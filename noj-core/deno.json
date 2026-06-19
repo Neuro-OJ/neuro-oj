@@ -8,7 +8,7 @@
   },
   "imports": {
     "hono": "npm:hono@^4",
-    "hono/": "npm:/hono@^4/"
+    "hono/": "npm:hono@^4/"
   },
   "fmt": {
     "semiColons": true,

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 
-export const health = new Hono();
+const health = new Hono();
 
 /**
  * 健康检查端点。
@@ -12,3 +12,5 @@ health.get("/health", (c) => {
     version: "0.1.0",
   });
 });
+
+export default health;

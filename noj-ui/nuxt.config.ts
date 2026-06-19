@@ -1,11 +1,13 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+const apiBase = process.env.NUXT_API_BASE ?? "http://localhost:8000";
+
 export default defineNuxtConfig({
   devtools: { enabled: true },
   modules: [],
 
   // 运行时配置（服务端私有，不暴露给浏览器）
   runtimeConfig: {
-    apiBase: "http://localhost:8000",
+    apiBase,
   },
 
   // Nitro 服务端代理 — 将 /api/* 转发到 noj-core
@@ -13,7 +15,7 @@ export default defineNuxtConfig({
   nitro: {
     devProxy: {
       "/api": {
-        target: "http://localhost:8000",
+        target: apiBase,
         changeOrigin: true,
       },
     },
@@ -21,7 +23,7 @@ export default defineNuxtConfig({
 
   routeRules: {
     // 生产环境代理（部署时由 Nitro 服务端处理）
-    "/api/**": { proxy: { to: "http://localhost:8000/api/**" } },
+    "/api/**": { proxy: { to: `${apiBase}/api/**` } },
   },
 
   app: {

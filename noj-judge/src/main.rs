@@ -1,5 +1,3 @@
-use tokio;
-
 /// Neuro OJ 评测 Worker
 ///
 /// 从 Redis 消息队列中拉取评测任务，在 Docker 容器中执行评测，

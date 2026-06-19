@@ -18,13 +18,13 @@ Neuro OJ (NOJ) 是一个面向 LMCC（大语言模型能力认证）的在线评
 docker compose up -d
 
 # 启动后端
-cd noj-core && deno task dev
+(cd noj-core && deno task dev)
 
 # 启动前端
-cd noj-ui && npm run dev
+(cd noj-ui && npm run dev)
 
 # 启动评测 Worker
-cd noj-judge && cargo run
+(cd noj-judge && cargo run)
 ```
 
 ## 项目结构

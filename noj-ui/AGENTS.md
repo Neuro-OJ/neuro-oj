@@ -67,7 +67,7 @@ defineProps<Props>()
 
 ## API 交互约定
 
-- noj-core 地址通过环境变量 `NUXT_PUBLIC_API_BASE` 配置
+- noj-core 地址通过服务端私有环境变量 `NUXT_API_BASE` 配置
 - 所有 API 调用统一通过 `server/api/` 代理（避免 CORS + 隐藏内部地址）
 - 错误处理：全局封装，统一 toast 提示
 
