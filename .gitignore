@@ -1,0 +1,36 @@
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === IDE ===
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# === Deno (noj-core) ===
+deno.lock
+
+# === Node.js (noj-ui) ===
+node_modules/
+.nuxt/
+.output/
+dist/
+*.log
+npm-debug.log*
+
+# === Rust (noj-judge) ===
+target/
+*.rs.bk
+
+# === Docker ===
+docker-data/
+
+# === Environment ===
+.env
+.env.*
+!.env.example
+
+# === JJ (Jujutsu) ===
+.jj/repo/op_heads/
+.jj/repo/store/

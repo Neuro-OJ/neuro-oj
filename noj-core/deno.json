@@ -1,0 +1,23 @@
+{
+  "name": "@noj/core",
+  "version": "0.1.0",
+  "exports": "./src/mod.ts",
+  "tasks": {
+    "dev": "deno run --watch --allow-net --allow-env src/main.ts",
+    "start": "deno run --allow-net --allow-env src/main.ts"
+  },
+  "imports": {
+    "hono": "npm:hono@^4",
+    "hono/": "npm:/hono@^4/"
+  },
+  "fmt": {
+    "semiColons": true,
+    "singleQuote": false,
+    "indentWidth": 2
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  }
+}

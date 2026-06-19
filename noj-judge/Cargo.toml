@@ -1,0 +1,9 @@
+[package]
+name = "noj-judge"
+version = "0.1.0"
+edition = "2021"
+description = "Neuro OJ 评测 Worker — 通过 Redis MQ 接收任务，Docker 沙箱执行评测"
+
+[dependencies]
+redis = { version = "0.27", features = ["tokio-comp"] }
+tokio = { version = "1", features = ["full"] }
