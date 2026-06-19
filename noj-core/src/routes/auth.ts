@@ -7,11 +7,25 @@ import type { LoginInput, RegisterInput } from "../types/auth.ts";
 const auth = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
 /**
+ * 安全解析 JSON 请求体。
+ * 解析失败时抛出 ValidationError（400）而非返回 500。
+ */
+async function parseJsonBody<T>(
+  c: { req: { json: <U>() => Promise<U> } },
+): Promise<T> {
+  try {
+    return await c.req.json<T>();
+  } catch {
+    throw new ValidationError("请求体格式错误：需要有效的 JSON");
+  }
+}
+
+/**
  * 用户注册端点。
  * POST /api/v1/auth/register
  */
 auth.post("/register", async (c) => {
-  const body = await c.req.json<RegisterInput>();
+  const body = await parseJsonBody<RegisterInput>(c);
 
   // 验证必填字段
   if (!body.username || !body.email || !body.password) {
@@ -48,7 +62,7 @@ auth.post("/register", async (c) => {
  * POST /api/v1/auth/login
  */
 auth.post("/login", async (c) => {
-  const body = await c.req.json<LoginInput>();
+  const body = await parseJsonBody<LoginInput>(c);
 
   // 验证必填字段
   if (!body.login || !body.password) {

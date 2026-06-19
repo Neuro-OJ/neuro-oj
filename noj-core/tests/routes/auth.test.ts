@@ -55,7 +55,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
     const res = await jsonRequest(app, `${BASE}/register`, "POST", {
       username: `route_user_${ts}`,
@@ -78,7 +78,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
     const res = await jsonRequest(app, `${BASE}/register`, "POST", {
       username: "abc",
@@ -97,7 +97,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
     const res = await jsonRequest(app, `${BASE}/register`, "POST", {
       username: "@invalid!",
@@ -117,7 +117,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
     const res = await jsonRequest(app, `${BASE}/register`, "POST", {
       username: "shortpwd",
@@ -137,7 +137,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
     const res = await jsonRequest(app, `${BASE}/register`, "POST", {
       username: "validuser",
@@ -157,7 +157,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
 
     // 第一次注册
@@ -186,7 +186,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
     const user = `login_test_${ts}`;
 
@@ -217,7 +217,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
     const user = `login_fail_${ts}`;
 
@@ -244,7 +244,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
     const user = `me_test_${ts}`;
 
@@ -277,7 +277,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
     const user = `login_email_${ts}`;
     const email = `${user}@example.com`;
@@ -308,7 +308,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
     const user = `ab_${ts}`; // 5 字符，有效
     const res = await jsonRequest(app, `${BASE}/register`, "POST", {
@@ -326,7 +326,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
     // 31 字符，无效
     const longName = "a".repeat(31);
@@ -345,7 +345,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
     const user = `pw8_${ts}`;
     const res = await jsonRequest(app, `${BASE}/register`, "POST", {
@@ -363,7 +363,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
     const res = await jsonRequest(app, `${BASE}/me`, "GET");
     assertEquals(res.status, 401);
@@ -378,7 +378,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
     const res = await jsonRequest(app, `${BASE}/me`, "GET", undefined, "Bearer invalid-token");
     assertEquals(res.status, 401);
@@ -393,7 +393,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const app = createApp();
     const res = await jsonRequest(app, `${BASE}/login`, "POST", {
       login: "user", // 缺少 password

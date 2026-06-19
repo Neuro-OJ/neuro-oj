@@ -35,7 +35,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const user = await registerUser(TEST_USER);
 
     assertEquals(user.username, TEST_USER.username);
@@ -54,7 +54,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     // 已存在 TEST_USER（上一步创建的），尝试重复注册
     await assertRejects(
       () =>
@@ -75,7 +75,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     await assertRejects(
       () =>
         registerUser({
@@ -95,7 +95,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const result = await loginUser({
       login: TEST_USER.username,
       password: TEST_USER.password,
@@ -115,7 +115,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     const result = await loginUser({
       login: TEST_USER.email,
       password: TEST_USER.password,
@@ -132,7 +132,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     await assertRejects(
       () =>
         loginUser({
@@ -151,7 +151,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     await assertRejects(
       () =>
         loginUser({
@@ -170,7 +170,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     // 先注册以获取 ID
     const registered = await registerUser({
       username: `test-profile-${ts}`,
@@ -191,7 +191,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    resetDbForTest();
+    await resetDbForTest();
     await assertRejects(
       () => getUserProfile("00000000-0000-0000-0000-000000000000"),
       UnauthorizedError,

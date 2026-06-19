@@ -63,8 +63,16 @@ export async function checkDbHealth(): Promise<
 
 /**
  * 重置数据库连接状态（测试用）。
+ * 关闭 postgres.js 连接池后清空单例，避免连接泄漏。
  */
-export function resetDbForTest() {
+export async function resetDbForTest() {
+  if (_client) {
+    try {
+      await _client.end();
+    } catch {
+      // 关闭连接失败不影响测试结果
+    }
+  }
   _db = null;
   _client = null;
   _error = null;
