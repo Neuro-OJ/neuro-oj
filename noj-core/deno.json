@@ -13,7 +13,10 @@
     "drizzle-orm": "npm:drizzle-orm@0.45.2",
     "drizzle-orm/": "npm:/drizzle-orm@0.45.2/",
     "postgres": "npm:postgres@3.4.9",
-    "ioredis": "npm:ioredis@5.11.1"
+    "ioredis": "npm:ioredis@5.11.1",
+    "bcryptjs": "npm:bcryptjs@^2.4.3",
+    "jose": "npm:jose@^5",
+    "drizzle-kit": "npm:drizzle-kit"
   },
   "fmt": {
     "semiColons": true,

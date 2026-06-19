@@ -53,7 +53,7 @@ export async function checkDbHealth(): Promise<
   }
 
   try {
-    await _db.run(sql`SELECT 1`);
+    await _db.execute(sql`SELECT 1`);
     return { ok: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

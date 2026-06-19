@@ -1,6 +1,7 @@
+// deno-lint-ignore-file no-explicit-any
 import Redis from "ioredis";
 
-let _redis: Redis | null = null;
+let _redis: any | null = null;
 let _error: Error | null = null;
 
 /**
@@ -8,16 +9,17 @@ let _error: Error | null = null;
  * 首次调用时根据环境变量 REDIS_URL 创建连接。
  * 失败时记录错误但不崩溃，health 端点可查询状态。
  */
-export function getRedis(): Redis {
+export function getRedis(): any {
   if (_error) throw _error;
   if (_redis) return _redis;
 
   try {
     const redisUrl = Deno.env.get("REDIS_URL") || "redis://127.0.0.1:6379/";
+    // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
     _redis = new Redis(redisUrl, {
       maxRetriesPerRequest: 3,
       enableOfflineQueue: false, // 断开时直接失败而非缓冲
-      retryStrategy(times) {
+      retryStrategy(times: number) {
         if (times > 5) return null; // 停止重试
         return Math.min(times * 200, 2000); // 指数退避
       },
@@ -25,7 +27,7 @@ export function getRedis(): Redis {
     });
 
     // 错误处理
-    _redis.on("error", (err) => {
+    _redis.on("error", (err: Error) => {
       console.error("Redis 连接错误:", err.message);
       _error = err;
     });
