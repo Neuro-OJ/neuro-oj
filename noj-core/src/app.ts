@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import health from "./routes/health.ts";
-import auth from "./routes/auth.ts";
+import auth, { adminAuth } from "./routes/auth.ts";
+import categories from "./routes/categories.ts";
 import problems from "./routes/problems.ts";
-import submissions from "./routes/submissions.ts";
+import submissions, { adminSubmissions } from "./routes/submissions.ts";
+import users from "./routes/users.ts";
 import { AppError } from "./lib/errors.ts";
 
 /**
@@ -26,8 +28,12 @@ export function createApp(): Hono {
   // 注册路由
   app.route("/", health);
   app.route("/api/v1/auth", auth);
+  app.route("/api/v1/admin", adminAuth);
+  app.route("/api/v1/categories", categories);
   app.route("/api/v1/problems", problems);
   app.route("/api/v1/submissions", submissions);
+  app.route("/api/v1/admin/submissions", adminSubmissions);
+  app.route("/api/v1/users", users);
 
   return app;
 }

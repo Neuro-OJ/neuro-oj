@@ -26,3 +26,16 @@ export async function authMiddleware(c: Context, next: Next) {
     return c.json({ error: "认证令牌无效或已过期" }, 401);
   }
 }
+
+/**
+ * 管理员中间件——检查当前用户是否为管理员。
+ *
+ * 需要在 authMiddleware 之后使用，依赖其注入的 userRole 字段。
+ * 若用户角色不为 "admin"，返回 403 禁止访问。
+ */
+export async function adminMiddleware(c: Context, next: Next) {
+  if (c.get("userRole") !== "admin") {
+    return c.json({ error: "需要管理员权限" }, 403);
+  }
+  await next();
+}

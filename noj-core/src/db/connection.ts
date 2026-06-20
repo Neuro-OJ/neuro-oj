@@ -26,7 +26,26 @@ export function getDb() {
   try {
     // 连接池大小可通过环境变量配置，默认 10
     const poolMax = parseInt(Deno.env.get("DATABASE_POOL_MAX") || "10", 10);
-    _client = postgres(databaseUrl, { max: poolMax });
+    // connection_timeout / idle_timeout / max_lifetime 显式设定，避免
+    // npm 兼容层下 postgres.js 连接管理异常导致首次查询耗时数秒
+    const connectTimeout = parseInt(
+      Deno.env.get("DATABASE_CONNECT_TIMEOUT") || "10",
+      10,
+    );
+    const idleTimeout = parseInt(
+      Deno.env.get("DATABASE_IDLE_TIMEOUT") || "300",
+      10,
+    );
+    const maxLifetime = parseInt(
+      Deno.env.get("DATABASE_MAX_LIFETIME") || "3600",
+      10,
+    );
+    _client = postgres(databaseUrl, {
+      max: poolMax,
+      connect_timeout: connectTimeout,
+      idle_timeout: idleTimeout,
+      max_lifetime: maxLifetime,
+    });
     _db = drizzle(_client, { schema });
     return _db;
   } catch (err) {

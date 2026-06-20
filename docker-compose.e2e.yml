@@ -43,11 +43,12 @@ services:
       - "base"
 
   # === E2E 全链路（可选，需要 profile） ===
+  #
+  # 注意：noj-core 暂无 Dockerfile，以下服务使用 denoland/deno 镜像。
+  # 如需本地构建，请先在 noj-core/ 创建 Dockerfile（见 docker-compose.yml 的 noj-core 参考）。
 
-  noj-core-test:
-    build:
-      context: ./noj-core
-      dockerfile: Dockerfile
+  noj-core-server:
+    image: denoland/deno:alpine
     depends_on:
       redis:
         condition: service_healthy
@@ -57,9 +58,40 @@ services:
       DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e_test
       REDIS_URL: redis://redis:6379
       JWT_SECRET: e2e-test-secret
-      NOJ_RUN_E2E: "1"
+      ADMIN_EMAIL: e2e_admin@test.com
+      ADMIN_PASS: e2e_admin_pass
+    working_dir: /app
+    volumes:
+      - ./noj-core:/app
     command: >
-      sh -c "deno task migrate && deno test -A"
+      sh -c "
+        deno task migrate &&
+        ADMIN_EMAIL=e2e_admin@test.com ADMIN_PASS=e2e_admin_pass deno task seed &&
+        deno task start
+      "
+    healthcheck:
+      test: ["CMD", "deno", "eval", "fetch('http://localhost:8000/health').then(r => Deno.exit(r.ok?0:1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    profiles:
+      - "e2e-full"
+
+  noj-core-e2e:
+    image: denoland/deno:alpine
+    depends_on:
+      noj-core-server:
+        condition: service_healthy
+    environment:
+      NOJ_RUN_E2E: "1"
+      E2E_BASE_URL: http://noj-core-server:8000
+      E2E_ADMIN_EMAIL: e2e_admin@test.com
+      E2E_ADMIN_PASS: e2e_admin_pass
+    working_dir: /app
+    volumes:
+      - ./noj-core:/app
+    command: >
+      sh -c "deno test -A tests/e2e/api.test.ts"
     profiles:
       - "e2e-full"
 

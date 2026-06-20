@@ -1,6 +1,11 @@
 import { Hono } from "hono";
-import { authMiddleware } from "../middleware/auth.ts";
-import { getUserProfile, loginUser, registerUser } from "../services/auth.ts";
+import { adminMiddleware, authMiddleware } from "../middleware/auth.ts";
+import {
+  getUserProfile,
+  loginUser,
+  promoteUser,
+  registerUser,
+} from "../services/auth.ts";
 import { ValidationError } from "../lib/errors.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import type { LoginInput, RegisterInput } from "../types/auth.ts";
@@ -71,4 +76,34 @@ auth.get("/me", authMiddleware, async (c) => {
   return c.json({ data: user }, 200);
 });
 
+/**
+ * 管理员用户管理路由。
+ * 需要 authMiddleware + adminMiddleware 双重保护。
+ */
+const adminAuth = new Hono<
+  { Variables: { userId: string; userRole: string } }
+>();
+
+/**
+ * 管理员提升/降级用户角色。
+ * PATCH /api/v1/admin/users/:id/role
+ */
+adminAuth.patch(
+  "/users/:id/role",
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
+    const targetUserId = c.req.param("id") as string;
+    const body = await parseJsonBody<{ role: string }>(c);
+
+    if (!body.role) {
+      throw new ValidationError("缺少必填字段：role");
+    }
+
+    const user = await promoteUser(targetUserId, body.role, c.get("userId"));
+    return c.json({ data: user }, 200);
+  },
+);
+
+export { adminAuth };
 export default auth;

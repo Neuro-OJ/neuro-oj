@@ -3,7 +3,7 @@
 //! 提供 Docker 容器管理、测试门控、镜像管理等通用工具函数。
 //! 被各个测试文件通过 `mod common; use common::*;` 导入。
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -114,6 +114,9 @@ pub async fn create_test_container(
         memory_swap: Some(memory_limit_mb as i64 * 1024 * 1024),
         nano_cpus: Some(1_000_000_000),
         network_mode: Some("none".to_string()),
+        cap_drop: Some(vec!["ALL".to_string()]),
+        readonly_rootfs: Some(true),
+        security_opt: Some(vec!["no-new-privileges:true".to_string()]),
         auto_remove: Some(false),
         ..Default::default()
     };
@@ -162,26 +165,37 @@ pub async fn wait_container(
             }),
         );
         match stream.next().await {
-            Some(Ok(output)) => Ok(output.status_code),
-            Some(Err(e)) => Err(anyhow::anyhow!("等待容器失败: {}", e)),
-            None => Err(anyhow::anyhow!("容器退出流提前结束")),
+            Some(Ok(output)) => Some(output.status_code),
+            Some(Err(e)) => {
+                // 部分 Docker 版本下 wait stream 对 OOM/non-zero 退出返回错误，
+                // 回退到 inspect_container 读取退出码
+                eprintln!("wait_container stream 错误，回退到 inspect: {}", e);
+                None
+            }
+            None => None,
         }
     })
     .await;
 
     let exit_code = match wait_result {
-        Ok(Ok(code)) => code,
-        Ok(Err(e)) => {
-            let _ = docker
-                .remove_container(
-                    container_id,
-                    Some(RemoveContainerOptions {
-                        force: true,
-                        ..Default::default()
-                    }),
-                )
-                .await;
-            return Err(e);
+        Ok(Some(code)) => code,
+        Ok(None) => {
+            // wait stream 失败，回退到 inspect_container
+            match docker.inspect_container(container_id, None).await {
+                Ok(info) => info.state.and_then(|s| s.exit_code).unwrap_or(-1),
+                Err(e) => {
+                    let _ = docker
+                        .remove_container(
+                            container_id,
+                            Some(RemoveContainerOptions {
+                                force: true,
+                                ..Default::default()
+                            }),
+                        )
+                        .await;
+                    return Err(anyhow::anyhow!("等待容器失败（inspect 也失败）: {}", e));
+                }
+            }
         }
         Err(_elapsed) => {
             let _ = docker

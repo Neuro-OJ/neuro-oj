@@ -2,6 +2,7 @@ import {
   index,
   integer,
   pgTable,
+  primaryKey,
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -43,6 +44,47 @@ export const problems = pgTable("problems", {
   created_at: text("created_at").notNull(),
   updated_at: text("updated_at").notNull(),
 });
+
+/**
+ * 分类表。
+ * 树形结构，通过 parent_id 自引用实现多级分类。
+ * level 字段缓存层级深度（顶级为 0），避免递归计算。
+ */
+export const categories = pgTable(
+  "categories",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull().unique(),
+    description: text("description").notNull().default(""),
+    // deno-lint-ignore no-explicit-any
+    parent_id: text("parent_id").references((): any => categories.id, {
+      onDelete: "set null",
+    }),
+    level: integer("level").notNull().default(0),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
+  },
+);
+
+/**
+ * 题目-分类关联表。
+ * 多对多关系，级联删除。
+ */
+export const problemsCategories = pgTable(
+  "problems_categories",
+  {
+    problem_id: text("problem_id")
+      .notNull()
+      .references(() => problems.id, { onDelete: "cascade" }),
+    category_id: text("category_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "cascade" }),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.problem_id, table.category_id] }),
+  }),
+);
 
 /**
  * 提交记录表。

@@ -1,7 +1,7 @@
 # =============================================================================
 # Neuro OJ CI Pipeline
 #
-# 触发条件：向 main 分支发起 PR 或在 main 分支上 push
+# 触发条件：全分支 Push 和 Pull Request
 # 并行检查三个模块：
 #   - noj-core: Deno 后端（格式/代码检查/集成测试，需 PostgreSQL + Redis）
 #   - noj-ui:   Nuxt 3 前端（构建编译检查）
@@ -12,9 +12,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 # 同一分支/PR 的新推送自动取消旧运行，避免排队浪费

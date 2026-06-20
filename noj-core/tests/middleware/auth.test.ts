@@ -1,6 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
-import { authMiddleware } from "../../src/middleware/auth.ts";
+import { adminMiddleware, authMiddleware } from "../../src/middleware/auth.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
@@ -100,6 +100,70 @@ Deno.test({
     const res = await app.request("/protected", {
       headers: { Authorization: "Bearer " },
     });
+    assertEquals(res.status, 401);
+  },
+});
+
+/**
+ * adminMiddleware 测试
+ */
+
+/**
+ * 创建带 authMiddleware + adminMiddleware 的测试用 Hono 应用。
+ */
+function createAdminTestApp() {
+  const app = new Hono<{
+    Variables: { userId: string; userRole: string };
+  }>();
+
+  app.get("/admin-only", authMiddleware, adminMiddleware, (c) => {
+    return c.json({ ok: true });
+  });
+
+  return app;
+}
+
+Deno.test({
+  name: "adminMiddleware: 非管理员用户返回 403",
+  ignore: !hasEnv,
+  fn: async () => {
+    const app = createAdminTestApp();
+    const token = await signToken({ sub: "test-user-id", role: "user" });
+
+    const res = await app.request("/admin-only", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assertEquals(res.status, 403);
+
+    const body = await res.json();
+    assertEquals(body.error, "需要管理员权限");
+  },
+});
+
+Deno.test({
+  name: "adminMiddleware: 管理员用户通过",
+  ignore: !hasEnv,
+  fn: async () => {
+    const app = createAdminTestApp();
+    const token = await signToken({ sub: "admin-user-id", role: "admin" });
+
+    const res = await app.request("/admin-only", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assertEquals(res.status, 200);
+
+    const body = await res.json();
+    assertEquals(body.ok, true);
+  },
+});
+
+Deno.test({
+  name: "adminMiddleware: 未登录用户先被 authMiddleware 拦截返回 401",
+  ignore: !hasEnv,
+  fn: async () => {
+    const app = createAdminTestApp();
+
+    const res = await app.request("/admin-only");
     assertEquals(res.status, 401);
   },
 });
