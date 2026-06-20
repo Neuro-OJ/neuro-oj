@@ -71,12 +71,27 @@ router.get("/:id", (c) => {
 });
 
 /**
- * GET /api/v1/submissions — 提交列表
+ * GET /api/v1/submissions — 提交列表（支持分页）
  */
 router.get("/", (c) => {
+  const page = parseInt(c.req.query("page") || "1");
+  const limit = parseInt(c.req.query("limit") || "20");
   const userId = "anonymous";
-  const list = submissions.listSubmissions(userId);
-  return c.json({ data: list });
+
+  const allSubmissions = submissions.listSubmissions(userId);
+  const start = (page - 1) * limit;
+  const end = start + limit;
+  const data = allSubmissions.slice(start, end);
+
+  return c.json({
+    data,
+    pagination: {
+      page,
+      limit,
+      total: allSubmissions.length,
+      total_pages: Math.ceil(allSubmissions.length / limit),
+    },
+  });
 });
 
 export default router;
