@@ -8,7 +8,9 @@
   },
   "imports": {
     "hono": "npm:hono@^4",
-    "hono/": "npm:hono@^4/"
+    "hono/": "npm:hono@^4/",
+    "ioredis": "npm:ioredis@^5",
+    "uuid": "npm:uuid@^11"
   },
   "fmt": {
     "semiColons": true,

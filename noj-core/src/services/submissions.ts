@@ -11,6 +11,8 @@ import type {
   SubmissionWithResult,
   EvaluationResult,
 } from "../types/submissions.ts";
+import { pushJudgeTask } from "../mq/judge.ts";
+import * as problems from "./problems.ts";
 
 /** 内存存储的提交数据 */
 const submissionsStore: Map<string, Submission> = new Map();
@@ -61,12 +63,12 @@ export function getSubmission(id: string, userId: string): SubmissionWithResult 
 }
 
 /**
- * 创建提交
+ * 创建提交并推送到评测队列
  */
-export function createSubmission(
+export async function createSubmission(
   userId: string,
   input: CreateSubmissionInput
-): Submission {
+): Promise<Submission> {
   const id = crypto.randomUUID();
   const fileName = input.file_name || `main.${getFileExtension(input.language)}`;
 
@@ -82,6 +84,23 @@ export function createSubmission(
   };
 
   submissionsStore.set(id, submission);
+
+  // 推送到 Redis MQ
+  const problem = problems.getProblem(input.problem_id);
+  if (problem) {
+    await pushJudgeTask({
+      submission_id: id,
+      problem_id: input.problem_id,
+      language: input.language,
+      code: input.code,
+      file_name: fileName,
+      time_limit_ms: problem.time_limit_ms,
+      memory_limit_mb: problem.memory_limit_mb,
+      judge_image: problem.judge_image,
+      judge_command: problem.judge_command,
+    });
+  }
+
   return submission;
 }
 

@@ -40,7 +40,7 @@ router.post("/", async (c) => {
   }
 
   const userId = "anonymous";
-  const submission = submissions.createSubmission(userId, body);
+  const submission = await submissions.createSubmission(userId, body);
 
   return c.json(
     {
