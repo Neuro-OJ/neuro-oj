@@ -180,9 +180,19 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    const result = await listProblems({ keyword: "舱门" });
+    // 创建含关键词的题目
+    const keyword = `搜索测试-${ts}`;
+    await createProblem({
+      id: `search-test-${ts}`,
+      title: `标题包含${keyword}`,
+      description: `描述也包含${keyword}`,
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+    });
+    const result = await listProblems({ keyword });
     assertEquals(result.items.length, 1);
-    assertEquals(result.items[0].id, TEST_PROBLEM_ID);
+    assertEquals(result.items[0].id, `search-test-${ts}`);
   },
 });
 

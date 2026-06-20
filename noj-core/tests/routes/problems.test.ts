@@ -1,6 +1,8 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
+import { createProblem } from "../../src/services/problems.ts";
+import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 const hasEnv = !!Deno.env.get("JWT_SECRET");
@@ -78,12 +80,39 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/problems/1001");
+    // 先创建一个带分类的题目，确保数据存在
+    await resetDbForTest();
+    const ts = Date.now();
+    const catId = `route-test-cat-${ts}`;
+    const db = getDb();
+    const { categories } = await import("../../src/db/schema.ts");
+    const now = new Date().toISOString();
+    await db.insert(categories).values({
+      id: catId,
+      name: "测试分类",
+      slug: `route-test-cat-${ts}`,
+      description: "",
+      parent_id: null,
+      level: 0,
+      created_at: now,
+      updated_at: now,
+    });
+    const problem = await createProblem({
+      id: `route-test-prob-${ts}`,
+      title: "路由测试题目",
+      description: "测试描述",
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+      category_ids: [catId],
+    });
+    const res = await app.request(`/api/v1/problems/${problem.id}`);
     assertEquals(res.status, 200);
 
     const body = await res.json();
-    assertEquals(body.data.id, "1001");
+    assertEquals(body.data.id, problem.id);
     assertEquals(Array.isArray(body.data.categories), true);
+    assertEquals(body.data.categories.length, 1);
   },
 });
 
