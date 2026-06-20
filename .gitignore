@@ -9,7 +9,7 @@ Thumbs.db
 *.swo
 
 # === Deno (noj-core) ===
-deno.lock
+# deno.lock 已提交至仓库，用于 CI 缓存和可重现构建
 
 # === Node.js (noj-ui) ===
 node_modules/
