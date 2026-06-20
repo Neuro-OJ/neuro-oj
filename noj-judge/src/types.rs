@@ -43,6 +43,7 @@ pub struct JudgeTask {
     /// 提交 UUID
     pub submission_id: String,
     /// 题目 UUID
+    #[allow(dead_code)]
     pub problem_id: String,
     /// 题目定义的 Docker 镜像名
     pub judge_image: String,
@@ -143,6 +144,7 @@ impl JudgeResult {
 ///
 /// 由 evaluate.py 在 details.cases 数组中填充，用于前端统一渲染。
 /// 所有 output 字段均为可选的——有些题目不适合展示具体输入输出。
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CaseResult {
     /// 用例标识

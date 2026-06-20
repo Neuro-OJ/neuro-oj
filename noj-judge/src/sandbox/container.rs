@@ -12,10 +12,46 @@ use bollard::models::HostConfig;
 use bollard::Docker;
 use futures_util::StreamExt;
 use tokio::fs;
-use tokio::io::AsyncWriteExt;
 use tracing::{error, info, warn};
 
 use crate::types::JudgeTask;
+
+/// 同步解压 zip 内容到目标目录。
+///
+/// 使用 std::fs 同步写入以避免 tokio async fs 在特定环境下可能出现的缓冲问题。
+fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
+    let cursor = std::io::Cursor::new(data);
+    let mut archive = zip::ZipArchive::new(cursor).context("打开 zip 文件失败")?;
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).context("读取 zip 条目失败")?;
+        let file_name = file.name().to_string();
+
+        // 防止 path traversal 攻击：拒绝任何含 .. 路径组件的条目
+        if file_name.split(['/', '\\']).any(|part| part == "..") {
+            warn!("跳过 zip 路径遍历: {}", file_name);
+            continue;
+        }
+
+        let out_path = target_dir.join(&file_name);
+
+        if file.is_dir() {
+            std::fs::create_dir_all(&out_path)
+                .with_context(|| format!("创建目录失败: {}", out_path.display()))?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("创建父目录失败: {}", parent.display()))?;
+            }
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf)?;
+            std::fs::write(&out_path, &buf)
+                .with_context(|| format!("写入文件失败: {}", out_path.display()))?;
+        }
+    }
+
+    Ok(())
+}
 
 /// 容器执行输出
 #[derive(Debug, Clone)]
@@ -50,42 +86,15 @@ async fn get_support_package_bytes(task: &JudgeTask) -> Result<Option<Vec<u8>>> 
 }
 
 /// 解压支持包到目标目录。
+///
+/// 使用 spawn_blocking 将同步解压操作移出 async 上下文，
+/// 避免 zip crate 在 tokio runtime 下可能出现的数据读取问题。
 async fn extract_zip(data: &[u8], target_dir: &Path) -> Result<()> {
-    let cursor = std::io::Cursor::new(data);
-    let mut archive = zip::ZipArchive::new(cursor).context("打开 zip 文件失败")?;
-
-    let mut entries: Vec<(bool, String, Vec<u8>)> = Vec::new();
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i).context("读取 zip 条目失败")?;
-        let file_name = file.name().to_string();
-
-        // 防止 path traversal 攻击
-        let out_path = target_dir.join(&file_name);
-        if !out_path.starts_with(target_dir) {
-            warn!("跳过 zip 路径遍历: {}", file_name);
-            continue;
-        }
-
-        let is_dir = file.is_dir();
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf)?;
-        // file 在此 drop，释放对 archive 的借用
-        entries.push((is_dir, file_name, buf));
-    }
-
-    for (is_dir, file_name, buf) in entries {
-        let out_path = target_dir.join(&file_name);
-        if is_dir {
-            fs::create_dir_all(&out_path).await?;
-        } else {
-            if let Some(parent) = out_path.parent() {
-                fs::create_dir_all(parent).await?;
-            }
-            let mut writer = fs::File::create(&out_path).await?;
-            writer.write_all(&buf).await?;
-        }
-    }
-
+    let data = data.to_vec();
+    let target_dir = target_dir.to_path_buf();
+    tokio::task::spawn_blocking(move || extract_zip_sync(&data, &target_dir))
+        .await
+        .context("解压线程阻塞失败")??;
     Ok(())
 }
 
@@ -185,13 +194,11 @@ pub async fn run_in_container(
                 condition: "not-running",
             }),
         );
-        while let Some(item) = stream.next().await {
-            match item {
-                Ok(output) => return Ok(output.status_code),
-                Err(e) => return Err(anyhow::anyhow!("等待容器失败: {}", e)),
-            }
+        match stream.next().await {
+            Some(Ok(output)) => Ok(output.status_code),
+            Some(Err(e)) => Err(anyhow::anyhow!("等待容器失败: {}", e)),
+            None => Err(anyhow::anyhow!("容器退出流提前结束")),
         }
-        Err(anyhow::anyhow!("容器退出流提前结束"))
     })
     .await;
 
