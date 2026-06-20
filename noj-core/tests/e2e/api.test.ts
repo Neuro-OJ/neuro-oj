@@ -363,3 +363,113 @@ Deno.test({
     assertEquals(d.data.role, "admin");
   },
 });
+
+// ——— 提交列表 ———
+
+Deno.test({
+  name: "[e2e/submissions] 4.1 用户提交列表无 token 返回 401",
+  ignore: skip,
+  fn: async () => {
+    const { status } = await apiGet("/api/v1/submissions");
+    assertEquals(status, 401);
+  },
+});
+
+Deno.test({
+  name: "[e2e/submissions] 4.2 用户提交列表返回空列表和分页信息",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiGet(
+      "/api/v1/submissions",
+      regularToken,
+    );
+    assertEquals(status, 200);
+    const d = body as { data: unknown[]; pagination: { page: number; per_page: number; total: number; total_pages: number } };
+    assertEquals(Array.isArray(d.data), true);
+    assertEquals(d.data.length, 0);
+    assertEquals(d.pagination.page, 1);
+    assertEquals(d.pagination.per_page, 20);
+    assertEquals(d.pagination.total, 0);
+    assertEquals(d.pagination.total_pages, 0);
+  },
+});
+
+Deno.test({
+  name: "[e2e/submissions] 4.3 用户提交列表按 status 非法值返回 400",
+  ignore: skip,
+  fn: async () => {
+    const { status } = await apiGet(
+      "/api/v1/submissions?status=invalid",
+      regularToken,
+    );
+    assertEquals(status, 400);
+  },
+});
+
+Deno.test({
+  name: "[e2e/submissions] 4.4 管理员提交列表无 token 返回 401",
+  ignore: skip,
+  fn: async () => {
+    const { status } = await apiGet("/api/v1/admin/submissions");
+    assertEquals(status, 401);
+  },
+});
+
+Deno.test({
+  name: "[e2e/submissions] 4.5 普通用户访问管理员提交列表返回 403",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiGet(
+      "/api/v1/admin/submissions",
+      regularToken,
+    );
+    assertEquals(status, 403);
+    const d = body as { error: string };
+    assertEquals(d.error, "需要管理员权限");
+  },
+});
+
+Deno.test({
+  name: "[e2e/submissions] 4.6 管理员查看所有提交返回空列表",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiGet(
+      "/api/v1/admin/submissions",
+      adminToken,
+    );
+    assertEquals(status, 200);
+    const d = body as { data: unknown[]; pagination: { total: number } };
+    assertEquals(Array.isArray(d.data), true);
+    assertEquals(typeof d.pagination.total, "number");
+  },
+});
+
+Deno.test({
+  name: "[e2e/submissions] 4.7 管理员按 user_id 筛选",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiGet(
+      "/api/v1/admin/submissions?user_id=nonexistent-user",
+      adminToken,
+    );
+    assertEquals(status, 200);
+    const d = body as { data: unknown[]; pagination: { total: number } };
+    assertEquals(d.data.length, 0);
+    assertEquals(d.pagination.total, 0);
+  },
+});
+
+Deno.test({
+  name: "[e2e/submissions] 4.8 管理员按 problem_id 筛选",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiGet(
+      "/api/v1/admin/submissions?problem_id=nonexistent",
+      adminToken,
+    );
+    assertEquals(status, 200);
+    const d = body as { data: unknown[]; pagination: { total: number } };
+    assertEquals(d.data.length, 0);
+    assertEquals(d.pagination.total, 0);
+  },
+});

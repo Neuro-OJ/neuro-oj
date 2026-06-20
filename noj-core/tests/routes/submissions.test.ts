@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 
@@ -92,5 +92,140 @@ Deno.test({
     assertEquals(res.status, 404);
     const body = await res.json();
     assertEquals(body.error, "提交不存在");
+  },
+});
+
+// ── 提交列表 ──
+
+Deno.test({
+  name: "submissions route: GET /api/v1/submissions 无 token 返回 401",
+  ignore: !hasEnv,
+  fn: async () => {
+    const app = createApp();
+    const res = await app.request("/api/v1/submissions");
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name: "submissions route: GET /api/v1/submissions 无效 token 返回 401",
+  ignore: !hasEnv,
+  fn: async () => {
+    const app = createApp();
+    const res = await app.request("/api/v1/submissions", {
+      headers: { Authorization: "Bearer invalid-token" },
+    });
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name: "submissions route: GET /api/v1/submissions 无数据时返回空列表和分页信息",
+  ignore: skip,
+  fn: async () => {
+    const app = createApp();
+    const token = await signToken({ sub: "test-list-empty", role: "user" });
+    const res = await app.request("/api/v1/submissions", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(Array.isArray(body.data), true);
+    assertEquals(body.data.length, 0);
+    assertExists(body.pagination);
+    assertEquals(body.pagination.page, 1);
+    assertEquals(body.pagination.per_page, 20);
+    assertEquals(body.pagination.total, 0);
+    assertEquals(body.pagination.total_pages, 0);
+  },
+});
+
+Deno.test({
+  name: "submissions route: GET /api/v1/submissions 按 status 筛选返回错误状态值时 400",
+  ignore: !hasEnv,
+  fn: async () => {
+    const app = createApp();
+    const token = await signToken({ sub: "test-user", role: "user" });
+    const res = await app.request("/api/v1/submissions?status=invalid", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assertEquals(res.status, 400);
+  },
+});
+
+Deno.test({
+  name: "submissions route: GET /api/v1/submissions per_page 超过上限自动限制",
+  ignore: skip,
+  fn: async () => {
+    const app = createApp();
+    const token = await signToken({ sub: "test-user", role: "user" });
+    const res = await app.request("/api/v1/submissions?per_page=999", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.pagination.per_page, 100);
+  },
+});
+
+// ── 管理员提交列表 ──
+
+Deno.test({
+  name: "admin submissions: GET /api/v1/admin/submissions 无 token 返回 401",
+  ignore: !hasEnv,
+  fn: async () => {
+    const app = createApp();
+    const res = await app.request("/api/v1/admin/submissions");
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name: "admin submissions: GET /api/v1/admin/submissions 普通用户返回 403",
+  ignore: skip,
+  fn: async () => {
+    const app = createApp();
+    const token = await signToken({ sub: "test-regular", role: "user" });
+    const res = await app.request("/api/v1/admin/submissions", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assertEquals(res.status, 403);
+    const body = await res.json();
+    assertEquals(body.error, "需要管理员权限");
+  },
+});
+
+Deno.test({
+  name: "admin submissions: GET /api/v1/admin/submissions 管理员查看所有提交",
+  ignore: skip,
+  fn: async () => {
+    const app = createApp();
+    const token = await signToken({ sub: "test-admin", role: "admin" });
+    const res = await app.request("/api/v1/admin/submissions", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(Array.isArray(body.data), true);
+    assertExists(body.pagination);
+  },
+});
+
+Deno.test({
+  name: "admin submissions: GET /api/v1/admin/submissions 按 user_id 筛选",
+  ignore: skip,
+  fn: async () => {
+    const app = createApp();
+    const token = await signToken({ sub: "test-admin", role: "admin" });
+    const res = await app.request(
+      "/api/v1/admin/submissions?user_id=nonexistent-user",
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.data.length, 0);
+    assertEquals(body.pagination.total, 0);
   },
 });

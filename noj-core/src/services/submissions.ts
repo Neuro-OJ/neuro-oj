@@ -1,7 +1,7 @@
 import { encodeBase64 } from "@std/encoding/base64";
-import { eq } from "drizzle-orm";
+import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
-import { evaluationResults, submissions } from "../db/schema.ts";
+import { evaluationResults, problems, submissions } from "../db/schema.ts";
 import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
 import { getProblem } from "./problems.ts";
@@ -37,6 +37,137 @@ export interface SubmissionWithResult extends SubmissionResponse {
     time_ms: number | null;
     memory_kb: number | null;
   } | null;
+}
+
+/**
+ * 提交列表项——不含 code 字段，附带题目和评测摘要。
+ */
+export interface SubmissionListItem {
+  id: string;
+  user_id: string;
+  problem_id: string;
+  language: string;
+  file_name: string | null;
+  status: SubmissionStatus;
+  created_at: string;
+  problem: {
+    id: string;
+    title: string;
+  };
+  result: {
+    status: string;
+    score: number;
+  } | null;
+}
+
+/**
+ * 列表查询参数。
+ */
+export interface ListSubmissionsParams {
+  userId?: string;
+  problemId?: string;
+  language?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  page: number;
+  perPage: number;
+}
+
+/**
+ * 列表查询结果。
+ */
+export interface ListSubmissionsResult {
+  data: SubmissionListItem[];
+  total: number;
+}
+
+/**
+ * 查询提交列表（分页 + 筛选）。
+ *
+ * 使用 LEFT JOIN 一次获取提交、题目、评测结果，避免 N+1。
+ * 不返回 code 字段（源代码仅在详情接口返回）。
+ */
+export async function listSubmissions(
+  params: ListSubmissionsParams,
+): Promise<ListSubmissionsResult> {
+  const db = getDb();
+  const { userId, problemId, language, status, from, to, page, perPage } =
+    params;
+
+  // 动态构建筛选条件（仅对提供的参数添加条件）
+  const conditions: ReturnType<typeof eq>[] = [];
+
+  if (userId) conditions.push(eq(submissions.user_id, userId));
+  if (problemId) conditions.push(eq(submissions.problem_id, problemId));
+  if (language) conditions.push(eq(submissions.language, language));
+  if (status) conditions.push(eq(submissions.status, status as SubmissionStatus));
+  if (from) conditions.push(gte(submissions.created_at, from));
+  if (to) conditions.push(lte(submissions.created_at, to));
+
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  // COUNT 总数
+  const [countRow] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(submissions)
+    .where(where);
+
+  const total = Number(countRow?.total ?? 0);
+
+  // 无数据时提前返回，避免无效查询
+  if (total === 0) {
+    return { data: [], total: 0 };
+  }
+
+  const offset = (page - 1) * perPage;
+
+  // 数据查询：LEFT JOIN problems + evaluation_results
+  const rows = await db
+    .select({
+      id: submissions.id,
+      user_id: submissions.user_id,
+      problem_id: submissions.problem_id,
+      language: submissions.language,
+      file_name: submissions.file_name,
+      status: submissions.status,
+      created_at: submissions.created_at,
+      problem_title: problems.title,
+      result_status: evaluationResults.status,
+      result_score: evaluationResults.score,
+    })
+    .from(submissions)
+    .leftJoin(problems, eq(submissions.problem_id, problems.id))
+    .leftJoin(
+      evaluationResults,
+      eq(evaluationResults.submission_id, submissions.id),
+    )
+    .where(where)
+    .orderBy(sql`${submissions.created_at} DESC`)
+    .offset(offset)
+    .limit(perPage);
+
+  const data: SubmissionListItem[] = rows.map((row) => ({
+    id: row.id,
+    user_id: row.user_id,
+    problem_id: row.problem_id,
+    language: row.language,
+    file_name: row.file_name,
+    status: row.status,
+    created_at: row.created_at,
+    problem: {
+      id: row.problem_id,
+      title: row.problem_title ?? "",
+    },
+    result: row.result_status
+      ? {
+        status: row.result_status,
+        score: row.result_score ?? 0,
+      }
+      : null,
+  }));
+
+  return { data, total };
 }
 
 /**
