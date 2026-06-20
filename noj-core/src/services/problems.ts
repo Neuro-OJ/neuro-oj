@@ -1,4 +1,13 @@
-import { and, asc, count, eq, ilike, inArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  ilike,
+  inArray,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { categories, problems, problemsCategories } from "../db/schema.ts";
 import { BadRequestError, NotFoundError } from "../lib/errors.ts";
@@ -99,7 +108,7 @@ export async function listProblems(
   const offset = (page - 1) * limit;
 
   // 构建筛选条件
-  const conditions: ReturnType<typeof eq>[] = [];
+  const conditions: SQL[] = [];
 
   if (query.difficulty) {
     if (!isValidDifficulty(query.difficulty)) {
@@ -117,46 +126,26 @@ export async function listProblems(
     );
   }
 
-  // 按分类筛选（子查询）
-  let categoryFilter: Set<string> | undefined;
+  // 按分类筛选——先查关联表拿到题目 ID，再通过 inArray 下推到 SQL WHERE 层
   if (query.category_id) {
     const catRows = await db
-      .select()
+      .select({ problem_id: problemsCategories.problem_id })
       .from(problemsCategories)
       .where(eq(problemsCategories.category_id, query.category_id));
-    categoryFilter = new Set(catRows.map((r) => r.problem_id));
+
+    if (catRows.length === 0) {
+      // 分类下无题目，直接返回空（无需进一步查询）
+      return { items: [], total: 0, page, limit };
+    }
+
+    const problemIds = catRows.map((r) => r.problem_id);
+    conditions.push(inArray(problems.id, problemIds));
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-  // 查询列表
-  let items: typeof problems.$inferSelect[];
-  if (categoryFilter) {
-    // 获取全部匹配条件的题目，再按分类过滤
-    const allMatching = await db
-      .select()
-      .from(problems)
-      .where(whereClause)
-      .orderBy(asc(problems.id));
-
-    items = allMatching.filter((p) => categoryFilter.has(p.id))
-      .slice(offset, offset + limit);
-
-    const total = allMatching.filter((p) => categoryFilter.has(p.id)).length;
-
-    const catMap = await attachCategories(items.map((p) => p.id));
-    return {
-      items: items.map((p) => ({
-        ...toProblemResponse(p),
-        categories: catMap.get(p.id) ?? [],
-      })),
-      total,
-      page,
-      limit,
-    };
-  }
-
-  items = await db
+  // 查询列表（SQL 层完成全部过滤+分页）
+  const items = await db
     .select()
     .from(problems)
     .where(whereClause)
@@ -171,6 +160,7 @@ export async function listProblems(
     .where(whereClause);
   const total = Number(countResult[0]?.count ?? 0);
 
+  // 注入关联分类信息
   const catMap = await attachCategories(items.map((p) => p.id));
 
   return {

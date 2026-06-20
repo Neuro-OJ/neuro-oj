@@ -159,17 +159,26 @@ export async function getUserProfile(
  * 管理员提升/降级用户角色。
  * 仅允许在 "admin" 和 "user" 之间切换。
  *
+ * @param targetUserId 目标用户 ID
+ * @param role 目标角色（"admin" | "user"）
+ * @param currentUserId 当前操作用户 ID——禁止管理员撤销自己的权限
  * @throws {NotFoundError} 目标用户不存在
- * @throws {BadRequestError} 非法的角色值
+ * @throws {BadRequestError} 非法的角色值 或 操作自己的角色
  */
 export async function promoteUser(
   targetUserId: string,
   role: string,
+  currentUserId?: string,
 ): Promise<UserResponse> {
   const db = getDb();
 
   if (role !== "admin" && role !== "user") {
     throw new BadRequestError("角色值非法，仅允许 admin 或 user");
+  }
+
+  // 防止最后一个管理员误操作导致系统无管理员
+  if (currentUserId && targetUserId === currentUserId) {
+    throw new BadRequestError("不能修改自己的角色");
   }
 
   const existing = await db

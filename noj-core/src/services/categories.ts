@@ -260,9 +260,11 @@ export async function updateCategory(
     .set(updates)
     .where(eq(categories.id, id));
 
-  // 如果 level 变了，递归更新子分类的 level
+  // 如果 level 变了，在事务中递归更新子分类的 level
   if (newLevel !== current.level) {
-    await recalculateLevels(id, newLevel);
+    await db.transaction(async (tx) => {
+      await recalculateLevels(id, newLevel, tx);
+    });
   }
 
   return getCategory(id);
@@ -270,12 +272,18 @@ export async function updateCategory(
 
 /**
  * 递归更新子孙分类的 level。
+ * 所有更新在同一个事务中执行，避免部分写入导致数据不一致。
+ *
+ * @param tx Drizzle 事务实例——首次调用由 updateCategory 通过 db.transaction() 传入，
+ *           递归调用时沿用同一事务，确保原子性。
  */
 async function recalculateLevels(
   parentId: string,
   parentLevel: number,
+  // deno-lint-ignore no-explicit-any
+  tx?: any,
 ): Promise<void> {
-  const db = getDb();
+  const db = tx ?? getDb();
   const children = await db
     .select()
     .from(categories)
@@ -287,7 +295,7 @@ async function recalculateLevels(
       .update(categories)
       .set({ level: newLevel, updated_at: new Date().toISOString() })
       .where(eq(categories.id, child.id));
-    await recalculateLevels(child.id, newLevel);
+    await recalculateLevels(child.id, newLevel, tx);
   }
 }
 

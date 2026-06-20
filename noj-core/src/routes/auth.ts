@@ -100,7 +100,7 @@ adminAuth.patch(
       throw new ValidationError("缺少必填字段：role");
     }
 
-    const user = await promoteUser(targetUserId, body.role);
+    const user = await promoteUser(targetUserId, body.role, c.get("userId"));
     return c.json({ data: user }, 200);
   },
 );
