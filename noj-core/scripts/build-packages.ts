@@ -9,8 +9,9 @@
  * 目录结构:
  *   data/problems-src/<id>/
  *     ├── evaluate.py       (评测脚本，入口)
- *     ├── hidden.jsonl      (隐藏测试用例，不公开)
+ *     ├── hidden.jsonl      (隐藏测试用例)
  *     ├── visible.jsonl     (可见测试用例)
+ *     ├── submission.py     (示例解法/参考实现——不打包进 zip)
  *     └── README.md         (题目描述)
  *
  *   data/packages/
@@ -28,9 +29,9 @@ async function buildProblemPackage(id: string): Promise<void> {
   const srcDir = join(SRC_DIR, id);
   const outFile = join(OUT_DIR, `${id}.zip`);
 
-  // 使用 Deno 的 zip 命令
+  // 使用 zip 命令打包，排除用户提交文件 submission.py
   const cmd = new Deno.Command("zip", {
-    args: ["-r", outFile, "."],
+    args: ["-r", outFile, ".", "-x", "submission.py"],
     cwd: srcDir,
   });
 

@@ -40,9 +40,6 @@ docker-data/
 tmp/
 
 # === Problem Data (noj-core) ===
-# Support packages 包含隐藏测试数据，不纳入版本控制
+# Support packages 是构建产物，不纳入版本控制
 noj-core/data/packages/
 !noj-core/data/packages/.gitkeep
-# 题目源码目录（可选 gitignore，避免评测脚本暴露在公开仓库）
-noj-core/data/problems-src/
-!noj-core/data/problems-src/.gitkeep

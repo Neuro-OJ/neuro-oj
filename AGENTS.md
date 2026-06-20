@@ -37,6 +37,35 @@ NOJ 分为三个核心模块：
 
 架构遵循 **Producer-Consumer** 模式，支持多个 noj-judge 实例水平扩展。
 
+### 提交流程详解
+
+用户提交代码后，noj-core 组装 `JudgeTask` 消息推送到 Redis MQ：
+
+```json
+{
+  "submission_id": "uuid",
+  "problem_id": "1001",
+  "judge_image": "noj-judge-python",
+  "judge_command": "python3 /tmp/evaluate.py",
+  "support_package_path": "data/packages/1001.zip",
+  "language": "python3",
+  "code": "...",
+  "file_name": "submission.py",
+  "time_limit_ms": 5000,
+  "memory_limit_mb": 512
+}
+```
+
+noj-judge 收到任务后执行：
+
+1. **加载支持包** — 读取 `support_package_path` 指向的 zip（含 evaluate.py、测试用例等）
+2. **注入用户代码** — 将 `code` 以 `file_name` 命名写入工作目录（覆盖/补全支持包文件）
+3. **执行评测** — 在 Docker 容器中运行 `judge_command`（evaluate.py 负责读取测试用例并评分）
+4. **返回结果** — 将 stdout/stderr、得分、耗时、内存等打包为 `JudgeResult` 发回 Redis MQ
+
+支持包（zip）由 `deno task build-packages` 从 `data/problems-src/<id>/` 构建。
+用户提交的代码（如 `submission.py`）**不**包含在支持包中——由 noj-judge 在运行时放入。
+
 ## 技术栈
 
 | 模块      | 语言/运行时          | 核心框架       | 关键依赖               |

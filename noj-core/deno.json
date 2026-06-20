@@ -5,6 +5,7 @@
   "tasks": {
     "dev": "deno run --watch --env-file=.env --allow-net --allow-env --allow-read src/main.ts",
     "start": "deno run --env-file=.env --allow-net --allow-env --allow-read src/main.ts",
+    "setup": "deno task build-packages && deno task seed",
     "seed": "deno run --allow-net --allow-env --allow-read --allow-write scripts/seed.ts",
     "build-packages": "deno run --allow-read --allow-write --allow-run scripts/build-packages.ts",
     "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts",
