@@ -80,21 +80,53 @@
 <style scoped>
 /* Hero */
 .hero {
+    position: relative;
+    min-height: calc(100vh - 64px);
     padding: 80px 0;
     background: linear-gradient(135deg, var(--c-bg-dark) 0%, #1a2a4a 50%, #1e3a6a 100%);
+    background-size: 200% 200%;
+    animation: gradientShift 12s ease infinite;
     color: var(--c-white);
     overflow: hidden;
+    display: flex;
+    align-items: center;
+}
+
+.hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+        radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(59, 130, 246, 0.05) 0%, transparent 50%),
+        radial-gradient(circle at 60% 80%, rgba(59, 130, 246, 0.06) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+.hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
 }
 
 .hero .container {
+    position: relative;
+    z-index: 1;
     display: flex;
     align-items: center;
     gap: 64px;
 }
 
+
+
 .hero-content {
     flex: 1;
     min-width: 0;
+    animation: fadeInUp 0.8s ease both;
 }
 
 .hero-title {
@@ -102,11 +134,16 @@
     font-weight: 800;
     line-height: 1.2;
     margin-bottom: 20px;
+    animation: fadeInUp 0.6s ease 0.1s both;
 }
 
 .highlight {
     color: var(--c-primary-light);
+    display: inline-block;
+    animation: glow 2s ease-in-out infinite alternate;
 }
+
+
 
 .hero-subtitle {
     font-size: 18px;
@@ -114,13 +151,17 @@
     color: var(--c-text-muted);
     margin-bottom: 32px;
     max-width: 520px;
+    animation: fadeInUp 0.6s ease 0.2s both;
 }
 
 .hero-actions {
     display: flex;
     gap: 16px;
     margin-bottom: 48px;
+    animation: fadeInUp 0.6s ease 0.3s both;
 }
+
+
 
 .btn-lg {
     padding: 14px 32px;
@@ -140,6 +181,7 @@
 .hero-stats {
     display: flex;
     gap: 48px;
+    animation: fadeInUp 0.6s ease 0.5s both;
 }
 
 .stat {
@@ -162,6 +204,7 @@
 .hero-visual {
     flex: 1;
     min-width: 0;
+    animation: fadeInUp 0.8s ease 0.4s both;
 }
 
 .code-block {
@@ -169,6 +212,7 @@
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    animation: float 4s ease-in-out infinite;
 }
 
 .code-header {
@@ -196,9 +240,9 @@
 }
 
 .code-body {
-    padding: 20px;
-    font-size: 14px;
-    line-height: 1.7;
+    padding: 16px;
+    font-size: 12px;
+    line-height: 1.5;
     overflow-x: auto;
 }
 

@@ -64,6 +64,7 @@ body {
 .body-area {
     display: flex;
     flex: 1;
+    min-height: calc(100vh - 64px);
 }
 
 .main {
@@ -97,5 +98,34 @@ body {
 .btn-primary:hover {
     background: var(--c-primary-dark);
     border-color: var(--c-primary-dark);
+}
+</style>
+
+<style>
+@keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+@keyframes glow {
+    from { text-shadow: 0 0 8px rgba(59, 130, 246, 0.3); }
+    to { text-shadow: 0 0 20px rgba(59, 130, 246, 0.7); }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(24px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
 }
 </style>

@@ -14,24 +14,24 @@ const port = parseInt(Deno.env.get("PORT") || "8000", 10);
  * 3. 启动 HTTP 服务
  */
 async function main() {
-  // 初始化数据库
-  try {
-    await runMigrations();
-  } catch (err) {
-    console.error("数据库初始化失败，服务可能不完整:", err);
-  }
+    // 初始化数据库
+    try {
+        await runMigrations();
+    } catch (err) {
+        console.error("数据库初始化失败，服务可能不完整:", err);
+    }
 
-  // 连接 Redis
-  try {
-    await connectRedis();
-  } catch (err) {
-    console.error("Redis 连接失败，评测分发功能不可用:", err);
-  }
+    // 连接 Redis
+    try {
+        await connectRedis();
+    } catch (err) {
+        console.error("Redis 连接失败，评测分发功能不可用:", err);
+    }
 
-  // 启动 HTTP 服务
-  Deno.serve({ port }, app.fetch);
+    // 启动 HTTP 服务
+    Deno.serve({ port }, app.fetch);
 
-  console.log(`noj-core running on http://localhost:${port}`);
+    console.log(`noj-core running on http://localhost:${port}`);
 }
 
 await main();
