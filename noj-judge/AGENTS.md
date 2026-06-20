@@ -86,7 +86,6 @@ noj-judge/
 - status 由 evaluate.py 输出 `---RESULT---` 标记后的 JSON 决定（可自由扩展）
 - score 采用 ×100 整数存储（1000 = 10.00 分）
 - time_ms / memory_kb 为可选字段（当前始终为 None，后续通过 Docker stats 实现）
-```
 
 ## 安全注意事项
 
