@@ -1,4 +1,4 @@
-import { assertEquals, assertExists } from "jsr:@std/assert@^1";
+import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");

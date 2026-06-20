@@ -101,7 +101,9 @@ export async function listSubmissions(
   if (userId) conditions.push(eq(submissions.user_id, userId));
   if (problemId) conditions.push(eq(submissions.problem_id, problemId));
   if (language) conditions.push(eq(submissions.language, language));
-  if (status) conditions.push(eq(submissions.status, status as SubmissionStatus));
+  if (status) {
+    conditions.push(eq(submissions.status, status as SubmissionStatus));
+  }
   if (from) conditions.push(gte(submissions.created_at, from));
   if (to) conditions.push(lte(submissions.created_at, to));
 

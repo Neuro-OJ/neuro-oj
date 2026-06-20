@@ -120,7 +120,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "submissions route: GET /api/v1/submissions 无数据时返回空列表和分页信息",
+  name:
+    "submissions route: GET /api/v1/submissions 无数据时返回空列表和分页信息",
   ignore: skip,
   fn: async () => {
     const app = createApp();
@@ -141,7 +142,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "submissions route: GET /api/v1/submissions 按 status 筛选返回错误状态值时 400",
+  name:
+    "submissions route: GET /api/v1/submissions 按 status 筛选返回错误状态值时 400",
   ignore: !hasEnv,
   fn: async () => {
     const app = createApp();

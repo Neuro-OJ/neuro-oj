@@ -384,7 +384,15 @@ Deno.test({
       regularToken,
     );
     assertEquals(status, 200);
-    const d = body as { data: unknown[]; pagination: { page: number; per_page: number; total: number; total_pages: number } };
+    const d = body as {
+      data: unknown[];
+      pagination: {
+        page: number;
+        per_page: number;
+        total: number;
+        total_pages: number;
+      };
+    };
     assertEquals(Array.isArray(d.data), true);
     assertEquals(d.data.length, 0);
     assertEquals(d.pagination.page, 1);
@@ -487,7 +495,12 @@ Deno.test({
     const d = body as {
       data: {
         user: { id: string; username: string };
-        stats: { total_submissions: number; accepted: number; acceptance_rate: number; solved_count: number };
+        stats: {
+          total_submissions: number;
+          accepted: number;
+          acceptance_rate: number;
+          solved_count: number;
+        };
         solved_problems: unknown[];
         recent_submissions: unknown[];
       };

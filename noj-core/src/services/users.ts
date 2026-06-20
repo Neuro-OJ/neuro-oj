@@ -1,6 +1,11 @@
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
-import { evaluationResults, problems, submissions, users } from "../db/schema.ts";
+import {
+  evaluationResults,
+  problems,
+  submissions,
+  users,
+} from "../db/schema.ts";
 import { NotFoundError } from "../lib/errors.ts";
 import { scoreFromDb } from "../types/index.ts";
 
@@ -54,7 +59,11 @@ export async function getUserProfile(
 
   // 1. 验证用户存在
   const [userRow] = await db
-    .select({ id: users.id, username: users.username, created_at: users.created_at })
+    .select({
+      id: users.id,
+      username: users.username,
+      created_at: users.created_at,
+    })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
@@ -67,8 +76,12 @@ export async function getUserProfile(
   const [statsRow] = await db
     .select({
       total_submissions: sql<number>`count(*)`,
-      accepted: sql<number>`count(*) filter (where ${evaluationResults.status} = 'Accepted')`,
-      solved_count: sql<number>`count(distinct ${submissions.problem_id}) filter (where ${evaluationResults.status} = 'Accepted')`,
+      accepted: sql<
+        number
+      >`count(*) filter (where ${evaluationResults.status} = 'Accepted')`,
+      solved_count: sql<
+        number
+      >`count(distinct ${submissions.problem_id}) filter (where ${evaluationResults.status} = 'Accepted')`,
     })
     .from(submissions)
     .leftJoin(
