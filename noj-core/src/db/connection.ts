@@ -24,7 +24,9 @@ export function getDb() {
   }
 
   try {
-    _client = postgres(databaseUrl);
+    // 连接池大小可通过环境变量配置，默认 10
+    const poolMax = parseInt(Deno.env.get("DATABASE_POOL_MAX") || "10", 10);
+    _client = postgres(databaseUrl, { max: poolMax });
     _db = drizzle(_client, { schema });
     return _db;
   } catch (err) {

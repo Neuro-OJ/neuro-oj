@@ -15,6 +15,7 @@ export async function runMigrations(): Promise<void> {
 
     // 基于 import.meta.url 解析绝对路径，避免 CWD 依赖
     const migrationsFolder = resolve(__dirname, "../../drizzle");
+    console.log("迁移文件夹路径:", migrationsFolder);
     await migrate(db, { migrationsFolder });
     console.log("数据库迁移完成");
   } catch (err) {
