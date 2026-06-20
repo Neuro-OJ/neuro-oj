@@ -50,6 +50,32 @@ noj-judge/
 - 日志：使用 `tracing` / `log` 记录关键操作
 - 异步优先：所有 I/O 操作使用 async/await
 
+### E2E / 集成测试
+
+集成测试位于 `tests/` 目录，使用真实 Docker daemon 验证沙箱功能。
+
+**文件列表：**
+| 文件 | 验证内容 |
+|------|----------|
+| `tests/e2e_docker_basic.rs` | 容器生命周期、退出码、stdout/stderr 捕获 |
+| `tests/e2e_resource_limits.rs` | 超时 kill、OOM、内存限制 |
+| `tests/e2e_security_isolation.rs` | 网络隔离、敏感路径防护 |
+| `tests/e2e_support_package.rs` | 支持包、evaluate.py 执行、---RESULT--- 标记 |
+
+**运行方式：**
+```bash
+# 需要 Docker daemon 在运行中，且无 NOJ_RUN_E2E=1
+NOJ_RUN_E2E=1 cargo test --test e2e -- --ignored
+
+# 仅运行特定测试
+NOJ_RUN_E2E=1 cargo test --test e2e -- --ignored test_container_lifecycle
+```
+
+**测试门控：**
+- 所有集成测试默认被 `#[ignore]` 跳过
+- 设置 `NOJ_RUN_E2E=1` 后方可执行
+- 需要系统安装 Docker 并有权限访问 `/var/run/docker.sock`
+
 ### MQ 消息格式（JudgeTask → noj-judge）
 
 ```json

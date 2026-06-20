@@ -1,0 +1,85 @@
+# =============================================================================
+# Neuro OJ E2E 测试环境编排
+#
+# 使用方式：
+#   启动基础服务（Redis + PostgreSQL）：
+#     docker compose -f docker-compose.e2e.yml up -d
+#
+#   启动全链路测试（包含 noj-core 和 noj-judge）：
+#     docker compose -f docker-compose.e2e.yml --profile e2e-full up
+# =============================================================================
+
+name: neuro-oj-e2e
+
+services:
+  # === 基础服务 ===
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - "base"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: e2e
+      POSTGRES_PASSWORD: e2e
+      POSTGRES_DB: e2e_test
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "e2e"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - "base"
+
+  # === E2E 全链路（可选，需要 profile） ===
+
+  noj-core-test:
+    build:
+      context: ./noj-core
+      dockerfile: Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e_test
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: e2e-test-secret
+      NOJ_RUN_E2E: "1"
+    command: >
+      sh -c "deno task migrate && deno test -A"
+    profiles:
+      - "e2e-full"
+
+  noj-judge-test:
+    build:
+      context: ./noj-judge
+      dockerfile: Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379
+      JUDGE_QUEUE: noj:judge:queue
+      RESULT_QUEUE: noj:judge:results
+      MAX_CONCURRENT: "2"
+      WORK_DIR: /tmp/noj-work
+      NOJ_RUN_E2E: "1"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: >
+      sh -c "cargo test --test e2e -- --ignored"
+    profiles:
+      - "e2e-full"

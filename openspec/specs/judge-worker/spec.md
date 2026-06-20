@@ -68,6 +68,16 @@
 - **WHEN** 容器因 OOM 被 Docker kill（退出码 137）
 - **THEN** status 设为 `MemoryLimitExceeded`，score 设为 0
 
+#### Scenario: 容器创建失败（镜像问题）
+
+- **WHEN** task.judge_image 对应的镜像在本地不存在且无法构建
+- **THEN** 评测返回 SystemError，错误信息包含镜像名和构建提示
+
+#### Scenario: 临时目录在错误时仍清理
+
+- **WHEN** 评测过程中发生错误（超时、OOM 等）
+- **THEN** 临时目录及其内容仍被删除
+
 ### Requirement: 并发控制
 
 系统 SHALL 通过可配置的信号量限制同时执行的评测数量，默认值为 2。

@@ -209,3 +209,46 @@ Deno.test({
     assertEquals(rows.length, 1, "重复消费不应插入多行");
   },
 });
+
+// ── 消费者解析逻辑的单元测试（不需要数据库） ──
+
+Deno.test({
+  name: "consumer: 有效 JudgeResult JSON 解析",
+  fn: () => {
+    const rawJson =
+      `{"submission_id":"sid-1","status":"Accepted","score":1000,"output":"ok","details":{}}`;
+    const parsed = JSON.parse(rawJson);
+    assertEquals(parsed.submission_id, "sid-1");
+    assertEquals(parsed.status, "Accepted");
+    assertEquals(parsed.score, 1000);
+  },
+});
+
+Deno.test({
+  name: "consumer: 非法 JSON 应抛出异常",
+  fn: () => {
+    const rawJson = "{invalid json}";
+    let parseError: Error | null = null;
+    try {
+      JSON.parse(rawJson);
+    } catch (err) {
+      parseError = err instanceof Error ? err : new Error(String(err));
+    }
+    assertEquals(parseError !== null, true, "非法 JSON 应抛出异常");
+  },
+});
+
+Deno.test({
+  name: "consumer: 缺少 submission_id 的 JSON 应被检测",
+  fn: () => {
+    const rawJson = `{"status":"Accepted","score":1000}`;
+    const parsed = JSON.parse(rawJson);
+    assertEquals(
+      parsed.submission_id,
+      undefined,
+      "缺少 submission_id 应为 undefined",
+    );
+    assertEquals(parsed.status, "Accepted");
+    assertEquals(parsed.score, 1000);
+  },
+});

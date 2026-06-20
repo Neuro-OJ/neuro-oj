@@ -160,3 +160,45 @@ jobs:
       - name: 运行测试 (cargo test)
         working-directory: noj-judge
         run: cargo test
+
+  # ===========================================================================
+  # noj-judge — Docker 沙箱集成测试（需要 Docker daemon，手动触发）
+  # ===========================================================================
+  judge-e2e:
+    name: Judge E2E (Docker)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    env:
+      NOJ_RUN_E2E: "1"
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: 缓存 Cargo 依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            noj-judge/target
+          key: cargo-e2e-${{ hashFiles('noj-judge/Cargo.lock') }}
+          restore-keys: |
+            cargo-e2e-
+
+      - name: 构建测试 Docker 镜像
+        working-directory: noj-judge/tests/e2e
+        run: docker build -t noj-judge-test-runner -f Dockerfile.test-runner .
+
+      - name: 运行 E2E 集成测试
+        working-directory: noj-judge
+        run: cargo test --test e2e -- --ignored
+
+      - name: 再次运行单元测试确认无回归
+        working-directory: noj-judge
+        run: cargo test

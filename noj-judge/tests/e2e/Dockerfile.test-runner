@@ -1,0 +1,9 @@
+# noj-judge E2E 测试用 Docker 镜像
+FROM python:3.12-alpine
+
+RUN pip install --no-cache-dir requests urllib3
+
+COPY evaluate.py /evaluate.py
+RUN chmod +x /evaluate.py
+
+WORKDIR /tmp
