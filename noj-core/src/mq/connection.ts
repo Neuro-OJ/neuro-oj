@@ -89,9 +89,12 @@ export async function connectRedis(): Promise<void> {
 
 /**
  * 检查 Redis 连接是否正常。
+ * 连接状态为 ready 时执行实际 PING 命令验证。
  * 返回 { ok: true } 或 { ok: false, error: string }。
  */
-export function checkRedisHealth(): { ok: boolean; error?: string } {
+export async function checkRedisHealth(): Promise<
+  { ok: boolean; error?: string }
+> {
   if (_error) {
     return { ok: false, error: _error.message };
   }
@@ -101,7 +104,17 @@ export function checkRedisHealth(): { ok: boolean; error?: string } {
       error: `连接状态: ${_redis?.status ?? "未初始化"}`,
     };
   }
-  return { ok: true };
+
+  try {
+    const pong = await _redis.ping();
+    if (pong !== "PONG") {
+      return { ok: false, error: `PING 返回异常: ${pong}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message };
+  }
 }
 
 /**
