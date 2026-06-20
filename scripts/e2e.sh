@@ -131,7 +131,25 @@ echo ""
 cd "$REPO_DIR/noj-judge"
 export NOJ_RUN_E2E=1
 
-if cargo test --test e2e -- --ignored 2>&1; then
+# 逐个运行各测试目标（Cargo 按文件名 --test 命名）
+E2E_TESTS=(
+  e2e_docker_basic
+  e2e_resource_limits
+  e2e_security_isolation
+  e2e_support_package
+)
+ALL_PASSED=true
+
+for test_target in "${E2E_TESTS[@]}"; do
+  echo -e "${INFO} 运行 ${BLUE}${test_target}${NC}..."
+  if cargo test --test "$test_target" -- --ignored 2>&1 | tail -1 | grep -q "FAILED"; then
+    echo -e "${FAIL} ${test_target} 失败"
+    ALL_PASSED=false
+    break
+  fi
+done
+
+if [ "$ALL_PASSED" = true ]; then
   echo ""
   echo -e "${PASS} noj-judge 集成测试全部通过"
 else
