@@ -5,6 +5,7 @@ Thumbs.db
 # === IDE ===
 .idea/
 .vscode/
+.trea/
 *.swp
 *.swo
 
@@ -34,3 +35,6 @@ docker-data/
 # === JJ (Jujutsu) ===
 .jj/repo/op_heads/
 .jj/repo/store/
+
+# === Tmp ===
+tmp/
