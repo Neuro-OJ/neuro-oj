@@ -5,26 +5,20 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   modules: [],
 
+  // @lucide/vue 的 Icon 组件在 SSR 下 inject() 上下文丢失，
+  // 通过 noExternal 强制让 Vite 将其打包入 SSR bundle，确保 inject 链路完整
+  vite: {
+    ssr: {
+      noExternal: ["@lucide/vue"],
+    },
+  },
+
   // 运行时配置（服务端私有，不暴露给浏览器）
   runtimeConfig: {
     apiBase,
   },
 
-  // Nitro 服务端代理 — 将 /api/* 转发到 noj-core
-  // 开发模式使用 devProxy，生产模式使用 routeRules
-  nitro: {
-    devProxy: {
-      "/api": {
-        target: apiBase,
-        changeOrigin: true,
-      },
-    },
-  },
-
-  routeRules: {
-    // 生产环境代理（部署时由 Nitro 服务端处理）
-    "/api/**": { proxy: { to: `${apiBase}/api/**` } },
-  },
+  // API 请求由 server/api/[...slug].ts 代理到 noj-core
 
   app: {
     head: {
