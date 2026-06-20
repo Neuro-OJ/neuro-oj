@@ -3,7 +3,12 @@ import { getDb } from "../db/connection.ts";
 import { users } from "../db/schema.ts";
 import { comparePassword, hashPassword } from "../lib/password.ts";
 import { signToken } from "../lib/jwt.ts";
-import { ConflictError, UnauthorizedError } from "../lib/errors.ts";
+import {
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  UnauthorizedError,
+} from "../lib/errors.ts";
 import type { LoginInput, RegisterInput, UserResponse } from "../types/auth.ts";
 
 /**
@@ -148,4 +153,47 @@ export async function getUserProfile(
   }
 
   return toUserResponse(existing[0]);
+}
+
+/**
+ * 管理员提升/降级用户角色。
+ * 仅允许在 "admin" 和 "user" 之间切换。
+ *
+ * @throws {NotFoundError} 目标用户不存在
+ * @throws {BadRequestError} 非法的角色值
+ */
+export async function promoteUser(
+  targetUserId: string,
+  role: string,
+): Promise<UserResponse> {
+  const db = getDb();
+
+  if (role !== "admin" && role !== "user") {
+    throw new BadRequestError("角色值非法，仅允许 admin 或 user");
+  }
+
+  const existing = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, targetUserId))
+    .limit(1);
+
+  if (existing.length === 0) {
+    throw new NotFoundError("用户不存在");
+  }
+
+  const now = new Date().toISOString();
+  await db
+    .update(users)
+    .set({ role, updated_at: now })
+    .where(eq(users.id, targetUserId));
+
+  return {
+    id: existing[0].id,
+    username: existing[0].username,
+    email: existing[0].email,
+    role,
+    created_at: existing[0].created_at,
+    updated_at: now,
+  };
 }

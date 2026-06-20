@@ -1,11 +1,17 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
+import { signToken } from "../../src/lib/jwt.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
+const hasEnv = !!Deno.env.get("JWT_SECRET");
+const skipDb = !hasDb;
+const skipEnv = !hasEnv;
 
 Deno.test({
   name: "problems route: GET /api/v1/problems 返回分页列表",
-  ignore: !hasDb,
+  ignore: skipDb,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const res = await app.request("/api/v1/problems");
@@ -21,7 +27,9 @@ Deno.test({
 
 Deno.test({
   name: "problems route: GET /api/v1/problems 支持分页参数",
-  ignore: !hasDb,
+  ignore: skipDb,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const res = await app.request("/api/v1/problems?page=1&limit=5");
@@ -34,8 +42,56 @@ Deno.test({
 });
 
 Deno.test({
+  name: "problems route: GET /api/v1/problems 按难度筛选",
+  ignore: skipDb,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const res = await app.request("/api/v1/problems?difficulty=easy");
+    assertEquals(res.status, 200);
+
+    const body = await res.json();
+    assertEquals(
+      body.data.every((i: { difficulty: string }) => i.difficulty === "easy"),
+      true,
+    );
+  },
+});
+
+Deno.test({
+  name: "problems route: GET /api/v1/problems 按关键词搜索",
+  ignore: skipDb,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const res = await app.request("/api/v1/problems?keyword=舱门");
+    assertEquals(res.status, 200);
+  },
+});
+
+Deno.test({
+  name: "problems route: GET /api/v1/problems/:id 返回题目详情含分类",
+  ignore: skipDb,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const res = await app.request("/api/v1/problems/1001");
+    assertEquals(res.status, 200);
+
+    const body = await res.json();
+    assertEquals(body.data.id, "1001");
+    assertEquals(Array.isArray(body.data.categories), true);
+  },
+});
+
+Deno.test({
   name: "problems route: GET /api/v1/problems/:id 不存在的题目返回 404",
-  ignore: !hasDb,
+  ignore: skipDb,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const res = await app.request("/api/v1/problems/nonexistent");
@@ -47,8 +103,122 @@ Deno.test({
 });
 
 Deno.test({
-  name: "problems route: GET /api/v1/problems XSS 防护 — 响应格式为 JSON",
-  ignore: !hasDb,
+  name: "problems route: POST /api/v1/problems 未登录返回 401",
+  ignore: skipDb || skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const res = await app.request("/api/v1/problems", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "新题" }),
+    });
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name: "problems route: POST /api/v1/problems 非管理员返回 403",
+  ignore: skipDb || skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await signToken({ sub: "test-user", role: "user" });
+
+    const res = await app.request("/api/v1/problems", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        title: "新题",
+        description: "描述",
+        judge_image: "noj-judge-python",
+        judge_command: "python3 /tmp/evaluate.py",
+      }),
+    });
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name: "problems route: POST /api/v1/problems 管理员创建成功",
+  ignore: skipDb || skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await signToken({ sub: "admin-user", role: "admin" });
+
+    const res = await app.request("/api/v1/problems", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        title: "管理员创建的新题",
+        description: "测试描述",
+        difficulty: "medium",
+        judge_image: "noj-judge-python",
+        judge_command: "python3 /tmp/evaluate.py",
+        time_limit_ms: 5000,
+        memory_limit_mb: 256,
+      }),
+    });
+    assertEquals(res.status, 201);
+
+    const body = await res.json();
+    assertEquals(body.data.title, "管理员创建的新题");
+  },
+});
+
+Deno.test({
+  name: "problems route: PUT /api/v1/problems/:id 非管理员返回 403",
+  ignore: skipDb || skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await signToken({ sub: "test-user", role: "user" });
+
+    const res = await app.request("/api/v1/problems/1001", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ title: "被篡改" }),
+    });
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name: "problems route: DELETE /api/v1/problems/:id 非管理员返回 403",
+  ignore: skipDb || skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await signToken({ sub: "test-user", role: "user" });
+
+    const res = await app.request("/api/v1/problems/1001", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name: "problems route: XSS 防护 — 响应格式为 JSON",
+  ignore: skipDb,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const res = await app.request("/api/v1/problems");

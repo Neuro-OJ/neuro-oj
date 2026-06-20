@@ -5,11 +5,20 @@
  *
  * 此脚本从 data/packages/ 读取已构建的 support 包，
  * 将题目元数据写入数据库。支持幂等运行（ON CONFLICT DO NOTHING）。
+ *
+ * 环境变量：
+ *   ADMIN_EMAIL - 若设置，则将对应邮箱的用户角色提升为 admin
  */
 
+import { eq } from "drizzle-orm";
 import { runMigrations } from "../src/db/migrate.ts";
 import { getDb } from "../src/db/connection.ts";
-import { problems } from "../src/db/schema.ts";
+import {
+  categories,
+  problems,
+  problemsCategories,
+  users,
+} from "../src/db/schema.ts";
 
 interface SampleProblem {
   id: string;
@@ -38,12 +47,66 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
   },
 ];
 
+/**
+ * 示例分类定义。
+ */
+interface SampleCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  parent_id: string | null;
+  level: number;
+}
+
+const SAMPLE_CATEGORIES: SampleCategory[] = [
+  {
+    id: "cat-algorithm",
+    name: "算法",
+    slug: "algorithm",
+    description: "算法相关题目",
+    parent_id: null,
+    level: 0,
+  },
+  {
+    id: "cat-data-structure",
+    name: "数据结构",
+    slug: "data-structure",
+    description: "数据结构相关题目",
+    parent_id: null,
+    level: 0,
+  },
+  {
+    id: "cat-tree",
+    name: "树",
+    slug: "tree",
+    description: "树结构相关题目",
+    parent_id: "cat-data-structure",
+    level: 1,
+  },
+  {
+    id: "cat-lmcc",
+    name: "LMCC 样例题",
+    slug: "lmcc-sample",
+    description: "LMCC 样例题集",
+    parent_id: null,
+    level: 0,
+  },
+];
+
+/**
+ * 题目与分类的关联定义。
+ */
+const PROBLEM_CATEGORY_MAP: [string, string][] = [
+  ["1001", "cat-lmcc"],
+  ["1001", "cat-algorithm"],
+];
+
 async function seedProblems(): Promise<void> {
   const db = getDb();
   const now = new Date().toISOString();
 
   for (const problem of SAMPLE_PROBLEMS) {
-    // 使用 ON CONFLICT 确保幂等性
     await db
       .insert(problems)
       .values({
@@ -55,6 +118,81 @@ async function seedProblems(): Promise<void> {
 
     console.log(`已同步题目: ${problem.id} ${problem.title}`);
   }
+}
+
+/**
+ * 初始化示例分类。
+ */
+async function seedCategories(): Promise<void> {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  for (const cat of SAMPLE_CATEGORIES) {
+    await db
+      .insert(categories)
+      .values({
+        ...cat,
+        created_at: now,
+        updated_at: now,
+      })
+      .onConflictDoNothing({ target: categories.id });
+
+    console.log(`  已同步分类: ${cat.name} (${cat.slug})`);
+  }
+}
+
+/**
+ * 关联题目与分类。
+ */
+async function seedProblemCategories(): Promise<void> {
+  const db = getDb();
+
+  for (const [problemId, categoryId] of PROBLEM_CATEGORY_MAP) {
+    await db
+      .insert(problemsCategories)
+      .values({ problem_id: problemId, category_id: categoryId })
+      .onConflictDoNothing();
+
+    console.log(`  已关联题目 ${problemId} → 分类 ${categoryId}`);
+  }
+}
+
+/**
+ * 根据 ADMIN_EMAIL 环境变量将用户提升为管理员。
+ */
+async function promoteAdminFromEnv(): Promise<void> {
+  const adminEmail = Deno.env.get("ADMIN_EMAIL");
+  if (!adminEmail) {
+    console.log("  ADMIN_EMAIL 未设置，跳过管理员提升");
+    return;
+  }
+
+  const db = getDb();
+  const existing = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, adminEmail))
+    .limit(1);
+
+  if (existing.length === 0) {
+    console.warn(
+      `  警告：用户 ${adminEmail} 不存在，跳过管理员提升（请先注册后再运行 seed）`,
+    );
+    return;
+  }
+
+  const user = existing[0];
+  if (user.role === "admin") {
+    console.log(`  用户 ${adminEmail} 已是管理员，无需提升`);
+    return;
+  }
+
+  await db
+    .update(users)
+    .set({ role: "admin", updated_at: new Date().toISOString() })
+    .where(eq(users.email, adminEmail));
+
+  console.log(`  已提升用户 ${adminEmail} 为管理员`);
 }
 
 async function main() {
@@ -75,6 +213,33 @@ async function main() {
     await seedProblems();
   } catch (err) {
     console.error("示例题插入失败:", err);
+    Deno.exit(1);
+  }
+
+  // 3. 初始化示例分类
+  try {
+    console.log("初始化示例分类...");
+    await seedCategories();
+  } catch (err) {
+    console.error("示例分类初始化失败:", err);
+    Deno.exit(1);
+  }
+
+  // 4. 关联题目与分类
+  try {
+    console.log("关联题目与分类...");
+    await seedProblemCategories();
+  } catch (err) {
+    console.error("分类关联失败:", err);
+    Deno.exit(1);
+  }
+
+  // 5. 管理员提升
+  try {
+    console.log("检查管理员提升...");
+    await promoteAdminFromEnv();
+  } catch (err) {
+    console.error("管理员提升失败:", err);
     Deno.exit(1);
   }
 
