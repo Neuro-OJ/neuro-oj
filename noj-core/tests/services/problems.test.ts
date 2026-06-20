@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { listProblems, getProblem } from "../../src/services/problems.ts";
-import { resetDbForTest, getDb } from "../../src/db/connection.ts";
+import { getProblem, listProblems } from "../../src/services/problems.ts";
+import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { problems } from "../../src/db/schema.ts";
 import { NotFoundError } from "../../src/lib/errors.ts";
 

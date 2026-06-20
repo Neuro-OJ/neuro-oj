@@ -52,6 +52,9 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const res = await app.request("/api/v1/problems");
-    assertEquals(res.headers.get("content-type")?.includes("application/json"), true);
+    assertEquals(
+      res.headers.get("content-type")?.includes("application/json"),
+      true,
+    );
   },
 });

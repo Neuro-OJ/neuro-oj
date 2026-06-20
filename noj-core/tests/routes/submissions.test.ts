@@ -14,7 +14,11 @@ Deno.test({
     const res = await app.request("/api/v1/submissions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ problem_id: "1001", language: "python3", code: "print('hi')" }),
+      body: JSON.stringify({
+        problem_id: "1001",
+        language: "python3",
+        code: "print('hi')",
+      }),
     });
     assertEquals(res.status, 401);
     const body = await res.json();
@@ -33,7 +37,11 @@ Deno.test({
         "Content-Type": "application/json",
         Authorization: "Bearer invalid-token-here",
       },
-      body: JSON.stringify({ problem_id: "1001", language: "python3", code: "print('hi')" }),
+      body: JSON.stringify({
+        problem_id: "1001",
+        language: "python3",
+        code: "print('hi')",
+      }),
     });
     assertEquals(res.status, 401);
     const body = await res.json();
@@ -72,7 +80,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "submissions route: GET /api/v1/submissions/:id 有效 token 但提交不存在返回 404",
+  name:
+    "submissions route: GET /api/v1/submissions/:id 有效 token 但提交不存在返回 404",
   ignore: skip,
   fn: async () => {
     const app = createApp();
