@@ -47,7 +47,7 @@ export interface JudgeResult {
 /**
  * 提交的状态枚举。
  */
-export type SubmissionStatus = "pending" | "judging" | "finished";
+export type SubmissionStatus = "pending" | "judging" | "finished" | "error";
 
 /**
  * 分数精度常量。

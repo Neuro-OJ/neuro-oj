@@ -16,7 +16,7 @@ export function createApp(): Hono {
     if (err instanceof AppError) {
       return c.json(
         { error: err.message },
-        err.statusCode as 400 | 401 | 409 | 500,
+        err.statusCode as 400 | 401 | 404 | 409 | 500,
       );
     }
     console.error("未处理的错误:", err);

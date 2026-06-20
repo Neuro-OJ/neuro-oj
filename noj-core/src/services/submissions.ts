@@ -1,8 +1,9 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { evaluationResults, submissions } from "../db/schema.ts";
-import { BadRequestError, NotFoundError } from "../lib/errors.ts";
+import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
+import { getProblem } from "./problems.ts";
 import type { JudgeTask, SubmissionStatus } from "../types/index.ts";
 
 export interface SubmissionInput {
@@ -24,7 +25,7 @@ export interface SubmissionResponse {
 }
 
 export interface SubmissionWithResult extends SubmissionResponse {
-  result?: {
+  result: {
     status: string;
     score: number;
     output: string;
@@ -63,7 +64,6 @@ export async function createSubmission(
   const db = getDb();
 
   // 检查题目是否存在并获取信息
-  const { getProblem } = await import("./problems.ts");
   const problem = await getProblem(input.problem_id);
 
   // 验证语言
@@ -82,27 +82,16 @@ export async function createSubmission(
   };
   const fileName = input.file_name || extMap[input.language] || "main.txt";
 
-  // 创建提交记录
+  // 创建提交记录并推送到评测队列（在同一个 try 块中保证一致性）
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  await db.insert(submissions).values({
-    id,
-    user_id: userId,
-    problem_id: input.problem_id,
-    language: input.language,
-    code: input.code,
-    file_name: fileName,
-    status: "pending",
-    created_at: now,
-  });
-
-  // 推送到评测队列
   const task: JudgeTask = {
     submission_id: id,
     problem_id: input.problem_id,
-    judge_image: "noj-judge-python",
-    judge_command: "python3 /tmp/code.py",
+    judge_image: problem.judge_image,
+    judge_command: problem.judge_command,
+    support_package_path: problem.support_package_path ?? undefined,
     language: input.language,
     code: input.code,
     file_name: fileName,
@@ -111,10 +100,28 @@ export async function createSubmission(
   };
 
   try {
+    await db.insert(submissions).values({
+      id,
+      user_id: userId,
+      problem_id: input.problem_id,
+      language: input.language,
+      code: input.code,
+      file_name: fileName,
+      status: "pending",
+      created_at: now,
+    });
     await pushJudgeTask(task);
   } catch (err) {
-    console.error("推送评测任务失败:", err);
-    // 不阻塞提交创建，评测任务可由补偿 job 重试
+    // 若 DB 插入成功但 MQ 推送失败，标记为 error
+    try {
+      await db.update(submissions).set({ status: "error" }).where(
+        eq(submissions.id, id),
+      );
+    } catch {
+      // 忽略 cleanup 失败（可能是 DB 插入未完成）
+    }
+    console.error("创建提交或推送评测任务失败:", err);
+    throw new AppError("提交失败，请稍后重试", 500);
   }
 
   return {
@@ -136,7 +143,7 @@ export async function createSubmission(
  */
 export async function getSubmission(
   id: string,
-  userId?: string,
+  userId: string,
 ): Promise<SubmissionWithResult> {
   const db = getDb();
 
@@ -180,14 +187,41 @@ export async function getSubmission(
   };
 }
 
+// 允许的状态转换
+const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
+  pending: ["judging"],
+  judging: ["finished"],
+  finished: [],
+  error: [],
+};
+
 /**
  * 更新提交状态。
+ * 校验状态转换是否合法（pending → judging → finished）。
+ *
+ * @throws {NotFoundError} 提交不存在
+ * @throws {BadRequestError} 状态转换非法
  */
 export async function updateSubmissionStatus(
   id: string,
   status: SubmissionStatus,
 ): Promise<void> {
   const db = getDb();
+
+  const existing = await db
+    .select({ status: submissions.status })
+    .from(submissions)
+    .where(eq(submissions.id, id))
+    .limit(1);
+
+  if (existing.length === 0) {
+    throw new NotFoundError("提交不存在");
+  }
+
+  const current = existing[0].status as SubmissionStatus;
+  if (!VALID_TRANSITIONS[current]?.includes(status)) {
+    throw new BadRequestError(`无效的状态转换: ${current} → ${status}`);
+  }
 
   await db
     .update(submissions)

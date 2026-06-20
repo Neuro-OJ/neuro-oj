@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, count, eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { problems } from "../db/schema.ts";
 import { NotFoundError } from "../lib/errors.ts";
@@ -8,6 +8,9 @@ export interface ProblemResponse {
   title: string;
   description: string;
   difficulty: string;
+  judge_image: string;
+  judge_command: string;
+  support_package_path: string | null;
   time_limit_ms: number;
   memory_limit_mb: number;
   created_at: string;
@@ -30,6 +33,9 @@ function toProblemResponse(row: typeof problems.$inferSelect): ProblemResponse {
     title: row.title,
     description: row.description,
     difficulty: row.difficulty,
+    judge_image: row.judge_image,
+    judge_command: row.judge_command,
+    support_package_path: row.support_package_path,
     time_limit_ms: row.time_limit_ms,
     memory_limit_mb: row.memory_limit_mb,
     created_at: row.created_at,
@@ -56,7 +62,7 @@ export async function listProblems(
     .offset(offset);
 
   // 查询总数
-  const countResult = await db.select({ count: problems.id }).from(problems);
+  const countResult = await db.select({ count: count() }).from(problems);
   const total = Number(countResult[0]?.count ?? 0);
 
   return {
@@ -96,7 +102,7 @@ export async function initSampleProblems(): Promise<void> {
   const db = getDb();
 
   // 检查是否已有题目
-  const countResult = await db.select({ count: problems.id }).from(problems);
+  const countResult = await db.select({ count: count() }).from(problems);
   if (Number(countResult[0]?.count ?? 0) > 0) {
     return;
   }
