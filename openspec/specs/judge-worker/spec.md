@@ -55,8 +55,13 @@
 
 #### Scenario: 评测脚本无有效输出
 
-- **WHEN** 容器退出但 stdout 中没有 `---RESULT---` 标记
-- **THEN** status 设为 `SystemError`，output 保留完整 stdout/stderr
+- **WHEN** 容器退出但 stdout 中没有 `---RESULT---` 标记，且退出码为 0
+- **THEN** status 设为 `SystemError`（评测脚本/环境异常，非用户代码问题），output 保留完整 stdout/stderr
+
+#### Scenario: 用户代码运行时错误
+
+- **WHEN** 容器退出但 stdout 中没有 `---RESULT---` 标记，且退出码非 0
+- **THEN** status 设为 `RuntimeError`，output 保留完整 stdout/stderr
 
 #### Scenario: 容器内存超限
 

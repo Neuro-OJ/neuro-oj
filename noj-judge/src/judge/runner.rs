@@ -76,9 +76,9 @@ fn process_output(task: &crate::types::JudgeTask, output: &ContainerOutput) -> J
         Ok(None) => {
             // 无 ---RESULT--- 标记
             if output.exit_code == 0 {
-                // 正常退出但没有结果标记 → 可能是评测脚本有 bug
+                // 正常退出但没有结果标记 → 评测脚本/环境问题，属于系统错误
                 error!("评测无结果标记: {}", submission_id);
-                JudgeResult::runtime_error(submission_id, &full_output)
+                JudgeResult::system_error(submission_id, &full_output)
             } else {
                 error!(
                     "评测运行时错误: {} (exit: {})",
@@ -296,5 +296,31 @@ Some debug output
 
         let result = process_output(&task, &output);
         assert_eq!(result.status, "RuntimeError");
+    }
+
+    #[test]
+    fn test_process_output_exit_code_0_no_marker_system_error() {
+        let task = crate::types::JudgeTask {
+            submission_id: "test-no-marker".to_string(),
+            problem_id: "1001".to_string(),
+            judge_image: "noj-judge-python".to_string(),
+            judge_command: "python3 /tmp/evaluate.py".to_string(),
+            support_package_base64: None,
+            language: "python3".to_string(),
+            code: "".to_string(),
+            file_name: None,
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+        };
+
+        let output = ContainerOutput {
+            stdout: "评测正常执行但未输出 ---RESULT---".to_string(),
+            stderr: String::new(),
+            exit_code: 0,
+        };
+
+        let result = process_output(&task, &output);
+        assert_eq!(result.status, "SystemError");
+        assert_eq!(result.score, 0);
     }
 }

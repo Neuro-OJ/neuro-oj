@@ -126,6 +126,19 @@ impl JudgeResult {
         }
     }
 
+    /// 构造一个系统错误结果（评测环境/脚本异常，非用户代码问题）。
+    pub fn system_error(submission_id: &str, output: &str) -> Self {
+        Self {
+            submission_id: submission_id.to_string(),
+            status: JudgeStatus::SystemError.as_str().to_string(),
+            score: 0,
+            output: output.to_string(),
+            details: Value::Null,
+            time_ms: None,
+            memory_kb: None,
+        }
+    }
+
     /// 构造一个运行时错误结果。
     pub fn runtime_error(submission_id: &str, output: &str) -> Self {
         Self {
@@ -324,6 +337,14 @@ mod tests {
         let r = JudgeResult::runtime_error("sid-re", "traceback");
         assert_eq!(r.status, "RuntimeError");
         assert_eq!(r.output, "traceback");
+    }
+
+    #[test]
+    fn test_judge_result_system_error() {
+        let r = JudgeResult::system_error("sid-se", "评测脚本未输出结果标记");
+        assert_eq!(r.status, "SystemError");
+        assert_eq!(r.score, 0);
+        assert_eq!(r.output, "评测脚本未输出结果标记");
     }
 
     // ── CaseResult ──

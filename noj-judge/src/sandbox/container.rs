@@ -73,7 +73,9 @@ async fn prepare_work_dir(work_dir: &Path, submission_id: &str) -> Result<PathBu
 }
 
 /// 获取支持包内容（Base64 解码）。
-async fn get_support_package_bytes(task: &JudgeTask) -> Result<Option<Vec<u8>>> {
+///
+/// Base64 解码是纯 CPU 操作，无需 async。
+fn get_support_package_bytes(task: &JudgeTask) -> Result<Option<Vec<u8>>> {
     match &task.support_package_base64 {
         Some(base64_str) if !base64_str.is_empty() => {
             let bytes = base64::engine::general_purpose::STANDARD
@@ -127,7 +129,7 @@ pub async fn run_in_container(
     let work_dir = prepare_work_dir(work_dir_root, submission_id).await?;
 
     // 1. 获取并解压支持包
-    if let Some(zip_data) = get_support_package_bytes(task).await? {
+    if let Some(zip_data) = get_support_package_bytes(task)? {
         extract_zip(&zip_data, &work_dir).await?;
         info!("支持包已解压: {} ({} bytes)", submission_id, zip_data.len());
     } else {
@@ -226,7 +228,7 @@ pub async fn run_in_container(
             let _ = docker
                 .kill_container(&container.id, None::<KillContainerOptions<String>>)
                 .await;
-            let output = capture_container_logs(docker, &container.id).await;
+            let output = capture_container_logs(docker, &container.id, -1).await;
             let _ = fs::remove_dir_all(&work_dir).await;
             return Ok(ContainerOutput {
                 stdout: output.stdout,
@@ -236,8 +238,8 @@ pub async fn run_in_container(
         }
     };
 
-    // 6. 捕获日志
-    let output = capture_container_logs(docker, &container.id).await;
+    // 6. 捕获日志（传入实际的退出码）
+    let output = capture_container_logs(docker, &container.id, exit_code).await;
 
     // 清理容器
     let _ = docker
@@ -253,11 +255,7 @@ pub async fn run_in_container(
     // 7. 清理临时目录
     let _ = fs::remove_dir_all(&work_dir).await;
 
-    Ok(ContainerOutput {
-        stdout: output.stdout,
-        stderr: output.stderr,
-        exit_code,
-    })
+    Ok(output)
 }
 
 /// 确认 Docker 镜像在本地存在。
@@ -290,7 +288,14 @@ async fn ensure_image_local(docker: &Docker, image: &str) -> Result<()> {
 }
 
 /// 捕获容器 stdout 和 stderr。
-async fn capture_container_logs(docker: &Docker, container_id: &str) -> ContainerOutput {
+///
+/// `exit_code` 由调用方传入（来自容器 wait 结果或超时标记），
+/// 本函数仅负责日志捕获，不负责确定退出码。
+async fn capture_container_logs(
+    docker: &Docker,
+    container_id: &str,
+    exit_code: i64,
+) -> ContainerOutput {
     let options = LogsOptions::<String> {
         stdout: true,
         stderr: true,
@@ -322,7 +327,7 @@ async fn capture_container_logs(docker: &Docker, container_id: &str) -> Containe
     ContainerOutput {
         stdout,
         stderr,
-        exit_code: 0,
+        exit_code,
     }
 }
 
@@ -524,8 +529,7 @@ mod tests {
             memory_limit_mb: 128,
         };
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(get_support_package_bytes(&task)).unwrap();
+        let result = get_support_package_bytes(&task).unwrap();
         assert_eq!(result, Some(data.to_vec()));
     }
 
@@ -544,8 +548,7 @@ mod tests {
             memory_limit_mb: 128,
         };
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(get_support_package_bytes(&task)).unwrap();
+        let result = get_support_package_bytes(&task).unwrap();
         assert!(result.is_none());
     }
 
@@ -564,8 +567,7 @@ mod tests {
             memory_limit_mb: 128,
         };
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(get_support_package_bytes(&task)).unwrap();
+        let result = get_support_package_bytes(&task).unwrap();
         assert!(result.is_none());
     }
 }

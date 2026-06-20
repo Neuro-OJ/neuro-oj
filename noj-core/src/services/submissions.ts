@@ -1,3 +1,4 @@
+import { encodeBase64 } from "@std/encoding/base64";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { evaluationResults, submissions } from "../db/schema.ts";
@@ -95,12 +96,7 @@ export async function createSubmission(
   if (problem.support_package_path) {
     try {
       const zipBytes = await Deno.readFile(problem.support_package_path);
-      support_package_base64 = btoa(
-        new Uint8Array(zipBytes).reduce(
-          (data, byte) => data + String.fromCharCode(byte),
-          "",
-        ),
-      );
+      support_package_base64 = encodeBase64(zipBytes);
     } catch (err) {
       console.error(
         `读取支持包失败 (${problem.support_package_path}):`,
@@ -224,27 +220,30 @@ export async function saveEvaluationResult(
 
   const now = new Date().toISOString();
 
-  // 更新提交状态
-  await db
-    .update(submissions)
-    .set({ status: "finished" })
-    .where(eq(submissions.id, result.submission_id));
+  // 使用事务保证原子性：更新 submission 状态 + 插入 evaluation_results
+  await db.transaction(async (tx) => {
+    // 更新提交状态
+    await tx
+      .update(submissions)
+      .set({ status: "finished" })
+      .where(eq(submissions.id, result.submission_id));
 
-  // 插入评测结果（使用 UPSERT 语义防止重复消费）
-  await db
-    .insert(evaluationResults)
-    .values({
-      id: crypto.randomUUID(),
-      submission_id: result.submission_id,
-      status: result.status,
-      score: result.score,
-      output: result.output,
-      details: JSON.stringify(result.details),
-      time_ms: result.time_ms ?? null,
-      memory_kb: result.memory_kb ?? null,
-      created_at: now,
-    })
-    .onConflictDoNothing({ target: evaluationResults.submission_id });
+    // 插入评测结果（使用 UPSERT 语义防止重复消费）
+    await tx
+      .insert(evaluationResults)
+      .values({
+        id: crypto.randomUUID(),
+        submission_id: result.submission_id,
+        status: result.status,
+        score: result.score,
+        output: result.output,
+        details: JSON.stringify(result.details),
+        time_ms: result.time_ms ?? null,
+        memory_kb: result.memory_kb ?? null,
+        created_at: now,
+      })
+      .onConflictDoNothing({ target: evaluationResults.submission_id });
+  });
 }
 
 // 允许的状态转换

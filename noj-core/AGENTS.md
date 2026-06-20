@@ -136,7 +136,7 @@ export default router;
 ## Redis MQ 约定
 
 - 评测任务队列：`noj:judge:queue`（LPUSH / BRPOP）
-- 评测结果通道：`noj:judge:results:{submissionId}`
+- 评测结果通道：`noj:judge:results`
 - 使用连接池管理 Redis 连接
 
 ## 贡献要求

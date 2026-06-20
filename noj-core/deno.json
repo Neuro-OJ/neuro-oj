@@ -21,7 +21,8 @@
     "ioredis": "npm:ioredis@5.11.1",
     "bcryptjs": "npm:bcryptjs@^2.4.3",
     "jose": "npm:jose@^5",
-    "drizzle-kit": "npm:drizzle-kit"
+    "drizzle-kit": "npm:drizzle-kit",
+    "@std/encoding": "jsr:@std/encoding@^1"
   },
   "fmt": {
     "semiColons": true,

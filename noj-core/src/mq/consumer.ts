@@ -34,7 +34,7 @@ export async function startResultConsumer(): Promise<void> {
       "结果消费者 Redis 连接失败:",
       err instanceof Error ? err.message : String(err),
     );
-    // 不阻塞启动，后续 BRPOP 会重试
+    return; // 连接失败不进入主循环，由外层 catch 处理重新拉起
   }
 
   console.log("结果消费者启动，等待评测结果...");

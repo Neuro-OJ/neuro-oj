@@ -46,38 +46,46 @@ noj-judge/
 - 使用 `cargo fmt` 格式化
 - 使用 `cargo clippy` 检查（禁止 warnings）
 - 使用 `cargo test` 运行测试
-- 错误处理：使用 `anyhow` / `thiserror` 定义错误类型
+- 错误处理：使用 `anyhow` 定义错误类型
 - 日志：使用 `tracing` / `log` 记录关键操作
 - 异步优先：所有 I/O 操作使用 async/await
 
-### MQ 消息格式
+### MQ 消息格式（JudgeTask → noj-judge）
 
 ```json
 {
   "submission_id": "uuid",
+  "problem_id": "1001",
+  "judge_image": "noj-judge-python",
+  "judge_command": "python3 /tmp/evaluate.py",
+  "support_package_base64": "UEsDBBQAAAAIA...",
   "language": "python3",
   "code": "...",
-  "time_limit_ms": 1000,
-  "memory_limit_mb": 256,
-  "test_cases": [
-    { "input": "1 2", "expected_output": "3" }
-  ]
+  "file_name": "submission.py",
+  "time_limit_ms": 5000,
+  "memory_limit_mb": 512
 }
 ```
 
-### 评测结果格式
+支持包（zip）由 noj-core 读取后 Base64 编码，通过 `support_package_base64` 字段传输。
+
+### 评测结果格式（JudgeResult → noj-core）
 
 ```json
 {
   "submission_id": "uuid",
-  "status": "Accepted | WrongAnswer | TimeLimitExceeded | RuntimeError | CompileError",
-  "score": 100,
+  "status": "Accepted | WrongAnswer | TimeLimitExceeded | MemoryLimitExceeded | RuntimeError | SystemError",
+  "score": 1000,
+  "output": "---RESULT---\n{\"status\":\"Accepted\",\"score\":1000,\"details\":{}}",
+  "details": { "cases": [...] },
   "time_ms": 42,
-  "memory_kb": 8192,
-  "details": [
-    { "case": 1, "status": "Accepted", "time_ms": 15, "output": "3" }
-  ]
+  "memory_kb": 8192
 }
+```
+
+- status 由 evaluate.py 输出 `---RESULT---` 标记后的 JSON 决定（可自由扩展）
+- score 采用 ×100 整数存储（1000 = 10.00 分）
+- time_ms / memory_kb 为可选字段（当前始终为 None，后续通过 Docker stats 实现）
 ```
 
 ## 安全注意事项
