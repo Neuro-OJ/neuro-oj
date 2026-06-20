@@ -4,6 +4,7 @@ import auth, { adminAuth } from "./routes/auth.ts";
 import categories from "./routes/categories.ts";
 import problems from "./routes/problems.ts";
 import submissions, { adminSubmissions } from "./routes/submissions.ts";
+import users from "./routes/users.ts";
 import { AppError } from "./lib/errors.ts";
 
 /**
@@ -32,6 +33,7 @@ export function createApp(): Hono {
   app.route("/api/v1/problems", problems);
   app.route("/api/v1/submissions", submissions);
   app.route("/api/v1/admin/submissions", adminSubmissions);
+  app.route("/api/v1/users", users);
 
   return app;
 }

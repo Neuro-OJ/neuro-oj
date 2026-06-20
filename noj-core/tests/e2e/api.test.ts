@@ -473,3 +473,57 @@ Deno.test({
     assertEquals(d.pagination.total, 0);
   },
 });
+
+// ——— 用户主页 ———
+
+Deno.test({
+  name: "[e2e/profile] 5.1 查看存在的用户主页",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiGet(
+      `/api/v1/users/${regularUserId}/profile`,
+    );
+    assertEquals(status, 200);
+    const d = body as {
+      data: {
+        user: { id: string; username: string };
+        stats: { total_submissions: number; accepted: number; acceptance_rate: number; solved_count: number };
+        solved_problems: unknown[];
+        recent_submissions: unknown[];
+      };
+    };
+    assertEquals(d.data.user.id, regularUserId);
+    assertEquals(typeof d.data.user.username, "string");
+    assertEquals(typeof d.data.stats.total_submissions, "number");
+    assertEquals(typeof d.data.stats.accepted, "number");
+    assertEquals(typeof d.data.stats.acceptance_rate, "number");
+    assertEquals(typeof d.data.stats.solved_count, "number");
+    assertEquals(Array.isArray(d.data.solved_problems), true);
+    assertEquals(Array.isArray(d.data.recent_submissions), true);
+  },
+});
+
+Deno.test({
+  name: "[e2e/profile] 5.2 查看不存在的用户返回 404",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiGet(
+      "/api/v1/users/nonexistent-user-id/profile",
+    );
+    assertEquals(status, 404);
+    const d = body as { error: string };
+    assertEquals(d.error, "用户不存在");
+  },
+});
+
+Deno.test({
+  name: "[e2e/profile] 5.3 用户主页无需认证即可访问",
+  ignore: skip,
+  fn: async () => {
+    // 不传 token 访问，应返回 200 或 404（取决于用户是否存在），而非 401
+    const { status } = await apiGet(
+      `/api/v1/users/${regularUserId}/profile`,
+    );
+    assertEquals(status, 200);
+  },
+});
