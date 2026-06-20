@@ -179,7 +179,10 @@ mod tests {
         assert_eq!(JudgeStatus::Accepted.as_str(), "Accepted");
         assert_eq!(JudgeStatus::WrongAnswer.as_str(), "WrongAnswer");
         assert_eq!(JudgeStatus::TimeLimitExceeded.as_str(), "TimeLimitExceeded");
-        assert_eq!(JudgeStatus::MemoryLimitExceeded.as_str(), "MemoryLimitExceeded");
+        assert_eq!(
+            JudgeStatus::MemoryLimitExceeded.as_str(),
+            "MemoryLimitExceeded"
+        );
         assert_eq!(JudgeStatus::RuntimeError.as_str(), "RuntimeError");
         assert_eq!(JudgeStatus::SystemError.as_str(), "SystemError");
     }
@@ -224,7 +227,10 @@ mod tests {
         });
         let task: JudgeTask = serde_json::from_value(json).unwrap();
         assert_eq!(task.submission_id, "sid-456");
-        assert_eq!(task.support_package_base64.as_deref(), Some("UEsDBBQAAAAIA"));
+        assert_eq!(
+            task.support_package_base64.as_deref(),
+            Some("UEsDBBQAAAAIA")
+        );
         assert_eq!(task.file_name.as_deref(), Some("solution.py"));
         assert_eq!(task.time_limit_ms, 10000);
     }

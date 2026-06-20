@@ -50,7 +50,10 @@ fn process_output(task: &crate::types::JudgeTask, output: &ContainerOutput) -> J
     // 尝试解析 ---RESULT--- 标记
     match parse_result_marker(&output.stdout) {
         Ok(Some((status, score, details))) => {
-            info!("评测完成: {} -> {} (score: {})", submission_id, status, score);
+            info!(
+                "评测完成: {} -> {} (score: {})",
+                submission_id, status, score
+            );
 
             // 非零退出码 + 有 ---RESULT--- → 以 evaluate.py 的输出为准，但记录 warn
             if output.exit_code != 0 {
@@ -77,7 +80,10 @@ fn process_output(task: &crate::types::JudgeTask, output: &ContainerOutput) -> J
                 error!("评测无结果标记: {}", submission_id);
                 JudgeResult::runtime_error(submission_id, &full_output)
             } else {
-                error!("评测运行时错误: {} (exit: {})", submission_id, output.exit_code);
+                error!(
+                    "评测运行时错误: {} (exit: {})",
+                    submission_id, output.exit_code
+                );
                 JudgeResult::runtime_error(submission_id, &full_output)
             }
         }
@@ -111,16 +117,12 @@ fn parse_result_marker(stdout: &str) -> Result<Option<(String, i32, Value)>> {
 
     // 标记后的第一行非空文本
     let after_marker = &stdout[marker_pos + MARKER.len()..];
-    let json_str = match after_marker
-        .lines()
-        .find(|line| !line.trim().is_empty())
-    {
+    let json_str = match after_marker.lines().find(|line| !line.trim().is_empty()) {
         Some(s) => s,
         None => return Ok(None), // 标记后无有效内容，视作无结果
     };
 
-    let parsed: Value =
-        serde_json::from_str(json_str).context("解析 ---RESULT--- JSON 失败")?;
+    let parsed: Value = serde_json::from_str(json_str).context("解析 ---RESULT--- JSON 失败")?;
 
     let status = parsed
         .get("status")
@@ -131,7 +133,8 @@ fn parse_result_marker(stdout: &str) -> Result<Option<(String, i32, Value)>> {
     let score = parsed
         .get("score")
         .and_then(|v| v.as_i64())
-        .ok_or_else(|| anyhow::anyhow!("---RESULT--- 缺少 score 字段或类型错误"))? as i32;
+        .ok_or_else(|| anyhow::anyhow!("---RESULT--- 缺少 score 字段或类型错误"))?
+        as i32;
 
     let details = parsed.get("details").cloned().unwrap_or(Value::Null);
 
@@ -201,7 +204,7 @@ Some debug output
             judge_image: "noj-judge-python".to_string(),
             judge_command: "python3 /tmp/evaluate.py".to_string(),
             support_package_base64: None,
-            language:"python3".to_string(),
+            language: "python3".to_string(),
             code: "print('hello')".to_string(),
             file_name: Some("main.py".to_string()),
             time_limit_ms: 5000,
@@ -209,7 +212,8 @@ Some debug output
         };
 
         let output = ContainerOutput {
-            stdout: "---RESULT---\n{\"status\":\"Accepted\",\"score\":1000,\"details\":{}}\n".to_string(),
+            stdout: "---RESULT---\n{\"status\":\"Accepted\",\"score\":1000,\"details\":{}}\n"
+                .to_string(),
             stderr: String::new(),
             exit_code: 0,
         };
@@ -227,7 +231,7 @@ Some debug output
             judge_image: "noj-judge-python".to_string(),
             judge_command: "python3 /tmp/evaluate.py".to_string(),
             support_package_base64: None,
-            language:"python3".to_string(),
+            language: "python3".to_string(),
             code: "".to_string(),
             file_name: None,
             time_limit_ms: 5000,
@@ -252,7 +256,7 @@ Some debug output
             judge_image: "noj-judge-python".to_string(),
             judge_command: "python3 /tmp/evaluate.py".to_string(),
             support_package_base64: None,
-            language:"python3".to_string(),
+            language: "python3".to_string(),
             code: "".to_string(),
             file_name: None,
             time_limit_ms: 5000,
@@ -277,7 +281,7 @@ Some debug output
             judge_image: "noj-judge-python".to_string(),
             judge_command: "python3 /tmp/evaluate.py".to_string(),
             support_package_base64: None,
-            language:"python3".to_string(),
+            language: "python3".to_string(),
             code: "".to_string(),
             file_name: None,
             time_limit_ms: 5000,

@@ -4,7 +4,11 @@ import { evaluationResults, submissions } from "../db/schema.ts";
 import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
 import { getProblem } from "./problems.ts";
-import type { JudgeResult, JudgeTask, SubmissionStatus } from "../types/index.ts";
+import type {
+  JudgeResult,
+  JudgeTask,
+  SubmissionStatus,
+} from "../types/index.ts";
 
 export interface SubmissionInput {
   problem_id: string;

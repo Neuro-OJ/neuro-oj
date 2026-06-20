@@ -12,10 +12,8 @@ pub async fn pull_task(
     queue: &str,
 ) -> Result<Option<JudgeTask>> {
     // BRPOP 返回 (key, value) tuple，超时单位是秒
-    let result: Option<(String, String)> = conn
-        .brpop(queue, 5.0)
-        .await
-        .context("BRPOP 拉取任务失败")?;
+    let result: Option<(String, String)> =
+        conn.brpop(queue, 5.0).await.context("BRPOP 拉取任务失败")?;
 
     match result {
         Some((_key, value)) => {

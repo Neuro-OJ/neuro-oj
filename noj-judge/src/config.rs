@@ -32,8 +32,7 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse::<usize>().ok())
                 .unwrap_or(2),
-            work_dir: std::env::var("WORK_DIR")
-                .unwrap_or_else(|_| "/tmp/noj-judge".to_string()),
+            work_dir: std::env::var("WORK_DIR").unwrap_or_else(|_| "/tmp/noj-judge".to_string()),
         }
     }
 }
@@ -83,7 +82,13 @@ mod tests {
     fn test_config_defaults() {
         let _lock = ENV_TEST_MUTEX.lock().unwrap();
         let _guard = EnvGuard::set(vec![]);
-        for key in &["REDIS_URL", "JUDGE_QUEUE", "RESULT_QUEUE", "MAX_CONCURRENT", "WORK_DIR"] {
+        for key in &[
+            "REDIS_URL",
+            "JUDGE_QUEUE",
+            "RESULT_QUEUE",
+            "MAX_CONCURRENT",
+            "WORK_DIR",
+        ] {
             std::env::remove_var(key);
         }
         let cfg = Config::from_env();

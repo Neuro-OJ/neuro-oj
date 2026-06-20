@@ -5,7 +5,12 @@ import {
   saveEvaluationResult,
 } from "../../src/services/submissions.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { evaluationResults, problems, submissions, users } from "../../src/db/schema.ts";
+import {
+  evaluationResults,
+  problems,
+  submissions,
+  users,
+} from "../../src/db/schema.ts";
 import { BadRequestError, NotFoundError } from "../../src/lib/errors.ts";
 import { eq } from "drizzle-orm";
 

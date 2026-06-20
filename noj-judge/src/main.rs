@@ -36,8 +36,8 @@ async fn main() -> Result<()> {
     );
 
     // 连接 Redis
-    let redis_client = redis::Client::open(config.redis_url.as_str())
-        .context("创建 Redis 客户端失败")?;
+    let redis_client =
+        redis::Client::open(config.redis_url.as_str()).context("创建 Redis 客户端失败")?;
     let mut redis_conn = redis_client
         .get_multiplexed_async_connection()
         .await
@@ -105,12 +105,16 @@ async fn main() -> Result<()> {
 
             // 建立独立连接发布结果
             if let Ok(mut conn) = redis_client_conn(&redis_url).await {
-                if let Err(e) =
-                    mq::push_result(&mut conn, &result_queue, &result).await
-                {
-                    error!("发布评测结果失败: {} (submission: {})", e, task.submission_id);
+                if let Err(e) = mq::push_result(&mut conn, &result_queue, &result).await {
+                    error!(
+                        "发布评测结果失败: {} (submission: {})",
+                        e, task.submission_id
+                    );
                 } else {
-                    info!("评测结果已发布: {} -> {}", task.submission_id, result.status);
+                    info!(
+                        "评测结果已发布: {} -> {}",
+                        task.submission_id, result.status
+                    );
                 }
             } else {
                 error!(
@@ -124,8 +128,7 @@ async fn main() -> Result<()> {
 
 /// 创建并验证 Redis 连接。
 async fn redis_client_conn(redis_url: &str) -> Result<redis::aio::MultiplexedConnection> {
-    let client =
-        redis::Client::open(redis_url).context("创建 Redis 客户端失败")?;
+    let client = redis::Client::open(redis_url).context("创建 Redis 客户端失败")?;
     let conn = client
         .get_multiplexed_async_connection()
         .await

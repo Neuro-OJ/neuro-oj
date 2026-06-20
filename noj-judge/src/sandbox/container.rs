@@ -52,8 +52,7 @@ async fn get_support_package_bytes(task: &JudgeTask) -> Result<Option<Vec<u8>>> 
 /// 解压支持包到目标目录。
 async fn extract_zip(data: &[u8], target_dir: &Path) -> Result<()> {
     let cursor = std::io::Cursor::new(data);
-    let mut archive =
-        zip::ZipArchive::new(cursor).context("打开 zip 文件失败")?;
+    let mut archive = zip::ZipArchive::new(cursor).context("打开 zip 文件失败")?;
 
     let mut entries: Vec<(bool, String, Vec<u8>)> = Vec::new();
     for i in 0..archive.len() {
@@ -136,13 +135,10 @@ pub async fn run_in_container(
     // 4. 创建并启动容器
     let container_name = format!("noj-judge-{}", submission_id);
     let host_config = HostConfig {
-        binds: Some(vec![format!(
-            "{}:/tmp",
-            work_dir.to_string_lossy()
-        )]),
+        binds: Some(vec![format!("{}:/tmp", work_dir.to_string_lossy())]),
         memory: Some(task.memory_limit_mb as i64 * 1024 * 1024),
         memory_swap: Some(task.memory_limit_mb as i64 * 1024 * 1024), // 禁用 swap
-        nano_cpus: Some(1_000_000_000), // 1 CPU 核
+        nano_cpus: Some(1_000_000_000),                               // 1 CPU 核
         network_mode: Some("none".to_string()),
         auto_remove: Some(false), // 手动管理生命周期以捕获日志
         ..Default::default()
