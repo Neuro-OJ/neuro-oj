@@ -13,13 +13,13 @@
 
 ## 技术栈
 
-| 组件 | 选择 |
-|------|------|
-| 语言 | Rust (Edition 2021) |
-| 异步运行时 | Tokio |
+| 组件         | 选择                  |
+| ------------ | --------------------- |
+| 语言         | Rust (Edition 2021)   |
+| 异步运行时   | Tokio                 |
 | Redis 客户端 | redis-rs (tokio-comp) |
-| Docker API | bollard / docker-api |
-| 沙箱 | Docker 容器 |
+| Docker API   | bollard / docker-api  |
+| 沙箱         | Docker 容器           |
 
 ## 目录约定
 

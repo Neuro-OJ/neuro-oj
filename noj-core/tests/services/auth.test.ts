@@ -1,6 +1,10 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { registerUser, loginUser, getUserProfile } from "../../src/services/auth.ts";
-import { resetDbForTest, getDb } from "../../src/db/connection.ts";
+import {
+  getUserProfile,
+  loginUser,
+  registerUser,
+} from "../../src/services/auth.ts";
+import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { users } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { ConflictError, UnauthorizedError } from "../../src/lib/errors.ts";

@@ -1,4 +1,8 @@
-import { assertEquals, assertNotEquals, assertRejects } from "jsr:@std/assert@^1";
+import {
+  assertEquals,
+  assertNotEquals,
+  assertRejects,
+} from "jsr:@std/assert@^1";
 import { signToken, verifyToken } from "../../src/lib/jwt.ts";
 
 const hasJwtSecret = !!Deno.env.get("JWT_SECRET");

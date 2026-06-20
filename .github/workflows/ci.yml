@@ -1,0 +1,162 @@
+# =============================================================================
+# Neuro OJ CI Pipeline
+#
+# 触发条件：向 main 分支发起 PR 或在 main 分支上 push
+# 并行检查三个模块：
+#   - noj-core: Deno 后端（格式/代码检查/集成测试，需 PostgreSQL + Redis）
+#   - noj-ui:   Nuxt 3 前端（构建编译检查）
+#   - noj-judge: Rust Worker（格式/Clippy/编译/测试）
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# 同一分支/PR 的新推送自动取消旧运行，避免排队浪费
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ===========================================================================
+  # noj-core — Deno 后端
+  # ===========================================================================
+  core-test:
+    name: Core (Deno)
+    runs-on: ubuntu-latest
+
+    # 为集成测试提供 PostgreSQL 和 Redis 服务容器
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://noj:noj@localhost:5432/noj
+      REDIS_URL: redis://localhost:6379/
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock') }}
+          restore-keys: |
+            deno-
+
+      - name: 格式检查 (deno fmt)
+        working-directory: noj-core
+        run: deno fmt --check
+
+      - name: 代码检查 (deno lint)
+        working-directory: noj-core
+        run: deno lint
+
+      - name: 运行测试 (deno test)
+        working-directory: noj-core
+        run: deno test -A
+
+  # ===========================================================================
+  # noj-ui — Nuxt 3 前端
+  # ===========================================================================
+  ui-check:
+    name: UI (Nuxt)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # 注意：项目尚处骨架阶段，使用 npm install 而非 npm ci。
+      # 当 package-lock.json 提交后，可切换到 npm ci。
+      - name: 安装依赖
+        working-directory: noj-ui
+        run: npm install
+
+      - name: 构建检查 (nuxt build)
+        working-directory: noj-ui
+        run: npm run build
+
+  # ===========================================================================
+  # noj-judge — Rust Worker
+  # ===========================================================================
+  judge-check:
+    name: Judge (Rust)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: 缓存 Cargo 依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            noj-judge/target
+          key: cargo-${{ hashFiles('noj-judge/Cargo.lock') }}
+          restore-keys: |
+            cargo-
+
+      - name: 格式检查 (cargo fmt)
+        working-directory: noj-judge
+        run: cargo fmt --all --check
+
+      - name: Clippy 检查 (禁止 warnings)
+        working-directory: noj-judge
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: 编译检查 (cargo build)
+        working-directory: noj-judge
+        run: cargo build
+
+      - name: 运行测试 (cargo test)
+        working-directory: noj-judge
+        run: cargo test
