@@ -363,3 +363,180 @@ Deno.test({
     assertEquals(d.data.role, "admin");
   },
 });
+
+// ——— 提交列表 ———
+
+Deno.test({
+  name: "[e2e/submissions] 4.1 用户提交列表无 token 返回 401",
+  ignore: skip,
+  fn: async () => {
+    const { status } = await apiGet("/api/v1/submissions");
+    assertEquals(status, 401);
+  },
+});
+
+Deno.test({
+  name: "[e2e/submissions] 4.2 用户提交列表返回空列表和分页信息",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiGet(
+      "/api/v1/submissions",
+      regularToken,
+    );
+    assertEquals(status, 200);
+    const d = body as {
+      data: unknown[];
+      pagination: {
+        page: number;
+        per_page: number;
+        total: number;
+        total_pages: number;
+      };
+    };
+    assertEquals(Array.isArray(d.data), true);
+    assertEquals(d.data.length, 0);
+    assertEquals(d.pagination.page, 1);
+    assertEquals(d.pagination.per_page, 20);
+    assertEquals(d.pagination.total, 0);
+    assertEquals(d.pagination.total_pages, 0);
+  },
+});
+
+Deno.test({
+  name: "[e2e/submissions] 4.3 用户提交列表按 status 非法值返回 400",
+  ignore: skip,
+  fn: async () => {
+    const { status } = await apiGet(
+      "/api/v1/submissions?status=invalid",
+      regularToken,
+    );
+    assertEquals(status, 400);
+  },
+});
+
+Deno.test({
+  name: "[e2e/submissions] 4.4 管理员提交列表无 token 返回 401",
+  ignore: skip,
+  fn: async () => {
+    const { status } = await apiGet("/api/v1/admin/submissions");
+    assertEquals(status, 401);
+  },
+});
+
+Deno.test({
+  name: "[e2e/submissions] 4.5 普通用户访问管理员提交列表返回 403",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiGet(
+      "/api/v1/admin/submissions",
+      regularToken,
+    );
+    assertEquals(status, 403);
+    const d = body as { error: string };
+    assertEquals(d.error, "需要管理员权限");
+  },
+});
+
+Deno.test({
+  name: "[e2e/submissions] 4.6 管理员查看所有提交返回空列表",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiGet(
+      "/api/v1/admin/submissions",
+      adminToken,
+    );
+    assertEquals(status, 200);
+    const d = body as { data: unknown[]; pagination: { total: number } };
+    assertEquals(Array.isArray(d.data), true);
+    assertEquals(typeof d.pagination.total, "number");
+  },
+});
+
+Deno.test({
+  name: "[e2e/submissions] 4.7 管理员按 user_id 筛选",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiGet(
+      "/api/v1/admin/submissions?user_id=nonexistent-user",
+      adminToken,
+    );
+    assertEquals(status, 200);
+    const d = body as { data: unknown[]; pagination: { total: number } };
+    assertEquals(d.data.length, 0);
+    assertEquals(d.pagination.total, 0);
+  },
+});
+
+Deno.test({
+  name: "[e2e/submissions] 4.8 管理员按 problem_id 筛选",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiGet(
+      "/api/v1/admin/submissions?problem_id=nonexistent",
+      adminToken,
+    );
+    assertEquals(status, 200);
+    const d = body as { data: unknown[]; pagination: { total: number } };
+    assertEquals(d.data.length, 0);
+    assertEquals(d.pagination.total, 0);
+  },
+});
+
+// ——— 用户主页 ———
+
+Deno.test({
+  name: "[e2e/profile] 5.1 查看存在的用户主页",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiGet(
+      `/api/v1/users/${regularUserId}/profile`,
+    );
+    assertEquals(status, 200);
+    const d = body as {
+      data: {
+        user: { id: string; username: string };
+        stats: {
+          total_submissions: number;
+          accepted: number;
+          acceptance_rate: number;
+          solved_count: number;
+        };
+        solved_problems: unknown[];
+        recent_submissions: unknown[];
+      };
+    };
+    assertEquals(d.data.user.id, regularUserId);
+    assertEquals(typeof d.data.user.username, "string");
+    assertEquals(typeof d.data.stats.total_submissions, "number");
+    assertEquals(typeof d.data.stats.accepted, "number");
+    assertEquals(typeof d.data.stats.acceptance_rate, "number");
+    assertEquals(typeof d.data.stats.solved_count, "number");
+    assertEquals(Array.isArray(d.data.solved_problems), true);
+    assertEquals(Array.isArray(d.data.recent_submissions), true);
+  },
+});
+
+Deno.test({
+  name: "[e2e/profile] 5.2 查看不存在的用户返回 404",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiGet(
+      "/api/v1/users/nonexistent-user-id/profile",
+    );
+    assertEquals(status, 404);
+    const d = body as { error: string };
+    assertEquals(d.error, "用户不存在");
+  },
+});
+
+Deno.test({
+  name: "[e2e/profile] 5.3 用户主页无需认证即可访问",
+  ignore: skip,
+  fn: async () => {
+    // 不传 token 访问，应返回 200 或 404（取决于用户是否存在），而非 401
+    const { status } = await apiGet(
+      `/api/v1/users/${regularUserId}/profile`,
+    );
+    assertEquals(status, 200);
+  },
+});
