@@ -46,39 +46,72 @@ noj-judge/
 - 使用 `cargo fmt` 格式化
 - 使用 `cargo clippy` 检查（禁止 warnings）
 - 使用 `cargo test` 运行测试
-- 错误处理：使用 `anyhow` / `thiserror` 定义错误类型
+- 错误处理：使用 `anyhow` 定义错误类型
 - 日志：使用 `tracing` / `log` 记录关键操作
 - 异步优先：所有 I/O 操作使用 async/await
 
-### MQ 消息格式
+### E2E / 集成测试
+
+集成测试位于 `tests/` 目录，使用真实 Docker daemon 验证沙箱功能。
+
+**文件列表：**
+| 文件 | 验证内容 |
+|------|----------|
+| `tests/e2e_docker_basic.rs` | 容器生命周期、退出码、stdout/stderr 捕获 |
+| `tests/e2e_resource_limits.rs` | 超时 kill、OOM、内存限制 |
+| `tests/e2e_security_isolation.rs` | 网络隔离、敏感路径防护 |
+| `tests/e2e_support_package.rs` | 支持包、evaluate.py 执行、---RESULT--- 标记 |
+
+**运行方式：**
+```bash
+# 需要 Docker daemon 在运行中，且无 NOJ_RUN_E2E=1
+NOJ_RUN_E2E=1 cargo test --test e2e -- --ignored
+
+# 仅运行特定测试
+NOJ_RUN_E2E=1 cargo test --test e2e -- --ignored test_container_lifecycle
+```
+
+**测试门控：**
+- 所有集成测试默认被 `#[ignore]` 跳过
+- 设置 `NOJ_RUN_E2E=1` 后方可执行
+- 需要系统安装 Docker 并有权限访问 `/var/run/docker.sock`
+
+### MQ 消息格式（JudgeTask → noj-judge）
 
 ```json
 {
   "submission_id": "uuid",
+  "problem_id": "1001",
+  "judge_image": "noj-judge-python",
+  "judge_command": "python3 /tmp/evaluate.py",
+  "support_package_base64": "UEsDBBQAAAAIA...",
   "language": "python3",
   "code": "...",
-  "time_limit_ms": 1000,
-  "memory_limit_mb": 256,
-  "test_cases": [
-    { "input": "1 2", "expected_output": "3" }
-  ]
+  "file_name": "submission.py",
+  "time_limit_ms": 5000,
+  "memory_limit_mb": 512
 }
 ```
 
-### 评测结果格式
+支持包（zip）由 noj-core 读取后 Base64 编码，通过 `support_package_base64` 字段传输。
+
+### 评测结果格式（JudgeResult → noj-core）
 
 ```json
 {
   "submission_id": "uuid",
-  "status": "Accepted | WrongAnswer | TimeLimitExceeded | RuntimeError | CompileError",
-  "score": 100,
+  "status": "Accepted | WrongAnswer | TimeLimitExceeded | MemoryLimitExceeded | RuntimeError | SystemError",
+  "score": 1000,
+  "output": "---RESULT---\n{\"status\":\"Accepted\",\"score\":1000,\"details\":{}}",
+  "details": { "cases": [...] },
   "time_ms": 42,
-  "memory_kb": 8192,
-  "details": [
-    { "case": 1, "status": "Accepted", "time_ms": 15, "output": "3" }
-  ]
+  "memory_kb": 8192
 }
 ```
+
+- status 由 evaluate.py 输出 `---RESULT---` 标记后的 JSON 决定（可自由扩展）
+- score 采用 ×100 整数存储（1000 = 10.00 分）
+- time_ms / memory_kb 为可选字段（当前始终为 None，后续通过 Docker stats 实现）
 
 ## 安全注意事项
 

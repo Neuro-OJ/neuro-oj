@@ -1,10 +1,15 @@
+import { encodeBase64 } from "@std/encoding/base64";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { evaluationResults, submissions } from "../db/schema.ts";
 import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
 import { getProblem } from "./problems.ts";
-import type { JudgeTask, SubmissionStatus } from "../types/index.ts";
+import type {
+  JudgeResult,
+  JudgeTask,
+  SubmissionStatus,
+} from "../types/index.ts";
 
 export interface SubmissionInput {
   problem_id: string;
@@ -86,12 +91,27 @@ export async function createSubmission(
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
+  // 读取支持包并 Base64 编码
+  let support_package_base64: string | undefined;
+  if (problem.support_package_path) {
+    try {
+      const zipBytes = await Deno.readFile(problem.support_package_path);
+      support_package_base64 = encodeBase64(zipBytes);
+    } catch (err) {
+      console.error(
+        `读取支持包失败 (${problem.support_package_path}):`,
+        err instanceof Error ? err.message : String(err),
+      );
+      // 支持包读取失败不阻塞提交，但会跳过支持包
+    }
+  }
+
   const task: JudgeTask = {
     submission_id: id,
     problem_id: input.problem_id,
     judge_image: problem.judge_image,
     judge_command: problem.judge_command,
-    support_package_path: problem.support_package_path ?? undefined,
+    support_package_base64,
     language: input.language,
     code: input.code,
     file_name: fileName,
@@ -111,6 +131,8 @@ export async function createSubmission(
       created_at: now,
     });
     await pushJudgeTask(task);
+    // 入队成功后立即更新状态为 judging
+    await updateSubmissionStatus(id, "judging");
   } catch (err) {
     // 若 DB 插入成功但 MQ 推送失败，标记为 error
     try {
@@ -129,7 +151,7 @@ export async function createSubmission(
     language: input.language,
     code: input.code,
     file_name: fileName,
-    status: "pending",
+    status: "judging",
     created_at: now,
   };
 }
@@ -183,6 +205,45 @@ export async function getSubmission(
     ...toSubmissionResponse(row),
     result,
   };
+}
+
+/**
+ * 保存评测结果。
+ *
+ * 由结果消费者调用，将 noj-judge 返回的 JudgeResult 持久化到数据库。
+ * 原子操作：更新 submission 状态 → INSERT evaluation_results。
+ */
+export async function saveEvaluationResult(
+  result: JudgeResult,
+): Promise<void> {
+  const db = getDb();
+
+  const now = new Date().toISOString();
+
+  // 使用事务保证原子性：更新 submission 状态 + 插入 evaluation_results
+  await db.transaction(async (tx) => {
+    // 更新提交状态
+    await tx
+      .update(submissions)
+      .set({ status: "finished" })
+      .where(eq(submissions.id, result.submission_id));
+
+    // 插入评测结果（使用 UPSERT 语义防止重复消费）
+    await tx
+      .insert(evaluationResults)
+      .values({
+        id: crypto.randomUUID(),
+        submission_id: result.submission_id,
+        status: result.status,
+        score: result.score,
+        output: result.output,
+        details: JSON.stringify(result.details),
+        time_ms: result.time_ms ?? null,
+        memory_kb: result.memory_kb ?? null,
+        created_at: now,
+      })
+      .onConflictDoNothing({ target: evaluationResults.submission_id });
+  });
 }
 
 // 允许的状态转换

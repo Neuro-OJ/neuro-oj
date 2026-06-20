@@ -10,8 +10,8 @@ export interface JudgeTask {
   judge_image: string;
   /** 容器内执行的评测命令 */
   judge_command: string;
-  /** 支持包 zip 路径，相对 CWD */
-  support_package_path?: string;
+  /** 支持包 zip 的 Base64 编码 */
+  support_package_base64?: string;
   /** 编程语言标识 */
   language: string;
   /** 用户源代码 */
