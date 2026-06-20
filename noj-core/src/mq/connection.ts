@@ -12,6 +12,7 @@ interface RedisClient {
   quit(): Promise<string>;
   status: string;
   lpush(...args: (string | number)[]): Promise<number>;
+  brpop(...args: (string | number)[]): Promise<[string, string] | null>;
   on(event: string, handler: (...args: unknown[]) => void): void;
 }
 
@@ -23,6 +24,36 @@ let _error: Error | null = null;
  * 首次调用时根据环境变量 REDIS_URL 创建连接。
  * 失败时记录错误但不崩溃，health 端点可查询状态。
  */
+/**
+ * 创建专用的 Redis 消费者连接。
+ *
+ * 结果消费者使用 BRPOP 阻塞等待，会独占连接通道。
+ * 因此需要独立的连接实例，不与 pushJudgeTask（LPUSH）共享。
+ */
+export function createConsumerRedis(): RedisClient {
+  const redisUrl = Deno.env.get("REDIS_URL") || "redis://127.0.0.1:6379/";
+  // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
+  const redis = new IORedis(redisUrl, {
+    maxRetriesPerRequest: 3,
+    enableOfflineQueue: false,
+    retryStrategy(times: number) {
+      if (times > 5) return null;
+      return Math.min(times * 200, 2000);
+    },
+    lazyConnect: true,
+  });
+
+  redis.on("error", (...args: unknown[]) => {
+    const err = args[0];
+    console.error(
+      "消费者 Redis 连接错误:",
+      err instanceof Error ? err.message : String(err),
+    );
+  });
+
+  return redis;
+}
+
 export function getRedis(): RedisClient {
   if (_error) throw _error;
   if (_redis) return _redis!;

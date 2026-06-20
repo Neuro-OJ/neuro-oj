@@ -1,6 +1,7 @@
 import { createApp } from "./app.ts";
 import { runMigrations } from "./db/migrate.ts";
 import { connectRedis } from "./mq/connection.ts";
+import { startResultConsumer } from "./mq/consumer.ts";
 
 const app = createApp();
 
@@ -11,7 +12,8 @@ const port = parseInt(Deno.env.get("PORT") || "8000", 10);
  * 初始化顺序：
  * 1. 数据库迁移
  * 2. Redis 连接验证
- * 3. 启动 HTTP 服务
+ * 3. 启动评测结果消费者（后台）
+ * 4. 启动 HTTP 服务
  */
 async function main() {
   // 初始化数据库
@@ -21,12 +23,20 @@ async function main() {
     console.error("数据库初始化失败，服务可能不完整:", err);
   }
 
-  // 连接 Redis
+  // 连接 Redis（共享连接供 producer 使用）
   try {
     await connectRedis();
   } catch (err) {
     console.error("Redis 连接失败，评测分发功能不可用:", err);
   }
+
+  // 启动评测结果消费者（后台运行，不阻塞 HTTP）
+  startResultConsumer().catch((err) => {
+    console.error(
+      "结果消费者异常退出:",
+      err instanceof Error ? err.message : String(err),
+    );
+  });
 
   // 启动 HTTP 服务
   Deno.serve({ port }, app.fetch);

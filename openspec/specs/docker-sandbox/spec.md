@@ -1,4 +1,9 @@
-## ADDED Requirements
+## Purpose
+
+定义 Neuro OJ 评测沙箱的基础设施规范。no-judge 使用
+Docker 容器为每道题目创建隔离的评测环境，限制资源访问并防止恶意代码逃逸。
+
+## Requirements
 
 ### Requirement: 容器创建与配置
 

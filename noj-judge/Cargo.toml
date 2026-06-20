@@ -7,3 +7,17 @@ description = "Neuro OJ 评测 Worker — 通过 Redis MQ 接收任务，Docker 
 [dependencies]
 redis = { version = "0.27", features = ["tokio-comp"] }
 tokio = { version = "1", features = ["full"] }
+bollard = "0.18"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+uuid = { version = "1", features = ["v4"] }
+base64 = "0.22"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+futures-util = "0.3"
+
+[dev-dependencies]
+tempfile = "3"

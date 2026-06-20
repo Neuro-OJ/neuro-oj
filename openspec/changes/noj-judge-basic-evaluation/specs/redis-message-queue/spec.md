@@ -38,7 +38,7 @@ details 中的 cases 数组每项包含：
 
 ### Requirement: 评测任务消息格式
 
-评测任务 JSON SHALL 包含以下字段。`support_package_base64` 与 `support_package_path` 二选一，`support_package_base64` 优先。
+评测任务 JSON SHALL 包含以下字段。支持包通过 `support_package_base64` 以 Base64 编码传递。
 
 | 字段                    | 类型    | 必须 | 说明                          |
 | ----------------------- | ------- | ---- | ----------------------------- |
@@ -46,7 +46,6 @@ details 中的 cases 数组每项包含：
 | problem_id              | string  | 是   | 题目 UUID                     |
 | judge_image             | string  | 是   | 题目定义的 Docker 镜像        |
 | judge_command           | string  | 是   | 题目定义的评测命令            |
-| support_package_path    | string  | 否   | 支持包 zip 本地路径（同机用） |
 | support_package_base64  | string  | 否   | 支持包 zip 的 Base64 编码     |
 | language                | string  | 是   | 编程语言标识                  |
 | code                    | string  | 是   | 用户源代码                    |
@@ -59,10 +58,10 @@ details 中的 cases 数组每项包含：
 - **WHEN** 推送一个包含 support_package_base64 的评测任务
 - **THEN** 队列中的 JSON 包含所有必填字段及 Base64 编码的支持包内容
 
-#### Scenario: 完整任务消息（本地路径模式）
+#### Scenario: 无支持包任务消息
 
-- **WHEN** 推送一个包含 support_package_path 的评测任务
-- **THEN** 队列中的 JSON 包含所有必填字段及支持包本地路径
+- **WHEN** 推送一个不包含 support_package_base64 的评测任务
+- **THEN** judge 跳过支持包步骤，直接写入用户代码后执行
 
 ## ADDED Requirements
 
