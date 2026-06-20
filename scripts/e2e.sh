@@ -47,19 +47,32 @@ done
 
 # ── 清理函数 ──
 cleanup() {
+  local EXIT_CODE=$?
   echo ""
   echo -e "${INFO} 清理测试环境..."
   if [ "$ONLY_JUDGE" = false ]; then
-    cd "$REPO_DIR"
-    docker compose -f docker-compose.e2e.yml down --remove-orphans 2>/dev/null || true
+    # 回到项目根目录执行 docker compose down
+    cd "$REPO_DIR" 2>/dev/null || true
+    echo -e "${INFO} 停止并移除 docker-compose 容器..."
+    docker compose -f docker-compose.e2e.yml down --remove-orphans --volumes --timeout 10
+    echo -e "${PASS} docker-compose 容器已清理"
   fi
   echo -e "${PASS} 清理完成"
+  exit "$EXIT_CODE"
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 
 # ── 环境检查 ──
 echo -e "${INFO} Neuro OJ E2E 测试"
 echo ""
+
+# 先确保没有残留容器
+if [ "$ONLY_JUDGE" = false ]; then
+  echo -e "${INFO} 确保测试环境干净..."
+  cd "$REPO_DIR"
+  docker compose -f docker-compose.e2e.yml down --remove-orphans --volumes --timeout 5 2>/dev/null || true
+  echo -e "${PASS} 环境干净"
+fi
 
 if ! docker info &>/dev/null; then
   echo -e "${FAIL} Docker daemon 未运行"

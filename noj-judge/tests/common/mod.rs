@@ -3,7 +3,7 @@
 //! 提供 Docker 容器管理、测试门控、镜像管理等通用工具函数。
 //! 被各个测试文件通过 `mod common; use common::*;` 导入。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
