@@ -1,0 +1,129 @@
+import IORedis from "ioredis";
+
+/**
+ * Redis 客户端的最小接口定义。
+ * ioredis 的类型在 Deno 中解析受限（类/命名空间冲突），
+ * 因此定义本地接口仅声明实际使用的方法。
+ */
+interface RedisClient {
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  ping(): Promise<string>;
+  quit(): Promise<string>;
+  status: string;
+  lpush(...args: (string | number)[]): Promise<number>;
+  on(event: string, handler: (...args: unknown[]) => void): void;
+}
+
+let _redis: RedisClient | null = null;
+let _error: Error | null = null;
+
+/**
+ * 获取 Redis 连接实例（单例模式）。
+ * 首次调用时根据环境变量 REDIS_URL 创建连接。
+ * 失败时记录错误但不崩溃，health 端点可查询状态。
+ */
+export function getRedis(): RedisClient {
+  if (_error) throw _error;
+  if (_redis) return _redis!;
+
+  try {
+    const redisUrl = Deno.env.get("REDIS_URL") || "redis://127.0.0.1:6379/";
+    // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
+    _redis = new IORedis(redisUrl, {
+      maxRetriesPerRequest: 3,
+      enableOfflineQueue: false, // 断开时直接失败而非缓冲
+      retryStrategy(times: number) {
+        if (times > 5) return null; // 停止重试
+        return Math.min(times * 200, 2000); // 指数退避
+      },
+      lazyConnect: true, // 延迟连接，手动调用 connect()
+    });
+
+    // 错误处理
+    _redis!.on("error", (...args: unknown[]) => {
+      const err = args[0];
+      console.error(
+        "Redis 连接错误:",
+        err instanceof Error ? err.message : String(err),
+      );
+      _error = err instanceof Error ? err : new Error(String(err));
+    });
+
+    _redis!.on("reconnecting", () => {
+      console.log("Redis 正在重连...");
+    });
+
+    _redis!.on("connect", () => {
+      console.log("Redis 连接已建立");
+      _error = null; // 重连成功时清除历史错误
+    });
+
+    return _redis!;
+  } catch (err) {
+    _error = err instanceof Error ? err : new Error(String(err));
+    console.error("Redis 初始化失败:", _error.message);
+    throw _error;
+  }
+}
+
+/**
+ * 连接并验证 Redis 服务。
+ * 在启动时调用，执行 PING 确认连接有效。
+ */
+export async function connectRedis(): Promise<void> {
+  try {
+    const redis = getRedis();
+    await redis.connect();
+    const pong = await redis.ping();
+    if (pong !== "PONG") {
+      throw new Error(`Redis PING 返回异常: ${pong}`);
+    }
+    console.log("Redis 连接验证通过");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Redis 连接失败:", message);
+    throw err;
+  }
+}
+
+/**
+ * 检查 Redis 连接是否正常。
+ * 连接状态为 ready 时执行实际 PING 命令验证。
+ * 返回 { ok: true } 或 { ok: false, error: string }。
+ */
+export async function checkRedisHealth(): Promise<
+  { ok: boolean; error?: string }
+> {
+  if (_error) {
+    return { ok: false, error: _error.message };
+  }
+  if (!_redis || _redis.status !== "ready") {
+    return {
+      ok: false,
+      error: `连接状态: ${_redis?.status ?? "未初始化"}`,
+    };
+  }
+
+  try {
+    const pong = await _redis.ping();
+    if (pong !== "PONG") {
+      return { ok: false, error: `PING 返回异常: ${pong}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message };
+  }
+}
+
+/**
+ * 重置 Redis 连接状态（测试用）。
+ */
+export function resetRedisForTest() {
+  if (_redis) {
+    _redis.disconnect();
+    _redis = null;
+  }
+  _error = null;
+}

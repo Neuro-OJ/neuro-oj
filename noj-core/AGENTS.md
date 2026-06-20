@@ -13,14 +13,14 @@
 
 ## 技术栈
 
-| 组件 | 选择 |
-|------|------|
-| 运行时 | Deno |
-| 语言 | TypeScript |
-| Web 框架 | Hono |
-| 数据库 | 待定（PostgreSQL / SQLite） |
-| 消息队列 | Redis (Producer) |
-| 部署 | Deno Deploy / Docker |
+| 组件     | 选择                        |
+| -------- | --------------------------- |
+| 运行时   | Deno                        |
+| 语言     | TypeScript                  |
+| Web 框架 | Hono                        |
+| 数据库   | PostgreSQL 16 + postgres.js |
+| 消息队列 | Redis (Producer)            |
+| 部署     | Deno Deploy / Docker        |
 
 ## 目录约定
 
@@ -32,6 +32,7 @@ noj-core/
 │   ├── app.ts         # Hono 应用工厂
 │   ├── mod.ts         # 公共导出
 │   ├── routes/        # 路由（一个文件一个资源）
+│   ├── db/            # 数据库连接 & ORM schema（Drizzle + PostgreSQL）
 │   ├── middleware/     # 中间件（auth、cors、logger 等）
 │   ├── models/        # 数据模型 / ORM
 │   ├── services/      # 业务逻辑层

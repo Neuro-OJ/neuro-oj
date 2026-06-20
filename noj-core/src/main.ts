@@ -1,9 +1,37 @@
 import { createApp } from "./app.ts";
+import { runMigrations } from "./db/migrate.ts";
+import { connectRedis } from "./mq/connection.ts";
 
 const app = createApp();
 
-const port = parseInt(Deno.env.get("PORT") || "8000");
+const port = parseInt(Deno.env.get("PORT") || "8000", 10);
 
-Deno.serve({ port }, app.fetch);
+/**
+ * 应用启动入口。
+ * 初始化顺序：
+ * 1. 数据库迁移
+ * 2. Redis 连接验证
+ * 3. 启动 HTTP 服务
+ */
+async function main() {
+  // 初始化数据库
+  try {
+    await runMigrations();
+  } catch (err) {
+    console.error("数据库初始化失败，服务可能不完整:", err);
+  }
 
-console.log(`noj-core running on http://localhost:${port}`);
+  // 连接 Redis
+  try {
+    await connectRedis();
+  } catch (err) {
+    console.error("Redis 连接失败，评测分发功能不可用:", err);
+  }
+
+  // 启动 HTTP 服务
+  Deno.serve({ port }, app.fetch);
+
+  console.log(`noj-core running on http://localhost:${port}`);
+}
+
+await main();
