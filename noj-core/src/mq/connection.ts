@@ -1,6 +1,21 @@
-import Redis from "ioredis";
+import IORedis from "ioredis";
 
-let _redis: Redis | null = null;
+/**
+ * Redis 客户端的最小接口定义。
+ * ioredis 的类型在 Deno 中解析受限（类/命名空间冲突），
+ * 因此定义本地接口仅声明实际使用的方法。
+ */
+interface RedisClient {
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  ping(): Promise<string>;
+  quit(): Promise<string>;
+  status: string;
+  lpush(...args: (string | number)[]): Promise<number>;
+  on(event: string, handler: (...args: unknown[]) => void): void;
+}
+
+let _redis: RedisClient | null = null;
 let _error: Error | null = null;
 
 /**
@@ -8,16 +23,17 @@ let _error: Error | null = null;
  * 首次调用时根据环境变量 REDIS_URL 创建连接。
  * 失败时记录错误但不崩溃，health 端点可查询状态。
  */
-export function getRedis(): Redis {
+export function getRedis(): RedisClient {
   if (_error) throw _error;
-  if (_redis) return _redis;
+  if (_redis) return _redis!;
 
   try {
     const redisUrl = Deno.env.get("REDIS_URL") || "redis://127.0.0.1:6379/";
-    _redis = new Redis(redisUrl, {
+    // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
+    _redis = new IORedis(redisUrl, {
       maxRetriesPerRequest: 3,
       enableOfflineQueue: false, // 断开时直接失败而非缓冲
-      retryStrategy(times) {
+      retryStrategy(times: number) {
         if (times > 5) return null; // 停止重试
         return Math.min(times * 200, 2000); // 指数退避
       },
@@ -25,21 +41,25 @@ export function getRedis(): Redis {
     });
 
     // 错误处理
-    _redis.on("error", (err) => {
-      console.error("Redis 连接错误:", err.message);
-      _error = err;
+    _redis!.on("error", (...args: unknown[]) => {
+      const err = args[0];
+      console.error(
+        "Redis 连接错误:",
+        err instanceof Error ? err.message : String(err),
+      );
+      _error = err instanceof Error ? err : new Error(String(err));
     });
 
-    _redis.on("reconnecting", () => {
+    _redis!.on("reconnecting", () => {
       console.log("Redis 正在重连...");
     });
 
-    _redis.on("connect", () => {
+    _redis!.on("connect", () => {
       console.log("Redis 连接已建立");
       _error = null; // 重连成功时清除历史错误
     });
 
-    return _redis;
+    return _redis!;
   } catch (err) {
     _error = err instanceof Error ? err : new Error(String(err));
     console.error("Redis 初始化失败:", _error.message);
