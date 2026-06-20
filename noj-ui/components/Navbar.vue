@@ -5,19 +5,88 @@
                 <img :src="logoSrc" alt="Neuro OJ" class="logo-img" />
                 <span class="logo-text">Neuro OJ</span>
             </NuxtLink>
-            <nav class="nav-links">
-                <NuxtLink to="/" class="nav-link">首页</NuxtLink>
-            </nav>
             <div class="nav-actions">
-                <NuxtLink to="/login" class="btn btn-outline">登录</NuxtLink>
-                <NuxtLink to="/register" class="btn btn-primary">注册</NuxtLink>
+                <template v-if="showAuthButtons">
+                    <NuxtLink to="/login" class="btn btn-outline">登录</NuxtLink>
+                    <NuxtLink to="/register" class="btn btn-primary">注册</NuxtLink>
+                </template>
+                <div v-else-if="isLoggedIn" class="user-menu" @mouseenter="onMenuEnter" @mouseleave="onMenuLeave">
+                    <span class="user-name">{{ user?.username }}</span>
+                    <button class="user-btn">
+                        <User class="user-icon" :size="22" />
+                    </button>
+                    <div v-show="showDropdown" class="dropdown">
+                        <button class="dropdown-item"><Database :size="16" />数据</button>
+                        <button class="dropdown-item"><Settings :size="16" />设置</button>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item dropdown-danger" @click="showLogoutConfirm = true"><LogOut :size="16" />登出</button>
+                    </div>
+                </div>
             </div>
         </div>
+
+        <Transition name="fade">
+            <div v-if="showLogoutConfirm" class="confirm-overlay" @click.self="showLogoutConfirm = false">
+                <div class="confirm-dialog">
+                    <h2>确认登出</h2>
+                    <p>确定要登出当前账号吗？</p>
+                    <div class="confirm-actions">
+                        <button ref="cancelBtnRef" class="btn btn-cancel" @click="showLogoutConfirm = false">取消</button>
+                        <button class="btn btn-danger" @click="handleLogout">确认登出</button>
+                    </div>
+                </div>
+            </div>
+        </Transition>
     </header>
 </template>
 
 <script setup lang="ts">
+import { User, Database, Settings, LogOut } from "@lucide/vue"
 import logoSrc from "~/assets/img/logo.jpg"
+
+const route = useRoute()
+const router = useRouter()
+const { user, isLoggedIn, logout } = useAuth()
+
+const showAuthButtons = computed(() => !isLoggedIn.value && !route.path.startsWith("/login") && !route.path.startsWith("/register"))
+
+const showDropdown = ref(false)
+let hideTimer: ReturnType<typeof setTimeout> | null = null
+
+function onMenuEnter() {
+    if (hideTimer) clearTimeout(hideTimer)
+    showDropdown.value = true
+}
+
+function onMenuLeave() {
+    hideTimer = setTimeout(() => {
+        showDropdown.value = false
+    }, 100)
+}
+
+const showLogoutConfirm = ref(false)
+const cancelBtnRef = ref<HTMLButtonElement>()
+
+watch(showLogoutConfirm, (val) => {
+    if (val) {
+        nextTick(() => cancelBtnRef.value?.focus())
+    }
+})
+
+function onKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape" && showLogoutConfirm.value) {
+        showLogoutConfirm.value = false
+    }
+}
+
+onMounted(() => document.addEventListener("keydown", onKeydown))
+onUnmounted(() => document.removeEventListener("keydown", onKeydown))
+
+function handleLogout() {
+    logout()
+    showLogoutConfirm.value = false
+    router.replace("/")
+}
 </script>
 
 <style scoped>
@@ -30,8 +99,10 @@ import logoSrc from "~/assets/img/logo.jpg"
 }
 
 .container {
-    padding: 0 24px 0 0;
-    margin-left: 60px;
+    margin-left: 24px;
+    margin-right: 24px;
+    max-width: none;
+    padding: 0;
     height: 64px;
     display: flex;
     align-items: center;
@@ -45,30 +116,13 @@ import logoSrc from "~/assets/img/logo.jpg"
     font-size: 20px;
     font-weight: 700;
     color: var(--c-primary);
+    flex-shrink: 0;
 }
 
 .logo-img {
     width: 28px;
     height: 28px;
     border-radius: 6px;
-}
-
-.nav-links {
-    display: flex;
-    align-items: center;
-    gap: 32px;
-}
-
-.nav-link {
-    text-decoration: none;
-    color: var(--c-text-secondary);
-    font-size: 15px;
-    font-weight: 500;
-    transition: color 0.2s;
-}
-
-.nav-link:hover {
-    color: var(--c-primary);
 }
 
 .nav-actions {
@@ -79,8 +133,9 @@ import logoSrc from "~/assets/img/logo.jpg"
 }
 
 .btn {
-    padding: 8px 20px;
-    font-size: 14px;
+    padding: 10px 24px;
+    font-size: 15px;
+    line-height: 1;
 }
 
 .btn-outline {
@@ -94,5 +149,165 @@ import logoSrc from "~/assets/img/logo.jpg"
     color: var(--c-white);
 }
 
+.user-menu {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.user-name {
+    font-size: 16px;
+    color: var(--c-text-secondary);
+    font-weight: 500;
+}
+
+.user-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    color: var(--c-text-secondary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.user-btn:hover {
+    background: var(--c-primary-hover-bg);
+    color: var(--c-primary);
+}
+
+.dropdown {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: 8px;
+    min-width: 210px;
+    padding: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 200;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 14px;
+    font-size: 14px;
+    color: var(--c-text);
+    background: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+
+.dropdown-item:hover {
+    background: var(--c-bg-hover, #f5f5f5);
+}
+
+.dropdown-divider {
+    height: 1px;
+    background: var(--c-border);
+    margin: 4px 0;
+}
+
+.dropdown-danger {
+    color: #dc2626;
+}
+
+.dropdown-danger:hover {
+    background: #fef2f2;
+}
+
+.confirm-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 300;
+}
+
+.confirm-dialog {
+    background: var(--c-white);
+    border-radius: 12px;
+    padding: 60px;
+    text-align: center;
+    max-width: 380px;
+    width: calc(100% - 48px);
+}
+
+.confirm-dialog h2 {
+    font-size: 24px;
+    margin-bottom: 12px;
+}
+
+.confirm-dialog p {
+    font-size: 17px;
+    color: var(--c-text-secondary);
+    margin-bottom: 24px;
+}
+
+.confirm-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.btn {
+    padding: 10px 24px;
+    font-size: 15px;
+    line-height: 1;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.confirm-dialog .btn {
+    padding: 12px 28px;
+    font-size: 16px;
+    border-radius: 8px;
+}
+
+.btn-cancel {
+    color: var(--c-text-secondary);
+    border: 1.5px solid var(--c-border);
+    background: transparent;
+}
+
+.btn-cancel:hover {
+    border-color: var(--c-text-secondary);
+}
+
+.btn-danger {
+    color: #fff;
+    background: #dc2626;
+    border: 1.5px solid #dc2626;
+}
+
+.btn-danger:hover {
+    background: #b91c1c;
+    border-color: #b91c1c;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.2s;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
+}
 
 </style>
