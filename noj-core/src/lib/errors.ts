@@ -45,3 +45,25 @@ export class ValidationError extends AppError {
     this.name = "ValidationError";
   }
 }
+
+/**
+ * 未找到错误（HTTP 404）。
+ * 用于资源不存在场景（如题目/提交不存在）。
+ */
+export class NotFoundError extends AppError {
+  constructor(message: string) {
+    super(message, 404);
+    this.name = "NotFoundError";
+  }
+}
+
+/**
+ * 请求错误（HTTP 400）。
+ * 用于请求参数或内容错误。
+ */
+export class BadRequestError extends AppError {
+  constructor(message: string) {
+    super(message, 400);
+    this.name = "BadRequestError";
+  }
+}

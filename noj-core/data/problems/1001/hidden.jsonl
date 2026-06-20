@@ -1,0 +1,4 @@
+{"id":"t0_h001","text":"西区十号门关闭","expected_gate_id":"W-10","expected_status":"closed"}
+{"id":"t0_h002","text":"南侧4号门已开启","expected_gate_id":"S-04","expected_status":"open"}
+{"id":"t0_h003","text":"外环二号门报个故障","expected_gate_id":"O-02","expected_status":"fault"}
+{"id":"t0_h004","text":"北区五号门暂时封闭","expected_gate_id":"N-05","expected_status":"closed"}

@@ -1,6 +1,7 @@
 import { createApp } from "./app.ts";
 import { runMigrations } from "./db/migrate.ts";
 import { connectRedis } from "./mq/connection.ts";
+import { initSampleProblems } from "./services/problems.ts";
 
 const app = createApp();
 
@@ -19,6 +20,13 @@ async function main() {
     await runMigrations();
   } catch (err) {
     console.error("数据库初始化失败，服务可能不完整:", err);
+  }
+
+  // 初始化示例题
+  try {
+    await initSampleProblems();
+  } catch (err) {
+    console.error("示例题初始化失败:", err);
   }
 
   // 连接 Redis

@@ -1,0 +1,8 @@
+{"id":"t0_v001","text":"东环七号门现在打不开，报个故障","expected_gate_id":"E-07","expected_status":"fault"}
+{"id":"t0_v002","text":"请把西区2号门关闭，先别放人","expected_gate_id":"W-02","expected_status":"closed"}
+{"id":"t0_v003","text":"南侧九号门已经恢复通行","expected_gate_id":"S-09","expected_status":"open"}
+{"id":"t0_v004","text":"主环三号门卡住了","expected_gate_id":"I-03","expected_status":"fault"}
+{"id":"t0_v005","text":"北区11号门暂时封闭","expected_gate_id":"N-11","expected_status":"closed"}
+{"id":"t0_v006","text":"外环一号门已开启","expected_gate_id":"O-01","expected_status":"open"}
+{"id":"t0_v007","text":"内侧六号门失灵，完全拉不开","expected_gate_id":"I-06","expected_status":"fault"}
+{"id":"t0_v008","text":"东区12号门重新打开","expected_gate_id":"E-12","expected_status":"open"}
