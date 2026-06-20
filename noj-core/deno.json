@@ -5,7 +5,9 @@
   "tasks": {
     "dev": "deno run --watch --allow-net --allow-env --allow-read src/main.ts",
     "start": "deno run --allow-net --allow-env --allow-read src/main.ts",
-    "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts"
+    "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts",
+    "migrate": "deno run -A scripts/migrate.ts",
+    "test": "deno test -A --setup tests/setup.ts"
   },
   "imports": {
     "hono": "npm:hono@^4",

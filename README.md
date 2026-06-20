@@ -29,11 +29,11 @@ docker compose up -d
 
 ## 项目结构
 
-| 目录 | 说明 |
-|------|------|
-| `noj-core/` | 核心后端 (Deno + Hono) |
-| `noj-ui/` | 核心前端 (Nuxt.js) |
-| `noj-judge/` | 评测 Worker (Rust) |
+| 目录         | 说明                   |
+| ------------ | ---------------------- |
+| `noj-core/`  | 核心后端 (Deno + Hono) |
+| `noj-ui/`    | 核心前端 (Nuxt.js)     |
+| `noj-judge/` | 评测 Worker (Rust)     |
 
 ## 贡献指南
 

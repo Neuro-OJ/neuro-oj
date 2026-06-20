@@ -1,6 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
-import { resetDbForTest, getDb } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { users } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 
@@ -14,7 +14,7 @@ const ts = Date.now();
 /**
  * 从登录响应中提取 token。
  */
-function extractToken(res: Response): string {
+function _extractToken(res: Response): string {
   return res.headers.get("x-test-token") || "";
 }
 
@@ -70,7 +70,6 @@ Deno.test({
     assertEquals("password_hash" in body.data, false);
   },
 });
-
 
 Deno.test({
   name: "routes: POST /register 缺少字段返回 400",
@@ -310,7 +309,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const user = `ab_${ts}`; // 5 字符，有效
+    const _user = `ab_${ts}`; // 5 字符，有效
     const res = await jsonRequest(app, `${BASE}/register`, "POST", {
       username: "ab", // 2 字符，无效
       email: `bound_min_${ts}@example.com`,
@@ -380,7 +379,13 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(app, `${BASE}/me`, "GET", undefined, "Bearer invalid-token");
+    const res = await jsonRequest(
+      app,
+      `${BASE}/me`,
+      "GET",
+      undefined,
+      "Bearer invalid-token",
+    );
     assertEquals(res.status, 401);
     const body = await res.json();
     assertEquals(body.error, "认证令牌无效或已过期");

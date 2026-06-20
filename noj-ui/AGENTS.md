@@ -12,13 +12,13 @@
 
 ## 技术栈
 
-| 组件 | 选择 |
-|------|------|
-| 框架 | Nuxt 3 (Vue 3) |
-| 语言 | TypeScript |
-| 组件库 | 待定（Nuxt UI / Ant Design Vue） |
+| 组件       | 选择                               |
+| ---------- | ---------------------------------- |
+| 框架       | Nuxt 3 (Vue 3)                     |
+| 语言       | TypeScript                         |
+| 组件库     | 待定（Nuxt UI / Ant Design Vue）   |
 | 代码编辑器 | 待定（Monaco Editor / CodeMirror） |
-| 部署 | Node.js / 静态导出 |
+| 部署       | Node.js / 静态导出                 |
 
 ## 目录约定
 

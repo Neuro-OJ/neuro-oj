@@ -1,5 +1,5 @@
 import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1";
-import { hashPassword, comparePassword } from "../../src/lib/password.ts";
+import { comparePassword, hashPassword } from "../../src/lib/password.ts";
 
 Deno.test("password: hashPassword 返回 bcrypt 哈希字符串", async () => {
   const hash = await hashPassword("test1234");

@@ -58,7 +58,9 @@ export const submissions = pgTable(
     language: text("language").notNull(),
     code: text("code").notNull(),
     file_name: text("file_name"),
-    status: text("status").$type<SubmissionStatus>().notNull().default("pending"),
+    status: text("status").$type<SubmissionStatus>().notNull().default(
+      "pending",
+    ),
     created_at: text("created_at").notNull(),
   },
   (table) => ({
