@@ -128,10 +128,10 @@ fi
 
 # ── 汇总 ──
 echo ""
-echo "  ${BLUE}服务${NC}     http://localhost:$PORT"
-echo "  ${BLUE}健康检查${NC}  http://localhost:$PORT/health"
-echo "  ${BLUE}管理员${NC}    $ADMIN_EMAIL / $ADMIN_PASS"
-echo "  ${BLUE}服务器日志${NC} /tmp/noj-e2e-server.log"
+echo -e "  ${BLUE}服务${NC}     http://localhost:$PORT"
+echo -e "  ${BLUE}健康检查${NC}  http://localhost:$PORT/health"
+echo -e "  ${BLUE}管理员${NC}    $ADMIN_EMAIL / $ADMIN_PASS"
+echo -e "  ${BLUE}服务器日志${NC} /tmp/noj-e2e-server.log"
 echo ""
 echo -e "  按 ${BOLD}Ctrl+C${NC} 停止服务器并退出"
 echo ""

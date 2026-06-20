@@ -42,7 +42,12 @@ async fn test_network_isolation() {
     let _ = std::fs::remove_dir_all(&work_dir);
 }
 
-/// 敏感路径不可访问测试
+/// 敏感路径不可访问测试。
+///
+/// 验证容器内无法访问宿主机敏感路径。
+/// 注意：/etc/passwd 和 /proc/* 在正常 Docker 容器中天然存在
+///（分别来自镜像和 /proc 挂载），不代表宿主机路径泄漏。
+/// 此处仅检查确实不应存在的路径（Docker socket、宿主机数据目录等）。
 #[ignore]
 #[serial_test::serial]
 #[tokio::test]
@@ -54,7 +59,8 @@ async fn test_container_no_sensitive_mounts() {
     let docker = get_docker().expect("连接 Docker 失败");
     ensure_test_image(&docker).await.expect("确保测试镜像失败");
 
-    let code = r#"import os; paths=['/etc/passwd','/proc/1/cmdline','/var/run/docker.sock']; [print(p) for p in paths if os.path.exists(p)]"#;
+    // 仅检查那些在正常容器中不应存在的敏感路径
+    let code = r#"import os; paths=['/var/run/docker.sock','/host','/var/lib/docker']; [print(p) for p in paths if os.path.exists(p)]"#;
     let (container_id, work_dir) = create_test_container(
         &docker,
         "noj-judge-test-runner",
@@ -76,7 +82,7 @@ async fn test_container_no_sensitive_mounts() {
     assert_eq!(output.exit_code, 0, "敏感路径检查应正常退出");
     assert!(
         output.stdout.trim().is_empty(),
-        "不应发现敏感路径，但找到了: {}",
+        "不应发现宿主机敏感路径，但找到了: {}",
         output.stdout
     );
     let _ = std::fs::remove_dir_all(&work_dir);

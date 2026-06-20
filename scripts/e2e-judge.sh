@@ -76,28 +76,45 @@ if ! redis-cli -u "$REDIS_URL" ping &>/dev/null; then
 fi
 ok "Redis 就绪"
 
-# ========== 2. 编译（带测试特性） ==========
-step "2/3  编译 noj-judge（测试模式）"
-if cargo build --test e2e 2>&1; then
-  ok "编译完成"
-else
-  fail "编译失败"
-  exit 1
-fi
+# ========== 2. 编译（所有 E2E 测试目标） ==========
+E2E_TARGETS=(
+  e2e_docker_basic
+  e2e_resource_limits
+  e2e_security_isolation
+  e2e_support_package
+)
+
+step "2/3  编译 noj-judge（${#E2E_TARGETS[@]} 个 E2E 目标）"
+for target in "${E2E_TARGETS[@]}"; do
+  echo "  building $target ..."
+  if ! cargo build --test "$target" 2>&1; then
+    fail "编译 $target 失败"
+    exit 1
+  fi
+done
+ok "全部编译完成"
 
 # ========== 3. 运行 E2E 测试 ==========
 step "3/3  执行 E2E 测试"
-echo ""
-NOJ_RUN_E2E=1 \
-cargo test --test e2e -- --ignored --test-threads=1 2>&1
+PASS=0
+FAIL=0
+for target in "${E2E_TARGETS[@]}"; do
+  echo ""
+  echo "  ── $target ──"
+  if NOJ_RUN_E2E=1 cargo test --test "$target" -- --ignored --test-threads=1 2>&1; then
+    echo -e "  ${GREEN}✓${NC} $target 通过"
+    ((PASS++))
+  else
+    echo -e "  ${RED}✗${NC} $target 失败"
+    ((FAIL++))
+  fi
+done
 
-TEST_EXIT=$?
 echo ""
-if [ $TEST_EXIT -eq 0 ]; then
-  header "✅  全部 noj-judge E2E 测试通过"
+if [ $FAIL -eq 0 ]; then
+  header "✅  全部 noj-judge E2E 测试通过（${PASS}/${#E2E_TARGETS[@]}）"
 else
-  header "⚠️  部分 noj-judge E2E 测试未通过"
-  warn "检查上方 FAILED 输出定位问题"
+  header "⚠️  noj-judge E2E 测试 ${PASS} 通过，${FAIL} 失败"
 fi
 
 echo ""
