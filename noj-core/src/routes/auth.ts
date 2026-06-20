@@ -2,23 +2,10 @@ import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth.ts";
 import { getUserProfile, loginUser, registerUser } from "../services/auth.ts";
 import { ValidationError } from "../lib/errors.ts";
+import { parseJsonBody } from "../lib/request.ts";
 import type { LoginInput, RegisterInput } from "../types/auth.ts";
 
 const auth = new Hono<{ Variables: { userId: string; userRole: string } }>();
-
-/**
- * 安全解析 JSON 请求体。
- * 解析失败时抛出 ValidationError（400）而非返回 500。
- */
-async function parseJsonBody<T>(
-  c: { req: { json: <U>() => Promise<U> } },
-): Promise<T> {
-  try {
-    return await c.req.json<T>();
-  } catch {
-    throw new ValidationError("请求体格式错误：需要有效的 JSON");
-  }
-}
 
 /**
  * 用户注册端点。

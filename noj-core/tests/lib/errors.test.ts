@@ -1,7 +1,9 @@
 import { assertEquals, assertInstanceOf } from "jsr:@std/assert@^1";
 import {
   AppError,
+  BadRequestError,
   ConflictError,
+  NotFoundError,
   UnauthorizedError,
   ValidationError,
 } from "../../src/lib/errors.ts";
@@ -36,5 +38,21 @@ Deno.test("errors: ValidationError 返回 400", () => {
 
 Deno.test("errors: AppError 子类可通过 instanceof AppError 识别", () => {
   const err = new ConflictError("冲突");
+  assertEquals(err instanceof AppError, true);
+});
+
+Deno.test("errors: NotFoundError 返回 404", () => {
+  const err = new NotFoundError("题目不存在");
+  assertEquals(err.statusCode, 404);
+  assertEquals(err.message, "题目不存在");
+  assertEquals(err.name, "NotFoundError");
+  assertEquals(err instanceof AppError, true);
+});
+
+Deno.test("errors: BadRequestError 返回 400", () => {
+  const err = new BadRequestError("参数错误");
+  assertEquals(err.statusCode, 400);
+  assertEquals(err.message, "参数错误");
+  assertEquals(err.name, "BadRequestError");
   assertEquals(err instanceof AppError, true);
 });

@@ -38,3 +38,8 @@ docker-data/
 
 # === Tmp ===
 tmp/
+
+# === Problem Data (noj-core) ===
+# Support packages 是构建产物，不纳入版本控制
+noj-core/data/packages/
+!noj-core/data/packages/.gitkeep

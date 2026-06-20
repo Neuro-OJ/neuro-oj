@@ -1,0 +1,228 @@
+import { eq } from "drizzle-orm";
+import { getDb } from "../db/connection.ts";
+import { evaluationResults, submissions } from "../db/schema.ts";
+import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
+import { pushJudgeTask } from "../mq/producer.ts";
+import { getProblem } from "./problems.ts";
+import type { JudgeTask, SubmissionStatus } from "../types/index.ts";
+
+export interface SubmissionInput {
+  problem_id: string;
+  language: string;
+  code: string;
+  file_name?: string;
+}
+
+export interface SubmissionResponse {
+  id: string;
+  user_id: string;
+  problem_id: string;
+  language: string;
+  code: string;
+  file_name: string | null;
+  status: SubmissionStatus;
+  created_at: string;
+}
+
+export interface SubmissionWithResult extends SubmissionResponse {
+  result: {
+    status: string;
+    score: number;
+    output: string;
+    time_ms: number | null;
+    memory_kb: number | null;
+  } | null;
+}
+
+/**
+ * 将数据库行转换为提交响应。
+ */
+function toSubmissionResponse(
+  row: typeof submissions.$inferSelect,
+): SubmissionResponse {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    problem_id: row.problem_id,
+    language: row.language,
+    code: row.code,
+    file_name: row.file_name,
+    status: row.status,
+    created_at: row.created_at,
+  };
+}
+
+/**
+ * 创建提交记录并推送到评测队列。
+ *
+ * @throws {NotFoundError} 题目不存在
+ */
+export async function createSubmission(
+  userId: string,
+  input: SubmissionInput,
+): Promise<SubmissionResponse> {
+  const db = getDb();
+
+  // 检查题目是否存在并获取信息
+  const problem = await getProblem(input.problem_id);
+
+  // 验证语言
+  const supportedLanguages = ["python3", "python", "cpp", "c", "javascript"];
+  if (!supportedLanguages.includes(input.language)) {
+    throw new BadRequestError(`不支持的语言: ${input.language}`);
+  }
+
+  // 生成文件默认名
+  const extMap: Record<string, string> = {
+    python3: "main.py",
+    python: "main.py",
+    cpp: "main.cpp",
+    c: "main.c",
+    javascript: "main.js",
+  };
+  const fileName = input.file_name || extMap[input.language] || "main.txt";
+
+  // 创建提交记录并推送到评测队列（在同一个 try 块中保证一致性）
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  const task: JudgeTask = {
+    submission_id: id,
+    problem_id: input.problem_id,
+    judge_image: problem.judge_image,
+    judge_command: problem.judge_command,
+    support_package_path: problem.support_package_path ?? undefined,
+    language: input.language,
+    code: input.code,
+    file_name: fileName,
+    time_limit_ms: problem.time_limit_ms,
+    memory_limit_mb: problem.memory_limit_mb,
+  };
+
+  try {
+    await db.insert(submissions).values({
+      id,
+      user_id: userId,
+      problem_id: input.problem_id,
+      language: input.language,
+      code: input.code,
+      file_name: fileName,
+      status: "pending",
+      created_at: now,
+    });
+    await pushJudgeTask(task);
+  } catch (err) {
+    // 若 DB 插入成功但 MQ 推送失败，标记为 error
+    try {
+      await updateSubmissionStatus(id, "error");
+    } catch {
+      // 忽略 cleanup 失败（可能是 DB 插入未完成）
+    }
+    console.error("创建提交或推送评测任务失败:", err);
+    throw new AppError("提交失败，请稍后重试", 500);
+  }
+
+  return {
+    id,
+    user_id: userId,
+    problem_id: input.problem_id,
+    language: input.language,
+    code: input.code,
+    file_name: fileName,
+    status: "pending",
+    created_at: now,
+  };
+}
+
+/**
+ * 根据 ID 查询提交记录。
+ *
+ * @throws {NotFoundError} 提��不存在
+ */
+export async function getSubmission(
+  id: string,
+  userId: string,
+): Promise<SubmissionWithResult> {
+  const db = getDb();
+
+  const rows = await db
+    .select()
+    .from(submissions)
+    .where(eq(submissions.id, id))
+    .limit(1);
+
+  if (rows.length === 0) {
+    throw new NotFoundError("提交不存在");
+  }
+
+  const row = rows[0];
+
+  // 非所有者只能查看自己的提交
+  if (userId && row.user_id !== userId) {
+    throw new NotFoundError("提交不存在");
+  }
+
+  // 查询评测结果
+  const resultRows = await db
+    .select()
+    .from(evaluationResults)
+    .where(eq(evaluationResults.submission_id, id))
+    .limit(1);
+
+  const result = resultRows.length > 0
+    ? {
+      status: resultRows[0].status,
+      score: resultRows[0].score,
+      output: resultRows[0].output,
+      time_ms: resultRows[0].time_ms,
+      memory_kb: resultRows[0].memory_kb,
+    }
+    : null;
+
+  return {
+    ...toSubmissionResponse(row),
+    result,
+  };
+}
+
+// 允许的状态转换
+const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
+  pending: ["judging", "error"],
+  judging: ["finished"],
+  finished: [],
+  error: [],
+};
+
+/**
+ * 更新提交状态。
+ * 校验状态转换是否合法（pending → judging → finished）。
+ *
+ * @throws {NotFoundError} 提交不存在
+ * @throws {BadRequestError} 状态转换非法
+ */
+export async function updateSubmissionStatus(
+  id: string,
+  status: SubmissionStatus,
+): Promise<void> {
+  const db = getDb();
+
+  const existing = await db
+    .select({ status: submissions.status })
+    .from(submissions)
+    .where(eq(submissions.id, id))
+    .limit(1);
+
+  if (existing.length === 0) {
+    throw new NotFoundError("提交不存在");
+  }
+
+  const current = existing[0].status as SubmissionStatus;
+  if (!VALID_TRANSITIONS[current]?.includes(status)) {
+    throw new BadRequestError(`无效的状态转换: ${current} → ${status}`);
+  }
+
+  await db
+    .update(submissions)
+    .set({ status })
+    .where(eq(submissions.id, id));
+}

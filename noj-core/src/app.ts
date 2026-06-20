@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import health from "./routes/health.ts";
 import auth from "./routes/auth.ts";
+import problems from "./routes/problems.ts";
+import submissions from "./routes/submissions.ts";
 import { AppError } from "./lib/errors.ts";
 
 /**
@@ -14,7 +16,7 @@ export function createApp(): Hono {
     if (err instanceof AppError) {
       return c.json(
         { error: err.message },
-        err.statusCode as 400 | 401 | 409 | 500,
+        err.statusCode as 400 | 401 | 404 | 409 | 500,
       );
     }
     console.error("未处理的错误:", err);
@@ -24,6 +26,8 @@ export function createApp(): Hono {
   // 注册路由
   app.route("/", health);
   app.route("/api/v1/auth", auth);
+  app.route("/api/v1/problems", problems);
+  app.route("/api/v1/submissions", submissions);
 
   return app;
 }
