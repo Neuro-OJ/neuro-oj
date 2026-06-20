@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { assertRejects } from "jsr:@std/assert@^1";
 import {
   createSubmission,
   getSubmission,

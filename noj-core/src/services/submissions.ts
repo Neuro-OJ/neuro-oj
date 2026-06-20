@@ -114,9 +114,7 @@ export async function createSubmission(
   } catch (err) {
     // 若 DB 插入成功但 MQ 推送失败，标记为 error
     try {
-      await db.update(submissions).set({ status: "error" }).where(
-        eq(submissions.id, id),
-      );
+      await updateSubmissionStatus(id, "error");
     } catch {
       // 忽略 cleanup 失败（可能是 DB 插入未完成）
     }
@@ -189,7 +187,7 @@ export async function getSubmission(
 
 // 允许的状态转换
 const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
-  pending: ["judging"],
+  pending: ["judging", "error"],
   judging: ["finished"],
   finished: [],
   error: [],

@@ -93,36 +93,3 @@ export async function getProblem(id: string): Promise<ProblemResponse> {
 
   return toProblemResponse(existing[0]);
 }
-
-/**
- * 初始化示例题。
- * 仅当数据库为空时插入 Hello World 题目。
- */
-export async function initSampleProblems(): Promise<void> {
-  const db = getDb();
-
-  // 检查是否已有题目
-  const countResult = await db.select({ count: count() }).from(problems);
-  if (Number(countResult[0]?.count ?? 0) > 0) {
-    return;
-  }
-
-  const now = new Date().toISOString();
-
-  // 插入 1001 T0-LMCC 题目
-  await db.insert(problems).values({
-    id: "1001",
-    title: "1001 T0-LMCC：星港舱门报码归一化",
-    description:
-      "星港舱门报码归一化。将自然语言报码整理成标准 JSON（gate_id + status）。总分 10 分。",
-    difficulty: "easy",
-    judge_image: "noj-judge-python",
-    judge_command: "python3 /tmp/evaluate.py",
-    time_limit_ms: 5000,
-    memory_limit_mb: 512,
-    created_at: now,
-    updated_at: now,
-  });
-
-  console.log("已初始化示例题: 1001 T0-LMCC");
-}
