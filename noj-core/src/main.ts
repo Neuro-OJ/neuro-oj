@@ -2,7 +2,7 @@ import { createApp } from "./app.ts";
 
 const app = createApp();
 
-const port = parseInt(Deno.env.get("PORT") || "8000");
+const port = parseInt(Deno.env.get("PORT") || "8001");
 
 Deno.serve({ port }, app.fetch);
 
