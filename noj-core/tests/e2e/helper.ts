@@ -159,7 +159,9 @@ export async function waitForServer(
           try {
             const wr = await fetch(`${BASE_URL}${ep}`);
             await wr.text();
-          } catch {}
+          } catch {
+            // 预热请求失败不影响后续测试
+          }
         }
         // 预热：发一个 POST 请求，避免 Deno.serve 第二个 POST 卡 7s
         try {
@@ -169,7 +171,9 @@ export async function waitForServer(
             body: JSON.stringify({ login: "warmup", password: "warmup" }),
           });
           await wr.text();
-        } catch {}
+        } catch {
+          // 预热请求失败不影响后续测试
+        }
         return;
       }
     } catch {

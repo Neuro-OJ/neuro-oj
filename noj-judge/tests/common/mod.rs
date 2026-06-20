@@ -182,11 +182,7 @@ pub async fn wait_container(
         Ok(None) => {
             // wait stream 失败，回退到 inspect_container
             match docker.inspect_container(container_id, None).await {
-                Ok(info) => {
-                    info.state
-                        .and_then(|s| s.exit_code)
-                        .unwrap_or(-1)
-                }
+                Ok(info) => info.state.and_then(|s| s.exit_code).unwrap_or(-1),
                 Err(e) => {
                     let _ = docker
                         .remove_container(
