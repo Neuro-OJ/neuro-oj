@@ -158,16 +158,22 @@ async function seedProblemCategories(): Promise<void> {
 }
 
 /**
- * 根据 ADMIN_EMAIL 环境变量将用户提升为管理员。
+ * 根据 ADMIN_EMAIL 环境变量创建/提升管理员。
+ *
+ * ADMIN_EMAIL 必须设置。
+ * 若 ADMIN_PASS 同时设置，则自动创建用户（不存在时）并设为 admin；
+ * 若 ADMIN_PASS 未设置，则仅提升已存在的用户。
  */
-async function promoteAdminFromEnv(): Promise<void> {
+async function ensureAdminFromEnv(): Promise<void> {
   const adminEmail = Deno.env.get("ADMIN_EMAIL");
   if (!adminEmail) {
-    console.log("  ADMIN_EMAIL 未设置，跳过管理员提升");
+    console.log("  ADMIN_EMAIL 未设置，跳过管理员");
     return;
   }
 
+  const adminPass = Deno.env.get("ADMIN_PASS");
   const db = getDb();
+
   const existing = await db
     .select()
     .from(users)
@@ -175,9 +181,28 @@ async function promoteAdminFromEnv(): Promise<void> {
     .limit(1);
 
   if (existing.length === 0) {
-    console.warn(
-      `  警告：用户 ${adminEmail} 不存在，跳过管理员提升（请先注册后再运行 seed）`,
-    );
+    if (!adminPass) {
+      console.warn(
+        `  警告：用户 ${adminEmail} 不存在，且未设置 ADMIN_PASS，无法自动创建`,
+      );
+      return;
+    }
+    // 自动创建管理员用户
+    const { hashPassword } = await import("../src/lib/password.ts");
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const username = adminEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_");
+
+    await db.insert(users).values({
+      id,
+      username,
+      email: adminEmail,
+      password_hash: await hashPassword(adminPass),
+      role: "admin",
+      created_at: now,
+      updated_at: now,
+    });
+    console.log(`  已创建管理员用户: ${adminEmail} (${username})`);
     return;
   }
 
@@ -200,50 +225,56 @@ async function main() {
   console.log("Seed 脚本启动");
   console.log("=".repeat(48));
 
-  // 1. 运行迁移
   try {
-    await runMigrations();
-  } catch (err) {
-    console.error("数据库迁移失败:", err);
-    Deno.exit(1);
-  }
+    // 1. 运行迁移
+    try {
+      await runMigrations();
+    } catch (err) {
+      console.error("数据库迁移失败:", err);
+      throw err;
+    }
 
-  // 2. 插入示例题
-  try {
-    await seedProblems();
-  } catch (err) {
-    console.error("示例题插入失败:", err);
-    Deno.exit(1);
-  }
+    // 2. 插入示例题
+    try {
+      await seedProblems();
+    } catch (err) {
+      console.error("示例题插入失败:", err);
+      throw err;
+    }
 
-  // 3. 初始化示例分类
-  try {
-    console.log("初始化示例分类...");
-    await seedCategories();
-  } catch (err) {
-    console.error("示例分类初始化失败:", err);
-    Deno.exit(1);
-  }
+    // 3. 初始化示例分类
+    try {
+      console.log("初始化示例分类...");
+      await seedCategories();
+    } catch (err) {
+      console.error("示例分类初始化失败:", err);
+      throw err;
+    }
 
-  // 4. 关联题目与分类
-  try {
-    console.log("关联题目与分类...");
-    await seedProblemCategories();
-  } catch (err) {
-    console.error("分类关联失败:", err);
-    Deno.exit(1);
-  }
+    // 4. 关联题目与分类
+    try {
+      console.log("关联题目与分类...");
+      await seedProblemCategories();
+    } catch (err) {
+      console.error("分类关联失败:", err);
+      throw err;
+    }
 
-  // 5. 管理员提升
-  try {
-    console.log("检查管理员提升...");
-    await promoteAdminFromEnv();
-  } catch (err) {
-    console.error("管理员提升失败:", err);
-    Deno.exit(1);
-  }
+    // 5. 管理员创建/提升
+    try {
+      console.log("检查管理员...");
+      await ensureAdminFromEnv();
+    } catch (err) {
+      console.error("管理员处理失败:", err);
+      throw err;
+    }
 
-  console.log("Seed 完成");
+    console.log("Seed 完成");
+  } finally {
+    // 关闭数据库连接池，确保进程退出
+    const { resetDbForTest } = await import("../src/db/connection.ts");
+    await resetDbForTest();
+  }
 }
 
 await main();
