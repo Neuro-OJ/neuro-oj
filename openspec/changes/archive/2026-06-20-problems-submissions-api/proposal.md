@@ -33,10 +33,12 @@
   - `src/routes/submissions.ts`
   - `src/services/problems.ts`
   - `src/services/submissions.ts`
-  - `data/problems/1001/`
+  - `data/problems-src/1001/`
+  - `scripts/build-packages.ts`
+  - `scripts/seed.ts`
 - **修改文件**:
   - `src/app.ts` (注册路由)
-  - `src/main.ts` (初始化示例题)
   - `src/lib/errors.ts` (新增错误类)
+  - `deno.json` (新增 setup / seed / build-packages 任务)
 - **数据库**: problems 表已存在，无需新表
 - **评测**: 通过 Redis MQ 分发任务到 noj-judge

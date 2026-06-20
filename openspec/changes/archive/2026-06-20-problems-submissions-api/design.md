@@ -50,7 +50,8 @@ noj-ui (Vue) ──REST API── noj-core (Deno+Hono)
 | problem_id | text | 外键 → problems.id |
 | language | text | 编程语言 |
 | code | text | 用户代码 |
-| status | text | pending/judging/finished |
+| file_name | text | 容器内文件名（由语言映射） |
+| status | text | pending/judging/error/finished |
 
 ### 评测流程
 

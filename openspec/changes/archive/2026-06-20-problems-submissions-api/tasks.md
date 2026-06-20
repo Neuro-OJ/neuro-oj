@@ -17,7 +17,8 @@
 - [x] 创建 `src/services/problems.ts`
 - [x] 实现 `listProblems(page, limit)` 分页查询
 - [x] 实现 `getProblem(id)` 按 ID 查询
-- [x] 实现 `initSampleProblems()` 初始化示例题
+- [x] 创建 `scripts/build-packages.ts` 打包 support package
+- [x] 创建 `scripts/seed.ts` 写入数据库（含迁移）
 
 #### 2. 题目路由
 
@@ -41,7 +42,7 @@
 
 #### 5. 示例题
 
-- [x] 创建 `data/problems/1001/`
+- [x] 创建 `data/problems-src/1001/`
 - [x] 添加 README.md 题目描述
 - [x] 添加 evaluate.py 评测脚本
 - [x] 添加 visible.jsonl 可见数据
