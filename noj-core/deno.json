@@ -2,11 +2,16 @@
   "name": "@noj/core",
   "version": "0.1.0",
   "exports": "./src/mod.ts",
+  "compilerOptions": {
+    "lib": ["esnext", "dom", "deno.ns"],
+    "types": ["npm:@types/node"]
+  },
+  "nodeModulesDir": "auto",
   "tasks": {
     "dev": "deno run --watch --env-file=.env --allow-net --allow-env --allow-read src/main.ts",
     "start": "deno run --env-file=.env --allow-net --allow-env --allow-read src/main.ts",
     "setup": "deno task build-packages && deno task seed",
-    "seed": "deno run --allow-net --allow-env --allow-read --allow-write scripts/seed.ts",
+    "seed": "deno run --env-file=.env --allow-net --allow-env --allow-read --allow-write scripts/seed.ts",
     "build-packages": "deno run --allow-read --allow-write --allow-run scripts/build-packages.ts",
     "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts",
     "migrate": "deno run -A scripts/migrate.ts",
@@ -22,7 +27,7 @@
     "bcryptjs": "npm:bcryptjs@^2.4.3",
     "jose": "npm:jose@^5",
     "drizzle-kit": "npm:drizzle-kit",
-    "@std/encoding": "jsr:@std/encoding@^1"
+    "@types/node": "npm:@types/node@^22.19.21"
   },
   "fmt": {
     "semiColons": true,
