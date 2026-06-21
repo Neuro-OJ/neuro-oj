@@ -5,6 +5,11 @@
                 <img :src="logoSrc" alt="Neuro OJ" class="logo-img" />
                 <span class="logo-text">Neuro OJ</span>
             </NuxtLink>
+            <slot name="title" />
+            <div v-if="route.meta.pageTitle" class="nav-title">
+                <span class="nav-title-main">{{ route.meta.pageTitle as string }}</span>
+                <span v-if="route.meta.pageSubtitle" class="nav-title-sub">{{ route.meta.pageSubtitle as string }}</span>
+            </div>
             <div class="nav-actions">
                 <template v-if="showAuthButtons">
                     <NuxtLink to="/login" class="btn btn-outline">登录</NuxtLink>
@@ -106,6 +111,7 @@ function handleLogout() {
     height: 64px;
     display: flex;
     align-items: center;
+    position: relative;
 }
 
 .logo {
@@ -130,6 +136,28 @@ function handleLogout() {
     align-items: center;
     gap: 12px;
     margin-left: auto;
+}
+
+.nav-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
+}
+
+.nav-title-main {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--c-text);
+}
+
+.nav-title-sub {
+    font-size: 13px;
+    color: var(--c-text-muted);
 }
 
 .btn {
