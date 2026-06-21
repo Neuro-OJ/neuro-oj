@@ -25,16 +25,15 @@ export function useAuth() {
     const saved = localStorage.getItem("noj:token")
     if (saved) {
       token.value = saved
+      // loading 保持 true，等待 fetchUser 完成后才放行
       fetchUser().finally(() => {
         loading.value = false
       })
     } else {
       loading.value = false
     }
-  } else {
-    // SSR — 标记为就绪
-    loading.value = false
   }
+  // SSR: 保持 loading 为 true（useState 默认值），等水合后 client 路径处理
 
   async function login(login: string, password: string) {
     const res = await $fetch<AuthResponse>("/api/v1/auth/login", {

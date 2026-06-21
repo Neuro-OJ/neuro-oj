@@ -74,7 +74,23 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
     difficulty: "medium",
     judge_image: "noj-judge-python",
     judge_command: "python3 /tmp/evaluate.py",
-    support_package_path: null,
+    support_package_path: null, // TODO: 创建 1002 支持包后更新此路径（deno task build-packages + seed）
+    time_limit_ms: 1000,
+    memory_limit_mb: 256,
+  },
+  {
+    id: "1003",
+    title: "1003 T0-LMCC：A+B Problem",
+    description:
+      "## 问题描述\n\n给定两个整数 $a$ 和 $b$，计算它们的和。\n\n" +
+      "## 输入格式\n\n一行，两个整数 $a$ 和 $b$，空格分隔。\n\n" +
+      "## 输出格式\n\n一行，一个整数，即 $a + b$ 的值。\n\n" +
+      "## 示例\n\n**输入**\n\n```\n1 2\n```\n\n**输出**\n\n```\n3\n```\n\n" +
+      "## 限制\n\n- $-10^9 \\leq a, b \\leq 10^9$\n- 时间限制：$1000\\text{ms}$\n- 内存限制：$256\\text{MB}$",
+    difficulty: "easy",
+    judge_image: "noj-judge-python",
+    judge_command: "python3 /tmp/evaluate.py",
+    support_package_path: "data/packages/1003.zip",
     time_limit_ms: 1000,
     memory_limit_mb: 256,
   },
@@ -133,6 +149,7 @@ const SAMPLE_CATEGORIES: SampleCategory[] = [
 const PROBLEM_CATEGORY_MAP: [string, string][] = [
   ["1001", "cat-lmcc"],
   ["1001", "cat-algorithm"],
+  ["1003", "cat-algorithm"],
 ];
 
 async function seedProblems(): Promise<void> {

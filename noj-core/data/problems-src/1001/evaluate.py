@@ -18,7 +18,7 @@ from typing import Any
 DATA_DIR = Path(__file__).parent
 VISIBLE_DATA = DATA_DIR / "visible.jsonl"
 HIDDEN_DATA = DATA_DIR / "hidden.jsonl"
-CODE_PATH = Path("/tmp/submission.py")
+CODE_PATH = Path("/tmp/main.py")
 
 # 评分配置
 CONTENT_SCORE_FULL = 8.0

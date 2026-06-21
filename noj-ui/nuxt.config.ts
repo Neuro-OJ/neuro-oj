@@ -3,7 +3,7 @@ const apiBase = process.env.NUXT_API_BASE ?? "http://localhost:8000";
 
 export default defineNuxtConfig({
   devtools: { enabled: true },
-  modules: [],
+  modules: ["@nuxtjs/tailwindcss"],
 
   // @lucide/vue 的 Icon 组件在 SSR 下 inject() 上下文丢失，
   // 通过 noExternal 强制让 Vite 将其打包入 SSR bundle，确保 inject 链路完整

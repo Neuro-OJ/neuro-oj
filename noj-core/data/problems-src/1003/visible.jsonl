@@ -1,0 +1,10 @@
+{"id":"v001","input":"0 0\n","expected":0}
+{"id":"v002","input":"1 2\n","expected":3}
+{"id":"v003","input":"-1 1\n","expected":0}
+{"id":"v004","input":"100 200\n","expected":300}
+{"id":"v005","input":"-5 -7\n","expected":-12}
+{"id":"v006","input":"0 100\n","expected":100}
+{"id":"v007","input":"999 1\n","expected":1000}
+{"id":"v008","input":"-1000 500\n","expected":-500}
+{"id":"v009","input":"12345 67890\n","expected":80235}
+{"id":"v010","input":"7 -3\n","expected":4}

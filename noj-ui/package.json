@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@lucide/vue": "^1.21.0",
+    "@nuxtjs/tailwindcss": "^6.14.0",
+    "@tailwindcss/typography": "^0.5.20",
     "dompurify": "^3.4.11",
     "highlight.js": "^11.11.1",
     "katex": "^0.17.0",

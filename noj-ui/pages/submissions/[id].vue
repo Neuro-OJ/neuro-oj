@@ -63,7 +63,7 @@ interface SubmissionResponse {
   data: SubmissionDetail
 }
 
-const { data, refresh } = useFetch<SubmissionResponse>(
+const { data } = useFetch<SubmissionResponse>(
   `/api/v1/submissions/${submissionId}`,
   {
     headers: { Authorization: `Bearer ${token.value}` },
@@ -83,7 +83,17 @@ watch(
   () => submission.value?.status,
   (status) => {
     if (status === "pending" || status === "judging") {
-      pollTimer = setInterval(() => refresh(), 3000)
+      pollTimer = setInterval(async () => {
+        try {
+          const res = await $fetch<SubmissionResponse>(
+            `/api/v1/submissions/${submissionId}`,
+            { headers: { Authorization: `Bearer ${token.value}` } },
+          )
+          if (res) data.value = res
+        } catch {
+          // 轮询失败静默处理——下一轮会重试
+        }
+      }, 3000)
     } else {
       if (pollTimer) {
         clearInterval(pollTimer)
@@ -125,6 +135,22 @@ const resultDefMap: Record<string, ResultDef> = {
 function getResultDef(status: string | undefined): ResultDef {
   if (!status) return { label: status ?? "未知", icon: "x", class: "se" }
   return resultDefMap[status] ?? { label: status, icon: "x", class: "se" }
+}
+
+// Tailwind 判定颜色（完整字面量确保 JIT 识别）
+const verdictClasses: Record<string, string> = {
+  accepted: "bg-green-50 border border-green-200 text-green-700",
+  wrong: "bg-red-50 border border-red-200 text-red-800",
+  tle: "bg-orange-50 border border-orange-200 text-orange-800",
+  mle: "bg-orange-50 border border-orange-200 text-orange-800",
+  re: "bg-red-50 border border-red-200 text-red-800",
+  se: "bg-red-50 border border-red-200 text-red-800",
+}
+
+const statusBadgeColors: Record<string, string> = {
+  pending: "bg-gray-50 text-slate-500 border border-border",
+  judging: "bg-blue-50 text-blue-700 border border-blue-200",
+  error: "bg-red-50 text-red-800 border border-red-200",
 }
 
 function formatScore(raw: number | undefined): string {
@@ -189,52 +215,45 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="result-page">
+  <div class="max-w-[800px] mx-auto px-3 py-5 sm:px-6 sm:py-8 flex flex-col gap-5">
     <!-- 回退链接 -->
     <NuxtLink
       v-if="submission"
       :to="`/problems/${submission.problem_id}`"
-      class="back-link"
+      class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
     >
       <ArrowLeft :size="16" />
       返回题目
     </NuxtLink>
 
     <!-- Loading -->
-    <div v-if="!submission" class="loading-state">
-      <div class="spinner" />
+    <div v-if="!submission" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted">
+      <div class="h-[28px] w-[28px] border-[3px] border-border border-t-primary rounded-full animate-spin-slow" />
       <span>加载中...</span>
     </div>
 
     <template v-else>
       <!-- 头部卡片 -->
-      <div class="result-card">
-        <div class="result-header">
-          <h1 class="result-title">提交结果</h1>
-          <span class="submission-id">#{{ submission.id.slice(0, 8) }}</span>
+      <div class="bg-white border border-border rounded-xl overflow-hidden">
+        <div class="flex items-center justify-between px-6 pt-5">
+          <h1 class="text-lg font-bold">提交结果</h1>
+          <span class="font-mono text-xs text-text-muted">#{{ submission.id.slice(0, 8) }}</span>
         </div>
 
-        <div class="result-badge-area">
+        <div class="px-6 py-7 flex justify-center">
           <!-- 等待/评测中 -->
           <div
-            v-if="submission.status === 'pending'"
-            class="status-badge pending"
+            v-if="submission.status === 'pending' || submission.status === 'judging'"
+            class="inline-flex items-center gap-2.5 px-7 py-3 rounded-full text-base font-semibold"
+            :class="statusBadgeColors[submission.status]"
           >
-            <Loader2 :size="20" class="spin-icon" />
-            <span>等待评测</span>
-          </div>
-
-          <div
-            v-else-if="submission.status === 'judging'"
-            class="status-badge judging"
-          >
-            <Loader2 :size="20" class="spin-icon" />
-            <span>评测中</span>
+            <Loader2 :size="20" class="animate-spin" />
+            <span>{{ submission.status === 'pending' ? '等待评测' : '评测中' }}</span>
           </div>
 
           <div
             v-else-if="submission.status === 'error'"
-            class="status-badge error"
+            class="inline-flex items-center gap-2.5 px-7 py-3 rounded-full text-base font-semibold bg-red-50 text-red-800 border border-red-200"
           >
             <XCircle :size="22" />
             <span>系统错误</span>
@@ -243,8 +262,8 @@ onMounted(() => {
           <!-- 已完成 -->
           <div
             v-else-if="submission.result"
-            class="result-verdict"
-            :class="getResultDef(submission.result.status).class"
+            class="flex items-center gap-4 px-9 py-5 rounded-2xl flex-col text-center sm:flex-row sm:text-left"
+            :class="verdictClasses[getResultDef(submission.result.status).class] || verdictClasses.se"
           >
             <CheckCircle
               v-if="getResultDef(submission.result.status).icon === 'check'"
@@ -255,11 +274,11 @@ onMounted(() => {
               :size="32"
             />
             <AlertTriangle v-else :size="32" />
-            <div class="verdict-text">
-              <span class="verdict-label">
+            <div class="flex flex-col gap-0.5">
+              <span class="text-lg font-bold">
                 {{ getResultDef(submission.result.status).label }}
               </span>
-              <span class="verdict-score">
+              <span class="text-2xl font-extrabold">
                 {{ formatScore(submission.result.score) }} 分
               </span>
             </div>
@@ -267,25 +286,25 @@ onMounted(() => {
         </div>
 
         <!-- 元信息 -->
-        <div class="result-meta">
-          <div class="meta-row">
-            <span class="meta-label">题目</span>
+        <div class="px-6 pb-4 flex flex-col gap-2">
+          <div class="flex gap-3 text-sm">
+            <span class="text-text-muted min-w-[70px] shrink-0">题目</span>
             <NuxtLink
               :to="`/problems/${submission.problem_id}`"
-              class="meta-value link"
+              class="text-primary no-underline hover:underline"
             >
               {{ submission.problem_id }}
             </NuxtLink>
           </div>
-          <div class="meta-row">
-            <span class="meta-label">语言</span>
-            <span class="meta-value">
+          <div class="flex gap-3 text-sm">
+            <span class="text-text-muted min-w-[70px] shrink-0">语言</span>
+            <span class="text-text">
               {{ languageLabel[submission.language] || submission.language }}
             </span>
           </div>
-          <div class="meta-row">
-            <span class="meta-label">提交时间</span>
-            <span class="meta-value">
+          <div class="flex gap-3 text-sm">
+            <span class="text-text-muted min-w-[70px] shrink-0">提交时间</span>
+            <span class="text-text">
               {{ formatDateTime(submission.created_at) }}
             </span>
           </div>
@@ -294,22 +313,22 @@ onMounted(() => {
         <!-- 资源消耗（仅 finished） -->
         <div
           v-if="submission.result && submission.status === 'finished'"
-          class="resource-row"
+          class="flex flex-col sm:flex-row gap-3 sm:gap-8 px-6 py-4 border-t border-border bg-gray-50"
         >
-          <div class="resource-item">
+          <div class="flex items-center gap-2.5 text-text-secondary">
             <Clock :size="16" />
-            <div class="resource-info">
-              <span class="resource-label">耗时</span>
-              <span class="resource-value">
+            <div class="flex flex-col gap-px">
+              <span class="text-[11px] text-text-muted">耗时</span>
+              <span class="text-sm font-semibold text-text">
                 {{ formatTime(submission.result.time_ms) }}
               </span>
             </div>
           </div>
-          <div class="resource-item">
+          <div class="flex items-center gap-2.5 text-text-secondary">
             <Server :size="16" />
-            <div class="resource-info">
-              <span class="resource-label">内存</span>
-              <span class="resource-value">
+            <div class="flex flex-col gap-px">
+              <span class="text-[11px] text-text-muted">内存</span>
+              <span class="text-sm font-semibold text-text">
                 {{ formatMemory(submission.result.memory_kb) }}
               </span>
             </div>
@@ -318,351 +337,29 @@ onMounted(() => {
       </div>
 
       <!-- 代码区 -->
-      <div class="code-card">
-        <div class="code-card-header">
+      <div class="bg-[#0d1117] border border-[#30363d] rounded-xl overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-2.5 bg-[#161b22] text-[#8b949e] text-xs font-mono border-b border-[#30363d]">
           <FileText :size="16" />
           <span>{{ submission.file_name || "main.py" }}</span>
         </div>
-        <pre class="code-body"><code :ref="codeRef" :class="`language-${codeLanguage}`">{{ submission.code }}</code></pre>
+        <pre class="p-4 overflow-x-auto text-xs leading-relaxed"><code :ref="codeRef" :class="`language-${codeLanguage}`" class="font-mono text-[#e6edf3] whitespace-pre">{{ submission.code }}</code></pre>
       </div>
 
       <!-- 输出区（仅 finished 有内容） -->
       <div
         v-if="submission.status === 'finished' && submission.result?.output"
-        class="output-card"
+        class="bg-white border border-border rounded-xl overflow-hidden"
       >
         <button
-          class="output-header"
+          class="flex items-center justify-between w-full px-4 py-3 bg-gray-50 border-0 border-b border-border text-sm font-semibold text-text cursor-pointer hover:bg-gray-100"
           @click="showOutput = !showOutput"
         >
           <span>评测输出</span>
           <ChevronDown v-if="!showOutput" :size="16" />
           <ChevronUp v-else :size="16" />
         </button>
-        <pre v-show="showOutput" class="output-body"><code>{{ submission.result.output }}</code></pre>
+        <pre v-show="showOutput" class="p-4 overflow-x-auto text-xs leading-relaxed bg-[#0d1117] text-[#e6edf3]"><code class="font-mono whitespace-pre-wrap break-all">{{ submission.result.output }}</code></pre>
       </div>
     </template>
   </div>
 </template>
-
-<style scoped>
-.result-page {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 32px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-/* ── Back Link ── */
-.back-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  color: var(--c-text-secondary);
-  text-decoration: none;
-}
-
-.back-link:hover {
-  color: var(--c-primary);
-}
-
-/* ── Loading ── */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 80px 24px;
-  color: var(--c-text-muted);
-}
-
-.spinner {
-  width: 28px;
-  height: 28px;
-  border: 3px solid var(--c-border);
-  border-top-color: var(--c-primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* ── Result Card ── */
-.result-card {
-  background: var(--c-white);
-  border: 1px solid var(--c-border);
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.result-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px 0;
-}
-
-.result-title {
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.submission-id {
-  font-family: "SF Mono", "Fira Code", monospace;
-  font-size: 13px;
-  color: var(--c-text-muted);
-}
-
-/* ── Badge / Verdict ── */
-.result-badge-area {
-  padding: 28px 24px;
-  display: flex;
-  justify-content: center;
-}
-
-.status-badge {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 28px;
-  border-radius: 40px;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.status-badge.pending {
-  background: #f8fafc;
-  color: #64748b;
-  border: 1px solid var(--c-border);
-}
-
-.status-badge.judging {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border: 1px solid #bfdbfe;
-}
-
-.status-badge.error {
-  background: #fef2f2;
-  color: #991b1b;
-  border: 1px solid #fecaca;
-}
-
-.spin-icon {
-  animation: spin 1s linear infinite;
-}
-
-.result-verdict {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 20px 36px;
-  border-radius: 16px;
-}
-
-.result-verdict.accepted {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #166534;
-}
-
-.result-verdict.wrong {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #991b1b;
-}
-
-.result-verdict.tle,
-.result-verdict.mle {
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
-  color: #9a3412;
-}
-
-.result-verdict.re,
-.result-verdict.se {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #991b1b;
-}
-
-.verdict-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.verdict-label {
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.verdict-score {
-  font-size: 22px;
-  font-weight: 800;
-}
-
-/* ── Meta ── */
-.result-meta {
-  padding: 0 24px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.meta-row {
-  display: flex;
-  gap: 12px;
-  font-size: 14px;
-}
-
-.meta-label {
-  color: var(--c-text-muted);
-  min-width: 70px;
-  flex-shrink: 0;
-}
-
-.meta-value {
-  color: var(--c-text);
-}
-
-.meta-value.link {
-  color: var(--c-primary);
-  text-decoration: none;
-}
-
-.meta-value.link:hover {
-  text-decoration: underline;
-}
-
-/* ── Resource ── */
-.resource-row {
-  display: flex;
-  gap: 32px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--c-border);
-  background: #f8fafc;
-}
-
-.resource-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--c-text-secondary);
-}
-
-.resource-info {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.resource-label {
-  font-size: 11px;
-  color: var(--c-text-muted);
-}
-
-.resource-value {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--c-text);
-}
-
-/* ── Code Card ── */
-.code-card {
-  background: #0d1117;
-  border: 1px solid #30363d;
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.code-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: #161b22;
-  color: #8b949e;
-  font-size: 13px;
-  font-family: "SF Mono", "Fira Code", monospace;
-  border-bottom: 1px solid #30363d;
-}
-
-.code-body {
-  padding: 16px;
-  overflow-x: auto;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.code-body code {
-  font-family: "SF Mono", "Fira Code", monospace;
-  color: #e6edf3;
-  white-space: pre;
-}
-
-/* ── Output Card ── */
-.output-card {
-  background: var(--c-white);
-  border: 1px solid var(--c-border);
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.output-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 12px 16px;
-  background: #f8fafc;
-  border: none;
-  border-bottom: 1px solid var(--c-border);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--c-text);
-  cursor: pointer;
-}
-
-.output-header:hover {
-  background: #f1f5f9;
-}
-
-.output-body {
-  padding: 16px;
-  overflow-x: auto;
-  font-size: 13px;
-  line-height: 1.5;
-  background: #0d1117;
-  color: #e6edf3;
-}
-
-.output-body code {
-  font-family: "SF Mono", "Fira Code", monospace;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-/* ── Responsive ── */
-@media (max-width: 640px) {
-  .result-page {
-    padding: 20px 12px;
-  }
-
-  .result-verdict {
-    flex-direction: column;
-    text-align: center;
-  }
-
-  .resource-row {
-    flex-direction: column;
-    gap: 12px;
-  }
-}
-</style>

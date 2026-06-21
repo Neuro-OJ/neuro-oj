@@ -15,6 +15,7 @@ const emit = defineEmits<{
 const containerRef = ref<HTMLDivElement | null>(null)
 let editor: any = null
 let monacoModule: any = null
+let modelContentDisposable: { dispose: () => void } | null = null
 
 const MONACO_VERSION = "0.55.1" // 须与 package.json 中的 monaco-editor 版本一致
 
@@ -72,7 +73,7 @@ async function initMonaco() {
   })
 
   // Sync changes back to v-model
-  editor.onDidChangeModelContent(() => {
+  modelContentDisposable = editor.onDidChangeModelContent(() => {
     emit("update:modelValue", editor.getValue())
   })
 }
@@ -80,6 +81,7 @@ async function initMonaco() {
 onMounted(initMonaco)
 
 onUnmounted(() => {
+  modelContentDisposable?.dispose()
   editor?.dispose()
 })
 
@@ -117,14 +119,5 @@ watch(
 </script>
 
 <template>
-  <div ref="containerRef" class="monaco-container" :style="{ minHeight: minHeight ? `${minHeight}px` : '320px' }" />
+  <div ref="containerRef" class="w-full border border-border rounded-lg overflow-hidden" :style="{ minHeight: minHeight ? `${minHeight}px` : '320px' }" />
 </template>
-
-<style scoped>
-.monaco-container {
-  width: 100%;
-  border: 1px solid var(--c-border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-</style>
