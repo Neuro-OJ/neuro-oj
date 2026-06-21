@@ -44,47 +44,51 @@ echo ""
 # ══════════════════════════════════════════════
 step "1/6  Docker 基础设施"
 
-if ! docker info --format '{{.ServerVersion}}' > /dev/null 2>&1; then
-  fail "Docker 未运行，请先启动 Docker"
-  exit 1
-fi
-ok "Docker 运行中"
-
-# 启动 E2E 专用容器（PostgreSQL :5433, Redis :6380）
-if docker ps --format '{{.Names}}' | grep -q '^noj-e2e-postgres$'; then
-  ok "noj-e2e-postgres 已在运行"
-else
-  info "启动 noj-e2e-postgres..."
-  docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" up -d postgres
-  ok "noj-e2e-postgres 已启动"
-fi
-
-if docker ps --format '{{.Names}}' | grep -q '^noj-e2e-redis$'; then
-  ok "noj-e2e-redis 已在运行"
-else
-  info "启动 noj-e2e-redis..."
-  docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" up -d redis
-  ok "noj-e2e-redis 已启动"
-fi
-
-# 等待数据库就绪
-info "等待 PostgreSQL 就绪..."
-for i in $(seq 1 30); do
-  if docker exec noj-e2e-postgres pg_isready -U e2e > /dev/null 2>&1; then
-    ok "PostgreSQL 就绪"
-    break
+if [ -z "${CI:-}" ]; then
+  # 本地环境：通过 docker compose 启动 E2E 专用容器
+  if ! docker info --format '{{.ServerVersion}}' > /dev/null 2>&1; then
+    fail "Docker 未运行，请先启动 Docker"
+    exit 1
   fi
-  sleep 1
-done
+  ok "Docker 运行中"
 
-info "等待 Redis 就绪..."
-for i in $(seq 1 15); do
-  if docker exec noj-e2e-redis redis-cli ping > /dev/null 2>&1; then
-    ok "Redis 就绪"
-    break
+  if docker ps --format '{{.Names}}' | grep -q '^noj-e2e-postgres$'; then
+    ok "noj-e2e-postgres 已在运行"
+  else
+    info "启动 noj-e2e-postgres..."
+    docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" up -d postgres
+    ok "noj-e2e-postgres 已启动"
   fi
-  sleep 1
-done
+
+  if docker ps --format '{{.Names}}' | grep -q '^noj-e2e-redis$'; then
+    ok "noj-e2e-redis 已在运行"
+  else
+    info "启动 noj-e2e-redis..."
+    docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" up -d redis
+    ok "noj-e2e-redis 已启动"
+  fi
+
+  # 等待数据库就绪
+  info "等待 PostgreSQL 就绪..."
+  for i in $(seq 1 30); do
+    if docker exec noj-e2e-postgres pg_isready -U e2e > /dev/null 2>&1; then
+      ok "PostgreSQL 就绪"
+      break
+    fi
+    sleep 1
+  done
+
+  info "等待 Redis 就绪..."
+  for i in $(seq 1 15); do
+    if docker exec noj-e2e-redis redis-cli ping > /dev/null 2>&1; then
+      ok "Redis 就绪"
+      break
+    fi
+    sleep 1
+  done
+else
+  ok "CI 环境检测，跳过 Docker 容器启动（使用 GitHub Actions 服务容器）"
+fi
 
 # ══════════════════════════════════════════════
 # 2. 数据库迁移 + 种子

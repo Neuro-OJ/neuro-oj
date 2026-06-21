@@ -53,15 +53,19 @@ if [ -f /tmp/noj-e2e-ui.pid ]; then
   rm -f /tmp/noj-e2e-ui.pid
 fi
 
-# ── 停止 Docker 容器 ──
-if docker ps --format '{{.Names}}' | grep -q '^noj-e2e-postgres$'; then
-  docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" stop postgres
-  ok "noj-e2e-postgres 已停止"
-fi
+# ── 停止 Docker 容器（仅本地环境） ──
+if [ -z "${CI:-}" ]; then
+  if docker ps --format '{{.Names}}' | grep -q '^noj-e2e-postgres$'; then
+    docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" stop postgres
+    ok "noj-e2e-postgres 已停止"
+  fi
 
-if docker ps --format '{{.Names}}' | grep -q '^noj-e2e-redis$'; then
-  docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" stop redis
-  ok "noj-e2e-redis 已停止"
+  if docker ps --format '{{.Names}}' | grep -q '^noj-e2e-redis$'; then
+    docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" stop redis
+    ok "noj-e2e-redis 已停止"
+  fi
+else
+  ok "CI 环境检测，跳过 Docker 容器停止"
 fi
 
 # ── 清理临时文件 ──
