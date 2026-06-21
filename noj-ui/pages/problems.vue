@@ -25,7 +25,7 @@ interface ProblemsResponse {
 const page = ref(1)
 const limit = 20
 
-const { data, pending, error, refresh } = useFetch<ProblemsResponse>(
+const { data, pending, error } = useFetch<ProblemsResponse>(
   () => `/api/v1/problems?page=${page.value}&limit=${limit}`,
 )
 
@@ -42,14 +42,12 @@ const difficultyLabel: Record<string, string> = {
 function prevPage() {
   if (page.value > 1) {
     page.value--
-    refresh()
   }
 }
 
 function nextPage() {
   if (page.value < totalPages.value) {
     page.value++
-    refresh()
   }
 }
 </script>

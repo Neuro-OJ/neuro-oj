@@ -70,7 +70,7 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
       "## 输入\n\n- 第一行：$n$ 和 $k$（空格分隔）\n- 第二行：$n$ 个整数，即 $\\text{sensor\\_data}$\n\n" +
       "## 输出\n\n一行，$n-k+1$ 个浮点数（保留两位小数），空格分隔。\n\n" +
       "## 示例\n\n**输入**\n\n```\n6 3\n1 3 5 7 9 11\n```\n\n**输出**\n\n```\n3.00 5.00 7.00 9.00\n```\n\n" +
-      "## 限制\n\n- $1 \\leq k \\leq n \\leq 10^5$\n- $-10^9 \\leq \\text{sensor\\_data}[i] \\leq 10^9$\n- 时间限制：${1000}\\text{ms}$\n- 内存限制：${256}\\text{MB}$",
+      "## 限制\n\n- $1 \\leq k \\leq n \\leq 10^5$\n- $-10^9 \\leq \\text{sensor\\_data}[i] \\leq 10^9$\n- 时间限制：$1000\\text{ms}$\n- 内存限制：$256\\text{MB}$",
     difficulty: "medium",
     judge_image: "noj-judge-python",
     judge_command: "python3 /tmp/evaluate.py",

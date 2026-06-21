@@ -16,6 +16,8 @@ const containerRef = ref<HTMLDivElement | null>(null)
 let editor: any = null
 let monacoModule: any = null
 
+const MONACO_VERSION = "0.55.1" // 须与 package.json 中的 monaco-editor 版本一致
+
 // Map our language identifiers to Monaco's
 const langMap: Record<string, string> = {
   python3: "python",
@@ -29,17 +31,21 @@ const langMap: Record<string, string> = {
 async function initMonaco() {
   if (!containerRef.value || !import.meta.client) return
 
-  // Import monaco-editor — only runs on client
   monacoModule = await import("monaco-editor")
 
-  // Use CDN-based workers (avoids Vite worker bundling complexity in Nuxt)
-  const MONACO_CDN = "https://unpkg.com/monaco-editor@0.52.2/min/vs"
+  // CDN Worker — 避免 Vite ?worker 导入在 Nuxt SSR 下的兼容问题
+  // 使用直接 CDN URL 而非 data: URI，避免违反 CSP worker-src
+  const CDN_BASE = `https://unpkg.com/monaco-editor@${MONACO_VERSION}/min/vs`
   self.MonacoEnvironment = {
-    getWorkerUrl(_workerId: string, _label: string) {
-      return `data:text/javascript;charset=utf-8,${encodeURIComponent(`
-        self.MonacoEnvironment = { baseUrl: "${MONACO_CDN}" };
-        importScripts("${MONACO_CDN}/base/worker/workerMain.js");
-      `)}`
+    getWorker(_workerId: string, label: string) {
+      const workerUrlMap: Record<string, string> = {
+        typescript: `${CDN_BASE}/language/typescript/ts.worker.js`,
+        javascript: `${CDN_BASE}/language/typescript/ts.worker.js`,
+        json: `${CDN_BASE}/language/json/json.worker.js`,
+        css: `${CDN_BASE}/language/css/css.worker.js`,
+        html: `${CDN_BASE}/language/html/html.worker.js`,
+      }
+      return new Worker(workerUrlMap[label] || `${CDN_BASE}/editor/editor.worker.js`)
     },
   }
 
@@ -77,12 +83,14 @@ onUnmounted(() => {
   editor?.dispose()
 })
 
-// Sync external modelValue changes back to editor
+// Sync external modelValue → editor（保留光标位置）
 watch(
   () => props.modelValue,
   (val) => {
     if (editor && val !== editor.getValue()) {
+      const pos = editor.getPosition()
       editor.setValue(val)
+      if (pos) editor.setPosition(pos)
     }
   },
 )
