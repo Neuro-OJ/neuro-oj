@@ -1,14 +1,15 @@
 ## Purpose
 
-定义 noj-judge（Rust 评测 Worker）的核心功能规范。judge-worker
-通过 Redis MQ 接收评测任务，在 Docker 容器中执行用户代码，
-解析评分脚本的输出，并将结果返回给 noj-core。
+定义 noj-judge（Rust 评测 Worker）的核心功能规范。judge-worker 通过 Redis MQ
+接收评测任务，在 Docker 容器中执行用户代码， 解析评分脚本的输出，并将结果返回给
+noj-core。
 
 ## Requirements
 
 ### Requirement: 任务拉取
 
-系统 SHALL 通过 BRPOP 命令从 `noj:judge:queue` 列表阻塞拉取评测任务，超时时间 5 秒。
+系统 SHALL 通过 BRPOP 命令从 `noj:judge:queue` 列表阻塞拉取评测任务，超时时间 5
+秒。
 
 #### Scenario: 成功拉取任务
 
@@ -27,7 +28,8 @@
 
 ### Requirement: 结果发布
 
-系统 SHALL 将评测结果序列化为 JSON 后通过 LPUSH 推送到 `noj:judge:results` 列表，供 noj-core 消费。
+系统 SHALL 将评测结果序列化为 JSON 后通过 LPUSH 推送到 `noj:judge:results`
+列表，供 noj-core 消费。
 
 #### Scenario: 成功发布结果
 
@@ -41,7 +43,8 @@
 
 ### Requirement: 评测编排
 
-系统 SHALL 依序执行：获取支持包（Base64 解码）→ 解压 → 写入用户代码 → 启动 Docker 容器 → 解析输出 → 清理临时目录。
+系统 SHALL 依序执行：获取支持包（Base64 解码）→ 解压 → 写入用户代码 → 启动
+Docker 容器 → 解析输出 → 清理临时目录。
 
 #### Scenario: 评测成功
 
@@ -56,7 +59,9 @@
 #### Scenario: 评测脚本无有效输出
 
 - **WHEN** 容器退出但 stdout 中没有 `---RESULT---` 标记，且退出码为 0
-- **THEN** status 设为 `SystemError`（评测脚本/环境异常，非用户代码问题），output 保留完整 stdout/stderr
+- **THEN** status 设为
+  `SystemError`（评测脚本/环境异常，非用户代码问题），output 保留完整
+  stdout/stderr
 
 #### Scenario: 用户代码运行时错误
 
@@ -94,7 +99,8 @@
 
 ### Requirement: 临时文件管理
 
-系统 SHALL 为每个评测任务创建独立临时目录 `{WORK_DIR}/{submission_id}/`，评测完成后清理。
+系统 SHALL 为每个评测任务创建独立临时目录
+`{WORK_DIR}/{submission_id}/`，评测完成后清理。
 
 #### Scenario: 创建临时目录
 

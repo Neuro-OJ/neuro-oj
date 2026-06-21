@@ -1,14 +1,18 @@
 ## Purpose
 
-定义 Neuro OJ 提交历史查询 API 规范，支持用户查询自己的提交记录列表，支持分页和多条件筛选。管理员可查看所有用户的提交。API 路径前缀为 `/api/v1/submissions`，管理端为 `/api/v1/admin/submissions`。
+定义 Neuro OJ 提交历史查询 API
+规范，支持用户查询自己的提交记录列表，支持分页和多条件筛选。管理员可查看所有用户的提交。API
+路径前缀为 `/api/v1/submissions`，管理端为 `/api/v1/admin/submissions`。
 
 ## Requirements
 
 ### Requirement: 用户查询提交列表
 
-系统 SHALL 提供 `GET /api/v1/submissions` 端点，返回当前认证用户的提交列表，支持分页和多条件筛选。
+系统 SHALL 提供 `GET /api/v1/submissions`
+端点，返回当前认证用户的提交列表，支持分页和多条件筛选。
 
-此端点 MUST 受 JWT 中间件保护。列表默认按 `created_at` 降序排列（最新提交在前）。
+此端点 MUST 受 JWT 中间件保护。列表默认按 `created_at`
+降序排列（最新提交在前）。
 
 请求支持以下查询参数（均为可选）：
 
@@ -44,7 +48,9 @@
 #### Scenario: 无筛选条件查询第一页
 
 - **WHEN** 用户 GET `/api/v1/submissions` 不传任何查询参数，该用户有 15 条提交
-- **THEN** 系统返回 200，`data` 包含 15 条记录，按 created_at 降序，`pagination.total` 为 15，`pagination.total_pages` 为 1，每条包含 problem 摘要和 result（如有）
+- **THEN** 系统返回 200，`data` 包含 15 条记录，按 created_at
+  降序，`pagination.total` 为 15，`pagination.total_pages` 为 1，每条包含
+  problem 摘要和 result（如有）
 
 #### Scenario: 按 problem_id 筛选
 
@@ -59,11 +65,13 @@
 #### Scenario: 按日期范围筛选
 
 - **WHEN** 用户 GET `/api/v1/submissions?from=2026-01-01&to=2026-06-20`
-- **THEN** 系统仅返回 created_at 在 2026-01-01T00:00:00 至 2026-06-20T23:59:59 范围内的提交
+- **THEN** 系统仅返回 created_at 在 2026-01-01T00:00:00 至 2026-06-20T23:59:59
+  范围内的提交
 
 #### Scenario: 多条件组合筛选
 
-- **WHEN** 用户 GET `/api/v1/submissions?problem_id=1001&language=python3&status=finished`
+- **WHEN** 用户 GET
+  `/api/v1/submissions?problem_id=1001&language=python3&status=finished`
 - **THEN** 系统返回同时满足三个筛选条件的提交记录
 
 #### Scenario: 分页超出范围
@@ -88,9 +96,11 @@
 
 ### Requirement: 管理员查询所有用户提交
 
-系统 SHALL 提供 `GET /api/v1/admin/submissions` 端点，允许管理员查看所有用户的提交记录。
+系统 SHALL 提供 `GET /api/v1/admin/submissions`
+端点，允许管理员查看所有用户的提交记录。
 
-此端点 MUST 依次通过 `authMiddleware` 和 `adminMiddleware` 保护。路由 MUST 挂载在 `/api/v1/admin/` 路径前缀下。
+此端点 MUST 依次通过 `authMiddleware` 和 `adminMiddleware` 保护。路由 MUST
+挂载在 `/api/v1/admin/` 路径前缀下。
 
 支持与用户列表接口相同的筛选和分页参数，额外支持：
 

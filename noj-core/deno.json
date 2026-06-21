@@ -24,6 +24,7 @@
     "drizzle-kit": "npm:drizzle-kit",
     "@std/encoding": "jsr:@std/encoding@^1"
   },
+  "nodeModulesDir": "auto",
   "fmt": {
     "semiColons": true,
     "singleQuote": false,

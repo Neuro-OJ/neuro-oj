@@ -14,44 +14,44 @@ noj-ui (Vue) ──REST API── noj-core (Deno+Hono)
 
 #### 题目 API
 
-| Method | Path | Auth | 说明 |
-|--------|------|------|------|
-| GET | /api/v1/problems | No | 题目列表，支持 ?page=1&limit=20 |
-| GET | /api/v1/problems/:id | No | 题目详情 |
+| Method | Path                 | Auth | 说明                            |
+| ------ | -------------------- | ---- | ------------------------------- |
+| GET    | /api/v1/problems     | No   | 题目列表，支持 ?page=1&limit=20 |
+| GET    | /api/v1/problems/:id | No   | 题目详情                        |
 
 #### 提交 API
 
-| Method | Path | Auth | 说明 |
-|--------|------|------|------|
-| POST | /api/v1/submissions | JWT | 创建提交 |
-| GET | /api/v1/submissions/:id | JWT | 提交详情 |
+| Method | Path                    | Auth | 说明     |
+| ------ | ----------------------- | ---- | -------- |
+| POST   | /api/v1/submissions     | JWT  | 创建提交 |
+| GET    | /api/v1/submissions/:id | JWT  | 提交详情 |
 
 ### Data Model
 
 #### problems 表
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | text | 主键，如 "1001" |
-| title | text | 标题 |
-| description | text | 描述 |
-| difficulty | text | 难度 |
-| judge_image | text | Docker 镜像 |
-| judge_command | text | 评测命令 |
-| time_limit_ms | integer | 时间限制 |
-| memory_limit_mb | integer | 内存限制 |
+| 字段            | 类型    | 说明            |
+| --------------- | ------- | --------------- |
+| id              | text    | 主键，如 "1001" |
+| title           | text    | 标题            |
+| description     | text    | 描述            |
+| difficulty      | text    | 难度            |
+| judge_image     | text    | Docker 镜像     |
+| judge_command   | text    | 评测命令        |
+| time_limit_ms   | integer | 时间限制        |
+| memory_limit_mb | integer | 内存限制        |
 
 #### submissions 表
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | text | 主键 (UUID) |
-| user_id | text | 外键 → users.id |
-| problem_id | text | 外键 → problems.id |
-| language | text | 编程语言 |
-| code | text | 用户代码 |
-| file_name | text | 容器内文件名（由语言映射） |
-| status | text | pending/judging/error/finished |
+| 字段       | 类型 | 说明                           |
+| ---------- | ---- | ------------------------------ |
+| id         | text | 主键 (UUID)                    |
+| user_id    | text | 外键 → users.id                |
+| problem_id | text | 外键 → problems.id             |
+| language   | text | 编程语言                       |
+| code       | text | 用户代码                       |
+| file_name  | text | 容器内文件名（由语言映射）     |
+| status     | text | pending/judging/error/finished |
 
 ### 评测流程
 

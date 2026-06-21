@@ -38,11 +38,15 @@ fail()   { echo -e "  ${RED}✗${NC} $1"; }
 info()   { echo -e "  ${CYAN}→${NC} $1"; }
 header() { echo -e "\n${BOLD}${CYAN}$1${NC}\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"; }
 
-# ── 进入项目目录 ──
-cd "$(dirname "$0")/../noj-judge"
+ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+# 加载 E2E 环境（如果 setup.sh 有写入的话）
+[ -f /tmp/noj-e2e-env.sh ] && source /tmp/noj-e2e-env.sh
 
-# ── 配置 ──
-REDIS_URL="${REDIS_URL:-redis://localhost:6379}"
+# ── 进入项目目录 ──
+cd "$ROOT_DIR/noj-judge"
+
+# ── 配置（用独立 Redis DB 1，不污染开发环境 DB 0）──
+REDIS_URL="${REDIS_URL:-redis://localhost:6380/1}"
 export REDIS_URL
 
 cleanup() {
@@ -67,10 +71,14 @@ if ! docker info &>/dev/null; then
 fi
 ok "Docker daemon 就绪"
 
-if ! redis-cli -u "$REDIS_URL" ping &>/dev/null; then
+# redis-cli -u 不支持端口+DB 索引的 URI 格式，拆开连接
+REDIS_HOST="localhost"
+REDIS_PORT="${E2E_REDIS_URL##*:}"
+REDIS_PORT="${REDIS_PORT%%/*}"
+if ! redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" ping &>/dev/null; then
   warn "Redis 未就绪，尝试启动..."
-  docker start noj-redis 2>/dev/null || {
-    fail "Redis 不可用，请先启动: docker compose up -d redis"
+  docker start noj-e2e-redis 2>/dev/null || {
+    fail "Redis 不可用，请先执行: bash scripts/e2e/setup.sh"
     exit 1
   }
 fi

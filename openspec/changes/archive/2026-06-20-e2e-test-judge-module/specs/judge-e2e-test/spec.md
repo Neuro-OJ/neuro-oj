@@ -7,7 +7,8 @@
 #### Scenario: 测试环境
 
 - **WHEN** 运行全链路 E2E 测试
-- **THEN** 需要以下服务可用：Redis、PostgreSQL（可通过 docker-compose 或环境变量配置）
+- **THEN** 需要以下服务可用：Redis、PostgreSQL（可通过 docker-compose
+  或环境变量配置）
 
 #### Scenario: 测试门控
 
@@ -27,7 +28,9 @@
 #### Scenario: 提交信息完整
 
 - **WHEN** 从 MQ 拉取 `JudgeTask` 消息
-- **THEN** 消息包含 `submission_id`、`judge_image`、`judge_command`、`code`、`time_limit_ms`、`memory_limit_mb` 等所有必要字段
+- **THEN** 消息包含
+  `submission_id`、`judge_image`、`judge_command`、`code`、`time_limit_ms`、`memory_limit_mb`
+  等所有必要字段
 
 ### Requirement: 结果消费验证
 
@@ -36,7 +39,8 @@
 #### Scenario: 模拟结果消费
 
 - **WHEN** 向 Redis 结果队列 `noj:judge:results` 推送合法的 `JudgeResult` JSON
-- **THEN** 结果消费者 `startResultConsumer` 正确解析并调用 `saveEvaluationResult` 持久化
+- **THEN** 结果消费者 `startResultConsumer` 正确解析并调用
+  `saveEvaluationResult` 持久化
 
 #### Scenario: 状态流转验证
 

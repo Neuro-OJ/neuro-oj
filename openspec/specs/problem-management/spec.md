@@ -31,7 +31,8 @@
 
 ### Requirement: 管理员可更新题目
 
-系统 SHALL 提供 `PUT /api/v1/problems/:id`，仅管理员可调用，用于全量更新题目信息。
+系统 SHALL 提供
+`PUT /api/v1/problems/:id`，仅管理员可调用，用于全量更新题目信息。
 
 #### Scenario: 管理员成功更新题目
 
@@ -64,7 +65,8 @@
 
 ### Requirement: 题目列表支持多维度筛选与分页
 
-系统 SHALL 在 `GET /api/v1/problems` 上支持 `difficulty`、`category_id`、`keyword` 查询参数，并保留 `page` 与 `limit` 分页。
+系统 SHALL 在 `GET /api/v1/problems` 上支持
+`difficulty`、`category_id`、`keyword` 查询参数，并保留 `page` 与 `limit` 分页。
 
 #### Scenario: 按难度筛选
 
@@ -83,7 +85,8 @@
 
 #### Scenario: 组合筛选加分页
 
-- **WHEN** 用户请求 `GET /api/v1/problems?difficulty=easy&keyword=归一化&page=1&limit=10`
+- **WHEN** 用户请求
+  `GET /api/v1/problems?difficulty=easy&keyword=归一化&page=1&limit=10`
 - **THEN** 系统返回同时满足所有条件的分页结果
 
 #### Scenario: 非法分页参数
@@ -93,7 +96,8 @@
 
 ### Requirement: 数据库强制限制难度取值
 
-系统 SHALL 通过数据库 `CHECK` 约束确保 `problems.difficulty` 仅允许 `'easy'`、`'medium'`、`'hard'`。
+系统 SHALL 通过数据库 `CHECK` 约束确保 `problems.difficulty` 仅允许
+`'easy'`、`'medium'`、`'hard'`。
 
 #### Scenario: 非法难度写入数据库
 

@@ -7,7 +7,8 @@
 
 ### Requirement: 系统可返回分类树
 
-系统 SHALL 提供 `GET /api/v1/categories`，返回所有分类并以树形结构组织（含子分类数组）。
+系统 SHALL 提供
+`GET /api/v1/categories`，返回所有分类并以树形结构组织（含子分类数组）。
 
 #### Scenario: 获取分类树
 
@@ -16,16 +17,20 @@
 
 ### Requirement: 管理员可创建分类
 
-系统 SHALL 提供 `POST /api/v1/categories`，仅管理员可调用，用于创建分类；可选指定 `parent_id` 以建立父子关系。
+系统 SHALL 提供
+`POST /api/v1/categories`，仅管理员可调用，用于创建分类；可选指定 `parent_id`
+以建立父子关系。
 
 #### Scenario: 管理员创建顶级分类
 
-- **WHEN** 管理员发送 `POST /api/v1/categories` 并传入 `{ "name": "数据结构", "slug": "data-structures" }`
+- **WHEN** 管理员发送 `POST /api/v1/categories` 并传入
+  `{ "name": "数据结构", "slug": "data-structures" }`
 - **THEN** 系统创建 level = 0 的分类并返回 201
 
 #### Scenario: 管理员创建子分类
 
-- **WHEN** 管理员发送 `POST /api/v1/categories` 并传入 `{ "name": "树", "slug": "tree", "parent_id": "<parent-id>" }`
+- **WHEN** 管理员发送 `POST /api/v1/categories` 并传入
+  `{ "name": "树", "slug": "tree", "parent_id": "<parent-id>" }`
 - **THEN** 系统创建 level = 父分类 level + 1 的分类
 
 #### Scenario: 普通用户创建分类
@@ -73,7 +78,8 @@
 
 ### Requirement: 题目可与多个分类关联
 
-系统 SHALL 支持在创建/更新题目时通过 `category_ids` 数组指定题目所属分类，并持久化到 `problems_categories` 关联表。
+系统 SHALL 支持在创建/更新题目时通过 `category_ids`
+数组指定题目所属分类，并持久化到 `problems_categories` 关联表。
 
 #### Scenario: 创建题目时关联分类
 

@@ -36,14 +36,62 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
   {
     id: "1001",
     title: "1001 T0-LMCC：星港舱门报码归一化",
-    description:
-      "星港舱门报码归一化。将自然语言报码整理成标准 JSON（gate_id + status）。总分 10 分。",
+    description: "## 问题背景\n\n星港空间站的多传感器系统会采集大量环境数据。" +
+      "其中，**舱门报码归一化**任务要求将自然语言描述的报码整理成标准 JSON 格式。\n\n" +
+      "## 输入格式\n\n输入包含一个字符串 `report`，描述舱门状态，例如：\n\n" +
+      '```json\n{"gate": "A12", "status": "open", "timestamp": 1704067200}\n```\n\n' +
+      "## 输出要求\n\n输出标准化的 JSON，包含以下字段：\n\n" +
+      "- `gate_id` (`string`) — 舱门编号\n" +
+      "- `status` (`string`) — 舱门状态（`open` / `closed` / `maintenance`）\n\n" +
+      "## 评分标准\n\n总分 10 分。评测时使用公式：\n\n" +
+      "$$ \\text{score} = \\frac{\\text{正确字段数}}{\\text{总字段数}} \\times 10 $$\n\n" +
+      "其中 $\\text{正确字段数}$ 由评测脚本根据标准答案计算。\n\n" +
+      "## 示例\n\n### 示例 1\n\n**输入**\n\n" +
+      '```\n舱门 A12 已打开\n```\n\n**输出**\n\n```json\n{"gate_id": "A12", "status": "open"}\n```\n\n' +
+      "> 注意：输出的 JSON 键名使用 `snake_case`。\n\n" +
+      "### 示例 2\n\n**输入**\n\n" +
+      '```\nB-07 舱门维护中\n```\n\n**输出**\n\n```json\n{"gate_id": "B-07", "status": "maintenance"}\n```',
     difficulty: "easy",
     judge_image: "noj-judge-python",
     judge_command: "python3 /tmp/evaluate.py",
     support_package_path: "data/packages/1001.zip",
     time_limit_ms: 5000,
     memory_limit_mb: 512,
+  },
+  {
+    id: "1002",
+    title: "1002 T0-LMCC：传感器数据滤波",
+    description:
+      "## 问题描述\n\n给定一个长度为 $n$ 的整数数组 $\\text{sensor\\_data}$，" +
+      "使用**滑动窗口平均法**对数据进行平滑滤波。窗口大小为 $k$。\n\n" +
+      "## 公式\n\n滤波后的第 $i$ 个元素为：\n\n" +
+      "$$ \\text{filtered}[i] = \\frac{1}{k} \\sum_{j=i}^{i+k-1} \\text{sensor\\_data}[j] $$\n\n" +
+      "其中 $0 \\leq i \\leq n-k$。\n\n" +
+      "## 输入\n\n- 第一行：$n$ 和 $k$（空格分隔）\n- 第二行：$n$ 个整数，即 $\\text{sensor\\_data}$\n\n" +
+      "## 输出\n\n一行，$n-k+1$ 个浮点数（保留两位小数），空格分隔。\n\n" +
+      "## 示例\n\n**输入**\n\n```\n6 3\n1 3 5 7 9 11\n```\n\n**输出**\n\n```\n3.00 5.00 7.00 9.00\n```\n\n" +
+      "## 限制\n\n- $1 \\leq k \\leq n \\leq 10^5$\n- $-10^9 \\leq \\text{sensor\\_data}[i] \\leq 10^9$\n- 时间限制：$1000\\text{ms}$\n- 内存限制：$256\\text{MB}$",
+    difficulty: "medium",
+    judge_image: "noj-judge-python",
+    judge_command: "python3 /tmp/evaluate.py",
+    support_package_path: null, // TODO: 创建 1002 支持包后更新此路径（deno task build-packages + seed）
+    time_limit_ms: 1000,
+    memory_limit_mb: 256,
+  },
+  {
+    id: "1003",
+    title: "1003 T0-LMCC：A+B Problem",
+    description: "## 问题描述\n\n给定两个整数 $a$ 和 $b$，计算它们的和。\n\n" +
+      "## 输入格式\n\n一行，两个整数 $a$ 和 $b$，空格分隔。\n\n" +
+      "## 输出格式\n\n一行，一个整数，即 $a + b$ 的值。\n\n" +
+      "## 示例\n\n**输入**\n\n```\n1 2\n```\n\n**输出**\n\n```\n3\n```\n\n" +
+      "## 限制\n\n- $-10^9 \\leq a, b \\leq 10^9$\n- 时间限制：$1000\\text{ms}$\n- 内存限制：$256\\text{MB}$",
+    difficulty: "easy",
+    judge_image: "noj-judge-python",
+    judge_command: "python3 /tmp/evaluate.py",
+    support_package_path: "data/packages/1003.zip",
+    time_limit_ms: 1000,
+    memory_limit_mb: 256,
   },
 ];
 
@@ -100,6 +148,7 @@ const SAMPLE_CATEGORIES: SampleCategory[] = [
 const PROBLEM_CATEGORY_MAP: [string, string][] = [
   ["1001", "cat-lmcc"],
   ["1001", "cat-algorithm"],
+  ["1003", "cat-algorithm"],
 ];
 
 async function seedProblems(): Promise<void> {

@@ -2,9 +2,12 @@
 
 ### Requirement: 管理员可查看所有用户提交
 
-系统 SHALL 提供 `GET /api/v1/admin/submissions` 端点，允许管理员查看所有用户的提交列表。
+系统 SHALL 提供 `GET /api/v1/admin/submissions`
+端点，允许管理员查看所有用户的提交列表。
 
-此端点 MUST 依次通过 `authMiddleware` 和 `adminMiddleware` 保护。支持与用户提交列表接口相同的分页和筛选参数，额外支持 `user_id` 查询参数按用户筛选。
+此端点 MUST 依次通过 `authMiddleware` 和 `adminMiddleware`
+保护。支持与用户提交列表接口相同的分页和筛选参数，额外支持 `user_id`
+查询参数按用户筛选。
 
 详细规范见 `submission-list-api` spec 中「管理员查询所有用户提交」需求。
 

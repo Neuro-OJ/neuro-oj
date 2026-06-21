@@ -1,6 +1,8 @@
 ## Why
 
-用户主页是 OJ 系统的核心功能之一。目前 noj-core 缺少一个聚合用户统计信息（提交数、通过率、解题数）、已通过题目列表和最近提交活动的 API 端点，导致前端无法展示用户个人主页。
+用户主页是 OJ 系统的核心功能之一。目前 noj-core
+缺少一个聚合用户统计信息（提交数、通过率、解题数）、已通过题目列表和最近提交活动的
+API 端点，导致前端无法展示用户个人主页。
 
 ## What Changes
 
@@ -13,6 +15,7 @@
 ## Capabilities
 
 ### New Capabilities
+
 - `user-profile`: 用户主页 API，提供聚合统计、已通过题目列表和最近提交活动
 
 ### Modified Capabilities
@@ -23,6 +26,7 @@
 
 - **新增文件**：`noj-core/src/routes/users.ts` — 用户主页路由
 - **修改文件**：`noj-core/src/app.ts` — 注册新路由
-- **新增服务函数**：在 `services/auth.ts` 或新建 `services/users.ts` 中实现聚合查询
+- **新增服务函数**：在 `services/auth.ts` 或新建 `services/users.ts`
+  中实现聚合查询
 - **新增类型**：`UserProfileResponse` 接口定义
 - **测试**：新增单元测试和 E2E 测试

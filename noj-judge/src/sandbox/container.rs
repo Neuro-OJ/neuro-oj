@@ -5,8 +5,8 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use base64::Engine;
 use bollard::container::{
-    Config, CreateContainerOptions, KillContainerOptions, LogsOptions, RemoveContainerOptions,
-    StartContainerOptions, WaitContainerOptions,
+    Config, CreateContainerOptions, InspectContainerOptions, KillContainerOptions, LogsOptions,
+    RemoveContainerOptions, StartContainerOptions,
 };
 use bollard::models::HostConfig;
 use bollard::Docker;
@@ -188,18 +188,25 @@ pub async fn run_in_container(
     );
 
     // 5. 等待容器退出（timeout = time_limit_ms + 5s 余量）
+    // 使用轮询 inspect_container 替代 wait_container，
+    // 避免 bollard 0.18 与 Docker API 1.54+ 的 wait 端点兼容性问题
     let timeout = Duration::from_millis(task.time_limit_ms + 5000);
+    let poll_interval = Duration::from_millis(200);
     let wait_result = tokio::time::timeout(timeout, async {
-        let mut stream = docker.wait_container(
-            &container.id,
-            Some(WaitContainerOptions {
-                condition: "not-running",
-            }),
-        );
-        match stream.next().await {
-            Some(Ok(output)) => Ok(output.status_code),
-            Some(Err(e)) => Err(anyhow::anyhow!("等待容器失败: {}", e)),
-            None => Err(anyhow::anyhow!("容器退出流提前结束")),
+        loop {
+            let info = docker
+                .inspect_container(&container.id, None::<InspectContainerOptions>)
+                .await
+                .with_context(|| format!("检查容器状态失败: {}", container_name))?;
+
+            let running = info.state.as_ref().and_then(|s| s.running).unwrap_or(false);
+
+            if !running {
+                let exit_code = info.state.as_ref().and_then(|s| s.exit_code).unwrap_or(-1);
+                return Ok(exit_code);
+            }
+
+            tokio::time::sleep(poll_interval).await;
         }
     })
     .await;

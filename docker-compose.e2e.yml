@@ -1,117 +1,15 @@
-# =============================================================================
-# Neuro OJ E2E 测试环境编排
-#
-# 使用方式：
-#   启动基础服务（Redis + PostgreSQL）：
-#     docker compose -f docker-compose.e2e.yml up -d
-#
-#   启动全链路测试（包含 noj-core 和 noj-judge）：
-#     docker compose -f docker-compose.e2e.yml --profile e2e-full up
-# =============================================================================
-
-name: neuro-oj-e2e
-
+# E2E 测试基础设施（独立端口/DB，与开发环境隔离）
 services:
-  # === 基础服务 ===
-
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    profiles:
-      - "base"
+    container_name: noj-e2e-redis
+    ports: ["6380:6379"]         # 避开开发环境的 6379
 
   postgres:
     image: postgres:16-alpine
+    container_name: noj-e2e-postgres
+    ports: ["5433:5432"]         # 避开开发环境的 5432
     environment:
       POSTGRES_USER: e2e
       POSTGRES_PASSWORD: e2e
-      POSTGRES_DB: e2e_test
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "e2e"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    profiles:
-      - "base"
-
-  # === E2E 全链路（可选，需要 profile） ===
-  #
-  # 注意：noj-core 暂无 Dockerfile，以下服务使用 denoland/deno 镜像。
-  # 如需本地构建，请先在 noj-core/ 创建 Dockerfile（见 docker-compose.yml 的 noj-core 参考）。
-
-  noj-core-server:
-    image: denoland/deno:alpine
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e_test
-      REDIS_URL: redis://redis:6379
-      JWT_SECRET: e2e-test-secret
-      ADMIN_EMAIL: e2e_admin@test.com
-      ADMIN_PASS: e2e_admin_pass
-    working_dir: /app
-    volumes:
-      - ./noj-core:/app
-    command: >
-      sh -c "
-        deno task migrate &&
-        ADMIN_EMAIL=e2e_admin@test.com ADMIN_PASS=e2e_admin_pass deno task seed &&
-        deno task start
-      "
-    healthcheck:
-      test: ["CMD", "deno", "eval", "fetch('http://localhost:8000/health').then(r => Deno.exit(r.ok?0:1))"]
-      interval: 5s
-      timeout: 5s
-      retries: 15
-    profiles:
-      - "e2e-full"
-
-  noj-core-e2e:
-    image: denoland/deno:alpine
-    depends_on:
-      noj-core-server:
-        condition: service_healthy
-    environment:
-      NOJ_RUN_E2E: "1"
-      E2E_BASE_URL: http://noj-core-server:8000
-      E2E_ADMIN_EMAIL: e2e_admin@test.com
-      E2E_ADMIN_PASS: e2e_admin_pass
-    working_dir: /app
-    volumes:
-      - ./noj-core:/app
-    command: >
-      sh -c "deno test -A tests/e2e/api.test.ts"
-    profiles:
-      - "e2e-full"
-
-  noj-judge-test:
-    build:
-      context: ./noj-judge
-      dockerfile: Dockerfile
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      REDIS_URL: redis://redis:6379
-      JUDGE_QUEUE: noj:judge:queue
-      RESULT_QUEUE: noj:judge:results
-      MAX_CONCURRENT: "2"
-      WORK_DIR: /tmp/noj-work
-      NOJ_RUN_E2E: "1"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: >
-      sh -c "cargo test --test e2e -- --ignored"
-    profiles:
-      - "e2e-full"
+      POSTGRES_DB: e2e
