@@ -17,6 +17,7 @@ interface AuthResponse {
 export function useAuth() {
   const user = useState<UserResponse | null>("auth:user", () => null)
   const token = useState<string | null>("auth:token", () => null)
+  const loading = useState<boolean>("auth:loading", () => true)
 
   const isLoggedIn = computed(() => !!token.value && !!user.value)
 
@@ -24,8 +25,15 @@ export function useAuth() {
     const saved = localStorage.getItem("noj:token")
     if (saved) {
       token.value = saved
-      fetchUser()
+      fetchUser().finally(() => {
+        loading.value = false
+      })
+    } else {
+      loading.value = false
     }
+  } else {
+    // SSR — 标记为就绪
+    loading.value = false
   }
 
   async function login(login: string, password: string) {
@@ -71,5 +79,5 @@ export function useAuth() {
     }
   }
 
-  return { user, token, isLoggedIn, login, register, fetchUser, logout }
+  return { user, token, isLoggedIn, loading, login, register, fetchUser, logout }
 }

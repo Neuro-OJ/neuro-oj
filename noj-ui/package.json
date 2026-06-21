@@ -11,6 +11,10 @@
   },
   "dependencies": {
     "@lucide/vue": "^1.21.0",
+    "highlight.js": "^11.11.1",
+    "katex": "^0.17.0",
+    "markdown-it": "^14.2.0",
+    "monaco-editor": "^0.55.1",
     "nuxt": "^3.0.0"
   },
   "devDependencies": {
