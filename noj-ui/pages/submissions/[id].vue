@@ -76,36 +76,43 @@ const isFinished = computed(
 )
 const showOutput = ref(true)
 
-// 自动轮询 pending/judging 状态
+// 自动轮询：不依赖初始 useFetch，挂载后立即开始，直到状态变为 finished/error
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
-watch(
-  () => submission.value?.status,
-  (status) => {
-    if (status === "pending" || status === "judging") {
-      pollTimer = setInterval(async () => {
-        try {
-          const res = await $fetch<SubmissionResponse>(
-            `/api/v1/submissions/${submissionId}`,
-            { headers: { Authorization: `Bearer ${token.value}` } },
-          )
-          if (res) data.value = res
-        } catch {
-          // 轮询失败静默处理——下一轮会重试
+async function pollSubmission() {
+  if (!token.value) return // auth 还未就绪，下次重试
+  try {
+    const res = await $fetch<SubmissionResponse>(
+      `/api/v1/submissions/${submissionId}`,
+      { headers: { Authorization: `Bearer ${token.value}` } },
+    )
+    if (res) {
+      data.value = res
+      const status = res.data?.status
+      if (status === "finished" || status === "error") {
+        if (pollTimer) {
+          clearInterval(pollTimer)
+          pollTimer = null
         }
-      }, 1000)
-    } else {
-      if (pollTimer) {
-        clearInterval(pollTimer)
-        pollTimer = null
       }
     }
-  },
-  { immediate: true },
-)
+  } catch {
+    // 轮询失败静默处理——下一轮会重试
+  }
+}
+
+onMounted(() => {
+  // 立即拉一次
+  pollSubmission()
+  // 每秒轮询
+  pollTimer = setInterval(pollSubmission, 1000)
+})
 
 onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer)
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
 })
 
 // 状态标签

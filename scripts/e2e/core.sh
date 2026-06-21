@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# ============================================================================
+# noj-core E2E 测试
+#
+# 依赖：已运行的 E2E 环境（由 setup.sh 启动）
+#   - PostgreSQL / Redis 容器
+#   - noj-core 在 :8099 运行
+#   - 数据库已 migrate + seed
+#
+# 环境变量（覆盖默认，若未设置则读取 /tmp/noj-e2e-env.sh）：
+#   E2E_CORE_URL  - noj-core 地址（默认 http://localhost:8099）
+#   E2E_CORE_PORT - 端口（默认 8099）
+# ============================================================================
+
+set -uo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+
+# 加载 E2E 环境（如果 setup.sh 有写入的话）
+[ -f /tmp/noj-e2e-env.sh ] && source /tmp/noj-e2e-env.sh
+
+E2E_CORE_URL="${E2E_CORE_URL:-http://localhost:8099}"
+E2E_CORE_PORT="${E2E_CORE_PORT:-8099}"
+
+# ── 颜色 ──
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'
+BOLD='\033[1m'; NC='\033[0m'
+ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
+fail() { echo -e "  ${RED}✗${NC} $1"; }
+info() { echo -e "  ${CYAN}→${NC} $1"; }
+
+echo ""
+echo -e "${BOLD}━━━ noj-core E2E ━━━${NC}"
+info "noj-core: $E2E_CORE_URL"
+
+# 确保 core 在运行
+if ! curl -sf "$E2E_CORE_URL/health" > /dev/null 2>&1; then
+  fail "noj-core 未在运行，请先执行 bash scripts/e2e/setup.sh"
+  exit 1
+fi
+
+# 运行 E2E 测试
+cd "$ROOT_DIR/noj-core"
+
+echo ""
+NOJ_RUN_E2E=1 \
+E2E_BASE_URL="$E2E_CORE_URL" \
+deno test -A tests/e2e/api.test.ts 2>&1
+
+TEST_EXIT=$?
+
+if [ $TEST_EXIT -eq 0 ]; then
+  echo ""
+  echo -e "${BOLD}✅  noj-core E2E 全部通过${NC}"
+else
+  echo ""
+  echo -e "${BOLD}❌  noj-core E2E 部分失败${NC}"
+fi
+
+exit $TEST_EXIT
