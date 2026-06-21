@@ -193,7 +193,24 @@ jobs:
           REDIS_URL: ${{ env.E2E_REDIS_URL }}
 
       # ════════════════════════════════════════════
-      # 4. noj-ui Playwright 冒烟测试
+      # 4. noj-judge 守护进程（处理 UI 冒烟的提交）
+      # ════════════════════════════════════════════
+
+      - name: 编译 Judge 守护进程
+        working-directory: noj-judge
+        run: cargo build --bin noj-judge
+
+      - name: 启动 Judge 守护进程（后台）
+        run: |
+          nohup ./noj-judge/target/debug/noj-judge \
+            > /tmp/noj-judge-daemon.log 2>&1 &
+          sleep 3
+          echo "✅ noj-judge 守护进程已启动 (PID $!)"
+        env:
+          REDIS_URL: ${{ env.E2E_REDIS_URL }}
+
+      # ════════════════════════════════════════════
+      # 5. noj-ui Playwright 冒烟测试
       # ════════════════════════════════════════════
 
       - name: 安装前端依赖
