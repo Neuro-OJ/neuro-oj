@@ -93,7 +93,7 @@ watch(
         } catch {
           // 轮询失败静默处理——下一轮会重试
         }
-      }, 3000)
+      }, 1000)
     } else {
       if (pollTimer) {
         clearInterval(pollTimer)

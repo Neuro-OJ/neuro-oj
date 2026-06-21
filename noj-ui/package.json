@@ -21,6 +21,7 @@
     "nuxt": "^3.0.0"
   },
   "devDependencies": {
+    "playwright": "^1.61.0",
     "typescript": "^5.0.0"
   }
 }
