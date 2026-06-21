@@ -2,11 +2,10 @@
  * E2E 冒烟测试：完整提交流程（API 提交 + 页面结果验证）
  *
  * 前置条件：
- *   - noj-core (port 8000), noj-ui (port 3000), noj-judge 均在运行
- *   - 数据库已 seed，用户 e2e_test / test123456 已注册
+ *   - noj-core, noj-ui, noj-judge 均在运行
  *
  * 验证路径：
- *   登录 → 通过 API 提交 A+B 代码 → 打开结果页 → 看到 Accepted
+ *   注册 → 登录 → 通过 API 提交 A+B 代码 → 打开结果页 → 看到 Accepted
  */
 
 import { createRequire } from "module";
@@ -44,8 +43,22 @@ async function main() {
   let failed = 0;
 
   try {
+    // ===== Step 0: 注册测试用户（API，确保用户存在） =====
+    console.log("[0/5] 注册测试用户...");
+    const regResp = await fetch(`${API}/api/v1/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "e2e_test", email: "e2e@test.com", password: "test123456" }),
+    });
+    const regData = await regResp.json().catch(() => ({}));
+    if (regResp.ok) {
+      console.log("  ✅ 测试用户已注册");
+    } else {
+      console.log(`  ℹ️  用户已存在: ${regData.error || regResp.status}`);
+    }
+
     // ===== Step 1: 登录页面 =====
-    console.log("[1/4] 登录...");
+    console.log("[1/5] 登录...");
     await page.goto(`${BASE}/login`, { waitUntil: "networkidle" });
     await page.waitForTimeout(1000);
 
@@ -75,26 +88,13 @@ async function main() {
     console.log("  ✅ 登录成功");
 
     // ===== Step 2: 验证题目列表页 =====
-    console.log("[2/4] 验证题目列表...");
+    console.log("[2/5] 验证题目列表...");
     await page.goto(`${BASE}/problems`, { waitUntil: "networkidle" });
     await page.waitForSelector("text=A+B Problem", { timeout: 10000 });
     console.log("  ✅ 题目列表有 A+B Problem");
 
-    // ===== Step 3: 通过 API 提交代码 =====
-    console.log("[3/4] API 提交代码...");
-
-    // 先尝试注册（幂等：已存在时后端返回错误，忽略），再登录获取 token
-    const regResp = await fetch(`${API}/api/v1/auth/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "e2e_test", email: "e2e@test.com", password: "test123456" }),
-    });
-    const regData = await regResp.json().catch(() => ({}));
-    if (regResp.ok) {
-      console.log("  ✅ 测试用户已注册");
-    } else {
-      console.log(`  ℹ️  用户可能已存在: ${regData.error || regResp.status}`);
-    }
+    // ===== Step 3: API 登录 + 提交代码 =====
+    console.log("[3/5] API 提交代码...");
 
     const loginResp = await fetch(`${API}/api/v1/auth/login`, {
       method: "POST",
@@ -125,7 +125,7 @@ async function main() {
     console.log(`  ✅ 提交成功, id=${submissionId}`);
 
     // ===== Step 4: 查看结果页 =====
-    console.log("[4/4] 等待评测结果...");
+    console.log("[4/5] 等待评测结果...");
     await page.goto(`${BASE}/submissions/${submissionId}`, { waitUntil: "networkidle" });
 
     const result = await waitForAccepted(page);
