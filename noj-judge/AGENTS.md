@@ -55,14 +55,16 @@ noj-judge/
 集成测试位于 `tests/` 目录，使用真实 Docker daemon 验证沙箱功能。
 
 **文件列表：**
-| 文件 | 验证内容 |
-|------|----------|
-| `tests/e2e_docker_basic.rs` | 容器生命周期、退出码、stdout/stderr 捕获 |
-| `tests/e2e_resource_limits.rs` | 超时 kill、OOM、内存限制 |
-| `tests/e2e_security_isolation.rs` | 网络隔离、敏感路径防护 |
-| `tests/e2e_support_package.rs` | 支持包、evaluate.py 执行、---RESULT--- 标记 |
+
+| 文件                              | 验证内容                                    |
+| --------------------------------- | ------------------------------------------- |
+| `tests/e2e_docker_basic.rs`       | 容器生命周期、退出码、stdout/stderr 捕获    |
+| `tests/e2e_resource_limits.rs`    | 超时 kill、OOM、内存限制                    |
+| `tests/e2e_security_isolation.rs` | 网络隔离、敏感路径防护                      |
+| `tests/e2e_support_package.rs`    | 支持包、evaluate.py 执行、---RESULT--- 标记 |
 
 **运行方式：**
+
 ```bash
 # 需要 Docker daemon 在运行中，且无 NOJ_RUN_E2E=1
 NOJ_RUN_E2E=1 cargo test --test e2e -- --ignored
@@ -72,6 +74,7 @@ NOJ_RUN_E2E=1 cargo test --test e2e -- --ignored test_container_lifecycle
 ```
 
 **测试门控：**
+
 - 所有集成测试默认被 `#[ignore]` 跳过
 - 设置 `NOJ_RUN_E2E=1` 后方可执行
 - 需要系统安装 Docker 并有权限访问 `/var/run/docker.sock`
@@ -93,7 +96,8 @@ NOJ_RUN_E2E=1 cargo test --test e2e -- --ignored test_container_lifecycle
 }
 ```
 
-支持包（zip）由 noj-core 读取后 Base64 编码，通过 `support_package_base64` 字段传输。
+支持包（zip）由 noj-core 读取后 Base64 编码，通过 `support_package_base64`
+字段传输。
 
 ### 评测结果格式（JudgeResult → noj-core）
 

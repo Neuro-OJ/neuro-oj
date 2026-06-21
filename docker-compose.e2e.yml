@@ -13,7 +13,6 @@ name: neuro-oj-e2e
 
 services:
   # === 基础服务 ===
-
   redis:
     image: redis:7-alpine
     ports:
@@ -70,7 +69,12 @@ services:
         deno task start
       "
     healthcheck:
-      test: ["CMD", "deno", "eval", "fetch('http://localhost:8000/health').then(r => Deno.exit(r.ok?0:1))"]
+      test: [
+        "CMD",
+        "deno",
+        "eval",
+        "fetch('http://localhost:8000/health').then(r => Deno.exit(r.ok?0:1))",
+      ]
       interval: 5s
       timeout: 5s
       retries: 15

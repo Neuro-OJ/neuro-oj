@@ -2,7 +2,8 @@
 
 ### Requirement: 集成测试框架
 
-系统 SHALL 提供一个可门控的集成测试框架，使用真实 Docker daemon 验证 noj-judge 的沙箱功能。
+系统 SHALL 提供一个可门控的集成测试框架，使用真实 Docker daemon 验证 noj-judge
+的沙箱功能。
 
 #### Scenario: 测试门控
 
@@ -16,7 +17,8 @@
 
 ### Requirement: 测试用 Docker 镜像
 
-系统 SHALL 提供一个专用于集成测试的 Docker 镜像 `noj-judge-test-runner`，基于 `python:3.12-alpine`。
+系统 SHALL 提供一个专用于集成测试的 Docker 镜像 `noj-judge-test-runner`，基于
+`python:3.12-alpine`。
 
 #### Scenario: 镜像构建
 
@@ -27,7 +29,8 @@
 
 ### Requirement: 容器生命周期测试
 
-系统 SHALL 验证 Docker 容器的完整生命周期：创建 → 启动 → 执行 → 等待 → 日志捕获 → 清理。
+系统 SHALL 验证 Docker 容器的完整生命周期：创建 → 启动 → 执行 → 等待 → 日志捕获
+→ 清理。
 
 #### Scenario: 正常执行
 

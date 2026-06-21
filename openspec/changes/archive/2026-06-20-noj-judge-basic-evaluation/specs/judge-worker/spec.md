@@ -2,7 +2,8 @@
 
 ### Requirement: 任务拉取
 
-系统 SHALL 通过 BRPOP 命令从 `noj:judge:queue` 列表阻塞拉取评测任务，超时时间 5 秒。
+系统 SHALL 通过 BRPOP 命令从 `noj:judge:queue` 列表阻塞拉取评测任务，超时时间 5
+秒。
 
 #### Scenario: 成功拉取任务
 
@@ -21,7 +22,8 @@
 
 ### Requirement: 结果发布
 
-系统 SHALL 将评测结果序列化为 JSON 后通过 LPUSH 推送到 `noj:judge:results` 列表，供 noj-core 消费。
+系统 SHALL 将评测结果序列化为 JSON 后通过 LPUSH 推送到 `noj:judge:results`
+列表，供 noj-core 消费。
 
 #### Scenario: 成功发布结果
 
@@ -35,7 +37,8 @@
 
 ### Requirement: 评测编排
 
-系统 SHALL 依序执行：获取支持包（Base64 解码或本地路径读取）→ 解压 → 写入用户代码 → 启动 Docker 容器 → 解析输出 → 清理临时目录。
+系统 SHALL 依序执行：获取支持包（Base64 解码或本地路径读取）→ 解压 →
+写入用户代码 → 启动 Docker 容器 → 解析输出 → 清理临时目录。
 
 #### Scenario: 评测成功
 
@@ -73,7 +76,8 @@
 
 ### Requirement: 临时文件管理
 
-系统 SHALL 为每个评测任务创建独立临时目录 `{WORK_DIR}/{submission_id}/`，评测完成后清理。
+系统 SHALL 为每个评测任务创建独立临时目录
+`{WORK_DIR}/{submission_id}/`，评测完成后清理。
 
 #### Scenario: 创建临时目录
 

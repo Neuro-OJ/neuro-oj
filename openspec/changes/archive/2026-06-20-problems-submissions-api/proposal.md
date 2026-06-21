@@ -1,6 +1,8 @@
 ## Why
 
-当前 noj-core 已有用户认证系统（Issue #12），但缺少题目查询和代码提交 API。Phase 0 需要：
+当前 noj-core 已有用户认证系统（Issue #12），但缺少题目查询和代码提交 API。Phase
+0 需要：
+
 - 题目 API：用户浏览题目
 - 提交 API：用户提交代码并获取评测结果
 - Redis MQ Producer：分发评测任务给 noj-judge

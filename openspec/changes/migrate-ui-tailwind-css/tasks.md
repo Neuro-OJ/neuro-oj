@@ -9,7 +9,8 @@
 ## 2. MonacoEditor 迁移
 
 - [x] 2.1 删除 `MonacoEditor.vue` 的 `<style scoped>` 块
-- [x] 2.2 在模板容器 div 上应用 Tailwind 类：`w-full border border-border rounded-lg overflow-hidden`
+- [x] 2.2 在模板容器 div 上应用 Tailwind
+      类：`w-full border border-border rounded-lg overflow-hidden`
 - [x] 2.3 验证：编辑器显示正确，边框和圆角与原版一致（构建通过）
 
 ## 3. ProblemDescription Markdown 样式迁移

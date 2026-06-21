@@ -4,15 +4,15 @@
 
 系统 SHALL 使用 bollard 创建 Docker 容器，配置以下参数：
 
-| 配置项 | 值 | 说明 |
-|--------|-----|------|
-| Image | task.judge_image | 题目指定的 Docker 镜像 |
-| Cmd | task.judge_command | 容器内执行的评测命令 |
-| HostConfig.Binds | work_dir:/tmp | 挂载临时目录到容器 /tmp |
-| HostConfig.Memory | task.memory_limit_mb × 1024² | 内存限制 |
-| HostConfig.NanoCpus | 1 × 10⁹ (1 核) | CPU 限制 |
-| HostConfig.NetworkMode | none | 禁用网络 |
-| HostConfig.AutoRemove | true | 容器退出后自动删除 |
+| 配置项                 | 值                           | 说明                    |
+| ---------------------- | ---------------------------- | ----------------------- |
+| Image                  | task.judge_image             | 题目指定的 Docker 镜像  |
+| Cmd                    | task.judge_command           | 容器内执行的评测命令    |
+| HostConfig.Binds       | work_dir:/tmp                | 挂载临时目录到容器 /tmp |
+| HostConfig.Memory      | task.memory_limit_mb × 1024² | 内存限制                |
+| HostConfig.NanoCpus    | 1 × 10⁹ (1 核)               | CPU 限制                |
+| HostConfig.NetworkMode | none                         | 禁用网络                |
+| HostConfig.AutoRemove  | true                         | 容器退出后自动删除      |
 
 #### Scenario: 创建并启动容器
 
@@ -22,7 +22,8 @@
 #### Scenario: Docker 镜像不存在
 
 - **WHEN** task.judge_image 对应的镜像在本地不存在
-- **THEN** bollard 自动拉取镜像（Docker 默认行为），拉取完成后创建容器；若拉取失败则返回 SystemError
+- **THEN** bollard 自动拉取镜像（Docker
+  默认行为），拉取完成后创建容器；若拉取失败则返回 SystemError
 
 ### Requirement: 容器执行与输出捕获
 
@@ -45,7 +46,8 @@
 
 ### Requirement: 用户代码注入
 
-系统 SHALL 将 task.code 以 task.file_name 为文件名写入临时目录，若文件已存在则覆盖。
+系统 SHALL 将 task.code 以 task.file_name
+为文件名写入临时目录，若文件已存在则覆盖。
 
 #### Scenario: 写入用户代码
 
@@ -59,7 +61,8 @@
 
 ### Requirement: 支持包解压
 
-系统 SHALL 将 task.support_package_base64 解码后解压到临时目录。若该字段为空，跳过此步骤。
+系统 SHALL 将 task.support_package_base64
+解码后解压到临时目录。若该字段为空，跳过此步骤。
 
 #### Scenario: 从 Base64 解码支持包
 

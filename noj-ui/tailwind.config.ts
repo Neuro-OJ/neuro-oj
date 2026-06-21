@@ -1,6 +1,6 @@
 import type { Config } from "tailwindcss";
 
-export default <Config>{
+export default <Config> {
   content: [
     "./app.vue",
     "./pages/**/*.vue",

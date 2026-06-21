@@ -81,8 +81,7 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
   {
     id: "1003",
     title: "1003 T0-LMCC：A+B Problem",
-    description:
-      "## 问题描述\n\n给定两个整数 $a$ 和 $b$，计算它们的和。\n\n" +
+    description: "## 问题描述\n\n给定两个整数 $a$ 和 $b$，计算它们的和。\n\n" +
       "## 输入格式\n\n一行，两个整数 $a$ 和 $b$，空格分隔。\n\n" +
       "## 输出格式\n\n一行，一个整数，即 $a + b$ 的值。\n\n" +
       "## 示例\n\n**输入**\n\n```\n1 2\n```\n\n**输出**\n\n```\n3\n```\n\n" +

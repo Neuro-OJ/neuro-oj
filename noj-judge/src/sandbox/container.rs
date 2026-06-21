@@ -199,18 +199,10 @@ pub async fn run_in_container(
                 .await
                 .with_context(|| format!("检查容器状态失败: {}", container_name))?;
 
-            let running = info
-                .state
-                .as_ref()
-                .and_then(|s| s.running)
-                .unwrap_or(false);
+            let running = info.state.as_ref().and_then(|s| s.running).unwrap_or(false);
 
             if !running {
-                let exit_code = info
-                    .state
-                    .as_ref()
-                    .and_then(|s| s.exit_code)
-                    .unwrap_or(-1);
+                let exit_code = info.state.as_ref().and_then(|s| s.exit_code).unwrap_or(-1);
                 return Ok(exit_code);
             }
 

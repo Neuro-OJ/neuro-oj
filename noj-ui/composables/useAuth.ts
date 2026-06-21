@@ -1,36 +1,36 @@
 interface UserResponse {
-  id: string
-  username: string
-  email: string
-  role: string
-  created_at: string
-  updated_at: string
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface AuthResponse {
   data: {
-    user: UserResponse
-    token: string
-  }
+    user: UserResponse;
+    token: string;
+  };
 }
 
 export function useAuth() {
-  const user = useState<UserResponse | null>("auth:user", () => null)
-  const token = useState<string | null>("auth:token", () => null)
-  const loading = useState<boolean>("auth:loading", () => true)
+  const user = useState<UserResponse | null>("auth:user", () => null);
+  const token = useState<string | null>("auth:token", () => null);
+  const loading = useState<boolean>("auth:loading", () => true);
 
-  const isLoggedIn = computed(() => !!token.value && !!user.value)
+  const isLoggedIn = computed(() => !!token.value && !!user.value);
 
   if (import.meta.client) {
-    const saved = localStorage.getItem("noj:token")
+    const saved = localStorage.getItem("noj:token");
     if (saved) {
-      token.value = saved
+      token.value = saved;
       // loading 保持 true，等待 fetchUser 完成后才放行
       fetchUser().finally(() => {
-        loading.value = false
-      })
+        loading.value = false;
+      });
     } else {
-      loading.value = false
+      loading.value = false;
     }
   }
   // SSR: 保持 loading 为 true（useState 默认值），等水合后 client 路径处理
@@ -39,44 +39,53 @@ export function useAuth() {
     const res = await $fetch<AuthResponse>("/api/v1/auth/login", {
       method: "POST",
       body: { login, password },
-    })
-    const { user: userData, token: tokenValue } = res.data
-    token.value = tokenValue
-    user.value = userData
+    });
+    const { user: userData, token: tokenValue } = res.data;
+    token.value = tokenValue;
+    user.value = userData;
     if (import.meta.client) {
-      localStorage.setItem("noj:token", tokenValue)
+      localStorage.setItem("noj:token", tokenValue);
     }
-    return res.data
+    return res.data;
   }
 
   async function register(username: string, email: string, password: string) {
     await $fetch("/api/v1/auth/register", {
       method: "POST",
       body: { username, email, password },
-    })
+    });
   }
 
   async function fetchUser() {
-    if (!token.value) return null
+    if (!token.value) return null;
     try {
       const res = await $fetch<{ data: UserResponse }>("/api/v1/auth/me", {
         headers: { Authorization: `Bearer ${token.value}` },
-      })
-      user.value = res.data
-      return res.data
+      });
+      user.value = res.data;
+      return res.data;
     } catch {
-      logout()
-      return null
+      logout();
+      return null;
     }
   }
 
   function logout() {
-    user.value = null
-    token.value = null
+    user.value = null;
+    token.value = null;
     if (import.meta.client) {
-      localStorage.removeItem("noj:token")
+      localStorage.removeItem("noj:token");
     }
   }
 
-  return { user, token, isLoggedIn, loading, login, register, fetchUser, logout }
+  return {
+    user,
+    token,
+    isLoggedIn,
+    loading,
+    login,
+    register,
+    fetchUser,
+    logout,
+  };
 }
