@@ -34,6 +34,7 @@ pub async fn pull_task(
 /// 使用 LPUSH 将结果 JSON 添加到结果列表头部。
 /// noj-core 通过 BRPOP 从同一列表消费。
 /// 内置 3 次指数退避重试，最终失败时序列化到本地文件系统。
+#[allow(dead_code)]
 pub async fn push_result(
     conn: &mut redis::aio::MultiplexedConnection,
     queue: &str,

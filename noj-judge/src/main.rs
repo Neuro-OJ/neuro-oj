@@ -21,6 +21,31 @@ use tracing::{error, info, warn};
 use crate::config::Config;
 use crate::pool::PoolManager;
 
+/// 等待所有 in-flight 任务完成（带 30s 超时兜底）。
+async fn drain_tasks(tasks: &mut FuturesUnordered<tokio::task::JoinHandle<()>>) {
+    info!(
+        "关闭信号已接收，等待 {} 个正在执行的任务完成...",
+        tasks.len()
+    );
+    let timeout_dur = std::time::Duration::from_secs(30);
+    let timeout = tokio::time::sleep(timeout_dur);
+    tokio::pin!(timeout);
+    loop {
+        tokio::select! {
+            _ = &mut timeout => {
+                warn!("等待超时，{} 个任务未完成，强制退出", tasks.len());
+                break;
+            }
+            _ = tasks.next() => {
+                if tasks.is_empty() {
+                    info!("所有 in-flight 任务已完成");
+                    break;
+                }
+            }
+        }
+    }
+}
+
 fn main() -> Result<()> {
     let rt = tokio::runtime::Runtime::new().context("创建 Tokio 运行时失败")?;
     rt.block_on(async {
@@ -80,25 +105,7 @@ fn main() -> Result<()> {
             tokio::select! {
                 biased;
                 _ = &mut shutdown_rx => {
-                    info!("关闭信号已接收，等待 {} 个正在执行的任务完成...", tasks.len());
-                    // 等待所有 in-flight 任务完成（带 30s 超时）
-                    let timeout_dur = std::time::Duration::from_secs(30);
-                    let timeout = tokio::time::sleep(timeout_dur);
-                    tokio::pin!(timeout);
-                    loop {
-                        tokio::select! {
-                            _ = &mut timeout => {
-                                warn!("等待超时，{} 个任务未完成，强制退出", tasks.len());
-                                break;
-                            }
-                            _ = tasks.next() => {
-                                if tasks.is_empty() {
-                                    info!("所有 in-flight 任务已完成");
-                                    break;
-                                }
-                            }
-                        }
-                    }
+                    drain_tasks(&mut tasks).await;
                     break;
                 }
                 task_result = mq::pull_task(&mut redis_conn, &config.judge_queue) => {
@@ -175,24 +182,7 @@ fn main() -> Result<()> {
             tokio::select! {
                 biased;
                 _ = &mut shutdown_rx => {
-                    info!("关闭信号已接收，等待 {} 个正在执行的任务完成...", tasks.len());
-                    let timeout_dur = std::time::Duration::from_secs(30);
-                    let timeout = tokio::time::sleep(timeout_dur);
-                    tokio::pin!(timeout);
-                    loop {
-                        tokio::select! {
-                            _ = &mut timeout => {
-                                warn!("等待超时，{} 个任务未完成，强制退出", tasks.len());
-                                break;
-                            }
-                            _ = tasks.next() => {
-                                if tasks.is_empty() {
-                                    info!("所有 in-flight 任务已完成");
-                                    break;
-                                }
-                            }
-                        }
-                    }
+                    drain_tasks(&mut tasks).await;
                     break;
                 }
                 task_result = mq::pull_task(&mut redis_conn, &config.judge_queue) => {
@@ -206,11 +196,16 @@ fn main() -> Result<()> {
                         }
                     };
 
-                    let permit = semaphore
-                        .clone()
-                        .acquire_owned()
-                        .await
-                        .expect("信号量关闭，无法继续处理");
+                    let permit = match semaphore.clone().acquire_owned().await {
+                        Ok(p) => p,
+                        Err(_) => {
+                            error!(
+                                "信号量已关闭，无法获取许可，跳过任务: {}",
+                                task.submission_id
+                            );
+                            continue;
+                        }
+                    };
                     let docker = docker.clone();
                     let redis_client = redis_client.clone();
                     let result_queue = result_queue.clone();

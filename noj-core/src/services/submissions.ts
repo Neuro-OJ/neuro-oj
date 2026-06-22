@@ -332,7 +332,7 @@ export async function getSubmission(
       output: resultRows[0].output,
       time_ms: resultRows[0].time_ms,
       memory_kb: resultRows[0].memory_kb,
-      details: resultRows[0].details,
+      details: parseDetails(resultRows[0].details),
     }
     : null;
 
@@ -393,6 +393,19 @@ const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
   finished: [],
   error: [],
 };
+
+/**
+ * 解析 details 字段。
+ * 数据库中以 JSON 字符串存储，解析为对象返回。
+ */
+function parseDetails(raw: string | null): Record<string, unknown> | null {
+  if (raw === null || raw === undefined) return null;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * 更新提交状态。

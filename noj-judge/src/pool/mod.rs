@@ -26,8 +26,10 @@ use crate::pool::scaler::ScalerEvent;
 // ── 常量 ───────────────────────────────────────────────
 
 /// 健康检查间隔（秒）。
+#[allow(dead_code)]
 const HEALTH_CHECK_INTERVAL_SECS: u64 = 5;
 /// Supervisor 状态检查间隔（秒）。
+#[allow(dead_code)]
 const SUPERVISOR_INTERVAL_SECS: u64 = 30;
 /// 回补 debounce 窗口（毫秒）。
 const REFILL_DEBOUNCE_MS: u64 = 200;
@@ -46,6 +48,7 @@ pub enum ContainerStatus {
     /// 已分配给某个任务，正在使用
     InUse,
     /// 健康检查发现异常，等待摘除
+    #[allow(dead_code)]
     Dead,
 }
 
@@ -53,6 +56,7 @@ pub enum ContainerStatus {
 #[derive(Debug, Clone)]
 pub struct ContainerState {
     /// Docker 容器 ID
+    #[allow(dead_code)]
     pub container_id: String,
     /// 当前生命周期状态
     pub status: ContainerStatus,
@@ -161,6 +165,7 @@ impl Pool {
 
     /// 收集并移除所有 Dead 容器。
     /// 返回被移除的容器 ID 列表（调用方需 docker rm -f）。
+    #[allow(dead_code)]
     pub async fn collect_dead(&self) -> Vec<String> {
         let mut guard = self.containers.write().await;
         let mut to_remove = Vec::new();
@@ -175,6 +180,7 @@ impl Pool {
     }
 
     /// 触发空闲超时清理和健康检查。
+    #[allow(dead_code)]
     pub async fn collect_idle_timeout(&self, idle_timeout: std::time::Duration) -> Vec<String> {
         let mut guard = self.containers.write().await;
         let mut to_remove = Vec::new();
@@ -197,6 +203,12 @@ impl Pool {
     #[allow(dead_code)]
     pub async fn len(&self) -> usize {
         self.containers.read().await.len()
+    }
+
+    /// 检查池是否为空。
+    #[allow(dead_code)]
+    pub async fn is_empty(&self) -> bool {
+        self.containers.read().await.is_empty()
     }
 
     /// 获取 idle 容器数。
@@ -240,6 +252,7 @@ impl Pool {
     }
 
     /// 获取 (idle, in_flight, total) 快照。
+    #[allow(dead_code)]
     pub async fn snapshot(&self) -> (usize, usize, usize) {
         let guard = self.containers.read().await;
         let idle = guard
@@ -915,6 +928,7 @@ impl PoolManager {
     }
 
     /// 获取所有池（用于健康检查等）。
+    #[allow(dead_code)]
     pub async fn all_pools(&self) -> Vec<Arc<Pool>> {
         self.pools.lock().await.values().cloned().collect()
     }
@@ -938,31 +952,37 @@ impl PoolManager {
         &self.config
     }
 
+    #[allow(dead_code)]
     pub fn is_shutting_down(&self) -> bool {
         self.shutting_down.load(Ordering::SeqCst)
     }
 
     /// 获取泄漏容器列表（用于 metrics）。
+    #[allow(dead_code)]
     pub fn leaked_containers(&self) -> &Mutex<Vec<String>> {
         &self.leaked_containers
     }
 
     /// 获取累积任务数（counter）。
+    #[allow(dead_code)]
     pub fn tasks_total(&self) -> usize {
         self.tasks_total.load(Ordering::Relaxed)
     }
 
     /// 获取累积错误数（counter）。
+    #[allow(dead_code)]
     pub fn errors_total(&self) -> usize {
         self.errors_total.load(Ordering::Relaxed)
     }
 
     /// 获取累积超时数（counter）。
+    #[allow(dead_code)]
     pub fn timeouts_total(&self) -> usize {
         self.timeouts_total.load(Ordering::Relaxed)
     }
 
     /// 获取累积池 miss 数（counter）。
+    #[allow(dead_code)]
     pub fn pool_misses_total(&self) -> usize {
         self.pool_misses_total.load(Ordering::Relaxed)
     }
@@ -992,6 +1012,7 @@ impl PoolManager {
     /// 启动健康检查循环。
     ///
     /// 每 5 秒检查空闲容器状态，移除异常容器并触发回补。
+    #[allow(dead_code)]
     pub async fn start_health_check(self: &Arc<Self>) {
         let manager = self.clone();
         tokio::spawn(async move {
@@ -1195,6 +1216,7 @@ impl PoolManager {
     }
 
     /// 启动后台任务（健康检查 + Supervisor + Scaler + Metrics 服务）。
+    #[allow(dead_code)]
     pub async fn start_background_tasks(self: &Arc<Self>) {
         self.start_health_check().await;
         self.start_supervisor();
@@ -1203,6 +1225,7 @@ impl PoolManager {
     }
 
     /// 启动 metrics HTTP 服务。
+    #[allow(dead_code)]
     async fn start_metrics_server(self: &Arc<Self>) {
         let pool = self.clone();
         tokio::spawn(async move {
@@ -1211,6 +1234,7 @@ impl PoolManager {
     }
 
     /// 启动 Scaler 扩缩容循环。
+    #[allow(dead_code)]
     async fn start_scaler(self: &Arc<Self>) {
         let pools = self.all_pools().await;
         if pools.is_empty() {
@@ -1232,6 +1256,7 @@ impl PoolManager {
     }
 
     /// 输出池状态快照日志（指标替代 Prometheus）。
+    #[allow(dead_code)]
     async fn log_pool_metrics(self: &Arc<Self>) {
         let pools = self.pools.lock().await;
         for pool in pools.values() {
@@ -1250,6 +1275,7 @@ impl PoolManager {
     }
 
     /// Supervisor 后台任务：每 30s 检查状态 + 输出指标。
+    #[allow(dead_code)]
     fn start_supervisor(self: &Arc<Self>) {
         let manager = self.clone();
         tokio::spawn(async move {

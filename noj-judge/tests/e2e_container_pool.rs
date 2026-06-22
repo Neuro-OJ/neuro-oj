@@ -66,6 +66,7 @@ async fn create_test_container_raw(
 }
 
 /// 捕获容器的完整 stdout/stderr。
+#[allow(dead_code)]
 async fn capture_container_logs(docker: &Docker, container_id: &str) -> (String, String, i64) {
     let inspect = docker
         .inspect_container(
@@ -220,7 +221,7 @@ async fn test_pool_full_execution_path() {
     assert!(running, "池容器应正在运行");
 
     // 通过 exec 执行简单命令
-    let (stdout, stderr, exit_code, _time_ms) = execute_in_container(
+    let (stdout, _stderr, exit_code, _time_ms) = execute_in_container(
         &docker,
         &container_id,
         &[
@@ -352,7 +353,7 @@ async fn test_pool_exec_timeout() {
         .expect("创建容器失败");
 
     // 执行一个长时间运行的任务，设置短超时
-    let (stdout, stderr, exit_code, _time_ms) = execute_in_container(
+    let (_stdout, _stderr, exit_code, _time_ms) = execute_in_container(
         &docker,
         &container_id,
         &[
@@ -420,7 +421,7 @@ async fn test_pool_security_config() {
         .expect("PoolManager init 失败");
 
     // 获取池中容器
-    let test_pool = pool
+    let _test_pool = pool
         .get_pool("noj-judge-test-runner")
         .await
         .expect("应有 test-runner 池");
@@ -506,7 +507,7 @@ async fn test_pool_queue_wait() {
         .expect("第一次 acquire 应成功");
 
     // 第二次 acquire 应排队（但因为我们不阻塞太久，通过获取超时来验证）
-    let start = std::time::Instant::now();
+    let _start = std::time::Instant::now();
     let timeout_result = tokio::time::timeout(
         std::time::Duration::from_millis(500),
         pool.acquire("noj-judge-test-runner", 128),

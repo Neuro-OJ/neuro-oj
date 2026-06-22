@@ -12,11 +12,13 @@ use tracing::{error, info};
 use crate::pool::PoolManager;
 
 /// 默认 metrics 监听端口。
+#[allow(dead_code)]
 const METRICS_PORT: u16 = 9100;
 
 /// 启动 metrics HTTP 服务器。
 ///
 /// 在 `0.0.0.0:{port}` 上监听 `/metrics` 端点。
+#[allow(dead_code)]
 pub async fn start_metrics_server(pool: Arc<PoolManager>, port: Option<u16>) {
     let port = port.unwrap_or(METRICS_PORT);
     let app = Router::new().route("/metrics", get(move || metrics_handler(pool.clone())));
@@ -38,6 +40,7 @@ pub async fn start_metrics_server(pool: Arc<PoolManager>, port: Option<u16>) {
 }
 
 /// 处理 `/metrics` 请求，返回 Prometheus 文本格式指标。
+#[allow(dead_code)]
 async fn metrics_handler(pool: Arc<PoolManager>) -> String {
     let mut output = String::new();
 

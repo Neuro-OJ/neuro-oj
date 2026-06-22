@@ -16,6 +16,7 @@ use crate::config::PoolConfig;
 
 /// Scaler 事件：任务到达/排队/即时创建。
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum ScalerEvent {
     /// 任务到达指定镜像的池（携带到达时间戳，在事件产生处打点）
     Arrival { pool: String, timestamp: Instant },
@@ -28,12 +29,14 @@ pub enum ScalerEvent {
 /// 扩缩容评估器。
 ///
 /// 维护滑动窗口指标，定期调整各池的目标深度。
+#[allow(dead_code)]
 pub struct Scaler {
     /// 每个池的指标记录
     metrics: Vec<PoolMetrics>,
 }
 
 /// 单个池的滑动窗口指标。
+#[allow(dead_code)]
 struct PoolMetrics {
     /// 池引用
     pool: Arc<Pool>,
@@ -54,6 +57,7 @@ struct PoolMetrics {
     config: Arc<PoolConfig>,
 }
 
+#[allow(dead_code)]
 impl Scaler {
     /// 创建 Scaler。
     pub fn new(pools: Vec<Arc<Pool>>, config: Arc<PoolConfig>) -> Self {

@@ -38,8 +38,10 @@ pub struct PoolConfig {
     /// Per-image 内存配置：image_name -> memory_mb
     pub per_image_memory: std::collections::HashMap<String, u64>,
     /// 空闲容器超时秒数（默认: 300）
+    #[allow(dead_code)]
     pub idle_timeout_secs: u64,
     /// 扩缩容评估间隔秒数（默认: 60）
+    #[allow(dead_code)]
     pub scale_interval_secs: u64,
     /// 支持包最大 MB（默认: 25）
     pub max_archive_mb: u64,

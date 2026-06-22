@@ -15,6 +15,7 @@ use futures_util::StreamExt;
 
 /// 容器执行输出
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ContainerOutput {
     pub stdout: String,
     pub stderr: String,
@@ -89,6 +90,7 @@ pub async fn ensure_test_image(docker: &Docker) -> Result<()> {
 /// 创建测试用容器。
 ///
 /// 返回 (container_id, work_dir_path)。
+#[allow(dead_code)]
 pub async fn create_test_container(
     docker: &Docker,
     image: &str,
@@ -151,6 +153,7 @@ pub async fn create_test_container(
 /// 等待容器退出并捕获输出。
 ///
 /// `timeout_ms` 为超时阈值，超时返回 exit_code=-1。
+#[allow(dead_code)]
 pub async fn wait_container(
     docker: &Docker,
     container_id: &str,
@@ -240,6 +243,7 @@ pub async fn wait_container(
 }
 
 /// 捕获容器日志。
+#[allow(dead_code)]
 async fn capture_logs(docker: &Docker, container_id: &str) -> ContainerOutput {
     let options = bollard::query_parameters::LogsOptions {
         stdout: true,
