@@ -78,6 +78,14 @@ Docker 容器 → 解析输出 → 清理临时目录。
 - **WHEN** task.judge_image 对应的镜像在本地不存在且无法构建
 - **THEN** 评测返回 SystemError，错误信息包含镜像名和构建提示
 
+#### Scenario: 返回资源消耗数据
+
+- **WHEN** 评测完成（正常或异常）
+- **THEN** `JudgeResult.time_ms` 包含评测脚本执行时间（毫秒，μs 精度）
+- **THEN** `JudgeResult.memory_kb` 包含评测脚本执行期间的内存峰值（KB）
+- **WHEN** 资源测量失败（如 cgroup 不可读）
+- **THEN** `time_ms` 和 `memory_kb` 返回 0
+
 #### Scenario: 临时目录在错误时仍清理
 
 - **WHEN** 评测过程中发生错误（超时、OOM 等）

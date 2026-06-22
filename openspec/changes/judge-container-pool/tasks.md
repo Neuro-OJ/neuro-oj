@@ -78,7 +78,7 @@
 - [x] 11.11 tar 安全过滤（已有单元测试覆盖）
 - [x] 11.12 `POOL_ENABLED=false`（main.rs 分支）
 - [x] 11.13 E2E 容器安全配置测试（CapDrop/readonly/network）
-- [x] 11.14 熔断降级（单元测试已覆盖逻辑）
+- [x] 11.14 ~~熔断降级（已移除，不再需要）~~
 - [x] 11.15 孤儿容器清理（init 阶段已实现）
 - [x] 11.16 rm -f 重试（release 路径已实现）
 - [x] 11.17 zip 完整性防护（单元测试已覆盖）
@@ -97,12 +97,12 @@
 - [ ] 13.4 回补请求添加 200ms debounce（AtomicBool 标记 + tokio::time::sleep 合并窗口）
 - [x] 13.5 实现 Supervisor 后台任务（30s 周期，检查池状态一致性并记录警告）
 
-## 14. 可靠性和熔断
+## 14. 可靠性
 
 - [x] 14.1 创建 `with_timeout(duration, api_call)` 包装函数，对所有 bollard API 调用应用超时
-- [x] 14.2 实现熔断器：AtomicBool 状态 + 30s 滑动窗口错误计数，错误率 >50% 时自动切旧模式
-- [x] 14.3 实现 Docker 恢复探测：熔断后每 30s 尝试 `docker.ping()`，成功后自动切回池模式
-- [ ] 14.4 `release` 中 docker rm -f 退避重试 3 次（100ms, 500ms, 2s），全部失败加入泄漏追踪列表
+- [x] 14.4 `release` 中 docker rm -f 退避重试 3 次（100ms, 500ms, 2s），全部失败加入泄漏追踪列表
+
+> ~~14.2 熔断器和 14.3 Docker 恢复探测已移除。Docker daemon 不可用时，由 bollard API 超时机制保证调用不 hang，通过 ERROR 日志告警。简化了架构，避免了熔断状态机的复杂性。~~
 - [x] 14.5 启动时根据标签清理孤儿容器（PoolManager::init 中先 docker ps --filter label=com.noj.judge.pool=true 再 rm -f）
 - [x] 14.6 冷启动策略：前 2 个 POOL_SCALE_INTERVAL 仅扩不缩，初始 target_depth = POOL_INITIAL_SIZE + 1（已在 Scaler 中实现）
 

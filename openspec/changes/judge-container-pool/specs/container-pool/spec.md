@@ -216,7 +216,7 @@
 
 ### Requirement: 可靠性与故障恢复
 
-系统 SHALL 实现熔断降级、孤儿清理、API 超时和重试机制。
+系统 SHALL 实现孤儿清理、API 超时和重试机制。
 
 #### Scenario: bollard API 超时
 
@@ -224,12 +224,6 @@
 - **THEN** 调用超时返回错误，记录 ERROR 日志
 - **WHEN** docker rm -f 调用超过 10s
 - **THEN** 调用超时返回错误，容器加入泄漏追踪列表
-
-#### Scenario: 熔断降级
-
-- **WHEN** 30s 滑动窗口内 bollard 错误率 > 50%
-- **THEN** 系统自动切换为旧 Semaphore 模式（不重启进程）
-- **THEN** 每 30s 探测 Docker 恢复，成功后自动切回池模式
 
 #### Scenario: 孤儿容器清理
 

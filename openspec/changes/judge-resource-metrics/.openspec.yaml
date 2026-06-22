@@ -1,0 +1,5 @@
+version: 1
+name: judge-resource-metrics
+state: implementing
+created: 2026-06-22
+description: 为评测结果添加时间 (time_ms) 和内存峰值 (memory_kb) 字段

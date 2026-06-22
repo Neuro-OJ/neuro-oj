@@ -29,8 +29,6 @@ use crate::pool::scaler::ScalerEvent;
 const HEALTH_CHECK_INTERVAL_SECS: u64 = 5;
 /// Supervisor 状态检查间隔（秒）。
 const SUPERVISOR_INTERVAL_SECS: u64 = 30;
-/// 熔断恢复探测间隔（秒）。
-const CIRCUIT_RECOVERY_INTERVAL_SECS: u64 = 30;
 /// 回补 debounce 窗口（毫秒）。
 const REFILL_DEBOUNCE_MS: u64 = 200;
 /// acquire 阻塞等待超时（秒）。
@@ -309,12 +307,6 @@ pub struct PoolManager {
     shutting_down: AtomicBool,
     /// 关闭通知
     shutdown_token: CancellationToken,
-    /// 熔断器：是否已打开（Docker daemon 异常时自动降级）
-    circuit_open: AtomicBool,
-    /// 熔断器：bollard 错误计数器（30s 窗口）
-    bollard_error_count: AtomicUsize,
-    /// 熔断器：总操作计数器（30s 窗口）
-    bollard_total_count: AtomicUsize,
     /// Scaler 事件发送端（由 start_scaler 初始化）
     scaler_tx: tokio::sync::Mutex<Option<mpsc::UnboundedSender<ScalerEvent>>>,
     /// rm -f 最终失败的泄漏容器（健康检查定期清理）
@@ -336,9 +328,6 @@ impl PoolManager {
             config,
             shutting_down: AtomicBool::new(false),
             shutdown_token: CancellationToken::new(),
-            circuit_open: AtomicBool::new(false),
-            bollard_error_count: AtomicUsize::new(0),
-            bollard_total_count: AtomicUsize::new(0),
             scaler_tx: tokio::sync::Mutex::new(None),
             leaked_containers: Mutex::new(Vec::new()),
         });
@@ -489,10 +478,6 @@ impl PoolManager {
 
     /// 内部 acquire 实现（返回容器 ID + 所属 Pool）。
     async fn acquire_with_pool(&self, image: &str, memory_mb: u64) -> Result<(String, Arc<Pool>)> {
-        // 熔断检查：电路打开时快速失败，避免无效 Docker API 调用
-        if self.circuit_open.load(Ordering::SeqCst) {
-            anyhow::bail!("熔断器已打开，拒绝 acquire");
-        }
         let pool = self.get_or_create_pool(image).await?;
 
         // 快速路径：尝试获取空闲容器
@@ -679,9 +664,6 @@ impl PoolManager {
 
     /// 创建容器。
     async fn create_container(&self, image: &str) -> Result<String> {
-        if self.circuit_open.load(Ordering::SeqCst) {
-            anyhow::bail!("熔断器已打开，拒绝创建容器");
-        }
         Self::create_container_inner(&self.docker, image, &self.config.label_prefix, self.config.cpu).await
     }
 
@@ -929,10 +911,9 @@ impl PoolManager {
         });
     }
 
-    /// 启动后台任务（健康检查 + 熔断恢复 + Supervisor + Scaler）。
+    /// 启动后台任务（健康检查 + Supervisor + Scaler）。
     pub async fn start_background_tasks(self: &Arc<Self>) {
         self.start_health_check().await;
-        self.start_circuit_recovery();
         self.start_supervisor();
         self.start_scaler().await;
     }
@@ -1010,71 +991,17 @@ impl PoolManager {
         });
     }
 
-    /// 记录一次 bollard 操作（用于熔断器统计）。
-    pub fn record_bollard_call(&self, is_error: bool) {
-        self.bollard_total_count.fetch_add(1, Ordering::SeqCst);
-        if is_error {
-            self.bollard_error_count.fetch_add(1, Ordering::SeqCst);
-        }
-    }
-
-    /// 检查熔断器状态。
-    pub fn is_circuit_open(&self) -> bool {
-        self.circuit_open.load(Ordering::SeqCst)
-    }
-
-    /// 启动熔断恢复探测循环。
-    fn start_circuit_recovery(self: &Arc<Self>) {
-        let manager = self.clone();
-        tokio::spawn(async move {
-            loop {
-                if manager.is_shutting_down() {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_secs(CIRCUIT_RECOVERY_INTERVAL_SECS)).await;
-
-                // 每 30s 检测一次熔断条件
-                let total = manager.bollard_total_count.swap(0, Ordering::SeqCst);
-                let errors = manager.bollard_error_count.swap(0, Ordering::SeqCst);
-
-                let circuit = manager.circuit_open.load(Ordering::SeqCst);
-
-                if !circuit && total > 0 {
-                    let error_rate = errors as f64 / total as f64;
-                    if error_rate > 0.50 {
-                        warn!("熔断器打开: bollard 错误率 {:.1}% ({} / {})", error_rate * 100.0, errors, total);
-                        manager.circuit_open.store(true, Ordering::SeqCst);
-                    }
-                } else if circuit {
-                    // 熔断已打开，尝试恢复
-                    match manager.timed_bollard(5, "docker_ping", async {
-                        manager.docker.ping().await.map_err(anyhow::Error::from)
-                    }).await {
-                        Ok(_) => {
-                            info!("熔断器关闭: Docker daemon 已恢复");
-                            manager.circuit_open.store(false, Ordering::SeqCst);
-                        }
-                        Err(e) => {
-                            warn!("熔断恢复探测失败: {}", e);
-                        }
-                    }
-                }
-            }
-        });
-    }
 }
 
 // ── 辅助函数 ──────────────────────────────────────────
 
 impl PoolManager {
-    /// 执行带超时和熔断记录的 bollard API 调用。
+    /// 执行带超时的 bollard API 调用。
     async fn timed_bollard<F, T>(&self, timeout_secs: u64, op_name: &str, future: F) -> Result<T>
     where
         F: std::future::Future<Output = Result<T>>,
     {
-        let result = with_timeout(timeout_secs, op_name, future).await;
-        self.record_bollard_call(result.is_err());
-        result
+        with_timeout(timeout_secs, op_name, future).await
     }
 
     /// 向 Scaler 发送事件（忽略失败，Scaler 未启动时静默丢弃）。

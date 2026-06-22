@@ -77,7 +77,28 @@
 - **WHEN** 支持包中包含同名的模板/示例文件
 - **THEN** 用户代码覆盖该文件
 
-### Requirement: 支持包解压
+### Requirement: 资源测量
+
+系统 SHALL 在评测容器执行完毕后，测量并返回执行时间和内存峰值。
+
+#### Scenario: 时间测量
+
+- **WHEN** `execute_in_container` 执行评测命令
+- **THEN** 系统在 exec 启动前和返回后分别记录 `Instant::now()`，计算差值作为 `time_ms`
+- **THEN** `time_ms` 精度为毫秒（纳秒计时器读取），反映 wall-clock 时间
+
+#### Scenario: 内存峰值测量
+
+- **WHEN** exec 执行完毕
+- **THEN** 系统在容器内执行 `cat /sys/fs/cgroup/memory/memory.max_usage_in_bytes`（cgroup v1）或 `cat /sys/fs/cgroup/memory.peak`（cgroup v2）
+- **THEN** 解析输出字节数，转换为 KB 作为 `memory_kb`
+- **WHEN** cgroup 文件不存在或读取失败
+- **THEN** `memory_kb` 设为 0，不阻塞评测结果
+
+#### Scenario: 容器未运行或已删除
+
+- **WHEN** 容器已删除导致内存读取失败
+- **THEN** `memory_kb` 设为 0，错误记录日志
 
 系统 SHALL 将 task.support_package_base64
 解码后解压到临时目录。若该字段为空，跳过此步骤。

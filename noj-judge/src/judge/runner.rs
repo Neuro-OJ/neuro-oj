@@ -82,7 +82,7 @@ async fn do_evaluate_with_pool(
     let timeout_ms = task.time_limit_ms;
     let kill_grace = pool.config().kill_grace_secs;
 
-    let (stdout, stderr, exit_code) = execute_in_container(
+    let (stdout, stderr, exit_code, time_ms) = execute_in_container(
         pool.docker(),
         container_id,
         &cmd_parts,
@@ -92,17 +92,25 @@ async fn do_evaluate_with_pool(
     .await?;
 
     info!(
-        "评测执行完毕: {} (exit: {})",
-        submission_id, exit_code
+        "评测执行完毕: {} (exit: {}, time: {}ms)",
+        submission_id, exit_code, time_ms
     );
 
-    // 5. 解析输出
+    // 5. 读取内存峰值
+    let memory_kb = crate::pool::exec::read_memory_peak_kb(pool.docker(), container_id)
+        .await
+        .unwrap_or(0);
+
+    // 6. 解析输出
     let output = ContainerOutput {
         stdout,
         stderr,
         exit_code,
     };
-    Ok(process_output(task, &output))
+    let mut result = process_output(task, &output);
+    result.time_ms = Some(time_ms);
+    result.memory_kb = Some(memory_kb);
+    Ok(result)
 }
 
 /// 执行评测任务（旧路径）。
@@ -113,9 +121,21 @@ pub async fn evaluate_legacy(
     task: &JudgeTask,
     work_dir: &str,
 ) -> Result<JudgeResult> {
+    use crate::pool::exec::read_memory_peak_kb;
+    use std::time::Instant;
+
+    let start = Instant::now();
     let work_dir = Path::new(work_dir);
     let output = container::run_in_container(docker, task, work_dir).await?;
-    Ok(process_output(task, &output))
+    let time_ms = start.elapsed().as_millis() as u64;
+
+    // 内存峰值（容器在 run_in_container 末尾被 rm -f，需在之前读取）
+    let memory_kb = 0; // 旧路径容器在 capture_logs 后立即被删除，无法读 cgroup
+
+    let mut result = process_output(task, &output);
+    result.time_ms = Some(time_ms);
+    result.memory_kb = Some(memory_kb);
+    Ok(result)
 }
 
 /// 处理容器输出，解析 ---RESULT--- 标记，构造 JudgeResult。
