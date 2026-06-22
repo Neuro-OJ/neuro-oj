@@ -4,10 +4,8 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use base64::Engine;
-use bollard::container::{
-    Config, CreateContainerOptions, InspectContainerOptions, KillContainerOptions, LogsOptions,
-    RemoveContainerOptions, StartContainerOptions,
-};
+use bollard::container::LogOutput;
+use bollard::models::ContainerCreateBody;
 use bollard::models::HostConfig;
 use bollard::Docker;
 use futures_util::StreamExt;
@@ -206,7 +204,7 @@ pub async fn run_in_container(
     // 解析 judge_command → cmd 数组
     let cmd_parts: Vec<String> = parse_command(&task.judge_command);
 
-    let config = Config {
+    let config = ContainerCreateBody {
         image: Some(task.judge_image.clone()),
         cmd: Some(cmd_parts),
         host_config: Some(host_config),
@@ -215,9 +213,9 @@ pub async fn run_in_container(
 
     let container = docker
         .create_container(
-            Some(CreateContainerOptions {
-                name: &container_name,
-                platform: None,
+            Some(bollard::query_parameters::CreateContainerOptions {
+                name: Some(container_name.clone()),
+                platform: String::new(),
             }),
             config,
         )
@@ -225,7 +223,7 @@ pub async fn run_in_container(
         .with_context(|| format!("创建容器失败: {}", container_name))?;
 
     docker
-        .start_container(&container.id, None::<StartContainerOptions<String>>)
+        .start_container(&container.id, None::<bollard::query_parameters::StartContainerOptions>)
         .await
         .with_context(|| format!("启动容器失败: {}", container_name))?;
 
@@ -243,7 +241,7 @@ pub async fn run_in_container(
     let wait_result = tokio::time::timeout(timeout, async {
         loop {
             let info = docker
-                .inspect_container(&container.id, None::<InspectContainerOptions>)
+                .inspect_container(&container.id, None::<bollard::query_parameters::InspectContainerOptions>)
                 .await
                 .with_context(|| format!("检查容器状态失败: {}", container_name))?;
 
@@ -268,7 +266,7 @@ pub async fn run_in_container(
             let _ = docker
                 .remove_container(
                     &container.id,
-                    Some(RemoveContainerOptions {
+                    Some(bollard::query_parameters::RemoveContainerOptions {
                         force: true,
                         ..Default::default()
                     }),
@@ -281,7 +279,7 @@ pub async fn run_in_container(
             // 超时，强制 kill
             warn!("容器超时: {}", container_name);
             let _ = docker
-                .kill_container(&container.id, None::<KillContainerOptions<String>>)
+                .kill_container(&container.id, None::<bollard::query_parameters::KillContainerOptions>)
                 .await;
             let output = capture_container_logs(docker, &container.id, -1).await;
             let _ = fs::remove_dir_all(&work_dir).await;
@@ -300,7 +298,7 @@ pub async fn run_in_container(
     let _ = docker
         .remove_container(
             &container.id,
-            Some(RemoveContainerOptions {
+            Some(bollard::query_parameters::RemoveContainerOptions {
                 force: true,
                 ..Default::default()
             }),
@@ -320,7 +318,7 @@ pub async fn run_in_container(
 /// 如果镜像不存在，返回错误并提示构建命令。
 async fn ensure_image_local(docker: &Docker, image: &str) -> Result<()> {
     let images = docker
-        .list_images::<String>(None)
+        .list_images(None::<bollard::query_parameters::ListImagesOptions>)
         .await
         .context("列出 Docker 镜像失败")?;
 
@@ -351,7 +349,7 @@ async fn capture_container_logs(
     container_id: &str,
     exit_code: i64,
 ) -> ContainerOutput {
-    let options = LogsOptions::<String> {
+    let options = bollard::query_parameters::LogsOptions {
         stdout: true,
         stderr: true,
         ..Default::default()
@@ -364,10 +362,10 @@ async fn capture_container_logs(
     while let Some(item) = stream.next().await {
         match item {
             Ok(output) => match output {
-                bollard::container::LogOutput::StdOut { message } => {
+                LogOutput::StdOut { message } => {
                     stdout.push_str(&String::from_utf8_lossy(&message));
                 }
-                bollard::container::LogOutput::StdErr { message } => {
+                LogOutput::StdErr { message } => {
                     stderr.push_str(&String::from_utf8_lossy(&message));
                 }
                 _ => {}

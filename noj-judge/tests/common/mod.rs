@@ -7,10 +7,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use bollard::container::{
-    Config, CreateContainerOptions, KillContainerOptions, LogsOptions, RemoveContainerOptions,
-    StartContainerOptions, WaitContainerOptions,
-};
+use bollard::container::LogOutput;
+use bollard::models::ContainerCreateBody;
 use bollard::models::HostConfig;
 use bollard::Docker;
 use futures_util::StreamExt;
@@ -42,7 +40,7 @@ pub async fn ensure_test_image(docker: &Docker) -> Result<()> {
 
     // 检查本地镜像
     let images = docker
-        .list_images::<String>(None)
+        .list_images(None::<bollard::query_parameters::ListImagesOptions>)
         .await
         .context("列出 Docker 镜像失败")?;
 
@@ -121,7 +119,7 @@ pub async fn create_test_container(
         ..Default::default()
     };
 
-    let config = Config {
+    let config = ContainerCreateBody {
         image: Some(image.to_string()),
         cmd: Some(cmd_parts),
         host_config: Some(host_config),
@@ -130,9 +128,9 @@ pub async fn create_test_container(
 
     let container = docker
         .create_container(
-            Some(CreateContainerOptions {
-                name: &container_name,
-                platform: None,
+            Some(bollard::query_parameters::CreateContainerOptions {
+                name: Some(container_name.clone()),
+                platform: String::new(),
             }),
             config,
         )
@@ -140,7 +138,7 @@ pub async fn create_test_container(
         .with_context(|| format!("创建容器失败: {}", container_name))?;
 
     docker
-        .start_container(&container.id, None::<StartContainerOptions<String>>)
+        .start_container(&container.id, None::<bollard::query_parameters::StartContainerOptions>)
         .await
         .with_context(|| format!("启动容器失败: {}", container_name))?;
 
@@ -160,8 +158,8 @@ pub async fn wait_container(
     let wait_result = tokio::time::timeout(timeout, async {
         let mut stream = docker.wait_container(
             container_id,
-            Some(WaitContainerOptions {
-                condition: "not-running",
+            Some(bollard::query_parameters::WaitContainerOptions {
+                condition: "not-running".to_string(),
             }),
         );
         match stream.next().await {
@@ -181,13 +179,13 @@ pub async fn wait_container(
         Ok(Some(code)) => code,
         Ok(None) => {
             // wait stream 失败，回退到 inspect_container
-            match docker.inspect_container(container_id, None).await {
+            match docker.inspect_container(container_id, None::<bollard::query_parameters::InspectContainerOptions>).await {
                 Ok(info) => info.state.and_then(|s| s.exit_code).unwrap_or(-1),
                 Err(e) => {
                     let _ = docker
                         .remove_container(
                             container_id,
-                            Some(RemoveContainerOptions {
+                            Some(bollard::query_parameters::RemoveContainerOptions {
                                 force: true,
                                 ..Default::default()
                             }),
@@ -199,7 +197,7 @@ pub async fn wait_container(
         }
         Err(_elapsed) => {
             let _ = docker
-                .kill_container(container_id, None::<KillContainerOptions<String>>)
+                .kill_container(container_id, None::<bollard::query_parameters::KillContainerOptions>)
                 .await;
             let output = capture_logs(docker, container_id).await;
             return Ok(ContainerOutput {
@@ -215,7 +213,7 @@ pub async fn wait_container(
     let _ = docker
         .remove_container(
             container_id,
-            Some(RemoveContainerOptions {
+            Some(bollard::query_parameters::RemoveContainerOptions {
                 force: true,
                 ..Default::default()
             }),
@@ -231,7 +229,7 @@ pub async fn wait_container(
 
 /// 捕获容器日志。
 async fn capture_logs(docker: &Docker, container_id: &str) -> ContainerOutput {
-    let options = LogsOptions::<String> {
+    let options = bollard::query_parameters::LogsOptions {
         stdout: true,
         stderr: true,
         ..Default::default()
@@ -244,10 +242,10 @@ async fn capture_logs(docker: &Docker, container_id: &str) -> ContainerOutput {
     while let Some(item) = stream.next().await {
         match item {
             Ok(output) => match output {
-                bollard::container::LogOutput::StdOut { message } => {
+                LogOutput::StdOut { message } => {
                     stdout.push_str(&String::from_utf8_lossy(&message));
                 }
-                bollard::container::LogOutput::StdErr { message } => {
+                LogOutput::StdErr { message } => {
                     stderr.push_str(&String::from_utf8_lossy(&message));
                 }
                 _ => {}

@@ -13,7 +13,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use bollard::image::CreateImageOptions;
 use bollard::Docker;
 use futures_util::StreamExt;
 use tokio::sync::{mpsc, Mutex, Notify, RwLock};
@@ -374,11 +373,12 @@ impl PoolManager {
             // 镜像不在本地，需要拉取（重试 3 次）
             let mut pulled = false;
             for attempt in 1..=3 {
-                let options = CreateImageOptions {
-                    from_image: image.clone(),
-                    from_src: image.clone(),
-                    repo: image.clone(),
-                    tag: "latest".to_string(),
+                let options = bollard::query_parameters::CreateImageOptions {
+                    from_image: Some(image.clone()),
+                    from_src: Some(image.clone()),
+                    repo: Some(image.clone()),
+                    tag: Some("latest".to_string()),
+                    message: None,
                     platform: String::new(),
                     changes: vec![],
                 };
@@ -442,7 +442,7 @@ impl PoolManager {
     /// 检查镜像是否存在于本地 Docker 仓库。
     async fn image_exists_locally(&self, image: &str) -> Result<bool> {
         let result = self.timed_bollard(5, "list_images", async {
-            self.docker.list_images::<String>(None).await.map_err(anyhow::Error::from)
+            self.docker.list_images(None::<bollard::query_parameters::ListImagesOptions>).await.map_err(anyhow::Error::from)
         }).await;
         match result {
             Ok(images) => Ok(images.iter().any(|i| {
@@ -551,7 +551,7 @@ impl PoolManager {
         for (i, delay_ms) in RM_F_RETRY_DELAYS.iter().enumerate() {
             let cid = container_id.to_string();
             match self.timed_bollard(10, "remove_container", async {
-                self.docker.remove_container(&cid, Some(bollard::container::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
+                self.docker.remove_container(&cid, Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
             }).await {
                 Ok(_) => {
                     success = true;
@@ -668,10 +668,7 @@ impl PoolManager {
     }
 
     async fn create_container_inner(docker: &Docker, image: &str, label_prefix: &str, cpu: f64) -> Result<String> {
-        use bollard::container::Config;
-        use bollard::container::CreateContainerOptions;
-
-        let options = CreateContainerOptions::<String> {
+        let options = bollard::query_parameters::CreateContainerOptions {
             ..Default::default()
         };
 
@@ -689,7 +686,7 @@ impl PoolManager {
         let mut tmpfs = HashMap::new();
         tmpfs.insert("/tmp".to_string(), "size=256M".to_string());
 
-        let config = Config {
+        let config = bollard::models::ContainerCreateBody {
             image: Some(image.to_string()),
             cmd: Some(vec!["sleep".to_string(), "infinity".to_string()]),
             labels: Some(labels),
@@ -711,19 +708,18 @@ impl PoolManager {
         };
 
         let result = with_timeout(30, "create_container", async {
-            docker.create_container::<String, String>(Some(options), config).await.map_err(anyhow::Error::from)
+            docker.create_container(Some(options), config).await.map_err(anyhow::Error::from)
         }).await?;
         with_timeout(5, "start_container", async {
-            docker.start_container::<String>(&result.id, None).await.map_err(anyhow::Error::from)
+            docker.start_container(&result.id, None).await.map_err(anyhow::Error::from)
         }).await?;
         Ok(result.id)
     }
 
     /// docker update 下调内存限制。
     async fn update_container_memory(&self, container_id: &str, memory_mb: u64) -> Result<()> {
-        use bollard::container::UpdateContainerOptions;
         let bytes = (memory_mb as i64) * 1024 * 1024;
-        let opts = UpdateContainerOptions::<String> {
+        let opts = bollard::models::ContainerUpdateBody {
             memory: Some(bytes),
             memory_swap: Some(bytes), // 禁用 swap
             memory_swappiness: Some(0),
@@ -738,14 +734,15 @@ impl PoolManager {
 
     /// 清理孤儿容器。
     async fn cleanup_orphans(docker: &Docker, label_prefix: &str) {
-        use bollard::container::ListContainersOptions;
+        use bollard::query_parameters::ListContainersOptions;
         let filter_label = format!("{}.pool=true", label_prefix);
-        let options = ListContainersOptions {
+        let options = bollard::query_parameters::ListContainersOptions {
             all: true,
-            filters: HashMap::from([(
+            size: false,
+            filters: Some(HashMap::from([(
                 "label".to_string(),
                 vec![filter_label],
-            )]),
+            )])),
             ..Default::default()
         };
 
@@ -757,7 +754,7 @@ impl PoolManager {
                     if let Some(ref id) = c.id {
                         warn!("清理孤儿容器: {}", id);
                         let _ = with_timeout(10, "remove_container", async {
-                            docker.remove_container(id.as_str(), Some(bollard::container::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
+                            docker.remove_container(id.as_str(), Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
                         }).await;
                     }
                 }
@@ -826,7 +823,7 @@ impl PoolManager {
                     for id in &expired {
                         if let Err(e) = manager.timed_bollard(10, "remove_container", async {
                             let cid = id.clone();
-                            manager.docker.remove_container(&cid, Some(bollard::container::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
+                            manager.docker.remove_container(&cid, Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
                         }).await {
                             warn!("健康检查: 移除超时空闲容器失败: {}: {}", id, e);
                             manager.leaked_containers.lock().await.push(id.clone());
@@ -848,7 +845,7 @@ impl PoolManager {
                     for id in &idle_containers {
                         let inspect_result = manager.timed_bollard(5, "inspect_container", async {
                             let cid = id.clone();
-                            manager.docker.inspect_container(&cid, None::<bollard::container::InspectContainerOptions>).await.map_err(anyhow::Error::from)
+                            manager.docker.inspect_container(&cid, None::<bollard::query_parameters::InspectContainerOptions>).await.map_err(anyhow::Error::from)
                         }).await;
                         match inspect_result {
                             Ok(info) => {
@@ -882,7 +879,7 @@ impl PoolManager {
                     for id in &dead {
                         if let Err(e) = manager.timed_bollard(10, "remove_container_dead", async {
                             let cid = id.clone();
-                            manager.docker.remove_container(&cid, Some(bollard::container::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
+                            manager.docker.remove_container(&cid, Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
                         }).await {
                             warn!("健康检查: 移除 Dead 容器失败: {}: {}", id, e);
                             manager.leaked_containers.lock().await.push(id.clone());
@@ -898,7 +895,7 @@ impl PoolManager {
                     for id in &retry {
                         if (manager.timed_bollard(10, "remove_container_leak", async {
                             let cid = id.clone();
-                            manager.docker.remove_container(&cid, Some(bollard::container::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
+                            manager.docker.remove_container(&cid, Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
                         }).await).is_ok() {
                             info!("健康检查: 清理泄漏容器成功: {}", id);
                         } else {

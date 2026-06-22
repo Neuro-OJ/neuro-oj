@@ -3,10 +3,9 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use bollard::container::{
-    KillContainerOptions, LogOutput, LogsOptions, StopContainerOptions,
-};
-use bollard::exec::{CreateExecOptions, StartExecResults};
+use bollard::container::LogOutput;
+use bollard::exec::StartExecResults;
+use bollard::models::ExecConfig;
 use bollard::Docker;
 use futures_util::StreamExt;
 use tokio::time::timeout;
@@ -27,7 +26,7 @@ pub async fn execute_in_container(
     // 创建 exec（带 10s 超时）
     let exec = timeout(Duration::from_secs(10), docker.create_exec(
         container_id,
-        CreateExecOptions {
+        ExecConfig {
             cmd: Some(command.to_vec()),
             attach_stdout: Some(true),
             attach_stderr: Some(true),
@@ -73,12 +72,12 @@ pub async fn execute_in_container(
         Err(_elapsed) => {
             // 超时：先 stop 再 kill
             if let Err(e) = docker
-                .stop_container(container_id, Some(StopContainerOptions { t: kill_grace_secs as i64 }))
+                .stop_container(container_id, Some(bollard::query_parameters::StopContainerOptions { t: Some(kill_grace_secs as i32), signal: None }))
                 .await {
                 warn!("超时后 stop_container 失败: {}: {}", container_id, e);
             }
             if let Err(e) = docker
-                .kill_container(container_id, None::<KillContainerOptions<String>>)
+                .kill_container(container_id, None::<bollard::query_parameters::KillContainerOptions>)
                 .await {
                 warn!("超时后 kill_container 失败: {}: {}", container_id, e);
             }
@@ -86,10 +85,14 @@ pub async fn execute_in_container(
             // 超时后从日志捕获剩余输出
             let mut logs = docker.logs(
                 container_id,
-                Some(LogsOptions::<String> {
+                Some(bollard::query_parameters::LogsOptions {
                     stdout: true,
                     stderr: true,
-                    ..Default::default()
+                    follow: false,
+                    since: 0,
+                    until: 0,
+                    timestamps: false,
+                    tail: "all".to_string(),
                 }),
             );
 

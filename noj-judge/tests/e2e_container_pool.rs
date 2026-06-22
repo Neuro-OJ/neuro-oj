@@ -9,10 +9,8 @@
 mod common;
 // Path and Arc used in tests below
 
-use bollard::container::{
-    Config, CreateContainerOptions, InspectContainerOptions, LogsOptions, RemoveContainerOptions,
-    StartContainerOptions,
-};
+use bollard::container::LogOutput;
+use bollard::models::ContainerCreateBody;
 use bollard::models::HostConfig;
 use bollard::Docker;
 use common::{get_docker, is_e2e_enabled};
@@ -32,7 +30,7 @@ async fn create_test_container_raw(
     let container_name = format!("noj-pool-test-{}", uuid::Uuid::new_v4());
     let cmd_parts: Vec<String> = cmd.iter().map(|s| s.to_string()).collect();
 
-    let config = Config {
+    let config = ContainerCreateBody {
         image: Some("noj-judge-test-runner".to_string()),
         cmd: Some(cmd_parts),
         host_config: Some(HostConfig {
@@ -51,15 +49,15 @@ async fn create_test_container_raw(
 
     let container = docker
         .create_container(
-            Some(CreateContainerOptions {
-                name: &container_name,
-                platform: None,
+            Some(bollard::query_parameters::CreateContainerOptions {
+                name: Some(container_name.to_string()),
+                platform: String::new(),
             }),
             config,
         )
         .await?;
     docker
-        .start_container(&container.id, None::<StartContainerOptions<String>>)
+        .start_container(&container.id, None::<bollard::query_parameters::StartContainerOptions>)
         .await?;
     Ok(container.id)
 }
@@ -70,7 +68,7 @@ async fn capture_container_logs(
     container_id: &str,
 ) -> (String, String, i64) {
     let inspect = docker
-        .inspect_container(container_id, None::<InspectContainerOptions>)
+        .inspect_container(container_id, None::<bollard::query_parameters::InspectContainerOptions>)
         .await;
     let exit_code = inspect
         .ok()
@@ -78,10 +76,14 @@ async fn capture_container_logs(
         .and_then(|s| s.exit_code)
         .unwrap_or(-1);
 
-    let options = LogsOptions::<String> {
+    let options = bollard::query_parameters::LogsOptions {
         stdout: true,
         stderr: true,
-        ..Default::default()
+        follow: false,
+        since: 0,
+        until: 0,
+        timestamps: false,
+        tail: "all".to_string(),
     };
 
     let mut stdout = String::new();
@@ -90,10 +92,10 @@ async fn capture_container_logs(
     use futures_util::StreamExt;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(bollard::container::LogOutput::StdOut { message }) => {
+            Ok(LogOutput::StdOut { message }) => {
                 stdout.push_str(&String::from_utf8_lossy(&message));
             }
-            Ok(bollard::container::LogOutput::StdErr { message }) => {
+            Ok(LogOutput::StdErr { message }) => {
                 stderr.push_str(&String::from_utf8_lossy(&message));
             }
             _ => {}
@@ -152,7 +154,7 @@ async fn test_pool_initialization() {
     let _ = docker
         .remove_container(
             "noj-judge-test-runner",
-            None::<RemoveContainerOptions>,
+            None::<bollard::query_parameters::RemoveContainerOptions>,
         )
         .await;
 }
@@ -199,7 +201,7 @@ async fn test_pool_full_execution_path() {
 
     // 验证容器正在运行
     let inspect = docker
-        .inspect_container(&container_id, None::<InspectContainerOptions>)
+        .inspect_container(&container_id, None::<bollard::query_parameters::InspectContainerOptions>)
         .await
         .expect("inspect 失败");
     let running = inspect
@@ -210,7 +212,7 @@ async fn test_pool_full_execution_path() {
     assert!(running, "池容器应正在运行");
 
     // 通过 exec 执行简单命令
-    let (stdout, stderr, exit_code) = execute_in_container(
+    let (stdout, stderr, exit_code, _time_ms) = execute_in_container(
         &docker,
         &container_id,
         &["python3".to_string(), "-c".to_string(), "print('pool-exec')".to_string()],
@@ -234,7 +236,7 @@ async fn test_pool_full_execution_path() {
 
     // 验证容器已被删除
     let inspect_result = docker
-        .inspect_container(&container_id, None::<InspectContainerOptions>)
+        .inspect_container(&container_id, None::<bollard::query_parameters::InspectContainerOptions>)
         .await;
     assert!(
         inspect_result.is_err(),
@@ -262,7 +264,7 @@ async fn test_pool_memory_update() {
 
     // 读取初始 memory 限制
     let inspect = docker
-        .inspect_container(&container_id, None::<InspectContainerOptions>)
+        .inspect_container(&container_id, None::<bollard::query_parameters::InspectContainerOptions>)
         .await
         .expect("inspect 失败");
     let initial_memory = inspect
@@ -273,11 +275,11 @@ async fn test_pool_memory_update() {
     assert_eq!(initial_memory, 512 * 1024 * 1024, "初始内存应为 512MB");
 
     // 使用 docker update 下调到 64MB
-    use bollard::container::UpdateContainerOptions;
+    
     docker
         .update_container(
             &container_id,
-            UpdateContainerOptions::<String> {
+            bollard::models::ContainerUpdateBody {
                 memory: Some(64 * 1024 * 1024),
                 memory_swap: Some(64 * 1024 * 1024),
                 memory_swappiness: Some(0),
@@ -289,7 +291,7 @@ async fn test_pool_memory_update() {
 
     // 验证内存已更新
     let inspect = docker
-        .inspect_container(&container_id, None::<InspectContainerOptions>)
+        .inspect_container(&container_id, None::<bollard::query_parameters::InspectContainerOptions>)
         .await
         .expect("inspect 失败");
     let updated_memory = inspect
@@ -301,7 +303,7 @@ async fn test_pool_memory_update() {
 
     // 清理
     docker
-        .remove_container(&container_id, Some(RemoveContainerOptions { force: true, ..Default::default() }))
+        .remove_container(&container_id, Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() }))
         .await
         .expect("清理容器失败");
 }
@@ -324,7 +326,7 @@ async fn test_pool_exec_timeout() {
         .expect("创建容器失败");
 
     // 执行一个长时间运行的任务，设置短超时
-    let (stdout, stderr, exit_code) = execute_in_container(
+    let (stdout, stderr, exit_code, _time_ms) = execute_in_container(
         &docker,
         &container_id,
         &["python3".to_string(), "-c".to_string(),
@@ -339,7 +341,7 @@ async fn test_pool_exec_timeout() {
 
     // 清理
     docker
-        .remove_container(&container_id, Some(RemoveContainerOptions { force: true, ..Default::default() }))
+        .remove_container(&container_id, Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() }))
         .await
         .expect("清理容器失败");
 }
@@ -387,7 +389,7 @@ async fn test_pool_security_config() {
 
     // inspect 验证安全配置
     let inspect = docker
-        .inspect_container(&container_id, None::<InspectContainerOptions>)
+        .inspect_container(&container_id, None::<bollard::query_parameters::InspectContainerOptions>)
         .await
         .expect("inspect 失败");
 

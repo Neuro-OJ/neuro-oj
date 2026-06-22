@@ -135,7 +135,7 @@ pub async fn copy_to_container(
 
     // 验证容器正在运行
     docker
-        .inspect_container(container_id, None::<bollard::container::InspectContainerOptions>)
+        .inspect_container(container_id, None::<bollard::query_parameters::InspectContainerOptions>)
         .await
         .map_err(|e| anyhow::anyhow!("copy_to_container: 容器 {} 不可用: {}", container_id, e))?
         .state
