@@ -86,6 +86,9 @@ fn main() -> Result<()> {
             .await
             .context("初始化容器池失败")?;
 
+        // 启动后台任务：健康检查、Supervisor、Scaler 自动扩缩容、Metrics 服务器
+        pool.start_background_tasks().await;
+
         let pool_ref = pool.clone();
         // 注册优雅关闭信号处理
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
