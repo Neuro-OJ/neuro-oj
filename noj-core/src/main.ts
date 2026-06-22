@@ -1,7 +1,7 @@
 import { createApp } from "./app.ts";
 import { runMigrations } from "./db/migrate.ts";
 import { connectRedis } from "./mq/connection.ts";
-import { startResultConsumer } from "./mq/consumer.ts";
+import { startResultConsumerWithRetry } from "./mq/consumer.ts";
 
 const app = createApp();
 
@@ -30,13 +30,8 @@ async function main() {
     console.error("Redis 连接失败，评测分发功能不可用:", err);
   }
 
-  // 启动评测结果消费者（后台运行，不阻塞 HTTP）
-  startResultConsumer().catch((err) => {
-    console.error(
-      "结果消费者异常退出:",
-      err instanceof Error ? err.message : String(err),
-    );
-  });
+  // 启动评测结果消费者（后台运行，带自动重连，不阻塞 HTTP）
+  startResultConsumerWithRetry();
 
   // 启动 HTTP 服务
   Deno.serve({ port }, app.fetch);

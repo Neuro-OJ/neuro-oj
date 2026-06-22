@@ -37,8 +37,9 @@ export function createConsumerRedis(): RedisClient {
     maxRetriesPerRequest: 3,
     enableOfflineQueue: false,
     retryStrategy(times: number) {
-      if (times > 5) return null;
-      return Math.min(times * 200, 2000);
+      // 指数退避：100ms → 200ms → 400ms → ... → 上限 30s
+      // 永不返回 null，确保连接断开时持续尝试重连
+      return Math.min(Math.pow(2, times) * 100, 30000);
     },
     lazyConnect: true,
   });
