@@ -309,7 +309,35 @@ impl PoolManager {
         for image in &manager.config.images {
             info!("预热镜像: {}", image);
 
-            // docker pull（重试 3 次）
+            // 先检查镜像是否已存在于本地
+            let image_exists = manager.image_exists_locally(image).await;
+            if image_exists {
+                info!("镜像已存在本地，跳过拉取: {}", image);
+
+                let image_memory = manager.config.memory_mb_for_image(image);
+                let pool = Arc::new(Pool::new(
+                    image.clone(),
+                    image_memory,
+                    manager.config.initial_size,
+                ));
+
+                for i in 0..manager.config.initial_size {
+                    match manager.create_container(image).await {
+                        Ok(container_id) => {
+                            pool.push_idle(container_id).await;
+                            info!("创建预热容器 [{}/{}] 镜像={}", i + 1, manager.config.initial_size, image);
+                        }
+                        Err(e) => {
+                            warn!("创建预热容器失败: {}: {}", image, e);
+                        }
+                    }
+                }
+
+                manager.pools.lock().await.insert(image.clone(), pool);
+                continue;
+            }
+
+            // 镜像不在本地，需要拉取（重试 3 次）
             let mut pulled = false;
             for attempt in 1..=3 {
                 let options = CreateImageOptions {
@@ -375,6 +403,22 @@ impl PoolManager {
 
         info!("容器池初始化完成 (镜像数={})", manager.config.images.len());
         Ok(manager)
+    }
+
+    /// 检查镜像是否存在于本地 Docker 仓库。
+    async fn image_exists_locally(&self, image: &str) -> bool {
+        match self
+            .docker
+            .list_images::<String>(None)
+            .await
+        {
+            Ok(images) => images.iter().any(|i| {
+                i.repo_tags
+                    .iter()
+                    .any(|tag| tag == image || tag.starts_with(&format!("{}:", image)))
+            }),
+            Err(_) => false,
+        }
     }
 
     /// 获取或即时创建容器。

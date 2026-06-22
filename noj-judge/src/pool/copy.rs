@@ -6,6 +6,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use tracing::debug;
 use bollard::Docker;
 use tokio::task::spawn_blocking;
 
@@ -128,16 +129,30 @@ pub async fn copy_to_container(
     use bollard::container::UploadToContainerOptions;
     use tokio_util::bytes::Bytes;
 
+    // 验证容器正在运行
+    docker
+        .inspect_container(container_id, None::<bollard::container::InspectContainerOptions>)
+        .await
+        .map_err(|e| anyhow::anyhow!("copy_to_container: 容器 {} 不可用: {}", container_id, e))?
+        .state
+        .as_ref()
+        .and_then(|s| s.running)
+        .filter(|&r| r)
+        .ok_or_else(|| anyhow::anyhow!("copy_to_container: 容器 {} 未在运行", container_id))?;
+
     docker
         .upload_to_container::<String>(
             container_id,
             Some(UploadToContainerOptions {
-                path: "/tmp/".into(),
-                ..Default::default()
+                path: "/tmp/".to_string(),
+                no_overwrite_dir_non_dir: "0".to_string(),
             }),
             Bytes::from(tar_bytes),
         )
-        .await?;
+        .await
+        .with_context(|| format!("put_archive 到容器 {} 失败", container_id))?;
+
+    debug!("文件已注入到容器 {} 的 /tmp/", container_id);
     Ok(())
 }
 
@@ -149,14 +164,43 @@ pub async fn archive_and_copy(
     max_archive_mb: u64,
 ) -> Result<()> {
     let max_bytes = max_archive_mb * 1024 * 1024;
-    let work_dir = work_dir.to_path_buf();
+    let wd_path = work_dir.to_path_buf();
+    let wd_str = wd_path.to_string_lossy().to_string();
+
+    // 验证工作目录存在且非空
+    if !wd_path.exists() {
+        anyhow::bail!("archive_and_copy: 工作目录不存在: {}", wd_str);
+    }
+
+    let entries = tokio::task::spawn_blocking({
+        let wd = wd_path.clone();
+        move || -> Result<Vec<String>> {
+            let mut names = Vec::new();
+            for entry in std::fs::read_dir(&wd)? {
+                let entry = entry?;
+                names.push(entry.file_name().to_string_lossy().to_string());
+            }
+            Ok(names)
+        }
+    })
+    .await
+    .context("读取工作目录 panicked")?
+    .with_context(|| format!("读取工作目录失败: {}", work_dir.display()))?;
+
+    if entries.is_empty() {
+        anyhow::bail!("archive_and_copy: 工作目录为空（没有需要注入的文件）: {}", work_dir.display());
+    }
 
     // tar 打包在 spawn_blocking 中执行
-    let tar_bytes = spawn_blocking(move || archive_work_dir(&work_dir, max_bytes))
+    let tar_bytes = spawn_blocking(move || archive_work_dir(&wd_path, max_bytes))
         .await
-        .context("tar 打包任务 panicked")??;
+        .context("tar 打包任务 panicked")?
+        .with_context(|| format!("打包工作目录失败: {}", wd_str))?;
 
-    copy_to_container(docker, container_id, tar_bytes).await?;
+    copy_to_container(docker, container_id, tar_bytes)
+        .await
+        .with_context(|| format!("注入文件到容器 {} 失败", container_id))?;
+
     Ok(())
 }
 
