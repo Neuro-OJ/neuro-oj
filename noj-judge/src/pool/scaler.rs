@@ -74,7 +74,7 @@ impl Scaler {
     }
 
     /// 记录一次任务到达。
-    pub fn record_arrival(&mut self, pool: &str) {
+    pub(crate) fn record_arrival(&mut self, pool: &str) {
         for m in &mut self.metrics {
             if m.pool.image() == pool {
                 m.arrival_timestamps.push_back(Instant::now());
@@ -87,7 +87,7 @@ impl Scaler {
     }
 
     /// 记录一次 acquire 排队时间（毫秒）。
-    pub fn record_queue_wait(&mut self, pool: &str, wait_ms: u64) {
+    pub(crate) fn record_queue_wait(&mut self, pool: &str, wait_ms: u64) {
         for m in &mut self.metrics {
             if m.pool.image() == pool {
                 m.queue_wait_times.push_back(wait_ms);
@@ -101,7 +101,7 @@ impl Scaler {
     }
 
     /// 记录一次即时创建（池空 miss）。
-    pub fn record_miss(&mut self, pool: &str) {
+    pub(crate) fn record_miss(&mut self, pool: &str) {
         for m in &mut self.metrics {
             if m.pool.image() == pool {
                 m.miss_count += 1;

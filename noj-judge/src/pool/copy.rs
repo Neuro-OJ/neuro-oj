@@ -6,7 +6,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use tracing::debug;
+use tracing::{debug, info, warn};
 use bollard::Docker;
 use tokio::task::spawn_blocking;
 
@@ -120,14 +120,18 @@ fn collect_entries_rec(
     Ok(())
 }
 
-/// 通过 put_archive 将 tar 字节流上传到容器内的 `/tmp/`。
+/// 通过 docker exec + tar 将文件注入到容器内的 `/tmp/`。
+///
+/// Docker put_archive API 在 readonly_rootfs 等场景存在兼容性问题（返回成功但实际不写入），
+/// 改用 exec `tar xf - -C /tmp/` + 管道 stdin 传输 tar 数据，更可靠。
 pub async fn copy_to_container(
     docker: &Docker,
     container_id: &str,
     tar_bytes: Vec<u8>,
 ) -> Result<()> {
-    use bollard::container::UploadToContainerOptions;
-    use tokio_util::bytes::Bytes;
+    use bollard::exec::{CreateExecOptions, StartExecResults};
+    use futures_util::StreamExt;
+    use tokio::io::AsyncWriteExt;
 
     // 验证容器正在运行
     docker
@@ -140,17 +144,77 @@ pub async fn copy_to_container(
         .filter(|&r| r)
         .ok_or_else(|| anyhow::anyhow!("copy_to_container: 容器 {} 未在运行", container_id))?;
 
-    docker
-        .upload_to_container::<String>(
+    // 创建 exec: tar xf - -C /tmp/（从 stdin 读取 tar）
+    let exec = docker
+        .create_exec(
             container_id,
-            Some(UploadToContainerOptions {
-                path: "/tmp/".to_string(),
-                no_overwrite_dir_non_dir: "0".to_string(),
-            }),
-            Bytes::from(tar_bytes),
+            CreateExecOptions {
+                cmd: Some(vec![
+                    "tar".to_string(),
+                    "xf".to_string(),
+                    "-".to_string(),
+                    "-C".to_string(),
+                    "/tmp/".to_string(),
+                ]),
+                attach_stdin: Some(true),
+                attach_stdout: Some(true),
+                attach_stderr: Some(true),
+                ..Default::default()
+            },
         )
         .await
-        .with_context(|| format!("put_archive 到容器 {} 失败", container_id))?;
+        .context("创建 tar exec 失败")?;
+
+    // 启动 exec
+    let result = docker
+        .start_exec(&exec.id, None)
+        .await
+        .context("启动 tar exec 失败")?;
+
+    if let StartExecResults::Attached { mut output, input } = result {
+        // 通过 stdin 管道写入 tar 数据
+        let mut input_writer = input;
+        input_writer.write_all(&tar_bytes).await?;
+        let _ = input_writer.shutdown().await;
+
+        // 读取 exec 输出
+        let mut stderr = String::new();
+        while let Some(chunk) = output.next().await {
+            if let Ok(bollard::container::LogOutput::StdErr { message }) = chunk {
+                stderr.push_str(&String::from_utf8_lossy(&message));
+            }
+        }
+
+        if !stderr.is_empty() {
+            warn!("文件注入 stderr: {}", stderr);
+        }
+    }
+
+    // 验证文件
+    if let Ok(exec) = docker
+        .create_exec(
+            container_id,
+            CreateExecOptions {
+                cmd: Some(vec!["ls".to_string(), "-la".to_string(), "/tmp/".to_string()]),
+                attach_stdout: Some(true),
+                attach_stderr: Some(true),
+                ..Default::default()
+            },
+        )
+        .await
+    {
+        if let Ok(StartExecResults::Attached { mut output, .. }) =
+            docker.start_exec(&exec.id, None).await
+        {
+            let mut out = String::new();
+            while let Some(chunk) = output.next().await {
+                if let Ok(bollard::container::LogOutput::StdOut { message }) = chunk {
+                    out.push_str(&String::from_utf8_lossy(&message));
+                }
+            }
+            info!("容器 {} /tmp/ 内容:\n{}", &container_id[..12], out);
+        }
+    }
 
     debug!("文件已注入到容器 {} 的 /tmp/", container_id);
     Ok(())
@@ -190,6 +254,8 @@ pub async fn archive_and_copy(
     if entries.is_empty() {
         anyhow::bail!("archive_and_copy: 工作目录为空（没有需要注入的文件）: {}", work_dir.display());
     }
+
+    info!("archive_and_copy: 工作目录 {} 包含 {} 个文件: {:?}", wd_str, entries.len(), entries);
 
     // tar 打包在 spawn_blocking 中执行
     let tar_bytes = spawn_blocking(move || archive_work_dir(&wd_path, max_bytes))

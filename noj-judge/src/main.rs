@@ -103,7 +103,7 @@ fn main() -> Result<()> {
                 let result = match judge::runner::evaluate_with_pool(pool.clone(), &task, work_dir_path).await {
                     Ok(r) => r,
                     Err(e) => {
-                        error!("评测失败: {}: {}", task.submission_id, e);
+                        error!("评测失败: {}: {:#}", task.submission_id, e);
                         types::JudgeResult::error(&task.submission_id, &e.to_string())
                     }
                 };
@@ -156,7 +156,7 @@ fn main() -> Result<()> {
                 let result = match judge::runner::evaluate_legacy(&docker, &task, &work_dir).await {
                     Ok(r) => r,
                     Err(e) => {
-                        error!("评测失败: {}: {}", task.submission_id, e);
+                        error!("评测失败: {}: {:#}", task.submission_id, e);
                         types::JudgeResult::error(&task.submission_id, &e.to_string())
                     }
                 };

@@ -10,7 +10,7 @@ pub mod scaler;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use bollard::image::CreateImageOptions;
@@ -47,8 +47,6 @@ pub enum ContainerStatus {
     Idle,
     /// 已分配给某个任务，正在使用
     InUse,
-    /// 正在被删除
-    Removing,
     /// 健康检查发现异常，等待摘除
     Dead,
 }
@@ -491,13 +489,17 @@ impl PoolManager {
 
     /// 内部 acquire 实现（返回容器 ID + 所属 Pool）。
     async fn acquire_with_pool(&self, image: &str, memory_mb: u64) -> Result<(String, Arc<Pool>)> {
+        // 熔断检查：电路打开时快速失败，避免无效 Docker API 调用
+        if self.circuit_open.load(Ordering::SeqCst) {
+            anyhow::bail!("熔断器已打开，拒绝 acquire");
+        }
         let pool = self.get_or_create_pool(image).await?;
 
         // 快速路径：尝试获取空闲容器
         if let Some(id) = pool.acquire().await {
             self.send_scaler_event(ScalerEvent::Arrival { pool: image.to_string() }).await;
             if let Err(e) = self.update_container_memory(&id, memory_mb).await {
-                pool.release(&id).await;
+                self.release(&pool, &id).await;
                 return Err(e);
             }
             return Ok((id, pool.clone()));
@@ -519,25 +521,35 @@ impl PoolManager {
                 info!("快速扩容: {} -> {}", image, pool.target_depth());
             }
             if let Err(e) = self.update_container_memory(&id, memory_mb).await {
-                pool.release(&id).await;
+                self.release(&pool, &id).await;
                 return Err(e);
             }
             return Ok((id, pool.clone()));
         }
 
-        // 已达上限：阻塞等待
+        // 已达上限：阻塞等待（带超时）
         let wait_start = Instant::now();
+        let deadline = wait_start + Duration::from_secs(ACQUIRE_TIMEOUT_SECS);
         loop {
             if self.shutting_down.load(Ordering::SeqCst) {
                 anyhow::bail!("池管理器正在关闭");
             }
-            pool.wait_for_slot().await;
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                anyhow::bail!("acquire 等待超时 (>{})s", ACQUIRE_TIMEOUT_SECS);
+            }
+            tokio::select! {
+                _ = pool.wait_for_slot() => {}
+                _ = tokio::time::sleep(remaining) => {
+                    anyhow::bail!("acquire 等待超时 (>{})s", ACQUIRE_TIMEOUT_SECS);
+                }
+            }
             if let Some(id) = pool.acquire().await {
                 let wait_ms = wait_start.elapsed().as_millis() as u64;
                 self.send_scaler_event(ScalerEvent::Arrival { pool: image.to_string() }).await;
                 self.send_scaler_event(ScalerEvent::QueueWait { pool: image.to_string(), wait_ms }).await;
                 if let Err(e) = self.update_container_memory(&id, memory_mb).await {
-                    pool.release(&id).await;
+                    self.release(&pool, &id).await;
                     return Err(e);
                 }
                 return Ok((id, pool.clone()));
@@ -554,7 +566,7 @@ impl PoolManager {
         for (i, delay_ms) in RM_F_RETRY_DELAYS.iter().enumerate() {
             let cid = container_id.to_string();
             match self.timed_bollard(10, "remove_container", async {
-                self.docker.remove_container(&cid, None::<bollard::container::RemoveContainerOptions>).await.map_err(anyhow::Error::from)
+                self.docker.remove_container(&cid, Some(bollard::container::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
             }).await {
                 Ok(_) => {
                     success = true;
@@ -566,9 +578,8 @@ impl PoolManager {
                         tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
                     } else {
                         error!("rm -f 最终失败: {}: {}", container_id, e);
-                        if let Ok(mut leaked) = self.leaked_containers.try_lock() {
-                            leaked.push(container_id.to_string());
-                        }
+                        let mut leaked = self.leaked_containers.lock().await;
+                        leaked.push(container_id.to_string());
                     }
                 }
             }
@@ -608,7 +619,6 @@ impl PoolManager {
             // debounce 窗口
             tokio::time::sleep(std::time::Duration::from_millis(REFILL_DEBOUNCE_MS)).await;
 
-            let _target = pool.target_depth();
             // 批量补齐缺口（最多 3 次尝试，避免无限循环）
             for _ in 0..3 {
                 let idle = pool.idle_count().await;
@@ -669,6 +679,9 @@ impl PoolManager {
 
     /// 创建容器。
     async fn create_container(&self, image: &str) -> Result<String> {
+        if self.circuit_open.load(Ordering::SeqCst) {
+            anyhow::bail!("熔断器已打开，拒绝创建容器");
+        }
         Self::create_container_inner(&self.docker, image, &self.config.label_prefix, self.config.cpu).await
     }
 
@@ -690,6 +703,10 @@ impl PoolManager {
             None
         };
 
+        // 显式 tmpfs 挂载确保 /tmp 可写（readonly_rootfs 时 Docker 默认创建但存在兼容性问题）
+        let mut tmpfs = HashMap::new();
+        tmpfs.insert("/tmp".to_string(), "size=256M".to_string());
+
         let config = Config {
             image: Some(image.to_string()),
             cmd: Some(vec!["sleep".to_string(), "infinity".to_string()]),
@@ -698,8 +715,13 @@ impl PoolManager {
                 cap_drop: Some(vec!["ALL".to_string()]),
                 security_opt: Some(vec!["no-new-privileges:true".to_string()]),
                 privileged: Some(false),
-                readonly_rootfs: Some(true),
+                // 注意：不使用 readonly_rootfs，因为 Docker put_archive API 与此不兼容
+                // 安全通过 CapDrop ALL + no-new-privileges + network_mode none 保证
+                readonly_rootfs: Some(false),
                 network_mode: Some("none".to_string()),
+                ipc_mode: Some("none".to_string()),
+                pids_limit: Some(256),
+                tmpfs: Some(tmpfs),
                 nano_cpus,
                 ..Default::default()
             }),
@@ -753,7 +775,7 @@ impl PoolManager {
                     if let Some(ref id) = c.id {
                         warn!("清理孤儿容器: {}", id);
                         let _ = with_timeout(10, "remove_container", async {
-                            docker.remove_container(id.as_str(), None::<bollard::container::RemoveContainerOptions>).await.map_err(anyhow::Error::from)
+                            docker.remove_container(id.as_str(), Some(bollard::container::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
                         }).await;
                     }
                 }
@@ -815,16 +837,17 @@ impl PoolManager {
 
                 tokio::time::sleep(std::time::Duration::from_secs(HEALTH_CHECK_INTERVAL_SECS)).await;
 
-                let pools = manager.pools.lock().await;
-                for pool in pools.values() {
+                let pool_refs: Vec<Arc<Pool>> = manager.pools.lock().await.values().cloned().collect();
+                for pool in &pool_refs {
                     // 空闲超时清理
                     let expired = pool.collect_idle_timeout(idle_timeout).await;
                     for id in &expired {
                         if let Err(e) = manager.timed_bollard(10, "remove_container", async {
                             let cid = id.clone();
-                            manager.docker.remove_container(&cid, None::<bollard::container::RemoveContainerOptions>).await.map_err(anyhow::Error::from)
+                            manager.docker.remove_container(&cid, Some(bollard::container::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
                         }).await {
                             warn!("健康检查: 移除超时空闲容器失败: {}: {}", id, e);
+                            manager.leaked_containers.lock().await.push(id.clone());
                         } else {
                             info!("健康检查: 移除空闲超时容器: {}", id);
                         }
@@ -877,30 +900,28 @@ impl PoolManager {
                     for id in &dead {
                         if let Err(e) = manager.timed_bollard(10, "remove_container_dead", async {
                             let cid = id.clone();
-                            manager.docker.remove_container(&cid, None::<bollard::container::RemoveContainerOptions>).await.map_err(anyhow::Error::from)
+                            manager.docker.remove_container(&cid, Some(bollard::container::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
                         }).await {
                             warn!("健康检查: 移除 Dead 容器失败: {}: {}", id, e);
+                            manager.leaked_containers.lock().await.push(id.clone());
                         } else {
                             info!("健康检查: 已移除 Dead 容器: {}", id);
                         }
                     }
 
                     // 清理泄漏容器（rm -f 全失败的）
-                    if let Ok(mut leaked) = manager.leaked_containers.try_lock() {
-                        let retry: Vec<String> = leaked.drain(..).collect();
-                        drop(leaked);
-                        for id in &retry {
-                            if let Ok(()) = manager.timed_bollard(10, "remove_container_leak", async {
-                                let cid = id.clone();
-                                manager.docker.remove_container(&cid, None::<bollard::container::RemoveContainerOptions>).await.map_err(anyhow::Error::from)
-                            }).await {
-                                info!("健康检查: 清理泄漏容器成功: {}", id);
-                            } else {
-                                // 重试失败，加回列表下次再试
-                                if let Ok(mut leaked) = manager.leaked_containers.try_lock() {
-                                    leaked.push(id.clone());
-                                }
-                            }
+                    let mut leaked = manager.leaked_containers.lock().await;
+                    let retry: Vec<String> = leaked.drain(..).collect();
+                    drop(leaked);
+                    for id in &retry {
+                        if (manager.timed_bollard(10, "remove_container_leak", async {
+                            let cid = id.clone();
+                            manager.docker.remove_container(&cid, Some(bollard::container::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
+                        }).await).is_ok() {
+                            info!("健康检查: 清理泄漏容器成功: {}", id);
+                        } else {
+                            // 重试失败，加回列表下次再试
+                            manager.leaked_containers.lock().await.push(id.clone());
                         }
                     }
                 }
@@ -1058,10 +1079,9 @@ impl PoolManager {
 
     /// 向 Scaler 发送事件（忽略失败，Scaler 未启动时静默丢弃）。
     async fn send_scaler_event(&self, event: ScalerEvent) {
-        if let Ok(mut guard) = self.scaler_tx.try_lock() {
-            if let Some(ref tx) = *guard {
-                let _ = tx.send(event);
-            }
+        let mut guard = self.scaler_tx.lock().await;
+        if let Some(ref tx) = *guard {
+            let _ = tx.send(event);
         }
     }
 }

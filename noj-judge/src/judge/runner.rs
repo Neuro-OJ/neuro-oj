@@ -27,8 +27,9 @@ pub async fn evaluate_with_pool(
     let submission_id = &task.submission_id;
     let image = &task.judge_image;
 
-    // 1. 从池获取容器
-    let container_id = pool.acquire(image, task.memory_limit_mb).await?;
+    // 1. 从池获取容器（带 RAII guard，? 提前返回时自动 cleanup）
+    let guard = pool.acquire_guarded(image, task.memory_limit_mb).await?;
+    let container_id = guard.container_id().to_string();
 
     // 2. 准备临时工作目录
     let work_dir = container::prepare_work_dir(work_dir_root, submission_id).await?;
@@ -41,6 +42,9 @@ pub async fn evaluate_with_pool(
         pool.release(&p, &container_id).await;
     }
     let _ = tokio::fs::remove_dir_all(&work_dir).await;
+
+    // 5. 手动释放 guard（防止 Drop 重复 cleanup）
+    guard.release().await;
 
     result
 }

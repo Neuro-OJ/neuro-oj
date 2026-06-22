@@ -41,7 +41,7 @@ async fn create_test_container_raw(
             nano_cpus: Some(1_000_000_000),
             network_mode: Some("none".to_string()),
             cap_drop: Some(vec!["ALL".to_string()]),
-            readonly_rootfs: Some(true),
+            readonly_rootfs: Some(false),
             security_opt: Some(vec!["no-new-privileges:true".to_string()]),
             auto_remove: Some(false),
             ..Default::default()
@@ -411,8 +411,8 @@ async fn test_pool_security_config() {
     // readonly_rootfs
     assert_eq!(
         hc.readonly_rootfs,
-        Some(true),
-        "readonly_rootfs 应为 true"
+        Some(false),
+        "readonly_rootfs 应为 false（put_archive 兼容性）"
     );
 
     // 释放

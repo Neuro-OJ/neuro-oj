@@ -10,6 +10,7 @@ use bollard::exec::{CreateExecOptions, StartExecResults};
 use bollard::Docker;
 use futures_util::StreamExt;
 use tokio::time::timeout;
+use tracing::warn;
 
 /// 在已存在的容器中通过 exec 执行命令。
 ///
@@ -21,18 +22,18 @@ pub async fn execute_in_container(
     timeout_ms: u64,
     kill_grace_secs: u64,
 ) -> Result<(String, String, i64)> {
-    // 创建 exec
-    let exec = docker
-        .create_exec(
-            container_id,
-            CreateExecOptions {
-                cmd: Some(command.to_vec()),
-                attach_stdout: Some(true),
-                attach_stderr: Some(true),
-                ..Default::default()
-            },
-        )
+    // 创建 exec（带 10s 超时）
+    let exec = timeout(Duration::from_secs(10), docker.create_exec(
+        container_id,
+        CreateExecOptions {
+            cmd: Some(command.to_vec()),
+            attach_stdout: Some(true),
+            attach_stderr: Some(true),
+            ..Default::default()
+        },
+    ))
         .await
+        .context("创建 exec 超时 (>10s)")?
         .context("创建 exec 失败")?;
 
     // 启动 exec 并捕获输出
@@ -69,12 +70,16 @@ pub async fn execute_in_container(
         Ok(result) => result,
         Err(_elapsed) => {
             // 超时：先 stop 再 kill
-            let _ = docker
+            if let Err(e) = docker
                 .stop_container(container_id, Some(StopContainerOptions { t: kill_grace_secs as i64 }))
-                .await;
-            let _ = docker
+                .await {
+                warn!("超时后 stop_container 失败: {}: {}", container_id, e);
+            }
+            if let Err(e) = docker
                 .kill_container(container_id, None::<KillContainerOptions<String>>)
-                .await;
+                .await {
+                warn!("超时后 kill_container 失败: {}: {}", container_id, e);
+            }
 
             // 超时后从日志捕获剩余输出
             let mut logs = docker.logs(
