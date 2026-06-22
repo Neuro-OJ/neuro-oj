@@ -12,17 +12,27 @@
                 </NuxtLink>
             </nav>
         </div>
+        <div class="sidebar-bottom">
+            <nav class="nav-links">
+                <NuxtLink to="/about" class="nav-link">
+                    <Info class="nav-icon" />
+                    <span class="nav-text">关于</span>
+                </NuxtLink>
+            </nav>
+        </div>
     </aside>
 </template>
 
 <script setup lang="ts">
-import { House, FileText, Trophy, BarChart3 } from "@lucide/vue"
+import { House, FileText, Info } from "@lucide/vue"
 </script>
 
 <style scoped>
 .sidebar {
     position: sticky;
     top: 64px;
+    display: flex;
+    flex-direction: column;
     width: 60px;
     height: calc(100vh - 64px);
     background: var(--c-white);
@@ -39,7 +49,13 @@ import { House, FileText, Trophy, BarChart3 } from "@lucide/vue"
 }
 
 .sidebar-inner {
+    flex: 1;
     padding: 16px 8px;
+}
+
+.sidebar-bottom {
+    padding: 8px;
+    border-top: 1px solid var(--c-border);
 }
 
 .nav-links {
