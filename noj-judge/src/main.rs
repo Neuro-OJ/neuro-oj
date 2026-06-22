@@ -12,6 +12,7 @@
 mod config;
 mod judge;
 mod mq;
+mod pool;
 mod sandbox;
 mod types;
 
@@ -31,8 +32,8 @@ async fn main() -> Result<()> {
     let config = Config::from_env();
 
     info!(
-        "noj-judge 启动 (queue={}, result_queue={}, max_concurrent={})",
-        config.judge_queue, config.result_queue, config.max_concurrent
+        "noj-judge 启动 (queue={}, result_queue={})",
+        config.judge_queue, config.result_queue
     );
 
     // 连接 Redis
@@ -58,7 +59,7 @@ async fn main() -> Result<()> {
     info!("Docker 连接成功");
 
     // 并发控制
-    let semaphore = Arc::new(Semaphore::new(config.max_concurrent));
+    let semaphore = Arc::new(Semaphore::new(config.max_concurrent()));
     let redis_url = config.redis_url.clone();
     let result_queue = config.result_queue.clone();
     let work_dir = config.work_dir.clone();

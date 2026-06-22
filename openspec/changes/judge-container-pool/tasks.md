@@ -1,30 +1,30 @@
 ## 1. 配置层
 
-- [ ] 1.1 在 `config.rs` 移除 `MAX_CONCURRENT`；新增 `PoolConfig` 结构体，包含全部新环境变量：`POOL_ENABLED`, `POOL_INITIAL_SIZE`, `POOL_MAX_SIZE`, `POOL_MIN_SIZE`, `POOL_MEMORY_MB`, `POOL_CPU`, `POOL_IMAGES`, `POOL_IDLE_TIMEOUT`, `POOL_SCALE_INTERVAL`, `POOL_MAX_ARCHIVE_MB`，全部使用 `unwrap_or_else` 默认值
-- [ ] 1.2 在 `config.rs` 添加一个 `legacy` 开关：`POOL_ENABLED=false` 时回退到原有 Semaphore + `MAX_CONCURRENT` 模型，保持向后兼容
+- [x] 1.1 在 `config.rs` 移除 `MAX_CONCURRENT`；新增 `PoolConfig` 结构体，包含全部新环境变量：`POOL_ENABLED`, `POOL_INITIAL_SIZE`, `POOL_MAX_SIZE`, `POOL_MIN_SIZE`, `POOL_MEMORY_MB`, `POOL_CPU`, `POOL_IMAGES`, `POOL_IDLE_TIMEOUT`, `POOL_SCALE_INTERVAL`, `POOL_MAX_ARCHIVE_MB`，全部使用 `unwrap_or_else` 默认值
+- [x] 1.2 在 `config.rs` 添加一个 `legacy` 开关：`POOL_ENABLED=false` 时回退到原有 Semaphore + `MAX_CONCURRENT` 模型，保持向后兼容
 
 ## 2. Pool 核心模块（`src/pool/mod.rs`）
 
-- [ ] 2.1 创建 `PoolManager` 结构体：包含 `per-image: HashMap<String, Pool>`、`in_flight: AtomicUsize`、`target_depth: AtomicUsize`、`max_depth: usize`、`shutdown_token: CancellationToken`
-- [ ] 2.2 创建 `Pool` 结构体：`idle: Mutex<VecDeque<ContainerState>>`、`notify: tokio::sync::Notify`（用于队列等待通知）
-- [ ] 2.3 实现 `PoolManager::init()`：遍历 `POOL_IMAGES`，逐个 `docker pull`（含 3 次重试），创建 `POOL_INITIAL_SIZE` 个容器，启动后放入空闲队列
-- [ ] 2.4 实现 `PoolManager::acquire(image, memory_mb) -> Result<ContainerGuard>`：从空闲队列 pop 或即时创建新容器，调用 `docker.update_memory()`，返回 RAII guard（析构时自动 `docker rm -f` + `in_flight--` + 触发回补检查）
-- [ ] 2.5 实现 `acquire` 的阻塞等待逻辑：空闲队列空且 `in_flight >= max_depth` 时，等待 `notify.notified()`
-- [ ] 2.6 实现 `PoolManager::release(container_id)`：被 `ContainerGuard` 析构调用：`docker rm -f` → `in_flight--` → `notify.notify_one()` → 检查是否需回补
-- [ ] 2.7 回补逻辑：若空闲队列长度 < target_depth 的 50%，spawn 后台任务创建一新容器推入队列
-- [ ] 2.8 镜像名称归一化匹配：acquire 时 strip 默认 `:latest` tag 再匹配池注册名
+- [x] 2.1 创建 `PoolManager` 结构体：包含 `per-image: HashMap<String, Pool>`、`in_flight: AtomicUsize`、`target_depth: AtomicUsize`、`max_depth: usize`、`shutdown_token: CancellationToken`
+- [x] 2.2 创建 `Pool` 结构体：`idle: Mutex<VecDeque<ContainerState>>`、`notify: tokio::sync::Notify`（用于队列等待通知）
+- [x] 2.3 实现 `PoolManager::init()`：遍历 `POOL_IMAGES`，逐个 `docker pull`（含 3 次重试），创建 `POOL_INITIAL_SIZE` 个容器，启动后放入空闲队列
+- [x] 2.4 实现 `PoolManager::acquire(image, memory_mb) -> Result<ContainerGuard>`：从空闲队列 pop 或即时创建新容器，调用 `docker.update_memory()`，返回 RAII guard（析构时自动 `docker rm -f` + `in_flight--` + 触发回补检查）
+- [x] 2.5 实现 `acquire` 的阻塞等待逻辑：空闲队列空且 `in_flight >= max_depth` 时，等待 `notify.notified()`
+- [x] 2.6 实现 `PoolManager::release(container_id)`：被 `ContainerGuard` 析构调用：`docker rm -f` → `in_flight--` → `notify.notify_one()` → 检查是否需回补
+- [x] 2.7 回补逻辑：若空闲队列长度 < target_depth 的 50%，spawn 后台任务创建一新容器推入队列
+- [ ] 2.8 镜像名称归一化匹配：acquire 时 strip 默认 `:latest` tag 再匹配池注册名（待实现）
 
 ## 3. 容器文件注入（`src/pool/copy.rs`）
 
-- [ ] 3.1 实现 `archive_work_dir(work_dir) -> Vec<u8>`：使用 `tar` crate 将目录打包为内存字节流
-- [ ] 3.2 安全过滤：打包时跳过符号链接（`is_symlink`）和含 `..` 的条目；若总大小超 `POOL_MAX_ARCHIVE_MB` 返回错误
-- [ ] 3.3 实现 `copy_to_container(docker, container_id, tar_bytes)`：通过 bollard `put_archive` API 上传到容器 `/tmp/`
+- [x] 3.1 实现 `archive_work_dir(work_dir) -> Vec<u8>`：使用 `tar` crate 将目录打包为内存字节流
+- [x] 3.2 安全过滤：打包时跳过符号链接（`is_symlink`）和含 `..` 的条目；若总大小超 `POOL_MAX_ARCHIVE_MB` 返回错误
+- [x] 3.3 实现 `copy_to_container(docker, container_id, tar_bytes)`：通过 bollard `put_archive` API 上传到容器 `/tmp/`
 
 ## 4. 容器执行（`src/pool/exec.rs`）
 
-- [ ] 4.1 实现 `execute_in_container(docker, container_id, judge_command, timeout_ms)`：通过 bollard exec API 执行命令，流式捕获 stdout/stderr
-- [ ] 4.2 超时处理：`tokio::select!` 竞速 exec stream 与 `tokio::time::sleep`；超时先 `docker stop -t 2` 再 `docker kill`
-- [ ] 4.3 集成标准输出解析：复用 `runner.rs` 中 `process_output()` 处理捕获到的 stdout/stderr，复用现有 `---RESULT---` 标记解析
+- [x] 4.1 实现 `execute_in_container(docker, container_id, judge_command, timeout_ms)`：通过 bollard exec API 执行命令，流式捕获 stdout/stderr
+- [x] 4.2 超时处理：`tokio::select!` 竞速 exec stream 与 `tokio::time::sleep`；超时先 `docker stop -t 2` 再 `docker kill`
+- [ ] 4.3 集成标准输出解析：复用 `runner.rs` 中 `process_output()` 处理捕获到的 stdout/stderr，复用现有 `---RESULT---` 标记解析（任务 6 集成时完成）
 
 ## 5. 公共函数重构（`src/sandbox/container.rs`）
 
@@ -85,15 +85,15 @@
 
 ## 12. 安全加固
 
-- [ ] 12.1 容器创建时配置 `CapDrop=["ALL"]`, `SecurityOpt=["no-new-privileges"]`, `ReadonlyRootfs=true`, `NetworkMode="none"`（修改 PoolManager::create_container 和旧路径 run_in_container 的 HostConfig）
-- [ ] 12.2 docker update 时同步设置 MemorySwap = task.memory_limit_mb, MemorySwappiness = 0（防止通过 swap 绕过 OOM 限制）
+- [x] 12.1 容器创建时配置 `CapDrop=["ALL"]`, `SecurityOpt=["no-new-privileges"]`, `ReadonlyRootfs=true`, `NetworkMode="none"`（已在 PoolManager::create_container_inner 中实现）
+- [x] 12.2 docker update 时同步设置 MemorySwap = task.memory_limit_mb, MemorySwappiness = 0（已在 update_container_memory 中实现）
 - [ ] 12.3 zip 解压增加 overlapping entries 检测和总大小限制（修改 `prepare_work_dir` 中的解压逻辑）
 
 ## 13. 并发安全
 
-- [ ] 13.1 引入容器状态枚举：`enum ContainerState { Idle, InUse, Removing, Dead }`
-- [ ] 13.2 空闲队列从 VecDeque 升级为 `Mutex<RwLock<HashMap<String, ContainerState>>>`
-- [ ] 13.3 acquire 原子性检查 Idle → InUse；health_check 标记 Dead 不移除；release 处理 Dead 容器的移除
+- [x] 13.1 引入容器状态枚举：`enum ContainerState { Idle, InUse, Removing, Dead }`（已在 pool/mod.rs 中实现）
+- [x] 13.2 空闲队列从 VecDeque 升级为 `Mutex<RwLock<HashMap<String, ContainerState>>>`（已在 Pool 结构体中实现）
+- [x] 13.3 acquire 原子性检查 Idle → InUse；health_check 标记 Dead 不移除；release 处理 Dead 容器的移除（已在 pool/mod.rs 中实现）
 - [ ] 13.4 回补请求添加 200ms debounce（AtomicBool 标记 + tokio::time::sleep 合并窗口）
 - [ ] 13.5 实现 Supervisor 后台任务（30s 周期，检查 health_check/scaler/replenish 任务存活，崩溃后自动重启）
 
@@ -103,8 +103,8 @@
 - [ ] 14.2 实现熔断器：AtomicBool 状态 + 30s 滑动窗口错误计数，错误率 >50% 时自动切旧模式
 - [ ] 14.3 实现 Docker 恢复探测：熔断后每 30s 尝试 `docker.ping()`，成功后自动切回池模式
 - [ ] 14.4 `release` 中 docker rm -f 退避重试 3 次（100ms, 500ms, 2s），全部失败加入泄漏追踪列表
-- [ ] 14.5 启动时根据标签清理孤儿容器（PoolManager::init 中先 docker ps --filter label=com.noj.judge.pool=true 再 rm -f）
-- [ ] 14.6 冷启动策略：前 2 个 POOL_SCALE_INTERVAL 仅扩不缩，初始 target_depth = POOL_INITIAL_SIZE + 1
+- [x] 14.5 启动时根据标签清理孤儿容器（PoolManager::init 中先 docker ps --filter label=com.noj.judge.pool=true 再 rm -f）
+- [x] 14.6 冷启动策略：前 2 个 POOL_SCALE_INTERVAL 仅扩不缩，初始 target_depth = POOL_INITIAL_SIZE + 1（已在 Scaler 中实现）
 
 ## 15. 可观测性
 
