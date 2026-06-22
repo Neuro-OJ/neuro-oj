@@ -4,10 +4,8 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use base64::Engine;
-use bollard::container::{
-    Config, CreateContainerOptions, InspectContainerOptions, KillContainerOptions, LogsOptions,
-    RemoveContainerOptions, StartContainerOptions,
-};
+use bollard::container::LogOutput;
+use bollard::models::ContainerCreateBody;
 use bollard::models::HostConfig;
 use bollard::Docker;
 use futures_util::StreamExt;
@@ -16,12 +14,28 @@ use tracing::{error, info, warn};
 
 use crate::types::JudgeTask;
 
+/// 解压炸弹防护：最大条目数。
+const MAX_ZIP_ENTRIES: usize = 1000;
+/// 解压炸弹防护：单文件最大大小（64MB）。
+const MAX_FILE_SIZE: u64 = 64 * 1024 * 1024;
+/// 解压炸弹防护：总解压大小（512MB）。
+const MAX_TOTAL_SIZE: u64 = 512 * 1024 * 1024;
+
 /// 同步解压 zip 内容到目标目录。
 ///
 /// 使用 std::fs 同步写入以避免 tokio async fs 在特定环境下可能出现的缓冲问题。
 fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
     let cursor = std::io::Cursor::new(data);
     let mut archive = zip::ZipArchive::new(cursor).context("打开 zip 文件失败")?;
+
+    let mut seen_paths = std::collections::HashSet::new();
+
+    // 解压炸弹防护：最多条目数
+    if archive.len() > MAX_ZIP_ENTRIES {
+        anyhow::bail!("zip 条目数 {} 超过上限 {}", archive.len(), MAX_ZIP_ENTRIES);
+    }
+
+    let mut total_extracted: u64 = 0;
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).context("读取 zip 条目失败")?;
@@ -31,6 +45,11 @@ fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
         if file_name.split(['/', '\\']).any(|part| part == "..") {
             warn!("跳过 zip 路径遍历: {}", file_name);
             continue;
+        }
+
+        // 拒绝 overlapping entries（同名路径出现两次）
+        if !seen_paths.insert(file_name.clone()) {
+            anyhow::bail!("zip 包含重复条目: {}", file_name);
         }
 
         let out_path = target_dir.join(&file_name);
@@ -43,8 +62,30 @@ fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
                 std::fs::create_dir_all(parent)
                     .with_context(|| format!("创建父目录失败: {}", parent.display()))?;
             }
+
+            // 单文件大小限制
+            if file.size() > MAX_FILE_SIZE {
+                anyhow::bail!(
+                    "zip 条目 '{}' 大小 {} 超过单文件上限 {}",
+                    file_name,
+                    file.size(),
+                    MAX_FILE_SIZE
+                );
+            }
+
             let mut buf = Vec::new();
             file.read_to_end(&mut buf)?;
+
+            // 总解压大小限制
+            total_extracted += buf.len() as u64;
+            if total_extracted > MAX_TOTAL_SIZE {
+                anyhow::bail!(
+                    "zip 总解压大小 {} 超过上限 {}",
+                    total_extracted,
+                    MAX_TOTAL_SIZE
+                );
+            }
+
             std::fs::write(&out_path, &buf)
                 .with_context(|| format!("写入文件失败: {}", out_path.display()))?;
         }
@@ -64,7 +105,7 @@ pub struct ContainerOutput {
 /// 准备临时工作目录。
 ///
 /// 在 work_dir 下创建 `{submission_id}` 目录。
-async fn prepare_work_dir(work_dir: &Path, submission_id: &str) -> Result<PathBuf> {
+pub async fn prepare_work_dir(work_dir: &Path, submission_id: &str) -> Result<PathBuf> {
     let dir = work_dir.join(submission_id);
     fs::create_dir_all(&dir)
         .await
@@ -75,7 +116,7 @@ async fn prepare_work_dir(work_dir: &Path, submission_id: &str) -> Result<PathBu
 /// 获取支持包内容（Base64 解码）。
 ///
 /// Base64 解码是纯 CPU 操作，无需 async。
-fn get_support_package_bytes(task: &JudgeTask) -> Result<Option<Vec<u8>>> {
+pub fn get_support_package_bytes(task: &JudgeTask) -> Result<Option<Vec<u8>>> {
     match &task.support_package_base64 {
         Some(base64_str) if !base64_str.is_empty() => {
             let bytes = base64::engine::general_purpose::STANDARD
@@ -91,7 +132,7 @@ fn get_support_package_bytes(task: &JudgeTask) -> Result<Option<Vec<u8>>> {
 ///
 /// 使用 spawn_blocking 将同步解压操作移出 async 上下文，
 /// 避免 zip crate 在 tokio runtime 下可能出现的数据读取问题。
-async fn extract_zip(data: &[u8], target_dir: &Path) -> Result<()> {
+pub async fn extract_zip(data: &[u8], target_dir: &Path) -> Result<()> {
     let data = data.to_vec();
     let target_dir = target_dir.to_path_buf();
     tokio::task::spawn_blocking(move || extract_zip_sync(&data, &target_dir))
@@ -101,8 +142,16 @@ async fn extract_zip(data: &[u8], target_dir: &Path) -> Result<()> {
 }
 
 /// 写入用户代码到工作目录。
-async fn write_user_code(work_dir: &Path, task: &JudgeTask) -> Result<()> {
+///
+/// 验证 file_name 安全性：拒绝含路径分隔符或 `..` 的文件名，防止路径逃逸。
+pub async fn write_user_code(work_dir: &Path, task: &JudgeTask) -> Result<()> {
     let file_name = task.file_name.as_deref().unwrap_or("main.py");
+
+    // 安全校验：仅允许单级文件名，拒绝路径遍历
+    if file_name.contains('/') || file_name.contains('\\') || file_name.contains("..") {
+        anyhow::bail!("非法的 file_name（含路径分隔符或 ..）: {}", file_name);
+    }
+
     let code_path = work_dir.join(file_name);
     fs::write(&code_path, &task.code)
         .await
@@ -158,7 +207,7 @@ pub async fn run_in_container(
     // 解析 judge_command → cmd 数组
     let cmd_parts: Vec<String> = parse_command(&task.judge_command);
 
-    let config = Config {
+    let config = ContainerCreateBody {
         image: Some(task.judge_image.clone()),
         cmd: Some(cmd_parts),
         host_config: Some(host_config),
@@ -167,9 +216,9 @@ pub async fn run_in_container(
 
     let container = docker
         .create_container(
-            Some(CreateContainerOptions {
-                name: &container_name,
-                platform: None,
+            Some(bollard::query_parameters::CreateContainerOptions {
+                name: Some(container_name.clone()),
+                platform: String::new(),
             }),
             config,
         )
@@ -177,7 +226,10 @@ pub async fn run_in_container(
         .with_context(|| format!("创建容器失败: {}", container_name))?;
 
     docker
-        .start_container(&container.id, None::<StartContainerOptions<String>>)
+        .start_container(
+            &container.id,
+            None::<bollard::query_parameters::StartContainerOptions>,
+        )
         .await
         .with_context(|| format!("启动容器失败: {}", container_name))?;
 
@@ -195,7 +247,10 @@ pub async fn run_in_container(
     let wait_result = tokio::time::timeout(timeout, async {
         loop {
             let info = docker
-                .inspect_container(&container.id, None::<InspectContainerOptions>)
+                .inspect_container(
+                    &container.id,
+                    None::<bollard::query_parameters::InspectContainerOptions>,
+                )
                 .await
                 .with_context(|| format!("检查容器状态失败: {}", container_name))?;
 
@@ -220,7 +275,7 @@ pub async fn run_in_container(
             let _ = docker
                 .remove_container(
                     &container.id,
-                    Some(RemoveContainerOptions {
+                    Some(bollard::query_parameters::RemoveContainerOptions {
                         force: true,
                         ..Default::default()
                     }),
@@ -233,7 +288,10 @@ pub async fn run_in_container(
             // 超时，强制 kill
             warn!("容器超时: {}", container_name);
             let _ = docker
-                .kill_container(&container.id, None::<KillContainerOptions<String>>)
+                .kill_container(
+                    &container.id,
+                    None::<bollard::query_parameters::KillContainerOptions>,
+                )
                 .await;
             let output = capture_container_logs(docker, &container.id, -1).await;
             let _ = fs::remove_dir_all(&work_dir).await;
@@ -252,7 +310,7 @@ pub async fn run_in_container(
     let _ = docker
         .remove_container(
             &container.id,
-            Some(RemoveContainerOptions {
+            Some(bollard::query_parameters::RemoveContainerOptions {
                 force: true,
                 ..Default::default()
             }),
@@ -272,7 +330,7 @@ pub async fn run_in_container(
 /// 如果镜像不存在，返回错误并提示构建命令。
 async fn ensure_image_local(docker: &Docker, image: &str) -> Result<()> {
     let images = docker
-        .list_images::<String>(None)
+        .list_images(None::<bollard::query_parameters::ListImagesOptions>)
         .await
         .context("列出 Docker 镜像失败")?;
 
@@ -303,7 +361,7 @@ async fn capture_container_logs(
     container_id: &str,
     exit_code: i64,
 ) -> ContainerOutput {
-    let options = LogsOptions::<String> {
+    let options = bollard::query_parameters::LogsOptions {
         stdout: true,
         stderr: true,
         ..Default::default()
@@ -316,10 +374,10 @@ async fn capture_container_logs(
     while let Some(item) = stream.next().await {
         match item {
             Ok(output) => match output {
-                bollard::container::LogOutput::StdOut { message } => {
+                LogOutput::StdOut { message } => {
                     stdout.push_str(&String::from_utf8_lossy(&message));
                 }
-                bollard::container::LogOutput::StdErr { message } => {
+                LogOutput::StdErr { message } => {
                     stderr.push_str(&String::from_utf8_lossy(&message));
                 }
                 _ => {}
@@ -341,7 +399,7 @@ async fn capture_container_logs(
 /// 解析评测命令为字符串数组。
 ///
 /// 简单 shell 风格分词，支持单引号和双引号。
-fn parse_command(command: &str) -> Vec<String> {
+pub fn parse_command(command: &str) -> Vec<String> {
     let mut args = Vec::new();
     let mut current = String::new();
     let mut in_quote = false;

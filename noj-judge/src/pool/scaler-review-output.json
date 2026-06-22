@@ -1,0 +1,92 @@
+{
+  "findings": [
+    {
+      "title": "事件到达时间戳被异步缓冲压缩，导致 QPS 计算失真",
+      "file": "/home/xyber-nova/Github/neuro-oj/noj-judge/src/pool/scaler.rs",
+      "line": "81",
+      "severity": "高",
+      "description": "record_arrival 使用 Instant::now() 记录事件处理时刻而非任务实际到达时刻。事件通过无界 mpsc channel 从 PoolManager::acquire_with_pool 发送到 Scaler::start 循环。start 循环先 try_recv() 消费所有积压事件再 sleep，这意味着一个 interval 内堆积的所有 Arrival 事件被顺序消费时都获得相同的 Instant::now() 时间戳。后果：1) 滑动窗口内的时间戳分布完全失真——所有到达看起来发生在同一瞬间，QPS 失去时间特征；2) 窗口裁剪依赖时间戳先后顺序，压缩后无法正确剔除过期数据；3) QPS 降为零的速度变慢：即使新周期内无事件，上一周期批处理的时间戳要经过 1.5 个 interval 才集体过期，QPS 缓慢下降而非立即反映负载消失。",
+      "suggestion": "将 Instant::now() 从 record_arrival 中移除，改为在事件产生处（acquire_with_pool 中调用 send_scaler_event 之前）打时间戳，将时间戳作为 ScalerEvent::Arrival 的一部分传递。例如：ScalerEvent::Arrival { pool: String, timestamp: Instant }。这样即使事件被 channel 缓冲，时间戳反映的是实际到达时刻。"
+    },
+    {
+      "title": "QPS 计算分母与滑动窗口裁剪阈值不一致",
+      "file": "/home/xyber-nova/Github/neuro-oj/noj-judge/src/pool/scaler.rs",
+      "line": "149-157",
+      "severity": "中",
+      "description": "第 149 行 window_secs = interval as f64 作为 QPS 的分母。但第 151 行的裁剪阈值是 window_secs * 1.5（保留 1.5 倍 interval 内的记录）。这导致：滑动窗口保持 1.5 倍 interval 的到达记录，却除以 1 倍 interval 计算速率。如果 interval=60s，实际统计窗口为 90s，但分母是 60s，QPS 被系统性高估 50%。同时，若使用正确分母 90s 则 90s 时长的平均速率又过于平滑，不利于快速检测突发。",
+      "suggestion": "统一窗口与分母。方案一：将 window_secs 改为 interval as f64 * 1.5，裁剪阈值保持 window_secs，实现 1.5x 有效窗口。方案二：将裁剪阈值改为 window_secs（去掉 1.5 倍），分母保持 window_secs。考虑到评估间隔的采样边界抖动，建议方案一。"
+    },
+    {
+      "title": "扩缩容步长始终为 1，无法应对突发流量",
+      "file": "/home/xyber-nova/Github/neuro-oj/noj-judge/src/pool/scaler.rs",
+      "line": "205-208",
+      "severity": "高",
+      "description": "adjustment = scale_up - scale_down 取值范围为 -2 到 +3（scale_up 累加最多 3，scale_down 累加最多 2），但实际调整 new_target = target + adjustment 只做线性加减。scale_up=3 和 scale_up=1 都只增加 1 个容器。这意味着在全空池+高排队延迟的场景下（scale_up=3），依然只扩容 1 个实例。在默认 interval=60s 下，从 min_size=1 到 max_size=16 需要 15 分钟。突发流量到达时系统严重响应不足。",
+      "suggestion": "将 adjustment 作为倍数或非线性系数使用。例如 new_target = target + max(1, adjustment * target * 0.1)，使得压力大时扩容更多。同时考虑在 scaler 外部（acquire_with_pool 中已有的快速扩容逻辑）之外，让 scaler 也能做更积极的一次性扩容。"
+    },
+    {
+      "title": "sample_count 永不重置导致 miss_rate 随运行时间趋近于 0",
+      "file": "/home/xyber-nova/Github/neuro-oj/noj-judge/src/pool/scaler.rs",
+      "line": "98+167+248-249",
+      "severity": "高",
+      "description": "miss_rate = miss_count / max(1, sample_count)。sample_count 仅在 record_queue_wait 时递增（第 98 行），但永不重置。每次评估循环（第 248-249 行）只重置 miss_count 和 queue_wait_times，不清零 sample_count。运行足够长时间后，sample_count 累积到很大值，而 miss_count 每个周期从零开始，miss_rate 趋近于 0，导致 miss_rate>0.3 的扩容条件永远无法触发。这与 miss_rate 的评估意图（检测近期池空比例）完全背离。",
+      "suggestion": "每个评估周期也重置 sample_count，或改用独立窗口统计 miss 数量。更简单的方案：将 miss_rate 改为基于当前周期内 miss 与 task 的比例。可引入独立的事件计数器记录本周期总任务数，同时重置 sample_count，或将 miss_rate 的计算改为 miss_count / max(1, miss_count + queue_wait_count + arrival_count)。"
+    },
+    {
+      "title": "缩容条件缺少对 in_flight 的考量，繁忙时错误触发缩容",
+      "file": "/home/xyber-nova/Github/neuro-oj/noj-judge/src/pool/scaler.rs",
+      "line": "170-203",
+      "severity": "中",
+      "description": "idle_ratio = idle / target。当 target 被快速扩容增大后，idle 容器尚未回补完成时 idle 可能为 0 或很小，idle_ratio 可能暂时偏低——这没问题。但反过来，如果 target 较小而短时间内全部容器都在处理任务（idle=0, in_flight=target），idle_ratio=0 不会触发缩容，这是正确的。但如果 target 保持稳定且所有容器忙碌（idle=0, in_flight=target），此时 idle_ratio=0 不触发缩容，正确。然而 idle_ratio 完全没有考虑 in_flight：如果 target 被手动或快速扩容调大后突然负载降低，idle 变多，而 in_flight 也可能仍然很多。此时两者合计可能远超 target，但 idle_ratio=idle/target 可能不大。更严重的问题是：缩容决策完全没有参考 QPS、排队时间等负载指标。一个场景：QPS 很高但刚好全部容器都在处理（idle=0），此时不会缩容，正确。但若 QPS 为 0 但 in_flight>0（容器还在处理但无新任务），idle_ratio=0，不会缩容，这可能导致容器迟迟不缩。",
+      "suggestion": "缩容条件应综合 idle_ratio、QPS 趋势和队列等待时间。只有当 QPS 持续降低且 idle_ratio 持续偏高时才缩容。建议同时检查 QPS < threshold 和 avg_queue_wait < threshold 作为缩容的附加条件，避免在仍有负载时缩容。"
+    },
+    {
+      "title": "prev_idle_count 字段声明但从未使用",
+      "file": "/home/xyber-nova/Github/neuro-oj/noj-judge/src/pool/scaler.rs",
+      "line": "49-50",
+      "severity": "低",
+      "description": "PoolMetrics 结构体包含 prev_idle_count 字段（第 49 行），标注了 #[allow(dead_code)]。该字段在初始化为 0 后在代码中从未被读取或写入。这表明缩容逻辑缺少 idle 变化趋势的考量——原本可能计划通过比较前后两次 idle 计数来判断趋势（如 idle 快速增加说明负载下降），但此功能未实现。",
+      "suggestion": "移除未使用的 prev_idle_count 字段与 #[allow(dead_code)]，或实现其原始设计意图：在评估时记录上次 idle 计数，当 idle 呈上升趋势时辅助缩容决策。"
+    },
+    {
+      "title": "scale_interval_secs 取第一个池的配置，多池不同间隔时行为异常",
+      "file": "/home/xyber-nova/Github/neuro-oj/noj-judge/src/pool/scaler.rs",
+      "line": "118-122",
+      "severity": "低",
+      "description": "第 118-122 行在 start() 中通过 self.metrics.first() 取第一个池的 scale_interval_secs 作为全局评估间隔。如果多个池配置了不同的评估间隔，将被忽略。所有池使用统一间隔进行评估。虽然通常所有池共享同一份 PoolConfig，但每个 PoolMetrics 保存着自己的 config.clone()，给了每个池不同间隔的可能性，但实际并未使用。",
+      "suggestion": "要么在 Scaler::new() 时验证所有池间隔一致并记录日志，要么改为每个池独立运行各自的评估循环（每个池一个 tokio::spawn 任务），实现真正的 per-pool 评估间隔。"
+    },
+    {
+      "title": "scope_up 和 scope_down 逻辑存在同时触发的抵消风险",
+      "file": "/home/xyber-nova/Github/neuro-oj/noj-judge/src/pool/scaler.rs",
+      "line": "178-203",
+      "severity": "中",
+      "description": "scale_up 和 scale_down 的判断条件相互独立，且在调整时做简单的加减抵消。存在同时满足某些条件的场景：例如 avg_queue_wait=600ms（排队>500ms，scale_up+=1），同时 target 较小导致 idle_ratio=0.5（>0.4，连续 3 周期则 scale_down+=2），可能产生 scale_up=1, scale_down=2, adjustment=-1, 即负载较高时反而缩容。虽然 high_idle_cycles 的持续条件提供了一定的保护（需要连续≥2 周期空闲），但如果每个周期同时满足排队延迟和一定空闲率（例如池目标设置过小导致频繁排队，同时部分容器空闲），就会出现同时扩缩的矛盾决策。",
+      "suggestion": "在 scale_down 生效前增加 QPS 检查：只有 QPS < 预设低水位阈值时才允许 scale_down，确保不会在仍有负载压力时缩容。或者在 adjustment 计算时，如果 scale_up > 0 则禁止 scale_down。"
+    },
+    {
+      "title": "快速扩容绕过 Scaler 直接修改 target_depth，可能导致震荡",
+      "file": "/home/xyber-nova/Github/neuro-oj/noj-judge/src/pool/mod.rs",
+      "line": "508-515",
+      "severity": "中",
+      "description": "acquire_with_pool 中遇 Miss 时直接 pool.set_target_depth(pool.target_depth() + 1) 做快速扩容。此操作绕过 Scaler 评估循环，直接修改 AtomicUsize。Scaler 在下一个评估周期会读取到已修改的 target，并基于自身指标再次计算调整。如果 Scaler 评估结果为 noop（因为快速扩容后 idle 增加了），则无事；但如果 Scaler 认为需要缩容（因为新容器还处于 idle 状态），则可能在几秒内先快速扩再缩，造成震荡。此外快速扩容的 +1 步长很小，与 Scaler 的 +1 步长相同，两者间的协调缺乏机制。",
+      "suggestion": "在 Scaler 中记录快速扩容事件，评估时考虑这些事件：快速扩容后的下一个评估周期应暂停或减弱缩容倾向，给新容器时间投入工作。或者将快速扩容的增量通知 Scaler（通过新事件类型），让 Scaler 调整后续评估策略。"
+    },
+    {
+      "title": "arrival_timestamps 上限 1024 在高 QPS 场景可能成为瓶颈",
+      "file": "/home/xyber-nova/Github/neuro-oj/noj-judge/src/pool/scaler.rs",
+      "line": "64+81-84",
+      "severity": "低",
+      "description": "arrival_timestamps 的容量上限为 1024（第 64 行：VecDeque::with_capacity(1024)），超过时 pop_front 丢弃最旧记录。如果 QPS 超过 1024 / interval，则记录会被截断，窗口内的到达计数被低估。例如 interval=60s 时，QPS 超过 1024/60≈17 时，队列会在到达评估周期之前就开始丢弃数据。对 QPS 上限为 17 的扩缩容系统来说，这可能在较高负载下低估 QPS。",
+      "suggestion": "将容量上限改为基于配置计算的值，如 (max_qps_estimate * interval * 2) 作为容量，或直接使用大容量如 65536。也可以改用更内存高效的环形缓冲区。"
+    },
+    {
+      "title": "无单元测试覆盖扩缩容逻辑",
+      "file": "/home/xyber-nova/Github/neuro-oj/noj-judge/src/pool/scaler.rs",
+      "line": "1-253",
+      "severity": "中",
+      "description": "整个 scaler 模块没有任何 #[cfg(test)] 单元测试。扩缩容逻辑涉及复杂的滑动窗口计算、阈值判断、多池隔离，且存在本文列出的多个潜在 bug，完全没有测试覆盖。",
+      "suggestion": "添加单元测试覆盖：1) 滑动窗口 QPS 计算（验证时间戳分布和裁剪）；2) 各阈值组合下的 scale_up/scale_down 决策输出；3) 指标重置行为；4) 空事件流行为；5) 突发到达场景。考虑使用模拟时钟（如 tokio::time::advance）加速时间相关测试。"
+    }
+  ]
+}

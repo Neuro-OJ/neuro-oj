@@ -2,16 +2,10 @@
 ///
 /// 从 Redis 消息队列中拉取评测任务，在 Docker 容器中执行评测，
 /// 并将结果返回给 noj-core。
-///
-/// # 工作流程
-///
-/// 1. 连接 Redis（PING 验证）和 Docker daemon（PING 验证）
-/// 2. BRPOP 阻塞拉取 noj:judge:queue 的任务
-/// 3. 通过 Semaphore 控制并发数，spawn tokio task 处理
-/// 4. 每个 task：解压支持包 → 写入用户代码 → Docker 执行 → 解析结果 → LPUSH 返回
 mod config;
 mod judge;
 mod mq;
+mod pool;
 mod sandbox;
 mod types;
 
@@ -19,21 +13,46 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use bollard::Docker;
+use futures_util::stream::FuturesUnordered;
+use futures_util::StreamExt;
 use tokio::sync::Semaphore;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::config::Config;
+use crate::pool::PoolManager;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+/// 等待所有 in-flight 任务完成（带 30s 超时兜底）。
+async fn drain_tasks(tasks: &mut FuturesUnordered<tokio::task::JoinHandle<()>>) {
+    info!(
+        "关闭信号已接收，等待 {} 个正在执行的任务完成...",
+        tasks.len()
+    );
+    let timeout_dur = std::time::Duration::from_secs(30);
+    let timeout = tokio::time::sleep(timeout_dur);
+    tokio::pin!(timeout);
+    loop {
+        tokio::select! {
+            _ = &mut timeout => {
+                warn!("等待超时，{} 个任务未完成，强制退出", tasks.len());
+                break;
+            }
+            _ = tasks.next() => {
+                if tasks.is_empty() {
+                    info!("所有 in-flight 任务已完成");
+                    break;
+                }
+            }
+        }
+    }
+}
+
+fn main() -> Result<()> {
+    let rt = tokio::runtime::Runtime::new().context("创建 Tokio 运行时失败")?;
+    rt.block_on(async {
     tracing_subscriber::fmt::init();
 
     let config = Config::from_env();
-
-    info!(
-        "noj-judge 启动 (queue={}, result_queue={}, max_concurrent={})",
-        config.judge_queue, config.result_queue, config.max_concurrent
-    );
+    info!("noj-judge 启动 (pool_enabled={})", config.pool.enabled);
 
     // 连接 Redis
     let redis_client =
@@ -57,81 +76,168 @@ async fn main() -> Result<()> {
         .context("Docker daemon PING 失败（请确保 Docker 在运行中）")?;
     info!("Docker 连接成功");
 
-    // 并发控制
-    let semaphore = Arc::new(Semaphore::new(config.max_concurrent));
-    let redis_url = config.redis_url.clone();
+    let _redis_url = config.redis_url.clone();
     let result_queue = config.result_queue.clone();
     let work_dir = config.work_dir.clone();
 
-    info!("等待评测任务...");
-
-    // 主循环
-    loop {
-        let task = match mq::pull_task(&mut redis_conn, &config.judge_queue).await {
-            Ok(Some(task)) => task,
-            Ok(None) => continue,
-            Err(e) => {
-                error!("拉取任务失败: {}", e);
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                continue;
-            }
-        };
-
-        info!(
-            "收到评测任务: submission_id={}, language={}",
-            task.submission_id, task.language
-        );
-
-        let permit = semaphore
-            .clone()
-            .acquire_owned()
+    if config.pool.enabled {
+        // ── Pool 模式 ──────────────────────────────
+        let pool = PoolManager::init(docker, config.pool.clone())
             .await
-            .expect("信号量关闭，无法继续处理");
-        let docker = docker.clone();
-        let redis_url = redis_url.clone();
-        let result_queue = result_queue.clone();
-        let work_dir = work_dir.clone();
+            .context("初始化容器池失败")?;
 
+        let pool_ref = pool.clone();
+        // 注册优雅关闭信号处理
+        let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         tokio::spawn(async move {
-            let _permit = permit;
-
-            let result = match judge::runner::evaluate(&docker, &task, &work_dir).await {
-                Ok(r) => r,
-                Err(e) => {
-                    error!("评测失败: {}: {}", task.submission_id, e);
-                    types::JudgeResult::error(&task.submission_id, &e.to_string())
-                }
-            };
-
-            // 建立独立连接发布结果
-            if let Ok(mut conn) = redis_client_conn(&redis_url).await {
-                if let Err(e) = mq::push_result(&mut conn, &result_queue, &result).await {
-                    error!(
-                        "发布评测结果失败: {} (submission: {})",
-                        e, task.submission_id
-                    );
-                } else {
-                    info!(
-                        "评测结果已发布: {} -> {}",
-                        task.submission_id, result.status
-                    );
-                }
-            } else {
-                error!(
-                    "无法连接 Redis 发布结果 (submission: {})",
-                    task.submission_id
-                );
-            }
+            tokio::signal::ctrl_c().await.ok();
+            info!("收到 SIGINT，开始优雅关闭...");
+            pool_ref.shutdown().await;
+            let _ = shutdown_tx.send(());
         });
-    }
-}
 
-/// 创建并验证 Redis 连接。
-async fn redis_client_conn(redis_url: &str) -> Result<redis::aio::MultiplexedConnection> {
-    let client = redis::Client::open(redis_url).context("创建 Redis 客户端失败")?;
-    let conn = client
-        .get_multiplexed_async_connection()
-        .await
-        .context("连接 Redis 失败")?;
-    Ok(conn)
+        info!("等待评测任务（池模式）...");
+
+        // 使用 FuturesUnordered 跟踪所有 in-flight 任务
+        let mut tasks = FuturesUnordered::new();
+
+        loop {
+            tokio::select! {
+                biased;
+                _ = &mut shutdown_rx => {
+                    drain_tasks(&mut tasks).await;
+                    break;
+                }
+                task_result = mq::pull_task(&mut redis_conn, &config.judge_queue) => {
+                    let task = match task_result {
+                        Ok(Some(task)) => task,
+                        Ok(None) => continue,
+                        Err(e) => {
+                            error!("拉取任务失败: {}", e);
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                            continue;
+                        }
+                    };
+
+                    info!(
+                        "收到评测任务: submission_id={}, language={}",
+                        task.submission_id, task.language
+                    );
+
+                    let pool = pool.clone();
+                    let redis_client = redis_client.clone();
+                    let result_queue = result_queue.clone();
+                    let work_dir = work_dir.clone();
+
+                    let handle = tokio::spawn(async move {
+                        let work_dir_path = std::path::Path::new(&work_dir);
+                        let fallback_dir = std::path::Path::new(&work_dir).join("fallback-results");
+
+                        let result = match judge::runner::evaluate_with_pool(pool.clone(), &task, work_dir_path).await {
+                            Ok(r) => {
+                                // 根据结果状态更新计数器
+                                match r.status.as_str() {
+                                    "TimeLimitExceeded" => pool.inc_timeouts_total(),
+                                    "SystemError" | "RuntimeError" => pool.inc_errors_total(),
+                                    _ => {}
+                                }
+                                r
+                            }
+                            Err(e) => {
+                                error!("评测失败: {}: {:#}", task.submission_id, e);
+                                pool.inc_errors_total();
+                                types::JudgeResult::error(&task.submission_id, &e.to_string())
+                            }
+                        };
+
+                        // 使用带重试的推送
+                        mq::push_result_with_retry(
+                            &redis_client,
+                            &result_queue,
+                            &result,
+                            &fallback_dir,
+                        ).await;
+                    });
+                    tasks.push(handle);
+                }
+            }
+        }
+    } else {
+        // ── 旧 Semaphore 模式 ──────────────────────
+        let semaphore = Arc::new(Semaphore::new(config.max_concurrent()));
+
+        info!("等待评测任务（Semaphore 模式）...");
+
+        // 注册优雅关闭信号
+        let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(async move {
+            tokio::signal::ctrl_c().await.ok();
+            info!("收到 SIGINT，开始优雅关闭（Semaphore 模式）...");
+            let _ = shutdown_tx.send(());
+        });
+
+        let mut tasks = FuturesUnordered::new();
+
+        loop {
+            tokio::select! {
+                biased;
+                _ = &mut shutdown_rx => {
+                    drain_tasks(&mut tasks).await;
+                    break;
+                }
+                task_result = mq::pull_task(&mut redis_conn, &config.judge_queue) => {
+                    let task = match task_result {
+                        Ok(Some(task)) => task,
+                        Ok(None) => continue,
+                        Err(e) => {
+                            error!("拉取任务失败: {}", e);
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                            continue;
+                        }
+                    };
+
+                    let permit = match semaphore.clone().acquire_owned().await {
+                        Ok(p) => p,
+                        Err(_) => {
+                            error!(
+                                "信号量已关闭，无法获取许可，跳过任务: {}",
+                                task.submission_id
+                            );
+                            continue;
+                        }
+                    };
+                    let docker = docker.clone();
+                    let redis_client = redis_client.clone();
+                    let result_queue = result_queue.clone();
+                    let work_dir = work_dir.clone();
+
+                    let handle = tokio::spawn(async move {
+                        let _permit = permit;
+                        let fallback_dir = std::path::Path::new(&work_dir).join("fallback-results");
+
+                        let result = match judge::runner::evaluate_legacy(&docker, &task, &work_dir).await {
+                            Ok(r) => r,
+                            Err(e) => {
+                                error!("评测失败: {}: {:#}", task.submission_id, e);
+                                types::JudgeResult::error(&task.submission_id, &e.to_string())
+                            }
+                        };
+
+                        // 使用带重试的推送
+                        mq::push_result_with_retry(
+                            &redis_client,
+                            &result_queue,
+                            &result,
+                            &fallback_dir,
+                        ).await;
+                    });
+                    tasks.push(handle);
+                }
+            }
+        }
+    }
+
+    #[allow(unreachable_code)]
+    Ok(())
+    })
 }

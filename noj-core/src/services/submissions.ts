@@ -36,6 +36,7 @@ export interface SubmissionWithResult extends SubmissionResponse {
     output: string;
     time_ms: number | null;
     memory_kb: number | null;
+    details: Record<string, unknown> | null;
   } | null;
 }
 
@@ -331,6 +332,7 @@ export async function getSubmission(
       output: resultRows[0].output,
       time_ms: resultRows[0].time_ms,
       memory_kb: resultRows[0].memory_kb,
+      details: parseDetails(resultRows[0].details),
     }
     : null;
 
@@ -355,10 +357,15 @@ export async function saveEvaluationResult(
 
   // 使用事务保证原子性：更新 submission 状态 + 插入 evaluation_results
   await db.transaction(async (tx) => {
-    // 更新提交状态
+    // 根据评测结果状态映射 submission 状态
+    // SystemError → "error"，其他 → "finished"
+    const submissionStatus: SubmissionStatus = result.status === "SystemError"
+      ? "error"
+      : "finished";
+
     await tx
       .update(submissions)
-      .set({ status: "finished" })
+      .set({ status: submissionStatus })
       .where(eq(submissions.id, result.submission_id));
 
     // 插入评测结果（使用 UPSERT 语义防止重复消费）
@@ -382,10 +389,23 @@ export async function saveEvaluationResult(
 // 允许的状态转换
 const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
   pending: ["judging", "error"],
-  judging: ["finished"],
+  judging: ["finished", "error"],
   finished: [],
   error: [],
 };
+
+/**
+ * 解析 details 字段。
+ * 数据库中以 JSON 字符串存储，解析为对象返回。
+ */
+function parseDetails(raw: string | null): Record<string, unknown> | null {
+  if (raw === null || raw === undefined) return null;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * 更新提交状态。

@@ -7,7 +7,7 @@ description = "Neuro OJ 评测 Worker — 通过 Redis MQ 接收任务，Docker 
 [dependencies]
 redis = { version = "0.27", features = ["tokio-comp"] }
 tokio = { version = "1", features = ["full"] }
-bollard = "0.18"
+bollard = "0.21"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
@@ -17,6 +17,10 @@ uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 futures-util = "0.3"
+tar = "0.4"
+tokio-util = "0.7"
+scopeguard = "1.2"
+axum = "0.8"
 
 [dev-dependencies]
 tempfile = "3"

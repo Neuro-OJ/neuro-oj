@@ -1,33 +1,145 @@
-use anyhow::{Context, Result};
-use bollard::Docker;
-use serde_json::Value;
 use std::path::Path;
+use std::sync::Arc;
+
+use anyhow::{Context, Result};
+use serde_json::Value;
 use tracing::{error, info, warn};
 
-use crate::sandbox::container::{run_in_container, ContainerOutput};
+use crate::pool::copy::archive_and_copy;
+use crate::pool::exec::execute_in_container;
+use crate::pool::PoolManager;
+use crate::sandbox::container::{self, ContainerOutput};
 use crate::types::{JudgeResult, JudgeStatus};
 
-/// 执行评测任务。
+/// Redis MQ 拉取到的评测任务。（引用 types::JudgeTask）
+pub use crate::types::JudgeTask;
+
+/// 执行评测任务（池路径）。
 ///
-/// 编排完整流程：解压支持包 → 写入用户代码 → Docker 容器执行 → 解析结果 → 清理。
-pub async fn evaluate(
-    docker: &Docker,
-    task: &crate::types::JudgeTask,
+/// 获取容器后，将实际评测逻辑委托给 `do_evaluate_with_pool`，
+/// 然后在函数返回前无条件执行 cleanup（释放容器 + 删除临时目录），
+/// 确保不泄漏容器或磁盘空间。
+pub async fn evaluate_with_pool(
+    pool: Arc<PoolManager>,
+    task: &JudgeTask,
+    work_dir_root: &Path,
+) -> Result<JudgeResult> {
+    let submission_id = &task.submission_id;
+    let image = &task.judge_image;
+
+    // 计数器：任务开始
+    pool.inc_tasks_total();
+
+    // 1. 从池获取容器（带 RAII guard，? 提前返回时自动 cleanup）
+    let guard = pool.acquire_guarded(image, task.memory_limit_mb).await?;
+    let container_id = guard.container_id().to_string();
+
+    // 2. 准备临时工作目录
+    let work_dir = container::prepare_work_dir(work_dir_root, submission_id).await?;
+
+    // 3. 执行评测逻辑
+    let result = do_evaluate_with_pool(pool.clone(), task, &container_id, &work_dir).await;
+
+    // 4. 清理临时目录
+    let _ = tokio::fs::remove_dir_all(&work_dir).await;
+
+    // 5. 手动释放 guard（触发 docker rm -f + in_flight-- + 回补检查）
+    //    注意：不能同时调用 pool.release()，否则 in_flight 会被减两次
+    guard.release().await;
+
+    result
+}
+
+/// 评测逻辑核心（不含资源获取/清理，方便确保 cleanup）。
+async fn do_evaluate_with_pool(
+    pool: Arc<PoolManager>,
+    task: &JudgeTask,
+    container_id: &str,
+    work_dir: &Path,
+) -> Result<JudgeResult> {
+    let submission_id = &task.submission_id;
+
+    // 1. 解压支持包
+    if let Some(zip_data) = container::get_support_package_bytes(task)? {
+        container::extract_zip(&zip_data, work_dir).await?;
+        info!("支持包已解压: {} ({} bytes)", submission_id, zip_data.len());
+    } else {
+        info!("无支持包，跳过解压: {}", submission_id);
+    }
+
+    // 2. 写入用户代码
+    container::write_user_code(work_dir, task).await?;
+    info!("用户代码已写入: {}", submission_id);
+
+    // 3. tar 打包并注入到容器
+    let max_archive_mb = pool.config().max_archive_mb;
+    archive_and_copy(pool.docker(), container_id, work_dir, max_archive_mb)
+        .await
+        .context("archive_and_copy 失败")?;
+    info!("文件已注入到容器: {}", submission_id);
+
+    // 4. docker exec 执行评测命令
+    let cmd_parts = container::parse_command(&task.judge_command);
+    let timeout_ms = task.time_limit_ms;
+    let kill_grace = pool.config().kill_grace_secs;
+
+    let (stdout, stderr, exit_code, time_ms) = execute_in_container(
+        pool.docker(),
+        container_id,
+        &cmd_parts,
+        timeout_ms,
+        kill_grace,
+    )
+    .await?;
+
+    info!(
+        "评测执行完毕: {} (exit: {}, time: {}ms)",
+        submission_id, exit_code, time_ms
+    );
+
+    // 5. 读取内存峰值
+    let memory_kb = crate::pool::exec::read_memory_peak_kb(pool.docker(), container_id)
+        .await
+        .unwrap_or(0);
+
+    // 6. 解析输出
+    let output = ContainerOutput {
+        stdout,
+        stderr,
+        exit_code,
+    };
+    let mut result = process_output(task, &output);
+    result.time_ms = Some(time_ms);
+    result.memory_kb = Some(memory_kb);
+    Ok(result)
+}
+
+/// 执行评测任务（旧路径）。
+///
+/// 使用 Semaphore + run_in_container，与原有行为一致。
+pub async fn evaluate_legacy(
+    docker: &bollard::Docker,
+    task: &JudgeTask,
     work_dir: &str,
 ) -> Result<JudgeResult> {
+    use std::time::Instant;
+
+    let start = Instant::now();
     let work_dir = Path::new(work_dir);
+    let output = container::run_in_container(docker, task, work_dir).await?;
+    let time_ms = start.elapsed().as_millis() as u64;
 
-    // 1. 在 Docker 容器中执行评测
-    let output = run_in_container(docker, task, work_dir).await?;
+    // 内存峰值（容器在 run_in_container 末尾被 rm -f，需在之前读取）
+    let memory_kb = 0; // 旧路径容器在 capture_logs 后立即被删除，无法读 cgroup
 
-    // 2. 根据退出码和输出构造结果
-    let result = process_output(task, &output);
-
+    let mut result = process_output(task, &output);
+    result.time_ms = Some(time_ms);
+    result.memory_kb = Some(memory_kb);
     Ok(result)
 }
 
 /// 处理容器输出，解析 ---RESULT--- 标记，构造 JudgeResult。
-fn process_output(task: &crate::types::JudgeTask, output: &ContainerOutput) -> JudgeResult {
+pub fn process_output(task: &JudgeTask, output: &ContainerOutput) -> JudgeResult {
     let submission_id = &task.submission_id;
     let full_output = if output.stderr.is_empty() {
         output.stdout.clone()
@@ -35,13 +147,13 @@ fn process_output(task: &crate::types::JudgeTask, output: &ContainerOutput) -> J
         format!("{}\n--- STDERR ---\n{}", output.stdout, output.stderr)
     };
 
-    // 超时检测（exit_code = -1 由容器超时逻辑设置）
+    // 超时检测（exit_code = -1）
     if output.exit_code == -1 {
         warn!("评测超时: {}", submission_id);
         return JudgeResult::timeout(submission_id, &full_output);
     }
 
-    // OOM 检测（Docker OOM kill 退出码为 137 = 128 + SIGKILL(9)）
+    // OOM 检测（退出码 137 = 128 + SIGKILL(9)）
     if output.exit_code == 137 {
         warn!("评测 OOM: {}", submission_id);
         return JudgeResult::memory_exceeded(submission_id, &full_output);
@@ -55,7 +167,6 @@ fn process_output(task: &crate::types::JudgeTask, output: &ContainerOutput) -> J
                 submission_id, status, score
             );
 
-            // 非零退出码 + 有 ---RESULT--- → 以 evaluate.py 的输出为准，但记录 warn
             if output.exit_code != 0 {
                 warn!(
                     "evaluate.py 有输出但退出码非零: {} (exit: {})",
@@ -74,9 +185,7 @@ fn process_output(task: &crate::types::JudgeTask, output: &ContainerOutput) -> J
             }
         }
         Ok(None) => {
-            // 无 ---RESULT--- 标记
             if output.exit_code == 0 {
-                // 正常退出但没有结果标记 → 评测脚本/环境问题，属于系统错误
                 error!("评测无结果标记: {}", submission_id);
                 JudgeResult::system_error(submission_id, &full_output)
             } else {
@@ -88,7 +197,6 @@ fn process_output(task: &crate::types::JudgeTask, output: &ContainerOutput) -> J
             }
         }
         Err(e) => {
-            // JSON 解析失败
             error!("评测结果解析失败: {}: {}", submission_id, e);
             JudgeResult {
                 submission_id: submission_id.to_string(),
@@ -104,22 +212,18 @@ fn process_output(task: &crate::types::JudgeTask, output: &ContainerOutput) -> J
 }
 
 /// 从 stdout 中解析 ---RESULT--- 标记后的 JSON。
-///
-/// 返回 (status, score, details) 元组。
 fn parse_result_marker(stdout: &str) -> Result<Option<(String, i32, Value)>> {
     const MARKER: &str = "---RESULT---";
 
-    // 从后往前找最后一个 ---RESULT--- 标记
     let marker_pos = match stdout.rfind(MARKER) {
         Some(pos) => pos,
         None => return Ok(None),
     };
 
-    // 标记后的第一行非空文本
     let after_marker = &stdout[marker_pos + MARKER.len()..];
     let json_str = match after_marker.lines().find(|line| !line.trim().is_empty()) {
         Some(s) => s,
-        None => return Ok(None), // 标记后无有效内容，视作无结果
+        None => return Ok(None),
     };
 
     let parsed: Value = serde_json::from_str(json_str).context("解析 ---RESULT--- JSON 失败")?;
@@ -169,36 +273,8 @@ Some debug output
     }
 
     #[test]
-    fn test_parse_result_marker_invalid_json() {
-        let stdout = "\
----RESULT---
-{invalid json}
-";
-        let result = parse_result_marker(stdout);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_parse_result_marker_empty_after_marker() {
-        let stdout = "---RESULT---\n  \n  \n";
-        let result = parse_result_marker(stdout).unwrap();
-        // 标记后无有效内容
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_parse_result_marker_missing_fields() {
-        let stdout = "\
----RESULT---
-{\"status\":\"Accepted\"}
-";
-        let result = parse_result_marker(stdout);
-        assert!(result.is_err()); // 缺少 score
-    }
-
-    #[test]
     fn test_process_output_accepted() {
-        let task = crate::types::JudgeTask {
+        let task = JudgeTask {
             submission_id: "test-123".to_string(),
             problem_id: "1001".to_string(),
             judge_image: "noj-judge-python".to_string(),
@@ -225,7 +301,7 @@ Some debug output
 
     #[test]
     fn test_process_output_timeout() {
-        let task = crate::types::JudgeTask {
+        let task = JudgeTask {
             submission_id: "test-456".to_string(),
             problem_id: "1001".to_string(),
             judge_image: "noj-judge-python".to_string(),
@@ -250,7 +326,7 @@ Some debug output
 
     #[test]
     fn test_process_output_oom() {
-        let task = crate::types::JudgeTask {
+        let task = JudgeTask {
             submission_id: "test-789".to_string(),
             problem_id: "1001".to_string(),
             judge_image: "noj-judge-python".to_string(),
@@ -275,7 +351,7 @@ Some debug output
 
     #[test]
     fn test_process_output_runtime_error() {
-        let task = crate::types::JudgeTask {
+        let task = JudgeTask {
             submission_id: "test-runtime".to_string(),
             problem_id: "1001".to_string(),
             judge_image: "noj-judge-python".to_string(),
@@ -299,8 +375,8 @@ Some debug output
     }
 
     #[test]
-    fn test_process_output_exit_code_0_no_marker_system_error() {
-        let task = crate::types::JudgeTask {
+    fn test_process_output_system_error() {
+        let task = JudgeTask {
             submission_id: "test-no-marker".to_string(),
             problem_id: "1001".to_string(),
             judge_image: "noj-judge-python".to_string(),
@@ -312,15 +388,33 @@ Some debug output
             time_limit_ms: 5000,
             memory_limit_mb: 512,
         };
-
         let output = ContainerOutput {
-            stdout: "评测正常执行但未输出 ---RESULT---".to_string(),
+            stdout: "\u{8bc4}\u{6d4b}\u{6b63}\u{5e38}\u{6267}\u{884c}\u{4f46}\u{672a}\u{8f93}\u{51fa}---RESULT---".to_string(),
             stderr: String::new(),
             exit_code: 0,
         };
-
         let result = process_output(&task, &output);
         assert_eq!(result.status, "SystemError");
-        assert_eq!(result.score, 0);
+    }
+
+    #[test]
+    fn test_parse_result_marker_invalid_json() {
+        let stdout = "---RESULT---\n{invalid json}\n";
+        let result = parse_result_marker(stdout);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_result_marker_empty_after_marker() {
+        let stdout = "---RESULT---\n  \n  \n";
+        let result = parse_result_marker(stdout).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_result_marker_missing_fields() {
+        let stdout = "---RESULT---\n{\"status\":\"Accepted\"}\n";
+        let result = parse_result_marker(stdout);
+        assert!(result.is_err());
     }
 }

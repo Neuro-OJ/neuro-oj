@@ -21,7 +21,9 @@ const HEADLESS = process.env.HEADLESS !== "false"; // 默认 headless
 // 启动前检查
 if (!process.env.E2E_CORE_URL) {
   console.warn(`  ⚠️  E2E_CORE_URL 未设置，默认 API → ${API}`);
-  console.warn(`  正确用法: cd noj-ui && E2E_CORE_URL=http://localhost:8099 node ../scripts/e2e/smoke.mjs\n`);
+  console.warn(
+    `  正确用法: cd noj-ui && E2E_CORE_URL=http://localhost:8099 node ../scripts/e2e/smoke.mjs\n`,
+  );
 }
 
 async function waitForAccepted(page) {
@@ -37,7 +39,9 @@ async function waitForAccepted(page) {
 
 async function main() {
   const browser = await chromium.launch({ headless: HEADLESS });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 900 },
+  });
 
   let passed = 0;
   let failed = 0;
@@ -48,7 +52,11 @@ async function main() {
     const regResp = await fetch(`${API}/api/v1/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "e2e_test", email: "e2e@test.com", password: "test123456" }),
+      body: JSON.stringify({
+        username: "e2e_test",
+        email: "e2e@test.com",
+        password: "test123456",
+      }),
     });
     const regData = await regResp.json().catch(() => ({}));
     if (regResp.ok) {
@@ -71,9 +79,12 @@ async function main() {
     const loginResult = await Promise.race([
       page.waitForURL("http://localhost:3000/", { timeout: 15000 })
         .then(() => "navigated"),
-      page.locator(".error-banner, [class*='error']").first().waitFor({ timeout: 5000 })
+      page.locator(".error-banner, [class*='error']").first().waitFor({
+        timeout: 5000,
+      })
         .then(async () => {
-          const text = await page.locator(".error-banner, [class*='error']").first().textContent();
+          const text = await page.locator(".error-banner, [class*='error']")
+            .first().textContent();
           return `error: ${text}`;
         })
         .catch(() => "timeout"),
@@ -103,7 +114,9 @@ async function main() {
     });
     const loginData = await loginResp.json();
     const token = loginData.data?.token;
-    if (!token) throw new Error("获取 token 失败: " + JSON.stringify(loginData));
+    if (!token) {
+      throw new Error("获取 token 失败: " + JSON.stringify(loginData));
+    }
 
     // 提交代码
     const submitResp = await fetch(`${API}/api/v1/submissions`, {
@@ -115,7 +128,8 @@ async function main() {
       body: JSON.stringify({
         problem_id: "1003",
         language: "python3",
-        code: "import sys\na, b = map(int, sys.stdin.read().split())\nprint(a + b)",
+        code:
+          "import sys\na, b = map(int, sys.stdin.read().split())\nprint(a + b)",
       }),
     });
     const submitData = await submitResp.json();
@@ -126,7 +140,9 @@ async function main() {
 
     // ===== Step 4: 查看结果页 =====
     console.log("[4/5] 等待评测结果...");
-    await page.goto(`${BASE}/submissions/${submissionId}`, { waitUntil: "networkidle" });
+    await page.goto(`${BASE}/submissions/${submissionId}`, {
+      waitUntil: "networkidle",
+    });
 
     const result = await waitForAccepted(page);
 
@@ -142,10 +158,14 @@ async function main() {
 
     await page.screenshot({ path: "/tmp/e2e-result.png", fullPage: true });
     console.log("  📸 截图: /tmp/e2e-result.png");
-
   } catch (err) {
-    console.error(`\n❌ 异常:`, err instanceof Error ? err.message : String(err));
-    await page.screenshot({ path: "/tmp/e2e-error.png", fullPage: true }).catch(() => {});
+    console.error(
+      `\n❌ 异常:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    await page.screenshot({ path: "/tmp/e2e-error.png", fullPage: true }).catch(
+      () => {},
+    );
     failed++;
   } finally {
     await browser.close();
