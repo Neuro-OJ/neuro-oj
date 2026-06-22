@@ -13,7 +13,7 @@
                     <div class="footer-section">
                         <h4>了解我们</h4>
                         <NuxtLink to="/about">关于</NuxtLink>
-                        <a href="https://github.com/anomalyco/neuro-oj" target="_blank" rel="noopener">GitHub</a>
+                        <a href="https://github.com/Neuro-OJ/neuro-oj" target="_blank" rel="noopener">GitHub</a>
                     </div>
                 </div>
             </div>

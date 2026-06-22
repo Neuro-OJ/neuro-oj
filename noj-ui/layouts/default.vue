@@ -69,6 +69,7 @@ body {
     flex: 1;
     min-height: calc(100vh - 64px);
     width: 100%;
+    padding: 64px 0 0 60px;
 }
 
 .main {

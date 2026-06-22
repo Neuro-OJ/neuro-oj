@@ -29,8 +29,9 @@ import { House, FileText, Info } from "@lucide/vue"
 
 <style scoped>
 .sidebar {
-    position: sticky;
+    position: fixed;
     top: 64px;
+    left: 0;
     display: flex;
     flex-direction: column;
     width: 60px;
@@ -41,7 +42,6 @@ import { House, FileText, Info } from "@lucide/vue"
     overflow: hidden;
     white-space: nowrap;
     transition: width 0.25s ease;
-    flex-shrink: 0;
 }
 
 .sidebar:hover {

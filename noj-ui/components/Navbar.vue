@@ -93,16 +93,18 @@ function handleLogout() {
 .navbar {
     background: var(--c-white);
     border-bottom: 1px solid var(--c-border);
-    position: sticky;
+    position: fixed;
     top: 0;
+    left: 0;
+    right: 0;
     z-index: 100;
 }
 
 .container {
-    margin-left: 24px;
-    margin-right: 24px;
+    width: 100%;
     max-width: none;
-    padding: 0;
+    margin: 0;
+    padding: 0 24px;
     height: 64px;
     display: flex;
     align-items: center;

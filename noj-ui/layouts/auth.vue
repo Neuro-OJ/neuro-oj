@@ -18,7 +18,7 @@
 .main {
     flex: 1;
     min-height: calc(100vh - 64px);
-    padding: 48px 24px;
+    padding: 112px 24px 48px;
     display: flex;
     align-items: center;
     justify-content: center;
