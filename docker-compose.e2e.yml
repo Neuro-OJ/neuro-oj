@@ -36,6 +36,9 @@ services:
       JWT_SECRET: e2e-test-secret
       PORT: "8000"
       NOJ_RUN_E2E: "1"
+      # seed 管理员凭证（需与 noj-core/tests/e2e/helper.ts 默认值一致）
+      ADMIN_EMAIL: e2e_admin@test.com
+      ADMIN_PASS: e2e_admin_pass
     depends_on:
       postgres:
         condition: service_healthy

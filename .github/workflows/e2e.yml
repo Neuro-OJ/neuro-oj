@@ -25,6 +25,8 @@ concurrency:
 
 env:
   COMPOSE_PROJECT_NAME: noj-e2e
+  DOCKER_BUILDKIT: "1"
+  COMPOSE_DOCKER_CLI_BUILD: "1"
   E2E_BASE_URL: http://localhost:8099
   E2E_CORE_PORT: 8099
   E2E_DB_URL: postgres://e2e:e2e@localhost:5433/e2e

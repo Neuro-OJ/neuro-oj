@@ -6,7 +6,12 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY src/ ./src/
 
-RUN cargo build --release --bin noj-judge
+# cargo registry + target 均用 BuildKit 缓存，后续构建复用已编译的依赖
+# 编译后将二进制复制到 /tmp/（非缓存路径）供 COPY --from=builder 使用
+RUN --mount=type=cache,target=/build/target \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    cargo build --release --bin noj-judge && \
+    cp /build/target/release/noj-judge /tmp/noj-judge
 
 # 运行阶段
 FROM debian:bookworm-slim
@@ -15,6 +20,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /build/target/release/noj-judge /usr/local/bin/noj-judge
+COPY --from=builder /tmp/noj-judge /usr/local/bin/noj-judge
 
 ENTRYPOINT ["noj-judge"]
