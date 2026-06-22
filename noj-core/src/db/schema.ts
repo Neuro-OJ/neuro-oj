@@ -20,6 +20,8 @@ export const users = pgTable(
     email: text("email").notNull().unique(),
     password_hash: text("password_hash").notNull(),
     role: text("role").notNull().default("user"),
+    /** 个人简介（Markdown 格式） */
+    bio: text("bio").notNull().default(""),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
   },

@@ -494,7 +494,7 @@ Deno.test({
     assertEquals(status, 200);
     const d = body as {
       data: {
-        user: { id: string; username: string };
+        user: { id: string; username: string; bio: string };
         stats: {
           total_submissions: number;
           accepted: number;
@@ -507,6 +507,7 @@ Deno.test({
     };
     assertEquals(d.data.user.id, regularUserId);
     assertEquals(typeof d.data.user.username, "string");
+    assertEquals(typeof d.data.user.bio, "string");
     assertEquals(typeof d.data.stats.total_submissions, "number");
     assertEquals(typeof d.data.stats.accepted, "number");
     assertEquals(typeof d.data.stats.acceptance_rate, "number");
@@ -538,5 +539,118 @@ Deno.test({
       `/api/v1/users/${regularUserId}/profile`,
     );
     assertEquals(status, 200);
+  },
+});
+
+Deno.test({
+  name: "[e2e/profile] 5.4 主页返回 bio 字段且默认为空",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiGet(
+      `/api/v1/users/${regularUserId}/profile`,
+    );
+    assertEquals(status, 200);
+    const d = body as { data: { user: { bio: string } } };
+    assertEquals(d.data.user.bio, "");
+  },
+});
+
+Deno.test({
+  name: "[e2e/profile] 5.5 PUT /api/v1/users/me 未认证返回 401",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiPut(
+      "/api/v1/users/me",
+      { bio: "test" },
+    );
+    assertEquals(status, 401);
+    const d = body as { error: string };
+    assertEquals(d.error, "未提供认证令牌");
+  },
+});
+
+Deno.test({
+  name: "[e2e/profile] 5.6 PUT /api/v1/users/me 缺少 bio 字段返回 400",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiPut(
+      "/api/v1/users/me",
+      {},
+      regularToken,
+    );
+    assertEquals(status, 400);
+    const d = body as { error: string };
+    assertEquals(d.error.includes("缺少必填字段"), true);
+  },
+});
+
+Deno.test({
+  name: "[e2e/profile] 5.7 PUT /api/v1/users/me bio 超长返回 400",
+  ignore: skip,
+  fn: async () => {
+    const longBio = "x".repeat(5001);
+    const { status, body } = await apiPut(
+      "/api/v1/users/me",
+      { bio: longBio },
+      regularToken,
+    );
+    assertEquals(status, 400);
+    const d = body as { error: string };
+    assertEquals(d.error.includes("不能超过"), true);
+  },
+});
+
+Deno.test({
+  name: "[e2e/profile] 5.8 PUT /api/v1/users/me 成功更新 bio",
+  ignore: skip,
+  fn: async () => {
+    const markdownBio =
+      "# 自我介绍\n\n热爱 **算法竞赛** 和开源。\n\n```python\ndef hello():\n    print('NOJ!')\n```";
+    const { status, body } = await apiPut(
+      "/api/v1/users/me",
+      { bio: markdownBio },
+      regularToken,
+    );
+    assertEquals(status, 200);
+    const d = body as { data: { username: string; bio: string } };
+    assertEquals(d.data.username.startsWith("e2e_user_"), true);
+    assertEquals(d.data.bio, markdownBio);
+  },
+});
+
+Deno.test({
+  name: "[e2e/profile] 5.9 主页反映更新后的 bio",
+  ignore: skip,
+  fn: async () => {
+    const expectedBio =
+      "# 自我介绍\n\n热爱 **算法竞赛** 和开源。\n\n```python\ndef hello():\n    print('NOJ!')\n```";
+    const { status, body } = await apiGet(
+      `/api/v1/users/${regularUserId}/profile`,
+    );
+    assertEquals(status, 200);
+    const d = body as { data: { user: { bio: string } } };
+    assertEquals(d.data.user.bio, expectedBio);
+  },
+});
+
+Deno.test({
+  name: "[e2e/profile] 5.10 PUT /api/v1/users/me 可清空 bio",
+  ignore: skip,
+  fn: async () => {
+    const { status, body } = await apiPut(
+      "/api/v1/users/me",
+      { bio: "" },
+      regularToken,
+    );
+    assertEquals(status, 200);
+    const d = body as { data: { bio: string } };
+    assertEquals(d.data.bio, "");
+
+    // 确认主页也返回空
+    const getRes = await apiGet(
+      `/api/v1/users/${regularUserId}/profile`,
+    );
+    const getBody = getRes.body as { data: { user: { bio: string } } };
+    assertEquals(getBody.data.user.bio, "");
   },
 });

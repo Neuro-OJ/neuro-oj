@@ -16,19 +16,32 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 | email         | TEXT | NOT NULL, UNIQUE         |
 | password_hash | TEXT | NOT NULL                 |
 | role          | TEXT | NOT NULL, DEFAULT 'user' |
+| bio           | TEXT | DEFAULT ''               |
 | created_at    | TEXT | NOT NULL, ISO 8601       |
 | updated_at    | TEXT | NOT NULL, ISO 8601       |
+
+> `bio` 字段存储用户个人简介（Markdown 格式），默认为空字符串。
 
 #### Scenario: 插入新用户
 
 - **WHEN** 向 `users` 表插入一条包含 username、email、password_hash 的记录
-- **THEN** 系统自动生成 UUID 主键，role 默认为 'user'，created_at 和 updated_at
+- **THEN** 系统自动生成 UUID 主键，role 默认为 'user'，bio 默认为 ''，created_at 和 updated_at
   自动填充当前 ISO 8601 时间戳
 
 #### Scenario: 用户名唯一约束
 
 - **WHEN** 尝试插入与已存在记录相同 username 的行
 - **THEN** 数据库返回 UNIQUE 约束冲突错误
+
+#### Scenario: 用户设置 bio
+
+- **WHEN** 更新用户的 bio 字段为 `"## 关于我\n\n热爱算法竞赛"`
+- **THEN** 数据库中该用户的 bio 字段存储对应的 Markdown 文本
+
+#### Scenario: bio 可为空
+
+- **WHEN** 查询未设置 bio 的用户
+- **THEN** 返回的 bio 字段为空字符串 `""`
 
 ### Requirement: 题目表（problems）
 

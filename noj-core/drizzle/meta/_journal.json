@@ -15,6 +15,13 @@
       "when": 1750400000,
       "tag": "0001_problem_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1750700000,
+      "tag": "0002_user_bio",
+      "breakpoints": true
     }
   ]
 }

@@ -11,13 +11,13 @@
                     <NuxtLink to="/register" class="btn btn-primary">注册</NuxtLink>
                 </template>
                 <div v-else-if="isLoggedIn" class="user-menu" @mouseenter="onMenuEnter" @mouseleave="onMenuLeave">
-                    <span class="user-name">{{ user?.username }}</span>
+                    <NuxtLink :to="`/users/${user?.id}`" class="user-name-link">{{ user?.username }}</NuxtLink>
                     <button class="user-btn">
                         <User class="user-icon" :size="22" />
                     </button>
                     <div v-show="showDropdown" class="dropdown">
                         <button class="dropdown-item"><Database :size="16" />数据</button>
-                        <button class="dropdown-item"><Settings :size="16" />设置</button>
+                        <NuxtLink to="/settings" class="dropdown-item-link"><Settings :size="16" />设置</NuxtLink>
                         <div class="dropdown-divider"></div>
                         <button class="dropdown-item dropdown-danger" @click="showLogoutConfirm = true"><LogOut :size="16" />登出</button>
                     </div>
@@ -162,6 +162,18 @@ function handleLogout() {
     font-weight: 500;
 }
 
+.user-name-link {
+    font-size: 16px;
+    color: var(--c-text-secondary);
+    font-weight: 500;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.user-name-link:hover {
+    color: var(--c-primary);
+}
+
 .user-btn {
     display: flex;
     align-items: center;
@@ -208,6 +220,23 @@ function handleLogout() {
     cursor: pointer;
     text-align: left;
     transition: background 0.15s;
+}
+
+.dropdown-item-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 14px;
+    font-size: 14px;
+    color: var(--c-text);
+    text-decoration: none;
+    border-radius: 4px;
+    transition: background 0.15s;
+}
+
+.dropdown-item-link:hover {
+    background: var(--c-bg-hover, #f5f5f5);
 }
 
 .dropdown-item:hover {
