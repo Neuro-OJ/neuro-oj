@@ -42,7 +42,24 @@ pub async fn start_metrics_server(pool: Arc<PoolManager>, port: Option<u16>) {
 async fn metrics_handler(pool: Arc<PoolManager>) -> String {
     let mut output = String::new();
 
-    // 全局指标
+    // ── Counter 指标 ──────────────────────────────────
+    output.push_str("# HELP noj_judge_tasks_total 累积评测任务数\n");
+    output.push_str("# TYPE noj_judge_tasks_total counter\n");
+    output.push_str(&format!("noj_judge_tasks_total {}\n", pool.tasks_total()));
+
+    output.push_str("# HELP noj_judge_errors_total 累积评测错误数\n");
+    output.push_str("# TYPE noj_judge_errors_total counter\n");
+    output.push_str(&format!("noj_judge_errors_total {}\n", pool.errors_total()));
+
+    output.push_str("# HELP noj_judge_timeouts_total 累积超时数\n");
+    output.push_str("# TYPE noj_judge_timeouts_total counter\n");
+    output.push_str(&format!("noj_judge_timeouts_total {}\n", pool.timeouts_total()));
+
+    output.push_str("# HELP noj_judge_pool_misses_total 累积池 miss 数\n");
+    output.push_str("# TYPE noj_judge_pool_misses_total counter\n");
+    output.push_str(&format!("noj_judge_pool_misses_total {}\n", pool.pool_misses_total()));
+
+    // ── Gauge 指标 ────────────────────────────────────
     output.push_str("# HELP noj_pool_leaked_containers 最终泄漏的容器数\n");
     output.push_str("# TYPE noj_pool_leaked_containers gauge\n");
     let leaked = pool.leaked_containers().lock().await.len();

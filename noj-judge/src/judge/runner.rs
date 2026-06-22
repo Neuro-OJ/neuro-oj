@@ -27,6 +27,9 @@ pub async fn evaluate_with_pool(
     let submission_id = &task.submission_id;
     let image = &task.judge_image;
 
+    // 计数器：任务开始
+    pool.inc_tasks_total();
+
     // 1. 从池获取容器（带 RAII guard，? 提前返回时自动 cleanup）
     let guard = pool.acquire_guarded(image, task.memory_limit_mb).await?;
     let container_id = guard.container_id().to_string();

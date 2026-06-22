@@ -17,8 +17,8 @@ use crate::config::PoolConfig;
 /// Scaler 事件：任务到达/排队/即时创建。
 #[derive(Debug, Clone)]
 pub enum ScalerEvent {
-    /// 任务到达指定镜像的池
-    Arrival { pool: String },
+    /// 任务到达指定镜像的池（携带到达时间戳，在事件产生处打点）
+    Arrival { pool: String, timestamp: Instant },
     /// 任务排队等待时间（毫秒）
     QueueWait { pool: String, wait_ms: u64 },
     /// 池空导致即时创建
@@ -41,9 +41,9 @@ struct PoolMetrics {
     arrival_timestamps: VecDeque<Instant>,
     /// 排队时间滑动窗口（毫秒）
     queue_wait_times: VecDeque<u64>,
-    /// 采样次数
+    /// 采样次数（每周期重置）
     sample_count: u64,
-    /// 即时创建次数（池空）
+    /// 即时创建次数（池空，每周期重置）
     miss_count: u64,
     /// 上次评估时的 idle 计数快照
     #[allow(dead_code)]
@@ -74,11 +74,11 @@ impl Scaler {
         Scaler { metrics }
     }
 
-    /// 记录一次任务到达。
-    pub(crate) fn record_arrival(&mut self, pool: &str) {
+    /// 记录一次任务到达（使用事件携带的时间戳）。
+    pub(crate) fn record_arrival(&mut self, pool: &str, timestamp: Instant) {
         for m in &mut self.metrics {
             if m.pool.image() == pool {
-                m.arrival_timestamps.push_back(Instant::now());
+                m.arrival_timestamps.push_back(timestamp);
                 if m.arrival_timestamps.len() > 1024 {
                     m.arrival_timestamps.pop_front();
                 }
@@ -128,7 +128,7 @@ impl Scaler {
             if let Some(ref mut rx) = event_rx {
                 while let Ok(event) = rx.try_recv() {
                     match event {
-                        ScalerEvent::Arrival { pool } => self.record_arrival(&pool),
+                        ScalerEvent::Arrival { pool, timestamp } => self.record_arrival(&pool, timestamp),
                         ScalerEvent::QueueWait { pool, wait_ms } => self.record_queue_wait(&pool, wait_ms),
                         ScalerEvent::Miss { pool } => self.record_miss(&pool),
                     }
@@ -146,9 +146,10 @@ impl Scaler {
 
                 // 计算窗口内的 QPS
                 let now = Instant::now();
-                let window_secs = interval as f64;
+                // 使用 1.5x interval 作为裁剪窗口，分母与之匹配
+                let window_secs = interval as f64 * 1.5;
                 while let Some(&t) = m.arrival_timestamps.front() {
-                    if now.duration_since(t).as_secs_f64() > window_secs * 1.5 {
+                    if now.duration_since(t).as_secs_f64() > window_secs {
                         m.arrival_timestamps.pop_front();
                     } else {
                         break;
@@ -163,9 +164,13 @@ impl Scaler {
                     0.0
                 };
 
-                // miss_rate
-                let total_tasks = m.sample_count.max(1);
-                let miss_rate = m.miss_count as f64 / total_tasks as f64;
+                // miss_rate：使用本周期实际任务数计算
+                let period_tasks = m.miss_count + m.queue_wait_times.len() as u64;
+                let miss_rate = if period_tasks > 0 {
+                    m.miss_count as f64 / period_tasks as f64
+                } else {
+                    0.0
+                };
 
                 // idle_ratio
                 let idle_ratio = if target > 0 {
@@ -189,16 +194,21 @@ impl Scaler {
                     scale_up += 1;
                 }
 
-                // 缩：长期利用率低
-                if idle_ratio > 0.4 {
-                    m.high_idle_cycles += 1;
-                    if m.high_idle_cycles >= 2 {
-                        scale_down += 1;
-                    }
-                    if m.high_idle_cycles >= 3 && idle_ratio > 0.6 {
-                        scale_down += 1;
+                // 缩：长期利用率低（仅在无扩容需求时允许缩容）
+                if scale_up == 0 {
+                    if idle_ratio > 0.4 {
+                        m.high_idle_cycles += 1;
+                        if m.high_idle_cycles >= 2 {
+                            scale_down += 1;
+                        }
+                        if m.high_idle_cycles >= 3 && idle_ratio > 0.6 {
+                            scale_down += 1;
+                        }
+                    } else {
+                        m.high_idle_cycles = 0;
                     }
                 } else {
+                    // 有扩容需求时重置空闲计数，避免矛盾决策
                     m.high_idle_cycles = 0;
                 }
 
@@ -226,7 +236,7 @@ impl Scaler {
                         "scaler_adjust",
                     );
                 } else {
-                    // 即使不调整也输出调试级日志，记录完整决策上下文
+                    // 即使不调整也输出日志，记录完整决策上下文
                     info!(
                         action = "noop",
                         image = pool.image(),
@@ -244,8 +254,9 @@ impl Scaler {
                     );
                 }
 
-                // 重置计数器
+                // 重置周期计数器
                 m.miss_count = 0;
+                m.sample_count = 0;
                 m.queue_wait_times.clear();
             }
         }

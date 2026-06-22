@@ -315,6 +315,14 @@ pub struct PoolManager {
     scaler_tx: tokio::sync::Mutex<Option<mpsc::UnboundedSender<ScalerEvent>>>,
     /// rm -f 最终失败的泄漏容器（健康检查定期清理）
     leaked_containers: Mutex<Vec<String>>,
+    /// 累积任务数（counter 指标）
+    tasks_total: AtomicUsize,
+    /// 累积错误数（counter 指标）
+    errors_total: AtomicUsize,
+    /// 累积超时数（counter 指标）
+    timeouts_total: AtomicUsize,
+    /// 累积池 miss 数（counter 指标）
+    pool_misses_total: AtomicUsize,
 }
 
 impl PoolManager {
@@ -334,6 +342,10 @@ impl PoolManager {
             shutdown_token: CancellationToken::new(),
             scaler_tx: tokio::sync::Mutex::new(None),
             leaked_containers: Mutex::new(Vec::new()),
+            tasks_total: AtomicUsize::new(0),
+            errors_total: AtomicUsize::new(0),
+            timeouts_total: AtomicUsize::new(0),
+            pool_misses_total: AtomicUsize::new(0),
         });
 
         // 按镜像初始化池
@@ -490,7 +502,7 @@ impl PoolManager {
 
         // 快速路径：尝试获取空闲容器
         if let Some(id) = pool.acquire().await {
-            self.send_scaler_event(ScalerEvent::Arrival { pool: image.to_string() }).await;
+            self.send_scaler_event(ScalerEvent::Arrival { pool: image.to_string(), timestamp: Instant::now() }).await;
             if let Err(e) = self.update_container_memory(&id, memory_mb).await {
                 self.release(&pool, &id).await;
                 return Err(e);
@@ -502,8 +514,9 @@ impl PoolManager {
         if pool.in_flight() < pool.target_depth() {
             let id = self.create_container(image).await?;
             pool.mark_in_use(&id).await;
-            self.send_scaler_event(ScalerEvent::Arrival { pool: image.to_string() }).await;
+            self.send_scaler_event(ScalerEvent::Arrival { pool: image.to_string(), timestamp: Instant::now() }).await;
             self.send_scaler_event(ScalerEvent::Miss { pool: image.to_string() }).await;
+            self.inc_pool_misses_total();
             // 快速扩容触发器：排队时立即扩容
             if pool.target_depth() < self.config.max_size {
                 pool.set_target_depth(
@@ -539,7 +552,7 @@ impl PoolManager {
             }
             if let Some(id) = pool.acquire().await {
                 let wait_ms = wait_start.elapsed().as_millis() as u64;
-                self.send_scaler_event(ScalerEvent::Arrival { pool: image.to_string() }).await;
+                self.send_scaler_event(ScalerEvent::Arrival { pool: image.to_string(), timestamp: Instant::now() }).await;
                 self.send_scaler_event(ScalerEvent::QueueWait { pool: image.to_string(), wait_ms }).await;
                 if let Err(e) = self.update_container_memory(&id, memory_mb).await {
                     self.release(&pool, &id).await;
@@ -840,6 +853,46 @@ impl PoolManager {
     /// 获取泄漏容器列表（用于 metrics）。
     pub fn leaked_containers(&self) -> &Mutex<Vec<String>> {
         &self.leaked_containers
+    }
+
+    /// 获取累积任务数（counter）。
+    pub fn tasks_total(&self) -> usize {
+        self.tasks_total.load(Ordering::Relaxed)
+    }
+
+    /// 获取累积错误数（counter）。
+    pub fn errors_total(&self) -> usize {
+        self.errors_total.load(Ordering::Relaxed)
+    }
+
+    /// 获取累积超时数（counter）。
+    pub fn timeouts_total(&self) -> usize {
+        self.timeouts_total.load(Ordering::Relaxed)
+    }
+
+    /// 获取累积池 miss 数（counter）。
+    pub fn pool_misses_total(&self) -> usize {
+        self.pool_misses_total.load(Ordering::Relaxed)
+    }
+
+    /// 增加任务计数。
+    pub fn inc_tasks_total(&self) {
+        self.tasks_total.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// 增加错误计数。
+    pub fn inc_errors_total(&self) {
+        self.errors_total.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// 增加超时计数。
+    pub fn inc_timeouts_total(&self) {
+        self.timeouts_total.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// 增加池 miss 计数。
+    pub fn inc_pool_misses_total(&self) {
+        self.pool_misses_total.fetch_add(1, Ordering::Relaxed);
     }
 
     // ── 后台任务 ──────────────────────────────────

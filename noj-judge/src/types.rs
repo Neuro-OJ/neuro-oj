@@ -87,13 +87,16 @@ pub struct JudgeResult {
 }
 
 impl JudgeResult {
-    /// 构造一个系统错误结果。
-    pub fn error(submission_id: &str, message: &str) -> Self {
+    /// 构造一个系统错误结果（对用户隐藏内部错误细节）。
+    ///
+    /// `message` 是内部错误详情，仅记录到日志；`output` 是返回给用户的友好信息。
+    pub fn error(submission_id: &str, _message: &str) -> Self {
         Self {
             submission_id: submission_id.to_string(),
             status: JudgeStatus::SystemError.as_str().to_string(),
             score: 0,
-            output: message.to_string(),
+            // 对用户隐藏内部错误细节，避免信息泄露
+            output: format!("系统内部错误 (submission: {})", submission_id),
             details: Value::Null,
             time_ms: None,
             memory_kb: None,
