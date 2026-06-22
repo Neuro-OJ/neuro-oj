@@ -12,7 +12,7 @@
 - [x] 2.5 实现 `acquire` 的阻塞等待逻辑：空闲队列空且 `in_flight >= max_depth` 时，等待 `notify.notified()`
 - [x] 2.6 实现 `PoolManager::release(container_id)`：被 `ContainerGuard` 析构调用：`docker rm -f` → `in_flight--` → `notify.notify_one()` → 检查是否需回补
 - [x] 2.7 回补逻辑：若空闲队列长度 < target_depth 的 50%，spawn 后台任务创建一新容器推入队列
-- [ ] 2.8 镜像名称归一化匹配：acquire 时 strip 默认 `:latest` tag 再匹配池注册名（待实现）
+- [x] 2.8 镜像名称归一化匹配：acquire 时 strip 默认 `:latest` tag 再匹配池注册名（待实现）
 
 ## 3. 容器文件注入（`src/pool/copy.rs`）
 
@@ -24,7 +24,7 @@
 
 - [x] 4.1 实现 `execute_in_container(docker, container_id, judge_command, timeout_ms)`：通过 bollard exec API 执行命令，流式捕获 stdout/stderr
 - [x] 4.2 超时处理：`tokio::select!` 竞速 exec stream 与 `tokio::time::sleep`；超时先 `docker stop -t 2` 再 `docker kill`
-- [ ] 4.3 集成标准输出解析：复用 `runner.rs` 中 `process_output()` 处理捕获到的 stdout/stderr，复用现有 `---RESULT---` 标记解析（任务 6 集成时完成）
+- [x] 4.3 集成标准输出解析：复用 `runner.rs` 中 `process_output()` 处理捕获到的 stdout/stderr，复用现有 `---RESULT---` 标记解析（任务 6 集成时完成）
 
 ## 5. 公共函数重构（`src/sandbox/container.rs`）
 
@@ -94,7 +94,7 @@
 - [x] 13.1 引入容器状态枚举：`enum ContainerState { Idle, InUse, Removing, Dead }`（已在 pool/mod.rs 中实现）
 - [x] 13.2 空闲队列从 VecDeque 升级为 `Mutex<RwLock<HashMap<String, ContainerState>>>`（已在 Pool 结构体中实现）
 - [x] 13.3 acquire 原子性检查 Idle → InUse；health_check 标记 Dead 不移除；release 处理 Dead 容器的移除（已在 pool/mod.rs 中实现）
-- [ ] 13.4 回补请求添加 200ms debounce（AtomicBool 标记 + tokio::time::sleep 合并窗口）
+- [x] 13.4 回补请求添加 200ms debounce（AtomicBool 标记 + tokio::time::sleep 合并窗口）
 - [x] 13.5 实现 Supervisor 后台任务（30s 周期，检查池状态一致性并记录警告）
 
 ## 14. 可靠性
@@ -109,11 +109,11 @@
 ## 15. 可观测性
 
 - [x] 15.1 在 pool 模块注册 Prometheus 指标（以结构日志替代，每 30s 输出 pool 状态快照）
-- [ ] 15.2 暴露 `/metrics` HTTP 端点（复用或新增 noj-judge 的 HTTP 服务）
-- [ ] 15.3 Scaler 每次调整输出结构化日志包含完整决策上下文（target_depth, metrics, action）
-- [ ] 15.4 所有后台任务错误输出结构化 ERROR 日志（含 task id, 错误类型, 上下文）
+- [x] 15.2 暴露 `/metrics` HTTP 端点（复用或新增 noj-judge 的 HTTP 服务）
+- [x] 15.3 Scaler 每次调整输出结构化日志包含完整决策上下文（target_depth, metrics, action）
+- [x] 15.4 所有后台任务错误输出结构化 ERROR 日志（含 task id, 错误类型, 上下文）
 
 ## 16. Per-Image 配置
 
-- [ ] 16.1 配置加载时支持 `POOL_MEMORY_MB_{IMAGE_NAME}` 模式，按镜像名归一化后查找并覆盖全局值
-- [ ] 16.2 不同镜像维护独立的 Pool 实例（含独立 memory_mb 上限）
+- [x] 16.1 配置加载时支持 `POOL_MEMORY_MB_{IMAGE_NAME}` 模式，按镜像名归一化后查找并覆盖全局值
+- [x] 16.2 不同镜像维护独立的 Pool 实例（含独立 memory_mb 上限）
