@@ -39,22 +39,45 @@ if ! curl -sf "$E2E_CORE_URL/health" > /dev/null 2>&1; then
   exit 1
 fi
 
-# 运行 E2E 测试
+# 1. 运行 noj-core 现有 API E2E 测试
 cd "$ROOT_DIR/noj-core"
 
 echo ""
+echo -e "  ${CYAN}▶ noj-core API E2E${NC}"
 NOJ_RUN_E2E=1 \
 E2E_BASE_URL="$E2E_CORE_URL" \
 deno test -A tests/e2e/api.test.ts 2>&1
 
-TEST_EXIT=$?
+CORE_EXIT=$?
+
+# 2. 运行 noj-tests 管道 E2E 测试
+cd "$ROOT_DIR/noj-tests"
+
+echo ""
+echo -e "  ${CYAN}▶ noj-tests 管道 E2E${NC}"
+NOJ_RUN_E2E=1 \
+E2E_BASE_URL="$E2E_CORE_URL" \
+deno test -A e2e/e2e.test.ts 2>&1
+
+PIPELINE_EXIT=$?
+
+# 汇总
+TEST_EXIT=0
+[ $CORE_EXIT -ne 0 ] && TEST_EXIT=1
+[ $PIPELINE_EXIT -ne 0 ] && TEST_EXIT=1
+
+if [ $CORE_EXIT -eq 0 ] || [ $PIPELINE_EXIT -eq 0 ]; then
+  echo ""
+  echo -e "  ${GREEN}✓ noj-core API E2E:  $([ $CORE_EXIT -eq 0 ] && echo '通过' || echo '失败')"
+  echo -e "  ${GREEN}✓ noj-tests 管道 E2E: $([ $PIPELINE_EXIT -eq 0 ] && echo '通过' || echo '失败')"
+fi
 
 if [ $TEST_EXIT -eq 0 ]; then
   echo ""
-  echo -e "${BOLD}✅  noj-core E2E 全部通过${NC}"
+  echo -e "${BOLD}✅  E2E 全部通过${NC}"
 else
   echo ""
-  echo -e "${BOLD}❌  noj-core E2E 部分失败${NC}"
+  echo -e "${BOLD}❌  E2E 部分失败${NC}"
 fi
 
 exit $TEST_EXIT

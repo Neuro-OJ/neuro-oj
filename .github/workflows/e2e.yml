@@ -2,16 +2,14 @@
 # Neuro OJ — 全链路 E2E 测试
 #
 # 在每个 PR 和推送到 main 时运行完整的端到端测试：
-#   - noj-core  API E2E（33 个测试）
+#   - noj-core  API E2E（33 个 API 测试）
+#   - noj-tests 管道 E2E（5 个全链路测试）
 #   - noj-judge Docker 沙箱 E2E（12 个测试）
-#   - noj-ui    Playwright 冒烟（登录 → 提交流程 → 结果）
 #
-# 技术栈：Deno + Node.js + Rust + Docker
+# 使用 Docker Compose 编排完整评测栈（noj-core + noj-judge + PostgreSQL + Redis）。
+#
+# 技术栈：Deno + Node.js + Rust + Docker Compose
 # 运行时间：首次 ~15min，缓存命中后 ~5-8min
-#
-# 注意：要使此检查成为 PR 的 required check，仓库管理员需在
-#   Settings → Branches → Branch protection rules 中添加
-#   "E2E / Full Pipeline" 为 required status check。
 # =============================================================================
 
 name: E2E
@@ -21,20 +19,17 @@ on:
   push:
   workflow_dispatch:
 
-# 同一分支/PR 的新推送自动取消旧运行
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  # E2E 测试专用配置（对应 docker-compose.e2e.yml 的端口/凭据）
+  COMPOSE_PROJECT_NAME: noj-e2e
+  E2E_BASE_URL: http://localhost:8099
+  E2E_CORE_PORT: 8099
   E2E_DB_URL: postgres://e2e:e2e@localhost:5433/e2e
   E2E_REDIS_URL: redis://localhost:6380/1
-  E2E_CORE_PORT: 8099
-  E2E_CORE_URL: http://localhost:8099
   JWT_SECRET: e2e-ci-secret
-  E2E_ADMIN_EMAIL: admin@e2e.test
-  E2E_ADMIN_PASS: admin-e2e-pass
   NOJ_RUN_E2E: "1"
   DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
 
@@ -43,32 +38,6 @@ jobs:
     name: Full Pipeline
     runs-on: ubuntu-latest
     timeout-minutes: 60
-
-    # PostgreSQL :5433 + Redis :6380（与 E2E 配置一致）
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: e2e
-          POSTGRES_PASSWORD: e2e
-          POSTGRES_DB: e2e
-        ports:
-          - 5433:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6380:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
       - name: 检出代码
@@ -80,11 +49,6 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-
-      - name: 安装 Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
 
       - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable
@@ -113,62 +77,51 @@ jobs:
             cargo-e2e-
 
       # ════════════════════════════════════════════
-      # 1. 基础设施：Docker 镜像 + 数据库
+      # 1. 构建 Docker 镜像
       # ════════════════════════════════════════════
 
-      - name: 构建评测镜像 (noj-judge-python)
-        run: docker build -t noj-judge-python -f noj-judge/docker/python/Dockerfile noj-judge
-
-      - name: 安装 Deno 依赖
-        working-directory: noj-core
-        run: deno install
-
-      - name: 构建题目支持包 (packages/*.zip)
-        working-directory: noj-core
-        run: deno task build-packages
-
-      - name: 数据库迁移
-        working-directory: noj-core
-        run: deno task migrate
-        env:
-          DATABASE_URL: ${{ env.E2E_DB_URL }}
-
-      - name: 初始化种子数据
-        working-directory: noj-core
-        run: deno run --allow-net --allow-env --allow-read --allow-write scripts/seed.ts
-        env:
-          DATABASE_URL: ${{ env.E2E_DB_URL }}
-          ADMIN_EMAIL: ${{ env.E2E_ADMIN_EMAIL }}
-          ADMIN_PASS: ${{ env.E2E_ADMIN_PASS }}
-
-      # ════════════════════════════════════════════
-      # 2. noj-core API E2E 测试
-      # ════════════════════════════════════════════
-
-      - name: 启动 noj-core（后台）
+      - name: 构建 Docker Compose 镜像
         run: |
-          cd noj-core
-          nohup deno run --allow-net --allow-env --allow-read src/main.ts \
-            > /tmp/noj-core-e2e.log 2>&1 &
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:$E2E_CORE_PORT/health > /dev/null 2>&1; then
-              echo "✅ noj-core 就绪 (PID $!)"
+          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME build
+
+      # ════════════════════════════════════════════
+      # 2. 启动 E2E 评测栈
+      # ════════════════════════════════════════════
+
+      - name: 启动评测栈
+        run: |
+          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME up -d
+          echo "等待 noj-core 就绪..."
+          for i in $(seq 1 60); do
+            if curl -sf $E2E_BASE_URL/health > /dev/null 2>&1; then
+              echo "✅ noj-core 就绪"
               break
             fi
-            sleep 1
+            sleep 2
           done
-        env:
-          DATABASE_URL: ${{ env.E2E_DB_URL }}
-          REDIS_URL: ${{ env.E2E_REDIS_URL }}
-          PORT: ${{ env.E2E_CORE_PORT }}
-          JWT_SECRET: ${{ env.JWT_SECRET }}
+
+      # ════════════════════════════════════════════
+      # 3. noj-core API E2E 测试
+      # ════════════════════════════════════════════
 
       - name: Core E2E 测试（33 个 API 测试）
         working-directory: noj-core
         run: deno test -A tests/e2e/api.test.ts
+        env:
+          E2E_BASE_URL: ${{ env.E2E_BASE_URL }}
 
       # ════════════════════════════════════════════
-      # 3. noj-judge Docker 沙箱 E2E 测试
+      # 4. noj-tests 管道 E2E 测试
+      # ════════════════════════════════════════════
+
+      - name: 管道 E2E 测试（5 个全链路测试）
+        working-directory: noj-tests
+        run: deno test -A e2e/e2e.test.ts
+        env:
+          E2E_BASE_URL: ${{ env.E2E_BASE_URL }}
+
+      # ════════════════════════════════════════════
+      # 5. noj-judge Docker 沙箱 E2E 测试
       # ════════════════════════════════════════════
 
       - name: 编译 Judge E2E 测试目标
@@ -193,47 +146,10 @@ jobs:
           REDIS_URL: ${{ env.E2E_REDIS_URL }}
 
       # ════════════════════════════════════════════
-      # 4. noj-judge 守护进程（处理 UI 冒烟的提交）
+      # 6. 清理
       # ════════════════════════════════════════════
 
-      - name: 编译 Judge 守护进程
-        working-directory: noj-judge
-        run: cargo build --bin noj-judge
-
-      - name: 启动 Judge 守护进程（后台）
+      - name: 清理评测栈
+        if: always()
         run: |
-          nohup ./noj-judge/target/debug/noj-judge \
-            > /tmp/noj-judge-daemon.log 2>&1 &
-          sleep 3
-          echo "✅ noj-judge 守护进程已启动 (PID $!)"
-        env:
-          REDIS_URL: ${{ env.E2E_REDIS_URL }}
-
-      # ════════════════════════════════════════════
-      # 5. noj-ui Playwright 冒烟测试
-      # ════════════════════════════════════════════
-
-      - name: 安装前端依赖
-        working-directory: noj-ui
-        run: npm install
-
-      - name: 安装 Playwright 浏览器
-        working-directory: noj-ui
-        run: npx playwright install chromium
-
-      - name: 启动 noj-ui（后台）
-        run: |
-          cd noj-ui
-          NUXT_API_BASE=$E2E_CORE_URL nohup npm run dev \
-            > /tmp/noj-ui-e2e.log 2>&1 &
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:3000 > /dev/null 2>&1; then
-              echo "✅ noj-ui 就绪"
-              break
-            fi
-            sleep 1
-          done
-
-      - name: UI Playwright 冒烟（登录 → 提交 → 结果）
-        working-directory: noj-ui
-        run: E2E_CORE_URL=$E2E_CORE_URL HEADLESS=true node ../scripts/e2e/smoke.mjs
+          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME down -v

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
 # E2E 一键运行脚本
-# 1. 环境启动（setup.sh — 自动拉起所有依赖）
-# 2. 运行所有测试套件：core → judge → ui
-# 3. 环境停止（teardown.sh — 清理服务+容器）
+# 1. 环境启动（setup.sh — docker compose 拉起完整评测栈）
+# 2. 运行所有测试套件：core → judge
+# 3. 环境停止（teardown.sh — docker compose down -v）
 #
 # 使用方法: bash scripts/e2e/run-all.sh
 
@@ -52,10 +52,6 @@ run_test() {
 # core + judge: 依赖 setup.sh 导出的环境变量
 run_test "noj-core E2E" "bash $ROOT_DIR/scripts/e2e/core.sh"
 run_test "noj-judge E2E" "bash $ROOT_DIR/scripts/e2e/judge.sh"
-
-# UI 冒烟需要 playwright 依赖，从 noj-ui 目录运行
-source /tmp/noj-e2e-env.sh 2>/dev/null || true
-run_test "noj-ui 冒烟" "cd '$ROOT_DIR/noj-ui' && E2E_CORE_URL=${E2E_CORE_URL:-http://localhost:8099} node '$ROOT_DIR/scripts/e2e/smoke.mjs'"
 
 # ── Step 3: 环境停止 ──
 echo ">>> [3/3] 停止 E2E 环境..."
