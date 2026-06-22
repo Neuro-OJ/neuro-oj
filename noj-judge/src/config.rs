@@ -35,6 +35,8 @@ pub struct PoolConfig {
     pub cpu: f64,
     /// 需要预热的镜像列表（逗号分隔，默认: "noj-judge-python"）
     pub images: Vec<String>,
+    /// Per-image 内存配置：image_name -> memory_mb
+    pub per_image_memory: std::collections::HashMap<String, u64>,
     /// 空闲容器超时秒数（默认: 300）
     pub idle_timeout_secs: u64,
     /// 扩缩容评估间隔秒数（默认: 60）
@@ -78,6 +80,17 @@ impl PoolConfig {
     fn from_env() -> Self {
         let enabled = env_var_parse::<bool>("POOL_ENABLED").unwrap_or(true);
         let raw_images = env_or("POOL_IMAGES", "noj-judge-python");
+        let images: Vec<String> = raw_images.split(',').map(|s| s.trim().to_string()).collect();
+
+        // 收集 per-image 内存配置（POOL_MEMORY_MB_{IMAGE_NAME}）
+        let mut per_image_memory = std::collections::HashMap::new();
+        for img in &images {
+            let norm = img.to_uppercase().replace('-', "_");
+            let key = format!("POOL_MEMORY_MB_{}", norm);
+            if let Some(val) = env_var_parse::<u64>(&key) {
+                per_image_memory.insert(img.clone(), val);
+            }
+        }
 
         PoolConfig {
             enabled,
@@ -86,13 +99,25 @@ impl PoolConfig {
             min_size: env_var_parse("POOL_MIN_SIZE").unwrap_or(1),
             memory_mb: env_var_parse("POOL_MEMORY_MB").unwrap_or(256),
             cpu: env_var_parse("POOL_CPU").unwrap_or(0.0),
-            images: raw_images.split(',').map(|s| s.trim().to_string()).collect(),
+            images,
+            per_image_memory,
             idle_timeout_secs: env_var_parse("POOL_IDLE_TIMEOUT").unwrap_or(300),
             scale_interval_secs: env_var_parse("POOL_SCALE_INTERVAL").unwrap_or(60),
             max_archive_mb: env_var_parse("POOL_MAX_ARCHIVE_MB").unwrap_or(25),
             kill_grace_secs: env_var_parse("POOL_KILL_GRACE_SECONDS").unwrap_or(2),
             label_prefix: env_or("POOL_LABEL_PREFIX", "com.noj.judge"),
         }
+    }
+
+    /// 获取指定镜像的内存限制 MB。
+    ///
+    /// 优先返回 per-image 配置（`POOL_MEMORY_MB_{IMAGE}`），
+    /// 不存在则返回全局默认值。
+    pub fn memory_mb_for_image(&self, image: &str) -> u64 {
+        self.per_image_memory
+            .get(image)
+            .copied()
+            .unwrap_or(self.memory_mb)
     }
 }
 

@@ -23,6 +23,8 @@ fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
     let cursor = std::io::Cursor::new(data);
     let mut archive = zip::ZipArchive::new(cursor).context("打开 zip 文件失败")?;
 
+    let mut seen_paths = std::collections::HashSet::new();
+
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).context("读取 zip 条目失败")?;
         let file_name = file.name().to_string();
@@ -31,6 +33,11 @@ fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
         if file_name.split(['/', '\\']).any(|part| part == "..") {
             warn!("跳过 zip 路径遍历: {}", file_name);
             continue;
+        }
+
+        // 拒绝 overlapping entries（同名路径出现两次）
+        if !seen_paths.insert(file_name.clone()) {
+            anyhow::bail!("zip 包含重复条目: {}", file_name);
         }
 
         let out_path = target_dir.join(&file_name);

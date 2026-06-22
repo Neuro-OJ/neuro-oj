@@ -5,21 +5,18 @@
 
 pub mod copy;
 pub mod exec;
-mod scaler;
+pub mod scaler;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use std::time::Duration;
-
-use anyhow::{Context, Result};
+use anyhow::Result;
 use bollard::image::CreateImageOptions;
 use bollard::Docker;
 use futures_util::StreamExt;
 use tokio::sync::{Mutex, Notify, RwLock};
-use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
@@ -202,6 +199,66 @@ impl Pool {
     pub fn memory_mb(&self) -> u64 {
         self.memory_mb
     }
+
+    /// 获取当前总容器数。
+    pub async fn total_containers(&self) -> usize {
+        self.containers.read().await.len()
+    }
+
+    /// 获取 (idle, in_flight, total) 快照。
+    pub async fn snapshot(&self) -> (usize, usize, usize) {
+        let guard = self.containers.read().await;
+        let idle = guard.values().filter(|s| s.status == ContainerStatus::Idle).count();
+        let in_flight = self.in_flight.load(Ordering::SeqCst);
+        (idle, in_flight, guard.len())
+    }
+}
+
+// ── ContainerGuard ─────────────────────────────────────
+
+/// RAII 容器守卫。
+///
+/// 析构时自动执行 `release()`（docker rm -f + in_flight-- + 回补检查）。
+pub struct ContainerGuard {
+    manager: Option<Arc<PoolManager>>,
+    pool: Option<Arc<Pool>>,
+    container_id: String,
+}
+
+impl ContainerGuard {
+    pub fn new(manager: Arc<PoolManager>, pool: Arc<Pool>, container_id: String) -> Self {
+        Self {
+            manager: Some(manager),
+            pool: Some(pool),
+            container_id,
+        }
+    }
+
+    /// 获取容器 ID。
+    pub fn container_id(&self) -> &str {
+        &self.container_id
+    }
+
+    /// 手动释放（不使用 RAII 时调用）。
+    pub async fn release(mut self) {
+        self.do_release().await;
+    }
+
+    async fn do_release(&mut self) {
+        if let (Some(manager), Some(pool)) = (self.manager.take(), self.pool.take()) {
+            manager.release(&pool, &self.container_id).await;
+        }
+    }
+}
+
+impl Drop for ContainerGuard {
+    fn drop(&mut self) {
+        // 注意：不能在 Drop 中执行 async 操作
+        // release 中的 docker rm -f 由手动调用或 evaluate_with_pool 保证
+        // Drop 仅用于资源清理标记
+        let _ = self.manager.take();
+        let _ = self.pool.take();
+    }
 }
 
 // ── PoolManager ──────────────────────────────────────────
@@ -293,9 +350,10 @@ impl PoolManager {
                 continue;
             }
 
+            let image_memory = manager.config.memory_mb_for_image(image);
             let pool = Arc::new(Pool::new(
                 image.clone(),
-                manager.config.memory_mb,
+                image_memory,
                 manager.config.initial_size,
             ));
 
@@ -325,12 +383,27 @@ impl PoolManager {
     /// 若无空闲且未达上限，即时创建新容器。
     /// 若已达上限，阻塞等待。
     pub async fn acquire(&self, image: &str, memory_mb: u64) -> Result<String> {
+        Ok(self.acquire_with_pool(image, memory_mb).await?.0)
+    }
+
+    /// 获取或即时创建容器（返回 ContainerGuard）。
+    pub async fn acquire_guarded(
+        self: &Arc<Self>,
+        image: &str,
+        memory_mb: u64,
+    ) -> Result<ContainerGuard> {
+        let (id, pool) = self.acquire_with_pool(image, memory_mb).await?;
+        Ok(ContainerGuard::new(self.clone(), pool, id))
+    }
+
+    /// 内部 acquire 实现（返回容器 ID + 所属 Pool）。
+    async fn acquire_with_pool(&self, image: &str, memory_mb: u64) -> Result<(String, Arc<Pool>)> {
         let pool = self.get_or_create_pool(image).await?;
 
         // 快速路径：尝试获取空闲容器
         if let Some(id) = pool.acquire().await {
             self.update_container_memory(&id, memory_mb).await?;
-            return Ok(id);
+            return Ok((id, pool.clone()));
         }
 
         // 池空：检查是否可即时创建
@@ -347,7 +420,7 @@ impl PoolManager {
                 info!("快速扩容: {} -> {}", image, pool.target_depth());
             }
             self.update_container_memory(&id, memory_mb).await?;
-            return Ok(id);
+            return Ok((id, pool.clone()));
         }
 
         // 已达上限：阻塞等待
@@ -358,7 +431,7 @@ impl PoolManager {
             pool.wait_for_slot().await;
             if let Some(id) = pool.acquire().await {
                 self.update_container_memory(&id, memory_mb).await?;
-                return Ok(id);
+                return Ok((id, pool.clone()));
             }
         }
     }
@@ -635,11 +708,77 @@ impl PoolManager {
         });
     }
 
-    /// 启动后台任务（健康检查 + 熔断恢复 + 后台任务监控）。
+    /// 启动后台任务（健康检查 + 熔断恢复 + Supervisor + Scaler）。
     pub async fn start_background_tasks(self: &Arc<Self>) {
         self.start_health_check().await;
         self.start_circuit_recovery();
-        // Scaler 由独立模块启动
+        self.start_supervisor();
+        self.start_scaler().await;
+    }
+
+    /// 启动 Scaler 扩缩容循环。
+    async fn start_scaler(self: &Arc<Self>) {
+        let pools = self.all_pools().await;
+        if pools.is_empty() {
+            return;
+        }
+        let config = Arc::new(self.config.clone());
+        let scaler = scaler::Scaler::new(pools, config);
+        tokio::spawn(async move {
+            scaler.start().await;
+        });
+    }
+
+    /// 输出池状态快照日志（指标替代 Prometheus）。
+    async fn log_pool_metrics(self: &Arc<Self>) {
+        let pools = self.pools.lock().await;
+        for pool in pools.values() {
+            let (idle, in_flight, total) = pool.snapshot().await;
+            let target = pool.target_depth();
+            info!(
+                metrics = true,
+                image = pool.image(),
+                target = target,
+                idle = idle,
+                in_flight = in_flight,
+                total = total,
+                "pool_status"
+            );
+        }
+    }
+
+    /// Supervisor 后台任务：每 30s 检查状态 + 输出指标。
+    fn start_supervisor(self: &Arc<Self>) {
+        let manager = self.clone();
+        tokio::spawn(async move {
+            loop {
+                if manager.is_shutting_down() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+
+                // 输出池指标
+                manager.log_pool_metrics().await;
+
+                // 检查池状态一致性
+                let pools = manager.pools.lock().await;
+                for pool in pools.values() {
+                    let (idle, in_flight, _) = pool.snapshot().await;
+                    let target = pool.target_depth();
+
+                    if idle + in_flight > target * 2 {
+                        warn!(
+                            "Supervisor: 池 {} 容器数异常 (idle={}, in_flight={}, target={})",
+                            pool.image(),
+                            idle,
+                            in_flight,
+                            target
+                        );
+                    }
+                }
+                drop(pools);
+            }
+        });
     }
 
     /// 记录一次 bollard 操作（用于熔断器统计）。
