@@ -5,6 +5,7 @@
 
 pub mod copy;
 pub mod exec;
+pub mod metrics;
 pub mod scaler;
 
 use std::collections::HashMap;
@@ -58,6 +59,7 @@ pub struct ContainerState {
     /// 进入 Idle 状态的时间戳（用于空闲超时检测）
     pub idle_since: Option<Instant>,
     /// 容器所属镜像名
+    #[allow(dead_code)]
     pub image: String,
 }
 
@@ -192,6 +194,7 @@ impl Pool {
     }
 
     /// 获取 len（用于统计）。
+    #[allow(dead_code)]
     pub async fn len(&self) -> usize {
         self.containers.read().await.len()
     }
@@ -222,11 +225,13 @@ impl Pool {
         &self.image
     }
 
+    #[allow(dead_code)]
     pub fn memory_mb(&self) -> u64 {
         self.memory_mb
     }
 
     /// 获取当前总容器数。
+    #[allow(dead_code)]
     pub async fn total_containers(&self) -> usize {
         self.containers.read().await.len()
     }
@@ -464,6 +469,7 @@ impl PoolManager {
     /// 优先从池中获取空闲容器。
     /// 若无空闲且未达上限，即时创建新容器。
     /// 若已达上限，阻塞等待。
+    #[allow(dead_code)]
     pub async fn acquire(&self, image: &str, memory_mb: u64) -> Result<String> {
         Ok(self.acquire_with_pool(image, memory_mb).await?.0)
     }
@@ -561,10 +567,26 @@ impl PoolManager {
                 }
                 Err(e) => {
                     if i < RM_F_RETRY_DELAYS.len() - 1 {
-                        warn!("rm -f 失败 (重试 {}/{}): {}: {}", i + 1, RM_F_RETRY_DELAYS.len(), container_id, e);
+                        warn!(
+                            task = "release",
+                            action = "rm_retry",
+                            container_id = container_id,
+                            image = pool.image(),
+                            attempt = i + 1,
+                            max_attempts = RM_F_RETRY_DELAYS.len(),
+                            error = %e,
+                            "rm -f 失败，将重试"
+                        );
                         tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
                     } else {
-                        error!("rm -f 最终失败: {}: {}", container_id, e);
+                        error!(
+                            task = "release",
+                            action = "rm_final_failed",
+                            container_id = container_id,
+                            image = pool.image(),
+                            error = %e,
+                            "rm -f 最终失败，加入泄漏追踪列表"
+                        );
                         let mut leaked = self.leaked_containers.lock().await;
                         leaked.push(container_id.to_string());
                     }
@@ -618,10 +640,23 @@ impl PoolManager {
 
                 match Self::replenish_one(&docker, pool.image(), &label_prefix, cpu, &pool).await {
                     Ok(id) => {
-                        info!("回补容器完成: {} (剩余 gap={})", id, gap - 1);
+                        info!(
+                            task = "replenish",
+                            action = "success",
+                            container_id = id,
+                            image = pool.image(),
+                            gap = gap - 1,
+                            "回补容器完成"
+                        );
                     }
                     Err(e) => {
-                        warn!("回补容器失败: {}", e);
+                        warn!(
+                            task = "replenish",
+                            action = "failed",
+                            image = pool.image(),
+                            error = %e,
+                            "回补容器失败"
+                        );
                         break;
                     }
                 }
@@ -653,10 +688,10 @@ impl PoolManager {
         if let Some(pool) = pools.get(&normalized) {
             return Ok(pool.clone());
         }
-        // 没有对应池，创建一个新的
+        // 没有对应池，创建一个新的（使用 per-image 内存配置）
         let pool = Arc::new(Pool::new(
             normalized.clone(),
-            self.config.memory_mb,
+            self.config.memory_mb_for_image(image),
             self.config.initial_size,
         ));
         // 这里简化处理：即时池不预创建容器
@@ -736,7 +771,7 @@ impl PoolManager {
 
     /// 清理孤儿容器。
     async fn cleanup_orphans(docker: &Docker, label_prefix: &str) {
-        use bollard::query_parameters::ListContainersOptions;
+        
         let filter_label = format!("{}.pool=true", label_prefix);
         let options = bollard::query_parameters::ListContainersOptions {
             all: true,
@@ -768,6 +803,7 @@ impl PoolManager {
     }
 
     /// 获取镜像的池引用。
+    #[allow(dead_code)]
     pub async fn get_pool(&self, image: &str) -> Option<Arc<Pool>> {
         let normalized = Self::normalize_image(image);
         self.pools.lock().await.get(&normalized).cloned()
@@ -801,6 +837,11 @@ impl PoolManager {
         self.shutting_down.load(Ordering::SeqCst)
     }
 
+    /// 获取泄漏容器列表（用于 metrics）。
+    pub fn leaked_containers(&self) -> &Mutex<Vec<String>> {
+        &self.leaked_containers
+    }
+
     // ── 后台任务 ──────────────────────────────────
 
     /// 启动健康检查循环。
@@ -827,10 +868,21 @@ impl PoolManager {
                             let cid = id.clone();
                             manager.docker.remove_container(&cid, Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
                         }).await {
-                            warn!("健康检查: 移除超时空闲容器失败: {}: {}", id, e);
+                            warn!(
+                                task = "health_check",
+                                action = "remove_idle_timeout",
+                                container_id = id,
+                                error = %e,
+                                "健康检查: 移除超时空闲容器失败"
+                            );
                             manager.leaked_containers.lock().await.push(id.clone());
                         } else {
-                            info!("健康检查: 移除空闲超时容器: {}", id);
+                            info!(
+                                task = "health_check",
+                                action = "remove_idle_timeout",
+                                container_id = id,
+                                "健康检查: 移除空闲超时容器"
+                            );
                         }
                     }
 
@@ -855,7 +907,13 @@ impl PoolManager {
                                     .and_then(|s| s.running)
                                     .unwrap_or(false);
                                 if !running {
-                                    warn!("健康检查: 容器异常: {}", id);
+                                    warn!(
+                                        task = "health_check",
+                                        action = "container_anomaly",
+                                        container_id = id,
+                                        image = pool.image(),
+                                        "健康检查: 容器异常（非 running）"
+                                    );
                                     let mut guard = pool.containers.write().await;
                                     if let Some(state) = guard.get_mut(id) {
                                         if state.status == ContainerStatus::Idle {
@@ -865,7 +923,14 @@ impl PoolManager {
                                 }
                             }
                             Err(e) => {
-                                warn!("健康检查: inspect 失败: {}: {}", id, e);
+                                warn!(
+                                    task = "health_check",
+                                    action = "inspect_failed",
+                                    container_id = id,
+                                    image = pool.image(),
+                                    error = %e,
+                                    "健康检查: inspect 失败"
+                                );
                                 let mut guard = pool.containers.write().await;
                                 if let Some(state) = guard.get_mut(id) {
                                     if state.status == ContainerStatus::Idle {
@@ -883,10 +948,23 @@ impl PoolManager {
                             let cid = id.clone();
                             manager.docker.remove_container(&cid, Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
                         }).await {
-                            warn!("健康检查: 移除 Dead 容器失败: {}: {}", id, e);
+                            warn!(
+                                task = "health_check",
+                                action = "remove_dead_failed",
+                                container_id = id,
+                                image = pool.image(),
+                                error = %e,
+                                "健康检查: 移除 Dead 容器失败"
+                            );
                             manager.leaked_containers.lock().await.push(id.clone());
                         } else {
-                            info!("健康检查: 已移除 Dead 容器: {}", id);
+                            info!(
+                                task = "health_check",
+                                action = "remove_dead",
+                                container_id = id,
+                                image = pool.image(),
+                                "健康检查: 已移除 Dead 容器"
+                            );
                         }
                     }
 
@@ -899,8 +977,19 @@ impl PoolManager {
                             let cid = id.clone();
                             manager.docker.remove_container(&cid, Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
                         }).await).is_ok() {
-                            info!("健康检查: 清理泄漏容器成功: {}", id);
+                            info!(
+                                task = "health_check",
+                                action = "leak_cleanup_success",
+                                container_id = id,
+                                "健康检查: 清理泄漏容器成功"
+                            );
                         } else {
+                            warn!(
+                                task = "health_check",
+                                action = "leak_cleanup_retry",
+                                container_id = id,
+                                "健康检查: 泄漏容器清理失败，加入重试列表"
+                            );
                             // 重试失败，加回列表下次再试
                             manager.leaked_containers.lock().await.push(id.clone());
                         }
@@ -910,11 +999,20 @@ impl PoolManager {
         });
     }
 
-    /// 启动后台任务（健康检查 + Supervisor + Scaler）。
+    /// 启动后台任务（健康检查 + Supervisor + Scaler + Metrics 服务）。
     pub async fn start_background_tasks(self: &Arc<Self>) {
         self.start_health_check().await;
         self.start_supervisor();
         self.start_scaler().await;
+        self.start_metrics_server().await;
+    }
+
+    /// 启动 metrics HTTP 服务。
+    async fn start_metrics_server(self: &Arc<Self>) {
+        let pool = self.clone();
+        tokio::spawn(async move {
+            metrics::start_metrics_server(pool, None).await;
+        });
     }
 
     /// 启动 Scaler 扩缩容循环。
@@ -977,11 +1075,13 @@ impl PoolManager {
 
                     if idle + in_flight > target * 2 {
                         warn!(
-                            "Supervisor: 池 {} 容器数异常 (idle={}, in_flight={}, target={})",
-                            pool.image(),
-                            idle,
-                            in_flight,
-                            target
+                            task = "supervisor",
+                            action = "pool_anomaly",
+                            image = pool.image(),
+                            idle = idle,
+                            in_flight = in_flight,
+                            target = target,
+                            "Supervisor: 池容器数异常"
                         );
                     }
                 }
@@ -1005,7 +1105,7 @@ impl PoolManager {
 
     /// 向 Scaler 发送事件（忽略失败，Scaler 未启动时静默丢弃）。
     async fn send_scaler_event(&self, event: ScalerEvent) {
-        let mut guard = self.scaler_tx.lock().await;
+        let guard = self.scaler_tx.lock().await;
         if let Some(ref tx) = *guard {
             let _ = tx.send(event);
         }

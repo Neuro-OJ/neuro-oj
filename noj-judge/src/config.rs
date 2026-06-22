@@ -88,7 +88,13 @@ impl PoolConfig {
             let norm = img.to_uppercase().replace('-', "_");
             let key = format!("POOL_MEMORY_MB_{}", norm);
             if let Some(val) = env_var_parse::<u64>(&key) {
-                per_image_memory.insert(img.clone(), val);
+                // 使用归一化后的镜像名作为 key（strip :latest）
+                let normalized = if let Some(stripped) = img.strip_suffix(":latest") {
+                    stripped.to_string()
+                } else {
+                    img.clone()
+                };
+                per_image_memory.insert(normalized, val);
             }
         }
 
@@ -113,9 +119,15 @@ impl PoolConfig {
     ///
     /// 优先返回 per-image 配置（`POOL_MEMORY_MB_{IMAGE}`），
     /// 不存在则返回全局默认值。
+    /// 查找时自动归一化镜像名（strip `:latest`）。
     pub fn memory_mb_for_image(&self, image: &str) -> u64 {
+        let normalized = if let Some(stripped) = image.strip_suffix(":latest") {
+            stripped
+        } else {
+            image
+        };
         self.per_image_memory
-            .get(image)
+            .get(normalized)
             .copied()
             .unwrap_or(self.memory_mb)
     }

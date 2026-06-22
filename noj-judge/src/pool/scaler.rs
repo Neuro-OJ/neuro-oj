@@ -46,6 +46,7 @@ struct PoolMetrics {
     /// 即时创建次数（池空）
     miss_count: u64,
     /// 上次评估时的 idle 计数快照
+    #[allow(dead_code)]
     prev_idle_count: usize,
     /// 连续高空闲周期数（用于缩容判断）
     high_idle_cycles: u32,
@@ -207,18 +208,39 @@ impl Scaler {
                         .min(m.config.max_size as i32) as usize;
                     pool.set_target_depth(new_target, m.config.min_size, m.config.max_size);
 
+                    let action = if adjustment > 0 { "scale_up" } else { "scale_down" };
                     info!(
-                        "扩缩容: image={}, target={}->{}, qps={:.1}, queue_wait={:.0}ms, \
-                         miss_rate={:.1}%, idle_ratio={:.1}%, in_flight={}, idle={}",
-                        pool.image(),
-                        target,
-                        new_target,
-                        qps,
-                        avg_queue_wait,
-                        miss_rate * 100.0,
-                        idle_ratio * 100.0,
-                        in_flight,
-                        idle,
+                        action = action,
+                        image = pool.image(),
+                        target_old = target,
+                        target_new = new_target,
+                        qps = qps,
+                        queue_wait_ms = avg_queue_wait,
+                        miss_rate = miss_rate,
+                        idle_ratio = idle_ratio,
+                        in_flight = in_flight,
+                        idle = idle,
+                        scale_up_score = scale_up,
+                        scale_down_score = scale_down,
+                        high_idle_cycles = m.high_idle_cycles,
+                        "scaler_adjust",
+                    );
+                } else {
+                    // 即使不调整也输出调试级日志，记录完整决策上下文
+                    info!(
+                        action = "noop",
+                        image = pool.image(),
+                        target = target,
+                        qps = qps,
+                        queue_wait_ms = avg_queue_wait,
+                        miss_rate = miss_rate,
+                        idle_ratio = idle_ratio,
+                        in_flight = in_flight,
+                        idle = idle,
+                        scale_up_score = scale_up,
+                        scale_down_score = scale_down,
+                        high_idle_cycles = m.high_idle_cycles,
+                        "scaler_noop",
                     );
                 }
 

@@ -37,13 +37,11 @@ pub async fn evaluate_with_pool(
     // 3. 执行评测逻辑
     let result = do_evaluate_with_pool(pool.clone(), task, &container_id, &work_dir).await;
 
-    // 4. 无论成功或失败，均清理容器和临时目录
-    if let Some(p) = pool.get_pool(image).await {
-        pool.release(&p, &container_id).await;
-    }
+    // 4. 清理临时目录
     let _ = tokio::fs::remove_dir_all(&work_dir).await;
 
-    // 5. 手动释放 guard（防止 Drop 重复 cleanup）
+    // 5. 手动释放 guard（触发 docker rm -f + in_flight-- + 回补检查）
+    //    注意：不能同时调用 pool.release()，否则 in_flight 会被减两次
     guard.release().await;
 
     result
@@ -121,7 +119,7 @@ pub async fn evaluate_legacy(
     task: &JudgeTask,
     work_dir: &str,
 ) -> Result<JudgeResult> {
-    use crate::pool::exec::read_memory_peak_kb;
+    
     use std::time::Instant;
 
     let start = Instant::now();

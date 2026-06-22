@@ -49,7 +49,7 @@ fn main() -> Result<()> {
         .context("Docker daemon PING 失败（请确保 Docker 在运行中）")?;
     info!("Docker 连接成功");
 
-    let redis_url = config.redis_url.clone();
+    let _redis_url = config.redis_url.clone();
     let result_queue = config.result_queue.clone();
     let work_dir = config.work_dir.clone();
 
