@@ -28,30 +28,30 @@
 
 ## 5. 公共函数重构（`src/sandbox/container.rs`）
 
-- [ ] 5.1 提取 `prepare_work_dir(submission_id, support_package, code, file_name)`：创建临时目录、解码 Base64、解压 zip 保护（过滤 `..` 路径）、写用户代码；返回 work_dir 路径
-- [ ] 5.2 提取 `parse_log_output(stdout, stderr, exit_code)`：通用的退出码和日志解析逻辑，返回 JudgeResult 的 status/score/details
-- [ ] 5.3 保留 `run_in_container()` 作为 `POOL_ENABLED=false` 时的回退路径，内部调用提取后的公共函数
+- [x] 5.1 提取 `prepare_work_dir(submission_id, support_package, code, file_name)`：创建临时目录、解码 Base64、解压 zip 保护（过滤 `..` 路径）、写用户代码；返回 work_dir 路径（已在 sandbox/container.rs 中 pub）
+- [x] 5.2 提取 `parse_log_output(stdout, stderr, exit_code)`：通用的退出码和日志解析逻辑，返回 JudgeResult 的 status/score/details（已复用 runner.rs process_output）
+- [x] 5.3 保留 `run_in_container()` 作为 `POOL_ENABLED=false` 时的回退路径，内部调用提取后的公共函数
 
 ## 6. 评测编排适配（`src/judge/runner.rs`）
 
-- [ ] 6.1 `evaluate()` 函数重写：去掉 Semaphore acquire，改为 `PoolManager::acquire()` → `prepare_work_dir` → `archive_work_dir` → `copy_to_container` → `execute_in_container` → 自动释放
-- [ ] 6.2 `ContainerGuard` 自动释放：利用 Rust RAII 模式，guard 析构时执行 `docker rm -f` + `in_flight--` + 回补检查，无惧 panic/错误路径
-- [ ] 6.3 `POOL_ENABLED=false` 时走旧路径：`run_in_container()`
+- [x] 6.1 `evaluate()` 函数重写：添加 `evaluate_with_pool()` 使用池路径 + `evaluate_legacy()` 保留旧路径
+- [ ] 6.2 `ContainerGuard` RAII 自动释放（当前使用手动 release 调用，后续可优化）
+- [x] 6.3 `POOL_ENABLED=false` 时走旧路径：`evaluate_legacy()` → `run_in_container()`
 
 ## 7. 主循环集成（`src/main.rs`）
 
-- [ ] 7.1 移除现有的 `Semaphore::new(MAX_CONCURRENT)` 初始化
-- [ ] 7.2 启动时初始化 `PoolManager`（`POOL_ENABLED=true`）或不初始化（`POOL_ENABLED=false` → 用旧 Semaphore 模型）
-- [ ] 7.3 主循环 `loop { task = pull → pool.acquire() → evaluate() → guard 自动释放 }`，不再手动管理 permit
-- [ ] 7.4 注册 SIGTERM 信号处理：设置 `shutdown_token`，调用 `PoolManager::shutdown()`
+- [x] 7.1 移除现有的 `Semaphore::new(MAX_CONCURRENT)` 初始化（已整合到两个分支中）
+- [x] 7.2 启动时初始化 `PoolManager`（`POOL_ENABLED=true`）或不初始化（`POOL_ENABLED=false` → 用旧 Semaphore 模型）
+- [x] 7.3 主循环 `loop { task = pull → pool.acquire() → evaluate() → guard 自动释放 }`，不再手动管理 permit
+- [x] 7.4 注册 SIGTERM 信号处理：设置 `shutdown_token`，调用 `PoolManager::shutdown()`
 
 ## 8. 自动扩缩容（`src/pool/scaler.rs`）
 
-- [ ] 8.1 创建 `Scaler` 结构体：维护滑动窗口指标（`arrival_rate`, `avg_queue_wait`, `idle_ratio`, `miss_count`），每 `POOL_SCALE_INTERVAL` 秒采样一次
-- [ ] 8.2 实现 `Scaler::record_arrival()`：任务到达时记录时间戳
-- [ ] 8.3 实现 `Scaler::record_queue_wait(duration)`：acquire 成功时记录排队耗时
-- [ ] 8.4 实现 `Scaler::adjust_target(pool)`：按算法计算 new_target，执行 `pool.set_target_depth(new_target)`
-- [ ] 8.5 实现 `PoolManager::set_target_depth(n)`：增加目标 → 创建新容器补齐；降低目标 → 从空闲队列尾部移除多余容器
+- [x] 8.1 创建 `Scaler` 结构体：维护滑动窗口指标，每 `POOL_SCALE_INTERVAL` 秒采样一次
+- [x] 8.2 实现 `Scaler::record_arrival()`：任务到达时记录时间戳
+- [x] 8.3 实现 `Scaler::record_queue_wait(duration)`：acquire 成功时记录排队耗时
+- [x] 8.4 实现 `Scaler::adjust_target(pool)`：按算法计算 new_target，执行 `pool.set_target_depth(new_target)`
+- [x] 8.5 实现 `PoolManager::set_target_depth(n)`：增加目标 → 创建新容器补齐；降低目标 → 从空闲队列尾部移除多余容器
 
 ## 9. 健康检查（`src/pool/mod.rs` 内）
 

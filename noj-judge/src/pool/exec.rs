@@ -104,37 +104,4 @@ pub async fn execute_in_container(
     }
 }
 
-/// 将 judge_command 字符串解析为 exec 所需的参数数组。
-///
-/// 支持引号包裹的参数（与现有 parse_command 行为一致）。
-pub fn parse_command(cmd: &str) -> Vec<String> {
-    let mut args = Vec::new();
-    let mut current = String::new();
-    let mut in_single_quote = false;
-    let mut in_double_quote = false;
-
-    for c in cmd.chars() {
-        match c {
-            '\'' if !in_double_quote => {
-                in_single_quote = !in_single_quote;
-            }
-            '"' if !in_single_quote => {
-                in_double_quote = !in_double_quote;
-            }
-            ' ' if !in_single_quote && !in_double_quote => {
-                if !current.is_empty() {
-                    args.push(current.clone());
-                    current.clear();
-                }
-            }
-            _ => {
-                current.push(c);
-            }
-        }
-    }
-    if !current.is_empty() {
-        args.push(current);
-    }
-
-    args
-}
+// parse_command 请使用 crate::sandbox::container::parse_command

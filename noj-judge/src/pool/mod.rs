@@ -3,8 +3,8 @@
 //! PoolManager 替代原有的 Semaphore 并发控制模型。
 //! 所有容器（预创建和即时创建）都通过池统一管理。
 
-mod copy;
-mod exec;
+pub mod copy;
+pub mod exec;
 mod scaler;
 
 use std::collections::HashMap;
@@ -394,7 +394,7 @@ impl PoolManager {
     }
 
     /// 回补一个容器。
-    async fn replenish_one(docker: &Docker, image: &str, pool: &Arc<Pool>) -> Result<String> {
+    async fn replenish_one(_docker: &Docker, image: &str, pool: &Arc<Pool>) -> Result<String> {
         let client = Docker::connect_with_local_defaults()?;
         let id = Self::create_container_inner(&client, image).await?;
         pool.push_idle(id.clone()).await;

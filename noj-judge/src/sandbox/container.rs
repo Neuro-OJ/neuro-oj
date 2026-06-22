@@ -64,7 +64,7 @@ pub struct ContainerOutput {
 /// 准备临时工作目录。
 ///
 /// 在 work_dir 下创建 `{submission_id}` 目录。
-async fn prepare_work_dir(work_dir: &Path, submission_id: &str) -> Result<PathBuf> {
+pub async fn prepare_work_dir(work_dir: &Path, submission_id: &str) -> Result<PathBuf> {
     let dir = work_dir.join(submission_id);
     fs::create_dir_all(&dir)
         .await
@@ -75,7 +75,7 @@ async fn prepare_work_dir(work_dir: &Path, submission_id: &str) -> Result<PathBu
 /// 获取支持包内容（Base64 解码）。
 ///
 /// Base64 解码是纯 CPU 操作，无需 async。
-fn get_support_package_bytes(task: &JudgeTask) -> Result<Option<Vec<u8>>> {
+pub fn get_support_package_bytes(task: &JudgeTask) -> Result<Option<Vec<u8>>> {
     match &task.support_package_base64 {
         Some(base64_str) if !base64_str.is_empty() => {
             let bytes = base64::engine::general_purpose::STANDARD
@@ -91,7 +91,7 @@ fn get_support_package_bytes(task: &JudgeTask) -> Result<Option<Vec<u8>>> {
 ///
 /// 使用 spawn_blocking 将同步解压操作移出 async 上下文，
 /// 避免 zip crate 在 tokio runtime 下可能出现的数据读取问题。
-async fn extract_zip(data: &[u8], target_dir: &Path) -> Result<()> {
+pub async fn extract_zip(data: &[u8], target_dir: &Path) -> Result<()> {
     let data = data.to_vec();
     let target_dir = target_dir.to_path_buf();
     tokio::task::spawn_blocking(move || extract_zip_sync(&data, &target_dir))
@@ -101,7 +101,7 @@ async fn extract_zip(data: &[u8], target_dir: &Path) -> Result<()> {
 }
 
 /// 写入用户代码到工作目录。
-async fn write_user_code(work_dir: &Path, task: &JudgeTask) -> Result<()> {
+pub async fn write_user_code(work_dir: &Path, task: &JudgeTask) -> Result<()> {
     let file_name = task.file_name.as_deref().unwrap_or("main.py");
     let code_path = work_dir.join(file_name);
     fs::write(&code_path, &task.code)
@@ -341,7 +341,7 @@ async fn capture_container_logs(
 /// 解析评测命令为字符串数组。
 ///
 /// 简单 shell 风格分词，支持单引号和双引号。
-fn parse_command(command: &str) -> Vec<String> {
+pub fn parse_command(command: &str) -> Vec<String> {
     let mut args = Vec::new();
     let mut current = String::new();
     let mut in_quote = false;
