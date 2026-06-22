@@ -16,11 +16,27 @@ use anyhow::Result;
 use bollard::image::CreateImageOptions;
 use bollard::Docker;
 use futures_util::StreamExt;
-use tokio::sync::{Mutex, Notify, RwLock};
+use tokio::sync::{mpsc, Mutex, Notify, RwLock};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use crate::config::PoolConfig;
+use crate::pool::scaler::ScalerEvent;
+
+// ── 常量 ───────────────────────────────────────────────
+
+/// 健康检查间隔（秒）。
+const HEALTH_CHECK_INTERVAL_SECS: u64 = 5;
+/// Supervisor 状态检查间隔（秒）。
+const SUPERVISOR_INTERVAL_SECS: u64 = 30;
+/// 熔断恢复探测间隔（秒）。
+const CIRCUIT_RECOVERY_INTERVAL_SECS: u64 = 30;
+/// 回补 debounce 窗口（毫秒）。
+const REFILL_DEBOUNCE_MS: u64 = 200;
+/// acquire 阻塞等待超时（秒）。
+const ACQUIRE_TIMEOUT_SECS: u64 = 60;
+/// docker rm -f 重试延迟序列（毫秒）。
+const RM_F_RETRY_DELAYS: &[u64] = &[100, 500, 2000];
 
 // ── 容器状态机 ──────────────────────────────────────────
 
@@ -146,6 +162,21 @@ impl Pool {
         self.notify.notified().await;
     }
 
+    /// 收集并移除所有 Dead 容器。
+    /// 返回被移除的容器 ID 列表（调用方需 docker rm -f）。
+    pub async fn collect_dead(&self) -> Vec<String> {
+        let mut guard = self.containers.write().await;
+        let mut to_remove = Vec::new();
+        guard.retain(|id, state| {
+            if state.status == ContainerStatus::Dead {
+                to_remove.push(id.clone());
+                return false;
+            }
+            true
+        });
+        to_remove
+    }
+
     /// 触发空闲超时清理和健康检查。
     pub async fn collect_idle_timeout(&self, idle_timeout: std::time::Duration) -> Vec<String> {
         let mut guard = self.containers.write().await;
@@ -253,11 +284,14 @@ impl ContainerGuard {
 
 impl Drop for ContainerGuard {
     fn drop(&mut self) {
-        // 注意：不能在 Drop 中执行 async 操作
-        // release 中的 docker rm -f 由手动调用或 evaluate_with_pool 保证
-        // Drop 仅用于资源清理标记
-        let _ = self.manager.take();
-        let _ = self.pool.take();
+        // 若 manager 和 pool 仍在，说明未被手动 release()
+        // 通过 tokio::spawn 异步执行清理（best-effort）
+        if let (Some(manager), Some(pool)) = (self.manager.take(), self.pool.take()) {
+            let cid = self.container_id.clone();
+            tokio::spawn(async move {
+                manager.release(&pool, &cid).await;
+            });
+        }
     }
 }
 
@@ -283,6 +317,10 @@ pub struct PoolManager {
     bollard_error_count: AtomicUsize,
     /// 熔断器：总操作计数器（30s 窗口）
     bollard_total_count: AtomicUsize,
+    /// Scaler 事件发送端（由 start_scaler 初始化）
+    scaler_tx: tokio::sync::Mutex<Option<mpsc::UnboundedSender<ScalerEvent>>>,
+    /// rm -f 最终失败的泄漏容器（健康检查定期清理）
+    leaked_containers: Mutex<Vec<String>>,
 }
 
 impl PoolManager {
@@ -303,6 +341,8 @@ impl PoolManager {
             circuit_open: AtomicBool::new(false),
             bollard_error_count: AtomicUsize::new(0),
             bollard_total_count: AtomicUsize::new(0),
+            scaler_tx: tokio::sync::Mutex::new(None),
+            leaked_containers: Mutex::new(Vec::new()),
         });
 
         // 按镜像初始化池
@@ -310,7 +350,14 @@ impl PoolManager {
             info!("预热镜像: {}", image);
 
             // 先检查镜像是否已存在于本地
-            let image_exists = manager.image_exists_locally(image).await;
+            let image_exists = match manager.image_exists_locally(image).await {
+                Ok(true) => true,
+                Ok(false) => false,
+                Err(_) => {
+                    warn!("无法检查镜像状态，将尝试拉取: {}", image);
+                    false
+                }
+            };
             if image_exists {
                 info!("镜像已存在本地，跳过拉取: {}", image);
 
@@ -406,18 +453,20 @@ impl PoolManager {
     }
 
     /// 检查镜像是否存在于本地 Docker 仓库。
-    async fn image_exists_locally(&self, image: &str) -> bool {
-        match self
-            .docker
-            .list_images::<String>(None)
-            .await
-        {
-            Ok(images) => images.iter().any(|i| {
+    async fn image_exists_locally(&self, image: &str) -> Result<bool> {
+        let result = self.timed_bollard(5, "list_images", async {
+            self.docker.list_images::<String>(None).await.map_err(anyhow::Error::from)
+        }).await;
+        match result {
+            Ok(images) => Ok(images.iter().any(|i| {
                 i.repo_tags
                     .iter()
                     .any(|tag| tag == image || tag.starts_with(&format!("{}:", image)))
-            }),
-            Err(_) => false,
+            })),
+            Err(e) => {
+                warn!("检查本地镜像失败: {}: {}", image, e);
+                Err(e)
+            }
         }
     }
 
@@ -446,7 +495,11 @@ impl PoolManager {
 
         // 快速路径：尝试获取空闲容器
         if let Some(id) = pool.acquire().await {
-            self.update_container_memory(&id, memory_mb).await?;
+            self.send_scaler_event(ScalerEvent::Arrival { pool: image.to_string() }).await;
+            if let Err(e) = self.update_container_memory(&id, memory_mb).await {
+                pool.release(&id).await;
+                return Err(e);
+            }
             return Ok((id, pool.clone()));
         }
 
@@ -454,6 +507,8 @@ impl PoolManager {
         if pool.in_flight() < pool.target_depth() {
             let id = self.create_container(image).await?;
             pool.mark_in_use(&id).await;
+            self.send_scaler_event(ScalerEvent::Arrival { pool: image.to_string() }).await;
+            self.send_scaler_event(ScalerEvent::Miss { pool: image.to_string() }).await;
             // 快速扩容触发器：排队时立即扩容
             if pool.target_depth() < self.config.max_size {
                 pool.set_target_depth(
@@ -463,18 +518,28 @@ impl PoolManager {
                 );
                 info!("快速扩容: {} -> {}", image, pool.target_depth());
             }
-            self.update_container_memory(&id, memory_mb).await?;
+            if let Err(e) = self.update_container_memory(&id, memory_mb).await {
+                pool.release(&id).await;
+                return Err(e);
+            }
             return Ok((id, pool.clone()));
         }
 
         // 已达上限：阻塞等待
+        let wait_start = Instant::now();
         loop {
             if self.shutting_down.load(Ordering::SeqCst) {
                 anyhow::bail!("池管理器正在关闭");
             }
             pool.wait_for_slot().await;
             if let Some(id) = pool.acquire().await {
-                self.update_container_memory(&id, memory_mb).await?;
+                let wait_ms = wait_start.elapsed().as_millis() as u64;
+                self.send_scaler_event(ScalerEvent::Arrival { pool: image.to_string() }).await;
+                self.send_scaler_event(ScalerEvent::QueueWait { pool: image.to_string(), wait_ms }).await;
+                if let Err(e) = self.update_container_memory(&id, memory_mb).await {
+                    pool.release(&id).await;
+                    return Err(e);
+                }
                 return Ok((id, pool.clone()));
             }
         }
@@ -486,20 +551,24 @@ impl PoolManager {
     pub async fn release(&self, pool: &Arc<Pool>, container_id: &str) {
         // docker rm -f 带退避重试
         let mut success = false;
-        let delays = [100, 500, 2000];
-        for (i, delay_ms) in delays.iter().enumerate() {
-            match self.docker.remove_container(container_id, None::<bollard::container::RemoveContainerOptions>).await {
+        for (i, delay_ms) in RM_F_RETRY_DELAYS.iter().enumerate() {
+            let cid = container_id.to_string();
+            match self.timed_bollard(10, "remove_container", async {
+                self.docker.remove_container(&cid, None::<bollard::container::RemoveContainerOptions>).await.map_err(anyhow::Error::from)
+            }).await {
                 Ok(_) => {
                     success = true;
                     break;
                 }
                 Err(e) => {
-                    if i < delays.len() - 1 {
-                        warn!("rm -f 失败 (重试 {}/{}): {}: {}", i + 1, delays.len(), container_id, e);
+                    if i < RM_F_RETRY_DELAYS.len() - 1 {
+                        warn!("rm -f 失败 (重试 {}/{}): {}: {}", i + 1, RM_F_RETRY_DELAYS.len(), container_id, e);
                         tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
                     } else {
                         error!("rm -f 最终失败: {}: {}", container_id, e);
-                        // 加入泄漏追踪（由健康检查定期处理）
+                        if let Ok(mut leaked) = self.leaked_containers.try_lock() {
+                            leaked.push(container_id.to_string());
+                        }
                     }
                 }
             }
@@ -518,45 +587,73 @@ impl PoolManager {
     }
 
     /// 回补一个容器。
-    async fn replenish_one(docker: &Docker, image: &str, pool: &Arc<Pool>) -> Result<String> {
-        let id = Self::create_container_inner(docker, image).await?;
+    async fn replenish_one(docker: &Docker, image: &str, label_prefix: &str, cpu: f64, pool: &Arc<Pool>) -> Result<String> {
+        let id = Self::create_container_inner(docker, image, label_prefix, cpu).await?;
         pool.push_idle(id.clone()).await;
         Ok(id)
     }
 
-    /// 触发带 debounce 的回补。
+    /// 触发带 debounce 的批量回补。
+    ///
+    /// 计算缺口 `target - idle - in_flight` 并循环补齐，最多补齐到 target。
     fn trigger_replenish(&self, pool: &Arc<Pool>) {
         if pool.refill_in_progress.swap(true, Ordering::SeqCst) {
             return; // 已有回补进行中
         }
         let pool = pool.clone();
         let docker = self.docker.clone();
+        let label_prefix = self.config.label_prefix.clone();
+        let cpu = self.config.cpu;
         tokio::spawn(async move {
-            // 200ms debounce 窗口
-            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            match Self::replenish_one(&docker, pool.image(), &pool).await {
-                Ok(id) => {
-                    info!("回补容器完成: {}", id);
+            // debounce 窗口
+            tokio::time::sleep(std::time::Duration::from_millis(REFILL_DEBOUNCE_MS)).await;
+
+            let _target = pool.target_depth();
+            // 批量补齐缺口（最多 3 次尝试，避免无限循环）
+            for _ in 0..3 {
+                let idle = pool.idle_count().await;
+                let in_flight = pool.in_flight();
+                let target = pool.target_depth();
+                let gap = (target as i64 - idle as i64 - in_flight as i64).max(0) as usize;
+                if gap == 0 {
+                    break;
                 }
-                Err(e) => {
-                    warn!("回补容器失败: {}", e);
+
+                match Self::replenish_one(&docker, pool.image(), &label_prefix, cpu, &pool).await {
+                    Ok(id) => {
+                        info!("回补容器完成: {} (剩余 gap={})", id, gap - 1);
+                    }
+                    Err(e) => {
+                        warn!("回补容器失败: {}", e);
+                        break;
+                    }
                 }
             }
             pool.refill_in_progress.store(false, Ordering::SeqCst);
         });
     }
 
+    /// 归一化镜像名：剥离 `:latest` 后缀用于池 key 匹配。
+    fn normalize_image(image: &str) -> String {
+        if let Some(stripped) = image.strip_suffix(":latest") {
+            stripped.to_string()
+        } else {
+            image.to_string()
+        }
+    }
+
     /// 获取或创建镜像的池。
     async fn get_or_create_pool(&self, image: &str) -> Result<Arc<Pool>> {
+        let normalized = Self::normalize_image(image);
         let pools = self.pools.lock().await;
-        if let Some(pool) = pools.get(image) {
+        if let Some(pool) = pools.get(&normalized) {
             return Ok(pool.clone());
         }
         // 没有对应池，创建一个新的
         drop(pools); // 释放锁，后面需要重新获取可变锁
         let mut pools = self.pools.lock().await;
         // 检查是否被其他线程创建了
-        if let Some(pool) = pools.get(image) {
+        if let Some(pool) = pools.get(&normalized) {
             return Ok(pool.clone());
         }
         // 没有对应池，创建一个新的
@@ -566,16 +663,16 @@ impl PoolManager {
             self.config.initial_size,
         ));
         // 这里简化处理：即时池不预创建容器
-        pools.insert(image.to_string(), pool.clone());
+        pools.insert(normalized, pool.clone());
         Ok(pool)
     }
 
     /// 创建容器。
     async fn create_container(&self, image: &str) -> Result<String> {
-        Self::create_container_inner(&self.docker, image).await
+        Self::create_container_inner(&self.docker, image, &self.config.label_prefix, self.config.cpu).await
     }
 
-    async fn create_container_inner(docker: &Docker, image: &str) -> Result<String> {
+    async fn create_container_inner(docker: &Docker, image: &str, label_prefix: &str, cpu: f64) -> Result<String> {
         use bollard::container::Config;
         use bollard::container::CreateContainerOptions;
 
@@ -583,8 +680,15 @@ impl PoolManager {
             ..Default::default()
         };
 
+        let label_key = format!("{}.pool", label_prefix);
         let mut labels = HashMap::new();
-        labels.insert("com.noj.judge.pool".to_string(), "true".to_string());
+        labels.insert(label_key, "true".to_string());
+
+        let nano_cpus = if cpu > 0.0 {
+            Some((cpu * 1_000_000_000.0) as i64)
+        } else {
+            None
+        };
 
         let config = Config {
             image: Some(image.to_string()),
@@ -596,13 +700,18 @@ impl PoolManager {
                 privileged: Some(false),
                 readonly_rootfs: Some(true),
                 network_mode: Some("none".to_string()),
+                nano_cpus,
                 ..Default::default()
             }),
             ..Default::default()
         };
 
-        let result = docker.create_container::<String, String>(Some(options), config).await?;
-        docker.start_container::<String>(&result.id, None).await?;
+        let result = with_timeout(30, "create_container", async {
+            docker.create_container::<String, String>(Some(options), config).await.map_err(anyhow::Error::from)
+        }).await?;
+        with_timeout(5, "start_container", async {
+            docker.start_container::<String>(&result.id, None).await.map_err(anyhow::Error::from)
+        }).await?;
         Ok(result.id)
     }
 
@@ -616,14 +725,17 @@ impl PoolManager {
             memory_swappiness: Some(0),
             ..Default::default()
         };
-        self.docker.update_container(container_id, opts).await?;
+        let cid = container_id.to_string();
+        self.timed_bollard(5, "update_container", async {
+            self.docker.update_container(&cid, opts).await.map_err(anyhow::Error::from)
+        }).await?;
         Ok(())
     }
 
     /// 清理孤儿容器。
     async fn cleanup_orphans(docker: &Docker, label_prefix: &str) {
         use bollard::container::ListContainersOptions;
-        let filter_label = format!("{}={}", label_prefix, "true");
+        let filter_label = format!("{}.pool=true", label_prefix);
         let options = ListContainersOptions {
             all: true,
             filters: HashMap::from([(
@@ -633,12 +745,16 @@ impl PoolManager {
             ..Default::default()
         };
 
-        match docker.list_containers(Some(options)).await {
+        match with_timeout(10, "list_containers", async {
+            docker.list_containers(Some(options)).await.map_err(anyhow::Error::from)
+        }).await {
             Ok(containers) => {
                 for c in &containers {
                     if let Some(ref id) = c.id {
                         warn!("清理孤儿容器: {}", id);
-                        let _ = docker.remove_container(id.as_str(), None::<bollard::container::RemoveContainerOptions>).await;
+                        let _ = with_timeout(10, "remove_container", async {
+                            docker.remove_container(id.as_str(), None::<bollard::container::RemoveContainerOptions>).await.map_err(anyhow::Error::from)
+                        }).await;
                     }
                 }
             }
@@ -650,7 +766,8 @@ impl PoolManager {
 
     /// 获取镜像的池引用。
     pub async fn get_pool(&self, image: &str) -> Option<Arc<Pool>> {
-        self.pools.lock().await.get(image).cloned()
+        let normalized = Self::normalize_image(image);
+        self.pools.lock().await.get(&normalized).cloned()
     }
 
     /// 获取所有池（用于健康检查等）。
@@ -696,18 +813,21 @@ impl PoolManager {
                     break;
                 }
 
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                tokio::time::sleep(std::time::Duration::from_secs(HEALTH_CHECK_INTERVAL_SECS)).await;
 
                 let pools = manager.pools.lock().await;
                 for pool in pools.values() {
                     // 空闲超时清理
                     let expired = pool.collect_idle_timeout(idle_timeout).await;
                     for id in &expired {
-                        let _ = manager.docker.remove_container(
-                            id,
-                            None::<bollard::container::RemoveContainerOptions>,
-                        ).await;
-                        info!("健康检查: 移除空闲超时容器: {}", id);
+                        if let Err(e) = manager.timed_bollard(10, "remove_container", async {
+                            let cid = id.clone();
+                            manager.docker.remove_container(&cid, None::<bollard::container::RemoveContainerOptions>).await.map_err(anyhow::Error::from)
+                        }).await {
+                            warn!("健康检查: 移除超时空闲容器失败: {}: {}", id, e);
+                        } else {
+                            info!("健康检查: 移除空闲超时容器: {}", id);
+                        }
                     }
 
                     // 检查空闲容器是否存活
@@ -721,7 +841,11 @@ impl PoolManager {
                     };
 
                     for id in &idle_containers {
-                        match manager.docker.inspect_container(id, None::<bollard::container::InspectContainerOptions>).await {
+                        let inspect_result = manager.timed_bollard(5, "inspect_container", async {
+                            let cid = id.clone();
+                            manager.docker.inspect_container(&cid, None::<bollard::container::InspectContainerOptions>).await.map_err(anyhow::Error::from)
+                        }).await;
+                        match inspect_result {
                             Ok(info) => {
                                 let running = info.state.as_ref()
                                     .and_then(|s| s.running)
@@ -747,6 +871,38 @@ impl PoolManager {
                             }
                         }
                     }
+
+                    // 清理 Dead 容器
+                    let dead = pool.collect_dead().await;
+                    for id in &dead {
+                        if let Err(e) = manager.timed_bollard(10, "remove_container_dead", async {
+                            let cid = id.clone();
+                            manager.docker.remove_container(&cid, None::<bollard::container::RemoveContainerOptions>).await.map_err(anyhow::Error::from)
+                        }).await {
+                            warn!("健康检查: 移除 Dead 容器失败: {}: {}", id, e);
+                        } else {
+                            info!("健康检查: 已移除 Dead 容器: {}", id);
+                        }
+                    }
+
+                    // 清理泄漏容器（rm -f 全失败的）
+                    if let Ok(mut leaked) = manager.leaked_containers.try_lock() {
+                        let retry: Vec<String> = leaked.drain(..).collect();
+                        drop(leaked);
+                        for id in &retry {
+                            if let Ok(()) = manager.timed_bollard(10, "remove_container_leak", async {
+                                let cid = id.clone();
+                                manager.docker.remove_container(&cid, None::<bollard::container::RemoveContainerOptions>).await.map_err(anyhow::Error::from)
+                            }).await {
+                                info!("健康检查: 清理泄漏容器成功: {}", id);
+                            } else {
+                                // 重试失败，加回列表下次再试
+                                if let Ok(mut leaked) = manager.leaked_containers.try_lock() {
+                                    leaked.push(id.clone());
+                                }
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -767,9 +923,17 @@ impl PoolManager {
             return;
         }
         let config = Arc::new(self.config.clone());
+
+        // 创建事件通道
+        let (tx, rx) = mpsc::unbounded_channel();
+        {
+            let mut scaler_tx = self.scaler_tx.lock().await;
+            *scaler_tx = Some(tx);
+        }
+
         let scaler = scaler::Scaler::new(pools, config);
         tokio::spawn(async move {
-            scaler.start().await;
+            scaler.start(Some(rx)).await;
         });
     }
 
@@ -799,7 +963,7 @@ impl PoolManager {
                 if manager.is_shutting_down() {
                     break;
                 }
-                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                tokio::time::sleep(std::time::Duration::from_secs(SUPERVISOR_INTERVAL_SECS)).await;
 
                 // 输出池指标
                 manager.log_pool_metrics().await;
@@ -846,7 +1010,7 @@ impl PoolManager {
                 if manager.is_shutting_down() {
                     break;
                 }
-                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                tokio::time::sleep(std::time::Duration::from_secs(CIRCUIT_RECOVERY_INTERVAL_SECS)).await;
 
                 // 每 30s 检测一次熔断条件
                 let total = manager.bollard_total_count.swap(0, Ordering::SeqCst);
@@ -862,7 +1026,9 @@ impl PoolManager {
                     }
                 } else if circuit {
                     // 熔断已打开，尝试恢复
-                    match manager.docker.ping().await {
+                    match manager.timed_bollard(5, "docker_ping", async {
+                        manager.docker.ping().await.map_err(anyhow::Error::from)
+                    }).await {
                         Ok(_) => {
                             info!("熔断器关闭: Docker daemon 已恢复");
                             manager.circuit_open.store(false, Ordering::SeqCst);
@@ -878,6 +1044,27 @@ impl PoolManager {
 }
 
 // ── 辅助函数 ──────────────────────────────────────────
+
+impl PoolManager {
+    /// 执行带超时和熔断记录的 bollard API 调用。
+    async fn timed_bollard<F, T>(&self, timeout_secs: u64, op_name: &str, future: F) -> Result<T>
+    where
+        F: std::future::Future<Output = Result<T>>,
+    {
+        let result = with_timeout(timeout_secs, op_name, future).await;
+        self.record_bollard_call(result.is_err());
+        result
+    }
+
+    /// 向 Scaler 发送事件（忽略失败，Scaler 未启动时静默丢弃）。
+    async fn send_scaler_event(&self, event: ScalerEvent) {
+        if let Ok(mut guard) = self.scaler_tx.try_lock() {
+            if let Some(ref tx) = *guard {
+                let _ = tx.send(event);
+            }
+        }
+    }
+}
 
 /// 对 bollard API 调用添加超时。
 ///

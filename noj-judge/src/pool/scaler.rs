@@ -7,11 +7,23 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tracing::info;
 
 use super::Pool;
 use crate::config::PoolConfig;
+
+/// Scaler 事件：任务到达/排队/即时创建。
+#[derive(Debug, Clone)]
+pub enum ScalerEvent {
+    /// 任务到达指定镜像的池
+    Arrival { pool: String },
+    /// 任务排队等待时间（毫秒）
+    QueueWait { pool: String, wait_ms: u64 },
+    /// 池空导致即时创建
+    Miss { pool: String },
+}
 
 /// 扩缩容评估器。
 ///
@@ -99,7 +111,9 @@ impl Scaler {
     }
 
     /// 启动周期性扩缩容循环。
-    pub async fn start(mut self) {
+    ///
+    /// `event_rx` 可选的事件接收端，从 PoolManager 接收任务到达/排队/miss 事件。
+    pub async fn start(mut self, mut event_rx: Option<mpsc::UnboundedReceiver<ScalerEvent>>) {
         let interval = self
             .metrics
             .first()
@@ -109,6 +123,17 @@ impl Scaler {
         info!("扩缩容循环启动 (间隔={}s)", interval);
 
         loop {
+            // 处理待处理的事件（非阻塞）
+            if let Some(ref mut rx) = event_rx {
+                while let Ok(event) = rx.try_recv() {
+                    match event {
+                        ScalerEvent::Arrival { pool } => self.record_arrival(&pool),
+                        ScalerEvent::QueueWait { pool, wait_ms } => self.record_queue_wait(&pool, wait_ms),
+                        ScalerEvent::Miss { pool } => self.record_miss(&pool),
+                    }
+                }
+            }
+
             sleep(Duration::from_secs(interval)).await;
 
             for m in &mut self.metrics {

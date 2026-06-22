@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use serde_json::Value;
@@ -15,9 +16,11 @@ pub use crate::types::JudgeTask;
 
 /// 执行评测任务（池路径）。
 ///
-/// 使用统一容器池：acquire → prepare_work_dir → archive_and_copy → exec → 解析结果。
+/// 获取容器后，将实际评测逻辑委托给 `do_evaluate_with_pool`，
+/// 然后在函数返回前无条件执行 cleanup（释放容器 + 删除临时目录），
+/// 确保不泄漏容器或磁盘空间。
 pub async fn evaluate_with_pool(
-    pool: &PoolManager,
+    pool: Arc<PoolManager>,
     task: &JudgeTask,
     work_dir_root: &Path,
 ) -> Result<JudgeResult> {
@@ -30,33 +33,54 @@ pub async fn evaluate_with_pool(
     // 2. 准备临时工作目录
     let work_dir = container::prepare_work_dir(work_dir_root, submission_id).await?;
 
-    // 3. 解压支持包
+    // 3. 执行评测逻辑
+    let result = do_evaluate_with_pool(pool.clone(), task, &container_id, &work_dir).await;
+
+    // 4. 无论成功或失败，均清理容器和临时目录
+    if let Some(p) = pool.get_pool(image).await {
+        pool.release(&p, &container_id).await;
+    }
+    let _ = tokio::fs::remove_dir_all(&work_dir).await;
+
+    result
+}
+
+/// 评测逻辑核心（不含资源获取/清理，方便确保 cleanup）。
+async fn do_evaluate_with_pool(
+    pool: Arc<PoolManager>,
+    task: &JudgeTask,
+    container_id: &str,
+    work_dir: &Path,
+) -> Result<JudgeResult> {
+    let submission_id = &task.submission_id;
+
+    // 1. 解压支持包
     if let Some(zip_data) = container::get_support_package_bytes(task)? {
-        container::extract_zip(&zip_data, &work_dir).await?;
+        container::extract_zip(&zip_data, work_dir).await?;
         info!("支持包已解压: {} ({} bytes)", submission_id, zip_data.len());
     } else {
         info!("无支持包，跳过解压: {}", submission_id);
     }
 
-    // 4. 写入用户代码
-    container::write_user_code(&work_dir, task).await?;
+    // 2. 写入用户代码
+    container::write_user_code(work_dir, task).await?;
     info!("用户代码已写入: {}", submission_id);
 
-    // 5. tar 打包并注入到容器
+    // 3. tar 打包并注入到容器
     let max_archive_mb = pool.config().max_archive_mb;
-    archive_and_copy(pool.docker(), &container_id, &work_dir, max_archive_mb)
+    archive_and_copy(pool.docker(), container_id, work_dir, max_archive_mb)
         .await
         .context("archive_and_copy 失败")?;
     info!("文件已注入到容器: {}", submission_id);
 
-    // 6. docker exec 执行评测命令
+    // 4. docker exec 执行评测命令
     let cmd_parts = container::parse_command(&task.judge_command);
     let timeout_ms = task.time_limit_ms;
     let kill_grace = pool.config().kill_grace_secs;
 
     let (stdout, stderr, exit_code) = execute_in_container(
         pool.docker(),
-        &container_id,
+        container_id,
         &cmd_parts,
         timeout_ms,
         kill_grace,
@@ -68,17 +92,7 @@ pub async fn evaluate_with_pool(
         submission_id, exit_code
     );
 
-    // 7. 容器会在 ContainerGuard 析构时自动删除
-    // 但我们当前没有用 ContainerGuard，需要手动 release
-    // 获取 pool 并 release
-    if let Some(p) = pool.get_pool(image).await {
-        pool.release(&p, &container_id).await;
-    }
-
-    // 8. 清理临时目录
-    let _ = tokio::fs::remove_dir_all(&work_dir).await;
-
-    // 9. 解析输出
+    // 5. 解析输出
     let output = ContainerOutput {
         stdout,
         stderr,

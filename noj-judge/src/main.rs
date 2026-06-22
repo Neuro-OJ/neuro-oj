@@ -19,8 +19,9 @@ use tracing::{error, info};
 use crate::config::Config;
 use crate::pool::PoolManager;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    let rt = tokio::runtime::Runtime::new().context("创建 Tokio 运行时失败")?;
+    rt.block_on(async {
     tracing_subscriber::fmt::init();
 
     let config = Config::from_env();
@@ -71,6 +72,11 @@ async fn main() -> Result<()> {
         info!("等待评测任务（池模式）...");
 
         loop {
+            if pool.is_shutting_down() {
+                info!("池管理器正在关闭，退出主循环");
+                break;
+            }
+
             let task = match mq::pull_task(&mut redis_conn, &config.judge_queue).await {
                 Ok(Some(task)) => task,
                 Ok(None) => continue,
@@ -87,14 +93,14 @@ async fn main() -> Result<()> {
             );
 
             let pool = pool.clone();
-            let redis_url = redis_url.clone();
+            let redis_client = redis_client.clone();
             let result_queue = result_queue.clone();
             let work_dir = work_dir.clone();
 
             tokio::spawn(async move {
                 let work_dir_path = std::path::Path::new(&work_dir);
 
-                let result = match judge::runner::evaluate_with_pool(&pool, &task, work_dir_path).await {
+                let result = match judge::runner::evaluate_with_pool(pool.clone(), &task, work_dir_path).await {
                     Ok(r) => r,
                     Err(e) => {
                         error!("评测失败: {}: {}", task.submission_id, e);
@@ -102,7 +108,7 @@ async fn main() -> Result<()> {
                     }
                 };
 
-                if let Ok(mut conn) = redis_client_conn(&redis_url).await {
+                if let Ok(mut conn) = redis_client.get_multiplexed_async_connection().await {
                     if let Err(e) = mq::push_result(&mut conn, &result_queue, &result).await {
                         error!(
                             "发布评测结果失败: {} (submission: {})",
@@ -140,7 +146,7 @@ async fn main() -> Result<()> {
                 .await
                 .expect("信号量关闭，无法继续处理");
             let docker = docker.clone();
-            let redis_url = redis_url.clone();
+            let redis_client = redis_client.clone();
             let result_queue = result_queue.clone();
             let work_dir = work_dir.clone();
 
@@ -155,7 +161,7 @@ async fn main() -> Result<()> {
                     }
                 };
 
-                if let Ok(mut conn) = redis_client_conn(&redis_url).await {
+                if let Ok(mut conn) = redis_client.get_multiplexed_async_connection().await {
                     if let Err(e) = mq::push_result(&mut conn, &result_queue, &result).await {
                         error!(
                             "发布评测结果失败: {} (submission: {})",
@@ -171,14 +177,8 @@ async fn main() -> Result<()> {
             });
         }
     }
-}
 
-/// 创建并验证 Redis 连接。
-async fn redis_client_conn(redis_url: &str) -> Result<redis::aio::MultiplexedConnection> {
-    let client = redis::Client::open(redis_url).context("创建 Redis 客户端失败")?;
-    let conn = client
-        .get_multiplexed_async_connection()
-        .await
-        .context("连接 Redis 失败")?;
-    Ok(conn)
+    #[allow(unreachable_code)]
+    Ok(())
+    })
 }

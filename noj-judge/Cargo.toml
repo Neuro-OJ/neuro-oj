@@ -19,6 +19,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 futures-util = "0.3"
 tar = "0.4"
 tokio-util = "0.7"
+scopeguard = "1.2"
 
 [dev-dependencies]
 tempfile = "3"

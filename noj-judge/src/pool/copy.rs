@@ -99,7 +99,7 @@ fn collect_entries_rec(
             collect_entries_rec(base, &entry.path(), entries)?;
         }
     } else {
-        let metadata = current.metadata()?;
+        let metadata = current.symlink_metadata()?;
         let is_symlink = metadata.file_type().is_symlink();
 
         let relative = current
@@ -226,35 +226,23 @@ mod tests {
     }
 
     #[test]
-    fn test_archive_rejects_dotdot() {
+    fn test_archive_skips_symlinks() {
+        use std::os::unix::fs::symlink;
         let tmp = TempDir::new().unwrap();
-        // 模拟 .. 场景：创建嵌套目录
-        let sub = tmp.path().join("sub");
-        fs::create_dir(&sub).unwrap();
-        fs::write(sub.join("../../evil.txt"), b"x").unwrap();
+        // 创建普通文件
+        fs::write(tmp.path().join("real.txt"), b"real content").unwrap();
+        // 创建符号链接指向它
+        symlink(tmp.path().join("real.txt"), tmp.path().join("link.txt")).unwrap();
 
-        // 打包时 items 的 relative 路径会包含 ..，应该被拒绝
-        let max_bytes = 10 * 1024 * 1024;
-        let mut entries = super::collect_entries(tmp.path()).unwrap();
-        // 手动修改 relative 为包含 .. 的路径来测试
-        let evil_entry = ArchiveEntry {
-            relative: "../../evil.txt".to_string(),
-            full_path: sub.join("../../evil.txt"),
-            size: 1,
-            is_symlink: false,
-        };
-        entries.push(evil_entry);
-
-        let mut buf = Vec::new();
-        let mut builder = tar::Builder::new(&mut buf);
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            for e in &entries {
-                if e.relative.contains("..") {
-                    panic!("拒绝路径");
-                }
-            }
-        }));
-        assert!(result.is_err());
+        // 打包，符号链接应被排除
+        let result = archive_work_dir(tmp.path(), 10 * 1024 * 1024).unwrap();
+        let mut archive = tar::Archive::new(&result[..]);
+        let entries: Vec<_> = archive.entries().unwrap().collect();
+        // 只有一个条目（real.txt），符号链接被跳过
+        assert_eq!(entries.len(), 1, "符号链接应被排除在 tar 之外");
+        let entry = &entries[0];
+        let path = entry.as_ref().unwrap().path().unwrap();
+        assert_eq!(path.to_string_lossy(), "real.txt");
     }
 
     #[test]

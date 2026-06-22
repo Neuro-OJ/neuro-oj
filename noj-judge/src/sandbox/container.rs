@@ -16,6 +16,13 @@ use tracing::{error, info, warn};
 
 use crate::types::JudgeTask;
 
+/// 解压炸弹防护：最大条目数。
+const MAX_ZIP_ENTRIES: usize = 1000;
+/// 解压炸弹防护：单文件最大大小（64MB）。
+const MAX_FILE_SIZE: u64 = 64 * 1024 * 1024;
+/// 解压炸弹防护：总解压大小（512MB）。
+const MAX_TOTAL_SIZE: u64 = 512 * 1024 * 1024;
+
 /// 同步解压 zip 内容到目标目录。
 ///
 /// 使用 std::fs 同步写入以避免 tokio async fs 在特定环境下可能出现的缓冲问题。
@@ -24,6 +31,13 @@ fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
     let mut archive = zip::ZipArchive::new(cursor).context("打开 zip 文件失败")?;
 
     let mut seen_paths = std::collections::HashSet::new();
+
+    // 解压炸弹防护：最多条目数
+    if archive.len() > MAX_ZIP_ENTRIES {
+        anyhow::bail!("zip 条目数 {} 超过上限 {}", archive.len(), MAX_ZIP_ENTRIES);
+    }
+
+    let mut total_extracted: u64 = 0;
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).context("读取 zip 条目失败")?;
@@ -50,8 +64,27 @@ fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
                 std::fs::create_dir_all(parent)
                     .with_context(|| format!("创建父目录失败: {}", parent.display()))?;
             }
+
+            // 单文件大小限制
+            if file.size() > MAX_FILE_SIZE {
+                anyhow::bail!(
+                    "zip 条目 '{}' 大小 {} 超过单文件上限 {}",
+                    file_name, file.size(), MAX_FILE_SIZE
+                );
+            }
+
             let mut buf = Vec::new();
             file.read_to_end(&mut buf)?;
+
+            // 总解压大小限制
+            total_extracted += buf.len() as u64;
+            if total_extracted > MAX_TOTAL_SIZE {
+                anyhow::bail!(
+                    "zip 总解压大小 {} 超过上限 {}",
+                    total_extracted, MAX_TOTAL_SIZE
+                );
+            }
+
             std::fs::write(&out_path, &buf)
                 .with_context(|| format!("写入文件失败: {}", out_path.display()))?;
         }
@@ -108,8 +141,16 @@ pub async fn extract_zip(data: &[u8], target_dir: &Path) -> Result<()> {
 }
 
 /// 写入用户代码到工作目录。
+///
+/// 验证 file_name 安全性：拒绝含路径分隔符或 `..` 的文件名，防止路径逃逸。
 pub async fn write_user_code(work_dir: &Path, task: &JudgeTask) -> Result<()> {
     let file_name = task.file_name.as_deref().unwrap_or("main.py");
+
+    // 安全校验：仅允许单级文件名，拒绝路径遍历
+    if file_name.contains('/') || file_name.contains('\\') || file_name.contains("..") {
+        anyhow::bail!("非法的 file_name（含路径分隔符或 ..）: {}", file_name);
+    }
+
     let code_path = work_dir.join(file_name);
     fs::write(&code_path, &task.code)
         .await
