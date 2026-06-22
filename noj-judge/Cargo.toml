@@ -20,6 +20,7 @@ futures-util = "0.3"
 tar = "0.4"
 tokio-util = "0.7"
 scopeguard = "1.2"
+axum = "0.8"
 
 [dev-dependencies]
 tempfile = "3"

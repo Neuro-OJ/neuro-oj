@@ -347,9 +347,10 @@ impl PoolManager {
             if image_exists {
                 info!("镜像已存在本地，跳过拉取: {}", image);
 
+                let normalized = Self::normalize_image(image);
                 let image_memory = manager.config.memory_mb_for_image(image);
                 let pool = Arc::new(Pool::new(
-                    image.clone(),
+                    normalized.clone(),
                     image_memory,
                     manager.config.initial_size,
                 ));
@@ -366,7 +367,7 @@ impl PoolManager {
                     }
                 }
 
-                manager.pools.lock().await.insert(image.clone(), pool);
+                manager.pools.lock().await.insert(normalized, pool);
                 continue;
             }
 
@@ -413,8 +414,9 @@ impl PoolManager {
             }
 
             let image_memory = manager.config.memory_mb_for_image(image);
+            let normalized = Self::normalize_image(image);
             let pool = Arc::new(Pool::new(
-                image.clone(),
+                normalized.clone(),
                 image_memory,
                 manager.config.initial_size,
             ));
@@ -432,7 +434,7 @@ impl PoolManager {
                 }
             }
 
-            manager.pools.lock().await.insert(image.clone(), pool);
+            manager.pools.lock().await.insert(normalized, pool);
         }
 
         info!("容器池初始化完成 (镜像数={})", manager.config.images.len());
@@ -653,7 +655,7 @@ impl PoolManager {
         }
         // 没有对应池，创建一个新的
         let pool = Arc::new(Pool::new(
-            image.to_string(),
+            normalized.clone(),
             self.config.memory_mb,
             self.config.initial_size,
         ));
