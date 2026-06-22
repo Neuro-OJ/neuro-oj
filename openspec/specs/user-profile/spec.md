@@ -20,6 +20,7 @@
   "user": {
     "id": "uuid",
     "username": "hachimi",
+    "bio": "## 关于我\n\n热爱算法竞赛",
     "created_at": "2026-01-01T00:00:00Z"
   },
   "stats": {
@@ -55,7 +56,12 @@
 
 - **WHEN** 客户端 GET `/api/v1/users/:id/profile`，其中 `:id` 为存在的用户 ID
 - **THEN** 系统返回 200，包含
-  `user`、`stats`、`solved_problems`、`recent_submissions` 四个字段
+  `user`、`stats`、`solved_problems`、`recent_submissions` 四个字段，`user` 对象包含 `bio` 字段
+
+#### Scenario: 查看未设置 bio 的用户主页
+
+- **WHEN** 客户端 GET `/api/v1/users/:id/profile`，该用户未设置 bio
+- **THEN** 系统返回 200，`user.bio` 字段为空字符串 `""`
 
 #### Scenario: 查看不存在的用户
 

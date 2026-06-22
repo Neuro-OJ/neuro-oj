@@ -6,7 +6,7 @@ import {
   submissions,
   users,
 } from "../db/schema.ts";
-import { NotFoundError } from "../lib/errors.ts";
+import { NotFoundError, ValidationError } from "../lib/errors.ts";
 import { scoreFromDb } from "../types/index.ts";
 
 /**
@@ -16,6 +16,7 @@ export interface UserProfileResponse {
   user: {
     id: string;
     username: string;
+    bio: string;
     created_at: string;
   };
   stats: {
@@ -62,6 +63,7 @@ export async function getUserProfile(
     .select({
       id: users.id,
       username: users.username,
+      bio: users.bio,
       created_at: users.created_at,
     })
     .from(users)
@@ -162,6 +164,7 @@ export async function getUserProfile(
     user: {
       id: userRow.id,
       username: userRow.username,
+      bio: userRow.bio,
       created_at: userRow.created_at,
     },
     stats: {
@@ -173,4 +176,41 @@ export async function getUserProfile(
     solved_problems: solvedProblems,
     recent_submissions: recentSubmissions,
   };
+}
+
+const BIO_MAX_LENGTH = 5000;
+
+/**
+ * 更新用户个人简介（bio）。
+ *
+ * 校验 bio 长度不超过 BIO_MAX_LENGTH（5000 字符），
+ * 然后更新 users 表的 bio 字段，返回更新后的用户基本信息。
+ *
+ * @throws {ValidationError} bio 超长时抛出
+ */
+export async function updateUserProfile(
+  userId: string,
+  bio: string,
+): Promise<{ id: string; username: string; bio: string }> {
+  const db = getDb();
+
+  if (bio.length > BIO_MAX_LENGTH) {
+    throw new ValidationError(`bio 长度不能超过 ${BIO_MAX_LENGTH} 字`);
+  }
+
+  const [updated] = await db
+    .update(users)
+    .set({ bio, updated_at: new Date().toISOString() })
+    .where(eq(users.id, userId))
+    .returning({
+      id: users.id,
+      username: users.username,
+      bio: users.bio,
+    });
+
+  if (!updated) {
+    throw new NotFoundError("用户不存在");
+  }
+
+  return updated;
 }

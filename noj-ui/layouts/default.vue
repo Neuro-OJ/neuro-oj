@@ -48,6 +48,7 @@ html {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: var(--c-text);
     scroll-behavior: smooth;
+    overflow-x: hidden;
 }
 
 body {
@@ -59,12 +60,15 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    width: 100%;
+    overflow-x: hidden;
 }
 
 .body-area {
     display: flex;
     flex: 1;
     min-height: calc(100vh - 64px);
+    width: 100%;
 }
 
 .main {
