@@ -12,11 +12,14 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::Result;
+use std::time::Duration;
+
+use anyhow::{Context, Result};
 use bollard::image::CreateImageOptions;
 use bollard::Docker;
 use futures_util::StreamExt;
 use tokio::sync::{Mutex, Notify, RwLock};
+use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
@@ -66,6 +69,8 @@ pub struct Pool {
     image: String,
     /// 该池的内存上限 MB
     memory_mb: u64,
+    /// 回补进行中标记（debounce）
+    refill_in_progress: AtomicBool,
 }
 
 impl Pool {
@@ -77,6 +82,7 @@ impl Pool {
             in_flight: AtomicUsize::new(0),
             image,
             memory_mb,
+            refill_in_progress: AtomicBool::new(false),
         }
     }
 
@@ -214,6 +220,12 @@ pub struct PoolManager {
     shutting_down: AtomicBool,
     /// 关闭通知
     shutdown_token: CancellationToken,
+    /// 熔断器：是否已打开（Docker daemon 异常时自动降级）
+    circuit_open: AtomicBool,
+    /// 熔断器：bollard 错误计数器（30s 窗口）
+    bollard_error_count: AtomicUsize,
+    /// 熔断器：总操作计数器（30s 窗口）
+    bollard_total_count: AtomicUsize,
 }
 
 impl PoolManager {
@@ -231,6 +243,9 @@ impl PoolManager {
             config,
             shutting_down: AtomicBool::new(false),
             shutdown_token: CancellationToken::new(),
+            circuit_open: AtomicBool::new(false),
+            bollard_error_count: AtomicUsize::new(0),
+            bollard_total_count: AtomicUsize::new(0),
         });
 
         // 按镜像初始化池
@@ -375,30 +390,43 @@ impl PoolManager {
 
         pool.release(container_id).await;
 
-        // 检查是否需回补
+        // 检查是否需回补（带 debounce）
         if success {
             let idle = pool.idle_count().await;
             let target = pool.target_depth();
             if (idle as f64) < (target as f64) * 0.5 {
-                let pool = pool.clone();
-                let docker = self.docker.clone();
-                let image = pool.image().to_string();
-                tokio::spawn(async move {
-                    match Self::replenish_one(&docker, &image, &pool).await {
-                        Ok(id) => info!("回补容器完成: {}", id),
-                        Err(e) => warn!("回补容器失败: {}", e),
-                    }
-                });
+                self.trigger_replenish(pool);
             }
         }
     }
 
     /// 回补一个容器。
-    async fn replenish_one(_docker: &Docker, image: &str, pool: &Arc<Pool>) -> Result<String> {
-        let client = Docker::connect_with_local_defaults()?;
-        let id = Self::create_container_inner(&client, image).await?;
+    async fn replenish_one(docker: &Docker, image: &str, pool: &Arc<Pool>) -> Result<String> {
+        let id = Self::create_container_inner(docker, image).await?;
         pool.push_idle(id.clone()).await;
         Ok(id)
+    }
+
+    /// 触发带 debounce 的回补。
+    fn trigger_replenish(&self, pool: &Arc<Pool>) {
+        if pool.refill_in_progress.swap(true, Ordering::SeqCst) {
+            return; // 已有回补进行中
+        }
+        let pool = pool.clone();
+        let docker = self.docker.clone();
+        tokio::spawn(async move {
+            // 200ms debounce 窗口
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            match Self::replenish_one(&docker, pool.image(), &pool).await {
+                Ok(id) => {
+                    info!("回补容器完成: {}", id);
+                }
+                Err(e) => {
+                    warn!("回补容器失败: {}", e);
+                }
+            }
+            pool.refill_in_progress.store(false, Ordering::SeqCst);
+        });
     }
 
     /// 获取或创建镜像的池。
@@ -534,5 +562,155 @@ impl PoolManager {
 
     pub fn is_shutting_down(&self) -> bool {
         self.shutting_down.load(Ordering::SeqCst)
+    }
+
+    // ── 后台任务 ──────────────────────────────────
+
+    /// 启动健康检查循环。
+    ///
+    /// 每 5 秒检查空闲容器状态，移除异常容器并触发回补。
+    pub async fn start_health_check(self: &Arc<Self>) {
+        let manager = self.clone();
+        tokio::spawn(async move {
+            let idle_timeout = std::time::Duration::from_secs(manager.config.idle_timeout_secs);
+
+            loop {
+                if manager.is_shutting_down() {
+                    break;
+                }
+
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+                let pools = manager.pools.lock().await;
+                for pool in pools.values() {
+                    // 空闲超时清理
+                    let expired = pool.collect_idle_timeout(idle_timeout).await;
+                    for id in &expired {
+                        let _ = manager.docker.remove_container(
+                            id,
+                            None::<bollard::container::RemoveContainerOptions>,
+                        ).await;
+                        info!("健康检查: 移除空闲超时容器: {}", id);
+                    }
+
+                    // 检查空闲容器是否存活
+                    let idle_containers: Vec<String> = {
+                        let guard = pool.containers.read().await;
+                        guard
+                            .values()
+                            .filter(|s| s.status == ContainerStatus::Idle)
+                            .map(|s| s.container_id.clone())
+                            .collect()
+                    };
+
+                    for id in &idle_containers {
+                        match manager.docker.inspect_container(id, None::<bollard::container::InspectContainerOptions>).await {
+                            Ok(info) => {
+                                let running = info.state.as_ref()
+                                    .and_then(|s| s.running)
+                                    .unwrap_or(false);
+                                if !running {
+                                    warn!("健康检查: 容器异常: {}", id);
+                                    let mut guard = pool.containers.write().await;
+                                    if let Some(state) = guard.get_mut(id) {
+                                        if state.status == ContainerStatus::Idle {
+                                            state.status = ContainerStatus::Dead;
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                warn!("健康检查: inspect 失败: {}: {}", id, e);
+                                let mut guard = pool.containers.write().await;
+                                if let Some(state) = guard.get_mut(id) {
+                                    if state.status == ContainerStatus::Idle {
+                                        state.status = ContainerStatus::Dead;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /// 启动后台任务（健康检查 + 熔断恢复 + 后台任务监控）。
+    pub async fn start_background_tasks(self: &Arc<Self>) {
+        self.start_health_check().await;
+        self.start_circuit_recovery();
+        // Scaler 由独立模块启动
+    }
+
+    /// 记录一次 bollard 操作（用于熔断器统计）。
+    pub fn record_bollard_call(&self, is_error: bool) {
+        self.bollard_total_count.fetch_add(1, Ordering::SeqCst);
+        if is_error {
+            self.bollard_error_count.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    /// 检查熔断器状态。
+    pub fn is_circuit_open(&self) -> bool {
+        self.circuit_open.load(Ordering::SeqCst)
+    }
+
+    /// 启动熔断恢复探测循环。
+    fn start_circuit_recovery(self: &Arc<Self>) {
+        let manager = self.clone();
+        tokio::spawn(async move {
+            loop {
+                if manager.is_shutting_down() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+
+                // 每 30s 检测一次熔断条件
+                let total = manager.bollard_total_count.swap(0, Ordering::SeqCst);
+                let errors = manager.bollard_error_count.swap(0, Ordering::SeqCst);
+
+                let circuit = manager.circuit_open.load(Ordering::SeqCst);
+
+                if !circuit && total > 0 {
+                    let error_rate = errors as f64 / total as f64;
+                    if error_rate > 0.50 {
+                        warn!("熔断器打开: bollard 错误率 {:.1}% ({} / {})", error_rate * 100.0, errors, total);
+                        manager.circuit_open.store(true, Ordering::SeqCst);
+                    }
+                } else if circuit {
+                    // 熔断已打开，尝试恢复
+                    match manager.docker.ping().await {
+                        Ok(_) => {
+                            info!("熔断器关闭: Docker daemon 已恢复");
+                            manager.circuit_open.store(false, Ordering::SeqCst);
+                        }
+                        Err(e) => {
+                            warn!("熔断恢复探测失败: {}", e);
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+// ── 辅助函数 ──────────────────────────────────────────
+
+/// 对 bollard API 调用添加超时。
+///
+/// - 轻量操作（update, inspect）→ 5s
+/// - exec 操作 → 沿用例行超时
+/// - rm -f 操作 → 10s
+pub async fn with_timeout<F, T>(duration_secs: u64, op: &str, future: F) -> Result<T>
+where
+    F: std::future::Future<Output = Result<T>>,
+{
+    match tokio::time::timeout(std::time::Duration::from_secs(duration_secs), future).await {
+        Ok(result) => result,
+        Err(_elapsed) => {
+            let err_msg = format!("bollard API 超时 ({} > {}s)", op, duration_secs);
+            error!("{}", err_msg);
+            Err(anyhow::anyhow!(err_msg))
+        }
     }
 }

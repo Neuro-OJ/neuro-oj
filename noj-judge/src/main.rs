@@ -59,6 +59,8 @@ async fn main() -> Result<()> {
             .context("初始化容器池失败")?;
 
         let pool_ref = pool.clone();
+        // 启动后台任务（健康检查）
+        pool.start_background_tasks().await;
         // 注册 SIGTERM 处理
         tokio::spawn(async move {
             tokio::signal::ctrl_c().await.ok();

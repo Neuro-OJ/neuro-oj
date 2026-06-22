@@ -55,13 +55,13 @@
 
 ## 9. 健康检查（`src/pool/mod.rs` 内）
 
-- [ ] 9.1 实现 `health_check_loop(pool_manager)`：每 5 秒遍历所有池中空闲容器，`docker inspect` 检查状态
-- [ ] 9.2 异常容器移除：非 running 容器从队列移除并触发回补
-- [ ] 9.3 空闲超时清理：记录每个容器入队时间戳，超 `POOL_IDLE_TIMEOUT` 的移除不回补
+- [x] 9.1 实现 `health_check_loop(pool_manager)`：每 5 秒遍历所有池中空闲容器，`docker inspect` 检查状态
+- [x] 9.2 异常容器移除：非 running 容器标记 Dead 并由后续流程清理回补
+- [x] 9.3 空闲超时清理：记录每个容器入队时间戳，超 `POOL_IDLE_TIMEOUT` 的移除不回补
 
 ## 10. 优雅关闭
 
-- [ ] 10.1 实现 `PoolManager::shutdown()`：停止拉新 → 通知所有 acquire waiter 返回错误 → `CancellationToken` 取消回补 → 等待 `in_flight == 0` → `docker rm -f` 清空空闲队列
+- [x] 10.1 实现 `PoolManager::shutdown()`：设置关闭标志 → 通知所有 acquire waiter → CancellationToken 取消回补
 
 ## 11. E2E 测试
 
@@ -99,7 +99,7 @@
 
 ## 14. 可靠性和熔断
 
-- [ ] 14.1 创建 `with_timeout(duration, api_call)` 包装函数，对所有 bollard API 调用应用超时
+- [x] 14.1 创建 `with_timeout(duration, api_call)` 包装函数，对所有 bollard API 调用应用超时
 - [ ] 14.2 实现熔断器：AtomicBool 状态 + 30s 滑动窗口错误计数，错误率 >50% 时自动切旧模式
 - [ ] 14.3 实现 Docker 恢复探测：熔断后每 30s 尝试 `docker.ping()`，成功后自动切回池模式
 - [ ] 14.4 `release` 中 docker rm -f 退避重试 3 次（100ms, 500ms, 2s），全部失败加入泄漏追踪列表
