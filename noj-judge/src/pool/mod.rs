@@ -202,7 +202,10 @@ impl Pool {
     /// 获取 idle 容器数。
     pub async fn idle_count(&self) -> usize {
         let guard = self.containers.read().await;
-        guard.values().filter(|s| s.status == ContainerStatus::Idle).count()
+        guard
+            .values()
+            .filter(|s| s.status == ContainerStatus::Idle)
+            .count()
     }
 
     /// 获取 in_flight。
@@ -239,7 +242,10 @@ impl Pool {
     /// 获取 (idle, in_flight, total) 快照。
     pub async fn snapshot(&self) -> (usize, usize, usize) {
         let guard = self.containers.read().await;
-        let idle = guard.values().filter(|s| s.status == ContainerStatus::Idle).count();
+        let idle = guard
+            .values()
+            .filter(|s| s.status == ContainerStatus::Idle)
+            .count();
         let in_flight = self.in_flight.load(Ordering::SeqCst);
         (idle, in_flight, guard.len())
     }
@@ -376,7 +382,12 @@ impl PoolManager {
                     match manager.create_container(image).await {
                         Ok(container_id) => {
                             pool.push_idle(container_id).await;
-                            info!("创建预热容器 [{}/{}] 镜像={}", i + 1, manager.config.initial_size, image);
+                            info!(
+                                "创建预热容器 [{}/{}] 镜像={}",
+                                i + 1,
+                                manager.config.initial_size,
+                                image
+                            );
                         }
                         Err(e) => {
                             warn!("创建预热容器失败: {}: {}", image, e);
@@ -443,7 +454,12 @@ impl PoolManager {
                 match manager.create_container(image).await {
                     Ok(container_id) => {
                         pool.push_idle(container_id).await;
-                        info!("创建预热容器 [{}/{}] 镜像={}", i + 1, manager.config.initial_size, image);
+                        info!(
+                            "创建预热容器 [{}/{}] 镜像={}",
+                            i + 1,
+                            manager.config.initial_size,
+                            image
+                        );
                     }
                     Err(e) => {
                         warn!("创建预热容器失败: {}: {}", image, e);
@@ -460,9 +476,14 @@ impl PoolManager {
 
     /// 检查镜像是否存在于本地 Docker 仓库。
     async fn image_exists_locally(&self, image: &str) -> Result<bool> {
-        let result = self.timed_bollard(5, "list_images", async {
-            self.docker.list_images(None::<bollard::query_parameters::ListImagesOptions>).await.map_err(anyhow::Error::from)
-        }).await;
+        let result = self
+            .timed_bollard(5, "list_images", async {
+                self.docker
+                    .list_images(None::<bollard::query_parameters::ListImagesOptions>)
+                    .await
+                    .map_err(anyhow::Error::from)
+            })
+            .await;
         match result {
             Ok(images) => Ok(images.iter().any(|i| {
                 i.repo_tags
@@ -502,7 +523,11 @@ impl PoolManager {
 
         // 快速路径：尝试获取空闲容器
         if let Some(id) = pool.acquire().await {
-            self.send_scaler_event(ScalerEvent::Arrival { pool: image.to_string(), timestamp: Instant::now() }).await;
+            self.send_scaler_event(ScalerEvent::Arrival {
+                pool: image.to_string(),
+                timestamp: Instant::now(),
+            })
+            .await;
             if let Err(e) = self.update_container_memory(&id, memory_mb).await {
                 self.release(&pool, &id).await;
                 return Err(e);
@@ -514,8 +539,15 @@ impl PoolManager {
         if pool.in_flight() < pool.target_depth() {
             let id = self.create_container(image).await?;
             pool.mark_in_use(&id).await;
-            self.send_scaler_event(ScalerEvent::Arrival { pool: image.to_string(), timestamp: Instant::now() }).await;
-            self.send_scaler_event(ScalerEvent::Miss { pool: image.to_string() }).await;
+            self.send_scaler_event(ScalerEvent::Arrival {
+                pool: image.to_string(),
+                timestamp: Instant::now(),
+            })
+            .await;
+            self.send_scaler_event(ScalerEvent::Miss {
+                pool: image.to_string(),
+            })
+            .await;
             self.inc_pool_misses_total();
             // 快速扩容触发器：排队时立即扩容
             if pool.target_depth() < self.config.max_size {
@@ -552,8 +584,16 @@ impl PoolManager {
             }
             if let Some(id) = pool.acquire().await {
                 let wait_ms = wait_start.elapsed().as_millis() as u64;
-                self.send_scaler_event(ScalerEvent::Arrival { pool: image.to_string(), timestamp: Instant::now() }).await;
-                self.send_scaler_event(ScalerEvent::QueueWait { pool: image.to_string(), wait_ms }).await;
+                self.send_scaler_event(ScalerEvent::Arrival {
+                    pool: image.to_string(),
+                    timestamp: Instant::now(),
+                })
+                .await;
+                self.send_scaler_event(ScalerEvent::QueueWait {
+                    pool: image.to_string(),
+                    wait_ms,
+                })
+                .await;
                 if let Err(e) = self.update_container_memory(&id, memory_mb).await {
                     self.release(&pool, &id).await;
                     return Err(e);
@@ -571,9 +611,21 @@ impl PoolManager {
         let mut success = false;
         for (i, delay_ms) in RM_F_RETRY_DELAYS.iter().enumerate() {
             let cid = container_id.to_string();
-            match self.timed_bollard(10, "remove_container", async {
-                self.docker.remove_container(&cid, Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
-            }).await {
+            match self
+                .timed_bollard(10, "remove_container", async {
+                    self.docker
+                        .remove_container(
+                            &cid,
+                            Some(bollard::query_parameters::RemoveContainerOptions {
+                                force: true,
+                                ..Default::default()
+                            }),
+                        )
+                        .await
+                        .map_err(anyhow::Error::from)
+                })
+                .await
+            {
                 Ok(_) => {
                     success = true;
                     break;
@@ -620,7 +672,13 @@ impl PoolManager {
     }
 
     /// 回补一个容器。
-    async fn replenish_one(docker: &Docker, image: &str, label_prefix: &str, cpu: f64, pool: &Arc<Pool>) -> Result<String> {
+    async fn replenish_one(
+        docker: &Docker,
+        image: &str,
+        label_prefix: &str,
+        cpu: f64,
+        pool: &Arc<Pool>,
+    ) -> Result<String> {
         let id = Self::create_container_inner(docker, image, label_prefix, cpu).await?;
         pool.push_idle(id.clone()).await;
         Ok(id)
@@ -714,10 +772,21 @@ impl PoolManager {
 
     /// 创建容器。
     async fn create_container(&self, image: &str) -> Result<String> {
-        Self::create_container_inner(&self.docker, image, &self.config.label_prefix, self.config.cpu).await
+        Self::create_container_inner(
+            &self.docker,
+            image,
+            &self.config.label_prefix,
+            self.config.cpu,
+        )
+        .await
     }
 
-    async fn create_container_inner(docker: &Docker, image: &str, label_prefix: &str, cpu: f64) -> Result<String> {
+    async fn create_container_inner(
+        docker: &Docker,
+        image: &str,
+        label_prefix: &str,
+        cpu: f64,
+    ) -> Result<String> {
         let options = bollard::query_parameters::CreateContainerOptions {
             ..Default::default()
         };
@@ -758,11 +827,19 @@ impl PoolManager {
         };
 
         let result = with_timeout(30, "create_container", async {
-            docker.create_container(Some(options), config).await.map_err(anyhow::Error::from)
-        }).await?;
+            docker
+                .create_container(Some(options), config)
+                .await
+                .map_err(anyhow::Error::from)
+        })
+        .await?;
         with_timeout(5, "start_container", async {
-            docker.start_container(&result.id, None).await.map_err(anyhow::Error::from)
-        }).await?;
+            docker
+                .start_container(&result.id, None)
+                .await
+                .map_err(anyhow::Error::from)
+        })
+        .await?;
         Ok(result.id)
     }
 
@@ -777,35 +854,50 @@ impl PoolManager {
         };
         let cid = container_id.to_string();
         self.timed_bollard(5, "update_container", async {
-            self.docker.update_container(&cid, opts).await.map_err(anyhow::Error::from)
-        }).await?;
+            self.docker
+                .update_container(&cid, opts)
+                .await
+                .map_err(anyhow::Error::from)
+        })
+        .await?;
         Ok(())
     }
 
     /// 清理孤儿容器。
     async fn cleanup_orphans(docker: &Docker, label_prefix: &str) {
-        
         let filter_label = format!("{}.pool=true", label_prefix);
         let options = bollard::query_parameters::ListContainersOptions {
             all: true,
             size: false,
-            filters: Some(HashMap::from([(
-                "label".to_string(),
-                vec![filter_label],
-            )])),
+            filters: Some(HashMap::from([("label".to_string(), vec![filter_label])])),
             ..Default::default()
         };
 
         match with_timeout(10, "list_containers", async {
-            docker.list_containers(Some(options)).await.map_err(anyhow::Error::from)
-        }).await {
+            docker
+                .list_containers(Some(options))
+                .await
+                .map_err(anyhow::Error::from)
+        })
+        .await
+        {
             Ok(containers) => {
                 for c in &containers {
                     if let Some(ref id) = c.id {
                         warn!("清理孤儿容器: {}", id);
                         let _ = with_timeout(10, "remove_container", async {
-                            docker.remove_container(id.as_str(), Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
-                        }).await;
+                            docker
+                                .remove_container(
+                                    id.as_str(),
+                                    Some(bollard::query_parameters::RemoveContainerOptions {
+                                        force: true,
+                                        ..Default::default()
+                                    }),
+                                )
+                                .await
+                                .map_err(anyhow::Error::from)
+                        })
+                        .await;
                     }
                 }
             }
@@ -910,17 +1002,32 @@ impl PoolManager {
                     break;
                 }
 
-                tokio::time::sleep(std::time::Duration::from_secs(HEALTH_CHECK_INTERVAL_SECS)).await;
+                tokio::time::sleep(std::time::Duration::from_secs(HEALTH_CHECK_INTERVAL_SECS))
+                    .await;
 
-                let pool_refs: Vec<Arc<Pool>> = manager.pools.lock().await.values().cloned().collect();
+                let pool_refs: Vec<Arc<Pool>> =
+                    manager.pools.lock().await.values().cloned().collect();
                 for pool in &pool_refs {
                     // 空闲超时清理
                     let expired = pool.collect_idle_timeout(idle_timeout).await;
                     for id in &expired {
-                        if let Err(e) = manager.timed_bollard(10, "remove_container", async {
-                            let cid = id.clone();
-                            manager.docker.remove_container(&cid, Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
-                        }).await {
+                        if let Err(e) = manager
+                            .timed_bollard(10, "remove_container", async {
+                                let cid = id.clone();
+                                manager
+                                    .docker
+                                    .remove_container(
+                                        &cid,
+                                        Some(bollard::query_parameters::RemoveContainerOptions {
+                                            force: true,
+                                            ..Default::default()
+                                        }),
+                                    )
+                                    .await
+                                    .map_err(anyhow::Error::from)
+                            })
+                            .await
+                        {
                             warn!(
                                 task = "health_check",
                                 action = "remove_idle_timeout",
@@ -950,15 +1057,23 @@ impl PoolManager {
                     };
 
                     for id in &idle_containers {
-                        let inspect_result = manager.timed_bollard(5, "inspect_container", async {
-                            let cid = id.clone();
-                            manager.docker.inspect_container(&cid, None::<bollard::query_parameters::InspectContainerOptions>).await.map_err(anyhow::Error::from)
-                        }).await;
+                        let inspect_result = manager
+                            .timed_bollard(5, "inspect_container", async {
+                                let cid = id.clone();
+                                manager
+                                    .docker
+                                    .inspect_container(
+                                        &cid,
+                                        None::<bollard::query_parameters::InspectContainerOptions>,
+                                    )
+                                    .await
+                                    .map_err(anyhow::Error::from)
+                            })
+                            .await;
                         match inspect_result {
                             Ok(info) => {
-                                let running = info.state.as_ref()
-                                    .and_then(|s| s.running)
-                                    .unwrap_or(false);
+                                let running =
+                                    info.state.as_ref().and_then(|s| s.running).unwrap_or(false);
                                 if !running {
                                     warn!(
                                         task = "health_check",
@@ -997,10 +1112,23 @@ impl PoolManager {
                     // 清理 Dead 容器
                     let dead = pool.collect_dead().await;
                     for id in &dead {
-                        if let Err(e) = manager.timed_bollard(10, "remove_container_dead", async {
-                            let cid = id.clone();
-                            manager.docker.remove_container(&cid, Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
-                        }).await {
+                        if let Err(e) = manager
+                            .timed_bollard(10, "remove_container_dead", async {
+                                let cid = id.clone();
+                                manager
+                                    .docker
+                                    .remove_container(
+                                        &cid,
+                                        Some(bollard::query_parameters::RemoveContainerOptions {
+                                            force: true,
+                                            ..Default::default()
+                                        }),
+                                    )
+                                    .await
+                                    .map_err(anyhow::Error::from)
+                            })
+                            .await
+                        {
                             warn!(
                                 task = "health_check",
                                 action = "remove_dead_failed",
@@ -1026,10 +1154,24 @@ impl PoolManager {
                     let retry: Vec<String> = leaked.drain(..).collect();
                     drop(leaked);
                     for id in &retry {
-                        if (manager.timed_bollard(10, "remove_container_leak", async {
-                            let cid = id.clone();
-                            manager.docker.remove_container(&cid, Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() })).await.map_err(anyhow::Error::from)
-                        }).await).is_ok() {
+                        if (manager
+                            .timed_bollard(10, "remove_container_leak", async {
+                                let cid = id.clone();
+                                manager
+                                    .docker
+                                    .remove_container(
+                                        &cid,
+                                        Some(bollard::query_parameters::RemoveContainerOptions {
+                                            force: true,
+                                            ..Default::default()
+                                        }),
+                                    )
+                                    .await
+                                    .map_err(anyhow::Error::from)
+                            })
+                            .await)
+                            .is_ok()
+                        {
                             info!(
                                 task = "health_check",
                                 action = "leak_cleanup_success",
@@ -1142,7 +1284,6 @@ impl PoolManager {
             }
         });
     }
-
 }
 
 // ── 辅助函数 ──────────────────────────────────────────

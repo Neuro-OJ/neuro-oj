@@ -5,8 +5,8 @@ use anyhow::{Context, Result};
 use serde_json::Value;
 use tracing::{error, info, warn};
 
-use crate::pool::exec::execute_in_container;
 use crate::pool::copy::archive_and_copy;
+use crate::pool::exec::execute_in_container;
 use crate::pool::PoolManager;
 use crate::sandbox::container::{self, ContainerOutput};
 use crate::types::{JudgeResult, JudgeStatus};
@@ -122,7 +122,6 @@ pub async fn evaluate_legacy(
     task: &JudgeTask,
     work_dir: &str,
 ) -> Result<JudgeResult> {
-    
     use std::time::Instant;
 
     let start = Instant::now();
@@ -238,7 +237,8 @@ fn parse_result_marker(stdout: &str) -> Result<Option<(String, i32, Value)>> {
     let score = parsed
         .get("score")
         .and_then(|v| v.as_i64())
-        .ok_or_else(|| anyhow::anyhow!("---RESULT--- 缺少 score 字段或类型错误"))? as i32;
+        .ok_or_else(|| anyhow::anyhow!("---RESULT--- 缺少 score 字段或类型错误"))?
+        as i32;
 
     let details = parsed.get("details").cloned().unwrap_or(Value::Null);
 

@@ -6,9 +6,9 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use tracing::{debug, info, warn};
 use bollard::Docker;
 use tokio::task::spawn_blocking;
+use tracing::{debug, info, warn};
 
 /// 将工作目录打包为 tar 字节流。
 ///
@@ -37,11 +37,7 @@ pub fn archive_work_dir(work_dir: &Path, max_size_bytes: u64) -> Result<Vec<u8>>
         // 检查总大小
         total_size += entry.size;
         if total_size > max_size_bytes {
-            anyhow::bail!(
-                "工作目录总大小 {} 超出限制 {}",
-                total_size,
-                max_size_bytes
-            );
+            anyhow::bail!("工作目录总大小 {} 超出限制 {}", total_size, max_size_bytes);
         }
 
         let mut header = tar::Header::new_gnu();
@@ -88,11 +84,7 @@ fn collect_entries(dir: &Path) -> Result<Vec<ArchiveEntry>> {
 }
 
 /// 递归收集文件条目。
-fn collect_entries_rec(
-    base: &Path,
-    current: &Path,
-    entries: &mut Vec<ArchiveEntry>,
-) -> Result<()> {
+fn collect_entries_rec(base: &Path, current: &Path, entries: &mut Vec<ArchiveEntry>) -> Result<()> {
     if current.is_dir() {
         for entry in fs::read_dir(current)? {
             let entry = entry?;
@@ -135,7 +127,10 @@ pub async fn copy_to_container(
 
     // 验证容器正在运行
     docker
-        .inspect_container(container_id, None::<bollard::query_parameters::InspectContainerOptions>)
+        .inspect_container(
+            container_id,
+            None::<bollard::query_parameters::InspectContainerOptions>,
+        )
         .await
         .map_err(|e| anyhow::anyhow!("copy_to_container: 容器 {} 不可用: {}", container_id, e))?
         .state
@@ -195,7 +190,11 @@ pub async fn copy_to_container(
         .create_exec(
             container_id,
             CreateExecOptions {
-                cmd: Some(vec!["ls".to_string(), "-la".to_string(), "/tmp/".to_string()]),
+                cmd: Some(vec![
+                    "ls".to_string(),
+                    "-la".to_string(),
+                    "/tmp/".to_string(),
+                ]),
                 attach_stdout: Some(true),
                 attach_stderr: Some(true),
                 ..Default::default()
@@ -252,10 +251,18 @@ pub async fn archive_and_copy(
     .with_context(|| format!("读取工作目录失败: {}", work_dir.display()))?;
 
     if entries.is_empty() {
-        anyhow::bail!("archive_and_copy: 工作目录为空（没有需要注入的文件）: {}", work_dir.display());
+        anyhow::bail!(
+            "archive_and_copy: 工作目录为空（没有需要注入的文件）: {}",
+            work_dir.display()
+        );
     }
 
-    info!("archive_and_copy: 工作目录 {} 包含 {} 个文件: {:?}", wd_str, entries.len(), entries);
+    info!(
+        "archive_and_copy: 工作目录 {} 包含 {} 个文件: {:?}",
+        wd_str,
+        entries.len(),
+        entries
+    );
 
     // tar 打包在 spawn_blocking 中执行
     let tar_bytes = spawn_blocking(move || archive_work_dir(&wd_path, max_bytes))

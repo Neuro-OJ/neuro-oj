@@ -2,7 +2,9 @@
 
 ### Requirement: 评测编排
 
-系统 SHALL 依序执行：从池获取容器/等待容器 → 动态调整内存 → 获取支持包（Base64 解码）→ 解压 → 写入用户代码 → tar 打包 → put_archive 注入 → docker exec 评测 → 解析输出 → 删除容器。
+系统 SHALL 依序执行：从池获取容器/等待容器 → 动态调整内存 → 获取支持包（Base64
+解码）→ 解压 → 写入用户代码 → tar 打包 → put_archive 注入 → docker exec 评测 →
+解析输出 → 删除容器。
 
 #### Scenario: 评测成功
 
@@ -35,7 +37,9 @@
 
 ### Requirement: 并发控制
 
-系统 SHALL 通过统一容器池控制并发评测数。所有容器（预创建和即时创建）均通过池管理，无独立 Semaphore。
+系统 SHALL
+通过统一容器池控制并发评测数。所有容器（预创建和即时创建）均通过池管理，无独立
+Semaphore。
 
 #### Scenario: 达到并发上限
 
@@ -50,7 +54,9 @@
 
 ### Requirement: 临时文件管理
 
-系统 SHALL 为每个评测任务创建独立临时目录 `{WORK_DIR}/{submission_id}/`，评测完成后清理。此路径与池容器文件注入配合使用——目录被 tar 打包后上传到容器 `/tmp/`。
+系统 SHALL 为每个评测任务创建独立临时目录
+`{WORK_DIR}/{submission_id}/`，评测完成后清理。此路径与池容器文件注入配合使用——目录被
+tar 打包后上传到容器 `/tmp/`。
 
 #### Scenario: 创建临时目录
 
@@ -66,6 +72,8 @@
 
 ### Requirement: 并发控制（原信号量模型）
 
-**Reason**: 并发控制已由 PoolManager 统一接管。原有 `MAX_CONCURRENT` Semaphore 模型被移除，由 `POOL_MAX_SIZE` 替代。
+**Reason**: 并发控制已由 PoolManager 统一接管。原有 `MAX_CONCURRENT` Semaphore
+模型被移除，由 `POOL_MAX_SIZE` 替代。
 
-**Migration**: 配置项 `MAX_CONCURRENT` 不再生效，改用 `POOL_MAX_SIZE`（默认 16）。`POOL_ENABLED=false` 时可回退到原有 Semaphore 模型。
+**Migration**: 配置项 `MAX_CONCURRENT` 不再生效，改用 `POOL_MAX_SIZE`（默认
+16）。`POOL_ENABLED=false` 时可回退到原有 Semaphore 模型。

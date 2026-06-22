@@ -138,7 +138,10 @@ pub async fn create_test_container(
         .with_context(|| format!("创建容器失败: {}", container_name))?;
 
     docker
-        .start_container(&container.id, None::<bollard::query_parameters::StartContainerOptions>)
+        .start_container(
+            &container.id,
+            None::<bollard::query_parameters::StartContainerOptions>,
+        )
         .await
         .with_context(|| format!("启动容器失败: {}", container_name))?;
 
@@ -179,7 +182,13 @@ pub async fn wait_container(
         Ok(Some(code)) => code,
         Ok(None) => {
             // wait stream 失败，回退到 inspect_container
-            match docker.inspect_container(container_id, None::<bollard::query_parameters::InspectContainerOptions>).await {
+            match docker
+                .inspect_container(
+                    container_id,
+                    None::<bollard::query_parameters::InspectContainerOptions>,
+                )
+                .await
+            {
                 Ok(info) => info.state.and_then(|s| s.exit_code).unwrap_or(-1),
                 Err(e) => {
                     let _ = docker
@@ -197,7 +206,10 @@ pub async fn wait_container(
         }
         Err(_elapsed) => {
             let _ = docker
-                .kill_container(container_id, None::<bollard::query_parameters::KillContainerOptions>)
+                .kill_container(
+                    container_id,
+                    None::<bollard::query_parameters::KillContainerOptions>,
+                )
                 .await;
             let output = capture_logs(docker, container_id).await;
             return Ok(ContainerOutput {

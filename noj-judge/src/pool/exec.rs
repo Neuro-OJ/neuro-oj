@@ -24,22 +24,28 @@ pub async fn execute_in_container(
     let exec_start = std::time::Instant::now();
 
     // 创建 exec（带 10s 超时）
-    let exec = timeout(Duration::from_secs(10), docker.create_exec(
-        container_id,
-        ExecConfig {
-            cmd: Some(command.to_vec()),
-            attach_stdout: Some(true),
-            attach_stderr: Some(true),
-            ..Default::default()
-        },
-    ))
-        .await
-        .context("创建 exec 超时 (>10s)")?
-        .context("创建 exec 失败")?;
+    let exec = timeout(
+        Duration::from_secs(10),
+        docker.create_exec(
+            container_id,
+            ExecConfig {
+                cmd: Some(command.to_vec()),
+                attach_stdout: Some(true),
+                attach_stderr: Some(true),
+                ..Default::default()
+            },
+        ),
+    )
+    .await
+    .context("创建 exec 超时 (>10s)")?
+    .context("创建 exec 失败")?;
 
     // 启动 exec 并捕获输出
     let output_future = async {
-        let result = docker.start_exec(&exec.id, None).await.context("启动 exec 失败")?;
+        let result = docker
+            .start_exec(&exec.id, None)
+            .await
+            .context("启动 exec 失败")?;
 
         let mut stdout = String::new();
         let mut stderr = String::new();
@@ -62,7 +68,12 @@ pub async fn execute_in_container(
         let inspect = docker.inspect_exec(&exec.id).await?;
         let exit_code = inspect.exit_code.unwrap_or(-1);
 
-        Ok::<_, anyhow::Error>((stdout, stderr, exit_code, exec_start.elapsed().as_millis() as u64))
+        Ok::<_, anyhow::Error>((
+            stdout,
+            stderr,
+            exit_code,
+            exec_start.elapsed().as_millis() as u64,
+        ))
     };
 
     // 竞速：exec 执行 vs 超时
@@ -72,13 +83,24 @@ pub async fn execute_in_container(
         Err(_elapsed) => {
             // 超时：先 stop 再 kill
             if let Err(e) = docker
-                .stop_container(container_id, Some(bollard::query_parameters::StopContainerOptions { t: Some(kill_grace_secs as i32), signal: None }))
-                .await {
+                .stop_container(
+                    container_id,
+                    Some(bollard::query_parameters::StopContainerOptions {
+                        t: Some(kill_grace_secs as i32),
+                        signal: None,
+                    }),
+                )
+                .await
+            {
                 warn!("超时后 stop_container 失败: {}: {}", container_id, e);
             }
             if let Err(e) = docker
-                .kill_container(container_id, None::<bollard::query_parameters::KillContainerOptions>)
-                .await {
+                .kill_container(
+                    container_id,
+                    None::<bollard::query_parameters::KillContainerOptions>,
+                )
+                .await
+            {
                 warn!("超时后 kill_container 失败: {}: {}", container_id, e);
             }
 
@@ -109,7 +131,12 @@ pub async fn execute_in_container(
                 }
             }
 
-            Ok((output, String::new(), -1, exec_start.elapsed().as_millis() as u64))
+            Ok((
+                output,
+                String::new(),
+                -1,
+                exec_start.elapsed().as_millis() as u64,
+            ))
         }
     }
 }

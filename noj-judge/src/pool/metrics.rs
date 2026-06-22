@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use axum::{Router, routing::get};
+use axum::{routing::get, Router};
 use tokio::net::TcpListener;
 use tracing::{error, info};
 
@@ -19,8 +19,7 @@ const METRICS_PORT: u16 = 9100;
 /// 在 `0.0.0.0:{port}` 上监听 `/metrics` 端点。
 pub async fn start_metrics_server(pool: Arc<PoolManager>, port: Option<u16>) {
     let port = port.unwrap_or(METRICS_PORT);
-    let app = Router::new()
-        .route("/metrics", get(move || metrics_handler(pool.clone())));
+    let app = Router::new().route("/metrics", get(move || metrics_handler(pool.clone())));
 
     let addr = format!("0.0.0.0:{}", port);
     info!("Metrics HTTP 服务启动: http://{}/metrics", addr);
@@ -53,11 +52,17 @@ async fn metrics_handler(pool: Arc<PoolManager>) -> String {
 
     output.push_str("# HELP noj_judge_timeouts_total 累积超时数\n");
     output.push_str("# TYPE noj_judge_timeouts_total counter\n");
-    output.push_str(&format!("noj_judge_timeouts_total {}\n", pool.timeouts_total()));
+    output.push_str(&format!(
+        "noj_judge_timeouts_total {}\n",
+        pool.timeouts_total()
+    ));
 
     output.push_str("# HELP noj_judge_pool_misses_total 累积池 miss 数\n");
     output.push_str("# TYPE noj_judge_pool_misses_total counter\n");
-    output.push_str(&format!("noj_judge_pool_misses_total {}\n", pool.pool_misses_total()));
+    output.push_str(&format!(
+        "noj_judge_pool_misses_total {}\n",
+        pool.pool_misses_total()
+    ));
 
     // ── Gauge 指标 ────────────────────────────────────
     output.push_str("# HELP noj_pool_leaked_containers 最终泄漏的容器数\n");

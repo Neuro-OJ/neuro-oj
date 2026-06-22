@@ -80,7 +80,10 @@ impl PoolConfig {
     fn from_env() -> Self {
         let enabled = env_var_parse::<bool>("POOL_ENABLED").unwrap_or(true);
         let raw_images = env_or("POOL_IMAGES", "noj-judge-python");
-        let images: Vec<String> = raw_images.split(',').map(|s| s.trim().to_string()).collect();
+        let images: Vec<String> = raw_images
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect();
 
         // 收集 per-image 内存配置（POOL_MEMORY_MB_{IMAGE_NAME}）
         let mut per_image_memory = std::collections::HashMap::new();
@@ -183,10 +186,21 @@ mod tests {
     fn test_config_defaults() {
         let _lock = ENV_TEST_MUTEX.lock().unwrap();
         for key in &[
-            "REDIS_URL", "JUDGE_QUEUE", "RESULT_QUEUE", "WORK_DIR",
-            "POOL_ENABLED", "POOL_INITIAL_SIZE", "POOL_MAX_SIZE", "POOL_MIN_SIZE",
-            "POOL_MEMORY_MB", "POOL_CPU", "POOL_IMAGES", "POOL_IDLE_TIMEOUT",
-            "POOL_SCALE_INTERVAL", "POOL_MAX_ARCHIVE_MB", "POOL_KILL_GRACE_SECONDS",
+            "REDIS_URL",
+            "JUDGE_QUEUE",
+            "RESULT_QUEUE",
+            "WORK_DIR",
+            "POOL_ENABLED",
+            "POOL_INITIAL_SIZE",
+            "POOL_MAX_SIZE",
+            "POOL_MIN_SIZE",
+            "POOL_MEMORY_MB",
+            "POOL_CPU",
+            "POOL_IMAGES",
+            "POOL_IDLE_TIMEOUT",
+            "POOL_SCALE_INTERVAL",
+            "POOL_MAX_ARCHIVE_MB",
+            "POOL_KILL_GRACE_SECONDS",
             "POOL_LABEL_PREFIX",
         ] {
             std::env::remove_var(key);
@@ -253,10 +267,7 @@ mod tests {
     #[test]
     fn test_max_concurrent_legacy_fallback() {
         let _lock = ENV_TEST_MUTEX.lock().unwrap();
-        let _guard = EnvGuard::set(vec![
-            ("POOL_ENABLED", "false"),
-            ("MAX_CONCURRENT", "8"),
-        ]);
+        let _guard = EnvGuard::set(vec![("POOL_ENABLED", "false"), ("MAX_CONCURRENT", "8")]);
         let cfg = Config::from_env();
         // POOL_ENABLED=false 时 max_concurrent 读取 MAX_CONCURRENT
         assert!(!cfg.pool.enabled);

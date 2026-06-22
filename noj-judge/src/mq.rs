@@ -75,11 +75,7 @@ pub async fn push_result_with_retry(
                     conn.lpush::<&str, &str, usize>(queue, &json).await;
                 match push_result {
                     Ok(_) => {
-                        info!(
-                            submission_id,
-                            attempt,
-                            "评测结果已发布",
-                        );
+                        info!(submission_id, attempt, "评测结果已发布",);
                         return;
                     }
                     Err(e) => {

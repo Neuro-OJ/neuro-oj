@@ -2,13 +2,16 @@
 
 ### Requirement: 统一容器池管理
 
-系统 SHALL 使用 PoolManager 对所有评测容器进行统一管理。PoolManager 替代现有的 Semaphore 并发控制模型。
+系统 SHALL 使用 PoolManager 对所有评测容器进行统一管理。PoolManager 替代现有的
+Semaphore 并发控制模型。
 
 #### Scenario: 启动时创建初始池
 
 - **WHEN** noj-judge 启动且 `POOL_ENABLED=true`
-- **THEN** 系统对 `POOL_IMAGES` 中每个镜像执行 `docker pull`（失败重试 3 次，间隔 5s）
-- **THEN** 每个镜像创建 `POOL_INITIAL_SIZE` 个容器，CMD 设为 `sleep infinity`，使用 `POOL_MEMORY_MB` 和 `POOL_CPU` 作为资源限制
+- **THEN** 系统对 `POOL_IMAGES` 中每个镜像执行 `docker pull`（失败重试 3
+  次，间隔 5s）
+- **THEN** 每个镜像创建 `POOL_INITIAL_SIZE` 个容器，CMD 设为
+  `sleep infinity`，使用 `POOL_MEMORY_MB` 和 `POOL_CPU` 作为资源限制
 - **THEN** 容器全部就绪后，主循环开始从 MQ 拉取任务
 
 #### Scenario: 启动时预拉取镜像失败
@@ -21,12 +24,14 @@
 
 - **WHEN** `POOL_ENABLED=false`
 - **THEN** 系统不创建池管理器
-- **THEN** 评测流程回退到现有模式（Semaphore 控制并发，`create_container` → `start_container` → `run` → `remove`）
+- **THEN** 评测流程回退到现有模式（Semaphore 控制并发，`create_container` →
+  `start_container` → `run` → `remove`）
 - **THEN** 提示：此模式下 `MAX_CONCURRENT` 替代 `POOL_MAX_SIZE` 控制并发
 
 ### Requirement: 容器分配与等待
 
-系统 SHALL 从池中分配空闲容器执行评测。无空闲容器时，若未达容量上限则即时创建，若已达上限则排队等待。
+系统 SHALL
+从池中分配空闲容器执行评测。无空闲容器时，若未达容量上限则即时创建，若已达上限则排队等待。
 
 #### Scenario: 有空闲容器
 
@@ -51,18 +56,21 @@
 #### Scenario: 镜像名匹配
 
 - **WHEN** 系统按 `task.judge_image` 查找池
-- **THEN** 若池中存在 `image` 且 `task.judge_image` 与池注册镜像名在去除默认 tag（`:latest` 视为等价于无 tag）后一致，视为匹配
+- **THEN** 若池中存在 `image` 且 `task.judge_image` 与池注册镜像名在去除默认
+  tag（`:latest` 视为等价于无 tag）后一致，视为匹配
 - **THEN** 若无匹配池，系统报错日志并触发即时创建路径
 
 ### Requirement: 动态内存调整
 
-系统 SHALL 在 exec 执行前通过 `docker update` 将容器内存限制调整为 `task.memory_limit_mb`，保证 OOM 检测正确。
+系统 SHALL 在 exec 执行前通过 `docker update` 将容器内存限制调整为
+`task.memory_limit_mb`，保证 OOM 检测正确。
 
 #### Scenario: exec 前调整内存
 
 - **WHEN** 容器已分配给任务
 - **THEN** 系统调用 `docker.update_container(memory = task.memory_limit_mb)`
-- **THEN** 若 `task.memory_limit_mb > POOL_MEMORY_MB`，报错并拒绝执行（不支持大于池硬上限的任务）
+- **THEN** 若
+  `task.memory_limit_mb > POOL_MEMORY_MB`，报错并拒绝执行（不支持大于池硬上限的任务）
 
 #### Scenario: 运行时 OOM 检测
 
@@ -72,7 +80,8 @@
 
 ### Requirement: 文件注入 (docker cp)
 
-系统 SHALL 将支持包和用户代码通过 tar 打包 + `docker put_archive` 注入到容器内的 `/tmp/` 目录。
+系统 SHALL 将支持包和用户代码通过 tar 打包 + `docker put_archive` 注入到容器内的
+`/tmp/` 目录。
 
 #### Scenario: tar 打包并复制
 
@@ -94,7 +103,8 @@
 
 ### Requirement: 评测执行 (docker exec)
 
-系统 SHALL 在文件注入后通过 Docker exec API 执行评测命令，并流式捕获 stdout/stderr。
+系统 SHALL 在文件注入后通过 Docker exec API 执行评测命令，并流式捕获
+stdout/stderr。
 
 #### Scenario: 正常执行
 
@@ -172,7 +182,8 @@
 
 ### Requirement: 优雅关闭
 
-系统 SHALL 在 SIGTERM 时按顺序关闭：停止拉取 → inflight 完成 → 取消回补 → 清理池。
+系统 SHALL 在 SIGTERM 时按顺序关闭：停止拉取 → inflight 完成 → 取消回补 →
+清理池。
 
 #### Scenario: 收到 SIGTERM
 
@@ -190,7 +201,9 @@
 #### Scenario: 容器安全配置
 
 - **WHEN** 任何池容器被创建
-- **THEN** HostConfig 包含 CapDrop=["ALL"], SecurityOpt=["no-new-privileges:true"], Privileged=false, ReadonlyRootfs=true, NetworkMode=none
+- **THEN** HostConfig 包含 CapDrop=["ALL"],
+  SecurityOpt=["no-new-privileges:true"], Privileged=false, ReadonlyRootfs=true,
+  NetworkMode=none
 - **THEN** MemorySwap 与 Memory 同值（禁用 swap），MemorySwappiness=0
 
 #### Scenario: swap 数据完整性

@@ -15,9 +15,9 @@ use bollard::models::HostConfig;
 use bollard::Docker;
 use common::{get_docker, is_e2e_enabled};
 
-use noj_judge::pool::PoolManager;
 use noj_judge::pool::exec::execute_in_container;
 use noj_judge::pool::with_timeout;
+use noj_judge::pool::PoolManager;
 
 // ── Helper ─────────────────────────────────────────────
 
@@ -57,18 +57,21 @@ async fn create_test_container_raw(
         )
         .await?;
     docker
-        .start_container(&container.id, None::<bollard::query_parameters::StartContainerOptions>)
+        .start_container(
+            &container.id,
+            None::<bollard::query_parameters::StartContainerOptions>,
+        )
         .await?;
     Ok(container.id)
 }
 
 /// 捕获容器的完整 stdout/stderr。
-async fn capture_container_logs(
-    docker: &Docker,
-    container_id: &str,
-) -> (String, String, i64) {
+async fn capture_container_logs(docker: &Docker, container_id: &str) -> (String, String, i64) {
     let inspect = docker
-        .inspect_container(container_id, None::<bollard::query_parameters::InspectContainerOptions>)
+        .inspect_container(
+            container_id,
+            None::<bollard::query_parameters::InspectContainerOptions>,
+        )
         .await;
     let exit_code = inspect
         .ok()
@@ -144,7 +147,9 @@ async fn test_pool_initialization() {
     // 验证池中有 2 个空闲容器
     let pools = pool.all_pools().await;
     assert!(!pools.is_empty(), "应有至少一个镜像的池");
-    let test_pool = pools.into_iter().find(|p| p.image() == "noj-judge-test-runner");
+    let test_pool = pools
+        .into_iter()
+        .find(|p| p.image() == "noj-judge-test-runner");
     assert!(test_pool.is_some(), "应找到 test-runner 池");
 
     let idle = test_pool.unwrap().idle_count().await;
@@ -201,7 +206,10 @@ async fn test_pool_full_execution_path() {
 
     // 验证容器正在运行
     let inspect = docker
-        .inspect_container(&container_id, None::<bollard::query_parameters::InspectContainerOptions>)
+        .inspect_container(
+            &container_id,
+            None::<bollard::query_parameters::InspectContainerOptions>,
+        )
         .await
         .expect("inspect 失败");
     let running = inspect
@@ -215,7 +223,11 @@ async fn test_pool_full_execution_path() {
     let (stdout, stderr, exit_code, _time_ms) = execute_in_container(
         &docker,
         &container_id,
-        &["python3".to_string(), "-c".to_string(), "print('pool-exec')".to_string()],
+        &[
+            "python3".to_string(),
+            "-c".to_string(),
+            "print('pool-exec')".to_string(),
+        ],
         10000,
         2,
     )
@@ -236,12 +248,12 @@ async fn test_pool_full_execution_path() {
 
     // 验证容器已被删除
     let inspect_result = docker
-        .inspect_container(&container_id, None::<bollard::query_parameters::InspectContainerOptions>)
+        .inspect_container(
+            &container_id,
+            None::<bollard::query_parameters::InspectContainerOptions>,
+        )
         .await;
-    assert!(
-        inspect_result.is_err(),
-        "容器应已被删除"
-    );
+    assert!(inspect_result.is_err(), "容器应已被删除");
 }
 
 /// 3. 动态内存调整验证。
@@ -259,12 +271,16 @@ async fn test_pool_memory_update() {
         .expect("确保测试镜像失败");
 
     // 先创建容器（直接用 create_test_container_raw）
-    let container_id = create_test_container_raw(&docker, &["sleep", "infinity"], 512).await
+    let container_id = create_test_container_raw(&docker, &["sleep", "infinity"], 512)
+        .await
         .expect("创建预热容器失败");
 
     // 读取初始 memory 限制
     let inspect = docker
-        .inspect_container(&container_id, None::<bollard::query_parameters::InspectContainerOptions>)
+        .inspect_container(
+            &container_id,
+            None::<bollard::query_parameters::InspectContainerOptions>,
+        )
         .await
         .expect("inspect 失败");
     let initial_memory = inspect
@@ -275,7 +291,7 @@ async fn test_pool_memory_update() {
     assert_eq!(initial_memory, 512 * 1024 * 1024, "初始内存应为 512MB");
 
     // 使用 docker update 下调到 64MB
-    
+
     docker
         .update_container(
             &container_id,
@@ -291,7 +307,10 @@ async fn test_pool_memory_update() {
 
     // 验证内存已更新
     let inspect = docker
-        .inspect_container(&container_id, None::<bollard::query_parameters::InspectContainerOptions>)
+        .inspect_container(
+            &container_id,
+            None::<bollard::query_parameters::InspectContainerOptions>,
+        )
         .await
         .expect("inspect 失败");
     let updated_memory = inspect
@@ -303,7 +322,13 @@ async fn test_pool_memory_update() {
 
     // 清理
     docker
-        .remove_container(&container_id, Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() }))
+        .remove_container(
+            &container_id,
+            Some(bollard::query_parameters::RemoveContainerOptions {
+                force: true,
+                ..Default::default()
+            }),
+        )
         .await
         .expect("清理容器失败");
 }
@@ -322,26 +347,40 @@ async fn test_pool_exec_timeout() {
         .await
         .expect("确保测试镜像失败");
 
-    let container_id = create_test_container_raw(&docker, &["sleep", "infinity"], 256).await
+    let container_id = create_test_container_raw(&docker, &["sleep", "infinity"], 256)
+        .await
         .expect("创建容器失败");
 
     // 执行一个长时间运行的任务，设置短超时
     let (stdout, stderr, exit_code, _time_ms) = execute_in_container(
         &docker,
         &container_id,
-        &["python3".to_string(), "-c".to_string(),
-          "import time; time.sleep(30); print('done')".to_string()],
+        &[
+            "python3".to_string(),
+            "-c".to_string(),
+            "import time; time.sleep(30); print('done')".to_string(),
+        ],
         2000, // 2s 超时
         2,
     )
     .await
     .expect("exec 应返回（即使超时）");
 
-    assert_eq!(exit_code, -1, "超时应返回 exit_code=-1，实际: {}", exit_code);
+    assert_eq!(
+        exit_code, -1,
+        "超时应返回 exit_code=-1，实际: {}",
+        exit_code
+    );
 
     // 清理
     docker
-        .remove_container(&container_id, Some(bollard::query_parameters::RemoveContainerOptions { force: true, ..Default::default() }))
+        .remove_container(
+            &container_id,
+            Some(bollard::query_parameters::RemoveContainerOptions {
+                force: true,
+                ..Default::default()
+            }),
+        )
         .await
         .expect("清理容器失败");
 }
@@ -381,7 +420,10 @@ async fn test_pool_security_config() {
         .expect("PoolManager init 失败");
 
     // 获取池中容器
-    let test_pool = pool.get_pool("noj-judge-test-runner").await.expect("应有 test-runner 池");
+    let test_pool = pool
+        .get_pool("noj-judge-test-runner")
+        .await
+        .expect("应有 test-runner 池");
     let container_id = pool
         .acquire("noj-judge-test-runner", 128)
         .await
@@ -389,17 +431,17 @@ async fn test_pool_security_config() {
 
     // inspect 验证安全配置
     let inspect = docker
-        .inspect_container(&container_id, None::<bollard::query_parameters::InspectContainerOptions>)
+        .inspect_container(
+            &container_id,
+            None::<bollard::query_parameters::InspectContainerOptions>,
+        )
         .await
         .expect("inspect 失败");
 
     let hc = inspect.host_config.as_ref().expect("应有 host_config");
 
     // CapDrop ALL
-    assert!(
-        hc.cap_drop.as_ref().is_some(),
-        "cap_drop 应被设置"
-    );
+    assert!(hc.cap_drop.as_ref().is_some(), "cap_drop 应被设置");
     let caps = hc.cap_drop.as_ref().unwrap();
     assert!(caps.iter().any(|c| c == "ALL"), "cap_drop 应包含 ALL");
 
@@ -440,7 +482,7 @@ async fn test_pool_queue_wait() {
     let config = noj_judge::config::PoolConfig {
         enabled: true,
         initial_size: 1,
-        max_size: 1,  // 最大 1 个并发
+        max_size: 1, // 最大 1 个并发
         min_size: 1,
         memory_mb: 256,
         cpu: 0.0,
@@ -494,6 +536,9 @@ async fn test_pool_with_timeout() {
     let docker = get_docker().expect("连接 Docker 失败");
 
     // 正常的调用应通过
-    let result = with_timeout(5, "ping", async { docker.ping().await.map_err(anyhow::Error::from) }).await;
+    let result = with_timeout(5, "ping", async {
+        docker.ping().await.map_err(anyhow::Error::from)
+    })
+    .await;
     assert!(result.is_ok(), "docker ping 应在 5s 内完成");
 }

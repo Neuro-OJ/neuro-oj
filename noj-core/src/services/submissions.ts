@@ -359,8 +359,9 @@ export async function saveEvaluationResult(
   await db.transaction(async (tx) => {
     // 根据评测结果状态映射 submission 状态
     // SystemError → "error"，其他 → "finished"
-    const submissionStatus: SubmissionStatus =
-      result.status === "SystemError" ? "error" : "finished";
+    const submissionStatus: SubmissionStatus = result.status === "SystemError"
+      ? "error"
+      : "finished";
 
     await tx
       .update(submissions)

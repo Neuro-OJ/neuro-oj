@@ -67,7 +67,9 @@ fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
             if file.size() > MAX_FILE_SIZE {
                 anyhow::bail!(
                     "zip 条目 '{}' 大小 {} 超过单文件上限 {}",
-                    file_name, file.size(), MAX_FILE_SIZE
+                    file_name,
+                    file.size(),
+                    MAX_FILE_SIZE
                 );
             }
 
@@ -79,7 +81,8 @@ fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
             if total_extracted > MAX_TOTAL_SIZE {
                 anyhow::bail!(
                     "zip 总解压大小 {} 超过上限 {}",
-                    total_extracted, MAX_TOTAL_SIZE
+                    total_extracted,
+                    MAX_TOTAL_SIZE
                 );
             }
 
@@ -223,7 +226,10 @@ pub async fn run_in_container(
         .with_context(|| format!("创建容器失败: {}", container_name))?;
 
     docker
-        .start_container(&container.id, None::<bollard::query_parameters::StartContainerOptions>)
+        .start_container(
+            &container.id,
+            None::<bollard::query_parameters::StartContainerOptions>,
+        )
         .await
         .with_context(|| format!("启动容器失败: {}", container_name))?;
 
@@ -241,7 +247,10 @@ pub async fn run_in_container(
     let wait_result = tokio::time::timeout(timeout, async {
         loop {
             let info = docker
-                .inspect_container(&container.id, None::<bollard::query_parameters::InspectContainerOptions>)
+                .inspect_container(
+                    &container.id,
+                    None::<bollard::query_parameters::InspectContainerOptions>,
+                )
                 .await
                 .with_context(|| format!("检查容器状态失败: {}", container_name))?;
 
@@ -279,7 +288,10 @@ pub async fn run_in_container(
             // 超时，强制 kill
             warn!("容器超时: {}", container_name);
             let _ = docker
-                .kill_container(&container.id, None::<bollard::query_parameters::KillContainerOptions>)
+                .kill_container(
+                    &container.id,
+                    None::<bollard::query_parameters::KillContainerOptions>,
+                )
                 .await;
             let output = capture_container_logs(docker, &container.id, -1).await;
             let _ = fs::remove_dir_all(&work_dir).await;

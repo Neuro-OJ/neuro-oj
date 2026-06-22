@@ -128,8 +128,12 @@ impl Scaler {
             if let Some(ref mut rx) = event_rx {
                 while let Ok(event) = rx.try_recv() {
                     match event {
-                        ScalerEvent::Arrival { pool, timestamp } => self.record_arrival(&pool, timestamp),
-                        ScalerEvent::QueueWait { pool, wait_ms } => self.record_queue_wait(&pool, wait_ms),
+                        ScalerEvent::Arrival { pool, timestamp } => {
+                            self.record_arrival(&pool, timestamp)
+                        }
+                        ScalerEvent::QueueWait { pool, wait_ms } => {
+                            self.record_queue_wait(&pool, wait_ms)
+                        }
                         ScalerEvent::Miss { pool } => self.record_miss(&pool),
                     }
                 }
@@ -214,11 +218,17 @@ impl Scaler {
 
                 let adjustment = scale_up - scale_down;
                 if adjustment != 0 {
-                    let new_target = (target as i32 + adjustment).max(m.config.min_size as i32)
-                        .min(m.config.max_size as i32) as usize;
+                    let new_target = (target as i32 + adjustment)
+                        .max(m.config.min_size as i32)
+                        .min(m.config.max_size as i32)
+                        as usize;
                     pool.set_target_depth(new_target, m.config.min_size, m.config.max_size);
 
-                    let action = if adjustment > 0 { "scale_up" } else { "scale_down" };
+                    let action = if adjustment > 0 {
+                        "scale_up"
+                    } else {
+                        "scale_down"
+                    };
                     info!(
                         action = action,
                         image = pool.image(),
