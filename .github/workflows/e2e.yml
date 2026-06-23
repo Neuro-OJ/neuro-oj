@@ -148,7 +148,23 @@ jobs:
           REDIS_URL: ${{ env.E2E_REDIS_URL }}
 
       # ════════════════════════════════════════════
-      # 6. 清理
+      # 6. 诊断日志（即使前面失败也执行）
+      # ════════════════════════════════════════════
+
+      - name: 输出 noj-judge 日志
+        if: always()
+        run: |
+          echo "=== noj-judge 日志 ==="
+          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 noj-judge 2>&1 || echo "容器可能未启动"
+
+      - name: 输出 noj-core 日志
+        if: always()
+        run: |
+          echo "=== noj-core 日志 ==="
+          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 noj-core 2>&1 || echo "容器可能未启动"
+
+      # ════════════════════════════════════════════
+      # 7. 清理
       # ════════════════════════════════════════════
 
       - name: 清理评测栈
