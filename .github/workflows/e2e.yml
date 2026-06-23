@@ -79,8 +79,21 @@ jobs:
             cargo-e2e-
 
       # ════════════════════════════════════════════
-      # 1. 构建 Docker 镜像
+      # 1. 构建基础设施：支持包 + 评测镜像 + Docker Compose 镜像
       # ════════════════════════════════════════════
+
+      - name: 安装 Deno 依赖
+        working-directory: noj-core
+        run: deno install
+
+      - name: 构建题目支持包 (packages/*.zip)
+        working-directory: noj-core
+        run: deno task build-packages
+        env:
+          DENO_DIR: ${{ env.DENO_DIR }}
+
+      - name: 构建评测镜像 (noj-judge-python)
+        run: docker build -t noj-judge-python -f noj-judge/docker/python/Dockerfile noj-judge
 
       - name: 构建 Docker Compose 镜像
         run: |

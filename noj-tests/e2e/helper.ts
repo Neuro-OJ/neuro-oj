@@ -143,8 +143,8 @@ export async function submitCode(
 export async function pollSubmission(
   token: string,
   submissionId: string,
-  maxRetries = 60,
-  intervalMs = 2000,
+  maxRetries = 5,
+  intervalMs = 1000,
 ): Promise<{ status: string; verdict: string; score: number }> {
   for (let i = 0; i < maxRetries; i++) {
     const res = await apiGet(

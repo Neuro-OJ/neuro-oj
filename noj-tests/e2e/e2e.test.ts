@@ -3,19 +3,18 @@
  *
  * 验证完整提交流程：提交 → MQ → Judge → 结果 → 持久化。
  *
- * 前置条件：
+ * 前置条件：评测栈已运行（由 CI 或 docker compose up -d 启动）
  *   NOJ_RUN_E2E=1 deno task test:e2e
  *
  * 测试流程：
- *   1. 启动 Docker Compose 评测栈（若未运行）
- *   2. 等待所有服务就绪
+ *   1. 等待 API 就绪
+ *   2. 注册用户
  *   3. 执行 5 个测试用例
- * （容器由 CI 或调用方清理，测试不负责 teardown）
+ * （容器由 CI 或调用方管理，测试不负责启停）
  */
 
 import {
   CODE_SAMPLES,
-  composeUp,
   isE2E,
   pollSubmission,
   registerUser,
@@ -34,23 +33,19 @@ Deno.test({
   },
 });
 
-// ── 设置 / 清理 ───────────────────────────────────
+// ── 设置 ──────────────────────────────────────────
 
 let token = "";
 const TEST_USER = `e2e_user_${Date.now()}`;
-const PROBLEM_ID = "1001"; // A+B Problem
+const PROBLEM_ID = "1001";
 
 Deno.test({
-  name: "[e2e] Setup: 启动评测栈 + 注册用户",
+  name: "[e2e] Setup: 等待 API 就绪 + 注册用户",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     if (!isE2E) return;
-    // 启动 Docker Compose
-    await composeUp();
-    // 等待 API 就绪
     await waitForServer();
-    // 注册测试用户
     token = await registerUser(
       TEST_USER,
       `${TEST_USER}@test.com`,
@@ -108,7 +103,8 @@ Deno.test({
       CODE_SAMPLES.timeLimitExceeded,
     );
     console.log(`  → 提交 ID: ${id}`);
-    const result = await pollSubmission(token, id);
+    // TLE 需要等待超时 kill，给 20s 超时
+    const result = await pollSubmission(token, id, 10, 2000);
     console.log(`  → 结果: ${result.verdict}`);
     if (result.verdict !== "TimeLimitExceeded") {
       throw new Error(`期望 TimeLimitExceeded，实际 ${result.verdict}`);
@@ -124,22 +120,17 @@ Deno.test({
   fn: async () => {
     if (!isE2E) return;
 
-    // 提交并等待完成
     const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
     console.log(`  → 提交 ID: ${id}`);
     const result = await pollSubmission(token, id);
     console.log(`  → 结果: ${result.verdict} (${result.score}分)`);
 
-    // 验证：
-    // 1. 状态为 finished
     if (result.status !== "finished") {
       throw new Error(`期望 finished，实际 ${result.status}`);
     }
-    // 2. 有分数（>0）
     if (result.score <= 0) {
       throw new Error(`期望分数 >0，实际 ${result.score}`);
     }
-
     console.log("  ✓ MQ 可靠性验证通过");
   },
 });
@@ -151,9 +142,7 @@ Deno.test({
   fn: async () => {
     if (!isE2E) return;
 
-    // 直接向 Redis 结果队列注入非法 JSON（通过 docker exec）
     console.log("  → 向结果队列注入非法 JSON...");
-
     try {
       const cmd = new Deno.Command("docker", {
         args: [
@@ -169,12 +158,10 @@ Deno.test({
       }
       console.log("  → 非法消息已注入");
     } catch (e) {
-      console.warn(`  ⚠ redis-cli 注入失败: ${e}`);
-      console.log("  → 跳过此测试（需要安装 redis-cli）");
+      console.warn(`  ⚠ docker exec 注入失败: ${e}`);
       return;
     }
 
-    // 提交一个合法代码，验证仍能正常完成
     const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
     console.log(`  → 合法提交 ID: ${id}`);
     const result = await pollSubmission(token, id);
