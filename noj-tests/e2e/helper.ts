@@ -19,7 +19,8 @@ export const isE2E = Deno.env.get("NOJ_RUN_E2E") === "1";
 export const noCleanup = Deno.env.get("E2E_NO_CLEANUP") === "1";
 export const BASE_URL = Deno.env.get("E2E_BASE_URL") || "http://localhost:8099";
 
-const COMPOSE_FILE = Deno.env.get("COMPOSE_FILE") || "../docker-compose.e2e.yml";
+const COMPOSE_FILE = Deno.env.get("COMPOSE_FILE") ||
+  "../docker-compose.e2e.yml";
 const COMPOSE_PROJECT = "noj-e2e";
 
 // ── API 客户端 ────────────────────────────────────
@@ -58,16 +59,24 @@ export async function api(
   return { status: res.status, body };
 }
 
-export function apiGet(path: string, token?: string) {
-  return api("GET", path, { token });
-}
-
 export function apiPost(path: string, body: unknown, token?: string) {
   return api("POST", path, { body, token });
 }
 
 export function apiPut(path: string, body: unknown, token?: string) {
   return api("PUT", path, { body, token });
+}
+
+export function apiPatch(path: string, body: unknown, token?: string) {
+  return api("PATCH", path, { body, token });
+}
+
+export function apiDelete(path: string, token?: string) {
+  return api("DELETE", path, { token });
+}
+
+export function apiGet(path: string, token?: string) {
+  return api("GET", path, { token });
 }
 
 // ── 用户辅助 ──────────────────────────────────────
@@ -110,6 +119,22 @@ export async function registerUser(
     );
   }
   return (loginRes.body as { data: { token: string } }).data.token;
+}
+
+/**
+ * 登录用户返回 token。
+ */
+export async function loginUser(
+  login: string,
+  password: string,
+): Promise<string> {
+  const res = await apiPost("/api/v1/auth/login", { login, password });
+  if (res.status !== 200) {
+    throw new Error(
+      `登录失败: ${res.status} ${JSON.stringify(res.body)}`,
+    );
+  }
+  return (res.body as { data: { token: string } }).data.token;
 }
 
 /**
@@ -211,9 +236,13 @@ export async function composeUp(): Promise<void> {
   // 使用 --remove-orphans 处理容器名冲突
   const args = [
     "compose",
-    "-f", COMPOSE_FILE,
-    "-p", COMPOSE_PROJECT,
-    "up", "-d", "--remove-orphans",
+    "-f",
+    COMPOSE_FILE,
+    "-p",
+    COMPOSE_PROJECT,
+    "up",
+    "-d",
+    "--remove-orphans",
   ];
 
   const cmd = new Deno.Command("docker", {
@@ -242,9 +271,12 @@ export async function composeDown(): Promise<void> {
   const cmd = new Deno.Command("docker", {
     args: [
       "compose",
-      "-f", COMPOSE_FILE,
-      "-p", COMPOSE_PROJECT,
-      "down", "-v",
+      "-f",
+      COMPOSE_FILE,
+      "-p",
+      COMPOSE_PROJECT,
+      "down",
+      "-v",
     ],
     stdout: "piped",
     stderr: "piped",

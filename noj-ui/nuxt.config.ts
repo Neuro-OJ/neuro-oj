@@ -11,6 +11,9 @@ export default defineNuxtConfig({
     ssr: {
       noExternal: ["@lucide/vue"],
     },
+    optimizeDeps: {
+      include: ["@lucide/vue"],
+    },
   },
 
   // 运行时配置（服务端私有，不暴露给浏览器）

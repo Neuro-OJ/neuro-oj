@@ -10,6 +10,7 @@ import type {
   JudgeTask,
   SubmissionStatus,
 } from "../types/index.ts";
+import { getSubmissionQueueStatus } from "./queue.ts";
 
 export interface SubmissionInput {
   problem_id: string;
@@ -38,6 +39,14 @@ export interface SubmissionWithResult extends SubmissionResponse {
     memory_kb: number | null;
     details: Record<string, unknown> | null;
   } | null;
+  /** 排队位置（1-based），仅在 pending/等待中时有值。 */
+  queue_position?: number | null;
+  /** 当前 pending 队列总长度。 */
+  queue_length?: number | null;
+  /** 开始评测时间。 */
+  judge_started_at?: string | null;
+  /** 评测完成时间。 */
+  judge_finished_at?: string | null;
 }
 
 /**
@@ -336,9 +345,18 @@ export async function getSubmission(
     }
     : null;
 
+  // 查询队列状态信息（排队位置、时间戳）
+  const queueStatus = await getSubmissionQueueStatus(id);
+
   return {
     ...toSubmissionResponse(row),
     result,
+    queue_position: queueStatus?.queue_position ?? null,
+    queue_length: queueStatus?.queue_length ?? null,
+    judge_started_at: queueStatus?.judge_started_at ?? row.judge_started_at ??
+      null,
+    judge_finished_at: queueStatus?.judge_finished_at ??
+      row.judge_finished_at ?? null,
   };
 }
 
@@ -410,6 +428,7 @@ function parseDetails(raw: string | null): Record<string, unknown> | null {
 /**
  * 更新提交状态。
  * 校验状态转换是否合法（pending → judging → finished）。
+ * 同步更新 judge_started_at / judge_finished_at 时间戳。
  *
  * @throws {NotFoundError} 提交不存在
  * @throws {BadRequestError} 状态转换非法
@@ -435,8 +454,21 @@ export async function updateSubmissionStatus(
     throw new BadRequestError(`无效的状态转换: ${current} → ${status}`);
   }
 
+  const now = new Date().toISOString();
+  const updates: Record<string, string> = { status };
+
+  // 设置 judge_started_at：pending → judging
+  if (status === "judging") {
+    updates.judge_started_at = now;
+  }
+
+  // 设置 judge_finished_at：judging → finished / error
+  if (status === "finished" || status === "error") {
+    updates.judge_finished_at = now;
+  }
+
   await db
     .update(submissions)
-    .set({ status })
+    .set(updates)
     .where(eq(submissions.id, id));
 }

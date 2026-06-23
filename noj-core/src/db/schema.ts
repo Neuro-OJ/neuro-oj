@@ -105,6 +105,10 @@ export const submissions = pgTable(
     status: text("status").$type<SubmissionStatus>().notNull().default(
       "pending",
     ),
+    /** ISO 8601，开始评测时间。 */
+    judge_started_at: text("judge_started_at"),
+    /** ISO 8601，评测完成时间。 */
+    judge_finished_at: text("judge_finished_at"),
     created_at: text("created_at").notNull(),
   },
   (table) => ({

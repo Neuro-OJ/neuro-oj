@@ -41,7 +41,7 @@ function renderMarkdown(src: string): string {
   })
 
   // 3. 行内 LaTeX $...$（不匹配 \$ 转义符，允许 \\. 转义序列）
-  text = text.replace(/(?<!\$)(?<!\\)\$([^$\\\n]+?)\$(?!\$)(?!\\)/g, (_match, math: string) => {
+  text = text.replace(/(?<!\$)(?<!\\)\$([^$\n]+?)\$(?!\$)(?!\\)/g, (_match, math: string) => {
     try {
       return katex.renderToString(math.trim(), { displayMode: false, throwOnError: false })
     } catch {
