@@ -35,7 +35,7 @@
 
 - **WHEN** 通过 REST API 提交含有逻辑错误的代码
 - **THEN** submission 状态最终变为 `finished`
-- **THEN** evaluation_result 的 verdict 为 `Wrong Answer`
+- **THEN** evaluation_result 的 verdict 为 `WrongAnswer`
 
 ### Requirement: 超时代码 TLE 验证
 

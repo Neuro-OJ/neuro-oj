@@ -6,7 +6,7 @@ WORKDIR /app
 
 # 先复制依赖定义，利用 Docker 缓存
 COPY deno.json deno.lock* ./
-RUN deno install 2>/dev/null || true
+RUN deno install 2>&1 || { echo "ERROR: deno install failed" >&2; exit 1; }
 
 # 复制源码
 COPY src/ ./src/

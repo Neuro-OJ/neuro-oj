@@ -1,15 +1,16 @@
 /**
  * noj-tests E2E 测试辅助函数。
  *
- * 管理 Docker Compose 生命周期 + REST API 客户端。
+ * 提供 REST API 客户端、用户注册/提交辅助和 Docker Compose 生命周期管理。
+ *
+ * Docker Compose 管理函数（composeUp/composeDown/isStackRunning）供本地手动调试使用，
+ * CI 中由 .github/workflows/e2e.yml 直接管理容器生命周期，测试本身不自动启停。
  *
  * 环境变量：
  *   NOJ_RUN_E2E       - 设为 "1" 时启用 E2E 测试
  *   E2E_NO_CLEANUP    - 设为 "1" 时不自动清理容器（调试用）
  *   E2E_BASE_URL      - noj-core 服务地址（默认 http://localhost:8099）
  *   COMPOSE_FILE      - docker-compose.e2e.yml 路径
- *   E2E_ADMIN_EMAIL   - 管理员邮箱
- *   E2E_ADMIN_PASS    - 管理员密码
  */
 
 // ── 配置 ──────────────────────────────────────────
@@ -17,9 +18,6 @@
 export const isE2E = Deno.env.get("NOJ_RUN_E2E") === "1";
 export const noCleanup = Deno.env.get("E2E_NO_CLEANUP") === "1";
 export const BASE_URL = Deno.env.get("E2E_BASE_URL") || "http://localhost:8099";
-export const ADMIN_EMAIL = Deno.env.get("E2E_ADMIN_EMAIL") ||
-  "e2e_admin@test.com";
-export const ADMIN_PASS = Deno.env.get("E2E_ADMIN_PASS") || "e2e_admin_pass";
 
 const COMPOSE_FILE = Deno.env.get("COMPOSE_FILE") || "../docker-compose.e2e.yml";
 const COMPOSE_PROJECT = "noj-e2e";
