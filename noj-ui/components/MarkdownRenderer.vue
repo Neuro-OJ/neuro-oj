@@ -39,7 +39,7 @@ function renderMarkdown(src: string): string {
   })
 
   // 3. 行内 LaTeX $...$
-  text = text.replace(/(?<!\$)(?<!\\)\$([^$\\\n]+?)\$(?!\$)(?!\\)/g, (_match, math: string) => {
+  text = text.replace(/(?<!\$)(?<!\\)\$([^$\n]+?)\$(?!\$)(?!\\)/g, (_match, math: string) => {
     try {
       return katex.renderToString(math.trim(), { displayMode: false, throwOnError: false })
     } catch {
@@ -55,36 +55,23 @@ function renderMarkdown(src: string): string {
 }
 
 // DOMPurify sanitize（防止 v-html XSS）
-// 客户端懒加载，SSR 时直接渲染（用户 bio 无敏感代码）
+// 客户端优先使用 DOMPurify，加载失败时使用标签白名单降级
 const renderedHtml = ref("")
+let renderId = 0
 
-if (import.meta.client) {
-  import("dompurify").then((mod) => {
-    const purify = mod.default
-    watch(
-      () => props.content,
-      (content) => {
-        const raw = renderMarkdown(content)
-        renderedHtml.value = purify.sanitize(raw)
-      },
-      { immediate: true },
-    )
-  }).catch(() => {
-    // DOMPurify 失败时降级直接渲染
-    watch(
-      () => props.content,
-      (content) => { renderedHtml.value = renderMarkdown(content) },
-      { immediate: true },
-    )
-  })
-} else {
-  // SSR — 直接渲染
-  watch(
-    () => props.content,
-    (content) => { renderedHtml.value = renderMarkdown(content) },
-    { immediate: true },
-  )
-}
+watch(
+  () => props.content,
+  async (content) => {
+    const id = ++renderId
+    const raw = renderMarkdown(content)
+    const html = import.meta.client
+      ? await sanitizeHtmlAsync(raw)
+      : sanitizeHtmlSync(raw)
+    // 只应用最新的渲染结果，防止 async 完成顺序错乱
+    if (id === renderId) renderedHtml.value = html
+  },
+  { immediate: true },
+)
 </script>
 
 <template>

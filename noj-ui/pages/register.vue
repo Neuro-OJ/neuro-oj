@@ -210,11 +210,21 @@ async function handleRegister() {
 
     loading.value = true
     try {
+        // 先注册
         await auth.register(form.username.trim(), form.email.trim(), form.password)
-        await auth.login(form.username.trim(), form.password)
-        router.replace("/")
     } catch (e: any) {
         setError(typeof e.data?.error === "string" ? e.data.error : `错误代码: ${e.status || 502}`)
+        loading.value = false
+        return
+    }
+
+    // 注册成功后自动登录
+    try {
+        await auth.login(form.username.trim(), form.password)
+        router.replace("/")
+    } catch {
+        // 注册成功但登录失败 → 引导用户手动登录
+        router.replace("/login?registered=1")
     } finally {
         loading.value = false
     }

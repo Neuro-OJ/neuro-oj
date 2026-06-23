@@ -29,6 +29,12 @@ interface QueueData {
 
 const data = ref<QueueData | null>(null)
 
+// 实时时钟——确保 elapsed 时间每秒更新而不是仅在轮询时刷新
+const now = ref(Date.now())
+let clockTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => { clockTimer = setInterval(() => { now.value = Date.now() }, 1000) })
+onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); clockTimer = null })
+
 // 语言标签映射
 const languageLabel: Record<string, string> = {
   python3: "Python 3",
@@ -56,7 +62,7 @@ function formatScore(raw: number | null | undefined): string {
 
 function elapsedSince(iso: string | null | undefined): string {
   if (!iso) return "--"
-  const ms = Date.now() - new Date(iso).getTime()
+  const ms = now.value - new Date(iso).getTime()
   const seconds = Math.floor(ms / 1000)
   if (seconds < 60) return `${seconds}s`
   const minutes = Math.floor(seconds / 60)

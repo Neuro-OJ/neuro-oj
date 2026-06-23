@@ -1,6 +1,11 @@
 <template>
     <div class="auth-page">
         <Transition name="slide">
+            <div v-if="registeredMsg" class="success-banner">
+                <span>{{ registeredMsg }}</span>
+            </div>
+        </Transition>
+        <Transition name="slide">
             <div v-if="error" class="error-banner">
                 <span>{{ error }}</span>
                 <button class="close-btn" @click="clearError">✕</button>
@@ -96,6 +101,13 @@ const loading = ref(false)
 const error = ref("")
 const showPassword = ref(false)
 const showForgot = ref(false)
+
+// 注册成功后的提示
+const registeredMsg = ref("")
+const route = useRoute()
+if (route.query.registered === "1") {
+  registeredMsg.value = "注册成功，请登录"
+}
 
 const fieldErrors = reactive({
     login: "",
@@ -196,6 +208,26 @@ async function handleLogin() {
 
 .close-btn:hover {
     opacity: 1;
+}
+
+.success-banner {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #166534;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    position: fixed;
+    top: calc(64px + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 99;
+    max-width: 380px;
+    width: calc(100% - 48px);
 }
 
 .slide-enter-active {

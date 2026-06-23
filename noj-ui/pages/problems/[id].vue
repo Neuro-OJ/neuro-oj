@@ -65,7 +65,8 @@ async function handleSubmit() {
     })
     await router.push(`/submissions/${res.data.id}`)
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "提交失败，请稍后重试"
+    const e = err as { data?: { error?: string }; status?: number; message?: string }
+    const msg = e.data?.error || e.message || "提交失败，请稍后重试"
     submitError.value = msg
   } finally {
     submitting.value = false

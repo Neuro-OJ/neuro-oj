@@ -22,66 +22,30 @@ const { token, isLoggedIn, loading } = useAuth()
 
 const submissionId = route.params.id as string
 
-// 等待 auth 就绪后检查登录状态
-onMounted(() => {
-  let unwatch: (() => void) | null = null
-  unwatch = watch(
-    loading,
-    (loadingVal) => {
-      if (!loadingVal) {
-        if (unwatch) unwatch()
-        unwatch = null
-        nextTick(() => {
-          if (!isLoggedIn.value) {
-            navigateTo("/login")
-          }
-        })
-      }
-    },
-    { immediate: true },
-  )
-})
-
-interface SubmissionDetail {
-  id: string
-  problem_id: string
-  language: string
-  code: string
-  file_name: string | null
-  status: string
-  created_at: string
-  queue_position?: number | null
-  queue_length?: number | null
-  judge_started_at?: string | null
-  judge_finished_at?: string | null
-  result: {
-    status: string
-    score: number
-    output: string
-    time_ms: number | null
-    memory_kb: number | null
-  } | null
-}
-
-interface SubmissionResponse {
-  data: SubmissionDetail
-}
-
-const { data } = useFetch<SubmissionResponse>(
-  `/api/v1/submissions/${submissionId}`,
-  {
-    headers: { Authorization: `Bearer ${token.value}` },
-  },
-)
-
+// 不使用 useFetch（setup 阶段 token 可能未就绪），改为手动管理
+const data = ref<SubmissionResponse | null>(null)
 const submission = computed(() => data.value?.data ?? null)
 const isFinished = computed(
   () => submission.value?.status === "finished" || submission.value?.status === "error",
 )
 const showOutput = ref(true)
 
-// 自动轮询：不依赖初始 useFetch，挂载后立即开始，直到状态变为 finished/error
+// 认证守卫：简化 watch + onMounted 嵌套为一次 watch
+const router = useRouter()
+watch(
+  loading,
+  (loadingVal) => {
+    if (!loadingVal && !isLoggedIn.value) {
+      router.replace("/login")
+    }
+  },
+  { immediate: true },
+)
+
+// 自动轮询：等 auth token 就绪后开始，直到状态变为 finished/error
 let pollTimer: ReturnType<typeof setInterval> | null = null
+
+const POLL_INTERVAL_MS = 1500
 
 async function pollSubmission() {
   if (!token.value) return // auth 还未就绪，下次重试
@@ -94,10 +58,7 @@ async function pollSubmission() {
       data.value = res
       const status = res.data?.status
       if (status === "finished" || status === "error") {
-        if (pollTimer) {
-          clearInterval(pollTimer)
-          pollTimer = null
-        }
+        stopPolling()
       }
     }
   } catch {
@@ -105,18 +66,27 @@ async function pollSubmission() {
   }
 }
 
-onMounted(() => {
-  // 立即拉一次
-  pollSubmission()
-  // 每 0.5 秒轮询
-  pollTimer = setInterval(pollSubmission, 500)
-})
-
-onUnmounted(() => {
+function stopPolling() {
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null
   }
+}
+
+// token 就绪后再开始轮询，避免首次请求缺少 Authorization header
+watch(
+  token,
+  (tok) => {
+    if (tok && !pollTimer) {
+      pollSubmission()
+      pollTimer = setInterval(pollSubmission, POLL_INTERVAL_MS)
+    }
+  },
+  { immediate: true },
+)
+
+onUnmounted(() => {
+  stopPolling()
 })
 
 // 状态标签
@@ -218,11 +188,16 @@ const codeLanguage = computed(() =>
   hljsLangMap[submission.value?.language ?? ""] || "plaintext",
 )
 
-onMounted(() => {
-  if (codeRef.value) {
-    hljs.highlightElement(codeRef.value)
-  }
-})
+// 使用 watch 而非 onMounted（数据加载前 codeRef 指向空）
+watch(
+  () => submission.value?.code,
+  (code) => {
+    if (code && codeRef.value) {
+      nextTick(() => hljs.highlightElement(codeRef.value!))
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>

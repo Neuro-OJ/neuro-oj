@@ -1,28 +1,21 @@
 <script setup lang="ts">
 import { ArrowLeft, Save, Eye, Edit3, CheckCircle, AlertCircle } from "@lucide/vue"
 
+definePageMeta({ ssr: false })
+
 const { token, user, isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
-// 认证守卫
-onMounted(() => {
-  let unwatch: (() => void) | null = null
-  unwatch = watch(
-    loading,
-    (loadingVal) => {
-      if (!loadingVal) {
-        if (unwatch) unwatch()
-        unwatch = null
-        nextTick(() => {
-          if (!isLoggedIn.value) {
-            router.replace("/login")
-          }
-        })
-      }
-    },
-    { immediate: true },
-  )
-})
+// 认证守卫：loading 就绪后检查登录状态
+watch(
+  loading,
+  (loadingVal) => {
+    if (!loadingVal && !isLoggedIn.value) {
+      router.replace("/login")
+    }
+  },
+  { immediate: true },
+)
 
 // Bio 编辑
 const bio = ref("")
@@ -31,18 +24,22 @@ const saving = ref(false)
 const saveSuccess = ref(false)
 const saveError = ref("")
 
-// 加载当前用户 bio
-onMounted(async () => {
-  if (!token.value) return
-  try {
-    const res = await $fetch<{ data: { user: { bio: string } } }>(
-      `/api/v1/users/${user.value?.id}/profile`,
-    )
-    bio.value = res.data.user.bio || ""
-  } catch {
-    // 静默失败
-  }
-})
+// 加载当前用户 bio（等 user 就绪后再请求，避免 fetchUser 未完成）
+watch(
+  user,
+  async (u) => {
+    if (!u?.id) return
+    try {
+      const res = await $fetch<{ data: { user: { bio: string } } }>(
+        `/api/v1/users/${u.id}/profile`,
+      )
+      bio.value = res.data.user.bio || ""
+    } catch {
+      // 静默失败
+    }
+  },
+  { immediate: true },
+)
 
 async function handleSave() {
   if (!token.value) return
@@ -70,7 +67,8 @@ async function handleSave() {
   <div class="max-w-[800px] mx-auto px-4 py-6 sm:px-6 sm:py-8 flex flex-col gap-6">
     <!-- 返回 -->
     <NuxtLink
-      :to="`/users/${user?.id}`"
+      v-if="user?.id"
+      :to="`/users/${user.id}`"
       class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
     >
       <ArrowLeft :size="16" />

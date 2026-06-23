@@ -22,7 +22,7 @@
                         <User class="user-icon" :size="22" />
                     </button>
                     <div v-show="showDropdown" class="dropdown">
-                        <button class="dropdown-item"><Database :size="16" />数据</button>
+                        <NuxtLink :to="`/users/${user?.id}`" class="dropdown-item-link"><Database :size="16" />数据</NuxtLink>
                         <NuxtLink to="/settings" class="dropdown-item-link"><Settings :size="16" />设置</NuxtLink>
                         <div class="dropdown-divider"></div>
                         <button class="dropdown-item dropdown-danger" @click="showLogoutConfirm = true"><LogOut :size="16" />登出</button>
