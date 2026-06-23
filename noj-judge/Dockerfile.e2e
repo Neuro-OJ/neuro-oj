@@ -1,0 +1,26 @@
+# noj-judge E2E 测试用 Dockerfile
+# 多阶段构建：先编译 Rust 二进制，再运行
+FROM rust:1.86-slim-bookworm AS builder
+
+WORKDIR /build
+COPY Cargo.toml Cargo.lock ./
+COPY src/ ./src/
+
+# cargo registry + target 均用 BuildKit 缓存，后续构建复用已编译的依赖
+# 编译后将二进制复制到 /tmp/（非缓存路径）供 COPY --from=builder 使用
+RUN --mount=type=cache,target=/build/target \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    cargo build --release --bin noj-judge && \
+    cp /build/target/release/noj-judge /tmp/noj-judge && \
+    test -f /tmp/noj-judge || { echo "ERROR: binary not found after build" >&2; exit 1; }
+
+# 运行阶段
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /tmp/noj-judge /usr/local/bin/noj-judge
+
+ENTRYPOINT ["noj-judge"]

@@ -195,6 +195,27 @@ neuro-oj/
 
 ---
 
+## 🧪 测试
+
+### 跨模块全链路 E2E 测试
+
+跨 noj-core 和 noj-judge 的全链路管道测试位于 `noj-tests/` 包中：
+
+```bash
+cd noj-tests
+NOJ_RUN_E2E=1 deno task test:e2e
+```
+
+详见 [noj-tests/E2E_TESTING.md](noj-tests/E2E_TESTING.md)。
+
+### 各模块测试
+
+- **noj-core**：`cd noj-core && deno task test`
+- **noj-judge 单元测试**：`cd noj-judge && cargo test`
+- **noj-judge Docker 沙箱测试**：`cd noj-judge && NOJ_RUN_E2E=1 cargo test -- --ignored`
+
+---
+
 ## 📄 许可证
 
 本项目基于 **GNU Affero General Public License v3.0** 开源，详见

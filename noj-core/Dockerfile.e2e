@@ -1,0 +1,24 @@
+# noj-core E2E 测试用 Dockerfile
+# 基于 denoland/deno 镜像构建，含 migrate + seed + 启动入口
+FROM denoland/deno:alpine-2.8.0
+
+WORKDIR /app
+
+# 先复制依赖定义，利用 Docker 缓存
+COPY deno.json deno.lock* ./
+RUN deno install 2>&1 || { echo "ERROR: deno install failed" >&2; exit 1; }
+
+# 复制源码
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+COPY data/ ./data/
+COPY drizzle.config.ts ./
+COPY drizzle/ drizzle/
+
+# 入口脚本
+COPY scripts/e2e-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 8000
+
+ENTRYPOINT ["/entrypoint.sh"]

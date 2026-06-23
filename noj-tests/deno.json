@@ -1,0 +1,24 @@
+{
+  "name": "@noj/tests",
+  "version": "0.1.0",
+  "exports": {},
+  "tasks": {
+    "test:e2e": "deno test -A --env-file=../env.e2e.template --filter=/e2e/ e2e/",
+    "test:e2e:no-cleanup": "E2E_NO_CLEANUP=1 deno test -A --env-file=../env.e2e.template --filter=/e2e/ e2e/",
+    "test": "deno test -A --env-file=../env.e2e.template e2e/"
+  },
+  "imports": {
+    "@noj/core": "../noj-core/src/mod.ts"
+  },
+  "nodeModulesDir": "auto",
+  "fmt": {
+    "semiColons": true,
+    "singleQuote": false,
+    "indentWidth": 2
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  }
+}

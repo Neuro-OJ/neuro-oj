@@ -3,13 +3,65 @@ services:
   redis:
     image: redis:7-alpine
     container_name: noj-e2e-redis
-    ports: ["6380:6379"] # 避开开发环境的 6379
+    ports: ["6380:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
 
   postgres:
     image: postgres:16-alpine
     container_name: noj-e2e-postgres
-    ports: ["5433:5432"] # 避开开发环境的 5432
+    ports: ["5433:5432"]
     environment:
       POSTGRES_USER: e2e
       POSTGRES_PASSWORD: e2e
       POSTGRES_DB: e2e
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "e2e"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  noj-core:
+    build:
+      context: ./noj-core
+      dockerfile: Dockerfile.e2e
+    container_name: noj-e2e-core
+    ports: ["8099:8000"]
+    environment:
+      DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e
+      REDIS_URL: redis://redis:6379/1
+      JWT_SECRET: e2e-test-secret
+      PORT: "8000"
+      NOJ_RUN_E2E: "1"
+      # seed 管理员凭证（需与 noj-core/tests/e2e/helper.ts 默认值一致）
+      ADMIN_EMAIL: e2e_admin@test.com
+      ADMIN_PASS: e2e_admin_pass
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  noj-judge:
+    build:
+      context: ./noj-judge
+      dockerfile: Dockerfile.e2e
+    container_name: noj-e2e-judge
+    environment:
+      REDIS_URL: redis://redis:6379/1
+      JUDGE_QUEUE: noj:judge:queue
+      RESULT_QUEUE: noj:judge:results
+      MAX_CONCURRENT: "2"
+      WORK_DIR: /tmp/noj-work
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - noj-judge-work:/tmp/noj-work
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  noj-judge-work:
