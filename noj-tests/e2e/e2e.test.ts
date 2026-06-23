@@ -7,16 +7,14 @@
  *   NOJ_RUN_E2E=1 deno task test:e2e
  *
  * 测试流程：
- *   1. 启动 Docker Compose 评测栈
+ *   1. 启动 Docker Compose 评测栈（若未运行）
  *   2. 等待所有服务就绪
  *   3. 执行 5 个测试用例
- *   4. 清理容器（除非 E2E_NO_CLEANUP=1）
+ * （容器由 CI 或调用方清理，测试不负责 teardown）
  */
 
 import {
-  apiPost,
   CODE_SAMPLES,
-  composeDown,
   composeUp,
   isE2E,
   pollSubmission,
@@ -186,17 +184,5 @@ Deno.test({
       throw new Error(`非法消息后合法提交未完成: ${result.status}`);
     }
     console.log("  ✓ 无效消息容错验证通过");
-  },
-});
-
-// ── 清理（最后执行） ─────────────────────────────
-
-Deno.test({
-  name: "[e2e] Teardown: 清理资源",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    if (!isE2E) return;
-    await composeDown();
   },
 });
