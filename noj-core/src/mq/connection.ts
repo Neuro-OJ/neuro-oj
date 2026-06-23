@@ -13,6 +13,8 @@ interface RedisClient {
   status: string;
   lpush(...args: (string | number)[]): Promise<number>;
   brpop(...args: (string | number)[]): Promise<[string, string] | null>;
+  lrange(...args: (string | number)[]): Promise<string[]>;
+  llen(...args: (string | number)[]): Promise<number>;
   on(event: string, handler: (...args: unknown[]) => void): void;
 }
 

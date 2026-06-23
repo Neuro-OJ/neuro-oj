@@ -50,6 +50,10 @@ interface SubmissionDetail {
   file_name: string | null
   status: string
   created_at: string
+  queue_position?: number | null
+  queue_length?: number | null
+  judge_started_at?: string | null
+  judge_finished_at?: string | null
   result: {
     status: string
     score: number
@@ -104,8 +108,8 @@ async function pollSubmission() {
 onMounted(() => {
   // 立即拉一次
   pollSubmission()
-  // 每秒轮询
-  pollTimer = setInterval(pollSubmission, 1000)
+  // 每 0.5 秒轮询
+  pollTimer = setInterval(pollSubmission, 500)
 })
 
 onUnmounted(() => {
@@ -256,6 +260,12 @@ onMounted(() => {
           >
             <Loader2 :size="20" class="animate-spin" />
             <span>{{ submission.status === 'pending' ? '等待评测' : '评测中' }}</span>
+            <span v-if="submission.status === 'pending' && submission.queue_position != null" class="queue-pos">
+              #{{ submission.queue_position }}/{{ submission.queue_length }}
+            </span>
+            <span v-if="submission.status === 'judging' && submission.judge_started_at" class="queue-pos">
+              {{ formatDateTime(submission.judge_started_at) }} 开始
+            </span>
           </div>
 
           <div

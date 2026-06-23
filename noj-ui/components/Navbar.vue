@@ -5,6 +5,12 @@
                 <img :src="logoSrc" alt="Neuro OJ" class="logo-img" />
                 <span class="logo-text">Neuro OJ</span>
             </NuxtLink>
+            <nav class="nav-links">
+                <NuxtLink to="/" class="nav-link">首页</NuxtLink>
+                <NuxtLink to="/problems" class="nav-link">题库</NuxtLink>
+                <NuxtLink to="/queue" class="nav-link">队列</NuxtLink>
+                <NuxtLink to="/about" class="nav-link">关于</NuxtLink>
+            </nav>
             <div class="nav-actions">
                 <template v-if="showAuthButtons">
                     <NuxtLink to="/login" class="btn btn-outline">登录</NuxtLink>
@@ -125,6 +131,32 @@ function handleLogout() {
     width: 28px;
     height: 28px;
     border-radius: 6px;
+}
+
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 24px;
+}
+
+.nav-link {
+    padding: 6px 12px;
+    font-size: 14px;
+    color: var(--c-text-secondary);
+    text-decoration: none;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.nav-link:hover {
+    background: var(--c-bg-hover, #f5f5f5);
+    color: var(--c-text);
+}
+
+.nav-link.router-link-active {
+    color: var(--c-primary);
+    font-weight: 600;
 }
 
 .nav-actions {

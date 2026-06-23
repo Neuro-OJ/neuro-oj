@@ -4,6 +4,7 @@ import {
   getSubmission,
   listSubmissions,
 } from "../services/submissions.ts";
+import { getSubmissionQueueStatus } from "../services/queue.ts";
 import { adminMiddleware, authMiddleware } from "../middleware/auth.ts";
 import { BadRequestError } from "../lib/errors.ts";
 
@@ -112,6 +113,21 @@ router.get("/:id", authMiddleware, async (c) => {
 
   const result = await getSubmission(id, c.var.userId);
   return c.json({ data: result });
+});
+
+/**
+ * 获取提交的队列状态（排队位置、时间戳等）。
+ * GET /api/v1/submissions/:id/status
+ * 需 JWT 认证，但**不限制提交者身份**——任意已登录用户可查。
+ */
+router.get("/:id/status", authMiddleware, async (c) => {
+  const id = c.req.param("id")!;
+
+  const result = await getSubmissionQueueStatus(id);
+  if (!result) {
+    return c.json({ error: "提交不存在" }, 404);
+  }
+  return c.json(result);
 });
 
 /**

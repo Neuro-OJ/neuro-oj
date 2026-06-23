@@ -1,9 +1,7 @@
 {
   "version": "5",
   "specifiers": {
-    "npm:nuxt@3": "3.21.8_@vue+compiler-sfc@3.5.38_typescript@5.9.3_vite@7.3.5__jiti@2.7.0",
-    "npm:typescript@5": "5.9.3",
-    "npm:vue@3": "3.5.38_typescript@5.9.3"
+    "npm:typescript@5": "5.9.3"
   },
   "npm": {
     "@babel/code-frame@7.29.7": {
@@ -4575,9 +4573,16 @@
   "workspace": {
     "packageJson": {
       "dependencies": [
-        "npm:nuxt@3",
-        "npm:typescript@5",
-        "npm:vue@3"
+        "npm:@lucide/vue@^1.21.0",
+        "npm:@nuxtjs/tailwindcss@^6.14.0",
+        "npm:@tailwindcss/typography@~0.5.20",
+        "npm:dompurify@^3.4.11",
+        "npm:highlight.js@^11.11.1",
+        "npm:katex@0.17",
+        "npm:markdown-it@^14.2.0",
+        "npm:monaco-editor@~0.55.1",
+        "npm:nuxt@^4.4.8",
+        "npm:typescript@5"
       ]
     }
   }

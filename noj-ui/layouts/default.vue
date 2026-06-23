@@ -4,7 +4,6 @@
     <div class="layout">
         <Navbar />
         <div class="body-area">
-            <Sidebar />
             <main class="main">
                 <slot />
             </main>
@@ -69,12 +68,13 @@ body {
     flex: 1;
     min-height: calc(100vh - 64px);
     width: 100%;
-    padding: 64px 0 0 60px;
+    padding-top: 64px;
 }
 
 .main {
     flex: 1;
     min-width: 0;
+    width: 100%;
 }
 
 .container {
