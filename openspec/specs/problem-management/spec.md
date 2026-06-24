@@ -81,7 +81,12 @@
 #### Scenario: 按关键词搜索
 
 - **WHEN** 用户请求 `GET /api/v1/problems?keyword=归一化`
-- **THEN** 系统返回标题或描述中包含该关键词的题目
+- **THEN** 系统返回标题、描述或题号中包含该关键词的题目
+
+#### Scenario: 按题号搜索
+
+- **WHEN** 用户请求 `GET /api/v1/problems?keyword=1001`
+- **THEN** 系统返回题号（problems.id）模糊匹配 "1001" 的题目
 
 #### Scenario: 组合筛选加分页
 
