@@ -1,4 +1,4 @@
-import { eq, or } from "drizzle-orm";
+import { eq, or, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { users } from "../db/schema.ts";
 import { comparePassword, hashPassword } from "../lib/password.ts";
@@ -204,5 +204,56 @@ export async function promoteUser(
     role,
     created_at: existing[0].created_at,
     updated_at: now,
+  };
+}
+
+/**
+ * 管理员获取用户列表（分页）。
+ * 返回用户基本信息，不含密码哈希。
+ */
+export async function listUsers(
+  opts: { page: number; perPage: number },
+): Promise<
+  {
+    data: UserResponse[];
+    pagination: {
+      page: number;
+      per_page: number;
+      total: number;
+      total_pages: number;
+    };
+  }
+> {
+  const db = getDb();
+  const offset = (opts.page - 1) * opts.perPage;
+
+  const [rows, countResult] = await Promise.all([
+    db
+      .select({
+        id: users.id,
+        username: users.username,
+        email: users.email,
+        role: users.role,
+        created_at: users.created_at,
+        updated_at: users.updated_at,
+      })
+      .from(users)
+      .orderBy(users.created_at)
+      .limit(opts.perPage)
+      .offset(offset),
+    db.select({ count: sql<number>`count(*)` }).from(users),
+  ]);
+
+  const total = Number(countResult[0]?.count ?? 0);
+  const totalPages = Math.ceil(total / opts.perPage);
+
+  return {
+    data: rows,
+    pagination: {
+      page: opts.page,
+      per_page: opts.perPage,
+      total,
+      total_pages: totalPages,
+    },
   };
 }
