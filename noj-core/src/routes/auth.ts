@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { adminMiddleware, authMiddleware } from "../middleware/auth.ts";
 import {
   getUserProfile,
+  listUsers,
   loginUser,
   promoteUser,
   registerUser,
@@ -83,6 +84,26 @@ auth.get("/me", authMiddleware, async (c) => {
 const adminAuth = new Hono<
   { Variables: { userId: string; userRole: string } }
 >();
+
+/**
+ * 管理员获取用户列表（分页）。
+ * GET /api/v1/admin/users
+ */
+adminAuth.get(
+  "/users",
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
+    let page = parseInt(c.req.query("page") ?? "1", 10);
+    let perPage = parseInt(c.req.query("per_page") ?? "20", 10);
+    if (isNaN(page) || page < 1) page = 1;
+    if (isNaN(perPage) || perPage < 1) perPage = 20;
+    if (perPage > 100) perPage = 100;
+
+    const result = await listUsers({ page, perPage });
+    return c.json({ data: result.data, pagination: result.pagination });
+  },
+);
 
 /**
  * 管理员提升/降级用户角色。
