@@ -122,7 +122,9 @@ export async function listProblems(
   if (query.keyword) {
     const kw = `%${query.keyword}%`;
     conditions.push(
-      sql`(${ilike(problems.title, kw)} OR ${ilike(problems.description, kw)})`,
+      sql`(${ilike(problems.title, kw)} OR ${
+        ilike(problems.description, kw)
+      } OR ${ilike(problems.id, kw)})`,
     );
   }
 
