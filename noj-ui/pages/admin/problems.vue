@@ -121,7 +121,7 @@ async function handleDelete() {
         <h1 class="title">题目管理</h1>
         <span class="subtitle">管理所有题目</span>
       </div>
-      <NuxtLink to="/admin/problems/new" class="btn btn-primary">
+      <NuxtLink to="/admin/problem-new" class="btn btn-primary">
         <Plus :size="16" />
         创建题目
       </NuxtLink>
@@ -142,7 +142,7 @@ async function handleDelete() {
 
       <template #actions="{ row }">
         <div class="action-btns">
-          <NuxtLink :to="`/admin/problems/${row.id}/edit`" class="icon-btn" title="编辑">
+          <NuxtLink :to="`/admin/problem-edit/${row.id}`" class="icon-btn" title="编辑">
             <Pencil :size="15" />
           </NuxtLink>
           <button class="icon-btn danger" title="删除" @click="confirmDelete(row)">

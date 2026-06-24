@@ -15,16 +15,19 @@ export default defineNuxtRouteMiddleware(async (_to, _from) => {
 
   const { loading, isLoggedIn, user } = useAuth();
 
-  // 等待认证状态就绪
+  // 等待认证状态就绪，加 5s 超时防止后端不可达时页面卡死
   if (loading.value) {
-    await new Promise<void>((resolve) => {
-      const unwatch = watch(loading, (val) => {
-        if (!val) {
-          unwatch();
-          resolve();
-        }
-      });
-    });
+    await Promise.race([
+      new Promise<void>((resolve) => {
+        const unwatch = watch(loading, (val) => {
+          if (!val) {
+            unwatch();
+            resolve();
+          }
+        });
+      }),
+      new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+    ]);
   }
 
   // 未登录 → 去登录页
