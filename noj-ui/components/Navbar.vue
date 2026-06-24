@@ -8,6 +8,7 @@
             <nav class="nav-links">
                 <NuxtLink to="/" class="nav-link">首页</NuxtLink>
                 <NuxtLink to="/problems" class="nav-link">题库</NuxtLink>
+                <NuxtLink to="/submissions" class="nav-link">提交记录</NuxtLink>
                 <NuxtLink to="/queue" class="nav-link">队列</NuxtLink>
                 <NuxtLink to="/about" class="nav-link">关于</NuxtLink>
             </nav>
