@@ -15,10 +15,34 @@ import {
   ArrowLeft,
 } from "@lucide/vue"
 
-definePageMeta({ ssr: false })
+interface SubmissionResult {
+  status: string
+  score: number
+  time_ms: number | null
+  memory_kb: number | null
+  output: string
+}
+
+interface SubmissionData {
+  id: string
+  problem_id: string
+  language: string
+  code: string
+  file_name: string
+  status: string
+  queue_position?: number
+  queue_length?: number
+  judge_started_at?: string
+  created_at: string
+  result?: SubmissionResult
+}
+
+interface SubmissionResponse {
+  data: SubmissionData
+}
 
 const route = useRoute()
-const { token, isLoggedIn, loading } = useAuth()
+const { isLoggedIn, loading } = useAuth()
 
 const submissionId = route.params.id as string
 
@@ -48,11 +72,9 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 const POLL_INTERVAL_MS = 1500
 
 async function pollSubmission() {
-  if (!token.value) return // auth 还未就绪，下次重试
   try {
     const res = await $fetch<SubmissionResponse>(
       `/api/v1/submissions/${submissionId}`,
-      { headers: { Authorization: `Bearer ${token.value}` } },
     )
     if (res) {
       data.value = res
@@ -73,11 +95,12 @@ function stopPolling() {
   }
 }
 
-// token 就绪后再开始轮询，避免首次请求缺少 Authorization header
+// 登录后开始轮询，cookie 由浏览器自动发送
 watch(
-  token,
-  (tok) => {
-    if (tok && !pollTimer) {
+  isLoggedIn,
+  (loggedIn) => {
+    if (import.meta.server) return // SSR 阶段无 cookie，客户端水合后接管
+    if (loggedIn && !pollTimer) {
       pollSubmission()
       pollTimer = setInterval(pollSubmission, POLL_INTERVAL_MS)
     }

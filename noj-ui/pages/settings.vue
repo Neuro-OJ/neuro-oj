@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { ArrowLeft, Save, Eye, Edit3, CheckCircle, AlertCircle } from "@lucide/vue"
 
-definePageMeta({ ssr: false })
-
-const { token, user, isLoggedIn, loading } = useAuth()
+const { user, isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
 // 认证守卫：loading 就绪后检查登录状态
@@ -42,14 +40,13 @@ watch(
 )
 
 async function handleSave() {
-  if (!token.value) return
+  if (!isLoggedIn.value) return
   saving.value = true
   saveSuccess.value = false
   saveError.value = ""
   try {
     await $fetch("/api/v1/users/me", {
       method: "PUT",
-      headers: { Authorization: `Bearer ${token.value}` },
       body: { bio: bio.value },
     })
     saveSuccess.value = true

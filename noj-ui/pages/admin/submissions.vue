@@ -8,7 +8,7 @@ definePageMeta({
   ssr: false,
 })
 
-const { token, isLoggedIn, loading } = useAuth()
+const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
 watch(loading, (val) => {
@@ -86,14 +86,13 @@ function buildQuery(page: number): string {
 }
 
 async function loadSubmissions(page = 1) {
-  if (!token.value) return
+  if (!isLoggedIn.value) return
   tableLoading.value = true
   tableError.value = ""
   currentPage.value = page
   try {
     const res = await $fetch<{ data: Submission[]; pagination: { total: number; total_pages: number } }>(
       `/api/v1/admin/submissions?${buildQuery(page)}`,
-      { headers: { Authorization: `Bearer ${token.value}` } },
     )
     submissions.value = res.data
     totalPages.value = res.pagination.total_pages
@@ -104,7 +103,7 @@ async function loadSubmissions(page = 1) {
   }
 }
 
-watch(token, (val) => {
+watch(isLoggedIn, (val) => {
   if (val) loadSubmissions()
 }, { immediate: true })
 

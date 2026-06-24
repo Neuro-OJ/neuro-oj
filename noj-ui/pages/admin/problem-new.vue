@@ -7,7 +7,7 @@ definePageMeta({
   ssr: false,
 })
 
-const { token, isLoggedIn, loading } = useAuth()
+const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
 watch(loading, (val) => {
@@ -57,7 +57,6 @@ function validate(): boolean {
 }
 
 async function handleSubmit() {
-  if (!token.value) return
   if (!validate()) return
 
   saving.value = true
@@ -65,7 +64,6 @@ async function handleSubmit() {
   try {
     await $fetch("/api/v1/problems", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token.value}` },
       body: {
         title: title.value.trim(),
         description: description.value.trim(),

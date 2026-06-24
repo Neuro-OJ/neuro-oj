@@ -8,7 +8,7 @@ definePageMeta({
   ssr: false,
 })
 
-const { token, isLoggedIn, loading } = useAuth()
+const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
 watch(loading, (val) => {
@@ -53,7 +53,7 @@ const columns: Column<Problem>[] = [
 ]
 
 async function loadProblems(page = 1) {
-  if (!token.value) return
+  if (!isLoggedIn.value) return
   tableLoading.value = true
   tableError.value = ""
   currentPage.value = page
@@ -70,7 +70,7 @@ async function loadProblems(page = 1) {
   }
 }
 
-watch(token, (val) => {
+watch(isLoggedIn, (val) => {
   if (val) loadProblems()
 }, { immediate: true })
 
@@ -91,13 +91,12 @@ function confirmDelete(problem: Problem) {
 }
 
 async function handleDelete() {
-  if (!deleteTarget.value || !token.value) return
+  if (!deleteTarget.value) return
   deleting.value = true
   deleteError.value = ""
   try {
     await $fetch(`/api/v1/problems/${deleteTarget.value.id}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token.value}` },
     })
     showDeleteConfirm.value = false
     // 如果当前页只有这一个题目，删除后自动回到上一页
