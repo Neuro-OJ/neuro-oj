@@ -31,29 +31,33 @@ async function loadStats() {
   if (!token.value) return
   statsLoading.value = true
   statsError.value = ""
-  try {
-    const [userRes, problemRes, submissionRes, queueRes] = await Promise.all([
-      $fetch<{ pagination: { total: number } }>("/api/v1/admin/users", {
-        headers: { Authorization: `Bearer ${token.value}` },
-      }),
-      $fetch<{ total: number }>("/api/v1/problems"),
-      $fetch<{ pagination: { total: number } }>("/api/v1/admin/submissions", {
-        headers: { Authorization: `Bearer ${token.value}` },
-      }),
-      $fetch<{ stats: { pending_count: number; judging_count: number; completed_today: number } }>("/api/v1/queue"),
-    ])
 
-    stats.value = [
-      { label: "用户总数", value: userRes.pagination.total, icon: Users, color: "#3b82f6" },
-      { label: "题目总数", value: problemRes.total, icon: BookOpen, color: "#10b981" },
-      { label: "提交总数", value: submissionRes.pagination.total, icon: Files, color: "#f59e0b" },
-    ]
-    queueStats.value = queueRes.stats
-  } catch (err: unknown) {
-    statsError.value = err instanceof Error ? err.message : "加载统计数据失败"
-  } finally {
-    statsLoading.value = false
+  // 分别请求，单个失败不影响其他统计项
+  const [userRes, problemRes, submissionRes, queueRes] = await Promise.all([
+    $fetch<{ pagination: { total: number } }>("/api/v1/admin/users", {
+      headers: { Authorization: `Bearer ${token.value}` },
+    }).catch(() => null),
+    $fetch<{ total: number }>("/api/v1/problems")
+      .catch(() => null),
+    $fetch<{ pagination: { total: number } }>("/api/v1/admin/submissions", {
+      headers: { Authorization: `Bearer ${token.value}` },
+    }).catch(() => null),
+    $fetch<{ stats: { pending_count: number; judging_count: number; completed_today: number } }>("/api/v1/queue")
+      .catch(() => null),
+  ])
+
+  const allStats: StatsCard[] = []
+  if (userRes) allStats.push({ label: "用户总数", value: userRes.pagination.total, icon: Users, color: "#3b82f6" })
+  if (problemRes) allStats.push({ label: "题目总数", value: problemRes.total, icon: BookOpen, color: "#10b981" })
+  if (submissionRes) allStats.push({ label: "提交总数", value: submissionRes.pagination.total, icon: Files, color: "#f59e0b" })
+  stats.value = allStats
+  queueStats.value = queueRes?.stats ?? null
+
+  if (allStats.length === 0 && !queueRes) {
+    statsError.value = "加载统计数据失败"
   }
+
+  statsLoading.value = false
 }
 
 // 等 auth 就绪后加载

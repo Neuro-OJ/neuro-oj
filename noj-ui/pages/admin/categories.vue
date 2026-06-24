@@ -120,6 +120,7 @@ const deleting = ref(false)
 
 function confirmDelete(cat: Category) {
   deleteTarget.value = cat
+  formError.value = ""
   showDeleteConfirm.value = true
 }
 
@@ -211,6 +212,7 @@ async function handleDelete() {
     @cancel="showDeleteConfirm = false"
   >
     <p>确定要删除分类 <strong>{{ deleteTarget?.name }}</strong> 吗？此操作不可撤销。</p>
+    <p v-if="formError" class="error-text">{{ formError }}</p>
   </AdminModal>
 </template>
 

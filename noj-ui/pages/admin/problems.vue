@@ -100,7 +100,12 @@ async function handleDelete() {
       headers: { Authorization: `Bearer ${token.value}` },
     })
     showDeleteConfirm.value = false
-    await loadProblems(currentPage.value)
+    // 如果当前页只有这一个题目，删除后自动回到上一页
+    if (problems.value.length <= 1 && currentPage.value > 1) {
+      await loadProblems(currentPage.value - 1)
+    } else {
+      await loadProblems(currentPage.value)
+    }
   } catch (err: unknown) {
     deleteError.value = err instanceof Error ? err.message : "删除失败"
   } finally {

@@ -72,8 +72,8 @@ async function handleSubmit() {
         difficulty: difficulty.value,
         judge_image: judgeImage.value.trim(),
         judge_command: judgeCommand.value.trim(),
-        time_limit_ms: timeLimitMs.value,
-        memory_limit_mb: memoryLimitMb.value,
+        time_limit_ms: timeLimitMs.value > 0 ? timeLimitMs.value : 5000,
+        memory_limit_mb: memoryLimitMb.value > 0 ? memoryLimitMb.value : 512,
         category_ids: categoryIds.value.length > 0 ? categoryIds.value : undefined,
       },
     })

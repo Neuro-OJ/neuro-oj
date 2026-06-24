@@ -29,6 +29,7 @@ const categoryIds = ref<string[]>([])
 // 页面状态
 const pageLoading = ref(true)
 const notFound = ref(false)
+const loadError = ref("")
 
 // 分类选项
 const categories = ref<{ id: string; name: string }[]>([])
@@ -63,6 +64,8 @@ async function loadData() {
   } catch (err: unknown) {
     if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) {
       notFound.value = true
+    } else {
+      loadError.value = err instanceof Error ? err.message : "加载题目失败"
     }
   } finally {
     pageLoading.value = false
@@ -107,8 +110,8 @@ async function handleSubmit() {
         difficulty: difficulty.value,
         judge_image: judgeImage.value.trim(),
         judge_command: judgeCommand.value.trim(),
-        time_limit_ms: timeLimitMs.value,
-        memory_limit_mb: memoryLimitMb.value,
+        time_limit_ms: timeLimitMs.value > 0 ? timeLimitMs.value : 5000,
+        memory_limit_mb: memoryLimitMb.value > 0 ? memoryLimitMb.value : 512,
         category_ids: categoryIds.value.length > 0 ? categoryIds.value : undefined,
       },
     })
@@ -129,6 +132,11 @@ async function handleSubmit() {
 
   <div v-else-if="pageLoading" class="page">
     <p class="loading-text">加载中...</p>
+  </div>
+
+  <div v-else-if="loadError" class="page">
+    <p class="error-text">{{ loadError }}</p>
+    <NuxtLink to="/admin/problems" class="back-link">返回题目列表</NuxtLink>
   </div>
 
   <div v-else class="page">
