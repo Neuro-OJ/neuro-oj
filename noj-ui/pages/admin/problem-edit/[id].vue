@@ -7,7 +7,7 @@ definePageMeta({
   ssr: false,
 })
 
-const { token, isLoggedIn, loading } = useAuth()
+const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
 const route = useRoute()
 const problemId = route.params.id as string
@@ -30,7 +30,7 @@ const loadError = ref("")
 const categories = ref<{ id: string; name: string }[]>([])
 
 async function loadData() {
-  if (!token.value) return
+  if (!isLoggedIn.value) return
   pageLoading.value = true
   try {
     const [catRes, problemRes] = await Promise.all([
@@ -60,7 +60,7 @@ async function loadData() {
   }
 }
 
-watch(token, (val) => { if (val) loadData() }, { immediate: true })
+watch(isLoggedIn, (val) => { if (val) loadData() }, { immediate: true })
 
 const previewMode = ref(false)
 const saving = ref(false)
@@ -78,12 +78,11 @@ function validate(): boolean {
 }
 
 async function handleSubmit() {
-  if (!token.value || !validate()) return
+  if (!validate()) return
   saving.value = true; saveError.value = ""
   try {
     await $fetch(`/api/v1/problems/${problemId}`, {
       method: "PUT",
-      headers: { Authorization: `Bearer ${token.value}` },
       body: {
         title: title.value.trim(), description: description.value.trim(),
         difficulty: difficulty.value,

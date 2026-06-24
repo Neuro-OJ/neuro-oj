@@ -4,7 +4,7 @@ import { Clock, Server, AlertCircle, Send, Loader2 } from "@lucide/vue"
 
 const route = useRoute()
 const router = useRouter()
-const { token, isLoggedIn } = useAuth()
+const { isLoggedIn } = useAuth()
 
 const problemId = route.params.id as string
 
@@ -56,7 +56,6 @@ async function handleSubmit() {
   try {
     const res = await $fetch<{ data: { id: string } }>("/api/v1/submissions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token.value}` },
       body: {
         problem_id: problemId,
         language,

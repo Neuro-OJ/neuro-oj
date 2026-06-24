@@ -8,7 +8,7 @@ definePageMeta({
   ssr: false,
 })
 
-const { token, isLoggedIn, loading } = useAuth()
+const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
 watch(loading, (val) => {
@@ -50,14 +50,13 @@ const columns: Column<User>[] = [
 ]
 
 async function loadUsers(page = 1) {
-  if (!token.value) return
+  if (!isLoggedIn.value) return
   tableLoading.value = true
   tableError.value = ""
   currentPage.value = page
   try {
     const res = await $fetch<{ data: User[]; pagination: { total: number; total_pages: number } }>(
       `/api/v1/admin/users?page=${page}&per_page=${perPage}`,
-      { headers: { Authorization: `Bearer ${token.value}` } },
     )
     users.value = res.data
     totalPages.value = res.pagination.total_pages
@@ -68,7 +67,7 @@ async function loadUsers(page = 1) {
   }
 }
 
-watch(token, (val) => {
+watch(isLoggedIn, (val) => {
   if (val) loadUsers()
 }, { immediate: true })
 
@@ -89,14 +88,13 @@ function confirmRoleSwitch(user: User) {
 }
 
 async function handleRoleSwitch() {
-  if (!targetUser.value || !token.value) return
+  if (!targetUser.value) return
   const newRole = targetUser.value.role === "admin" ? "user" : "admin"
   switchingRole.value = true
   switchError.value = ""
   try {
     await $fetch(`/api/v1/admin/users/${targetUser.value.id}/role`, {
       method: "PATCH",
-      headers: { Authorization: `Bearer ${token.value}` },
       body: { role: newRole },
     })
     showRoleModal.value = false

@@ -8,7 +8,7 @@ definePageMeta({
   ssr: false,
 })
 
-const { token, isLoggedIn, loading } = useAuth()
+const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
 watch(loading, (val) => {
@@ -33,7 +33,7 @@ const columns: Column<Category>[] = [
 ]
 
 async function loadCategories() {
-  if (!token.value) return
+  if (!isLoggedIn.value) return
   tableLoading.value = true
   tableError.value = ""
   try {
@@ -46,7 +46,7 @@ async function loadCategories() {
   }
 }
 
-watch(token, (val) => {
+watch(isLoggedIn, (val) => {
   if (val) loadCategories()
 }, { immediate: true })
 
@@ -78,7 +78,6 @@ function openEdit(cat: Category) {
 }
 
 async function handleSave() {
-  if (!token.value) return
   if (!formName.value.trim()) {
     formError.value = "名称不能为空"
     return
@@ -94,13 +93,11 @@ async function handleSave() {
     if (editingCategory.value) {
       await $fetch(`/api/v1/categories/${editingCategory.value.id}`, {
         method: "PUT",
-        headers: { Authorization: `Bearer ${token.value}` },
         body: { name: formName.value, slug: formSlug.value, description: formDesc.value },
       })
     } else {
       await $fetch("/api/v1/categories", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token.value}` },
         body: { name: formName.value, slug: formSlug.value, description: formDesc.value },
       })
     }
@@ -125,12 +122,11 @@ function confirmDelete(cat: Category) {
 }
 
 async function handleDelete() {
-  if (!deleteTarget.value || !token.value) return
+  if (!deleteTarget.value) return
   deleting.value = true
   try {
     await $fetch(`/api/v1/categories/${deleteTarget.value.id}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token.value}` },
     })
     showDeleteConfirm.value = false
     await loadCategories()

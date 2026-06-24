@@ -64,20 +64,19 @@ const { data: categoriesData } = await useAsyncData("problem-categories", () =>
 const categories = computed(() => categoriesData.value?.data ?? [])
 
 // ── 通过状态（仅已登录用户） ──
-const { isLoggedIn, token } = useAuth()
+const { isLoggedIn } = useAuth()
 const solvedIds = ref<Set<string>>(new Set())
 const attemptedIds = ref<Set<string>>(new Set())
 let statusFetchGen = 0
 
 async function fetchUserProblemStatus() {
-  if (!isLoggedIn.value || !token.value) return
+  if (!isLoggedIn.value) return
   const gen = ++statusFetchGen
   try {
     const res = await $fetch<{
       data: { problem_id: string; result: { score: number } | null }[]
     }>("/api/v1/submissions", {
       query: { per_page: 100 },
-      headers: { Authorization: `Bearer ${token.value}` },
     })
     if (gen !== statusFetchGen) return // stale
     const subs = res.data ?? []

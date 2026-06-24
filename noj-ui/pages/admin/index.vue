@@ -7,7 +7,7 @@ definePageMeta({
   ssr: false,
 })
 
-const { token, isLoggedIn, loading } = useAuth()
+const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
 // 认证守卫
@@ -28,20 +28,17 @@ const statsError = ref("")
 const queueStats = ref<{ pending_count: number; judging_count: number; completed_today: number } | null>(null)
 
 async function loadStats() {
-  if (!token.value) return
   statsLoading.value = true
   statsError.value = ""
 
   // 分别请求，单个失败不影响其他统计项
   const [userRes, problemRes, submissionRes, queueRes] = await Promise.all([
-    $fetch<{ pagination: { total: number } }>("/api/v1/admin/users", {
-      headers: { Authorization: `Bearer ${token.value}` },
-    }).catch(() => null),
+    $fetch<{ pagination: { total: number } }>("/api/v1/admin/users")
+      .catch(() => null),
     $fetch<{ total: number }>("/api/v1/problems")
       .catch(() => null),
-    $fetch<{ pagination: { total: number } }>("/api/v1/admin/submissions", {
-      headers: { Authorization: `Bearer ${token.value}` },
-    }).catch(() => null),
+    $fetch<{ pagination: { total: number } }>("/api/v1/admin/submissions")
+      .catch(() => null),
     $fetch<{ stats: { pending_count: number; judging_count: number; completed_today: number } }>("/api/v1/queue")
       .catch(() => null),
   ])
@@ -61,7 +58,7 @@ async function loadStats() {
 }
 
 // 等 auth 就绪后加载
-watch(token, (val) => {
+watch(isLoggedIn, (val) => {
   if (val) loadStats()
 }, { immediate: true })
 
