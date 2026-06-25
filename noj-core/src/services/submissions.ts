@@ -461,9 +461,22 @@ export async function saveEvaluationResult(
       ? "error"
       : "finished";
 
+    // 同步回填 judge_finished_at 时间戳
+    //
+    // 修复 issue 64 评论 §4.1：saveEvaluationResult 走的是直接 UPDATE，
+    // 绕过了 updateSubmissionStatus 中状态转换时的字段同步逻辑，
+    // 导致 judge_finished_at 永远为 NULL，admin 监控与前端历史记录的
+    // "完成时间"显示空。
+    //
+    // 注意：updateSubmissionStatus 也会设置该字段，但状态机校验
+    // (pending → judging → finished) 不允许 finished → finished 的二次更新，
+    // 因此这里直接在 saveEvaluationResult 中设置以保证准确性。
     await tx
       .update(submissions)
-      .set({ status: submissionStatus })
+      .set({
+        status: submissionStatus,
+        judge_finished_at: now,
+      })
       .where(eq(submissions.id, result.submission_id));
 
     // 插入评测结果（使用 UPSERT 语义防止重复消费）
