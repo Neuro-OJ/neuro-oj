@@ -3,11 +3,43 @@ import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { createProblem } from "../../src/services/problems.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { problems } from "../../src/db/schema.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skipDb = !hasDb;
 const skipEnv = !hasEnv;
+
+// 创建测试题目供 PUT/DELETE 等需要已存在题目的测试使用
+const ts = Date.now();
+const TEST_PROBLEM_ID = `route-test-1001-${ts}`;
+
+Deno.test({
+  name: "problems route: 初始化测试题目",
+  ignore: skipDb,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const now = new Date().toISOString();
+    await db.insert(problems).values({
+      id: TEST_PROBLEM_ID,
+      title: `测试题目 ${ts}`,
+      description: "测试描述",
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+      time_limit_ms: 5000,
+      memory_limit_mb: 512,
+      number: 9998,
+      owner_id: "0",
+      type: "U",
+      created_at: now,
+      updated_at: now,
+    });
+  },
+});
 
 Deno.test({
   name: "problems route: GET /api/v1/problems 返回分页列表",
@@ -148,7 +180,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "problems route: POST /api/v1/problems 非管理员返回 403",
+  name: "problems route: POST /api/v1/problems 非管理员创建 P 型返回 403",
   ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -167,6 +199,7 @@ Deno.test({
         description: "描述",
         judge_image: "noj-judge-python",
         judge_command: "python3 /tmp/evaluate.py",
+        type: "P",
       }),
     });
     assertEquals(res.status, 403);
@@ -180,7 +213,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await signToken({ sub: "0", role: "admin" });
 
     const res = await app.request("/api/v1/problems", {
       method: "POST",
@@ -214,7 +247,7 @@ Deno.test({
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
 
-    const res = await app.request("/api/v1/problems/1001", {
+    const res = await app.request(`/api/v1/problems/${TEST_PROBLEM_ID}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -235,7 +268,7 @@ Deno.test({
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
 
-    const res = await app.request("/api/v1/problems/1001", {
+    const res = await app.request(`/api/v1/problems/${TEST_PROBLEM_ID}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     });

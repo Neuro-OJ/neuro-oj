@@ -23,6 +23,7 @@
                         <User class="user-icon" :size="22" />
                     </button>
                     <div v-show="showDropdown" class="dropdown">
+                        <NuxtLink to="/my/problems" class="dropdown-item-link"><BookOpen :size="16" />我的题目</NuxtLink>
                         <NuxtLink :to="`/users/${user?.id}`" class="dropdown-item-link"><Database :size="16" />数据</NuxtLink>
                         <NuxtLink to="/settings" class="dropdown-item-link"><Settings :size="16" />设置</NuxtLink>
                         <NuxtLink v-if="user?.role === 'admin'" to="/admin" class="dropdown-item-link"><ShieldCheck :size="16" />管理后台</NuxtLink>
@@ -49,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { User, Database, Settings, LogOut, ShieldCheck } from "@lucide/vue"
+import { User, Database, Settings, LogOut, ShieldCheck, BookOpen } from "@lucide/vue"
 import logoSrc from "~/assets/img/logo.jpg"
 
 const route = useRoute()

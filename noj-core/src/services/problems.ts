@@ -10,11 +10,16 @@ import {
 } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { categories, problems, problemsCategories } from "../db/schema.ts";
-import { BadRequestError, NotFoundError } from "../lib/errors.ts";
+import {
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+} from "../lib/errors.ts";
 import {
   type CreateProblemInput,
   DIFFICULTIES,
   isValidDifficulty,
+  isValidProblemType,
   type ProblemListQuery,
   type ProblemResponseWithCategories,
   type UpdateProblemInput,
@@ -30,6 +35,10 @@ export interface ProblemResponse {
   support_package_path: string | null;
   time_limit_ms: number;
   memory_limit_mb: number;
+  number: number;
+  owner_id: string;
+  type: string;
+  display_id: string;
   created_at: string;
   updated_at: string;
 }
@@ -57,6 +66,10 @@ function toProblemResponse(
     support_package_path: row.support_package_path,
     time_limit_ms: row.time_limit_ms,
     memory_limit_mb: row.memory_limit_mb,
+    number: row.number,
+    owner_id: row.owner_id,
+    type: row.type,
+    display_id: `${row.type}${row.number}`,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -124,8 +137,23 @@ export async function listProblems(
     conditions.push(
       sql`(${ilike(problems.title, kw)} OR ${
         ilike(problems.description, kw)
-      } OR ${ilike(problems.id, kw)})`,
+      } OR ${ilike(problems.id, kw)} OR ${
+        ilike(sql`CAST(${problems.number} AS TEXT)`, kw)
+      } OR ${
+        ilike(sql`${problems.type} || CAST(${problems.number} AS TEXT)`, kw)
+      })`,
     );
+  }
+
+  // 未指定 type 时默认只显示 P 型题目（U 型仅通过 URL 或用户主页访问）
+  conditions.push(eq(problems.type, (query.type || "P").toUpperCase()));
+
+  if (query.number !== undefined) {
+    conditions.push(eq(problems.number, query.number));
+  }
+
+  if (query.owner_id) {
+    conditions.push(eq(problems.owner_id, query.owner_id));
   }
 
   // 按分类筛选——先查关联表拿到题目 ID，再通过 inArray 下推到 SQL WHERE 层
@@ -204,12 +232,52 @@ export async function getProblem(
 }
 
 /**
- * 创建题目（管理员）。
+ * 根据 type+number 组合唯一索引查找题目。
+ * 用于双索引路由解析 display_id（如 P1001 → type=P, number=1001）。
+ *
+ * @throws {NotFoundError} 题目不存在
+ */
+export async function getProblemByTypeAndNumber(
+  type: string,
+  number: number,
+): Promise<ProblemResponseWithCategories> {
+  const db = getDb();
+
+  const existing = await db
+    .select()
+    .from(problems)
+    .where(
+      and(
+        eq(problems.type, type.toUpperCase()),
+        eq(problems.number, number),
+      ),
+    )
+    .limit(1);
+
+  if (existing.length === 0) {
+    throw new NotFoundError("题目不存在");
+  }
+
+  const catMap = await attachCategories([existing[0].id]);
+  return {
+    ...toProblemResponse(existing[0]),
+    categories: catMap.get(existing[0].id) ?? [],
+  };
+}
+
+/**
+ * 创建题目。
+ *
+ * admin 可创建任意 type，普通用户仅限 U 型。
+ * 自动设 owner_id 为当前用户，自动分配 U 型 number。
  *
  * @throws {BadRequestError} 难度值非法
+ * @throws {ForbiddenError} 普通用户尝试创建 P 型题目
  */
 export async function createProblem(
   input: CreateProblemInput,
+  userId?: string,
+  userRole?: string,
 ): Promise<ProblemResponseWithCategories> {
   const db = getDb();
 
@@ -220,22 +288,75 @@ export async function createProblem(
     );
   }
 
+  // 确定题目类型（默认 U）
+  const rawType = input.type?.toUpperCase() ?? "U";
+  if (!isValidProblemType(rawType)) {
+    throw new BadRequestError(`非法题目类型：${input.type}，仅允许 U/P`);
+  }
+  const type = rawType;
+
+  // 权限检查：普通用户只能创建 U 型
+  if (type === "P" && userRole !== "admin") {
+    throw new ForbiddenError("仅管理员可创建管理题");
+  }
+
+  // 确定所有者
+  const ownerId = userId ?? "0";
+
+  // 确定题号（同一 type 内自增，并发冲突时重试）
+  // 仅 admin 可指定 number；普通用户强制 MAX+1
+  const adminProvidedNumber = input.number !== undefined;
+  if (adminProvidedNumber && userRole !== "admin") {
+    throw new ForbiddenError("仅管理员可指定题号");
+  }
+  let number = input.number;
+  // 确定题号 + 插入（MAX+1 并发冲突时最多重试 3 次）
+  const MAX_RETRIES = 3;
   const id = input.id ?? crypto.randomUUID();
   const now = new Date().toISOString();
 
-  await db.insert(problems).values({
-    id,
-    title: input.title,
-    description: input.description,
-    difficulty: input.difficulty ?? "medium",
-    judge_image: input.judge_image,
-    judge_command: input.judge_command,
-    support_package_path: input.support_package_path ?? null,
-    time_limit_ms: input.time_limit_ms ?? 5000,
-    memory_limit_mb: input.memory_limit_mb ?? 512,
-    created_at: now,
-    updated_at: now,
-  });
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (number === undefined) {
+      const result = await db
+        .select({ max: sql<number>`COALESCE(MAX(${problems.number}), 0)` })
+        .from(problems)
+        .where(eq(problems.type, type));
+      number = (result[0]?.max ?? 0) + 1;
+    }
+
+    try {
+      await db.insert(problems).values({
+        id,
+        title: input.title,
+        description: input.description,
+        difficulty: input.difficulty ?? "medium",
+        judge_image: input.judge_image,
+        judge_command: input.judge_command,
+        support_package_path: input.support_package_path ?? null,
+        time_limit_ms: input.time_limit_ms ?? 5000,
+        memory_limit_mb: input.memory_limit_mb ?? 512,
+        number,
+        owner_id: ownerId,
+        type,
+        created_at: now,
+        updated_at: now,
+      });
+      break; // 插入成功，退出重试循环
+    } catch (err) {
+      if (attempt === MAX_RETRIES - 1) throw err;
+      // PostgreSQL UNIQUE 约束冲突错误码 23505
+      if (
+        err && typeof err === "object" && "code" in err &&
+        (err as { code: string }).code === "23505"
+      ) {
+        // 管理员指定 number 冲突 → 直接报错，不自动重试
+        if (adminProvidedNumber) throw err;
+        number = undefined; // 重置 number，下一轮重新 MAX+1
+        continue;
+      }
+      throw err; // 非唯一冲突，直接抛出
+    }
+  }
 
   // 处理分类关联
   if (input.category_ids && input.category_ids.length > 0) {
@@ -246,14 +367,23 @@ export async function createProblem(
 }
 
 /**
- * 全量更新题目（管理员）。
+ * 全量更新题目。
+ *
+ * 权限规则：
+ * - admin 可更新任意题目
+ * - U 型：owner 可更新
+ * - P 型：仅 admin 可更新
+ * - 禁止修改 type 和 number 字段
  *
  * @throws {NotFoundError} 题目不存在
  * @throws {BadRequestError} 难度值非法
+ * @throws {ForbiddenError} 权限不足
  */
 export async function updateProblem(
   id: string,
   input: UpdateProblemInput,
+  userId?: string,
+  userRole?: string,
 ): Promise<ProblemResponseWithCategories> {
   const db = getDb();
 
@@ -267,12 +397,29 @@ export async function updateProblem(
     throw new NotFoundError("题目不存在");
   }
 
+  const problem = existing[0];
+
+  // 权限检查
+  if (userRole !== "admin") {
+    if (problem.type === "P") {
+      throw new ForbiddenError("仅管理员可编辑管理题");
+    }
+    // U 型：仅所有者可编辑
+    if (problem.owner_id !== userId) {
+      throw new ForbiddenError("无权编辑此题目");
+    }
+  }
+
   // 校验难度
   if (input.difficulty && !isValidDifficulty(input.difficulty)) {
     throw new BadRequestError(
       `非法难度值：${input.difficulty}，仅允许 ${DIFFICULTIES.join("/")}`,
     );
   }
+
+  // 防御性忽略 type 和 number（spec 承诺这两个字段不可变更）
+  delete (input as Record<string, unknown>)["type"];
+  delete (input as Record<string, unknown>)["number"];
 
   const updates: Record<string, unknown> = {};
   if (input.title !== undefined) updates.title = input.title;
@@ -304,11 +451,21 @@ export async function updateProblem(
 }
 
 /**
- * 删除题目（管理员）。
+ * 删除题目。
+ *
+ * 权限规则：
+ * - admin 可删除任意题目
+ * - U 型：owner 可删除
+ * - P 型：仅 admin 可删除
  *
  * @throws {NotFoundError} 题目不存在
+ * @throws {ForbiddenError} 权限不足
  */
-export async function deleteProblem(id: string): Promise<void> {
+export async function deleteProblem(
+  id: string,
+  userId?: string,
+  userRole?: string,
+): Promise<void> {
   const db = getDb();
 
   const existing = await db
@@ -319,6 +476,18 @@ export async function deleteProblem(id: string): Promise<void> {
 
   if (existing.length === 0) {
     throw new NotFoundError("题目不存在");
+  }
+
+  const problem = existing[0];
+
+  // 权限检查
+  if (userRole !== "admin") {
+    if (problem.type === "P") {
+      throw new ForbiddenError("仅管理员可删除管理题");
+    }
+    if (problem.owner_id !== userId) {
+      throw new ForbiddenError("无权删除此题目");
+    }
   }
 
   // 级联删除（problems_categories 的 ON DELETE CASCADE 会自动清理关联）

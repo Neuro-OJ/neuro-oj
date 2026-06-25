@@ -47,19 +47,22 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 
 系统 SHALL 提供 `problems` 表存储 LMCC 题目信息，支持自定义评测环境配置：
 
-| 字段                 | 类型    | 约束                       | 说明                      |
-| -------------------- | ------- | -------------------------- | ------------------------- |
-| id                   | TEXT    | PRIMARY KEY, UUID v4       |                           |
-| title                | TEXT    | NOT NULL                   | 题目标题                  |
-| description          | TEXT    | NOT NULL                   | 题目描述（Markdown）      |
-| difficulty           | TEXT    | NOT NULL, DEFAULT 'medium' | easy / medium / hard      |
-| judge_image          | TEXT    | NOT NULL                   | Docker 镜像名             |
-| judge_command        | TEXT    | NOT NULL                   | 容器内评测命令            |
-| support_package_path | TEXT    |                            | 支持包 zip 路径，相对 CWD |
-| time_limit_ms        | INTEGER | NOT NULL, DEFAULT 5000     | 时间限制（毫秒）          |
-| memory_limit_mb      | INTEGER | NOT NULL, DEFAULT 512      | 内存限制（MB）            |
-| created_at           | TEXT    | NOT NULL, ISO 8601         |                           |
-| updated_at           | TEXT    | NOT NULL, ISO 8601         |                           |
+| 字段                 | 类型    | 约束                                 | 说明                           |
+| -------------------- | ------- | ------------------------------------ | ------------------------------ |
+| id                   | TEXT    | PRIMARY KEY, UUID v4                 |                                |
+| title                | TEXT    | NOT NULL                             | 题目标题                       |
+| description          | TEXT    | NOT NULL                             | 题目描述（Markdown）           |
+| difficulty           | TEXT    | NOT NULL, DEFAULT 'medium'           | easy / medium / hard           |
+| judge_image          | TEXT    | NOT NULL                             | Docker 镜像名                  |
+| judge_command        | TEXT    | NOT NULL                             | 容器内评测命令                 |
+| support_package_path | TEXT    |                                      | 支持包 zip 路径，相对 CWD      |
+| time_limit_ms        | INTEGER | NOT NULL, DEFAULT 5000               | 时间限制（毫秒）               |
+| memory_limit_mb      | INTEGER | NOT NULL, DEFAULT 512                | 内存限制（MB）                 |
+| number               | INTEGER | NOT NULL, UNIQUE(type, number)       | 题号（同一 type 内独立自增）   |
+| owner_id             | TEXT    | NOT NULL, DEFAULT '0', FK → users.id | 题目所有者 ID，默认 root       |
+| type                 | TEXT    | NOT NULL, DEFAULT 'U', CHECK('U','P')| 题目类型：U=用户题, P=管理题   |
+| created_at           | TEXT    | NOT NULL, ISO 8601                   |                                |
+| updated_at           | TEXT    | NOT NULL, ISO 8601                   |                                |
 
 > **注意：** 不包含 `test_cases` 列。测试用例由支持包 zip 内的评测脚本管理。
 

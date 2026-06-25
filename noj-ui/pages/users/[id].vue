@@ -48,6 +48,23 @@ const { data, pending, error } = useFetch<ProfileResponse>(
 
 const profile = computed(() => data.value?.data ?? null)
 
+// 该用户创建的 U 型题目
+interface CreatedProblem {
+  id: string
+  title: string
+  difficulty: string
+  display_id: string
+  created_at: string
+}
+
+const { data: createdData, pending: createdPending } = useFetch<{
+  data: CreatedProblem[]
+}>(
+  `/api/v1/problems?type=U&owner_id=${userId}&limit=50`,
+)
+
+const createdProblems = computed(() => createdData.value?.data ?? [])
+
 // 当前登录用户是否在查看自己的主页
 const isOwnProfile = computed(
   () => currentUser.value?.id === userId,
@@ -213,6 +230,42 @@ function formatScore(raw: number | null | undefined): string {
                 {{ difficultyLabel[problem.difficulty] || problem.difficulty }}
               </span>
               <span class="text-xs text-text-muted">{{ formatDate(problem.accepted_at) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 创建的题目 -->
+      <div v-if="createdProblems.length" class="bg-white border border-border rounded-xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-border bg-gray-50">
+          <h2 class="text-base font-semibold flex items-center gap-2">
+            <FileText :size="18" class="text-primary" />
+            创建的题目
+          </h2>
+        </div>
+        <div class="divide-y divide-border">
+          <div
+            v-for="problem in createdProblems"
+            :key="problem.id"
+            class="flex items-center justify-between px-6 py-3 hover:bg-gray-50"
+          >
+            <div class="flex items-center gap-3">
+              <ProblemId :display-id="problem.display_id" :type="'U'" />
+              <NuxtLink
+                :to="`/problems/${problem.id}`"
+                class="text-sm text-primary no-underline hover:underline"
+              >
+                {{ problem.title }}
+              </NuxtLink>
+            </div>
+            <div class="flex items-center gap-3">
+              <span
+                class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                :class="badgeColors[problem.difficulty] || ''"
+              >
+                {{ difficultyLabel[problem.difficulty] || problem.difficulty }}
+              </span>
+              <span class="text-xs text-text-muted">{{ formatDate(problem.created_at) }}</span>
             </div>
           </div>
         </div>

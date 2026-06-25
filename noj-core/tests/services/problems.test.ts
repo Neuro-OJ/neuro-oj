@@ -141,7 +141,7 @@ Deno.test({
     const updated = await updateProblem(TEST_PROBLEM_ID, {
       title: "更新的标题",
       difficulty: "hard",
-    });
+    }, "0");
     assertEquals(updated.title, "更新的标题");
     assertEquals(updated.difficulty, "hard");
   },
@@ -155,7 +155,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await assertRejects(
-      () => updateProblem(TEST_PROBLEM_ID, { difficulty: "invalid" }),
+      () => updateProblem(TEST_PROBLEM_ID, { difficulty: "invalid" }, "0"),
       BadRequestError,
     );
   },
@@ -190,7 +190,7 @@ Deno.test({
       judge_image: "noj-judge-python",
       judge_command: "python3 /tmp/evaluate.py",
     });
-    const result = await listProblems({ keyword });
+    const result = await listProblems({ keyword, type: "U" });
     assertEquals(result.items.length, 1);
     assertEquals(result.items[0].id, `search-test-${ts}`);
   },
@@ -203,7 +203,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await deleteProblem(TEST_PROBLEM_ID);
+    await deleteProblem(TEST_PROBLEM_ID, "0");
     await assertRejects(
       () => getProblem(TEST_PROBLEM_ID),
       NotFoundError,
