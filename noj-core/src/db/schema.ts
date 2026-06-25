@@ -116,6 +116,12 @@ export const submissions = pgTable(
     problem_idx: index("idx_submissions_problem_id").on(table.problem_id),
     status_idx: index("idx_submissions_status").on(table.status),
     created_at_idx: index("idx_submissions_created_at").on(table.created_at),
+    // 复合索引：用户提交历史按时间倒序分页（issue 64 评论 §6.4）
+    // 优化 "WHERE user_id = ? ORDER BY created_at DESC" 场景
+    user_created_idx: index("idx_submissions_user_id_created_at").on(
+      table.user_id,
+      table.created_at,
+    ),
   }),
 );
 
@@ -143,5 +149,7 @@ export const evaluationResults = pgTable(
     submission_idx: uniqueIndex("idx_eval_results_submission_id").on(
       table.submission_id,
     ),
+    // created_at 索引：评测结果按时间分页与归档（issue 64 评论 §6.4）
+    created_at_idx: index("idx_eval_results_created_at").on(table.created_at),
   }),
 );
