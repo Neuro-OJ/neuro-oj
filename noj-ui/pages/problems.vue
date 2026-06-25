@@ -13,6 +13,10 @@ interface ProblemItem {
   memory_limit_mb: number
   acceptance_rate?: number
   categories: { id: string; name: string; slug: string }[]
+  display_id: string
+  type: string
+  owner_id: string
+  number: number
   created_at: string
   updated_at: string
 }
@@ -36,6 +40,7 @@ const {
   keyword,
   difficulty,
   categoryId,
+  problemType,
   limit,
   hasActiveFilters,
   setFilter,
@@ -143,10 +148,12 @@ function formatAcceptanceRate(rate: number | undefined): string {
       :keyword="keyword"
       :difficulty="difficulty"
       :category-id="categoryId"
+      :problem-type="problemType"
       :categories="categories"
       @update:keyword="setFilter('keyword', $event)"
       @update:difficulty="setFilter('difficulty', $event)"
       @update:category-id="setFilter('category_id', $event)"
+      @update:problem-type="setFilter('type', $event)"
     />
 
     <!-- 加载中 -->
@@ -183,6 +190,7 @@ function formatAcceptanceRate(rate: number | undefined): string {
           <thead>
             <tr>
               <th scope="col" class="w-20 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">#</th>
+              <th scope="col" class="w-16 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">类型</th>
               <th scope="col" class="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">题目</th>
               <th scope="col" class="w-20 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">难度</th>
               <th scope="col" class="w-[120px] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border hidden sm:table-cell">分类</th>
@@ -204,7 +212,15 @@ function formatAcceptanceRate(rate: number | undefined): string {
               @keydown.space.prevent="router.push(`/problems/${problem.id}`)"
             >
               <td class="w-20 px-4 py-3.5">
-                <span class="font-mono text-xs text-text-muted">{{ problem.id }}</span>
+                <span class="font-mono text-xs text-text-muted">{{ problem.display_id }}</span>
+              </td>
+              <td class="w-16 px-4 py-3.5">
+                <span
+                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                  :class="problem.type === 'U'
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-purple-100 text-purple-700'"
+                >{{ problem.type }}</span>
               </td>
               <td class="px-4 py-3.5">
                 <NuxtLink

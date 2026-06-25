@@ -19,6 +19,9 @@ interface Problem {
   id: string
   title: string
   difficulty: string
+  display_id: string
+  type: string
+  owner_id: string
   categories: { id: string; name: string }[]
   created_at: string
 }
@@ -37,7 +40,8 @@ const difficultyLabels: Record<string, string> = {
 }
 
 const columns: Column<Problem>[] = [
-  { key: "id", label: "编号" },
+  { key: "display_id", label: "题号" },
+  { key: "type", label: "类型", format: (val) => (val as string) === "U" ? "用户题" : "专题" },
   { key: "title", label: "标题" },
   { key: "difficulty", label: "难度", format: (val) => difficultyLabels[val as string] || (val as string) },
   {

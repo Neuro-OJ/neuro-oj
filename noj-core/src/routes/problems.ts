@@ -1,11 +1,12 @@
 import { Hono } from "hono";
-import { adminMiddleware, authMiddleware } from "../middleware/auth.ts";
+import { authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
-import { BadRequestError } from "../lib/errors.ts";
+import { BadRequestError, NotFoundError } from "../lib/errors.ts";
 import {
   createProblem,
   deleteProblem,
   getProblem,
+  getProblemByTypeAndNumber,
   listProblems,
   updateProblem,
 } from "../services/problems.ts";
@@ -18,8 +19,31 @@ import type {
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
 /**
+ * 双索引查找工具函数。
+ * 支持通过 UUID 或 display_id（如 P1001）两种格式查找题目。
+ */
+async function resolveProblem(id: string) {
+  // 尝试 1：按 UUID / id 精确查找
+  try {
+    return await getProblem(id);
+  } catch {
+    // 未命中，继续尝试 display_id 格式
+  }
+
+  // 尝试 2：解析 display_id "P1001" / "U42" → (type, number)
+  const match = id.match(/^([UuPp])(\d+)$/);
+  if (match) {
+    const type = match[1].toUpperCase();
+    const number = parseInt(match[2], 10);
+    return await getProblemByTypeAndNumber(type, number);
+  }
+
+  throw new NotFoundError("题目不存在");
+}
+
+/**
  * 获取题目列表。
- * 支持分页与筛选：?page=1&limit=20&difficulty=easy&category_id=xxx&keyword=xxx
+ * 支持分页与筛选：?page=1&limit=20&difficulty=easy&category_id=xxx&keyword=xxx&type=U&number=1001
  */
 router.get("/", async (c) => {
   const page = parseInt(c.req.query("page") || "1", 10);
@@ -44,6 +68,15 @@ router.get("/", async (c) => {
   const keyword = c.req.query("keyword");
   if (keyword) query.keyword = keyword;
 
+  const type = c.req.query("type");
+  if (type) query.type = type;
+
+  const numberStr = c.req.query("number");
+  if (numberStr) {
+    const number = parseInt(numberStr, 10);
+    if (!Number.isNaN(number)) query.number = number;
+  }
+
   const result = await listProblems(query);
   return c.json({
     data: result.items,
@@ -54,19 +87,20 @@ router.get("/", async (c) => {
 });
 
 /**
- * 获取题目详情。
+ * 获取题目详情（双索引：UUID 或 display_id）。
  */
 router.get("/:id", async (c) => {
   const id = c.req.param("id") as string;
-  const problem = await getProblem(id);
+  const problem = await resolveProblem(id);
   return c.json({ data: problem });
 });
 
 /**
- * 创建题目（管理员）。
+ * 创建题目。
+ * admin 可创建任意 type，普通用户仅限 U 型。
  * POST /api/v1/problems
  */
-router.post("/", authMiddleware, adminMiddleware, async (c) => {
+router.post("/", authMiddleware, async (c) => {
   const body = await parseJsonBody<CreateProblemInput>(c);
 
   if (!body.title || !body.judge_image || !body.judge_command) {
@@ -79,28 +113,40 @@ router.post("/", authMiddleware, adminMiddleware, async (c) => {
     throw new BadRequestError("缺少必填字段：description");
   }
 
-  const problem = await createProblem(body);
+  const userId = c.get("userId");
+  const userRole = c.get("userRole");
+  const problem = await createProblem(body, userId, userRole);
   return c.json({ data: problem }, 201);
 });
 
 /**
- * 全量更新题目（管理员）。
- * PUT /api/v1/problems/:id
+ * 全量更新题目（双索引：UUID 或 display_id）。
+ * 权限在服务层按 type+owner 判断。
  */
-router.put("/:id", authMiddleware, adminMiddleware, async (c) => {
+router.put("/:id", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const body = await parseJsonBody<UpdateProblemInput>(c);
-  const problem = await updateProblem(id, body);
-  return c.json({ data: problem });
+  const userId = c.get("userId");
+  const userRole = c.get("userRole");
+
+  // 双索引解析获取实际题目 ID
+  const problem = await resolveProblem(id);
+  const updated = await updateProblem(problem.id, body, userId, userRole);
+  return c.json({ data: updated });
 });
 
 /**
- * 删除题目（管理员）。
- * DELETE /api/v1/problems/:id
+ * 删除题目（双索引：UUID 或 display_id）。
+ * 权限在服务层按 type+owner 判断。
  */
-router.delete("/:id", authMiddleware, adminMiddleware, async (c) => {
+router.delete("/:id", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
-  await deleteProblem(id);
+  const userId = c.get("userId");
+  const userRole = c.get("userRole");
+
+  // 双索引解析获取实际题目 ID
+  const problem = await resolveProblem(id);
+  await deleteProblem(problem.id, userId, userRole);
   return c.body(null, 204);
 });
 

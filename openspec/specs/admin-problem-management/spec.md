@@ -6,21 +6,23 @@
 
 ### Requirement: 管理员可查看题目列表
 
-系统 SHALL 在 `/admin/problems` 路径提供题目管理页面，以表格形式展示所有题目。
+系统 SHALL 在 `/admin/problems` 路径提供题目管理页面，以表格形式展示所有题目，含 display_id、类型、所有者字段。
 
 #### Scenario: 管理员访问题目管理
-
 - **WHEN** 已登录管理员访问 `/admin/problems`
-- **THEN** 系统显示题目列表，包含题号、标题、难度、分类、创建时间等字段
+- **THEN** 系统显示题目列表，包含 display_id（如 P1001）、标题、类型（U/P 标签）、所有者、难度、分类、创建时间等字段
 
 ### Requirement: 管理员可创建题目
 
-系统 SHALL 在 `/admin/problems/new` 路径提供创建题目表单。
+系统 SHALL 在 `/admin/problems/new` 路径提供创建题目表单，包含类型选择器和题号输入。
 
-#### Scenario: 管理员成功创建题目
+#### Scenario: 管理员创建 P 型题目指定题号
+- **WHEN** 管理员选择类型为"专题（P）"，填写题号 1001 及其他字段并提交
+- **THEN** 系统调用 `POST /api/v1/problems` 创建 P 型题目，成功后跳转
 
-- **WHEN** 管理员填写标题、描述、难度、分类、时间/内存限制等字段并提交
-- **THEN** 系统调用 `POST /api/v1/problems` 创建题目，成功后跳转到题目列表页并显示成功消息
+#### Scenario: 管理员创建 U 型题目
+- **WHEN** 管理员选择类型为"用户题（U）"，不填题号
+- **THEN** 系统自动分配 number，创建 U 型题目
 
 #### Scenario: 创建题目时必填字段为空
 
@@ -37,9 +39,12 @@
 系统 SHALL 在 `/admin/problems/:id/edit` 路径提供编辑题目表单，预填充已有数据。
 
 #### Scenario: 管理员成功编辑题目
-
 - **WHEN** 管理员修改题目字段并提交
 - **THEN** 系统调用 `PUT /api/v1/problems/:id`，成功后跳转到题目列表页并显示成功消息
+
+#### Scenario: 编辑页面显示类型和题号只读
+- **WHEN** 管理员访问编辑页面
+- **THEN** 类型和题号以只读标签展示，不可修改
 
 #### Scenario: 管理员编辑不存在的题目
 

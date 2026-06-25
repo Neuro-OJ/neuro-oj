@@ -2,6 +2,7 @@ import { createApp } from "./app.ts";
 import { runMigrations } from "./db/migrate.ts";
 import { connectRedis } from "./mq/connection.ts";
 import { startResultConsumerWithRetry } from "./mq/consumer.ts";
+import { ensureRootUser } from "./services/auth.ts";
 
 const app = createApp();
 
@@ -21,6 +22,13 @@ async function main() {
     await runMigrations();
   } catch (err) {
     console.error("数据库初始化失败，服务可能不完整:", err);
+  }
+
+  // 确保 root 系统用户存在
+  try {
+    await ensureRootUser();
+  } catch (err) {
+    console.error("Root 用户创建失败:", err);
   }
 
   // 连接 Redis（共享连接供 producer 使用）

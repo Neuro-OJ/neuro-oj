@@ -3,7 +3,6 @@ import { ArrowLeft, Save, Eye, Edit3 } from "@lucide/vue"
 
 definePageMeta({
   layout: "admin",
-  middleware: "admin",
   ssr: false,
 })
 
@@ -23,6 +22,8 @@ const judgeCommand = ref("")
 const timeLimitMs = ref(5000)
 const memoryLimitMb = ref(512)
 const categoryIds = ref<string[]>([])
+const problemType = ref("P")
+const problemNumber = ref<number | undefined>(undefined)
 
 // 分类选项
 const categories = ref<{ id: string; name: string }[]>([])
@@ -73,6 +74,8 @@ async function handleSubmit() {
         time_limit_ms: timeLimitMs.value > 0 ? timeLimitMs.value : 5000,
         memory_limit_mb: memoryLimitMb.value > 0 ? memoryLimitMb.value : 512,
         category_ids: categoryIds.value.length > 0 ? categoryIds.value : undefined,
+        type: problemType.value,
+        number: problemNumber.value || undefined,
       },
     })
     router.replace("/admin/problems")
@@ -105,6 +108,19 @@ async function handleSubmit() {
             <label class="label">标题 <span class="required">*</span></label>
             <input v-model="title" class="input" placeholder="题目标题" />
             <p v-if="fieldErrors.title" class="field-error">{{ fieldErrors.title }}</p>
+          </div>
+
+          <div class="field">
+            <label class="label">题目类型</label>
+            <select v-model="problemType" class="input">
+              <option value="P">专题（P）</option>
+              <option value="U">用户题（U）</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="label">题号</label>
+            <input v-model.number="problemNumber" type="number" class="input" min="1" placeholder="不填则自动分配" />
           </div>
 
           <div class="field">

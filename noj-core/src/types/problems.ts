@@ -12,6 +12,19 @@ export function isValidDifficulty(value: string): value is Difficulty {
 }
 
 /**
+ * 允许的题目类型。
+ */
+export const PROBLEM_TYPES = ["U", "P"] as const;
+export type ProblemType = typeof PROBLEM_TYPES[number];
+
+/**
+ * 校验题目类型是否合法。
+ */
+export function isValidProblemType(value: string): value is ProblemType {
+  return PROBLEM_TYPES.includes(value as ProblemType);
+}
+
+/**
  * 创建题目请求体。
  */
 export interface CreateProblemInput {
@@ -25,6 +38,10 @@ export interface CreateProblemInput {
   time_limit_ms?: number;
   memory_limit_mb?: number;
   category_ids?: string[];
+  /** 题目类型：U（用户题）/ P（主题题），默认 U */
+  type?: string;
+  /** 题号（同一 type 内独立编号），不传则自动分配 */
+  number?: number;
 }
 
 /**
@@ -51,6 +68,10 @@ export interface ProblemListQuery {
   difficulty?: string;
   category_id?: string;
   keyword?: string;
+  /** 按类型筛选（U/P） */
+  type?: string;
+  /** 按题号筛选 */
+  number?: number;
 }
 
 /**
@@ -69,4 +90,12 @@ export interface ProblemResponseWithCategories {
   categories: { id: string; name: string; slug: string }[];
   created_at: string;
   updated_at: string;
+  /** 题号（同一 type 内独立） */
+  number: number;
+  /** 题目所有者 ID */
+  owner_id: string;
+  /** 题目类型：U / P */
+  type: string;
+  /** 展示标识，格式：{type}{number}（如 P1001、U42） */
+  display_id: string;
 }

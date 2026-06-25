@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from "vue-router"
-import { Clock, Server, AlertCircle, Send, Loader2 } from "@lucide/vue"
+import { Clock, Server, AlertCircle, Send, Loader2, Pencil } from "@lucide/vue"
 
 const route = useRoute()
 const router = useRouter()
-const { isLoggedIn } = useAuth()
+const { isLoggedIn, user } = useAuth()
 
 const problemId = route.params.id as string
 
@@ -17,6 +17,10 @@ const { data, pending, error } = useFetch<{
     difficulty: string
     time_limit_ms: number
     memory_limit_mb: number
+    display_id: string
+    type: string
+    owner_id: string
+    number: number
     categories: { id: string; name: string; slug: string }[]
   }
 }>(`/api/v1/problems/${problemId}`)
@@ -25,6 +29,13 @@ const problem = computed(() => data.value?.data ?? null)
 
 // 分类标签
 const categories = computed(() => problem.value?.categories ?? [])
+
+// 权限判断：是否可编辑（admin 或 U 型所有者）
+const canEdit = computed(() => {
+  const p = problem.value
+  if (!p) return false
+  return user.value?.role === "admin" || (p.type === "U" && p.owner_id === user.value?.id)
+})
 
 // 难度标签映射
 const difficultyLabel: Record<string, string> = {
@@ -89,7 +100,33 @@ async function handleSubmit() {
     <!-- 题目信息区 -->
     <div class="bg-white border border-border rounded-xl overflow-hidden">
       <div class="px-7 py-6 pb-5 border-b border-border">
-        <h1 class="text-2xl font-bold mb-3 text-text">{{ problem.title }}</h1>
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex-1">
+            <div class="flex items-center gap-2 mb-2">
+              <span
+                class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                :class="problem.type === 'U' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'"
+              >
+                {{ problem.display_id }}
+              </span>
+              <span
+                class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                :class="problem.type === 'U' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'"
+              >
+                {{ problem.type === 'U' ? '用户题' : '专题' }}
+              </span>
+            </div>
+            <h1 class="text-2xl font-bold mb-3 text-text">{{ problem.title }}</h1>
+          </div>
+          <NuxtLink
+            v-if="canEdit"
+            :to="`/admin/problem-edit/${problem.id}`"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg text-text-secondary hover:text-primary hover:border-primary/40 transition-colors"
+          >
+            <Pencil :size="14" />
+            编辑
+          </NuxtLink>
+        </div>
         <div class="flex items-center gap-5 flex-wrap">
           <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-tight" :class="badgeColors[problem.difficulty] || ''">
             {{ difficultyLabel[problem.difficulty] || problem.difficulty }}

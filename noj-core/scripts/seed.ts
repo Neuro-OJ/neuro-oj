@@ -30,6 +30,9 @@ interface SampleProblem {
   support_package_path: string | null;
   time_limit_ms: number;
   memory_limit_mb: number;
+  number: number;
+  owner_id: string;
+  type: string;
 }
 
 const SAMPLE_PROBLEMS: SampleProblem[] = [
@@ -57,6 +60,9 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
     support_package_path: "data/packages/1001.zip",
     time_limit_ms: 5000,
     memory_limit_mb: 512,
+    number: 1001,
+    owner_id: "0",
+    type: "P",
   },
   {
     id: "1002",
@@ -77,6 +83,9 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
     support_package_path: null, // TODO: 创建 1002 支持包后更新此路径（deno task build-packages + seed）
     time_limit_ms: 1000,
     memory_limit_mb: 256,
+    number: 1002,
+    owner_id: "0",
+    type: "P",
   },
   {
     id: "1003",
@@ -92,6 +101,9 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
     support_package_path: "data/packages/1003.zip",
     time_limit_ms: 1000,
     memory_limit_mb: 256,
+    number: 1003,
+    owner_id: "0",
+    type: "P",
   },
 ];
 

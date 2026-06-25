@@ -9,6 +9,7 @@ interface Props {
   keyword: string
   difficulty: string
   categoryId: string
+  problemType: string
   categories: Category[]
 }
 
@@ -17,6 +18,7 @@ const emit = defineEmits<{
   'update:keyword': [value: string]
   'update:difficulty': [value: string]
   'update:categoryId': [value: string]
+  'update:problemType': [value: string]
 }>()
 
 const searchInput = ref(props.keyword)
@@ -46,12 +48,22 @@ const difficulties = [
   { value: 'hard', label: '困难' },
 ]
 
+const types = [
+  { value: '', label: '全部' },
+  { value: 'U', label: '用户题' },
+  { value: 'P', label: '专题' },
+]
+
 function selectDifficulty(value: string) {
   emit('update:difficulty', value === props.difficulty ? '' : value)
 }
 
 function selectCategory(value: string) {
   emit('update:categoryId', value === props.categoryId ? '' : value)
+}
+
+function selectType(value: string) {
+  emit('update:problemType', value === props.problemType ? '' : value)
 }
 </script>
 
@@ -73,6 +85,26 @@ function selectCategory(value: string) {
         @click="searchInput = ''; emit('update:keyword', '')"
       >
         <span class="text-sm leading-none">&times;</span>
+      </button>
+    </div>
+
+    <!-- 类型筛选 -->
+    <div class="flex items-center gap-1.5 flex-wrap" role="radiogroup" aria-labelledby="type-label">
+      <span class="text-xs text-text-muted mr-1" id="type-label">类型:</span>
+      <button
+        v-for="t in types"
+        :key="t.value"
+        role="radio"
+        :aria-checked="problemType === t.value"
+        class="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors duration-150"
+        :class="problemType === t.value
+          ? t.value === 'U' ? 'bg-blue-100 text-blue-700 border-blue-300'
+            : t.value === 'P' ? 'bg-purple-100 text-purple-700 border-purple-300'
+            : 'bg-primary text-white border-primary'
+          : 'bg-white text-text-secondary border-border hover:border-primary/40'"
+        @click="selectType(t.value)"
+      >
+        {{ t.label }}
       </button>
     </div>
 

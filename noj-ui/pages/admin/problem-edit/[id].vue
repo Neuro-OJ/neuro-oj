@@ -3,7 +3,6 @@ import { ArrowLeft, Save, Eye, Edit3 } from "@lucide/vue"
 
 definePageMeta({
   layout: "admin",
-  middleware: "admin",
   ssr: false,
 })
 
@@ -19,6 +18,9 @@ watch(loading, (val) => {
 const title = ref("")
 const description = ref("")
 const difficulty = ref("medium")
+const displayId = ref("")
+const problemType = ref("")
+const problemNumber = ref(0)
 const judgeImage = ref("")
 const judgeCommand = ref("")
 const timeLimitMs = ref(5000)
@@ -39,11 +41,14 @@ async function loadData() {
         title: string; description: string; difficulty: string
         judge_image: string; judge_command: string
         time_limit_ms: number; memory_limit_mb: number
+        display_id: string; type: string; number: number
         categories: { id: string }[]
       } }>(`/api/v1/problems/${problemId}`),
     ])
     categories.value = catRes.data
     const p = problemRes.data
+    displayId.value = p.display_id
+    problemType.value = p.type
     title.value = p.title; description.value = p.description
     difficulty.value = p.difficulty
     judgeImage.value = p.judge_image; judgeCommand.value = p.judge_command
@@ -119,6 +124,14 @@ async function handleSubmit() {
       <section class="section">
         <h2 class="section-title">基本信息</h2>
         <div class="form-grid">
+          <div class="field">
+            <label class="label">题号</label>
+            <span class="input readonly-like">{{ displayId }}</span>
+          </div>
+          <div class="field">
+            <label class="label">类型</label>
+            <span class="input readonly-like">{{ problemType === 'U' ? '用户题（U）' : '专题（P）' }}</span>
+          </div>
           <div class="field">
             <label class="label">标题 <span class="required">*</span></label>
             <input v-model="title" class="input" />
@@ -212,6 +225,7 @@ async function handleSubmit() {
 .checkbox-label { display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; }
 .checkbox { accent-color: var(--c-primary); }
 .text-muted { font-size: 13px; color: var(--c-text-muted); }
+.readonly-like { background: var(--c-bg-subtle, #f9fafb); color: var(--c-text-secondary); cursor: default; }
 .field-error { font-size: 12px; color: #dc2626; }
 .form-actions { display: flex; gap: 10px; justify-content: flex-end; padding: 16px 24px; }
 .btn-primary { padding: 10px 20px; font-size: 14px; font-weight: 600; background: var(--c-primary); color: #fff; border: 1.5px solid var(--c-primary); border-radius: 8px; cursor: pointer; }

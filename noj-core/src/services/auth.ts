@@ -208,7 +208,7 @@ export async function promoteUser(
 }
 
 /**
- * 管理员获取用户列表（分页）。
+ * 管理员获取用户列表（分页，排除 root 系统用户）。
  * 返回用户基本信息，不含密码哈希。
  */
 export async function listUsers(
@@ -227,6 +227,9 @@ export async function listUsers(
   const db = getDb();
   const offset = (opts.page - 1) * opts.perPage;
 
+  // 排除 root 系统用户（id='0'）
+  const excludeRoot = (u: typeof users) => sql`${u.id} <> '0'`;
+
   const [rows, countResult] = await Promise.all([
     db
       .select({
@@ -238,10 +241,14 @@ export async function listUsers(
         updated_at: users.updated_at,
       })
       .from(users)
+      .where(excludeRoot(users))
       .orderBy(users.created_at)
       .limit(opts.perPage)
       .offset(offset),
-    db.select({ count: sql<number>`count(*)` }).from(users),
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(users)
+      .where(excludeRoot(users)),
   ]);
 
   const total = Number(countResult[0]?.count ?? 0);
@@ -256,4 +263,38 @@ export async function listUsers(
       total_pages: totalPages,
     },
   };
+}
+
+/**
+ * 确保 root 系统用户存在。
+ * 在应用启动时调用，若 users 表中不存在 id='0' 则自动创建。
+ * root 用户为 admin 角色，密码随机生成，不可登录，不在用户列表中显示。
+ */
+export async function ensureRootUser(): Promise<void> {
+  const db = getDb();
+
+  const existing = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, "0"))
+    .limit(1);
+
+  if (existing.length > 0) return;
+
+  const randomPassword = crypto.randomUUID();
+  const { hashPassword } = await import("../lib/password.ts");
+  const now = new Date().toISOString();
+
+  await db.insert(users).values({
+    id: "0",
+    username: "root",
+    email: "root@noj.local",
+    password_hash: await hashPassword(randomPassword),
+    role: "admin",
+    bio: "系统根用户",
+    created_at: now,
+    updated_at: now,
+  });
+
+  console.log("Root 系统用户 (UID=0) 已创建");
 }
