@@ -27,7 +27,7 @@ Deno.test({
     token = await registerUser(
       "sub_user_" + ts,
       "sub_user_" + ts + "@test.com",
-      "pass1234",
+      "Pass1234Test",
     );
   },
 });
