@@ -13,9 +13,12 @@ export function isValidDifficulty(value: string): value is Difficulty {
 
 /**
  * 创建题目请求体。
+ *
+ * 注意：`id` 字段已从客户端输入中移除——所有题目统一由服务端生成 UUID。
+ * 历史 seed 数据中的字符串 id（如 "1001"）仍可通过 `support_package_path` 关联，
+ * 但新题目主键空间完全使用 UUID v4。
  */
 export interface CreateProblemInput {
-  id?: string;
   title: string;
   description: string;
   difficulty?: string;

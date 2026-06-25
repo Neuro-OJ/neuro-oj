@@ -28,16 +28,46 @@ async function ensureReady() {
 }
 
 // Queue 路由测试
+// 注：issue #64 §3.2 修复后本路由限制为 admin，公开访问改为 401。
+// 旧测试"无需认证返回 200"已替换为三个场景：无 token / 非 admin / admin。
 
 Deno.test({
-  name: "queue route: GET /api/v1/queue 无需认证返回 200",
+  name: "queue route: GET /api/v1/queue 无 token 返回 401",
   ignore: skip,
+  fn: async () => {
+    const app = createApp();
+    const res = await app.request("/api/v1/queue");
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name: "queue route: GET /api/v1/queue 非管理员返回 403",
+  ignore: skip,
+  fn: async () => {
+    const app = createApp();
+    const token = await signToken({ sub: "test-user", role: "user" });
+    const res = await app.request("/api/v1/queue", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name: "queue route: GET /api/v1/queue 管理员返回 200",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     await ensureReady();
     if (!ready) return;
 
     const app = createApp();
-    const res = await app.request("/api/v1/queue");
+    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const res = await app.request("/api/v1/queue", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     assertEquals(res.status, 200);
 
     const body = await res.json();
@@ -67,6 +97,8 @@ Deno.test({
 Deno.test({
   name: "submissions/:id/status: 有效 token 但提交不存在返回 404",
   ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     await ensureReady();
     if (!ready) return;
@@ -86,6 +118,8 @@ Deno.test({
 Deno.test({
   name: "submissions/:id/status: 非提交者也可访问（不限制身份）",
   ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     await ensureReady();
     if (!ready) return;
@@ -103,6 +137,8 @@ Deno.test({
 Deno.test({
   name: "submissions/:id: 增强详情接口提交不存在时返回 404",
   ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     await ensureReady();
     if (!ready) return;

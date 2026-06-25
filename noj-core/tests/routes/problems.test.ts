@@ -98,7 +98,6 @@ Deno.test({
       updated_at: now,
     });
     const problem = await createProblem({
-      id: `route-test-prob-${ts}`,
       title: "路由测试题目",
       description: "测试描述",
       difficulty: "easy",

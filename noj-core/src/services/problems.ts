@@ -220,7 +220,9 @@ export async function createProblem(
     );
   }
 
-  const id = input.id ?? crypto.randomUUID();
+  // 题目主键统一由服务端生成 UUID，避免客户端注入字符串 id
+  // 影响 PR #63 的 display_id 双索引路由解析
+  const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
   await db.insert(problems).values({

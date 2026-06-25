@@ -1,4 +1,4 @@
-import { eq, or, sql } from "drizzle-orm";
+import { and, eq, not, or, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { users } from "../db/schema.ts";
 import { comparePassword, hashPassword } from "../lib/password.ts";
@@ -189,6 +189,25 @@ export async function promoteUser(
 
   if (existing.length === 0) {
     throw new NotFoundError("用户不存在");
+  }
+
+  // 防止降级最后一个可登录 admin：
+  // - 若目标是 admin 且本次操作降级为 user
+  // - 且当前系统中仅有 1 个 admin（含目标）
+  // 则拒绝，防止系统进入无 admin 状态。
+  // 注意：root 系统用户（id='0'，PR #63 引入）虽然 role='admin' 但不可登录，
+  // 因此不计入"可登录 admin"统计。
+  if (existing[0].role === "admin" && role === "user") {
+    const [adminCountRow] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(users)
+      .where(and(eq(users.role, "admin"), not(eq(users.id, "0"))));
+    const adminCount = Number(adminCountRow?.count ?? 0);
+    if (adminCount <= 1) {
+      throw new BadRequestError(
+        "系统当前仅有 1 个可登录管理员，不能降级；如需调整请先创建新的管理员账户",
+      );
+    }
   }
 
   const now = new Date().toISOString();

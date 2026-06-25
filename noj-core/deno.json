@@ -14,10 +14,11 @@
   },
   "imports": {
     "hono": "npm:hono@^4",
-    "hono/": "npm:hono@^4/",
+    "hono/": "npm:/hono@^4/",
+    "hono/cors": "npm:hono@^4/cors",
     "drizzle-orm": "npm:drizzle-orm@0.45.2",
     "drizzle-orm/": "npm:/drizzle-orm@0.45.2/",
-    "postgres": "https://deno.land/x/postgresjs@v3.4.5/mod.js",
+    "postgres": "npm:postgres@3.4.5",
     "ioredis": "npm:ioredis@5.11.1",
     "bcryptjs": "npm:bcryptjs@^2.4.3",
     "jose": "npm:jose@^5",

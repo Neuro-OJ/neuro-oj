@@ -18,7 +18,7 @@ const hasDb = !!Deno.env.get("DATABASE_URL");
 const skip = !hasDb;
 
 const ts = Date.now();
-const TEST_PROBLEM_ID = `test-${ts}`;
+let TEST_PROBLEM_ID: string;
 
 const now = new Date().toISOString();
 
@@ -45,7 +45,6 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const problem = await createProblem({
-      id: TEST_PROBLEM_ID,
       title: `测试题目 ${ts}`,
       description: "测试描述",
       difficulty: "easy",
@@ -54,7 +53,8 @@ Deno.test({
       time_limit_ms: 5000,
       memory_limit_mb: 512,
     });
-    assertEquals(problem.id, TEST_PROBLEM_ID);
+    // id 由服务端生成 UUID，记录供后续测试引用
+    TEST_PROBLEM_ID = problem.id;
     assertEquals(problem.title, `测试题目 ${ts}`);
     assertEquals(problem.difficulty, "easy");
     assertEquals(problem.categories, []);
@@ -104,7 +104,6 @@ Deno.test({
     });
 
     const problem = await createProblem({
-      id: `test-with-cat-${ts}`,
       title: "带分类的题目",
       description: "描述",
       difficulty: "medium",
@@ -182,8 +181,7 @@ Deno.test({
     await resetDbForTest();
     // 创建含关键词的题目
     const keyword = `搜索测试-${ts}`;
-    await createProblem({
-      id: `search-test-${ts}`,
+    const created = await createProblem({
       title: `标题包含${keyword}`,
       description: `描述也包含${keyword}`,
       difficulty: "easy",
@@ -192,7 +190,7 @@ Deno.test({
     });
     const result = await listProblems({ keyword });
     assertEquals(result.items.length, 1);
-    assertEquals(result.items[0].id, `search-test-${ts}`);
+    assertEquals(result.items[0].id, created.id);
   },
 });
 

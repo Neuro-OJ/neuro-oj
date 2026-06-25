@@ -338,18 +338,32 @@ export async function createSubmission(
       status: "pending",
       created_at: now,
     });
+  } catch (dbErr) {
+    console.error("提交记录插入失败:", dbErr);
+    throw new AppError(
+      "提交失败：数据库写入错误，请稍后重试",
+      500,
+      "SUBMISSION_DB_ERROR",
+    );
+  }
+
+  try {
     await pushJudgeTask(task);
     // 入队成功后立即更新状态为 judging
     await updateSubmissionStatus(id, "judging");
-  } catch (err) {
-    // 若 DB 插入成功但 MQ 推送失败，标记为 error
+  } catch (mqErr) {
+    console.error("评测任务推送失败:", mqErr);
+    // DB 成功但 MQ 失败，标记为 error 让用户重新提交
     try {
       await updateSubmissionStatus(id, "error");
     } catch {
-      // 忽略 cleanup 失败（可能是 DB 插入未完成）
+      // 忽略 cleanup 失败
     }
-    console.error("创建提交或推送评测任务失败:", err);
-    throw new AppError("提交失败，请稍后重试", 500);
+    throw new AppError(
+      "提交失败：评测队列暂时不可用，请稍后重试",
+      500,
+      "SUBMISSION_QUEUE_ERROR",
+    );
   }
 
   return {
@@ -411,7 +425,8 @@ export async function getSubmission(
     : null;
 
   // 查询队列状态信息（排队位置、时间戳）
-  const queueStatus = await getSubmissionQueueStatus(id);
+  // getSubmission 已在上面完成归属校验，此处仍传 userId 让服务层做兜底校验
+  const queueStatus = await getSubmissionQueueStatus(id, userId);
 
   return {
     ...toSubmissionResponse(row),

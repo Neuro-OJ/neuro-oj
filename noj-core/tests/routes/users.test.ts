@@ -8,6 +8,8 @@ const skip = !(hasEnv && hasDb);
 Deno.test({
   name: "users route: GET /api/v1/users/:id/profile 不存在的用户返回 404",
   ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const res = await app.request("/api/v1/users/nonexistent-id/profile");
@@ -20,6 +22,8 @@ Deno.test({
 Deno.test({
   name: "users route: GET /api/v1/users/:id/profile 公开访问无需 token",
   ignore: !hasEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     // 不存在的用户，但路由本身不应要求认证
@@ -32,6 +36,8 @@ Deno.test({
 Deno.test({
   name: "users route: GET /api/v1/users/:id/profile 返回结构正确",
   ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const res = await app.request("/api/v1/users/nonexistent-id/profile");

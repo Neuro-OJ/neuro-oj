@@ -240,15 +240,27 @@ export async function getQueueOverview(): Promise<QueueResponse> {
 
 /**
  * 获取单个提交的队列状态。
+ *
+ * 权限控制：当传入 `viewerUserId` 时，仅返回该用户自己的提交状态（避免 IDOR）；
+ * `viewerRole === 'admin'` 时可查看任意提交。两者均不传时按公开访问处理
+ * （保留向后兼容，但生产路由不应走到此分支）。
+ *
+ * @param submissionId 提交 ID
+ * @param viewerUserId 当前查看者用户 ID（可选）
+ * @param viewerRole 当前查看者角色（可选，"admin" 拥有所有权限）
+ * @returns 队列状态；提交不存在或查看者无权访问时返回 null
  */
 export async function getSubmissionQueueStatus(
   submissionId: string,
+  viewerUserId?: string,
+  viewerRole?: string,
 ): Promise<SubmissionStatusResponse | null> {
   const db = getDb();
 
-  // 1. 查询提交基本信息
+  // 1. 查询提交基本信息（含 user_id 用于权限校验）
   const rows = await db
     .select({
+      user_id: submissions.user_id,
       status: submissions.status,
       judge_started_at: submissions.judge_started_at,
       judge_finished_at: submissions.judge_finished_at,
@@ -259,12 +271,17 @@ export async function getSubmissionQueueStatus(
 
   if (rows.length === 0) return null;
 
+  // 2. 权限校验：仅 admin 或提交所有者可查看
+  if (viewerUserId !== undefined && viewerRole !== "admin") {
+    if (rows[0].user_id !== viewerUserId) return null;
+  }
+
   const row = rows[0];
   const status = row.status;
   let queuePosition: number | null = null;
   let queueLength: number | null = null;
 
-  // 2. 如果状态是 judging 或 pending，查询排队位置
+  // 3. 如果状态是 judging 或 pending，查询排队位置
   //    注意：DB 中 status 在入队后立即标记为 judging，
   //    因此需要结合 Redis 队列判断实际排队情况
   if (status === "judging" || status === "pending") {

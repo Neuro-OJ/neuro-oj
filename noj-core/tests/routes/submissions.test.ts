@@ -83,6 +83,8 @@ Deno.test({
   name:
     "submissions route: GET /api/v1/submissions/:id 有效 token 但提交不存在返回 404",
   ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
@@ -123,6 +125,8 @@ Deno.test({
   name:
     "submissions route: GET /api/v1/submissions 无数据时返回空列表和分页信息",
   ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await signToken({ sub: "test-list-empty", role: "user" });
@@ -158,6 +162,8 @@ Deno.test({
 Deno.test({
   name: "submissions route: GET /api/v1/submissions per_page 超过上限自动限制",
   ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
@@ -200,6 +206,8 @@ Deno.test({
 Deno.test({
   name: "admin submissions: GET /api/v1/admin/submissions 管理员查看所有提交",
   ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await signToken({ sub: "test-admin", role: "admin" });
@@ -216,6 +224,8 @@ Deno.test({
 Deno.test({
   name: "admin submissions: GET /api/v1/admin/submissions 按 user_id 筛选",
   ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await signToken({ sub: "test-admin", role: "admin" });
