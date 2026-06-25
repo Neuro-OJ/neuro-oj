@@ -24,11 +24,12 @@ async function main() {
     console.error("数据库初始化失败，服务可能不完整:", err);
   }
 
-  // 确保 root 系统用户存在
+  // 确保 root 系统用户存在（必需依赖，失败时终止启动）
   try {
     await ensureRootUser();
   } catch (err) {
-    console.error("Root 用户创建失败:", err);
+    console.error("Root 用户创建失败，终止启动:", err);
+    Deno.exit(1);
   }
 
   // 连接 Redis（共享连接供 producer 使用）

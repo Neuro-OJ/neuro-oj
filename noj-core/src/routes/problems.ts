@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
-import { BadRequestError, NotFoundError } from "../lib/errors.ts";
+import { BadRequestError } from "../lib/errors.ts";
 import {
   createProblem,
   deleteProblem,
@@ -20,19 +20,21 @@ const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
 /**
  * 双索引查找工具函数。
- * 支持通过 UUID 或 display_id（如 P1001）两种格式查找题目。
- * 捕获 NotFoundError 后尝试下一种查找方式，其他异常直接透传。
+ * 支持通过 UUID、display_id（如 P1001）、纯数字 ID（兼容旧 seed 数据 1001/1002/1003）
+ * 以及其他任意非标准 ID 格式查找题目。
+ *
+ * 先通过正则判断 id 格式，避免每次 display_id 请求都先多一次 UUID 查询。
+ * 对于不匹配任何已知格式的 ID，fallback 到 `getProblem(id)` 直接查找。
  */
 async function resolveProblem(id: string) {
-  // 尝试 1：按 UUID / id 精确查找
-  try {
+  // UUID 格式：直接按 id 精确查找
+  if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  ) {
     return await getProblem(id);
-  } catch (err) {
-    // 非 NotFoundError（如 DB 连接异常）直接透传，不吞错
-    if (!(err instanceof NotFoundError)) throw err;
   }
 
-  // 尝试 2：解析 display_id "P1001" / "U42" → (type, number)
+  // display_id 格式：解析 "P1001" / "U42" → (type, number)
   const match = id.match(/^([UuPp])(\d+)$/);
   if (match) {
     const type = match[1].toUpperCase();
@@ -40,7 +42,13 @@ async function resolveProblem(id: string) {
     return await getProblemByTypeAndNumber(type, number);
   }
 
-  throw new NotFoundError("题目不存在");
+  // 纯数字 id（兼容旧 seed 数据 1001/1002/1003 等使用数字编号的题目）
+  if (/^\d+$/.test(id)) {
+    return await getProblem(id);
+  }
+
+  // fallback：尝试直接按 id 查找（兼容非标准 ID 格式）
+  return await getProblem(id);
 }
 
 /**

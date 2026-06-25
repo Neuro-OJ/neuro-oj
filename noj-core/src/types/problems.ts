@@ -40,6 +40,8 @@ export interface CreateProblemInput {
   category_ids?: string[];
   /** 题目类型：U（用户题）/ P（主题题），默认 U */
   type?: string;
+  /** 题号（仅 admin 可指定，普通用户自动分配） */
+  number?: number;
 }
 
 /**

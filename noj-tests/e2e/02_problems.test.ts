@@ -60,6 +60,7 @@ Deno.test({
       judge_command: "python3 /tmp/evaluate.py",
       time_limit_ms: 3000,
       memory_limit_mb: 256,
+      type: "P",
     }, adminToken);
     if (status !== 201) throw new Error("创建失败: " + status);
     problemId = (body as { data: { id: string } }).data.id;

@@ -41,10 +41,10 @@ async function loadProblems(page = 1) {
   currentPage.value = page
   try {
     const res = await $fetch<{ data: ProblemItem[]; total: number }>(
-      `/api/v1/problems?type=U&page=${page}&limit=${perPage}`,
+      `/api/v1/problems?type=U&owner_id=${user.value.id}&page=${page}&limit=${perPage}`,
     )
-    // 后端只按 type=U 筛，前端再做一次 owner 过滤
-    problems.value = res.data.filter((p) => p.owner_id === user.value!.id)
+    // 后端已按 type=U + owner_id 过滤，直接使用分页结果
+    problems.value = res.data
     totalPages.value = Math.ceil(res.total / perPage)
   } catch (err: unknown) {
     loadError.value = err instanceof Error ? err.message : "加载题目失败"

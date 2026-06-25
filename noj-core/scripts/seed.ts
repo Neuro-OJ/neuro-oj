@@ -295,7 +295,16 @@ async function main() {
       throw err;
     }
 
-    // 2. 插入示例题
+    // 2. 确保 root 系统用户存在（problems.owner_id FK 依赖）
+    try {
+      const { ensureRootUser } = await import("../src/services/auth.ts");
+      await ensureRootUser();
+    } catch (err) {
+      console.error("Root 用户初始化失败:", err);
+      throw err;
+    }
+
+    // 3. 插入示例题
     try {
       await seedProblems();
     } catch (err) {
@@ -303,7 +312,7 @@ async function main() {
       throw err;
     }
 
-    // 3. 初始化示例分类
+    // 4. 初始化示例分类
     try {
       console.log("初始化示例分类...");
       await seedCategories();
@@ -312,7 +321,7 @@ async function main() {
       throw err;
     }
 
-    // 4. 关联题目与分类
+    // 5. 关联题目与分类
     try {
       console.log("关联题目与分类...");
       await seedProblemCategories();
@@ -321,7 +330,7 @@ async function main() {
       throw err;
     }
 
-    // 5. 管理员创建/提升
+    // 6. 管理员创建/提升
     try {
       console.log("检查管理员...");
       await ensureAdminFromEnv();

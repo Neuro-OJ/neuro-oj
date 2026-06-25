@@ -19,6 +19,7 @@ import {
   type CreateProblemInput,
   DIFFICULTIES,
   isValidDifficulty,
+  isValidProblemType,
   type ProblemListQuery,
   type ProblemResponseWithCategories,
   type UpdateProblemInput,
@@ -138,6 +139,8 @@ export async function listProblems(
         ilike(problems.description, kw)
       } OR ${ilike(problems.id, kw)} OR ${
         ilike(sql`CAST(${problems.number} AS TEXT)`, kw)
+      } OR ${
+        ilike(sql`${problems.type} || CAST(${problems.number} AS TEXT)`, kw)
       })`,
     );
   }
@@ -286,7 +289,11 @@ export async function createProblem(
   }
 
   // 确定题目类型（默认 U）
-  const type = input.type?.toUpperCase() === "P" ? "P" : "U";
+  const rawType = input.type?.toUpperCase() ?? "U";
+  if (!isValidProblemType(rawType)) {
+    throw new BadRequestError(`非法题目类型：${input.type}，仅允许 U/P`);
+  }
+  const type = rawType;
 
   // 权限检查：普通用户只能创建 U 型
   if (type === "P" && userRole !== "admin") {
@@ -296,35 +303,60 @@ export async function createProblem(
   // 确定所有者
   const ownerId = userId ?? "0";
 
-  // 确定题号（同一 type 内自增）
-  let number = input.number;
-  if (number === undefined) {
-    const result = await db
-      .select({ max: sql<number>`COALESCE(MAX(${problems.number}), 0)` })
-      .from(problems)
-      .where(eq(problems.type, type));
-    number = (result[0]?.max ?? 0) + 1;
+  // 确定题号（同一 type 内自增，并发冲突时重试）
+  // 仅 admin 可指定 number；普通用户强制 MAX+1
+  const adminProvidedNumber = input.number !== undefined;
+  if (adminProvidedNumber && userRole !== "admin") {
+    throw new ForbiddenError("仅管理员可指定题号");
   }
-
+  let number = input.number;
+  // 确定题号 + 插入（MAX+1 并发冲突时最多重试 3 次）
+  const MAX_RETRIES = 3;
   const id = input.id ?? crypto.randomUUID();
   const now = new Date().toISOString();
 
-  await db.insert(problems).values({
-    id,
-    title: input.title,
-    description: input.description,
-    difficulty: input.difficulty ?? "medium",
-    judge_image: input.judge_image,
-    judge_command: input.judge_command,
-    support_package_path: input.support_package_path ?? null,
-    time_limit_ms: input.time_limit_ms ?? 5000,
-    memory_limit_mb: input.memory_limit_mb ?? 512,
-    number,
-    owner_id: ownerId,
-    type,
-    created_at: now,
-    updated_at: now,
-  });
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (number === undefined) {
+      const result = await db
+        .select({ max: sql<number>`COALESCE(MAX(${problems.number}), 0)` })
+        .from(problems)
+        .where(eq(problems.type, type));
+      number = (result[0]?.max ?? 0) + 1;
+    }
+
+    try {
+      await db.insert(problems).values({
+        id,
+        title: input.title,
+        description: input.description,
+        difficulty: input.difficulty ?? "medium",
+        judge_image: input.judge_image,
+        judge_command: input.judge_command,
+        support_package_path: input.support_package_path ?? null,
+        time_limit_ms: input.time_limit_ms ?? 5000,
+        memory_limit_mb: input.memory_limit_mb ?? 512,
+        number,
+        owner_id: ownerId,
+        type,
+        created_at: now,
+        updated_at: now,
+      });
+      break; // 插入成功，退出重试循环
+    } catch (err) {
+      if (attempt === MAX_RETRIES - 1) throw err;
+      // PostgreSQL UNIQUE 约束冲突错误码 23505
+      if (
+        err && typeof err === "object" && "code" in err &&
+        (err as { code: string }).code === "23505"
+      ) {
+        // 管理员指定 number 冲突 → 直接报错，不自动重试
+        if (adminProvidedNumber) throw err;
+        number = undefined; // 重置 number，下一轮重新 MAX+1
+        continue;
+      }
+      throw err; // 非唯一冲突，直接抛出
+    }
+  }
 
   // 处理分类关联
   if (input.category_ids && input.category_ids.length > 0) {
@@ -384,6 +416,10 @@ export async function updateProblem(
       `非法难度值：${input.difficulty}，仅允许 ${DIFFICULTIES.join("/")}`,
     );
   }
+
+  // 防御性忽略 type 和 number（spec 承诺这两个字段不可变更）
+  delete (input as Record<string, unknown>)["type"];
+  delete (input as Record<string, unknown>)["number"];
 
   const updates: Record<string, unknown> = {};
   if (input.title !== undefined) updates.title = input.title;

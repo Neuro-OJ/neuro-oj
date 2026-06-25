@@ -3,6 +3,7 @@ import { ArrowLeft } from "@lucide/vue"
 
 definePageMeta({
   layout: "admin",
+  middleware: "admin",
   ssr: false,
 })
 

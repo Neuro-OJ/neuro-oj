@@ -1,11 +1,14 @@
 import {
+  check,
   index,
   integer,
   pgTable,
   primaryKey,
   text,
+  unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { SubmissionStatus } from "../types/index.ts";
 
 /**
@@ -32,26 +35,36 @@ export const users = pgTable(
  * 每道题定义独立的评测环境（Docker 镜像 + 支持包 + 评测命令）。
  * 不包含 test_cases——测试用例由支持包 zip 内的评测脚本自行管理。
  */
-export const problems = pgTable("problems", {
-  id: text("id").primaryKey(),
-  title: text("title").notNull(),
-  description: text("description").notNull(),
-  difficulty: text("difficulty").notNull().default("medium"),
-  judge_image: text("judge_image").notNull(),
-  judge_command: text("judge_command").notNull(),
-  /** 支持包 zip 路径，相对 CWD。如 "data/problems/abc-123/support.zip" */
-  support_package_path: text("support_package_path"),
-  time_limit_ms: integer("time_limit_ms").notNull().default(5000),
-  memory_limit_mb: integer("memory_limit_mb").notNull().default(512),
-  /** 题号（同一 type 内独立自增） */
-  number: integer("number").notNull(),
-  /** 题目所有者 ID，默认 root (UID=0) */
-  owner_id: text("owner_id").notNull().default("0"),
-  /** 题目类型：U=用户题库, P=主题库 */
-  type: text("type").notNull().default("U"),
-  created_at: text("created_at").notNull(),
-  updated_at: text("updated_at").notNull(),
-});
+export const problems = pgTable(
+  "problems",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    difficulty: text("difficulty").notNull().default("medium"),
+    judge_image: text("judge_image").notNull(),
+    judge_command: text("judge_command").notNull(),
+    /** 支持包 zip 路径，相对 CWD。如 "data/problems/abc-123/support.zip" */
+    support_package_path: text("support_package_path"),
+    time_limit_ms: integer("time_limit_ms").notNull().default(5000),
+    memory_limit_mb: integer("memory_limit_mb").notNull().default(512),
+    /** 题号（同一 type 内独立自增） */
+    number: integer("number").notNull(),
+    /** 题目所有者 ID，默认 root (UID=0) */
+    owner_id: text("owner_id").notNull().default("0"),
+    /** 题目类型：U=用户题库, P=主题库 */
+    type: text("type").notNull().default("U"),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    typeNumberUnique: unique("problems_type_number_unique").on(
+      table.type,
+      table.number,
+    ),
+    typeCheck: check("problems_type_check", sql`${table.type} IN ('U', 'P')`),
+  }),
+);
 
 /**
  * 分类表。

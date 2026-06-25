@@ -285,16 +285,18 @@ export async function ensureRootUser(): Promise<void> {
   const { hashPassword } = await import("../lib/password.ts");
   const now = new Date().toISOString();
 
-  await db.insert(users).values({
-    id: "0",
-    username: "root",
-    email: "root@noj.local",
-    password_hash: await hashPassword(randomPassword),
-    role: "admin",
-    bio: "系统根用户",
-    created_at: now,
-    updated_at: now,
-  });
+  await db.insert(users)
+    .values({
+      id: "0",
+      username: "root",
+      email: "root@noj.local",
+      password_hash: await hashPassword(randomPassword),
+      role: "admin",
+      bio: "系统根用户",
+      created_at: now,
+      updated_at: now,
+    })
+    .onConflictDoNothing();
 
-  console.log("Root 系统用户 (UID=0) 已创建");
+  console.log("Root 系统用户 (UID=0) 已创建（或已存在）");
 }
