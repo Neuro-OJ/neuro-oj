@@ -136,7 +136,9 @@ export async function listProblems(
     conditions.push(
       sql`(${ilike(problems.title, kw)} OR ${
         ilike(problems.description, kw)
-      } OR ${ilike(problems.id, kw)})`,
+      } OR ${ilike(problems.id, kw)} OR ${
+        ilike(sql`CAST(${problems.number} AS TEXT)`, kw)
+      })`,
     );
   }
 

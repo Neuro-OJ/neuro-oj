@@ -21,13 +21,15 @@ const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 /**
  * 双索引查找工具函数。
  * 支持通过 UUID 或 display_id（如 P1001）两种格式查找题目。
+ * 捕获 NotFoundError 后尝试下一种查找方式，其他异常直接透传。
  */
 async function resolveProblem(id: string) {
   // 尝试 1：按 UUID / id 精确查找
   try {
     return await getProblem(id);
-  } catch {
-    // 未命中，继续尝试 display_id 格式
+  } catch (err) {
+    // 非 NotFoundError（如 DB 连接异常）直接透传，不吞错
+    if (!(err instanceof NotFoundError)) throw err;
   }
 
   // 尝试 2：解析 display_id "P1001" / "U42" → (type, number)
