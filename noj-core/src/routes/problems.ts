@@ -79,6 +79,9 @@ router.get("/", async (c) => {
     if (!Number.isNaN(number)) query.number = number;
   }
 
+  const ownerId = c.req.query("owner_id");
+  if (ownerId) query.owner_id = ownerId;
+
   const result = await listProblems(query);
   return c.json({
     data: result.items,

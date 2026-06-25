@@ -136,7 +136,8 @@ function formatAcceptanceRate(rate: number | undefined): string {
 </script>
 
 <template>
-  <NuxtPage v-if="route.params.id" />
+  <!-- /problems/:id 和 /problems/new 等子路由由 NuxtPage 渲染 -->
+  <NuxtPage v-if="route.path !== '/problems'" />
   <div v-else class="px-4 py-5 sm:px-7 sm:py-8 max-w-[960px] mx-auto">
     <div class="flex items-baseline gap-3 mb-6">
       <h1 class="text-2xl font-bold text-text">题库</h1>
@@ -189,8 +190,7 @@ function formatAcceptanceRate(rate: number | undefined): string {
         <table class="w-full border-collapse">
           <thead>
             <tr>
-              <th scope="col" class="w-20 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">#</th>
-              <th scope="col" class="w-16 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">类型</th>
+              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">#</th>
               <th scope="col" class="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">题目</th>
               <th scope="col" class="w-20 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">难度</th>
               <th scope="col" class="w-[120px] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border hidden sm:table-cell">分类</th>
@@ -211,16 +211,8 @@ function formatAcceptanceRate(rate: number | undefined): string {
               @keydown.enter.prevent="router.push(`/problems/${problem.id}`)"
               @keydown.space.prevent="router.push(`/problems/${problem.id}`)"
             >
-              <td class="w-20 px-4 py-3.5">
-                <span class="font-mono text-xs text-text-muted">{{ problem.display_id }}</span>
-              </td>
-              <td class="w-16 px-4 py-3.5">
-                <span
-                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
-                  :class="problem.type === 'U'
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'bg-purple-100 text-purple-700'"
-                >{{ problem.type }}</span>
+              <td class="w-24 px-4 py-3.5">
+                <ProblemId :display-id="problem.display_id" :type="problem.type" />
               </td>
               <td class="px-4 py-3.5">
                 <NuxtLink

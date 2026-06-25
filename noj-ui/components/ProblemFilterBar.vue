@@ -49,9 +49,8 @@ const difficulties = [
 ]
 
 const types = [
-  { value: '', label: '全部' },
-  { value: 'U', label: '用户题' },
-  { value: 'P', label: '专题' },
+  { value: 'P', label: '主题库' },
+  { value: 'U', label: '用户题库' },
 ]
 
 function selectDifficulty(value: string) {

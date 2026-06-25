@@ -41,7 +41,7 @@ const difficultyLabels: Record<string, string> = {
 
 const columns: Column<Problem>[] = [
   { key: "display_id", label: "题号" },
-  { key: "type", label: "类型", format: (val) => (val as string) === "U" ? "用户题" : "专题" },
+  { key: "type", label: "类型", format: (val) => (val as string) === "U" ? "用户题库" : "主题库" },
   { key: "title", label: "标题" },
   { key: "difficulty", label: "难度", format: (val) => difficultyLabels[val as string] || (val as string) },
   {

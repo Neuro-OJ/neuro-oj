@@ -69,7 +69,7 @@ function onPageChange(page: number) {
         <h1 class="text-2xl font-bold text-text">我的题目</h1>
         <span class="text-sm text-text-muted">{{ problems.length }} 道用户题</span>
       </div>
-      <NuxtLink to="/admin/problem-new" class="btn btn-primary text-sm px-4 py-2">
+      <NuxtLink to="/problems/new" class="btn btn-primary text-sm px-4 py-2">
         创建题目
       </NuxtLink>
     </div>
@@ -86,7 +86,7 @@ function onPageChange(page: number) {
 
     <div v-else-if="problems.length === 0" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted">
       <p>你还没有创建任何题目</p>
-      <NuxtLink to="/admin/problem-new" class="btn btn-primary text-sm px-4 py-2">
+      <NuxtLink to="/problems/new" class="btn btn-primary text-sm px-4 py-2">
         创建第一道题
       </NuxtLink>
     </div>
@@ -105,7 +105,7 @@ function onPageChange(page: number) {
         <tbody class="divide-y divide-border">
           <tr v-for="problem in problems" :key="problem.id">
             <td class="px-4 py-3.5">
-              <span class="font-mono text-xs text-text-muted">{{ problem.display_id }}</span>
+              <ProblemId :display-id="problem.display_id" type="U" />
             </td>
             <td class="px-4 py-3.5">
               <NuxtLink :to="`/problems/${problem.id}`" class="text-text no-underline font-medium hover:text-primary">
@@ -120,7 +120,7 @@ function onPageChange(page: number) {
             </td>
             <td class="px-4 py-3.5 text-center">
               <NuxtLink
-                :to="`/admin/problem-edit/${problem.id}`"
+                :to="`/problems/${problem.id}/edit`"
                 class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium border border-border rounded-md text-text-secondary hover:text-primary hover:border-primary/40 transition-colors"
               >
                 编辑

@@ -2,8 +2,16 @@
 -- 为 U/P 双题库拆分做准备
 
 -- 1. 题号字段（每个 type 独立编号，INTEGER 支持 MAX 聚合）
+--    现有数据统一分配顺序号（兼容非数字 UUID 类型的 id）
 ALTER TABLE problems ADD COLUMN number INTEGER;
-UPDATE problems SET number = CAST(id AS INTEGER) WHERE number IS NULL;
+
+UPDATE problems SET number = sub.seq
+FROM (
+  SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS seq
+  FROM problems
+) sub
+WHERE problems.id = sub.id;
+
 ALTER TABLE problems ALTER COLUMN number SET NOT NULL;
 
 -- 2. 所有者字段（默认归 root 用户 UID=0）

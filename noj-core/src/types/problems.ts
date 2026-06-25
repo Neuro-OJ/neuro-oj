@@ -40,8 +40,6 @@ export interface CreateProblemInput {
   category_ids?: string[];
   /** 题目类型：U（用户题）/ P（主题题），默认 U */
   type?: string;
-  /** 题号（同一 type 内独立编号），不传则自动分配 */
-  number?: number;
 }
 
 /**
@@ -72,6 +70,8 @@ export interface ProblemListQuery {
   type?: string;
   /** 按题号筛选 */
   number?: number;
+  /** 按所有者筛选 */
+  owner_id?: string;
 }
 
 /**

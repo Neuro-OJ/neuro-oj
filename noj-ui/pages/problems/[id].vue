@@ -37,6 +37,9 @@ const canEdit = computed(() => {
   return user.value?.role === "admin" || (p.type === "U" && p.owner_id === user.value?.id)
 })
 
+// 判断当前路由是否为详情页本身（而非 edit 等子路由）
+const isDetailPage = computed(() => route.path === `/problems/${problemId}`)
+
 // 难度标签映射
 const difficultyLabel: Record<string, string> = {
   easy: "简单",
@@ -85,6 +88,11 @@ async function handleSubmit() {
 </script>
 
 <template>
+  <!-- 子路由（如 /problems/:id/edit）由 NuxtPage 渲染 -->
+  <NuxtPage v-if="!isDetailPage" />
+
+  <!-- 详情页自身内容 -->
+  <template v-else>
   <div v-if="pending" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted">
     <div class="h-[28px] w-[28px] border-[3px] border-border border-t-primary rounded-full animate-spin-slow" />
     <span>加载中...</span>
@@ -113,14 +121,14 @@ async function handleSubmit() {
                 class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
                 :class="problem.type === 'U' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'"
               >
-                {{ problem.type === 'U' ? '用户题' : '专题' }}
+                {{ problem.type === 'U' ? '用户题库' : '主题库' }}
               </span>
             </div>
             <h1 class="text-2xl font-bold mb-3 text-text">{{ problem.title }}</h1>
           </div>
           <NuxtLink
             v-if="canEdit"
-            :to="`/admin/problem-edit/${problem.id}`"
+            :to="`/problems/${problem.id}/edit`"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg text-text-secondary hover:text-primary hover:border-primary/40 transition-colors"
           >
             <Pencil :size="14" />
@@ -210,4 +218,5 @@ async function handleSubmit() {
       </button>
     </div>
   </div>
+  </template>
 </template>

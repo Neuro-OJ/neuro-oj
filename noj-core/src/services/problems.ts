@@ -142,12 +142,15 @@ export async function listProblems(
     );
   }
 
-  if (query.type) {
-    conditions.push(eq(problems.type, query.type.toUpperCase()));
-  }
+  // 未指定 type 时默认只显示 P 型题目（U 型仅通过 URL 或用户主页访问）
+  conditions.push(eq(problems.type, (query.type || "P").toUpperCase()));
 
   if (query.number !== undefined) {
     conditions.push(eq(problems.number, query.number));
+  }
+
+  if (query.owner_id) {
+    conditions.push(eq(problems.owner_id, query.owner_id));
   }
 
   // 按分类筛选——先查关联表拿到题目 ID，再通过 inArray 下推到 SQL WHERE 层

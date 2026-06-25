@@ -13,7 +13,7 @@ export function useProblemFilters() {
   const keyword = computed(() => (route.query.keyword as string) || "")
   const difficulty = computed(() => (route.query.difficulty as string) || "")
   const categoryId = computed(() => (route.query.category_id as string) || "")
-  const problemType = computed(() => (route.query.type as string) || "")
+  const problemType = computed(() => (route.query.type as string) || "P")
   const problemNumber = computed(() => (route.query.number as string) || "")
 
   const limit = 20
