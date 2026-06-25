@@ -16,7 +16,9 @@
 
 请求支持以下查询参数（均为可选）：
 
-- `problem_id`（string）：按题目 ID 筛选
+- `problem_id`（string）：按题目 ID 精确筛选（向后兼容）
+- `problem_search`（string）：按题目 ID 精确匹配 OR 题目名称 ILIKE 模糊搜索。若输入值能精确匹配某个 `problem_id`，优先按 ID 筛选；否则按 `problems.title` ILIKE 搜索
+- `submission_id`（string）：按提交 ID 前缀匹配（ILIKE `id || '%'`），输入前几位即可定位
 - `language`（string）：按编程语言筛选
 - `status`（string）：按提交状态筛选（pending / judging / finished / error）
 - `from`（string）：起始日期（ISO 8601 日期，含当日）
@@ -44,6 +46,16 @@
   }
 }
 ```
+
+#### Scenario: 按题目名称模糊搜索
+
+- **WHEN** 用户 GET `/api/v1/submissions?problem_search=T0-LMCC`
+- **THEN** 系统返回题目名称包含 "T0-LMCC" 的提交记录
+
+#### Scenario: 按提交 ID 前缀搜索
+
+- **WHEN** 用户 GET `/api/v1/submissions?submission_id=abc123`
+- **THEN** 系统仅返回提交 ID 以 "abc123" 开头的记录
 
 #### Scenario: 无筛选条件查询第一页
 
@@ -104,16 +116,27 @@
 
 支持与用户列表接口相同的筛选和分页参数，额外支持：
 
-- `user_id`（string）：按用户 ID 筛选
+- `user_id`（string）：按用户 ID 精确筛选（向后兼容）
+- `user_search`（string）：按 `users.username` ILIKE 模糊搜索 OR `submissions.user_id` 前缀匹配。若输入值看起来像 UUID（匹配 UUID 格式），优先按 user_id 搜索；否则按 username ILIKE 搜索。一个输入框同时支持两种输入。
 
 管理员列表记录 SHALL 额外包含 `user_id` 字段，以便区分提交所属用户。
+
+#### Scenario: 管理员按用户名搜索
+
+- **WHEN** 管理员 GET `/api/v1/admin/submissions?user_search=john`
+- **THEN** 系统返回用户名包含 "john" 的用户的提交记录
+
+#### Scenario: 管理员按用户 ID 搜索
+
+- **WHEN** 管理员 GET `/api/v1/admin/submissions?user_search=<user-uuid-prefix>`
+- **THEN** 系统返回 user_id 以该前缀开头的提交记录
 
 #### Scenario: 管理员查看所有提交
 
 - **WHEN** 管理员 GET `/api/v1/admin/submissions` 不传 user_id
 - **THEN** 系统返回所有用户的提交列表，每条记录包含 `user_id`
 
-#### Scenario: 管理员按用户筛选
+#### Scenario: 管理员按用户筛选（兼容旧参数）
 
 - **WHEN** 管理员 GET `/api/v1/admin/submissions?user_id=<user-uuid>`
 - **THEN** 系统仅返回该用户的提交记录
