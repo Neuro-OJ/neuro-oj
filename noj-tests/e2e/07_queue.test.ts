@@ -6,6 +6,7 @@ import {
   apiGet,
   CODE_SAMPLES,
   isE2E,
+  loginUser,
   registerUser,
   submitCode,
   waitForServer,
@@ -13,6 +14,9 @@ import {
 
 const skip = !isE2E;
 let token = "";
+let adminToken = "";
+const ADMIN_EMAIL = Deno.env.get("E2E_ADMIN_EMAIL") || "e2e_admin@test.com";
+const ADMIN_PASS = Deno.env.get("E2E_ADMIN_PASS") || "e2e_admin_pass";
 const PROBLEM_ID = "1001";
 
 Deno.test({
@@ -23,6 +27,7 @@ Deno.test({
   fn: async () => {
     if (!isE2E) return;
     await waitForServer();
+    adminToken = await loginUser(ADMIN_EMAIL, ADMIN_PASS);
     const ts = Date.now().toString(36);
     token = await registerUser(
       "q_user_" + ts,
@@ -38,7 +43,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     if (!isE2E) return;
-    const { status, body } = await apiGet("/api/v1/queue");
+    const { status, body } = await apiGet("/api/v1/queue", adminToken);
     if (status !== 200) throw new Error("期望 200");
     const d = body as {
       pending: unknown[];
@@ -74,7 +79,7 @@ Deno.test({
   fn: async () => {
     if (!isE2E) return;
     const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
-    const { body } = await apiGet("/api/v1/queue");
+    const { body } = await apiGet("/api/v1/queue", adminToken);
     const q = body as { pending: { id: string }[]; judging: { id: string }[] };
     const ids = [...q.pending.map((x) => x.id), ...q.judging.map((x) => x.id)];
     if (!ids.includes(id)) throw new Error("提交未出现在队列");
