@@ -30,7 +30,7 @@ env:
   E2E_CORE_PORT: 8099
   E2E_DB_URL: postgres://e2e:e2e@localhost:5433/e2e
   E2E_REDIS_URL: redis://localhost:6380/1
-  JWT_SECRET: e2e-ci-secret
+  JWT_SECRET: e2e-ci-secret-01234567890123456789
   NOJ_RUN_E2E: "1"
   DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
 
