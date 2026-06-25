@@ -79,3 +79,14 @@ export class BadRequestError extends AppError {
     this.name = "BadRequestError";
   }
 }
+
+/**
+ * 禁止访问错误（HTTP 403）。
+ * 用于权限不足场景（如普通用户尝试编辑管理题）。
+ */
+export class ForbiddenError extends AppError {
+  constructor(message: string) {
+    super(message, 403);
+    this.name = "ForbiddenError";
+  }
+}

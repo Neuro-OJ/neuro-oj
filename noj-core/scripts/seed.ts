@@ -30,6 +30,9 @@ interface SampleProblem {
   support_package_path: string | null;
   time_limit_ms: number;
   memory_limit_mb: number;
+  number: number;
+  owner_id: string;
+  type: string;
 }
 
 const SAMPLE_PROBLEMS: SampleProblem[] = [
@@ -57,6 +60,9 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
     support_package_path: "data/packages/1001.zip",
     time_limit_ms: 5000,
     memory_limit_mb: 512,
+    number: 1001,
+    owner_id: "0",
+    type: "P",
   },
   {
     id: "1002",
@@ -77,6 +83,9 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
     support_package_path: null, // TODO: 创建 1002 支持包后更新此路径（deno task build-packages + seed）
     time_limit_ms: 1000,
     memory_limit_mb: 256,
+    number: 1002,
+    owner_id: "0",
+    type: "P",
   },
   {
     id: "1003",
@@ -92,6 +101,9 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
     support_package_path: "data/packages/1003.zip",
     time_limit_ms: 1000,
     memory_limit_mb: 256,
+    number: 1003,
+    owner_id: "0",
+    type: "P",
   },
 ];
 
@@ -283,7 +295,16 @@ async function main() {
       throw err;
     }
 
-    // 2. 插入示例题
+    // 2. 确保 root 系统用户存在（problems.owner_id FK 依赖）
+    try {
+      const { ensureRootUser } = await import("../src/services/auth.ts");
+      await ensureRootUser();
+    } catch (err) {
+      console.error("Root 用户初始化失败:", err);
+      throw err;
+    }
+
+    // 3. 插入示例题
     try {
       await seedProblems();
     } catch (err) {
@@ -291,7 +312,7 @@ async function main() {
       throw err;
     }
 
-    // 3. 初始化示例分类
+    // 4. 初始化示例分类
     try {
       console.log("初始化示例分类...");
       await seedCategories();
@@ -300,7 +321,7 @@ async function main() {
       throw err;
     }
 
-    // 4. 关联题目与分类
+    // 5. 关联题目与分类
     try {
       console.log("关联题目与分类...");
       await seedProblemCategories();
@@ -309,7 +330,7 @@ async function main() {
       throw err;
     }
 
-    // 5. 管理员创建/提升
+    // 6. 管理员创建/提升
     try {
       console.log("检查管理员...");
       await ensureAdminFromEnv();

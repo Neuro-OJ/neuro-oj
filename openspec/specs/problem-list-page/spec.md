@@ -8,7 +8,8 @@
 
 系统 SHALL 在 `/problems` 页面以表格形式展示题目列表，每行包含以下列：
 
-- **题号**（`id`）：等宽字体展示
+- **题号**（`display_id`）：等宽字体展示，格式为 `{type}{number}`（如 `P1001`、`U42`）
+- **类型**（`type`）：标签展示（U=用户题 蓝色标签 / P=专题 紫色标签）
 - **标题**（`title`）：可点击的链接，点击跳转至 `/problems/:id`
 - **难度**（`difficulty`）：带颜色标识的标签，easy=绿色/简单、medium=黄色/中等、hard=红色/困难
 - **分类**（`categories`）：分类标签列表；无分类时显示 `--`
@@ -62,6 +63,15 @@
 
 - **WHEN** 用户清空搜索框内容
 - **THEN** 系统移除 `keyword` 参数，返回全部题目
+
+### Requirement: 按类型筛选
+
+系统 SHALL 提供类型筛选控件，支持"全部"、"U（用户题）"、"P（专题）"三个选项。
+筛选值 SHALL 通过 URL 参数 `type` 反映。
+
+#### Scenario: 按类型筛选
+- **WHEN** 用户选择类型 "U"
+- **THEN** 系统发起 `GET /api/v1/problems?type=U` 请求
 
 ### Requirement: 按难度筛选
 

@@ -6,10 +6,22 @@
 
 ## Requirements
 
+### Requirement: Root 系统用户自动创建
+
+系统 SHALL 在启动时自动创建 `id='0'` 的 root 用户（admin 角色、随机密码、不可登录）。
+
+#### Scenario: 首次启动创建 root
+- **WHEN** noj-core 首次启动且 users 表中不存在 id='0' 的用户
+- **THEN** 系统自动创建 root 用户，角色为 admin，密码为随机 UUID，bio 为"系统根用户"
+
+#### Scenario: root 用户不在用户列表中显示
+- **WHEN** 管理员查询用户列表
+- **THEN** 列表中不包含 id='0' 的 root 用户
+
 ### Requirement: 仅管理员可访问管理端点
 
-系统 SHALL 提供 `adminMiddleware`，当请求用户角色不是 `admin` 时返回 403
-禁止访问。
+系统 SHALL 提供 `adminMiddleware`，用于保护非题目类的管理端点。
+题目 CRUD 不再依赖 adminMiddleware，改为服务层根据 type+owner 进行权限判断。
 
 #### Scenario: 普通用户访问管理端点
 

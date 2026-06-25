@@ -13,11 +13,14 @@ export function useProblemFilters() {
   const keyword = computed(() => (route.query.keyword as string) || "")
   const difficulty = computed(() => (route.query.difficulty as string) || "")
   const categoryId = computed(() => (route.query.category_id as string) || "")
+  /** 题目类型筛选。空字符串 = 未选择（API 默认返回 P 型）。 */
+  const problemType = computed(() => (route.query.type as string) || "")
+  const problemNumber = computed(() => (route.query.number as string) || "")
 
   const limit = 20
 
   const hasActiveFilters = computed(() =>
-    keyword.value || difficulty.value || categoryId.value,
+    !!keyword.value || !!difficulty.value || !!categoryId.value,
   )
 
   /**
@@ -47,6 +50,8 @@ export function useProblemFilters() {
     if (keyword.value) params.keyword = keyword.value
     if (difficulty.value) params.difficulty = difficulty.value
     if (categoryId.value) params.category_id = categoryId.value
+    if (problemType.value) params.type = problemType.value
+    if (problemNumber.value) params.number = problemNumber.value
     return params
   })
 
@@ -56,6 +61,8 @@ export function useProblemFilters() {
     keyword,
     difficulty,
     categoryId,
+    problemType,
+    problemNumber,
     hasActiveFilters,
     setFilter,
     queryParams,

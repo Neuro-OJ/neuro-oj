@@ -1,18 +1,18 @@
 ## Purpose
 
-定义 Neuro OJ 题目管理系统规范，包括题目 CRUD、多维度筛选与分页、难度约束。
-管理员可管理题目，普通用户可查看和筛选。
+题目管理规范增量更新：权限模型从「仅管理员」改为基于 type + owner 的细粒度控制，
+创建/更新/删除/列表均适配 U/P 双题库。
 
-## Requirements
+## MODIFIED Requirements
 
-### Requirement: 用户可创建题目
+### Requirement: 管理员可创建题目
 
 系统 SHALL 提供 `POST /api/v1/problems`，管理员可创建任意 type 的题目，
 普通用户可创建 type='U' 的题目（自动成为所有者）。
 
 #### Scenario: 管理员成功创建 P 型题目
 - **WHEN** 管理员发送 `POST /api/v1/problems` 并携带 type='P' 及有效字段
-- **THEN** 系统创建 P 型题目并返回 201
+- **THEN** 系统创建 P 型题目（admin 自动成为所有者）并返回 201
 
 #### Scenario: 普通用户成功创建 U 型题目
 - **WHEN** 普通用户发送 `POST /api/v1/problems` 并携带 type='U' 及有效字段
@@ -26,15 +26,7 @@
 - **WHEN** 用户发送 `POST /api/v1/problems` 且未传 type 字段
 - **THEN** 系统默认 type='U'
 
-#### Scenario: 缺少必填字段
-- **WHEN** 用户创建题目时缺少 `title`、`judge_image` 或 `judge_command`
-- **THEN** 系统返回 HTTP 400，提示缺少必填字段
-
-#### Scenario: 非法难度值
-- **WHEN** 用户创建题目时传入 `difficulty: "expert"`
-- **THEN** 系统返回 HTTP 400，提示难度值仅允许 easy/medium/hard
-
-### Requirement: 用户可更新题目
+### Requirement: 管理员可更新题目
 
 系统 SHALL 提供 `PUT /api/v1/problems/:id`，权限基于 type + owner 判断。
 
@@ -58,11 +50,7 @@
 - **WHEN** 任何用户更新题目时尝试修改 type 或 number
 - **THEN** 系统忽略这两个字段的变更
 
-#### Scenario: 更新不存在的题目
-- **WHEN** 用户更新 `PUT /api/v1/problems/nonexistent`
-- **THEN** 系统返回 HTTP 404
-
-### Requirement: 用户可删除题目
+### Requirement: 管理员可删除题目
 
 系统 SHALL 提供 `DELETE /api/v1/problems/:id`。U 型所有者可删除自己题目，P 型仅管理员可删除。
 
@@ -78,25 +66,9 @@
 - **WHEN** 普通用户删除 P 型题目
 - **THEN** 系统返回 HTTP 403
 
-#### Scenario: 删除不存在的题目
-- **WHEN** 管理员删除 `DELETE /api/v1/problems/nonexistent`
-- **THEN** 系统返回 HTTP 404
-
 ### Requirement: 题目列表支持多维度筛选与分页
 
 系统 SHALL 在 `GET /api/v1/problems` 上支持 `difficulty`、`category_id`、`keyword`、`type`、`number` 查询参数。
-
-#### Scenario: 按难度筛选
-- **WHEN** 用户请求 `GET /api/v1/problems?difficulty=easy`
-- **THEN** 系统仅返回难度为 easy 的题目
-
-#### Scenario: 按分类筛选
-- **WHEN** 用户请求 `GET /api/v1/problems?category_id=<category-id>`
-- **THEN** 系统仅返回属于该分类的题目
-
-#### Scenario: 按关键词搜索
-- **WHEN** 用户请求 `GET /api/v1/problems?keyword=归一化`
-- **THEN** 系统返回标题、描述或题号中包含该关键词的题目
 
 #### Scenario: 按类型筛选
 - **WHEN** 用户请求 `GET /api/v1/problems?type=U`
@@ -106,23 +78,6 @@
 - **WHEN** 用户请求 `GET /api/v1/problems?type=P&number=1001`
 - **THEN** 系统仅返回 P 型中 number=1001 的题目
 
-#### Scenario: 组合筛选加分页
-- **WHEN** 用户请求 `GET /api/v1/problems?difficulty=easy&keyword=归一化&page=1&limit=10`
-- **THEN** 系统返回同时满足所有条件的分页结果
-
-#### Scenario: 非法分页参数
-- **WHEN** 用户请求 `GET /api/v1/problems?page=abc`
-- **THEN** 系统返回 HTTP 400
-
 #### Scenario: display_id 返回
 - **WHEN** 用户请求题目列表或详情
 - **THEN** 响应中包含 display_id（如 "P1001"）、owner_id、type、number 字段
-
-### Requirement: 数据库强制限制难度取值
-
-系统 SHALL 通过数据库 `CHECK` 约束确保 `problems.difficulty` 仅允许
-`'easy'`、`'medium'`、`'hard'`。
-
-#### Scenario: 非法难度写入数据库
-- **WHEN** 任何 SQL 尝试写入 `difficulty = 'invalid'`
-- **THEN** 数据库返回约束违反错误

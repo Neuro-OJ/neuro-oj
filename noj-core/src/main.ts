@@ -2,6 +2,7 @@ import { createApp } from "./app.ts";
 import { runMigrations } from "./db/migrate.ts";
 import { connectRedis } from "./mq/connection.ts";
 import { startResultConsumerWithRetry } from "./mq/consumer.ts";
+import { ensureRootUser } from "./services/auth.ts";
 
 const app = createApp();
 
@@ -44,6 +45,14 @@ async function main() {
     await runMigrations();
   } catch (err) {
     console.error("数据库迁移失败，终止启动:", err);
+    Deno.exit(1);
+  }
+
+  // 确保 root 系统用户存在（必需依赖，失败时终止启动）
+  try {
+    await ensureRootUser();
+  } catch (err) {
+    console.error("Root 用户创建失败，终止启动:", err);
     Deno.exit(1);
   }
 
