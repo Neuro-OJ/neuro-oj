@@ -41,5 +41,11 @@
     "exclude": [
       ".deno_cache"
     ]
+  },
+  "test": {
+    "exclude": [
+      "node_modules",
+      ".deno_cache"
+    ]
   }
 }
