@@ -19,6 +19,18 @@ type Env = {
 const router = new Hono<Env>();
 
 /**
+ * 提交代码最大长度（字符数）。
+ *
+ * 限制原因：
+ * 1. Redis 单值上限 512MB，超大消息会导致 LPUSH 失败或集群分裂
+ * 2. 评测 worker 在 Docker 容器内加载代码，过大文件增加 IO 与内存开销
+ * 3. 防止恶意用户通过超大提交耗尽存储与带宽
+ *
+ * 100KB 足以覆盖绝大多数 ACM/OI 题目的解题代码；如有特殊需求可走管理员通道。
+ */
+const MAX_CODE_LENGTH = 100 * 1024;
+
+/**
  * 提交列表（分页 + 筛选）。
  * GET /api/v1/submissions
  * 返回当前认证用户的提交记录，支持按 problem_id、language、status、日期范围筛选。
@@ -99,6 +111,17 @@ router.post("/", authMiddleware, async (c) => {
     throw new BadRequestError(`缺少必填字段: ${missing.join(", ")}`);
   }
 
+  // 大小限制：防止恶意大请求耗尽存储与 Redis 单值上限（512MB）
+  // 100KB 足以覆盖绝大多数代码提交；超过则提示客户端精简代码或拆分提交
+  if (typeof body.code !== "string") {
+    throw new BadRequestError("code 字段必须为字符串");
+  }
+  if (body.code.length > MAX_CODE_LENGTH) {
+    throw new BadRequestError(
+      `代码长度超过限制（${MAX_CODE_LENGTH} 字符），请精简后重新提交`,
+    );
+  }
+
   const result = await createSubmission(userId, {
     problem_id: body.problem_id as string,
     language: body.language as string,
@@ -122,12 +145,14 @@ router.get("/:id", authMiddleware, async (c) => {
 /**
  * 获取提交的队列状态（排队位置、时间戳等）。
  * GET /api/v1/submissions/:id/status
- * 需 JWT 认证，但**不限制提交者身份**——任意已登录用户可查。
+ * 仅 admin 或提交所有者可查看；非授权用户返回 404。
  */
 router.get("/:id/status", authMiddleware, async (c) => {
   const id = c.req.param("id")!;
+  const userId = c.var.userId!;
+  const userRole = c.var.userRole!;
 
-  const result = await getSubmissionQueueStatus(id);
+  const result = await getSubmissionQueueStatus(id, userId, userRole);
   if (!result) {
     return c.json({ error: "提交不存在" }, 404);
   }

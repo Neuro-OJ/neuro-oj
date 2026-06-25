@@ -31,7 +31,7 @@ Deno.test({
     regularToken = await registerUser(
       "auth_user_" + userTs,
       "auth_user_" + userTs + "@test.com",
-      "pass1234",
+      "Pass1234Test",
     );
     const res = await apiGet("/api/v1/auth/me", regularToken);
     regularUserId = (res.body as { data: { id: string } }).data.id;

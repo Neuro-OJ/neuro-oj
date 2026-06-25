@@ -1,4 +1,4 @@
-import { eq, or, sql } from "drizzle-orm";
+import { and, eq, not, or, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { users } from "../db/schema.ts";
 import { comparePassword, hashPassword } from "../lib/password.ts";
@@ -10,6 +10,58 @@ import {
   UnauthorizedError,
 } from "../lib/errors.ts";
 import type { LoginInput, RegisterInput, UserResponse } from "../types/auth.ts";
+
+/**
+ * 密码强度校验最小长度。
+ *
+ * OWASP 2025+ 建议密码至少 12 字符，比 8 字符的破解空间大 1000+ 倍。
+ * 当前 bcrypt cost 12 下，12 字符的强密码在 GPU 集群上仍需数年才能爆破。
+ */
+const MIN_PASSWORD_LENGTH = 12;
+
+/**
+ * 校验密码强度。
+ *
+ * 规则：
+ * 1. 长度 >= 12 字符
+ * 2. 至少包含一个小写字母
+ * 3. 至少包含一个大写字母
+ * 4. 至少包含一个数字
+ * 5. 不能与用户名相同（不区分大小写）
+ * 6. 不能与邮箱前缀相同
+ *
+ * 修复 issue 64 评论 §6.5：原校验仅 length >= 8，
+ * 弱密码（"12345678"、"password"）可通过。
+ *
+ * @throws {BadRequestError} 不符合任一规则
+ */
+export function validatePasswordStrength(
+  password: string,
+  username: string,
+  email: string,
+): void {
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    throw new BadRequestError(
+      `密码长度不足（当前 ${password.length} 字符，至少需要 ${MIN_PASSWORD_LENGTH} 字符）`,
+    );
+  }
+  if (!/[a-z]/.test(password)) {
+    throw new BadRequestError("密码必须包含至少一个小写字母");
+  }
+  if (!/[A-Z]/.test(password)) {
+    throw new BadRequestError("密码必须包含至少一个大写字母");
+  }
+  if (!/[0-9]/.test(password)) {
+    throw new BadRequestError("密码必须包含至少一个数字");
+  }
+  if (password.toLowerCase() === username.toLowerCase()) {
+    throw new BadRequestError("密码不能与用户名相同");
+  }
+  const emailPrefix = email.split("@")[0]?.toLowerCase() ?? "";
+  if (emailPrefix && password.toLowerCase() === emailPrefix) {
+    throw new BadRequestError("密码不能与邮箱前缀相同");
+  }
+}
 
 /**
  * 将数据库行转换为公开的用户响应。
@@ -30,11 +82,15 @@ function toUserResponse(row: typeof users.$inferSelect): UserResponse {
  * 注册新用户。
  * 检查用户名和邮箱的唯一性，密码使用 bcrypt 哈希后存储。
  *
+ * @throws {BadRequestError} 密码不符合强度要求
  * @throws {ConflictError} 用户名或邮箱已存在
  */
 export async function registerUser(
   input: RegisterInput,
 ): Promise<UserResponse> {
+  // 密码强度校验（issue 64 评论 §6.5）
+  validatePasswordStrength(input.password, input.username, input.email);
+
   const db = getDb();
 
   // 检查用户名是否已存在
@@ -189,6 +245,25 @@ export async function promoteUser(
 
   if (existing.length === 0) {
     throw new NotFoundError("用户不存在");
+  }
+
+  // 防止降级最后一个可登录 admin：
+  // - 若目标是 admin 且本次操作降级为 user
+  // - 且当前系统中仅有 1 个 admin（含目标）
+  // 则拒绝，防止系统进入无 admin 状态。
+  // 注意：root 系统用户（id='0'，PR #63 引入）虽然 role='admin' 但不可登录，
+  // 因此不计入"可登录 admin"统计。
+  if (existing[0].role === "admin" && role === "user") {
+    const [adminCountRow] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(users)
+      .where(and(eq(users.role, "admin"), not(eq(users.id, "0"))));
+    const adminCount = Number(adminCountRow?.count ?? 0);
+    if (adminCount <= 1) {
+      throw new BadRequestError(
+        "系统当前仅有 1 个可登录管理员，不能降级；如需调整请先创建新的管理员账户",
+      );
+    }
   }
 
   const now = new Date().toISOString();

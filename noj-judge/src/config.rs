@@ -49,6 +49,17 @@ pub struct PoolConfig {
     pub kill_grace_secs: u64,
     /// Docker 容器标签前缀（默认: "com.noj.judge"）
     pub label_prefix: String,
+    /// Metrics HTTP 监听地址（默认 127.0.0.1:9100）
+    ///
+    /// 默认绑定 loopback 而非 0.0.0.0 以避免将内部容器池状态
+    /// （任务总数、错误数、池深度、版本信息等）暴露给未授权网络。
+    /// 外部 Prometheus 抓取时通过 sidecar 或 SSH 隧道。
+    pub metrics_bind: String,
+    /// Metrics 端点可选 bearer token
+    ///
+    /// 设置后，访问 /metrics 需在 Authorization 头携带 `Bearer <token>`。
+    /// 未设置则仅依赖 IP 层保护（127.0.0.1 限制）。
+    pub metrics_auth_token: Option<String>,
 }
 
 impl Config {
@@ -117,6 +128,10 @@ impl PoolConfig {
             max_archive_mb: env_var_parse("POOL_MAX_ARCHIVE_MB").unwrap_or(25),
             kill_grace_secs: env_var_parse("POOL_KILL_GRACE_SECONDS").unwrap_or(2),
             label_prefix: env_or("POOL_LABEL_PREFIX", "com.noj.judge"),
+            metrics_bind: env_or("METRICS_BIND", "127.0.0.1:9100"),
+            metrics_auth_token: std::env::var("METRICS_AUTH_TOKEN")
+                .ok()
+                .filter(|s| !s.is_empty()),
         }
     }
 

@@ -1,5 +1,6 @@
 import { createConsumerRedis } from "./connection.ts";
 import { saveEvaluationResult } from "../services/submissions.ts";
+import { logJudgeResultReceived } from "../lib/logging.ts";
 import type { JudgeResult } from "../types/index.ts";
 
 /**
@@ -126,8 +127,10 @@ async function startResultConsumer(): Promise<void> {
         continue;
       }
 
-      console.log(
-        `收到评测结果: submission_id=${judgeResult.submission_id}, status=${judgeResult.status}, score=${judgeResult.score}`,
+      logJudgeResultReceived(
+        judgeResult.submission_id,
+        judgeResult.status,
+        judgeResult.score,
       );
 
       try {

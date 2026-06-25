@@ -3,4 +3,7 @@
 //! 将仅二进制 crate 中的模块暴露给集成测试。
 
 pub mod config;
+pub mod judge;
 pub mod pool;
+pub mod sandbox;
+pub mod types;

@@ -1,15 +1,27 @@
 /**
  * 应用错误基类。
  * 所有已知的业务错误继承此类，由全局错误处理程序统一捕获并返回 JSON 响应。
+ *
+ * `code` 字段为机器可读的错误码，便于前端按错误类型做差异化处理或上报。
+ * `requestId` 字段在 app.ts 的全局错误处理中填充，用于与服务端日志关联。
  */
 export class AppError extends Error {
   /** HTTP 状态码 */
   statusCode: number;
+  /** 机器可读的错误码（如 "VALIDATION_ERROR"）；未显式传入时根据类名自动生成 */
+  code: string;
+  /** 请求关联 ID（由全局错误处理注入，便于日志追踪） */
+  requestId?: string;
 
-  constructor(message: string, statusCode: number) {
+  constructor(
+    message: string,
+    statusCode: number,
+    code?: string,
+  ) {
     super(message);
     this.name = "AppError";
     this.statusCode = statusCode;
+    this.code = code ?? "INTERNAL_ERROR";
   }
 }
 
@@ -19,7 +31,7 @@ export class AppError extends Error {
  */
 export class ConflictError extends AppError {
   constructor(message: string) {
-    super(message, 409);
+    super(message, 409, "CONFLICT_ERROR");
     this.name = "ConflictError";
   }
 }
@@ -30,7 +42,7 @@ export class ConflictError extends AppError {
  */
 export class UnauthorizedError extends AppError {
   constructor(message: string) {
-    super(message, 401);
+    super(message, 401, "UNAUTHORIZED");
     this.name = "UnauthorizedError";
   }
 }
@@ -41,7 +53,7 @@ export class UnauthorizedError extends AppError {
  */
 export class ValidationError extends AppError {
   constructor(message: string) {
-    super(message, 400);
+    super(message, 400, "VALIDATION_ERROR");
     this.name = "ValidationError";
   }
 }
@@ -52,7 +64,7 @@ export class ValidationError extends AppError {
  */
 export class NotFoundError extends AppError {
   constructor(message: string) {
-    super(message, 404);
+    super(message, 404, "NOT_FOUND");
     this.name = "NotFoundError";
   }
 }
@@ -63,7 +75,7 @@ export class NotFoundError extends AppError {
  */
 export class BadRequestError extends AppError {
   constructor(message: string) {
-    super(message, 400);
+    super(message, 400, "BAD_REQUEST");
     this.name = "BadRequestError";
   }
 }

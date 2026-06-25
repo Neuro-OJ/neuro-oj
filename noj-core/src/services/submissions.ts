@@ -40,6 +40,8 @@ export interface SubmissionWithResult extends SubmissionResponse {
     status: string;
     score: number;
     output: string;
+    /** output 是否被 API 层截断（issue 64 评论 §5.1） */
+    output_truncated: boolean;
     time_ms: number | null;
     memory_kb: number | null;
     details: Record<string, unknown> | null;
@@ -338,18 +340,32 @@ export async function createSubmission(
       status: "pending",
       created_at: now,
     });
+  } catch (dbErr) {
+    console.error("提交记录插入失败:", dbErr);
+    throw new AppError(
+      "提交失败：数据库写入错误，请稍后重试",
+      500,
+      "SUBMISSION_DB_ERROR",
+    );
+  }
+
+  try {
     await pushJudgeTask(task);
     // 入队成功后立即更新状态为 judging
     await updateSubmissionStatus(id, "judging");
-  } catch (err) {
-    // 若 DB 插入成功但 MQ 推送失败，标记为 error
+  } catch (mqErr) {
+    console.error("评测任务推送失败:", mqErr);
+    // DB 成功但 MQ 失败，标记为 error 让用户重新提交
     try {
       await updateSubmissionStatus(id, "error");
     } catch {
-      // 忽略 cleanup 失败（可能是 DB 插入未完成）
+      // 忽略 cleanup 失败
     }
-    console.error("创建提交或推送评测任务失败:", err);
-    throw new AppError("提交失败，请稍后重试", 500);
+    throw new AppError(
+      "提交失败：评测队列暂时不可用，请稍后重试",
+      500,
+      "SUBMISSION_QUEUE_ERROR",
+    );
   }
 
   return {
@@ -363,6 +379,17 @@ export async function createSubmission(
     created_at: now,
   };
 }
+
+/**
+ * 详情接口返回的 result.output 最大长度（字节近似）。
+ *
+ * 评测脚本 stdout 可能包含大量测试点详情，单次响应过大影响
+ * 移动端加载与序列化性能。原始 output 仍完整保存在 DB 中，
+ * 本截断仅作用于 API 响应层。
+ *
+ * 修复 issue 64 评论 §5.1。
+ */
+const MAX_OUTPUT_LENGTH = 8 * 1024;
 
 /**
  * 根据 ID 查询提交记录。
@@ -400,18 +427,28 @@ export async function getSubmission(
     .limit(1);
 
   const result = resultRows.length > 0
-    ? {
-      status: resultRows[0].status,
-      score: resultRows[0].score,
-      output: resultRows[0].output,
-      time_ms: resultRows[0].time_ms,
-      memory_kb: resultRows[0].memory_kb,
-      details: parseDetails(resultRows[0].details),
-    }
+    ? (() => {
+      const rawOutput = resultRows[0].output ?? "";
+      // API 层截断：原始 output 完整保留在 DB，仅响应层控制大小
+      const output_truncated = rawOutput.length > MAX_OUTPUT_LENGTH;
+      const output = output_truncated
+        ? rawOutput.slice(0, MAX_OUTPUT_LENGTH)
+        : rawOutput;
+      return {
+        status: resultRows[0].status,
+        score: resultRows[0].score,
+        output,
+        output_truncated,
+        time_ms: resultRows[0].time_ms,
+        memory_kb: resultRows[0].memory_kb,
+        details: parseDetails(resultRows[0].details),
+      };
+    })()
     : null;
 
   // 查询队列状态信息（排队位置、时间戳）
-  const queueStatus = await getSubmissionQueueStatus(id);
+  // getSubmission 已在上面完成归属校验，此处仍传 userId 让服务层做兜底校验
+  const queueStatus = await getSubmissionQueueStatus(id, userId);
 
   return {
     ...toSubmissionResponse(row),
@@ -446,9 +483,22 @@ export async function saveEvaluationResult(
       ? "error"
       : "finished";
 
+    // 同步回填 judge_finished_at 时间戳
+    //
+    // 修复 issue 64 评论 §4.1：saveEvaluationResult 走的是直接 UPDATE，
+    // 绕过了 updateSubmissionStatus 中状态转换时的字段同步逻辑，
+    // 导致 judge_finished_at 永远为 NULL，admin 监控与前端历史记录的
+    // "完成时间"显示空。
+    //
+    // 注意：updateSubmissionStatus 也会设置该字段，但状态机校验
+    // (pending → judging → finished) 不允许 finished → finished 的二次更新，
+    // 因此这里直接在 saveEvaluationResult 中设置以保证准确性。
     await tx
       .update(submissions)
-      .set({ status: submissionStatus })
+      .set({
+        status: submissionStatus,
+        judge_finished_at: now,
+      })
       .where(eq(submissions.id, result.submission_id));
 
     // 插入评测结果（使用 UPSERT 语义防止重复消费）

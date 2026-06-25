@@ -1228,8 +1228,10 @@ impl PoolManager {
     #[allow(dead_code)]
     async fn start_metrics_server(self: &Arc<Self>) {
         let pool = self.clone();
+        let bind = self.config.metrics_bind.clone();
+        let auth_token = self.config.metrics_auth_token.clone();
         tokio::spawn(async move {
-            metrics::start_metrics_server(pool, None).await;
+            metrics::start_metrics_server(pool, Some(bind), auth_token).await;
         });
     }
 

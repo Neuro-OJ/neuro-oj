@@ -24,7 +24,7 @@ async function isJudgeAvailable(): Promise<boolean> {
     const t = await registerUser(
       "pipe_check_" + ts,
       "pipe_check_" + ts + "@test.com",
-      "test123456",
+      "Test12345679",
     );
     const id = await submitCode(t, PROBLEM_ID, "print(1)");
     // 等一小段时间看状态是否推进
@@ -54,7 +54,7 @@ Deno.test({
     token = await registerUser(
       "pipe_user_" + ts,
       "pipe_user_" + ts + "@test.com",
-      "test123456",
+      "Test12345679",
     );
     console.log("  → 用户已注册");
     judgeOk = await isJudgeAvailable();

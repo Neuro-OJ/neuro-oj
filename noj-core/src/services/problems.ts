@@ -288,6 +288,10 @@ export async function createProblem(
     );
   }
 
+  // 题目主键统一由服务端生成 UUID，避免客户端注入字符串 id
+  // 影响 display_id 双索引路由解析
+  const id = crypto.randomUUID();
+
   // 确定题目类型（默认 U）
   const rawType = input.type?.toUpperCase() ?? "U";
   if (!isValidProblemType(rawType)) {
@@ -312,7 +316,6 @@ export async function createProblem(
   let number = input.number;
   // 确定题号 + 插入（MAX+1 并发冲突时最多重试 3 次）
   const MAX_RETRIES = 3;
-  const id = input.id ?? crypto.randomUUID();
   const now = new Date().toISOString();
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {

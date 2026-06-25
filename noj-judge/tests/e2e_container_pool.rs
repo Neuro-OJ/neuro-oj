@@ -139,6 +139,8 @@ async fn test_pool_initialization() {
         max_archive_mb: 25,
         kill_grace_secs: 2,
         label_prefix: "com.noj.judge.test".to_string(),
+        metrics_bind: "127.0.0.1:9101".to_string(),
+        metrics_auth_token: None,
     };
 
     let pool = PoolManager::init(docker.clone(), config)
@@ -193,6 +195,8 @@ async fn test_pool_full_execution_path() {
         max_archive_mb: 25,
         kill_grace_secs: 2,
         label_prefix: "com.noj.judge.test".to_string(),
+        metrics_bind: "127.0.0.1:9101".to_string(),
+        metrics_auth_token: None,
     };
 
     let pool = PoolManager::init(docker.clone(), config)
@@ -414,6 +418,8 @@ async fn test_pool_security_config() {
         max_archive_mb: 25,
         kill_grace_secs: 2,
         label_prefix: "com.noj.judge.test".to_string(),
+        metrics_bind: "127.0.0.1:9101".to_string(),
+        metrics_auth_token: None,
     };
 
     let pool = PoolManager::init(docker.clone(), config)
@@ -494,6 +500,8 @@ async fn test_pool_queue_wait() {
         max_archive_mb: 25,
         kill_grace_secs: 2,
         label_prefix: "com.noj.judge.test".to_string(),
+        metrics_bind: "127.0.0.1:9101".to_string(),
+        metrics_auth_token: None,
     };
 
     let pool = PoolManager::init(docker.clone(), config)

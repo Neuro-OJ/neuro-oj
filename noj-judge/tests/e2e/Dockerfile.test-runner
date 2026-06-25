@@ -1,5 +1,12 @@
-# noj-judge E2E 测试用 Docker 镜像
-FROM python:3.12-alpine
+# noj-judge E2E 测试用 Docker 镜像。
+#
+# 使用 docker.m.daocloud.io 镜像源：在网络受限环境（无法直连 docker.io）
+# 中也能拉到基础镜像。docker.m.daocloud.io 是 DaoCloud 维护的 Docker Hub
+# 公共镜像代理，与官方镜像内容一致。
+#
+# 修复 issue 64 评论 §6.3：原 FROM python:3.12-alpine 在部分环境
+# (CI、沙箱) 中 connection refused，无法构建测试镜像。
+FROM docker.m.daocloud.io/library/python:3.12-alpine
 
 RUN pip install --no-cache-dir requests urllib3
 
