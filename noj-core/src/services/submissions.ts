@@ -40,6 +40,8 @@ export interface SubmissionWithResult extends SubmissionResponse {
     status: string;
     score: number;
     output: string;
+    /** output 是否被 API 层截断（issue 64 评论 §5.1） */
+    output_truncated: boolean;
     time_ms: number | null;
     memory_kb: number | null;
     details: Record<string, unknown> | null;
@@ -379,6 +381,17 @@ export async function createSubmission(
 }
 
 /**
+ * 详情接口返回的 result.output 最大长度（字节近似）。
+ *
+ * 评测脚本 stdout 可能包含大量测试点详情，单次响应过大影响
+ * 移动端加载与序列化性能。原始 output 仍完整保存在 DB 中，
+ * 本截断仅作用于 API 响应层。
+ *
+ * 修复 issue 64 评论 §5.1。
+ */
+const MAX_OUTPUT_LENGTH = 8 * 1024;
+
+/**
  * 根据 ID 查询提交记录。
  *
  * @throws {NotFoundError} 提��不存在
@@ -414,14 +427,23 @@ export async function getSubmission(
     .limit(1);
 
   const result = resultRows.length > 0
-    ? {
-      status: resultRows[0].status,
-      score: resultRows[0].score,
-      output: resultRows[0].output,
-      time_ms: resultRows[0].time_ms,
-      memory_kb: resultRows[0].memory_kb,
-      details: parseDetails(resultRows[0].details),
-    }
+    ? (() => {
+      const rawOutput = resultRows[0].output ?? "";
+      // API 层截断：原始 output 完整保留在 DB，仅响应层控制大小
+      const output_truncated = rawOutput.length > MAX_OUTPUT_LENGTH;
+      const output = output_truncated
+        ? rawOutput.slice(0, MAX_OUTPUT_LENGTH)
+        : rawOutput;
+      return {
+        status: resultRows[0].status,
+        score: resultRows[0].score,
+        output,
+        output_truncated,
+        time_ms: resultRows[0].time_ms,
+        memory_kb: resultRows[0].memory_kb,
+        details: parseDetails(resultRows[0].details),
+      };
+    })()
     : null;
 
   // 查询队列状态信息（排队位置、时间戳）
