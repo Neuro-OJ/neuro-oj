@@ -18,7 +18,7 @@ const ts = Date.now();
 const TEST_USER = {
   username: `test-svc-${ts}`,
   email: `test-svc-${ts}@example.com`,
-  password: "test-password-123",
+  password: "TestPwd-2024-Xy9",
 };
 
 /**
@@ -65,7 +65,7 @@ Deno.test({
         registerUser({
           username: TEST_USER.username,
           email: `diff-${ts}@example.com`,
-          password: "another-pass",
+          password: "AnothPass-2024-Ab1",
         }),
       ConflictError,
       "用户名已存在",
@@ -85,7 +85,7 @@ Deno.test({
         registerUser({
           username: `diff-user-${ts}`,
           email: TEST_USER.email,
-          password: "another-pass",
+          password: "AnothPass-2024-Ab1",
         }),
       ConflictError,
       "邮箱已被注册",
@@ -141,7 +141,7 @@ Deno.test({
       () =>
         loginUser({
           login: TEST_USER.username,
-          password: "wrong-password",
+          password: "WrongPwd-2024-Cd2",
         }),
       UnauthorizedError,
       "用户名或密码错误",
@@ -160,7 +160,7 @@ Deno.test({
       () =>
         loginUser({
           login: "nonexistent-user-99999",
-          password: "any-password",
+          password: "AnyPwd-2024-Ef3",
         }),
       UnauthorizedError,
       "用户名或密码错误",
@@ -179,7 +179,7 @@ Deno.test({
     const registered = await registerUser({
       username: `test-profile-${ts}`,
       email: `test-profile-${ts}@example.com`,
-      password: "password-123",
+      password: "MyPwd-2024-Gh5",
     });
 
     const profile = await getUserProfile(registered.id);

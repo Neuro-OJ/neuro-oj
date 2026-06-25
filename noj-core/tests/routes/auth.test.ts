@@ -60,7 +60,7 @@ Deno.test({
     const res = await jsonRequest(app, `${BASE}/register`, "POST", {
       username: `route_user_${ts}`,
       email: `route_user_${ts}@example.com`,
-      password: "test-pass-123",
+      password: "TestPwd-2024-Xy9",
     });
 
     assertEquals(res.status, 201);
@@ -101,7 +101,7 @@ Deno.test({
     const res = await jsonRequest(app, `${BASE}/register`, "POST", {
       username: "@invalid!",
       email: "test@test.com",
-      password: "12345678",
+      password: "TestPwd-2024a",
     });
 
     assertEquals(res.status, 400);
@@ -141,7 +141,7 @@ Deno.test({
     const res = await jsonRequest(app, `${BASE}/register`, "POST", {
       username: "validuser",
       email: "not-an-email",
-      password: "12345678",
+      password: "TestPwd-2024a",
     });
 
     assertEquals(res.status, 400);
@@ -163,7 +163,7 @@ Deno.test({
     const res1 = await jsonRequest(app, `${BASE}/register`, "POST", {
       username: `dup_user_${ts}`,
       email: `dup_user_${ts}@example.com`,
-      password: "test-pass-123",
+      password: "TestPwd-2024-Xy9",
     });
     assertEquals(res1.status, 201);
 
@@ -171,7 +171,7 @@ Deno.test({
     const res2 = await jsonRequest(app, `${BASE}/register`, "POST", {
       username: `dup_user_${ts}`,
       email: `other-${ts}@example.com`,
-      password: "test-pass-123",
+      password: "TestPwd-2024-Xy9",
     });
     assertEquals(res2.status, 409);
     const body = await res2.json();
@@ -193,13 +193,13 @@ Deno.test({
     await jsonRequest(app, `${BASE}/register`, "POST", {
       username: user,
       email: `${user}@example.com`,
-      password: "test-pass-123",
+      password: "TestPwd-2024-Xy9",
     });
 
     // 再登录
     const res = await jsonRequest(app, `${BASE}/login`, "POST", {
       login: user,
-      password: "test-pass-123",
+      password: "TestPwd-2024-Xy9",
     });
 
     assertEquals(res.status, 200);
@@ -223,12 +223,12 @@ Deno.test({
     await jsonRequest(app, `${BASE}/register`, "POST", {
       username: user,
       email: `${user}@example.com`,
-      password: "correct-pass",
+      password: "CorrectPwd-Ab1",
     });
 
     const res = await jsonRequest(app, `${BASE}/login`, "POST", {
       login: user,
-      password: "wrong-pass",
+      password: "WrongPwd-Cd2",
     });
 
     assertEquals(res.status, 401);
@@ -251,13 +251,13 @@ Deno.test({
     await jsonRequest(app, `${BASE}/register`, "POST", {
       username: user,
       email: `${user}@example.com`,
-      password: "test-pass-123",
+      password: "TestPwd-2024-Xy9",
     });
 
     // 登录获取 token
     const loginRes = await jsonRequest(app, `${BASE}/login`, "POST", {
       login: user,
-      password: "test-pass-123",
+      password: "TestPwd-2024-Xy9",
     });
     const { token } = (await loginRes.json()).data;
 
@@ -285,13 +285,13 @@ Deno.test({
     await jsonRequest(app, `${BASE}/register`, "POST", {
       username: user,
       email,
-      password: "test-pass-123",
+      password: "TestPwd-2024-Xy9",
     });
 
     // 用邮箱登录
     const res = await jsonRequest(app, `${BASE}/login`, "POST", {
       login: email,
-      password: "test-pass-123",
+      password: "TestPwd-2024-Xy9",
     });
 
     assertEquals(res.status, 200);
@@ -313,7 +313,7 @@ Deno.test({
     const res = await jsonRequest(app, `${BASE}/register`, "POST", {
       username: "ab", // 2 字符，无效
       email: `bound_min_${ts}@example.com`,
-      password: "12345678",
+      password: "TestPwd-2024", // 11 字符，少于 12
     });
     assertEquals(res.status, 400);
   },
@@ -332,14 +332,14 @@ Deno.test({
     const res = await jsonRequest(app, `${BASE}/register`, "POST", {
       username: longName,
       email: `bound_max_${ts}@example.com`,
-      password: "12345678",
+      password: "TestPwd-2024", // 11 字符，少于 12
     });
     assertEquals(res.status, 400);
   },
 });
 
 Deno.test({
-  name: "routes: POST /register 密码恰好 8 字符边界",
+  name: "routes: POST /register 密码恰好 12 字符边界",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -350,7 +350,7 @@ Deno.test({
     const res = await jsonRequest(app, `${BASE}/register`, "POST", {
       username: user,
       email: `${user}@example.com`,
-      password: "12345678", // 恰好 8 位
+      password: "TestPwd-2024a", // 恰好 12 位
     });
     assertEquals(res.status, 201);
   },
