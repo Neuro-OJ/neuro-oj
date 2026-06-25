@@ -36,6 +36,8 @@ router.get("/", authMiddleware, async (c) => {
 
   // 解析筛选参数
   const problemId = c.req.query("problem_id") || undefined;
+  const problemSearch = c.req.query("problem_search") || undefined;
+  const submissionId = c.req.query("submission_id") || undefined;
   const language = c.req.query("language") || undefined;
   const status = c.req.query("status") || undefined;
   const from = c.req.query("from") || undefined;
@@ -52,6 +54,8 @@ router.get("/", authMiddleware, async (c) => {
   const result = await listSubmissions({
     userId,
     problemId,
+    problemSearch,
+    submissionId,
     language,
     status,
     from,
@@ -147,9 +151,12 @@ adminSubmissions.get("/", authMiddleware, adminMiddleware, async (c) => {
   if (isNaN(perPage) || perPage < 1) perPage = 20;
   if (perPage > 100) perPage = 100;
 
-  // 解析筛选参数（额外支持 user_id）
+  // 解析筛选参数（额外支持 user_id、user_search）
   const userId = c.req.query("user_id") || undefined;
+  const userSearch = c.req.query("user_search") || undefined;
   const problemId = c.req.query("problem_id") || undefined;
+  const problemSearch = c.req.query("problem_search") || undefined;
+  const submissionId = c.req.query("submission_id") || undefined;
   const language = c.req.query("language") || undefined;
   const status = c.req.query("status") || undefined;
   const from = c.req.query("from") || undefined;
@@ -165,7 +172,10 @@ adminSubmissions.get("/", authMiddleware, adminMiddleware, async (c) => {
 
   const result = await listSubmissions({
     userId,
+    userSearch,
     problemId,
+    problemSearch,
+    submissionId,
     language,
     status,
     from,

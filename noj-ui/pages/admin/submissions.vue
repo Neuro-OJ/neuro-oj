@@ -1,6 +1,15 @@
 <script setup lang="ts">
-import { Search, X, Filter } from "@lucide/vue"
+import { Search, X } from "@lucide/vue"
 import type { Column } from "~/components/admin/AdminTable.vue"
+import type { SubmissionListItem } from "~/composables/use-submissions"
+import {
+  getStatusColor,
+  getStatusLabel,
+  formatScore,
+  formatTime,
+  formatMemory,
+  getLanguageLabel,
+} from "~/composables/use-submissions"
 
 definePageMeta({
   layout: "admin",
@@ -15,16 +24,7 @@ watch(loading, (val) => {
   if (!val && !isLoggedIn.value) router.replace("/login")
 }, { immediate: true })
 
-interface Submission {
-  id: string
-  user_id: string
-  problem_id: string
-  language: string
-  status: string
-  created_at: string
-}
-
-const submissions = ref<Submission[]>([])
+const submissions = ref<SubmissionListItem[]>([])
 const tableLoading = ref(true)
 const tableError = ref("")
 const currentPage = ref(1)
@@ -33,37 +33,57 @@ const perPage = 20
 
 // 筛选条件
 const filters = reactive({
-  user_id: "",
-  problem_id: "",
+  problem_search: "",
+  submission_id: "",
+  user_search: "",
   language: "",
   status: "",
-  from: "",
-  to: "",
 })
 
-const statusLabels: Record<string, string> = {
-  pending: "等待中",
-  judging: "评测中",
-  finished: "已完成",
-  error: "出错",
-}
+// 语言选项
+const languageOptions = [
+  { value: "", label: "全部" },
+  { value: "python3", label: "Python 3" },
+  { value: "python", label: "Python" },
+  { value: "cpp", label: "C++" },
+  { value: "c", label: "C" },
+  { value: "javascript", label: "JavaScript" },
+]
 
-const statusColors: Record<string, string> = {
-  pending: "#f59e0b",
-  judging: "#3b82f6",
-  finished: "#10b981",
-  error: "#ef4444",
-}
+// 状态选项
+const statusOptions = [
+  { value: "", label: "全部" },
+  { value: "pending", label: "等待评测" },
+  { value: "judging", label: "评测中" },
+  { value: "finished", label: "已完成" },
+  { value: "error", label: "出错" },
+]
 
-const columns: Column<Submission>[] = [
+// AdminTable 的 Column 泛型默认为 Record<string, unknown>，format 中通过 rowSub 取值
+const columns: Column[] = [
   { key: "id", label: "编号", format: (val) => (val as string).slice(0, 8) + "..." },
   { key: "user_id", label: "用户" },
-  { key: "problem_id", label: "题目" },
-  { key: "language", label: "语言" },
   {
-    key: "status",
-    label: "状态",
-    format: (val) => statusLabels[val as string] || (val as string),
+    key: "problem",
+    label: "题目",
+    format: (_, row) => rowSub(row).problem.title || rowSub(row).problem_id,
+  },
+  { key: "language", label: "语言", format: (val) => getLanguageLabel(val as string) },
+  { key: "status", label: "状态" },
+  {
+    key: "score",
+    label: "得分",
+    format: (_, row) => rowSub(row).result ? formatScore(rowSub(row).result!.score) : "--",
+  },
+  {
+    key: "time_ms",
+    label: "耗时",
+    format: (_, row) => rowSub(row).result ? formatTime(rowSub(row).result!.time_ms) : "--",
+  },
+  {
+    key: "memory_kb",
+    label: "内存",
+    format: (_, row) => rowSub(row).result ? formatMemory(rowSub(row).result!.memory_kb) : "--",
   },
   {
     key: "created_at",
@@ -76,12 +96,11 @@ function buildQuery(page: number): string {
   const params = new URLSearchParams()
   params.set("page", String(page))
   params.set("per_page", String(perPage))
-  if (filters.user_id) params.set("user_id", filters.user_id)
-  if (filters.problem_id) params.set("problem_id", filters.problem_id)
+  if (filters.user_search) params.set("user_search", filters.user_search)
+  if (filters.problem_search) params.set("problem_search", filters.problem_search)
+  if (filters.submission_id) params.set("submission_id", filters.submission_id)
   if (filters.language) params.set("language", filters.language)
   if (filters.status) params.set("status", filters.status)
-  if (filters.from) params.set("from", filters.from)
-  if (filters.to) params.set("to", filters.to)
   return params.toString()
 }
 
@@ -91,7 +110,7 @@ async function loadSubmissions(page = 1) {
   tableError.value = ""
   currentPage.value = page
   try {
-    const res = await $fetch<{ data: Submission[]; pagination: { total: number; total_pages: number } }>(
+    const res = await $fetch<{ data: SubmissionListItem[]; pagination: { total: number; total_pages: number } }>(
       `/api/v1/admin/submissions?${buildQuery(page)}`,
     )
     submissions.value = res.data
@@ -116,13 +135,17 @@ function applyFilters() {
 }
 
 function clearFilters() {
-  filters.user_id = ""
-  filters.problem_id = ""
+  filters.user_search = ""
+  filters.problem_search = ""
+  filters.submission_id = ""
   filters.language = ""
   filters.status = ""
-  filters.from = ""
-  filters.to = ""
   loadSubmissions(1)
+}
+
+// AdminTable slot 中 row 类型为 Record<string, unknown>，辅助函数用于安全取值
+function rowSub(row: Record<string, unknown>): SubmissionListItem {
+  return row as unknown as SubmissionListItem
 }
 </script>
 
@@ -137,34 +160,47 @@ function clearFilters() {
     <div class="filter-bar">
       <div class="filter-row">
         <div class="filter-item">
-          <label class="filter-label">用户 ID</label>
-          <input v-model="filters.user_id" class="filter-input" placeholder="user_id" @keyup.enter="applyFilters" />
+          <label class="filter-label">题目</label>
+          <input
+            v-model="filters.problem_search"
+            class="filter-input"
+            placeholder="题目 ID 或名称"
+            @keyup.enter="applyFilters"
+          />
         </div>
         <div class="filter-item">
-          <label class="filter-label">题目 ID</label>
-          <input v-model="filters.problem_id" class="filter-input" placeholder="problem_id" @keyup.enter="applyFilters" />
+          <label class="filter-label">用户</label>
+          <input
+            v-model="filters.user_search"
+            class="filter-input"
+            placeholder="用户名或用户 ID"
+            @keyup.enter="applyFilters"
+          />
+        </div>
+        <div class="filter-item">
+          <label class="filter-label">提交 ID</label>
+          <input
+            v-model="filters.submission_id"
+            class="filter-input"
+            placeholder="提交 ID 前缀"
+            @keyup.enter="applyFilters"
+          />
         </div>
         <div class="filter-item">
           <label class="filter-label">语言</label>
-          <input v-model="filters.language" class="filter-input" placeholder="如 python3" @keyup.enter="applyFilters" />
+          <select v-model="filters.language" class="filter-input" @change="applyFilters">
+            <option v-for="opt in languageOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </select>
         </div>
         <div class="filter-item">
           <label class="filter-label">状态</label>
           <select v-model="filters.status" class="filter-input" @change="applyFilters">
-            <option value="">全部</option>
-            <option value="pending">等待中</option>
-            <option value="judging">评测中</option>
-            <option value="finished">已完成</option>
-            <option value="error">出错</option>
+            <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
           </select>
-        </div>
-        <div class="filter-item">
-          <label class="filter-label">开始时间</label>
-          <input v-model="filters.from" type="date" class="filter-input" />
-        </div>
-        <div class="filter-item">
-          <label class="filter-label">结束时间</label>
-          <input v-model="filters.to" type="date" class="filter-input" />
         </div>
       </div>
       <div class="filter-actions">
@@ -186,14 +222,22 @@ function clearFilters() {
       :error="tableError"
       empty-text="暂无提交记录"
     >
+      <!-- 状态标签列：评测结果状态优先，提交状态回退 -->
       <template #cell-status="{ row }">
-        <span class="status-badge" :style="{ background: statusColors[row.status] + '15', color: statusColors[row.status] }">
-          {{ statusLabels[row.status] || row.status }}
+        <span
+          class="status-badge"
+          :style="{
+            background: getStatusColor(rowSub(row).status, rowSub(row).result?.status) + '15',
+            color: getStatusColor(rowSub(row).status, rowSub(row).result?.status),
+          }"
+        >
+          {{ getStatusLabel(rowSub(row).status, rowSub(row).result?.status) }}
         </span>
       </template>
 
+      <!-- 操作列 -->
       <template #actions="{ row }">
-        <NuxtLink :to="`/submissions/${row.id}`" class="btn btn-xs">查看</NuxtLink>
+        <NuxtLink :to="`/submissions/${rowSub(row).id}`" class="btn btn-xs">查看</NuxtLink>
       </template>
     </AdminTable>
 
@@ -334,5 +378,6 @@ function clearFilters() {
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
 }
 </style>

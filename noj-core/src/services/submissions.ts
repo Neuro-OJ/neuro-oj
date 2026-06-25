@@ -1,7 +1,12 @@
 import { encodeBase64 } from "@std/encoding/base64";
-import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { and, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
-import { evaluationResults, problems, submissions } from "../db/schema.ts";
+import {
+  evaluationResults,
+  problems,
+  submissions,
+  users,
+} from "../db/schema.ts";
 import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
 import { getProblem } from "./problems.ts";
@@ -67,6 +72,8 @@ export interface SubmissionListItem {
   result: {
     status: string;
     score: number;
+    time_ms: number | null;
+    memory_kb: number | null;
   } | null;
 }
 
@@ -76,6 +83,9 @@ export interface SubmissionListItem {
 export interface ListSubmissionsParams {
   userId?: string;
   problemId?: string;
+  problemSearch?: string;
+  submissionId?: string;
+  userSearch?: string;
   language?: string;
   status?: string;
   from?: string;
@@ -102,8 +112,19 @@ export async function listSubmissions(
   params: ListSubmissionsParams,
 ): Promise<ListSubmissionsResult> {
   const db = getDb();
-  const { userId, problemId, language, status, from, to, page, perPage } =
-    params;
+  const {
+    userId,
+    problemId,
+    problemSearch,
+    submissionId,
+    userSearch,
+    language,
+    status,
+    from,
+    to,
+    page,
+    perPage,
+  } = params;
 
   // 动态构建筛选条件（仅对提供的参数添加条件）
   const conditions: ReturnType<typeof eq>[] = [];
@@ -117,13 +138,47 @@ export async function listSubmissions(
   if (from) conditions.push(gte(submissions.created_at, from));
   if (to) conditions.push(lte(submissions.created_at, to));
 
+  // problemSearch: problem_id 精确匹配 OR problems.title ILIKE 模糊搜索
+  if (problemSearch) {
+    conditions.push(
+      or(
+        eq(submissions.problem_id, problemSearch),
+        ilike(problems.title, `%${problemSearch}%`),
+      ) as unknown as ReturnType<typeof eq>,
+    );
+  }
+
+  // submissionId: submissions.id ILIKE 前缀匹配
+  if (submissionId) {
+    conditions.push(
+      ilike(submissions.id, `${submissionId}%`) as unknown as ReturnType<
+        typeof eq
+      >,
+    );
+  }
+
+  // userSearch: users.username ILIKE OR submissions.user_id 前缀匹配
+  if (userSearch) {
+    conditions.push(
+      or(
+        ilike(users.username, `%${userSearch}%`),
+        ilike(submissions.user_id, `${userSearch}%`),
+      ) as unknown as ReturnType<typeof eq>,
+    );
+  }
+
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  // COUNT 总数
-  const [countRow] = await db
+  // COUNT 总数（需 LEFT JOIN problems 以支持 problemSearch，users 以支持 userSearch）
+  let countQuery = db
     .select({ total: sql<number>`count(*)` })
     .from(submissions)
-    .where(where);
+    .leftJoin(problems, eq(submissions.problem_id, problems.id));
+  // userSearch 需要关联 users 表
+  if (userSearch) {
+    countQuery = countQuery.leftJoin(users, eq(submissions.user_id, users.id));
+  }
+  const [countRow] = await countQuery.where(where);
 
   const total = Number(countRow?.total ?? 0);
 
@@ -134,8 +189,8 @@ export async function listSubmissions(
 
   const offset = (page - 1) * perPage;
 
-  // 数据查询：LEFT JOIN problems + evaluation_results
-  const rows = await db
+  // 数据查询：LEFT JOIN problems + evaluation_results（+ users 当需要 userSearch 时）
+  let dataQuery = db
     .select({
       id: submissions.id,
       user_id: submissions.user_id,
@@ -147,14 +202,22 @@ export async function listSubmissions(
       problem_title: problems.title,
       result_status: evaluationResults.status,
       result_score: evaluationResults.score,
+      result_time_ms: evaluationResults.time_ms,
+      result_memory_kb: evaluationResults.memory_kb,
     })
     .from(submissions)
     .leftJoin(problems, eq(submissions.problem_id, problems.id))
     .leftJoin(
       evaluationResults,
       eq(evaluationResults.submission_id, submissions.id),
-    )
-    .where(where)
+    );
+  if (userSearch) {
+    dataQuery = dataQuery.leftJoin(
+      users,
+      eq(submissions.user_id, users.id),
+    );
+  }
+  const rows = await dataQuery.where(where)
     .orderBy(sql`${submissions.created_at} DESC`)
     .offset(offset)
     .limit(perPage);
@@ -175,6 +238,8 @@ export async function listSubmissions(
       ? {
         status: row.result_status,
         score: row.result_score ?? 0,
+        time_ms: row.result_time_ms,
+        memory_kb: row.result_memory_kb,
       }
       : null,
   }));
