@@ -9,7 +9,7 @@ const sc: Record<Size, string> = { sm: "px-3 py-1.5 text-xs gap-1", md: "px-4 py
 const cls = computed(() => { const b = "inline-flex items-center justify-center font-semibold rounded-md border transition-all duration-150 cursor-pointer no-underline"; const s = (props.loading || props.disabled) ? "opacity-50 cursor-not-allowed pointer-events-none" : ""; return [b, vc[props.variant], sc[props.size], s].join(" ") })
 </script>
 <template>
-  <NuxtLink v-if="to && !disabled && !loading" :to="to" :class="cls"><Loader2 v-if="loading" :size="16" class="animate-spin" /><slot /></NuxtLink>
-  <a v-else-if="href && !disabled && !loading" :href="href" target="_blank" rel="noopener" :class="cls"><Loader2 v-if="loading" :size="16" class="animate-spin" /><slot /></a>
+  <NuxtLink v-if="to && !disabled" :to="to" :class="cls"><Loader2 v-if="loading" :size="16" class="animate-spin" /><slot /></NuxtLink>
+  <a v-else-if="href && !disabled" :href="href" target="_blank" rel="noopener" :class="cls"><Loader2 v-if="loading" :size="16" class="animate-spin" /><slot /></a>
   <button v-else :class="cls" :disabled="disabled || loading"><Loader2 v-if="loading" :size="16" class="animate-spin" /><slot /></button>
 </template>

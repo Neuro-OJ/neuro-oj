@@ -91,8 +91,8 @@ function onKeydown(e: KeyboardEvent) {
 onMounted(() => document.addEventListener("keydown", onKeydown))
 onUnmounted(() => document.removeEventListener("keydown", onKeydown))
 
-function handleLogout() {
-    logout()
+async function handleLogout() {
+    await logout()
     showLogoutConfirm.value = false
     router.replace("/")
 }

@@ -58,9 +58,8 @@
                             id="password"
                             v-model="form.password"
                             :type="showPassword ? 'text' : 'password'"
-                            placeholder="8-30 位字母或数字"
+                            placeholder="至少 12 位，需包含字母和数字"
                             autocomplete="new-password"
-                            maxlength="30"
                             :disabled="loading"
                             @focus="fieldErrors.password = ''"
                         />
@@ -184,11 +183,17 @@ function validate(): boolean {
     if (!form.password) {
         fieldErrors.password = "请输入密码"
         valid = false
-    } else if (form.password.length < 8) {
-        fieldErrors.password = "密码长度 8-30 位"
+    } else if (form.password.length < 12) {
+        fieldErrors.password = "密码长度不能少于 12 位"
         valid = false
-    } else if (!/^[a-zA-Z0-9]+$/.test(form.password)) {
-        fieldErrors.password = "密码仅允许字母和数字"
+    } else if (!/[a-z]/.test(form.password)) {
+        fieldErrors.password = "密码必须包含至少一个小写字母"
+        valid = false
+    } else if (!/[A-Z]/.test(form.password)) {
+        fieldErrors.password = "密码必须包含至少一个大写字母"
+        valid = false
+    } else if (!/[0-9]/.test(form.password)) {
+        fieldErrors.password = "密码必须包含至少一个数字"
         valid = false
     }
 

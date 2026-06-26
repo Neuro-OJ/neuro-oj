@@ -44,7 +44,6 @@
                             :type="showPassword ? 'text' : 'password'"
                             placeholder="请输入密码（仅字母和数字）"
                             autocomplete="current-password"
-                            maxlength="30"
                             :disabled="loading"
                             @focus="fieldErrors.password = ''"
                         />
@@ -139,12 +138,6 @@ function validate(): boolean {
 
     if (!form.password) {
         fieldErrors.password = "请输入密码"
-        valid = false
-    } else if (form.password.length < 8) {
-        fieldErrors.password = "密码长度 8-30 位"
-        valid = false
-    } else if (!/^[a-zA-Z0-9]+$/.test(form.password)) {
-        fieldErrors.password = "密码仅允许字母和数字"
         valid = false
     }
 

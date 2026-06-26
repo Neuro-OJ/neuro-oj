@@ -44,6 +44,7 @@ const route = useRoute()
 const { isLoggedIn, loading } = useAuth()
 const submissionId = route.params.id as string
 // 不使用 useFetch（setup 阶段 token 可能未就绪），改为手动管理
+const isMounted = ref(true)
 const data = ref<SubmissionResponse | null>(null)
 const submission = computed(() => data.value?.data ?? null)
 const isFinished = computed(
@@ -63,16 +64,16 @@ watch(
 )
 // 自动轮询：等 auth token 就绪后开始，直到状态变为 finished/error
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let pollReqId = 0
 const POLL_INTERVAL_MS = 1500
 async function pollSubmission() {
   if (!isMounted.value) return
-  abortController?.abort()
-  abortController = new AbortController()
+  const thisReq = ++pollReqId
   try {
     const res = await $fetch<SubmissionResponse>(
       `/api/v1/submissions/${submissionId}`,
     )
-    if (!isMounted.value) return
+    if (!isMounted.value || thisReq !== pollReqId) return
       if (res) {
       data.value = res
       const status = res.data?.status
@@ -81,7 +82,6 @@ async function pollSubmission() {
       }
     }
   } catch (err: unknown) {
-    if (err instanceof Error && err.name === "AbortError") return
     if (!isMounted.value) return
   }
 }
@@ -105,6 +105,7 @@ watch(
 )
 onUnmounted(() => {
   stopPolling()
+  isMounted.value = false
 })
 // 状态标签
 const statusLabel: Record<string, string> = {
@@ -204,7 +205,6 @@ watch(
       :to="`/problems/${submission.problem_id}`"
       class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
     >
-import { getLanguageLabel, formatScore, formatTime, formatMemory } from "\~\/composables\/use\-submissions"
       <ArrowLeft :size="16" />
       返回题目
     </NuxtLink>
