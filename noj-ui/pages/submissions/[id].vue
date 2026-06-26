@@ -146,21 +146,6 @@ const statusBadgeColors: Record<string, string> = {
   judging: "bg-blue-50 text-blue-700 border border-blue-200",
   error: "bg-red-50 text-red-800 border border-red-200",
 }
-function formatScore(raw: number | undefined): string {
-  if (raw === undefined || raw === null) return "--"
-  return (raw / 100).toFixed(1)
-}
-function formatTime(ms: number | undefined | null): string {
-  if (ms === undefined || ms === null) return "--"
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(2)}s`
-}
-function formatMemory(kb: number | undefined | null): string {
-  if (kb === undefined || kb === null) return "--"
-  if (kb < 1024) return `${kb}KB`
-  if (kb < 1024 * 1024) return `${(kb / 1024).toFixed(1)}MB`
-  return `${(kb / 1024 / 1024).toFixed(2)}GB`
-}
 function formatDateTime(iso: string | undefined): string {
   if (!iso) return "--"
   const d = new Date(iso)

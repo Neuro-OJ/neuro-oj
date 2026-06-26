@@ -32,13 +32,14 @@ const data = ref<QueueData | null>(null)
 
 const isMounted = ref(true)
 
-
 // 实时时钟——确保 elapsed 时间每秒更新而不是仅在轮询时刷新
 const now = ref(Date.now())
 let clockTimer: ReturnType<typeof setInterval> | null = null
 onMounted(() => { clockTimer = setInterval(() => { now.value = Date.now() }, 1000) })
-isMounted.value = false
-  onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); clockTimer = null })
+onUnmounted(() => {
+  isMounted.value = false
+  if (clockTimer) clearInterval(clockTimer); clockTimer = null
+})
 
 // 语言标签映射
 function formatDateTime(iso: string): string {
