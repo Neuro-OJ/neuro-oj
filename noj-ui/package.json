@@ -18,7 +18,8 @@
     "katex": "^0.17.0",
     "markdown-it": "^14.2.0",
     "monaco-editor": "^0.55.1",
-    "nuxt": "^4.4.8"
+    "nuxt": "^4.4.8",
+    "sweetalert2": "^11.26.25"
   },
   "devDependencies": {
     "typescript": "^5.0.0"

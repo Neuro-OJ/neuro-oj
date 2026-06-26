@@ -21,7 +21,7 @@ NOJ 分为三个核心模块：
 ```
 
 - **noj-core** — 核心后端服务。使用 Deno + Hono 框架，提供 RESTful API。
-- **noj-ui** — 核心前端。使用 Nuxt.js (Vue 3)，通过 RESTful API 与 noj-core
+- **noj-ui** — 核心前端。使用 Nuxt 4 (Vue 3), Deno 运行时，通过 RESTful API 与 noj-core
   交互。
 - **noj-judge** — 评测 Worker。使用 Rust 编写，通过 Redis
   消息队列接收评测任务，使用 Docker 创建隔离的评测环境，执行评测后返回结果。
@@ -76,7 +76,7 @@ noj-judge 收到任务后执行：
 | 模块      | 语言/运行时          | 核心框架       | 关键依赖               |
 | --------- | -------------------- | -------------- | ---------------------- |
 | noj-core  | Deno / TypeScript    | Hono           | Redis (ioredis/bullmq) |
-| noj-ui    | Node.js / TypeScript | Nuxt 3 / Vue 3 | —                      |
+| noj-ui    | Deno / TypeScript    | Nuxt 4 / Vue 3 | Tailwind CSS, Monaco                      |
 | noj-judge | Rust                 | Tokio          | redis-rs, Docker API   |
 | 基础设施  | —                    | —              | Redis (MQ)             |
 
@@ -90,7 +90,7 @@ neuro-oj/
 │       ├── main.ts
 │       ├── mod.ts
 │       └── routes/
-├── noj-ui/              # 核心前端 (Nuxt.js)
+├── noj-ui/              # 核心前端 (Nuxt 4 / Deno)
 │   ├── package.json
 │   ├── nuxt.config.ts
 │   ├── app.vue

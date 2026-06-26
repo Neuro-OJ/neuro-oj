@@ -152,7 +152,6 @@ function validate(): boolean {
 }
 
 async function handleLogin() {
-    setError("")
     if (!validate()) return
 
     loading.value = true

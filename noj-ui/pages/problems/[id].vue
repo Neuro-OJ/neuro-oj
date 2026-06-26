@@ -160,7 +160,7 @@ async function handleSubmit() {
       </div>
 
       <div class="px-7 py-6">
-        <ProblemDescription :content="problem.description" />
+        <MarkdownRenderer :content="problem.description" />
       </div>
     </div>
 
