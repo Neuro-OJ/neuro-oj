@@ -33,6 +33,7 @@ watch(searchInput, (val) => {
 
 watch(() => props.keyword, (val) => {
   if (val !== searchInput.value) {
+    clearTimeout(debounceTimer)
     searchInput.value = val
   }
 })
@@ -81,7 +82,7 @@ function selectType(value: string) {
         v-if="searchInput"
         class="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors"
         aria-label="清除搜索"
-        @click="searchInput = ''; emit('update:keyword', '')"
+        @click="searchInput = ''"
       >
         <span class="text-sm leading-none">&times;</span>
       </button>

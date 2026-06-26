@@ -139,13 +139,13 @@ async function handleDelete() {
 </script>
 
 <template>
-  <div class="page">
-    <div class="header">
+  <div class="flex flex-col gap-4">
+    <div class="flex items-start justify-between gap-3">
       <div>
-        <h1 class="title">分类管理</h1>
-        <span class="subtitle">管理题目分类</span>
+        <h1 class="text-[22px] font-bold text-text">分类管理</h1>
+        <span class="text-sm text-text-secondary">管理题目分类</span>
       </div>
-      <button class="btn btn-primary" @click="openCreate">
+      <button class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark" @click="openCreate">
         <Plus :size="16" />
         新建分类
       </button>
@@ -159,11 +159,11 @@ async function handleDelete() {
       empty-text="暂无分类"
     >
       <template #actions="{ row }">
-        <div class="action-btns">
-          <button class="icon-btn" title="编辑" @click="openEdit(row)">
+        <div class="flex gap-1.5 justify-center">
+          <button class="flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-[#f5f5f5] hover:text-text" title="编辑" @click="openEdit(row)">
             <Pencil :size="15" />
           </button>
-          <button class="icon-btn danger" title="删除" @click="confirmDelete(row)">
+          <button class="flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" title="删除" @click="confirmDelete(row)">
             <Trash2 :size="15" />
           </button>
         </div>
@@ -180,20 +180,20 @@ async function handleDelete() {
     @confirm="handleSave"
     @cancel="showForm = false"
   >
-    <div class="form">
-      <div class="field">
-        <label class="label">名称 <span class="required">*</span></label>
-        <input v-model="formName" class="input" placeholder="分类名称" />
+    <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-1">
+        <label class="text-[13px] font-semibold text-text">名称 <span class="text-error-text">*</span></label>
+        <input v-model="formName" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="分类名称" />
       </div>
-      <div class="field">
-        <label class="label">标识 <span class="required">*</span></label>
-        <input v-model="formSlug" class="input" placeholder="分类标识（英文）" />
+      <div class="flex flex-col gap-1">
+        <label class="text-[13px] font-semibold text-text">标识 <span class="text-error-text">*</span></label>
+        <input v-model="formSlug" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="分类标识（英文）" />
       </div>
-      <div class="field">
-        <label class="label">描述</label>
-        <input v-model="formDesc" class="input" placeholder="可选描述" />
+      <div class="flex flex-col gap-1">
+        <label class="text-[13px] font-semibold text-text">描述</label>
+        <input v-model="formDesc" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="可选描述" />
       </div>
-      <p v-if="formError" class="error-text">{{ formError }}</p>
+      <p v-if="formError" class="text-error-text text-[13px]">{{ formError }}</p>
     </div>
   </AdminModal>
 
@@ -208,124 +208,6 @@ async function handleDelete() {
     @cancel="showDeleteConfirm = false"
   >
     <p>确定要删除分类 <strong>{{ deleteTarget?.name }}</strong> 吗？此操作不可撤销。</p>
-    <p v-if="formError" class="error-text">{{ formError }}</p>
+    <p v-if="formError" class="text-error-text text-[13px]">{{ formError }}</p>
   </AdminModal>
 </template>
-
-<style scoped>
-.page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.title {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--c-text);
-}
-
-.subtitle {
-  font-size: 14px;
-  color: var(--c-text-secondary);
-}
-
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  background: var(--c-primary);
-  color: var(--c-white);
-  border: 1.5px solid var(--c-primary);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.btn-primary:hover {
-  background: var(--c-primary-dark);
-  border-color: var(--c-primary-dark);
-}
-
-.action-btns {
-  display: flex;
-  gap: 6px;
-  justify-content: center;
-}
-
-.icon-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--c-border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--c-text-secondary);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.icon-btn:hover {
-  background: var(--c-bg-hover, #f5f5f5);
-  color: var(--c-text);
-}
-
-.icon-btn.danger:hover {
-  background: #fef2f2;
-  color: #dc2626;
-  border-color: #fecaca;
-}
-
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--c-text);
-}
-
-.required {
-  color: #dc2626;
-}
-
-.input {
-  padding: 8px 12px;
-  font-size: 14px;
-  border: 1px solid var(--c-border);
-  border-radius: 6px;
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.input:focus {
-  border-color: var(--c-primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-.error-text {
-  color: #dc2626;
-  font-size: 13px;
-}
-</style>

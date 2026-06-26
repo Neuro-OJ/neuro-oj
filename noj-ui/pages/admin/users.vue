@@ -108,10 +108,10 @@ async function handleRoleSwitch() {
 </script>
 
 <template>
-  <div class="page">
-    <div class="header">
-      <h1 class="title">用户管理</h1>
-      <span class="subtitle">管理所有用户的角色权限</span>
+  <div class="flex flex-col gap-4">
+    <div class="flex flex-col gap-1">
+      <h1 class="text-[22px] font-bold text-text">用户管理</h1>
+      <span class="text-sm text-text-secondary">管理所有用户的角色权限</span>
     </div>
 
     <AdminTable
@@ -122,7 +122,10 @@ async function handleRoleSwitch() {
       empty-text="暂无用户"
     >
       <template #cell-role="{ row }">
-        <span class="role-badge" :class="row.role === 'admin' ? 'admin' : 'user'">
+        <span
+          class="inline-flex items-center gap-1 px-2 py-[3px] rounded text-xs font-semibold"
+          :class="row.role === 'admin' ? 'bg-blue-50 text-info-text' : 'bg-[#f5f5f5] text-[#6b7280]'"
+        >
           <ShieldCheck v-if="row.role === 'admin'" :size="14" />
           <ShieldX v-else :size="14" />
           {{ row.role === "admin" ? "管理员" : "用户" }}
@@ -131,8 +134,10 @@ async function handleRoleSwitch() {
 
       <template #actions="{ row }">
         <button
-          class="btn btn-xs"
-          :class="row.role === 'admin' ? 'btn-outline-warning' : 'btn-outline-primary'"
+          class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-transparent"
+          :class="row.role === 'admin'
+            ? 'text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white'
+            : 'text-info-text border-info-text bg-transparent hover:bg-info-text hover:text-white'"
           @click="confirmRoleSwitch(row)"
         >
           {{ row.role === "admin" ? "降为用户" : "设为管理员" }}
@@ -160,89 +165,6 @@ async function handleRoleSwitch() {
     <p>确定将 <strong>{{ targetUser?.username }}</strong> 的角色从
     <strong>{{ targetUser?.role === "admin" ? "管理员" : "普通用户" }}</strong>
     改为 <strong>{{ targetUser?.role === "admin" ? "普通用户" : "管理员" }}</strong> 吗？</p>
-    <p v-if="switchError" class="error-text">{{ switchError }}</p>
+    <p v-if="switchError" class="mt-2 text-error-text text-[13px]">{{ switchError }}</p>
   </AdminModal>
 </template>
-
-<style scoped>
-.page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.header {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.title {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--c-text);
-}
-
-.subtitle {
-  font-size: 14px;
-  color: var(--c-text-secondary);
-}
-
-.role-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.role-badge.admin {
-  background: #eff6ff;
-  color: #3b82f6;
-}
-
-.role-badge.user {
-  background: #f5f5f5;
-  color: #6b7280;
-}
-
-.btn-xs {
-  padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
-  border: 1.5px solid transparent;
-}
-
-.btn-outline-primary {
-  color: #3b82f6;
-  border-color: #3b82f6;
-  background: transparent;
-}
-
-.btn-outline-primary:hover {
-  background: #3b82f6;
-  color: #fff;
-}
-
-.btn-outline-warning {
-  color: #f59e0b;
-  border-color: #f59e0b;
-  background: transparent;
-}
-
-.btn-outline-warning:hover {
-  background: #f59e0b;
-  color: #fff;
-}
-
-.error-text {
-  margin-top: 8px;
-  color: #dc2626;
-  font-size: 13px;
-}
-</style>

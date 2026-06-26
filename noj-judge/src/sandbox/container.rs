@@ -41,8 +41,8 @@ fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
         let mut file = archive.by_index(i).context("读取 zip 条目失败")?;
         let file_name = file.name().to_string();
 
-        // 防止 path traversal 攻击：拒绝任何含 .. 路径组件的条目
-        if file_name.split(['/', '\\']).any(|part| part == "..") {
+        // 防止 path traversal 攻击：拒绝任何含 .. 路径组件或绝对路径的条目
+        if file_name.split(['/', '\\']).any(|part| part == "..") || file_name.starts_with('/') {
             warn!("跳过 zip 路径遍历: {}", file_name);
             continue;
         }

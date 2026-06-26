@@ -44,6 +44,7 @@ const route = useRoute()
 const { isLoggedIn, loading } = useAuth()
 const submissionId = route.params.id as string
 // 不使用 useFetch（setup 阶段 token 可能未就绪），改为手动管理
+const isMounted = ref(true)
 const data = ref<SubmissionResponse | null>(null)
 const submission = computed(() => data.value?.data ?? null)
 const isFinished = computed(
@@ -63,16 +64,16 @@ watch(
 )
 // 自动轮询：等 auth token 就绪后开始，直到状态变为 finished/error
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let pollReqId = 0
 const POLL_INTERVAL_MS = 1500
 async function pollSubmission() {
   if (!isMounted.value) return
-  abortController?.abort()
-  abortController = new AbortController()
+  const thisReq = ++pollReqId
   try {
     const res = await $fetch<SubmissionResponse>(
       `/api/v1/submissions/${submissionId}`,
     )
-    if (!isMounted.value) return
+    if (!isMounted.value || thisReq !== pollReqId) return
       if (res) {
       data.value = res
       const status = res.data?.status
@@ -81,7 +82,6 @@ async function pollSubmission() {
       }
     }
   } catch (err: unknown) {
-    if (err instanceof Error && err.name === "AbortError") return
     if (!isMounted.value) return
   }
 }
@@ -105,6 +105,7 @@ watch(
 )
 onUnmounted(() => {
   stopPolling()
+  isMounted.value = false
 })
 // 状态标签
 const statusLabel: Record<string, string> = {
@@ -144,21 +145,6 @@ const statusBadgeColors: Record<string, string> = {
   pending: "bg-gray-50 text-slate-500 border border-border",
   judging: "bg-blue-50 text-blue-700 border border-blue-200",
   error: "bg-red-50 text-red-800 border border-red-200",
-}
-function formatScore(raw: number | undefined): string {
-  if (raw === undefined || raw === null) return "--"
-  return (raw / 100).toFixed(1)
-}
-function formatTime(ms: number | undefined | null): string {
-  if (ms === undefined || ms === null) return "--"
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(2)}s`
-}
-function formatMemory(kb: number | undefined | null): string {
-  if (kb === undefined || kb === null) return "--"
-  if (kb < 1024) return `${kb}KB`
-  if (kb < 1024 * 1024) return `${(kb / 1024).toFixed(1)}MB`
-  return `${(kb / 1024 / 1024).toFixed(2)}GB`
 }
 function formatDateTime(iso: string | undefined): string {
   if (!iso) return "--"
@@ -204,7 +190,6 @@ watch(
       :to="`/problems/${submission.problem_id}`"
       class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
     >
-import { getLanguageLabel, formatScore, formatTime, formatMemory } from "\~\/composables\/use\-submissions"
       <ArrowLeft :size="16" />
       返回题目
     </NuxtLink>

@@ -1,22 +1,22 @@
 <template>
-    <aside class="sidebar">
-        <div class="sidebar-inner">
-            <nav class="nav-links">
-                <NuxtLink to="/" class="nav-link">
-                    <House class="nav-icon" />
-                    <span class="nav-text">首页</span>
+    <aside class="group fixed top-16 left-0 flex flex-col w-15 h-[calc(100vh-64px)] bg-white border-r border-border z-99 overflow-hidden whitespace-nowrap transition-[width] duration-250 ease-out hover:w-[200px]">
+        <div class="flex-1 p-4 px-2">
+            <nav class="flex flex-col gap-1">
+                <NuxtLink to="/" class="flex items-center gap-3 p-2.5 rounded-lg no-underline text-text-secondary text-sm font-medium transition-colors hover:bg-primary-hover-bg hover:text-primary">
+                    <House class="size-5 min-w-5" />
+                    <span class="opacity-0 group-hover:opacity-100 transition-opacity duration-150">首页</span>
                 </NuxtLink>
-                <NuxtLink to="/problems" class="nav-link">
-                    <FileText class="nav-icon" />
-                    <span class="nav-text">题库</span>
+                <NuxtLink to="/problems" class="flex items-center gap-3 p-2.5 rounded-lg no-underline text-text-secondary text-sm font-medium transition-colors hover:bg-primary-hover-bg hover:text-primary">
+                    <FileText class="size-5 min-w-5" />
+                    <span class="opacity-0 group-hover:opacity-100 transition-opacity duration-150">题库</span>
                 </NuxtLink>
             </nav>
         </div>
-        <div class="sidebar-bottom">
-            <nav class="nav-links">
-                <NuxtLink to="/about" class="nav-link">
-                    <Info class="nav-icon" />
-                    <span class="nav-text">关于</span>
+        <div class="p-2 border-t border-border">
+            <nav class="flex flex-col gap-1">
+                <NuxtLink to="/about" class="flex items-center gap-3 p-2.5 rounded-lg no-underline text-text-secondary text-sm font-medium transition-colors hover:bg-primary-hover-bg hover:text-primary">
+                    <Info class="size-5 min-w-5" />
+                    <span class="opacity-0 group-hover:opacity-100 transition-opacity duration-150">关于</span>
                 </NuxtLink>
             </nav>
         </div>
@@ -26,74 +26,3 @@
 <script setup lang="ts">
 import { House, FileText, Info } from "@lucide/vue"
 </script>
-
-<style scoped>
-.sidebar {
-    position: fixed;
-    top: 64px;
-    left: 0;
-    display: flex;
-    flex-direction: column;
-    width: 60px;
-    height: calc(100vh - 64px);
-    background: var(--c-white);
-    border-right: 1px solid var(--c-border);
-    z-index: 99;
-    overflow: hidden;
-    white-space: nowrap;
-    transition: width 0.25s ease;
-}
-
-.sidebar:hover {
-    width: 200px;
-}
-
-.sidebar-inner {
-    flex: 1;
-    padding: 16px 8px;
-}
-
-.sidebar-bottom {
-    padding: 8px;
-    border-top: 1px solid var(--c-border);
-}
-
-.nav-links {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.nav-link {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px;
-    border-radius: 8px;
-    text-decoration: none;
-    color: var(--c-text-secondary);
-    font-size: 15px;
-    font-weight: 500;
-    transition: background 0.2s, color 0.2s;
-}
-
-.nav-link:hover {
-    background: var(--c-primary-hover-bg);
-    color: var(--c-primary);
-}
-
-.nav-icon {
-    width: 20px;
-    height: 20px;
-    min-width: 20px;
-}
-
-.nav-text {
-    opacity: 0;
-    transition: opacity 0.15s ease;
-}
-
-.sidebar:hover .nav-text {
-    opacity: 1;
-}
-</style>

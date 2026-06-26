@@ -10,7 +10,6 @@ definePageMeta({
 const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
-// 认证守卫
 watch(loading, (val) => {
   if (!val && !isLoggedIn.value) router.replace("/login")
 }, { immediate: true })
@@ -31,16 +30,11 @@ async function loadStats() {
   statsLoading.value = true
   statsError.value = ""
 
-  // 分别请求，单个失败不影响其他统计项
   const [userRes, problemRes, submissionRes, queueRes] = await Promise.all([
-    $fetch<{ pagination: { total: number } }>("/api/v1/admin/users")
-      .catch(() => null),
-    $fetch<{ total: number }>("/api/v1/problems")
-      .catch(() => null),
-    $fetch<{ pagination: { total: number } }>("/api/v1/admin/submissions")
-      .catch(() => null),
-    $fetch<{ stats: { pending_count: number; judging_count: number; completed_today: number } }>("/api/v1/queue")
-      .catch(() => null),
+    $fetch<{ pagination: { total: number } }>("/api/v1/admin/users").catch(() => null),
+    $fetch<{ total: number }>("/api/v1/problems").catch(() => null),
+    $fetch<{ pagination: { total: number } }>("/api/v1/admin/submissions").catch(() => null),
+    $fetch<{ stats: { pending_count: number; judging_count: number; completed_today: number } }>("/api/v1/queue").catch(() => null),
   ])
 
   const allStats: StatsCard[] = []
@@ -53,249 +47,78 @@ async function loadStats() {
   if (allStats.length === 0 && !queueRes) {
     statsError.value = "加载统计数据失败"
   }
-
   statsLoading.value = false
 }
 
-// 等 auth 就绪后加载
-watch(isLoggedIn, (val) => {
-  if (val) loadStats()
-}, { immediate: true })
+watch(isLoggedIn, (val) => { if (val) loadStats() }, { immediate: true })
 
 const refreshing = ref(false)
 async function handleRefresh() {
-  refreshing.value = true
-  await loadStats()
-  refreshing.value = false
+  refreshing.value = true; await loadStats(); refreshing.value = false
 }
 </script>
 
 <template>
-  <div class="dashboard">
+  <!-- tailwind-dashboard -->
+  <div class="flex flex-col gap-6">
     <!-- 顶栏 -->
-    <div class="header">
-      <h1 class="title">仪表盘</h1>
-      <button class="btn btn-outline" :disabled="refreshing" @click="handleRefresh">
-        <RefreshCw :size="16" :class="{ spin: refreshing }" />
+    <div class="flex items-center justify-between">
+      <h1 class="text-[22px] font-bold text-text">仪表盘</h1>
+      <button class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-text-secondary bg-white border border-border rounded-lg cursor-pointer transition-all hover:border-text-secondary disabled:opacity-50 disabled:cursor-not-allowed" :disabled="refreshing" @click="handleRefresh">
+        <RefreshCw :size="16" :class="{ 'animate-spin': refreshing }" />
         {{ refreshing ? "刷新中..." : "刷新" }}
       </button>
     </div>
 
     <!-- 加载态 -->
-    <div v-if="statsLoading && stats.length === 0" class="state-box">
-      <Loader2 :size="24" class="spin" />
+    <div v-if="statsLoading && stats.length === 0" class="flex flex-col items-center justify-center gap-2.5 px-6 py-12 text-text-secondary text-sm bg-white border border-border rounded-xl">
+      <Loader2 :size="24" class="animate-spin" />
       <span>加载中...</span>
     </div>
 
     <!-- 错误态 -->
-    <div v-else-if="statsError && stats.length === 0" class="state-box error">
+    <div v-else-if="statsError && stats.length === 0" class="flex flex-col items-center justify-center gap-2.5 px-6 py-12 text-red-600 text-sm bg-white border border-border rounded-xl">
       <AlertCircle :size="20" />
       <span>{{ statsError }}</span>
-      <button class="btn btn-outline mt-4" @click="loadStats">重试</button>
+      <button class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-text-secondary bg-white border border-border rounded-lg cursor-pointer transition-all hover:border-text-secondary mt-4" @click="loadStats">重试</button>
     </div>
 
     <!-- 统计卡片 -->
-    <div v-else class="stats-grid">
+    <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
       <div
-        v-for="card in stats"
-        :key="card.label"
-        class="stat-card"
+        v-for="card in stats" :key="card.label"
+        class="flex items-center gap-4 p-5 bg-white border border-border rounded-xl"
       >
-        <div class="stat-icon" :style="{ background: card.color + '15', color: card.color }">
+        <div class="flex items-center justify-center size-12 rounded-xl shrink-0" :style="{ background: card.color + '15', color: card.color }">
           <component :is="card.icon" :size="24" />
         </div>
-        <div class="stat-info">
-          <span class="stat-value">{{ card.value }}</span>
-          <span class="stat-label">{{ card.label }}</span>
+        <div class="flex flex-col gap-0.5">
+          <span class="text-2xl font-bold text-text leading-tight">{{ card.value }}</span>
+          <span class="text-xs text-text-secondary">{{ card.label }}</span>
         </div>
       </div>
     </div>
 
     <!-- 队列状态 -->
-    <div v-if="queueStats" class="queue-section">
-      <h2 class="section-title">
+    <div v-if="queueStats" class="bg-white border border-border rounded-xl p-5">
+      <h2 class="flex items-center gap-2 text-base font-semibold text-text mb-4">
         <Activity :size="18" />
         评测队列状态
       </h2>
-      <div class="queue-grid">
-        <div class="queue-item">
-          <span class="queue-value warning">{{ queueStats.pending_count }}</span>
-          <span class="queue-label">等待中</span>
+      <div class="grid grid-cols-3 gap-4">
+        <div class="flex flex-col items-center gap-1 p-4 rounded-lg bg-gray-50">
+          <span class="text-[28px] font-bold text-amber-500">{{ queueStats.pending_count }}</span>
+          <span class="text-xs text-text-secondary">等待中</span>
         </div>
-        <div class="queue-item">
-          <span class="queue-value info">{{ queueStats.judging_count }}</span>
-          <span class="queue-label">评测中</span>
+        <div class="flex flex-col items-center gap-1 p-4 rounded-lg bg-gray-50">
+          <span class="text-[28px] font-bold text-blue-500">{{ queueStats.judging_count }}</span>
+          <span class="text-xs text-text-secondary">评测中</span>
         </div>
-        <div class="queue-item">
-          <span class="queue-value success">{{ queueStats.completed_today }}</span>
-          <span class="queue-label">今日完成</span>
+        <div class="flex flex-col items-center gap-1 p-4 rounded-lg bg-gray-50">
+          <span class="text-[28px] font-bold text-emerald-500">{{ queueStats.completed_today }}</span>
+          <span class="text-xs text-text-secondary">今日完成</span>
         </div>
       </div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.dashboard {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.title {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--c-text);
-}
-
-.btn-outline {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--c-text-secondary);
-  border: 1.5px solid var(--c-border);
-  background: var(--c-white);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.btn-outline:hover:not(:disabled) {
-  border-color: var(--c-text-secondary);
-}
-
-.btn-outline:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.state-box {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 48px 24px;
-  color: var(--c-text-secondary);
-  font-size: 14px;
-  background: var(--c-white);
-  border: 1px solid var(--c-border);
-  border-radius: 10px;
-}
-
-.state-box.error {
-  color: #dc2626;
-}
-
-.mt-4 {
-  margin-top: 16px;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-}
-
-.stat-card {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 20px;
-  background: var(--c-white);
-  border: 1px solid var(--c-border);
-  border-radius: 10px;
-}
-
-.stat-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 10px;
-  flex-shrink: 0;
-}
-
-.stat-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.stat-value {
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--c-text);
-  line-height: 1.2;
-}
-
-.stat-label {
-  font-size: 13px;
-  color: var(--c-text-secondary);
-}
-
-.queue-section {
-  background: var(--c-white);
-  border: 1px solid var(--c-border);
-  border-radius: 10px;
-  padding: 20px;
-}
-
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--c-text);
-  margin-bottom: 16px;
-}
-
-.queue-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-
-.queue-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 16px;
-  border-radius: 8px;
-  background: #fafafa;
-}
-
-.queue-value {
-  font-size: 28px;
-  font-weight: 700;
-}
-
-.queue-label {
-  font-size: 13px;
-  color: var(--c-text-secondary);
-}
-
-.warning { color: #f59e0b; }
-.info { color: #3b82f6; }
-.success { color: #10b981; }
-</style>

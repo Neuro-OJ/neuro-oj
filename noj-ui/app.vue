@@ -12,7 +12,6 @@
     --c-text: #1e293b; --c-text-secondary: #64748b; --c-text-muted: #94a3b8;
     --c-border: #e2e8f0; --c-bg-page: #f8fafc; --c-white: #ffffff;
 }
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-html { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: var(--c-text); scroll-behavior: smooth; overflow-x: hidden; }
-body { background: var(--c-bg-page); min-height: 100vh; }
+/* CSS 变量（设计 Token）统一在 :root 中定义，tailwind.config.ts 通过 var() 引用。
+   全局重置由 Tailwind Preflight 提供，字体和背景通过 Tailwind 类在 layouts 中应用。 */
 </style>
