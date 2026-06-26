@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { getLanguageLabel, formatScore } from "\~\/composables\/use\-submissions"
 import { Clock, CheckCircle, XCircle, Loader2 } from "@lucide/vue"
 
 interface QueueItem {
@@ -29,21 +30,17 @@ interface QueueData {
 
 const data = ref<QueueData | null>(null)
 
+const isMounted = ref(true)
+
+
 // 实时时钟——确保 elapsed 时间每秒更新而不是仅在轮询时刷新
 const now = ref(Date.now())
 let clockTimer: ReturnType<typeof setInterval> | null = null
 onMounted(() => { clockTimer = setInterval(() => { now.value = Date.now() }, 1000) })
-onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); clockTimer = null })
+isMounted.value = false
+  onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); clockTimer = null })
 
 // 语言标签映射
-const languageLabel: Record<string, string> = {
-  python3: "Python 3",
-  python: "Python",
-  cpp: "C++",
-  c: "C",
-  javascript: "JavaScript",
-}
-
 function formatDateTime(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleString("zh-CN", {
@@ -116,7 +113,7 @@ usePolling(async () => {
           <div v-for="item in data.judging" :key="item.id" class="queue-row">
             <NuxtLink :to="`/submissions/${item.id}`" class="row-id">#{{ item.id.slice(0, 8) }}</NuxtLink>
             <span class="row-problem">{{ item.problem_id }} {{ item.problem_title }}</span>
-            <span class="row-lang">{{ languageLabel[item.language] || item.language }}</span>
+            <span class="row-lang">{{ getLanguageLabel(item.language) }}</span>
             <span class="row-user">{{ item.submitted_by }}</span>
             <span class="row-time">{{ formatDateTime(item.submitted_at) }}</span>
             <span class="row-elapsed"><Clock :size="14" /> {{ elapsedSince(item.judge_started_at) }}</span>
@@ -133,7 +130,7 @@ usePolling(async () => {
           <div v-for="item in data.pending" :key="item.id" class="queue-row">
             <NuxtLink :to="`/submissions/${item.id}`" class="row-id">#{{ item.id.slice(0, 8) }}</NuxtLink>
             <span class="row-problem">{{ item.problem_id }} {{ item.problem_title }}</span>
-            <span class="row-lang">{{ languageLabel[item.language] || item.language }}</span>
+            <span class="row-lang">{{ getLanguageLabel(item.language) }}</span>
             <span class="row-user">{{ item.submitted_by }}</span>
             <span class="row-time">{{ formatDateTime(item.submitted_at) }}</span>
           </div>
@@ -149,7 +146,7 @@ usePolling(async () => {
           <div v-for="item in data.recently_completed" :key="item.id" class="queue-row">
             <NuxtLink :to="`/submissions/${item.id}`" class="row-id">#{{ item.id.slice(0, 8) }}</NuxtLink>
             <span class="row-problem">{{ item.problem_id }} {{ item.problem_title }}</span>
-            <span class="row-lang">{{ languageLabel[item.language] || item.language }}</span>
+            <span class="row-lang">{{ getLanguageLabel(item.language) }}</span>
             <span class="row-user">{{ item.submitted_by }}</span>
             <span class="row-time">{{ formatDateTime(item.submitted_at) }}</span>
             <span :class="['row-score', item.status === 'error' || (item.score !== null && item.score === 0) ? 'score-zero' : '']">
@@ -194,7 +191,7 @@ usePolling(async () => {
 
 .stat-pending {
   background: #f0f0f0;
-  color: #555;
+  color: var(--c-text-secondary); /* #555 */
 }
 
 .stat-judging {
@@ -204,7 +201,7 @@ usePolling(async () => {
 
 .stat-done {
   background: #e6f4ea;
-  color: #137333;
+  color: var(--c-success-text); /* #137333 */
 }
 
 .loading-wrap {
@@ -213,7 +210,7 @@ usePolling(async () => {
   justify-content: center;
   gap: 8px;
   padding: 60px 0;
-  color: #888;
+  color: var(--c-text-muted); /* #888 */
 }
 
 .spin {
@@ -226,7 +223,7 @@ usePolling(async () => {
 
 .queue-section {
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--c-border); /* #e5e7eb */
   border-radius: 10px;
   margin-bottom: 16px;
   overflow: hidden;
@@ -240,7 +237,7 @@ usePolling(async () => {
   margin: 0;
   font-size: 15px;
   font-weight: 700;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--c-border); /* #e5e7eb */
 }
 
 .judging-title {
@@ -248,11 +245,11 @@ usePolling(async () => {
 }
 
 .pending-title {
-  color: #555;
+  color: var(--c-text-secondary); /* #555 */
 }
 
 .done-title {
-  color: #137333;
+  color: var(--c-success-text); /* #137333 */
 }
 
 .queue-row {
@@ -269,7 +266,7 @@ usePolling(async () => {
 }
 
 .queue-row:hover {
-  background: #f9fafb;
+  background: var(--c-bg-page); /* #f9fafb */
 }
 
 .row-id {
@@ -290,23 +287,23 @@ usePolling(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #111;
+  color: var(--c-text); /* #111 */
 }
 
 .row-lang {
-  color: #555;
+  color: var(--c-text-secondary); /* #555 */
   min-width: 70px;
   text-align: center;
   font-size: 12px;
 }
 
 .row-user {
-  color: #555;
+  color: var(--c-text-secondary); /* #555 */
   min-width: 60px;
 }
 
 .row-time {
-  color: #888;
+  color: var(--c-text-muted); /* #888 */
   font-size: 12px;
   min-width: 100px;
 }

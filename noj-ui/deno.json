@@ -1,4 +1,14 @@
 {
+  "tasks": {
+    "dev": "deno run -A npm:nuxt dev",
+    "build": "deno run -A npm:nuxt build",
+    "preview": "deno run -A npm:nuxt preview",
+    "lint": "deno lint",
+    "fmt": "deno fmt"
+  },
+  "lint": { "include": ["*.vue", "*.ts"] },
+  "fmt": { "include": ["*.vue", "*.ts"], "options": { "singleQuote": true, "lineWidth": 120 } },
+  "nodeModulesDir": "auto",
   "allowScripts": [
     "npm:@parcel/watcher@2.5.6",
     "npm:esbuild@0.27.7",

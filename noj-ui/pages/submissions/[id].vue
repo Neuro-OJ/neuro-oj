@@ -14,15 +14,16 @@ import {
   FileText,
   ArrowLeft,
 } from "@lucide/vue"
+import { getLanguageLabel, formatScore, formatTime, formatMemory } from "~/composables/use-submissions"
 
 interface SubmissionResult {
+
   status: string
   score: number
   time_ms: number | null
   memory_kb: number | null
   output: string
 }
-
 interface SubmissionData {
   id: string
   problem_id: string
@@ -36,16 +37,12 @@ interface SubmissionData {
   created_at: string
   result?: SubmissionResult
 }
-
 interface SubmissionResponse {
   data: SubmissionData
 }
-
 const route = useRoute()
 const { isLoggedIn, loading } = useAuth()
-
 const submissionId = route.params.id as string
-
 // 不使用 useFetch（setup 阶段 token 可能未就绪），改为手动管理
 const data = ref<SubmissionResponse | null>(null)
 const submission = computed(() => data.value?.data ?? null)
@@ -53,7 +50,6 @@ const isFinished = computed(
   () => submission.value?.status === "finished" || submission.value?.status === "error",
 )
 const showOutput = ref(true)
-
 // 认证守卫：简化 watch + onMounted 嵌套为一次 watch
 const router = useRouter()
 watch(
@@ -65,36 +61,36 @@ watch(
   },
   { immediate: true },
 )
-
 // 自动轮询：等 auth token 就绪后开始，直到状态变为 finished/error
 let pollTimer: ReturnType<typeof setInterval> | null = null
-
 const POLL_INTERVAL_MS = 1500
-
 async function pollSubmission() {
+  if (!isMounted.value) return
+  abortController?.abort()
+  abortController = new AbortController()
   try {
     const res = await $fetch<SubmissionResponse>(
       `/api/v1/submissions/${submissionId}`,
     )
-    if (res) {
+    if (!isMounted.value) return
+      if (res) {
       data.value = res
       const status = res.data?.status
       if (status === "finished" || status === "error") {
         stopPolling()
       }
     }
-  } catch {
-    // 轮询失败静默处理——下一轮会重试
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === "AbortError") return
+    if (!isMounted.value) return
   }
 }
-
 function stopPolling() {
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null
   }
 }
-
 // 登录后开始轮询，cookie 由浏览器自动发送
 watch(
   isLoggedIn,
@@ -107,11 +103,9 @@ watch(
   },
   { immediate: true },
 )
-
 onUnmounted(() => {
   stopPolling()
 })
-
 // 状态标签
 const statusLabel: Record<string, string> = {
   pending: "等待评测",
@@ -119,14 +113,12 @@ const statusLabel: Record<string, string> = {
   finished: "已完成",
   error: "系统错误",
 }
-
 // 结果状态映射
 interface ResultDef {
   label: string
   icon: string
   class: string
 }
-
 const resultDefMap: Record<string, ResultDef> = {
   Accepted: { label: "答案正确", icon: "check", class: "accepted" },
   WrongAnswer: { label: "答案错误", icon: "x", class: "wrong" },
@@ -135,12 +127,10 @@ const resultDefMap: Record<string, ResultDef> = {
   RuntimeError: { label: "运行时错误", icon: "x", class: "re" },
   SystemError: { label: "系统错误", icon: "x", class: "se" },
 }
-
 function getResultDef(status: string | undefined): ResultDef {
   if (!status) return { label: status ?? "未知", icon: "x", class: "se" }
   return resultDefMap[status] ?? { label: status, icon: "x", class: "se" }
 }
-
 // Tailwind 判定颜色（完整字面量确保 JIT 识别）
 const verdictClasses: Record<string, string> = {
   accepted: "bg-green-50 border border-green-200 text-green-700",
@@ -150,31 +140,26 @@ const verdictClasses: Record<string, string> = {
   re: "bg-red-50 border border-red-200 text-red-800",
   se: "bg-red-50 border border-red-200 text-red-800",
 }
-
 const statusBadgeColors: Record<string, string> = {
   pending: "bg-gray-50 text-slate-500 border border-border",
   judging: "bg-blue-50 text-blue-700 border border-blue-200",
   error: "bg-red-50 text-red-800 border border-red-200",
 }
-
 function formatScore(raw: number | undefined): string {
   if (raw === undefined || raw === null) return "--"
   return (raw / 100).toFixed(1)
 }
-
 function formatTime(ms: number | undefined | null): string {
   if (ms === undefined || ms === null) return "--"
   if (ms < 1000) return `${ms}ms`
   return `${(ms / 1000).toFixed(2)}s`
 }
-
 function formatMemory(kb: number | undefined | null): string {
   if (kb === undefined || kb === null) return "--"
   if (kb < 1024) return `${kb}KB`
   if (kb < 1024 * 1024) return `${(kb / 1024).toFixed(1)}MB`
   return `${(kb / 1024 / 1024).toFixed(2)}GB`
 }
-
 function formatDateTime(iso: string | undefined): string {
   if (!iso) return "--"
   const d = new Date(iso)
@@ -187,16 +172,7 @@ function formatDateTime(iso: string | undefined): string {
     second: "2-digit",
   })
 }
-
 // 语言标签
-const languageLabel: Record<string, string> = {
-  python3: "Python 3",
-  python: "Python",
-  cpp: "C++",
-  c: "C",
-  javascript: "JavaScript",
-}
-
 // highlight.js 语言映射
 const hljsLangMap: Record<string, string> = {
   python3: "python",
@@ -205,12 +181,10 @@ const hljsLangMap: Record<string, string> = {
   c: "c",
   javascript: "javascript",
 }
-
 const codeRef = ref<HTMLElement>()
 const codeLanguage = computed(() =>
   hljsLangMap[submission.value?.language ?? ""] || "plaintext",
 )
-
 // 使用 watch 而非 onMounted（数据加载前 codeRef 指向空）
 watch(
   () => submission.value?.code,
@@ -222,7 +196,6 @@ watch(
   { immediate: true },
 )
 </script>
-
 <template>
   <div class="max-w-[800px] mx-auto px-3 py-5 sm:px-6 sm:py-8 flex flex-col gap-5">
     <!-- 回退链接 -->
@@ -231,16 +204,15 @@ watch(
       :to="`/problems/${submission.problem_id}`"
       class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
     >
+import { getLanguageLabel, formatScore, formatTime, formatMemory } from "\~\/composables\/use\-submissions"
       <ArrowLeft :size="16" />
       返回题目
     </NuxtLink>
-
     <!-- Loading -->
     <div v-if="!submission" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted">
       <div class="h-[28px] w-[28px] border-[3px] border-border border-t-primary rounded-full animate-spin-slow" />
       <span>加载中...</span>
     </div>
-
     <template v-else>
       <!-- 头部卡片 -->
       <div class="bg-white border border-border rounded-xl overflow-hidden">
@@ -248,7 +220,6 @@ watch(
           <h1 class="text-lg font-bold">提交结果</h1>
           <span class="font-mono text-xs text-text-muted">#{{ submission.id.slice(0, 8) }}</span>
         </div>
-
         <div class="px-6 py-7 flex justify-center">
           <!-- 等待/评测中 -->
           <div
@@ -265,7 +236,6 @@ watch(
               {{ formatDateTime(submission.judge_started_at) }} 开始
             </span>
           </div>
-
           <div
             v-else-if="submission.status === 'error'"
             class="inline-flex items-center gap-2.5 px-7 py-3 rounded-full text-base font-semibold bg-red-50 text-red-800 border border-red-200"
@@ -273,7 +243,6 @@ watch(
             <XCircle :size="22" />
             <span>系统错误</span>
           </div>
-
           <!-- 已完成 -->
           <div
             v-else-if="submission.result"
@@ -299,7 +268,6 @@ watch(
             </div>
           </div>
         </div>
-
         <!-- 元信息 -->
         <div class="px-6 pb-4 flex flex-col gap-2">
           <div class="flex gap-3 text-sm">
@@ -314,7 +282,7 @@ watch(
           <div class="flex gap-3 text-sm">
             <span class="text-text-muted min-w-[70px] shrink-0">语言</span>
             <span class="text-text">
-              {{ languageLabel[submission.language] || submission.language }}
+              {{ getLanguageLabel(submission.language) }}
             </span>
           </div>
           <div class="flex gap-3 text-sm">
@@ -324,7 +292,6 @@ watch(
             </span>
           </div>
         </div>
-
         <!-- 资源消耗（仅 finished） -->
         <div
           v-if="submission.result && submission.status === 'finished'"
@@ -350,7 +317,6 @@ watch(
           </div>
         </div>
       </div>
-
       <!-- 代码区 -->
       <div class="bg-[#0d1117] border border-[#30363d] rounded-xl overflow-hidden">
         <div class="flex items-center gap-2 px-4 py-2.5 bg-[#161b22] text-[#8b949e] text-xs font-mono border-b border-[#30363d]">
@@ -359,7 +325,6 @@ watch(
         </div>
         <pre class="p-4 overflow-x-auto text-xs leading-relaxed"><code :ref="codeRef" :class="`language-${codeLanguage}`" class="font-mono text-[#e6edf3] whitespace-pre">{{ submission.code }}</code></pre>
       </div>
-
       <!-- 输出区（仅 finished 有内容） -->
       <div
         v-if="submission.status === 'finished' && submission.result?.output"

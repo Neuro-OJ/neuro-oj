@@ -1,6 +1,6 @@
 # noj-ui — Neuro OJ 核心前端
 
-基于 **Nuxt 3 + Vue 3** 的用户界面。
+基于 **Nuxt 4 + Vue 3** 的用户界面。
 
 ## 职责
 
@@ -14,11 +14,11 @@
 
 | 组件       | 选择                               |
 | ---------- | ---------------------------------- |
-| 框架       | Nuxt 3 (Vue 3)                     |
+| 框架       | Nuxt 4 (Vue 3)                     |
 | 语言       | TypeScript                         |
 | 组件库     | 待定（Nuxt UI / Ant Design Vue）   |
 | 代码编辑器 | 待定（Monaco Editor / CodeMirror） |
-| 部署       | Node.js / 静态导出                 |
+| 部署       | Deno / 静态导出                 |
 
 ## 目录约定
 
@@ -79,5 +79,5 @@ defineProps<Props>()
 
 ## 相关文档
 
-- [Nuxt 3 文档](https://nuxt.com/docs)
+- [Nuxt 4 文档](https://nuxt.com/docs)
 - [Vue 3 文档](https://vuejs.org/)

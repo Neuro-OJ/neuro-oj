@@ -40,6 +40,26 @@ export default <Config> {
         "spin-slow": "spin 0.8s linear infinite",
       },
 
+      borderRadius: {
+        sm: "4px",
+        DEFAULT: "6px",
+        md: "8px",
+        lg: "12px",
+        xl: "16px",
+      },
+
+      boxShadow: {
+        card: "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
+        dropdown: "0 4px 12px rgba(0,0,0,0.1)",
+        modal: "0 20px 60px rgba(0,0,0,0.15)",
+      },
+
+      transitionDuration: {
+        fast: "150ms",
+        DEFAULT: "200ms",
+        slow: "300ms",
+      },
+
       // 代码字体
       fontFamily: {
         mono: ['"SF Mono"', '"Fira Code"', '"Consolas"', "monospace"],

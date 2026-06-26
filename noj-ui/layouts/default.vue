@@ -42,6 +42,7 @@
 }
 
 .btn {
+    @apply inline-flex items-center justify-center font-semibold no-underline cursor-pointer;
     border-radius: 8px;
     font-weight: 600;
     text-decoration: none;
@@ -61,6 +62,17 @@
 .btn-primary:hover {
     background: var(--c-primary-dark);
     border-color: var(--c-primary-dark);
+}
+
+.btn-outline {
+    @apply bg-transparent;
+    color: var(--c-primary);
+    border: 1.5px solid var(--c-primary);
+}
+
+.btn-outline:hover {
+    @apply text-white;
+    background: var(--c-primary);
 }
 </style>
 
