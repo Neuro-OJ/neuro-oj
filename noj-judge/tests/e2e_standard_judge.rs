@@ -34,8 +34,7 @@ fn test_judge_task_deserialize_legacy_format_defaults_to_special() {
         "time_limit_ms": 5000,
         "memory_limit_mb": 512
     }"#;
-    let task: JudgeTask = serde_json::from_str(legacy_json)
-        .expect("旧格式 JudgeTask 反序列化失败");
+    let task: JudgeTask = serde_json::from_str(legacy_json).expect("旧格式 JudgeTask 反序列化失败");
     assert_eq!(task.judge_type, JudgeType::Special);
     assert_eq!(task.submission_id, "legacy-001");
 }
@@ -54,8 +53,7 @@ fn test_judge_task_deserialize_explicit_standard() {
         "memory_limit_mb": 512,
         "judge_type": "standard"
     }"#;
-    let task: JudgeTask =
-        serde_json::from_str(json).expect("显式 standard 反序列化失败");
+    let task: JudgeTask = serde_json::from_str(json).expect("显式 standard 反序列化失败");
     assert_eq!(task.judge_type, JudgeType::Standard);
 }
 
@@ -128,7 +126,9 @@ async fn test_standard_judge_correct_solution() {
         "evaluate_legacy 不支持 standard 路径，应返回 SystemError，但得到: {}",
         result.status
     );
-    assert!(result.output.contains("standard 评测模式需要 noj-judge 池模式"));
+    assert!(result
+        .output
+        .contains("standard 评测模式需要 noj-judge 池模式"));
 
     let _ = tokio::fs::remove_dir_all(&work_dir).await;
 }
@@ -145,14 +145,14 @@ async fn test_standard_judge_wrong_solution() {
     let docker = get_docker().expect("连接 Docker 失败");
     ensure_test_image(&docker).await.expect("确保测试镜像失败");
 
-    let work_dir = std::env::temp_dir().join(format!(
-        "noj-judge-standard-wrong-{}",
-        uuid::Uuid::new_v4()
-    ));
+    let work_dir =
+        std::env::temp_dir().join(format!("noj-judge-standard-wrong-{}", uuid::Uuid::new_v4()));
     tokio::fs::create_dir_all(&work_dir).await.unwrap();
 
     // 用户代码：故意输出错误答案
-    tokio::fs::write(work_dir.join("main.py"), "print(0)").await.unwrap();
+    tokio::fs::write(work_dir.join("main.py"), "print(0)")
+        .await
+        .unwrap();
 
     tokio::fs::write(
         work_dir.join("visible.jsonl"),
@@ -196,10 +196,8 @@ async fn test_standard_judge_timeout() {
     let docker = get_docker().expect("连接 Docker 失败");
     ensure_test_image(&docker).await.expect("确保测试镜像失败");
 
-    let work_dir = std::env::temp_dir().join(format!(
-        "noj-judge-standard-tle-{}",
-        uuid::Uuid::new_v4()
-    ));
+    let work_dir =
+        std::env::temp_dir().join(format!("noj-judge-standard-tle-{}", uuid::Uuid::new_v4()));
     tokio::fs::create_dir_all(&work_dir).await.unwrap();
 
     // 用户代码：无限循环（触发超时）
