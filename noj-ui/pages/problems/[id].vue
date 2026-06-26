@@ -22,6 +22,7 @@ const { data, pending, error } = useFetch<{
     owner_id: string
     number: number
     categories: { id: string; name: string; slug: string }[]
+    judge_type?: string
   }
 }>(`/api/v1/problems/${problemId}`)
 
@@ -139,6 +140,11 @@ async function handleSubmit() {
           <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-tight" :class="badgeColors[problem.difficulty] || ''">
             {{ difficultyLabel[problem.difficulty] || problem.difficulty }}
           </span>
+          <span
+            v-if="problem.judge_type === 'special'"
+            class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700"
+            title="Special Judge：自定义 evaluate.py 脚本评分"
+          >SPJ</span>
           <span class="inline-flex items-center gap-1 text-xs text-text-secondary">
             <Clock :size="14" />
             {{ problem.time_limit_ms }}ms

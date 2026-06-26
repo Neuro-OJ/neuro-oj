@@ -30,6 +30,7 @@ const timeLimitMs = ref(5000)
 const memoryLimitMb = ref(512)
 const categoryIds = ref<string[]>([])
 const problemType = ref(props.initialType)
+const judgeType = ref<"standard" | "special">("special")
 
 // 编辑模式专用
 const displayId = ref("")
@@ -59,6 +60,7 @@ async function loadProblem() {
       judge_image: string; judge_command: string
       time_limit_ms: number; memory_limit_mb: number
       display_id: string; type: string; number: number
+      judge_type: string
       categories: { id: string }[]
     } }>(`/api/v1/problems/${props.problemId}`)
     const p = res.data
@@ -68,6 +70,7 @@ async function loadProblem() {
     difficulty.value = p.difficulty
     judgeImage.value = p.judge_image; judgeCommand.value = p.judge_command
     timeLimitMs.value = p.time_limit_ms; memoryLimitMb.value = p.memory_limit_mb
+    judgeType.value = (p.judge_type === "standard" ? "standard" : "special") as "standard" | "special"
     categoryIds.value = p.categories.map((c) => c.id)
   } catch (err: unknown) {
     if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) {
@@ -118,6 +121,7 @@ async function handleSubmit() {
           time_limit_ms: timeLimitMs.value > 0 ? timeLimitMs.value : 5000,
           memory_limit_mb: memoryLimitMb.value > 0 ? memoryLimitMb.value : 512,
           category_ids: categoryIds.value,
+          judge_type: judgeType.value,
         },
       })
       emit("saved", props.problemId!)
@@ -132,6 +136,7 @@ async function handleSubmit() {
           memory_limit_mb: memoryLimitMb.value > 0 ? memoryLimitMb.value : 512,
           category_ids: categoryIds.value,
           type: problemType.value,
+          judge_type: judgeType.value,
         },
       })
       emit("saved", res.data.id)
@@ -257,6 +262,13 @@ async function handleSubmit() {
           <label class="label">评测命令 <span class="required">*</span></label>
           <input v-model="judgeCommand" class="input" placeholder="如：python3 /tmp/evaluate.py" />
           <p v-if="fieldErrors.judge_command" class="field-error">{{ fieldErrors.judge_command }}</p>
+        </div>
+        <div class="field">
+          <label class="label">判题类型</label>
+          <select v-model="judgeType" class="input">
+            <option value="special">SPJ（自定义评测脚本）</option>
+            <option value="standard">标准（stdout diff 原生执行器）</option>
+          </select>
         </div>
         <div class="field">
           <label class="label">时间限制 (ms)</label>

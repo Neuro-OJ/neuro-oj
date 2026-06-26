@@ -19,6 +19,7 @@ interface ProblemItem {
   number: number
   created_at: string
   updated_at: string
+  judge_type?: string
 }
 
 interface ProblemsResponse {
@@ -193,6 +194,7 @@ function formatAcceptanceRate(rate: number | undefined): string {
               <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">#</th>
               <th scope="col" class="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">题目</th>
               <th scope="col" class="w-20 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">难度</th>
+              <th scope="col" class="w-[60px] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border hidden sm:table-cell">判题</th>
               <th scope="col" class="w-[120px] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border hidden sm:table-cell">分类</th>
               <th scope="col" class="w-[90px] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border hidden sm:table-cell">时间</th>
               <th scope="col" class="w-[90px] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border hidden sm:table-cell">内存</th>
@@ -226,6 +228,13 @@ function formatAcceptanceRate(rate: number | undefined): string {
                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold" :class="badgeColors[problem.difficulty] || ''">
                   {{ difficultyLabel[problem.difficulty] || problem.difficulty }}
                 </span>
+              </td>
+              <td class="w-[60px] px-4 py-3.5 hidden sm:table-cell">
+                <span
+                  v-if="problem.judge_type === 'special'"
+                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700"
+                >SPJ</span>
+                <span v-else class="text-xs text-text-muted">--</span>
               </td>
               <td class="w-[120px] px-4 py-3.5 hidden sm:table-cell">
                 <span
