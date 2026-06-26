@@ -308,9 +308,11 @@ Deno.test({
       judge_type: "standard",
     });
     const app = createApp();
-    // 用 keyword 过滤（避免分页错过刚 create 的题）
+    // listProblems 默认 type='P'，createProblem 不传 type 时默认 'U'；
+    // 必须显式传 type=U 才能查回刚创建的 U 型题；keyword 走 LIKE 路径
+    // 进一步精确匹配，无视分页排序
     const res = await app.request(
-      `/api/v1/problems?keyword=${
+      `/api/v1/problems?type=U&keyword=${
         encodeURIComponent(`路由层 judge_type ${ts}`)
       }`,
     );
@@ -387,8 +389,17 @@ Deno.test({
       judge_type: "standard",
     });
     const app = createApp();
-    const res = await app.request("/api/v1/problems?judge_type=standard");
+    // 必须显式传 type=U：listProblems 默认 type='P'，createProblem 不传
+    // type 时默认 'U'，刚建的题是 U 型
+    const res = await app.request(
+      "/api/v1/problems?type=U&judge_type=standard",
+    );
     const body = await res.json();
+    // 至少要包含刚 create 的题
+    const found = body.data.find((p: { title: string }) =>
+      p.title.includes(`过滤 standard ${ts}`)
+    );
+    assertEquals(!!found, true);
     assertEquals(
       body.data.every((p: { judge_type: string }) =>
         p.judge_type === "standard"
