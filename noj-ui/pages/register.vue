@@ -1,19 +1,19 @@
 <template>
-    <div class="auth-page">
+    <div class="w-full max-w-[380px] relative">
         <Transition name="slide">
-            <div v-if="error" class="error-banner">
+            <div v-if="error" class="bg-red-50 border border-red-200 text-red-700 rounded-md px-3.5 py-2.5 text-sm flex items-center justify-between gap-3 fixed top-[74px] left-1/2 -translate-x-1/2 z-[99] max-w-[380px] w-[calc(100%-48px)]">
                 <span>{{ error }}</span>
-                <button class="close-btn" @click="clearError">✕</button>
+                <button class="bg-transparent border-0 text-red-700 cursor-pointer text-base p-0.5 leading-none opacity-70 shrink-0 hover:opacity-100" @click="clearError">&#10005;</button>
             </div>
         </Transition>
-        <div class="auth-card">
-            <h1 class="auth-title">注册</h1>
+        <div class="bg-white border border-border rounded-lg p-8">
+            <h1 class="text-[22px] font-bold text-center mb-6 text-text animate-[fadeInUp_0.5s_ease_both]">注册</h1>
 
             <form @submit.prevent="handleRegister">
-                <div class="form-group">
-                    <label for="username">用户名</label>
-                    <div class="input-wrapper">
-                        <User class="input-icon" :size="18" />
+                <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.05s_both]">
+                    <label for="username" class="block text-sm font-semibold text-text mb-1">用户名</label>
+                    <div class="relative flex items-center">
+                        <User class="absolute left-[10px] text-text-muted pointer-events-none" :size="18" />
                         <input
                             id="username"
                             v-model="form.username"
@@ -21,18 +21,19 @@
                             placeholder="3-30 位字母、数字或下划线"
                             autocomplete="username"
                             :disabled="loading"
+                            class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
                             @focus="fieldErrors.username = ''"
                         />
                     </div>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.username" class="field-error"><span>{{ fieldErrors.username }}</span><X :size="14" /></div>
+                        <div v-if="fieldErrors.username" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-[13px] text-red-700"><span>{{ fieldErrors.username }}</span><X :size="14" /></div>
                     </Transition>
                 </div>
 
-                <div class="form-group">
-                    <label for="email">邮箱</label>
-                    <div class="input-wrapper">
-                        <Mail class="input-icon" :size="18" />
+                <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.1s_both]">
+                    <label for="email" class="block text-sm font-semibold text-text mb-1">邮箱</label>
+                    <div class="relative flex items-center">
+                        <Mail class="absolute left-[10px] text-text-muted pointer-events-none" :size="18" />
                         <input
                             id="email"
                             v-model="form.email"
@@ -40,20 +41,21 @@
                             placeholder="请输入邮箱地址"
                             autocomplete="email"
                             :disabled="loading"
+                            class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
                             @focus="fieldErrors.email = ''"
                         />
                     </div>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.email" class="field-error"><span>{{ fieldErrors.email }}</span><X :size="14" /></div>
+                        <div v-if="fieldErrors.email" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-[13px] text-red-700"><span>{{ fieldErrors.email }}</span><X :size="14" /></div>
                     </Transition>
                 </div>
 
                 <!-- TODO 验证码 -->
 
-                <div class="form-group">
-                    <label for="password">密码</label>
-                    <div class="input-wrapper">
-                        <Lock class="input-icon" :size="18" />
+                <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.15s_both]">
+                    <label for="password" class="block text-sm font-semibold text-text mb-1">密码</label>
+                    <div class="relative flex items-center">
+                        <Lock class="absolute left-[10px] text-text-muted pointer-events-none" :size="18" />
                         <input
                             id="password"
                             v-model="form.password"
@@ -61,10 +63,11 @@
                             placeholder="至少 12 位，需包含字母和数字"
                             autocomplete="new-password"
                             :disabled="loading"
+                            class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
                             @focus="fieldErrors.password = ''"
                         />
-                        <button type="button" class="pwd-toggle" @click="showPassword = !showPassword" tabindex="-1">
-                            <span class="icon-wrap">
+                        <button type="button" class="absolute right-3 bg-transparent border-0 text-text-muted cursor-pointer p-0 flex items-center hover:text-text-secondary" @click="showPassword = !showPassword" tabindex="-1">
+                            <span class="flex items-center justify-center w-[18px] h-[18px]">
                                 <Transition name="icon" mode="out-in">
                                     <EyeOff v-if="!showPassword" :size="18" key="off" />
                                     <Eye v-else :size="18" key="on" />
@@ -73,14 +76,14 @@
                         </button>
                     </div>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.password" class="field-error"><span>{{ fieldErrors.password }}</span><X :size="14" /></div>
+                        <div v-if="fieldErrors.password" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-[13px] text-red-700"><span>{{ fieldErrors.password }}</span><X :size="14" /></div>
                     </Transition>
                 </div>
 
-                <div class="form-group">
-                    <label for="confirmPassword">确认密码</label>
-                    <div class="input-wrapper">
-                        <Lock class="input-icon" :size="18" />
+                <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.2s_both]">
+                    <label for="confirmPassword" class="block text-sm font-semibold text-text mb-1">确认密码</label>
+                    <div class="relative flex items-center">
+                        <Lock class="absolute left-[10px] text-text-muted pointer-events-none" :size="18" />
                         <input
                             id="confirmPassword"
                             v-model="form.confirmPassword"
@@ -89,10 +92,11 @@
                             autocomplete="new-password"
                             maxlength="30"
                             :disabled="loading"
+                            class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
                             @focus="fieldErrors.confirmPassword = ''"
                         />
-                        <button type="button" class="pwd-toggle" @click="showConfirmPassword = !showConfirmPassword" tabindex="-1">
-                            <span class="icon-wrap">
+                        <button type="button" class="absolute right-3 bg-transparent border-0 text-text-muted cursor-pointer p-0 flex items-center hover:text-text-secondary" @click="showConfirmPassword = !showConfirmPassword" tabindex="-1">
+                            <span class="flex items-center justify-center w-[18px] h-[18px]">
                                 <Transition name="icon" mode="out-in">
                                     <EyeOff v-if="!showConfirmPassword" :size="18" key="off" />
                                     <Eye v-else :size="18" key="on" />
@@ -101,18 +105,18 @@
                         </button>
                     </div>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.confirmPassword" class="field-error"><span>{{ fieldErrors.confirmPassword }}</span><X :size="14" /></div>
+                        <div v-if="fieldErrors.confirmPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-[13px] text-red-700"><span>{{ fieldErrors.confirmPassword }}</span><X :size="14" /></div>
                     </Transition>
                 </div>
 
-                <button type="submit" class="btn btn-primary btn-submit" :disabled="loading">
-                    <Loader2 v-if="loading" class="btn-spinner" :size="18" />
+                <button type="submit" class="inline-flex items-center justify-center font-semibold no-underline cursor-pointer rounded-lg transition-all duration-200 bg-primary text-white border border-primary hover:bg-primary-dark hover:border-primary-dark w-full py-2.5 text-sm mt-1 animate-[fadeInUp_0.5s_ease_0.25s_both] disabled:opacity-60 disabled:cursor-not-allowed" :disabled="loading">
+                    <Loader2 v-if="loading" class="animate-spin-slow mr-1.5" :size="18" />
                     {{ loading ? '注册中...' : '注册' }}
                 </button>
             </form>
 
-            <p class="auth-footer">
-                已有账号？<NuxtLink to="/login">立即登录</NuxtLink>
+            <p class="text-center mt-5 text-sm text-text-secondary animate-[fadeInUp_0.5s_ease_0.3s_both]">
+                已有账号？<NuxtLink to="/login" class="text-primary no-underline font-semibold hover:underline">立即登录</NuxtLink>
             </p>
         </div>
     </div>
@@ -236,100 +240,27 @@ async function handleRegister() {
 }
 </script>
 
-<style scoped>
-.auth-page {
-    width: 100%;
-    max-width: 380px;
-    position: relative;
-}
-
-.error-banner {
-    background: #fef2f2;
-    border: 1px solid #fecaca;
-    color: #b91c1c;
-    border-radius: 8px;
-    padding: 10px 14px;
-    font-size: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    position: fixed;
-    top: calc(64px + 10px);
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 99;
-    max-width: 380px;
-    width: calc(100% - 48px);
-}
-
-.close-btn {
-    background: none;
-    border: none;
-    color: #b91c1c;
-    cursor: pointer;
-    font-size: 16px;
-    padding: 2px;
-    line-height: 1;
-    opacity: 0.7;
-    flex-shrink: 0;
-}
-
-.close-btn:hover {
-    opacity: 1;
-}
-
+<style>
+/* Vue Transition: slide (用于 error banner) */
 .slide-enter-active {
     transition: all 0.3s ease-out;
 }
-
 .slide-leave-active {
     transition: all 0.2s ease-in;
 }
-
 .slide-enter-from {
     transform: translateX(-50%) translateY(-20px);
     opacity: 0;
 }
-
 .slide-leave-to {
     transform: translateX(-50%) translateY(-20px);
     opacity: 0;
 }
 
-.auth-card {
-    background: var(--c-white);
-    border: 1px solid var(--c-border);
-    border-radius: 12px;
-    padding: 32px;
-}
-
-.auth-title {
-    font-size: 22px;
-    font-weight: 700;
-    text-align: center;
-    margin-bottom: 24px;
-    color: var(--c-text);
-    animation: fadeInUp 0.5s ease both;
-}
-
-.field-error {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    right: 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 4px;
-    font-size: 13px;
-    color: #b91c1c;
-}
-
+/* Vue Transition: drop (用于 field errors) */
 .drop-enter-active {
     animation: dropIn 0.25s ease both;
 }
-
 .drop-leave-active {
     animation: dropOut 0.2s ease both;
 }
@@ -356,138 +287,39 @@ async function handleRegister() {
     }
 }
 
-.form-group {
-    position: relative;
-    margin-bottom: 28px;
-    animation: fadeInUp 0.5s ease both;
+/* Vue Transition: fade (保留用于可能的将来 overlay) */
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.2s;
+}
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
 }
 
-.form-group:nth-child(1) { animation-delay: 0.05s; }
-.form-group:nth-child(2) { animation-delay: 0.1s; }
-.form-group:nth-child(3) { animation-delay: 0.15s; }
-.form-group:nth-child(4) { animation-delay: 0.2s; }
-
-.btn-submit {
-    animation: fadeInUp 0.5s ease 0.25s both;
-}
-
-.form-group label {
-    display: block;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--c-text);
-    margin-bottom: 4px;
-}
-
-.input-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
-
-.input-icon {
-    position: absolute;
-    left: 10px;
-    color: var(--c-text-muted);
-    pointer-events: none;
-}
-
-.pwd-toggle {
-    position: absolute;
-    right: 12px;
-    background: none;
-    border: none;
-    color: var(--c-text-muted);
-    cursor: pointer;
-    padding: 0;
-    display: flex;
-    align-items: center;
-}
-
-.pwd-toggle:hover {
-    color: var(--c-text-secondary);
-}
-
-.icon-wrap {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-}
-
+/* Vue Transition: icon (用于密码可见切换) */
 .icon-enter-active,
 .icon-leave-active {
     transition: opacity 0.18s linear, transform 0.18s linear;
 }
-
 .icon-enter-from {
     opacity: 0;
     transform: translate(-6px, -6px);
 }
-
 .icon-leave-to {
     opacity: 0;
     transform: translate(6px, 6px);
 }
 
-.input-wrapper input {
-    width: 100%;
-    padding: 8px 12px 8px 36px;
-    border: 1.5px solid var(--c-border);
-    border-radius: 8px;
-    font-size: 14px;
-    color: var(--c-text);
-    background: var(--c-white);
-    outline: none;
-    transition: border-color 0.2s;
-}
-
-.input-wrapper input:focus {
-    border-color: var(--c-primary);
-}
-
-.input-wrapper input:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.btn-submit {
-    width: 100%;
-    padding: 10px;
-    font-size: 14px;
-    margin-top: 4px;
-}
-
-.btn-submit:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.btn-spinner {
-    animation: spin 0.8s linear infinite;
-    margin-right: 6px;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-.auth-footer {
-    text-align: center;
-    margin-top: 20px;
-    font-size: 14px;
-    color: var(--c-text-secondary);
-    animation: fadeInUp 0.5s ease 0.3s both;
-}
-
-.auth-footer a {
-    color: var(--c-primary);
-    text-decoration: none;
-    font-weight: 600;
-}
-
-.auth-footer a:hover {
-    text-decoration: underline;
+/* @keyframes fadeInUp (用于入场动画) */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 </style>

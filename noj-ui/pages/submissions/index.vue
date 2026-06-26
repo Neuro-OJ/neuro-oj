@@ -125,58 +125,64 @@ function hasResult(item: SubmissionListItem): boolean {
 </script>
 
 <template>
-  <div class="submissions-page">
+  <div class="py-8">
     <div class="container">
       <!-- 页面标题 -->
-      <div class="page-header">
-        <h1 class="page-title">提交历史</h1>
-        <p class="page-subtitle">查看你的所有提交记录</p>
+      <div class="mb-6">
+        <h1 class="m-0 text-2xl font-bold text-text">提交历史</h1>
+        <p class="m-0 mt-1 text-sm text-text-secondary">查看你的所有提交记录</p>
       </div>
 
       <!-- 筛选栏 -->
-      <div class="filter-bar">
-        <div class="filter-row">
-          <div class="filter-item">
-            <label class="filter-label">题目</label>
+      <div class="mb-4 rounded-lg border border-border bg-white p-4">
+        <div class="mb-3 flex flex-wrap gap-3">
+          <div class="flex min-w-[140px] flex-1 flex-col gap-1">
+            <label class="text-xs font-semibold text-text-secondary">题目</label>
             <input
               v-model="filters.problem_search"
-              class="filter-input"
+              class="rounded border border-border bg-white px-2.5 py-1.5 text-[13px] text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10"
               placeholder="题目 ID 或名称"
               @keyup.enter="applyFilters"
             />
           </div>
-          <div class="filter-item">
-            <label class="filter-label">提交 ID</label>
+          <div class="flex min-w-[140px] flex-1 flex-col gap-1">
+            <label class="text-xs font-semibold text-text-secondary">提交 ID</label>
             <input
               v-model="filters.submission_id"
-              class="filter-input"
+              class="rounded border border-border bg-white px-2.5 py-1.5 text-[13px] text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10"
               placeholder="输入提交 ID 前缀"
               @keyup.enter="applyFilters"
             />
           </div>
-          <div class="filter-item">
-            <label class="filter-label">语言</label>
-            <select v-model="filters.language" class="filter-input" @change="applyFilters">
+          <div class="flex min-w-[140px] flex-1 flex-col gap-1">
+            <label class="text-xs font-semibold text-text-secondary">语言</label>
+            <select v-model="filters.language" class="rounded border border-border bg-white px-2.5 py-1.5 text-[13px] text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10" @change="applyFilters">
               <option v-for="opt in languageOptions" :key="opt.value" :value="opt.value">
                 {{ opt.label }}
               </option>
             </select>
           </div>
-          <div class="filter-item">
-            <label class="filter-label">状态</label>
-            <select v-model="filters.status" class="filter-input" @change="applyFilters">
+          <div class="flex min-w-[140px] flex-1 flex-col gap-1">
+            <label class="text-xs font-semibold text-text-secondary">状态</label>
+            <select v-model="filters.status" class="rounded border border-border bg-white px-2.5 py-1.5 text-[13px] text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10" @change="applyFilters">
               <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
                 {{ opt.label }}
               </option>
             </select>
           </div>
         </div>
-        <div class="filter-actions">
-          <button class="btn btn-primary btn-sm" @click="applyFilters">
+        <div class="flex gap-2">
+          <button
+            class="inline-flex cursor-pointer items-center gap-1 rounded border border-primary bg-primary px-3.5 py-1.5 text-[13px] font-semibold leading-none text-white no-underline transition-all duration-150 hover:border-primary-dark hover:bg-primary-dark"
+            @click="applyFilters"
+          >
             <Search :size="14" />
             筛选
           </button>
-          <button class="btn btn-ghost btn-sm" @click="clearFilters">
+          <button
+            class="inline-flex cursor-pointer items-center gap-1 rounded border border-border bg-transparent px-3.5 py-1.5 text-[13px] font-semibold leading-none text-text-secondary no-underline transition-all duration-150 hover:border-text-secondary hover:text-text"
+            @click="clearFilters"
+          >
             <X :size="14" />
             清空
           </button>
@@ -184,50 +190,55 @@ function hasResult(item: SubmissionListItem): boolean {
       </div>
 
       <!-- 加载态 -->
-      <div v-if="tableLoading" class="state-box">
-        <div class="spinner" />
+      <div v-if="tableLoading" class="flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-white px-6 py-16 text-sm text-text-secondary">
+        <div class="h-6 w-6 animate-spin-slow rounded-full border-[3px] border-border border-t-primary" />
         <span>加载中...</span>
       </div>
 
       <!-- 错误态 -->
-      <div v-else-if="tableError" class="state-box state-error">
+      <div v-else-if="tableError" class="flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-white px-6 py-16 text-sm text-red-600">
         <span>{{ tableError }}</span>
-        <button class="btn btn-primary btn-sm" @click="loadSubmissions(currentPage)">重试</button>
+        <button
+          class="inline-flex cursor-pointer items-center gap-1 rounded border border-primary bg-primary px-3.5 py-1.5 text-[13px] font-semibold leading-none text-white no-underline transition-all duration-150 hover:border-primary-dark hover:bg-primary-dark"
+          @click="loadSubmissions(currentPage)"
+        >
+          重试
+        </button>
       </div>
 
       <!-- 空态 -->
-      <div v-else-if="submissions.length === 0" class="state-box">
+      <div v-else-if="submissions.length === 0" class="flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-white px-6 py-16 text-sm text-text-secondary">
         <span>暂无提交记录</span>
       </div>
 
       <!-- 表格 -->
-      <div v-else class="table-wrapper">
-        <table class="submissions-table">
+      <div v-else class="overflow-hidden rounded-lg border border-border bg-white">
+        <table class="w-full border-collapse">
           <thead>
             <tr>
-              <th class="th th-id">提交 ID</th>
-              <th class="th">题目</th>
-              <th class="th">语言</th>
-              <th class="th">状态</th>
-              <th class="th th-num">得分</th>
-              <th class="th th-num">耗时</th>
-              <th class="th th-num">内存</th>
-              <th class="th">提交时间</th>
-              <th class="th th-action">操作</th>
+              <th class="w-[100px] whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">提交 ID</th>
+              <th class="whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">题目</th>
+              <th class="whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">语言</th>
+              <th class="whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">状态</th>
+              <th class="w-[70px] whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-muted">得分</th>
+              <th class="w-[70px] whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-muted">耗时</th>
+              <th class="w-[70px] whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-muted">内存</th>
+              <th class="whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">提交时间</th>
+              <th class="w-[80px] whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-center text-xs font-semibold uppercase tracking-wider text-text-muted">操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="sub in submissions" :key="sub.id" class="tr">
-              <td class="td td-mono">{{ sub.id.slice(0, 8) }}...</td>
-              <td class="td">
-                <NuxtLink :to="`/problems/${sub.problem_id}`" class="problem-link">
+            <tr v-for="sub in submissions" :key="sub.id" class="border-b border-border transition-colors duration-150 last:border-b-0 hover:bg-[#fafafa]">
+              <td class="px-3.5 py-3 font-mono text-xs text-text-secondary">{{ sub.id.slice(0, 8) }}...</td>
+              <td class="px-3.5 py-3 text-[13px] text-text">
+                <NuxtLink :to="`/problems/${sub.problem_id}`" class="font-medium text-primary no-underline hover:underline">
                   {{ sub.problem.title || sub.problem_id }}
                 </NuxtLink>
               </td>
-              <td class="td">{{ getLanguageLabel(sub.language) }}</td>
-              <td class="td">
+              <td class="px-3.5 py-3 text-[13px] text-text">{{ getLanguageLabel(sub.language) }}</td>
+              <td class="px-3.5 py-3 text-[13px] text-text">
                 <span
-                  class="status-badge"
+                  class="inline-block whitespace-nowrap rounded px-2 py-0.5 text-xs font-semibold"
                   :style="{
                     background: getStatusColor(sub.status, sub.result?.status) + '18',
                     color: getStatusColor(sub.status, sub.result?.status),
@@ -236,21 +247,21 @@ function hasResult(item: SubmissionListItem): boolean {
                   {{ getStatusLabel(sub.status, sub.result?.status) }}
                 </span>
               </td>
-              <td class="td td-num">
+              <td class="px-3.5 py-3 text-right text-[13px] tabular-nums text-text">
                 <template v-if="hasResult(sub)">{{ formatScore(sub.result!.score) }}</template>
                 <template v-else>--</template>
               </td>
-              <td class="td td-num">
+              <td class="px-3.5 py-3 text-right text-[13px] tabular-nums text-text">
                 <template v-if="hasResult(sub)">{{ formatTime(sub.result!.time_ms) }}</template>
                 <template v-else>--</template>
               </td>
-              <td class="td td-num">
+              <td class="px-3.5 py-3 text-right text-[13px] tabular-nums text-text">
                 <template v-if="hasResult(sub)">{{ formatMemory(sub.result!.memory_kb) }}</template>
                 <template v-else>--</template>
               </td>
-              <td class="td">{{ formatDateTime(sub.created_at) }}</td>
-              <td class="td td-action">
-                <NuxtLink :to="`/submissions/${sub.id}`" class="btn btn-outline btn-xs">
+              <td class="px-3.5 py-3 text-[13px] text-text">{{ formatDateTime(sub.created_at) }}</td>
+              <td class="px-3.5 py-3 text-center text-[13px] text-text">
+                <NuxtLink :to="`/submissions/${sub.id}`" class="inline-flex cursor-pointer items-center gap-1 rounded border border-primary bg-transparent px-2.5 py-1 text-xs font-semibold leading-none text-primary no-underline transition-all duration-150 hover:bg-primary hover:text-white">
                   查看
                 </NuxtLink>
               </td>
@@ -268,258 +279,3 @@ function hasResult(item: SubmissionListItem): boolean {
     </div>
   </div>
 </template>
-
-<style scoped>
-.submissions-page {
-  padding: 32px 0;
-}
-
-.page-header {
-  margin-bottom: 24px;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--c-text);
-  margin: 0;
-}
-
-.page-subtitle {
-  font-size: 14px;
-  color: var(--c-text-secondary);
-  margin: 4px 0 0;
-}
-
-/* 筛选栏 */
-.filter-bar {
-  background: var(--c-white);
-  border: 1px solid var(--c-border);
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.filter-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 140px;
-  flex: 1;
-}
-
-.filter-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--c-text-secondary);
-}
-
-.filter-input {
-  padding: 6px 10px;
-  font-size: 13px;
-  border: 1px solid var(--c-border);
-  border-radius: 6px;
-  outline: none;
-  background: var(--c-white);
-  transition: border-color 0.15s;
-}
-
-.filter-input:focus {
-  border-color: var(--c-primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-.filter-actions {
-  display: flex;
-  gap: 8px;
-}
-
-/* 按钮 */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-weight: 600;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
-  border: 1.5px solid transparent;
-  text-decoration: none;
-  line-height: 1;
-}
-
-.btn-sm {
-  padding: 6px 14px;
-  font-size: 13px;
-}
-
-.btn-xs {
-  padding: 4px 10px;
-  font-size: 12px;
-}
-
-.btn-primary {
-  background: var(--c-primary);
-  color: var(--c-white);
-  border-color: var(--c-primary);
-}
-
-.btn-primary:hover {
-  background: var(--c-primary-dark);
-  border-color: var(--c-primary-dark);
-}
-
-.btn-ghost {
-  color: var(--c-text-secondary);
-  border-color: var(--c-border);
-  background: transparent;
-}
-
-.btn-ghost:hover {
-  border-color: var(--c-text-secondary);
-  color: var(--c-text);
-}
-
-.btn-outline {
-  color: var(--c-primary);
-  border-color: var(--c-primary);
-  background: transparent;
-}
-
-.btn-outline:hover {
-  background: var(--c-primary);
-  color: var(--c-white);
-}
-
-/* 状态 */
-.state-box {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 64px 24px;
-  color: var(--c-text-secondary);
-  font-size: 14px;
-  background: var(--c-white);
-  border: 1px solid var(--c-border);
-  border-radius: 10px;
-}
-
-.state-error {
-  color: #dc2626;
-}
-
-.spinner {
-  width: 24px;
-  height: 24px;
-  border: 3px solid var(--c-border);
-  border-top-color: var(--c-primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* 表格 */
-.table-wrapper {
-  background: var(--c-white);
-  border: 1px solid var(--c-border);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.submissions-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.th {
-  padding: 12px 14px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--c-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  text-align: left;
-  background: #fafafa;
-  border-bottom: 1px solid var(--c-border);
-  white-space: nowrap;
-}
-
-.th-id {
-  width: 100px;
-}
-
-.th-num {
-  width: 70px;
-  text-align: right;
-}
-
-.th-action {
-  width: 80px;
-  text-align: center;
-}
-
-.tr {
-  border-bottom: 1px solid var(--c-border);
-  transition: background 0.15s;
-}
-
-.tr:last-child {
-  border-bottom: none;
-}
-
-.tr:hover {
-  background: #fafafa;
-}
-
-.td {
-  padding: 12px 14px;
-  font-size: 13px;
-  color: var(--c-text);
-}
-
-.td-mono {
-  font-family: "SF Mono", "Fira Code", "Fira Mono", monospace;
-  font-size: 12px;
-  color: var(--c-text-secondary);
-}
-
-.td-num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.td-action {
-  text-align: center;
-}
-
-.problem-link {
-  color: var(--c-primary);
-  text-decoration: none;
-  font-weight: 500;
-}
-
-.problem-link:hover {
-  text-decoration: underline;
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-</style>

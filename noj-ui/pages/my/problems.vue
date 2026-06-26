@@ -69,7 +69,7 @@ function onPageChange(page: number) {
         <h1 class="text-2xl font-bold text-text">我的题目</h1>
         <span class="text-sm text-text-muted">{{ problems.length }} 道用户题</span>
       </div>
-      <NuxtLink to="/problems/new" class="btn btn-primary text-sm px-4 py-2">
+      <NuxtLink to="/problems/new" class="inline-flex items-center gap-1.5 text-sm px-4 py-2 bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark">
         创建题目
       </NuxtLink>
     </div>
@@ -86,7 +86,7 @@ function onPageChange(page: number) {
 
     <div v-else-if="problems.length === 0" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted">
       <p>你还没有创建任何题目</p>
-      <NuxtLink to="/problems/new" class="btn btn-primary text-sm px-4 py-2">
+      <NuxtLink to="/problems/new" class="inline-flex items-center gap-1.5 text-sm px-4 py-2 bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark">
         创建第一道题
       </NuxtLink>
     </div>
@@ -132,22 +132,3 @@ function onPageChange(page: number) {
     </div>
   </div>
 </template>
-
-<style scoped>
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--c-primary);
-  color: #fff;
-  border: 1.5px solid var(--c-primary);
-  border-radius: 8px;
-  cursor: pointer;
-  text-decoration: none;
-  transition: all 0.15s;
-}
-.btn-primary:hover {
-  background: var(--c-primary-dark);
-  border-color: var(--c-primary-dark);
-}
-</style>
