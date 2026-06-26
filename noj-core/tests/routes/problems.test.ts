@@ -389,10 +389,13 @@ Deno.test({
       judge_type: "standard",
     });
     const app = createApp();
-    // 必须显式传 type=U：listProblems 默认 type='P'，createProblem 不传
-    // type 时默认 'U'，刚建的题是 U 型
+    // listProblems 默认 type='P'，createProblem 不传 type 时默认 'U'，
+    // 必须显式传 type=U；CI DB 可能累积多个 U 型测试题，再加 keyword
+    // 走 LIKE 路径精确匹配，无视分页排序
     const res = await app.request(
-      "/api/v1/problems?type=U&judge_type=standard",
+      `/api/v1/problems?type=U&judge_type=standard&keyword=${
+        encodeURIComponent(`过滤 standard ${ts}`)
+      }`,
     );
     const body = await res.json();
     // 至少要包含刚 create 的题
