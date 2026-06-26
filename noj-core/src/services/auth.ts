@@ -232,11 +232,6 @@ export async function promoteUser(
     throw new BadRequestError("角色值非法，仅允许 admin 或 user");
   }
 
-  // 防止最后一个管理员误操作导致系统无管理员
-  if (currentUserId && targetUserId === currentUserId) {
-    throw new BadRequestError("不能修改自己的角色");
-  }
-
   const existing = await db
     .select()
     .from(users)
@@ -245,6 +240,11 @@ export async function promoteUser(
 
   if (existing.length === 0) {
     throw new NotFoundError("用户不存在");
+  }
+
+  // 防止最后一个管理员误操作导致系统无管理员
+  if (currentUserId && targetUserId === currentUserId) {
+    throw new BadRequestError("不能修改自己的角色");
   }
 
   // 防止降级最后一个可登录 admin：

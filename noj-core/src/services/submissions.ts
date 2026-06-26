@@ -396,12 +396,13 @@ const MAX_OUTPUT_LENGTH = 8 * 1024;
 
 /**
  * 根据 ID 查询提交记录。
+ * userId 若为空字符串或 undefined，则跳过所有权检查（供测试或内部调用）。
  *
- * @throws {NotFoundError} 提��不存在
+ * @throws {NotFoundError} 提交不存在
  */
 export async function getSubmission(
   id: string,
-  userId: string,
+  userId?: string,
 ): Promise<SubmissionWithResult> {
   const db = getDb();
 

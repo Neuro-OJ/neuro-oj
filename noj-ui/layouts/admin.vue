@@ -48,45 +48,48 @@ function isActive(path: string) {
 </script>
 
 <template>
-  <div class="admin-layout">
+  <div class="flex min-h-screen bg-gray-50">
     <!-- 移动端遮罩 -->
     <Transition name="fade">
       <div
         v-if="isMobile && sidebarOpen"
-        class="sidebar-overlay"
+        class="fixed inset-0 bg-black/30 z-[45]"
         @click="sidebarOpen = false"
       />
     </Transition>
 
     <!-- 侧边栏 -->
-    <aside class="sidebar" :class="{ collapsed: !sidebarOpen }">
-      <div class="sidebar-header">
-        <NuxtLink to="/admin" class="sidebar-brand">
-          <img src="~/assets/img/logo.jpg" alt="NOJ" class="brand-logo" />
-          <span v-show="sidebarOpen" class="brand-text">管理后台</span>
+    <aside
+      class="fixed top-0 left-0 bottom-0 z-50 flex flex-col bg-white border-r border-border transition-[width] duration-200"
+      :class="sidebarOpen ? 'w-60' : 'w-0 md:w-15 overflow-hidden md:overflow-visible'"
+    >
+      <div class="flex items-center justify-between px-3 py-3.5 border-b border-border min-h-16">
+        <NuxtLink to="/admin" class="flex items-center gap-2 no-underline overflow-hidden">
+          <img src="~/assets/img/logo.jpg" alt="NOJ" class="size-7 rounded-md shrink-0" />
+          <span v-show="sidebarOpen" class="text-base font-bold text-primary whitespace-nowrap">管理后台</span>
         </NuxtLink>
-        <button class="toggle-btn" @click="sidebarOpen = !sidebarOpen">
+        <button class="bg-none border-none text-text-secondary cursor-pointer p-1 rounded shrink-0 hover:bg-gray-100 transition-colors" @click="sidebarOpen = !sidebarOpen">
           <PanelLeftClose v-if="sidebarOpen" :size="18" />
           <PanelLeft v-else :size="18" />
         </button>
       </div>
 
-      <nav class="sidebar-nav">
+      <nav class="flex-1 p-2 flex flex-col gap-0.5 overflow-y-auto">
         <NuxtLink
           v-for="item in navItems"
           :key="item.to"
           :to="item.to"
-          class="nav-item"
-          :class="{ active: isActive(item.to) }"
+          class="flex items-center gap-2.5 px-3 py-2.5 text-sm text-text-secondary no-underline rounded-md transition-colors whitespace-nowrap overflow-hidden"
+          :class="{ 'bg-primary-bg text-primary font-semibold': isActive(item.to), 'hover:bg-gray-100 hover:text-text': !isActive(item.to) }"
           @click="isMobile && (sidebarOpen = false)"
         >
           <component :is="item.icon" :size="18" />
-          <span v-show="sidebarOpen" class="nav-label">{{ item.label }}</span>
+          <span v-show="sidebarOpen" class="flex-1">{{ item.label }}</span>
         </NuxtLink>
       </nav>
 
-      <div class="sidebar-footer">
-        <NuxtLink to="/" class="back-link">
+      <div class="p-2 border-t border-border">
+        <NuxtLink to="/" class="flex items-center gap-2 px-3 py-2.5 text-xs text-text-secondary no-underline rounded-md transition-colors whitespace-nowrap overflow-hidden hover:bg-gray-100 hover:text-text">
           <ArrowLeftFromLine :size="16" />
           <span v-show="sidebarOpen">返回前台</span>
         </NuxtLink>
@@ -94,16 +97,16 @@ function isActive(path: string) {
     </aside>
 
     <!-- 主内容区 -->
-    <div class="main-area" :class="{ expanded: !sidebarOpen }">
+    <div class="flex-1 min-h-screen transition-[margin-left] duration-200" :class="sidebarOpen ? 'ml-60 max-md:ml-0' : 'ml-15 max-md:ml-0'">
       <!-- 移动端顶栏 -->
-      <header v-if="isMobile" class="mobile-header">
-        <button class="hamburger-btn" @click="sidebarOpen = !sidebarOpen">
+      <header v-if="isMobile" class="flex items-center gap-3 px-4 py-3 bg-white border-b border-border sticky top-0 z-40">
+        <button class="bg-none border-none text-text cursor-pointer p-1.5 rounded hover:bg-gray-100" @click="sidebarOpen = !sidebarOpen">
           <PanelLeft :size="20" />
         </button>
-        <span class="mobile-title">管理后台</span>
+        <span class="text-base font-semibold">管理后台</span>
       </header>
 
-      <main class="content">
+      <main class="p-6 max-w-[1200px]">
         <slot />
       </main>
     </div>
@@ -111,191 +114,7 @@ function isActive(path: string) {
 </template>
 
 <style scoped>
-.admin-layout {
-  display: flex;
-  min-height: 100vh;
-  background: #f8f9fa;
-}
-
-/* 侧边栏 */
-.sidebar {
-  width: 240px;
-  background: var(--c-white);
-  border-right: 1px solid var(--c-border);
-  display: flex;
-  flex-direction: column;
-  transition: width 0.2s ease;
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  z-index: 50;
-}
-
-.sidebar.collapsed {
-  width: 60px;
-}
-
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 12px;
-  border-bottom: 1px solid var(--c-border);
-  min-height: 64px;
-}
-
-.sidebar-brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-decoration: none;
-  overflow: hidden;
-}
-
-.brand-logo {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  flex-shrink: 0;
-}
-
-.brand-text {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--c-primary);
-  white-space: nowrap;
-}
-
-.toggle-btn {
-  background: none;
-  border: none;
-  color: var(--c-text-secondary);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  flex-shrink: 0;
-  transition: background 0.15s;
-}
-
-.toggle-btn:hover {
-  background: var(--c-bg-hover, #f5f5f5);
-}
-
-.sidebar-nav {
-  flex: 1;
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  overflow-y: auto;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  font-size: 14px;
-  color: var(--c-text-secondary);
-  text-decoration: none;
-  border-radius: 6px;
-  transition: background 0.15s, color 0.15s;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.nav-item:hover {
-  background: var(--c-bg-hover, #f5f5f5);
-  color: var(--c-text);
-}
-
-.nav-item.active {
-  background: var(--c-primary-bg, #eff6ff);
-  color: var(--c-primary);
-  font-weight: 600;
-}
-
-.nav-label {
-  flex: 1;
-}
-
-.sidebar-footer {
-  padding: 8px;
-  border-top: 1px solid var(--c-border);
-}
-
-.back-link {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  font-size: 13px;
-  color: var(--c-text-secondary);
-  text-decoration: none;
-  border-radius: 6px;
-  transition: background 0.15s, color 0.15s;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.back-link:hover {
-  background: var(--c-bg-hover, #f5f5f5);
-  color: var(--c-text);
-}
-
-/* 主内容区 */
-.main-area {
-  flex: 1;
-  margin-left: 240px;
-  transition: margin-left 0.2s ease;
-  min-height: 100vh;
-}
-
-.main-area.expanded {
-  margin-left: 60px;
-}
-
-.mobile-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--c-white);
-  border-bottom: 1px solid var(--c-border);
-  position: sticky;
-  top: 0;
-  z-index: 40;
-}
-
-.hamburger-btn {
-  background: none;
-  border: none;
-  color: var(--c-text);
-  cursor: pointer;
-  padding: 6px;
-  border-radius: 4px;
-}
-
-.mobile-title {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.content {
-  padding: 24px;
-  max-width: 1200px;
-}
-
-/* 遮罩 */
-.sidebar-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.3);
-  z-index: 45;
-}
-
-/* 过渡动画 */
+/* Vue Transition: 遮罩淡入淡出 */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.2s;
@@ -303,22 +122,5 @@ function isActive(path: string) {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
-}
-
-/* 响应式 */
-@media (max-width: 767px) {
-  .sidebar:not(.collapsed) {
-    width: 240px;
-  }
-
-  .sidebar.collapsed {
-    width: 0;
-    overflow: hidden;
-  }
-
-  .main-area,
-  .main-area.expanded {
-    margin-left: 0;
-  }
 }
 </style>

@@ -98,7 +98,7 @@ async function handleSave() {
           <div class="flex items-center justify-between">
             <label class="text-sm font-semibold text-text">个人简介</label>
             <button
-              class="btn btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5"
+              class="btn text-xs px-3 py-1.5 flex items-center gap-1.5 text-text-secondary border border-border bg-transparent rounded-md cursor-pointer hover:bg-gray-100 hover:text-text transition-colors"
               @click="previewMode = !previewMode"
             >
               <Eye v-if="!previewMode" :size="14" />
@@ -144,18 +144,3 @@ async function handleSave() {
     </div>
   </div>
 </template>
-
-<style scoped>
-.btn-ghost {
-  color: var(--c-text-secondary);
-  border: 1px solid var(--c-border);
-  background: transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.2s, color 0.2s;
-}
-.btn-ghost:hover {
-  background: var(--c-bg-hover, #f5f5f5);
-  color: var(--c-text);
-}
-</style>

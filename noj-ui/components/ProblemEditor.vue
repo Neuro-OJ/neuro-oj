@@ -151,357 +151,142 @@ async function handleSubmit() {
 
 <template>
   <!-- 编辑模式：未找到 -->
-  <div v-if="notFound" class="page">
-    <p class="state-text">题目不存在</p>
+  <div v-if="notFound" class="text-center py-12 text-text-secondary text-base">
+    题目不存在
   </div>
 
   <!-- 编辑模式：加载中 -->
-  <div v-else-if="isEditMode && pageLoading" class="page">
-    <p class="state-text">加载中...</p>
+  <div v-else-if="isEditMode && pageLoading" class="text-center py-12 text-text-secondary text-base">
+    加载中...
   </div>
 
   <!-- 编辑模式：加载失败 -->
-  <div v-else-if="isEditMode && loadError" class="page">
-    <p class="state-text">{{ loadError }}</p>
+  <div v-else-if="isEditMode && loadError" class="text-center py-12 text-text-secondary text-base">
+    {{ loadError }}
   </div>
 
   <!-- 正常表单 -->
-  <div v-else class="card">
-    <div v-if="saveError" class="alert-error">{{ saveError }}</div>
+  <div v-else class="bg-white border border-border rounded-xl overflow-hidden">
+    <div v-if="saveError" class="mx-6 mt-4 px-3.5 py-2.5 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">{{ saveError }}</div>
 
     <!-- 基本信息 -->
-    <section class="section">
-      <h2 class="section-title">基本信息</h2>
-      <div class="form-grid">
+    <section class="px-6 py-5 border-b border-border last:border-b-0">
+      <h2 class="text-sm font-semibold text-text mb-0">基本信息</h2>
+      <div class="grid grid-cols-2 gap-3.5 mt-3">
         <!-- 编辑模式：只读题号和类型 -->
         <template v-if="isEditMode">
-          <div class="field">
-            <label class="label">题号</label>
-            <span class="input readonly-like">{{ displayId }}</span>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-text">题号</label>
+            <span class="px-3 py-2 text-sm border border-border rounded-md bg-gray-50 text-text-secondary cursor-default">{{ displayId }}</span>
           </div>
-          <div class="field">
-            <label class="label">类型</label>
-            <span class="input readonly-like">{{ problemType === 'U' ? '用户题库（U）' : '主题库（P）' }}</span>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-text">类型</label>
+            <span class="px-3 py-2 text-sm border border-border rounded-md bg-gray-50 text-text-secondary cursor-default">{{ problemType === 'U' ? '用户题库（U）' : '主题库（P）' }}</span>
           </div>
         </template>
 
         <!-- 创建模式：类型选择 -->
         <template v-else>
-          <div class="field">
-            <label class="label">题目类型</label>
-            <select v-model="problemType" class="input">
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-text">题目类型</label>
+            <select v-model="problemType" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white">
               <option v-if="isAdmin" value="P">主题库（P）</option>
               <option value="U">用户题库（U）</option>
             </select>
           </div>
         </template>
 
-        <div class="field">
-          <label class="label">标题 <span class="required">*</span></label>
-          <input v-model="title" class="input" placeholder="题目标题" />
-          <p v-if="fieldErrors.title" class="field-error">{{ fieldErrors.title }}</p>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">标题 <span class="text-red-600">*</span></label>
+          <input v-model="title" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white" placeholder="题目标题" />
+          <p v-if="fieldErrors.title" class="text-xs text-red-600">{{ fieldErrors.title }}</p>
         </div>
 
-        <div class="field">
-          <label class="label">难度</label>
-          <select v-model="difficulty" class="input">
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">难度</label>
+          <select v-model="difficulty" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white">
             <option value="easy">简单</option>
             <option value="medium">中等</option>
             <option value="hard">困难</option>
           </select>
         </div>
 
-        <div class="field">
-          <label class="label">分类</label>
-          <div class="checkbox-group">
-            <label v-for="cat in categories" :key="cat.id" class="checkbox-label">
-              <input v-model="categoryIds" type="checkbox" :value="cat.id" class="checkbox" />
+        <div class="flex flex-col gap-1 col-span-2">
+          <label class="text-xs font-semibold text-text">分类</label>
+          <div class="flex flex-wrap gap-2">
+            <label v-for="cat in categories" :key="cat.id" class="flex items-center gap-1 text-xs text-text cursor-pointer">
+              <input v-model="categoryIds" type="checkbox" :value="cat.id" class="accent-primary" />
               {{ cat.name }}
             </label>
-            <span v-if="categories.length === 0" class="text-muted">暂无分类</span>
+            <span v-if="categories.length === 0" class="text-xs text-text-muted">暂无分类</span>
           </div>
         </div>
       </div>
     </section>
 
     <!-- 题目描述 -->
-    <section class="section">
-      <div class="section-header">
-        <h2 class="section-title">题目描述 <span class="required">*</span></h2>
-        <button class="toggle-preview" @click="previewMode = !previewMode">
+    <section class="px-6 py-5 border-b border-border last:border-b-0">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-text mb-0">题目描述 <span class="text-red-600">*</span></h2>
+        <button class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-text-secondary bg-transparent border border-border rounded-md cursor-pointer transition-colors hover:border-text-secondary hover:text-text" @click="previewMode = !previewMode">
           <Eye v-if="!previewMode" :size="14" />
           <Edit3 v-else :size="14" />
           {{ previewMode ? "编辑" : "预览" }}
         </button>
       </div>
-      <p v-if="fieldErrors.description" class="field-error">{{ fieldErrors.description }}</p>
+      <p v-if="fieldErrors.description" class="text-xs text-red-600 mb-2">{{ fieldErrors.description }}</p>
 
       <textarea
         v-if="!previewMode"
         v-model="description"
-        class="textarea"
+        class="w-full px-3 py-3 text-sm font-mono leading-relaxed border border-border rounded-md outline-none resize-y min-h-[200px] box-border transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
         placeholder="支持 Markdown 格式的题目描述..."
         rows="12"
       />
-      <div v-else class="preview-box">
+      <div v-else class="px-3 py-3 border border-border rounded-md min-h-[200px]">
         <MarkdownRenderer v-if="description.trim()" :content="description" />
-        <p v-else class="text-muted">暂无内容</p>
+        <p v-else class="text-xs text-text-muted">暂无内容</p>
       </div>
     </section>
 
     <!-- 评测配置 -->
-    <section class="section">
-      <h2 class="section-title">评测配置</h2>
-      <div class="form-grid">
-        <div class="field">
-          <label class="label">评测镜像 <span class="required">*</span></label>
-          <input v-model="judgeImage" class="input" placeholder="如：noj-judge-python" />
-          <p v-if="fieldErrors.judge_image" class="field-error">{{ fieldErrors.judge_image }}</p>
+    <section class="px-6 py-5 border-b border-border last:border-b-0">
+      <h2 class="text-sm font-semibold text-text mb-3">评测配置</h2>
+      <div class="grid grid-cols-2 gap-3.5">
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">评测镜像 <span class="text-red-600">*</span></label>
+          <input v-model="judgeImage" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white" placeholder="如：noj-judge-python" />
+          <p v-if="fieldErrors.judge_image" class="text-xs text-red-600">{{ fieldErrors.judge_image }}</p>
         </div>
-        <div class="field">
-          <label class="label">评测命令 <span class="required">*</span></label>
-          <input v-model="judgeCommand" class="input" placeholder="如：python3 /tmp/evaluate.py" />
-          <p v-if="fieldErrors.judge_command" class="field-error">{{ fieldErrors.judge_command }}</p>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">评测命令 <span class="text-red-600">*</span></label>
+          <input v-model="judgeCommand" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white" placeholder="如：python3 /tmp/evaluate.py" />
+          <p v-if="fieldErrors.judge_command" class="text-xs text-red-600">{{ fieldErrors.judge_command }}</p>
         </div>
-        <div class="field">
-          <label class="label">判题类型</label>
-          <select v-model="judgeType" class="input">
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">判题类型</label>
+          <select v-model="judgeType" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white">
             <option value="special">SPJ（自定义评测脚本）</option>
             <option value="standard">标准（stdout diff 原生执行器）</option>
           </select>
         </div>
-        <div class="field">
-          <label class="label">时间限制 (ms)</label>
-          <input v-model.number="timeLimitMs" type="number" class="input" min="100" max="30000" />
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">时间限制 (ms)</label>
+          <input v-model.number="timeLimitMs" type="number" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" min="100" max="30000" />
         </div>
-        <div class="field">
-          <label class="label">内存限制 (MB)</label>
-          <input v-model.number="memoryLimitMb" type="number" class="input" min="16" max="4096" />
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">内存限制 (MB)</label>
+          <input v-model.number="memoryLimitMb" type="number" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" min="16" max="4096" />
         </div>
       </div>
     </section>
 
     <!-- 提交按钮 -->
-    <div class="form-actions">
-      <button class="btn btn-primary" :disabled="saving" @click="handleSubmit">
+    <div class="flex gap-2.5 justify-end px-6 py-4">
+      <button class="btn btn-primary inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold rounded-lg border border-transparent bg-primary text-white cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary-dark hover:border-primary-dark" :disabled="saving" @click="handleSubmit">
         <Save :size="16" />
         {{ saving ? (isEditMode ? "保存中..." : "创建中...") : (isEditMode ? "保存修改" : "创建题目") }}
       </button>
     </div>
   </div>
 </template>
-
-<style scoped>
-.card {
-  background: var(--c-white);
-  border: 1px solid var(--c-border);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.state-text {
-  text-align: center;
-  padding: 48px;
-  color: var(--c-text-secondary);
-  font-size: 16px;
-}
-
-.alert-error {
-  margin: 16px 24px 0;
-  padding: 10px 14px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  color: #dc2626;
-  font-size: 14px;
-}
-
-.section {
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--c-border);
-}
-
-.section:last-child {
-  border-bottom: none;
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.section-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--c-text);
-  margin: 0 0 12px 0;
-}
-
-.section-header .section-title {
-  margin-bottom: 0;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.field:has(textarea),
-.field:has(.checkbox-group) {
-  grid-column: 1 / -1;
-}
-
-.label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--c-text);
-}
-
-.required {
-  color: #dc2626;
-}
-
-.input {
-  padding: 8px 12px;
-  font-size: 14px;
-  border: 1px solid var(--c-border);
-  border-radius: 6px;
-  outline: none;
-  transition: border-color 0.15s;
-  background: var(--c-white);
-}
-
-.input:focus {
-  border-color: var(--c-primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-.readonly-like {
-  background: var(--c-bg-subtle, #f9fafb);
-  color: var(--c-text-secondary);
-  cursor: default;
-}
-
-.textarea {
-  width: 100%;
-  padding: 12px;
-  font-size: 14px;
-  font-family: ui-monospace, monospace;
-  line-height: 1.6;
-  border: 1px solid var(--c-border);
-  border-radius: 6px;
-  outline: none;
-  resize: vertical;
-  min-height: 200px;
-  transition: border-color 0.15s;
-  box-sizing: border-box;
-}
-
-.textarea:focus {
-  border-color: var(--c-primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-.preview-box {
-  padding: 12px;
-  border: 1px solid var(--c-border);
-  border-radius: 6px;
-  min-height: 200px;
-}
-
-.toggle-preview {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--c-text-secondary);
-  background: transparent;
-  border: 1px solid var(--c-border);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.toggle-preview:hover {
-  border-color: var(--c-text-secondary);
-  color: var(--c-text);
-}
-
-.checkbox-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--c-text);
-  cursor: pointer;
-}
-
-.checkbox {
-  accent-color: var(--c-primary);
-}
-
-.text-muted {
-  font-size: 13px;
-  color: var(--c-text-muted);
-}
-
-.field-error {
-  font-size: 12px;
-  color: #dc2626;
-}
-
-.form-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-  padding: 16px 24px;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 20px;
-  font-size: 14px;
-  font-weight: 600;
-  border-radius: 8px;
-  cursor: pointer;
-  text-decoration: none;
-  transition: all 0.15s;
-  border: 1.5px solid transparent;
-  line-height: 1;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background: var(--c-primary);
-  color: var(--c-white);
-  border-color: var(--c-primary);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--c-primary-dark);
-  border-color: var(--c-primary-dark);
-}
-</style>

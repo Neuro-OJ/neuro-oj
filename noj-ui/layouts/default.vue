@@ -1,10 +1,10 @@
 <script setup lang="ts">
 </script>
 <template>
-    <div class="layout">
+    <div class="flex flex-col min-h-screen w-full overflow-x-hidden">
         <Navbar />
-        <div class="body-area">
-            <main class="main">
+        <div class="flex flex-1 min-h-[calc(100vh-64px)] w-full pt-16">
+            <main class="flex-1 min-w-0 w-full">
                 <slot />
             </main>
         </div>
@@ -13,70 +13,36 @@
 </template>
 
 <style>
-.layout {
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-    width: 100%;
-    overflow-x: hidden;
-}
-
-.body-area {
-    display: flex;
-    flex: 1;
-    min-height: calc(100vh - 64px);
-    width: 100%;
-    padding-top: 64px;
-}
-
-.main {
-    flex: 1;
-    min-width: 0;
-    width: 100%;
-}
-
+/* 全局工具类 —— 由 Tailwind @apply 生成，迁移过渡期保留 */
 .container {
+    @apply mx-auto w-full;
     max-width: 1200px;
-    margin: 0 auto;
     padding: 0 24px;
 }
 
 .btn {
-    @apply inline-flex items-center justify-center font-semibold no-underline cursor-pointer;
-    border-radius: 8px;
-    font-weight: 600;
-    text-decoration: none;
-    transition: all 0.2s;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    @apply inline-flex items-center justify-center font-semibold no-underline cursor-pointer rounded-lg transition-all duration-200;
 }
 
 .btn-primary {
-    background: var(--c-primary);
-    color: var(--c-white);
-    border: 1.5px solid var(--c-primary);
+    @apply bg-primary text-white border border-primary;
 }
 
 .btn-primary:hover {
-    background: var(--c-primary-dark);
-    border-color: var(--c-primary-dark);
+    @apply bg-primary-dark border-primary-dark;
 }
 
 .btn-outline {
-    @apply bg-transparent;
-    color: var(--c-primary);
-    border: 1.5px solid var(--c-primary);
+    @apply bg-transparent text-primary border border-primary;
 }
 
 .btn-outline:hover {
-    @apply text-white;
-    background: var(--c-primary);
+    @apply bg-primary text-white;
 }
 </style>
 
 <style>
+/* 动画关键帧 —— Tailwind animate-* 无法覆盖的自定义动画 */
 @keyframes gradientShift {
     0% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
@@ -89,14 +55,8 @@
 }
 
 @keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(24px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes float {

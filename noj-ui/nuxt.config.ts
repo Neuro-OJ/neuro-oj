@@ -34,4 +34,15 @@ export default defineNuxtConfig({
       ],
     },
   },
+
+  // Deno Compile 用，删了没法编译
+  hooks: {
+    close: () => {
+      process.exit(0); 
+    }
+  },
+
+  nitro: {
+    preset: "deno-server",
+  }
 });

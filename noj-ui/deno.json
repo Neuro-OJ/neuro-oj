@@ -2,6 +2,7 @@
   "tasks": {
     "dev": "deno run -A npm:nuxt dev",
     "build": "deno run -A npm:nuxt build",
+    "compile": "deno run -A npm:nuxt build && mkdir -p dist && deno compile -A --no-check --unstable-byonm --unstable-node-globals --include .output/public --output dist/noj-ui .output/server/index.mjs",
     "preview": "deno run -A npm:nuxt preview",
     "lint": "deno lint",
     "fmt": "deno fmt"

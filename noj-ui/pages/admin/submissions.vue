@@ -150,65 +150,65 @@ function rowSub(row: Record<string, unknown>): SubmissionListItem {
 </script>
 
 <template>
-  <div class="page">
-    <div class="header">
-      <h1 class="title">提交管理</h1>
-      <span class="subtitle">查看所有用户的提交记录</span>
+  <div class="flex flex-col gap-4">
+    <div class="flex flex-col gap-1">
+      <h1 class="text-[22px] font-bold text-text">提交管理</h1>
+      <span class="text-sm text-text-secondary">查看所有用户的提交记录</span>
     </div>
 
     <!-- 筛选栏 -->
-    <div class="filter-bar">
-      <div class="filter-row">
-        <div class="filter-item">
-          <label class="filter-label">题目</label>
+    <div class="bg-white border border-border rounded-lg p-4">
+      <div class="flex flex-wrap gap-3 mb-3">
+        <div class="flex flex-col gap-1 min-w-[140px] flex-1">
+          <label class="text-xs font-semibold text-text-secondary">题目</label>
           <input
             v-model="filters.problem_search"
-            class="filter-input"
+            class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
             placeholder="题目 ID 或名称"
             @keyup.enter="applyFilters"
           />
         </div>
-        <div class="filter-item">
-          <label class="filter-label">用户</label>
+        <div class="flex flex-col gap-1 min-w-[140px] flex-1">
+          <label class="text-xs font-semibold text-text-secondary">用户</label>
           <input
             v-model="filters.user_search"
-            class="filter-input"
+            class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
             placeholder="用户名或用户 ID"
             @keyup.enter="applyFilters"
           />
         </div>
-        <div class="filter-item">
-          <label class="filter-label">提交 ID</label>
+        <div class="flex flex-col gap-1 min-w-[140px] flex-1">
+          <label class="text-xs font-semibold text-text-secondary">提交 ID</label>
           <input
             v-model="filters.submission_id"
-            class="filter-input"
+            class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
             placeholder="提交 ID 前缀"
             @keyup.enter="applyFilters"
           />
         </div>
-        <div class="filter-item">
-          <label class="filter-label">语言</label>
-          <select v-model="filters.language" class="filter-input" @change="applyFilters">
+        <div class="flex flex-col gap-1 min-w-[140px] flex-1">
+          <label class="text-xs font-semibold text-text-secondary">语言</label>
+          <select v-model="filters.language" class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" @change="applyFilters">
             <option v-for="opt in languageOptions" :key="opt.value" :value="opt.value">
               {{ opt.label }}
             </option>
           </select>
         </div>
-        <div class="filter-item">
-          <label class="filter-label">状态</label>
-          <select v-model="filters.status" class="filter-input" @change="applyFilters">
+        <div class="flex flex-col gap-1 min-w-[140px] flex-1">
+          <label class="text-xs font-semibold text-text-secondary">状态</label>
+          <select v-model="filters.status" class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" @change="applyFilters">
             <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
               {{ opt.label }}
             </option>
           </select>
         </div>
       </div>
-      <div class="filter-actions">
-        <button class="btn btn-primary" @click="applyFilters">
+      <div class="flex gap-2">
+        <button class="inline-flex items-center gap-1 px-3.5 py-1.5 text-[13px] font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline bg-primary text-white border-primary hover:bg-primary-dark hover:border-primary-dark" @click="applyFilters">
           <Search :size="14" />
           筛选
         </button>
-        <button class="btn btn-ghost" @click="clearFilters">
+        <button class="inline-flex items-center gap-1 px-3.5 py-1.5 text-[13px] font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-text-secondary border-border bg-transparent hover:border-text-secondary hover:text-text" @click="clearFilters">
           <X :size="14" />
           清空
         </button>
@@ -222,10 +222,10 @@ function rowSub(row: Record<string, unknown>): SubmissionListItem {
       :error="tableError"
       empty-text="暂无提交记录"
     >
-      <!-- 状态标签列：评测结果状态优先，提交状态回退 -->
+      <!-- 状态标签列 -->
       <template #cell-status="{ row }">
         <span
-          class="status-badge"
+          class="inline-block px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap"
           :style="{
             background: getStatusColor(rowSub(row).status, rowSub(row).result?.status) + '15',
             color: getStatusColor(rowSub(row).status, rowSub(row).result?.status),
@@ -237,7 +237,7 @@ function rowSub(row: Record<string, unknown>): SubmissionListItem {
 
       <!-- 操作列 -->
       <template #actions="{ row }">
-        <NuxtLink :to="`/submissions/${rowSub(row).id}`" class="btn btn-xs">查看</NuxtLink>
+        <NuxtLink :to="`/submissions/${rowSub(row).id}`" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-primary border-primary bg-transparent hover:bg-primary hover:text-white">查看</NuxtLink>
       </template>
     </AdminTable>
 
@@ -248,136 +248,3 @@ function rowSub(row: Record<string, unknown>): SubmissionListItem {
     />
   </div>
 </template>
-
-<style scoped>
-.page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.header {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.title {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--c-text);
-}
-
-.subtitle {
-  font-size: 14px;
-  color: var(--c-text-secondary);
-}
-
-/* 筛选栏 */
-.filter-bar {
-  background: var(--c-white);
-  border: 1px solid var(--c-border);
-  border-radius: 10px;
-  padding: 16px;
-}
-
-.filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.filter-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 140px;
-  flex: 1;
-}
-
-.filter-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--c-text-secondary);
-}
-
-.filter-input {
-  padding: 6px 10px;
-  font-size: 13px;
-  border: 1px solid var(--c-border);
-  border-radius: 6px;
-  outline: none;
-  background: var(--c-white);
-  transition: border-color 0.15s;
-}
-
-.filter-input:focus {
-  border-color: var(--c-primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-.filter-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
-  border: 1.5px solid transparent;
-  line-height: 1;
-  text-decoration: none;
-}
-
-.btn-primary {
-  background: var(--c-primary);
-  color: var(--c-white);
-  border-color: var(--c-primary);
-}
-
-.btn-primary:hover {
-  background: var(--c-primary-dark);
-  border-color: var(--c-primary-dark);
-}
-
-.btn-ghost {
-  color: var(--c-text-secondary);
-  border-color: var(--c-border);
-  background: transparent;
-}
-
-.btn-ghost:hover {
-  border-color: var(--c-text-secondary);
-  color: var(--c-text);
-}
-
-.btn-xs {
-  padding: 4px 10px;
-  font-size: 12px;
-  color: var(--c-primary);
-  border-color: var(--c-primary);
-  background: transparent;
-}
-
-.btn-xs:hover {
-  background: var(--c-primary);
-  color: var(--c-white);
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-</style>

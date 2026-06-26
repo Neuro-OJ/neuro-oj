@@ -118,13 +118,13 @@ async function handleDelete() {
 </script>
 
 <template>
-  <div class="page">
-    <div class="header">
+  <div class="flex flex-col gap-4">
+    <div class="flex items-start justify-between gap-3">
       <div>
-        <h1 class="title">题目管理</h1>
-        <span class="subtitle">管理所有题目</span>
+        <h1 class="text-[22px] font-bold text-text">题目管理</h1>
+        <span class="text-sm text-text-secondary">管理所有题目</span>
       </div>
-      <NuxtLink to="/admin/problem-new" class="btn btn-primary">
+      <NuxtLink to="/admin/problem-new" class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark">
         <Plus :size="16" />
         创建题目
       </NuxtLink>
@@ -138,17 +138,17 @@ async function handleDelete() {
       empty-text="暂无题目"
     >
       <template #cell-difficulty="{ row }">
-        <span class="diff-badge" :class="row.difficulty">
+        <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold" :class="row.difficulty === 'easy' ? 'bg-green-50 text-success-text' : row.difficulty === 'medium' ? 'bg-amber-50 text-warning-text' : 'bg-red-50 text-error-text'">
           {{ difficultyLabels[row.difficulty] || row.difficulty }}
         </span>
       </template>
 
       <template #actions="{ row }">
-        <div class="action-btns">
-          <NuxtLink :to="`/admin/problem-edit/${row.id}`" class="icon-btn" title="编辑">
+        <div class="flex gap-1.5 justify-center">
+          <NuxtLink :to="`/admin/problem-edit/${row.id}`" class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer no-underline transition-all duration-150 hover:bg-[#f5f5f5] hover:text-text" title="编辑">
             <Pencil :size="15" />
           </NuxtLink>
-          <button class="icon-btn danger" title="删除" @click="confirmDelete(row)">
+          <button class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" title="删除" @click="confirmDelete(row)">
             <Trash2 :size="15" />
           </button>
         </div>
@@ -173,103 +173,6 @@ async function handleDelete() {
     @cancel="showDeleteConfirm = false"
   >
     <p>确定要删除题目 <strong>{{ deleteTarget?.title }}</strong>（{{ deleteTarget?.id }}）吗？此操作不可撤销，相关提交记录也会被级联删除。</p>
-    <p v-if="deleteError" class="error-text">{{ deleteError }}</p>
+    <p v-if="deleteError" class="mt-2 text-error-text text-[13px]">{{ deleteError }}</p>
   </AdminModal>
 </template>
-
-<style scoped>
-.page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.title {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--c-text);
-}
-
-.subtitle {
-  font-size: 14px;
-  color: var(--c-text-secondary);
-}
-
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  background: var(--c-primary);
-  color: var(--c-white);
-  border: 1.5px solid var(--c-primary);
-  border-radius: 8px;
-  cursor: pointer;
-  text-decoration: none;
-  transition: all 0.15s;
-}
-
-.btn-primary:hover {
-  background: var(--c-primary-dark);
-  border-color: var(--c-primary-dark);
-}
-
-.diff-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.diff-badge.easy { background: #ecfdf5; color: #10b981; }
-.diff-badge.medium { background: #fffbeb; color: #f59e0b; }
-.diff-badge.hard { background: #fef2f2; color: #ef4444; }
-
-.action-btns {
-  display: flex;
-  gap: 6px;
-  justify-content: center;
-}
-
-.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--c-border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--c-text-secondary);
-  cursor: pointer;
-  text-decoration: none;
-  transition: all 0.15s;
-}
-
-.icon-btn:hover {
-  background: var(--c-bg-hover, #f5f5f5);
-  color: var(--c-text);
-}
-
-.icon-btn.danger:hover {
-  background: #fef2f2;
-  color: #dc2626;
-  border-color: #fecaca;
-}
-
-.error-text {
-  margin-top: 8px;
-  color: #dc2626;
-  font-size: 13px;
-}
-</style>

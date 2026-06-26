@@ -1,26 +1,9 @@
 <template>
-    <div class="layout">
+    <div class="flex flex-col min-h-screen">
         <Navbar />
-        <main class="main">
+        <main class="flex-1 min-h-[calc(100vh-64px)] px-6 py-28 flex items-center justify-center">
             <slot />
         </main>
         <FooterBar />
     </div>
 </template>
-
-<style scoped>
-.layout {
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-}
-
-.main {
-    flex: 1;
-    min-height: calc(100vh - 64px);
-    padding: 112px 24px 48px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-</style>
