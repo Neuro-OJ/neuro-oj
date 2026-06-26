@@ -17,6 +17,7 @@ use serde::Serialize;
 use serde_json::json;
 use tracing::{info, warn};
 
+use crate::pool::copy::copy_to_container;
 use crate::pool::exec::{execute_in_container, read_memory_peak_kb};
 use crate::pool::PoolManager;
 use crate::types::JudgeTask;
@@ -317,6 +318,7 @@ pub async fn run_standard_evaluate(
     let visible_outputs = run_cases(
         docker,
         container_id,
+        work_dir,
         &visible_cases,
         task.time_limit_ms,
         kill_grace,
@@ -334,6 +336,7 @@ pub async fn run_standard_evaluate(
         run_cases(
             docker,
             container_id,
+            work_dir,
             &hidden_cases,
             task.time_limit_ms,
             kill_grace,
@@ -498,6 +501,7 @@ pub async fn run_standard_evaluate(
 async fn run_cases(
     docker: &bollard::Docker,
     container_id: &str,
+    work_dir: &Path,
     cases: &[TestCase],
     timeout_ms: u64,
     kill_grace: u64,
@@ -509,6 +513,38 @@ async fn run_cases(
     for (idx, case) in cases.iter().enumerate() {
         // 单 case 文件名用索引（纯数字），不用 case.id，防 author-controlled 路径穿越
         let case_input_filename = format!("case.in.{}", idx);
+        let case_input_path = work_dir.join(&case_input_filename);
+
+        // 把 case.input 写到 work_dir/case.in.N
+        tokio::fs::write(&case_input_path, &case.input)
+            .await
+            .with_context(|| format!("{} case {} 写输入文件失败", split_name, case.id))?;
+
+        // 同步注入到容器 /tmp/（容器是预热的，宿主机 work_dir 与容器 /tmp
+        // 并不共享；prepare 阶段的 archive_and_copy 只覆盖准备时的快照，
+        // 后续动态写入的 case.in.N 必须再单独 tar 注入一次）
+        let tar_bytes = {
+            let mut buf = Vec::new();
+            {
+                let mut builder = tar::Builder::new(&mut buf);
+                let mut header = tar::Header::new_gnu();
+                header.set_entry_type(tar::EntryType::Regular);
+                header.set_size(case.input.len() as u64);
+                header.set_mode(0o644);
+                header.set_uid(0);
+                header.set_gid(0);
+                header.set_mtime(0);
+                header.set_cksum();
+                builder
+                    .append_data(&mut header, &case_input_filename, case.input.as_bytes())
+                    .context("tar 打包 case.in 失败")?;
+                builder.finish().context("tar finish 失败")?;
+            }
+            buf
+        };
+        copy_to_container(docker, container_id, tar_bytes)
+            .await
+            .with_context(|| format!("{} case {} 注入到容器失败", split_name, case.id))?;
 
         // 执行命令：sh -c "python3 /tmp/main.py < /tmp/case.in.N"
         // bollard exec 不支持 stdin pipe，shell 重定向等价
@@ -828,9 +864,6 @@ mod tests {
         assert_eq!(report.cases[0].actual, "");
         assert!(!report.cases[0].content_ok);
         assert!(!report.all_valid_int);
-        assert_eq!(
-            report.cases[0].stderr.as_deref(),
-            Some("Traceback...")
-        );
+        assert_eq!(report.cases[0].stderr.as_deref(), Some("Traceback..."));
     }
 }
