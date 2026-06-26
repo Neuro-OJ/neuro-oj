@@ -1,19 +1,19 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
-const apiBase = process.env.NUXT_API_BASE ?? "http://localhost:8000";
+const apiBase = process.env.NUXT_API_BASE ?? 'http://localhost:8000';
 
 export default defineNuxtConfig({
-  compatibilityDate: "2026-06-26",
+  compatibilityDate: '2026-06-26',
   devtools: { enabled: true },
-  modules: ["@nuxtjs/tailwindcss"],
+  modules: ['@nuxtjs/tailwindcss'],
 
   // @lucide/vue 的 Icon 组件在 SSR 下 inject() 上下文丢失，
   // 通过 noExternal 强制让 Vite 将其打包入 SSR bundle，确保 inject 链路完整
   vite: {
     ssr: {
-      noExternal: ["@lucide/vue"],
+      noExternal: ['@lucide/vue'],
     },
     optimizeDeps: {
-      include: ["@lucide/vue"],
+      include: ['@lucide/vue'],
     },
   },
 
@@ -26,11 +26,11 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      title: "Neuro OJ",
+      title: 'Neuro OJ',
       meta: [
-        { charset: "utf-8" },
-        { name: "viewport", content: "width=device-width, initial-scale=1" },
-        { name: "description", content: "Neuro OJ — 面向 LMCC 的在线评测系统" },
+        { charset: 'utf-8' },
+        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+        { name: 'description', content: 'Neuro OJ — 面向 LMCC 的在线评测系统' },
       ],
     },
   },
@@ -38,11 +38,11 @@ export default defineNuxtConfig({
   // Deno Compile 用，删了没法编译
   hooks: {
     close: () => {
-      process.exit(0); 
-    }
+      process.exit(0);
+    },
   },
 
   nitro: {
-    preset: "deno-server",
-  }
+    preset: 'deno-server',
+  },
 });
