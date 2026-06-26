@@ -238,6 +238,145 @@ Deno.test({
   },
 });
 
+// ── issue #66: judge_type round-trip + 校验 ──
+
+Deno.test({
+  name: "problems service: 不传 judge_type 默认 special",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const problem = await createProblem({
+      title: `默认 special ${ts}`,
+      description: "测试",
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+    });
+    assertEquals(problem.judge_type, "special");
+  },
+});
+
+Deno.test({
+  name: "problems service: 创建题目时显式指定 judge_type=standard",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const problem = await createProblem({
+      title: `标准题 ${ts}`,
+      description: "测试",
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+      judge_type: "standard",
+    });
+    assertEquals(problem.judge_type, "standard");
+  },
+});
+
+Deno.test({
+  name: "problems service: 非法 judge_type 返回 BadRequestError",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await assertRejects(
+      () =>
+        createProblem({
+          title: "非法 judge_type",
+          description: "测试",
+          difficulty: "easy",
+          judge_image: "noj-judge-python",
+          judge_command: "python3 /tmp/evaluate.py",
+          judge_type: "bogus",
+        }),
+      BadRequestError,
+    );
+  },
+});
+
+Deno.test({
+  name: "problems service: 更新题目 judge_type 从 special → standard",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const created = await createProblem({
+      title: `待更新 judge_type ${ts}`,
+      description: "测试",
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+    });
+    assertEquals(created.judge_type, "special");
+
+    const updated = await updateProblem(created.id, {
+      judge_type: "standard",
+    }, "0");
+    assertEquals(updated.judge_type, "standard");
+  },
+});
+
+Deno.test({
+  name: "problems service: 更新非法 judge_type 返回 BadRequestError",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const created = await createProblem({
+      title: `更新非法 judge_type ${ts}`,
+      description: "测试",
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+    });
+    await assertRejects(
+      () => updateProblem(created.id, { judge_type: "invalid" }, "0"),
+      BadRequestError,
+    );
+  },
+});
+
+Deno.test({
+  name: "problems service: 按 judge_type=standard 过滤",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await createProblem({
+      title: `过滤 standard ${ts}`,
+      description: "测试",
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+      judge_type: "standard",
+    });
+    const result = await listProblems({ judge_type: "standard" });
+    assertEquals(result.items.every((i) => i.judge_type === "standard"), true);
+  },
+});
+
+Deno.test({
+  name: "problems service: 按 judge_type=invalid 过滤返回 BadRequestError",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await assertRejects(
+      () => listProblems({ judge_type: "invalid" }),
+      BadRequestError,
+    );
+  },
+});
+
 // 清理
 Deno.test({
   name: "problems service: cleanup",

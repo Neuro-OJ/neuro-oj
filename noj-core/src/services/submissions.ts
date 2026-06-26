@@ -327,6 +327,9 @@ export async function createSubmission(
     file_name: fileName,
     time_limit_ms: problem.time_limit_ms,
     memory_limit_mb: problem.memory_limit_mb,
+    // 透传判题类型：standard=标准题（noj-judge 原生 stdout diff），
+    // special=SPJ 题（python3 /tmp/evaluate.py）
+    judge_type: problem.judge_type,
   };
 
   try {

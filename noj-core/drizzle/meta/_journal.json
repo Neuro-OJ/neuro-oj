@@ -43,6 +43,13 @@
       "when": 1751400002,
       "tag": "0005_submission_eval_result_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1751600000,
+      "tag": "0006_problem_judge_type",
+      "breakpoints": true
     }
   ]
 }

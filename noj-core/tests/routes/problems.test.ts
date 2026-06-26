@@ -289,3 +289,106 @@ Deno.test({
     );
   },
 });
+
+// ── issue #66: judge_type 路由层测试 ──
+
+Deno.test({
+  name: "problems route: 列表返回 judge_type 字段",
+  ignore: skipDb,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await createProblem({
+      title: `路由层 judge_type ${ts}`,
+      description: "测试",
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+      judge_type: "standard",
+    });
+    const app = createApp();
+    const res = await app.request("/api/v1/problems");
+    const body = await res.json();
+    const created = body.data.find((p: { title: string }) =>
+      p.title.includes(`路由层 judge_type ${ts}`)
+    );
+    assertEquals(!!created, true);
+    assertEquals(created.judge_type, "standard");
+  },
+});
+
+Deno.test({
+  name: "problems route: GET /api/v1/problems/:id 详情含 judge_type",
+  ignore: skipDb,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const problem = await createProblem({
+      title: `详情 judge_type ${ts}`,
+      description: "测试",
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+      judge_type: "standard",
+    });
+    const app = createApp();
+    const res = await app.request(`/api/v1/problems/${problem.id}`);
+    const body = await res.json();
+    assertEquals(body.data.judge_type, "standard");
+  },
+});
+
+Deno.test({
+  name: "problems route: POST 非法 judge_type 返回 400",
+  ignore: skipDb || skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await signToken({ sub: "0", role: "admin" });
+    const res = await app.request("/api/v1/problems", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        title: "非法 judge_type",
+        description: "测试",
+        judge_image: "noj-judge-python",
+        judge_command: "python3 /tmp/evaluate.py",
+        judge_type: "bogus",
+      }),
+    });
+    assertEquals(res.status, 400);
+  },
+});
+
+Deno.test({
+  name: "problems route: GET /api/v1/problems?judge_type=standard 过滤",
+  ignore: skipDb,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await createProblem({
+      title: `过滤 standard ${ts}`,
+      description: "测试",
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+      judge_type: "standard",
+    });
+    const app = createApp();
+    const res = await app.request("/api/v1/problems?judge_type=standard");
+    const body = await res.json();
+    assertEquals(
+      body.data.every((p: { judge_type: string }) =>
+        p.judge_type === "standard"
+      ),
+      true,
+    );
+  },
+});
