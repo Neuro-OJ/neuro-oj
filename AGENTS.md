@@ -285,7 +285,7 @@ neuro-oj/
 | 模块      | 语言/运行时          | 核心框架       | 关键依赖               |
 | --------- | -------------------- | -------------- | ---------------------- |
 | noj-core  | Deno / TypeScript    | Hono           | Drizzle ORM, ioredis, Jose (JWT), postgres.js, bcryptjs |
-| noj-ui    | Deno / Node.js / TypeScript | Nuxt 4 / Vue 3 | Tailwind CSS, Monaco Editor, Lucide Icons, SweetAlert2, markdown-it, KaTeX, highlight.js, DOMPurify |
+| noj-ui    | Deno / TypeScript | Nuxt 4 / Vue 3 | Tailwind CSS, Monaco Editor, Lucide Icons, SweetAlert2, markdown-it, KaTeX, highlight.js, DOMPurify |
 | noj-judge | Rust (Edition 2021)  | Tokio          | bollard (Docker API), redis-rs, serde, axum (metrics), zip, tar |
 | 基础设施  | PostgreSQL 16 + Redis 7 | docker-compose | Drizzle Kit (迁移) |
 
