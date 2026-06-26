@@ -32,33 +32,33 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown))
 
 <template>
   <Transition name="modal">
-    <div class="overlay" @click.self="emit('cancel')">
-      <div class="modal">
+    <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-300 p-6" @click.self="emit('cancel')">
+      <div class="bg-white rounded-xl max-w-[420px] w-full shadow-modal">
         <!-- 标题 -->
-        <div class="modal-header">
-          <h3 class="modal-title">{{ title }}</h3>
-          <button class="close-btn" @click="emit('cancel')">
+        <div class="flex items-center justify-between pt-5 px-6">
+          <h3 class="text-lg font-bold text-text">{{ title }}</h3>
+          <button class="bg-none border-none text-text-secondary cursor-pointer p-1 rounded transition-colors hover:bg-gray-100" @click="emit('cancel')">
             <X :size="18" />
           </button>
         </div>
 
         <!-- 内容 -->
-        <div class="modal-body">
+        <div class="px-6 py-4 text-sm text-text-secondary leading-relaxed">
           <slot />
         </div>
 
         <!-- 操作按钮 -->
-        <div class="modal-footer">
+        <div class="flex gap-2.5 justify-end px-6 pb-5">
           <button
-            class="btn btn-cancel"
+            class="px-5 py-2.5 text-sm font-semibold rounded-lg border border-border bg-transparent text-text-secondary cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:border-text-secondary"
             :disabled="loading"
             @click="emit('cancel')"
           >
             {{ cancelText }}
           </button>
           <button
-            class="btn"
-            :class="danger ? 'btn-danger' : 'btn-primary'"
+            class="px-5 py-2.5 text-sm font-semibold rounded-lg border border-transparent text-white cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            :class="danger ? 'bg-red-600 border-red-600 hover:bg-red-700 hover:border-red-700' : 'bg-primary border-primary hover:bg-primary-dark hover:border-primary-dark'"
             :disabled="loading"
             @click="emit('confirm')"
           >
@@ -73,135 +73,23 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown))
 </template>
 
 <style scoped>
-.overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 300;
-  padding: 24px;
-}
-
-.modal {
-  background: var(--c-white);
-  border-radius: 12px;
-  max-width: 420px;
-  width: 100%;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px 0;
-}
-
-.modal-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--c-text);
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  color: var(--c-text-secondary);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  transition: background 0.15s;
-}
-
-.close-btn:hover {
-  background: var(--c-bg-hover, #f5f5f5);
-}
-
-.modal-body {
-  padding: 16px 24px;
-  font-size: 14px;
-  color: var(--c-text-secondary);
-  line-height: 1.6;
-}
-
-.modal-footer {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-  padding: 0 24px 20px;
-}
-
-.btn {
-  padding: 10px 20px;
-  font-size: 14px;
-  font-weight: 600;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.15s;
-  border: 1.5px solid transparent;
-  line-height: 1;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-cancel {
-  color: var(--c-text-secondary);
-  border-color: var(--c-border);
-  background: transparent;
-}
-
-.btn-cancel:hover:not(:disabled) {
-  border-color: var(--c-text-secondary);
-}
-
-.btn-primary {
-  background: var(--c-primary);
-  color: var(--c-white);
-  border-color: var(--c-primary);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--c-primary-dark);
-  border-color: var(--c-primary-dark);
-}
-
-.btn-danger {
-  background: #dc2626;
-  color: #fff;
-  border-color: #dc2626;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: #b91c1c;
-  border-color: #b91c1c;
-}
-
-/* 过渡动画 */
+/* Vue Transition: 模态框 */
 .modal-enter-active,
 .modal-leave-active {
   transition: opacity 0.2s;
 }
-
-.modal-enter-active .modal,
-.modal-leave-active .modal {
+.modal-enter-active > div:last-child,
+.modal-leave-active > div:last-child {
   transition: transform 0.2s;
 }
-
 .modal-enter-from,
 .modal-leave-to {
   opacity: 0;
 }
-
-.modal-enter-from .modal {
+.modal-enter-from > div:last-child {
   transform: scale(0.95);
 }
-
-.modal-leave-to .modal {
+.modal-leave-to > div:last-child {
   transform: scale(0.95);
 }
 </style>

@@ -177,9 +177,16 @@ neuro-oj/
 
 ### noj-ui
 
-- 使用 Nuxt 3 的 Composition API
+- 使用 Nuxt 4 的 Composition API
 - 遵循 Vue 3 单文件组件 (SFC) 规范
 - 使用 TypeScript
+- **样式必须使用 Tailwind CSS 编写，禁止手写 CSS**：
+  - 所有 `<style scoped>` 和 `<style>` 块中的手写 CSS 必须迁移为 Tailwind 工具类
+  - 组件模板中直接使用 Tailwind 类名（如 `class="flex items-center gap-2 p-4"`）
+  - 复杂或复用的样式组合可使用 Tailwind 的 `@apply` 指令封装（仍放在 `<style>` 中）
+  - 全局主题定制（颜色、字体、阴影等）统一在 `tailwind.config.ts` 的 `theme.extend` 中配置
+  - CSS 变量 (`--c-*`) 仅在 `app.vue` 的 `:root` 和 `tailwind.config.ts` 中定义，组件中通过 Tailwind 类名间接引用
+  - 动画关键帧 (`@keyframes`) 和复杂伪类可保留在 `<style>` 中，但优先使用 Tailwind 的 `animate-*` 工具类
 
 ### noj-judge
 
