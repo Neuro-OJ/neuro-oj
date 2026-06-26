@@ -308,7 +308,12 @@ Deno.test({
       judge_type: "standard",
     });
     const app = createApp();
-    const res = await app.request("/api/v1/problems");
+    // 用 keyword 过滤（避免分页错过刚 create 的题）
+    const res = await app.request(
+      `/api/v1/problems?keyword=${
+        encodeURIComponent(`路由层 judge_type ${ts}`)
+      }`,
+    );
     const body = await res.json();
     const created = body.data.find((p: { title: string }) =>
       p.title.includes(`路由层 judge_type ${ts}`)

@@ -498,6 +498,11 @@ pub async fn run_standard_evaluate(
 /// 4. 若某 case TLE（exit_code=-1）→ 后续 case 标记为 TLE，不再执行
 ///
 /// 返回的 `stdout` 字段保留每次 exec 的完整输出（用于日志）；输出行提取由 `score_cases` 完成。
+/// 跑一组测试用例（visible 或 hidden）。
+///
+/// `work_dir` 与 `cases` 共同决定 case.in.N 的位置与内容。
+/// 拆成 struct 会损失可读性，allow clippy::too_many_arguments。
+#[allow(clippy::too_many_arguments)]
 async fn run_cases(
     docker: &bollard::Docker,
     container_id: &str,
