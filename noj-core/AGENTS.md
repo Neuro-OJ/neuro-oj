@@ -145,6 +145,8 @@ docker compose down     # 停止
 | PATCH | `/api/v1/admin/users/:id/role` | 管理员 | 角色变更 |
 | GET | `/api/v1/users/:id/profile` | 公开 | 用户主页 |
 | PUT | `/api/v1/users/me` | 登录 | 更新个人简介 |
+| POST | `/api/v1/checkin` | 登录 | 每日签到（返回当前连续天数） |
+| GET | `/api/v1/checkin/today` | 登录 | 查询今日签到状态 |
 | GET | `/health` | 公开 | 健康检查 |
 
 ### 路由层关键模式
@@ -205,6 +207,7 @@ docker compose down     # 停止
 | `problems_categories` | `problem_id`, `category_id` | FK→problems ON DELETE CASCADE, FK→categories ON DELETE CASCADE |
 | `submissions` | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code` | PK, FK→users, FK→problems, idx(user_id,created_at) |
 | `evaluation_results` | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb` | PK, UK(submission_id), FK→submissions |
+| `check_ins` | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak` | PK, FK→users, UK(user_id,checkin_date) |
 
 **设计要点**：
 - 所有时间戳使用 ISO 8601 **文本**格式存储（非原生 `timestamptz`）
