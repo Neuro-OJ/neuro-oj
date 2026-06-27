@@ -255,6 +255,36 @@ docker compose down     # 停止
 | 用户枚举防护   | 登录失败统一返回"用户名或密码错误"，不区分"用户不存在"和"密码错误"                  |
 | Root 用户      | UID="0"，admin 角色，随机密码不可登录，不计入管理员统计，不出现在用户列表           |
 
+## 登录速率限制（issue #73）
+
+三机制组合使用，配置项全部支持环境变量覆盖（见 `.env.example`）：
+
+| 维度     | 默认值    | Redis Key                    | 说明                                            |
+| -------- | --------- | ---------------------------- | ----------------------------------------------- |
+| IP 窗口  | 30s/10 次 | `ratelimit:login:ip:<ip>`    | 单 IP 暴力破解防护                              |
+| 账号窗口 | 30s/5 次  | `ratelimit:login:acc:<user>` | 分布式撞同一账号防护                            |
+| 失败计数 | 10 次触发 | `loginfail:<user>`           | 跨进程一致（Redis）                             |
+| 失败退避 | +15s/次   | 内存 Map `inMemoryBackoff`   | 不阻塞响应（不依赖 Redis）                      |
+| 失败锁定 | 1h TTL    | `loginlock:<user>`           | 阈值后拒绝登录，需 `clearLoginFailure` 或等 TTL |
+
+**响应头**（触发限流时返回 429）：
+
+```
+X-RateLimit-Limit: 10
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1751606400
+Retry-After: 25
+```
+
+**架构决策**：
+
+- 服务层（`services/auth.ts`）保持纯粹，限流逻辑全部在路由层 + 中间件
+- IP 维度用中间件（`loginIpRateLimit()`），账号/锁定/退避在路由 handler 内
+- 失败时"立即返 401 + 下次 sleep"，避免暴露失败响应时间差
+- 总开关 `RATE_LIMIT_ENABLED` + `NOJ_ENV=test` 强制关闭（测试环境）
+- 生产部署需要**配置可信代理白名单**才能正确解析
+  `X-Forwarded-For`（默认信任首项）
+
 ## CORS 配置
 
 | 环境                                | 行为                                     |

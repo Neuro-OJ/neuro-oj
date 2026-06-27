@@ -16,6 +16,27 @@ interface RedisClient {
   lrange(...args: (string | number)[]): Promise<string[]>;
   llen(...args: (string | number)[]): Promise<number>;
   on(event: string, handler: (...args: unknown[]) => void): void;
+  // 限流/计数（issue #73）
+  incr(key: string): Promise<number>;
+  pexpire(key: string, ms: number): Promise<number>;
+  expire(key: string, seconds: number): Promise<number>;
+  pttl(key: string): Promise<number>;
+  del(...keys: string[]): Promise<number>;
+  exists(...keys: string[]): Promise<number>;
+  set(
+    key: string,
+    value: string,
+    mode?: "EX" | "PX" | "NX" | "XX",
+    ttl?: number,
+  ): Promise<unknown>;
+  pipeline(): RedisPipeline;
+}
+
+interface RedisPipeline {
+  incr(key: string): RedisPipeline;
+  pttl(key: string): RedisPipeline;
+  pexpire(key: string, ms: number): RedisPipeline;
+  exec(): Promise<[Error | null, unknown][]>;
 }
 
 let _redis: RedisClient | null = null;
