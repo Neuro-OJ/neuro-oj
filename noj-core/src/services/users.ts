@@ -247,6 +247,13 @@ export async function adminUpdateUserProfile(
 }> {
   const db = getDb();
 
+  // 先校验 email 格式（无需查询数据库）
+  if (input.email !== undefined) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) {
+      throw new BadRequestError("邮箱格式不正确");
+    }
+  }
+
   // 检查用户是否存在
   const existing = await db
     .select()
@@ -267,11 +274,6 @@ export async function adminUpdateUserProfile(
     if (input.email === user.email) {
       // 邮箱未变更，跳过
     } else {
-      // 格式校验
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) {
-        throw new BadRequestError("邮箱格式不正确");
-      }
-
       // 唯一性检查
       const existingEmail = await db
         .select()
