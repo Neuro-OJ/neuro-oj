@@ -588,3 +588,29 @@ export async function updateSubmissionStatus(
     .set(updates)
     .where(eq(submissions.id, id));
 }
+
+/**
+ * 管理员删除提交记录。
+ *
+ * 硬删除提交记录及关联的评测结果（通过 ON DELETE CASCADE 自动清理）。
+ * 仅管理员可通过 admin 端点调用。
+ *
+ * @throws {NotFoundError} 提交不存在
+ */
+export async function deleteSubmission(id: string): Promise<void> {
+  const db = getDb();
+
+  // 检查提交是否存在
+  const existing = await db
+    .select({ id: submissions.id })
+    .from(submissions)
+    .where(eq(submissions.id, id))
+    .limit(1);
+
+  if (existing.length === 0) {
+    throw new NotFoundError("提交不存在");
+  }
+
+  // 硬删除（evaluation_results 通过 ON DELETE CASCADE 自动清理）
+  await db.delete(submissions).where(eq(submissions.id, id));
+}

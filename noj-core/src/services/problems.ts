@@ -9,7 +9,12 @@ import {
   sql,
 } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
-import { categories, problems, problemsCategories } from "../db/schema.ts";
+import {
+  categories,
+  problems,
+  problemsCategories,
+  users,
+} from "../db/schema.ts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -45,6 +50,35 @@ export interface ProblemResponse {
 
 export interface ProblemListResponse {
   items: ProblemResponseWithCategories[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/**
+ * 管理员专属题目列表项（不含 description，额外包含 owner_username）。
+ */
+export interface AdminProblemListItem {
+  id: string;
+  title: string;
+  difficulty: string;
+  judge_image: string;
+  judge_command: string;
+  support_package_path: string | null;
+  time_limit_ms: number;
+  memory_limit_mb: number;
+  categories: { id: string; name: string; slug: string }[];
+  created_at: string;
+  updated_at: string;
+  number: number;
+  owner_id: string;
+  owner_username: string;
+  type: string;
+  display_id: string;
+}
+
+export interface AdminProblemListResponse {
+  items: AdminProblemListItem[];
   total: number;
   page: number;
   limit: number;
@@ -197,6 +231,125 @@ export async function listProblems(
     items: items.map((p) => ({
       ...toProblemResponse(p),
       categories: catMap.get(p.id) ?? [],
+    })),
+    total,
+    page,
+    limit,
+  };
+}
+
+/**
+ * 管理员获取全量题目列表（含 U 型和 P 型）。
+ *
+ * 与 listProblems 的区别：
+ * - 不默认添加 type='P' 筛选条件，返回所有类型题目
+ * - 额外返回 owner_username（JOIN users 表）
+ * - 不返回 description 字段（列表场景不需要）
+ *
+ * 支持与普通列表相同的 difficulty、category_id、keyword 筛选参数。
+ */
+export async function listAllProblems(
+  query: {
+    page?: number;
+    limit?: number;
+    difficulty?: string;
+    category_id?: string;
+    keyword?: string;
+  } = {},
+): Promise<AdminProblemListResponse> {
+  const db = getDb();
+  const page = Math.max(1, query.page ?? 1);
+  const limit = Math.min(100, Math.max(1, query.limit ?? 20));
+  const offset = (page - 1) * limit;
+
+  // 构建筛选条件（不默认添加 type='P'）
+  const conditions: SQL[] = [];
+
+  if (query.difficulty) {
+    if (!isValidDifficulty(query.difficulty)) {
+      throw new BadRequestError(
+        `非法难度值：${query.difficulty}，仅允许 ${DIFFICULTIES.join("/")}`,
+      );
+    }
+    conditions.push(eq(problems.difficulty, query.difficulty));
+  }
+
+  if (query.keyword) {
+    const kw = `%${query.keyword}%`;
+    conditions.push(
+      sql`(${ilike(problems.title, kw)} OR ${ilike(problems.description, kw)})`,
+    );
+  }
+
+  // 按分类筛选
+  if (query.category_id) {
+    const catRows = await db
+      .select({ problem_id: problemsCategories.problem_id })
+      .from(problemsCategories)
+      .where(eq(problemsCategories.category_id, query.category_id));
+
+    if (catRows.length === 0) {
+      return { items: [], total: 0, page, limit };
+    }
+
+    conditions.push(inArray(problems.id, catRows.map((r) => r.problem_id)));
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  // 查询列表：JOIN users 获取 owner_username
+  const rows = await db
+    .select({
+      id: problems.id,
+      title: problems.title,
+      difficulty: problems.difficulty,
+      judge_image: problems.judge_image,
+      judge_command: problems.judge_command,
+      support_package_path: problems.support_package_path,
+      time_limit_ms: problems.time_limit_ms,
+      memory_limit_mb: problems.memory_limit_mb,
+      created_at: problems.created_at,
+      updated_at: problems.updated_at,
+      number: problems.number,
+      owner_id: problems.owner_id,
+      owner_username: users.username,
+      type: problems.type,
+    })
+    .from(problems)
+    .leftJoin(users, eq(problems.owner_id, users.id))
+    .where(whereClause)
+    .orderBy(asc(problems.id))
+    .limit(limit)
+    .offset(offset);
+
+  // 查询总数
+  const countResult = await db
+    .select({ count: count() })
+    .from(problems)
+    .where(whereClause);
+  const total = Number(countResult[0]?.count ?? 0);
+
+  // 注入关联分类信息
+  const catMap = await attachCategories(rows.map((r) => r.id));
+
+  return {
+    items: rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      difficulty: r.difficulty,
+      judge_image: r.judge_image,
+      judge_command: r.judge_command,
+      support_package_path: r.support_package_path,
+      time_limit_ms: r.time_limit_ms,
+      memory_limit_mb: r.memory_limit_mb,
+      categories: catMap.get(r.id) ?? [],
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      number: r.number,
+      owner_id: r.owner_id,
+      owner_username: r.owner_username ?? "未知",
+      type: r.type,
+      display_id: `${r.type}${r.number}`,
     })),
     total,
     page,
