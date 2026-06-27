@@ -6,6 +6,9 @@
  *
  * 失败计数 + 锁定 + 退避见 src/lib/loginThrottle.ts，
  * 在路由层（routes/auth.ts）调用，service 层保持纯粹。
+ *
+ * envInt/envBool/isRateLimitEnabled/getClientIp 统一在
+ * src/lib/rateLimitEnv.ts 定义（DRY）。
  */
 
 import type { Context, Next } from "hono";
@@ -16,6 +19,11 @@ import {
   rateLimitHeaders,
   type RateLimitResult,
 } from "../lib/rateLimit.ts";
+import {
+  envInt,
+  getClientIp,
+  isRateLimitEnabled,
+} from "../lib/rateLimitEnv.ts";
 
 /** 限流 429 错误（继承 AppError，自动被 onError 捕获） */
 class RateLimitedError extends AppError {
@@ -25,25 +33,6 @@ class RateLimitedError extends AppError {
     this.name = "RateLimitedError";
     this.headers = headers;
   }
-}
-
-function envInt(name: string, def: number): number {
-  const v = Deno.env.get(name);
-  if (!v) return def;
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) && n > 0 ? n : def;
-}
-
-function envBool(name: string, def: boolean): boolean {
-  const v = Deno.env.get(name);
-  if (v === undefined) return def;
-  return v === "true" || v === "1";
-}
-
-/** 限流总开关 */
-export function isRateLimitEnabled(): boolean {
-  if (Deno.env.get("NOJ_ENV") === "test") return false;
-  return envBool("RATE_LIMIT_ENABLED", true);
 }
 
 // ── 默认限流配置（可被环境变量覆盖）────────────────────
@@ -59,18 +48,11 @@ export const LOGIN_LIMITS = {
   },
 } as const;
 
-/** 解析客户端真实 IP：X-Forwarded-For 第一项（生产需配可信代理白名单） */
-export function getClientIp(c: Context): string {
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) {
-    return xff.split(",")[0]!.trim();
-  }
-  return c.req.header("x-real-ip") || "unknown";
-}
-
 /**
  * IP 维度登录限流中间件（30s/10 次）。
  * 路由层在 body 解析后再做账号维度限流。
+ *
+ * Redis 不可用时由 checkRateLimit 内部抛 ServiceUnavailableError（503）。
  */
 export function loginIpRateLimit() {
   return async (c: Context, next: Next) => {

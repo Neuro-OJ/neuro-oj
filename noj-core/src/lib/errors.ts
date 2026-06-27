@@ -90,3 +90,15 @@ export class ForbiddenError extends AppError {
     this.name = "ForbiddenError";
   }
 }
+
+/**
+ * 服务不可用错误（HTTP 503）。
+ * 用于关键依赖（Redis、数据库）不可用导致无法执行业务的场景。
+ * 当前由限流相关 Redis 调用在连接失败时抛出（issue #73 fail-closed）。
+ */
+export class ServiceUnavailableError extends AppError {
+  constructor(message: string) {
+    super(message, 503, "SERVICE_UNAVAILABLE");
+    this.name = "ServiceUnavailableError";
+  }
+}
