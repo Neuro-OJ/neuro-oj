@@ -10,7 +10,7 @@
  *   ADMIN_EMAIL - 若设置，则将对应邮箱的用户角色提升为 admin
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq, not, sql } from "drizzle-orm";
 import { runMigrations } from "../src/db/migrate.ts";
 import { getDb } from "../src/db/connection.ts";
 import {
@@ -224,11 +224,14 @@ async function seedProblemCategories(): Promise<void> {
  * ADMIN_EMAIL 必须设置。
  * 若 ADMIN_PASS 同时设置，则自动创建用户（不存在时）并设为 admin；
  * 若 ADMIN_PASS 未设置，则仅提升已存在的用户。
+ *
+ * 注意：环境变量创建的初始密码视为临时凭证，置 must_change_password=true，
+ * 强制首次登录后修改。
  */
 async function ensureAdminFromEnv(): Promise<void> {
   const adminEmail = Deno.env.get("ADMIN_EMAIL");
   if (!adminEmail) {
-    console.log("  ADMIN_EMAIL 未设置，跳过管理员");
+    console.log("  ADMIN_EMAIL 未设置，将进入引导管理员兜底流程");
     return;
   }
 
@@ -260,10 +263,13 @@ async function ensureAdminFromEnv(): Promise<void> {
       email: adminEmail,
       password_hash: await hashPassword(adminPass),
       role: "admin",
+      must_change_password: true,
       created_at: now,
       updated_at: now,
     });
-    console.log(`  已创建管理员用户: ${adminEmail} (${username})`);
+    console.log(
+      `  已创建管理员用户: ${adminEmail} (${username})，已强制首次改密`,
+    );
     return;
   }
 
@@ -279,6 +285,81 @@ async function ensureAdminFromEnv(): Promise<void> {
     .where(eq(users.email, adminEmail));
 
   console.log(`  已提升用户 ${adminEmail} 为管理员`);
+}
+
+/**
+ * 生成 24 字符 base64url 强随机密码（issue #75）。
+ *
+ * base64url 字符集为 [A-Za-z0-9_-]，24 字符提供 ~144 bits 熵。
+ * 替换 +/= 等 URL 不安全字符，并去除易混淆字符（i/l/O/0）。
+ */
+function generateStrongPassword(): string {
+  const bytes = new Uint8Array(18); // 18 bytes → 24 chars base64url
+  crypto.getRandomValues(bytes);
+  let raw = btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+  // 去除易混淆字符（i, l, O, 0, 1），避免控制台抄写错误
+  raw = raw.replace(/[iIlO01]/g, "");
+  return raw.slice(0, 24).padEnd(24, "X");
+}
+
+/**
+ * 引导管理员兜底（issue #75）。
+ *
+ * 当系统中不存在任何可登录管理员（role='admin' AND id!='0'）时，
+ * 自动创建一个临时管理员：
+ *   - username: admin
+ *   - email:    admin@noj.local
+ *   - password: 24 字符 base64url 随机
+ *   - must_change_password: true
+ *
+ * 凭据以醒目块打印到终端，强制运维立即记录并首次登录后修改。
+ * 已存在可登录 admin 时本函数为 no-op，可重复运行（幂等）。
+ */
+async function ensureBootstrapAdmin(): Promise<void> {
+  const db = getDb();
+
+  const [adminCountRow] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(users)
+    .where(and(eq(users.role, "admin"), not(eq(users.id, "0"))));
+  const adminCount = Number(adminCountRow?.count ?? 0);
+  if (adminCount > 0) {
+    console.log("  已存在可登录管理员，跳过引导管理员创建");
+    return;
+  }
+
+  const username = "admin";
+  const email = "admin@noj.local";
+  const password = generateStrongPassword();
+  const { hashPassword } = await import("../src/lib/password.ts");
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  await db.insert(users).values({
+    id,
+    username,
+    email,
+    password_hash: await hashPassword(password),
+    role: "admin",
+    must_change_password: true,
+    created_at: now,
+    updated_at: now,
+  });
+
+  console.log("");
+  console.log("-".repeat(72));
+  console.log("⚠ 已创建临时引导管理员（首次登录后必须修改密码）");
+  console.log("-".repeat(72));
+  console.log(`  username: ${username}`);
+  console.log(`  email:    ${email}`);
+  console.log(`  password: ${password}`);
+  console.log("-".repeat(72));
+  console.log("⚠ 请立即记录上述密码，首次登录后系统会强制要求修改密码。");
+  console.log("-".repeat(72));
+  console.log("");
 }
 
 async function main() {
@@ -330,12 +411,20 @@ async function main() {
       throw err;
     }
 
-    // 6. 管理员创建/提升
+    // 6. 管理员创建/提升（环境变量优先）
     try {
       console.log("检查管理员...");
       await ensureAdminFromEnv();
     } catch (err) {
       console.error("管理员处理失败:", err);
+      throw err;
+    }
+
+    // 7. 引导管理员兜底：无任何可登录 admin 时创建临时账户（issue #75）
+    try {
+      await ensureBootstrapAdmin();
+    } catch (err) {
+      console.error("引导管理员创建失败:", err);
       throw err;
     }
 

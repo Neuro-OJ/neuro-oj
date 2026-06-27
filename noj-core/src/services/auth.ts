@@ -73,6 +73,7 @@ function toUserResponse(row: typeof users.$inferSelect): UserResponse {
     username: row.username,
     email: row.email,
     role: row.role,
+    must_change_password: row.must_change_password,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -137,6 +138,7 @@ export async function registerUser(
     username: input.username,
     email: input.email,
     role: "user",
+    must_change_password: false,
     created_at: now,
     updated_at: now,
   };
@@ -179,8 +181,12 @@ export async function loginUser(
     throw new UnauthorizedError("用户名或密码错误");
   }
 
-  // 签发 JWT
-  const token = await signToken({ sub: user.id, role: user.role });
+  // 签发 JWT（携带 must_change_password 字段，issue #75）
+  const token = await signToken({
+    sub: user.id,
+    role: user.role,
+    must_change_password: user.must_change_password,
+  });
 
   return {
     user: toUserResponse(user),
@@ -277,6 +283,7 @@ export async function promoteUser(
     username: existing[0].username,
     email: existing[0].email,
     role,
+    must_change_password: existing[0].must_change_password,
     created_at: existing[0].created_at,
     updated_at: now,
   };
@@ -312,6 +319,7 @@ export async function listUsers(
         username: users.username,
         email: users.email,
         role: users.role,
+        must_change_password: users.must_change_password,
         created_at: users.created_at,
         updated_at: users.updated_at,
       })
@@ -337,6 +345,80 @@ export async function listUsers(
       total,
       total_pages: totalPages,
     },
+  };
+}
+
+/**
+ * 修改当前用户密码（issue #75）。
+ *
+ * 流程：
+ * 1. 查询用户
+ * 2. 验证旧密码（防止 CSRF/会话劫持时静默改密）
+ * 3. 新密码强度校验（复用 validatePasswordStrength）
+ * 4. bcrypt 哈希新密码并 UPDATE，同时置 must_change_password=false
+ * 5. 返回最新的 UserResponse
+ *
+ * 注意：旧 JWT 仍有效至自然过期——前端应在成功后清 Cookie 重登
+ * （/api/v1/auth/change-password 路由层会清 cookie + 重新登录获取新 token）。
+ *
+ * @throws {UnauthorizedError} 用户不存在或旧密码错误
+ * @throws {BadRequestError} 新密码强度不足
+ */
+export async function changePassword(
+  userId: string,
+  oldPassword: string,
+  newPassword: string,
+): Promise<UserResponse> {
+  const db = getDb();
+
+  const existing = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (existing.length === 0) {
+    throw new UnauthorizedError("用户不存在");
+  }
+
+  const user = existing[0];
+
+  // 1. 拒绝新密码与旧密码相同（issue #75 评审 H5）
+  // 必须先校验这一步，避免攻击者用新=旧绕过强制改密
+  if (oldPassword === newPassword) {
+    throw new BadRequestError("新密码不能与旧密码相同");
+  }
+
+  // 2. 验证旧密码
+  const oldValid = await comparePassword(oldPassword, user.password_hash);
+  if (!oldValid) {
+    throw new UnauthorizedError("旧密码错误");
+  }
+
+  // 3. 新密码强度校验（与注册保持一致）
+  validatePasswordStrength(newPassword, user.username, user.email);
+
+  // 3. 哈希并 UPDATE
+  const newHash = await hashPassword(newPassword);
+  const now = new Date().toISOString();
+
+  await db
+    .update(users)
+    .set({
+      password_hash: newHash,
+      must_change_password: false,
+      updated_at: now,
+    })
+    .where(eq(users.id, userId));
+
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    role: user.role,
+    must_change_password: false,
+    created_at: user.created_at,
+    updated_at: now,
   };
 }
 

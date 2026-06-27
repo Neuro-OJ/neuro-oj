@@ -1,5 +1,9 @@
 <template>
     <header class="fixed top-0 left-0 right-0 z-100 bg-white border-b border-border">
+        <div v-if="user?.must_change_password === true" class="bg-red-50 border-b border-red-200 text-red-700 px-6 py-2 text-sm flex items-center justify-between gap-3">
+            <span>检测到当前密码为临时密码，首次登录后必须修改密码才能使用完整功能。</span>
+            <NuxtLink to="/change-password" class="font-semibold no-underline text-red-700 hover:underline shrink-0">立即修改 →</NuxtLink>
+        </div>
         <div class="w-full max-w-none mx-0 px-6 h-16 flex items-center">
             <NuxtLink to="/" class="flex items-center gap-2 no-underline text-xl font-bold text-primary shrink-0">
                 <img :src="logoSrc" alt="Neuro OJ" class="size-7 rounded-md" />

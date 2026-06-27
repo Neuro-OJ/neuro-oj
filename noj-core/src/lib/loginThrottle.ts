@@ -12,10 +12,14 @@
  * - 重启清零可接受（攻击者也重启了）
  *
  * 锁定存储在 Redis（跨进程一致）：
- * - 失败次数 ≥ 阈值时 SET loginlock:<user>，TTL = lockSeconds
+ * - 失败次数 ≥ 阈值时 SET <ns>lock:<user>，TTL = lockSeconds
  * - 登录成功时 DEL 清除
  *
  * Redis 不可用时采用 **fail-closed**：抛 ServiceUnavailableError (503)。
+ *
+ * Namespace 隔离（issue #75）：
+ * - 默认 namespace `login` 用于登录端点
+ * - change-password 端点使用 namespace `pwchange`，避免改密失败反锁 /login
  */
 
 import { getRedis } from "../mq/connection.ts";
@@ -27,18 +31,34 @@ const LOCK_TTL_SEC_DEFAULT = 3600; // 锁定时长：1 小时
 const LOCK_THRESHOLD_DEFAULT = 10; // 连续 10 次失败触发锁定
 const BACKOFF_SEC_DEFAULT = 15; // 每次失败 +15s
 
+/** 默认 namespace（登录端点） */
+const DEFAULT_NAMESPACE = "login";
+
+/** Namespace 校验：仅允许字母数字下划线短横线，防止 Redis key 注入 */
+function safeNs(ns: string): string {
+  return ns.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
 // ── 失败计数（Redis）────────────────────────────────────
 
-const failKey = (u: string) => `loginfail:${u.toLowerCase()}`;
-const lockKey = (u: string) => `loginlock:${u.toLowerCase()}`;
+const failKey = (u: string, ns: string) =>
+  `${safeNs(ns)}fail:${u.toLowerCase()}`;
+const lockKey = (u: string, ns: string) =>
+  `${safeNs(ns)}lock:${u.toLowerCase()}`;
 
 /**
  * 记录一次登录失败，返回当前失败计数。
  * 失败次数达阈值时自动设置锁定标记。
  *
+ * @param username 用户名 / UUID
+ * @param namespace 命名空间（默认 "login"；change-password 用 "pwchange"）
+ *
  * Redis 不可用时抛 ServiceUnavailableError（fail-closed）。
  */
-export async function recordLoginFailure(username: string): Promise<number> {
+export async function recordLoginFailure(
+  username: string,
+  namespace: string = DEFAULT_NAMESPACE,
+): Promise<number> {
   const threshold = envInt(
     "RATE_LIMIT_LOGIN_LOCK_THRESHOLD",
     LOCK_THRESHOLD_DEFAULT,
@@ -50,12 +70,12 @@ export async function recordLoginFailure(username: string): Promise<number> {
 
   try {
     const redis = getRedis();
-    const count = await redis.incr(failKey(username));
+    const count = await redis.incr(failKey(username, namespace));
     if (count === 1) {
-      await redis.expire(failKey(username), FAIL_TTL_SEC);
+      await redis.expire(failKey(username, namespace), FAIL_TTL_SEC);
     }
     if (count >= threshold) {
-      await redis.set(lockKey(username), "1", "EX", lockSec);
+      await redis.set(lockKey(username, namespace), "1", "EX", lockSec);
     }
     return count;
   } catch (err) {
@@ -64,21 +84,33 @@ export async function recordLoginFailure(username: string): Promise<number> {
   }
 }
 
-/** 检查账号是否被锁定。Redis 不可用时抛 ServiceUnavailableError */
-export async function isLoginLocked(username: string): Promise<boolean> {
+/**
+ * 检查账号是否被锁定。
+ * Redis 不可用时抛 ServiceUnavailableError
+ */
+export async function isLoginLocked(
+  username: string,
+  namespace: string = DEFAULT_NAMESPACE,
+): Promise<boolean> {
   try {
-    return (await getRedis().exists(lockKey(username))) === 1;
+    return (await getRedis().exists(lockKey(username, namespace))) === 1;
   } catch (err) {
     if (err instanceof ServiceUnavailableError) throw err;
     throw new ServiceUnavailableError("登录限流服务暂时不可用");
   }
 }
 
-/** 登录成功时清除失败计数和锁定标记。Redis 不可用时抛 ServiceUnavailableError */
-export async function clearLoginFailure(username: string): Promise<void> {
+/**
+ * 登录成功时清除失败计数和锁定标记。
+ * Redis 不可用时抛 ServiceUnavailableError
+ */
+export async function clearLoginFailure(
+  username: string,
+  namespace: string = DEFAULT_NAMESPACE,
+): Promise<void> {
   try {
     const redis = getRedis();
-    await redis.del(failKey(username), lockKey(username));
+    await redis.del(failKey(username, namespace), lockKey(username, namespace));
   } catch (err) {
     if (err instanceof ServiceUnavailableError) throw err;
     throw new ServiceUnavailableError("登录限流服务暂时不可用");
@@ -87,7 +119,8 @@ export async function clearLoginFailure(username: string): Promise<void> {
 
 // ── 退避（内存）────────────────────────────────────────
 
-const inMemoryBackoff = new Map<string, number>(); // username → deadline (ms)
+/** 内存退避 Map：`<ns>::<username>` → deadline (ms) */
+const inMemoryBackoff = new Map<string, number>();
 
 /** 退避时间（ms）= 失败次数 × backoffSec × 1000 */
 function backoffMs(failCount: number): number {
@@ -98,16 +131,23 @@ function backoffMs(failCount: number): number {
   return Math.max(0, failCount) * backoffSec * 1000;
 }
 
+function backoffMapKey(username: string, ns: string): string {
+  return `${safeNs(ns)}::${username.toLowerCase()}`;
+}
+
 /**
  * 检查并应用退避：未到 deadline 则 sleep 到 deadline。
  * 在路由 handler 入口调用，sleep 不会泄漏给用户（被同步等待）。
  *
  * 限流关闭时立即返回（不留任何副作用）。
  */
-export async function applyLoginBackoff(username: string): Promise<void> {
+export async function applyLoginBackoff(
+  username: string,
+  namespace: string = DEFAULT_NAMESPACE,
+): Promise<void> {
   if (!username) return;
   if (!isRateLimitEnabled()) return;
-  const key = username.toLowerCase();
+  const key = backoffMapKey(username, namespace);
   const deadline = inMemoryBackoff.get(key);
   if (!deadline) return;
   const now = Date.now();
@@ -128,11 +168,12 @@ export async function applyLoginBackoff(username: string): Promise<void> {
 export function recordLoginBackoff(
   username: string,
   failCount: number,
+  namespace: string = DEFAULT_NAMESPACE,
 ): void {
   if (!username) return;
   if (!isRateLimitEnabled()) return;
   if (failCount <= 0) return;
-  const key = username.toLowerCase();
+  const key = backoffMapKey(username, namespace);
   const ms = backoffMs(failCount);
   inMemoryBackoff.set(key, Date.now() + ms);
   // 兜底清理：deadline 之后 1 秒自动清除

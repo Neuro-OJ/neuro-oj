@@ -25,12 +25,19 @@ function getSecretKey(): Uint8Array {
 
 /**
  * JWT 负载中包含的用户信息。
+ *
+ * must_change_password（issue #75）：当用户密码为临时凭证（如引导管理员）
+ * 时，登录后必须修改密码。authMiddleware 据此拦截非白名单请求，避免
+ * 临时凭证被滥用。true 时 token 已强制更新为新密码，但**旧 token 仍有效
+ * 至自然过期**（依赖前端清 Cookie 重登）。
  */
 export interface TokenPayload {
   /** 用户 ID */
   sub: string;
   /** 用户角色 */
   role: string;
+  /** 是否必须修改密码（issue #75） */
+  must_change_password?: boolean;
   /** JWT 唯一标识（用于未来实现 token 黑名单/撤销） */
   jti?: string;
 }
@@ -48,10 +55,18 @@ export async function signToken(
   const expiresIn = Deno.env.get("JWT_EXPIRES_IN") || "24h";
   const jti = payload.jti ?? crypto.randomUUID();
 
-  const token = await new SignJWT({ ...payload, jti } as unknown as JWTPayload)
+  const token = await new SignJWT({
+    role: payload.role,
+    // 仅写入存在的字段，避免向 token 注入 undefined
+    ...(payload.must_change_password !== undefined && {
+      must_change_password: payload.must_change_password,
+    }),
+    jti,
+  } as unknown as JWTPayload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuer(JWT_ISSUER)
     .setAudience(JWT_AUDIENCE)
+    .setSubject(payload.sub)
     .setJti(jti)
     .setIssuedAt()
     .setExpirationTime(expiresIn)
@@ -65,9 +80,10 @@ export async function signToken(
  *
  * 校验 issuer 与 audience 防止跨服务 token 误用。
  * jti 字段透传以便上层实现黑名单机制（当前未启用，需配合 Redis 存储）。
+ * must_change_password 缺省时视为 false（向旧 token 兼容）。
  *
  * @param token - JWT 字符串
- * @returns 解码后的负载（含 sub、role、jti）
+ * @returns 解码后的负载（含 sub、role、jti、must_change_password）
  * @throws 令牌无效或已过期时抛出错误
  */
 export async function verifyToken(
@@ -83,6 +99,8 @@ export async function verifyToken(
   return {
     sub: payload.sub as string,
     role: payload.role as string,
+    // 旧 token 无该字段，缺省视为 false
+    must_change_password: (payload.must_change_password as boolean) ?? false,
     jti: payload.jti,
   };
 }
