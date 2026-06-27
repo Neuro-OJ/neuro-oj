@@ -121,31 +121,33 @@ docker compose down     # 停止
 
 ## API 路由
 
-| 方法   | 路径                             | 权限   | 说明                                         |
-| ------ | -------------------------------- | ------ | -------------------------------------------- |
-| POST   | `/api/v1/auth/register`          | 公开   | 用户注册                                     |
-| POST   | `/api/v1/auth/login`             | 公开   | 用户登录（返回 JWT）                         |
-| GET    | `/api/v1/auth/me`                | 登录   | 当前用户信息                                 |
-| GET    | `/api/v1/categories`             | 公开   | 分类树                                       |
-| POST   | `/api/v1/categories`             | 管理员 | 创建分类                                     |
-| GET    | `/api/v1/categories/:id`         | 公开   | 分类详情                                     |
-| PUT    | `/api/v1/categories/:id`         | 管理员 | 更新分类                                     |
-| DELETE | `/api/v1/categories/:id`         | 管理员 | 删除分类                                     |
-| GET    | `/api/v1/problems`               | 公开   | 题目列表（分页+筛选）                        |
-| GET    | `/api/v1/problems/:id`           | 公开   | 题目详情（**双索引**：UUID/display_id/数字） |
-| POST   | `/api/v1/problems`               | 登录   | 创建题目（U/P 类型）                         |
-| PUT    | `/api/v1/problems/:id`           | 登录   | 更新题目                                     |
-| DELETE | `/api/v1/problems/:id`           | 登录   | 删除题目                                     |
-| GET    | `/api/v1/submissions`            | 登录   | 我的提交列表                                 |
-| POST   | `/api/v1/submissions`            | 登录   | 创建提交                                     |
-| GET    | `/api/v1/submissions/:id`        | 登录   | 提交详情                                     |
-| GET    | `/api/v1/submissions/:id/status` | 登录   | 提交队列状态                                 |
-| GET    | `/api/v1/admin/submissions`      | 管理员 | 全部提交管理                                 |
-| GET    | `/api/v1/admin/users`            | 管理员 | 用户列表                                     |
-| PATCH  | `/api/v1/admin/users/:id/role`   | 管理员 | 角色变更                                     |
-| GET    | `/api/v1/users/:id/profile`      | 公开   | 用户主页                                     |
-| PUT    | `/api/v1/users/me`               | 登录   | 更新个人简介                                 |
-| GET    | `/health`                        | 公开   | 健康检查                                     |
+| 方法 | 路径 | 权限 | 说明 |
+|------|------|------|------|
+| POST | `/api/v1/auth/register` | 公开 | 用户注册 |
+| POST | `/api/v1/auth/login` | 公开 | 用户登录（返回 JWT） |
+| GET | `/api/v1/auth/me` | 登录 | 当前用户信息 |
+| GET | `/api/v1/categories` | 公开 | 分类树 |
+| POST | `/api/v1/categories` | 管理员 | 创建分类 |
+| GET | `/api/v1/categories/:id` | 公开 | 分类详情 |
+| PUT | `/api/v1/categories/:id` | 管理员 | 更新分类 |
+| DELETE | `/api/v1/categories/:id` | 管理员 | 删除分类 |
+| GET | `/api/v1/problems` | 公开 | 题目列表（分页+筛选） |
+| GET | `/api/v1/problems/:id` | 公开 | 题目详情（**双索引**：UUID/display_id/数字） |
+| POST | `/api/v1/problems` | 登录 | 创建题目（U/P 类型） |
+| PUT | `/api/v1/problems/:id` | 登录 | 更新题目 |
+| DELETE | `/api/v1/problems/:id` | 登录 | 删除题目 |
+| GET | `/api/v1/submissions` | 登录 | 我的提交列表 |
+| POST | `/api/v1/submissions` | 登录 | 创建提交 |
+| GET | `/api/v1/submissions/:id` | 登录 | 提交详情 |
+| GET | `/api/v1/submissions/:id/status` | 登录 | 提交队列状态 |
+| GET | `/api/v1/admin/submissions` | 管理员 | 全部提交管理 |
+| GET | `/api/v1/admin/users` | 管理员 | 用户列表 |
+| PATCH | `/api/v1/admin/users/:id/role` | 管理员 | 角色变更 |
+| GET | `/api/v1/users/:id/profile` | 公开 | 用户主页 |
+| PUT | `/api/v1/users/me` | 登录 | 更新个人简介 |
+| POST | `/api/v1/checkin` | 登录 | 每日签到（返回当前连续天数） |
+| GET | `/api/v1/checkin/today` | 登录 | 查询今日签到状态 |
+| GET | `/health` | 公开 | 健康检查 |
 
 ### 路由层关键模式
 
@@ -206,14 +208,15 @@ docker compose down     # 停止
 
 ## 数据库 Schema 设计
 
-| 表                    | 关键列                                                                                                | 约束 / 索引                                                    |
-| --------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `users`               | `id`(UUID), `username`(unique), `email`(unique), `password_hash`, `role`(user/admin), `bio`           | PK, UK(username), UK(email)                                    |
-| `problems`            | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`       | PK, UK(display_id), UK(type,number), FK→users                  |
-| `categories`          | `id`(UUID), `name`, `parent_id`, `level`(缓存深度)                                                    | PK, FK→categories(parent_id) ON DELETE SET NULL                |
-| `problems_categories` | `problem_id`, `category_id`                                                                           | FK→problems ON DELETE CASCADE, FK→categories ON DELETE CASCADE |
-| `submissions`         | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                     | PK, FK→users, FK→problems, idx(user_id,created_at)             |
-| `evaluation_results`  | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb` | PK, UK(submission_id), FK→submissions                          |
+| 表 | 关键列 | 约束 / 索引 |
+|----|--------|-------------|
+| `users` | `id`(UUID), `username`(unique), `email`(unique), `password_hash`, `role`(user/admin), `bio` | PK, UK(username), UK(email) |
+| `problems` | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id` | PK, UK(display_id), UK(type,number), FK→users |
+| `categories` | `id`(UUID), `name`, `parent_id`, `level`(缓存深度) | PK, FK→categories(parent_id) ON DELETE SET NULL |
+| `problems_categories` | `problem_id`, `category_id` | FK→problems ON DELETE CASCADE, FK→categories ON DELETE CASCADE |
+| `submissions` | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code` | PK, FK→users, FK→problems, idx(user_id,created_at) |
+| `evaluation_results` | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb` | PK, UK(submission_id), FK→submissions |
+| `check_ins` | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak` | PK, FK→users, UK(user_id,checkin_date) |
 
 **设计要点**：
 
