@@ -227,6 +227,11 @@ async function seedProblemCategories(): Promise<void> {
  *
  * 注意：环境变量创建的初始密码视为临时凭证，置 must_change_password=true，
  * 强制首次登录后修改。
+ *
+ * 例外：E2E 测试环境（NOJ_RUN_E2E=1）使用固定凭据（docker-compose.e2e.yml
+ * 已注入 ADMIN_EMAIL/ADMIN_PASS），若强制首次改密则 E2E 中所有需要 admin
+ * token 的 API 都会被 authMiddleware 拦截为 403 PASSWORD_CHANGE_REQUIRED，
+ * 导致 categories/problems/admin/queue 等套件全失败。该环境下跳过强制改密。
  */
 async function ensureAdminFromEnv(): Promise<void> {
   const adminEmail = Deno.env.get("ADMIN_EMAIL");
@@ -236,6 +241,7 @@ async function ensureAdminFromEnv(): Promise<void> {
   }
 
   const adminPass = Deno.env.get("ADMIN_PASS");
+  const isE2E = Deno.env.get("NOJ_RUN_E2E") === "1";
   const db = getDb();
 
   const existing = await db
@@ -263,12 +269,15 @@ async function ensureAdminFromEnv(): Promise<void> {
       email: adminEmail,
       password_hash: await hashPassword(adminPass),
       role: "admin",
-      must_change_password: true,
+      // E2E 环境使用固定凭据，跳过强制改密避免 admin token 全局 403；
+      // 生产环境仍保留强制改密以保护临时凭证。
+      must_change_password: !isE2E,
       created_at: now,
       updated_at: now,
     });
     console.log(
-      `  已创建管理员用户: ${adminEmail} (${username})，已强制首次改密`,
+      `  已创建管理员用户: ${adminEmail} (${username})` +
+        (isE2E ? "（E2E 环境，跳过强制改密）" : "，已强制首次改密"),
     );
     return;
   }

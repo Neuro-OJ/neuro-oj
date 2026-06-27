@@ -107,3 +107,16 @@
 ## 13. OpenSpec 规范同步
 
 - [ ] 13.1 通过 `/opsx:sync` 同步 delta specs 到主 spec 目录
+
+## 14. E2E 环境兼容性补丁
+
+- [ ] 14.1 修改 `scripts/seed.ts` 的 `ensureAdminFromEnv()`：检测
+  `NOJ_RUN_E2E === "1"` 时，新创建管理员的 `must_change_password`
+  设为 `false`，跳过强制改密
+  - 原因：E2E 测试用固定凭据（`docker-compose.e2e.yml` 注入
+    `ADMIN_EMAIL=e2e_admin@test.com` / `ADMIN_PASS=e2e_admin_pass`），
+    若强制首次改密则所有需要 admin token 的 API 都会被中间件拦截为
+    403 PASSWORD_CHANGE_REQUIRED，导致 categories/problems/admin/queue
+    等套件全失败（PR #76 CI 实证：15 个测试全因该机制失败）
+  - 与 issue #73 限流关闭遵循同一模式（`NOJ_ENV=test`）
+  - 生产路径完全不变：非 E2E 环境仍 `must_change_password=true`
