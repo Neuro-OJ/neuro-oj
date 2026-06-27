@@ -108,15 +108,26 @@
 
 - [ ] 13.1 通过 `/opsx:sync` 同步 delta specs 到主 spec 目录
 
-## 14. E2E 环境兼容性补丁
+## 14. E2E 强制改密守卫验证（评审修复 H2）
 
-- [ ] 14.1 修改 `scripts/seed.ts` 的 `ensureAdminFromEnv()`：检测
-  `NOJ_RUN_E2E === "1"` 时，新创建管理员的 `must_change_password`
-  设为 `false`，跳过强制改密
-  - 原因：E2E 测试用固定凭据（`docker-compose.e2e.yml` 注入
-    `ADMIN_EMAIL=e2e_admin@test.com` / `ADMIN_PASS=e2e_admin_pass`），
-    若强制首次改密则所有需要 admin token 的 API 都会被中间件拦截为
-    403 PASSWORD_CHANGE_REQUIRED，导致 categories/problems/admin/queue
-    等套件全失败（PR #76 CI 实证：15 个测试全因该机制失败）
-  - 与 issue #73 限流关闭遵循同一模式（`NOJ_ENV=test`）
-  - 生产路径完全不变：非 E2E 环境仍 `must_change_password=true`
+- [x] 14.1 修改 `scripts/seed.ts` 的 `ensureAdminFromEnv()`：回退
+  E2E 跳过强制改密的捷径，恢复 `must_change_password=true`
+  - 原因：跳过捷径让 E2E 完全无法验证 PASSWORD_CHANGE_REQUIRED 守卫，
+    评审 Sp2 明确指出生产路径未在 E2E 中验证
+  - 新方案：E2E 测试 setup 走完整强制改密流程（登录 → change-password → 重新登录）
+
+- [x] 14.2 新增 `scripts/seed.ts` 的 `ensureE2EPwChangeUser()`：
+  仅 `NOJ_RUN_E2E=1` 时创建固定测试用户
+  - 凭据：`e2e_pwchange@test.com` / `e2e_pwchange_pass_8chars`
+  - `must_change_password: true`，供守卫测试使用
+  - 幂等：用户存在时跳过
+
+- [x] 14.3 新增 `noj-tests/e2e/helper.ts` 的 `loginAndChangePassword()`：
+  一步完成登录 + 强制改密 + 重新登录，返回无 flag 的 token
+
+- [x] 14.4 修改所有 E2E 测试 setup（01/02/03/04/07）：
+  `loginUser(ADMIN)` → `loginAndChangePassword(ADMIN)`
+
+- [x] 14.5 新增 `noj-tests/e2e/08_password_change_guard.test.ts`：
+  验证 PASSWORD_CHANGE_REQUIRED 守卫、白名单放行、改密后恢复、
+  pwchange 限流桶独立

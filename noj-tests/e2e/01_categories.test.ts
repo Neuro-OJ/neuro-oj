@@ -7,13 +7,15 @@ import {
   apiGet,
   apiPost,
   isE2E,
-  loginUser,
+  loginAndChangePassword,
   waitForServer,
 } from "./helper.ts";
 
 const skip = !isE2E;
 const ADMIN_EMAIL = Deno.env.get("E2E_ADMIN_EMAIL") || "e2e_admin@test.com";
 const ADMIN_PASS = Deno.env.get("E2E_ADMIN_PASS") || "e2e_admin_pass";
+// E2E admin 改密后的密码（评审修复 H2：E2E 必须走完整强制改密流程验证 403 守卫）
+const ADMIN_NEW_PASS = "E2eAdminChangedPass1";
 let adminToken = "";
 
 Deno.test({
@@ -24,8 +26,12 @@ Deno.test({
   fn: async () => {
     if (!isE2E) return;
     await waitForServer();
-    adminToken = await loginUser(ADMIN_EMAIL, ADMIN_PASS);
-    console.log("  ✓ 管理员已登录");
+    adminToken = await loginAndChangePassword(
+      ADMIN_EMAIL,
+      ADMIN_PASS,
+      ADMIN_NEW_PASS,
+    );
+    console.log("  ✓ 管理员已登录并完成强制改密");
   },
 });
 

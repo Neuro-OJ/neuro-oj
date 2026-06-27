@@ -6,6 +6,10 @@ export default defineEventHandler(async (event) => {
   const token = cookies['noj:token'];
 
   // ── 拦截登录成功响应，设置 Cookie ──
+  // 严格遵循 noj-ui/AGENTS.md:163：仅拦截 POST /api/v1/auth/login。
+  // 修改密码（issue #75）流程由前端 useAuth.changePassword() 在成功后
+  // 调用 logout() 清空 Cookie，再跳 /login 重新登录——不需要在 /me
+  // 拦截处同步 must_change_password 状态。
   if (event.path.endsWith('/api/v1/auth/login') && event.method === 'POST') {
     const body = await readBody(event);
 
@@ -82,62 +86,6 @@ export default defineEventHandler(async (event) => {
   // ── 从 Cookie 注入 Authorization 头到转发请求 ──
   if (token) {
     event.node.req.headers.authorization = `Bearer ${token}`;
-  }
-
-  // ── /api/v1/auth/me：同步刷新 session cookie 中的 must_change_password ──
-  // 修改密码成功后，user 状态已变为 must_change_password=false，
-  // 前端 fetchUser() 通过这里把新状态写回可读 cookie，
-  // 确保水合后或下次导航路由守卫读到最新值。
-  if (event.path.endsWith('/api/v1/auth/me') && event.method === 'GET') {
-    try {
-      const response = await $fetch.raw(target, {
-        method: 'GET',
-        headers: event.node.req.headers as Record<string, string>,
-      });
-
-      const data = response._data as
-        | {
-          data?: {
-            id: string;
-            username: string;
-            role: string;
-            email: string;
-            must_change_password?: boolean;
-          };
-        }
-        | undefined;
-
-      if (response.status === 200 && data?.data) {
-        const user = data.data;
-        setCookie(
-          event,
-          'noj:session',
-          JSON.stringify({
-            userId: user.id,
-            username: user.username,
-            role: user.role,
-            email: user.email,
-            must_change_password: user.must_change_password ?? false,
-          }),
-          {
-            httpOnly: false,
-            sameSite: 'lax',
-            path: '/',
-            maxAge: 60 * 60 * 24,
-          },
-        );
-      }
-
-      setResponseStatus(event, response.status);
-      return data;
-    } catch (err) {
-      const e = err as { response?: { status: number; _data: unknown } };
-      if (e.response) {
-        setResponseStatus(event, e.response.status);
-        return e.response._data;
-      }
-      throw err;
-    }
   }
 
   return proxyRequest(event, target);

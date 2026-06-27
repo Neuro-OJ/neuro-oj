@@ -219,6 +219,49 @@ async function seedProblemCategories(): Promise<void> {
 }
 
 /**
+ * 创建 E2E 守卫测试专用用户（must_change_password=true）。
+ *
+ * 仅在 NOJ_RUN_E2E=1 时创建，供 noj-tests/e2e/08_password_change_guard.test.ts
+ * 验证 PASSWORD_CHANGE_REQUIRED 守卫（评审修复 H2）。
+ *
+ * 凭据固定：e2e_pwchange@test.com / e2e_pwchange_pass_8chars
+ * 幂等：用户存在时跳过。
+ */
+async function ensureE2EPwChangeUser(): Promise<void> {
+  if (Deno.env.get("NOJ_RUN_E2E") !== "1") return;
+
+  const email = "e2e_pwchange@test.com";
+  const pass = "e2e_pwchange_pass_8chars";
+  const db = getDb();
+
+  const existing = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+  if (existing.length > 0) {
+    console.log(`  E2E 守卫测试用户 ${email} 已存在，跳过创建`);
+    return;
+  }
+
+  const { hashPassword } = await import("../src/lib/password.ts");
+  const now = new Date().toISOString();
+  await db.insert(users).values({
+    id: crypto.randomUUID(),
+    username: "e2e_pwchange",
+    email,
+    password_hash: await hashPassword(pass),
+    role: "user",
+    must_change_password: true,
+    created_at: now,
+    updated_at: now,
+  });
+  console.log(
+    `  已创建 E2E 守卫测试用户: ${email} (must_change_password=true)`,
+  );
+}
+
+/**
  * 根据 ADMIN_EMAIL 环境变量创建/提升管理员。
  *
  * ADMIN_EMAIL 必须设置。
@@ -228,10 +271,10 @@ async function seedProblemCategories(): Promise<void> {
  * 注意：环境变量创建的初始密码视为临时凭证，置 must_change_password=true，
  * 强制首次登录后修改。
  *
- * 例外：E2E 测试环境（NOJ_RUN_E2E=1）使用固定凭据（docker-compose.e2e.yml
- * 已注入 ADMIN_EMAIL/ADMIN_PASS），若强制首次改密则 E2E 中所有需要 admin
- * token 的 API 都会被 authMiddleware 拦截为 403 PASSWORD_CHANGE_REQUIRED，
- * 导致 categories/problems/admin/queue 等套件全失败。该环境下跳过强制改密。
+ * E2E 测试环境的强制改密（评审修复 H2）：
+ * E2E 测试也必须走完整强制改密流程，让 E2E 验证 PASSWORD_CHANGE_REQUIRED 守卫。
+ * E2E helper (noj-tests/e2e/helper.ts) 在 setup 阶段登录后自动调
+ * /api/v1/auth/change-password 完成改密，拿到无 flag 的 token 用于后续测试。
  */
 async function ensureAdminFromEnv(): Promise<void> {
   const adminEmail = Deno.env.get("ADMIN_EMAIL");
@@ -241,7 +284,6 @@ async function ensureAdminFromEnv(): Promise<void> {
   }
 
   const adminPass = Deno.env.get("ADMIN_PASS");
-  const isE2E = Deno.env.get("NOJ_RUN_E2E") === "1";
   const db = getDb();
 
   const existing = await db
@@ -269,15 +311,12 @@ async function ensureAdminFromEnv(): Promise<void> {
       email: adminEmail,
       password_hash: await hashPassword(adminPass),
       role: "admin",
-      // E2E 环境使用固定凭据，跳过强制改密避免 admin token 全局 403；
-      // 生产环境仍保留强制改密以保护临时凭证。
-      must_change_password: !isE2E,
+      must_change_password: true,
       created_at: now,
       updated_at: now,
     });
     console.log(
-      `  已创建管理员用户: ${adminEmail} (${username})` +
-        (isE2E ? "（E2E 环境，跳过强制改密）" : "，已强制首次改密"),
+      `  已创建管理员用户: ${adminEmail} (${username})，已强制首次改密`,
     );
     return;
   }
@@ -297,21 +336,25 @@ async function ensureAdminFromEnv(): Promise<void> {
 }
 
 /**
- * 生成 24 字符 base64url 强随机密码（issue #75）。
+ * 生成 24 字符 base64url 强随机密码（issue #75，评审修复 M4）。
  *
- * base64url 字符集为 [A-Za-z0-9_-]，24 字符提供 ~144 bits 熵。
- * 替换 +/= 等 URL 不安全字符，并去除易混淆字符（i/l/O/0）。
+ * base64url 字符集 [A-Za-z0-9_-] 共 64 字符，每字符 6 bits 熵。
+ * 24 字符 × 6 bits = **144 bits 熵**，满足 NIST SP 800-63B 临时凭证要求。
+ *
+ * 实现细节：
+ * - 取 24 字节随机数 → 32 字符 base64url
+ * - 截断到前 24 字符：每字符仍来自完整 64 字符集熵，未做"去除混淆字符"
+ *   （评审 Sp5：原实现去除 i/l/O/0/1 后用 X 填充，字符集从 64 → 59，熵被低估）
+ * - 不替换 +/=：btoa 输出的 padding 在 24 字节（可被 3 整除）情况下无 padding
  */
 function generateStrongPassword(): string {
-  const bytes = new Uint8Array(18); // 18 bytes → 24 chars base64url
+  const bytes = new Uint8Array(24); // 24 bytes → 32 chars base64url → 截断到 24
   crypto.getRandomValues(bytes);
-  let raw = btoa(String.fromCharCode(...bytes))
+  return btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-  // 去除易混淆字符（i, l, O, 0, 1），避免控制台抄写错误
-  raw = raw.replace(/[iIlO01]/g, "");
-  return raw.slice(0, 24).padEnd(24, "X");
+    .replace(/=+$/g, "")
+    .slice(0, 24);
 }
 
 /**
@@ -434,6 +477,14 @@ async function main() {
       await ensureBootstrapAdmin();
     } catch (err) {
       console.error("引导管理员创建失败:", err);
+      throw err;
+    }
+
+    // 8. E2E 守卫测试用户（评审修复 H2）
+    try {
+      await ensureE2EPwChangeUser();
+    } catch (err) {
+      console.error("E2E 守卫测试用户创建失败:", err);
       throw err;
     }
 

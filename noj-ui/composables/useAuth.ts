@@ -63,13 +63,17 @@ export function useAuth() {
   }
 
   async function login(login: string, password: string) {
-    const res = await $fetch<{ data: { user: UserResponse } }>(
-      '/api/v1/auth/login',
-      {
-        method: 'POST',
-        body: { login, password },
-      },
-    );
+    // 5s 超时（评审修复 L2，与 fetchUser 一致）
+    const res = await Promise.race([
+      $fetch<{ data: { user: UserResponse } }>(
+        '/api/v1/auth/login',
+        {
+          method: 'POST',
+          body: { login, password },
+        },
+      ),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('login timeout')), 5000)),
+    ]);
     // token 已由 Nitro 代理设置为 HTTP-only cookie，客户端不接收 token 字段
     const userData = res.data.user;
     user.value = userData;
@@ -86,9 +90,11 @@ export function useAuth() {
   async function fetchUser() {
     if (!isLoggedIn.value) return null;
     try {
-      // Cookie 由浏览器自动携带，Nitro 代理注入 Authorization 头
-      // 代理同时会同步更新 noj:session cookie（含 must_change_password）
-      const res = await $fetch<{ data: UserResponse }>('/api/v1/auth/me');
+      // 5s 超时（评审修复 L2，与 middleware/auth.ts fetchUser 一致）
+      const res = await Promise.race([
+        $fetch<{ data: UserResponse }>('/api/v1/auth/me'),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('fetchUser timeout')), 5000)),
+      ]);
       user.value = res.data;
       return res.data;
     } catch {

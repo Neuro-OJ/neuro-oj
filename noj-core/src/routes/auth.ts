@@ -154,7 +154,7 @@ auth.get("/me", authMiddleware, async (c) => {
  */
 auth.post(
   "/change-password",
-  loginIpRateLimit(),
+  loginIpRateLimit("pwchange"),
   authMiddleware,
   async (c) => {
     const body = await parseJsonBody<
@@ -171,7 +171,7 @@ auth.post(
     const userId = c.get("userId") as string;
 
     // 账号维度限流：按 userId 防止暴力试老密码（独立 namespace）
-    const accResult = await checkLoginAccountRateLimit(userId);
+    const accResult = await checkLoginAccountRateLimit(userId, "pwchange");
     if (!accResult.allowed) {
       throwRateLimited(LOGIN_LIMITS.acc, accResult);
     }

@@ -138,6 +138,43 @@ export async function loginUser(
 }
 
 /**
+ * 登录 admin 并完成强制改密，返回无 must_change_password flag 的 token
+ * （评审修复 H2：E2E 必须走完整强制改密流程才能验证 403 守卫）。
+ *
+ * 流程：
+ * 1. 登录拿到 tokenA（must_change_password=true）
+ * 2. 调 /api/v1/auth/change-password 完成改密 → 服务端置 must_change_password=false
+ * 3. 重新登录拿到 tokenB（must_change_password=false）供后续测试使用
+ *
+ * @param login    登录标识（邮箱或用户名）
+ * @param password 当前密码
+ * @param newPassword 改密后的密码
+ * @returns 无改密 flag 的 admin token
+ */
+export async function loginAndChangePassword(
+  login: string,
+  password: string,
+  newPassword: string,
+): Promise<string> {
+  const firstToken = await loginUser(login, password);
+
+  // 调 change-password（authMiddleware 在 must_change_password=true 状态下放行该路径）
+  const changeRes = await apiPost(
+    "/api/v1/auth/change-password",
+    { old_password: password, new_password: newPassword },
+    firstToken,
+  );
+  if (changeRes.status !== 200) {
+    throw new Error(
+      `E2E 强制改密失败: ${changeRes.status} ${JSON.stringify(changeRes.body)}`,
+    );
+  }
+
+  // 重新登录拿到无 flag 的 token
+  return await loginUser(login, newPassword);
+}
+
+/**
  * 提交代码并返回 submission ID。
  */
 export async function submitCode(
