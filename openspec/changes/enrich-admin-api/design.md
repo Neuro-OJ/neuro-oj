@@ -44,9 +44,9 @@
 
 ### Decision 2：仪表盘统计接口——多查询聚合
 
-**决策：** `GET /api/v1/admin/dashboard/stats` 在服务层中执行 4 次独立 SQL 查询（用户统计、题目统计、提交统计、队列统计），服务层聚合后返回。
+**决策：** `GET /api/v1/admin/dashboard/stats` 在服务层中执行 6 次独立 SQL 查询（用户数 / 题目数 / 分类数 / 提交聚合 / 待评测数 / 24h 窗口提交 + 活跃用户），服务层聚合后返回。
 
-**不选用** 单条巨型 SQL 的原因：各统计维度来自不同的表（users、problems、submissions），单条 SQL 的 CROSS JOIN 会膨胀中间结果集，在数据量大时反而更慢。4 次独立查询均在主键/索引上执行，每次为 O(log N)，总耗时可忽略。
+**不选用** 单条巨型 SQL 的原因：各统计维度来自不同的表（users、problems、categories、submissions），单条 SQL 的 CROSS JOIN 会膨胀中间结果集，在数据量大时反而更慢。6 次独立查询均在主键/索引上执行，每次为 O(log N)，总耗时可忽略。提交聚合（total / accepted / judged）合并为单次 LEFT JOIN 查询以减少往返。
 
 ### Decision 3：管理员题目列表——新增独立服务函数
 

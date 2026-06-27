@@ -1,6 +1,12 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
+import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+// deno-lint-ignore no-unused-vars
+import { problems, submissions, users } from "../../src/db/schema.ts";
+import { eq } from "drizzle-orm";
+
+const ts = Date.now();
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 const hasEnv = !!Deno.env.get("JWT_SECRET");
@@ -337,5 +343,313 @@ Deno.test({
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(Array.isArray(body.data), true);
+  },
+});
+
+// ─── 功能性测试（issue #71 review）──────────────────────────
+
+/** 在 DB 中直接插入一个测试用户（绕过 register 路由以便复用现成字段） */
+async function insertTestUser(
+  username: string,
+  email: string,
+  bio = "",
+): Promise<string> {
+  const db = getDb();
+  const id = `adm-${username}`;
+  const now = new Date().toISOString();
+  await db.insert(users).values({
+    id,
+    username,
+    email,
+    password_hash: "x",
+    role: "user",
+    bio,
+    created_at: now,
+    updated_at: now,
+  });
+  return id;
+}
+
+async function cleanupTestUser(id: string) {
+  try {
+    const db = getDb();
+    await db.delete(users).where(eq(users.id, id));
+  } catch {
+    // ignore
+  }
+}
+
+async function cleanupTestSubmission(id: string) {
+  try {
+    const db = getDb();
+    await db.delete(submissions).where(eq(submissions.id, id));
+  } catch {
+    // ignore
+  }
+}
+
+Deno.test({
+  name: "admin route: PUT /api/v1/admin/users/:id 成功更新 bio",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const username = `adm_bio_${ts}`;
+    const targetId = await insertTestUser(username, `${username}@example.com`);
+
+    try {
+      const token = await signToken({ sub: "admin-user", role: "admin" });
+      const res = await app.request(`/api/v1/admin/users/${targetId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ bio: "管理员更新的简介" }),
+      });
+      assertEquals(res.status, 200);
+      const body = await res.json();
+      assertEquals(body.data.bio, "管理员更新的简介");
+
+      // 验证 DB 中已更新
+      const db = getDb();
+      const rows = await db
+        .select({ bio: users.bio })
+        .from(users)
+        .where(eq(users.id, targetId))
+        .limit(1);
+      assertEquals(rows[0]?.bio, "管理员更新的简介");
+    } finally {
+      await cleanupTestUser(targetId);
+    }
+  },
+});
+
+Deno.test({
+  name: "admin route: PUT /api/v1/admin/users/:id 邮箱冲突返回 409",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const userA = `adm_email_a_${ts}`;
+    const userB = `adm_email_b_${ts}`;
+    const emailA = `adm_email_a_${ts}@example.com`;
+    const emailB = `adm_email_b_${ts}@example.com`;
+    const idA = await insertTestUser(userA, emailA);
+    const idB = await insertTestUser(userB, emailB);
+
+    try {
+      const token = await signToken({ sub: "admin-user", role: "admin" });
+      // 试图把 B 的邮箱改成 A 的，应 409
+      const res = await app.request(`/api/v1/admin/users/${idB}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ email: emailA }),
+      });
+      assertEquals(res.status, 409);
+    } finally {
+      await cleanupTestUser(idA);
+      await cleanupTestUser(idB);
+    }
+  },
+});
+
+Deno.test({
+  name: "admin route: PUT /api/v1/admin/users/:id 不存在用户返回 404",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const res = await app.request("/api/v1/admin/users/nonexistent-user-id", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ bio: "不存在" }),
+    });
+    assertEquals(res.status, 404);
+  },
+});
+
+Deno.test({
+  name: "admin route: PUT /api/v1/admin/users/0 拒绝修改 root",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const res = await app.request("/api/v1/admin/users/0", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ bio: "试图改 root" }),
+    });
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name: "admin route: PUT /api/v1/admin/users/:id 强化邮箱正则拒绝 TLD 1 字符",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const username = `adm_tld_${ts}`;
+    const targetId = await insertTestUser(username, `${username}@example.com`);
+
+    try {
+      const token = await signToken({ sub: "admin-user", role: "admin" });
+      // "a@b.c" TLD 只有 1 字符 → 应被强化正则拒绝
+      const res = await app.request(`/api/v1/admin/users/${targetId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ email: "weak@example.c" }),
+      });
+      assertEquals(res.status, 400);
+    } finally {
+      await cleanupTestUser(targetId);
+    }
+  },
+});
+
+Deno.test({
+  name: "admin route: GET /api/v1/admin/users keyword 实际筛选命中",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const uniq = `kwfilter_${ts}`;
+    const username = `${uniq}_user`;
+    const targetId = await insertTestUser(username, `${uniq}@example.com`);
+
+    try {
+      const token = await signToken({ sub: "admin-user", role: "admin" });
+      const res = await app.request(
+        `/api/v1/admin/users?keyword=${uniq}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      assertEquals(res.status, 200);
+      const body = await res.json();
+      // 至少包含新建的测试用户
+      const ids = body.data.map((u: { id: string }) => u.id);
+      assertEquals(ids.includes(targetId), true);
+    } finally {
+      await cleanupTestUser(targetId);
+    }
+  },
+});
+
+Deno.test({
+  name: "admin route: DELETE /api/v1/admin/submissions/:id 管理员真删除",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const db = getDb();
+
+    // 需要测试用户（FK）和测试题目（FK）—— 通过 createSubmission 复用
+    const { problems } = await import("../../src/db/schema.ts");
+    const userId = `adm-del-user-${ts}`;
+    const problemId = `adm-del-prob-${ts}`;
+    const submissionId = `adm-del-sub-${ts}`;
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+      id: userId,
+      username: userId,
+      email: `${userId}@example.com`,
+      password_hash: "x",
+      role: "user",
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(problems).values({
+      id: problemId,
+      title: `del-test-${ts}`,
+      description: "x",
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+      time_limit_ms: 5000,
+      memory_limit_mb: 512,
+      owner_id: userId,
+      type: "U",
+      number: 9000 + (ts % 1000),
+      created_at: now,
+      updated_at: now,
+    });
+
+    // 直接插 DB 提交行（避免 createSubmission 触发 Redis MQ）
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      language: "python3",
+      code: "print('hi')",
+      file_name: "main.py",
+      status: "pending",
+      created_at: now,
+    });
+
+    try {
+      const token = await signToken({ sub: "admin-user", role: "admin" });
+      const res = await app.request(
+        `/api/v1/admin/submissions/${submissionId}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+      );
+      assertEquals(res.status, 204);
+
+      // 验证 DB 中已删除
+      const rows = await db
+        .select()
+        .from(submissions)
+        .where(eq(submissions.id, submissionId))
+        .limit(1);
+      assertEquals(rows.length, 0);
+    } finally {
+      await cleanupTestSubmission(submissionId);
+      await cleanupTestUser(userId);
+      await db.delete(problems).where(eq(problems.id, problemId));
+    }
+  },
+});
+
+Deno.test({
+  name: "admin route: DELETE /api/v1/admin/submissions/:missing-id 返回 404",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const res = await app.request(
+      "/api/v1/admin/submissions/00000000-0000-0000-0000-000000000000",
+      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(res.status, 404);
   },
 });

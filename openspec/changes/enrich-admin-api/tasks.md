@@ -28,8 +28,8 @@
 
 ## 6. 实现管理员编辑用户资料
 
-- [ ] 6.1 在 `services/users.ts` 中新增 `adminUpdateUserProfile()` 函数，支持更新指定用户的 email 和 bio，包含邮箱唯一性检查和格式校验
-- [ ] 6.2 在 `routes/admin.ts` 中添加 `PUT /users/:id` 路由，解析 email/bio 字段，调用 adminUpdateUserProfile
+- [x] 6.1 在 `services/users.ts` 中新增 `adminUpdateUserProfile()` 函数，支持更新指定用户的 email 和 bio，包含邮箱唯一性检查和格式校验
+- [x] 6.2 在 `routes/admin.ts` 中添加 `PUT /users/:id` 路由，解析 email/bio 字段，调用 adminUpdateUserProfile
 
 ## 7. 添加测试
 

@@ -9,6 +9,7 @@ import {
 import {
   BadRequestError,
   ConflictError,
+  ForbiddenError,
   NotFoundError,
   ValidationError,
 } from "../lib/errors.ts";
@@ -245,11 +246,21 @@ export async function adminUpdateUserProfile(
   role: string;
   bio: string;
 }> {
+  // 拒绝修改 root 系统用户，避免破坏系统惯例（root 不计入管理员统计、不可登录）
+  if (targetUserId === "0") {
+    throw new ForbiddenError("不能修改系统 root 用户");
+  }
+
   const db = getDb();
 
   // 先校验 email 格式（无需查询数据库）
   if (input.email !== undefined) {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) {
+    // 强化：local-part 不允许连续点号、不允许首尾点号；TLD 至少 2 字符
+    if (
+      !/^(?!\.)(?!.*\.\.)[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(
+        input.email,
+      )
+    ) {
       throw new BadRequestError("邮箱格式不正确");
     }
   }
