@@ -6,7 +6,12 @@ import {
   submissions,
   users,
 } from "../db/schema.ts";
-import { NotFoundError, ValidationError } from "../lib/errors.ts";
+import {
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from "../lib/errors.ts";
 import { scoreFromDb } from "../types/index.ts";
 
 /**
@@ -211,6 +216,116 @@ export async function updateUserProfile(
   if (!updated) {
     throw new NotFoundError("用户不存在");
   }
+
+  return updated;
+}
+
+/**
+ * 管理员更新任意用户的资料（email、bio）。
+ *
+ * 与普通 updateUserProfile 的区别：
+ * - 不检查 bio 长度限制（管理员有权设置任意内容）
+ * - 支持更新 email（含格式校验和唯一性检查）
+ * - 返回用户完整信息（含 email、role）
+ *
+ * @param targetUserId 目标用户 ID
+ * @param input.email 新邮箱（可选）
+ * @param input.bio 新简介（可选）
+ * @throws {NotFoundError} 目标用户不存在
+ * @throws {BadRequestError} 邮箱格式不正确
+ * @throws {ConflictError} 邮箱已被其他用户使用
+ */
+export async function adminUpdateUserProfile(
+  targetUserId: string,
+  input: { email?: string; bio?: string },
+): Promise<{
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+  bio: string;
+}> {
+  const db = getDb();
+
+  // 检查用户是否存在
+  const existing = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, targetUserId))
+    .limit(1);
+
+  if (existing.length === 0) {
+    throw new NotFoundError("用户不存在");
+  }
+
+  const user = existing[0];
+  const updates: Record<string, string> = {};
+  const now = new Date().toISOString();
+
+  // 处理邮箱更新
+  if (input.email !== undefined) {
+    if (input.email === user.email) {
+      // 邮箱未变更，跳过
+    } else {
+      // 格式校验
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) {
+        throw new BadRequestError("邮箱格式不正确");
+      }
+
+      // 唯一性检查
+      const existingEmail = await db
+        .select()
+        .from(users)
+        .where(
+          and(
+            eq(users.email, input.email),
+            sql`${users.id} <> ${targetUserId}`,
+          ),
+        )
+        .limit(1);
+
+      if (existingEmail.length > 0) {
+        throw new ConflictError("邮箱已被注册");
+      }
+
+      updates.email = input.email;
+    }
+  }
+
+  // 处理 bio 更新（不检查长度限制）
+  if (input.bio !== undefined) {
+    updates.bio = input.bio;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      bio: user.bio,
+    };
+  }
+
+  updates.updated_at = now;
+
+  await db
+    .update(users)
+    .set(updates)
+    .where(eq(users.id, targetUserId));
+
+  // 返回更新后的用户信息
+  const [updated] = await db
+    .select({
+      id: users.id,
+      username: users.username,
+      email: users.email,
+      role: users.role,
+      bio: users.bio,
+    })
+    .from(users)
+    .where(eq(users.id, targetUserId))
+    .limit(1);
 
   return updated;
 }

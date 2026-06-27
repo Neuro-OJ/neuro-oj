@@ -1,4 +1,4 @@
-import { and, eq, not, or, sql } from "drizzle-orm";
+import { and, eq, gte, ilike, lte, not, or, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { users } from "../db/schema.ts";
 import { comparePassword, hashPassword } from "../lib/password.ts";
@@ -285,9 +285,21 @@ export async function promoteUser(
 /**
  * 管理员获取用户列表（分页，排除 root 系统用户）。
  * 返回用户基本信息，不含密码哈希。
+ *
+ * @param opts.keyword 搜索关键词（匹配 username 或 email，ILIKE 模糊搜索）
+ * @param opts.role 按角色筛选（"admin" | "user"）
+ * @param opts.from 注册日期范围起始（ISO 字符串）
+ * @param opts.to 注册日期范围截止（ISO 字符串）
  */
 export async function listUsers(
-  opts: { page: number; perPage: number },
+  opts: {
+    page: number;
+    perPage: number;
+    keyword?: string;
+    role?: string;
+    from?: string;
+    to?: string;
+  },
 ): Promise<
   {
     data: UserResponse[];
@@ -302,8 +314,39 @@ export async function listUsers(
   const db = getDb();
   const offset = (opts.page - 1) * opts.perPage;
 
+  // 构建筛选条件
+  const conditions: ReturnType<typeof sql>[] = [];
+
   // 排除 root 系统用户（id='0'）
-  const excludeRoot = (u: typeof users) => sql`${u.id} <> '0'`;
+  conditions.push(sql`${users.id} <> '0'`);
+
+  // 按角色筛选
+  if (opts.role) {
+    conditions.push(eq(users.role, opts.role));
+  }
+
+  // 按关键词搜索（username 或 email ILIKE 模糊匹配）
+  if (opts.keyword) {
+    const kw = `%${opts.keyword}%`;
+    conditions.push(
+      or(
+        ilike(users.username, kw),
+        ilike(users.email, kw),
+      ) as unknown as ReturnType<
+        typeof sql
+      >,
+    );
+  }
+
+  // 按注册日期范围筛选
+  if (opts.from) {
+    conditions.push(gte(users.created_at, opts.from));
+  }
+  if (opts.to) {
+    conditions.push(lte(users.created_at, opts.to));
+  }
+
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [rows, countResult] = await Promise.all([
     db
@@ -316,14 +359,14 @@ export async function listUsers(
         updated_at: users.updated_at,
       })
       .from(users)
-      .where(excludeRoot(users))
+      .where(where)
       .orderBy(users.created_at)
       .limit(opts.perPage)
       .offset(offset),
     db
       .select({ count: sql<number>`count(*)` })
       .from(users)
-      .where(excludeRoot(users)),
+      .where(where),
   ]);
 
   const total = Number(countResult[0]?.count ?? 0);
