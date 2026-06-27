@@ -25,6 +25,22 @@ export function isValidProblemType(value: string): value is ProblemType {
 }
 
 /**
+ * 允许的判题类型。
+ *
+ * - `standard`：标准题，noj-judge 原生 Rust 执行器做 stdout diff 评分
+ * - `special`：SPJ 题，保留 python3 /tmp/evaluate.py 自定义评测路径
+ */
+export const JUDGE_TYPES = ["standard", "special"] as const;
+export type JudgeType = typeof JUDGE_TYPES[number];
+
+/**
+ * 校验判题类型是否合法。
+ */
+export function isValidJudgeType(value: string): value is JudgeType {
+  return JUDGE_TYPES.includes(value as JudgeType);
+}
+
+/**
  * 创建题目请求体。
  *
  * 注意：`id` 字段已从客户端输入中移除——所有题目统一由服务端生成 UUID。
@@ -45,6 +61,11 @@ export interface CreateProblemInput {
   type?: string;
   /** 题号（仅 admin 可指定，普通用户自动分配） */
   number?: number;
+  /**
+   * 判题类型：standard=标准题（stdout diff），special=SPJ 题（自定义 evaluate.py）。
+   * 不传则使用 DB 默认 'special'。
+   */
+  judge_type?: string;
 }
 
 /**
@@ -60,6 +81,8 @@ export interface UpdateProblemInput {
   time_limit_ms?: number;
   memory_limit_mb?: number;
   category_ids?: string[];
+  /** 判题类型（admin 可修改以切换评测模式） */
+  judge_type?: string;
 }
 
 /**
@@ -77,6 +100,8 @@ export interface ProblemListQuery {
   number?: number;
   /** 按所有者筛选 */
   owner_id?: string;
+  /** 按判题类型筛选（standard/special） */
+  judge_type?: string;
 }
 
 /**
@@ -103,4 +128,6 @@ export interface ProblemResponseWithCategories {
   type: string;
   /** 展示标识，格式：{type}{number}（如 P1001、U42） */
   display_id: string;
+  /** 判题类型：standard=标准题 / special=SPJ 题 */
+  judge_type: string;
 }

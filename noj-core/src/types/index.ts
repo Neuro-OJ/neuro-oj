@@ -22,6 +22,13 @@ export interface JudgeTask {
   time_limit_ms: number;
   /** 内存限制（MB） */
   memory_limit_mb: number;
+  /**
+   * 判题类型：standard=标准题（noj-judge 原生 stdout diff），
+   * special=SPJ 题（python3 /tmp/evaluate.py）。
+   *
+   * 缺省时 noj-judge 默认 special，保证旧 noj-core 实例推送的消息能正常处理。
+   */
+  judge_type?: string;
 }
 
 /**

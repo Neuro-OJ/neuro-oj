@@ -104,6 +104,7 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
     number: 1003,
     owner_id: "0",
     type: "P",
+    judge_type: "standard", // A+B 标准题，走 noj-judge 原生执行器（issue #66）
   },
 ];
 
@@ -168,6 +169,8 @@ async function seedProblems(): Promise<void> {
   const now = new Date().toISOString();
 
   for (const problem of SAMPLE_PROBLEMS) {
+    // 使用 onConflictDoUpdate 保证可重入并修正 1003 的 judge_type
+    // （issue #66：迁移 0006 在 seed 之前跑时 1003 不存在，UPDATE 影响 0 行）
     await db
       .insert(problems)
       .values({
@@ -175,7 +178,24 @@ async function seedProblems(): Promise<void> {
         created_at: now,
         updated_at: now,
       })
-      .onConflictDoNothing({ target: problems.id });
+      .onConflictDoUpdate({
+        target: problems.id,
+        set: {
+          title: problem.title,
+          description: problem.description,
+          difficulty: problem.difficulty,
+          judge_image: problem.judge_image,
+          judge_command: problem.judge_command,
+          support_package_path: problem.support_package_path,
+          time_limit_ms: problem.time_limit_ms,
+          memory_limit_mb: problem.memory_limit_mb,
+          number: problem.number,
+          owner_id: problem.owner_id,
+          type: problem.type,
+          judge_type: problem.judge_type,
+          updated_at: now,
+        },
+      });
 
     console.log(`已同步题目: ${problem.id} ${problem.title}`);
   }

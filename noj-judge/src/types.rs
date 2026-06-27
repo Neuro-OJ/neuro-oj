@@ -35,6 +35,24 @@ impl JudgeStatus {
     }
 }
 
+/// 评测类型。
+///
+/// - `Standard`：标准题，noj-judge 原生 Rust 执行器做 stdout diff 评分
+/// - `Special`：SPJ 题，保留 python3 /tmp/evaluate.py 自定义评测路径
+///
+/// `Default = Special` 保证从旧 noj-core 实例推送的 JudgeTask
+/// （无 `judge_type` 字段）能正确路由到现有 Python 路径，
+/// 是滚动部署中"先升级 noj-judge 再升级 noj-core"的兼容性保障。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum JudgeType {
+    /// SPJ 题（默认）。执行 problem.judge_command（通常为 python3 /tmp/evaluate.py）
+    #[default]
+    Special,
+    /// 标准题。noj-judge 原生执行器逐 case 跑用户代码 + stdout diff
+    Standard,
+}
+
 /// 评测任务——从 noj-core 发送到 noj-judge 的消息。
 ///
 /// 字段对齐 noj-core/src/types/index.ts 的 JudgeTask 接口。
@@ -61,6 +79,10 @@ pub struct JudgeTask {
     pub time_limit_ms: u64,
     /// 内存限制（MB）
     pub memory_limit_mb: u64,
+    /// 评测类型。`#[serde(default)]` 在字段缺失时调用 enum-level `Default` → `Special`，
+    /// 兼容旧 noj-core 推送的不含该字段的消息。
+    #[serde(default)]
+    pub judge_type: JudgeType,
 }
 
 /// 评测结果——从 noj-judge 返回到 noj-core 的消息。
@@ -268,6 +290,84 @@ mod tests {
         });
         let task: JudgeTask = serde_json::from_value(json).unwrap();
         assert_eq!(task.support_package_base64, Some(String::new()));
+    }
+
+    // ── JudgeType 反序列化（issue #66，向后兼容测试） ──
+
+    /// 关键回归：旧格式消息无 judge_type 字段 → 默认 Special
+    /// 保证新 noj-judge 能处理来自未升级 noj-core 的消息（滚动部署必需）
+    #[test]
+    fn test_judge_task_deserialize_missing_judge_type_defaults_special() {
+        let json = json!({
+            "submission_id": "sid-old",
+            "problem_id": "1001",
+            "judge_image": "noj-judge-python",
+            "judge_command": "python3 /tmp/evaluate.py",
+            "language": "python3",
+            "code": "",
+            "time_limit_ms": 5000,
+            "memory_limit_mb": 512
+        });
+        let task: JudgeTask = serde_json::from_value(json).unwrap();
+        assert_eq!(task.judge_type, JudgeType::Special);
+    }
+
+    #[test]
+    fn test_judge_task_deserialize_explicit_special() {
+        let json = json!({
+            "submission_id": "sid-sp",
+            "problem_id": "1001",
+            "judge_image": "noj-judge-python",
+            "judge_command": "python3 /tmp/evaluate.py",
+            "language": "python3",
+            "code": "",
+            "time_limit_ms": 5000,
+            "memory_limit_mb": 512,
+            "judge_type": "special"
+        });
+        let task: JudgeTask = serde_json::from_value(json).unwrap();
+        assert_eq!(task.judge_type, JudgeType::Special);
+    }
+
+    #[test]
+    fn test_judge_task_deserialize_explicit_standard() {
+        let json = json!({
+            "submission_id": "sid-st",
+            "problem_id": "1003",
+            "judge_image": "noj-judge-python",
+            "judge_command": "python3 /tmp/evaluate.py",
+            "language": "python3",
+            "code": "",
+            "time_limit_ms": 5000,
+            "memory_limit_mb": 512,
+            "judge_type": "standard"
+        });
+        let task: JudgeTask = serde_json::from_value(json).unwrap();
+        assert_eq!(task.judge_type, JudgeType::Standard);
+    }
+
+    /// 无效的 judge_type 值必须失败（不静默 coerce）
+    /// ——避免生产者 bug 导致 standard 题被静默走 Python 路径
+    #[test]
+    fn test_judge_task_deserialize_invalid_judge_type_fails() {
+        let json = json!({
+            "submission_id": "sid-bad",
+            "problem_id": "1003",
+            "judge_image": "noj-judge-python",
+            "judge_command": "python3 /tmp/evaluate.py",
+            "language": "python3",
+            "code": "",
+            "time_limit_ms": 5000,
+            "memory_limit_mb": 512,
+            "judge_type": "invalid_value"
+        });
+        let result: Result<JudgeTask, _> = serde_json::from_value(json);
+        assert!(result.is_err(), "无效的 judge_type 必须导致反序列化失败");
+    }
+
+    #[test]
+    fn test_judge_type_default_is_special() {
+        assert_eq!(JudgeType::default(), JudgeType::Special);
     }
 
     // ── JudgeResult 序列化 ──

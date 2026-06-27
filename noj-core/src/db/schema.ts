@@ -54,6 +54,11 @@ export const problems = pgTable(
     owner_id: text("owner_id").notNull().default("0"),
     /** 题目类型：U=用户题库, P=主题库 */
     type: text("type").notNull().default("U"),
+    /**
+     * 评测类型：standard=标准题（noj-judge 原生 Rust 执行器 stdout diff），
+     * special=SPJ 题（python3 /tmp/evaluate.py 自定义评测脚本）
+     */
+    judge_type: text("judge_type").notNull().default("special"),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
   },
@@ -63,6 +68,10 @@ export const problems = pgTable(
       table.number,
     ),
     typeCheck: check("problems_type_check", sql`${table.type} IN ('U', 'P')`),
+    judgeTypeCheck: check(
+      "problems_judge_type_check",
+      sql`${table.judge_type} IN ('standard', 'special')`,
+    ),
   }),
 );
 

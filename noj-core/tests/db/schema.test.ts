@@ -40,6 +40,7 @@ Deno.test("schema: problems table has LMCC-specific columns", () => {
   assertEquals(columns.includes("support_package_path"), true);
   assertEquals(columns.includes("time_limit_ms"), true);
   assertEquals(columns.includes("memory_limit_mb"), true);
+  assertEquals(columns.includes("judge_type"), true); // issue #66: 区分 standard/special
   // 不应包含 test_cases
   assertEquals(columns.includes("test_cases"), false);
 });
@@ -61,6 +62,14 @@ Deno.test("schema: problems columns have correct constraints", () => {
   assertEquals(problems.memory_limit_mb.notNull, true);
   assertEquals(problems.memory_limit_mb.hasDefault, true);
   assertEquals(problems.memory_limit_mb.default, 512); // DEFAULT 512
+});
+
+// ── issue #66: judge_type 列约束 ──
+
+Deno.test("schema: problems.judge_type has NOT NULL + DEFAULT 'special'", () => {
+  assertEquals(problems.judge_type.notNull, true);
+  assertEquals(problems.judge_type.hasDefault, true);
+  assertEquals(problems.judge_type.default, "special");
 });
 
 Deno.test("schema: submissions table has file_name for mount", () => {

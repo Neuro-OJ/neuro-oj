@@ -19,7 +19,9 @@ import {
   type CreateProblemInput,
   DIFFICULTIES,
   isValidDifficulty,
+  isValidJudgeType,
   isValidProblemType,
+  JUDGE_TYPES,
   type ProblemListQuery,
   type ProblemResponseWithCategories,
   type UpdateProblemInput,
@@ -39,6 +41,7 @@ export interface ProblemResponse {
   owner_id: string;
   type: string;
   display_id: string;
+  judge_type: string;
   created_at: string;
   updated_at: string;
 }
@@ -70,6 +73,7 @@ function toProblemResponse(
     owner_id: row.owner_id,
     type: row.type,
     display_id: `${row.type}${row.number}`,
+    judge_type: row.judge_type,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -154,6 +158,16 @@ export async function listProblems(
 
   if (query.owner_id) {
     conditions.push(eq(problems.owner_id, query.owner_id));
+  }
+
+  // 按判题类型筛选——独立于 difficulty 的简单 eq 扫描
+  if (query.judge_type) {
+    if (!isValidJudgeType(query.judge_type)) {
+      throw new BadRequestError(
+        `非法判题类型：${query.judge_type}，仅允许 ${JUDGE_TYPES.join("/")}`,
+      );
+    }
+    conditions.push(eq(problems.judge_type, query.judge_type));
   }
 
   // 按分类筛选——先查关联表拿到题目 ID，再通过 inArray 下推到 SQL WHERE 层
@@ -288,6 +302,13 @@ export async function createProblem(
     );
   }
 
+  // 校验判题类型（仅当显式提供时校验；不传则使用 DB 默认 'special'）
+  if (input.judge_type !== undefined && !isValidJudgeType(input.judge_type)) {
+    throw new BadRequestError(
+      `非法判题类型：${input.judge_type}，仅允许 ${JUDGE_TYPES.join("/")}`,
+    );
+  }
+
   // 题目主键统一由服务端生成 UUID，避免客户端注入字符串 id
   // 影响 display_id 双索引路由解析
   const id = crypto.randomUUID();
@@ -341,6 +362,11 @@ export async function createProblem(
         number,
         owner_id: ownerId,
         type,
+        // 仅当显式传入时插入 judge_type；undefined 让 DB 默认 'special' 生效
+        // （避免 Drizzle 显式写 NULL 触发 NOT NULL 约束）
+        ...(input.judge_type !== undefined
+          ? { judge_type: input.judge_type }
+          : {}),
         created_at: now,
         updated_at: now,
       });
@@ -420,6 +446,13 @@ export async function updateProblem(
     );
   }
 
+  // 校验判题类型
+  if (input.judge_type !== undefined && !isValidJudgeType(input.judge_type)) {
+    throw new BadRequestError(
+      `非法判题类型：${input.judge_type}，仅允许 ${JUDGE_TYPES.join("/")}`,
+    );
+  }
+
   // 防御性忽略 type 和 number（spec 承诺这两个字段不可变更）
   delete (input as Record<string, unknown>)["type"];
   delete (input as Record<string, unknown>)["number"];
@@ -441,6 +474,8 @@ export async function updateProblem(
   if (input.memory_limit_mb !== undefined) {
     updates.memory_limit_mb = input.memory_limit_mb;
   }
+  // judge_type 是可变字段：admin 切换 standard ↔ special 时修改
+  if (input.judge_type !== undefined) updates.judge_type = input.judge_type;
   updates.updated_at = new Date().toISOString();
 
   await db.update(problems).set(updates).where(eq(problems.id, id));
