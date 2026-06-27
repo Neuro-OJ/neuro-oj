@@ -5,7 +5,7 @@ import {
   listSubmissions,
 } from "../services/submissions.ts";
 import { getSubmissionQueueStatus } from "../services/queue.ts";
-import { adminMiddleware, authMiddleware } from "../middleware/auth.ts";
+import { authMiddleware } from "../middleware/auth.ts";
 import { BadRequestError } from "../lib/errors.ts";
 
 // 扩展 Hono 类型，使 c.get("userId") 返回 string
@@ -159,68 +159,4 @@ router.get("/:id/status", authMiddleware, async (c) => {
   return c.json(result);
 });
 
-/**
- * 管理员提交列表路由。
- * 需要 authMiddleware + adminMiddleware 双重保护。
- */
-const adminSubmissions = new Hono<
-  { Variables: { userId: string; userRole: string } }
->();
-
-adminSubmissions.get("/", authMiddleware, adminMiddleware, async (c) => {
-  // 解析分页参数
-  let page = parseInt(c.req.query("page") ?? "", 10);
-  let perPage = parseInt(c.req.query("per_page") ?? "", 10);
-
-  if (isNaN(page) || page < 1) page = 1;
-  if (isNaN(perPage) || perPage < 1) perPage = 20;
-  if (perPage > 100) perPage = 100;
-
-  // 解析筛选参数（额外支持 user_id、user_search）
-  const userId = c.req.query("user_id") || undefined;
-  const userSearch = c.req.query("user_search") || undefined;
-  const problemId = c.req.query("problem_id") || undefined;
-  const problemSearch = c.req.query("problem_search") || undefined;
-  const submissionId = c.req.query("submission_id") || undefined;
-  const language = c.req.query("language") || undefined;
-  const status = c.req.query("status") || undefined;
-  const from = c.req.query("from") || undefined;
-  const to = c.req.query("to") || undefined;
-
-  // status 参数校验
-  const validStatuses = ["pending", "judging", "finished", "error"];
-  if (status && !validStatuses.includes(status)) {
-    throw new BadRequestError(
-      `无效的状态值：${status}，有效值：${validStatuses.join("、")}`,
-    );
-  }
-
-  const result = await listSubmissions({
-    userId,
-    userSearch,
-    problemId,
-    problemSearch,
-    submissionId,
-    language,
-    status,
-    from,
-    to,
-    page,
-    perPage,
-  });
-
-  const totalPages = Math.ceil(result.total / perPage);
-
-  return c.json({
-    data: result.data,
-    pagination: {
-      page,
-      per_page: perPage,
-      total: result.total,
-      total_pages: totalPages,
-    },
-  });
-});
-
-export { adminSubmissions };
 export default router;
