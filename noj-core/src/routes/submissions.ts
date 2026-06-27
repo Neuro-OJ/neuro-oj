@@ -4,15 +4,22 @@ import {
   getSubmission,
   listSubmissions,
 } from "../services/submissions.ts";
+import { getCachedTotalStats, getCachedTodayStats } from "../services/stats-cache.ts";
 import { getSubmissionQueueStatus } from "../services/queue.ts";
-import { authMiddleware } from "../middleware/auth.ts";
+import {
+  adminMiddleware,
+  authMiddleware,
+  optionalAuthMiddleware,
+} from "../middleware/auth.ts";
+import { rateLimit } from "../middleware/rate-limit.ts";
 import { BadRequestError, NotFoundError } from "../lib/errors.ts";
 
-// 扩展 Hono 类型，使 c.get("userId") 返回 string
+// 扩展 Hono 类型，使 c.get("userId") 返回 string | undefined
+// （optionalAuthMiddleware 注入时可能为 undefined；authMiddleware 注入时一定有值）
 type Env = {
   Variables: {
-    userId: string;
-    userRole: string;
+    userId?: string;
+    userRole?: string;
   };
 };
 
@@ -133,12 +140,80 @@ router.post("/", authMiddleware, async (c) => {
 });
 
 /**
- * 获取提交详情。
+ * 公开最新评测列表（无需登录）。
+ * GET /api/v1/submissions/public/recent
+ *
+ * 返回全站最近 N 条评测的基础数据（不含 code），用于首页"最新评测"卡片等场景。
+ * 限流策略：
+ *   - 登录用户：两次请求至少间隔 1s（防止过快的 UI 轮询拖慢服务）
+ *   - 未登录用户：两次请求至少间隔 5s（防止匿名滥用），per_page 上限 50
+ * 注意：注册顺序必须在 `/:id` 之前，避免被动态段吞掉。
  */
-router.get("/:id", authMiddleware, async (c) => {
+router.get(
+  "/public/recent",
+  optionalAuthMiddleware,
+  rateLimit({ loggedInIntervalMs: 1000, loggedOutIntervalMs: 5000 }),
+  async (c) => {
+    const isLoggedIn = !!c.var.userId;
+    // 未登录用户 per_page 严格上限 50；登录用户放宽到 100（防滥用但允许更多）
+    const maxPerPage = isLoggedIn ? 100 : 50;
+    const defaultPerPage = isLoggedIn ? 20 : 10;
+    const perPage = Math.max(
+      1,
+      Math.min(
+        parseInt(c.req.query("per_page") ?? "", 10) || defaultPerPage,
+        maxPerPage,
+      ),
+    );
+
+    const result = await listSubmissions({ page: 1, perPage });
+    return c.json({ data: result.data });
+  },
+);
+
+/**
+ * 获取今日提交统计（首页"最新评测"卡片使用）。
+ * GET /api/v1/submissions/today-stats
+ * 必须在 /:id 之前注册，避免被动态段吞掉。
+ */
+router.get(
+  "/today-stats",
+  optionalAuthMiddleware,
+  rateLimit({ loggedInIntervalMs: 1000, loggedOutIntervalMs: 5000 }),
+  async (c) => {
+    const stats = await getCachedTodayStats(c.var.userId);
+    return c.json({ data: stats });
+  },
+);
+
+/**
+ * 获取全站历史累计提交统计（首页"最新评测"卡片"总共"模式使用）。
+ * GET /api/v1/submissions/total-stats
+ * 必须在 /:id 之前注册，避免被动态段吞掉。
+ */
+router.get(
+  "/total-stats",
+  rateLimit({ loggedInIntervalMs: 1000, loggedOutIntervalMs: 5000 }),
+  async (c) => {
+    const stats = await getCachedTotalStats();
+    return c.json({ data: stats });
+  },
+);
+
+/**
+ * 获取提交详情。
+ *
+ * 权限：基础数据公开访问；code/output/details 仅 owner 或 admin 可见。
+ * 服务层 `getSubmission` 根据 viewerId/viewerRole 自动裁剪字段。
+ */
+router.get("/:id", optionalAuthMiddleware, async (c) => {
   const id = c.req.param("id")!;
 
-  const result = await getSubmission(id, c.var.userId);
+  const result = await getSubmission(
+    id,
+    c.var.userId,
+    c.var.userRole,
+  );
   return c.json({ data: result });
 });
 
@@ -147,16 +222,84 @@ router.get("/:id", authMiddleware, async (c) => {
  * GET /api/v1/submissions/:id/status
  * 仅 admin 或提交所有者可查看；非授权用户返回 404。
  */
-router.get("/:id/status", authMiddleware, async (c) => {
-  const id = c.req.param("id")!;
-  const userId = c.var.userId!;
-  const userRole = c.var.userRole!;
+router.get(
+  "/:id/status",
+  authMiddleware,
+  async (c) => {
+    const id = c.req.param("id")!;
+    const userId = c.var.userId!;
+    const userRole = c.var.userRole!;
 
-  const result = await getSubmissionQueueStatus(id, userId, userRole);
-  if (!result) {
-    throw new NotFoundError("提交不存在");
+    const result = await getSubmissionQueueStatus(id, userId, userRole);
+    if (!result) {
+      throw new NotFoundError("提交不存在");
+    }
+    return c.json(result);
+  },
+);
+
+/**
+ * 管理员提交列表路由。
+ * 需要 authMiddleware + adminMiddleware 双重保护。
+ */
+const adminSubmissions = new Hono<
+  { Variables: { userId: string; userRole: string } }
+>();
+
+adminSubmissions.get("/", authMiddleware, adminMiddleware, async (c) => {
+  // 解析分页参数
+  let page = parseInt(c.req.query("page") ?? "", 10);
+  let perPage = parseInt(c.req.query("per_page") ?? "", 10);
+
+  if (isNaN(page) || page < 1) page = 1;
+  if (isNaN(perPage) || perPage < 1) perPage = 20;
+  if (perPage > 100) perPage = 100;
+
+  // 解析筛选参数（额外支持 user_id、user_search）
+  const userId = c.req.query("user_id") || undefined;
+  const userSearch = c.req.query("user_search") || undefined;
+  const problemId = c.req.query("problem_id") || undefined;
+  const problemSearch = c.req.query("problem_search") || undefined;
+  const submissionId = c.req.query("submission_id") || undefined;
+  const language = c.req.query("language") || undefined;
+  const status = c.req.query("status") || undefined;
+  const from = c.req.query("from") || undefined;
+  const to = c.req.query("to") || undefined;
+
+  // status 参数校验
+  const validStatuses = ["pending", "judging", "finished", "error"];
+  if (status && !validStatuses.includes(status)) {
+    throw new BadRequestError(
+      `无效的状态值：${status}，有效值：${validStatuses.join("、")}`,
+    );
   }
-  return c.json(result);
+
+  const result = await listSubmissions({
+    userId,
+    userSearch,
+    problemId,
+    problemSearch,
+    submissionId,
+    language,
+    status,
+    from,
+    to,
+    page,
+    perPage,
+  });
+
+  const totalPages = Math.ceil(result.total / perPage);
+
+  return c.json({
+    data: result.data,
+    pagination: {
+      page,
+      per_page: perPage,
+      total: result.total,
+      total_pages: totalPages,
+    },
+  });
 });
 
+export { adminSubmissions };
 export default router;

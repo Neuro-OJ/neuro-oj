@@ -36,7 +36,7 @@ async function initMonaco() {
 
   // Worker 从 Nuxt 静态资源加载（self-host 模式，issue #82）
   // 避免国内网络下 unpkg.com 不可达导致 worker 拉取失败。
-  // 文件名带 hash，由 postinstall 脚本扫描并写入 workers.json。
+  // 文件名带 hash，由 postinstall 脚本（scripts/copy-monaco.mjs）扫描并写入 workers.json。
   const CDN_BASE = `/monaco`
   const manifest = (await fetch(`${CDN_BASE}/workers.json`).then((r) => r.json())) ?? {}
   const editorWorkerUrl = manifest.editor ? `${CDN_BASE}/${manifest.editor}` : null

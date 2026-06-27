@@ -53,6 +53,54 @@ export interface UserBanState {
 }
 
 /**
+ * 可选认证中间件——有 token 则验证并注入用户信息，无 token 则以匿名身份放行。
+ *
+ * 与 authMiddleware 的区别：
+ * - authMiddleware：要求必须登录，未登录直接抛 401
+ * - optionalAuthMiddleware：未登录也放行，但 c.get("userId") 为 undefined
+ *
+ * 适用于公开但支持个性化数据的端点（如公共提交列表、题目列表）。
+ * 下游路由通过 `if (!c.get("userId"))` 判断是否匿名。
+ */
+export async function optionalAuthMiddleware(c: Context, next: Next) {
+  const authHeader = c.req.header("Authorization");
+
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.slice(7);
+    let payload: Awaited<ReturnType<typeof verifyToken>> | null = null;
+    try {
+      payload = await verifyToken(token);
+    } catch {
+      // token 无效或过期：以匿名身份放行
+    }
+
+    if (payload) {
+      c.set("userId", payload.sub);
+      c.set("userRole", payload.role);
+      c.set("mustChangePassword", payload.must_change_password ?? false);
+
+      // 非 GET/HEAD/OPTIONS 时校验封禁状态（与 authMiddleware 一致）
+      if (
+        c.req.method !== "GET" && c.req.method !== "HEAD" &&
+        c.req.method !== "OPTIONS" &&
+        !BAN_WHITELIST.includes(c.req.path)
+      ) {
+        const banState = await getUserBanState(payload.sub);
+        const stillBanned = banState.banned &&
+          (!banState.until || Date.parse(banState.until) > Date.now());
+        if (stillBanned) {
+          throw new ForbiddenError("账号已被封禁", "USER_BANNED", {
+            reason: banState.reason,
+            until: banState.until,
+          });
+        }
+      }
+    }
+  }
+  await next();
+}
+
+/**
  * 认证中间件——验证 JWT Bearer token。
  *
  * 提取 Authorization 头中的 Bearer token，验证签名和有效期，

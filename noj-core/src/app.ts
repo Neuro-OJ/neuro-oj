@@ -11,7 +11,7 @@ import submissions from "./routes/submissions.ts";
 import users from "./routes/users.ts";
 import rankings from "./routes/rankings.ts";
 import conversations from "./routes/conversations.ts";
-import sse from "./routes/sse.ts";
+import sse, { statsSse } from "./routes/sse.ts";
 import { AppError } from "./lib/errors.ts";
 import { listJudgeImages } from "./services/judge-images.ts";
 import { banlistMiddleware } from "./middleware/banlist.ts";
@@ -97,6 +97,8 @@ export function createApp(): Hono {
     return c.json({ data: items });
   });
 
+  // 统计数据 SSE 端点（公开，无需 authMiddleware，必须在 sse 之前注册）
+  app.route("/api/v1", statsSse);
   app.route("/api/v1", sse);
 
   // 全局中间件（issue #102 / ban-status-endpoint）：

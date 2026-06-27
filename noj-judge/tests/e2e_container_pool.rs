@@ -121,6 +121,7 @@ fn make_pool_config(initial_size: usize, max_size: usize) -> noj_judge::config::
         max_archive_mb: 25,
         kill_grace_secs: 2,
         label_prefix: "com.noj.judge.test".to_string(),
+        images: vec!["noj-judge-test-runner".to_string()],
     }
 }
 

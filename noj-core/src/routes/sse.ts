@@ -4,6 +4,7 @@ import { authMiddleware } from "../middleware/auth.ts";
 import { onEvent } from "../lib/event-bus.ts";
 import { getSubmission } from "../services/submissions.ts";
 import { getQueueOverview } from "../services/queue.ts";
+import { getCachedTotalStats, getCachedTodayStats } from "../services/stats-cache.ts";
 
 /**
  * SSE（Server-Sent Events）路由。
@@ -155,6 +156,90 @@ sse.get("/queue/events", (c) => {
         }).catch(() => {
           closeStream();
         });
+      },
+    );
+
+    const keepAlive = setInterval(() => {
+      if (streamClosed) return;
+      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
+        closeStream();
+      });
+    }, 30_000);
+
+    await new Promise<void>((resolve) => {
+      resolveAbort = resolve;
+      stream.onAbort(() => {
+        closeStream();
+      });
+    });
+  });
+});
+
+/**
+ * 统计数据 SSE 端点（公开，无需认证）。
+ *
+ * 首页最新评测卡片订阅此端点，收到 `stats:updated` 事件后刷新统计数据。
+ * 相比轮询，减少了服务端全表扫描频率。
+ *
+ * 事件格式：
+ *   event: stats:updated
+ *   data: { type: "stats:updated", total: {...}, today: {...} }
+ */
+export const statsSse = new Hono();
+
+statsSse.get("/submissions/stats/events", (c) => {
+  return streamSSE(c, async (stream) => {
+    let streamClosed = false;
+    let resolveAbort: (() => void) | null = null;
+
+    const safetyTimer = setTimeout(() => {
+      closeStream();
+    }, 300_000);
+
+    function closeStream() {
+      if (streamClosed) return;
+      streamClosed = true;
+      clearTimeout(safetyTimer);
+      clearInterval(keepAlive);
+      unsub();
+      if (resolveAbort) resolveAbort();
+    }
+
+    // 连接建立后立即推送当前统计数据（类似 MQTT Retain 语义）
+    try {
+      const [total, today] = await Promise.all([
+        getCachedTotalStats(),
+        getCachedTodayStats(),
+      ]);
+      await stream.writeSSE({
+        event: "stats:updated",
+        data: JSON.stringify({ type: "stats:updated", total, today }),
+      });
+    } catch {
+      // 初始化失败不影响后续订阅
+    }
+
+    const unsub = onEvent(
+      "noj:events:stats",
+      async (_channel, message) => {
+        if (streamClosed) return;
+        try {
+          const [total, today] = await Promise.all([
+            getCachedTotalStats(),
+            getCachedTodayStats(),
+          ]);
+          await stream.writeSSE({
+            event: "stats:updated",
+            data: JSON.stringify({
+              type: "stats:updated",
+              total,
+              today,
+              ...JSON.parse(message),
+            }),
+          });
+        } catch {
+          // 静默失败
+        }
       },
     );
 
