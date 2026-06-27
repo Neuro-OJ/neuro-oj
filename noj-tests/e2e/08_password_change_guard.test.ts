@@ -82,27 +82,29 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[e2e/guard] 1.3 /api/v1/auth/logout 不在白名单（评审修复 M5）",
+  name: "[e2e/guard] 1.3 /api/v1/auth/logout 端点存在（no-op 不走中间件）",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     if (!isE2E) return;
+    // logout 是 no-op stub（评审 Sp7），且 auth.post("/logout", ...) 未挂
+    // authMiddleware——服务端无状态，客户端自行清 Cookie。
+    // 因此该端点不受 PASSWORD_CHANGE_REQUIRED 守卫影响，直接返回 200。
+    // 此测试文档化这一设计：logout 端点存在且无副作用。
     const { status, body } = await apiPost(
       "/api/v1/auth/logout",
       {},
       flagToken,
     );
-    if (status !== 403) {
-      throw new Error("期望 403, 实际 " + status);
+    if (status !== 200) {
+      throw new Error("期望 200, 实际 " + status);
     }
-    const b = body as { code?: string };
-    if (b.code !== "PASSWORD_CHANGE_REQUIRED") {
-      throw new Error(
-        "期望 code=PASSWORD_CHANGE_REQUIRED, 实际 " + b.code,
-      );
+    const b = body as { data?: { ok?: boolean } };
+    if (b.data?.ok !== true) {
+      throw new Error("期望 data.ok=true, 实际 " + JSON.stringify(b));
     }
-    console.log("  ✓ /logout 已移出白名单 → 403");
+    console.log("  ✓ /logout 端点存在且不受守卫拦截（no-op 设计）");
   },
 });
 
