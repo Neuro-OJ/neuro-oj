@@ -138,17 +138,31 @@ export async function loginUser(
 }
 
 /**
+ * 尝试登录，失败返回 null（不抛错）。供幂等 helper 使用。
+ */
+async function tryLogin(
+  login: string,
+  password: string,
+): Promise<string | null> {
+  const res = await apiPost("/api/v1/auth/login", { login, password });
+  if (res.status !== 200) return null;
+  return (res.body as { data: { token: string } }).data.token;
+}
+
+/**
  * 登录 admin 并完成强制改密，返回无 must_change_password flag 的 token
  * （评审修复 H2：E2E 必须走完整强制改密流程才能验证 403 守卫）。
  *
- * 流程：
- * 1. 登录拿到 tokenA（must_change_password=true）
- * 2. 调 /api/v1/auth/change-password 完成改密 → 服务端置 must_change_password=false
- * 3. 重新登录拿到 tokenB（must_change_password=false）供后续测试使用
+ * 幂等设计：E2E 各测试 setup 共享同一个 admin 账户，前序测试已把密码改为
+ * newPassword。流程：
+ *   1. 先用 newPassword 登录（如果成功 → 已经是无 flag 状态，直接返回）
+ *   2. 失败 → 用 password 登录（拿 flag token）
+ *   3. 调 change-password 完成改密
+ *   4. 用 newPassword 重新登录拿到无 flag token
  *
  * @param login    登录标识（邮箱或用户名）
- * @param password 当前密码
- * @param newPassword 改密后的密码
+ * @param password 当前密码（seed 设置的 ADMIN_PASS）
+ * @param newPassword 改密后的密码（所有测试统一目标）
  * @returns 无改密 flag 的 admin token
  */
 export async function loginAndChangePassword(
@@ -156,13 +170,25 @@ export async function loginAndChangePassword(
   password: string,
   newPassword: string,
 ): Promise<string> {
-  const firstToken = await loginUser(login, password);
+  // 步骤 1：前序测试可能已改密。先用 newPassword 试登录拿无 flag token。
+  const cleanToken = await tryLogin(login, newPassword);
+  if (cleanToken) return cleanToken;
 
-  // 调 change-password（authMiddleware 在 must_change_password=true 状态下放行该路径）
+  // 步骤 2：用 password 登录拿 flag token（必须是 password，否则说明 admin
+  // 状态异常——既不是初始密码也不是改密后密码）。
+  const flagToken = await tryLogin(login, password);
+  if (!flagToken) {
+    throw new Error(
+      `loginAndChangePassword: ${login} 既无法用初始密码登录，也无法用改密后密码登录`,
+    );
+  }
+
+  // 步骤 3：调 change-password 完成改密。
+  // authMiddleware 在 must_change_password=true 状态下放行 /api/v1/auth/change-password。
   const changeRes = await apiPost(
     "/api/v1/auth/change-password",
     { old_password: password, new_password: newPassword },
-    firstToken,
+    flagToken,
   );
   if (changeRes.status !== 200) {
     throw new Error(
@@ -170,7 +196,7 @@ export async function loginAndChangePassword(
     );
   }
 
-  // 重新登录拿到无 flag 的 token
+  // 步骤 4：用 newPassword 重新登录拿到无 flag token。
   return await loginUser(login, newPassword);
 }
 

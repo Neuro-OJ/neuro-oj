@@ -19,13 +19,7 @@
  * 5. 验证改密后非白名单 API 恢复正常
  */
 
-import {
-  apiGet,
-  apiPost,
-  isE2E,
-  loginUser,
-  waitForServer,
-} from "./helper.ts";
+import { apiGet, apiPost, isE2E, loginUser, waitForServer } from "./helper.ts";
 
 const skip = !isE2E;
 const PWCHANGE_EMAIL = "e2e_pwchange@test.com";
@@ -54,9 +48,11 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     if (!isE2E) return;
-    // 试访问任意非白名单 API
+    // 试访问任意非白名单、受 authMiddleware 保护的 API。
+    // 注意：必须用受保护路径，否则中间件不执行，守卫无法拦截。
+    // /api/v1/categories GET 是公开路由，不应使用。
     const { status, body } = await apiGet(
-      "/api/v1/categories",
+      "/api/v1/admin/users",
       flagToken,
     );
     if (status !== 403) {
@@ -142,7 +138,8 @@ Deno.test({
     if (!isE2E) return;
     // 用新密码登录拿到无 flag 的 token
     const cleanToken = await loginUser(PWCHANGE_EMAIL, PWCHANGE_NEW_PASS);
-    const { status } = await apiGet("/api/v1/categories", cleanToken);
+    // 用受保护的普通用户 API（/api/v1/submissions）验证 token 通过 authMiddleware
+    const { status } = await apiGet("/api/v1/submissions", cleanToken);
     if (status !== 200) {
       throw new Error("期望 200, 实际 " + status);
     }
@@ -167,10 +164,10 @@ Deno.test({
         cleanToken,
       );
     }
-    // /login 仍能正常使用（说明限流桶与 /login 隔离）
-    const { status } = await apiGet("/api/v1/categories", cleanToken);
+    // 用受保护 API（/api/v1/submissions）验证 token 仍可用 → pwchange 限流桶与 /login 隔离
+    const { status } = await apiGet("/api/v1/submissions", cleanToken);
     if (status !== 200) {
-      throw new Error("/login 受影响，限流桶未隔离: " + status);
+      throw new Error("pwchange 限流污染了 token 路径: " + status);
     }
     console.log("  ✓ pwchange 限流不污染 /login");
   },
