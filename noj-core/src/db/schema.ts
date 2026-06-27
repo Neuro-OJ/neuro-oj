@@ -198,3 +198,32 @@ export const checkIns = pgTable(
     ),
   }),
 );
+
+/**
+ * 密码重置令牌表（issue #49）。
+ * 存储密码重置流程的短期令牌：DB 存 SHA-256 哈希（不存明文），URL 传明文。
+ * expires_at = created_at + 15 分钟（OWASP 2025+ 建议）。
+ * used_at NULL = 未使用，原子消耗用单 SQL UPDATE 实现。
+ */
+export const passwordResetTokens = pgTable(
+  "password_reset_tokens",
+  {
+    id: text("id").primaryKey(),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** 令牌 SHA-256 hex 哈希（不存明文明文 token） */
+    token_hash: text("token_hash").notNull().unique(),
+    /** ISO 8601，过期时间，now + 15 分钟 */
+    expires_at: text("expires_at").notNull(),
+    /** ISO 8601，使用时间。NULL = 未使用 */
+    used_at: text("used_at"),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    user_idx: index("idx_password_reset_tokens_user_id").on(table.user_id),
+    expires_idx: index("idx_password_reset_tokens_expires_at").on(
+      table.expires_at,
+    ),
+  }),
+);

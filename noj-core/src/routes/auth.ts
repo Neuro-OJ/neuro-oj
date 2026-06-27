@@ -1,7 +1,14 @@
 import { Hono } from "hono";
-import { authMiddleware } from "../middleware/auth.ts";
-import { getUserProfile, loginUser, registerUser } from "../services/auth.ts";
-import { ValidationError } from "../lib/errors.ts";
+import { adminMiddleware, authMiddleware } from "../middleware/auth.ts";
+import {
+  getUserProfile,
+  listUsers,
+  loginUser,
+  promoteUser,
+  registerUser,
+} from "../services/auth.ts";
+import { requestReset, resetPassword } from "../services/passwordReset.ts";
+import { BadRequestError, ValidationError } from "../lib/errors.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import {
   applyLoginBackoff,
@@ -17,7 +24,12 @@ import {
   throwRateLimited,
 } from "../middleware/rateLimit.ts";
 import { UnauthorizedError } from "../lib/errors.ts";
-import type { LoginInput, RegisterInput } from "../types/auth.ts";
+import type {
+  ForgotPasswordInput,
+  LoginInput,
+  RegisterInput,
+  ResetPasswordInput,
+} from "../types/auth.ts";
 
 const auth = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
@@ -116,4 +128,61 @@ auth.get("/me", authMiddleware, async (c) => {
   return c.json({ data: user }, 200);
 });
 
+/**
+ * 密码重置请求端点（issue #49）。
+ * POST /api/v1/auth/forgot-password
+ *
+ * 防枚举行为：不管邮箱是否存在，统一返 200 + 同一消息。
+ * 邮箱存在时生成 token + 调 sendPasswordResetEmail()。
+ */
+auth.post("/forgot-password", async (c) => {
+  const body = await parseJsonBody<ForgotPasswordInput>(c);
+
+  if (!body.email) {
+    throw new BadRequestError("缺少字段 email");
+  }
+
+  // 应用基础 URL：从请求头 Host 拼出（生产环境后续接 APP_URL 环境变量）
+  const proto = c.req.header("x-forwarded-proto") ?? "http";
+  const host = c.req.header("host") ?? "localhost:3000";
+  const appBaseUrl = `${proto}://${host}`;
+
+  await requestReset(body.email, appBaseUrl);
+
+  return c.json(
+    {
+      ok: true,
+      message: "如果该邮箱已注册，您将收到一封密码重置邮件",
+    },
+    200,
+  );
+});
+
+/**
+ * 密码重置执行端点（issue #49）。
+ * POST /api/v1/auth/reset-password
+ *
+ * 用邮件链接中的 token + 新密码重置密码。
+ * 令牌无效/过期/已用时返 400 明确错误（用户主动操作场景）。
+ */
+auth.post("/reset-password", async (c) => {
+  const body = await parseJsonBody<ResetPasswordInput>(c);
+
+  if (!body.token || !body.new_password) {
+    const missing: string[] = [];
+    if (!body.token) missing.push("token");
+    if (!body.new_password) missing.push("new_password");
+    throw new BadRequestError(`缺少字段：${missing.join(", ")}`);
+  }
+
+  await resetPassword(body.token, body.new_password);
+
+  return c.json(
+    {
+      ok: true,
+      message: "密码重置成功，请使用新密码登录",
+    },
+    200,
+  );
+});
 export default auth;
