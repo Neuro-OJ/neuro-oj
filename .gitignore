@@ -1,45 +1,68 @@
-# === OS ===
+# --- OS ---
 .DS_Store
 Thumbs.db
-
-# === IDE ===
-.idea/
-.vscode/
-.trea/
 *.swp
 *.swo
+*~
 
-# === Deno (noj-core) ===
-# deno.lock 已提交至仓库，用于 CI 缓存和可重现构建
+# --- IDE ---
+.idea/
+.vscode/
+*.code-workspace
+.trea/
 
-# === Node.js (noj-ui) ===
+# --- Environment ---
+.env
+.env.*
+!.env.example
+!.env.e2e.template
+
+# --- Deno ---
+.deno_cache/
+deno.lock  # 不锁定依赖版本——社区库遵循 semver 即可
+
+# --- Node.js / npm ---
 node_modules/
 .nuxt/
 .output/
 dist/
+.cache/
+*.tsbuildinfo
+
+# --- Logs ---
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# === Rust (noj-judge) ===
+# --- Rust ---
 target/
 *.rs.bk
+**/*.rs.bk
 
-# === Docker ===
+# --- Python (evaluate.py scripts) ---
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# --- Docker ---
 docker-data/
 
-# === Environment ===
-.env
-.env.*
-!.env.example
-
-# === JJ (Jujutsu) ===
+# --- Jujutsu (jj) ---
 .jj/repo/op_heads/
 .jj/repo/store/
 
-# === Tmp ===
+# --- Build Artifacts ---
 tmp/
+coverage/
+*.wasm
 
-# === Problem Data (noj-core) ===
-# Support packages 是构建产物，不纳入版本控制
+# --- Problem Data (noj-core) ---
+# Support packages are build artifacts, not versioned
 noj-core/data/packages/
 !noj-core/data/packages/.gitkeep
+
+# --- IDE metadata (project-local, not shareable) ---
+*.iml
+*.idea/
