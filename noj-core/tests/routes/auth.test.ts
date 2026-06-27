@@ -3,10 +3,27 @@ import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { users } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
+import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
+import { _clearLoginBackoffForTest } from "../../src/lib/loginThrottle.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 const hasJwt = !!Deno.env.get("JWT_SECRET");
+const hasRedis = !!Deno.env.get("REDIS_URL");
 const skip = !(hasDb && hasJwt);
+
+// 模块加载时建立一次 Redis 连接（后续测试复用）
+// 路由层的登录限流依赖 Redis，必须在第一个测试运行前完成
+if (hasRedis) {
+  try {
+    const redisModule = await import("../../src/mq/connection.ts");
+    redisModule.resetRedisForTest();
+    await redisModule.connectRedis();
+  } catch (e) {
+    if (!String(e).includes("already connecting/connected")) {
+      console.warn("[setup] Redis 连接失败:", e);
+    }
+  }
+}
 
 const BASE = "/api/v1/auth";
 const ts = Date.now();
@@ -38,6 +55,49 @@ async function jsonRequest(
     body: body ? JSON.stringify(body) : undefined,
   });
   return await app.fetch(req);
+}
+
+/**
+ * 带 X-Forwarded-For 的 JSON 请求（用于 IP 限流测试）。
+ */
+async function jsonRequestWithIp(
+  app: ReturnType<typeof createApp>,
+  ip: string,
+  path: string,
+  method: string,
+  body?: Record<string, unknown>,
+): Promise<Response> {
+  const headers = new Headers({
+    "Content-Type": "application/json",
+    "X-Forwarded-For": ip,
+  });
+
+  const req = new Request(`http://localhost${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return await app.fetch(req);
+}
+
+/** 生成测试用唯一 IP（10.x.x.x 私有地址） */
+function _uniqueIp(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = (h * 31 + seed.charCodeAt(i)) & 0xffffffff;
+  }
+  return `10.${(h >>> 8) & 0xff}.${h & 0xff}.${(h >>> 16) & 0xff}`;
+}
+
+/** 确保 Redis 已连接（幂等） */
+async function ensureRedisConnected() {
+  resetRedisForTest();
+  const { connectRedis } = await import("../../src/mq/connection.ts");
+  try {
+    await connectRedis();
+  } catch (e) {
+    if (!String(e).includes("already connecting/connected")) throw e;
+  }
 }
 
 async function cleanupUser(username: string) {
@@ -404,6 +464,151 @@ Deno.test({
       login: "user", // 缺少 password
     });
     assertEquals(res.status, 400);
+  },
+});
+
+// ── 速率限制测试（issue #73）──────────────────────────────
+
+/** 临时启用限流（绕过 NOJ_ENV=test 的全局关闭） */
+function enableRateLimitForTest() {
+  const prev = Deno.env.get("NOJ_ENV") ?? "";
+  Deno.env.set("NOJ_ENV", "development"); // 让 isRateLimitEnabled() 返回 true
+  return () => {
+    Deno.env.set("NOJ_ENV", prev);
+  };
+}
+
+Deno.test({
+  name: "routes: POST /login IP 维度 30s/10次 后 429",
+  ignore: skip || !hasRedis,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const restore = enableRateLimitForTest();
+    try {
+      await resetDbForTest();
+      await ensureRedisConnected();
+      const app = createApp();
+      // 用 ts + 随机后缀确保 IP 在本测试唯一（30s 窗口内不会被其他测试污染）
+      const ip = `192.168.${(ts & 0xff)}.${
+        Math.floor(Math.random() * 254) + 1
+      }`;
+
+      // 用不同账号（每次都不存在），账号维度不会先触发限流
+      for (let i = 0; i < 10; i++) {
+        const res = await jsonRequestWithIp(
+          app,
+          ip,
+          `${BASE}/login`,
+          "POST",
+          { login: `ip_noexist_${ts}_${i}`, password: "WrongPwd-Cd2" },
+        );
+        assertEquals(res.status, 401, `第 ${i + 1} 次应 401（账号不存在）`);
+      }
+
+      // 第 11 次：IP 维度超限 → 429
+      const res = await jsonRequestWithIp(
+        app,
+        ip,
+        `${BASE}/login`,
+        "POST",
+        { login: `ip_noexist_${ts}_10`, password: "WrongPwd-Cd2" },
+      );
+      assertEquals(res.status, 429);
+      assertEquals(res.headers.get("X-RateLimit-Limit"), "10");
+      assertEquals(res.headers.get("X-RateLimit-Remaining"), "0");
+      assertEquals(res.headers.get("Retry-After") !== null, true);
+
+      // 清理：避免影响后续测试
+      try {
+        const redis = getRedis();
+        await redis.del(`ratelimit:login:ip:${ip}`);
+      } catch {
+        // ignore
+      }
+    } finally {
+      restore();
+    }
+  },
+});
+
+Deno.test({
+  name: "routes: POST /login 10 次失败后账号被锁定（route 层）",
+  ignore: skip || !hasRedis,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const restore = enableRateLimitForTest();
+    try {
+      await resetDbForTest();
+      await ensureRedisConnected();
+      const app = createApp();
+      const user = `lockout_route_${ts}`;
+      const ip = `192.168.${(ts & 0xff)}.${
+        (Math.floor(Math.random() * 254) + 1) + 50
+      }`;
+
+      // 注册
+      await jsonRequest(app, `${BASE}/register`, "POST", {
+        username: user,
+        email: `${user}@example.com`,
+        password: "CorrectPwd-Ab1",
+      });
+
+      // 10 次错密码（每次清掉 IP 限流计数 + 账号退避，避免 IP 限流先于锁定触发）
+      for (let i = 0; i < 10; i++) {
+        const redis = getRedis();
+        // 清掉账号维度的限流计数（业务上限 5 会先触发，否则无法连续 10 次失败）
+        await redis.del(`ratelimit:login:acc:${user}`);
+        _clearLoginBackoffForTest();
+        const res = await jsonRequestWithIp(
+          app,
+          ip,
+          `${BASE}/login`,
+          "POST",
+          { login: user, password: "WrongPwd-Cd2" },
+        );
+        assertEquals(res.status, 401, `第 ${i + 1} 次错密码应 401`);
+      }
+
+      // 第 11 次：清掉 IP/账号限流，确保走到 lock 检查
+      _clearLoginBackoffForTest();
+      {
+        const redis = getRedis();
+        await redis.del(
+          `ratelimit:login:ip:${ip}`,
+          `ratelimit:login:acc:${user}`,
+        );
+      }
+
+      const res = await jsonRequestWithIp(
+        app,
+        ip,
+        `${BASE}/login`,
+        "POST",
+        { login: user, password: "WrongPwd-Cd2" },
+      );
+      assertEquals(res.status, 401);
+      const body = await res.json();
+      assertEquals(body.error, "登录尝试过多，账号已临时锁定");
+
+      // 清理
+      _clearLoginBackoffForTest();
+      try {
+        const redis = getRedis();
+        await redis.del(
+          `loginfail:${user}`,
+          `loginlock:${user}`,
+          `ratelimit:login:ip:${ip}`,
+          `ratelimit:login:acc:${user}`,
+        );
+      } catch {
+        // ignore
+      }
+      await cleanupUser(user);
+    } finally {
+      restore();
+    }
   },
 });
 

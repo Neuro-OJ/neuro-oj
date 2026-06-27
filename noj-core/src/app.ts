@@ -43,13 +43,21 @@ export function createApp(): Hono {
     const requestId = crypto.randomUUID();
     if (err instanceof AppError) {
       err.requestId = requestId;
+      // 限流错误携带 X-RateLimit-* 响应头（issue #73）
+      const extraHeaders =
+        (err as { headers?: Record<string, string> }).headers;
+      if (extraHeaders) {
+        for (const [k, v] of Object.entries(extraHeaders)) {
+          c.header(k, v);
+        }
+      }
       return c.json(
         {
           error: err.message,
           code: err.code,
           request_id: requestId,
         },
-        err.statusCode as 400 | 401 | 404 | 409 | 500,
+        err.statusCode as 400 | 401 | 404 | 409 | 429 | 500,
       );
     }
     console.error("未处理的错误 [request_id=" + requestId + "]:", err);

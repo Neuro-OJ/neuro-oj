@@ -9,6 +9,20 @@ import {
 } from "../services/auth.ts";
 import { ValidationError } from "../lib/errors.ts";
 import { parseJsonBody } from "../lib/request.ts";
+import {
+  applyLoginBackoff,
+  clearLoginFailure,
+  isLoginLocked,
+  recordLoginBackoff,
+  recordLoginFailure,
+} from "../lib/loginThrottle.ts";
+import {
+  checkLoginAccountRateLimit,
+  LOGIN_LIMITS,
+  loginIpRateLimit,
+  throwRateLimited,
+} from "../middleware/rateLimit.ts";
+import { UnauthorizedError } from "../lib/errors.ts";
 import type { LoginInput, RegisterInput } from "../types/auth.ts";
 
 const auth = new Hono<{ Variables: { userId: string; userRole: string } }>();
@@ -53,8 +67,14 @@ auth.post("/register", async (c) => {
 /**
  * 用户登录端点。
  * POST /api/v1/auth/login
+ *
+ * 限流（issue #73）：
+ * 1. IP 维度（中间件）：30s 10 次 → 429
+ * 2. 账号维度（路由层）：30s 5 次 → 429
+ * 3. 失败退避：连续失败每次 +15s 等待（内存 Map）
+ * 4. 失败锁定：连续 10 次失败 → 锁 1 小时
  */
-auth.post("/login", async (c) => {
+auth.post("/login", loginIpRateLimit(), async (c) => {
   const body = await parseJsonBody<LoginInput>(c);
 
   // 验证必填字段
@@ -62,8 +82,33 @@ auth.post("/login", async (c) => {
     throw new ValidationError("缺少必填字段：login, password");
   }
 
-  const result = await loginUser(body);
-  return c.json({ data: result }, 200);
+  // 1. 账号维度限流
+  const accResult = await checkLoginAccountRateLimit(body.login);
+  if (!accResult.allowed) {
+    throwRateLimited(LOGIN_LIMITS.acc, accResult);
+  }
+
+  // 2. 内存退避：未到 deadline 则 sleep
+  await applyLoginBackoff(body.login);
+
+  // 3. 账号锁定检查
+  if (await isLoginLocked(body.login)) {
+    throw new UnauthorizedError("登录尝试过多，账号已临时锁定");
+  }
+
+  // 4. 验证
+  try {
+    const result = await loginUser(body);
+    await clearLoginFailure(body.login);
+    return c.json({ data: result }, 200);
+  } catch (err) {
+    if (err instanceof UnauthorizedError) {
+      // 5. 失败：记录（不阻塞响应）
+      const failCount = await recordLoginFailure(body.login);
+      await recordLoginBackoff(body.login, failCount);
+    }
+    throw err;
+  }
 });
 
 /**
