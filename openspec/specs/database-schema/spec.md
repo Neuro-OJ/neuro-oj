@@ -78,6 +78,21 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 - **WHEN** 创建题目未指定 time_limit_ms 和 memory_limit_mb
 - **THEN** 系统默认设置 time_limit_ms=5000, memory_limit_mb=512
 
+#### Scenario: 插入 U 型题目
+
+- **WHEN** 向 problems 表插入一条 type='U' 的记录
+- **THEN** owner_id 默认为 '0'（root），number 须在 U 型范围内唯一
+
+#### Scenario: 插入 P 型题目
+
+- **WHEN** 向 problems 表插入一条 type='P' 的记录
+- **THEN** 允许与 U 型题目有相同的 number 值（不同 type 独立编号）
+
+#### Scenario: type + number 组合唯一约束
+
+- **WHEN** 尝试插入 type='U', number=1 且已存在同 type+number 的记录
+- **THEN** 数据库返回 UNIQUE 约束冲突错误
+
 ### Requirement: 提交表（submissions）
 
 系统 SHALL 提供 `submissions` 表存储用户代码提交：
@@ -133,7 +148,7 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 
 ### Requirement: 数据库迁移自动执行
 
-系统 SHALL 在启动时自动执行数据库迁移，确保 schema 与代码一致。
+系统 SHALL 在启动时自动执行数据库迁移，确保 schema 与代码一致。迁移按顺序编号执行（0000-0005），目前包含 6 个迁移文件。
 
 #### Scenario: 首次启动
 
@@ -144,6 +159,11 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 
 - **WHEN** noj-core 启动且数据库中所有 migration 已执行
 - **THEN** 系统跳过迁移，正常启动
+
+#### Scenario: 首次执行 0004
+
+- **WHEN** noj-core 启动且 migration 0004 未执行
+- **THEN** 系统执行 ALTER TABLE 添加 owner_id、type、number 字段，创建 CHECK 和 UNIQUE 约束，迁移已有数据
 
 ### Requirement: 健康检查包含数据库状态
 

@@ -73,6 +73,10 @@
 - **WHEN** 用户选择类型 "U"
 - **THEN** 系统发起 `GET /api/v1/problems?type=U` 请求
 
+#### Scenario: 筛选后显示类型标签
+- **WHEN** 题目列表加载完成
+- **THEN** 每行显示类型标签（U 或 P）
+
 ### Requirement: 按难度筛选
 
 系统 SHALL 提供难度筛选控件，支持 easy、medium、hard 三个选项。筛选值 SHALL 通过 URL 参数 `difficulty` 反映。
