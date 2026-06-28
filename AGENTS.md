@@ -105,7 +105,7 @@ neuro-oj/
 │   │   ├── db/
 │   │   │   ├── connection.ts  # 数据库连接管理（单例模式）
 │   │   │   ├── migrate.ts     # 迁移执行器（绝对路径解析，不依赖 CWD）
-│   │   │   └── schema.ts      # Drizzle 表定义（6 张表）
+│   │   │   └── schema.ts      # Drizzle 表定义（7 张表）
 │   │   ├── middleware/
 │   │   │   └── auth.ts        # JWT 认证中间件
 │   │   ├── mq/

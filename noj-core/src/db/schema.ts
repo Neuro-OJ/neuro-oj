@@ -172,3 +172,29 @@ export const evaluationResults = pgTable(
     created_at_idx: index("idx_eval_results_created_at").on(table.created_at),
   }),
 );
+
+/**
+ * 签到记录表。
+ * 每日每用户一条记录，streak 记录连续签到天数。
+ *
+ * user_id FK 使用 ON DELETE CASCADE（评审 M2）：用户被删除时
+ * 关联签到记录一并删除，避免未来用户删除功能被 FK 阻止。
+ */
+export const checkIns = pgTable(
+  "check_ins",
+  {
+    id: text("id").primaryKey(),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    checkin_date: text("checkin_date").notNull(),
+    streak: integer("streak").notNull().default(1),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    userDateUnique: unique("check_ins_user_date_unique").on(
+      table.user_id,
+      table.checkin_date,
+    ),
+  }),
+);
