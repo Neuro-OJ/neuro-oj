@@ -32,4 +32,4 @@
 #### Scenario: 同日重复签到
 
 - **WHEN** 用户尝试在同一天第二次签到
-- **THEN** 数据库 UNIQUE 约束拒绝，服务层返回 400 BAD_REQUEST
+- **THEN** 数据库 UNIQUE 约束拒绝，服务层返回 409 CONFLICT_ERROR

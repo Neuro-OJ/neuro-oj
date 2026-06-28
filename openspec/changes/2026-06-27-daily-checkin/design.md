@@ -57,12 +57,13 @@ VALUES (?, ?, ?, ?, ?);
 ### 签到流程
 1. 接收 `POST /api/v1/checkin` 请求（需登录）
 2. 计算今日日期 `today = new Date().toISOString().slice(0, 10)` （UTC）
-3. 查询今日签到记录：若存在 → 抛 `BadRequestError("今天已签到")`
-4. 计算昨日日期 `yesterday = today - 1 day`
-5. 查询昨日签到记录：取其 `streak` 字段
-6. 计算新 `streak = (yesterday_streak ?? 0) + 1`
-7. 插入新记录（UUID, user_id, today, streak, now）
-8. 返回 `{ checked_in: true, streak }`
+3. 计算昨日日期 `yesterday = today - 1 day`
+4. 查询昨日签到记录：取其 `streak` 字段
+5. 计算新 `streak = (yesterday_streak ?? 0) + 1`
+6. 原子插入：`INSERT ... ON CONFLICT (user_id, checkin_date) DO NOTHING RETURNING id`
+   - 若插入成功（`returning` 有返回值）→ 继续步骤 7
+   - 若插入失败（`returning` 空集，并发竞态已有人先插入）→ 抛 `ConflictError("今天已签到")`
+7. 返回 `{ checked_in: true, streak }`
 
 ### 连续天数规则
 - 首次签到：streak = 1
@@ -76,7 +77,7 @@ VALUES (?, ?, ?, ?, ?);
 - 鉴权：必需
 - 请求体：无
 - 响应 200：`{ "data": { "checked_in": true, "streak": 5 } }`
-- 响应 400：`{ "error": "今天已签到", "code": "BAD_REQUEST" }`
+- 响应 409：`{ "error": "今天已签到", "code": "CONFLICT_ERROR" }`
 
 ### GET /api/v1/checkin/today
 - 鉴权：必需
@@ -89,7 +90,7 @@ VALUES (?, ?, ?, ?, ?);
 | 决策 | 选择 | 理由 |
 |------|------|------|
 | 日期粒度 | UTC 日期（YYYY-MM-DD） | 简化时区处理，跨时区用户接受可能偏移 |
-| 重复签到 | 服务端校验，返回 400 | 防止前端绕过 |
+| 重复签到 | 服务端校验 + DB UNIQUE 约束，返回 409 ConflictError | 防止前端绕过，并发竞态由 ON CONFLICT DO NOTHING 兜底 |
 | 唯一约束 | DB 层 UNIQUE (user_id, checkin_date) | 双重防护，并发签到最终由 DB 拒绝 |
 | streak 计算 | 查昨日 + 1 | 简单查询 O(1)，无需扫描全表 |
 | 跨时区行为 | 不处理 | 简化实现，明确已知限制 |
