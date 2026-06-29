@@ -76,8 +76,8 @@ noj-core/
 | `REDIS_URL`                | `redis://127.0.0.1:6379/` | Redis 连接串                     |
 | `PORT`                     | `8000`                    | HTTP 监听端口                    |
 | `NOJ_ENV`                  | 空（development）         | `production` 启用生产模式        |
-| `ADMIN_EMAIL`              | —                         | Seed 管理员邮箱                  |
-| `ADMIN_PASS`               | —                         | Seed 管理员密码                  |
+| `ADMIN_EMAIL`              | —                         | Seed 管理员邮箱（强烈推荐）。未设置时 seed 自动创建引导管理员（临时随机密码，首次登录强制改密） |
+| `ADMIN_PASS`               | —                         | Seed 管理员密码（需与 ADMIN_EMAIL 配合）                                                        |
 | `DATABASE_POOL_MAX`        | `10`                      | PostgreSQL 连接池大小            |
 | `DATABASE_CONNECT_TIMEOUT` | `10`                      | 连接超时秒数                     |
 | `DATABASE_IDLE_TIMEOUT`    | `300`                     | 空闲连接超时秒数                 |
@@ -145,6 +145,8 @@ docker compose down     # 停止
 | PATCH  | `/api/v1/admin/users/:id/role`   | 管理员 | 角色变更                                     |
 | GET    | `/api/v1/users/:id/profile`      | 公开   | 用户主页                                     |
 | PUT    | `/api/v1/users/me`               | 登录   | 更新个人简介                                 |
+| POST   | `/api/v1/auth/change-password`  | 登录   | 修改密码（issue #75 强制改密）              |
+| POST   | `/api/v1/auth/logout`           | 公开   | 登出（no-op stub，客户端自行清 Cookie）     |
 | GET    | `/health`                        | 公开   | 健康检查                                     |
 
 ### 路由层关键模式
@@ -208,7 +210,7 @@ docker compose down     # 停止
 
 | 表                    | 关键列                                                                                                | 约束 / 索引                                                    |
 | --------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `users`               | `id`(UUID), `username`(unique), `email`(unique), `password_hash`, `role`(user/admin), `bio`           | PK, UK(username), UK(email)                                    |
+| `users`               | `id`(UUID), `username`(unique), `email`(unique), `password_hash`, `role`(user/admin), `bio`, `must_change_password`(bool) | PK, UK(username), UK(email)                                    |
 | `problems`            | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`       | PK, UK(display_id), UK(type,number), FK→users                  |
 | `categories`          | `id`(UUID), `name`, `parent_id`, `level`(缓存深度)                                                    | PK, FK→categories(parent_id) ON DELETE SET NULL                |
 | `problems_categories` | `problem_id`, `category_id`                                                                           | FK→problems ON DELETE CASCADE, FK→categories ON DELETE CASCADE |
@@ -254,6 +256,9 @@ docker compose down     # 停止
 | 分页默认值     | page=1, per_page=20, max per_page=100                                               |
 | 用户枚举防护   | 登录失败统一返回"用户名或密码错误"，不区分"用户不存在"和"密码错误"                  |
 | Root 用户      | UID="0"，admin 角色，随机密码不可登录，不计入管理员统计，不出现在用户列表           |
+| 引导管理员     | 无可登录 admin 且未设 ADMIN_EMAIL 时，seed 自动创建 username=admin 临时账号，must_change_password=true，终端打印随机密码 |
+| 强制改密守卫   | authMiddleware 检测 token.must_change_password=true，白名单（/change-password, /me）外全部 403 PASSWORD_CHANGE_REQUIRED |
+| change-password限流 | 独立 pwchange 命名空间，不污染 /login 限流桶（issue #75 评审 H4）             |
 
 ## 登录速率限制（issue #73）
 

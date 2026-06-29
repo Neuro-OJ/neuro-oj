@@ -342,8 +342,10 @@ async function ensureAdminFromEnv(): Promise<void> {
  * 24 字符 × 6 bits = **144 bits 熵**，满足 NIST SP 800-63B 临时凭证要求。
  *
  * 实现细节：
- * - 取 24 字节随机数 → 32 字符 base64url
- * - 截断到前 24 字符：每字符仍来自完整 64 字符集熵，未做"去除混淆字符"
+ * - 取 24 字节随机数 → 32 字符 base64url → 截断到前 24 字符
+ * - 取 24 字节（而非理论最小的 18 字节）是为了让每个输出字符都来自
+ *   独立随机源，避免 bits 对齐取整的边缘效应
+ * - 每字符仍来自完整 64 字符集熵，未做"去除混淆字符"
  *   （评审 Sp5：原实现去除 i/l/O/0/1 后用 X 填充，字符集从 64 → 59，熵被低估）
  * - 不替换 +/=：btoa 输出的 padding 在 24 字节（可被 3 整除）情况下无 padding
  */
@@ -369,8 +371,19 @@ function generateStrongPassword(): string {
  *
  * 凭据以醒目块打印到终端，强制运维立即记录并首次登录后修改。
  * 已存在可登录 admin 时本函数为 no-op，可重复运行（幂等）。
+ *
+ * 边界条件：
+ * - ADMIN_EMAIL 已设置时跳过创建——运维已表达通过环境变量管理管理员的意图，
+ *   即使对应用户不存在也不应回退到临时 admin（参见 admin-authorization spec
+ *   "ADMIN_EMAIL 对应用户不存在"场景）。
  */
 async function ensureBootstrapAdmin(): Promise<void> {
+  // 运维已设置 ADMIN_EMAIL，表明有明确的管理员管理意图，不创建临时 admin
+  if (Deno.env.get("ADMIN_EMAIL")) {
+    console.log("  ADMIN_EMAIL 已设置，遵循环境变量配置，跳过引导管理员创建");
+    return;
+  }
+
   const db = getDb();
 
   const [adminCountRow] = await db

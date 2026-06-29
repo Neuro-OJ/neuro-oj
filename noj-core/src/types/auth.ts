@@ -34,6 +34,14 @@ export interface UserResponse {
 }
 
 /**
+ * 修改密码请求体（issue #75）。
+ */
+export interface ChangePasswordInput {
+  old_password: string;
+  new_password: string;
+}
+
+/**
  * 登录成功后返回的认证令牌响应。
  */
 export interface AuthTokenResponse {

@@ -21,7 +21,11 @@ import {
   loginIpRateLimit,
   throwRateLimited,
 } from "../middleware/rateLimit.ts";
-import type { LoginInput, RegisterInput } from "../types/auth.ts";
+import type {
+  ChangePasswordInput,
+  LoginInput,
+  RegisterInput,
+} from "../types/auth.ts";
 
 // change-password 端点的限流命名空间（独立于登录端点）
 // 失败计数 / 锁定 / 退避均使用此前缀，避免改密失败反锁 /login（issue #75 评审 H4）
@@ -157,9 +161,7 @@ auth.post(
   loginIpRateLimit("pwchange"),
   authMiddleware,
   async (c) => {
-    const body = await parseJsonBody<
-      { old_password: string; new_password: string }
-    >(c);
+    const body = await parseJsonBody<ChangePasswordInput>(c);
 
     if (!body.old_password || !body.new_password) {
       const missing: string[] = [];

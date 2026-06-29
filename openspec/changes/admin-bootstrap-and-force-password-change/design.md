@@ -93,23 +93,28 @@ async function ensureBootstrapAdmin(): Promise<void> {
 `generateStrongPassword()`：
 
 - 24 字符 base64url（URL-safe，不含 `+/=`）
-- 使用 `crypto.getRandomValues(new Uint8Array(18))` 生成 18 字节随机数
-- 经 base64url 编码后正好 24 字符
-- 满足 ≥12 位 + 大小写字母 + 数字的强度规则
+- 使用 `crypto.getRandomValues(new Uint8Array(24))` 生成 24 字节随机数
+- 经 base64url 编码后截断到前 24 字符（取 24 字节而非理论最小 18 字节，
+  目的是让每个输出字符都来自独立随机源）
+- 24 字符 × 6 bits = 144 bits 熵，满足 ≥12 位 + 大小写字母 + 数字的强度规则
 
 ## 4. 中间件拦截
 
 ### 4.1 白名单
 
-`PASSWORD_CHANGE_WHITELIST` 仅包含三个端点：
+`PASSWORD_CHANGE_WHITELIST` 仅包含两个端点：
 
 ```ts
 const PASSWORD_CHANGE_WHITELIST = [
   "/api/v1/auth/change-password",
   "/api/v1/auth/me",            // 允许前端查当前用户信息
-  "/api/v1/auth/logout",
 ];
 ```
+
+> **关于 `/api/v1/auth/logout`**：评审修复 M5 后已移除出白名单。
+> logout 端点是 no-op stub（路由层不挂 authMiddleware），服务端无状态，
+> 客户端自行清 Cookie。强制改密状态下用户不需要走后端 logout
+> （Nitro 代理本地清 Cookie 即可），缩小攻击面。
 
 ### 4.2 拦截逻辑
 
@@ -245,7 +250,7 @@ if (user.must_change_password) {
    也只创建一次
 2. **强制改密前拒绝所有非白名单操作**：含 `/api/v1/submissions`、
    `/api/v1/problems`、`/api/v1/admin/*` 等所有受保护路径
-3. **白名单最小化**：只放行"改密 + 看自己信息 + 登出"
+3. **白名单最小化**：只放行"改密 + 看自己信息"（评审修复 M5 后移除 logout，缩小攻击面）
 4. **旧密码校验**：`change-password` 要求提供 `old_password`，防止 CSRF/会话
    劫持后被改密
 5. **改密成功后清 Cookie**：跳 `/login?reason=password_changed`，让旧 JWT 不再

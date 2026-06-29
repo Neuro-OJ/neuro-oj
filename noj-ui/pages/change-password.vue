@@ -202,7 +202,7 @@ async function handleSubmit() {
         showToast("success", "密码修改成功，请重新登录")
         router.replace("/login?reason=password_changed")
     } catch (e: any) {
-        setError(typeof e.data?.error === "string" ? e.data.error : `错误代码: ${e.status || 502}`)
+        setError(typeof e.data?.error === "string" ? e.data.error : `错误代码: ${e.response?.status || e.statusCode || e.status || 502}`)
     } finally {
         loading.value = false
     }
