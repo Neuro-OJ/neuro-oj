@@ -26,6 +26,9 @@
 - **WHEN** 管理员访问所有 `/api/v1/admin/*` 端点
 - **THEN** 系统响应与重构前一致，无破坏性变更
 
+#### Scenario: root 用户不可登录
+- **WHEN** 尝试使用 root 用户的随机密码登录
+- **THEN** 因 root 密码为随机 UUID 且机制上不对外暴露，登录失败
 ### Requirement: 仅管理员可访问管理端点
 
 系统 SHALL 提供 `adminMiddleware`，用于保护非题目类的管理端点。
