@@ -1,10 +1,14 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { users } from "../../src/db/schema.ts";
+import { passwordResetTokens, users } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
 import { _clearLoginBackoffForTest } from "../../src/lib/loginThrottle.ts";
+import {
+  generateResetToken,
+  hashResetToken,
+} from "../../src/lib/resetToken.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 const hasJwt = !!Deno.env.get("JWT_SECRET");
@@ -735,10 +739,52 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
+    const username = `pwweak_route_${ts}`;
+    const email = `pwweak_route_${ts}@example.com`;
+
+    // 先注册用户
+    await jsonRequest(app, `${BASE}/register`, "POST", {
+      username,
+      email,
+      password: "OrigPass-2024-Ab1",
+    });
+
+    // 发起重置获取 token（通过 console.log mock 无法捕获，直接查 DB token）
+    const forgotRes = await jsonRequest(
+      app,
+      `${BASE}/forgot-password`,
+      "POST",
+      {
+        email,
+      },
+    );
+    assertEquals(forgotRes.status, 200);
+
+    // 从 DB 插入一个已知 token 用于测试弱密码路径
+    const userId = (await getDb().select({ id: users.id }).from(users).where(
+      eq(users.email, email),
+    ).limit(1))[0]?.id;
+
+    if (!userId) throw new Error("用户未创建");
+
+    const token = generateResetToken();
+    const tokenHash = await hashResetToken(token);
+    await getDb().insert(passwordResetTokens).values({
+      id: crypto.randomUUID(),
+      user_id: userId,
+      token_hash: tokenHash,
+      expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+      used_at: null,
+      created_at: new Date().toISOString(),
+    });
+
+    // 用合法 token + 弱密码 → 应 400
     const res = await jsonRequest(app, `${BASE}/reset-password`, "POST", {
-      token: "any-token-here",
+      token,
       new_password: "short",
     });
     assertEquals(res.status, 400);
+
+    await cleanupUser(username);
   },
 });

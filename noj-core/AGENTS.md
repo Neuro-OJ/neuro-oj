@@ -74,29 +74,29 @@ noj-core/
 
 从 `.env` 文件或 `Deno.env` 读取。**必须配置**：
 
-| 变量                       | 默认值                    | 说明                             |
-| -------------------------- | ------------------------- | -------------------------------- |
-| `DATABASE_URL`             | —                         | PostgreSQL 连接串（无默认值）    |
-| `JWT_SECRET`               | —                         | HS256 签名密钥（≥32 字符）       |
-| `JWT_EXPIRES_IN`           | `24h`                     | Token 有效期                     |
-| `REDIS_URL`                | `redis://127.0.0.1:6379/` | Redis 连接串                     |
-| `PORT`                     | `8000`                    | HTTP 监听端口                    |
-| `NOJ_ENV`                  | 空（development）         | `production` 启用生产模式        |
-| `ADMIN_EMAIL`              | —                         | Seed 管理员邮箱                  |
-| `ADMIN_PASS`               | —                         | Seed 管理员密码                  |
-| `DATABASE_POOL_MAX`        | `10`                      | PostgreSQL 连接池大小            |
-| `DATABASE_CONNECT_TIMEOUT` | `10`                      | 连接超时秒数                     |
-| `DATABASE_IDLE_TIMEOUT`    | `300`                     | 空闲连接超时秒数                 |
-| `DATABASE_MAX_LIFETIME`    | `3600`                    | 连接最大生命周期秒数             |
-| `CORS_ALLOWED_ORIGINS`     | —                         | 生产环境 CORS 白名单（逗号分隔） |
-| `EMAIL_PROVIDER`          | `mock`                    | 邮件 Provider：`mock`/`aliyun`/`tencent` |
-| `ALIBABA_ACCESS_KEY_ID`   | —                         | 阿里云 DirectMail AccessKey（aliyun 时必填） |
-| `ALIBABA_ACCESS_KEY_SECRET` | —                       | 阿里云 DirectMail AccessKey Secret |
-| `ALIBABA_FROM_EMAIL`      | —                         | 阿里云发信地址（需控制台验证域名） |
-| `TENCENT_SECRET_ID`       | —                         | 腾讯云 SecretId（tencent 时必填） |
-| `TENCENT_SECRET_KEY`      | —                         | 腾讯云 SecretKey |
-| `TENCENT_FROM_EMAIL`      | —                         | 腾讯云发信地址（需控制台验证域名） |
-| `TENCENT_REGION`          | `ap-guangzhou`            | 腾讯云地域 |
+| 变量                        | 默认值                    | 说明                                         |
+| --------------------------- | ------------------------- | -------------------------------------------- |
+| `DATABASE_URL`              | —                         | PostgreSQL 连接串（无默认值）                |
+| `JWT_SECRET`                | —                         | HS256 签名密钥（≥32 字符）                   |
+| `JWT_EXPIRES_IN`            | `24h`                     | Token 有效期                                 |
+| `REDIS_URL`                 | `redis://127.0.0.1:6379/` | Redis 连接串                                 |
+| `PORT`                      | `8000`                    | HTTP 监听端口                                |
+| `NOJ_ENV`                   | 空（development）         | `production` 启用生产模式                    |
+| `ADMIN_EMAIL`               | —                         | Seed 管理员邮箱                              |
+| `ADMIN_PASS`                | —                         | Seed 管理员密码                              |
+| `DATABASE_POOL_MAX`         | `10`                      | PostgreSQL 连接池大小                        |
+| `DATABASE_CONNECT_TIMEOUT`  | `10`                      | 连接超时秒数                                 |
+| `DATABASE_IDLE_TIMEOUT`     | `300`                     | 空闲连接超时秒数                             |
+| `DATABASE_MAX_LIFETIME`     | `3600`                    | 连接最大生命周期秒数                         |
+| `CORS_ALLOWED_ORIGINS`      | —                         | 生产环境 CORS 白名单（逗号分隔）             |
+| `EMAIL_PROVIDER`            | `mock`                    | 邮件 Provider：`mock`/`aliyun`/`tencent`     |
+| `ALIBABA_ACCESS_KEY_ID`     | —                         | 阿里云 DirectMail AccessKey（aliyun 时必填） |
+| `ALIBABA_ACCESS_KEY_SECRET` | —                         | 阿里云 DirectMail AccessKey Secret           |
+| `ALIBABA_FROM_EMAIL`        | —                         | 阿里云发信地址（需控制台验证域名）           |
+| `TENCENT_SECRET_ID`         | —                         | 腾讯云 SecretId（tencent 时必填）            |
+| `TENCENT_SECRET_KEY`        | —                         | 腾讯云 SecretKey                             |
+| `TENCENT_FROM_EMAIL`        | —                         | 腾讯云发信地址（需控制台验证域名）           |
+| `TENCENT_REGION`            | `ap-guangzhou`            | 腾讯云地域                                   |
 
 ## 开发命令
 
@@ -257,24 +257,24 @@ docker compose down     # 停止
 
 ## 服务层业务规则
 
-| 规则                 | 说明                                                                                        |
-| -------------------- | ------------------------------------------------------------------------------------------- |
-| 提交状态机           | `pending → [judging, error]` → `judging → [finished, error]`，finished/error 为终态         |
-| 输出截断             | API 返回时截断至 8KB（`MAX_OUTPUT_LENGTH`），数据库保留完整内容                             |
-| 代码大小上限         | 100KB（`MAX_CODE_LENGTH`），路由层校验                                                      |
-| 个人简介上限         | 5000 字符                                                                                   |
-| 支持包读取失败       | 非致命：日志记录后继续（无支持包），由 judge 端处理                                         |
-| 题目更新             | 静默忽略 `type` 和 `number` 字段（API 接受但不处理）                                        |
-| 题目编号冲突         | 自动分配时重试 3 次（PG 23505），手动指定时立即报错                                         |
-| 评测结果写入         | UPSERT 语义（`onConflictDoNothing`），防止重复处理                                          |
-| 队列位置查询         | 即使 DB 状态为 "judging" 也检查 Redis 队列（状态在入队时已更新）                            |
-| 问题列表默认         | 默认只显示 `type='P'` 的题目，U 类型需直接 URL 或所有者主页访问                             |
-| 分页默认值           | page=1, per_page=20, max per_page=100                                                       |
-| 用户枚举防护         | 登录失败统一返回"用户名或密码错误"，不区分"用户不存在"和"密码错误"                          |
-| Root 用户            | UID="0"，admin 角色，随机密码不可登录，不计入管理员统计，不出现在用户列表                   |
-| 密码重置邮箱枚举防护 | `POST /forgot-password` 不管邮箱是否存在都返 200 + 同一消息（与登录失败防枚举共存）         |
-| 密码重置令牌         | DB 存 SHA-256 hex 哈希（**不存明文**），URL 传明文 base64url；32 字节随机数                 |
-| 密码重置 TTL         | 15 分钟（OWASP 2025+ 建议 ≤ 15 分钟），单 SQL 原子消耗防并发                                |
+| 规则                 | 说明                                                                                                                        |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 提交状态机           | `pending → [judging, error]` → `judging → [finished, error]`，finished/error 为终态                                         |
+| 输出截断             | API 返回时截断至 8KB（`MAX_OUTPUT_LENGTH`），数据库保留完整内容                                                             |
+| 代码大小上限         | 100KB（`MAX_CODE_LENGTH`），路由层校验                                                                                      |
+| 个人简介上限         | 5000 字符                                                                                                                   |
+| 支持包读取失败       | 非致命：日志记录后继续（无支持包），由 judge 端处理                                                                         |
+| 题目更新             | 静默忽略 `type` 和 `number` 字段（API 接受但不处理）                                                                        |
+| 题目编号冲突         | 自动分配时重试 3 次（PG 23505），手动指定时立即报错                                                                         |
+| 评测结果写入         | UPSERT 语义（`onConflictDoNothing`），防止重复处理                                                                          |
+| 队列位置查询         | 即使 DB 状态为 "judging" 也检查 Redis 队列（状态在入队时已更新）                                                            |
+| 问题列表默认         | 默认只显示 `type='P'` 的题目，U 类型需直接 URL 或所有者主页访问                                                             |
+| 分页默认值           | page=1, per_page=20, max per_page=100                                                                                       |
+| 用户枚举防护         | 登录失败统一返回"用户名或密码错误"，不区分"用户不存在"和"密码错误"                                                          |
+| Root 用户            | UID="0"，admin 角色，随机密码不可登录，不计入管理员统计，不出现在用户列表                                                   |
+| 密码重置邮箱枚举防护 | `POST /forgot-password` 不管邮箱是否存在都返 200 + 同一消息（与登录失败防枚举共存）                                         |
+| 密码重置令牌         | DB 存 SHA-256 hex 哈希（**不存明文**），URL 传明文 base64url；32 字节随机数                                                 |
+| 密码重置 TTL         | 15 分钟（OWASP 2025+ 建议 ≤ 15 分钟），单 SQL 原子消耗防并发                                                                |
 | 密码重置邮件         | 策略模式：`EMAIL_PROVIDER` 选择 mock（默认）/ aliyun / tencent；mock 为控制台输出；真实 Provider 在发送前校验环境变量完整性 |
 
 ## 登录速率限制（issue #73）

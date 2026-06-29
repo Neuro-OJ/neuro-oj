@@ -1,12 +1,6 @@
 import { Hono } from "hono";
-import { adminMiddleware, authMiddleware } from "../middleware/auth.ts";
-import {
-  getUserProfile,
-  listUsers,
-  loginUser,
-  promoteUser,
-  registerUser,
-} from "../services/auth.ts";
+import { authMiddleware } from "../middleware/auth.ts";
+import { getUserProfile, loginUser, registerUser } from "../services/auth.ts";
 import { requestReset, resetPassword } from "../services/passwordReset.ts";
 import { BadRequestError, ValidationError } from "../lib/errors.ts";
 import { parseJsonBody } from "../lib/request.ts";

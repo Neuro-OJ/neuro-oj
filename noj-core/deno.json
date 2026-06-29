@@ -49,5 +49,9 @@
       ".deno_cache"
     ]
   },
-  "allowScripts": ["npm:@alicloud/openapi-core@1.0.7", "npm:esbuild@0.18.20", "npm:esbuild@0.25.12", "npm:esbuild@0.28.1"]
+  "allowScripts": [
+    "npm:esbuild@0.18.20",
+    "npm:esbuild@0.25.12",
+    "npm:esbuild@0.28.1"
+  ]
 }

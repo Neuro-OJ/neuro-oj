@@ -129,6 +129,7 @@ export async function resetPassword(
         and(
           eq(passwordResetTokens.token_hash, tokenHash),
           isNull(passwordResetTokens.used_at),
+          gt(passwordResetTokens.expires_at, nowIso),
         ),
       )
       .returning({ id: passwordResetTokens.id });
