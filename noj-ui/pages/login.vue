@@ -73,19 +73,9 @@
                 还没有账号？<NuxtLink to="/register" class="text-primary no-underline font-semibold hover:underline">立即注册</NuxtLink>
             </p>
             <p class="text-center mt-2 text-sm text-text-secondary animate-[fadeInUp_0.5s_ease_0.2s_both]">
-                <button type="button" class="bg-transparent border-0 text-primary text-sm cursor-pointer p-0 font-semibold hover:underline" @click="showForgot = true">忘记密码？</button>
+                <NuxtLink to="/forgot-password" class="text-primary no-underline font-semibold hover:underline">忘记密码？</NuxtLink>
             </p>
         </div>
-
-        <Transition name="fade">
-            <div v-if="showForgot" class="fixed inset-0 bg-black/40 flex items-center justify-center z-[200]" @click.self="showForgot = false">
-                <div class="bg-white rounded-lg p-8 text-center max-w-[340px] w-[calc(100%-48px)]">
-                    <h2 class="text-lg mb-3">找回密码</h2>
-                    <p class="text-sm text-text-secondary mb-5">功能开发中，敬请期待</p>
-                    <button type="button" class="inline-flex items-center justify-center font-semibold no-underline cursor-pointer rounded-lg transition-all duration-200 bg-primary text-white border border-primary hover:bg-primary-dark hover:border-primary-dark px-4 py-2 text-sm" @click="showForgot = false">知道了</button>
-                </div>
-            </div>
-        </Transition>
     </div>
 </template>
 
@@ -101,13 +91,15 @@ const form = reactive({ login: "", password: "" })
 const loading = ref(false)
 const error = ref("")
 const showPassword = ref(false)
-const showForgot = ref(false)
 
 // 注册成功后的提示
 const registeredMsg = ref("")
 const route = useRoute()
 if (route.query.registered === "1") {
   registeredMsg.value = "注册成功，请登录"
+} else if (route.query.reset === "1") {
+  // issue #49：密码重置成功 banner
+  registeredMsg.value = "密码重置成功，请登录"
 }
 
 const fieldErrors = reactive({

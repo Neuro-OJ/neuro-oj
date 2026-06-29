@@ -1,10 +1,14 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { users } from "../../src/db/schema.ts";
+import { passwordResetTokens, users } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
 import { _clearLoginBackoffForTest } from "../../src/lib/loginThrottle.ts";
+import {
+  generateResetToken,
+  hashResetToken,
+} from "../../src/lib/resetToken.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 const hasJwt = !!Deno.env.get("JWT_SECRET");
@@ -626,5 +630,161 @@ Deno.test({
     await cleanupUser(`me_test_${ts}`);
     await cleanupUser(`login_email_${ts}`);
     await cleanupUser(`pw8_${ts}`);
+    await cleanupUser(`pwreset_route_${ts}`);
+  },
+});
+
+// ── issue #49: 密码重置路由测试 ──
+
+Deno.test({
+  name: "routes: POST /forgot-password 已注册邮箱返 200",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    // 先注册用户
+    const app = createApp();
+    const username = `pwreset_route_${ts}`;
+    const email = `pwreset_route_${ts}@example.com`;
+    const registerRes = await jsonRequest(app, `${BASE}/register`, "POST", {
+      username,
+      email,
+      password: "OrigPass-2024-Ab1",
+    });
+    assertEquals(registerRes.status, 201);
+
+    // 发起重置
+    const res = await jsonRequest(app, `${BASE}/forgot-password`, "POST", {
+      email,
+    });
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.ok, true);
+    assertEquals(typeof body.message, "string");
+  },
+});
+
+Deno.test({
+  name: "routes: POST /forgot-password 未注册邮箱返 200（防枚举）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const res = await jsonRequest(app, `${BASE}/forgot-password`, "POST", {
+      email: `nobody-${ts}@example.com`,
+    });
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.ok, true);
+    // 响应消息应与已注册邮箱场景一致
+    assertEquals(typeof body.message, "string");
+  },
+});
+
+Deno.test({
+  name: "routes: POST /forgot-password 缺少 email 返 400",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const res = await jsonRequest(app, `${BASE}/forgot-password`, "POST", {});
+    assertEquals(res.status, 400);
+  },
+});
+
+Deno.test({
+  name: "routes: POST /reset-password 缺字段返 400",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const res = await jsonRequest(app, `${BASE}/reset-password`, "POST", {
+      token: "fake",
+      // 缺 new_password
+    });
+    assertEquals(res.status, 400);
+  },
+});
+
+Deno.test({
+  name: "routes: POST /reset-password 无效 token 返 400",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const res = await jsonRequest(app, `${BASE}/reset-password`, "POST", {
+      token: "invalid-fake-token",
+      new_password: "NewPass-2024-Xy9",
+    });
+    assertEquals(res.status, 400);
+    const body = await res.json();
+    assertEquals(body.error, "重置令牌无效或已过期");
+  },
+});
+
+Deno.test({
+  name: "routes: POST /reset-password 弱密码返 400",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const username = `pwweak_route_${ts}`;
+    const email = `pwweak_route_${ts}@example.com`;
+
+    // 先注册用户
+    await jsonRequest(app, `${BASE}/register`, "POST", {
+      username,
+      email,
+      password: "OrigPass-2024-Ab1",
+    });
+
+    // 发起重置获取 token（通过 console.log mock 无法捕获，直接查 DB token）
+    const forgotRes = await jsonRequest(
+      app,
+      `${BASE}/forgot-password`,
+      "POST",
+      {
+        email,
+      },
+    );
+    assertEquals(forgotRes.status, 200);
+
+    // 从 DB 插入一个已知 token 用于测试弱密码路径
+    const userId = (await getDb().select({ id: users.id }).from(users).where(
+      eq(users.email, email),
+    ).limit(1))[0]?.id;
+
+    if (!userId) throw new Error("用户未创建");
+
+    const token = generateResetToken();
+    const tokenHash = await hashResetToken(token);
+    await getDb().insert(passwordResetTokens).values({
+      id: crypto.randomUUID(),
+      user_id: userId,
+      token_hash: tokenHash,
+      expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+      used_at: null,
+      created_at: new Date().toISOString(),
+    });
+
+    // 用合法 token + 弱密码 → 应 400
+    const res = await jsonRequest(app, `${BASE}/reset-password`, "POST", {
+      token,
+      new_password: "short",
+    });
+    assertEquals(res.status, 400);
+
+    await cleanupUser(username);
   },
 });

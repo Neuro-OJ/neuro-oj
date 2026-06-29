@@ -5,6 +5,7 @@ import auth from "./routes/auth.ts";
 import admin from "./routes/admin.ts";
 import categories from "./routes/categories.ts";
 import problems from "./routes/problems.ts";
+import checkin from "./routes/checkin.ts";
 import queue from "./routes/queue.ts";
 import submissions from "./routes/submissions.ts";
 import users from "./routes/users.ts";
@@ -78,6 +79,7 @@ export function createApp(): Hono {
   app.route("/api/v1/admin", admin);
   app.route("/api/v1/categories", categories);
   app.route("/api/v1/problems", problems);
+  app.route("/api/v1/checkin", checkin);
   app.route("/api/v1/queue", queue);
   app.route("/api/v1/submissions", submissions);
   app.route("/api/v1/users", users);

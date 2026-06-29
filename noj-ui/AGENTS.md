@@ -311,6 +311,28 @@ cd dist
 
 > SSR 阶段跳过守卫，客户端水合后重新执行。所有 admin 页面使用 `ssr: false`。
 
+## 密码重置页面（issue #49）
+
+| 页面 | 路径 | 用途 |
+|------|------|------|
+| 忘记密码 | `/forgot-password` | 步骤 1：输入注册邮箱 → 显示"邮件已发送"绿色 banner |
+| 重置密码 | `/reset-password` | 步骤 2：URL `?token=...` → 输入新密码 + 确认密码 → 跳 `/login?reset=1` |
+
+**实现约定**：
+
+- 两页使用 `definePageMeta({ layout: "auth" })`，与 login/register 布局一致
+- 完全仿 `login.vue` / `register.vue` 模式：Lucide 图标 + Tailwind utility 类 + Transition banner
+- `useAuth()` 暴露 `forgotPassword(email)` + `resetPassword(token, newPassword)` 两个方法
+- `middleware/auth.ts` 顶部 `PUBLIC_AUTH_PATHS` 白名单含 `/forgot-password` + `/reset-password`
+- 错误状态：复用现有 `setError` + 3000ms 自动消失模式（重置页用 5000ms 给用户更多时间）
+- 成功状态：重置成功后跳 `/login?reset=1`，login.vue 读 `route.query.reset === "1"` 显示"密码重置成功"绿色 banner
+
+**安全约束**：
+
+- 前端**不**判断邮箱是否存在（服务端防枚举：统一返 200 + 同一消息）
+- token 仅从 URL `?token=...` 读取，提交时透传给后端
+- 不在前端打印、缓存或上报 token
+
 ## 已知限制
 
 - **无单元测试 / E2E 测试**：项目未配置测试框架

@@ -48,3 +48,22 @@ export interface AuthTokenResponse {
   user: UserResponse;
   token: string;
 }
+
+/**
+ * 密码重置请求体（issue #49）。
+ * 用户输入注册邮箱以发起密码重置流程。
+ *
+ * 防枚举说明：服务端不区分邮箱是否存在，统一返 200。
+ */
+export interface ForgotPasswordInput {
+  email: string;
+}
+
+/**
+ * 密码重置执行请求体（issue #49）。
+ * token 来自邮件 URL 中的查询参数，new_password 是新密码。
+ */
+export interface ResetPasswordInput {
+  token: string;
+  new_password: string;
+}

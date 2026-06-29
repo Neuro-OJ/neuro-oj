@@ -38,10 +38,17 @@
       "breakpoints": true
     },
     {
-      "idx": 5,
+      "idx": 6,
       "version": "6",
-      "when": 1751400002,
-      "tag": "0005_submission_eval_result_indexes",
+      "when": 1751500000,
+      "tag": "0006_check_ins",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1751700000,
+      "tag": "0006_password_reset_tokens",
       "breakpoints": true
     },
     {

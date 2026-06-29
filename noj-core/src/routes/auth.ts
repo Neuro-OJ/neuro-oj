@@ -6,7 +6,12 @@ import {
   loginUser,
   registerUser,
 } from "../services/auth.ts";
-import { UnauthorizedError, ValidationError } from "../lib/errors.ts";
+import { requestReset, resetPassword } from "../services/passwordReset.ts";
+import {
+  BadRequestError,
+  UnauthorizedError,
+  ValidationError,
+} from "../lib/errors.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import {
   applyLoginBackoff,
@@ -23,8 +28,10 @@ import {
 } from "../middleware/rateLimit.ts";
 import type {
   ChangePasswordInput,
+  ForgotPasswordInput,
   LoginInput,
   RegisterInput,
+  ResetPasswordInput,
 } from "../types/auth.ts";
 
 // change-password 端点的限流命名空间（独立于登录端点）

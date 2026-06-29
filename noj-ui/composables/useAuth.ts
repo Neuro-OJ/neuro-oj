@@ -87,6 +87,28 @@ export function useAuth() {
     });
   }
 
+  /**
+   * 发起密码重置请求（issue #49）。
+   * 邮箱是否存在对前端透明：服务端统一返 200 + 同一消息（防枚举）。
+   */
+  async function forgotPassword(email: string) {
+    await $fetch("/api/v1/auth/forgot-password", {
+      method: "POST",
+      body: { email },
+    });
+  }
+
+  /**
+   * 执行密码重置（issue #49）。
+   * @throws 令牌无效/过期/已用/弱密码时抛出错误（含后端 error 消息）
+   */
+  async function resetPassword(token: string, newPassword: string) {
+    await $fetch("/api/v1/auth/reset-password", {
+      method: "POST",
+      body: { token, new_password: newPassword },
+    });
+  }
+
   async function fetchUser() {
     if (!isLoggedIn.value) return null;
     try {
@@ -139,5 +161,7 @@ export function useAuth() {
     fetchUser,
     changePassword,
     logout,
+    forgotPassword,
+    resetPassword,
   };
 }
