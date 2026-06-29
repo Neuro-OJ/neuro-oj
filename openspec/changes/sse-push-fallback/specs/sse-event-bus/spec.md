@@ -5,7 +5,8 @@
 系统 SHALL 提供 `publishEvent(channel, message)` 函数，将事件消息发布到 Redis Pub/Sub 频道。
 
 - 发布操作 SHALL 复用现有 `getRedis()` 共享连接
-- 发布操作 SHALL 为 fire-and-forget（不阻塞调用方）
+- 发布操作 SHALL 为 fire-and-forget（不阻塞调用方），不 await 也不抛出异常
+- 发布前 SHALL 检查 `subscriberReady` 标志，未就绪时静默跳过（丢失的事件由前端轮询 fallback 补齐）
 - 频道命名 SHALL 遵循 `noj:events:<domain>` 前缀规则
 
 #### Scenario: 发布提交状态变更事件
@@ -20,8 +21,13 @@
 
 #### Scenario: 发布失败不阻塞调用方
 
-- **WHEN** `publishEvent()` 执行但 Redis 连接异常
+- **WHEN** `publishEvent()` 执行但 Redis 连接异常或 `subscriberReady` 为 false
 - **THEN** 系统记录日志但不抛异常，调用方继续执行
+
+#### Scenario: 订阅者未就绪时跳过发布
+
+- **WHEN** `initEventSubscriber()` 尚未完成（`subscriberReady === false`）
+- **THEN** `publishEvent()` 直接 return，不写入 Redis（丢失事件由前端轮询 fallback 补齐）
 
 ### Requirement: Redis Pub/Sub 订阅与本地分发
 
@@ -43,8 +49,9 @@
 
 ### Requirement: 本地事件订阅接口
 
-系统 SHALL 提供 `onEvent(pattern, callback)` 函数供 SSE handler 注册事件监听，返回 unsubscribe 函数。
+系统 SHALL 提供 `onEvent(channel, callback)` 函数供 SSE handler 注册事件监听，返回 unsubscribe 函数。
 
+- `channel` 为精确的 Redis 频道名（如 `"noj:events:submission:<id>"`），不支持 glob 模式匹配
 - SSE handler 在连接建立时调用 `onEvent`
 - SSE handler 在断开时调用返回的 unsubscribe
 

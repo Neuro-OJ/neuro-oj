@@ -13,7 +13,7 @@
 正在评测的项目额外显示开始评测时间和持续时间。
 已完成的项目额外显示得分和完成时间。
 
-页面 SHALL 优先通过 SSE（`GET /api/v1/queue/events` 管理员）接收队列变更通知，收到 `queue:changed` 事件时立即调用 `GET /api/v1/queue` 刷新全量数据。当 SSE 不可用时 SHALL 降级到每 2 秒轮询 `GET /api/v1/queue` 刷新状态。
+页面 SHALL 优先通过 SSE（`GET /api/v1/queue/events` 管理员）接收队列变更通知，收到 `queue:changed` 事件时立即调用 `GET /api/v1/queue` 刷新全量数据。当 SSE 不可用时 SHALL 降级到每 2 秒轮询 `GET /api/v1/queue` 刷新状态。队列页不维护独立的 1s 时钟计时器，ui 更新由 SSE 事件或轮询触发的 Vue 重渲染驱动。
 
 #### Scenario: 访问队列页面
 

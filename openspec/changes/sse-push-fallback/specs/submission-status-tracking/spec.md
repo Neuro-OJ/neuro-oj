@@ -8,7 +8,7 @@
 - `judging`：显示"正在评测…"，配运行中动画
 - `finished` / `error`：自动显示评测结果页
 
-页面 SHALL 优先通过 SSE（`GET /api/v1/submissions/:id/events`）接收状态更新。当 SSE 不可用时 SHALL 降级到每 1.5 秒轮询 `GET /api/v1/submissions/:id` 检查状态变更。当状态变为 finished 或 error 时，停止 SSE/轮询并展示结果。
+页面 SHALL 优先通过 SSE（`GET /api/v1/submissions/:id/events`）接收状态更新通知。SSE 事件仅作触发信号，收到后通过 REST 调 `GET /api/v1/submissions/:id` 拉取全量数据。当 SSE 不可用时 SHALL 降级到每 1.5 秒轮询 `GET /api/v1/submissions/:id` 检查状态变更。当 `pollSubmission()` 检测到状态变为 finished 或 error 时，关闭 SSE 连接并展示结果。
 
 #### Scenario: 排队中状态展示
 

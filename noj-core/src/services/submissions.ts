@@ -9,7 +9,7 @@ import {
 } from "../db/schema.ts";
 import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
-import { publishEvent, Channels } from "../lib/event-bus.ts";
+import { Channels, publishEvent } from "../lib/event-bus.ts";
 import { getProblem } from "./problems.ts";
 import type {
   JudgeResult,

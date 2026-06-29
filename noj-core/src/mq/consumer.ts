@@ -1,7 +1,7 @@
 import { createConsumerRedis } from "./connection.ts";
 import { saveEvaluationResult } from "../services/submissions.ts";
 import { logJudgeResultReceived } from "../lib/logging.ts";
-import { publishEvent, Channels } from "../lib/event-bus.ts";
+import { Channels, publishEvent } from "../lib/event-bus.ts";
 import type { JudgeResult } from "../types/index.ts";
 
 /**

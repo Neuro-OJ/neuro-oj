@@ -100,13 +100,13 @@ let subscriberReady = false;
 /**
  * Redis Pub/Sub 连接实例引用（供重连时复用）。
  */
-let subscriberRedis: ReturnType<typeof createPubSubRedis> | null = null;
+let _subscriberRedis: ReturnType<typeof createPubSubRedis> | null = null;
 
 /**
  * 在 Redis 连接上注册 pmessage 分发监听器。
  */
 function registerPmessageHandler(redis: RedisClient): void {
-  // @ts-ignore - ioredis pmessage 事件参数类型
+  // @ts-ignore: ioredis pmessage 事件参数类型与 Deno 类型定义不完全兼容
   redis.on("pmessage", (
     _pattern: string,
     channel: string,
@@ -115,7 +115,7 @@ function registerPmessageHandler(redis: RedisClient): void {
     dispatchToLocalListeners(channel, message);
   });
   // ioredis 在某些 Deno 版本中可能使用 message 而非 pmessage
-  // @ts-ignore
+  // @ts-ignore: ioredis 在某些环境下使用 message 而非 pmessage，两者都注册以兼容
   redis.on("message", (channel: string, message: string) => {
     dispatchToLocalListeners(channel, message);
   });
@@ -159,7 +159,7 @@ async function doSubscribe(redis: RedisClient): Promise<void> {
  */
 export function initEventSubscriber(): void {
   const redis = createPubSubRedis();
-  subscriberRedis = redis;
+  _subscriberRedis = redis;
 
   // 先注册 pmessage 监听器再连接/订阅，避免竞态
   registerPmessageHandler(redis);
@@ -180,13 +180,13 @@ export function initEventSubscriber(): void {
   })();
 
   // ioredis 重连后自动重新 PSUBSCRIBE
-  // @ts-ignore - ioredis reconnect 事件
+  // @ts-ignore: ioredis reconnect 事件在类型定义中未声明
   redis.on("reconnect", () => {
     console.log("事件订阅者 Redis 重连中...");
     subscriberReady = false;
   });
 
-  // @ts-ignore - ioredis ready 事件（重连成功后触发）
+  // @ts-ignore: ioredis ready 事件（重连成功后触发）类型未声明
   redis.on("ready", async () => {
     console.log("事件订阅者 Redis 已就绪，重新订阅...");
     try {

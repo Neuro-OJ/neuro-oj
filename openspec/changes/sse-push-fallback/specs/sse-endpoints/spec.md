@@ -6,13 +6,19 @@
 
 - 端点 SHALL 受 JWT 认证保护（复用 authMiddleware）
 - 响应 Content-Type SHALL 为 `text/event-stream`
-- 当 `noj:events:submission:<id>` 频道有事件时 SHALL 以 `submission:updated` 事件名推送
+- 当 `noj:events:submission:<id>` 频道有事件时 SHALL 以 `submission:updated` 事件名推送，data 为 `{ type: "submission:updated", id: "<submission_id>" }`（仅作触发通知，不包含完整提交数据）
 - 每 30 秒 SHALL 发送心跳事件（`keepalive`）
+- 如果提交已处于终态（`finished`/`error`），连接建立后立即推送一次 `submission:updated` 事件并关闭连接
 
 #### Scenario: 提交状态实时推送
 
 - **WHEN** 已登录用户 GET `/api/v1/submissions/<id>/events` 且 SSE 连接建立
-- **THEN** 系统返回 `text/event-stream` 响应，当评测状态变更时推送 `event: submission:updated`，data 包含 JSON 格式的提交数据
+- **THEN** 系统返回 `text/event-stream` 响应，当评测状态变更时推送 `event: submission:updated`，data 为 `{ type: "submission:updated", id: "<id>" }`，前端收到后通过 REST 拉取全量数据
+
+#### Scenario: 已终态提交连接
+
+- **WHEN** 提交已 finished/error 时连接 SSE
+- **THEN** 系统立即推送 `submission:updated` 事件并关闭 SSE 连接
 
 #### Scenario: 未认证用户访问 SSE
 
@@ -46,6 +52,11 @@
 
 - **WHEN** 非管理员用户 GET `/api/v1/queue/events`
 - **THEN** 系统返回 403 且 `code: "FORBIDDEN"`
+
+#### Scenario: 连接建立时推送当前状态
+
+- **WHEN** 管理员 SSE 连接建立
+- **THEN** 系统立即推送一次 `event: queue:changed`，data 为 `{ type: "queue:changed" }`，通知前端刷新当前队列状态（MQTT Retain 语义）
 
 #### Scenario: 队列事件触发全量刷新
 

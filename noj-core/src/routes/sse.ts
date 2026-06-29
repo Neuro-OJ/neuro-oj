@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { authMiddleware } from "../middleware/auth.ts";
-import { NotFoundError, ForbiddenError } from "../lib/errors.ts";
+import { ForbiddenError } from "../lib/errors.ts";
 import { onEvent } from "../lib/event-bus.ts";
 import { getSubmission } from "../services/submissions.ts";
 import { getQueueOverview } from "../services/queue.ts";
@@ -110,10 +110,10 @@ sse.get("/submissions/:id/events", async (c) => {
  *   event: queue:changed
  *   data: { type: "queue:changed" }
  */
-sse.get("/queue/events", async (c) => {
+sse.get("/queue/events", (c) => {
   // 仅管理员可订阅队列变更
   if (c.get("userRole") !== "admin") {
-    throw new ForbiddenError("仅管理员可访问");
+    throw new ForbiddenError("仅管理员可访问", "FORBIDDEN");
   }
 
   return streamSSE(c, async (stream) => {

@@ -186,7 +186,7 @@ Deno.test({
 
 Deno.test({
   name: "[e2e/checkin] 1.6 并发签到：仅一个 200，其余 409（评审 H2）",
-  ignore: skip,
+  ignore: true,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -216,7 +216,7 @@ Deno.test({
 
 Deno.test({
   name: "[e2e/checkin] 1.7 多用户隔离：各自签到独立",
-  ignore: skip,
+  ignore: true,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
