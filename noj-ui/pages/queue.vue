@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { getLanguageLabel, formatScore } from "~/composables/use-submissions"
+import { useEventSource } from "~/composables/useEventSource"
 import { Clock, CheckCircle, XCircle, Loader2 } from "@lucide/vue"
 
 interface QueueItem {
@@ -67,14 +68,28 @@ function elapsedSince(iso: string | null | undefined): string {
   return `${minutes}m ${seconds % 60}s`
 }
 
-// 使用轮询每 2s 刷新
-usePolling(async () => {
-  try {
-    data.value = await $fetch<QueueData>("/api/v1/queue")
-  } catch {
-    // 静默
-  }
-}, { intervalMs: 2000 })
+// SSE 实时推送 + 轮询 fallback：优先通过 EventSource 接收队列变更通知
+// SSE 不可用时自动降级到 2s 轮询
+useEventSource({
+  url: "/api/v1/queue/events",
+  onEvent: {
+    "queue:changed": async () => {
+      try {
+        data.value = await $fetch<QueueData>("/api/v1/queue")
+      } catch {
+        // 静默
+      }
+    },
+  },
+  fetchFn: async () => {
+    try {
+      data.value = await $fetch<QueueData>("/api/v1/queue")
+    } catch {
+      // 静默
+    }
+  },
+  fallbackIntervalMs: 2000,
+})
 </script>
 
 <template>

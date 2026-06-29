@@ -9,6 +9,7 @@ import {
 } from "../db/schema.ts";
 import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
+import { Channels, publishEvent } from "../lib/event-bus.ts";
 import { getProblem } from "./problems.ts";
 import type {
   JudgeResult,
@@ -353,6 +354,9 @@ export async function createSubmission(
     await pushJudgeTask(task);
     // 入队成功后立即更新状态为 judging
     await updateSubmissionStatus(id, "judging");
+
+    // 发布队列变更事件（fire-and-forget）
+    publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
   } catch (mqErr) {
     console.error("评测任务推送失败:", mqErr);
     // DB 成功但 MQ 失败，标记为 error 让用户重新提交
