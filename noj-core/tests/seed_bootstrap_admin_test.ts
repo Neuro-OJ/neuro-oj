@@ -86,6 +86,10 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
 
+    // 清理前序测试可能残留的 admin 用户
+    const db = getDb();
+    await db.delete(users).where(eq(users.role, "admin"));
+
     // 设置 ADMIN_EMAIL（即使对应用户不存在）
     Deno.env.set("ADMIN_EMAIL", "ops@example.com");
 

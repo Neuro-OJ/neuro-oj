@@ -3,6 +3,9 @@
  *
  * 覆盖：正常改密（200）、缺少旧密码（400）、旧密码错误（401）、
  * 弱密码拒绝（400）、新旧密码相同（400）。
+ *
+ * 注意：路由层挂载了 loginIpRateLimit 中间件，CI 环境有 Redis
+ * 时限流生效。测试必须确保 Redis 已连接，或使用独立 IP 避免触发限流。
  */
 
 import { assertEquals } from "jsr:@std/assert@^1";
@@ -15,7 +18,21 @@ import { signToken } from "../../src/lib/jwt.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 const hasJwt = !!Deno.env.get("JWT_SECRET");
+const hasRedis = !!Deno.env.get("REDIS_URL");
 const skip = !(hasDb && hasJwt);
+
+// 确保 Redis 在路由测试前连接，避免 rate limiter 抛 503
+if (hasRedis) {
+  try {
+    const redisModule = await import("../../src/mq/connection.ts");
+    redisModule.resetRedisForTest();
+    await redisModule.connectRedis();
+  } catch (e) {
+    if (!String(e).includes("already connecting/connected")) {
+      console.warn("[setup] Redis 连接失败:", e);
+    }
+  }
+}
 
 const BASE = "/api/v1/auth";
 const ts = Date.now();
@@ -30,6 +47,12 @@ const TEST_USER = {
 
 const NEW_PASS = "NewStr0ng!Pass-2024";
 
+function uniqueIp(): string {
+  return `10.${Math.floor(Math.random() * 255)}.${
+    Math.floor(Math.random() * 255)
+  }.${Math.floor(Math.random() * 255)}`;
+}
+
 async function jsonRequest(
   app: ReturnType<typeof createApp>,
   path: string,
@@ -37,7 +60,10 @@ async function jsonRequest(
   body?: Record<string, unknown>,
   token?: string,
 ): Promise<Response> {
-  const headers = new Headers({ "Content-Type": "application/json" });
+  const headers = new Headers({
+    "Content-Type": "application/json",
+    "X-Forwarded-For": uniqueIp(),
+  });
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
   const req = new Request(`http://localhost${path}`, {
