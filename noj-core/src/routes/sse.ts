@@ -4,6 +4,7 @@ import { authMiddleware } from "../middleware/auth.ts";
 import { NotFoundError, ForbiddenError } from "../lib/errors.ts";
 import { onEvent } from "../lib/event-bus.ts";
 import { getSubmission } from "../services/submissions.ts";
+import { getQueueOverview } from "../services/queue.ts";
 
 /**
  * SSE（Server-Sent Events）路由。
@@ -38,9 +39,8 @@ sse.get("/submissions/:id/events", async (c) => {
   const { id } = c.req.param();
   const userId = c.get("userId") as string | undefined;
 
-  // 校验提交存在并验证访问权限
-  // getSubmission 在提交不存在或无权限时抛出 NotFoundError
-  await getSubmission(id, userId);
+  // 校验提交存在并验证访问权限，同时获取当前状态
+  const submission = await getSubmission(id, userId);
 
   return streamSSE(c, async (stream) => {
     // 当前 SSE 流是否已关闭（防止重复清理）
@@ -54,6 +54,19 @@ sse.get("/submissions/:id/events", async (c) => {
       clearInterval(keepAlive);
       unsub();
       if (resolveAbort) resolveAbort();
+    }
+
+    // 如果提交已经处于终态（finished/error），立即推送触发通知并关闭
+    if (submission.status === "finished" || submission.status === "error") {
+      await stream.writeSSE({
+        event: "submission:updated",
+        data: JSON.stringify({
+          type: "submission:updated",
+          id: id,
+        }),
+      });
+      closeStream();
+      return;
     }
 
     const unsub = onEvent(
@@ -113,6 +126,17 @@ sse.get("/queue/events", async (c) => {
       clearInterval(keepAlive);
       unsub();
       if (resolveAbort) resolveAbort();
+    }
+
+    // 连接建立后立即推送当前队列全量数据（MQTT Retain 语义）
+    try {
+      await getQueueOverview();
+      await stream.writeSSE({
+        event: "queue:changed",
+        data: JSON.stringify({ type: "queue:changed" }),
+      });
+    } catch {
+      // 获取当前队列失败不影响后续订阅
     }
 
     const unsub = onEvent(

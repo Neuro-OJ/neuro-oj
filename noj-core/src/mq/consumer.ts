@@ -141,15 +141,12 @@ async function startResultConsumer(): Promise<void> {
         );
 
         // 发布事件到 Redis Pub/Sub（fire-and-forget，不阻塞）
+        // 事件仅作触发通知，前端收到后主动通过 REST 接口拉取全量数据
         publishEvent(
           Channels.submission(judgeResult.submission_id),
           JSON.stringify({
             type: "submission:updated",
-            data: {
-              id: judgeResult.submission_id,
-              status: judgeResult.status,
-              score: judgeResult.score,
-            },
+            id: judgeResult.submission_id,
           }),
         );
         publishEvent(

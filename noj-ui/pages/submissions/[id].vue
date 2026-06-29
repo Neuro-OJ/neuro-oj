@@ -80,6 +80,7 @@ async function pollSubmission() {
       const status = res.data?.status
       if (status === "finished" || status === "error") {
         stopPolling()
+        sseEnabled.value = false
       }
     }
   } catch (err: unknown) {
@@ -93,22 +94,17 @@ function stopPolling() {
   }
 }
 
-// SSE 实时推送：优先通过 EventSource 接收状态更新
-// SSE 不可用时自动降级到轮询（fetchFn: pollSubmission, 1500ms 间隔）
+// SSE 实时推送 + 轮询 fallback
+const sseEnabled = ref(true)
 useEventSource({
-  url: computed(() => isLoggedIn.value ? `/api/v1/submissions/${submissionId}/events` : ""),
+  url: computed(() => isLoggedIn.value && sseEnabled.value ? `/api/v1/submissions/${submissionId}/events` : ""),
   onEvent: {
-    "submission:updated": (payload: Record<string, unknown>) => {
-      const d = payload as unknown as SubmissionData
-      if (d && d.id) {
-        data.value = { data: d }
-        if (d.status === "finished" || d.status === "error") {
-          stopPolling()
-        }
-      }
+    "submission:updated": () => {
+      // SSE 仅作触发通知，收到后调轮询拉取全量数据
+      pollSubmission()
     },
   },
-  enabled: computed(() => isLoggedIn.value),
+  enabled: computed(() => isLoggedIn.value && sseEnabled.value),
   fetchFn: pollSubmission,
   fallbackIntervalMs: POLL_INTERVAL_MS,
 })
