@@ -49,7 +49,7 @@
 
 #### Scenario: 已完成的提交被重测
 
-- **WHEN** 一条 status=fished 的提交被重测
+- **WHEN** 一条 status=finished 的提交被重测
 - **THEN** 系统删除对应 evaluation_results，重置 judge_started_at 和 judge_finished_at 为 NULL
 
 #### Scenario: 评测中的提交被重测

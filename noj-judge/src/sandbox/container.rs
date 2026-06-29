@@ -592,6 +592,7 @@ mod tests {
             file_name: None,
             time_limit_ms: 1000,
             memory_limit_mb: 128,
+            rejudge_seq: None,
         };
 
         let result = get_support_package_bytes(&task).unwrap();
@@ -611,6 +612,7 @@ mod tests {
             file_name: None,
             time_limit_ms: 1000,
             memory_limit_mb: 128,
+            rejudge_seq: None,
         };
 
         let result = get_support_package_bytes(&task).unwrap();
@@ -630,6 +632,7 @@ mod tests {
             file_name: None,
             time_limit_ms: 1000,
             memory_limit_mb: 128,
+            rejudge_seq: None,
         };
 
         let result = get_support_package_bytes(&task).unwrap();

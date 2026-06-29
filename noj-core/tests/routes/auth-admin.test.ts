@@ -2,7 +2,6 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-// deno-lint-ignore no-unused-vars
 import { problems, submissions, users } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 
@@ -657,7 +656,8 @@ Deno.test({
 // ─── 重测 API ────────────────────────────────────────────
 
 Deno.test({
-  name: "admin route: POST /api/v1/admin/submissions/:id/rejudge 未登录返回 401",
+  name:
+    "admin route: POST /api/v1/admin/submissions/:id/rejudge 未登录返回 401",
   ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -672,7 +672,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: POST /api/v1/admin/submissions/:id/rejudge 非管理员返回 403",
+  name:
+    "admin route: POST /api/v1/admin/submissions/:id/rejudge 非管理员返回 403",
   ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -691,7 +692,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: POST /api/v1/admin/submissions/:id/rejudge 不存在的提交返回 404",
+  name:
+    "admin route: POST /api/v1/admin/submissions/:id/rejudge 不存在的提交返回 404",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -745,7 +747,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: POST /api/v1/admin/problems/:id/rejudge 不存在的题目返回 404",
+  name:
+    "admin route: POST /api/v1/admin/problems/:id/rejudge 不存在的题目返回 404",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -761,5 +764,107 @@ Deno.test({
       },
     );
     assertEquals(res.status, 404);
+  },
+});
+
+// ─── 重测业务路径 ─────────────────────────────────────
+
+Deno.test({
+  name: "admin route: POST /api/v1/admin/problems/:id/rejudge 有活跃提交时拒绝",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const app = createApp();
+    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const now = new Date().toISOString();
+    const ts = Date.now();
+
+    const problemId = `rej-test-problem-${ts}`;
+    await db.insert(problems).values({
+      id: problemId,
+      title: `重测测试 ${ts}`,
+      description: "测试",
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+      time_limit_ms: 5000,
+      memory_limit_mb: 512,
+      number: Math.floor(Math.random() * 90000) + 10000,
+      owner_id: "0",
+      type: "P",
+      created_at: now,
+      updated_at: now,
+    });
+
+    const judgingSubId = `rej-sub-judging-${ts}`;
+    await db.insert(submissions).values({
+      id: judgingSubId,
+      user_id: "test-user",
+      problem_id: problemId,
+      language: "python3",
+      code: "print(1)",
+      status: "judging",
+      judge_started_at: now,
+      created_at: now,
+    });
+
+    const res = await app.request(
+      `/api/v1/admin/problems/${problemId}/rejudge`,
+      { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(res.status, 400);
+    const body = await res.json();
+    assertEquals(body.error.includes("活跃评测"), true);
+
+    await db.delete(submissions).where(eq(submissions.id, judgingSubId));
+    await db.delete(problems).where(eq(problems.id, problemId));
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: POST /api/v1/admin/problems/:id/rejudge 无已完结提交返回空",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const app = createApp();
+    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const now = new Date().toISOString();
+    const ts = Date.now();
+
+    const problemId = `rej-empty-${ts}`;
+    await db.insert(problems).values({
+      id: problemId,
+      title: `重测空 ${ts}`,
+      description: "测试",
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+      time_limit_ms: 5000,
+      memory_limit_mb: 512,
+      number: Math.floor(Math.random() * 90000) + 10000,
+      owner_id: "0",
+      type: "P",
+      created_at: now,
+      updated_at: now,
+    });
+
+    const res = await app.request(
+      `/api/v1/admin/problems/${problemId}/rejudge`,
+      { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.total, 0);
+    assertEquals(body.queued, 0);
+    assertEquals(body.skipped, 0);
+
+    await db.delete(problems).where(eq(problems.id, problemId));
   },
 });
