@@ -1,6 +1,7 @@
 import { createConsumerRedis } from "./connection.ts";
 import { saveEvaluationResult } from "../services/submissions.ts";
 import { logJudgeResultReceived } from "../lib/logging.ts";
+import { publishEvent, Channels } from "../lib/event-bus.ts";
 import type { JudgeResult } from "../types/index.ts";
 
 /**
@@ -137,6 +138,23 @@ async function startResultConsumer(): Promise<void> {
         await saveEvaluationResult(judgeResult);
         console.log(
           `评测结果已持久化: ${judgeResult.submission_id}`,
+        );
+
+        // 发布事件到 Redis Pub/Sub（fire-and-forget，不阻塞）
+        publishEvent(
+          Channels.submission(judgeResult.submission_id),
+          JSON.stringify({
+            type: "submission:updated",
+            data: {
+              id: judgeResult.submission_id,
+              status: judgeResult.status,
+              score: judgeResult.score,
+            },
+          }),
+        );
+        publishEvent(
+          Channels.queue,
+          JSON.stringify({ type: "queue:changed" }),
         );
       } catch (dbErr) {
         console.error(

@@ -15,6 +15,7 @@ import {
   ArrowLeft,
 } from "@lucide/vue"
 import { getLanguageLabel, formatScore, formatTime, formatMemory } from "~/composables/use-submissions"
+import { useEventSource } from "~/composables/useEventSource"
 
 interface SubmissionResult {
 
@@ -91,18 +92,26 @@ function stopPolling() {
     pollTimer = null
   }
 }
-// 登录后开始轮询，cookie 由浏览器自动发送
-watch(
-  isLoggedIn,
-  (loggedIn) => {
-    if (import.meta.server) return // SSR 阶段无 cookie，客户端水合后接管
-    if (loggedIn && !pollTimer) {
-      pollSubmission()
-      pollTimer = setInterval(pollSubmission, POLL_INTERVAL_MS)
-    }
+
+// SSE 实时推送：优先通过 EventSource 接收状态更新
+// SSE 不可用时自动降级到轮询（fetchFn: pollSubmission, 1500ms 间隔）
+useEventSource({
+  url: computed(() => isLoggedIn.value ? `/api/v1/submissions/${submissionId}/events` : ""),
+  onEvent: {
+    "submission:updated": (payload: Record<string, unknown>) => {
+      const d = payload as unknown as SubmissionData
+      if (d && d.id) {
+        data.value = { data: d }
+        if (d.status === "finished" || d.status === "error") {
+          stopPolling()
+        }
+      }
+    },
   },
-  { immediate: true },
-)
+  enabled: computed(() => isLoggedIn.value),
+  fetchFn: pollSubmission,
+  fallbackIntervalMs: POLL_INTERVAL_MS,
+})
 onUnmounted(() => {
   stopPolling()
   isMounted.value = false

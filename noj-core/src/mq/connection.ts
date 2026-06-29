@@ -5,13 +5,16 @@ import IORedis from "ioredis";
  * ioredis 的类型在 Deno 中解析受限（类/命名空间冲突），
  * 因此定义本地接口仅声明实际使用的方法。
  */
-interface RedisClient {
+export interface RedisClient {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   ping(): Promise<string>;
   quit(): Promise<string>;
   status: string;
   lpush(...args: (string | number)[]): Promise<number>;
+  publish(channel: string, message: string): Promise<number>;
+  subscribe(...channels: string[]): Promise<unknown>;
+  psubscribe(...patterns: string[]): Promise<unknown>;
   brpop(...args: (string | number)[]): Promise<[string, string] | null>;
   lrange(...args: (string | number)[]): Promise<string[]>;
   llen(...args: (string | number)[]): Promise<number>;
@@ -71,6 +74,38 @@ export function createConsumerRedis(): RedisClient {
     const err = args[0];
     console.error(
       "消费者 Redis 连接错误:",
+      err instanceof Error ? err.message : String(err),
+    );
+  });
+
+  return redis;
+}
+
+/**
+ * 创建专用的 Redis Pub/Sub 订阅者连接。
+ *
+ * Pub/Sub 模式（PSUBSCRIBE/SUBSCRIBE）会独占 Redis 连接通道，
+ * 因此需要独立的连接实例，不与 LPUSH/BRPOP 共享。
+ * 配置无限重试，确保事件订阅的持久性。
+ */
+export function createPubSubRedis(): RedisClient {
+  const redisUrl = Deno.env.get("REDIS_URL") || "redis://127.0.0.1:6379/";
+  // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
+  const redis = new IORedis(redisUrl, {
+    maxRetriesPerRequest: 3,
+    enableOfflineQueue: false,
+    retryStrategy(times: number) {
+      // 指数退避：100ms → 200ms → 400ms → ... → 上限 30s
+      // 永不返回 null，确保 Pub/Sub 订阅持久连接
+      return Math.min(Math.pow(2, times) * 100, 30000);
+    },
+    lazyConnect: true,
+  });
+
+  redis.on("error", (...args: unknown[]) => {
+    const err = args[0];
+    console.error(
+      "Pub/Sub Redis 连接错误:",
       err instanceof Error ? err.message : String(err),
     );
   });

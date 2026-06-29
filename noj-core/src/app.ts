@@ -9,6 +9,7 @@ import checkin from "./routes/checkin.ts";
 import queue from "./routes/queue.ts";
 import submissions from "./routes/submissions.ts";
 import users from "./routes/users.ts";
+import sse from "./routes/sse.ts";
 import { AppError } from "./lib/errors.ts";
 
 /**
@@ -83,6 +84,7 @@ export function createApp(): Hono {
   app.route("/api/v1/queue", queue);
   app.route("/api/v1/submissions", submissions);
   app.route("/api/v1/users", users);
+  app.route("/api/v1", sse);
 
   return app;
 }

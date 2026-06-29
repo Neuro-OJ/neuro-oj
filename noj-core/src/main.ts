@@ -2,6 +2,7 @@ import { createApp } from "./app.ts";
 import { runMigrations } from "./db/migrate.ts";
 import { connectRedis } from "./mq/connection.ts";
 import { startResultConsumerWithRetry } from "./mq/consumer.ts";
+import { initEventSubscriber } from "./lib/event-bus.ts";
 import { ensureRootUser } from "./services/auth.ts";
 
 const app = createApp();
@@ -114,6 +115,9 @@ async function main() {
 
   // 启动评测结果消费者（后台运行，带自动重连，不阻塞 HTTP）
   startResultConsumerWithRetry();
+
+  // 初始化 Redis Pub/Sub 事件订阅者（后台运行，用于 SSE 推送）
+  initEventSubscriber();
 
   // 启动 HTTP 服务
   Deno.serve({ port }, app.fetch);
