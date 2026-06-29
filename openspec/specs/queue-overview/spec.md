@@ -105,19 +105,24 @@
 正在评测的项目额外显示开始评测时间和持续时间。
 已完成的项目额外显示得分和完成时间。
 
-页面 SHALL 每 2 秒轮询 `GET /api/v1/queue` 刷新状态。
+页面 SHALL 优先通过 SSE（`GET /api/v1/queue/events` 管理员）接收队列变更通知，收到 `queue:changed` 事件时立即调用 `GET /api/v1/queue` 刷新全量数据。当 SSE 不可用时 SHALL 降级到每 2 秒轮询 `GET /api/v1/queue` 刷新状态。队列页不维护独立的 1s 时钟计时器，ui 更新由 SSE 事件或轮询触发的 Vue 重渲染驱动。
 
 #### Scenario: 访问队列页面
 
 - **WHEN** 用户访问 `/queue`
-- **THEN** 页面展示三区域分组列表，并开始每 2 秒轮询刷新
+- **THEN** 页面展示三区域分组列表，优先通过 SSE 接收更新通知
 
 #### Scenario: 队列页面在未登录状态下可访问
 
 - **WHEN** 未登录用户访问 `/queue`
 - **THEN** 页面正常显示全局队列状态
 
-#### Scenario: 轮询刷新数据
+#### Scenario: SSE 驱动刷新
 
-- **WHEN** 页面处于打开状态
-- **THEN** 每 2 秒自动更新数据，UI 平滑过渡不闪烁
+- **WHEN** 页面通过 SSE 收到 `queue:changed` 事件
+- **THEN** 页面立即调用 `GET /api/v1/queue` 刷新全量数据，无需等待轮询间隔
+
+#### Scenario: SSE 不可用时降级轮询
+
+- **WHEN** SSE 连接失败或浏览器不支持 EventSource
+- **THEN** 页面自动降级到每 2 秒轮询 `GET /api/v1/queue`，功能与现有行为一致
