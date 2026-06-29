@@ -227,9 +227,10 @@ cd dist
 ## Composables 参考
 
 ### useAuth
-- `useState<AuthUser | null>("auth:user")` 存储用户信息
+- `useState<AuthUser | null>("auth:user")` 存储用户信息（含 `must_change_password` 字段，issue #75）
 - `fetchUser()`：调用 `/api/v1/auth/me`，401 时自动调用 `logout()` 清除状态
 - `login(credentials)` / `register(data)` / `logout()`：封装对应 API 调用
+- `changePassword(oldPassword, newPassword)`：调用 `/api/v1/auth/change-password`，成功后自动 `logout()` 清 Cookie 并跳 `/login?reason=password_changed`（避免旧 JWT flag 残留致路由守卫死循环）
 - `logout()` 清除 `auth:user` 状态 + 调用 `/api/auth/logout` 删除 Cookie
 - 初始化时若 Cookie 存在则自动调用 `fetchUser()`（SSR 阶段跳过）
 
@@ -278,6 +279,7 @@ cd dist
 - 不存在 → `navigateTo("/login")`
 - 存在但需要验证 → 调用 `fetchUser()`，5 秒超时
 - SSR 阶段跳过守卫，客户端水合后重新执行
+- **强制改密（issue #75）**：`user.must_change_password=true` 时强制跳 `/change-password`（白名单路径 `/change-password`、`/login`、`/logout` 放行）
 
 ### admin 守卫
 - 检查 `noj:session` Cookie 中的 `role` 字段

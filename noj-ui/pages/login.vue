@@ -143,8 +143,13 @@ async function handleLogin() {
 
     loading.value = true
     try {
-        await auth.login(form.login.trim(), form.password)
-        router.replace("/")
+        const { user: loggedInUser } = await auth.login(form.login.trim(), form.password)
+        // issue #75：临时引导管理员首次登录必须改密
+        if (loggedInUser?.must_change_password === true) {
+            router.replace("/change-password")
+        } else {
+            router.replace("/")
+        }
     } catch (e: any) {
         setError(typeof e.data?.error === "string" ? e.data.error : `服务器错误 (${e.status || 502})`)
     } finally {

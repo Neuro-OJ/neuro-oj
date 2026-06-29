@@ -1,4 +1,5 @@
 import {
+  boolean,
   check,
   index,
   integer,
@@ -25,6 +26,15 @@ export const users = pgTable(
     role: text("role").notNull().default("user"),
     /** 个人简介（Markdown 格式） */
     bio: text("bio").notNull().default(""),
+    /**
+     * 是否必须在下一次登录后修改密码（issue #75）。
+     * - 引导管理员 / ADMIN_EMAIL+ADMIN_PASS 创建的初始账号设为 true
+     * - 历史用户保持 false，向前兼容
+     * - authMiddleware 在 token 携带 true 且请求不在白名单内时返回 403
+     */
+    must_change_password: boolean("must_change_password").notNull().default(
+      false,
+    ),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
   },

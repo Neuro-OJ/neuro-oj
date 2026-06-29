@@ -50,6 +50,13 @@
       "when": 1751700000,
       "tag": "0006_password_reset_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1751400003,
+      "tag": "0006_must_change_password",
+      "breakpoints": true
     }
   ]
 }

@@ -59,7 +59,7 @@ export function createApp(): Hono {
           code: err.code,
           request_id: requestId,
         },
-        err.statusCode as 400 | 401 | 404 | 409 | 429 | 500 | 503,
+        err.statusCode as 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503,
       );
     }
     console.error("未处理的错误 [request_id=" + requestId + "]:", err);

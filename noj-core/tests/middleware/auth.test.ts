@@ -1,9 +1,38 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
 import { adminMiddleware, authMiddleware } from "../../src/middleware/auth.ts";
+import { AppError } from "../../src/lib/errors.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
+
+/**
+ * 注册与 src/app.ts 等价的最小 onError（评审修复 H2 衍生：middleware 抛
+ * AppError 后必须被捕获才能形成 JSON 响应，否则 Hono 默认 500）。
+ *
+ * 与生产 onError 行为一致：AppError → 对应 statusCode + {error, code, request_id}，
+ * 非 AppError → 500 + {error: "服务器内部错误"}。
+ *
+ * 不做泛型推导（避免 Hono 4 复杂泛型不兼容），调用方负责传入具体类型。
+ */
+// deno-lint-ignore no-explicit-any
+function registerAppErrorHandler(app: Hono<any, any, "/">) {
+  app.onError((err, c) => {
+    if (err instanceof AppError) {
+      const requestId = crypto.randomUUID();
+      return c.json(
+        {
+          error: err.message,
+          code: err.code,
+          request_id: requestId,
+        },
+        err.statusCode as 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503,
+      );
+    }
+    console.error("未处理的错误:", err);
+    return c.json({ error: "服务器内部错误" }, 500);
+  });
+}
 
 /**
  * 创建带认证中间件的测试用 Hono 应用。
@@ -12,6 +41,9 @@ function createTestApp() {
   const app = new Hono<{
     Variables: { userId: string; userRole: string };
   }>();
+
+  // deno-lint-ignore no-explicit-any
+  registerAppErrorHandler(app as Hono<any, any, "/">);
 
   app.get("/protected", authMiddleware, (c) => {
     return c.json({
@@ -115,6 +147,9 @@ function createAdminTestApp() {
   const app = new Hono<{
     Variables: { userId: string; userRole: string };
   }>();
+
+  // deno-lint-ignore no-explicit-any
+  registerAppErrorHandler(app as Hono<any, any, "/">);
 
   app.get("/admin-only", authMiddleware, adminMiddleware, (c) => {
     return c.json({ ok: true });

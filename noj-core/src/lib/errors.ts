@@ -82,11 +82,15 @@ export class BadRequestError extends AppError {
 
 /**
  * 禁止访问错误（HTTP 403）。
- * 用于权限不足场景（如普通用户尝试编辑管理题）。
+ * 用于权限不足场景（如普通用户尝试编辑管理题、
+ * must_change_password=true 用户访问非白名单路径）。
+ *
+ * 支持可选 code 参数以区分不同禁止场景（issue #75 评审修复 M1：
+ * PASSWORD_CHANGE_REQUIRED 等机器可读码供前端差异化处理）。
  */
 export class ForbiddenError extends AppError {
-  constructor(message: string) {
-    super(message, 403);
+  constructor(message: string, code?: string) {
+    super(message, 403, code);
     this.name = "ForbiddenError";
   }
 }

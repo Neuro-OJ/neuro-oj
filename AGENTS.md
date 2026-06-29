@@ -359,6 +359,31 @@ cargo run               # 需要 Docker daemon
 # 三模块可独立启动，开发时可以只跑需要的部分
 ```
 
+### 创建第一个管理员
+
+首次运行 `deno task setup` 后，若未设置 `ADMIN_EMAIL`/`ADMIN_PASS` 环境变量，seed 脚本会自动创建引导管理员（仅限无任何可登录 admin 时）：
+
+```bash
+cd noj-core && deno task setup
+# 终端输出类似：
+# ⚠ 已创建临时引导管理员（首次登录后必须修改密码）
+#   username: admin
+#   email:    admin@noj.local
+#   password: <24字符 base64url 随机>
+```
+
+引导管理员登录后**必须**立即修改密码，否则无法访问受保护页面（自动强制跳转 `/change-password`）。
+
+**推荐做法**：在 `.env` 中设置 `ADMIN_EMAIL` 和 `ADMIN_PASS`，运行 seed 后直接使用固定凭据登录：
+
+```bash
+echo 'ADMIN_EMAIL=admin@example.com' >> noj-core/.env
+echo 'ADMIN_PASS=YourSecurePass123!' >> noj-core/.env
+cd noj-core && deno task seed
+```
+
+详见 [issue #75](https://github.com/Neuro-OJ/neuro-oj/issues/75)。
+
 ---
 
 ## 5. 版本控制约定
