@@ -11,7 +11,7 @@
 
 import { assertEquals } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../src/db/connection.ts";
-import { users } from "../src/db/schema.ts";
+import { problems, problemsCategories, users } from "../src/db/schema.ts";
 import { and, eq, not, sql } from "drizzle-orm";
 import { registerUser } from "../src/services/auth.ts";
 import { hashPassword } from "../src/lib/password.ts";
@@ -86,9 +86,11 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
 
-    // 清理前序测试可能残留的 admin 用户
+    // 清理前序测试可能残留的数据（需按 FK 依赖顺序）
     const db = getDb();
-    await db.delete(users).where(eq(users.role, "admin"));
+    await db.delete(problemsCategories);
+    await db.delete(problems);
+    await db.delete(users);
 
     // 设置 ADMIN_EMAIL（即使对应用户不存在）
     Deno.env.set("ADMIN_EMAIL", "ops@example.com");

@@ -74,29 +74,38 @@ noj-core/
 
 从 `.env` 文件或 `Deno.env` 读取。**必须配置**：
 
-| 变量                        | 默认值                    | 说明                                                                  |
-| --------------------------- | ------------------------- | --------------------------------------------------------------------- |
-| `DATABASE_URL`              | —                         | PostgreSQL 连接串（无默认值）                                         |
-| `JWT_SECRET`                | —                         | HS256 签名密钥（≥32 字符）                                            |
-| `JWT_EXPIRES_IN`            | `24h`                     | Token 有效期                                                          |
-| `REDIS_URL`                 | `redis://127.0.0.1:6379/` | Redis 连接串                                                          |
-| `PORT`                      | `8000`                    | HTTP 监听端口                                                         |
-| `NOJ_ENV`                   | 空（development）         | `production` 启用生产模式                                             |
-| `ADMIN_EMAIL`               | —                         | Seed 管理员邮箱（**强烈推荐**）。未设置时 seed 自动创建临时引导管理员 |
-| `ADMIN_PASS`                | —                         | Seed 管理员密码（需与 ADMIN_EMAIL 配合）                              |
-| `DATABASE_POOL_MAX`         | `10`                      | PostgreSQL 连接池大小                                                 |
-| `DATABASE_CONNECT_TIMEOUT`  | `10`                      | 连接超时秒数                                                          |
-| `DATABASE_IDLE_TIMEOUT`     | `300`                     | 空闲连接超时秒数                                                      |
-| `DATABASE_MAX_LIFETIME`     | `3600`                    | 连接最大生命周期秒数                                                  |
-| `CORS_ALLOWED_ORIGINS`      | —                         | 生产环境 CORS 白名单（逗号分隔）                                      |
-| `EMAIL_PROVIDER`            | `mock`                    | 邮件 Provider：`mock`/`aliyun`/`tencent`                              |
-| `ALIBABA_ACCESS_KEY_ID`     | —                         | 阿里云 DirectMail AccessKey（aliyun 时必填）                          |
-| `ALIBABA_ACCESS_KEY_SECRET` | —                         | 阿里云 DirectMail AccessKey Secret                                    |
-| `ALIBABA_FROM_EMAIL`        | —                         | 阿里云发信地址（需控制台验证域名）                                    |
-| `TENCENT_SECRET_ID`         | —                         | 腾讯云 SecretId（tencent 时必填）                                     |
-| `TENCENT_SECRET_KEY`        | —                         | 腾讯云 SecretKey                                                      |
-| `TENCENT_FROM_EMAIL`        | —                         | 腾讯云发信地址（需控制台验证域名）                                    |
-| `TENCENT_REGION`            | `ap-guangzhou`            | 腾讯云地域                                                            |
+| 变量                              | 默认值                    | 说明                                                                  |
+| --------------------------------- | ------------------------- | --------------------------------------------------------------------- |
+| `DATABASE_URL`                    | —                         | PostgreSQL 连接串（无默认值）                                         |
+| `JWT_SECRET`                      | —                         | HS256 签名密钥（≥32 字符）                                            |
+| `JWT_EXPIRES_IN`                  | `24h`                     | Token 有效期                                                          |
+| `REDIS_URL`                       | `redis://127.0.0.1:6379/` | Redis 连接串                                                          |
+| `PORT`                            | `8000`                    | HTTP 监听端口                                                         |
+| `NOJ_ENV`                         | 空（development）         | `production` 启用生产模式                                             |
+| `ADMIN_EMAIL`                     | —                         | Seed 管理员邮箱（**强烈推荐**）。未设置时 seed 自动创建临时引导管理员 |
+| `ADMIN_PASS`                      | —                         | Seed 管理员密码（需与 ADMIN_EMAIL 配合）                              |
+| `DATABASE_POOL_MAX`               | `10`                      | PostgreSQL 连接池大小                                                 |
+| `DATABASE_CONNECT_TIMEOUT`        | `10`                      | 连接超时秒数                                                          |
+| `DATABASE_IDLE_TIMEOUT`           | `300`                     | 空闲连接超时秒数                                                      |
+| `DATABASE_MAX_LIFETIME`           | `3600`                    | 连接最大生命周期秒数                                                  |
+| `CORS_ALLOWED_ORIGINS`            | —                         | 生产环境 CORS 白名单（逗号分隔）                                      |
+| `EMAIL_PROVIDER`                  | `mock`                    | 邮件 Provider：`mock`/`aliyun`/`tencent`                              |
+| `ALIBABA_ACCESS_KEY_ID`           | —                         | 阿里云 DirectMail AccessKey（aliyun 时必填）                          |
+| `ALIBABA_ACCESS_KEY_SECRET`       | —                         | 阿里云 DirectMail AccessKey Secret                                    |
+| `ALIBABA_FROM_EMAIL`              | —                         | 阿里云发信地址（需控制台验证域名）                                    |
+| `TENCENT_SECRET_ID`               | —                         | 腾讯云 SecretId（tencent 时必填）                                     |
+| `TENCENT_SECRET_KEY`              | —                         | 腾讯云 SecretKey                                                      |
+| `TENCENT_FROM_EMAIL`              | —                         | 腾讯云发信地址（需控制台验证域名）                                    |
+| `TENCENT_REGION`                  | `ap-guangzhou`            | 腾讯云地域                                                            |
+| `RATE_LIMIT_ENABLED`              | `true`                    | 速率限制总开关（NOJ_ENV=test 时强制关闭）                             |
+| `RATE_LIMIT_LOGIN_IP_WINDOW`      | `30`                      | IP 维度限流窗口（秒）                                                 |
+| `RATE_LIMIT_LOGIN_IP_MAX`         | `10`                      | IP 维度窗口内最大尝试次数                                             |
+| `RATE_LIMIT_LOGIN_ACC_WINDOW`     | `30`                      | 账号维度限流窗口（秒）                                                |
+| `RATE_LIMIT_LOGIN_ACC_MAX`        | `5`                       | 账号维度窗口内最大尝试次数                                            |
+| `RATE_LIMIT_LOGIN_BACKOFF_SEC`    | `15`                      | 每次失败累计退避秒数                                                  |
+| `RATE_LIMIT_LOGIN_LOCK_THRESHOLD` | `10`                      | 连续失败锁定阈值                                                      |
+| `RATE_LIMIT_LOGIN_LOCK_SECONDS`   | `3600`                    | 锁定时长（秒）                                                        |
+| `TRUSTED_PROXIES`                 | —                         | 可信代理白名单（逗号分隔 IP/CIDR）。生产环境**必须**配置              |
 
 ## 开发命令
 
