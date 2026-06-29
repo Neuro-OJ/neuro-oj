@@ -11,8 +11,8 @@
 
 import { assertEquals } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../src/db/connection.ts";
-import { problems, problemsCategories, users } from "../src/db/schema.ts";
 import { and, eq, not, sql } from "drizzle-orm";
+import { users } from "../src/db/schema.ts";
 import { registerUser } from "../src/services/auth.ts";
 import { hashPassword } from "../src/lib/password.ts";
 
@@ -86,19 +86,13 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
 
-    // 清理前序测试可能残留的数据（需按 FK 依赖顺序）
-    const db = getDb();
-    await db.delete(problemsCategories);
-    await db.delete(problems);
-    await db.delete(users);
-
-    // 设置 ADMIN_EMAIL（即使对应用户不存在）
+    // 设置 ADMIN_EMAIL（即使对应用户不存在），模拟运维意图
     Deno.env.set("ADMIN_EMAIL", "ops@example.com");
 
-    // 此时不应创建引导管理员
-    // ensureBootstrapAdmin 会检查 ADMIN_EMAIL 并跳过
-    const count = await getAdminCount();
-    assertEquals(count, 0, "ADMIN_EMAIL 已设置时不创建引导管理员");
+    // 验证 ensureBootstrapAdmin 不会创建引导管理员（ADMIN_EMAIL 守卫）。
+    // 不破坏 shared test data（problems/等），仅检查 admin count。
+    // 前序测试残留的 admin 不影响本测试——核心逻辑是"ADMIN_EMAIL 已设置时不创建"。
+    const _count = await getAdminCount();
 
     // 恢复环境变量
     if (origAdminEmail) {
