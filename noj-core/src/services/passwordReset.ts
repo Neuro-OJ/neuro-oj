@@ -58,9 +58,9 @@ export async function requestReset(
     created_at: nowIso,
   });
 
-  // 发送邮件（mock：控制台日志）
+  // 发送邮件
   const resetLink = `${appBaseUrl}/reset-password?token=${plainToken}`;
-  sendPasswordResetEmail(email, resetLink, TOKEN_TTL_MINUTES);
+  await sendPasswordResetEmail(email, resetLink, TOKEN_TTL_MINUTES);
 }
 
 /**

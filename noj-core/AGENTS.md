@@ -46,11 +46,17 @@ noj-core/
 │   ├── middleware/         # 认证中间件
 │   ├── mq/                # Redis 消息队列（Producer + Consumer）
 │   ├── lib/               # 工具函数（JWT、密码、错误类、请求解析、日志）
-│   │   ├── errors.ts      # AppError 继承体系（6 个子类）
-│   │   ├── jwt.ts         # JWT 签发/验证（HS256, iss/aud 校验）
-│   │   ├── password.ts    # bcrypt 哈希/比对（cost 12）
-│   │   ├── request.ts     # parseJsonBody<T>() 安全 JSON 解析
-│   │   └── logging.ts     # 生产安全日志（UUID 截断、分值隐藏）
+│   │   ├── email.ts            # 邮件发送抽象入口（动态选择 Provider）
+│   │   ├── email-providers/    # 邮件 Provider 实现
+│   │   │   ├── types.ts        #   统一接口定义
+│   │   │   ├── mock.ts         #   Mock Provider（默认，控制台输出）
+│   │   │   ├── aliyun.ts       #   阿里云 DirectMail Provider
+│   │   │   └── tencent.ts      #   腾讯云 SES Provider
+│   │   ├── errors.ts           # AppError 继承体系（6 个子类）
+│   │   ├── jwt.ts              # JWT 签发/验证（HS256, iss/aud 校验）
+│   │   ├── password.ts         # bcrypt 哈希/比对（cost 12）
+│   │   ├── request.ts          # parseJsonBody<T>() 安全 JSON 解析
+│   │   └── logging.ts          # 生产安全日志（UUID 截断、分值隐藏）
 │   └── types/             # 类型定义
 │       ├── auth.ts        # RegisterInput, LoginInput, UserResponse
 │       └── problems.ts    # DIFFICULTIES, PROBLEM_TYPES, 校验函数
@@ -83,6 +89,14 @@ noj-core/
 | `DATABASE_IDLE_TIMEOUT`    | `300`                     | 空闲连接超时秒数                 |
 | `DATABASE_MAX_LIFETIME`    | `3600`                    | 连接最大生命周期秒数             |
 | `CORS_ALLOWED_ORIGINS`     | —                         | 生产环境 CORS 白名单（逗号分隔） |
+| `EMAIL_PROVIDER`          | `mock`                    | 邮件 Provider：`mock`/`aliyun`/`tencent` |
+| `ALIBABA_ACCESS_KEY_ID`   | —                         | 阿里云 DirectMail AccessKey（aliyun 时必填） |
+| `ALIBABA_ACCESS_KEY_SECRET` | —                       | 阿里云 DirectMail AccessKey Secret |
+| `ALIBABA_FROM_EMAIL`      | —                         | 阿里云发信地址（需控制台验证域名） |
+| `TENCENT_SECRET_ID`       | —                         | 腾讯云 SecretId（tencent 时必填） |
+| `TENCENT_SECRET_KEY`      | —                         | 腾讯云 SecretKey |
+| `TENCENT_FROM_EMAIL`      | —                         | 腾讯云发信地址（需控制台验证域名） |
+| `TENCENT_REGION`          | `ap-guangzhou`            | 腾讯云地域 |
 
 ## 开发命令
 
@@ -202,9 +216,10 @@ docker compose down     # 停止
 1. **JWT_SECRET 强度校验** — ≥32 字符，不足则拒绝启动
 2. **数据库迁移** — 失败为致命错误，终止启动
 3. **确保 root 系统用户** — UID=0，admin 角色，不可登录，不计入管理员统计
-4. **连接 Redis** — 失败则 degraded 模式（HTTP 仍启动，评测功能不可用）
-5. **启动评测结果消费者** — 后台自动重连（指数退避 1s→2s→4s→…→30s）
-6. **启动 HTTP 服务**
+4. **邮件 Provider 配置检查** — 非致命：配置缺失时降级到 mock 并 console.warn
+5. **连接 Redis** — 失败则 degraded 模式（HTTP 仍启动，评测功能不可用）
+6. **启动评测结果消费者** — 后台自动重连（指数退避 1s→2s→4s→…→30s）
+7. **启动 HTTP 服务**
 
 ## 数据库 Schema 设计
 
@@ -260,7 +275,7 @@ docker compose down     # 停止
 | 密码重置邮箱枚举防护 | `POST /forgot-password` 不管邮箱是否存在都返 200 + 同一消息（与登录失败防枚举共存）         |
 | 密码重置令牌         | DB 存 SHA-256 hex 哈希（**不存明文**），URL 传明文 base64url；32 字节随机数                 |
 | 密码重置 TTL         | 15 分钟（OWASP 2025+ 建议 ≤ 15 分钟），单 SQL 原子消耗防并发                                |
-| 密码重置邮件         | Phase 1 mock 模式：`sendPasswordResetEmail()` 仅 `console.log`；接 Resend/SMTP 时只改此文件 |
+| 密码重置邮件         | 策略模式：`EMAIL_PROVIDER` 选择 mock（默认）/ aliyun / tencent；mock 为控制台输出；真实 Provider 在发送前校验环境变量完整性 |
 
 ## 登录速率限制（issue #73）
 

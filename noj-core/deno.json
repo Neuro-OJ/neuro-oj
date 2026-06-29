@@ -23,7 +23,8 @@
     "bcryptjs": "npm:bcryptjs@^2.4.3",
     "jose": "npm:jose@^5",
     "drizzle-kit": "npm:drizzle-kit",
-    "@std/encoding": "jsr:@std/encoding@^1"
+    "@std/encoding": "jsr:@std/encoding@^1",
+    "@alicloud/dm": "npm:@alicloud/dm20151123@^1.10.2"
   },
   "nodeModulesDir": "auto",
   "fmt": {
@@ -47,5 +48,6 @@
       "node_modules",
       ".deno_cache"
     ]
-  }
+  },
+  "allowScripts": ["npm:@alicloud/openapi-core@1.0.7", "npm:esbuild@0.18.20", "npm:esbuild@0.25.12", "npm:esbuild@0.28.1"]
 }
