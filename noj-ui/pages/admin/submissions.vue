@@ -10,6 +10,8 @@ import {
   formatMemory,
   getLanguageLabel,
 } from "~/composables/use-submissions"
+import { useToast } from "~/composables/useToast"
+import { useDialog } from "~/composables/useDialog"
 
 definePageMeta({
   layout: "admin",
@@ -147,6 +149,30 @@ function clearFilters() {
 function rowSub(row: Record<string, unknown>): SubmissionListItem {
   return row as unknown as SubmissionListItem
 }
+
+const toast = useToast()
+const { dialog } = useDialog()
+
+async function rejudge(submissionId: string) {
+  const confirmed = await dialog.confirm(
+    "确定要重测该提交吗？将重新运行评测并覆盖现有结果。",
+    { title: "确认重测" },
+  )
+  if (!confirmed) return
+
+  try {
+    await $fetch(`/api/v1/admin/submissions/${submissionId}/rejudge`, {
+      method: "POST",
+    })
+    toast.showToast("success", "重测任务已提交")
+    loadSubmissions(currentPage.value)
+  } catch (err: unknown) {
+    toast.showToast(
+      "error",
+      err instanceof Error ? err.message : "重测失败",
+    )
+  }
+}
 </script>
 
 <template>
@@ -237,7 +263,10 @@ function rowSub(row: Record<string, unknown>): SubmissionListItem {
 
       <!-- 操作列 -->
       <template #actions="{ row }">
-        <NuxtLink :to="`/submissions/${rowSub(row).id}`" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-primary border-primary bg-transparent hover:bg-primary hover:text-white">查看</NuxtLink>
+        <div class="flex gap-1.5 justify-center">
+          <button class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white" @click="rejudge(rowSub(row).id)">重测</button>
+          <NuxtLink :to="`/submissions/${rowSub(row).id}`" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-primary border-primary bg-transparent hover:bg-primary hover:text-white">查看</NuxtLink>
+        </div>
       </template>
     </AdminTable>
 

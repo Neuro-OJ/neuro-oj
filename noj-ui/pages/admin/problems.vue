@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { Plus, Trash2, Pencil } from "@lucide/vue"
+import { Plus, Trash2, Pencil, RefreshCw } from "@lucide/vue"
 import type { Column } from "~/components/admin/AdminTable.vue"
+import { useToast } from "~/composables/useToast"
+import { useDialog } from "~/composables/useDialog"
 
 definePageMeta({
   layout: "admin",
@@ -115,6 +117,31 @@ async function handleDelete() {
     deleting.value = false
   }
 }
+
+const toast = useToast()
+const { dialog } = useDialog()
+
+async function batchRejudge(problemId: string) {
+  const confirmed = await dialog.confirm(
+    "确定要重测该题目的所有已完结提交吗？这将重新运行评测并覆盖现有结果。",
+    { title: "确认批量重测" },
+  )
+  if (!confirmed) return
+
+  try {
+    const res = await $fetch<{ message: string; total: number; queued: number }>(
+      `/api/v1/admin/problems/${problemId}/rejudge`,
+      { method: "POST" },
+    )
+    toast.showToast("success", `批量重测任务已提交，共 ${res.total} 条`)
+    loadProblems(currentPage.value)
+  } catch (err: unknown) {
+    toast.showToast(
+      "error",
+      err instanceof Error ? err.message : "批量重测失败",
+    )
+  }
+}
 </script>
 
 <template>
@@ -148,6 +175,9 @@ async function handleDelete() {
           <NuxtLink :to="`/admin/problem-edit/${row.id}`" class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer no-underline transition-all duration-150 hover:bg-[#f5f5f5] hover:text-text" title="编辑">
             <Pencil :size="15" />
           </NuxtLink>
+          <button class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-amber-50 hover:text-[#d97706] hover:border-amber-200" title="重测" @click="batchRejudge(row.id)">
+            <RefreshCw :size="15" />
+          </button>
           <button class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" title="删除" @click="confirmDelete(row)">
             <Trash2 :size="15" />
           </button>

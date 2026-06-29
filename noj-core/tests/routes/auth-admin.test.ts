@@ -653,3 +653,113 @@ Deno.test({
     assertEquals(res.status, 404);
   },
 });
+
+// ─── 重测 API ────────────────────────────────────────────
+
+Deno.test({
+  name: "admin route: POST /api/v1/admin/submissions/:id/rejudge 未登录返回 401",
+  ignore: !hasEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const res = await app.request(
+      "/api/v1/admin/submissions/some-id/rejudge",
+      { method: "POST" },
+    );
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name: "admin route: POST /api/v1/admin/submissions/:id/rejudge 非管理员返回 403",
+  ignore: !hasEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await signToken({ sub: "regular-user", role: "user" });
+    const res = await app.request(
+      "/api/v1/admin/submissions/some-id/rejudge",
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name: "admin route: POST /api/v1/admin/submissions/:id/rejudge 不存在的提交返回 404",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const res = await app.request(
+      "/api/v1/admin/submissions/00000000-0000-0000-0000-000000000000/rejudge",
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    assertEquals(res.status, 404);
+  },
+});
+
+Deno.test({
+  name: "admin route: POST /api/v1/admin/problems/:id/rejudge 未登录返回 401",
+  ignore: !hasEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const res = await app.request(
+      "/api/v1/admin/problems/some-id/rejudge",
+      { method: "POST" },
+    );
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name: "admin route: POST /api/v1/admin/problems/:id/rejudge 非管理员返回 403",
+  ignore: !hasEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await signToken({ sub: "regular-user", role: "user" });
+    const res = await app.request(
+      "/api/v1/admin/problems/some-id/rejudge",
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name: "admin route: POST /api/v1/admin/problems/:id/rejudge 不存在的题目返回 404",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const res = await app.request(
+      "/api/v1/admin/problems/00000000-0000-0000-0000-000000000000/rejudge",
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    assertEquals(res.status, 404);
+  },
+});

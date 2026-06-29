@@ -1,5 +1,5 @@
 import { encodeBase64 } from "@std/encoding/base64";
-import { and, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
+import { and, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import {
   evaluationResults,
@@ -591,6 +591,206 @@ export async function updateSubmissionStatus(
     .update(submissions)
     .set(updates)
     .where(eq(submissions.id, id));
+}
+
+/**
+ * 管理员重测提交。
+ *
+ * 管理专用：重置提交状态为 pending，清除旧评测结果，重新推送评测任务。
+ * 跳过状态机校验直接重置，适用于任何状态的提交。
+ *
+ * @throws {NotFoundError} 提交不存在
+ * @throws {NotFoundError} 题目不存在（已被删除）
+ */
+export async function rejudgeSubmission(id: string): Promise<void> {
+  const db = getDb();
+
+  // 获取提交记录
+  const [submission] = await db
+    .select()
+    .from(submissions)
+    .where(eq(submissions.id, id))
+    .limit(1);
+
+  if (!submission) {
+    throw new NotFoundError("提交不存在");
+  }
+
+  // 获取题目最新配置
+  const problem = await getProblem(submission.problem_id);
+
+  // 读取支持包
+  let support_package_base64: string | undefined;
+  if (problem.support_package_path) {
+    try {
+      const zipBytes = await Deno.readFile(problem.support_package_path);
+      support_package_base64 = encodeBase64(zipBytes);
+    } catch (err) {
+      console.error(
+        `重测读取支持包失败 (${problem.support_package_path}):`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  // 事务：清除旧结果 + 重置状态
+  await db.transaction(async (tx) => {
+    await tx.delete(evaluationResults)
+      .where(eq(evaluationResults.submission_id, id));
+
+    await tx.update(submissions)
+      .set({
+        status: "pending",
+        judge_started_at: null,
+        judge_finished_at: null,
+      })
+      .where(eq(submissions.id, id));
+  });
+
+  // 推进状态：pending → judging
+  await updateSubmissionStatus(id, "judging");
+
+  // 推送评测任务
+  const task: JudgeTask = {
+    submission_id: id,
+    problem_id: submission.problem_id,
+    judge_image: problem.judge_image,
+    judge_command: problem.judge_command,
+    support_package_base64,
+    language: submission.language,
+    code: submission.code,
+    file_name: submission.file_name ?? undefined,
+    time_limit_ms: problem.time_limit_ms,
+    memory_limit_mb: problem.memory_limit_mb,
+  };
+
+  await pushJudgeTask(task);
+
+  // 发布队列变更事件
+  publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
+}
+
+/**
+ * 管理员批量重测指定题目的所有已完结提交。
+ *
+ * 默认只重测状态为 finished 和 error 的提交。
+ * 若该题下存在 pending 或 judging 的活跃提交，则拒绝操作并返回错误。
+ *
+ * @throws {NotFoundError} 题目不存在
+ * @throws {BadRequestError} 存在活跃提交时拒绝
+ */
+export async function rejudgeProblemSubmissions(
+  problemId: string,
+): Promise<{ total: number; queued: number; skipped: number }> {
+  const db = getDb();
+
+  // 获取题目最新配置
+  const problem = await getProblem(problemId);
+
+  // 检查是否存在 pending / judging 的活跃提交
+  const activeCounts = await db
+    .select({ status: submissions.status, count: sql<number>`count(*)` })
+    .from(submissions)
+    .where(
+      and(
+        eq(submissions.problem_id, problemId),
+        inArray(submissions.status, ["pending", "judging"]),
+      ),
+    )
+    .groupBy(submissions.status);
+
+  if (activeCounts.length > 0) {
+    const details = activeCounts
+      .map((r) => `${r.status}: ${r.count}条`)
+      .join("、");
+    throw new BadRequestError(
+      `该题目尚有活跃评测中的提交（${details}），无法批量重测，请等待完成后再试`,
+    );
+  }
+
+  // 读取支持包（该题所有提交共享同一份）
+  let support_package_base64: string | undefined;
+  if (problem.support_package_path) {
+    try {
+      const zipBytes = await Deno.readFile(problem.support_package_path);
+      support_package_base64 = encodeBase64(zipBytes);
+    } catch (err) {
+      console.error(
+        `批量重测读取支持包失败 (${problem.support_package_path}):`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  // 获取所有待重测提交
+  const submissionsToRejudge = await db
+    .select()
+    .from(submissions)
+    .where(
+      and(
+        eq(submissions.problem_id, problemId),
+        inArray(submissions.status, ["finished", "error"]),
+      ),
+    );
+
+  if (submissionsToRejudge.length === 0) {
+    return { total: 0, queued: 0, skipped: 0 };
+  }
+
+  const ids = submissionsToRejudge.map((s) => s.id);
+
+  // 事务：原子清除全部旧结果 + 重置状态
+  await db.transaction(async (tx) => {
+    await tx.delete(evaluationResults)
+      .where(inArray(evaluationResults.submission_id, ids));
+
+    for (const sid of ids) {
+      await tx.update(submissions)
+        .set({
+          status: "pending",
+          judge_started_at: null,
+          judge_finished_at: null,
+        })
+        .where(eq(submissions.id, sid));
+    }
+  });
+
+  // 逐条入队（每条代码内容不同，无法合并）
+  let queued = 0;
+  for (const sub of submissionsToRejudge) {
+    try {
+      const task: JudgeTask = {
+        submission_id: sub.id,
+        problem_id: problemId,
+        judge_image: problem.judge_image,
+        judge_command: problem.judge_command,
+        support_package_base64,
+        language: sub.language,
+        code: sub.code,
+        file_name: sub.file_name ?? undefined,
+        time_limit_ms: problem.time_limit_ms,
+        memory_limit_mb: problem.memory_limit_mb,
+      };
+
+      await pushJudgeTask(task);
+      await updateSubmissionStatus(sub.id, "judging");
+      queued++;
+    } catch (err) {
+      console.error(
+        `批量重测入队失败 (submission=${sub.id}):`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  // 发布队列变更事件
+  publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
+
+  return {
+    total: submissionsToRejudge.length,
+    queued,
+    skipped: submissionsToRejudge.length - queued,
+  };
 }
 
 /**
