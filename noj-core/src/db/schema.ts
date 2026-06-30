@@ -77,6 +77,31 @@ export const problems = pgTable(
 );
 
 /**
+ * 评测镜像白名单表。
+ * 管理员通过此表配置允许使用的 Docker 评测镜像。
+ * mode='exact' 时仅精确匹配指定镜像名；
+ * mode='all_versions' 时匹配该镜像名（不含标签部分）的所有版本。
+ */
+export const judgeImages = pgTable(
+  "judge_images",
+  {
+    id: text("id").primaryKey(),
+    image: text("image").notNull(),
+    mode: text("mode").notNull().default("exact"),
+    /** 管理员配置的介绍，在题目编辑器下拉中展示 */
+    description: text("description").notNull().default(""),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    modeCheck: check(
+      "judge_images_mode_check",
+      sql`${table.mode} IN ('exact', 'all_versions')`,
+    ),
+  }),
+);
+
+/**
  * 分类表。
  * 树形结构，通过 parent_id 自引用实现多级分类。
  * level 字段缓存层级深度（顶级为 0），避免递归计算。

@@ -29,6 +29,7 @@ import {
   type ProblemResponseWithCategories,
   type UpdateProblemInput,
 } from "../types/problems.ts";
+import { validateJudgeImage } from "./judge-images.ts";
 
 export interface ProblemResponse {
   id: string;
@@ -441,6 +442,11 @@ export async function createProblem(
     );
   }
 
+  // 校验评测镜像白名单
+  if (input.judge_image) {
+    await validateJudgeImage(input.judge_image);
+  }
+
   // 题目主键统一由服务端生成 UUID，避免客户端注入字符串 id
   // 影响 display_id 双索引路由解析
   const id = crypto.randomUUID();
@@ -571,6 +577,11 @@ export async function updateProblem(
     throw new BadRequestError(
       `非法难度值：${input.difficulty}，仅允许 ${DIFFICULTIES.join("/")}`,
     );
+  }
+
+  // 校验评测镜像白名单
+  if (input.judge_image !== undefined) {
+    await validateJudgeImage(input.judge_image);
   }
 
   // 防御性忽略 type 和 number（spec 承诺这两个字段不可变更）

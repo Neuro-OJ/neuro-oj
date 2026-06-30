@@ -104,3 +104,54 @@ export interface ProblemResponseWithCategories {
   /** 展示标识，格式：{type}{number}（如 P1001、U42） */
   display_id: string;
 }
+
+/**
+ * 创建评测镜像白名单条目请求体。
+ */
+export interface CreateJudgeImageInput {
+  image: string;
+  mode: "exact" | "all_versions";
+  description?: string;
+}
+
+/**
+ * 更新评测镜像白名单条目请求体。
+ */
+export interface UpdateJudgeImageInput {
+  image?: string;
+  mode?: "exact" | "all_versions";
+  description?: string;
+}
+
+/**
+ * 评测镜像白名单条目响应。
+ */
+export interface JudgeImageResponse {
+  id: string;
+  image: string;
+  mode: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * 校验 judge_image 是否与白名单匹配。
+ * exact 模式：完全相等；all_versions 模式：镜像名去掉标签后匹配。
+ */
+export function isImageInWhitelist(
+  image: string,
+  whitelist: { image: string; mode: string }[],
+): boolean {
+  for (const entry of whitelist) {
+    if (entry.mode === "exact") {
+      if (image === entry.image) return true;
+    } else if (entry.mode === "all_versions") {
+      // 去掉标签部分（: 之后的内容），只比较镜像名前缀
+      const imageWithoutTag = image.split(":")[0];
+      const entryWithoutTag = entry.image.split(":")[0];
+      if (imageWithoutTag === entryWithoutTag) return true;
+    }
+  }
+  return false;
+}
