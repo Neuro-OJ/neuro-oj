@@ -783,6 +783,11 @@ Deno.test({
     const ts = Date.now();
 
     const problemId = `rej-test-problem-${ts}`;
+    const testUserId = await insertTestUser(
+      `rej-user-${ts}`,
+      `rej-${ts}@test.noj`,
+    );
+
     await db.insert(problems).values({
       id: problemId,
       title: `重测测试 ${ts}`,
@@ -802,7 +807,7 @@ Deno.test({
     const judgingSubId = `rej-sub-judging-${ts}`;
     await db.insert(submissions).values({
       id: judgingSubId,
-      user_id: "test-user",
+      user_id: testUserId,
       problem_id: problemId,
       language: "python3",
       code: "print(1)",
