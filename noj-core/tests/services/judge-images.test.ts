@@ -225,6 +225,24 @@ Deno.test({
       await db.delete(judgeImages).where(
         eq(judgeImages.image, `delete-test-${ts}`),
       );
+
+      // 确保默认评测镜像种子数据存在（"空白名单"测试可能已清除）
+      const existing = await db
+        .select()
+        .from(judgeImages)
+        .where(eq(judgeImages.image, "noj-judge-python"))
+        .limit(1);
+      if (existing.length === 0) {
+        const now = new Date().toISOString();
+        await db.insert(judgeImages).values({
+          id: "e0000000-0000-0000-0000-000000000001",
+          image: "noj-judge-python",
+          mode: "all_versions",
+          description: "Python 3.12 评测环境",
+          created_at: now,
+          updated_at: now,
+        });
+      }
     } catch {
       // ignore
     }

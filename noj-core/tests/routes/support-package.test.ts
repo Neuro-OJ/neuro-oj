@@ -7,8 +7,8 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { problems } from "../../src/db/schema.ts";
-import { eq } from "drizzle-orm";
+import { problems, users } from "../../src/db/schema.ts";
+import { eq, sql } from "drizzle-orm";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 const hasEnv = !!Deno.env.get("JWT_SECRET");
@@ -16,22 +16,57 @@ const skipDb = !hasDb;
 const skipEnv = !hasEnv;
 
 const ts = Date.now();
-const TEST_PROBLEM_ID = `route-sp-problem-${ts}`;
 const SOLUTION_ID = crypto.randomUUID();
 const OWNER_ID = `route-sp-owner-${ts}`;
+const TEST_NUMBER = 60000 + (ts & 0x7fff);
 
 /**
- * 创建测试题目（直接 DB 插入）。
+ * 每个测试独立的问题 ID 和引用变量。
+ * problemIdRef[0] 始终指向当前测试创建的问题 ID，供 HTTP 请求使用。
  */
-async function createTestProblem(
-  id: string = TEST_PROBLEM_ID,
-  ownerId: string = OWNER_ID,
-  type: string = "U",
-): Promise<void> {
+let problemSeq = 0;
+const problemIdRef: string[] = [];
+
+/**
+ * 创建测试用户（确保 FK 约束满足）。
+ */
+async function createTestUser(id: string): Promise<void> {
   const db = getDb();
   const now = new Date().toISOString();
-  await db.insert(problems).values({
+  await db.insert(users).values({
     id,
+    username: `rtuser-${id}`,
+    email: `rtuser-${id}@test.com`,
+    password_hash: "not-used",
+    role: "user",
+    created_at: now,
+    updated_at: now,
+  });
+}
+
+/**
+ * 创建测试题目（直接 DB 插入）。每次调用使用独立 ID 避免 PK 冲突，
+ * 并将 ID 存入 problemIdRef 供当前测试的 HTTP 请求使用。
+ */
+async function createTestProblem(
+  ownerId: string = OWNER_ID,
+  type: string = "U",
+): Promise<string> {
+  const db = getDb();
+  const pid = `route-sp-problem-${ts}-${++problemSeq}`;
+  problemIdRef[0] = pid;
+  // 确保 owner 用户存在（FK 约束）
+  if (ownerId !== "0") { // "0" 是 root 用户，无需创建
+    const existingOwner = await db.select().from(users).where(
+      eq(users.id, ownerId),
+    ).limit(1);
+    if (existingOwner.length === 0) {
+      await createTestUser(ownerId);
+    }
+  }
+  const now = new Date().toISOString();
+  await db.insert(problems).values({
+    id: pid,
     title: `支持包路由测试 ${ts}`,
     description: "测试描述",
     difficulty: "easy",
@@ -39,12 +74,13 @@ async function createTestProblem(
     judge_command: "python3 /tmp/evaluate.py",
     time_limit_ms: 5000,
     memory_limit_mb: 512,
-    number: 9996,
+    number: TEST_NUMBER + problemSeq, // +problemSeq 确保同文件内每个测试独立 number
     owner_id: ownerId,
     type,
     created_at: now,
     updated_at: now,
   });
+  return pid;
 }
 
 Deno.test({
@@ -89,7 +125,7 @@ Deno.test({
     formData.append("file", blob, "test.zip");
 
     const res = await app.request(
-      `/api/v1/problems/${TEST_PROBLEM_ID}/support-package`,
+      `/api/v1/problems/${problemIdRef[0]}/support-package`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -110,16 +146,40 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem(TEST_PROBLEM_ID);
+    await createTestProblem();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
 
-    const blob = new Blob([new Uint8Array(10)], { type: "application/zip" });
+    const zipContent = new Uint8Array([
+      0x50,
+      0x4b,
+      0x05,
+      0x06,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ]);
+    const blob = new Blob([zipContent], { type: "application/zip" });
     const formData = new FormData();
     formData.append("file", blob, "admin.zip");
 
     const res = await app.request(
-      `/api/v1/problems/${TEST_PROBLEM_ID}/support-package`,
+      `/api/v1/problems/${problemIdRef[0]}/support-package`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -137,16 +197,40 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem(TEST_PROBLEM_ID);
+    await createTestProblem();
     const app = createApp();
     const token = await signToken({ sub: "other-user", role: "user" });
 
-    const blob = new Blob([new Uint8Array(10)], { type: "application/zip" });
+    const zipContent = new Uint8Array([
+      0x50,
+      0x4b,
+      0x05,
+      0x06,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ]);
+    const blob = new Blob([zipContent], { type: "application/zip" });
     const formData = new FormData();
     formData.append("file", blob, "test.zip");
 
     const res = await app.request(
-      `/api/v1/problems/${TEST_PROBLEM_ID}/support-package`,
+      `/api/v1/problems/${problemIdRef[0]}/support-package`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -164,7 +248,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem(TEST_PROBLEM_ID);
+    await createTestProblem();
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
@@ -173,7 +257,7 @@ Deno.test({
     formData.append("file", blob, "test.txt");
 
     const res = await app.request(
-      `/api/v1/problems/${TEST_PROBLEM_ID}/support-package`,
+      `/api/v1/problems/${problemIdRef[0]}/support-package`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -194,7 +278,31 @@ Deno.test({
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
-    const blob = new Blob([new Uint8Array(10)], { type: "application/zip" });
+    const zipContent = new Uint8Array([
+      0x50,
+      0x4b,
+      0x05,
+      0x06,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ]);
+    const blob = new Blob([zipContent], { type: "application/zip" });
     const formData = new FormData();
     formData.append("file", blob, "test.zip");
 
@@ -217,16 +325,40 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem(TEST_PROBLEM_ID);
+    await createTestProblem();
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
     // 先上传
-    const blob = new Blob([new Uint8Array(10)], { type: "application/zip" });
+    const zipContent = new Uint8Array([
+      0x50,
+      0x4b,
+      0x05,
+      0x06,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ]);
+    const blob = new Blob([zipContent], { type: "application/zip" });
     const formData = new FormData();
     formData.append("file", blob, "test.zip");
     await app.request(
-      `/api/v1/problems/${TEST_PROBLEM_ID}/support-package`,
+      `/api/v1/problems/${problemIdRef[0]}/support-package`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -236,7 +368,7 @@ Deno.test({
 
     // 再删除
     const res = await app.request(
-      `/api/v1/problems/${TEST_PROBLEM_ID}/support-package`,
+      `/api/v1/problems/${problemIdRef[0]}/support-package`,
       {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -255,12 +387,12 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem(TEST_PROBLEM_ID);
+    await createTestProblem();
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
     const res = await app.request(
-      `/api/v1/problems/${TEST_PROBLEM_ID}/support-package`,
+      `/api/v1/problems/${problemIdRef[0]}/support-package`,
       {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -277,12 +409,12 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem(TEST_PROBLEM_ID);
+    await createTestProblem();
     const app = createApp();
     const token = await signToken({ sub: "other-user", role: "user" });
 
     const res = await app.request(
-      `/api/v1/problems/${TEST_PROBLEM_ID}/support-package`,
+      `/api/v1/problems/${problemIdRef[0]}/support-package`,
       {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -299,11 +431,11 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem(TEST_PROBLEM_ID);
+    await createTestProblem();
     const app = createApp();
 
     const res = await app.request(
-      `/api/v1/problems/${TEST_PROBLEM_ID}/support-package`,
+      `/api/v1/problems/${problemIdRef[0]}/support-package`,
       { method: "POST" },
     );
     assertEquals(res.status, 401);
@@ -319,7 +451,11 @@ Deno.test({
   fn: async () => {
     try {
       const db = getDb();
-      await db.delete(problems).where(eq(problems.id, TEST_PROBLEM_ID));
+      // 清理本文件所有测试创建的问题（前缀匹配）
+      await db.delete(problems).where(
+        sql`${problems.id} LIKE 'route-sp-problem-%'`,
+      );
+      await db.delete(users).where(eq(users.id, OWNER_ID));
     } catch {
       // ignore
     }
@@ -329,14 +465,6 @@ Deno.test({
     } catch {
       // ignore
     }
-    // 清理文件
-    try {
-      const { getPackagePath } = await import(
-        "../../src/services/support-package.ts"
-      );
-      await Deno.remove(getPackagePath(TEST_PROBLEM_ID));
-    } catch {
-      // ignore
-    }
+    // 文件由问题删除时的级联清理处理，无需手动清理
   },
 });

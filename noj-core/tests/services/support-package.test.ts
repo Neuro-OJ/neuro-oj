@@ -6,7 +6,7 @@
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { problems } from "../../src/db/schema.ts";
+import { problems, users } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 import {
   deleteSupportPackage,
@@ -23,23 +23,50 @@ const hasDb = !!Deno.env.get("DATABASE_URL");
 const skip = !hasDb;
 
 const ts = Date.now();
-const TEST_PROBLEM_ID = `test-sp-problem-${ts}`;
-const TEST_PROBLEM_UUID = crypto.randomUUID();
 const OWNER_ID = `test-owner-${ts}`;
 const ADMIN_ID = "0";
+const TEST_NUMBER = 40000 + (ts & 0x7fff);
+
+/** 每个测试独立的问题 ID 计数器，避免同文件内 PK 冲突 */
+let problemSeq = 0;
+let currentProblemId = "";
 
 /**
- * 创建测试题目（直接 DB 插入，绕过 whitelist 校验）。
+ * 创建测试用户（确保 FK 约束满足）。
  */
-async function createTestProblem(
-  id: string,
-  ownerId: string = OWNER_ID,
-  type: string = "U",
-): Promise<void> {
+async function createTestUser(id: string): Promise<void> {
   const db = getDb();
   const now = new Date().toISOString();
-  await db.insert(problems).values({
+  await db.insert(users).values({
     id,
+    username: `tuser-${id}`,
+    email: `tuser-${id}@test.com`,
+    password_hash: "not-used",
+    role: "user",
+    created_at: now,
+    updated_at: now,
+  });
+}
+
+/**
+ * 创建测试题目（直接 DB 插入，绕过 whitelist 校验）。自动使用独立 ID 避免 PK 冲突。
+ */
+async function createTestProblem(
+  ownerId: string = OWNER_ID,
+  type: string = "U",
+): Promise<string> {
+  const db = getDb();
+  currentProblemId = `test-sp-problem-${ts}-${++problemSeq}`;
+  // 确保 owner 用户存在（FK 约束）
+  const existingOwner = await db.select().from(users).where(
+    eq(users.id, ownerId),
+  ).limit(1);
+  if (existingOwner.length === 0) {
+    await createTestUser(ownerId);
+  }
+  const now = new Date().toISOString();
+  await db.insert(problems).values({
+    id: currentProblemId,
     title: `支持包测试题目 ${ts}`,
     description: "测试描述",
     difficulty: "easy",
@@ -47,12 +74,13 @@ async function createTestProblem(
     judge_command: "python3 /tmp/evaluate.py",
     time_limit_ms: 5000,
     memory_limit_mb: 512,
-    number: 9997,
+    number: TEST_NUMBER + problemSeq, // +problemSeq 确保同文件内每个测试独立 number
     owner_id: ownerId,
     type,
     created_at: now,
     updated_at: now,
   });
+  return currentProblemId;
 }
 
 Deno.test({
@@ -62,7 +90,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem(TEST_PROBLEM_ID);
+    await createTestProblem();
 
     const zipData = new Uint8Array([
       0x50,
@@ -89,15 +117,15 @@ Deno.test({
       0,
     ]);
     const result = await saveSupportPackage(
-      TEST_PROBLEM_ID,
+      currentProblemId,
       { name: "test.zip", data: zipData },
       OWNER_ID,
       "user",
     );
-    assertEquals(result, getPackagePath(TEST_PROBLEM_ID));
+    assertEquals(result, getPackagePath(currentProblemId));
 
     // 验证文件已写入
-    const fileInfo = await Deno.stat(getPackagePath(TEST_PROBLEM_ID));
+    const fileInfo = await Deno.stat(getPackagePath(currentProblemId));
     assertEquals(fileInfo.isFile, true);
 
     // 验证 DB 已更新
@@ -105,9 +133,9 @@ Deno.test({
     const [row] = await db
       .select({ path: problems.support_package_path })
       .from(problems)
-      .where(eq(problems.id, TEST_PROBLEM_ID))
+      .where(eq(problems.id, currentProblemId))
       .limit(1);
-    assertEquals(row?.path, getPackagePath(TEST_PROBLEM_ID));
+    assertEquals(row?.path, getPackagePath(currentProblemId));
   },
 });
 
@@ -118,12 +146,12 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem(TEST_PROBLEM_ID);
+    await createTestProblem();
 
     await assertRejects(
       () =>
         saveSupportPackage(
-          TEST_PROBLEM_ID,
+          currentProblemId,
           { name: "test.exe", data: new Uint8Array(10) },
           OWNER_ID,
           "user",
@@ -141,12 +169,12 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem(TEST_PROBLEM_ID);
+    await createTestProblem();
 
     await assertRejects(
       () =>
         saveSupportPackage(
-          TEST_PROBLEM_ID,
+          currentProblemId,
           { name: "test.zip", data: new Uint8Array(10) },
           "other-user",
           "user",
@@ -163,16 +191,16 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem(TEST_PROBLEM_ID, "other-owner");
+    await createTestProblem("other-owner");
 
     const zipData = new Uint8Array(10);
     const result = await saveSupportPackage(
-      TEST_PROBLEM_ID,
+      currentProblemId,
       { name: "admin-test.zip", data: zipData },
       ADMIN_ID,
       "admin",
     );
-    assertEquals(result, getPackagePath(TEST_PROBLEM_ID));
+    assertEquals(result, getPackagePath(currentProblemId));
   },
 });
 
@@ -183,12 +211,12 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem(TEST_PROBLEM_ID, OWNER_ID, "P");
+    await createTestProblem(OWNER_ID, "P");
 
     await assertRejects(
       () =>
         saveSupportPackage(
-          TEST_PROBLEM_ID,
+          currentProblemId,
           { name: "test.zip", data: new Uint8Array(10) },
           OWNER_ID,
           "user",
@@ -226,22 +254,22 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem(TEST_PROBLEM_ID);
+    await createTestProblem();
 
     // 先上传
     await saveSupportPackage(
-      TEST_PROBLEM_ID,
+      currentProblemId,
       { name: "test.zip", data: new Uint8Array(10) },
       OWNER_ID,
       "user",
     );
 
     // 再删除
-    await deleteSupportPackage(TEST_PROBLEM_ID, OWNER_ID, "user");
+    await deleteSupportPackage(currentProblemId, OWNER_ID, "user");
 
     // 验证文件已删除
     await assertRejects(
-      () => Deno.stat(getPackagePath(TEST_PROBLEM_ID)),
+      () => Deno.stat(getPackagePath(currentProblemId)),
       Deno.errors.NotFound,
     );
 
@@ -250,7 +278,7 @@ Deno.test({
     const [row] = await db
       .select({ path: problems.support_package_path })
       .from(problems)
-      .where(eq(problems.id, TEST_PROBLEM_ID))
+      .where(eq(problems.id, currentProblemId))
       .limit(1);
     assertEquals(row?.path, null);
   },
@@ -263,12 +291,12 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem(TEST_PROBLEM_ID);
+    await createTestProblem();
 
     // 删除不存在的支持包应幂等
-    await deleteSupportPackage(TEST_PROBLEM_ID, OWNER_ID, "user");
+    await deleteSupportPackage(currentProblemId, OWNER_ID, "user");
     // 再次删除仍应成功
-    await deleteSupportPackage(TEST_PROBLEM_ID, OWNER_ID, "user");
+    await deleteSupportPackage(currentProblemId, OWNER_ID, "user");
   },
 });
 
@@ -279,10 +307,10 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await createTestProblem(TEST_PROBLEM_ID);
+    await createTestProblem();
 
     await assertRejects(
-      () => deleteSupportPackage(TEST_PROBLEM_ID, "other-user", "user"),
+      () => deleteSupportPackage(currentProblemId, "other-user", "user"),
       ForbiddenError,
     );
   },
@@ -311,14 +339,16 @@ Deno.test({
   fn: async () => {
     try {
       const db = getDb();
-      await db.delete(problems).where(eq(problems.id, TEST_PROBLEM_ID));
-      await db.delete(problems).where(eq(problems.id, TEST_PROBLEM_UUID));
+      await db.delete(problems).where(eq(problems.id, currentProblemId));
+      // 所有测试问题已通过 currentProblemId 机制自动获取独立 ID，
+      // 不需要额外的 UUID 变量
+      await db.delete(users).where(eq(users.id, OWNER_ID));
     } catch {
       // ignore
     }
     // 清理文件
     try {
-      await Deno.remove(getPackagePath(TEST_PROBLEM_ID));
+      await Deno.remove(getPackagePath(currentProblemId));
     } catch {
       // ignore
     }

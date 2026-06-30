@@ -13,6 +13,7 @@ const skipEnv = !hasEnv;
 // 创建测试题目供 PUT/DELETE 等需要已存在题目的测试使用
 const ts = Date.now();
 const TEST_PROBLEM_ID = `route-test-1001-${ts}`;
+const TEST_NUMBER = 20000 + (ts & 0x7fff);
 
 Deno.test({
   name: "problems route: 初始化测试题目",
@@ -32,7 +33,7 @@ Deno.test({
       judge_command: "python3 /tmp/evaluate.py",
       time_limit_ms: 5000,
       memory_limit_mb: 512,
-      number: 9998,
+      number: TEST_NUMBER,
       owner_id: "0",
       type: "U",
       created_at: now,
