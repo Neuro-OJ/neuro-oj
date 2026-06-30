@@ -43,19 +43,19 @@
 
 系统 SHALL 提供 `GET /api/v1/queue/events` 端点，通过 SSE 流式推送队列变更通知。
 
-- 端点 SHALL 仅限管理员访问（非管理员返回 403）
+- 端点 SHALL 受 JWT 认证保护（复用 authMiddleware），登录用户可访问
 - 当 `noj:events:queue` 频道有事件时 SHALL 以 `queue:changed` 事件名推送
 - 推送的 data SHALL 为 JSON 格式的 `{ type: "queue:changed" }`
 
-#### Scenario: 管理员订阅队列变更
+#### Scenario: 已登录用户订阅队列变更
 
-- **WHEN** 管理员 GET `/api/v1/queue/events` 且 SSE 连接建立
+- **WHEN** 已登录用户 GET `/api/v1/queue/events` 且 SSE 连接建立
 - **THEN** 系统返回 `text/event-stream` 响应，队列变更时推送 `event: queue:changed`
 
-#### Scenario: 非管理员访问被拒绝
+#### Scenario: 未登录用户被拒绝
 
-- **WHEN** 非管理员用户 GET `/api/v1/queue/events`
-- **THEN** 系统返回 403 且 `code: "FORBIDDEN"`
+- **WHEN** 未登录用户 GET `/api/v1/queue/events`
+- **THEN** 系统返回 401 UNAUTHORIZED
 
 #### Scenario: 连接建立时推送当前状态
 

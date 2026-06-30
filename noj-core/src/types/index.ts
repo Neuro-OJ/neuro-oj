@@ -22,6 +22,8 @@ export interface JudgeTask {
   time_limit_ms: number;
   /** 内存限制（MB） */
   memory_limit_mb: number;
+  /** 重测序列号（重测时递增）。首次提交不传，默认 0。 */
+  rejudge_seq?: number;
 }
 
 /**
@@ -42,6 +44,8 @@ export interface JudgeResult {
   time_ms?: number;
   /** 峰值内存（KB） */
   memory_kb?: number;
+  /** 重测序列号，由 noj-judge 透传。用于 saveEvaluationResult 校验。 */
+  rejudge_seq?: number;
 }
 
 /**

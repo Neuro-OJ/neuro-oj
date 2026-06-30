@@ -57,6 +57,13 @@
       "when": 1751400003,
       "tag": "0006_must_change_password",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1751800000,
+      "tag": "0007_submissions_rejudge_seq",
+      "breakpoints": true
     }
   ]
 }

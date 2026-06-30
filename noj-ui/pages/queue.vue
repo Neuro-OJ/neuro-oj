@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { getLanguageLabel, formatScore } from "~/composables/use-submissions"
 import { useEventSource } from "~/composables/useEventSource"
-import { Clock, CheckCircle, XCircle, Loader2 } from "@lucide/vue"
+import { Clock, CheckCircle, XCircle, Loader2, Play } from "@lucide/vue"
 
 interface QueueItem {
   id: string
@@ -100,11 +100,11 @@ useEventSource({
       <!-- 统计条 -->
       <div class="flex gap-3 mb-6 flex-wrap" v-if="data">
         <div class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#f0f0f0] text-text-secondary">
-          <Loader2 :size="14" class="animate-spin" />
+          <Clock :size="14" />
           排队中 {{ data.stats.pending_count }}
         </div>
         <div class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#e8f0fe] text-[#1967d2]">
-          <Loader2 :size="14" class="animate-spin" />
+          <Play :size="14" />
           正在评测 {{ data.stats.judging_count }}
         </div>
         <div class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#e6f4ea] text-[var(--c-success-text)]">
@@ -114,7 +114,7 @@ useEventSource({
       </div>
 
       <div v-if="!data" class="flex items-center justify-center gap-2 py-16 text-text-muted">
-        <Loader2 :size="24" class="animate-spin" />
+        <Loader2 :size="24" />
         <span>加载中...</span>
       </div>
 
@@ -122,7 +122,7 @@ useEventSource({
         <!-- 正在评测 -->
         <section class="bg-white border border-border rounded-[10px] mb-4 overflow-hidden">
           <h2 class="flex items-center gap-2 px-4 py-3 m-0 text-[15px] font-bold border-b border-border text-[#1967d2]">
-            <Loader2 :size="18" class="animate-spin" />
+            <Play :size="18" />
             正在评测（{{ data.judging.length }}）
           </h2>
           <div v-if="data.judging.length === 0" class="p-4 text-center text-[#aaa] text-[13px]">暂无</div>

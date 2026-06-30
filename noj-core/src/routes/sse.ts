@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { authMiddleware } from "../middleware/auth.ts";
-import { ForbiddenError } from "../lib/errors.ts";
 import { onEvent } from "../lib/event-bus.ts";
 import { getSubmission } from "../services/submissions.ts";
 import { getQueueOverview } from "../services/queue.ts";
@@ -103,7 +102,7 @@ sse.get("/submissions/:id/events", async (c) => {
 /**
  * 全局队列 SSE 端点。
  *
- * 仅管理员可订阅。收到 `queue:changed` 事件后，
+ * 登录用户可订阅。收到 `queue:changed` 事件后，
  * 前端应调用 GET /api/v1/queue 刷新全量队列数据。
  *
  * 事件格式：
@@ -111,11 +110,6 @@ sse.get("/submissions/:id/events", async (c) => {
  *   data: { type: "queue:changed" }
  */
 sse.get("/queue/events", (c) => {
-  // 仅管理员可订阅队列变更
-  if (c.get("userRole") !== "admin") {
-    throw new ForbiddenError("仅管理员可访问", "FORBIDDEN");
-  }
-
   return streamSSE(c, async (stream) => {
     let streamClosed = false;
     let resolveAbort: (() => void) | null = null;

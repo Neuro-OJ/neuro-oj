@@ -9,6 +9,8 @@ import {
   deleteSubmission,
   getSubmission,
   listSubmissions,
+  rejudgeProblemSubmissions,
+  rejudgeSubmission,
 } from "../services/submissions.ts";
 import { adminUpdateUserProfile } from "../services/users.ts";
 
@@ -178,6 +180,30 @@ router.delete("/submissions/:id", async (c) => {
   const id = c.req.param("id") as string;
   await deleteSubmission(id);
   return c.body(null, 204);
+});
+
+/**
+ * 管理员重测提交。
+ * POST /api/v1/admin/submissions/:id/rejudge
+ */
+router.post("/submissions/:id/rejudge", async (c) => {
+  const id = c.req.param("id") as string;
+  await rejudgeSubmission(id);
+  return c.json({ message: "重测任务已提交", submission_id: id });
+});
+
+/**
+ * 管理员批量重测题目的所有已完结提交。
+ * POST /api/v1/admin/problems/:id/rejudge
+ */
+router.post("/problems/:id/rejudge", async (c) => {
+  const id = c.req.param("id") as string;
+  const result = await rejudgeProblemSubmissions(id);
+  return c.json({
+    message: "批量重测任务已提交",
+    problem_id: id,
+    ...result,
+  });
 });
 
 // ─── 仪表盘 ─────────────────────────────────────────────────

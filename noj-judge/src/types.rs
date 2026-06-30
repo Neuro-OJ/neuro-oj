@@ -61,6 +61,9 @@ pub struct JudgeTask {
     pub time_limit_ms: u64,
     /// 内存限制（MB）
     pub memory_limit_mb: u64,
+    /// 重测序列号（透传回 JudgeResult）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rejudge_seq: Option<i64>,
 }
 
 /// 评测结果——从 noj-judge 返回到 noj-core 的消息。
@@ -84,6 +87,9 @@ pub struct JudgeResult {
     /// 峰值内存（KB）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_kb: Option<u64>,
+    /// 重测序列号（由 noj-core 设置，透传回 saveEvaluationResult 做竞态校验）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rejudge_seq: Option<i64>,
 }
 
 impl JudgeResult {
@@ -100,6 +106,7 @@ impl JudgeResult {
             details: Value::Null,
             time_ms: None,
             memory_kb: None,
+            rejudge_seq: None,
         }
     }
 
@@ -113,6 +120,7 @@ impl JudgeResult {
             details: Value::Null,
             time_ms: None,
             memory_kb: None,
+            rejudge_seq: None,
         }
     }
 
@@ -126,6 +134,7 @@ impl JudgeResult {
             details: Value::Null,
             time_ms: None,
             memory_kb: None,
+            rejudge_seq: None,
         }
     }
 
@@ -139,6 +148,7 @@ impl JudgeResult {
             details: Value::Null,
             time_ms: None,
             memory_kb: None,
+            rejudge_seq: None,
         }
     }
 
@@ -152,6 +162,7 @@ impl JudgeResult {
             details: Value::Null,
             time_ms: None,
             memory_kb: None,
+            rejudge_seq: None,
         }
     }
 }
@@ -282,6 +293,7 @@ mod tests {
             details: json!({"score_content": 8.0}),
             time_ms: Some(2340),
             memory_kb: Some(18432),
+            rejudge_seq: Some(1),
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["submission_id"], "sid-123");
@@ -290,6 +302,7 @@ mod tests {
         assert_eq!(json["time_ms"], 2340);
         assert_eq!(json["memory_kb"], 18432);
         assert_eq!(json["details"]["score_content"], 8.0);
+        assert_eq!(json["rejudge_seq"], 1);
     }
 
     #[test]
@@ -302,6 +315,7 @@ mod tests {
             details: Value::Null,
             time_ms: None,
             memory_kb: None,
+            rejudge_seq: None,
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["score"], 500);

@@ -134,6 +134,8 @@ export const submissions = pgTable(
     status: text("status").$type<SubmissionStatus>().notNull().default(
       "pending",
     ),
+    /** 重测序列号，递增。用于区分新旧评测结果，防止竞态覆盖。 */
+    rejudge_seq: integer("rejudge_seq").notNull().default(0),
     /** ISO 8601，开始评测时间。 */
     judge_started_at: text("judge_started_at"),
     /** ISO 8601，评测完成时间。 */

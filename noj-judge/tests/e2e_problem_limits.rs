@@ -41,6 +41,7 @@ async fn test_problem_time_limit_triggers_kill() {
         file_name: None,
         time_limit_ms: 1500,
         memory_limit_mb: 128,
+        rejudge_seq: None,
     };
 
     let work_dir =

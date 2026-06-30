@@ -66,11 +66,11 @@ Hono + jose + bcryptjs 实现，API 路径前缀为 `/api/v1/auth`。
 
 响应：
 
-- 成功：200，`{ "data": { "user": { ... }, "token": "<jwt>" } }`（从 noj-core 直接调用时）
+- 成功：200，`{ "data": { "user": { "id", "username", "email", "role", "must_change_password", ... }, "token": "<jwt>" } }`（从 noj-core 直接调用时）
 - 成功（通过 Nitro 代理）：200，`{ "data": { "user": { ... } } }`（token 字段被 Nitro 代理拦截并转为 Set-Cookie）
 - 失败：400（验证失败）或 401（凭证无效）
 
-JWT 负载 MUST 包含 `sub`（用户 ID）和 `role`（用户角色），过期时间默认 24 小时。
+JWT 负载 MUST 包含 `sub`（用户 ID）、`role`（用户角色）和 `must_change_password`（布尔），过期时间默认 24 小时。
 
 为提高安全性，登录失败 MUST 返回统一消息
 `"用户名或密码错误"`，不区分"用户不存在"和"密码错误"。
@@ -114,7 +114,7 @@ JWT 负载 MUST 包含 `sub`（用户 ID）和 `role`（用户角色），过期
 
 响应：
 
-- 成功：200，`{ "data": { "id", "username", "email", "role", "created_at", "updated_at" } }`
+- 成功：200，`{ "data": { "id", "username", "email", "role", "must_change_password", "created_at", "updated_at" } }`
 - 失败：401（未认证或令牌无效）
 
 #### Scenario: 获取当前用户信息
@@ -265,3 +265,65 @@ JWT 负载 MUST 包含 `sub`（用户 ID）和 `role`（用户角色），过期
 
 - **WHEN** 客户端 POST 不携带 token 或 new_password
 - **THEN** 系统返 400 和错误消息 `"缺少字段 token"` 或 `"缺少字段 new_password"`
+
+### Requirement: 修改密码端点
+
+系统 SHALL 提供 `POST /api/v1/auth/change-password`，要求登录态。
+
+请求体：
+
+- `old_password`（必填，string）：用户当前密码（root 系统用户 id='0' 不可登录，理论上不应调用此端点）
+- `new_password`（必填，string）：新密码，复用注册时强度规则（≥12 位、含大小写字母+数字、不能与 username/email 前缀相同）
+
+响应：
+
+- 成功：200，`{ "data": { ...user, "must_change_password": false } }`
+- 失败：400（缺少字段或新密码强度不足）或 401（原密码错误）
+
+成功后 MUST 更新 `password_hash` 并将 `must_change_password` 设为 `false`。
+
+此端点 MUST 受登录速率限制（IP 维度）保护。
+
+#### Scenario: 引导管理员首次改密成功
+
+- **WHEN** `must_change_password=true` 的用户 POST `/api/v1/auth/change-password` 携带正确 `old_password` 和符合强度规则的 `new_password`
+- **THEN** 系统更新密码哈希与 `must_change_password=false`，返回 200 与更新后的用户信息
+
+#### Scenario: 原密码错误
+
+- **WHEN** 用户 POST `/api/v1/auth/change-password` 携带错误的 `old_password`
+- **THEN** 系统返回 401，错误消息 `"原密码错误"`，不修改数据库
+
+#### Scenario: 新密码强度不足
+
+- **WHEN** 用户 POST `/api/v1/auth/change-password` 携带 `new_password="123"`
+- **THEN** 系统返回 400，错误消息指明密码不符合强度规则
+
+#### Scenario: 缺少原密码
+
+- **WHEN** 用户 POST `/api/v1/auth/change-password` 但请求体缺少 `old_password` 字段
+- **THEN** 系统返回 400，错误消息 `"缺少原密码"`
+
+#### Scenario: 速率限制保护
+
+- **WHEN** 同一 IP 在 rate-limit 窗口内高频调用 `/api/v1/auth/change-password`
+- **THEN** 系统返回 429
+
+### Requirement: JWT 负载扩展
+
+JWT 负载 MUST 包含 `must_change_password: boolean` claim，签发与验证时透传该字段。
+
+#### Scenario: 签发携带强制改密 claim
+
+- **WHEN** `loginUser()` 为 `must_change_password=true` 的用户签发 JWT
+- **THEN** JWT payload 包含 `"must_change_password": true`
+
+#### Scenario: 验证透传 claim
+
+- **WHEN** `verifyToken()` 解码 JWT
+- **THEN** 返回的 `TokenPayload` 包含 `must_change_password` 字段，值与签发时一致
+
+#### Scenario: 中间件读取 claim
+
+- **WHEN** `authMiddleware` 验证 JWT
+- **THEN** 中间件将 `payload.must_change_password` 写入 `c.set("mustChangePassword", ...)`，供下游使用

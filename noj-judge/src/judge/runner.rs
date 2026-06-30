@@ -182,6 +182,7 @@ pub fn process_output(task: &JudgeTask, output: &ContainerOutput) -> JudgeResult
                 details,
                 time_ms: None,
                 memory_kb: None,
+                rejudge_seq: task.rejudge_seq,
             }
         }
         Ok(None) => {
@@ -206,6 +207,7 @@ pub fn process_output(task: &JudgeTask, output: &ContainerOutput) -> JudgeResult
                 details: Value::Null,
                 time_ms: None,
                 memory_kb: None,
+                rejudge_seq: task.rejudge_seq,
             }
         }
     }
@@ -285,6 +287,7 @@ Some debug output
             file_name: Some("main.py".to_string()),
             time_limit_ms: 5000,
             memory_limit_mb: 512,
+            rejudge_seq: None,
         };
 
         let output = ContainerOutput {
@@ -312,6 +315,7 @@ Some debug output
             file_name: None,
             time_limit_ms: 5000,
             memory_limit_mb: 512,
+            rejudge_seq: None,
         };
 
         let output = ContainerOutput {
@@ -337,6 +341,7 @@ Some debug output
             file_name: None,
             time_limit_ms: 5000,
             memory_limit_mb: 512,
+            rejudge_seq: None,
         };
 
         let output = ContainerOutput {
@@ -362,6 +367,7 @@ Some debug output
             file_name: None,
             time_limit_ms: 5000,
             memory_limit_mb: 512,
+            rejudge_seq: None,
         };
 
         let output = ContainerOutput {
@@ -387,6 +393,7 @@ Some debug output
             file_name: None,
             time_limit_ms: 5000,
             memory_limit_mb: 512,
+            rejudge_seq: None,
         };
         let output = ContainerOutput {
             stdout: "\u{8bc4}\u{6d4b}\u{6b63}\u{5e38}\u{6267}\u{884c}\u{4f46}\u{672a}\u{8f93}\u{51fa}---RESULT---".to_string(),

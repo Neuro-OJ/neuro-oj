@@ -57,10 +57,10 @@
 }
 ```
 
-#### Scenario: 未认证用户获取队列概览
+#### Scenario: 未登录用户获取队列概览
 
 - **WHEN** 客户端（未提供 Authorization 头）GET `/api/v1/queue`
-- **THEN** 系统返回 200，包含 `pending`、`judging`、`recently_completed` 三个数组和 `stats` 对象
+- **THEN** 系统返回 401 UNAUTHORIZED
 
 #### Scenario: 队列为空
 
@@ -94,7 +94,7 @@
 
 ### Requirement: 全局队列页面
 
-系统 SHALL 提供前端页面 `/queue`，展示全局评测队列状态，面向所有访客开放（无需登录）。
+系统 SHALL 提供前端页面 `/queue`，展示全局评测队列状态，面向所有已登录用户开放。
 
 排序规则（与 API 相反，按时间倒序，越靠近上端越新）：
 - 正在评测：按 `judge_started_at` 降序（最新开始的在上）
@@ -105,7 +105,7 @@
 正在评测的项目额外显示开始评测时间和持续时间。
 已完成的项目额外显示得分和完成时间。
 
-页面 SHALL 优先通过 SSE（`GET /api/v1/queue/events` 管理员）接收队列变更通知，收到 `queue:changed` 事件时立即调用 `GET /api/v1/queue` 刷新全量数据。当 SSE 不可用时 SHALL 降级到每 2 秒轮询 `GET /api/v1/queue` 刷新状态。队列页不维护独立的 1s 时钟计时器，ui 更新由 SSE 事件或轮询触发的 Vue 重渲染驱动。
+页面 SHALL 优先通过 SSE（`GET /api/v1/queue/events`）接收队列变更通知，收到 `queue:changed` 事件时立即调用 `GET /api/v1/queue` 刷新全量数据。当 SSE 不可用时 SHALL 降级到每 2 秒轮询 `GET /api/v1/queue` 刷新状态。队列页不维护独立的 1s 时钟计时器，ui 更新由 SSE 事件或轮询触发的 Vue 重渲染驱动。
 
 #### Scenario: 访问队列页面
 
