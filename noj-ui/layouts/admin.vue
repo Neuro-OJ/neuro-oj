@@ -9,6 +9,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   ArrowLeftFromLine,
+  Container,
 } from "@lucide/vue"
 
 const route = useRoute()
@@ -38,6 +39,7 @@ const navItems: NavItem[] = [
   { label: "用户管理", to: "/admin/users", icon: Users },
   { label: "题目管理", to: "/admin/problems", icon: BookOpen },
   { label: "分类管理", to: "/admin/categories", icon: Tags },
+  { label: "评测镜像", to: "/admin/judge-images", icon: Container },
   { label: "提交管理", to: "/admin/submissions", icon: Files },
 ]
 
