@@ -34,19 +34,20 @@ async function initMonaco() {
 
   monacoModule = await import("monaco-editor")
 
-  // CDN Worker — 避免 Vite ?worker 导入在 Nuxt SSR 下的兼容问题
-  // 使用直接 CDN URL 而非 data: URI，避免违反 CSP worker-src
-  const CDN_BASE = `https://unpkg.com/monaco-editor@${MONACO_VERSION}/min/vs`
+  // Worker 从 Nuxt 静态资源加载（self-host 模式，issue #82）
+  // 避免国内网络下 unpkg.com 不可达导致 worker 拉取失败。
+  // 文件名带 hash，由 postinstall 脚本扫描并写入 workers.json。
+  const CDN_BASE = `/monaco`
+  const manifest = await fetch(`${CDN_BASE}/workers.json`).then((r) => r.json())
+  const editorWorkerUrl = manifest.editor ? `${CDN_BASE}/${manifest.editor}` : null
   self.MonacoEnvironment = {
     getWorker(_workerId: string, label: string) {
-      const workerUrlMap: Record<string, string> = {
-        typescript: `${CDN_BASE}/language/typescript/ts.worker.js`,
-        javascript: `${CDN_BASE}/language/typescript/ts.worker.js`,
-        json: `${CDN_BASE}/language/json/json.worker.js`,
-        css: `${CDN_BASE}/language/css/css.worker.js`,
-        html: `${CDN_BASE}/language/html/html.worker.js`,
-      }
-      return new Worker(workerUrlMap[label] || `${CDN_BASE}/editor/editor.worker.js`)
+      const specific = manifest.workers?.[label]
+      if (specific) return new Worker(`${CDN_BASE}/${specific}`)
+      // python / 其他基础语言：通用 editor worker 即可处理高亮
+      if (editorWorkerUrl) return new Worker(editorWorkerUrl)
+      // 极端兜底（不应该走到这里）
+      throw new Error(`No worker available for label=${label}`)
     },
   }
 
