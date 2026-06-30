@@ -12,7 +12,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  "package-changed": []
+  "package-changed": [hasPackage: boolean]
 }>()
 
 // ── 上传状态 ──
@@ -82,7 +82,7 @@ async function doUpload(file: File) {
       body: formData,
     })
 
-    emit("package-changed")
+    emit("package-changed", true)
   } catch (err: unknown) {
     uploadError.value = err instanceof Error ? err.message : "上传失败"
   } finally {
@@ -92,15 +92,14 @@ async function doUpload(file: File) {
 
 // ── 删除 ──
 const deleting = ref(false)
-const { showConfirm } = useDialog()
+const { dialog } = useDialog()
 
 async function handleDelete() {
   if (!props.problemId || deleting.value) return
 
-  const confirmed = await showConfirm(
-    "删除支持包",
+  const confirmed = await dialog.confirm(
     "确定要删除此题目的支持包吗？此操作不可撤销。",
-    true, // danger
+    { title: "删除支持包", danger: true },
   )
   if (!confirmed) return
 
@@ -110,7 +109,7 @@ async function handleDelete() {
     await $fetch(`/api/v1/problems/${props.problemId}/support-package`, {
       method: "DELETE",
     })
-    emit("package-changed")
+    emit("package-changed", false)
   } catch (err: unknown) {
     uploadError.value = err instanceof Error ? err.message : "删除失败"
   } finally {

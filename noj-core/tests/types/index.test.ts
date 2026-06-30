@@ -1,5 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { scoreFromDb, scoreToDb } from "../../src/types/index.ts";
+import { isImageInWhitelist } from "../../src/types/problems.ts";
 
 Deno.test("scoreToDb/scoreFromDb 整分", () => {
   assertEquals(scoreToDb(100), 10000);
@@ -24,4 +25,47 @@ Deno.test("scoreToDb/scoreFromDb 满分", () => {
 Deno.test("scoreToDb 四舍五入", () => {
   assertEquals(scoreToDb(10.005), 1001);
   assertEquals(scoreToDb(10.004), 1000);
+});
+
+// ── isImageInWhitelist 单元测试 ──
+
+const WHITELIST = [
+  { image: "noj-judge-cpp:gcc13", mode: "exact" },
+  { image: "noj-judge-python", mode: "all_versions" },
+  { image: "noj-judge-java:jdk21", mode: "exact" },
+];
+
+Deno.test("isImageInWhitelist: exact 模式精确匹配", () => {
+  assertEquals(isImageInWhitelist("noj-judge-cpp:gcc13", WHITELIST), true);
+});
+
+Deno.test("isImageInWhitelist: exact 模式不匹配返回 false", () => {
+  assertEquals(isImageInWhitelist("noj-judge-cpp:gcc14", WHITELIST), false);
+  assertEquals(isImageInWhitelist("noj-judge-cpp", WHITELIST), false);
+});
+
+Deno.test("isImageInWhitelist: all_versions 模式无标签匹配", () => {
+  assertEquals(isImageInWhitelist("noj-judge-python", WHITELIST), true);
+});
+
+Deno.test("isImageInWhitelist: all_versions 模式有标签匹配", () => {
+  assertEquals(isImageInWhitelist("noj-judge-python:latest", WHITELIST), true);
+  assertEquals(isImageInWhitelist("noj-judge-python:v1.0", WHITELIST), true);
+  assertEquals(isImageInWhitelist("noj-judge-python:dev", WHITELIST), true);
+});
+
+Deno.test("isImageInWhitelist: all_versions 条目标签不影响匹配", () => {
+  // 白名单条目本身带标签时，all_versions 模式仍只比较镜像名前缀
+  const list = [{ image: "noj-judge-node:18", mode: "all_versions" }];
+  assertEquals(isImageInWhitelist("noj-judge-node:20", list), true);
+  assertEquals(isImageInWhitelist("noj-judge-node:latest", list), true);
+});
+
+Deno.test("isImageInWhitelist: 完全不相关的镜像返回 false", () => {
+  assertEquals(isImageInWhitelist("ubuntu:latest", WHITELIST), false);
+  assertEquals(isImageInWhitelist("evil-image:latest", WHITELIST), false);
+});
+
+Deno.test("isImageInWhitelist: 空白名单返回 false", () => {
+  assertEquals(isImageInWhitelist("any-image", []), false);
 });

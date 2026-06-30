@@ -20,6 +20,8 @@ import {
   saveSupportPackage,
 } from "../services/support-package.ts";
 
+const MAX_SUPPORT_PACKAGE_SIZE = 20 * 1024 * 1024; // 20MB
+
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
 /**
@@ -176,7 +178,7 @@ router.post("/:id/support-package", authMiddleware, async (c) => {
   const userId = c.get("userId");
   const userRole = c.get("userRole");
 
-  // 双索引解析获取实际题目 ID
+  // 双索引解析获取实际题目 ID，同时获取题目信息用于权限校验
   const problem = await resolveProblem(id);
 
   // 解析 multipart/form-data
@@ -191,12 +193,19 @@ router.post("/:id/support-package", authMiddleware, async (c) => {
     throw new BadRequestError("仅支持 .zip 格式文件");
   }
 
+  if (file.size > MAX_SUPPORT_PACKAGE_SIZE) {
+    throw new BadRequestError(
+      `支持包大小超过限制（最大 ${(MAX_SUPPORT_PACKAGE_SIZE / 1024 / 1024).toFixed(0)}MB）`,
+    );
+  }
+
   const fileBytes = new Uint8Array(await file.arrayBuffer());
   const packagePath = await saveSupportPackage(
     problem.id,
     { name: file.name, data: fileBytes },
     userId,
     userRole,
+    { type: problem.type, owner_id: problem.owner_id }, // 复用已获取的题目信息
   );
 
   return c.json({ data: { support_package_path: packagePath } });
@@ -211,10 +220,13 @@ router.delete("/:id/support-package", authMiddleware, async (c) => {
   const userId = c.get("userId");
   const userRole = c.get("userRole");
 
-  // 双索引解析获取实际题目 ID
+  // 双索引解析获取实际题目 ID，同时获取题目信息用于权限校验
   const problem = await resolveProblem(id);
 
-  await deleteSupportPackage(problem.id, userId, userRole);
+  await deleteSupportPackage(problem.id, userId, userRole, {
+    type: problem.type,
+    owner_id: problem.owner_id,
+  });
 
   return c.json({ data: { support_package_path: null } });
 });

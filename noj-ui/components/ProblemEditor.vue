@@ -96,7 +96,7 @@ async function loadProblem() {
     } }>(`/api/v1/problems/${props.problemId}`)
     const p = res.data
     displayId.value = p.display_id
-    problemType.value = p.type
+    problemType.value = p.type as "U" | "P"
     title.value = p.title; description.value = p.description
     difficulty.value = p.difficulty
     judgeImage.value = p.judge_image; judgeCommand.value = p.judge_command
@@ -324,7 +324,7 @@ async function handleSubmit() {
         :problem-id="uploadProblemId"
         :has-package="hasSupportPackage"
         :disabled="!uploadProblemId"
-        @package-changed="hasSupportPackage = !hasSupportPackage"
+        @package-changed="(val) => hasSupportPackage = val"
       />
     </section>
 

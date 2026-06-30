@@ -5,6 +5,8 @@
  */
 import { runMigrations } from "../src/db/migrate.ts";
 import { ensureRootUser } from "../src/services/auth.ts";
+import { getDb } from "../src/db/connection.ts";
+import { judgeImages } from "../src/db/schema.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 
@@ -18,6 +20,23 @@ if (hasDb) {
     // problems.owner_id 的 FK 约束依赖该用户存在
     await ensureRootUser();
     console.log("[setup] Root 用户就绪");
+
+    // 插入默认评测镜像白名单，确保 services/problems 等测试中的
+    // validateJudgeImage() 校验通过。幂等：使用固定 UUID + onConflictDoNothing
+    const db = getDb();
+    const now = new Date().toISOString();
+    await db
+      .insert(judgeImages)
+      .values({
+        id: "e0000000-0000-0000-0000-000000000001",
+        image: "noj-judge-python",
+        mode: "all_versions",
+        description: "Python 3.12 评测环境",
+        created_at: now,
+        updated_at: now,
+      })
+      .onConflictDoNothing({ target: judgeImages.id });
+    console.log("[setup] 默认评测镜像白名单就绪");
   } catch (err) {
     console.error("[setup] 数据库/种子数据初始化失败:", err);
     Deno.exit(1);

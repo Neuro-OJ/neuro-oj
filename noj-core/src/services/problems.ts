@@ -30,6 +30,7 @@ import {
   type UpdateProblemInput,
 } from "../types/problems.ts";
 import { validateJudgeImage } from "./judge-images.ts";
+import { getPackagePath } from "./support-package.ts";
 
 export interface ProblemResponse {
   id: string;
@@ -656,6 +657,18 @@ export async function deleteProblem(
     }
     if (problem.owner_id !== userId) {
       throw new ForbiddenError("无权删除此题目");
+    }
+  }
+
+  // 清理支持包文件（幂等，文件不存在则忽略）
+  try {
+    await Deno.remove(getPackagePath(id));
+  } catch (err) {
+    if (!(err instanceof Deno.errors.NotFound)) {
+      console.error(
+        `清理支持包文件失败 (${getPackagePath(id)}):`,
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 
