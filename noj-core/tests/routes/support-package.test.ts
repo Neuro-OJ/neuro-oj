@@ -48,7 +48,8 @@ async function createTestProblem(
 }
 
 Deno.test({
-  name: "support-package route: POST /problems/:id/support-package 所有者上传成功",
+  name:
+    "support-package route: POST /problems/:id/support-package 所有者上传成功",
   ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -59,7 +60,30 @@ Deno.test({
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
     // 构造 multipart/form-data
-    const zipContent = new Uint8Array([0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    const zipContent = new Uint8Array([
+      0x50,
+      0x4b,
+      0x05,
+      0x06,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ]);
     const blob = new Blob([zipContent], { type: "application/zip" });
     const formData = new FormData();
     formData.append("file", blob, "test.zip");
@@ -79,7 +103,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "support-package route: POST /problems/:id/support-package admin 上传成功",
+  name:
+    "support-package route: POST /problems/:id/support-package admin 上传成功",
   ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,

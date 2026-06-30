@@ -1,7 +1,11 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { problems } from "../db/schema.ts";
-import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts";
+import {
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from "../lib/errors.ts";
 
 /**
  * 支持包存储目录（相对 CWD）。
@@ -93,7 +97,9 @@ export async function saveSupportPackage(
   // 验证文件大小（防御性校验，路由层已做相同检查）
   if (file.data.length > MAX_SUPPORT_PACKAGE_SIZE) {
     throw new ValidationError(
-      `支持包大小超过限制（最大 ${(MAX_SUPPORT_PACKAGE_SIZE / 1024 / 1024).toFixed(0)}MB）`,
+      `支持包大小超过限制（最大 ${
+        (MAX_SUPPORT_PACKAGE_SIZE / 1024 / 1024).toFixed(0)
+      }MB）`,
     );
   }
 

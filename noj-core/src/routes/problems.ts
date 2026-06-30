@@ -21,7 +21,6 @@ import {
   saveSupportPackage,
 } from "../services/support-package.ts";
 
-
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
 /**
@@ -195,7 +194,9 @@ router.post("/:id/support-package", authMiddleware, async (c) => {
 
   if (file.size > MAX_SUPPORT_PACKAGE_SIZE) {
     throw new BadRequestError(
-      `支持包大小超过限制（最大 ${(MAX_SUPPORT_PACKAGE_SIZE / 1024 / 1024).toFixed(0)}MB）`,
+      `支持包大小超过限制（最大 ${
+        (MAX_SUPPORT_PACKAGE_SIZE / 1024 / 1024).toFixed(0)
+      }MB）`,
     );
   }
 

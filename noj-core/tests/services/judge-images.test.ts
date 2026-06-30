@@ -4,10 +4,7 @@
  * 依赖 DATABASE_URL + JWT_SECRET 环境变量。
  * 测试前自动运行迁移并 seed 默认白名单条目（见 00_migrate_test.ts）。
  */
-import {
-  assertEquals,
-  assertRejects,
-} from "jsr:@std/assert@^1";
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { judgeImages } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
@@ -178,7 +175,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "judge-images service: validateJudgeImage 不在白名单返回 ValidationError",
+  name:
+    "judge-images service: validateJudgeImage 不在白名单返回 ValidationError",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,

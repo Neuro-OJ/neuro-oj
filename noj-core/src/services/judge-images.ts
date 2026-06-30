@@ -5,8 +5,8 @@ import { NotFoundError, ValidationError } from "../lib/errors.ts";
 import { isImageInWhitelist } from "../types/problems.ts";
 import type {
   CreateJudgeImageInput,
-  UpdateJudgeImageInput,
   JudgeImageResponse,
+  UpdateJudgeImageInput,
 } from "../types/problems.ts";
 
 const VALID_MODES = ["exact", "all_versions"];

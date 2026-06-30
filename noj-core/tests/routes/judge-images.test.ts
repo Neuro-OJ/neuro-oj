@@ -31,7 +31,10 @@ Deno.test({
     const body = await res.json();
     assertEquals(Array.isArray(body.data), true);
     // 应包含默认 seed
-    assertEquals(body.data.some((i: { image: string }) => i.image === "noj-judge-python"), true);
+    assertEquals(
+      body.data.some((i: { image: string }) => i.image === "noj-judge-python"),
+      true,
+    );
   },
 });
 
@@ -111,7 +114,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "judge-images route: POST /api/v1/admin/judge-images 非法 mode 返回 400",
+  name:
+    "judge-images route: POST /api/v1/admin/judge-images 非法 mode 返回 400",
   ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -181,7 +185,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "judge-images route: DELETE /api/v1/admin/judge-images/:id 管理员删除成功",
+  name:
+    "judge-images route: DELETE /api/v1/admin/judge-images/:id 管理员删除成功",
   ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -214,7 +219,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "judge-images route: DELETE /api/v1/admin/judge-images/:id 不存在的返回 404",
+  name:
+    "judge-images route: DELETE /api/v1/admin/judge-images/:id 不存在的返回 404",
   ignore: skipDb || skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,

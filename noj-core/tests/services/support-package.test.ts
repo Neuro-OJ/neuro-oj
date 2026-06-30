@@ -4,20 +4,20 @@
  * 依赖 DATABASE_URL 环境变量。
  * 测试前自动运行迁移并 seed root 用户（见 00_migrate_test.ts）。
  */
-import {
-  assertEquals,
-  assertRejects,
-} from "jsr:@std/assert@^1";
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { problems } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 import {
-  saveSupportPackage,
   deleteSupportPackage,
   getPackagePath,
-  PACKAGES_DIR,
+  saveSupportPackage,
 } from "../../src/services/support-package.ts";
-import { NotFoundError, ForbiddenError, ValidationError } from "../../src/lib/errors.ts";
+import {
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from "../../src/lib/errors.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 const skip = !hasDb;
@@ -64,7 +64,30 @@ Deno.test({
     await resetDbForTest();
     await createTestProblem(TEST_PROBLEM_ID);
 
-    const zipData = new Uint8Array([0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    const zipData = new Uint8Array([
+      0x50,
+      0x4b,
+      0x05,
+      0x06,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ]);
     const result = await saveSupportPackage(
       TEST_PROBLEM_ID,
       { name: "test.zip", data: zipData },
