@@ -173,19 +173,26 @@ async function seedJudgeImages(): Promise<void> {
   const db = getDb();
   const now = new Date().toISOString();
 
-  await db
-    .insert(judgeImages)
-    .values({
+  // 先按 image 名查找是否已存在，防止管理员删除默认条目后自行重建导致重复
+  const existing = await db
+    .select()
+    .from(judgeImages)
+    .where(eq(judgeImages.image, "noj-judge-python"))
+    .limit(1);
+
+  if (existing.length === 0) {
+    await db.insert(judgeImages).values({
       id: "e0000000-0000-0000-0000-000000000001",
       image: "noj-judge-python",
       mode: "all_versions",
       description: "Python 3.12 评测环境",
       created_at: now,
       updated_at: now,
-    })
-    .onConflictDoNothing({ target: judgeImages.id });
-
-  console.log("  已同步默认评测镜像: noj-judge-python (all_versions)");
+    });
+    console.log("  已插入默认评测镜像: noj-judge-python (all_versions)");
+  } else {
+    console.log("  默认评测镜像已存在，跳过插入");
+  }
 }
 
 async function seedProblems(): Promise<void> {

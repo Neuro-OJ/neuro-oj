@@ -1,4 +1,19 @@
 /**
+ * 提取 Docker 镜像的基础名称（去掉 tag 部分）。
+ *
+ * Docker 镜像引用可能包含 registry 端口和路径：
+ *   "noj-judge-python:latest"           → "noj-judge-python"
+ *   "registry:5000/my-image:v2"         → "my-image"
+ *   "docker.io/library/python:3.12"     → "python"
+ *
+ * 正确做法：取最后一个 "/" 之后的段落作为镜像名，再用 ":" 分离 tag。
+ */
+function getImageBase(name: string): string {
+  const lastSegment = name.split("/").pop() ?? name;
+  return lastSegment.split(":")[0];
+}
+
+/**
  * 允许的难度等级。
  */
 export const DIFFICULTIES = ["easy", "medium", "hard"] as const;
@@ -149,10 +164,9 @@ export function isImageInWhitelist(
     if (entry.mode === "exact") {
       if (image === entry.image) return true;
     } else if (entry.mode === "all_versions") {
-      // 去掉标签部分（: 之后的内容），只比较镜像名前缀
-      const imageWithoutTag = image.split(":")[0];
-      const entryWithoutTag = entry.image.split(":")[0];
-      if (imageWithoutTag === entryWithoutTag) return true;
+      // all_versions：提取两者的基础镜像名（去掉 tag 部分）进行比较
+      // 注意 entry.image 本身也可能带 tag（即便语义上 all_versions 含 tag 不合理）
+      if (getImageBase(image) === getImageBase(entry.image)) return true;
     }
   }
   return false;

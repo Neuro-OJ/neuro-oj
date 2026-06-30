@@ -150,7 +150,6 @@ export async function deleteJudgeImage(id: string): Promise<void> {
  */
 export async function validateJudgeImage(image: string): Promise<boolean> {
   const db = getDb();
-
   const rows = await db
     .select({ image: judgeImages.image, mode: judgeImages.mode })
     .from(judgeImages);

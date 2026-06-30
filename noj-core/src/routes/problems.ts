@@ -17,10 +17,10 @@ import type {
 } from "../types/problems.ts";
 import {
   deleteSupportPackage,
+  MAX_SUPPORT_PACKAGE_SIZE,
   saveSupportPackage,
 } from "../services/support-package.ts";
 
-const MAX_SUPPORT_PACKAGE_SIZE = 20 * 1024 * 1024; // 20MB
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
@@ -200,6 +200,12 @@ router.post("/:id/support-package", authMiddleware, async (c) => {
   }
 
   const fileBytes = new Uint8Array(await file.arrayBuffer());
+
+  // 验证 zip magic bytes（PK 头：0x50, 0x4B）
+  if (fileBytes.length < 4 || fileBytes[0] !== 0x50 || fileBytes[1] !== 0x4B) {
+    throw new BadRequestError("文件不是有效的 zip 格式");
+  }
+
   const packagePath = await saveSupportPackage(
     problem.id,
     { name: file.name, data: fileBytes },

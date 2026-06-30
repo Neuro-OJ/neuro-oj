@@ -9,6 +9,14 @@ import { NotFoundError, ForbiddenError, ValidationError } from "../lib/errors.ts
 export const PACKAGES_DIR = "data/packages";
 
 /**
+ * 支持包文件最大字节数。
+ *
+ * Redis MQ 消息限制 16MB，Base64 编码膨胀 ~33%，留 margin 给消息中其他字段
+ * （code、metadata 等），故 zip 文件上限为 12MB。
+ */
+export const MAX_SUPPORT_PACKAGE_SIZE = 12 * 1024 * 1024; // 12MB
+
+/**
  * 获取支持包文件路径。
  */
 export function getPackagePath(problemId: string): string {
@@ -80,6 +88,13 @@ export async function saveSupportPackage(
   // 验证文件扩展名为 .zip（防御性校验，路由层已做相同检查）
   if (!file.name.toLowerCase().endsWith(".zip")) {
     throw new ValidationError("仅支持 .zip 格式文件");
+  }
+
+  // 验证文件大小（防御性校验，路由层已做相同检查）
+  if (file.data.length > MAX_SUPPORT_PACKAGE_SIZE) {
+    throw new ValidationError(
+      `支持包大小超过限制（最大 ${(MAX_SUPPORT_PACKAGE_SIZE / 1024 / 1024).toFixed(0)}MB）`,
+    );
   }
 
   // 确保存储目录存在

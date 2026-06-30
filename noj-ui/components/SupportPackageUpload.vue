@@ -84,7 +84,8 @@ async function doUpload(file: File) {
 
     emit("package-changed", true)
   } catch (err: unknown) {
-    uploadError.value = err instanceof Error ? err.message : "上传失败"
+    const apiErr = err as { data?: { error?: string }; message?: string } | undefined
+    uploadError.value = apiErr?.data?.error || apiErr?.message || "上传失败"
   } finally {
     uploading.value = false
   }
@@ -111,7 +112,8 @@ async function handleDelete() {
     })
     emit("package-changed", false)
   } catch (err: unknown) {
-    uploadError.value = err instanceof Error ? err.message : "删除失败"
+    const apiErr = err as { data?: { error?: string }; message?: string } | undefined
+    uploadError.value = apiErr?.data?.error || apiErr?.message || "删除失败"
   } finally {
     deleting.value = false
   }

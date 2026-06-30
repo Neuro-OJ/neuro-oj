@@ -107,7 +107,8 @@ async function loadProblem() {
     if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) {
       notFound.value = true
     } else {
-      loadError.value = err instanceof Error ? err.message : "加载题目失败"
+      const apiErr = err as { data?: { error?: string }; message?: string } | undefined
+      loadError.value = apiErr?.data?.error || apiErr?.message || "加载题目失败"
     }
   } finally {
     pageLoading.value = false
@@ -179,7 +180,8 @@ async function handleSubmit() {
       emit("saved", res.data.id)
     }
   } catch (err: unknown) {
-    saveError.value = err instanceof Error ? err.message : "保存失败"
+    const apiErr = err as { data?: { error?: string }; message?: string } | undefined
+    saveError.value = apiErr?.data?.error || apiErr?.message || "保存失败"
   } finally {
     saving.value = false
   }

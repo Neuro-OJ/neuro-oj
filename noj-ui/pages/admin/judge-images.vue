@@ -57,7 +57,8 @@ async function loadItems() {
     const res = await $fetch<{ data: JudgeImage[] }>("/api/v1/admin/judge-images")
     items.value = res.data
   } catch (err: unknown) {
-    tableError.value = err instanceof Error ? err.message : "加载评测镜像列表失败"
+    const apiErr = err as { data?: { error?: string }; message?: string } | undefined
+    tableError.value = apiErr?.data?.error || apiErr?.message || "加载评测镜像列表失败"
   } finally {
     tableLoading.value = false
   }
@@ -136,7 +137,8 @@ async function handleSave() {
     showForm.value = false
     await loadItems()
   } catch (err: unknown) {
-    formError.value = err instanceof Error ? err.message : "保存失败"
+    const apiErr = err as { data?: { error?: string }; message?: string } | undefined
+    formError.value = apiErr?.data?.error || apiErr?.message || "保存失败"
   } finally {
     saving.value = false
   }
@@ -161,9 +163,10 @@ async function handleDelete() {
       method: "DELETE",
     })
     showDeleteConfirm.value = false
-    await loadItems()
   } catch (err: unknown) {
-    formError.value = err instanceof Error ? err.message : "删除失败"
+    const apiErr = err as { data?: { error?: string }; message?: string } | undefined
+    formError.value = apiErr?.data?.error || apiErr?.message || "删除失败"
+  } finally {
   } finally {
     deleting.value = false
   }
