@@ -159,7 +159,7 @@ async function handleDelete() {
     <!-- 已有支持包：显示状态 + 替换/删除 -->
     <div v-if="hasPackage && !uploading" class="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-border rounded-md">
       <FileArchive :size="16" class="text-text-secondary shrink-0" />
-      <span class="text-xs text-text flex-1">已上传支持包</span>
+      <span class="text-xs text-text flex-1">支持包已上传</span>
       <label
         class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-primary bg-transparent border border-primary rounded cursor-pointer transition-colors hover:bg-primary-bg"
         :class="{ 'opacity-50 pointer-events-none': disabled || uploading }"
