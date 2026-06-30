@@ -28,8 +28,8 @@ async function ensureReady() {
 }
 
 // Queue 路由测试
-// 注：issue #64 §3.2 修复后本路由限制为 admin，公开访问改为 401。
-// 旧测试"无需认证返回 200"已替换为三个场景：无 token / 非 admin / admin。
+// 经设计评审后放开为登录用户可访问（无需管理员权限）。
+// 三个场景：无 token → 401 / 非管理员 → 200 / 管理员 → 200。
 
 Deno.test({
   name: "queue route: GET /api/v1/queue 无 token 返回 401",
@@ -42,15 +42,32 @@ Deno.test({
 });
 
 Deno.test({
-  name: "queue route: GET /api/v1/queue 非管理员返回 403",
+  name: "queue route: GET /api/v1/queue 非管理员返回 200",
   ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
   fn: async () => {
+    await ensureReady();
+    if (!ready) return;
+
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
     const res = await app.request("/api/v1/queue", {
       headers: { Authorization: `Bearer ${token}` },
     });
-    assertEquals(res.status, 403);
+    assertEquals(res.status, 200);
+
+    const body = await res.json();
+    assertExists(body.pending);
+    assertExists(body.judging);
+    assertExists(body.recently_completed);
+    assertExists(body.stats);
+    assertEquals(Array.isArray(body.pending), true);
+    assertEquals(Array.isArray(body.judging), true);
+    assertEquals(Array.isArray(body.recently_completed), true);
+    assertEquals(typeof body.stats.pending_count, "number");
+    assertEquals(typeof body.stats.judging_count, "number");
+    assertEquals(typeof body.stats.completed_today, "number");
   },
 });
 

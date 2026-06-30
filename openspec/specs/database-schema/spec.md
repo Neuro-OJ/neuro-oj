@@ -16,6 +16,7 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 | email         | TEXT | NOT NULL, UNIQUE         |
 | password_hash | TEXT | NOT NULL                 |
 | role          | TEXT | NOT NULL, DEFAULT 'user' |
+| must_change_password | BOOLEAN | NOT NULL, DEFAULT false |
 | bio           | TEXT | DEFAULT ''               |
 | created_at    | TEXT | NOT NULL, ISO 8601       |
 | updated_at    | TEXT | NOT NULL, ISO 8601       |
@@ -42,6 +43,37 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 
 - **WHEN** 查询未设置 bio 的用户
 - **THEN** 返回的 bio 字段为空字符串 `""`
+
+### Requirement: users.must_change_password 列
+
+`users` 表 MUST 包含 `must_change_password BOOLEAN NOT NULL DEFAULT false` 列，用于标记用户首次登录后是否必须修改密码。
+
+约束：
+
+- `NOT NULL` — 不允许空值
+- `DEFAULT false` — 存量用户默认 `false`，向前兼容
+- 仅在以下场景被置为 `true`：种子脚本的 `ensureBootstrapAdmin()` 创建临时管理员时
+- 仅在以下场景被置为 `false`：种子脚本的普通用户注册时（默认）、`changePassword()` 成功后
+
+#### Scenario: 字段存在且默认 false
+
+- **WHEN** 数据库执行 migration 后查询 `users` 表结构
+- **THEN** 表中存在 `must_change_password boolean NOT NULL DEFAULT false` 列
+
+#### Scenario: 存量用户默认值
+
+- **WHEN** migration 在含已有用户的数据库上执行
+- **THEN** 所有存量用户的 `must_change_password` 为 `false`，不影响其登录流程
+
+#### Scenario: 引导管理员创建时置位
+
+- **WHEN** `ensureBootstrapAdmin()` 插入临时管理员记录
+- **THEN** 该用户记录的 `must_change_password=true`
+
+#### Scenario: changePassword 成功后清字段
+
+- **WHEN** 用户成功调用 `POST /api/v1/auth/change-password`
+- **THEN** 该用户记录的 `must_change_password=false`
 
 ### Requirement: 题目表（problems）
 
@@ -187,9 +219,43 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 - **WHEN** 重置密码接口用 token_hash 查表
 - **THEN** 数据库走 UNIQUE 索引，O(log n) 定位单行
 
+### Requirement: 签到记录表（check_ins）
+
+系统 SHALL 提供 `check_ins` 表记录用户每日签到状态及连续签到天数。
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | TEXT | PRIMARY KEY, UUID v4 | 记录主键 |
+| user_id | TEXT | NOT NULL, FK→users.id | 签到用户 |
+| checkin_date | TEXT | NOT NULL | 签到日期，格式 YYYY-MM-DD（UTC） |
+| streak | INTEGER | NOT NULL, DEFAULT 1 | 连续签到天数 |
+| created_at | TEXT | NOT NULL, ISO 8601 | 记录创建时间 |
+
+唯一约束：`UNIQUE (user_id, checkin_date)`，防止同日重复签到。
+
+#### Scenario: 用户首次签到
+
+- **WHEN** 用户首次调用签到接口
+- **THEN** 数据库插入一条新记录，streak = 1
+
+#### Scenario: 连续签到累计 streak
+
+- **WHEN** 用户昨日已签到（昨日 streak = 3）且今日签到
+- **THEN** 新记录 streak = 4
+
+#### Scenario: 断签后重新签到
+
+- **WHEN** 用户昨日未签到但今日签到
+- **THEN** 新记录 streak = 1（重置，不累加）
+
+#### Scenario: 同日重复签到
+
+- **WHEN** 用户尝试在同一天第二次签到
+- **THEN** 数据库 UNIQUE 约束拒绝，服务层返回 409 CONFLICT_ERROR
+
 ### Requirement: 数据库迁移自动执行
 
-系统 SHALL 在启动时自动执行数据库迁移，确保 schema 与代码一致。迁移按顺序编号执行（0000-0005），目前包含 6 个迁移文件。
+系统 SHALL 在启动时自动执行数据库迁移，确保 schema 与代码一致。迁移按顺序编号执行（0000-0007），目前包含 8 个迁移文件。
 
 #### Scenario: 首次启动
 
