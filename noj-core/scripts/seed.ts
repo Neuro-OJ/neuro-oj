@@ -167,6 +167,7 @@ const PROBLEM_CATEGORY_MAP: [string, string][] = [
 /**
  * 初始化评测镜像白名单。
  * 预置 noj-judge-python 确保开箱可用（与现有样例题目的 judge_image 值一致）。
+ * 幂等：使用固定 UUID 确保重复运行不重复插入。
  */
 async function seedJudgeImages(): Promise<void> {
   const db = getDb();
@@ -175,14 +176,14 @@ async function seedJudgeImages(): Promise<void> {
   await db
     .insert(judgeImages)
     .values({
-      id: crypto.randomUUID(),
+      id: "e0000000-0000-0000-0000-000000000001",
       image: "noj-judge-python",
       mode: "all_versions",
       description: "Python 3.12 评测环境",
       created_at: now,
       updated_at: now,
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing({ target: judgeImages.id });
 
   console.log("  已同步默认评测镜像: noj-judge-python (all_versions)");
 }

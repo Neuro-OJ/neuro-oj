@@ -443,7 +443,7 @@ export async function createProblem(
   }
 
   // 校验评测镜像白名单
-  if (input.judge_image) {
+  if (input.judge_image !== undefined) {
     await validateJudgeImage(input.judge_image);
   }
 

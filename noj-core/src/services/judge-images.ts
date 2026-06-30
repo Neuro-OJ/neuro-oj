@@ -1,4 +1,4 @@
-import { eq, count } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { judgeImages } from "../db/schema.ts";
 import { NotFoundError, ValidationError } from "../lib/errors.ts";
@@ -146,8 +146,7 @@ export async function deleteJudgeImage(id: string): Promise<void> {
 /**
  * 校验 judge_image 是否在白名单中。
  *
- * @returns 校验通过返回 true；白名单为空时返回 false（拒绝所有镜像）。
- * @throws {ValidationError} 校验不通过时抛出，包含明确错误消息。
+ * @throws {ValidationError} 白名单为空或镜像不在白名单中时抛出，包含明确错误消息。
  */
 export async function validateJudgeImage(image: string): Promise<boolean> {
   const db = getDb();
