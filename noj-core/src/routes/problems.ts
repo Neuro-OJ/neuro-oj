@@ -15,6 +15,10 @@ import type {
   ProblemListQuery,
   UpdateProblemInput,
 } from "../types/problems.ts";
+import {
+  deleteSupportPackage,
+  saveSupportPackage,
+} from "../services/support-package.ts";
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
@@ -161,6 +165,58 @@ router.delete("/:id", authMiddleware, async (c) => {
   const problem = await resolveProblem(id);
   await deleteProblem(problem.id, userId, userRole);
   return c.body(null, 204);
+});
+
+/**
+ * 上传支持包。
+ * POST /api/v1/problems/:id/support-package
+ */
+router.post("/:id/support-package", authMiddleware, async (c) => {
+  const id = c.req.param("id") as string;
+  const userId = c.get("userId");
+  const userRole = c.get("userRole");
+
+  // 双索引解析获取实际题目 ID
+  const problem = await resolveProblem(id);
+
+  // 解析 multipart/form-data
+  const body = await c.req.parseBody();
+  const file = body["file"];
+
+  if (!file || !(file instanceof File)) {
+    throw new BadRequestError("请上传有效的 zip 文件");
+  }
+
+  if (!file.name.toLowerCase().endsWith(".zip")) {
+    throw new BadRequestError("仅支持 .zip 格式文件");
+  }
+
+  const fileBytes = new Uint8Array(await file.arrayBuffer());
+  const packagePath = await saveSupportPackage(
+    problem.id,
+    { name: file.name, data: fileBytes },
+    userId,
+    userRole,
+  );
+
+  return c.json({ data: { support_package_path: packagePath } });
+});
+
+/**
+ * 删除支持包。
+ * DELETE /api/v1/problems/:id/support-package
+ */
+router.delete("/:id/support-package", authMiddleware, async (c) => {
+  const id = c.req.param("id") as string;
+  const userId = c.get("userId");
+  const userRole = c.get("userRole");
+
+  // 双索引解析获取实际题目 ID
+  const problem = await resolveProblem(id);
+
+  await deleteSupportPackage(problem.id, userId, userRole);
+
+  return c.json({ data: { support_package_path: null } });
 });
 
 export default router;

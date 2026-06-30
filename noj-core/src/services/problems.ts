@@ -39,6 +39,7 @@ export interface ProblemResponse {
   judge_image: string;
   judge_command: string;
   support_package_path: string | null;
+  has_support_package: boolean;
   time_limit_ms: number;
   memory_limit_mb: number;
   number: number;
@@ -99,6 +100,7 @@ function toProblemResponse(
     judge_image: row.judge_image,
     judge_command: row.judge_command,
     support_package_path: row.support_package_path,
+    has_support_package: row.support_package_path !== null,
     time_limit_ms: row.time_limit_ms,
     memory_limit_mb: row.memory_limit_mb,
     number: row.number,

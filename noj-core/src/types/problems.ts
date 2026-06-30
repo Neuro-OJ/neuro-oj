@@ -90,6 +90,8 @@ export interface ProblemResponseWithCategories {
   judge_image: string;
   judge_command: string;
   support_package_path: string | null;
+  /** 是否有已上传的支持包文件 */
+  has_support_package: boolean;
   time_limit_ms: number;
   memory_limit_mb: number;
   categories: { id: string; name: string; slug: string }[];

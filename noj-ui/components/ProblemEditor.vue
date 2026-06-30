@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ArrowLeft, Save, Eye, Edit3 } from "@lucide/vue"
+import SupportPackageUpload from "~/components/SupportPackageUpload.vue"
 
 interface Props {
   mode: "create" | "edit"
@@ -34,6 +35,13 @@ const problemType = ref(props.initialType)
 // 编辑模式专用
 const displayId = ref("")
 const isEditMode = computed(() => props.mode === "edit")
+
+// ── 支持包上传 ──
+const hasSupportPackage = ref(false)
+
+/** 用于 SupportPackageUpload 组件的实际 problemId（创建模式下保存后才赋值） */
+const uploadProblemId = computed(() => isEditMode.value ? (props.problemId ?? null) : savedProblemId.value)
+const savedProblemId = ref<string | null>(null)
 
 // ── 分类选项 ──
 const categories = ref<{ id: string; name: string }[]>([])
@@ -82,6 +90,8 @@ async function loadProblem() {
       judge_image: string; judge_command: string
       time_limit_ms: number; memory_limit_mb: number
       display_id: string; type: string; number: number
+      support_package_path: string | null
+      has_support_package: boolean
       categories: { id: string }[]
     } }>(`/api/v1/problems/${props.problemId}`)
     const p = res.data
@@ -92,6 +102,7 @@ async function loadProblem() {
     judgeImage.value = p.judge_image; judgeCommand.value = p.judge_command
     timeLimitMs.value = p.time_limit_ms; memoryLimitMb.value = p.memory_limit_mb
     categoryIds.value = p.categories.map((c) => c.id)
+    hasSupportPackage.value = p.has_support_package
   } catch (err: unknown) {
     if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) {
       notFound.value = true
@@ -164,6 +175,7 @@ async function handleSubmit() {
           type: problemType.value,
         },
       })
+      savedProblemId.value = res.data.id
       emit("saved", res.data.id)
     }
   } catch (err: unknown) {
@@ -304,6 +316,16 @@ async function handleSubmit() {
           <input v-model.number="memoryLimitMb" type="number" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" min="16" max="4096" />
         </div>
       </div>
+    </section>
+
+    <!-- 题目支持包 -->
+    <section class="px-6 py-5 border-b border-border last:border-b-0">
+      <SupportPackageUpload
+        :problem-id="uploadProblemId"
+        :has-package="hasSupportPackage"
+        :disabled="!uploadProblemId"
+        @package-changed="hasSupportPackage = !hasSupportPackage"
+      />
     </section>
 
     <!-- 提交按钮 -->
