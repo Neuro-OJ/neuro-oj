@@ -167,7 +167,6 @@ async function handleDelete() {
     const apiErr = err as { data?: { error?: string }; message?: string } | undefined
     formError.value = apiErr?.data?.error || apiErr?.message || "删除失败"
   } finally {
-  } finally {
     deleting.value = false
   }
 }
