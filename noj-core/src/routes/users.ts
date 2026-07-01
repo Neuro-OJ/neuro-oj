@@ -3,6 +3,7 @@ import { authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { ValidationError } from "../lib/errors.ts";
 import { getUserProfile, updateUserProfile } from "../services/users.ts";
+import { getMyRanking } from "../services/rankings.ts";
 
 const users = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
@@ -28,11 +29,14 @@ users.put("/me", authMiddleware, async (c) => {
  * 获取用户主页。
  * GET /api/v1/users/:id/profile
  * 公开访问，无需认证。
+ * 响应对象额外包含 `rank` 字段（number | null），表示该用户全站榜单排名。
  */
 users.get("/:id/profile", async (c) => {
   const userId = c.req.param("id") as string;
   const profile = await getUserProfile(userId);
-  return c.json({ data: profile }, 200);
+  // 追加 rank 字段：复用 rankings service 的 getMyRanking，确保排序逻辑一致
+  const ranking = await getMyRanking(userId);
+  return c.json({ data: { ...profile, rank: ranking?.rank ?? null } }, 200);
 });
 
 export default users;
