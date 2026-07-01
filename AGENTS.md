@@ -119,7 +119,7 @@ neuro-oj/
 │   │   │   ├── request.ts     # parseJsonBody<T>() 安全 JSON 解析
 │   │   │   └── logging.ts     # 生产安全日志（UUID 截断、分值隐藏）
 │   │   └── types/
-│   │       ├── index.ts       # JudgeTask, JudgeResult, SubmissionStatus
+│   │       ├── index.ts       # JudgeTask, JudgeResult, SubmissionStatus, LANGUAGE_EXT_MAP
 │   │       ├── auth.ts        # RegisterInput, LoginInput, UserResponse
 │   │       └── problems.ts    # CreateProblemInput, DIFFICULTIES, PROBLEM_TYPES
 │   ├── scripts/
@@ -402,7 +402,7 @@ cd noj-core && deno task seed
 
 - 格式：`<type>(<scope>): <description>`
 - type：`feat` `fix` `docs` `style` `refactor` `perf` `test` `chore` `ci` `build`
-- scope 可选：`core` `ui` `judge` `root`
+- scope 可选：`core` `ui` `judge` `root`；多 scope 使用逗号分隔：`fix(core,ui): 描述`
 - description 使用**中文**
 - 示例：`feat(core): 添加评测任务分发 API` / `fix(judge): 修复容器超时未清理`
 

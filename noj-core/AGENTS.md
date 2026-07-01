@@ -58,8 +58,9 @@ noj-core/
 │   │   ├── request.ts          # parseJsonBody<T>() 安全 JSON 解析
 │   │   └── logging.ts          # 生产安全日志（UUID 截断、分值隐藏）
 │   └── types/             # 类型定义
-│       ├── auth.ts        # RegisterInput, LoginInput, UserResponse
-│       └── problems.ts    # DIFFICULTIES, PROBLEM_TYPES, 校验函数
+│       ├── index.ts        # JudgeTask, JudgeResult, SubmissionStatus, LANGUAGE_EXT_MAP
+│       ├── auth.ts         # RegisterInput, LoginInput, UserResponse
+│       └── problems.ts     # DIFFICULTIES, PROBLEM_TYPES, 校验函数
 ├── scripts/               # CLI 脚本（seed、build-packages、migrate）
 ├── data/
 │   ├── problems-src/<id>/ # 题目源文件（版本控制，仅样例题）
@@ -277,7 +278,7 @@ docker compose down     # 停止
 | 支持包读取失败       | 非致命：日志记录后继续（无支持包），由 judge 端处理                                                                         |
 | 题目更新             | 静默忽略 `type` 和 `number` 字段（API 接受但不处理）                                                                        |
 | 题目编号冲突         | 自动分配时重试 3 次（PG 23505），手动指定时立即报错                                                                         |
-| 评测结果写入         | UPSERT 语义（`onConflictDoNothing`），防止重复处理                                                                          |
+| 评测结果写入         | UPSERT 语义（`onConflictDoUpdate`），用最新结果覆盖旧数据；配合 `rejudge_seq` 防护乱序覆盖                                  |
 | 队列位置查询         | 即使 DB 状态为 "judging" 也检查 Redis 队列（状态在入队时已更新）                                                            |
 | 问题列表默认         | 默认只显示 `type='P'` 的题目，U 类型需直接 URL 或所有者主页访问                                                             |
 | 分页默认值           | page=1, per_page=20, max per_page=100                                                                                       |

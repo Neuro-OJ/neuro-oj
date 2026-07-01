@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert@^1";
 import {
   createSubmission,
   getSubmission,
@@ -254,5 +254,162 @@ Deno.test({
     );
     assertEquals(parsed.status, "Accepted");
     assertEquals(parsed.score, 1000);
+  },
+});
+
+Deno.test({
+  name:
+    "submissions service: saveEvaluationResult 重复写同一 submission 应 UPDATE 而非 silently 跳过（issue #86）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const subId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    // 创建测试用户
+    const userId = crypto.randomUUID();
+    await db.insert(users).values({
+      id: userId,
+      username: `upsert_test_${Date.now()}`,
+      email: `upsert_test_${Date.now()}@test.com`,
+      password_hash: "x",
+      role: "user",
+      created_at: now,
+      updated_at: now,
+    });
+
+    // 准备 submission（status=judging 让 UPDATE 通行）
+    await db.insert(submissions).values({
+      id: subId,
+      user_id: userId,
+      problem_id: TEST_PROBLEM_ID,
+      language: "python3",
+      code: "print(1)",
+      status: "judging",
+      created_at: now,
+    });
+
+    try {
+      // 第一次写入：WrongAnswer
+      await saveEvaluationResult({
+        submission_id: subId,
+        status: "WrongAnswer",
+        score: 500,
+        output: '---RESULT---\n{"first":true}',
+        details: {},
+      });
+
+      // 第二次写入：Accepted（rejudge 后）
+      await saveEvaluationResult({
+        submission_id: subId,
+        status: "Accepted",
+        score: 1000,
+        output: '---RESULT---\n{"new":true}',
+        details: { rejudge: true },
+        time_ms: 200,
+        memory_kb: 2048,
+      });
+
+      // 断言：只有 1 行（UNIQUE 保持），但内容是第二次的
+      const rows = await db.select().from(evaluationResults)
+        .where(eq(evaluationResults.submission_id, subId));
+      assertEquals(rows.length, 1);
+      assertEquals(rows[0].status, "Accepted");
+      assertEquals(rows[0].score, 1000);
+      assertEquals(rows[0].output, '---RESULT---\n{"new":true}');
+      assertEquals(JSON.parse(rows[0].details), { rejudge: true });
+      assertEquals(rows[0].time_ms, 200);
+      assertEquals(rows[0].memory_kb, 2048);
+    } finally {
+      // 清理
+      await db.delete(evaluationResults).where(
+        eq(evaluationResults.submission_id, subId),
+      );
+      await db.delete(submissions).where(eq(submissions.id, subId));
+      await db.delete(users).where(eq(users.id, userId));
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "submissions service: saveEvaluationResult rejudge_seq 防护：旧结果不应覆盖新结果",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const subId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const userId = crypto.randomUUID();
+    await db.insert(users).values({
+      id: userId,
+      username: `seq_guard_${Date.now()}`,
+      email: `seq_guard_${Date.now()}@test.com`,
+      password_hash: "x",
+      role: "user",
+      created_at: now,
+      updated_at: now,
+    });
+
+    await db.insert(submissions).values({
+      id: subId,
+      user_id: userId,
+      problem_id: TEST_PROBLEM_ID,
+      language: "python3",
+      code: "print(1)",
+      status: "judging",
+      rejudge_seq: 2, // 当前序列号=2
+      created_at: now,
+    });
+
+    try {
+      // 写入 seq=2 的新结果（应成功）
+      await saveEvaluationResult({
+        submission_id: subId,
+        status: "Accepted",
+        score: 1000,
+        output: "---NEW---",
+        details: { seq: 2 },
+        rejudge_seq: 2,
+      });
+
+      // 写入 seq=1 的旧结果（应被丢弃，仅 console.warn）
+      const originalWarn = console.warn;
+      const warnings: string[] = [];
+      console.warn = (...args: unknown[]) => warnings.push(args.join(" "));
+      try {
+        await saveEvaluationResult({
+          submission_id: subId,
+          status: "WrongAnswer",
+          score: 500,
+          output: "---OLD---",
+          details: { seq: 1 },
+          rejudge_seq: 1,
+        });
+      } finally {
+        console.warn = originalWarn;
+      }
+
+      // 断言：evaluation_results 仍只有 1 行，且是 seq=2 的内容
+      const rows = await db.select().from(evaluationResults)
+        .where(eq(evaluationResults.submission_id, subId));
+      assertEquals(rows.length, 1);
+      assertEquals(rows[0].status, "Accepted");
+      assertEquals(rows[0].output, "---NEW---");
+
+      // 断言：丢弃日志被记录
+      const ignoredLog = warnings.find((w) => w.includes("忽略过时的评测结果"));
+      assertExists(ignoredLog, "应记录旧结果被丢弃的日志");
+    } finally {
+      await db.delete(evaluationResults).where(
+        eq(evaluationResults.submission_id, subId),
+      );
+      await db.delete(submissions).where(eq(submissions.id, subId));
+      await db.delete(users).where(eq(users.id, userId));
+    }
   },
 });
