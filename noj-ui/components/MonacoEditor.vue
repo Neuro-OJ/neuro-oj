@@ -38,7 +38,7 @@ async function initMonaco() {
   // 避免国内网络下 unpkg.com 不可达导致 worker 拉取失败。
   // 文件名带 hash，由 postinstall 脚本扫描并写入 workers.json。
   const CDN_BASE = `/monaco`
-  const manifest = await fetch(`${CDN_BASE}/workers.json`).then((r) => r.json())
+  const manifest = (await fetch(`${CDN_BASE}/workers.json`).then((r) => r.json())) ?? {}
   const editorWorkerUrl = manifest.editor ? `${CDN_BASE}/${manifest.editor}` : null
   self.MonacoEnvironment = {
     getWorker(_workerId: string, label: string) {

@@ -34,11 +34,11 @@ let htmlWorker = null
 try {
   const files = await readdir(assetsDir)
   for (const f of files) {
-    if (f.startsWith("editor.worker-") && f.endsWith(".js")) editorWorker = `assets/${f}`
-    else if (f.startsWith("ts.worker-") && f.endsWith(".js")) tsWorker = `assets/${f}`
-    else if (f.startsWith("json.worker-") && f.endsWith(".js")) jsonWorker = `assets/${f}`
-    else if (f.startsWith("css.worker-") && f.endsWith(".js")) cssWorker = `assets/${f}`
-    else if (f.startsWith("html.worker-") && f.endsWith(".js")) htmlWorker = `assets/${f}`
+    if (/^editor\.worker-[\w-]+\.js$/.test(f)) editorWorker = `assets/${f}`
+    else if (/^ts\.worker-[\w-]+\.js$/.test(f)) tsWorker = `assets/${f}`
+    else if (/^json\.worker-[\w-]+\.js$/.test(f)) jsonWorker = `assets/${f}`
+    else if (/^css\.worker-[\w-]+\.js$/.test(f)) cssWorker = `assets/${f}`
+    else if (/^html\.worker-[\w-]+\.js$/.test(f)) htmlWorker = `assets/${f}`
   }
 } catch (err) {
   console.warn("[copy-monaco] 扫描 assets/ 失败:", err.message)
@@ -59,3 +59,9 @@ const manifest = {
 await writeFile(manifestPath, JSON.stringify(manifest, null, 2))
 console.log(`[copy-monaco] worker manifest 写入 ${manifestPath}`)
 console.log(`[copy-monaco] editor worker: ${editorWorker}`)
+
+// sanity check：editor worker 是必要项，缺失说明 monaco 包结构变动
+if (!editorWorker) {
+  console.error("[copy-monaco] 致命：未在 assets/ 找到 editor.worker-*，请检查 monaco-editor 版本或包结构")
+  process.exit(1)
+}
