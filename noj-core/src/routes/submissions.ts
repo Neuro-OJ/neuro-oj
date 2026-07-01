@@ -6,7 +6,7 @@ import {
 } from "../services/submissions.ts";
 import { getSubmissionQueueStatus } from "../services/queue.ts";
 import { authMiddleware } from "../middleware/auth.ts";
-import { BadRequestError } from "../lib/errors.ts";
+import { BadRequestError, NotFoundError } from "../lib/errors.ts";
 
 // 扩展 Hono 类型，使 c.get("userId") 返回 string
 type Env = {
@@ -154,7 +154,7 @@ router.get("/:id/status", authMiddleware, async (c) => {
 
   const result = await getSubmissionQueueStatus(id, userId, userRole);
   if (!result) {
-    return c.json({ error: "提交不存在" }, 404);
+    throw new NotFoundError("提交不存在");
   }
   return c.json(result);
 });

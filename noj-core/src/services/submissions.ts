@@ -11,10 +11,11 @@ import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";
 import { getProblem } from "./problems.ts";
-import type {
-  JudgeResult,
-  JudgeTask,
-  SubmissionStatus,
+import {
+  type JudgeResult,
+  type JudgeTask,
+  LANGUAGE_EXT_MAP,
+  type SubmissionStatus,
 } from "../types/index.ts";
 import { getSubmissionQueueStatus } from "./queue.ts";
 
@@ -289,14 +290,8 @@ export async function createSubmission(
   }
 
   // 生成文件默认名
-  const extMap: Record<string, string> = {
-    python3: "main.py",
-    python: "main.py",
-    cpp: "main.cpp",
-    c: "main.c",
-    javascript: "main.js",
-  };
-  const fileName = input.file_name || extMap[input.language] || "main.txt";
+  const fileName = input.file_name || LANGUAGE_EXT_MAP[input.language] ||
+    "main.txt";
 
   // 创建提交记录并推送到评测队列（在同一个 try 块中保证一致性）
   const id = crypto.randomUUID();
@@ -489,20 +484,20 @@ export async function saveEvaluationResult(
   //
   // 方案：JudgeResult 携带 rejudge_seq（由 noj-judge 从 JudgeTask 透传），
   // 此处比对 submissions 当前值。结果 seq < 当前 seq → 丢弃。
-  if (result.rejudge_seq !== undefined) {
-    const [sub] = await db
-      .select({ rejudge_seq: submissions.rejudge_seq })
-      .from(submissions)
-      .where(eq(submissions.id, result.submission_id))
-      .limit(1);
+  // 缺失 rejudge_seq 时按 0 处理（首次提交走默认值），此时仍需检查。
+  const incomingSeq = result.rejudge_seq ?? 0;
+  const [sub] = await db
+    .select({ rejudge_seq: submissions.rejudge_seq })
+    .from(submissions)
+    .where(eq(submissions.id, result.submission_id))
+    .limit(1);
 
-    if (sub && result.rejudge_seq < sub.rejudge_seq) {
-      console.warn(
-        `忽略过时的评测结果: submission=${result.submission_id}, ` +
-          `result_seq=${result.rejudge_seq}, current_seq=${sub.rejudge_seq}`,
-      );
-      return;
-    }
+  if (sub && incomingSeq < sub.rejudge_seq) {
+    console.warn(
+      `忽略过时的评测结果: submission=${result.submission_id}, ` +
+        `result_seq=${incomingSeq}, current_seq=${sub.rejudge_seq}`,
+    );
+    return;
   }
 
   const now = new Date().toISOString();
@@ -533,7 +528,15 @@ export async function saveEvaluationResult(
       })
       .where(eq(submissions.id, result.submission_id));
 
-    // 插入评测结果（使用 UPSERT 语义防止重复消费）
+    // 插入评测结果（使用 UPSERT 语义防止重复消费，并在重测后用最新结果覆盖）
+    //
+    // 修复 issue #86：重测流程中 rejudgeSubmission 会先 DELETE 旧 evaluation_results，
+    // 再发送新 JudgeTask。但若旧结果到达顺序在新结果到达之前出现（例如消费者网络抖动
+    // 触发的延迟重投），旧结果 INSERT 成功后会占据 submission_id 的 UNIQUE 槽位，
+    // 之后到达的新结果因 onConflictDoNothing 被 silently 跳过，导致评测结果停留在旧值。
+    //
+    // 改为 onConflictDoUpdate：若 submission_id 已存在，直接覆盖为本次结果。
+    // 配合 rejudge_seq 防护（旧结果 seq 已被丢弃），不会污染正确的新结果。
     await tx
       .insert(evaluationResults)
       .values({
@@ -547,7 +550,18 @@ export async function saveEvaluationResult(
         memory_kb: result.memory_kb ?? null,
         created_at: now,
       })
-      .onConflictDoNothing({ target: evaluationResults.submission_id });
+      .onConflictDoUpdate({
+        target: evaluationResults.submission_id,
+        set: {
+          status: result.status,
+          score: result.score,
+          output: result.output,
+          details: JSON.stringify(result.details),
+          time_ms: result.time_ms ?? null,
+          memory_kb: result.memory_kb ?? null,
+          created_at: now,
+        },
+      });
   });
 }
 
@@ -622,15 +636,6 @@ export async function updateSubmissionStatus(
 
 /** 批量重测单次最大提交数。 */
 const MAX_BATCH_REJUDGE = 500;
-
-/** 语言 → 默认文件名映射（与 createSubmission 保持一致）。 */
-const extMap: Record<string, string> = {
-  python3: "main.py",
-  python: "main.py",
-  cpp: "main.cpp",
-  c: "main.c",
-  javascript: "main.js",
-};
 
 /**
  * 管理员重测提交。
@@ -708,7 +713,7 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     language: submission.language,
     code: submission.code,
     file_name: submission.file_name ??
-      (extMap[submission.language] || "main.txt"),
+      (LANGUAGE_EXT_MAP[submission.language] || "main.txt"),
     time_limit_ms: problem.time_limit_ms,
     memory_limit_mb: problem.memory_limit_mb,
     rejudge_seq: updated?.rejudge_seq ?? 0,
@@ -891,7 +896,8 @@ export async function rejudgeProblemSubmissions(
         support_package_base64,
         language: sub.language,
         code: sub.code,
-        file_name: sub.file_name ?? (extMap[sub.language] || "main.txt"),
+        file_name: sub.file_name ??
+          (LANGUAGE_EXT_MAP[sub.language] || "main.txt"),
         time_limit_ms: problem.time_limit_ms,
         memory_limit_mb: problem.memory_limit_mb,
         rejudge_seq: currentSeq,

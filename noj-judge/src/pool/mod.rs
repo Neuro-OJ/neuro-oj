@@ -846,13 +846,33 @@ impl PoolManager {
                 .map_err(anyhow::Error::from)
         })
         .await?;
-        with_timeout(5, "start_container", async {
+        let start_result = with_timeout(5, "start_container", async {
             docker
                 .start_container(&result.id, None)
                 .await
                 .map_err(anyhow::Error::from)
         })
-        .await?;
+        .await;
+        if let Err(start_err) = start_result {
+            // 启动失败：清理已创建但未启动的容器，避免 zombie 容器泄漏
+            if let Err(rm_err) = docker
+                .remove_container(
+                    &result.id,
+                    Some(bollard::query_parameters::RemoveContainerOptions {
+                        force: true,
+                        ..Default::default()
+                    }),
+                )
+                .await
+            {
+                warn!(
+                    container_id = %result.id,
+                    error = %rm_err,
+                    "create_container 启动失败后清理容器也失败，可能存在 zombie 容器"
+                );
+            }
+            return Err(start_err);
+        }
         Ok(result.id)
     }
 

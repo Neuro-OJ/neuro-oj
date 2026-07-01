@@ -1,5 +1,23 @@
+const FORWARDABLE_HEADERS = new Set([
+  "retry-after",
+  "x-ratelimit-limit",
+  "x-ratelimit-remaining",
+  "x-ratelimit-reset",
+  "x-request-id",
+  "www-authenticate",
+]);
+
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
+
+  // 路径白名单：仅允许转发到 noj-core v1 API
+  if (!event.path.startsWith("/api/v1/")) {
+    return sendError(
+      event,
+      createError({ statusCode: 404, statusMessage: "Not Found" }),
+    );
+  }
+
   const target = `${config.apiBase}${event.path}`;
 
   const cookies = parseCookies(event);
@@ -72,11 +90,25 @@ export default defineEventHandler(async (event) => {
       }
 
       setResponseStatus(event, response.status);
+      setHeader(event, "cache-control", "no-store, private");
       return data;
     } catch (err) {
-      const e = err as { response?: { status: number; _data: unknown } };
+      const e = err as {
+        response?: {
+          status: number;
+          _data: unknown;
+          headers?: Record<string, string>;
+        };
+      };
       if (e.response) {
         setResponseStatus(event, e.response.status);
+        if (e.response.headers) {
+          for (const [name, value] of Object.entries(e.response.headers)) {
+            if (FORWARDABLE_HEADERS.has(name.toLowerCase())) {
+              setHeader(event, name, value);
+            }
+          }
+        }
         return e.response._data;
       }
       throw err;

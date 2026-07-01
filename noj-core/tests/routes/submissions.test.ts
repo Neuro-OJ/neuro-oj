@@ -241,3 +241,27 @@ Deno.test({
     assertEquals(body.pagination.total, 0);
   },
 });
+
+Deno.test({
+  name:
+    "submissions route: GET /api/v1/submissions/:id/status 提交不存在时返回 404 + code + request_id",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await signToken({ sub: "test-user", role: "user" });
+    const res = await app.request(
+      "/api/v1/submissions/nonexistent-id/status",
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    assertEquals(res.status, 404);
+    const body = await res.json();
+    assertEquals(body.error, "提交不存在");
+    assertEquals(body.code, "NOT_FOUND");
+    assertEquals(typeof body.request_id, "string");
+    assertExists(body.request_id);
+  },
+});

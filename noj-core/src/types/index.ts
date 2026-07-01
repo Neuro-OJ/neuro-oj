@@ -74,3 +74,18 @@ export function scoreToDb(value: number): number {
 export function scoreFromDb(value: number): number {
   return value / SCORE_SCALE;
 }
+
+/**
+ * 编程语言 → 默认文件名映射（评测 worker 期望的文件名）。
+ *
+ * 当提交未显式提供 file_name 时，按此表推断默认文件名。
+ * 单一来源：所有需要推断默认文件名的服务（createSubmission、
+ * rejudgeSubmission、rejudgeProblemSubmissions）均引用此常量。
+ */
+export const LANGUAGE_EXT_MAP: Record<string, string> = {
+  python3: "main.py",
+  python: "main.py",
+  cpp: "main.cpp",
+  c: "main.c",
+  javascript: "main.js",
+};

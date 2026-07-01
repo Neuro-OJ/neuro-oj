@@ -5,22 +5,21 @@ import * as schema from "./schema.ts";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _client: ReturnType<typeof postgres> | null = null;
-let _error: Error | null = null;
 
 /**
  * 获取 Drizzle ORM 数据库实例（单例模式）。
  * 首次调用时初始化 postgres.js 连接。
  * 必须通过环境变量 `DATABASE_URL` 配置连接字符串，无默认值。
+ *
+ * 注意：不在模块级别缓存连接错误，启动期 DB 暂不可用时让调用方
+ * 收到原始错误，DB 恢复后下一次调用即可成功重连。
  */
 export function getDb() {
   if (_db) return _db;
-  if (_error) throw _error;
 
   const databaseUrl = Deno.env.get("DATABASE_URL");
   if (!databaseUrl) {
-    const err = new Error("环境变量 DATABASE_URL 未设置");
-    _error = err;
-    throw err;
+    throw new Error("环境变量 DATABASE_URL 未设置");
   }
 
   try {
@@ -49,9 +48,9 @@ export function getDb() {
     _db = drizzle(_client, { schema });
     return _db;
   } catch (err) {
-    _error = err instanceof Error ? err : new Error(String(err));
-    console.error("数据库初始化失败:", _error.message);
-    throw _error;
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("数据库初始化失败:", message);
+    throw err;
   }
 }
 
@@ -63,9 +62,6 @@ export function getDb() {
 export async function checkDbHealth(): Promise<
   { ok: boolean; error?: string }
 > {
-  if (_error) {
-    return { ok: false, error: _error.message };
-  }
   if (!_client) {
     return { ok: false, error: "未初始化" };
   }
@@ -96,5 +92,4 @@ export async function resetDbForTest() {
   }
   _db = null;
   _client = null;
-  _error = null;
 }

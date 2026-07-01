@@ -22,26 +22,59 @@ use crate::config::Config;
 use crate::pool::PoolManager;
 
 /// 等待所有 in-flight 任务完成（带 30s 超时兜底）。
+///
+/// 超时后必须**显式** `abort()` 剩余 `JoinHandle`，否则：
+/// 1. `FuturesUnordered` 在本函数返回后被 drop，drop 时**不会**等待 task 完成；
+/// 2. task 内部的 future（如 `bollard` exec、cgroup read）会被取消；
+/// 3. Docker exec 在 daemon 侧无法被取消，会残留到自然结束——这就是 exec 泄漏。
+///
+/// 因此超时分支里我们主动遍历 `tasks.iter_mut()` 调用 `abort()`，
+/// 然后用 5s 兜底 `join_all` 收集结果（best-effort，不阻塞进程退出）。
 async fn drain_tasks(tasks: &mut FuturesUnordered<tokio::task::JoinHandle<()>>) {
     info!(
         "关闭信号已接收，等待 {} 个正在执行的任务完成...",
         tasks.len()
     );
-    let timeout_dur = std::time::Duration::from_secs(30);
-    let timeout = tokio::time::sleep(timeout_dur);
-    tokio::pin!(timeout);
+    let drain_timeout = std::time::Duration::from_secs(30);
+    let deadline = tokio::time::sleep(drain_timeout);
+    tokio::pin!(deadline);
     loop {
         tokio::select! {
-            _ = &mut timeout => {
+            _ = &mut deadline => {
                 warn!("等待超时，{} 个任务未完成，强制退出", tasks.len());
                 break;
             }
             _ = tasks.next() => {
                 if tasks.is_empty() {
                     info!("所有 in-flight 任务已完成");
-                    break;
+                    return;
                 }
             }
+        }
+    }
+
+    // 显式 abort 所有剩余任务，阻止 FuturesUnordered drop 后 task 被悄悄取消
+    let remaining = tasks.len();
+    warn!("drain 超时，强制 abort {} 个剩余 task", remaining);
+    for handle in tasks.iter_mut() {
+        handle.abort();
+    }
+    // best-effort 等待 abort 完成，最多 5s（不阻塞进程退出）
+    let drain = futures_util::future::join_all(tasks);
+    match tokio::time::timeout(std::time::Duration::from_secs(5), drain).await {
+        Ok(results) => {
+            let aborted = results
+                .iter()
+                .filter(|r| r.as_ref().err().is_some_and(|e| e.is_cancelled()))
+                .count();
+            let finished = results.len() - aborted;
+            info!(
+                "剩余任务 abort 完成: finished={}, aborted={}",
+                finished, aborted
+            );
+        }
+        Err(_) => {
+            warn!("abort 后 join_all 仍超时，进程将直接退出");
         }
     }
 }
@@ -49,7 +82,12 @@ async fn drain_tasks(tasks: &mut FuturesUnordered<tokio::task::JoinHandle<()>>) 
 fn main() -> Result<()> {
     let rt = tokio::runtime::Runtime::new().context("创建 Tokio 运行时失败")?;
     rt.block_on(async {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,noj_judge=debug")),
+        )
+        .init();
 
     let config = Config::from_env();
     info!("noj-judge 启动 (pool_enabled={})", config.pool.enabled);
