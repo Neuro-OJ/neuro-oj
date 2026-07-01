@@ -1,5 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
+import { jsonRequest } from "../lib/helper.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const hasDb = !!Deno.env.get("DATABASE_URL");
@@ -12,7 +13,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/users/nonexistent-id/profile");
+    const res = await jsonRequest(app, "/api/v1/users/nonexistent-id/profile");
     assertEquals(res.status, 404);
     const body = await res.json();
     assertEquals(body.error, "用户不存在");
@@ -27,7 +28,7 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     // 不存在的用户，但路由本身不应要求认证
-    const res = await app.request("/api/v1/users/some-id/profile");
+    const res = await jsonRequest(app, "/api/v1/users/some-id/profile");
     // 应返回 404（用户不存在）而非 401（未认证）
     assertEquals(res.status, 404);
   },
@@ -40,7 +41,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/users/nonexistent-id/profile");
+    const res = await jsonRequest(app, "/api/v1/users/nonexistent-id/profile");
     assertEquals(res.status, 404);
   },
 });

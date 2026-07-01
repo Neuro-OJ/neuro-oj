@@ -1,6 +1,7 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
+import { jsonRequest } from "../lib/helper.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const hasDb = !!Deno.env.get("DATABASE_URL");
@@ -11,14 +12,13 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/submissions", {
+    const res = await jsonRequest(app, "/api/v1/submissions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      body: {
         problem_id: "1001",
         language: "python3",
         code: "print('hi')",
-      }),
+      },
     });
     assertEquals(res.status, 401);
     const body = await res.json();
@@ -31,17 +31,14 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/submissions", {
+    const res = await jsonRequest(app, "/api/v1/submissions", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer invalid-token-here",
-      },
-      body: JSON.stringify({
+      body: {
         problem_id: "1001",
         language: "python3",
         code: "print('hi')",
-      }),
+      },
+      token: "invalid-token-here",
     });
     assertEquals(res.status, 401);
     const body = await res.json();
@@ -55,13 +52,10 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
-    const res = await app.request("/api/v1/submissions", {
+    const res = await jsonRequest(app, "/api/v1/submissions", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ problem_id: "1001" }), // 缺少 language 和 code
+      body: { problem_id: "1001" }, // 缺少 language 和 code
+      token,
     });
     assertEquals(res.status, 400);
     const body = await res.json();
@@ -74,7 +68,7 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/submissions/123");
+    const res = await jsonRequest(app, "/api/v1/submissions/123");
     assertEquals(res.status, 401);
   },
 });
@@ -88,8 +82,8 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
-    const res = await app.request("/api/v1/submissions/nonexistent-id", {
-      headers: { Authorization: `Bearer ${token}` },
+    const res = await jsonRequest(app, "/api/v1/submissions/nonexistent-id", {
+      token,
     });
     assertEquals(res.status, 404);
     const body = await res.json();
@@ -104,7 +98,7 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/submissions");
+    const res = await jsonRequest(app, "/api/v1/submissions");
     assertEquals(res.status, 401);
   },
 });
@@ -114,8 +108,8 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/submissions", {
-      headers: { Authorization: "Bearer invalid-token" },
+    const res = await jsonRequest(app, "/api/v1/submissions", {
+      token: "invalid-token",
     });
     assertEquals(res.status, 401);
   },
@@ -130,9 +124,7 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const token = await signToken({ sub: "test-list-empty", role: "user" });
-    const res = await app.request("/api/v1/submissions", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/api/v1/submissions", { token });
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(Array.isArray(body.data), true);
@@ -152,8 +144,8 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
-    const res = await app.request("/api/v1/submissions?status=invalid", {
-      headers: { Authorization: `Bearer ${token}` },
+    const res = await jsonRequest(app, "/api/v1/submissions?status=invalid", {
+      token,
     });
     assertEquals(res.status, 400);
   },
@@ -167,8 +159,8 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
-    const res = await app.request("/api/v1/submissions?per_page=999", {
-      headers: { Authorization: `Bearer ${token}` },
+    const res = await jsonRequest(app, "/api/v1/submissions?per_page=999", {
+      token,
     });
     assertEquals(res.status, 200);
     const body = await res.json();
@@ -183,7 +175,7 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/admin/submissions");
+    const res = await jsonRequest(app, "/api/v1/admin/submissions");
     assertEquals(res.status, 401);
   },
 });
@@ -194,9 +186,7 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const token = await signToken({ sub: "test-regular", role: "user" });
-    const res = await app.request("/api/v1/admin/submissions", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/api/v1/admin/submissions", { token });
     assertEquals(res.status, 403);
     const body = await res.json();
     assertEquals(body.error, "需要管理员权限");
@@ -211,9 +201,7 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const token = await signToken({ sub: "test-admin", role: "admin" });
-    const res = await app.request("/api/v1/admin/submissions", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/api/v1/admin/submissions", { token });
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(Array.isArray(body.data), true);
@@ -229,11 +217,10 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const token = await signToken({ sub: "test-admin", role: "admin" });
-    const res = await app.request(
+    const res = await jsonRequest(
+      app,
       "/api/v1/admin/submissions?user_id=nonexistent-user",
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      },
+      { token },
     );
     assertEquals(res.status, 200);
     const body = await res.json();
@@ -251,11 +238,10 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
-    const res = await app.request(
+    const res = await jsonRequest(
+      app,
       "/api/v1/submissions/nonexistent-id/status",
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      },
+      { token },
     );
     assertEquals(res.status, 404);
     const body = await res.json();
