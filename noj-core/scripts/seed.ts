@@ -15,6 +15,7 @@ import { runMigrations } from "../src/db/migrate.ts";
 import { getDb } from "../src/db/connection.ts";
 import {
   categories,
+  judgeImages,
   problems,
   problemsCategories,
   users,
@@ -162,6 +163,37 @@ const PROBLEM_CATEGORY_MAP: [string, string][] = [
   ["1001", "cat-algorithm"],
   ["1003", "cat-algorithm"],
 ];
+
+/**
+ * 初始化评测镜像白名单。
+ * 预置 noj-judge-python 确保开箱可用（与现有样例题目的 judge_image 值一致）。
+ * 幂等：使用固定 UUID 确保重复运行不重复插入。
+ */
+async function seedJudgeImages(): Promise<void> {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  // 先按 image 名查找是否已存在，防止管理员删除默认条目后自行重建导致重复
+  const existing = await db
+    .select()
+    .from(judgeImages)
+    .where(eq(judgeImages.image, "noj-judge-python"))
+    .limit(1);
+
+  if (existing.length === 0) {
+    await db.insert(judgeImages).values({
+      id: "e0000000-0000-0000-0000-000000000001",
+      image: "noj-judge-python",
+      mode: "all_versions",
+      description: "Python 3.12 评测环境",
+      created_at: now,
+      updated_at: now,
+    });
+    console.log("  已插入默认评测镜像: noj-judge-python (all_versions)");
+  } else {
+    console.log("  默认评测镜像已存在，跳过插入");
+  }
+}
 
 async function seedProblems(): Promise<void> {
   const db = getDb();
@@ -450,7 +482,16 @@ async function main() {
       throw err;
     }
 
-    // 3. 插入示例题
+    // 3. 插入默认评测镜像白名单（必须在 seedProblems 之前，确保校验通过）
+    try {
+      console.log("初始化评测镜像白名单...");
+      await seedJudgeImages();
+    } catch (err) {
+      console.error("评测镜像白名单初始化失败:", err);
+      throw err;
+    }
+
+    // 4. 插入示例题
     try {
       await seedProblems();
     } catch (err) {
@@ -458,7 +499,7 @@ async function main() {
       throw err;
     }
 
-    // 4. 初始化示例分类
+    // 5. 初始化示例分类
     try {
       console.log("初始化示例分类...");
       await seedCategories();
@@ -467,7 +508,7 @@ async function main() {
       throw err;
     }
 
-    // 5. 关联题目与分类
+    // 6. 关联题目与分类
     try {
       console.log("关联题目与分类...");
       await seedProblemCategories();
@@ -476,7 +517,7 @@ async function main() {
       throw err;
     }
 
-    // 6. 管理员创建/提升（环境变量优先）
+    // 7. 管理员创建/提升（环境变量优先）
     try {
       console.log("检查管理员...");
       await ensureAdminFromEnv();
@@ -485,7 +526,7 @@ async function main() {
       throw err;
     }
 
-    // 7. 引导管理员兜底：无任何可登录 admin 时创建临时账户（issue #75）
+    // 8. 引导管理员兜底：无任何可登录 admin 时创建临时账户（issue #75）
     try {
       await ensureBootstrapAdmin();
     } catch (err) {
@@ -493,7 +534,7 @@ async function main() {
       throw err;
     }
 
-    // 8. E2E 守卫测试用户（评审修复 H2）
+    // 9. E2E 守卫测试用户（评审修复 H2）
     try {
       await ensureE2EPwChangeUser();
     } catch (err) {

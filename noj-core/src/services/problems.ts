@@ -29,6 +29,8 @@ import {
   type ProblemResponseWithCategories,
   type UpdateProblemInput,
 } from "../types/problems.ts";
+import { validateJudgeImage } from "./judge-images.ts";
+import { getPackagePath } from "./support-package.ts";
 
 export interface ProblemResponse {
   id: string;
@@ -38,6 +40,7 @@ export interface ProblemResponse {
   judge_image: string;
   judge_command: string;
   support_package_path: string | null;
+  has_support_package: boolean;
   time_limit_ms: number;
   memory_limit_mb: number;
   number: number;
@@ -98,6 +101,7 @@ function toProblemResponse(
     judge_image: row.judge_image,
     judge_command: row.judge_command,
     support_package_path: row.support_package_path,
+    has_support_package: row.support_package_path !== null,
     time_limit_ms: row.time_limit_ms,
     memory_limit_mb: row.memory_limit_mb,
     number: row.number,
@@ -441,6 +445,11 @@ export async function createProblem(
     );
   }
 
+  // 校验评测镜像白名单
+  if (input.judge_image !== undefined) {
+    await validateJudgeImage(input.judge_image);
+  }
+
   // 题目主键统一由服务端生成 UUID，避免客户端注入字符串 id
   // 影响 display_id 双索引路由解析
   const id = crypto.randomUUID();
@@ -573,6 +582,11 @@ export async function updateProblem(
     );
   }
 
+  // 校验评测镜像白名单
+  if (input.judge_image !== undefined) {
+    await validateJudgeImage(input.judge_image);
+  }
+
   // 防御性忽略 type 和 number（spec 承诺这两个字段不可变更）
   delete (input as Record<string, unknown>)["type"];
   delete (input as Record<string, unknown>)["number"];
@@ -643,6 +657,18 @@ export async function deleteProblem(
     }
     if (problem.owner_id !== userId) {
       throw new ForbiddenError("无权删除此题目");
+    }
+  }
+
+  // 清理支持包文件（幂等，文件不存在则忽略）
+  try {
+    await Deno.remove(getPackagePath(id));
+  } catch (err) {
+    if (!(err instanceof Deno.errors.NotFound)) {
+      console.error(
+        `清理支持包文件失败 (${getPackagePath(id)}):`,
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 

@@ -15,6 +15,11 @@ import type {
   ProblemListQuery,
   UpdateProblemInput,
 } from "../types/problems.ts";
+import {
+  deleteSupportPackage,
+  MAX_SUPPORT_PACKAGE_SIZE,
+  saveSupportPackage,
+} from "../services/support-package.ts";
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
@@ -161,6 +166,76 @@ router.delete("/:id", authMiddleware, async (c) => {
   const problem = await resolveProblem(id);
   await deleteProblem(problem.id, userId, userRole);
   return c.body(null, 204);
+});
+
+/**
+ * 上传支持包。
+ * POST /api/v1/problems/:id/support-package
+ */
+router.post("/:id/support-package", authMiddleware, async (c) => {
+  const id = c.req.param("id") as string;
+  const userId = c.get("userId");
+  const userRole = c.get("userRole");
+
+  // 双索引解析获取实际题目 ID，同时获取题目信息用于权限校验
+  const problem = await resolveProblem(id);
+
+  // 解析 multipart/form-data
+  const body = await c.req.parseBody();
+  const file = body["file"];
+
+  if (!file || !(file instanceof File)) {
+    throw new BadRequestError("请上传有效的 zip 文件");
+  }
+
+  if (!file.name.toLowerCase().endsWith(".zip")) {
+    throw new BadRequestError("仅支持 .zip 格式文件");
+  }
+
+  if (file.size > MAX_SUPPORT_PACKAGE_SIZE) {
+    throw new BadRequestError(
+      `支持包大小超过限制（最大 ${
+        (MAX_SUPPORT_PACKAGE_SIZE / 1024 / 1024).toFixed(0)
+      }MB）`,
+    );
+  }
+
+  const fileBytes = new Uint8Array(await file.arrayBuffer());
+
+  // 验证 zip magic bytes（PK 头：0x50, 0x4B）
+  if (fileBytes.length < 4 || fileBytes[0] !== 0x50 || fileBytes[1] !== 0x4B) {
+    throw new BadRequestError("文件不是有效的 zip 格式");
+  }
+
+  const packagePath = await saveSupportPackage(
+    problem.id,
+    { name: file.name, data: fileBytes },
+    userId,
+    userRole,
+    { type: problem.type, owner_id: problem.owner_id }, // 复用已获取的题目信息
+  );
+
+  return c.json({ data: { support_package_path: packagePath } });
+});
+
+/**
+ * 删除支持包。
+ * DELETE /api/v1/problems/:id/support-package
+ */
+router.delete("/:id/support-package", authMiddleware, async (c) => {
+  const id = c.req.param("id") as string;
+  const userId = c.get("userId");
+  const userRole = c.get("userRole");
+
+  // 双索引解析获取实际题目 ID，同时获取题目信息用于权限校验
+  const problem = await resolveProblem(id);
+
+  await deleteSupportPackage(problem.id, userId, userRole, {
+    type: problem.type,
+    owner_id: problem.owner_id,
+  });
+
+  return c.json({ data: { support_package_path: null } });
 });
 
 export default router;

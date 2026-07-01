@@ -36,6 +36,16 @@ async function getAdminCount(): Promise<number> {
   return Number(row?.count ?? 0);
 }
 
+/**
+ * 清理测试间残留的 admin 用户（除 root 外），确保种子测试从干净状态开始。
+ */
+async function cleanNonRootAdmins(): Promise<void> {
+  const db = getDb();
+  await db.delete(users).where(
+    and(eq(users.role, "admin"), not(eq(users.id, "0"))),
+  );
+}
+
 Deno.test({
   name: "seed bootstrap: 新数据库无可登录 admin",
   ignore: skip,
@@ -43,6 +53,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
+    await cleanNonRootAdmins();
     // 确保 ADMIN_EMAIL 未设置
     if (origAdminEmail) Deno.env.delete("ADMIN_EMAIL");
 
@@ -58,6 +69,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
+    await cleanNonRootAdmins();
 
     // 先注册一个普通用户
     const user = await registerUser({
@@ -110,6 +122,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
+    await cleanNonRootAdmins();
     if (origAdminEmail) Deno.env.delete("ADMIN_EMAIL");
 
     // 直接创建引导管理员（模拟 seed 行为）

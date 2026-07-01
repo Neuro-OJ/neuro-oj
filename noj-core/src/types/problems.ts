@@ -1,4 +1,19 @@
 /**
+ * 提取 Docker 镜像的基础名称（去掉 tag 部分）。
+ *
+ * Docker 镜像引用可能包含 registry 端口和路径：
+ *   "noj-judge-python:latest"           → "noj-judge-python"
+ *   "registry:5000/my-image:v2"         → "my-image"
+ *   "docker.io/library/python:3.12"     → "python"
+ *
+ * 正确做法：取最后一个 "/" 之后的段落作为镜像名，再用 ":" 分离 tag。
+ */
+function getImageBase(name: string): string {
+  const lastSegment = name.split("/").pop() ?? name;
+  return lastSegment.split(":")[0];
+}
+
+/**
  * 允许的难度等级。
  */
 export const DIFFICULTIES = ["easy", "medium", "hard"] as const;
@@ -90,6 +105,8 @@ export interface ProblemResponseWithCategories {
   judge_image: string;
   judge_command: string;
   support_package_path: string | null;
+  /** 是否有已上传的支持包文件 */
+  has_support_package: boolean;
   time_limit_ms: number;
   memory_limit_mb: number;
   categories: { id: string; name: string; slug: string }[];
@@ -103,4 +120,54 @@ export interface ProblemResponseWithCategories {
   type: string;
   /** 展示标识，格式：{type}{number}（如 P1001、U42） */
   display_id: string;
+}
+
+/**
+ * 创建评测镜像白名单条目请求体。
+ */
+export interface CreateJudgeImageInput {
+  image: string;
+  mode: "exact" | "all_versions";
+  description?: string;
+}
+
+/**
+ * 更新评测镜像白名单条目请求体。
+ */
+export interface UpdateJudgeImageInput {
+  image?: string;
+  mode?: "exact" | "all_versions";
+  description?: string;
+}
+
+/**
+ * 评测镜像白名单条目响应。
+ */
+export interface JudgeImageResponse {
+  id: string;
+  image: string;
+  mode: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * 校验 judge_image 是否与白名单匹配。
+ * exact 模式：完全相等；all_versions 模式：镜像名去掉标签后匹配。
+ */
+export function isImageInWhitelist(
+  image: string,
+  whitelist: { image: string; mode: string }[],
+): boolean {
+  for (const entry of whitelist) {
+    if (entry.mode === "exact") {
+      if (image === entry.image) return true;
+    } else if (entry.mode === "all_versions") {
+      // all_versions：提取两者的基础镜像名（去掉 tag 部分）进行比较
+      // 注意 entry.image 本身也可能带 tag（即便语义上 all_versions 含 tag 不合理）
+      if (getImageBase(image) === getImageBase(entry.image)) return true;
+    }
+  }
+  return false;
 }

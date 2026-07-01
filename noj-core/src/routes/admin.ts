@@ -6,6 +6,16 @@ import { listUsers, promoteUser } from "../services/auth.ts";
 import { getDashboardStats } from "../services/dashboard.ts";
 import { listAllProblems } from "../services/problems.ts";
 import {
+  createJudgeImage,
+  deleteJudgeImage,
+  listJudgeImages,
+  updateJudgeImage,
+} from "../services/judge-images.ts";
+import type {
+  CreateJudgeImageInput,
+  UpdateJudgeImageInput,
+} from "../types/problems.ts";
+import {
   deleteSubmission,
   getSubmission,
   listSubmissions,
@@ -204,6 +214,53 @@ router.post("/problems/:id/rejudge", async (c) => {
     problem_id: id,
     ...result,
   });
+});
+
+// ─── 评测镜像白名单管理 ───────────────────────────────────────
+
+/**
+ * 获取所有白名单条目。
+ * GET /api/v1/admin/judge-images
+ */
+router.get("/judge-images", async (c) => {
+  const items = await listJudgeImages();
+  return c.json({ data: items });
+});
+
+/**
+ * 新增白名单条目。
+ * POST /api/v1/admin/judge-images
+ */
+router.post("/judge-images", async (c) => {
+  const body = await parseJsonBody<CreateJudgeImageInput>(c);
+
+  if (!body.image?.trim()) {
+    throw new BadRequestError("镜像名不能为空");
+  }
+
+  const item = await createJudgeImage(body);
+  return c.json({ data: item }, 201);
+});
+
+/**
+ * 更新白名单条目。
+ * PUT /api/v1/admin/judge-images/:id
+ */
+router.put("/judge-images/:id", async (c) => {
+  const id = c.req.param("id") as string;
+  const body = await parseJsonBody<UpdateJudgeImageInput>(c);
+  const item = await updateJudgeImage(id, body);
+  return c.json({ data: item }, 200);
+});
+
+/**
+ * 删除白名单条目。
+ * DELETE /api/v1/admin/judge-images/:id
+ */
+router.delete("/judge-images/:id", async (c) => {
+  const id = c.req.param("id") as string;
+  await deleteJudgeImage(id);
+  return c.body(null, 204);
 });
 
 // ─── 仪表盘 ─────────────────────────────────────────────────

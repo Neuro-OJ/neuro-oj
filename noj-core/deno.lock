@@ -13,6 +13,7 @@
     "npm:@types/pg@^8.20.0": "8.20.0",
     "npm:bcryptjs@^2.4.3": "2.4.3",
     "npm:drizzle-kit@*": "0.31.10",
+    "npm:drizzle-orm@0.35.2": "0.35.2_@types+pg@8.20.0_postgres@3.4.5",
     "npm:drizzle-orm@0.45.2": "0.45.2_@types+pg@8.20.0_postgres@3.4.5",
     "npm:hono@4": "4.12.26",
     "npm:ioredis@5.11.1": "5.11.1",
@@ -646,6 +647,17 @@
         "tsx"
       ],
       "bin": true
+    },
+    "drizzle-orm@0.35.2_@types+pg@8.20.0_postgres@3.4.5": {
+      "integrity": "sha512-bLQtRchl8QvRo2MyG6kcZC90UDzR7Ubir4YwOHV3cZPdJbF+4jU/Yt0QOczsoXe25wLRt6CtCWLXtSDQKft3yg==",
+      "dependencies": [
+        "@types/pg",
+        "postgres"
+      ],
+      "optionalPeers": [
+        "@types/pg",
+        "postgres"
+      ]
     },
     "drizzle-orm@0.45.2_@types+pg@8.20.0_postgres@3.4.5": {
       "integrity": "sha512-kY0BSaTNYWnoDMVoyY8uxmyHjpJW1geOmBMdSSicKo9CIIWkSxMIj2rkeSR51b8KAPB7m+qysjuHme5nKP+E5Q==",

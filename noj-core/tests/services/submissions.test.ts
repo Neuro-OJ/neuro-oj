@@ -20,6 +20,7 @@ const skip = !hasDb;
 const ts = Date.now();
 const TEST_PROBLEM_ID = `tst-pr-${ts}`;
 const TEST_USER_ID = `tst-user-${ts}`;
+const TEST_NUMBER = 50000 + (ts & 0x7fff);
 
 Deno.test({
   name: "submissions service: 初始化测试题目和用户",
@@ -48,7 +49,7 @@ Deno.test({
       judge_command: "python3 /tmp/evaluate.py",
       time_limit_ms: 5000,
       memory_limit_mb: 512,
-      number: 10000,
+      number: TEST_NUMBER,
       owner_id: TEST_USER_ID,
       type: "P",
       created_at: now,
