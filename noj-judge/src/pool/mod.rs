@@ -1,6 +1,6 @@
 //! 统一容器池模块。
 //!
-//! PoolManager 替代原有的 Semaphore 并发控制模型。
+//! PoolManager 统一管理所有评测容器的生命周期。
 //! 所有容器（预创建和即时创建）都通过池统一管理。
 
 pub mod copy;
@@ -450,7 +450,19 @@ impl PoolManager {
             }
 
             if !pulled {
-                warn!("跳过镜像 {}: 拉取失败，任务将使用即时创建路径", image);
+                let build_hint = image
+                    .strip_prefix("noj-judge-")
+                    .map(|s| {
+                        format!(
+                            "docker build -t {} -f noj-judge/docker/{}/Dockerfile .",
+                            image, s
+                        )
+                    })
+                    .unwrap_or_else(|| format!("docker build -t {} .", image));
+                warn!(
+                    "跳过镜像 {}: 拉取失败，任务将使用即时创建路径。如需本地构建：{}",
+                    image, build_hint
+                );
                 continue;
             }
 

@@ -28,7 +28,7 @@
 
 #### Scenario: 池预创建容器
 
-- **WHEN** noj-judge 启动且 POOL_ENABLED=true
+- **WHEN** noj-judge 启动
 - **THEN** 预创建 POOL_INITIAL_SIZE 个容器，CMD = `sleep infinity`
 - **THEN** 容器启动后进入空闲队列等待任务分配
 

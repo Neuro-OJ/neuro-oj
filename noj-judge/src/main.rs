@@ -9,13 +9,10 @@ mod pool;
 mod sandbox;
 mod types;
 
-use std::sync::Arc;
-
 use anyhow::{Context, Result};
 use bollard::Docker;
 use futures_util::stream::FuturesUnordered;
 use futures_util::StreamExt;
-use tokio::sync::Semaphore;
 use tracing::{error, info, warn};
 
 use crate::config::Config;
@@ -90,7 +87,12 @@ fn main() -> Result<()> {
         .init();
 
     let config = Config::from_env();
-    info!("noj-judge 启动 (pool_enabled={})", config.pool.enabled);
+    info!("noj-judge 启动 (pool_max_size={})", config.pool.max_size);
+
+    // 检测已废弃的 POOL_ENABLED 环境变量
+    if let Ok(val) = std::env::var("POOL_ENABLED") {
+        warn!("环境变量 POOL_ENABLED={} 已废弃（容器池始终启用），请移除该变量", val);
+    }
 
     // 连接 Redis
     let redis_client =
@@ -118,9 +120,8 @@ fn main() -> Result<()> {
     let result_queue = config.result_queue.clone();
     let work_dir = config.work_dir.clone();
 
-    if config.pool.enabled {
-        // ── Pool 模式 ──────────────────────────────
-        let pool = PoolManager::init(docker, config.pool.clone())
+    // ── 初始化容器池 ──────────────────────────────
+    let pool = PoolManager::init(docker, config.pool.clone())
             .await
             .context("初始化容器池失败")?;
 
@@ -203,80 +204,6 @@ fn main() -> Result<()> {
                 }
             }
         }
-    } else {
-        // ── 旧 Semaphore 模式 ──────────────────────
-        let semaphore = Arc::new(Semaphore::new(config.max_concurrent()));
-
-        info!("等待评测任务（Semaphore 模式）...");
-
-        // 注册优雅关闭信号
-        let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
-        tokio::spawn(async move {
-            tokio::signal::ctrl_c().await.ok();
-            info!("收到 SIGINT，开始优雅关闭（Semaphore 模式）...");
-            let _ = shutdown_tx.send(());
-        });
-
-        let mut tasks = FuturesUnordered::new();
-
-        loop {
-            tokio::select! {
-                biased;
-                _ = &mut shutdown_rx => {
-                    drain_tasks(&mut tasks).await;
-                    break;
-                }
-                task_result = mq::pull_task(&mut redis_conn, &config.judge_queue) => {
-                    let task = match task_result {
-                        Ok(Some(task)) => task,
-                        Ok(None) => continue,
-                        Err(e) => {
-                            error!("拉取任务失败: {}", e);
-                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                            continue;
-                        }
-                    };
-
-                    let permit = match semaphore.clone().acquire_owned().await {
-                        Ok(p) => p,
-                        Err(_) => {
-                            error!(
-                                "信号量已关闭，无法获取许可，跳过任务: {}",
-                                task.submission_id
-                            );
-                            continue;
-                        }
-                    };
-                    let docker = docker.clone();
-                    let redis_client = redis_client.clone();
-                    let result_queue = result_queue.clone();
-                    let work_dir = work_dir.clone();
-
-                    let handle = tokio::spawn(async move {
-                        let _permit = permit;
-                        let fallback_dir = std::path::Path::new(&work_dir).join("fallback-results");
-
-                        let result = match judge::runner::evaluate_legacy(&docker, &task, &work_dir).await {
-                            Ok(r) => r,
-                            Err(e) => {
-                                error!("评测失败: {}: {:#}", task.submission_id, e);
-                                types::JudgeResult::error(&task.submission_id, &e.to_string())
-                            }
-                        };
-
-                        // 使用带重试的推送
-                        mq::push_result_with_retry(
-                            &redis_client,
-                            &result_queue,
-                            &result,
-                            &fallback_dir,
-                        ).await;
-                    });
-                    tasks.push(handle);
-                }
-            }
-        }
-    }
 
     #[allow(unreachable_code)]
     Ok(())

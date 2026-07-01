@@ -114,30 +114,6 @@ async fn do_evaluate_with_pool(
     Ok(result)
 }
 
-/// 执行评测任务（旧路径）。
-///
-/// 使用 Semaphore + run_in_container，与原有行为一致。
-pub async fn evaluate_legacy(
-    docker: &bollard::Docker,
-    task: &JudgeTask,
-    work_dir: &str,
-) -> Result<JudgeResult> {
-    use std::time::Instant;
-
-    let start = Instant::now();
-    let work_dir = Path::new(work_dir);
-    let output = container::run_in_container(docker, task, work_dir).await?;
-    let time_ms = start.elapsed().as_millis() as u64;
-
-    // 内存峰值（容器在 run_in_container 末尾被 rm -f，需在之前读取）
-    let memory_kb = 0; // 旧路径容器在 capture_logs 后立即被删除，无法读 cgroup
-
-    let mut result = process_output(task, &output);
-    result.time_ms = Some(time_ms);
-    result.memory_kb = Some(memory_kb);
-    Ok(result)
-}
-
 /// 处理容器输出，解析 ---RESULT--- 标记，构造 JudgeResult。
 pub fn process_output(task: &JudgeTask, output: &ContainerOutput) -> JudgeResult {
     let submission_id = &task.submission_id;
