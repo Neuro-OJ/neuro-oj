@@ -163,8 +163,8 @@ cd dist
 - **仅拦截** `POST /api/v1/auth/login`：解析登录响应，提取 JWT 设置 Cookie，从响应体删除 `token` 字段
 - **不拦截**注册等其他认证端点
 - 非登录请求：从 Cookie 读取 `noj:token`，注入 `Authorization: Bearer` 头后直接 `proxyRequest()`
-- 错误处理：`$fetch.raw` 抛出的 `err.response` 被捕获并原样转发状态码和 body
-- **无 URL 校验**：所有路径直接拼接 `apiBase + event.path`，无白名单过滤
+- **路径白名单**：仅允许 `/api/v1/` 前缀的请求透传，非匹配路径返回 404
+- 错误处理：`$fetch.raw` 抛出的 `err.response` 被捕获并原样转发状态码和 body，白名单响应头（`retry-after`、`x-ratelimit-*`、`x-request-id`、`www-authenticate`）透传给客户端
 
 ### 安全模型
 
