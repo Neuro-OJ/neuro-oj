@@ -31,7 +31,7 @@
                       <Mail :size="20" />
                       <span
                         v-if="unreadCount > 0"
-                        class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] font-bold text-white bg-error-text rounded-full leading-none"
+                        class="absolute -top-1 -right-1 z-50 flex items-center justify-center min-w-[20px] h-[20px] px-1 text-[11px] font-bold text-white bg-red-600 rounded-full leading-none shadow-sm"
                       >
                         {{ unreadCount > 99 ? "99+" : unreadCount }}
                       </span>
@@ -77,25 +77,32 @@ const { user, isLoggedIn, logout } = useAuth()
 const unreadCount = ref(0)
 let unreadPollTimer: ReturnType<typeof setInterval> | null = null
 
+// 每 30 秒轮询未读数
 async function fetchUnreadCount() {
   if (!isLoggedIn.value) return
   try {
-    const res = await $fetch<{ unread_count: number }>("/api/v1/conversations/unread-count")
-    unreadCount.value = res.unread_count
-  } catch {
-    // 静默
+    const res = await fetch("/api/v1/conversations/unread-count", {
+      credentials: "same-origin",
+      headers: { accept: "application/json" },
+    })
+    const json = await res.json()
+    console.log("[Navbar] unread_count:", json.unread_count)
+    unreadCount.value = json.unread_count ?? 0
+  } catch (e) {
+    console.warn("[Navbar] fetch 失败:", e)
   }
 }
 
-// 登录后启动 30 秒轮询，未登录时清除
-// 仅在客户端执行（SSR 阶段 Nuxt 禁止 setInterval）
 watch(isLoggedIn, (val) => {
-  if (!import.meta.client) return;
+  if (!import.meta.client) return
   if (val) {
     fetchUnreadCount()
-    unreadPollTimer = setInterval(fetchUnreadCount, 30_000)
+    if (!unreadPollTimer) {
+      unreadPollTimer = setInterval(fetchUnreadCount, 30_000)
+    }
   } else {
     if (unreadPollTimer) clearInterval(unreadPollTimer)
+    unreadPollTimer = null
     unreadCount.value = 0
   }
 }, { immediate: true })
@@ -131,7 +138,9 @@ function onKeydown(e: KeyboardEvent) {
     }
 }
 
-onMounted(() => document.addEventListener("keydown", onKeydown))
+onMounted(() => {
+  document.addEventListener("keydown", onKeydown)
+})
 onUnmounted(() => {
   document.removeEventListener("keydown", onKeydown)
   if (unreadPollTimer) clearInterval(unreadPollTimer)

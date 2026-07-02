@@ -132,9 +132,8 @@ function formatDate(iso: string): string {
 
 async function startConversation() {
   try {
-    const result = await findOrCreateConversation(userId)
-    const convId = result.data.id
-    router.push(`/messages/${convId}?user_name=${encodeURIComponent(profile?.user.username ?? "")}`)
+    await findOrCreateConversation(userId)
+    router.push(`/messages`)
   } catch {
     toast.error("无法创建会话")
   }
