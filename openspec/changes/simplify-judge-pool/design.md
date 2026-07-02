@@ -16,9 +16,8 @@
 **Non-Goals:**
 - 不改变容器安全配置（cap_drop ALL 等保持不变）
 - 不改变 copy.rs / exec.rs / container.rs 的评测执行逻辑
-- 不引入新的外部依赖
-- 不增加新的环境变量
-- 不修改 Redis MQ 协议或评测结果格式
+- 不引入新的外部依赖（Redis RPC 客户端复用现有 redis-rs，core 侧复用现有 ioredis）
+- 不修改现有的评测任务 MQ 协议
 
 ## Decisions
 
@@ -99,11 +98,119 @@ docker rm -f (3 retries) → create new container → push idle
 
 **原则**: dead_code 警告是有价值的——它告诉你"有东西没人用了"。全部抑制等于关掉了这个检查。
 
+### D7: Redis RPC 通信层 — 镜像发现的唯一来源
+
+**选择**: 基于 Redis List 实现轻量 RPC 协议，支持 core↔judge 双向请求/响应。Judge 启动时通过 RPC 从 core 获取镜像列表，`POOL_IMAGES` 环境变量不再使用。RPC 不可用时 judge panic 退出。
+
+**理由**: 
+- core 和 judge 之间已经有 Redis 作为通信骨干（MQ），复用同一条连接零额外开销
+- RPC 模式比 Pub/Sub 可靠（消息持久化在 List 中），比 Streams 简单（不需要消费组管理），比 HTTP 解耦（无需知道对方地址）
+- **无退化路径**: 如果 RPC 不可用，意味着 core 不在线，judge 启动也没有意义（没有 core 就不会有评测任务下发）。panic 即 fail-fast，避免"部分启动"的混淆状态
+
+**备选方案**: HTTP API — 但需要 judge 知道 core 的地址（新环境变量），且需要 core 先启动。
+
+**影响**:
+- `POOL_IMAGES` 环境变量**移除**（不再作为退化路径，也不再作为配置项）
+- Judge 启动时 `get_image_allowlist()` 失败 → `error!` 日志 + `process::exit(1)`
+- 启动顺序：Redis → core → judge（严格的链式依赖）
+
+### Redis RPC 协议设计
+
+#### 命名空间
+
+```
+noj:rpc:v1:judge:core           ← List: judge → core 请求
+noj:rpc:v1:judge:{id}:response  ← List: core → 指定 judge 的回复
+noj:rpc:v1:core:judge           ← List: core → judge 请求
+noj:rpc:v1:core:response        ← List: judge → core 回复
+```
+
+- `v1` — 版本号，方便未来协议升级
+- `{id}` — judge 实例标识（hostname 或 UUID），支持多 judge 实例共存
+
+#### 消息信封
+
+```json
+{
+  "id": "a1b2c3d4-e5f6-...",
+  "method": "get_image_allowlist",
+  "params": null,
+  "timestamp": 1767312345
+}
+```
+
+```json
+{
+  "id": "a1b2c3d4-e5f6-...",
+  "result": { "images": ["noj-judge-python"] },
+  "error": null,
+  "timestamp": 1767312346
+}
+```
+
+- `id` — UUID，关联请求和回复
+- `method` — 方法名（仅请求需要）
+- `params` — 请求参数（可选的 JSON）
+- `result` — 成功响应数据
+- `error` — 错误信息（仅出错时非 null）
+
+#### 请求/响应流程
+
+```
+Judge                                 Core
+  │                                     │
+  │  LPUSH noj:rpc:v1:judge:core        │
+  │  ─────────────────────────────────>  │
+  │                                     │  BRPOP noj:rpc:v1:judge:core
+  │                                     │  → dispatch to handler
+  │                                     │  → handler queries DB
+  │  BRPOP noj:rpc:v1:judge:{id}:resp   │
+  │  <─────────────────────────────────  │  LPUSH noj:rpc:v1:judge:{id}:response
+  │                                     │
+  │  → parse response                   │
+  │  → return typed result              │
+```
+
+**超时**: judge 发起请求后最多等待 5s（可配），超时 → `error!` 日志 + `process::exit(1)`。
+
+#### 第一个方法：`get_image_allowlist`
+
+请求（params: null）：
+
+响应（result 结构）：
+```json
+{
+  "result": {
+    "images": [
+      { "image": "noj-judge-python", "tag": "latest" },
+      { "image": "noj-judge-go", "tag": "latest" }
+    ]
+  }
+}
+```
+
+Core 侧处理逻辑：查询 `judge_images` 表中所有 `enabled = true` 的记录，返回镜像名列表。
+
+#### 实现约定
+
+- **Judge 侧** (`noj-judge/src/mq/rpc.rs`):
+  - `RpcClient` 结构体，封装 Redis connection
+  - `request(method, params, timeout) → Result<Value>` 通用方法
+  - `get_image_allowlist() → Result<Vec<String>>` 类型安全封装
+  - 请求时生成 UUID（`uuid` crate 已有依赖），设置 5s 超时
+  - 超时或连接错误 → 返回 Err，调用方 panic 退出
+
+- **Core 侧** (`noj-core/src/mq/judge-rpc.ts`):
+  - `JudgeRpcHandler` 类，在已有 Redis consumer 中运行
+  - `start() → BRPOP 循环（非阻塞，集成到现有 consumer 的 select! 中）`
+  - 收到 `get_image_allowlist` → 从数据库读取 `judge_images` 表 → 返回
+  - 未知 method → 返回 `{ error: "unknown method: xxx" }`
+
 ## Risks / Trade-offs
 
 | 风险 | 缓解 |
 |------|------|
 | 移除 Metrics 端点后运维可见性下降 | 日志中保留池状态快照（Supervisor 的 log_pool_metrics 逻辑），可通过 `grep` 提取 |
 | 阻塞等待移除后，max_size 配太低可能导致任务报错 | 保留 `max_size` 配置，默认 16，远高于单 Worker 并发数 |
-| 移除 Per-Image 内存环境变量后，所有镜像共享全局 MEMORY_MB | NOJ 当前仅 `noj-judge-python` 一个镜像，无区分需求 |
+| Redis RPC 请求在 core 启动前发出 → judge panic | 启动顺序要求：Redis → core → judge。如果在容器编排中三者同时启动，judge 可能因竞争条件重启一次。|
 | 大重构引入新 Bug | E2E 测试 (`e2e_container_pool`) 覆盖核心路径；重构前后运行对比 |

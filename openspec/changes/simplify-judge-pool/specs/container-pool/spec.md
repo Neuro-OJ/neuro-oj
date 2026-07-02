@@ -19,7 +19,9 @@
 #### Scenario: 启动时创建初始池
 
 - **WHEN** noj-judge 启动
-- **THEN** 系统对 `POOL_IMAGES` 中每个镜像拉取镜像（若本地不存在则 docker pull，失败重试 3 次，间隔 5s）
+- **THEN** 系统通过 Redis RPC 向 core 请求镜像白名单（`get_image_allowlist` 方法）
+- **THEN** 若 RPC 失败或超时，系统记录 `error!` 日志并调用 `process::exit(1)` 退出
+- **THEN** 对返回列表中的每个镜像检查本地是否存在（若不存在则 docker pull，失败重试 3 次，间隔 5s）
 - **THEN** 若镜像已在本地存在，跳过拉取
 - **THEN** 每个镜像创建 `POOL_INITIAL_SIZE` 个容器，CMD 设为 `sleep infinity`
 - **THEN** 容器全部就绪后，主循环开始从 MQ 拉取任务

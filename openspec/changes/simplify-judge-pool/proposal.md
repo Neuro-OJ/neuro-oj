@@ -13,11 +13,14 @@
 - **移除** 快速扩容（fast scale-up）：不再在 miss 时递增 target_depth
 - **移除** `target_depth` 概念：代之以固定 `min_size` / `max_size` 边界
 - **移除** Per-Image 内存覆盖环境变量 (`POOL_MEMORY_MB_*`)
-- **移除** `POOL_SCALE_INTERVAL`、`METRICS_BIND`、`METRICS_AUTH_TOKEN` 配置项
+- **移除** `POOL_IMAGES` 环境变量：镜像列表来源变为 Redis RPC → core 数据库
+- **移除** `POOL_SCALE_INTERVAL`、`METRICS_BIND`、`METRICS_AUTH_TOKEN`、`POOL_IMAGES` 配置项
 - **清理** 死代码：`mq::push_result()`、所有虚假的 `#[allow(dead_code)]` 注解
+- **新增** Redis RPC 通信层：core↔judge 双向请求/响应协议，首个方法 `get_image_allowlist`
+- **Judge 启动行为变更为 fail-fast**：若启动时 Redis RPC 获取镜像列表失败，`process::exit(1)` 退出
 - **更新** CLAUDE.md：移除所有过时引用（双模式、Semaphore、RAII Guard、acquire_guarded），对齐实际实现
 - **合并** `PoolManager::init()` 中 ~60 行重复的容器预热代码
-- **BREAKING**: 移除 Prometheus metrics 端点；移除 `POOL_MEMORY_MB_*` 环境变量支持
+- **BREAKING**: 移除 Prometheus metrics 端点；移除 `POOL_MEMORY_MB_*` 环境变量支持；**移除 `POOL_IMAGES` 环境变量**
 
 ## Capabilities
 
