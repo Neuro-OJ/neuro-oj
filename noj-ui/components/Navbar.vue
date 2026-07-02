@@ -23,6 +23,19 @@
                 </template>
                 <div v-else-if="isLoggedIn" class="relative flex items-center gap-3" @mouseenter="onMenuEnter" @mouseleave="onMenuLeave">
                     <NuxtLink :to="`/users/${user?.id}`" class="text-base text-text-secondary font-medium no-underline transition-colors hover:text-primary">{{ user?.username }}</NuxtLink>
+                    <!-- 私信图标 + 未读徽标 -->
+                    <NuxtLink
+                      to="/messages"
+                      class="relative flex items-center justify-center size-9 rounded-full text-text-secondary bg-none border-none cursor-pointer transition-colors hover:bg-primary-hover-bg hover:text-primary no-underline"
+                    >
+                      <Mail :size="20" />
+                      <span
+                        v-if="unreadCount > 0"
+                        class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] font-bold text-white bg-error-text rounded-full leading-none"
+                      >
+                        {{ unreadCount > 99 ? "99+" : unreadCount }}
+                      </span>
+                    </NuxtLink>
                     <button class="flex items-center justify-center size-9 rounded-full text-text-secondary bg-none border-none cursor-pointer transition-colors hover:bg-primary-hover-bg hover:text-primary">
                         <User :size="22" />
                     </button>
@@ -54,12 +67,36 @@
 </template>
 
 <script setup lang="ts">
-import { User, Database, Settings, LogOut, ShieldCheck, BookOpen } from "@lucide/vue"
+import { User, Database, Settings, LogOut, ShieldCheck, BookOpen, Mail } from "@lucide/vue"
 import logoSrc from "~/assets/img/logo.jpg"
 
 const route = useRoute()
 const router = useRouter()
 const { user, isLoggedIn, logout } = useAuth()
+
+const unreadCount = ref(0)
+let unreadPollTimer: ReturnType<typeof setInterval> | null = null
+
+async function fetchUnreadCount() {
+  if (!isLoggedIn.value) return
+  try {
+    const res = await $fetch<{ unread_count: number }>("/api/v1/conversations/unread-count")
+    unreadCount.value = res.unread_count
+  } catch {
+    // 静默
+  }
+}
+
+// 登录后启动 30 秒轮询，未登录时清除
+watch(isLoggedIn, (val) => {
+  if (val) {
+    fetchUnreadCount()
+    unreadPollTimer = setInterval(fetchUnreadCount, 30_000)
+  } else {
+    if (unreadPollTimer) clearInterval(unreadPollTimer)
+    unreadCount.value = 0
+  }
+}, { immediate: true })
 
 const showAuthButtons = computed(() => !isLoggedIn.value && !route.path.startsWith("/login") && !route.path.startsWith("/register"))
 
@@ -93,7 +130,10 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 onMounted(() => document.addEventListener("keydown", onKeydown))
-onUnmounted(() => document.removeEventListener("keydown", onKeydown))
+onUnmounted(() => {
+  document.removeEventListener("keydown", onKeydown)
+  if (unreadPollTimer) clearInterval(unreadPollTimer)
+})
 
 async function handleLogout() {
     await logout()

@@ -17,6 +17,10 @@ export const Channels = {
   },
   /** 全局队列变更：noj:events:queue */
   queue: `${EVENT_CHANNEL_PREFIX}queue`,
+  /** 用户私信通知：noj:events:user:<user_id> */
+  user(id: string): string {
+    return `${EVENT_CHANNEL_PREFIX}user:${id}`;
+  },
 } as const;
 
 /**
