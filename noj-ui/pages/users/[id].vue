@@ -20,6 +20,8 @@ interface UserProfile {
     acceptance_rate: number
     solved_count: number
   }
+  /** 全站排名（issue user-ranking）；未上榜时为 null */
+  rank: number | null
   solved_problems: {
     id: string
     title: string
@@ -181,7 +183,7 @@ function formatScore(raw: number | null | undefined): string {
       </div>
 
       <!-- 统计卡片 -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <div class="bg-white border border-border rounded-xl px-5 py-4 flex flex-col gap-1">
           <span class="text-xs text-text-muted font-medium uppercase tracking-wide">总提交</span>
           <span class="text-2xl font-bold text-text">{{ profile.stats.total_submissions }}</span>
@@ -199,6 +201,19 @@ function formatScore(raw: number | null | undefined): string {
         <div class="bg-white border border-border rounded-xl px-5 py-4 flex flex-col gap-1">
           <span class="text-xs text-text-muted font-medium uppercase tracking-wide">解题数</span>
           <span class="text-2xl font-bold text-primary">{{ profile.stats.solved_count }}</span>
+        </div>
+        <!-- 全站排名（仅上榜用户显示） -->
+        <div
+          v-if="profile.rank !== null"
+          class="bg-white border border-border rounded-xl px-5 py-4 flex flex-col gap-1"
+        >
+          <span class="text-xs text-text-muted font-medium uppercase tracking-wide">全站排名</span>
+          <NuxtLink
+            to="/ranking"
+            class="text-2xl font-bold text-text no-underline hover:text-primary tabular-nums"
+          >
+            #{{ profile.rank }}
+          </NuxtLink>
         </div>
       </div>
 
