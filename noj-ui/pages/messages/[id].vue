@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { Send, ArrowLeft, User, Trash2 } from "@lucide/vue"
+import { Send, ArrowLeft, User } from "@lucide/vue"
 import { useMessages, type ConversationMessage } from "~/composables/useMessages"
 import { useAuth } from "~/composables/useAuth"
 import { useToast } from "~/composables/useToast"
+import { useEventSource } from "~/composables/useEventSource"
 
 definePageMeta({
   middleware: "auth",
@@ -92,33 +93,27 @@ function scrollToBottom() {
   })
 }
 
-// 定时轮询新消息
-let pollTimer: ReturnType<typeof setInterval> | null = null
+// SSE 实时接收新消息 + 轮询降级
+useEventSource({
+  url: "/api/v1/conversations/events",
+  onEvent: {
+    "message:new": (data: unknown) => {
+      const evt = data as { conversation_id: string }
+      if (evt.conversation_id === conversationId) {
+        loadMessages()
+      }
+    },
+  },
+  fetchFn: () => loadMessages(),
+  fallbackIntervalMs: 3000,
+})
+
 onMounted(async () => {
   await loadMessages()
   if (messages.value.length > 0) {
     await markAsRead()
   }
   scrollToBottom()
-
-  // 3 秒轮询新消息
-  pollTimer = setInterval(async () => {
-    try {
-      const result = await fetchMessages(conversationId, 1, 50)
-      const newMsgs = result.data.reverse()
-      if (newMsgs.length > messages.value.length) {
-        const added = newMsgs.slice(messages.value.length)
-        messages.value = newMsgs
-        scrollToBottom()
-      }
-    } catch {
-      // 静默
-    }
-  }, 3000)
-})
-
-onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer)
 })
 
 function formatTime(iso: string): string {
