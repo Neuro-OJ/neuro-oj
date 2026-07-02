@@ -15,7 +15,7 @@ use anyhow::Result;
 use bollard::Docker;
 use futures_util::FutureExt;
 use futures_util::StreamExt;
-use tokio::sync::{Notify, RwLock};
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
@@ -43,8 +43,6 @@ struct IdleEntry {
 pub struct Pool {
     /// 空闲容器队列（FIFO）
     idle: RwLock<VecDeque<IdleEntry>>,
-    /// 池满时 acquire 在此阻塞
-    notify: Notify,
     /// 当前最小容器数
     min_size: usize,
     /// 当前最大容器数
@@ -60,7 +58,6 @@ impl Pool {
     fn new(image: String, min_size: usize, max_size: usize) -> Self {
         Self {
             idle: RwLock::new(VecDeque::new()),
-            notify: Notify::new(),
             min_size,
             max_size,
             in_flight: AtomicUsize::new(0),
@@ -188,7 +185,6 @@ pub struct PoolManager {
 
 // ── PoolManager 实现 ────────────────────────────────────
 
-#[allow(dead_code)]
 impl PoolManager {
     /// 创建并初始化池管理器。
     pub async fn init(docker: Docker, config: PoolConfig, images: &[String]) -> Result<Arc<Self>> {
@@ -304,25 +300,19 @@ impl PoolManager {
 
         pool.dec_in_flight();
 
+        // 检查是否需要回补（避免超过 max_size 时还创建新容器）
+        let total = pool.idle_count().await + pool.in_flight();
+        if total >= pool.max_size() {
+            if let Some(oldest) = pool.pop_oldest_idle().await {
+                self.remove_container_force(&oldest).await;
+            }
+            return;
+        }
+
         // 创建新容器回补到空闲队列
         match self.create_container(pool.image()).await {
             Ok(new_id) => {
-                let total = pool.idle_count().await + pool.in_flight();
-                if total <= pool.max_size() {
-                    pool.push_idle(new_id).await;
-                } else {
-                    // 超出 max_size，删除多余的空闲容器
-                    info!(
-                        "池达到上限，移除多余容器: {} (total={}, max={})",
-                        new_id,
-                        total + 1,
-                        pool.max_size()
-                    );
-                    if let Some(oldest) = pool.pop_oldest_idle().await {
-                        self.remove_container_force(&oldest).await;
-                    }
-                    self.remove_container_force(&new_id).await;
-                }
+                pool.push_idle(new_id).await;
             }
             Err(e) => {
                 warn!("回补容器失败: image={}, error={}", pool.image(), e);
@@ -647,10 +637,6 @@ impl PoolManager {
     pub async fn shutdown(&self) {
         self.shutting_down.store(true, Ordering::SeqCst);
         self.shutdown_token.cancel();
-        let pools = self.pools.read().await;
-        for (_, pool) in pools.iter() {
-            pool.notify.notify_waiters();
-        }
     }
 
     /// 获取内部 Docker 客户端引用。
@@ -664,6 +650,7 @@ impl PoolManager {
     }
 
     /// 检查池管理器是否正在关闭。
+    #[allow(dead_code)]
     pub fn is_shutting_down(&self) -> bool {
         self.shutting_down.load(Ordering::SeqCst)
     }
@@ -683,19 +670,23 @@ impl PoolManager {
         self.timeouts_total.fetch_add(1, Ordering::Relaxed);
     }
 
+    #[allow(dead_code)]
     pub fn tasks_total(&self) -> usize {
         self.tasks_total.load(Ordering::Relaxed)
     }
 
+    #[allow(dead_code)]
     pub fn errors_total(&self) -> usize {
         self.errors_total.load(Ordering::Relaxed)
     }
 
+    #[allow(dead_code)]
     pub fn timeouts_total(&self) -> usize {
         self.timeouts_total.load(Ordering::Relaxed)
     }
 
     /// 获取所有池（用于 metrics 或外部访问）。
+    #[allow(dead_code)]
     pub async fn all_pools(&self) -> Vec<Arc<Pool>> {
         self.pools
             .read()
@@ -706,6 +697,7 @@ impl PoolManager {
     }
 
     /// 获取指定镜像的池引用。
+    #[allow(dead_code)]
     pub async fn get_pool(&self, image: &str) -> Option<Arc<Pool>> {
         let normalized = Self::normalize_image(image);
         self.pools

@@ -61,6 +61,7 @@ impl RpcClient {
             "method": method,
             "params": params,
             "timestamp": timestamp,
+            "judge_id": self.judge_id,
         });
 
         let request_queue = "noj:rpc:v1:judge:core".to_string();

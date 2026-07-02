@@ -8,7 +8,7 @@
 //! 请求队列: `noj:rpc:v1:judge:core` (List)
 //! 响应队列: `noj:rpc:v1:judge:{judge_id}:response` (List)
 //!
-//! 请求格式: { "id": "<uuid>", "method": "<name>", "params": {...}, "timestamp": <int> }
+//! 请求格式: { "id": "<uuid>", "method": "<name>", "params": {...}, "timestamp": <int>, "judge_id": "<id>" }
 //! 响应格式: { "id": "<uuid>", "result": {...}, "error": null|string, "timestamp": <int> }
 
 import type { Redis } from "ioredis";
@@ -87,7 +87,7 @@ export async function startJudgeRpcHandler(
       if (!result) continue;
 
       const [, rawMessage] = result;
-      let request: RpcRequest;
+      let request: Record<string, unknown>;
 
       try {
         request = JSON.parse(rawMessage);
@@ -101,12 +101,16 @@ export async function startJudgeRpcHandler(
         continue;
       }
 
-      // 分发到 handler
-      const handler = handlers[request.method];
+      // 从请求中提取 judge_id（由 judge 端在消息顶层发送）
+      const judgeId = request.judge_id as string | undefined;
+      const responseQueue = judgeId
+        ? `noj:rpc:v1:judge:${judgeId}:response`
+        : `noj:rpc:v1:judge:${request.id}:response`;
+
+      const handler = handlers[request.method as string];
       if (!handler) {
         console.warn(`[judge-rpc] Unknown method: ${request.method}`);
-        const response = createResponse(request.id, undefined, `unknown method: ${request.method}`);
-        const responseQueue = `noj:rpc:v1:judge:${extractJudgeId(rawMessage)}:response`;
+        const response = createResponse(request.id as string, undefined, `unknown method: ${request.method}`);
         await redis.lpush(responseQueue, JSON.stringify(response));
         continue;
       }
@@ -114,50 +118,22 @@ export async function startJudgeRpcHandler(
       // 执行 handler
       try {
         const result = await handler(request.params);
-        const response = createResponse(request.id, result);
-
-        // 响应队列：从请求来源推导 judge_id
-        // 注意：实际运行时，judge 连接 BRPOP 自己的响应队列
-        // 由于我们不知道 judge_id，该实现需要改进
-        // 当前简化实现：将响应推回请求队列，由调用方自行匹配 ID
-
-        // TODO: 确定 judge_id 的传递机制
-        // 方案 1: 请求消息中包含 judge_id 字段
-        // 方案 2: 固定响应队列，judge 端按 request_id 过滤
-        // 当前采用方案 2：固定一个响应队列，judge 根据 ID 匹配
-        const judgeId = (request as Record<string, unknown>).judge_id as string | undefined;
-        const responseQueue = judgeId
-          ? `noj:rpc:v1:judge:${judgeId}:response`
-          : "noj:rpc:v1:judge:response";
-
+        const response = createResponse(request.id as string, result);
         await redis.lpush(responseQueue, JSON.stringify(response));
       } catch (err) {
         console.error(`[judge-rpc] Handler error for ${request.method}:`, err);
         const response = createResponse(
-          request.id,
+          request.id as string,
           undefined,
           err instanceof Error ? err.message : "internal error",
         );
-        const responseQueue = `noj:rpc:v1:judge:${extractJudgeId(rawMessage)}:response`;
         await redis.lpush(responseQueue, JSON.stringify(response));
       }
     } catch (err) {
       console.error("[judge-rpc] BRPOP error:", err);
-      // 等待后重试
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
 
   console.log("[judge-rpc] RPC handler stopped");
-}
-
-/**
- * 从请求消息中提取 judge_id。
- * 当前简化实现：固定返回空字符串（使用默认响应队列）。
- * TODO: 从请求消息的 params 或自定义 header 中提取 judge_id。
- */
-function extractJudgeId(_rawMessage: string): string {
-  // 简化实现：所有响应推入固定响应队列
-  // judge 端按 request_id 匹配过滤
-  return "response";
 }
