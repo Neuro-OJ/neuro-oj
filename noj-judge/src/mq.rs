@@ -4,6 +4,8 @@ use tracing::{error, info, warn};
 
 use crate::types::{JudgeResult, JudgeTask};
 
+pub mod rpc;
+
 /// 从 Redis 队列中拉取评测任务。
 ///
 /// 使用 BRPOP 阻塞等待，超时 5 秒后返回 None。
@@ -27,24 +29,6 @@ pub async fn pull_task(
             Ok(None)
         }
     }
-}
-
-/// 将评测结果推送到 Redis 结果列表。
-///
-/// 使用 LPUSH 将结果 JSON 添加到结果列表头部。
-/// noj-core 通过 BRPOP 从同一列表消费。
-/// 内置 3 次指数退避重试，最终失败时序列化到本地文件系统。
-#[allow(dead_code)]
-pub async fn push_result(
-    conn: &mut redis::aio::MultiplexedConnection,
-    queue: &str,
-    result: &JudgeResult,
-) -> Result<()> {
-    let json = serde_json::to_string(result).context("序列化 JudgeResult 失败")?;
-    conn.lpush::<&str, String, usize>(queue, json)
-        .await
-        .context("LPUSH 评测结果失败")?;
-    Ok(())
 }
 
 /// 带重试的结果推送。

@@ -19,7 +19,6 @@
 | 异步运行时   | Tokio                         |
 | Redis 客户端 | redis-rs 0.27 (tokio-comp)    |
 | Docker API   | bollard 0.21                  |
-| HTTP 服务    | axum 0.8（仅 metrics 端点）    |
 | 沙箱         | Docker 容器                   |
 
 ## 目录结构
@@ -33,11 +32,13 @@ noj-judge/
 ├── Dockerfile.e2e          # E2E 测试用 Dockerfile（多阶段构建）
 ├── .dockerignore           # 排除 target/ tests/ docker/ 等
 ├── src/
-│   ├── main.rs             # 入口（双模式：Pool / Semaphore）
+│   ├── main.rs             # 入口（容器池模式）
 │   ├── lib.rs              # 库入口（暴露模块给集成测试）
 │   ├── config.rs           # 环境变量配置（PoolConfig + 全局配置）
 │   ├── types.rs            # JudgeTask、JudgeResult、CaseResult 类型
-│   ├── mq.rs               # Redis MQ 任务拉取 + 结果推送（带重试 + fallback）
+│   ├── mq/
+│   │   ├── mod.rs           # Redis MQ 任务拉取 + 结果推送（带重试 + fallback）
+│   │   └── rpc.rs           # Redis RPC 客户端（core↔judge 通信）
 │   ├── sandbox/
 │   │   ├── mod.rs
 │   │   └── container.rs    # 容器生命周期 + zip 解压 + 命令解析
@@ -45,11 +46,9 @@ noj-judge/
 │   │   ├── mod.rs
 │   │   └── runner.rs       # 评测逻辑（---RESULT--- 标记解析 + 超时/OOM 检测）
 │   └── pool/
-│       ├── mod.rs          # PoolManager（容器池 + RAII Guard + 健康检查）
+│       ├── mod.rs          # PoolManager（固定池，懒回补 + 健康检查）
 │       ├── copy.rs         # tar 打包 + docker exec 注入文件
-│       ├── exec.rs         # docker exec 执行命令 + cgroup 内存峰值读取
-│       ├── metrics.rs      # Prometheus /metrics HTTP 端点
-│       └── scaler.rs       # 自动扩缩容（滑动窗口 QPS + 排队时间）
+│       └── exec.rs         # docker exec 执行命令 + cgroup 内存峰值读取
 └── tests/
     ├── common/mod.rs       # 测试公共辅助函数
     ├── e2e/
@@ -102,58 +101,47 @@ cargo fmt
 | `JUDGE_QUEUE` | `noj:judge:queue` | 评测任务队列名 |
 | `RESULT_QUEUE` | `noj:judge:results` | 评测结果队列名 |
 | `WORK_DIR` | `/tmp/noj-judge` | 临时工作目录 |
-| `MAX_CONCURRENT` | `2` | 并发上限（Semaphore 模式） |
-| `POOL_ENABLED` | `true` | 是否启用容器池 |
 | `POOL_INITIAL_SIZE` | `2` | 每镜像预热容器数 |
 | `POOL_MAX_SIZE` | `16` | 池最大深度 |
 | `POOL_MIN_SIZE` | `1` | 池最小深度 |
 | `POOL_MEMORY_MB` | `256` | 容器内存硬上限（MB） |
 | `POOL_CPU` | `0` | CPU 核数（0=无限制） |
-| `POOL_IMAGES` | `noj-judge-python` | 预热镜像列表（逗号分隔） |
 | `POOL_IDLE_TIMEOUT` | `300` | 空闲容器超时秒数 |
-| `POOL_SCALE_INTERVAL` | `60` | 扩缩容评估间隔秒数 |
 | `POOL_MAX_ARCHIVE_MB` | `25` | 支持包最大 MB |
 | `POOL_KILL_GRACE_SECONDS` | `2` | SIGTERM→SIGKILL 等待秒数 |
 | `POOL_LABEL_PREFIX` | `com.noj.judge` | Docker 容器标签前缀 |
-| `METRICS_BIND` | `127.0.0.1:9100` | Metrics HTTP 监听地址 |
-| `METRICS_AUTH_TOKEN` | — | Metrics 端点 Bearer token |
-
-Per-image 内存配置：`POOL_MEMORY_MB_{IMAGE_NAME}`（镜像名大写，`-` 替换为 `_`）
+| `JUDGE_ID` | hostname | Judge 实例标识（用于 Redis RPC 响应队列） |
 
 ### 池内部常量（硬编码，不可配置）
 
 | 常量 | 值 | 说明 |
 |------|-----|------|
 | 健康检查间隔 | 5s | `start_health_check()` 轮询空闲容器 |
-| Supervisor 间隔 | 30s | 输出池指标日志 |
-| Refill 防抖 | 200ms | 容器释放后延迟再填充，避免抖动 |
-| Acquire 超时 | 60s | 等待容器最大时间 |
-| 容器 rm 重试 | 3 次（100ms/200ms/400ms） | 清理容器时的退避重试 |
+| 容器 rm 重试 | 3 次（100ms/500ms/2s） | 清理容器时的退避重试 |
 | Exec 创建超时 | 10s | Docker daemon 响应超时 |
 | 内存读取超时 | 5s | cgroup 峰值读取超时 |
 
-## 双运行模式
+## 容器池架构（单一模式）
 
-### 1. 容器池模式（默认，`POOL_ENABLED=true`）
-
-```
-main.rs → PoolManager::init() → 预创建容器 → start_background_tasks()
-  ├─ start_health_check()    — 每 5s 检查空闲容器状态
-  ├─ start_supervisor()      — 每 30s 输出池指标
-  ├─ start_scaler()          — 基于滑动窗口指标自动扩缩容
-  └─ start_metrics_server() — Prometheus /metrics 端点
-
-评测流程：
-  acquire_guarded() → 从池获取空闲容器（或即时创建）
-  → evaluate_with_pool() → archive_and_copy() → execute_in_container()
-  → read_memory_peak_kb() → release()
-```
-
-### 2. Semaphore 模式（`POOL_ENABLED=false`）
+noj-judge 始终使用容器池模式，无 Semaphore 退化路径。
 
 ```
-Semaphore::new(max_concurrent) → 每次任务获取 permit
-→ evaluate_legacy() → run_in_container() → 创建/启动/等待/清理容器
+主流程:
+  RPC 启动 → 通过 Redis RPC 从 core 获取镜像白名单
+  → PoolManager::init(images) → 预创建 POOL_INITIAL_SIZE 个容器/每个镜像
+  → start_background_tasks()
+      └─ start_health_check() — 每 5s 检查空闲容器状态 + 每 30s 输出池指标日志
+
+评测流程:
+  with_container(image, memory_mb, closure)
+   → acquire_with_pool()
+       ├─ 快速路径: idle.pop_front() — 从空闲队列取
+       └─ 慢路径: create_container() — 即时创建新容器
+   → evaluate_with_pool() → archive_and_copy() → execute_in_container()
+   → read_memory_peak_kb() → process_output()
+   → release()
+       ├─ docker rm -f (3次重试)
+       └─ 创建新容器回补到空闲队列
 ```
 
 ## 评测流程（核心）
@@ -236,28 +224,15 @@ Semaphore::new(max_concurrent) → 每次任务获取 permit
 - 使用 `tracing` crate 输出结构化日志
 - 关键事件：任务到达、评测开始/完成、超时、OOM、池状态变化
 
-## Metrics 端点（Prometheus 格式）
+## 池指标日志
 
-监听 `GET /metrics`（`METRICS_BIND` 配置地址）。
+池状态通过 tracing 日志输出（每 30s），无独立的 Prometheus 端点：
 
-| 指标 | 类型 | 说明 |
-|------|------|------|
-| `noj_judge_tasks_total` | Counter | 总任务数 |
-| `noj_judge_errors_total` | Counter | 总错误数 |
-| `noj_judge_timeouts_total` | Counter | 总超时数 |
-| `noj_judge_pool_misses_total` | Counter | 池未命中数（需即时创建容器） |
-| `noj_pool_idle_containers` | Gauge(镜像标签) | 空闲容器数 |
-| `noj_pool_in_flight` | Gauge(镜像标签) | 运行中任务数 |
-| `noj_pool_total_containers` | Gauge(镜像标签) | 总容器数 |
-| `noj_pool_target_depth` | Gauge(镜像标签) | 目标池深度 |
-| `noj_pool_leaked_containers` | Gauge | 无法清理的残留容器数 |
+```text
+pool_status=true image=noj-judge-python idle=2 in_flight=1 total=3 min=1 max=16
+```
 
-**实现细节**：
-- 手写 Prometheus 文本格式（未使用 `prometheus` crate）
-- 镜像标签中的 `\` 和 `"` 被转义
-- 认证：`METRICS_AUTH_TOKEN` 为空时跳过鉴权
-- 绑定失败仅记录日志，不阻止进程启动
-- 无 `/health` 或 `/ready` 端点
+指标包括：`idle`（空闲容器数）、`in_flight`（运行中任务数）、`total`（总容器数）、`min`/`max`（池边界）。
 
 ## 代码规范
 
@@ -266,36 +241,44 @@ Semaphore::new(max_concurrent) → 每次任务获取 permit
 - 日志：`tracing::info!` / `warn!` / `error!`
 - 异步优先：所有 I/O 操作用 async/await
 - `#[allow(dead_code)]` 合法使用位置：
-  - `pool/mod.rs`：`len()`、`is_empty()`、`total_containers()`、`snapshot()`、`collect_dead()`、`collect_idle_timeout()`
-  - `pool/scaler.rs`：`start()` 通过 `tokio::spawn` 间接分发
-  - `pool/metrics.rs`：`start_metrics_server()`、`metrics_handler()` 通过 `tokio::spawn` 间接分发
+  - `pool/mod.rs`：`tasks_total()`、`errors_total()`、`timeouts_total()`、`all_pools()`、`get_pool()`、`is_shutting_down()`
+  - `mq/rpc.rs`：`judge_id()`
   - `types.rs`：`CaseResult` 结构体字段
-  - `config.rs`：`idle_timeout_secs`、`scale_interval_secs`
-  - `mq.rs`：`push_result()` 通过 `tokio::spawn` 间接分发
 - `#[allow(unreachable_code)]`：`main.rs` 中 `rt.block_on` 后的 `Ok(())`，属合法使用
 - `#[ignore]`：集成测试，需要 `NOJ_RUN_E2E=1` + Docker 环境
 
-## 自动扩缩容算法（Scaler）
+## Redis RPC 通信
 
-**评估周期**：`POOL_SCALE_INTERVAL`（默认 60s），滑动窗口为 1.5 倍周期（90s）
+noj-judge 通过 Redis RPC 与 noj-core 通信，用于启动时获取镜像白名单。
 
-**扩容评分**（任一条件触发）：
-| 条件 | 分值 |
-|------|------|
-| 平均排队等待 > 1000ms | +2 |
-| 平均排队等待 > 500ms | +1 |
-| Miss 率 > 30%（池空需即时创建） | +1 |
+### 协议
 
-**缩容评分**（仅当扩容分为 0 时评估）：
-| 条件 | 分值 |
-|------|------|
-| 空闲率 > 40% 持续 2+ 周期 | -1 |
-| 空闲率 > 60% 持续 3+ 周期 | -1（额外） |
+| 队列 | 方向 | 说明 |
+|------|------|------|
+| `noj:rpc:v1:judge:core` | judge → core | 请求（LPUSH） |
+| `noj:rpc:v1:judge:{judge_id}:response` | core → judge | 响应（BRPOP） |
 
-**目标值调整**：`new_target = (target + scale_up - scale_down).clamp(min_size, max_size)`
+### 消息格式
 
-**事件驱动**：Scaler 接收 `Arrival`/`QueueWait`/`Miss` 事件，结合池快照做决策。
-周期计数器（miss_count、sample_count）每周期重置。
+**请求**：
+```json
+{ "id": "<uuid>", "method": "get_image_allowlist", "params": null, "timestamp": 1767312345 }
+```
+
+**响应**：
+```json
+{ "id": "<uuid>", "result": { "images": ["noj-judge-python"] }, "error": null, "timestamp": 1767312346 }
+```
+
+### 镜像发现流程
+
+```
+noj-judge 启动
+  → Redis RPC get_image_allowlist()
+      ├─ 成功 → 从返回列表预热容器
+      └─ 失败/超时 → error! 日志 + process::exit(1)（fail-fast）
+  → PoolManager::init(images)
+```
 
 ## 测试基础设施
 
