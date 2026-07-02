@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Mail, MessageSquare, ChevronRight } from "@lucide/vue"
+import { Mail, MessageSquare, Search, Plus, Loader2 } from "@lucide/vue"
 import { useEventSource } from "~/composables/useEventSource"
 import { useMessages, type Conversation } from "~/composables/useMessages"
 
@@ -11,12 +11,19 @@ const emit = defineEmits<{
   select: [id: string]
 }>()
 
-const { fetchConversations } = useMessages()
+const { fetchConversations, findOrCreateConversation } = useMessages()
 
 const conversations = ref<Conversation[]>([])
 const loading = ref(true)
 const currentPage = ref(1)
 const totalPages = ref(1)
+
+// 搜索
+const searchQuery = ref("")
+const searchResults = ref<{ id: string; username: string }[]>([])
+const searching = ref(false)
+const showResults = ref(false)
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 async function loadConversations(page = 1) {
   try {
@@ -43,6 +50,41 @@ useEventSource({
 
 onMounted(() => { loadConversations() })
 
+// 搜索用户（防抖 300ms）
+watch(searchQuery, (val) => {
+  if (searchTimer) clearTimeout(searchTimer)
+  if (val.trim().length < 2) {
+    searchResults.value = []
+    showResults.value = false
+    return
+  }
+  searchTimer = setTimeout(async () => {
+    searching.value = true
+    try {
+      const res = await $fetch<{ data: { id: string; username: string }[] }>(
+        `/api/v1/users/search?q=${encodeURIComponent(val.trim())}`,
+      )
+      searchResults.value = res.data
+      showResults.value = true
+    } catch {
+      searchResults.value = []
+    } finally {
+      searching.value = false
+    }
+  }, 300)
+})
+
+async function startConversation(otherUserId: string) {
+  try {
+    const result = await findOrCreateConversation(otherUserId)
+    showResults.value = false
+    searchQuery.value = ""
+    emit("select", result.data.id)
+  } catch {
+    // 静默
+  }
+}
+
 function formatTime(iso: string): string {
   const d = new Date(iso)
   const now = new Date()
@@ -56,12 +98,57 @@ function formatTime(iso: string): string {
 </script>
 
 <template>
-  <div class="flex flex-col h-full border-r border-border bg-white">
+  <div class="flex flex-col h-full border-r border-border bg-white relative">
     <!-- 标题 -->
     <div class="flex items-center gap-2 px-5 py-4 border-b border-border">
       <Mail :size="20" class="text-primary" />
       <h2 class="text-base font-bold text-text">私信</h2>
     </div>
+
+    <!-- 搜索框 -->
+    <div class="px-4 py-3 border-b border-border">
+      <div class="relative">
+        <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="搜索用户..."
+          class="w-full pl-8 pr-3 py-1.5 text-sm rounded-md border border-border bg-page text-text outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+        />
+        <Loader2
+          v-if="searching"
+          :size="14"
+          class="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary animate-spin"
+        />
+      </div>
+    </div>
+
+    <!-- 搜索结果下拉 -->
+    <div
+      v-if="showResults && searchQuery.trim().length >= 2"
+      class="absolute top-[115px] left-3 right-3 z-10 bg-white border border-border rounded-lg shadow-dropdown max-h-60 overflow-y-auto"
+    >
+      <div v-if="searchResults.length === 0" class="px-4 py-3 text-sm text-text-secondary text-center">
+        未找到用户
+      </div>
+      <button
+        v-for="u in searchResults"
+        :key="u.id"
+        class="flex items-center gap-3 w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 transition-colors"
+        @click="startConversation(u.id)"
+      >
+        <div
+          class="w-7 h-7 rounded-full bg-primary-bg flex items-center justify-center text-primary font-semibold text-[10px] flex-shrink-0"
+        >
+          {{ u.username.charAt(0).toUpperCase() }}
+        </div>
+        <span class="text-text">{{ u.username }}</span>
+        <Plus :size="14" class="ml-auto text-text-secondary opacity-50" />
+      </button>
+    </div>
+
+    <!-- 最近联系 -->
+    <div class="px-4 pt-3 pb-1 text-xs text-text-secondary font-medium">最近联系</div>
 
     <!-- 列表 -->
     <div v-if="loading" class="flex items-center justify-center py-12">
@@ -84,13 +171,11 @@ function formatTime(iso: string): string {
         :class="activeConversationId === conv.id ? 'bg-primary-bg/30' : ''"
         @click="emit('select', conv.id)"
       >
-        <!-- 头像占位 -->
         <div
           class="flex-shrink-0 w-9 h-9 rounded-full bg-primary-bg flex items-center justify-center text-primary font-semibold text-xs"
         >
           {{ conv.other_user_name.charAt(0).toUpperCase() }}
         </div>
-
         <div class="flex-1 min-w-0">
           <div class="flex items-center justify-between">
             <span class="text-sm font-medium text-text truncate">{{ conv.other_user_name }}</span>
