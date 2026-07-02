@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { authMiddleware } from "../middleware/auth.ts";
-import { onEvent } from "../lib/event-bus.ts";
+import { Channels, onEvent } from "../lib/event-bus.ts";
 import { getSubmission } from "../services/submissions.ts";
 import { getQueueOverview } from "../services/queue.ts";
 
@@ -146,6 +146,62 @@ sse.get("/queue/events", (c) => {
       },
     );
 
+    const keepAlive = setInterval(() => {
+      if (streamClosed) return;
+      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
+        closeStream();
+      });
+    }, 30_000);
+
+    await new Promise<void>((resolve) => {
+      resolveAbort = resolve;
+      stream.onAbort(() => {
+        closeStream();
+      });
+    });
+  });
+});
+
+/**
+ * 私信通知 SSE 端点。
+ *
+ * 登录用户可订阅。收到 `message:new` 事件后，
+ * 前端应拉取会话列表和未读计数。
+ *
+ * 事件格式：
+ *   event: message:new
+ *   data: { type: "message:new", conversation_id: "...", sender_id: "..." }
+ *
+ * SSE 连接仅在聊天页面建立，导航栏未读数使用 30 秒轮询。
+ */
+sse.get("/conversations/events", (c) => {
+  const userId = c.get("userId") as string;
+  return streamSSE(c, async (stream) => {
+    let streamClosed = false;
+    let resolveAbort: (() => void) | null = null;
+
+    function closeStream() {
+      if (streamClosed) return;
+      streamClosed = true;
+      clearInterval(keepAlive);
+      unsub();
+      if (resolveAbort) resolveAbort();
+    }
+
+    const unsub = onEvent(
+      Channels.user(userId),
+      (_channel, message) => {
+        if (streamClosed) return;
+        stream.writeSSE({
+          event: "message:new",
+          data: message,
+        }).catch(() => {
+          closeStream();
+        });
+      },
+    );
+
+    // 30s 心跳保持连接
     const keepAlive = setInterval(() => {
       if (streamClosed) return;
       stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {

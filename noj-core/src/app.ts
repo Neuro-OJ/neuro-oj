@@ -10,6 +10,7 @@ import queue from "./routes/queue.ts";
 import submissions from "./routes/submissions.ts";
 import users from "./routes/users.ts";
 import rankings from "./routes/rankings.ts";
+import messages from "./routes/messages.ts";
 import sse from "./routes/sse.ts";
 import { AppError } from "./lib/errors.ts";
 import { listJudgeImages } from "./services/judge-images.ts";
@@ -87,6 +88,7 @@ export function createApp(): Hono {
   app.route("/api/v1/submissions", submissions);
   app.route("/api/v1/users", users);
   app.route("/api/v1/rankings", rankings);
+  app.route("/api/v1/conversations", messages);
   // 评测镜像公开列表（必须在 sse 路由之前注册，避免被 SSE 的 authMiddleware 拦截）
   app.get("/api/v1/judge-images", async (c) => {
     const items = await listJudgeImages();
