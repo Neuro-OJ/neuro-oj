@@ -8,7 +8,7 @@ const route = useRoute()
 const router = useRouter()
 const { user: currentUser } = useAuth()
 const { findOrCreateConversation } = useMessages()
-const { success: toastSuccess, error: toastError } = useToast()
+const { toast } = useToast()
 
 const userId = route.params.id as string
 
@@ -136,7 +136,7 @@ async function startConversation() {
     const convId = result.data.id
     router.push(`/messages/${convId}?user_name=${encodeURIComponent(profile?.user.username ?? "")}`)
   } catch {
-    toastError("无法创建会话")
+    toast.error("无法创建会话")
   }
 }
 

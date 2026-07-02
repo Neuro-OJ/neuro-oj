@@ -88,7 +88,9 @@ async function fetchUnreadCount() {
 }
 
 // 登录后启动 30 秒轮询，未登录时清除
+// 仅在客户端执行（SSR 阶段 Nuxt 禁止 setInterval）
 watch(isLoggedIn, (val) => {
+  if (!import.meta.client) return;
   if (val) {
     fetchUnreadCount()
     unreadPollTimer = setInterval(fetchUnreadCount, 30_000)
