@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { getDb } from "../../src/db/connection.ts";
 import { conversations, users } from "../../src/db/schema.ts";
 import { hashPassword } from "../../src/lib/password.ts";
@@ -39,10 +39,16 @@ async function createTestUser(): Promise<string> {
 
 /**
  * 清理用户和关联数据。
+ * 需先删除关联会话（CASCADE 到 messages/conversation_reads/message_deletions），
+ * 再删除用户，避免 conversations.user1_id/user2_id FK 阻止用户删除。
  */
 async function cleanup(...userIds: string[]): Promise<void> {
   const db = getDb();
   for (const uid of userIds) {
+    // 先删除用户参与的会话（CASCADE 到 messages、conversation_reads、message_deletions）
+    await db.delete(conversations).where(
+      or(eq(conversations.user1_id, uid), eq(conversations.user2_id, uid)),
+    );
     await db.delete(users).where(eq(users.id, uid));
   }
 }

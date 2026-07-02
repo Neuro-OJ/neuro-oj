@@ -12,7 +12,7 @@ const route = useRoute()
 const router = useRouter()
 const { user } = useAuth()
 const { fetchMessages, sendMessage: apiSend, markRead: apiMarkRead } = useMessages()
-const { success: toastSuccess, error: toastError } = useToast()
+const { toast } = useToast()
 
 const conversationId = route.params.id as string
 const messages = ref<ConversationMessage[]>([])
@@ -69,7 +69,7 @@ async function send() {
     newMessage.value = ""
     scrollToBottom()
   } catch {
-    toastError("发送失败")
+    toast.error("发送失败")
   } finally {
     sending.value = false
   }
