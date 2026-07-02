@@ -264,56 +264,6 @@ impl Pool {
     }
 }
 
-// ── ContainerGuard ─────────────────────────────────────
-
-/// RAII 容器守卫。
-///
-/// 析构时自动执行 `release()`（docker rm -f + in_flight-- + 回补检查）。
-pub struct ContainerGuard {
-    manager: Option<Arc<PoolManager>>,
-    pool: Option<Arc<Pool>>,
-    container_id: String,
-}
-
-impl ContainerGuard {
-    pub fn new(manager: Arc<PoolManager>, pool: Arc<Pool>, container_id: String) -> Self {
-        Self {
-            manager: Some(manager),
-            pool: Some(pool),
-            container_id,
-        }
-    }
-
-    /// 获取容器 ID。
-    pub fn container_id(&self) -> &str {
-        &self.container_id
-    }
-
-    /// 手动释放（不使用 RAII 时调用）。
-    pub async fn release(mut self) {
-        self.do_release().await;
-    }
-
-    async fn do_release(&mut self) {
-        if let (Some(manager), Some(pool)) = (self.manager.take(), self.pool.take()) {
-            manager.release(&pool, &self.container_id).await;
-        }
-    }
-}
-
-impl Drop for ContainerGuard {
-    fn drop(&mut self) {
-        // 若 manager 和 pool 仍在，说明未被手动 release()
-        // 通过 tokio::spawn 异步执行清理（best-effort）
-        if let (Some(manager), Some(pool)) = (self.manager.take(), self.pool.take()) {
-            let cid = self.container_id.clone();
-            tokio::spawn(async move {
-                manager.release(&pool, &cid).await;
-            });
-        }
-    }
-}
-
 // ── PoolManager ──────────────────────────────────────────
 
 /// 统一容器池管理器。
@@ -522,24 +472,24 @@ impl PoolManager {
         }
     }
 
-    /// 获取或即时创建容器。
+    /// 使用容器执行闭包，闭包返回后自动释放容器。
     ///
-    /// 优先从池中获取空闲容器。
-    /// 若无空闲且未达上限，即时创建新容器。
-    /// 若已达上限，阻塞等待。
-    #[allow(dead_code)]
-    pub async fn acquire(&self, image: &str, memory_mb: u64) -> Result<String> {
-        Ok(self.acquire_with_pool(image, memory_mb).await?.0)
-    }
-
-    /// 获取或即时创建容器（返回 ContainerGuard）。
-    pub async fn acquire_guarded(
+    /// 容器获取 → 闭包执行 → 自动 release（无论 Ok/Err 均执行）
+    /// 所有清理在同一个 async 上下文中完成，不会被 tokio::spawn 静默丢弃。
+    pub async fn with_container<F, Fut, T>(
         self: &Arc<Self>,
         image: &str,
         memory_mb: u64,
-    ) -> Result<ContainerGuard> {
+        f: F,
+    ) -> Result<T>
+    where
+        F: FnOnce(String) -> Fut,
+        Fut: std::future::Future<Output = Result<T>>,
+    {
         let (id, pool) = self.acquire_with_pool(image, memory_mb).await?;
-        Ok(ContainerGuard::new(self.clone(), pool, id))
+        let result = f(id.clone()).await;
+        self.release(&pool, &id).await;
+        result
     }
 
     /// 内部 acquire 实现（返回容器 ID + 所属 Pool）。
@@ -630,7 +580,7 @@ impl PoolManager {
 
     /// 释放容器。
     ///
-    /// 被 ContainerGuard 析构时自动调用。
+    /// 由 with_container() 在闭包返回后自动调用。
     pub async fn release(&self, pool: &Arc<Pool>, container_id: &str) {
         // docker rm -f 带退避重试
         let mut success = false;

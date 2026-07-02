@@ -8,6 +8,32 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+
+/// 临时工作目录守卫。
+///
+/// Drop 时自动递归删除目录（sync Drop，不依赖 tokio）。
+pub struct TempDir {
+    path: PathBuf,
+}
+
+impl TempDir {
+    /// 在 `root` 下创建以 `prefix` 命名的临时目录。
+    pub async fn new(root: &Path, prefix: &str) -> Result<Self> {
+        let path = prepare_work_dir(root, prefix).await?;
+        Ok(Self { path })
+    }
+
+    /// 获取临时目录路径。
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
 use base64::Engine;
 use tokio::fs;
 use tracing::warn;
@@ -400,5 +426,45 @@ mod tests {
 
         let result = get_support_package_bytes(&task).unwrap();
         assert!(result.is_none());
+    }
+
+    // ── TempDir ──
+
+    #[tokio::test]
+    async fn test_temp_dir_creates_and_cleans_up() {
+        let root = std::env::temp_dir();
+        let prefix = format!("noj-test-tempdir-{}", uuid::Uuid::new_v4());
+
+        let path;
+        {
+            let temp = TempDir::new(&root, &prefix).await.unwrap();
+            path = temp.path().to_path_buf();
+            assert!(path.exists(), "临时目录应被创建");
+            assert!(path.is_dir(), "应为目录");
+            assert!(
+                path.to_string_lossy().contains(&prefix),
+                "路径应包含 prefix"
+            );
+        }
+        // temp 已 drop，目录应被删除
+        assert!(!path.exists(), "Drop 后临时目录应被删除");
+    }
+
+    #[tokio::test]
+    async fn test_temp_dir_cleans_up_on_drop() {
+        let root = std::env::temp_dir();
+        let prefix = format!("noj-test-tempdir-{}", uuid::Uuid::new_v4());
+
+        let path;
+        {
+            let temp = TempDir::new(&root, &prefix).await.unwrap();
+            path = temp.path().to_path_buf();
+            // 在目录中创建一个文件
+            let file_path = path.join("test.txt");
+            std::fs::write(&file_path, "hello").unwrap();
+            assert!(file_path.exists());
+        }
+        // 目录及其所有内容应在 Drop 时被删除
+        assert!(!path.exists(), "Drop 后整个临时目录应被递归删除");
     }
 }
