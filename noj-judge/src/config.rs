@@ -73,6 +73,10 @@ impl Config {
 }
 
 impl PoolConfig {
+    /// 从环境变量加载容器池配置。
+    ///
+    /// 读取 `POOL_INITIAL_SIZE`、`POOL_MAX_SIZE`、`POOL_IMAGES` 等环境变量，
+    /// 缺失的字段使用合理的默认值。
     fn from_env() -> Self {
         let raw_images = env_or("POOL_IMAGES", "noj-judge-python");
         let images: Vec<String> = raw_images
@@ -135,11 +139,16 @@ impl PoolConfig {
 }
 
 /// 读取环境变量，不存在时返回默认值。
+///
+/// 若环境变量未设置，返回 `default` 的 to_string() 结果。
 fn env_or(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
 /// 读取环境变量并解析为指定类型。
+///
+/// 若环境变量未设置或解析失败（如非数字字符串解析为整数），返回 None。
+/// 支持的类型：`bool`、`u64`、`f64` 等实现 `FromStr` 的类型。
 fn env_var_parse<T: std::str::FromStr>(key: &str) -> Option<T> {
     std::env::var(key).ok().and_then(|v| v.parse().ok())
 }

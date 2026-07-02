@@ -76,6 +76,10 @@ async fn drain_tasks(tasks: &mut FuturesUnordered<tokio::task::JoinHandle<()>>) 
     }
 }
 
+/// noj-judge 入口点。
+///
+/// 初始化 Tokio 运行时，连接 Redis 和 Docker，启动容器池管理器，
+/// 然后进入主循环阻塞拉取评测任务。
 fn main() -> Result<()> {
     let rt = tokio::runtime::Runtime::new().context("创建 Tokio 运行时失败")?;
     rt.block_on(async {

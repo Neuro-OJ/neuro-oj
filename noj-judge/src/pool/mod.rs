@@ -88,6 +88,7 @@ pub struct Pool {
 }
 
 impl Pool {
+    /// 创建一个新的池。
     fn new(image: String, memory_mb: u64, initial_target: usize) -> Self {
         Self {
             containers: RwLock::new(HashMap::new()),
@@ -236,10 +237,12 @@ impl Pool {
         self.target_depth.store(clamped, Ordering::SeqCst);
     }
 
+    /// 获取池对应的镜像名。
     pub fn image(&self) -> &str {
         &self.image
     }
 
+    /// 获取池的内存上限 MB。
     #[allow(dead_code)]
     pub fn memory_mb(&self) -> u64 {
         self.memory_mb
@@ -756,6 +759,11 @@ impl PoolManager {
         .await
     }
 
+    /// 创建并启动一个评测容器。
+    ///
+    /// 容器安全配置（cap_drop ALL、no-new-privileges、network_mode none 等）
+    /// 在宿主机侧的 HostConfig 中设置。容器 CMD 设为 `sleep infinity`，
+    /// 通过 docker exec 执行实际评测命令。
     async fn create_container_inner(
         docker: &Docker,
         image: &str,
@@ -926,14 +934,19 @@ impl PoolManager {
         }
     }
 
+    /// 获取内部 Docker 客户端引用。
     pub fn docker(&self) -> &Docker {
         &self.docker
     }
 
+    /// 获取池配置引用。
     pub fn config(&self) -> &PoolConfig {
         &self.config
     }
 
+    /// 检查池管理器是否正在关闭中。
+    ///
+    /// 关闭中时应避免创建新容器或阻塞等待。
     #[allow(dead_code)]
     pub fn is_shutting_down(&self) -> bool {
         self.shutting_down.load(Ordering::SeqCst)

@@ -23,6 +23,7 @@ pub enum JudgeStatus {
 }
 
 impl JudgeStatus {
+    /// 返回状态的字符串表示，用于序列化和日志记录。
     pub fn as_str(&self) -> &'static str {
         match self {
             JudgeStatus::Accepted => "Accepted",
