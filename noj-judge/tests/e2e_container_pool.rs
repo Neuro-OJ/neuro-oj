@@ -117,16 +117,16 @@ fn make_pool_config(initial_size: usize, max_size: usize) -> noj_judge::config::
         min_size: 1,
         memory_mb: 256,
         cpu: 0.0,
-        images: vec!["noj-judge-test-runner".to_string()],
-        per_image_memory: std::collections::HashMap::new(),
         idle_timeout_secs: 300,
-        scale_interval_secs: 60,
         max_archive_mb: 25,
         kill_grace_secs: 2,
         label_prefix: "com.noj.judge.test".to_string(),
-        metrics_bind: "127.0.0.1:9101".to_string(),
-        metrics_auth_token: None,
     }
+}
+
+/// 测试用的镜像列表。
+fn test_images() -> Vec<String> {
+    vec!["noj-judge-test-runner".to_string()]
 }
 
 // ── Tests ──────────────────────────────────────────────
@@ -148,7 +148,7 @@ async fn test_pool_initialization() {
     // 初始化池管理器
     let config = make_pool_config(2, 4);
 
-    let pool = PoolManager::init(docker.clone(), config)
+    let pool = PoolManager::init(docker.clone(), config, &test_images())
         .await
         .expect("PoolManager init 失败");
 
@@ -179,7 +179,7 @@ async fn test_pool_full_execution_path() {
         .expect("确保测试镜像失败");
 
     let config = make_pool_config(1, 2);
-    let pool = PoolManager::init(docker.clone(), config)
+    let pool = PoolManager::init(docker.clone(), config, &test_images())
         .await
         .expect("PoolManager init 失败");
 
@@ -386,7 +386,7 @@ async fn test_pool_security_config() {
         .expect("确保测试镜像失败");
 
     let config = make_pool_config(1, 2);
-    let pool = PoolManager::init(docker.clone(), config)
+    let pool = PoolManager::init(docker.clone(), config, &test_images())
         .await
         .expect("PoolManager init 失败");
 
@@ -427,11 +427,11 @@ async fn test_pool_security_config() {
     .expect("with_container 失败");
 }
 
-/// 6. 队列等待：超过并发上限时应排队。
+/// 6. 并发任务：池可同时运行多个任务（即时创建补足空闲不足）。
 #[ignore]
 #[serial_test::serial]
 #[tokio::test]
-async fn test_pool_queue_wait() {
+async fn test_pool_concurrent_tasks() {
     if !is_e2e_enabled() {
         return;
     }
@@ -441,40 +441,35 @@ async fn test_pool_queue_wait() {
         .await
         .expect("确保测试镜像失败");
 
-    let config = make_pool_config(1, 1); // 最大 1 个并发
-    let pool = PoolManager::init(docker.clone(), config)
+    let config = make_pool_config(1, 2); // 初始 1 个空闲，最大 2
+    let pool = PoolManager::init(docker.clone(), config, &test_images())
         .await
         .expect("PoolManager init 失败");
 
-    // 占用唯一的槽位：with_container 闭包长时运行
-    let pool_for_spawn = pool.clone();
-    let hold = tokio::spawn(async move {
-        pool_for_spawn
-            .with_container("noj-judge-test-runner", 128, |_id| async move {
-                // 持有容器 2 秒
-                tokio::time::sleep(Duration::from_secs(2)).await;
-                Ok(())
-            })
-            .await
-    });
-
-    // 等待确保第一个任务已获取容器
-    tokio::time::sleep(Duration::from_millis(300)).await;
-
-    // 第二次 with_container 应排队阻塞（500ms 超时验证）
-    let timeout_result = tokio::time::timeout(
-        Duration::from_millis(500),
-        pool.with_container("noj-judge-test-runner", 128, |_id| async move { Ok(()) }),
-    )
-    .await;
-
-    assert!(
-        timeout_result.is_err(),
-        "超过 max_size=1 时第二次 with_container 应排队阻塞（500ms 超时）"
+    // 并发运行 2 个任务（第 2 个需即时创建容器）
+    let pool1 = pool.clone();
+    let pool2 = pool.clone();
+    let (r1, r2) = tokio::join!(
+        tokio::spawn(async move {
+            pool1
+                .with_container("noj-judge-test-runner", 128, |_id| async move {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    Ok::<_, anyhow::Error>("done".to_string())
+                })
+                .await
+        }),
+        tokio::spawn(async move {
+            pool2
+                .with_container("noj-judge-test-runner", 128, |_id| async move {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    Ok::<_, anyhow::Error>("done".to_string())
+                })
+                .await
+        }),
     );
 
-    // 等待第一个任务完成释放槽位
-    let _ = hold.await.expect("hold 任务应正常完成");
+    assert!(r1.unwrap().is_ok(), "任务 1 应成功");
+    assert!(r2.unwrap().is_ok(), "任务 2 应成功（即时创建容器）");
 }
 
 /// 7. 带超时的 bollard API 调用测试。

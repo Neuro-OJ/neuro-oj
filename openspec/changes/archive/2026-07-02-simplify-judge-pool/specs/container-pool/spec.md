@@ -1,10 +1,4 @@
-## Purpose
-
-定义 Neuro OJ 评测容器池（Container Pool）的基础设施规范。noj-judge 使用
-PoolManager 统一管理 Docker
-容器的生命周期，包括预创建、分配、释放和健康检查，以提升评测启动速度和资源利用率。
-
-## Requirements
+## ADDED Requirements
 
 ### Requirement: 固定池大小
 
@@ -15,6 +9,8 @@ PoolManager 统一管理 Docker
 - **WHEN** noj-judge 运行中
 - **THEN** 池容器数始终在 `[POOL_MIN_SIZE, POOL_MAX_SIZE]` 范围内
 - **THEN** 系统不根据 QPS、排队时间或空闲率调整池大小
+
+## MODIFIED Requirements
 
 ### Requirement: 统一容器池管理
 
@@ -70,7 +66,7 @@ PoolManager 统一管理 Docker
 - **THEN** `in_flight` 计数器 -1
 - **THEN** 系统执行 `docker rm -f` 删除容器（首次失败后退避重试 3 次：100ms / 500ms / 2s）
 - **THEN** 系统创建新容器并推入对应镜像的空闲队列
-- **THEN** 若空闲队列长度超过 `POOL_MAX_SIZE`，跳过回补
+- **THEN** 若空闲队列长度超过 `POOL_MAX_SIZE`，移除最旧的空闲容器（`docker rm -f`）
 
 #### Scenario: rm -f 重试全部失败
 
@@ -95,48 +91,6 @@ PoolManager 统一管理 Docker
 - **THEN** 系统移除并 `docker rm -f` 删除该容器
 - **THEN** 不触发回补
 
-### Requirement: 文件注入 (docker cp)
-
-系统 SHALL 将支持包和用户代码通过 tar 打包 + `docker exec tar xf -`
-注入到容器内的 `/tmp/` 目录。
-
-#### Scenario: tar 打包并复制
-
-- **WHEN** 支持包已解压、用户代码已写入临时目录
-- **THEN** 系统将临时目录全部内容 tar 打包为内存字节流
-- **THEN** 系统通过 `docker exec tar xf - -C /tmp/` 将 tar 数据通过 stdin
-  管道注入到容器内
-
-#### Scenario: tar 安全过滤
-
-- **WHEN** tar 打包时扫描到符号链接文件
-- **THEN** 系统跳过该文件（不打包符号链接）
-- **WHEN** 文件名包含 `..` 路径组件
-- **THEN** 系统跳过该条目
-
-#### Scenario: tar 大小超限
-
-- **WHEN** 临时目录总大小超过 `POOL_MAX_ARCHIVE_MB`
-- **THEN** 系统报错并跳过该任务（避免内存 OOM）
-
-### Requirement: 评测执行 (docker exec)
-
-系统 SHALL 在文件注入后通过 Docker exec API 执行评测命令，并流式捕获
-stdout/stderr。
-
-#### Scenario: 正常执行
-
-- **WHEN** 系统执行 `docker.create_exec` + `start_exec`
-- **THEN** 流式捕获 stdout/stderr
-- **THEN** `tokio::select!` 竞速 exec stream 与超时定时器
-
-#### Scenario: exec 超时
-
-- **WHEN** 评测运行超过 `time_limit_ms + kill_grace_secs × 1000` ms
-- **THEN** 系统先发送 `docker stop -t <kill_grace_secs>`（SIGTERM + 等待进程 flush）
-- **THEN** 若仍未退出，`docker kill`（SIGKILL）
-- **THEN** 剩余日志被捕获，状态设为 TimeLimitExceeded
-
 ### Requirement: 优雅关闭
 
 系统 SHALL 在 SIGTERM 时按顺序关闭：停止拉取 → inflight 完成 → 清理池。
@@ -148,24 +102,6 @@ stdout/stderr。
 - **THEN** 设置 `shutting_down` 标记阻止新容器创建
 - **THEN** 等待所有 inflight 任务完成（最长 30s 超时）
 - **THEN** 对所有池中容器执行 `docker rm -f`
-
-### Requirement: 容器安全加固
-
-系统 SHALL 在创建所有容器时应用最小权限配置。
-
-#### Scenario: 容器安全配置
-
-- **WHEN** 任何池容器被创建
-- **THEN** HostConfig 包含 CapDrop=["ALL"],
-  SecurityOpt=["no-new-privileges:true"], Privileged=false, ReadonlyRootfs=true,
-  NetworkMode=none
-- **THEN** MemorySwap 与 Memory 同值（禁用 swap），MemorySwappiness=0
-
-#### Scenario: swap 数据完整性
-
-- **WHEN** docker update 下调内存限制
-- **THEN** MemorySwap 同步调整为 `task.memory_limit_mb × 1024²`
-- **THEN** 进程因内存超限被 OOM killer 终止，退出码 137
 
 ### Requirement: 并发安全与状态管理
 
@@ -194,14 +130,28 @@ stdout/stderr。
 - **WHEN** docker rm -f 调用超过 10s
 - **THEN** 调用超时返回错误，记录 ERROR 日志（不追踪泄漏）
 
-### Requirement: 支持包完整性校验
+## REMOVED Requirements
 
-系统 SHALL 在 zip 解压阶段实施多层防护。
+### Requirement: 自动扩缩容
 
-#### Scenario: zip 解压防护
+**Reason**: NOJ 当前为单 Worker 部署，无需自动扩缩容。Scaler 的滑动窗口指标计算存在 3 个已知 Bug（QPS 分母/窗口不匹配、到达时间戳失真、sample_count 设计缺陷）。修复这些 Bug 的工作量不足以在当前规模下提供价值。
 
-- **WHEN** 解压支持包 zip
-- **THEN** 解压后总大小不超过 POOL_MAX_ARCHIVE_MB
-- **THEN** 拒绝 overlapping entries（相同路径重复）
-- **THEN** 拒绝包含 `..` 组件的 entry
-- **THEN** 单文件大小不超过 POOL_MAX_ARCHIVE_MB
+**Migration**: 池大小由 `POOL_MIN_SIZE` 和 `POOL_MAX_SIZE` 固定控制。运维人员如需调整容量，修改配置后重启 noj-judge 即可。
+
+### Requirement: 可观测性
+
+**Reason**: Prometheus /metrics 端点在 NOJ 当前部署中从不被消费（无 Prometheus + Grafana 栈），增加 axum 依赖和 ~120 行代码却无实际价值。
+
+**Migration**: 池关键状态通过 tracing 日志输出（每 30s Supervisor 快照）。运维人员可通过 `grep pool_status` 提取指标。
+
+### Requirement: 动态内存调整
+
+**Reason**: 当前实现仅支持内存下调（不超过 Pool 初始配置）。在单镜像部署场景下，所有任务共享同一内存限制，无需 per-task 动态调整。`docker update` 调用增加了每次 acquire 的延迟开销。
+
+**Migration**: 容器创建时直接使用 `POOL_MEMORY_MB` 作为内存限制。评测脚本通过自身的 `evaluate.py` 内的资源感知逻辑处理不同题目的内存需求。
+
+### Requirement: Per-Image 资源配置
+
+**Reason**: NOJ 当前仅使用 `noj-judge-python` 单个镜像，per-image 覆盖机制从未被使用。
+
+**Migration**: 所有镜像共享全局 `POOL_MEMORY_MB` 和 `POOL_CPU` 配置。未来如需 per-image 配置，可重新引入。

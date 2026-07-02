@@ -124,13 +124,40 @@ fn main() -> Result<()> {
     let result_queue = config.result_queue.clone();
     let work_dir = config.work_dir.clone();
 
-    // ── 初始化容器池 ──────────────────────────────
-    let pool = PoolManager::init(docker, config.pool.clone())
-            .await
-            .context("初始化容器池失败")?;
+    // ── 通过 Redis RPC 获取镜像白名单 ─────────────────
+    let judge_id = std::env::var("JUDGE_ID")
+        .unwrap_or_else(|_| gethostname::gethostname().to_string_lossy().to_string());
+    info!("judge_id = {}", judge_id);
 
-        // 启动后台任务：健康检查、Supervisor、Scaler 自动扩缩容、Metrics 服务器
-        pool.start_background_tasks().await;
+    // 创建专用于 RPC 的 Redis 连接（不与主循环共享）
+    let rpc_conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .context("创建 RPC Redis 连接失败")?;
+    let mut rpc_client = mq::rpc::RpcClient::new(rpc_conn, judge_id);
+
+    let images = match rpc_client.get_image_allowlist().await {
+        Ok(list) if !list.is_empty() => {
+            info!("从 core 获取镜像白名单: {:?}", list);
+            list
+        }
+        Ok(_) => {
+            error!("RPC 返回空镜像列表，无法启动");
+            std::process::exit(1);
+        }
+        Err(e) => {
+            error!("获取镜像白名单失败: {:#}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // ── 初始化容器池 ──────────────────────────────
+    let pool = PoolManager::init(docker, config.pool.clone(), &images)
+        .await
+        .context("初始化容器池失败")?;
+
+    // 启动后台任务：健康检查（简化版，合并 Supervisor 日志）
+    pool.start_background_tasks().await;
 
         let pool_ref = pool.clone();
         // 注册优雅关闭信号处理

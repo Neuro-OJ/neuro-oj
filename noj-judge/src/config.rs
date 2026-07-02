@@ -28,33 +28,14 @@ pub struct PoolConfig {
     pub memory_mb: u64,
     /// CPU 核数（0=无限制，默认: 0）
     pub cpu: f64,
-    /// 需要预热的镜像列表（逗号分隔，默认: "noj-judge-python"）
-    pub images: Vec<String>,
-    /// Per-image 内存配置：image_name -> memory_mb
-    pub per_image_memory: std::collections::HashMap<String, u64>,
     /// 空闲容器超时秒数（默认: 300）
-    #[allow(dead_code)]
     pub idle_timeout_secs: u64,
-    /// 扩缩容评估间隔秒数（默认: 60）
-    #[allow(dead_code)]
-    pub scale_interval_secs: u64,
     /// 支持包最大 MB（默认: 25）
     pub max_archive_mb: u64,
     /// 超时 kill 的 SIGTERM→SIGKILL 等待秒数（默认: 2）
     pub kill_grace_secs: u64,
     /// Docker 容器标签前缀（默认: "com.noj.judge"）
     pub label_prefix: String,
-    /// Metrics HTTP 监听地址（默认 127.0.0.1:9100）
-    ///
-    /// 默认绑定 loopback 而非 0.0.0.0 以避免将内部容器池状态
-    /// （任务总数、错误数、池深度、版本信息等）暴露给未授权网络。
-    /// 外部 Prometheus 抓取时通过 sidecar 或 SSH 隧道。
-    pub metrics_bind: String,
-    /// Metrics 端点可选 bearer token
-    ///
-    /// 设置后，访问 /metrics 需在 Authorization 头携带 `Bearer <token>`。
-    /// 未设置则仅依赖 IP 层保护（127.0.0.1 限制）。
-    pub metrics_auth_token: Option<String>,
 }
 
 impl Config {
@@ -74,67 +55,18 @@ impl Config {
 
 impl PoolConfig {
     /// 从环境变量加载容器池配置。
-    ///
-    /// 读取 `POOL_INITIAL_SIZE`、`POOL_MAX_SIZE`、`POOL_IMAGES` 等环境变量，
-    /// 缺失的字段使用合理的默认值。
     fn from_env() -> Self {
-        let raw_images = env_or("POOL_IMAGES", "noj-judge-python");
-        let images: Vec<String> = raw_images
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .collect();
-
-        // 收集 per-image 内存配置（POOL_MEMORY_MB_{IMAGE_NAME}）
-        let mut per_image_memory = std::collections::HashMap::new();
-        for img in &images {
-            let norm = img.to_uppercase().replace('-', "_");
-            let key = format!("POOL_MEMORY_MB_{}", norm);
-            if let Some(val) = env_var_parse::<u64>(&key) {
-                // 使用归一化后的镜像名作为 key（strip :latest）
-                let normalized = if let Some(stripped) = img.strip_suffix(":latest") {
-                    stripped.to_string()
-                } else {
-                    img.clone()
-                };
-                per_image_memory.insert(normalized, val);
-            }
-        }
-
         PoolConfig {
             initial_size: env_var_parse("POOL_INITIAL_SIZE").unwrap_or(2),
             max_size: env_var_parse("POOL_MAX_SIZE").unwrap_or(16),
             min_size: env_var_parse("POOL_MIN_SIZE").unwrap_or(1),
             memory_mb: env_var_parse("POOL_MEMORY_MB").unwrap_or(256),
             cpu: env_var_parse("POOL_CPU").unwrap_or(0.0),
-            images,
-            per_image_memory,
             idle_timeout_secs: env_var_parse("POOL_IDLE_TIMEOUT").unwrap_or(300),
-            scale_interval_secs: env_var_parse("POOL_SCALE_INTERVAL").unwrap_or(60),
             max_archive_mb: env_var_parse("POOL_MAX_ARCHIVE_MB").unwrap_or(25),
             kill_grace_secs: env_var_parse("POOL_KILL_GRACE_SECONDS").unwrap_or(2),
             label_prefix: env_or("POOL_LABEL_PREFIX", "com.noj.judge"),
-            metrics_bind: env_or("METRICS_BIND", "127.0.0.1:9100"),
-            metrics_auth_token: std::env::var("METRICS_AUTH_TOKEN")
-                .ok()
-                .filter(|s| !s.is_empty()),
         }
-    }
-
-    /// 获取指定镜像的内存限制 MB。
-    ///
-    /// 优先返回 per-image 配置（`POOL_MEMORY_MB_{IMAGE}`），
-    /// 不存在则返回全局默认值。
-    /// 查找时自动归一化镜像名（strip `:latest`）。
-    pub fn memory_mb_for_image(&self, image: &str) -> u64 {
-        let normalized = if let Some(stripped) = image.strip_suffix(":latest") {
-            stripped
-        } else {
-            image
-        };
-        self.per_image_memory
-            .get(normalized)
-            .copied()
-            .unwrap_or(self.memory_mb)
     }
 }
 
@@ -202,9 +134,7 @@ mod tests {
             "POOL_MIN_SIZE",
             "POOL_MEMORY_MB",
             "POOL_CPU",
-            "POOL_IMAGES",
             "POOL_IDLE_TIMEOUT",
-            "POOL_SCALE_INTERVAL",
             "POOL_MAX_ARCHIVE_MB",
             "POOL_KILL_GRACE_SECONDS",
             "POOL_LABEL_PREFIX",
@@ -222,9 +152,7 @@ mod tests {
         assert_eq!(p.min_size, 1);
         assert_eq!(p.memory_mb, 256);
         assert_eq!(p.cpu, 0.0);
-        assert_eq!(p.images, vec!["noj-judge-python"]);
         assert_eq!(p.idle_timeout_secs, 300);
-        assert_eq!(p.scale_interval_secs, 60);
         assert_eq!(p.max_archive_mb, 25);
         assert_eq!(p.kill_grace_secs, 2);
         assert_eq!(p.label_prefix, "com.noj.judge");
@@ -243,9 +171,7 @@ mod tests {
             ("POOL_MIN_SIZE", "2"),
             ("POOL_MEMORY_MB", "512"),
             ("POOL_CPU", "2.0"),
-            ("POOL_IMAGES", "noj-judge-python,noj-judge-cpp"),
             ("POOL_IDLE_TIMEOUT", "600"),
-            ("POOL_SCALE_INTERVAL", "120"),
             ("POOL_MAX_ARCHIVE_MB", "50"),
             ("POOL_KILL_GRACE_SECONDS", "5"),
             ("POOL_LABEL_PREFIX", "org.example"),
@@ -259,9 +185,7 @@ mod tests {
         assert_eq!(p.min_size, 2);
         assert_eq!(p.memory_mb, 512);
         assert_eq!(p.cpu, 2.0);
-        assert_eq!(p.images, vec!["noj-judge-python", "noj-judge-cpp"]);
         assert_eq!(p.idle_timeout_secs, 600);
-        assert_eq!(p.scale_interval_secs, 120);
         assert_eq!(p.max_archive_mb, 50);
         assert_eq!(p.kill_grace_secs, 5);
         assert_eq!(p.label_prefix, "org.example");
