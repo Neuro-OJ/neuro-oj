@@ -191,6 +191,12 @@ router.get("/events", (c) => {
       });
     }, 30_000);
 
+    // 发送初始化事件，触发代理 flush 响应头
+    await stream.writeSSE({
+      event: "connected",
+      data: JSON.stringify({ status: "connected" }),
+    });
+
     await new Promise<void>((resolve) => {
       resolveAbort = resolve;
       stream.onAbort(() => {
