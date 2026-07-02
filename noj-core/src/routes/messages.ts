@@ -1,7 +1,9 @@
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { BadRequestError } from "../lib/errors.ts";
+import { Channels, onEvent } from "../lib/event-bus.ts";
 import {
   deleteMessage,
   findOrCreateConversation,
@@ -50,12 +52,12 @@ router.post("/", async (c) => {
     throw new BadRequestError("缺少对方用户 ID");
   }
 
-  const conversation = await findOrCreateConversation(
+  const { conversation, created } = await findOrCreateConversation(
     userId,
     body.other_user_id,
   );
 
-  return c.json({ data: conversation }, 201);
+  return c.json({ data: conversation }, created ? 201 : 200);
 });
 
 /**
@@ -145,6 +147,57 @@ router.delete("/:id/messages/:messageId", async (c) => {
   const messageId = c.req.param("messageId");
   await deleteMessage(userId, messageId);
   return c.body(null, 204);
+});
+
+/**
+ * GET /api/v1/conversations/events
+ * 私信通知 SSE 端点。
+ *
+ * 收到 message:new 事件后前端应拉取会话列表和未读计数。
+ * SSE 事件仅作触发器，不包含消息内容。
+ */
+router.get("/events", (c) => {
+  const userId = c.get("userId") as string;
+  return streamSSE(c, async (stream) => {
+    let streamClosed = false;
+    let resolveAbort: (() => void) | null = null;
+
+    function closeStream() {
+      if (streamClosed) return;
+      streamClosed = true;
+      clearInterval(keepAlive);
+      unsub();
+      if (resolveAbort) resolveAbort();
+    }
+
+    const unsub = onEvent(
+      Channels.user(userId),
+      (_channel, message) => {
+        if (streamClosed) return;
+        stream.writeSSE({
+          event: "message:new",
+          data: message,
+        }).catch(() => {
+          closeStream();
+        });
+      },
+    );
+
+    // 30s 心跳保持连接
+    const keepAlive = setInterval(() => {
+      if (streamClosed) return;
+      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
+        closeStream();
+      });
+    }, 30_000);
+
+    await new Promise<void>((resolve) => {
+      resolveAbort = resolve;
+      stream.onAbort(() => {
+        closeStream();
+      });
+    });
+  });
 });
 
 export default router;

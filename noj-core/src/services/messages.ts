@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, or, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import {
   conversations,
@@ -30,7 +30,7 @@ const PREVIEW_LENGTH = 50;
 export async function findOrCreateConversation(
   userId: string,
   otherUserId: string,
-) {
+): Promise<{ conversation: typeof conversations.$inferSelect; created: boolean }> {
   // 拒绝自聊
   if (userId === otherUserId) {
     throw new BadRequestError("无法与自己创建会话");
@@ -62,7 +62,7 @@ export async function findOrCreateConversation(
     )
     .limit(1);
 
-  if (existing) return existing;
+  if (existing) return { conversation: existing, created: false };
 
   // 创建新会话
   const now = new Date().toISOString();
@@ -76,7 +76,7 @@ export async function findOrCreateConversation(
 
   try {
     await getDb().insert(conversations).values(conversation);
-    return conversation;
+    return { conversation, created: true };
   } catch (err: unknown) {
     // 并发创建冲突（PG 23505），返回已有会话
     if (err instanceof Error && err.message?.includes("23505")) {
@@ -91,7 +91,7 @@ export async function findOrCreateConversation(
         )
         .limit(1);
 
-      if (existingAfterConflict) return existingAfterConflict;
+      if (existingAfterConflict) return { conversation: existingAfterConflict, created: false };
     }
     throw err;
   }
@@ -150,12 +150,14 @@ export async function sendMessage(
     created_at: now,
   };
 
-  await getDb().insert(messages).values(message);
-  await getDb()
-    .update(conversations)
-    .set({ last_message_at: now })
-    .where(eq(conversations.id, conversationId));
-
+  // 消息写入和会话更新时间放在同一事务，防止数据不一致
+  await getDb().transaction(async (tx) => {
+    await tx.insert(messages).values(message);
+    await tx
+      .update(conversations)
+      .set({ last_message_at: now })
+      .where(eq(conversations.id, conversationId));
+  });
   // 通过 Redis Pub/Sub 通知接收方
   publishEvent(
     Channels.user(otherUserId),
@@ -207,7 +209,7 @@ export async function listConversations(
     .offset(offset);
 
   if (rows.length === 0) {
-    return { data: [], total: 0 };
+    return { data: [], pagination: { page, per_page: perPage, total: 0, total_pages: 0 } };
   }
 
   // 收集所有参与方用户 ID（排除当前用户）
