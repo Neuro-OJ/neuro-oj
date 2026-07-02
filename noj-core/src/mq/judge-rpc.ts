@@ -32,7 +32,11 @@ interface RpcResponse {
 }
 
 /** 创建 RPC 响应 */
-function createResponse(id: string, result?: unknown, error?: string | null): RpcResponse {
+function createResponse(
+  id: string,
+  result?: unknown,
+  error?: string | null,
+): RpcResponse {
   return {
     id,
     result,
@@ -45,7 +49,9 @@ function createResponse(id: string, result?: unknown, error?: string | null): Rp
  * 处理 get_image_allowlist 请求。
  * 从数据库查询所有 judge_images 记录。
  */
-async function handleGetImageAllowlist(): Promise<{ images: { image: string; tag: string }[] }> {
+async function handleGetImageAllowlist(): Promise<
+  { images: { image: string; tag: string }[] }
+> {
   const rows = await getDb()
     .select({ image: judgeImages.image })
     .from(judgeImages);
@@ -105,7 +111,11 @@ export async function startJudgeRpcHandler(
       const handler = handlers[request.method as string];
       if (!handler) {
         console.warn(`[judge-rpc] Unknown method: ${request.method}`);
-        const response = createResponse(request.id as string, undefined, `unknown method: ${request.method}`);
+        const response = createResponse(
+          request.id as string,
+          undefined,
+          `unknown method: ${request.method}`,
+        );
         await redis.lpush(responseQueue, JSON.stringify(response));
         continue;
       }

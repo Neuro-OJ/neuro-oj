@@ -612,7 +612,7 @@ impl PoolManager {
                 }
 
                 // 每 6 次循环（~30s）输出一次池状态日志
-                if loop_count.is_multiple_of(6) {
+                if loop_count % 6 == 0 {
                     let pools = manager.pools.read().await;
                     for (image, pool) in pools.iter() {
                         let idle = pool.idle_count().await;
