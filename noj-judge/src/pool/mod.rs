@@ -90,6 +90,11 @@ impl Pool {
         self.in_flight.fetch_sub(1, Ordering::SeqCst);
     }
 
+    /// in_flight 计数器 +1。
+    pub fn inc_in_flight(&self) {
+        self.in_flight.fetch_add(1, Ordering::SeqCst);
+    }
+
     /// 获取空闲容器数。
     pub async fn idle_count(&self) -> usize {
         self.idle.read().await.len()
@@ -279,6 +284,8 @@ impl PoolManager {
         // 快速路径：尝试获取空闲容器
         if let Some(id) = pool.acquire().await {
             if let Err(e) = self.update_container_memory(&id, memory_mb).await {
+                // 容器已从 idle 弹出，需清理避免泄漏
+                self.remove_container_force(&id).await;
                 pool.dec_in_flight();
                 return Err(e);
             }
@@ -287,8 +294,10 @@ impl PoolManager {
 
         // 慢路径：即时创建新容器
         let id = self.create_container(image).await?;
+        pool.inc_in_flight();
         if let Err(e) = self.update_container_memory(&id, memory_mb).await {
             self.remove_container_force(&id).await;
+            pool.dec_in_flight();
             return Err(e);
         }
         Ok((id, pool.clone()))
@@ -375,8 +384,15 @@ impl PoolManager {
             );
             let mut ok = false;
             while let Some(result) = stream.next().await {
-                if result.is_ok() {
-                    ok = true;
+                match result {
+                    Ok(_) => {
+                        ok = true;
+                    }
+                    Err(e) => {
+                        warn!("拉取镜像流错误 (attempt {}/3): {}", attempt, e);
+                        ok = false;
+                        break;
+                    }
                 }
             }
             if ok {
@@ -587,7 +603,7 @@ impl PoolManager {
                     // Inspect 所有空闲容器
                     let idle_ids = pool.collect_all_idle().await;
                     for id in &idle_ids {
-                        let running = manager
+                        let inspect_result = manager
                             .timed_bollard(5, "inspect_container", async {
                                 let cid = id.clone();
                                 let info = manager
@@ -600,18 +616,24 @@ impl PoolManager {
                                     .map_err(anyhow::Error::from)?;
                                 Ok(info.state.and_then(|s| s.running).unwrap_or(false))
                             })
-                            .await
-                            .unwrap_or(false);
+                            .await;
 
-                        if !running {
-                            warn!("健康检查: 容器异常, 移除: {}", id);
-                            pool.remove_idle(id).await;
-                            manager.remove_container_force(id).await;
+                        match inspect_result {
+                            Ok(true) => { /* 容器正常 */ }
+                            Ok(false) => {
+                                warn!("健康检查: 容器异常, 移除: {}", id);
+                                pool.remove_idle(id).await;
+                                manager.remove_container_force(id).await;
+                            }
+                            Err(e) => {
+                                warn!("健康检查: inspect 失败, 跳过: {}: {}", id, e);
+                            }
                         }
                     }
                 }
 
                 // 每 6 次循环（~30s）输出一次池状态日志
+                #[allow(clippy::manual_is_multiple_of)]
                 if loop_count % 6 == 0 {
                     let pools = manager.pools.read().await;
                     for (image, pool) in pools.iter() {

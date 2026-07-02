@@ -57,11 +57,11 @@ impl RpcClient {
             .unwrap_or(0);
 
         let request = serde_json::json!({
-            "id": request_id,
+            "id": request_id.clone(),
             "method": method,
             "params": params,
             "timestamp": timestamp,
-            "judge_id": self.judge_id,
+            "judge_id": self.judge_id.clone(),
         });
 
         let request_queue = "noj:rpc:v1:judge:core".to_string();

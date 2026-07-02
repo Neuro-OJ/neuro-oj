@@ -36,8 +36,8 @@ noj-judge/
 │   ├── lib.rs              # 库入口（暴露模块给集成测试）
 │   ├── config.rs           # 环境变量配置（PoolConfig + 全局配置）
 │   ├── types.rs            # JudgeTask、JudgeResult、CaseResult 类型
+│   ├── mq.rs               # Redis MQ 任务拉取 + 结果推送（带重试 + fallback）
 │   ├── mq/
-│   │   ├── mod.rs           # Redis MQ 任务拉取 + 结果推送（带重试 + fallback）
 │   │   └── rpc.rs           # Redis RPC 客户端（core↔judge 通信）
 │   ├── sandbox/
 │   │   ├── mod.rs
@@ -217,7 +217,7 @@ noj-judge 始终使用容器池模式，无 Semaphore 退化路径。
 - **结果重试**：推送结果最多重试 3 次（指数退避），全部失败则序列化到本地文件系统
 - **孤儿容器清理**：启动时按标签清理残留容器
 - **JudgeResult::error()** 有意隐藏错误详情（不暴露内部路径/配置给用户）
-- **评测镜像本地构建**：`ensure_image_local()` 明确要求镜像预先 `docker build`，不从 registry 拉取
+- **镜像存在性检查**：`ensure_image_local()` 检查本地是否存在，不存在则从 registry 拉取
 
 ## 日志约定
 

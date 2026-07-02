@@ -39,7 +39,7 @@
 #### Scenario: 请求超时
 
 - **WHEN** 请求方发送请求后未在超时窗口内收到响应
-- **THEN** 请求超时退出，调用方按自身策略处理退化逻辑
+- **THEN** 请求超时退出，judge 调用 process::exit(1) fail-fast 退出
 
 ### Requirement: 获取镜像白名单
 

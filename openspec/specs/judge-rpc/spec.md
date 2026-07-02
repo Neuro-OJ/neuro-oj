@@ -29,7 +29,7 @@
 #### Scenario: 消息信封格式
 
 - **WHEN** 任何一方发送 RPC 请求
-- **THEN** 消息 JSON 包含字段：`id`（UUID）、`method`（字符串）、`params`（可选 JSON）、`timestamp`（整数 Unix 时间戳）
+- **THEN** 消息 JSON 包含字段：`id`（UUID）、`method`（字符串）、`params`（可选 JSON）、`judge_id`（字符串）、`timestamp`（整数 Unix 时间戳）
 - **WHEN** 任何一方发送 RPC 响应
 - **THEN** 消息 JSON 包含字段：`id`（对应请求的 UUID）、`result`（可选 JSON）、`error`（可选字符串）、`timestamp`
 
@@ -52,7 +52,7 @@
 #### Scenario: 成功获取
 
 - **WHEN** judge 发送 `get_image_allowlist` RPC 请求
-- **THEN** core 查询 `judge_images` 表中所有 `enabled = true` 的记录
+- **THEN** core 查询 `judge_images` 表中所有记录
 - **THEN** core 返回 JSON 数组，每项包含 `image`（镜像名）和 `tag`（标签）
 - **THEN** judge 使用返回的镜像列表预热容器池
 
