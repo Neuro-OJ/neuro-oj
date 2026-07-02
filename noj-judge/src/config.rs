@@ -270,9 +270,7 @@ mod tests {
     #[test]
     fn test_pool_max_size_default() {
         let _lock = ENV_TEST_MUTEX.lock().unwrap();
-        for key in &["POOL_MAX_SIZE"] {
-            std::env::remove_var(key);
-        }
+        std::env::remove_var("POOL_MAX_SIZE");
         let cfg = Config::from_env();
         assert_eq!(cfg.pool.max_size, 16);
     }

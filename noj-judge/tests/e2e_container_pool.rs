@@ -7,7 +7,8 @@
 /// NOJ_RUN_E2E=1 cargo test --test e2e_container_pool -- --ignored
 /// ```
 mod common;
-// Path and Arc used in tests below
+
+use std::time::Duration;
 
 use bollard::container::LogOutput;
 use bollard::models::ContainerCreateBody;
@@ -108,6 +109,26 @@ async fn capture_container_logs(docker: &Docker, container_id: &str) -> (String,
     (stdout, stderr, exit_code)
 }
 
+/// 创建测试用的 PoolConfig。
+fn make_pool_config(initial_size: usize, max_size: usize) -> noj_judge::config::PoolConfig {
+    noj_judge::config::PoolConfig {
+        initial_size,
+        max_size,
+        min_size: 1,
+        memory_mb: 256,
+        cpu: 0.0,
+        images: vec!["noj-judge-test-runner".to_string()],
+        per_image_memory: std::collections::HashMap::new(),
+        idle_timeout_secs: 300,
+        scale_interval_secs: 60,
+        max_archive_mb: 25,
+        kill_grace_secs: 2,
+        label_prefix: "com.noj.judge.test".to_string(),
+        metrics_bind: "127.0.0.1:9101".to_string(),
+        metrics_auth_token: None,
+    }
+}
+
 // ── Tests ──────────────────────────────────────────────
 
 /// 1. 池初始化：验证 POOL_INITIAL_SIZE 个容器已创建并运行。
@@ -125,23 +146,7 @@ async fn test_pool_initialization() {
         .expect("确保测试镜像失败");
 
     // 初始化池管理器
-    let config = noj_judge::config::PoolConfig {
-        enabled: true,
-        initial_size: 2,
-        max_size: 4,
-        min_size: 1,
-        memory_mb: 256,
-        cpu: 0.0,
-        images: vec!["noj-judge-test-runner".to_string()],
-        per_image_memory: std::collections::HashMap::new(),
-        idle_timeout_secs: 300,
-        scale_interval_secs: 60,
-        max_archive_mb: 25,
-        kill_grace_secs: 2,
-        label_prefix: "com.noj.judge.test".to_string(),
-        metrics_bind: "127.0.0.1:9101".to_string(),
-        metrics_auth_token: None,
-    };
+    let config = make_pool_config(2, 4);
 
     let pool = PoolManager::init(docker.clone(), config)
         .await
@@ -157,17 +162,9 @@ async fn test_pool_initialization() {
 
     let idle = test_pool.unwrap().idle_count().await;
     assert_eq!(idle, 2, "启动时应有 2 个空闲容器");
-
-    // 清理池
-    let _ = docker
-        .remove_container(
-            "noj-judge-test-runner",
-            None::<bollard::query_parameters::RemoveContainerOptions>,
-        )
-        .await;
 }
 
-/// 2. 完整执行路径：acquire → docker update → exec → rm → 回补。
+/// 2. 完整执行路径：with_container → docker exec → 自动清理。
 #[ignore]
 #[serial_test::serial]
 #[tokio::test]
@@ -181,77 +178,62 @@ async fn test_pool_full_execution_path() {
         .await
         .expect("确保测试镜像失败");
 
-    let config = noj_judge::config::PoolConfig {
-        enabled: true,
-        initial_size: 1,
-        max_size: 2,
-        min_size: 1,
-        memory_mb: 256,
-        cpu: 0.0,
-        images: vec!["noj-judge-test-runner".to_string()],
-        per_image_memory: std::collections::HashMap::new(),
-        idle_timeout_secs: 300,
-        scale_interval_secs: 60,
-        max_archive_mb: 25,
-        kill_grace_secs: 2,
-        label_prefix: "com.noj.judge.test".to_string(),
-        metrics_bind: "127.0.0.1:9101".to_string(),
-        metrics_auth_token: None,
-    };
-
+    let config = make_pool_config(1, 2);
     let pool = PoolManager::init(docker.clone(), config)
         .await
         .expect("PoolManager init 失败");
 
-    // acquire 容器
-    let container_id = pool
-        .acquire("noj-judge-test-runner", 128)
-        .await
-        .expect("acquire 失败");
+    // 使用 with_container 闭包 API
+    let docker_for_inspect = docker.clone();
+    let result: Result<String, anyhow::Error> = pool
+        .with_container("noj-judge-test-runner", 128, |container_id| {
+            let docker = docker_for_inspect.clone();
+            async move {
+                // 验证容器正在运行
+                let inspect = docker
+                    .inspect_container(
+                        &container_id,
+                        None::<bollard::query_parameters::InspectContainerOptions>,
+                    )
+                    .await
+                    .expect("inspect 失败");
+                let running = inspect
+                    .state
+                    .as_ref()
+                    .and_then(|s| s.running)
+                    .unwrap_or(false);
+                assert!(running, "池容器应正在运行");
 
-    // 验证容器正在运行
-    let inspect = docker
-        .inspect_container(
-            &container_id,
-            None::<bollard::query_parameters::InspectContainerOptions>,
-        )
-        .await
-        .expect("inspect 失败");
-    let running = inspect
-        .state
-        .as_ref()
-        .and_then(|s| s.running)
-        .unwrap_or(false);
-    assert!(running, "池容器应正在运行");
+                // 通过 exec 执行简单命令
+                let (stdout, _stderr, exit_code, _time_ms) = execute_in_container(
+                    &docker,
+                    &container_id,
+                    &[
+                        "python3".to_string(),
+                        "-c".to_string(),
+                        "print('pool-exec')".to_string(),
+                    ],
+                    10000,
+                    2,
+                )
+                .await
+                .expect("exec 执行失败");
 
-    // 通过 exec 执行简单命令
-    let (stdout, _stderr, exit_code, _time_ms) = execute_in_container(
-        &docker,
-        &container_id,
-        &[
-            "python3".to_string(),
-            "-c".to_string(),
-            "print('pool-exec')".to_string(),
-        ],
-        10000,
-        2,
-    )
-    .await
-    .expect("exec 执行失败");
+                assert_eq!(exit_code, 0, "exit_code 应为 0，实际: {}", exit_code);
+                assert!(
+                    stdout.contains("pool-exec"),
+                    "stdout 应包含 'pool-exec'，实际: {}",
+                    stdout
+                );
 
-    assert_eq!(exit_code, 0, "exit_code 应为 0，实际: {}", exit_code);
-    assert!(
-        stdout.contains("pool-exec"),
-        "stdout 应包含 'pool-exec'，实际: {}",
-        stdout
-    );
+                Ok(container_id.clone())
+            }
+        })
+        .await;
 
-    // 释放并删除容器
-    if let Some(p) = pool.get_pool("noj-judge-test-runner").await {
-        pool.release(&p, &container_id).await;
-    }
+    let container_id = result.expect("with_container 失败");
 
-    // 验证容器已被删除
+    // 验证容器已被删除（with_container 退出后自动 release → rm -f）
     let inspect_result = docker
         .inspect_container(
             &container_id,
@@ -296,7 +278,6 @@ async fn test_pool_memory_update() {
     assert_eq!(initial_memory, 512 * 1024 * 1024, "初始内存应为 512MB");
 
     // 使用 docker update 下调到 64MB
-
     docker
         .update_container(
             &container_id,
@@ -404,72 +385,46 @@ async fn test_pool_security_config() {
         .await
         .expect("确保测试镜像失败");
 
-    let config = noj_judge::config::PoolConfig {
-        enabled: true,
-        initial_size: 1,
-        max_size: 2,
-        min_size: 1,
-        memory_mb: 256,
-        cpu: 0.0,
-        images: vec!["noj-judge-test-runner".to_string()],
-        per_image_memory: std::collections::HashMap::new(),
-        idle_timeout_secs: 300,
-        scale_interval_secs: 60,
-        max_archive_mb: 25,
-        kill_grace_secs: 2,
-        label_prefix: "com.noj.judge.test".to_string(),
-        metrics_bind: "127.0.0.1:9101".to_string(),
-        metrics_auth_token: None,
-    };
-
+    let config = make_pool_config(1, 2);
     let pool = PoolManager::init(docker.clone(), config)
         .await
         .expect("PoolManager init 失败");
 
-    // 获取池中容器
-    let _test_pool = pool
-        .get_pool("noj-judge-test-runner")
-        .await
-        .expect("应有 test-runner 池");
-    let container_id = pool
-        .acquire("noj-judge-test-runner", 128)
-        .await
-        .expect("acquire 失败");
+    pool.with_container("noj-judge-test-runner", 128, |container_id| async move {
+        // inspect 验证安全配置
+        let inspect = docker
+            .inspect_container(
+                &container_id,
+                None::<bollard::query_parameters::InspectContainerOptions>,
+            )
+            .await
+            .expect("inspect 失败");
 
-    // inspect 验证安全配置
-    let inspect = docker
-        .inspect_container(
-            &container_id,
-            None::<bollard::query_parameters::InspectContainerOptions>,
-        )
-        .await
-        .expect("inspect 失败");
+        let hc = inspect.host_config.as_ref().expect("应有 host_config");
 
-    let hc = inspect.host_config.as_ref().expect("应有 host_config");
+        // CapDrop ALL
+        assert!(hc.cap_drop.as_ref().is_some(), "cap_drop 应被设置");
+        let caps = hc.cap_drop.as_ref().unwrap();
+        assert!(caps.iter().any(|c| c == "ALL"), "cap_drop 应包含 ALL");
 
-    // CapDrop ALL
-    assert!(hc.cap_drop.as_ref().is_some(), "cap_drop 应被设置");
-    let caps = hc.cap_drop.as_ref().unwrap();
-    assert!(caps.iter().any(|c| c == "ALL"), "cap_drop 应包含 ALL");
+        // network_mode none
+        assert_eq!(
+            hc.network_mode.as_deref(),
+            Some("none"),
+            "network_mode 应为 none"
+        );
 
-    // network_mode none
-    assert_eq!(
-        hc.network_mode.as_deref(),
-        Some("none"),
-        "network_mode 应为 none"
-    );
+        // readonly_rootfs
+        assert_eq!(
+            hc.readonly_rootfs,
+            Some(false),
+            "readonly_rootfs 应为 false（put_archive 兼容性）"
+        );
 
-    // readonly_rootfs
-    assert_eq!(
-        hc.readonly_rootfs,
-        Some(false),
-        "readonly_rootfs 应为 false（put_archive 兼容性）"
-    );
-
-    // 释放
-    if let Some(p) = pool.get_pool("noj-judge-test-runner").await {
-        pool.release(&p, &container_id).await;
-    }
+        Ok(())
+    })
+    .await
+    .expect("with_container 失败");
 }
 
 /// 6. 队列等待：超过并发上限时应排队。
@@ -486,51 +441,40 @@ async fn test_pool_queue_wait() {
         .await
         .expect("确保测试镜像失败");
 
-    let config = noj_judge::config::PoolConfig {
-        enabled: true,
-        initial_size: 1,
-        max_size: 1, // 最大 1 个并发
-        min_size: 1,
-        memory_mb: 256,
-        cpu: 0.0,
-        images: vec!["noj-judge-test-runner".to_string()],
-        per_image_memory: std::collections::HashMap::new(),
-        idle_timeout_secs: 300,
-        scale_interval_secs: 60,
-        max_archive_mb: 25,
-        kill_grace_secs: 2,
-        label_prefix: "com.noj.judge.test".to_string(),
-        metrics_bind: "127.0.0.1:9101".to_string(),
-        metrics_auth_token: None,
-    };
-
+    let config = make_pool_config(1, 1); // 最大 1 个并发
     let pool = PoolManager::init(docker.clone(), config)
         .await
         .expect("PoolManager init 失败");
 
-    // 占用唯一的槽位
-    let c1 = pool
-        .acquire("noj-judge-test-runner", 128)
-        .await
-        .expect("第一次 acquire 应成功");
+    // 占用唯一的槽位：with_container 闭包长时运行
+    let pool_for_spawn = pool.clone();
+    let hold = tokio::spawn(async move {
+        pool_for_spawn
+            .with_container("noj-judge-test-runner", 128, |_id| async move {
+                // 持有容器 2 秒
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                Ok(())
+            })
+            .await
+    });
 
-    // 第二次 acquire 应排队（但因为我们不阻塞太久，通过获取超时来验证）
-    let _start = std::time::Instant::now();
+    // 等待确保第一个任务已获取容器
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // 第二次 with_container 应排队阻塞（500ms 超时验证）
     let timeout_result = tokio::time::timeout(
-        std::time::Duration::from_millis(500),
-        pool.acquire("noj-judge-test-runner", 128),
+        Duration::from_millis(500),
+        pool.with_container("noj-judge-test-runner", 128, |_id| async move { Ok(()) }),
     )
     .await;
 
     assert!(
         timeout_result.is_err(),
-        "超过 max_size 时应排队阻塞（500ms 超时）"
+        "超过 max_size=1 时第二次 with_container 应排队阻塞（500ms 超时）"
     );
 
-    // 释放 c1 让队列继续
-    if let Some(p) = pool.get_pool("noj-judge-test-runner").await {
-        pool.release(&p, &c1).await;
-    }
+    // 等待第一个任务完成释放槽位
+    let _ = hold.await.expect("hold 任务应正常完成");
 }
 
 /// 7. 带超时的 bollard API 调用测试。

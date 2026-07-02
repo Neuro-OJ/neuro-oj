@@ -18,7 +18,21 @@ pub struct TempDir {
 
 impl TempDir {
     /// 在 `root` 下创建以 `prefix` 命名的临时目录。
+    ///
+    /// `prefix` 必须是单级路径组件（不含 `/`、`\`、`..`），且不能为空。
     pub async fn new(root: &Path, prefix: &str) -> Result<Self> {
+        // 安全校验：拒绝空字符串
+        if prefix.is_empty() {
+            anyhow::bail!("TempDir prefix 不能为空");
+        }
+        // 安全校验：拒绝路径分隔符
+        if prefix.contains('/') || prefix.contains('\\') {
+            anyhow::bail!("TempDir prefix 不能包含路径分隔符: {}", prefix);
+        }
+        // 安全校验：拒绝 .. 路径穿越
+        if prefix.contains("..") {
+            anyhow::bail!("TempDir prefix 不能包含 '..': {}", prefix);
+        }
         let path = prepare_work_dir(root, prefix).await?;
         Ok(Self { path })
     }
@@ -31,7 +45,15 @@ impl TempDir {
 
 impl Drop for TempDir {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
+        if let Err(e) = std::fs::remove_dir_all(&self.path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                warn!(
+                    "TempDir 清理失败（非 NotFound）: path={}, error={}",
+                    self.path.display(),
+                    e
+                );
+            }
+        }
     }
 }
 use base64::Engine;

@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use bollard::Docker;
+use futures_util::FutureExt;
 use futures_util::StreamExt;
 use tokio::sync::{mpsc, Mutex, Notify, RwLock};
 use tokio_util::sync::CancellationToken;
@@ -477,8 +478,9 @@ impl PoolManager {
 
     /// 使用容器执行闭包，闭包返回后自动释放容器。
     ///
-    /// 容器获取 → 闭包执行 → 自动 release（无论 Ok/Err 均执行）
+    /// 容器获取 → 闭包执行 → 自动 release（无论 Ok/Err/panic 均执行）
     /// 所有清理在同一个 async 上下文中完成，不会被 tokio::spawn 静默丢弃。
+    /// panic 会被 catch_unwind 捕获并转换为 Err，确保容器不泄漏。
     pub async fn with_container<F, Fut, T>(
         self: &Arc<Self>,
         image: &str,
@@ -490,8 +492,24 @@ impl PoolManager {
         Fut: std::future::Future<Output = Result<T>>,
     {
         let (id, pool) = self.acquire_with_pool(image, memory_mb).await?;
-        let result = f(id.clone()).await;
-        self.release(&pool, &id).await;
+        let id_for_release = id.clone();
+        // 用 catch_unwind 包裹闭包，确保 panic 时仍执行 release
+        let result = {
+            let wrapped = std::panic::AssertUnwindSafe(f(id));
+            match wrapped.catch_unwind().await {
+                Ok(Ok(val)) => Ok(val),
+                Ok(Err(e)) => Err(e),
+                Err(panic) => {
+                    let msg = panic
+                        .downcast_ref::<&str>()
+                        .map(|s| s.to_string())
+                        .or_else(|| panic.downcast_ref::<String>().cloned())
+                        .unwrap_or_else(|| "unknown panic".to_string());
+                    Err(anyhow::anyhow!("with_container 闭包 panic: {}", msg))
+                }
+            }
+        };
+        self.release(&pool, &id_for_release).await;
         result
     }
 
