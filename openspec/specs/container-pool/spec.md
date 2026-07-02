@@ -2,9 +2,19 @@
 
 定义 Neuro OJ 评测容器池（Container Pool）的基础设施规范。noj-judge 使用
 PoolManager 统一管理 Docker
-容器的生命周期，包括预创建、分配、释放、健康检查和自动扩缩容，以提升评测启动速度和资源利用率。
+容器的生命周期，包括预创建、分配、释放和健康检查，以提升评测启动速度和资源利用率。
 
 ## Requirements
+
+### Requirement: 固定池大小
+
+系统 SHALL 使用固定的最小/最大池大小，不再支持动态调整 target_depth。
+
+#### Scenario: 池大小边界固定
+
+- **WHEN** noj-judge 运行中
+- **THEN** 池容器数始终在 `[POOL_MIN_SIZE, POOL_MAX_SIZE]` 范围内
+- **THEN** 系统不根据 QPS、排队时间或空闲率调整池大小
 
 ### Requirement: 统一容器池管理
 
@@ -13,8 +23,11 @@ PoolManager 统一管理 Docker
 #### Scenario: 启动时创建初始池
 
 - **WHEN** noj-judge 启动
-- **THEN** 系统对 `POOL_IMAGES` 中每个镜像执行 `docker pull`（失败重试 3 次，间隔 5s）
-- **THEN** 每个镜像创建 `POOL_INITIAL_SIZE` 个容器，CMD 设为 `sleep infinity`，使用 `POOL_MEMORY_MB` 和 `POOL_CPU` 作为资源限制
+- **THEN** 系统通过 Redis RPC 向 core 请求镜像白名单（`get_image_allowlist` 方法）
+- **THEN** 若 RPC 失败或超时，系统记录 `error!` 日志并调用 `process::exit(1)` 退出
+- **THEN** 对返回列表中的每个镜像检查本地是否存在（若不存在则 docker pull，失败重试 3 次，间隔 5s）
+- **THEN** 若镜像已在本地存在，跳过拉取
+- **THEN** 每个镜像创建 `POOL_INITIAL_SIZE` 个容器，CMD 设为 `sleep infinity`
 - **THEN** 容器全部就绪后，主循环开始从 MQ 拉取任务
 
 #### Scenario: 启动时预拉取镜像失败
@@ -23,10 +36,9 @@ PoolManager 统一管理 Docker
 - **THEN** 系统记录 `warn!` 日志跳过该镜像
 - **THEN** 该镜像的池维持为空，系统正常启动，任务通过即时创建路径执行
 
-### Requirement: 容器分配与等待
+### Requirement: 容器分配（两路 Acquire）
 
-系统 SHALL
-从池中分配空闲容器执行评测。无空闲容器时，若未达容量上限则即时创建，若已达上限则排队等待。
+系统 SHALL 从池中分配空闲容器执行评测。无空闲容器时即时创建。
 
 #### Scenario: 有空闲容器
 
@@ -35,43 +47,53 @@ PoolManager 统一管理 Docker
 - **THEN** 若队列非空，取出一个容器，`in_flight` 计数器 +1
 - **THEN** 系统执行文件注入和评测命令
 
-#### Scenario: 无空闲容器但未达上限
+#### Scenario: 无空闲容器时即时创建
 
-- **WHEN** 空闲队列为空且 `in_flight < POOL_MAX_SIZE`
-- **THEN** 系统立即创建一个新容器（CMD = `sleep infinity`，资源限制同预热容器）
-- **THEN** 该容器直接分配给当前任务（不等预热）
+- **WHEN** 空闲队列为空
+- **THEN** 系统立即创建一个新容器（CMD = `sleep infinity`，安全配置同预热容器）
+- **THEN** 该容器直接分配给当前任务
 - **THEN** `in_flight` 计数器 +1
-
-#### Scenario: 无空闲容器且已达上限
-
-- **WHEN** 空闲队列为空且 `in_flight >= POOL_MAX_SIZE`
-- **THEN** 当前任务阻塞等待，直到有容器被释放
-- **THEN** 系统记录排队时间用于扩缩容指标
 
 #### Scenario: 镜像名匹配
 
 - **WHEN** 系统按 `task.judge_image` 查找池
-- **THEN** 若池中存在 `image` 且 `task.judge_image` 与池注册镜像名在去除默认
-  tag（`:latest` 视为等价于无 tag）后一致，视为匹配
-- **THEN** 若无匹配池，系统报错日志并触发即时创建路径
+- **THEN** 若池中存在 image 且 task.judge_image 与池注册镜像名在去除默认 tag（`:latest` 视为等价于无 tag）后一致，视为匹配
+- **THEN** 若无匹配池，系统自动创建新池并即时创建容器
 
-### Requirement: 动态内存调整
+### Requirement: 容器释放与自动回补
 
-系统 SHALL 在 exec 执行前通过 `docker update` 将容器内存限制调整为
-`task.memory_limit_mb`，保证 OOM 检测正确。
+系统 SHALL 在任务完成后删除容器并创建新容器回补到空闲队列。
 
-#### Scenario: exec 前调整内存
+#### Scenario: 任务完成释放
 
-- **WHEN** 容器已分配给任务
-- **THEN** 系统调用 `docker.update_container(memory = task.memory_limit_mb)`
-- **THEN** 若
-  `task.memory_limit_mb > POOL_MEMORY_MB`，报错并拒绝执行（不支持大于池硬上限的任务）
+- **WHEN** 评测任务完成（成功或失败）
+- **THEN** `in_flight` 计数器 -1
+- **THEN** 系统执行 `docker rm -f` 删除容器（首次失败后退避重试 3 次：100ms / 500ms / 2s）
+- **THEN** 系统创建新容器并推入对应镜像的空闲队列
+- **THEN** 若空闲队列长度超过 `POOL_MAX_SIZE`，跳过回补
 
-#### Scenario: 运行时 OOM 检测
+#### Scenario: rm -f 重试全部失败
 
-- **WHEN** 容器内进程分配内存超过 `task.memory_limit_mb`
-- **THEN** Docker OOM killer 终止进程，退出码 137
-- **THEN** 系统正确报告 `MemoryLimitExceeded`
+- **WHEN** `docker rm -f` 3 次重试全部失败
+- **THEN** 系统记录 `error!` 日志（含 container_id 和 image）
+- **THEN** 系统不追踪泄漏容器，依赖启动时孤儿清理处理
+
+### Requirement: 健康检查
+
+系统 SHALL 定期检查池内空闲容器的健康状态，直接移除异常容器并回补。
+
+#### Scenario: 空闲容器异常
+
+- **WHEN** 健康检查（每 5s）对空闲容器执行 inspect 发现容器非 running
+- **THEN** 系统直接执行 `docker rm -f` 删除该容器
+- **THEN** 系统从空闲队列移除该容器条目
+- **THEN** 系统检查空闲队列长度，若低于 `POOL_MIN_SIZE` 则创建新容器回补
+
+#### Scenario: 空闲超时清理
+
+- **WHEN** 容器在空闲队列中停留时间超过 `POOL_IDLE_TIMEOUT` 秒且空闲队列长度 > `POOL_MIN_SIZE`
+- **THEN** 系统移除并 `docker rm -f` 删除该容器
+- **THEN** 不触发回补
 
 ### Requirement: 文件注入 (docker cp)
 
@@ -110,84 +132,21 @@ stdout/stderr。
 
 #### Scenario: exec 超时
 
-- **WHEN** 评测运行超过 `time_limit_ms + 5000ms`
-- **THEN** 系统先发送 `docker stop -t 2`（SIGTERM + 2s 等待进程 flush）
+- **WHEN** 评测运行超过 `time_limit_ms + kill_grace_secs × 1000` ms
+- **THEN** 系统先发送 `docker stop -t <kill_grace_secs>`（SIGTERM + 等待进程 flush）
 - **THEN** 若仍未退出，`docker kill`（SIGKILL）
 - **THEN** 剩余日志被捕获，状态设为 TimeLimitExceeded
 
-### Requirement: 容器释放与回补
-
-系统 SHALL 在任务完成后删除容器，并在池空闲数低于目标时触发异步回补。
-
-#### Scenario: 任务完成释放
-
-- **WHEN** 评测任务完成（成功或失败）
-- **THEN** `in_flight` 计数器 -1
-- **THEN** 系统执行 `docker rm -f` 删除容器
-- **THEN** 若当前空闲容器数 < target_depth 的 50%，触发异步回补
-
-#### Scenario: 异步回补
-
-- **WHEN** 回补逻辑触发
-- **THEN** 后台 `tokio::spawn` 创建并启动一个新容器
-- **THEN** 新容器放入对应镜像的空闲队列
-
-### Requirement: 健康检查
-
-系统 SHALL 定期检查池内容器的健康状态，自动移除异常容器并回补。
-
-#### Scenario: 容器异常死亡
-
-- **WHEN** 健康检查（每 5s）发现池中某个容器非 running
-- **THEN** 从池中移除该容器，触发回补
-
-#### Scenario: 空闲超时清理
-
-- **WHEN** 容器在空闲队列中停留时间超过 `POOL_IDLE_TIMEOUT` 秒
-- **THEN** 系统移除并删除该容器，不触发回补
-
-### Requirement: 自动扩缩容
-
-系统 SHALL 根据本地 QPS、排队时间和利用率指标自动调整目标池深度。
-
-#### Scenario: 扩—排队时间过长
-
-- **WHEN** acquire 的排队平均等待时间在滑动窗口内 > 500ms
-- **THEN** target_depth +1
-- **WHEN** 排队时间 > 1000ms
-- **THEN** target_depth +2
-
-#### Scenario: 扩—即时创建率过高
-
-- **WHEN** 即时创建的容器比例（miss_rate）超过 30%
-- **THEN** target_depth +1
-
-#### Scenario: 缩—利用率持续偏低
-
-- **WHEN** 空闲容器比例连续 2 个周期 > 40%
-- **THEN** target_depth -1
-- **WHEN** 空闲比例连续 3 个周期 > 60%
-- **THEN** target_depth -1（叠加）
-
-#### Scenario: 深度边界
-
-- **WHEN** target_depth 超出 `POOL_MAX_SIZE`
-- **THEN** 截断为 `POOL_MAX_SIZE`
-- **WHEN** target_depth 低于 `POOL_MIN_SIZE`
-- **THEN** 提升为 `POOL_MIN_SIZE`
-
 ### Requirement: 优雅关闭
 
-系统 SHALL 在 SIGTERM 时按顺序关闭：停止拉取 → inflight 完成 → 取消回补 →
-清理池。
+系统 SHALL 在 SIGTERM 时按顺序关闭：停止拉取 → inflight 完成 → 清理池。
 
 #### Scenario: 收到 SIGTERM
 
 - **WHEN** noj-judge 收到 SIGTERM
 - **THEN** 主循环停止拉取新任务
-- **THEN** 当前阻塞在 acquire 的任务返回错误
-- **THEN** 设置 CancellationToken 通知后台回补跳过
-- **THEN** 等待所有 inflight 任务完成
+- **THEN** 设置 `shutting_down` 标记阻止新容器创建
+- **THEN** 等待所有 inflight 任务完成（最长 30s 超时）
 - **THEN** 对所有池中容器执行 `docker rm -f`
 
 ### Requirement: 容器安全加固
@@ -210,58 +169,30 @@ stdout/stderr。
 
 ### Requirement: 并发安全与状态管理
 
-系统 SHALL 使用容器状态机（Idle/InUse/Dead）管理生命周期。
+系统 SHALL 使用简单的两态容器管理（Idle/InUse）。
 
-#### Scenario: 健康检查竞争安全
+#### Scenario: 空闲队列操作
 
-- **WHEN** 健康检查发现空闲容器异常
-- **THEN** 仅标记状态为 Dead，不移除容器
-- **THEN** acquire 或 release 在操作 Dead 容器时完成实际移除
-
-#### Scenario: 回补请求合并
-
-- **WHEN** 200ms 窗口内收到多个回补触发信号
-- **THEN** 仅执行一次回补创建
+- **WHEN** 多个任务同时 acquire 同一个池的空闲容器
+- **THEN** `RwLock<VecDeque>` 保证 pop_front 的原子性
+- **WHEN** 健康检查与 acquire 竞争同一容器
+- **THEN** 健康检查仅操作 Idle 容器，acquire 将容器标记为 InUse 后健康检查不再触碰
 
 ### Requirement: 可靠性与故障恢复
 
-系统 SHALL 实现孤儿清理、API 超时和重试机制。
-
-#### Scenario: bollard API 超时
-
-- **WHEN** docker update/inspect 调用超过 5s
-- **THEN** 调用超时返回错误，记录 ERROR 日志
-- **WHEN** docker rm -f 调用超过 10s
-- **THEN** 调用超时返回错误，容器加入泄漏追踪列表
+系统 SHALL 实现孤儿清理和 API 超时机制。
 
 #### Scenario: 孤儿容器清理
 
 - **WHEN** 系统启动
-- **THEN** 按标签 `com.noj.judge.pool=true` 过滤并清理所有残留容器
+- **THEN** 按标签 `com.noj.judge.pool=true` 过滤并 `docker rm -f` 清理所有残留容器
 
-#### Scenario: docker rm -f 重试
+#### Scenario: bollard API 超时
 
-- **WHEN** release 路径中 rm -f 首次失败
-- **THEN** 退避重试 3 次（间隔 100ms, 500ms, 2s）
-- **WHEN** 全部 3 次重试失败
-- **THEN** 容器记录到泄漏追踪列表，健康检查线程定期重试清理
-
-### Requirement: 可观测性
-
-系统 SHALL 暴露 Prometheus 指标用于运维监控。
-
-#### Scenario: 指标暴露
-
-- **WHEN** 池系统运行中
-- **THEN** Prometheus 端点 `/metrics` 返回以下指标：
-  - pool_idle_containers{image}
-  - pool_in_flight
-  - pool_queue_wait_seconds
-  - pool_miss_total
-  - pool_target_depth{image}
-  - pool_scale_actions{action}
-  - pool_leaked_containers
-  - pool_bollard_errors
+- **WHEN** docker create/start 调用超过 30s/5s
+- **THEN** 调用超时返回错误，记录 ERROR 日志
+- **WHEN** docker rm -f 调用超过 10s
+- **THEN** 调用超时返回错误，记录 ERROR 日志（不追踪泄漏）
 
 ### Requirement: 支持包完整性校验
 
@@ -274,14 +205,3 @@ stdout/stderr。
 - **THEN** 拒绝 overlapping entries（相同路径重复）
 - **THEN** 拒绝包含 `..` 组件的 entry
 - **THEN** 单文件大小不超过 POOL_MAX_ARCHIVE_MB
-
-### Requirement: Per-Image 资源配置
-
-系统 SHALL 支持按镜像名称覆盖全局内存限制。
-
-#### Scenario: per-image 内存配置
-
-- **WHEN** 环境变量 `POOL_MEMORY_MB_NOJ_JUDGE_PYTHON` 存在
-- **THEN** 对应 noj-judge-python 镜像的池使用该值而非全局 POOL_MEMORY_MB
-- **WHEN** 无对应 per-image 变量
-- **THEN** 使用全局 POOL_MEMORY_MB
