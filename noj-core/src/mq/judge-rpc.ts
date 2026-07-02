@@ -12,9 +12,8 @@
 //! 响应格式: { "id": "<uuid>", "result": {...}, "error": null|string, "timestamp": <int> }
 
 import type { Redis } from "ioredis";
-import { db } from "../db/connection.ts";
+import { getDb } from "../db/connection.ts";
 import { judgeImages } from "../db/schema.ts";
-import { eq } from "drizzle-orm";
 
 /** RPC 请求消息结构 */
 interface RpcRequest {
@@ -44,18 +43,14 @@ function createResponse(id: string, result?: unknown, error?: string | null): Rp
 
 /**
  * 处理 get_image_allowlist 请求。
- * 从数据库查询所有 enabled 的 judge_images 记录。
+ * 从数据库查询所有 judge_images 记录。
  */
 async function handleGetImageAllowlist(): Promise<{ images: { image: string; tag: string }[] }> {
-  const images = await db
-    .select({
-      image: judgeImages.image,
-      tag: judgeImages.tag,
-    })
-    .from(judgeImages)
-    .where(eq(judgeImages.enabled, true));
+  const rows = await getDb()
+    .select({ image: judgeImages.image })
+    .from(judgeImages);
 
-  return { images };
+  return { images: rows.map((r) => ({ image: r.image, tag: "latest" })) };
 }
 
 /** 方法名到处理函数的映射 */
