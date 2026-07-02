@@ -1,16 +1,64 @@
+//! 评测工具函数。
+//!
+//! 原本是 Semaphore 模式的容器生命周期管理模块，随 Semaphore 模式移除后
+//! 退化为纯工具库：提供临时目录创建、支持包解压、用户代码写入、命令解析等功能。
+//! 容器生命周期管理全部由 `pool/` 模块负责。
+
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use anyhow::{Context, Result};
+
+/// 临时工作目录守卫。
+///
+/// Drop 时自动递归删除目录（sync Drop，不依赖 tokio）。
+pub struct TempDir {
+    path: PathBuf,
+}
+
+impl TempDir {
+    /// 在 `root` 下创建以 `prefix` 命名的临时目录。
+    ///
+    /// `prefix` 必须是单级路径组件（不含 `/`、`\`、`..`），且不能为空。
+    pub async fn new(root: &Path, prefix: &str) -> Result<Self> {
+        // 安全校验：拒绝空字符串
+        if prefix.is_empty() {
+            anyhow::bail!("TempDir prefix 不能为空");
+        }
+        // 安全校验：拒绝路径分隔符
+        if prefix.contains('/') || prefix.contains('\\') {
+            anyhow::bail!("TempDir prefix 不能包含路径分隔符: {}", prefix);
+        }
+        // 安全校验：拒绝 .. 路径穿越
+        if prefix.contains("..") {
+            anyhow::bail!("TempDir prefix 不能包含 '..': {}", prefix);
+        }
+        let path = prepare_work_dir(root, prefix).await?;
+        Ok(Self { path })
+    }
+
+    /// 获取临时目录路径。
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        if let Err(e) = std::fs::remove_dir_all(&self.path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                warn!(
+                    "TempDir 清理失败（非 NotFound）: path={}, error={}",
+                    self.path.display(),
+                    e
+                );
+            }
+        }
+    }
+}
 use base64::Engine;
-use bollard::container::LogOutput;
-use bollard::models::ContainerCreateBody;
-use bollard::models::HostConfig;
-use bollard::Docker;
-use futures_util::StreamExt;
 use tokio::fs;
-use tracing::{error, info, warn};
+use tracing::warn;
 
 use crate::types::JudgeTask;
 
@@ -157,243 +205,6 @@ pub async fn write_user_code(work_dir: &Path, task: &JudgeTask) -> Result<()> {
         .await
         .with_context(|| format!("写入用户代码失败: {}", code_path.display()))?;
     Ok(())
-}
-
-/// 在 Docker 沙箱中执行评测命令。
-///
-/// 完整流程：
-/// 1. 准备临时目录
-/// 2. 获取并解压支持包
-/// 3. 写入用户代码
-/// 4. 创建并启动 Docker 容器
-/// 5. 等待容器退出（带超时）
-/// 6. 捕获 stdout/stderr
-/// 7. 清理临时目录
-pub async fn run_in_container(
-    docker: &Docker,
-    task: &JudgeTask,
-    work_dir_root: &Path,
-) -> Result<ContainerOutput> {
-    let submission_id = &task.submission_id;
-    let work_dir = prepare_work_dir(work_dir_root, submission_id).await?;
-
-    // 1. 获取并解压支持包
-    if let Some(zip_data) = get_support_package_bytes(task)? {
-        extract_zip(&zip_data, &work_dir).await?;
-        info!("支持包已解压: {} ({} bytes)", submission_id, zip_data.len());
-    } else {
-        info!("无支持包，跳过解压: {}", submission_id);
-    }
-
-    // 2. 写入用户代码
-    write_user_code(&work_dir, task).await?;
-    info!("用户代码已写入: {}", submission_id);
-
-    // 3. 确认本地镜像存在
-    ensure_image_local(docker, &task.judge_image).await?;
-
-    // 4. 创建并启动容器
-    let container_name = format!("noj-judge-{}", submission_id);
-    let host_config = HostConfig {
-        binds: Some(vec![format!("{}:/tmp", work_dir.to_string_lossy())]),
-        memory: Some(task.memory_limit_mb as i64 * 1024 * 1024),
-        memory_swap: Some(task.memory_limit_mb as i64 * 1024 * 1024), // 禁用 swap
-        nano_cpus: Some(1_000_000_000),                               // 1 CPU 核
-        network_mode: Some("none".to_string()),
-        auto_remove: Some(false), // 手动管理生命周期以捕获日志
-        ..Default::default()
-    };
-
-    // 解析 judge_command → cmd 数组
-    let cmd_parts: Vec<String> = parse_command(&task.judge_command);
-
-    let config = ContainerCreateBody {
-        image: Some(task.judge_image.clone()),
-        cmd: Some(cmd_parts),
-        host_config: Some(host_config),
-        ..Default::default()
-    };
-
-    let container = docker
-        .create_container(
-            Some(bollard::query_parameters::CreateContainerOptions {
-                name: Some(container_name.clone()),
-                platform: String::new(),
-            }),
-            config,
-        )
-        .await
-        .with_context(|| format!("创建容器失败: {}", container_name))?;
-
-    docker
-        .start_container(
-            &container.id,
-            None::<bollard::query_parameters::StartContainerOptions>,
-        )
-        .await
-        .with_context(|| format!("启动容器失败: {}", container_name))?;
-
-    info!(
-        "容器已启动: {} ({})",
-        container_name,
-        &container.id[..12.min(container.id.len())]
-    );
-
-    // 5. 等待容器退出（timeout = time_limit_ms + 5s 余量）
-    // 使用轮询 inspect_container 替代 wait_container，
-    // 避免 bollard 0.18 与 Docker API 1.54+ 的 wait 端点兼容性问题
-    let timeout = Duration::from_millis(task.time_limit_ms + 5000);
-    let poll_interval = Duration::from_millis(200);
-    let wait_result = tokio::time::timeout(timeout, async {
-        loop {
-            let info = docker
-                .inspect_container(
-                    &container.id,
-                    None::<bollard::query_parameters::InspectContainerOptions>,
-                )
-                .await
-                .with_context(|| format!("检查容器状态失败: {}", container_name))?;
-
-            let running = info.state.as_ref().and_then(|s| s.running).unwrap_or(false);
-
-            if !running {
-                let exit_code = info.state.as_ref().and_then(|s| s.exit_code).unwrap_or(-1);
-                return Ok(exit_code);
-            }
-
-            tokio::time::sleep(poll_interval).await;
-        }
-    })
-    .await;
-
-    let exit_code = match wait_result {
-        Ok(Ok(code)) => {
-            info!("容器正常退出: {} (exit: {})", container_name, code);
-            code
-        }
-        Ok(Err(e)) => {
-            let _ = docker
-                .remove_container(
-                    &container.id,
-                    Some(bollard::query_parameters::RemoveContainerOptions {
-                        force: true,
-                        ..Default::default()
-                    }),
-                )
-                .await;
-            let _ = fs::remove_dir_all(&work_dir).await;
-            return Err(e);
-        }
-        Err(_elapsed) => {
-            // 超时，强制 kill
-            warn!("容器超时: {}", container_name);
-            let _ = docker
-                .kill_container(
-                    &container.id,
-                    None::<bollard::query_parameters::KillContainerOptions>,
-                )
-                .await;
-            let output = capture_container_logs(docker, &container.id, -1).await;
-            let _ = fs::remove_dir_all(&work_dir).await;
-            return Ok(ContainerOutput {
-                stdout: output.stdout,
-                stderr: output.stderr,
-                exit_code: -1, // 超时代码
-            });
-        }
-    };
-
-    // 6. 捕获日志（传入实际的退出码）
-    let output = capture_container_logs(docker, &container.id, exit_code).await;
-
-    // 清理容器
-    let _ = docker
-        .remove_container(
-            &container.id,
-            Some(bollard::query_parameters::RemoveContainerOptions {
-                force: true,
-                ..Default::default()
-            }),
-        )
-        .await;
-
-    // 7. 清理临时目录
-    let _ = fs::remove_dir_all(&work_dir).await;
-
-    Ok(output)
-}
-
-/// 确认 Docker 镜像在本地存在。
-///
-/// noj-judge 使用本地构建的评测镜像（如 `noj-judge-python`），
-/// 这些镜像通过 `docker build` 提前构建好，不从远程拉取。
-/// 如果镜像不存在，返回错误并提示构建命令。
-async fn ensure_image_local(docker: &Docker, image: &str) -> Result<()> {
-    let images = docker
-        .list_images(None::<bollard::query_parameters::ListImagesOptions>)
-        .await
-        .context("列出 Docker 镜像失败")?;
-
-    let exists = images.iter().any(|i| {
-        i.repo_tags
-            .iter()
-            .any(|tag| tag == image || tag.starts_with(&format!("{}:", image)))
-    });
-
-    if exists {
-        return Ok(());
-    }
-
-    Err(anyhow::anyhow!(
-        "Docker 镜像 '{}' 未在本地找到。请先构建：docker build -t {} -f noj-judge/docker/{}/Dockerfile .",
-        image,
-        image,
-        image.strip_prefix("noj-judge-").unwrap_or(image)
-    ))
-}
-
-/// 捕获容器 stdout 和 stderr。
-///
-/// `exit_code` 由调用方传入（来自容器 wait 结果或超时标记），
-/// 本函数仅负责日志捕获，不负责确定退出码。
-async fn capture_container_logs(
-    docker: &Docker,
-    container_id: &str,
-    exit_code: i64,
-) -> ContainerOutput {
-    let options = bollard::query_parameters::LogsOptions {
-        stdout: true,
-        stderr: true,
-        ..Default::default()
-    };
-
-    let mut stdout = String::new();
-    let mut stderr = String::new();
-
-    let mut stream = docker.logs(container_id, Some(options));
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(output) => match output {
-                LogOutput::StdOut { message } => {
-                    stdout.push_str(&String::from_utf8_lossy(&message));
-                }
-                LogOutput::StdErr { message } => {
-                    stderr.push_str(&String::from_utf8_lossy(&message));
-                }
-                _ => {}
-            },
-            Err(e) => {
-                error!("读取容器日志失败: {}", e);
-                break;
-            }
-        }
-    }
-
-    ContainerOutput {
-        stdout,
-        stderr,
-        exit_code,
-    }
 }
 
 /// 解析评测命令为字符串数组。
@@ -637,5 +448,45 @@ mod tests {
 
         let result = get_support_package_bytes(&task).unwrap();
         assert!(result.is_none());
+    }
+
+    // ── TempDir ──
+
+    #[tokio::test]
+    async fn test_temp_dir_creates_and_cleans_up() {
+        let root = std::env::temp_dir();
+        let prefix = format!("noj-test-tempdir-{}", uuid::Uuid::new_v4());
+
+        let path;
+        {
+            let temp = TempDir::new(&root, &prefix).await.unwrap();
+            path = temp.path().to_path_buf();
+            assert!(path.exists(), "临时目录应被创建");
+            assert!(path.is_dir(), "应为目录");
+            assert!(
+                path.to_string_lossy().contains(&prefix),
+                "路径应包含 prefix"
+            );
+        }
+        // temp 已 drop，目录应被删除
+        assert!(!path.exists(), "Drop 后临时目录应被删除");
+    }
+
+    #[tokio::test]
+    async fn test_temp_dir_cleans_up_on_drop() {
+        let root = std::env::temp_dir();
+        let prefix = format!("noj-test-tempdir-{}", uuid::Uuid::new_v4());
+
+        let path;
+        {
+            let temp = TempDir::new(&root, &prefix).await.unwrap();
+            path = temp.path().to_path_buf();
+            // 在目录中创建一个文件
+            let file_path = path.join("test.txt");
+            std::fs::write(&file_path, "hello").unwrap();
+            assert!(file_path.exists());
+        }
+        // 目录及其所有内容应在 Drop 时被删除
+        assert!(!path.exists(), "Drop 后整个临时目录应被递归删除");
     }
 }

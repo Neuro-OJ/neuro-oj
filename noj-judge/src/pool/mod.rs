@@ -1,6 +1,6 @@
 //! 统一容器池模块。
 //!
-//! PoolManager 替代原有的 Semaphore 并发控制模型。
+//! PoolManager 统一管理所有评测容器的生命周期。
 //! 所有容器（预创建和即时创建）都通过池统一管理。
 
 pub mod copy;
@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use bollard::Docker;
+use futures_util::FutureExt;
 use futures_util::StreamExt;
 use tokio::sync::{mpsc, Mutex, Notify, RwLock};
 use tokio_util::sync::CancellationToken;
@@ -88,6 +89,7 @@ pub struct Pool {
 }
 
 impl Pool {
+    /// 创建一个新的池。
     fn new(image: String, memory_mb: u64, initial_target: usize) -> Self {
         Self {
             containers: RwLock::new(HashMap::new()),
@@ -236,10 +238,12 @@ impl Pool {
         self.target_depth.store(clamped, Ordering::SeqCst);
     }
 
+    /// 获取池对应的镜像名。
     pub fn image(&self) -> &str {
         &self.image
     }
 
+    /// 获取池的内存上限 MB。
     #[allow(dead_code)]
     pub fn memory_mb(&self) -> u64 {
         self.memory_mb
@@ -261,56 +265,6 @@ impl Pool {
             .count();
         let in_flight = self.in_flight.load(Ordering::SeqCst);
         (idle, in_flight, guard.len())
-    }
-}
-
-// ── ContainerGuard ─────────────────────────────────────
-
-/// RAII 容器守卫。
-///
-/// 析构时自动执行 `release()`（docker rm -f + in_flight-- + 回补检查）。
-pub struct ContainerGuard {
-    manager: Option<Arc<PoolManager>>,
-    pool: Option<Arc<Pool>>,
-    container_id: String,
-}
-
-impl ContainerGuard {
-    pub fn new(manager: Arc<PoolManager>, pool: Arc<Pool>, container_id: String) -> Self {
-        Self {
-            manager: Some(manager),
-            pool: Some(pool),
-            container_id,
-        }
-    }
-
-    /// 获取容器 ID。
-    pub fn container_id(&self) -> &str {
-        &self.container_id
-    }
-
-    /// 手动释放（不使用 RAII 时调用）。
-    pub async fn release(mut self) {
-        self.do_release().await;
-    }
-
-    async fn do_release(&mut self) {
-        if let (Some(manager), Some(pool)) = (self.manager.take(), self.pool.take()) {
-            manager.release(&pool, &self.container_id).await;
-        }
-    }
-}
-
-impl Drop for ContainerGuard {
-    fn drop(&mut self) {
-        // 若 manager 和 pool 仍在，说明未被手动 release()
-        // 通过 tokio::spawn 异步执行清理（best-effort）
-        if let (Some(manager), Some(pool)) = (self.manager.take(), self.pool.take()) {
-            let cid = self.container_id.clone();
-            tokio::spawn(async move {
-                manager.release(&pool, &cid).await;
-            });
-        }
     }
 }
 
@@ -450,7 +404,19 @@ impl PoolManager {
             }
 
             if !pulled {
-                warn!("跳过镜像 {}: 拉取失败，任务将使用即时创建路径", image);
+                let build_hint = image
+                    .strip_prefix("noj-judge-")
+                    .map(|s| {
+                        format!(
+                            "docker build -t {} -f noj-judge/docker/{}/Dockerfile .",
+                            image, s
+                        )
+                    })
+                    .unwrap_or_else(|| format!("docker build -t {} .", image));
+                warn!(
+                    "跳过镜像 {}: 拉取失败，任务将使用即时创建路径。如需本地构建：{}",
+                    image, build_hint
+                );
                 continue;
             }
 
@@ -510,24 +476,41 @@ impl PoolManager {
         }
     }
 
-    /// 获取或即时创建容器。
+    /// 使用容器执行闭包，闭包返回后自动释放容器。
     ///
-    /// 优先从池中获取空闲容器。
-    /// 若无空闲且未达上限，即时创建新容器。
-    /// 若已达上限，阻塞等待。
-    #[allow(dead_code)]
-    pub async fn acquire(&self, image: &str, memory_mb: u64) -> Result<String> {
-        Ok(self.acquire_with_pool(image, memory_mb).await?.0)
-    }
-
-    /// 获取或即时创建容器（返回 ContainerGuard）。
-    pub async fn acquire_guarded(
+    /// 容器获取 → 闭包执行 → 自动 release（无论 Ok/Err/panic 均执行）
+    /// 所有清理在同一个 async 上下文中完成，不会被 tokio::spawn 静默丢弃。
+    /// panic 会被 catch_unwind 捕获并转换为 Err，确保容器不泄漏。
+    pub async fn with_container<F, Fut, T>(
         self: &Arc<Self>,
         image: &str,
         memory_mb: u64,
-    ) -> Result<ContainerGuard> {
+        f: F,
+    ) -> Result<T>
+    where
+        F: FnOnce(String) -> Fut,
+        Fut: std::future::Future<Output = Result<T>>,
+    {
         let (id, pool) = self.acquire_with_pool(image, memory_mb).await?;
-        Ok(ContainerGuard::new(self.clone(), pool, id))
+        let id_for_release = id.clone();
+        // 用 catch_unwind 包裹闭包，确保 panic 时仍执行 release
+        let result = {
+            let wrapped = std::panic::AssertUnwindSafe(f(id));
+            match wrapped.catch_unwind().await {
+                Ok(Ok(val)) => Ok(val),
+                Ok(Err(e)) => Err(e),
+                Err(panic) => {
+                    let msg = panic
+                        .downcast_ref::<&str>()
+                        .map(|s| s.to_string())
+                        .or_else(|| panic.downcast_ref::<String>().cloned())
+                        .unwrap_or_else(|| "unknown panic".to_string());
+                    Err(anyhow::anyhow!("with_container 闭包 panic: {}", msg))
+                }
+            }
+        };
+        self.release(&pool, &id_for_release).await;
+        result
     }
 
     /// 内部 acquire 实现（返回容器 ID + 所属 Pool）。
@@ -618,7 +601,7 @@ impl PoolManager {
 
     /// 释放容器。
     ///
-    /// 被 ContainerGuard 析构时自动调用。
+    /// 由 with_container() 在闭包返回后自动调用。
     pub async fn release(&self, pool: &Arc<Pool>, container_id: &str) {
         // docker rm -f 带退避重试
         let mut success = false;
@@ -794,6 +777,11 @@ impl PoolManager {
         .await
     }
 
+    /// 创建并启动一个评测容器。
+    ///
+    /// 容器安全配置（cap_drop ALL、no-new-privileges、network_mode none 等）
+    /// 在宿主机侧的 HostConfig 中设置。容器 CMD 设为 `sleep infinity`，
+    /// 通过 docker exec 执行实际评测命令。
     async fn create_container_inner(
         docker: &Docker,
         image: &str,
@@ -964,14 +952,19 @@ impl PoolManager {
         }
     }
 
+    /// 获取内部 Docker 客户端引用。
     pub fn docker(&self) -> &Docker {
         &self.docker
     }
 
+    /// 获取池配置引用。
     pub fn config(&self) -> &PoolConfig {
         &self.config
     }
 
+    /// 检查池管理器是否正在关闭中。
+    ///
+    /// 关闭中时应避免创建新容器或阻塞等待。
     #[allow(dead_code)]
     pub fn is_shutting_down(&self) -> bool {
         self.shutting_down.load(Ordering::SeqCst)

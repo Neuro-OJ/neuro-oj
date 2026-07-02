@@ -16,13 +16,8 @@ pub struct Config {
 }
 
 /// 容器池配置。
-///
-/// 当 `enabled=false` 时回退到旧 Semaphore 模型，
-/// 使用 `MAX_CONCURRENT` 环境变量控制并发。
 #[derive(Debug, Clone)]
 pub struct PoolConfig {
-    /// 是否启用容器池（默认: true）
-    pub enabled: bool,
     /// 启动时每个镜像预创建的容器数（默认: 2）
     pub initial_size: usize,
     /// 池最大深度（默认: 16）
@@ -75,23 +70,14 @@ impl Config {
             pool: PoolConfig::from_env(),
         }
     }
-
-    /// 获取并发上限（兼容旧 Semaphore 模型）。
-    ///
-    /// - 池启用时：返回 `pool.max_size`
-    /// - 池禁用时：读取 `MAX_CONCURRENT` 环境变量（默认 2）
-    pub fn max_concurrent(&self) -> usize {
-        if self.pool.enabled {
-            self.pool.max_size
-        } else {
-            env_var_parse("MAX_CONCURRENT").unwrap_or(2)
-        }
-    }
 }
 
 impl PoolConfig {
+    /// 从环境变量加载容器池配置。
+    ///
+    /// 读取 `POOL_INITIAL_SIZE`、`POOL_MAX_SIZE`、`POOL_IMAGES` 等环境变量，
+    /// 缺失的字段使用合理的默认值。
     fn from_env() -> Self {
-        let enabled = env_var_parse::<bool>("POOL_ENABLED").unwrap_or(true);
         let raw_images = env_or("POOL_IMAGES", "noj-judge-python");
         let images: Vec<String> = raw_images
             .split(',')
@@ -115,7 +101,6 @@ impl PoolConfig {
         }
 
         PoolConfig {
-            enabled,
             initial_size: env_var_parse("POOL_INITIAL_SIZE").unwrap_or(2),
             max_size: env_var_parse("POOL_MAX_SIZE").unwrap_or(16),
             min_size: env_var_parse("POOL_MIN_SIZE").unwrap_or(1),
@@ -154,11 +139,16 @@ impl PoolConfig {
 }
 
 /// 读取环境变量，不存在时返回默认值。
+///
+/// 若环境变量未设置，返回 `default` 的 to_string() 结果。
 fn env_or(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
 /// 读取环境变量并解析为指定类型。
+///
+/// 若环境变量未设置或解析失败（如非数字字符串解析为整数），返回 None。
+/// 支持的类型：`bool`、`u64`、`f64` 等实现 `FromStr` 的类型。
 fn env_var_parse<T: std::str::FromStr>(key: &str) -> Option<T> {
     std::env::var(key).ok().and_then(|v| v.parse().ok())
 }
@@ -207,7 +197,6 @@ mod tests {
             "JUDGE_QUEUE",
             "RESULT_QUEUE",
             "WORK_DIR",
-            "POOL_ENABLED",
             "POOL_INITIAL_SIZE",
             "POOL_MAX_SIZE",
             "POOL_MIN_SIZE",
@@ -228,7 +217,6 @@ mod tests {
         assert_eq!(cfg.work_dir, "/tmp/noj-judge");
 
         let p = &cfg.pool;
-        assert!(p.enabled);
         assert_eq!(p.initial_size, 2);
         assert_eq!(p.max_size, 16);
         assert_eq!(p.min_size, 1);
@@ -250,7 +238,6 @@ mod tests {
             ("JUDGE_QUEUE", "custom:queue"),
             ("RESULT_QUEUE", "custom:results"),
             ("WORK_DIR", "/custom/path"),
-            ("POOL_ENABLED", "true"),
             ("POOL_INITIAL_SIZE", "4"),
             ("POOL_MAX_SIZE", "32"),
             ("POOL_MIN_SIZE", "2"),
@@ -267,7 +254,6 @@ mod tests {
         assert_eq!(cfg.redis_url, "redis://custom:6379");
 
         let p = &cfg.pool;
-        assert!(p.enabled);
         assert_eq!(p.initial_size, 4);
         assert_eq!(p.max_size, 32);
         assert_eq!(p.min_size, 2);
@@ -282,26 +268,18 @@ mod tests {
     }
 
     #[test]
-    fn test_max_concurrent_legacy_fallback() {
+    fn test_pool_max_size_default() {
         let _lock = ENV_TEST_MUTEX.lock().unwrap();
-        let _guard = EnvGuard::set(vec![("POOL_ENABLED", "false"), ("MAX_CONCURRENT", "8")]);
+        std::env::remove_var("POOL_MAX_SIZE");
         let cfg = Config::from_env();
-        // POOL_ENABLED=false 时 max_concurrent 读取 MAX_CONCURRENT
-        assert!(!cfg.pool.enabled);
-        assert_eq!(cfg.max_concurrent(), 8);
+        assert_eq!(cfg.pool.max_size, 16);
     }
 
     #[test]
-    fn test_max_concurrent_pool_max_size() {
+    fn test_pool_max_size_custom() {
         let _lock = ENV_TEST_MUTEX.lock().unwrap();
-        let _guard = EnvGuard::set(vec![
-            ("POOL_ENABLED", "true"),
-            ("POOL_MAX_SIZE", "12"),
-            ("MAX_CONCURRENT", "8"),
-        ]);
+        let _guard = EnvGuard::set(vec![("POOL_MAX_SIZE", "12")]);
         let cfg = Config::from_env();
-        // POOL_ENABLED=true 时 max_concurrent 返回 pool.max_size
-        assert!(cfg.pool.enabled);
-        assert_eq!(cfg.max_concurrent(), 12);
+        assert_eq!(cfg.pool.max_size, 12);
     }
 }

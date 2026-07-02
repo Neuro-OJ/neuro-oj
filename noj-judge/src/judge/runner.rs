@@ -14,40 +14,32 @@ use crate::types::{JudgeResult, JudgeStatus};
 /// Redis MQ 拉取到的评测任务。（引用 types::JudgeTask）
 pub use crate::types::JudgeTask;
 
-/// 执行评测任务（池路径）。
+/// 执行评测任务。
 ///
-/// 获取容器后，将实际评测逻辑委托给 `do_evaluate_with_pool`，
-/// 然后在函数返回前无条件执行 cleanup（释放容器 + 删除临时目录），
-/// 确保不泄漏容器或磁盘空间。
+/// 使用 with_container() 在闭包作用域内使用容器，
+/// 闭包返回后自动释放容器，然后清理临时目录。
 pub async fn evaluate_with_pool(
     pool: Arc<PoolManager>,
     task: &JudgeTask,
     work_dir_root: &Path,
 ) -> Result<JudgeResult> {
-    let submission_id = &task.submission_id;
-    let image = &task.judge_image;
-
     // 计数器：任务开始
     pool.inc_tasks_total();
 
-    // 1. 从池获取容器（带 RAII guard，? 提前返回时自动 cleanup）
-    let guard = pool.acquire_guarded(image, task.memory_limit_mb).await?;
-    let container_id = guard.container_id().to_string();
+    // 创建临时工作目录（Drop 时自动清理）
+    let temp_dir = container::TempDir::new(work_dir_root, &task.submission_id).await?;
+    let work_dir_path: &Path = temp_dir.path();
 
-    // 2. 准备临时工作目录
-    let work_dir = container::prepare_work_dir(work_dir_root, submission_id).await?;
-
-    // 3. 执行评测逻辑
-    let result = do_evaluate_with_pool(pool.clone(), task, &container_id, &work_dir).await;
-
-    // 4. 清理临时目录
-    let _ = tokio::fs::remove_dir_all(&work_dir).await;
-
-    // 5. 手动释放 guard（触发 docker rm -f + in_flight-- + 回补检查）
-    //    注意：不能同时调用 pool.release()，否则 in_flight 会被减两次
-    guard.release().await;
-
-    result
+    // 使用闭包模式获取容器并执行评测，闭包返回后自动 release
+    let pool_for_closure = pool.clone();
+    pool.with_container(
+        &task.judge_image,
+        task.memory_limit_mb,
+        |container_id| async move {
+            do_evaluate_with_pool(pool_for_closure, task, &container_id, work_dir_path).await
+        },
+    )
+    .await
 }
 
 /// 评测逻辑核心（不含资源获取/清理，方便确保 cleanup）。
@@ -108,30 +100,6 @@ async fn do_evaluate_with_pool(
         stderr,
         exit_code,
     };
-    let mut result = process_output(task, &output);
-    result.time_ms = Some(time_ms);
-    result.memory_kb = Some(memory_kb);
-    Ok(result)
-}
-
-/// 执行评测任务（旧路径）。
-///
-/// 使用 Semaphore + run_in_container，与原有行为一致。
-pub async fn evaluate_legacy(
-    docker: &bollard::Docker,
-    task: &JudgeTask,
-    work_dir: &str,
-) -> Result<JudgeResult> {
-    use std::time::Instant;
-
-    let start = Instant::now();
-    let work_dir = Path::new(work_dir);
-    let output = container::run_in_container(docker, task, work_dir).await?;
-    let time_ms = start.elapsed().as_millis() as u64;
-
-    // 内存峰值（容器在 run_in_container 末尾被 rm -f，需在之前读取）
-    let memory_kb = 0; // 旧路径容器在 capture_logs 后立即被删除，无法读 cgroup
-
     let mut result = process_output(task, &output);
     result.time_ms = Some(time_ms);
     result.memory_kb = Some(memory_kb);

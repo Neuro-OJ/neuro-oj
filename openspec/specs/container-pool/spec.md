@@ -8,16 +8,13 @@ PoolManager 统一管理 Docker
 
 ### Requirement: 统一容器池管理
 
-系统 SHALL 使用 PoolManager 对所有评测容器进行统一管理。PoolManager 替代现有的
-Semaphore 并发控制模型。
+系统 SHALL 使用 PoolManager 对所有评测容器进行统一管理。
 
 #### Scenario: 启动时创建初始池
 
-- **WHEN** noj-judge 启动且 `POOL_ENABLED=true`
-- **THEN** 系统对 `POOL_IMAGES` 中每个镜像执行 `docker pull`（失败重试 3
-  次，间隔 5s）
-- **THEN** 每个镜像创建 `POOL_INITIAL_SIZE` 个容器，CMD 设为
-  `sleep infinity`，使用 `POOL_MEMORY_MB` 和 `POOL_CPU` 作为资源限制
+- **WHEN** noj-judge 启动
+- **THEN** 系统对 `POOL_IMAGES` 中每个镜像执行 `docker pull`（失败重试 3 次，间隔 5s）
+- **THEN** 每个镜像创建 `POOL_INITIAL_SIZE` 个容器，CMD 设为 `sleep infinity`，使用 `POOL_MEMORY_MB` 和 `POOL_CPU` 作为资源限制
 - **THEN** 容器全部就绪后，主循环开始从 MQ 拉取任务
 
 #### Scenario: 启动时预拉取镜像失败
@@ -25,14 +22,6 @@ Semaphore 并发控制模型。
 - **WHEN** 对某个镜像的 `docker pull` 经过 3 次重试仍失败
 - **THEN** 系统记录 `warn!` 日志跳过该镜像
 - **THEN** 该镜像的池维持为空，系统正常启动，任务通过即时创建路径执行
-
-#### Scenario: 池禁用
-
-- **WHEN** `POOL_ENABLED=false`
-- **THEN** 系统不创建池管理器
-- **THEN** 评测流程回退到现有模式（Semaphore 控制并发，`create_container` →
-  `start_container` → `run` → `remove`）
-- **THEN** 提示：此模式下 `MAX_CONCURRENT` 替代 `POOL_MAX_SIZE` 控制并发
 
 ### Requirement: 容器分配与等待
 
@@ -247,7 +236,7 @@ stdout/stderr。
 
 #### Scenario: 孤儿容器清理
 
-- **WHEN** 系统启动且 POOL_ENABLED=true
+- **WHEN** 系统启动
 - **THEN** 按标签 `com.noj.judge.pool=true` 过滤并清理所有残留容器
 
 #### Scenario: docker rm -f 重试
