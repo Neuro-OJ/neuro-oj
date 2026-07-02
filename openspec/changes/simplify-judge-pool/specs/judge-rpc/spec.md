@@ -9,11 +9,18 @@
 - **WHEN** judge 向 core 发起 RPC 请求
 - **THEN** 请求消息写入 List `noj:rpc:v1:judge:core`
 - **WHEN** core 向 judge 返回 RPC 响应
-- **THEN** 响应消息写入 List `noj:rpc:v1:judge:{judge_id}:response`（`judge_id` 为 judge 实例标识）
+- **THEN** 响应消息写入 List `noj:rpc:v1:judge:{judge_id}:response`
 - **WHEN** core 向 judge 发起 RPC 请求
 - **THEN** 请求消息写入 List `noj:rpc:v1:core:judge`
 - **WHEN** judge 向 core 返回 RPC 响应
 - **THEN** 响应消息写入 List `noj:rpc:v1:core:response`
+
+#### Scenario: Judge ID 确定
+
+- **WHEN** judge 启动时初始化 RPC 客户端
+- **THEN** 若 `JUDGE_ID` 环境变量存在，使用该值作为 judge_id
+- **THEN** 若 `JUDGE_ID` 不存在，使用 `gethostname::gethostname()` 的返回值
+- **THEN** judge_id 在本次运行期间保持不变
 
 #### Scenario: 消息信封格式
 

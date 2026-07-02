@@ -39,10 +39,11 @@
 ## 5. Redis RPC 通信层
 
 - [ ] 5.1 定义 Redis RPC 协议规范文档（Redis key 命名规则、消息信封格式、错误处理约定）
-- [ ] 5.2 实现 Judge 侧 `RpcClient`（`noj-judge/src/mq/rpc.rs`）：封装 Redis connection、`request()` 通用方法、`get_image_allowlist()` 类型安全封装、5s 超时
-- [ ] 5.3 实现 Core 侧 `JudgeRpcHandler`（`noj-core/src/mq/judge-rpc.ts`）：BRPOP 循环、方法分发、`get_image_allowlist` handler（查询 `judge_images` 表）
-- [ ] 5.4 集成到 Judge `main.rs`：启动时通过 RPC 获取镜像列表 → 失败时 `process::exit(1)` → 成功时传递到 PoolManager::init()
-- [ ] 5.5 集成到 Core `main.ts`：在 Redis 就绪后启动 RPC handler（集成到现有 consumer 启动流程中）
+- [ ] 5.2 在 `Cargo.toml` 新增 `gethostname` 依赖
+- [ ] 5.3 实现 Judge 侧 `RpcClient`（`noj-judge/src/mq/rpc.rs`）：封装 Redis connection、`request()` 通用方法、`get_image_allowlist()` 类型安全封装、5s 超时；judge_id 来源：JUDGE_ID 环境变量 > gethostname
+- [ ] 5.4 实现 Core 侧 `JudgeRpcHandler`（`noj-core/src/mq/judge-rpc.ts`）：BRPOP 循环、方法分发、`get_image_allowlist` handler（查询 `judge_images` 表）
+- [ ] 5.5 集成到 Judge `main.rs`：启动时通过 RPC 获取镜像列表 → 失败时 `process::exit(1)` → 成功时传递到 PoolManager::init()
+- [ ] 5.6 集成到 Core `main.ts`：在 Redis 就绪后启动 RPC handler（集成到现有 consumer 启动流程中）
 
 ## 6. 文档更新
 
