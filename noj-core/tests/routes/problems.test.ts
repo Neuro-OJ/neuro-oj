@@ -3,7 +3,6 @@ import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { createProblem } from "../../src/services/problems.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { problems } from "../../src/db/schema.ts";
 
 // PGlite 内存数据库始终可用
 const dbAvailable = true;

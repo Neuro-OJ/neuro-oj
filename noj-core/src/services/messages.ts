@@ -12,8 +12,6 @@ import { Channels, publishEvent } from "../lib/event-bus.ts";
 
 /** 消息内容最大长度 */
 const MAX_MESSAGE_LENGTH = 10_000;
-/** 消息列表每页默认条数 */
-const DEFAULT_PER_PAGE = 50;
 /** 消息预览截断长度 */
 const PREVIEW_LENGTH = 50;
 

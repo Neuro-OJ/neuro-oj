@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { and, eq, or } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { conversations, users } from "../../src/db/schema.ts";
 import { hashPassword } from "../../src/lib/password.ts";

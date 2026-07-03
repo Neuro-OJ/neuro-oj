@@ -7,13 +7,8 @@ import {
   updateProblem,
 } from "../../src/services/problems.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import {
-  categories,
-  problems,
-  problemsCategories,
-} from "../../src/db/schema.ts";
+import { categories } from "../../src/db/schema.ts";
 import { BadRequestError, NotFoundError } from "../../src/lib/errors.ts";
-import { eq } from "drizzle-orm";
 
 // PGlite 内存数据库始终可用
 const dbAvailable = true;

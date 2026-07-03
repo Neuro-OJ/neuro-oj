@@ -4,9 +4,7 @@ import {
   loginUser,
   registerUser,
 } from "../../src/services/auth.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { users } from "../../src/db/schema.ts";
-import { eq } from "drizzle-orm";
+import { resetDbForTest } from "../../src/db/connection.ts";
 import { ConflictError, UnauthorizedError } from "../../src/lib/errors.ts";
 
 // PGlite 内存数据库始终可用

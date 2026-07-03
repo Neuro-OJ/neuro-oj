@@ -70,11 +70,12 @@ Deno.test({
     // 先创建一个分类占用 slug
     await createCategory({
       name: "第一个",
-      slug: `test-cat-${ts}`,
+      slug: `test-cat-slug-conflict-${ts}`,
     });
     // 同 slug 第二次创建应冲突
     await assertRejects(
-      () => createCategory({ name: "重复", slug: `test-cat-${ts}` }),
+      () =>
+        createCategory({ name: "重复", slug: `test-cat-slug-conflict-${ts}` }),
       ConflictError,
     );
   },

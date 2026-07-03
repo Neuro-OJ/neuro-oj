@@ -39,7 +39,6 @@ export function getDb() {
     _db = drizzlePglite(
       _pgliteInstance,
       { schema },
-      // deno-lint-ignore no-explicit-any
     ) as unknown as ReturnType<typeof drizzlePg>;
     return _db;
   }
