@@ -17,6 +17,7 @@ import type {
 } from "../types/problems.ts";
 import {
   deleteSupportPackage,
+  getSupportPackageBytes,
   MAX_SUPPORT_PACKAGE_SIZE,
   saveSupportPackage,
 } from "../services/support-package.ts";
@@ -215,7 +216,37 @@ router.post("/:id/support-package", authMiddleware, async (c) => {
     { type: problem.type, owner_id: problem.owner_id }, // 复用已获取的题目信息
   );
 
-  return c.json({ data: { support_package_path: packagePath } });
+  return c.json({ data: { support_package_storage_url: packagePath } });
+});
+
+/**
+ * 下载支持包。
+ * GET /api/v1/problems/:id/support-package
+ * 始终通过 noj-core 代理返回文件内容（S3/MinIO 可能位于内网）。
+ */
+router.get("/:id/support-package", authMiddleware, async (c) => {
+  const id = c.req.param("id") as string;
+  const userId = c.get("userId");
+  const userRole = c.get("userRole");
+
+  const problem = await resolveProblem(id);
+  const zipBytes = await getSupportPackageBytes(
+    problem.id,
+    userId,
+    userRole,
+  );
+
+  if (!zipBytes) {
+    return c.json({ error: "该题目尚无支持包" }, 404);
+  }
+
+  return new Response(zipBytes as unknown as BodyInit, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${problem.id}.zip"`,
+    },
+  });
 });
 
 /**
@@ -235,7 +266,7 @@ router.delete("/:id/support-package", authMiddleware, async (c) => {
     owner_id: problem.owner_id,
   });
 
-  return c.json({ data: { support_package_path: null } });
+  return c.json({ data: { support_package_storage_url: null } });
 });
 
 export default router;

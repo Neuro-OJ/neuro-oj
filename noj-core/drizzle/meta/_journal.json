@@ -78,6 +78,13 @@
       "when": 1782995131156,
       "tag": "0010_graceful_domino",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783036800000,
+      "tag": "0011_support_package_storage_url",
+      "breakpoints": true
     }
   ]
 }

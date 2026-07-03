@@ -1,32 +1,32 @@
 ## 1. StorageProvider 接口与 URL 工具
 
-- [ ] 1.1 创建 `src/lib/storage/types.ts` — StorageProvider 接口（put/get/delete/downloadUrl）、`noj-storage://` 与 `noj-download://` URL 解析工具、URL 层级转换
-- [ ] 1.2 创建 `src/lib/storage/local.ts` — LocalStorageProvider（put 计算 SHA-256 并编码 base64、get 解码、downloadUrl 返回 `noj-download://base64/`），首次实例化输出废弃警告
-- [ ] 1.3 创建 `src/lib/storage/factory.ts` — `getStorageProvider()` 工厂函数，读取 `STORAGE_PROVIDER` 环境变量
-- [ ] 1.4 创建 `src/lib/storage/mod.ts` — 公共导出 barrel
-- [ ] 1.5 创建 `tests/lib/storage/url.test.ts` — 两种 URL 空间的解析和转换测试
+- [x] 1.1 创建 `src/lib/storage/types.ts` — StorageProvider 接口（put/get/delete/downloadUrl）、`noj-storage://` 与 `noj-download://` URL 解析工具、URL 层级转换
+- [x] 1.2 创建 `src/lib/storage/local.ts` — LocalStorageProvider（put 计算 SHA-256 并编码 base64、get 解码、downloadUrl 返回 `noj-download://base64/`），首次实例化输出废弃警告
+- [x] 1.3 创建 `src/lib/storage/factory.ts` — `getStorageProvider()` 工厂函数，读取 `STORAGE_PROVIDER` 环境变量
+- [x] 1.4 创建 `src/lib/storage/mod.ts` — 公共导出 barrel
+- [x] 1.5 创建 `tests/lib/storage/url.test.ts` — 两种 URL 空间的解析和转换测试
 
 ## 2. S3StorageProvider + JudgeTask 传输改造
 
-- [ ] 2.1 创建 `src/lib/storage/s3.ts` — S3StorageProvider（`@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`），put 计算 SHA-256、downloadUrl 生成 presigned URL 并做百分号编码
-- [ ] 2.2 在 `deno.json` 添加 `@aws-sdk/client-s3` 和 `@aws-sdk/s3-request-presigner` 导入映射 → `deno install`
-- [ ] 2.3 在 `.env.example` 添加 S3 环境变量
-- [ ] 2.4 修改 `src/types/index.ts` — JudgeTask 字段 `support_package_base64` → `download_url?: string`
-- [ ] 2.5 修改 `src/services/submissions.ts` — 三处（create/rejudge/batchRejudge）调用 `storage.downloadUrl()` 填充 `download_url`
-- [ ] 2.6 修改 `src/mq/producer.ts` — 适配新字段名
+- [x] 2.1 创建 `src/lib/storage/s3.ts` — S3StorageProvider（`@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`），put 计算 SHA-256、downloadUrl 生成 presigned URL 并做百分号编码
+- [x] 2.2 在 `deno.json` 添加 `@aws-sdk/client-s3` 和 `@aws-sdk/s3-request-presigner` 导入映射 → `deno install`
+- [x] 2.3 在 `.env.example` 添加 S3 环境变量
+- [x] 2.4 修改 `src/types/index.ts` — JudgeTask 字段 `support_package_base64` → `download_url?: string`
+- [x] 2.5 修改 `src/services/submissions.ts` — 三处（create/rejudge/batchRejudge）调用 `storage.downloadUrl()` 填充 `download_url`
+- [x] 2.6 修改 `src/mq/producer.ts` — 适配新字段名（无需变更，producer 仅序列化 JudgeTask，不引用具体字段）
 - [ ] 2.7 创建 `tests/lib/storage/s3.test.ts` — S3StorageProvider 测试（需要 MinIO）
 
 ## 3. 支持包服务层改造
-- [ ] 3.0 创建 Drizzle 迁移文件：`support_package_path` → `support_package_storage_url`（改名），更新 `src/db/schema.ts`
+- [x] 3.0 创建 Drizzle 迁移文件：`support_package_path` → `support_package_storage_url`（改名），更新 `src/db/schema.ts`
 
-- [ ] 3.1 修改 `src/services/support-package.ts` — `saveSupportPackage` 调用 `storage.put()` 返回 `noj-storage://` URL；`deleteSupportPackage` 调用 `storage.delete()`
-- [ ] 3.2 修改 `src/services/problems.ts` — `deleteProblem()` 使用 `storage.delete()`
-- [ ] 3.3 修改 `src/routes/problems.ts` — 上传响应适配 `noj-storage://` URL 格式
-- [ ] 3.4 在 `src/main.ts` 添加存储启动逻辑（S3 模式下调用 `ensureBucket()`）
-- [ ] 3.5 修改 `scripts/seed.ts` — 更新硬编码路径格式
-- [ ] 3.6 修改 `scripts/build-packages.ts` — 更新注释说明
-- [ ] 3.7 修改 `tests/services/support-package.test.ts` — 适配 `noj-storage://` URL
-- [ ] 3.8 修改 `tests/routes/support-package.test.ts` — 适配新 URL 格式
+- [x] 3.1 修改 `src/services/support-package.ts` — `saveSupportPackage` 调用 `storage.put()` 返回 `noj-storage://` URL；`deleteSupportPackage` 调用 `storage.delete()`
+- [x] 3.2 修改 `src/services/problems.ts` — `deleteProblem()` 使用 `storage.delete()`
+- [x] 3.3 修改 `src/routes/problems.ts` — 上传响应适配 `noj-storage://` URL 格式
+- [x] 3.4 在 `src/main.ts` 添加存储启动逻辑（S3 模式下调用 `ensureBucket()`）
+- [x] 3.5 修改 `scripts/seed.ts` — 更新硬编码路径格式
+- [x] 3.6 修改 `scripts/build-packages.ts` — 更新注释说明
+- [x] 3.7 修改 `tests/services/support-package.test.ts` — 适配 `noj-storage://` URL
+- [x] 3.8 修改 `tests/routes/support-package.test.ts` — 适配新 URL 格式
 
 ## 4. noj-judge 改造
 

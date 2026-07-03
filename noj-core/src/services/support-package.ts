@@ -6,25 +6,26 @@ import {
   NotFoundError,
   ValidationError,
 } from "../lib/errors.ts";
+import { getStorageProvider } from "../lib/storage/mod.ts";
 
 /**
- * 支持包存储目录（相对 CWD）。
- */
-export const PACKAGES_DIR = "data/packages";
-
-/**
- * 支持包文件最大字节数。
+ * 支持包文件最大字节数（128 MiB）。
  *
- * Redis MQ 消息限制 16MB，Base64 编码膨胀 ~33%，留 margin 给消息中其他字段
- * （code、metadata 等），故 zip 文件上限为 12MB。
+ * 引入 S3 存储后不再受 Redis MQ 16MB 消息限制，
+ * 上限放宽至 128 MiB。
  */
-export const MAX_SUPPORT_PACKAGE_SIZE = 12 * 1024 * 1024; // 12MB
+export const MAX_SUPPORT_PACKAGE_SIZE = 128 * 1024 * 1024; // 128MB
 
 /**
- * 获取支持包文件路径。
+ * 支持包存储键前缀。
  */
-export function getPackagePath(problemId: string): string {
-  return `${PACKAGES_DIR}/${problemId}.zip`;
+const PACKAGES_KEY_PREFIX = "packages/";
+
+/**
+ * 构建支持包存储键。
+ */
+function buildPackageKey(problemId: string): string {
+  return `${PACKAGES_KEY_PREFIX}${problemId}.zip`;
 }
 
 /**
@@ -70,13 +71,13 @@ async function checkSupportPackagePermission(
 }
 
 /**
- * 保存支持包文件。
+ * 保存支持包。
  *
- * 将上传的 zip 文件写入 data/packages/<problem_id>.zip，
- * 并更新数据库中的 support_package_path 字段。
+ * 通过 StorageProvider 存储 zip 数据，返回 `noj-storage://` URL，
+ * 并更新数据库中的 `support_package_storage_url` 字段。
  *
  * @param problem - 可选的预获取题目信息（type, owner_id），避免重复查询
- * @returns 保存后的支持包路径
+ * @returns `noj-storage://` URL
  * @throws {NotFoundError} 题目不存在
  * @throws {ForbiddenError} 无权操作
  */
@@ -103,49 +104,33 @@ export async function saveSupportPackage(
     );
   }
 
-  // 确保存储目录存在
-  try {
-    await Deno.mkdir(PACKAGES_DIR, { recursive: true });
-  } catch {
-    // 目录已存在则忽略
-  }
-
-  const packagePath = getPackagePath(problemId);
-
-  // 原子写入：先写临时文件再 rename
-  const tmpPath = `${packagePath}.tmp.${crypto.randomUUID()}`;
-  try {
-    await Deno.writeFile(tmpPath, file.data);
-    await Deno.rename(tmpPath, packagePath);
-  } catch (err) {
-    // 清理临时文件
-    try {
-      await Deno.remove(tmpPath);
-    } catch {
-      // 忽略清理失败
-    }
-    throw err;
-  }
+  // 通过 StorageProvider 存储
+  const storage = await getStorageProvider();
+  const storageUrl = await storage.put(
+    buildPackageKey(problemId),
+    file.data,
+    "application/zip",
+  );
 
   // 更新数据库
   const db = getDb();
   await db
     .update(problems)
     .set({
-      support_package_path: packagePath,
+      support_package_storage_url: storageUrl,
       updated_at: new Date().toISOString(),
     })
     .where(eq(problems.id, problemId));
 
-  return packagePath;
+  return storageUrl;
 }
 
 /**
- * 删除支持包文件。
+ * 删除支持包。
  *
- * 删除 data/packages/<problem_id>.zip 文件，
- * 并将数据库中的 support_package_path 设为 null。
- * 文件不存在时幂等返回。
+ * 通过 StorageProvider 删除已存储的数据，
+ * 并将数据库中的 `support_package_storage_url` 设为 null。
+ * 幂等操作。
  *
  * @param problem - 可选的预获取题目信息（type, owner_id），避免重复查询
  * @throws {NotFoundError} 题目不存在
@@ -159,26 +144,77 @@ export async function deleteSupportPackage(
 ): Promise<void> {
   await checkSupportPackagePermission(problemId, userId, userRole, problem);
 
-  const packagePath = getPackagePath(problemId);
+  const db = getDb();
 
-  // 删除文件（幂等）
-  try {
-    await Deno.remove(packagePath);
-  } catch (err) {
-    if (err instanceof Deno.errors.NotFound) {
-      // 文件不存在，幂等处理
-    } else {
-      throw err;
+  // 获取当前 storage URL
+  const [current] = await db
+    .select({ storageUrl: problems.support_package_storage_url })
+    .from(problems)
+    .where(eq(problems.id, problemId))
+    .limit(1);
+
+  // 通过 StorageProvider 删除
+  if (current?.storageUrl) {
+    const storage = await getStorageProvider();
+    try {
+      await storage.delete(current.storageUrl);
+    } catch (err) {
+      console.error(
+        `删除支持包失败 (${current.storageUrl}):`,
+        err instanceof Error ? err.message : String(err),
+      );
+      // 删除失败不阻塞 DB 更新
     }
   }
 
   // 更新数据库
-  const db = getDb();
   await db
     .update(problems)
     .set({
-      support_package_path: null,
+      support_package_storage_url: null,
       updated_at: new Date().toISOString(),
     })
     .where(eq(problems.id, problemId));
+}
+
+/**
+ * 获取支持包原始字节。
+ *
+ * 通过 StorageProvider 读取支持包数据。
+ * 用于下载端点（GET /support-package）等需要返回文件内容的场景。
+ *
+ * @returns 支持包 zip 字节，无支持包时返回 null
+ */
+export async function getSupportPackageBytes(
+  problemId: string,
+  userId?: string,
+  userRole?: string,
+): Promise<Uint8Array | null> {
+  const db = getDb();
+
+  const [problem] = await db
+    .select({
+      type: problems.type,
+      owner_id: problems.owner_id,
+      storageUrl: problems.support_package_storage_url,
+    })
+    .from(problems)
+    .where(eq(problems.id, problemId))
+    .limit(1);
+
+  if (!problem) {
+    throw new NotFoundError("题目不存在");
+  }
+
+  // 权限校验
+  if (userRole !== "admin" && problem.owner_id !== userId) {
+    throw new ForbiddenError("无权下载此题目的支持包");
+  }
+
+  if (!problem.storageUrl) {
+    return null;
+  }
+
+  const storage = await getStorageProvider();
+  return await storage.get(problem.storageUrl);
 }

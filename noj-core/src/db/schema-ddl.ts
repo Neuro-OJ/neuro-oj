@@ -25,7 +25,7 @@ export const SCHEMA_DDL: string[] = [
     difficulty TEXT NOT NULL DEFAULT 'medium',
     judge_image TEXT NOT NULL,
     judge_command TEXT NOT NULL,
-    support_package_path TEXT,
+    support_package_storage_url TEXT,
     time_limit_ms INTEGER NOT NULL DEFAULT 5000,
     memory_limit_mb INTEGER NOT NULL DEFAULT 512,
     number INTEGER NOT NULL,

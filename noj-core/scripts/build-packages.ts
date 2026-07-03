@@ -16,6 +16,10 @@
  *
  *   data/packages/
  *     └── <id>.zip          (构建产物，gitignored)
+ *
+ * 注意：构建产物 zip 文件通过 StorageProvider 上传后，
+ * 存储 URL 格式为 `noj-storage://<provider>/packages/<id>.zip?checksum_sha256=<hex>`。
+ * 本地开发模式下文件仍写入 data/packages/ 目录。
  */
 
 import { dirname, join, resolve } from "jsr:@std/path@^1";

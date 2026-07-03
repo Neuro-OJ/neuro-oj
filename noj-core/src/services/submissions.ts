@@ -1,4 +1,3 @@
-import { encodeBase64 } from "@std/encoding/base64";
 import { and, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import {
@@ -11,6 +10,7 @@ import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";
 import { getProblem } from "./problems.ts";
+import { getStorageProvider } from "../lib/storage/mod.ts";
 import {
   type JudgeResult,
   type JudgeTask,
@@ -297,18 +297,18 @@ export async function createSubmission(
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  // 读取支持包并 Base64 编码
-  let support_package_base64: string | undefined;
-  if (problem.support_package_path) {
+  // 获取支持包 download URL
+  let download_url: string | undefined;
+  if (problem.support_package_storage_url) {
     try {
-      const zipBytes = await Deno.readFile(problem.support_package_path);
-      support_package_base64 = encodeBase64(zipBytes);
+      const storage = await getStorageProvider();
+      download_url = await storage.downloadUrl(problem.support_package_storage_url);
     } catch (err) {
       console.error(
-        `读取支持包失败 (${problem.support_package_path}):`,
+        `获取支持包 download URL 失败 (${problem.support_package_storage_url}):`,
         err instanceof Error ? err.message : String(err),
       );
-      // 支持包读取失败不阻塞提交，但会跳过支持包
+      // 支持包获取失败不阻塞提交，但会跳过支持包
     }
   }
 
@@ -317,7 +317,7 @@ export async function createSubmission(
     problem_id: input.problem_id,
     judge_image: problem.judge_image,
     judge_command: problem.judge_command,
-    support_package_base64,
+    download_url,
     language: input.language,
     code: input.code,
     file_name: fileName,
@@ -663,15 +663,15 @@ export async function rejudgeSubmission(id: string): Promise<void> {
   // 获取题目最新配置
   const problem = await getProblem(submission.problem_id);
 
-  // 读取支持包
-  let support_package_base64: string | undefined;
-  if (problem.support_package_path) {
+  // 获取支持包 download URL
+  let download_url: string | undefined;
+  if (problem.support_package_storage_url) {
     try {
-      const zipBytes = await Deno.readFile(problem.support_package_path);
-      support_package_base64 = encodeBase64(zipBytes);
+      const storage = await getStorageProvider();
+      download_url = await storage.downloadUrl(problem.support_package_storage_url);
     } catch (err) {
       console.error(
-        `重测读取支持包失败 (${problem.support_package_path}):`,
+        `重测获取支持包 download URL 失败 (${problem.support_package_storage_url}):`,
         err instanceof Error ? err.message : String(err),
       );
     }
@@ -709,7 +709,7 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     problem_id: submission.problem_id,
     judge_image: problem.judge_image,
     judge_command: problem.judge_command,
-    support_package_base64,
+    download_url,
     language: submission.language,
     code: submission.code,
     file_name: submission.file_name ??
@@ -759,15 +759,15 @@ export async function rejudgeProblemSubmissions(
   // 获取题目最新配置
   const problem = await getProblem(problemId);
 
-  // 读取支持包（该题所有提交共享同一份）
-  let support_package_base64: string | undefined;
-  if (problem.support_package_path) {
+  // 获取支持包 download URL（该题所有提交共享同一份）
+  let download_url: string | undefined;
+  if (problem.support_package_storage_url) {
     try {
-      const zipBytes = await Deno.readFile(problem.support_package_path);
-      support_package_base64 = encodeBase64(zipBytes);
+      const storage = await getStorageProvider();
+      download_url = await storage.downloadUrl(problem.support_package_storage_url);
     } catch (err) {
       console.error(
-        `批量重测读取支持包失败 (${problem.support_package_path}):`,
+        `批量重测获取支持包 download URL 失败 (${problem.support_package_storage_url}):`,
         err instanceof Error ? err.message : String(err),
       );
     }
@@ -893,7 +893,7 @@ export async function rejudgeProblemSubmissions(
         problem_id: problemId,
         judge_image: problem.judge_image,
         judge_command: problem.judge_command,
-        support_package_base64,
+        download_url,
         language: sub.language,
         code: sub.code,
         file_name: sub.file_name ??

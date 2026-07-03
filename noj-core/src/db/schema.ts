@@ -54,8 +54,8 @@ export const problems = pgTable(
     difficulty: text("difficulty").notNull().default("medium"),
     judge_image: text("judge_image").notNull(),
     judge_command: text("judge_command").notNull(),
-    /** 支持包 zip 路径，相对 CWD。如 "data/problems/abc-123/support.zip" */
-    support_package_path: text("support_package_path"),
+    /** 支持包存储 URL（`noj-storage://` 格式），或 legacy 本地路径 */
+    support_package_storage_url: text("support_package_storage_url"),
     time_limit_ms: integer("time_limit_ms").notNull().default(5000),
     memory_limit_mb: integer("memory_limit_mb").notNull().default(512),
     /** 题号（同一 type 内独立自增） */
