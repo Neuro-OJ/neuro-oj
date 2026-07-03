@@ -59,6 +59,7 @@ export async function recordLoginFailure(
   username: string,
   namespace: string = DEFAULT_NAMESPACE,
 ): Promise<number> {
+  if (!isRateLimitEnabled()) return 0;
   const threshold = envInt(
     "RATE_LIMIT_LOGIN_LOCK_THRESHOLD",
     LOCK_THRESHOLD_DEFAULT,
@@ -92,6 +93,7 @@ export async function isLoginLocked(
   username: string,
   namespace: string = DEFAULT_NAMESPACE,
 ): Promise<boolean> {
+  if (!isRateLimitEnabled()) return false;
   try {
     return (await getRedis().exists(lockKey(username, namespace))) === 1;
   } catch (err) {
@@ -108,6 +110,7 @@ export async function clearLoginFailure(
   username: string,
   namespace: string = DEFAULT_NAMESPACE,
 ): Promise<void> {
+  if (!isRateLimitEnabled()) return;
   try {
     const redis = getRedis();
     await redis.del(failKey(username, namespace), lockKey(username, namespace));

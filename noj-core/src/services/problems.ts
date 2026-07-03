@@ -510,10 +510,13 @@ export async function createProblem(
     } catch (err) {
       if (attempt === MAX_RETRIES - 1) throw err;
       // PostgreSQL UNIQUE 约束冲突错误码 23505
-      if (
-        err && typeof err === "object" && "code" in err &&
-        (err as { code: string }).code === "23505"
-      ) {
+      // postgres.js 在 err.code，PGlite 在 err.cause.code
+      const pgCode = err && typeof err === "object"
+        ? (err as Record<string, unknown>).code ||
+          ((err as Record<string, unknown>).cause as Record<string, unknown>)
+            ?.code
+        : undefined;
+      if (pgCode === "23505") {
         // 管理员指定 number 冲突 → 直接报错，不自动重试
         if (adminProvidedNumber) throw err;
         number = undefined; // 重置 number，下一轮重新 MAX+1

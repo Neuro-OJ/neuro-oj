@@ -14,7 +14,7 @@ import {
 import { BadRequestError, NotFoundError } from "../../src/lib/errors.ts";
 import { eq } from "drizzle-orm";
 
-const hasDb = !!Deno.env.get("DATABASE_URL");
+const hasDb = true; // PGlite 内存数据库始终可用
 const skip = !hasDb;
 
 const ts = Date.now();

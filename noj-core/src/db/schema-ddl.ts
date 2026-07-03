@@ -1,0 +1,186 @@
+/**
+ * Schema DDL SQL 字符串——与 src/db/schema.ts 同步。
+ *
+ * 供 PGlite 模式在测试中建表使用。当 Drizzle schema 变更时需同步更新此文件。
+ */
+export const SCHEMA_DDL: string[] = [
+  // 1. users
+  `CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user',
+    bio TEXT NOT NULL DEFAULT '',
+    must_change_password BOOLEAN NOT NULL DEFAULT false,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
+  // 2. problems
+  `CREATE TABLE IF NOT EXISTS problems (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    difficulty TEXT NOT NULL DEFAULT 'medium',
+    judge_image TEXT NOT NULL,
+    judge_command TEXT NOT NULL,
+    support_package_path TEXT,
+    time_limit_ms INTEGER NOT NULL DEFAULT 5000,
+    memory_limit_mb INTEGER NOT NULL DEFAULT 512,
+    number INTEGER NOT NULL,
+    owner_id TEXT NOT NULL DEFAULT '0',
+    type TEXT NOT NULL DEFAULT 'U' CHECK (type IN ('U', 'P')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
+  // 3. judge_images
+  `CREATE TABLE IF NOT EXISTS judge_images (
+    id TEXT PRIMARY KEY,
+    image TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'exact' CHECK (mode IN ('exact', 'all_versions')),
+    description TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
+  // 4. categories
+  `CREATE TABLE IF NOT EXISTS categories (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    parent_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+    level INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
+  // 5. problems_categories
+  `CREATE TABLE IF NOT EXISTS problems_categories (
+    problem_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    PRIMARY KEY (problem_id, category_id)
+  )`,
+
+  // 6. submissions
+  `CREATE TABLE IF NOT EXISTS submissions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    problem_id TEXT NOT NULL REFERENCES problems(id),
+    language TEXT NOT NULL,
+    code TEXT NOT NULL,
+    file_name TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    rejudge_seq INTEGER NOT NULL DEFAULT 0,
+    judge_started_at TEXT,
+    judge_finished_at TEXT,
+    created_at TEXT NOT NULL
+  )`,
+
+  // 7. evaluation_results
+  `CREATE TABLE IF NOT EXISTS evaluation_results (
+    id TEXT PRIMARY KEY,
+    submission_id TEXT NOT NULL UNIQUE REFERENCES submissions(id),
+    status TEXT NOT NULL,
+    score INTEGER NOT NULL DEFAULT 0,
+    output TEXT NOT NULL DEFAULT '',
+    details TEXT NOT NULL DEFAULT '{}',
+    time_ms INTEGER,
+    memory_kb INTEGER,
+    created_at TEXT NOT NULL
+  )`,
+
+  // 8. check_ins
+  `CREATE TABLE IF NOT EXISTS check_ins (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    checkin_date TEXT NOT NULL,
+    streak INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    UNIQUE (user_id, checkin_date)
+  )`,
+
+  // 9. password_reset_tokens
+  `CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL
+  )`,
+
+  // 10. conversations
+  `CREATE TABLE IF NOT EXISTS conversations (
+    id TEXT PRIMARY KEY,
+    user1_id TEXT NOT NULL REFERENCES users(id),
+    user2_id TEXT NOT NULL REFERENCES users(id),
+    last_message_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (user1_id, user2_id),
+    CHECK (user1_id < user2_id)
+  )`,
+
+  // 11. messages
+  `CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    sender_id TEXT NOT NULL REFERENCES users(id),
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+
+  // 12. conversation_reads
+  `CREATE TABLE IF NOT EXISTS conversation_reads (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    last_read_message_id TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, conversation_id)
+  )`,
+
+  // 13. message_deletions
+  `CREATE TABLE IF NOT EXISTS message_deletions (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    deleted_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, message_id)
+  )`,
+];
+
+export const SCHEMA_INDEXES: string[] = [
+  "CREATE UNIQUE INDEX IF NOT EXISTS problems_type_number_unique ON problems (type, number)",
+  "CREATE INDEX IF NOT EXISTS idx_submissions_user_id ON submissions (user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_submissions_problem_id ON submissions (problem_id)",
+  "CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions (status)",
+  "CREATE INDEX IF NOT EXISTS idx_submissions_created_at ON submissions (created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_submissions_user_id_created_at ON submissions (user_id, created_at)",
+  "CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_results_submission_id ON evaluation_results (submission_id)",
+  "CREATE INDEX IF NOT EXISTS idx_eval_results_created_at ON evaluation_results (created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens (user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires_at ON password_reset_tokens (expires_at)",
+  "CREATE INDEX IF NOT EXISTS idx_conversations_user1_id ON conversations (user1_id)",
+  "CREATE INDEX IF NOT EXISTS idx_conversations_user2_id ON conversations (user2_id)",
+  "CREATE INDEX IF NOT EXISTS idx_conversations_last_message_at ON conversations (last_message_at)",
+  "CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON messages (conversation_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages (sender_id)",
+  "CREATE INDEX IF NOT EXISTS idx_message_deletions_message_id ON message_deletions (message_id)",
+];
+
+export const ALL_TABLES = [
+  "users",
+  "problems",
+  "judge_images",
+  "categories",
+  "problems_categories",
+  "submissions",
+  "evaluation_results",
+  "check_ins",
+  "password_reset_tokens",
+  "conversations",
+  "messages",
+  "conversation_reads",
+  "message_deletions",
+] as const;

@@ -10,11 +10,13 @@
     "npm:@alicloud/dm20151123@^1.10.2": "1.10.2",
     "npm:@alicloud/openapi-core@*": "1.0.7",
     "npm:@alicloud/openapi-core@^1.0.7": "1.0.7",
+    "npm:@electric-sql/pglite@*": "0.5.3",
+    "npm:@electric-sql/pglite@~0.5.3": "0.5.3",
     "npm:@types/pg@^8.20.0": "8.20.0",
     "npm:bcryptjs@^2.4.3": "2.4.3",
     "npm:drizzle-kit@*": "0.31.10",
-    "npm:drizzle-orm@0.35.2": "0.35.2_@types+pg@8.20.0_postgres@3.4.5",
-    "npm:drizzle-orm@0.45.2": "0.45.2_@types+pg@8.20.0_postgres@3.4.5",
+    "npm:drizzle-orm@0.35.2": "0.35.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5",
+    "npm:drizzle-orm@0.45.2": "0.45.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5",
     "npm:hono@4": "4.12.26",
     "npm:ioredis@5.11.1": "5.11.1",
     "npm:jose@5": "5.10.0",
@@ -173,6 +175,9 @@
     },
     "@drizzle-team/brocli@0.10.2": {
       "integrity": "sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w=="
+    },
+    "@electric-sql/pglite@0.5.3": {
+      "integrity": "sha512-iTTYbA5Uesrl+N7zss0J5LopT7KE4j9aymYo+EZZh+rZbARQCUQOs+n2pay64JRUpc3fCkpfrniTNJnvYzOE+g=="
     },
     "@esbuild-kit/core-utils@3.3.2": {
       "integrity": "sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==",
@@ -648,24 +653,28 @@
       ],
       "bin": true
     },
-    "drizzle-orm@0.35.2_@types+pg@8.20.0_postgres@3.4.5": {
+    "drizzle-orm@0.35.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5": {
       "integrity": "sha512-bLQtRchl8QvRo2MyG6kcZC90UDzR7Ubir4YwOHV3cZPdJbF+4jU/Yt0QOczsoXe25wLRt6CtCWLXtSDQKft3yg==",
       "dependencies": [
+        "@electric-sql/pglite",
         "@types/pg",
         "postgres"
       ],
       "optionalPeers": [
+        "@electric-sql/pglite",
         "@types/pg",
         "postgres"
       ]
     },
-    "drizzle-orm@0.45.2_@types+pg@8.20.0_postgres@3.4.5": {
+    "drizzle-orm@0.45.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5": {
       "integrity": "sha512-kY0BSaTNYWnoDMVoyY8uxmyHjpJW1geOmBMdSSicKo9CIIWkSxMIj2rkeSR51b8KAPB7m+qysjuHme5nKP+E5Q==",
       "dependencies": [
+        "@electric-sql/pglite",
         "@types/pg",
         "postgres"
       ],
       "optionalPeers": [
+        "@electric-sql/pglite",
         "@types/pg",
         "postgres"
       ]
@@ -1369,6 +1378,7 @@
     "dependencies": [
       "jsr:@std/encoding@1",
       "npm:@alicloud/dm20151123@^1.10.2",
+      "npm:@electric-sql/pglite@~0.5.3",
       "npm:bcryptjs@^2.4.3",
       "npm:drizzle-kit@*",
       "npm:drizzle-orm@0.45.2",

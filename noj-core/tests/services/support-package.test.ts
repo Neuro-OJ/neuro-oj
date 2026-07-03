@@ -19,7 +19,7 @@ import {
   ValidationError,
 } from "../../src/lib/errors.ts";
 
-const hasDb = !!Deno.env.get("DATABASE_URL");
+const hasDb = true; // PGlite 内存数据库始终可用
 const skip = !hasDb;
 
 const ts = Date.now();

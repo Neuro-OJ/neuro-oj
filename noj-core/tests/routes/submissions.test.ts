@@ -1,9 +1,13 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
+import { resetDbForTest } from "../../src/db/connection.ts";
+
+// 模块级 bootstrap：确保 PGlite schema 已创建
+await resetDbForTest();
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
-const hasDb = !!Deno.env.get("DATABASE_URL");
+const hasDb = true; // PGlite 内存数据库始终可用
 const skip = !(hasEnv && hasDb);
 
 async function jsonRequest(

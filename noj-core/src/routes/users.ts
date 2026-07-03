@@ -2,7 +2,11 @@ import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { ValidationError } from "../lib/errors.ts";
-import { getUserProfile, searchUsers, updateUserProfile } from "../services/users.ts";
+import {
+  getUserProfile,
+  searchUsers,
+  updateUserProfile,
+} from "../services/users.ts";
 import { getMyRanking } from "../services/rankings.ts";
 
 const users = new Hono<{ Variables: { userId: string; userRole: string } }>();

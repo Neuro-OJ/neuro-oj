@@ -7,20 +7,29 @@ import {
   updateProblem,
 } from "../../src/services/problems.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import {
-  categories,
-  problems,
-  problemsCategories,
-} from "../../src/db/schema.ts";
+import { categories } from "../../src/db/schema.ts";
 import { BadRequestError, NotFoundError } from "../../src/lib/errors.ts";
 
-const hasDb = !!Deno.env.get("DATABASE_URL");
-const skip = !hasDb;
+// PGlite 内存数据库始终可用
+const dbAvailable = true;
+const skip = !dbAvailable;
 
 const ts = Date.now();
-let TEST_PROBLEM_ID: string;
 
 const now = new Date().toISOString();
+
+// 模块级 setup：创建共享测试题目
+await resetDbForTest();
+const MODULE_PROBLEM = await createProblem({
+  title: `测试题目 ${ts}`,
+  description: "测试描述",
+  difficulty: "easy",
+  judge_image: "noj-judge-python",
+  judge_command: "python3 /tmp/evaluate.py",
+  time_limit_ms: 5000,
+  memory_limit_mb: 512,
+});
+const TEST_PROBLEM_ID = MODULE_PROBLEM.id;
 
 Deno.test({
   name: "problems service: 列表返回正确分页结构",
@@ -28,7 +37,6 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
     const result = await listProblems({ page: 1, limit: 10 });
     assertEquals(Array.isArray(result.items), true);
     assertEquals(typeof result.total, "number");
@@ -43,19 +51,16 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
     const problem = await createProblem({
-      title: `测试题目 ${ts}`,
-      description: "测试描述",
+      title: `临时创建题 ${ts}`,
+      description: "用来测创建的",
       difficulty: "easy",
       judge_image: "noj-judge-python",
       judge_command: "python3 /tmp/evaluate.py",
       time_limit_ms: 5000,
       memory_limit_mb: 512,
     });
-    // id 由服务端生成 UUID，记录供后续测试引用
-    TEST_PROBLEM_ID = problem.id;
-    assertEquals(problem.title, `测试题目 ${ts}`);
+    assertEquals(problem.title, `临时创建题 ${ts}`);
     assertEquals(problem.difficulty, "easy");
     assertEquals(problem.categories, []);
   },
@@ -67,7 +72,6 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
     await assertRejects(
       () =>
         createProblem({
@@ -88,7 +92,6 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
     // 先创建一个分类
     const db = getDb();
     const catId = `test-cat-${ts}`;
@@ -122,7 +125,6 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
     const problem = await getProblem(TEST_PROBLEM_ID);
     assertEquals(problem.id, TEST_PROBLEM_ID);
     assertEquals(problem.difficulty, "easy");
@@ -136,7 +138,6 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
     const updated = await updateProblem(TEST_PROBLEM_ID, {
       title: "更新的标题",
       difficulty: "hard",
@@ -152,7 +153,6 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
     await assertRejects(
       () => updateProblem(TEST_PROBLEM_ID, { difficulty: "invalid" }, "0"),
       BadRequestError,
@@ -167,11 +167,22 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    const result = await listProblems({ difficulty: "easy" });
+    // 重建模块级题目，因为 resetDbForTest() 清掉了
+    await createProblem({
+      title: `测试题目 ${ts}`,
+      description: "测试描述",
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+      time_limit_ms: 5000,
+      memory_limit_mb: 512,
+    });
+    const result = await listProblems({ difficulty: "easy", type: "U" });
     assertEquals(result.items.every((i) => i.difficulty === "easy"), true);
   },
 });
 
+// 按关键词搜索——自包含测试
 Deno.test({
   name: "problems service: 按关键词搜索",
   ignore: skip,
@@ -179,7 +190,6 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    // 创建含关键词的题目
     const keyword = `搜索测试-${ts}`;
     const created = await createProblem({
       title: `标题包含${keyword}`,
@@ -200,10 +210,19 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
-    await deleteProblem(TEST_PROBLEM_ID, "0");
+    // 自包含：创建后立即删除，不依赖模块级 TEST_PROBLEM_ID
+    const toDelete = await createProblem({
+      title: `待删除题目 ${ts}`,
+      description: "将被删除",
+      difficulty: "easy",
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+      time_limit_ms: 5000,
+      memory_limit_mb: 512,
+    });
+    await deleteProblem(toDelete.id, "0");
     await assertRejects(
-      () => getProblem(TEST_PROBLEM_ID),
+      () => getProblem(toDelete.id),
       NotFoundError,
       "题目不存在",
     );
@@ -235,23 +254,5 @@ Deno.test({
     const result = await listProblems({ page: 2, limit: 1 });
     assertEquals(result.page, 2);
     assertEquals(result.limit, 1);
-  },
-});
-
-// 清理
-Deno.test({
-  name: "problems service: cleanup",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    try {
-      const db = getDb();
-      await db.delete(problemsCategories);
-      await db.delete(categories);
-      await db.delete(problems);
-    } catch {
-      // ignore
-    }
   },
 });

@@ -103,10 +103,15 @@ export async function getGlobalRankings(params: {
     LIMIT ${cappedLimit} OFFSET ${offset}
   `);
 
-  const data: RankingRow[] = rows.map((row) => ({
+  // postgres.js 返回 array-like 支持 .map()，PGlite 返回 { rows }
+  // 统一用 .rows 访问
+  const resultRows = "rows" in rows
+    ? (rows as { rows: Record<string, unknown>[] }).rows
+    : (rows as unknown as Record<string, unknown>[]);
+  const data: RankingRow[] = resultRows.map((row: Record<string, unknown>) => ({
     rank: Number(row.rank),
-    user_id: row.user_id,
-    username: row.username,
+    user_id: row.user_id as string,
+    username: row.username as string,
     solved_count: Number(row.solved_count),
     total_submissions: Number(row.total_submissions),
     acceptance_rate: Number(row.acceptance_rate),
@@ -125,7 +130,10 @@ export async function getGlobalRankings(params: {
       HAVING COUNT(*) FILTER (WHERE er.status = 'Accepted') > 0
     ) AS ranked_users
   `);
-  const total = Number(totalResult[0]?.total ?? 0);
+  const totalRows = "rows" in totalResult
+    ? (totalResult as { rows: { total: number }[] }).rows
+    : (totalResult as unknown as { total: number }[]);
+  const total = Number(totalRows[0]?.total ?? 0);
 
   return { data, total };
 }
@@ -187,13 +195,16 @@ export async function getMyRanking(
     SELECT * FROM ranked WHERE user_id = ${userId} LIMIT 1
   `);
 
-  const row = rows[0];
+  const myRows = "rows" in rows
+    ? (rows as { rows: Record<string, unknown>[] }).rows
+    : (rows as unknown as Record<string, unknown>[]);
+  const row = myRows[0];
   if (!row) return null;
 
   return {
     rank: Number(row.rank),
-    user_id: row.user_id,
-    username: row.username,
+    user_id: row.user_id as string,
+    username: row.username as string,
     solved_count: Number(row.solved_count),
     total_submissions: Number(row.total_submissions),
     acceptance_rate: Number(row.acceptance_rate),

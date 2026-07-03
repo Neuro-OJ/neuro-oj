@@ -4,11 +4,14 @@ import { eq } from "drizzle-orm";
 import checkin from "../../src/routes/checkin.ts";
 import { AppError } from "../../src/lib/errors.ts";
 import { signToken } from "../../src/lib/jwt.ts";
-import { getDb } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { checkIns, users } from "../../src/db/schema.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 
-const hasEnv = !!Deno.env.get("DATABASE_URL") &&
+// 模块级 bootstrap：确保 PGlite schema 已创建
+await resetDbForTest();
+
+const hasEnv = true && // DATABASE_URL 未设置时 PGlite 可用
   !!Deno.env.get("JWT_SECRET");
 
 /**

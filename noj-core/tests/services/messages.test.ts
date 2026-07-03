@@ -1,21 +1,24 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { eq, and, or } from "drizzle-orm";
-import { getDb } from "../../src/db/connection.ts";
+import { eq, or } from "drizzle-orm";
+import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { conversations, users } from "../../src/db/schema.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 import {
+  deleteMessage,
   findOrCreateConversation,
-  sendMessage,
+  getUnreadCount,
+  getUnreadCountByConversation,
   listConversations,
   listMessages,
   markConversationRead,
-  getUnreadCount,
-  getUnreadCountByConversation,
-  deleteMessage,
+  sendMessage,
 } from "../../src/services/messages.ts";
 import { BadRequestError, NotFoundError } from "../../src/lib/errors.ts";
 
-const hasEnv = !!Deno.env.get("DATABASE_URL") &&
+// 模块级 bootstrap：确保 PGlite schema 已创建
+await resetDbForTest();
+
+const hasEnv = true && // DATABASE_URL 未设置时 PGlite 可用
   !!Deno.env.get("JWT_SECRET");
 
 /**
@@ -62,7 +65,10 @@ Deno.test({
     const userA = await createTestUser();
     const userB = await createTestUser();
     try {
-      const { conversation: conv } = await findOrCreateConversation(userA, userB);
+      const { conversation: conv } = await findOrCreateConversation(
+        userA,
+        userB,
+      );
       assertEquals(typeof conv.id, "string");
       assertEquals(conv.user1_id, userA < userB ? userA : userB);
       assertEquals(conv.user2_id, userA < userB ? userB : userA);
@@ -81,8 +87,14 @@ Deno.test({
     const userA = await createTestUser();
     const userB = await createTestUser();
     try {
-      const { conversation: conv1 } = await findOrCreateConversation(userA, userB);
-      const { conversation: conv2 } = await findOrCreateConversation(userA, userB);
+      const { conversation: conv1 } = await findOrCreateConversation(
+        userA,
+        userB,
+      );
+      const { conversation: conv2 } = await findOrCreateConversation(
+        userA,
+        userB,
+      );
       assertEquals(conv1.id, conv2.id);
     } finally {
       await cleanup(userA, userB);
@@ -137,7 +149,10 @@ Deno.test({
     const userA = await createTestUser();
     const userB = await createTestUser();
     try {
-      const { conversation: conv } = await findOrCreateConversation(userA, userB);
+      const { conversation: conv } = await findOrCreateConversation(
+        userA,
+        userB,
+      );
       const msg = await sendMessage(userA, conv.id, "Hello!");
       assertEquals(msg.content, "Hello!");
       assertEquals(msg.sender_id, userA);
@@ -157,7 +172,10 @@ Deno.test({
     const userB = await createTestUser();
     const userC = await createTestUser();
     try {
-      const { conversation: conv } = await findOrCreateConversation(userA, userB);
+      const { conversation: conv } = await findOrCreateConversation(
+        userA,
+        userB,
+      );
       await assertRejects(
         () => sendMessage(userC, conv.id, "Hi"),
         NotFoundError,
@@ -212,7 +230,10 @@ Deno.test({
     const userA = await createTestUser();
     const userB = await createTestUser();
     try {
-      const { conversation: conv } = await findOrCreateConversation(userA, userB);
+      const { conversation: conv } = await findOrCreateConversation(
+        userA,
+        userB,
+      );
       await sendMessage(userA, conv.id, "msg1");
       await sendMessage(userB, conv.id, "msg2");
       const result = await listMessages(userA, conv.id, 1, 10);
@@ -233,7 +254,10 @@ Deno.test({
     const userB = await createTestUser();
     const userC = await createTestUser();
     try {
-      const { conversation: conv } = await findOrCreateConversation(userA, userB);
+      const { conversation: conv } = await findOrCreateConversation(
+        userA,
+        userB,
+      );
       await assertRejects(
         () => listMessages(userC, conv.id, 1, 10),
         NotFoundError,
@@ -253,7 +277,10 @@ Deno.test({
     const userA = await createTestUser();
     const userB = await createTestUser();
     try {
-      const { conversation: conv } = await findOrCreateConversation(userA, userB);
+      const { conversation: conv } = await findOrCreateConversation(
+        userA,
+        userB,
+      );
       const msg1 = await sendMessage(userA, conv.id, "test message");
 
       // 标记已读前 B 有 1 条未读
@@ -279,7 +306,10 @@ Deno.test({
     const userA = await createTestUser();
     const userB = await createTestUser();
     try {
-      const { conversation: conv } = await findOrCreateConversation(userA, userB);
+      const { conversation: conv } = await findOrCreateConversation(
+        userA,
+        userB,
+      );
       await sendMessage(userA, conv.id, "msg1");
 
       const total = await getUnreadCount(userB);
@@ -300,7 +330,10 @@ Deno.test({
     const userA = await createTestUser();
     const userB = await createTestUser();
     try {
-      const { conversation: conv } = await findOrCreateConversation(userA, userB);
+      const { conversation: conv } = await findOrCreateConversation(
+        userA,
+        userB,
+      );
       const msg = await sendMessage(userA, conv.id, "delete me");
 
       // A 删除这条消息
