@@ -1,21 +1,48 @@
 import { sql } from "drizzle-orm";
 import postgres from "postgres";
-import { drizzle } from "drizzle-orm/postgres-js";
+import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
+import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
+import { PGlite } from "@electric-sql/pglite";
 import * as schema from "./schema.ts";
+import { SCHEMA_DDL, SCHEMA_INDEXES, ALL_TABLES } from "./schema-ddl.ts";
 
-let _db: ReturnType<typeof drizzle> | null = null;
+let _db: ReturnType<typeof drizzlePg> | null = null;
 let _client: ReturnType<typeof postgres> | null = null;
+
+/** PGlite 全局单例——测试模式下使用，生产环境/CI 保持 null */
+let _pgliteInstance: PGlite | null = null;
+/** PGlite Schema 引导 Promise——首次 resetDbForTest() 时执行 */
+let _bootstrapPromise: Promise<void> | null = null;
+
+/**
+ * 判断当前是否为 PGlite 模式（无 DATABASE_URL 时自动启用）。
+ */
+function isPGliteMode(): boolean {
+  return !Deno.env.get("DATABASE_URL");
+}
 
 /**
  * 获取 Drizzle ORM 数据库实例（单例模式）。
- * 首次调用时初始化 postgres.js 连接。
- * 必须通过环境变量 `DATABASE_URL` 配置连接字符串，无默认值。
  *
- * 注意：不在模块级别缓存连接错误，启动期 DB 暂不可用时让调用方
- * 收到原始错误，DB 恢复后下一次调用即可成功重连。
+ * 双模式驱动：
+ * - `DATABASE_URL` 已设置 → postgres.js 连接外部 PostgreSQL（生产/CI）
+ * - `DATABASE_URL` 未设置 → PGlite 内存 PostgreSQL（测试，零外部依赖）
  */
 export function getDb() {
   if (_db) return _db;
+
+  if (isPGliteMode()) {
+    // PGlite 模式：全局单例，首次调用时创建
+    if (!_pgliteInstance) {
+      _pgliteInstance = new PGlite();
+    }
+    _db = drizzlePglite(
+      _pgliteInstance,
+      { schema },
+      // deno-lint-ignore no-explicit-any
+    ) as unknown as ReturnType<typeof drizzlePg>;
+    return _db;
+  }
 
   const databaseUrl = Deno.env.get("DATABASE_URL");
   if (!databaseUrl) {
@@ -23,10 +50,7 @@ export function getDb() {
   }
 
   try {
-    // 连接池大小可通过环境变量配置，默认 10
     const poolMax = parseInt(Deno.env.get("DATABASE_POOL_MAX") || "10", 10);
-    // connection_timeout / idle_timeout / max_lifetime 显式设定，避免
-    // npm 兼容层下 postgres.js 连接管理异常导致首次查询耗时数秒
     const connectTimeout = parseInt(
       Deno.env.get("DATABASE_CONNECT_TIMEOUT") || "10",
       10,
@@ -45,7 +69,7 @@ export function getDb() {
       idle_timeout: idleTimeout,
       max_lifetime: maxLifetime,
     });
-    _db = drizzle(_client, { schema });
+    _db = drizzlePg(_client, { schema });
     return _db;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -56,12 +80,24 @@ export function getDb() {
 
 /**
  * 检查数据库连接状态。
- * 执行轻量查询（SELECT 1）验证连接实际可用。
- * 返回 { ok: true } 或 { ok: false, error: string }。
+ * PGlite 模式检查实例是否已初始化；postgres.js 模式执行 SELECT 1 验证。
  */
 export async function checkDbHealth(): Promise<
   { ok: boolean; error?: string }
 > {
+  if (isPGliteMode()) {
+    if (!_db) {
+      return { ok: false, error: "未初始化" };
+    }
+    try {
+      await _db.execute(sql`SELECT 1`);
+      return { ok: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: message };
+    }
+  }
+
   if (!_client) {
     return { ok: false, error: "未初始化" };
   }
@@ -80,9 +116,64 @@ export async function checkDbHealth(): Promise<
 
 /**
  * 重置数据库连接状态（测试用）。
- * 关闭 postgres.js 连接池后清空单例，避免连接泄漏。
+ *
+ * PGlite 模式：TRUNCATE 所有表 + re-seed root 用户和 judge image。
+ * 保留 PGlite 实例（不清除），避免冷启动开销。
+ *
+ * postgres.js 模式：关闭连接池后清空单例（现有行为不变）。
  */
 export async function resetDbForTest() {
+  if (isPGliteMode()) {
+    // PGlite 模式 — 确保实例已初始化
+    if (!_pgliteInstance) {
+      _pgliteInstance = new PGlite();
+    }
+    // 自动引导 Schema（首次调用时），await 确保引导完成
+    if (!_bootstrapPromise) {
+      _bootstrapPromise = (async () => {
+        for (const ddl of SCHEMA_DDL) {
+          await _pgliteInstance!.query(ddl);
+        }
+        for (const idx of SCHEMA_INDEXES) {
+          await _pgliteInstance!.query(idx);
+        }
+      })();
+    }
+    await _bootstrapPromise;
+    _db = null; // 清空 drizzle 包装，下次 getDb() 重新包装
+
+    // TRUNCATE 保留 schema + re-seed
+    const now = new Date().toISOString();
+    try {
+      await _pgliteInstance.query(
+        `TRUNCATE TABLE ${ALL_TABLES.join(", ")} CASCADE`,
+      );
+    } catch {
+      // 某些测试可能只建了部分表，忽略
+    }
+    // Re-seed 必需数据
+    try {
+      await _pgliteInstance.query(
+        `INSERT INTO users (id, username, email, password_hash, role, bio, created_at, updated_at)
+         VALUES ('0', 'root', 'root@noj.local', '', 'admin', '', '${now}', '${now}')
+         ON CONFLICT (id) DO NOTHING`,
+      );
+    } catch {
+      // 表可能还没建
+    }
+    try {
+      await _pgliteInstance.query(
+        `INSERT INTO judge_images (id, image, mode, description, created_at, updated_at)
+         VALUES ('e0000000-0000-0000-0000-000000000001', 'noj-judge-python', 'all_versions', 'Python 3.12 评测环境', '${now}', '${now}')
+         ON CONFLICT (id) DO NOTHING`,
+      );
+    } catch {
+      // 表可能还没建
+    }
+    _db = null;
+    return;
+  }
+
   if (_client) {
     try {
       await _client.end();

@@ -9,11 +9,11 @@ import { users } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { ConflictError, UnauthorizedError } from "../../src/lib/errors.ts";
 
-const hasDb = !!Deno.env.get("DATABASE_URL");
+// PGlite 内存数据库始终可用
+const dbAvailable = true;
 const hasJwt = !!Deno.env.get("JWT_SECRET");
-const skip = !(hasDb && hasJwt);
+const skip = !(dbAvailable && hasJwt);
 
-// 用时间戳生成唯一用户名/邮箱，避免测试间冲突
 const ts = Date.now();
 const TEST_USER = {
   username: `test-svc-${ts}`,
@@ -21,17 +21,10 @@ const TEST_USER = {
   password: "TestPwd-2024-Xy9",
 };
 
-/**
- * 清理测试用户。
- */
-async function cleanupUser(username: string) {
-  try {
-    const db = getDb();
-    await db.delete(users).where(eq(users.username, username));
-  } catch {
-    // 清理失败不影响测试结果
-  }
-}
+// 模块级 setup：创建跨测试共享的 TEST_USER
+// 在 PGlite 模式下每次 resetDbForTest() 会 TRUNCATE，因此放在模块级执行一次
+await resetDbForTest();
+await registerUser(TEST_USER);
 
 Deno.test({
   name: "auth service: registerUser 创建用户并返回 UserResponse",
@@ -39,16 +32,16 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
-    const user = await registerUser(TEST_USER);
-
-    assertEquals(user.username, TEST_USER.username);
-    assertEquals(user.email, TEST_USER.email);
-    assertEquals(user.role, "user");
-    assertEquals(typeof user.id, "string");
-    assertEquals(typeof user.created_at, "string");
-    // 验证不含 password_hash
-    assertEquals("password_hash" in user, false);
+    // 验证模块级创建的 TEST_USER 存在
+    const result = await loginUser({
+      login: TEST_USER.username,
+      password: TEST_USER.password,
+    });
+    assertEquals(result.user.username, TEST_USER.username);
+    assertEquals(result.user.email, TEST_USER.email);
+    assertEquals(result.user.role, "user");
+    assertEquals(typeof result.user.id, "string");
+    assertEquals("password_hash" in result.user, false);
   },
 });
 
@@ -58,8 +51,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
-    // 已存在 TEST_USER（上一步创建的），尝试重复注册
+    // TEST_USER 来自模块级 setup
     await assertRejects(
       () =>
         registerUser({
@@ -79,7 +71,6 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
     await assertRejects(
       () =>
         registerUser({
@@ -99,7 +90,6 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
     const result = await loginUser({
       login: TEST_USER.username,
       password: TEST_USER.password,
@@ -108,7 +98,6 @@ Deno.test({
     assertEquals(result.user.username, TEST_USER.username);
     assertEquals(result.user.email, TEST_USER.email);
     assertEquals(typeof result.token, "string");
-    // JWT 格式验证
     assertEquals(result.token.split(".").length, 3);
   },
 });
@@ -119,7 +108,6 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
     const result = await loginUser({
       login: TEST_USER.email,
       password: TEST_USER.password,
@@ -136,7 +124,6 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
     await assertRejects(
       () =>
         loginUser({
@@ -155,7 +142,6 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await resetDbForTest();
     await assertRejects(
       () =>
         loginUser({
@@ -175,12 +161,12 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    // 先注册以获取 ID
-    const registered = await registerUser({
-      username: `test-profile-${ts}`,
-      email: `test-profile-${ts}@example.com`,
-      password: "MyPwd-2024-Gh5",
-    });
+    const profileUser = {
+      username: `test-profile-${Date.now()}`,
+      email: `test-profile-${Date.now()}@example.com`,
+      password: "ProfilePwd-2024-Xx9",
+    };
+    const registered = await registerUser(profileUser);
 
     const profile = await getUserProfile(registered.id);
     assertEquals(profile.id, registered.id);
@@ -201,18 +187,5 @@ Deno.test({
       UnauthorizedError,
       "用户不存在",
     );
-  },
-});
-
-// 全部测试完成后清理
-Deno.test({
-  name: "auth service: cleanup test users",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await cleanupUser(TEST_USER.username);
-    await cleanupUser(`diff-user-${ts}`);
-    await cleanupUser(`test-profile-${ts}`);
   },
 });

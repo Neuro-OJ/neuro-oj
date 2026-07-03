@@ -2,9 +2,13 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 
-const hasDb = !!Deno.env.get("DATABASE_URL");
+const hasDb = true; // PGlite 内存数据库始终可用
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasDb;
+
+// 模块级 bootstrap：确保表已创建（PGlite 模式）
+import { resetDbForTest } from "../../src/db/connection.ts";
+await resetDbForTest();
 
 Deno.test({
   name: "categories route: GET /api/v1/categories 返回分类树",

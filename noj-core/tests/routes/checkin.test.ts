@@ -8,7 +8,7 @@ import { getDb } from "../../src/db/connection.ts";
 import { checkIns, users } from "../../src/db/schema.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 
-const hasEnv = !!Deno.env.get("DATABASE_URL") &&
+const hasEnv = true && // DATABASE_URL 未设置时 PGlite 可用
   !!Deno.env.get("JWT_SECRET");
 
 /**

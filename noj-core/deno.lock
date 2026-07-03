@@ -11,6 +11,7 @@
     "npm:@alicloud/openapi-core@*": "1.0.7",
     "npm:@alicloud/openapi-core@^1.0.7": "1.0.7",
     "npm:@electric-sql/pglite@*": "0.5.3",
+    "npm:@electric-sql/pglite@~0.5.3": "0.5.3",
     "npm:@types/pg@^8.20.0": "8.20.0",
     "npm:bcryptjs@^2.4.3": "2.4.3",
     "npm:drizzle-kit@*": "0.31.10",
@@ -1377,6 +1378,7 @@
     "dependencies": [
       "jsr:@std/encoding@1",
       "npm:@alicloud/dm20151123@^1.10.2",
+      "npm:@electric-sql/pglite@~0.5.3",
       "npm:bcryptjs@^2.4.3",
       "npm:drizzle-kit@*",
       "npm:drizzle-orm@0.45.2",

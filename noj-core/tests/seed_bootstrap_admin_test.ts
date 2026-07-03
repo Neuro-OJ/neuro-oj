@@ -16,7 +16,7 @@ import { users } from "../src/db/schema.ts";
 import { registerUser } from "../src/services/auth.ts";
 import { hashPassword } from "../src/lib/password.ts";
 
-const hasDb = !!Deno.env.get("DATABASE_URL");
+const hasDb = true; // PGlite 内存数据库始终可用
 const skip = !hasDb;
 
 /**

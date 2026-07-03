@@ -16,7 +16,7 @@ import { eq } from "drizzle-orm";
 import { registerUser } from "../../src/services/auth.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 
-const hasDb = !!Deno.env.get("DATABASE_URL");
+const hasDb = true; // PGlite 内存数据库始终可用
 const hasJwt = !!Deno.env.get("JWT_SECRET");
 const hasRedis = !!Deno.env.get("REDIS_URL");
 const skip = !(hasDb && hasJwt);

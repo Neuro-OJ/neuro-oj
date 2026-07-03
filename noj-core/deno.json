@@ -24,7 +24,8 @@
     "jose": "npm:jose@^5",
     "drizzle-kit": "npm:drizzle-kit",
     "@std/encoding": "jsr:@std/encoding@^1",
-    "@alicloud/dm": "npm:@alicloud/dm20151123@^1.10.2"
+    "@alicloud/dm": "npm:@alicloud/dm20151123@^1.10.2",
+    "@electric-sql/pglite": "npm:@electric-sql/pglite@^0.5.3"
   },
   "nodeModulesDir": "auto",
   "fmt": {

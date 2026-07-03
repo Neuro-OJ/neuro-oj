@@ -6,7 +6,7 @@ import { checkIn, getTodayCheckIn } from "../../src/services/checkin.ts";
 import { ConflictError } from "../../src/lib/errors.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 
-const hasEnv = !!Deno.env.get("DATABASE_URL") &&
+const hasEnv = true && // DATABASE_URL 未设置时 PGlite 可用
   !!Deno.env.get("JWT_SECRET");
 
 /**

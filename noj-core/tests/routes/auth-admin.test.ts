@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 
 const ts = Date.now();
 
-const hasDb = !!Deno.env.get("DATABASE_URL");
+const hasDb = true; // PGlite 内存数据库始终可用
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasDb || !hasEnv;
 

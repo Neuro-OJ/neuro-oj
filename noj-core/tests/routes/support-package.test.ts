@@ -10,7 +10,7 @@ import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { problems, users } from "../../src/db/schema.ts";
 import { eq, sql } from "drizzle-orm";
 
-const hasDb = !!Deno.env.get("DATABASE_URL");
+const hasDb = true; // PGlite 内存数据库始终可用
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skipDb = !hasDb;
 const skipEnv = !hasEnv;

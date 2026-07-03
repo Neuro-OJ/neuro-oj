@@ -14,7 +14,7 @@ import {
   NotFoundError,
 } from "../../src/lib/errors.ts";
 
-const hasDb = !!Deno.env.get("DATABASE_URL");
+const hasDb = true; // PGlite 内存数据库始终可用
 const skip = !hasDb;
 
 const ts = Date.now();
@@ -67,6 +67,12 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
+    // 先创建一个分类占用 slug
+    await createCategory({
+      name: "第一个",
+      slug: `test-cat-${ts}`,
+    });
+    // 同 slug 第二次创建应冲突
     await assertRejects(
       () => createCategory({ name: "重复", slug: `test-cat-${ts}` }),
       ConflictError,

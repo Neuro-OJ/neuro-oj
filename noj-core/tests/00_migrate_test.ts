@@ -1,29 +1,30 @@
 /**
- * 数据库迁移 + 必需种子数据初始化。
+ * 数据库初始化 + 必需种子数据。
  * 文件名以 00 开头，确保在其它测试之前按字母序最先执行。
- * 仅在 DATABASE_URL 可用时执行迁移。
+ *
+ * 双模式：
+ * - DATABASE_URL 已设置 → 使用 drizzle-orm/postgres-js/migrator 执行文件迁移
+ * - DATABASE_URL 未设置 → 使用 PGlite 内存数据库，执行 DDL SQL 建表
  */
-import { eq } from "drizzle-orm";
 import { runMigrations } from "../src/db/migrate.ts";
 import { ensureRootUser } from "../src/services/auth.ts";
 import { getDb } from "../src/db/connection.ts";
+import { setupSchemaForTest } from "./_setup.ts";
 import { judgeImages } from "../src/db/schema.ts";
+import { eq } from "drizzle-orm";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 
 if (hasDb) {
+  // postgres.js 模式：原有文件迁移路径
   console.log("[setup] 开始数据库迁移...");
   try {
     await runMigrations();
     console.log("[setup] 数据库迁移完成");
 
-    // 创建 root 系统用户（UID=0）作为必需种子数据
-    // problems.owner_id 的 FK 约束依赖该用户存在
     await ensureRootUser();
     console.log("[setup] Root 用户就绪");
 
-    // 插入默认评测镜像白名单，确保 services/problems 等测试中的
-    // validateJudgeImage() 校验通过。幂等：按 image 名查询，不存在才插入。
     const db = getDb();
     const now = new Date().toISOString();
     const existing = await db
@@ -49,5 +50,13 @@ if (hasDb) {
     Deno.exit(1);
   }
 } else {
-  console.log("[setup] 跳过迁移（DATABASE_URL 未设置）");
+  // PGlite 模式：DDL SQL 引导
+  console.log("[setup] PGlite 模式：正在初始化 Schema...");
+  try {
+    await setupSchemaForTest();
+    console.log("[setup] PGlite Schema 和种子数据就绪");
+  } catch (err) {
+    console.error("[setup] PGlite 初始化失败:", err);
+    Deno.exit(1);
+  }
 }

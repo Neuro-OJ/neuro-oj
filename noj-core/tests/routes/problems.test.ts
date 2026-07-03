@@ -5,42 +5,26 @@ import { createProblem } from "../../src/services/problems.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { problems } from "../../src/db/schema.ts";
 
-const hasDb = !!Deno.env.get("DATABASE_URL");
+// PGlite 内存数据库始终可用
+const dbAvailable = true;
 const hasEnv = !!Deno.env.get("JWT_SECRET");
-const skipDb = !hasDb;
+const skipDb = !dbAvailable;
 const skipEnv = !hasEnv;
 
-// 创建测试题目供 PUT/DELETE 等需要已存在题目的测试使用
 const ts = Date.now();
-const TEST_PROBLEM_ID = `route-test-1001-${ts}`;
-const TEST_NUMBER = 20000 + (ts & 0x7fff);
 
-Deno.test({
-  name: "problems route: 初始化测试题目",
-  ignore: skipDb,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const db = getDb();
-    const now = new Date().toISOString();
-    await db.insert(problems).values({
-      id: TEST_PROBLEM_ID,
-      title: `测试题目 ${ts}`,
-      description: "测试描述",
-      difficulty: "easy",
-      judge_image: "noj-judge-python",
-      judge_command: "python3 /tmp/evaluate.py",
-      time_limit_ms: 5000,
-      memory_limit_mb: 512,
-      number: TEST_NUMBER,
-      owner_id: "0",
-      type: "U",
-      created_at: now,
-      updated_at: now,
-    });
-  },
+// 模块级 setup：创建跨测试共享的测试题目
+await resetDbForTest();
+const MODULE_PROBLEM = await createProblem({
+  title: `模块级测试题目 ${ts}`,
+  description: "测试描述",
+  difficulty: "easy",
+  judge_image: "noj-judge-python",
+  judge_command: "python3 /tmp/evaluate.py",
+  time_limit_ms: 5000,
+  memory_limit_mb: 512,
 });
+const TEST_PROBLEM_ID = MODULE_PROBLEM.id;
 
 Deno.test({
   name: "problems route: GET /api/v1/problems 返回分页列表",
@@ -101,7 +85,8 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/problems?keyword=舱门");
+    const res = await app.request("/api/v1/problems?keyword=" +
+      encodeURIComponent("测试"));
     assertEquals(res.status, 200);
   },
 });
@@ -113,17 +98,14 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    // 先创建一个带分类的题目，确保数据存在
-    await resetDbForTest();
-    const ts = Date.now();
-    const catId = `route-test-cat-${ts}`;
+    const catId = `route-test-cat-${Date.now()}`;
     const db = getDb();
     const { categories } = await import("../../src/db/schema.ts");
     const now = new Date().toISOString();
     await db.insert(categories).values({
       id: catId,
       name: "测试分类",
-      slug: `route-test-cat-${ts}`,
+      slug: `route-test-cat-${Date.now()}`,
       description: "",
       parent_id: null,
       level: 0,

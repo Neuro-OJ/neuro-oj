@@ -13,7 +13,7 @@ import {
 } from "../../src/services/rankings.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 
-const hasEnv = !!Deno.env.get("DATABASE_URL") &&
+const hasEnv = true && // DATABASE_URL 未设置时 PGlite 可用
   !!Deno.env.get("JWT_SECRET");
 
 /**
