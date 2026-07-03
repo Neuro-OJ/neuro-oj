@@ -8,10 +8,10 @@ Neuro OJ (NOJ) 是一个独立的在线评测系统，面向 AI
 | 模块      | 技术                        | 用途               |
 | --------- | --------------------------- | ------------------ |
 | noj-core  | Deno + Hono                 | RESTful API 服务端 |
-| noj-ui    | Nuxt 3 + Vue 3              | Web 前端           |
+| noj-ui    | Nuxt 4 + Vue 3              | Web 前端           |
 | noj-judge | Rust + Docker               | 评测 Worker        |
 | 中间件    | Redis                       | 消息队列           |
-| 数据库    | 待定（SQLite / PostgreSQL） | 持久化存储         |
+| 数据库    | PostgreSQL 16               | 持久化存储         |
 
 ## Phase 0：端到端 MVP
 
@@ -19,32 +19,32 @@ Neuro OJ (NOJ) 是一个独立的在线评测系统，面向 AI
 
 **noj-core**
 
-- [ ] 用户系统：注册、登录（JWT）
-- [ ] 题目 API：单题 CRUD，至少 1 道示例题含测试用例
-- [ ] 提交 API：接收代码，生成 submission_id
-- [ ] 评测结果 API：查询评测状态与结果
-- [ ] Redis MQ Producer：发布评测任务
+- [x] 用户系统：注册、登录（JWT）
+- [x] 题目 API：单题 CRUD，至少 1 道示例题含测试用例
+- [x] 提交 API：接收代码，生成 submission_id
+- [x] 评测结果 API：查询评测状态与结果
+- [x] Redis MQ Producer：发布评测任务
 
 **noj-ui**
 
-- [ ] 登录 / 注册页面
-- [ ] 题目页面：描述 + 代码编辑器
-- [ ] 提交结果页：状态、通过用例、耗时、内存
-- [ ] API 客户端封装（Nitro proxy）
+- [x] 登录 / 注册页面
+- [x] 题目页面：描述 + 代码编辑器
+- [x] 提交结果页：状态、通过用例、耗时、内存
+- [x] API 客户端封装（Nitro proxy）
 
 **noj-judge**
 
-- [ ] Redis MQ Consumer：拉取评测任务
-- [ ] Docker 沙箱：创建容器，注入代码，限制资源
-- [ ] 语言支持：Python 3
-- [ ] 评测逻辑：运行 → 逐用例对比 → AC / WA / TLE / MLE / RE
-- [ ] 结果回传 Redis
+- [x] Redis MQ Consumer：拉取评测任务
+- [x] Docker 沙箱：创建容器，注入代码，限制资源
+- [x] 语言支持：Python 3
+- [x] 评测逻辑：运行 → 逐用例对比 → AC / WA / TLE / MLE / RE
+- [x] 结果回传 Redis
 
 **基础设施**
 
-- [ ] 数据库建表与迁移
-- [ ] Redis 消息队列
-- [ ] Docker 环境
+- [x] 数据库建表与迁移
+- [x] Redis 消息队列
+- [x] Docker 环境
 
 ---
 
@@ -54,20 +54,20 @@ Neuro OJ (NOJ) 是一个独立的在线评测系统，面向 AI
 
 **noj-core**
 
-- [ ] 题目管理：CRUD + 难度标签 + 分类
+- [x] 题目管理：CRUD + 难度标签 + 分类
 - [ ] 多语言：Python、C++、Java、JavaScript
-- [ ] 提交历史：分页、筛选
-- [ ] 排行榜：通过数 / 通过率
-- [ ] 用户主页：统计、通过列表
-- [ ] 管理 API：题目导入导出
+- [x] 提交历史：分页、筛选
+- [x] 排行榜：通过数 / 通过率
+- [x] 用户主页：统计、通过列表
+- [x] 管理 API：题目导入导出
 
 **noj-ui**
 
-- [ ] 题目列表页：搜索、筛选、分页
-- [ ] 排行榜页面
-- [ ] 用户主页
-- [ ] 提交历史页
-- [ ] 管理后台：题目编辑器、用例管理
+- [x] 题目列表页：搜索、筛选、分页
+- [x] 排行榜页面
+- [x] 用户主页
+- [x] 提交历史页
+- [x] 管理后台：题目编辑器、用例管理
 
 **noj-judge**
 

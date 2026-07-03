@@ -37,6 +37,10 @@ noj-ui/
 │   ├── problems.vue       # 题目列表
 │   ├── problems/[id].vue  # 题目详情 + 代码提交
 │   ├── submissions/       # 提交历史
+│   ├── change-password.vue  # 强制改密
+│   ├── forgot-password.vue  # 忘记密码
+│   ├── reset-password.vue   # 重置密码
+│   ├── ranking.vue          # 用户榜单
 │   ├── admin/             # 管理后台（管理员，ssr: false）
 │   └── ...
 ├── components/            # 可复用 Vue 组件
@@ -47,6 +51,12 @@ noj-ui/
 │   ├── MarkdownRenderer.vue  # Markdown 渲染（DOMPurify 清洗）
 │   ├── MonacoEditor.vue   # 代码编辑器（CDN 加载 Monaco）
 │   ├── SubmissionTable.vue   # 提交历史表格
+│   ├── ProblemId.vue          # 彩色题号
+│   ├── StatusBadge.vue        # 解决状态标签
+│   ├── PaginationNav.vue      # 智能分页
+│   ├── admin/                 # 管理后台组件
+│   │   ├── AdminTable.vue
+│   │   └── AdminModal.vue
 │   ├── ui/                # 通用 UI 组件
 │   │   ├── BaseButton.vue
 │   │   ├── AsyncContent.vue
@@ -335,7 +345,7 @@ cd dist
 
 ## 已知限制
 
-- **无单元测试 / E2E 测试**：项目未配置测试框架
+- **无前端单元测试**：组件未配置独立的测试框架（跨模块 E2E 测试见 noj-tests）
 - **无 SEO 优化**：无 Open Graph 标签、结构化数据、sitemap
 - **无图片优化**：仅 `logo.jpg`，未使用 Nuxt 图片优化
 - **无字体优化**：使用系统字体栈，无 web font 加载

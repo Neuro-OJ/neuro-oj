@@ -10,22 +10,35 @@
 noj-tests/
 ├── deno.json                  # Deno 项目配置
 ├── E2E_TESTING.md             # 本文档
+├── run-e2e.sh                 # 一键运行脚本
 └── e2e/
-    ├── e2e.test.ts            # 主测试文件（5 个测试用例）
     ├── helper.ts              # 辅助函数（API 客户端、Docker Compose 管理）
+    ├── 01_categories.test.ts  # 分类管理（CRUD + 层级树）
+    ├── 02_problems.test.ts    # 题目管理（U/P 型 CRUD + 筛选）
+    ├── 03_auth.test.ts        # 认证流程（注册/登录/改密/管理员）
+    ├── 04_submissions.test.ts # 提交流程（AC/WA/TLE + 查看结果）
+    ├── 05_profile.test.ts     # 用户主页（信息+统计）
+    ├── 06_pipeline.test.ts    # 全管道（提交→MQ→评测→结果）
+    ├── 07_queue.test.ts       # 队列可见性+MQ可靠性
+    ├── 08_password_change_guard.test.ts  # 强制改密守卫
+    ├── 09_checkin.test.ts     # 每日签到
     └── support-package/       # 测试用支持包参考
         └── evaluate.py        # 示例评测脚本
 ```
 
 ### 测试覆盖
 
-| # | 测试用例 | 验证内容 | 代码模板 |
-|---|---------|---------|---------|
-| 1 | Accepted | 正确代码获得 Accepted | `a + b` 正确实现 |
-| 2 | Wrong Answer | 错误代码获得 WrongAnswer | 总是输出 0 |
-| 3 | TLE | 死循环触发 TimeLimitExceeded | `while True: pass` |
-| 4 | MQ 可靠性 | 结果被正确持久化到数据库 | 常规提交流程验证 |
-| 5 | 无效消息容错 | 非法 JSON 不阻塞后续消费 | 注入后正常提交 |
+| 测试文件 | 测试内容 | 关键验证点 |
+|---------|---------|------------|
+| `01_categories.test.ts` | 分类 CRUD + 层级树 | 创建/更新/删除分类，父子层级 |
+| `02_problems.test.ts` | 题目 CRUD + U/P 型 + 筛选 | 题型分离，URL 驱动筛选 |
+| `03_auth.test.ts` | 登录/注册/改密/管理员 | JWT Cookie，强制改密守卫 |
+| `04_submissions.test.ts` | 提交流程 AC/WA/TLE | 评测结果正确性 |
+| `05_profile.test.ts` | 用户主页信息统计 | 通过数，AC 率 |
+| `06_pipeline.test.ts` | 全管道端到端 | 提交→MQ→评测→结果→DB |
+| `07_queue.test.ts` | 队列可见性 + MQ 可靠性 | 队列状态，非法消息容错 |
+| `08_password_change_guard.test.ts` | 强制改密守卫 | 改密前访问限制 |
+| `09_checkin.test.ts` | 每日签到 | 连续签到天数计算 |
 
 ## 前置条件
 

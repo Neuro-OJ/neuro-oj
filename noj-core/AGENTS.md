@@ -42,7 +42,7 @@ noj-core/
 │   ├── db/                # 数据库连接 & Drizzle schema
 │   │   ├── index.ts       # 数据库连接管理（单例模式）
 │   │   ├── migrate.ts     # 迁移执行器（绝对路径解析，不依赖 CWD）
-│   │   └── schema/        # Drizzle 表定义
+│   │   └── schema.ts      # Drizzle 表定义（13 张表）
 │   ├── middleware/         # 认证中间件
 │   ├── mq/                # Redis 消息队列（Producer + Consumer + RPC）
 │   │   ├── connection.ts   #   连接管理（共享 + 消费者 + Pub/Sub）
@@ -261,6 +261,12 @@ docker compose down     # 停止
 | `submissions`         | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                         | PK, FK→users, FK→problems, idx(user_id,created_at)             |
 | `evaluation_results`  | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                     | PK, UK(submission_id), FK→submissions                          |
 | `check_ins`           | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                           | PK, FK→users, UK(user_id,checkin_date)                         |
+| `judge_images`        | `id`(UUID), `image`(text), `enabled`(bool)                                                                                   | PK, UK(image)                                                   |
+| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                                 | PK, FK→users, UK(token_hash)                                    |
+| `conversations`        | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                                 | PK, FK→users, UK(participant_a,participant_b)                   |
+| `messages`             | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                             | PK, FK→conversations, idx(conversation_id,created_at)           |
+| `conversation_reads`   | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                              | PK, FK→conversations, FK→users, UK(conversation_id,user_id)     |
+| `message_deletions`    | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                     | PK, FK→messages, FK→users                                      |
 
 **设计要点**：
 

@@ -89,23 +89,29 @@ neuro-oj/
 │   ├── drizzle.config.ts # Drizzle Kit 配置
 │   ├── drizzle/          # SQL 迁移文件（自动生成，勿手动编辑 _journal.json）
 │   │   ├── meta/_journal.json
-│   │   └── 0000_*.sql    # 通过 0005 共 6 个迁移文件
+│   │   └── 0000_*.sql    # 截至 0010 共 12 个迁移文件
 │   ├── .env.example      # 环境变量模板（不提交 .env）
 │   ├── src/
 │   │   ├── main.ts       # 入口（启动校验 + 初始化顺序）
 │   │   ├── app.ts        # Hono 应用工厂（CORS + 路由 + 错误处理）
 │   │   ├── mod.ts        # 公共导出
 │   │   ├── routes/       # 路由层（参数校验 + 调用 service）
-│   │   │   ├── auth.ts, categories.ts, health.ts
-│   │   │   ├── problems.ts, queue.ts
+│   │   │   ├── admin.ts, auth.ts, categories.ts
+│   │   │   ├── checkin.ts, conversations.ts
+│   │   │   ├── health.ts, problems.ts, queue.ts
+│   │   │   ├── rankings.ts, sse.ts
 │   │   │   ├── submissions.ts, users.ts
 │   │   ├── services/     # 业务逻辑层（数据库读写）
-│   │   │   ├── auth.ts, categories.ts, problems.ts
-│   │   │   ├── queue.ts, submissions.ts, users.ts
+│   │   │   ├── auth.ts, categories.ts, checkin.ts
+│   │   │   ├── conversations.ts, judge-images.ts
+│   │   │   ├── passwordReset.ts, problems.ts
+│   │   │   ├── queue.ts, rankings.ts, sse.ts
+│   │   │   ├── submissions.ts, support-package.ts
+│   │   │   ├── users.ts
 │   │   ├── db/
 │   │   │   ├── connection.ts  # 数据库连接管理（单例模式）
 │   │   │   ├── migrate.ts     # 迁移执行器（绝对路径解析，不依赖 CWD）
-│   │   │   └── schema.ts      # Drizzle 表定义（7 张表）
+│   │   │   └── schema.ts      # Drizzle 表定义（13 张表）
 │   │   ├── middleware/
 │   │   │   └── auth.ts        # JWT 认证中间件
 │   │   ├── mq/
@@ -154,7 +160,11 @@ neuro-oj/
 │   │   ├── problems/[id]/edit.vue # 编辑题目（ssr: false）
 │   │   ├── submissions/        # 提交历史（筛选/状态标签/分页）
 │   │   ├── submissions/[id].vue # 提交详情（1.5s 轮询+高亮代码）
+│   │   ├── change-password.vue  # 强制改密（首次登录）
+│   │   ├── forgot-password.vue  # 忘记密码
+│   │   ├── reset-password.vue   # 重置密码
 │   │   ├── queue.vue           # 队列状态（2s 轮询）
+│   │   ├── ranking.vue         # 用户榜单
 │   │   ├── about.vue, settings.vue
 │   │   ├── users/[id].vue      # 用户主页
 │   │   ├── my/problems.vue     # 我的题目（U 型）
@@ -205,11 +215,13 @@ neuro-oj/
 │   ├── docker/
 │   │   └── python/Dockerfile  # 评测运行时（python:3.12-slim）
 │   ├── src/
-│   │   ├── main.rs        # 入口（双模式：Pool / Semaphore）
+│   │   ├── main.rs        # 入口（容器池模式，无 Semaphore 退化路径）
 │   │   ├── lib.rs          # 库入口（暴露模块给集成测试）
 │   │   ├── config.rs       # 环境变量配置（PoolConfig + 全局配置）
 │   │   ├── types.rs        # JudgeTask, JudgeResult, CaseResult
 │   │   ├── mq.rs           # Redis MQ 拉取/推送（重试 + fallback 文件）
+│   │   ├── mq/
+│   │   │   └── rpc.rs      # Redis RPC 客户端（core↔judge 通信）
 │   │   ├── sandbox/
 │   │   │   ├── mod.rs
 │   │   │   └── container.rs # 容器生命周期 + zip 解压 + 命令解析
@@ -217,11 +229,9 @@ neuro-oj/
 │   │   │   ├── mod.rs
 │   │   │   └── runner.rs    # 评测逻辑（---RESULT--- 解析 + 超时/OOM 检测）
 │   │   └── pool/
-│   │       ├── mod.rs       # PoolManager（容器池 + RAII Guard + 健康检查）
+│   │       ├── mod.rs       # PoolManager（固定池，懒回补 + 健康检查）
 │   │       ├── copy.rs      # tar 打包 + docker exec 注入文件
-│   │       ├── exec.rs      # docker exec + cgroup 内存峰值读取
-│   │       ├── metrics.rs   # Prometheus /metrics HTTP 端点
-│   │       └── scaler.rs    # 自动扩缩容（滑动窗口 QPS + 排队时间）
+│   │       └── exec.rs      # docker exec + cgroup 内存峰值读取
 │   └── tests/
 │       ├── common/mod.rs    # 测试公共辅助函数
 │       ├── e2e/
@@ -250,10 +260,10 @@ neuro-oj/
 │
 ├── openspec/              # OpenSpec 规范驱动开发
 │   ├── config.yaml
-│   ├── specs/             # 主规范（26 个）
+│   ├── specs/             # 主规范（38 个）
 │   └── changes/           # 变更提案
-│       ├── u-p-problem-bank-split/  # 活跃变更（当前开发中）
-│       └── archive/       # 已归档变更（16 个）
+│       ├── user-ranking/  # 活跃变更（当前开发中）
+│       └── archive/       # 已归档变更（35 个）
 │
 ├── scripts/               # 构建与维护脚本
 │   ├── build-packages.sh
@@ -333,7 +343,7 @@ docker compose down     # 停止
 3. 从环境变量加载配置
 4. 连接 Redis + PING 验证
 5. 连接 Docker + PING 验证
-6. 根据模式：PoolManager::init（启动后台任务 -> 事件循环）或 Semaphore 循环
+6. PoolManager::init（启动后台任务 -> 事件循环）
 7. ctrl_c() 信号处理（SIGINT）触发优雅关闭
 
 ### 快速启动
@@ -556,7 +566,7 @@ jj git push
 
 ## 8. 测试体系
 
-### noj-core 测试（Deno，~19 个测试文件）
+### noj-core 测试（Deno，37 个测试文件）
 
 ```bash
 cd noj-core && deno task test
@@ -610,7 +620,7 @@ NOJ_RUN_E2E=1 deno task test:e2e
 **e2e.yml** -- 全链路管道测试，PR/推送 main 时运行：
 - 构建支持包 + 评测镜像 + Docker Compose
 - 启动完整评测栈（noj-core + noj-judge + PG + Redis）
-- 运行 noj-tests E2E（52 个测试）
+- 运行 noj-tests E2E（70 个测试）
 - 运行 noj-judge Docker 沙箱 E2E（12 个测试）
 - 首次 ~15min，缓存命中后 ~5-8min
 - 超时 60min，always() 输出诊断日志
@@ -626,17 +636,20 @@ NOJ_RUN_E2E=1 deno task test:e2e
 ```
 openspec/
 ├── config.yaml          # OpenSpec 配置
-├── specs/               # 主规范（26 个活跃 spec）
+├── specs/               # 主规范（38 个活跃 spec）
 │   ├── database-schema/ # 数据库 Schema
 │   ├── user-auth/       # 用户认证
 │   ├── problem-*/       # 题目管理相关
 │   ├── judge-*/         # 评测相关
 │   ├── admin-*/         # 管理后台
 │   ├── container-pool/  # 容器池
+│   ├── checkin/         # 每日签到
+│   ├── private-messaging/  # 站内私信
+│   ├── sse-*/           # SSE 推送
 │   └── ...
 └── changes/             # 变更提案
-    ├── u-p-problem-bank-split/  # 活跃变更
-    └── archive/         # 16 个已归档变更
+    ├── user-ranking/  # 活跃变更（用户榜单）
+    └── archive/         # 35 个已归档变更
 ```
 
 ### 开发历史（按时间线）
@@ -647,7 +660,11 @@ openspec/
 4. 2026-06-23: judge-queue-visibility
 5. 2026-06-24: e2e-tests + ui-problem-list + migrate-to-cookies
 6. 2026-06-25: admin-panel-frontend + submission-history
-7. 2026-06-26: u-p-problem-bank-split（当前活跃）
+7. 2026-06-27: u-p-problem-bank-split + enrich-admin-api（双题库分离+管理API增强）
+8. 2026-06-29: email-provider + password-reset + sse-push-fallback（邮件服务+密码重置+SSE推送）
+9. 2026-06-30: admin-bootstrap-force-password + daily-checkin + submission-rejudge（引导管理员+签到+重测）
+10. 2026-07-02: container-pool-simplify + semaphore-remove + image-whitelist + support-package-upload（容器池重构+镜像白名单+支持包上传）
+11. 2026-07-03: private-messaging + pglite-test-migration + user-ranking（站内私信+PGlite测试迁移+用户榜单）
 
 ---
 
@@ -664,13 +681,8 @@ openspec/
 
 ### 已知遗留问题
 
-**noj-judge Scaler 已知 Bug**（来自 scaler-review-output.json）：
-1. 事件到达时间戳压缩：arrival 时间戳在批处理消费时使用 Instant::now()，QPS 计算失真
-2. QPS 分母与窗口不匹配：分母使用 1x interval，裁剪窗口 1.5x，QPS 被高估 50%
-3. sample_count 永不重置：miss_rate 分母永不清零，扩容触发条件永远不满足
 
 **前端已知限制**：
-- 无单元测试 / E2E 测试
 - 无 SEO 优化（无 OG 标签、sitemap）
 - 无图片优化（仅 logo.jpg）
 - 无 web fonts（使用系统字体栈）

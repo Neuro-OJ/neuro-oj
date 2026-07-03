@@ -2,7 +2,7 @@
 # Neuro OJ — 全链路 E2E 测试
 #
 # 在每个 PR 和推送到 main 时运行完整的端到端测试：
-#   - noj-tests 全量 E2E（50 API + 管道 + 队列可见性测试）
+#   - noj-tests 全量 E2E（70 API + 管道 + 队列可见性测试）
 #   - noj-judge Docker 沙箱 E2E（12 个测试）
 #
 # 使用 Docker Compose 编排完整评测栈（noj-core + noj-judge + PostgreSQL + Redis）。
