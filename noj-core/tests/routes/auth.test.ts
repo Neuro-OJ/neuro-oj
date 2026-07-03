@@ -113,6 +113,15 @@ async function cleanupUser(username: string) {
   }
 }
 
+// 模块级 bootstrap：确保 PGlite schema 已创建
+await resetDbForTest();
+
+// 没有 Redis 时禁用限流，避免登录/改密路由因 Redis 不可用返回 503
+// 限流相关测试（如 429）已独立检查 hasRedis 并跳过
+if (!hasRedis) {
+  Deno.env.set("RATE_LIMIT_ENABLED", "false");
+}
+
 Deno.test({
   name: "routes: POST /register 成功返回 201",
   ignore: skip,
@@ -473,12 +482,19 @@ Deno.test({
 
 // ── 速率限制测试（issue #73）──────────────────────────────
 
-/** 临时启用限流（绕过 NOJ_ENV=test 的全局关闭） */
+/** 临时启用限流（绕过 NOJ_ENV=test 的全局关闭和 RATE_LIMIT_ENABLED=false） */
 function enableRateLimitForTest() {
-  const prev = Deno.env.get("NOJ_ENV") ?? "";
-  Deno.env.set("NOJ_ENV", "development"); // 让 isRateLimitEnabled() 返回 true
+  const prevNojEnv = Deno.env.get("NOJ_ENV") ?? "";
+  const prevRl = Deno.env.get("RATE_LIMIT_ENABLED");
+  Deno.env.set("NOJ_ENV", "development");
+  Deno.env.set("RATE_LIMIT_ENABLED", "true");
   return () => {
-    Deno.env.set("NOJ_ENV", prev);
+    Deno.env.set("NOJ_ENV", prevNojEnv);
+    if (prevRl !== undefined) {
+      Deno.env.set("RATE_LIMIT_ENABLED", prevRl);
+    } else {
+      Deno.env.delete("RATE_LIMIT_ENABLED");
+    }
   };
 }
 

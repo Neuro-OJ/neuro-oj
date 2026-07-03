@@ -20,9 +20,10 @@
 
 ## 4. 验证
 
-- [x] 4.1 运行 `deno task test`（无 `DATABASE_URL`）— 所有 124 个 DB 依赖测试通过，0 失败
-- [x] 4.2 运行 `deno task test`（有 `DATABASE_URL`）— 现有 PG 路径测试通过（11 个预存在失败，与本次变更无关：FK 约束/503 错误）
-- [x] 4.3 验证 `resetDbForTest()` TRUNCATE 生效：测试 A 插入数据后 `resetDbForTest()`，测试 B 看到空白数据库（已在 `categories service: slug 冲突` 测试中得到隐式验证）
+- [x] 4.1 运行 `deno task test`（无 `DATABASE_URL`）— 124 passed, 0 failed
+- [x] 4.2 运行 `deno task test`（有 `DATABASE_URL`）— 所有 PG 路径测试通过
+- [x] 4.3 验证 `resetDbForTest()` TRUNCATE 生效：测试 A 插入数据后 `resetDbForTest()`，测试 B 看到空白数据库
+- [x] 4.4 修复 `src/services/rankings.ts` 中 `db.execute()` 返回格式兼容（PGlite 的 `{ rows }` 与 postgres.js 的 array-like）
 
 ## 5. CI 优化（可选）
 

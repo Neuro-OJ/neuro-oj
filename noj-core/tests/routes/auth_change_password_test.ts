@@ -16,9 +16,18 @@ import { eq } from "drizzle-orm";
 import { registerUser } from "../../src/services/auth.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 
+// 模块级 bootstrap：确保 PGlite schema 已创建
+await resetDbForTest();
+
 const hasDb = true; // PGlite 内存数据库始终可用
 const hasJwt = !!Deno.env.get("JWT_SECRET");
 const hasRedis = !!Deno.env.get("REDIS_URL");
+
+// 没有 Redis 时禁用限流，避免 change-password 路由因 Redis 不可用返回 503
+// 路由层挂载了 loginIpRateLimit 中间件，无 Redis 时会抛 ServiceUnavailableError
+if (!hasRedis) {
+  Deno.env.set("RATE_LIMIT_ENABLED", "false");
+}
 const skip = !(hasDb && hasJwt);
 
 // 确保 Redis 在路由测试前连接，避免 rate limiter 抛 503

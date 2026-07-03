@@ -119,7 +119,8 @@ async function main() {
 
   // 启动 Judge RPC 处理器（响应 judge 的镜像白名单等请求）
   const redisForRpc = createConsumerRedis();
-  startJudgeRpcHandler(redisForRpc);
+  // deno-lint-ignore no-explicit-any
+  startJudgeRpcHandler(redisForRpc as any);
 
   // 初始化 Redis Pub/Sub 事件订阅者（后台运行，用于 SSE 推送）
   initEventSubscriber();

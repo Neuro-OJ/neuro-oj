@@ -11,6 +11,9 @@ const hasDb = true; // PGlite 内存数据库始终可用
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasDb || !hasEnv;
 
+// 模块级 bootstrap：确保 PGlite schema 已创建
+await resetDbForTest();
+
 Deno.test({
   name: "admin route: PATCH /api/v1/admin/users/:id/role 未登录返回 401",
   ignore: skip,

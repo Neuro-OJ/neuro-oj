@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq, and, or } from "drizzle-orm";
-import { getDb } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { conversations, users } from "../../src/db/schema.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 import {
@@ -14,6 +14,9 @@ import {
   deleteMessage,
 } from "../../src/services/messages.ts";
 import { BadRequestError, NotFoundError } from "../../src/lib/errors.ts";
+
+// 模块级 bootstrap：确保 PGlite schema 已创建
+await resetDbForTest();
 
 const hasEnv = true && // DATABASE_URL 未设置时 PGlite 可用
   !!Deno.env.get("JWT_SECRET");

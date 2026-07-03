@@ -11,10 +11,13 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq, or } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
-import { getDb } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { conversations, users } from "../../src/db/schema.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 import { signToken } from "../../src/lib/jwt.ts";
+
+// 模块级 bootstrap：确保 PGlite schema 已创建
+await resetDbForTest();
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const hasJwt = !!Deno.env.get("JWT_SECRET");

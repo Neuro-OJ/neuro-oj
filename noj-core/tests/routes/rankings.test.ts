@@ -2,6 +2,10 @@ import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
 import rankings from "../../src/routes/rankings.ts";
 import { AppError } from "../../src/lib/errors.ts";
+import { resetDbForTest } from "../../src/db/connection.ts";
+
+// 模块级 bootstrap：确保 PGlite schema 已创建
+await resetDbForTest();
 
 const hasEnv = true && // DATABASE_URL 未设置时 PGlite 可用
   !!Deno.env.get("JWT_SECRET");

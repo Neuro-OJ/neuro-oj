@@ -1,5 +1,9 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
+import { resetDbForTest } from "../../src/db/connection.ts";
+
+// 模块级 bootstrap：确保 PGlite schema 已创建
+await resetDbForTest();
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const hasDb = true; // PGlite 内存数据库始终可用
