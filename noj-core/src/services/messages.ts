@@ -79,7 +79,7 @@ export async function findOrCreateConversation(
     return { conversation, created: true };
   } catch (err: unknown) {
     // 并发创建冲突（PG 23505），返回已有会话
-    if (err instanceof Error && err.message?.includes("23505")) {
+    if (err && typeof err === "object" && "code" in err && err.code === "23505") {
       const [existingAfterConflict] = await getDb()
         .select()
         .from(conversations)
@@ -139,6 +139,14 @@ export async function sendMessage(
   conversationId: string,
   content: string,
 ) {
+  // 防御性校验 — 路由层已校验，service 层再加一道防止绕过
+  if (!content || content.trim().length === 0) {
+    throw new BadRequestError("消息内容不能为空");
+  }
+  if (content.length > MAX_MESSAGE_LENGTH) {
+    throw new BadRequestError(`消息内容不能超过 ${MAX_MESSAGE_LENGTH} 字符`);
+  }
+
   const { otherUserId } = await assertParticipant(userId, conversationId);
 
   const now = new Date().toISOString();

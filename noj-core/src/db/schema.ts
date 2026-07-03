@@ -289,6 +289,10 @@ export const conversations = pgTable(
       table.user1_id,
       table.user2_id,
     ),
+    userOrderCheck: check(
+      "conversations_user_order_check",
+      sql`${table.user1_id} < ${table.user2_id}`,
+    ),
     user1_idx: index("idx_conversations_user1_id").on(table.user1_id),
     user2_idx: index("idx_conversations_user2_id").on(table.user2_id),
     last_msg_idx: index("idx_conversations_last_message_at").on(

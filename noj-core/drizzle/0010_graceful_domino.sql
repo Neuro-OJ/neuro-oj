@@ -4,7 +4,8 @@ CREATE TABLE "conversations" (
 	"user2_id" text NOT NULL,
 	"last_message_at" text NOT NULL,
 	"created_at" text NOT NULL,
-	CONSTRAINT "conversations_user_pair_unique" UNIQUE("user1_id","user2_id")
+	CONSTRAINT "conversations_user_pair_unique" UNIQUE("user1_id","user2_id"),
+	CONSTRAINT "conversations_user_order_check" CHECK("user1_id" < "user2_id")
 );
 --> statement-breakpoint
 CREATE TABLE "messages" (

@@ -350,7 +350,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "conversations_user_order_check": {
+          "name": "conversations_user_order_check",
+          "definition": "CHECK(\"user1_id\" < \"user2_id\")"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.evaluation_results": {

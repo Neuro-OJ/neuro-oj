@@ -29,10 +29,16 @@ router.use("*", authMiddleware);
  */
 router.get("/", async (c) => {
   const userId = c.get("userId");
-  let page = parseInt(c.req.query("page") ?? "", 10);
-  let perPage = parseInt(c.req.query("per_page") ?? "", 10);
-  if (isNaN(page) || page < 1) page = 1;
-  if (isNaN(perPage) || perPage < 1) perPage = 20;
+  const pageRaw = c.req.query("page");
+  const perPageRaw = c.req.query("per_page");
+  const page = pageRaw === undefined ? 1 : Number(pageRaw);
+  if (!Number.isInteger(page) || page < 1) {
+    throw new BadRequestError("page 必须为正整数");
+  }
+  let perPage = perPageRaw === undefined ? 20 : Number(perPageRaw);
+  if (!Number.isInteger(perPage) || perPage < 1) {
+    throw new BadRequestError("per_page 必须为正整数");
+  }
   if (perPage > 100) perPage = 100;
 
   const result = await listConversations(userId, page, perPage);
@@ -78,10 +84,16 @@ router.get("/:id/messages", async (c) => {
   const userId = c.get("userId");
   const conversationId = c.req.param("id");
 
-  let page = parseInt(c.req.query("page") ?? "", 10);
-  let perPage = parseInt(c.req.query("per_page") ?? "", 10);
-  if (isNaN(page) || page < 1) page = 1;
-  if (isNaN(perPage) || perPage < 1) perPage = 50;
+  const pageRaw = c.req.query("page");
+  const perPageRaw = c.req.query("per_page");
+  const page = pageRaw === undefined ? 1 : Number(pageRaw);
+  if (!Number.isInteger(page) || page < 1) {
+    throw new BadRequestError("page 必须为正整数");
+  }
+  let perPage = perPageRaw === undefined ? 50 : Number(perPageRaw);
+  if (!Number.isInteger(perPage) || perPage < 1) {
+    throw new BadRequestError("per_page 必须为正整数");
+  }
   if (perPage > 100) perPage = 100;
 
   const result = await listMessages(userId, conversationId, page, perPage);
