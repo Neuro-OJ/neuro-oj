@@ -371,3 +371,31 @@ export const messageDeletions = pgTable(
     msg_idx: index("idx_message_deletions_message_id").on(table.message_id),
   }),
 );
+
+/**
+ * 系统设置 KV 表（issue #99）。
+ * 管理员运行时可变配置持久化层。
+ *
+ * - 运行时读取优先级：DB value > envFallback > SETTING_DEFINITIONS.default
+ * - 写入由 services/system-settings.ts 做严格 type 校验 + 敏感字段掩码
+ * - 审计日志走 console.log("[admin] ...")，issue #101 落库后迁移
+ */
+export const systemSettings = pgTable(
+  "system_settings",
+  {
+    key: text("key").primaryKey(),
+    /** JSON 编码字符串（boolean/string/text 三种类型共存） */
+    value: text("value").notNull(),
+    description: text("description").notNull().default(""),
+    is_secret: boolean("is_secret").notNull().default(false),
+    updated_at: text("updated_at").notNull(),
+    updated_by: text("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => ({
+    updatedAtIdx: index("idx_system_settings_updated_at").on(
+      table.updated_at,
+    ),
+  }),
+);

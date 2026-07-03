@@ -92,6 +92,13 @@
       "when": 1783036800000,
       "tag": "0011_support_package_storage_url",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1783120000000,
+      "tag": "0012_system_settings",
+      "breakpoints": true
     }
   ]
 }

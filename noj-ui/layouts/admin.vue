@@ -10,6 +10,7 @@ import {
   PanelLeft,
   ArrowLeftFromLine,
   Container,
+  Settings,
 } from "@lucide/vue"
 
 const route = useRoute()
@@ -41,6 +42,7 @@ const navItems: NavItem[] = [
   { label: "分类管理", to: "/admin/categories", icon: Tags },
   { label: "评测镜像", to: "/admin/judge-images", icon: Container },
   { label: "提交管理", to: "/admin/submissions", icon: Files },
+  { label: "系统设置", to: "/admin/settings", icon: Settings },
 ]
 
 function isActive(path: string) {

@@ -1,7 +1,11 @@
 import { Hono } from "hono";
 import { adminMiddleware, authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
-import { BadRequestError, ValidationError } from "../lib/errors.ts";
+import {
+  BadRequestError,
+  NotFoundError,
+  ValidationError,
+} from "../lib/errors.ts";
 import { listUsers, promoteUser } from "../services/auth.ts";
 import { getDashboardStats } from "../services/dashboard.ts";
 import { listAllProblems } from "../services/problems.ts";
@@ -22,6 +26,12 @@ import {
   rejudgeProblemSubmissions,
   rejudgeSubmission,
 } from "../services/submissions.ts";
+import {
+  getSetting,
+  listSettings,
+  resetSetting,
+  updateSetting,
+} from "../services/system-settings.ts";
 import { adminUpdateUserProfile } from "../services/users.ts";
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
@@ -272,6 +282,59 @@ router.delete("/judge-images/:id", async (c) => {
 router.get("/dashboard/stats", async (c) => {
   const stats = await getDashboardStats();
   return c.json({ data: stats });
+});
+
+// ─── 系统设置（issue #99）───────────────────────────────────
+
+/**
+ * 列出所有系统设置项（DB-backed 5 项 + env-only N 项）。
+ * GET /api/v1/admin/settings
+ *
+ * 注意：必须先注册静态路径 `/settings`，再注册参数化路径 `/settings/:key`，
+ * 否则 `GET /settings` 会被 `/settings/:key` 误匹配。
+ */
+router.get("/settings", (c) => {
+  const items = listSettings();
+  return c.json({ data: items });
+});
+
+/**
+ * 获取单个设置项详情。
+ * GET /api/v1/admin/settings/:key
+ */
+router.get("/settings/:key", (c) => {
+  const key = c.req.param("key") as string;
+  const value = getSetting(key);
+  if (!value) {
+    throw new NotFoundError(`设置项不存在: ${key}`);
+  }
+  return c.json({ data: { key, ...value } });
+});
+
+/**
+ * 更新单个设置项（UPSERT）。
+ * PUT /api/v1/admin/settings/:key
+ * body: { value: boolean | string }
+ */
+router.put("/settings/:key", async (c) => {
+  const key = c.req.param("key") as string;
+  const body = await parseJsonBody<{ value: unknown }>(c);
+  if (!("value" in body)) {
+    throw new BadRequestError("请求体必须包含 value 字段");
+  }
+  const item = await updateSetting(key, body.value, c.get("userId"));
+  return c.json({ data: item }, 200);
+});
+
+/**
+ * 重置单个设置项（DELETE FROM system_settings，回退到 env/default）。
+ * DELETE /api/v1/admin/settings/:key
+ * 幂等：DB 不存在也正常返回 204。
+ */
+router.delete("/settings/:key", async (c) => {
+  const key = c.req.param("key") as string;
+  await resetSetting(key, c.get("userId"));
+  return c.body(null, 204);
 });
 
 export default router;

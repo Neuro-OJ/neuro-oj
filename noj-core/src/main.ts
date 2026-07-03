@@ -4,8 +4,11 @@ import { connectRedis, createConsumerRedis } from "./mq/connection.ts";
 import { startResultConsumerWithRetry } from "./mq/consumer.ts";
 import { startJudgeRpcHandler } from "./mq/judge-rpc.ts";
 import { initEventSubscriber } from "./lib/event-bus.ts";
+import { snapshotEnv } from "./lib/env-snapshot.ts";
+import { validateRegistry } from "./lib/settings-registry.ts";
 import { ensureRootUser } from "./services/auth.ts";
 import { getStorageProvider } from "./lib/storage/mod.ts";
+import { initSystemSettings } from "./services/system-settings.ts";
 
 const app = createApp();
 
@@ -102,6 +105,28 @@ async function main() {
     console.error("Root 用户创建失败，终止启动:", err);
     Deno.exit(1);
   }
+
+  // 校验系统设置注册表（issue #99）
+  // 启动期检查：key 唯一、type 合法。开发期就发现问题。
+  try {
+    validateRegistry();
+  } catch (err) {
+    console.error("系统设置注册表校验失败，终止启动:", err);
+    Deno.exit(1);
+  }
+
+  // 初始化系统设置缓存（issue #99）
+  // 从 system_settings 全量加载到内存 Map，失败时终止启动。
+  try {
+    await initSystemSettings();
+  } catch (err) {
+    console.error("系统设置缓存初始化失败，终止启动:", err);
+    Deno.exit(1);
+  }
+
+  // 启动期 env 快照（issue #99）
+  // 一次性读取 env-only 设置项到内存 Map，admin 面板只读展示。
+  snapshotEnv();
 
   // 邮件 Provider 配置检查（非致命，配置缺失时降级到 mock）
   checkEmailProviderConfig();
