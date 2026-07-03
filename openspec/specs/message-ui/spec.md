@@ -1,6 +1,6 @@
 私信系统前端界面。覆盖会话列表页、聊天详情页、导航栏未读徽标和用户主页入口。
 
-## 需求
+## Requirements
 
 ### Requirement: 私信 Composable
 系统 SHALL 提供 Vue composable 封装私信功能的 API 调用和状态管理。

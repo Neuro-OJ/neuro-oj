@@ -1,6 +1,6 @@
 私信系统后端 API。覆盖会话 CRUD、消息收发、已读追踪、未读计数、消息删除和 SSE 实时推送。
 
-## 需求
+## Requirements
 
 ### Requirement: 会话创建与查找
 系统 SHALL 允许用户根据对方用户 ID 创建或查找会话。
