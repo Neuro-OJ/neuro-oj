@@ -2,10 +2,22 @@ import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { ValidationError } from "../lib/errors.ts";
-import { getUserProfile, updateUserProfile } from "../services/users.ts";
+import { getUserProfile, searchUsers, updateUserProfile } from "../services/users.ts";
 import { getMyRanking } from "../services/rankings.ts";
 
 const users = new Hono<{ Variables: { userId: string; userRole: string } }>();
+
+/**
+ * 搜索用户。
+ * GET /api/v1/users/search?q=关键词
+ * 需要登录，用于私信搜索联系人。必须在 /:id/profile 之前注册，
+ * 避免 "search" 被捕获为 :id。
+ */
+users.get("/search", authMiddleware, async (c) => {
+  const query = c.req.query("q") || "";
+  const result = await searchUsers(query);
+  return c.json({ data: result });
+});
 
 /**
  * 更新当前用户个人资料。

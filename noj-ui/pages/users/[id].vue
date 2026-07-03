@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import { useRoute } from "vue-router"
-import { CheckCircle, Clock, Server, Calendar, FileText, Code } from "@lucide/vue"
+import { CheckCircle, Clock, Server, Calendar, FileText, Code, Send } from "@lucide/vue"
+import { useMessages } from "~/composables/useMessages"
+import { useToast } from "~/composables/useToast"
 
 const route = useRoute()
+const router = useRouter()
 const { user: currentUser } = useAuth()
+const { findOrCreateConversation } = useMessages()
+const { toast } = useToast()
 
 const userId = route.params.id as string
 
@@ -127,6 +132,15 @@ function formatDate(iso: string): string {
   })
 }
 
+async function startConversation() {
+  try {
+    await findOrCreateConversation(userId)
+    router.push(`/messages`)
+  } catch {
+    toast.error("无法创建会话")
+  }
+}
+
 function formatScore(raw: number | null | undefined): string {
   if (raw === undefined || raw === null) return "--"
   return (raw / 100).toFixed(1)
@@ -173,6 +187,15 @@ function formatScore(raw: number | null | undefined): string {
             >
               编辑个人资料
             </NuxtLink>
+            <!-- 发送私信按钮（查看他人主页时显示） -->
+            <button
+              v-else-if="currentUser"
+              class="btn btn-outline text-xs px-3 py-1.5 flex items-center gap-1.5"
+              @click="startConversation"
+            >
+              <Send :size="14" />
+              发送私信
+            </button>
           </div>
 
           <!-- Bio（Markdown 渲染） -->

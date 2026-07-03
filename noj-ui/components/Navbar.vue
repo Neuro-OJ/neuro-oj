@@ -24,6 +24,19 @@
                 </template>
                 <div v-else-if="isLoggedIn" class="relative flex items-center gap-3" @mouseenter="onMenuEnter" @mouseleave="onMenuLeave">
                     <NuxtLink :to="`/users/${user?.id}`" class="text-base text-text-secondary font-medium no-underline transition-colors hover:text-primary">{{ user?.username }}</NuxtLink>
+                    <!-- 私信图标 + 未读徽标 -->
+                    <NuxtLink
+                      to="/messages"
+                      class="relative flex items-center justify-center size-9 rounded-full text-text-secondary bg-none border-none cursor-pointer transition-colors hover:bg-primary-hover-bg hover:text-primary no-underline"
+                    >
+                      <Mail :size="20" />
+                      <span
+                        v-if="unreadCount > 0"
+                        class="absolute -top-1 -right-1 z-50 flex items-center justify-center min-w-[20px] h-[20px] px-1 text-[11px] font-bold text-white bg-red-600 rounded-full leading-none shadow-sm"
+                      >
+                        {{ unreadCount > 99 ? "99+" : unreadCount }}
+                      </span>
+                    </NuxtLink>
                     <button class="flex items-center justify-center size-9 rounded-full text-text-secondary bg-none border-none cursor-pointer transition-colors hover:bg-primary-hover-bg hover:text-primary">
                         <User :size="22" />
                     </button>
@@ -55,12 +68,45 @@
 </template>
 
 <script setup lang="ts">
-import { User, Database, Settings, LogOut, ShieldCheck, BookOpen } from "@lucide/vue"
+import { User, Database, Settings, LogOut, ShieldCheck, BookOpen, Mail } from "@lucide/vue"
 import logoSrc from "~/assets/img/logo.jpg"
 
 const route = useRoute()
 const router = useRouter()
 const { user, isLoggedIn, logout } = useAuth()
+
+const unreadCount = ref(0)
+let unreadPollTimer: ReturnType<typeof setInterval> | null = null
+
+// 每 30 秒轮询未读数
+async function fetchUnreadCount() {
+  if (!isLoggedIn.value) return
+  try {
+    const res = await fetch("/api/v1/conversations/unread-count", {
+      credentials: "same-origin",
+      headers: { accept: "application/json" },
+    })
+    const json = await res.json()
+    console.log("[Navbar] unread_count:", json.unread_count)
+    unreadCount.value = json.unread_count ?? 0
+  } catch (e) {
+    console.warn("[Navbar] fetch 失败:", e)
+  }
+}
+
+watch(isLoggedIn, (val) => {
+  if (!import.meta.client) return
+  if (val) {
+    fetchUnreadCount()
+    if (!unreadPollTimer) {
+      unreadPollTimer = setInterval(fetchUnreadCount, 30_000)
+    }
+  } else {
+    if (unreadPollTimer) clearInterval(unreadPollTimer)
+    unreadPollTimer = null
+    unreadCount.value = 0
+  }
+}, { immediate: true })
 
 const showAuthButtons = computed(() => !isLoggedIn.value && !route.path.startsWith("/login") && !route.path.startsWith("/register"))
 
@@ -93,8 +139,13 @@ function onKeydown(e: KeyboardEvent) {
     }
 }
 
-onMounted(() => document.addEventListener("keydown", onKeydown))
-onUnmounted(() => document.removeEventListener("keydown", onKeydown))
+onMounted(() => {
+  document.addEventListener("keydown", onKeydown)
+})
+onUnmounted(() => {
+  document.removeEventListener("keydown", onKeydown)
+  if (unreadPollTimer) clearInterval(unreadPollTimer)
+})
 
 async function handleLogout() {
     await logout()
