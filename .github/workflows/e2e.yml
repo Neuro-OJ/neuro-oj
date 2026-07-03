@@ -98,6 +98,10 @@ jobs:
         run: |
           docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME build
 
+      - name: 初始化 MinIO bucket
+        run: |
+          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME up -d minio minio-init
+
       # ════════════════════════════════════════════
       # 2. 启动 E2E 评测栈
       # ════════════════════════════════════════════

@@ -174,6 +174,12 @@ fn main() -> Result<()> {
         // 使用 FuturesUnordered 跟踪所有 in-flight 任务
         let mut tasks = FuturesUnordered::new();
 
+        // 克隆配置值供 tokio::spawn 使用
+        let cache_dir = config.support_cache_dir.clone();
+        let download_timeout = config.support_package_download_timeout_secs;
+        let cache_max_items = config.support_cache_max_items;
+        let cache_max_mb = config.support_cache_max_mb;
+
         loop {
             tokio::select! {
                 biased;
@@ -201,12 +207,21 @@ fn main() -> Result<()> {
                     let redis_client = redis_client.clone();
                     let result_queue = result_queue.clone();
                     let work_dir = work_dir.clone();
+                    let cache_dir = cache_dir.clone();
 
                     let handle = tokio::spawn(async move {
                         let work_dir_path = std::path::Path::new(&work_dir);
                         let fallback_dir = std::path::Path::new(&work_dir).join("fallback-results");
 
-                        let result = match judge::runner::evaluate_with_pool(pool.clone(), &task, work_dir_path).await {
+                        let result = match judge::runner::evaluate_with_pool(
+                            pool.clone(),
+                            &task,
+                            work_dir_path,
+                            download_timeout,
+                            cache_dir.clone(),
+                            cache_max_items,
+                            cache_max_mb,
+                        ).await {
                             Ok(r) => {
                                 // 根据结果状态更新计数器
                                 match r.status.as_str() {

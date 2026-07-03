@@ -8,7 +8,9 @@ use tracing::{error, info, warn};
 use crate::pool::copy::archive_and_copy;
 use crate::pool::exec::execute_in_container;
 use crate::pool::PoolManager;
+use crate::sandbox::cache::SupportPackageCache;
 use crate::sandbox::container::{self, ContainerOutput};
+use crate::sandbox::download;
 use crate::types::{JudgeResult, JudgeStatus};
 
 /// Redis MQ 拉取到的评测任务。（引用 types::JudgeTask）
@@ -22,6 +24,10 @@ pub async fn evaluate_with_pool(
     pool: Arc<PoolManager>,
     task: &JudgeTask,
     work_dir_root: &Path,
+    download_timeout_secs: u64,
+    cache_dir: String,
+    cache_max_items: usize,
+    cache_max_mb: u64,
 ) -> Result<JudgeResult> {
     // 计数器：任务开始
     pool.inc_tasks_total();
@@ -36,25 +42,60 @@ pub async fn evaluate_with_pool(
         &task.judge_image,
         task.memory_limit_mb,
         |container_id| async move {
-            do_evaluate_with_pool(pool_for_closure, task, &container_id, work_dir_path).await
+            do_evaluate_with_pool(
+                pool_for_closure,
+                task,
+                &container_id,
+                work_dir_path,
+                download_timeout_secs,
+                &cache_dir,
+                cache_max_items,
+                cache_max_mb,
+            ).await
         },
     )
     .await
 }
 
 /// 评测逻辑核心（不含资源获取/清理，方便确保 cleanup）。
+#[allow(clippy::too_many_arguments)]
 async fn do_evaluate_with_pool(
     pool: Arc<PoolManager>,
     task: &JudgeTask,
     container_id: &str,
     work_dir: &Path,
+    download_timeout_secs: u64,
+    cache_dir: &str,
+    cache_max_items: usize,
+    cache_max_mb: u64,
 ) -> Result<JudgeResult> {
     let submission_id = &task.submission_id;
 
-    // 1. 解压支持包
-    if let Some(zip_data) = container::get_support_package_bytes(task)? {
-        container::extract_zip(&zip_data, work_dir).await?;
-        info!("支持包已解压: {} ({} bytes)", submission_id, zip_data.len());
+    // 1. 获取并解压支持包（通过 download_url）
+    if let Some(ref download_url) = task.download_url {
+        if !download_url.is_empty() {
+            match fetch_and_cache_support_package(
+                download_url,
+                download_timeout_secs,
+                cache_dir,
+                cache_max_items,
+                cache_max_mb,
+            ).await {
+                Ok(zip_data) => {
+                    container::extract_zip(&zip_data, work_dir).await?;
+                    info!("支持包已解压: {} ({} bytes)", submission_id, zip_data.len());
+                }
+                Err(e) => {
+                    error!("获取支持包失败: {}: {}", submission_id, e);
+                    return Ok(JudgeResult::system_error(
+                        submission_id,
+                        &format!("获取支持包失败: {}", e),
+                    ));
+                }
+            }
+        } else {
+            info!("无支持包，跳过解压: {}", submission_id);
+        }
     } else {
         info!("无支持包，跳过解压: {}", submission_id);
     }
@@ -104,6 +145,41 @@ async fn do_evaluate_with_pool(
     result.time_ms = Some(time_ms);
     result.memory_kb = Some(memory_kb);
     Ok(result)
+}
+
+/// 获取支持包：缓存优先 → 按 host 分派下载 → SHA-256 校验 → 写缓存。
+async fn fetch_and_cache_support_package(
+    download_url: &str,
+    download_timeout_secs: u64,
+    cache_dir: &str,
+    cache_max_items: usize,
+    cache_max_mb: u64,
+) -> Result<Vec<u8>> {
+    // 尝试从缓存获取
+    let cache = SupportPackageCache::new(
+        cache_dir,
+        cache_max_items,
+        cache_max_mb,
+    )
+    .await?;
+
+    // 先解析 URL 获取 checksum（用于缓存查找）
+    let timeout = download_timeout_secs;
+    let (zip_data, checksum) = download::fetch_support_package(download_url, timeout).await?;
+
+    // SHA-256 校验
+    download::verify_checksum(&zip_data, checksum.as_deref())?;
+
+    // 写入缓存
+    if let Some(ref cs) = checksum {
+        if !cs.is_empty() {
+            if let Err(e) = cache.set(cs, &zip_data).await {
+                warn!("写入支持包缓存失败: {}", e);
+            }
+        }
+    }
+
+    Ok(zip_data)
 }
 
 /// 处理容器输出，解析 ---RESULT--- 标记，构造 JudgeResult。
@@ -249,7 +325,7 @@ Some debug output
             problem_id: "1001".to_string(),
             judge_image: "noj-judge-python".to_string(),
             judge_command: "python3 /tmp/evaluate.py".to_string(),
-            support_package_base64: None,
+            download_url: None,
             language: "python3".to_string(),
             code: "print('hello')".to_string(),
             file_name: Some("main.py".to_string()),
@@ -277,7 +353,7 @@ Some debug output
             problem_id: "1001".to_string(),
             judge_image: "noj-judge-python".to_string(),
             judge_command: "python3 /tmp/evaluate.py".to_string(),
-            support_package_base64: None,
+            download_url: None,
             language: "python3".to_string(),
             code: "".to_string(),
             file_name: None,
@@ -303,7 +379,7 @@ Some debug output
             problem_id: "1001".to_string(),
             judge_image: "noj-judge-python".to_string(),
             judge_command: "python3 /tmp/evaluate.py".to_string(),
-            support_package_base64: None,
+            download_url: None,
             language: "python3".to_string(),
             code: "".to_string(),
             file_name: None,
@@ -329,7 +405,7 @@ Some debug output
             problem_id: "1001".to_string(),
             judge_image: "noj-judge-python".to_string(),
             judge_command: "python3 /tmp/evaluate.py".to_string(),
-            support_package_base64: None,
+            download_url: None,
             language: "python3".to_string(),
             code: "".to_string(),
             file_name: None,
@@ -355,7 +431,7 @@ Some debug output
             problem_id: "1001".to_string(),
             judge_image: "noj-judge-python".to_string(),
             judge_command: "python3 /tmp/evaluate.py".to_string(),
-            support_package_base64: None,
+            download_url: None,
             language: "python3".to_string(),
             code: "".to_string(),
             file_name: None,

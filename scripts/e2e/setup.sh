@@ -75,6 +75,19 @@ if ! curl -sf "http://localhost:$E2E_CORE_PORT/health" > /dev/null 2>&1; then
   exit 1
 fi
 
+# ══════════════════════════════════════════════
+# 3. 初始化 MinIO bucket
+# ══════════════════════════════════════════════
+step "3/3  初始化 MinIO"
+
+if [ -z "${CI:-}" ]; then
+  info "初始化 MinIO bucket..."
+  docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" up -d minio minio-init
+  ok "MinIO bucket 已初始化"
+else
+  ok "CI 环境检测，跳过 MinIO 初始化"
+fi
+
 # ── 汇总 ──
 echo ""
 echo -e "${BOLD}=========================================="
@@ -84,6 +97,7 @@ echo ""
 echo "  ${CYAN}PostgreSQL${NC}    $E2E_DB_URL"
 echo "  ${CYAN}Redis${NC}         $E2E_REDIS_URL"
 echo "  ${CYAN}noj-core${NC}      $E2E_CORE_URL"
+echo "  ${CYAN}MinIO${NC}         http://localhost:9002"
 echo ""
 echo "  stop:    bash scripts/e2e/teardown.sh"
 echo "  test:    bash scripts/e2e/run-all.sh"

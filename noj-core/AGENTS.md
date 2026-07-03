@@ -49,13 +49,19 @@ noj-core/
 │   │   ├── consumer.ts     #   评测结果消费者（BRPOP 阻塞）
 │   │   ├── producer.ts     #   评测任务生产者（LPUSH）
 │   │   └── judge-rpc.ts   #   Judge RPC 处理器（镜像白名单等）
-│   ├── lib/               # 工具函数（JWT、密码、错误类、请求解析、日志）
+│   ├── lib/               # 工具函数（JWT、密码、错误类、请求解析、日志、存储）
 │   │   ├── email.ts            # 邮件发送抽象入口（动态选择 Provider）
 │   │   ├── email-providers/    # 邮件 Provider 实现
 │   │   │   ├── types.ts        #   统一接口定义
 │   │   │   ├── mock.ts         #   Mock Provider（默认，控制台输出）
 │   │   │   ├── aliyun.ts       #   阿里云 DirectMail Provider
 │   │   │   └── tencent.ts      #   腾讯云 SES Provider
+│   │   ├── storage/            # 抽象存储层（StorageProvider）
+│   │   │   ├── types.ts        #   StorageProvider 接口 + URL 工具
+│   │   │   ├── local.ts        #   LocalStorageProvider（dev 专用）
+│   │   │   ├── s3.ts           #   S3StorageProvider（生产环境）
+│   │   │   ├── factory.ts      #   工厂函数（环境变量选择实现）
+│   │   │   └── mod.ts          #   公共导出
 │   │   ├── errors.ts           # AppError 继承体系（6 个子类）
 │   │   ├── jwt.ts              # JWT 签发/验证（HS256, iss/aud 校验）
 │   │   ├── password.ts         # bcrypt 哈希/比对（cost 12）
@@ -68,7 +74,7 @@ noj-core/
 ├── scripts/               # CLI 脚本（seed、build-packages、migrate）
 ├── data/
 │   ├── problems-src/<id>/ # 题目源文件（版本控制，仅样例题）
-│   └── packages/<id>.zip  # 构建产物（gitignored）
+│   └── packages/<id>.zip  # 构建产物（gitignored，local 模式使用）
 └── tests/                 # 测试文件（与 src 镜像结构）
     ├── 00_migrate_test.ts # 最先执行：迁移 + seed root 用户
     ├── services/          # 服务层测试
@@ -102,6 +108,13 @@ noj-core/
 | `TENCENT_SECRET_KEY`              | —                         | 腾讯云 SecretKey                                                      |
 | `TENCENT_FROM_EMAIL`              | —                         | 腾讯云发信地址（需控制台验证域名）                                    |
 | `TENCENT_REGION`                  | `ap-guangzhou`            | 腾讯云地域                                                            |
+| `STORAGE_PROVIDER`                | `local`                   | 存储 Provider：`local`（开发测试）或 `s3`（生产环境）                |
+| `S3_ENDPOINT`                     | —                         | S3 兼容对象存储端点（s3 模式必填）                                   |
+| `S3_REGION`                       | `us-east-1`               | S3 区域                                                                |
+| `S3_ACCESS_KEY`                   | —                         | S3 访问密钥（s3 模式必填）                                            |
+| `S3_SECRET_KEY`                   | —                         | S3 秘密密钥（s3 模式必填）                                            |
+| `S3_BUCKET`                       | `noj-support-packages`    | S3 存储桶名                                                            |
+| `S3_FORCE_PATH_STYLE`             | `true`                    | 使用路径风格 URL（MinIO 需要）                                        |
 | `RATE_LIMIT_ENABLED`              | `true`                    | 速率限制总开关（NOJ_ENV=test 时强制关闭）                             |
 | `RATE_LIMIT_LOGIN_IP_WINDOW`      | `30`                      | IP 维度限流窗口（秒）                                                 |
 | `RATE_LIMIT_LOGIN_IP_MAX`         | `10`                      | IP 维度窗口内最大尝试次数                                             |
@@ -175,6 +188,7 @@ docker compose down     # 停止
 | PUT    | `/api/v1/users/me`               | 登录   | 更新个人简介                                 |
 | POST   | `/api/v1/auth/change-password`   | 登录   | 修改密码（issue #75 强制改密）               |
 | POST   | `/api/v1/auth/logout`            | 公开   | 登出（no-op stub，客户端自行清 Cookie）      |
+| GET    | `/api/v1/problems/:id/support-package` | 登录 | 下载支持包（通过 core 代理，不暴露 S3 URL） |
 | POST   | `/api/v1/checkin`                | 登录   | 每日签到（返回当前连续天数）                 |
 | GET    | `/api/v1/checkin/today`          | 登录   | 查询今日签到状态                             |
 | GET    | `/health`                        | 公开   | 健康检查                                     |

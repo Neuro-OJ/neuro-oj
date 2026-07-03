@@ -56,7 +56,6 @@ impl Drop for TempDir {
         }
     }
 }
-use base64::Engine;
 use tokio::fs;
 use tracing::warn;
 
@@ -159,21 +158,6 @@ pub async fn prepare_work_dir(work_dir: &Path, submission_id: &str) -> Result<Pa
         .await
         .with_context(|| format!("创建临时目录失败: {}", dir.display()))?;
     Ok(dir)
-}
-
-/// 获取支持包内容（Base64 解码）。
-///
-/// Base64 解码是纯 CPU 操作，无需 async。
-pub fn get_support_package_bytes(task: &JudgeTask) -> Result<Option<Vec<u8>>> {
-    match &task.support_package_base64 {
-        Some(base64_str) if !base64_str.is_empty() => {
-            let bytes = base64::engine::general_purpose::STANDARD
-                .decode(base64_str)
-                .context("Base64 解码支持包失败")?;
-            Ok(Some(bytes))
-        }
-        _ => Ok(None),
-    }
 }
 
 /// 解压支持包到目标目录。
@@ -386,69 +370,6 @@ mod tests {
         assert_eq!(after[0], "ok.txt");
     }
 
-    // ── get_support_package_bytes ──
-
-    #[test]
-    fn test_get_support_package_bytes_base64() {
-        let data = b"hello zip content";
-        let encoded = base64::engine::general_purpose::STANDARD.encode(data);
-        let task = JudgeTask {
-            submission_id: "test".to_string(),
-            problem_id: "1001".to_string(),
-            judge_image: "img".to_string(),
-            judge_command: "cmd".to_string(),
-            support_package_base64: Some(encoded),
-            language: "python3".to_string(),
-            code: "".to_string(),
-            file_name: None,
-            time_limit_ms: 1000,
-            memory_limit_mb: 128,
-            rejudge_seq: None,
-        };
-
-        let result = get_support_package_bytes(&task).unwrap();
-        assert_eq!(result, Some(data.to_vec()));
-    }
-
-    #[test]
-    fn test_get_support_package_bytes_none() {
-        let task = JudgeTask {
-            submission_id: "test".to_string(),
-            problem_id: "1001".to_string(),
-            judge_image: "img".to_string(),
-            judge_command: "cmd".to_string(),
-            support_package_base64: None,
-            language: "python3".to_string(),
-            code: "".to_string(),
-            file_name: None,
-            time_limit_ms: 1000,
-            memory_limit_mb: 128,
-            rejudge_seq: None,
-        };
-
-        let result = get_support_package_bytes(&task).unwrap();
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_get_support_package_bytes_empty_string() {
-        let task = JudgeTask {
-            submission_id: "test".to_string(),
-            problem_id: "1001".to_string(),
-            judge_image: "img".to_string(),
-            judge_command: "cmd".to_string(),
-            support_package_base64: Some(String::new()),
-            language: "python3".to_string(),
-            code: "".to_string(),
-            file_name: None,
-            time_limit_ms: 1000,
-            memory_limit_mb: 128,
-            rejudge_seq: None,
-        };
-
-        let result = get_support_package_bytes(&task).unwrap();
-        assert!(result.is_none());
-    }
 
     // ── TempDir ──
 
