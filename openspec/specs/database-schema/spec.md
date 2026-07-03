@@ -286,3 +286,22 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 
 - **WHEN** GET `/health` 且数据库连接异常
 - **THEN** 响应 JSON 包含 `"database": "error"` 及错误信息
+
+### Requirement: PG 错误码兼容
+
+系统 SHALL 在检查 PostgreSQL 约束冲突错误码（`23505`）时，同时兼容两种错误对象结构：
+
+- postgres.js 驱动：`err.code === '23505'`
+- PGlite WASM 驱动：`err.cause.code === '23505'`
+
+`problems.ts` 中创建题目并发冲突重试逻辑的错误码检查 MUST 兼容两种结构。
+
+#### Scenario: postgres.js 模式下捕获 UNIQUE 冲突
+
+- **WHEN** `DATABASE_URL` 已设置，插入题目触发 `(type, number)` UNIQUE 约束冲突
+- **THEN** `err.code === '23505'` 为 true，重试逻辑正常触发
+
+#### Scenario: PGlite 模式下捕获 UNIQUE 冲突
+
+- **WHEN** `DATABASE_URL` 未设置（PGlite 模式），插入题目触发 `(type, number)` UNIQUE 约束冲突
+- **THEN** `err.cause.code === '23505'` 为 true，重试逻辑正常触发

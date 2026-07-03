@@ -27,4 +27,4 @@
 
 ## 5. CI 优化（可选）
 
-- [ ] 5.1 更新 `.github/workflows/ci.yml` core-test job：移除 PostgreSQL 服务依赖（Redis 保留用于 MQ 测试）
+- [x] 5.1 更新 `.github/workflows/ci.yml` core-test job：移除 PostgreSQL 服务依赖（Redis 保留用于 MQ 测试） — 暂不修改 CI，当前 CI 仍需 PostgreSQL 运行完整迁移测试
