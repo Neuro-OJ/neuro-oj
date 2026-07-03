@@ -54,7 +54,7 @@ export async function getStorageProvider(): Promise<StorageProvider> {
         accessKeyId: S3_ACCESS_KEY,
         secretAccessKey: S3_SECRET_KEY,
         bucket: S3_BUCKET || "noj-support-packages",
-        forcePathStyle: S3_FORCE_PATH_STYLE !== "false",
+        forcePathStyle: S3_FORCE_PATH_STYLE === "true",
       });
       break;
     }

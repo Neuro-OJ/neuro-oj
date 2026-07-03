@@ -32,6 +32,21 @@ async function ensureConnected() {
   }
 }
 
+/**
+ * 临时覆盖 NOJ_ENV 使限流逻辑可工作。
+ * .env 中 NOJ_ENV=test 会禁用限流，而本测试需要验证限流行为。
+ */
+async function withRateLimitEnabled<T>(fn: () => Promise<T>): Promise<T> {
+  const orig = Deno.env.get("NOJ_ENV");
+  Deno.env.delete("NOJ_ENV");
+  try {
+    return await fn();
+  } finally {
+    if (orig !== undefined) Deno.env.set("NOJ_ENV", orig);
+    else Deno.env.delete("NOJ_ENV");
+  }
+}
+
 Deno.test({
   name: "rateLimit: 窗口内超限后 429",
   ignore: skip,
@@ -80,24 +95,26 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await ensureConnected();
-    const username = `locktest_${Date.now()}_${Math.random()}`;
-    // 前 9 次：未锁定
-    for (let i = 1; i <= 9; i++) {
+    await withRateLimitEnabled(async () => {
+      await ensureConnected();
+      const username = `locktest_${Date.now()}_${Math.random()}`;
+      // 前 9 次：未锁定
+      for (let i = 1; i <= 9; i++) {
+        await recordLoginFailure(username);
+        assertEquals(
+          await isLoginLocked(username),
+          false,
+          `第 ${i} 次失败不应锁定`,
+        );
+      }
+      // 第 10 次：触发锁定
       await recordLoginFailure(username);
-      assertEquals(
-        await isLoginLocked(username),
-        false,
-        `第 ${i} 次失败不应锁定`,
-      );
-    }
-    // 第 10 次：触发锁定
-    await recordLoginFailure(username);
-    assertEquals(await isLoginLocked(username), true);
+      assertEquals(await isLoginLocked(username), true);
 
-    // 清理
-    await clearLoginFailure(username);
-    assertEquals(await isLoginLocked(username), false);
+      // 清理
+      await clearLoginFailure(username);
+      assertEquals(await isLoginLocked(username), false);
+    });
   },
 });
 
@@ -107,18 +124,20 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    await ensureConnected();
-    const username = `cleartest_${Date.now()}_${Math.random()}`;
-    for (let i = 0; i < 5; i++) {
-      await recordLoginFailure(username);
-    }
-    await clearLoginFailure(username);
-    // 清零后不会触发锁定（需要 10 次）
-    for (let i = 0; i < 8; i++) {
-      await recordLoginFailure(username);
-    }
-    assertEquals(await isLoginLocked(username), false);
-    await clearLoginFailure(username);
+    await withRateLimitEnabled(async () => {
+      await ensureConnected();
+      const username = `cleartest_${Date.now()}_${Math.random()}`;
+      for (let i = 0; i < 5; i++) {
+        await recordLoginFailure(username);
+      }
+      await clearLoginFailure(username);
+      // 清零后不会触发锁定（需要 10 次）
+      for (let i = 0; i < 8; i++) {
+        await recordLoginFailure(username);
+      }
+      assertEquals(await isLoginLocked(username), false);
+      await clearLoginFailure(username);
+    });
   },
 });
 

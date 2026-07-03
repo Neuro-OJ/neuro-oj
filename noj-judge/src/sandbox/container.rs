@@ -370,7 +370,6 @@ mod tests {
         assert_eq!(after[0], "ok.txt");
     }
 
-
     // ── TempDir ──
 
     #[tokio::test]

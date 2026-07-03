@@ -22,18 +22,16 @@ pub async fn fetch_support_package(
     download_url: &str,
     download_timeout_secs: u64,
 ) -> Result<(Vec<u8>, Option<String>)> {
-    let url = download_url.strip_prefix("noj-download://")
+    let url = download_url
+        .strip_prefix("noj-download://")
         .context("不是 noj-download:// URL")?;
 
     // 提取 host（第一个 / 或 ? 之前的部分）
-    let host_end = url.find(['/', '?'])
-        .unwrap_or(url.len());
+    let host_end = url.find(['/', '?']).unwrap_or(url.len());
     let host = &url[..host_end];
 
     // 提取 query 参数
-    let query = url.find('?')
-        .map(|i| &url[i + 1..])
-        .unwrap_or("");
+    let query = url.find('?').map(|i| &url[i + 1..]).unwrap_or("");
 
     let checksum = parse_query_param(query, "checksum_sha256");
 
@@ -47,8 +45,8 @@ pub async fn fetch_support_package(
             Ok((bytes, checksum))
         }
         "s3" => {
-            let raw_url = parse_query_param(query, "url")
-                .context("noj-download://s3 缺少 url 参数")?;
+            let raw_url =
+                parse_query_param(query, "url").context("noj-download://s3 缺少 url 参数")?;
             // percent 解码
             let decoded_url = percent_decode_str(&raw_url)
                 .decode_utf8()
@@ -69,20 +67,13 @@ async fn http_download(url: &str, timeout_secs: u64) -> Result<Vec<u8>> {
         .build()
         .context("创建 HTTP 客户端失败")?;
 
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .context("HTTP 下载请求失败")?;
+    let response = client.get(url).send().await.context("HTTP 下载请求失败")?;
 
     if !response.status().is_success() {
         bail!("HTTP 下载返回非成功状态码: {}", response.status());
     }
 
-    let bytes = response
-        .bytes()
-        .await
-        .context("读取 HTTP 响应体失败")?;
+    let bytes = response.bytes().await.context("读取 HTTP 响应体失败")?;
 
     Ok(bytes.to_vec())
 }
@@ -103,11 +94,7 @@ pub fn verify_checksum(data: &[u8], expected: Option<&str>) -> Result<()> {
         }
         let actual = sha256_hex(data);
         if actual != expected {
-            bail!(
-                "SHA-256 校验和不匹配: 期望={}, 实际={}",
-                expected,
-                actual
-            );
+            bail!("SHA-256 校验和不匹配: 期望={}, 实际={}", expected, actual);
         }
     }
     Ok(())

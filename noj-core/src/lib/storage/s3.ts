@@ -22,11 +22,11 @@ import {
 import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner@^3";
 
 import {
-  type StorageProvider,
   buildS3DownloadUrl,
   buildStorageUrl,
   parseStorageUrl,
   sha256Hex,
+  type StorageProvider,
 } from "./types.ts";
 
 /** S3StorageProvider 构造配置 */

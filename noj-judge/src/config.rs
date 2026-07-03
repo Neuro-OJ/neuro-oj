@@ -60,14 +60,9 @@ impl Config {
                 "SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT",
             )
             .unwrap_or(60),
-            support_cache_dir: env_or(
-                "SUPPORT_CACHE_DIR",
-                "/tmp/noj-judge/support-cache",
-            ),
-            support_cache_max_items: env_var_parse("SUPPORT_CACHE_MAX_ITEMS")
-                .unwrap_or(500),
-            support_cache_max_mb: env_var_parse("SUPPORT_CACHE_MAX_MB")
-                .unwrap_or(2048),
+            support_cache_dir: env_or("SUPPORT_CACHE_DIR", "/tmp/noj-judge/support-cache"),
+            support_cache_max_items: env_var_parse("SUPPORT_CACHE_MAX_ITEMS").unwrap_or(500),
+            support_cache_max_mb: env_var_parse("SUPPORT_CACHE_MAX_MB").unwrap_or(2048),
             pool: PoolConfig::from_env(),
         }
     }

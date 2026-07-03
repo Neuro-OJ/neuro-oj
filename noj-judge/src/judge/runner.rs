@@ -51,7 +51,8 @@ pub async fn evaluate_with_pool(
                 &cache_dir,
                 cache_max_items,
                 cache_max_mb,
-            ).await
+            )
+            .await
         },
     )
     .await
@@ -80,7 +81,9 @@ async fn do_evaluate_with_pool(
                 cache_dir,
                 cache_max_items,
                 cache_max_mb,
-            ).await {
+            )
+            .await
+            {
                 Ok(zip_data) => {
                     container::extract_zip(&zip_data, work_dir).await?;
                     info!("支持包已解压: {} ({} bytes)", submission_id, zip_data.len());
@@ -156,12 +159,7 @@ async fn fetch_and_cache_support_package(
     cache_max_mb: u64,
 ) -> Result<Vec<u8>> {
     // 尝试从缓存获取
-    let cache = SupportPackageCache::new(
-        cache_dir,
-        cache_max_items,
-        cache_max_mb,
-    )
-    .await?;
+    let cache = SupportPackageCache::new(cache_dir, cache_max_items, cache_max_mb).await?;
 
     // 先解析 URL 获取 checksum（用于缓存查找）
     let timeout = download_timeout_secs;

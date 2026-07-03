@@ -21,19 +21,14 @@ pub struct SupportPackageCache {
     max_mb: u64,
 }
 
+#[allow(dead_code)]
 impl SupportPackageCache {
     /// 创建新的缓存实例。
     ///
     /// 自动创建缓存目录（如不存在）。
-    pub async fn new(
-        dir: impl Into<PathBuf>,
-        max_items: usize,
-        max_mb: u64,
-    ) -> Result<Self> {
+    pub async fn new(dir: impl Into<PathBuf>, max_items: usize, max_mb: u64) -> Result<Self> {
         let dir = dir.into();
-        fs::create_dir_all(&dir)
-            .await
-            .context("创建缓存目录失败")?;
+        fs::create_dir_all(&dir).await.context("创建缓存目录失败")?;
 
         Ok(Self {
             dir,
@@ -64,15 +59,9 @@ impl SupportPackageCache {
         .await
         .ok();
 
-        let data = fs::read(&path)
-            .await
-            .context("读取缓存文件失败")?;
+        let data = fs::read(&path).await.context("读取缓存文件失败")?;
 
-        info!(
-            "支持包缓存命中: checksum={}, size={}",
-            checksum,
-            data.len()
-        );
+        info!("支持包缓存命中: checksum={}, size={}", checksum, data.len());
 
         Ok(Some(data))
     }
@@ -88,11 +77,9 @@ impl SupportPackageCache {
         let path = self.cache_path(checksum);
 
         // 原子写入：tmp 文件 + rename
-        let tmp_path = self.dir.join(format!(
-            ".{}.tmp.{}",
-            checksum,
-            uuid::Uuid::new_v4()
-        ));
+        let tmp_path = self
+            .dir
+            .join(format!(".{}.tmp.{}", checksum, uuid::Uuid::new_v4()));
         fs::write(&tmp_path, data)
             .await
             .context("写入缓存临时文件失败")?;
@@ -100,11 +87,7 @@ impl SupportPackageCache {
             .await
             .context("重命名缓存文件失败")?;
 
-        info!(
-            "支持包缓存写入: checksum={}, size={}",
-            checksum,
-            data.len()
-        );
+        info!("支持包缓存写入: checksum={}, size={}", checksum, data.len());
 
         // 淘汰检查
         self.evict_if_needed().await?;
@@ -264,9 +247,9 @@ mod tests {
 
         // 最多保留 2 个文件
         let mut read_dir = fs::read_dir(tmp.path()).await.unwrap();
-        let mut count = 0usize;
+        let mut _count = 0usize;
         while let Ok(Some(_)) = read_dir.next_entry().await {
-            count += 1;
+            _count += 1;
         }
         // 至少有一个 .zip 文件被淘汰
         let mut read_dir = fs::read_dir(tmp.path()).await.unwrap();

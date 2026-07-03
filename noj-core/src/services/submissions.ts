@@ -302,7 +302,9 @@ export async function createSubmission(
   if (problem.support_package_storage_url) {
     try {
       const storage = await getStorageProvider();
-      download_url = await storage.downloadUrl(problem.support_package_storage_url);
+      download_url = await storage.downloadUrl(
+        problem.support_package_storage_url,
+      );
     } catch (err) {
       console.error(
         `获取支持包 download URL 失败 (${problem.support_package_storage_url}):`,
@@ -668,7 +670,9 @@ export async function rejudgeSubmission(id: string): Promise<void> {
   if (problem.support_package_storage_url) {
     try {
       const storage = await getStorageProvider();
-      download_url = await storage.downloadUrl(problem.support_package_storage_url);
+      download_url = await storage.downloadUrl(
+        problem.support_package_storage_url,
+      );
     } catch (err) {
       console.error(
         `重测获取支持包 download URL 失败 (${problem.support_package_storage_url}):`,
@@ -764,7 +768,9 @@ export async function rejudgeProblemSubmissions(
   if (problem.support_package_storage_url) {
     try {
       const storage = await getStorageProvider();
-      download_url = await storage.downloadUrl(problem.support_package_storage_url);
+      download_url = await storage.downloadUrl(
+        problem.support_package_storage_url,
+      );
     } catch (err) {
       console.error(
         `批量重测获取支持包 download URL 失败 (${problem.support_package_storage_url}):`,

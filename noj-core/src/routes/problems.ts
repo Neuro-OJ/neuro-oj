@@ -193,6 +193,14 @@ router.post("/:id/support-package", authMiddleware, async (c) => {
     throw new BadRequestError("仅支持 .zip 格式文件");
   }
 
+  // Content-Type 校验（防御性：扩展名校验的补充）
+  if (
+    file.type &&
+    !["application/zip", "application/x-zip-compressed"].includes(file.type)
+  ) {
+    throw new BadRequestError("仅支持 .zip 格式文件");
+  }
+
   if (file.size > MAX_SUPPORT_PACKAGE_SIZE) {
     throw new BadRequestError(
       `支持包大小超过限制（最大 ${

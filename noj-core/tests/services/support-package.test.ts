@@ -86,7 +86,8 @@ async function createTestProblem(
 }
 
 Deno.test({
-  name: "support-package service: saveSupportPackage 上传成功返回 noj-storage:// URL",
+  name:
+    "support-package service: saveSupportPackage 上传成功返回 noj-storage:// URL",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -96,7 +97,26 @@ Deno.test({
     await createTestProblem();
 
     const zipData = new Uint8Array([
-      0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0x50,
+      0x4b,
+      0x05,
+      0x06,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
     ]);
     const result = await saveSupportPackage(
       currentProblemId,
@@ -335,7 +355,11 @@ Deno.test({
       "user",
     );
 
-    const bytes = await getSupportPackageBytes(currentProblemId, OWNER_ID, "user");
+    const bytes = await getSupportPackageBytes(
+      currentProblemId,
+      OWNER_ID,
+      "user",
+    );
     assertEquals(bytes !== null, true);
     if (bytes) {
       assertEquals(bytes.length, zipData.length);
@@ -353,7 +377,11 @@ Deno.test({
     resetStorageProvider();
     await createTestProblem();
 
-    const bytes = await getSupportPackageBytes(currentProblemId, OWNER_ID, "user");
+    const bytes = await getSupportPackageBytes(
+      currentProblemId,
+      OWNER_ID,
+      "user",
+    );
     assertEquals(bytes, null);
   },
 });

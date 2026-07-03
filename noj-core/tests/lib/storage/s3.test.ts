@@ -6,7 +6,10 @@
  */
 
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { isStorageUrl, parseStorageUrl } from "../../../src/lib/storage/types.ts";
+import {
+  isStorageUrl,
+  parseStorageUrl,
+} from "../../../src/lib/storage/types.ts";
 
 /** 检查 MinIO 是否可用（不抛出 env 权限错误） */
 function hasMinioConfig(): boolean {
@@ -38,7 +41,11 @@ Deno.test({
       forcePathStyle: true,
     });
     const data = new Uint8Array([0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0]);
-    const url = await provider.put("test/put-test.zip", data, "application/zip");
+    const url = await provider.put(
+      "test/put-test.zip",
+      data,
+      "application/zip",
+    );
 
     assertEquals(isStorageUrl(url), true);
     const parsed = parseStorageUrl(url);
@@ -66,7 +73,11 @@ Deno.test({
       forcePathStyle: true,
     });
     const data = new Uint8Array([0x50, 0x4b, 0x01, 0x02, 0, 0, 0, 0]);
-    const url = await provider.put("test/get-test.zip", data, "application/zip");
+    const url = await provider.put(
+      "test/get-test.zip",
+      data,
+      "application/zip",
+    );
 
     const result = await provider.get(url);
     assertEquals(result.length, data.length);
@@ -92,7 +103,11 @@ Deno.test({
       forcePathStyle: true,
     });
     const data = new Uint8Array([0x50, 0x4b, 0x05, 0x06]);
-    const url = await provider.put("test/delete-test.zip", data, "application/zip");
+    const url = await provider.put(
+      "test/delete-test.zip",
+      data,
+      "application/zip",
+    );
 
     await provider.delete(url);
     await provider.delete(url);

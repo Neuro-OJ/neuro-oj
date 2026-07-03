@@ -12,7 +12,13 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../src/db/connection.ts";
 import { and, eq, not, sql } from "drizzle-orm";
-import { users } from "../src/db/schema.ts";
+import {
+  conversationReads,
+  conversations,
+  messageDeletions,
+  messages,
+  users,
+} from "../src/db/schema.ts";
 import { registerUser } from "../src/services/auth.ts";
 import { hashPassword } from "../src/lib/password.ts";
 
@@ -38,9 +44,18 @@ async function getAdminCount(): Promise<number> {
 
 /**
  * 清理测试间残留的 admin 用户（除 root 外），确保种子测试从干净状态开始。
+ *
+ * 注意：conversations 等表的 FK 引用了 users.id 且无 ON DELETE CASCADE，
+ * 需要先清理这些表中的数据，否则 DELETE FROM users 会因 FK 约束失败。
  */
 async function cleanNonRootAdmins(): Promise<void> {
   const db = getDb();
+  // 清理 conversations 相关表的 FK 引用（无 CASCADE，须手动清理）
+  await db.delete(messageDeletions);
+  await db.delete(messages);
+  await db.delete(conversationReads);
+  await db.delete(conversations);
+  // 现在可以安全删除 admin 用户
   await db.delete(users).where(
     and(eq(users.role, "admin"), not(eq(users.id, "0"))),
   );

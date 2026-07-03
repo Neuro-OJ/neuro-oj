@@ -14,12 +14,11 @@
  */
 
 import {
-  type StorageProvider,
   buildBase64DownloadUrl,
   buildStorageUrl,
-  isStorageUrl,
   parseStorageUrl,
   sha256Hex,
+  type StorageProvider,
 } from "./types.ts";
 
 const PACKAGES_DIR = "data/packages";
@@ -88,9 +87,7 @@ export class LocalStorageProvider implements StorageProvider {
    */
   async get(url: string): Promise<Uint8Array> {
     const parsed = parseStorageUrl(url);
-    const filePath = parsed.key
-      ? `${PACKAGES_DIR}/${parsed.key}.zip`
-      : url; // legacy 路径直接使用
+    const filePath = parsed.key ? `${PACKAGES_DIR}/${parsed.key}.zip` : url; // legacy 路径直接使用
 
     return await Deno.readFile(filePath);
   }
