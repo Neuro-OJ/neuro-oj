@@ -4,34 +4,35 @@
 
 ## What Changes
 
-- 新增 `StorageProvider` 抽象接口，定义 `put`/`get`/`delete`/`presignedUrl` 四个方法
-- 实现 `LocalStorageProvider`（标注为开发测试专用，base64 数据直接编码到 `storage://local/<base64>` URL 中）和 `S3StorageProvider`（使用 `@aws-sdk/client-s3`，DB 存 object key，judge 拿 presigned HTTPS URL）
-- **JudgeTask 统一使用 `support_package_url`**（移除 `support_package_base64`）
-- S3 模式：DB 存 object key（如 `packages/123.zip`），`presignedUrl()` 生成 presigned HTTPS URL → judge HTTP 下载
-- Local 模式：数据自包含在 `storage://local/<base64>` URL 中 → judge 提取 base64 解码
-- noj-judge 根据 URL scheme 分派：`http://` 或 `https://` → HTTP GET 下载；`storage://local/` → base64 解码
-- 下载/解码失败直接返回 SystemError（无回退）
+- 新增 `StorageProvider` 抽象接口，定义 `put`/`get`/`delete`/`downloadUrl` 四个方法
+- 实现 `LocalStorageProvider`（标注为开发测试专用）和 `S3StorageProvider`（使用 `@aws-sdk/client-s3`）
+- **两种 URL 空间**：`noj-storage://` 用于 DB 存储，`noj-download://` 用于 JudgeTask 交付
+  - DB: `noj-storage://local/[base64]?checksum_sha256=...` / `noj-storage://s3/[key]?checksum_sha256=...`
+  - JudgeTask: `noj-download://base64/?content=[base64]&checksum_sha256=...` / `noj-download://s3?url=[percent-encoded-presigned-url]&checksum_sha256=...`
+- JudgeTask 字段 `support_package_url` **改名为 `download_url`**（移除 `support_package_base64`）
+- `download_url` 自包含下载方式和 `checksum_sha256`，judge 无需额外字段
+- noj-judge 解析 `noj-download://` URL 分派：host=`base64` → 提取 `content` 解码；host=`s3` → 解码 `url` 后 HTTP 下载
+- 下载后校验 SHA-256 完整性（来自 URL 中 `checksum_sha256`）；磁盘缓存按内容寻址，LRU 淘汰
 - docker-compose 开发环境增加 MinIO 服务
-- DB schema 无变更（`support_package_path` text 列复用，值格式从本地相对路径变为 `storage://` URL）
+- DB schema 变更：`support_package_path` → `support_package_storage_url`
 
 ## Capabilities
 
 ### New Capabilities
-- `object-storage`: 抽象存储层——定义 StorageProvider 接口、`storage://` URL 规范、LocalStorageProvider 和 S3StorageProvider 的行为要求
+- `object-storage`: 抽象存储层——定义 StorageProvider 接口、`noj-storage://` 与 `noj-download://` 两种 URL 规范、LocalStorageProvider 和 S3StorageProvider 的行为要求
 
 ### Modified Capabilities
-- `support-package-upload`: 存储路径格式从本地相对路径变为 `storage://` URL；新增支持包下载端点（GET）；上传/删除的权限模型不变
-- `judge-worker`: 评测编排步骤中支持包获取方式从 Base64 解码改为 HTTP URL 下载；下载失败直接返回 SystemError
+- `support-package-upload`: 存储路径格式从本地相对路径变为 `noj-storage://` URL；新增支持包下载端点（GET，通过 core 代理）；上传/删除的权限模型不变
+- `judge-worker`: 评测编排步骤中支持包获取方式从 Base64 解码改为 `noj-download://` URL 分派；支持磁盘缓存和完整性校验
 
 ## Impact
 
 - **noj-core**: 新增 `src/lib/storage/` 模块（~4 文件）；修改 `services/support-package.ts`、`services/submissions.ts`、`services/problems.ts`、`types/index.ts`
-- **noj-judge**: 新增 `reqwest` 依赖；修改 `types.rs`、`sandbox/container.rs`、`judge/runner.rs`、`config.rs`；移除 `get_support_package_bytes()` base64 解码函数
+- **noj-judge**: 新增 `reqwest`、`sha2` 依赖；修改 `types.rs`、`sandbox/container.rs`、`judge/runner.rs`、`config.rs`；移除 `get_support_package_bytes()`；新增缓存模块
 - **noj-ui**: 无变更（上传仍通过后端中转）
-- **文档**: 更新 `noj-core/CLAUDE.md` 和 `AGENTS.md` 中的存储路径描述、环境变量表格、目录结构；更新 `README.md` 中关于支持包构建的描述
-- **构建脚本**: `scripts/build-packages.ts` 更新输出格式注释；`scripts/seed.ts` 更新硬编码路径格式
-- **环境变量**: `noj-core/.env.example` 新增 STORAGE_PROVIDER、S3_ENDPOINT、S3_REGION、S3_ACCESS_KEY、S3_SECRET_KEY、S3_BUCKET、S3_FORCE_PATH_STYLE；`env.e2e.template` 同步新增
-- **基础设施**: `docker-compose.yml`、`docker-compose.e2e.yml`、`scripts/e2e/setup.sh`、`.github/workflows/e2e.yml` 增加 MinIO
-- **基础设施**: `docker-compose.yml`、`docker-compose.e2e.yml`、`.env.example`、CI E2E workflow 增加 MinIO
-- **依赖**: Deno 新增 `@aws-sdk/client-s3`、`@aws-sdk/s3-request-presigner`；Rust 新增 `reqwest`
-- **向后兼容**: 非 `storage://` 前缀的旧路径自动视为 local legacy path，透明兼容
+- **文档**: 更新 `noj-core/CLAUDE.md` 和 `AGENTS.md` 中的存储路径描述、环境变量表格；更新 `README.md`
+- **构建脚本**: `scripts/build-packages.ts` 更新注释；`scripts/seed.ts` 更新路径格式
+- **环境变量**: `noj-core/.env.example` 新增 STORAGE_PROVIDER、S3_*；`env.e2e.template` 同步
+- **基础设施**: `docker-compose.yml`、`docker-compose.e2e.yml`、`.github/workflows/e2e.yml`、`scripts/e2e/setup.sh` 增加 MinIO
+- **依赖**: Deno 新增 `@aws-sdk/client-s3`、`@aws-sdk/s3-request-presigner`；Rust 新增 `reqwest`、`sha2`
+- **向后兼容**: 非 `noj-storage://` 前缀的旧路径自动视为 local legacy path
