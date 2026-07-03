@@ -4,7 +4,7 @@ import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { PGlite } from "@electric-sql/pglite";
 import * as schema from "./schema.ts";
-import { SCHEMA_DDL, SCHEMA_INDEXES, ALL_TABLES } from "./schema-ddl.ts";
+import { ALL_TABLES, SCHEMA_DDL, SCHEMA_INDEXES } from "./schema-ddl.ts";
 
 let _db: ReturnType<typeof drizzlePg> | null = null;
 let _client: ReturnType<typeof postgres> | null = null;

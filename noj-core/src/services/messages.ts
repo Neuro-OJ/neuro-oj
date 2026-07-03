@@ -1,14 +1,14 @@
 import { and, desc, eq, gt, or, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import {
-  conversations,
   conversationReads,
+  conversations,
   messageDeletions,
   messages,
   users,
 } from "../db/schema.ts";
 import { BadRequestError, NotFoundError } from "../lib/errors.ts";
-import { publishEvent, Channels } from "../lib/event-bus.ts";
+import { Channels, publishEvent } from "../lib/event-bus.ts";
 
 /** 消息内容最大长度 */
 const MAX_MESSAGE_LENGTH = 10_000;
@@ -30,7 +30,9 @@ const PREVIEW_LENGTH = 50;
 export async function findOrCreateConversation(
   userId: string,
   otherUserId: string,
-): Promise<{ conversation: typeof conversations.$inferSelect; created: boolean }> {
+): Promise<
+  { conversation: typeof conversations.$inferSelect; created: boolean }
+> {
   // 拒绝自聊
   if (userId === otherUserId) {
     throw new BadRequestError("无法与自己创建会话");
@@ -79,7 +81,9 @@ export async function findOrCreateConversation(
     return { conversation, created: true };
   } catch (err: unknown) {
     // 并发创建冲突（PG 23505），返回已有会话
-    if (err && typeof err === "object" && "code" in err && err.code === "23505") {
+    if (
+      err && typeof err === "object" && "code" in err && err.code === "23505"
+    ) {
       const [existingAfterConflict] = await getDb()
         .select()
         .from(conversations)
@@ -91,7 +95,9 @@ export async function findOrCreateConversation(
         )
         .limit(1);
 
-      if (existingAfterConflict) return { conversation: existingAfterConflict, created: false };
+      if (existingAfterConflict) {
+        return { conversation: existingAfterConflict, created: false };
+      }
     }
     throw err;
   }
@@ -105,7 +111,9 @@ export async function findOrCreateConversation(
 async function assertParticipant(
   userId: string,
   conversationId: string,
-): Promise<{ conversation: typeof conversations.$inferSelect; otherUserId: string }> {
+): Promise<
+  { conversation: typeof conversations.$inferSelect; otherUserId: string }
+> {
   const [conv] = await getDb()
     .select()
     .from(conversations)
@@ -217,7 +225,10 @@ export async function listConversations(
     .offset(offset);
 
   if (rows.length === 0) {
-    return { data: [], pagination: { page, per_page: perPage, total: 0, total_pages: 0 } };
+    return {
+      data: [],
+      pagination: { page, per_page: perPage, total: 0, total_pages: 0 },
+    };
   }
 
   // 收集所有参与方用户 ID（排除当前用户）
@@ -344,7 +355,10 @@ export async function listMessages(
   const total = Number(countRow?.total ?? 0);
 
   if (total === 0) {
-    return { data: [], pagination: { page, per_page: perPage, total, total_pages: 0 } };
+    return {
+      data: [],
+      pagination: { page, per_page: perPage, total, total_pages: 0 },
+    };
   }
 
   // 查询消息

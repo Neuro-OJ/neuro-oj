@@ -57,7 +57,6 @@ async function cleanup(...userIds: string[]): Promise<void> {
   }
 }
 
-
 // ─── 认证校验 ────────────────────────────────────────────────────
 
 Deno.test({
@@ -298,7 +297,6 @@ Deno.test({
     }
   },
 });
-
 
 // ─── Unread Count ────────────────────────────────────────────────
 
@@ -576,7 +574,6 @@ Deno.test({
   },
 });
 
-
 // ─── Read / Mark as Read ──────────────────────────────────────────
 
 Deno.test({
@@ -627,7 +624,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "messages route: POST /conversations/:id/read 缺少 last_read_message_id 返回 400",
+  name:
+    "messages route: POST /conversations/:id/read 缺少 last_read_message_id 返回 400",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -714,7 +712,8 @@ Deno.test({
 // ─── Delete Message ─────────────────────────────────────────────
 
 Deno.test({
-  name: "messages route: DELETE /conversations/:id/messages/:mid 删除成功返回 204",
+  name:
+    "messages route: DELETE /conversations/:id/messages/:mid 删除成功返回 204",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -754,7 +753,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "messages route: DELETE /conversations/:id/messages/:mid 不存在返回 404",
+  name:
+    "messages route: DELETE /conversations/:id/messages/:mid 不存在返回 404",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -773,10 +773,13 @@ Deno.test({
         body: JSON.stringify({ other_user_id: userB }),
       });
       const conv = (await createRes.json()).data;
-      const res = await app.request(BASE + `/${conv.id}/messages/${crypto.randomUUID()}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${tokenA}` },
-      });
+      const res = await app.request(
+        BASE + `/${conv.id}/messages/${crypto.randomUUID()}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${tokenA}` },
+        },
+      );
       assertEquals(res.status, 404);
     } finally {
       await cleanup(userA, userB);

@@ -30,7 +30,9 @@ export async function setupSchemaForTest(): Promise<void> {
 
   const db = getDb();
 
-  const { SCHEMA_DDL, SCHEMA_INDEXES } = await import("../src/db/schema-ddl.ts");
+  const { SCHEMA_DDL, SCHEMA_INDEXES } = await import(
+    "../src/db/schema-ddl.ts"
+  );
 
   for (const ddl of SCHEMA_DDL) {
     await db.execute(ddl);
