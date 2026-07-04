@@ -1,6 +1,10 @@
 import type { Context, Next } from "hono";
+import { and, eq, isNull } from "drizzle-orm";
 import { ForbiddenError, UnauthorizedError } from "../lib/errors.ts";
 import { verifyToken } from "../lib/jwt.ts";
+import { getDb } from "../db/connection.ts";
+import { userBans } from "../db/schema.ts";
+import { getCached } from "../lib/banCache.ts";
 
 /**
  * 强制改密白名单（issue #75）。
@@ -23,6 +27,30 @@ export const PASSWORD_CHANGE_WHITELIST: readonly string[] = [
 ] as const;
 
 /**
+ * 封禁状态校验白名单（issue #102 / ban-status-endpoint）。
+ *
+ * 与 `banlistMiddleware` 统一采用"方法限制 + 最小白名单"策略：
+ * - GET/HEAD/OPTIONS → 直接放行（被封用户可浏览、查 ban-status）
+ * - POST/PUT/PATCH/DELETE → 检查封禁状态（白名单路径豁免）
+ *
+ * 白名单仅保留 logout——被封用户必须能登出。
+ * login 不需要白名单（login 路由不经过 authMiddleware）；
+ * /me 不需要白名单（GET 方法限制自动放行）。
+ */
+export const BAN_WHITELIST: readonly string[] = [
+  "/api/v1/auth/logout",
+] as const;
+
+/**
+ * 用户 ban 状态（从 users 表读，60s LRU 缓存）。
+ */
+export interface UserBanState {
+  banned: boolean;
+  reason: string;
+  until: string | null;
+}
+
+/**
  * 认证中间件——验证 JWT Bearer token。
  *
  * 提取 Authorization 头中的 Bearer token，验证签名和有效期，
@@ -33,6 +61,10 @@ export const PASSWORD_CHANGE_WHITELIST: readonly string[] = [
  * issue #75：若 token 携带 must_change_password=true 且请求路径
  * 不在白名单内，抛 ForbiddenError（PASSWORD_CHANGE_REQUIRED），
  * 由 app.ts onError 统一处理（评审修复 M1）。
+ *
+ * issue #102：扩展封禁校验——从 DB 查 users.banned/banned_reason/banned_until
+ * （60s LRU 缓存），命中且未过期则抛 ForbiddenError（USER_BANNED）。
+ * `banUser`/`unbanUser` 写操作会调 `invalidateBanCache` 立即失效。
  */
 export async function authMiddleware(c: Context, next: Next) {
   const authHeader = c.req.header("Authorization");
@@ -58,10 +90,60 @@ export async function authMiddleware(c: Context, next: Next) {
     throw new ForbiddenError("请先修改密码", "PASSWORD_CHANGE_REQUIRED");
   }
 
+  // issue #102 / ban-status-endpoint：封禁校验
+  // 方法限制：GET/HEAD/OPTIONS 放行（被封用户可浏览、查状态）
+  // 白名单：写操作中豁免的路径（如 logout）
+  if (
+    c.req.method !== "GET" && c.req.method !== "HEAD" &&
+    c.req.method !== "OPTIONS" &&
+    !BAN_WHITELIST.includes(c.req.path)
+  ) {
+    const banState = await getUserBanState(payload.sub);
+    // 临时封禁：banned_until < now 视为已解封
+    const stillBanned = banState.banned &&
+      (!banState.until || Date.parse(banState.until) > Date.now());
+    if (stillBanned) {
+      throw new ForbiddenError("账号已被封禁", "USER_BANNED", {
+        reason: banState.reason,
+        until: banState.until,
+      });
+    }
+  }
+
   c.set("userId", payload.sub);
   c.set("userRole", payload.role);
   c.set("mustChangePassword", payload.must_change_password ?? false);
   await next();
+}
+
+/**
+ * 读取用户 ban 状态（60s LRU 缓存）。
+ * 缓存 key: `user:${userId}` → UserBanState
+ * 从 user_bans 表查询活跃封禁（unbanned_at IS NULL）。
+ */
+export async function getUserBanState(userId: string): Promise<UserBanState> {
+  return await getCached(`user:${userId}`, async () => {
+    const db = getDb();
+    const rows = await db
+      .select({
+        reason: userBans.reason,
+        banned_until: userBans.banned_until,
+      })
+      .from(userBans)
+      .where(and(
+        eq(userBans.user_id, userId),
+        isNull(userBans.unbanned_at),
+      ))
+      .limit(1);
+    if (rows.length === 0) {
+      return { banned: false, reason: "", until: null };
+    }
+    return {
+      banned: true,
+      reason: rows[0].reason,
+      until: rows[0].banned_until,
+    };
+  });
 }
 
 /**

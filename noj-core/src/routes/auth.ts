@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { authMiddleware } from "../middleware/auth.ts";
+import { authMiddleware, getUserBanState } from "../middleware/auth.ts";
 import {
   changePassword,
   getUserProfile,
@@ -13,6 +13,9 @@ import {
   ValidationError,
 } from "../lib/errors.ts";
 import { parseJsonBody } from "../lib/request.ts";
+import { verifyToken } from "../lib/jwt.ts";
+import { getClientIp } from "../lib/rateLimitEnv.ts";
+import { getBannedIpDetail } from "../services/banlist.ts";
 import {
   applyLoginBackoff,
   clearLoginFailure,
@@ -221,6 +224,71 @@ auth.post(
  */
 auth.post("/logout", (c) => {
   return c.json({ data: { ok: true } }, 200);
+});
+
+/**
+ * 当前请求的封禁状态（issue #102 / ban-status-endpoint）。
+ * GET /api/v1/auth/ban-status
+ *
+ * 不受 banlistMiddleware 和 authMiddleware 封禁检查限制（GET 方法限制自动放行）。
+ * 返回 IP 封禁状态 +（如有有效 JWT）用户封禁状态。
+ *
+ * 前端在布局级调用此端点以决定是否渲染全局 BanBanner。
+ */
+auth.get("/ban-status", async (c) => {
+  // ─── IP 封禁状态 ───
+  const clientIp = getClientIp(c);
+  let ipBanned = false;
+  let ipBanInfo: {
+    matched_cidr: string;
+    reason: string;
+    expires_at: string | null;
+    created_at: string;
+  } | null = null;
+
+  if (clientIp && clientIp !== "unknown") {
+    const detail = await getBannedIpDetail(clientIp);
+    if (detail) {
+      ipBanned = true;
+      ipBanInfo = detail;
+    }
+  }
+
+  // ─── 用户封禁状态（尝试解析 token，不强校验） ───
+  let authenticated = false;
+  let user: { id: string; role: string } | null = null;
+  let userBanned = false;
+  let userBanInfo: { reason: string; until: string | null } | null = null;
+
+  const authHeader = c.req.header("Authorization");
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      const payload = await verifyToken(authHeader.slice(7));
+      authenticated = true;
+      user = {
+        id: payload.sub,
+        role: payload.role ?? "user",
+      };
+      const banState = await getUserBanState(payload.sub);
+      const stillBanned = banState.banned &&
+        (!banState.until || Date.parse(banState.until) > Date.now());
+      if (stillBanned) {
+        userBanned = true;
+        userBanInfo = { reason: banState.reason, until: banState.until };
+      }
+    } catch {
+      // token 无效/过期 —— 忽略，视为未认证
+    }
+  }
+
+  return c.json({
+    ip_banned: ipBanned,
+    ip_ban_info: ipBanInfo,
+    user_banned: userBanned,
+    user_ban_info: userBanInfo,
+    authenticated,
+    user,
+  }, 200);
 });
 
 /**

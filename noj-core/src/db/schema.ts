@@ -399,3 +399,62 @@ export const systemSettings = pgTable(
     ),
   }),
 );
+
+/**
+ * IP 黑名单表（issue #102）。
+ * 存储被封禁的 IPv4 裸 IP（如 1.2.3.4）或 CIDR 范围（如 10.0.0.0/8）。
+ * 命中后中间件返 403 IP_BLACKLISTED。
+ * expires_at 为 ISO 8601 字符串；NULL = 永久。
+ */
+export const ipBans = pgTable(
+  "ip_bans",
+  {
+    id: text("id").primaryKey(),
+    ip_or_cidr: text("ip_or_cidr").notNull(),
+    reason: text("reason").notNull().default(""),
+    expires_at: text("expires_at"),
+    created_at: text("created_at").notNull(),
+    created_by: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => ({
+    ipCidrIdx: index("idx_ip_bans_ip_or_cidr").on(table.ip_or_cidr),
+    expiresIdx: index("idx_ip_bans_expires_at").on(table.expires_at),
+  }),
+);
+
+/**
+ * 用户封禁表（user-ban-table）。
+ *
+ * 每条记录代表一次封禁操作。unbanned_at IS NULL = 当前活跃封禁。
+ * 至多一条活跃封禁记录（banUser 先关闭旧活跃再插入新记录）。
+ * 支持审计追溯：banned_by/unbanned_by 记录操作人。
+ */
+export const userBans = pgTable(
+  "user_bans",
+  {
+    id: text("id").primaryKey(),
+    user_id: text("user_id").notNull().references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    reason: text("reason").notNull().default(""),
+    /** ISO 8601；NULL = 永久封禁 */
+    banned_until: text("banned_until"),
+    banned_at: text("banned_at").notNull(),
+    banned_by: text("banned_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** 解封时间；NULL = 当前活跃封禁 */
+    unbanned_at: text("unbanned_at"),
+    unbanned_by: text("unbanned_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => ({
+    userIdx: index("idx_user_bans_user").on(table.user_id),
+    activeIdx: index("idx_user_bans_active").on(table.user_id).where(
+      sql`unbanned_at IS NULL`,
+    ),
+  }),
+);

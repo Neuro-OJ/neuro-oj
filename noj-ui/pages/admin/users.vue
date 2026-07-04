@@ -20,6 +20,8 @@ interface User {
   username: string
   email: string
   role: string
+  /** user-ban-table：活跃封禁信息 */
+  active_ban: { reason: string; banned_until: string | null } | null
   created_at: string
   updated_at: string
 }
@@ -87,6 +89,110 @@ function confirmRoleSwitch(user: User) {
   showRoleModal.value = true
 }
 
+// ─── 封禁 / 解封（issue #102）─────────────────────
+const showBanModal = ref(false)
+const banTarget = ref<User | null>(null)
+const banForm = reactive({ reason: "", banned_until: "" })
+const banning = ref(false)
+const banError = ref("")
+const { dialog } = useDialog()
+
+function confirmBan(user: User) {
+  banTarget.value = user
+  banForm.reason = ""
+  banForm.banned_until = ""
+  banError.value = ""
+  showBanModal.value = true
+}
+
+async function handleBan() {
+  if (!banTarget.value) return
+  banning.value = true
+  banError.value = ""
+  try {
+    await $fetch(`/api/v1/admin/users/${banTarget.value.id}/ban`, {
+      method: "PATCH",
+      body: {
+        reason: banForm.reason.trim() || undefined,
+        banned_until: banForm.banned_until
+          ? new Date(banForm.banned_until).toISOString()
+          : null,
+      },
+    })
+    showBanModal.value = false
+    toast.success(`已封禁 ${banTarget.value.username}`)
+    await loadUsers(currentPage.value)
+  } catch (err: unknown) {
+    banError.value = err instanceof Error ? err.message : "封禁失败"
+  } finally {
+    banning.value = false
+  }
+}
+
+async function confirmUnban(user: User) {
+  const ok = await dialog({
+    title: "确认解封用户？",
+    text: `将解除 ${user.username} 的封禁状态。此操作立即生效。`,
+    icon: "warning",
+    confirmText: "确认解封",
+  })
+  if (!ok) return
+  banning.value = true
+  try {
+    await $fetch(`/api/v1/admin/users/${user.id}/unban`, { method: "PATCH" })
+    toast.success(`已解封 ${user.username}`)
+    await loadUsers(currentPage.value)
+  } catch (err: unknown) {
+    toast.error(err instanceof Error ? err.message : "解封失败")
+  } finally {
+    banning.value = false
+  }
+}
+
+// ─── 封禁历史（user-ban-table）─────────────────────
+interface BanRecord {
+  id: string
+  reason: string
+  banned_until: string | null
+  banned_at: string
+  banned_by: { id: string; username: string } | null
+  unbanned_at: string | null
+  unbanned_by: { id: string; username: string } | null
+}
+
+const showHistoryModal = ref(false)
+const historyTarget = ref<User | null>(null)
+const historyRecords = ref<BanRecord[]>([])
+const historyLoading = ref(false)
+const historyError = ref("")
+
+function formatDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("zh-CN", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit",
+    })
+  } catch { return iso }
+}
+
+async function showBanHistory(user: User) {
+  historyTarget.value = user
+  historyRecords.value = []
+  historyError.value = ""
+  historyLoading.value = true
+  showHistoryModal.value = true
+  try {
+    const res = await $fetch<{ data: BanRecord[] }>(
+      `/api/v1/admin/users/${user.id}/bans`,
+    )
+    historyRecords.value = res.data
+  } catch (err: unknown) {
+    historyError.value = err instanceof Error ? err.message : "加载封禁历史失败"
+  } finally {
+    historyLoading.value = false
+  }
+}
+
 async function handleRoleSwitch() {
   if (!targetUser.value) return
   const newRole = targetUser.value.role === "admin" ? "user" : "admin"
@@ -122,26 +228,61 @@ async function handleRoleSwitch() {
       empty-text="暂无用户"
     >
       <template #cell-role="{ row }">
-        <span
-          class="inline-flex items-center gap-1 px-2 py-[3px] rounded text-xs font-semibold"
-          :class="row.role === 'admin' ? 'bg-blue-50 text-info-text' : 'bg-[#f5f5f5] text-[#6b7280]'"
-        >
-          <ShieldCheck v-if="row.role === 'admin'" :size="14" />
-          <ShieldX v-else :size="14" />
-          {{ row.role === "admin" ? "管理员" : "用户" }}
-        </span>
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <span
+            class="inline-flex items-center gap-1 px-2 py-[3px] rounded text-xs font-semibold"
+            :class="row.role === 'admin' ? 'bg-blue-50 text-info-text' : 'bg-[#f5f5f5] text-[#6b7280]'"
+          >
+            <ShieldCheck v-if="row.role === 'admin'" :size="14" />
+            <ShieldX v-else :size="14" />
+            {{ row.role === "admin" ? "管理员" : "用户" }}
+          </span>
+          <!-- user-ban-table：封禁 badge -->
+          <span
+            v-if="row.active_ban"
+            class="inline-flex items-center px-2 py-[3px] rounded text-xs font-semibold bg-red-50 text-error-text"
+            :title="row.active_ban.banned_until ? `至 ${row.active_ban.banned_until} 解封` : '永久封禁'"
+          >
+            已封禁
+          </span>
+        </div>
       </template>
 
       <template #actions="{ row }">
-        <button
-          class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-transparent"
-          :class="row.role === 'admin'
-            ? 'text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white'
-            : 'text-info-text border-info-text bg-transparent hover:bg-info-text hover:text-white'"
-          @click="confirmRoleSwitch(row)"
-        >
-          {{ row.role === "admin" ? "降为用户" : "设为管理员" }}
-        </button>
+        <div class="flex items-center gap-1.5">
+          <button
+            class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-transparent"
+            :class="row.role === 'admin'
+              ? 'text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white'
+              : 'text-info-text border-info-text bg-transparent hover:bg-info-text hover:text-white'"
+            @click="confirmRoleSwitch(row)"
+          >
+            {{ row.role === "admin" ? "降为用户" : "设为管理员" }}
+          </button>
+          <!-- user-ban-table：封禁 / 解封 / 历史按钮 -->
+          <button
+            v-if="!row.active_ban"
+            class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-error-text text-error-text bg-transparent hover:bg-error-text hover:text-white"
+            :disabled="banning"
+            @click="confirmBan(row)"
+          >
+            封禁
+          </button>
+          <button
+            v-else
+            class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-info-text text-info-text bg-transparent hover:bg-info-text hover:text-white"
+            :disabled="banning"
+            @click="confirmUnban(row)"
+          >
+            解封
+          </button>
+          <button
+            class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-border text-text-secondary bg-transparent hover:bg-page hover:text-text"
+            @click="showBanHistory(row)"
+          >
+            历史
+          </button>
+        </div>
       </template>
     </AdminTable>
 
@@ -166,5 +307,85 @@ async function handleRoleSwitch() {
     <strong>{{ targetUser?.role === "admin" ? "管理员" : "普通用户" }}</strong>
     改为 <strong>{{ targetUser?.role === "admin" ? "普通用户" : "管理员" }}</strong> 吗？</p>
     <p v-if="switchError" class="mt-2 text-error-text text-[13px]">{{ switchError }}</p>
+  </AdminModal>
+
+  <!-- 封禁用户弹窗（issue #102） -->
+  <AdminModal
+    v-if="showBanModal"
+    title="封禁用户"
+    confirm-text="确认封禁"
+    :loading="banning"
+    danger
+    @confirm="handleBan"
+    @cancel="showBanModal = false"
+  >
+    <p class="mb-3">将封禁 <strong>{{ banTarget?.username }}</strong>。</p>
+    <div class="flex flex-col gap-3">
+      <div>
+        <label class="block text-sm font-semibold text-text mb-1">封禁原因</label>
+        <input
+          v-model="banForm.reason"
+          placeholder="例如：刷接口 / 提交作弊"
+          class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+        />
+      </div>
+      <div>
+        <label class="block text-sm font-semibold text-text mb-1">到期时间</label>
+        <input
+          v-model="banForm.banned_until"
+          type="datetime-local"
+          class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+        />
+        <p class="mt-1 text-[12px] text-text-secondary">留空表示永久封禁</p>
+      </div>
+      <p v-if="banError" class="text-[13px] text-error-text">{{ banError }}</p>
+    </div>
+  </AdminModal>
+
+  <!-- 封禁历史弹窗（user-ban-table） -->
+  <AdminModal
+    v-if="showHistoryModal"
+    title="封禁历史"
+    confirm-text=""
+    :loading="historyLoading"
+    @confirm="showHistoryModal = false"
+    @cancel="showHistoryModal = false"
+  >
+    <p v-if="historyTarget" class="mb-3">
+      <strong>{{ historyTarget.username }}</strong> 的封禁记录
+    </p>
+    <div v-if="historyLoading" class="text-center py-4 text-sm text-text-secondary">
+      加载中...
+    </div>
+    <div v-else-if="historyError" class="text-error-text text-sm">
+      {{ historyError }}
+    </div>
+    <div v-else-if="historyRecords.length === 0" class="text-center py-4 text-sm text-text-secondary">
+      暂无封禁记录
+    </div>
+    <div v-else class="space-y-3 max-h-[400px] overflow-y-auto">
+      <div
+        v-for="rec in historyRecords"
+        :key="rec.id"
+        class="border border-border rounded-md p-3 text-sm"
+      >
+        <div class="flex items-center justify-between mb-1">
+          <span class="font-semibold">{{ rec.reason || '(无原因)' }}</span>
+          <span
+            class="text-xs px-2 py-0.5 rounded"
+            :class="rec.unbanned_at ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'"
+          >
+            {{ rec.unbanned_at ? '已解封' : '封禁中' }}
+          </span>
+        </div>
+        <div class="text-text-secondary text-xs space-y-0.5">
+          <div>封禁于 {{ formatDate(rec.banned_at) }} — {{ rec.banned_by?.username || '系统' }}</div>
+          <div v-if="rec.banned_until">到期：{{ formatDate(rec.banned_until) }}</div>
+          <div v-if="rec.unbanned_at" class="text-green-700">
+            解封于 {{ formatDate(rec.unbanned_at) }} — {{ rec.unbanned_by?.username || '系统' }}
+          </div>
+        </div>
+      </div>
+    </div>
   </AdminModal>
 </template>

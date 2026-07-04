@@ -17,6 +17,7 @@
     "npm:@types/pg@^8.20.0": "8.20.0",
     "npm:bcryptjs@^2.4.3": "2.4.3",
     "npm:drizzle-kit@*": "0.31.10",
+    "npm:drizzle-orm@*": "0.45.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5",
     "npm:drizzle-orm@0.35.2": "0.35.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5",
     "npm:drizzle-orm@0.45.2": "0.45.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5",
     "npm:hono@4": "4.12.26",
