@@ -579,6 +579,7 @@ jj git push
 - 无速率限制 / IP 封禁 / CAPTCHA
 - 无 CSRF token（依赖 sameSite: 'lax'）
 - 注册存在 TOCTOU 竞争条件（DB 唯一约束为最终保障）
+- 审计日志保留 90 天（`AUDIT_LOG_RETENTION_DAYS` 可配置；0 = 禁用）
 
 ---
 

@@ -13,14 +13,14 @@
  * - 写路径同步失效单条 → 异步 reload
  * - 读路径 O(1) Map 查找，不打 DB
  *
- * 审计日志：console.log("[admin] actor=... action=... key=... value=...")。
- * 完整落库审计留待 issue #101（独立工作）。
+ * 审计日志：已迁移至 logAudit()（issue #101）。
  */
 
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { systemSettings } from "../db/schema.ts";
 import { ValidationError } from "../lib/errors.ts";
+import { logAudit } from "./audit-log.ts";
 import {
   ENV_ONLY_DEFINITIONS,
   getEnvSnapshotValue,
@@ -303,6 +303,10 @@ export async function updateSetting(
   const now = new Date().toISOString();
   const db = getDb();
 
+  // 获取旧值（用于审计对比）
+  const oldSetting = getSetting(key);
+  const fromRaw = oldSetting?.value;
+
   // UPSERT：PG `ON CONFLICT (key) DO UPDATE`
   await db
     .insert(systemSettings)
@@ -327,15 +331,21 @@ export async function updateSetting(
   cache.delete(key);
   await reloadSingleKey(key);
 
-  // 审计日志（issue #101 落库前临时方案）
-  // 敏感字段（is_secret=true）在日志中改为掩码，避免生产环境 stdout 泄露明文
+  // 审计日志：记录设置变更（issue #101）
   const def = findDefinition(key);
   if (!def) {
     throw new ValidationError(`未注册的设置项: ${key}`);
   }
-  const loggedValue = def.is_secret ? maskSecret(value) : validation.raw;
-  console.log(
-    `[admin] actor=${actorId} action=PUT key=${key} value=${loggedValue}`,
+  const toValue = def.is_secret ? maskSecret(value) : value;
+  await logAudit(
+    "settings.update",
+    {
+      action: "settings.update",
+      key,
+      from: fromRaw,
+      to: toValue,
+    },
+    { type: "system_setting", id: key },
   );
 
   return {
@@ -364,12 +374,27 @@ export async function resetSetting(
   actorId: string,
 ): Promise<void> {
   const db = getDb();
+
+  // 获取旧值（用于审计对比）
+  const oldSetting = getSetting(key);
+  const fromRaw = oldSetting?.value;
+
   await db.delete(systemSettings).where(eq(systemSettings.key, key));
 
   cache.delete(key);
   // 重置后不需要 reload（已经从 Map 删除，下次读会走 env/default 兜底）
 
-  console.log(`[admin] actor=${actorId} action=DELETE key=${key} value=null`);
+  // 审计日志：记录设置删除（issue #101）
+  await logAudit(
+    "settings.update",
+    {
+      action: "settings.update",
+      key,
+      from: fromRaw,
+      to: null,
+    },
+    { type: "system_setting", id: key },
+  );
 }
 
 // ─── 内部辅助 ───────────────────────────────────────────────

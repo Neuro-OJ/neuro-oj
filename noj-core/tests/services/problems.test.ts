@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { eq } from "drizzle-orm";
 import {
   createProblem,
   deleteProblem,
@@ -7,8 +8,9 @@ import {
   updateProblem,
 } from "../../src/services/problems.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { categories } from "../../src/db/schema.ts";
+import { auditLogs, categories, users } from "../../src/db/schema.ts";
 import { BadRequestError, NotFoundError } from "../../src/lib/errors.ts";
+import { enterTestContext } from "../../src/lib/requestContext.ts";
 
 // PGlite 内存数据库始终可用
 const dbAvailable = true;
@@ -226,6 +228,76 @@ Deno.test({
       NotFoundError,
       "题目不存在",
     );
+  },
+});
+
+Deno.test({
+  name: "problems service: deleteProblem 写一条 problems.delete 审计",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+
+    // 准备：admin 操作者（满足 audit_logs.admin_id FK）
+    const db = getDb();
+    const adminId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+      id: adminId,
+      username: `test-del-prob-admin-${Date.now()}`,
+      email: `test-del-prob-admin-${Date.now()}@example.com`,
+      password_hash: "",
+      role: "admin",
+      created_at: now,
+      updated_at: now,
+    });
+
+    // 注入 admin actor context（logAudit 依赖 RequestContext）
+    enterTestContext({
+      actorId: adminId,
+      actorIp: "10.0.0.42",
+      actorRole: "admin",
+    });
+
+    // 创建题目（admin 创建，owner=admin，避免权限检查失败）
+    const toDelete = await createProblem(
+      {
+        title: `待删除审计题 ${Date.now()}`,
+        description: "将触发 problems.delete 审计",
+        difficulty: "easy",
+        judge_image: "noj-judge-python",
+        judge_command: "python3 /tmp/evaluate.py",
+        time_limit_ms: 5000,
+        memory_limit_mb: 512,
+      },
+      adminId,
+      "admin",
+    );
+
+    // 清空本测试前可能存在的审计行，避免行数偏差
+    await getDb().delete(auditLogs);
+
+    // 执行：删除题目（admin 可删任意题）
+    await deleteProblem(toDelete.id, adminId, "admin");
+
+    // 验证：审计日志写入
+    const rows = await getDb().select().from(auditLogs).where(
+      eq(auditLogs.action, "problems.delete"),
+    );
+    assertEquals(rows.length, 1);
+    assertEquals(rows[0].target_type, "problem");
+    assertEquals(rows[0].target_id, toDelete.id);
+    assertEquals(rows[0].admin_id, adminId);
+    assertEquals(rows[0].ip_address, "10.0.0.42");
+    const detail = rows[0].detail as {
+      action: string;
+      title: string;
+      display_id: string;
+    };
+    assertEquals(detail.action, "problems.delete");
+    assertEquals(detail.title, toDelete.title);
+    assertEquals(detail.display_id, toDelete.display_id);
   },
 });
 

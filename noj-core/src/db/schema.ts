@@ -3,6 +3,7 @@ import {
   check,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -401,6 +402,42 @@ export const systemSettings = pgTable(
 );
 
 /**
+ * 审计日志表（issue #101）。
+ * 记录所有管理员操作的详细信息：admin_id、action、target、detail、ip、time。
+ * service 层通过 logAudit() 同步写入；后台任务定期清理过期记录。
+ */
+export const auditLogs = pgTable(
+  "audit_logs",
+  {
+    id: text("id").primaryKey(),
+    admin_id: text("admin_id").notNull().references(() => users.id),
+    action: text("action").notNull(),
+    target_type: text("target_type"),
+    target_id: text("target_id"),
+    detail: jsonb("detail").notNull().default({}),
+    ip_address: text("ip_address").notNull(),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    actionCheck: check(
+      "audit_logs_action_check",
+      sql`${table.action} IN (
+        'users.role_change',
+        'users.ban',
+        'users.unban',
+        'problems.delete',
+        'categories.delete',
+        'submissions.rejudge',
+        'settings.update'
+      )`,
+    ),
+    adminIdx: index("audit_logs_admin_id_idx").on(table.admin_id),
+    createdAtIdx: index("audit_logs_created_at_idx").on(table.created_at),
+    actionIdx: index("audit_logs_action_idx").on(table.action),
+  }),
+);
+
+/**
  * IP 黑名单表（issue #102）。
  * 存储被封禁的 IPv4 裸 IP（如 1.2.3.4）或 CIDR 范围（如 10.0.0.0/8）。
  * 命中后中间件返 403 IP_BLACKLISTED。
@@ -457,4 +494,3 @@ export const userBans = pgTable(
       sql`unbanned_at IS NULL`,
     ),
   }),
-);

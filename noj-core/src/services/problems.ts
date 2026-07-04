@@ -33,6 +33,7 @@ import {
 } from "../types/problems.ts";
 import { validateJudgeImage } from "./judge-images.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
+import { logAudit } from "./audit-log.ts";
 
 export interface ProblemResponse {
   id: string;
@@ -693,6 +694,17 @@ export async function deleteProblem(
 
   // 级联删除（problems_categories 的 ON DELETE CASCADE 会自动清理关联）
   await db.delete(problems).where(eq(problems.id, id));
+
+  // 审计日志：删除成功后才记录（display_id 由 type+number 派生）
+  await logAudit(
+    "problems.delete",
+    {
+      action: "problems.delete",
+      title: problem.title,
+      display_id: `${problem.type}${problem.number}`,
+    },
+    { type: "problem", id },
+  );
 }
 
 /**
