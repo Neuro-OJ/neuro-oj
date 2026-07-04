@@ -20,8 +20,7 @@ import {
   _resetEnvSnapshotForTest,
   snapshotEnv,
 } from "../../src/lib/env-snapshot.ts";
-
-const ts = Date.now();
+import { jsonRequest } from "../lib/helper.ts";
 
 // 测试需要 JWT_SECRET 签发 token
 if (!Deno.env.get("JWT_SECRET")) {
@@ -46,7 +45,7 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     const app = createApp();
-    const res = await app.request("/api/v1/admin/settings");
+    const res = await jsonRequest(app, "/api/v1/admin/settings");
     assertEquals(res.status, 401);
   },
 });
@@ -59,9 +58,7 @@ Deno.test({
     await freshSetup();
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
-    const res = await app.request("/api/v1/admin/settings", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/api/v1/admin/settings", { token });
     assertEquals(res.status, 403);
   },
 });
@@ -74,9 +71,7 @@ Deno.test({
     await freshSetup();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
-    const res = await app.request("/api/v1/admin/settings", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/api/v1/admin/settings", { token });
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(Array.isArray(body.data), true);
@@ -97,30 +92,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin-settings route: PUT /settings/:key admin 合法 boolean 写入",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await freshSetup();
-    const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
-    const res = await app.request(
-      `/api/v1/admin/settings/maintenance_mode_${ts}`,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ value: true }),
-      },
-    );
-    // 用了 ts 后缀未注册，会 400。这里验证未注册 key 拒绝。
-    assertEquals(res.status, 400);
-  },
-});
-
-Deno.test({
   name: "admin-settings route: PUT /settings/allow_register admin 合法值",
   sanitizeResources: false,
   sanitizeOps: false,
@@ -128,15 +99,13 @@ Deno.test({
     await freshSetup();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
-    const res = await app.request(
+    const res = await jsonRequest(
+      app,
       "/api/v1/admin/settings/allow_register",
       {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ value: false }),
+        body: { value: false },
+        token,
       },
     );
     assertEquals(res.status, 200);
@@ -145,15 +114,13 @@ Deno.test({
     assertEquals(body.data.effective_value, false);
 
     // 清理：恢复成 true
-    await app.request(
+    await jsonRequest(
+      app,
       "/api/v1/admin/settings/allow_register",
       {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ value: true }),
+        body: { value: true },
+        token,
       },
     );
   },
@@ -167,15 +134,13 @@ Deno.test({
     await freshSetup();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
-    const res = await app.request(
+    const res = await jsonRequest(
+      app,
       "/api/v1/admin/settings/hacker_key",
       {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ value: 1 }),
+        body: { value: 1 },
+        token,
       },
     );
     assertEquals(res.status, 400);
@@ -190,15 +155,13 @@ Deno.test({
     await freshSetup();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
-    const res = await app.request(
+    const res = await jsonRequest(
+      app,
       "/api/v1/admin/settings/allow_register",
       {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ value: "yes" }),
+        body: { value: "yes" },
+        token,
       },
     );
     assertEquals(res.status, 400);
@@ -213,15 +176,13 @@ Deno.test({
     await freshSetup();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
-    const res = await app.request(
+    const res = await jsonRequest(
+      app,
       "/api/v1/admin/settings/smtp_from",
       {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ value: "not-an-email" }),
+        body: { value: "not-an-email" },
+        token,
       },
     );
     assertEquals(res.status, 400);
@@ -238,45 +199,64 @@ Deno.test({
     const token = await signToken({ sub: "0", role: "admin" });
 
     // 先写一个
-    await app.request(
+    await jsonRequest(
+      app,
       "/api/v1/admin/settings/allow_register",
       {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ value: false }),
+        body: { value: false },
+        token,
       },
     );
 
     // 再删
-    const res = await app.request(
+    const res = await jsonRequest(
+      app,
       "/api/v1/admin/settings/allow_register",
-      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+      { method: "DELETE", token },
     );
     assertEquals(res.status, 204);
 
     // 验证后续 GET 不返回 404（DB 中已删，回退 default）
-    const getRes = await app.request(
+    const getRes = await jsonRequest(
+      app,
       "/api/v1/admin/settings/allow_register",
-      { headers: { Authorization: `Bearer ${token}` } },
+      { token },
     );
     assertEquals(getRes.status, 200);
   },
 });
 
 Deno.test({
-  name: "admin-settings route: DELETE /settings/:key 不存在也返回 204（幂等）",
+  name: "admin-settings route: DELETE /settings/:key DB 不存在也 204（幂等）",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
-    const res = await app.request(
+    const res = await jsonRequest(
+      app,
       "/api/v1/admin/settings/maintenance_mode",
-      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+      { method: "DELETE", token },
+    );
+    assertEquals(res.status, 204);
+  },
+});
+
+Deno.test({
+  name: "admin-settings route: DELETE /settings/:key 未注册 key 也 204（幂等）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    const app = createApp();
+    const token = await signToken({ sub: "0", role: "admin" });
+    // spec：DELETE /api/v1/admin/settings/nonexistent_key → 204 幂等
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/settings/totally_unregistered_key",
+      { method: "DELETE", token },
     );
     assertEquals(res.status, 204);
   },
@@ -290,9 +270,10 @@ Deno.test({
     await freshSetup();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
-    const res = await app.request(
+    const res = await jsonRequest(
+      app,
       "/api/v1/admin/settings/allow_register",
-      { headers: { Authorization: `Bearer ${token}` } },
+      { token },
     );
     assertEquals(res.status, 200);
     const body = await res.json();

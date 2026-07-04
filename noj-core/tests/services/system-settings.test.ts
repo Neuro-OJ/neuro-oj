@@ -201,6 +201,20 @@ Deno.test({
 });
 
 Deno.test({
+  name: "system-settings service: resetSetting 未注册 key 也幂等（不抛错）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    // spec：DELETE /api/v1/admin/settings/nonexistent_key 应当响应 204，不抛错
+    await resetSetting("totally_unregistered_key_xyz", "0");
+    // 后续再次调用同样幂等
+    await resetSetting("totally_unregistered_key_xyz", "0");
+    assertEquals(true, true);
+  },
+});
+
+Deno.test({
   name: "system-settings service: maskSecret 长度 ≤ 6 整体掩码",
   fn: () => {
     assertEquals(maskSecret("abc"), "***");
@@ -268,6 +282,32 @@ Deno.test({
     // 5 个注册表项 is_secret=false，effective_value 不会被掩码
     assertEquals(allowReg?.effective_value, false);
     assertEquals(allowReg?.is_secret, false);
+  },
+});
+
+Deno.test({
+  name:
+    "system-settings service: listSettings env-only raw_value 是 JSON 编码字符串",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // 模拟运行时 .env 中有该 key：先 setenv 再重置并快照
+    Deno.env.set("REDIS_URL", "redis://127.0.0.1:6379/");
+    await resetDbForTest();
+    _resetSystemSettingsForTest();
+    _resetEnvSnapshotForTest();
+    snapshotEnv();
+    await initSystemSettings();
+
+    const items = listSettings();
+    const redis = items.find((i) => i.key === "REDIS_URL");
+    assertEquals(redis !== undefined, true);
+    // spec 要求 raw_value 是 "原始 JSON 编码"
+    assertEquals(redis?.raw_value, JSON.stringify("redis://127.0.0.1:6379/"));
+    // raw_value 可被 JSON.parse 反序列化
+    assertEquals(JSON.parse(redis!.raw_value), "redis://127.0.0.1:6379/");
+
+    Deno.env.delete("REDIS_URL");
   },
 });
 

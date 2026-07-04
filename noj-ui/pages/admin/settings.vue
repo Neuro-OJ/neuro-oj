@@ -119,6 +119,30 @@ const envOnlySettings = computed(() =>
   )
 )
 
+// 按 category 分组（spec 要求），未声明分类的归到 other
+const envOnlyGrouped = computed(() => {
+  const groups = new Map<SettingCategory, SystemSetting[]>()
+  for (const s of envOnlySettings.value) {
+    const cat = (s.category ?? "other") as SettingCategory
+    if (!groups.has(cat)) groups.set(cat, [])
+    groups.get(cat)!.push(s)
+  }
+  // 固定分组顺序
+  const order: SettingCategory[] = [
+    "auth",
+    "maintenance",
+    "email",
+    "rate_limit",
+    "database",
+    "redis",
+    "cors",
+    "other",
+  ]
+  return order
+    .filter((c) => groups.has(c))
+    .map((c) => ({ category: c, items: groups.get(c)! }))
+})
+
 /** 该 key 是否有未保存的修改 */
 function isDirty(key: string): boolean {
   const s = settings.value.find((x) => x.key === key)
@@ -158,25 +182,28 @@ async function saveSetting(key: string) {
 
 // ─── 重置单个设置 ─────────────────────────────────────────
 
-const resetTarget = ref<SystemSetting | null>(null)
-const showResetConfirm = ref(false)
 const resetting = ref(false)
 const { dialog } = useDialog()
 
-function confirmReset(s: SystemSetting) {
-  resetTarget.value = s
-  showResetConfirm.value = true
-}
+async function confirmReset(s: SystemSetting) {
+  // spec 要求 SweetAlert2 弹窗，文案：
+  // "确认将 XXX 重置为默认值？此操作不可撤销"
+  // DELETE 是幂等的：DB 中无此行也不报错（直接回退到 env/default）
+  const ok = await dialog({
+    title: `确认将 ${s.key} 重置为默认值？`,
+    text: "此操作不可撤销。数据库中保存的值将被删除，回退到 .env 环境变量或系统默认值。",
+    icon: "warning",
+    danger: true,
+    confirmText: "确认重置",
+  })
+  if (!ok) return
 
-async function handleReset() {
-  if (!resetTarget.value) return
   resetting.value = true
   try {
-    await $fetch(`/api/v1/admin/settings/${resetTarget.value.key}`, {
+    await $fetch(`/api/v1/admin/settings/${s.key}`, {
       method: "DELETE",
     })
-    showResetConfirm.value = false
-    toast.success(`已重置 ${resetTarget.value.key}`)
+    toast.success(`已重置 ${s.key}`)
     await loadSettings()
   } catch (err: unknown) {
     toast.error(err instanceof Error ? err.message : "重置失败")
@@ -338,9 +365,9 @@ function toggleBoolean(key: string, currentVal: boolean) {
                   {{ savingKey === s.key ? "保存中..." : "保存" }}
                 </button>
                 <button
-                  class="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-semibold text-text-secondary bg-white border-[1.5px] border-border rounded cursor-pointer transition-all duration-150 hover:border-warning-text hover:text-warning-text"
-                  :disabled="s.source === 'env' || s.source === 'default'"
-                  :title="s.source === 'env' || s.source === 'default' ? '当前已是默认值' : '重置为默认值'"
+                  class="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-semibold text-text-secondary bg-white border-[1.5px] border-border rounded cursor-pointer transition-all duration-150 hover:border-warning-text hover:text-warning-text disabled:opacity-50 disabled:cursor-not-allowed"
+                  :disabled="resetting"
+                  title="重置为默认值"
                   @click="confirmReset(s)"
                 >
                   <RotateCcw :size="13" />
@@ -369,71 +396,69 @@ function toggleBoolean(key: string, currentVal: boolean) {
               {{ envOnlySettings.length }} 项
             </span>
           </div>
-          <span class="text-[11px] text-text-secondary">
-            修改 .env 后需重启 noj-core
-          </span>
         </summary>
+
+        <!-- 顶部提示文字（spec 要求） -->
+        <div class="flex items-start gap-2 px-5 py-3 bg-blue-50 border-b border-blue-100 text-[13px] text-info-text">
+          <Info :size="15" class="shrink-0 mt-0.5" />
+          <div>
+            修改这些项需要更新 .env 并重启 noj-core 服务。当前展示的是已
+            <code class="px-1 py-0.5 bg-blue-100 rounded font-mono text-[12px]">snapshotEnv()</code>
+            启动时快照的值。
+          </div>
+        </div>
 
         <div v-if="envOnlySettings.length === 0" class="p-6 text-center text-sm text-text-secondary">
           当前 .env 中没有白名单内的环境变量
         </div>
-        <table v-else class="w-full text-sm">
-          <thead>
-            <tr class="bg-gray-50 border-b border-border">
-              <th class="px-3 py-2 text-left font-semibold text-text w-[240px]">键名</th>
-              <th class="px-3 py-2 text-left font-semibold text-text">当前值</th>
-              <th class="px-3 py-2 text-left font-semibold text-text w-[100px]">分类</th>
-              <th class="px-3 py-2 text-left font-semibold text-text">描述</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="s in envOnlySettings"
-              :key="s.key"
-              class="border-b border-border last:border-b-0 hover:bg-gray-50"
-            >
-              <td class="px-3 py-2 align-top">
-                <code class="font-mono text-[13px] text-text">{{ s.key }}</code>
-              </td>
-              <td class="px-3 py-2 align-top">
-                <code
-                  class="font-mono text-[13px] px-2 py-0.5 rounded"
-                  :class="s.is_secret ? 'bg-amber-50 text-amber-800' : 'bg-gray-50 text-text'"
-                >
-                  {{ String(s.effective_value) }}
-                </code>
-              </td>
-              <td class="px-3 py-2 align-top">
-                <span class="text-[11px] text-text-secondary">
-                  {{ CATEGORY_LABEL[s.category] }}
+        <div v-else class="flex flex-col">
+          <div
+            v-for="group in envOnlyGrouped"
+            :key="group.category"
+            class="border-b border-border last:border-b-0"
+          >
+            <div class="px-5 py-2 bg-gray-50/60 border-b border-border">
+              <h3 class="text-[13px] font-semibold text-text-secondary uppercase tracking-wide">
+                {{ CATEGORY_LABEL[group.category] }}
+                <span class="ml-1 text-text-muted normal-case font-normal">
+                  ({{ group.items.length }})
                 </span>
-              </td>
-              <td class="px-3 py-2 align-top text-[13px] text-text-secondary">
-                {{ s.description }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+              </h3>
+            </div>
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="bg-white border-b border-border">
+                  <th class="px-3 py-2 text-left font-semibold text-text w-[240px]">键名</th>
+                  <th class="px-3 py-2 text-left font-semibold text-text">当前值</th>
+                  <th class="px-3 py-2 text-left font-semibold text-text">描述</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="s in group.items"
+                  :key="s.key"
+                  class="border-b border-border last:border-b-0 hover:bg-gray-50"
+                >
+                  <td class="px-3 py-2 align-top">
+                    <code class="font-mono text-[13px] text-text">{{ s.key }}</code>
+                  </td>
+                  <td class="px-3 py-2 align-top">
+                    <code
+                      class="font-mono text-[13px] px-2 py-0.5 rounded"
+                      :class="s.is_secret ? 'bg-amber-50 text-amber-800' : 'bg-gray-50 text-text'"
+                    >
+                      {{ String(s.effective_value) }}
+                    </code>
+                  </td>
+                  <td class="px-3 py-2 align-top text-[13px] text-text-secondary">
+                    {{ s.description }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </details>
     </section>
-
-    <!-- 重置确认弹窗 -->
-    <AdminModal
-      v-if="showResetConfirm"
-      title="重置设置项"
-      confirm-text="确认重置"
-      :loading="resetting"
-      danger
-      @confirm="handleReset"
-      @cancel="showResetConfirm = false"
-    >
-      <p>
-        确定要将 <code class="font-mono px-1 bg-gray-100 rounded">{{ resetTarget?.key }}</code>
-        重置为 <strong>{{ resetTarget?.source === 'env' ? 'env' : '默认' }}</strong> 值吗？
-      </p>
-      <p class="mt-2 text-[13px] text-text-secondary">
-        数据库中保存的值将被删除，此操作不可撤销。
-      </p>
-    </AdminModal>
   </div>
 </template>

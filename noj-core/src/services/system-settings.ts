@@ -269,7 +269,8 @@ export function listSettings(): SystemSettingListItem[] {
       key: def.key,
       type: "string",
       effective_value: def.is_secret ? maskSecret(envVal) : envVal,
-      raw_value: envVal,
+      // spec 要求 raw_value 为 "原始 JSON 编码字符串"，env 值统一 JSON.stringify
+      raw_value: JSON.stringify(envVal),
       source: "env",
       is_secret: def.is_secret,
       description: def.description,
@@ -327,14 +328,16 @@ export async function updateSetting(
   await reloadSingleKey(key);
 
   // 审计日志（issue #101 落库前临时方案）
-  console.log(
-    `[admin] actor=${actorId} action=PUT key=${key} value=${validation.raw}`,
-  );
-
+  // 敏感字段（is_secret=true）在日志中改为掩码，避免生产环境 stdout 泄露明文
   const def = findDefinition(key);
   if (!def) {
     throw new ValidationError(`未注册的设置项: ${key}`);
   }
+  const loggedValue = def.is_secret ? maskSecret(value) : validation.raw;
+  console.log(
+    `[admin] actor=${actorId} action=PUT key=${key} value=${loggedValue}`,
+  );
+
   return {
     key: def.key,
     type: def.type,
@@ -351,17 +354,15 @@ export async function updateSetting(
 
 /**
  * 重置设置（DELETE）。从 DB 删除该 key，回退到 env/default 兜底。
- * 幂等：DB 不存在也正常返回。
+ *
+ * 幂等（spec 要求）：
+ * - 即使 key 未注册或 DB 中无该行也正常返回（DELETE 永远不会失败）
+ * - 缓存条目清理后，下次读取会走 env/default 兜底链
  */
 export async function resetSetting(
   key: string,
   actorId: string,
 ): Promise<void> {
-  const def = findDefinition(key);
-  if (!def) {
-    throw new ValidationError(`未注册的设置项: ${key}`);
-  }
-
   const db = getDb();
   await db.delete(systemSettings).where(eq(systemSettings.key, key));
 

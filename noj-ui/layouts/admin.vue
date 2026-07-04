@@ -41,8 +41,8 @@ const navItems: NavItem[] = [
   { label: "题目管理", to: "/admin/problems", icon: BookOpen },
   { label: "分类管理", to: "/admin/categories", icon: Tags },
   { label: "评测镜像", to: "/admin/judge-images", icon: Container },
-  { label: "提交管理", to: "/admin/submissions", icon: Files },
   { label: "系统设置", to: "/admin/settings", icon: Settings },
+  { label: "提交管理", to: "/admin/submissions", icon: Files },
 ]
 
 function isActive(path: string) {
