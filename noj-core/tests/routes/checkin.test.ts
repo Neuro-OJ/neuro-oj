@@ -7,6 +7,7 @@ import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { checkIns, users } from "../../src/db/schema.ts";
 import { hashPassword } from "../../src/lib/password.ts";
+import { jsonRequest } from "../lib/helper.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建
 await resetDbForTest();
@@ -76,7 +77,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createTestApp();
-    const res = await app.request("/api/v1/checkin", { method: "POST" });
+    const res = await jsonRequest(app, "/api/v1/checkin", { method: "POST" });
     assertEquals(res.status, 401);
   },
 });
@@ -88,7 +89,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createTestApp();
-    const res = await app.request("/api/v1/checkin/today");
+    const res = await jsonRequest(app, "/api/v1/checkin/today");
     assertEquals(res.status, 401);
   },
 });
@@ -103,9 +104,9 @@ Deno.test({
     try {
       const token = await signToken({ sub: userId, role: "user" });
       const app = createTestApp();
-      const res = await app.request("/api/v1/checkin", {
+      const res = await jsonRequest(app, "/api/v1/checkin", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        token,
       });
       assertEquals(res.status, 200);
       const body = await res.json() as {
@@ -130,14 +131,11 @@ Deno.test({
       const token = await signToken({ sub: userId, role: "user" });
       const app = createTestApp();
       // 第一次签到
-      await app.request("/api/v1/checkin", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await jsonRequest(app, "/api/v1/checkin", { method: "POST", token });
       // 第二次签到：409
-      const res = await app.request("/api/v1/checkin", {
+      const res = await jsonRequest(app, "/api/v1/checkin", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        token,
       });
       assertEquals(res.status, 409);
       const body = await res.json() as { code: string };
@@ -158,9 +156,7 @@ Deno.test({
     try {
       const token = await signToken({ sub: userId, role: "user" });
       const app = createTestApp();
-      const res = await app.request("/api/v1/checkin/today", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await jsonRequest(app, "/api/v1/checkin/today", { token });
       assertEquals(res.status, 200);
       const body = await res.json() as {
         data: { checked_in: boolean; streak: number };
@@ -184,14 +180,9 @@ Deno.test({
       const token = await signToken({ sub: userId, role: "user" });
       const app = createTestApp();
       // 先签到
-      await app.request("/api/v1/checkin", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await jsonRequest(app, "/api/v1/checkin", { method: "POST", token });
       // 再查询
-      const res = await app.request("/api/v1/checkin/today", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await jsonRequest(app, "/api/v1/checkin/today", { token });
       assertEquals(res.status, 200);
       const body = await res.json() as {
         data: { checked_in: boolean; streak: number };

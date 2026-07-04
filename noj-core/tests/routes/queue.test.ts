@@ -1,7 +1,7 @@
 /**
  * 评测队列路由单元测试。
  *
- * 使用 Hono app.request() 直接测试路由层逻辑（不依赖外部 HTTP 服务器）。
+ * 使用 jsonRequest() 通过 Hono 路由栈直接测试路由层逻辑（不依赖外部 HTTP 服务器）。
  * 需要 PostgreSQL + Redis 已在环境中运行。
  */
 
@@ -10,6 +10,7 @@ import { createApp } from "../../src/app.ts";
 import { connectRedis } from "../../src/mq/connection.ts";
 import { runMigrations } from "../../src/db/migrate.ts";
 import { signToken } from "../../src/lib/jwt.ts";
+import { jsonRequest } from "../lib/helper.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasEnv;
@@ -36,7 +37,7 @@ Deno.test({
   ignore: skip,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/queue");
+    const res = await jsonRequest(app, "/api/v1/queue");
     assertEquals(res.status, 401);
   },
 });
@@ -52,9 +53,7 @@ Deno.test({
 
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
-    const res = await app.request("/api/v1/queue", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/api/v1/queue", { token });
     assertEquals(res.status, 200);
 
     const body = await res.json();
@@ -82,9 +81,7 @@ Deno.test({
 
     const app = createApp();
     const token = await signToken({ sub: "admin-user", role: "admin" });
-    const res = await app.request("/api/v1/queue", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/api/v1/queue", { token });
     assertEquals(res.status, 200);
 
     const body = await res.json();
@@ -106,7 +103,7 @@ Deno.test({
   ignore: skip,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/submissions/123/status");
+    const res = await jsonRequest(app, "/api/v1/submissions/123/status");
     assertEquals(res.status, 401);
   },
 });
@@ -122,9 +119,10 @@ Deno.test({
 
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
-    const res = await app.request(
+    const res = await jsonRequest(
+      app,
       "/api/v1/submissions/nonexistent-id/status",
-      { headers: { Authorization: `Bearer ${token}` } },
+      { token },
     );
     assertEquals(res.status, 404);
     const body = await res.json();
@@ -143,9 +141,10 @@ Deno.test({
 
     const app = createApp();
     const token = await signToken({ sub: "user-a", role: "user" });
-    const res = await app.request(
+    const res = await jsonRequest(
+      app,
       "/api/v1/submissions/nonexistent-id/status",
-      { headers: { Authorization: `Bearer ${token}` } },
+      { token },
     );
     assertEquals(res.status, 404); // 404 而非 401/403 = 权限检查正确
   },
@@ -162,9 +161,10 @@ Deno.test({
 
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
-    const res = await app.request(
+    const res = await jsonRequest(
+      app,
       "/api/v1/submissions/nonexistent-id",
-      { headers: { Authorization: `Bearer ${token}` } },
+      { token },
     );
     assertEquals(res.status, 404);
   },

@@ -1,48 +1,121 @@
 /**
- * 测试公共辅助函数（issue #99 引入，与 PR #90 helper 合并版一致）。
+ * 路由层测试统一辅助函数。
+ *
+ * ## 背景（PR #89 review finding）
+ *
+ * `jsonRequest()` 在本文件落地之前，散落在以下 3 个测试文件中：
+ *
+ *   - tests/routes/auth.test.ts
+ *   - tests/routes/auth_change_password_test.ts
+ *   - tests/routes/submissions.test.ts
+ *
+ * 三份实现 95% 等价，剩余 ~5% 集中在 `X-Forwarded-For` 头的处理差异
+ * （IP 限流测试场景需要注入）。这种重复会让任何后续 helper 演进
+ * （例如新增 trace-id 注入、统一错误响应格式校验等）都要同步修改 3 处，
+ * 且后续新测试找不到权威实现时容易再复制一份 → 重复扩散。
+ *
+ * 本文件作为**单一来源**，3 个调用方统一从此 import，避免再次分叉。
+ *
+ * ## 实现要点
+ *
+ * **为什么走 `new Request()` + `app.fetch()` 而不是 `app.request(path, opts)`**
+ *
+ * `app.request()` 是 Hono 提供的便捷方法，会从 opts 解构 method/headers/body
+ * 后内部再构造一个 Request；`app.fetch()` 则直接接收一个完整的 Request 对象，
+ * 与生产环境（`hono/serve` 接收真实 fetch Request）的代码路径完全一致。
+ * 这样更能暴露路由层兼容性问题（例如某些自定义中间件只对 fetch 入口触发）。
+ * 本约定见 noj-core/AGENTS.md 的"测试约定"一节。
+ *
+ * **为什么用 options bag 而不是位置参数**
+ *
+ * 位置参数版本在 "GET + token" 的场景下需要显式传 `undefined` 占位
+ * （原代码 13/15 个调用点都如此），可读性差且容易写错。options bag 让
+ * 每个字段独立命名，调用方一眼看出传了哪些参数、未来新增字段不破坏
+ * 二进制兼容性（旧调用点不受影响）。
  */
 
-/** jsonRequest 选项包 */
+// 使用 `Hono<any, any, "/">` 而非裸 `Hono`，因为 `Variables` 泛型是逆变
+// 的（`Hono<{Variables: V}>` 不能赋给 `Hono<{}>`），而中间件/路由测试常
+// 用 `new Hono<{Variables: ...}>()` 自定义测试应用。
+import type { Hono } from "hono";
+
+/** `jsonRequest` 的可配置项。 */
 export interface JsonRequestOptions {
+  /** HTTP 方法，默认 `GET`。 */
   method?: string;
+  /** 请求体，传 `undefined` 表示无 body；其他值会被 `JSON.stringify`。 */
   body?: unknown;
-  /** 自动拼 'Bearer ' 前缀；显式提供 Authorization 时跳过 */
+  /** 设置 `Authorization: Bearer <token>`，未设置则不携带。
+   *  如已在 `headers` 中显式提供 `Authorization`，此项被忽略。 */
   token?: string;
-  /** 用于触发或绕过基于 IP 的限流 */
+  /** 设置 `X-Forwarded-For`，用于触发或绕过基于 IP 的限流。
+   *  如已在 `headers` 中显式提供 `X-Forwarded-For`，此项被忽略。 */
   ip?: string;
-  /** 自定义 header（覆盖默认），用于中间件测试 */
-  headers?: Record<string, string>;
+  /** 任意附加 / 覆盖 headers。常用于中间件单元测试中发送非标准
+   *  `Authorization`（如空字符串、`Token` scheme、裸 `Bearer ` 等）。
+   *  传入的 headers 会与上面前缀字段合并；若两者指定同一 header，
+   *  `headers` 优先。`Content-Type` 默认总是 `application/json`，可被覆盖。 */
+  headers?: HeadersInit;
 }
 
 /**
- * 构造带 JSON body 的 fetch Request 并通过 app.fetch() 调用 Hono 路由。
- * 与生产 hono/serve 路径一致，避免测试用 app.request(path, init) 直写时的 fallback。
+ * 构造一个 JSON 测试请求并通过 Hono 路由栈执行。
+ *
+ * @example
+ * ```ts
+ * // POST JSON
+ * await jsonRequest(app, "/api/v1/x", {
+ *   method: "POST",
+ *   body: { foo: 1 },
+ * });
+ *
+ * // GET 带 token
+ * await jsonRequest(app, "/api/v1/me", { token });
+ *
+ * // IP 限流测试：固定 IP
+ * await jsonRequest(app, "/api/v1/auth/login", {
+ *   method: "POST",
+ *   body: { login, password },
+ *   ip: "10.0.0.1",
+ * });
+ *
+ * // 中间件测试：发送非标准 Authorization
+ * await jsonRequest(app, "/protected", {
+ *   headers: { Authorization: "Token abc123" },
+ * });
+ * ```
  */
 export async function jsonRequest(
-  app: { fetch: (req: Request) => Promise<Response> | Response },
+  // deno-lint-ignore no-explicit-any
+  app: Hono<any, any, "/">,
   path: string,
   options: JsonRequestOptions = {},
 ): Promise<Response> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(options.headers ?? {}),
-  };
-  if (
-    options.token !== undefined && !("Authorization" in (options.headers ?? {}))
-  ) {
-    headers["Authorization"] = `Bearer ${options.token}`;
-  }
-  if (options.ip !== undefined) {
-    headers["X-Forwarded-For"] = options.ip;
+  const headers = new Headers({ "Content-Type": "application/json" });
+
+  // 调用方提供的任意 headers 先合并（让它有机会覆盖自动值）
+  if (options.headers) {
+    const extra = options.headers instanceof Headers
+      ? options.headers
+      : new Headers(options.headers);
+    extra.forEach((value, key) => headers.set(key, value));
   }
 
-  const init: RequestInit = {
-    method: options.method ?? "GET",
-    headers,
-  };
-  if (options.body !== undefined) {
-    init.body = JSON.stringify(options.body);
+  // 自动便利字段：仅在调用方未通过 `headers` 显式覆盖时生效
+  if (options.token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${options.token}`);
+  }
+  if (options.ip && !headers.has("X-Forwarded-For")) {
+    headers.set("X-Forwarded-For", options.ip);
   }
 
-  return await app.fetch(new Request(`http://localhost${path}`, init));
+  return await app.fetch(
+    new Request(`http://localhost${path}`, {
+      method: options.method ?? "GET",
+      headers,
+      body: options.body !== undefined
+        ? JSON.stringify(options.body)
+        : undefined,
+    }),
+  );
 }
