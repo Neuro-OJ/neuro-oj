@@ -1,0 +1,70 @@
+# noj-judge 生产镜像（issue #103）
+#
+# 多阶段构建：
+# - stage1 (rust:1.86-slim-bookworm)：编译 release 二进制
+#   - 用 --mount=type=cache 复用 cargo registry + target
+# - stage2 (debian:bookworm-slim)：运行时
+#   - 装 docker-cli 让 judge 通过 /var/run/docker.sock 与宿主机 Docker 通信
+#   - judge 启动评测容器时实际调用的是宿主机 Docker engine
+#
+# 注意：SIGTERM 优雅关闭（关闭 container pool）依赖 #107 合并后生效，
+# 当前 SIGTERM 不会触发 graceful shutdown 路径（仅 SIGINT 触发）
+
+# ── stage1: 构建 ──
+FROM rust:1.86-slim-bookworm AS builder
+
+WORKDIR /build
+
+# 安装构建依赖（Drizzle 之类需要）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        pkg-config \
+        libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY Cargo.toml Cargo.lock ./
+COPY src/ ./src/
+
+RUN --mount=type=cache,target=/build/target \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    cargo build --release --bin noj-judge && \
+    cp /build/target/release/noj-judge /tmp/noj-judge && \
+    test -f /tmp/noj-judge || { echo "ERROR: binary not found after build" >&2; exit 1; }
+
+# ── stage2: 运行时 ──
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        tini \
+        curl \
+        gnupg \
+    && install -m 0755 -d /etc/apt/keyrings && \
+        curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
+        chmod a+r /etc/apt/keyrings/docker.gpg && \
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable" \
+            > /etc/apt/sources.list.d/docker.list && \
+        apt-get update && \
+        apt-get install -y --no-install-recommends \
+            docker-ce-cli \
+            docker-compose-plugin \
+        && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /tmp/noj-judge /usr/local/bin/noj-judge
+
+RUN useradd --system --uid 1000 --no-create-home judge && \
+    mkdir -p /tmp/noj-work && \
+    chown -R judge:judge /tmp/noj-work
+
+USER judge
+
+# tini 负责 PID 1 与信号转发
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+# noj-judge 是 worker 进程，不监听 TCP；健康检查由 docker ps 判断存活
+# 留一个简单探针：进程是否在响应信号
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD kill -0 1 || exit 1
+
+CMD ["noj-judge"]

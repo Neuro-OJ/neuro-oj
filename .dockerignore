@@ -1,0 +1,68 @@
+# Neuro OJ 顶层 .dockerignore
+# 防止 secrets、构建产物、缓存漏到任何 docker build context 中
+#
+# 注意：每个子模块有自己的 .dockerignore（如 noj-judge/.dockerignore），
+# 那个由构建上下文（context）决定，子模块的镜像构建只 COPY 它需要的文件。
+# 本顶层 .dockerignore 主要为 docker-compose.prod.yml 的 build 段保驾护航。
+
+# --- 环境变量 / Secrets ---
+.env
+.env.*
+!.env.example
+!.env.e2e.template
+!.env.prod.example
+env.prod.sh
+
+# --- Deno ---
+.deno_cache/
+node_modules/
+
+# --- Node.js / npm / Nuxt ---
+.npm/
+.cache/
+.output/
+.nuxt/
+dist/
+
+# --- Rust ---
+target/
+*.rs.bk
+
+# --- 编辑器 / OS ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+*.log
+
+# --- Docker 自身 ---
+docker-compose.override.yml
+
+# --- 测试产物 ---
+.noj-test-state/
+coverage/
+.nyc_output/
+
+# --- Git ---
+.git/
+.gitignore
+.github/
+
+# --- 文档（不进镜像） ---
+*.md
+!noj-core/CLAUDE.md
+!noj-judge/CLAUDE.md
+!noj-ui/CLAUDE.md
+openspec/
+
+# --- 题目源 / 支持包（不进任何镜像，由数据卷挂载） ---
+noj-core/data/problems-src/
+noj-core/data/packages/
+
+# --- E2E 测试专用（不进生产镜像） ---
+scripts/e2e/
+env.e2e.template
+*.test.ts

@@ -1,0 +1,283 @@
+# Neuro OJ 生产编排（issue #103）
+#
+# 一键部署：cp env.prod.example env.prod.sh → 填必填项 →
+#   bash scripts/init-letsencrypt.sh →
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# 优雅关闭依赖 #107（SIGTERM + /health 状态码）合并后完全生效，
+# 合并前 stop_grace_period 仅对 nginx / postgres / redis 生效（应用容器
+# 因无 SIGTERM 处理会被 fast kill）。compose 文件结构与未来修复兼容。
+
+# ── 通用网络：所有服务共用一个 user-defined bridge ──
+networks:
+  noj_net:
+    driver: bridge
+
+# ── 命名卷：所有持久化数据 ──
+volumes:
+  postgres_data:
+  redis_data:
+  letsencrypt_data:
+  certbot_www:
+  nginx_logs:
+  judge_workdir:
+  core_uploads:
+  backup_data:
+
+services:
+  # ╔════════════════════════════════════════════════════════════╗
+  # ║  反代层（nginx）                                             ║
+  # ╚════════════════════════════════════════════════════════════╝
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: noj-prod-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # 主配置只读挂载
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # templates/:*.template → 自动 envsubst 到 /etc/nginx/conf.d/（nginx 官方镜像机制）
+      - ./docker/nginx/templates:/etc/nginx/templates:ro
+      - letsencrypt_data:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+      - nginx_logs:/var/log/nginx
+    environment:
+      YOUR_DOMAIN: ${YOUR_DOMAIN:?required}
+    depends_on:
+      core:
+        condition: service_healthy
+      ui:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+    networks:
+      - noj_net
+
+  # ╔════════════════════════════════════════════════════════════╗
+  # ║  前端层（noj-ui 单二进制）                                    ║
+  # ╚════════════════════════════════════════════════════════════╝
+  ui:
+    build:
+      context: ./noj-ui
+      dockerfile: Dockerfile.prod
+    container_name: noj-prod-ui
+    restart: unless-stopped
+    environment:
+      # 反代后 NUXT_PUBLIC_API_BASE 留空 → 客户端走 /api/v1 同源
+      NUXT_API_BASE: http://core:8000
+      NUXT_PUBLIC_API_BASE: ""
+      NODE_ENV: production
+    expose:
+      - "3000"
+    depends_on:
+      core:
+        condition: service_healthy
+    stop_grace_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+    networks:
+      - noj_net
+
+  # ╔════════════════════════════════════════════════════════════╗
+  # ║  后端层（noj-core）                                          ║
+  # ╚════════════════════════════════════════════════════════════╝
+  core:
+    build:
+      context: ./noj-core
+      dockerfile: Dockerfile.prod
+    container_name: noj-prod-core
+    restart: unless-stopped
+    env_file:
+      - env.prod.sh
+    environment:
+      NOJ_ENV: production
+      PORT: "8000"
+      # 反代在前，本容器在内部网络，无需公网端口
+      PUBLIC_BASE_URL: ${YOUR_DOMAIN:?required}
+      # 受信任的反代网段（nginx 容器所在网络）
+      TRUSTED_PROXIES: 127.0.0.1,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s   # 迁移可能耗时
+    stop_grace_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+    networks:
+      - noj_net
+
+  # ╔════════════════════════════════════════════════════════════╗
+  # ║  评测 Worker（noj-judge）                                    ║
+  # ╚════════════════════════════════════════════════════════════╝
+  judge:
+    build:
+      context: ./noj-judge
+      dockerfile: Dockerfile.prod
+    container_name: noj-prod-judge
+    restart: unless-stopped
+    env_file:
+      - env.prod.sh
+    environment:
+      REDIS_URL: redis://redis:6379
+      MAX_CONCURRENT: "4"
+      WORK_DIR: /tmp/noj-work
+      RUST_LOG: info,noj_judge=info
+    volumes:
+      # 重要：judge 通过挂载 docker.sock 调用宿主机 Docker engine，
+      # 生产环境必须保证宿主机 docker 可用且用户加入 docker 组
+      - /var/run/docker.sock:/var/run/docker.sock
+      - judge_workdir:/tmp/noj-work
+    depends_on:
+      redis:
+        condition: service_healthy
+      core:
+        condition: service_started
+    stop_grace_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+    networks:
+      - noj_net
+
+  # ╔════════════════════════════════════════════════════════════╗
+  # ║  基础设施层                                                  ║
+  # ╚════════════════════════════════════════════════════════════╝
+  postgres:
+    image: postgres:16-alpine
+    container_name: noj-prod-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${POSTGRES_DB:-noj}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - backup_data:/var/backups
+      - ./scripts/prod-backup.sh:/usr/local/bin/backup.sh:ro
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - max_connections=200
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+    networks:
+      - noj_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: noj-prod-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - "900 1"
+      - --save
+      - "300 10"
+      - --save
+      - "60 10000"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    stop_grace_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 384M
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+    networks:
+      - noj_net
+
+  # ╔════════════════════════════════════════════════════════════╗
+  # ║  证书（webroot 模式，由 init-letsencrypt.sh 首次 init）       ║
+  # ║  续期路径：宿主机 cron 调用 scripts/prod-renew-cert.sh          ║
+  # ╚════════════════════════════════════════════════════════════╝
+  certbot:
+    image: certbot/certbot
+    container_name: noj-prod-certbot
+    # 该服务仅作为 certbot 工具容器，无长驻进程 —— no 依赖、无 restart
+    profiles: ["certbot"]
+    volumes:
+      - letsencrypt_data:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    networks:
+      - noj_net

@@ -1,0 +1,110 @@
+# Neuro OJ 生产 nginx 站点配置（issue #103）
+#
+# 替换占位 ${YOUR_DOMAIN}：
+#   docker compose/nginx 自动 envsubst（在 ENTRYPOINT 中执行）
+#   或手动：envsubst '${YOUR_DOMAIN}' < noj.conf > noj.conf.rendered
+#
+# 路由策略：
+#   /api/v1/*     → core:8000（API 反代，含速率限制）
+#   /api/v1/auth/login  → core:8000（加强限流，issue #73）
+#   其他路径        → ui:3000（前端 SSR）
+
+# ── 80 端口：certbot 验证 + 强制跳 HTTPS ──
+server {
+    listen      80 default_server;
+    listen      [::]:80 default_server;
+    server_name _;
+
+    # certbot webroot：必须在 https 强制跳转之前
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type "text/plain";
+    }
+
+    # 其余强制 HTTPS
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ── 443 端口：主站 ──
+server {
+    listen      443 ssl http2;
+    listen      [::]:443 ssl http2;
+    server_name ${YOUR_DOMAIN};
+
+    # SSL 证书路径（init-letsencrypt.sh 后由 certbot 写入）
+    ssl_certificate     /etc/letsencrypt/live/${YOUR_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${YOUR_DOMAIN}/privkey.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/${YOUR_DOMAIN}/chain.pem;
+
+    # HSTS（一年）
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options           "SAMEORIGIN"        always;
+    add_header X-Content-Type-Options    "nosniff"           always;
+    add_header Referrer-Policy           "no-referrer-when-downgrade" always;
+
+    # ── /api/* 反代到 core ──
+    location /api/ {
+        limit_req zone=api burst=20 nodelay;
+        limit_req_status 429;
+
+        proxy_pass         http://noj_core;
+        proxy_http_version 1.1;
+        proxy_set_header   Connection          "";
+        proxy_set_header   Host                $host;
+        proxy_set_header   X-Real-IP           $remote_addr;
+        proxy_set_header   X-Forwarded-For     $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto   $scheme;
+        proxy_set_header   X-Forwarded-Host    $host;
+        proxy_set_header   X-Forwarded-Port    $server_port;
+
+        proxy_connect_timeout 5s;
+        proxy_send_timeout    60s;
+        proxy_read_timeout    60s;
+
+        # 不缓存 API 响应
+        proxy_cache_bypass $http_pragma;
+        proxy_cache_valid   any 0;
+        add_header Cache-Control "no-store" always;
+    }
+
+    # ── 登录单独加强限流（issue #73 已经做了 IP 维度，再加 nginx 层） ──
+    location = /api/v1/auth/login {
+        limit_req zone=login burst=3 nodelay;
+        limit_req_status 429;
+
+        proxy_pass         http://noj_core;
+        proxy_http_version 1.1;
+        proxy_set_header   Connection          "";
+        proxy_set_header   Host                $host;
+        proxy_set_header   X-Real-IP           $remote_addr;
+        proxy_set_header   X-Forwarded-For     $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto   $scheme;
+
+        add_header Cache-Control "no-store" always;
+    }
+
+    # ── 其他路径 → noj-ui 前端 ──
+    location / {
+        proxy_pass         http://noj_ui;
+        proxy_http_version 1.1;
+        proxy_set_header   Connection          "";
+        proxy_set_header   Host                $host;
+        proxy_set_header   X-Real-IP           $remote_addr;
+        proxy_set_header   X-Forwarded-For     $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto   $scheme;
+
+        # Nuxt SSR：长连接 + 超时
+        proxy_connect_timeout 5s;
+        proxy_send_timeout    60s;
+        proxy_read_timeout    120s;
+
+        # 静态资源缓存
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|otf)$ {
+            proxy_pass         http://noj_ui;
+            expires            7d;
+            add_header Cache-Control "public, max-age=604800, immutable";
+        }
+    }
+}

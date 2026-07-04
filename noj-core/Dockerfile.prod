@@ -1,0 +1,47 @@
+# noj-core 生产镜像（issue #103）
+#
+# 多阶段构建思路：
+# - 单一 `denoland/deno:alpine-2.8.0` 镜像即可（Deno 自带运行时，无需 Node 等）
+# - 先复制 deno.json / deno.lock 跑 deno install 缓存依赖
+# - 再复制源码
+# - 最后层只保留生产运行所需最小文件（src / scripts / drizzle / data）
+#
+# 非 root 用户：denoland/deno:alpine 镜像自带 `deno` 用户（UID 1000）
+#
+# 启动行为：
+# - 启动时自动跑迁移 + seed（main.ts 内置 startup sequence）
+# - 接受 SIGTERM（Deno.serve 默认行为）—— 完整优雅关闭（关闭后台
+#   consumer / RPC handler / pubsub subscriber）等 #107 合并后即生效
+
+FROM denoland/deno:alpine-2.8.0 AS base
+
+ENV DENO_DIR=/deno-dir \
+    NOJ_ENV=production \
+    PORT=8000
+
+WORKDIR /app
+
+# ── 第一阶段：deno install 缓存依赖 ──
+COPY deno.json deno.lock* ./
+RUN deno install --allow-scripts='npm:esbuild@0.18.20,npm:esbuild@0.25.12' || \
+    { echo "ERROR: deno install failed" >&2; exit 1; }
+
+# ── 第二阶段：复制源码 + 配置 ──
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+COPY data/ ./data/
+COPY drizzle.config.ts ./
+COPY drizzle/ drizzle/
+
+# 切换 nonroot：deno 镜像内置 `deno` 用户
+USER deno
+
+EXPOSE 8000
+
+# 健康检查用 wget --spider（alpine 内置）
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD wget --spider --quiet http://localhost:8000/health || exit 1
+
+# 直接运行 main.ts；deno 不需要预编译（也支持，但 alpine 镜像无 AOT）
+# 启动期会跑迁移 + 创建 root 用户 + 启动后台 consumer/RPC，最后 Deno.serve
+CMD ["run", "--allow-net", "--allow-env", "--allow-read", "--unstable-kv", "src/main.ts"]
