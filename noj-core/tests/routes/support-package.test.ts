@@ -134,7 +134,7 @@ Deno.test({
     );
     assertEquals(res.status, 200);
     const body = await res.json();
-    assertEquals(typeof body.data.support_package_path, "string");
+    assertEquals(typeof body.data.support_package_storage_url, "string");
   },
 });
 
@@ -376,7 +376,7 @@ Deno.test({
     );
     assertEquals(res.status, 200);
     const body = await res.json();
-    assertEquals(body.data.support_package_path, null);
+    assertEquals(body.data.support_package_storage_url, null);
   },
 });
 

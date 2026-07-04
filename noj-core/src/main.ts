@@ -5,6 +5,7 @@ import { startResultConsumerWithRetry } from "./mq/consumer.ts";
 import { startJudgeRpcHandler } from "./mq/judge-rpc.ts";
 import { initEventSubscriber } from "./lib/event-bus.ts";
 import { ensureRootUser } from "./services/auth.ts";
+import { getStorageProvider } from "./lib/storage/mod.ts";
 
 const app = createApp();
 
@@ -104,6 +105,19 @@ async function main() {
 
   // 邮件 Provider 配置检查（非致命，配置缺失时降级到 mock）
   checkEmailProviderConfig();
+
+  // 存储 Provider 初始化（非致命，S3 bucket 创建失败仅 warn）
+  try {
+    const storage = await getStorageProvider();
+    if (typeof storage.ensureBucket === "function") {
+      await storage.ensureBucket();
+    }
+  } catch (err) {
+    console.warn(
+      "[storage] 存储 Provider 初始化失败:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
 
   // 连接 Redis（共享连接供 producer 使用）
   // Redis 是评测分发依赖而非核心数据依赖，连接失败时仍启动 HTTP 服务，

@@ -37,7 +37,7 @@ Deno.test("schema: problems table has LMCC-specific columns", () => {
   const columns = Object.keys(problems);
   assertEquals(columns.includes("judge_image"), true);
   assertEquals(columns.includes("judge_command"), true);
-  assertEquals(columns.includes("support_package_path"), true);
+  assertEquals(columns.includes("support_package_storage_url"), true);
   assertEquals(columns.includes("time_limit_ms"), true);
   assertEquals(columns.includes("memory_limit_mb"), true);
   // 不应包含 test_cases
@@ -54,7 +54,7 @@ Deno.test("schema: problems columns have correct constraints", () => {
   assertEquals(problems.difficulty.default, "medium"); // DEFAULT 'medium'
   assertEquals(problems.judge_image.notNull, true);
   assertEquals(problems.judge_command.notNull, true);
-  assertEquals(problems.support_package_path.notNull, false); // 可选
+  assertEquals(problems.support_package_storage_url.notNull, false); // 可选
   assertEquals(problems.time_limit_ms.notNull, true);
   assertEquals(problems.time_limit_ms.hasDefault, true);
   assertEquals(problems.time_limit_ms.default, 5000); // DEFAULT 5000

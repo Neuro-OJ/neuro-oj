@@ -11,6 +11,14 @@ pub struct Config {
     pub result_queue: String,
     /// 临时工作目录
     pub work_dir: String,
+    /// 支持包 HTTP 下载超时秒数（默认: 60）
+    pub support_package_download_timeout_secs: u64,
+    /// 支持包缓存目录（默认: /tmp/noj-judge/support-cache）
+    pub support_cache_dir: String,
+    /// 支持包缓存最大文件数（默认: 500）
+    pub support_cache_max_items: usize,
+    /// 支持包缓存最大磁盘占用 MB（默认: 2048）
+    pub support_cache_max_mb: u64,
     /// 容器池配置
     pub pool: PoolConfig,
 }
@@ -48,6 +56,13 @@ impl Config {
             judge_queue: env_or("JUDGE_QUEUE", "noj:judge:queue"),
             result_queue: env_or("RESULT_QUEUE", "noj:judge:results"),
             work_dir: env_or("WORK_DIR", "/tmp/noj-judge"),
+            support_package_download_timeout_secs: env_var_parse(
+                "SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT",
+            )
+            .unwrap_or(60),
+            support_cache_dir: env_or("SUPPORT_CACHE_DIR", "/tmp/noj-judge/support-cache"),
+            support_cache_max_items: env_var_parse("SUPPORT_CACHE_MAX_ITEMS").unwrap_or(500),
+            support_cache_max_mb: env_var_parse("SUPPORT_CACHE_MAX_MB").unwrap_or(2048),
             pool: PoolConfig::from_env(),
         }
     }

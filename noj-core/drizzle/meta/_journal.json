@@ -38,17 +38,10 @@
       "breakpoints": true
     },
     {
-      "idx": 6,
+      "idx": 5,
       "version": "6",
-      "when": 1751500000,
-      "tag": "0006_check_ins",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "6",
-      "when": 1751700000,
-      "tag": "0006_password_reset_tokens",
+      "when": 1751400002,
+      "tag": "0005_submission_eval_result_indexes",
       "breakpoints": true
     },
     {
@@ -59,24 +52,45 @@
       "breakpoints": true
     },
     {
+      "idx": 7,
+      "version": "6",
+      "when": 1751500000,
+      "tag": "0006_check_ins",
+      "breakpoints": true
+    },
+    {
       "idx": 8,
+      "version": "6",
+      "when": 1751700000,
+      "tag": "0006_password_reset_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
       "version": "6",
       "when": 1751800000,
       "tag": "0007_submissions_rejudge_seq",
       "breakpoints": true
     },
     {
-      "idx": 9,
+      "idx": 10,
       "version": "6",
       "when": 1751900000,
       "tag": "0008_judge_images",
       "breakpoints": true
     },
     {
-      "idx": 10,
+      "idx": 11,
       "version": "7",
       "when": 1782995131156,
       "tag": "0010_graceful_domino",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783036800000,
+      "tag": "0011_support_package_storage_url",
       "breakpoints": true
     }
   ]

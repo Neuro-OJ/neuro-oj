@@ -24,6 +24,32 @@ services:
       timeout: 3s
       retries: 10
 
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    container_name: noj-e2e-minio
+    ports: ["9002:9000"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      sleep 3;
+      mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc mb --ignore-existing local/noj-support-packages;
+      "
+
   noj-core:
     build:
       context: ./noj-core
@@ -36,6 +62,7 @@ services:
       JWT_SECRET: e2e-test-secret-01234567890123456
       PORT: "8000"
       NOJ_RUN_E2E: "1"
+      STORAGE_PROVIDER: local
       # seed 管理员凭证（需与 noj-core/tests/e2e/helper.ts 默认值一致）
       ADMIN_EMAIL: e2e_admin@test.com
       ADMIN_PASS: e2e_admin_pass

@@ -30,7 +30,7 @@ import {
   type UpdateProblemInput,
 } from "../types/problems.ts";
 import { validateJudgeImage } from "./judge-images.ts";
-import { getPackagePath } from "./support-package.ts";
+import { getStorageProvider } from "../lib/storage/mod.ts";
 
 export interface ProblemResponse {
   id: string;
@@ -39,7 +39,7 @@ export interface ProblemResponse {
   difficulty: string;
   judge_image: string;
   judge_command: string;
-  support_package_path: string | null;
+  support_package_storage_url: string | null;
   has_support_package: boolean;
   time_limit_ms: number;
   memory_limit_mb: number;
@@ -67,7 +67,7 @@ export interface AdminProblemListItem {
   difficulty: string;
   judge_image: string;
   judge_command: string;
-  support_package_path: string | null;
+  support_package_storage_url: string | null;
   time_limit_ms: number;
   memory_limit_mb: number;
   categories: { id: string; name: string; slug: string }[];
@@ -100,8 +100,8 @@ function toProblemResponse(
     difficulty: row.difficulty,
     judge_image: row.judge_image,
     judge_command: row.judge_command,
-    support_package_path: row.support_package_path,
-    has_support_package: row.support_package_path !== null,
+    support_package_storage_url: row.support_package_storage_url,
+    has_support_package: row.support_package_storage_url !== null,
     time_limit_ms: row.time_limit_ms,
     memory_limit_mb: row.memory_limit_mb,
     number: row.number,
@@ -309,7 +309,7 @@ export async function listAllProblems(
       difficulty: problems.difficulty,
       judge_image: problems.judge_image,
       judge_command: problems.judge_command,
-      support_package_path: problems.support_package_path,
+      support_package_storage_url: problems.support_package_storage_url,
       time_limit_ms: problems.time_limit_ms,
       memory_limit_mb: problems.memory_limit_mb,
       created_at: problems.created_at,
@@ -343,7 +343,7 @@ export async function listAllProblems(
       difficulty: r.difficulty,
       judge_image: r.judge_image,
       judge_command: r.judge_command,
-      support_package_path: r.support_package_path,
+      support_package_storage_url: r.support_package_storage_url,
       time_limit_ms: r.time_limit_ms,
       memory_limit_mb: r.memory_limit_mb,
       categories: catMap.get(r.id) ?? [],
@@ -497,7 +497,7 @@ export async function createProblem(
         difficulty: input.difficulty ?? "medium",
         judge_image: input.judge_image,
         judge_command: input.judge_command,
-        support_package_path: input.support_package_path ?? null,
+        support_package_storage_url: input.support_package_storage_url ?? null,
         time_limit_ms: input.time_limit_ms ?? 5000,
         memory_limit_mb: input.memory_limit_mb ?? 512,
         number,
@@ -602,8 +602,8 @@ export async function updateProblem(
   if (input.judge_command !== undefined) {
     updates.judge_command = input.judge_command;
   }
-  if (input.support_package_path !== undefined) {
-    updates.support_package_path = input.support_package_path;
+  if (input.support_package_storage_url !== undefined) {
+    updates.support_package_storage_url = input.support_package_storage_url;
   }
   if (input.time_limit_ms !== undefined) {
     updates.time_limit_ms = input.time_limit_ms;
@@ -663,13 +663,15 @@ export async function deleteProblem(
     }
   }
 
-  // 清理支持包文件（幂等，文件不存在则忽略）
-  try {
-    await Deno.remove(getPackagePath(id));
-  } catch (err) {
-    if (!(err instanceof Deno.errors.NotFound)) {
+  // 清理支持包（通过 StorageProvider，幂等）
+  const storageUrl = problem.support_package_storage_url;
+  if (storageUrl) {
+    try {
+      const storage = await getStorageProvider();
+      await storage.delete(storageUrl);
+    } catch (err) {
       console.error(
-        `清理支持包文件失败 (${getPackagePath(id)}):`,
+        `清理支持包失败 (${storageUrl}):`,
         err instanceof Error ? err.message : String(err),
       );
     }

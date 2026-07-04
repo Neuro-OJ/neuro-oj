@@ -28,7 +28,7 @@ interface SampleProblem {
   difficulty: string;
   judge_image: string;
   judge_command: string;
-  support_package_path: string | null;
+  support_package_storage_url: string | null;
   time_limit_ms: number;
   memory_limit_mb: number;
   number: number;
@@ -58,7 +58,7 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
     difficulty: "easy",
     judge_image: "noj-judge-python",
     judge_command: "python3 /tmp/evaluate.py",
-    support_package_path: "data/packages/1001.zip",
+    support_package_storage_url: "data/packages/1001.zip",
     time_limit_ms: 5000,
     memory_limit_mb: 512,
     number: 1001,
@@ -81,7 +81,7 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
     difficulty: "medium",
     judge_image: "noj-judge-python",
     judge_command: "python3 /tmp/evaluate.py",
-    support_package_path: null, // TODO: 创建 1002 支持包后更新此路径（deno task build-packages + seed）
+    support_package_storage_url: null, // TODO: 创建 1002 支持包后更新此路径（deno task build-packages + seed）
     time_limit_ms: 1000,
     memory_limit_mb: 256,
     number: 1002,
@@ -99,7 +99,7 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
     difficulty: "easy",
     judge_image: "noj-judge-python",
     judge_command: "python3 /tmp/evaluate.py",
-    support_package_path: "data/packages/1003.zip",
+    support_package_storage_url: "data/packages/1003.zip",
     time_limit_ms: 1000,
     memory_limit_mb: 256,
     number: 1003,

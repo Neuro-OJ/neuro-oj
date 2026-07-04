@@ -83,81 +83,84 @@ async fn drain_tasks(tasks: &mut FuturesUnordered<tokio::task::JoinHandle<()>>) 
 fn main() -> Result<()> {
     let rt = tokio::runtime::Runtime::new().context("创建 Tokio 运行时失败")?;
     rt.block_on(async {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,noj_judge=debug")),
-        )
-        .init();
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,noj_judge=debug")),
+            )
+            .init();
 
-    let config = Config::from_env();
-    info!("noj-judge 启动 (pool_max_size={})", config.pool.max_size);
+        let config = Config::from_env();
+        info!("noj-judge 启动 (pool_max_size={})", config.pool.max_size);
 
-    // 检测已废弃的 POOL_ENABLED 环境变量
-    if let Ok(val) = std::env::var("POOL_ENABLED") {
-        warn!("环境变量 POOL_ENABLED={} 已废弃（容器池始终启用），请移除该变量", val);
-    }
-
-    // 连接 Redis
-    let redis_client =
-        redis::Client::open(config.redis_url.as_str()).context("创建 Redis 客户端失败")?;
-    let mut redis_conn = redis_client
-        .get_multiplexed_async_connection()
-        .await
-        .context("连接 Redis 失败")?;
-    redis::cmd("PING")
-        .query_async::<String>(&mut redis_conn)
-        .await
-        .context("Redis PING 失败")?;
-    info!("Redis 连接成功");
-
-    // 连接 Docker
-    let docker = Docker::connect_with_local_defaults()
-        .context("连接 Docker daemon 失败（请确保 Docker 在运行中）")?;
-    docker
-        .ping()
-        .await
-        .context("Docker daemon PING 失败（请确保 Docker 在运行中）")?;
-    info!("Docker 连接成功");
-
-    let _redis_url = config.redis_url.clone();
-    let result_queue = config.result_queue.clone();
-    let work_dir = config.work_dir.clone();
-
-    // ── 通过 Redis RPC 获取镜像白名单 ─────────────────
-    let judge_id = std::env::var("JUDGE_ID")
-        .unwrap_or_else(|_| gethostname::gethostname().to_string_lossy().to_string());
-    info!("judge_id = {}", judge_id);
-
-    // 创建专用于 RPC 的 Redis 连接（不与主循环共享）
-    let rpc_conn = redis_client
-        .get_multiplexed_async_connection()
-        .await
-        .context("创建 RPC Redis 连接失败")?;
-    let mut rpc_client = mq::rpc::RpcClient::new(rpc_conn, judge_id);
-
-    let images = match rpc_client.get_image_allowlist().await {
-        Ok(list) if !list.is_empty() => {
-            info!("从 core 获取镜像白名单: {:?}", list);
-            list
+        // 检测已废弃的 POOL_ENABLED 环境变量
+        if let Ok(val) = std::env::var("POOL_ENABLED") {
+            warn!(
+                "环境变量 POOL_ENABLED={} 已废弃（容器池始终启用），请移除该变量",
+                val
+            );
         }
-        Ok(_) => {
-            error!("RPC 返回空镜像列表，无法启动");
-            std::process::exit(1);
-        }
-        Err(e) => {
-            error!("获取镜像白名单失败: {:#}", e);
-            std::process::exit(1);
-        }
-    };
 
-    // ── 初始化容器池 ──────────────────────────────
-    let pool = PoolManager::init(docker, config.pool.clone(), &images)
-        .await
-        .context("初始化容器池失败")?;
+        // 连接 Redis
+        let redis_client =
+            redis::Client::open(config.redis_url.as_str()).context("创建 Redis 客户端失败")?;
+        let mut redis_conn = redis_client
+            .get_multiplexed_async_connection()
+            .await
+            .context("连接 Redis 失败")?;
+        redis::cmd("PING")
+            .query_async::<String>(&mut redis_conn)
+            .await
+            .context("Redis PING 失败")?;
+        info!("Redis 连接成功");
 
-    // 启动后台任务：健康检查（简化版，合并 Supervisor 日志）
-    pool.start_background_tasks().await;
+        // 连接 Docker
+        let docker = Docker::connect_with_local_defaults()
+            .context("连接 Docker daemon 失败（请确保 Docker 在运行中）")?;
+        docker
+            .ping()
+            .await
+            .context("Docker daemon PING 失败（请确保 Docker 在运行中）")?;
+        info!("Docker 连接成功");
+
+        let _redis_url = config.redis_url.clone();
+        let result_queue = config.result_queue.clone();
+        let work_dir = config.work_dir.clone();
+
+        // ── 通过 Redis RPC 获取镜像白名单 ─────────────────
+        let judge_id = std::env::var("JUDGE_ID")
+            .unwrap_or_else(|_| gethostname::gethostname().to_string_lossy().to_string());
+        info!("judge_id = {}", judge_id);
+
+        // 创建专用于 RPC 的 Redis 连接（不与主循环共享）
+        let rpc_conn = redis_client
+            .get_multiplexed_async_connection()
+            .await
+            .context("创建 RPC Redis 连接失败")?;
+        let mut rpc_client = mq::rpc::RpcClient::new(rpc_conn, judge_id);
+
+        let images = match rpc_client.get_image_allowlist().await {
+            Ok(list) if !list.is_empty() => {
+                info!("从 core 获取镜像白名单: {:?}", list);
+                list
+            }
+            Ok(_) => {
+                error!("RPC 返回空镜像列表，无法启动");
+                std::process::exit(1);
+            }
+            Err(e) => {
+                error!("获取镜像白名单失败: {:#}", e);
+                std::process::exit(1);
+            }
+        };
+
+        // ── 初始化容器池 ──────────────────────────────
+        let pool = PoolManager::init(docker, config.pool.clone(), &images)
+            .await
+            .context("初始化容器池失败")?;
+
+        // 启动后台任务：健康检查（简化版，合并 Supervisor 日志）
+        pool.start_background_tasks().await;
 
         let pool_ref = pool.clone();
         // 注册优雅关闭信号处理
@@ -173,6 +176,12 @@ fn main() -> Result<()> {
 
         // 使用 FuturesUnordered 跟踪所有 in-flight 任务
         let mut tasks = FuturesUnordered::new();
+
+        // 克隆配置值供 tokio::spawn 使用
+        let cache_dir = config.support_cache_dir.clone();
+        let download_timeout = config.support_package_download_timeout_secs;
+        let cache_max_items = config.support_cache_max_items;
+        let cache_max_mb = config.support_cache_max_mb;
 
         loop {
             tokio::select! {
@@ -201,12 +210,21 @@ fn main() -> Result<()> {
                     let redis_client = redis_client.clone();
                     let result_queue = result_queue.clone();
                     let work_dir = work_dir.clone();
+                    let cache_dir = cache_dir.clone();
 
                     let handle = tokio::spawn(async move {
                         let work_dir_path = std::path::Path::new(&work_dir);
                         let fallback_dir = std::path::Path::new(&work_dir).join("fallback-results");
 
-                        let result = match judge::runner::evaluate_with_pool(pool.clone(), &task, work_dir_path).await {
+                        let result = match judge::runner::evaluate_with_pool(
+                            pool.clone(),
+                            &task,
+                            work_dir_path,
+                            download_timeout,
+                            cache_dir.clone(),
+                            cache_max_items,
+                            cache_max_mb,
+                        ).await {
                             Ok(r) => {
                                 // 根据结果状态更新计数器
                                 match r.status.as_str() {
@@ -236,7 +254,7 @@ fn main() -> Result<()> {
             }
         }
 
-    #[allow(unreachable_code)]
-    Ok(())
+        #[allow(unreachable_code)]
+        Ok(())
     })
 }

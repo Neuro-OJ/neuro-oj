@@ -50,8 +50,8 @@ pub struct JudgeTask {
     pub judge_image: String,
     /// 容器内执行的评测命令
     pub judge_command: String,
-    /// 支持包 zip 的 Base64 编码
-    pub support_package_base64: Option<String>,
+    /// 支持包下载 URL（`noj-download://` 格式）
+    pub download_url: Option<String>,
     /// 编程语言标识
     pub language: String,
     /// 用户源代码
@@ -237,7 +237,7 @@ mod tests {
         assert_eq!(task.judge_image, "noj-judge-python");
         assert_eq!(task.language, "python3");
         assert_eq!(task.time_limit_ms, 5000);
-        assert!(task.support_package_base64.is_none());
+        assert!(task.download_url.is_none());
         assert!(task.file_name.is_none());
     }
 
@@ -248,7 +248,7 @@ mod tests {
             "problem_id": "2001",
             "judge_image": "noj-judge-python",
             "judge_command": "python3 /tmp/evaluate.py",
-            "support_package_base64": "UEsDBBQAAAAIA",
+            "download_url": "noj-download://base64/?content=UEsDBBQAAAAIA",
             "language": "python3",
             "code": "print('hello')",
             "file_name": "solution.py",
@@ -258,8 +258,8 @@ mod tests {
         let task: JudgeTask = serde_json::from_value(json).unwrap();
         assert_eq!(task.submission_id, "sid-456");
         assert_eq!(
-            task.support_package_base64.as_deref(),
-            Some("UEsDBBQAAAAIA")
+            task.download_url.as_deref(),
+            Some("noj-download://base64/?content=UEsDBBQAAAAIA")
         );
         assert_eq!(task.file_name.as_deref(), Some("solution.py"));
         assert_eq!(task.time_limit_ms, 10000);
@@ -272,14 +272,14 @@ mod tests {
             "problem_id": "1001",
             "judge_image": "noj-judge-python",
             "judge_command": "python3 /tmp/evaluate.py",
-            "support_package_base64": "",
+            "download_url": "",
             "language": "python3",
             "code": "",
             "time_limit_ms": 5000,
             "memory_limit_mb": 512
         });
         let task: JudgeTask = serde_json::from_value(json).unwrap();
-        assert_eq!(task.support_package_base64, Some(String::new()));
+        assert_eq!(task.download_url, Some(String::new()));
     }
 
     // ── JudgeResult 序列化 ──

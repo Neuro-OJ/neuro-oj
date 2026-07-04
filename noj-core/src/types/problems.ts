@@ -43,7 +43,7 @@ export function isValidProblemType(value: string): value is ProblemType {
  * 创建题目请求体。
  *
  * 注意：`id` 字段已从客户端输入中移除——所有题目统一由服务端生成 UUID。
- * 历史 seed 数据中的字符串 id（如 "1001"）仍可通过 `support_package_path` 关联，
+ * 历史 seed 数据中的字符串 id（如 "1001"）仍可通过 `support_package_storage_url` 关联，
  * 但新题目主键空间完全使用 UUID v4。
  */
 export interface CreateProblemInput {
@@ -52,7 +52,7 @@ export interface CreateProblemInput {
   difficulty?: string;
   judge_image: string;
   judge_command: string;
-  support_package_path?: string | null;
+  support_package_storage_url?: string | null;
   time_limit_ms?: number;
   memory_limit_mb?: number;
   category_ids?: string[];
@@ -71,7 +71,7 @@ export interface UpdateProblemInput {
   difficulty?: string;
   judge_image?: string;
   judge_command?: string;
-  support_package_path?: string | null;
+  support_package_storage_url?: string | null;
   time_limit_ms?: number;
   memory_limit_mb?: number;
   category_ids?: string[];
@@ -104,7 +104,7 @@ export interface ProblemResponseWithCategories {
   difficulty: string;
   judge_image: string;
   judge_command: string;
-  support_package_path: string | null;
+  support_package_storage_url: string | null;
   /** 是否有已上传的支持包文件 */
   has_support_package: boolean;
   time_limit_ms: number;
