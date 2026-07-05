@@ -16,8 +16,12 @@ import {
 } from "../../src/middleware/auth.ts";
 import { AppError } from "../../src/lib/errors.ts";
 import { signToken } from "../../src/lib/jwt.ts";
+import { resetDbForTest } from "../../src/db/connection.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
+
+// 初始化 PGlite schema（含 user_bans 表），供 authMiddleware 封禁检查使用
+await resetDbForTest();
 
 // deno-lint-ignore no-explicit-any
 function registerAppErrorHandler(app: Hono<any, any, "/">) {

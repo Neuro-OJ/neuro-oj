@@ -56,7 +56,6 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgresql://noj:noj@localhost:5432/noj
       REDIS_URL: redis://localhost:6379/
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
