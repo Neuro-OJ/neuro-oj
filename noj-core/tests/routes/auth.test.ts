@@ -33,22 +33,6 @@ if (hasRedis) {
 const BASE = "/api/v1/auth";
 const ts = Date.now();
 
-/**
- * 从登录响应中提取 token。
- */
-function _extractToken(res: Response): string {
-  return res.headers.get("x-test-token") || "";
-}
-
-/** 生成测试用唯一 IP（10.x.x.x 私有地址） */
-function _uniqueIp(seed: string): string {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) {
-    h = (h * 31 + seed.charCodeAt(i)) & 0xffffffff;
-  }
-  return `10.${(h >>> 8) & 0xff}.${h & 0xff}.${(h >>> 16) & 0xff}`;
-}
-
 /** 确保 Redis 已连接（幂等） */
 async function ensureRedisConnected() {
   resetRedisForTest();
