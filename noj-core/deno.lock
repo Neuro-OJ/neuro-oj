@@ -23,6 +23,7 @@
     "npm:hono@4": "4.12.26",
     "npm:ioredis@5.11.1": "5.11.1",
     "npm:jose@5": "5.10.0",
+    "npm:postgres@*": "3.4.5",
     "npm:postgres@3.4.5": "3.4.5",
     "npm:tencentcloud-sdk-nodejs-ses@^4.1.247": "4.1.247"
   },

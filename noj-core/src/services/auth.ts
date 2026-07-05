@@ -11,6 +11,8 @@ import {
   UnauthorizedError,
 } from "../lib/errors.ts";
 import type { LoginInput, RegisterInput, UserResponse } from "../types/auth.ts";
+import { isBannedIp } from "../lib/cidr.ts";
+import { getBannedRanges } from "./banlist.ts";
 
 /**
  * 密码强度校验最小长度。
@@ -160,6 +162,7 @@ export async function registerUser(
  */
 export async function loginUser(
   input: LoginInput,
+  clientIp?: string,
 ): Promise<{ user: UserResponse; token: string }> {
   const db = getDb();
 
@@ -185,6 +188,14 @@ export async function loginUser(
   const valid = await comparePassword(input.password, user.password_hash);
   if (!valid) {
     throw new UnauthorizedError("用户名或密码错误");
+  }
+
+  // IP 封禁检查：即使 credentials 正确，被 IP-ban 的用户也不得登录
+  if (clientIp) {
+    const ranges = await getBannedRanges();
+    if (isBannedIp(clientIp, ranges)) {
+      throw new UnauthorizedError("用户名或密码错误");
+    }
   }
 
   // 封禁检查（user-ban-table）：查 user_bans 活跃记录

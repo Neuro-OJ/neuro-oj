@@ -11,8 +11,10 @@ import {
 import { getDb } from "../db/connection.ts";
 import {
   categories,
+  evaluationResults,
   problems,
   problemsCategories,
+  submissions,
   users,
 } from "../db/schema.ts";
 import {
@@ -676,6 +678,18 @@ export async function deleteProblem(
       );
     }
   }
+
+  // 清理关联提交（submissions 无 ON DELETE CASCADE，需手动清理）
+  await db.delete(evaluationResults)
+    .where(
+      inArray(
+        evaluationResults.submission_id,
+        db.select({ id: submissions.id })
+          .from(submissions)
+          .where(eq(submissions.problem_id, id)),
+      ),
+    );
+  await db.delete(submissions).where(eq(submissions.problem_id, id));
 
   // 级联删除（problems_categories 的 ON DELETE CASCADE 会自动清理关联）
   await db.delete(problems).where(eq(problems.id, id));

@@ -32,6 +32,17 @@ const totalPages = ref(1)
 const tableLoading = ref(true)
 const tableError = ref("")
 const perPage = 20
+const keyword = ref("")
+
+// 搜索输入防抖：停止输入 300ms 后自动刷新
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+function onSearchInput(val: string) {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    keyword.value = val
+    loadUsers(1)
+  }, 300)
+}
 
 const columns: Column<User>[] = [
   { key: "username", label: "用户名" },
@@ -57,13 +68,16 @@ async function loadUsers(page = 1) {
   tableError.value = ""
   currentPage.value = page
   try {
+    const params = new URLSearchParams({ page: String(page), per_page: String(perPage), _: String(Date.now()) })
+    if (keyword.value) params.set("keyword", keyword.value)
     const res = await $fetch<{ data: User[]; pagination: { total: number; total_pages: number } }>(
-      `/api/v1/admin/users?page=${page}&per_page=${perPage}`,
+      `/api/v1/admin/users?${params}`,
     )
     users.value = res.data
     totalPages.value = res.pagination.total_pages
   } catch (err: unknown) {
     tableError.value = err instanceof Error ? err.message : "加载用户列表失败"
+    console.error("loadUsers error:", err)
   } finally {
     tableLoading.value = false
   }
@@ -96,6 +110,7 @@ const banForm = reactive({ reason: "", banned_until: "" })
 const banning = ref(false)
 const banError = ref("")
 const { dialog } = useDialog()
+const { toast } = useToast()
 
 function confirmBan(user: User) {
   banTarget.value = user
@@ -121,29 +136,39 @@ async function handleBan() {
     })
     showBanModal.value = false
     toast.success(`已封禁 ${banTarget.value.username}`)
-    await loadUsers(currentPage.value)
   } catch (err: unknown) {
     banError.value = err instanceof Error ? err.message : "封禁失败"
+    banning.value = false
+    return
+  }
+  try {
+    await loadUsers(currentPage.value)
+  } catch {
+    // 刷新失败不影响操作成功
   } finally {
     banning.value = false
   }
 }
 
 async function confirmUnban(user: User) {
-  const ok = await dialog({
-    title: "确认解封用户？",
-    text: `将解除 ${user.username} 的封禁状态。此操作立即生效。`,
-    icon: "warning",
-    confirmText: "确认解封",
-  })
+  const ok = await dialog.confirm(
+    `将解除 ${user.username} 的封禁状态。此操作立即生效。`,
+    { title: "确认解封用户？", confirmText: "确认解封" },
+  )
   if (!ok) return
   banning.value = true
   try {
     await $fetch(`/api/v1/admin/users/${user.id}/unban`, { method: "PATCH" })
     toast.success(`已解封 ${user.username}`)
-    await loadUsers(currentPage.value)
   } catch (err: unknown) {
     toast.error(err instanceof Error ? err.message : "解封失败")
+    banning.value = false
+    return
+  }
+  try {
+    await loadUsers(currentPage.value)
+  } catch {
+    // 刷新失败不影响操作成功
   } finally {
     banning.value = false
   }
@@ -218,6 +243,15 @@ async function handleRoleSwitch() {
     <div class="flex flex-col gap-1">
       <h1 class="text-[22px] font-bold text-text">用户管理</h1>
       <span class="text-sm text-text-secondary">管理所有用户的角色权限</span>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <input
+        type="text"
+        placeholder="搜索用户名或邮箱…"
+        class="w-full max-w-xs px-3 py-2 text-sm border border-border rounded-lg bg-white text-text placeholder-text-muted outline-none focus:border-info-text transition-colors"
+        @input="onSearchInput(($event.target as HTMLInputElement).value)"
+      />
     </div>
 
     <AdminTable

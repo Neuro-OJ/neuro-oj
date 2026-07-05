@@ -15,8 +15,10 @@ import { and, eq, not, sql } from "drizzle-orm";
 import {
   conversationReads,
   conversations,
+  evaluationResults,
   messageDeletions,
   messages,
+  submissions,
   users,
 } from "../src/db/schema.ts";
 import { registerUser } from "../src/services/auth.ts";
@@ -50,7 +52,10 @@ async function getAdminCount(): Promise<number> {
  */
 async function cleanNonRootAdmins(): Promise<void> {
   const db = getDb();
-  // 清理 conversations 相关表的 FK 引用（无 CASCADE，须手动清理）
+  // 清理 submissions 相关表的 FK 引用（无 CASCADE，须手动清理）
+  await db.delete(evaluationResults);
+  await db.delete(submissions);
+  // 清理 conversations 相关表的 FK 引用
   await db.delete(messageDeletions);
   await db.delete(messages);
   await db.delete(conversationReads);

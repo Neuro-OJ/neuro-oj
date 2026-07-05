@@ -9,7 +9,7 @@
  * 审计日志：每次写操作 console.log "[admin] actor=... action=... key=... value=..."
  */
 
-import { and, eq, like, sql } from "drizzle-orm";
+import { and, eq, isNull, like, or, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { ipBans } from "../db/schema.ts";
 import {
@@ -165,15 +165,18 @@ export async function removeIpBan(
 export async function getBannedRanges(): Promise<string[]> {
   return await getCached("ip_bans:all", async () => {
     const db = getDb();
+    const now = new Date().toISOString();
     const rows = await db.select({
       ip_or_cidr: ipBans.ip_or_cidr,
-      expires_at: ipBans.expires_at,
     })
-      .from(ipBans);
-    const now = new Date().toISOString();
-    return rows
-      .filter((r) => !r.expires_at || r.expires_at > now)
-      .map((r) => r.ip_or_cidr);
+      .from(ipBans)
+      .where(
+        or(
+          isNull(ipBans.expires_at),
+          sql`${ipBans.expires_at} > ${now}`,
+        ),
+      );
+    return rows.map((r) => r.ip_or_cidr);
   });
 }
 

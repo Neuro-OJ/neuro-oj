@@ -14,6 +14,9 @@ import {
 } from "../lib/errors.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { verifyToken } from "../lib/jwt.ts";
+import { eq } from "drizzle-orm";
+import { getDb } from "../db/connection.ts";
+import { users } from "../db/schema.ts";
 import { getClientIp } from "../lib/rateLimitEnv.ts";
 import { getBannedIpDetail } from "../services/banlist.ts";
 import {
@@ -122,7 +125,8 @@ auth.post("/login", loginIpRateLimit(), async (c) => {
 
   // 4. 验证
   try {
-    const result = await loginUser(body);
+    const clientIp = getClientIp(c);
+    const result = await loginUser(body, clientIp);
     await clearLoginFailure(body.login);
     return c.json({ data: result }, 200);
   } catch (err) {
@@ -256,7 +260,7 @@ auth.get("/ban-status", async (c) => {
 
   // ─── 用户封禁状态（尝试解析 token，不强校验） ───
   let authenticated = false;
-  let user: { id: string; role: string } | null = null;
+  let user: { id: string; role: string; username: string } | null = null;
   let userBanned = false;
   let userBanInfo: { reason: string; until: string | null } | null = null;
 
@@ -265,9 +269,19 @@ auth.get("/ban-status", async (c) => {
     try {
       const payload = await verifyToken(authHeader.slice(7));
       authenticated = true;
+
+      // 从 DB 查 username（JWT payload 不包含 username）
+      const db = getDb();
+      const [userRow] = await db
+        .select({ username: users.username })
+        .from(users)
+        .where(eq(users.id, payload.sub))
+        .limit(1);
+
       user = {
         id: payload.sub,
         role: payload.role ?? "user",
+        username: userRow?.username ?? "unknown",
       };
       const banState = await getUserBanState(payload.sub);
       const stillBanned = banState.banned &&

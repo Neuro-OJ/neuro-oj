@@ -103,12 +103,11 @@ export function isStorageUrl(value: string): boolean {
  *   noj-storage://local/<base64>?checksum_sha256=<hex>
  *   noj-storage://s3/<key>?checksum_sha256=<hex>
  *
- * 向后兼容：非 `noj-storage://` 前缀的值返回 `{ provider: "local", key: value }`
+ * @throws {Error} 非 `noj-storage://` 前缀的 URL 直接拒绝
  */
 export function parseStorageUrl(url: string): ParsedStorageUrl {
   if (!isStorageUrl(url)) {
-    // Legacy 本地路径兼容
-    return { provider: "local", key: url };
+    throw new Error(`不是合法的 noj-storage:// URL: ${url}`);
   }
 
   const withoutPrefix = url.slice(STORAGE_URL_PREFIX.length);

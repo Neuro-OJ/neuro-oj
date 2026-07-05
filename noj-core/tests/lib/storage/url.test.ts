@@ -40,11 +40,12 @@ Deno.test("parseStorageUrl: 无 checksum", () => {
   assertEquals(result.checksumSha256, undefined);
 });
 
-Deno.test("parseStorageUrl: 向后兼容 legacy 路径", () => {
-  const result = parseStorageUrl("data/packages/1001.zip");
-  assertEquals(result.provider, "local");
-  assertEquals(result.key, "data/packages/1001.zip");
-  assertEquals(result.checksumSha256, undefined);
+Deno.test("parseStorageUrl: 非 noj-storage:// URL 拒绝", () => {
+  assertThrows(
+    () => parseStorageUrl("data/packages/1001.zip"),
+    Error,
+    "不是合法的 noj-storage:// URL",
+  );
 });
 
 Deno.test("parseStorageUrl: 空 key", () => {
