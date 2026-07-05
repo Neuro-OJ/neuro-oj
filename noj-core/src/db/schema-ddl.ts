@@ -148,6 +148,16 @@ export const SCHEMA_DDL: string[] = [
     deleted_at TEXT NOT NULL,
     PRIMARY KEY (user_id, message_id)
   )`,
+
+  // 14. system_settings (issue #99)
+  `CREATE TABLE IF NOT EXISTS system_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    is_secret BOOLEAN NOT NULL DEFAULT false,
+    updated_at TEXT NOT NULL,
+    updated_by TEXT REFERENCES users(id) ON DELETE SET NULL
+  )`,
 ];
 
 export const SCHEMA_INDEXES: string[] = [
@@ -167,6 +177,7 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON messages (conversation_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages (sender_id)",
   "CREATE INDEX IF NOT EXISTS idx_message_deletions_message_id ON message_deletions (message_id)",
+  "CREATE INDEX IF NOT EXISTS idx_system_settings_updated_at ON system_settings (updated_at DESC)",
 ];
 
 export const ALL_TABLES = [
@@ -183,4 +194,5 @@ export const ALL_TABLES = [
   "messages",
   "conversation_reads",
   "message_deletions",
+  "system_settings",
 ] as const;
