@@ -4,6 +4,8 @@
  *
  * `code` 字段为机器可读的错误码，便于前端按错误类型做差异化处理或上报。
  * `requestId` 字段在 app.ts 的全局错误处理中填充，用于与服务端日志关联。
+ * `meta` 字段携带额外数据（如 issue #102 USER_BANNED 携带 reason/until），
+ * 由 app.ts onError 透传到 JSON 响应。
  */
 export class AppError extends Error {
   /** HTTP 状态码 */
@@ -12,16 +14,20 @@ export class AppError extends Error {
   code: string;
   /** 请求关联 ID（由全局错误处理注入，便于日志追踪） */
   requestId?: string;
+  /** 附加字段，会被原样透传到错误响应（issue #102 USER_BANNED 用） */
+  meta?: Record<string, unknown>;
 
   constructor(
     message: string,
     statusCode: number,
     code?: string,
+    meta?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "AppError";
     this.statusCode = statusCode;
     this.code = code ?? "INTERNAL_ERROR";
+    if (meta) this.meta = meta;
   }
 }
 
@@ -83,14 +89,19 @@ export class BadRequestError extends AppError {
 /**
  * 禁止访问错误（HTTP 403）。
  * 用于权限不足场景（如普通用户尝试编辑管理题、
- * must_change_password=true 用户访问非白名单路径）。
+ * must_change_password=true 用户访问非白名单路径、
+ * issue #102 USER_BANNED / IP_BLACKLISTED）。
  *
- * 支持可选 code 参数以区分不同禁止场景（issue #75 评审修复 M1：
- * PASSWORD_CHANGE_REQUIRED 等机器可读码供前端差异化处理）。
+ * 支持可选 code 参数以区分不同禁止场景（issue #75 评审修复 M1）。
+ * 支持可选 meta 参数携带额外数据（如 USER_BANNED 携带 reason/until）。
  */
 export class ForbiddenError extends AppError {
-  constructor(message: string, code?: string) {
-    super(message, 403, code);
+  constructor(
+    message: string,
+    code?: string,
+    meta?: Record<string, unknown>,
+  ) {
+    super(message, 403, code, meta);
     this.name = "ForbiddenError";
   }
 }

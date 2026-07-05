@@ -1,20 +1,20 @@
 const FORWARDABLE_HEADERS = new Set([
-  "retry-after",
-  "x-ratelimit-limit",
-  "x-ratelimit-remaining",
-  "x-ratelimit-reset",
-  "x-request-id",
-  "www-authenticate",
+  'retry-after',
+  'x-ratelimit-limit',
+  'x-ratelimit-remaining',
+  'x-ratelimit-reset',
+  'x-request-id',
+  'www-authenticate',
 ]);
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
 
   // 路径白名单：仅允许转发到 noj-core v1 API
-  if (!event.path.startsWith("/api/v1/")) {
+  if (!event.path.startsWith('/api/v1/')) {
     return sendError(
       event,
-      createError({ statusCode: 404, statusMessage: "Not Found" }),
+      createError({ statusCode: 404, statusMessage: 'Not Found' }),
     );
   }
 
@@ -90,7 +90,7 @@ export default defineEventHandler(async (event) => {
       }
 
       setResponseStatus(event, response.status);
-      setHeader(event, "cache-control", "no-store, private");
+      setHeader(event, 'cache-control', 'no-store, private');
       return data;
     } catch (err) {
       const e = err as {

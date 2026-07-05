@@ -158,6 +158,11 @@ async function main() {
 
   // 启动 Judge RPC 处理器（响应 judge 的镜像白名单等请求）
   const redisForRpc = createConsumerRedis();
+  try {
+    await redisForRpc.connect();
+  } catch (err) {
+    console.error("Judge RPC Redis 连接失败:", err);
+  }
   // deno-lint-ignore no-explicit-any
   startJudgeRpcHandler(redisForRpc as any);
 

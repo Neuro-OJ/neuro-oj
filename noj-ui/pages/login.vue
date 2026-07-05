@@ -5,6 +5,12 @@
                 <span>{{ registeredMsg }}</span>
             </div>
         </Transition>
+        <!-- ban-status-endpoint：用户被封禁时在登录页显示 banner（不依赖 URL 参数） -->
+        <Transition name="slide">
+            <div v-if="bannedMsg" class="bg-red-50 border border-red-200 text-red-700 rounded-md px-3.5 py-2.5 text-sm flex items-center justify-center gap-3 fixed top-[74px] left-1/2 -translate-x-1/2 z-[99] max-w-[380px] w-[calc(100%-48px)]">
+                <span>{{ bannedMsg }}</span>
+            </div>
+        </Transition>
         <Transition name="slide">
             <div v-if="error" class="bg-red-50 border border-red-200 text-red-700 rounded-md px-3.5 py-2.5 text-sm flex items-center justify-between gap-3 fixed top-[74px] left-1/2 -translate-x-1/2 z-[99] max-w-[380px] w-[calc(100%-48px)]">
                 <span>{{ error }}</span>
@@ -94,6 +100,7 @@ const showPassword = ref(false)
 
 // 注册成功后的提示
 const registeredMsg = ref("")
+const bannedMsg = ref("")
 const route = useRoute()
 if (route.query.registered === "1") {
   registeredMsg.value = "注册成功，请登录"
@@ -151,6 +158,15 @@ async function handleLogin() {
             router.replace("/")
         }
     } catch (e: any) {
+        // ban-status-endpoint：被封用户直接 inline 显示 banner，不用 URL 跳转
+        if (e.data?.code === "USER_BANNED") {
+            const reason = e.data.reason || "";
+            const until = e.data.until || "";
+            bannedMsg.value = until
+                ? `账号已被封禁至 ${until}。${reason ? `原因：${reason}。` : ""}请联系管理员。`
+                : `账号已被封禁。${reason ? `原因：${reason}。` : ""}请联系管理员。`;
+            return;
+        }
         setError(typeof e.data?.error === "string" ? e.data.error : `服务器错误 (${e.status || 502})`)
     } finally {
         loading.value = false

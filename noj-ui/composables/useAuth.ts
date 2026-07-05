@@ -92,8 +92,8 @@ export function useAuth() {
    * 邮箱是否存在对前端透明：服务端统一返 200 + 同一消息（防枚举）。
    */
   async function forgotPassword(email: string) {
-    await $fetch("/api/v1/auth/forgot-password", {
-      method: "POST",
+    await $fetch('/api/v1/auth/forgot-password', {
+      method: 'POST',
       body: { email },
     });
   }
@@ -103,8 +103,8 @@ export function useAuth() {
    * @throws 令牌无效/过期/已用/弱密码时抛出错误（含后端 error 消息）
    */
   async function resetPassword(token: string, newPassword: string) {
-    await $fetch("/api/v1/auth/reset-password", {
-      method: "POST",
+    await $fetch('/api/v1/auth/reset-password', {
+      method: 'POST',
       body: { token, new_password: newPassword },
     });
   }

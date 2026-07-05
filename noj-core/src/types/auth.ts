@@ -22,6 +22,9 @@ export interface LoginInput {
  *
  * 包含 must_change_password 字段（issue #75）：前端在登录后据此
  * 决定是否强制跳转 `/change-password` 页面。
+ *
+ * active_ban 字段（user-ban-table）：当前活跃封禁的 reason/until，
+ * 从 user_bans 表计算（unbanned_at IS NULL）。null = 未封禁。
  */
 export interface UserResponse {
   id: string;
@@ -29,6 +32,7 @@ export interface UserResponse {
   email: string;
   role: string;
   must_change_password: boolean;
+  active_ban: { reason: string; banned_until: string | null } | null;
   created_at: string;
   updated_at: string;
 }

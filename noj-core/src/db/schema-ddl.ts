@@ -158,6 +158,28 @@ export const SCHEMA_DDL: string[] = [
     updated_at TEXT NOT NULL,
     updated_by TEXT REFERENCES users(id) ON DELETE SET NULL
   )`,
+
+  // 15. ip_bans (issue #102)
+  `CREATE TABLE IF NOT EXISTS ip_bans (
+    id TEXT PRIMARY KEY,
+    ip_or_cidr TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    expires_at TEXT,
+    created_at TEXT NOT NULL,
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL
+  )`,
+
+  // 16. user_bans (issue #102)
+  `CREATE TABLE IF NOT EXISTS user_bans (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reason TEXT NOT NULL DEFAULT '',
+    banned_until TEXT,
+    banned_at TEXT NOT NULL,
+    banned_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    unbanned_at TEXT,
+    unbanned_by TEXT REFERENCES users(id) ON DELETE SET NULL
+  )`,
 ];
 
 export const SCHEMA_INDEXES: string[] = [
@@ -178,6 +200,10 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages (sender_id)",
   "CREATE INDEX IF NOT EXISTS idx_message_deletions_message_id ON message_deletions (message_id)",
   "CREATE INDEX IF NOT EXISTS idx_system_settings_updated_at ON system_settings (updated_at DESC)",
+  "CREATE INDEX IF NOT EXISTS idx_ip_bans_ip_or_cidr ON ip_bans (ip_or_cidr)",
+  "CREATE INDEX IF NOT EXISTS idx_ip_bans_expires_at ON ip_bans (expires_at)",
+  "CREATE INDEX IF NOT EXISTS idx_user_bans_user ON user_bans (user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_user_bans_active ON user_bans (user_id) WHERE unbanned_at IS NULL",
 ];
 
 export const ALL_TABLES = [
@@ -195,4 +221,6 @@ export const ALL_TABLES = [
   "conversation_reads",
   "message_deletions",
   "system_settings",
+  "ip_bans",
+  "user_bans",
 ] as const;

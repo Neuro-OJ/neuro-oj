@@ -14,6 +14,7 @@ import conversations from "./routes/conversations.ts";
 import sse from "./routes/sse.ts";
 import { AppError } from "./lib/errors.ts";
 import { listJudgeImages } from "./services/judge-images.ts";
+import { banlistMiddleware } from "./middleware/banlist.ts";
 
 /**
  * 创建并配置 Hono 应用实例。
@@ -61,6 +62,7 @@ export function createApp(): Hono {
         {
           error: err.message,
           code: err.code,
+          ...(err.meta ?? {}), // issue #102：透传 meta（如 USER_BANNED 的 reason/until）
           request_id: requestId,
         },
         err.statusCode as 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503,
@@ -96,6 +98,13 @@ export function createApp(): Hono {
   });
 
   app.route("/api/v1", sse);
+
+  // 全局中间件（issue #102 / ban-status-endpoint）：
+  // - banlistMiddleware 在 /api/v1/* 路径前，方法限制 + 最小白名单：
+  //   GET/HEAD/OPTIONS 放行，POST/PUT/PATCH/DELETE 拦截，白名单路径豁免
+  // - 被封 IP 用户仍可浏览、查 ban-status、登录/登出
+  // - authMiddleware（路由级）与 banlistMiddleware 统一模式
+  app.use("/api/v1/*", banlistMiddleware);
 
   return app;
 }
