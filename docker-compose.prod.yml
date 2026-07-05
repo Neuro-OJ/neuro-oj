@@ -47,9 +47,9 @@ services:
       YOUR_DOMAIN: ${YOUR_DOMAIN:?required}
     depends_on:
       core:
-        condition: service_healthy
+        condition: service_started
       ui:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "--spider", "--quiet", "http://localhost/health"]
       interval: 30s

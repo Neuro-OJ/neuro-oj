@@ -43,7 +43,7 @@ echo "  目标 DB：${POSTGRES_DB}"
 echo
 
 # ─── 警告 ───
-echo "⚠ 此操作会覆盖当前数据库 '$(POSTGRES_DB)'！"
+echo "⚠ 此操作会覆盖当前数据库 '${POSTGRES_DB}'！"
 echo "  建议：先 dump 当前 DB（防止误操作）"
 read -rp "确认继续？输入 yes 继续： " CONFIRM
 if [[ "$CONFIRM" != "yes" ]]; then

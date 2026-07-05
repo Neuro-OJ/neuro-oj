@@ -61,7 +61,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY --from=builder /build/dist/noj-ui /app/noj-ui
-RUN chmod +x /app/noj-ui
+RUN chmod +rx /app/noj-ui
+
+# 切到 nonroot（debian-slim 内置 nobody 用户 UID 65534），与其他运行时镜像保持一致
+USER nobody
 
 # tini 负责 PID 1 与信号转发（SIGTERM 等），保证优雅退出
 ENTRYPOINT ["/usr/bin/tini", "--"]

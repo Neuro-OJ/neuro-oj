@@ -8,7 +8,6 @@
 # --- 环境变量 / Secrets ---
 .env
 .env.*
-!.env.example
 !.env.e2e.template
 !.env.prod.example
 env.prod.sh

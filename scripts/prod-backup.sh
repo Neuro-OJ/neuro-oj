@@ -32,11 +32,11 @@ mkdir -p "$BACKUP_DIR"
 
 echo "▶ 备份 PostgreSQL..."
 mkdir -p "/tmp/${BACKUP_NAME}"
+# 不指定 --host，走 Unix socket + peer 认证（容器内默认）；
+# 若指定 --host=localhost 强制 TCP 会触发密码认证，与 --no-password 冲突导致失败。
 pg_dump \
-  --host=localhost \
   --username="${POSTGRES_USER}" \
   --dbname="${POSTGRES_DB}" \
-  --no-password \
   --format=custom \
   --compress=9 \
   --file="/tmp/${BACKUP_NAME}/db.dump"
