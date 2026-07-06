@@ -4,7 +4,10 @@ import { authMiddleware } from "../middleware/auth.ts";
 import { onEvent } from "../lib/event-bus.ts";
 import { getSubmission } from "../services/submissions.ts";
 import { getQueueOverview } from "../services/queue.ts";
-import { getCachedTotalStats, getCachedTodayStats } from "../services/stats-cache.ts";
+import {
+  getCachedTodayStats,
+  getCachedTotalStats,
+} from "../services/stats-cache.ts";
 
 /**
  * SSE（Server-Sent Events）路由。

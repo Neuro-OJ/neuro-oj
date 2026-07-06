@@ -79,7 +79,9 @@ export async function getCachedTotalStats(): Promise<StatsSnapshot> {
  * 获取今日统计（内存缓存，懒加载）。
  * userId 提供时回退到 DB 查询（精确到人）。
  */
-export async function getCachedTodayStats(userId?: string): Promise<StatsSnapshot> {
+export async function getCachedTodayStats(
+  userId?: string,
+): Promise<StatsSnapshot> {
   if (userId) {
     // 用户级统计场景较少，不做缓存
     return getTodayStatsFromDb(userId);
@@ -140,7 +142,9 @@ async function getTodayStatsFromDb(userId: string): Promise<StatsSnapshot> {
       evaluationResults,
       eq(evaluationResults.submission_id, submissions.id),
     )
-    .where(and(gte(submissions.created_at, today), eq(submissions.user_id, userId)));
+    .where(
+      and(gte(submissions.created_at, today), eq(submissions.user_id, userId)),
+    );
   const t = Number(row?.total ?? 0);
   const f = Number(row?.full_score ?? 0);
   return { total: t, full_score: f, not_full_score: t - f };

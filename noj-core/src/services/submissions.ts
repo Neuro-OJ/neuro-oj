@@ -1,4 +1,14 @@
-import { and, eq, gte, ilike, inArray, lte, or, type SQL, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  lte,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import {
   evaluationResults,
   problems,
@@ -570,7 +580,10 @@ export async function saveEvaluationResult(
 
   const incomingSeq = result.rejudge_seq ?? 0;
   const [sub] = await db
-    .select({ rejudge_seq: submissions.rejudge_seq, created_at: submissions.created_at })
+    .select({
+      rejudge_seq: submissions.rejudge_seq,
+      created_at: submissions.created_at,
+    })
     .from(submissions)
     .where(eq(submissions.id, result.submission_id))
     .limit(1);

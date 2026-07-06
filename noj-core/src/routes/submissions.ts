@@ -4,7 +4,10 @@ import {
   getSubmission,
   listSubmissions,
 } from "../services/submissions.ts";
-import { getCachedTotalStats, getCachedTodayStats } from "../services/stats-cache.ts";
+import {
+  getCachedTodayStats,
+  getCachedTotalStats,
+} from "../services/stats-cache.ts";
 import { getSubmissionQueueStatus } from "../services/queue.ts";
 import {
   adminMiddleware,
