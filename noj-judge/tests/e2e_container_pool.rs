@@ -423,11 +423,7 @@ async fn test_pool_security_config() {
         );
 
         // pids_limit 应设为 256（DoS 防护）
-        assert_eq!(
-            hc.pids_limit,
-            Some(256),
-            "pids_limit 应为 256（DoS 防护）"
-        );
+        assert_eq!(hc.pids_limit, Some(256), "pids_limit 应为 256（DoS 防护）");
 
         // ipc_mode 应设为 none（IPC 隔离）
         assert_eq!(

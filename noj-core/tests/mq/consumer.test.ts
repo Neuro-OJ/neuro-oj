@@ -9,10 +9,15 @@
 
 import { assertEquals } from "jsr:@std/assert@^1";
 import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
-import { resetDbForTest, getDb } from "../../src/db/connection.ts";
-import { problems, submissions, evaluationResults, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import {
+  evaluationResults,
+  problems,
+  submissions,
+  users,
+} from "../../src/db/schema.ts";
 import { eq, sql } from "drizzle-orm";
-import { startFakeRedis, type FakeRedis } from "./_setup.ts";
+import { startFakeRedis } from "./_setup.ts";
 
 const hasDb = true;
 const TS = Date.now();
@@ -26,18 +31,37 @@ async function setupTestData() {
   const now = new Date().toISOString();
 
   await db.insert(users).values({
-    id: USER_ID, username: `c-tester-${TS}`, email: `c-${TS}@test.noj`,
-    password_hash: "hash", role: "user", created_at: now, updated_at: now,
+    id: USER_ID,
+    username: `c-tester-${TS}`,
+    email: `c-${TS}@test.noj`,
+    password_hash: "hash",
+    role: "user",
+    created_at: now,
+    updated_at: now,
   });
   await db.insert(problems).values({
-    id: PROBLEM_ID, title: `C-Test ${TS}`, description: "desc", difficulty: "easy",
-    judge_image: "noj-judge-python", judge_command: "python3 /tmp/evaluate.py",
-    time_limit_ms: 5000, memory_limit_mb: 512, number: 90000 + (TS & 0x7fff),
-    owner_id: USER_ID, type: "P", created_at: now, updated_at: now,
+    id: PROBLEM_ID,
+    title: `C-Test ${TS}`,
+    description: "desc",
+    difficulty: "easy",
+    judge_image: "noj-judge-python",
+    judge_command: "python3 /tmp/evaluate.py",
+    time_limit_ms: 5000,
+    memory_limit_mb: 512,
+    number: 90000 + (TS & 0x7fff),
+    owner_id: USER_ID,
+    type: "P",
+    created_at: now,
+    updated_at: now,
   });
   await db.insert(submissions).values({
-    id: SUBMISSION_ID, user_id: USER_ID, problem_id: PROBLEM_ID,
-    status: "judging", language: "python3", code: "print('t')", created_at: now,
+    id: SUBMISSION_ID,
+    user_id: USER_ID,
+    problem_id: PROBLEM_ID,
+    status: "judging",
+    language: "python3",
+    code: "print('t')",
+    created_at: now,
   });
 }
 
@@ -128,12 +152,14 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await setupTestData();
-    const { saveEvaluationResult } = await import("../../src/services/submissions.ts");
+    const { saveEvaluationResult } = await import(
+      "../../src/services/submissions.ts"
+    );
     await saveEvaluationResult({
       submission_id: SUBMISSION_ID,
       status: "Accepted",
       score: 1000,
-      output: "---RESULT---\n{\"status\":\"Accepted\"}",
+      output: '---RESULT---\n{"status":"Accepted"}',
       details: { cases: [{ status: "Accepted", score: 1000 }] },
       time_ms: 42,
       memory_kb: 8192,

@@ -17,7 +17,7 @@
 
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../src/app.ts";
-import { getDb, resetDbForTest } from "../src/db/connection.ts";
+import { resetDbForTest } from "../src/db/connection.ts";
 
 // PGlite 模式：运行 DDL 建表。无 DATABASE_URL 时使用 PGlite 内存数据库。
 if (!Deno.env.get("DATABASE_URL")) {

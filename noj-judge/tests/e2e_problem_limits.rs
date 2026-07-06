@@ -26,7 +26,11 @@ async fn test_problem_time_limit_enforced() {
     let (container_id, work_dir) = create_test_container(
         &docker,
         "noj-judge-test-runner",
-        &["python3", "-c", "import time; time.sleep(10); print('never')"],
+        &[
+            "python3",
+            "-c",
+            "import time; time.sleep(10); print('never')",
+        ],
         256,
         500, // time_limit_ms = 500ms
     )

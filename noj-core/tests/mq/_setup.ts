@@ -49,10 +49,14 @@ export function startFakeRedis(): FakeRedis {
 
   const stop = async () => {
     for (const c of connections) {
-      try { c.close(); } catch { /* ignore */ }
+      try {
+        c.close();
+      } catch { /* ignore */ }
     }
     connections.clear();
-    try { listener.close(); } catch { /* ignore */ }
+    try {
+      listener.close();
+    } catch { /* ignore */ }
     await acceptTask.catch(() => {});
   };
 
@@ -93,7 +97,11 @@ async function handleConnection(
 
       const reply = handleCommand(parsed.cmd, parsed.args, queues);
       if (reply) {
-        try { await conn.write(reply); } catch { return; }
+        try {
+          await conn.write(reply);
+        } catch {
+          return;
+        }
       }
     }
   }
@@ -119,7 +127,8 @@ function tryParseRespCommand(buf: Uint8Array): ParsedCommand | null {
     const lenEnd = findCrlf(buf, pos);
     if (lenEnd < 0) return null;
     const len = parseInt(
-      new TextDecoder().decode(buf.subarray(pos + 1, lenEnd)), 10,
+      new TextDecoder().decode(buf.subarray(pos + 1, lenEnd)),
+      10,
     );
     if (!Number.isFinite(len)) return null;
     pos = lenEnd + 2;
@@ -128,7 +137,11 @@ function tryParseRespCommand(buf: Uint8Array): ParsedCommand | null {
     pos += len + 2;
   }
 
-  return { cmd: (parts[0] ?? "").toUpperCase(), args: parts.slice(1), rest: buf.slice(pos) };
+  return {
+    cmd: (parts[0] ?? "").toUpperCase(),
+    args: parts.slice(1),
+    rest: buf.slice(pos),
+  };
 }
 
 function findCrlf(buf: Uint8Array, from: number): number {
@@ -193,7 +206,7 @@ function handleBrpop(
 ): Uint8Array {
   if (args.length < 2) return renderRespError("ERR wrong number of arguments");
   // 最后一个参数是 timeout，前面的参数是 keys
-  const timeout = parseInt(args[args.length - 1], 10);
+  const _timeout = parseInt(args[args.length - 1], 10);
   const keys = args.slice(0, -1);
 
   // 检查所有 key 是否有数据

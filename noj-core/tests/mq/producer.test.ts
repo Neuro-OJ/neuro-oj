@@ -14,8 +14,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { pushJudgeTask } from "../../src/mq/producer.ts";
 import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
-import { resetDbForTest } from "../../src/db/connection.ts";
-import { startFakeRedis, type FakeRedis } from "./_setup.ts";
+import { startFakeRedis } from "./_setup.ts";
 import type { JudgeTask } from "../../src/types/index.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
