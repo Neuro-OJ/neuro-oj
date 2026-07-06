@@ -7,7 +7,7 @@
     "start": "deno run --env-file=.env -A src/main.ts",
     "setup": "deno task build-packages && deno task seed",
     "seed": "deno run --env-file=.env -A scripts/seed.ts",
-    "build-packages": "deno run -A --allow-run scripts/build-packages.ts",
+    "build-packages": "deno run -A scripts/build-packages.ts",
     "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts",
     "migrate": "deno run -A scripts/migrate.ts --env-file=.env",
     "test:smoke": "deno test -A --no-check tests/smoke.test.ts"
