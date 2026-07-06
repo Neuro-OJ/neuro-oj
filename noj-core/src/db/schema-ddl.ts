@@ -171,7 +171,8 @@ export const SCHEMA_DDL: string[] = [
     created_at TEXT NOT NULL,
     CONSTRAINT audit_logs_action_check CHECK (action IN (
       'users.role_change','users.ban','users.unban',
-      'problems.delete','categories.delete','submissions.rejudge','settings.update'
+      'problems.delete','categories.delete','submissions.rejudge','settings.update',
+      'ip_ban.create','ip_ban.delete'
     ))
   )`,
 

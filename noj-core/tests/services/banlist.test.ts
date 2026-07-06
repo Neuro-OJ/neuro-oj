@@ -4,7 +4,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { ipBans, users } from "../../src/db/schema.ts";
+import { auditLogs, ipBans, users } from "../../src/db/schema.ts";
 import {
   _resetBanlistForTest,
   addIpBan,
@@ -18,6 +18,10 @@ import {
   NotFoundError,
   ValidationError,
 } from "../../src/lib/errors.ts";
+import {
+  enterTestContext,
+  leaveTestContext,
+} from "../../src/lib/requestContext.ts";
 
 const ADMIN_ID = crypto.randomUUID();
 const TEST_TS = Date.now();
@@ -229,5 +233,86 @@ Deno.test({
     const { getBannedIpDetail } = await import("../../src/services/banlist.ts");
     const detail = await getBannedIpDetail("9.9.9.9");
     assertEquals(detail, null);
+  },
+});
+
+Deno.test({
+  name: "banlist service: addIpBan 写入审计日志",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    const db = getDb();
+    await db.delete(auditLogs);
+
+    enterTestContext({
+      actorId: ADMIN_ID,
+      actorIp: "10.0.0.1",
+      actorRole: "admin",
+    });
+    try {
+      const ban = await addIpBan(
+        { ip_or_cidr: "10.0.0.0/8", reason: "internal" },
+        ADMIN_ID,
+      );
+
+      const logs = await db.select().from(auditLogs);
+      assertEquals(logs.length, 1);
+      assertEquals(logs[0].admin_id, ADMIN_ID);
+      assertEquals(logs[0].action, "ip_ban.create");
+      assertEquals(logs[0].target_type, "ip_bans");
+      assertEquals(logs[0].target_id, ban.id);
+      assertEquals(logs[0].ip_address, "10.0.0.1");
+      assertEquals(logs[0].detail, {
+        action: "ip_ban.create",
+        ip_or_cidr: "10.0.0.0/8",
+        reason: "internal",
+        expires_at: null,
+      });
+    } finally {
+      leaveTestContext();
+    }
+  },
+});
+
+Deno.test({
+  name: "banlist service: removeIpBan 写入审计日志",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    const db = getDb();
+    await db.delete(auditLogs);
+
+    const ban = await addIpBan(
+      { ip_or_cidr: "1.2.3.4", reason: "bot" },
+      ADMIN_ID,
+    );
+
+    enterTestContext({
+      actorId: ADMIN_ID,
+      actorIp: "10.0.0.1",
+      actorRole: "admin",
+    });
+    try {
+      await removeIpBan(ban.id, ADMIN_ID);
+
+      const logs = await db.select().from(auditLogs).orderBy(
+        auditLogs.created_at,
+      );
+      // 第一条：addIpBan 写入的（没有 test context 时被静默忽略）
+      // 第二条：removeIpBan 写入的
+      const removeLog = logs.find((l) => l.action === "ip_ban.delete");
+      assertEquals(removeLog?.admin_id, ADMIN_ID);
+      assertEquals(removeLog?.action, "ip_ban.delete");
+      assertEquals(removeLog?.target_type, "ip_bans");
+      assertEquals(removeLog?.target_id, ban.id);
+      assertEquals(removeLog?.detail, {
+        action: "ip_ban.delete",
+        ip_or_cidr: "1.2.3.4",
+      });
+    } finally {
+      leaveTestContext();
+    }
   },
 });

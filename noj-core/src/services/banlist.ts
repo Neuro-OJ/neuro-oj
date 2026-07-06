@@ -19,6 +19,7 @@ import {
 } from "../lib/errors.ts";
 import { isBannedIp, isValidIpOrCidr } from "../lib/cidr.ts";
 import { getCached, invalidateBanCache } from "../lib/banCache.ts";
+import { logAudit } from "./audit-log.ts";
 
 export interface IpBan {
   id: string;
@@ -122,8 +123,15 @@ export async function addIpBan(
 
   // 失效 ip_bans 全表缓存
   invalidateBanCache({ ipOrCidr: trimmed });
-  console.log(
-    `[admin] actor=${actorId} action=POST key=ip_bans value=${trimmed}`,
+  logAudit(
+    "ip_ban.create",
+    {
+      action: "ip_ban.create",
+      ip_or_cidr: trimmed,
+      reason: input.reason ?? "",
+      expires_at: input.expires_at ?? null,
+    },
+    { type: "ip_bans", id },
   );
 
   return {
@@ -139,7 +147,7 @@ export async function addIpBan(
 /** 删除 IP 黑名单。 */
 export async function removeIpBan(
   id: string,
-  actorId: string,
+  _actorId: string,
 ): Promise<void> {
   const db = getDb();
   const existing = await db.select().from(ipBans)
@@ -151,10 +159,10 @@ export async function removeIpBan(
   await db.delete(ipBans).where(eq(ipBans.id, id));
 
   invalidateBanCache({ ipOrCidr: existing[0]!.ip_or_cidr });
-  console.log(
-    `[admin] actor=${actorId} action=DELETE key=ip_bans value=${
-      existing[0]!.ip_or_cidr
-    }`,
+  logAudit(
+    "ip_ban.delete",
+    { action: "ip_ban.delete", ip_or_cidr: existing[0]!.ip_or_cidr },
+    { type: "ip_bans", id },
   );
 }
 

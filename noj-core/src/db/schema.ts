@@ -428,7 +428,9 @@ export const auditLogs = pgTable(
         'problems.delete',
         'categories.delete',
         'submissions.rejudge',
-        'settings.update'
+        'settings.update',
+        'ip_ban.create',
+        'ip_ban.delete'
       )`,
     ),
     adminIdx: index("audit_logs_admin_id_idx").on(table.admin_id),
@@ -494,3 +496,4 @@ export const userBans = pgTable(
       sql`unbanned_at IS NULL`,
     ),
   }),
+);

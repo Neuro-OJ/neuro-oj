@@ -16,6 +16,7 @@ import {
 } from "../lib/errors.ts";
 import { scoreFromDb } from "../types/index.ts";
 import { invalidateBanCache } from "../lib/banCache.ts";
+import { logAudit } from "./audit-log.ts";
 import type { UserResponse } from "../types/auth.ts";
 
 /**
@@ -457,8 +458,10 @@ export async function banUser(
   });
 
   invalidateBanCache({ userId: targetUserId });
-  console.log(
-    `[admin] actor=${currentUserId} action=PUT key=user_ban value=${targetUserId}`,
+  logAudit(
+    "users.ban",
+    { action: "users.ban", reason: reason ?? "", until: bannedUntil ?? null },
+    { type: "users", id: targetUserId },
   );
 
   return {
@@ -498,8 +501,10 @@ export async function unbanUser(
     );
 
   invalidateBanCache({ userId: targetUserId });
-  console.log(
-    `[admin] actor=${currentUserId} action=PUT key=user_unban value=${targetUserId}`,
+  logAudit(
+    "users.unban",
+    { action: "users.unban" },
+    { type: "users", id: targetUserId },
   );
 
   return {

@@ -1,7 +1,10 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { auditLogs, users } from "../../src/db/schema.ts";
-import { enterTestContext, leaveTestContext } from "../../src/lib/requestContext.ts";
+import {
+  enterTestContext,
+  leaveTestContext,
+} from "../../src/lib/requestContext.ts";
 import {
   cleanupOldAuditLogs,
   listAuditLogs,
@@ -223,5 +226,73 @@ Deno.test({
       to,
     });
     assertEquals(result.data.length, 1);
+  },
+});
+
+Deno.test({
+  name: "audit-log: logAudit ip_ban.create 写入字段映射",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await cleanAuditLogs();
+    enterTestContext(TEST_CTX);
+
+    await logAudit(
+      "ip_ban.create",
+      {
+        action: "ip_ban.create",
+        ip_or_cidr: "10.0.0.0/8",
+        reason: "spam",
+        expires_at: null,
+      },
+      { type: "ip_bans", id: "ban-uuid-1" },
+    );
+
+    const db = getDb();
+    const rows = await db.select().from(auditLogs);
+    assertEquals(rows.length, 1);
+    assertEquals(rows[0].admin_id, "test-admin-uuid");
+    assertEquals(rows[0].action, "ip_ban.create");
+    assertEquals(rows[0].target_type, "ip_bans");
+    assertEquals(rows[0].target_id, "ban-uuid-1");
+    assertEquals(rows[0].detail, {
+      action: "ip_ban.create",
+      ip_or_cidr: "10.0.0.0/8",
+      reason: "spam",
+      expires_at: null,
+    });
+    assertExists(rows[0].created_at);
+    assertExists(rows[0].id);
+  },
+});
+
+Deno.test({
+  name: "audit-log: logAudit ip_ban.delete 写入字段映射",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await cleanAuditLogs();
+    enterTestContext(TEST_CTX);
+
+    await logAudit(
+      "ip_ban.delete",
+      { action: "ip_ban.delete", ip_or_cidr: "1.2.3.4" },
+      { type: "ip_bans", id: "ban-uuid-2" },
+    );
+
+    const db = getDb();
+    const rows = await db.select().from(auditLogs);
+    assertEquals(rows.length, 1);
+    assertEquals(rows[0].action, "ip_ban.delete");
+    assertEquals(rows[0].target_type, "ip_bans");
+    assertEquals(rows[0].target_id, "ban-uuid-2");
+    assertEquals(rows[0].detail, {
+      action: "ip_ban.delete",
+      ip_or_cidr: "1.2.3.4",
+    });
+    assertExists(rows[0].created_at);
+    assertExists(rows[0].id);
   },
 });

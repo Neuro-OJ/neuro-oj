@@ -120,6 +120,13 @@
       "when": 1783120000300,
       "tag": "0015_user_bans",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783120000400,
+      "tag": "0016_audit_logs_ip_ban_actions",
+      "breakpoints": true
     }
   ]
 }

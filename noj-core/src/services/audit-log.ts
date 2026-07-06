@@ -48,7 +48,9 @@ export async function logAudit(
     const pgConstraint = typeof pgErr.constraint === "string"
       ? ` (${pgErr.constraint})`
       : "";
-    const pgDetail = typeof pgErr.detail === "string" ? `: ${pgErr.detail}` : "";
+    const pgDetail = typeof pgErr.detail === "string"
+      ? `: ${pgErr.detail}`
+      : "";
     console.error(
       `[audit] logAudit 失败 (action=${action}):${pgCode}${pgConstraint}${pgDetail}`,
       msg,

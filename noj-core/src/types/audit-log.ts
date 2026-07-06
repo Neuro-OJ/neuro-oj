@@ -13,7 +13,9 @@ export type AuditAction =
   | "problems.delete"
   | "categories.delete"
   | "submissions.rejudge"
-  | "settings.update";
+  | "settings.update"
+  | "ip_ban.create"
+  | "ip_ban.delete";
 
 /** 按 action 强类型的 detail（discriminated union） */
 export type AuditDetail =
@@ -32,7 +34,14 @@ export type AuditDetail =
     problem_id?: string;
     count?: number;
   }
-  | { action: "settings.update"; key: string; from: unknown; to: unknown };
+  | { action: "settings.update"; key: string; from: unknown; to: unknown }
+  | {
+    action: "ip_ban.create";
+    ip_or_cidr: string;
+    reason: string;
+    expires_at: string | null;
+  }
+  | { action: "ip_ban.delete"; ip_or_cidr: string };
 
 /** audit_logs 表的响应类型 */
 export interface AuditLogEntry {

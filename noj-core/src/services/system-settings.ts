@@ -371,7 +371,7 @@ export async function updateSetting(
  */
 export async function resetSetting(
   key: string,
-  actorId: string,
+  _actorId: string,
 ): Promise<void> {
   const db = getDb();
 
