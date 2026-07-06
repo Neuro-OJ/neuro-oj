@@ -5,6 +5,7 @@
  */
 
 import {
+  BASE_URL,
   CODE_SAMPLES,
   isE2E,
   pollSubmission,
@@ -29,7 +30,7 @@ async function isJudgeAvailable(): Promise<boolean> {
     const id = await submitCode(t, PROBLEM_ID, "print(1)");
     // 等一小段时间看状态是否推进
     await new Promise((r) => setTimeout(r, 2000));
-    const res = await fetch("http://localhost:8000/api/v1/submissions/" + id, {
+    const res = await fetch(`${BASE_URL}/api/v1/submissions/${id}`, {
       headers: { Authorization: "Bearer " + t },
     });
     const data = await res.json();
@@ -158,5 +159,62 @@ Deno.test({
     const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
     const result = await pollSubmission(token, id);
     if (result.status !== "finished") throw new Error("非法消息后提交未完成");
+  },
+});
+
+Deno.test({
+  name: "[e2e/pipeline] 6/8 Memory Limit Exceeded",
+  ignore: skip || !judgeOk,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    if (!isE2E) return;
+    const id = await submitCode(
+      token,
+      PROBLEM_ID,
+      CODE_SAMPLES.memoryLimitExceeded,
+    );
+    const result = await pollSubmission(token, id, 15, 2000);
+    if (result.verdict !== "MemoryLimitExceeded") {
+      throw new Error("期望 MemoryLimitExceeded, 实际 " + result.verdict);
+    }
+  },
+});
+
+Deno.test({
+  name: "[e2e/pipeline] 7/8 Runtime Error",
+  ignore: skip || !judgeOk,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    if (!isE2E) return;
+    const id = await submitCode(
+      token,
+      PROBLEM_ID,
+      CODE_SAMPLES.runtimeError,
+    );
+    const result = await pollSubmission(token, id, 15, 2000);
+    if (result.verdict !== "RuntimeError") {
+      throw new Error("期望 RuntimeError, 实际 " + result.verdict);
+    }
+  },
+});
+
+Deno.test({
+  name: "[e2e/pipeline] 8/8 Syntax Error",
+  ignore: skip || !judgeOk,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    if (!isE2E) return;
+    const id = await submitCode(
+      token,
+      PROBLEM_ID,
+      CODE_SAMPLES.syntaxError,
+    );
+    const result = await pollSubmission(token, id, 15, 2000);
+    if (result.verdict !== "CompileError" && result.verdict !== "RuntimeError") {
+      throw new Error("期望 CompileError/RuntimeError, 实际 " + result.verdict);
+    }
   },
 });

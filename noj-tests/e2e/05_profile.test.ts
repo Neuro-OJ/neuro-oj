@@ -35,7 +35,7 @@ Deno.test({
 
 Deno.test({
   name: "[e2e/profile] 5.1 查看用户主页",
-  ignore: true,
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -62,7 +62,7 @@ Deno.test({
 
 Deno.test({
   name: "[e2e/profile] 5.2 不存在用户 404",
-  ignore: true,
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -79,7 +79,7 @@ Deno.test({
 
 Deno.test({
   name: "[e2e/profile] 5.3 主页无需认证",
-  ignore: true,
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -92,7 +92,7 @@ Deno.test({
 
 Deno.test({
   name: "[e2e/profile] 5.4 bio 默认为空",
-  ignore: true,
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -178,7 +178,7 @@ Deno.test({
 
 Deno.test({
   name: "[e2e/profile] 5.9 主页反映更新",
-  ignore: true,
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -195,7 +195,7 @@ Deno.test({
 
 Deno.test({
   name: "[e2e/profile] 5.10 清空 bio",
-  ignore: true,
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

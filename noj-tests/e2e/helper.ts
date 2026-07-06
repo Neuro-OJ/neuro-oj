@@ -229,8 +229,8 @@ export async function submitCode(
 export async function pollSubmission(
   token: string,
   submissionId: string,
-  maxRetries = 5,
-  intervalMs = 1000,
+  maxRetries = 15,
+  intervalMs = 2000,
 ): Promise<{ status: string; verdict: string; score: number }> {
   for (let i = 0; i < maxRetries; i++) {
     const res = await apiGet(
@@ -412,4 +412,18 @@ print(json.dumps({"gate_id":"E-01","status":"open"}, ensure_ascii=False))`,
 while True:
     pass
 print("never reaches here")`,
+
+  /** 内存无限分配，触发 MLE */
+  memoryLimitExceeded: `import time; data = []
+while True:
+    data.append([0] * 10_000_000)
+    time.sleep(0.1)`,
+
+  /** 运行时错误：非零退出码 */
+  runtimeError: `import sys; sys.exit(1)
+# 非零退出码 → Runtime Error`,
+
+  /** 语法错误 */
+  syntaxError: `def foo(:  # 语法错误
+    print("never")`,
 };

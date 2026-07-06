@@ -605,10 +605,11 @@ async function main() {
     }
 
     console.log("Seed 完成");
-  } finally {
-    // 关闭数据库连接池，确保进程退出
-    const { resetDbForTest } = await import("../src/db/connection.ts");
-    await resetDbForTest();
+    // 强制退出，避免 postgres.js 连接阻止 Deno 进程终止（同 migrate.ts）
+    Deno.exit(0);
+  } catch (err) {
+    console.error("Seed 失败:", err);
+    Deno.exit(1);
   }
 }
 
