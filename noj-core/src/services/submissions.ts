@@ -269,20 +269,23 @@ export async function listSubmissions(
     .offset(offset)
     .limit(perPage);
 
-  // 查询 Redis 中实际的 pending 队列，用于区分"排队中"和"评测中"
-  // 仅对没有 result 的 in-progress 提交有效
+  // 仅当存在无结果的 in-progress 提交时才查 Redis 队列
+  // （避免每次列表请求都 LRANGE 整个队列）
+  const hasInProgress = rows.some((r) => !r.result_status);
   let pendingPosMap: Map<string, number> | null = null;
   let queueLength: number | null = null;
-  try {
-    const pendingIds = await getPendingSubmissionIds();
-    queueLength = pendingIds.length;
-    // LRANGE 0 -1 返回最新优先，idx + 1 与出队顺序相反
-    // 用 pendingIds.length - idx 使队列位置从 1（下个出队）递增
-    pendingPosMap = new Map(
-      pendingIds.map((id, idx) => [id, pendingIds.length - idx]),
-    );
-  } catch {
-    // Redis 不可用时，pendingPosMap 保持 null，所有未完成提交视为"评测中"
+  if (hasInProgress) {
+    try {
+      const pendingIds = await getPendingSubmissionIds();
+      queueLength = pendingIds.length;
+      // LRANGE 0 -1 返回最新优先（LPUSH），pendingIds.length - idx
+      // 使队列位置从 1（下个出队）递增
+      pendingPosMap = new Map(
+        pendingIds.map((id, idx) => [id, pendingIds.length - idx]),
+      );
+    } catch {
+      // Redis 不可用时，pendingPosMap 保持 null，所有未完成提交视为"评测中"
+    }
   }
 
   const data: SubmissionListItem[] = rows.map((row) => {
@@ -360,15 +363,9 @@ export async function createSubmission(
     throw new BadRequestError(`不支持的语言: ${input.language}`);
   }
 
-  // 生成文件默认名
-  const extMap: Record<string, string> = {
-    python3: "main.py",
-    python: "main.py",
-    cpp: "main.cpp",
-    c: "main.c",
-    javascript: "main.js",
-  };
-  const fileName = input.file_name || extMap[input.language] || "main.txt";
+  // 生成文件默认名：优先使用 LANGUAGE_EXT_MAP
+  const fileName = input.file_name || LANGUAGE_EXT_MAP[input.language] ||
+    "main.txt";
 
   // 创建提交记录并推送到评测队列（在同一个 try 块中保证一致性）
   const id = crypto.randomUUID();
@@ -431,6 +428,9 @@ export async function createSubmission(
     await db.update(submissions).set({ status: "judging" }).where(
       eq(submissions.id, id),
     );
+
+    // 发布队列变更事件，通知 SSE 等订阅者
+    publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
   } catch (mqErr) {
     console.error("评测任务推送失败:", mqErr);
     // DB 成功但 MQ 失败，标记为 error 让用户重新提交
@@ -588,7 +588,14 @@ export async function saveEvaluationResult(
     .where(eq(submissions.id, result.submission_id))
     .limit(1);
 
-  if (sub && incomingSeq < sub.rejudge_seq) {
+  if (!sub) {
+    console.warn(
+      `提交不存在，忽略评测结果: submission=${result.submission_id}`,
+    );
+    return;
+  }
+
+  if (incomingSeq < sub.rejudge_seq) {
     console.warn(
       `忽略过时的评测结果: submission=${result.submission_id}, ` +
         `result_seq=${incomingSeq}, current_seq=${sub.rejudge_seq}`,
@@ -639,7 +646,7 @@ export async function saveEvaluationResult(
   });
 
   // 更新内存统计缓存（仅 net-new 结果，重测不计入避免 double-count）
-  if (sub && sub.created_at) {
+  if (sub.created_at) {
     applyNewResult(result.score, sub.created_at);
   }
 }
@@ -1050,6 +1057,17 @@ export async function rejudgeProblemSubmissions(
         `批量重测入队失败 (submission=${sub.id}):`,
         err instanceof Error ? err.message : String(err),
       );
+      // 入队失败：将状态回退到 error，避免卡在 pending 导致无法重试
+      try {
+        const errNow = new Date().toISOString();
+        await db.update(submissions)
+          .set({
+            status: "error",
+            judge_started_at: null,
+            judge_finished_at: errNow,
+          })
+          .where(eq(submissions.id, sub.id));
+      } catch { /* ignore cleanup failure */ }
     }
   }
 

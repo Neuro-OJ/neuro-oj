@@ -53,6 +53,30 @@ export interface UserBanState {
 }
 
 /**
+ * 封禁状态公共校验（authMiddleware 与 optionalAuthMiddleware 共享）。
+ *
+ * 方法限制：GET/HEAD/OPTIONS 放行（被封用户可浏览、查状态）
+ * 白名单：写操作中豁免的路径（如 logout）
+ */
+async function checkBanStatus(c: Context, userId: string): Promise<void> {
+  if (
+    c.req.method !== "GET" && c.req.method !== "HEAD" &&
+    c.req.method !== "OPTIONS" &&
+    !BAN_WHITELIST.includes(c.req.path)
+  ) {
+    const banState = await getUserBanState(userId);
+    const stillBanned = banState.banned &&
+      (!banState.until || Date.parse(banState.until) > Date.now());
+    if (stillBanned) {
+      throw new ForbiddenError("账号已被封禁", "USER_BANNED", {
+        reason: banState.reason,
+        until: banState.until,
+      });
+    }
+  }
+}
+
+/**
  * 可选认证中间件——有 token 则验证并注入用户信息，无 token 则以匿名身份放行。
  *
  * 与 authMiddleware 的区别：
@@ -79,22 +103,7 @@ export async function optionalAuthMiddleware(c: Context, next: Next) {
       c.set("userRole", payload.role);
       c.set("mustChangePassword", payload.must_change_password ?? false);
 
-      // 非 GET/HEAD/OPTIONS 时校验封禁状态（与 authMiddleware 一致）
-      if (
-        c.req.method !== "GET" && c.req.method !== "HEAD" &&
-        c.req.method !== "OPTIONS" &&
-        !BAN_WHITELIST.includes(c.req.path)
-      ) {
-        const banState = await getUserBanState(payload.sub);
-        const stillBanned = banState.banned &&
-          (!banState.until || Date.parse(banState.until) > Date.now());
-        if (stillBanned) {
-          throw new ForbiddenError("账号已被封禁", "USER_BANNED", {
-            reason: banState.reason,
-            until: banState.until,
-          });
-        }
-      }
+      await checkBanStatus(c, payload.sub);
     }
   }
   await next();
@@ -140,25 +149,8 @@ export async function authMiddleware(c: Context, next: Next) {
     throw new ForbiddenError("请先修改密码", "PASSWORD_CHANGE_REQUIRED");
   }
 
-  // issue #102 / ban-status-endpoint：封禁校验
-  // 方法限制：GET/HEAD/OPTIONS 放行（被封用户可浏览、查状态）
-  // 白名单：写操作中豁免的路径（如 logout）
-  if (
-    c.req.method !== "GET" && c.req.method !== "HEAD" &&
-    c.req.method !== "OPTIONS" &&
-    !BAN_WHITELIST.includes(c.req.path)
-  ) {
-    const banState = await getUserBanState(payload.sub);
-    // 临时封禁：banned_until < now 视为已解封
-    const stillBanned = banState.banned &&
-      (!banState.until || Date.parse(banState.until) > Date.now());
-    if (stillBanned) {
-      throw new ForbiddenError("账号已被封禁", "USER_BANNED", {
-        reason: banState.reason,
-        until: banState.until,
-      });
-    }
-  }
+  // 封禁校验（与 optionalAuthMiddleware 共享 checkBanStatus）
+  await checkBanStatus(c, payload.sub);
 
   c.set("userId", payload.sub);
   c.set("userRole", payload.role);

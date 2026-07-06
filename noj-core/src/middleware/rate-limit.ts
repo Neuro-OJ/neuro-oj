@@ -1,5 +1,6 @@
 import type { Context, Next } from "hono";
-import { isRateLimitEnabled } from "../lib/rateLimitEnv.ts";
+import { RateLimitedError } from "../lib/errors.ts";
+import { getClientIp, isRateLimitEnabled } from "../lib/rateLimitEnv.ts";
 
 /**
  * 滑动窗口限流中间件（内存版）。
@@ -34,18 +35,8 @@ function getClientKey(c: Context): { key: string; isLoggedIn: boolean } {
   if (userId) {
     return { key: `${path}:user:${userId}`, isLoggedIn: true };
   }
-  // IP 提取策略：
-  // 1. X-Real-IP 优先——反向代理设置的实际客户端 IP，不受客户端伪造影响
-  // 2. X-Forwarded-For 取最后一项——代理链中最后添加的 IP 最可信
-  // 3. 兜底 fallback 到 "unknown"
-  // 注意：仅信任明确配置的反向代理剥离 X-Forwarded-For 的环境
-  const realIp = c.req.header("x-real-ip");
-  if (realIp) {
-    return { key: `${path}:ip:${realIp}`, isLoggedIn: false };
-  }
-  const xff = c.req.header("x-forwarded-for");
-  const ips = xff?.split(",").map((s) => s.trim()).filter(Boolean);
-  const ip = ips?.[ips.length - 1] || "unknown";
+  // 使用 rateLimitEnv 共享的 IP 解析（支持 TRUSTED_PROXIES 白名单）
+  const ip = getClientIp(c);
   return { key: `${path}:ip:${ip}`, isLoggedIn: false };
 }
 
@@ -53,10 +44,11 @@ function checkAndRecord(key: string, intervalMs: number): boolean {
   const now = Date.now();
   const timestamps = trackedRequests.get(key) ?? [];
   // 清理窗口外的时间戳
+  // （filter 已保证 recent 中所有 t 都满足 now - t < intervalMs）
   const recent = timestamps.filter((t) => now - t < intervalMs);
 
-  if (recent.length > 0 && now - recent[recent.length - 1] < intervalMs) {
-    // 仍在窗口内且未到间隔：拒绝
+  if (recent.length > 0) {
+    // 窗口内已有请求：拒绝（最小间隔限流，1 请求 / intervalMs）
     trackedRequests.set(key, recent);
     return false;
   }
@@ -101,11 +93,10 @@ export function rateLimit(opts: RateLimitOptions) {
 
     if (!checkAndRecord(key, intervalMs)) {
       const retryAfterSec = Math.ceil(intervalMs / 1000);
-      c.header("Retry-After", String(retryAfterSec));
-      return c.json({
-        error: "请求过于频繁，请稍后再试",
-        retry_after: retryAfterSec,
-      }, 429);
+      // 抛出 RateLimitedError 使其通过全局 onError 处理：
+      // - 自动带上 request_id
+      // - 自动设置 Retry-After 响应头（通过 err.headers）
+      throw new RateLimitedError("请求过于频繁，请稍后再试", retryAfterSec);
     }
 
     await next();

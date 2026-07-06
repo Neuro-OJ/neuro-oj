@@ -77,7 +77,9 @@ export async function getPendingSubmissionIds(): Promise<string[]> {
         ids.push(parsed.submission_id);
       }
     } catch {
-      // 跳过无法解析的条目
+      console.error(
+        `队列中存在无法解析的条目，已跳过: content=${item.slice(0, 200)}`,
+      );
     }
   }
   return ids;

@@ -28,9 +28,12 @@ export function envBool(name: string, def: boolean): boolean {
   return v === "true" || v === "1";
 }
 
-/** 限流总开关。NOJ_ENV=test 或 RATE_LIMIT_ENABLED=false 时禁用 */
+/** 限流总开关。NOJ_ENV=test 时默认禁用，但 RATE_LIMIT_ENABLED=true 可覆盖。 */
 export function isRateLimitEnabled(): boolean {
-  if (Deno.env.get("NOJ_ENV") === "test") return false;
+  if (Deno.env.get("NOJ_ENV") === "test") {
+    // 测试模式下默认关闭，但允许测试文件主动开启
+    return envBool("RATE_LIMIT_ENABLED", false);
+  }
   return envBool("RATE_LIMIT_ENABLED", true);
 }
 

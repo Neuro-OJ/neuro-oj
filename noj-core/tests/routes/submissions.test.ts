@@ -302,5 +302,7 @@ Deno.test({
     assertEquals(res.status, 404);
     const body = await res.json();
     assertEquals(body.error, "提交不存在");
+    assertEquals(body.code, "NOT_FOUND");
+    assertExists(body.request_id);
   },
 });

@@ -6,16 +6,46 @@ import {
 import { optionalAuthMiddleware } from "../../src/middleware/auth.ts";
 import { Hono } from "hono";
 import { signToken } from "../../src/lib/jwt.ts";
+import { AppError } from "../../src/lib/errors.ts";
+import type { Context } from "hono";
+import { resetDbForTest } from "../../src/db/connection.ts";
 
+// 显式启用限流中间件（NOJ_ENV=test 时默认关闭）
+Deno.env.set("RATE_LIMIT_ENABLED", "true");
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 
 type Env = { Variables: { userId?: string; userRole?: string } };
+
+/**
+ * Hono 全局错误处理（与 app.ts 一致），测试用。
+ */
+function handleError(err: Error, c: Context) {
+  if (err instanceof AppError) {
+    const extraHeaders = (err as { headers?: Record<string, string> }).headers;
+    if (extraHeaders) {
+      for (const [k, v] of Object.entries(extraHeaders)) {
+        c.header(k, v);
+      }
+    }
+    return c.json(
+      {
+        error: err.message,
+        code: err.code,
+        ...(err.meta ?? {}),
+      },
+      err.statusCode as 429,
+    );
+  }
+  console.error("未处理的错误:", err);
+  return c.json({ error: "服务器内部错误", code: "INTERNAL_ERROR" }, 500);
+}
 
 /**
  * 创建带 optionalAuth + rateLimit 中间件的测试用 Hono 应用。
  */
 function createTestApp(loggedInMs: number, loggedOutMs: number) {
   const app = new Hono<Env>();
+  app.onError(handleError);
   app.get(
     "/limited",
     optionalAuthMiddleware,
@@ -138,8 +168,10 @@ Deno.test({
   // 此测试独立，不依赖前面的限流测试
   fn: async () => {
     _resetRateLimitForTests();
+    await resetDbForTest();
     const { default: router } = await import("../../src/routes/submissions.ts");
     const app = new Hono<Env>();
+    app.onError(handleError);
     app.route("/api/v1/submissions", router);
 
     const res = await app.request(
@@ -160,8 +192,10 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     _resetRateLimitForTests();
+    await resetDbForTest();
     const { default: router } = await import("../../src/routes/submissions.ts");
     const app = new Hono<Env>();
+    app.onError(handleError);
     app.route("/api/v1/submissions", router);
 
     const token = await signToken({ sub: "user-perpage", role: "user" });
@@ -183,8 +217,10 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     _resetRateLimitForTests();
+    await resetDbForTest();
     const { default: router } = await import("../../src/routes/submissions.ts");
     const app = new Hono<Env>();
+    app.onError(handleError);
     app.route("/api/v1/submissions", router);
 
     // 第一次：无 token 走未登录限流（5s）
@@ -205,8 +241,10 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     _resetRateLimitForTests();
+    await resetDbForTest();
     const { default: router } = await import("../../src/routes/submissions.ts");
     const app = new Hono<Env>();
+    app.onError(handleError);
     app.route("/api/v1/submissions", router);
 
     const token = await signToken({ sub: "user-rate-test", role: "user" });

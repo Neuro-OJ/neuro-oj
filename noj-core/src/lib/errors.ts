@@ -10,6 +10,10 @@
 export class AppError extends Error {
   /** HTTP 状态码 */
   statusCode: number;
+  /** Hono 兼容字段——默认错误处理通过 err.status 读取状态码 */
+  get status(): number {
+    return this.statusCode;
+  }
   /** 机器可读的错误码（如 "VALIDATION_ERROR"）；未显式传入时根据类名自动生成 */
   code: string;
   /** 请求关联 ID（由全局错误处理注入，便于日志追踪） */
@@ -115,5 +119,23 @@ export class ServiceUnavailableError extends AppError {
   constructor(message: string) {
     super(message, 503, "SERVICE_UNAVAILABLE");
     this.name = "ServiceUnavailableError";
+  }
+}
+
+/**
+ * 请求过多错误（HTTP 429）。
+ * 用于速率限制场景（如接口请求过于频繁）。
+ *
+ * 携带 headers 供 app.ts onError 设置响应头（如 Retry-After）。
+ */
+export class RateLimitedError extends AppError {
+  headers?: Record<string, string>;
+
+  constructor(message: string, retryAfter?: number) {
+    super(message, 429, "RATE_LIMITED", { retry_after: retryAfter });
+    this.name = "RateLimitedError";
+    if (retryAfter !== undefined) {
+      this.headers = { "Retry-After": String(retryAfter) };
+    }
   }
 }

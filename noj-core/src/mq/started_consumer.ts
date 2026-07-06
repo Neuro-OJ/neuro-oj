@@ -61,15 +61,19 @@ async function startStartedConsumer(): Promise<void> {
   startedConsumerAlive = true;
   console.log("评测开始事件消费者启动，等待事件...");
 
-  // @ts-ignore - ioredis 的 brpop 类型在 Deno 中解析受限
   while (true) {
     try {
-      const result: [string, string] | null = await redis.brpop(
+      const result = await redis.brpop(
         STARTED_QUEUE,
         BLPOP_TIMEOUT,
-      );
+      ) as [string, string] | null;
 
       if (!result) {
+        continue;
+      }
+
+      if (!Array.isArray(result) || result.length < 2) {
+        console.error("评测开始事件 brpop 返回格式异常，跳过");
         continue;
       }
 
