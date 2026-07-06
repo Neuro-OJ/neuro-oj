@@ -46,10 +46,14 @@ sse.get("/submissions/:id/events", async (c) => {
     let streamClosed = false;
     let resolveAbort: (() => void) | null = null;
 
+    // 兜底超时：5 分钟后自动关闭，防止 onAbort 不触发时泄漏 setInterval + 回调
+    const safetyTimer = setTimeout(() => { closeStream(); }, 300_000);
+
     // 关闭流并清理资源
     function closeStream() {
       if (streamClosed) return;
       streamClosed = true;
+      clearTimeout(safetyTimer);
       clearInterval(keepAlive);
       unsub();
       if (resolveAbort) resolveAbort();
@@ -114,9 +118,13 @@ sse.get("/queue/events", (c) => {
     let streamClosed = false;
     let resolveAbort: (() => void) | null = null;
 
+    // 兜底超时：5 分钟后自动关闭，防止 onAbort 不触发时泄漏 setInterval + 回调
+    const safetyTimer = setTimeout(() => { closeStream(); }, 300_000);
+
     function closeStream() {
       if (streamClosed) return;
       streamClosed = true;
+      clearTimeout(safetyTimer);
       clearInterval(keepAlive);
       unsub();
       if (resolveAbort) resolveAbort();

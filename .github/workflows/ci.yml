@@ -87,7 +87,7 @@ jobs:
 
       - name: 运行测试 (deno test)
         working-directory: noj-core
-        run: deno test -A
+        run: deno test -A --parallel
 
   # ===========================================================================
   # noj-ui — Nuxt 4 前端

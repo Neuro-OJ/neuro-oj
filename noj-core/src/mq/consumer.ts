@@ -90,6 +90,7 @@ async function startResultConsumer(): Promise<void> {
       "结果消费者 Redis 连接失败:",
       err instanceof Error ? err.message : String(err),
     );
+    redis.disconnect(); // 显式断开，防止 ioredis 在后台无限重试泄漏
     return; // 连接失败，由外层重试循环处理
   }
 

@@ -163,6 +163,7 @@ async function main() {
     await redisForRpc.connect();
   } catch (err) {
     console.error("Judge RPC Redis 连接失败:", err);
+    redisForRpc.disconnect();
   }
   // deno-lint-ignore no-explicit-any
   startJudgeRpcHandler(redisForRpc as any);
