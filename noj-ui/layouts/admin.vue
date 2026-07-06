@@ -12,6 +12,7 @@ import {
   Container,
   Settings,
   Ban,
+  ScrollText,
 } from "@lucide/vue"
 
 const route = useRoute()
@@ -45,6 +46,7 @@ const navItems: NavItem[] = [
   { label: "评测镜像", to: "/admin/judge-images", icon: Container },
   { label: "系统设置", to: "/admin/settings", icon: Settings },
   { label: "提交管理", to: "/admin/submissions", icon: Files },
+  { label: "审计日志", to: "/admin/audit-logs", icon: ScrollText },
 ]
 
 function isActive(path: string) {

@@ -18,6 +18,7 @@ import {
   type SubmissionStatus,
 } from "../types/index.ts";
 import { getSubmissionQueueStatus } from "./queue.ts";
+import { logAudit } from "./audit-log.ts";
 
 export interface SubmissionInput {
   problem_id: string;
@@ -723,6 +724,16 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     rejudge_seq: updated?.rejudge_seq ?? 0,
   };
 
+  // 审计日志：先写入审计再推送不可逆的 MQ 消息（issue #101）
+  await logAudit(
+    "submissions.rejudge",
+    {
+      action: "submissions.rejudge",
+      submission_id: id,
+    },
+    { type: "submission", id },
+  );
+
   try {
     await pushJudgeTask(task);
   } catch (mqErr) {
@@ -889,6 +900,19 @@ export async function rejudgeProblemSubmissions(
     .select()
     .from(submissions)
     .where(inArray(submissions.id, allIds));
+
+  // 审计日志：先写入审计再推送不可逆的 MQ 消息
+  if (total > 0) {
+    await logAudit(
+      "submissions.rejudge",
+      {
+        action: "submissions.rejudge",
+        problem_id: problemId,
+        count: total,
+      },
+      { type: "problem", id: problemId },
+    );
+  }
 
   // 逐条入队（每条代码内容不同，无法合并）
   let queued = 0;

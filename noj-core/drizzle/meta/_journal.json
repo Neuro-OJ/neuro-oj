@@ -103,15 +103,29 @@
     {
       "idx": 14,
       "version": "7",
-      "when": 1783120000200,
-      "tag": "0014_ip_bans_and_user_ban",
+      "when": 1783300000000,
+      "tag": "0013_audit_logs",
       "breakpoints": true
     },
     {
       "idx": 15,
       "version": "7",
+      "when": 1783120000200,
+      "tag": "0014_ip_bans_and_user_ban",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
       "when": 1783120000300,
       "tag": "0015_user_bans",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783120000400,
+      "tag": "0016_audit_logs_ip_ban_actions",
       "breakpoints": true
     }
   ]

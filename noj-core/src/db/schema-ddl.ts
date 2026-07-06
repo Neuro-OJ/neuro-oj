@@ -159,7 +159,24 @@ export const SCHEMA_DDL: string[] = [
     updated_by TEXT REFERENCES users(id) ON DELETE SET NULL
   )`,
 
-  // 15. ip_bans (issue #102)
+  // 15. audit_logs (issue #101)
+  `CREATE TABLE IF NOT EXISTS audit_logs (
+    id TEXT PRIMARY KEY,
+    admin_id TEXT NOT NULL REFERENCES users(id),
+    action TEXT NOT NULL,
+    target_type TEXT,
+    target_id TEXT,
+    detail JSONB NOT NULL DEFAULT '{}',
+    ip_address TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    CONSTRAINT audit_logs_action_check CHECK (action IN (
+      'users.role_change','users.ban','users.unban',
+      'problems.delete','categories.delete','submissions.rejudge','settings.update',
+      'ip_ban.create','ip_ban.delete'
+    ))
+  )`,
+
+  // 16. ip_bans (issue #102)
   `CREATE TABLE IF NOT EXISTS ip_bans (
     id TEXT PRIMARY KEY,
     ip_or_cidr TEXT NOT NULL,
@@ -169,7 +186,7 @@ export const SCHEMA_DDL: string[] = [
     created_by TEXT REFERENCES users(id) ON DELETE SET NULL
   )`,
 
-  // 16. user_bans (issue #102)
+  // 17. user_bans (issue #102)
   `CREATE TABLE IF NOT EXISTS user_bans (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -200,6 +217,9 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages (sender_id)",
   "CREATE INDEX IF NOT EXISTS idx_message_deletions_message_id ON message_deletions (message_id)",
   "CREATE INDEX IF NOT EXISTS idx_system_settings_updated_at ON system_settings (updated_at DESC)",
+  "CREATE INDEX IF NOT EXISTS audit_logs_admin_id_idx ON audit_logs (admin_id)",
+  "CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON audit_logs (created_at)",
+  "CREATE INDEX IF NOT EXISTS audit_logs_action_idx ON audit_logs (action)",
   "CREATE INDEX IF NOT EXISTS idx_ip_bans_ip_or_cidr ON ip_bans (ip_or_cidr)",
   "CREATE INDEX IF NOT EXISTS idx_ip_bans_expires_at ON ip_bans (expires_at)",
   "CREATE INDEX IF NOT EXISTS idx_user_bans_user ON user_bans (user_id)",
@@ -221,6 +241,7 @@ export const ALL_TABLES = [
   "conversation_reads",
   "message_deletions",
   "system_settings",
+  "audit_logs",
   "ip_bans",
   "user_bans",
 ] as const;

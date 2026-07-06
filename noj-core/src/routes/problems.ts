@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { BadRequestError } from "../lib/errors.ts";
+import { getClientIp } from "../lib/rateLimitEnv.ts";
+import { runWithContext } from "../lib/requestContext.ts";
 import {
   createProblem,
   deleteProblem,
@@ -165,8 +167,19 @@ router.delete("/:id", authMiddleware, async (c) => {
 
   // 双索引解析获取实际题目 ID
   const problem = await resolveProblem(id);
-  await deleteProblem(problem.id, userId, userRole);
-  return c.body(null, 204);
+
+  // 注入 ALS 上下文使 logAudit 可获取 actor 信息（issue #101）
+  return await runWithContext(
+    {
+      actorId: userId,
+      actorIp: getClientIp(c),
+      actorRole: userRole,
+    },
+    async () => {
+      await deleteProblem(problem.id, userId, userRole);
+      return c.body(null, 204);
+    },
+  );
 });
 
 /**

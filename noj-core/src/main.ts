@@ -9,6 +9,7 @@ import { validateRegistry } from "./lib/settings-registry.ts";
 import { ensureRootUser } from "./services/auth.ts";
 import { getStorageProvider } from "./lib/storage/mod.ts";
 import { initSystemSettings } from "./services/system-settings.ts";
+import { startAuditLogRetentionTask } from "./services/audit-log.ts";
 
 const app = createApp();
 
@@ -173,6 +174,9 @@ async function main() {
   Deno.serve({ port }, app.fetch);
 
   console.log(`noj-core running on http://localhost:${port}`);
+
+  // 启动后台审计日志保留任务
+  startAuditLogRetentionTask();
 }
 
 await main();

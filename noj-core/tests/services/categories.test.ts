@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { eq } from "drizzle-orm";
 import {
   createCategory,
   deleteCategory,
@@ -7,12 +8,13 @@ import {
   updateCategory,
 } from "../../src/services/categories.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { categories } from "../../src/db/schema.ts";
+import { auditLogs, categories, users } from "../../src/db/schema.ts";
 import {
   BadRequestError,
   ConflictError,
   NotFoundError,
 } from "../../src/lib/errors.ts";
+import { enterTestContext } from "../../src/lib/requestContext.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const skip = !hasDb;
@@ -197,6 +199,68 @@ Deno.test({
     if (topLevel) {
       assertEquals(topLevel.children[0].parent_id, topLevel.id);
     }
+  },
+});
+
+Deno.test({
+  name: "categories service: deleteCategory 写一条 categories.delete 审计",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+
+    // 准备：admin 操作者（满足 audit_logs.admin_id FK）
+    const db = getDb();
+    const adminId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+      id: adminId,
+      username: `test-del-cat-admin-${Date.now()}`,
+      email: `test-del-cat-admin-${Date.now()}@example.com`,
+      password_hash: "",
+      role: "admin",
+      created_at: now,
+      updated_at: now,
+    });
+
+    // 注入 admin actor context（logAudit 依赖 RequestContext）
+    enterTestContext({
+      actorId: adminId,
+      actorIp: "10.0.0.77",
+      actorRole: "admin",
+    });
+
+    // 创建待删除分类
+    const toDelete = await createCategory({
+      name: `待删除审计分类 ${Date.now()}`,
+      slug: `del-cat-audit-${Date.now()}`,
+      description: "将触发 categories.delete 审计",
+    });
+
+    // 清空本测试前可能存在的审计行，避免行数偏差
+    await getDb().delete(auditLogs);
+
+    // 执行：删除分类
+    await deleteCategory(toDelete.id);
+
+    // 验证：审计日志写入
+    const rows = await getDb().select().from(auditLogs).where(
+      eq(auditLogs.action, "categories.delete"),
+    );
+    assertEquals(rows.length, 1);
+    assertEquals(rows[0].target_type, "category");
+    assertEquals(rows[0].target_id, toDelete.id);
+    assertEquals(rows[0].admin_id, adminId);
+    assertEquals(rows[0].ip_address, "10.0.0.77");
+    const detail = rows[0].detail as {
+      action: string;
+      name: string;
+      slug: string;
+    };
+    assertEquals(detail.action, "categories.delete");
+    assertEquals(detail.name, toDelete.name);
+    assertEquals(detail.slug, toDelete.slug);
   },
 });
 

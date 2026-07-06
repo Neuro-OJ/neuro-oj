@@ -3,6 +3,7 @@ import { getDb } from "../db/connection.ts";
 import { userBans, users } from "../db/schema.ts";
 import { comparePassword, hashPassword } from "../lib/password.ts";
 import { signToken } from "../lib/jwt.ts";
+import { logAudit } from "./audit-log.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -313,6 +314,13 @@ export async function promoteUser(
     .update(users)
     .set({ role, updated_at: now })
     .where(eq(users.id, targetUserId));
+
+  // 审计：角色变更（issue #101）
+  await logAudit(
+    "users.role_change",
+    { action: "users.role_change", from: existing[0].role, to: role },
+    { type: "user", id: targetUserId },
+  );
 
   return {
     id: existing[0].id,

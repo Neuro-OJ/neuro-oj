@@ -5,6 +5,8 @@ import { verifyToken } from "../lib/jwt.ts";
 import { getDb } from "../db/connection.ts";
 import { userBans } from "../db/schema.ts";
 import { getCached } from "../lib/banCache.ts";
+import { getClientIp } from "../lib/rateLimitEnv.ts";
+import { runWithContext } from "../lib/requestContext.ts";
 
 /**
  * 强制改密白名单（issue #75）。
@@ -151,10 +153,23 @@ export async function getUserBanState(userId: string): Promise<UserBanState> {
  *
  * 需要在 authMiddleware 之后使用，依赖其注入的 userRole 字段。
  * 若用户角色不为 "admin"，抛 ForbiddenError 由 app.ts onError 统一处理。
+ *
+ * 注入 RequestContext 到 AsyncLocalStorage（issue #101），使下游 service 层
+ * 通过 getRequestContext() 获取 actorId / actorIp / actorRole，
+ * 用于审计日志埋点。
  */
 export async function adminMiddleware(c: Context, next: Next) {
-  if (c.get("userRole") !== "admin") {
+  const userRole = c.get("userRole");
+  if (userRole !== "admin") {
     throw new ForbiddenError("需要管理员权限");
   }
-  await next();
+
+  return await runWithContext(
+    {
+      actorId: c.get("userId"),
+      actorIp: getClientIp(c),
+      actorRole: userRole,
+    },
+    () => next(),
+  );
 }
