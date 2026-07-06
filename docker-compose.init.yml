@@ -1,0 +1,57 @@
+# docker-compose.init.yml — init-letsencrypt 独立栈（issue #103 修复）
+#
+# 设计目的：
+#   首次部署签证书时需要 nginx 仅服务 80 端口（ACME challenge），
+#   而完整配置依赖已签发的证书存在。让 init-letsencrypt.sh 直接修改
+#   docker/nginx/nginx.conf 存在 race window（脚本崩溃会污染主配置）。
+#
+#   本文件**独立定义**一个最小 init 栈（nginx + certbot），不继承 base compose。
+#   - 与正式栈用不同的 project 名（-p noj-init）避免冲突
+#   - 共享命名卷 letsencrypt_data / certbot_www / nginx_logs（卷名全局）
+#   - 主配置 docker/nginx/nginx.conf 全程不被修改
+#
+#   使用方式（由 init-letsencrypt.sh 调用）：
+#     docker compose -f docker-compose.init.yml -p noj-init up -d nginx
+#     docker compose -f docker-compose.init.yml -p noj-init \
+#       run --rm certbot certonly --webroot -w /var/www/certbot \
+#       -d YOUR_DOMAIN ...
+#     docker compose -f docker-compose.init.yml -p noj-init down --remove-orphans
+#     docker compose -f docker-compose.prod.yml up -d   # 启动正式栈
+
+networks:
+  noj_net_init:
+    driver: bridge
+
+volumes:
+  letsencrypt_data:
+  certbot_www:
+  nginx_logs:
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: noj-init-nginx
+    restart: "no"
+    ports:
+      - "80:80"
+    volumes:
+      # init 专用配置：仅服务 80 端口 + ACME challenge，不引用证书
+      - ./docker/nginx/nginx.init.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/templates:/etc/nginx/templates:ro
+      - letsencrypt_data:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+      - nginx_logs:/var/log/nginx
+    environment:
+      YOUR_DOMAIN: ${YOUR_DOMAIN:?required}
+    networks:
+      - noj_net_init
+
+  certbot:
+    image: certbot/certbot
+    container_name: noj-init-certbot
+    profiles: ["certbot"]
+    volumes:
+      - letsencrypt_data:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    networks:
+      - noj_net_init

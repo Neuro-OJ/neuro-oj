@@ -61,6 +61,9 @@ services:
         limits:
           cpus: "0.5"
           memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
     logging:
       driver: json-file
       options:
@@ -71,12 +74,15 @@ services:
 
   # ╔════════════════════════════════════════════════════════════╗
   # ║  前端层（noj-ui 单二进制）                                    ║
+  # ║                                                              ║
+  # ║  ui 是无状态前端，可水平扩展；replicas=2 在 swarm 模式生效。    ║
+  # ║  单机 compose 部署请用 docker compose up --scale ui=2。       ║
   # ╚════════════════════════════════════════════════════════════╝
   ui:
     build:
       context: ./noj-ui
       dockerfile: Dockerfile.prod
-    container_name: noj-prod-ui
+    # 不设 container_name：允许水平扩展（--scale 与 swarm 部署都依赖于此）
     restart: unless-stopped
     environment:
       # 反代后 NUXT_PUBLIC_API_BASE 留空 → 客户端走 /api/v1 同源
@@ -90,10 +96,14 @@ services:
         condition: service_healthy
     stop_grace_period: 15s
     deploy:
+      replicas: 2
       resources:
         limits:
           cpus: "1.0"
           memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
     logging:
       driver: json-file
       options:
@@ -104,12 +114,17 @@ services:
 
   # ╔════════════════════════════════════════════════════════════╗
   # ║  后端层（noj-core）                                          ║
+  # ║                                                              ║
+  # ║  core 是 stateless API（JWT 无状态、session 落 DB），          ║
+  # ║  可水平扩展。replicas=2 在 swarm 模式生效；单机 compose        ║
+  # ║  部署请用 docker compose up --scale core=2。                   ║
+  # ║  迁移 + seed 仅在首个实例启动时跑（其它实例通过 healthcheck  等待）。 ║
   # ╚════════════════════════════════════════════════════════════╝
   core:
     build:
       context: ./noj-core
       dockerfile: Dockerfile.prod
-    container_name: noj-prod-core
+    # 不设 container_name：允许水平扩展
     restart: unless-stopped
     env_file:
       - env.prod.sh
@@ -135,10 +150,19 @@ services:
       start_period: 60s   # 迁移可能耗时
     stop_grace_period: 60s
     deploy:
+      replicas: 2
+      # 滚动更新策略：先起新实例 → healthcheck 通过 → 停旧实例
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
       resources:
         limits:
           cpus: "2.0"
           memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 256M
     logging:
       driver: json-file
       options:
@@ -149,12 +173,17 @@ services:
 
   # ╔════════════════════════════════════════════════════════════╗
   # ║  评测 Worker（noj-judge）                                    ║
+  # ║                                                              ║
+  # ║  judge 通过 Redis MQ 协同消费，支持水平扩展（replicas=2 /    ║
+  # ║  --scale judge=2）。注意：所有实例共享 judge_workdir 卷，     ║
+  # ║  临时文件命名含 hostname 避免冲突；fallback-results 子目录     ║
+  # ║  按实例隔离。                                                  ║
   # ╚════════════════════════════════════════════════════════════╝
   judge:
     build:
       context: ./noj-judge
       dockerfile: Dockerfile.prod
-    container_name: noj-prod-judge
+    # 不设 container_name：允许水平扩展
     restart: unless-stopped
     env_file:
       - env.prod.sh
@@ -175,10 +204,14 @@ services:
         condition: service_started
     stop_grace_period: 60s
     deploy:
+      replicas: 2
       resources:
         limits:
           cpus: "4.0"
           memory: 4G
+        reservations:
+          cpus: "1.0"
+          memory: 1G
     logging:
       driver: json-file
       options:
@@ -220,6 +253,9 @@ services:
         limits:
           cpus: "2.0"
           memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 256M
     logging:
       driver: json-file
       options:
@@ -259,6 +295,9 @@ services:
         limits:
           cpus: "0.5"
           memory: 384M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
     logging:
       driver: json-file
       options:

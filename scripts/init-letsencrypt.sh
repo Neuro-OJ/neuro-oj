@@ -3,10 +3,16 @@
 #
 # 首次部署时的 Let's Encrypt 证书初始化：
 #   1. 校验 env.prod.sh 含必填项（YOUR_DOMAIN / LE_EMAIL）
-#   2. 先以"占位配置"启动 nginx（仅 80 端口可服务 ACME challenge）
+#   2. 用 docker-compose.init.yml（独立 nginx.conf + 仅 nginx/certbot 服务）
+#      启动临时栈，**不修改 docker/nginx/nginx.conf 主配置**
 #   3. certbot webroot 模式签发证书
-#   4. 重启 nginx 让其加载完整配置（含 443 HTTPS / 限流 / 反代）
-#   5. （后续）certbot 容器每 12h 自动 renew
+#   4. 销毁临时栈 → 用户用 docker-compose.prod.yml 启动正式栈
+#
+# 设计说明（修复 init-letsencrypt race window）：
+#   - 原版直接覆盖 docker/nginx/nginx.conf，靠 .bak 回滚；脚本中途崩溃
+#     会污染主配置。
+#   - 现版用 docker-compose.init.yml override，提供独立的 nginx.init.conf；
+#     主配置全程不动；脚本退出只需 docker compose down 清理临时容器。
 #
 # 用法：
 #   1. cp env.prod.example env.prod.sh
@@ -18,10 +24,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-COMPOSE_FILE="$ROOT_DIR/docker-compose.prod.yml"
+COMPOSE_BASE="$ROOT_DIR/docker-compose.prod.yml"
+COMPOSE_INIT="$ROOT_DIR/docker-compose.init.yml"
 ENV_FILE="$ROOT_DIR/env.prod.sh"
-NGINX_TEMPLATE_DIR="$ROOT_DIR/docker/nginx/templates"
-TEMP_NGINX_CONF="$ROOT_DIR/docker/nginx/nginx.temp.conf"
+INIT_PROJECT="noj-init"
 
 # ─── 校验前置 ───
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -45,73 +51,44 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 
+if [[ ! -f "$COMPOSE_INIT" ]]; then
+  echo "❌ $COMPOSE_INIT 不存在（应为 docker-compose.init.yml）" >&2
+  exit 1
+fi
+
+# 临时栈清理函数（异常退出时也调用）
+cleanup() {
+  echo
+  echo "▶ 清理临时栈..."
+  docker compose -f "$COMPOSE_INIT" -p "$INIT_PROJECT" down --remove-orphans 2>/dev/null || true
+}
+trap cleanup EXIT
+
 echo "▶ 配置："
 echo "   DOMAIN = $YOUR_DOMAIN"
 echo "   EMAIL  = $LE_EMAIL"
 echo
 
-# ─── 临时 nginx 配置：只服务 80 端口（ACME challenge）───
-# 启动首次 certbot 之前需要先让 nginx 跑起来（HTTP 可达），
-# 但完整模板（443 + 速率限制 + SSL）需要证书存在。
-# 故先用一个临时占位 nginx.conf（仅 80）+ 起 nginx + certbot + 切回完整配置
+# ─── 启动临时栈（init override）───
+echo "▶ 启动临时 nginx（init override）..."
 
-echo "▶ 生成临时 nginx 配置（仅 80 端口）..."
+# 显式导出 YOUR_DOMAIN 让 docker compose 自动 envsubst 注入
+export YOUR_DOMAIN
 
-cat > "$TEMP_NGINX_CONF" <<'NGINX_EOF'
-user  nginx;
-worker_processes  auto;
-error_log  /var/log/nginx/error.log notice;
-pid        /var/run/nginx.pid;
-events { worker_connections 1024; }
-http {
-    include       /etc/nginx/mime.types;
-    default_type  application/octet-stream;
-    server {
-        listen      80 default_server;
-        listen      [::]:80 default_server;
-        server_name _;
-        location ^~ /.well-known/acme-challenge/ {
-            root /var/www/certbot;
-            default_type "text/plain";
-        }
-        location / {
-            return 200 "NOJ: cert issuance in progress.\n";
-            add_header Content-Type text/plain;
-        }
-    }
-}
-NGINX_EOF
-
-# 用临时配置启动 nginx
-echo "▶ 启动 nginx（临时占位配置）..."
-
-# 备份主配置（如果不存在）
-if [[ -f "$ROOT_DIR/docker/nginx/nginx.conf" && ! -f "$ROOT_DIR/docker/nginx/nginx.conf.bak" ]]; then
-  cp "$ROOT_DIR/docker/nginx/nginx.conf" "$ROOT_DIR/docker/nginx/nginx.conf.bak"
-fi
-
-# 用临时配置替换主配置
-cp "$TEMP_NGINX_CONF" "$ROOT_DIR/docker/nginx/nginx.conf"
-
-# 启动仅 nginx（其它服务暂不起）
-docker compose -f "$COMPOSE_FILE" up -d nginx
+# 使用独立 init compose（-p noj-init 隔离 project，避免与正式栈冲突）
+docker compose -f "$COMPOSE_INIT" -p "$INIT_PROJECT" up -d nginx
 sleep 5
 
 # 验证 80 端口可达
 echo "▶ 验证 80 端口..."
-if ! docker compose -f "$COMPOSE_FILE" exec -T nginx wget --spider --quiet http://localhost/ 2>&1; then
+if ! docker compose -f "$COMPOSE_INIT" -p "$INIT_PROJECT" exec -T nginx wget --spider --quiet http://localhost/ 2>&1; then
   echo "❌ nginx 80 端口不可达" >&2
-  # 回滚主配置
-  if [[ -f "$ROOT_DIR/docker/nginx/nginx.conf.bak" ]]; then
-    mv "$ROOT_DIR/docker/nginx/nginx.conf.bak" "$ROOT_DIR/docker/nginx/nginx.conf"
-  fi
-  rm -f "$TEMP_NGINX_CONF"
   exit 1
 fi
 
 # ─── 签发证书 ───
 echo "▶ 签发证书（webroot 模式）..."
-docker compose -f "$COMPOSE_FILE" run --rm certbot certonly \
+docker compose -f "$COMPOSE_INIT" -p "$INIT_PROJECT" run --rm certbot certonly \
   --webroot \
   -w /var/www/certbot \
   -d "$YOUR_DOMAIN" \
@@ -120,36 +97,34 @@ docker compose -f "$COMPOSE_FILE" run --rm certbot certonly \
   --no-bootstrap \
   --force-renewal
 
-# ─── 切回完整 nginx 配置 ───
-echo "▶ 切回完整配置（含 443 + 速率限制）..."
+# ─── 销毁临时栈 ───
+echo "▶ 销毁临时栈（保留命名卷 letsencrypt_data / certbot_www）..."
+docker compose -f "$COMPOSE_INIT" -p "$INIT_PROJECT" down --remove-orphans
 
-if [[ -f "$ROOT_DIR/docker/nginx/nginx.conf.bak" ]]; then
-  mv "$ROOT_DIR/docker/nginx/nginx.conf.bak" "$ROOT_DIR/docker/nginx/nginx.conf"
-fi
-rm -f "$TEMP_NGINX_CONF"
+# trap cleanup 现在无意义，显式解除
+trap - EXIT
 
-# 重启 nginx 让其加载完整配置（包含 envsubst YOUR_DOMAIN + SSL 路径）
-docker compose -f "$COMPOSE_FILE" restart nginx
-sleep 3
-
-# ─── 验证 ───
-echo "▶ 验证 HTTPS..."
-if docker compose -f "$COMPOSE_FILE" exec -T nginx sh -c "wget --spider --quiet https://localhost/ 2>&1 || exit 1"; then
-  echo "✓ HTTPS 自检通过"
-else
-  echo "⚠ HTTPS 自检失败（容器内可能缺 CA bundle），请到宿主机："
-  echo "    curl -v https://$YOUR_DOMAIN/health"
-fi
-
+# ─── 验证（用户后续用正式栈自检）───
 echo
 echo "═══════════════════════════════════════════════════════"
 echo "✓ 初始化完成"
 echo
-echo "  证书路径：/etc/letsencrypt/live/$YOUR_DOMAIN/"
-echo "  续期机制：certbot 容器内每 12h 自动 renew"
-echo "            （建议同时配置宿主机 cron 调用 scripts/prod-renew-cert.sh）"
+echo "  证书路径（命名卷 letsencrypt_data 内）："
+echo "    /etc/letsencrypt/live/$YOUR_DOMAIN/fullchain.pem"
+echo
+echo "  ⚠️  续期机制（重要）："
+echo "    本编排的 certbot 服务是 profiles: [\"certbot\"] 的工具容器，"
+echo "    无长驻进程；不会自动续期。"
+echo "    必须配置宿主机 cron 调用 scripts/prod-renew-cert.sh："
+echo
+echo "      # /etc/cron.d/noj-cert-renew（每天 03:30 检查一次）"
+echo "      30 3 * * * root /opt/noj/scripts/prod-renew-cert.sh \\"
+echo "        >> /var/log/noj-cert-renew.log 2>&1"
+echo
+echo "    或运行 ./scripts/install-backup-cron.sh --with-cert-renew"
+echo "    一键安装（详见脚本 --help）"
 echo
 echo "下一步："
-echo "  docker compose -f $COMPOSE_FILE up -d   # 启动完整栈"
-echo "  curl https://$YOUR_DOMAIN/health         # 验证健康"
+echo "  docker compose -f $COMPOSE_BASE up -d        # 启动完整栈"
+echo "  curl https://$YOUR_DOMAIN/health              # 验证健康"
 echo "═══════════════════════════════════════════════════════"

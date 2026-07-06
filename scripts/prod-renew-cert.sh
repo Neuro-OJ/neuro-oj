@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # scripts/prod-renew-cert.sh（issue #103）
 #
-# 手动触发证书续期 + nginx reload。
-# 推荐用法：宿主机每 12h cron 调用：
-#   0 */12 * * * /opt/noj/scripts/prod-renew-cert.sh >> /var/log/noj-cert-renew.log 2>&1
+# 手动 / 定时触发证书续期 + nginx reload。
+#
+# ⚠️ 重要：docker-compose.prod.yml 中的 certbot 服务是
+# profiles: ["certbot"] 的工具容器，无长驻进程，不会自动续期。
+# 必须由本脚本在宿主机执行，推荐通过 systemd timer 或 cron：
+#
+#   # 推荐：./scripts/install-backup-cron.sh --with-cert-renew 一键安装
+#   # 或手动 crontab：30 3 * * * /opt/noj/scripts/prod-renew-cert.sh >> /var/log/noj-cert-renew.log 2>&1
 #
 # 实现：
 #   1. 在 certbot 容器内运行 certbot renew
-#   2. 若有证书被更新（exit 0 + stdout 含 'renewed'），通过 docker compose 重启 nginx
+#   2. 若有证书被更新（stdout 含 'renewed'），通过 docker compose reload nginx
 #
 # 也可以让 certbot 容器内的 entrypoint 自带此行为，但需要在容器内调用
 # 宿主机 docker 命令（或共享 sock）。本脚本以宿主机视角运行更干净。

@@ -100,7 +100,7 @@ docker compose -f docker-compose.prod.yml ps   # 所有服务 healthy
 |------|---------------------------|--------------------------------------|
 | 端口 | 6379 / 5432 直连 | 仅 80 / 443 经反代 |
 | CORS | `*`（开发允许） | 白名单必填，否则跨域拒绝 |
-| TLS | 无 | Let's Encrypt 自动续期 |
+| TLS | 无 | Let's Encrypt + 宿主机 cron 续期 |
 | 日志 | docker 默认 | json-file + 100MB × 5 轮转 |
 | 资源限制 | 无 | CPU / Memory limit 全栈 |
 | DB / Redis | 容器化同名 | 卷命名 + 强密码 + 健康检查 |
@@ -141,13 +141,30 @@ aws s3 cp /var/backups/noj-backup-*.tar.gz s3://my-noj-backups/$(date +%Y/%m/%d)
 
 ### 证书续期
 
-certbot 容器已内置 12h 自动续期检查（如证书被实际更新会触发 `--deploy-hook`）。
+⚠️ **`certbot` 服务是 `profiles: ["certbot"]` 的工具容器，无长驻进程，不会自动续期。** 续期必须由宿主机 cron / systemd timer 调用 `scripts/prod-renew-cert.sh` 完成。
 
-如需手动续期：
+**一键安装（systemd timer，优先）**：
+
+```bash
+sudo ./scripts/install-backup-cron.sh --with-cert-renew
+# 启用：备份每日 03:00 / 续期每日 03:30 各 ±5min 随机延迟
+systemctl list-timers
+```
+
+**或手动配置 crontab**：
+
+```cron
+# /etc/cron.d/noj-cert-renew
+30 3 * * * root /opt/noj/scripts/prod-renew-cert.sh >> /var/log/noj-cert-renew.log 2>&1
+```
+
+**立即手动续期**：
 
 ```bash
 bash scripts/prod-renew-cert.sh
 ```
+
+续期脚本本身检测到证书未到窗口不会 reload nginx；只有实际续期时才触发 `nginx -s reload`。
 
 ### 优雅重启（依赖 #107）
 
@@ -162,9 +179,26 @@ docker compose -f docker-compose.prod.yml restart core
 **垂直**：调 `docker-compose.prod.yml` 各服务 `deploy.resources.limits` 后 `docker compose up -d`。
 
 **水平**：
-- `core` / `ui` 可直接 `replicas: 2`（已确认 stateless）
-- `judge` 可直接 `replicas: 2`（协同消费 Redis 队列）
-- `nginx` 因端口冲突需改用云 LB（ALB / NLB）前置
+
+PR 默认 `core` / `ui` / `judge` 三者 `replicas: 2`。两种扩展方式：
+
+- **Swarm 模式**（推荐生产多机）：
+  ```bash
+  docker swarm init
+  docker stack deploy -c docker-compose.prod.yml noj
+  # 扩缩容：
+  docker service scale noj_core=4 noj_judge=6
+  ```
+  swarm 自动用 internal DNS + IPVS 做负载均衡，nginx `upstream core:8000` 无需改动即可 round-robin 到所有实例。
+
+- **单机 compose**（`deploy.replicas` 在此模式被忽略，需用 `--scale`）：
+  ```bash
+  docker compose -f docker-compose.prod.yml up -d --scale core=4 --scale judge=6
+  ```
+  ⚠️ `--scale` 模式下 nginx 需要走 Docker 内置 DNS resolver 才能 round-robin 到多个实例
+  （已配置 `resolver 127.0.0.11 valid=10s;` + `server core:8000 resolve;`）。
+
+- `nginx` 因 80/443 端口冲突需改用云 LB（ALB / NLB）前置
 - `postgres` / `redis` 不建议本机多实例，应迁移到托管服务
 
 ### 升级应用
