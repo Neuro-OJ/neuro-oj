@@ -181,5 +181,30 @@ export async function resetDbForTest() {
     }
   }
   _db = null;
+  // 测试模式（非 PGlite）：TRUNCATE 所有表 + re-seed 基础数据
+  const now = new Date().toISOString();
+  try {
+    await getDb().execute(
+      `TRUNCATE TABLE ${ALL_TABLES.join(", ")} CASCADE`,
+    );
+  } catch {
+    // 某些表可能不存在，忽略
+  }
+  try {
+    // re-seed root 用户
+    await getDb().execute(
+      `INSERT INTO users (id, username, email, password_hash, role, bio, created_at, updated_at)
+       VALUES ('0', 'root', 'root@noj.local', '', 'admin', '', '${now}', '${now}')
+       ON CONFLICT (id) DO NOTHING`,
+    );
+  } catch { /* 忽略 */ }
+  try {
+    await getDb().execute(
+      `INSERT INTO judge_images (id, image, mode, description, created_at, updated_at)
+       VALUES ('e0000000-0000-0000-0000-000000000001', 'noj-judge-python', 'all_versions', 'Python 3.12 评测环境', '${now}', '${now}')
+       ON CONFLICT (id) DO NOTHING`,
+    );
+  } catch { /* 忽略 */ }
+  _db = null;
   _client = null;
 }

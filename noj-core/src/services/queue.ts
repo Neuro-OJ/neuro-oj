@@ -63,8 +63,11 @@ export interface SubmissionStatusResponse {
 /**
  * 从 Redis 获取 pending 队列中的 submission_id 列表（按入队顺序）。
  */
-async function getPendingSubmissionIds(): Promise<string[]> {
+export async function getPendingSubmissionIds(): Promise<string[]> {
   const redis = getRedis();
+  if (redis.status !== "ready") {
+    await redis.connect();
+  }
   const raw = await redis.lrange(JUDGE_QUEUE, 0, -1);
   const ids: string[] = [];
   for (const item of raw) {
@@ -74,7 +77,9 @@ async function getPendingSubmissionIds(): Promise<string[]> {
         ids.push(parsed.submission_id);
       }
     } catch {
-      // 跳过无法解析的条目
+      console.error(
+        `队列中存在无法解析的条目，已跳过: content=${item.slice(0, 200)}`,
+      );
     }
   }
   return ids;
@@ -284,12 +289,19 @@ export async function getSubmissionQueueStatus(
   // 3. 如果状态是 judging 或 pending，查询排队位置
   //    注意：DB 中 status 在入队后立即标记为 judging，
   //    因此需要结合 Redis 队列判断实际排队情况
+  //    Redis 不可用时静默失败，queue_position/queue_length 保持 null
   if (status === "judging" || status === "pending") {
-    const pendingIds = await getPendingSubmissionIds();
-    queueLength = pendingIds.length;
-    const idx = pendingIds.indexOf(submissionId);
-    if (idx !== -1) {
-      queuePosition = idx + 1; // 1-based
+    try {
+      const pendingIds = await getPendingSubmissionIds();
+      queueLength = pendingIds.length;
+      const idx = pendingIds.indexOf(submissionId);
+      if (idx !== -1) {
+        // LRANGE 0 -1 返回最新优先（LPUSH），
+        // pendingIds.length - idx 使队列位置从 1（下个出队）递增
+        queuePosition = pendingIds.length - idx;
+      }
+    } catch {
+      // Redis 不可用时静默跳过，queue_position/queue_length 保持 null
     }
     // 如果不在 pending 中且 status 为 judging，说明正在被评测
     // queue_position 保持 null

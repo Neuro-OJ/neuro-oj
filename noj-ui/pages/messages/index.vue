@@ -4,7 +4,7 @@ import { useMessages, type ConversationMessage } from "~/composables/useMessages
 import { useAuth } from "~/composables/useAuth"
 import { useToast } from "~/composables/useToast"
 import { useEventSource } from "~/composables/useEventSource"
-import ChatSidebar from "~/components/ChatSidebar.vue"
+import ChatSidebar from "~/components/feature/ChatSidebar.vue"
 
 definePageMeta({
   middleware: "auth",

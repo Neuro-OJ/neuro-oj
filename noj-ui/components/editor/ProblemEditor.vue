@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowLeft, Save, Eye, Edit3 } from "@lucide/vue"
-import SupportPackageUpload from "~/components/SupportPackageUpload.vue"
+import SupportPackageUpload from "../admin/SupportPackageUpload.vue"
 
 interface Props {
   mode: "create" | "edit"
@@ -36,12 +36,30 @@ const problemType = ref(props.initialType)
 const displayId = ref("")
 const isEditMode = computed(() => props.mode === "edit")
 
-// ── 支持包上传 ──
+// 支持包上传
 const hasSupportPackage = ref(false)
 
 /** 用于 SupportPackageUpload 组件的实际 problemId（创建模式下保存后才赋值） */
-const uploadProblemId = computed(() => isEditMode.value ? (props.problemId ?? null) : savedProblemId.value)
+const uploadProblemId = computed(() =>
+  isEditMode.value ? (props.problemId ?? null) : savedProblemId.value,
+)
 const savedProblemId = ref<string | null>(null)
+
+// 评测镜像白名单
+const judgeImages = ref<{ image: string }[]>([])
+const judgeImagesLoading = ref(false)
+
+async function loadJudgeImages() {
+  judgeImagesLoading.value = true
+  try {
+    const res = await $fetch<{ data: { image: string }[] }>("/api/v1/judge-images")
+    judgeImages.value = res.data ?? []
+  } catch {
+    // 静默失败
+  } finally {
+    judgeImagesLoading.value = false
+  }
+}
 
 // ── 分类选项 ──
 const categories = ref<{ id: string; name: string }[]>([])
@@ -51,29 +69,6 @@ async function loadCategories() {
     const res = await $fetch<{ data: { id: string; name: string }[] }>("/api/v1/categories")
     categories.value = res.data
   } catch { /* 静默失败 */ }
-}
-
-// ── 评测镜像白名单 ──
-interface JudgeImageOption {
-  id: string
-  image: string
-  mode: string
-  description: string
-}
-
-const judgeImages = ref<JudgeImageOption[]>([])
-const judgeImagesLoading = ref(true)
-
-async function loadJudgeImages() {
-  judgeImagesLoading.value = true
-  try {
-    const res = await $fetch<{ data: JudgeImageOption[] }>("/api/v1/judge-images")
-    judgeImages.value = res.data
-  } catch {
-    judgeImages.value = []
-  } finally {
-    judgeImagesLoading.value = false
-  }
 }
 
 // ── 编辑模式：加载现有数据 ──
@@ -90,25 +85,22 @@ async function loadProblem() {
       judge_image: string; judge_command: string
       time_limit_ms: number; memory_limit_mb: number
       display_id: string; type: string; number: number
-      support_package_path: string | null
-      has_support_package: boolean
       categories: { id: string }[]
     } }>(`/api/v1/problems/${props.problemId}`)
     const p = res.data
     displayId.value = p.display_id
-    problemType.value = p.type as "U" | "P"
+    problemType.value = p.type
     title.value = p.title; description.value = p.description
     difficulty.value = p.difficulty
     judgeImage.value = p.judge_image; judgeCommand.value = p.judge_command
     timeLimitMs.value = p.time_limit_ms; memoryLimitMb.value = p.memory_limit_mb
     categoryIds.value = p.categories.map((c) => c.id)
-    hasSupportPackage.value = p.has_support_package
+    hasSupportPackage.value = (p as Record<string, unknown>).has_support_package === true
   } catch (err: unknown) {
     if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) {
       notFound.value = true
     } else {
-      const apiErr = err as { data?: { error?: string }; message?: string } | undefined
-      loadError.value = apiErr?.data?.error || apiErr?.message || "加载题目失败"
+      loadError.value = err instanceof Error ? err.message : "加载题目失败"
     }
   } finally {
     pageLoading.value = false
@@ -133,13 +125,7 @@ function validate(): boolean {
   const errors: Record<string, string> = {}
   if (!title.value.trim()) errors.title = "请输入题目标题"
   if (!description.value.trim()) errors.description = "请输入题目描述"
-  if (!judgeImage.value.trim()) {
-    if (judgeImages.value.length > 0) {
-      errors.judge_image = "请选择评测镜像"
-    } else {
-      errors.judge_image = "暂无可用评测镜像，请联系管理员"
-    }
-  }
+  if (!judgeImage.value.trim()) errors.judge_image = "请输入评测镜像"
   if (!judgeCommand.value.trim()) errors.judge_command = "请输入评测命令"
   fieldErrors.value = errors
   return Object.keys(errors).length === 0
@@ -180,8 +166,7 @@ async function handleSubmit() {
       emit("saved", res.data.id)
     }
   } catch (err: unknown) {
-    const apiErr = err as { data?: { error?: string }; message?: string } | undefined
-    saveError.value = apiErr?.data?.error || apiErr?.message || "保存失败"
+    saveError.value = err instanceof Error ? err.message : "保存失败"
   } finally {
     saving.value = false
   }
@@ -294,14 +279,11 @@ async function handleSubmit() {
       <div class="grid grid-cols-2 gap-3.5">
         <div class="flex flex-col gap-1">
           <label class="text-xs font-semibold text-text">评测镜像 <span class="text-red-600">*</span></label>
-          <select v-model="judgeImage" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white" :disabled="judgeImagesLoading || judgeImages.length === 0">
-            <option v-if="judgeImagesLoading" value="" disabled>加载中...</option>
-            <option v-else-if="judgeImages.length === 0" value="" disabled>暂无可用镜像，请联系管理员</option>
-            <option v-for="ji in judgeImages" :key="ji.id" :value="ji.image">
-              {{ ji.image }}{{ ji.description ? ` — ${ji.description}` : '' }}
-            </option>
+          <select v-model="judgeImage" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white" :disabled="judgeImagesLoading">
+            <option value="" disabled>{{ judgeImagesLoading ? "加载中..." : judgeImages.length === 0 ? "暂无可用评测镜像" : "请选择评测镜像" }}</option>
+            <option v-for="ji in judgeImages" :key="ji.image" :value="ji.image">{{ ji.image }}</option>
           </select>
-          <p v-if="judgeImages.length === 0 && !judgeImagesLoading" class="text-xs text-amber-600">白名单未配置，需管理员在后台添加评测镜像</p>
+          <p v-if="!judgeImagesLoading && judgeImages.length === 0 && !fieldErrors.judge_image" class="text-xs text-warning-text">白名单未配置，需管理员在后台添加评测镜像</p>
           <p v-if="fieldErrors.judge_image" class="text-xs text-red-600">{{ fieldErrors.judge_image }}</p>
         </div>
         <div class="flex flex-col gap-1">
@@ -320,14 +302,9 @@ async function handleSubmit() {
       </div>
     </section>
 
-    <!-- 题目支持包 -->
+    <!-- 支持包上传 -->
     <section class="px-6 py-5 border-b border-border last:border-b-0">
-      <SupportPackageUpload
-        :problem-id="uploadProblemId"
-        :has-package="hasSupportPackage"
-        :disabled="!uploadProblemId"
-        @package-changed="(val) => hasSupportPackage = val"
-      />
+      <SupportPackageUpload :problem-id="uploadProblemId" :has-package="hasSupportPackage" :disabled="!uploadProblemId" @package-changed="(val: boolean) => hasSupportPackage = val" />
     </section>
 
     <!-- 提交按钮 -->

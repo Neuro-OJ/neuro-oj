@@ -8,6 +8,7 @@
 
 <script setup lang="ts">
 import BanBanner from "~/components/BanBanner.vue"
+import { useBanStatus } from "~/composables/useBanStatus"
 
 const { ipBanned, ipBanInfo, userBanned, userBanInfo, fetch } = useBanStatus()
 

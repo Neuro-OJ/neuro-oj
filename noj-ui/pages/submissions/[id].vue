@@ -13,23 +13,26 @@ import {
   ChevronUp,
   FileText,
   ArrowLeft,
+  Lock,
 } from "@lucide/vue"
 import { getLanguageLabel, formatScore, formatTime, formatMemory } from "~/composables/use-submissions"
-import { useEventSource } from "~/composables/useEventSource"
 
 interface SubmissionResult {
-
   status: string
   score: number
   time_ms: number | null
   memory_kb: number | null
-  output: string
+  /** 评测输出：未登录或非 owner/admin 时为 null */
+  output: string | null
+  output_truncated?: boolean
+  details?: Record<string, unknown> | null
 }
 interface SubmissionData {
   id: string
   problem_id: string
   language: string
-  code: string
+  /** 源代码：未登录或非 owner/admin 时为 null */
+  code: string | null
   file_name: string
   status: string
   queue_position?: number
@@ -42,7 +45,7 @@ interface SubmissionResponse {
   data: SubmissionData
 }
 const route = useRoute()
-const { isLoggedIn, loading } = useAuth()
+const { isLoggedIn, loading: authLoading } = useAuth()
 const submissionId = route.params.id as string
 // 不使用 useFetch（setup 阶段 token 可能未就绪），改为手动管理
 const isMounted = ref(true)
@@ -52,18 +55,7 @@ const isFinished = computed(
   () => submission.value?.status === "finished" || submission.value?.status === "error",
 )
 const showOutput = ref(true)
-// 认证守卫：简化 watch + onMounted 嵌套为一次 watch
-const router = useRouter()
-watch(
-  loading,
-  (loadingVal) => {
-    if (!loadingVal && !isLoggedIn.value) {
-      router.replace("/login")
-    }
-  },
-  { immediate: true },
-)
-// 自动轮询：等 auth token 就绪后开始，直到状态变为 finished/error
+// 自动轮询：基础数据公开访问，未登录也能查看；等 auth token 就绪后开始轮询
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let pollReqId = 0
 const POLL_INTERVAL_MS = 1500
@@ -80,7 +72,6 @@ async function pollSubmission() {
       const status = res.data?.status
       if (status === "finished" || status === "error") {
         stopPolling()
-        sseEnabled.value = false
       }
     }
   } catch (err: unknown) {
@@ -93,21 +84,18 @@ function stopPolling() {
     pollTimer = null
   }
 }
-
-// SSE 实时推送 + 轮询 fallback
-const sseEnabled = ref(true)
-useEventSource({
-  url: computed(() => isLoggedIn.value && sseEnabled.value ? `/api/v1/submissions/${submissionId}/events` : ""),
-  onEvent: {
-    "submission:updated": () => {
-      // SSE 仅作触发通知，收到后调轮询拉取全量数据
+// auth 状态确定后开始轮询（无论登录与否都能轮询基础数据）
+watch(
+  authLoading,
+  (authLoadingVal) => {
+    if (import.meta.server) return // SSR 阶段无 cookie，客户端水合后接管
+    if (!authLoadingVal && !pollTimer) {
       pollSubmission()
-    },
+      pollTimer = setInterval(pollSubmission, POLL_INTERVAL_MS)
+    }
   },
-  enabled: computed(() => isLoggedIn.value && sseEnabled.value),
-  fetchFn: pollSubmission,
-  fallbackIntervalMs: POLL_INTERVAL_MS,
-})
+  { immediate: true },
+)
 onUnmounted(() => {
   stopPolling()
   isMounted.value = false
@@ -313,11 +301,22 @@ watch(
           <FileText :size="16" />
           <span>{{ submission.file_name || "main.py" }}</span>
         </div>
-        <pre class="p-4 overflow-x-auto text-xs leading-relaxed"><code :ref="codeRef" :class="`language-${codeLanguage}`" class="font-mono text-[#e6edf3] whitespace-pre">{{ submission.code }}</code></pre>
+        <pre v-if="submission.code !== null" class="p-4 overflow-x-auto text-xs leading-relaxed"><code :ref="codeRef" :class="`language-${codeLanguage}`" class="font-mono text-[#e6edf3] whitespace-pre">{{ submission.code }}</code></pre>
+        <div v-else class="flex flex-col items-center justify-center gap-2 py-12 text-[#8b949e] text-sm">
+          <Lock :size="24" />
+          <span>登录后查看源代码</span>
+          <NuxtLink
+            v-if="!isLoggedIn"
+            to="/login"
+            class="inline-flex items-center px-4 py-1.5 rounded-md text-xs font-semibold bg-primary text-white border border-primary no-underline hover:bg-primary-dark hover:border-primary-dark"
+          >
+            登录
+          </NuxtLink>
+        </div>
       </div>
       <!-- 输出区（仅 finished 有内容） -->
       <div
-        v-if="submission.status === 'finished' && submission.result?.output"
+        v-if="submission.status === 'finished' && submission.result"
         class="bg-white border border-border rounded-xl overflow-hidden"
       >
         <button
@@ -328,7 +327,18 @@ watch(
           <ChevronDown v-if="!showOutput" :size="16" />
           <ChevronUp v-else :size="16" />
         </button>
-        <pre v-show="showOutput" class="p-4 overflow-x-auto text-xs leading-relaxed bg-[#0d1117] text-[#e6edf3]"><code class="font-mono whitespace-pre-wrap break-all">{{ submission.result.output }}</code></pre>
+        <pre v-if="submission.result.output !== null && submission.result.output !== undefined" v-show="showOutput" class="p-4 overflow-x-auto text-xs leading-relaxed bg-[#0d1117] text-[#e6edf3]"><code class="font-mono whitespace-pre-wrap break-all">{{ submission.result.output }}</code></pre>
+        <div v-else class="flex flex-col items-center justify-center gap-2 py-8 text-text-muted text-sm">
+          <Lock :size="20" />
+          <span>登录后查看评测输出</span>
+          <NuxtLink
+            v-if="!isLoggedIn"
+            to="/login"
+            class="inline-flex items-center px-4 py-1.5 rounded-md text-xs font-semibold bg-primary text-white border border-primary no-underline hover:bg-primary-dark hover:border-primary-dark"
+          >
+            登录
+          </NuxtLink>
+        </div>
       </div>
     </template>
   </div>

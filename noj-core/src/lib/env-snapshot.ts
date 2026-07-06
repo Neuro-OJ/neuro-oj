@@ -241,11 +241,6 @@ export function snapshotEnv(): Record<string, string | undefined> {
   if (_snapshotted) {
     return envSnapshot;
   }
-  if (Deno.env.get("NOJ_ENV") === "test") {
-    envSnapshot = {};
-    _snapshotted = true;
-    return envSnapshot;
-  }
 
   const snap: Record<string, string | undefined> = {};
   for (const def of ENV_ONLY_DEFINITIONS) {

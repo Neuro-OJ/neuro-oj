@@ -21,6 +21,8 @@ export const Channels = {
   user(id: string): string {
     return `${EVENT_CHANNEL_PREFIX}user:${id}`;
   },
+  /** 统计数据变更：noj:events:stats */
+  stats: `${EVENT_CHANNEL_PREFIX}stats`,
 } as const;
 
 /**

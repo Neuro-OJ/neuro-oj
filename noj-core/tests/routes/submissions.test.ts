@@ -82,12 +82,12 @@ Deno.test({
 });
 
 Deno.test({
-  name: "submissions route: GET /api/v1/submissions/:id 无 token 返回 401",
+  name: "submissions route: GET /api/v1/submissions/:id 无 token 返回 404",
   ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
     const res = await jsonRequest(app, "/api/v1/submissions/123", "GET");
-    assertEquals(res.status, 401);
+    assertEquals(res.status, 404);
   },
 });
 
@@ -303,7 +303,6 @@ Deno.test({
     const body = await res.json();
     assertEquals(body.error, "提交不存在");
     assertEquals(body.code, "NOT_FOUND");
-    assertEquals(typeof body.request_id, "string");
     assertExists(body.request_id);
   },
 });

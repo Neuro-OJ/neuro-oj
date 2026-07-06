@@ -92,6 +92,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
+    Deno.env.set("STORAGE_PROVIDER", "local");
     await resetDbForTest();
     resetStorageProvider();
     await createTestProblem();

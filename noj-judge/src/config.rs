@@ -44,6 +44,8 @@ pub struct PoolConfig {
     pub kill_grace_secs: u64,
     /// Docker 容器标签前缀（默认: "com.noj.judge"）
     pub label_prefix: String,
+    /// 预热镜像列表（默认: ["noj-judge-python"]）
+    pub images: Vec<String>,
 }
 
 impl Config {
@@ -81,6 +83,11 @@ impl PoolConfig {
             max_archive_mb: env_var_parse("POOL_MAX_ARCHIVE_MB").unwrap_or(25),
             kill_grace_secs: env_var_parse("POOL_KILL_GRACE_SECONDS").unwrap_or(2),
             label_prefix: env_or("POOL_LABEL_PREFIX", "com.noj.judge"),
+            images: env_or("POOL_IMAGES", "noj-judge-python")
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
         }
     }
 }

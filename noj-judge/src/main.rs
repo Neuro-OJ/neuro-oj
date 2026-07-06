@@ -145,12 +145,12 @@ fn main() -> Result<()> {
                 list
             }
             Ok(_) => {
-                error!("RPC 返回空镜像列表，无法启动");
-                std::process::exit(1);
+                warn!("RPC 返回空镜像列表，回退至配置文件默认值");
+                config.pool.images.clone()
             }
             Err(e) => {
-                error!("获取镜像白名单失败: {:#}", e);
-                std::process::exit(1);
+                warn!("获取镜像白名单失败: {:#}，回退至配置文件默认值", e);
+                config.pool.images.clone()
             }
         };
 
