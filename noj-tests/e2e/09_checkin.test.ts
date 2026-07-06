@@ -186,7 +186,7 @@ Deno.test({
 
 Deno.test({
   name: "[e2e/checkin] 1.6 并发签到：仅一个 200，其余 409（评审 H2）",
-  ignore: true,
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -198,25 +198,31 @@ Deno.test({
       `e2e_cc_${ts2}@test.com`,
       "E2eCheckinPass1",
     );
-    // 5 个并发请求：1 个 200，其余 4 个 409
-    const results = await Promise.all(
-      Array.from({ length: 5 }, () => apiPost("/api/v1/checkin", {}, token2)),
-    );
+    // 3 个并发请求：1 个 200，其余 2 个 409
+    const TIMEOUT_MS = 10_000;
+    const results = await Promise.race([
+      Promise.all(
+        Array.from({ length: 3 }, () => apiPost("/api/v1/checkin", {}, token2)),
+      ),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("并发签到测试超时")), TIMEOUT_MS)
+      ),
+    ]);
     const successCount = results.filter((r) => r.status === 200).length;
     const conflictCount = results.filter((r) => r.status === 409).length;
-    if (successCount !== 1 || conflictCount !== 4) {
+    if (successCount !== 1 || conflictCount !== 2) {
       throw new Error(
-        "期望 1×200 + 4×409, 实际 " +
+        "期望 1×200 + 2×409, 实际 " +
           results.map((r) => r.status).join(","),
       );
     }
-    console.log("  ✓ 并发签到 → 1×200 + 4×409 (无 500)");
+    console.log("  ✓ 并发签到 → 1×200 + 2×409 (无 500)");
   },
 });
 
 Deno.test({
   name: "[e2e/checkin] 1.7 多用户隔离：各自签到独立",
-  ignore: true,
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

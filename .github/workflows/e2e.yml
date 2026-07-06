@@ -14,9 +14,11 @@
 name: E2E
 
 on:
-  # pull_request:
-  # push:
-  # workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -135,15 +137,15 @@ jobs:
       - name: 编译 Judge E2E 测试目标
         working-directory: noj-judge
         run: |
-          for target in e2e_docker_basic e2e_resource_limits e2e_security_isolation e2e_support_package; do
+          for target in e2e_docker_basic e2e_resource_limits e2e_security_isolation e2e_support_package e2e_problem_limits; do
             echo "→ 构建 $target ..."
             cargo build --test "$target"
           done
 
-      - name: Judge E2E 测试（12 个 Docker 沙箱测试）
+      - name: Judge E2E 测试（15 个 Docker 沙箱测试）
         working-directory: noj-judge
         run: |
-          for target in e2e_docker_basic e2e_resource_limits e2e_security_isolation e2e_support_package; do
+          for target in e2e_docker_basic e2e_resource_limits e2e_security_isolation e2e_support_package e2e_problem_limits; do
             echo ""
             echo "───────────────────────────────────────"
             echo "  $target"

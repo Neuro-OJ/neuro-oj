@@ -23,6 +23,27 @@ concurrency:
 jobs:
 
   # ===========================================================================
+  # noj-core — 快速冒烟测试（不依赖外部服务，使用 PGlite 内存数据库）
+  # ===========================================================================
+  core-smoke:
+    name: Core Smoke
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 快速冒烟测试
+        working-directory: noj-core
+        run: deno task test:smoke
+
+  # ===========================================================================
   # noj-core — Deno 后端
   # ===========================================================================
   core-test:
