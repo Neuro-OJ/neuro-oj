@@ -24,12 +24,9 @@
 
 import { getRedis } from "../mq/connection.ts";
 import { ServiceUnavailableError } from "./errors.ts";
-import { envInt, isRateLimitEnabled } from "./rateLimitEnv.ts";
+import { isRateLimitEnabled, settingInt } from "./rateLimitEnv.ts";
 
 const FAIL_TTL_SEC = 3600; // 失败计数 TTL：1 小时
-const LOCK_TTL_SEC_DEFAULT = 3600; // 锁定时长：1 小时
-const LOCK_THRESHOLD_DEFAULT = 10; // 连续 10 次失败触发锁定
-const BACKOFF_SEC_DEFAULT = 15; // 每次失败 +15s
 
 /** 默认 namespace（登录端点） */
 const DEFAULT_NAMESPACE = "login";
@@ -60,14 +57,8 @@ export async function recordLoginFailure(
   namespace: string = DEFAULT_NAMESPACE,
 ): Promise<number> {
   if (!isRateLimitEnabled()) return 0;
-  const threshold = envInt(
-    "RATE_LIMIT_LOGIN_LOCK_THRESHOLD",
-    LOCK_THRESHOLD_DEFAULT,
-  );
-  const lockSec = envInt(
-    "RATE_LIMIT_LOGIN_LOCK_SECONDS",
-    LOCK_TTL_SEC_DEFAULT,
-  );
+  const threshold = settingInt("rate_limit_login_lock_threshold");
+  const lockSec = settingInt("rate_limit_login_lock_seconds");
 
   try {
     const redis = getRedis();
@@ -127,10 +118,7 @@ const inMemoryBackoff = new Map<string, number>();
 
 /** 退避时间（ms）= 失败次数 × backoffSec × 1000 */
 function backoffMs(failCount: number): number {
-  const backoffSec = envInt(
-    "RATE_LIMIT_LOGIN_BACKOFF_SEC",
-    BACKOFF_SEC_DEFAULT,
-  );
+  const backoffSec = settingInt("rate_limit_login_backoff_sec");
   return Math.max(0, failCount) * backoffSec * 1000;
 }
 

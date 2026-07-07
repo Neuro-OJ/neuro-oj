@@ -26,6 +26,9 @@ export interface EnvOnlyDefinition {
 
 /**
  * env-only 白名单（启动期快照键名）。
+ * 仅保留基础设施配置项（DB 可用前就需要或启动期行为相关）。
+ * 应用层配置项已在 settings-registry.ts 中定义为 DB-backed。
+ *
  * 顺序敏感：管理后台按此顺序展示，分组用 category 字段。
  */
 export const ENV_ONLY_DEFINITIONS: readonly EnvOnlyDefinition[] = [
@@ -77,12 +80,6 @@ export const ENV_ONLY_DEFINITIONS: readonly EnvOnlyDefinition[] = [
     category: "auth",
   },
   {
-    key: "JWT_EXPIRES_IN",
-    description: "Token 有效期",
-    is_secret: false,
-    category: "auth",
-  },
-  {
     key: "ADMIN_EMAIL",
     description: "Seed 管理员邮箱",
     is_secret: false,
@@ -94,111 +91,11 @@ export const ENV_ONLY_DEFINITIONS: readonly EnvOnlyDefinition[] = [
     is_secret: true,
     category: "auth",
   },
-
-  // ── 速率限制 ─────────────────────────────────────────────
   {
-    key: "RATE_LIMIT_ENABLED",
-    description: "总开关",
+    key: "BCRYPT_SALT_ROUNDS",
+    description: "bcrypt 哈希轮数（修改影响已有密码一致性）",
     is_secret: false,
-    category: "rate_limit",
-  },
-  {
-    key: "RATE_LIMIT_LOGIN_IP_WINDOW",
-    description: "IP 维度限流窗口（秒）",
-    is_secret: false,
-    category: "rate_limit",
-  },
-  {
-    key: "RATE_LIMIT_LOGIN_IP_MAX",
-    description: "IP 维度窗口内最大尝试次数",
-    is_secret: false,
-    category: "rate_limit",
-  },
-  {
-    key: "RATE_LIMIT_LOGIN_ACC_WINDOW",
-    description: "账号维度限流窗口（秒）",
-    is_secret: false,
-    category: "rate_limit",
-  },
-  {
-    key: "RATE_LIMIT_LOGIN_ACC_MAX",
-    description: "账号维度窗口内最大尝试次数",
-    is_secret: false,
-    category: "rate_limit",
-  },
-  {
-    key: "RATE_LIMIT_LOGIN_BACKOFF_SEC",
-    description: "每次失败退避秒数",
-    is_secret: false,
-    category: "rate_limit",
-  },
-  {
-    key: "RATE_LIMIT_LOGIN_LOCK_THRESHOLD",
-    description: "连续失败锁定阈值",
-    is_secret: false,
-    category: "rate_limit",
-  },
-  {
-    key: "RATE_LIMIT_LOGIN_LOCK_SECONDS",
-    description: "锁定时长（秒）",
-    is_secret: false,
-    category: "rate_limit",
-  },
-  {
-    key: "TRUSTED_PROXIES",
-    description: "可信代理白名单（IP/CIDR，逗号分隔）",
-    is_secret: false,
-    category: "rate_limit",
-  },
-
-  // ── 邮件 ─────────────────────────────────────────────────
-  {
-    key: "EMAIL_PROVIDER",
-    description: "邮件 Provider：mock/aliyun/tencent",
-    is_secret: false,
-    category: "email",
-  },
-  {
-    key: "ALIBABA_ACCESS_KEY_ID",
-    description: "阿里云 DirectMail AccessKey ID",
-    is_secret: false,
-    category: "email",
-  },
-  {
-    key: "ALIBABA_ACCESS_KEY_SECRET",
-    description: "阿里云 DirectMail AccessKey Secret",
-    is_secret: true,
-    category: "email",
-  },
-  {
-    key: "ALIBABA_FROM_EMAIL",
-    description: "阿里云发信地址",
-    is_secret: false,
-    category: "email",
-  },
-  {
-    key: "TENCENT_SECRET_ID",
-    description: "腾讯云 SES SecretId",
-    is_secret: false,
-    category: "email",
-  },
-  {
-    key: "TENCENT_SECRET_KEY",
-    description: "腾讯云 SES SecretKey",
-    is_secret: true,
-    category: "email",
-  },
-  {
-    key: "TENCENT_FROM_EMAIL",
-    description: "腾讯云发信地址",
-    is_secret: false,
-    category: "email",
-  },
-  {
-    key: "TENCENT_REGION",
-    description: "腾讯云地域",
-    is_secret: false,
-    category: "email",
+    category: "auth",
   },
 
   // ── CORS ─────────────────────────────────────────────────

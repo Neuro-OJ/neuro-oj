@@ -133,6 +133,27 @@ function validateValueType(
       }
       return { ok: true, raw: JSON.stringify(value) };
     }
+    case "integer": {
+      if (typeof value !== "number" || !Number.isInteger(value)) {
+        return {
+          ok: false,
+          message: `${key} 必须是整数（integer）`,
+        };
+      }
+      if (def.min !== undefined && value < def.min) {
+        return {
+          ok: false,
+          message: `${key} 不能小于 ${def.min}（当前 ${value}）`,
+        };
+      }
+      if (def.max !== undefined && value > def.max) {
+        return {
+          ok: false,
+          message: `${key} 不能大于 ${def.max}（当前 ${value}）`,
+        };
+      }
+      return { ok: true, raw: JSON.stringify(value) };
+    }
     default:
       return { ok: false, message: `${key} 类型定义错误: ${def.type}` };
   }
@@ -195,7 +216,9 @@ export function getSetting(key: string): SettingValue | null {
   const def = findDefinition(key);
   if (def) {
     const envKey = def.envFallback;
-    const envValue = getEnvSnapshotValue(envKey);
+    // 优先走启动期快照（性能最优），快照中不存在时回退到实时 Deno.env.get
+    // （兼容测试/运维中环境变量在快照后设置或未进入 ENV_ONLY_DEFINITIONS 的场景）
+    const envValue = getEnvSnapshotValue(envKey) ?? Deno.env.get(envKey);
     if (envValue !== undefined && envValue !== "") {
       // 尝试按 type 解析
       let decoded: unknown = envValue;

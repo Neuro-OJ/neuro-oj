@@ -22,13 +22,14 @@ watch(loading, (val) => {
 
 // ─── 类型定义 ────────────────────────────────────────────
 
-type SettingType = "boolean" | "string" | "text"
+type SettingType = "boolean" | "string" | "text" | "integer"
 type SettingSource = "db" | "env" | "default"
 type SettingCategory =
   | "auth"
   | "maintenance"
   | "email"
   | "rate_limit"
+  | "storage"
   | "database"
   | "redis"
   | "cors"
@@ -52,6 +53,7 @@ const CATEGORY_LABEL: Record<SettingCategory, string> = {
   maintenance: "维护与公告",
   email: "邮件",
   rate_limit: "速率限制",
+  storage: "对象存储",
   database: "数据库",
   redis: "Redis",
   cors: "CORS",
@@ -95,28 +97,22 @@ watch(isLoggedIn, (val) => {
 
 const drafts = ref<Record<string, unknown>>({})
 
+/** infrastructure env-only 键名白名单（与 ENV_ONLY_DEFINITIONS 同步） */
+const ENV_ONLY_KEYS = new Set([
+  "DATABASE_URL", "DATABASE_POOL_MAX", "DATABASE_CONNECT_TIMEOUT",
+  "DATABASE_IDLE_TIMEOUT", "DATABASE_MAX_LIFETIME",
+  "REDIS_URL",
+  "JWT_SECRET", "ADMIN_EMAIL", "ADMIN_PASS", "BCRYPT_SALT_ROUNDS",
+  "CORS_ALLOWED_ORIGINS",
+  "PORT", "NOJ_ENV",
+])
+
 const dbSettings = computed(() =>
-  settings.value.filter((s) =>
-    [
-      "allow_register",
-      "smtp_from",
-      "rate_limit_login_enabled",
-      "maintenance_mode",
-      "homepage_banner",
-    ].includes(s.key)
-  )
+  settings.value.filter((s) => !ENV_ONLY_KEYS.has(s.key))
 )
 
 const envOnlySettings = computed(() =>
-  settings.value.filter((s) =>
-    ![
-      "allow_register",
-      "smtp_from",
-      "rate_limit_login_enabled",
-      "maintenance_mode",
-      "homepage_banner",
-    ].includes(s.key)
-  )
+  settings.value.filter((s) => ENV_ONLY_KEYS.has(s.key))
 )
 
 // 按 category 分组（spec 要求），未声明分类的归到 other
@@ -133,6 +129,7 @@ const envOnlyGrouped = computed(() => {
     "maintenance",
     "email",
     "rate_limit",
+    "storage",
     "database",
     "redis",
     "cors",
@@ -251,12 +248,15 @@ function toggleBoolean(key: string, currentVal: boolean) {
       </button>
     </div>
 
-    <!-- ─── 第一组：DB-backed 可编辑设置（5 项） ─────────────── -->
+    <!-- ─── 第一组：DB-backed 可编辑设置 ─────────────── -->
     <section class="bg-white border border-border rounded-xl overflow-hidden">
       <div class="px-5 py-3 border-b border-border bg-gray-50">
         <div class="flex items-center gap-2">
           <Database :size="16" class="text-primary" />
-          <h2 class="text-base font-semibold text-text">运行时配置（可编辑）</h2>
+          <h2 class="text-base font-semibold text-text">
+            运行时配置（可编辑）
+            <span class="ml-1 text-sm font-normal text-text-secondary">{{ dbSettings.length }} 项</span>
+          </h2>
         </div>
         <p class="text-xs text-text-secondary mt-1">
           修改后点击行内「保存」按钮，写入数据库；点击「重置」恢复 env / 默认值
@@ -327,11 +327,20 @@ function toggleBoolean(key: string, currentVal: boolean) {
 
               <!-- text：textarea -->
               <textarea
-                v-else
+                v-else-if="s.type === 'text'"
                 v-model="drafts[s.key]"
                 rows="2"
                 maxlength="1000"
                 class="w-full px-2.5 py-1.5 text-[13px] border border-border rounded outline-none transition-colors resize-y focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+              />
+
+              <!-- integer：number input -->
+              <input
+                v-else-if="s.type === 'integer'"
+                v-model.number="drafts[s.key]"
+                type="number"
+                step="1"
+                class="w-full px-2.5 py-1.5 text-[13px] font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
               />
             </td>
 

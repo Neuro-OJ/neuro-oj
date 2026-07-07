@@ -20,9 +20,9 @@ import {
   type RateLimitResult,
 } from "../lib/rateLimit.ts";
 import {
-  envInt,
   getClientIp,
   isRateLimitEnabled,
+  settingInt,
 } from "../lib/rateLimitEnv.ts";
 
 /** 限流 429 错误（继承 AppError，自动被 onError 捕获） */
@@ -39,12 +39,12 @@ class RateLimitedError extends AppError {
 
 export const LOGIN_LIMITS = {
   ip: {
-    windowSec: envInt("RATE_LIMIT_LOGIN_IP_WINDOW", 30),
-    max: envInt("RATE_LIMIT_LOGIN_IP_MAX", 10),
+    windowSec: settingInt("rate_limit_login_ip_window"),
+    max: settingInt("rate_limit_login_ip_max"),
   },
   acc: {
-    windowSec: envInt("RATE_LIMIT_LOGIN_ACC_WINDOW", 30),
-    max: envInt("RATE_LIMIT_LOGIN_ACC_MAX", 5),
+    windowSec: settingInt("rate_limit_login_acc_window"),
+    max: settingInt("rate_limit_login_acc_max"),
   },
 } as const;
 

@@ -28,6 +28,7 @@ import {
   snapshotEnv,
 } from "../../src/lib/env-snapshot.ts";
 import { ValidationError } from "../../src/lib/errors.ts";
+import { validateRegistry } from "../../src/lib/settings-registry.ts";
 
 const ts = Date.now();
 
@@ -143,7 +144,107 @@ Deno.test({
 });
 
 Deno.test({
-  name: "system-settings service: updateSetting 未注册 key 拒绝",
+  name: "system-settings service: updateSetting integer 合法值接受",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    await updateSetting("rate_limit_login_ip_max", 20, "0");
+    const got = getSetting("rate_limit_login_ip_max");
+    assertEquals(got?.source, "db");
+    assertEquals(got?.value, 20);
+  },
+});
+
+Deno.test({
+  name: "system-settings service: updateSetting integer 浮点数拒绝",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    await assertRejects(
+      () => updateSetting("rate_limit_login_ip_max", 10.5, "0"),
+      ValidationError,
+      "必须是整数",
+    );
+  },
+});
+
+Deno.test({
+  name: "system-settings service: updateSetting integer 非数字拒绝",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    await assertRejects(
+      () =>
+        updateSetting(
+          "rate_limit_login_ip_max",
+          "twenty" as unknown as number,
+          "0",
+        ),
+      ValidationError,
+      "必须是整数",
+    );
+  },
+});
+
+Deno.test({
+  name: "system-settings service: updateSetting integer 低于 min 拒绝",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    // rate_limit_login_ip_max 定义 min:1
+    await assertRejects(
+      () => updateSetting("rate_limit_login_ip_max", 0, "0"),
+      ValidationError,
+      "不能小于 1",
+    );
+  },
+});
+
+Deno.test({
+  name: "system-settings service: updateSetting integer 高于 max 拒绝",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    // audit_log_retention_days 定义 max:365
+    await assertRejects(
+      () => updateSetting("audit_log_retention_days", 999, "0"),
+      ValidationError,
+      "不能大于 365",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "system-settings service: getSetting integer 未设置回退 registry default",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    // rate_limit_login_ip_max 注册表 default=10
+    const got = getSetting("rate_limit_login_ip_max");
+    assertEquals(got?.source, "default");
+    assertEquals(got?.value, 10);
+  },
+});
+
+Deno.test({
+  name: "system-settings service: validateRegistry 不抛错（注册表完整）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: () => {
+    // 当前注册表包含 22+ 个合法定义，不应抛错
+    validateRegistry();
+  },
+});
+
+Deno.test({
+  name: "system-settings service: 未注册 key 拒绝",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -234,24 +335,13 @@ Deno.test({
 });
 
 Deno.test({
-  name: "system-settings service: listSettings 包含 5 项 DB-backed",
+  name: "system-settings service: listSettings 包含所有 DB-backed 项",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
     const items = listSettings();
-    const dbKeys = items
-      .filter((i) =>
-        [
-          "allow_register",
-          "smtp_from",
-          "rate_limit_login_enabled",
-          "maintenance_mode",
-          "homepage_banner",
-        ].includes(i.key)
-      )
-      .map((i) => i.key);
-    assertEquals(dbKeys.length, 5);
+    // 包含原始 5 项
     for (
       const k of [
         "allow_register",
@@ -261,8 +351,14 @@ Deno.test({
         "homepage_banner",
       ]
     ) {
-      assertEquals(dbKeys.includes(k), true);
+      assertEquals(items.some((i) => i.key === k), true);
     }
+    // 包含新增项（抽样）
+    assertEquals(items.some((i) => i.key === "jwt_expires_in"), true);
+    assertEquals(items.some((i) => i.key === "rate_limit_enabled"), true);
+    assertEquals(items.some((i) => i.key === "email_provider"), true);
+    assertEquals(items.some((i) => i.key === "storage_provider"), true);
+    assertEquals(items.some((i) => i.key === "audit_log_retention_days"), true);
   },
 });
 

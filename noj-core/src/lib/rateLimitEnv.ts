@@ -12,6 +12,8 @@
  */
 
 import type { Context } from "hono";
+import { getSetting } from "../services/system-settings.ts";
+import { findDefinition } from "./settings-registry.ts";
 
 /** 读取整数环境变量（非正数或 NaN 时回退默认值） */
 export function envInt(name: string, def: number): number {
@@ -21,11 +23,31 @@ export function envInt(name: string, def: number): number {
   return Number.isFinite(n) && n > 0 ? n : def;
 }
 
+/** 从 DB-backed 设置读取整数（通过 getSetting），回退至注册表 default */
+export function settingInt(key: string): number {
+  const s = getSetting(key);
+  if (s?.value !== undefined && typeof s.value === "number") {
+    return s.value;
+  }
+  const def = findDefinition(key);
+  return typeof def?.default === "number" ? def.default : 0;
+}
+
 /** 读取布尔环境变量（"true"/"1" 视为 true；undefined 时回退默认） */
 export function envBool(name: string, def: boolean): boolean {
   const v = Deno.env.get(name);
   if (v === undefined) return def;
   return v === "true" || v === "1";
+}
+
+/** 从 DB-backed 设置读取布尔值（通过 getSetting），回退至注册表 default */
+export function settingBool(key: string): boolean {
+  const s = getSetting(key);
+  if (s?.value !== undefined && typeof s.value === "boolean") {
+    return s.value;
+  }
+  const def = findDefinition(key);
+  return typeof def?.default === "boolean" ? def.default : true;
 }
 
 /** 限流总开关。NOJ_ENV=test 时默认禁用，但 RATE_LIMIT_ENABLED=true 可覆盖。 */
@@ -34,23 +56,19 @@ export function isRateLimitEnabled(): boolean {
     // 测试模式下默认关闭，但允许测试文件主动开启
     return envBool("RATE_LIMIT_ENABLED", false);
   }
-  return envBool("RATE_LIMIT_ENABLED", true);
+  return settingBool("rate_limit_enabled");
 }
 
-/** 解析可信代理白名单（逗号分隔，缓存于模块级） */
-let _trustedProxiesCache: string[] | null = null;
+/** 解析可信代理，逗号分隔。不再缓存（DB-backed 值可运行时变更）。 */
 export function getTrustedProxies(): string[] {
-  if (_trustedProxiesCache !== null) return _trustedProxiesCache;
-  const v = Deno.env.get("TRUSTED_PROXIES");
-  _trustedProxiesCache = v
-    ? v.split(",").map((s) => s.trim()).filter(Boolean)
-    : [];
-  return _trustedProxiesCache;
+  const setting = getSetting("trusted_proxies");
+  const v = typeof setting?.value === "string" ? setting.value : "";
+  return v ? v.split(",").map((s) => s.trim()).filter(Boolean) : [];
 }
 
 /** 重置白名单缓存（测试用） */
 export function _resetTrustedProxiesForTest() {
-  _trustedProxiesCache = null;
+  // 不再需要缓存，保留为 no-op 兼容
 }
 
 /**
