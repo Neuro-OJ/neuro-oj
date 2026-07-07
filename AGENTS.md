@@ -377,7 +377,7 @@ deno task dev            # 热重载
 
 # 启动 noj-ui
 cd noj-ui
-npm install
+deno install
 deno task dev            # 默认 http://localhost:3000
 
 # 启动 noj-judge

@@ -7,7 +7,7 @@
 #
 # 使用 Docker Compose 编排完整评测栈（noj-core + noj-judge + PostgreSQL + Redis）。
 #
-# 技术栈：Deno + Node.js + Rust + Docker Compose
+# 技术栈：Deno + Rust + Docker Compose
 # 运行时间：首次 ~15min，缓存命中后 ~5-8min
 # =============================================================================
 
