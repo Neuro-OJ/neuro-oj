@@ -57,7 +57,7 @@ NOJ 由三个核心模块组成，通过 RESTful API 和 Redis 消息队列协�
 | 模块 | 语言/运行时 | 核心框架 | 关键依赖 |
 |------|------------|----------|----------|
 | **noj-core** | Deno / TypeScript | Hono 4 | Drizzle ORM, postgres.js, ioredis, Jose (JWT), bcryptjs |
-| **noj-ui** | Deno / Node.js / TypeScript | Nuxt 4 / Vue 3 | Tailwind CSS, Monaco Editor, Lucide Icons, SweetAlert2, markdown-it, KaTeX, highlight.js, DOMPurify |
+| **noj-ui** | Deno / TypeScript | Nuxt 4 / Vue 3 | Tailwind CSS, Monaco Editor, Lucide Icons, SweetAlert2, markdown-it, KaTeX, highlight.js, DOMPurify |
 | **noj-judge** | Rust (Edition 2021) | Tokio | bollard (Docker API), redis-rs, serde, axum (metrics), zip, tar |
 | **基础设施** | — | — | PostgreSQL 16 / Redis 7 |
 
@@ -111,7 +111,6 @@ neuro-oj/
 - [Deno](https://deno.com) 2.x
 - [Rust](https://www.rust-lang.org/)
 - [Docker](https://www.docker.com/)
-- Node.js >= 20（noj-ui 依赖）
 
 ### 启动基础设施
 

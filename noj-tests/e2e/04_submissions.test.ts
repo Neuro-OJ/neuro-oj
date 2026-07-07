@@ -5,15 +5,12 @@
 import {
   apiGet,
   isE2E,
-  loginAndChangePassword,
+  getAdminToken,
   registerUser,
   waitForServer,
 } from "./helper.ts";
 
 const skip = !isE2E;
-const ADMIN_EMAIL = Deno.env.get("E2E_ADMIN_EMAIL") || "e2e_admin@test.com";
-const ADMIN_PASS = Deno.env.get("E2E_ADMIN_PASS") || "e2e_admin_pass";
-const ADMIN_NEW_PASS = "E2eAdminChangedPass1";
 let token = "";
 
 Deno.test({
@@ -116,11 +113,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     if (!isE2E) return;
-    const adminT = await loginAndChangePassword(
-      ADMIN_EMAIL,
-      ADMIN_PASS,
-      ADMIN_NEW_PASS,
-    );
+    const adminT = await getAdminToken();
     const { status, body } = await apiGet("/api/v1/admin/submissions", adminT);
     if (status !== 200) throw new Error("期望 200");
     const d = body as { data: unknown[]; pagination: { total: number } };
