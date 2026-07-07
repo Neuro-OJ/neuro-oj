@@ -1,7 +1,7 @@
 {
   "version": "5",
   "specifiers": {
-    "npm:@lucide/vue@^1.21.0": "1.21.0_vue@3.5.38__typescript@5.9.3_typescript@5.9.3",
+    "npm:@lucide/vue@^1.21.0": "1.21.0_vue@3.5.39__typescript@5.9.3_typescript@5.9.3",
     "npm:@nuxtjs/tailwindcss@^6.14.0": "6.14.0",
     "npm:@tailwindcss/typography@~0.5.20": "0.5.20_tailwindcss@3.4.19",
     "npm:dompurify@^3.4.11": "3.4.11",
@@ -659,7 +659,7 @@
     "@kwsites/promise-deferred@1.1.1": {
       "integrity": "sha512-GaHYm+c0O9MjZRu0ongGBRbinu8gVAMd2UZjji6jVmqKtZluZnptXGWhz1E8j8D2HJ3f/yMxKAUC0b+57wncIw=="
     },
-    "@lucide/vue@1.21.0_vue@3.5.38__typescript@5.9.3_typescript@5.9.3": {
+    "@lucide/vue@1.21.0_vue@3.5.39__typescript@5.9.3_typescript@5.9.3": {
       "integrity": "sha512-eoFn3tppjKAc12ZqdnRSMFdtwQ1ZMRQFb6SV1Eub6Y8kU28ccnqKeSFdnur9hMg8gIbosU2Y3WFJr/J/xS/IlQ==",
       "dependencies": [
         "vue"
@@ -861,7 +861,7 @@
       "dependencies": [
         "@nuxt/devalue",
         "@nuxt/kit@4.4.8_magicast@0.5.3",
-        "@unhead/vue",
+        "@unhead/vue@2.1.15_vue@3.5.38__typescript@5.9.3_typescript@5.9.3",
         "@vue/shared",
         "consola",
         "defu",
@@ -911,7 +911,7 @@
       ],
       "bin": true
     },
-    "@nuxt/vite-builder@4.4.8_nuxt@4.4.8__typescript@5.9.3__vite@7.3.5___jiti@2.7.0___yaml@2.9.0_vue@3.5.38__typescript@5.9.3_typescript@5.9.3": {
+    "@nuxt/vite-builder@4.4.8_nuxt@4.4.8__typescript@5.9.3__vite@7.3.5___jiti@2.7.0___yaml@2.9.0_vue@3.5.39__typescript@5.9.3_typescript@5.9.3": {
       "integrity": "sha512-54M/k6qVY85Qeoe1m/lPZ0SANGJEbI50r5uYgh3XT942ENve3K5Nk6TMYp8i5wGGC4TWvPea+1mlCrp8rjsXag==",
       "dependencies": [
         "@nuxt/kit@4.4.8_magicast@0.5.3",
@@ -1673,6 +1673,13 @@
       "integrity": "sha512-SSByXfEjhzPn8gXdEdgpYqpLMPSkLUH2HVE0GxZfOtNsJ0GgOHQs0g9T67ZZ1z0kTELLKdtOtYrzrbv9+ffF7g==",
       "dependencies": [
         "hookable@6.1.1",
+        "unhead"
+      ]
+    },
+    "@unhead/vue@2.1.15_vue@3.5.39__typescript@5.9.3_typescript@5.9.3": {
+      "integrity": "sha512-SSByXfEjhzPn8gXdEdgpYqpLMPSkLUH2HVE0GxZfOtNsJ0GgOHQs0g9T67ZZ1z0kTELLKdtOtYrzrbv9+ffF7g==",
+      "dependencies": [
+        "hookable@6.1.1",
         "unhead",
         "vue"
       ]
@@ -1695,7 +1702,7 @@
       ],
       "bin": true
     },
-    "@vitejs/plugin-vue-jsx@5.1.5_vite@7.3.5__jiti@2.7.0__yaml@2.9.0_vue@3.5.38__typescript@5.9.3_jiti@2.7.0_typescript@5.9.3": {
+    "@vitejs/plugin-vue-jsx@5.1.5_vite@7.3.5__jiti@2.7.0__yaml@2.9.0_vue@3.5.39__typescript@5.9.3_typescript@5.9.3": {
       "integrity": "sha512-jIAsvHOEtWpslLOI2MeElGFxH7M8pM83BU/Tor4RLyiwH0FM4nUW3xdvbw20EeU9wc5IspQwMq225K3CMnJEpA==",
       "dependencies": [
         "@babel/core",
@@ -1707,7 +1714,7 @@
         "vue"
       ]
     },
-    "@vitejs/plugin-vue@6.0.7_vite@7.3.5__jiti@2.7.0__yaml@2.9.0_vue@3.5.38__typescript@5.9.3_jiti@2.7.0_typescript@5.9.3": {
+    "@vitejs/plugin-vue@6.0.7_vite@7.3.5__jiti@2.7.0__yaml@2.9.0_vue@3.5.39__typescript@5.9.3_typescript@5.9.3": {
       "integrity": "sha512-km+p+XdSz9Sxm5rqUbqcSfZYaAniKxWBj1KURl+Jr7UaPvvX7BmaWMdP69I5rrFDeQGyxAG7NXdc57vz+snhWg==",
       "dependencies": [
         "@rolldown/pluginutils",
@@ -1722,11 +1729,7 @@
         "ast-kit",
         "local-pkg",
         "magic-string-ast",
-        "unplugin-utils",
-        "vue"
-      ],
-      "optionalPeers": [
-        "vue"
+        "unplugin-utils"
       ]
     },
     "@vue/babel-helper-vue-transform-on@2.0.1": {
@@ -1761,8 +1764,8 @@
         "@vue/compiler-sfc"
       ]
     },
-    "@vue/compiler-core@3.5.38": {
-      "integrity": "sha512-s99aGxWYig9ErHbct27KXEGhrBYlRI6c4MwAgXErOAbX9xiW37/uMa+XUDO69zLz83dng8UUZ70CTOJrLrYrEQ==",
+    "@vue/compiler-core@3.5.39": {
+      "integrity": "sha512-16KBTEXAJCpDr0mwlw+AZyhu8iyC7R3S2vBwsI7QnWJU6X3WKc9VKeNEZpiMdZ569qWhz9574L3vV55qRL0Vtw==",
       "dependencies": [
         "@babel/parser@7.29.7",
         "@vue/shared",
@@ -1771,15 +1774,15 @@
         "source-map-js"
       ]
     },
-    "@vue/compiler-dom@3.5.38": {
-      "integrity": "sha512-JTqp25l8aFfJYF7/KmsXZjAxJz7T+SjmTJLoXVjHtc2BrSgSiW2n9Aem/cWq1OPe68A8JL06B3eVdhlP0H4TVw==",
+    "@vue/compiler-dom@3.5.39": {
+      "integrity": "sha512-oQPigALqYbNxTNPvNgSOe+czwVExfbVF02lz8jP0S3AXJiu3jxYDygNUiqSep4ezzW8XgnubqH63My2A7JR/vg==",
       "dependencies": [
         "@vue/compiler-core",
         "@vue/shared"
       ]
     },
-    "@vue/compiler-sfc@3.5.38": {
-      "integrity": "sha512-DuA2GiZawSEW442iw/9+Fkol8hTgb4Ke5KkhmSry65QA7YuyMbIdy8p0XZRMvNwJdgRz307W8g1CSzdvS4nuNg==",
+    "@vue/compiler-sfc@3.5.39": {
+      "integrity": "sha512-d0ki86iOyN8LoZPBmk5SJWNwHP19CnDDCfuo//+2WJa2g5Ke0Jay983PIBIcSSzldC68I8DrD5GrHV3OSDfodg==",
       "dependencies": [
         "@babel/parser@7.29.7",
         "@vue/compiler-core",
@@ -1792,8 +1795,8 @@
         "source-map-js"
       ]
     },
-    "@vue/compiler-ssr@3.5.38": {
-      "integrity": "sha512-7s+W5Gc42FGxZMcuwl8H5B29T8BJPMdBT7KHFE+BbAuZ/iTEdTtv7z2XiMjiaUUw4w3ZcCEdHs36RuYJ2VA7bA==",
+    "@vue/compiler-ssr@3.5.39": {
+      "integrity": "sha512-Ce7/wvwMHai74bdszfXExdazFigYnlF9zgCmEQUcM1j0fOymlouZ7XilTYNo8oUjhlnjYOZbGrcYKuqjz89Ucw==",
       "dependencies": [
         "@vue/compiler-dom",
         "@vue/shared"
@@ -1809,8 +1812,7 @@
       "integrity": "sha512-xezkv5/CPH/o5C8PE2Len9MnTJMsctYYQbKbbUiNOJpKd+fRHj27nKDb/sbtYI8NSQduegeQhCJGKRgAiOV6Uw==",
       "dependencies": [
         "@vue/devtools-kit",
-        "@vue/devtools-shared",
-        "vue"
+        "@vue/devtools-shared"
       ]
     },
     "@vue/devtools-kit@8.1.3": {
@@ -1825,21 +1827,21 @@
     "@vue/devtools-shared@8.1.3": {
       "integrity": "sha512-CM3uIPL+v+lrJUk33+pxspYo0MhuMWlCvf7zC9fybifvCPyM2jUbYRPwoYEJgYbwRqPikm5HozbUhp60MF2QuA=="
     },
-    "@vue/reactivity@3.5.38": {
-      "integrity": "sha512-pG6LV/NDNRbKizcUjFFLAfjaL8mcv4DmR9avNcUw2gDHBzZneuS2TWCmp633ynzxz9YYKNeEPK2I8Wraqy2HUQ==",
+    "@vue/reactivity@3.5.39": {
+      "integrity": "sha512-TpsuBJ9gGlZa5d23XcM2y8EXanz9dZeVDQBXRwzy46ItgvM+rWpzs+UVM0wcRLxGvcav0HE5jz2gNL53xlRAog==",
       "dependencies": [
         "@vue/shared"
       ]
     },
-    "@vue/runtime-core@3.5.38": {
-      "integrity": "sha512-iyW8WVfF1CpCXxncZY5Ei6rSd6oZr5DgEom//fUjRBRl56AXPD+s9ATvukRt77ZFTuYlnVA1bxY+dJB94tWVYw==",
+    "@vue/runtime-core@3.5.39": {
+      "integrity": "sha512-9GLtNyRvPAUMbX+7ono0RC2j0guo2LXVi8LvcmAooImACUKm0oFf0jjwbX8/H0AE/t1nxhAkn8RSl9PMCzzxZw==",
       "dependencies": [
         "@vue/reactivity",
         "@vue/shared"
       ]
     },
-    "@vue/runtime-dom@3.5.38": {
-      "integrity": "sha512-apX2wt9sdfDshS+a2xueFZLVpt0GkRJZSoPmrW/SA4yzXTznhfcMVW59gr7h4YQeY0vJhdJkk2rsIDwgfFgC5A==",
+    "@vue/runtime-dom@3.5.39": {
+      "integrity": "sha512-7Y6aAGboKcXAZ3ECuUy7RrS5yy2r47dhTp2SKaJmYxjopImaVFaNa5Ne66NwGovsrxVAl5S5rwc7m22UG7Lmww==",
       "dependencies": [
         "@vue/reactivity",
         "@vue/runtime-core",
@@ -1847,16 +1849,16 @@
         "csstype"
       ]
     },
-    "@vue/server-renderer@3.5.38_vue@3.5.38__typescript@5.9.3_typescript@5.9.3": {
-      "integrity": "sha512-vue8vbf2QlV4quHqzwmJy6dWfmRhP1J8l4wtZg60CL6VoKqcPY2oe7may3+1d9qfpedjK5PRLFqd5k3Isj9mUw==",
+    "@vue/server-renderer@3.5.39_vue@3.5.39__typescript@5.9.3_typescript@5.9.3": {
+      "integrity": "sha512-yZSakiAGw85rZfG7UM8akMnIF+FmeiNk47uvHf2nVBBSe+dIKUhZuZq9+XgJhbV3nS5Z4ALH23/MpXofW+mbcw==",
       "dependencies": [
         "@vue/compiler-ssr",
         "@vue/shared",
         "vue"
       ]
     },
-    "@vue/shared@3.5.38": {
-      "integrity": "sha512-FTW0AFZNaK5/mOqvGBwVfUlNLU38TiQn4+DQgIFUnrBBJQ1crMJ82yeGQLV5jyKFsO8yRukpbuP7x+nRbH6aug=="
+    "@vue/shared@3.5.39": {
+      "integrity": "sha512-l1rrBtBfTnmxvtsvdQDXltUUy8S1Y+ZaqdfUzmAnJkTd8Z8rv5v/ytW+TKiqEOWyHPoqtPlNFSs0lhRmYVSHVA=="
     },
     "abbrev@3.0.1": {
       "integrity": "sha512-AO2ac6pjRB3SJmGJo+v5/aK6Omggp6fsLrs6wN9bd35ulu4cCwaAU9+7ZhXjeqHVkaHThLuzH0nZr0YpCDhygg=="
@@ -3702,7 +3704,7 @@
         "@nuxt/schema",
         "@nuxt/telemetry",
         "@nuxt/vite-builder",
-        "@unhead/vue",
+        "@unhead/vue@2.1.15_vue@3.5.39__typescript@5.9.3_typescript@5.9.3",
         "@vue/shared",
         "chokidar@5.0.0",
         "compatx",
@@ -5128,8 +5130,7 @@
         "magic-string",
         "pathe@2.0.3",
         "source-map-js",
-        "vite",
-        "vue"
+        "vite"
       ]
     },
     "vite@7.3.5_jiti@2.7.0_yaml@2.9.0": {
@@ -5182,15 +5183,14 @@
         "unplugin@3.0.0",
         "unplugin-utils",
         "vite",
-        "vue",
         "yaml"
       ],
       "optionalPeers": [
         "vite"
       ]
     },
-    "vue@3.5.38_typescript@5.9.3": {
-      "integrity": "sha512-vAMKHfImQlYSy0C+PBue4s3ERZ2xGKfgZg5GXAsLInq1dyh2H78ILVP5sK0KPFPVW4kv+OGCIvBEondcjpZp7A==",
+    "vue@3.5.39_typescript@5.9.3": {
+      "integrity": "sha512-xmZCYabFGcirU8r0fTuvl/LICc1OU620rnqepaJDL/a141ZigkG7AyaxQLdqJ02ZRYzWe6YPaDHeQx7MfknQfA==",
       "dependencies": [
         "@vue/compiler-dom",
         "@vue/compiler-sfc",

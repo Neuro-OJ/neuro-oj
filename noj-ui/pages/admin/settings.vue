@@ -5,6 +5,7 @@ import {
   Info,
   ChevronDown,
   Database,
+  Lock,
 } from "@lucide/vue"
 
 definePageMeta({
@@ -77,10 +78,10 @@ async function loadSettings() {
       "/api/v1/admin/settings",
     )
     settings.value = res.data
-    // 初始化草稿：与当前 effective_value 同步
+    // 初始化草稿：普通字段同步当前值，敏感字段初始化为 null（需显式编辑）
     drafts.value = {}
     for (const s of res.data) {
-      drafts.value[s.key] = s.effective_value
+      drafts.value[s.key] = s.is_secret ? null : s.effective_value
     }
   } catch (err: unknown) {
     tableError.value = err instanceof Error
@@ -142,27 +143,6 @@ const envOnlyGrouped = computed(() => {
     .map((c) => ({ category: c, items: groups.get(c)! }))
 })
 
-// 按 category 分组（DB-backed 设置项，spec 要求）
-const dbGrouped = computed(() => {
-  const groups = new Map<SettingCategory, SystemSetting[]>()
-  for (const s of dbSettings.value) {
-    const cat = (s.category ?? "other") as SettingCategory
-    if (!groups.has(cat)) groups.set(cat, [])
-    groups.get(cat)!.push(s)
-  }
-  const order: SettingCategory[] = [
-    "auth",
-    "maintenance",
-    "email",
-    "rate_limit",
-    "storage",
-    "other",
-  ]
-  return order
-    .filter((c) => groups.has(c))
-    .map((c) => ({ category: c, items: groups.get(c)! }))
-})
-
 /** AdminTable 列定义（env-only 只读面板） */
 const envOnlyColumns = [
   { key: "key", label: "键名" },
@@ -175,6 +155,7 @@ function isDirty(key: string): boolean {
   const s = settings.value.find((x) => x.key === key)
   if (!s) return false
   const draft = drafts.value[key]
+  if (draft === null) return false // 敏感字段未显式编辑时不视为 dirty
   return !deepEqual(draft, s.effective_value)
 }
 
@@ -192,6 +173,8 @@ const savingKey = ref<string | null>(null)
 const { toast } = useToast()
 
 async function saveSetting(key: string) {
+  // 敏感字段未显式编辑 → 跳过保存
+  if (drafts.value[key] === null) return
   savingKey.value = key
   try {
     await $fetch(`/api/v1/admin/settings/${key}`, {
@@ -297,33 +280,20 @@ function toggleBoolean(key: string, currentVal: boolean) {
         :status="tableLoading ? 'loading' : dbSettings.length === 0 ? 'empty' : 'data'"
         empty-text="暂无可编辑设置项"
       >
-        <div
-          v-for="group in dbGrouped"
-          :key="group.category"
-          class="border-b border-border last:border-b-0"
-        >
-          <div class="px-5 py-2 bg-gray-50/60 border-b border-border">
-            <h3 class="text-[13px] font-semibold text-text-secondary uppercase tracking-wide">
-              {{ CATEGORY_LABEL[group.category] }}
-              <span class="ml-1 text-text-muted normal-case font-normal">
-                ({{ group.items.length }} 项)
-              </span>
-            </h3>
-          </div>
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="bg-white border-b border-border">
-                <th class="px-3 py-2.5 text-left font-semibold text-text w-[180px]">设置项</th>
-                <th class="px-3 py-2.5 text-left font-semibold text-text">当前值</th>
-                <th class="px-3 py-2.5 text-left font-semibold text-text w-[90px]">来源</th>
-                <th class="px-3 py-2.5 text-left font-semibold text-text">描述</th>
-                <th class="px-3 py-2.5 text-right font-semibold text-text w-[200px]">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="s in group.items"
-                :key="s.key"
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-gray-50 border-b border-border">
+              <th class="px-3 py-2.5 text-left font-semibold text-text w-[180px]">设置项</th>
+              <th class="px-3 py-2.5 text-left font-semibold text-text">当前值</th>
+              <th class="px-3 py-2.5 text-left font-semibold text-text w-[90px]">来源</th>
+              <th class="px-3 py-2.5 text-left font-semibold text-text">描述</th>
+              <th class="px-3 py-2.5 text-right font-semibold text-text w-[200px]">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="s in dbSettings"
+              :key="s.key"
             class="border-b border-border last:border-b-0 transition-colors"
             :class="isDirty(s.key) ? 'bg-amber-50' : 'hover:bg-gray-50'"
           >
@@ -359,12 +329,33 @@ function toggleBoolean(key: string, currentVal: boolean) {
               </label>
 
               <!-- string：Input -->
-              <input
+              <div
                 v-else-if="s.type === 'string'"
-                v-model="drafts[s.key]"
-                :placeholder="s.is_secret ? '••• 敏感字段' : ''"
-                class="w-full px-2.5 py-1.5 text-[13px] font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
-              />
+                class="flex items-center gap-2"
+              >
+                <!-- 敏感字段：初始为 null 时显示只读占位，需点击编辑才能修改 -->
+                <template v-if="s.is_secret">
+                  <input
+                    v-model="drafts[s.key]"
+                    :disabled="drafts[s.key] === null"
+                    :placeholder="drafts[s.key] === null ? '•••••••• 点击「编辑」以修改' : ''"
+                    class="w-full px-2.5 py-1.5 text-[13px] font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <button
+                    v-if="drafts[s.key] === null"
+                    class="shrink-0 px-2 py-1.5 text-[12px] font-semibold text-primary border border-primary rounded cursor-pointer hover:bg-primary-bg transition-colors"
+                    @click="drafts[s.key] = ''"
+                  >
+                    编辑
+                  </button>
+                </template>
+                <!-- 非敏感字段：正常可编辑 -->
+                <input
+                  v-else
+                  v-model="drafts[s.key]"
+                  class="w-full px-2.5 py-1.5 text-[13px] font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+                />
+              </div>
 
               <!-- text：textarea -->
               <textarea
@@ -430,7 +421,6 @@ function toggleBoolean(key: string, currentVal: boolean) {
           </tr>
         </tbody>
       </table>
-        </div>
       </AsyncContent>
     </section>
 
@@ -465,47 +455,42 @@ function toggleBoolean(key: string, currentVal: boolean) {
         <div v-if="envOnlySettings.length === 0" class="p-6 text-center text-sm text-text-secondary">
           当前 .env 中没有白名单内的环境变量
         </div>
-        <div v-else class="flex flex-col">
-          <div
-            v-for="group in envOnlyGrouped"
-            :key="group.category"
-            class="border-b border-border last:border-b-0"
-          >
-            <div class="px-5 py-2 bg-gray-50/60 border-b border-border">
-              <h3 class="text-[13px] font-semibold text-text-secondary uppercase tracking-wide">
-                {{ CATEGORY_LABEL[group.category] }}
-                <span class="ml-1 text-text-muted normal-case font-normal">
-                  ({{ group.items.length }})
-                </span>
-              </h3>
-            </div>
-            <AdminTable
-              :columns="envOnlyColumns"
-              :data="group.items"
-              :loading="false"
-            >
-              <template #cell-key="{ row }">
-                <code class="font-mono text-[13px] text-text">{{ row.key }}</code>
-              </template>
-              <template #cell-effective_value="{ row }">
+        <AdminTable
+          v-else
+          :columns="envOnlyColumns"
+          :data="envOnlySettings"
+          :loading="false"
+        >
+          <template #cell-key="{ row }">
+            <code class="font-mono text-[13px] text-text">{{ row.key }}</code>
+          </template>
+          <template #cell-effective_value="{ row }">
+            <Tooltip v-if="row.is_secret" content="敏感值（已脱敏）" class="cursor-help">
+              <span class="inline-flex items-center gap-1">
+                <Lock :size="12" class="shrink-0 text-amber-700" />
                 <code
-                  class="font-mono text-[13px] px-2 py-0.5 rounded"
-                  :class="row.is_secret ? 'bg-amber-50 text-amber-800' : 'bg-gray-50 text-text'"
+                  class="font-mono text-[13px] px-2 py-0.5 rounded underline decoration-dotted underline-offset-2 bg-amber-50 text-amber-800"
                 >
                   {{ String(row.effective_value) }}
                 </code>
-              </template>
-              <template #cell-description="{ row }">
-                <div class="flex flex-col gap-0.5">
-                  <span class="text-[13px] text-text-secondary">{{ row.description }}</span>
-                  <span v-if="row.key === 'JWT_SECRET'" class="text-[11px] text-text-muted">
-                    ⓘ 此值已做 SHA-256 哈希处理（前16位），仅用于部署密钥比对
-                  </span>
-                </div>
-              </template>
-            </AdminTable>
-          </div>
-        </div>
+              </span>
+            </Tooltip>
+            <code
+              v-else
+              class="font-mono text-[13px] px-2 py-0.5 rounded bg-gray-50 text-text"
+            >
+              {{ String(row.effective_value) }}
+            </code>
+          </template>
+          <template #cell-description="{ row }">
+            <div class="flex flex-col gap-0.5">
+              <span class="text-[13px] text-text-secondary">{{ row.description }}</span>
+              <span v-if="row.key === 'JWT_SECRET'" class="text-[11px] text-text-muted">
+                ⓘ 此值已做 SHA-256 哈希处理（前16位），仅用于部署密钥比对
+              </span>
+            </div>
+          </template>
+        </AdminTable>
       </details>
     </section>
   </div>
