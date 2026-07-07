@@ -122,7 +122,8 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     key: "alibaba_access_key_secret",
     type: "string",
     default: "",
-    description: "阿里云 DirectMail AccessKey Secret（已脱敏：仅保留前 3 后 3 字符）",
+    description:
+      "阿里云 DirectMail AccessKey Secret（已脱敏：仅保留前 3 后 3 字符）",
     is_secret: true,
     envFallback: "ALIBABA_ACCESS_KEY_SECRET",
     category: "email",

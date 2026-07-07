@@ -262,6 +262,9 @@ export function getSetting(key: string): SettingValue | null {
       let decoded: unknown = envValue;
       if (def.type === "boolean") {
         decoded = envValue === "true" || envValue === "1";
+      } else if (def.type === "integer") {
+        const n = parseInt(envValue, 10);
+        decoded = Number.isFinite(n) ? n : envValue;
       }
       return {
         value: decoded,
@@ -425,13 +428,15 @@ export async function updateSetting(
   if (!def) {
     throw new ValidationError(`未注册的设置项: ${key}`);
   }
+  const fromValue = def.is_secret ? maskSecret(fromRaw) : fromRaw;
   const toValue = def.is_secret ? maskSecret(value) : value;
   await logAudit(
     "settings.update",
     {
-      action: "PUT",
+      action: "settings.update",
+      operation: "PUT",
       key,
-      from: fromRaw,
+      from: fromValue,
       to: toValue,
     },
     { type: "system_setting", id: key },
@@ -474,12 +479,15 @@ export async function resetSetting(
   // 重置后不需要 reload（已经从 Map 删除，下次读会走 env/default 兜底）
 
   // 审计日志：记录设置删除（issue #101）
+  const def = findDefinition(key);
+  const fromValue = def?.is_secret ? maskSecret(fromRaw) : fromRaw;
   await logAudit(
     "settings.update",
     {
-      action: "DELETE",
+      action: "settings.update",
+      operation: "DELETE",
       key,
-      from: fromRaw,
+      from: fromValue,
       to: null,
     },
     { type: "system_setting", id: key },

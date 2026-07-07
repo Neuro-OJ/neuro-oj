@@ -34,7 +34,13 @@ export type AuditDetail =
     problem_id?: string;
     count?: number;
   }
-  | { action: "settings.update"; key: string; from: unknown; to: unknown }
+  | {
+    action: "settings.update";
+    operation: "PUT" | "DELETE";
+    key: string;
+    from: unknown;
+    to: unknown;
+  }
   | {
     action: "ip_ban.create";
     ip_or_cidr: string;

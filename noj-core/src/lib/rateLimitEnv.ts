@@ -66,12 +66,8 @@ export function getTrustedProxies(): string[] {
   return v ? v.split(",").map((s) => s.trim()).filter(Boolean) : [];
 }
 
-/** 重置白名单缓存（测试用） */
-export function _resetTrustedProxiesForTest() {
-  // 不再需要缓存，保留为 no-op 兼容
-}
-
 /**
+ * 解析客户端真实 IP。
  * 解析客户端真实 IP。
  * - XFF 存在时按白名单规则取最左侧的非代理 IP
  * - 否则用 X-Real-IP

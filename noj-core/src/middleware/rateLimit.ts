@@ -38,15 +38,19 @@ class RateLimitedError extends AppError {
 // ── 默认限流配置（可被环境变量覆盖）────────────────────
 
 export const LOGIN_LIMITS = {
-  ip: {
-    windowSec: settingInt("rate_limit_login_ip_window"),
-    max: settingInt("rate_limit_login_ip_max"),
+  get ip() {
+    return {
+      windowSec: settingInt("rate_limit_login_ip_window"),
+      max: settingInt("rate_limit_login_ip_max"),
+    };
   },
-  acc: {
-    windowSec: settingInt("rate_limit_login_acc_window"),
-    max: settingInt("rate_limit_login_acc_max"),
+  get acc() {
+    return {
+      windowSec: settingInt("rate_limit_login_acc_window"),
+      max: settingInt("rate_limit_login_acc_max"),
+    };
   },
-} as const;
+};
 
 /**
  * IP 维度登录限流中间件（30s/10 次）。

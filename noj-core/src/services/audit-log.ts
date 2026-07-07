@@ -143,7 +143,7 @@ export function startAuditLogRetentionTask(): void {
   const days = typeof setting?.value === "number"
     ? Math.floor(setting.value)
     : 90;
-  if (Number.isNaN(days) || days <= 0) {
+  if (days <= 0) {
     console.info(
       `[audit] audit_log_retention_days=${days} 无效, 清理任务已禁用`,
     );

@@ -340,7 +340,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
-    const items = listSettings();
+    const items = await listSettings();
     // 包含原始 5 项
     for (
       const k of [
@@ -372,7 +372,7 @@ Deno.test({
     // 这里改用 mock：通过 service 间接验证（注册表中 5 项均 is_secret=false）
     // 所以改用更新后 listSettings 检查 raw_value 未被掩码
     await updateSetting("allow_register", false, "0");
-    const items = listSettings();
+    const items = await listSettings();
     const allowReg = items.find((i) => i.key === "allow_register");
     assertEquals(allowReg?.source, "db");
     // 5 个注册表项 is_secret=false，effective_value 不会被掩码
@@ -395,7 +395,7 @@ Deno.test({
     snapshotEnv();
     await initSystemSettings();
 
-    const items = listSettings();
+    const items = await listSettings();
     const redis = items.find((i) => i.key === "REDIS_URL");
     assertEquals(redis !== undefined, true);
     // spec 要求 raw_value 是 "原始 JSON 编码"

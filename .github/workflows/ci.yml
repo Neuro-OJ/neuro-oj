@@ -140,6 +140,8 @@ jobs:
 
       - name: 运行测试 (deno test)
         working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
         run: deno test -A --parallel
 
   # ===========================================================================
