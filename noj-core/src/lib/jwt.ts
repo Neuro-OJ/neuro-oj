@@ -1,4 +1,5 @@
 import { type JWTPayload, jwtVerify, SignJWT } from "jose";
+import { getSetting } from "../services/system-settings.ts";
 
 /**
  * JWT 签发者与接收者标识。
@@ -52,7 +53,11 @@ export async function signToken(
   payload: TokenPayload,
 ): Promise<string> {
   const secret = getSecretKey();
-  const expiresIn = Deno.env.get("JWT_EXPIRES_IN") || "24h";
+  const setting = getSetting("jwt_expires_in");
+  const expiresIn =
+    typeof setting?.value === "string" && setting.value.length > 0
+      ? setting.value
+      : "24h";
   const jti = payload.jti ?? crypto.randomUUID();
 
   const token = await new SignJWT({

@@ -33,6 +33,7 @@ env:
   E2E_REDIS_URL: redis://localhost:6380/1
   JWT_SECRET: e2e-ci-secret-01234567890123456789
   NOJ_RUN_E2E: "1"
+  BCRYPT_SALT_ROUNDS: 4
   DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
 
 jobs:

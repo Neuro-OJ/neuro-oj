@@ -1,11 +1,7 @@
 import { Hono } from "hono";
 import { adminMiddleware, authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
-import {
-  BadRequestError,
-  NotFoundError,
-  ValidationError,
-} from "../lib/errors.ts";
+import { BadRequestError, ValidationError } from "../lib/errors.ts";
 import { listUsers, promoteUser } from "../services/auth.ts";
 import { getDashboardStats } from "../services/dashboard.ts";
 import { listAllProblems } from "../services/problems.ts";
@@ -34,7 +30,6 @@ import {
 } from "../services/users.ts";
 import { addIpBan, listIpBans, removeIpBan } from "../services/banlist.ts";
 import {
-  getSetting,
   listSettings,
   resetSetting,
   updateSetting,
@@ -301,22 +296,9 @@ router.get("/dashboard/stats", async (c) => {
  * 注意：必须先注册静态路径 `/settings`，再注册参数化路径 `/settings/:key`，
  * 否则 `GET /settings` 会被 `/settings/:key` 误匹配。
  */
-router.get("/settings", (c) => {
-  const items = listSettings();
+router.get("/settings", async (c) => {
+  const items = await listSettings();
   return c.json({ data: items });
-});
-
-/**
- * 获取单个设置项详情。
- * GET /api/v1/admin/settings/:key
- */
-router.get("/settings/:key", (c) => {
-  const key = c.req.param("key") as string;
-  const value = getSetting(key);
-  if (!value) {
-    throw new NotFoundError(`设置项不存在: ${key}`);
-  }
-  return c.json({ data: { key, ...value } });
 });
 
 /**

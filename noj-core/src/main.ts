@@ -9,7 +9,7 @@ import { snapshotEnv } from "./lib/env-snapshot.ts";
 import { validateRegistry } from "./lib/settings-registry.ts";
 import { ensureRootUser } from "./services/auth.ts";
 import { getStorageProvider } from "./lib/storage/mod.ts";
-import { initSystemSettings } from "./services/system-settings.ts";
+import { getSetting, initSystemSettings } from "./services/system-settings.ts";
 import { startAuditLogRetentionTask } from "./services/audit-log.ts";
 
 const app = createApp();
@@ -25,44 +25,60 @@ const port = parseInt(Deno.env.get("PORT") || "8000", 10);
 const MIN_JWT_SECRET_LENGTH = 32;
 
 /**
- * 检查邮件 Provider 环境变量配置。
+ * 检查邮件 Provider 运行时配置。
  *
  * 非致命校验：配置缺失时降级到 mock 并输出警告，不阻塞启动。
- * 用于提示运维人员完善邮件配置。
+ * 因 email provider 凭证已迁移为 DB-backed 设置项，
+ * 此函数仅作启动期警告提示，不再修改 provider 选择。
  */
 function checkEmailProviderConfig(): void {
-  const provider = Deno.env.get("EMAIL_PROVIDER") || "mock";
+  const pSetting = getSetting("email_provider");
+  const provider = typeof pSetting?.value === "string"
+    ? pSetting.value
+    : "mock";
 
   if (provider === "aliyun") {
-    const missing = [
-      "ALIBABA_ACCESS_KEY_ID",
-      "ALIBABA_ACCESS_KEY_SECRET",
-      "ALIBABA_FROM_EMAIL",
-    ].filter((k) => !Deno.env.get(k));
-
+    const missing = [];
+    for (
+      const [key, label] of [
+        ["alibaba_access_key_id", "ALIBABA_ACCESS_KEY_ID"],
+        ["alibaba_access_key_secret", "ALIBABA_ACCESS_KEY_SECRET"],
+        ["alibaba_from_email", "ALIBABA_FROM_EMAIL"],
+      ]
+    ) {
+      const s = getSetting(key);
+      if (!(typeof s?.value === "string" && s.value.length > 0)) {
+        missing.push(label);
+      }
+    }
     if (missing.length > 0) {
       console.warn(
-        `[email] EMAIL_PROVIDER=aliyun 但缺少环境变量: ${
+        `[email] email_provider=aliyun 但缺少配置: ${
           missing.join(", ")
-        }，降级到 mock`,
+        }（可通过管理后台 > 系统设置配置）`,
       );
-      Deno.env.set("EMAIL_PROVIDER", "mock");
     }
   } else if (provider === "tencent") {
-    const missing = [
-      "TENCENT_SECRET_ID",
-      "TENCENT_SECRET_KEY",
-      "TENCENT_FROM_EMAIL",
-      "TENCENT_REGION",
-    ].filter((k) => !Deno.env.get(k));
-
+    const missing = [];
+    for (
+      const [key, label] of [
+        ["tencent_secret_id", "TENCENT_SECRET_ID"],
+        ["tencent_secret_key", "TENCENT_SECRET_KEY"],
+        ["tencent_from_email", "TENCENT_FROM_EMAIL"],
+        ["tencent_region", "TENCENT_REGION"],
+      ]
+    ) {
+      const s = getSetting(key);
+      if (!(typeof s?.value === "string" && s.value.length > 0)) {
+        missing.push(label);
+      }
+    }
     if (missing.length > 0) {
       console.warn(
-        `[email] EMAIL_PROVIDER=tencent 但缺少环境变量: ${
+        `[email] email_provider=tencent 但缺少配置: ${
           missing.join(", ")
-        }，降级到 mock`,
+        }（可通过管理后台 > 系统设置配置）`,
       );
-      Deno.env.set("EMAIL_PROVIDER", "mock");
     }
   }
 }

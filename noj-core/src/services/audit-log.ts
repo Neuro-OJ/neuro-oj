@@ -12,6 +12,7 @@ import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { auditLogs } from "../db/schema.ts";
 import { getRequestContext } from "../lib/requestContext.ts";
+import { getSetting } from "./system-settings.ts";
 import type {
   AuditAction,
   AuditDetail,
@@ -138,11 +139,13 @@ export async function cleanupOldAuditLogs(
 
 /** 启动后台保留任务（HTTP 启动后由 main.ts 调用） */
 export function startAuditLogRetentionTask(): void {
-  const raw = Deno.env.get("AUDIT_LOG_RETENTION_DAYS") ?? "90";
-  const days = parseInt(raw, 10);
-  if (Number.isNaN(days) || days <= 0) {
+  const setting = getSetting("audit_log_retention_days");
+  const days = typeof setting?.value === "number"
+    ? Math.floor(setting.value)
+    : 90;
+  if (days <= 0) {
     console.info(
-      `[audit] AUDIT_LOG_RETENTION_DAYS=${raw} 无效, 清理任务已禁用`,
+      `[audit] audit_log_retention_days=${days} 无效, 清理任务已禁用`,
     );
     return;
   }

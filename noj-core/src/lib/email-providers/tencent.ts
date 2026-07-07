@@ -10,15 +10,17 @@
  */
 
 import type { SendPasswordResetEmail } from "./types.ts";
+import { getSetting } from "../../services/system-settings.ts";
 
-function getEnvOrThrow(name: string): string {
-  const val = Deno.env.get(name);
-  if (!val) {
+function getSettingOrThrow(key: string, label: string): string {
+  const val = getSetting(key);
+  const str = typeof val?.value === "string" ? val.value : "";
+  if (!str) {
     throw new Error(
-      `[email/tencent] ${name} 未配置，请检查环境变量`,
+      `[email/tencent] ${label} 未配置，请通过系统设置或环境变量配置`,
     );
   }
-  return val;
+  return str;
 }
 
 /**
@@ -33,10 +35,10 @@ export const sendPasswordResetEmail: SendPasswordResetEmail = async (
   resetLink: string,
   _expiresInMinutes = 15,
 ) => {
-  const secretId = getEnvOrThrow("TENCENT_SECRET_ID");
-  const secretKey = getEnvOrThrow("TENCENT_SECRET_KEY");
-  const fromEmail = getEnvOrThrow("TENCENT_FROM_EMAIL");
-  const region = Deno.env.get("TENCENT_REGION") || "ap-guangzhou";
+  const secretId = getSettingOrThrow("tencent_secret_id", "腾讯云 SecretId");
+  const secretKey = getSettingOrThrow("tencent_secret_key", "腾讯云 SecretKey");
+  const fromEmail = getSettingOrThrow("tencent_from_email", "腾讯云发信地址");
+  const region = String(getSetting("tencent_region")?.value ?? "ap-guangzhou");
 
   // 动态导入腾讯云 SES SDK
   // deno-lint-ignore no-explicit-any
