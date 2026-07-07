@@ -3,6 +3,7 @@ import {
   RotateCcw,
   Save,
   Info,
+  RefreshCw,
   ChevronDown,
   Database,
   Lock,
@@ -49,6 +50,7 @@ interface SystemSetting {
   category: SettingCategory
   min?: number
   max?: number
+  needsRestart?: boolean
 }
 
 const CATEGORY_LABEL: Record<SettingCategory, string> = {
@@ -150,6 +152,14 @@ const envOnlyColumns = [
   { key: "description", label: "描述" },
 ]
 
+/** 获取敏感字段的脱敏方式说明（显示在 tooltip 中） */
+function getSecretTooltip(key: string): string {
+  if (key === "DATABASE_URL") return "已脱敏：仅移除 user:password@，保留协议+主机+路径"
+  if (key === "REDIS_URL") return "已脱敏：仅移除 :password@，保留协议+主机+路径"
+  if (key === "JWT_SECRET") return "已脱敏：SHA-256 哈希（前16位），仅用于部署密钥比对"
+  return "敏感值（已脱敏）"
+}
+
 /** 该 key 是否有未保存的修改 */
 function isDirty(key: string): boolean {
   const s = settings.value.find((x) => x.key === key)
@@ -181,7 +191,13 @@ async function saveSetting(key: string) {
       method: "PUT",
       body: { value: drafts.value[key] },
     })
-    toast.success("设置已保存")
+    // 检查是否需要重启生效
+    const s = settings.value.find((x) => x.key === key)
+    if (s?.needsRestart) {
+      toast.success("设置已保存，需重启 noj-core 服务才能生效")
+    } else {
+      toast.success("设置已保存")
+    }
     await loadSettings()
   } catch (err: unknown) {
     toast.error(err instanceof Error ? err.message : "保存失败")
@@ -273,6 +289,10 @@ function toggleBoolean(key: string, currentVal: boolean) {
         </div>
         <p class="text-xs text-text-secondary mt-1">
           修改后点击行内「保存」按钮，写入数据库；点击「重置」恢复 env / 默认值
+        </p>
+        <p class="text-[11px] text-text-muted mt-0.5">
+          读取优先级：<span class="font-semibold">DB 写入值</span> → env 值（.env） → 系统默认值。
+          带 <RefreshCw :size="12" class="inline -mt-0.5 text-warning-text" /> 标记的项保存后需要重启 noj-core 服务才能生效。
         </p>
       </div>
 
@@ -393,7 +413,12 @@ function toggleBoolean(key: string, currentVal: boolean) {
 
             <!-- 描述 -->
             <td class="px-3 py-3 align-top text-[13px] text-text-secondary">
-              {{ s.description }}
+              <div class="flex flex-col gap-1">
+                <span>{{ s.description }}</span>
+                <span v-if="s.needsRestart" class="inline-flex items-center gap-0.5 text-[11px] font-semibold text-warning-text">
+                  <RefreshCw :size="12" /> 需重启生效
+                </span>
+              </div>
             </td>
 
             <!-- 操作按钮 -->
@@ -465,7 +490,7 @@ function toggleBoolean(key: string, currentVal: boolean) {
             <code class="font-mono text-[13px] text-text">{{ row.key }}</code>
           </template>
           <template #cell-effective_value="{ row }">
-            <Tooltip v-if="row.is_secret" content="敏感值（已脱敏）" class="cursor-help">
+            <Tooltip v-if="row.is_secret" :content="getSecretTooltip(row.key)" class="cursor-help">
               <span class="inline-flex items-center gap-1">
                 <Lock :size="12" class="shrink-0 text-amber-700" />
                 <code
@@ -483,12 +508,7 @@ function toggleBoolean(key: string, currentVal: boolean) {
             </code>
           </template>
           <template #cell-description="{ row }">
-            <div class="flex flex-col gap-0.5">
-              <span class="text-[13px] text-text-secondary">{{ row.description }}</span>
-              <span v-if="row.key === 'JWT_SECRET'" class="text-[11px] text-text-muted">
-                ⓘ 此值已做 SHA-256 哈希处理（前16位），仅用于部署密钥比对
-              </span>
-            </div>
+            <span class="text-[13px] text-text-secondary">{{ row.description }}</span>
           </template>
         </AdminTable>
       </details>

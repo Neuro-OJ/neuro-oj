@@ -64,6 +64,8 @@ export interface SystemSettingListItem {
   min?: number;
   /** integer 类型专用：最大值（含） */
   max?: number;
+  /** 修改后需重启 noj-core 才能生效 */
+  needsRestart?: boolean;
 }
 
 /** module-level 缓存：key -> 解析后的值 */
@@ -324,6 +326,7 @@ export async function listSettings(): Promise<SystemSettingListItem[]> {
       category: def.category,
       min: def.min,
       max: def.max,
+      needsRestart: def.needsRestart,
     });
   }
 

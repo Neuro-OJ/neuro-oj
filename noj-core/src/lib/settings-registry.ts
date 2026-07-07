@@ -44,6 +44,8 @@ export interface SettingDefinition {
   min?: number;
   /** integer 类型专用：最大值（含） */
   max?: number;
+  /** 修改后需重启 noj-core 才能生效（如启动时单例读取的配置） */
+  needsRestart?: boolean;
 }
 
 /** 22 个 DB-backed 设置项的元数据定义 */
@@ -277,7 +279,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "rate_limit",
   },
 
-  // ── storage ───────────────────────────────────────────────
+  // ── storage（修改需重启 noj-core：Provider 为启动时初始化的单例）───────
   {
     key: "storage_provider",
     type: "string",
@@ -286,6 +288,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "STORAGE_PROVIDER",
     category: "storage",
+    needsRestart: true,
   },
   {
     key: "s3_endpoint",
@@ -295,6 +298,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "S3_ENDPOINT",
     category: "storage",
+    needsRestart: true,
   },
   {
     key: "s3_region",
@@ -304,6 +308,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "S3_REGION",
     category: "storage",
+    needsRestart: true,
   },
   {
     key: "s3_access_key",
@@ -313,6 +318,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "S3_ACCESS_KEY",
     category: "storage",
+    needsRestart: true,
   },
   {
     key: "s3_secret_key",
@@ -322,6 +328,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: true,
     envFallback: "S3_SECRET_KEY",
     category: "storage",
+    needsRestart: true,
   },
   {
     key: "s3_bucket",
@@ -331,6 +338,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "S3_BUCKET",
     category: "storage",
+    needsRestart: true,
   },
   {
     key: "s3_force_path_style",
@@ -340,6 +348,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "S3_FORCE_PATH_STYLE",
     category: "storage",
+    needsRestart: true,
   },
 
   // ── other ─────────────────────────────────────────────────

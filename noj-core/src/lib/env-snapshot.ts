@@ -35,7 +35,7 @@ export const ENV_ONLY_DEFINITIONS: readonly EnvOnlyDefinition[] = [
   // ── 数据库 ───────────────────────────────────────────────
   {
     key: "DATABASE_URL",
-    description: "PostgreSQL 连接串（已脱敏：仅移除 user:password@，保留协议+主机+路径）",
+    description: "PostgreSQL 连接串",
     is_secret: true,
     category: "database",
   },
@@ -67,7 +67,7 @@ export const ENV_ONLY_DEFINITIONS: readonly EnvOnlyDefinition[] = [
   // ── Redis ────────────────────────────────────────────────
   {
     key: "REDIS_URL",
-    description: "Redis 连接串（已脱敏：仅移除 :password@，保留协议+主机+路径）",
+    description: "Redis 连接串",
     is_secret: true,
     category: "redis",
   },
@@ -75,7 +75,7 @@ export const ENV_ONLY_DEFINITIONS: readonly EnvOnlyDefinition[] = [
   // ── 认证 ─────────────────────────────────────────────────
   {
     key: "JWT_SECRET",
-    description: "JWT 签名密钥（≥32 字符，已脱敏：返回 SHA-256 哈希前 16 位）",
+    description: "JWT 签名密钥（≥32 字符）",
     is_secret: true,
     category: "auth",
   },
@@ -87,7 +87,7 @@ export const ENV_ONLY_DEFINITIONS: readonly EnvOnlyDefinition[] = [
   },
   {
     key: "ADMIN_PASS",
-    description: "Seed 管理员密码（已脱敏：仅保留前 3 后 3 字符）",
+    description: "Seed 管理员密码",
     is_secret: true,
     category: "auth",
   },
