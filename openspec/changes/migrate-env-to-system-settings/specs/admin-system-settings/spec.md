@@ -86,7 +86,7 @@
 - 用户编辑后行高亮（dirty 状态）
 - "保存"按钮：`PUT /api/v1/admin/settings/:key`，成功后 toast 成功 + 重载数据
 - "重置"按钮：弹 dialog 确认 → `DELETE /api/v1/admin/settings/:key` → 重载
-- 可编辑项按 category 分组展示（auth / maintenance / email / rate_limit / other），每组带标题
+- 可编辑项按 category 分组展示（auth / maintenance / email / rate_limit / storage / other），每组带标题
 
 **区域二：只读折叠面板（env-only 设置项，仅基础设施配置）**
 
@@ -174,6 +174,18 @@
 | `rate_limit_login_lock_threshold` | integer | `10` | 连续失败锁定阈值 | false | `RATE_LIMIT_LOGIN_LOCK_THRESHOLD` | 1 | 100 |
 | `rate_limit_login_lock_seconds` | integer | `3600` | 锁定时长（秒） | false | `RATE_LIMIT_LOGIN_LOCK_SECONDS` | 60 | 86400 |
 | `trusted_proxies` | string | `""` | 可信代理白名单（IP/CIDR，逗号分隔） | false | `TRUSTED_PROXIES` | — | — |
+
+**storage（7 项）：**
+
+| key | type | default | description | is_secret | envFallback |
+|-----|------|---------|-------------|-----------|-------------|
+| `storage_provider` | string | `"local"` | 存储 Provider（local/s3） | false | `STORAGE_PROVIDER` |
+| `s3_endpoint` | string | `""` | S3 兼容存储端点 | false | `S3_ENDPOINT` |
+| `s3_region` | string | `"us-east-1"` | S3 区域 | false | `S3_REGION` |
+| `s3_access_key` | string | `""` | S3 访问密钥 | false | `S3_ACCESS_KEY` |
+| `s3_secret_key` | string | `""` | S3 秘密密钥 | true | `S3_SECRET_KEY` |
+| `s3_bucket` | string | `"noj-support-packages"` | S3 存储桶名 | false | `S3_BUCKET` |
+| `s3_force_path_style` | boolean | `false` | 使用路径风格 URL（MinIO 等需要） | false | `S3_FORCE_PATH_STYLE` |
 
 **other（1 项）：**
 

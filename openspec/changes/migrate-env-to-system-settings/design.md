@@ -41,13 +41,6 @@
 | `JWT_SECRET` | 安全密钥，应在部署环境隔离；签名和验证密钥应一致不可运行时随意变更 |
 | `PORT` | HTTP 监听端口，启动时绑定 |
 | `NOJ_ENV` | 环境模式，影响多处行为（日志、CORS、健康检查） |
-| `STORAGE_PROVIDER` | 存储后端选择（local/s3），影响 `initStorage()` |
-| `S3_ENDPOINT` | S3 基础设施配置 |
-| `S3_REGION` | S3 基础设施配置 |
-| `S3_ACCESS_KEY` | S3 基础设施凭证 |
-| `S3_SECRET_KEY` | S3 基础设施凭证 |
-| `S3_BUCKET` | S3 基础设施配置 |
-| `S3_FORCE_PATH_STYLE` | S3 基础设施配置 |
 | `ADMIN_EMAIL` | Seed 阶段使用，在 `initSystemSettings()` 之前 |
 | `ADMIN_PASS` | Seed 阶段使用，在 `initSystemSettings()` 之前 |
 | `BCRYPT_SALT_ROUNDS` | 在 `lib/password.ts` 模块加载时读取，修改会影响已有密码哈希的一致性 |
@@ -76,6 +69,13 @@
 | `RATE_LIMIT_LOGIN_LOCK_SECONDS` | `rate_limit_login_lock_seconds` | integer | `3600` | rate_limit |
 | `TRUSTED_PROXIES` | `trusted_proxies` | string | `""` | rate_limit |
 | `AUDIT_LOG_RETENTION_DAYS` | `audit_log_retention_days` | integer | `90` | other |
+| `STORAGE_PROVIDER` | `storage_provider` | string | `"local"` | storage |
+| `S3_ENDPOINT` | `s3_endpoint` | string | `""` | storage |
+| `S3_REGION` | `s3_region` | string | `"us-east-1"` | storage |
+| `S3_ACCESS_KEY` | `s3_access_key` | string | `""` | storage |
+| `S3_SECRET_KEY` | `s3_secret_key` | string | `""` | storage |
+| `S3_BUCKET` | `s3_bucket` | string | `"noj-support-packages"` | storage |
+| `S3_FORCE_PATH_STYLE` | `s3_force_path_style` | boolean | `false` | storage |
 | `ALLOW_REGISTER` | `allow_register` | boolean | `true` | auth |
 | `RATE_LIMIT_LOGIN_ENABLED` | `rate_limit_login_enabled` | boolean | `true` | rate_limit |
 | `MAINTENANCE_MODE` | `maintenance_mode` | boolean | `false` | maintenance |
@@ -158,6 +158,21 @@ export function settingInt(key: string): number {
 - 从 `app.ts` 模块顶层移除 CORS 配置读取
 - 改为在 Hono 的中间件/路由中动态读取（或保持 env fallback，因为 CORS 变更极少需要运行时修改）
 - **权衡**：考虑到 CORS 配置极少需要运行时修改，且改为动态读取会增加每次请求的开销，决定 `cors_allowed_origins` 保留 env fallback 方式但不将其作为主要 DB-backed 设置项推广
+
+**模式 D — 延迟初始化读取（S3 配置）**：
+
+`lib/storage/factory.ts` 中 `getStorageProvider()` 在 `main.ts` 的 `initSystemSettings()` 之后调用，因此 S3 配置可安全改为 `getSetting()`：
+
+```typescript
+// Before
+const provider = Deno.env.get("STORAGE_PROVIDER") || "local";
+const { S3_ENDPOINT, S3_REGION, ... } = Deno.env.toObject();
+
+// After
+const provider = String(getSetting("storage_provider")?.value ?? "local");
+const endpoint = String(getSetting("s3_endpoint")?.value ?? "");
+// ...
+```
 
 ### Decision 4: 向后兼容策略
 
