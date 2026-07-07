@@ -54,6 +54,7 @@ services:
     build:
       context: ./noj-core
       dockerfile: Dockerfile.e2e
+    image: noj-e2e-core
     container_name: noj-e2e-core
     ports: ["8099:8000"]
     environment:
@@ -77,6 +78,7 @@ services:
     build:
       context: ./noj-judge
       dockerfile: Dockerfile.e2e
+    image: noj-e2e-judge
     container_name: noj-e2e-judge
     environment:
       REDIS_URL: redis://redis:6379/1
