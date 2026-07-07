@@ -3,7 +3,6 @@ import { adminMiddleware, authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import {
   BadRequestError,
-  NotFoundError,
   ValidationError,
 } from "../lib/errors.ts";
 import { listUsers, promoteUser } from "../services/auth.ts";
@@ -34,7 +33,6 @@ import {
 } from "../services/users.ts";
 import { addIpBan, listIpBans, removeIpBan } from "../services/banlist.ts";
 import {
-  getSetting,
   listSettings,
   resetSetting,
   updateSetting,
@@ -304,19 +302,6 @@ router.get("/dashboard/stats", async (c) => {
 router.get("/settings", (c) => {
   const items = listSettings();
   return c.json({ data: items });
-});
-
-/**
- * 获取单个设置项详情。
- * GET /api/v1/admin/settings/:key
- */
-router.get("/settings/:key", (c) => {
-  const key = c.req.param("key") as string;
-  const value = getSetting(key);
-  if (!value) {
-    throw new NotFoundError(`设置项不存在: ${key}`);
-  }
-  return c.json({ data: { key, ...value } });
 });
 
 /**

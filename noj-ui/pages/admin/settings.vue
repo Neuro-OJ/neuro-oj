@@ -46,6 +46,8 @@ interface SystemSetting {
   updated_at: string | null
   updated_by: string | null
   category: SettingCategory
+  min?: number
+  max?: number
 }
 
 const CATEGORY_LABEL: Record<SettingCategory, string> = {
@@ -139,6 +141,34 @@ const envOnlyGrouped = computed(() => {
     .filter((c) => groups.has(c))
     .map((c) => ({ category: c, items: groups.get(c)! }))
 })
+
+// 按 category 分组（DB-backed 设置项，spec 要求）
+const dbGrouped = computed(() => {
+  const groups = new Map<SettingCategory, SystemSetting[]>()
+  for (const s of dbSettings.value) {
+    const cat = (s.category ?? "other") as SettingCategory
+    if (!groups.has(cat)) groups.set(cat, [])
+    groups.get(cat)!.push(s)
+  }
+  const order: SettingCategory[] = [
+    "auth",
+    "maintenance",
+    "email",
+    "rate_limit",
+    "storage",
+    "other",
+  ]
+  return order
+    .filter((c) => groups.has(c))
+    .map((c) => ({ category: c, items: groups.get(c)! }))
+})
+
+/** AdminTable 列定义（env-only 只读面板） */
+const envOnlyColumns = [
+  { key: "key", label: "键名" },
+  { key: "effective_value", label: "当前值" },
+  { key: "description", label: "描述" },
+]
 
 /** 该 key 是否有未保存的修改 */
 function isDirty(key: string): boolean {
@@ -263,26 +293,37 @@ function toggleBoolean(key: string, currentVal: boolean) {
         </p>
       </div>
 
-      <div v-if="tableLoading" class="p-8 text-center text-sm text-text-secondary">
-        加载中...
-      </div>
-      <div v-else-if="dbSettings.length === 0" class="p-8 text-center text-sm text-text-secondary">
-        暂无可编辑设置项
-      </div>
-      <table v-else class="w-full text-sm">
-        <thead>
-          <tr class="bg-gray-50 border-b border-border">
-            <th class="px-3 py-2.5 text-left font-semibold text-text w-[180px]">设置项</th>
-            <th class="px-3 py-2.5 text-left font-semibold text-text">当前值</th>
-            <th class="px-3 py-2.5 text-left font-semibold text-text w-[90px]">来源</th>
-            <th class="px-3 py-2.5 text-left font-semibold text-text">描述</th>
-            <th class="px-3 py-2.5 text-right font-semibold text-text w-[200px]">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="s in dbSettings"
-            :key="s.key"
+      <AsyncContent
+        :status="tableLoading ? 'loading' : dbSettings.length === 0 ? 'empty' : 'data'"
+        empty-text="暂无可编辑设置项"
+      >
+        <div
+          v-for="group in dbGrouped"
+          :key="group.category"
+          class="border-b border-border last:border-b-0"
+        >
+          <div class="px-5 py-2 bg-gray-50/60 border-b border-border">
+            <h3 class="text-[13px] font-semibold text-text-secondary uppercase tracking-wide">
+              {{ CATEGORY_LABEL[group.category] }}
+              <span class="ml-1 text-text-muted normal-case font-normal">
+                ({{ group.items.length }} 项)
+              </span>
+            </h3>
+          </div>
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-white border-b border-border">
+                <th class="px-3 py-2.5 text-left font-semibold text-text w-[180px]">设置项</th>
+                <th class="px-3 py-2.5 text-left font-semibold text-text">当前值</th>
+                <th class="px-3 py-2.5 text-left font-semibold text-text w-[90px]">来源</th>
+                <th class="px-3 py-2.5 text-left font-semibold text-text">描述</th>
+                <th class="px-3 py-2.5 text-right font-semibold text-text w-[200px]">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="s in group.items"
+                :key="s.key"
             class="border-b border-border last:border-b-0 transition-colors"
             :class="isDirty(s.key) ? 'bg-amber-50' : 'hover:bg-gray-50'"
           >
@@ -340,6 +381,8 @@ function toggleBoolean(key: string, currentVal: boolean) {
                 v-model.number="drafts[s.key]"
                 type="number"
                 step="1"
+                :min="s.min"
+                :max="s.max"
                 class="w-full px-2.5 py-1.5 text-[13px] font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
               />
             </td>
@@ -387,6 +430,8 @@ function toggleBoolean(key: string, currentVal: boolean) {
           </tr>
         </tbody>
       </table>
+        </div>
+      </AsyncContent>
     </section>
 
     <!-- ─── 第二组：env-only 只读设置（折叠面板） ───────────── -->
@@ -434,37 +479,23 @@ function toggleBoolean(key: string, currentVal: boolean) {
                 </span>
               </h3>
             </div>
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="bg-white border-b border-border">
-                  <th class="px-3 py-2 text-left font-semibold text-text w-[240px]">键名</th>
-                  <th class="px-3 py-2 text-left font-semibold text-text">当前值</th>
-                  <th class="px-3 py-2 text-left font-semibold text-text">描述</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="s in group.items"
-                  :key="s.key"
-                  class="border-b border-border last:border-b-0 hover:bg-gray-50"
+            <AdminTable
+              :columns="envOnlyColumns"
+              :data="group.items"
+              :loading="false"
+            >
+              <template #cell-key="{ row }">
+                <code class="font-mono text-[13px] text-text">{{ row.key }}</code>
+              </template>
+              <template #cell-effective_value="{ row }">
+                <code
+                  class="font-mono text-[13px] px-2 py-0.5 rounded"
+                  :class="row.is_secret ? 'bg-amber-50 text-amber-800' : 'bg-gray-50 text-text'"
                 >
-                  <td class="px-3 py-2 align-top">
-                    <code class="font-mono text-[13px] text-text">{{ s.key }}</code>
-                  </td>
-                  <td class="px-3 py-2 align-top">
-                    <code
-                      class="font-mono text-[13px] px-2 py-0.5 rounded"
-                      :class="s.is_secret ? 'bg-amber-50 text-amber-800' : 'bg-gray-50 text-text'"
-                    >
-                      {{ String(s.effective_value) }}
-                    </code>
-                  </td>
-                  <td class="px-3 py-2 align-top text-[13px] text-text-secondary">
-                    {{ s.description }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                  {{ String(row.effective_value) }}
+                </code>
+              </template>
+            </AdminTable>
           </div>
         </div>
       </details>

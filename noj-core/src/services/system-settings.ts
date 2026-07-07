@@ -60,6 +60,10 @@ export interface SystemSettingListItem {
   updated_at: string | null;
   updated_by: string | null;
   category: SettingCategory;
+  /** integer 类型专用：最小值（含） */
+  min?: number;
+  /** integer 类型专用：最大值（含） */
+  max?: number;
 }
 
 /** module-level 缓存：key -> 解析后的值 */
@@ -281,6 +285,8 @@ export function listSettings(): SystemSettingListItem[] {
       updated_at: val.updatedAt,
       updated_by: val.updatedBy,
       category: def.category,
+      min: def.min,
+      max: def.max,
     });
   }
 
@@ -363,7 +369,7 @@ export async function updateSetting(
   await logAudit(
     "settings.update",
     {
-      action: "settings.update",
+      action: "PUT",
       key,
       from: fromRaw,
       to: toValue,
@@ -411,7 +417,7 @@ export async function resetSetting(
   await logAudit(
     "settings.update",
     {
-      action: "settings.update",
+      action: "DELETE",
       key,
       from: fromRaw,
       to: null,
