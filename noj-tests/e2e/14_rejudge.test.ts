@@ -15,7 +15,7 @@ import {
   BASE_URL,
   CODE_SAMPLES,
   isE2E,
-  loginAndChangePassword,
+  getAdminToken,
   pollSubmission,
   registerUser,
   submitCode,
@@ -23,9 +23,6 @@ import {
 } from "./helper.ts";
 
 const skip = !isE2E;
-const ADMIN_EMAIL = Deno.env.get("E2E_ADMIN_EMAIL") || "e2e_admin@test.com";
-const ADMIN_PASS = Deno.env.get("E2E_ADMIN_PASS") || "e2e_admin_pass";
-const ADMIN_NEW_PASS = "E2eAdminChangedPass1";
 const PROBLEM_ID = "1001";
 
 let adminToken = "";
@@ -63,11 +60,7 @@ Deno.test({
     if (!isE2E) return;
     await waitForServer();
 
-    adminToken = await loginAndChangePassword(
-      ADMIN_EMAIL,
-      ADMIN_PASS,
-      ADMIN_NEW_PASS,
-    );
+    adminToken = await getAdminToken();
 
     const ts = Date.now().toString(36);
     userToken = await registerUser(

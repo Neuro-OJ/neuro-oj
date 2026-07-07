@@ -81,6 +81,59 @@ export function apiGet(path: string, token?: string) {
 
 // ── 用户辅助 ──────────────────────────────────────
 
+// ── Token 缓存 ──────────────────────────────────────
+
+const adminCreds = {
+  email: Deno.env.get("E2E_ADMIN_EMAIL") || "e2e_admin@test.com",
+  pass: Deno.env.get("E2E_ADMIN_PASS") || "e2e_admin_pass",
+  newPass: "E2eAdminChangedPass1",
+};
+
+let _adminToken: string | null = null;
+
+/**
+ * 获取缓存的 admin token。
+ * 首次调用执行完整的 loginAndChangePassword 流程（含强制改密），
+ * 后续调用直接返回缓存 token，避免重复 bcrypt 哈希。
+ */
+export async function getAdminToken(): Promise<string> {
+  if (_adminToken) return _adminToken;
+  _adminToken = await loginAndChangePassword(
+    adminCreds.email,
+    adminCreds.pass,
+    adminCreds.newPass,
+  );
+  return _adminToken;
+}
+
+const _userCache = new Map<string, { token: string; password: string }>();
+
+/**
+ * 获取或创建缓存用户。
+ *
+ * 首次以该 key 调用时注册用户，后续返回缓存的 token。
+ * 避免同一逻辑用户被重复注册（每次注册都触发 bcrypt）。
+ *
+ * @param key   缓存键（如 "submissions_user"）
+ * @param username 用户名
+ * @param email    邮箱
+ * @param password 密码（默认 Pass1234Test）
+ */
+export async function getOrCreateUser(
+  key: string,
+  username: string,
+  email: string,
+  password = "Pass1234Test",
+): Promise<{ token: string; password: string }> {
+  const cached = _userCache.get(key);
+  if (cached) return cached;
+
+  const token = await registerUser(username, email, password);
+  const entry = { token, password };
+  _userCache.set(key, entry);
+  return entry;
+}
+
 /**
  * 注册用户并返回 token。如果已存在则登录。
  */

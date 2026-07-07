@@ -15,15 +15,12 @@ import {
   apiGet,
   apiPost,
   isE2E,
-  loginAndChangePassword,
+  getAdminToken,
   registerUser,
   waitForServer,
 } from "./helper.ts";
 
 const skip = !isE2E;
-const ADMIN_EMAIL = Deno.env.get("E2E_ADMIN_EMAIL") || "e2e_admin@test.com";
-const ADMIN_PASS = Deno.env.get("E2E_ADMIN_PASS") || "e2e_admin_pass";
-const ADMIN_NEW_PASS = "E2eAdminChangedPass1";
 
 // S3 模式检测：需要 MinIO 端点和 noj-core 以 S3 模式运行
 const s3Endpoint = Deno.env.get("S3_ENDPOINT");
@@ -73,11 +70,7 @@ Deno.test({
       return;
     }
 
-    adminToken = await loginAndChangePassword(
-      ADMIN_EMAIL,
-      ADMIN_PASS,
-      ADMIN_NEW_PASS,
-    );
+    adminToken = await getAdminToken();
 
     const ts = Date.now().toString(36);
     ownerToken = await registerUser(

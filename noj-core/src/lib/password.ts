@@ -3,12 +3,11 @@ import bcrypt from "bcryptjs";
 /**
  * bcrypt 哈希的盐轮数。
  *
- * 历史值为 10（OWASP 2025+ 已不推荐）。当前值 12 符合 OWASP 最低建议，
- * 在 2026 年的硬件水平下，单次哈希约 250-300ms——注册/登录可接受，
- * 暴力破解在 GPU 集群上仍需数年。
- * 后续若需要可评估迁移至 argon2id（OWASP 首选）。
+ * 历史值为 10（OWASP 2025+ 已不推荐）。默认值 12 符合 OWASP 最低建议，
+ * 在 2026 年的硬件水平下，单次哈希约 250-300ms。
+ * 可通过环境变量 BCRYPT_SALT_ROUNDS 覆盖（E2E 测试环境设为 4 以加速）。
  */
-const SALT_ROUNDS = 12;
+const SALT_ROUNDS = parseInt(Deno.env.get("BCRYPT_SALT_ROUNDS") || "12", 10);
 
 /**
  * 对明文密码进行 bcrypt 哈希。
