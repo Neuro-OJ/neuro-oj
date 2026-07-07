@@ -68,7 +68,7 @@ export const ENV_ONLY_DEFINITIONS: readonly EnvOnlyDefinition[] = [
   {
     key: "REDIS_URL",
     description: "Redis 连接串",
-    is_secret: false,
+    is_secret: true,
     category: "redis",
   },
 

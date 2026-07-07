@@ -88,6 +88,38 @@ export function maskSecret(value: unknown): string {
   return `${str.slice(0, 3)}***${str.slice(-3)}`;
 }
 
+/** SHA-256 哈希脱敏：计算值的 SHA-256 摘要，返回 `sha256$<前16位hex>` */
+export async function hashSecret(value: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(value);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = new Uint8Array(hashBuffer);
+  let hex = "";
+  for (let i = 0; i < hashArray.length; i++) {
+    hex += hashArray[i].toString(16).padStart(2, "0");
+  }
+  return `sha256$${hex.slice(0, 16)}`;
+}
+
+/** URL 凭据脱敏：移除 user:password@ 部分，仅保留协议+主机+路径 */
+function stripUrlCredentials(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.username || parsed.password) {
+      parsed.username = "";
+      parsed.password = "";
+      return parsed.toString();
+    }
+    return url;
+  } catch {
+    // 解析失败（非标准 URL 格式），安全起见返回脱敏后的掩码
+    return maskSecret(url);
+  }
+}
+
+/** 敏感设置键名白名单：这些 key 在返回前端前需剥离 URL 凭据 */
+const URL_CREDENTIAL_KEYS = new Set(["DATABASE_URL", "REDIS_URL"]);
+
 // ─── 类型校验 ───────────────────────────────────────────────
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -267,18 +299,23 @@ export function getSetting(key: string): SettingValue | null {
  * 列出所有设置项（DB-backed 5 项 + env-only N 项）。
  * 敏感字段在 effective_value 位置返回掩码后的字符串。
  */
-export function listSettings(): SystemSettingListItem[] {
+export async function listSettings(): Promise<SystemSettingListItem[]> {
   const items: SystemSettingListItem[] = [];
 
   // 1. DB-backed 设置项
   for (const def of SETTING_DEFINITIONS) {
     const val = getSetting(def.key);
     if (!val) continue; // 不应发生（registry default 兜底）
+
+    // 后端脱敏：敏感字段在 API 响应中不暴露完整内容
+    const sanitized = def.is_secret ? maskSecret(val.value) : val.value;
+    const rawSanitized = def.is_secret ? JSON.stringify(sanitized) : val.raw;
+
     items.push({
       key: def.key,
       type: def.type,
-      effective_value: def.is_secret ? maskSecret(val.value) : val.value,
-      raw_value: val.raw,
+      effective_value: sanitized,
+      raw_value: rawSanitized,
       source: val.source,
       is_secret: def.is_secret,
       description: def.description,
@@ -294,12 +331,32 @@ export function listSettings(): SystemSettingListItem[] {
   for (const def of ENV_ONLY_DEFINITIONS) {
     const envVal = getEnvSnapshotValue(def.key);
     if (envVal === undefined) continue; // 未设置不展示
+
+    // 后端脱敏：敏感值不在 API 响应中暴露完整内容
+    let sanitized: string;
+    let rawSanitized: string;
+    if (URL_CREDENTIAL_KEYS.has(def.key)) {
+      // URL 凭据：仅移除 user:password@，保留协议+主机+路径
+      sanitized = stripUrlCredentials(envVal);
+      rawSanitized = JSON.stringify(sanitized);
+    } else if (def.key === "JWT_SECRET") {
+      // JWT_SECRET 使用 SHA-256 哈希，防止暴力补全
+      sanitized = await hashSecret(envVal);
+      rawSanitized = JSON.stringify(sanitized);
+    } else if (def.is_secret) {
+      // 其他敏感字段：通用掩码
+      sanitized = maskSecret(envVal);
+      rawSanitized = JSON.stringify(sanitized);
+    } else {
+      sanitized = envVal;
+      rawSanitized = JSON.stringify(envVal);
+    }
+
     items.push({
       key: def.key,
       type: "string",
-      effective_value: def.is_secret ? maskSecret(envVal) : envVal,
-      // spec 要求 raw_value 为 "原始 JSON 编码字符串"，env 值统一 JSON.stringify
-      raw_value: JSON.stringify(envVal),
+      effective_value: sanitized,
+      raw_value: rawSanitized,
       source: "env",
       is_secret: def.is_secret,
       description: def.description,

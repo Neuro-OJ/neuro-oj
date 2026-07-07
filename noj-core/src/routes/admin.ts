@@ -299,8 +299,8 @@ router.get("/dashboard/stats", async (c) => {
  * 注意：必须先注册静态路径 `/settings`，再注册参数化路径 `/settings/:key`，
  * 否则 `GET /settings` 会被 `/settings/:key` 误匹配。
  */
-router.get("/settings", (c) => {
-  const items = listSettings();
+router.get("/settings", async (c) => {
+  const items = await listSettings();
   return c.json({ data: items });
 });
 

@@ -495,6 +495,14 @@ function toggleBoolean(key: string, currentVal: boolean) {
                   {{ String(row.effective_value) }}
                 </code>
               </template>
+              <template #cell-description="{ row }">
+                <div class="flex flex-col gap-0.5">
+                  <span class="text-[13px] text-text-secondary">{{ row.description }}</span>
+                  <span v-if="row.key === 'JWT_SECRET'" class="text-[11px] text-text-muted">
+                    ⓘ 此值已做 SHA-256 哈希处理（前16位），仅用于部署密钥比对
+                  </span>
+                </div>
+              </template>
             </AdminTable>
           </div>
         </div>
