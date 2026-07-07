@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Switch } from "@headlessui/vue"
 import {
   RotateCcw,
   Save,
@@ -239,10 +240,6 @@ async function confirmReset(s: SystemSetting) {
 }
 
 // ─── 编辑控件辅助 ─────────────────────────────────────────
-
-function toggleBoolean(key: string, currentVal: boolean) {
-  drafts.value[key] = !currentVal
-}
 </script>
 
 <template>
@@ -328,25 +325,23 @@ function toggleBoolean(key: string, currentVal: boolean) {
             <!-- 当前值（可编辑） -->
             <td class="px-3 py-3 align-top">
               <!-- boolean：Switch -->
-              <label
+              <div
                 v-if="s.type === 'boolean'"
-                class="inline-flex items-center gap-2 cursor-pointer"
+                class="inline-flex items-center gap-2"
               >
-                <button
-                  type="button"
-                  class="relative w-10 h-5 rounded-full transition-colors duration-150"
+                <Switch
+                  :model-value="!!drafts[s.key]"
+                  @update:model-value="(v) => drafts[s.key] = v"
                   :class="drafts[s.key] ? 'bg-primary' : 'bg-gray-300'"
-                  @click="toggleBoolean(s.key, !!drafts[s.key])"
+                  class="relative inline-flex h-5 w-10 shrink-0 items-center rounded-full transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                 >
                   <span
-                    class="absolute top-0.5 size-4 bg-white rounded-full shadow transition-transform duration-150"
-                    :class="drafts[s.key] ? 'translate-x-5' : 'translate-x-0.5'"
+                    class="inline-block size-4 transform rounded-full bg-white shadow transition-transform duration-150"
+                    :class="drafts[s.key] ? 'translate-x-[22px]' : 'translate-x-[2px]'"
                   />
-                </button>
-                <span class="text-[13px] font-mono">
-                  {{ drafts[s.key] ? "true" : "false" }}
-                </span>
-              </label>
+                </Switch>
+                <span class="text-[13px] font-mono">{{ drafts[s.key] ? "true" : "false" }}</span>
+              </div>
 
               <!-- string：Input -->
               <div
