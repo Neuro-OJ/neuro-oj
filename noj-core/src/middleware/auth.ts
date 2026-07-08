@@ -1,6 +1,12 @@
 import type { Context, Next } from "hono";
+import { and, eq, isNull } from "drizzle-orm";
 import { ForbiddenError, UnauthorizedError } from "../lib/errors.ts";
 import { verifyToken } from "../lib/jwt.ts";
+import { getDb } from "../db/connection.ts";
+import { userBans } from "../db/schema.ts";
+import { getCached } from "../lib/banCache.ts";
+import { getClientIp } from "../lib/rateLimitEnv.ts";
+import { runWithContext } from "../lib/requestContext.ts";
 
 /**
  * 强制改密白名单（issue #75）。
@@ -23,6 +29,87 @@ export const PASSWORD_CHANGE_WHITELIST: readonly string[] = [
 ] as const;
 
 /**
+ * 封禁状态校验白名单（issue #102 / ban-status-endpoint）。
+ *
+ * 与 `banlistMiddleware` 统一采用"方法限制 + 最小白名单"策略：
+ * - GET/HEAD/OPTIONS → 直接放行（被封用户可浏览、查 ban-status）
+ * - POST/PUT/PATCH/DELETE → 检查封禁状态（白名单路径豁免）
+ *
+ * 白名单仅保留 logout——被封用户必须能登出。
+ * login 不需要白名单（login 路由不经过 authMiddleware）；
+ * /me 不需要白名单（GET 方法限制自动放行）。
+ */
+export const BAN_WHITELIST: readonly string[] = [
+  "/api/v1/auth/logout",
+] as const;
+
+/**
+ * 用户 ban 状态（从 users 表读，60s LRU 缓存）。
+ */
+export interface UserBanState {
+  banned: boolean;
+  reason: string;
+  until: string | null;
+}
+
+/**
+ * 封禁状态公共校验（authMiddleware 与 optionalAuthMiddleware 共享）。
+ *
+ * 方法限制：GET/HEAD/OPTIONS 放行（被封用户可浏览、查状态）
+ * 白名单：写操作中豁免的路径（如 logout）
+ */
+async function checkBanStatus(c: Context, userId: string): Promise<void> {
+  if (
+    c.req.method !== "GET" && c.req.method !== "HEAD" &&
+    c.req.method !== "OPTIONS" &&
+    !BAN_WHITELIST.includes(c.req.path)
+  ) {
+    const banState = await getUserBanState(userId);
+    const stillBanned = banState.banned &&
+      (!banState.until || Date.parse(banState.until) > Date.now());
+    if (stillBanned) {
+      throw new ForbiddenError("账号已被封禁", "USER_BANNED", {
+        reason: banState.reason,
+        until: banState.until,
+      });
+    }
+  }
+}
+
+/**
+ * 可选认证中间件——有 token 则验证并注入用户信息，无 token 则以匿名身份放行。
+ *
+ * 与 authMiddleware 的区别：
+ * - authMiddleware：要求必须登录，未登录直接抛 401
+ * - optionalAuthMiddleware：未登录也放行，但 c.get("userId") 为 undefined
+ *
+ * 适用于公开但支持个性化数据的端点（如公共提交列表、题目列表）。
+ * 下游路由通过 `if (!c.get("userId"))` 判断是否匿名。
+ */
+export async function optionalAuthMiddleware(c: Context, next: Next) {
+  const authHeader = c.req.header("Authorization");
+
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.slice(7);
+    let payload: Awaited<ReturnType<typeof verifyToken>> | null = null;
+    try {
+      payload = await verifyToken(token);
+    } catch {
+      // token 无效或过期：以匿名身份放行
+    }
+
+    if (payload) {
+      c.set("userId", payload.sub);
+      c.set("userRole", payload.role);
+      c.set("mustChangePassword", payload.must_change_password ?? false);
+
+      await checkBanStatus(c, payload.sub);
+    }
+  }
+  await next();
+}
+
+/**
  * 认证中间件——验证 JWT Bearer token。
  *
  * 提取 Authorization 头中的 Bearer token，验证签名和有效期，
@@ -33,6 +120,10 @@ export const PASSWORD_CHANGE_WHITELIST: readonly string[] = [
  * issue #75：若 token 携带 must_change_password=true 且请求路径
  * 不在白名单内，抛 ForbiddenError（PASSWORD_CHANGE_REQUIRED），
  * 由 app.ts onError 统一处理（评审修复 M1）。
+ *
+ * issue #102：扩展封禁校验——从 DB 查 users.banned/banned_reason/banned_until
+ * （60s LRU 缓存），命中且未过期则抛 ForbiddenError（USER_BANNED）。
+ * `banUser`/`unbanUser` 写操作会调 `invalidateBanCache` 立即失效。
  */
 export async function authMiddleware(c: Context, next: Next) {
   const authHeader = c.req.header("Authorization");
@@ -58,6 +149,9 @@ export async function authMiddleware(c: Context, next: Next) {
     throw new ForbiddenError("请先修改密码", "PASSWORD_CHANGE_REQUIRED");
   }
 
+  // 封禁校验（与 optionalAuthMiddleware 共享 checkBanStatus）
+  await checkBanStatus(c, payload.sub);
+
   c.set("userId", payload.sub);
   c.set("userRole", payload.role);
   c.set("mustChangePassword", payload.must_change_password ?? false);
@@ -65,14 +159,57 @@ export async function authMiddleware(c: Context, next: Next) {
 }
 
 /**
+ * 读取用户 ban 状态（60s LRU 缓存）。
+ * 缓存 key: `user:${userId}` → UserBanState
+ * 从 user_bans 表查询活跃封禁（unbanned_at IS NULL）。
+ */
+export async function getUserBanState(userId: string): Promise<UserBanState> {
+  return await getCached(`user:${userId}`, async () => {
+    const db = getDb();
+    const rows = await db
+      .select({
+        reason: userBans.reason,
+        banned_until: userBans.banned_until,
+      })
+      .from(userBans)
+      .where(and(
+        eq(userBans.user_id, userId),
+        isNull(userBans.unbanned_at),
+      ))
+      .limit(1);
+    if (rows.length === 0) {
+      return { banned: false, reason: "", until: null };
+    }
+    return {
+      banned: true,
+      reason: rows[0].reason,
+      until: rows[0].banned_until,
+    };
+  });
+}
+
+/**
  * 管理员中间件——检查当前用户是否为管理员。
  *
  * 需要在 authMiddleware 之后使用，依赖其注入的 userRole 字段。
  * 若用户角色不为 "admin"，抛 ForbiddenError 由 app.ts onError 统一处理。
+ *
+ * 注入 RequestContext 到 AsyncLocalStorage（issue #101），使下游 service 层
+ * 通过 getRequestContext() 获取 actorId / actorIp / actorRole，
+ * 用于审计日志埋点。
  */
 export async function adminMiddleware(c: Context, next: Next) {
-  if (c.get("userRole") !== "admin") {
+  const userRole = c.get("userRole");
+  if (userRole !== "admin") {
     throw new ForbiddenError("需要管理员权限");
   }
-  await next();
+
+  return await runWithContext(
+    {
+      actorId: c.get("userId"),
+      actorIp: getClientIp(c),
+      actorRole: userRole,
+    },
+    () => next(),
+  );
 }

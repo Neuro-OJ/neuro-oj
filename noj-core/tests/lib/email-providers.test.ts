@@ -93,7 +93,7 @@ Deno.test({
       await assertRejects(
         () => aliyunSend("test@example.com", "http://localhost/token"),
         Error,
-        "ALIBABA_ACCESS_KEY_ID",
+        "阿里云 AccessKey ID",
       );
     } finally {
       // 恢复环境变量
@@ -122,6 +122,7 @@ Deno.test({
       Deno.env.delete("TENCENT_SECRET_ID");
       Deno.env.delete("TENCENT_SECRET_KEY");
       Deno.env.delete("TENCENT_FROM_EMAIL");
+      Deno.env.delete("TENCENT_REGION");
 
       const { sendPasswordResetEmail: tencentSend } = await import(
         "../../src/lib/email-providers/tencent.ts"
@@ -130,7 +131,7 @@ Deno.test({
       await assertRejects(
         () => tencentSend("test@example.com", "http://localhost/token"),
         Error,
-        "TENCENT_SECRET_ID",
+        "腾讯云 SecretId",
       );
     } finally {
       if (originalId) Deno.env.set("TENCENT_SECRET_ID", originalId);

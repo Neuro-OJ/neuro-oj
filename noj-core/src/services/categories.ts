@@ -6,6 +6,7 @@ import {
   ConflictError,
   NotFoundError,
 } from "../lib/errors.ts";
+import { logAudit } from "./audit-log.ts";
 
 /**
  * 分类响应（树形节点）。
@@ -357,4 +358,15 @@ export async function deleteCategory(id: string): Promise<void> {
   }
 
   await db.delete(categories).where(eq(categories.id, id));
+
+  // 审计：记录分类删除（name+slug 从预取行复用，无额外 round-trip）
+  await logAudit(
+    "categories.delete",
+    {
+      action: "categories.delete",
+      name: existing[0].name,
+      slug: existing[0].slug,
+    },
+    { type: "category", id },
+  );
 }

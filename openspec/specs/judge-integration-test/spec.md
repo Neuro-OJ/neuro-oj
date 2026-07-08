@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+定义 noj-judge 集成测试规范，覆盖容器生命周期、资源限制、安全隔离、支持包注入和并发管理，通过真实的 Docker daemon 验证沙箱行为。
+
+## Requirements
 
 ### Requirement: 集成测试框架
 

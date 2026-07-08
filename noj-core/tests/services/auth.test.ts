@@ -1,11 +1,15 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { eq } from "drizzle-orm";
 import {
   getUserProfile,
   loginUser,
+  promoteUser,
   registerUser,
 } from "../../src/services/auth.ts";
-import { resetDbForTest } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { auditLogs, users } from "../../src/db/schema.ts";
 import { ConflictError, UnauthorizedError } from "../../src/lib/errors.ts";
+import { enterTestContext } from "../../src/lib/requestContext.ts";
 
 // PGlite 内存数据库始终可用
 const dbAvailable = true;
@@ -185,5 +189,56 @@ Deno.test({
       UnauthorizedError,
       "用户不存在",
     );
+  },
+});
+
+Deno.test({
+  name: "auth service: promoteUser 写一条 role_change 审计",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+
+    // 准备：插入一个 admin 操作者和一个 user 目标
+    const db = getDb();
+    const adminId = crypto.randomUUID();
+    const target = await registerUser({
+      username: `test-promote-${Date.now()}`,
+      email: `test-promote-${Date.now()}@example.com`,
+      password: "PromotePwd-2024-Xy9",
+    });
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+      id: adminId,
+      username: `test-admin-${Date.now()}`,
+      email: `test-admin-${Date.now()}@example.com`,
+      password_hash: "",
+      role: "admin",
+      created_at: now,
+      updated_at: now,
+    });
+
+    // 注入 admin actor context
+    enterTestContext({
+      actorId: adminId,
+      actorIp: "10.0.0.1",
+      actorRole: "admin",
+    });
+
+    await getDb().delete(auditLogs);
+
+    // 执行：升级目标为 admin
+    const result = await promoteUser(target.id, "admin", adminId);
+    assertEquals(result.role, "admin");
+
+    // 验证：审计日志写入
+    const rows = await getDb().select().from(auditLogs).where(
+      eq(auditLogs.action, "users.role_change"),
+    );
+    assertEquals(rows.length, 1);
+    assertEquals(rows[0].target_id, target.id);
+    assertEquals(rows[0].ip_address, "10.0.0.1");
+    assertEquals(rows[0].admin_id, adminId);
   },
 });

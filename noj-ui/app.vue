@@ -1,8 +1,23 @@
 <template>
     <NuxtLayout>
+        <BanBanner v-if="ipBanned" type="ip" :ip-info="ipBanInfo" />
+        <BanBanner v-if="userBanned" type="user" :user-info="userBanInfo" />
         <NuxtPage />
     </NuxtLayout>
 </template>
+
+<script setup lang="ts">
+import BanBanner from "~/components/BanBanner.vue"
+import { useBanStatus } from "~/composables/useBanStatus"
+
+const { ipBanned, ipBanInfo, userBanned, userBanInfo, fetch } = useBanStatus()
+
+// 首次加载时获取封禁状态
+if (import.meta.client) {
+  fetch()
+}
+</script>
+
 <style>
 :root {
     --c-primary: #2563eb; --c-primary-dark: #1d4ed8; --c-primary-light: #3b82f6;

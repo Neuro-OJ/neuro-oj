@@ -24,9 +24,8 @@ if (hasDb) {
     const elapsed = (performance.now() - start).toFixed(0);
     console.log(`[migrate] 迁移完成 (${elapsed}ms)`);
 
-    // 关闭数据库连接池，否则 postgres.js 会阻止 Deno 进程退出
-    const { resetDbForTest } = await import("../src/db/connection.ts");
-    await resetDbForTest();
+    // 强制退出，避免 postgres.js 连接阻止 Deno 进程终止
+    Deno.exit(0);
   } catch (err) {
     console.error("[migrate] 迁移失败:", err);
     Deno.exit(1);

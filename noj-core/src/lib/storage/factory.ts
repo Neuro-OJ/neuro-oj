@@ -11,6 +11,7 @@
  */
 
 import type { StorageProvider } from "./types.ts";
+import { getSetting } from "../../services/system-settings.ts";
 
 let instance: StorageProvider | null = null;
 
@@ -23,38 +24,38 @@ let instance: StorageProvider | null = null;
 export async function getStorageProvider(): Promise<StorageProvider> {
   if (instance) return instance;
 
-  const provider = Deno.env.get("STORAGE_PROVIDER") || "local";
+  const provider = String(getSetting("storage_provider")?.value ?? "local");
 
   switch (provider) {
     case "s3": {
       const { S3StorageProvider } = await import("./s3.ts");
-      const {
-        S3_ENDPOINT,
-        S3_REGION,
-        S3_ACCESS_KEY,
-        S3_SECRET_KEY,
-        S3_BUCKET,
-        S3_FORCE_PATH_STYLE,
-      } = Deno.env.toObject();
+      const endpoint = String(getSetting("s3_endpoint")?.value ?? "");
+      const region = String(getSetting("s3_region")?.value ?? "us-east-1");
+      const accessKeyId = String(getSetting("s3_access_key")?.value ?? "");
+      const secretAccessKey = String(getSetting("s3_secret_key")?.value ?? "");
+      const bucket = String(
+        getSetting("s3_bucket")?.value ?? "noj-support-packages",
+      );
+      const forcePathStyle = getSetting("s3_force_path_style")?.value === true;
 
-      if (!S3_ENDPOINT) {
+      if (!endpoint) {
         throw new Error(
-          "STORAGE_PROVIDER=s3 但未设置 S3_ENDPOINT 环境变量",
+          "storage_provider=s3 但未配置 S3 端点（s3_endpoint），请通过系统设置或环境变量配置",
         );
       }
-      if (!S3_ACCESS_KEY || !S3_SECRET_KEY) {
+      if (!accessKeyId || !secretAccessKey) {
         throw new Error(
-          "STORAGE_PROVIDER=s3 但未设置 S3_ACCESS_KEY 和 S3_SECRET_KEY",
+          "storage_provider=s3 但未配置访问密钥（s3_access_key / s3_secret_key），请通过系统设置或环境变量配置",
         );
       }
 
       instance = new S3StorageProvider({
-        endpoint: S3_ENDPOINT,
-        region: S3_REGION || "us-east-1",
-        accessKeyId: S3_ACCESS_KEY,
-        secretAccessKey: S3_SECRET_KEY,
-        bucket: S3_BUCKET || "noj-support-packages",
-        forcePathStyle: S3_FORCE_PATH_STYLE === "true",
+        endpoint,
+        region,
+        accessKeyId,
+        secretAccessKey,
+        bucket,
+        forcePathStyle,
       });
       break;
     }

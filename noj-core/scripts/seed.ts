@@ -20,6 +20,7 @@ import {
   problemsCategories,
   users,
 } from "../src/db/schema.ts";
+import { getStorageProvider } from "../src/lib/storage/mod.ts";
 
 interface SampleProblem {
   id: string;
@@ -58,7 +59,7 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
     difficulty: "easy",
     judge_image: "noj-judge-python",
     judge_command: "python3 /tmp/evaluate.py",
-    support_package_storage_url: "data/packages/1001.zip",
+    support_package_storage_url: null, // 由 seedSupportPackages 注册后填充
     time_limit_ms: 5000,
     memory_limit_mb: 512,
     number: 1001,
@@ -99,7 +100,7 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
     difficulty: "easy",
     judge_image: "noj-judge-python",
     judge_command: "python3 /tmp/evaluate.py",
-    support_package_storage_url: "data/packages/1003.zip",
+    support_package_storage_url: null, // 由 seedSupportPackages 注册后填充
     time_limit_ms: 1000,
     memory_limit_mb: 256,
     number: 1003,
@@ -195,6 +196,45 @@ async function seedJudgeImages(): Promise<void> {
   }
 }
 
+/**
+ * 用 StorageProvider 注册支持包，获取 noj-storage:// URL 后写回数据库。
+ *
+ * 对每个有 zip 文件的样例题，读取 data/packages/<id>.zip，
+ * 通过 storage.put() 注册到存储层（local 模式下存为 <hash>.zip），
+ * 并将返回的 noj-storage:// URL 更新到 problems.support_package_storage_url。
+ */
+async function seedSupportPackages(): Promise<void> {
+  const db = getDb();
+  const storage = await getStorageProvider();
+  const PACKAGES_DIR = "data/packages";
+
+  for (const problem of SAMPLE_PROBLEMS) {
+    const zipPath = `${PACKAGES_DIR}/${problem.id}.zip`;
+    try {
+      const stat = await Deno.stat(zipPath);
+      if (!stat.isFile) {
+        console.log(`  跳过支持包（不是文件）: ${zipPath}`);
+        continue;
+      }
+    } catch {
+      console.log(`  跳过支持包（文件不存在）: ${zipPath}`);
+      continue;
+    }
+
+    const data = await Deno.readFile(zipPath);
+    const storageUrl = await storage.put(problem.id, data, "application/zip");
+    await db
+      .update(problems)
+      .set({
+        support_package_storage_url: storageUrl,
+        updated_at: new Date().toISOString(),
+      })
+      .where(eq(problems.id, problem.id));
+
+    console.log(`  已注册支持包: ${problem.id} → ${storageUrl}`);
+  }
+}
+
 async function seedProblems(): Promise<void> {
   const db = getDb();
   const now = new Date().toISOString();
@@ -207,7 +247,20 @@ async function seedProblems(): Promise<void> {
         created_at: now,
         updated_at: now,
       })
-      .onConflictDoNothing({ target: problems.id });
+      .onConflictDoUpdate({
+        target: problems.id,
+        set: {
+          title: problem.title,
+          description: problem.description,
+          difficulty: problem.difficulty,
+          judge_image: problem.judge_image,
+          judge_command: problem.judge_command,
+          time_limit_ms: problem.time_limit_ms,
+          memory_limit_mb: problem.memory_limit_mb,
+          updated_at: now,
+          // support_package_storage_url 由 seedSupportPackages 单独管理
+        },
+      });
 
     console.log(`已同步题目: ${problem.id} ${problem.title}`);
   }
@@ -491,7 +544,7 @@ async function main() {
       throw err;
     }
 
-    // 4. 插入示例题
+    // 4. 插入示例题（先生成行，供后续 support package 写入）
     try {
       await seedProblems();
     } catch (err) {
@@ -499,7 +552,16 @@ async function main() {
       throw err;
     }
 
-    // 5. 初始化示例分类
+    // 5. 注册支持包（通过 StorageProvider 生成 noj-storage:// URL）
+    try {
+      console.log("注册支持包...");
+      await seedSupportPackages();
+    } catch (err) {
+      console.error("支持包注册失败:", err);
+      throw err;
+    }
+
+    // 6. 初始化示例分类
     try {
       console.log("初始化示例分类...");
       await seedCategories();
@@ -508,7 +570,7 @@ async function main() {
       throw err;
     }
 
-    // 6. 关联题目与分类
+    // 7. 关联题目与分类
     try {
       console.log("关联题目与分类...");
       await seedProblemCategories();
@@ -517,7 +579,7 @@ async function main() {
       throw err;
     }
 
-    // 7. 管理员创建/提升（环境变量优先）
+    // 8. 管理员创建/提升（环境变量优先）
     try {
       console.log("检查管理员...");
       await ensureAdminFromEnv();
@@ -526,7 +588,7 @@ async function main() {
       throw err;
     }
 
-    // 8. 引导管理员兜底：无任何可登录 admin 时创建临时账户（issue #75）
+    // 9. 引导管理员兜底：无任何可登录 admin 时创建临时账户（issue #75）
     try {
       await ensureBootstrapAdmin();
     } catch (err) {
@@ -534,7 +596,7 @@ async function main() {
       throw err;
     }
 
-    // 9. E2E 守卫测试用户（评审修复 H2）
+    // 10. E2E 守卫测试用户（评审修复 H2）
     try {
       await ensureE2EPwChangeUser();
     } catch (err) {
@@ -543,10 +605,11 @@ async function main() {
     }
 
     console.log("Seed 完成");
-  } finally {
-    // 关闭数据库连接池，确保进程退出
-    const { resetDbForTest } = await import("../src/db/connection.ts");
-    await resetDbForTest();
+    // 强制退出，避免 postgres.js 连接阻止 Deno 进程终止（同 migrate.ts）
+    Deno.exit(0);
+  } catch (err) {
+    console.error("Seed 失败:", err);
+    Deno.exit(1);
   }
 }
 

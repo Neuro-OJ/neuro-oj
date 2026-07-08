@@ -40,19 +40,6 @@ const canEdit = computed(() => {
 // 判断当前路由是否为详情页本身（而非 edit 等子路由）
 const isDetailPage = computed(() => route.path === `/problems/${problemId}`)
 
-// 难度标签映射
-const difficultyLabel: Record<string, string> = {
-  easy: "简单",
-  medium: "中等",
-  hard: "困难",
-}
-
-const badgeColors: Record<string, string> = {
-  easy: "bg-green-100 text-green-700",
-  medium: "bg-yellow-100 text-yellow-700",
-  hard: "bg-red-100 text-red-700",
-}
-
 // 提交表单 — 当前仅支持 Python 3
 // TODO: 多语言支持（noj-judge 各语言评测镜像就绪后启用，见 noj-core/services/submissions.ts:208）
 const language = "python3"
@@ -136,9 +123,7 @@ async function handleSubmit() {
           </NuxtLink>
         </div>
         <div class="flex items-center gap-5 flex-wrap">
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-tight" :class="badgeColors[problem.difficulty] || ''">
-            {{ difficultyLabel[problem.difficulty] || problem.difficulty }}
-          </span>
+          <DifficultyBadge :difficulty="problem.difficulty" />
           <span class="inline-flex items-center gap-1 text-xs text-text-secondary">
             <Clock :size="14" />
             {{ problem.time_limit_ms }}ms

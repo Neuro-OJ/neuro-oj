@@ -73,7 +73,7 @@ ok "Docker daemon 就绪"
 
 # redis-cli -u 不支持端口+DB 索引的 URI 格式，拆开连接
 REDIS_HOST="localhost"
-REDIS_PORT="${E2E_REDIS_URL##*:}"
+REDIS_PORT="${REDIS_URL##*:}"
 REDIS_PORT="${REDIS_PORT%%/*}"
 if ! redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" ping &>/dev/null; then
   warn "Redis 未就绪，尝试启动..."
@@ -90,6 +90,8 @@ E2E_TARGETS=(
   e2e_resource_limits
   e2e_security_isolation
   e2e_support_package
+  e2e_problem_limits
+  e2e_container_pool
 )
 
 step "2/3  编译 noj-judge（${#E2E_TARGETS[@]} 个 E2E 目标）"

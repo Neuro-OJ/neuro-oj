@@ -2,10 +2,12 @@
   "version": "5",
   "specifiers": {
     "jsr:@std/assert@1": "1.0.19",
+    "jsr:@std/assert@^1.0.19": "1.0.19",
     "jsr:@std/encoding@1": "1.0.10",
     "jsr:@std/internal@^1.0.12": "1.0.14",
     "jsr:@std/internal@^1.0.14": "1.0.14",
     "jsr:@std/path@1": "1.1.5",
+    "jsr:@std/testing@1": "1.0.19",
     "npm:@alicloud/dm20151123@*": "1.10.2",
     "npm:@alicloud/dm20151123@^1.10.2": "1.10.2",
     "npm:@alicloud/openapi-core@*": "1.0.7",
@@ -15,13 +17,16 @@
     "npm:@electric-sql/pglite@*": "0.5.3",
     "npm:@electric-sql/pglite@~0.5.3": "0.5.3",
     "npm:@types/pg@^8.20.0": "8.20.0",
+    "npm:bcryptjs@*": "2.4.3",
     "npm:bcryptjs@^2.4.3": "2.4.3",
     "npm:drizzle-kit@*": "0.31.10",
+    "npm:drizzle-orm@*": "0.45.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5",
     "npm:drizzle-orm@0.35.2": "0.35.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5",
     "npm:drizzle-orm@0.45.2": "0.45.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5",
     "npm:hono@4": "4.12.26",
     "npm:ioredis@5.11.1": "5.11.1",
     "npm:jose@5": "5.10.0",
+    "npm:postgres@*": "3.4.5",
     "npm:postgres@3.4.5": "3.4.5",
     "npm:tencentcloud-sdk-nodejs-ses@^4.1.247": "4.1.247"
   },
@@ -42,6 +47,12 @@
       "integrity": "ccea00982ea28c36becaf6e62f855406c76a8c32d462f66f415bbb7d83a271bc",
       "dependencies": [
         "jsr:@std/internal@^1.0.14"
+      ]
+    },
+    "@std/testing@1.0.19": {
+      "integrity": "f4236172365b216728dc3cc8b5e80a9f4c33083d1e4ede7613d5b25b4014898e",
+      "dependencies": [
+        "jsr:@std/assert@^1.0.19"
       ]
     }
   },

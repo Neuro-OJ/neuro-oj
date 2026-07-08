@@ -4,14 +4,15 @@
 # 触发条件：全分支 Push 和 Pull Request
 # 并行检查三个模块：
 #   - noj-core: Deno 后端（格式/代码检查/集成测试，需 PostgreSQL + Redis）
-#   - noj-ui:   Nuxt 4 前端（构建编译检查）
-#   - noj-judge: Rust Worker（格式/Clippy/编译/测试）
+#   - noj-ui:   Nuxt 4 前端（Deno 构建检查）
+#   - noj-judge: Rust Worker（格式/Clippy/单元测试）
 # =============================================================================
 
 name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -23,13 +24,73 @@ concurrency:
 jobs:
 
   # ===========================================================================
-  # noj-core — Deno 后端
+  # noj-core — 快速冒烟测试（不依赖外部服务，使用 PGlite 内存数据库）
   # ===========================================================================
-  core-test:
-    name: Core (Deno)
+  core-smoke:
+    name: Core Smoke
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 快速冒烟测试
+        working-directory: noj-core
+        run: deno task test:smoke
+
+  # ===========================================================================
+  # noj-core — Deno 格式检查（轻量，无外部服务依赖）
+  # ===========================================================================
+  core-fmt:
+    name: Core Fmt
     runs-on: ubuntu-latest
 
-    # 为集成测试提供 PostgreSQL 和 Redis 服务容器
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 格式检查 (deno fmt)
+        working-directory: noj-core
+        run: deno fmt --check
+
+  # ===========================================================================
+  # noj-core — Deno 代码检查（轻量，无外部服务依赖）
+  # ===========================================================================
+  core-lint:
+    name: Core Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 代码检查 (deno lint)
+        working-directory: noj-core
+        run: deno lint
+
+  # ===========================================================================
+  # noj-core — 集成测试（需 PostgreSQL + Redis 服务容器）
+  # ===========================================================================
+  core-test:
+    name: Core Test
+    runs-on: ubuntu-latest
+
     services:
       postgres:
         image: postgres:16-alpine
@@ -56,7 +117,6 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgresql://noj:noj@localhost:5432/noj
       REDIS_URL: redis://localhost:6379/
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
@@ -78,20 +138,14 @@ jobs:
           restore-keys: |
             deno-
 
-      - name: 格式检查 (deno fmt)
-        working-directory: noj-core
-        run: deno fmt --check
-
-      - name: 代码检查 (deno lint)
-        working-directory: noj-core
-        run: deno lint
-
       - name: 运行测试 (deno test)
         working-directory: noj-core
-        run: deno test -A
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: deno test -A --parallel
 
   # ===========================================================================
-  # noj-ui — Nuxt 4 前端
+  # noj-ui — Nuxt 4 前端（Deno 构建检查）
   # ===========================================================================
   ui-check:
     name: UI (Nuxt)
@@ -101,26 +155,32 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 安装 Node.js
-        uses: actions/setup-node@v4
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
         with:
-          node-version: 22
+          deno-version: v2.x
 
-      # 注意：项目尚处骨架阶段，使用 npm install 而非 npm ci。
-      # 当 package-lock.json 提交后，可切换到 npm ci。
-      - name: 安装依赖
-        working-directory: noj-ui
-        run: npm install
+      - name: 缓存 node_modules
+        uses: actions/cache@v4
+        with:
+          path: noj-ui/node_modules
+          key: npm-${{ hashFiles('noj-ui/package.json') }}
+          restore-keys: |
+            npm-
 
-      - name: 构建检查 (nuxt build)
+      - name: 安装依赖 (Deno BYONM)
         working-directory: noj-ui
-        run: npm run build
+        run: deno install
+
+      - name: 构建检查 (deno task build)
+        working-directory: noj-ui
+        run: deno task build
 
   # ===========================================================================
-  # noj-judge — Rust Worker
+  # noj-judge — Rust 格式检查
   # ===========================================================================
-  judge-check:
-    name: Judge (Rust)
+  judge-fmt:
+    name: Judge Fmt
     runs-on: ubuntu-latest
 
     steps:
@@ -130,7 +190,27 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt
+
+      - name: 格式检查 (cargo fmt)
+        working-directory: noj-judge
+        run: cargo fmt --all --check
+
+  # ===========================================================================
+  # noj-judge — Clippy 检查（含编译，禁止 warnings）
+  # ===========================================================================
+  judge-clippy:
+    name: Judge Clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: 缓存 Cargo 依赖
         uses: actions/cache@v4
@@ -143,17 +223,34 @@ jobs:
           restore-keys: |
             cargo-
 
-      - name: 格式检查 (cargo fmt)
-        working-directory: noj-judge
-        run: cargo fmt --all --check
-
-      - name: Clippy 检查 (禁止 warnings)
+      - name: Clippy 检查 (cargo clippy)
         working-directory: noj-judge
         run: cargo clippy --all-targets -- -D warnings
 
-      - name: 编译检查 (cargo build)
-        working-directory: noj-judge
-        run: cargo build
+  # ===========================================================================
+  # noj-judge — 单元测试（复用 clippy 编译产物）
+  # ===========================================================================
+  judge-test:
+    name: Judge Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 缓存 Cargo 依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            noj-judge/target
+          key: cargo-${{ hashFiles('noj-judge/Cargo.lock') }}
+          restore-keys: |
+            cargo-
 
       - name: 运行测试 (cargo test)
         working-directory: noj-judge

@@ -217,13 +217,14 @@ Deno.test({
     );
     assertEquals(res.status, 204);
 
-    // 验证后续 GET 不返回 404（DB 中已删，回退 default）
-    const getRes = await jsonRequest(
-      app,
-      "/api/v1/admin/settings/allow_register",
-      { token },
+    // 验证后续列表返回 default 来源（DB 中已删，回退 default）
+    const listRes = await jsonRequest(app, "/api/v1/admin/settings", { token });
+    assertEquals(listRes.status, 200);
+    const listBody = await listRes.json();
+    const item = listBody.data.find((i: { key: string }) =>
+      i.key === "allow_register"
     );
-    assertEquals(getRes.status, 200);
+    assertEquals(item.source, "default");
   },
 });
 
@@ -259,24 +260,5 @@ Deno.test({
       { method: "DELETE", token },
     );
     assertEquals(res.status, 204);
-  },
-});
-
-Deno.test({
-  name: "admin-settings route: GET /settings/:key 存在返回 200",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await freshSetup();
-    const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
-    const res = await jsonRequest(
-      app,
-      "/api/v1/admin/settings/allow_register",
-      { token },
-    );
-    assertEquals(res.status, 200);
-    const body = await res.json();
-    assertEquals(body.data.key, "allow_register");
   },
 });

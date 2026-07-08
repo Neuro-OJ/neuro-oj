@@ -82,12 +82,10 @@ export class LocalStorageProvider implements StorageProvider {
 
   /**
    * 根据 `noj-storage://` URL 读取数据
-   *
-   * 向后兼容：非 `noj-storage://` 前缀的路径直接作为本地相对路径读取
    */
   async get(url: string): Promise<Uint8Array> {
     const parsed = parseStorageUrl(url);
-    const filePath = parsed.key ? `${PACKAGES_DIR}/${parsed.key}.zip` : url; // legacy 路径直接使用
+    const filePath = `${PACKAGES_DIR}/${parsed.key}.zip`;
 
     return await Deno.readFile(filePath);
   }
@@ -99,8 +97,6 @@ export class LocalStorageProvider implements StorageProvider {
    */
   async delete(url: string): Promise<void> {
     const parsed = parseStorageUrl(url);
-    if (!parsed.key) return; // 无 key 时静默忽略
-
     const filePath = `${PACKAGES_DIR}/${parsed.key}.zip`;
     try {
       await Deno.remove(filePath);

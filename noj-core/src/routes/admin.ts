@@ -1,11 +1,7 @@
 import { Hono } from "hono";
 import { adminMiddleware, authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
-import {
-  BadRequestError,
-  NotFoundError,
-  ValidationError,
-} from "../lib/errors.ts";
+import { BadRequestError, ValidationError } from "../lib/errors.ts";
 import { listUsers, promoteUser } from "../services/auth.ts";
 import { getDashboardStats } from "../services/dashboard.ts";
 import { listAllProblems } from "../services/problems.ts";
@@ -27,12 +23,19 @@ import {
   rejudgeSubmission,
 } from "../services/submissions.ts";
 import {
-  getSetting,
+  adminUpdateUserProfile,
+  banUser,
+  getUserBanHistory,
+  unbanUser,
+} from "../services/users.ts";
+import { addIpBan, listIpBans, removeIpBan } from "../services/banlist.ts";
+import {
   listSettings,
   resetSetting,
   updateSetting,
 } from "../services/system-settings.ts";
-import { adminUpdateUserProfile } from "../services/users.ts";
+import { listAuditLogs } from "../services/audit-log.ts";
+import type { AuditAction } from "../types/audit-log.ts";
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
@@ -187,8 +190,8 @@ router.get("/submissions", async (c) => {
  */
 router.get("/submissions/:id", async (c) => {
   const id = c.req.param("id") as string;
-  // 传入 userId=undefined 跳过所有权检查
-  const result = await getSubmission(id);
+  // 传入 userId/userRole 确保管理员能看到 code/output/details
+  const result = await getSubmission(id, c.get("userId"), c.get("userRole"));
   return c.json({ data: result });
 });
 
@@ -293,22 +296,9 @@ router.get("/dashboard/stats", async (c) => {
  * 注意：必须先注册静态路径 `/settings`，再注册参数化路径 `/settings/:key`，
  * 否则 `GET /settings` 会被 `/settings/:key` 误匹配。
  */
-router.get("/settings", (c) => {
-  const items = listSettings();
+router.get("/settings", async (c) => {
+  const items = await listSettings();
   return c.json({ data: items });
-});
-
-/**
- * 获取单个设置项详情。
- * GET /api/v1/admin/settings/:key
- */
-router.get("/settings/:key", (c) => {
-  const key = c.req.param("key") as string;
-  const value = getSetting(key);
-  if (!value) {
-    throw new NotFoundError(`设置项不存在: ${key}`);
-  }
-  return c.json({ data: { key, ...value } });
 });
 
 /**
@@ -337,4 +327,119 @@ router.delete("/settings/:key", async (c) => {
   return c.body(null, 204);
 });
 
+// ─── IP 黑名单管理（issue #102）────────────────────────────────
+
+/**
+ * 管理员列出 IP 黑名单（分页 + 模糊搜索）。
+ * GET /api/v1/admin/blacklist?page=&per_page=&keyword=
+ */
+router.get("/blacklist", async (c) => {
+  let page = parseInt(c.req.query("page") ?? "1", 10);
+  let perPage = parseInt(c.req.query("per_page") ?? "20", 10);
+  if (isNaN(page) || page < 1) page = 1;
+  if (isNaN(perPage) || perPage < 1) perPage = 20;
+  if (perPage > 100) perPage = 100;
+
+  const keyword = c.req.query("keyword") || undefined;
+  const result = await listIpBans({ page, perPage, keyword });
+  return c.json({ data: result.data, pagination: result.pagination });
+});
+
+/**
+ * 管理员添加 IP 黑名单。
+ * POST /api/v1/admin/blacklist
+ * body: { ip_or_cidr, reason?, expires_at? }
+ */
+router.post("/blacklist", async (c) => {
+  const body = await parseJsonBody<{
+    ip_or_cidr: string;
+    reason?: string;
+    expires_at?: string | null;
+  }>(c);
+  if (!body.ip_or_cidr) {
+    throw new ValidationError("缺少必填字段：ip_or_cidr");
+  }
+  const ban = await addIpBan(body, c.get("userId"));
+  return c.json({ data: ban }, 201);
+});
+
+/**
+ * 管理员删除 IP 黑名单条目。
+ * DELETE /api/v1/admin/blacklist/:id
+ */
+router.delete("/blacklist/:id", async (c) => {
+  const id = c.req.param("id") as string;
+  await removeIpBan(id, c.get("userId"));
+  return c.body(null, 204);
+});
+
+// ─── 用户封禁管理（issue #102）────────────────────────────────
+
+/**
+ * 管理员封禁用户。
+ * PATCH /api/v1/admin/users/:id/ban
+ * body: { reason?, banned_until? }
+ */
+router.patch("/users/:id/ban", async (c) => {
+  const targetUserId = c.req.param("id") as string;
+  const body = await parseJsonBody<{
+    reason?: string;
+    banned_until?: string | null;
+  }>(c);
+  const user = await banUser(
+    targetUserId,
+    body.reason,
+    body.banned_until,
+    c.get("userId"),
+  );
+  return c.json({ data: user }, 200);
+});
+
+/**
+ * 管理员解封用户。
+ * PATCH /api/v1/admin/users/:id/unban
+ */
+router.patch("/users/:id/unban", async (c) => {
+  const targetUserId = c.req.param("id") as string;
+  const user = await unbanUser(targetUserId, c.get("userId"));
+  return c.json({ data: user }, 200);
+});
+
+/**
+ * 获取用户封禁历史（user-ban-table）。
+ * GET /api/v1/admin/users/:id/bans
+ */
+router.get("/users/:id/bans", async (c) => {
+  const targetUserId = c.req.param("id") as string;
+  const records = await getUserBanHistory(targetUserId);
+  return c.json({ data: records }, 200);
+});
+
+// ─── 审计日志（issue #101）───────────────────────────────────
+
+/**
+ * 管理员查询审计日志（分页 + 筛选）。
+ * GET /api/v1/admin/audit-logs
+ *
+ * Query:
+ *   page, per_page (default 20, max 100)
+ *   admin_id?, action?, from?, to?  (ISO 8601)
+ */
+router.get("/audit-logs", async (c) => {
+  let page = parseInt(c.req.query("page") ?? "1", 10);
+  let perPage = parseInt(c.req.query("per_page") ?? "20", 10);
+  if (isNaN(page) || page < 1) page = 1;
+  if (isNaN(perPage) || perPage < 1) perPage = 20;
+  if (perPage > 100) perPage = 100;
+
+  const result = await listAuditLogs({
+    page,
+    perPage,
+    admin_id: c.req.query("admin_id") || undefined,
+    action: (c.req.query("action") || undefined) as AuditAction | undefined,
+    from: c.req.query("from") || undefined,
+    to: c.req.query("to") || undefined,
+  });
+  return c.json({ data: result.data, pagination: result.pagination });
+});
 export default router;

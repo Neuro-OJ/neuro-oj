@@ -66,3 +66,5 @@ noj-core/data/packages/
 # --- IDE metadata (project-local, not shareable) ---
 *.iml
 *.idea/
+.playwright-mcp/
+aa.txt

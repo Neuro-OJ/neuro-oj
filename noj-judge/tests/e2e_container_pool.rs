@@ -121,6 +121,7 @@ fn make_pool_config(initial_size: usize, max_size: usize) -> noj_judge::config::
         max_archive_mb: 25,
         kill_grace_secs: 2,
         label_prefix: "com.noj.judge.test".to_string(),
+        images: vec!["noj-judge-test-runner".to_string()],
     }
 }
 
@@ -419,6 +420,23 @@ async fn test_pool_security_config() {
             hc.readonly_rootfs,
             Some(false),
             "readonly_rootfs 应为 false（put_archive 兼容性）"
+        );
+
+        // pids_limit 应设为 256（DoS 防护）
+        assert_eq!(hc.pids_limit, Some(256), "pids_limit 应为 256（DoS 防护）");
+
+        // ipc_mode 应设为 none（IPC 隔离）
+        assert_eq!(
+            hc.ipc_mode.as_deref(),
+            Some("none"),
+            "ipc_mode 应为 none（IPC 隔离）"
+        );
+
+        // security_opt 应包含 no-new-privileges:true
+        let sec_opts = hc.security_opt.as_ref().expect("security_opt 应被设置");
+        assert!(
+            sec_opts.iter().any(|s| s == "no-new-privileges:true"),
+            "security_opt 应包含 no-new-privileges:true"
         );
 
         Ok(())

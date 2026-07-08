@@ -1,87 +1,229 @@
 <template>
-    <div>
-        <section class="hero-section relative min-h-[calc(100vh-64px)] py-12 md:py-20 bg-gradient-to-br from-bg-dark via-[#1a2a4a] to-[#1e3a6a] bg-[length:200%_200%] text-white overflow-hidden flex items-center animate-[gradientShift_12s_ease_infinite]">
-            <!-- 伪元素背景由 style scoped 实现 -->
-            <div class="relative z-[1] flex-col md:flex-row items-center gap-10 md:gap-16 w-full" style="max-width:1200px;margin:0 auto;padding:0 24px">
-                <div class="flex-1 min-w-0 animate-[fadeInUp_0.8s_ease_both]">
-                    <h1 class="text-[32px] md:text-5xl font-extrabold leading-tight mb-5 animate-[fadeInUp_0.6s_ease_0.1s_both]">
-                        面向 <span class="text-primary-light inline-block animate-[glow_2s_ease-in-out_infinite_alternate]">LMCC</span> 的<br>在线评测系统
-                    </h1>
-                    <p class="text-lg leading-relaxed text-text-muted mb-8 max-w-[520px] animate-[fadeInUp_0.6s_ease_0.2s_both]">
-                        Neuro OJ 是一个专为 CCF 大语言模型能力认证（LMCC）设计的在线评测平台，
-                        提供高效的代码评测服务和智能化的能力评估。
-                    </p>
-                    <div class="flex flex-col md:flex-row gap-4 mb-12 animate-[fadeInUp_0.6s_ease_0.3s_both]">
-                        <NuxtLink to="/register" class="inline-flex items-center justify-center font-semibold no-underline cursor-pointer rounded-lg transition-all duration-200 px-8 py-3.5 text-base bg-primary text-white border border-primary hover:bg-primary-dark hover:border-primary-dark">立即开始</NuxtLink>
-                        <NuxtLink to="/problems" class="inline-flex items-center justify-center font-semibold no-underline cursor-pointer rounded-lg transition-all duration-200 px-8 py-3.5 text-base text-white bg-transparent border border-white/30 hover:border-white">浏览题库</NuxtLink>
+    <div class="py-6">
+        <div class="mx-auto w-full max-w-[1320px] border border-border rounded-xl shadow-card flex flex-col overflow-hidden">
+            <div class="flex flex-col flex-1">
+                <div class="flex flex-col lg:flex-row flex-1 min-h-[320px] bg-white">
+                    <!-- Carousel -->
+                    <div class="flex-1 min-w-0 relative overflow-hidden">
+                        <Transition name="carousel-fade">
+                            <div
+                                :key="currentSlide"
+                                class="absolute inset-0 bg-gradient-to-br p-8 lg:p-12 flex flex-col justify-center text-white"
+                                :class="announcements[currentSlide].gradient"
+                            >
+                                <h2 class="text-2xl lg:text-3xl font-bold mb-3 animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_both]">{{ announcements[currentSlide].title }}</h2>
+                                <p class="text-sm lg:text-base text-white/85 max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">{{ announcements[currentSlide].description }}</p>
+                            </div>
+                        </Transition>
+                        <div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-10">
+                            <button
+                                v-for="(_, i) in announcements"
+                                :key="i"
+                                class="size-2 rounded-full transition-all duration-300 cursor-pointer bg-white"
+                                :class="i === currentSlide ? 'opacity-100 scale-125' : 'opacity-50 hover:opacity-100'"
+                                :aria-label="`切换到第 ${i + 1} 张`"
+                                @click="goToSlide(i)"
+                            />
+                        </div>
                     </div>
 
-                    <div class="flex gap-6 md:gap-12 animate-[fadeInUp_0.6s_ease_0.5s_both]">
-                        <div class="flex flex-col gap-1">
-                            <span class="text-[28px] font-bold text-white">--</span>
-                            <span class="text-sm text-text-muted">题目</span>
+                    <!-- Check-in -->
+                    <div class="w-full lg:w-[300px] lg:aspect-square lg:self-start shrink-0 flex flex-col bg-gradient-to-br from-white to-gray-50/50">
+                        <div class="flex flex-col items-center pt-5 text-xs text-text-muted leading-tight">
+                            <span>{{ todayDateStr }}</span>
+                            <span class="tabular-nums mt-0.5">{{ todayTimeStr }}</span>
                         </div>
-                        <div class="flex flex-col gap-1">
-                            <span class="text-[28px] font-bold text-white">--</span>
-                            <span class="text-sm text-text-muted">用户</span>
-                        </div>
-                        <div class="flex flex-col gap-1">
-                            <span class="text-[28px] font-bold text-white">--</span>
-                            <span class="text-sm text-text-muted">提交</span>
-                        </div>
+                        <CheckInCard
+                            :is-logged-in="isLoggedIn"
+                            :username="user?.username ?? ''"
+                            :checked-in="checkedIn"
+                            :fade-white="fadeWhite"
+                            :show-text="showText"
+                            :streak-count="streakCount"
+                            :show-streak="showStreak"
+                            :check-in-loaded="checkInLoaded"
+                            @checkin="handleCheckIn"
+                        />
                     </div>
                 </div>
-
-                <div class="flex-1 min-w-0 animate-[fadeInUp_0.8s_ease_0.4s_both] max-md:hidden">
-                    <div class="bg-[#0d1117] rounded-xl overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.4)] animate-[float_4s_ease-in-out_infinite]">
-                        <div class="flex items-center gap-1.5 px-4 py-3 bg-[#161b22]">
-                            <span class="size-2.5 rounded-full bg-[#ff5f56]" />
-                            <span class="size-2.5 rounded-full bg-[#ffbd2e]" />
-                            <span class="size-2.5 rounded-full bg-[#27c93f]" />
-                            <span class="ml-2 text-xs text-[#8b949e]">solution.py</span>
-                        </div>
-                        <pre class="p-4 text-xs leading-relaxed overflow-x-auto"><code class="font-mono">
-<span class="text-[#ff7b72]">from</span> __future__ <span class="text-[#ff7b72]">import</span> annotations
-
-<span class="text-[#ff7b72]">import</span> json
-
-
-<span class="text-[#ff7b72]">def</span> <span class="text-[#d2a8ff]">normalize_gate_report_csp</span>(text: <span class="text-[#79c0ff]">str</span>) -> <span class="text-[#79c0ff]">str</span>:
-    <span class="text-[#7ee787]">"""</span>
-<span class="text-[#7ee787]">    输入：自然语言舱门报码</span>
-<span class="text-[#7ee787]">    输出：一行 JSON 字符串</span>
-<span class="text-[#7ee787]">    """</span>
-    <span class="text-[#8b949e]"># ======== 考生实现区域 ========</span>
-
-    <span class="text-[#8b949e]"># ======== 考生实现区域 ========</span>
-                        </code></pre>
-                    </div>
+                <div class="border-b border-border" />
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
+                    <RandomProblems />
+                    <LatestSubmissions />
                 </div>
             </div>
-        </section>
+        </div>
     </div>
 </template>
 
-<style scoped>
-/* 伪元素：径向光晕和网格 */
-.hero-section::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image:
-        radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(59, 130, 246, 0.05) 0%, transparent 50%),
-        radial-gradient(circle at 60% 80%, rgba(59, 130, 246, 0.06) 0%, transparent 50%);
-    pointer-events: none;
+<script setup lang="ts">
+const { user, isLoggedIn } = useAuth()
+
+// ── Announcement Carousel ──
+interface Announcement {
+    title: string
+    description: string
+    gradient: string
 }
 
-.hero-section::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
-                      linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
-    background-size: 60px 60px;
-    pointer-events: none;
+const announcements: Announcement[] = [
+    {
+        title: "Neuro OJ 正式上线",
+        description: "面向 LMCC 的在线评测系统现已开放注册，提供高效的代码评测服务和智能化的能力评估。",
+        gradient: "from-blue-600 via-sky-500 to-cyan-400",
+    },
+    {
+        title: "新题持续更新",
+        description: "题库不断扩充中，涵盖算法、数据结构等各类编程题目，满足不同水平的训练需求。",
+        gradient: "from-purple-600 via-fuchsia-500 to-pink-400",
+    },
+    {
+        title: "社区共建计划",
+        description: "欢迎为 Neuro OJ 贡献题目与代码，共同打造优秀的在线评测社区平台。",
+        gradient: "from-emerald-600 via-teal-500 to-cyan-400",
+    },
+]
+
+const currentSlide = ref(0)
+let autoTimer: ReturnType<typeof setInterval> | null = null
+let idleTimer: ReturnType<typeof setTimeout> | null = null
+
+function startAuto() {
+    stopAuto()
+    autoTimer = setInterval(() => {
+        currentSlide.value = (currentSlide.value + 1) % announcements.length
+    }, 5000)
 }
+
+function stopAuto() {
+    if (autoTimer) {
+        clearInterval(autoTimer)
+        autoTimer = null
+    }
+}
+
+function goToSlide(i: number) {
+    if (i === currentSlide.value) return
+    currentSlide.value = i
+    resetIdle()
+}
+
+function resetIdle() {
+    stopAuto()
+    if (idleTimer) clearTimeout(idleTimer)
+    idleTimer = setTimeout(startAuto, 60000)
+}
+
+onMounted(startAuto)
+onUnmounted(() => {
+    stopAuto()
+    if (idleTimer) clearTimeout(idleTimer)
+})
+
+// ── Check-in ──
+const checkedIn = ref(false)
+const checkInAnim = ref(false)
+const fadeWhite = ref(false)
+const showText = ref(false)
+const streakCount = ref(0)
+const showStreak = ref(false)
+const checkInLoading = ref(false)
+const checkInLoaded = ref(false)
+
+async function fetchTodayCheckIn() {
+    if (!isLoggedIn.value) return
+    try {
+        const res = await $fetch<{ data: { checked_in: boolean; streak: number } }>("/api/v1/checkin/today")
+        if (res.data) {
+            checkedIn.value = res.data.checked_in
+            streakCount.value = res.data.streak
+            if (res.data.checked_in) {
+                checkInAnim.value = true
+                setTimeout(() => { checkInAnim.value = false }, 600)
+                setTimeout(() => { fadeWhite.value = true }, 200)
+                setTimeout(() => { showText.value = true }, 400)
+                setTimeout(() => { showStreak.value = true }, 700)
+            }
+        }
+    } catch {
+        // silent
+    } finally {
+        checkInLoaded.value = true
+    }
+}
+
+async function handleCheckIn() {
+    if (checkInLoading.value || checkedIn.value) return
+    checkInLoading.value = true
+    try {
+        const res = await $fetch<{ data: { checked_in: boolean; streak: number } }>("/api/v1/checkin", {
+            method: "POST",
+        })
+        if (res.data) {
+            checkedIn.value = res.data.checked_in
+            streakCount.value = res.data.streak
+            checkInAnim.value = true
+            setTimeout(() => { checkInAnim.value = false }, 600)
+            setTimeout(() => { fadeWhite.value = true }, 1500)
+            setTimeout(() => { showText.value = true }, 2200)
+            setTimeout(() => { showStreak.value = true }, 2500)
+        }
+    } catch {
+        // silent
+    } finally {
+        checkInLoading.value = false
+    }
+}
+
+const d = new Date()
+const todayDateStr = d.toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+}) + " " + d.toLocaleDateString("zh-CN", { weekday: "long" })
+
+const now = ref(Date.now())
+let clockTimer: ReturnType<typeof setInterval> | null = null
+
+const todayTimeStr = computed(() => new Date(now.value).toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+}))
+
+onMounted(() => {
+    clockTimer = setInterval(() => { now.value = Date.now() }, 100)
+    if (isLoggedIn.value) {
+        fetchTodayCheckIn()
+    }
+})
+
+onUnmounted(() => {
+    if (clockTimer) clearInterval(clockTimer)
+})
+</script>
+
+<style scoped>
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.carousel-fade-enter-active,
+.carousel-fade-leave-active {
+    transition: opacity 700ms ease-in-out;
+}
+
+.carousel-fade-enter-from,
+.carousel-fade-leave-to {
+    opacity: 0;
+}
+
+
 </style>

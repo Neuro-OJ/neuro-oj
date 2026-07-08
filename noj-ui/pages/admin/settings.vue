@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { Switch } from "@headlessui/vue"
 import {
   RotateCcw,
   Save,
   Info,
+  RefreshCw,
   ChevronDown,
   Database,
+  Lock,
 } from "@lucide/vue"
 
 definePageMeta({
@@ -22,13 +25,14 @@ watch(loading, (val) => {
 
 // ─── 类型定义 ────────────────────────────────────────────
 
-type SettingType = "boolean" | "string" | "text"
+type SettingType = "boolean" | "string" | "text" | "integer"
 type SettingSource = "db" | "env" | "default"
 type SettingCategory =
   | "auth"
   | "maintenance"
   | "email"
   | "rate_limit"
+  | "storage"
   | "database"
   | "redis"
   | "cors"
@@ -45,6 +49,9 @@ interface SystemSetting {
   updated_at: string | null
   updated_by: string | null
   category: SettingCategory
+  min?: number
+  max?: number
+  needsRestart?: boolean
 }
 
 const CATEGORY_LABEL: Record<SettingCategory, string> = {
@@ -52,6 +59,7 @@ const CATEGORY_LABEL: Record<SettingCategory, string> = {
   maintenance: "维护与公告",
   email: "邮件",
   rate_limit: "速率限制",
+  storage: "对象存储",
   database: "数据库",
   redis: "Redis",
   cors: "CORS",
@@ -73,10 +81,10 @@ async function loadSettings() {
       "/api/v1/admin/settings",
     )
     settings.value = res.data
-    // 初始化草稿：与当前 effective_value 同步
+    // 初始化草稿：普通字段同步当前值，敏感字段初始化为 null（需显式编辑）
     drafts.value = {}
     for (const s of res.data) {
-      drafts.value[s.key] = s.effective_value
+      drafts.value[s.key] = s.is_secret ? null : s.effective_value
     }
   } catch (err: unknown) {
     tableError.value = err instanceof Error
@@ -95,28 +103,22 @@ watch(isLoggedIn, (val) => {
 
 const drafts = ref<Record<string, unknown>>({})
 
+/** infrastructure env-only 键名白名单（与 ENV_ONLY_DEFINITIONS 同步） */
+const ENV_ONLY_KEYS = new Set([
+  "DATABASE_URL", "DATABASE_POOL_MAX", "DATABASE_CONNECT_TIMEOUT",
+  "DATABASE_IDLE_TIMEOUT", "DATABASE_MAX_LIFETIME",
+  "REDIS_URL",
+  "JWT_SECRET", "ADMIN_EMAIL", "ADMIN_PASS", "BCRYPT_SALT_ROUNDS",
+  "CORS_ALLOWED_ORIGINS",
+  "PORT", "NOJ_ENV",
+])
+
 const dbSettings = computed(() =>
-  settings.value.filter((s) =>
-    [
-      "allow_register",
-      "smtp_from",
-      "rate_limit_login_enabled",
-      "maintenance_mode",
-      "homepage_banner",
-    ].includes(s.key)
-  )
+  settings.value.filter((s) => !ENV_ONLY_KEYS.has(s.key))
 )
 
 const envOnlySettings = computed(() =>
-  settings.value.filter((s) =>
-    ![
-      "allow_register",
-      "smtp_from",
-      "rate_limit_login_enabled",
-      "maintenance_mode",
-      "homepage_banner",
-    ].includes(s.key)
-  )
+  settings.value.filter((s) => ENV_ONLY_KEYS.has(s.key))
 )
 
 // 按 category 分组（spec 要求），未声明分类的归到 other
@@ -133,6 +135,7 @@ const envOnlyGrouped = computed(() => {
     "maintenance",
     "email",
     "rate_limit",
+    "storage",
     "database",
     "redis",
     "cors",
@@ -143,11 +146,27 @@ const envOnlyGrouped = computed(() => {
     .map((c) => ({ category: c, items: groups.get(c)! }))
 })
 
+/** AdminTable 列定义（env-only 只读面板） */
+const envOnlyColumns = [
+  { key: "key", label: "键名" },
+  { key: "effective_value", label: "当前值" },
+  { key: "description", label: "描述" },
+]
+
+/** 获取敏感字段的脱敏方式说明（显示在 tooltip 中） */
+function getSecretTooltip(key: string): string {
+  if (key === "DATABASE_URL") return "已脱敏：仅移除 user:password@，保留协议+主机+路径"
+  if (key === "REDIS_URL") return "已脱敏：仅移除 :password@，保留协议+主机+路径"
+  if (key === "JWT_SECRET") return "已脱敏：SHA-256 哈希（前16位），仅用于部署密钥比对"
+  return "敏感值（已脱敏）"
+}
+
 /** 该 key 是否有未保存的修改 */
 function isDirty(key: string): boolean {
   const s = settings.value.find((x) => x.key === key)
   if (!s) return false
   const draft = drafts.value[key]
+  if (draft === null) return false // 敏感字段未显式编辑时不视为 dirty
   return !deepEqual(draft, s.effective_value)
 }
 
@@ -165,13 +184,21 @@ const savingKey = ref<string | null>(null)
 const { toast } = useToast()
 
 async function saveSetting(key: string) {
+  // 敏感字段未显式编辑 → 跳过保存
+  if (drafts.value[key] === null) return
   savingKey.value = key
   try {
     await $fetch(`/api/v1/admin/settings/${key}`, {
       method: "PUT",
       body: { value: drafts.value[key] },
     })
-    toast.success("设置已保存")
+    // 检查是否需要重启生效
+    const s = settings.value.find((x) => x.key === key)
+    if (s?.needsRestart) {
+      toast.success("设置已保存，需重启 noj-core 服务才能生效")
+    } else {
+      toast.success("设置已保存")
+    }
     await loadSettings()
   } catch (err: unknown) {
     toast.error(err instanceof Error ? err.message : "保存失败")
@@ -213,10 +240,6 @@ async function confirmReset(s: SystemSetting) {
 }
 
 // ─── 编辑控件辅助 ─────────────────────────────────────────
-
-function toggleBoolean(key: string, currentVal: boolean) {
-  drafts.value[key] = !currentVal
-}
 </script>
 
 <template>
@@ -251,38 +274,43 @@ function toggleBoolean(key: string, currentVal: boolean) {
       </button>
     </div>
 
-    <!-- ─── 第一组：DB-backed 可编辑设置（5 项） ─────────────── -->
+    <!-- ─── 第一组：DB-backed 可编辑设置 ─────────────── -->
     <section class="bg-white border border-border rounded-xl overflow-hidden">
       <div class="px-5 py-3 border-b border-border bg-gray-50">
         <div class="flex items-center gap-2">
           <Database :size="16" class="text-primary" />
-          <h2 class="text-base font-semibold text-text">运行时配置（可编辑）</h2>
+          <h2 class="text-base font-semibold text-text">
+            运行时配置（可编辑）
+            <span class="ml-1 text-sm font-normal text-text-secondary">{{ dbSettings.length }} 项</span>
+          </h2>
         </div>
         <p class="text-xs text-text-secondary mt-1">
           修改后点击行内「保存」按钮，写入数据库；点击「重置」恢复 env / 默认值
         </p>
+        <p class="text-[11px] text-text-muted mt-0.5">
+          读取优先级：<span class="font-semibold">DB 写入值</span> → env 值（.env） → 系统默认值。
+          带 <RefreshCw :size="12" class="inline -mt-0.5 text-warning-text" /> 标记的项保存后需要重启 noj-core 服务才能生效。
+        </p>
       </div>
 
-      <div v-if="tableLoading" class="p-8 text-center text-sm text-text-secondary">
-        加载中...
-      </div>
-      <div v-else-if="dbSettings.length === 0" class="p-8 text-center text-sm text-text-secondary">
-        暂无可编辑设置项
-      </div>
-      <table v-else class="w-full text-sm">
-        <thead>
-          <tr class="bg-gray-50 border-b border-border">
-            <th class="px-3 py-2.5 text-left font-semibold text-text w-[180px]">设置项</th>
-            <th class="px-3 py-2.5 text-left font-semibold text-text">当前值</th>
-            <th class="px-3 py-2.5 text-left font-semibold text-text w-[90px]">来源</th>
-            <th class="px-3 py-2.5 text-left font-semibold text-text">描述</th>
-            <th class="px-3 py-2.5 text-right font-semibold text-text w-[200px]">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="s in dbSettings"
-            :key="s.key"
+      <AsyncContent
+        :status="tableLoading ? 'loading' : dbSettings.length === 0 ? 'empty' : 'data'"
+        empty-text="暂无可编辑设置项"
+      >
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-gray-50 border-b border-border">
+              <th class="px-3 py-2.5 text-left font-semibold text-text w-[180px]">设置项</th>
+              <th class="px-3 py-2.5 text-left font-semibold text-text">当前值</th>
+              <th class="px-3 py-2.5 text-left font-semibold text-text w-[90px]">来源</th>
+              <th class="px-3 py-2.5 text-left font-semibold text-text">描述</th>
+              <th class="px-3 py-2.5 text-right font-semibold text-text w-[200px]">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="s in dbSettings"
+              :key="s.key"
             class="border-b border-border last:border-b-0 transition-colors"
             :class="isDirty(s.key) ? 'bg-amber-50' : 'hover:bg-gray-50'"
           >
@@ -297,41 +325,71 @@ function toggleBoolean(key: string, currentVal: boolean) {
             <!-- 当前值（可编辑） -->
             <td class="px-3 py-3 align-top">
               <!-- boolean：Switch -->
-              <label
+              <div
                 v-if="s.type === 'boolean'"
-                class="inline-flex items-center gap-2 cursor-pointer"
+                class="inline-flex items-center gap-2"
               >
-                <button
-                  type="button"
-                  class="relative w-10 h-5 rounded-full transition-colors duration-150"
+                <Switch
+                  :model-value="!!drafts[s.key]"
+                  @update:model-value="(v) => drafts[s.key] = v"
                   :class="drafts[s.key] ? 'bg-primary' : 'bg-gray-300'"
-                  @click="toggleBoolean(s.key, !!drafts[s.key])"
+                  class="relative inline-flex h-5 w-10 shrink-0 items-center rounded-full transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                 >
                   <span
-                    class="absolute top-0.5 size-4 bg-white rounded-full shadow transition-transform duration-150"
-                    :class="drafts[s.key] ? 'translate-x-5' : 'translate-x-0.5'"
+                    class="inline-block size-4 transform rounded-full bg-white shadow transition-transform duration-150"
+                    :class="drafts[s.key] ? 'translate-x-[22px]' : 'translate-x-[2px]'"
                   />
-                </button>
-                <span class="text-[13px] font-mono">
-                  {{ drafts[s.key] ? "true" : "false" }}
-                </span>
-              </label>
+                </Switch>
+                <span class="text-[13px] font-mono">{{ drafts[s.key] ? "true" : "false" }}</span>
+              </div>
 
               <!-- string：Input -->
-              <input
+              <div
                 v-else-if="s.type === 'string'"
-                v-model="drafts[s.key]"
-                :placeholder="s.is_secret ? '••• 敏感字段' : ''"
-                class="w-full px-2.5 py-1.5 text-[13px] font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
-              />
+                class="flex items-center gap-2"
+              >
+                <!-- 敏感字段：初始为 null 时显示只读占位，需点击编辑才能修改 -->
+                <template v-if="s.is_secret">
+                  <input
+                    v-model="drafts[s.key]"
+                    :disabled="drafts[s.key] === null"
+                    :placeholder="drafts[s.key] === null ? '•••••••• 点击「编辑」以修改' : ''"
+                    class="w-full px-2.5 py-1.5 text-[13px] font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <button
+                    v-if="drafts[s.key] === null"
+                    class="shrink-0 px-2 py-1.5 text-[12px] font-semibold text-primary border border-primary rounded cursor-pointer hover:bg-primary-bg transition-colors"
+                    @click="drafts[s.key] = ''"
+                  >
+                    编辑
+                  </button>
+                </template>
+                <!-- 非敏感字段：正常可编辑 -->
+                <input
+                  v-else
+                  v-model="drafts[s.key]"
+                  class="w-full px-2.5 py-1.5 text-[13px] font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+                />
+              </div>
 
               <!-- text：textarea -->
               <textarea
-                v-else
+                v-else-if="s.type === 'text'"
                 v-model="drafts[s.key]"
                 rows="2"
                 maxlength="1000"
                 class="w-full px-2.5 py-1.5 text-[13px] border border-border rounded outline-none transition-colors resize-y focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+              />
+
+              <!-- integer：number input -->
+              <input
+                v-else-if="s.type === 'integer'"
+                v-model.number="drafts[s.key]"
+                type="number"
+                step="1"
+                :min="s.min"
+                :max="s.max"
+                class="w-full px-2.5 py-1.5 text-[13px] font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
               />
             </td>
 
@@ -350,7 +408,12 @@ function toggleBoolean(key: string, currentVal: boolean) {
 
             <!-- 描述 -->
             <td class="px-3 py-3 align-top text-[13px] text-text-secondary">
-              {{ s.description }}
+              <div class="flex flex-col gap-1">
+                <span>{{ s.description }}</span>
+                <span v-if="s.needsRestart" class="inline-flex items-center gap-0.5 text-[11px] font-semibold text-warning-text">
+                  <RefreshCw :size="12" /> 需重启生效
+                </span>
+              </div>
             </td>
 
             <!-- 操作按钮 -->
@@ -378,6 +441,7 @@ function toggleBoolean(key: string, currentVal: boolean) {
           </tr>
         </tbody>
       </table>
+      </AsyncContent>
     </section>
 
     <!-- ─── 第二组：env-only 只读设置（折叠面板） ───────────── -->
@@ -411,53 +475,37 @@ function toggleBoolean(key: string, currentVal: boolean) {
         <div v-if="envOnlySettings.length === 0" class="p-6 text-center text-sm text-text-secondary">
           当前 .env 中没有白名单内的环境变量
         </div>
-        <div v-else class="flex flex-col">
-          <div
-            v-for="group in envOnlyGrouped"
-            :key="group.category"
-            class="border-b border-border last:border-b-0"
-          >
-            <div class="px-5 py-2 bg-gray-50/60 border-b border-border">
-              <h3 class="text-[13px] font-semibold text-text-secondary uppercase tracking-wide">
-                {{ CATEGORY_LABEL[group.category] }}
-                <span class="ml-1 text-text-muted normal-case font-normal">
-                  ({{ group.items.length }})
-                </span>
-              </h3>
-            </div>
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="bg-white border-b border-border">
-                  <th class="px-3 py-2 text-left font-semibold text-text w-[240px]">键名</th>
-                  <th class="px-3 py-2 text-left font-semibold text-text">当前值</th>
-                  <th class="px-3 py-2 text-left font-semibold text-text">描述</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="s in group.items"
-                  :key="s.key"
-                  class="border-b border-border last:border-b-0 hover:bg-gray-50"
+        <AdminTable
+          v-else
+          :columns="envOnlyColumns"
+          :data="envOnlySettings"
+          :loading="false"
+        >
+          <template #cell-key="{ row }">
+            <code class="font-mono text-[13px] text-text">{{ row.key }}</code>
+          </template>
+          <template #cell-effective_value="{ row }">
+            <Tooltip v-if="row.is_secret" :content="getSecretTooltip(row.key)" class="cursor-help">
+              <span class="inline-flex items-center gap-1">
+                <Lock :size="12" class="shrink-0 text-amber-700" />
+                <code
+                  class="font-mono text-[13px] px-2 py-0.5 rounded underline decoration-dotted underline-offset-2 bg-amber-50 text-amber-800"
                 >
-                  <td class="px-3 py-2 align-top">
-                    <code class="font-mono text-[13px] text-text">{{ s.key }}</code>
-                  </td>
-                  <td class="px-3 py-2 align-top">
-                    <code
-                      class="font-mono text-[13px] px-2 py-0.5 rounded"
-                      :class="s.is_secret ? 'bg-amber-50 text-amber-800' : 'bg-gray-50 text-text'"
-                    >
-                      {{ String(s.effective_value) }}
-                    </code>
-                  </td>
-                  <td class="px-3 py-2 align-top text-[13px] text-text-secondary">
-                    {{ s.description }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+                  {{ String(row.effective_value) }}
+                </code>
+              </span>
+            </Tooltip>
+            <code
+              v-else
+              class="font-mono text-[13px] px-2 py-0.5 rounded bg-gray-50 text-text"
+            >
+              {{ String(row.effective_value) }}
+            </code>
+          </template>
+          <template #cell-description="{ row }">
+            <span class="text-[13px] text-text-secondary">{{ row.description }}</span>
+          </template>
+        </AdminTable>
       </details>
     </section>
   </div>

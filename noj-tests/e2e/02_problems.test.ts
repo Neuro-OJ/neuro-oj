@@ -7,15 +7,12 @@ import {
   apiGet,
   apiPost,
   apiPut,
+  getAdminToken,
   isE2E,
-  loginAndChangePassword,
   waitForServer,
 } from "./helper.ts";
 
 const skip = !isE2E;
-const ADMIN_EMAIL = Deno.env.get("E2E_ADMIN_EMAIL") || "e2e_admin@test.com";
-const ADMIN_PASS = Deno.env.get("E2E_ADMIN_PASS") || "e2e_admin_pass";
-const ADMIN_NEW_PASS = "E2eAdminChangedPass1";
 let adminToken = "";
 let problemId = "";
 
@@ -27,11 +24,7 @@ Deno.test({
   fn: async () => {
     if (!isE2E) return;
     await waitForServer();
-    adminToken = await loginAndChangePassword(
-      ADMIN_EMAIL,
-      ADMIN_PASS,
-      ADMIN_NEW_PASS,
-    );
+    adminToken = await getAdminToken();
   },
 });
 

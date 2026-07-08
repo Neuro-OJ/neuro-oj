@@ -1,5 +1,14 @@
-import { and, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
+import {
+  and,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  lte,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import {
   evaluationResults,
   problems,
@@ -7,18 +16,20 @@ import {
   users,
 } from "../db/schema.ts";
 import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
+import { getDb } from "../db/connection.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
-import { Channels, publishEvent } from "../lib/event-bus.ts";
 import { getProblem } from "./problems.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
-import {
-  type JudgeResult,
-  type JudgeTask,
-  LANGUAGE_EXT_MAP,
-  type SubmissionStatus,
+import { getPendingSubmissionIds, getSubmissionQueueStatus } from "./queue.ts";
+import type {
+  JudgeResult,
+  JudgeTask,
+  SubmissionStatus,
 } from "../types/index.ts";
-import { getSubmissionQueueStatus } from "./queue.ts";
-
+import { logAudit } from "./audit-log.ts";
+import { LANGUAGE_EXT_MAP } from "../types/index.ts";
+import { Channels, publishEvent } from "../lib/event-bus.ts";
+import { applyNewResult } from "./stats-cache.ts";
 export interface SubmissionInput {
   problem_id: string;
   language: string;
@@ -37,15 +48,32 @@ export interface SubmissionResponse {
   created_at: string;
 }
 
-export interface SubmissionWithResult extends SubmissionResponse {
+/**
+ * 提交详情响应——基础数据公开，详细内容（code/output/details）按权限裁剪。
+ *
+ * - viewer 是 owner 或 admin → `code`/`output`/`details` 完整返回（output 可能被截断）
+ * - viewer 是匿名用户或登录非 owner → `code`/`output`/`details` 均为 null
+ */
+export interface SubmissionDetail {
+  id: string;
+  user_id: string;
+  problem_id: string;
+  language: string;
+  /** 源代码：仅 owner/admin 可见，否则为 null */
+  code: string | null;
+  file_name: string | null;
+  status: SubmissionStatus;
+  created_at: string;
   result: {
     status: string;
     score: number;
-    output: string;
-    /** output 是否被 API 层截断（issue 64 评论 §5.1） */
-    output_truncated: boolean;
+    /** 评测脚本输出：仅 owner/admin 可见（可能被截断至 8KB），否则为 null */
+    output: string | null;
+    /** output 是否被 API 层截断（issue 64 评论 §5.1）；非 owner/admin 为 null */
+    output_truncated: boolean | null;
     time_ms: number | null;
     memory_kb: number | null;
+    /** 评测用例级详情：仅 owner/admin 可见，否则为 null */
     details: Record<string, unknown> | null;
   } | null;
   /** 排队位置（1-based），仅在 pending/等待中时有值。 */
@@ -59,6 +87,11 @@ export interface SubmissionWithResult extends SubmissionResponse {
 }
 
 /**
+ * @deprecated 请使用 `SubmissionDetail`——本接口保留仅为兼容旧调用方。
+ */
+export interface SubmissionWithResult extends SubmissionDetail {}
+
+/**
  * 提交列表项——不含 code 字段，附带题目和评测摘要。
  */
 export interface SubmissionListItem {
@@ -69,9 +102,15 @@ export interface SubmissionListItem {
   file_name: string | null;
   status: SubmissionStatus;
   created_at: string;
+  judge_started_at: string | null;
+  judge_finished_at: string | null;
+  queue_position: number | null;
+  queue_length: number | null;
   problem: {
     id: string;
     title: string;
+    time_limit_ms: number | null;
+    memory_limit_mb: number | null;
   };
   result: {
     status: string;
@@ -203,7 +242,11 @@ export async function listSubmissions(
       file_name: submissions.file_name,
       status: submissions.status,
       created_at: submissions.created_at,
+      judge_started_at: submissions.judge_started_at,
+      judge_finished_at: submissions.judge_finished_at,
       problem_title: problems.title,
+      problem_time_limit_ms: problems.time_limit_ms,
+      problem_memory_limit_mb: problems.memory_limit_mb,
       result_status: evaluationResults.status,
       result_score: evaluationResults.score,
       result_time_ms: evaluationResults.time_ms,
@@ -226,27 +269,58 @@ export async function listSubmissions(
     .offset(offset)
     .limit(perPage);
 
-  const data: SubmissionListItem[] = rows.map((row) => ({
-    id: row.id,
-    user_id: row.user_id,
-    problem_id: row.problem_id,
-    language: row.language,
-    file_name: row.file_name,
-    status: row.status,
-    created_at: row.created_at,
-    problem: {
-      id: row.problem_id,
-      title: row.problem_title ?? "",
-    },
-    result: row.result_status
-      ? {
-        status: row.result_status,
-        score: row.result_score ?? 0,
-        time_ms: row.result_time_ms,
-        memory_kb: row.result_memory_kb,
-      }
-      : null,
-  }));
+  // 仅当存在无结果的 in-progress 提交时才查 Redis 队列
+  // （避免每次列表请求都 LRANGE 整个队列）
+  const hasInProgress = rows.some((r) => !r.result_status);
+  let pendingPosMap: Map<string, number> | null = null;
+  let queueLength: number | null = null;
+  if (hasInProgress) {
+    try {
+      const pendingIds = await getPendingSubmissionIds();
+      queueLength = pendingIds.length;
+      // LRANGE 0 -1 返回最新优先（LPUSH），pendingIds.length - idx
+      // 使队列位置从 1（下个出队）递增
+      pendingPosMap = new Map(
+        pendingIds.map((id, idx) => [id, pendingIds.length - idx]),
+      );
+    } catch {
+      // Redis 不可用时，pendingPosMap 保持 null，所有未完成提交视为"评测中"
+    }
+  }
+
+  const data: SubmissionListItem[] = rows.map((row) => {
+    const hasResult = !!row.result_status;
+    const queue_position = !hasResult && pendingPosMap
+      ? (pendingPosMap.get(row.id) ?? null)
+      : null;
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      problem_id: row.problem_id,
+      language: row.language,
+      file_name: row.file_name,
+      status: row.status,
+      created_at: row.created_at,
+      judge_started_at: row.judge_started_at ?? null,
+      judge_finished_at: row.judge_finished_at ?? null,
+      queue_position,
+      queue_length: !hasResult ? queueLength : null,
+      problem: {
+        id: row.problem_id,
+        title: row.problem_title ?? "",
+        time_limit_ms: row.problem_time_limit_ms ?? null,
+        memory_limit_mb: row.problem_memory_limit_mb ?? null,
+      },
+      result: row.result_status
+        ? {
+          status: row.result_status,
+          score: row.result_score ?? 0,
+          time_ms: row.result_time_ms,
+          memory_kb: row.result_memory_kb,
+        }
+        : null,
+    };
+  });
 
   return { data, total };
 }
@@ -254,7 +328,7 @@ export async function listSubmissions(
 /**
  * 将数据库行转换为提交响应。
  */
-function toSubmissionResponse(
+function _toSubmissionResponse(
   row: typeof submissions.$inferSelect,
 ): SubmissionResponse {
   return {
@@ -289,7 +363,7 @@ export async function createSubmission(
     throw new BadRequestError(`不支持的语言: ${input.language}`);
   }
 
-  // 生成文件默认名
+  // 生成文件默认名：优先使用 LANGUAGE_EXT_MAP
   const fileName = input.file_name || LANGUAGE_EXT_MAP[input.language] ||
     "main.txt";
 
@@ -350,9 +424,12 @@ export async function createSubmission(
   try {
     await pushJudgeTask(task);
     // 入队成功后立即更新状态为 judging
-    await updateSubmissionStatus(id, "judging");
+    // 注意：此处不设置 judge_started_at，它由 noj-judge 开始执行时通过 started 事件设置
+    await db.update(submissions).set({ status: "judging" }).where(
+      eq(submissions.id, id),
+    );
 
-    // 发布队列变更事件（fire-and-forget）
+    // 发布队列变更事件，通知 SSE 等订阅者
     publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
   } catch (mqErr) {
     console.error("评测任务推送失败:", mqErr);
@@ -394,14 +471,22 @@ const MAX_OUTPUT_LENGTH = 8 * 1024;
 
 /**
  * 根据 ID 查询提交记录。
- * userId 若为空字符串或 undefined，则跳过所有权检查（供测试或内部调用）。
+ *
+ * 权限模型（issue: 评测详情公开访问分级）：
+ * - 基础数据（题号、状态、时间、内存、得分等）：所有访问者可见
+ * - 详细内容（源代码、评测输出、用例级详情）：仅 owner 或 admin 可见
+ *
+ * @param id 提交 ID
+ * @param viewerId 当前查看者的 userId；undefined/null 表示匿名访问
+ * @param viewerRole 当前查看者的角色；'admin' 时跳过所有权校验
  *
  * @throws {NotFoundError} 提交不存在
  */
 export async function getSubmission(
   id: string,
-  userId?: string,
-): Promise<SubmissionWithResult> {
+  viewerId?: string | null,
+  viewerRole?: string | null,
+): Promise<SubmissionDetail> {
   const db = getDb();
 
   const rows = await db
@@ -416,10 +501,11 @@ export async function getSubmission(
 
   const row = rows[0];
 
-  // 非所有者只能查看自己的提交
-  if (userId && row.user_id !== userId) {
-    throw new NotFoundError("提交不存在");
-  }
+  // 权限判断：仅 owner 或 admin 可看 code/output/details
+  // 注意：基础数据（题号/状态/时间等）对所有访问者公开，不在这里做"非所有者 404"的拦截
+  const isOwner = !!viewerId && row.user_id === viewerId;
+  const isAdmin = viewerRole === "admin";
+  const canSeeDetails = isOwner || isAdmin;
 
   // 查询评测结果
   const resultRows = await db
@@ -433,27 +519,44 @@ export async function getSubmission(
       const rawOutput = resultRows[0].output ?? "";
       // API 层截断：原始 output 完整保留在 DB，仅响应层控制大小
       const output_truncated = rawOutput.length > MAX_OUTPUT_LENGTH;
-      const output = output_truncated
-        ? rawOutput.slice(0, MAX_OUTPUT_LENGTH)
-        : rawOutput;
+      // 仅 owner/admin 返回 output（截断），其他访问者得到 null
+      const output = canSeeDetails
+        ? (output_truncated ? rawOutput.slice(0, MAX_OUTPUT_LENGTH) : rawOutput)
+        : null;
+      // 仅 owner/admin 解析 details JSON，其他访问者得到 null
+      const details = canSeeDetails
+        ? parseDetails(resultRows[0].details)
+        : null;
       return {
         status: resultRows[0].status,
         score: resultRows[0].score,
         output,
-        output_truncated,
+        output_truncated: canSeeDetails ? output_truncated : null,
         time_ms: resultRows[0].time_ms,
         memory_kb: resultRows[0].memory_kb,
-        details: parseDetails(resultRows[0].details),
+        details,
       };
     })()
     : null;
 
   // 查询队列状态信息（排队位置、时间戳）
-  // getSubmission 已在上面完成归属校验，此处仍传 userId 让服务层做兜底校验
-  const queueStatus = await getSubmissionQueueStatus(id, userId);
+  // getSubmissionQueueStatus 已实现三态权限：未登录 + owner + admin 可见，登录非 owner 不可见
+  // Redis 不可用时内部静默失败，返回 null 时间戳回退至 DB 值
+  const queueStatus = await getSubmissionQueueStatus(
+    id,
+    viewerId ?? undefined,
+    viewerRole ?? undefined,
+  );
 
   return {
-    ...toSubmissionResponse(row),
+    id: row.id,
+    user_id: row.user_id,
+    problem_id: row.problem_id,
+    language: row.language,
+    code: canSeeDetails ? row.code : null,
+    file_name: row.file_name,
+    status: row.status,
+    created_at: row.created_at,
     result,
     queue_position: queueStatus?.queue_position ?? null,
     queue_length: queueStatus?.queue_length ?? null,
@@ -469,32 +572,30 @@ export async function getSubmission(
  *
  * 由结果消费者调用，将 noj-judge 返回的 JudgeResult 持久化到数据库。
  * 原子操作：更新 submission 状态 → INSERT evaluation_results。
- *
- * 重测竞态防护：
- * 若 JudgeResult 携带 rejudge_seq，检查是否小于 submissions 当前序列号。
- * 若小于，说明该结果是重测前的旧评测产生的，应丢弃。
  */
 export async function saveEvaluationResult(
   result: JudgeResult,
 ): Promise<void> {
   const db = getDb();
 
-  // 重测竞态防护：检查结果序列号是否匹配当前提交
-  //
-  // 场景：旧评测因网络延迟在重测重置后到达 INSERT，携带旧 seq，
-  // 而新评测尚未到达。若不拦截，旧结果会覆盖新评测的空间。
-  //
-  // 方案：JudgeResult 携带 rejudge_seq（由 noj-judge 从 JudgeTask 透传），
-  // 此处比对 submissions 当前值。结果 seq < 当前 seq → 丢弃。
-  // 缺失 rejudge_seq 时按 0 处理（首次提交走默认值），此时仍需检查。
   const incomingSeq = result.rejudge_seq ?? 0;
   const [sub] = await db
-    .select({ rejudge_seq: submissions.rejudge_seq })
+    .select({
+      rejudge_seq: submissions.rejudge_seq,
+      created_at: submissions.created_at,
+    })
     .from(submissions)
     .where(eq(submissions.id, result.submission_id))
     .limit(1);
 
-  if (sub && incomingSeq < sub.rejudge_seq) {
+  if (!sub) {
+    console.warn(
+      `提交不存在，忽略评测结果: submission=${result.submission_id}`,
+    );
+    return;
+  }
+
+  if (incomingSeq < sub.rejudge_seq) {
     console.warn(
       `忽略过时的评测结果: submission=${result.submission_id}, ` +
         `result_seq=${incomingSeq}, current_seq=${sub.rejudge_seq}`,
@@ -504,24 +605,11 @@ export async function saveEvaluationResult(
 
   const now = new Date().toISOString();
 
-  // 使用事务保证原子性：更新 submission 状态 + 插入 evaluation_results
   await db.transaction(async (tx) => {
-    // 根据评测结果状态映射 submission 状态
-    // SystemError → "error"，其他 → "finished"
     const submissionStatus: SubmissionStatus = result.status === "SystemError"
       ? "error"
       : "finished";
 
-    // 同步回填 judge_finished_at 时间戳
-    //
-    // 修复 issue 64 评论 §4.1：saveEvaluationResult 走的是直接 UPDATE，
-    // 绕过了 updateSubmissionStatus 中状态转换时的字段同步逻辑，
-    // 导致 judge_finished_at 永远为 NULL，admin 监控与前端历史记录的
-    // "完成时间"显示空。
-    //
-    // 注意：updateSubmissionStatus 也会设置该字段，但状态机校验
-    // (pending → judging → finished) 不允许 finished → finished 的二次更新，
-    // 因此这里直接在 saveEvaluationResult 中设置以保证准确性。
     await tx
       .update(submissions)
       .set({
@@ -530,15 +618,6 @@ export async function saveEvaluationResult(
       })
       .where(eq(submissions.id, result.submission_id));
 
-    // 插入评测结果（使用 UPSERT 语义防止重复消费，并在重测后用最新结果覆盖）
-    //
-    // 修复 issue #86：重测流程中 rejudgeSubmission 会先 DELETE 旧 evaluation_results，
-    // 再发送新 JudgeTask。但若旧结果到达顺序在新结果到达之前出现（例如消费者网络抖动
-    // 触发的延迟重投），旧结果 INSERT 成功后会占据 submission_id 的 UNIQUE 槽位，
-    // 之后到达的新结果因 onConflictDoNothing 被 silently 跳过，导致评测结果停留在旧值。
-    //
-    // 改为 onConflictDoUpdate：若 submission_id 已存在，直接覆盖为本次结果。
-    // 配合 rejudge_seq 防护（旧结果 seq 已被丢弃），不会污染正确的新结果。
     await tx
       .insert(evaluationResults)
       .values({
@@ -565,6 +644,11 @@ export async function saveEvaluationResult(
         },
       });
   });
+
+  // 更新内存统计缓存（仅 net-new 结果，重测不计入避免 double-count）
+  if (sub.created_at) {
+    applyNewResult(result.score, sub.created_at);
+  }
 }
 
 // 允许的状态转换
@@ -618,7 +702,7 @@ export async function updateSubmissionStatus(
   }
 
   const now = new Date().toISOString();
-  const updates: Record<string, string> = { status };
+  const updates: Record<string, string | undefined> = { status };
 
   // 设置 judge_started_at：pending → judging
   if (status === "judging") {
@@ -636,22 +720,99 @@ export async function updateSubmissionStatus(
     .where(eq(submissions.id, id));
 }
 
-/** 批量重测单次最大提交数。 */
-const MAX_BATCH_REJUDGE = 500;
+/**
+ * 今日提交统计。
+ */
+export interface TodayStats {
+  total: number;
+  full_score: number;
+  not_full_score: number;
+}
 
 /**
- * 管理员重测提交。
- *
- * 管理专用：重置提交状态为 pending，清除旧评测结果，重新推送评测任务。
- * 跳过状态机校验直接重置，适用于任何状态的提交。
- *
- * @throws {NotFoundError} 提交不存在
- * @throws {NotFoundError} 题目不存在（已被删除）
+ * 获取当前用户的今日提交统计。
+ * - total：今日提交总数
+ * - full_score：今日获得满分的提交数（score >= 10000）
+ * - not_full_score：今日未获满分的提交数
  */
+/**
+ * 获取全站历史累计提交统计（不受时间范围限制）。
+ */
+export async function getTotalStats(): Promise<TodayStats> {
+  const db = getDb();
+
+  const [row] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      full_score: sql<
+        number
+      >`count(*) filter (where ${evaluationResults.score} >= 10000)::int`,
+    })
+    .from(submissions)
+    .leftJoin(
+      evaluationResults,
+      eq(evaluationResults.submission_id, submissions.id),
+    );
+
+  const total = Number(row?.total ?? 0);
+  const fullScore = Number(row?.full_score ?? 0);
+  const notFullScore = total - fullScore;
+
+  return {
+    total,
+    full_score: fullScore,
+    not_full_score: notFullScore,
+  };
+}
+
+export async function getTodayStats(userId?: string): Promise<TodayStats> {
+  const db = getDb();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const conditions: SQL[] = [gte(submissions.created_at, today)];
+  if (userId) conditions.push(eq(submissions.user_id, userId));
+
+  const [row] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      full_score: sql<
+        number
+      >`count(*) filter (where ${evaluationResults.score} >= 10000)::int`,
+    })
+    .from(submissions)
+    .leftJoin(
+      evaluationResults,
+      eq(evaluationResults.submission_id, submissions.id),
+    )
+    .where(and(...conditions));
+
+  const total = Number(row?.total ?? 0);
+  const fullScore = Number(row?.full_score ?? 0);
+  const notFullScore = total - fullScore;
+
+  return {
+    total,
+    full_score: fullScore,
+    not_full_score: notFullScore,
+  };
+}
+
+const MAX_BATCH_REJUDGE = 500;
+
+type BatchTxResult = {
+  ids: string[];
+  count: number;
+  rows?: {
+    id: string;
+    language: string;
+    code: string;
+    file_name: string | null;
+  }[];
+} | { error: string };
+
 export async function rejudgeSubmission(id: string): Promise<void> {
   const db = getDb();
 
-  // 获取提交记录
   const [submission] = await db
     .select()
     .from(submissions)
@@ -662,31 +823,28 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     throw new NotFoundError("提交不存在");
   }
 
-  // 获取题目最新配置
   const problem = await getProblem(submission.problem_id);
 
   // 获取支持包 download URL
   let download_url: string | undefined;
-  if (problem.support_package_storage_url) {
-    try {
+  try {
+    if (problem.support_package_storage_url) {
       const storage = await getStorageProvider();
       download_url = await storage.downloadUrl(
         problem.support_package_storage_url,
       );
-    } catch (err) {
-      console.error(
-        `重测获取支持包 download URL 失败 (${problem.support_package_storage_url}):`,
-        err instanceof Error ? err.message : String(err),
-      );
     }
+  } catch (err) {
+    console.error(
+      `重测获取支持包 download URL 失败 (${problem.support_package_storage_url}):`,
+      err instanceof Error ? err.message : String(err),
+    );
   }
 
-  // 事务：清除旧结果 + 重置状态 + 递增 rejudge_seq
   await db.transaction(async (tx) => {
     await tx.delete(evaluationResults)
       .where(eq(evaluationResults.submission_id, id));
 
-    // 原子递增 rejudge_seq（使用 SQL 原生加法，避免读取-修改-写入竞态）
     await tx.update(submissions)
       .set({
         status: "pending",
@@ -697,17 +855,14 @@ export async function rejudgeSubmission(id: string): Promise<void> {
       .where(eq(submissions.id, id));
   });
 
-  // 读取递增后的 rejudge_seq 以放入 JudgeTask
   const [updated] = await db
     .select({ rejudge_seq: submissions.rejudge_seq })
     .from(submissions)
     .where(eq(submissions.id, id))
     .limit(1);
 
-  // 推进状态：pending → judging
   await updateSubmissionStatus(id, "judging");
 
-  // 推送评测任务
   const task: JudgeTask = {
     submission_id: id,
     problem_id: submission.problem_id,
@@ -723,15 +878,24 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     rejudge_seq: updated?.rejudge_seq ?? 0,
   };
 
+  // 审计日志：先写入审计再推送不可逆的 MQ 消息（issue #101）
+  await logAudit(
+    "submissions.rejudge",
+    {
+      action: "submissions.rejudge",
+      submission_id: id,
+    },
+    { type: "submission", id },
+  );
+
   try {
     await pushJudgeTask(task);
   } catch (mqErr) {
-    // MQ 推送失败 → 标记为 error，避免永久停留在 judging
     console.error("重测任务推送失败:", mqErr);
     try {
       await updateSubmissionStatus(id, "error");
     } catch {
-      // 忽略 cleanup 失败
+      // ignore cleanup failure
     }
     throw new AppError(
       "重测失败：评测队列暂时不可用，请稍后重试",
@@ -740,63 +904,33 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     );
   }
 
-  // 发布队列变更事件
   publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
 }
 
-/**
- * 管理员批量重测指定题目的所有已完结提交。
- *
- * 默认只重测状态为 finished 和 error 的提交。
- * 若该题下存在 pending 或 judging 的活跃提交，则拒绝操作并返回错误。
- *
- * 最大批量上限为 MAX_BATCH_REJUDGE（500）条提交。
- *
- * @throws {NotFoundError} 题目不存在
- * @throws {BadRequestError} 存在活跃提交时拒绝，或超出批量上限
- */
 export async function rejudgeProblemSubmissions(
   problemId: string,
 ): Promise<{ total: number; queued: number; skipped: number }> {
   const db = getDb();
 
-  // 获取题目最新配置
   const problem = await getProblem(problemId);
 
   // 获取支持包 download URL（该题所有提交共享同一份）
   let download_url: string | undefined;
-  if (problem.support_package_storage_url) {
-    try {
+  try {
+    if (problem.support_package_storage_url) {
       const storage = await getStorageProvider();
       download_url = await storage.downloadUrl(
         problem.support_package_storage_url,
       );
-    } catch (err) {
-      console.error(
-        `批量重测获取支持包 download URL 失败 (${problem.support_package_storage_url}):`,
-        err instanceof Error ? err.message : String(err),
-      );
     }
+  } catch (err) {
+    console.error(
+      `批量重测获取支持包 download URL 失败 (${problem.support_package_storage_url}):`,
+      err instanceof Error ? err.message : String(err),
+    );
   }
 
-  // 事务内：检查活跃提交 + 清除旧结果 + 重置状态（原子操作，避免 TOCTOU）
-  //
-  // 审查修复（issue #80）：
-  // 1) TOCTOU：活跃检查与重置在同一个事务中，防止检查后重置前有新提交进入 judging
-  // 2) N+1 UPDATE：使用 inArray 单条 SQL 替代逐条 UPDATE
-  // 3) 递增 rejudge_seq：使用 SQL 原生加法
-  type BatchTxResult = {
-    ids: string[];
-    count: number;
-    rows?: {
-      id: string;
-      language: string;
-      code: string;
-      file_name: string | null;
-    }[];
-  } | { error: string };
   const txResult = await db.transaction<BatchTxResult>(async (tx) => {
-    // 检查活跃提交（在事务内执行，锁定相关行）
     const activeCounts = await tx
       .select({ status: submissions.status, count: sql<number>`count(*)` })
       .from(submissions)
@@ -818,7 +952,6 @@ export async function rejudgeProblemSubmissions(
       };
     }
 
-    // 获取所有待重测提交的 id
     const rows = await tx
       .select({
         id: submissions.id,
@@ -838,7 +971,6 @@ export async function rejudgeProblemSubmissions(
       return { ids: [], count: 0 };
     }
 
-    // 批量上限检查
     if (rows.length > MAX_BATCH_REJUDGE) {
       return {
         error:
@@ -848,11 +980,9 @@ export async function rejudgeProblemSubmissions(
 
     const ids = rows.map((r) => r.id);
 
-    // 清除旧结果
     await tx.delete(evaluationResults)
       .where(inArray(evaluationResults.submission_id, ids));
 
-    // 单条 SQL 批量重置（修复 N+1）
     await tx.update(submissions)
       .set({
         status: "pending",
@@ -865,7 +995,6 @@ export async function rejudgeProblemSubmissions(
     return { ids, count: ids.length, rows };
   });
 
-  // 处理事务内返回的错误
   if ("error" in txResult) {
     throw new BadRequestError(txResult.error);
   }
@@ -876,7 +1005,6 @@ export async function rejudgeProblemSubmissions(
     return { total: 0, queued: 0, skipped: 0 };
   }
 
-  // 读取递增后的 rejudge_seq（取第一行，所有行在同一事务中递增了相同的值 +1）
   const [seqRow] = await db
     .select({ rejudge_seq: submissions.rejudge_seq })
     .from(submissions)
@@ -884,11 +1012,23 @@ export async function rejudgeProblemSubmissions(
     .limit(1);
   const currentSeq = seqRow?.rejudge_seq ?? 0;
 
-  // 用事务内存取的完整数据构建任务
   const rejudgeRows = await db
     .select()
     .from(submissions)
     .where(inArray(submissions.id, allIds));
+
+  // 审计日志：先写入审计再推送不可逆的 MQ 消息
+  if (total > 0) {
+    await logAudit(
+      "submissions.rejudge",
+      {
+        action: "submissions.rejudge",
+        problem_id: problemId,
+        count: total,
+      },
+      { type: "problem", id: problemId },
+    );
+  }
 
   // 逐条入队（每条代码内容不同，无法合并）
   let queued = 0;
@@ -917,10 +1057,20 @@ export async function rejudgeProblemSubmissions(
         `批量重测入队失败 (submission=${sub.id}):`,
         err instanceof Error ? err.message : String(err),
       );
+      // 入队失败：将状态回退到 error，避免卡在 pending 导致无法重试
+      try {
+        const errNow = new Date().toISOString();
+        await db.update(submissions)
+          .set({
+            status: "error",
+            judge_started_at: null,
+            judge_finished_at: errNow,
+          })
+          .where(eq(submissions.id, sub.id));
+      } catch { /* ignore cleanup failure */ }
     }
   }
 
-  // 发布队列变更事件
   publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
 
   return {
@@ -929,18 +1079,10 @@ export async function rejudgeProblemSubmissions(
     skipped: total - queued,
   };
 }
-/**
- * 管理员删除提交记录。
- *
- * 硬删除提交记录及关联的评测结果（通过 ON DELETE CASCADE 自动清理）。
- * 仅管理员可通过 admin 端点调用。
- *
- * @throws {NotFoundError} 提交不存在
- */
+
 export async function deleteSubmission(id: string): Promise<void> {
   const db = getDb();
 
-  // 检查提交是否存在
   const existing = await db
     .select({ id: submissions.id })
     .from(submissions)
@@ -951,6 +1093,5 @@ export async function deleteSubmission(id: string): Promise<void> {
     throw new NotFoundError("提交不存在");
   }
 
-  // 硬删除（evaluation_results 通过 ON DELETE CASCADE 自动清理）
   await db.delete(submissions).where(eq(submissions.id, id));
 }

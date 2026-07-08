@@ -22,6 +22,11 @@ export default defineNuxtConfig({
     apiBase,
   },
 
+  // 子目录组件不添加路径前缀（feature/LatestSubmissions.vue → <LatestSubmissions>）
+  components: {
+    dirs: [{ path: '~/components', pathPrefix: false }],
+  },
+
   // API 请求由 server/api/[...slug].ts 代理到 noj-core
 
   app: {

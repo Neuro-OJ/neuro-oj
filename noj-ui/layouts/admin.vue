@@ -11,6 +11,8 @@ import {
   ArrowLeftFromLine,
   Container,
   Settings,
+  Ban,
+  ScrollText,
 } from "@lucide/vue"
 
 const route = useRoute()
@@ -38,11 +40,13 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: "仪表盘", to: "/admin", icon: LayoutDashboard },
   { label: "用户管理", to: "/admin/users", icon: Users },
+  { label: "黑名单管理", to: "/admin/blacklist", icon: Ban },
   { label: "题目管理", to: "/admin/problems", icon: BookOpen },
   { label: "分类管理", to: "/admin/categories", icon: Tags },
   { label: "评测镜像", to: "/admin/judge-images", icon: Container },
   { label: "系统设置", to: "/admin/settings", icon: Settings },
   { label: "提交管理", to: "/admin/submissions", icon: Files },
+  { label: "审计日志", to: "/admin/audit-logs", icon: ScrollText },
 ]
 
 function isActive(path: string) {

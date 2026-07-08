@@ -1,0 +1,5 @@
+name: admin-ip-blacklist
+schema: spec-driven
+created: 2026-07-04
+issue: 102
+status: implementing

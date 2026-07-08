@@ -9,15 +9,17 @@
  */
 
 import type { SendPasswordResetEmail } from "./types.ts";
+import { getSetting } from "../../services/system-settings.ts";
 
-function getEnvOrThrow(name: string): string {
-  const val = Deno.env.get(name);
-  if (!val) {
+function getSettingOrThrow(key: string, label: string): string {
+  const val = getSetting(key);
+  const str = typeof val?.value === "string" ? val.value : "";
+  if (!str) {
     throw new Error(
-      `[email/aliyun] ${name} 未配置，请检查环境变量`,
+      `[email/aliyun] ${label} 未配置，请通过系统设置或环境变量配置`,
     );
   }
-  return val;
+  return str;
 }
 
 /**
@@ -32,9 +34,15 @@ export const sendPasswordResetEmail: SendPasswordResetEmail = async (
   resetLink: string,
   _expiresInMinutes = 15,
 ) => {
-  const akId = getEnvOrThrow("ALIBABA_ACCESS_KEY_ID");
-  const akSecret = getEnvOrThrow("ALIBABA_ACCESS_KEY_SECRET");
-  const fromEmail = getEnvOrThrow("ALIBABA_FROM_EMAIL");
+  const akId = getSettingOrThrow(
+    "alibaba_access_key_id",
+    "阿里云 AccessKey ID",
+  );
+  const akSecret = getSettingOrThrow(
+    "alibaba_access_key_secret",
+    "阿里云 AccessKey Secret",
+  );
+  const fromEmail = getSettingOrThrow("alibaba_from_email", "阿里云发信地址");
 
   // 动态导入 SDK（CJS/ESM 互操作）
   // deno-lint-ignore no-explicit-any

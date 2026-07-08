@@ -10,6 +10,7 @@
  */
 
 import type { SendPasswordResetEmail } from "./email-providers/types.ts";
+import { getSetting } from "../services/system-settings.ts";
 
 /** Provider 名称到模块路径的映射 */
 const PROVIDER_MODULES: Record<string, string> = {
@@ -30,7 +31,7 @@ let sendFn: SendPasswordResetEmail | null = null;
 async function loadSendFn(): Promise<SendPasswordResetEmail> {
   if (sendFn) return sendFn;
 
-  const provider = Deno.env.get("EMAIL_PROVIDER") || "mock";
+  const provider = String(getSetting("email_provider")?.value ?? "mock");
   const modulePath = PROVIDER_MODULES[provider];
 
   if (!modulePath) {

@@ -1,15 +1,19 @@
-import { and, eq, gte, ilike, lte, not, or, sql } from "drizzle-orm";
+import { and, eq, gte, ilike, isNull, lte, not, or, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
-import { users } from "../db/schema.ts";
+import { userBans, users } from "../db/schema.ts";
 import { comparePassword, hashPassword } from "../lib/password.ts";
 import { signToken } from "../lib/jwt.ts";
+import { logAudit } from "./audit-log.ts";
 import {
   BadRequestError,
   ConflictError,
+  ForbiddenError,
   NotFoundError,
   UnauthorizedError,
 } from "../lib/errors.ts";
 import type { LoginInput, RegisterInput, UserResponse } from "../types/auth.ts";
+import { isBannedIp } from "../lib/cidr.ts";
+import { getBannedRanges } from "./banlist.ts";
 
 /**
  * 密码强度校验最小长度。
@@ -67,13 +71,17 @@ export function validatePasswordStrength(
  * 将数据库行转换为公开的用户响应。
  * 排除 password_hash 等敏感字段。
  */
-function toUserResponse(row: typeof users.$inferSelect): UserResponse {
+function toUserResponse(
+  row: typeof users.$inferSelect,
+  activeBan?: { reason: string; banned_until: string | null } | null,
+): UserResponse {
   return {
     id: row.id,
     username: row.username,
     email: row.email,
     role: row.role,
     must_change_password: row.must_change_password,
+    active_ban: activeBan ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -139,6 +147,7 @@ export async function registerUser(
     email: input.email,
     role: "user",
     must_change_password: false,
+    active_ban: null,
     created_at: now,
     updated_at: now,
   };
@@ -154,6 +163,7 @@ export async function registerUser(
  */
 export async function loginUser(
   input: LoginInput,
+  clientIp?: string,
 ): Promise<{ user: UserResponse; token: string }> {
   const db = getDb();
 
@@ -181,6 +191,33 @@ export async function loginUser(
     throw new UnauthorizedError("用户名或密码错误");
   }
 
+  // IP 封禁检查：即使 credentials 正确，被 IP-ban 的用户也不得登录
+  if (clientIp) {
+    const ranges = await getBannedRanges();
+    if (isBannedIp(clientIp, ranges)) {
+      throw new UnauthorizedError("用户名或密码错误");
+    }
+  }
+
+  // 封禁检查（user-ban-table）：查 user_bans 活跃记录
+  const activeBan = await db.select({
+    reason: userBans.reason,
+    banned_until: userBans.banned_until,
+  })
+    .from(userBans)
+    .where(and(eq(userBans.user_id, user.id), isNull(userBans.unbanned_at)))
+    .limit(1);
+  if (activeBan.length > 0) {
+    const stillBanned = !activeBan[0].banned_until ||
+      Date.parse(activeBan[0].banned_until) > Date.now();
+    if (stillBanned) {
+      throw new ForbiddenError("账号已被封禁", "USER_BANNED", {
+        reason: activeBan[0].reason,
+        until: activeBan[0].banned_until,
+      });
+    }
+  }
+
   // 签发 JWT（携带 must_change_password 字段，issue #75）
   const token = await signToken({
     sub: user.id,
@@ -189,7 +226,7 @@ export async function loginUser(
   });
 
   return {
-    user: toUserResponse(user),
+    user: toUserResponse(user, activeBan[0] ?? null),
     token,
   };
 }
@@ -214,7 +251,7 @@ export async function getUserProfile(
     throw new UnauthorizedError("用户不存在");
   }
 
-  return toUserResponse(existing[0]);
+  return toUserResponse(existing[0], null);
 }
 
 /**
@@ -278,12 +315,20 @@ export async function promoteUser(
     .set({ role, updated_at: now })
     .where(eq(users.id, targetUserId));
 
+  // 审计：角色变更（issue #101）
+  await logAudit(
+    "users.role_change",
+    { action: "users.role_change", from: existing[0].role, to: role },
+    { type: "user", id: targetUserId },
+  );
+
   return {
     id: existing[0].id,
     username: existing[0].username,
     email: existing[0].email,
     role,
     must_change_password: existing[0].must_change_password,
+    active_ban: null,
     created_at: existing[0].created_at,
     updated_at: now,
   };
@@ -365,8 +410,15 @@ export async function listUsers(
         must_change_password: users.must_change_password,
         created_at: users.created_at,
         updated_at: users.updated_at,
+        // 活跃封禁信息（LEFT JOIN user_bans）
+        ban_reason: userBans.reason,
+        ban_until: userBans.banned_until,
       })
       .from(users)
+      .leftJoin(
+        userBans,
+        and(eq(userBans.user_id, users.id), isNull(userBans.unbanned_at)),
+      )
       .where(where)
       .orderBy(users.created_at)
       .limit(opts.perPage)
@@ -380,8 +432,22 @@ export async function listUsers(
   const total = Number(countResult[0]?.count ?? 0);
   const totalPages = Math.ceil(total / opts.perPage);
 
+  // 将 LEFT JOIN 结果映射为 UserResponse
+  const data = rows.map((r) => ({
+    id: r.id,
+    username: r.username,
+    email: r.email,
+    role: r.role,
+    must_change_password: r.must_change_password,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+    active_ban: r.ban_reason !== null
+      ? { reason: r.ban_reason!, banned_until: r.ban_until }
+      : null,
+  }));
+
   return {
-    data: rows,
+    data,
     pagination: {
       page: opts.page,
       per_page: opts.perPage,
@@ -463,6 +529,7 @@ export async function changePassword(
     email: user.email,
     role: user.role,
     must_change_password: false,
+    active_ban: null,
     created_at: user.created_at,
     updated_at: now,
   };
