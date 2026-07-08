@@ -4,7 +4,11 @@ import { parseJsonBody } from "../lib/request.ts";
 import { BadRequestError, ValidationError } from "../lib/errors.ts";
 import { listUsers, promoteUser } from "../services/auth.ts";
 import { getDashboardStats } from "../services/dashboard.ts";
-import { listAllProblems } from "../services/problems.ts";
+import {
+  buildExportPayload,
+  importProblems,
+  listAllProblems,
+} from "../services/problems.ts";
 import {
   createJudgeImage,
   deleteJudgeImage,
@@ -13,6 +17,7 @@ import {
 } from "../services/judge-images.ts";
 import type {
   CreateJudgeImageInput,
+  ImportStrategy,
   UpdateJudgeImageInput,
 } from "../types/problems.ts";
 import {
@@ -124,6 +129,82 @@ router.get("/problems", async (c) => {
     page: result.page,
     limit: result.limit,
   });
+});
+
+// ─── 题目导入导出（issue #28）──────────────────────────────
+
+/**
+ * 管理员导出题目集合为 JSON。
+ * POST /api/v1/admin/problems/export
+ * body: { ids?: string[]; type?: "U" | "P" }
+ *
+ * 返回 application/json 文件下载，Content-Disposition 携带文件名。
+ */
+router.post("/problems/export", async (c) => {
+  const body = await parseJsonBody<{ ids?: string[]; type?: string }>(c);
+
+  const query: { ids?: string[]; type?: "U" | "P" } = {};
+  if (body.ids !== undefined) {
+    if (!Array.isArray(body.ids)) {
+      throw new BadRequestError("ids 必须为字符串数组");
+    }
+    if (body.ids.some((id) => typeof id !== "string" || id.length === 0)) {
+      throw new BadRequestError("ids 数组中不能包含空字符串或非字符串元素");
+    }
+    query.ids = body.ids;
+  }
+  if (body.type !== undefined) {
+    if (body.type !== "U" && body.type !== "P") {
+      throw new BadRequestError(`非法 type：${body.type}（仅允许 U/P）`);
+    }
+    query.type = body.type;
+  }
+
+  const payload = await buildExportPayload(query, c.get("userId"));
+
+  const filename = `noj-problems-${Date.now()}.json`;
+  return c.body(JSON.stringify(payload, null, 2), 200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Disposition": `attachment; filename="${filename}"`,
+  });
+});
+
+/**
+ * 管理员导入题目集合。
+ * POST /api/v1/admin/problems/import
+ * body: { strategy: "create" | "overwrite" | "skip"; payload: ExportPayload }
+ *
+ * 返回导入结果报告。
+ */
+router.post("/problems/import", async (c) => {
+  const body = await parseJsonBody<{
+    strategy: string;
+    payload: unknown;
+  }>(c);
+
+  if (!body.strategy) {
+    throw new ValidationError("缺少必填字段：strategy");
+  }
+  if (
+    body.strategy !== "create" &&
+    body.strategy !== "overwrite" &&
+    body.strategy !== "skip"
+  ) {
+    throw new BadRequestError(
+      `非法 strategy：${body.strategy}（仅允许 create/overwrite/skip）`,
+    );
+  }
+  if (body.payload === undefined || body.payload === null) {
+    throw new ValidationError("缺少必填字段：payload");
+  }
+
+  const report = await importProblems(
+    body.payload,
+    body.strategy as ImportStrategy,
+    c.get("userId"),
+    c.get("userRole"),
+  );
+  return c.json({ data: report }, 200);
 });
 
 // ─── 提交管理 ───────────────────────────────────────────────
