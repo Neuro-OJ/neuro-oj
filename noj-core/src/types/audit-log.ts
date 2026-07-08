@@ -11,6 +11,8 @@ export type AuditAction =
   | "users.ban"
   | "users.unban"
   | "problems.delete"
+  | "problems.import"
+  | "problems.export"
   | "categories.delete"
   | "submissions.rejudge"
   | "settings.update"
@@ -23,6 +25,22 @@ export type AuditDetail =
   | { action: "users.ban"; reason: string; until: string | null }
   | { action: "users.unban" }
   | { action: "problems.delete"; title: string; display_id: string }
+  | {
+    action: "problems.import";
+    strategy: "create" | "overwrite" | "skip";
+    total: number;
+    created: number;
+    updated: number;
+    skipped: number;
+    failed: number;
+  }
+  | {
+    action: "problems.export";
+    mode: "ids" | "type";
+    type?: "U" | "P";
+    count: number;
+    ids?: string[];
+  }
   | {
     action: "categories.delete";
     name: string;

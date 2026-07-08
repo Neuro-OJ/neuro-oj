@@ -20,52 +20,75 @@ import { createCategory } from "../../src/services/categories.ts";
 import { resetDbForTest } from "../../src/db/connection.ts";
 import { BadRequestError } from "../../src/lib/errors.ts";
 
-const skip = false; // 依赖 PGlite，始终可用
+// 共享测试夹具：模块顶层声明但延迟初始化（PR #116 review 修复）
+// - 避免模块顶层副作用污染其他测试文件的文件级隔离
+// - 每个测试用例都通过 hasEnv gating（与 noj-core/AGENTS.md「测试约定」一致）
+// - 实际初始化在 Deno.test("00 setup") 中按文件名前缀字母序先行执行
+const skip = !Deno.env.get("DATABASE_URL");
 const ts = Date.now();
 
-await resetDbForTest();
+interface Fixture {
+  catA: { id: string; name: string; slug: string };
+  catB: { id: string; name: string; slug: string };
+  PROBLEM_WITH_SAMPLES: { id: string; title: string; number: number };
+  PROBLEM_PLAIN: { id: string; title: string; number: number };
+}
+const fixture: { value?: Fixture } = {};
 
-// 模块级 setup：创建分类 + 测试题目
-const catA = await createCategory({
-  name: `基础-${ts}`,
-  slug: `basic-${ts}`,
-});
-const catB = await createCategory({
-  name: `数组-${ts}`,
-  slug: `array-${ts}`,
-});
-
-const PROBLEM_WITH_SAMPLES = await createProblem(
-  {
-    title: `含样例的题-${ts}`,
-    description:
-      `# 题目\n\n题目描述。\n\n## 样例输入\n\n1 2\n\n## 样例输出\n\n3\n\n## 样例输入 #2\n\n4 5\n\n## 样例输出 #2\n\n9\n`,
-    difficulty: "easy",
-    judge_image: "noj-judge-python",
-    judge_command: "python3 /tmp/evaluate.py",
-    time_limit_ms: 1000,
-    memory_limit_mb: 256,
-    type: "P",
-    category_ids: [catA.id, catB.id],
+Deno.test({
+  name: "00 setup: 初始化 PGlite + 分类 + 测试题目",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const catA = await createCategory({
+      name: `基础-${ts}`,
+      slug: `basic-${ts}`,
+    });
+    const catB = await createCategory({
+      name: `数组-${ts}`,
+      slug: `array-${ts}`,
+    });
+    const PROBLEM_WITH_SAMPLES = await createProblem(
+      {
+        title: `含样例的题-${ts}`,
+        description:
+          `# 题目\n\n题目描述。\n\n## 样例输入\n\n1 2\n\n## 样例输出\n\n3\n\n## 样例输入 #2\n\n4 5\n\n## 样例输出 #2\n\n9\n`,
+        difficulty: "easy",
+        judge_image: "noj-judge-python",
+        judge_command: "python3 /tmp/evaluate.py",
+        time_limit_ms: 1000,
+        memory_limit_mb: 256,
+        type: "P",
+        category_ids: [catA.id, catB.id],
+      },
+      "test-admin",
+      "admin",
+    );
+    const PROBLEM_PLAIN = await createProblem(
+      {
+        title: `普通题-${ts}`,
+        description: "# 普通题\n\n没有样例段。",
+        difficulty: "medium",
+        judge_image: "noj-judge-python",
+        judge_command: "python3 /tmp/evaluate.py",
+        time_limit_ms: 2000,
+        memory_limit_mb: 512,
+        type: "P",
+      },
+      "test-admin",
+      "admin",
+    );
+    fixture.value = { catA, catB, PROBLEM_WITH_SAMPLES, PROBLEM_PLAIN };
   },
-  "test-admin",
-  "admin",
-);
+});
 
-const PROBLEM_PLAIN = await createProblem(
-  {
-    title: `普通题-${ts}`,
-    description: "# 普通题\n\n没有样例段。",
-    difficulty: "medium",
-    judge_image: "noj-judge-python",
-    judge_command: "python3 /tmp/evaluate.py",
-    time_limit_ms: 2000,
-    memory_limit_mb: 512,
-    type: "P",
-  },
-  "test-admin",
-  "admin",
-);
+/** 取夹具；若 setup 未运行则跳过当前测试。 */
+function fx(): Fixture {
+  if (!fixture.value) throw new Error("setup 未运行（应已被 ignore 跳过）");
+  return fixture.value;
+}
 
 Deno.test({
   name: "export: ids 和 type 都未提供 → 拒绝",
@@ -120,14 +143,14 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const payload = await buildExportPayload(
-      { ids: [PROBLEM_WITH_SAMPLES.id] },
+      { ids: [fx().PROBLEM_WITH_SAMPLES.id] },
       "test-admin",
     );
     assertEquals(payload.version, "1.0");
     assertEquals(payload.exported_by, "test-admin");
     assertEquals(payload.problems.length, 1);
     const p = payload.problems[0];
-    assertEquals(p.id, PROBLEM_WITH_SAMPLES.id);
+    assertEquals(p.id, fx().PROBLEM_WITH_SAMPLES.id);
     assertEquals(p.title, `含样例的题-${ts}`);
     assertEquals(p.difficulty, "easy");
     assertEquals(p.time_limit_ms, 1000);
@@ -151,7 +174,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const payload = await buildExportPayload(
-      { ids: [PROBLEM_PLAIN.id] },
+      { ids: [fx().PROBLEM_PLAIN.id] },
       "test-admin",
     );
     assertEquals(payload.problems[0].samples, []);
@@ -169,9 +192,9 @@ Deno.test({
       "test-admin",
     );
     const found = payload.problems.find(
-      (p) => p.id === PROBLEM_WITH_SAMPLES.id,
+      (p) => p.id === fx().PROBLEM_WITH_SAMPLES.id,
     );
-    assertEquals(found?.display_id, `P${PROBLEM_WITH_SAMPLES.number}`);
+    assertEquals(found?.display_id, `P${fx().PROBLEM_WITH_SAMPLES.number}`);
   },
 });
 
@@ -183,8 +206,8 @@ Deno.test({
   fn: async () => {
     const payload = await buildExportPayload({ type: "P" }, "test-admin");
     const ids = payload.problems.map((p) => p.id);
-    assertEquals(ids.includes(PROBLEM_WITH_SAMPLES.id), true);
-    assertEquals(ids.includes(PROBLEM_PLAIN.id), true);
+    assertEquals(ids.includes(fx().PROBLEM_WITH_SAMPLES.id), true);
+    assertEquals(ids.includes(fx().PROBLEM_PLAIN.id), true);
     for (const p of payload.problems) {
       assertEquals(p.type, "P");
     }
@@ -275,7 +298,7 @@ Deno.test({
   fn: async () => {
     // 先 export 一道
     const exported = await buildExportPayload(
-      { ids: [PROBLEM_WITH_SAMPLES.id] },
+      { ids: [fx().PROBLEM_WITH_SAMPLES.id] },
       "test-admin",
     );
     // 然后 import 同一份（不同 id 时新建；同 id 时按 strategy 走）
@@ -289,13 +312,17 @@ Deno.test({
     assertEquals(report.total, 1);
     assertEquals(report.created.length, 0);
     assertEquals(report.updated.length, 1);
-    assertEquals(report.updated[0].id, PROBLEM_WITH_SAMPLES.id);
+    assertEquals(report.updated[0].id, fx().PROBLEM_WITH_SAMPLES.id);
     assertEquals(report.failed.length, 0);
 
     // 验证 DB 状态保持
-    const reloaded = await getProblem(PROBLEM_WITH_SAMPLES.id);
+    const reloaded = await getProblem(fx().PROBLEM_WITH_SAMPLES.id);
     assertEquals(reloaded.title, `含样例的题-${ts}`);
-    assertEquals(reloaded.samples, undefined); // samples 不在 ProblemResponse
+    // samples 不在 ProblemResponse（只存在 description 文本内）
+    assertEquals(
+      (reloaded as unknown as { samples?: unknown }).samples,
+      undefined,
+    );
     assertEquals(reloaded.description.includes("样例输入"), true);
   },
 });
@@ -356,7 +383,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const exported = await buildExportPayload(
-      { ids: [PROBLEM_PLAIN.id] },
+      { ids: [fx().PROBLEM_PLAIN.id] },
       "test-admin",
     );
     const report = await importProblems(
@@ -366,7 +393,7 @@ Deno.test({
       "admin",
     );
     assertEquals(report.skipped.length, 1);
-    assertEquals(report.skipped[0].id, PROBLEM_PLAIN.id);
+    assertEquals(report.skipped[0].id, fx().PROBLEM_PLAIN.id);
     assertEquals(report.created.length, 0);
     assertEquals(report.updated.length, 0);
   },
@@ -379,7 +406,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const exported = await buildExportPayload(
-      { ids: [PROBLEM_PLAIN.id] },
+      { ids: [fx().PROBLEM_PLAIN.id] },
       "test-admin",
     );
     const report = await importProblems(

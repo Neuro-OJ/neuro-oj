@@ -870,14 +870,21 @@ export async function buildExportPayload(
 // ─── 导入服务 ──────────────────────────────────────────────
 
 /**
- * 导入 payload 类型守卫。
- * 校验 version、problems 数组、每个 ExportProblem 的基本字段。
+ * 导入 payload 类型守卫（issue #28 PR #116 review 强化）。
+ *
+ * 显式校验 ExportPayload 每个字段的类型，避免 silent cast。
+ * 任一字段非法都抛 BadRequestError，整体拒绝导入。
+ *
+ * 注意：返回的 ExportPayload 仍带 unknown 转换，但每一字段都已经在
+ * 此处经过类型校验——下游 importOne 可安全访问。
  */
 function parseImportPayload(input: unknown): ExportPayload {
   if (!input || typeof input !== "object") {
     throw new BadRequestError("导入文件必须为 JSON 对象");
   }
   const obj = input as Record<string, unknown>;
+
+  // ── 顶层字段 ──
   if (obj.version !== EXPORT_VERSION) {
     throw new BadRequestError(
       `不支持的导入文件版本：${
@@ -885,27 +892,149 @@ function parseImportPayload(input: unknown): ExportPayload {
       }（当前仅支持 ${EXPORT_VERSION}）`,
     );
   }
+  if (typeof obj.exported_at !== "string") {
+    throw new BadRequestError("exported_at 必须为字符串");
+  }
+  if (typeof obj.exported_by !== "string") {
+    throw new BadRequestError("exported_by 必须为字符串");
+  }
   if (!Array.isArray(obj.problems)) {
     throw new BadRequestError("导入文件必须包含 problems 数组");
   }
+
+  // ── problems[] 字段 ──
   for (let i = 0; i < obj.problems.length; i++) {
     const p = obj.problems[i] as Record<string, unknown> | null;
     if (!p || typeof p !== "object") {
       throw new BadRequestError(`problems[${i}] 不是合法对象`);
     }
+
+    // 字符串必填
     for (
       const field of [
         "id",
+        "display_id",
         "title",
         "description",
         "judge_command",
-        "type",
-        "number",
       ]
     ) {
-      if (!(field in p)) {
+      if (typeof p[field] !== "string" || (p[field] as string).length === 0) {
         throw new BadRequestError(
-          `problems[${i}] 缺少必填字段：${field}`,
+          `problems[${i}].${field} 必须为非空字符串`,
+        );
+      }
+    }
+
+    // type: U / P
+    if (p.type !== "U" && p.type !== "P") {
+      throw new BadRequestError(
+        `problems[${i}].type 必须为 "U" 或 "P"（当前：${String(p.type)}）`,
+      );
+    }
+
+    // number: 正整数
+    if (
+      typeof p.number !== "number" || !Number.isInteger(p.number) ||
+      p.number < 1
+    ) {
+      throw new BadRequestError(
+        `problems[${i}].number 必须为正整数（当前：${String(p.number)}）`,
+      );
+    }
+
+    // difficulty: 字符串 + 合法值
+    if (typeof p.difficulty !== "string" || !isValidDifficulty(p.difficulty)) {
+      throw new BadRequestError(
+        `problems[${i}].difficulty 非法（${String(p.difficulty)}）`,
+      );
+    }
+
+    // categories: 数组，元素 {name: string, slug: string}
+    if (!Array.isArray(p.categories)) {
+      throw new BadRequestError(`problems[${i}].categories 必须为数组`);
+    }
+    for (let j = 0; j < p.categories.length; j++) {
+      const c = p.categories[j] as Record<string, unknown> | null;
+      if (!c || typeof c !== "object") {
+        throw new BadRequestError(
+          `problems[${i}].categories[${j}] 不是合法对象`,
+        );
+      }
+      if (typeof c.name !== "string" || (c.name as string).length === 0) {
+        throw new BadRequestError(
+          `problems[${i}].categories[${j}].name 必须为非空字符串`,
+        );
+      }
+      if (typeof c.slug !== "string" || (c.slug as string).length === 0) {
+        throw new BadRequestError(
+          `problems[${i}].categories[${j}].slug 必须为非空字符串`,
+        );
+      }
+    }
+
+    // judge_images: 非空字符串数组
+    if (
+      !Array.isArray(p.judge_images) ||
+      p.judge_images.length === 0 ||
+      !p.judge_images.every((img) => typeof img === "string" && img.length > 0)
+    ) {
+      throw new BadRequestError(
+        `problems[${i}].judge_images 必须为非空字符串数组`,
+      );
+    }
+
+    // time_limit_ms / memory_limit_mb: 正整数
+    if (
+      typeof p.time_limit_ms !== "number" ||
+      !Number.isInteger(p.time_limit_ms) ||
+      p.time_limit_ms < 1
+    ) {
+      throw new BadRequestError(
+        `problems[${i}].time_limit_ms 必须为正整数`,
+      );
+    }
+    if (
+      typeof p.memory_limit_mb !== "number" ||
+      !Number.isInteger(p.memory_limit_mb) ||
+      p.memory_limit_mb < 1
+    ) {
+      throw new BadRequestError(
+        `problems[${i}].memory_limit_mb 必须为正整数`,
+      );
+    }
+
+    // support_package_storage_url: string | null
+    if (
+      p.support_package_storage_url !== null &&
+      typeof p.support_package_storage_url !== "string"
+    ) {
+      throw new BadRequestError(
+        `problems[${i}].support_package_storage_url 必须为字符串或 null`,
+      );
+    }
+
+    // test_cases_ref: string | null（语义占位，与 support_package_storage_url 同值）
+    if (
+      p.test_cases_ref !== null && typeof p.test_cases_ref !== "string"
+    ) {
+      throw new BadRequestError(
+        `problems[${i}].test_cases_ref 必须为字符串或 null`,
+      );
+    }
+
+    // samples: 数组，元素 {input: string, output: string}
+    if (!Array.isArray(p.samples)) {
+      throw new BadRequestError(`problems[${i}].samples 必须为数组`);
+    }
+    for (let j = 0; j < p.samples.length; j++) {
+      const s = p.samples[j] as Record<string, unknown> | null;
+      if (!s || typeof s !== "object") {
+        throw new BadRequestError(`problems[${i}].samples[${j}] 不是合法对象`);
+      }
+      if (typeof s.input !== "string" || typeof s.output !== "string") {
+        throw new BadRequestError(
+          `problems[${i}].samples[${j}].input/output 必须为字符串`,
         );
       }
     }
@@ -936,13 +1065,18 @@ async function buildCategoryLookup(): Promise<Map<string, string>> {
  * 把单个 ExportProblem 落到数据库。
  *
  * 策略行为：
- * - create: 已存在 → skip；不存在 → 新建
- * - overwrite: 已存在 → 更新（type/number 不可变）；不存在 → 新建
- * - skip: 已存在 → skip；不存在 → 新建
+ * - create: 不存在 → 新建；已存在 → skip（不报错）
+ * - overwrite: 不存在 → 新建；已存在 → 更新元数据（type/number 不可变）
+ * - skip: 不存在 → fail（docstring 与实现对齐）；已存在 → skip
  *
  * 权限：
  * - 仅 admin 可调用
  * - 若 import 项的 type='P'，会校验 userRole
+ *
+ * 幂等性：
+ * - 目标不存在路径使用 `crypto.randomUUID()` 重新生成 id，与导出时的
+ *   UUID 不一致——这是**快照语义**。若需要 round-trip 等价，请使用
+ *   overwrite 策略并在导入前确保目标已存在。
  *
  * @returns 该条目的处理结果（含写入后的 problem_id）
  */
@@ -958,7 +1092,7 @@ async function importOne(
     display_id: item.display_id,
   };
 
-  // 1. 难度值校验
+  // 1. 难度值校验（parseImportPayload 已校验，这里双保险）
   if (!isValidDifficulty(item.difficulty)) {
     return {
       ...baseResult,
@@ -1033,15 +1167,30 @@ async function importOne(
   }
 
   // 7. 检查目标问题是否存在（按 source id）
+  //    race-safe：单条 SQL 原子 UPDATE，不存在则 affectedRows=0；并发场景下
+  //    两条 SQL 串行执行不会丢更新。post-UPDATE 再 SELECT 拿到最新 id。
   const db = getDb();
-  const existing = await db
-    .select()
-    .from(problems)
-    .where(eq(problems.id, item.id))
-    .limit(1);
+  const now = new Date().toISOString();
+  const updates: Record<string, unknown> = {
+    title: item.title,
+    description: item.description,
+    difficulty: item.difficulty,
+    judge_image: judgeImage,
+    judge_command: item.judge_command,
+    support_package_storage_url: item.support_package_storage_url,
+    time_limit_ms: item.time_limit_ms,
+    memory_limit_mb: item.memory_limit_mb,
+    updated_at: now,
+  };
 
-  if (existing.length > 0) {
-    // 目标已存在
+  const updateResult = await db
+    .update(problems)
+    .set(updates)
+    .where(eq(problems.id, item.id))
+    .returning({ id: problems.id });
+
+  if (updateResult.length > 0) {
+    // 目标已存在 → UPDATE 成功
     if (strategy === "create" || strategy === "skip") {
       return {
         ...baseResult,
@@ -1049,31 +1198,29 @@ async function importOne(
         reason: strategy === "create"
           ? "目标 id 已存在，create 策略跳过"
           : "目标 id 已存在，skip 策略跳过",
-        problem_id: existing[0].id,
+        problem_id: updateResult[0].id,
       };
     }
-    // overwrite：更新元数据
-    const updates: Record<string, unknown> = {
-      title: item.title,
-      description: item.description,
-      difficulty: item.difficulty,
-      judge_image: judgeImage,
-      judge_command: item.judge_command,
-      support_package_storage_url: item.support_package_storage_url,
-      time_limit_ms: item.time_limit_ms,
-      memory_limit_mb: item.memory_limit_mb,
-      updated_at: new Date().toISOString(),
-    };
-    await db.update(problems).set(updates).where(eq(problems.id, item.id));
+    // overwrite：更新元数据 + 同步分类
     await syncProblemCategories(item.id, categoryIds);
     return {
       ...baseResult,
       action: "updated",
-      problem_id: item.id,
+      problem_id: updateResult[0].id,
     };
   }
 
-  // 8. 目标不存在 → 新建
+  // 8. UPDATE 命中 0 行 → 目标不存在
+  if (strategy === "skip") {
+    // skip 策略：docstring 承诺"不存在则新建失败"
+    return {
+      ...baseResult,
+      action: "failed",
+      reason: "skip 策略：目标 id 不存在（按约定拒绝创建）",
+    };
+  }
+
+  // create / overwrite：新建
   try {
     const created = await createProblem(
       {
@@ -1172,6 +1319,20 @@ export async function importProblems(
         break;
     }
   }
+
+  // 审计日志：记录本次批量导入汇总（每条详情不进审计，避免膨胀）
+  await logAudit(
+    "problems.import",
+    {
+      action: "problems.import",
+      strategy,
+      total: payload.problems.length,
+      created: created.length,
+      updated: updated.length,
+      skipped: skipped.length,
+      failed: failed.length,
+    },
+  );
 
   return {
     strategy,

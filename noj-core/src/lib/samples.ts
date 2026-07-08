@@ -91,13 +91,3 @@ export function extractSamples(description: string): SamplePair[] {
   }
   return pairs;
 }
-
-/**
- * 移除 description 中的所有样例段，返回剩余文本。
- * 用于导入时防止重复拼接。
- */
-export function removeSamplesSection(description: string): string {
-  const hits = collectHits(description);
-  if (hits.length === 0) return description;
-  return description.slice(0, hits[0].start).trimEnd();
-}

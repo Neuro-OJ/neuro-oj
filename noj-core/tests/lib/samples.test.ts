@@ -5,7 +5,7 @@
  * 标记可见样例。导入导出时需要把这些段单独抽出来。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { extractSamples, removeSamplesSection } from "../../src/lib/samples.ts";
+import { extractSamples } from "../../src/lib/samples.ts";
 
 Deno.test("samples: 单样例（H2 标题，无编号）", () => {
   const md = `# 题目
@@ -140,26 +140,4 @@ Deno.test("samples: 大小写不敏感", () => {
   assertEquals(extractSamples(md), [
     { input: "1", output: "2" },
   ]);
-});
-
-Deno.test("removeSamplesSection: 截断到第一个样例段之前", () => {
-  const md = `# 题目描述
-
-详细描述。
-
-## 样例输入
-
-1 2
-
-## 样例输出
-
-3
-`;
-  const cleaned = removeSamplesSection(md);
-  assertEquals(cleaned, "# 题目描述\n\n详细描述。");
-});
-
-Deno.test("removeSamplesSection: 无样例段时原样返回", () => {
-  const md = "# 只有描述";
-  assertEquals(removeSamplesSection(md), "# 只有描述");
 });

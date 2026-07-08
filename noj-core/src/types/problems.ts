@@ -164,9 +164,16 @@ export const EXPORT_VERSION = "1.0" as const;
  * 导出单题结构。
  *
  * 字段命名约定：
- * - 蛇形命名（snake_case）保持与 DB 列一致，便于 round-trip
+ * - 蛇形命名（snake_case）保持与 DB 列一致
  * - 列表类字段（categories / judge_images / samples）按显示顺序排列
- * - display_id = `${type}${number}`，从 type+number 计算得出，导入时可任选其一
+ * - display_id = `${type}${number}`，从 type+number 计算得出
+ *
+ * **快照语义（PR #116 review 明确化）**：
+ * - `id` 字段是导出时刻的题目 UUID，**导入时不再保留**——create/overwrite
+ *   在目标不存在时由服务端重新生成 UUID。
+ * - 若需要 round-trip 等价（保留 id），应在导入前保证目标 id 已存在
+ *   并使用 overwrite 策略。
+ * - 删除 `id` 字段不影响导入路径（仅作 informational reference）。
  */
 export interface ExportProblem {
   id: string;
@@ -211,7 +218,7 @@ export interface ExportQuery {
  * 导入策略。
  * - create: 不存在则新建；存在则按 skip 处理（不报错）
  * - overwrite: 不存在则新建；存在则覆盖元数据（type/number 不可变）
- * - skip: 不存在则新建失败；存在则跳过
+ * - skip: 不存在则按 failed 报告；存在则跳过
  */
 export type ImportStrategy = "create" | "overwrite" | "skip";
 

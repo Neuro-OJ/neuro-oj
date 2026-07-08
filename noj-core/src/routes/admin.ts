@@ -9,6 +9,7 @@ import {
   importProblems,
   listAllProblems,
 } from "../services/problems.ts";
+import { logAudit } from "../services/audit-log.ts";
 import {
   createJudgeImage,
   deleteJudgeImage,
@@ -162,7 +163,19 @@ router.post("/problems/export", async (c) => {
 
   const payload = await buildExportPayload(query, c.get("userId"));
 
-  const filename = `noj-problems-${Date.now()}.json`;
+  // 审计：导出是元数据读取，但同 admin 账号连续多次导出可能泄漏题库结构
+  await logAudit("problems.export", {
+    action: "problems.export",
+    mode: query.ids !== undefined ? "ids" : "type",
+    type: query.type,
+    count: payload.problems.length,
+    ids: query.ids,
+  });
+
+  // 文件名加随机后缀，避免同毫秒并发导出的浏览器下载冲突
+  const filename = `noj-problems-${Date.now()}-${
+    crypto.randomUUID().slice(0, 6)
+  }.json`;
   return c.body(JSON.stringify(payload, null, 2), 200, {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Disposition": `attachment; filename="${filename}"`,
@@ -177,6 +190,19 @@ router.post("/problems/export", async (c) => {
  * 返回导入结果报告。
  */
 router.post("/problems/import", async (c) => {
+  // 路由层 payload 大小上限（issue #28 PR #116 review）
+  // - Content-Length 上限 5MB（避免恶意大 payload OOM 服务）
+  // - problems 数量上限 1000（单次导入批次上限）
+  const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
+  const MAX_PROBLEMS_PER_IMPORT = 1000;
+
+  const contentLength = parseInt(c.req.header("content-length") ?? "0", 10);
+  if (Number.isFinite(contentLength) && contentLength > MAX_PAYLOAD_BYTES) {
+    throw new BadRequestError(
+      `请求体过大（${contentLength} 字节），上限 ${MAX_PAYLOAD_BYTES} 字节`,
+    );
+  }
+
   const body = await parseJsonBody<{
     strategy: string;
     payload: unknown;
@@ -196,6 +222,17 @@ router.post("/problems/import", async (c) => {
   }
   if (body.payload === undefined || body.payload === null) {
     throw new ValidationError("缺少必填字段：payload");
+  }
+
+  // problems 数量上限提前检查（在 parseImportPayload 之前）
+  const pre = body.payload as { problems?: unknown };
+  if (
+    Array.isArray(pre?.problems) &&
+    pre.problems.length > MAX_PROBLEMS_PER_IMPORT
+  ) {
+    throw new BadRequestError(
+      `单次导入 problems 数量 ${pre.problems.length} 超过上限 ${MAX_PROBLEMS_PER_IMPORT}`,
+    );
   }
 
   const report = await importProblems(
