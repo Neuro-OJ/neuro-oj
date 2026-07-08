@@ -446,10 +446,8 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    // 注：原版传 "Bearer invalid-token" 作为 token 字符串（会被 helper 再拼一次
-    // 前缀），语义有瑕疵但测试只断言 401，不修。
     const res = await jsonRequest(app, `${BASE}/me`, {
-      token: "Bearer invalid-token",
+      token: "invalid-token",
     });
     assertEquals(res.status, 401);
     const body = await res.json();

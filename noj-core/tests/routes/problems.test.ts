@@ -85,7 +85,10 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/problems?keyword=舱门");
+    const res = await jsonRequest(
+      app,
+      "/api/v1/problems?keyword=" + encodeURIComponent("测试"),
+    );
     assertEquals(res.status, 200);
   },
 });

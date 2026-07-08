@@ -34,10 +34,16 @@
  * 二进制兼容性（旧调用点不受影响）。
  */
 
-// 使用 `Hono<any, any, "/">` 而非裸 `Hono`，因为 `Variables` 泛型是逆变
-// 的（`Hono<{Variables: V}>` 不能赋给 `Hono<{}>`），而中间件/路由测试常
-// 用 `new Hono<{Variables: ...}>()` 自定义测试应用。
-import type { Hono } from "hono";
+// 不使用 `Hono<any, any, "/">` + `deno-lint-ignore no-explicit-any`：Hono
+// 的 Env 类型参数是**不变**的（Variables 既被读也被写），`Hono<{Variables:
+// V}>` 不能赋给 `Hono<{}>`（裸 Hono），所以旧的 `app: Hono` 写法在中间
+// 件/路由测试（`new Hono<{Variables: ...}>()`）下报错。但若用 `<any, any,
+// "/">` 又违反 TypeScript 严格模式。
+//
+// 解法：把 helper 做成真正的**泛型函数**，让 TypeScript 在调用点推断 E/S。
+// 调用方传 `Hono<{Variables: V}>` → 推断 E = `{Variables: V}`；传裸 Hono →
+// 推断 E = BlankEnv。两侧都不需要 `any`，也无需 lint 抑制。
+import type { Env, Hono, Schema } from "hono";
 
 /** `jsonRequest` 的可配置项。 */
 export interface JsonRequestOptions {
@@ -85,9 +91,15 @@ export interface JsonRequestOptions {
  * });
  * ```
  */
-export async function jsonRequest(
-  // deno-lint-ignore no-explicit-any
-  app: Hono<any, any, "/">,
+export async function jsonRequest<
+  // 接受任意 Hono 实例。三个泛型参数推断自调用方传入的具体 Hono 类型
+  // （Env 必带 Variables/Bindings 形态，Schema 默认 BlankSchema），
+  // 既兼容裸 Hono（生产 `createApp()`），也兼容 `new Hono<{Variables:
+  // V}>()` 的中间件/路由单元测试。无需 `any`，无需 lint 抑制。
+  E extends Env,
+  S extends Schema = Record<PropertyKey, never>,
+>(
+  app: Hono<E, S, "/">,
   path: string,
   options: JsonRequestOptions = {},
 ): Promise<Response> {
