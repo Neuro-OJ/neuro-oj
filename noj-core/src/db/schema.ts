@@ -59,6 +59,12 @@ export const problems = pgTable(
     support_package_storage_url: text("support_package_storage_url"),
     time_limit_ms: integer("time_limit_ms").notNull().default(5000),
     memory_limit_mb: integer("memory_limit_mb").notNull().default(512),
+    /**
+     * 双容器 Runtime 配置（dual-container-judge §4）。
+     * - NULL：单容器题目（向后兼容）
+     * - 非 NULL：双容器题目（evaluator + solution 各自 RuntimeConfig）
+     */
+    runtime_config: jsonb("runtime_config"),
     /** 题号（同一 type 内独立自增） */
     number: integer("number").notNull(),
     /** 题目所有者 ID，默认 root (UID=0) */
@@ -74,6 +80,10 @@ export const problems = pgTable(
       table.number,
     ),
     typeCheck: check("problems_type_check", sql`${table.type} IN ('U', 'P')`),
+    runtimeConfigCheck: check(
+      "problems_runtime_config_check",
+      sql`${table.runtime_config} IS NULL OR jsonb_typeof(${table.runtime_config}) = 'object'`,
+    ),
   }),
 );
 
@@ -438,6 +448,7 @@ export const auditLogs = pgTable(
         'users.ban',
         'users.unban',
         'problems.delete',
+        'problems.runtime_config_changed',
         'categories.delete',
         'submissions.rejudge',
         'settings.update',

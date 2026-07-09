@@ -28,6 +28,7 @@ export const SCHEMA_DDL: string[] = [
     support_package_storage_url TEXT,
     time_limit_ms INTEGER NOT NULL DEFAULT 5000,
     memory_limit_mb INTEGER NOT NULL DEFAULT 512,
+    runtime_config JSONB CHECK (runtime_config IS NULL OR jsonb_typeof(runtime_config) = 'object'),
     number INTEGER NOT NULL,
     owner_id TEXT NOT NULL DEFAULT '0',
     type TEXT NOT NULL DEFAULT 'U' CHECK (type IN ('U', 'P')),
@@ -172,7 +173,7 @@ export const SCHEMA_DDL: string[] = [
     created_at TEXT NOT NULL,
     CONSTRAINT audit_logs_action_check CHECK (action IN (
       'users.role_change','users.ban','users.unban',
-      'problems.delete','categories.delete','submissions.rejudge','settings.update',
+      'problems.delete','problems.runtime_config_changed','categories.delete','submissions.rejudge','settings.update',
       'ip_ban.create','ip_ban.delete'
     ))
   )`,

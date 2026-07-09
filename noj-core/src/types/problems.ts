@@ -40,6 +40,30 @@ export function isValidProblemType(value: string): value is ProblemType {
 }
 
 /**
+ * 双容器 Runtime 配置（与 noj-judge/src/types.ts RuntimeConfig 对齐）。
+ *
+ * 仅 admin 可设置；普通用户创建题目时该字段被忽略。
+ */
+export interface RuntimeConfig {
+  evaluator: EvaluatorRuntime;
+  solution: SolutionRuntime;
+}
+
+export interface EvaluatorRuntime {
+  image: string;
+  command: string;
+  time_limit_ms: number;
+  memory_limit_mb: number;
+}
+
+export interface SolutionRuntime {
+  image: string;
+  entry: string;
+  call_timeout_ms: number;
+  memory_limit_mb: number;
+}
+
+/**
  * 创建题目请求体。
  *
  * 注意：`id` 字段已从客户端输入中移除——所有题目统一由服务端生成 UUID。
@@ -55,6 +79,11 @@ export interface CreateProblemInput {
   support_package_storage_url?: string | null;
   time_limit_ms?: number;
   memory_limit_mb?: number;
+  /**
+   * 双容器 Runtime 配置。仅 admin 可设置。
+   * 设置后 `judge_image` / `judge_command` 仍保留为同步值，但调度时以 runtime_config 为准。
+   */
+  runtime_config?: RuntimeConfig | null;
   category_ids?: string[];
   /** 题目类型：U（用户题）/ P（主题题），默认 U */
   type?: string;
@@ -74,6 +103,10 @@ export interface UpdateProblemInput {
   support_package_storage_url?: string | null;
   time_limit_ms?: number;
   memory_limit_mb?: number;
+  /**
+   * 双容器 Runtime 配置。设为 null 即清空（题目回到单容器路径）。
+   */
+  runtime_config?: RuntimeConfig | null;
   category_ids?: string[];
 }
 
@@ -109,6 +142,10 @@ export interface ProblemResponseWithCategories {
   has_support_package: boolean;
   time_limit_ms: number;
   memory_limit_mb: number;
+  /**
+   * 双容器 Runtime 配置。null 表示单容器题目。
+   */
+  runtime_config: RuntimeConfig | null;
   categories: { id: string; name: string; slug: string }[];
   created_at: string;
   updated_at: string;
@@ -206,6 +243,11 @@ export interface ExportProblem {
   support_package_storage_url: string | null;
   /** 引用支持包 URL（与 support_package_storage_url 同值，仅作为语义占位） */
   test_cases_ref: string | null;
+  /**
+   * 双容器 Runtime 配置。null 表示单容器题目。
+   * 旧版导出文件可能缺失该字段，导入时按 null 处理。
+   */
+  runtime_config: RuntimeConfig | null;
   samples: { input: string; output: string }[];
 }
 

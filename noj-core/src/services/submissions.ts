@@ -19,6 +19,7 @@ import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { getDb } from "../db/connection.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
 import { getProblem } from "./problems.ts";
+import { validateJudgeImage, validateJudgeImageWithKind } from "./judge-images.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { getPendingSubmissionIds, getSubmissionQueueStatus } from "./queue.ts";
 import type {
@@ -354,8 +355,17 @@ export async function createSubmission(
 ): Promise<SubmissionResponse> {
   const db = getDb();
 
-  // 检查题目是否存在并获取信息
-  const problem = await getProblem(input.problem_id);
+  // 行级锁 + 读取最新题目配置（避免 admin 在提交期间清空 runtime_config 导致竞态）
+  const lockedRows = await db
+    .select()
+    .from(problems)
+    .where(eq(problems.id, input.problem_id))
+    .for("update")
+    .limit(1);
+  if (lockedRows.length === 0) {
+    throw new NotFoundError("题目不存在");
+  }
+  const problem = lockedRows[0];
 
   // 验证语言
   const supportedLanguages = ["python3", "python", "cpp", "c", "javascript"];
@@ -388,12 +398,46 @@ export async function createSubmission(
     }
   }
 
+  // ── 决定评测模式 + 镜像白名单 final gate ──
+  // - runtime_config 非空 → dual mode + 校验 evaluator/solution image + kind
+  // - runtime_config 为空 → single mode + 校验 judge_image
+  // 任一校验失败抛 image_not_allowlisted 错误（spec §4 final gate）
+  const runtimeConfig = problem.runtime_config as
+    | import("../types/problems.ts").RuntimeConfig
+    | null
+    | undefined;
+
+  let judgeMode: "single" | "dual";
+  if (runtimeConfig) {
+    judgeMode = "dual";
+    // 防御性 final gate：再次校验双容器镜像 + kind
+    await validateJudgeImageWithKind(
+      runtimeConfig.evaluator.image,
+      "evaluator",
+    );
+    await validateJudgeImageWithKind(
+      runtimeConfig.solution.image,
+      "solution",
+    );
+  } else {
+    judgeMode = "single";
+    // 单容器：校验 judge_image 仍在白名单
+    await validateJudgeImage(problem.judge_image);
+  }
+
   const task: JudgeTask = {
     submission_id: id,
     problem_id: input.problem_id,
-    judge_image: problem.judge_image,
-    judge_command: problem.judge_command,
+    mode: judgeMode,
+    // dual 模式下 judge_image / judge_command 可省略；single 模式下必填
+    ...(judgeMode === "single" && {
+      judge_image: problem.judge_image,
+      judge_command: problem.judge_command,
+    }),
     download_url,
+    ...(judgeMode === "dual" && {
+      runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
+    }),
     language: input.language,
     code: input.code,
     file_name: fileName,
