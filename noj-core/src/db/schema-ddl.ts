@@ -40,6 +40,7 @@ export const SCHEMA_DDL: string[] = [
     id TEXT PRIMARY KEY,
     image TEXT NOT NULL,
     mode TEXT NOT NULL DEFAULT 'exact' CHECK (mode IN ('exact', 'all_versions')),
+    kind TEXT NOT NULL DEFAULT 'evaluator' CHECK (kind IN ('evaluator', 'solution')),
     description TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL

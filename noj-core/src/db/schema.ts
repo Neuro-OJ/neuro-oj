@@ -89,6 +89,14 @@ export const judgeImages = pgTable(
     id: text("id").primaryKey(),
     image: text("image").notNull(),
     mode: text("mode").notNull().default("exact"),
+    /**
+     * 镜像用途分类（dual-container-judge §5）。
+     * - 'evaluator'：单容器 / 双容器 Evaluator 角色
+     * - 'solution' ：双容器 Solution 角色
+     *
+     * 历史数据迁移时默认 'evaluator'。
+     */
+    kind: text("kind").notNull().default("evaluator"),
     /** 管理员配置的介绍，在题目编辑器下拉中展示 */
     description: text("description").notNull().default(""),
     created_at: text("created_at").notNull(),
@@ -98,6 +106,10 @@ export const judgeImages = pgTable(
     modeCheck: check(
       "judge_images_mode_check",
       sql`${table.mode} IN ('exact', 'all_versions')`,
+    ),
+    kindCheck: check(
+      "judge_images_kind_check",
+      sql`${table.kind} IN ('evaluator', 'solution')`,
     ),
   }),
 );

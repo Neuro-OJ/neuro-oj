@@ -2,7 +2,11 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { judgeImages } from "../db/schema.ts";
 import { NotFoundError, ValidationError } from "../lib/errors.ts";
-import { isImageInWhitelist } from "../types/problems.ts";
+import {
+  isImageInWhitelist,
+  isValidJudgeImageKind,
+  type JudgeImageKind,
+} from "../types/problems.ts";
 import type {
   CreateJudgeImageInput,
   JudgeImageResponse,
@@ -21,6 +25,7 @@ function toResponse(
     id: row.id,
     image: row.image,
     mode: row.mode,
+    kind: row.kind as JudgeImageKind,
     description: row.description,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -37,9 +42,19 @@ export async function listJudgeImages(): Promise<JudgeImageResponse[]> {
 }
 
 /**
+ * 按 kind 过滤白名单条目（dual-container-judge §5）。
+ */
+export async function listJudgeImagesByKind(
+  kind: JudgeImageKind,
+): Promise<JudgeImageResponse[]> {
+  const all = await listJudgeImages();
+  return all.filter((img) => img.kind === kind);
+}
+
+/**
  * 新增白名单条目。
  *
- * @throws {ValidationError} mode 非法
+ * @throws {ValidationError} mode / kind 非法
  */
 export async function createJudgeImage(
   input: CreateJudgeImageInput,
@@ -52,6 +67,11 @@ export async function createJudgeImage(
       `mode 仅允许 ${VALID_MODES.join("/")}，收到: ${input.mode}`,
     );
   }
+  if (!isValidJudgeImageKind(input.kind)) {
+    throw new ValidationError(
+      `kind 仅允许 evaluator/solution，收到: ${input.kind}`,
+    );
+  }
 
   const db = getDb();
   const now = new Date().toISOString();
@@ -61,6 +81,7 @@ export async function createJudgeImage(
     id,
     image: input.image.trim(),
     mode: input.mode,
+    kind: input.kind,
     description: input.description?.trim() ?? "",
     created_at: now,
     updated_at: now,
@@ -79,7 +100,7 @@ export async function createJudgeImage(
  * 更新白名单条目。
  *
  * @throws {NotFoundError} 条目不存在
- * @throws {ValidationError} mode 非法
+ * @throws {ValidationError} mode / kind 非法
  */
 export async function updateJudgeImage(
   id: string,
@@ -102,10 +123,16 @@ export async function updateJudgeImage(
       `mode 仅允许 ${VALID_MODES.join("/")}，收到: ${input.mode}`,
     );
   }
+  if (input.kind !== undefined && !isValidJudgeImageKind(input.kind)) {
+    throw new ValidationError(
+      `kind 仅允许 evaluator/solution，收到: ${input.kind}`,
+    );
+  }
 
   const updates: Record<string, unknown> = {};
   if (input.image !== undefined) updates.image = input.image.trim();
   if (input.mode !== undefined) updates.mode = input.mode;
+  if (input.kind !== undefined) updates.kind = input.kind;
   if (input.description !== undefined) {
     updates.description = input.description.trim();
   }
@@ -163,6 +190,57 @@ export async function validateJudgeImage(image: string): Promise<boolean> {
   if (!isImageInWhitelist(image, rows)) {
     throw new ValidationError(
       `评测镜像 '${image}' 不在允许列表中`,
+    );
+  }
+
+  return true;
+}
+
+/**
+ * 校验 judge_image + kind 组合（dual-container-judge §5）。
+ *
+ * 用于 admin API 在创建/更新题目时校验 `runtime_config` 中的镜像：
+ * - `runtime_config.evaluator.image` 必须 kind='evaluator'
+ * - `runtime_config.solution.image` 必须 kind='solution'
+ *
+ * @throws {ValidationError} kind 不匹配或镜像不在白名单
+ */
+export async function validateJudgeImageWithKind(
+  image: string,
+  expectedKind: JudgeImageKind,
+): Promise<boolean> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      image: judgeImages.image,
+      mode: judgeImages.mode,
+      kind: judgeImages.kind,
+    })
+    .from(judgeImages);
+
+  if (rows.length === 0) {
+    throw new ValidationError(
+      "系统尚未配置允许的评测镜像，请联系管理员",
+    );
+  }
+
+  // 1. 检查白名单
+  if (!isImageInWhitelist(image, rows)) {
+    throw new ValidationError(
+      `评测镜像 '${image}' 不在允许列表中`,
+    );
+  }
+
+  // 2. 检查 kind 匹配
+  const matched = rows.find((r) => isImageInWhitelist(image, [r]));
+  if (!matched) {
+    throw new ValidationError(
+      `评测镜像 '${image}' 未匹配任何白名单条目`,
+    );
+  }
+  if (matched.kind !== expectedKind) {
+    throw new ValidationError(
+      `image kind mismatch: 期望 ${expectedKind}，镜像 '${image}' 实际为 ${matched.kind}`,
     );
   }
 

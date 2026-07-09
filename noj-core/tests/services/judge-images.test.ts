@@ -45,6 +45,7 @@ Deno.test({
     const item = await createJudgeImage({
       image: `test-image-${ts}`,
       mode: "exact",
+      kind: "evaluator",
       description: "测试用镜像",
     });
     assertEquals(item.image, `test-image-${ts}`);
@@ -68,6 +69,7 @@ Deno.test({
         createJudgeImage({
           image: "test-image",
           mode: "regex" as "exact" | "all_versions",
+          kind: "evaluator",
         }),
       ValidationError,
     );
@@ -86,6 +88,7 @@ Deno.test({
         createJudgeImage({
           image: "",
           mode: "exact",
+          kind: "evaluator",
         }),
       ValidationError,
     );
@@ -103,6 +106,7 @@ Deno.test({
     const created = await createJudgeImage({
       image: `update-test-${ts}`,
       mode: "exact",
+      kind: "evaluator",
       description: "原始介绍",
     });
     // 再更新
@@ -140,6 +144,7 @@ Deno.test({
     const created = await createJudgeImage({
       image: `delete-test-${ts}`,
       mode: "exact",
+      kind: "evaluator",
     });
     await deleteJudgeImage(created.id);
     // 删除后再次删除应抛 NotFound

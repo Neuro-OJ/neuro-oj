@@ -103,6 +103,7 @@ Deno.test({
       body: JSON.stringify({
         image: `route-test-image-${ts}`,
         mode: "exact",
+        kind: "evaluator",
         description: "路由测试",
       }),
     });
@@ -158,6 +159,7 @@ Deno.test({
       body: JSON.stringify({
         image: `route-update-test-${ts}`,
         mode: "exact",
+        kind: "evaluator",
       }),
     });
     const created = await createRes.json();
@@ -205,6 +207,7 @@ Deno.test({
       body: JSON.stringify({
         image: `route-delete-test-${ts}`,
         mode: "exact",
+        kind: "evaluator",
       }),
     });
     const created = await createRes.json();
