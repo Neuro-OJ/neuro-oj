@@ -3,6 +3,7 @@
 /// 从 Redis 消息队列中拉取评测任务，在 Docker 容器中执行评测，
 /// 并将结果返回给 noj-core。
 mod config;
+mod dual;
 mod judge;
 mod mq;
 mod pool;
@@ -140,13 +141,21 @@ fn main() -> Result<()> {
         let mut rpc_client = mq::rpc::RpcClient::new(rpc_conn, judge_id);
 
         let images = match rpc_client.get_image_allowlist().await {
-            Ok(list) if !list.is_empty() => {
-                info!("从 core 获取镜像白名单: {:?}", list);
-                list
-            }
-            Ok(_) => {
-                warn!("RPC 返回空镜像列表，回退至配置文件默认值");
-                config.pool.images.clone()
+            Ok(list) => {
+                // 仅 evaluator kind 的镜像入池；solution kind 仅记录
+                let pool_images = if !list.evaluator.is_empty() {
+                    info!(
+                        "从 core 获取镜像白名单: evaluator={:?}, solution={:?}",
+                        list.evaluator, list.solution
+                    );
+                    list.evaluator
+                } else {
+                    warn!(
+                        "core 返回的 evaluator 镜像列表为空，回退至配置文件默认值"
+                    );
+                    config.pool.images.clone()
+                };
+                pool_images
             }
             Err(e) => {
                 warn!("获取镜像白名单失败: {:#}，回退至配置文件默认值", e);
@@ -202,8 +211,8 @@ fn main() -> Result<()> {
                     };
 
                     info!(
-                        "收到评测任务: submission_id={}, language={}",
-                        task.submission_id, task.language
+                        "收到评测任务: submission_id={}, language={}, mode={:?}",
+                        task.submission_id, task.language, task.mode
                     );
 
                     let pool = pool.clone();
@@ -211,33 +220,64 @@ fn main() -> Result<()> {
                     let result_queue = result_queue.clone();
                     let work_dir = work_dir.clone();
                     let cache_dir = cache_dir.clone();
+                    let docker_for_dual = Docker::connect_with_local_defaults().ok();
 
                     let handle = tokio::spawn(async move {
                         let work_dir_path = std::path::Path::new(&work_dir);
                         let fallback_dir = std::path::Path::new(&work_dir).join("fallback-results");
 
-                        let result = match judge::runner::evaluate_with_pool(
-                            pool.clone(),
-                            &task,
-                            work_dir_path,
-                            download_timeout,
-                            cache_dir.clone(),
-                            cache_max_items,
-                            cache_max_mb,
-                        ).await {
-                            Ok(r) => {
-                                // 根据结果状态更新计数器
-                                match r.status.as_str() {
-                                    "TimeLimitExceeded" => pool.inc_timeouts_total(),
-                                    "SystemError" | "RuntimeError" => pool.inc_errors_total(),
-                                    _ => {}
+                        // 按 task.mode 分流：
+                        // - single（默认）→ 单容器 + PoolManager
+                        // - dual → 双容器编排（DualContainer，不入池）
+                        let result = match task.mode {
+                            types::JudgeMode::Dual => {
+                                let docker = docker_for_dual.unwrap_or_else(|| {
+                                    error!("dual 模式要求 Docker 连接，使用空实例");
+                                    Docker::connect_with_local_defaults()
+                                        .expect("Docker 连接失败")
+                                });
+                                let dual_result = judge::runner::evaluate(
+                                    docker,
+                                    &task,
+                                    work_dir_path,
+                                    download_timeout,
+                                    cache_dir.clone(),
+                                    cache_max_items,
+                                    cache_max_mb,
+                                ).await;
+                                match dual_result {
+                                    Ok(r) => r,
+                                    Err(e) => {
+                                        error!("双容器评测失败: {}: {:#}", task.submission_id, e);
+                                        pool.inc_errors_total();
+                                        types::JudgeResult::error(&task.submission_id, &e.to_string())
+                                    }
                                 }
-                                r
                             }
-                            Err(e) => {
-                                error!("评测失败: {}: {:#}", task.submission_id, e);
-                                pool.inc_errors_total();
-                                types::JudgeResult::error(&task.submission_id, &e.to_string())
+                            types::JudgeMode::Single => {
+                                match judge::runner::evaluate_with_pool(
+                                    pool.clone(),
+                                    &task,
+                                    work_dir_path,
+                                    download_timeout,
+                                    cache_dir.clone(),
+                                    cache_max_items,
+                                    cache_max_mb,
+                                ).await {
+                                    Ok(r) => {
+                                        match r.status.as_str() {
+                                            "TimeLimitExceeded" => pool.inc_timeouts_total(),
+                                            "SystemError" | "RuntimeError" => pool.inc_errors_total(),
+                                            _ => {}
+                                        }
+                                        r
+                                    }
+                                    Err(e) => {
+                                        error!("评测失败: {}: {:#}", task.submission_id, e);
+                                        pool.inc_errors_total();
+                                        types::JudgeResult::error(&task.submission_id, &e.to_string())
+                                    }
+                                }
                             }
                         };
 

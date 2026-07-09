@@ -14,9 +14,49 @@ use crate::sandbox::download;
 use crate::types::{JudgeResult, JudgeStatus};
 
 /// Redis MQ 拉取到的评测任务。（引用 types::JudgeTask）
-pub use crate::types::JudgeTask;
+pub use crate::types::{JudgeMode, JudgeTask};
 
-/// 执行评测任务。
+/// 评测任务分派入口（单/双容器自动分流）。
+///
+/// - `task.mode == 'single'`（默认）或缺省 → 单容器路径
+/// - `task.mode == 'dual'` + `runtime_config` 非空 → 双容器路径
+pub async fn evaluate(
+    docker: bollard::Docker,
+    task: &JudgeTask,
+    _work_dir_root: &Path,
+    _download_timeout_secs: u64,
+    cache_dir: String,
+    cache_max_items: usize,
+    cache_max_mb: u64,
+) -> Result<JudgeResult> {
+    match task.mode {
+        JudgeMode::Dual => {
+            let rc = task
+                .runtime_config
+                .as_ref()
+                .context("dual mode 要求 runtime_config 非空")?;
+            crate::dual::evaluate_dual(
+                docker,
+                &task.submission_id,
+                rc,
+                &task.code,
+                task.file_name.as_deref().unwrap_or("solution.py"),
+                None, // 支持包挂载（v1 暂未实现，预留）
+                &cache_dir,
+                cache_max_items,
+                cache_max_mb,
+            )
+            .await
+        }
+        JudgeMode::Single => {
+            // 单容器路径使用 PoolManager；这里没有 PoolManager 因为 evaluate_with_pool
+            // 已有完整实现，调用方应通过 evaluate_with_pool 而非本函数。
+            anyhow::bail!("single 模式请调用 evaluate_with_pool，本入口仅支持 dual 路由");
+        }
+    }
+}
+
+/// 执行评测任务（单容器，with_container 闭包模式）。
 ///
 /// 使用 with_container() 在闭包作用域内使用容器，
 /// 闭包返回后自动释放容器，然后清理临时目录。
@@ -321,9 +361,11 @@ Some debug output
         let task = JudgeTask {
             submission_id: "test-123".to_string(),
             problem_id: "1001".to_string(),
+            mode: crate::types::JudgeMode::Single,
             judge_image: "noj-judge-python".to_string(),
             judge_command: "python3 /tmp/evaluate.py".to_string(),
             download_url: None,
+            runtime_config: None,
             language: "python3".to_string(),
             code: "print('hello')".to_string(),
             file_name: Some("main.py".to_string()),
@@ -349,9 +391,11 @@ Some debug output
         let task = JudgeTask {
             submission_id: "test-456".to_string(),
             problem_id: "1001".to_string(),
+            mode: crate::types::JudgeMode::Single,
             judge_image: "noj-judge-python".to_string(),
             judge_command: "python3 /tmp/evaluate.py".to_string(),
             download_url: None,
+            runtime_config: None,
             language: "python3".to_string(),
             code: "".to_string(),
             file_name: None,
@@ -375,9 +419,11 @@ Some debug output
         let task = JudgeTask {
             submission_id: "test-789".to_string(),
             problem_id: "1001".to_string(),
+            mode: crate::types::JudgeMode::Single,
             judge_image: "noj-judge-python".to_string(),
             judge_command: "python3 /tmp/evaluate.py".to_string(),
             download_url: None,
+            runtime_config: None,
             language: "python3".to_string(),
             code: "".to_string(),
             file_name: None,
@@ -401,9 +447,11 @@ Some debug output
         let task = JudgeTask {
             submission_id: "test-runtime".to_string(),
             problem_id: "1001".to_string(),
+            mode: crate::types::JudgeMode::Single,
             judge_image: "noj-judge-python".to_string(),
             judge_command: "python3 /tmp/evaluate.py".to_string(),
             download_url: None,
+            runtime_config: None,
             language: "python3".to_string(),
             code: "".to_string(),
             file_name: None,
@@ -427,9 +475,11 @@ Some debug output
         let task = JudgeTask {
             submission_id: "test-no-marker".to_string(),
             problem_id: "1001".to_string(),
+            mode: crate::types::JudgeMode::Single,
             judge_image: "noj-judge-python".to_string(),
             judge_command: "python3 /tmp/evaluate.py".to_string(),
             download_url: None,
+            runtime_config: None,
             language: "python3".to_string(),
             code: "".to_string(),
             file_name: None,
