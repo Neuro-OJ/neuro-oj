@@ -55,10 +55,29 @@ Deno.test("isImageInWhitelist: all_versions 模式有标签匹配", () => {
 });
 
 Deno.test("isImageInWhitelist: all_versions 条目标签不影响匹配", () => {
-  // 白名单条目本身带标签时，all_versions 模式仍只比较镜像名前缀
+  // 白名单条目本身带标签时，all_versions 模式仍只忽略 tag
   const list = [{ image: "noj-judge-node:18", mode: "all_versions" }];
   assertEquals(isImageInWhitelist("noj-judge-node:20", list), true);
   assertEquals(isImageInWhitelist("noj-judge-node:latest", list), true);
+});
+
+Deno.test("isImageInWhitelist: all_versions 保留完整 repository 路径", () => {
+  const list = [{
+    image: "registry.local/team/noj-judge-python:3.12",
+    mode: "all_versions",
+  }];
+  assertEquals(
+    isImageInWhitelist("registry.local/team/noj-judge-python:latest", list),
+    true,
+  );
+  assertEquals(
+    isImageInWhitelist("evil.example/other/noj-judge-python:latest", list),
+    false,
+  );
+  assertEquals(
+    isImageInWhitelist("noj-judge-python:latest", list),
+    false,
+  );
 });
 
 Deno.test("isImageInWhitelist: 完全不相关的镜像返回 false", () => {
