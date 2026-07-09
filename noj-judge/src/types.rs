@@ -36,9 +36,53 @@ impl JudgeStatus {
     }
 }
 
+/// 评测模式。
+///
+/// - `Single` 走现有单容器路径（`judge_image` / `judge_command`）。
+/// - `Dual` 走双容器编排（Evaluator + Solution），使用 `runtime_config`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum JudgeMode {
+    Single,
+    Dual,
+}
+
+impl Default for JudgeMode {
+    /// 缺省/未识别时按单容器处理（向后兼容）。
+    fn default() -> Self {
+        JudgeMode::Single
+    }
+}
+
+/// 双容器模式下的 Runtime 配置（与 noj-core/src/types/index.ts 的 RuntimeConfig 对齐）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeConfig {
+    pub evaluator: EvaluatorRuntime,
+    pub solution: SolutionRuntime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvaluatorRuntime {
+    pub image: String,
+    pub command: String,
+    pub time_limit_ms: u64,
+    pub memory_limit_mb: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SolutionRuntime {
+    pub image: String,
+    /// Solution 容器内入口文件名（例如 `solution.py`）。
+    pub entry: String,
+    /// 单次 SDK 调用的时间上限（毫秒）。
+    pub call_timeout_ms: u64,
+    pub memory_limit_mb: u64,
+}
+
 /// 评测任务——从 noj-core 发送到 noj-judge 的消息。
 ///
 /// 字段对齐 noj-core/src/types/index.ts 的 JudgeTask 接口。
+/// `judge_image` / `judge_command` 在 dual 模式下可为空（由 `runtime_config` 提供）。
 #[derive(Debug, Clone, Deserialize)]
 pub struct JudgeTask {
     /// 提交 UUID
@@ -46,12 +90,20 @@ pub struct JudgeTask {
     /// 题目 UUID
     #[allow(dead_code)]
     pub problem_id: String,
-    /// 题目定义的 Docker 镜像名
+    /// 评测模式：缺省/单容器/双容器
+    #[serde(default)]
+    pub mode: JudgeMode,
+    /// 题目定义的 Docker 镜像名（单容器必填；双容器由 runtime_config.evaluator.image 提供）
+    #[serde(default)]
     pub judge_image: String,
-    /// 容器内执行的评测命令
+    /// 容器内执行的评测命令（单容器必填；双容器由 runtime_config.evaluator.command 提供）
+    #[serde(default)]
     pub judge_command: String,
-    /// 支持包下载 URL（`noj-download://` 格式）
+    /// 支持包下载 URL（`noj-download://` 格式），单/双容器共用
     pub download_url: Option<String>,
+    /// 双容器模式：Runtime 配置
+    #[serde(default)]
+    pub runtime_config: Option<RuntimeConfig>,
     /// 编程语言标识
     pub language: String,
     /// 用户源代码
@@ -59,8 +111,12 @@ pub struct JudgeTask {
     /// 用户代码的文件名
     pub file_name: Option<String>,
     /// 时间限制（毫秒）
+    /// - 单容器：总超时
+    /// - 双容器：Evaluator 总超时
     pub time_limit_ms: u64,
     /// 内存限制（MB）
+    /// - 单容器：总内存
+    /// - 双容器：Evaluator 默认内存（实际以 runtime_config.evaluator.memory_limit_mb 为准）
     pub memory_limit_mb: u64,
     /// 重测序列号（透传回 JudgeResult）
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -263,6 +319,79 @@ mod tests {
         );
         assert_eq!(task.file_name.as_deref(), Some("solution.py"));
         assert_eq!(task.time_limit_ms, 10000);
+    }
+
+    #[test]
+    fn test_judge_task_deserialize_dual_mode() {
+        let json = json!({
+            "submission_id": "sid-dual-1",
+            "problem_id": "2002",
+            "mode": "dual",
+            "judge_image": "",
+            "judge_command": "",
+            "download_url": "noj-download://base64/?content=XYZ",
+            "runtime_config": {
+                "evaluator": {
+                    "image": "noj-evaluator-python:3.12",
+                    "command": "python3 /workspace/evaluate.py",
+                    "time_limit_ms": 5000,
+                    "memory_limit_mb": 512
+                },
+                "solution": {
+                    "image": "noj-solution-python:3.12",
+                    "entry": "solution.py",
+                    "call_timeout_ms": 1000,
+                    "memory_limit_mb": 256
+                }
+            },
+            "language": "python3",
+            "code": "def solve(a, b): return a + b",
+            "file_name": "solution.py",
+            "time_limit_ms": 5000,
+            "memory_limit_mb": 512
+        });
+        let task: JudgeTask = serde_json::from_value(json).unwrap();
+        assert_eq!(task.mode, JudgeMode::Dual);
+        let rc = task.runtime_config.as_ref().expect("runtime_config 应存在");
+        assert_eq!(rc.evaluator.image, "noj-evaluator-python:3.12");
+        assert_eq!(rc.evaluator.command, "python3 /workspace/evaluate.py");
+        assert_eq!(rc.evaluator.time_limit_ms, 5000);
+        assert_eq!(rc.evaluator.memory_limit_mb, 512);
+        assert_eq!(rc.solution.image, "noj-solution-python:3.12");
+        assert_eq!(rc.solution.entry, "solution.py");
+        assert_eq!(rc.solution.call_timeout_ms, 1000);
+        assert_eq!(rc.solution.memory_limit_mb, 256);
+    }
+
+    #[test]
+    fn test_judge_task_default_mode_is_single() {
+        // 不传 mode 字段时默认单容器（向后兼容）
+        let json = json!({
+            "submission_id": "sid-default",
+            "problem_id": "1001",
+            "judge_image": "noj-judge-python",
+            "judge_command": "python3 /tmp/evaluate.py",
+            "language": "python3",
+            "code": "",
+            "time_limit_ms": 5000,
+            "memory_limit_mb": 512
+        });
+        let task: JudgeTask = serde_json::from_value(json).unwrap();
+        assert_eq!(task.mode, JudgeMode::Single);
+        assert!(task.runtime_config.is_none());
+    }
+
+    #[test]
+    fn test_judge_mode_serializes_lowercase() {
+        // JudgeMode 序列化为小写（与 TS 接口一致）
+        assert_eq!(
+            serde_json::to_value(JudgeMode::Single).unwrap(),
+            json!("single")
+        );
+        assert_eq!(
+            serde_json::to_value(JudgeMode::Dual).unwrap(),
+            json!("dual")
+        );
     }
 
     #[test]
