@@ -23,9 +23,12 @@ PoolManager 统一管理 Docker
 #### Scenario: 启动时创建初始池
 
 - **WHEN** noj-judge 启动
-- **THEN** 系统通过 Redis RPC 向 core 请求镜像白名单（`get_image_allowlist` 方法）
-- **THEN** 若 RPC 失败或超时，系统记录 `error!` 日志并调用 `process::exit(1)` 退出
-- **THEN** 对返回列表中的每个镜像检查本地是否存在（若不存在则 docker pull，失败重试 3 次，间隔 5s）
+- **THEN** 系统通过 Redis RPC 向 core 请求镜像白名单（`get_image_allowlist`
+  方法）
+- **THEN** 若 RPC 失败或超时，系统记录 `error!` 日志并调用 `process::exit(1)`
+  退出
+- **THEN** 对返回列表中的每个镜像检查本地是否存在（若不存在则 docker
+  pull，失败重试 3 次，间隔 5s）
 - **THEN** 若镜像已在本地存在，跳过拉取
 - **THEN** 每个镜像创建 `POOL_INITIAL_SIZE` 个容器，CMD 设为 `sleep infinity`
 - **THEN** 容器全部就绪后，主循环开始从 MQ 拉取任务
@@ -57,7 +60,8 @@ PoolManager 统一管理 Docker
 #### Scenario: 镜像名匹配
 
 - **WHEN** 系统按 `task.judge_image` 查找池
-- **THEN** 若池中存在 image 且 task.judge_image 与池注册镜像名在去除默认 tag（`:latest` 视为等价于无 tag）后一致，视为匹配
+- **THEN** 若池中存在 image 且 task.judge_image 与池注册镜像名在去除默认
+  tag（`:latest` 视为等价于无 tag）后一致，视为匹配
 - **THEN** 若无匹配池，系统自动创建新池并即时创建容器
 
 ### Requirement: 容器释放与自动回补
@@ -68,7 +72,8 @@ PoolManager 统一管理 Docker
 
 - **WHEN** 评测任务完成（成功或失败）
 - **THEN** `in_flight` 计数器 -1
-- **THEN** 系统执行 `docker rm -f` 删除容器（首次失败后退避重试 3 次：100ms / 500ms / 2s）
+- **THEN** 系统执行 `docker rm -f` 删除容器（首次失败后退避重试 3 次：100ms /
+  500ms / 2s）
 - **THEN** 系统创建新容器并推入对应镜像的空闲队列
 - **THEN** 若空闲队列长度超过 `POOL_MAX_SIZE`，跳过回补
 
@@ -91,7 +96,8 @@ PoolManager 统一管理 Docker
 
 #### Scenario: 空闲超时清理
 
-- **WHEN** 容器在空闲队列中停留时间超过 `POOL_IDLE_TIMEOUT` 秒且空闲队列长度 > `POOL_MIN_SIZE`
+- **WHEN** 容器在空闲队列中停留时间超过 `POOL_IDLE_TIMEOUT` 秒且空闲队列长度 >
+  `POOL_MIN_SIZE`
 - **THEN** 系统移除并 `docker rm -f` 删除该容器
 - **THEN** 不触发回补
 
@@ -132,8 +138,9 @@ stdout/stderr。
 
 #### Scenario: exec 超时
 
-- **WHEN** 评测运行超过 `time_limit_ms + kill_grace_secs × 1000` ms
-- **THEN** 系统先发送 `docker stop -t <kill_grace_secs>`（SIGTERM + 等待进程 flush）
+- **WHEN** 评测运行超过 `time_limit_ms` ms
+- **THEN** 系统先发送 `docker stop -t <kill_grace_secs>`（SIGTERM + 等待进程
+  flush）
 - **THEN** 若仍未退出，`docker kill`（SIGKILL）
 - **THEN** 剩余日志被捕获，状态设为 TimeLimitExceeded
 
@@ -176,7 +183,8 @@ stdout/stderr。
 - **WHEN** 多个任务同时 acquire 同一个池的空闲容器
 - **THEN** `RwLock<VecDeque>` 保证 pop_front 的原子性
 - **WHEN** 健康检查与 acquire 竞争同一容器
-- **THEN** 健康检查仅操作 Idle 容器，acquire 将容器标记为 InUse 后健康检查不再触碰
+- **THEN** 健康检查仅操作 Idle 容器，acquire 将容器标记为 InUse
+  后健康检查不再触碰
 
 ### Requirement: 可靠性与故障恢复
 
@@ -185,7 +193,8 @@ stdout/stderr。
 #### Scenario: 孤儿容器清理
 
 - **WHEN** 系统启动
-- **THEN** 按标签 `com.noj.judge.pool=true` 过滤并 `docker rm -f` 清理所有残留容器
+- **THEN** 按标签 `com.noj.judge.pool=true` 过滤并 `docker rm -f`
+  清理所有残留容器
 
 #### Scenario: bollard API 超时
 

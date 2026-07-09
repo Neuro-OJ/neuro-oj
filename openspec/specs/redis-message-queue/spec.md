@@ -43,30 +43,29 @@
 
 ### Requirement: 评测任务消息格式
 
-推送的评测任务 JSON SHALL 包含以下字段。支持包通过 `support_package_base64` 以
-Base64 编码传递。
+推送的评测任务 JSON SHALL 包含以下字段。支持包通过 `download_url` 传递。
 
-| 字段                   | 类型    | 必须 | 说明                      |
-| ---------------------- | ------- | ---- | ------------------------- |
-| submission_id          | string  | 是   | 提交 UUID                 |
-| problem_id             | string  | 是   | 题目 UUID                 |
-| judge_image            | string  | 是   | 题目定义的 Docker 镜像    |
-| judge_command          | string  | 是   | 题目定义的评测命令        |
-| support_package_base64 | string  | 否   | 支持包 zip 的 Base64 编码 |
-| language               | string  | 是   | 编程语言标识              |
-| code                   | string  | 是   | 用户源代码                |
-| file_name              | string  | 否   | 用户文件名                |
-| time_limit_ms          | integer | 是   | 时间限制（毫秒）          |
-| memory_limit_mb        | integer | 是   | 内存限制（MB）            |
+| 字段            | 类型    | 必须 | 说明                             |
+| --------------- | ------- | ---- | -------------------------------- |
+| submission_id   | string  | 是   | 提交 UUID                        |
+| problem_id      | string  | 是   | 题目 UUID                        |
+| judge_image     | string  | 是   | 题目定义的 Docker 镜像           |
+| judge_command   | string  | 是   | 题目定义的评测命令               |
+| download_url    | string  | 否   | `noj-download://` 支持包下载 URL |
+| language        | string  | 是   | 编程语言标识                     |
+| code            | string  | 是   | 用户源代码                       |
+| file_name       | string  | 否   | 用户文件名                       |
+| time_limit_ms   | integer | 是   | 时间限制（毫秒）                 |
+| memory_limit_mb | integer | 是   | 内存限制（MB）                   |
 
-#### Scenario: 完整任务消息（Base64 模式）
+#### Scenario: 完整任务消息（download_url 模式）
 
-- **WHEN** 推送一个包含 support_package_base64 的评测任务
-- **THEN** 队列中的 JSON 包含所有必填字段及 Base64 编码的支持包内容
+- **WHEN** 推送一个包含 `download_url` 的评测任务
+- **THEN** 队列中的 JSON 包含所有必填字段及 `noj-download://` URL
 
 #### Scenario: 无支持包任务消息
 
-- **WHEN** 推送一个不包含 support_package_base64 的评测任务
+- **WHEN** 推送一个不包含 `download_url` 的评测任务
 - **THEN** judge 跳过支持包步骤，直接写入用户代码后执行
 
 ### Requirement: 评测结果通道约定
@@ -144,12 +143,13 @@ noj-core SHALL 在启动时运行结果消费者，通过 BRPOP 阻塞等待 `no
 
 ### Requirement: Redis Pub/Sub 事件频道
 
-系统 SHALL 新增以下 Redis Pub/Sub 频道用于事件广播，与现有 List 队列（`noj:judge:queue`、`noj:judge:results`）互补：
+系统 SHALL 新增以下 Redis Pub/Sub 频道用于事件广播，与现有 List
+队列（`noj:judge:queue`、`noj:judge:results`）互补：
 
-| 频道 | 发布时机 | 说明 |
-|------|----------|------|
-| `noj:events:submission:<submission_id>` | Consumer 持久化评测结果后 | 单提交状态变更 |
-| `noj:events:queue` | 提交入队 / 评测完成 / 状态变更 | 全局队列变更 |
+| 频道                                    | 发布时机                       | 说明           |
+| --------------------------------------- | ------------------------------ | -------------- |
+| `noj:events:submission:<submission_id>` | Consumer 持久化评测结果后      | 单提交状态变更 |
+| `noj:events:queue`                      | 提交入队 / 评测完成 / 状态变更 | 全局队列变更   |
 
 - Pub/Sub 频道 SHALL 不影响现有 LPUSH/BRPOP 队列功能
 - 发布操作 SHALL 复用共享 Redis 连接（`getRedis()`）
@@ -167,4 +167,5 @@ noj-core SHALL 在启动时运行结果消费者，通过 BRPOP 阻塞等待 `no
 #### Scenario: 现有 List 队列不受影响
 
 - **WHEN** Pub/Sub 功能启用
-- **THEN** `noj:judge:queue` 和 `noj:judge:results` 的 LPUSH/BRPOP 行为不变，所有现有评测流程正常工作
+- **THEN** `noj:judge:queue` 和 `noj:judge:results` 的 LPUSH/BRPOP
+  行为不变，所有现有评测流程正常工作

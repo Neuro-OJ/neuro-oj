@@ -15,11 +15,23 @@ use anyhow::Result;
 use bollard::Docker;
 use futures_util::FutureExt;
 use futures_util::StreamExt;
-use tokio::sync::RwLock;
+use tokio::sync::{Notify, RwLock};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use crate::config::PoolConfig;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AllowedImageMode {
+    Exact,
+    AllVersions,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AllowedImage {
+    pub image: String,
+    pub mode: AllowedImageMode,
+}
 
 // ── 常量 ───────────────────────────────────────────────
 
@@ -49,8 +61,70 @@ pub struct Pool {
     max_size: usize,
     /// 当前忙碌（已分配）容器数
     in_flight: AtomicUsize,
+    /// 当前总容器数（idle + in_flight）
+    total: AtomicUsize,
     /// 该池的镜像名
     image: String,
+    /// 容器可用性通知
+    notify: Notify,
+}
+
+/// 已分配给任务的容器租约。
+///
+/// 显式调用 `release()` 时同步归还容器；若任务被取消导致租约直接 drop，
+/// Drop 会在后台补做 release，避免 shutdown abort 后泄漏 in-use 容器。
+pub struct ContainerLease {
+    manager: Arc<PoolManager>,
+    pool: Arc<Pool>,
+    container_id: Option<String>,
+}
+
+impl ContainerLease {
+    fn new(manager: Arc<PoolManager>, pool: Arc<Pool>, container_id: String) -> Self {
+        Self {
+            manager,
+            pool,
+            container_id: Some(container_id),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        self.container_id.as_deref().unwrap_or("")
+    }
+
+    pub async fn release(mut self) {
+        if let Some(container_id) = self.container_id.take() {
+            self.manager.release(&self.pool, &container_id).await;
+        }
+    }
+}
+
+impl Drop for ContainerLease {
+    fn drop(&mut self) {
+        let Some(container_id) = self.container_id.take() else {
+            return;
+        };
+
+        let manager = self.manager.clone();
+        let pool = self.pool.clone();
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.spawn(async move {
+                    warn!(
+                        container_id = %container_id,
+                        "容器租约在未显式 release 的情况下被 drop，后台补做清理"
+                    );
+                    manager.release(&pool, &container_id).await;
+                });
+            }
+            Err(_) => {
+                error!(
+                    container_id = %container_id,
+                    "ContainerLease drop 时无可用 Tokio runtime，容器可能等待下次孤儿清理"
+                );
+            }
+        }
+    }
 }
 
 impl Pool {
@@ -61,7 +135,9 @@ impl Pool {
             min_size,
             max_size,
             in_flight: AtomicUsize::new(0),
+            total: AtomicUsize::new(0),
             image,
+            notify: Notify::new(),
         }
     }
 
@@ -120,10 +196,34 @@ impl Pool {
         self.max_size
     }
 
-    /// 移除并返回最旧的空闲容器 ID（超出 max_size 时收缩使用）。
-    async fn pop_oldest_idle(&self) -> Option<String> {
-        let mut guard = self.idle.write().await;
-        guard.pop_front().map(|e| e.container_id)
+    fn try_reserve_slot(&self) -> bool {
+        let mut current = self.total.load(Ordering::SeqCst);
+        loop {
+            if current >= self.max_size {
+                return false;
+            }
+            match self.total.compare_exchange(
+                current,
+                current + 1,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => return true,
+                Err(actual) => current = actual,
+            }
+        }
+    }
+
+    fn add_prewarmed_slot(&self) {
+        self.total.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn release_slot(&self) {
+        self.total.fetch_sub(1, Ordering::SeqCst);
+    }
+
+    fn notify_available(&self) {
+        self.notify.notify_waiters();
     }
 
     /// 收集空闲超时的容器 ID（仅当超过 min_size 时）。
@@ -160,9 +260,11 @@ impl Pool {
     }
 
     /// 从空闲队列中移除指定容器。
-    async fn remove_idle(&self, container_id: &str) {
+    async fn remove_idle(&self, container_id: &str) -> bool {
         let mut guard = self.idle.write().await;
+        let before = guard.len();
         guard.retain(|e| e.container_id != container_id);
+        before != guard.len()
     }
 }
 
@@ -176,6 +278,8 @@ pub struct PoolManager {
     docker: Docker,
     /// 配置
     config: PoolConfig,
+    /// 允许使用的镜像白名单规则。
+    allowed_images: Vec<AllowedImage>,
     /// 是否正在关闭
     shutting_down: AtomicBool,
     /// 关闭通知
@@ -192,13 +296,18 @@ pub struct PoolManager {
 
 impl PoolManager {
     /// 创建并初始化池管理器。
-    pub async fn init(docker: Docker, config: PoolConfig, images: &[String]) -> Result<Arc<Self>> {
+    pub async fn init(
+        docker: Docker,
+        config: PoolConfig,
+        images: &[AllowedImage],
+    ) -> Result<Arc<Self>> {
         Self::cleanup_orphans(&docker, &config.label_prefix).await;
 
         let manager = Arc::new(Self {
             pools: RwLock::new(Vec::new()),
             docker,
             config,
+            allowed_images: images.to_vec(),
             shutting_down: AtomicBool::new(false),
             shutdown_token: CancellationToken::new(),
             tasks_total: AtomicUsize::new(0),
@@ -206,7 +315,8 @@ impl PoolManager {
             timeouts_total: AtomicUsize::new(0),
         });
 
-        for image in images {
+        for allowed in images {
+            let image = &allowed.image;
             info!("预热镜像: {}", image);
 
             if let Err(e) = manager.ensure_image_local(image).await {
@@ -214,16 +324,17 @@ impl PoolManager {
                 continue;
             }
 
-            let normalized = Self::normalize_image(image);
+            let normalized = Self::pool_key(image);
             let pool = Arc::new(Pool::new(
                 normalized.clone(),
                 manager.config.min_size,
                 manager.config.max_size,
             ));
 
-            for i in 0..manager.config.initial_size {
+            for i in 0..manager.config.initial_size.min(manager.config.max_size) {
                 match manager.create_container(image).await {
                     Ok(container_id) => {
+                        pool.add_prewarmed_slot();
                         pool.push_idle(container_id).await;
                         info!(
                             "创建预热容器 [{}/{}] 镜像={}",
@@ -241,11 +352,12 @@ impl PoolManager {
             manager.pools.write().await.push((normalized, pool));
         }
 
-        info!("容器池初始化完成 (镜像数={})", images.len());
+        info!("容器池初始化完成 (镜像规则数={})", images.len());
         Ok(manager)
     }
 
     /// 使用容器执行闭包，闭包返回后自动释放容器。
+    #[allow(dead_code)]
     pub async fn with_container<F, Fut, T>(
         self: &Arc<Self>,
         image: &str,
@@ -256,8 +368,8 @@ impl PoolManager {
         F: FnOnce(String) -> Fut,
         Fut: std::future::Future<Output = Result<T>>,
     {
-        let (id, pool) = self.acquire_with_pool(image, memory_mb).await?;
-        let id_for_release = id.clone();
+        let lease = self.acquire_container(image, memory_mb).await?;
+        let id = lease.id().to_string();
         let result = {
             let wrapped = std::panic::AssertUnwindSafe(f(id));
             match wrapped.catch_unwind().await {
@@ -273,34 +385,72 @@ impl PoolManager {
                 }
             }
         };
-        self.release(&pool, &id_for_release).await;
+        lease.release().await;
         result
+    }
+
+    /// 获取一个已准备好的容器租约。
+    pub async fn acquire_container(
+        self: &Arc<Self>,
+        image: &str,
+        memory_mb: u64,
+    ) -> Result<ContainerLease> {
+        let (container_id, pool) = self.acquire_with_pool(image, memory_mb).await?;
+        Ok(ContainerLease::new(self.clone(), pool, container_id))
     }
 
     /// 内部 acquire 实现（两路路径）。
     async fn acquire_with_pool(&self, image: &str, memory_mb: u64) -> Result<(String, Arc<Pool>)> {
         let pool = self.get_or_create_pool(image).await?;
 
-        // 快速路径：尝试获取空闲容器
-        if let Some(id) = pool.acquire().await {
-            if let Err(e) = self.update_container_memory(&id, memory_mb).await {
-                // 容器已从 idle 弹出，需清理避免泄漏
-                self.remove_container_force(&id).await;
-                pool.dec_in_flight();
-                return Err(e);
-            }
-            return Ok((id, pool.clone()));
-        }
+        loop {
+            let notified = pool.notify.notified();
 
-        // 慢路径：即时创建新容器
-        let id = self.create_container(image).await?;
-        pool.inc_in_flight();
-        if let Err(e) = self.update_container_memory(&id, memory_mb).await {
-            self.remove_container_force(&id).await;
-            pool.dec_in_flight();
-            return Err(e);
+            // 快速路径：尝试获取空闲容器
+            if let Some(id) = pool.acquire().await {
+                if let Err(e) = self.update_container_memory(&id, memory_mb).await {
+                    // 容器已从 idle 弹出，需清理避免泄漏
+                    self.remove_container_force(&id).await;
+                    pool.dec_in_flight();
+                    pool.release_slot();
+                    pool.notify_available();
+                    return Err(e);
+                }
+                return Ok((id, pool.clone()));
+            }
+
+            // 慢路径：仅在总容器数未到上限时即时创建
+            if pool.try_reserve_slot() {
+                let id = match self.create_container(image).await {
+                    Ok(id) => id,
+                    Err(e) => {
+                        pool.release_slot();
+                        pool.notify_available();
+                        return Err(e);
+                    }
+                };
+                pool.inc_in_flight();
+                if let Err(e) = self.update_container_memory(&id, memory_mb).await {
+                    self.remove_container_force(&id).await;
+                    pool.dec_in_flight();
+                    pool.release_slot();
+                    pool.notify_available();
+                    return Err(e);
+                }
+                return Ok((id, pool.clone()));
+            }
+
+            if self.shutting_down.load(Ordering::SeqCst) {
+                anyhow::bail!("judge 正在关闭，拒绝分配新容器");
+            }
+
+            tokio::select! {
+                _ = notified => {}
+                _ = self.shutdown_token.cancelled() => {
+                    anyhow::bail!("judge 正在关闭，拒绝分配新容器");
+                }
+            }
         }
-        Ok((id, pool.clone()))
     }
 
     /// 释放容器并在空闲队列中回补一个新的。
@@ -309,22 +459,22 @@ impl PoolManager {
 
         pool.dec_in_flight();
 
-        // 检查是否需要回补（避免超过 max_size 时还创建新容器）
-        let total = pool.idle_count().await + pool.in_flight();
-        if total >= pool.max_size() {
-            if let Some(oldest) = pool.pop_oldest_idle().await {
-                self.remove_container_force(&oldest).await;
-            }
+        if self.shutting_down.load(Ordering::SeqCst) {
+            pool.release_slot();
+            pool.notify_available();
             return;
         }
 
-        // 创建新容器回补到空闲队列
+        // 替换已消费的容器，保持总量稳定。
         match self.create_container(pool.image()).await {
             Ok(new_id) => {
                 pool.push_idle(new_id).await;
+                pool.notify_available();
             }
             Err(e) => {
                 warn!("回补容器失败: image={}, error={}", pool.image(), e);
+                pool.release_slot();
+                pool.notify_available();
             }
         }
     }
@@ -418,7 +568,7 @@ impl PoolManager {
             Ok(images) => Ok(images.iter().any(|i| {
                 i.repo_tags
                     .iter()
-                    .any(|tag| tag == image || tag.starts_with(&format!("{}:", image)))
+                    .any(|tag| Self::matches_local_image_reference(tag, image))
             })),
             Err(e) => {
                 warn!("检查本地镜像失败: {}: {}", image, e);
@@ -429,7 +579,10 @@ impl PoolManager {
 
     /// 获取或创建镜像的池。
     async fn get_or_create_pool(&self, image: &str) -> Result<Arc<Pool>> {
-        let normalized = Self::normalize_image(image);
+        let normalized = Self::pool_key(image);
+        if !self.is_image_allowed(image) {
+            anyhow::bail!("镜像不在白名单中: {}", image);
+        }
         let pools = self.pools.read().await;
         for (name, pool) in pools.iter() {
             if name == &normalized {
@@ -484,7 +637,7 @@ impl PoolManager {
                 cap_drop: Some(vec!["ALL".to_string()]),
                 security_opt: Some(vec!["no-new-privileges:true".to_string()]),
                 privileged: Some(false),
-                readonly_rootfs: Some(false),
+                readonly_rootfs: Some(true),
                 network_mode: Some("none".to_string()),
                 ipc_mode: Some("none".to_string()),
                 pids_limit: Some(256),
@@ -498,13 +651,28 @@ impl PoolManager {
             ..Default::default()
         };
 
-        let result = with_timeout(30, "create_container", async {
+        let result = match with_timeout(30, "create_container", async {
             self.docker
-                .create_container(Some(options), config)
+                .create_container(Some(options.clone()), config.clone())
                 .await
                 .map_err(anyhow::Error::from)
         })
-        .await?;
+        .await
+        {
+            Ok(result) => result,
+            Err(e) if Self::is_missing_image_error(&e) => {
+                warn!("创建容器时镜像未就绪，尝试即时拉取: {}: {}", image, e);
+                self.ensure_image_local(image).await?;
+                with_timeout(30, "create_container_retry", async {
+                    self.docker
+                        .create_container(Some(options), config)
+                        .await
+                        .map_err(anyhow::Error::from)
+                })
+                .await?
+            }
+            Err(e) => return Err(e),
+        };
 
         with_timeout(5, "start_container", async {
             self.docker
@@ -558,12 +726,56 @@ impl PoolManager {
         Ok(())
     }
 
-    /// 归一化镜像名：剥离 :latest 后缀。
-    fn normalize_image(image: &str) -> String {
+    /// 池 key：仅将 `:latest` 与无 tag 视为等价。
+    fn pool_key(image: &str) -> String {
         if let Some(stripped) = image.strip_suffix(":latest") {
             stripped.to_string()
         } else {
             image.to_string()
+        }
+    }
+
+    fn strip_image_tag(name: &str) -> &str {
+        let last_slash = name.rfind('/').unwrap_or(0);
+        let last_colon = name.rfind(':');
+        match last_colon {
+            Some(idx) if idx > last_slash => &name[..idx],
+            _ => name,
+        }
+    }
+
+    fn has_explicit_tag(image: &str) -> bool {
+        let last_segment = image.rsplit('/').next().unwrap_or(image);
+        last_segment.contains(':')
+    }
+
+    fn matches_local_image_reference(local_tag: &str, requested: &str) -> bool {
+        if Self::has_explicit_tag(requested) {
+            local_tag == requested
+        } else {
+            local_tag == requested || local_tag == format!("{}:latest", requested)
+        }
+    }
+
+    fn is_missing_image_error(error: &anyhow::Error) -> bool {
+        let msg = error.to_string().to_ascii_lowercase();
+        msg.contains("no such image")
+            || msg.contains("not found")
+            || msg.contains("pull access denied")
+    }
+
+    fn is_image_allowed(&self, image: &str) -> bool {
+        self.allowed_images
+            .iter()
+            .any(|allowed| Self::allowed_image_matches(image, allowed))
+    }
+
+    fn allowed_image_matches(image: &str, allowed: &AllowedImage) -> bool {
+        match allowed.mode {
+            AllowedImageMode::Exact => image == allowed.image,
+            AllowedImageMode::AllVersions => {
+                Self::strip_image_tag(image) == Self::strip_image_tag(&allowed.image)
+            }
         }
     }
 
@@ -597,6 +809,8 @@ impl PoolManager {
                     let expired = pool.collect_expired(idle_timeout).await;
                     for id in &expired {
                         manager.remove_container_force(id).await;
+                        pool.release_slot();
+                        pool.notify_available();
                         info!("健康检查: 移除空闲超时容器: {}", id);
                     }
 
@@ -622,8 +836,11 @@ impl PoolManager {
                             Ok(true) => { /* 容器正常 */ }
                             Ok(false) => {
                                 warn!("健康检查: 容器异常, 移除: {}", id);
-                                pool.remove_idle(id).await;
-                                manager.remove_container_force(id).await;
+                                if pool.remove_idle(id).await {
+                                    manager.remove_container_force(id).await;
+                                    pool.release_slot();
+                                    pool.notify_available();
+                                }
                             }
                             Err(e) => {
                                 warn!("健康检查: inspect 失败, 跳过: {}: {}", id, e);
@@ -661,6 +878,26 @@ impl PoolManager {
         self.shutdown_token.cancel();
     }
 
+    pub async fn cleanup_idle_containers(&self) {
+        let pools = self.all_pools().await;
+        for pool in &pools {
+            let idle_ids = pool.collect_all_idle().await;
+            for id in &idle_ids {
+                if pool.remove_idle(id).await {
+                    self.remove_container_force(id).await;
+                    pool.release_slot();
+                }
+            }
+            pool.notify_available();
+        }
+    }
+
+    /// 强制清理所有带 pool 标签的容器（含 idle / in-use 残留）。
+    pub async fn cleanup_all_containers(&self) {
+        self.cleanup_idle_containers().await;
+        Self::cleanup_orphans(&self.docker, &self.config.label_prefix).await;
+    }
+
     /// 获取内部 Docker 客户端引用。
     pub fn docker(&self) -> &Docker {
         &self.docker
@@ -675,6 +912,11 @@ impl PoolManager {
     #[allow(dead_code)]
     pub fn is_shutting_down(&self) -> bool {
         self.shutting_down.load(Ordering::SeqCst)
+    }
+
+    /// 返回关闭令牌副本，供外部后台任务监听优雅关闭。
+    pub fn shutdown_token(&self) -> CancellationToken {
+        self.shutdown_token.clone()
     }
 
     // ── 计数器（外部 API） ──────────────────────
@@ -721,7 +963,7 @@ impl PoolManager {
     /// 获取指定镜像的池引用。
     #[allow(dead_code)]
     pub async fn get_pool(&self, image: &str) -> Option<Arc<Pool>> {
-        let normalized = Self::normalize_image(image);
+        let normalized = Self::pool_key(image);
         self.pools
             .read()
             .await
@@ -799,5 +1041,66 @@ where
             error!("{}", err_msg);
             Err(anyhow::anyhow!(err_msg))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AllowedImage, AllowedImageMode, PoolManager};
+
+    #[test]
+    fn test_allowed_image_exact_requires_full_match() {
+        let allowed = AllowedImage {
+            image: "noj-judge-python:3.12".to_string(),
+            mode: AllowedImageMode::Exact,
+        };
+        assert!(PoolManager::allowed_image_matches(
+            "noj-judge-python:3.12",
+            &allowed
+        ));
+        assert!(!PoolManager::allowed_image_matches(
+            "noj-judge-python:latest",
+            &allowed
+        ));
+    }
+
+    #[test]
+    fn test_allowed_image_all_versions_matches_tag_variants() {
+        let allowed = AllowedImage {
+            image: "registry.local/oj/noj-judge-python:3.12".to_string(),
+            mode: AllowedImageMode::AllVersions,
+        };
+        assert!(PoolManager::allowed_image_matches(
+            "registry.local/oj/noj-judge-python:latest",
+            &allowed
+        ));
+        assert!(PoolManager::allowed_image_matches(
+            "registry.local/oj/noj-judge-python:v1.0",
+            &allowed
+        ));
+        assert!(!PoolManager::allowed_image_matches(
+            "ubuntu:latest",
+            &allowed
+        ));
+        assert!(!PoolManager::allowed_image_matches(
+            "evil.local/other/noj-judge-python:latest",
+            &allowed
+        ));
+    }
+
+    #[test]
+    fn test_matches_local_image_reference_respects_explicit_tags() {
+        assert!(PoolManager::matches_local_image_reference(
+            "noj-judge-python:latest",
+            "noj-judge-python"
+        ));
+        assert!(!PoolManager::matches_local_image_reference(
+            "noj-judge-python:v1.0",
+            "noj-judge-python"
+        ));
+        assert!(PoolManager::matches_local_image_reference(
+            "noj-judge-python:v1.0",
+            "noj-judge-python:v1.0"
+        ));
     }
 }

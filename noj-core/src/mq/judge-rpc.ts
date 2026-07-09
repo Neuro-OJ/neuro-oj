@@ -50,13 +50,13 @@ function createResponse(
  * 从数据库查询所有 judge_images 记录。
  */
 async function handleGetImageAllowlist(): Promise<
-  { images: { image: string; tag: string }[] }
+  { images: { image: string; mode: string }[] }
 > {
   const rows = await getDb()
-    .select({ image: judgeImages.image })
+    .select({ image: judgeImages.image, mode: judgeImages.mode })
     .from(judgeImages);
 
-  return { images: rows.map((r) => ({ image: r.image, tag: "latest" })) };
+  return { images: rows.map((r) => ({ image: r.image, mode: r.mode })) };
 }
 
 /** 方法名到处理函数的映射 */

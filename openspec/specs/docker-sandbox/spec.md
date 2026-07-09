@@ -14,7 +14,7 @@
 | --------------------------- | ------------------------------------------------------------- | ------------------------------------------------ |
 | Image                       | task.judge_image                                              | 题目指定的 Docker 镜像，启动时预拉取             |
 | Cmd                         | `sleep infinity`                                              | 全部容器均设为此命令保持运行，通过 exec 执行评测 |
-| HostConfig.Binds            | 无                                                            | 文件通过 put_archive 注入                        |
+| HostConfig.Binds            | 无                                                            | 文件通过 docker exec + tar 注入                  |
 | HostConfig.Memory           | `POOL_MEMORY_MB × 1024²`（初始）→ 运行时 `docker update` 下调 | 初始为池硬上限，exec 前调整到任务规格            |
 | HostConfig.MemorySwap       | task.memory_limit_mb × 1024²                                  | 禁用 swap（与 Memory 同值）                      |
 | HostConfig.MemorySwappiness | 0                                                             | 禁用 swap                                        |
@@ -43,7 +43,7 @@
 - **WHEN** 容器分配给评测任务
 - **THEN** 系统执行 `docker.update_container(memory = task.memory_limit_mb)`
   调整内存
-- **THEN** 系统通过 put_archive 注入文件到 `/tmp/`
+- **THEN** 系统通过 docker exec `tar xf - -C /tmp/` 注入文件到 `/tmp/`
 - **THEN** 系统通过 docker exec 执行 `task.judge_command`
 
 #### Scenario: Docker 镜像不存在
@@ -59,7 +59,7 @@ run），捕获 stdout/stderr，并在超时时有序终止。
 
 #### Scenario: 正常执行
 
-- **WHEN** 文件已通过 put_archive 注入到容器 `/tmp/`
+- **WHEN** 文件已通过 docker exec `tar xf - -C /tmp/` 注入到容器 `/tmp/`
 - **WHEN** 系统通过 docker exec 执行 `task.judge_command`
 - **THEN** 系统流式捕获 stdout/stderr
 - **THEN** `tokio::select!` 竞速 exec stream 与超时定时器
@@ -129,17 +129,17 @@ run），捕获 stdout/stderr，并在超时时有序终止。
 - **WHEN** 容器已删除导致内存读取失败
 - **THEN** `memory_kb` 设为 0，错误记录日志
 
-系统 SHALL 将 task.support_package_base64
-解码后解压到临时目录。若该字段为空，跳过此步骤。
+系统 SHALL 根据 `task.download_url`
+获取支持包并解压到临时目录。若该字段为空，跳过此步骤。
 
-#### Scenario: 从 Base64 解码支持包
+#### Scenario: 从 `noj-download://base64/` 获取支持包
 
-- **WHEN** support_package_base64 非空
-- **THEN** 将 Base64 字符串解码为 zip 字节流，解压到 `{work_dir}/` 下
+- **WHEN** `download_url` 为 `noj-download://base64/?content=...`
+- **THEN** 将 `content` Base64 字符串解码为 zip 字节流，解压到 `{work_dir}/` 下
 
 #### Scenario: 支持包为空
 
-- **WHEN** support_package_base64 为空
+- **WHEN** `download_url` 为空
 - **THEN** 跳过支持包步骤，直接写入用户代码后执行
 
 ### Requirement: 安全隔离

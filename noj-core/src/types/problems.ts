@@ -1,16 +1,18 @@
 /**
- * 提取 Docker 镜像的基础名称（去掉 tag 部分）。
+ * 去掉 Docker 镜像引用中的 tag，保留完整 repository 路径。
  *
- * Docker 镜像引用可能包含 registry 端口和路径：
- *   "noj-judge-python:latest"           → "noj-judge-python"
- *   "registry:5000/my-image:v2"         → "my-image"
- *   "docker.io/library/python:3.12"     → "python"
- *
- * 正确做法：取最后一个 "/" 之后的段落作为镜像名，再用 ":" 分离 tag。
+ * 这里不能只比较 basename，否则：
+ * - `registry-a/team/noj-judge-python:latest`
+ * - `registry-b/evil/noj-judge-python:latest`
+ * 会被错误地视为同一镜像。
  */
-function getImageBase(name: string): string {
-  const lastSegment = name.split("/").pop() ?? name;
-  return lastSegment.split(":")[0];
+function stripImageTag(name: string): string {
+  const lastSlash = name.lastIndexOf("/");
+  const lastColon = name.lastIndexOf(":");
+  if (lastColon > lastSlash) {
+    return name.slice(0, lastColon);
+  }
+  return name;
 }
 
 /**
@@ -154,7 +156,7 @@ export interface JudgeImageResponse {
 
 /**
  * 校验 judge_image 是否与白名单匹配。
- * exact 模式：完全相等；all_versions 模式：镜像名去掉标签后匹配。
+ * exact 模式：完全相等；all_versions 模式：仅忽略 tag，repository 路径必须一致。
  */
 export function isImageInWhitelist(
   image: string,
@@ -164,9 +166,7 @@ export function isImageInWhitelist(
     if (entry.mode === "exact") {
       if (image === entry.image) return true;
     } else if (entry.mode === "all_versions") {
-      // all_versions：提取两者的基础镜像名（去掉 tag 部分）进行比较
-      // 注意 entry.image 本身也可能带 tag（即便语义上 all_versions 含 tag 不合理）
-      if (getImageBase(image) === getImageBase(entry.image)) return true;
+      if (stripImageTag(image) === stripImageTag(entry.image)) return true;
     }
   }
   return false;

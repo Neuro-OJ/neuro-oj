@@ -18,6 +18,8 @@ use redis::AsyncCommands;
 use serde_json::Value;
 use tracing::{info, warn};
 
+use crate::pool::{AllowedImage, AllowedImageMode};
+
 /// Redis RPC 客户端。
 pub struct RpcClient {
     /// Redis connection（共享 main.rs 中已有连接）
@@ -149,9 +151,9 @@ impl RpcClient {
     ///
     /// 调用 core 的 `get_image_allowlist` 方法，返回允许使用的镜像列表。
     /// 支持两种响应格式：
-    /// - 对象数组：`{"images": [{"image": "noj-judge-python", "tag": "latest"}]}`
+    /// - 对象数组：`{"images": [{"image": "noj-judge-python", "mode": "all_versions"}]}`
     /// - 字符串数组：`{"images": ["noj-judge-python"]}`
-    pub async fn get_image_allowlist(&mut self) -> Result<Vec<String>> {
+    pub async fn get_image_allowlist(&mut self) -> Result<Vec<AllowedImage>> {
         let result = self.request("get_image_allowlist", None, 5).await?;
 
         let arr = result
@@ -160,15 +162,21 @@ impl RpcClient {
             .cloned()
             .unwrap_or_default();
 
-        // 尝试对象格式：{ "image": "xxx", "tag": "yyy" }
+        // 尝试对象格式：{ "image": "xxx", "mode": "all_versions" }
         let has_objects = arr.first().and_then(|v| v.get("image")).is_some();
         if has_objects {
             let images = arr
                 .iter()
                 .filter_map(|v| {
-                    v.get("image")
-                        .and_then(|s| s.as_str())
-                        .map(|s| s.to_string())
+                    let image = v.get("image").and_then(|s| s.as_str())?;
+                    let mode = match v.get("mode").and_then(|s| s.as_str()) {
+                        Some("all_versions") => AllowedImageMode::AllVersions,
+                        _ => AllowedImageMode::Exact,
+                    };
+                    Some(AllowedImage {
+                        image: image.to_string(),
+                        mode,
+                    })
                 })
                 .collect();
             return Ok(images);
@@ -177,7 +185,12 @@ impl RpcClient {
         // 退化到纯字符串格式：["xxx", "yyy"]
         let images = arr
             .iter()
-            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .filter_map(|v| {
+                v.as_str().map(|s| AllowedImage {
+                    image: s.to_string(),
+                    mode: AllowedImageMode::Exact,
+                })
+            })
             .collect();
         Ok(images)
     }

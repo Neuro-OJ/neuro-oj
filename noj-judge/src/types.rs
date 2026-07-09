@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 /// 评测状态枚举。
 ///
@@ -39,7 +39,7 @@ impl JudgeStatus {
 /// 评测任务——从 noj-core 发送到 noj-judge 的消息。
 ///
 /// 字段对齐 noj-core/src/types/index.ts 的 JudgeTask 接口。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JudgeTask {
     /// 提交 UUID
     pub submission_id: String,
@@ -94,76 +94,80 @@ pub struct JudgeResult {
 }
 
 impl JudgeResult {
+    fn empty_details() -> Value {
+        json!({})
+    }
+
     /// 构造一个系统错误结果（对用户隐藏内部错误细节）。
     ///
     /// `message` 是内部错误详情，仅记录到日志；`output` 是返回给用户的友好信息。
-    pub fn error(submission_id: &str, _message: &str) -> Self {
+    pub fn error(submission_id: &str, _message: &str, rejudge_seq: Option<i64>) -> Self {
         Self {
             submission_id: submission_id.to_string(),
             status: JudgeStatus::SystemError.as_str().to_string(),
             score: 0,
             // 对用户隐藏内部错误细节，避免信息泄露
             output: format!("系统内部错误 (submission: {})", submission_id),
-            details: Value::Null,
+            details: Self::empty_details(),
             time_ms: None,
             memory_kb: None,
-            rejudge_seq: None,
+            rejudge_seq,
         }
     }
 
     /// 构造一个超时结果。
-    pub fn timeout(submission_id: &str, output: &str) -> Self {
+    pub fn timeout(submission_id: &str, output: &str, rejudge_seq: Option<i64>) -> Self {
         Self {
             submission_id: submission_id.to_string(),
             status: JudgeStatus::TimeLimitExceeded.as_str().to_string(),
             score: 0,
             output: output.to_string(),
-            details: Value::Null,
+            details: Self::empty_details(),
             time_ms: None,
             memory_kb: None,
-            rejudge_seq: None,
+            rejudge_seq,
         }
     }
 
     /// 构造一个内存溢出结果。
-    pub fn memory_exceeded(submission_id: &str, output: &str) -> Self {
+    pub fn memory_exceeded(submission_id: &str, output: &str, rejudge_seq: Option<i64>) -> Self {
         Self {
             submission_id: submission_id.to_string(),
             status: JudgeStatus::MemoryLimitExceeded.as_str().to_string(),
             score: 0,
             output: output.to_string(),
-            details: Value::Null,
+            details: Self::empty_details(),
             time_ms: None,
             memory_kb: None,
-            rejudge_seq: None,
+            rejudge_seq,
         }
     }
 
     /// 构造一个系统错误结果（评测环境/脚本异常，非用户代码问题）。
-    pub fn system_error(submission_id: &str, output: &str) -> Self {
+    pub fn system_error(submission_id: &str, output: &str, rejudge_seq: Option<i64>) -> Self {
         Self {
             submission_id: submission_id.to_string(),
             status: JudgeStatus::SystemError.as_str().to_string(),
             score: 0,
             output: output.to_string(),
-            details: Value::Null,
+            details: Self::empty_details(),
             time_ms: None,
             memory_kb: None,
-            rejudge_seq: None,
+            rejudge_seq,
         }
     }
 
     /// 构造一个运行时错误结果。
-    pub fn runtime_error(submission_id: &str, output: &str) -> Self {
+    pub fn runtime_error(submission_id: &str, output: &str, rejudge_seq: Option<i64>) -> Self {
         Self {
             submission_id: submission_id.to_string(),
             status: JudgeStatus::RuntimeError.as_str().to_string(),
             score: 0,
             output: output.to_string(),
-            details: Value::Null,
+            details: Self::empty_details(),
             time_ms: None,
             memory_kb: None,
-            rejudge_seq: None,
+            rejudge_seq,
         }
     }
 }
@@ -313,7 +317,7 @@ mod tests {
             status: "WrongAnswer".to_string(),
             score: 500,
             output: "".to_string(),
-            details: Value::Null,
+            details: json!({}),
             time_ms: None,
             memory_kb: None,
             rejudge_seq: None,
@@ -329,40 +333,45 @@ mod tests {
 
     #[test]
     fn test_judge_result_error() {
-        let r = JudgeResult::error("sid-err", "something went wrong");
+        let r = JudgeResult::error("sid-err", "something went wrong", Some(9));
         assert_eq!(r.submission_id, "sid-err");
         assert_eq!(r.status, "SystemError");
         assert_eq!(r.score, 0);
-        assert!(r.details.is_null());
+        assert_eq!(r.details, json!({}));
+        assert_eq!(r.rejudge_seq, Some(9));
     }
 
     #[test]
     fn test_judge_result_timeout() {
-        let r = JudgeResult::timeout("sid-tle", "timeout output");
+        let r = JudgeResult::timeout("sid-tle", "timeout output", Some(3));
         assert_eq!(r.status, "TimeLimitExceeded");
         assert_eq!(r.score, 0);
         assert_eq!(r.output, "timeout output");
+        assert_eq!(r.rejudge_seq, Some(3));
     }
 
     #[test]
     fn test_judge_result_memory_exceeded() {
-        let r = JudgeResult::memory_exceeded("sid-mle", "oom");
+        let r = JudgeResult::memory_exceeded("sid-mle", "oom", Some(4));
         assert_eq!(r.status, "MemoryLimitExceeded");
+        assert_eq!(r.rejudge_seq, Some(4));
     }
 
     #[test]
     fn test_judge_result_runtime_error() {
-        let r = JudgeResult::runtime_error("sid-re", "traceback");
+        let r = JudgeResult::runtime_error("sid-re", "traceback", Some(5));
         assert_eq!(r.status, "RuntimeError");
         assert_eq!(r.output, "traceback");
+        assert_eq!(r.rejudge_seq, Some(5));
     }
 
     #[test]
     fn test_judge_result_system_error() {
-        let r = JudgeResult::system_error("sid-se", "评测脚本未输出结果标记");
+        let r = JudgeResult::system_error("sid-se", "评测脚本未输出结果标记", Some(6));
         assert_eq!(r.status, "SystemError");
         assert_eq!(r.score, 0);
         assert_eq!(r.output, "评测脚本未输出结果标记");
+        assert_eq!(r.rejudge_seq, Some(6));
     }
 
     // ── CaseResult ──

@@ -1,6 +1,7 @@
 ## Purpose
 
-定义 noj-core 与 noj-judge 之间的 Redis RPC 通信协议。支持 judge 启动时从 core 获取镜像白名单、健康检查等双向通信需求。
+定义 noj-core 与 noj-judge 之间的 Redis RPC 通信协议。支持 judge 启动时从 core
+获取镜像白名单、健康检查等双向通信需求。
 
 ## Requirements
 
@@ -29,9 +30,11 @@
 #### Scenario: 消息信封格式
 
 - **WHEN** 任何一方发送 RPC 请求
-- **THEN** 消息 JSON 包含字段：`id`（UUID）、`method`（字符串）、`params`（可选 JSON）、`judge_id`（字符串）、`timestamp`（整数 Unix 时间戳）
+- **THEN** 消息 JSON 包含字段：`id`（UUID）、`method`（字符串）、`params`（可选
+  JSON）、`judge_id`（字符串）、`timestamp`（整数 Unix 时间戳）
 - **WHEN** 任何一方发送 RPC 响应
-- **THEN** 消息 JSON 包含字段：`id`（对应请求的 UUID）、`result`（可选 JSON）、`error`（可选字符串）、`timestamp`
+- **THEN** 消息 JSON 包含字段：`id`（对应请求的 UUID）、`result`（可选
+  JSON）、`error`（可选字符串）、`timestamp`
 
 #### Scenario: 请求/响应关联
 
@@ -53,7 +56,8 @@
 
 - **WHEN** judge 发送 `get_image_allowlist` RPC 请求
 - **THEN** core 查询 `judge_images` 表中所有记录
-- **THEN** core 返回 JSON 数组，每项包含 `image`（镜像名）和 `tag`（标签）
+- **THEN** core 返回 JSON 数组，每项包含 `image`（镜像名）和 `mode`（`exact` 或
+  `all_versions`）
 - **THEN** judge 使用返回的镜像列表预热容器池
 
 #### Scenario: RPC 超时或不可用

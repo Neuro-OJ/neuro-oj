@@ -18,7 +18,7 @@ use common::{get_docker, is_e2e_enabled};
 
 use noj_judge::pool::exec::execute_in_container;
 use noj_judge::pool::with_timeout;
-use noj_judge::pool::PoolManager;
+use noj_judge::pool::{AllowedImage, AllowedImageMode, PoolManager};
 
 // ── Helper ─────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ async fn create_test_container_raw(
             nano_cpus: Some(1_000_000_000),
             network_mode: Some("none".to_string()),
             cap_drop: Some(vec!["ALL".to_string()]),
-            readonly_rootfs: Some(false),
+            readonly_rootfs: Some(true),
             security_opt: Some(vec!["no-new-privileges:true".to_string()]),
             auto_remove: Some(false),
             ..Default::default()
@@ -126,8 +126,11 @@ fn make_pool_config(initial_size: usize, max_size: usize) -> noj_judge::config::
 }
 
 /// 测试用的镜像列表。
-fn test_images() -> Vec<String> {
-    vec!["noj-judge-test-runner".to_string()]
+fn test_images() -> Vec<AllowedImage> {
+    vec![AllowedImage {
+        image: "noj-judge-test-runner".to_string(),
+        mode: AllowedImageMode::Exact,
+    }]
 }
 
 // ── Tests ──────────────────────────────────────────────
@@ -416,11 +419,7 @@ async fn test_pool_security_config() {
         );
 
         // readonly_rootfs
-        assert_eq!(
-            hc.readonly_rootfs,
-            Some(false),
-            "readonly_rootfs 应为 false（put_archive 兼容性）"
-        );
+        assert_eq!(hc.readonly_rootfs, Some(true), "readonly_rootfs 应为 true");
 
         // pids_limit 应设为 256（DoS 防护）
         assert_eq!(hc.pids_limit, Some(256), "pids_limit 应为 256（DoS 防护）");

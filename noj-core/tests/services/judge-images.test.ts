@@ -176,6 +176,33 @@ Deno.test({
 
 Deno.test({
   name:
+    "judge-images service: validateJudgeImage all_versions 保留完整 repository 路径",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    await db.delete(judgeImages);
+    await createJudgeImage({
+      image: "registry.local/team/noj-judge-python:3.12",
+      mode: "all_versions",
+      description: "repo path test",
+    });
+
+    assertEquals(
+      await validateJudgeImage("registry.local/team/noj-judge-python:latest"),
+      true,
+    );
+    await assertRejects(
+      () => validateJudgeImage("evil.example/other/noj-judge-python:latest"),
+      ValidationError,
+    );
+  },
+});
+
+Deno.test({
+  name:
     "judge-images service: validateJudgeImage 不在白名单返回 ValidationError",
   ignore: skip,
   sanitizeResources: false,

@@ -45,6 +45,7 @@ pub struct PoolConfig {
     /// Docker 容器标签前缀（默认: "com.noj.judge"）
     pub label_prefix: String,
     /// 预热镜像列表（默认: ["noj-judge-python"]）
+    #[allow(dead_code)]
     pub images: Vec<String>,
 }
 

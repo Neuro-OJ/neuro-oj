@@ -23,6 +23,7 @@ gethostname = "0.5"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 sha2 = "0.10"
 percent-encoding = "2"
+filetime = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
