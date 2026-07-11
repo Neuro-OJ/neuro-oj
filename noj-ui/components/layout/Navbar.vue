@@ -15,6 +15,18 @@
                 <NuxtLink to="/about" class="px-3 py-1.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-gray-100 hover:text-text" active-class="text-primary font-semibold">关于</NuxtLink>
             </nav>
             <div class="flex items-center gap-3 ml-auto">
+                <!-- 搜索按钮（issue #100） -->
+                <button
+                    type="button"
+                    class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary rounded-md transition-colors hover:bg-gray-100 hover:text-text border border-border"
+                    title="搜索（Ctrl+K）"
+                    aria-label="打开搜索面板"
+                    @click="openSearchPalette"
+                >
+                    <Search :size="16" />
+                    <span class="hidden md:inline">搜索</span>
+                    <kbd class="hidden md:inline-block text-xs text-text-muted border border-border px-1 py-0.5 rounded">Ctrl K</kbd>
+                </button>
                 <UserMenu />
             </div>
         </div>
@@ -22,5 +34,11 @@
 </template>
 
 <script setup lang="ts">
+import { Search } from "@lucide/vue"
 const { user } = useAuth()
+const { open } = useSearchPalette()
+
+function openSearchPalette() {
+    open()
+}
 </script>

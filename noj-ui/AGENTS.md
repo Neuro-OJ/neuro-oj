@@ -273,6 +273,12 @@ cd dist
 - 分值格式化：`score / 100`（数据库存储 ×100）
 - 状态/颜色映射：`Accepted→green`、`WrongAnswer→red`、`TimeLimitExceeded→yellow` 等
 
+### useSearchPalette（issue #100）
+- 暴露 `isOpen` / `open()` / `close()` / `toggle()`，全局单例（`useState`）
+- 内部维护 `query` / `problemResults` / `userResults` / `loading` / `selectedIndex`
+- 150ms debounce 触发 `/api/v1/search`；type=user 仅 admin 调用
+- 仅由 `SearchPalette.vue` 与 `app.vue`（Ctrl+K 监听）使用
+
 ## 数据获取策略
 
 | 场景 | 方法 | 说明 |
@@ -311,6 +317,7 @@ cd dist
 | `BaseButton.vue` | 通用按钮，支持 `loading`、`disabled`、`to`（NuxtLink） |
 | `AsyncContent.vue` | 异步内容容器，统一处理 loading / empty / error 状态 |
 | `SubmissionTable.vue` | 提交历史表格，状态标签着色，点击跳转详情 |
+| `SearchPalette.vue` | 全局 Ctrl+K 搜索弹窗（issue #100），Teleport 到 body；debounce 150ms；键盘 ↑↓ Enter Esc；管理员额外展示用户组 |
 
 ## 认证守卫
 
@@ -342,6 +349,22 @@ cd dist
 - 前端**不**判断邮箱是否存在（服务端防枚举：统一返 200 + 同一消息）
 - token 仅从 URL `?token=...` 读取，提交时透传给后端
 - 不在前端打印、缓存或上报 token
+
+## 全文搜索（issue #100）
+
+| 入口 | 触发方式 | 说明 |
+|------|---------|------|
+| 导航栏搜索按钮 | 点击 | 打开 SearchPalette 弹窗 |
+| Ctrl/Cmd + K | 全局快捷键 | 切换 SearchPalette 弹窗（焦点在 input/textarea/Monaco 内时跳过） |
+| `/search` 页面 | URL 直访 | 完整分页结果（admin 可切换 type=user） |
+
+实现要点：
+
+- `SearchPalette.vue`（`components/shared/`）— Teleport 到 body，半透明 + backdrop-blur 背景；显示 problem / user（仅 admin）分组
+- `useSearchPalette` composable — 全局 `useState('search-palette:open')`，150ms debounce 触发 fetch，admin 时并发请求 type=user
+- `app.vue` — 注册 `keydown` 监听 `(ctrlKey || metaKey) && key === 'k'`，跳过可编辑元素避免与 Monaco 冲突
+- 跳题：题目 → `/problems/<id>`；用户 → `/search?q=<username>&type=user` 全页路由（搜索结果只带 username）
+- `/search` 页面（`definePageMeta({ ssr: false })`）— URL `?q=&type=&page=` 同步，`useAsyncData` 拉数据，复用 `<PaginationNav>`
 
 ## 已知限制
 

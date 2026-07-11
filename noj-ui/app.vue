@@ -4,17 +4,47 @@
         <BanBanner v-if="userBanned" type="user" :user-info="userBanInfo" />
         <NuxtPage />
     </NuxtLayout>
+    <!-- 全文搜索 palette（issue #100），全局单例 -->
+    <SearchPalette />
 </template>
 
 <script setup lang="ts">
 import BanBanner from "~/components/BanBanner.vue"
+import SearchPalette from "~/components/shared/SearchPalette.vue"
 import { useBanStatus } from "~/composables/useBanStatus"
 
 const { ipBanned, ipBanInfo, userBanned, userBanInfo, fetch } = useBanStatus()
+const { toggle } = useSearchPalette()
 
 // 首次加载时获取封禁状态
 if (import.meta.client) {
-  fetch()
+    fetch()
+}
+
+// 全局快捷键：Ctrl/Cmd + K 切换搜索面板
+// 跳过 Monaco / textarea / input 内部的按键，避免与代码编辑器冲突
+if (import.meta.client) {
+    function isEditable(el: EventTarget | null): boolean {
+        if (!(el instanceof HTMLElement)) return false
+        if (el.isContentEditable) return true
+        const tag = el.tagName
+        return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT"
+    }
+
+    function onKeydown(e: KeyboardEvent) {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+            if (isEditable(e.target)) return
+            e.preventDefault()
+            toggle()
+        }
+    }
+
+    onMounted(() => {
+        window.addEventListener("keydown", onKeydown)
+    })
+    onUnmounted(() => {
+        window.removeEventListener("keydown", onKeydown)
+    })
 }
 </script>
 
