@@ -128,13 +128,25 @@ export async function resetDbForTest() {
       _pgliteInstance = new PGlite();
     }
     // 自动引导 Schema（首次调用时），await 确保引导完成
+    // 注：部分 DDL（如 CREATE EXTENSION pg_trgm）在 PGlite 不可用；
+    // 这些语句独立 try/catch，让测试在不支持扩展的驱动下仍可启动。
     if (!_bootstrapPromise) {
       _bootstrapPromise = (async () => {
         for (const ddl of SCHEMA_DDL) {
-          await _pgliteInstance!.query(ddl);
+          try {
+            await _pgliteInstance!.query(ddl);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(`[schema-ddl] 跳过: ${msg.slice(0, 100)}`);
+          }
         }
         for (const idx of SCHEMA_INDEXES) {
-          await _pgliteInstance!.query(idx);
+          try {
+            await _pgliteInstance!.query(idx);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(`[schema-index] 跳过: ${msg.slice(0, 100)}`);
+          }
         }
       })();
     }

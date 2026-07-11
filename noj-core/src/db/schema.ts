@@ -1,6 +1,7 @@
 import {
   boolean,
   check,
+  customType,
   index,
   integer,
   jsonb,
@@ -12,6 +13,18 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { SubmissionStatus } from "../types/index.ts";
+
+/**
+ * PostgreSQL tsvector 类型（issue #100）。
+ * Drizzle 0.45.2 未内置 tsvector 列类型，使用 customType 占位；
+ * 实际列由 PG 触发器维护（drizzle/0019_search.sql），应用层仅通过
+ * raw SQL 读取 `search_vector`，无需插入/更新该字段。
+ */
+const tsvector = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
 
 /**
  * 用户表。
@@ -73,6 +86,13 @@ export const problems = pgTable(
     type: text("type").notNull().default("U"),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
+    /**
+     * 全文搜索向量（issue #100 / drizzle/0019_search.sql）。
+     * 由 BEFORE INSERT/UPDATE 触发器自动维护，列上未设 NOT NULL 以兼容
+     * 历史数据回填窗口；GIN 索引见 `idx_problems_search_vector`。
+     * 应用层通过 raw SQL 读取（services/search.ts），不通过 Drizzle 写入。
+     */
+    search_vector: tsvector("search_vector"),
   },
   (table) => ({
     typeNumberUnique: unique("problems_type_number_unique").on(

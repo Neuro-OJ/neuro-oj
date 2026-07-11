@@ -24,6 +24,9 @@ function isPGliteMode(): boolean {
  * postgres.js 模式下：no-op（由 00_migrate_test.ts 使用文件迁移）。
  *
  * 幂等——使用 IF NOT EXISTS / ON CONFLICT DO NOTHING。
+ *
+ * 注：单条 DDL 失败（如 PGlite 不可用的 pg_trgm 扩展）不影响其他 DDL；
+ * 测试驱动不要求扩展可用，仅生产 PG 才走完整 GIN trigram 索引路径。
  */
 export async function setupSchemaForTest(): Promise<void> {
   if (!isPGliteMode()) return;
@@ -35,10 +38,20 @@ export async function setupSchemaForTest(): Promise<void> {
   );
 
   for (const ddl of SCHEMA_DDL) {
-    await db.execute(ddl);
+    try {
+      await db.execute(ddl);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[schema-ddl] 跳过: ${msg.slice(0, 120)}`);
+    }
   }
   for (const idx of SCHEMA_INDEXES) {
-    await db.execute(idx);
+    try {
+      await db.execute(idx);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[schema-index] 跳过: ${msg.slice(0, 120)}`);
+    }
   }
 
   // 种子数据

@@ -192,6 +192,7 @@ docker compose down     # 停止
 | GET    | `/api/v1/problems/:id/support-package` | 登录   | 下载支持包（通过 core 代理，不暴露 S3 URL）  |
 | POST   | `/api/v1/checkin`                      | 登录   | 每日签到（返回当前连续天数）                 |
 | GET    | `/api/v1/checkin/today`                | 登录   | 查询今日签到状态                             |
+| GET    | `/api/v1/search?q=&type=&page=&limit=` | 公开*  | 全文搜索（issue #100；type=user 需管理员）   |
 | GET    | `/health`                              | 公开   | 健康检查                                     |
 
 ### 路由层关键模式
@@ -267,21 +268,21 @@ docker compose down     # 停止
 
 ## 数据库 Schema 设计
 
-| 表                      | 关键列                                                                                                                    | 约束 / 索引                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `users`                 | `id`(UUID), `username`(unique), `email`(unique), `password_hash`, `role`(user/admin), `bio`, `must_change_password`(bool) | PK, UK(username), UK(email)                                    |
-| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`                           | PK, UK(display_id), UK(type,number), FK→users                  |
-| `categories`            | `id`(UUID), `name`, `parent_id`, `level`(缓存深度)                                                                        | PK, FK→categories(parent_id) ON DELETE SET NULL                |
-| `problems_categories`   | `problem_id`, `category_id`                                                                                               | FK→problems ON DELETE CASCADE, FK→categories ON DELETE CASCADE |
-| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                         | PK, FK→users, FK→problems, idx(user_id,created_at)             |
-| `evaluation_results`    | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                     | PK, UK(submission_id), FK→submissions                          |
-| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                           | PK, FK→users, UK(user_id,checkin_date)                         |
-| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                | PK, UK(image)                                                  |
-| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                               | PK, FK→users, UK(token_hash)                                   |
-| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                               | PK, FK→users, UK(participant_a,participant_b)                  |
-| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                           | PK, FK→conversations, idx(conversation_id,created_at)          |
-| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                            | PK, FK→conversations, FK→users, UK(conversation_id,user_id)    |
-| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                   | PK, FK→messages, FK→users                                      |
+| 表                      | 关键列                                                                                                                     | 约束 / 索引                                                       |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `users`                 | `id`(UUID), `username`(unique), `email`(unique), `password_hash`, `role`(user/admin), `bio`, `must_change_password`(bool)  | PK, UK(username), UK(email)                                       |
+| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`, `search_vector`(tsvector) | PK, UK(display_id), UK(type,number), FK→users, GIN(search_vector) |
+| `categories`            | `id`(UUID), `name`, `parent_id`, `level`(缓存深度)                                                                         | PK, FK→categories(parent_id) ON DELETE SET NULL                   |
+| `problems_categories`   | `problem_id`, `category_id`                                                                                                | FK→problems ON DELETE CASCADE, FK→categories ON DELETE CASCADE    |
+| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                          | PK, FK→users, FK→problems, idx(user_id,created_at)                |
+| `evaluation_results`    | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                      | PK, UK(submission_id), FK→submissions                             |
+| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                            | PK, FK→users, UK(user_id,checkin_date)                            |
+| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                 | PK, UK(image)                                                     |
+| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                                | PK, FK→users, UK(token_hash)                                      |
+| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                                | PK, FK→users, UK(participant_a,participant_b)                     |
+| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                            | PK, FK→conversations, idx(conversation_id,created_at)             |
+| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                             | PK, FK→conversations, FK→users, UK(conversation_id,user_id)       |
+| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                    | PK, FK→messages, FK→users                                         |
 
 **设计要点**：
 
@@ -291,6 +292,22 @@ docker compose down     # 停止
 - `problems.number` 按 `type` 分别自增（`(type, number)` UNIQUE）
 - `categories.level` 为应用层计算的缓存深度（非触发器自动维护）
 - `submissions` 有复合索引 `(user_id, created_at)` 优化"我的提交历史"查询
+
+## 全文搜索（issue #100）
+
+`problems` 表新增 `search_vector tsvector` 列，由 BEFORE INSERT/UPDATE 触发器
+`trg_problems_search_vector` 自动维护（拼接
+`title`/`description`/`type||number`， 权重 A/B/A）。`pg_trgm` 扩展提供
+`gin_trgm_ops` 索引加速 `ILIKE '%q%'` 短字符串 匹配（如 `9001`）。查询路径：
+
+- `services/search.ts::searchProblems` —
+  `tsvector @@ plainto_tsquery('simple', q)`
+  - `title/description/type||number ILIKE` 兜底；`ts_rank_cd` 排序
+- `services/search.ts::searchUsers` — 仅 admin，`ILIKE` 模糊匹配 username/email
+
+PG `simple` 词典不切分 CJK，故中文必须走 ILIKE 兜底（依赖 `pg_trgm` GIN 索引）。
+触发器在 PGlite 测试驱动中不可用（pg_trgm 扩展不存在），相关测试通过
+`tests/_setup.ts` 单条 DDL try/catch 跳过，schema-ddl.ts 同样容错。
 
 ## 代码规范
 

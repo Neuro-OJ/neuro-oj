@@ -33,7 +33,8 @@ export const SCHEMA_DDL: string[] = [
     owner_id TEXT NOT NULL DEFAULT '0',
     type TEXT NOT NULL DEFAULT 'U' CHECK (type IN ('U', 'P')),
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    search_vector TSVECTOR
   )`,
 
   // 3. judge_images
@@ -203,6 +204,24 @@ export const SCHEMA_DDL: string[] = [
 
 export const SCHEMA_INDEXES: string[] = [
   "CREATE UNIQUE INDEX IF NOT EXISTS problems_type_number_unique ON problems (type, number)",
+  // 全文搜索扩展与索引（issue #100）
+  "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+  "CREATE INDEX IF NOT EXISTS idx_problems_search_vector ON problems USING gin (search_vector)",
+  "CREATE INDEX IF NOT EXISTS idx_problems_display_id_trgm ON problems USING gin ((type || number::text) gin_trgm_ops)",
+  "CREATE INDEX IF NOT EXISTS idx_users_username_trgm ON users USING gin (username gin_trgm_ops)",
+  "CREATE INDEX IF NOT EXISTS idx_users_email_trgm ON users USING gin (email gin_trgm_ops)",
+  // trigger 函数 + trigger（issue #100）
+  `CREATE OR REPLACE FUNCTION problems_search_vector_update() RETURNS trigger AS $$
+   BEGIN
+     NEW.search_vector :=
+       setweight(to_tsvector('simple', coalesce(NEW.title, '')), 'A') ||
+       setweight(to_tsvector('simple', coalesce(NEW.description, '')), 'B') ||
+       setweight(to_tsvector('simple', coalesce(NEW.type || NEW.number::text, '')), 'A');
+     RETURN NEW;
+   END;
+   $$ LANGUAGE plpgsql`,
+  "DROP TRIGGER IF EXISTS trg_problems_search_vector ON problems",
+  "CREATE TRIGGER trg_problems_search_vector BEFORE INSERT OR UPDATE OF title, description, type, number ON problems FOR EACH ROW EXECUTE FUNCTION problems_search_vector_update()",
   "CREATE INDEX IF NOT EXISTS idx_submissions_user_id ON submissions (user_id)",
   "CREATE INDEX IF NOT EXISTS idx_submissions_problem_id ON submissions (problem_id)",
   "CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions (status)",

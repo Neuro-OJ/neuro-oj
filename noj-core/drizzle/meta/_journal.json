@@ -141,6 +141,13 @@
       "when": 1784000000000,
       "tag": "0018_judge_images_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784200000000,
+      "tag": "0019_search",
+      "breakpoints": true
     }
   ]
 }
