@@ -50,6 +50,35 @@ services:
       mc mb --ignore-existing local/noj-support-packages;
       "
 
+  # ──────────────────────────────────────────────────────────────────────────
+  # 拆分 prepare 步骤：把耗时 ~25-30min 的 migrate + seed 从 noj-core 容器里
+  # 抽出为独立 one-shot 任务。这样 noj-core 容器只跑 HTTP server，
+  # 冷启动从 ~30min 降到 ~1s，单 PR Full Pipeline 从 10-30min 降到 4-6min。
+  #
+  # noj-migrate 用 entrypoint "setup" 模式：migrate + seed 后退出。
+  # noj-core depends_on service_completed_successfully → 等 noj-migrate 完后才起。
+  # ──────────────────────────────────────────────────────────────────────────
+  noj-migrate:
+    build:
+      context: ./noj-core
+      dockerfile: Dockerfile.e2e
+    image: noj-e2e-core
+    container_name: noj-e2e-migrate
+    entrypoint: ["/entrypoint.sh", "setup"]
+    environment:
+      DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e
+      REDIS_URL: redis://redis:6379/1
+      NOJ_RUN_E2E: "1"
+      STORAGE_PROVIDER: local
+      RATE_LIMIT_ENABLED: "false"
+      JWT_SECRET: e2e-ci-secret-fixed-value-with-32-chars-min-abc
+      ADMIN_EMAIL: e2e_admin@test.com
+      ADMIN_PASS: e2e_admin_pass
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   noj-core:
     build:
       context: ./noj-core
@@ -57,6 +86,18 @@ services:
     image: noj-e2e-core
     container_name: noj-e2e-core
     ports: ["8099:8000"]
+    # 健康探测。noj-core 只跑 server（migrate + seed 在 noj-migrate 里跑完了），
+    # 启动 < 1s，健康检查几乎立即通过；start_period/retries 调到小值即可。
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health > /dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    # 关键改动：noj-core 不再自己跑 migrate + seed —— 由上游 noj-migrate one-shot
+    # 提前完成。这条 entrypoint 跳过 ~25-30min 的 deno runtime 数据库初始化，
+    # 直接监听 :8000。
+    entrypoint: ["/entrypoint.sh", "serve"]
     environment:
       DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e
       REDIS_URL: redis://redis:6379/1
@@ -70,6 +111,8 @@ services:
       ADMIN_EMAIL: e2e_admin@test.com
       ADMIN_PASS: e2e_admin_pass
     depends_on:
+      noj-migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
