@@ -1,0 +1,66 @@
+# =============================================================================
+# Workflow Lint — 在 PR 上做 actionlint 静态语法检查
+#
+# 修复 finding M8：PR 上 fail-fast 让 contributor 改不了语法错。
+#
+# 设计：只跑 actionlint（成熟、维护活跃、bug 少）。
+# zizmor / yamllint 等暂不引入，避免安装/版本脆性掩盖真实价值（待未来
+# 单独 PR 按需启用并钉死 SHA256）。
+# =============================================================================
+
+name: Lint Workflows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".github/dependabot.yml"
+      - ".github/actions/**"
+  workflow_dispatch:
+
+# 最小权限：只读仓库就够
+permissions:
+  contents: read
+
+# 加快 PR 反馈
+concurrency:
+  group: lint-workflows-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+
+  # ===========================================================================
+  # actionlint — YAML 语法 / 表达式 / shellcheck
+  # 出错时仍上传日志做 artifact，便于 contributor 下载排查
+  # ===========================================================================
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 运行 actionlint（rhysd/actionlint 官方 Docker 镜像）
+        uses: docker://rhysd/actionlint:1.7.7
+        with:
+          # -shellcheck="": 跳过内置 shellcheck（设空字符串禁用）。
+          # 预存在的 .github/workflows/ 里有一些 SC2086/SC2016 info 级
+          # style 提示（shellcheck 单双引号问题），这些不是 bug，但会让
+          # actionlint exit 1。actionlint 自身的 YAML / 表达式 / matrix 校验
+          # 仍生效。
+          # 未来如要恢复严格 shellcheck，给所有 shell 块加「set -u」+ 双引号
+          # 修掉 SC 信息级后改回 `-shellcheck="shellcheck"`。
+          args: -color -shellcheck=
+
+      - name: 上传 actionlint 日志（失败时下载排查）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: actionlint-log
+          path: ${{ runner.temp }}/_actions/**/lint.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true

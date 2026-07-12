@@ -1,0 +1,13 @@
+# =============================================================================
+# actionlint 配置 — 控制 lint 行为
+#
+# 当前设置 `self-hosted-runner` 为最小标签集，避免 actionlint 报告
+# "runs-on: ubuntu-latest 不是已知 GH-hosted runner" 等误报警。
+#
+# 未来如需启用 shellcheck / matrix / 各 check 细粒度配置，加在此处。
+# =============================================================================
+
+self-hosted-runner:
+  labels: []
+  matrix: {}
+  runs-on: []
