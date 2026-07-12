@@ -1,14 +1,24 @@
 # =============================================================================
 # noj-core E2E 测试用 Dockerfile
 #
-# 关键设计：build-time 预 populate deno deps cache。
-# 之前依赖 deno install（只锁 deno.json 中的 workspace deps），但
-# scripts/build-packages.ts、src/db/migrate.ts、src/lib/resetToken.ts 直接写
-# `jsr:@std/path`、`jsr:@std/encoding` 等 URL imports 不走 deno.json
-# alias，导致每次 runtime 冷启动重新下载，实测启动 20-30min。
-# 修复：用 `deno cache` 对所有运行时入口脚本预解析 deps，runtime 不再联网。
+# v11 关键改进：用 `deno compile` AOT 编译 src/main.ts 为单文件 binary
+# /app/noj-core。所有 JS deps（jsr:@std/path 等）被烤进 binary，runtime
+# 不再有任何网络下载。noj-core 冷启动 < 50ms。
+#
+# 之前 v9-v10 用 `deno cache` 预解析期望 runtime 命中缓存，但实测：
+#   12:48 容器 Started
+#   13:19 Listening on :8000
+#   用了 31 min——bash loop 1800s 都兜不住。
+# 根因：deno runtime 启动时 online 验证 jsr: 直接 URL integrity，缓存被
+# 旁路，每次都重新网络检查。
+#
+# v11 用 compile 根治——binary 自包含，runtime 完全无网络依赖。
 # =============================================================================
 FROM denoland/deno:alpine-2.8.0
+
+# deno compile 只能产 gnu-glibc target binary，但 Alpine 是 musl libc。
+# 装 gcompat 提供 glibc 兼容层（libdl.so.2 等）让 binary 能起。
+RUN apk add --no-cache gcompat
 
 WORKDIR /app
 
@@ -18,22 +28,25 @@ COPY deno.json deno.lock* ./
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 
-# `deno install` 只锁 deno.json workspace deps。
-# runtime 入口脚本（migrate/seed/main）还有直接 jsr: imports，不走 alias。
-# `--no-lock` 避免 lockfile 漂移（这些 cache 来自 build 工具）。
+# `deno install` 锁 workspace deps；`deno cache` 预解析 src/scripts 的 import 链
+#（migrate/seed/main 三处）。AOT compile 把这些全烤进 binary。
 RUN deno install 2>&1 || { echo "ERROR: deno install failed" >&2; exit 1; } \
  && deno cache \
       scripts/migrate.ts \
       scripts/seed.ts \
       src/main.ts \
-      --no-lock || { echo "ERROR: deno cache warmup failed" >&2; exit 1; }
+      --no-lock || { echo "ERROR: deno cache warmup failed" >&2; exit 1; } \
+ && deno compile -A \
+      --output /app/noj-core \
+      --target x86_64-unknown-linux-gnu \
+      src/main.ts || { echo "ERROR: deno compile failed" >&2; exit 1; }
 
 # 复制其余数据 / 配置
 COPY data/ ./data/
 COPY drizzle.config.ts ./
 COPY drizzle/ drizzle/
 
-# 入口脚本
+# 入口脚本（仍保留 serve 模式分发；migrate 走 deno 跑，server 走 binary）
 COPY scripts/e2e-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

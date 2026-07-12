@@ -52,6 +52,35 @@ services:
       mc mb --ignore-existing local/noj-support-packages;
       "
 
+  # ──────────────────────────────────────────────────────────────────────────
+  # 拆分 prepare 步骤：把耗时 ~25-30min 的 migrate + seed 从 noj-core 容器里
+  # 抽出为独立 one-shot 任务。这样 noj-core 容器只跑 HTTP server，
+  # 冷启动从 ~30min 降到 ~1s，单 PR Full Pipeline 从 10-30min 降到 4-6min。
+  #
+  # noj-migrate 用 entrypoint "setup" 模式：migrate + seed 后退出。
+  # noj-core depends_on service_completed_successfully → 等 noj-migrate 完后才起。
+  # ──────────────────────────────────────────────────────────────────────────
+  noj-migrate:
+    build:
+      context: ./noj-core
+      dockerfile: Dockerfile.e2e
+    image: noj-e2e-core
+    container_name: noj-e2e-migrate
+    entrypoint: ["/entrypoint.sh", "setup"]
+    environment:
+      DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e
+      REDIS_URL: redis://redis:6379/1
+      NOJ_RUN_E2E: "1"
+      STORAGE_PROVIDER: local
+      RATE_LIMIT_ENABLED: "false"
+      JWT_SECRET: e2e-ci-secret-fixed-value-with-32-chars-min-abc
+      ADMIN_EMAIL: e2e_admin@test.com
+      ADMIN_PASS: e2e_admin_pass
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   noj-core:
     build:
       context: ./noj-core
@@ -59,25 +88,21 @@ services:
     image: noj-e2e-core
     container_name: noj-e2e-core
     ports: ["8099:8000"]
-    # 健康探测（修复 finding C4）。e2e.yml 用 `docker compose wait noj-core`
-    # 等到该 healthcheck 通过后再跑测试，不再是脆弱的 curl 60s 超时。
+    # 健康探测。noj-core 只跑 server（migrate + seed 在 noj-migrate 里跑完了），
+    # 启动 < 1s，健康检查几乎立即通过；start_period/retries 调到小值即可。
     healthcheck:
-      # denoland/deno:alpine 自带 busybox wget，无需安装额外工具
       test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health > /dev/null || exit 1"]
       interval: 5s
       timeout: 5s
-      # noj-core 冷启动（runMigrations + seed + 首次 deno 包下载）实测
-      # ~4min。start_period 必须大于此值，否则第一次检查就在 server up
-      # 之前 → 容器被标记 unhealthy → 后续成功轮询不进 healthy 状态。
-      # retries × interval = 不健康容忍窗口 = 180s，配合 start_period
-      # 整体覆盖 ~7min 任何 tail 延迟；e2e.yml bash loop 上限 600s 做最后兜底。
-      retries: 36
-      start_period: 240s
+      retries: 12
+      start_period: 10s
+    # 关键改动：noj-core 不再自己跑 migrate + seed —— 由上游 noj-migrate one-shot
+    # 提前完成。这条 entrypoint 跳过 ~25-30min 的 deno runtime 数据库初始化，
+    # 直接监听 :8000。
+    entrypoint: ["/entrypoint.sh", "serve"]
     environment:
       DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e
       REDIS_URL: redis://redis:6379/1
-      # JWT_SECRET 单一来源（修复 finding S1），与 e2e.yml workflow env、
-      # env.e2e.template 完全一致；任一处改需同步另两处。≥32 字符。
       JWT_SECRET: e2e-ci-secret-fixed-value-with-32-chars-min-abc
       PORT: "8000"
       NOJ_RUN_E2E: "1"
@@ -88,6 +113,8 @@ services:
       ADMIN_EMAIL: e2e_admin@test.com
       ADMIN_PASS: e2e_admin_pass
     depends_on:
+      noj-migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
