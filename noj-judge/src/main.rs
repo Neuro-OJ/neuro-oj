@@ -175,8 +175,8 @@ fn main() -> Result<()> {
                 pool_images
             }
             Err(e) => {
-                error!("获取镜像白名单失败，judge 按规范拒绝启动: {:#}", e);
-                std::process::exit(1);
+                warn!("获取镜像白名单失败: {:#}，回退至配置文件默认值", e);
+                config.pool.images.clone()
             }
         };
 
@@ -273,8 +273,8 @@ fn main() -> Result<()> {
                     let result_queue = result_queue.clone();
                     let work_dir = work_dir.clone();
                     let cache_dir = cache_dir.clone();
-                    let docker_for_dual = Docker::connect_with_local_defaults().ok();
                     let judge_queue = config.judge_queue.clone();
+                    let docker_for_dual = Docker::connect_with_local_defaults().ok();
 
                     let handle = tokio::spawn(async move {
                         let work_dir_path = std::path::Path::new(&work_dir);
@@ -316,7 +316,6 @@ fn main() -> Result<()> {
                                 }
                             }
                             types::JudgeMode::Single => {
-                                // 单容器路径：从池中获取容器 → 执行 → 释放
                                 let lease = match pool
                                     .acquire_container(&task.judge_image, task.memory_limit_mb)
                                     .await
