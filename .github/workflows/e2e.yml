@@ -17,6 +17,15 @@ on:
   push:
     branches: [main]
   pull_request:
+    # 纯文档 / 规范 / lint 配置类改动无需跑完整评测栈（节省 10-15 min / PR）。
+    # push to main 仍全量跑；workflow_dispatch 仍可手动强跑。
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'openspec/**'
+      - '.opencode/**'
+      - '.github/dependabot.yml'
+      - '.github/actionlint.yaml'
   workflow_dispatch:
 
 concurrency:
@@ -106,7 +115,7 @@ jobs:
           tags: noj-judge-python
           load: true
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
 
       - name: 构建 Docker Compose 镜像 (noj-core, 带 GHA 缓存)
         uses: docker/build-push-action@v6
@@ -116,7 +125,7 @@ jobs:
           tags: noj-e2e-core
           load: true
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
 
       - name: 构建 Docker Compose 镜像 (noj-judge, 带 GHA 缓存)
         uses: docker/build-push-action@v6
@@ -126,7 +135,7 @@ jobs:
           tags: noj-e2e-judge
           load: true
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
 
       - name: 初始化 MinIO bucket
         run: |
