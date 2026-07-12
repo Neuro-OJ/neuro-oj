@@ -68,8 +68,11 @@ jobs:
       - name: 缓存 Deno 依赖
         uses: actions/cache@v4
         with:
+          # cache key 同时 hash deno.lock 和 deno.json（修复 finding P7）：
+          # 单 hashFiles('deno.lock') 在 imports map 变更时不刷缓存，
+          # 会用到旧的下载模块。
           path: ${{ github.workspace }}/noj-core/.deno_cache
-          key: deno-${{ hashFiles('noj-core/deno.lock') }}
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
           restore-keys: |
             deno-
 
