@@ -29,7 +29,8 @@ jobs:
   core-smoke:
     name: Core Smoke
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    # 冒烟测试是唯一真实启动 Hono server 并验证 /health 的检查，必须在 main 推送 / 手动触发也执行，
+    # 不只是 PR。core-test 直接 import router 不启 server，覆盖不到 HTTP 层。
     timeout-minutes: 5
 
     steps:
@@ -122,6 +123,9 @@ jobs:
 
     env:
       REDIS_URL: redis://localhost:6379/
+      # 真实接入 PostgreSQL 服务容器；若缺失则 00_migrate_test.ts 会静默退到 PGlite，
+      # 导致 pg_trgm / tsvector / GIN 等 PG 专属路径在 PR 上从未被 CI 覆盖。
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
 
@@ -161,7 +165,11 @@ jobs:
         working-directory: noj-core
         env:
           BCRYPT_SALT_ROUNDS: 4
-        run: deno test -A --parallel
+        # 不加 --parallel：之前因为没设 DATABASE_URL 误走 PGlite 内存模式，单进程内
+        # --parallel 不会冲突。修好 DATABASE_URL 接通真实 PG 后，多 worker 并发
+        # TRUNCATE / INSERT 会导致死锁（CI 日志可见 Process 494 vs 495 互锁）。
+        # 串行执行匹配现有 resetDbForTest() 的顺序假设。
+        run: deno test -A
 
       # 失败时上传日志（修复 finding M7）。CI 默认只在 UI 里保留日志，
       # 开发者必须本地复现才能排查；改为 actions/upload-artifact 上传到
@@ -335,12 +343,16 @@ jobs:
         continue-on-error: true
 
   # ===========================================================================
-  # noj-judge — Docker 沙箱集成测试（需要 Docker daemon，手动触发）
+  # noj-judge — Docker 沙箱集成测试
+  #
+  # 以前只跑在 workflow_dispatch，导致容器池 / 双容器协调 / 沙箱资源限制等
+  # 关键路径在 push / PR 上无信号。现默认 push + 非 fork PR + manual 都跑。
+  # Fork PR 仍会跑（GitHub-hosted ubuntu-latest 自带 Docker daemon），仅 cache 写入
+  # 会被 GHA 静默忽略，缓存命中率下降但不影响测试正确性。
   # ===========================================================================
   judge-e2e:
     name: Judge E2E (Docker)
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
     timeout-minutes: 30
     env:
       NOJ_RUN_E2E: "1"
@@ -372,8 +384,25 @@ jobs:
       - name: 运行 E2E 集成测试
         working-directory: noj-judge
         env:
+          # judge-e2e job 现在默认在 push/PR 上也跑（之前仅 workflow_dispatch）。
+          # 此时仍需一个本地可达的 Redis，配合服务容器 redis:7-alpine。
           REDIS_URL: redis://localhost:6379/
-        run: cargo test --test e2e -- --ignored
+        run: |
+          # set -euo pipefail：任一 cargo test 失败立即终止整个 job
+          set -euo pipefail
+          # 与 e2e.yml 保持完全一致的 6 个目标清单（含 2026-07-02 重构后的
+          # e2e_container_pool）。原 cargo test --test e2e 在没有 e2e.rs 的
+          # 情况下 exit 101，从未暴露是因为 if: workflow_dispatch。
+          for target in \
+            e2e_docker_basic \
+            e2e_resource_limits \
+            e2e_security_isolation \
+            e2e_support_package \
+            e2e_problem_limits \
+            e2e_container_pool; do
+            echo "═══ $target ═══"
+            NOJ_RUN_E2E=1 cargo test --test "$target" -- --ignored --test-threads=1
+          done
 
       # 失败时上传 Docker 沙箱产物
       - name: 上传失败日志

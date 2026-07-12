@@ -168,7 +168,18 @@ jobs:
       - name: Judge E2E 测试（Docker 沙箱）
         working-directory: noj-judge
         run: |
-          for target in e2e_docker_basic e2e_resource_limits e2e_security_isolation e2e_support_package e2e_problem_limits; do
+          # set -euo pipefail：任一 cargo test 失败立即终止整个 job，
+          # 修复原版 for 循环吞掉中间失败、只在最后一个目标失败时退出 0 的问题。
+          set -euo pipefail
+          # 必须列出全部 6 个 e2e_* 测试文件；之前漏掉的 e2e_container_pool 正是
+          # 2026-07-02 container-pool-simplify 重构过的关键路径。
+          for target in \
+            e2e_docker_basic \
+            e2e_resource_limits \
+            e2e_security_isolation \
+            e2e_support_package \
+            e2e_problem_limits \
+            e2e_container_pool; do
             echo ""
             echo "───────────────────────────────────────"
             echo "  $target"
