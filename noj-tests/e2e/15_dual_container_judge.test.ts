@@ -41,7 +41,7 @@ if (!isE2E) {
   /** 获取 admin token（首调用时强制改密走通） */
   async function getAdminToken(): Promise<string> {
     return await loginAndChangePassword(
-      "admin-e2e-dual",
+      "admin_e2e_dual",
       "InitPass123!",
       "AdminPass123!",
     );

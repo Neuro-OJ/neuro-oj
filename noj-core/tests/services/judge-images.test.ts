@@ -192,6 +192,7 @@ Deno.test({
     await createJudgeImage({
       image: "registry.local/team/noj-judge-python:3.12",
       mode: "all_versions",
+      kind: "evaluator",
       description: "repo path test",
     });
 

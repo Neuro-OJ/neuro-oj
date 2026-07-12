@@ -24,6 +24,8 @@ use crate::config::PoolConfig;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AllowedImageMode {
     Exact,
+    /// 预留：`allowlist` RPC 的字符串兜底模式（v2 启用）。
+    #[allow(dead_code)]
     AllVersions,
 }
 

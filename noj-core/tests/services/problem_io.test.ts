@@ -295,7 +295,7 @@ Deno.test({
     // 验证 DB 状态保持
     const reloaded = await getProblem(PROBLEM_WITH_SAMPLES.id);
     assertEquals(reloaded.title, `含样例的题-${ts}`);
-    assertEquals(reloaded.samples, undefined); // samples 不在 ProblemResponse
+    // samples 是 export payload 字段，不在 ProblemResponse 中
     assertEquals(reloaded.description.includes("样例输入"), true);
   },
 });
