@@ -74,6 +74,11 @@ services:
       JWT_SECRET: e2e-ci-secret-fixed-value-with-32-chars-min-abc
       ADMIN_EMAIL: e2e_admin@test.com
       ADMIN_PASS: e2e_admin_pass
+    # v13.4：seedSupportPackages 通过 LocalStorageProvider 把 zip 写入
+    # /app/data/packages/<hash>.zip。这是容器内文件系统，noj-core 看不到。
+    # 共享 volume 让 noj-migrate 写入的包对 noj-core 可见。
+    volumes:
+      - noj-data-packages:/app/data/packages
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,6 +122,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # v13.4：与 noj-migrate 共享 /app/data/packages/，让 LocalStorageProvider
+    # 写入的支持包对 noj-core 可见。
+    volumes:
+      - noj-data-packages:/app/data/packages
 
   noj-judge:
     build:
@@ -133,9 +142,15 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - noj-judge-work:/tmp/noj-work
+    # v13.3：noj-judge 启动时立刻发 RPC `get_image_allowlist` 给 noj-core，
+    # 但 noj-core 这时还在下载 JSR deps（deno runtime 启动 4-5 min），
+    # RPC 5s 超时后 noj-judge 直接退出。改为等 noj-core healthy 后再起。
     depends_on:
       redis:
+        condition: service_healthy
+      noj-core:
         condition: service_healthy
 
 volumes:
   noj-judge-work:
+  noj-data-packages:

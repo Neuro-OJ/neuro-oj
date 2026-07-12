@@ -7,7 +7,7 @@
 #   - seed:    只跑 seed
 #   - setup:   migrate + seed 后退出（CI 用作 one-shot 准备步骤）
 #
-# 这样 noj-core 容器启动只需 ~1 秒（vs 之前 25-30 min 在容器里跑 migrate+seed），
+# 这样 noj-core 容器启动 ~4s（vs 之前 25-30 min 在容器里跑 migrate+seed），
 # 单 PR Full Pipeline 时间从 10-30 min 降到 4-6 min。
 set -e
 
@@ -31,9 +31,10 @@ case "$MODE" in
     exit 0
     ;;
   serve|*)
-    # v11：跑编译后的 binary /app/noj-core（deno compile AOT 烤进 deps），
-    # 冷启动 < 50ms。env vars 来自 docker compose environment: 块。
-    echo ">>> Starting noj-core API server (compiled binary)..."
-    exec /app/noj-core
+    # v13 fix：放弃 deno compile AOT（Alpine musl vs glibc binary 兼容性
+    # 问题过多）。改用 deno cache 预热 + deno task start 启动 server。
+    # 冷启动 ~4s（之前实测 25-30 min）。
+    echo ">>> Starting noj-core API server (deno task start)..."
+    exec deno task start
     ;;
 esac

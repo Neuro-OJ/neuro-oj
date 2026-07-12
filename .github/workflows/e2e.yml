@@ -149,9 +149,12 @@ jobs:
           #
           # 一改前：noj-core 启动时跑 migrate + seed（实测 25-30 min），
           # 一改后：拆分出 noj-migrate one-shot 提前跑 migrate + seed，
-          # noj-core 容器只启动 HTTP server（启动 < 1s）。故 300s 足够。
-          echo "等待 noj-core 健康（bash 轮询 docker inspect，300s 超时）..."
-          for i in $(seq 1 300); do
+          # noj-core 容器只启动 HTTP server + deno runtime（启动 ~4 min）。
+          # v13 fix：放弃 deno compile AOT（Alpine musl vs glibc binary 兼容性
+          # 问题过多），改用 deno cache 预热 + bash loop 拉长到 600s 兜底
+          # cold-start。
+          echo "等待 noj-core 健康（bash 轮询 docker inspect，600s 超时）..."
+          for i in $(seq 1 600); do
             status=$(docker inspect --format='{{.State.Health.Status}}' \
                      noj-e2e-core 2>/dev/null || echo "missing")
             if [ "$status" = "healthy" ]; then
@@ -171,7 +174,7 @@ jobs:
             fi
             sleep 1
           done
-          echo "::error::noj-core 未在 300s 内健康就绪 (status=$status)"
+          echo "::error::noj-core 未在 600s 内健康就绪 (status=$status)"
           docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME \
             logs --tail=100 noj-core
           exit 1
