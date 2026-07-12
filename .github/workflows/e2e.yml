@@ -13,15 +13,20 @@
 
 name: E2E
 
+# workflow-level 最小权限：所有 job 默认 contents: read。修复 finding S3。
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
 
+# 仅 PR 上可取消旧运行（修复 finding M4），main 推送不可被取消。
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   COMPOSE_PROJECT_NAME: noj-e2e
@@ -31,7 +36,11 @@ env:
   E2E_CORE_PORT: 8099
   E2E_DB_URL: postgres://e2e:e2e@localhost:5433/e2e
   E2E_REDIS_URL: redis://localhost:6380/1
-  JWT_SECRET: e2e-ci-secret-01234567890123456789
+  # JWT_SECRET 单一来源（修复 finding S1）。
+  # 全仓库（e2e.yml workflow env、docker-compose.e2e.yml noj-core、env.e2e.template）
+  # 统一使用此值；任何一处修改必须同步另外两处。
+  # 长度 ≥32 满足 noj-core main.ts 的 JWT_SECRET ≥ 32 字符校验。
+  JWT_SECRET: e2e-ci-secret-fixed-value-with-32-chars-min-abc
   NOJ_RUN_E2E: "1"
   BCRYPT_SALT_ROUNDS: 4
   DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
@@ -106,7 +115,10 @@ jobs:
           tags: noj-judge-python
           load: true
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Fork PR 的 GITHUB_TOKEN 是 read-only，cache 写入会失败且
+          # 浪费存储（修复 finding S6 + P7）。原模式 mode=max 还会把缓存
+          # 体积推到 5-10× image size。改用 fork 感知 + 较小 cache。
+          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
 
       - name: 构建 Docker Compose 镜像 (noj-core, 带 GHA 缓存)
         uses: docker/build-push-action@v6
@@ -116,7 +128,7 @@ jobs:
           tags: noj-e2e-core
           load: true
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
 
       - name: 构建 Docker Compose 镜像 (noj-judge, 带 GHA 缓存)
         uses: docker/build-push-action@v6
@@ -126,10 +138,13 @@ jobs:
           tags: noj-e2e-judge
           load: true
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
 
       - name: 初始化 MinIO bucket
         run: |
+          # minio-init 之前 depends_on: service_started 会有冷启动 race，
+          # entrypoint 里又 sleep 3 补补丁。改为 depends_on: service_healthy
+          # 后不再需要这条 sleep；同时把 minio-init 的 depends_on 修了（commit 同行）
           docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME up -d minio minio-init
 
       # ════════════════════════════════════════════
@@ -139,13 +154,35 @@ jobs:
       - name: 启动评测栈（使用预构建镜像，不触发 rebuild）
         run: |
           docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME up -d --no-build
-          echo "等待 noj-core 就绪..."
-          timeout 60 bash -c '
-            until curl -sf $E2E_BASE_URL/health > /dev/null 2>&1; do
-              printf "."
-              sleep 1
-            done
-          ' && echo "✅ noj-core 就绪" || echo "⚠ noj-core 未在 60s 内就绪"
+          # 修复 finding C4 + C8：原版用 timeout 60 bash + curl 探测，
+          # 且失败用 `|| echo ⚠` 静默吞下，导致后续 70+ 测试在 noj-core
+          # 未起来时跑出 ECONNREFUSED 伪装成测试失败。
+          #
+          # 之前尝试用 `docker compose wait noj-core --timeout 240`，其语义是
+          # "blocks until containers stop"，与"等 healthy"相反，反而把超时
+          # 吃掉不报原因。改用 docker inspect 轮询 Health.Status：
+          #   - status=healthy → 成功
+          #   - 容器已退出（main.ts 启动失败 / migration 失败等）→ 立即诊断退出
+          echo "等待 noj-core 健康（bash 轮询 docker inspect，1800s 超时）..."
+          for i in $(seq 1 1800); do
+            status=$(docker inspect --format='{{.State.Health.Status}}' \
+                     noj-e2e-core 2>/dev/null || echo "missing")
+            if [ "$status" = "healthy" ]; then
+              echo "✅ noj-core 健康就绪 ($i s)"
+              exit 0
+            fi
+            if ! docker ps --format='{{.Names}}' 2>/dev/null | grep -qx "noj-e2e-core"; then
+              echo "::error::noj-core 容器已退出，状态=$status"
+              docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME \
+                logs --tail=100 noj-core
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "::error::noj-core 未在 1800s 内健康就绪 (status=$status)"
+          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME \
+            logs --tail=100 noj-core
+          exit 1
 
       # ════════════════════════════════════════════
       # 3. noj-tests E2E 测试

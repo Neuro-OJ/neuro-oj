@@ -1,16 +1,34 @@
+# =============================================================================
 # noj-core E2E 测试用 Dockerfile
-# 基于 denoland/deno 镜像构建，含 migrate + seed + 启动入口
+#
+# 关键设计：build-time 预 populate deno deps cache。
+# 之前依赖 deno install（只锁 deno.json 中的 workspace deps），但
+# scripts/build-packages.ts、src/db/migrate.ts、src/lib/resetToken.ts 直接写
+# `jsr:@std/path`、`jsr:@std/encoding` 等 URL imports 不走 deno.json
+# alias，导致每次 runtime 冷启动重新下载，实测启动 20-30min。
+# 修复：用 `deno cache` 对所有运行时入口脚本预解析 deps，runtime 不再联网。
+# =============================================================================
 FROM denoland/deno:alpine-2.8.0
 
 WORKDIR /app
 
-# 先复制依赖定义，利用 Docker 缓存
+# 复制依赖定义 + 源码（顺序：先 deno.json 给 install 用，再 src + scripts 给 cache 用）。
+# entrypoint 引用 src/main.ts 及其全部 import 链，所以 src/ 必须在 cache 之前到位。
 COPY deno.json deno.lock* ./
-RUN deno install 2>&1 || { echo "ERROR: deno install failed" >&2; exit 1; }
-
-# 复制源码
 COPY src/ ./src/
 COPY scripts/ ./scripts/
+
+# `deno install` 只锁 deno.json workspace deps。
+# runtime 入口脚本（migrate/seed/main）还有直接 jsr: imports，不走 alias。
+# `--no-lock` 避免 lockfile 漂移（这些 cache 来自 build 工具）。
+RUN deno install 2>&1 || { echo "ERROR: deno install failed" >&2; exit 1; } \
+ && deno cache \
+      scripts/migrate.ts \
+      scripts/seed.ts \
+      src/main.ts \
+      --no-lock || { echo "ERROR: deno cache warmup failed" >&2; exit 1; }
+
+# 复制其余数据 / 配置
 COPY data/ ./data/
 COPY drizzle.config.ts ./
 COPY drizzle/ drizzle/
