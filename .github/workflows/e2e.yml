@@ -13,15 +13,20 @@
 
 name: E2E
 
+# workflow-level 最小权限：所有 job 默认 contents: read。修复 finding S3。
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
 
+# 仅 PR 上可取消旧运行（修复 finding M4），main 推送不可被取消。
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   COMPOSE_PROJECT_NAME: noj-e2e
@@ -31,7 +36,11 @@ env:
   E2E_CORE_PORT: 8099
   E2E_DB_URL: postgres://e2e:e2e@localhost:5433/e2e
   E2E_REDIS_URL: redis://localhost:6380/1
-  JWT_SECRET: e2e-ci-secret-01234567890123456789
+  # JWT_SECRET 单一来源（修复 finding S1）。
+  # 全仓库（e2e.yml workflow env、docker-compose.e2e.yml noj-core、env.e2e.template）
+  # 统一使用此值；任何一处修改必须同步另外两处。
+  # 长度 ≥32 满足 noj-core main.ts 的 JWT_SECRET ≥ 32 字符校验。
+  JWT_SECRET: e2e-ci-secret-fixed-value-with-32-chars-min-abc
   NOJ_RUN_E2E: "1"
   BCRYPT_SALT_ROUNDS: 4
   DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
@@ -106,7 +115,10 @@ jobs:
           tags: noj-judge-python
           load: true
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Fork PR 的 GITHUB_TOKEN 是 read-only，cache 写入会失败且
+          # 浪费存储（修复 finding S6 + P7）。原模式 mode=max 还会把缓存
+          # 体积推到 5-10× image size。改用 fork 感知 + 较小 cache。
+          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
 
       - name: 构建 Docker Compose 镜像 (noj-core, 带 GHA 缓存)
         uses: docker/build-push-action@v6
@@ -116,7 +128,7 @@ jobs:
           tags: noj-e2e-core
           load: true
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
 
       - name: 构建 Docker Compose 镜像 (noj-judge, 带 GHA 缓存)
         uses: docker/build-push-action@v6
@@ -126,7 +138,7 @@ jobs:
           tags: noj-e2e-judge
           load: true
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
 
       - name: 初始化 MinIO bucket
         run: |
