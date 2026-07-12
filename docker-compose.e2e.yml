@@ -40,12 +40,14 @@ services:
 
   minio-init:
     image: minio/mc:latest
+    # 修复 finding C5：原 condition: service_started 在冷启动下过早触发，
+    # mc alias set 连接偶尔被拒绝，entrypoint 里再 sleep 3 补补丁（脆弱）。
+    # 改为 service_healthy 后等 minio 健康检查通过再起，sleep 3 也去掉。
     depends_on:
       minio:
-        condition: service_started
+        condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      sleep 3;
       mc alias set local http://minio:9000 minioadmin minioadmin;
       mc mb --ignore-existing local/noj-support-packages;
       "
@@ -60,7 +62,7 @@ services:
     environment:
       DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e
       REDIS_URL: redis://redis:6379/1
-      JWT_SECRET: e2e-test-secret-01234567890123456
+      JWT_SECRET: e2e-ci-secret-fixed-value-with-32-chars-min-abc
       PORT: "8000"
       NOJ_RUN_E2E: "1"
       STORAGE_PROVIDER: local
