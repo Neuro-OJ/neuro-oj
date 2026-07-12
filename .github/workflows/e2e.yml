@@ -17,6 +17,16 @@ on:
   push:
     branches: [main]
   pull_request:
+    # 纯文档 / 规范 / lint 配置类改动无需跑完整评测栈（节省 10-15 min / PR）。
+    # push to main 仍全量跑；workflow_dispatch 仍可手动强跑。
+    # 修复点：之前的 cache-to mode=min 拆分到独立的 workflow 安全与配置一致性 PR。
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'openspec/**'
+      - '.opencode/**'
+      - '.github/dependabot.yml'
+      - '.github/actionlint.yaml'
   workflow_dispatch:
 
 concurrency:
