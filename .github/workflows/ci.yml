@@ -10,6 +10,11 @@
 
 name: CI
 
+# workflow-level 最小权限：所有 job 默认 contents: read；如需写权限再按 job
+# 单独收窄 scope。修复 finding S3：之前 GITHUB_TOKEN 默认是 write-all。
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -17,9 +22,11 @@ on:
   workflow_dispatch:
 
 # 同一分支/PR 的新推送自动取消旧运行，避免排队浪费
+# 修复 finding M4：之前 cancel-in-progress: true 对 main 推送也生效，
+# 一次 force-push 就会丢失 main 分支的 coverage。改为仅在 PR 上取消。
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
 

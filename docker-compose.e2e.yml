@@ -40,12 +40,14 @@ services:
 
   minio-init:
     image: minio/mc:latest
+    # 修复 finding C5：原 condition: service_started 在冷启动下过早触发，
+    # mc alias set 连接偶尔被拒绝，entrypoint 里再 sleep 3 补补丁（脆弱）。
+    # 改为 service_healthy 后等 minio 健康检查通过再起，sleep 3 也去掉。
     depends_on:
       minio:
-        condition: service_started
+        condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      sleep 3;
       mc alias set local http://minio:9000 minioadmin minioadmin;
       mc mb --ignore-existing local/noj-support-packages;
       "
@@ -57,10 +59,26 @@ services:
     image: noj-e2e-core
     container_name: noj-e2e-core
     ports: ["8099:8000"]
+    # 健康探测（修复 finding C4）。e2e.yml 用 `docker compose wait noj-core`
+    # 等到该 healthcheck 通过后再跑测试，不再是脆弱的 curl 60s 超时。
+    healthcheck:
+      # denoland/deno:alpine 自带 busybox wget，无需安装额外工具
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health > /dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      # noj-core 冷启动（runMigrations + seed + 首次 deno 包下载）实测
+      # ~4min。start_period 必须大于此值，否则第一次检查就在 server up
+      # 之前 → 容器被标记 unhealthy → 后续成功轮询不进 healthy 状态。
+      # retries × interval = 不健康容忍窗口 = 180s，配合 start_period
+      # 整体覆盖 ~7min 任何 tail 延迟；e2e.yml bash loop 上限 600s 做最后兜底。
+      retries: 36
+      start_period: 240s
     environment:
       DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e
       REDIS_URL: redis://redis:6379/1
-      JWT_SECRET: e2e-test-secret-01234567890123456
+      # JWT_SECRET 单一来源（修复 finding S1），与 e2e.yml workflow env、
+      # env.e2e.template 完全一致；任一处改需同步另两处。≥32 字符。
+      JWT_SECRET: e2e-ci-secret-fixed-value-with-32-chars-min-abc
       PORT: "8000"
       NOJ_RUN_E2E: "1"
       STORAGE_PROVIDER: local
