@@ -30,6 +30,7 @@ jobs:
     name: Core Smoke
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    timeout-minutes: 5
 
     steps:
       - name: 检出代码
@@ -50,6 +51,7 @@ jobs:
   core-fmt:
     name: Core Fmt
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: 检出代码
@@ -70,6 +72,7 @@ jobs:
   core-lint:
     name: Core Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: 检出代码
@@ -90,6 +93,7 @@ jobs:
   core-test:
     name: Core Test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       postgres:
@@ -130,11 +134,26 @@ jobs:
         with:
           deno-version: v2.x
 
+      # 校验 JWT_SECRET 长度 ≥32（修复 finding S7）。
+      # noj-core main.ts 启动时硬校验，但 CI 在测试环节会先 launch main.ts；
+      # 把校验提前到 step 层，错误信息更精准。
+      - name: Validate secrets
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ "${#JWT_SECRET}" -lt 32 ]; then
+            echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+            exit 1
+          fi
+
       - name: 缓存 Deno 依赖
         uses: actions/cache@v4
         with:
+          # cache key 同时 hash deno.lock 和 deno.json（修复 finding P7）。
+          # 原单 hashFiles('deno.lock') 在 imports map 变更时不刷新缓存，
+          # 会用到旧的下载模块。
           path: ${{ github.workspace }}/noj-core/.deno_cache
-          key: deno-${{ hashFiles('noj-core/deno.lock') }}
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
           restore-keys: |
             deno-
 
@@ -144,12 +163,28 @@ jobs:
           BCRYPT_SALT_ROUNDS: 4
         run: deno test -A --parallel
 
+      # 失败时上传日志（修复 finding M7）。CI 默认只在 UI 里保留日志，
+      # 开发者必须本地复现才能排查；改为 actions/upload-artifact 上传到
+      # GitHub Actions artifacts，contributor 可直接下载查看。
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-test-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
   # ===========================================================================
   # noj-ui — Nuxt 4 前端（Deno 构建检查）
   # ===========================================================================
   ui-check:
     name: UI (Nuxt)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: 检出代码
@@ -163,8 +198,11 @@ jobs:
       - name: 缓存 node_modules
         uses: actions/cache@v4
         with:
+          # cache key 同时 hash package.json 和 lockfile（修复 finding P8）。
+          # 原单 hashFiles('package.json') 在 lockfile 隐式更新时不刷缓存，
+          # 会出现非确定性依赖版本。
           path: noj-ui/node_modules
-          key: npm-${{ hashFiles('noj-ui/package.json') }}
+          key: npm-${{ hashFiles('noj-ui/package.json', 'noj-ui/package-lock.json', 'noj-ui/pnpm-lock.yaml') }}
           restore-keys: |
             npm-
 
@@ -176,12 +214,26 @@ jobs:
         working-directory: noj-ui
         run: deno task build
 
+      # 失败时上传 Nuxt 构建日志与 .output（修复 finding M7）
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-check-logs
+          path: |
+            noj-ui/.output/logs/
+            noj-ui/.nuxt/dist/
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
   # ===========================================================================
   # noj-judge — Rust 格式检查
   # ===========================================================================
   judge-fmt:
     name: Judge Fmt
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: 检出代码
@@ -202,6 +254,7 @@ jobs:
   judge-clippy:
     name: Judge Clippy
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: 检出代码
@@ -227,12 +280,24 @@ jobs:
         working-directory: noj-judge
         run: cargo clippy --all-targets -- -D warnings
 
+      # 失败时上传 cargo 编译缓存（修复 finding M7）
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: judge-clippy-logs
+          path: noj-judge/target/
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
   # ===========================================================================
   # noj-judge — 单元测试（复用 clippy 编译产物）
   # ===========================================================================
   judge-test:
     name: Judge Test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: 检出代码
@@ -256,6 +321,19 @@ jobs:
         working-directory: noj-judge
         run: cargo test
 
+      # 失败时上传 cargo test 日志
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: judge-test-logs
+          path: |
+            noj-judge/target/**/test-*.log
+            noj-judge/target/**/deps/
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
   # ===========================================================================
   # noj-judge — Docker 沙箱集成测试（需要 Docker daemon，手动触发）
   # ===========================================================================
@@ -263,6 +341,7 @@ jobs:
     name: Judge E2E (Docker)
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
     env:
       NOJ_RUN_E2E: "1"
 
@@ -292,8 +371,18 @@ jobs:
 
       - name: 运行 E2E 集成测试
         working-directory: noj-judge
+        env:
+          REDIS_URL: redis://localhost:6379/
         run: cargo test --test e2e -- --ignored
 
-      - name: 再次运行单元测试确认无回归
-        working-directory: noj-judge
-        run: cargo test
+      # 失败时上传 Docker 沙箱产物
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: judge-e2e-logs
+          path: |
+            noj-judge/target/**/test-*.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true

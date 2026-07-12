@@ -1,0 +1,113 @@
+# =============================================================================
+# Dependabot 配置 — 自动更新 workflow actions / npm / cargo / deno 依赖
+#
+# 修复 finding M8：之前没有自动依赖更新，actions/changes 只能手工 follow。
+# github-actions ecosystem 生成的 PR 会用 SHA 钉形式（如
+# `actions/checkout@<sha> # v4.1.7`），对应修复 S2 的供应链风险。
+#
+# 触发节奏：weekly（每周一）
+# 合并策略：建议用 dependabot[bot] 自动 squash merge
+# =============================================================================
+
+version: 2
+
+updates:
+
+  # ---------------------------------------------------------------------------
+  # GitHub Actions 自动更新（覆盖 ci.yml / e2e.yml / 未来 composite action）
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    # 单 PR 合并一组：避免每周刷 10 个 action PR
+    groups:
+      github-actions-minor:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    # 提交信息遵循 Conventional Commits 风格便于 auto-changelog
+    commit-message:
+      prefix: "ci"
+      prefix-development: "ci(draft)"
+      include: "scope"
+    # 每次最多开 5 个 PR（PR-7 总数限制，可调）
+    open-pull-requests-limit: 5
+    # 忽略 major 升（如 actions/checkout@v4 → v5），需要人工评估
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # ---------------------------------------------------------------------------
+  # npm — noj-ui 包（Monaco / Nuxt / Tailwind 等前端依赖）
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/noj-ui"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    groups:
+      npm-minor:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "deps(ui)"
+      prefix-development: "deps(ui,draft)"
+      include: "scope"
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # ---------------------------------------------------------------------------
+  # cargo — noj-judge Rust 依赖（tokio / bollard / redis 等）
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "cargo"
+    directory: "/noj-judge"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    groups:
+      cargo-minor:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "deps(judge)"
+      prefix-development: "deps(judge,draft)"
+      include: "scope"
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # ---------------------------------------------------------------------------
+  # pip — noj-judge SDK Python 测试依赖（防止 SDK 测试套件过期）
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "pip"
+    directory: "/noj-judge/sdk/evaluator/noj_evaluator_sdk"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    groups:
+      sdk-pip-minor:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "deps(judge-sdk)"
+    open-pull-requests-limit: 3

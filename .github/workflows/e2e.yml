@@ -194,6 +194,34 @@ jobs:
           echo "=== noj-core 日志 ==="
           docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 noj-core 2>&1 || echo "容器可能未启动"
 
+      # 失败时把诊断日志落盘 + 上传为 GitHub Actions artifact
+      # (修复 finding M7/S8)。原版只 echo 到 GHA log，contributor 必须本地复现才能排查。
+      # 改写为：docker logs 重定向到文件，再 upload-artifact。
+      - name: 保存 + 上传 noj-judge 日志
+        if: always()
+        run: |
+          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=500 noj-judge > noj-judge.log 2>&1 || echo "noj-judge may not be running"
+
+      - name: 保存 + 上传 noj-core 日志
+        if: always()
+        run: |
+          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=500 noj-core > noj-core.log 2>&1 || echo "noj-core may not be running"
+
+      - name: 上传诊断日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-full-pipeline-logs
+          path: |
+            noj-judge.log
+            noj-core.log
+            noj-judge/target/**/test-*.log
+            noj-judge/target/**/deps/
+            /tmp/noj-work/
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
+
       # ════════════════════════════════════════════
       # 7. 清理
       # ════════════════════════════════════════════
