@@ -17,7 +17,24 @@ use futures_util::StreamExt;
 use tracing::{error, info, warn};
 
 use crate::config::Config;
-use crate::pool::PoolManager;
+use crate::pool::{AllowedImage, AllowedImageMode, PoolManager};
+
+#[cfg(unix)]
+async fn wait_for_shutdown_signal() -> &'static str {
+    use tokio::signal::unix::{signal, SignalKind};
+
+    let mut sigterm = signal(SignalKind::terminate()).expect("注册 SIGTERM 失败");
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => "SIGINT",
+        _ = sigterm.recv() => "SIGTERM",
+    }
+}
+
+#[cfg(not(unix))]
+async fn wait_for_shutdown_signal() -> &'static str {
+    tokio::signal::ctrl_c().await.ok();
+    "SIGINT"
+}
 
 /// 等待所有 in-flight 任务完成（带 30s 超时兜底）。
 ///
@@ -158,13 +175,21 @@ fn main() -> Result<()> {
                 pool_images
             }
             Err(e) => {
-                warn!("获取镜像白名单失败: {:#}，回退至配置文件默认值", e);
-                config.pool.images.clone()
+                error!("获取镜像白名单失败，judge 按规范拒绝启动: {:#}", e);
+                std::process::exit(1);
             }
         };
 
         // ── 初始化容器池 ──────────────────────────────
-        let pool = PoolManager::init(docker, config.pool.clone(), &images)
+        // 将字符串列表转换为 AllowedImage 结构（mode 默认为 Exact）
+        let allowed_images: Vec<AllowedImage> = images
+            .iter()
+            .map(|image| AllowedImage {
+                image: image.clone(),
+                mode: AllowedImageMode::Exact,
+            })
+            .collect();
+        let pool = PoolManager::init(docker, config.pool.clone(), &allowed_images)
             .await
             .context("初始化容器池失败")?;
 
@@ -175,8 +200,8 @@ fn main() -> Result<()> {
         // 注册优雅关闭信号处理
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         tokio::spawn(async move {
-            tokio::signal::ctrl_c().await.ok();
-            info!("收到 SIGINT，开始优雅关闭...");
+            let signal_name = wait_for_shutdown_signal().await;
+            info!("收到 {}，开始优雅关闭...", signal_name);
             pool_ref.shutdown().await;
             let _ = shutdown_tx.send(());
         });
@@ -185,6 +210,34 @@ fn main() -> Result<()> {
 
         // 使用 FuturesUnordered 跟踪所有 in-flight 任务
         let mut tasks = FuturesUnordered::new();
+
+        // BRPOP 在 multiplexed Redis 连接上不是 cancel-safe。
+        // 若直接把 pull_task 放进 select!，其它分支抢占时会取消 future，
+        // 但底层阻塞请求仍可能留在连接里，导致后续任务被“吃掉”。
+        // 因此改为独立 puller 任务串行持有该连接，主循环只消费 channel。
+        let (task_tx, mut task_rx) = tokio::sync::mpsc::unbounded_channel::<types::JudgeTask>();
+        let pull_shutdown = pool.shutdown_token();
+        let judge_queue = config.judge_queue.clone();
+        tokio::spawn(async move {
+            loop {
+                if pull_shutdown.is_cancelled() {
+                    break;
+                }
+
+                match mq::pull_task(&mut redis_conn, &judge_queue).await {
+                    Ok(Some(task)) => {
+                        if task_tx.send(task).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(None) => continue,
+                    Err(e) => {
+                        error!("拉取任务失败: {}", e);
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    }
+                }
+            }
+        });
 
         // 克隆配置值供 tokio::spawn 使用
         let cache_dir = config.support_cache_dir.clone();
@@ -197,19 +250,19 @@ fn main() -> Result<()> {
                 biased;
                 _ = &mut shutdown_rx => {
                     drain_tasks(&mut tasks).await;
+                    pool.cleanup_all_containers().await;
                     break;
                 }
-                task_result = mq::pull_task(&mut redis_conn, &config.judge_queue) => {
-                    let task = match task_result {
-                        Ok(Some(task)) => task,
-                        Ok(None) => continue,
-                        Err(e) => {
-                            error!("拉取任务失败: {}", e);
-                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                            continue;
+                Some(join_result) = tasks.next(), if !tasks.is_empty() => {
+                    if let Err(e) = join_result {
+                        if e.is_cancelled() {
+                            warn!("后台评测任务已取消");
+                        } else {
+                            error!("后台评测任务异常退出: {}", e);
                         }
-                    };
-
+                    }
+                }
+                Some(task) = task_rx.recv() => {
                     info!(
                         "收到评测任务: submission_id={}, language={}, mode={:?}",
                         task.submission_id, task.language, task.mode
@@ -221,10 +274,12 @@ fn main() -> Result<()> {
                     let work_dir = work_dir.clone();
                     let cache_dir = cache_dir.clone();
                     let docker_for_dual = Docker::connect_with_local_defaults().ok();
+                    let judge_queue = config.judge_queue.clone();
 
                     let handle = tokio::spawn(async move {
                         let work_dir_path = std::path::Path::new(&work_dir);
                         let fallback_dir = std::path::Path::new(&work_dir).join("fallback-results");
+                        mq::push_started_event(&redis_client, &task.submission_id).await;
 
                         // 按 task.mode 分流：
                         // - single（默认）→ 单容器 + PoolManager
@@ -236,7 +291,7 @@ fn main() -> Result<()> {
                                     Docker::connect_with_local_defaults()
                                         .expect("Docker 连接失败")
                                 });
-                                let dual_result = judge::runner::evaluate(
+                                match judge::runner::evaluate(
                                     docker,
                                     &task,
                                     work_dir_path,
@@ -244,38 +299,115 @@ fn main() -> Result<()> {
                                     cache_dir.clone(),
                                     cache_max_items,
                                     cache_max_mb,
-                                ).await;
-                                match dual_result {
+                                ).await {
                                     Ok(r) => r,
                                     Err(e) => {
-                                        error!("双容器评测失败: {}: {:#}", task.submission_id, e);
+                                        error!(
+                                            "双容器评测失败: {}: {:#}",
+                                            task.submission_id, e
+                                        );
                                         pool.inc_errors_total();
-                                        types::JudgeResult::error(&task.submission_id, &e.to_string())
+                                        types::JudgeResult::error(
+                                            &task.submission_id,
+                                            &e.to_string(),
+                                            task.rejudge_seq,
+                                        )
                                     }
                                 }
                             }
                             types::JudgeMode::Single => {
-                                match judge::runner::evaluate_with_pool(
+                                // 单容器路径：从池中获取容器 → 执行 → 释放
+                                let lease = match pool
+                                    .acquire_container(&task.judge_image, task.memory_limit_mb)
+                                    .await
+                                {
+                                    Ok(lease) => lease,
+                                    Err(e) => {
+                                        error!(
+                                            "获取评测容器失败: submission_id={}, error={:#}",
+                                            task.submission_id, e
+                                        );
+                                        if pool.is_shutting_down() {
+                                            if let Err(requeue_err) = mq::requeue_task(
+                                                &redis_client,
+                                                &judge_queue,
+                                                &task,
+                                            )
+                                            .await
+                                            {
+                                                error!(
+                                                    "judge 关闭时任务回队失败: submission_id={}, error={:#}",
+                                                    task.submission_id, requeue_err
+                                                );
+                                                let result = types::JudgeResult::error(
+                                                    &task.submission_id,
+                                                    &requeue_err.to_string(),
+                                                    task.rejudge_seq,
+                                                );
+                                                mq::push_result_with_retry(
+                                                    &redis_client,
+                                                    &result_queue,
+                                                    &result,
+                                                    &fallback_dir,
+                                                )
+                                                .await;
+                                            }
+                                            return;
+                                        }
+
+                                        let result = types::JudgeResult::error(
+                                            &task.submission_id,
+                                            &e.to_string(),
+                                            task.rejudge_seq,
+                                        );
+                                        mq::push_result_with_retry(
+                                            &redis_client,
+                                            &result_queue,
+                                            &result,
+                                            &fallback_dir,
+                                        )
+                                        .await;
+                                        return;
+                                    }
+                                };
+
+                                let container_id = lease.id().to_string();
+                                let eval_result = judge::runner::evaluate_with_container(
                                     pool.clone(),
                                     &task,
+                                    &container_id,
                                     work_dir_path,
                                     download_timeout,
                                     cache_dir.clone(),
                                     cache_max_items,
                                     cache_max_mb,
-                                ).await {
+                                )
+                                .await;
+
+                                lease.release().await;
+
+                                match eval_result {
                                     Ok(r) => {
                                         match r.status.as_str() {
                                             "TimeLimitExceeded" => pool.inc_timeouts_total(),
-                                            "SystemError" | "RuntimeError" => pool.inc_errors_total(),
+                                            "SystemError" | "RuntimeError" => {
+                                                pool.inc_errors_total();
+                                            }
                                             _ => {}
                                         }
                                         r
                                     }
                                     Err(e) => {
-                                        error!("评测失败: {}: {:#}", task.submission_id, e);
+                                        error!(
+                                            "评测失败: {}: {:#}",
+                                            task.submission_id, e
+                                        );
                                         pool.inc_errors_total();
-                                        types::JudgeResult::error(&task.submission_id, &e.to_string())
+                                        types::JudgeResult::error(
+                                            &task.submission_id,
+                                            &e.to_string(),
+                                            task.rejudge_seq,
+                                        )
                                     }
                                 }
                             }

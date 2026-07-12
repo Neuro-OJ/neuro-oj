@@ -58,11 +58,42 @@ pub async fn evaluate(
 
 /// 执行评测任务（单容器，with_container 闭包模式）。
 ///
-/// 使用 with_container() 在闭包作用域内使用容器，
-/// 闭包返回后自动释放容器，然后清理临时目录。
+/// 该入口会自行获取容器并在返回前释放；主循环可使用
+/// `evaluate_with_container()` 复用已提前 acquire 的容器租约。
+#[allow(dead_code)]
 pub async fn evaluate_with_pool(
     pool: Arc<PoolManager>,
     task: &JudgeTask,
+    work_dir_root: &Path,
+    download_timeout_secs: u64,
+    cache_dir: String,
+    cache_max_items: usize,
+    cache_max_mb: u64,
+) -> Result<JudgeResult> {
+    let lease = pool
+        .acquire_container(&task.judge_image, task.memory_limit_mb)
+        .await?;
+    let result = evaluate_with_container(
+        pool.clone(),
+        task,
+        lease.id(),
+        work_dir_root,
+        download_timeout_secs,
+        cache_dir,
+        cache_max_items,
+        cache_max_mb,
+    )
+    .await;
+    lease.release().await;
+    result
+}
+
+/// 在已获取的容器中执行评测任务。
+#[allow(clippy::too_many_arguments)]
+pub async fn evaluate_with_container(
+    pool: Arc<PoolManager>,
+    task: &JudgeTask,
+    container_id: &str,
     work_dir_root: &Path,
     download_timeout_secs: u64,
     cache_dir: String,
@@ -76,24 +107,15 @@ pub async fn evaluate_with_pool(
     let temp_dir = container::TempDir::new(work_dir_root, &task.submission_id).await?;
     let work_dir_path: &Path = temp_dir.path();
 
-    // 使用闭包模式获取容器并执行评测，闭包返回后自动 release
-    let pool_for_closure = pool.clone();
-    pool.with_container(
-        &task.judge_image,
-        task.memory_limit_mb,
-        |container_id| async move {
-            do_evaluate_with_pool(
-                pool_for_closure,
-                task,
-                &container_id,
-                work_dir_path,
-                download_timeout_secs,
-                &cache_dir,
-                cache_max_items,
-                cache_max_mb,
-            )
-            .await
-        },
+    do_evaluate_with_pool(
+        pool,
+        task,
+        container_id,
+        work_dir_path,
+        download_timeout_secs,
+        &cache_dir,
+        cache_max_items,
+        cache_max_mb,
     )
     .await
 }
@@ -133,6 +155,7 @@ async fn do_evaluate_with_pool(
                     return Ok(JudgeResult::system_error(
                         submission_id,
                         &format!("获取支持包失败: {}", e),
+                        task.rejudge_seq,
                     ));
                 }
             }
@@ -203,13 +226,22 @@ async fn fetch_and_cache_support_package(
 
     // 先解析 URL 获取 checksum（用于缓存查找）
     let timeout = download_timeout_secs;
-    let (zip_data, checksum) = download::fetch_support_package(download_url, timeout).await?;
+    let checksum = download::extract_checksum(download_url)?;
+    if let Some(ref cs) = checksum {
+        if let Some(cached) = cache.get(cs).await? {
+            download::verify_checksum(&cached, Some(cs))?;
+            return Ok(cached);
+        }
+    }
+
+    let (zip_data, fetched_checksum) =
+        download::fetch_support_package(download_url, timeout).await?;
 
     // SHA-256 校验
-    download::verify_checksum(&zip_data, checksum.as_deref())?;
+    download::verify_checksum(&zip_data, fetched_checksum.as_deref())?;
 
     // 写入缓存
-    if let Some(ref cs) = checksum {
+    if let Some(ref cs) = fetched_checksum {
         if !cs.is_empty() {
             if let Err(e) = cache.set(cs, &zip_data).await {
                 warn!("写入支持包缓存失败: {}", e);
@@ -232,13 +264,13 @@ pub fn process_output(task: &JudgeTask, output: &ContainerOutput) -> JudgeResult
     // 超时检测（exit_code = -1）
     if output.exit_code == -1 {
         warn!("评测超时: {}", submission_id);
-        return JudgeResult::timeout(submission_id, &full_output);
+        return JudgeResult::timeout(submission_id, &full_output, task.rejudge_seq);
     }
 
     // OOM 检测（退出码 137 = 128 + SIGKILL(9)）
     if output.exit_code == 137 {
         warn!("评测 OOM: {}", submission_id);
-        return JudgeResult::memory_exceeded(submission_id, &full_output);
+        return JudgeResult::memory_exceeded(submission_id, &full_output, task.rejudge_seq);
     }
 
     // 尝试解析 ---RESULT--- 标记
@@ -270,13 +302,13 @@ pub fn process_output(task: &JudgeTask, output: &ContainerOutput) -> JudgeResult
         Ok(None) => {
             if output.exit_code == 0 {
                 error!("评测无结果标记: {}", submission_id);
-                JudgeResult::system_error(submission_id, &full_output)
+                JudgeResult::system_error(submission_id, &full_output, task.rejudge_seq)
             } else {
                 error!(
                     "评测运行时错误: {} (exit: {})",
                     submission_id, output.exit_code
                 );
-                JudgeResult::runtime_error(submission_id, &full_output)
+                JudgeResult::runtime_error(submission_id, &full_output, task.rejudge_seq)
             }
         }
         Err(e) => {

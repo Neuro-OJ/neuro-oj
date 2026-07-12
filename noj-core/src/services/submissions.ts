@@ -19,7 +19,10 @@ import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { getDb } from "../db/connection.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
 import { getProblem } from "./problems.ts";
-import { validateJudgeImage, validateJudgeImageWithKind } from "./judge-images.ts";
+import {
+  validateJudgeImage,
+  validateJudgeImageWithKind,
+} from "./judge-images.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { getPendingSubmissionIds, getSubmissionQueueStatus } from "./queue.ts";
 import type {

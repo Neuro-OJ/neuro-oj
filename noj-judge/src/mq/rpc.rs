@@ -152,9 +152,7 @@ impl RpcClient {
     ///
     /// 返回分类后的镜像列表（evaluator / solution），便于 judge 启动时按 kind
     /// 分别预热容器池。
-    pub async fn get_image_allowlist(
-        &mut self,
-    ) -> Result<ImageAllowlist> {
+    pub async fn get_image_allowlist(&mut self) -> Result<ImageAllowlist> {
         let result = self.request("get_image_allowlist", None, 5).await?;
 
         let arr = result
@@ -183,7 +181,10 @@ impl RpcClient {
             }
         }
 
-        Ok(ImageAllowlist { evaluator, solution })
+        Ok(ImageAllowlist {
+            evaluator,
+            solution,
+        })
     }
 }
 

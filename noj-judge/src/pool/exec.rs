@@ -11,6 +11,8 @@ use futures_util::StreamExt;
 use tokio::time::timeout;
 use tracing::warn;
 
+const MAX_EXEC_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
+
 /// 在已存在的容器中通过 exec 执行命令。
 ///
 /// 返回 (stdout, stderr, exit_code, time_ms)。
@@ -49,15 +51,17 @@ pub async fn execute_in_container(
 
         let mut stdout = String::new();
         let mut stderr = String::new();
+        let mut stdout_truncated = false;
+        let mut stderr_truncated = false;
 
         if let StartExecResults::Attached { mut output, .. } = result {
             while let Some(chunk) = output.next().await {
                 match chunk {
                     Ok(LogOutput::StdOut { message }) => {
-                        stdout.push_str(&String::from_utf8_lossy(&message));
+                        append_limited(&mut stdout, &message, &mut stdout_truncated);
                     }
                     Ok(LogOutput::StdErr { message }) => {
-                        stderr.push_str(&String::from_utf8_lossy(&message));
+                        append_limited(&mut stderr, &message, &mut stderr_truncated);
                     }
                     _ => {}
                 }
@@ -77,8 +81,7 @@ pub async fn execute_in_container(
     };
 
     // 竞速：exec 执行 vs 超时
-    let total_timeout_ms = timeout_ms + kill_grace_secs * 1000;
-    match timeout(Duration::from_millis(total_timeout_ms), output_future).await {
+    match timeout(Duration::from_millis(timeout_ms), output_future).await {
         Ok(result) => result,
         Err(_elapsed) => {
             // 超时：先 stop 再 kill
@@ -119,13 +122,14 @@ pub async fn execute_in_container(
             );
 
             let mut output = String::new();
+            let mut truncated = false;
             while let Some(chunk) = logs.next().await {
                 match chunk {
                     Ok(LogOutput::StdOut { message }) => {
-                        output.push_str(&String::from_utf8_lossy(&message));
+                        append_limited(&mut output, &message, &mut truncated);
                     }
                     Ok(LogOutput::StdErr { message }) => {
-                        output.push_str(&String::from_utf8_lossy(&message));
+                        append_limited(&mut output, &message, &mut truncated);
                     }
                     _ => {}
                 }
@@ -139,6 +143,28 @@ pub async fn execute_in_container(
             ))
         }
     }
+}
+
+fn append_limited(output: &mut String, message: &[u8], truncated: &mut bool) {
+    if *truncated {
+        return;
+    }
+
+    let remaining = MAX_EXEC_OUTPUT_BYTES.saturating_sub(output.len());
+    if remaining == 0 {
+        output.push_str("\n...[output truncated by noj-judge]\n");
+        *truncated = true;
+        return;
+    }
+
+    if message.len() <= remaining {
+        output.push_str(&String::from_utf8_lossy(message));
+        return;
+    }
+
+    output.push_str(&String::from_utf8_lossy(&message[..remaining]));
+    output.push_str("\n...[output truncated by noj-judge]\n");
+    *truncated = true;
 }
 
 /// 读取容器的 cgroup 内存峰值（KB）。
@@ -162,3 +188,22 @@ pub async fn read_memory_peak_kb(docker: &Docker, container_id: &str) -> Result<
 }
 
 // parse_command 请使用 crate::sandbox::container::parse_command
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_append_limited_truncates_large_output() {
+        let mut output = String::new();
+        let mut truncated = false;
+        append_limited(
+            &mut output,
+            &vec![b'a'; MAX_EXEC_OUTPUT_BYTES + 128],
+            &mut truncated,
+        );
+        assert!(truncated);
+        assert!(output.contains("truncated by noj-judge"));
+        assert!(output.len() > MAX_EXEC_OUTPUT_BYTES);
+    }
+}

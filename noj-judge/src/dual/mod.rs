@@ -203,7 +203,7 @@ async fn run_dual_loop(
             // 总超时
             _ = &mut deadline => {
                 warn!("Evaluator 总超时: {}", submission_id);
-                return Ok(JudgeResult::timeout(submission_id, "evaluator total timeout"));
+                return Ok(JudgeResult::timeout(submission_id, "evaluator total timeout", None));
             }
 
             // Evaluator stdout/stderr
@@ -282,7 +282,7 @@ async fn run_dual_loop(
             } else {
                 format!("{}\n--- STDERR ---\n{}", eval_stdout_full, eval_stderr_buf)
             };
-            Ok(JudgeResult::system_error(submission_id, &full_output))
+            Ok(JudgeResult::system_error(submission_id, &full_output, None))
         }
     }
 }

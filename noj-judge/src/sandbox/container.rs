@@ -33,7 +33,8 @@ impl TempDir {
         if prefix.contains("..") {
             anyhow::bail!("TempDir prefix 不能包含 '..': {}", prefix);
         }
-        let path = prepare_work_dir(root, prefix).await?;
+        let unique_name = format!("{}-{}", prefix, uuid::Uuid::new_v4());
+        let path = prepare_work_dir(root, &unique_name).await?;
         Ok(Self { path })
     }
 
@@ -90,8 +91,7 @@ fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
 
         // 防止 path traversal 攻击：拒绝任何含 .. 路径组件或绝对路径的条目
         if file_name.split(['/', '\\']).any(|part| part == "..") || file_name.starts_with('/') {
-            warn!("跳过 zip 路径遍历: {}", file_name);
-            continue;
+            anyhow::bail!("zip 包含非法路径条目: {}", file_name);
         }
 
         // 拒绝 overlapping entries（同名路径出现两次）
@@ -322,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_zip_path_traversal_prevented() {
+    fn test_extract_zip_path_traversal_rejected() {
         // 创建一个 zip，其中一个条目试图通过 ../ 逃逸
         let mut buf = std::io::Cursor::new(Vec::new());
         {
@@ -341,33 +341,11 @@ mod tests {
         let target = tempfile::tempdir().unwrap();
         let target_path = target.path().to_path_buf();
 
-        // 记录目标目录下的文件列表
-        let before: Vec<_> = std::fs::read_dir(&target_path)
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .map(|e| e.file_name())
-            .collect();
-        // 确保目录确实是空的
-        assert!(before.is_empty(), "目标目录应初始为空");
-
         let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            extract_zip(&buf.into_inner(), &target_path).await.unwrap();
-        });
-
-        // 正常条目放到了目标目录内
-        assert!(target_path.join("ok.txt").exists());
-
-        // Path traversal 文件不应出现在目标目录内
-        assert!(!target_path.join("evil_outside.txt").exists());
-        // 正常条目之外不应有多余文件（确认 traversal 被拦截）
-        let after: Vec<_> = std::fs::read_dir(&target_path)
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .map(|e| e.file_name())
-            .collect();
-        assert_eq!(after.len(), 1, "目标目录应只有 ok.txt");
-        assert_eq!(after[0], "ok.txt");
+        let err = rt
+            .block_on(async { extract_zip(&buf.into_inner(), &target_path).await })
+            .unwrap_err();
+        assert!(err.to_string().contains("非法路径条目"));
     }
 
     // ── TempDir ──

@@ -1,6 +1,6 @@
 //! 支持包和用户代码的文件注入功能。
 //!
-//! 通过 tar 打包 + docker put_archive 将文件注入到容器内的 `/tmp/`。
+//! 通过 tar 打包 + docker exec `tar xf -` 将文件注入到容器内的 `/tmp/`。
 
 use std::fs;
 use std::path::Path;
@@ -114,8 +114,8 @@ fn collect_entries_rec(base: &Path, current: &Path, entries: &mut Vec<ArchiveEnt
 
 /// 通过 docker exec + tar 将文件注入到容器内的 `/tmp/`。
 ///
-/// Docker put_archive API 在 readonly_rootfs 等场景存在兼容性问题（返回成功但实际不写入），
-/// 改用 exec `tar xf - -C /tmp/` + 管道 stdin 传输 tar 数据，更可靠。
+/// 通过 exec `tar xf - -C /tmp/` + 管道 stdin 传输 tar 数据。
+/// 这样可以在 `readonly_rootfs=true` 的前提下仍然稳定写入 `/tmp` tmpfs。
 pub async fn copy_to_container(
     docker: &Docker,
     container_id: &str,
@@ -182,6 +182,15 @@ pub async fn copy_to_container(
 
         if !stderr.is_empty() {
             warn!("文件注入 stderr: {}", stderr);
+        }
+
+        let inspect = docker
+            .inspect_exec(&exec.id)
+            .await
+            .context("检查 tar exec 状态失败")?;
+        let exit_code = inspect.exit_code.unwrap_or(-1);
+        if exit_code != 0 {
+            anyhow::bail!("文件注入失败 (exit_code={}): {}", exit_code, stderr.trim());
         }
     }
 

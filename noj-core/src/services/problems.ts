@@ -39,7 +39,10 @@ import {
   type RuntimeConfig,
   type UpdateProblemInput,
 } from "../types/problems.ts";
-import { validateJudgeImage, validateJudgeImageWithKind } from "./judge-images.ts";
+import {
+  validateJudgeImage,
+  validateJudgeImageWithKind,
+} from "./judge-images.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { extractSamples } from "../lib/samples.ts";
 import { listCategories } from "./categories.ts";
@@ -119,16 +122,24 @@ export function validateRuntimeConfig(rc: RuntimeConfig): void {
 
   const e = rc.evaluator;
   if (typeof e.image !== "string" || !e.image.trim()) {
-    throw new BadRequestError("runtime_config.evaluator.image 必须是非空字符串");
+    throw new BadRequestError(
+      "runtime_config.evaluator.image 必须是非空字符串",
+    );
   }
   if (typeof e.command !== "string" || !e.command.trim()) {
-    throw new BadRequestError("runtime_config.evaluator.command 必须是非空字符串");
+    throw new BadRequestError(
+      "runtime_config.evaluator.command 必须是非空字符串",
+    );
   }
   if (typeof e.time_limit_ms !== "number" || e.time_limit_ms <= 0) {
-    throw new BadRequestError("runtime_config.evaluator.time_limit_ms 必须为正整数");
+    throw new BadRequestError(
+      "runtime_config.evaluator.time_limit_ms 必须为正整数",
+    );
   }
   if (typeof e.memory_limit_mb !== "number" || e.memory_limit_mb <= 0) {
-    throw new BadRequestError("runtime_config.evaluator.memory_limit_mb 必须为正整数");
+    throw new BadRequestError(
+      "runtime_config.evaluator.memory_limit_mb 必须为正整数",
+    );
   }
 
   const s = rc.solution;
@@ -139,16 +150,22 @@ export function validateRuntimeConfig(rc: RuntimeConfig): void {
     throw new BadRequestError("runtime_config.solution.entry 必须是非空字符串");
   }
   // entry 安全校验：禁止路径分隔符与 ..
-  if (s.entry.includes("/") || s.entry.includes("\\") || s.entry.includes("..")) {
+  if (
+    s.entry.includes("/") || s.entry.includes("\\") || s.entry.includes("..")
+  ) {
     throw new BadRequestError(
       `runtime_config.solution.entry 含非法字符：${s.entry}`,
     );
   }
   if (typeof s.call_timeout_ms !== "number" || s.call_timeout_ms <= 0) {
-    throw new BadRequestError("runtime_config.solution.call_timeout_ms 必须为正整数");
+    throw new BadRequestError(
+      "runtime_config.solution.call_timeout_ms 必须为正整数",
+    );
   }
   if (typeof s.memory_limit_mb !== "number" || s.memory_limit_mb <= 0) {
-    throw new BadRequestError("runtime_config.solution.memory_limit_mb 必须为正整数");
+    throw new BadRequestError(
+      "runtime_config.solution.memory_limit_mb 必须为正整数",
+    );
   }
 }
 
@@ -726,7 +743,11 @@ export async function updateProblem(
   if (input.runtime_config !== undefined) {
     const oldHas = problem.runtime_config !== null;
     const newHas = input.runtime_config !== null;
-    if (oldHas !== newHas || JSON.stringify(problem.runtime_config) !== JSON.stringify(input.runtime_config)) {
+    if (
+      oldHas !== newHas ||
+      JSON.stringify(problem.runtime_config) !==
+        JSON.stringify(input.runtime_config)
+    ) {
       await logAudit(
         "problems.runtime_config_changed",
         {
@@ -1172,7 +1193,8 @@ async function importOne(
       support_package_storage_url: item.support_package_storage_url,
       time_limit_ms: item.time_limit_ms,
       memory_limit_mb: item.memory_limit_mb,
-      runtime_config: (item.runtime_config as RuntimeConfig | null | undefined) ?? null,
+      runtime_config:
+        (item.runtime_config as RuntimeConfig | null | undefined) ?? null,
       updated_at: new Date().toISOString(),
     };
     await db.update(problems).set(updates).where(eq(problems.id, item.id));
@@ -1197,7 +1219,8 @@ async function importOne(
         time_limit_ms: item.time_limit_ms,
         memory_limit_mb: item.memory_limit_mb,
         // runtime_config 缺失时按 null（单容器路径），保持向后兼容
-        runtime_config: (item.runtime_config as RuntimeConfig | null | undefined) ?? null,
+        runtime_config:
+          (item.runtime_config as RuntimeConfig | null | undefined) ?? null,
         type: item.type,
         number: item.number,
         category_ids: categoryIds,
