@@ -21,6 +21,11 @@ Deno.test({
   fn: async () => {
     if (!isE2E) return;
     const res = await fetch(`${BASE_URL}/problems/1001`);
+    if (res.status !== 200) {
+      throw new Error(
+        `问题详情页应返回 200，实际 ${res.status}（需先启动 noj-core）`,
+      );
+    }
     const html = await res.text();
     if (!html.includes("/editor/1001")) {
       throw new Error("题目详情页应包含指向 /editor/1001 的链接");
@@ -36,6 +41,7 @@ Deno.test({
   fn: async () => {
     if (!isE2E) return;
     const res = await fetch(`${BASE_URL}/problems/1001`);
+    if (res.status !== 200) return; // 后端不可用时跳过
     const html = await res.text();
     if (html.includes("monaco-editor")) {
       throw new Error("题目详情页不应再加载 Monaco Editor");
