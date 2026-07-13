@@ -4,7 +4,7 @@
  * 供 PGlite 模式在测试中建表使用。当 Drizzle schema 变更时需同步更新此文件。
  */
 export const SCHEMA_DDL: string[] = [
-  // 1. users
+  // 1. users（issue #100：含 search_vector 列供 PGlite 模式测试）
   `CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
@@ -14,10 +14,14 @@ export const SCHEMA_DDL: string[] = [
     bio TEXT NOT NULL DEFAULT '',
     must_change_password BOOLEAN NOT NULL DEFAULT false,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    search_vector tsvector GENERATED ALWAYS AS (
+      setweight(to_tsvector('simple', coalesce(username, '')), 'A') ||
+      setweight(to_tsvector('simple', coalesce(email, '')), 'B')
+    ) STORED
   )`,
 
-  // 2. problems
+  // 2. problems（issue #100：含 search_vector 列供 PGlite 模式测试）
   `CREATE TABLE IF NOT EXISTS problems (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -32,7 +36,13 @@ export const SCHEMA_DDL: string[] = [
     owner_id TEXT NOT NULL DEFAULT '0',
     type TEXT NOT NULL DEFAULT 'U' CHECK (type IN ('U', 'P')),
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    search_vector tsvector GENERATED ALWAYS AS (
+      setweight(to_tsvector('simple', coalesce(title, '')), 'A') ||
+      setweight(to_tsvector('simple',
+        coalesce(type, '') || ' ' || coalesce(number::text, '')
+      ), 'B')
+    ) STORED
   )`,
 
   // 3. judge_images
@@ -200,6 +210,9 @@ export const SCHEMA_DDL: string[] = [
 ];
 
 export const SCHEMA_INDEXES: string[] = [
+  // issue #100：search_vector GIN 索引（schema-ddl 用于 PGlite 模式测试）
+  "CREATE INDEX IF NOT EXISTS idx_users_search_vector ON users USING GIN (search_vector)",
+  "CREATE INDEX IF NOT EXISTS idx_problems_search_vector ON problems USING GIN (search_vector)",
   "CREATE UNIQUE INDEX IF NOT EXISTS problems_type_number_unique ON problems (type, number)",
   "CREATE INDEX IF NOT EXISTS idx_submissions_user_id ON submissions (user_id)",
   "CREATE INDEX IF NOT EXISTS idx_submissions_problem_id ON submissions (problem_id)",
