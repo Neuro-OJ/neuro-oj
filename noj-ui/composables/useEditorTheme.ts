@@ -2,7 +2,7 @@
  * 编辑器主题状态（light / dark），仅作用于 /editor 路由。
  *
  * - 持久化：localStorage `noj:editor:theme`
- * - DOM 同步：<html> 节点切换 `.editor-dark` 类（实际挂在 /editor 路由根 div 上，更安全）
+ * - DOM 同步（外部职责）：调用方在主题根节点通过 `:class="{ 'editor-dark': ... }"` 切换
  * - Monaco 同步：调用方需在组件中 watch theme 后调 monaco.editor.setTheme()
  */
 export type EditorTheme = "light" | "dark"

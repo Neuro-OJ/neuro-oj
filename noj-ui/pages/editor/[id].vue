@@ -10,10 +10,10 @@ definePageMeta({
 const route = useRoute()
 const router = useRouter()
 const problemId = computed(() => route.params.id as string)
-const { isLoggedIn, user } = useAuth()
+const { isLoggedIn } = useAuth()
 
 // 主题
-const { theme, set: setTheme, toggle: toggleTheme } = useEditorTheme()
+const { theme, set: setTheme } = useEditorTheme()
 
 // 草稿
 const code = ref('')
@@ -24,7 +24,12 @@ const { state: draftState, savedAt: draftSavedAt, clear: clearDraft } = useDraft
 const sidebarTab = ref<'description' | 'history' | 'settings'>('description')
 const sidebarVisible = ref(true)
 const sidebarWidth = useResizableSplit('editor:sidebar:width', 320, 240, 480)
-const sidebarWidthPx = computed(() => sidebarWidth.width.value)
+const sidebarWidthPx = computed({
+  get: () => sidebarWidth.width.value,
+  set: (value: number) => {
+    sidebarWidth.width.value = value
+  },
+})
 
 // 编辑器元数据（用于状态栏）
 const cursor = ref({ line: 1, col: 1 })
@@ -49,13 +54,14 @@ const { data: problemData, pending: problemPending, error: problemError } = useF
 const problem = computed(() => problemData.value?.data ?? null)
 
 // 提交历史
-const { data: submissionsData, refresh: refreshSubmissions } = useFetch<{
+const { data: submissionsData } = useFetch<{
   data: Array<{
     id: string
     status: string
     score: number
     language: string
     created_at: string
+    result: { status: string; score: number } | null
   }>
 }>(() => `/api/v1/submissions?problem_id=${problemId.value}&limit=20`, {
   server: false,
@@ -96,6 +102,11 @@ async function handleSubmit() {
   } finally {
     submitting.value = false
   }
+}
+
+function openSettings() {
+  sidebarTab.value = 'settings'
+  sidebarVisible.value = true
 }
 
 function openSubmission(id: string) {
@@ -146,7 +157,7 @@ function onCursorChange(pos: { line: number; col: number }) {
         :sidebar-visible="sidebarVisible"
         @update:language="language = $event"
         @update:theme-mode="setTheme($event)"
-        @open-settings="(sidebarTab = 'settings') && (sidebarVisible = true)"
+        @open-settings="openSettings"
         @toggle-sidebar="sidebarVisible = !sidebarVisible"
         @submit="handleSubmit"
         @back="goBack"
@@ -174,11 +185,10 @@ function onCursorChange(pos: { line: number; col: number }) {
             />
           </div>
           <ResizableSplitter
-            :model-value="sidebarWidthPx"
+            v-model="sidebarWidthPx"
             :min="240"
             :max="480"
             side="right"
-            @update:model-value="sidebarWidth.width.value = $event"
           />
         </template>
 
