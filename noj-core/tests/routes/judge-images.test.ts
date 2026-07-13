@@ -10,6 +10,7 @@ import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { judgeImages } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
+import { jsonRequest } from "../lib/helper.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const hasEnv = !!Deno.env.get("JWT_SECRET");
@@ -26,7 +27,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await app.request("/api/v1/judge-images");
+    const res = await jsonRequest(app, "/api/v1/judge-images");
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(Array.isArray(body.data), true);
@@ -46,7 +47,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await app.request("/api/v1/judge-images");
+    const res = await jsonRequest(app, "/api/v1/judge-images");
     assertEquals(res.status, 200);
   },
 });
@@ -60,9 +61,7 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
-    const res = await app.request("/api/v1/admin/judge-images", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/api/v1/admin/judge-images", { token });
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(Array.isArray(body.data), true);
@@ -78,9 +77,7 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
-    const res = await app.request("/api/v1/admin/judge-images", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/api/v1/admin/judge-images", { token });
     assertEquals(res.status, 403);
   },
 });
@@ -94,17 +91,14 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
-    const res = await app.request("/api/v1/admin/judge-images", {
+    const res = await jsonRequest(app, "/api/v1/admin/judge-images", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
+      body: {
         image: `route-test-image-${ts}`,
         mode: "exact",
         description: "路由测试",
-      }),
+      },
+      token,
     });
     assertEquals(res.status, 201);
     const body = await res.json();
@@ -123,16 +117,13 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
-    const res = await app.request("/api/v1/admin/judge-images", {
+    const res = await jsonRequest(app, "/api/v1/admin/judge-images", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
+      body: {
         image: "test-image",
         mode: "regex",
-      }),
+      },
+      token,
     });
     assertEquals(res.status, 400);
   },
@@ -149,32 +140,27 @@ Deno.test({
     const token = await signToken({ sub: "0", role: "admin" });
 
     // 先创建
-    const createRes = await app.request("/api/v1/admin/judge-images", {
+    const createRes = await jsonRequest(app, "/api/v1/admin/judge-images", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
+      body: {
         image: `route-update-test-${ts}`,
         mode: "exact",
-      }),
+      },
+      token,
     });
     const created = await createRes.json();
 
     // 再更新
-    const updateRes = await app.request(
+    const updateRes = await jsonRequest(
+      app,
       `/api/v1/admin/judge-images/${created.data.id}`,
       {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
+        body: {
           description: "更新后的介绍",
           mode: "all_versions",
-        }),
+        },
+        token,
       },
     );
     assertEquals(updateRes.status, 200);
@@ -196,23 +182,21 @@ Deno.test({
     const token = await signToken({ sub: "0", role: "admin" });
 
     // 先创建
-    const createRes = await app.request("/api/v1/admin/judge-images", {
+    const createRes = await jsonRequest(app, "/api/v1/admin/judge-images", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
+      body: {
         image: `route-delete-test-${ts}`,
         mode: "exact",
-      }),
+      },
+      token,
     });
     const created = await createRes.json();
 
     // 再删除
-    const deleteRes = await app.request(
+    const deleteRes = await jsonRequest(
+      app,
       `/api/v1/admin/judge-images/${created.data.id}`,
-      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+      { method: "DELETE", token },
     );
     assertEquals(deleteRes.status, 204);
   },
@@ -228,12 +212,10 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
-    const res = await app.request(
+    const res = await jsonRequest(
+      app,
       "/api/v1/admin/judge-images/nonexistent-id",
-      {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      },
+      { method: "DELETE", token },
     );
     assertEquals(res.status, 404);
   },
@@ -247,7 +229,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await app.request("/api/v1/admin/judge-images");
+    const res = await jsonRequest(app, "/api/v1/admin/judge-images");
     assertEquals(res.status, 401);
   },
 });

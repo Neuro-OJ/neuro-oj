@@ -1,8 +1,15 @@
+/**
+ * authMiddleware / adminMiddleware 单元测试。
+ *
+ * 使用裸 `app.fetch(new Request(...))` 或 `jsonRequest()` 直接走中间件，
+ * 不依赖 createApp() 中注册的路由。
+ */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
 import { adminMiddleware, authMiddleware } from "../../src/middleware/auth.ts";
 import { AppError } from "../../src/lib/errors.ts";
 import { signToken } from "../../src/lib/jwt.ts";
+import { jsonRequest } from "../lib/helper.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 
@@ -60,7 +67,7 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
-    const res = await app.request("/protected");
+    const res = await jsonRequest(app, "/protected");
     assertEquals(res.status, 401);
 
     const body = await res.json();
@@ -73,7 +80,8 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
-    const res = await app.request("/protected", {
+    // 显式覆盖 Authorization，跳过 helper 的 Bearer 前缀
+    const res = await jsonRequest(app, "/protected", {
       headers: { Authorization: "" },
     });
     assertEquals(res.status, 401);
@@ -85,7 +93,7 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
-    const res = await app.request("/protected", {
+    const res = await jsonRequest(app, "/protected", {
       headers: { Authorization: "Token abc123" },
     });
     assertEquals(res.status, 401);
@@ -97,7 +105,7 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
-    const res = await app.request("/protected", {
+    const res = await jsonRequest(app, "/protected", {
       headers: { Authorization: "Bearer invalid-token" },
     });
     assertEquals(res.status, 401);
@@ -113,9 +121,7 @@ Deno.test({
     const app = createTestApp();
     const token = await signToken({ sub: "test-user-id", role: "admin" });
 
-    const res = await app.request("/protected", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/protected", { token });
     assertEquals(res.status, 200);
 
     const body = await res.json();
@@ -129,7 +135,7 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
-    const res = await app.request("/protected", {
+    const res = await jsonRequest(app, "/protected", {
       headers: { Authorization: "Bearer " },
     });
     assertEquals(res.status, 401);
@@ -165,9 +171,7 @@ Deno.test({
     const app = createAdminTestApp();
     const token = await signToken({ sub: "test-user-id", role: "user" });
 
-    const res = await app.request("/admin-only", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/admin-only", { token });
     assertEquals(res.status, 403);
 
     const body = await res.json();
@@ -182,9 +186,7 @@ Deno.test({
     const app = createAdminTestApp();
     const token = await signToken({ sub: "admin-user-id", role: "admin" });
 
-    const res = await app.request("/admin-only", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/admin-only", { token });
     assertEquals(res.status, 200);
 
     const body = await res.json();
@@ -198,7 +200,7 @@ Deno.test({
   fn: async () => {
     const app = createAdminTestApp();
 
-    const res = await app.request("/admin-only");
+    const res = await jsonRequest(app, "/admin-only");
     assertEquals(res.status, 401);
   },
 });

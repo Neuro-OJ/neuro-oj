@@ -9,6 +9,7 @@ import {
   generateResetToken,
   hashResetToken,
 } from "../../src/lib/resetToken.ts";
+import { jsonRequest } from "../lib/helper.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const hasJwt = !!Deno.env.get("JWT_SECRET");
@@ -31,67 +32,6 @@ if (hasRedis) {
 
 const BASE = "/api/v1/auth";
 const ts = Date.now();
-
-/**
- * 从登录响应中提取 token。
- */
-function _extractToken(res: Response): string {
-  return res.headers.get("x-test-token") || "";
-}
-
-/**
- * 发送 JSON 请求的辅助函数。
- * 使用 app.fetch()（而非 app.request()）以确保与 Hono 路由兼容。
- */
-async function jsonRequest(
-  app: ReturnType<typeof createApp>,
-  path: string,
-  method: string,
-  body?: Record<string, unknown>,
-  token?: string,
-): Promise<Response> {
-  const headers = new Headers({ "Content-Type": "application/json" });
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-
-  const req = new Request(`http://localhost${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return await app.fetch(req);
-}
-
-/**
- * 带 X-Forwarded-For 的 JSON 请求（用于 IP 限流测试）。
- */
-async function jsonRequestWithIp(
-  app: ReturnType<typeof createApp>,
-  ip: string,
-  path: string,
-  method: string,
-  body?: Record<string, unknown>,
-): Promise<Response> {
-  const headers = new Headers({
-    "Content-Type": "application/json",
-    "X-Forwarded-For": ip,
-  });
-
-  const req = new Request(`http://localhost${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return await app.fetch(req);
-}
-
-/** 生成测试用唯一 IP（10.x.x.x 私有地址） */
-function _uniqueIp(seed: string): string {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) {
-    h = (h * 31 + seed.charCodeAt(i)) & 0xffffffff;
-  }
-  return `10.${(h >>> 8) & 0xff}.${h & 0xff}.${(h >>> 16) & 0xff}`;
-}
 
 /** 确保 Redis 已连接（幂等） */
 async function ensureRedisConnected() {
@@ -130,10 +70,13 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(app, `${BASE}/register`, "POST", {
-      username: `route_user_${ts}`,
-      email: `route_user_${ts}@example.com`,
-      password: "TestPwd-2024-Xy9",
+    const res = await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: `route_user_${ts}`,
+        email: `route_user_${ts}@example.com`,
+        password: "TestPwd-2024-Xy9",
+      },
     });
 
     assertEquals(res.status, 201);
@@ -152,9 +95,12 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(app, `${BASE}/register`, "POST", {
-      username: "abc",
-      // 缺少 email 和 password
+    const res = await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: "abc",
+        // 缺少 email 和 password
+      },
     });
 
     assertEquals(res.status, 400);
@@ -171,10 +117,13 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(app, `${BASE}/register`, "POST", {
-      username: "@invalid!",
-      email: "test@test.com",
-      password: "TestPwd-2024a",
+    const res = await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: "@invalid!",
+        email: "test@test.com",
+        password: "TestPwd-2024a",
+      },
     });
 
     assertEquals(res.status, 400);
@@ -191,10 +140,13 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(app, `${BASE}/register`, "POST", {
-      username: "shortpwd",
-      email: "test@test.com",
-      password: "123",
+    const res = await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: "shortpwd",
+        email: "test@test.com",
+        password: "123",
+      },
     });
 
     assertEquals(res.status, 400);
@@ -211,10 +163,13 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(app, `${BASE}/register`, "POST", {
-      username: "validuser",
-      email: "not-an-email",
-      password: "TestPwd-2024a",
+    const res = await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: "validuser",
+        email: "not-an-email",
+        password: "TestPwd-2024a",
+      },
     });
 
     assertEquals(res.status, 400);
@@ -233,18 +188,24 @@ Deno.test({
     const app = createApp();
 
     // 第一次注册
-    const res1 = await jsonRequest(app, `${BASE}/register`, "POST", {
-      username: `dup_user_${ts}`,
-      email: `dup_user_${ts}@example.com`,
-      password: "TestPwd-2024-Xy9",
+    const res1 = await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: `dup_user_${ts}`,
+        email: `dup_user_${ts}@example.com`,
+        password: "TestPwd-2024-Xy9",
+      },
     });
     assertEquals(res1.status, 201);
 
     // 重复注册相同用户名
-    const res2 = await jsonRequest(app, `${BASE}/register`, "POST", {
-      username: `dup_user_${ts}`,
-      email: `other-${ts}@example.com`,
-      password: "TestPwd-2024-Xy9",
+    const res2 = await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: `dup_user_${ts}`,
+        email: `other-${ts}@example.com`,
+        password: "TestPwd-2024-Xy9",
+      },
     });
     assertEquals(res2.status, 409);
     const body = await res2.json();
@@ -263,16 +224,22 @@ Deno.test({
     const user = `login_test_${ts}`;
 
     // 先注册
-    await jsonRequest(app, `${BASE}/register`, "POST", {
-      username: user,
-      email: `${user}@example.com`,
-      password: "TestPwd-2024-Xy9",
+    await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: user,
+        email: `${user}@example.com`,
+        password: "TestPwd-2024-Xy9",
+      },
     });
 
     // 再登录
-    const res = await jsonRequest(app, `${BASE}/login`, "POST", {
-      login: user,
-      password: "TestPwd-2024-Xy9",
+    const res = await jsonRequest(app, `${BASE}/login`, {
+      method: "POST",
+      body: {
+        login: user,
+        password: "TestPwd-2024-Xy9",
+      },
     });
 
     assertEquals(res.status, 200);
@@ -293,15 +260,21 @@ Deno.test({
     const app = createApp();
     const user = `login_fail_${ts}`;
 
-    await jsonRequest(app, `${BASE}/register`, "POST", {
-      username: user,
-      email: `${user}@example.com`,
-      password: "CorrectPwd-Ab1",
+    await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: user,
+        email: `${user}@example.com`,
+        password: "CorrectPwd-Ab1",
+      },
     });
 
-    const res = await jsonRequest(app, `${BASE}/login`, "POST", {
-      login: user,
-      password: "WrongPwd-Cd2",
+    const res = await jsonRequest(app, `${BASE}/login`, {
+      method: "POST",
+      body: {
+        login: user,
+        password: "WrongPwd-Cd2",
+      },
     });
 
     assertEquals(res.status, 401);
@@ -321,21 +294,27 @@ Deno.test({
     const user = `me_test_${ts}`;
 
     // 注册
-    await jsonRequest(app, `${BASE}/register`, "POST", {
-      username: user,
-      email: `${user}@example.com`,
-      password: "TestPwd-2024-Xy9",
+    await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: user,
+        email: `${user}@example.com`,
+        password: "TestPwd-2024-Xy9",
+      },
     });
 
     // 登录获取 token
-    const loginRes = await jsonRequest(app, `${BASE}/login`, "POST", {
-      login: user,
-      password: "TestPwd-2024-Xy9",
+    const loginRes = await jsonRequest(app, `${BASE}/login`, {
+      method: "POST",
+      body: {
+        login: user,
+        password: "TestPwd-2024-Xy9",
+      },
     });
     const { token } = (await loginRes.json()).data;
 
     // 访问 /me
-    const meRes = await jsonRequest(app, `${BASE}/me`, "GET", undefined, token);
+    const meRes = await jsonRequest(app, `${BASE}/me`, { token });
     assertEquals(meRes.status, 200);
     const meBody = await meRes.json();
     assertEquals(meBody.data.username, user);
@@ -355,16 +334,22 @@ Deno.test({
     const email = `${user}@example.com`;
 
     // 先注册
-    await jsonRequest(app, `${BASE}/register`, "POST", {
-      username: user,
-      email,
-      password: "TestPwd-2024-Xy9",
+    await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: user,
+        email,
+        password: "TestPwd-2024-Xy9",
+      },
     });
 
     // 用邮箱登录
-    const res = await jsonRequest(app, `${BASE}/login`, "POST", {
-      login: email,
-      password: "TestPwd-2024-Xy9",
+    const res = await jsonRequest(app, `${BASE}/login`, {
+      method: "POST",
+      body: {
+        login: email,
+        password: "TestPwd-2024-Xy9",
+      },
     });
 
     assertEquals(res.status, 200);
@@ -383,10 +368,13 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const _user = `ab_${ts}`; // 5 字符，有效
-    const res = await jsonRequest(app, `${BASE}/register`, "POST", {
-      username: "ab", // 2 字符，无效
-      email: `bound_min_${ts}@example.com`,
-      password: "TestPwd-2024", // 11 字符，少于 12
+    const res = await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: "ab", // 2 字符，无效
+        email: `bound_min_${ts}@example.com`,
+        password: "TestPwd-2024", // 11 字符，少于 12
+      },
     });
     assertEquals(res.status, 400);
   },
@@ -402,10 +390,13 @@ Deno.test({
     const app = createApp();
     // 31 字符，无效
     const longName = "a".repeat(31);
-    const res = await jsonRequest(app, `${BASE}/register`, "POST", {
-      username: longName,
-      email: `bound_max_${ts}@example.com`,
-      password: "TestPwd-2024", // 11 字符，少于 12
+    const res = await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: longName,
+        email: `bound_max_${ts}@example.com`,
+        password: "TestPwd-2024", // 11 字符，少于 12
+      },
     });
     assertEquals(res.status, 400);
   },
@@ -420,10 +411,13 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const user = `pw8_${ts}`;
-    const res = await jsonRequest(app, `${BASE}/register`, "POST", {
-      username: user,
-      email: `${user}@example.com`,
-      password: "TestPwd-2024a", // 恰好 12 位
+    const res = await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: user,
+        email: `${user}@example.com`,
+        password: "TestPwd-2024a", // 恰好 12 位
+      },
     });
     assertEquals(res.status, 201);
   },
@@ -437,7 +431,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(app, `${BASE}/me`, "GET");
+    const res = await jsonRequest(app, `${BASE}/me`);
     assertEquals(res.status, 401);
     const body = await res.json();
     assertEquals(body.error, "未提供认证令牌");
@@ -452,13 +446,9 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(
-      app,
-      `${BASE}/me`,
-      "GET",
-      undefined,
-      "Bearer invalid-token",
-    );
+    const res = await jsonRequest(app, `${BASE}/me`, {
+      token: "invalid-token",
+    });
     assertEquals(res.status, 401);
     const body = await res.json();
     assertEquals(body.error, "认证令牌无效或已过期");
@@ -473,8 +463,11 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(app, `${BASE}/login`, "POST", {
-      login: "user", // 缺少 password
+    const res = await jsonRequest(app, `${BASE}/login`, {
+      method: "POST",
+      body: {
+        login: "user", // 缺少 password
+      },
     });
     assertEquals(res.status, 400);
   },
@@ -516,24 +509,26 @@ Deno.test({
 
       // 用不同账号（每次都不存在），账号维度不会先触发限流
       for (let i = 0; i < 10; i++) {
-        const res = await jsonRequestWithIp(
-          app,
+        const res = await jsonRequest(app, `${BASE}/login`, {
+          method: "POST",
+          body: {
+            login: `ip_noexist_${ts}_${i}`,
+            password: "WrongPwd-Cd2",
+          },
           ip,
-          `${BASE}/login`,
-          "POST",
-          { login: `ip_noexist_${ts}_${i}`, password: "WrongPwd-Cd2" },
-        );
+        });
         assertEquals(res.status, 401, `第 ${i + 1} 次应 401（账号不存在）`);
       }
 
       // 第 11 次：IP 维度超限 → 429
-      const res = await jsonRequestWithIp(
-        app,
+      const res = await jsonRequest(app, `${BASE}/login`, {
+        method: "POST",
+        body: {
+          login: `ip_noexist_${ts}_10`,
+          password: "WrongPwd-Cd2",
+        },
         ip,
-        `${BASE}/login`,
-        "POST",
-        { login: `ip_noexist_${ts}_10`, password: "WrongPwd-Cd2" },
-      );
+      });
       assertEquals(res.status, 429);
       assertEquals(res.headers.get("X-RateLimit-Limit"), "10");
       assertEquals(res.headers.get("X-RateLimit-Remaining"), "0");
@@ -569,10 +564,13 @@ Deno.test({
       }`;
 
       // 注册
-      await jsonRequest(app, `${BASE}/register`, "POST", {
-        username: user,
-        email: `${user}@example.com`,
-        password: "CorrectPwd-Ab1",
+      await jsonRequest(app, `${BASE}/register`, {
+        method: "POST",
+        body: {
+          username: user,
+          email: `${user}@example.com`,
+          password: "CorrectPwd-Ab1",
+        },
       });
 
       // 10 次错密码（每次清掉 IP 限流计数 + 账号退避，避免 IP 限流先于锁定触发）
@@ -581,13 +579,14 @@ Deno.test({
         // 清掉账号维度的限流计数（业务上限 5 会先触发，否则无法连续 10 次失败）
         await redis.del(`ratelimit:login:acc:${user}`);
         _clearLoginBackoffForTest();
-        const res = await jsonRequestWithIp(
-          app,
+        const res = await jsonRequest(app, `${BASE}/login`, {
+          method: "POST",
+          body: {
+            login: user,
+            password: "WrongPwd-Cd2",
+          },
           ip,
-          `${BASE}/login`,
-          "POST",
-          { login: user, password: "WrongPwd-Cd2" },
-        );
+        });
         assertEquals(res.status, 401, `第 ${i + 1} 次错密码应 401`);
       }
 
@@ -601,13 +600,14 @@ Deno.test({
         );
       }
 
-      const res = await jsonRequestWithIp(
-        app,
+      const res = await jsonRequest(app, `${BASE}/login`, {
+        method: "POST",
+        body: {
+          login: user,
+          password: "WrongPwd-Cd2",
+        },
         ip,
-        `${BASE}/login`,
-        "POST",
-        { login: user, password: "WrongPwd-Cd2" },
-      );
+      });
       assertEquals(res.status, 401);
       const body = await res.json();
       assertEquals(body.error, "登录尝试过多，账号已临时锁定");
@@ -663,16 +663,20 @@ Deno.test({
     const app = createApp();
     const username = `pwreset_route_${ts}`;
     const email = `pwreset_route_${ts}@example.com`;
-    const registerRes = await jsonRequest(app, `${BASE}/register`, "POST", {
-      username,
-      email,
-      password: "OrigPass-2024-Ab1",
+    const registerRes = await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username,
+        email,
+        password: "OrigPass-2024-Ab1",
+      },
     });
     assertEquals(registerRes.status, 201);
 
     // 发起重置
-    const res = await jsonRequest(app, `${BASE}/forgot-password`, "POST", {
-      email,
+    const res = await jsonRequest(app, `${BASE}/forgot-password`, {
+      method: "POST",
+      body: { email },
     });
     assertEquals(res.status, 200);
     const body = await res.json();
@@ -689,8 +693,11 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(app, `${BASE}/forgot-password`, "POST", {
-      email: `nobody-${ts}@example.com`,
+    const res = await jsonRequest(app, `${BASE}/forgot-password`, {
+      method: "POST",
+      body: {
+        email: `nobody-${ts}@example.com`,
+      },
     });
     assertEquals(res.status, 200);
     const body = await res.json();
@@ -708,7 +715,10 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(app, `${BASE}/forgot-password`, "POST", {});
+    const res = await jsonRequest(app, `${BASE}/forgot-password`, {
+      method: "POST",
+      body: {},
+    });
     assertEquals(res.status, 400);
   },
 });
@@ -721,9 +731,12 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(app, `${BASE}/reset-password`, "POST", {
-      token: "fake",
-      // 缺 new_password
+    const res = await jsonRequest(app, `${BASE}/reset-password`, {
+      method: "POST",
+      body: {
+        token: "fake",
+        // 缺 new_password
+      },
     });
     assertEquals(res.status, 400);
   },
@@ -737,9 +750,12 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(app, `${BASE}/reset-password`, "POST", {
-      token: "invalid-fake-token",
-      new_password: "NewPass-2024-Xy9",
+    const res = await jsonRequest(app, `${BASE}/reset-password`, {
+      method: "POST",
+      body: {
+        token: "invalid-fake-token",
+        new_password: "NewPass-2024-Xy9",
+      },
     });
     assertEquals(res.status, 400);
     const body = await res.json();
@@ -759,21 +775,20 @@ Deno.test({
     const email = `pwweak_route_${ts}@example.com`;
 
     // 先注册用户
-    await jsonRequest(app, `${BASE}/register`, "POST", {
-      username,
-      email,
-      password: "OrigPass-2024-Ab1",
+    await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username,
+        email,
+        password: "OrigPass-2024-Ab1",
+      },
     });
 
     // 发起重置获取 token（通过 console.log mock 无法捕获，直接查 DB token）
-    const forgotRes = await jsonRequest(
-      app,
-      `${BASE}/forgot-password`,
-      "POST",
-      {
-        email,
-      },
-    );
+    const forgotRes = await jsonRequest(app, `${BASE}/forgot-password`, {
+      method: "POST",
+      body: { email },
+    });
     assertEquals(forgotRes.status, 200);
 
     // 从 DB 插入一个已知 token 用于测试弱密码路径
@@ -795,9 +810,12 @@ Deno.test({
     });
 
     // 用合法 token + 弱密码 → 应 400
-    const res = await jsonRequest(app, `${BASE}/reset-password`, "POST", {
-      token,
-      new_password: "short",
+    const res = await jsonRequest(app, `${BASE}/reset-password`, {
+      method: "POST",
+      body: {
+        token,
+        new_password: "short",
+      },
     });
     assertEquals(res.status, 400);
 

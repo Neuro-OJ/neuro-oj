@@ -1,6 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
+import { jsonRequest } from "../lib/helper.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const hasEnv = !!Deno.env.get("JWT_SECRET");
@@ -17,7 +18,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/categories");
+    const res = await jsonRequest(app, "/api/v1/categories");
     assertEquals(res.status, 200);
 
     const body = await res.json();
@@ -32,10 +33,9 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/categories", {
+    const res = await jsonRequest(app, "/api/v1/categories", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "新分类", slug: "new-cat" }),
+      body: { name: "新分类", slug: "new-cat" },
     });
     assertEquals(res.status, 401);
   },
@@ -50,13 +50,10 @@ Deno.test({
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
 
-    const res = await app.request("/api/v1/categories", {
+    const res = await jsonRequest(app, "/api/v1/categories", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ name: "新分类", slug: "new-cat" }),
+      body: { name: "新分类", slug: "new-cat" },
+      token,
     });
     assertEquals(res.status, 403);
   },
@@ -71,13 +68,10 @@ Deno.test({
     const app = createApp();
     const token = await signToken({ sub: "admin-user", role: "admin" });
 
-    const res = await app.request("/api/v1/categories", {
+    const res = await jsonRequest(app, "/api/v1/categories", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ name: "" }),
+      body: { name: "" },
+      token,
     });
     assertEquals(res.status, 400);
   },
@@ -90,7 +84,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/categories/nonexistent");
+    const res = await jsonRequest(app, "/api/v1/categories/nonexistent");
     assertEquals(res.status, 404);
   },
 });

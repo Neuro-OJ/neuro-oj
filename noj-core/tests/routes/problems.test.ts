@@ -3,6 +3,7 @@ import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { createProblem } from "../../src/services/problems.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { jsonRequest } from "../lib/helper.ts";
 
 // PGlite 内存数据库始终可用
 const dbAvailable = true;
@@ -32,7 +33,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/problems");
+    const res = await jsonRequest(app, "/api/v1/problems");
     assertEquals(res.status, 200);
 
     const body = await res.json();
@@ -50,7 +51,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/problems?page=1&limit=5");
+    const res = await jsonRequest(app, "/api/v1/problems?page=1&limit=5");
     assertEquals(res.status, 200);
 
     const body = await res.json();
@@ -66,7 +67,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/problems?difficulty=easy");
+    const res = await jsonRequest(app, "/api/v1/problems?difficulty=easy");
     assertEquals(res.status, 200);
 
     const body = await res.json();
@@ -84,9 +85,9 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await app.request(
-      "/api/v1/problems?keyword=" +
-        encodeURIComponent("测试"),
+    const res = await jsonRequest(
+      app,
+      "/api/v1/problems?keyword=" + encodeURIComponent("测试"),
     );
     assertEquals(res.status, 200);
   },
@@ -121,7 +122,7 @@ Deno.test({
       judge_command: "python3 /tmp/evaluate.py",
       category_ids: [catId],
     });
-    const res = await app.request(`/api/v1/problems/${problem.id}`);
+    const res = await jsonRequest(app, `/api/v1/problems/${problem.id}`);
     assertEquals(res.status, 200);
 
     const body = await res.json();
@@ -138,7 +139,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/problems/nonexistent");
+    const res = await jsonRequest(app, "/api/v1/problems/nonexistent");
     assertEquals(res.status, 404);
 
     const body = await res.json();
@@ -153,10 +154,9 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/problems", {
+    const res = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "新题" }),
+      body: { title: "新题" },
     });
     assertEquals(res.status, 401);
   },
@@ -171,19 +171,16 @@ Deno.test({
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
 
-    const res = await app.request("/api/v1/problems", {
+    const res = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
+      body: {
         title: "新题",
         description: "描述",
         judge_image: "noj-judge-python",
         judge_command: "python3 /tmp/evaluate.py",
         type: "P",
-      }),
+      },
+      token,
     });
     assertEquals(res.status, 403);
   },
@@ -198,13 +195,9 @@ Deno.test({
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
 
-    const res = await app.request("/api/v1/problems", {
+    const res = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
+      body: {
         title: "管理员创建的新题",
         description: "测试描述",
         difficulty: "medium",
@@ -212,7 +205,8 @@ Deno.test({
         judge_command: "python3 /tmp/evaluate.py",
         time_limit_ms: 5000,
         memory_limit_mb: 256,
-      }),
+      },
+      token,
     });
     assertEquals(res.status, 201);
 
@@ -230,13 +224,10 @@ Deno.test({
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
 
-    const res = await app.request(`/api/v1/problems/${TEST_PROBLEM_ID}`, {
+    const res = await jsonRequest(app, `/api/v1/problems/${TEST_PROBLEM_ID}`, {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ title: "被篡改" }),
+      body: { title: "被篡改" },
+      token,
     });
     assertEquals(res.status, 403);
   },
@@ -251,9 +242,9 @@ Deno.test({
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
 
-    const res = await app.request(`/api/v1/problems/${TEST_PROBLEM_ID}`, {
+    const res = await jsonRequest(app, `/api/v1/problems/${TEST_PROBLEM_ID}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
+      token,
     });
     assertEquals(res.status, 403);
   },
@@ -266,7 +257,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await app.request("/api/v1/problems");
+    const res = await jsonRequest(app, "/api/v1/problems");
     assertEquals(
       res.headers.get("content-type")?.includes("application/json"),
       true,

@@ -16,6 +16,7 @@ import {
 } from "../../src/middleware/auth.ts";
 import { AppError } from "../../src/lib/errors.ts";
 import { signToken } from "../../src/lib/jwt.ts";
+import { jsonRequest } from "../lib/helper.ts";
 import { resetDbForTest } from "../../src/db/connection.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
@@ -90,9 +91,7 @@ Deno.test({
       must_change_password: true,
     });
 
-    const res = await app.request("/protected", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/protected", { token });
     assertEquals(res.status, 403);
 
     const body = await res.json();
@@ -112,9 +111,9 @@ Deno.test({
       must_change_password: true,
     });
 
-    const res = await app.request("/api/v1/auth/change-password", {
+    const res = await jsonRequest(app, "/api/v1/auth/change-password", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      token,
     });
     assertEquals(res.status, 200);
   },
@@ -131,9 +130,7 @@ Deno.test({
       must_change_password: true,
     });
 
-    const res = await app.request("/api/v1/auth/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/api/v1/auth/me", { token });
     assertEquals(res.status, 200);
 
     const body = await res.json();
@@ -151,9 +148,7 @@ Deno.test({
       role: "user",
     });
 
-    const res = await app.request("/protected", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/protected", { token });
     assertEquals(res.status, 200);
 
     const body = await res.json();
@@ -173,9 +168,7 @@ Deno.test({
       must_change_password: false,
     });
 
-    const res = await app.request("/protected", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await jsonRequest(app, "/protected", { token });
     assertEquals(res.status, 200);
   },
 });
@@ -186,7 +179,7 @@ Deno.test({
   fn: async () => {
     const app = createTestApp();
 
-    const res = await app.request("/protected");
+    const res = await jsonRequest(app, "/protected");
     assertEquals(res.status, 401);
 
     const body = await res.json();

@@ -15,6 +15,7 @@ import { users } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { registerUser } from "../../src/services/auth.ts";
 import { signToken } from "../../src/lib/jwt.ts";
+import { jsonRequest } from "../lib/helper.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建
 await resetDbForTest();
@@ -62,27 +63,6 @@ function uniqueIp(): string {
   }.${Math.floor(Math.random() * 255)}`;
 }
 
-async function jsonRequest(
-  app: ReturnType<typeof createApp>,
-  path: string,
-  method: string,
-  body?: Record<string, unknown>,
-  token?: string,
-): Promise<Response> {
-  const headers = new Headers({
-    "Content-Type": "application/json",
-    "X-Forwarded-For": uniqueIp(),
-  });
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-
-  const req = new Request(`http://localhost${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return await app.fetch(req);
-}
-
 Deno.test({
   name: "route change-password: 注册用户并获取 token",
   ignore: skip,
@@ -108,13 +88,12 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(
-      app,
-      `${BASE}/change-password`,
-      "POST",
-      { old_password: TEST_USER.password, new_password: NEW_PASS },
-      testToken,
-    );
+    const res = await jsonRequest(app, `${BASE}/change-password`, {
+      method: "POST",
+      body: { old_password: TEST_USER.password, new_password: NEW_PASS },
+      token: testToken,
+      ip: uniqueIp(),
+    });
     assertEquals(res.status, 200);
 
     const body = await res.json();
@@ -130,13 +109,12 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(
-      app,
-      `${BASE}/change-password`,
-      "POST",
-      { new_password: NEW_PASS },
-      testToken,
-    );
+    const res = await jsonRequest(app, `${BASE}/change-password`, {
+      method: "POST",
+      body: { new_password: NEW_PASS },
+      token: testToken,
+      ip: uniqueIp(),
+    });
     assertEquals(res.status, 400);
 
     const body = await res.json();
@@ -151,13 +129,12 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(
-      app,
-      `${BASE}/change-password`,
-      "POST",
-      { old_password: TEST_USER.password },
-      testToken,
-    );
+    const res = await jsonRequest(app, `${BASE}/change-password`, {
+      method: "POST",
+      body: { old_password: TEST_USER.password },
+      token: testToken,
+      ip: uniqueIp(),
+    });
     assertEquals(res.status, 400);
   },
 });
@@ -169,13 +146,12 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(
-      app,
-      `${BASE}/change-password`,
-      "POST",
-      { old_password: "WrongOldPass-123", new_password: NEW_PASS },
-      testToken,
-    );
+    const res = await jsonRequest(app, `${BASE}/change-password`, {
+      method: "POST",
+      body: { old_password: "WrongOldPass-123", new_password: NEW_PASS },
+      token: testToken,
+      ip: uniqueIp(),
+    });
     assertEquals(res.status, 401);
 
     const body = await res.json();
@@ -190,12 +166,11 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const res = await jsonRequest(
-      app,
-      `${BASE}/change-password`,
-      "POST",
-      { old_password: TEST_USER.password, new_password: NEW_PASS },
-    );
+    const res = await jsonRequest(app, `${BASE}/change-password`, {
+      method: "POST",
+      body: { old_password: TEST_USER.password, new_password: NEW_PASS },
+      ip: uniqueIp(),
+    });
     assertEquals(res.status, 401);
   },
 });
