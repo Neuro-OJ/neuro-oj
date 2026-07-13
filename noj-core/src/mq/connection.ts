@@ -23,6 +23,7 @@ export interface RedisClient {
   incr(key: string): Promise<number>;
   pexpire(key: string, ms: number): Promise<number>;
   expire(key: string, seconds: number): Promise<number>;
+  ttl(key: string): Promise<number>;
   pttl(key: string): Promise<number>;
   del(...keys: string[]): Promise<number>;
   exists(...keys: string[]): Promise<number>;
