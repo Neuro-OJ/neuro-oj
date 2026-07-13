@@ -10,6 +10,20 @@ const props = defineProps<{
   draftSavedAt: Date | null
 }>()
 
+// 响应式时钟，让 savedAtLabel 跟随时间推进刷新
+const now = ref(Date.now())
+let nowTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  // SSR 安全：仅在浏览器环境启动定时器
+  if (!import.meta.client) return
+  nowTimer = setInterval(() => {
+    now.value = Date.now()
+  }, 5000)
+})
+onBeforeUnmount(() => {
+  if (nowTimer) clearInterval(nowTimer)
+})
+
 const draftLabel = computed(() => {
   switch (props.draftState) {
     case 'dirty':
@@ -43,7 +57,7 @@ const draftDotClass = computed(() => {
 
 const savedAtLabel = computed(() => {
   if (!props.draftSavedAt) return '未保存'
-  const diff = Math.floor((Date.now() - props.draftSavedAt.getTime()) / 1000)
+  const diff = Math.floor((now.value - props.draftSavedAt.getTime()) / 1000)
   if (diff < 2) return '刚刚已保存'
   if (diff < 60) return `${diff}s 前已保存`
   if (diff < 3600) return `${Math.floor(diff / 60)}m 前已保存`
