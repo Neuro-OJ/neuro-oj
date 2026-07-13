@@ -146,7 +146,7 @@ function onCursorChange(pos: { line: number; col: number }) {
         :sidebar-visible="sidebarVisible"
         @update:language="language = $event"
         @update:theme-mode="setTheme($event)"
-        @toggle-theme="toggleTheme"
+        @open-settings="(sidebarTab = 'settings') && (sidebarVisible = true)"
         @toggle-sidebar="sidebarVisible = !sidebarVisible"
         @submit="handleSubmit"
         @back="goBack"
