@@ -7,12 +7,11 @@
  * - type=problem: 公开（默认仅 P 型；admin + include_u=true 返回 U+P）
  * - type=user: admin only
  *
- * 限流：复用 searchRateLimit 中间件（IP/用户桶分离，admin 不限流）。
+ * 限流：由 app.ts 以匿名 IP 桶的路径级中间件统一处理。
  */
 
 import { Hono } from "hono";
 import { optionalAuthMiddleware } from "../middleware/auth.ts";
-import { searchRateLimit } from "../middleware/searchRateLimit.ts";
 import { searchProblems, searchUsers } from "../services/search.ts";
 import {
   ForbiddenError,
@@ -62,10 +61,6 @@ router.get("/", optionalAuthMiddleware, async (c) => {
     }
     throw new ForbiddenError("仅管理员可搜索用户");
   }
-
-  // 限流维度：admin 不限流（中间件内部已跳过），其余走 IP 桶
-  // 注：此处直接调用中间件闭包（hacky）；Task 8 测试会改为 mount 路径级中间件
-  await searchRateLimit(isAdmin ? "authed" : "anon")(c, async () => {});
 
   // 解析分页
   const page = Math.max(1, parseInt(c.req.query("page") ?? "1", 10) || 1);
