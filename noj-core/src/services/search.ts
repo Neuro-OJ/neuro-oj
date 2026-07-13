@@ -13,6 +13,23 @@
 
 import { sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
+import { ForbiddenError } from "../lib/errors.ts";
+
+/**
+ * 转义 LIKE 模式中的元字符（reviewer issue 2）。
+ *
+ * PostgreSQL LIKE 默认将 `%` 视为"任意字符序列"、`_` 视为"任意单个字符"。
+ * 用户输入 "50%off" 会变成 `%50%off%` 模式，意外匹配所有含 "50" 后跟任意字符再 "off" 的字符串。
+ * 同样 "foo_bar" 会匹配 "foo1bar"、"foo-bar" 等。
+ *
+ * 配合 `ESCAPE '\'` 子句，转义后 `\%` / `\_` 表示字面 `%` / `_`，`\\` 表示字面 `\`。
+ */
+function escapeLikePattern(s: string): string {
+  return s.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll(
+    "_",
+    "\\_",
+  );
+}
 
 export interface SearchProblemsParams {
   q: string;
@@ -55,6 +72,7 @@ export async function searchProblems(
   const offset = (page - 1) * limit;
   const includeUType = isAdmin && includeU;
   const start = performance.now();
+  const likeQ = `%${escapeLikePattern(q)}%`;
 
   // 列表查询：tsvector + trigram 联合（display_id 走 ILIKE 兜底，命中 'P1001' 这类 ID 搜索）
   const rows = await db.execute<{
@@ -75,8 +93,8 @@ export async function searchProblems(
     FROM problems p
     WHERE (
       p.search_vector @@ websearch_to_tsquery('simple', ${q})
-      OR p.title ILIKE ${"%" + q + "%"}
-      OR (p.type || p.number::text) ILIKE ${"%" + q + "%"}
+      OR p.title ILIKE ${likeQ} ESCAPE '\\'
+      OR (p.type || p.number::text) ILIKE ${likeQ} ESCAPE '\\'
     )
     AND (
       ${includeUType} = TRUE
@@ -116,8 +134,8 @@ export async function searchProblems(
     FROM problems p
     WHERE (
       p.search_vector @@ websearch_to_tsquery('simple', ${q})
-      OR p.title ILIKE ${"%" + q + "%"}
-      OR (p.type || p.number::text) ILIKE ${"%" + q + "%"}
+      OR p.title ILIKE ${likeQ} ESCAPE '\\'
+      OR (p.type || p.number::text) ILIKE ${likeQ} ESCAPE '\\'
     )
     AND (
       ${includeUType} = TRUE
@@ -170,16 +188,25 @@ export interface SearchUsersResult {
 /**
  * 搜索用户（admin only）。
  *
- * 必须 isAdmin=true，否则路由层拒绝（service 层不重复鉴权）。
+ * 必须 isAdmin=true。
  * 排除 root 用户（UID='0'）。
+ *
+ * 防御性鉴权（reviewer issue 3）：service 层加 `ForbiddenError` 兜底。
+ * 正常调用应来自路由层 `requireAdmin` 中间件保护，但万一路由守卫缺失，
+ * service 层 fail-closed 抛出 403，避免静默返回用户列表导致越权。
  */
 export async function searchUsers(
   params: SearchUsersParams,
 ): Promise<SearchUsersResult> {
+  // 防御性鉴权（fail-closed）：路由层若漏掉 admin 守卫，service 层兜底拒绝
+  if (!params.isAdmin) {
+    throw new ForbiddenError("用户搜索仅限管理员");
+  }
   const db = getDb();
   const { q, page, limit } = params;
   const offset = (page - 1) * limit;
   const start = performance.now();
+  const likeQ = `%${escapeLikePattern(q)}%`;
 
   const rows = await db.execute<{
     id: string;
@@ -198,7 +225,7 @@ export async function searchUsers(
     FROM users u
     WHERE (
       u.search_vector @@ websearch_to_tsquery('simple', ${q})
-      OR u.username ILIKE ${"%" + q + "%"}
+      OR u.username ILIKE ${likeQ} ESCAPE '\\'
     )
     AND u.id <> '0'
     ORDER BY rank DESC NULLS LAST, u.username ASC
@@ -230,7 +257,7 @@ export async function searchUsers(
     FROM users u
     WHERE (
       u.search_vector @@ websearch_to_tsquery('simple', ${q})
-      OR u.username ILIKE ${"%" + q + "%"}
+      OR u.username ILIKE ${likeQ} ESCAPE '\\'
     )
     AND u.id <> '0'
   `);

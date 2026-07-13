@@ -1,19 +1,22 @@
 /**
- * 搜索 service 测试（issue #100 Task 5）。
+ * 搜索 service 测试（issue #100 Task 5 + reviewer 修复）。
  *
- * 覆盖 6 个场景：
+ * 覆盖 8 个场景：
  * 1. 搜 'P1001' 命中 P 型题（display_id 走 search_vector）
  * 2. 中文 '动态规划' 命中（trigram ILIKE 兜底）
  * 3. 公开搜索不返回 U 型题
  * 4. admin + includeU=true 返回 U+P
  * 5. 搜英文 'Hello' 命中 tsvector
- * 6. 用户搜索仅 admin，排除 root
+ * 6. 用户搜索仅 admin（root 排除由测试 7 单独验证）
+ * 7. 用户搜索排除 root（seed 含 root，断言 result 中无 id='0'）
+ * 8. searchUsers admin 守卫：isAdmin=false 抛 ForbiddenError
  */
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { searchProblems, searchUsers } from "../../src/services/search.ts";
 import { resetDbForTest } from "../../src/db/connection.ts";
 import { problems, users } from "../../src/db/schema.ts";
 import { getDb } from "../../src/db/connection.ts";
+import { ForbiddenError } from "../../src/lib/errors.ts";
 
 await resetDbForTest();
 
@@ -83,6 +86,21 @@ async function seedUsers() {
       updated_at: now,
     },
   ]);
+  // reviewer issue 1：root 用户（id='0'）由 _setup.ts 建表时种入。
+  // 这里显式 upsert 一下，确保 username='root' / email='root@noj.local' 与 service
+  // 期望一致（_setup.ts 已经种了相同 id='0'，onConflictDoNothing 跳过）。
+  await db
+    .insert(users)
+    .values({
+      id: "0",
+      username: "root",
+      email: "root@noj.local",
+      password_hash: "x",
+      role: "admin",
+      created_at: now,
+      updated_at: now,
+    })
+    .onConflictDoNothing();
 }
 
 Deno.test({
@@ -191,5 +209,52 @@ Deno.test({
     assertEquals(result.items.length, 1);
     assertEquals(result.items[0]?.username, "alice_test");
     assertEquals(result.items[0]?.email, "alice@example.com");
+  },
+});
+
+Deno.test({
+  name: "search service: 用户搜索排除 root（reviewer issue 1）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await seedUsers();
+    // 搜 "root" 既可能匹配 root 用户，也可能匹配其他含 'root' 字样的。
+    // 这里用宽查询 'a' 来确认 root（username='root'）从不被返回。
+    const result = await searchUsers({
+      q: "a",
+      isAdmin: true,
+      page: 1,
+      limit: 20,
+    });
+    // 关键断言：root 用户（id='0'）必须被排除
+    const root = result.items.find((i) => i.id === "0");
+    assertEquals(root, undefined);
+    // 同时验证 alice / admin 两个非 root 用户都能命中
+    const usernames = result.items.map((i) => i.username).sort();
+    assertEquals(usernames.includes("alice_test"), true);
+    assertEquals(usernames.includes("admin_test"), true);
+  },
+});
+
+Deno.test({
+  name: "search service: searchUsers admin 守卫（reviewer issue 3）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await seedUsers();
+    // isAdmin=false 时 service 层兜底抛 ForbiddenError（fail-closed）
+    await assertRejects(
+      () =>
+        searchUsers({
+          q: "alice",
+          isAdmin: false,
+          page: 1,
+          limit: 20,
+        }),
+      ForbiddenError,
+      "用户搜索仅限管理员",
+    );
   },
 });
