@@ -167,37 +167,37 @@ docker compose down     # 停止
 
 ## API 路由
 
-| 方法   | 路径                                   | 权限   | 说明                                         |
-| ------ | -------------------------------------- | ------ | -------------------------------------------- |
-| POST   | `/api/v1/auth/register`                | 公开   | 用户注册                                     |
-| POST   | `/api/v1/auth/login`                   | 公开   | 用户登录（返回 JWT）                         |
-| GET    | `/api/v1/auth/me`                      | 登录   | 当前用户信息                                 |
-| GET    | `/api/v1/categories`                   | 公开   | 分类树                                       |
-| POST   | `/api/v1/categories`                   | 管理员 | 创建分类                                     |
-| GET    | `/api/v1/categories/:id`               | 公开   | 分类详情                                     |
-| PUT    | `/api/v1/categories/:id`               | 管理员 | 更新分类                                     |
-| DELETE | `/api/v1/categories/:id`               | 管理员 | 删除分类                                     |
-| GET    | `/api/v1/problems`                     | 公开   | 题目列表（分页+筛选）                        |
-| GET    | `/api/v1/problems/:id`                 | 公开   | 题目详情（**双索引**：UUID/display_id/数字） |
-| POST   | `/api/v1/problems`                     | 登录   | 创建题目（U/P 类型）                         |
-| PUT    | `/api/v1/problems/:id`                 | 登录   | 更新题目                                     |
-| DELETE | `/api/v1/problems/:id`                 | 登录   | 删除题目                                     |
-| GET    | `/api/v1/submissions`                  | 登录   | 我的提交列表                                 |
-| POST   | `/api/v1/submissions`                  | 登录   | 创建提交                                     |
-| GET    | `/api/v1/submissions/:id`              | 登录   | 提交详情                                     |
-| GET    | `/api/v1/submissions/:id/status`       | 登录   | 提交队列状态                                 |
-| GET    | `/api/v1/admin/submissions`            | 管理员 | 全部提交管理                                 |
-| GET    | `/api/v1/admin/users`                  | 管理员 | 用户列表                                     |
-| PATCH  | `/api/v1/admin/users/:id/role`         | 管理员 | 角色变更                                     |
-| GET    | `/api/v1/users/:id/profile`            | 公开   | 用户主页                                     |
-| PUT    | `/api/v1/users/me`                     | 登录   | 更新个人简介                                 |
-| POST   | `/api/v1/auth/change-password`         | 登录   | 修改密码（issue #75 强制改密）               |
-| POST   | `/api/v1/auth/logout`                  | 公开   | 登出（no-op stub，客户端自行清 Cookie）      |
-| GET    | `/api/v1/problems/:id/support-package` | 登录   | 下载支持包（通过 core 代理，不暴露 S3 URL）  |
-| POST   | `/api/v1/checkin`                      | 登录   | 每日签到（返回当前连续天数）                 |
-| GET    | `/api/v1/checkin/today`                | 登录   | 查询今日签到状态                             |
-| GET    | `/api/v1/search`                       | 公开/管理员 | 全局搜索（题目+用户，分页，issue #100） |
-| GET    | `/health`                              | 公开   | 健康检查                                     |
+| 方法   | 路径                                   | 权限        | 说明                                         |
+| ------ | -------------------------------------- | ----------- | -------------------------------------------- |
+| POST   | `/api/v1/auth/register`                | 公开        | 用户注册                                     |
+| POST   | `/api/v1/auth/login`                   | 公开        | 用户登录（返回 JWT）                         |
+| GET    | `/api/v1/auth/me`                      | 登录        | 当前用户信息                                 |
+| GET    | `/api/v1/categories`                   | 公开        | 分类树                                       |
+| POST   | `/api/v1/categories`                   | 管理员      | 创建分类                                     |
+| GET    | `/api/v1/categories/:id`               | 公开        | 分类详情                                     |
+| PUT    | `/api/v1/categories/:id`               | 管理员      | 更新分类                                     |
+| DELETE | `/api/v1/categories/:id`               | 管理员      | 删除分类                                     |
+| GET    | `/api/v1/problems`                     | 公开        | 题目列表（分页+筛选）                        |
+| GET    | `/api/v1/problems/:id`                 | 公开        | 题目详情（**双索引**：UUID/display_id/数字） |
+| POST   | `/api/v1/problems`                     | 登录        | 创建题目（U/P 类型）                         |
+| PUT    | `/api/v1/problems/:id`                 | 登录        | 更新题目                                     |
+| DELETE | `/api/v1/problems/:id`                 | 登录        | 删除题目                                     |
+| GET    | `/api/v1/submissions`                  | 登录        | 我的提交列表                                 |
+| POST   | `/api/v1/submissions`                  | 登录        | 创建提交                                     |
+| GET    | `/api/v1/submissions/:id`              | 登录        | 提交详情                                     |
+| GET    | `/api/v1/submissions/:id/status`       | 登录        | 提交队列状态                                 |
+| GET    | `/api/v1/admin/submissions`            | 管理员      | 全部提交管理                                 |
+| GET    | `/api/v1/admin/users`                  | 管理员      | 用户列表                                     |
+| PATCH  | `/api/v1/admin/users/:id/role`         | 管理员      | 角色变更                                     |
+| GET    | `/api/v1/users/:id/profile`            | 公开        | 用户主页                                     |
+| PUT    | `/api/v1/users/me`                     | 登录        | 更新个人简介                                 |
+| POST   | `/api/v1/auth/change-password`         | 登录        | 修改密码（issue #75 强制改密）               |
+| POST   | `/api/v1/auth/logout`                  | 公开        | 登出（no-op stub，客户端自行清 Cookie）      |
+| GET    | `/api/v1/problems/:id/support-package` | 登录        | 下载支持包（通过 core 代理，不暴露 S3 URL）  |
+| POST   | `/api/v1/checkin`                      | 登录        | 每日签到（返回当前连续天数）                 |
+| GET    | `/api/v1/checkin/today`                | 登录        | 查询今日签到状态                             |
+| GET    | `/api/v1/search`                       | 公开/管理员 | 全局搜索（题目+用户，分页，issue #100）      |
+| GET    | `/health`                              | 公开        | 健康检查                                     |
 
 ### 路由层关键模式
 
@@ -376,7 +376,8 @@ Retry-After: 25
 - `problems.search_vector` — `tsvector` GENERATED 列：
   `setweight(to_tsvector('simple', coalesce(title,'')), 'A')` + `||`
   `setweight(to_tsvector('simple', coalesce(type,'')||' '||coalesce(number::text,'')), 'B')`
-- `users.search_vector` — `tsvector` GENERATED 列：`username` 权重 A + `email` 权重 B
+- `users.search_vector` — `tsvector` GENERATED 列：`username` 权重 A + `email`
+  权重 B
 - 由 PostgreSQL `GENERATED ALWAYS AS ... STORED` 自动维护，应用层只读
 
 **索引策略**（双 GIN 索引，中英文友好）：
@@ -384,18 +385,18 @@ Retry-After: 25
 - `idx_*_search_vector` — GIN(tsvector)，英文/数字分词精确匹配
 - `idx_*_title_trgm` / `idx_users_username_trgm` — GIN(pg_trgm)，中文 trigram
   模糊匹配
-- 查询走 `tsvector @@ websearch_to_tsquery(...) OR ILIKE '%q%'` 联合，PG
-  planner 自动选最优索引
+- 查询走 `tsvector @@ websearch_to_tsquery(...) OR ILIKE '%q%'` 联合，PG planner
+  自动选最优索引
 
 **权重设计**：`title`/`username` = A (1.0)，`display_id`/`email` = B (0.4)，
 `ts_rank` 自动按权重排序。
 
 **权限矩阵**：
 
-| type       | 匿名             | 登录用户       | admin                |
-| ---------- | ---------------- | -------------- | -------------------- |
-| `problem`  | ✅ 仅 P 型       | ✅ 仅 P 型     | ✅ U+P（`?include_u=true`） |
-| `user`     | ❌ 401           | ❌ 403         | ✅                   |
+| type      | 匿名       | 登录用户   | admin                       |
+| --------- | ---------- | ---------- | --------------------------- |
+| `problem` | ✅ 仅 P 型 | ✅ 仅 P 型 | ✅ U+P（`?include_u=true`） |
+| `user`    | ❌ 401     | ❌ 403     | ✅                          |
 
 **输入校验**：
 
@@ -418,34 +419,35 @@ Retry-After: 25
 - 用户：`{id, username, email, role, rank, highlight}`
 - 高亮：用 `[[HIGHLIGHT]]...[[/HIGHLIGHT]]` marker 包裹（非 HTML），前端
   `SearchResultItem` 替换为 `<mark>`
-- 响应头：`X-Search-Took-Ms`、`X-Search-Query`、触发限流时附
-  `X-RateLimit-*` + `Retry-After`
+- 响应头：`X-Search-Took-Ms`、`X-Search-Query`、触发限流时附 `X-RateLimit-*` +
+  `Retry-After`
 
 **搜索限流**（与登录限流**独立桶**，避免互相污染）：
 
-| 维度     | Redis Key                            | 默认配置    |
-| -------- | ------------------------------------ | ----------- |
-| 匿名 IP  | `ratelimit:search:ip:<ip>`           | 30s/60 次   |
-| 登录用户 | `ratelimit:search:user:<user_id>`    | 30s/120 次  |
-| admin    | 不限流                                | —           |
+| 维度     | Redis Key                         | 默认配置   |
+| -------- | --------------------------------- | ---------- |
+| 匿名 IP  | `ratelimit:search:ip:<ip>`        | 30s/60 次  |
+| 登录用户 | `ratelimit:search:user:<user_id>` | 30s/120 次 |
+| admin    | 不限流                            | —          |
 
 通过 `lib/settings-registry.ts` 注册 4 个配置项（`rate_limit_search_*`），由
-`searchRateLimit("anon")` 中间件在 `/api/v1/search` 路径级统一处理，admin
-经 `c.get("userRole")` 跳过。
+`searchRateLimit("anon")` 中间件在 `/api/v1/search` 路径级统一处理，admin 经
+`c.get("userRole")` 跳过。
 
 **Service 层防御性鉴权**（`dcabe8d`，reviewer issue 3）：
 
-- `searchUsers()` 入口检查 `params.isAdmin === true`，否则 `throw new
+- `searchUsers()` 入口检查 `params.isAdmin === true`，否则
+  `throw new
   ForbiddenError`，路由守卫缺失时也 fail-closed
-- `searchProblems()` 默认仅返回 `type='P'`，admin 显式传 `includeU=true`
-  才返回 U+P
+- `searchProblems()` 默认仅返回 `type='P'`，admin 显式传 `includeU=true` 才返回
+  U+P
 
 **实现文件**：
 
 - 路由：`src/routes/search.ts`（`optionalAuthMiddleware` + 权限校验 + service
   调用）
-- 服务：`src/services/search.ts`（`searchProblems` / `searchUsers`，
-  tsvector + ILIKE 联合查询）
+- 服务：`src/services/search.ts`（`searchProblems` / `searchUsers`， tsvector +
+  ILIKE 联合查询）
 - 中间件：`src/middleware/searchRateLimit.ts`（Redis 固定窗口）
 - Schema：`src/db/schema.ts`（`tsvector` customType + GIN 索引定义）
 
