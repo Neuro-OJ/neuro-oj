@@ -10,10 +10,10 @@ definePageMeta({
 const route = useRoute()
 const router = useRouter()
 const problemId = computed(() => route.params.id as string)
-const { isLoggedIn } = useAuth()
+const { isLoggedIn, user } = useAuth()
 
 // 主题
-const { theme, set: setTheme } = useEditorTheme()
+const { theme, set: setTheme, toggle: toggleTheme } = useEditorTheme()
 
 // 草稿
 const code = ref('')
@@ -24,21 +24,7 @@ const { state: draftState, savedAt: draftSavedAt, clear: clearDraft } = useDraft
 const sidebarTab = ref<'description' | 'history' | 'settings'>('description')
 const sidebarVisible = ref(true)
 const sidebarWidth = useResizableSplit('editor:sidebar:width', 320, 240, 480)
-
-// 提交后实时状态轮询（留在编辑页，不跳转）
-const activeSubmissionId = ref<string | null>(null)
-const {
-  submission: activeSubmission,
-  isPolling: isPollingActive,
-  start: startPolling,
-  stop: stopPolling,
-} = useSubmissionPolling(activeSubmissionId)
-const sidebarWidthPx = computed({
-  get: () => sidebarWidth.width.value,
-  set: (value: number) => {
-    sidebarWidth.width.value = value
-  },
-})
+const sidebarWidthPx = computed(() => sidebarWidth.width.value)
 
 // 编辑器元数据（用于状态栏）
 const cursor = ref({ line: 1, col: 1 })
@@ -63,14 +49,13 @@ const { data: problemData, pending: problemPending, error: problemError } = useF
 const problem = computed(() => problemData.value?.data ?? null)
 
 // 提交历史
-const { data: submissionsData, refresh: refreshSubmissionsFn } = useFetch<{
+const { data: submissionsData, refresh: refreshSubmissions } = useFetch<{
   data: Array<{
     id: string
     status: string
     score: number
     language: string
     created_at: string
-    result: { status: string; score: number } | null
   }>
 }>(() => `/api/v1/submissions?problem_id=${problemId.value}&limit=20`, {
   server: false,
@@ -104,23 +89,13 @@ async function handleSubmit() {
         code: code.value,
       },
     })
-    // 留在编辑页：自动切到历史 tab + 启动实时轮询
-    sidebarTab.value = 'history'
-    sidebarVisible.value = true
-    startPolling(res.data.id)
-    // 轮询约 2s 后（judge 入队 + 评测完成），刷新历史列表把最近一条移入
-    setTimeout(() => refreshSubmissionsFn(), 2000)
+    await router.push(`/submissions/${res.data.id}`)
   } catch (err: unknown) {
     const e = err as { data?: { error?: string }; message?: string }
     submitError.value = e.data?.error || e.message || '提交失败，请稍后重试'
   } finally {
     submitting.value = false
   }
-}
-
-function openSettings() {
-  sidebarTab.value = 'settings'
-  sidebarVisible.value = true
 }
 
 function openSubmission(id: string) {
@@ -142,7 +117,6 @@ function onCursorChange(pos: { line: number; col: number }) {
     class="h-screen flex flex-col overflow-hidden"
     :class="{ 'editor-dark': theme === 'dark' }"
   >
-   <ClientOnly>
     <!-- 加载状态 -->
     <div v-if="problemPending" class="flex-1 flex items-center justify-center bg-bg-page">
       <div class="flex flex-col items-center gap-3 text-text-muted">
@@ -170,11 +144,9 @@ function onCursorChange(pos: { line: number; col: number }) {
         :can-submit="canSubmit"
         :submitting="submitting"
         :sidebar-visible="sidebarVisible"
-        :draft-state="draftState"
-        :draft-saved-at="draftSavedAt"
         @update:language="language = $event"
         @update:theme-mode="setTheme($event)"
-        @open-settings="openSettings"
+        @toggle-theme="toggleTheme"
         @toggle-sidebar="sidebarVisible = !sidebarVisible"
         @submit="handleSubmit"
         @back="goBack"
@@ -193,8 +165,6 @@ function onCursorChange(pos: { line: number; col: number }) {
               :active="sidebarTab"
               :problem="problem"
               :submissions="submissions"
-              :active-submission="activeSubmission"
-              :is-polling-active="isPollingActive"
               :theme-mode="theme"
               :draft-enabled="draftEnabled"
               @update:theme-mode="setTheme($event)"
@@ -204,15 +174,16 @@ function onCursorChange(pos: { line: number; col: number }) {
             />
           </div>
           <ResizableSplitter
-            v-model="sidebarWidthPx"
+            :model-value="sidebarWidthPx"
             :min="240"
             :max="480"
             side="right"
+            @update:model-value="sidebarWidth.width.value = $event"
           />
         </template>
 
         <!-- 主编辑区 -->
-        <main class="flex-1 flex flex-col min-w-0 h-full min-h-0">
+        <main class="flex-1 flex flex-col min-w-0">
           <ClientOnly>
             <MonacoEditor
               v-model="code"
@@ -248,16 +219,17 @@ function onCursorChange(pos: { line: number; col: number }) {
               <button class="text-red-600 hover:text-red-800" @click="submitError = ''">×</button>
             </div>
           </Transition>
-
-          <EditorStatusBar
-            :language="language"
-            :cursor="cursor"
-            :total-lines="totalLines"
-            :total-chars="totalChars"
-          />
         </main>
       </div>
+
+      <EditorStatusBar
+        :language="language"
+        :cursor="cursor"
+        :total-lines="totalLines"
+        :total-chars="totalChars"
+        :draft-state="draftState"
+        :draft-saved-at="draftSavedAt"
+      />
     </template>
-   </ClientOnly>
   </div>
 </template>
