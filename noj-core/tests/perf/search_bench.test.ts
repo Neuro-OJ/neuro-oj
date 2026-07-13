@@ -1,6 +1,6 @@
 import { assert } from "jsr:@std/assert@^1";
 import { searchProblems, searchUsers } from "../../src/services/search.ts";
-import { resetDbForTest, getDb } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { problems, users } from "../../src/db/schema.ts";
 import { sql } from "drizzle-orm";
 
@@ -60,7 +60,9 @@ Deno.test({
       limit: 20,
     });
     const pElapsed = performance.now() - pStart;
-    console.log(`题目搜索：${pResult.items.length} 命中，${pElapsed.toFixed(0)}ms`);
+    console.log(
+      `题目搜索：${pResult.items.length} 命中，${pElapsed.toFixed(0)}ms`,
+    );
     assert(pElapsed < 500, `题目搜索 ${pElapsed}ms 超 500ms 阈值`);
 
     // 用户搜索基准
@@ -72,7 +74,9 @@ Deno.test({
       limit: 20,
     });
     const uElapsed = performance.now() - uStart;
-    console.log(`用户搜索：${uResult.items.length} 命中，${uElapsed.toFixed(0)}ms`);
+    console.log(
+      `用户搜索：${uResult.items.length} 命中，${uElapsed.toFixed(0)}ms`,
+    );
     assert(uElapsed < 500, `用户搜索 ${uElapsed}ms 超 500ms 阈值`);
   },
 });
