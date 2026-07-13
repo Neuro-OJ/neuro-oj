@@ -42,7 +42,8 @@ const emit = defineEmits<{
   'open-submission': [id: string]
 }>()
 
-function formatScore(s: number) {
+function formatScore(s: number | undefined) {
+  if (s == null) return '—'
   return `${(s / 100).toFixed(0)}`
 }
 
@@ -113,7 +114,7 @@ function formatTime(iso: string) {
           >
             {{ getStatusLabel(sub.status, sub.result?.status) }}
           </span>
-          <span class="text-xs font-mono text-text-secondary">{{ formatScore(sub.score) }} 分</span>
+          <span class="text-xs font-mono text-text-secondary">{{ formatScore(sub.result?.score ?? 0) }} 分</span>
         </div>
         <div class="flex items-center justify-between text-xs text-text-muted">
           <span class="font-mono">{{ sub.language }}</span>
