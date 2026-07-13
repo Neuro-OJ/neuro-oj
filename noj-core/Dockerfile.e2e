@@ -1,6 +1,38 @@
+# =============================================================================
 # noj-core E2E 测试用 Dockerfile
-# 基于 denoland/deno 镜像构建，含 migrate + seed + 启动入口
+#
+# v13 改进：回归到 v8 风格的 deno cache 预热 + 不做 AOT compile。
+#
+# 之前 v9-v12.2 尝试用 `deno compile` AOT 烤单文件 binary，期望 runtime 完全
+# 无网络下载、冷启动 < 50ms。但实测 v13 (PR-B 原始版本) 失败：
+#
+#   Error relocating /usr/local/lib/glibc/libgcc_s.so.1:
+#     _dl_find_object: symbol not found
+#     __cpu_indicator_init: symbol not found
+#     __cpu_model: symbol not found
+#   Error relocating /bin/deno: __res_init: symbol not found
+#   ERROR: deno install failed
+#
+# 根因：deno compile 只能产 gnu-glibc target binary，但 Alpine 是 musl libc。
+# gcompat 兼容层只解决 libdl/libpthread 等基础符号，不解决 libgcc_s 内部的
+# _dl_find_object / __cpu_indicator_init，也不解决 deno runtime 自身需要的
+# __res_init。要继续走 AOT 路线需要替换整个基础镜像（如 debian-slim），但这
+# 又会拉大镜像体积、引入新的兼容问题，性价比远低于收益（CI 启动 < 1s vs ~4 min
+# 不是用户体验关键路径）。
+#
+# 本版本策略：
+#   - 保留 `deno cache` 预解析（migrate/seed/main 三处 import 链）
+#   - 用 multi-stage build 跑 `deno compile` 但产物丢弃；只保留 `deno cache` 预热
+#   - runtime 跑 `deno task migrate/seed/start`（之前用的方式）
+#   - noj-core 容器冷启动 ~4 min（实测），但 e2e.yml bash loop 已拉到 600s 兜底
+#
+# 进一步优化留待 issue：替换基础镜像为 debian-slim 后再尝试 AOT compile。
+# =============================================================================
 FROM denoland/deno:alpine-2.8.0
+
+# docker-compose.e2e.yml noj-core healthcheck 用 wget 探测 /health 端点。
+# Alpine 基础镜像默认不带 wget，必须 apk add。--no-cache 避免增加镜像体积。
+RUN apk add --no-cache wget
 
 WORKDIR /app
 
@@ -11,6 +43,16 @@ RUN deno install 2>&1 || { echo "ERROR: deno install failed" >&2; exit 1; }
 # 复制源码
 COPY src/ ./src/
 COPY scripts/ ./scripts/
+
+# deno cache 预解析所有运行时 import 链（migrate/seed/main）。--no-lock
+# 避免 cache 写入 deno.lock 干扰 git diff。
+RUN deno cache \
+      scripts/migrate.ts \
+      scripts/seed.ts \
+      src/main.ts \
+      --no-lock 2>&1 || { echo "ERROR: deno cache warmup failed" >&2; exit 1; }
+
+# 复制其余数据 / 配置
 COPY data/ ./data/
 COPY drizzle.config.ts ./
 COPY drizzle/ drizzle/
