@@ -8,14 +8,15 @@
  * 阈值通过 settings-registry 配置（rate_limit_search_*），运行时可调。
  * Admin 不受限流（user_role === 'admin' 时跳过）。
  *
- * 触发限流时抛 RateLimitError（含 X-RateLimit-* headers），由全局 onError 统一返回 429。
+ * 触发限流时抛 RateLimitedError（含 X-RateLimit-* headers 和 Retry-After），
+ * 由全局 onError 统一返回 429。
  */
 
 import type { Context, MiddlewareHandler } from "hono";
 import { getRedis } from "../mq/connection.ts";
 import { getClientIp } from "../lib/rateLimitEnv.ts";
 import { settingBool, settingInt } from "../lib/rateLimitEnv.ts";
-import { RateLimitError } from "../lib/errors.ts";
+import { RateLimitedError } from "../lib/errors.ts";
 
 export type SearchRateLimitDimension = "anon" | "authed";
 
@@ -72,14 +73,14 @@ export function searchRateLimit(
 
     if (count > max) {
       const ttl = await redis.ttl(key);
-      const resetAt = Math.floor(Date.now() / 1000) + (ttl > 0 ? ttl : window);
+      const retryAfter = ttl > 0 ? ttl : window;
+      const resetAt = Math.floor(Date.now() / 1000) + retryAfter;
       c.header("X-RateLimit-Reset", String(resetAt));
-      c.header("Retry-After", String(ttl > 0 ? ttl : window));
-      throw new RateLimitError(
+      throw new RateLimitedError(
         `搜索请求过于频繁，请稍后再试（${
           dimension === "anon" ? "IP" : "用户"
         }维度）`,
-        { retry_after: ttl > 0 ? ttl : window },
+        retryAfter,
       );
     }
 
