@@ -89,7 +89,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from "vue";
-import { Search as SearchIcon } from "lucide-vue-next";
+import { Search as SearchIcon } from "@lucide/vue";
 import { useSearch } from "~/composables/useSearch";
 
 const { state, close, search } = useSearch();

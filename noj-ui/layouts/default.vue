@@ -1,4 +1,24 @@
 <script setup lang="ts">
+import SearchPalette from "~/components/feature/search/SearchPalette.vue";
+
+const { state, open, close } = useSearch();
+
+function onGlobalKeydown(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        open();
+    } else if (e.key === "Escape" && state.value.open) {
+        close();
+    }
+}
+
+onMounted(() => {
+    window.addEventListener("keydown", onGlobalKeydown);
+});
+
+onUnmounted(() => {
+    window.removeEventListener("keydown", onGlobalKeydown);
+});
 </script>
 <template>
     <div class="flex flex-col min-h-screen w-full overflow-x-hidden">
@@ -9,6 +29,7 @@
             </main>
         </div>
         <FooterBar />
+        <SearchPalette />
     </div>
 </template>
 
