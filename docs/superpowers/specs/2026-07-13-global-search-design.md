@@ -579,6 +579,81 @@ ALTER TABLE problems DROP COLUMN IF EXISTS search_vector;
 
 ---
 
+## 13. 实现偏差（Implementation Deviations）
+
+实现过程中**相对本文档原设计**出现 5 处偏离，记录如下：
+
+### 13.1 T2 — tsvector 列类型改用 customType 注册
+
+**原设计**：`db/schema.ts` 直接用 `tsvector("search_vector")` 导入
+Drizzle ORM 内置 tsvector 列类型。
+
+**实际**（commit `8649fbe`）：drizzle-orm@0.45.2 **未导出**原生 `tsvector`
+列类型，需用 `customType<{ data: string }>({ dataType: () => "tsvector" })`
+在文件顶部自行注册。生成的列在 Drizzle 类型系统里是 `string`（应用层只读），
+PG 层仍按 `tsvector` 存储。
+
+**影响**：无，仅 schema 写法差异；`search_vector` 仍由 PG `GENERATED ... STORED`
+自动维护，ORM 不可写入。
+
+### 13.2 T4 — RateLimitError → RateLimitedError 合并
+
+**原设计**：`lib/errors.ts` 新增 `RateLimitError` 专门给搜索限流。
+
+**实际**（commit `394845a`）：项目里**已存在** `RateLimitedError` 类（命名略有
+差异），为避免错误类重复，搜索限流 `searchRateLimit.ts` 直接复用现有的
+`RateLimitedError`。两套限流（登录 / 搜索）共享同一 429 错误码路径，
+全局 `onError` 一处响应。
+
+**影响**：无功能差异；错误名以代码库既有命名为准。
+
+### 13.3 T10 — `useSearch` 并发与生命周期 6 项修复
+
+**原设计**：`composables/useSearch.ts` 防抖 300ms + `Promise.allSettled`
+并行请求问题/用户；错误静默吞。
+
+**实际**（commit `bab9a74`，reviewer review）：
+
+1. **`requestSeq` 序号** — 每次 `search()` 单调递增，回调里 `mySeq !== requestSeq`
+   时跳过结果写入，防止快速输入「abc → ab」旧请求晚到覆盖新结果
+2. **`clearTimeout` 提前** — 必须放在短查询早退（`< 2` 字符）**之前**，否则
+   「ab → a」会让旧请求继续等到触发再清，造成幽灵请求
+3. **`pendingResolve` 同步 resolve 旧 Promise** — 避免 await 挂起导致泄漏
+4. **`onScopeDispose` 清理** — 组件卸载时清挂起的 debounce + resolve pending
+   Promise，防止回调在卸载后写共享 `useState`
+5. **同步写 `query`/`type` 到共享 state** — 让 `/search` 分页组件读到最新值
+6. **`Promise.allSettled` 不抛错** — "all" 模式下两个端点都失败时**显式**置
+   `state.error = "搜索失败"`，不再静默吞错
+
+**影响**：用户体验层面更鲁棒；功能与原设计一致。
+
+### 13.4 T13 — lucide 图标包导入路径修正
+
+**原设计**：`package.json` 依赖 `lucide-vue-next`（与 README 一致）。
+
+**实际**（commit `4b1522c` 周边）：项目实际用包名 `@lucide/vue`（不是
+`lucide-vue-next`）。NavBar.vue 集成 `<Search />` 图标时**写成**
+`import { Search } from "lucide-vue-next"` 启动报错，修正为
+`import { Search } from "@lucide/vue"`。
+
+**影响**：图标组件能正常渲染；后续 README 也应统一为 `@lucide/vue`。
+
+### 13.5 T14 — 适配实际组件 API（AsyncContent / PaginationNav）
+
+**原设计**：假设 `/search` 页面用 `<AsyncContent>` 包裹列表 + `<PaginationNav>`
+分页，配 props 与项目内已有的"通用封装"。
+
+**实际**：实现时核对现有组件真实 props 后做了适配：
+
+- `AsyncContent`：实际接受的 slot 名为 `data`/`empty`，无独立的 `error` slot
+  —— 改为内层 try/catch + `<div class="...">` 渲染错误提示
+- `PaginationNav`：实际接受 `totalPages` + `currentPage`，而原假设是
+  `total` + `page` —— 调用方在 computed 里 `Math.ceil(total/limit)` 计算
+
+**影响**：组件复用更准确；不影响用户可见行为。
+
+---
+
 ## 附录 A：相关 issue 与规范
 
 - 父 issue：https://github.com/Neuro-OJ/neuro-oj/issues/100

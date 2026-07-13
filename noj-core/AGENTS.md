@@ -123,6 +123,10 @@ noj-core/
 | `RATE_LIMIT_LOGIN_BACKOFF_SEC`    | `15`                      | 每次失败累计退避秒数                                                  |
 | `RATE_LIMIT_LOGIN_LOCK_THRESHOLD` | `10`                      | 连续失败锁定阈值                                                      |
 | `RATE_LIMIT_LOGIN_LOCK_SECONDS`   | `3600`                    | 锁定时长（秒）                                                        |
+| `RATE_LIMIT_SEARCH_ENABLED`       | `true`                    | 搜索限流总开关（issue #100）                                          |
+| `RATE_LIMIT_SEARCH_WINDOW`        | `30`                      | 搜索限流窗口（秒）                                                    |
+| `RATE_LIMIT_SEARCH_MAX_ANON`      | `60`                      | 匿名 IP 窗口内最大搜索尝试次数                                        |
+| `RATE_LIMIT_SEARCH_MAX_AUTHED`    | `120`                     | 登录用户窗口内最大搜索尝试次数                                        |
 | `TRUSTED_PROXIES`                 | —                         | 可信代理白名单（逗号分隔 IP/CIDR）。生产环境**必须**配置              |
 | `AUDIT_LOG_RETENTION_DAYS`        | `90`                      | 审计日志保留天数（0 = 禁用清理）                                      |
 
@@ -192,6 +196,7 @@ docker compose down     # 停止
 | GET    | `/api/v1/problems/:id/support-package` | 登录   | 下载支持包（通过 core 代理，不暴露 S3 URL）  |
 | POST   | `/api/v1/checkin`                      | 登录   | 每日签到（返回当前连续天数）                 |
 | GET    | `/api/v1/checkin/today`                | 登录   | 查询今日签到状态                             |
+| GET    | `/api/v1/search`                       | 公开/管理员 | 全局搜索（题目+用户，分页，issue #100） |
 | GET    | `/health`                              | 公开   | 健康检查                                     |
 
 ### 路由层关键模式
@@ -359,6 +364,90 @@ Retry-After: 25
 - 总开关 `RATE_LIMIT_ENABLED` + `NOJ_ENV=test` 强制关闭（测试环境）
 - 生产部署需要**配置可信代理白名单**才能正确解析
   `X-Forwarded-For`（默认信任首项）
+
+## 全局搜索（issue #100）
+
+`GET /api/v1/search` 是统一的全局搜索入口，覆盖题目搜索（公开）与用户搜索
+（admin only），分页返回。设计文档见
+`docs/superpowers/specs/2026-07-13-global-search-design.md`。
+
+**数据库列**：
+
+- `problems.search_vector` — `tsvector` GENERATED 列：
+  `setweight(to_tsvector('simple', coalesce(title,'')), 'A')` + `||`
+  `setweight(to_tsvector('simple', coalesce(type,'')||' '||coalesce(number::text,'')), 'B')`
+- `users.search_vector` — `tsvector` GENERATED 列：`username` 权重 A + `email` 权重 B
+- 由 PostgreSQL `GENERATED ALWAYS AS ... STORED` 自动维护，应用层只读
+
+**索引策略**（双 GIN 索引，中英文友好）：
+
+- `idx_*_search_vector` — GIN(tsvector)，英文/数字分词精确匹配
+- `idx_*_title_trgm` / `idx_users_username_trgm` — GIN(pg_trgm)，中文 trigram
+  模糊匹配
+- 查询走 `tsvector @@ websearch_to_tsquery(...) OR ILIKE '%q%'` 联合，PG
+  planner 自动选最优索引
+
+**权重设计**：`title`/`username` = A (1.0)，`display_id`/`email` = B (0.4)，
+`ts_rank` 自动按权重排序。
+
+**权限矩阵**：
+
+| type       | 匿名             | 登录用户       | admin                |
+| ---------- | ---------------- | -------------- | -------------------- |
+| `problem`  | ✅ 仅 P 型       | ✅ 仅 P 型     | ✅ U+P（`?include_u=true`） |
+| `user`     | ❌ 401           | ❌ 403         | ✅                   |
+
+**输入校验**：
+
+- `q`：trim 后 2 ≤ length ≤ 100；UTF-8
+- `type`：enum `problem` \| `user`
+- `page`：1 ≤ page ≤ 1000（默认 1）
+- `limit`：1 ≤ limit ≤ 50（默认 20）
+- `include_u`：boolean（admin + type=problem 时生效）
+
+**SQL 安全**：
+
+- 用户输入通过 Drizzle `sql\`...${input}...\`` 占位符参数化
+- `q` 字符串经 `websearch_to_tsquery` 处理，避免 tsquery 注入
+- `ILIKE` 子串经 `escapeLikePattern()` 转义 `%`/`_`/`\`，配合 `ESCAPE '\'` 子句
+  （`dcabe8d`，reviewer issue 2）
+
+**响应字段**：
+
+- 题目：`{id, type, number, display_id, title, difficulty, rank, highlight}`
+- 用户：`{id, username, email, role, rank, highlight}`
+- 高亮：用 `[[HIGHLIGHT]]...[[/HIGHLIGHT]]` marker 包裹（非 HTML），前端
+  `SearchResultItem` 替换为 `<mark>`
+- 响应头：`X-Search-Took-Ms`、`X-Search-Query`、触发限流时附
+  `X-RateLimit-*` + `Retry-After`
+
+**搜索限流**（与登录限流**独立桶**，避免互相污染）：
+
+| 维度     | Redis Key                            | 默认配置    |
+| -------- | ------------------------------------ | ----------- |
+| 匿名 IP  | `ratelimit:search:ip:<ip>`           | 30s/60 次   |
+| 登录用户 | `ratelimit:search:user:<user_id>`    | 30s/120 次  |
+| admin    | 不限流                                | —           |
+
+通过 `lib/settings-registry.ts` 注册 4 个配置项（`rate_limit_search_*`），由
+`searchRateLimit("anon")` 中间件在 `/api/v1/search` 路径级统一处理，admin
+经 `c.get("userRole")` 跳过。
+
+**Service 层防御性鉴权**（`dcabe8d`，reviewer issue 3）：
+
+- `searchUsers()` 入口检查 `params.isAdmin === true`，否则 `throw new
+  ForbiddenError`，路由守卫缺失时也 fail-closed
+- `searchProblems()` 默认仅返回 `type='P'`，admin 显式传 `includeU=true`
+  才返回 U+P
+
+**实现文件**：
+
+- 路由：`src/routes/search.ts`（`optionalAuthMiddleware` + 权限校验 + service
+  调用）
+- 服务：`src/services/search.ts`（`searchProblems` / `searchUsers`，
+  tsvector + ILIKE 联合查询）
+- 中间件：`src/middleware/searchRateLimit.ts`（Redis 固定窗口）
+- Schema：`src/db/schema.ts`（`tsvector` customType + GIN 索引定义）
 
 ## CORS 配置
 

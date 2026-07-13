@@ -305,3 +305,56 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 
 - **WHEN** `DATABASE_URL` 未设置（PGlite 模式），插入题目触发 `(type, number)` UNIQUE 约束冲突
 - **THEN** `err.cause.code === '23505'` 为 true，重试逻辑正常触发
+
+### Requirement: search_vector 列（issue #100）
+
+`problems` 和 `users` 表 MUST 各包含一个 `search_vector tsvector` 列，由
+PostgreSQL `GENERATED ALWAYS AS ... STORED` 表达式自动维护，应用层只读：
+
+| 表        | 字段构成                                                                                                     |
+| --------- | ------------------------------------------------------------------------------------------------------------ |
+| `problems`| `setweight(to_tsvector('simple', title), 'A')` + `setweight(to_tsvector('simple', type \|\| ' ' \|\| number::text), 'B')` |
+| `users`   | `setweight(to_tsvector('simple', username), 'A')` + `setweight(to_tsvector('simple', email), 'B')`           |
+
+权重 A=1.0、B=0.4，由 `ts_rank` 自动按权重排序。
+
+系统 MUST 同时创建双 GIN 索引以支持中英文混合搜索：
+
+- `idx_<table>_search_vector`：GIN(tsvector)，英文/数字分词精确匹配（`@@
+  websearch_to_tsquery`）
+- `idx_<table>_<col>_trgm`：GIN(pg_trgm)（`title` / `username`），中文 trigram
+  模糊匹配（`ILIKE` + ILIKE 索引路径）
+
+`pg_trgm` 扩展由迁移启用（`CREATE EXTENSION IF NOT EXISTS pg_trgm`）。
+
+ORM 映射：Drizzle ORM 0.45.x 不导出原生 `tsvector` 列类型，使用
+`customType<{ data: string }>({ dataType: () => "tsvector" })` 注册（Drizzle
+文档 *Custom Types*），`searchVector` 字段只用于 `SELECT`，**禁止写入**。
+
+#### Scenario: 写入题目后 search_vector 自动更新
+
+- **WHEN** `INSERT INTO problems (title, ...) VALUES ('动态规划入门', ...)`
+- **THEN** PG 自动计算 `search_vector`，包含 `'动态':1 '规划':2 '入门':3
+  '动':4 ...` 等 token
+
+#### Scenario: 更新题目标题后自动重算
+
+- **WHEN** `UPDATE problems SET title = '新标题' WHERE id = ?`
+- **THEN** 该行的 `search_vector` 自动重算为新分词，旧 token 不残留
+
+#### Scenario: 应用层禁止写入 search_vector
+
+- **WHEN** 应用层尝试 `UPDATE problems SET search_vector = '...'`
+- **THEN** PG 拒绝写入（GENERATED ALWAYS 列不可 UPDATE）
+
+#### Scenario: 英文+数字分词精确命中
+
+- **WHEN** 搜索 `q = "P1001"`
+- **THEN** `tsvector @@ websearch_to_tsquery('simple', 'P1001')` 走
+  `idx_problems_search_vector` GIN 索引直接命中
+
+#### Scenario: 中文走 trigram 索引
+
+- **WHEN** 搜索 `q = "动态规划"`
+- **THEN** `title ILIKE '%动态规划%'` 走 `idx_problems_title_trgm` GIN
+  trigram 索引（`tsvector` 对中文按字分词召回率不足时由 ILIKE 兜底）
