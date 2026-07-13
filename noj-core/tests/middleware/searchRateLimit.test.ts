@@ -66,24 +66,29 @@ Deno.test({
     const key = "ratelimit:search:ip:127.0.0.1";
     await redis.del(key);
 
-    // 前 3 次应通过
-    for (let i = 0; i < 3; i++) {
+    try {
+      // 前 3 次应通过
+      for (let i = 0; i < 3; i++) {
+        const res = await app.request("/test", {
+          headers: { "x-forwarded-for": "127.0.0.1" },
+        });
+        assertEquals(res.status, 200);
+      }
+
+      // 第 4 次触发限流
       const res = await app.request("/test", {
         headers: { "x-forwarded-for": "127.0.0.1" },
       });
-      assertEquals(res.status, 200);
+      assertEquals(res.status, 429);
+      assertExists(res.headers.get("retry-after"));
+      assertEquals(res.headers.get("x-ratelimit-limit"), "3");
+    } finally {
+      // 清理 redis key + 全部 env vars（避免污染后续测试）
+      await redis.del(key);
+      Deno.env.delete("RATE_LIMIT_ENABLED");
+      Deno.env.delete("RATE_LIMIT_SEARCH_ENABLED");
+      Deno.env.delete("RATE_LIMIT_SEARCH_WINDOW");
+      Deno.env.delete("RATE_LIMIT_SEARCH_MAX_ANON");
     }
-
-    // 第 4 次触发限流
-    const res = await app.request("/test", {
-      headers: { "x-forwarded-for": "127.0.0.1" },
-    });
-    assertEquals(res.status, 429);
-    assertExists(res.headers.get("retry-after"));
-    assertEquals(res.headers.get("x-ratelimit-limit"), "3");
-
-    // 清理
-    await redis.del(key);
-    Deno.env.delete("RATE_LIMIT_SEARCH_MAX_ANON");
   },
 });
