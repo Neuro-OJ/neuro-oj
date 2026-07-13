@@ -27,6 +27,25 @@ if (import.meta.client) {
     --c-text: #1e293b; --c-text-secondary: #64748b; --c-text-muted: #94a3b8;
     --c-border: #e2e8f0; --c-bg-page: #f8fafc; --c-white: #ffffff;
 }
+
+.editor-dark {
+  --c-bg-page: #0f172a;
+  --c-white: #1e293b;
+  --c-border: #334155;
+  --c-text: #e2e8f0;
+  --c-text-secondary: #94a3b8;
+  --c-text-muted: #64748b;
+  --c-primary: #3b82f6;
+  --c-primary-hover-bg: #1e3a8a;
+  --c-primary-bg: #1e293b;
+}
+
+.editor-dark .prose-neuro {
+  --tw-prose-headings: #e2e8f0;
+  --tw-prose-links: #60a5fa;
+  --tw-prose-code: #f472b6;
+}
+
 /* CSS 变量（设计 Token）统一在 :root 中定义，tailwind.config.ts 通过 var() 引用。
    全局重置由 Tailwind Preflight 提供，字体和背景通过 Tailwind 类在 layouts 中应用。 */
 </style>

@@ -6,6 +6,7 @@ const props = defineProps<{
   language?: string
   disabled?: boolean
   minHeight?: number
+  theme?: "vs" | "vs-dark"
 }>()
 
 const emit = defineEmits<{
@@ -56,7 +57,7 @@ async function initMonaco() {
   editor = monaco.editor.create(containerRef.value, {
     value: props.modelValue,
     language: langMap[props.language ?? "python3"] || "python",
-    theme: "vs-dark",
+    theme: props.theme ?? "vs-dark",
     minimap: { enabled: false },
     fontSize: 13,
     lineNumbers: "on",
@@ -114,6 +115,16 @@ watch(
     const model = editor.getModel()
     if (model) {
       monacoModule.editor.setModelLanguage(model, langMap[lang ?? "python3"] || "python")
+    }
+  },
+)
+
+// Sync theme changes
+watch(
+  () => props.theme,
+  (t) => {
+    if (editor && t) {
+      monacoModule.editor.setTheme(t)
     }
   },
 )
