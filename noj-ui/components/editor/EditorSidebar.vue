@@ -24,6 +24,7 @@ interface Submission {
   score: number
   language: string
   created_at: string
+  result: { status: string; score: number } | null
 }
 
 defineProps<{
@@ -108,9 +109,9 @@ function formatTime(iso: string) {
         <div class="flex items-center justify-between mb-1">
           <span
             class="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded font-medium"
-            :style="{ background: getStatusColor(sub.status, sub.status) + '18', color: getStatusColor(sub.status, sub.status) }"
+            :style="{ background: getStatusColor(sub.status, sub.result?.status) + '18', color: getStatusColor(sub.status, sub.result?.status) }"
           >
-            {{ getStatusLabel(sub.status, sub.status) }}
+            {{ getStatusLabel(sub.status, sub.result?.status) }}
           </span>
           <span class="text-xs font-mono text-text-secondary">{{ formatScore(sub.score) }} 分</span>
         </div>
