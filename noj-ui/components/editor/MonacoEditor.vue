@@ -11,6 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "update:modelValue", value: string): void
+  (e: "cursorChange", pos: { line: number; col: number }): void
 }>()
 
 const containerRef = ref<HTMLDivElement | null>(null)
@@ -77,6 +78,11 @@ async function initMonaco() {
   // Sync changes back to v-model
   modelContentDisposable = editor.onDidChangeModelContent(() => {
     emit("update:modelValue", editor.getValue())
+  })
+
+  // Emit cursor position changes
+  editor.onDidChangeCursorPosition((e: any) => {
+    emit("cursorChange", { line: e.position.lineNumber, col: e.position.column })
   })
 }
 
