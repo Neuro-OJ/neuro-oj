@@ -93,7 +93,7 @@ function formatElapsed(iso: string) {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-white border-r border-border transition-colors duration-300">
+  <div class="h-full overflow-y-auto bg-[#1e1e1e] border-r border-bg-dark-3 text-[#cccccc] transition-colors duration-300 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-[#1e1e1e] [&::-webkit-scrollbar-thumb]:bg-[#424242] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#5a5a5a]">
    <Transition name="fade" mode="out-in">
     <div :key="active" class="h-full">
     <!-- 描述 tab -->
@@ -101,7 +101,7 @@ function formatElapsed(iso: string) {
         <div class="flex items-center gap-2 flex-wrap text-xs text-text-secondary">
           <span
             class="inline-flex items-center px-2 py-0.5 rounded-full font-semibold"
-            :class="problem.type === 'U' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'"
+            :class="problem.type === 'U' ? 'bg-blue-900/40 text-blue-300' : 'bg-purple-900/40 text-purple-300'"
           >
             {{ problem.display_id }}
           </span>
@@ -120,7 +120,7 @@ function formatElapsed(iso: string) {
         <span
           v-for="cat in problem.categories"
           :key="cat.id"
-          class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200"
+          class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-900/30 text-blue-300 border border-blue-800"
         >
           {{ cat.name }}
         </span>
