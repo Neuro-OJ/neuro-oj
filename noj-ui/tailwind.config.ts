@@ -81,13 +81,20 @@ export default <Config> {
               color: '#be123c',
             },
 
-            // 代码块
+            // 加粗（用于「输入」「输出」标签）
+            strong: {
+              fontWeight: '600',
+              color: '#0f172a',
+            },
+
+            // 代码块（输入/输出示例）— 增强区分度
             pre: {
               background: '#0d1117',
               borderRadius: '8px',
-              padding: '16px',
+              padding: '12px 14px',
               overflowX: 'auto',
-              margin: '0.8em 0',
+              margin: '0.4em 0 0.8em 0',
+              borderLeft: '3px solid #22c55e',
             },
             'pre code': {
               fontFamily: '"SF Mono", "Fira Code", "Consolas", monospace',
