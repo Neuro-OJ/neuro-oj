@@ -70,7 +70,7 @@ const charsLabel = computed(() => {
 </script>
 
 <template>
-  <div class="h-6 flex-shrink-0 bg-bg-page border-t border-border flex items-center px-3 gap-4 text-[11px] text-text-secondary font-mono ml-auto">
+  <div class="h-6 flex-shrink-0 bg-bg-dark-2 border-t border-bg-dark-3 flex items-center px-3 gap-4 text-[11px] text-text-muted font-mono ml-auto">
     <span class="flex items-center gap-1.5">
       <span class="size-1.5 rounded-full" :class="draftDotClass" />
       <span>{{ draftLabel }}</span>
