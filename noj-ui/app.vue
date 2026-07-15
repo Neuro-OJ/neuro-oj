@@ -41,6 +41,7 @@ if (import.meta.client) {
 }
 
 .editor-dark .prose-neuro {
+  --tw-prose-body: #e2e8f0;
   --tw-prose-headings: #e2e8f0;
   --tw-prose-links: #60a5fa;
   --tw-prose-code: #f472b6;
