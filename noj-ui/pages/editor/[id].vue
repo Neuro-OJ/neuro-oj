@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 import { AlertCircle } from '@lucide/vue'
+import { onMounted, nextTick } from 'vue'
 
 definePageMeta({
   layout: false,
@@ -19,6 +20,10 @@ const { theme, set: setTheme } = useEditorTheme()
 const code = ref('')
 const draftEnabled = ref(true)
 const { state: draftState, savedAt: draftSavedAt, clear: clearDraft } = useDraftStorage(problemId, code, draftEnabled)
+
+// 模板加载状态
+const templateLoading = ref(false)
+const templateError = ref('')
 
 // 侧栏
 const sidebarTab = ref<'description' | 'history' | 'settings'>('description')
@@ -122,6 +127,33 @@ function openSettings() {
   sidebarTab.value = 'settings'
   sidebarVisible.value = true
 }
+
+// 页面挂载后：若没有本地草稿且 code 为空，尝试从后端拉取 submission.py 模板
+onMounted(async () => {
+  // 等一拍让 useDraftStorage 完成从 localStorage 同步
+  await nextTick()
+  if (code.value.trim() !== '') return
+  if (draftState.value === 'saved' || draftState.value === 'dirty' || draftState.value === 'saving') return
+
+  templateLoading.value = true
+  templateError.value = ''
+  try {
+    const res = await $fetch<{ data: { content: string; language: string } }>(
+      `/api/v1/problems/${problemId.value}/template`,
+    )
+    if (res?.data?.content && code.value.trim() === '') {
+      code.value = res.data.content
+    }
+  } catch (e: unknown) {
+    const err = e as { statusCode?: number; data?: { error?: string }; message?: string }
+    // 404 是预期：题目无 submission.py 模板
+    if (err.statusCode !== 404) {
+      templateError.value = err.data?.error || err.message || '加载模板失败'
+    }
+  } finally {
+    templateLoading.value = false
+  }
+})
 
 function openSubmission(id: string) {
   router.push(`/submissions/${id}`)

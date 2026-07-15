@@ -1,3 +1,4 @@
+import { resolve } from "jsr:@std/path@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { problems } from "../db/schema.ts";
@@ -217,4 +218,38 @@ export async function getSupportPackageBytes(
 
   const storage = await getStorageProvider();
   return await storage.get(problem.storageUrl);
+}
+
+/**
+ * 获取题目的初始代码模板（submission.py）。
+ *
+ * 优先级：
+ * 1. 本地源目录 `data/problems-src/<id>/submission.py`（开发环境）
+ * 2. 不支持包时返回 null（路由层返回 404）
+ *
+ * 生产环境需要将 submission.py 单独存储（TODO: 上传至 S3/对象存储）。
+ * 目前 dev 模式：直接从源码目录读取。
+ */
+export async function getProblemTemplate(
+  problemId: string,
+): Promise<{ content: string; language: string } | null> {
+  // TODO: 生产环境从 support package 解压或单独的对象存储读取
+  const fsRoot = resolve(
+    Deno.cwd(),
+    "data",
+    "problems-src",
+    problemId,
+    "submission.py",
+  );
+
+  try {
+    const content = await Deno.readTextFile(fsRoot);
+    // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
+    return { content, language: "python3" };
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      return null;
+    }
+    throw err;
+  }
 }

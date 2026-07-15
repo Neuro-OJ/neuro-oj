@@ -19,6 +19,7 @@ import type {
 } from "../types/problems.ts";
 import {
   deleteSupportPackage,
+  getProblemTemplate,
   getSupportPackageBytes,
   MAX_SUPPORT_PACKAGE_SIZE,
   saveSupportPackage,
@@ -266,6 +267,29 @@ router.get("/:id/support-package", authMiddleware, async (c) => {
     headers: {
       "Content-Type": "application/zip",
       "Content-Disposition": `attachment; filename="${problem.id}.zip"`,
+    },
+  });
+});
+
+/**
+ * 获取题目初始代码模板（submission.py）。
+ * GET /api/v1/problems/:id/template
+ *
+ * 用于编辑器在没有用户本地草稿时填入的初始代码：
+ * - 题目源码目录有 submission.py → 返回内容
+ * - 没有 → 404
+ */
+router.get("/:id/template", authMiddleware, async (c) => {
+  const id = c.req.param("id") as string;
+  const problem = await resolveProblem(id);
+  const tpl = await getProblemTemplate(problem.id);
+  if (!tpl) {
+    return c.json({ error: "该题目没有初始代码模板" }, 404);
+  }
+  return c.json({
+    data: {
+      content: tpl.content,
+      language: tpl.language,
     },
   });
 });
