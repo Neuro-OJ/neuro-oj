@@ -20,15 +20,15 @@ const items: Item[] = [
 </script>
 
 <template>
-  <aside class="w-12 flex-shrink-0 bg-bg-page border-r border-border flex flex-col items-center py-2 gap-1">
+  <aside class="w-12 flex-shrink-0 bg-white border-r border-border flex flex-col items-center py-2 gap-1">
     <button
       v-for="item in items"
       :key="item.key"
       :title="item.label"
       :aria-label="item.label"
       :aria-pressed="active === item.key"
-      class="relative w-12 h-12 flex items-center justify-center rounded-md transition-colors duration-100 hover:bg-white"
-      :class="active === item.key ? 'text-primary bg-white' : 'text-text-secondary'"
+      class="relative w-12 h-12 flex items-center justify-center rounded-md transition-colors duration-100 hover:bg-bg-page"
+      :class="active === item.key ? 'text-primary bg-bg-page' : 'text-text-secondary'"
       @click="$emit('select', item.key)"
     >
       <span

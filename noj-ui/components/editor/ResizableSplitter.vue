@@ -36,7 +36,6 @@ function onDoubleClick() {
 <template>
   <div
     class="w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors hidden md:block flex-shrink-0"
-    :class="side === 'left' ? 'border-l border-border' : 'border-r border-border'"
     @mousedown="onMouseDown"
     @dblclick="onDoubleClick"
   />
