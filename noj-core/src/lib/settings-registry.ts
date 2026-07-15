@@ -1,7 +1,7 @@
 /**
  * 系统设置注册表（issue #99）。
  *
- * 定义 22 个 DB-backed 设置项的元数据（含 boolean/string/text/integer 四种类型）。
+ * 定义 35 个 DB-backed 设置项的元数据（含 boolean/string/text/integer 四种类型）。
  * 启动期 validateRegistry() 校验注册表合法性；
  * service 层 updateSetting/getSetting 依赖本表做严格 type 校验。
  *
@@ -48,7 +48,7 @@ export interface SettingDefinition {
   needsRestart?: boolean;
 }
 
-/** 22 个 DB-backed 设置项的元数据定义 */
+/** 35 个 DB-backed 设置项的元数据定义 */
 export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
   // ── auth ──────────────────────────────────────────────────
   {
@@ -269,6 +269,48 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "rate_limit",
     min: 60,
     max: 86400,
+  },
+  {
+    key: "rate_limit_search_enabled",
+    type: "boolean",
+    default: true,
+    description: "是否启用搜索速率限制（NOJ_ENV=test 时强制关闭）",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_SEARCH_ENABLED",
+    category: "rate_limit",
+  },
+  {
+    key: "rate_limit_search_window",
+    type: "integer",
+    default: 30,
+    description: "搜索限流窗口（秒）",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_SEARCH_WINDOW",
+    category: "rate_limit",
+    min: 1,
+    max: 3600,
+  },
+  {
+    key: "rate_limit_search_max_anon",
+    type: "integer",
+    default: 60,
+    description: "匿名 IP 窗口内最大搜索次数",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_SEARCH_MAX_ANON",
+    category: "rate_limit",
+    min: 1,
+    max: 10000,
+  },
+  {
+    key: "rate_limit_search_max_authed",
+    type: "integer",
+    default: 120,
+    description: "登录用户窗口内最大搜索次数",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_SEARCH_MAX_AUTHED",
+    category: "rate_limit",
+    min: 1,
+    max: 10000,
   },
   {
     key: "trusted_proxies",

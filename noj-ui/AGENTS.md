@@ -273,6 +273,31 @@ cd dist
 - 分值格式化：`score / 100`（数据库存储 ×100）
 - 状态/颜色映射：`Accepted→green`、`WrongAnswer→red`、`TimeLimitExceeded→yellow` 等
 
+### useSearch
+全局搜索状态 + 防抖 fetch（issue #100），命令面板与结果页共享同一 `useState`
+实例：
+
+- `state` — `{ open, query, type("all"|"problem"|"user"), results:
+  {problems, users}, loading, error }`
+- `open()` / `close()` — 控制 `SearchPalette` 浮层显隐
+- `search(q, opts?)` — 300ms 防抖调用 `GET /api/v1/search`；`type="all"` 时
+  并行 `Promise.allSettled` 拉题目 + 用户，两个端点都失败时设置 `state.error`
+- `Navbar.vue` 调用 `open()` 唤起命令面板；`SearchPalette` / `pages/search.vue`
+  共写共读
+
+并发与生命周期要点（`bab9a74`，Task 10 reviewer fixes）：
+
+- **请求序号 `requestSeq`** 每次 `search()` 单调递增，过期回调跳过结果写入
+  避免请求竞态（如快速输入「abc → ab」时旧请求晚到不污染新结果）
+- **早退前清理**：`clearTimeout` 必须在短查询早退（`< 2` 字符）之前执行，
+  否则「ab → a」会让旧请求继续等待触发
+- **`pendingResolve` 同步 resolve** 旧 Promise，避免 `await` 挂起泄漏
+- **`onScopeDispose` 清理挂起的 debounce + Promise**，防止组件卸载后写共享
+  state
+- **同步写入 `query`/`type`** 到共享 state，让分页等下游消费方能读到最新值
+- **`Promise.allSettled` 不抛错**，"all" 模式下两个端点都失败时显式置
+  `state.error = "搜索失败"`
+
 ## 数据获取策略
 
 | 场景 | 方法 | 说明 |
