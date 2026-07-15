@@ -14,6 +14,15 @@
                 <NuxtLink to="/queue" class="px-3 py-1.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-gray-100 hover:text-text" active-class="text-primary font-semibold">队列</NuxtLink>
                 <NuxtLink to="/about" class="px-3 py-1.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-gray-100 hover:text-text" active-class="text-primary font-semibold">关于</NuxtLink>
             </nav>
+            <button
+                type="button"
+                class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:bg-gray-100 rounded-md transition-colors"
+                @click="openSearch"
+            >
+                <SearchIcon class="w-4 h-4" />
+                <span>搜索</span>
+                <kbd class="hidden md:inline-block px-1.5 py-0.5 text-xs bg-gray-100 border border-border rounded">Ctrl K</kbd>
+            </button>
             <div class="flex items-center gap-3 ml-auto">
                 <UserMenu />
             </div>
@@ -22,5 +31,7 @@
 </template>
 
 <script setup lang="ts">
-const { user } = useAuth()
+import { Search as SearchIcon } from "@lucide/vue";
+const { user } = useAuth();
+const { open: openSearch } = useSearch();
 </script>

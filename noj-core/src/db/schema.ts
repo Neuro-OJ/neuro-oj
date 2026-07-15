@@ -1,6 +1,7 @@
 import {
   boolean,
   check,
+  customType,
   index,
   integer,
   jsonb,
@@ -12,6 +13,19 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { SubmissionStatus } from "../types/index.ts";
+
+/**
+ * Postgres `tsvector` 列（用于全文搜索）。
+ * Drizzle ORM 0.45.x 不导出原生 tsvector 列类型，使用 customType 注册一个。
+ * 对应列在 DB 层由 GENERATED ... STORED 自动维护，ORM 不可写入。
+ *
+ * 参考 https://orm.drizzle.team/docs/custom-types
+ */
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
 
 /**
  * 用户表。
@@ -38,7 +52,15 @@ export const users = pgTable(
     ),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
+    /** tsvector 列，GENERATED 自动维护 */
+    searchVector: tsvector("search_vector"),
   },
+  (table) => ({
+    searchVectorIdx: index("idx_users_search_vector").using(
+      "gin",
+      table.searchVector,
+    ),
+  }),
 );
 
 /**
@@ -67,6 +89,8 @@ export const problems = pgTable(
     type: text("type").notNull().default("U"),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
+    /** tsvector 列，GENERATED 自动维护，ORM 不可写入 */
+    searchVector: tsvector("search_vector"),
   },
   (table) => ({
     typeNumberUnique: unique("problems_type_number_unique").on(
@@ -74,6 +98,10 @@ export const problems = pgTable(
       table.number,
     ),
     typeCheck: check("problems_type_check", sql`${table.type} IN ('U', 'P')`),
+    searchVectorIdx: index("idx_problems_search_vector").using(
+      "gin",
+      table.searchVector,
+    ),
   }),
 );
 
