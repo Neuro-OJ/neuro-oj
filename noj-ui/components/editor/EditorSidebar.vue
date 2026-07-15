@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Clock, Server, Sun, Moon, Trash2, ChevronRight, Loader2 } from '@lucide/vue'
+import { Clock, Server, Sun, Moon, Trash2, ChevronRight, Loader2, Timer, MemoryStick } from '@lucide/vue'
 import MarkdownRenderer from '~/components/shared/MarkdownRenderer.vue'
 import { getStatusColor, getStatusLabel } from '~/composables/use-submissions'
 import type { EditorTheme } from '~/composables/useEditorTheme'
@@ -46,11 +46,21 @@ const emit = defineEmits<{
 }>()
 
 const recentSubmissions = computed(() => {
-  const live = props.activeSubmission ? [props.activeSubmission] : []
-  return live
+  // 仅显示当前正在轮询的那一条（最多一张）
+  return props.activeSubmission ? [props.activeSubmission] : []
 })
 
 const historySubmissions = computed(() => props.submissions)
+
+// 实时时钟：用于卡片内「已等待 Ns」显示
+const liveNow = ref(Date.now())
+let liveTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  liveTimer = setInterval(() => { liveNow.value = Date.now() }, 500)
+})
+onUnmounted(() => {
+  if (liveTimer) clearInterval(liveTimer)
+})
 
 function formatScore(s: number | undefined) {
   if (s == null) return '—'
@@ -59,12 +69,36 @@ function formatScore(s: number | undefined) {
 
 function formatTime(iso: string) {
   const d = new Date(iso)
-  const now = Date.now()
-  const diff = Math.floor((now - d.getTime()) / 1000)
+  const diff = Math.floor((liveNow.value - d.getTime()) / 1000)
   if (diff < 60) return `${diff}s 前`
   if (diff < 3600) return `${Math.floor(diff / 60)}m 前`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h 前`
   return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+}
+
+function formatElapsed(iso: string) {
+  const diff = Math.floor((liveNow.value - new Date(iso).getTime()) / 1000)
+  if (diff < 0) return '0s'
+  if (diff < 60) return `${diff}s`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ${diff % 60}s`
+  return `${Math.floor(diff / 3600)}h`
+}
+
+function statusDescription(sub: PolledSubmission) {
+  if (sub.status === 'pending') return '排队中，等待评测机'
+  if (sub.status === 'judging') return '评测机正在运行你的代码'
+  if (sub.status === 'finished') {
+    const rs = sub.result?.status
+    if (rs === 'Accepted') return '通过，全部测试点得分'
+    if (rs === 'WrongAnswer') return '答案错误'
+    if (rs === 'TimeLimitExceeded') return '运行超时'
+    if (rs === 'MemoryLimitExceeded') return '内存超限'
+    if (rs === 'RuntimeError') return '运行时错误'
+    if (rs === 'CompileError') return '编译错误'
+    return '评测完成'
+  }
+  if (sub.status === 'error') return '评测失败'
+  return sub.status
 }
 </script>
 
@@ -107,7 +141,7 @@ function formatTime(iso: string) {
 
     <!-- 历史 tab -->
     <div v-else-if="active === 'history'" class="p-4 space-y-4">
-      <!-- 最近（实时轮询） -->
+      <!-- 最近（实时轮询，最多一张卡片） -->
       <div>
         <div class="flex items-center justify-between mb-2">
           <h3 class="text-sm font-semibold text-text">最近</h3>
@@ -119,25 +153,59 @@ function formatTime(iso: string) {
         <button
           v-for="sub in recentSubmissions"
           :key="sub.id"
-          class="w-full text-left p-3 rounded-md border border-primary/40 bg-primary-bg/30 hover:border-primary transition-colors group relative"
+          class="w-full text-left p-3 rounded-md border-2 border-primary/40 bg-primary-bg/20 hover:border-primary hover:bg-primary-bg/40 transition-colors group relative"
           @click="emit('open-submission', sub.id)"
         >
-          <div class="flex items-center justify-between mb-1">
+          <!-- 行 1：状态徽章 + 得分 -->
+          <div class="flex items-center justify-between mb-2">
             <span
-              class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium"
-              :style="{ background: getStatusColor(sub.status, sub.result?.status) + '18', color: getStatusColor(sub.status, sub.result?.status) }"
+              class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded font-semibold"
+              :style="{ background: getStatusColor(sub.status, sub.result?.status) + '22', color: getStatusColor(sub.status, sub.result?.status) }"
             >
-              <Loader2 v-if="isPollingActive && (sub.status === 'pending' || sub.status === 'judging')" :size="10" class="animate-spin" />
+              <Loader2
+                v-if="sub.status === 'pending' || sub.status === 'judging'"
+                :size="10"
+                class="animate-spin"
+              />
               {{ getStatusLabel(sub.status, sub.result?.status) }}
             </span>
-            <span class="text-xs font-mono text-text-secondary">
-              {{ sub.result ? formatScore(sub.result.score) + ' 分' : '—' }}
+            <span class="text-sm font-mono font-semibold text-text">
+              <template v-if="sub.result && sub.status === 'finished'">
+                {{ formatScore(sub.result.score) }} 分
+              </template>
+              <template v-else>—</template>
             </span>
           </div>
-          <div class="flex items-center justify-between text-xs text-text-muted">
-            <span class="font-mono">{{ sub.language }}</span>
-            <span>{{ formatTime(sub.created_at) }}</span>
+
+          <!-- 行 2：状态描述 -->
+          <div class="text-xs text-text-secondary mb-2 leading-relaxed">
+            {{ statusDescription(sub) }}
           </div>
+
+          <!-- 行 3：用时 / 内存（仅 finished 显示） -->
+          <div
+            v-if="sub.status === 'finished' && (sub.result?.time_ms || sub.result?.memory_kb)"
+            class="flex items-center gap-3 text-xs text-text-muted mb-2"
+          >
+            <span v-if="sub.result?.time_ms" class="inline-flex items-center gap-1">
+              <Timer :size="11" />
+              {{ sub.result.time_ms }}ms
+            </span>
+            <span v-if="sub.result?.memory_kb" class="inline-flex items-center gap-1">
+              <MemoryStick :size="11" />
+              {{ Math.round(sub.result.memory_kb / 1024) }}MB
+            </span>
+          </div>
+
+          <!-- 行 4：底部 — 语言 + 已等待时长 -->
+          <div class="flex items-center justify-between text-xs text-text-muted border-t border-primary/20 pt-2">
+            <span class="font-mono">{{ sub.language }}</span>
+            <span v-if="sub.status === 'pending' || sub.status === 'judging'">
+              已等待 {{ formatElapsed(sub.created_at) }}
+            </span>
+            <span v-else>{{ formatTime(sub.created_at) }}</span>
+          </div>
+
           <ChevronRight
             :size="14"
             class="absolute right-2 top-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity"

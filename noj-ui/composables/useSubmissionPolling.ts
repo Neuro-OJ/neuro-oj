@@ -17,7 +17,14 @@ export interface PolledSubmission {
   score: number;
   language: string;
   created_at: string;
-  result: { status: string; score: number } | null;
+  time_ms?: number;
+  memory_kb?: number;
+  result: {
+    status: string;
+    score: number;
+    time_ms?: number;
+    memory_kb?: number;
+  } | null;
 }
 
 const TERMINAL_STATUSES: SubmissionStatus[] = ["finished", "error"];
