@@ -172,5 +172,5 @@ watch(
 </script>
 
 <template>
-  <div ref="containerRef" class="w-full h-full border border-border rounded-lg overflow-hidden" :style="{ minHeight: minHeight ? `${minHeight}px` : '320px' }" />
+  <div ref="containerRef" class="w-full h-full overflow-hidden" :style="{ minHeight: minHeight ? `${minHeight}px` : '320px' }" />
 </template>
