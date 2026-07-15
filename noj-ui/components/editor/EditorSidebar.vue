@@ -83,23 +83,6 @@ function formatElapsed(iso: string) {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ${diff % 60}s`
   return `${Math.floor(diff / 3600)}h`
 }
-
-function statusDescription(sub: PolledSubmission) {
-  if (sub.status === 'pending') return '排队中，等待评测机'
-  if (sub.status === 'judging') return '评测机正在运行你的代码'
-  if (sub.status === 'finished') {
-    const rs = sub.result?.status
-    if (rs === 'Accepted') return '通过，全部测试点得分'
-    if (rs === 'WrongAnswer') return '答案错误'
-    if (rs === 'TimeLimitExceeded') return '运行超时'
-    if (rs === 'MemoryLimitExceeded') return '内存超限'
-    if (rs === 'RuntimeError') return '运行时错误'
-    if (rs === 'CompileError') return '编译错误'
-    return '评测完成'
-  }
-  if (sub.status === 'error') return '评测失败'
-  return sub.status
-}
 </script>
 
 <template>
@@ -177,12 +160,7 @@ function statusDescription(sub: PolledSubmission) {
             </span>
           </div>
 
-          <!-- 行 2：状态描述 -->
-          <div class="text-xs text-text-secondary mb-2 leading-relaxed">
-            {{ statusDescription(sub) }}
-          </div>
-
-          <!-- 行 3：用时 / 内存（仅 finished 显示） -->
+          <!-- 行 2：用时 / 内存（仅 finished 显示） -->
           <div
             v-if="sub.status === 'finished' && (sub.result?.time_ms || sub.result?.memory_kb)"
             class="flex items-center gap-3 text-xs text-text-muted mb-2"
