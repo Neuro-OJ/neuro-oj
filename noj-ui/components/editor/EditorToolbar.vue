@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ArrowLeft, Moon, Sun, Settings, Sidebar, Loader2, Send } from '@lucide/vue'
 import type { EditorTheme } from '~/composables/useEditorTheme'
+import type { DraftState } from '~/composables/useDraftStorage'
 
 interface Problem {
   id: string
@@ -22,6 +23,8 @@ const props = defineProps<{
   canSubmit: boolean
   submitting: boolean
   sidebarVisible: boolean
+  draftState: DraftState
+  draftSavedAt: Date | null
 }>()
 
 const emit = defineEmits<{
@@ -36,6 +39,41 @@ const emit = defineEmits<{
 function toggleTheme() {
   emit('update:themeMode', props.themeMode === 'dark' ? 'light' : 'dark')
 }
+
+// 保存状态实时显示
+const now = ref(Date.now())
+let nowTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  if (!import.meta.client) return
+  nowTimer = setInterval(() => { now.value = Date.now() }, 5000)
+})
+onBeforeUnmount(() => {
+  if (nowTimer) clearInterval(nowTimer)
+})
+
+const draftLabel = computed(() => {
+  if (!props.draftSavedAt) return '未保存'
+  const diff = Math.floor((now.value - props.draftSavedAt.getTime()) / 1000)
+  if (diff < 2) return '刚刚已保存'
+  if (diff < 60) return `${diff}s 前已保存`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m 前已保存`
+  return props.draftSavedAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) + ' 已保存'
+})
+
+const draftDotClass = computed(() => {
+  switch (props.draftState) {
+    case 'dirty':
+      return 'bg-orange-500'
+    case 'saving':
+      return 'bg-blue-500 animate-pulse'
+    case 'error':
+      return 'bg-red-500'
+    case 'saved':
+      return 'bg-green-500'
+    default:
+      return 'bg-text-muted'
+  }
+})
 </script>
 
 <template>
@@ -60,6 +98,12 @@ function toggleTheme() {
 
     <!-- 中部 spacer -->
     <div class="flex-1" />
+
+    <!-- 保存状态（右侧） -->
+    <div class="flex items-center gap-1.5 text-xs text-text-secondary" :title="draftLabel">
+      <span class="size-1.5 rounded-full" :class="draftDotClass" />
+      <span class="hidden sm:inline">{{ draftLabel }}</span>
+    </div>
 
     <!-- 右：语言 + 主题 + 侧栏 + 设置 + 提交 -->
     <div class="flex items-center gap-1.5">
