@@ -70,15 +70,14 @@ const charsLabel = computed(() => {
 </script>
 
 <template>
-  <div class="w-6 flex-shrink-0 bg-bg-page border-l border-border flex flex-col items-center py-2 gap-2 text-[11px] text-text-secondary font-mono">
-    <span class="flex flex-col items-center gap-1.5" :title="draftLabel">
+  <div class="h-6 flex-shrink-0 bg-bg-page border-t border-border flex items-center px-3 gap-4 text-[11px] text-text-secondary font-mono ml-auto">
+    <span class="flex items-center gap-1.5">
       <span class="size-1.5 rounded-full" :class="draftDotClass" />
+      <span>{{ draftLabel }}</span>
     </span>
-    <span class="[writing-mode:vertical-rl] rotate-180 whitespace-nowrap">{{ draftLabel }}</span>
     <span>{{ language }}</span>
-    <span class="[writing-mode:vertical-rl] rotate-180 whitespace-nowrap">Ln {{ cursor.line }}</span>
-    <span class="[writing-mode:vertical-rl] rotate-180 whitespace-nowrap">Col {{ cursor.col }}</span>
+    <span>Ln {{ cursor.line }}, Col {{ cursor.col }}</span>
     <span>{{ totalLines }} 行</span>
-    <span class="[writing-mode:vertical-rl] rotate-180 whitespace-nowrap">{{ charsLabel }}</span>
+    <span>{{ charsLabel }}</span>
   </div>
 </template>

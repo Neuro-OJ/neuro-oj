@@ -247,7 +247,9 @@ function onCursorChange(pos: { line: number; col: number }) {
             </div>
           </Transition>
         </main>
+      </div>
 
+      <div class="flex-shrink-0 flex justify-end">
         <EditorStatusBar
           :language="language"
           :cursor="cursor"
