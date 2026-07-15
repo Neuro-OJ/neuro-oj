@@ -35,7 +35,7 @@ function onDoubleClick() {
 
 <template>
   <div
-    class="w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors hidden md:block flex-shrink-0"
+    class="w-1 cursor-col-resize bg-transparent hover:bg-primary/30 active:bg-primary/50 transition-colors hidden md:block flex-shrink-0"
     @mousedown="onMouseDown"
     @dblclick="onDoubleClick"
   />
