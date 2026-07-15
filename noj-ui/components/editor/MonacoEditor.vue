@@ -21,6 +21,12 @@ let modelContentDisposable: { dispose: () => void } | null = null
 
 const MONACO_VERSION = "0.55.1" // 须与 package.json 中的 monaco-editor 版本一致
 
+// 字号（响应 Ctrl/Cmd + 滚轮缩放）
+const MIN_FONT_SIZE = 10
+const MAX_FONT_SIZE = 32
+const DEFAULT_FONT_SIZE = 14
+let currentFontSize = DEFAULT_FONT_SIZE
+
 // Map our language identifiers to Monaco's
 const langMap: Record<string, string> = {
   python3: "python",
@@ -60,7 +66,9 @@ async function initMonaco() {
     language: langMap[props.language ?? "python3"] || "python",
     theme: props.theme ?? "vs-dark",
     minimap: { enabled: false },
-    fontSize: 13,
+    fontSize: currentFontSize,
+    fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Menlo, Consolas, monospace',
+    fontLigatures: true,
     lineNumbers: "on",
     scrollBeyondLastLine: false,
     automaticLayout: true,
@@ -73,6 +81,7 @@ async function initMonaco() {
     smoothScrolling: true,
     cursorBlinking: "smooth",
     cursorSmoothCaretAnimation: "on",
+    mouseWheelZoom: false, // 我们自己实现 Ctrl+滚轮缩放
   })
 
   // Sync changes back to v-model
@@ -86,9 +95,26 @@ async function initMonaco() {
   })
 }
 
+// Ctrl/Cmd + 滚轮：缩放编辑器字号
+function onWheelZoom(e: WheelEvent) {
+  if (!(e.ctrlKey || e.metaKey)) return
+  e.preventDefault()
+  const delta = e.deltaY > 0 ? -1 : 1
+  const next = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, currentFontSize + delta))
+  if (next === currentFontSize) return
+  currentFontSize = next
+  editor?.updateOptions({ fontSize: next })
+}
+
+onMounted(() => {
+  // 绑定到容器（passive: false 才能 preventDefault）
+  containerRef.value?.addEventListener("wheel", onWheelZoom, { passive: false })
+})
+
 onMounted(initMonaco)
 
 onUnmounted(() => {
+  containerRef.value?.removeEventListener("wheel", onWheelZoom)
   modelContentDisposable?.dispose()
   editor?.dispose()
 })
