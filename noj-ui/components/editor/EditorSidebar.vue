@@ -93,25 +93,26 @@ function formatElapsed(iso: string) {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-white border-r border-border">
+  <div class="h-full overflow-y-auto bg-white border-r border-border transition-colors duration-300">
     <!-- 描述 tab -->
-    <div v-if="active === 'description'" class="p-4 space-y-4">
-      <div class="flex items-center gap-2 flex-wrap text-xs text-text-secondary">
-        <span
-          class="inline-flex items-center px-2 py-0.5 rounded-full font-semibold"
-          :class="problem.type === 'U' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'"
-        >
-          {{ problem.display_id }}
-        </span>
-        <span class="inline-flex items-center gap-1">
-          <Clock :size="12" />
-          {{ problem.time_limit_ms }}ms
-        </span>
-        <span class="inline-flex items-center gap-1">
-          <Server :size="12" />
-          {{ problem.memory_limit_mb }}MB
-        </span>
-        <span class="font-medium">{{ problem.difficulty }}</span>
+    <Transition name="fade" mode="out-in">
+      <div v-if="active === 'description'" key="description" class="p-4 space-y-4">
+        <div class="flex items-center gap-2 flex-wrap text-xs text-text-secondary">
+          <span
+            class="inline-flex items-center px-2 py-0.5 rounded-full font-semibold"
+            :class="problem.type === 'U' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'"
+          >
+            {{ problem.display_id }}
+          </span>
+          <span class="inline-flex items-center gap-1">
+            <Clock :size="12" />
+            {{ problem.time_limit_ms }}ms
+          </span>
+          <span class="inline-flex items-center gap-1">
+            <Server :size="12" />
+            {{ problem.memory_limit_mb }}MB
+          </span>
+          <span class="font-medium">{{ problem.difficulty }}</span>
       </div>
 
       <div v-if="problem.categories.length" class="flex flex-wrap gap-1.5">
@@ -127,11 +128,11 @@ function formatElapsed(iso: string) {
       <div class="prose prose-sm prose-neuro max-w-none">
         <MarkdownRenderer :content="problem.description" />
       </div>
-    </div>
+      </div>
 
-    <!-- 历史 tab -->
-    <div v-else-if="active === 'history'" class="p-4 space-y-4">
-      <!-- 最近（实时轮询，最多一张卡片） -->
+      <!-- 历史 tab -->
+      <div v-if="active === 'history'" key="history" class="p-4 space-y-4">
+        <!-- 最近（实时轮询，最多一张卡片） -->
       <div>
         <div class="flex items-center justify-between mb-2">
           <h3 class="text-sm font-semibold text-text">最近</h3>
@@ -229,11 +230,11 @@ function formatElapsed(iso: string) {
           />
         </button>
       </div>
-    </div>
+      </div>
 
-    <!-- 设置 tab -->
-    <div v-else-if="active === 'settings'" class="p-4 space-y-5">
-      <h3 class="text-sm font-semibold text-text">设置</h3>
+      <!-- 设置 tab -->
+      <div v-if="active === 'settings'" key="settings" class="p-4 space-y-5">
+        <h3 class="text-sm font-semibold text-text">设置</h3>
 
       <div class="space-y-2">
         <label class="text-xs font-medium text-text-secondary">主题</label>
@@ -281,7 +282,24 @@ function formatElapsed(iso: string) {
           <Trash2 :size="14" />
           清除当前草稿
         </button>
+        </div>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>
+
+<style scoped>
+/* Tab 切换淡入淡出 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+.fade-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+</style>
