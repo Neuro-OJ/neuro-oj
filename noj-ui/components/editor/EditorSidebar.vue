@@ -93,7 +93,7 @@ function formatElapsed(iso: string) {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-white border-r border-border transition-colors duration-300">
+  <div class="h-full overflow-y-auto bg-white border-r border-border transition-colors duration-300 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-text-muted">
    <Transition name="fade" mode="out-in">
     <div :key="active" class="h-full">
     <!-- 描述 tab -->
