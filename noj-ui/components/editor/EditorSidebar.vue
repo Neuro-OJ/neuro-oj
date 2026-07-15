@@ -94,6 +94,8 @@ function formatElapsed(iso: string) {
 
 <template>
   <div class="h-full overflow-y-auto bg-white border-r border-border transition-colors duration-300">
+   <Transition name="fade" mode="out-in">
+    <div :key="active" class="h-full">
     <!-- 描述 tab -->
     <div v-if="active === 'description'" class="p-4 space-y-4">
         <div class="flex items-center gap-2 flex-wrap text-xs text-text-secondary">
@@ -283,5 +285,22 @@ function formatElapsed(iso: string) {
         </button>
       </div>
     </div>
+    </div>
+   </Transition>
   </div>
 </template>
+
+<style scoped>
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+.fade-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+</style>
