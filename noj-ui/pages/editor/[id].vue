@@ -128,6 +128,7 @@ function onCursorChange(pos: { line: number; col: number }) {
     class="h-screen flex flex-col overflow-hidden"
     :class="{ 'editor-dark': theme === 'dark' }"
   >
+   <ClientOnly>
     <!-- 加载状态 -->
     <div v-if="problemPending" class="flex-1 flex items-center justify-center bg-bg-page">
       <div class="flex flex-col items-center gap-3 text-text-muted">
@@ -241,5 +242,6 @@ function onCursorChange(pos: { line: number; col: number }) {
         :draft-saved-at="draftSavedAt"
       />
     </template>
+   </ClientOnly>
   </div>
 </template>
