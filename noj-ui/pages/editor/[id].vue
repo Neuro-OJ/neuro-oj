@@ -193,7 +193,7 @@ function onCursorChange(pos: { line: number; col: number }) {
         </template>
 
         <!-- 主编辑区 -->
-        <main class="flex-1 flex flex-col min-w-0">
+        <main class="flex-1 flex flex-col min-w-0 h-full min-h-0">
           <ClientOnly>
             <MonacoEditor
               v-model="code"
