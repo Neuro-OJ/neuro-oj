@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { Clock, Server, Sun, Moon, Trash2, ChevronRight } from '@lucide/vue'
+import { Clock, Server, Sun, Moon, Trash2, ChevronRight, Loader2 } from '@lucide/vue'
 import MarkdownRenderer from '~/components/shared/MarkdownRenderer.vue'
 import { getStatusColor, getStatusLabel } from '~/composables/use-submissions'
 import type { EditorTheme } from '~/composables/useEditorTheme'
+import type { PolledSubmission } from '~/composables/useSubmissionPolling'
 
 type Tab = 'description' | 'history' | 'settings'
 
@@ -27,10 +28,12 @@ interface Submission {
   result: { status: string; score: number } | null
 }
 
-defineProps<{
+const props = defineProps<{
   active: Tab
   problem: Problem
   submissions: Submission[]
+  activeSubmission: PolledSubmission | null
+  isPollingActive: boolean
   themeMode: EditorTheme
   draftEnabled: boolean
 }>()
@@ -41,6 +44,13 @@ const emit = defineEmits<{
   'clear-draft': []
   'open-submission': [id: string]
 }>()
+
+const recentSubmissions = computed(() => {
+  const live = props.activeSubmission ? [props.activeSubmission] : []
+  return live
+})
+
+const historySubmissions = computed(() => props.submissions)
 
 function formatScore(s: number | undefined) {
   if (s == null) return '—'
@@ -96,35 +106,76 @@ function formatTime(iso: string) {
     </div>
 
     <!-- 历史 tab -->
-    <div v-else-if="active === 'history'" class="p-4 space-y-2">
-      <h3 class="text-sm font-semibold text-text mb-3">提交历史</h3>
-      <div v-if="submissions.length === 0" class="text-xs text-text-muted text-center py-8">
-        暂无提交记录
+    <div v-else-if="active === 'history'" class="p-4 space-y-4">
+      <!-- 最近（实时轮询） -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-sm font-semibold text-text">最近</h3>
+          <Loader2 v-if="isPollingActive" :size="12" class="animate-spin text-primary" />
+        </div>
+        <div v-if="recentSubmissions.length === 0" class="text-xs text-text-muted text-center py-4 border border-dashed border-border rounded-md">
+          点击「提交评测」开始
+        </div>
+        <button
+          v-for="sub in recentSubmissions"
+          :key="sub.id"
+          class="w-full text-left p-3 rounded-md border border-primary/40 bg-primary-bg/30 hover:border-primary transition-colors group relative"
+          @click="emit('open-submission', sub.id)"
+        >
+          <div class="flex items-center justify-between mb-1">
+            <span
+              class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium"
+              :style="{ background: getStatusColor(sub.status, sub.result?.status) + '18', color: getStatusColor(sub.status, sub.result?.status) }"
+            >
+              <Loader2 v-if="isPollingActive && (sub.status === 'pending' || sub.status === 'judging')" :size="10" class="animate-spin" />
+              {{ getStatusLabel(sub.status, sub.result?.status) }}
+            </span>
+            <span class="text-xs font-mono text-text-secondary">
+              {{ sub.result ? formatScore(sub.result.score) + ' 分' : '—' }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between text-xs text-text-muted">
+            <span class="font-mono">{{ sub.language }}</span>
+            <span>{{ formatTime(sub.created_at) }}</span>
+          </div>
+          <ChevronRight
+            :size="14"
+            class="absolute right-2 top-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity"
+          />
+        </button>
       </div>
-      <button
-        v-for="sub in submissions"
-        :key="sub.id"
-        class="w-full text-left p-3 rounded-md border border-border hover:border-primary hover:bg-bg-page transition-colors group"
-        @click="emit('open-submission', sub.id)"
-      >
-        <div class="flex items-center justify-between mb-1">
-          <span
-            class="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded font-medium"
-            :style="{ background: getStatusColor(sub.status, sub.result?.status) + '18', color: getStatusColor(sub.status, sub.result?.status) }"
-          >
-            {{ getStatusLabel(sub.status, sub.result?.status) }}
-          </span>
-          <span class="text-xs font-mono text-text-secondary">{{ formatScore(sub.result?.score ?? 0) }} 分</span>
+
+      <!-- 历史（已完成） -->
+      <div>
+        <h3 class="text-sm font-semibold text-text mb-2">历史</h3>
+        <div v-if="historySubmissions.length === 0" class="text-xs text-text-muted text-center py-4">
+          暂无提交记录
         </div>
-        <div class="flex items-center justify-between text-xs text-text-muted">
-          <span class="font-mono">{{ sub.language }}</span>
-          <span>{{ formatTime(sub.created_at) }}</span>
-        </div>
-        <ChevronRight
-          :size="14"
-          class="absolute right-2 top-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity"
-        />
-      </button>
+        <button
+          v-for="sub in historySubmissions"
+          :key="sub.id"
+          class="w-full text-left p-3 rounded-md border border-border hover:border-primary hover:bg-bg-page transition-colors group relative mb-2"
+          @click="emit('open-submission', sub.id)"
+        >
+          <div class="flex items-center justify-between mb-1">
+            <span
+              class="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded font-medium"
+              :style="{ background: getStatusColor(sub.status, sub.result?.status) + '18', color: getStatusColor(sub.status, sub.result?.status) }"
+            >
+              {{ getStatusLabel(sub.status, sub.result?.status) }}
+            </span>
+            <span class="text-xs font-mono text-text-secondary">{{ formatScore(sub.result?.score ?? 0) }} 分</span>
+          </div>
+          <div class="flex items-center justify-between text-xs text-text-muted">
+            <span class="font-mono">{{ sub.language }}</span>
+            <span>{{ formatTime(sub.created_at) }}</span>
+          </div>
+          <ChevronRight
+            :size="14"
+            class="absolute right-2 top-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity"
+          />
+        </button>
+      </div>
     </div>
 
     <!-- 设置 tab -->
