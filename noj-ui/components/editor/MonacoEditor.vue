@@ -172,5 +172,5 @@ watch(
 </script>
 
 <template>
-  <div ref="containerRef" class="w-full h-full overflow-hidden" :style="{ minHeight: minHeight ? `${minHeight}px` : '320px' }" />
+  <div ref="containerRef" class="w-full h-full overflow-hidden [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#424242] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#5a5a5a]" :style="{ minHeight: minHeight ? `${minHeight}px` : '320px' }" />
 </template>
