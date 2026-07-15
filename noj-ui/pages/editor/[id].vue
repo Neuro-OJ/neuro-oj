@@ -24,6 +24,15 @@ const { state: draftState, savedAt: draftSavedAt, clear: clearDraft } = useDraft
 const sidebarTab = ref<'description' | 'history' | 'settings'>('description')
 const sidebarVisible = ref(true)
 const sidebarWidth = useResizableSplit('editor:sidebar:width', 320, 240, 480)
+
+// 提交后实时状态轮询（留在编辑页，不跳转）
+const activeSubmissionId = ref<string | null>(null)
+const {
+  submission: activeSubmission,
+  isPolling: isPollingActive,
+  start: startPolling,
+  stop: stopPolling,
+} = useSubmissionPolling(activeSubmissionId)
 const sidebarWidthPx = computed({
   get: () => sidebarWidth.width.value,
   set: (value: number) => {
@@ -54,7 +63,7 @@ const { data: problemData, pending: problemPending, error: problemError } = useF
 const problem = computed(() => problemData.value?.data ?? null)
 
 // 提交历史
-const { data: submissionsData } = useFetch<{
+const { data: submissionsData, refresh: refreshSubmissionsFn } = useFetch<{
   data: Array<{
     id: string
     status: string
@@ -95,7 +104,12 @@ async function handleSubmit() {
         code: code.value,
       },
     })
-    await router.push(`/submissions/${res.data.id}`)
+    // 留在编辑页：自动切到历史 tab + 启动实时轮询
+    sidebarTab.value = 'history'
+    sidebarVisible.value = true
+    startPolling(res.data.id)
+    // 轮询约 2s 后（judge 入队 + 评测完成），刷新历史列表把最近一条移入
+    setTimeout(() => refreshSubmissionsFn(), 2000)
   } catch (err: unknown) {
     const e = err as { data?: { error?: string }; message?: string }
     submitError.value = e.data?.error || e.message || '提交失败，请稍后重试'
@@ -177,6 +191,8 @@ function onCursorChange(pos: { line: number; col: number }) {
               :active="sidebarTab"
               :problem="problem"
               :submissions="submissions"
+              :active-submission="activeSubmission"
+              :is-polling-active="isPollingActive"
               :theme-mode="theme"
               :draft-enabled="draftEnabled"
               @update:theme-mode="setTheme($event)"
