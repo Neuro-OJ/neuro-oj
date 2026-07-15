@@ -96,9 +96,18 @@ async function initMonaco() {
 }
 
 // Ctrl/Cmd + 滚轮：缩放编辑器字号
+// 用 window + capture 阶段监听，避免 Monaco 内部或浏览器默认行为先消费事件
 function onWheelZoom(e: WheelEvent) {
   if (!(e.ctrlKey || e.metaKey)) return
+  // 只在鼠标位于编辑器容器内时拦截，避免影响其他区域
+  if (!containerRef.value) return
+  const rect = containerRef.value.getBoundingClientRect()
+  const inside =
+    e.clientX >= rect.left && e.clientX <= rect.right &&
+    e.clientY >= rect.top && e.clientY <= rect.bottom
+  if (!inside) return
   e.preventDefault()
+  e.stopPropagation()
   const delta = e.deltaY > 0 ? -1 : 1
   const next = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, currentFontSize + delta))
   if (next === currentFontSize) return
@@ -107,14 +116,14 @@ function onWheelZoom(e: WheelEvent) {
 }
 
 onMounted(() => {
-  // 绑定到容器（passive: false 才能 preventDefault）
-  containerRef.value?.addEventListener("wheel", onWheelZoom, { passive: false })
+  // window + capture: true，确保在 Monaco 之前先拿到事件
+  window.addEventListener("wheel", onWheelZoom, { passive: false, capture: true })
 })
 
 onMounted(initMonaco)
 
 onUnmounted(() => {
-  containerRef.value?.removeEventListener("wheel", onWheelZoom)
+  window.removeEventListener("wheel", onWheelZoom, { capture: true } as EventListenerOptions)
   modelContentDisposable?.dispose()
   editor?.dispose()
 })
