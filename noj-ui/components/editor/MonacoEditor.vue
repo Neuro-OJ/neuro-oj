@@ -21,12 +21,6 @@ let modelContentDisposable: { dispose: () => void } | null = null
 
 const MONACO_VERSION = "0.55.1" // 须与 package.json 中的 monaco-editor 版本一致
 
-// 字号（响应 Ctrl/Cmd + 滚轮缩放）
-const MIN_FONT_SIZE = 10
-const MAX_FONT_SIZE = 32
-const DEFAULT_FONT_SIZE = 14
-let currentFontSize = DEFAULT_FONT_SIZE
-
 // Map our language identifiers to Monaco's
 const langMap: Record<string, string> = {
   python3: "python",
@@ -66,9 +60,7 @@ async function initMonaco() {
     language: langMap[props.language ?? "python3"] || "python",
     theme: props.theme ?? "vs-dark",
     minimap: { enabled: false },
-    fontSize: currentFontSize,
-    fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Menlo, Consolas, monospace',
-    fontLigatures: true,
+    fontSize: 13,
     lineNumbers: "on",
     scrollBeyondLastLine: false,
     automaticLayout: true,
@@ -81,7 +73,6 @@ async function initMonaco() {
     smoothScrolling: true,
     cursorBlinking: "smooth",
     cursorSmoothCaretAnimation: "on",
-    mouseWheelZoom: false, // 我们自己实现 Ctrl+滚轮缩放
   })
 
   // Sync changes back to v-model
@@ -95,35 +86,9 @@ async function initMonaco() {
   })
 }
 
-// Ctrl/Cmd + 滚轮：缩放编辑器字号
-// 用 window + capture 阶段监听，避免 Monaco 内部或浏览器默认行为先消费事件
-function onWheelZoom(e: WheelEvent) {
-  if (!(e.ctrlKey || e.metaKey)) return
-  // 只在鼠标位于编辑器容器内时拦截，避免影响其他区域
-  if (!containerRef.value) return
-  const rect = containerRef.value.getBoundingClientRect()
-  const inside =
-    e.clientX >= rect.left && e.clientX <= rect.right &&
-    e.clientY >= rect.top && e.clientY <= rect.bottom
-  if (!inside) return
-  e.preventDefault()
-  e.stopPropagation()
-  const delta = e.deltaY > 0 ? -1 : 1
-  const next = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, currentFontSize + delta))
-  if (next === currentFontSize) return
-  currentFontSize = next
-  editor?.updateOptions({ fontSize: next })
-}
-
-onMounted(() => {
-  // window + capture: true，确保在 Monaco 之前先拿到事件
-  window.addEventListener("wheel", onWheelZoom, { passive: false, capture: true })
-})
-
 onMounted(initMonaco)
 
 onUnmounted(() => {
-  window.removeEventListener("wheel", onWheelZoom, { capture: true } as EventListenerOptions)
   modelContentDisposable?.dispose()
   editor?.dispose()
 })
@@ -172,5 +137,5 @@ watch(
 </script>
 
 <template>
-  <div ref="containerRef" class="w-full h-full overflow-hidden [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#424242] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#5a5a5a]" :style="{ minHeight: minHeight ? `${minHeight}px` : '320px' }" />
+  <div ref="containerRef" class="w-full flex-1 min-h-0 border border-border rounded-lg overflow-hidden" :style="{ minHeight: minHeight ? `${minHeight}px` : '320px' }" />
 </template>
