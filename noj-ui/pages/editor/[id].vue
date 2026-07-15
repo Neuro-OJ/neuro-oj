@@ -248,15 +248,15 @@ function onCursorChange(pos: { line: number; col: number }) {
               <button class="text-red-600 hover:text-red-800" @click="submitError = ''">×</button>
             </div>
           </Transition>
+
+          <EditorStatusBar
+            :language="language"
+            :cursor="cursor"
+            :total-lines="totalLines"
+            :total-chars="totalChars"
+          />
         </main>
       </div>
-
-      <EditorStatusBar
-        :language="language"
-        :cursor="cursor"
-        :total-lines="totalLines"
-        :total-chars="totalChars"
-      />
     </template>
    </ClientOnly>
   </div>
