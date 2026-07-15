@@ -46,8 +46,15 @@ const emit = defineEmits<{
 }>()
 
 const recentSubmissions = computed(() => {
-  // 仅显示当前正在轮询的那一条（最多一张）
-  return props.activeSubmission ? [props.activeSubmission] : []
+  // 优先显示当前正在轮询的那一条
+  if (props.activeSubmission) {
+    return [props.activeSubmission]
+  }
+  // 否则从历史里取最近的一条（API 已按 created_at DESC 排序）
+  if (historySubmissions.value.length > 0) {
+    return [historySubmissions.value[0]]
+  }
+  return []
 })
 
 const historySubmissions = computed(() => props.submissions)
