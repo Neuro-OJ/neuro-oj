@@ -247,16 +247,16 @@ function onCursorChange(pos: { line: number; col: number }) {
             </div>
           </Transition>
         </main>
-      </div>
 
-      <EditorStatusBar
-        :language="language"
-        :cursor="cursor"
-        :total-lines="totalLines"
-        :total-chars="totalChars"
-        :draft-state="draftState"
-        :draft-saved-at="draftSavedAt"
-      />
+        <EditorStatusBar
+          :language="language"
+          :cursor="cursor"
+          :total-lines="totalLines"
+          :total-chars="totalChars"
+          :draft-state="draftState"
+          :draft-saved-at="draftSavedAt"
+        />
+      </div>
     </template>
    </ClientOnly>
   </div>
