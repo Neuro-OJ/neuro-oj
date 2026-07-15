@@ -170,6 +170,8 @@ function onCursorChange(pos: { line: number; col: number }) {
         :can-submit="canSubmit"
         :submitting="submitting"
         :sidebar-visible="sidebarVisible"
+        :draft-state="draftState"
+        :draft-saved-at="draftSavedAt"
         @update:language="language = $event"
         @update:theme-mode="setTheme($event)"
         @open-settings="openSettings"
@@ -253,8 +255,6 @@ function onCursorChange(pos: { line: number; col: number }) {
           :cursor="cursor"
           :total-lines="totalLines"
           :total-chars="totalChars"
-          :draft-state="draftState"
-          :draft-saved-at="draftSavedAt"
         />
       </div>
     </template>
