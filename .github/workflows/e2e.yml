@@ -26,6 +26,7 @@ on:
     # 修复点：之前的 cache-to mode=min 拆分到独立的 workflow 安全与配置一致性 PR。
     paths-ignore:
       - 'docs/**'
+      - 'noj-docs/**'
       - '**/*.md'
       - 'openspec/**'
       - '.opencode/**'

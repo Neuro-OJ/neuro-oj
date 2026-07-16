@@ -1,0 +1,63 @@
+site_name: NOJ 文档
+site_description: Neuro OJ 面向做题人、运营者和出题人的正式文档
+site_url: https://neuro-oj.github.io/neuro-oj/
+repo_url: https://github.com/Neuro-OJ/neuro-oj
+repo_name: Neuro-OJ/neuro-oj
+
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - 首页: index.md
+  - 做题人:
+      - users/index.md
+      - 快速开始: users/getting-started.md
+      - 提交代码: users/submit.md
+      - 理解结果: users/results.md
+  - 运营者:
+      - operators/index.md
+      - 本地启动: operators/local-start.md
+      - 初始化与 seed: operators/seed.md
+      - 存储与支持包交付: operators/storage.md
+      - Judge Worker 运维: operators/judge-workers.md
+  - 出题人:
+      - problemsetters/index.md
+      - 评测模型: problemsetters/judge-model.md
+      - 题目支持包: problemsetters/support-package.md
+      - 测试数据: problemsetters/cases.md
+      - Evaluator SDK: problemsetters/evaluator-sdk.md
+      - Solution SDK: problemsetters/solution-sdk.md
+      - RPC 与可传递数据: problemsetters/rpc.md
+      - A+B 示例题: problemsetters/ab-example.md
+  - 参考:
+      - reference/index.md
+      - 术语表: reference/glossary.md
+      - 结果状态: reference/result-status.md
