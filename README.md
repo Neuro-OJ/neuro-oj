@@ -84,6 +84,7 @@ neuro-oj/
 ├── noj-core/          # 核心后端 — RESTful API 服务 (Deno + Hono)
 ├── noj-ui/            # 前端界面 — 用户交互 (Nuxt 4 + Vue 3)
 ├── noj-judge/         # 评测 Worker — Docker 沙箱执行 (Rust + Tokio)
+├── noj-docs/          # 正式文档站 — 做题人/运营者/出题人文档 (MkDocs Material)
 ├── noj-tests/         # 跨模块全链路 E2E 测试
 ├── openspec/          # OpenSpec 规范驱动开发（38 specs + 变化管理）
 ├── scripts/           # 构建与维护脚本
@@ -142,6 +143,25 @@ cargo run               # 需要 Docker daemon
 ```
 
 三模块可独立启动，开发时可以只跑需要的部分。
+
+## 文档站
+
+面向做题人、运营者和出题人的正式文档位于 [`noj-docs/`](./noj-docs/)。
+
+```bash
+cd noj-docs
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+mkdocs serve
+```
+
+提交文档变更前建议运行：
+
+```bash
+cd noj-docs
+mkdocs build --strict
+```
 
 ## 开发流程
 
