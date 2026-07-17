@@ -5,6 +5,7 @@
  * 测试前自动运行迁移并 seed 默认白名单条目（见 00_migrate_test.ts）。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
+import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
@@ -26,6 +27,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
+    await initRedisForTest();
     const app = createApp();
     const res = await jsonRequest(app, "/api/v1/judge-images");
     assertEquals(res.status, 200);
