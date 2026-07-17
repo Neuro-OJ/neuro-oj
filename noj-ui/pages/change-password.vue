@@ -46,7 +46,7 @@
                             id="newPassword"
                             v-model="form.newPassword"
                             :type="showNewPassword ? 'text' : 'password'"
-                            placeholder="至少 12 位，需包含字母和数字"
+                            placeholder="至少 8 位，需包含字母和数字"
                             autocomplete="new-password"
                             :disabled="loading"
                             class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
@@ -160,8 +160,8 @@ function validate(): boolean {
     if (!form.newPassword) {
         fieldErrors.newPassword = "请输入新密码"
         valid = false
-    } else if (form.newPassword.length < 12) {
-        fieldErrors.newPassword = "密码长度不能少于 12 位"
+    } else if (form.newPassword.length < 8) {
+        fieldErrors.newPassword = "密码长度不能少于 8 位"
         valid = false
     } else if (!/[a-z]/.test(form.newPassword)) {
         fieldErrors.newPassword = "密码必须包含至少一个小写字母"

@@ -304,7 +304,7 @@ docker compose down     # 停止
 - API 路径：`/api/v1/{resource}`
 - 错误处理：统一 `AppError` 继承体系（6 个子类），全局 `onError` 捕获，带
   `request_id`
-- 密码强度：≥12 位、含大小写字母和数字（OWASP 2025+）
+- 密码强度：≥8 位、含大小写字母和数字
 - JWT：HS256、iss/aud 校验、24h 有效期（无刷新机制）、`jti` 已生成但未持久化校验
 - 分值：×100 整数值存储（`scoreToDb`/`scoreFromDb`），避免浮点误差
 - 迁移：Drizzle ORM migrator，`drizzle/` 目录下 SQL 文件按序执行

@@ -225,7 +225,7 @@ JWT 负载 MUST 包含 `sub`（用户 ID）、`role`（用户角色）和 `must_
 
 **密码更新：**
 
-- 密码 MUST 通过 `validatePasswordStrength()` 校验（≥12 字符 + 大小写字母 + 数字 + 不得与用户名/邮箱相同）
+- 密码 MUST 通过 `validatePasswordStrength()` 校验（≥8 字符 + 大小写字母 + 数字 + 不得与用户名/邮箱相同）
 - 校验失败 MUST 返 400，**不消耗 token**（用户可重新请求）
 - 校验通过 MUST 用 `hashPassword()` (bcrypt cost 12) 哈希后 UPDATE users 表
 
@@ -273,7 +273,7 @@ JWT 负载 MUST 包含 `sub`（用户 ID）、`role`（用户角色）和 `must_
 请求体：
 
 - `old_password`（必填，string）：用户当前密码（root 系统用户 id='0' 不可登录，理论上不应调用此端点）
-- `new_password`（必填，string）：新密码，复用注册时强度规则（≥12 位、含大小写字母+数字、不能与 username/email 前缀相同）
+- `new_password`（必填，string）：新密码，复用注册时强度规则（≥8 位、含大小写字母+数字、不能与 username/email 前缀相同）
 
 响应：
 

@@ -156,6 +156,50 @@ Deno.test({
 });
 
 Deno.test({
+  name: "routes: POST /register 密码恰好 8 字符边界",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const user = `pw8_${ts}`;
+    const res = await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: user,
+        email: `${user}@example.com`,
+        password: "TestPw8a", // 恰好 8 位（含大小写+数字）
+      },
+    });
+    assertEquals(res.status, 201);
+  },
+});
+
+Deno.test({
+  name: "routes: POST /register 密码 7 字符边界失败",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const user = `pw7_${ts}`;
+    const res = await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: user,
+        email: `${user}@example.com`,
+        password: "TestPw7", // 7 字符，少于 8
+      },
+    });
+    assertEquals(res.status, 400);
+    const body = await res.json();
+    assertEquals(body.error, "密码长度不能少于 8 位");
+  },
+});
+
+Deno.test({
   name: "routes: POST /register 邮箱格式无效返回 400",
   ignore: skip,
   sanitizeResources: false,
@@ -373,7 +417,7 @@ Deno.test({
       body: {
         username: "ab", // 2 字符，无效
         email: `bound_min_${ts}@example.com`,
-        password: "TestPwd-2024", // 11 字符，少于 12
+        password: "TestPwd-2024", // 11 字符（含大小写+数字，符合当前长度下限）
       },
     });
     assertEquals(res.status, 400);
@@ -395,31 +439,10 @@ Deno.test({
       body: {
         username: longName,
         email: `bound_max_${ts}@example.com`,
-        password: "TestPwd-2024", // 11 字符，少于 12
+        password: "TestPwd-2024", // 11 字符（含大小写+数字，符合当前长度下限）
       },
     });
     assertEquals(res.status, 400);
-  },
-});
-
-Deno.test({
-  name: "routes: POST /register 密码恰好 12 字符边界",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const app = createApp();
-    const user = `pw8_${ts}`;
-    const res = await jsonRequest(app, `${BASE}/register`, {
-      method: "POST",
-      body: {
-        username: user,
-        email: `${user}@example.com`,
-        password: "TestPwd-2024a", // 恰好 12 位
-      },
-    });
-    assertEquals(res.status, 201);
   },
 });
 

@@ -4,6 +4,7 @@ import {
   changePassword,
   getUserProfile,
   loginUser,
+  MIN_PASSWORD_LENGTH,
   registerUser,
 } from "../services/auth.ts";
 import { requestReset, resetPassword } from "../services/passwordReset.ts";
@@ -82,9 +83,9 @@ auth.post("/register", async (c) => {
     throw new ValidationError("邮箱格式不正确");
   }
 
-  // 验证密码长度
-  if (body.password.length < 8) {
-    throw new ValidationError("密码长度不能少于 8 位");
+  // 验证密码长度（与服务层 MIN_PASSWORD_LENGTH 保持一致）
+  if (body.password.length < MIN_PASSWORD_LENGTH) {
+    throw new ValidationError(`密码长度不能少于 ${MIN_PASSWORD_LENGTH} 位`);
   }
 
   const user = await registerUser(body);

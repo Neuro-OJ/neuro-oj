@@ -97,7 +97,7 @@ neuro-oj/
 | 维度 | 措施 |
 |------|------|
 | **认证** | JWT HS256, iss/aud 校验, HTTP-only Cookie, 24h 过期 |
-| **密码** | bcrypt cost 12, 最小 12 字符含大小写+数字 |
+| **密码** | bcrypt cost 12, 最小 8 字符含大小写+数字 |
 | **容器** | cap_drop ALL, no-new-privileges, network_mode none, pids_limit 256, tmpfs /tmp |
 | **ZIP** | 路径穿越防护, 1000 条目 / 64MB 单文件 / 512MB 总解压上限 |
 | **XSS** | HTTP-only Cookie + DOMPurify Markdown 清洗 |
