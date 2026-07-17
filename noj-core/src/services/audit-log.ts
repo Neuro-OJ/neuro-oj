@@ -59,6 +59,57 @@ export async function logAudit(
   }
 }
 
+/**
+ * 记录认证相关审计事件（PR-2）。
+ *
+ * 与 `logAudit` 的区别：
+ * - **不依赖 RequestContext**：可在登录/注册/忘记密码等"无 admin 上下文"的路径调用
+ * - **actor 可为 null**：登录失败、未注册邮箱的密码重置请求等场景下没有 actor
+ * - **目标用户是 actor 本人**（不是 admin 操作用户）：admin_id 字段语义变为
+ *   "事件主体用户 ID"（失败时为 null）
+ *
+ * 失败行为同 logAudit：仅 console.error，业务继续。
+ *
+ * @param actorUserId - 触发事件的用户 ID（登录失败/未注册邮箱时为 null）
+ * @param clientIp - 客户端 IP（用于追溯攻击源）
+ * @param action - 审计动作（必须是 auth.* 子集）
+ * @param detail - 强类型 detail
+ */
+export async function logAuthEvent(
+  actorUserId: string | null,
+  clientIp: string,
+  action: AuditAction,
+  detail: AuditDetail,
+): Promise<void> {
+  try {
+    const db = getDb();
+    await db.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      admin_id: actorUserId, // 语义：事件主体用户 ID
+      action,
+      target_type: actorUserId ? "user" : null,
+      target_id: actorUserId,
+      detail: detail as unknown as Record<string, unknown>,
+      ip_address: clientIp || "unknown",
+      created_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const pgErr = e as Record<string, unknown>;
+    const pgCode = typeof pgErr.code === "string" ? ` [${pgErr.code}]` : "";
+    const pgConstraint = typeof pgErr.constraint === "string"
+      ? ` (${pgErr.constraint})`
+      : "";
+    const pgDetail = typeof pgErr.detail === "string"
+      ? `: ${pgErr.detail}`
+      : "";
+    console.error(
+      `[audit] logAuthEvent 失败 (action=${action}):${pgCode}${pgConstraint}${pgDetail}`,
+      msg,
+    );
+  }
+}
+
 /** 审计日志分页列表 + 多维度筛选。默认排除 root (admin_id='0')。 */
 export async function listAuditLogs(
   filter: AuditLogListFilter,
@@ -75,7 +126,8 @@ export async function listAuditLogs(
   if (admin_id) {
     conditions.push(eq(auditLogs.admin_id, admin_id));
   } else {
-    // 默认排除 root (admin_id='0')，显式传入 admin_id='0' 可覆盖
+    // 默认排除 root (admin_id='0')；PR-2 auth.* 事件 admin_id 可为 null
+    // 也保留（登录失败等需要追溯），显式传 admin_id 仍可查询
     conditions.push(sql`${auditLogs.admin_id} != '0'`);
   }
   if (action) conditions.push(eq(auditLogs.action, action));

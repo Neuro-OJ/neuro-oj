@@ -3,7 +3,7 @@ import { getDb } from "../db/connection.ts";
 import { userBans, users } from "../db/schema.ts";
 import { comparePassword, hashPassword } from "../lib/password.ts";
 import { signToken } from "../lib/jwt.ts";
-import { logAudit } from "./audit-log.ts";
+import { logAudit, logAuthEvent } from "./audit-log.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -96,6 +96,7 @@ function toUserResponse(
  */
 export async function registerUser(
   input: RegisterInput,
+  clientIp?: string,
 ): Promise<UserResponse> {
   // 密码强度校验（issue 64 评论 §6.5）
   validatePasswordStrength(input.password, input.username, input.email);
@@ -141,6 +142,19 @@ export async function registerUser(
     updated_at: now,
   });
 
+  // PR-2 审计：注册成功
+  await logAuthEvent(
+    id,
+    clientIp ?? "unknown",
+    "auth.register",
+    {
+      action: "auth.register",
+      user_id: id,
+      username: input.username,
+      email: input.email,
+    },
+  );
+
   return {
     id,
     username: input.username,
@@ -158,8 +172,10 @@ export async function registerUser(
  * 通过用户名或邮箱查找用户，验证密码，签发 JWT。
  *
  * 为防用户枚举，不区分"用户不存在"和"密码错误"，统一返回 401。
+ * 但**审计日志**（PR-2）区分四种失败原因，便于追溯攻击模式。
  *
  * @throws {UnauthorizedError} 用户名/邮箱不存在或密码错误
+ * @throws {ForbiddenError} 账号被封禁（USER_BANNED code）
  */
 export async function loginUser(
   input: LoginInput,
@@ -180,6 +196,17 @@ export async function loginUser(
     .limit(1);
 
   if (existing.length === 0) {
+    // PR-2 审计：用户不存在（撞库信号）
+    await logAuthEvent(
+      null,
+      clientIp ?? "unknown",
+      "auth.login_failure",
+      {
+        action: "auth.login_failure",
+        reason: "user_not_found",
+        login: input.login,
+      },
+    );
     throw new UnauthorizedError("用户名或密码错误");
   }
 
@@ -188,6 +215,16 @@ export async function loginUser(
   // 验证密码
   const valid = await comparePassword(input.password, user.password_hash);
   if (!valid) {
+    await logAuthEvent(
+      user.id,
+      clientIp ?? "unknown",
+      "auth.login_failure",
+      {
+        action: "auth.login_failure",
+        reason: "wrong_password",
+        login: input.login,
+      },
+    );
     throw new UnauthorizedError("用户名或密码错误");
   }
 
@@ -195,6 +232,16 @@ export async function loginUser(
   if (clientIp) {
     const ranges = await getBannedRanges();
     if (isBannedIp(clientIp, ranges)) {
+      await logAuthEvent(
+        user.id,
+        clientIp,
+        "auth.login_failure",
+        {
+          action: "auth.login_failure",
+          reason: "ip_banned",
+          login: input.login,
+        },
+      );
       throw new UnauthorizedError("用户名或密码错误");
     }
   }
@@ -211,6 +258,16 @@ export async function loginUser(
     const stillBanned = !activeBan[0].banned_until ||
       Date.parse(activeBan[0].banned_until) > Date.now();
     if (stillBanned) {
+      await logAuthEvent(
+        user.id,
+        clientIp ?? "unknown",
+        "auth.login_failure",
+        {
+          action: "auth.login_failure",
+          reason: "user_banned",
+          login: input.login,
+        },
+      );
       throw new ForbiddenError("账号已被封禁", "USER_BANNED", {
         reason: activeBan[0].reason,
         until: activeBan[0].banned_until,
@@ -224,6 +281,18 @@ export async function loginUser(
     role: user.role,
     must_change_password: user.must_change_password,
   });
+
+  // PR-2 审计：登录成功
+  await logAuthEvent(
+    user.id,
+    clientIp ?? "unknown",
+    "auth.login_success",
+    {
+      action: "auth.login_success",
+      user_id: user.id,
+      login: input.login,
+    },
+  );
 
   return {
     user: toUserResponse(user, activeBan[0] ?? null),
@@ -479,6 +548,7 @@ export async function changePassword(
   userId: string,
   oldPassword: string,
   newPassword: string,
+  clientIp?: string,
 ): Promise<UserResponse> {
   const db = getDb();
 
@@ -522,6 +592,14 @@ export async function changePassword(
       updated_at: now,
     })
     .where(eq(users.id, userId));
+
+  // PR-2 审计：改密成功（事务提交后异步写；写失败不影响主业务）
+  await logAuthEvent(
+    userId,
+    clientIp ?? "unknown",
+    "auth.change_password",
+    { action: "auth.change_password", user_id: userId },
+  );
 
   return {
     id: user.id,
