@@ -155,6 +155,13 @@
       "when": 1784350000100,
       "tag": "0019_audit_logs_nullable_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1784400000000,
+      "tag": "0020_user_rankings_view",
+      "breakpoints": true
     }
   ]
 }
