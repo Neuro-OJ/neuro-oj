@@ -126,21 +126,22 @@ export function useAuth() {
   }
 
   async function changePassword(oldPassword: string, newPassword: string) {
-    // 后端返回更新后的 UserResponse（must_change_password=false）
-    const res = await $fetch<{ data: UserResponse }>(
+    // 后端在改密成功后：
+    //   1. 撤销旧 token 的 jti（写入 Redis 黑名单）
+    //   2. 签发新 token
+    //   3. 返回 { user, token }
+    // Nitro 代理同步用新 token 替换 noj:token Cookie（user.must_change_password=false）。
+    // 因此前端**不再需要** logout()+重登——直接更新本地 user 状态即可。
+    const res = await $fetch<{ data: { user: UserResponse } }>(
       '/api/v1/auth/change-password',
       {
         method: 'POST',
         body: { old_password: oldPassword, new_password: newPassword },
       },
     );
-    // 关键：改密成功后必须清 Cookie（issue #75 评审 H2/H3）
-    // 后端旧 JWT 在 24h 内仍带 must_change_password=true，
-    // 前端路由守卫看到 JWT 仍会跳回 /change-password 形成死循环。
-    // 通过 logout() 清除 noj:token + noj:session，前端守卫将放行到 /login。
-    // 调用方（ChangePassword.vue）应负责 navigateTo('/login?reason=password_changed')。
-    await logout();
-    return res.data;
+    // 同步本地状态：must_change_password 现在是 false，前端路由守卫放行。
+    user.value = res.data.user;
+    return res.data.user;
   }
 
   async function logout() {
