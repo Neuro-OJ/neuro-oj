@@ -2,7 +2,8 @@
  * 核心 API 冒烟测试（smoke test）。
  *
  * 快速验证核心 API 端点在 HTTP 层面的可达性和基础响应格式正确性。
- * 不依赖外部服务（使用 PGlite 内存数据库），不执行评测相关功能。
+ * 使用 PGlite 内存数据库，需要 REDIS_URL 可用（PR-1 后 authMiddleware
+ * 校验 JWT 撤销状态依赖 Redis，fail-closed 设计）。
  * 作为 CI 中 core-smoke job 的快速反馈路径（预计 < 1 分钟完成）。
  *
  * 测试覆盖：
@@ -26,6 +27,20 @@ import {
   _resetEnvSnapshotForTest,
   snapshotEnv,
 } from "../src/lib/env-snapshot.ts";
+
+// 模块级：连接 Redis（PR-1 后 authMiddleware 需要 Redis 校验 JWT 撤销状态）
+// 未配置 REDIS_URL 时跳过此步（依赖测试自身的 Redis fixture）
+if (Deno.env.get("REDIS_URL")) {
+  try {
+    const redisModule = await import("../src/mq/connection.ts");
+    redisModule.resetRedisForTest();
+    await redisModule.connectRedis();
+  } catch (e) {
+    if (!String(e).includes("already connecting/connected")) {
+      console.warn("[smoke] Redis 连接失败:", e);
+    }
+  }
+}
 
 // PGlite 模式：运行 DDL 建表。
 if (!Deno.env.get("DATABASE_URL")) {
