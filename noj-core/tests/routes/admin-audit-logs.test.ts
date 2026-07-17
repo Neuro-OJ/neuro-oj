@@ -1,4 +1,5 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
+import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { auditLogs, users } from "../../src/db/schema.ts";
@@ -10,6 +11,7 @@ const skip = !hasDb || !hasEnv;
 
 // 模块级 bootstrap：确保 PGlite schema 已创建
 await resetDbForTest();
+await initRedisForTest();
 
 const ADMIN_USER_ID = "audit-route-admin-uuid";
 const NON_ADMIN_USER_ID = "audit-route-user-uuid";
