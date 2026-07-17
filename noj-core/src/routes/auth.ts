@@ -9,12 +9,14 @@ import {
 import { requestReset, resetPassword } from "../services/passwordReset.ts";
 import {
   BadRequestError,
+  ForbiddenError,
   UnauthorizedError,
   ValidationError,
 } from "../lib/errors.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { signToken, verifyToken } from "../lib/jwt.ts";
 import { remainingTtlFromExp, revokeJti } from "../lib/revokedTokens.ts";
+import { getSetting } from "../services/system-settings.ts";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { users } from "../db/schema.ts";
@@ -59,8 +61,17 @@ const auth = new Hono<
 /**
  * 用户注册端点。
  * POST /api/v1/auth/register
+ *
+ * PR-2：allow_register 设置生效（管理后台可关闭注册入口）。
+ * 关闭时直接 403，不暴露"用户已存在"等详细信息（防枚举）。
  */
 auth.post("/register", async (c) => {
+  // PR-2 死开关：allow_register
+  const allowRegisterSetting = getSetting("allow_register");
+  if (allowRegisterSetting?.value === false) {
+    throw new ForbiddenError("注册已关闭", "REGISTER_DISABLED");
+  }
+
   const body = await parseJsonBody<RegisterInput>(c);
 
   // 验证必填字段
@@ -89,7 +100,8 @@ auth.post("/register", async (c) => {
     throw new ValidationError("密码长度不能少于 8 位");
   }
 
-  const user = await registerUser(body);
+  const clientIp = getClientIp(c);
+  const user = await registerUser(body, clientIp);
   return c.json({ data: user }, 201);
 });
 
@@ -211,6 +223,7 @@ auth.post(
         userId,
         body.old_password,
         body.new_password,
+        getClientIp(c),
       );
       await clearLoginFailure(userId, PWCHANGE_NAMESPACE);
 
@@ -359,7 +372,7 @@ auth.post("/forgot-password", async (c) => {
   const host = c.req.header("host") ?? "localhost:3000";
   const appBaseUrl = `${proto}://${host}`;
 
-  await requestReset(body.email, appBaseUrl);
+  await requestReset(body.email, appBaseUrl, getClientIp(c));
 
   return c.json(
     {
@@ -387,7 +400,7 @@ auth.post("/reset-password", async (c) => {
     throw new BadRequestError(`缺少字段：${missing.join(", ")}`);
   }
 
-  await resetPassword(body.token, body.new_password);
+  await resetPassword(body.token, body.new_password, getClientIp(c));
 
   return c.json(
     {
