@@ -5,23 +5,29 @@ import { hashPassword } from "../lib/password.ts";
 import { generateResetToken, hashResetToken } from "../lib/resetToken.ts";
 import { sendPasswordResetEmail } from "../lib/email.ts";
 import { BadRequestError } from "../lib/errors.ts";
+import { logAuthEvent } from "./audit-log.ts";
 import { validatePasswordStrength } from "./auth.ts";
 
 /** 密码重置令牌有效期（分钟）。OWASP 2025+ 建议 ≤ 15 分钟。 */
 const TOKEN_TTL_MINUTES = 15;
 
 /**
- * 发起密码重置请求（issue #49）。
+ * 发起密码重置请求（issue #49 + PR-2 审计）。
  *
  * 防枚举行为：不管邮箱是否已注册，函数 MUST 不抛出业务错误且 MUST 同步返回。
  * 邮箱存在时才生成 token + 发送邮件，邮箱不存在时静默返回。
  *
+ * 审计：写入 `auth.forgot_password_request`（PR-2），包含 email_exists
+ * 标志用于追溯攻击者的撞邮箱行为。email 不写入 detail（防敏感信息泄露）。
+ *
  * @param email - 用户输入的邮箱
  * @param appBaseUrl - 应用基础 URL（用于拼 reset link）
+ * @param clientIp - 客户端 IP（用于审计 + 防滥用追溯）
  */
 export async function requestReset(
   email: string,
   appBaseUrl: string,
+  clientIp?: string,
 ): Promise<void> {
   const db = getDb();
 
@@ -33,7 +39,13 @@ export async function requestReset(
     .limit(1);
 
   if (userRows.length === 0) {
-    // 防枚举：邮箱不存在时静默返回
+    // 防枚举：邮箱不存在时静默返回（但不漏审计）
+    await logAuthEvent(
+      null,
+      clientIp ?? "unknown",
+      "auth.forgot_password_request",
+      { action: "auth.forgot_password_request", email_exists: false },
+    );
     return;
   }
 
@@ -61,6 +73,14 @@ export async function requestReset(
   // 发送邮件
   const resetLink = `${appBaseUrl}/reset-password?token=${plainToken}`;
   await sendPasswordResetEmail(email, resetLink, TOKEN_TTL_MINUTES);
+
+  // 审计：邮箱存在 → 记录成功（便于追溯撞邮箱行为）
+  await logAuthEvent(
+    userId,
+    clientIp ?? "unknown",
+    "auth.forgot_password_request",
+    { action: "auth.forgot_password_request", email_exists: true },
+  );
 }
 
 /**
@@ -79,6 +99,7 @@ export async function requestReset(
 export async function resetPassword(
   token: string,
   newPassword: string,
+  clientIp?: string,
 ): Promise<void> {
   const db = getDb();
   const tokenHash = await hashResetToken(token);
@@ -144,4 +165,12 @@ export async function resetPassword(
       .set({ password_hash: newHash, updated_at: nowIso })
       .where(eq(users.id, user.id));
   });
+
+  // 审计：密码重置成功（事务提交后异步写；写失败不影响主业务）
+  await logAuthEvent(
+    user.id,
+    clientIp ?? "unknown",
+    "auth.password_reset",
+    { action: "auth.password_reset", user_id: user.id },
+  );
 }
