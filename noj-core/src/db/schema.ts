@@ -460,7 +460,8 @@ export const auditLogs = pgTable(
   "audit_logs",
   {
     id: text("id").primaryKey(),
-    admin_id: text("admin_id").notNull().references(() => users.id),
+    // PR-2：admin_id 可空——auth.* 事件可能没有 actor（登录失败、撞邮箱等）
+    admin_id: text("admin_id").references(() => users.id),
     action: text("action").notNull(),
     target_type: text("target_type"),
     target_id: text("target_id"),
