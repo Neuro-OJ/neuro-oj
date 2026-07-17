@@ -7,6 +7,7 @@ import { submissions } from "../db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
 import { users } from "../db/schema.ts";
 import { BadRequestError } from "../lib/errors.ts";
+import { unwrapRows } from "../lib/sql-rows.ts";
 
 /**
  * 用户榜单条目。
@@ -41,14 +42,12 @@ const RANKING_MAX_LIMIT = 100;
 async function hasMaterializedView(): Promise<boolean> {
   try {
     const db = getDb();
-    const result = await db.execute<{ exists: boolean }>(
+    const result = await db.execute(
       sql`SELECT EXISTS (
         SELECT 1 FROM pg_class WHERE relname = 'user_rankings'
       ) AS exists`,
     );
-    const rows = "rows" in result
-      ? (result as { rows: { exists: boolean }[] }).rows
-      : (result as unknown as { exists: boolean }[]);
+    const rows = unwrapRows<{ exists: boolean }>(result as never);
     return Boolean(rows[0]?.exists);
   } catch {
     return false;
@@ -119,12 +118,8 @@ function readRankingsFromView(
       sql`SELECT COUNT(*)::int AS total FROM user_rankings`,
     ),
   ]).then(([dataRes, totalRes]) => {
-    const dataRows = "rows" in dataRes
-      ? (dataRes as { rows: Record<string, unknown>[] }).rows
-      : (dataRes as unknown as Record<string, unknown>[]);
-    const totalRows = "rows" in totalRes
-      ? (totalRes as { rows: { total: number }[] }).rows
-      : (totalRes as unknown as { total: number }[]);
+    const dataRows = unwrapRows<Record<string, unknown>>(dataRes as never);
+    const totalRows = unwrapRows<{ total: number }>(totalRes as never);
 
     return {
       data: dataRows.map((row) => ({
@@ -193,12 +188,8 @@ function readRankingsInline(
       ) AS ranked_users
     `),
   ]).then(([dataRes, totalRes]) => {
-    const dataRows = "rows" in dataRes
-      ? (dataRes as { rows: Record<string, unknown>[] }).rows
-      : (dataRes as unknown as Record<string, unknown>[]);
-    const totalRows = "rows" in totalRes
-      ? (totalRes as { rows: { total: number }[] }).rows
-      : (totalRes as unknown as { total: number }[]);
+    const dataRows = unwrapRows<Record<string, unknown>>(dataRes as never);
+    const totalRows = unwrapRows<{ total: number }>(totalRes as never);
 
     return {
       data: dataRows.map((row: Record<string, unknown>) => ({
@@ -269,9 +260,7 @@ export async function getMyRanking(
       SELECT * FROM ranked WHERE user_id = ${userId} LIMIT 1
     `);
 
-  const resultRows = "rows" in rows
-    ? (rows as { rows: Record<string, unknown>[] }).rows
-    : (rows as unknown as Record<string, unknown>[]);
+  const resultRows = unwrapRows<Record<string, unknown>>(rows as never);
   const row = resultRows[0];
   if (!row) return null;
 
