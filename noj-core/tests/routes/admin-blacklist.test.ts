@@ -2,6 +2,7 @@
  * Admin IP 黑名单路由测试（issue #102）。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
+import { initRedisForTest } from "../lib/helper.ts";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { ipBans, users } from "../../src/db/schema.ts";
@@ -16,6 +17,7 @@ const TEST_TS = Date.now();
 
 async function freshSetup() {
   await resetDbForTest();
+  await initRedisForTest();
   _resetBanlistForTest();
   _resetBanCacheForTest();
   const db = getDb();
