@@ -1,4 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
+import { initRedisForTest } from "../lib/helper.ts";
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import checkin from "../../src/routes/checkin.ts";
@@ -11,6 +12,7 @@ import { jsonRequest } from "../lib/helper.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建
 await resetDbForTest();
+await initRedisForTest();
 
 const hasEnv = true && // DATABASE_URL 未设置时 PGlite 可用
   !!Deno.env.get("JWT_SECRET");
