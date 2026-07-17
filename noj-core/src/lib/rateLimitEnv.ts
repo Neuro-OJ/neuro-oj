@@ -68,10 +68,24 @@ export function getTrustedProxies(): string[] {
 
 /**
  * 解析客户端真实 IP。
- * 解析客户端真实 IP。
- * - XFF 存在时按白名单规则取最左侧的非代理 IP
+ *
+ * 解析策略：
+ * - XFF 存在 + TRUSTED_PROXIES 已配置：从右往左找第一个不在白名单的 IP（最接近客户端）
+ * - XFF 存在 + TRUSTED_PROXIES **未配置**：仅在非生产环境下信任首项（开发友好）；
+ *   生产环境下应**拒绝启动**（main.ts 启动校验，PR-7），fallback 仍写在此处
+ *   以防御性返回 "unknown" 让上层走 unknown IP 分支（限流 / 审计仍工作）
  * - 否则用 X-Real-IP
  * - 都没有则返回 "unknown"
+ *
+ * ## PR-7 安全说明
+ *
+ * 未配置 TRUSTED_PROXIES 时返回 XFF 首项是历史行为，会被攻击者通过
+ * `X-Forwarded-For: 1.2.3.4` 绕过 IP 限流 / IP 黑名单。
+ * PR-7 修复：生产环境（NOJ_ENV=production）启动时若 TRUSTED_PROXIES 为空
+ * 直接 Deno.exit(1)，不让进程进入这种不安全状态。
+ *
+ * @param c Hono Context
+ * @returns 客户端 IP 字符串，无法解析时为 "unknown"
  */
 export function getClientIp(c: Context): string {
   const xff = c.req.header("x-forwarded-for");
@@ -85,7 +99,16 @@ export function getClientIp(c: Context): string {
       }
       return "unknown";
     }
-    // 未配置白名单：开发友好模式，信任首项
+    // 未配置白名单：
+    // - 生产环境：main.ts 启动校验应已 Deno.exit(1)，此处 defensive 返 unknown
+    // - 非生产（开发/测试）：保持历史行为信任首项，开发者本地调试友好
+    if (Deno.env.get("NOJ_ENV") === "production") {
+      console.warn(
+        "[security] 生产环境运行但 TRUSTED_PROXIES 未配置，XFF 首项不可信 → 返 unknown。" +
+          "（main.ts 启动校验应已阻止进入此分支）",
+      );
+      return "unknown";
+    }
     return ips[0] ?? "unknown";
   }
   return c.req.header("x-real-ip") || "unknown";

@@ -87,11 +87,12 @@ function checkEmailProviderConfig(): void {
  * 应用启动入口。
  * 初始化顺序：
  * 1. JWT_SECRET 强度校验（启动期致命错误）
- * 2. 数据库迁移
- * 3. 邮件 Provider 配置检查（非致命，降级到 mock）
- * 4. Redis 连接验证
- * 5. 启动评测结果消费者（后台）
- * 6. 启动 HTTP 服务
+ * 2. 生产环境 TRUSTED_PROXIES 校验（启动期致命错误，PR-7）
+ * 3. 数据库迁移
+ * 4. 邮件 Provider 配置检查（非致命，降级到 mock）
+ * 5. Redis 连接验证
+ * 6. 启动评测结果消费者（后台）
+ * 7. 启动 HTTP 服务
  */
 async function main() {
   // JWT 启动校验：HS256 要求至少 256 bit（32 字节）密钥强度
@@ -105,6 +106,27 @@ async function main() {
         `可通过 \`openssl rand -base64 48\` 生成强随机密钥。`,
     );
     Deno.exit(1);
+  }
+
+  // PR-7：生产环境必须配置 TRUSTED_PROXIES。
+  // 否则 getClientIp() 会回退到 XFF 首项信任，攻击者可伪造 IP 绕过 30s/10 次登录限流
+  // 与 IP 黑名单（PR #95 ban-status-endpoint）。开发环境（NOJ_ENV != production）放行。
+  if (Deno.env.get("NOJ_ENV") === "production") {
+    const trustedProxiesSetting = getSetting("trusted_proxies");
+    const trustedProxiesValue = typeof trustedProxiesSetting?.value ===
+        "string"
+      ? trustedProxiesSetting.value
+      : "";
+    if (!trustedProxiesValue || trustedProxiesValue.trim() === "") {
+      console.error(
+        "TRUSTED_PROXIES 未配置。\n" +
+          "生产环境（NOJ_ENV=production）必须显式配置可信代理白名单，\n" +
+          "否则 X-Forwarded-For 首项可被攻击者伪造以绕过 IP 限流和 IP 黑名单。\n" +
+          "可通过 TRUSTED_PROXIES 环境变量或 system_settings 表配置\n" +
+          "（格式：逗号分隔的 IP 或 CIDR，如 10.0.0.0/8,192.168.1.1）。",
+      );
+      Deno.exit(1);
+    }
   }
 
   // 初始化数据库：迁移失败为致命错误，终止启动避免带病运行
