@@ -10,6 +10,41 @@ import { getClientIp } from "../lib/rateLimitEnv.ts";
 import { runWithContext } from "../lib/requestContext.ts";
 
 /**
+ * 认证相关 Hono Env 类型（PR-6 抽取）。
+ *
+ * 统一所有需要认证上下文的路由的 Variables 类型，避免每个文件重复定义：
+ * - `AuthEnv`：authMiddleware 注入 userId/userRole/jti（必有）
+ * - `OptionalAuthEnv`：optionalAuthMiddleware 注入（可有可无）
+ *
+ * 路由层用法：
+ * ```ts
+ * import type { AuthEnv } from "../middleware/auth.ts";
+ * const app = new Hono<AuthEnv>();
+ * app.get("/me", authMiddleware, (c) => {
+ *   const userId = c.get("userId"); // 类型：string（非 undefined）
+ * });
+ * ```
+ */
+export interface AuthEnv {
+  Variables: {
+    userId: string;
+    userRole: string;
+    mustChangePassword: boolean;
+    jti?: string;
+  };
+}
+
+/** optionalAuthMiddleware 注入（c.get("userId") 可能 undefined） */
+export interface OptionalAuthEnv {
+  Variables: {
+    userId?: string;
+    userRole?: string;
+    mustChangePassword?: boolean;
+    jti?: string;
+  };
+}
+
+/**
  * 强制改密白名单（issue #75）。
  *
  * 当 token.must_change_password=true 时，仅允许访问白名单内路径；
