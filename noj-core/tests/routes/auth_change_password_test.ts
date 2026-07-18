@@ -81,8 +81,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    const user = await registerUser(TEST_USER);
-    testUserId = user.id;
+    await registerUser(TEST_USER);
   },
 });
 
