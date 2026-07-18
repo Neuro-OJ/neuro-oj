@@ -37,9 +37,15 @@ const RANKING_MAX_LIMIT = 100;
  * 检查 user_rankings 物化视图是否存在（postgres.js 模式下由 0020 迁移创建）。
  * PGlite 不支持 MATERIALIZED VIEW，因此 PGlite 模式恒返 false。
  *
- * 用 to_regclass 检测，避免每次榜单请求都抛"relation does not exist"错误。
+ * 缓存：模块级 + 60 秒 TTL。视图存在性不会秒级变化，缓存避免每次榜单请求都查 pg_class。
  */
+let _hasViewCache: { value: boolean; at: number } | null = null;
+const HAS_VIEW_CACHE_TTL_MS = 60_000;
+
 async function hasMaterializedView(): Promise<boolean> {
+  if (_hasViewCache && Date.now() - _hasViewCache.at < HAS_VIEW_CACHE_TTL_MS) {
+    return _hasViewCache.value;
+  }
   try {
     const db = getDb();
     const result = await db.execute(
@@ -48,10 +54,44 @@ async function hasMaterializedView(): Promise<boolean> {
       ) AS exists`,
     );
     const rows = unwrapRows<{ exists: boolean }>(result as never);
-    return Boolean(rows[0]?.exists);
+    const value = Boolean(rows[0]?.exists);
+    _hasViewCache = { value, at: Date.now() };
+    return value;
   } catch {
     return false;
   }
+}
+
+/**
+ * 刷新 user_rankings 物化视图（PR-4 评审修订）。
+ *
+ * 评测结果写回后必须立即刷新，否则用户提交代码 → 通过 → 榜单仍显示旧数据
+ * → 体验严重劣化（"我刚过的题怎么榜单上没显示"）。
+ *
+ * 用 CONCURRENTLY 避免锁表（需要 unique index，0020 迁移已创建）。
+ * 失败仅 console.error，不抛出 → 主业务（saveEvaluationResult）不受影响。
+ *
+ * PGlite 不支持 MATERIALIZED VIEW 自动跳过（hasMaterializedView 返 false）。
+ */
+export async function refreshRankingsView(): Promise<void> {
+  if (!(await hasMaterializedView())) return;
+  try {
+    const db = getDb();
+    await db.execute(
+      sql`REFRESH MATERIALIZED VIEW CONCURRENTLY user_rankings`,
+    );
+    // 视图更新后 hasMaterializedView 缓存的 value 不变，无需清
+  } catch (err) {
+    console.error(
+      "[rankings] 物化视图刷新失败（榜单可能短暂滞后）:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+/** 测试用：清除 hasMaterializedView 缓存 */
+export function _clearHasViewCacheForTest(): void {
+  _hasViewCache = null;
 }
 
 /**
@@ -88,19 +128,6 @@ export async function getGlobalRankings(params: {
   const useView = await hasMaterializedView();
 
   if (useView) {
-    // 每次读前 REFRESH 物化视图，确保 resetDbForTest 后插入的数据
-    // 能被立刻读到（生产环境 PR-4 设计是评测结果写回时增量更新视图，
-    // 但测试 resetDbForTest 仅 TRUNCATE + 一次 REFRESH，期间插入的数据
-    // 不会被视图反映）。
-    // 性能影响：CONCURRENTLY REFRESH 不阻塞读，但每秒榜单请求会带来
-    // 额外的视图刷新成本。生产环境应在评测结果写回时增量更新（PR-8 TODO）。
-    try {
-      await db.execute(
-        `REFRESH MATERIALIZED VIEW CONCURRENTLY user_rankings`,
-      );
-    } catch {
-      // CONCURRENTLY 在视图无数据时可能失败；非致命
-    }
     return readRankingsFromView(db, cappedLimit, offset);
   }
   return readRankingsInline(db, cappedLimit, offset);
@@ -230,16 +257,6 @@ export async function getMyRanking(
 ): Promise<RankingRow | null> {
   const db = getDb();
   const useView = await hasMaterializedView();
-
-  // 视图模式：读前 REFRESH（与 getGlobalRankings 一致），确保 resetDbForTest 后
-  // 插入的数据可被立即查到
-  if (useView) {
-    try {
-      await db.execute(
-        `REFRESH MATERIALIZED VIEW CONCURRENTLY user_rankings`,
-      );
-    } catch { /* 视图无数据时 CONCURRENTLY 失败；非致命 */ }
-  }
 
   const rows = useView
     // 物化视图路径：直接 WHERE user_id=? 查询

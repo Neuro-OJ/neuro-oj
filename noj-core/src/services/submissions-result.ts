@@ -14,6 +14,8 @@ import { BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { getDb } from "../db/connection.ts";
 import type { JudgeResult, SubmissionStatus } from "../types/index.ts";
 import { applyNewResult } from "./stats-cache.ts";
+// deno-lint-ignore no-unused-vars -- async fire-and-forget 触发榜单刷新
+import { refreshRankingsView } from "./rankings.ts";
 
 // 允许的状态转换
 const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
@@ -105,6 +107,11 @@ export async function saveEvaluationResult(
   if (sub.created_at) {
     applyNewResult(result.score, sub.created_at);
   }
+
+  // PR-4 评审修订：异步触发榜单物化视图刷新
+  // 不 await：避免阻塞主业务（saveEvaluationResult 是热路径）
+  // 失败仅 console.error（rankings.ts 内已处理）
+  refreshRankingsView().catch(() => {/* ignore - rankings.ts 内已记录 */});
 }
 
 /**
