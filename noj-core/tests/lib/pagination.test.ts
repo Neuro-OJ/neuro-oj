@@ -1,12 +1,12 @@
+import { assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
-import { ValidationError } from "../../src/lib/errors.ts";
 import {
   buildPaginationMeta,
   parsePagination,
 } from "../../src/lib/pagination.ts";
 
 /** 构造带 query 的 Hono Context（仅用于 parsePagination 测试） */
-function makeCtx(query: Record<string, string>): Hono {
+function makeCtx(_query: Record<string, string>): Hono {
   const app = new Hono();
   return app;
 }
