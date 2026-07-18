@@ -27,6 +27,7 @@ import { runWithContext } from "../lib/requestContext.ts";
 export const PASSWORD_CHANGE_WHITELIST: readonly string[] = [
   "/api/v1/auth/change-password",
   "/api/v1/auth/me",
+  "/api/v1/auth/logout",
 ] as const;
 
 /**

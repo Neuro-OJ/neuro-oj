@@ -114,17 +114,47 @@ export function createPubSubRedis(): RedisClient {
   return redis;
 }
 
-export function getRedis(): RedisClient { // PR-8 改进：失败时清空 _redis 让下方 try 创建新 client（自愈）
-  if (_redis && _redis.status === "ready") {
-    if (_error) _error = null;
-    return _redis;
-  }
-  if (_redis) {
-    try {
-      _redis.disconnect();
-    } catch { /* ignore */ }
-    _redis = null;
-    _error = null;
+export function getRedis(): RedisClient {
+  if (_error) throw _error;
+  if (_redis) return _redis!;
+
+  try {
+    const redisUrl = Deno.env.get("REDIS_URL") || "redis://127.0.0.1:6379/";
+    // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
+    _redis = new IORedis(redisUrl, {
+      maxRetriesPerRequest: 3,
+      enableOfflineQueue: false, // 断开时直接失败而非缓冲
+      retryStrategy(times: number) {
+        if (times > 5) return null; // 停止重试
+        return Math.min(times * 200, 2000); // 指数退避
+      },
+      lazyConnect: true, // 延迟连接，手动调用 connect()
+    });
+
+    // 错误处理
+    _redis!.on("error", (...args: unknown[]) => {
+      const err = args[0];
+      console.error(
+        "Redis 连接错误:",
+        err instanceof Error ? err.message : String(err),
+      );
+      _error = err instanceof Error ? err : new Error(String(err));
+    });
+
+    _redis!.on("reconnecting", () => {
+      console.log("Redis 正在重连...");
+    });
+
+    _redis!.on("connect", () => {
+      console.log("Redis 连接已建立");
+      _error = null; // 重连成功时清除历史错误
+    });
+
+    return _redis!;
+  } catch (err) {
+    _error = err instanceof Error ? err : new Error(String(err));
+    console.error("Redis 初始化失败:", _error.message);
+    throw _error;
   }
 }
 
