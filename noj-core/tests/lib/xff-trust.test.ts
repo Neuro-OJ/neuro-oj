@@ -105,6 +105,34 @@ Deno.test({
 });
 
 Deno.test({
+  name: "xff-trust: TRUSTED_PROXIES CIDR 格式 — 10.0.0.0/8 匹配 10.0.0.5",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    _resetSystemSettingsForTest();
+    await initSystemSettings();
+    // PR-7 评审修订：CIDR 支持是 K8s/Cloudflare 部署的关键
+    await updateSetting("trusted_proxies", "10.0.0.0/8", "0");
+    // 必须清缓存，因为 getTrustedProxyEntries 内部缓存
+    const { _clearTrustedProxyCacheForTest } = await import(
+      "../../src/lib/rateLimitEnv.ts"
+    );
+    _clearTrustedProxyCacheForTest();
+
+    // XFF = "1.1.1.1, 10.0.0.5"：10.0.0.5 在 10.0.0.0/8 网段内 → 代理
+    // 首个非代理 IP = "1.1.1.1"
+    const res = await app.request("/ip", {
+      headers: { "X-Forwarded-For": "1.1.1.1, 10.0.0.5" },
+    });
+    const body = await res.json();
+    assertEquals(body.ip, "1.1.1.1");
+
+    await updateSetting("trusted_proxies", "", "0");
+    _clearTrustedProxyCacheForTest();
+  },
+});
+
+Deno.test({
   name: "xff-trust: 未配置 TRUSTED_PROXIES + 开发环境 → 信任 XFF 首项",
   sanitizeResources: false,
   sanitizeOps: false,

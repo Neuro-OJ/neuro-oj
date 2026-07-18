@@ -122,8 +122,9 @@ async function main() {
         "TRUSTED_PROXIES 未配置。\n" +
           "生产环境（NOJ_ENV=production）必须显式配置可信代理白名单，\n" +
           "否则 X-Forwarded-For 首项可被攻击者伪造以绕过 IP 限流和 IP 黑名单。\n" +
-          "可通过 TRUSTED_PROXIES 环境变量或 system_settings 表配置\n" +
-          "（格式：逗号分隔的 IP 或 CIDR，如 10.0.0.0/8,192.168.1.1）。",
+          "配置方式：通过管理后台 → 系统设置 → trusted_proxies 项（DB-backed）。\n" +
+          "格式：逗号分隔的 IP 或 CIDR，如 `10.0.0.0/8,192.168.1.1`。\n" +
+          "（PR-7 评审修订：与运行时 getTrustedProxies() 共用同一数据源——system_settings 表）",
       );
       Deno.exit(1);
     }
