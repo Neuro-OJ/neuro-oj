@@ -64,7 +64,7 @@ Deno.test({
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
-  fn: async () => {
+  fn: () => {
     await resetDbForTest();
     _resetSystemSettingsForTest();
     await initSystemSettings();
