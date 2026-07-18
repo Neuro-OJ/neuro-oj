@@ -36,9 +36,15 @@ const RANKING_MAX_LIMIT = 100;
  * 检查 user_rankings 物化视图是否存在（postgres.js 模式下由 0020 迁移创建）。
  * PGlite 不支持 MATERIALIZED VIEW，因此 PGlite 模式恒返 false。
  *
- * 用 to_regclass 检测，避免每次榜单请求都抛"relation does not exist"错误。
+ * 缓存：模块级 + 60 秒 TTL。视图存在性不会秒级变化，缓存避免每次榜单请求都查 pg_class。
  */
+let _hasViewCache: { value: boolean; at: number } | null = null;
+const HAS_VIEW_CACHE_TTL_MS = 60_000;
+
 async function hasMaterializedView(): Promise<boolean> {
+  if (_hasViewCache && Date.now() - _hasViewCache.at < HAS_VIEW_CACHE_TTL_MS) {
+    return _hasViewCache.value;
+  }
   try {
     const db = getDb();
     const result = await db.execute<{ exists: boolean }>(
@@ -49,10 +55,44 @@ async function hasMaterializedView(): Promise<boolean> {
     const rows = "rows" in result
       ? (result as { rows: { exists: boolean }[] }).rows
       : (result as unknown as { exists: boolean }[]);
-    return Boolean(rows[0]?.exists);
+    const value = Boolean(rows[0]?.exists);
+    _hasViewCache = { value, at: Date.now() };
+    return value;
   } catch {
     return false;
   }
+}
+
+/**
+ * 刷新 user_rankings 物化视图（PR-4 评审修订）。
+ *
+ * 评测结果写回后必须立即刷新，否则用户提交代码 → 通过 → 榜单仍显示旧数据
+ * → 体验严重劣化（"我刚过的题怎么榜单上没显示"）。
+ *
+ * 用 CONCURRENTLY 避免锁表（需要 unique index，0020 迁移已创建）。
+ * 失败仅 console.error，不抛出 → 主业务（saveEvaluationResult）不受影响。
+ *
+ * PGlite 不支持 MATERIALIZED VIEW 自动跳过（hasMaterializedView 返 false）。
+ */
+export async function refreshRankingsView(): Promise<void> {
+  if (!(await hasMaterializedView())) return;
+  try {
+    const db = getDb();
+    await db.execute(
+      sql`REFRESH MATERIALIZED VIEW CONCURRENTLY user_rankings`,
+    );
+    // 视图更新后 hasMaterializedView 缓存的 value 不变，无需清
+  } catch (err) {
+    console.error(
+      "[rankings] 物化视图刷新失败（榜单可能短暂滞后）:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+/** 测试用：清除 hasMaterializedView 缓存 */
+export function _clearHasViewCacheForTest(): void {
+  _hasViewCache = null;
 }
 
 /**
