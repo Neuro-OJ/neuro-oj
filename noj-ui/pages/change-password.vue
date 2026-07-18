@@ -196,11 +196,11 @@ async function handleSubmit() {
     loading.value = true
     try {
         await auth.changePassword(form.oldPassword, form.newPassword)
-        // useAuth.changePassword() 内部已调 logout() 清 Cookie（issue #75 评审 H2/H3）。
-        // 旧 JWT 24h 内仍带 must_change_password=true，必须强制重新登录
-        // 才能避免前端路由守卫看到旧 JWT 把用户再跳回 /change-password 形成死循环。
-        showToast("success", "密码修改成功，请重新登录")
-        router.replace("/login?reason=password_changed")
+        // useAuth.changePassword() 内部已更新本地 user 状态（must_change_password=false）
+        // 并由 Nitro 代理同步替换 noj:token Cookie（旧 token 已被后端撤销）。
+        // 无需再走 /login，直接回首页即可。
+        showToast("success", "密码修改成功")
+        router.replace("/settings")
     } catch (e: any) {
         setError(typeof e.data?.error === "string" ? e.data.error : `错误代码: ${e.response?.status || e.statusCode || e.status || 502}`)
     } finally {

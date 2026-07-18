@@ -13,7 +13,8 @@ import {
   ValidationError,
 } from "../lib/errors.ts";
 import { parseJsonBody } from "../lib/request.ts";
-import { verifyToken } from "../lib/jwt.ts";
+import { signToken, verifyToken } from "../lib/jwt.ts";
+import { remainingTtlFromExp, revokeJti } from "../lib/revokedTokens.ts";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { users } from "../db/schema.ts";
@@ -50,6 +51,9 @@ const auth = new Hono<
       userId: string;
       userRole: string;
       mustChangePassword: boolean;
+      jti?: string;
+      /** Token 过期时间（Unix 秒），authMiddleware 注入，供 /logout + /change-password 计算撤销 TTL */
+      exp?: number;
     };
   }
 >();
@@ -166,9 +170,13 @@ auth.get("/me", authMiddleware, async (c) => {
  * 4. 失败锁定：连续 10 次失败 → 锁 1 小时（独立 namespace）
  *
  * 业务：
- * - 成功：清改密失败计数 + 返回 UserResponse（must_change_password=false）
+ * - 成功：清改密失败计数 + 撤销旧 token + 签发新 token + 返回
+ *   `{ user, token }`（must_change_password=false，token 是新 jti）
  * - 失败：401（用户不存在/旧密码错/强度不足），记录改密失败（独立 namespace）
- * - 旧 JWT 在自然过期前仍有效——前端应在成功后清 Cookie 重登
+ *
+ * 撤销机制（issue #75 撤销）：成功后立即将旧 jti 写入 Redis 黑名单，
+ * 旧 token 在剩余有效期内也会被 middleware 拒绝。新 token 由前端 Nitro
+ * 代理同步写入 noj:token cookie，用户无感知。
  */
 auth.post(
   "/change-password",
@@ -207,7 +215,23 @@ auth.post(
         body.new_password,
       );
       await clearLoginFailure(userId, PWCHANGE_NAMESPACE);
-      return c.json({ data: user }, 200);
+
+      // 撤销旧 jti（issue #75 JWT 撤销机制）：TTL 取 token 真实剩余有效期
+      // PR-1 评审修订：从 c.get("exp") 读取 jose 解密后的 exp，与 JWT_EXPIRES_IN 配置一致
+      const oldJti = c.get("jti");
+      if (oldJti) {
+        const ttl = remainingTtlFromExp(c.get("exp"));
+        await revokeJti(oldJti, ttl);
+      }
+
+      // 签发新 token（must_change_password 必为 false，changePassword 已 UPDATE）
+      const newToken = await signToken({
+        sub: user.id,
+        role: user.role,
+        must_change_password: false,
+      });
+
+      return c.json({ data: { user, token: newToken } }, 200);
     } catch (err) {
       if (err instanceof UnauthorizedError) {
         const failCount = await recordLoginFailure(userId, PWCHANGE_NAMESPACE);
@@ -219,14 +243,24 @@ auth.post(
 );
 
 /**
- * 登出端点（issue #75 白名单入口之一）。
+ * 登出端点（issue #75 JWT 撤销机制）。
  * POST /api/v1/auth/logout
+ * 需要 Bearer token 认证。
  *
- * 当前为客户端职责（清 Cookie）；服务端提供无副作用的成功响应，
- * 以便前端在 PASSWORD_CHANGE_REQUIRED 状态下可调（白名单）。
- * 旧 token 仍有效至自然过期，符合 issue #75 设计。
+ * 服务端将当前 token 的 jti 写入 Redis 黑名单（TTL = token 剩余有效期），
+ * 之后该 token 即使签名有效也会被 authMiddleware 拒绝。
+ * 同时清除客户端的 noj:token / noj:session Cookie（由 noj-ui Nitro 代理处理）。
+ *
+ * 设计权衡：BAN_WHITELIST 中保留 /logout，使被封禁用户也能主动结束会话。
  */
-auth.post("/logout", (c) => {
+auth.post("/logout", authMiddleware, async (c) => {
+  const jti = c.get("jti");
+  if (jti) {
+    // PR-1 评审修订：使用 c.get("exp") 获取 token 真实剩余 TTL，
+    // 与 JWT_EXPIRES_IN 配置保持一致；不再硬编码 24h
+    const ttl = remainingTtlFromExp(c.get("exp"));
+    await revokeJti(jti, ttl);
+  }
   return c.json({ data: { ok: true } }, 200);
 });
 

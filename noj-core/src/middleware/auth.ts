@@ -2,6 +2,7 @@ import type { Context, Next } from "hono";
 import { and, eq, isNull } from "drizzle-orm";
 import { ForbiddenError, UnauthorizedError } from "../lib/errors.ts";
 import { verifyToken } from "../lib/jwt.ts";
+import { isJtiRevoked } from "../lib/revokedTokens.ts";
 import { getDb } from "../db/connection.ts";
 import { userBans } from "../db/schema.ts";
 import { getCached } from "../lib/banCache.ts";
@@ -99,9 +100,21 @@ export async function optionalAuthMiddleware(c: Context, next: Next) {
     }
 
     if (payload) {
+      // 撤销检查（issue #75 JWT 撤销机制）：
+      // 已被主动撤销的 jti（/logout、/change-password）即使签名有效也视作无效。
+      // Redis 不可用时 isJtiRevoked 抛 ServiceUnavailableError，
+      // 让 Hono onError 统一返 503（fail-closed）。
+      if (payload.jti && await isJtiRevoked(payload.jti)) {
+        payload = null;
+      }
+    }
+
+    if (payload) {
       c.set("userId", payload.sub);
       c.set("userRole", payload.role);
       c.set("mustChangePassword", payload.must_change_password ?? false);
+      if (payload.jti) c.set("jti", payload.jti);
+      if (payload.exp) c.set("exp", payload.exp);
 
       await checkBanStatus(c, payload.sub);
     }
@@ -124,6 +137,10 @@ export async function optionalAuthMiddleware(c: Context, next: Next) {
  * issue #102：扩展封禁校验——从 DB 查 users.banned/banned_reason/banned_until
  * （60s LRU 缓存），命中且未过期则抛 ForbiddenError（USER_BANNED）。
  * `banUser`/`unbanUser` 写操作会调 `invalidateBanCache` 立即失效。
+ *
+ * PR-1 评审修订：同时设置 `exp`（秒，Unix 时间戳），让下游 handler 用于
+ * `remainingTtlFromExp()` 计算 token 真实剩余有效期 → 撤销条目 TTL 与
+ * `JWT_EXPIRES_IN` 配置保持一致，不再硬编码 24h。
  */
 export async function authMiddleware(c: Context, next: Next) {
   const authHeader = c.req.header("Authorization");
@@ -141,6 +158,14 @@ export async function authMiddleware(c: Context, next: Next) {
     throw new UnauthorizedError("认证令牌无效或已过期");
   }
 
+  // 撤销检查（issue #75 JWT 撤销机制）：
+  // /logout、/change-password 等场景主动写入 Redis 黑名单。
+  // 即使签名 + iss + aud + exp 均有效，被撤销的 jti 也视作无效。
+  // fail-closed：isJtiRevoked 抛 ServiceUnavailableError 时由 onError 返 503。
+  if (payload.jti && await isJtiRevoked(payload.jti)) {
+    throw new UnauthorizedError("认证令牌已失效");
+  }
+
   // 强制改密拦截（评审修复 M1：抛 ForbiddenError 而非 c.json）
   if (
     payload.must_change_password === true &&
@@ -155,6 +180,9 @@ export async function authMiddleware(c: Context, next: Next) {
   c.set("userId", payload.sub);
   c.set("userRole", payload.role);
   c.set("mustChangePassword", payload.must_change_password ?? false);
+  if (payload.jti) c.set("jti", payload.jti);
+  // payload.exp 是 jose 验证后 payload 中已解密字段（秒，Unix 时间戳）
+  if (payload.exp) c.set("exp", payload.exp);
   await next();
 }
 

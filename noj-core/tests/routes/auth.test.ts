@@ -647,6 +647,183 @@ Deno.test({
     await cleanupUser(`login_email_${ts}`);
     await cleanupUser(`pw8_${ts}`);
     await cleanupUser(`pwreset_route_${ts}`);
+    await cleanupUser(`logout_test_${ts}`);
+    await cleanupUser(`chpw_test_${ts}`);
+  },
+});
+
+// ── issue #75 JWT 撤销机制：/logout 真撤销 ──
+
+Deno.test({
+  name: "routes: POST /logout 撤销 jti 后旧 token 立即失效",
+  ignore: skip || !hasRedis,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await ensureRedisConnected();
+    const app = createApp();
+    const user = `logout_test_${ts}`;
+    const password = "TestPwd-2024-Xy9";
+
+    // 注册 + 登录获取 token
+    await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: user,
+        email: `${user}@example.com`,
+        password,
+      },
+    });
+    const loginRes = await jsonRequest(app, `${BASE}/login`, {
+      method: "POST",
+      body: { login: user, password },
+    });
+    const { token } = (await loginRes.json()).data;
+
+    // token 当前可用
+    const meRes1 = await jsonRequest(app, `${BASE}/me`, { token });
+    assertEquals(meRes1.status, 200);
+
+    // 调用 /logout 撤销
+    const logoutRes = await jsonRequest(app, `${BASE}/logout`, {
+      method: "POST",
+      token,
+    });
+    assertEquals(logoutRes.status, 200);
+
+    // 撤销后：同一 token 立即失效（401）
+    const meRes2 = await jsonRequest(app, `${BASE}/me`, { token });
+    assertEquals(meRes2.status, 401);
+    const meBody = await meRes2.json();
+    assertEquals(meBody.error, "认证令牌已失效");
+  },
+});
+
+Deno.test({
+  name: "routes: POST /logout 无 token 返 401（不再是无脑 200）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    // /logout 现在要求 authMiddleware，无 token 必须 401
+    const res = await jsonRequest(app, `${BASE}/logout`, { method: "POST" });
+    assertEquals(res.status, 401);
+  },
+});
+
+// ── issue #75 JWT 撤销机制：/change-password 撤销旧 token + 签发新 token ──
+
+Deno.test({
+  name: "routes: POST /change-password 返回新 token，旧 token 立即失效",
+  ignore: skip || !hasRedis,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await ensureRedisConnected();
+    const app = createApp();
+    const user = `chpw_test_${ts}`;
+    const oldPassword = "OldPwd-2024-Ab1";
+    const newPassword = "NewPwd-2024-Cd2";
+
+    // 注册 + 登录
+    await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: user,
+        email: `${user}@example.com`,
+        password: oldPassword,
+      },
+    });
+    const loginRes = await jsonRequest(app, `${BASE}/login`, {
+      method: "POST",
+      body: { login: user, password: oldPassword },
+    });
+    const loginData = (await loginRes.json()).data;
+    const oldToken = loginData.token;
+    const userId = loginData.user.id;
+
+    // 改密
+    const chpwRes = await jsonRequest(app, `${BASE}/change-password`, {
+      method: "POST",
+      token: oldToken,
+      body: { old_password: oldPassword, new_password: newPassword },
+    });
+    assertEquals(chpwRes.status, 200);
+    const chpwBody = (await chpwRes.json()).data;
+    // 新 token 必须存在且与旧 token 不同
+    assertEquals(typeof chpwBody.token, "string");
+    assertEquals(chpwBody.token.split(".").length, 3);
+    assertEquals(chpwBody.token !== oldToken, true);
+    assertEquals(chpwBody.user.must_change_password, false);
+
+    // 旧 token：立即失效（撤销机制生效）
+    const meOld = await jsonRequest(app, `${BASE}/me`, { token: oldToken });
+    assertEquals(meOld.status, 401);
+
+    // 新 token：可用，且 must_change_password=false（authMiddleware 不再拦）
+    const meNew = await jsonRequest(app, `${BASE}/me`, {
+      token: chpwBody.token,
+    });
+    assertEquals(meNew.status, 200);
+    const meNewBody = (await meNew.json()).data;
+    assertEquals(meNewBody.id, userId);
+    assertEquals(meNewBody.must_change_password, false);
+
+    // 清理
+    try {
+      const redis = getRedis();
+      await redis.del(`jwt:revoked:${oldToken.split(".")[1]}`); // 尝试清（不一定对得上 jti，但无害）
+    } catch {
+      // ignore
+    }
+  },
+});
+
+Deno.test({
+  name: "routes: POST /change-password 旧密码错误仍 401，不发新 token",
+  ignore: skip || !hasRedis,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await ensureRedisConnected();
+    const app = createApp();
+    const user = `chpw_fail_${ts}`;
+    const password = "CorrectPwd-Ab1";
+
+    await jsonRequest(app, `${BASE}/register`, {
+      method: "POST",
+      body: {
+        username: user,
+        email: `${user}@example.com`,
+        password,
+      },
+    });
+    const loginRes = await jsonRequest(app, `${BASE}/login`, {
+      method: "POST",
+      body: { login: user, password },
+    });
+    const { token } = (await loginRes.json()).data;
+
+    // 旧密码错误
+    const chpwRes = await jsonRequest(app, `${BASE}/change-password`, {
+      method: "POST",
+      token,
+      body: { old_password: "WrongPwd-Cd2", new_password: "NewPwd-2024-Ef3" },
+    });
+    assertEquals(chpwRes.status, 401);
+    const body = await chpwRes.json();
+    assertEquals(body.error, "旧密码错误");
+
+    // 旧 token 仍可用（撤销只在成功路径执行）
+    const meRes = await jsonRequest(app, `${BASE}/me`, { token });
+    assertEquals(meRes.status, 200);
+
+    await cleanupUser(user);
   },
 });
 
