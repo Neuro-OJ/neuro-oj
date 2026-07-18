@@ -11,7 +11,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
 import { resetDbForTest } from "../../src/db/connection.ts";
-import { getClientIp, getTrustedProxies } from "../../src/lib/rateLimitEnv.ts";
+
 import { updateSetting } from "../../src/services/system-settings.ts";
 import {
   _resetSystemSettingsForTest,
