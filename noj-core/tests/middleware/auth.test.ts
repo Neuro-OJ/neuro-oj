@@ -5,15 +5,11 @@
  * 不依赖 createApp() 中注册的路由。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
 import { Hono } from "hono";
 import { adminMiddleware, authMiddleware } from "../../src/middleware/auth.ts";
 import { AppError } from "../../src/lib/errors.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { jsonRequest } from "../lib/helper.ts";
-
-// PR-1：authMiddleware 校验 JWT 撤销需 Redis
-await initRedisForTest();
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 

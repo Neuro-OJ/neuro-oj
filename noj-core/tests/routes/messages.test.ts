@@ -9,7 +9,6 @@
  */
 
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
 import { eq, or } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
@@ -19,7 +18,6 @@ import { signToken } from "../../src/lib/jwt.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建
 await resetDbForTest();
-await initRedisForTest();
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const hasJwt = !!Deno.env.get("JWT_SECRET");

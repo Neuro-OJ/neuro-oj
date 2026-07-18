@@ -1,5 +1,4 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
@@ -15,7 +14,6 @@ const skip = !hasDb || !hasEnv;
 
 // 模块级 bootstrap：确保 PGlite schema 已创建
 await resetDbForTest();
-await initRedisForTest();
 
 Deno.test({
   name: "admin route: PATCH /api/v1/admin/users/:id/role 未登录返回 401",

@@ -9,7 +9,6 @@
  * - DELETE 重置设置
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { resetDbForTest } from "../../src/db/connection.ts";
@@ -33,7 +32,6 @@ if (!Deno.env.get("JWT_SECRET")) {
 
 async function freshSetup() {
   await resetDbForTest();
-  await initRedisForTest();
   _resetSystemSettingsForTest();
   _resetEnvSnapshotForTest();
   snapshotEnv();

@@ -4,7 +4,6 @@
  * 依赖 DATABASE_URL + JWT_SECRET 环境变量。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
@@ -92,7 +91,6 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await initRedisForTest();
     await createTestProblem();
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });

@@ -4,9 +4,6 @@
  * 覆盖：正常改密（200）、缺少旧密码（400）、旧密码错误（401）、
  * 弱密码拒绝（400）、新旧密码相同（400）。
  *
- * 重要（issue #75 JWT 撤销机制）：改密成功后会撤销旧 token。
- * 因此每个测试需要独立的 token，**不能**跨测试共享 testToken。
- *
  * 注意：路由层挂载了 loginIpRateLimit 中间件，CI 环境有 Redis
  * 时限流生效。测试必须确保 Redis 已连接，或使用独立 IP 避免触发限流。
  */
@@ -50,6 +47,8 @@ if (hasRedis) {
 const BASE = "/api/v1/auth";
 const ts = Date.now();
 
+let testToken = "";
+let testUserId = "";
 const TEST_USER = {
   username: `cp-route-${ts}`,
   email: `cp-route-${ts}@example.com`,
@@ -64,16 +63,6 @@ function uniqueIp(): string {
   }.${Math.floor(Math.random() * 255)}`;
 }
 
-/** 每个测试独立签 token（PR-1 后旧 token 在改密成功时被撤销，不可共享） */
-async function freshToken(): Promise<string> {
-  const user = await registerUser({
-    username: `cp-route-${ts}-${crypto.randomUUID().slice(0, 8)}`,
-    email: `cp-${ts}-${crypto.randomUUID().slice(0, 8)}@example.com`,
-    password: TEST_USER.password,
-  });
-  return await signToken({ sub: user.id, role: "user" });
-}
-
 Deno.test({
   name: "route change-password: 注册用户并获取 token",
   ignore: skip,
@@ -81,48 +70,49 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
-    await registerUser(TEST_USER);
+    const user = await registerUser(TEST_USER);
+    testUserId = user.id;
+
+    testToken = await signToken({
+      sub: user.id,
+      role: "user",
+    });
+    assertEquals(typeof testToken, "string");
   },
 });
 
 Deno.test({
-  name:
-    "route change-password: 正常改密返回 200 + must_change_password=false + 新 token",
-  ignore: skip || !hasRedis,
+  name: "route change-password: 正常改密返回 200 + must_change_password=false",
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await freshToken();
     const res = await jsonRequest(app, `${BASE}/change-password`, {
       method: "POST",
       body: { old_password: TEST_USER.password, new_password: NEW_PASS },
-      token,
+      token: testToken,
       ip: uniqueIp(),
     });
     assertEquals(res.status, 200);
 
-    // PR-1 后：响应包含 user + 新 token，旧 token 在服务端被撤销
     const body = await res.json();
-    assertEquals(body.data.user.must_change_password, false);
-    assertEquals(typeof body.data.token, "string");
-    assertEquals(body.data.token.split(".").length, 3);
-    assertEquals(body.data.token !== token, true);
+    assertEquals(body.data.must_change_password, false);
+    assertEquals(body.data.id, testUserId);
   },
 });
 
 Deno.test({
-  name: "route change-password: 缺少 old_password 返回 400（不消耗 token）",
-  ignore: skip || !hasRedis,
+  name: "route change-password: 缺少 old_password 返回 400",
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await freshToken();
     const res = await jsonRequest(app, `${BASE}/change-password`, {
       method: "POST",
       body: { new_password: NEW_PASS },
-      token,
+      token: testToken,
       ip: uniqueIp(),
     });
     assertEquals(res.status, 400);
@@ -133,17 +123,16 @@ Deno.test({
 });
 
 Deno.test({
-  name: "route change-password: 缺少 new_password 返回 400（不消耗 token）",
-  ignore: skip || !hasRedis,
+  name: "route change-password: 缺少 new_password 返回 400",
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await freshToken();
     const res = await jsonRequest(app, `${BASE}/change-password`, {
       method: "POST",
       body: { old_password: TEST_USER.password },
-      token,
+      token: testToken,
       ip: uniqueIp(),
     });
     assertEquals(res.status, 400);
@@ -151,17 +140,16 @@ Deno.test({
 });
 
 Deno.test({
-  name: "route change-password: 旧密码错误返回 401（不消耗 token）",
-  ignore: skip || !hasRedis,
+  name: "route change-password: 旧密码错误返回 401",
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await freshToken();
     const res = await jsonRequest(app, `${BASE}/change-password`, {
       method: "POST",
       body: { old_password: "WrongOldPass-123", new_password: NEW_PASS },
-      token,
+      token: testToken,
       ip: uniqueIp(),
     });
     assertEquals(res.status, 401);

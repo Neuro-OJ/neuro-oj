@@ -1,5 +1,4 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
 import {
   _resetRateLimitForTests,
   rateLimit,
@@ -14,9 +13,6 @@ import { resetDbForTest } from "../../src/db/connection.ts";
 // 显式启用限流中间件（NOJ_ENV=test 时默认关闭）
 Deno.env.set("RATE_LIMIT_ENABLED", "true");
 const hasEnv = !!Deno.env.get("JWT_SECRET");
-
-// PR-1：optionalAuthMiddleware 校验 JWT 撤销需 Redis
-await initRedisForTest();
 
 type Env = { Variables: { userId?: string; userRole?: string } };
 
@@ -173,7 +169,6 @@ Deno.test({
   fn: async () => {
     _resetRateLimitForTests();
     await resetDbForTest();
-    await initRedisForTest();
     const { default: router } = await import("../../src/routes/submissions.ts");
     const app = new Hono<Env>();
     app.onError(handleError);

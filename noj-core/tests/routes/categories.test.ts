@@ -1,5 +1,4 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { jsonRequest } from "../lib/helper.ts";
@@ -11,7 +10,6 @@ const skip = !hasDb;
 // 模块级 bootstrap：确保表已创建（PGlite 模式）
 import { resetDbForTest } from "../../src/db/connection.ts";
 await resetDbForTest();
-await initRedisForTest();
 
 Deno.test({
   name: "categories route: GET /api/v1/categories 返回分类树",

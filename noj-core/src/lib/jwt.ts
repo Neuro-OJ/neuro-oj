@@ -41,8 +41,6 @@ export interface TokenPayload {
   must_change_password?: boolean;
   /** JWT 唯一标识（用于未来实现 token 黑名单/撤销） */
   jti?: string;
-  /** Token 过期时间（Unix 秒，jose 自动验证） */
-  exp?: number;
 }
 
 /**
@@ -109,7 +107,5 @@ export async function verifyToken(
     // 旧 token 无该字段，缺省视为 false
     must_change_password: (payload.must_change_password as boolean) ?? false,
     jti: payload.jti,
-    // PR-1 评审修订：透传 exp 让下游 handler 用于精确的 token 剩余有效期计算
-    exp: typeof payload.exp === "number" ? payload.exp : undefined,
   };
 }

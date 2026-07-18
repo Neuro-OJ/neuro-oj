@@ -1,5 +1,4 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { createProblem } from "../../src/services/problems.ts";
@@ -16,7 +15,6 @@ const ts = Date.now();
 
 // 模块级 setup：创建跨测试共享的测试题目
 await resetDbForTest();
-await initRedisForTest();
 const MODULE_PROBLEM = await createProblem({
   title: `模块级测试题目 ${ts}`,
   description: "测试描述",

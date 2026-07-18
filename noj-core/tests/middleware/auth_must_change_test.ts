@@ -9,7 +9,6 @@
  */
 
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
 import { Hono } from "hono";
 import {
   authMiddleware,
@@ -24,7 +23,6 @@ const hasEnv = !!Deno.env.get("JWT_SECRET");
 
 // 初始化 PGlite schema（含 user_bans 表），供 authMiddleware 封禁检查使用
 await resetDbForTest();
-await initRedisForTest();
 
 // deno-lint-ignore no-explicit-any
 function registerAppErrorHandler(app: Hono<any, any, "/">) {
