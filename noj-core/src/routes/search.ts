@@ -13,6 +13,7 @@
 import { Hono } from "hono";
 import { optionalAuthMiddleware } from "../middleware/auth.ts";
 import { searchProblems, searchUsers } from "../services/search.ts";
+import { parsePagination } from "../lib/pagination.ts";
 import {
   ForbiddenError,
   UnauthorizedError,
@@ -62,12 +63,11 @@ router.get("/", optionalAuthMiddleware, async (c) => {
     throw new ForbiddenError("仅管理员可搜索用户");
   }
 
-  // 解析分页
-  const page = Math.max(1, parseInt(c.req.query("page") ?? "1", 10) || 1);
-  const limit = Math.min(
-    50,
-    Math.max(1, parseInt(c.req.query("limit") ?? "20", 10) || 20),
-  );
+  // 解析分页（PR-6 评审修订：使用 parsePagination helper）
+  const { page, perPage: limit } = parsePagination(c, {
+    defaultPerPage: 20,
+    maxPerPage: 50,
+  });
 
   // 调用 service
   if (type === "problem") {
