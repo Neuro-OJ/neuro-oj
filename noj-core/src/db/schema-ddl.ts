@@ -190,7 +190,7 @@ export const SCHEMA_DDL: string[] = [
       'auth.login_success','auth.login_failure','auth.register',
       'auth.change_password','auth.forgot_password_request','auth.password_reset')
     ))
-  )`,
+  `,
 
   // 16. ip_bans (issue #102)
   `CREATE TABLE IF NOT EXISTS ip_bans (

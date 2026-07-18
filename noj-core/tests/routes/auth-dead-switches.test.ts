@@ -433,7 +433,7 @@ Deno.test({
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
-  fn: async () => {
+  fn: () => {
     _resetSystemSettingsForTest();
     _resetEnvSnapshotForTest();
   },
