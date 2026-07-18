@@ -17,8 +17,8 @@ import {
   apiGet,
   apiPost,
   apiPut,
+  getAdminToken,
   isE2E,
-  loginAndChangePassword,
   registerUser,
 } from "./helper.ts";
 
@@ -38,17 +38,11 @@ if (!isE2E) {
 
   // ── 共享 fixtures ────────────────────────────────────
 
-  /** 获取 admin token（首调用时强制改密走通） */
-  async function getAdminToken(): Promise<string> {
-    return await loginAndChangePassword(
-      "admin-e2e-dual",
-      "InitPass123!",
-      "AdminPass123!",
-    );
-  }
-
   /** 创建（或复用）evaluator 镜像白名单条目 */
-  async function ensureImage(image: string, kind: "evaluator" | "solution"): Promise<string> {
+  async function ensureImage(
+    image: string,
+    kind: "evaluator" | "solution",
+  ): Promise<string> {
     const adminToken = await getAdminToken();
     const list = await apiGet("/api/v1/admin/judge-images", adminToken);
     type JiEntry = { id: string; image: string; kind: string };
@@ -113,7 +107,9 @@ if (!isE2E) {
     );
     if (res.status !== 201) {
       throw new Error(
-        `Failed to create dual problem: ${res.status} ${JSON.stringify(res.body)}`,
+        `Failed to create dual problem: ${res.status} ${
+          JSON.stringify(res.body)
+        }`,
       );
     }
     return (res.body as { data: { id: string } }).data.id;
@@ -264,7 +260,10 @@ if (!isE2E) {
 
       // 验证双容器已设置
       const before = await apiGet(`/api/v1/problems/${problemId}`);
-      if (!(before.body as { data: { runtime_config: unknown } }).data.runtime_config) {
+      if (
+        !(before.body as { data: { runtime_config: unknown } }).data
+          .runtime_config
+      ) {
         throw new Error("Expected runtime_config before update");
       }
 
@@ -323,7 +322,9 @@ if (!isE2E) {
       const rc = (detail.body as { data: { runtime_config: unknown } }).data
         .runtime_config;
       if (rc !== null) {
-        throw new Error("Expected runtime_config to be null for single-container problem");
+        throw new Error(
+          "Expected runtime_config to be null for single-container problem",
+        );
       }
     },
   });
@@ -359,7 +360,9 @@ if (!isE2E) {
         userToken,
       );
       if (sub.status !== 201) {
-        throw new Error(`Submit failed: ${sub.status} ${JSON.stringify(sub.body)}`);
+        throw new Error(
+          `Submit failed: ${sub.status} ${JSON.stringify(sub.body)}`,
+        );
       }
     },
   });

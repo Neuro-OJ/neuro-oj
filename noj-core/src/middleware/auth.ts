@@ -15,18 +15,16 @@ import { runWithContext } from "../lib/requestContext.ts";
  * 当 token.must_change_password=true 时，仅允许访问白名单内路径；
  * 其余路径一律抛 ForbiddenError(PASSWORD_CHANGE_REQUIRED)。
  *
- * 设计：最小白名单——只允许"改密 + 查看自己"。
- *
- * 评审修复 M5（issue #75 评审 Sp7）：移除 `/api/v1/auth/logout`。
- * 原 logout 端点是 no-op stub；实际登出由 noj-ui Nitro 代理处理。
- * 强制改密状态下用户不需要走后端 logout（Nitro 本地清 Cookie），
- * 把 logout 移出白名单可缩小攻击面。
+ * 设计：最小白名单——只允许"改密 + 查看自己 + 登出"。
+ * 用户即使在强制改密状态下也应能登出（与 BAN_WHITELIST 设计一致：
+ * 被封用户也需能登出）。
  *
  * 注意：路径必须与 app.ts 挂载前缀组合后的完整路径一致。
  */
 export const PASSWORD_CHANGE_WHITELIST: readonly string[] = [
   "/api/v1/auth/change-password",
   "/api/v1/auth/me",
+  "/api/v1/auth/logout",
 ] as const;
 
 /**
