@@ -57,7 +57,6 @@ const TEST_USER = {
 };
 
 const NEW_PASS = "NewStr0ng!Pass-2024";
-let testUserId = "";
 
 function uniqueIp(): string {
   return `10.${Math.floor(Math.random() * 255)}.${
