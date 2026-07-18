@@ -14,7 +14,6 @@ import { BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { getDb } from "../db/connection.ts";
 import type { JudgeResult, SubmissionStatus } from "../types/index.ts";
 import { applyNewResult } from "./stats-cache.ts";
-// deno-lint-ignore no-unused-vars -- async fire-and-forget 触发榜单刷新
 import { refreshRankingsView } from "./rankings.ts";
 
 // 允许的状态转换
