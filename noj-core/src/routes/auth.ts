@@ -1,5 +1,9 @@
 import { Hono } from "hono";
-import { authMiddleware, getUserBanState } from "../middleware/auth.ts";
+import {
+  type AuthEnv,
+  authMiddleware,
+  getUserBanState,
+} from "../middleware/auth.ts";
 import {
   changePassword,
   getUserProfile,
@@ -47,16 +51,9 @@ import type {
 // 失败计数 / 锁定 / 退避均使用此前缀，避免改密失败反锁 /login（issue #75 评审 H4）
 const PWCHANGE_NAMESPACE = "pwchange";
 
-const auth = new Hono<
-  {
-    Variables: {
-      userId: string;
-      userRole: string;
-      mustChangePassword: boolean;
-      jti?: string;
-    };
-  }
->();
+// PR-6 评审修订：使用 middleware/auth.ts 导出的 AuthEnv 类型
+// 避免与 inline 定义重复（之前两边各定义一份完全相同的 Variables 结构）
+const auth = new Hono<AuthEnv>();
 
 /**
  * 用户注册端点。

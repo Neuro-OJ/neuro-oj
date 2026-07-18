@@ -89,15 +89,17 @@ export function parsePagination(
   }
 
   const perPageRaw = c.req.query(perPageField);
-  const perPageRaw2 = perPageRaw === undefined || perPageRaw === ""
+  // PR-6 评审修订：原 perPageRaw2 命名异味——perPageRaw 才是真正的 raw string。
+  // 此处 parsedPerPage 是已 parseInt 后的数字，与下方 perPage 的 clamp 结果区分。
+  const parsedPerPage = perPageRaw === undefined || perPageRaw === ""
     ? defaultPerPage
     : parseInt(perPageRaw, 10);
 
-  if (!Number.isInteger(perPageRaw2) || perPageRaw2 < 1) {
+  if (!Number.isInteger(parsedPerPage) || parsedPerPage < 1) {
     throw new ValidationError(`${perPageField} 必须为正整数`);
   }
 
-  const perPage = Math.min(perPageRaw2, maxPerPage);
+  const perPage = Math.min(parsedPerPage, maxPerPage);
 
   return {
     page,

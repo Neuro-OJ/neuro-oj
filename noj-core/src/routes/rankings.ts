@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth.ts";
 import { getGlobalRankings, getMyRanking } from "../services/rankings.ts";
-import { BadRequestError } from "../lib/errors.ts";
+import { buildPaginationMeta, parsePagination } from "../lib/pagination.ts";
 
 type Env = {
   Variables: {
@@ -18,31 +18,21 @@ const router = new Hono<Env>();
  * 公开访问，无需认证。
  */
 router.get("/", async (c) => {
-  const pageRaw = c.req.query("page") ?? "1";
-  const limitRaw = c.req.query("limit") ?? "50";
-
-  const page = Number.parseInt(pageRaw, 10);
-  if (!Number.isFinite(page)) {
-    throw new BadRequestError("page 必须为整数");
-  }
-
-  const limit = Number.parseInt(limitRaw, 10);
-  if (!Number.isFinite(limit)) {
-    throw new BadRequestError("limit 必须为整数");
-  }
-
-  const { data, total } = await getGlobalRankings({ page, limit });
-  const perPage = Math.min(Math.max(limit, 1), 100);
-  const totalPages = total === 0 ? 0 : Math.ceil(total / perPage);
+  // PR-6 评审修订：使用 parsePagination helper 替换 9 行样板
+  const { page, perPage, offset } = parsePagination(c, {
+    defaultPerPage: 50,
+    maxPerPage: 100,
+    pageField: "page",
+    perPageField: "limit",
+  });
+  // rankings service 仍用 page + limit 参数（不是 offset）
+  const { data, total } = await getGlobalRankings({ page, limit: perPage });
 
   return c.json({
     data,
-    pagination: {
-      page,
-      per_page: perPage,
-      total,
-      total_pages: totalPages,
-    },
+    pagination: buildPaginationMeta(page, perPage, total),
+    // offset 仅用于未来若改用 keyset 分页的扩展性
+    _offset: offset,
   });
 });
 
