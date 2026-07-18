@@ -52,6 +52,8 @@ const auth = new Hono<
       userRole: string;
       mustChangePassword: boolean;
       jti?: string;
+      /** Token 过期时间（Unix 秒），authMiddleware 注入，供 /logout + /change-password 计算撤销 TTL */
+      exp?: number;
     };
   }
 >();
@@ -214,15 +216,11 @@ auth.post(
       );
       await clearLoginFailure(userId, PWCHANGE_NAMESPACE);
 
-      // 撤销旧 jti（issue #75 JWT 撤销机制）：TTL 取 token 剩余有效期
+      // 撤销旧 jti（issue #75 JWT 撤销机制）：TTL 取 token 真实剩余有效期
+      // PR-1 评审修订：从 c.get("exp") 读取 jose 解密后的 exp，与 JWT_EXPIRES_IN 配置一致
       const oldJti = c.get("jti");
       if (oldJti) {
-        const ttl = remainingTtlFromExp(
-          // c.req.raw 的 header 已经被中间件解析过；从 Authorization 重新提取 exp 不现实，
-          // 直接用 24h 上限作为保守 TTL；jose 验证后 token 已解密在内存
-          // 但此处拿不到原 exp，所以退化为 jwt_expires_in 默认 24h
-          undefined,
-        ) || 24 * 60 * 60; // 24h 兜底
+        const ttl = remainingTtlFromExp(c.get("exp"));
         await revokeJti(oldJti, ttl);
       }
 
@@ -258,9 +256,10 @@ auth.post(
 auth.post("/logout", authMiddleware, async (c) => {
   const jti = c.get("jti");
   if (jti) {
-    // TTL 取保守 24h（与 jwt_expires_in 默认一致）；
-    // 精确的剩余 TTL 需要重新解析 token exp，复杂度高于收益。
-    await revokeJti(jti, 24 * 60 * 60);
+    // PR-1 评审修订：使用 c.get("exp") 获取 token 真实剩余 TTL，
+    // 与 JWT_EXPIRES_IN 配置保持一致；不再硬编码 24h
+    const ttl = remainingTtlFromExp(c.get("exp"));
+    await revokeJti(jti, ttl);
   }
   return c.json({ data: { ok: true } }, 200);
 });

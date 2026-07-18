@@ -114,6 +114,7 @@ export async function optionalAuthMiddleware(c: Context, next: Next) {
       c.set("userRole", payload.role);
       c.set("mustChangePassword", payload.must_change_password ?? false);
       if (payload.jti) c.set("jti", payload.jti);
+      if (payload.exp) c.set("exp", payload.exp);
 
       await checkBanStatus(c, payload.sub);
     }
@@ -136,6 +137,10 @@ export async function optionalAuthMiddleware(c: Context, next: Next) {
  * issue #102：扩展封禁校验——从 DB 查 users.banned/banned_reason/banned_until
  * （60s LRU 缓存），命中且未过期则抛 ForbiddenError（USER_BANNED）。
  * `banUser`/`unbanUser` 写操作会调 `invalidateBanCache` 立即失效。
+ *
+ * PR-1 评审修订：同时设置 `exp`（秒，Unix 时间戳），让下游 handler 用于
+ * `remainingTtlFromExp()` 计算 token 真实剩余有效期 → 撤销条目 TTL 与
+ * `JWT_EXPIRES_IN` 配置保持一致，不再硬编码 24h。
  */
 export async function authMiddleware(c: Context, next: Next) {
   const authHeader = c.req.header("Authorization");
@@ -176,6 +181,8 @@ export async function authMiddleware(c: Context, next: Next) {
   c.set("userRole", payload.role);
   c.set("mustChangePassword", payload.must_change_password ?? false);
   if (payload.jti) c.set("jti", payload.jti);
+  // payload.exp 是 jose 验证后 payload 中已解密字段（秒，Unix 时间戳）
+  if (payload.exp) c.set("exp", payload.exp);
   await next();
 }
 
