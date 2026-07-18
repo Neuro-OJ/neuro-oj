@@ -31,21 +31,28 @@ import { getSetting } from "./services/system-settings.ts";
  * - 不缓存 maintenance_mode：管理后台切换后下一次请求立即生效
  * - 不阻塞 /health：负载均衡器仍能正常探活
  */
-function maintenanceMode(c: Context, next: Next): Response | Promise<void> {
+function maintenanceMode(
+  c: Context,
+  next: Next,
+) {
   const setting = getSetting("maintenance_mode");
-  if (setting?.value !== true) return next();
+  if (setting?.value !== true) {
+    return next();
+  }
 
   const method = c.req.method.toUpperCase();
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
     return next();
   }
 
-  return c.json(
-    {
-      error: "系统维护中，请稍后再试",
-      code: "MAINTENANCE",
-    },
-    503,
+  return Promise.resolve(
+    c.json(
+      {
+        error: "系统维护中，请稍后再试",
+        code: "MAINTENANCE",
+      },
+      503,
+    ),
   );
 }
 
