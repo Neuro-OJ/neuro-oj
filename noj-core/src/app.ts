@@ -31,7 +31,7 @@ import { getSetting } from "./services/system-settings.ts";
  * - 不缓存 maintenance_mode：管理后台切换后下一次请求立即生效
  * - 不阻塞 /health：负载均衡器仍能正常探活
  */
-function maintenanceMode(c: Context, next: Next): Promise<Response | undefined> {
+function maintenanceMode(c: Context, next: Next): Promise<Response | void> {
   const setting = getSetting("maintenance_mode");
   if (setting?.value !== true) {
     return next();
