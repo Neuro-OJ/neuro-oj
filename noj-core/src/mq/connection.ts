@@ -19,6 +19,7 @@ export interface RedisClient {
   lrange(...args: (string | number)[]): Promise<string[]>;
   llen(...args: (string | number)[]): Promise<number>;
   on(event: string, handler: (...args: unknown[]) => void): void;
+  off(event: string, handler: (...args: unknown[]) => void): void;
   // 限流/计数（issue #73）
   incr(key: string): Promise<number>;
   pexpire(key: string, ms: number): Promise<number>;
@@ -119,7 +120,7 @@ export function createPubSubRedis(): RedisClient {
 export function getRedis(): RedisClient {
   // PR-8：自愈逻辑（不主动 disconnect，保留 ioredis 内部重连能力）
   if (_redis) {
-    if (_redis.status === "ready") {
+    if ((_redis.status as string) === "ready") {
       // 客户端可用：清掉 stale error（双重保险）+ 返回
       if (_error) _error = null;
       return _redis;
@@ -201,7 +202,7 @@ export async function connectRedis(): Promise<void> {
     const redis = getRedis();
 
     // 幂等：已 ready 直接返回（每次都 PING 会浪费一次 RTT，但确保 PONG 语义）
-    if (redis.status === "ready") {
+    if ((redis.status as string) === "ready") {
       const pong = await redis.ping();
       if (pong !== "PONG") {
         throw new Error(`Redis PING 返回异常: ${pong}`);
@@ -216,8 +217,11 @@ export async function connectRedis(): Promise<void> {
       const deadline = Date.now() + 5000;
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 50));
-        if (redis.status === "ready") break;
-        if (redis.status === "end" || redis.status === "close") break;
+        if ((redis.status as string) === "ready") break;
+        if (
+          (redis.status as string) === "end" ||
+          (redis.status as string) === "close"
+        ) break;
       }
       if (redis.status !== "ready") {
         throw new Error(`Redis 连接等待超时（status=${redis.status}）`);
