@@ -24,6 +24,7 @@ use crate::config::PoolConfig;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AllowedImageMode {
     Exact,
+    #[allow(dead_code)]
     AllVersions,
 }
 
@@ -878,6 +879,7 @@ impl PoolManager {
         self.shutdown_token.cancel();
     }
 
+    #[allow(dead_code)]
     pub async fn cleanup_idle_containers(&self) {
         let pools = self.all_pools().await;
         for pool in &pools {
@@ -892,6 +894,7 @@ impl PoolManager {
         }
     }
 
+    #[allow(dead_code)]
     /// 强制清理所有带 pool 标签的容器（含 idle / in-use 残留）。
     pub async fn cleanup_all_containers(&self) {
         self.cleanup_idle_containers().await;
@@ -913,7 +916,7 @@ impl PoolManager {
     pub fn is_shutting_down(&self) -> bool {
         self.shutting_down.load(Ordering::SeqCst)
     }
-
+    #[allow(dead_code)]
     /// 返回关闭令牌副本，供外部后台任务监听优雅关闭。
     pub fn shutdown_token(&self) -> CancellationToken {
         self.shutdown_token.clone()

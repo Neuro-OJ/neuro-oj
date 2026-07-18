@@ -18,8 +18,6 @@ use redis::AsyncCommands;
 use serde_json::Value;
 use tracing::{info, warn};
 
-use crate::pool::{AllowedImage, AllowedImageMode};
-
 /// Redis RPC 客户端。
 pub struct RpcClient {
     /// Redis connection（共享 main.rs 中已有连接）
@@ -147,13 +145,14 @@ impl RpcClient {
         }
     }
 
-    /// 获取镜像白名单。
+    /// 获取镜像白名单（dual-container-judge §5）。
     ///
-    /// 调用 core 的 `get_image_allowlist` 方法，返回允许使用的镜像列表。
-    /// 支持两种响应格式：
-    /// - 对象数组：`{"images": [{"image": "noj-judge-python", "mode": "all_versions"}]}`
-    /// - 字符串数组：`{"images": ["noj-judge-python"]}`
-    pub async fn get_image_allowlist(&mut self) -> Result<Vec<AllowedImage>> {
+    /// 调用 core 的 `get_image_allowlist` 方法，返回结构升级后含 `kind` 字段：
+    /// `{"images": [{"image": "noj-judge-python", "kind": "evaluator", "mode": "exact"}, ...]}`
+    ///
+    /// 返回分类后的镜像列表（evaluator / solution），便于 judge 启动时按 kind
+    /// 分别预热容器池。
+    pub async fn get_image_allowlist(&mut self) -> Result<ImageAllowlist> {
         let result = self.request("get_image_allowlist", None, 5).await?;
 
         let arr = result
@@ -162,36 +161,38 @@ impl RpcClient {
             .cloned()
             .unwrap_or_default();
 
-        // 尝试对象格式：{ "image": "xxx", "mode": "all_versions" }
-        let has_objects = arr.first().and_then(|v| v.get("image")).is_some();
-        if has_objects {
-            let images = arr
-                .iter()
-                .filter_map(|v| {
-                    let image = v.get("image").and_then(|s| s.as_str())?;
-                    let mode = match v.get("mode").and_then(|s| s.as_str()) {
-                        Some("all_versions") => AllowedImageMode::AllVersions,
-                        _ => AllowedImageMode::Exact,
-                    };
-                    Some(AllowedImage {
-                        image: image.to_string(),
-                        mode,
-                    })
-                })
-                .collect();
-            return Ok(images);
+        let mut evaluator = Vec::new();
+        let mut solution = Vec::new();
+
+        for entry in &arr {
+            // 新格式：对象含 image / kind / mode
+            if let Some(image) = entry.get("image").and_then(|v| v.as_str()) {
+                let kind = entry
+                    .get("kind")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("evaluator");
+                match kind {
+                    "solution" => solution.push(image.to_string()),
+                    _ => evaluator.push(image.to_string()),
+                }
+            } else if let Some(s) = entry.as_str() {
+                // 旧格式兜底：纯字符串视为 evaluator
+                evaluator.push(s.to_string());
+            }
         }
 
-        // 退化到纯字符串格式：["xxx", "yyy"]
-        let images = arr
-            .iter()
-            .filter_map(|v| {
-                v.as_str().map(|s| AllowedImage {
-                    image: s.to_string(),
-                    mode: AllowedImageMode::Exact,
-                })
-            })
-            .collect();
-        Ok(images)
+        Ok(ImageAllowlist {
+            evaluator,
+            solution,
+        })
     }
+}
+
+/// core `get_image_allowlist` 响应的分类结构。
+#[derive(Debug, Clone, Default)]
+pub struct ImageAllowlist {
+    /// kind='evaluator' 的镜像列表（进入容器池预热）
+    pub evaluator: Vec<String>,
+    /// kind='solution' 的镜像列表（不入池，仅记录）
+    pub solution: Vec<String>,
 }

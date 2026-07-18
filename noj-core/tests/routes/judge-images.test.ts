@@ -10,7 +10,6 @@ import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { judgeImages } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
-import { jsonRequest } from "../lib/helper.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const hasEnv = !!Deno.env.get("JWT_SECRET");
@@ -27,7 +26,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/judge-images");
+    const res = await app.request("/api/v1/judge-images");
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(Array.isArray(body.data), true);
@@ -47,7 +46,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/judge-images");
+    const res = await app.request("/api/v1/judge-images");
     assertEquals(res.status, 200);
   },
 });
@@ -61,7 +60,9 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
-    const res = await jsonRequest(app, "/api/v1/admin/judge-images", { token });
+    const res = await app.request("/api/v1/admin/judge-images", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(Array.isArray(body.data), true);
@@ -77,7 +78,9 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await signToken({ sub: "test-user", role: "user" });
-    const res = await jsonRequest(app, "/api/v1/admin/judge-images", { token });
+    const res = await app.request("/api/v1/admin/judge-images", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     assertEquals(res.status, 403);
   },
 });
@@ -91,14 +94,18 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
-    const res = await jsonRequest(app, "/api/v1/admin/judge-images", {
+    const res = await app.request("/api/v1/admin/judge-images", {
       method: "POST",
-      body: {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         image: `route-test-image-${ts}`,
         mode: "exact",
+        kind: "evaluator",
         description: "路由测试",
-      },
-      token,
+      }),
     });
     assertEquals(res.status, 201);
     const body = await res.json();
@@ -117,13 +124,16 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
-    const res = await jsonRequest(app, "/api/v1/admin/judge-images", {
+    const res = await app.request("/api/v1/admin/judge-images", {
       method: "POST",
-      body: {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         image: "test-image",
         mode: "regex",
-      },
-      token,
+      }),
     });
     assertEquals(res.status, 400);
   },
@@ -140,27 +150,33 @@ Deno.test({
     const token = await signToken({ sub: "0", role: "admin" });
 
     // 先创建
-    const createRes = await jsonRequest(app, "/api/v1/admin/judge-images", {
+    const createRes = await app.request("/api/v1/admin/judge-images", {
       method: "POST",
-      body: {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         image: `route-update-test-${ts}`,
         mode: "exact",
-      },
-      token,
+        kind: "evaluator",
+      }),
     });
     const created = await createRes.json();
 
     // 再更新
-    const updateRes = await jsonRequest(
-      app,
+    const updateRes = await app.request(
       `/api/v1/admin/judge-images/${created.data.id}`,
       {
         method: "PUT",
-        body: {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
           description: "更新后的介绍",
           mode: "all_versions",
-        },
-        token,
+        }),
       },
     );
     assertEquals(updateRes.status, 200);
@@ -182,21 +198,24 @@ Deno.test({
     const token = await signToken({ sub: "0", role: "admin" });
 
     // 先创建
-    const createRes = await jsonRequest(app, "/api/v1/admin/judge-images", {
+    const createRes = await app.request("/api/v1/admin/judge-images", {
       method: "POST",
-      body: {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         image: `route-delete-test-${ts}`,
         mode: "exact",
-      },
-      token,
+        kind: "evaluator",
+      }),
     });
     const created = await createRes.json();
 
     // 再删除
-    const deleteRes = await jsonRequest(
-      app,
+    const deleteRes = await app.request(
       `/api/v1/admin/judge-images/${created.data.id}`,
-      { method: "DELETE", token },
+      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
     );
     assertEquals(deleteRes.status, 204);
   },
@@ -212,10 +231,12 @@ Deno.test({
     await resetDbForTest();
     const app = createApp();
     const token = await signToken({ sub: "0", role: "admin" });
-    const res = await jsonRequest(
-      app,
+    const res = await app.request(
       "/api/v1/admin/judge-images/nonexistent-id",
-      { method: "DELETE", token },
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      },
     );
     assertEquals(res.status, 404);
   },
@@ -229,7 +250,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/judge-images");
+    const res = await app.request("/api/v1/admin/judge-images");
     assertEquals(res.status, 401);
   },
 });

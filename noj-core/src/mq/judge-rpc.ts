@@ -47,16 +47,34 @@ function createResponse(
 
 /**
  * 处理 get_image_allowlist 请求。
- * 从数据库查询所有 judge_images 记录。
+ *
+ * 从数据库查询所有 judge_images 记录；返回结构包含 `kind` 与 `mode` 字段
+ * （dual-container-judge §5），供 judge 端按 kind 分池预热。
  */
 async function handleGetImageAllowlist(): Promise<
-  { images: { image: string; mode: string }[] }
+  {
+    images: {
+      image: string;
+      kind: "evaluator" | "solution";
+      mode: "exact" | "all_versions";
+    }[];
+  }
 > {
   const rows = await getDb()
-    .select({ image: judgeImages.image, mode: judgeImages.mode })
+    .select({
+      image: judgeImages.image,
+      kind: judgeImages.kind,
+      mode: judgeImages.mode,
+    })
     .from(judgeImages);
 
-  return { images: rows.map((r) => ({ image: r.image, mode: r.mode })) };
+  return {
+    images: rows.map((r) => ({
+      image: r.image,
+      kind: r.kind as "evaluator" | "solution",
+      mode: r.mode as "exact" | "all_versions",
+    })),
+  };
 }
 
 /** 方法名到处理函数的映射 */

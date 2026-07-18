@@ -40,6 +40,7 @@ fn parse_task_message(value: &str) -> Option<JudgeTask> {
 /// 发布“开始评测”事件。
 ///
 /// 该事件仅用于 noj-core 更新 `judge_started_at`，失败不影响评测主流程。
+#[allow(dead_code)]
 pub async fn push_started_event(redis_client: &redis::Client, submission_id: &str) {
     let payload = serde_json::json!({ "submission_id": submission_id });
     let json = match serde_json::to_string(&payload) {
@@ -64,6 +65,7 @@ pub async fn push_started_event(redis_client: &redis::Client, submission_id: &st
     }
 }
 
+#[allow(dead_code)]
 /// 将尚未开始执行的任务重新放回队列尾部，保持 FIFO 顺序。
 pub async fn requeue_task(
     redis_client: &redis::Client,
