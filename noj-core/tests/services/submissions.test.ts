@@ -5,6 +5,7 @@ import {
   rejudgeProblemSubmissions,
   rejudgeSubmission,
   saveEvaluationResult,
+  updateSubmissionStatus,
 } from "../../src/services/submissions.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import {
@@ -869,5 +870,198 @@ Deno.test({
       await fakeRedis.stop();
       Deno.env.delete("REDIS_URL");
     }
+  },
+});
+
+// ── PR-3 评审修订：状态机转换表测试 ─────────────────────
+//
+// 覆盖 VALID_TRANSITIONS 的关键边界：
+// - 合法转换：pending → judging → finished
+// - 非法转换：pending → finished（跳过 judging 应抛错）
+// - 非法转换：judging → pending（不可回退）
+// - 非法转换：finished → 任意（终态）
+// - 不存在的 submission_id 抛 NotFoundError
+
+Deno.test({
+  name:
+    "updateSubmissionStatus: 合法转换 pending → judging 设置 judge_started_at",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const { randomUUID } = await import("node:crypto");
+    const userId = randomUUID();
+    const problemId = randomUUID();
+    await db.insert(users).values({
+      id: userId,
+      username: `state_test_${Date.now()}`,
+      email: `st_${Date.now()}@e.com`,
+      password_hash: "x",
+      role: "user",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    await db.insert(problems).values({
+      id: problemId,
+      type: "U",
+      number: 99999,
+      display_id: "U99999",
+      title: "T",
+      description: "test",
+      difficulty: "easy",
+      owner_id: userId,
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+      time_limit_ms: 5000,
+      memory_limit_mb: 512,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    const subId = randomUUID();
+    await db.insert(submissions).values({
+      id: subId,
+      user_id: userId,
+      problem_id: problemId,
+      language: "python3",
+      code: "x",
+      status: "pending",
+      created_at: new Date().toISOString(),
+    });
+    await updateSubmissionStatus(subId, "judging");
+    const [row] = await db.select().from(submissions).where(
+      eq(submissions.id, subId),
+    ).limit(1);
+    assertEquals(row.status, "judging");
+    assertExists(row.judge_started_at);
+  },
+});
+
+Deno.test({
+  name:
+    "updateSubmissionStatus: 非法转换 pending → finished 应抛 BadRequestError",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const { randomUUID } = await import("node:crypto");
+    const userId = randomUUID();
+    const problemId = randomUUID();
+    await db.insert(users).values({
+      id: userId,
+      username: `state_test2_${Date.now()}`,
+      email: `st2_${Date.now()}@e.com`,
+      password_hash: "x",
+      role: "user",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    await db.insert(problems).values({
+      id: problemId,
+      type: "U",
+      number: 99998,
+      display_id: "U99998",
+      title: "T",
+      description: "test",
+      difficulty: "easy",
+      owner_id: userId,
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+      time_limit_ms: 5000,
+      memory_limit_mb: 512,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    const subId = randomUUID();
+    await db.insert(submissions).values({
+      id: subId,
+      user_id: userId,
+      problem_id: problemId,
+      language: "python3",
+      code: "x",
+      status: "pending",
+      created_at: new Date().toISOString(),
+    });
+    await assertRejects(
+      () => updateSubmissionStatus(subId, "finished"),
+      BadRequestError,
+      "无效的状态转换",
+    );
+  },
+});
+
+Deno.test({
+  name: "updateSubmissionStatus: finished 终态无法再转换",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const { randomUUID } = await import("node:crypto");
+    const userId = randomUUID();
+    const problemId = randomUUID();
+    await db.insert(users).values({
+      id: userId,
+      username: `state_test3_${Date.now()}`,
+      email: `st3_${Date.now()}@e.com`,
+      password_hash: "x",
+      role: "user",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    await db.insert(problems).values({
+      id: problemId,
+      type: "U",
+      number: 99997,
+      display_id: "U99997",
+      title: "T",
+      description: "test",
+      difficulty: "easy",
+      owner_id: userId,
+      judge_image: "noj-judge-python",
+      judge_command: "python3 /tmp/evaluate.py",
+      time_limit_ms: 5000,
+      memory_limit_mb: 512,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    const subId = randomUUID();
+    await db.insert(submissions).values({
+      id: subId,
+      user_id: userId,
+      problem_id: problemId,
+      language: "python3",
+      code: "x",
+      status: "finished",
+      created_at: new Date().toISOString(),
+    });
+    // 终态 → 任意都应抛错
+    await assertRejects(
+      () => updateSubmissionStatus(subId, "judging"),
+      BadRequestError,
+    );
+    await assertRejects(
+      () => updateSubmissionStatus(subId, "pending"),
+      BadRequestError,
+    );
+  },
+});
+
+Deno.test({
+  name: "updateSubmissionStatus: 不存在的 submission_id 抛 NotFoundError",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await assertRejects(
+      () =>
+        updateSubmissionStatus(
+          "00000000-0000-0000-0000-000000000000",
+          "judging",
+        ),
+      NotFoundError,
+      "提交不存在",
+    );
   },
 });
