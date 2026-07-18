@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-T0-LMCC 评测脚本：星港舱门报码归一化
+T0-LMCC 评测脚本：星港舱门报码归一化（双容器版）
 
 评分（总分 10）：
 - 内容正确 8 分：按字段级准确率计分
@@ -9,16 +9,17 @@ T0-LMCC 评测脚本：星港舱门报码归一化
 
 import json
 import re
-import subprocess
 import sys
-from pathlib import Path
 from typing import Any
 
+from noj_evaluator_sdk.runner import SolutionRunner
+
 # 路径配置
+DATA_DIR = __file__ and __file__[0] and "" or ""  # workaround
+from pathlib import Path
 DATA_DIR = Path(__file__).parent
 VISIBLE_DATA = DATA_DIR / "visible.jsonl"
 HIDDEN_DATA = DATA_DIR / "hidden.jsonl"
-CODE_PATH = Path("/tmp/main.py")
 
 # 评分配置
 CONTENT_SCORE_FULL = 8.0
@@ -69,35 +70,14 @@ def parse_prediction(pred_text: str) -> tuple[dict | None, bool]:
     return obj, fmt_ok
 
 
-def run_submission(text: str) -> tuple[str, dict | None, bool]:
-    """运行用户代码，返回 (原始输出, 解析结果, 格式是否正确)"""
-    if not CODE_PATH.exists():
-        raise FileNotFoundError(f"代码文件不存在: {CODE_PATH}")
-
-    # 运行用户代码，传入输入文本
-    result = subprocess.run(
-        ["python3", str(CODE_PATH), text],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-
-    # 提取最后一行 JSON
-    lines = [x.strip() for x in result.stdout.splitlines() if x.strip()]
-    json_line = ""
-    for line in reversed(lines):
-        if line.startswith("{"):
-            json_line = line
-            break
-
-    if not json_line:
-        return result.stdout, None, False
-
-    obj, fmt_ok = parse_prediction(json_line)
-    return result.stdout, obj, fmt_ok
+def call_solution(runner: SolutionRunner, text: str) -> str:
+    """通过 NDJSON 协议调用 Solution 容器中的用户代码"""
+    result = runner.call("solve", text)
+    # SDK 可能返回序列化后的值，确保为字符串
+    return str(result)
 
 
-def eval_split(split_name: str, data: list[dict]) -> dict[str, Any]:
+def eval_split(runner: SolutionRunner, split_name: str, data: list[dict]) -> dict[str, Any]:
     """评测一个数据集"""
     field_correct = 0
     format_correct = 0
@@ -105,7 +85,8 @@ def eval_split(split_name: str, data: list[dict]) -> dict[str, Any]:
     case_results = []
 
     for item in data:
-        raw_output, pred_obj, fmt_ok = run_submission(item["text"])
+        raw_output = call_solution(runner, item["text"])
+        pred_obj, fmt_ok = parse_prediction(raw_output)
 
         # 字段级匹配
         hit_gate = pred_obj and pred_obj.get("gate_id") == item["expected_gate_id"]
@@ -138,16 +119,18 @@ def eval_split(split_name: str, data: list[dict]) -> dict[str, Any]:
 
 
 def main() -> None:
+    runner = SolutionRunner()
+
     visible_data = load_jsonl(VISIBLE_DATA)
     hidden_data = load_jsonl(HIDDEN_DATA)
     hidden_missing = len(hidden_data) == 0
 
     print("=" * 48)
-    print("T0-LMCC 评测开始：星港舱门报码归一化")
+    print("T0-LMCC 评测开始：星港舱门报码归一化（双容器）")
     print("=" * 48)
 
     # 评测可见集
-    visible_stat = eval_split("VISIBLE", visible_data)
+    visible_stat = eval_split(runner, "VISIBLE", visible_data)
 
     if hidden_missing:
         print("\n⚠️ 隐藏数据未提供")
@@ -159,7 +142,7 @@ def main() -> None:
             "cases": [],
         }
     else:
-        hidden_stat = eval_split("HIDDEN", hidden_data)
+        hidden_stat = eval_split(runner, "HIDDEN", hidden_data)
 
     # 计算分数
     field_correct = visible_stat["field_correct"] + hidden_stat["field_correct"]
@@ -196,6 +179,8 @@ def main() -> None:
 
     print("---RESULT---")
     print(json.dumps(result, ensure_ascii=False))
+
+    runner.close()
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- problems：search_vector 列 + 索引
 ALTER TABLE problems
-  ADD COLUMN search_vector tsvector
+  ADD COLUMN IF NOT EXISTS search_vector tsvector
   GENERATED ALWAYS AS (
     setweight(to_tsvector('simple', coalesce(title, '')), 'A') ||
     setweight(to_tsvector('simple',
@@ -20,7 +20,7 @@ CREATE INDEX IF NOT EXISTS idx_problems_title_trgm ON problems USING GIN (title 
 
 -- users：search_vector 列 + 索引
 ALTER TABLE users
-  ADD COLUMN search_vector tsvector
+  ADD COLUMN IF NOT EXISTS search_vector tsvector
   GENERATED ALWAYS AS (
     setweight(to_tsvector('simple', coalesce(username, '')), 'A') ||
     setweight(to_tsvector('simple', coalesce(email, '')), 'B')

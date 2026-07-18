@@ -47,10 +47,21 @@ async function setup() {
     title: "Queue Test Problem",
     difficulty: "easy",
     owner_id: USER_ID,
-    judge_image: "python",
-    judge_command: "python3 evaluate.py",
-    time_limit_ms: 1000,
-    memory_limit_mb: 256,
+    runtime_config: {
+      evaluator: {
+        image: "noj-evaluator-python",
+        command: "python3 /workspace/evaluate.py",
+        time_limit_ms: 5000,
+        memory_limit_mb: 512,
+      },
+
+      solution: {
+        image: "noj-solution-python",
+        entry: "submission_sample.py",
+        call_timeout_ms: 2000,
+        memory_limit_mb: 512,
+      },
+    },
     description: "test",
     created_at: now,
     updated_at: now,
@@ -119,12 +130,23 @@ async function pushToQueue(submissionId: string) {
   const task = JSON.stringify({
     submission_id: submissionId,
     problem_id: PROBLEM_ID,
-    judge_image: "python",
-    judge_command: "python3 evaluate.py",
+    runtime_config: {
+      evaluator: {
+        image: "noj-evaluator-python",
+        command: "python3 /workspace/evaluate.py",
+        time_limit_ms: 5000,
+        memory_limit_mb: 512,
+      },
+
+      solution: {
+        image: "noj-solution-python",
+        entry: "submission_sample.py",
+        call_timeout_ms: 2000,
+        memory_limit_mb: 512,
+      },
+    },
     language: "python3",
     code: "print('test')",
-    time_limit_ms: 1000,
-    memory_limit_mb: 256,
   });
   await redis.lpush("noj:judge:queue", task);
 }

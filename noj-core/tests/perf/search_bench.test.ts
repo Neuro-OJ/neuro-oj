@@ -23,8 +23,21 @@ Deno.test({
         title: `题目 ${i * BATCH + j}：测试数据`,
         description: "",
         difficulty: "medium",
-        judge_image: "test",
-        judge_command: "test",
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+          },
+
+          solution: {
+            image: "noj-solution-python",
+            entry: "submission_sample.py",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
         number: i * BATCH + j + 1,
         type: "P" as const,
         created_at: now,

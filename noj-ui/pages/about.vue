@@ -67,7 +67,7 @@ const repoUrl = "https://github.com/Neuro-OJ/neuro-oj"
           <div class="flex flex-col gap-1.5">
             <h3 class="font-semibold text-text">全面容器化的评测环境</h3>
             <p class="text-sm text-text-secondary leading-relaxed">
-              每道题可指定自定义 Docker 镜像（<code class="text-green-700 bg-green-50 px-1 rounded text-xs font-mono">judge_image</code>），
+              每道题可指定自定义 Docker 镜像（<code class="text-green-700 bg-green-50 px-1 rounded text-xs font-mono">runtime_config</code>），
               意味着评测环境可以预装任意依赖——PyTorch、TensorFlow、NumPy、
               Node.js 包、C++ 库等。平台不再限制语言版本和可用库，
               题目作者自由定义最适合评测的运行时环境。
