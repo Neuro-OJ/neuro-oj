@@ -81,6 +81,12 @@ export const problems = pgTable(
     support_package_storage_url: text("support_package_storage_url"),
     time_limit_ms: integer("time_limit_ms").notNull().default(5000),
     memory_limit_mb: integer("memory_limit_mb").notNull().default(512),
+    /**
+     * 双容器 Runtime 配置（dual-container-judge §4）。
+     * - NULL：单容器题目（向后兼容）
+     * - 非 NULL：双容器题目（evaluator + solution 各自 RuntimeConfig）
+     */
+    runtime_config: jsonb("runtime_config"),
     /** 题号（同一 type 内独立自增） */
     number: integer("number").notNull(),
     /** 题目所有者 ID，默认 root (UID=0) */
@@ -102,6 +108,10 @@ export const problems = pgTable(
       "gin",
       table.searchVector,
     ),
+    runtimeConfigCheck: check(
+      "problems_runtime_config_check",
+      sql`${table.runtime_config} IS NULL OR jsonb_typeof(${table.runtime_config}) = 'object'`,
+    ),
   }),
 );
 
@@ -117,6 +127,14 @@ export const judgeImages = pgTable(
     id: text("id").primaryKey(),
     image: text("image").notNull(),
     mode: text("mode").notNull().default("exact"),
+    /**
+     * 镜像用途分类（dual-container-judge §5）。
+     * - 'evaluator'：单容器 / 双容器 Evaluator 角色
+     * - 'solution' ：双容器 Solution 角色
+     *
+     * 历史数据迁移时默认 'evaluator'。
+     */
+    kind: text("kind").notNull().default("evaluator"),
     /** 管理员配置的介绍，在题目编辑器下拉中展示 */
     description: text("description").notNull().default(""),
     created_at: text("created_at").notNull(),
@@ -126,6 +144,10 @@ export const judgeImages = pgTable(
     modeCheck: check(
       "judge_images_mode_check",
       sql`${table.mode} IN ('exact', 'all_versions')`,
+    ),
+    kindCheck: check(
+      "judge_images_kind_check",
+      sql`${table.kind} IN ('evaluator', 'solution')`,
     ),
   }),
 );
@@ -454,6 +476,7 @@ export const auditLogs = pgTable(
         'users.ban',
         'users.unban',
         'problems.delete',
+        'problems.runtime_config_changed',
         'categories.delete',
         'submissions.rejudge',
         'settings.update',

@@ -36,9 +36,53 @@ impl JudgeStatus {
     }
 }
 
+/// 评测模式。
+///
+/// - `Single` 走现有单容器路径（`judge_image` / `judge_command`）。
+/// - `Dual` 走双容器编排（Evaluator + Solution），使用 `runtime_config`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum JudgeMode {
+    Single,
+    Dual,
+}
+
+impl Default for JudgeMode {
+    /// 缺省/未识别时按单容器处理（向后兼容）。
+    fn default() -> Self {
+        JudgeMode::Single
+    }
+}
+
+/// 双容器模式下的 Runtime 配置（与 noj-core/src/types/index.ts 的 RuntimeConfig 对齐）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeConfig {
+    pub evaluator: EvaluatorRuntime,
+    pub solution: SolutionRuntime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvaluatorRuntime {
+    pub image: String,
+    pub command: String,
+    pub time_limit_ms: u64,
+    pub memory_limit_mb: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SolutionRuntime {
+    pub image: String,
+    /// Solution 容器内入口文件名（例如 `solution.py`）。
+    pub entry: String,
+    /// 单次 SDK 调用的时间上限（毫秒）。
+    pub call_timeout_ms: u64,
+    pub memory_limit_mb: u64,
+}
+
 /// 评测任务——从 noj-core 发送到 noj-judge 的消息。
 ///
 /// 字段对齐 noj-core/src/types/index.ts 的 JudgeTask 接口。
+/// `judge_image` / `judge_command` 在 dual 模式下可为空（由 `runtime_config` 提供）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JudgeTask {
     /// 提交 UUID
@@ -46,12 +90,20 @@ pub struct JudgeTask {
     /// 题目 UUID
     #[allow(dead_code)]
     pub problem_id: String,
-    /// 题目定义的 Docker 镜像名
+    /// 评测模式：缺省/单容器/双容器
+    #[serde(default)]
+    pub mode: JudgeMode,
+    /// 题目定义的 Docker 镜像名（单容器必填；双容器由 runtime_config.evaluator.image 提供）
+    #[serde(default)]
     pub judge_image: String,
-    /// 容器内执行的评测命令
+    /// 容器内执行的评测命令（单容器必填；双容器由 runtime_config.evaluator.command 提供）
+    #[serde(default)]
     pub judge_command: String,
-    /// 支持包下载 URL（`noj-download://` 格式）
+    /// 支持包下载 URL（`noj-download://` 格式），单/双容器共用
     pub download_url: Option<String>,
+    /// 双容器模式：Runtime 配置
+    #[serde(default)]
+    pub runtime_config: Option<RuntimeConfig>,
     /// 编程语言标识
     pub language: String,
     /// 用户源代码
@@ -59,8 +111,12 @@ pub struct JudgeTask {
     /// 用户代码的文件名
     pub file_name: Option<String>,
     /// 时间限制（毫秒）
+    /// - 单容器：总超时
+    /// - 双容器：Evaluator 总超时
     pub time_limit_ms: u64,
     /// 内存限制（MB）
+    /// - 单容器：总内存
+    /// - 双容器：Evaluator 默认内存（实际以 runtime_config.evaluator.memory_limit_mb 为准）
     pub memory_limit_mb: u64,
     /// 重测序列号（透传回 JudgeResult）
     #[serde(skip_serializing_if = "Option::is_none")]

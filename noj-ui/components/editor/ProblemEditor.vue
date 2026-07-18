@@ -2,6 +2,21 @@
 import { ArrowLeft, Save, Eye, Edit3 } from "@lucide/vue"
 import SupportPackageUpload from "../admin/SupportPackageUpload.vue"
 
+interface RuntimeConfigPayload {
+  evaluator: {
+    image: string
+    command: string
+    time_limit_ms: number
+    memory_limit_mb: number
+  }
+  solution: {
+    image: string
+    entry: string
+    call_timeout_ms: number
+    memory_limit_mb: number
+  }
+}
+
 interface Props {
   mode: "create" | "edit"
   problemId?: string
@@ -45,14 +60,16 @@ const uploadProblemId = computed(() =>
 )
 const savedProblemId = ref<string | null>(null)
 
-// 评测镜像白名单
-const judgeImages = ref<{ image: string }[]>([])
+// 评测镜像白名单（含 kind）
+const judgeImages = ref<{ image: string; kind?: string }[]>([])
 const judgeImagesLoading = ref(false)
 
 async function loadJudgeImages() {
   judgeImagesLoading.value = true
   try {
-    const res = await $fetch<{ data: { image: string }[] }>("/api/v1/judge-images")
+    const res = await $fetch<{ data: { image: string; kind?: string }[] }>(
+      "/api/v1/judge-images",
+    )
     judgeImages.value = res.data ?? []
   } catch {
     // 静默失败
@@ -60,6 +77,61 @@ async function loadJudgeImages() {
     judgeImagesLoading.value = false
   }
 }
+
+/** 按 kind 过滤的镜像列表（dual-container-judge §5） */
+const evaluatorImages = computed(() =>
+  judgeImages.value.filter((ji) => (ji.kind ?? "evaluator") === "evaluator"),
+)
+const solutionImages = computed(() =>
+  judgeImages.value.filter((ji) => ji.kind === "solution"),
+)
+
+// ── 双容器 Runtime 配置（仅 admin） ──
+const dualMode = ref(false)  // 是否启用双容器模式
+const evaluatorImage = ref("")
+const evaluatorCommand = ref("python3 /workspace/evaluate.py")
+const evaluatorTimeLimitMs = ref(5000)
+const evaluatorMemoryLimitMb = ref(512)
+const solutionImage = ref("")
+const solutionEntry = ref("solution.py")
+const solutionCallTimeoutMs = ref(1000)
+const solutionMemoryLimitMb = ref(256)
+
+// dualMode 关闭时清空 RuntimeConfig
+watch(dualMode, (on) => {
+  if (!on) {
+    evaluatorImage.value = ""
+    evaluatorCommand.value = ""
+    evaluatorTimeLimitMs.value = 5000
+    evaluatorMemoryLimitMb.value = 512
+    solutionImage.value = ""
+    solutionEntry.value = "solution.py"
+    solutionCallTimeoutMs.value = 1000
+    solutionMemoryLimitMb.value = 256
+  }
+})
+
+/** 组装 RuntimeConfig 用于提交；dualMode 关闭返回 null */
+const runtimeConfigPayload = computed(() => {
+  if (!dualMode.value) return null
+  return {
+    evaluator: {
+      image: evaluatorImage.value.trim(),
+      command: evaluatorCommand.value.trim(),
+      time_limit_ms: evaluatorTimeLimitMs.value,
+      memory_limit_mb: evaluatorMemoryLimitMb.value,
+    },
+    solution: {
+      image: solutionImage.value.trim(),
+      entry: solutionEntry.value.trim(),
+      call_timeout_ms: solutionCallTimeoutMs.value,
+      memory_limit_mb: solutionMemoryLimitMb.value,
+    },
+  }
+})
+
+// 仅 admin 可启用 dual mode
+const canDualMode = computed(() => isAdmin.value)
 
 // ── 分类选项 ──
 const categories = ref<{ id: string; name: string }[]>([])
@@ -86,6 +158,7 @@ async function loadProblem() {
       time_limit_ms: number; memory_limit_mb: number
       display_id: string; type: string; number: number
       categories: { id: string }[]
+      runtime_config: RuntimeConfigPayload | null
     } }>(`/api/v1/problems/${props.problemId}`)
     const p = res.data
     displayId.value = p.display_id
@@ -96,6 +169,22 @@ async function loadProblem() {
     timeLimitMs.value = p.time_limit_ms; memoryLimitMb.value = p.memory_limit_mb
     categoryIds.value = p.categories.map((c) => c.id)
     hasSupportPackage.value = (p as Record<string, unknown>).has_support_package === true
+
+    // 加载 runtime_config（如果有）
+    if (p.runtime_config) {
+      dualMode.value = true
+      const rc = p.runtime_config
+      evaluatorImage.value = rc.evaluator.image
+      evaluatorCommand.value = rc.evaluator.command
+      evaluatorTimeLimitMs.value = rc.evaluator.time_limit_ms
+      evaluatorMemoryLimitMb.value = rc.evaluator.memory_limit_mb
+      solutionImage.value = rc.solution.image
+      solutionEntry.value = rc.solution.entry
+      solutionCallTimeoutMs.value = rc.solution.call_timeout_ms
+      solutionMemoryLimitMb.value = rc.solution.memory_limit_mb
+    } else {
+      dualMode.value = false
+    }
   } catch (err: unknown) {
     if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) {
       notFound.value = true
@@ -160,6 +249,10 @@ async function handleSubmit() {
           memory_limit_mb: memoryLimitMb.value > 0 ? memoryLimitMb.value : 512,
           category_ids: categoryIds.value,
           type: problemType.value,
+          // 双容器 Runtime 配置（仅 admin 可设置）
+          ...(canDualMode.value && dualMode.value
+            ? { runtime_config: runtimeConfigPayload.value }
+            : { runtime_config: null }),
         },
       })
       savedProblemId.value = res.data.id
@@ -279,25 +372,105 @@ async function handleSubmit() {
       <div class="grid grid-cols-2 gap-3.5">
         <div class="flex flex-col gap-1">
           <label class="text-xs font-semibold text-text">评测镜像 <span class="text-red-600">*</span></label>
-          <select v-model="judgeImage" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white" :disabled="judgeImagesLoading">
-            <option value="" disabled>{{ judgeImagesLoading ? "加载中..." : judgeImages.length === 0 ? "暂无可用评测镜像" : "请选择评测镜像" }}</option>
-            <option v-for="ji in judgeImages" :key="ji.image" :value="ji.image">{{ ji.image }}</option>
+          <select v-model="judgeImage" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white" :disabled="dualMode || judgeImagesLoading">
+            <option value="" disabled>{{ judgeImagesLoading ? "加载中..." : (dualMode ? "双容器模式：使用 Evaluator 镜像" : (judgeImages.length === 0 ? "暂无可用评测镜像" : "请选择评测镜像")) }}</option>
+            <option v-for="ji in judgeImages.filter(j => (j.kind ?? 'evaluator') === 'evaluator')" :key="ji.image" :value="ji.image">{{ ji.image }}</option>
           </select>
           <p v-if="!judgeImagesLoading && judgeImages.length === 0 && !fieldErrors.judge_image" class="text-xs text-warning-text">白名单未配置，需管理员在后台添加评测镜像</p>
           <p v-if="fieldErrors.judge_image" class="text-xs text-red-600">{{ fieldErrors.judge_image }}</p>
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-xs font-semibold text-text">评测命令 <span class="text-red-600">*</span></label>
-          <input v-model="judgeCommand" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white" placeholder="如：python3 /tmp/evaluate.py" />
+          <input v-model="judgeCommand" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white" :disabled="dualMode" placeholder="如：python3 /tmp/evaluate.py" />
           <p v-if="fieldErrors.judge_command" class="text-xs text-red-600">{{ fieldErrors.judge_command }}</p>
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-xs font-semibold text-text">时间限制 (ms)</label>
-          <input v-model.number="timeLimitMs" type="number" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" min="100" max="30000" />
+          <input v-model.number="timeLimitMs" type="number" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" :disabled="dualMode" min="100" max="30000" />
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-xs font-semibold text-text">内存限制 (MB)</label>
-          <input v-model.number="memoryLimitMb" type="number" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" min="16" max="4096" />
+          <input v-model.number="memoryLimitMb" type="number" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" :disabled="dualMode" min="16" max="4096" />
+        </div>
+      </div>
+
+      <!-- 双容器 Runtime 配置（仅 admin 可启用） -->
+      <div v-if="canDualMode" class="mt-4 pt-4 border-t border-border">
+        <label class="flex items-center gap-2 text-xs font-semibold text-text cursor-pointer">
+          <input v-model="dualMode" type="checkbox" class="accent-primary" />
+          <span>启用双容器 Runtime（Evaluator + Solution）</span>
+          <span class="text-text-muted font-normal">— 仅 admin 可见，参考 openspec/changes/dual-container-judge</span>
+        </label>
+        <p class="text-xs text-text-muted mt-1">
+          双容器模式：Evaluator（可信）运行 evaluate.py + 支持包；Solution（不可信）单独运行用户代码。
+          启用后将覆盖上方"评测配置"中的镜像/命令/时间/内存字段。
+        </p>
+
+        <div v-if="dualMode" class="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- Evaluator 卡片 -->
+          <div class="border border-border rounded-lg p-3.5 bg-gray-50">
+            <h3 class="text-xs font-semibold text-text mb-2.5 flex items-center gap-1.5">
+              <span class="px-1.5 py-0.5 bg-primary text-white text-[10px] rounded">Evaluator</span>
+              可信端（运行 evaluate.py + 支持包）
+            </h3>
+            <div class="flex flex-col gap-2.5">
+              <div class="flex flex-col gap-1">
+                <label class="text-xs font-semibold text-text">镜像 <span class="text-red-600">*</span></label>
+                <select v-model="evaluatorImage" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" :disabled="judgeImagesLoading">
+                  <option value="" disabled>{{ judgeImagesLoading ? "加载中..." : evaluatorImages.length === 0 ? "暂无可用 evaluator 镜像" : "请选择 evaluator 镜像" }}</option>
+                  <option v-for="ji in evaluatorImages" :key="ji.image" :value="ji.image">{{ ji.image }}</option>
+                </select>
+                <p v-if="!judgeImagesLoading && evaluatorImages.length === 0" class="text-xs text-warning-text">白名单无 evaluator 类型镜像</p>
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-xs font-semibold text-text">评测命令 <span class="text-red-600">*</span></label>
+                <input v-model="evaluatorCommand" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" placeholder="如：python3 /workspace/evaluate.py" />
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs font-semibold text-text">总时间 (ms)</label>
+                  <input v-model.number="evaluatorTimeLimitMs" type="number" class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white" min="100" max="60000" />
+                </div>
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs font-semibold text-text">内存 (MB)</label>
+                  <input v-model.number="evaluatorMemoryLimitMb" type="number" class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white" min="32" max="8192" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Solution 卡片 -->
+          <div class="border border-border rounded-lg p-3.5 bg-gray-50">
+            <h3 class="text-xs font-semibold text-text mb-2.5 flex items-center gap-1.5">
+              <span class="px-1.5 py-0.5 bg-warning-text text-white text-[10px] rounded">Solution</span>
+              不可信端（运行用户代码，隔离)
+            </h3>
+            <div class="flex flex-col gap-2.5">
+              <div class="flex flex-col gap-1">
+                <label class="text-xs font-semibold text-text">镜像 <span class="text-red-600">*</span></label>
+                <select v-model="solutionImage" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" :disabled="judgeImagesLoading">
+                  <option value="" disabled>{{ judgeImagesLoading ? "加载中..." : solutionImages.length === 0 ? "暂无可用 solution 镜像" : "请选择 solution 镜像" }}</option>
+                  <option v-for="ji in solutionImages" :key="ji.image" :value="ji.image">{{ ji.image }}</option>
+                </select>
+                <p v-if="!judgeImagesLoading && solutionImages.length === 0" class="text-xs text-warning-text">白名单无 solution 类型镜像 — 管理员需先添加并标记 kind='solution'</p>
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-xs font-semibold text-text">入口文件名 <span class="text-red-600">*</span></label>
+                <input v-model="solutionEntry" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" placeholder="如：solution.py" />
+                <p class="text-xs text-text-muted">禁止包含路径分隔符或 ..</p>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs font-semibold text-text">单次调用超时 (ms)</label>
+                  <input v-model.number="solutionCallTimeoutMs" type="number" class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white" min="100" max="30000" />
+                </div>
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs font-semibold text-text">内存 (MB)</label>
+                  <input v-model.number="solutionMemoryLimitMb" type="number" class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white" min="16" max="4096" />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
