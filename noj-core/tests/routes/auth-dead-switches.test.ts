@@ -120,23 +120,26 @@ Deno.test({
     await resetDbForTest();
     _resetSystemSettingsForTest();
     await initSystemSettings();
+    // PR-2 评审修订：用 try/finally 包住设置与断言，**任何 assert 失败也会恢复 maintenance_mode**
+    // 避免 DB 残留 true 导致后续 30+ 测试命中 maintenanceMode 中间件返 503
     await updateSetting("maintenance_mode", true, "0");
+    try {
+      const app = createApp();
+      const res = await jsonRequest(app, `${BASE}/login`, {
+        method: "POST",
+        body: { login: "anyone", password: "anything" },
+      });
+      assertEquals(res.status, 503);
+      const body = await res.json();
+      assertEquals(body.code, "MAINTENANCE");
 
-    const app = createApp();
-    const res = await jsonRequest(app, `${BASE}/login`, {
-      method: "POST",
-      body: { login: "anyone", password: "anything" },
-    });
-    assertEquals(res.status, 503);
-    const body = await res.json();
-    assertEquals(body.code, "MAINTENANCE");
-
-    // GET 仍可用（健康检查、查状态）
-    const healthRes = await jsonRequest(app, "/health");
-    assertEquals(healthRes.status, 200);
-
-    // 恢复
-    await updateSetting("maintenance_mode", false, "0");
+      // GET 仍可用（健康检查、查状态）
+      const healthRes = await jsonRequest(app, "/health");
+      assertEquals(healthRes.status, 200);
+    } finally {
+      // 任何 assert 失败 / 异常都执行：恢复 maintenance_mode=false
+      await updateSetting("maintenance_mode", false, "0");
+    }
   },
 });
 
