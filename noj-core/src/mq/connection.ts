@@ -123,7 +123,9 @@ export function getRedis(): RedisClient {
   }
   // _redis 存在但未 ready（disconnected / end），重置引用
   if (_redis) {
-    try { _redis.disconnect(); } catch { /* ignore */ }
+    try {
+      _redis.disconnect();
+    } catch { /* ignore */ }
     _redis = null;
     _error = null;
   }
