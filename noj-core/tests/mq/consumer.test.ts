@@ -93,8 +93,9 @@ async function fakeLpush(fakeUrl: string, queue: string, message: string) {
 }
 
 /** 用 fake Redis 客户端执行回调，finally 保证状态恢复 */
-async function withFakeRedis<T>(
+async function _withFakeRedis<T>(
   fakeUrl: string,
+  // deno-lint-ignore no-explicit-any
   fn: (redis: any) => Promise<T>,
 ): Promise<T> {
   const prevUrl = Deno.env.get("REDIS_URL") ?? null;

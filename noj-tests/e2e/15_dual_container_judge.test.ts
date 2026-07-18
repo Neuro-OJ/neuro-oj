@@ -18,7 +18,7 @@ import {
   apiPost,
   apiPut,
   isE2E,
-  loginAndChangePassword,
+  getAdminToken,
   registerUser,
 } from "./helper.ts";
 
@@ -37,15 +37,6 @@ if (!isE2E) {
   const TEST_TAG = `e2e-${Date.now()}`;
 
   // ── 共享 fixtures ────────────────────────────────────
-
-  /** 获取 admin token（首调用时强制改密走通） */
-  async function getAdminToken(): Promise<string> {
-    return await loginAndChangePassword(
-      "admin-e2e-dual",
-      "InitPass123!",
-      "AdminPass123!",
-    );
-  }
 
   /** 创建（或复用）evaluator 镜像白名单条目 */
   async function ensureImage(image: string, kind: "evaluator" | "solution"): Promise<string> {

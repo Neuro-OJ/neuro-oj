@@ -191,7 +191,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "must_change: PASSWORD_CHANGE_WHITELIST 包含 /api/v1/auth/change-password 和 /api/v1/auth/me",
+    "must_change: PASSWORD_CHANGE_WHITELIST 包含 /api/v1/auth/change-password、/me、/logout",
   ignore: !hasEnv,
   fn: () => {
     assertEquals(
@@ -201,7 +201,7 @@ Deno.test({
     assertEquals(PASSWORD_CHANGE_WHITELIST.includes("/api/v1/auth/me"), true);
     assertEquals(
       PASSWORD_CHANGE_WHITELIST.includes("/api/v1/auth/logout"),
-      false,
+      true,
     );
   },
 });
