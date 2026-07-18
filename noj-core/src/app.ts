@@ -34,7 +34,7 @@ import { getSetting } from "./services/system-settings.ts";
 async function maintenanceMode(
   c: Context,
   next: Next,
-): Promise<Response | undefined> {
+): Promise<Response | void> {
   const setting = getSetting("maintenance_mode");
   if (setting?.value !== true) {
     await next();
