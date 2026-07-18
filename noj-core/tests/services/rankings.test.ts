@@ -239,7 +239,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     // 不创建 root 用户的提交（root 已由 00_migrate_test 创建）
-      await refreshRankingsView();
+    await refreshRankingsView();
     const result = await getGlobalRankings({ page: 1, limit: 100 });
     const rootRow = result.data.find((r) => r.user_id === "0");
     assertEquals(rootRow, undefined, "root 用户不应出现在榜单中");
@@ -334,7 +334,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-      await refreshRankingsView();
+    await refreshRankingsView();
     const result = await getGlobalRankings({ page: 1, limit: 500 });
     // 验证 limit=500 调用不抛错（service 层内部截断到 100）
     assertEquals(result.data.length <= 100, true);

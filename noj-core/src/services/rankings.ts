@@ -70,6 +70,27 @@ async function hasMaterializedView(): Promise<boolean> {
  *
  * @throws {BadRequestError} page < 1 或 limit < 1 时
  */
+/**
+ * 刷新 user_rankings 物化视图。
+ *
+ * 评测结果写回后必须立即刷新；测试中直接 INSERT 后也需调用此函数。
+ * 失败仅 console.error，不抛出。
+ */
+export async function refreshRankingsView(): Promise<void> {
+  if (!(await hasMaterializedView())) return;
+  try {
+    const db = getDb();
+    await db.execute(
+      sql`REFRESH MATERIALIZED VIEW CONCURRENTLY user_rankings`,
+    );
+  } catch (err) {
+    console.error(
+      "[rankings] 物化视图刷新失败（榜单可能短暂滞后）:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
 export async function getGlobalRankings(params: {
   page: number;
   limit?: number;
