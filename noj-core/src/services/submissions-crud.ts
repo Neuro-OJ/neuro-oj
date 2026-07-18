@@ -10,6 +10,25 @@
  * 重测相关（rejudgeSubmission / rejudgeProblemSubmissions）在
  * submissions-rejudge.ts；评测结果写回（saveEvaluationResult / updateSubmissionStatus）
  * 在 submissions-result.ts。
+ *
+ * ## 关于本文件中的 `as unknown as ReturnType<typeof eq>` 模式
+ *
+ * PR-5 评审指出这些 cast 模式（line 107, 114, 126 等）属于类型边界合理使用，
+ * 不抽取为 `unwrapRows` helper。原因：
+ *
+ * 1. `unwrapRows` 处理的是 `db.execute()` 的"返回值"，即 `T[] | { rows: T[] }`
+ *    这种**整张表**的形态
+ * 2. 本文件中的 `or(...)` / `ilike(...)` 是**单条 SQL 片段**，返回值是
+ *    `SQL | SQL<unknown>`，与 unwrapRows 的契约不匹配
+ * 3. 强行统一会让类型推导从 SQL 条件表达式退化为 `SQL`，丢失 schema 类型信息
+ *
+ * 真正的统一方案需 Drizzle 官方提供 `SQL<T>` 与 `SQL` 的统一类型，
+ * 目前没有。如未来支持，迁移路径：把所有 `as unknown as ReturnType<typeof eq>`
+ * 替换为直接的 `SQL<boolean>` 注解。
+ *
+ * 风险：每个 `as unknown as` 都是一个潜在的运行时类型漂移点。当前文件所有
+ * 此类 cast 都对应 Drizzle 在 LEFT JOIN 条件下 `or`/`ilike` 返回的
+ * `SQL<unknown>`，与等价的 `eq()` 返回 `SQL<boolean>` 兼容。
  */
 
 import { and, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
