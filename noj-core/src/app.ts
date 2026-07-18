@@ -40,12 +40,14 @@ function maintenanceMode(c: Context, next: Next): Promise<Response | void> {
     return next();
   }
 
-  return c.json(
-    {
-      error: "系统维护中，请稍后再试",
-      code: "MAINTENANCE",
-    },
-    503,
+  return Promise.resolve(
+    c.json(
+      {
+        error: "系统维护中，请稍后再试",
+        code: "MAINTENANCE",
+      },
+      503,
+    ),
   );
 }
 
