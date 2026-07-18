@@ -143,22 +143,29 @@
       "breakpoints": true
     },
     {
-      "idx": 19,
+      "idx": 20,
       "version": "7",
+      "when": 1784000000000,
+      "tag": "0018_judge_images_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
       "when": 1784350000000,
       "tag": "0018_audit_logs_auth_actions",
       "breakpoints": true
     },
     {
-      "idx": 20,
-      "version": "7",
+      "idx": 22,
+      "version": "6",
       "when": 1784350000100,
       "tag": "0019_audit_logs_nullable_admin",
       "breakpoints": true
     },
     {
-      "idx": 21,
-      "version": "7",
+      "idx": 23,
+      "version": "6",
       "when": 1784400000000,
       "tag": "0020_user_rankings_view",
       "breakpoints": true
