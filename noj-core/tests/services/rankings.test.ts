@@ -10,6 +10,7 @@ import {
 import {
   getGlobalRankings,
   getMyRanking,
+  refreshRankingsView,
 } from "../../src/services/rankings.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 
@@ -161,6 +162,7 @@ Deno.test({
       await createSubmission(userC, problem1, "WrongAnswer");
       await createSubmission(userC, problem2, "TimeLimitExceeded");
 
+      await refreshRankingsView();
       const result = await getGlobalRankings({ page: 1, limit: 100 });
       const aRow = result.data.find((r) => r.user_id === userA);
       const bRow = result.data.find((r) => r.user_id === userB);
@@ -210,6 +212,7 @@ Deno.test({
       await createSubmission(userE, problem2, "WrongAnswer");
       await createSubmission(userE, problem2, "TimeLimitExceeded");
 
+      await refreshRankingsView();
       const result = await getGlobalRankings({ page: 1, limit: 100 });
       const dRow = result.data.find((r) => r.user_id === userD);
       const eRow = result.data.find((r) => r.user_id === userE);
@@ -236,6 +239,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     // 不创建 root 用户的提交（root 已由 00_migrate_test 创建）
+      await refreshRankingsView();
     const result = await getGlobalRankings({ page: 1, limit: 100 });
     const rootRow = result.data.find((r) => r.user_id === "0");
     assertEquals(rootRow, undefined, "root 用户不应出现在榜单中");
@@ -253,6 +257,7 @@ Deno.test({
 
     try {
       await createSubmission(userF, problem1, "Accepted");
+      await refreshRankingsView();
       const result = await getMyRanking(userF);
       assertExists(result);
       assertEquals(result!.user_id, userF);
@@ -279,6 +284,7 @@ Deno.test({
     try {
       // 仅 WA，无 Accepted
       await createSubmission(userG, problem1, "WrongAnswer");
+      await refreshRankingsView();
       const result = await getMyRanking(userG);
       assertEquals(result, null);
     } finally {
@@ -299,7 +305,9 @@ Deno.test({
 
     try {
       await createSubmission(userH, problem1, "Accepted");
+      await refreshRankingsView();
       const page1 = await getGlobalRankings({ page: 1, limit: 50 });
+      await refreshRankingsView();
       const page2 = await getGlobalRankings({ page: 2, limit: 50 });
 
       // page1 含 userH，page2 仍可能含 userH（如果 global rank ≤ 50）
@@ -326,6 +334,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
+      await refreshRankingsView();
     const result = await getGlobalRankings({ page: 1, limit: 500 });
     // 验证 limit=500 调用不抛错（service 层内部截断到 100）
     assertEquals(result.data.length <= 100, true);
