@@ -158,7 +158,7 @@ export function getRedis(): RedisClient {
         err instanceof Error ? err.message : String(err),
       );
       // 仅在客户端尚未进入 ready 状态时累积错误（避免重连过程中误判）
-      if (_redis?.status !== "ready") {
+      if ((_redis?.status as string) !== "ready") {
         _error = err instanceof Error ? err : new Error(String(err));
       }
     });
@@ -212,7 +212,10 @@ export async function connectRedis(): Promise<void> {
     }
 
     // 正在 connecting：等就绪，避免重复 connect() 抛错
-    if (redis.status === "connecting" || redis.status === "connect") {
+    if (
+      (redis.status as string) === "connecting" ||
+      (redis.status as string) === "connect"
+    ) {
       // 等到 ready 或 5s 超时
       const deadline = Date.now() + 5000;
       while (Date.now() < deadline) {
@@ -223,7 +226,7 @@ export async function connectRedis(): Promise<void> {
           (redis.status as string) === "close"
         ) break;
       }
-      if (redis.status !== "ready") {
+      if ((redis.status as string) !== "ready") {
         throw new Error(`Redis 连接等待超时（status=${redis.status}）`);
       }
       console.log("Redis 连接验证通过（等待已有连接）");
@@ -255,10 +258,10 @@ export async function checkRedisHealth(): Promise<
   if (_error) {
     return { ok: false, error: _error.message };
   }
-  if (!_redis || _redis.status !== "ready") {
+  if (!_redis || (_redis.status as string) !== "ready") {
     return {
       ok: false,
-      error: `连接状态: ${_redis?.status ?? "未初始化"}`,
+      error: `连接状态: ${(_redis?.status as string) ?? "未初始化"}`,
     };
   }
 
