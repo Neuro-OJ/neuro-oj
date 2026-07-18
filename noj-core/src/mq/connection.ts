@@ -338,9 +338,7 @@ export function replaceRedisClientForTest(client: RedisClient | null) {
  *
  * @param url 新 URL，传 null 表示恢复到进程默认 `REDIS_URL`
  */
-export async function swapRedisURLForTest(
-  url: string | null,
-): Promise<void> {
+export function swapRedisURLForTest(url: string | null): void {
   if (_redis) {
     if (_clearErrorOnReady) {
       try {
