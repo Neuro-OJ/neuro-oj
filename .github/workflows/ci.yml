@@ -42,6 +42,19 @@ jobs:
     # 不只是 PR。core-test 直接 import router 不启 server，覆盖不到 HTTP 层。
     timeout-minutes: 5
 
+    services:
+      # smoke 测试现在走 authMiddleware（含 isJtiRevoked fail-closed），
+      # 必须在 Redis 可达环境下运行。加 redis 服务容器。
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -53,6 +66,8 @@ jobs:
 
       - name: 快速冒烟测试
         working-directory: noj-core
+        env:
+          REDIS_URL: redis://localhost:6379/
         run: deno task test:smoke
 
   # ===========================================================================
