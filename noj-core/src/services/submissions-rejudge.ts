@@ -17,6 +17,7 @@ import { getProblem } from "./problems.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { logAudit } from "./audit-log.ts";
 import type { JudgeTask } from "../types/index.ts";
+import type { RuntimeConfig } from "../types/problems.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";
 import { updateSubmissionStatus } from "./submissions-result.ts";
@@ -99,18 +100,20 @@ export async function rejudgeSubmission(id: string): Promise<void> {
 
   await updateSubmissionStatus(id, "judging");
 
+  const runtimeConfig = problem.runtime_config as
+    | RuntimeConfig
+    | null
+    | undefined;
+
   const task: JudgeTask = {
     submission_id: id,
     problem_id: submission.problem_id,
-    judge_image: problem.judge_image,
-    judge_command: problem.judge_command,
+    runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
     download_url,
     language: submission.language,
     code: submission.code,
     file_name: submission.file_name ??
       (LANGUAGE_EXT_MAP[submission.language] || "main.txt"),
-    time_limit_ms: problem.time_limit_ms,
-    memory_limit_mb: problem.memory_limit_mb,
     rejudge_seq: updated?.rejudge_seq ?? 0,
   };
 
@@ -282,15 +285,12 @@ export async function rejudgeProblemSubmissions(
       const task: JudgeTask = {
         submission_id: sub.id,
         problem_id: problemId,
-        judge_image: problem.judge_image,
-        judge_command: problem.judge_command,
+        runtime_config: problem.runtime_config as RuntimeConfig,
         download_url,
         language: sub.language,
         code: sub.code,
         file_name: sub.file_name ??
           (LANGUAGE_EXT_MAP[sub.language] || "main.txt"),
-        time_limit_ms: problem.time_limit_ms,
-        memory_limit_mb: problem.memory_limit_mb,
         rejudge_seq: currentSeq,
       };
 

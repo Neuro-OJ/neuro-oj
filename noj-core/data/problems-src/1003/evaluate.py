@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-T0-LMCC 评测脚本：A+B Problem
+T0-LMCC 评测脚本：A+B Problem（双容器版）
 
 评分（总分 10）：
 - 内容正确 8 分：每通过一个测试点得 0.4 分
@@ -8,24 +8,21 @@ T0-LMCC 评测脚本：A+B Problem
 """
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+from noj_evaluator_sdk.runner import SolutionRunner
 
 # 路径配置
 DATA_DIR = Path(__file__).parent
 VISIBLE_DATA = DATA_DIR / "visible.jsonl"
 HIDDEN_DATA = DATA_DIR / "hidden.jsonl"
-CODE_PATH = Path("/tmp/main.py")
 
 # 评分配置
 CONTENT_SCORE_FULL = 8.0
 FORMAT_SCORE_FULL = 2.0
 FULL_SCORE = CONTENT_SCORE_FULL + FORMAT_SCORE_FULL
-
-# 超时（秒）
-TIMEOUT = 5
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -41,22 +38,13 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def run_submission(input_str: str) -> tuple[str, str]:
-    """运行用户代码，返回 (stdout, stderr)"""
-    if not CODE_PATH.exists():
-        raise FileNotFoundError(f"代码文件不存在: {CODE_PATH}")
-
-    result = subprocess.run(
-        ["python3", str(CODE_PATH)],
-        input=input_str,
-        capture_output=True,
-        text=True,
-        timeout=TIMEOUT,
-    )
-    return result.stdout.strip(), result.stderr.strip()
+def call_solution(runner: SolutionRunner, input_str: str) -> str:
+    """通过 NDJSON 协议调用 Solution 容器中的用户代码"""
+    result = runner.call("solve", input_str)
+    return str(result)
 
 
-def eval_split(split_name: str, data: list[dict]) -> dict[str, Any]:
+def eval_split(runner: SolutionRunner, split_name: str, data: list[dict]) -> dict[str, Any]:
     """评测一个数据集"""
     passed = 0
     total = len(data)
@@ -65,23 +53,24 @@ def eval_split(split_name: str, data: list[dict]) -> dict[str, Any]:
 
     for item in data:
         try:
-            stdout, stderr = run_submission(item["input"])
-        except subprocess.TimeoutExpired:
-            stdout, stderr = "", "TIMEOUT"
+            output_line = call_solution(runner, item["input"])
+        except Exception as e:
+            output_line = ""
+            print(f"  [!] Solution 调用异常: {e}")
 
-        output_line = stdout.strip().splitlines()[-1] if stdout.strip() else ""
+        actual = output_line.strip().splitlines()[-1] if output_line.strip() else ""
         expected = str(item["expected"]).strip()
 
         # 检查输出是否为有效整数
         is_valid = False
         try:
-            int(output_line)
+            int(actual)
             is_valid = True
         except ValueError:
             all_valid_int = False
 
         # 内容匹配
-        content_ok = output_line == expected
+        content_ok = actual == expected
         if content_ok:
             passed += 1
 
@@ -89,16 +78,15 @@ def eval_split(split_name: str, data: list[dict]) -> dict[str, Any]:
             "id": item["id"],
             "input": item["input"],
             "expected": expected,
-            "actual": output_line,
+            "actual": actual,
             "content_ok": content_ok,
-            "stderr": stderr if stderr else None,
         })
 
         status = "PASS" if content_ok else "FAIL"
         print(f"[{split_name}] {item['id']}: {status}")
         print(f"  输入: {repr(item['input'])}")
         print(f"  期望: {expected}")
-        print(f"  输出: {output_line}")
+        print(f"  输出: {actual}")
 
     return {
         "passed": passed,
@@ -109,15 +97,17 @@ def eval_split(split_name: str, data: list[dict]) -> dict[str, Any]:
 
 
 def main() -> None:
+    runner = SolutionRunner()
+
     visible_data = load_jsonl(VISIBLE_DATA)
     hidden_data = load_jsonl(HIDDEN_DATA)
     hidden_missing = len(hidden_data) == 0
 
     print("=" * 48)
-    print("T0-LMCC 评测开始：A+B Problem")
+    print("T0-LMCC 评测开始：A+B Problem（双容器版）")
     print("=" * 48)
 
-    visible_stat = eval_split("VISIBLE", visible_data)
+    visible_stat = eval_split(runner, "VISIBLE", visible_data)
 
     if hidden_missing:
         print("\n⚠️ 隐藏数据未提供")
@@ -125,7 +115,7 @@ def main() -> None:
             "passed": 0, "total": 0, "all_valid_int": True, "cases": [],
         }
     else:
-        hidden_stat = eval_split("HIDDEN", hidden_data)
+        hidden_stat = eval_split(runner, "HIDDEN", hidden_data)
 
     total_passed = visible_stat["passed"] + hidden_stat["passed"]
     total_cases = visible_stat["total"] + hidden_stat["total"]
@@ -159,6 +149,8 @@ def main() -> None:
 
     print("---RESULT---")
     print(json.dumps(result, ensure_ascii=False))
+
+    runner.close()
 
 
 if __name__ == "__main__":

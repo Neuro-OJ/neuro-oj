@@ -92,7 +92,7 @@ pub async fn evaluate_dual(
     task_submission_id: &str,
     runtime_config: &RuntimeConfig,
     user_code: &str,
-    file_name: &str,
+    _file_name: &str,
     _support_pkg_bytes: Option<&[u8]>,
     _cache_dir: &str,
     _cache_max_items: usize,
@@ -121,10 +121,15 @@ pub async fn evaluate_dual(
 
     let solution_id = dual.solution_id.clone().expect("刚创建");
 
-    // 3. 注入用户代码到 Solution 容器
-    inject_file_to_container(&docker, &solution_id, file_name, user_code.as_bytes())
-        .await
-        .context("注入用户代码到 Solution 容器失败")?;
+    // 3. 注入用户代码到 Solution 容器（使用 runtime_config.solution.entry 作为文件名）
+    inject_file_to_container(
+        &docker,
+        &solution_id,
+        &runtime_config.solution.entry,
+        user_code.as_bytes(),
+    )
+    .await
+    .context("注入用户代码到 Solution 容器失败")?;
 
     // 4. 启动 Evaluator exec
     let evaluator_id = dual.evaluator_id.clone().expect("刚创建");

@@ -39,10 +39,7 @@ import {
   type RuntimeConfig,
   type UpdateProblemInput,
 } from "../types/problems.ts";
-import {
-  validateJudgeImage,
-  validateJudgeImageWithKind,
-} from "./judge-images.ts";
+import { validateJudgeImageWithKind } from "./judge-images.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { extractSamples } from "../lib/samples.ts";
 import { listCategories } from "./categories.ts";
@@ -53,13 +50,9 @@ export interface ProblemResponse {
   title: string;
   description: string;
   difficulty: string;
-  judge_image: string;
-  judge_command: string;
   support_package_storage_url: string | null;
   has_support_package: boolean;
-  time_limit_ms: number;
-  memory_limit_mb: number;
-  runtime_config: RuntimeConfig | null;
+  runtime_config: RuntimeConfig;
   number: number;
   owner_id: string;
   type: string;
@@ -82,11 +75,8 @@ export interface AdminProblemListItem {
   id: string;
   title: string;
   difficulty: string;
-  judge_image: string;
-  judge_command: string;
   support_package_storage_url: string | null;
-  time_limit_ms: number;
-  memory_limit_mb: number;
+  runtime_config: RuntimeConfig;
   categories: { id: string; name: string; slug: string }[];
   created_at: string;
   updated_at: string;
@@ -177,13 +167,9 @@ function toProblemResponse(
     title: row.title,
     description: row.description,
     difficulty: row.difficulty,
-    judge_image: row.judge_image,
-    judge_command: row.judge_command,
     support_package_storage_url: row.support_package_storage_url,
     has_support_package: row.support_package_storage_url !== null,
-    time_limit_ms: row.time_limit_ms,
-    memory_limit_mb: row.memory_limit_mb,
-    runtime_config: (row.runtime_config as RuntimeConfig | null) ?? null,
+    runtime_config: row.runtime_config as RuntimeConfig,
     number: row.number,
     owner_id: row.owner_id,
     type: row.type,
@@ -387,11 +373,8 @@ export async function listAllProblems(
       id: problems.id,
       title: problems.title,
       difficulty: problems.difficulty,
-      judge_image: problems.judge_image,
-      judge_command: problems.judge_command,
       support_package_storage_url: problems.support_package_storage_url,
-      time_limit_ms: problems.time_limit_ms,
-      memory_limit_mb: problems.memory_limit_mb,
+      runtime_config: problems.runtime_config,
       created_at: problems.created_at,
       updated_at: problems.updated_at,
       number: problems.number,
@@ -421,11 +404,8 @@ export async function listAllProblems(
       id: r.id,
       title: r.title,
       difficulty: r.difficulty,
-      judge_image: r.judge_image,
-      judge_command: r.judge_command,
       support_package_storage_url: r.support_package_storage_url,
-      time_limit_ms: r.time_limit_ms,
-      memory_limit_mb: r.memory_limit_mb,
+      runtime_config: r.runtime_config as RuntimeConfig,
       categories: catMap.get(r.id) ?? [],
       created_at: r.created_at,
       updated_at: r.updated_at,
@@ -525,25 +505,31 @@ export async function createProblem(
     );
   }
 
-  // 校验评测镜像白名单
-  if (input.judge_image !== undefined) {
-    await validateJudgeImage(input.judge_image);
-  }
-
-  // 校验 runtime_config（仅 admin 可设置；非空时校验结构 + 镜像 + kind）
+  // 校验 runtime_config（所有题目统一使用双容器模式）
   if (input.runtime_config !== undefined && input.runtime_config !== null) {
-    if (userRole !== "admin") {
-      throw new ForbiddenError("仅管理员可配置双容器 runtime_config");
-    }
     validateRuntimeConfig(input.runtime_config);
-    await validateJudgeImageWithKind(
-      input.runtime_config.evaluator.image,
-      "evaluator",
+    try {
+      await validateJudgeImageWithKind(
+        input.runtime_config.evaluator.image,
+        "evaluator",
+      );
+      await validateJudgeImageWithKind(
+        input.runtime_config.solution.image,
+        "solution",
+      );
+    } catch (err) {
+      console.error(
+        "[createProblem] runtime_config 镜像校验失败:",
+        err instanceof Error ? err.message : String(err),
+      );
+      throw err;
+    }
+  } else {
+    console.error(
+      "[createProblem] runtime_config 缺失",
+      JSON.stringify(input),
     );
-    await validateJudgeImageWithKind(
-      input.runtime_config.solution.image,
-      "solution",
-    );
+    throw new BadRequestError("runtime_config 是必填字段");
   }
 
   // 题目主键统一由服务端生成 UUID，避免客户端注入字符串 id
@@ -591,11 +577,7 @@ export async function createProblem(
         title: input.title,
         description: input.description,
         difficulty: input.difficulty ?? "medium",
-        judge_image: input.judge_image,
-        judge_command: input.judge_command,
         support_package_storage_url: input.support_package_storage_url ?? null,
-        time_limit_ms: input.time_limit_ms ?? 5000,
-        memory_limit_mb: input.memory_limit_mb ?? 512,
         runtime_config: input.runtime_config ?? null,
         number,
         owner_id: ownerId,
@@ -682,28 +664,21 @@ export async function updateProblem(
     );
   }
 
-  // 校验评测镜像白名单
-  if (input.judge_image !== undefined) {
-    await validateJudgeImage(input.judge_image);
-  }
-
-  // 校验 runtime_config（仅 admin 可设置；非空时校验结构 + 镜像 + kind）
-  //   undefined → 不变；null → 清空（回退单容器）；object → 校验并写入
+  // 校验 runtime_config
+  //   undefined → 不变；null → 拒绝（runtime_config 是必填字段）；object → 校验并写入
   if (input.runtime_config !== undefined) {
-    if (userRole !== "admin") {
-      throw new ForbiddenError("仅管理员可配置双容器 runtime_config");
+    if (input.runtime_config === null) {
+      throw new BadRequestError("runtime_config 是必填字段，不可清空");
     }
-    if (input.runtime_config !== null) {
-      validateRuntimeConfig(input.runtime_config);
-      await validateJudgeImageWithKind(
-        input.runtime_config.evaluator.image,
-        "evaluator",
-      );
-      await validateJudgeImageWithKind(
-        input.runtime_config.solution.image,
-        "solution",
-      );
-    }
+    validateRuntimeConfig(input.runtime_config);
+    await validateJudgeImageWithKind(
+      input.runtime_config.evaluator.image,
+      "evaluator",
+    );
+    await validateJudgeImageWithKind(
+      input.runtime_config.solution.image,
+      "solution",
+    );
   }
 
   // 防御性忽略 type 和 number（spec 承诺这两个字段不可变更）
@@ -714,18 +689,8 @@ export async function updateProblem(
   if (input.title !== undefined) updates.title = input.title;
   if (input.description !== undefined) updates.description = input.description;
   if (input.difficulty !== undefined) updates.difficulty = input.difficulty;
-  if (input.judge_image !== undefined) updates.judge_image = input.judge_image;
-  if (input.judge_command !== undefined) {
-    updates.judge_command = input.judge_command;
-  }
   if (input.support_package_storage_url !== undefined) {
     updates.support_package_storage_url = input.support_package_storage_url;
-  }
-  if (input.time_limit_ms !== undefined) {
-    updates.time_limit_ms = input.time_limit_ms;
-  }
-  if (input.memory_limit_mb !== undefined) {
-    updates.memory_limit_mb = input.memory_limit_mb;
   }
   if (input.runtime_config !== undefined) {
     updates.runtime_config = input.runtime_config;
@@ -977,15 +942,9 @@ export async function buildExportPayload(
       description: row.description,
       difficulty: row.difficulty,
       categories: cats.map((c) => ({ name: c.name, slug: c.slug })),
-      // judge_images 暂时只暴露单值（与当前 schema 一致：1 道题 = 1 镜像）。
-      // 字段设计为数组是为未来多镜像留口。
-      judge_images: [row.judge_image],
-      judge_command: row.judge_command,
-      time_limit_ms: row.time_limit_ms,
-      memory_limit_mb: row.memory_limit_mb,
       support_package_storage_url: row.support_package_storage_url,
       test_cases_ref: row.support_package_storage_url,
-      runtime_config: (row.runtime_config as RuntimeConfig | null) ?? null,
+      runtime_config: row.runtime_config as RuntimeConfig,
       samples: extractSamples(row.description),
     };
   });
@@ -1029,7 +988,6 @@ function parseImportPayload(input: unknown): ExportPayload {
         "id",
         "title",
         "description",
-        "judge_command",
         "type",
         "number",
       ]
@@ -1116,28 +1074,7 @@ async function importOne(
     };
   }
 
-  // 4. judge_images 校验（当前 schema 是 1:1，取第一个）
-  const judgeImage = item.judge_images[0];
-  if (!judgeImage) {
-    return {
-      ...baseResult,
-      action: "failed",
-      reason: "judge_images 数组为空",
-    };
-  }
-  try {
-    await validateJudgeImage(judgeImage);
-  } catch (err) {
-    return {
-      ...baseResult,
-      action: "failed",
-      reason: `judge_image 校验失败：${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    };
-  }
-
-  // 5. support_package_storage_url 协议前缀校验
+  // 4. support_package_storage_url 协议前缀校验
   if (item.support_package_storage_url) {
     if (
       !item.support_package_storage_url.startsWith("noj-storage://") &&
@@ -1188,13 +1125,22 @@ async function importOne(
       title: item.title,
       description: item.description,
       difficulty: item.difficulty,
-      judge_image: judgeImage,
-      judge_command: item.judge_command,
       support_package_storage_url: item.support_package_storage_url,
-      time_limit_ms: item.time_limit_ms,
-      memory_limit_mb: item.memory_limit_mb,
       runtime_config:
-        (item.runtime_config as RuntimeConfig | null | undefined) ?? null,
+        (item.runtime_config as RuntimeConfig | null | undefined) ?? {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+          },
+          solution: {
+            image: "noj-solution-python",
+            entry: "submission_sample.py",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
       updated_at: new Date().toISOString(),
     };
     await db.update(problems).set(updates).where(eq(problems.id, item.id));
@@ -1213,14 +1159,22 @@ async function importOne(
         title: item.title,
         description: item.description,
         difficulty: item.difficulty,
-        judge_image: judgeImage,
-        judge_command: item.judge_command,
         support_package_storage_url: item.support_package_storage_url,
-        time_limit_ms: item.time_limit_ms,
-        memory_limit_mb: item.memory_limit_mb,
-        // runtime_config 缺失时按 null（单容器路径），保持向后兼容
         runtime_config:
-          (item.runtime_config as RuntimeConfig | null | undefined) ?? null,
+          (item.runtime_config as RuntimeConfig | null | undefined) ?? {
+            evaluator: {
+              image: "noj-evaluator-python",
+              command: "python3 /workspace/evaluate.py",
+              time_limit_ms: 5000,
+              memory_limit_mb: 512,
+            },
+            solution: {
+              image: "noj-solution-python",
+              entry: "submission_sample.py",
+              call_timeout_ms: 2000,
+              memory_limit_mb: 512,
+            },
+          },
         type: item.type,
         number: item.number,
         category_ids: categoryIds,

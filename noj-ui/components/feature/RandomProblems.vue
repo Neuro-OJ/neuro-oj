@@ -31,8 +31,7 @@
                     :type="p.type"
                     :title="p.title"
                     :difficulty="p.difficulty"
-                    :time_limit_ms="p.time_limit_ms"
-                    :memory_limit_mb="p.memory_limit_mb"
+                    :runtime_config="p.runtime_config"
                     :categories="p.categories"
                 />
             </div>
@@ -56,8 +55,7 @@ interface ProblemItem {
     display_id: string
     type: string
     difficulty: string
-    time_limit_ms: number
-    memory_limit_mb: number
+    runtime_config: { evaluator: { time_limit_ms: number; memory_limit_mb: number } }
     categories: { id: string; name: string; slug: string }[]
 }
 

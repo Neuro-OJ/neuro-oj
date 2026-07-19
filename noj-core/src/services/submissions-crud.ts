@@ -22,9 +22,10 @@ import {
 import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { getDb } from "../db/connection.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
-import { getProblem } from "./problems.ts";
+import { validateJudgeImageWithKind } from "./judge-images.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { getPendingSubmissionIds } from "./queue.ts";
+import type { RuntimeConfig } from "../types/problems.ts";
 import type { JudgeTask, SubmissionStatus } from "../types/index.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";
@@ -162,8 +163,6 @@ export async function listSubmissions(
       judge_started_at: submissions.judge_started_at,
       judge_finished_at: submissions.judge_finished_at,
       problem_title: problems.title,
-      problem_time_limit_ms: problems.time_limit_ms,
-      problem_memory_limit_mb: problems.memory_limit_mb,
       result_status: evaluationResults.status,
       result_score: evaluationResults.score,
       result_time_ms: evaluationResults.time_ms,
@@ -225,8 +224,6 @@ export async function listSubmissions(
       problem: {
         id: row.problem_id,
         title: row.problem_title ?? "",
-        time_limit_ms: row.problem_time_limit_ms ?? null,
-        memory_limit_mb: row.problem_memory_limit_mb ?? null,
       },
       result: row.result_status
         ? {
@@ -253,8 +250,17 @@ export async function createSubmission(
 ): Promise<SubmissionResponse> {
   const db = getDb();
 
-  // 检查题目是否存在并获取信息
-  const problem = await getProblem(input.problem_id);
+  // 行级锁 + 读取最新题目配置（避免 admin 在提交期间清空 runtime_config 导致竞态）
+  const lockedRows = await db
+    .select()
+    .from(problems)
+    .where(eq(problems.id, input.problem_id))
+    .for("update")
+    .limit(1);
+  if (lockedRows.length === 0) {
+    throw new NotFoundError("题目不存在");
+  }
+  const problem = lockedRows[0];
 
   // 验证语言
   const supportedLanguages = ["python3", "python", "cpp", "c", "javascript"];
@@ -287,17 +293,39 @@ export async function createSubmission(
     }
   }
 
+  // ── 使用 runtime_config（双容器模式）──
+  // 校验 evaluator/solution image + kind（spec §4 final gate）
+  const runtimeConfig = problem.runtime_config as
+    | RuntimeConfig
+    | null
+    | undefined;
+
+  if (!runtimeConfig) {
+    throw new AppError(
+      "题目缺少 runtime_config 配置，无法评测",
+      500,
+      "RUNTIME_CONFIG_MISSING",
+    );
+  }
+
+  // 防御性 final gate：校验双容器镜像 + kind
+  await validateJudgeImageWithKind(
+    runtimeConfig.evaluator.image,
+    "evaluator",
+  );
+  await validateJudgeImageWithKind(
+    runtimeConfig.solution.image,
+    "solution",
+  );
+
   const task: JudgeTask = {
     submission_id: id,
     problem_id: input.problem_id,
-    judge_image: problem.judge_image,
-    judge_command: problem.judge_command,
+    runtime_config: runtimeConfig,
     download_url,
     language: input.language,
     code: input.code,
     file_name: fileName,
-    time_limit_ms: problem.time_limit_ms,
-    memory_limit_mb: problem.memory_limit_mb,
   };
 
   try {

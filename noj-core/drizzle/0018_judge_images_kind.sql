@@ -7,7 +7,7 @@
 -- 历史记录迁移：所有现存镜像默认为 'evaluator'。
 -- admin 应在迁移后手动将 `noj-solution-*` 镜像的 kind 改为 'solution'。
 
-ALTER TABLE "judge_images" ADD COLUMN "kind" text NOT NULL DEFAULT 'evaluator';
+ALTER TABLE "judge_images" ADD COLUMN IF NOT EXISTS "kind" text NOT NULL DEFAULT 'evaluator';
 
 -- 旧 CHECK 约束被替换（如果存在）
 ALTER TABLE "judge_images" DROP CONSTRAINT IF EXISTS "judge_images_mode_check";
