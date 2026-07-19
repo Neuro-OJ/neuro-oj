@@ -18,6 +18,11 @@ import {
 import { BadRequestError, NotFoundError } from "../../src/lib/errors.ts";
 import { eq } from "drizzle-orm";
 import { enterTestContext } from "../../src/lib/requestContext.ts";
+import {
+  type LogRecord,
+  resetLogSink,
+  setLogSink,
+} from "../../src/lib/logging.ts";
 
 /**
  * 启动一个极简的 Redis RESP 协议 mock 服务器，仅响应 LPUSH / PING / QUIT，
@@ -526,10 +531,9 @@ Deno.test({
         rejudge_seq: 2,
       });
 
-      // 写入 seq=1 的旧结果（应被丢弃，仅 console.warn）
-      const originalWarn = console.warn;
-      const warnings: string[] = [];
-      console.warn = (...args: unknown[]) => warnings.push(args.join(" "));
+      // 写入 seq=1 的旧结果（应被丢弃，仅 logger.warn）
+      const logs: LogRecord[] = [];
+      setLogSink((r) => logs.push(r));
       try {
         await saveEvaluationResult({
           submission_id: subId,
@@ -540,7 +544,7 @@ Deno.test({
           rejudge_seq: 1,
         });
       } finally {
-        console.warn = originalWarn;
+        resetLogSink();
       }
 
       // 断言：evaluation_results 仍只有 1 行，且是 seq=2 的内容
@@ -551,7 +555,7 @@ Deno.test({
       assertEquals(rows[0].output, "---NEW---");
 
       // 断言：丢弃日志被记录
-      const ignoredLog = warnings.find((w) => w.includes("忽略过时的评测结果"));
+      const ignoredLog = logs.find((l) => l.msg.includes("忽略过时的评测结果"));
       assertExists(ignoredLog, "应记录旧结果被丢弃的日志");
     } finally {
       await db.delete(evaluationResults).where(

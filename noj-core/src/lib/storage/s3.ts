@@ -28,6 +28,7 @@ import {
   sha256Hex,
   type StorageProvider,
 } from "./types.ts";
+import { logger } from "../logging.ts";
 
 /** S3StorageProvider 构造配置 */
 export interface S3StorageConfig {
@@ -182,18 +183,18 @@ export class S3StorageProvider implements StorageProvider {
           await this.client.send(
             new CreateBucketCommand({ Bucket: this.bucket }),
           );
-          console.log(
-            `[storage/s3] Created bucket: ${this.bucket}`,
-          );
+          logger.info("已创建 S3 bucket", { bucket: this.bucket });
         } catch (createErr) {
-          console.warn(
-            `[storage/s3] ⚠️  Failed to create bucket "${this.bucket}": ${createErr}`,
-          );
+          logger.warn("创建 S3 bucket 失败", {
+            bucket: this.bucket,
+            err: createErr,
+          });
         }
       } else {
-        console.warn(
-          `[storage/s3] ⚠️  Failed to head bucket "${this.bucket}": ${errMsg}`,
-        );
+        logger.warn("head S3 bucket 失败", {
+          bucket: this.bucket,
+          error: errMsg,
+        });
       }
     }
   }

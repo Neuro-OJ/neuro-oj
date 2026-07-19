@@ -15,6 +15,7 @@ import { getDb } from "../db/connection.ts";
 import type { JudgeResult, SubmissionStatus } from "../types/index.ts";
 import { applyNewResult } from "./stats-cache.ts";
 import { refreshRankingsView } from "./rankings.ts";
+import { logger } from "../lib/logging.ts";
 
 // 允许的状态转换
 const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
@@ -46,17 +47,18 @@ export async function saveEvaluationResult(
     .limit(1);
 
   if (!sub) {
-    console.warn(
-      `提交不存在，忽略评测结果: submission=${result.submission_id}`,
-    );
+    logger.warn("提交不存在，忽略评测结果", {
+      submission_id: result.submission_id,
+    });
     return;
   }
 
   if (incomingSeq < sub.rejudge_seq) {
-    console.warn(
-      `忽略过时的评测结果: submission=${result.submission_id}, ` +
-        `result_seq=${incomingSeq}, current_seq=${sub.rejudge_seq}`,
-    );
+    logger.warn("忽略过时的评测结果", {
+      submission_id: result.submission_id,
+      result_seq: incomingSeq,
+      current_seq: sub.rejudge_seq,
+    });
     return;
   }
 

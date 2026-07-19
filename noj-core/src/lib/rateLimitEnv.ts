@@ -15,6 +15,7 @@ import type { Context } from "hono";
 import { getSetting } from "../services/system-settings.ts";
 import { findDefinition } from "./settings-registry.ts";
 import { type CidrRange, ipInRange, parseCidr } from "./cidr.ts";
+import { logger } from "./logging.ts";
 
 /** 读取整数环境变量（非正数或 NaN 时回退默认值） */
 export function envInt(name: string, def: number): number {
@@ -154,8 +155,8 @@ export function getClientIp(c: Context): string {
     // - 生产环境：main.ts 启动校验应已 Deno.exit(1)，此处 defensive 返 unknown
     // - 非生产（开发/测试）：保持历史行为信任首项，开发者本地调试友好
     if (Deno.env.get("NOJ_ENV") === "production") {
-      console.warn(
-        "[security] 生产环境运行但 TRUSTED_PROXIES 未配置，XFF 首项不可信 → 返 unknown。" +
+      logger.warn(
+        "生产环境运行但 TRUSTED_PROXIES 未配置，XFF 首项不可信 → 返 unknown" +
           "（main.ts 启动校验应已阻止进入此分支）",
       );
       return "unknown";

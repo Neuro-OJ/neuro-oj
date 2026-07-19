@@ -57,6 +57,7 @@ import type {
   SubmissionResponse,
 } from "./submissions-types.ts";
 import { updateSubmissionStatus } from "./submissions-result.ts";
+import { logger } from "../lib/logging.ts";
 
 /**
  * 详情接口返回的 result.output 最大长度（字节近似）。
@@ -304,10 +305,10 @@ export async function createSubmission(
         problem.support_package_storage_url,
       );
     } catch (err) {
-      console.error(
-        `获取支持包 download URL 失败 (${problem.support_package_storage_url}):`,
-        err instanceof Error ? err.message : String(err),
-      );
+      logger.error("获取支持包 download URL 失败", {
+        storage_url: problem.support_package_storage_url,
+        err,
+      });
       // 支持包获取失败不阻塞提交，但会跳过支持包
     }
   }
@@ -359,7 +360,7 @@ export async function createSubmission(
       created_at: now,
     });
   } catch (dbErr) {
-    console.error("提交记录插入失败:", dbErr);
+    logger.error("提交记录插入失败", { err: dbErr });
     throw new AppError(
       "提交失败：数据库写入错误，请稍后重试",
       500,
@@ -378,7 +379,7 @@ export async function createSubmission(
     // 发布队列变更事件，通知 SSE 等订阅者
     publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
   } catch (mqErr) {
-    console.error("评测任务推送失败:", mqErr);
+    logger.error("评测任务推送失败", { submission_id: id, err: mqErr });
     // DB 成功但 MQ 失败，标记为 error 让用户重新提交
     try {
       await updateSubmissionStatus(id, "error");

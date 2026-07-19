@@ -14,6 +14,7 @@ import {
 import type { LoginInput, RegisterInput, UserResponse } from "../types/auth.ts";
 import { isBannedIp } from "../lib/cidr.ts";
 import { getBannedRanges } from "./banlist.ts";
+import { logger } from "../lib/logging.ts";
 
 /**
  * 密码强度校验最小长度。
@@ -646,5 +647,5 @@ export async function ensureRootUser(): Promise<void> {
     })
     .onConflictDoNothing();
 
-  console.log("Root 系统用户 (UID=0) 已创建（或已存在）");
+  logger.info("Root 系统用户 (UID=0) 已创建（或已存在）");
 }

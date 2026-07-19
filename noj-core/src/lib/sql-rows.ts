@@ -24,6 +24,8 @@
  * 可删除本 helper。
  */
 
+import { logger } from "./logging.ts";
+
 /**
  * 解包 db.execute(sql\`...\`) 的返回值为行数组。
  *
@@ -48,13 +50,12 @@ export function unwrapRows<T>(result: T[] | { rows: T[] }): T[] {
   // PR-5 评审修订：fallback 不再静默返空数组
   // 真实场景：程序员误传 null / 错误结构 / 拼写错误 → "为什么榜单空了"难定位
   // 改为 console.warn + 返空，至少让监控可见
-  console.warn(
-    "[unwrapRows] 未知 result 形态，返空数组。type:",
-    typeof result,
-    result && typeof result === "object" && "rows" in result
+  logger.warn("unwrapRows 未知 result 形态，返空数组", {
+    type: typeof result,
+    shape: result && typeof result === "object" && "rows" in result
       ? "hasRowsKey"
       : "noRowsKey",
-  );
+  });
   return [];
 }
 

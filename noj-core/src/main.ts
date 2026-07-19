@@ -11,6 +11,7 @@ import { ensureRootUser } from "./services/auth.ts";
 import { getStorageProvider } from "./lib/storage/mod.ts";
 import { getSetting, initSystemSettings } from "./services/system-settings.ts";
 import { startAuditLogRetentionTask } from "./services/audit-log.ts";
+import { logger } from "./lib/logging.ts";
 
 const app = createApp();
 
@@ -52,11 +53,11 @@ function checkEmailProviderConfig(): void {
       }
     }
     if (missing.length > 0) {
-      console.warn(
-        `[email] email_provider=aliyun 但缺少配置: ${
-          missing.join(", ")
-        }（可通过管理后台 > 系统设置配置）`,
-      );
+      logger.warn("email_provider=aliyun 但缺少配置", {
+        provider: "aliyun",
+        missing: missing.join(", "),
+        hint: "可通过管理后台 > 系统设置配置",
+      });
     }
   } else if (provider === "tencent") {
     const missing = [];
@@ -74,11 +75,11 @@ function checkEmailProviderConfig(): void {
       }
     }
     if (missing.length > 0) {
-      console.warn(
-        `[email] email_provider=tencent 但缺少配置: ${
-          missing.join(", ")
-        }（可通过管理后台 > 系统设置配置）`,
-      );
+      logger.warn("email_provider=tencent 但缺少配置", {
+        provider: "tencent",
+        missing: missing.join(", "),
+        hint: "可通过管理后台 > 系统设置配置",
+      });
     }
   }
 }
@@ -100,7 +101,7 @@ async function main() {
   const jwtSecret = Deno.env.get("JWT_SECRET");
   if (!jwtSecret || jwtSecret.length < MIN_JWT_SECRET_LENGTH) {
     const actualLength = jwtSecret ? jwtSecret.length : 0;
-    console.error(
+    logger.error(
       `JWT_SECRET 未设置或长度不足（当前 ${actualLength} 字符，需要至少 ${MIN_JWT_SECRET_LENGTH} 字符）。\n` +
         `HS256 算法要求至少 256 bit 密钥强度，使用弱密钥会显著降低 token 防伪造能力。\n` +
         `可通过 \`openssl rand -base64 48\` 生成强随机密钥。`,
@@ -118,7 +119,7 @@ async function main() {
       ? trustedProxiesSetting.value
       : "";
     if (!trustedProxiesValue || trustedProxiesValue.trim() === "") {
-      console.error(
+      logger.error(
         "TRUSTED_PROXIES 未配置。\n" +
           "生产环境（NOJ_ENV=production）必须显式配置可信代理白名单，\n" +
           "否则 X-Forwarded-For 首项可被攻击者伪造以绕过 IP 限流和 IP 黑名单。\n" +
@@ -135,7 +136,7 @@ async function main() {
   try {
     await runMigrations();
   } catch (err) {
-    console.error("数据库迁移失败，终止启动:", err);
+    logger.error("数据库迁移失败，终止启动", { err });
     Deno.exit(1);
   }
 
@@ -143,7 +144,7 @@ async function main() {
   try {
     await ensureRootUser();
   } catch (err) {
-    console.error("Root 用户创建失败，终止启动:", err);
+    logger.error("Root 用户创建失败，终止启动", { err });
     Deno.exit(1);
   }
 
@@ -152,7 +153,7 @@ async function main() {
   try {
     validateRegistry();
   } catch (err) {
-    console.error("系统设置注册表校验失败，终止启动:", err);
+    logger.error("系统设置注册表校验失败，终止启动", { err });
     Deno.exit(1);
   }
 
@@ -161,7 +162,7 @@ async function main() {
   try {
     await initSystemSettings();
   } catch (err) {
-    console.error("系统设置缓存初始化失败，终止启动:", err);
+    logger.error("系统设置缓存初始化失败，终止启动", { err });
     Deno.exit(1);
   }
 
@@ -179,10 +180,7 @@ async function main() {
       await storage.ensureBucket();
     }
   } catch (err) {
-    console.warn(
-      "[storage] 存储 Provider 初始化失败:",
-      err instanceof Error ? err.message : String(err),
-    );
+    logger.warn("存储 Provider 初始化失败", { err });
   }
 
   // 连接 Redis（共享连接供 producer 使用）
@@ -191,7 +189,7 @@ async function main() {
   try {
     await connectRedis();
   } catch (err) {
-    console.error("Redis 连接失败，评测分发功能不可用:", err);
+    logger.error("Redis 连接失败，评测分发功能不可用", { err });
   }
 
   // 启动评测结果消费者（后台运行，带自动重连，不阻塞 HTTP）
@@ -205,7 +203,7 @@ async function main() {
   try {
     await redisForRpc.connect();
   } catch (err) {
-    console.error("Judge RPC Redis 连接失败:", err);
+    logger.error("Judge RPC Redis 连接失败", { err });
     redisForRpc.disconnect();
   }
   // deno-lint-ignore no-explicit-any
@@ -217,7 +215,7 @@ async function main() {
   // 启动 HTTP 服务
   Deno.serve({ port }, app.fetch);
 
-  console.log(`noj-core running on http://localhost:${port}`);
+  logger.info("noj-core 已启动", { url: `http://localhost:${port}` });
 
   // 启动后台审计日志保留任务
   startAuditLogRetentionTask();

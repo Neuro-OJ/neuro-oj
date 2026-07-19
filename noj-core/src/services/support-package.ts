@@ -8,6 +8,7 @@ import {
   ValidationError,
 } from "../lib/errors.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
+import { logger } from "../lib/logging.ts";
 
 /**
  * 支持包文件最大字节数（128 MiB）。
@@ -160,10 +161,7 @@ export async function deleteSupportPackage(
     try {
       await storage.delete(current.storageUrl);
     } catch (err) {
-      console.error(
-        `删除支持包失败 (${current.storageUrl}):`,
-        err instanceof Error ? err.message : String(err),
-      );
+      logger.error("删除支持包失败", { storage_url: current.storageUrl, err });
       // 删除失败不阻塞 DB 更新
     }
   }

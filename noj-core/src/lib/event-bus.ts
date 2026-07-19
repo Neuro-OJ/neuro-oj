@@ -1,5 +1,6 @@
 import { createPubSubRedis, getRedis } from "../mq/connection.ts";
 import type { RedisClient } from "../mq/connection.ts";
+import { logger } from "./logging.ts";
 
 /**
  * Redis Pub/Sub 频道前缀。
@@ -41,20 +42,14 @@ export function publishEvent(channel: string, message: string): void {
   try {
     const redis = getRedis();
     if (redis.status !== "ready") {
-      console.warn(`publishEvent 跳过：Redis 未就绪（${redis.status}）`);
+      logger.warn("publishEvent 跳过：Redis 未就绪", { status: redis.status });
       return;
     }
     redis.publish(channel, message).catch((err: unknown) => {
-      console.error(
-        `publishEvent 失败 (channel=${channel}):`,
-        err instanceof Error ? err.message : String(err),
-      );
+      logger.error("publishEvent 失败", { channel, err });
     });
   } catch (err) {
-    console.error(
-      `publishEvent 异常 (channel=${channel}):`,
-      err instanceof Error ? err.message : String(err),
-    );
+    logger.error("publishEvent 异常", { channel, err });
   }
 }
 
@@ -134,10 +129,7 @@ function dispatchToLocalListeners(channel: string, message: string): void {
       try {
         cb(channel, message);
       } catch (err) {
-        console.error(
-          `事件回调异常 (channel=${channel}):`,
-          err instanceof Error ? err.message : String(err),
-        );
+        logger.error("事件回调异常", { channel, err });
       }
     }
   }
@@ -149,7 +141,7 @@ function dispatchToLocalListeners(channel: string, message: string): void {
 async function doSubscribe(redis: RedisClient): Promise<void> {
   await redis.psubscribe(`${EVENT_CHANNEL_PREFIX}*`);
   subscriberReady = true;
-  console.log("事件订阅者已订阅 noj:events:*");
+  logger.info("事件订阅者已订阅 noj:events:*");
 }
 
 /**
@@ -174,34 +166,28 @@ export function initEventSubscriber(): void {
   (async () => {
     try {
       await redis.connect();
-      console.log("事件订阅者 Redis 连接成功");
+      logger.info("事件订阅者 Redis 连接成功");
       await doSubscribe(redis);
     } catch (err) {
       subscriberReady = false;
-      console.error(
-        "事件订阅者初始化失败:",
-        err instanceof Error ? err.message : String(err),
-      );
+      logger.error("事件订阅者初始化失败", { err });
     }
   })();
 
   // ioredis 重连后自动重新 PSUBSCRIBE
   // @ts-ignore: ioredis reconnect 事件在类型定义中未声明
   redis.on("reconnect", () => {
-    console.log("事件订阅者 Redis 重连中...");
+    logger.info("事件订阅者 Redis 重连中...");
     subscriberReady = false;
   });
 
   // @ts-ignore: ioredis ready 事件（重连成功后触发）类型未声明
   redis.on("ready", async () => {
-    console.log("事件订阅者 Redis 已就绪，重新订阅...");
+    logger.info("事件订阅者 Redis 已就绪，重新订阅...");
     try {
       await doSubscribe(redis);
     } catch (err) {
-      console.error(
-        "事件订阅者重连后订阅失败:",
-        err instanceof Error ? err.message : String(err),
-      );
+      logger.error("事件订阅者重连后订阅失败", { err });
     }
   });
 }

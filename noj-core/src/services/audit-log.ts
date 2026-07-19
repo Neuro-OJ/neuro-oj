@@ -13,6 +13,7 @@ import { getDb } from "../db/connection.ts";
 import { auditLogs } from "../db/schema.ts";
 import { getRequestContext } from "../lib/requestContext.ts";
 import { getSetting } from "./system-settings.ts";
+import { logger } from "../lib/logging.ts";
 import type {
   AuditAction,
   AuditDetail,
@@ -43,19 +44,16 @@ export async function logAudit(
       created_at: new Date().toISOString(),
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
     const pgErr = e as Record<string, unknown>;
-    const pgCode = typeof pgErr.code === "string" ? ` [${pgErr.code}]` : "";
-    const pgConstraint = typeof pgErr.constraint === "string"
-      ? ` (${pgErr.constraint})`
-      : "";
-    const pgDetail = typeof pgErr.detail === "string"
-      ? `: ${pgErr.detail}`
-      : "";
-    console.error(
-      `[audit] logAudit 失败 (action=${action}):${pgCode}${pgConstraint}${pgDetail}`,
-      msg,
-    );
+    logger.error("审计日志写入失败 (logAudit)", {
+      action,
+      err: e,
+      pg_code: typeof pgErr.code === "string" ? pgErr.code : undefined,
+      constraint: typeof pgErr.constraint === "string"
+        ? pgErr.constraint
+        : undefined,
+      detail: typeof pgErr.detail === "string" ? pgErr.detail : undefined,
+    });
   }
 }
 
@@ -94,19 +92,16 @@ export async function logAuthEvent(
       created_at: new Date().toISOString(),
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
     const pgErr = e as Record<string, unknown>;
-    const pgCode = typeof pgErr.code === "string" ? ` [${pgErr.code}]` : "";
-    const pgConstraint = typeof pgErr.constraint === "string"
-      ? ` (${pgErr.constraint})`
-      : "";
-    const pgDetail = typeof pgErr.detail === "string"
-      ? `: ${pgErr.detail}`
-      : "";
-    console.error(
-      `[audit] logAuthEvent 失败 (action=${action}):${pgCode}${pgConstraint}${pgDetail}`,
-      msg,
-    );
+    logger.error("审计日志写入失败 (logAuthEvent)", {
+      action,
+      err: e,
+      pg_code: typeof pgErr.code === "string" ? pgErr.code : undefined,
+      constraint: typeof pgErr.constraint === "string"
+        ? pgErr.constraint
+        : undefined,
+      detail: typeof pgErr.detail === "string" ? pgErr.detail : undefined,
+    });
   }
 }
 
@@ -196,34 +191,20 @@ export function startAuditLogRetentionTask(): void {
     ? Math.floor(setting.value)
     : 90;
   if (days <= 0) {
-    console.info(
-      `[audit] audit_log_retention_days=${days} 无效, 清理任务已禁用`,
-    );
+    logger.info("审计日志清理任务已禁用", { retention_days: days });
     return;
   }
   // 启动立即跑一次
   cleanupOldAuditLogs(days)
-    .then((n) => console.info(`[audit] 启动清理: 移除 ${n} 条过期日志`))
-    .catch((e) =>
-      console.error(
-        "[audit] 启动清理失败:",
-        e instanceof Error ? e.message : String(e),
-      )
-    );
+    .then((n) => logger.info("审计日志启动清理完成", { removed: n }))
+    .catch((e) => logger.error("审计日志启动清理失败", { err: e }));
   // 每 24h 重复
   setInterval(() => {
     cleanupOldAuditLogs(days)
       .then((n) =>
-        n > 0
-          ? console.info(`[audit] 周期清理: 移除 ${n} 条过期日志`)
-          : undefined
+        n > 0 ? logger.info("审计日志周期清理完成", { removed: n }) : undefined
       )
-      .catch((e) =>
-        console.error(
-          "[audit] 周期清理失败:",
-          e instanceof Error ? e.message : String(e),
-        )
-      );
+      .catch((e) => logger.error("审计日志周期清理失败", { err: e }));
   }, 86400 * 1000);
-  console.info(`[audit] 保留任务已启动: retention_days=${days}`);
+  logger.info("审计日志保留任务已启动", { retention_days: days });
 }

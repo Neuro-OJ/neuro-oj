@@ -11,6 +11,7 @@
 
 import type { SendPasswordResetEmail } from "./email-providers/types.ts";
 import { getSetting } from "../services/system-settings.ts";
+import { logger } from "./logging.ts";
 
 /** Provider 名称到模块路径的映射 */
 const PROVIDER_MODULES: Record<string, string> = {
@@ -35,9 +36,7 @@ async function loadSendFn(): Promise<SendPasswordResetEmail> {
   const modulePath = PROVIDER_MODULES[provider];
 
   if (!modulePath) {
-    console.warn(
-      `[email] 未知的 EMAIL_PROVIDER="${provider}"，使用 mock 替代`,
-    );
+    logger.warn("未知的 EMAIL_PROVIDER，使用 mock 替代", { provider });
     Deno.env.set("EMAIL_PROVIDER", "mock");
     const mod = await import("./email-providers/mock.ts");
     sendFn = mod.sendPasswordResetEmail;

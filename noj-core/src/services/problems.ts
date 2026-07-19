@@ -44,6 +44,7 @@ import { getStorageProvider } from "../lib/storage/mod.ts";
 import { extractSamples } from "../lib/samples.ts";
 import { listCategories } from "./categories.ts";
 import { logAudit } from "./audit-log.ts";
+import { logger } from "../lib/logging.ts";
 
 export interface ProblemResponse {
   id: string;
@@ -518,17 +519,13 @@ export async function createProblem(
         "solution",
       );
     } catch (err) {
-      console.error(
-        "[createProblem] runtime_config 镜像校验失败:",
-        err instanceof Error ? err.message : String(err),
-      );
+      logger.error("createProblem: runtime_config 镜像校验失败", { err });
       throw err;
     }
   } else {
-    console.error(
-      "[createProblem] runtime_config 缺失",
-      JSON.stringify(input),
-    );
+    logger.error("createProblem: runtime_config 缺失", {
+      input: JSON.stringify(input),
+    });
     throw new BadRequestError("runtime_config 是必填字段");
   }
 
@@ -777,10 +774,7 @@ export async function deleteProblem(
       const storage = await getStorageProvider();
       await storage.delete(storageUrl);
     } catch (err) {
-      console.error(
-        `清理支持包失败 (${storageUrl}):`,
-        err instanceof Error ? err.message : String(err),
-      );
+      logger.error("清理支持包失败", { storage_url: storageUrl, err });
     }
   }
 

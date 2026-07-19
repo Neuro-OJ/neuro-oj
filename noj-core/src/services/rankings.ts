@@ -8,6 +8,7 @@ import { submissions } from "../db/schema.ts";
 import { users } from "../db/schema.ts";
 import { BadRequestError } from "../lib/errors.ts";
 import { unwrapRows } from "../lib/sql-rows.ts";
+import { logger } from "../lib/logging.ts";
 
 /**
  * 用户榜单条目。
@@ -82,10 +83,7 @@ export async function refreshRankingsView(): Promise<void> {
     );
     // 视图更新后 hasMaterializedView 缓存的 value 不变，无需清
   } catch (err) {
-    console.error(
-      "[rankings] 物化视图刷新失败（榜单可能短暂滞后）:",
-      err instanceof Error ? err.message : String(err),
-    );
+    logger.error("物化视图刷新失败（榜单可能短暂滞后）", { err });
   }
 }
 
