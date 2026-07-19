@@ -148,8 +148,8 @@ if (!isE2E) {
     fn: async () => {
       // 普通用户注册
       const userToken = await registerUser(
-        `dual-user-${Date.now()}`,
-        `dual-user-${Date.now()}@test.local`,
+        `dual_user_${Date.now()}`,
+        `dual_user_${Date.now()}@test.local`,
         "UserPass123!",
       );
 
