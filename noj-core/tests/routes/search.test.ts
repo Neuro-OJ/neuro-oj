@@ -45,8 +45,21 @@ async function seed() {
       title: "动态规划",
       description: "",
       difficulty: "medium",
-      judge_image: "test",
-      judge_command: "test",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+
+        solution: {
+          image: "noj-solution-python",
+          entry: "submission_sample.py",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
       number: 1,
       type: "P",
       created_at: now,
@@ -57,8 +70,21 @@ async function seed() {
       title: "私有题",
       description: "",
       difficulty: "hard",
-      judge_image: "test",
-      judge_command: "test",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+
+        solution: {
+          image: "noj-solution-python",
+          entry: "submission_sample.py",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
       number: 1,
       type: "U",
       created_at: now,
@@ -232,8 +258,21 @@ Deno.test({
       title: "新鲜出炉的题目",
       description: "",
       difficulty: "easy",
-      judge_image: "test",
-      judge_command: "test",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+
+        solution: {
+          image: "noj-solution-python",
+          entry: "submission_sample.py",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
       number: 999,
       type: "P",
       created_at: now,

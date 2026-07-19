@@ -53,4 +53,14 @@ export async function setupSchemaForTest(): Promise<void> {
      VALUES ('e0000000-0000-0000-0000-000000000001', 'noj-judge-python', 'all_versions', 'evaluator', 'Python 3.12 评测环境', '${now}', '${now}')
      ON CONFLICT (id) DO NOTHING`,
   );
+  await db.execute(
+    `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
+     VALUES ('e0000000-0000-0000-0000-000000000002', 'noj-evaluator-python', 'all_versions', 'evaluator', 'Evaluator 运行时', '${now}', '${now}')
+     ON CONFLICT (id) DO NOTHING`,
+  );
+  await db.execute(
+    `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
+     VALUES ('e0000000-0000-0000-0000-000000000003', 'noj-solution-python', 'all_versions', 'solution', 'Solution 运行时', '${now}', '${now}')
+     ON CONFLICT (id) DO NOTHING`,
+  );
 }

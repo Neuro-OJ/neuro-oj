@@ -138,8 +138,9 @@ jobs:
           file: noj-core/Dockerfile.e2e
           tags: noj-e2e-core
           load: true
-          cache-from: type=gha
-          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
+          build-args: CACHE_BUST=${{ github.run_id }}
+          cache-from: type=gha,scope=${{ github.head_ref || github.ref_name }}
+          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || format('type=gha,mode=min,scope={0}', github.head_ref || github.ref_name) }}
 
       - name: 构建 Docker Compose 镜像 (noj-judge, 带 GHA 缓存)
         uses: docker/build-push-action@v6
@@ -248,6 +249,12 @@ jobs:
       # 6. 诊断日志（即使前面失败也执行）
       # ════════════════════════════════════════════
 
+      - name: 输出 noj-migrate 日志
+        if: always()
+        run: |
+          echo "=== noj-migrate 日志 ==="
+          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 noj-migrate 2>&1 || echo "容器可能未启动"
+
       - name: 输出 noj-judge 日志
         if: always()
         run: |
@@ -268,6 +275,11 @@ jobs:
         run: |
           docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=500 noj-judge > noj-judge.log 2>&1 || echo "noj-judge may not be running"
 
+      - name: 保存 + 上传 noj-migrate 日志
+        if: always()
+        run: |
+          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=500 noj-migrate > noj-migrate.log 2>&1 || echo "noj-migrate may not be running"
+
       - name: 保存 + 上传 noj-core 日志
         if: always()
         run: |
@@ -280,6 +292,7 @@ jobs:
           name: e2e-full-pipeline-logs
           path: |
             noj-judge.log
+            noj-migrate.log
             noj-core.log
             noj-judge/target/**/test-*.log
             noj-judge/target/**/deps/

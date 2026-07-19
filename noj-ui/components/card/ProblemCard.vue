@@ -31,7 +31,7 @@
                 </div>
                 <!-- 右下：时间·内存限制 -->
                 <div class="flex items-center justify-end h-[18px]">
-                    <span class="text-[10px] text-text-muted tabular-nums leading-none">{{ (time_limit_ms / 1000).toFixed(0) }}s · {{ memory_limit_mb }}MB</span>
+                    <span class="text-[10px] text-text-muted tabular-nums leading-none">{{ (runtime_config.evaluator.time_limit_ms / 1000).toFixed(0) }}s · {{ runtime_config.evaluator.memory_limit_mb }}MB</span>
                 </div>
             </div>
         </div>
@@ -51,8 +51,7 @@ interface Props {
     type: string
     title: string
     difficulty: string
-    time_limit_ms: number
-    memory_limit_mb: number
+    runtime_config: { evaluator: { time_limit_ms: number; memory_limit_mb: number } }
     categories?: Category[]
 }
 
