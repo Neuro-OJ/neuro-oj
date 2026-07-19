@@ -82,8 +82,6 @@ export interface SubmissionListItem {
   problem: {
     id: string;
     title: string;
-    time_limit_ms: number | null;
-    memory_limit_mb: number | null;
   };
   result: {
     status: string;

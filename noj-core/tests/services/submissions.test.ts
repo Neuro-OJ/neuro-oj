@@ -182,10 +182,21 @@ Deno.test({
       title: `测试题目 ${ts}`,
       description: "测试描述",
       difficulty: "easy",
-      judge_image: "noj-judge-python",
-      judge_command: "python3 /tmp/evaluate.py",
-      time_limit_ms: 5000,
-      memory_limit_mb: 512,
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+
+        solution: {
+          image: "noj-solution-python",
+          entry: "submission_sample.py",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
       number: TEST_NUMBER,
       owner_id: TEST_USER_ID,
       type: "P",
@@ -612,10 +623,21 @@ Deno.test({
         title: `重测审计题 ${Date.now()}`,
         description: "rejudgeSubmission 审计测试用题目",
         difficulty: "easy",
-        judge_image: "noj-judge-python",
-        judge_command: "python3 /tmp/evaluate.py",
-        time_limit_ms: 5000,
-        memory_limit_mb: 512,
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+          },
+
+          solution: {
+            image: "noj-solution-python",
+            entry: "submission_sample.py",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
         number: 60000 + (Date.now() & 0x7fff),
         owner_id: adminId,
         type: "U",
@@ -747,10 +769,21 @@ Deno.test({
         title: `批量重测审计题 ${Date.now()}`,
         description: "rejudgeProblemSubmissions 审计测试用题目",
         difficulty: "easy",
-        judge_image: "noj-judge-python",
-        judge_command: "python3 /tmp/evaluate.py",
-        time_limit_ms: 5000,
-        memory_limit_mb: 512,
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+          },
+
+          solution: {
+            image: "noj-solution-python",
+            entry: "submission_sample.py",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
         number: 61000 + (Date.now() & 0x7fff),
         owner_id: adminId,
         type: "U",

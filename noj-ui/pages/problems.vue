@@ -9,8 +9,6 @@ interface ProblemItem {
   title: string
   description: string
   difficulty: string
-  time_limit_ms: number
-  memory_limit_mb: number
   acceptance_rate?: number
   categories: { id: string; name: string; slug: string }[]
   display_id: string
@@ -236,10 +234,10 @@ function formatAcceptanceRate(rate: number | undefined): string {
                 <span v-if="!problem.categories?.length" class="text-xs text-text-muted">--</span>
               </td>
               <td class="w-[90px] px-4 py-3.5 text-xs text-text-secondary hidden sm:table-cell">
-                {{ problem.time_limit_ms }}ms
+                {{ problem.runtime_config.evaluator.time_limit_ms }}ms
               </td>
               <td class="w-[90px] px-4 py-3.5 text-xs text-text-secondary hidden sm:table-cell">
-                {{ problem.memory_limit_mb }}MB
+                {{ problem.runtime_config.evaluator.memory_limit_mb }}MB
               </td>
               <td class="w-[80px] px-4 py-3.5 hidden sm:table-cell">
                 <span class="text-xs text-text-secondary">{{ formatAcceptanceRate(problem.acceptance_rate) }}</span>

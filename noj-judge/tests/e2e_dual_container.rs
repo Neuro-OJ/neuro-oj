@@ -24,7 +24,7 @@ use bollard::models::ExecConfig;
 use common::{get_docker, is_e2e_enabled};
 use futures_util::StreamExt;
 use noj_judge::dual::protocol::{frame_type, EvaluatorLine, LineParser};
-use noj_judge::types::{EvaluatorRuntime, JudgeMode, JudgeTask, RuntimeConfig, SolutionRuntime};
+use noj_judge::types::{EvaluatorRuntime, JudgeTask, RuntimeConfig, SolutionRuntime};
 use tokio::io::AsyncWriteExt;
 
 // ── Test fixtures ─────────────────────────────────────────
@@ -33,11 +33,8 @@ fn dual_task() -> JudgeTask {
     JudgeTask {
         submission_id: format!("sub-{}", uuid::Uuid::new_v4()),
         problem_id: "1001".to_string(),
-        mode: JudgeMode::Dual,
-        judge_image: String::new(),
-        judge_command: String::new(),
         download_url: None,
-        runtime_config: Some(RuntimeConfig {
+        runtime_config: RuntimeConfig {
             evaluator: EvaluatorRuntime {
                 image: "noj-judge-test-runner:latest".to_string(),
                 command: "python3 -c \"print(1)\"".to_string(),
@@ -50,12 +47,10 @@ fn dual_task() -> JudgeTask {
                 call_timeout_ms: 1_000,
                 memory_limit_mb: 256,
             },
-        }),
+        },
         language: "python3".to_string(),
         code: String::new(),
         file_name: Some("solution.py".to_string()),
-        time_limit_ms: 10_000,
-        memory_limit_mb: 256,
         rejudge_seq: None,
     }
 }
@@ -560,38 +555,13 @@ sys.stdout.flush()
 ///
 /// 直接通过 SDK 类型反序列化验证行为。
 #[test]
-fn dual_legacy_task_default_mode() {
-    if !is_e2e_enabled() {
-        return; // 单测不需要 docker
-    }
-    // 这条主要验证类型层：缺 mode 字段时默认 Single（向后兼容）
-    let json = serde_json::json!({
-        "submission_id": "sid-legacy",
-        "problem_id": "1001",
-        "judge_image": "noj-judge-python",
-        "judge_command": "python3 /tmp/evaluate.py",
-        "language": "python3",
-        "code": "print('hello')",
-        "time_limit_ms": 5000,
-        "memory_limit_mb": 512
-    });
-    let task: JudgeTask = serde_json::from_value(json).unwrap();
-    assert_eq!(task.mode, JudgeMode::Single);
-    assert!(task.runtime_config.is_none());
-}
-
-/// 验证 dual mode JudgeTask 反序列化包含 runtime_config。
-#[test]
 fn dual_task_runtime_config_serialization() {
     let json = serde_json::json!({
         "submission_id": "sid-dual",
         "problem_id": "1001",
-        "mode": "dual",
         "language": "python3",
         "code": "def solve(a,b): return a+b",
         "file_name": "solution.py",
-        "time_limit_ms": 5000,
-        "memory_limit_mb": 512,
         "runtime_config": {
             "evaluator": {
                 "image": "noj-evaluator-python:3.12",
@@ -608,10 +578,11 @@ fn dual_task_runtime_config_serialization() {
         }
     });
     let task: JudgeTask = serde_json::from_value(json).unwrap();
-    assert_eq!(task.mode, JudgeMode::Dual);
-    let rc = task.runtime_config.unwrap();
-    assert_eq!(rc.evaluator.image, "noj-evaluator-python:3.12");
-    assert_eq!(rc.solution.call_timeout_ms, 1000);
+    assert_eq!(
+        task.runtime_config.evaluator.image,
+        "noj-evaluator-python:3.12"
+    );
+    assert_eq!(task.runtime_config.solution.call_timeout_ms, 1000);
 }
 
 #[allow(dead_code)]

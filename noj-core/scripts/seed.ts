@@ -27,11 +27,8 @@ interface SampleProblem {
   title: string;
   description: string;
   difficulty: string;
-  judge_image: string;
-  judge_command: string;
+  runtime_config: string; // JSON string matching RuntimeConfig type
   support_package_storage_url: string | null;
-  time_limit_ms: number;
-  memory_limit_mb: number;
   number: number;
   owner_id: string;
   type: string;
@@ -57,11 +54,21 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
       "### 示例 2\n\n**输入**\n\n" +
       '```\nB-07 舱门维护中\n```\n\n**输出**\n\n```json\n{"gate_id": "B-07", "status": "maintenance"}\n```',
     difficulty: "easy",
-    judge_image: "noj-judge-python",
-    judge_command: "python3 /tmp/evaluate.py",
+    runtime_config: JSON.stringify({
+      evaluator: {
+        image: "noj-evaluator-python",
+        command: "python3 /workspace/evaluate.py",
+        time_limit_ms: 5000,
+        memory_limit_mb: 512,
+      },
+      solution: {
+        image: "noj-solution-python",
+        entry: "submission_sample.py",
+        call_timeout_ms: 5000,
+        memory_limit_mb: 512,
+      },
+    }),
     support_package_storage_url: null, // 由 seedSupportPackages 注册后填充
-    time_limit_ms: 5000,
-    memory_limit_mb: 512,
     number: 1001,
     owner_id: "0",
     type: "P",
@@ -80,11 +87,21 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
       "## 示例\n\n**输入**\n\n```\n6 3\n1 3 5 7 9 11\n```\n\n**输出**\n\n```\n3.00 5.00 7.00 9.00\n```\n\n" +
       "## 限制\n\n- $1 \\leq k \\leq n \\leq 10^5$\n- $-10^9 \\leq \\text{sensor\\_data}[i] \\leq 10^9$\n- 时间限制：$1000\\text{ms}$\n- 内存限制：$256\\text{MB}$",
     difficulty: "medium",
-    judge_image: "noj-judge-python",
-    judge_command: "python3 /tmp/evaluate.py",
-    support_package_storage_url: null, // TODO: 创建 1002 支持包后更新此路径（deno task build-packages + seed）
-    time_limit_ms: 1000,
-    memory_limit_mb: 256,
+    runtime_config: JSON.stringify({
+      evaluator: {
+        image: "noj-evaluator-python",
+        command: "python3 /workspace/evaluate.py",
+        time_limit_ms: 1000,
+        memory_limit_mb: 256,
+      },
+      solution: {
+        image: "noj-solution-python",
+        entry: "submission_sample.py",
+        call_timeout_ms: 5000,
+        memory_limit_mb: 256,
+      },
+    }),
+    support_package_storage_url: null,
     number: 1002,
     owner_id: "0",
     type: "P",
@@ -98,11 +115,21 @@ const SAMPLE_PROBLEMS: SampleProblem[] = [
       "## 示例\n\n**输入**\n\n```\n1 2\n```\n\n**输出**\n\n```\n3\n```\n\n" +
       "## 限制\n\n- $-10^9 \\leq a, b \\leq 10^9$\n- 时间限制：$1000\\text{ms}$\n- 内存限制：$256\\text{MB}$",
     difficulty: "easy",
-    judge_image: "noj-judge-python",
-    judge_command: "python3 /tmp/evaluate.py",
+    runtime_config: JSON.stringify({
+      evaluator: {
+        image: "noj-evaluator-python",
+        command: "python3 /workspace/evaluate.py",
+        time_limit_ms: 1000,
+        memory_limit_mb: 256,
+      },
+      solution: {
+        image: "noj-solution-python",
+        entry: "submission_sample.py",
+        call_timeout_ms: 5000,
+        memory_limit_mb: 256,
+      },
+    }),
     support_package_storage_url: null, // 由 seedSupportPackages 注册后填充
-    time_limit_ms: 1000,
-    memory_limit_mb: 256,
     number: 1003,
     owner_id: "0",
     type: "P",
@@ -167,32 +194,52 @@ const PROBLEM_CATEGORY_MAP: [string, string][] = [
 
 /**
  * 初始化评测镜像白名单。
- * 预置 noj-judge-python 确保开箱可用（与现有样例题目的 judge_image 值一致）。
+ * 预置 noj-judge-python、noj-evaluator-python、noj-solution-python 确保开箱可用。
  * 幂等：使用固定 UUID 确保重复运行不重复插入。
  */
 async function seedJudgeImages(): Promise<void> {
   const db = getDb();
   const now = new Date().toISOString();
 
-  // 先按 image 名查找是否已存在，防止管理员删除默认条目后自行重建导致重复
-  const existing = await db
-    .select()
-    .from(judgeImages)
-    .where(eq(judgeImages.image, "noj-judge-python"))
-    .limit(1);
-
-  if (existing.length === 0) {
-    await db.insert(judgeImages).values({
+  const images = [
+    {
       id: "e0000000-0000-0000-0000-000000000001",
       image: "noj-judge-python",
       mode: "all_versions",
-      description: "Python 3.12 评测环境",
+      kind: "evaluator",
+      description: "Python 3.12 评测环境（旧单容器镜像，保留兼容）",
+    },
+    {
+      id: "e0000000-0000-0000-0000-000000000002",
+      image: "noj-evaluator-python",
+      mode: "all_versions",
+      kind: "evaluator",
+      description: "双容器 Evaluator (Python 3.12, noj_evaluator_sdk)",
+    },
+    {
+      id: "e0000000-0000-0000-0000-000000000003",
+      image: "noj-solution-python",
+      mode: "all_versions",
+      kind: "solution",
+      description: "双容器 Solution (Python 3.12, noj_solution_sdk)",
+    },
+  ];
+
+  for (const img of images) {
+    await db.insert(judgeImages).values({
+      ...img,
       created_at: now,
       updated_at: now,
+    }).onConflictDoUpdate({
+      target: judgeImages.id,
+      set: {
+        kind: img.kind,
+        mode: img.mode,
+        description: img.description,
+        updated_at: now,
+      },
     });
-    console.log("  已插入默认评测镜像: noj-judge-python (all_versions)");
-  } else {
-    console.log("  默认评测镜像已存在，跳过插入");
+    console.log(`  已同步评测镜像: ${img.image} (kind=${img.kind})`);
   }
 }
 
@@ -244,6 +291,7 @@ async function seedProblems(): Promise<void> {
       .insert(problems)
       .values({
         ...problem,
+        runtime_config: JSON.parse(problem.runtime_config),
         created_at: now,
         updated_at: now,
       })
@@ -253,10 +301,8 @@ async function seedProblems(): Promise<void> {
           title: problem.title,
           description: problem.description,
           difficulty: problem.difficulty,
-          judge_image: problem.judge_image,
-          judge_command: problem.judge_command,
-          time_limit_ms: problem.time_limit_ms,
-          memory_limit_mb: problem.memory_limit_mb,
+          runtime_config: JSON.parse(problem.runtime_config),
+
           updated_at: now,
           // support_package_storage_url 由 seedSupportPackages 单独管理
         },

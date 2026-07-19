@@ -14,8 +14,6 @@ const { data, pending, error } = useFetch<{
     title: string
     description: string
     difficulty: string
-    time_limit_ms: number
-    memory_limit_mb: number
     display_id: string
     type: string
     owner_id: string
@@ -91,11 +89,11 @@ function goToEditor() {
             <DifficultyBadge :difficulty="problem.difficulty" />
             <span class="inline-flex items-center gap-1 text-xs text-text-secondary">
               <Clock :size="14" />
-              {{ problem.time_limit_ms }}ms
+              {{ problem.runtime_config.evaluator.time_limit_ms }}ms
             </span>
             <span class="inline-flex items-center gap-1 text-xs text-text-secondary">
               <Server :size="14" />
-              {{ problem.memory_limit_mb }}MB
+              {{ problem.runtime_config.evaluator.memory_limit_mb }}MB
             </span>
           </div>
           <div v-if="categories.length" class="flex flex-wrap gap-1.5 mt-2.5">

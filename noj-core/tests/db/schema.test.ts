@@ -35,13 +35,15 @@ Deno.test("schema: users columns have correct constraints", () => {
 
 Deno.test("schema: problems table has LMCC-specific columns", () => {
   const columns = Object.keys(problems);
-  assertEquals(columns.includes("judge_image"), true);
-  assertEquals(columns.includes("judge_command"), true);
   assertEquals(columns.includes("support_package_storage_url"), true);
-  assertEquals(columns.includes("time_limit_ms"), true);
-  assertEquals(columns.includes("memory_limit_mb"), true);
+  assertEquals(columns.includes("runtime_config"), true);
   // 不应包含 test_cases
   assertEquals(columns.includes("test_cases"), false);
+  // 不应包含已移除的字段
+  assertEquals(columns.includes("judge_image"), false);
+  assertEquals(columns.includes("judge_command"), false);
+  assertEquals(columns.includes("time_limit_ms"), false);
+  assertEquals(columns.includes("memory_limit_mb"), false);
 });
 
 Deno.test("schema: problems columns have correct constraints", () => {
@@ -52,15 +54,7 @@ Deno.test("schema: problems columns have correct constraints", () => {
   assertEquals(problems.difficulty.notNull, true);
   assertEquals(problems.difficulty.hasDefault, true);
   assertEquals(problems.difficulty.default, "medium"); // DEFAULT 'medium'
-  assertEquals(problems.judge_image.notNull, true);
-  assertEquals(problems.judge_command.notNull, true);
   assertEquals(problems.support_package_storage_url.notNull, false); // 可选
-  assertEquals(problems.time_limit_ms.notNull, true);
-  assertEquals(problems.time_limit_ms.hasDefault, true);
-  assertEquals(problems.time_limit_ms.default, 5000); // DEFAULT 5000
-  assertEquals(problems.memory_limit_mb.notNull, true);
-  assertEquals(problems.memory_limit_mb.hasDefault, true);
-  assertEquals(problems.memory_limit_mb.default, 512); // DEFAULT 512
 });
 
 Deno.test("schema: submissions table has file_name for mount", () => {
