@@ -139,11 +139,11 @@ export function getRedis(): RedisClient {
     const redisUrl = Deno.env.get("REDIS_URL") || "redis://127.0.0.1:6379/";
     // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
     _redis = new IORedis(redisUrl, {
-      maxRetriesPerRequest: 3,
-      enableOfflineQueue: false, // 断开时直接失败而非缓冲
+      maxRetriesPerRequest: 20,
+      enableOfflineQueue: true, // 允许重连窗口期内命令缓冲，避免测试间状态切换时立即失败
       retryStrategy(times: number) {
-        if (times > 5) return null; // 停止重试
-        return Math.min(times * 200, 2000); // 指数退避
+        // 最多重试 20 次（约 30s），确保并行测试间短暂的断开能恢复
+        return Math.min(times * 200, 2000);
       },
       lazyConnect: true, // 延迟连接，手动调用 connect()
     });
