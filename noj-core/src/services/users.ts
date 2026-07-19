@@ -152,14 +152,16 @@ export async function getUserProfile(
     ? Math.round((accepted / totalSubmissions) * 1000) / 1000
     : 0;
 
-  const solvedProblems = solvedRows.map((row) => ({
+  // deno-lint-ignore no-explicit-any -- Drizzle 查询返回类型在 Deno 中解析受限
+  const solvedProblems = solvedRows.map((row: any) => ({
     id: row.problem_id,
     title: row.problem_title,
     difficulty: row.difficulty,
     accepted_at: row.accepted_at,
   }));
 
-  const recentSubmissions = recentRows.map((row) => ({
+  // deno-lint-ignore no-explicit-any -- Drizzle 查询返回类型在 Deno 中解析受限
+  const recentSubmissions = recentRows.map((row: any) => ({
     id: row.id,
     problem_id: row.problem_id,
     problem_title: row.problem_title ?? "",

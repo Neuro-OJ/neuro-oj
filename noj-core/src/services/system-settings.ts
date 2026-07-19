@@ -17,7 +17,7 @@
  */
 
 import { eq } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
+import { getDb, registerDbResetCallback } from "../db/connection.ts";
 import { systemSettings } from "../db/schema.ts";
 import { ValidationError } from "../lib/errors.ts";
 import { logAudit } from "./audit-log.ts";
@@ -73,6 +73,12 @@ let cache: Map<string, SettingValue> = new Map();
 
 /** 是否已执行 init（用于测试时跳过重复） */
 let _initialized = false;
+
+// 注册 DB 重置回调：TRUNCATE system_settings 表时同步清内存缓存
+registerDbResetCallback(() => {
+  cache = new Map();
+  _initialized = false;
+});
 
 // ─── 敏感字段掩码 ───────────────────────────────────────────
 
