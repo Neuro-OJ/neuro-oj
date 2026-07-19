@@ -17,8 +17,8 @@ import {
   apiGet,
   apiPost,
   apiPut,
-  isE2E,
   getAdminToken,
+  isE2E,
   registerUser,
 } from "./helper.ts";
 
@@ -39,7 +39,10 @@ if (!isE2E) {
   // ── 共享 fixtures ────────────────────────────────────
 
   /** 创建（或复用）evaluator 镜像白名单条目 */
-  async function ensureImage(image: string, kind: "evaluator" | "solution"): Promise<string> {
+  async function ensureImage(
+    image: string,
+    kind: "evaluator" | "solution",
+  ): Promise<string> {
     const adminToken = await getAdminToken();
     const list = await apiGet("/api/v1/admin/judge-images", adminToken);
     type JiEntry = { id: string; image: string; kind: string };
@@ -74,7 +77,7 @@ if (!isE2E) {
     title: string,
   ): Promise<string> {
     const res = await apiPost(
-      "/api/v1/admin/problems",
+      "/api/v1/problems",
       {
         title,
         description: `# ${title}\n\nMarkdown 内容`,
@@ -104,7 +107,9 @@ if (!isE2E) {
     );
     if (res.status !== 201) {
       throw new Error(
-        `Failed to create dual problem: ${res.status} ${JSON.stringify(res.body)}`,
+        `Failed to create dual problem: ${res.status} ${
+          JSON.stringify(res.body)
+        }`,
       );
     }
     return (res.body as { data: { id: string } }).data.id;
@@ -202,7 +207,7 @@ if (!isE2E) {
 
       // 临时创建一个 evaluator 镜像：复用 EVALUATOR_IMAGE 当作 solution
       const res = await apiPost(
-        "/api/v1/admin/problems",
+        "/api/v1/problems",
         {
           title: `[${TEST_TAG}] kind 错配测试`,
           description: "test",
@@ -255,7 +260,10 @@ if (!isE2E) {
 
       // 验证双容器已设置
       const before = await apiGet(`/api/v1/problems/${problemId}`);
-      if (!(before.body as { data: { runtime_config: unknown } }).data.runtime_config) {
+      if (
+        !(before.body as { data: { runtime_config: unknown } }).data
+          .runtime_config
+      ) {
         throw new Error("Expected runtime_config before update");
       }
 
@@ -314,7 +322,9 @@ if (!isE2E) {
       const rc = (detail.body as { data: { runtime_config: unknown } }).data
         .runtime_config;
       if (rc !== null) {
-        throw new Error("Expected runtime_config to be null for single-container problem");
+        throw new Error(
+          "Expected runtime_config to be null for single-container problem",
+        );
       }
     },
   });
@@ -350,7 +360,9 @@ if (!isE2E) {
         userToken,
       );
       if (sub.status !== 201) {
-        throw new Error(`Submit failed: ${sub.status} ${JSON.stringify(sub.body)}`);
+        throw new Error(
+          `Submit failed: ${sub.status} ${JSON.stringify(sub.body)}`,
+        );
       }
     },
   });
