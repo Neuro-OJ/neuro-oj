@@ -88,14 +88,40 @@ async function assertResultExists(submissionId: string): Promise<boolean> {
 
 /** 向 fake Redis LPUSH 一条消息 */
 async function fakeLpush(fakeUrl: string, queue: string, message: string) {
-  resetRedisForTest();
-  Deno.env.set("REDIS_URL", fakeUrl);
-  const redis = getRedis();
-  await redis.connect();
-  await redis.ping();
-  await redis.lpush(queue, message);
-  resetRedisForTest();
-  Deno.env.delete("REDIS_URL");
+  const prevUrl = Deno.env.get("REDIS_URL") ?? null;
+  try {
+    resetRedisForTest();
+    Deno.env.set("REDIS_URL", fakeUrl);
+    const redis = getRedis();
+    await redis.connect();
+    await redis.ping();
+    await redis.lpush(queue, message);
+  } finally {
+    resetRedisForTest();
+    if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
+    else Deno.env.delete("REDIS_URL");
+  }
+}
+
+/** 用 fake Redis 客户端执行回调，finally 保证状态恢复 */
+async function _withFakeRedis<T>(
+  fakeUrl: string,
+  // deno-lint-ignore no-explicit-any
+  fn: (redis: any) => Promise<T>,
+): Promise<T> {
+  const prevUrl = Deno.env.get("REDIS_URL") ?? null;
+  try {
+    resetRedisForTest();
+    Deno.env.set("REDIS_URL", fakeUrl);
+    const redis = getRedis();
+    await redis.connect();
+    await redis.ping();
+    return await fn(redis);
+  } finally {
+    resetRedisForTest();
+    if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
+    else Deno.env.delete("REDIS_URL");
+  }
 }
 
 // ── 测试 ─────────────────────────────────────────

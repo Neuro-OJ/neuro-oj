@@ -12,6 +12,7 @@ import { getSubmissionQueueStatus } from "../services/queue.ts";
 import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
 import { rateLimit } from "../middleware/rate-limit.ts";
 import { BadRequestError, NotFoundError } from "../lib/errors.ts";
+import { buildPaginationMeta, parsePagination } from "../lib/pagination.ts";
 
 // 扩展 Hono 类型，使 c.get("userId") 返回 string | undefined
 // （optionalAuthMiddleware 注入时可能为 undefined；authMiddleware 注入时一定有值）
@@ -44,13 +45,11 @@ const MAX_CODE_LENGTH = 100 * 1024;
 router.get("/", authMiddleware, async (c) => {
   const userId = c.var.userId!;
 
-  // 解析分页参数
-  let page = parseInt(c.req.query("page") ?? "", 10);
-  let perPage = parseInt(c.req.query("per_page") ?? "", 10);
-
-  if (isNaN(page) || page < 1) page = 1;
-  if (isNaN(perPage) || perPage < 1) perPage = 20;
-  if (perPage > 100) perPage = 100;
+  // PR-6 评审修订：使用 parsePagination helper 替换 6 行样板
+  const { page, perPage } = parsePagination(c, {
+    defaultPerPage: 20,
+    maxPerPage: 100,
+  });
 
   // 解析筛选参数
   const problemId = c.req.query("problem_id") || undefined;
@@ -82,16 +81,9 @@ router.get("/", authMiddleware, async (c) => {
     perPage,
   });
 
-  const totalPages = Math.ceil(result.total / perPage);
-
   return c.json({
     data: result.data,
-    pagination: {
-      page,
-      per_page: perPage,
-      total: result.total,
-      total_pages: totalPages,
-    },
+    pagination: buildPaginationMeta(page, perPage, result.total),
   });
 });
 
@@ -154,16 +146,11 @@ router.get(
   rateLimit({ loggedInIntervalMs: 1000, loggedOutIntervalMs: 5000 }),
   async (c) => {
     const isLoggedIn = !!c.var.userId;
-    // 未登录用户 per_page 严格上限 50；登录用户放宽到 100（防滥用但允许更多）
-    const maxPerPage = isLoggedIn ? 100 : 50;
-    const defaultPerPage = isLoggedIn ? 20 : 10;
-    const perPage = Math.max(
-      1,
-      Math.min(
-        parseInt(c.req.query("per_page") ?? "", 10) || defaultPerPage,
-        maxPerPage,
-      ),
-    );
+    // PR-6 评审修订：使用 parsePagination，根据登录态动态调整上下限
+    const { perPage } = parsePagination(c, {
+      defaultPerPage: isLoggedIn ? 20 : 10,
+      maxPerPage: isLoggedIn ? 100 : 50,
+    });
 
     const result = await listSubmissions({ page: 1, perPage });
     return c.json({ data: result.data });

@@ -13,7 +13,6 @@
  */
 
 import {
-  api,
   apiGet,
   apiPost,
   apiPut,

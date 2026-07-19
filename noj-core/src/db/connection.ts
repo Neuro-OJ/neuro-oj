@@ -15,6 +15,17 @@ let _pgliteInstance: PGlite | null = null;
 let _bootstrapPromise: Promise<void> | null = null;
 
 /**
+ * DB 重置回调（避免循环依赖：其他模块注册清理回调，resetDbForTest 调用）。
+ * 解决 system_settings 等模块的内存缓存与 DB TRUNCATE 不同步导致的测试污染。
+ */
+const _onDbResetCallbacks: Array<() => void> = [];
+
+/** 注册测试重置回调（供 system-settings 等模块注册缓存清理函数） */
+export function registerDbResetCallback(fn: () => void): void {
+  _onDbResetCallbacks.push(fn);
+}
+
+/**
  * 判断当前是否为 PGlite 模式（无 DATABASE_URL 时自动启用）。
  */
 function isPGliteMode(): boolean {
@@ -179,7 +190,15 @@ export async function resetDbForTest() {
     } catch {
       // 表可能还没建
     }
+    // 刷新物化视图（user_rankings，PGlite 不支持则忽略）
+    try {
+      await _pgliteInstance.query(
+        `REFRESH MATERIALIZED VIEW CONCURRENTLY user_rankings`,
+      );
+    } catch { /* PGlite 无物化视图支持 */ }
     _db = null;
+    // 通知已注册模块重置缓存（如 system_settings 内存缓存）
+    for (const fn of _onDbResetCallbacks) fn();
     return;
   }
 
@@ -225,6 +244,14 @@ export async function resetDbForTest() {
        ON CONFLICT (id) DO NOTHING`,
     );
   } catch { /* 忽略 */ }
+  // 刷新物化视图（TRUNCATE 后 user_rankings 需同步刷新）
+  try {
+    await getDb().execute(
+      `REFRESH MATERIALIZED VIEW CONCURRENTLY user_rankings`,
+    );
+  } catch { /* 可能没有物化视图 */ }
   _db = null;
   _client = null;
+  // 通知已注册模块重置缓存（如 system_settings 内存缓存）
+  for (const fn of _onDbResetCallbacks) fn();
 }
