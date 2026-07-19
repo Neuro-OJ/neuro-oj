@@ -7,6 +7,7 @@ import {
   users,
 } from "../db/schema.ts";
 import { getRedis } from "../mq/connection.ts";
+import { logger } from "../lib/logging.ts";
 
 /** 评测任务队列名称（与 producer.ts 一致）。 */
 const JUDGE_QUEUE = "noj:judge:queue";
@@ -77,9 +78,9 @@ export async function getPendingSubmissionIds(): Promise<string[]> {
         ids.push(parsed.submission_id);
       }
     } catch {
-      console.error(
-        `队列中存在无法解析的条目，已跳过: content=${item.slice(0, 200)}`,
-      );
+      logger.error("队列中存在无法解析的条目，已跳过", {
+        content: item.slice(0, 200),
+      });
     }
   }
   return ids;

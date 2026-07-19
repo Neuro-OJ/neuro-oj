@@ -1,6 +1,7 @@
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { getDb } from "./connection.ts";
 import { dirname, resolve } from "jsr:@std/path@^1";
+import { logger } from "../lib/logging.ts";
 
 const __dirname = dirname(new URL(import.meta.url).pathname);
 
@@ -15,12 +16,11 @@ export async function runMigrations(): Promise<void> {
 
     // 基于 import.meta.url 解析绝对路径，避免 CWD 依赖
     const migrationsFolder = resolve(__dirname, "../../drizzle");
-    console.log("迁移文件夹路径:", migrationsFolder);
+    logger.info("开始数据库迁移", { migrations_folder: migrationsFolder });
     await migrate(db, { migrationsFolder });
-    console.log("数据库迁移完成");
+    logger.info("数据库迁移完成");
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("数据库迁移失败:", message);
+    logger.error("数据库迁移失败", { err });
     throw err;
   }
 }

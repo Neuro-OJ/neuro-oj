@@ -14,6 +14,7 @@
 import type { Redis } from "ioredis";
 import { getDb } from "../db/connection.ts";
 import { judgeImages } from "../db/schema.ts";
+import { logger } from "../lib/logging.ts";
 
 /** RPC 请求消息结构 */
 interface RpcRequest {
@@ -98,7 +99,7 @@ export async function startJudgeRpcHandler(
 ): Promise<void> {
   const REQUEST_QUEUE = "noj:rpc:v1:judge:core";
 
-  console.log("[judge-rpc] RPC handler started, waiting for requests...");
+  logger.info("Judge RPC handler 已启动，等待请求...");
 
   while (!abortSignal?.aborted) {
     try {
@@ -111,12 +112,12 @@ export async function startJudgeRpcHandler(
       try {
         request = JSON.parse(rawMessage);
       } catch {
-        console.warn("[judge-rpc] Invalid request JSON, skipping");
+        logger.warn("Judge RPC 请求 JSON 非法，跳过");
         continue;
       }
 
       if (!request.id || !request.method) {
-        console.warn("[judge-rpc] Request missing id or method, skipping");
+        logger.warn("Judge RPC 请求缺少 id 或 method，跳过");
         continue;
       }
 
@@ -128,7 +129,7 @@ export async function startJudgeRpcHandler(
 
       const handler = handlers[request.method as string];
       if (!handler) {
-        console.warn(`[judge-rpc] Unknown method: ${request.method}`);
+        logger.warn("Judge RPC 未知 method", { method: request.method });
         const response = createResponse(
           request.id as string,
           undefined,
@@ -144,7 +145,10 @@ export async function startJudgeRpcHandler(
         const response = createResponse(request.id as string, result);
         await redis.lpush(responseQueue, JSON.stringify(response));
       } catch (err) {
-        console.error(`[judge-rpc] Handler error for ${request.method}:`, err);
+        logger.error("Judge RPC handler 执行出错", {
+          method: request.method,
+          err,
+        });
         const response = createResponse(
           request.id as string,
           undefined,
@@ -153,10 +157,10 @@ export async function startJudgeRpcHandler(
         await redis.lpush(responseQueue, JSON.stringify(response));
       }
     } catch (err) {
-      console.error("[judge-rpc] BRPOP error:", err);
+      logger.error("Judge RPC BRPOP 出错", { err });
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
 
-  console.log("[judge-rpc] RPC handler stopped");
+  logger.info("Judge RPC handler 已停止");
 }

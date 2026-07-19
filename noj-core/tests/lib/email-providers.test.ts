@@ -1,6 +1,11 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { sendPasswordResetEmail as mockSend } from "../../src/lib/email-providers/mock.ts";
 import type { SendPasswordResetEmail } from "../../src/lib/email-providers/types.ts";
+import {
+  type LogRecord,
+  resetLogSink,
+  setLogSink,
+} from "../../src/lib/logging.ts";
 
 // ── Mock Provider 测试 ──
 
@@ -9,12 +14,9 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    // 不输出到 stdout 避免干扰测试输出
-    const logs: unknown[] = [];
-    const originalLog = console.log;
-    console.log = (...args: unknown[]) => {
-      logs.push(args);
-    };
+    // 通过 setLogSink 捕获 logger 记录，避免污染测试输出
+    const records: LogRecord[] = [];
+    setLogSink((r) => records.push(r));
 
     try {
       // mock 是同步实现但接口返回 Promise<void>
@@ -23,13 +25,12 @@ Deno.test({
       await result;
 
       // 验证日志输出
-      assertEquals(logs.length, 1);
-      const entry = JSON.parse(logs[0] as string);
-      assertEquals(entry.module, "email-mock");
-      assertEquals(entry.to, "test@example.com");
-      assertEquals(entry.link, "http://localhost/token");
+      assertEquals(records.length, 1);
+      assertEquals(records[0].fields.module, "email-mock");
+      assertEquals(records[0].fields.to, "test@example.com");
+      assertEquals(records[0].fields.link, "http://localhost/token");
     } finally {
-      console.log = originalLog;
+      resetLogSink();
     }
   },
 });
@@ -39,18 +40,14 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const logs: unknown[] = [];
-    const originalLog = console.log;
-    console.log = (...args: unknown[]) => {
-      logs.push(args);
-    };
+    const records: LogRecord[] = [];
+    setLogSink((r) => records.push(r));
 
     try {
       await mockSend("test@example.com", "http://localhost/token", 30);
-      const entry = JSON.parse(logs[0] as string);
-      assertEquals(entry.expiresIn, "30 minutes");
+      assertEquals(records[0].fields.expiresIn, "30 minutes");
     } finally {
-      console.log = originalLog;
+      resetLogSink();
     }
   },
 });

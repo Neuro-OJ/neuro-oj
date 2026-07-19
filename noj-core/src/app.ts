@@ -16,8 +16,10 @@ import search from "./routes/search.ts";
 import { searchRateLimit } from "./middleware/searchRateLimit.ts";
 import sse, { statsSse } from "./routes/sse.ts";
 import { AppError } from "./lib/errors.ts";
+import { logger } from "./lib/logging.ts";
 import { listJudgeImages } from "./services/judge-images.ts";
 import { banlistMiddleware } from "./middleware/banlist.ts";
+import { requestContext } from "./middleware/request-context.ts";
 import { getSetting } from "./services/system-settings.ts";
 
 /**
@@ -62,6 +64,10 @@ function maintenanceMode(
 export function createApp(): Hono {
   const app = new Hono();
 
+  // 请求上下文中间件（最外层）：为每个请求生成 request_id，
+  // 写入 context 供 onError 复用，并包裹后续处理使日志自动带 request_id。
+  app.use("*", requestContext);
+
   // CORS 中间件
   // - 开发环境：允许所有来源（便于本地调试与第三方工具）
   // - 生产环境：从 CORS_ALLOWED_ORIGINS 环境变量读取白名单（逗号分隔）
@@ -86,8 +92,10 @@ export function createApp(): Hono {
 
   // 全局错误处理——捕获所有 AppError 及未预期的错误
   app.onError((err, c) => {
-    // 为每次错误生成 request_id，便于客户端报错时与服务端日志关联
-    const requestId = crypto.randomUUID();
+    // 复用请求上下文的 request_id（由 requestContext 中间件注入），
+    // 保证错误响应与服务端日志的 request_id 一致；缺失时兜底新生成。
+    const requestId = (c.get("requestId") as string | undefined) ??
+      crypto.randomUUID();
     if (err instanceof AppError) {
       err.requestId = requestId;
       // 限流错误携带 X-RateLimit-* 响应头（issue #73）
@@ -108,7 +116,8 @@ export function createApp(): Hono {
         err.statusCode as 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503,
       );
     }
-    console.error("未处理的错误 [request_id=" + requestId + "]:", err);
+    // request_id 由 logger 从请求上下文自动注入，无需重复传入
+    logger.error("未处理的错误", { err });
     return c.json(
       {
         error: "服务器内部错误",

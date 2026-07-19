@@ -1,4 +1,5 @@
 import IORedis from "ioredis";
+import { logger } from "../lib/logging.ts";
 
 /**
  * Redis 客户端的最小接口定义。
@@ -76,10 +77,7 @@ export function createConsumerRedis(): RedisClient {
 
   redis.on("error", (...args: unknown[]) => {
     const err = args[0];
-    console.error(
-      "消费者 Redis 连接错误:",
-      err instanceof Error ? err.message : String(err),
-    );
+    logger.error("消费者 Redis 连接错误", { err });
   });
 
   return redis;
@@ -108,10 +106,7 @@ export function createPubSubRedis(): RedisClient {
 
   redis.on("error", (...args: unknown[]) => {
     const err = args[0];
-    console.error(
-      "Pub/Sub Redis 连接错误:",
-      err instanceof Error ? err.message : String(err),
-    );
+    logger.error("Pub/Sub Redis 连接错误", { err });
   });
 
   return redis;
@@ -153,10 +148,7 @@ export function getRedis(): RedisClient {
     // - ready 事件：连接真正可用时立即清空 _error，下次 getRedis() 不会因历史错误而抛
     _redis!.on("error", (...args: unknown[]) => {
       const err = args[0];
-      console.error(
-        "Redis 连接错误:",
-        err instanceof Error ? err.message : String(err),
-      );
+      logger.error("Redis 连接错误", { err });
       // 仅在客户端尚未进入 ready 状态时累积错误（避免重连过程中误判）
       if ((_redis?.status as string) !== "ready") {
         _error = err instanceof Error ? err : new Error(String(err));
@@ -164,11 +156,11 @@ export function getRedis(): RedisClient {
     });
 
     _redis!.on("reconnecting", () => {
-      console.log("Redis 正在重连...");
+      logger.info("Redis 正在重连...");
     });
 
     _redis!.on("connect", () => {
-      console.log("Redis 连接已建立");
+      logger.info("Redis 连接已建立");
     });
 
     // PR-8：核心修复 —— ready 事件触发时清空 _error
@@ -176,14 +168,14 @@ export function getRedis(): RedisClient {
     // 必须监听 ready 才能正确反映"连接可用"
     _clearErrorOnReady = () => {
       _error = null;
-      console.log("Redis ready 状态确认，清空历史错误");
+      logger.info("Redis ready 状态确认，清空历史错误");
     };
     _redis!.on("ready", _clearErrorOnReady);
 
     return _redis!;
   } catch (err) {
     _error = err instanceof Error ? err : new Error(String(err));
-    console.error("Redis 初始化失败:", _error.message);
+    logger.error("Redis 初始化失败", { err: _error });
     throw _error;
   }
 }
@@ -207,7 +199,7 @@ export async function connectRedis(): Promise<void> {
       if (pong !== "PONG") {
         throw new Error(`Redis PING 返回异常: ${pong}`);
       }
-      console.log("Redis 连接验证通过（复用现有连接）");
+      logger.info("Redis 连接验证通过（复用现有连接）");
       return;
     }
 
@@ -229,7 +221,7 @@ export async function connectRedis(): Promise<void> {
       if ((redis.status as string) !== "ready") {
         throw new Error(`Redis 连接等待超时（status=${redis.status}）`);
       }
-      console.log("Redis 连接验证通过（等待已有连接）");
+      logger.info("Redis 连接验证通过（等待已有连接）");
       return;
     }
 
@@ -239,10 +231,9 @@ export async function connectRedis(): Promise<void> {
     if (pong !== "PONG") {
       throw new Error(`Redis PING 返回异常: ${pong}`);
     }
-    console.log("Redis 连接验证通过");
+    logger.info("Redis 连接验证通过");
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("Redis 连接失败:", message);
+    logger.error("Redis 连接失败", { err });
     throw err;
   }
 }

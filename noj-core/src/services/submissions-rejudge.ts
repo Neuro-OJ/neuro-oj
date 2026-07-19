@@ -21,6 +21,7 @@ import type { RuntimeConfig } from "../types/problems.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";
 import { updateSubmissionStatus } from "./submissions-result.ts";
+import { logger } from "../lib/logging.ts";
 
 const MAX_BATCH_REJUDGE = 500;
 
@@ -72,10 +73,10 @@ export async function rejudgeSubmission(id: string): Promise<void> {
       );
     }
   } catch (err) {
-    console.error(
-      `重测获取支持包 download URL 失败 (${problem.support_package_storage_url}):`,
-      err instanceof Error ? err.message : String(err),
-    );
+    logger.error("重测获取支持包 download URL 失败", {
+      storage_url: problem.support_package_storage_url,
+      err,
+    });
   }
 
   await db.transaction(async (tx) => {
@@ -130,7 +131,7 @@ export async function rejudgeSubmission(id: string): Promise<void> {
   try {
     await pushJudgeTask(task);
   } catch (mqErr) {
-    console.error("重测任务推送失败:", mqErr);
+    logger.error("重测任务推送失败", { submission_id: id, err: mqErr });
     try {
       await updateSubmissionStatus(id, "error");
     } catch {
@@ -172,10 +173,10 @@ export async function rejudgeProblemSubmissions(
       );
     }
   } catch (err) {
-    console.error(
-      `批量重测获取支持包 download URL 失败 (${problem.support_package_storage_url}):`,
-      err instanceof Error ? err.message : String(err),
-    );
+    logger.error("批量重测获取支持包 download URL 失败", {
+      storage_url: problem.support_package_storage_url,
+      err,
+    });
   }
 
   const txResult = await db.transaction<BatchTxResult>(async (tx) => {
@@ -298,10 +299,7 @@ export async function rejudgeProblemSubmissions(
       await updateSubmissionStatus(sub.id, "judging");
       queued++;
     } catch (err) {
-      console.error(
-        `批量重测入队失败 (submission=${sub.id}):`,
-        err instanceof Error ? err.message : String(err),
-      );
+      logger.error("批量重测入队失败", { submission_id: sub.id, err });
       // 入队失败：将状态回退到 error，避免卡在 pending 导致无法重试
       try {
         const errNow = new Date().toISOString();

@@ -5,6 +5,7 @@ import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { PGlite } from "@electric-sql/pglite";
 import * as schema from "./schema.ts";
 import { ALL_TABLES, SCHEMA_DDL, SCHEMA_INDEXES } from "./schema-ddl.ts";
+import { logger } from "../lib/logging.ts";
 
 let _db: ReturnType<typeof drizzlePg> | null = null;
 let _client: ReturnType<typeof postgres> | null = null;
@@ -82,8 +83,7 @@ export function getDb() {
     _db = drizzlePg(_client, { schema });
     return _db;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("数据库初始化失败:", message);
+    logger.error("数据库初始化失败", { err });
     throw err;
   }
 }

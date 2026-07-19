@@ -20,6 +20,7 @@ import {
   sha256Hex,
   type StorageProvider,
 } from "./types.ts";
+import { logger } from "../logging.ts";
 
 const PACKAGES_DIR = "data/packages";
 
@@ -44,7 +45,7 @@ export class LocalStorageProvider implements StorageProvider {
   private emitDeprecationWarning(): void {
     if (this.warned) return;
     this.warned = true;
-    console.warn(DEPRECATED_WARNING);
+    logger.warn(DEPRECATED_WARNING);
   }
 
   /**

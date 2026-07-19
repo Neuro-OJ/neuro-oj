@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { submissions } from "../db/schema.ts";
 import { createConsumerRedis } from "./connection.ts";
+import { logger } from "../lib/logging.ts";
 
 const STARTED_QUEUE = "noj:judge:started";
 
@@ -18,15 +19,12 @@ export async function startStartedConsumerWithRetry(): Promise<void> {
   while (true) {
     startedConsumerAlive = false;
 
-    console.log("评测开始事件消费者正在启动...");
+    logger.info("评测开始事件消费者正在启动...");
 
     try {
       await startStartedConsumer();
     } catch (err) {
-      console.error(
-        "评测开始事件消费者异常退出:",
-        err instanceof Error ? err.message : String(err),
-      );
+      logger.error("评测开始事件消费者异常退出", { err });
     }
 
     startedConsumerAlive = false;
@@ -37,9 +35,10 @@ export async function startStartedConsumerWithRetry(): Promise<void> {
     );
     retryCount++;
 
-    console.warn(
-      `评测开始事件消费者将在 ${delay}ms 后重启（重试 #${retryCount}）...`,
-    );
+    logger.warn("评测开始事件消费者将重启", {
+      delay_ms: delay,
+      retry: retryCount,
+    });
 
     await new Promise((r) => setTimeout(r, delay));
   }
@@ -51,15 +50,12 @@ async function startStartedConsumer(): Promise<void> {
   try {
     await redis.connect();
   } catch (err) {
-    console.error(
-      "评测开始事件消费者 Redis 连接失败:",
-      err instanceof Error ? err.message : String(err),
-    );
+    logger.error("评测开始事件消费者 Redis 连接失败", { err });
     return;
   }
 
   startedConsumerAlive = true;
-  console.log("评测开始事件消费者启动，等待事件...");
+  logger.info("评测开始事件消费者启动，等待事件...");
 
   while (true) {
     try {
@@ -73,7 +69,7 @@ async function startStartedConsumer(): Promise<void> {
       }
 
       if (!Array.isArray(result) || result.length < 2) {
-        console.error("评测开始事件 brpop 返回格式异常，跳过");
+        logger.error("评测开始事件 brpop 返回格式异常，跳过");
         continue;
       }
 
@@ -83,12 +79,12 @@ async function startStartedConsumer(): Promise<void> {
       try {
         message = JSON.parse(rawJson);
       } catch {
-        console.error("评测开始事件 JSON 解析失败，跳过");
+        logger.error("评测开始事件 JSON 解析失败，跳过");
         continue;
       }
 
       if (!message.submission_id) {
-        console.error("评测开始事件缺少 submission_id，跳过");
+        logger.error("评测开始事件缺少 submission_id，跳过");
         continue;
       }
 
@@ -104,14 +100,12 @@ async function startStartedConsumer(): Promise<void> {
           ),
         );
 
-      console.log(
-        `评测开始时间已更新: submission=${message.submission_id}, started_at=${now}`,
-      );
+      logger.info("评测开始时间已更新", {
+        submission_id: message.submission_id,
+        started_at: now,
+      });
     } catch (err) {
-      console.error(
-        "评测开始事件消费者错误:",
-        err instanceof Error ? err.message : String(err),
-      );
+      logger.error("评测开始事件消费者错误", { err });
       await new Promise((r) => setTimeout(r, 1000));
     }
   }

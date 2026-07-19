@@ -1,6 +1,6 @@
 import { createConsumerRedis } from "./connection.ts";
 import { saveEvaluationResult } from "../services/submissions.ts";
-import { logJudgeResultReceived } from "../lib/logging.ts";
+import { logger, logJudgeResultReceived } from "../lib/logging.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";
 import type { JudgeResult } from "../types/index.ts";
 
@@ -40,17 +40,14 @@ export async function startResultConsumerWithRetry(): Promise<void> {
   while (true) {
     consumerAlive = false;
 
-    console.log("结果消费者正在启动...");
+    logger.info("结果消费者正在启动...");
 
     try {
       await startResultConsumer();
     } catch (err) {
       // startResultConsumer 内部已捕获所有预期错误；
       // 走到此处的异常是未预期的严重错误。
-      console.error(
-        "结果消费者异常退出:",
-        err instanceof Error ? err.message : String(err),
-      );
+      logger.error("结果消费者异常退出", { err });
     }
 
     consumerAlive = false;
@@ -62,9 +59,7 @@ export async function startResultConsumerWithRetry(): Promise<void> {
     );
     retryCount++;
 
-    console.warn(
-      `结果消费者将在 ${delay}ms 后重启（重试 #${retryCount}）...`,
-    );
+    logger.warn("结果消费者将重启", { delay_ms: delay, retry: retryCount });
 
     await new Promise((r) => setTimeout(r, delay));
   }
@@ -86,16 +81,13 @@ async function startResultConsumer(): Promise<void> {
   try {
     await redis.connect();
   } catch (err) {
-    console.error(
-      "结果消费者 Redis 连接失败:",
-      err instanceof Error ? err.message : String(err),
-    );
+    logger.error("结果消费者 Redis 连接失败", { err });
     redis.disconnect(); // 显式断开，防止 ioredis 在后台无限重试泄漏
     return; // 连接失败，由外层重试循环处理
   }
 
   consumerAlive = true;
-  console.log("结果消费者启动，等待评测结果...");
+  logger.info("结果消费者启动，等待评测结果...");
 
   // @ts-ignore - ioredis 的 brpop 类型在 Deno 中解析受限
   while (true) {
@@ -117,15 +109,12 @@ async function startResultConsumer(): Promise<void> {
       try {
         judgeResult = JSON.parse(rawJson);
       } catch (parseErr) {
-        console.error(
-          "评测结果 JSON 解析失败，跳过:",
-          parseErr instanceof Error ? parseErr.message : String(parseErr),
-        );
+        logger.error("评测结果 JSON 解析失败，跳过", { err: parseErr });
         continue;
       }
 
       if (!judgeResult.submission_id) {
-        console.error("评测结果缺少 submission_id，跳过");
+        logger.error("评测结果缺少 submission_id，跳过");
         continue;
       }
 
@@ -137,9 +126,9 @@ async function startResultConsumer(): Promise<void> {
 
       try {
         await saveEvaluationResult(judgeResult);
-        console.log(
-          `评测结果已持久化: ${judgeResult.submission_id}`,
-        );
+        logger.info("评测结果已持久化", {
+          submission_id: judgeResult.submission_id,
+        });
 
         // 发布事件到 Redis Pub/Sub（fire-and-forget，不阻塞）
         // 事件仅作触发通知，前端收到后主动通过 REST 接口拉取全量数据
@@ -155,17 +144,14 @@ async function startResultConsumer(): Promise<void> {
           JSON.stringify({ type: "queue:changed" }),
         );
       } catch (dbErr) {
-        console.error(
-          `评测结果持久化失败 (submission=${judgeResult.submission_id}):`,
-          dbErr instanceof Error ? dbErr.message : String(dbErr),
-        );
+        logger.error("评测结果持久化失败", {
+          submission_id: judgeResult.submission_id,
+          err: dbErr,
+        });
         // 不中断循环，错误仅记录日志
       }
     } catch (err) {
-      console.error(
-        "结果消费者错误:",
-        err instanceof Error ? err.message : String(err),
-      );
+      logger.error("结果消费者错误", { err });
       // 短暂等待后重试，避免空转
       await new Promise((r) => setTimeout(r, 1000));
     }
