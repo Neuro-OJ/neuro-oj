@@ -184,9 +184,9 @@ export const SCHEMA_DDL: string[] = [
       'ip_ban.create','ip_ban.delete',
       -- PR-2 新增 auth.* 动作
       'auth.login_success','auth.login_failure','auth.register',
-      'auth.change_password','auth.forgot_password_request','auth.password_reset'
+      'auth.change_password','auth.forgot_password_request','auth.password_reset')
     ))
-  )`,
+  `,
 
   // 16. ip_bans (issue #102)
   `CREATE TABLE IF NOT EXISTS ip_bans (

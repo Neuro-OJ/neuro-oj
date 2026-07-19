@@ -31,28 +31,28 @@ import { getSetting } from "./services/system-settings.ts";
  * - 不缓存 maintenance_mode：管理后台切换后下一次请求立即生效
  * - 不阻塞 /health：负载均衡器仍能正常探活
  */
-async function maintenanceMode(
+function maintenanceMode(
   c: Context,
   next: Next,
 ): Promise<Response | void> {
   const setting = getSetting("maintenance_mode");
   if (setting?.value !== true) {
-    await next();
-    return;
+    return next();
   }
 
   const method = c.req.method.toUpperCase();
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
-    await next();
-    return;
+    return next();
   }
 
-  return c.json(
-    {
-      error: "系统维护中，请稍后再试",
-      code: "MAINTENANCE",
-    },
-    503,
+  return Promise.resolve(
+    c.json(
+      {
+        error: "系统维护中，请稍后再试",
+        code: "MAINTENANCE",
+      },
+      503,
+    ),
   );
 }
 
@@ -119,10 +119,11 @@ export function createApp(): Hono {
     );
   });
 
-  // 全局中间件（PR-2 死开关：维护模式 + banlistMiddleware）：
-  // 必须在 routes 注册之前先注册，否则 routes 优先匹配导致中间件不生效。
-  app.use("/api/v1/*", maintenanceMode);
+  // 全局中间件（PR-2 修复顺序问题）：
+  // 注意：app.use() 的注册顺序决定执行顺序，必须在所有路由之前注册
+  // 才能拦截请求。原 banlistMiddleware 注册在 routes 之后，存在顺序 bug。
   app.use("/api/v1/*", banlistMiddleware);
+  app.use("/api/v1/*", maintenanceMode);
 
   // 注册路由
   app.route("/", health);
