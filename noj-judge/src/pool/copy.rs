@@ -116,6 +116,7 @@ fn collect_entries_rec(base: &Path, current: &Path, entries: &mut Vec<ArchiveEnt
 ///
 /// 通过 exec `tar xf - -C /tmp/` + 管道 stdin 传输 tar 数据。
 /// 这样可以在 `readonly_rootfs=true` 的前提下仍然稳定写入 `/tmp` tmpfs。
+#[allow(dead_code)]
 pub async fn copy_to_container(
     docker: &Docker,
     container_id: &str,
@@ -229,6 +230,7 @@ pub async fn copy_to_container(
 }
 
 /// 在工作目录上执行 archive + copy 的简便函数。
+#[allow(dead_code)]
 pub async fn archive_and_copy(
     docker: &Docker,
     container_id: &str,

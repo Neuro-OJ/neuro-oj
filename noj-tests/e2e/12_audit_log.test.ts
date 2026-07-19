@@ -53,10 +53,13 @@ Deno.test({
       title: "审计删除测试题",
       description: "将被删除以产生审计日志",
       difficulty: "easy",
-      judge_image: "noj-judge-python",
-      judge_command: "python3 /tmp/evaluate.py",
-      time_limit_ms: 3000,
-      memory_limit_mb: 256,
+      runtime_config: {
+
+        evaluator: { image: "noj-evaluator-python", command: "python3 /workspace/evaluate.py", time_limit_ms: 5000, memory_limit_mb: 512 },
+
+        solution: { image: "noj-solution-python", entry: "submission_sample.py", call_timeout_ms: 2000, memory_limit_mb: 512 },
+
+      },
       type: "P",
     }, adminToken);
     if (probRes.status !== 201) throw new Error("创建题目失败");

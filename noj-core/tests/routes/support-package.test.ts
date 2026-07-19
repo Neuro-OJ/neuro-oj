@@ -71,10 +71,21 @@ async function createTestProblem(
     title: `支持包路由测试 ${ts}`,
     description: "测试描述",
     difficulty: "easy",
-    judge_image: "noj-judge-python",
-    judge_command: "python3 /tmp/evaluate.py",
-    time_limit_ms: 5000,
-    memory_limit_mb: 512,
+    runtime_config: {
+      evaluator: {
+        image: "noj-evaluator-python",
+        command: "python3 /workspace/evaluate.py",
+        time_limit_ms: 5000,
+        memory_limit_mb: 512,
+      },
+
+      solution: {
+        image: "noj-solution-python",
+        entry: "submission_sample.py",
+        call_timeout_ms: 2000,
+        memory_limit_mb: 512,
+      },
+    },
     number: TEST_NUMBER + problemSeq, // +problemSeq 确保同文件内每个测试独立 number
     owner_id: ownerId,
     type,

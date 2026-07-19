@@ -25,14 +25,25 @@ function makeTask(overrides?: Partial<JudgeTask>): JudgeTask {
   return {
     submission_id: "test-sub-001",
     problem_id: "1001",
-    judge_image: "noj-judge-python",
-    judge_command: "python3 /tmp/evaluate.py",
+    runtime_config: {
+      evaluator: {
+        image: "noj-evaluator-python",
+        command: "python3 /workspace/evaluate.py",
+        time_limit_ms: 5000,
+        memory_limit_mb: 512,
+      },
+
+      solution: {
+        image: "noj-solution-python",
+        entry: "submission_sample.py",
+        call_timeout_ms: 2000,
+        memory_limit_mb: 512,
+      },
+    },
     download_url: "noj-download://base64/?content=",
     language: "python3",
     code: "print(42)",
     file_name: "submission.py",
-    time_limit_ms: 5000,
-    memory_limit_mb: 256,
     ...overrides,
   };
 }
@@ -63,7 +74,10 @@ Deno.test({
       // 验证消息可反序列化为合法的 JudgeTask
       const parsed = JSON.parse(messages[0]) as JudgeTask;
       assertEquals(parsed.submission_id, "test-sub-001");
-      assertEquals(parsed.judge_image, "noj-judge-python");
+      assertEquals(
+        parsed.runtime_config.evaluator.image,
+        "noj-evaluator-python",
+      );
       assertEquals(parsed.code, "print(42)");
     } finally {
       await fake.stop();
@@ -150,8 +164,6 @@ Deno.test({
 
       const task = makeTask({
         submission_id: "test-format-42",
-        time_limit_ms: 3000,
-        memory_limit_mb: 128,
       });
       await pushJudgeTask(task);
 
@@ -160,16 +172,13 @@ Deno.test({
 
       // 验证所有关键字段存在且类型正确
       assertEquals(typeof parsed.submission_id, "string");
-      assertEquals(typeof parsed.judge_image, "string");
+      assertEquals(typeof parsed.runtime_config, "object");
       assertEquals(typeof parsed.code, "string");
-      assertEquals(typeof parsed.time_limit_ms, "number");
-      assertEquals(typeof parsed.memory_limit_mb, "number");
       assertEquals(parsed.language, "python3");
       assertEquals(parsed.file_name, "submission.py");
 
       // 验证 JSON 序列化结果在 LPUSH 中正确传递
       assertEquals(parsed.submission_id, "test-format-42");
-      assertEquals(parsed.time_limit_ms, 3000);
     } finally {
       await fake.stop();
       resetRedisForTest();

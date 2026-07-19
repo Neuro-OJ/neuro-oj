@@ -151,20 +151,27 @@
     },
     {
       "idx": 21,
+      "version": "7",
+      "when": 1784200000000,
+      "tag": "0019_remove_judge_image_judge_command",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
       "version": "6",
       "when": 1784350000000,
       "tag": "0018_audit_logs_auth_actions",
       "breakpoints": true
     },
     {
-      "idx": 22,
+      "idx": 23,
       "version": "6",
       "when": 1784350000100,
       "tag": "0019_audit_logs_nullable_admin",
       "breakpoints": true
     },
     {
-      "idx": 23,
+      "idx": 24,
       "version": "6",
       "when": 1784400000000,
       "tag": "0020_user_rankings_view",

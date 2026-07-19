@@ -216,15 +216,15 @@ mod tests {
         let json = r#"{
             "submission_id":"sid-1",
             "problem_id":"1001",
-            "judge_image":"noj-judge-python",
-            "judge_command":"python3 /tmp/evaluate.py",
+            "runtime_config":{
+                "evaluator":{"image":"noj-evaluator-python","command":"python3 /workspace/evaluate.py","time_limit_ms":5000,"memory_limit_mb":512},
+                "solution":{"image":"noj-solution-python","entry":"submission_sample.py","call_timeout_ms":2000,"memory_limit_mb":512}
+            },
             "language":"python3",
-            "code":"print(1)",
-            "time_limit_ms":1000,
-            "memory_limit_mb":64
+            "code":"print(1)"
         }"#;
         let task = parse_task_message(json).expect("应解析成功");
         assert_eq!(task.submission_id, "sid-1");
-        assert_eq!(task.judge_image, "noj-judge-python");
+        assert_eq!(task.runtime_config.evaluator.image, "noj-evaluator-python");
     }
 }
