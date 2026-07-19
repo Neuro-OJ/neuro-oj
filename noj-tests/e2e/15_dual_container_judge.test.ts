@@ -345,8 +345,8 @@ if (!isE2E) {
 
       // 普通用户提交代码
       const userToken = await registerUser(
-        `dual-sub-${Date.now()}`,
-        `dual-sub-${Date.now()}@test.local`,
+        `dual_sub_${Date.now()}`,
+        `dual_sub_${Date.now()}@test.local`,
         "UserPass123!",
       );
 
