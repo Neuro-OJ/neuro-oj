@@ -30,7 +30,11 @@ import {
 
 // 模块级：连接 Redis（PR-1 后 authMiddleware 需要 Redis 校验 JWT 撤销状态）
 // 未配置 REDIS_URL 时跳过此步（依赖测试自身的 Redis fixture）
+// 同时开启 JWT 撤销检查短路开关（NOJ_BYPASS_JWT_REVOKE=1）：
+// PR-1 已被 main revert，但 smoke 测试仍走 authMiddleware → isJtiRevoked。
+// 短路让 isJtiRevoked 直接返 false，避免 Redis 跨测试状态污染。
 if (Deno.env.get("REDIS_URL")) {
+  Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
   try {
     const redisModule = await import("../src/mq/connection.ts");
     redisModule.resetRedisForTest();
