@@ -77,7 +77,7 @@ if (!isE2E) {
     title: string,
   ): Promise<string> {
     const res = await apiPost(
-      "/api/v1/admin/problems",
+      "/api/v1/problems",
       {
         title,
         description: `# ${title}\n\nMarkdown 内容`,
@@ -207,7 +207,7 @@ if (!isE2E) {
 
       // 临时创建一个 evaluator 镜像：复用 EVALUATOR_IMAGE 当作 solution
       const res = await apiPost(
-        "/api/v1/admin/problems",
+        "/api/v1/problems",
         {
           title: `[${TEST_TAG}] kind 错配测试`,
           description: "test",
