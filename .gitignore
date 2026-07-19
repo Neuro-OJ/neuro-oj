@@ -68,3 +68,10 @@ noj-core/data/packages/
 *.idea/
 .playwright-mcp/
 aa.txt
+
+# --- Rust profiling ---
+*.profraw
+*.profdata
+
+# --- Docker buildx cache ---
+.buildx/
