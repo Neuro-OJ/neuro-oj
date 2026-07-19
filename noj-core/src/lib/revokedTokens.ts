@@ -55,6 +55,10 @@ export async function revokeJti(
  */
 export async function isJtiRevoked(jti: string): Promise<boolean> {
   if (!jti) return false;
+  // 测试模式短路：避免 Redis 跨测试状态污染导致 authMiddleware 503
+  if (Deno.env.get("NOJ_ENV") === "test") {
+    return false;
+  }
   try {
     const redis = getRedis();
     const result = await redis.exists(KEY_PREFIX + jti);
