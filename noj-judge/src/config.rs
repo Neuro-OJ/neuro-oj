@@ -25,6 +25,7 @@ pub struct Config {
 
 /// 容器池配置。
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct PoolConfig {
     /// 启动时每个镜像预创建的容器数（默认: 2）
     pub initial_size: usize,

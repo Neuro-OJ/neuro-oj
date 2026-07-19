@@ -29,8 +29,21 @@ async function seedProblems() {
       title: "动态规划入门",
       description: "",
       difficulty: "medium",
-      judge_image: "test",
-      judge_command: "test",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+
+        solution: {
+          image: "noj-solution-python",
+          entry: "submission_sample.py",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
       number: 1001,
       type: "P",
       created_at: now,
@@ -41,8 +54,21 @@ async function seedProblems() {
       title: "Hello World",
       description: "",
       difficulty: "easy",
-      judge_image: "test",
-      judge_command: "test",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+
+        solution: {
+          image: "noj-solution-python",
+          entry: "submission_sample.py",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
       number: 1002,
       type: "P",
       created_at: now,
@@ -53,8 +79,21 @@ async function seedProblems() {
       title: "私有题目",
       description: "",
       difficulty: "hard",
-      judge_image: "test",
-      judge_command: "test",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+
+        solution: {
+          image: "noj-solution-python",
+          entry: "submission_sample.py",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
       number: 1,
       type: "U",
       created_at: now,

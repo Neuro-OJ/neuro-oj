@@ -19,10 +19,7 @@ import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { getDb } from "../db/connection.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
 import { getProblem } from "./problems.ts";
-import {
-  validateJudgeImage,
-  validateJudgeImageWithKind,
-} from "./judge-images.ts";
+import { validateJudgeImageWithKind } from "./judge-images.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { getPendingSubmissionIds, getSubmissionQueueStatus } from "./queue.ts";
 import type {
@@ -32,6 +29,7 @@ import type {
 } from "../types/index.ts";
 import { logAudit } from "./audit-log.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
+import type { RuntimeConfig } from "../types/problems.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";
 import { applyNewResult } from "./stats-cache.ts";
 export interface SubmissionInput {
@@ -113,8 +111,6 @@ export interface SubmissionListItem {
   problem: {
     id: string;
     title: string;
-    time_limit_ms: number | null;
-    memory_limit_mb: number | null;
   };
   result: {
     status: string;
@@ -249,8 +245,6 @@ export async function listSubmissions(
       judge_started_at: submissions.judge_started_at,
       judge_finished_at: submissions.judge_finished_at,
       problem_title: problems.title,
-      problem_time_limit_ms: problems.time_limit_ms,
-      problem_memory_limit_mb: problems.memory_limit_mb,
       result_status: evaluationResults.status,
       result_score: evaluationResults.score,
       result_time_ms: evaluationResults.time_ms,
@@ -312,8 +306,6 @@ export async function listSubmissions(
       problem: {
         id: row.problem_id,
         title: row.problem_title ?? "",
-        time_limit_ms: row.problem_time_limit_ms ?? null,
-        memory_limit_mb: row.problem_memory_limit_mb ?? null,
       },
       result: row.result_status
         ? {
@@ -401,51 +393,39 @@ export async function createSubmission(
     }
   }
 
-  // ── 决定评测模式 + 镜像白名单 final gate ──
-  // - runtime_config 非空 → dual mode + 校验 evaluator/solution image + kind
-  // - runtime_config 为空 → single mode + 校验 judge_image
-  // 任一校验失败抛 image_not_allowlisted 错误（spec §4 final gate）
+  // ── 使用 runtime_config（双容器模式）──
+  // 校验 evaluator/solution image + kind（spec §4 final gate）
   const runtimeConfig = problem.runtime_config as
     | import("../types/problems.ts").RuntimeConfig
     | null
     | undefined;
 
-  let judgeMode: "single" | "dual";
-  if (runtimeConfig) {
-    judgeMode = "dual";
-    // 防御性 final gate：再次校验双容器镜像 + kind
-    await validateJudgeImageWithKind(
-      runtimeConfig.evaluator.image,
-      "evaluator",
+  if (!runtimeConfig) {
+    throw new AppError(
+      "题目缺少 runtime_config 配置，无法评测",
+      500,
+      "RUNTIME_CONFIG_MISSING",
     );
-    await validateJudgeImageWithKind(
-      runtimeConfig.solution.image,
-      "solution",
-    );
-  } else {
-    judgeMode = "single";
-    // 单容器：校验 judge_image 仍在白名单
-    await validateJudgeImage(problem.judge_image);
   }
+
+  // 防御性 final gate：校验双容器镜像 + kind
+  await validateJudgeImageWithKind(
+    runtimeConfig.evaluator.image,
+    "evaluator",
+  );
+  await validateJudgeImageWithKind(
+    runtimeConfig.solution.image,
+    "solution",
+  );
 
   const task: JudgeTask = {
     submission_id: id,
     problem_id: input.problem_id,
-    mode: judgeMode,
-    // dual 模式下 judge_image / judge_command 可省略；single 模式下必填
-    ...(judgeMode === "single" && {
-      judge_image: problem.judge_image,
-      judge_command: problem.judge_command,
-    }),
+    runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
     download_url,
-    ...(judgeMode === "dual" && {
-      runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
-    }),
     language: input.language,
     code: input.code,
     file_name: fileName,
-    time_limit_ms: problem.time_limit_ms,
-    memory_limit_mb: problem.memory_limit_mb,
   };
 
   try {
@@ -910,18 +890,20 @@ export async function rejudgeSubmission(id: string): Promise<void> {
 
   await updateSubmissionStatus(id, "judging");
 
+  const runtimeConfig = problem.runtime_config as
+    | import("../types/problems.ts").RuntimeConfig
+    | null
+    | undefined;
+
   const task: JudgeTask = {
     submission_id: id,
     problem_id: submission.problem_id,
-    judge_image: problem.judge_image,
-    judge_command: problem.judge_command,
+    runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
     download_url,
     language: submission.language,
     code: submission.code,
     file_name: submission.file_name ??
       (LANGUAGE_EXT_MAP[submission.language] || "main.txt"),
-    time_limit_ms: problem.time_limit_ms,
-    memory_limit_mb: problem.memory_limit_mb,
     rejudge_seq: updated?.rejudge_seq ?? 0,
   };
 
@@ -1084,15 +1066,12 @@ export async function rejudgeProblemSubmissions(
       const task: JudgeTask = {
         submission_id: sub.id,
         problem_id: problemId,
-        judge_image: problem.judge_image,
-        judge_command: problem.judge_command,
+        runtime_config: problem.runtime_config as RuntimeConfig,
         download_url,
         language: sub.language,
         code: sub.code,
         file_name: sub.file_name ??
           (LANGUAGE_EXT_MAP[sub.language] || "main.txt"),
-        time_limit_ms: problem.time_limit_ms,
-        memory_limit_mb: problem.memory_limit_mb,
         rejudge_seq: currentSeq,
       };
 

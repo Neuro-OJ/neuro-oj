@@ -16,6 +16,7 @@ const MAX_EXEC_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 /// 在已存在的容器中通过 exec 执行命令。
 ///
 /// 返回 (stdout, stderr, exit_code, time_ms)。
+#[allow(dead_code)]
 pub async fn execute_in_container(
     docker: &Docker,
     container_id: &str,
@@ -145,6 +146,7 @@ pub async fn execute_in_container(
     }
 }
 
+#[allow(dead_code)]
 fn append_limited(output: &mut String, message: &[u8], truncated: &mut bool) {
     if *truncated {
         return;
@@ -171,6 +173,7 @@ fn append_limited(output: &mut String, message: &[u8], truncated: &mut bool) {
 ///
 /// 优先 cgroup v2 (`memory.peak`)，回退 v1 (`memory.max_usage_in_bytes`)。
 /// 读取失败时返回 Ok(0) 不阻塞评测流程。
+#[allow(dead_code)]
 pub async fn read_memory_peak_kb(docker: &Docker, container_id: &str) -> Result<u64> {
     // cgroup v2: memory.peak (Linux 6.1+)
     let cmd = vec![

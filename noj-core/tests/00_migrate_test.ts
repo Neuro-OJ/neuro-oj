@@ -27,24 +27,45 @@ if (hasDb) {
 
     const db = getDb();
     const now = new Date().toISOString();
-    const existing = await db
-      .select()
-      .from(judgeImages)
-      .where(eq(judgeImages.image, "noj-judge-python"))
-      .limit(1);
-    if (existing.length === 0) {
-      await db.insert(judgeImages).values({
-        id: "e0000000-0000-0000-0000-000000000001",
-        image: "noj-judge-python",
-        mode: "all_versions",
-        description: "Python 3.12 评测环境",
-        created_at: now,
-        updated_at: now,
-      });
-      console.log("[setup] 默认评测镜像白名单就绪");
-    } else {
-      console.log("[setup] 默认评测镜像已存在，跳过插入");
+    // 确保 3 个默认评测镜像存在（幂等）
+    for (
+      const img of [
+        {
+          id: "e0000000-0000-0000-0000-000000000001",
+          image: "noj-judge-python",
+          kind: "evaluator",
+          desc: "Python 3.12 评测环境",
+        },
+        {
+          id: "e0000000-0000-0000-0000-000000000002",
+          image: "noj-evaluator-python",
+          kind: "evaluator",
+          desc: "Evaluator 运行时",
+        },
+        {
+          id: "e0000000-0000-0000-0000-000000000003",
+          image: "noj-solution-python",
+          kind: "solution",
+          desc: "Solution 运行时",
+        },
+      ]
+    ) {
+      const exist = await db.select().from(judgeImages).where(
+        eq(judgeImages.image, img.image),
+      ).limit(1);
+      if (exist.length === 0) {
+        await db.insert(judgeImages).values({
+          id: img.id,
+          image: img.image,
+          mode: "all_versions",
+          kind: img.kind,
+          description: img.desc,
+          created_at: now,
+          updated_at: now,
+        });
+      }
     }
+    console.log("[setup] 默认评测镜像白名单就绪");
   } catch (err) {
     console.error("[setup] 数据库/种子数据初始化失败:", err);
     Deno.exit(1);
