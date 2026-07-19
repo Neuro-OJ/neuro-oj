@@ -75,18 +75,13 @@ export const problems = pgTable(
     title: text("title").notNull(),
     description: text("description").notNull(),
     difficulty: text("difficulty").notNull().default("medium"),
-    judge_image: text("judge_image").notNull(),
-    judge_command: text("judge_command").notNull(),
     /** 支持包存储 URL（`noj-storage://` 格式），或 legacy 本地路径 */
     support_package_storage_url: text("support_package_storage_url"),
-    time_limit_ms: integer("time_limit_ms").notNull().default(5000),
-    memory_limit_mb: integer("memory_limit_mb").notNull().default(512),
     /**
-     * 双容器 Runtime 配置（dual-container-judge §4）。
-     * - NULL：单容器题目（向后兼容）
-     * - 非 NULL：双容器题目（evaluator + solution 各自 RuntimeConfig）
+     * 双容器 Runtime 配置（必填）。
+     * 包含 evaluator 和 solution 两个容器的运行时配置。
      */
-    runtime_config: jsonb("runtime_config"),
+    runtime_config: jsonb("runtime_config").notNull(),
     /** 题号（同一 type 内独立自增） */
     number: integer("number").notNull(),
     /** 题目所有者 ID，默认 root (UID=0) */

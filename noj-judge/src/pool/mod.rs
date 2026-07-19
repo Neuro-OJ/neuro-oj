@@ -902,11 +902,13 @@ impl PoolManager {
     }
 
     /// 获取内部 Docker 客户端引用。
+    #[allow(dead_code)]
     pub fn docker(&self) -> &Docker {
         &self.docker
     }
 
     /// 获取池配置引用。
+    #[allow(dead_code)]
     pub fn config(&self) -> &PoolConfig {
         &self.config
     }
@@ -929,10 +931,12 @@ impl PoolManager {
         self.tasks_total.fetch_add(1, Ordering::Relaxed);
     }
 
+    #[allow(dead_code)]
     pub fn inc_errors_total(&self) {
         self.errors_total.fetch_add(1, Ordering::Relaxed);
     }
 
+    #[allow(dead_code)]
     pub fn inc_timeouts_total(&self) {
         self.timeouts_total.fetch_add(1, Ordering::Relaxed);
     }
