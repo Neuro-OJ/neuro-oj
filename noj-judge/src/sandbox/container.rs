@@ -12,6 +12,7 @@ use anyhow::{Context, Result};
 /// 临时工作目录守卫。
 ///
 /// Drop 时自动递归删除目录（sync Drop，不依赖 tokio）。
+#[allow(dead_code)]
 pub struct TempDir {
     path: PathBuf,
 }
@@ -20,6 +21,7 @@ impl TempDir {
     /// 在 `root` 下创建以 `prefix` 命名的临时目录。
     ///
     /// `prefix` 必须是单级路径组件（不含 `/`、`\`、`..`），且不能为空。
+    #[allow(dead_code)]
     pub async fn new(root: &Path, prefix: &str) -> Result<Self> {
         // 安全校验：拒绝空字符串
         if prefix.is_empty() {
@@ -39,6 +41,7 @@ impl TempDir {
     }
 
     /// 获取临时目录路径。
+    #[allow(dead_code)]
     pub fn path(&self) -> &Path {
         &self.path
     }
@@ -164,6 +167,7 @@ pub async fn prepare_work_dir(work_dir: &Path, submission_id: &str) -> Result<Pa
 ///
 /// 使用 spawn_blocking 将同步解压操作移出 async 上下文，
 /// 避免 zip crate 在 tokio runtime 下可能出现的数据读取问题。
+#[allow(dead_code)]
 pub async fn extract_zip(data: &[u8], target_dir: &Path) -> Result<()> {
     let data = data.to_vec();
     let target_dir = target_dir.to_path_buf();
@@ -176,6 +180,7 @@ pub async fn extract_zip(data: &[u8], target_dir: &Path) -> Result<()> {
 /// 写入用户代码到工作目录。
 ///
 /// 验证 file_name 安全性：拒绝含路径分隔符或 `..` 的文件名，防止路径逃逸。
+#[allow(dead_code)]
 pub async fn write_user_code(work_dir: &Path, task: &JudgeTask) -> Result<()> {
     let file_name = task.file_name.as_deref().unwrap_or("main.py");
 

@@ -76,14 +76,9 @@ export interface CreateProblemInput {
   title: string;
   description: string;
   difficulty?: string;
-  judge_image: string;
-  judge_command: string;
   support_package_storage_url?: string | null;
-  time_limit_ms?: number;
-  memory_limit_mb?: number;
   /**
    * 双容器 Runtime 配置。仅 admin 可设置。
-   * 设置后 `judge_image` / `judge_command` 仍保留为同步值，但调度时以 runtime_config 为准。
    */
   runtime_config?: RuntimeConfig | null;
   category_ids?: string[];
@@ -100,13 +95,9 @@ export interface UpdateProblemInput {
   title?: string;
   description?: string;
   difficulty?: string;
-  judge_image?: string;
-  judge_command?: string;
   support_package_storage_url?: string | null;
-  time_limit_ms?: number;
-  memory_limit_mb?: number;
   /**
-   * 双容器 Runtime 配置。设为 null 即清空（题目回到单容器路径）。
+   * 双容器 Runtime 配置。设为 null 即清空。
    */
   runtime_config?: RuntimeConfig | null;
   category_ids?: string[];
@@ -137,17 +128,13 @@ export interface ProblemResponseWithCategories {
   title: string;
   description: string;
   difficulty: string;
-  judge_image: string;
-  judge_command: string;
   support_package_storage_url: string | null;
   /** 是否有已上传的支持包文件 */
   has_support_package: boolean;
-  time_limit_ms: number;
-  memory_limit_mb: number;
   /**
-   * 双容器 Runtime 配置。null 表示单容器题目。
+   * 双容器 Runtime 配置（所有题目统一使用双容器模式）。
    */
-  runtime_config: RuntimeConfig | null;
+  runtime_config: RuntimeConfig;
   categories: { id: string; name: string; slug: string }[];
   created_at: string;
   updated_at: string;
@@ -226,7 +213,7 @@ export const EXPORT_VERSION = "1.0" as const;
  *
  * 字段命名约定：
  * - 蛇形命名（snake_case）保持与 DB 列一致，便于 round-trip
- * - 列表类字段（categories / judge_images / samples）按显示顺序排列
+ * - 列表类字段（categories / samples）按显示顺序排列
  * - display_id = `${type}${number}`，从 type+number 计算得出，导入时可任选其一
  */
 export interface ExportProblem {
@@ -238,15 +225,11 @@ export interface ExportProblem {
   description: string;
   difficulty: string;
   categories: { name: string; slug: string }[];
-  judge_images: string[];
-  judge_command: string;
-  time_limit_ms: number;
-  memory_limit_mb: number;
   support_package_storage_url: string | null;
   /** 引用支持包 URL（与 support_package_storage_url 同值，仅作为语义占位） */
   test_cases_ref: string | null;
   /**
-   * 双容器 Runtime 配置。null 表示单容器题目。
+   * 双容器 Runtime 配置。
    * 旧版导出文件可能缺失该字段，导入时按 null 处理。
    */
   runtime_config: RuntimeConfig | null;

@@ -34,6 +34,10 @@ FROM denoland/deno:alpine-2.8.0
 # Alpine 基础镜像默认不带 wget，必须 apk add。--no-cache 避免增加镜像体积。
 RUN apk add --no-cache wget
 
+# 缓存破坏器：CI 传入 github.run_id 确保每次获取最新源码
+ARG CACHE_BUST
+RUN test -n "$CACHE_BUST" || echo "warning: CACHE_BUST not set"
+
 WORKDIR /app
 
 # 先复制依赖定义，利用 Docker 缓存
@@ -53,6 +57,7 @@ RUN deno cache \
       --no-lock 2>&1 || { echo "ERROR: deno cache warmup failed" >&2; exit 1; }
 
 # 复制其余数据 / 配置
+# cache-bust-2026-07-19: fix migration ADD COLUMN without IF NOT EXISTS
 COPY data/ ./data/
 COPY drizzle.config.ts ./
 COPY drizzle/ drizzle/

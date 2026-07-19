@@ -58,8 +58,6 @@ const { data: problemData, pending: problemPending, error: problemError } = useF
     title: string
     description: string
     difficulty: string
-    time_limit_ms: number
-    memory_limit_mb: number
     type: 'U' | 'P'
     categories: { id: string; name: string; slug: string }[]
   }

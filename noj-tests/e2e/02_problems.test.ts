@@ -54,10 +54,13 @@ Deno.test({
       title: "E2E 两数之和",
       description: "实现两数之和。",
       difficulty: "easy",
-      judge_image: "noj-judge-python",
-      judge_command: "python3 /tmp/evaluate.py",
-      time_limit_ms: 3000,
-      memory_limit_mb: 256,
+      runtime_config: {
+
+        evaluator: { image: "noj-evaluator-python", command: "python3 /workspace/evaluate.py", time_limit_ms: 5000, memory_limit_mb: 512 },
+
+        solution: { image: "noj-solution-python", entry: "submission_sample.py", call_timeout_ms: 2000, memory_limit_mb: 512 },
+
+      },
       type: "P",
     }, adminToken);
     if (status !== 201) throw new Error("创建失败: " + status);
@@ -77,8 +80,13 @@ Deno.test({
     const { status } = await apiPost("/api/v1/problems", {
       title: "Hack",
       description: "x",
-      judge_image: "img",
-      judge_command: "cmd",
+      runtime_config: {
+
+        evaluator: { image: "noj-evaluator-python", command: "python3 /workspace/evaluate.py", time_limit_ms: 5000, memory_limit_mb: 512 },
+
+        solution: { image: "noj-solution-python", entry: "submission_sample.py", call_timeout_ms: 2000, memory_limit_mb: 512 },
+
+      },
     });
     if (status !== 401) throw new Error("期望 401");
     console.log("  ✓ 未认证创建被拒");

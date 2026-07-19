@@ -30,17 +30,17 @@
                     <div class="col-span-2 self-center flex items-center justify-between gap-2 text-[11px]">
                         <span class="text-text-muted">{{ formatTime(submission.created_at) }}</span>
                         <div class="flex items-center gap-px font-mono tabular-nums">
-                            <span :class="getUsageColor(submission.result.time_ms, submission.problem.time_limit_ms)">
+                            <span :class="getUsageColor(submission.result.time_ms, submission.problem.runtime_config.evaluator.time_limit_ms)">
                                 {{ formatTimeMs(submission.result.time_ms) }}
                             </span>
                             <span class="text-text-muted">/</span>
-                            <span class="font-bold text-text-muted">{{ formatTimeMs(submission.problem.time_limit_ms) }}</span>
+                            <span class="font-bold text-text-muted">{{ formatTimeMs(submission.problem.runtime_config.evaluator.time_limit_ms) }}</span>
                             <span class="text-text-muted mx-px">-</span>
                             <span :class="getUsageColor(submission.result.memory_kb, memoryLimitKb)">
                                 {{ formatMemory(submission.result.memory_kb) }}
                             </span>
                             <span class="text-text-muted">/</span>
-                            <span class="font-bold text-text-muted">{{ formatMemoryLimit(submission.problem.memory_limit_mb) }}</span>
+                            <span class="font-bold text-text-muted">{{ formatMemoryLimit(submission.problem.runtime_config.evaluator.memory_limit_mb) }}</span>
                         </div>
                     </div>
                 </template>
@@ -70,8 +70,7 @@ interface Submission {
     problem_id: string
     problem: {
         title: string
-        time_limit_ms: number | null
-        memory_limit_mb: number | null
+        runtime_config: { evaluator: { time_limit_ms: number; memory_limit_mb: number } }
     }
     status: string
     created_at: string
@@ -97,7 +96,7 @@ const props = defineProps<Props>()
 
 /** 内存上限换算为 KB（用于百分比计算）；null/0 时返回 0（灰色） */
 const memoryLimitKb = computed(() =>
-    (props.submission.problem.memory_limit_mb ?? 0) * 1024,
+    (props.submission.problem.runtime_config.evaluator.memory_limit_mb ?? 0) * 1024,
 )
 
 function formatTime(iso: string): string {
