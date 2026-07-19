@@ -119,6 +119,11 @@ export function createApp(): Hono {
     );
   });
 
+  // 全局中间件（PR-2 死开关：维护模式 + banlistMiddleware）：
+  // 必须在 routes 注册之前先注册，否则 routes 优先匹配导致中间件不生效。
+  app.use("/api/v1/*", maintenanceMode);
+  app.use("/api/v1/*", banlistMiddleware);
+
   // 注册路由
   app.route("/", health);
   app.route("/api/v1/auth", auth);
@@ -142,12 +147,6 @@ export function createApp(): Hono {
   // 统计数据 SSE 端点（公开，无需 authMiddleware，必须在 sse 之前注册）
   app.route("/api/v1", statsSse);
   app.route("/api/v1", sse);
-
-  // 全局中间件（PR-2 死开关：维护模式 + 修 banlistMiddleware 注册顺序）：
-  // 注意：app.use() 的注册顺序决定执行顺序，注册在 routes 之后仍能拦截
-  // 后续请求路径。
-  app.use("/api/v1/*", maintenanceMode);
-  app.use("/api/v1/*", banlistMiddleware);
 
   return app;
 }
