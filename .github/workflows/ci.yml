@@ -152,6 +152,10 @@ jobs:
       DATABASE_URL: postgres://noj:noj@localhost:5432/noj
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+      # 设置 NOJ_ENV=test 让 isRateLimitEnabled() 读 RATE_LIMIT_ENABLED=true
+      # 关闭限流（避免 CI 中因跨测试限流状态导致 503）
+      NOJ_ENV: test
+      RATE_LIMIT_ENABLED: "false"
 
     steps:
       - name: 检出代码
