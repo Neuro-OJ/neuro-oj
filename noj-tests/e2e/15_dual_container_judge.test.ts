@@ -269,7 +269,7 @@ if (!isE2E) {
 
       // 清空 runtime_config
       const update = await apiPut(
-        `/api/v1/admin/problems/${problemId}`,
+        `/api/v1/problems/${problemId}`,
         {
           runtime_config: null,
         },
@@ -299,7 +299,7 @@ if (!isE2E) {
 
       // 不传 runtime_config → 应创建单容器题目
       const res = await apiPost(
-        "/api/v1/admin/problems",
+        "/api/v1/problems",
         {
           title: `[${TEST_TAG}] 单容器回归`,
           description: "test",
