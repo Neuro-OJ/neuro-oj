@@ -53,7 +53,10 @@ _resetEnvSnapshotForTest();
 snapshotEnv();
 await initSystemSettings();
 
-// 禁用速率限制（避免无 Redis 时登录被限流/503）
+// 切换为 test 模式，确保 RATE_LIMIT_ENABLED=false 生效（isRateLimitEnabled 仅在
+// NOJ_ENV=test 时读取 RATE_LIMIT_ENABLED 环境变量；非 test 模式走 DB 默认值 true）。
+Deno.env.set("NOJ_ENV", "test");
+// 禁用速率限制（避免 Redis 未就绪时登录被限流/503）
 Deno.env.set("RATE_LIMIT_ENABLED", "false");
 // 设置测试 JWT_SECRET（CI 中通过 secret 注入，本地 PGlite 模式需默认值）
 if (!Deno.env.get("JWT_SECRET")) {
