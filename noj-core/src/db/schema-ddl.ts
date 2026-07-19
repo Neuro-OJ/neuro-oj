@@ -167,10 +167,11 @@ export const SCHEMA_DDL: string[] = [
     updated_by TEXT REFERENCES users(id) ON DELETE SET NULL
   )`,
 
-  // 15. audit_logs (issue #101)
+  // 15. audit_logs (issue #101 + PR-2)
   `CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY,
-    admin_id TEXT NOT NULL REFERENCES users(id),
+    -- PR-2：admin_id 改为 nullable——auth.* 事件可能无 actor（登录失败等）
+    admin_id TEXT REFERENCES users(id),
     action TEXT NOT NULL,
     target_type TEXT,
     target_id TEXT,
@@ -179,10 +180,13 @@ export const SCHEMA_DDL: string[] = [
     created_at TEXT NOT NULL,
     CONSTRAINT audit_logs_action_check CHECK (action IN (
       'users.role_change','users.ban','users.unban',
-      'problems.delete','problems.runtime_config_changed','categories.delete','submissions.rejudge','settings.update',
-      'ip_ban.create','ip_ban.delete'
+      'problems.delete','categories.delete','submissions.rejudge','settings.update',
+      'ip_ban.create','ip_ban.delete',
+      -- PR-2 新增 auth.* 动作
+      'auth.login_success','auth.login_failure','auth.register',
+      'auth.change_password','auth.forgot_password_request','auth.password_reset')
     ))
-  )`,
+  `,
 
   // 16. ip_bans (issue #102)
   `CREATE TABLE IF NOT EXISTS ip_bans (

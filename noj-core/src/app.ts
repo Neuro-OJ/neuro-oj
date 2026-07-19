@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context, Next } from "hono";
 import { cors } from "hono/cors";
 import health from "./routes/health.ts";
 import auth from "./routes/auth.ts";
@@ -17,6 +18,43 @@ import sse, { statsSse } from "./routes/sse.ts";
 import { AppError } from "./lib/errors.ts";
 import { listJudgeImages } from "./services/judge-images.ts";
 import { banlistMiddleware } from "./middleware/banlist.ts";
+import { getSetting } from "./services/system-settings.ts";
+
+/**
+ * 维护模式中间件（PR-2 死开关）。
+ *
+ * 当 `maintenance_mode=true` 时：
+ * - GET/HEAD/OPTIONS 请求放行（用户仍可浏览、查状态）
+ * - POST/PUT/PATCH/DELETE 请求返 503 + `MAINTENANCE` code
+ *
+ * 设计取舍：
+ * - 不缓存 maintenance_mode：管理后台切换后下一次请求立即生效
+ * - 不阻塞 /health：负载均衡器仍能正常探活
+ */
+function maintenanceMode(
+  c: Context,
+  next: Next,
+): Promise<Response | void> {
+  const setting = getSetting("maintenance_mode");
+  if (setting?.value !== true) {
+    return next();
+  }
+
+  const method = c.req.method.toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
+    return next();
+  }
+
+  return Promise.resolve(
+    c.json(
+      {
+        error: "系统维护中，请稍后再试",
+        code: "MAINTENANCE",
+      },
+      503,
+    ),
+  );
+}
 
 /**
  * 创建并配置 Hono 应用实例。
@@ -81,6 +119,12 @@ export function createApp(): Hono {
     );
   });
 
+  // 全局中间件（PR-2 修复顺序问题）：
+  // 注意：app.use() 的注册顺序决定执行顺序，必须在所有路由之前注册
+  // 才能拦截请求。原 banlistMiddleware 注册在 routes 之后，存在顺序 bug。
+  app.use("/api/v1/*", banlistMiddleware);
+  app.use("/api/v1/*", maintenanceMode);
+
   // 注册路由
   app.route("/", health);
   app.route("/api/v1/auth", auth);
@@ -104,13 +148,6 @@ export function createApp(): Hono {
   // 统计数据 SSE 端点（公开，无需 authMiddleware，必须在 sse 之前注册）
   app.route("/api/v1", statsSse);
   app.route("/api/v1", sse);
-
-  // 全局中间件（issue #102 / ban-status-endpoint）：
-  // - banlistMiddleware 在 /api/v1/* 路径前，方法限制 + 最小白名单：
-  //   GET/HEAD/OPTIONS 放行，POST/PUT/PATCH/DELETE 拦截，白名单路径豁免
-  // - 被封 IP 用户仍可浏览、查 ban-status、登录/登出
-  // - authMiddleware（路由级）与 banlistMiddleware 统一模式
-  app.use("/api/v1/*", banlistMiddleware);
 
   return app;
 }

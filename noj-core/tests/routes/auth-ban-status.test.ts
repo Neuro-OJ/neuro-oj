@@ -2,6 +2,7 @@
  * ban-status 端点测试（ban-status-endpoint）。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
+import { initRedisForTest } from "../lib/helper.ts";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
 import { _resetBanCacheForTest } from "../../src/lib/banCache.ts";
@@ -18,6 +19,7 @@ let userToken = "";
 
 async function freshSetup() {
   await resetDbForTest();
+  await initRedisForTest();
   _resetBanlistForTest();
   _resetBanCacheForTest();
   const db = getDb();

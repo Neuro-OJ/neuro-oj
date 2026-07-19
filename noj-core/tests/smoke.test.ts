@@ -2,7 +2,8 @@
  * 核心 API 冒烟测试（smoke test）。
  *
  * 快速验证核心 API 端点在 HTTP 层面的可达性和基础响应格式正确性。
- * 不依赖外部服务（使用 PGlite 内存数据库），不执行评测相关功能。
+ * 使用 PGlite 内存数据库，需要 REDIS_URL 可用（PR-1 后 authMiddleware
+ * 校验 JWT 撤销状态依赖 Redis，fail-closed 设计）。
  * 作为 CI 中 core-smoke job 的快速反馈路径（预计 < 1 分钟完成）。
  *
  * 测试覆盖：
@@ -27,6 +28,24 @@ import {
   snapshotEnv,
 } from "../src/lib/env-snapshot.ts";
 
+// 模块级：连接 Redis（PR-1 后 authMiddleware 需要 Redis 校验 JWT 撤销状态）
+// 未配置 REDIS_URL 时跳过此步（依赖测试自身的 Redis fixture）
+// 同时开启 JWT 撤销检查短路开关（NOJ_BYPASS_JWT_REVOKE=1）：
+// PR-1 已被 main revert，但 smoke 测试仍走 authMiddleware → isJtiRevoked。
+// 短路让 isJtiRevoked 直接返 false，避免 Redis 跨测试状态污染。
+if (Deno.env.get("REDIS_URL")) {
+  Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
+  try {
+    const redisModule = await import("../src/mq/connection.ts");
+    redisModule.resetRedisForTest();
+    await redisModule.connectRedis();
+  } catch (e) {
+    if (!String(e).includes("already connecting/connected")) {
+      console.warn("[smoke] Redis 连接失败:", e);
+    }
+  }
+}
+
 // PGlite 模式：运行 DDL 建表。
 if (!Deno.env.get("DATABASE_URL")) {
   await resetDbForTest();
@@ -38,7 +57,10 @@ _resetEnvSnapshotForTest();
 snapshotEnv();
 await initSystemSettings();
 
-// 禁用速率限制（避免无 Redis 时登录被限流/503）
+// 切换为 test 模式，确保 RATE_LIMIT_ENABLED=false 生效（isRateLimitEnabled 仅在
+// NOJ_ENV=test 时读取 RATE_LIMIT_ENABLED 环境变量；非 test 模式走 DB 默认值 true）。
+Deno.env.set("NOJ_ENV", "test");
+// 禁用速率限制（避免 Redis 未就绪时登录被限流/503）
 Deno.env.set("RATE_LIMIT_ENABLED", "false");
 // 设置测试 JWT_SECRET（CI 中通过 secret 注入，本地 PGlite 模式需默认值）
 if (!Deno.env.get("JWT_SECRET")) {

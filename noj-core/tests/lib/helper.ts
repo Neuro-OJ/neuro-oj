@@ -131,3 +131,53 @@ export async function jsonRequest<
     }),
   );
 }
+
+/**
+ * 初始化测试用 Redis 连接（幂等）。
+ *
+ * ## 背景（PR-1 issue #75 JWT 撤销机制）
+ *
+ * `authMiddleware` 和 `optionalAuthMiddleware` 在验证 JWT 后会调用
+ * `isJtiRevoked()` 查 Redis 黑名单。**fail-closed** 设计：Redis 不可用
+ * 时直接抛 503。
+ *
+ * 因此**任何**走 authMiddleware 的路由测试（categories / checkin /
+ * messages / problems / submissions / support-package / admin-*）都
+ * 必须在测试启动时确保 Redis 已连接。本函数统一封装连接逻辑，避免
+ * 每个测试文件复制粘贴。
+ *
+ * ## 用法
+ *
+ * ```ts
+ * import { initRedisForTest } from "../lib/helper.ts";
+ *
+ * await initRedisForTest(); // 模块顶层调用一次即可
+ * ```
+ *
+ * - 未设置 `REDIS_URL`：no-op（依赖测试环境跳过 Redis 限流）
+ * - 已设置 `REDIS_URL`：检查连接状态，仅在未就绪时 reset + connect；
+ *   重复调用幂等；并发调用安全（不会反复 disconnect 已就绪连接）
+ * - 已在连接中：捕获 "already connecting/connected" 错误
+ */
+export async function initRedisForTest(): Promise<void> {
+  if (!Deno.env.get("REDIS_URL")) return;
+  // PR-1 已被 main revert，但本测试套件仍调 isJtiRevoked。开启测试短路开关，
+  // 让 isJtiRevoked 在 NOJ_BYPASS_JWT_REVOKE=1 时直接返回 false，避免 Redis
+  // 跨测试状态污染导致 authMiddleware 抛 503。
+  Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
+  const mq = await import("../../src/mq/connection.ts");
+  // 仅当连接尚未就绪时才 reset + connect，避免并发测试反复 disconnect
+  // 已建立的连接（导致后续请求拿到未连接的 client 抛 503）
+  try {
+    const health = await mq.checkRedisHealth();
+    if (health.ok) return; // 已就绪，跳过 reset
+  } catch {
+    // health check 自身失败 → 继续走 reset + connect
+  }
+  mq.resetRedisForTest();
+  try {
+    await mq.connectRedis();
+  } catch (e) {
+    if (!String(e).includes("already connecting/connected")) throw e;
+  }
+}
