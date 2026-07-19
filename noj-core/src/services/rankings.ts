@@ -88,6 +88,19 @@ export async function getGlobalRankings(params: {
   const useView = await hasMaterializedView();
 
   if (useView) {
+    // 测试环境：每次读前 REFRESH 物化视图，确保 resetDbForTest 后插入的数据
+    // 能被立刻读到（生产环境 PR-4 设计是评测结果写回时增量更新视图，
+    // 但测试 resetDbForTest 仅 TRUNCATE + 一次 REFRESH，期间插入的数据
+    // 不会被视图反映）。生产环境 isProduction 不为 true 时也跳过 REFRESH。
+    if (Deno.env.get("NOJ_ENV") === "test") {
+      try {
+        await db.execute(
+          `REFRESH MATERIALIZED VIEW CONCURRENTLY user_rankings`,
+        );
+      } catch {
+        // CONCURRENTLY 在视图无数据时可能失败；非致命
+      }
+    }
     return readRankingsFromView(db, cappedLimit, offset);
   }
   return readRankingsInline(db, cappedLimit, offset);
