@@ -36,24 +36,6 @@ impl JudgeStatus {
     }
 }
 
-/// 评测模式。
-///
-/// - `Single` 走现有单容器路径（`judge_image` / `judge_command`）。
-/// - `Dual` 走双容器编排（Evaluator + Solution），使用 `runtime_config`。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum JudgeMode {
-    Single,
-    Dual,
-}
-
-impl Default for JudgeMode {
-    /// 缺省/未识别时按单容器处理（向后兼容）。
-    fn default() -> Self {
-        JudgeMode::Single
-    }
-}
-
 /// 双容器模式下的 Runtime 配置（与 noj-core/src/types/index.ts 的 RuntimeConfig 对齐）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeConfig {
@@ -82,7 +64,7 @@ pub struct SolutionRuntime {
 /// 评测任务——从 noj-core 发送到 noj-judge 的消息。
 ///
 /// 字段对齐 noj-core/src/types/index.ts 的 JudgeTask 接口。
-/// `judge_image` / `judge_command` 在 dual 模式下可为空（由 `runtime_config` 提供）。
+/// 所有评测统一使用双容器模式（Evaluator + Solution），由 `runtime_config` 提供配置。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JudgeTask {
     /// 提交 UUID
@@ -90,34 +72,16 @@ pub struct JudgeTask {
     /// 题目 UUID
     #[allow(dead_code)]
     pub problem_id: String,
-    /// 评测模式：缺省/单容器/双容器
-    #[serde(default)]
-    pub mode: JudgeMode,
-    /// 题目定义的 Docker 镜像名（单容器必填；双容器由 runtime_config.evaluator.image 提供）
-    #[serde(default)]
-    pub judge_image: String,
-    /// 容器内执行的评测命令（单容器必填；双容器由 runtime_config.evaluator.command 提供）
-    #[serde(default)]
-    pub judge_command: String,
-    /// 支持包下载 URL（`noj-download://` 格式），单/双容器共用
+    /// 支持包下载 URL（`noj-download://` 格式）
     pub download_url: Option<String>,
-    /// 双容器模式：Runtime 配置
-    #[serde(default)]
-    pub runtime_config: Option<RuntimeConfig>,
+    /// 双容器 Runtime 配置（必填）
+    pub runtime_config: RuntimeConfig,
     /// 编程语言标识
     pub language: String,
     /// 用户源代码
     pub code: String,
     /// 用户代码的文件名
     pub file_name: Option<String>,
-    /// 时间限制（毫秒）
-    /// - 单容器：总超时
-    /// - 双容器：Evaluator 总超时
-    pub time_limit_ms: u64,
-    /// 内存限制（MB）
-    /// - 单容器：总内存
-    /// - 双容器：Evaluator 默认内存（实际以 runtime_config.evaluator.memory_limit_mb 为准）
-    pub memory_limit_mb: u64,
     /// 重测序列号（透传回 JudgeResult）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rejudge_seq: Option<i64>,
@@ -284,19 +248,18 @@ mod tests {
         let json = json!({
             "submission_id": "sid-123",
             "problem_id": "1001",
-            "judge_image": "noj-judge-python",
-            "judge_command": "python3 /tmp/evaluate.py",
+            "runtime_config": {
+                "evaluator": {"image": "noj-evaluator-python", "command": "python3 /workspace/evaluate.py", "time_limit_ms": 5000, "memory_limit_mb": 512},
+                "solution": {"image": "noj-solution-python", "entry": "submission_sample.py", "call_timeout_ms": 2000, "memory_limit_mb": 512}
+            },
             "language": "python3",
             "code": "print('hello')",
-            "time_limit_ms": 5000,
-            "memory_limit_mb": 512
         });
         let task: JudgeTask = serde_json::from_value(json).unwrap();
         assert_eq!(task.submission_id, "sid-123");
         assert_eq!(task.problem_id, "1001");
-        assert_eq!(task.judge_image, "noj-judge-python");
+        assert_eq!(task.runtime_config.evaluator.image, "noj-evaluator-python");
         assert_eq!(task.language, "python3");
-        assert_eq!(task.time_limit_ms, 5000);
         assert!(task.download_url.is_none());
         assert!(task.file_name.is_none());
     }
@@ -306,14 +269,14 @@ mod tests {
         let json = json!({
             "submission_id": "sid-456",
             "problem_id": "2001",
-            "judge_image": "noj-judge-python",
-            "judge_command": "python3 /tmp/evaluate.py",
+            "runtime_config": {
+                "evaluator": {"image": "noj-evaluator-python", "command": "python3 /workspace/evaluate.py", "time_limit_ms": 5000, "memory_limit_mb": 512},
+                "solution": {"image": "noj-solution-python", "entry": "submission_sample.py", "call_timeout_ms": 2000, "memory_limit_mb": 512}
+            },
             "download_url": "noj-download://base64/?content=UEsDBBQAAAAIA",
             "language": "python3",
             "code": "print('hello')",
             "file_name": "solution.py",
-            "time_limit_ms": 10000,
-            "memory_limit_mb": 1024
         });
         let task: JudgeTask = serde_json::from_value(json).unwrap();
         assert_eq!(task.submission_id, "sid-456");
@@ -322,7 +285,6 @@ mod tests {
             Some("noj-download://base64/?content=UEsDBBQAAAAIA")
         );
         assert_eq!(task.file_name.as_deref(), Some("solution.py"));
-        assert_eq!(task.time_limit_ms, 10000);
     }
 
     #[test]
@@ -330,13 +292,13 @@ mod tests {
         let json = json!({
             "submission_id": "sid-789",
             "problem_id": "1001",
-            "judge_image": "noj-judge-python",
-            "judge_command": "python3 /tmp/evaluate.py",
+            "runtime_config": {
+                "evaluator": {"image": "noj-evaluator-python", "command": "python3 /workspace/evaluate.py", "time_limit_ms": 5000, "memory_limit_mb": 512},
+                "solution": {"image": "noj-solution-python", "entry": "submission_sample.py", "call_timeout_ms": 2000, "memory_limit_mb": 512}
+            },
             "download_url": "",
             "language": "python3",
             "code": "",
-            "time_limit_ms": 5000,
-            "memory_limit_mb": 512
         });
         let task: JudgeTask = serde_json::from_value(json).unwrap();
         assert_eq!(task.download_url, Some(String::new()));

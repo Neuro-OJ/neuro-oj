@@ -125,14 +125,16 @@ router.get("/:id", async (c) => {
 router.post("/", authMiddleware, async (c) => {
   const body = await parseJsonBody<CreateProblemInput>(c);
 
-  if (!body.title || !body.judge_image || !body.judge_command) {
-    throw new BadRequestError(
-      "缺少必填字段：title, judge_image, judge_command",
-    );
+  if (!body.title) {
+    throw new BadRequestError("缺少必填字段：title");
   }
 
   if (!body.description) {
     throw new BadRequestError("缺少必填字段：description");
+  }
+
+  if (!body.runtime_config) {
+    throw new BadRequestError("缺少必填字段：runtime_config");
   }
 
   const userId = c.get("userId");

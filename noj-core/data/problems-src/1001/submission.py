@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-T0-LMCC 示例提交：星港舱门报码归一化
+T0-LMCC 示例提交：星港舱门报码归一化（双容器版）
 
-你需要实现 build_messages 和 build_generation_parameters 函数。
+你需要实现 solve 函数，接收原始文本 report 描述，返回标准化 JSON 字符串。
 """
 
 import json
+import re
 from typing import Any
 
 
@@ -51,7 +52,6 @@ def normalize_gate_report(text: str) -> dict[str, str]:
             break
 
     # 阿拉伯数字
-    import re
     match = re.search(r"(\d+)号门", text)
     if match:
         num = int(match.group(1))
@@ -71,34 +71,7 @@ def normalize_gate_report(text: str) -> dict[str, str]:
     return {"gate_id": gate_id, "status": status}
 
 
-def build_messages(raw_text: str) -> list[dict[str, str]]:
-    """构建对话消息"""
-    system_prompt = """你是一个舱门报码归一化助手。
-对于每条输入的舱门报码，你需要输出一个 JSON，包含两个字段：
-- gate_id：格式为 X-YY，X 是区域字母（E/W/N/S/I/O），YY 是两位数字编号（01-12）
-- status：只能是 open/closed/fault
-
-区域映射：东(E) 西(W) 北(N) 南(S) 主/内(I) 外(O)
-状态优先级：故障 > 关闭 > 开启"""
-
-    return [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": raw_text},
-    ]
-
-
-def build_generation_parameters() -> dict[str, Any]:
-    """生成参数"""
-    return {
-        "max_new_tokens": 128,
-        "temperature": 0.0,
-    }
-
-
-# 如果直接运行，则处理命令行输入
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1:
-        text = sys.argv[1]
-        result = normalize_gate_report(text)
-        print(json.dumps(result, ensure_ascii=False))
+def solve(report: str) -> str:
+    """入口函数：由 noj_solution_sdk.host 调用"""
+    result = normalize_gate_report(report)
+    return json.dumps(result, ensure_ascii=False)

@@ -215,73 +215,35 @@ fn main() -> Result<()> {
                     };
 
                     info!(
-                        "收到评测任务: submission_id={}, language={}, mode={:?}",
-                        task.submission_id, task.language, task.mode
+                        "收到评测任务: submission_id={}, language={}",
+                        task.submission_id, task.language
                     );
 
-                    let pool = pool.clone();
                     let redis_client = redis_client.clone();
                     let result_queue = result_queue.clone();
                     let work_dir = work_dir.clone();
                     let cache_dir = cache_dir.clone();
-                    let docker_for_dual = Docker::connect_with_local_defaults().ok();
 
                     let handle = tokio::spawn(async move {
                         let work_dir_path = std::path::Path::new(&work_dir);
                         let fallback_dir = std::path::Path::new(&work_dir).join("fallback-results");
 
-                        // 按 task.mode 分流：
-                        // - single（默认）→ 单容器 + PoolManager
-                        // - dual → 双容器编排（DualContainer，不入池）
-                        let result = match task.mode {
-                            types::JudgeMode::Dual => {
-                                let docker = docker_for_dual.unwrap_or_else(|| {
-                                    error!("dual 模式要求 Docker 连接，使用空实例");
-                                    Docker::connect_with_local_defaults()
-                                        .expect("Docker 连接失败")
-                                });
-                                let dual_result = judge::runner::evaluate(
-                                    docker,
-                                    &task,
-                                    work_dir_path,
-                                    download_timeout,
-                                    cache_dir.clone(),
-                                    cache_max_items,
-                                    cache_max_mb,
-                                ).await;
-                                match dual_result {
-                                    Ok(r) => r,
-                                    Err(e) => {
-                                        error!("双容器评测失败: {}: {:#}", task.submission_id, e);
-                                        pool.inc_errors_total();
-                                        types::JudgeResult::error(&task.submission_id, &e.to_string(), task.rejudge_seq)
-                                    }
-                                }
-                            }
-                            types::JudgeMode::Single => {
-                                match judge::runner::evaluate_with_pool(
-                                    pool.clone(),
-                                    &task,
-                                    work_dir_path,
-                                    download_timeout,
-                                    cache_dir.clone(),
-                                    cache_max_items,
-                                    cache_max_mb,
-                                ).await {
-                                    Ok(r) => {
-                                        match r.status.as_str() {
-                                            "TimeLimitExceeded" => pool.inc_timeouts_total(),
-                                            "SystemError" | "RuntimeError" => pool.inc_errors_total(),
-                                            _ => {}
-                                        }
-                                        r
-                                    }
-                                    Err(e) => {
-                                        error!("评测失败: {}: {:#}", task.submission_id, e);
-                                        pool.inc_errors_total();
-                                        types::JudgeResult::error(&task.submission_id, &e.to_string(), task.rejudge_seq)
-                                    }
-                                }
+                        // 统一使用双容器模式（Evaluator + Solution）
+                        let docker = Docker::connect_with_local_defaults()
+                            .expect("Docker 连接失败");
+                        let result = match judge::runner::evaluate(
+                            docker,
+                            &task,
+                            work_dir_path,
+                            download_timeout,
+                            cache_dir.clone(),
+                            cache_max_items,
+                            cache_max_mb,
+                        ).await {
+                            Ok(r) => r,
+                            Err(e) => {
+                                error!("双容器评测失败: {}: {:#}", task.submission_id, e);
+                                types::JudgeResult::error(&task.submission_id, &e.to_string(), task.rejudge_seq)
                             }
                         };
 

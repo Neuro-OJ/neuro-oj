@@ -4,8 +4,8 @@
  * 覆盖：
  * - admin 通过 API 配置双容器题目 + 提交 → 期望进入评测队列
  * - 镜像白名单被下架后 admin 提交被拒
- * - 普通用户尝试设置 runtime_config → 403
- * - 单容器题目（无 runtime_config）仍正常评测（回归）
+ * - 普通用户可设置 runtime_config（双容器是唯一模式）
+ * - runtime_config 是必填字段，不可清空
  *
  * 要求：
  *   NOJ_RUN_E2E=1 表示启用 E2E 测试套件
@@ -84,10 +84,6 @@ if (!isE2E) {
         difficulty: "medium",
         type: "P",
         number: Math.floor(Math.random() * 9000) + 1000,
-        judge_image: EVALUATOR_IMAGE,
-        judge_command: "python3 /workspace/evaluate.py",
-        time_limit_ms: 10_000,
-        memory_limit_mb: 512,
         runtime_config: {
           evaluator: {
             image: EVALUATOR_IMAGE,
@@ -153,17 +149,13 @@ if (!isE2E) {
         "UserPass123!",
       );
 
-      // 普通用户创建题目时携带 runtime_config → 期望 403
+      // 普通用户创建题目时携带 runtime_config → 期望 201（双容器是唯一模式）
       const res = await apiPost(
         "/api/v1/problems",
         {
           title: `[${TEST_TAG}] 普通用户尝试双容器`,
           description: "test",
           difficulty: "easy",
-          judge_image: EVALUATOR_IMAGE,
-          judge_command: "python3 /workspace/evaluate.py",
-          time_limit_ms: 5000,
-          memory_limit_mb: 512,
           runtime_config: {
             evaluator: {
               image: EVALUATOR_IMAGE,
@@ -182,10 +174,10 @@ if (!isE2E) {
         userToken,
       );
 
-      // 期望 403（仅 admin 可设置 runtime_config）
-      if (res.status !== 403) {
+      // 期望 201（双容器是唯一模式，普通用户也可设置）
+      if (res.status !== 201) {
         throw new Error(
-          `Expected 403 for non-admin setting runtime_config, got ${res.status} ${
+          `Expected 201 for non-admin setting runtime_config, got ${res.status} ${
             JSON.stringify(res.body)
           }`,
         );
@@ -213,14 +205,10 @@ if (!isE2E) {
           description: "test",
           difficulty: "easy",
           type: "P",
-          judge_image: EVALUATOR_IMAGE,
-          judge_command: "python3 /workspace/evaluate.py",
           runtime_config: {
             evaluator: {
               image: EVALUATOR_IMAGE,
               command: "python3 /workspace/evaluate.py",
-              time_limit_ms: 5000,
-              memory_limit_mb: 512,
             },
             solution: {
               // 这里故意把 evaluator 镜像当 solution 用 → kind mismatch
@@ -246,7 +234,7 @@ if (!isE2E) {
   });
 
   Deno.test({
-    name: "dual_container_judge: 清空 runtime_config 回退单容器",
+    name: "dual_container_judge: 清空 runtime_config 被拒（必填字段）",
     sanitizeOps: false,
     sanitizeResources: false,
     fn: async () => {
@@ -267,7 +255,7 @@ if (!isE2E) {
         throw new Error("Expected runtime_config before update");
       }
 
-      // 清空 runtime_config
+      // 清空 runtime_config → 期望 400（runtime_config 是必填字段）
       const update = await apiPut(
         `/api/v1/problems/${problemId}`,
         {
@@ -275,40 +263,46 @@ if (!isE2E) {
         },
         adminToken,
       );
-      if (update.status !== 200) {
-        throw new Error(`Update failed: ${update.status}`);
-      }
-
-      // 验证已回退
-      const after = await apiGet(`/api/v1/problems/${problemId}`);
-      const afterRc = (after.body as { data: { runtime_config: unknown } }).data
-        .runtime_config;
-      if (afterRc !== null) {
-        throw new Error("Expected runtime_config to be null after clearing");
+      if (update.status !== 400) {
+        throw new Error(
+          `Expected 400 when clearing runtime_config, got ${update.status} ${
+            JSON.stringify(update.body)
+          }`,
+        );
       }
     },
   });
 
   Deno.test({
-    name: "dual_container_judge: 单容器题目回归（无 runtime_config）",
+    name: "dual_container_judge: runtime_config 始终存在（双容器是唯一模式）",
     sanitizeOps: false,
     sanitizeResources: false,
     fn: async () => {
       const adminToken = await getAdminToken();
       await ensureImage(EVALUATOR_IMAGE, "evaluator");
 
-      // 不传 runtime_config → 应创建单容器题目
+      // 创建题目时必须携带 runtime_config
       const res = await apiPost(
         "/api/v1/problems",
         {
-          title: `[${TEST_TAG}] 单容器回归`,
+          title: `[${TEST_TAG}] runtime_config 必填`,
           description: "test",
           difficulty: "easy",
           type: "P",
-          judge_image: EVALUATOR_IMAGE,
-          judge_command: "python3 /tmp/evaluate.py",
-          time_limit_ms: 5000,
-          memory_limit_mb: 512,
+          runtime_config: {
+            evaluator: {
+              image: EVALUATOR_IMAGE,
+              command: "python3 /workspace/evaluate.py",
+              time_limit_ms: 5000,
+              memory_limit_mb: 512,
+            },
+            solution: {
+              image: "noj-solution-python",
+              entry: "submission_sample.py",
+              call_timeout_ms: 2000,
+              memory_limit_mb: 512,
+            },
+          },
         },
         adminToken,
       );
@@ -321,9 +315,9 @@ if (!isE2E) {
       const detail = await apiGet(`/api/v1/problems/${problemId}`);
       const rc = (detail.body as { data: { runtime_config: unknown } }).data
         .runtime_config;
-      if (rc !== null) {
+      if (!rc) {
         throw new Error(
-          "Expected runtime_config to be null for single-container problem",
+          "Expected runtime_config to be present for dual-container mode",
         );
       }
     },

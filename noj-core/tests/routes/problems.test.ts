@@ -21,10 +21,21 @@ const MODULE_PROBLEM = await createProblem({
   title: `模块级测试题目 ${ts}`,
   description: "测试描述",
   difficulty: "easy",
-  judge_image: "noj-judge-python",
-  judge_command: "python3 /tmp/evaluate.py",
-  time_limit_ms: 5000,
-  memory_limit_mb: 512,
+  runtime_config: {
+    evaluator: {
+      image: "noj-evaluator-python",
+      command: "python3 /workspace/evaluate.py",
+      time_limit_ms: 5000,
+      memory_limit_mb: 512,
+    },
+
+    solution: {
+      image: "noj-solution-python",
+      entry: "submission_sample.py",
+      call_timeout_ms: 2000,
+      memory_limit_mb: 512,
+    },
+  },
 });
 const TEST_PROBLEM_ID = MODULE_PROBLEM.id;
 
@@ -120,8 +131,21 @@ Deno.test({
       title: "路由测试题目",
       description: "测试描述",
       difficulty: "easy",
-      judge_image: "noj-judge-python",
-      judge_command: "python3 /tmp/evaluate.py",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+
+        solution: {
+          image: "noj-solution-python",
+          entry: "submission_sample.py",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
       category_ids: [catId],
     });
     const res = await jsonRequest(app, `/api/v1/problems/${problem.id}`);
@@ -178,8 +202,21 @@ Deno.test({
       body: {
         title: "新题",
         description: "描述",
-        judge_image: "noj-judge-python",
-        judge_command: "python3 /tmp/evaluate.py",
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+          },
+
+          solution: {
+            image: "noj-solution-python",
+            entry: "submission_sample.py",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
         type: "P",
       },
       token,
@@ -203,10 +240,21 @@ Deno.test({
         title: "管理员创建的新题",
         description: "测试描述",
         difficulty: "medium",
-        judge_image: "noj-judge-python",
-        judge_command: "python3 /tmp/evaluate.py",
-        time_limit_ms: 5000,
-        memory_limit_mb: 256,
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+          },
+
+          solution: {
+            image: "noj-solution-python",
+            entry: "submission_sample.py",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
       },
       token,
     });

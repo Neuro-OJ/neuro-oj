@@ -560,10 +560,21 @@ Deno.test({
       title: `del-test-${ts}`,
       description: "x",
       difficulty: "easy",
-      judge_image: "noj-judge-python",
-      judge_command: "python3 /tmp/evaluate.py",
-      time_limit_ms: 5000,
-      memory_limit_mb: 512,
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+
+        solution: {
+          image: "noj-solution-python",
+          entry: "submission_sample.py",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
       owner_id: userId,
       type: "U",
       number: 70000 + (ts & 0x7fff),
@@ -771,10 +782,21 @@ Deno.test({
       title: `重测测试 ${ts}`,
       description: "测试",
       difficulty: "easy",
-      judge_image: "noj-judge-python",
-      judge_command: "python3 /tmp/evaluate.py",
-      time_limit_ms: 5000,
-      memory_limit_mb: 512,
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+
+        solution: {
+          image: "noj-solution-python",
+          entry: "submission_sample.py",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
       number: 80000 + (ts & 0x7fff),
       owner_id: "0",
       type: "P",
@@ -828,10 +850,21 @@ Deno.test({
       title: `重测空 ${ts}`,
       description: "测试",
       difficulty: "easy",
-      judge_image: "noj-judge-python",
-      judge_command: "python3 /tmp/evaluate.py",
-      time_limit_ms: 5000,
-      memory_limit_mb: 512,
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+
+        solution: {
+          image: "noj-solution-python",
+          entry: "submission_sample.py",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
       number: 85000 + (ts & 0x7fff),
       owner_id: "0",
       type: "P",

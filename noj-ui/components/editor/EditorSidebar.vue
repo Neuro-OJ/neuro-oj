@@ -13,8 +13,6 @@ interface Problem {
   title: string
   description: string
   difficulty: string
-  time_limit_ms: number
-  memory_limit_mb: number
   type: 'U' | 'P'
   categories: { id: string; name: string; slug: string }[]
 }
@@ -107,11 +105,11 @@ function formatElapsed(iso: string) {
           </span>
           <span class="inline-flex items-center gap-1">
             <Clock :size="12" />
-            {{ problem.time_limit_ms }}ms
+            {{ problem.runtime_config.evaluator.time_limit_ms }}ms
           </span>
           <span class="inline-flex items-center gap-1">
             <Server :size="12" />
-            {{ problem.memory_limit_mb }}MB
+            {{ problem.runtime_config.evaluator.memory_limit_mb }}MB
           </span>
           <span class="font-medium">{{ problem.difficulty }}</span>
       </div>

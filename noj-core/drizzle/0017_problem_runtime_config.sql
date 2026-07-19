@@ -7,7 +7,7 @@
 -- 历史数据：所有现存题目 runtime_config = NULL（保持单容器路径）。
 -- 结构校验仅做最基础的 jsonb_typeof 检查；语义校验由 admin API 完成。
 
-ALTER TABLE "problems" ADD COLUMN "runtime_config" jsonb;
+ALTER TABLE "problems" ADD COLUMN IF NOT EXISTS "runtime_config" jsonb;
 
 -- 约束：runtime_config 必须为 NULL 或 JSON object
 ALTER TABLE "problems" ADD CONSTRAINT "problems_runtime_config_check"
