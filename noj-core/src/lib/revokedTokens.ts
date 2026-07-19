@@ -55,8 +55,10 @@ export async function revokeJti(
  */
 export async function isJtiRevoked(jti: string): Promise<boolean> {
   if (!jti) return false;
-  // 测试模式短路：避免 Redis 跨测试状态污染导致 authMiddleware 503
-  if (Deno.env.get("NOJ_ENV") === "test") {
+  // 测试短路开关：测试 helper（如 initRedisForTest）设置此 env 时跳过 Redis 查询，
+  // 避免跨测试状态污染导致 authMiddleware 503。
+  // 生产环境 NOJ_BYPASS_JWT_REVOKE 永不设置（fail-closed 默认行为不变）。
+  if (Deno.env.get("NOJ_BYPASS_JWT_REVOKE") === "1") {
     return false;
   }
   try {

@@ -161,6 +161,10 @@ export async function jsonRequest<
  */
 export async function initRedisForTest(): Promise<void> {
   if (!Deno.env.get("REDIS_URL")) return;
+  // PR-1 已被 main revert，但本测试套件仍调 isJtiRevoked。开启测试短路开关，
+  // 让 isJtiRevoked 在 NOJ_BYPASS_JWT_REVOKE=1 时直接返回 false，避免 Redis
+  // 跨测试状态污染导致 authMiddleware 抛 503。
+  Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
   const mq = await import("../../src/mq/connection.ts");
   // 仅当连接尚未就绪时才 reset + connect，避免并发测试反复 disconnect
   // 已建立的连接（导致后续请求拿到未连接的 client 抛 503）
