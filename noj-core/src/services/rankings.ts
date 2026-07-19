@@ -231,6 +231,16 @@ export async function getMyRanking(
   const db = getDb();
   const useView = await hasMaterializedView();
 
+  // 视图模式：读前 REFRESH（与 getGlobalRankings 一致），确保 resetDbForTest 后
+  // 插入的数据可被立即查到
+  if (useView) {
+    try {
+      await db.execute(
+        `REFRESH MATERIALIZED VIEW CONCURRENTLY user_rankings`,
+      );
+    } catch { /* 视图无数据时 CONCURRENTLY 失败；非致命 */ }
+  }
+
   const rows = useView
     // 物化视图路径：直接 WHERE user_id=? 查询
     ? await db.execute(sql`
