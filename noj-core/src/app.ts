@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context, Next } from "hono";
 import { cors } from "hono/cors";
 import health from "./routes/health.ts";
 import auth from "./routes/auth.ts";
@@ -17,6 +18,43 @@ import sse, { statsSse } from "./routes/sse.ts";
 import { AppError } from "./lib/errors.ts";
 import { listJudgeImages } from "./services/judge-images.ts";
 import { banlistMiddleware } from "./middleware/banlist.ts";
+import { getSetting } from "./services/system-settings.ts";
+
+/**
+ * 维护模式中间件（PR-2 死开关）。
+ *
+ * 当 `maintenance_mode=true` 时：
+ * - GET/HEAD/OPTIONS 请求放行（用户仍可浏览、查状态）
+ * - POST/PUT/PATCH/DELETE 请求返 503 + `MAINTENANCE` code
+ *
+ * 设计取舍：
+ * - 不缓存 maintenance_mode：管理后台切换后下一次请求立即生效
+ * - 不阻塞 /health：负载均衡器仍能正常探活
+ */
+async function maintenanceMode(
+  c: Context,
+  next: Next,
+): Promise<Response | void> {
+  const setting = getSetting("maintenance_mode");
+  if (setting?.value !== true) {
+    await next();
+    return;
+  }
+
+  const method = c.req.method.toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
+    await next();
+    return;
+  }
+
+  return c.json(
+    {
+      error: "系统维护中，请稍后再试",
+      code: "MAINTENANCE",
+    },
+    503,
+  );
+}
 
 /**
  * 创建并配置 Hono 应用实例。
@@ -111,6 +149,9 @@ export function createApp(): Hono {
   // - 被封 IP 用户仍可浏览、查 ban-status、登录/登出
   // - authMiddleware（路由级）与 banlistMiddleware 统一模式
   app.use("/api/v1/*", banlistMiddleware);
+  // PR-2 死开关：维护模式中间件拦截写操作（POST/PUT/PATCH/DELETE），
+  // 维护模式下返 503 + MAINTENANCE code。GET/HEAD/OPTIONS 仍放行。
+  app.use("/api/v1/*", maintenanceMode);
 
   return app;
 }
