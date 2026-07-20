@@ -177,10 +177,7 @@ async function rejudge(submissionId: string) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <div class="flex flex-col gap-1">
-      <h1 class="text-[22px] font-bold text-text">提交管理</h1>
-      <span class="text-sm text-text-secondary">查看所有用户的提交记录</span>
-    </div>
+    <PageHeader title="提交管理" description="查看所有用户的提交记录" />
 
     <!-- 筛选栏 -->
     <div class="bg-white border border-border rounded-lg p-4">

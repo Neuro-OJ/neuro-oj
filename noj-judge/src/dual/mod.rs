@@ -25,9 +25,7 @@ use tracing::{error, info, warn};
 
 use crate::dual::container::{start_exec, DualContainer, ExecSession};
 use crate::dual::protocol::{frame_type, EvaluatorLine, LineParser};
-use crate::sandbox::container::{
-    parse_command, MAX_FILE_SIZE, MAX_TOTAL_SIZE, MAX_ZIP_ENTRIES,
-};
+use crate::sandbox::container::{parse_command, MAX_FILE_SIZE, MAX_TOTAL_SIZE, MAX_ZIP_ENTRIES};
 use crate::types::{JudgeResult, JudgeStatus, RuntimeConfig};
 
 /// 注入用户代码到指定容器的工作目录。
@@ -101,11 +99,7 @@ async fn inject_support_package_to_evaluator(
                 total_size = total_size.saturating_add(content.len() as u64);
 
                 if total_size > MAX_TOTAL_SIZE {
-                    anyhow::bail!(
-                        "zip 总解压大小 {} 超过上限 {}",
-                        total_size,
-                        MAX_TOTAL_SIZE
-                    );
+                    anyhow::bail!("zip 总解压大小 {} 超过上限 {}", total_size, MAX_TOTAL_SIZE);
                 }
 
                 entries.push((file_name, content));

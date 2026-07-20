@@ -126,17 +126,23 @@ export class ServiceUnavailableError extends AppError {
  * 请求过多错误（HTTP 429）。
  * 用于速率限制场景（如接口请求过于频繁、搜索限流 issue #100）。
  *
- * 携带 headers 供 app.ts onError 设置响应头（如 Retry-After）。
+ * 携带 headers 供 app.ts onError 设置响应头（如 Retry-After、X-RateLimit-*）。
  * `meta.retry_after` 由 app.ts onError 透传到响应体。
  */
 export class RateLimitedError extends AppError {
   headers?: Record<string, string>;
 
-  constructor(message: string, retryAfter?: number) {
-    super(message, 429, "RATE_LIMITED", { retry_after: retryAfter });
+  constructor(
+    message: string,
+    retryAfterOrHeaders?: number | Record<string, string>,
+  ) {
+    super(message, 429, "RATE_LIMITED");
     this.name = "RateLimitedError";
-    if (retryAfter !== undefined) {
-      this.headers = { "Retry-After": String(retryAfter) };
+    if (typeof retryAfterOrHeaders === "number") {
+      this.headers = { "Retry-After": String(retryAfterOrHeaders) };
+      this.meta = { retry_after: retryAfterOrHeaders };
+    } else if (retryAfterOrHeaders) {
+      this.headers = retryAfterOrHeaders;
     }
   }
 }

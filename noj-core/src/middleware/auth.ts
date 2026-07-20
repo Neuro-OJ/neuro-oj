@@ -111,6 +111,43 @@ async function checkBanStatus(c: Context, userId: string): Promise<void> {
 }
 
 /**
+ * 解析并验证 JWT token，返回 payload 或 null。
+ *
+ * 共享逻辑：authMiddleware 与 optionalAuthMiddleware 共用。
+ * - 从 Authorization header 提取 Bearer token
+ * - 调用 verifyToken 验证签名+有效期
+ * - 检查 JTI 是否已撤销
+ *
+ * @param c Hono Context
+ * @returns payload（验证通过）或 null（无 token / token 无效）
+ */
+async function resolveToken(
+  c: Context,
+): Promise<Awaited<ReturnType<typeof verifyToken>> | null> {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return null;
+  }
+
+  const token = authHeader.slice(7);
+  let payload: Awaited<ReturnType<typeof verifyToken>> | null = null;
+  try {
+    payload = await verifyToken(token);
+  } catch {
+    return null;
+  }
+
+  if (!payload) return null;
+
+  // 撤销检查
+  if (payload.jti && await isJtiRevoked(payload.jti)) {
+    return null;
+  }
+
+  return payload;
+}
+
+/**
  * 可选认证中间件——有 token 则验证并注入用户信息，无 token 则以匿名身份放行。
  *
  * 与 authMiddleware 的区别：
@@ -121,35 +158,15 @@ async function checkBanStatus(c: Context, userId: string): Promise<void> {
  * 下游路由通过 `if (!c.get("userId"))` 判断是否匿名。
  */
 export async function optionalAuthMiddleware(c: Context, next: Next) {
-  const authHeader = c.req.header("Authorization");
+  const payload = await resolveToken(c);
 
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    const token = authHeader.slice(7);
-    let payload: Awaited<ReturnType<typeof verifyToken>> | null = null;
-    try {
-      payload = await verifyToken(token);
-    } catch {
-      // token 无效或过期：以匿名身份放行
-    }
+  if (payload) {
+    c.set("userId", payload.sub);
+    c.set("userRole", payload.role);
+    c.set("mustChangePassword", payload.must_change_password ?? false);
+    if (payload.jti) c.set("jti", payload.jti);
 
-    if (payload) {
-      // 撤销检查（issue #75 JWT 撤销机制）：
-      // 已被主动撤销的 jti（/logout、/change-password）即使签名有效也视作无效。
-      // Redis 不可用时 isJtiRevoked 抛 ServiceUnavailableError，
-      // 让 Hono onError 统一返 503（fail-closed）。
-      if (payload.jti && await isJtiRevoked(payload.jti)) {
-        payload = null;
-      }
-    }
-
-    if (payload) {
-      c.set("userId", payload.sub);
-      c.set("userRole", payload.role);
-      c.set("mustChangePassword", payload.must_change_password ?? false);
-      if (payload.jti) c.set("jti", payload.jti);
-
-      await checkBanStatus(c, payload.sub);
-    }
+    await checkBanStatus(c, payload.sub);
   }
   await next();
 }
@@ -171,30 +188,19 @@ export async function optionalAuthMiddleware(c: Context, next: Next) {
  * `banUser`/`unbanUser` 写操作会调 `invalidateBanCache` 立即失效。
  */
 export async function authMiddleware(c: Context, next: Next) {
+  // 先检查请求头是否存在（提供精确的错误信息）
   const authHeader = c.req.header("Authorization");
-
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     throw new UnauthorizedError("未提供认证令牌");
   }
 
-  const token = authHeader.slice(7); // 去掉 "Bearer " 前缀
+  const payload = await resolveToken(c);
 
-  let payload;
-  try {
-    payload = await verifyToken(token);
-  } catch {
+  if (!payload) {
     throw new UnauthorizedError("认证令牌无效或已过期");
   }
 
-  // 撤销检查（issue #75 JWT 撤销机制）：
-  // /logout、/change-password 等场景主动写入 Redis 黑名单。
-  // 即使签名 + iss + aud + exp 均有效，被撤销的 jti 也视作无效。
-  // fail-closed：isJtiRevoked 抛 ServiceUnavailableError 时由 onError 返 503。
-  if (payload.jti && await isJtiRevoked(payload.jti)) {
-    throw new UnauthorizedError("认证令牌已失效");
-  }
-
-  // 强制改密拦截（评审修复 M1：抛 ForbiddenError 而非 c.json）
+  // 强制改密拦截
   if (
     payload.must_change_password === true &&
     !PASSWORD_CHANGE_WHITELIST.includes(c.req.path)
@@ -202,7 +208,7 @@ export async function authMiddleware(c: Context, next: Next) {
     throw new ForbiddenError("请先修改密码", "PASSWORD_CHANGE_REQUIRED");
   }
 
-  // 封禁校验（与 optionalAuthMiddleware 共享 checkBanStatus）
+  // 封禁校验
   await checkBanStatus(c, payload.sub);
 
   c.set("userId", payload.sub);

@@ -12,7 +12,7 @@
  */
 
 import type { Context, Next } from "hono";
-import { AppError } from "../lib/errors.ts";
+import { RateLimitedError } from "../lib/errors.ts";
 import {
   checkRateLimit,
   type RateLimitConfig,
@@ -25,17 +25,7 @@ import {
   settingInt,
 } from "../lib/rateLimitEnv.ts";
 
-/** 限流 429 错误（继承 AppError，自动被 onError 捕获） */
-class RateLimitedError extends AppError {
-  headers: Record<string, string>;
-  constructor(message: string, headers: Record<string, string>) {
-    super(message, 429, "TOO_MANY_REQUESTS");
-    this.name = "RateLimitedError";
-    this.headers = headers;
-  }
-}
-
-// ── 默认限流配置（可被环境变量覆盖）────────────────────
+// ── 默认限流配置（可被环境变量覆盖） ────────────────────
 
 export const LOGIN_LIMITS = {
   get ip() {

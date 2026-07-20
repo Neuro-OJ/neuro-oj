@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ShieldCheck, ShieldX, ShieldAlert } from "@lucide/vue"
 import type { Column } from "~/components/admin/AdminTable.vue"
+import { useAdminList } from "~/composables/useAdminList"
 
 definePageMeta({
   layout: "admin",
@@ -26,23 +27,10 @@ interface User {
   updated_at: string
 }
 
-const users = ref<User[]>([])
-const currentPage = ref(1)
-const totalPages = ref(1)
-const tableLoading = ref(true)
-const tableError = ref("")
-const perPage = 20
-const keyword = ref("")
-
-// 搜索输入防抖：停止输入 300ms 后自动刷新
-let searchTimer: ReturnType<typeof setTimeout> | undefined
-function onSearchInput(val: string) {
-  clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => {
-    keyword.value = val
-    loadUsers(1)
-  }, 300)
-}
+const { items: users, totalPages, loading: tableLoading, error: tableError, currentPage, perPage, searchInput, load: loadUsers, onPageChange } = useAdminList<User>({
+  path: "/api/v1/admin/users",
+  fetchOptions: { dataField: "data", totalField: "pagination.total_pages" },
+})
 
 const columns: Column<User>[] = [
   { key: "username", label: "用户名" },
@@ -62,34 +50,9 @@ const columns: Column<User>[] = [
   },
 ]
 
-async function loadUsers(page = 1) {
-  if (!isLoggedIn.value) return
-  tableLoading.value = true
-  tableError.value = ""
-  currentPage.value = page
-  try {
-    const params = new URLSearchParams({ page: String(page), per_page: String(perPage), _: String(Date.now()) })
-    if (keyword.value) params.set("keyword", keyword.value)
-    const res = await $fetch<{ data: User[]; pagination: { total: number; total_pages: number } }>(
-      `/api/v1/admin/users?${params}`,
-    )
-    users.value = res.data
-    totalPages.value = res.pagination.total_pages
-  } catch (err: unknown) {
-    tableError.value = err instanceof Error ? err.message : "加载用户列表失败"
-    console.error("loadUsers error:", err)
-  } finally {
-    tableLoading.value = false
-  }
-}
-
 watch(isLoggedIn, (val) => {
   if (val) loadUsers()
 }, { immediate: true })
-
-function onPageChange(page: number) {
-  loadUsers(page)
-}
 
 // 角色切换
 const targetUser = ref<User | null>(null)
@@ -240,17 +203,14 @@ async function handleRoleSwitch() {
 
 <template>
   <div class="flex flex-col gap-4">
-    <div class="flex flex-col gap-1">
-      <h1 class="text-[22px] font-bold text-text">用户管理</h1>
-      <span class="text-sm text-text-secondary">管理所有用户的角色权限</span>
-    </div>
+    <PageHeader title="用户管理" description="管理所有用户的角色权限" />
 
     <div class="flex items-center gap-2">
       <input
         type="text"
         placeholder="搜索用户名或邮箱…"
         class="w-full max-w-xs px-3 py-2 text-sm border border-border rounded-lg bg-white text-text placeholder-text-muted outline-none focus:border-info-text transition-colors"
-        @input="onSearchInput(($event.target as HTMLInputElement).value)"
+        @input="searchInput(($event.target as HTMLInputElement).value)"
       />
     </div>
 

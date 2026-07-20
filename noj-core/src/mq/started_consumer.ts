@@ -8,7 +8,9 @@ const STARTED_QUEUE = "noj:judge:started";
 
 export const startedConsumerAlive = { value: false };
 
-async function handleStartedMessage(data: Record<string, unknown>): Promise<void> {
+async function handleStartedMessage(
+  data: Record<string, unknown>,
+): Promise<void> {
   const message = data as { submission_id?: string };
 
   if (!message.submission_id) {

@@ -244,13 +244,7 @@ async function confirmReset(s: SystemSetting) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <!-- 页头 -->
-    <div class="flex flex-col gap-1">
-      <h1 class="text-[22px] font-bold text-text">系统设置</h1>
-      <span class="text-sm text-text-secondary">
-        运行时可改的配置项，修改即时生效；只读配置需重启服务
-      </span>
-    </div>
+    <PageHeader title="系统设置" description="运行时可改的配置项，修改即时生效；只读配置需重启服务" />
 
     <!-- 顶部提示横幅 -->
     <div class="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-[13px] text-info-text">

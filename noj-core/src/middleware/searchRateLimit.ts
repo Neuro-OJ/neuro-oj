@@ -13,10 +13,10 @@
  */
 
 import type { Context, MiddlewareHandler } from "hono";
-import { getRedis } from "../mq/connection.ts";
 import { getClientIp } from "../lib/rateLimitEnv.ts";
 import { settingBool, settingInt } from "../lib/rateLimitEnv.ts";
 import { RateLimitedError } from "../lib/errors.ts";
+import { checkRateLimit, rateLimitHeaders } from "../lib/rateLimit.ts";
 
 export type SearchRateLimitDimension = "anon" | "authed";
 
@@ -40,7 +40,7 @@ export function searchRateLimit(
       return await next();
     }
 
-    const window = settingInt("rate_limit_search_window");
+    const windowSec = settingInt("rate_limit_search_window");
     const max = dimension === "anon"
       ? settingInt("rate_limit_search_max_anon")
       : settingInt("rate_limit_search_max_authed");
@@ -55,33 +55,26 @@ export function searchRateLimit(
         return await next();
       }
       identifier = userId;
-      key = `ratelimit:search:user:${identifier}`;
+      key = `search:user:${identifier}`;
     } else {
       identifier = getClientIp(c);
-      key = `ratelimit:search:ip:${identifier}`;
+      key = `search:ip:${identifier}`;
     }
 
-    const redis = getRedis();
-    const count = await redis.incr(key);
-    if (count === 1) {
-      await redis.expire(key, window);
-    }
+    const cfg = { windowSec, max };
+    const result = await checkRateLimit(key, cfg);
 
-    const remaining = Math.max(0, max - count);
-    c.header("X-RateLimit-Limit", String(max));
-    c.header("X-RateLimit-Remaining", String(remaining));
-
-    if (count > max) {
-      const ttl = await redis.ttl(key);
-      const retryAfter = ttl > 0 ? ttl : window;
-      const resetAt = Math.floor(Date.now() / 1000) + retryAfter;
-      c.header("X-RateLimit-Reset", String(resetAt));
+    if (!result.allowed) {
       throw new RateLimitedError(
-        `搜索请求过于频繁，请稍后再试（${
-          dimension === "anon" ? "IP" : "用户"
-        }维度）`,
-        retryAfter,
+        "搜索请求过于频繁，请稍后再试",
+        rateLimitHeaders(cfg, result),
       );
+    }
+
+    // 未触发限流也设置 X-RateLimit-Remaining 等头
+    const headers = rateLimitHeaders(cfg, result);
+    for (const [k, v] of Object.entries(headers)) {
+      c.header(k, v);
     }
 
     await next();

@@ -46,8 +46,12 @@ export function isValidProblemType(value: string): value is ProblemType {
  *
  * 仅 admin 可设置；普通用户创建题目时该字段被忽略。
  */
-import { type EvaluatorRuntime, type SolutionRuntime, type RuntimeConfig } from "./index.ts";
-export { type EvaluatorRuntime, type SolutionRuntime, type RuntimeConfig };
+import {
+  type EvaluatorRuntime,
+  type RuntimeConfig,
+  type SolutionRuntime,
+} from "./index.ts";
+export { type EvaluatorRuntime, type RuntimeConfig, type SolutionRuntime };
 
 /**
  * 创建题目请求体。

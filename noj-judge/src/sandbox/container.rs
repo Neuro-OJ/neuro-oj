@@ -72,75 +72,124 @@ pub const MAX_FILE_SIZE: u64 = 64 * 1024 * 1024;
 /// 解压炸弹防护：总解压大小（512MB）。
 pub const MAX_TOTAL_SIZE: u64 = 512 * 1024 * 1024;
 
-/// 同步解压 zip 内容到目标目录。
+/// ZIP 条目：文件名 + 内容字节。
+pub struct ZipEntry {
+    pub file_name: String,
+    pub data: Vec<u8>,
+}
+
+/// 安全解压 ZIP 到内存，返回条目列表。
 ///
-/// 使用 std::fs 同步写入以避免 tokio async fs 在特定环境下可能出现的缓冲问题。
-pub fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
+/// 安全校验（硬编码不可配置）：
+/// - 路径穿越防护：拒绝含 `..` 或 `/` 开头的条目
+/// - 炸弹防护：1000 条目 / 64MB 单文件 / 512MB 总解压
+/// - Overlapping entries 防护：重复文件名报错
+/// - 统一换行符：将 `\r\n` 转换为 `\n`
+pub fn extract_zip_entries(data: &[u8]) -> Result<Vec<ZipEntry>> {
     let cursor = std::io::Cursor::new(data);
     let mut archive = zip::ZipArchive::new(cursor).context("打开 zip 文件失败")?;
 
+    if archive.len() > MAX_ZIP_ENTRIES {
+        anyhow::bail!(
+            "ZIP 条目数 {} 超过最大限制 {}",
+            archive.len(),
+            MAX_ZIP_ENTRIES
+        );
+    }
+
+    let mut entries = Vec::with_capacity(archive.len());
+    let mut total_size: u64 = 0;
     let mut seen_paths = std::collections::HashSet::new();
 
-    // 解压炸弹防护：最多条目数
-    if archive.len() > MAX_ZIP_ENTRIES {
-        anyhow::bail!("zip 条目数 {} 超过上限 {}", archive.len(), MAX_ZIP_ENTRIES);
-    }
-
-    let mut total_extracted: u64 = 0;
-
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i).context("读取 zip 条目失败")?;
-        let file_name = file.name().to_string();
+        let mut file = archive.by_index(i)?;
+        let original_name = file.name().to_string();
 
-        // 防止 path traversal 攻击：拒绝任何含 .. 路径组件或绝对路径的条目
-        if file_name.split(['/', '\\']).any(|part| part == "..") || file_name.starts_with('/') {
-            anyhow::bail!("zip 包含非法路径条目: {}", file_name);
+        // 路径穿越防护
+        if original_name.split(['/', '\\']).any(|part| part == "..")
+            || original_name.starts_with('/')
+        {
+            anyhow::bail!("ZIP 条目包含非法路径: {}", original_name);
         }
 
-        // 拒绝 overlapping entries（同名路径出现两次）
-        if !seen_paths.insert(file_name.clone()) {
-            anyhow::bail!("zip 包含重复条目: {}", file_name);
+        // 单文件大小限制
+        if file.size() > MAX_FILE_SIZE {
+            anyhow::bail!(
+                "ZIP 条目 {} 大小 {} 超过最大限制 {}",
+                original_name,
+                file.size(),
+                MAX_FILE_SIZE
+            );
         }
 
-        let out_path = target_dir.join(&file_name);
+        // Overlapping entries 防护
+        if !seen_paths.insert(original_name.clone()) {
+            anyhow::bail!("ZIP 条目重复: {}", original_name);
+        }
 
-        if file.is_dir() {
-            std::fs::create_dir_all(&out_path)
-                .with_context(|| format!("创建目录失败: {}", out_path.display()))?;
+        // 读取内容（统一换行符：将 CR+LF 转换为 LF）
+        let mut buf = Vec::with_capacity(file.size() as usize);
+        file.read_to_end(&mut buf)?;
+        let normalized = if buf.contains(&b'\r') {
+            let mut result = Vec::with_capacity(buf.len());
+            let mut i = 0;
+            while i < buf.len() {
+                if i + 1 < buf.len() && buf[i] == b'\r' && buf[i + 1] == b'\n' {
+                    result.push(b'\n');
+                    i += 2;
+                } else {
+                    result.push(buf[i]);
+                    i += 1;
+                }
+            }
+            result
         } else {
-            if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent)
-                    .with_context(|| format!("创建父目录失败: {}", parent.display()))?;
-            }
+            buf
+        };
 
-            // 单文件大小限制
-            if file.size() > MAX_FILE_SIZE {
-                anyhow::bail!(
-                    "zip 条目 '{}' 大小 {} 超过单文件上限 {}",
-                    file_name,
-                    file.size(),
-                    MAX_FILE_SIZE
-                );
-            }
-
-            let mut buf = Vec::new();
-            file.read_to_end(&mut buf)?;
-
-            // 总解压大小限制
-            total_extracted += buf.len() as u64;
-            if total_extracted > MAX_TOTAL_SIZE {
-                anyhow::bail!(
-                    "zip 总解压大小 {} 超过上限 {}",
-                    total_extracted,
-                    MAX_TOTAL_SIZE
-                );
-            }
-
-            std::fs::write(&out_path, &buf)
-                .with_context(|| format!("写入文件失败: {}", out_path.display()))?;
+        total_size += normalized.len() as u64;
+        if total_size > MAX_TOTAL_SIZE {
+            anyhow::bail!(
+                "ZIP 解压总大小 {} 超过最大限制 {}",
+                total_size,
+                MAX_TOTAL_SIZE
+            );
         }
+
+        entries.push(ZipEntry {
+            file_name: original_name,
+            data: normalized,
+        });
     }
 
+    Ok(entries)
+}
+
+/// 同步解压 zip 内容到目标目录。
+///
+/// 使用 std::fs 同步写入以避免 tokio async fs 在特定环境下可能出现的缓冲问题。
+/// 实际 ZIP 解压和安全校验委托给 [`extract_zip_entries`]。
+fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
+    let entries = extract_zip_entries(data)?;
+    for entry in &entries {
+        // extract_zip_entries 只返回文件条目，不返回目录条目，
+        // 但仍检查尾随 / 以防空文件名被 zip crate 特殊处理。
+        if entry.data.is_empty() && entry.file_name.ends_with('/') {
+            let dir_path = target_dir.join(&entry.file_name);
+            std::fs::create_dir_all(&dir_path)
+                .with_context(|| format!("创建目录失败: {}", dir_path.display()))?;
+            continue;
+        }
+
+        let target_path = target_dir.join(&entry.file_name);
+        // 确保父目录存在
+        if let Some(parent) = target_path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("创建父目录失败: {}", parent.display()))?;
+        }
+        std::fs::write(&target_path, &entry.data)
+            .with_context(|| format!("写入文件失败: {}", target_path.display()))?;
+    }
     Ok(())
 }
 
@@ -350,7 +399,7 @@ mod tests {
         let err = rt
             .block_on(async { extract_zip(&buf.into_inner(), &target_path).await })
             .unwrap_err();
-        assert!(err.to_string().contains("非法路径条目"));
+        assert!(err.to_string().contains("非法路径"));
     }
 
     // ── TempDir ──

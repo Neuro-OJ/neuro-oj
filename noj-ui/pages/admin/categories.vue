@@ -140,16 +140,14 @@ async function handleDelete() {
 
 <template>
   <div class="flex flex-col gap-4">
-    <div class="flex items-start justify-between gap-3">
-      <div>
-        <h1 class="text-[22px] font-bold text-text">分类管理</h1>
-        <span class="text-sm text-text-secondary">管理题目分类</span>
-      </div>
-      <button class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark" @click="openCreate">
-        <Plus :size="16" />
-        新建分类
-      </button>
-    </div>
+    <PageHeader title="分类管理" description="管理题目分类">
+      <template #actions>
+        <button class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark" @click="openCreate">
+          <Plus :size="16" />
+          新建分类
+        </button>
+      </template>
+    </PageHeader>
 
     <AdminTable
       :columns="columns"

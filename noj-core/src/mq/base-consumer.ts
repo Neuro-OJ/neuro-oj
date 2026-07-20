@@ -45,7 +45,10 @@ export function createConsumer(opts: ConsumerOptions): () => Promise<void> {
       );
       retryCount++;
 
-      logger.warn(`${label}消费者将重启`, { delay_ms: delay, retry: retryCount });
+      logger.warn(`${label}消费者将重启`, {
+        delay_ms: delay,
+        retry: retryCount,
+      });
       await new Promise((r) => setTimeout(r, delay));
     }
   };
@@ -65,8 +68,10 @@ export function createConsumer(opts: ConsumerOptions): () => Promise<void> {
 
     while (true) {
       try {
-        // deno-lint-ignore no-explicit-any
-        const result = await redis.brpop(opts.queueName, blpopTimeout) as [string, string] | null;
+        const result = await redis.brpop(opts.queueName, blpopTimeout) as [
+          string,
+          string,
+        ] | null;
         if (!result) continue;
 
         if (!Array.isArray(result) || result.length < 2) {

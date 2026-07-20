@@ -1,4 +1,5 @@
-/// 容器池 E2E 集成测试。
+#![allow(unused_doc_comments)]
+// 容器池 E2E 集成测试。
 ///
 /// 验证：池初始化、容器分配、docker exec 执行、内存调整、超时处理、空闲回收、安全加固。
 ///
@@ -14,7 +15,7 @@ use bollard::container::LogOutput;
 use bollard::models::ContainerCreateBody;
 use bollard::models::HostConfig;
 use bollard::Docker;
-use common::{get_docker, is_e2e_enabled};
+use common::{ensure_test_image, get_docker};
 
 use noj_judge::pool::exec::execute_in_container;
 use noj_judge::pool::with_timeout;
@@ -135,267 +136,119 @@ fn test_images() -> Vec<AllowedImage> {
 
 // ── Tests ──────────────────────────────────────────────
 
-/// 1. 池初始化：验证 POOL_INITIAL_SIZE 个容器已创建并运行。
-#[ignore]
-#[serial_test::serial]
-#[tokio::test]
-async fn test_pool_initialization() {
-    if !is_e2e_enabled() {
-        return;
+e2e_test!(
+    #[ignore]
+    test_pool_initialization,
+    async {
+        let docker = get_docker().expect("连接 Docker 失败");
+        ensure_test_image(&docker).await.expect("确保测试镜像失败");
+
+        // 初始化池管理器
+        let config = make_pool_config(2, 4);
+
+        let pool = PoolManager::init(docker.clone(), config, &test_images())
+            .await
+            .expect("PoolManager init 失败");
+
+        // 验证池中有 2 个空闲容器
+        let pools = pool.all_pools().await;
+        assert!(!pools.is_empty(), "应有至少一个镜像的池");
+        let test_pool = pools
+            .into_iter()
+            .find(|p| p.image() == "noj-judge-test-runner");
+        assert!(test_pool.is_some(), "应找到 test-runner 池");
+
+        let idle = test_pool.unwrap().idle_count().await;
+        assert_eq!(idle, 2, "启动时应有 2 个空闲容器");
     }
+);
 
-    let docker = get_docker().expect("连接 Docker 失败");
-    common::ensure_test_image(&docker)
-        .await
-        .expect("确保测试镜像失败");
+e2e_test!(
+    #[ignore]
+    test_pool_full_execution_path,
+    async {
+        let docker = get_docker().expect("连接 Docker 失败");
+        ensure_test_image(&docker).await.expect("确保测试镜像失败");
 
-    // 初始化池管理器
-    let config = make_pool_config(2, 4);
+        let config = make_pool_config(1, 2);
+        let pool = PoolManager::init(docker.clone(), config, &test_images())
+            .await
+            .expect("PoolManager init 失败");
 
-    let pool = PoolManager::init(docker.clone(), config, &test_images())
-        .await
-        .expect("PoolManager init 失败");
+        // 使用 with_container 闭包 API
+        let docker_for_inspect = docker.clone();
+        let result: Result<String, anyhow::Error> = pool
+            .with_container("noj-judge-test-runner", 128, |container_id| {
+                let docker = docker_for_inspect.clone();
+                async move {
+                    // 验证容器正在运行
+                    let inspect = docker
+                        .inspect_container(
+                            &container_id,
+                            None::<bollard::query_parameters::InspectContainerOptions>,
+                        )
+                        .await
+                        .expect("inspect 失败");
+                    let running = inspect
+                        .state
+                        .as_ref()
+                        .and_then(|s| s.running)
+                        .unwrap_or(false);
+                    assert!(running, "池容器应正在运行");
 
-    // 验证池中有 2 个空闲容器
-    let pools = pool.all_pools().await;
-    assert!(!pools.is_empty(), "应有至少一个镜像的池");
-    let test_pool = pools
-        .into_iter()
-        .find(|p| p.image() == "noj-judge-test-runner");
-    assert!(test_pool.is_some(), "应找到 test-runner 池");
-
-    let idle = test_pool.unwrap().idle_count().await;
-    assert_eq!(idle, 2, "启动时应有 2 个空闲容器");
-}
-
-/// 2. 完整执行路径：with_container → docker exec → 自动清理。
-#[ignore]
-#[serial_test::serial]
-#[tokio::test]
-async fn test_pool_full_execution_path() {
-    if !is_e2e_enabled() {
-        return;
-    }
-
-    let docker = get_docker().expect("连接 Docker 失败");
-    common::ensure_test_image(&docker)
-        .await
-        .expect("确保测试镜像失败");
-
-    let config = make_pool_config(1, 2);
-    let pool = PoolManager::init(docker.clone(), config, &test_images())
-        .await
-        .expect("PoolManager init 失败");
-
-    // 使用 with_container 闭包 API
-    let docker_for_inspect = docker.clone();
-    let result: Result<String, anyhow::Error> = pool
-        .with_container("noj-judge-test-runner", 128, |container_id| {
-            let docker = docker_for_inspect.clone();
-            async move {
-                // 验证容器正在运行
-                let inspect = docker
-                    .inspect_container(
+                    // 通过 exec 执行简单命令
+                    let (stdout, _stderr, exit_code, _time_ms) = execute_in_container(
+                        &docker,
                         &container_id,
-                        None::<bollard::query_parameters::InspectContainerOptions>,
+                        &[
+                            "python3".to_string(),
+                            "-c".to_string(),
+                            "print('pool-exec')".to_string(),
+                        ],
+                        10000,
+                        2,
                     )
                     .await
-                    .expect("inspect 失败");
-                let running = inspect
-                    .state
-                    .as_ref()
-                    .and_then(|s| s.running)
-                    .unwrap_or(false);
-                assert!(running, "池容器应正在运行");
+                    .expect("exec 执行失败");
 
-                // 通过 exec 执行简单命令
-                let (stdout, _stderr, exit_code, _time_ms) = execute_in_container(
-                    &docker,
-                    &container_id,
-                    &[
-                        "python3".to_string(),
-                        "-c".to_string(),
-                        "print('pool-exec')".to_string(),
-                    ],
-                    10000,
-                    2,
-                )
-                .await
-                .expect("exec 执行失败");
+                    assert_eq!(exit_code, 0, "exit_code 应为 0，实际: {}", exit_code);
+                    assert!(
+                        stdout.contains("pool-exec"),
+                        "stdout 应包含 'pool-exec'，实际: {}",
+                        stdout
+                    );
 
-                assert_eq!(exit_code, 0, "exit_code 应为 0，实际: {}", exit_code);
-                assert!(
-                    stdout.contains("pool-exec"),
-                    "stdout 应包含 'pool-exec'，实际: {}",
-                    stdout
-                );
+                    Ok(container_id.clone())
+                }
+            })
+            .await;
 
-                Ok(container_id.clone())
-            }
-        })
-        .await;
+        let container_id = result.expect("with_container 失败");
 
-    let container_id = result.expect("with_container 失败");
-
-    // 验证容器已被删除（with_container 退出后自动 release → rm -f）
-    let inspect_result = docker
-        .inspect_container(
-            &container_id,
-            None::<bollard::query_parameters::InspectContainerOptions>,
-        )
-        .await;
-    assert!(inspect_result.is_err(), "容器应已被删除");
-}
-
-/// 3. 动态内存调整验证。
-#[ignore]
-#[serial_test::serial]
-#[tokio::test]
-async fn test_pool_memory_update() {
-    if !is_e2e_enabled() {
-        return;
+        // 验证容器已被删除（with_container 退出后自动 release → rm -f）
+        let inspect_result = docker
+            .inspect_container(
+                &container_id,
+                None::<bollard::query_parameters::InspectContainerOptions>,
+            )
+            .await;
+        assert!(inspect_result.is_err(), "容器应已被删除");
     }
+);
 
-    let docker = get_docker().expect("连接 Docker 失败");
-    common::ensure_test_image(&docker)
-        .await
-        .expect("确保测试镜像失败");
+e2e_test!(
+    #[ignore]
+    test_pool_memory_update,
+    async {
+        let docker = get_docker().expect("连接 Docker 失败");
+        ensure_test_image(&docker).await.expect("确保测试镜像失败");
 
-    // 先创建容器（直接用 create_test_container_raw）
-    let container_id = create_test_container_raw(&docker, &["sleep", "infinity"], 512)
-        .await
-        .expect("创建预热容器失败");
+        // 先创建容器（直接用 create_test_container_raw）
+        let container_id = create_test_container_raw(&docker, &["sleep", "infinity"], 512)
+            .await
+            .expect("创建预热容器失败");
 
-    // 读取初始 memory 限制
-    let inspect = docker
-        .inspect_container(
-            &container_id,
-            None::<bollard::query_parameters::InspectContainerOptions>,
-        )
-        .await
-        .expect("inspect 失败");
-    let initial_memory = inspect
-        .host_config
-        .as_ref()
-        .and_then(|h| h.memory)
-        .unwrap_or(0);
-    assert_eq!(initial_memory, 512 * 1024 * 1024, "初始内存应为 512MB");
-
-    // 使用 docker update 下调到 64MB
-    docker
-        .update_container(
-            &container_id,
-            bollard::models::ContainerUpdateBody {
-                memory: Some(64 * 1024 * 1024),
-                memory_swap: Some(64 * 1024 * 1024),
-                memory_swappiness: Some(0),
-                ..Default::default()
-            },
-        )
-        .await
-        .expect("update_container 失败");
-
-    // 验证内存已更新
-    let inspect = docker
-        .inspect_container(
-            &container_id,
-            None::<bollard::query_parameters::InspectContainerOptions>,
-        )
-        .await
-        .expect("inspect 失败");
-    let updated_memory = inspect
-        .host_config
-        .as_ref()
-        .and_then(|h| h.memory)
-        .unwrap_or(0);
-    assert_eq!(updated_memory, 64 * 1024 * 1024, "更新后内存应为 64MB");
-
-    // 清理
-    docker
-        .remove_container(
-            &container_id,
-            Some(bollard::query_parameters::RemoveContainerOptions {
-                force: true,
-                ..Default::default()
-            }),
-        )
-        .await
-        .expect("清理容器失败");
-}
-
-/// 4. exec 超时处理。
-#[ignore]
-#[serial_test::serial]
-#[tokio::test]
-async fn test_pool_exec_timeout() {
-    if !is_e2e_enabled() {
-        return;
-    }
-
-    let docker = get_docker().expect("连接 Docker 失败");
-    common::ensure_test_image(&docker)
-        .await
-        .expect("确保测试镜像失败");
-
-    let container_id = create_test_container_raw(&docker, &["sleep", "infinity"], 256)
-        .await
-        .expect("创建容器失败");
-
-    // 执行一个长时间运行的任务，设置短超时
-    let (_stdout, _stderr, exit_code, _time_ms) = execute_in_container(
-        &docker,
-        &container_id,
-        &[
-            "python3".to_string(),
-            "-c".to_string(),
-            "import time; time.sleep(30); print('done')".to_string(),
-        ],
-        2000, // 2s 超时
-        2,
-    )
-    .await
-    .expect("exec 应返回（即使超时）");
-
-    assert_eq!(
-        exit_code, -1,
-        "超时应返回 exit_code=-1，实际: {}",
-        exit_code
-    );
-
-    // 清理
-    docker
-        .remove_container(
-            &container_id,
-            Some(bollard::query_parameters::RemoveContainerOptions {
-                force: true,
-                ..Default::default()
-            }),
-        )
-        .await
-        .expect("清理容器失败");
-}
-
-/// 5. 容器安全配置验证：CapDrop、readonly_rootfs、network_mode。
-#[ignore]
-#[serial_test::serial]
-#[tokio::test]
-async fn test_pool_security_config() {
-    if !is_e2e_enabled() {
-        return;
-    }
-
-    let docker = get_docker().expect("连接 Docker 失败");
-    common::ensure_test_image(&docker)
-        .await
-        .expect("确保测试镜像失败");
-
-    let config = make_pool_config(1, 2);
-    let pool = PoolManager::init(docker.clone(), config, &test_images())
-        .await
-        .expect("PoolManager init 失败");
-
-    pool.with_container("noj-judge-test-runner", 128, |container_id| async move {
-        // inspect 验证安全配置
+        // 读取初始 memory 限制
         let inspect = docker
             .inspect_container(
                 &container_id,
@@ -403,107 +256,216 @@ async fn test_pool_security_config() {
             )
             .await
             .expect("inspect 失败");
+        let initial_memory = inspect
+            .host_config
+            .as_ref()
+            .and_then(|h| h.memory)
+            .unwrap_or(0);
+        assert_eq!(initial_memory, 512 * 1024 * 1024, "初始内存应为 512MB");
 
-        let hc = inspect.host_config.as_ref().expect("应有 host_config");
+        // 使用 docker update 下调到 64MB
+        docker
+            .update_container(
+                &container_id,
+                bollard::models::ContainerUpdateBody {
+                    memory: Some(64 * 1024 * 1024),
+                    memory_swap: Some(64 * 1024 * 1024),
+                    memory_swappiness: Some(0),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("update_container 失败");
 
-        // CapDrop ALL
-        assert!(hc.cap_drop.as_ref().is_some(), "cap_drop 应被设置");
-        let caps = hc.cap_drop.as_ref().unwrap();
-        assert!(caps.iter().any(|c| c == "ALL"), "cap_drop 应包含 ALL");
+        // 验证内存已更新
+        let inspect = docker
+            .inspect_container(
+                &container_id,
+                None::<bollard::query_parameters::InspectContainerOptions>,
+            )
+            .await
+            .expect("inspect 失败");
+        let updated_memory = inspect
+            .host_config
+            .as_ref()
+            .and_then(|h| h.memory)
+            .unwrap_or(0);
+        assert_eq!(updated_memory, 64 * 1024 * 1024, "更新后内存应为 64MB");
 
-        // network_mode none
-        assert_eq!(
-            hc.network_mode.as_deref(),
-            Some("none"),
-            "network_mode 应为 none"
-        );
-
-        // readonly_rootfs
-        assert_eq!(hc.readonly_rootfs, Some(true), "readonly_rootfs 应为 true");
-
-        // pids_limit 应设为 256（DoS 防护）
-        assert_eq!(hc.pids_limit, Some(256), "pids_limit 应为 256（DoS 防护）");
-
-        // ipc_mode 应设为 none（IPC 隔离）
-        assert_eq!(
-            hc.ipc_mode.as_deref(),
-            Some("none"),
-            "ipc_mode 应为 none（IPC 隔离）"
-        );
-
-        // security_opt 应包含 no-new-privileges:true
-        let sec_opts = hc.security_opt.as_ref().expect("security_opt 应被设置");
-        assert!(
-            sec_opts.iter().any(|s| s == "no-new-privileges:true"),
-            "security_opt 应包含 no-new-privileges:true"
-        );
-
-        Ok(())
-    })
-    .await
-    .expect("with_container 失败");
-}
-
-/// 6. 并发任务：池可同时运行多个任务（即时创建补足空闲不足）。
-#[ignore]
-#[serial_test::serial]
-#[tokio::test]
-async fn test_pool_concurrent_tasks() {
-    if !is_e2e_enabled() {
-        return;
+        // 清理
+        docker
+            .remove_container(
+                &container_id,
+                Some(bollard::query_parameters::RemoveContainerOptions {
+                    force: true,
+                    ..Default::default()
+                }),
+            )
+            .await
+            .expect("清理容器失败");
     }
+);
 
-    let docker = get_docker().expect("连接 Docker 失败");
-    common::ensure_test_image(&docker)
+e2e_test!(
+    #[ignore]
+    test_pool_exec_timeout,
+    async {
+        let docker = get_docker().expect("连接 Docker 失败");
+        ensure_test_image(&docker).await.expect("确保测试镜像失败");
+
+        let container_id = create_test_container_raw(&docker, &["sleep", "infinity"], 256)
+            .await
+            .expect("创建容器失败");
+
+        // 执行一个长时间运行的任务，设置短超时
+        let (_stdout, _stderr, exit_code, _time_ms) = execute_in_container(
+            &docker,
+            &container_id,
+            &[
+                "python3".to_string(),
+                "-c".to_string(),
+                "import time; time.sleep(30); print('done')".to_string(),
+            ],
+            2000, // 2s 超时
+            2,
+        )
         .await
-        .expect("确保测试镜像失败");
+        .expect("exec 应返回（即使超时）");
 
-    let config = make_pool_config(1, 2); // 初始 1 个空闲，最大 2
-    let pool = PoolManager::init(docker.clone(), config, &test_images())
-        .await
-        .expect("PoolManager init 失败");
+        assert_eq!(
+            exit_code, -1,
+            "超时应返回 exit_code=-1，实际: {}",
+            exit_code
+        );
 
-    // 并发运行 2 个任务（第 2 个需即时创建容器）
-    let pool1 = pool.clone();
-    let pool2 = pool.clone();
-    let (r1, r2) = tokio::join!(
-        tokio::spawn(async move {
-            pool1
-                .with_container("noj-judge-test-runner", 128, |_id| async move {
-                    tokio::time::sleep(Duration::from_millis(500)).await;
-                    Ok::<_, anyhow::Error>("done".to_string())
-                })
-                .await
-        }),
-        tokio::spawn(async move {
-            pool2
-                .with_container("noj-judge-test-runner", 128, |_id| async move {
-                    tokio::time::sleep(Duration::from_millis(500)).await;
-                    Ok::<_, anyhow::Error>("done".to_string())
-                })
-                .await
-        }),
-    );
-
-    assert!(r1.unwrap().is_ok(), "任务 1 应成功");
-    assert!(r2.unwrap().is_ok(), "任务 2 应成功（即时创建容器）");
-}
-
-/// 7. 带超时的 bollard API 调用测试。
-#[ignore]
-#[serial_test::serial]
-#[tokio::test]
-async fn test_pool_with_timeout() {
-    if !is_e2e_enabled() {
-        return;
+        // 清理
+        docker
+            .remove_container(
+                &container_id,
+                Some(bollard::query_parameters::RemoveContainerOptions {
+                    force: true,
+                    ..Default::default()
+                }),
+            )
+            .await
+            .expect("清理容器失败");
     }
+);
 
-    let docker = get_docker().expect("连接 Docker 失败");
+e2e_test!(
+    #[ignore]
+    test_pool_security_config,
+    async {
+        let docker = get_docker().expect("连接 Docker 失败");
+        ensure_test_image(&docker).await.expect("确保测试镜像失败");
 
-    // 正常的调用应通过
-    let result = with_timeout(5, "ping", async {
-        docker.ping().await.map_err(anyhow::Error::from)
-    })
-    .await;
-    assert!(result.is_ok(), "docker ping 应在 5s 内完成");
-}
+        let config = make_pool_config(1, 2);
+        let pool = PoolManager::init(docker.clone(), config, &test_images())
+            .await
+            .expect("PoolManager init 失败");
+
+        pool.with_container("noj-judge-test-runner", 128, |container_id| async move {
+            // inspect 验证安全配置
+            let inspect = docker
+                .inspect_container(
+                    &container_id,
+                    None::<bollard::query_parameters::InspectContainerOptions>,
+                )
+                .await
+                .expect("inspect 失败");
+
+            let hc = inspect.host_config.as_ref().expect("应有 host_config");
+
+            // CapDrop ALL
+            assert!(hc.cap_drop.as_ref().is_some(), "cap_drop 应被设置");
+            let caps = hc.cap_drop.as_ref().unwrap();
+            assert!(caps.iter().any(|c| c == "ALL"), "cap_drop 应包含 ALL");
+
+            // network_mode none
+            assert_eq!(
+                hc.network_mode.as_deref(),
+                Some("none"),
+                "network_mode 应为 none"
+            );
+
+            // readonly_rootfs
+            assert_eq!(hc.readonly_rootfs, Some(true), "readonly_rootfs 应为 true");
+
+            // pids_limit 应设为 256（DoS 防护）
+            assert_eq!(hc.pids_limit, Some(256), "pids_limit 应为 256（DoS 防护）");
+
+            // ipc_mode 应设为 none（IPC 隔离）
+            assert_eq!(
+                hc.ipc_mode.as_deref(),
+                Some("none"),
+                "ipc_mode 应为 none（IPC 隔离）"
+            );
+
+            // security_opt 应包含 no-new-privileges:true
+            let sec_opts = hc.security_opt.as_ref().expect("security_opt 应被设置");
+            assert!(
+                sec_opts.iter().any(|s| s == "no-new-privileges:true"),
+                "security_opt 应包含 no-new-privileges:true"
+            );
+
+            Ok(())
+        })
+        .await
+        .expect("with_container 失败");
+    }
+);
+
+e2e_test!(
+    #[ignore]
+    test_pool_concurrent_tasks,
+    async {
+        let docker = get_docker().expect("连接 Docker 失败");
+        ensure_test_image(&docker).await.expect("确保测试镜像失败");
+
+        let config = make_pool_config(1, 2); // 初始 1 个空闲，最大 2
+        let pool = PoolManager::init(docker.clone(), config, &test_images())
+            .await
+            .expect("PoolManager init 失败");
+
+        // 并发运行 2 个任务（第 2 个需即时创建容器）
+        let pool1 = pool.clone();
+        let pool2 = pool.clone();
+        let (r1, r2) = tokio::join!(
+            tokio::spawn(async move {
+                pool1
+                    .with_container("noj-judge-test-runner", 128, |_id| async move {
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        Ok::<_, anyhow::Error>("done".to_string())
+                    })
+                    .await
+            }),
+            tokio::spawn(async move {
+                pool2
+                    .with_container("noj-judge-test-runner", 128, |_id| async move {
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        Ok::<_, anyhow::Error>("done".to_string())
+                    })
+                    .await
+            }),
+        );
+
+        assert!(r1.unwrap().is_ok(), "任务 1 应成功");
+        assert!(r2.unwrap().is_ok(), "任务 2 应成功（即时创建容器）");
+    }
+);
+
+e2e_test!(
+    #[ignore]
+    test_pool_with_timeout,
+    async {
+        let docker = get_docker().expect("连接 Docker 失败");
+        ensure_test_image(&docker).await.expect("确保测试镜像失败");
+
+        // 正常的调用应通过
+        let result = with_timeout(5, "ping", async {
+            docker.ping().await.map_err(anyhow::Error::from)
+        })
+        .await;
+        assert!(result.is_ok(), "docker ping 应在 5s 内完成");
+    }
+);

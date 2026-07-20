@@ -16,7 +16,9 @@ const RESULT_QUEUE = "noj:judge:results";
  */
 export const consumerAlive = { value: false };
 
-async function handleResultMessage(data: Record<string, unknown>): Promise<void> {
+async function handleResultMessage(
+  data: Record<string, unknown>,
+): Promise<void> {
   const judgeResult = data as unknown as JudgeResult;
 
   if (!judgeResult.submission_id) {
