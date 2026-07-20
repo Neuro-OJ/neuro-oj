@@ -88,7 +88,7 @@ export async function refreshRankingsView(): Promise<void> {
 }
 
 /** 测试用：清除 hasMaterializedView 缓存 */
-export function _clearHasViewCacheForTest(): void {
+export function _resetHasViewCacheForTest(): void {
   _hasViewCache = null;
 }
 

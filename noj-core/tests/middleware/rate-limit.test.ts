@@ -1,7 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../lib/helper.ts";
 import {
-  _resetRateLimitForTests,
+  _resetRateLimitForTest,
   rateLimit,
 } from "../../src/middleware/rate-limit.ts";
 import { optionalAuthMiddleware } from "../../src/middleware/auth.ts";
@@ -66,7 +66,7 @@ Deno.test({
   name: "rate limit: 未登录连续两次请求第二次返回 429",
   ignore: !hasEnv,
   fn: async () => {
-    _resetRateLimitForTests();
+    _resetRateLimitForTest();
     const app = createTestApp(1000, 5000);
 
     const r1 = await app.request("/limited");
@@ -86,7 +86,7 @@ Deno.test({
   name: "rate limit: 登录用户连续两次请求间隔 < 1s 返回 429",
   ignore: !hasEnv,
   fn: async () => {
-    _resetRateLimitForTests();
+    _resetRateLimitForTest();
     const app = createTestApp(1000, 5000);
     const token = await signToken({ sub: "user-test", role: "user" });
 
@@ -110,7 +110,7 @@ Deno.test({
   name: "rate limit: 不同 IP 的未登录请求互不影响",
   ignore: !hasEnv,
   fn: async () => {
-    _resetRateLimitForTests();
+    _resetRateLimitForTest();
     const app = createTestApp(1000, 5000);
 
     // IP A 请求一次
@@ -137,7 +137,7 @@ Deno.test({
   name: "rate limit: 不同登录用户互不影响",
   ignore: !hasEnv,
   fn: async () => {
-    _resetRateLimitForTests();
+    _resetRateLimitForTest();
     const app = createTestApp(1000, 5000);
     const tokenA = await signToken({ sub: "user-a", role: "user" });
     const tokenB = await signToken({ sub: "user-b", role: "user" });
@@ -155,11 +155,11 @@ Deno.test({
 });
 
 Deno.test({
-  name: "rate limit: 重复触发 _resetRateLimitForTests 不抛错",
+  name: "rate limit: 重复触发 _resetRateLimitForTest 不抛错",
   ignore: !hasEnv,
   fn: () => {
-    _resetRateLimitForTests();
-    _resetRateLimitForTests();
+    _resetRateLimitForTest();
+    _resetRateLimitForTest();
   },
 });
 
@@ -171,7 +171,7 @@ Deno.test({
   // 引入路由会触发 DB 连接；放在测试里加载避免顶层副作用
   // 此测试独立，不依赖前面的限流测试
   fn: async () => {
-    _resetRateLimitForTests();
+    _resetRateLimitForTest();
     await resetDbForTest();
     await initRedisForTest();
     const { default: router } = await import("../../src/routes/submissions.ts");
@@ -196,7 +196,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    _resetRateLimitForTests();
+    _resetRateLimitForTest();
     await resetDbForTest();
     const { default: router } = await import("../../src/routes/submissions.ts");
     const app = new Hono<Env>();
@@ -221,7 +221,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    _resetRateLimitForTests();
+    _resetRateLimitForTest();
     await resetDbForTest();
     const { default: router } = await import("../../src/routes/submissions.ts");
     const app = new Hono<Env>();
@@ -245,7 +245,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    _resetRateLimitForTests();
+    _resetRateLimitForTest();
     await resetDbForTest();
     const { default: router } = await import("../../src/routes/submissions.ts");
     const app = new Hono<Env>();

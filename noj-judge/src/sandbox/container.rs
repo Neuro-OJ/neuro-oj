@@ -66,16 +66,16 @@ use tracing::warn;
 use crate::types::JudgeTask;
 
 /// 解压炸弹防护：最大条目数。
-const MAX_ZIP_ENTRIES: usize = 1000;
+pub const MAX_ZIP_ENTRIES: usize = 1000;
 /// 解压炸弹防护：单文件最大大小（64MB）。
-const MAX_FILE_SIZE: u64 = 64 * 1024 * 1024;
+pub const MAX_FILE_SIZE: u64 = 64 * 1024 * 1024;
 /// 解压炸弹防护：总解压大小（512MB）。
-const MAX_TOTAL_SIZE: u64 = 512 * 1024 * 1024;
+pub const MAX_TOTAL_SIZE: u64 = 512 * 1024 * 1024;
 
 /// 同步解压 zip 内容到目标目录。
 ///
 /// 使用 std::fs 同步写入以避免 tokio async fs 在特定环境下可能出现的缓冲问题。
-fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
+pub fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
     let cursor = std::io::Cursor::new(data);
     let mut archive = zip::ZipArchive::new(cursor).context("打开 zip 文件失败")?;
 

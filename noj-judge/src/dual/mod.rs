@@ -25,7 +25,9 @@ use tracing::{error, info, warn};
 
 use crate::dual::container::{start_exec, DualContainer, ExecSession};
 use crate::dual::protocol::{frame_type, EvaluatorLine, LineParser};
-use crate::sandbox::container::parse_command;
+use crate::sandbox::container::{
+    parse_command, MAX_FILE_SIZE, MAX_TOTAL_SIZE, MAX_ZIP_ENTRIES,
+};
 use crate::types::{JudgeResult, JudgeStatus, RuntimeConfig};
 
 /// 注入用户代码到指定容器的工作目录。
@@ -45,10 +47,11 @@ async fn inject_support_package_to_evaluator(
             let cursor = std::io::Cursor::new(data);
             let mut archive = zip::ZipArchive::new(cursor).context("打开支持包 zip 文件失败")?;
 
-            if archive.len() > 1000 {
-                anyhow::bail!("zip 条目数 {} 超过上限 1000", archive.len());
+            if archive.len() > MAX_ZIP_ENTRIES {
+                anyhow::bail!("zip 条目数 {} 超过上限 {}", archive.len(), MAX_ZIP_ENTRIES);
             }
 
+            let mut seen_paths = std::collections::HashSet::new();
             let mut entries = Vec::new();
             let mut total_size: u64 = 0;
 
@@ -68,6 +71,21 @@ async fn inject_support_package_to_evaluator(
                     anyhow::bail!("zip 包含非法路径条目: {}", file_name);
                 }
 
+                // 拒绝 overlapping entries（同名路径出现两次）
+                if !seen_paths.insert(file_name.clone()) {
+                    anyhow::bail!("zip 包含重复条目: {}", file_name);
+                }
+
+                // 单文件大小限制
+                if file.size() > MAX_FILE_SIZE {
+                    anyhow::bail!(
+                        "zip 条目 '{}' 大小 {} 超过单文件上限 {}",
+                        file_name,
+                        file.size(),
+                        MAX_FILE_SIZE
+                    );
+                }
+
                 let mut content = Vec::new();
                 file.read_to_end(&mut content)
                     .context("读取 zip 条目内容失败")?;
@@ -82,8 +100,12 @@ async fn inject_support_package_to_evaluator(
 
                 total_size = total_size.saturating_add(content.len() as u64);
 
-                if total_size > 512 * 1024 * 1024 {
-                    anyhow::bail!("zip 总解压大小超过上限 512MB");
+                if total_size > MAX_TOTAL_SIZE {
+                    anyhow::bail!(
+                        "zip 总解压大小 {} 超过上限 {}",
+                        total_size,
+                        MAX_TOTAL_SIZE
+                    );
                 }
 
                 entries.push((file_name, content));
@@ -375,11 +397,7 @@ async fn run_dual_loop(
                     eval_stdout_full.push('\n');
                 }
             }
-            let full_output = if eval_stderr_buf.is_empty() {
-                eval_stdout_full.clone()
-            } else {
-                format!("{}\n--- STDERR ---\n{}", eval_stdout_full, eval_stderr_buf)
-            };
+            let full_output = crate::merge_output(&eval_stdout_full, &eval_stderr_buf);
             Ok(JudgeResult::system_error(
                 submission_id,
                 &full_output,
@@ -499,11 +517,7 @@ fn build_judge_result(
     stderr: &str,
     stdout: &str,
 ) -> JudgeResult {
-    let full_output = if stderr.is_empty() {
-        stdout.to_string()
-    } else {
-        format!("{}\n--- STDERR ---\n{}", stdout, stderr)
-    };
+    let full_output = crate::merge_output(stdout, stderr);
     let status = parsed
         .get("status")
         .and_then(Value::as_str)

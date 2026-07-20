@@ -4,7 +4,7 @@ import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { passwordResetTokens, users } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
-import { _clearLoginBackoffForTest } from "../../src/lib/loginThrottle.ts";
+import { _resetLoginBackoffForTest } from "../../src/lib/loginThrottle.ts";
 import {
   generateResetToken,
   hashResetToken,
@@ -578,7 +578,7 @@ Deno.test({
         const redis = getRedis();
         // 清掉账号维度的限流计数（业务上限 5 会先触发，否则无法连续 10 次失败）
         await redis.del(`ratelimit:login:acc:${user}`);
-        _clearLoginBackoffForTest();
+        _resetLoginBackoffForTest();
         const res = await jsonRequest(app, `${BASE}/login`, {
           method: "POST",
           body: {
@@ -591,7 +591,7 @@ Deno.test({
       }
 
       // 第 11 次：清掉 IP/账号限流，确保走到 lock 检查
-      _clearLoginBackoffForTest();
+      _resetLoginBackoffForTest();
       {
         const redis = getRedis();
         await redis.del(
@@ -613,7 +613,7 @@ Deno.test({
       assertEquals(body.error, "登录尝试过多，账号已临时锁定");
 
       // 清理
-      _clearLoginBackoffForTest();
+      _resetLoginBackoffForTest();
       try {
         const redis = getRedis();
         await redis.del(

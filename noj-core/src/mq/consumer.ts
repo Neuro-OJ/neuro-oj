@@ -1,4 +1,4 @@
-import { createConsumerRedis } from "./connection.ts";
+import { createConsumer } from "./base-consumer.ts";
 import { saveEvaluationResult } from "../services/submissions.ts";
 import { logger, logJudgeResultReceived } from "../lib/logging.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";
@@ -11,149 +11,63 @@ import type { JudgeResult } from "../types/index.ts";
 const RESULT_QUEUE = "noj:judge:results";
 
 /**
- * BRPOP 超时时间（秒）。
- * 超时后自动重试，防止连接因长时间空闲而断开。
- */
-const BLPOP_TIMEOUT = 10;
-
-/** 初始重试延迟（ms）。 */
-const INITIAL_RETRY_DELAY_MS = 1_000;
-/** 最大重试延迟（ms）。 */
-const MAX_RETRY_DELAY_MS = 30_000;
-
-/**
  * 消费者活跃状态标识。
  * 供健康检查端点查询消费者是否在正常运行。
  */
-export let consumerAlive = false;
+export const consumerAlive = { value: false };
+
+async function handleResultMessage(data: Record<string, unknown>): Promise<void> {
+  const judgeResult = data as unknown as JudgeResult;
+
+  if (!judgeResult.submission_id) {
+    logger.error("评测结果缺少 submission_id，跳过");
+    return;
+  }
+
+  logJudgeResultReceived(
+    judgeResult.submission_id,
+    judgeResult.status,
+    judgeResult.score,
+  );
+
+  try {
+    await saveEvaluationResult(judgeResult);
+    logger.info("评测结果已持久化", {
+      submission_id: judgeResult.submission_id,
+    });
+
+    // 发布事件到 Redis Pub/Sub（fire-and-forget，不阻塞）
+    // 事件仅作触发通知，前端收到后主动通过 REST 接口拉取全量数据
+    publishEvent(
+      Channels.submission(judgeResult.submission_id),
+      JSON.stringify({
+        type: "submission:updated",
+        id: judgeResult.submission_id,
+      }),
+    );
+    publishEvent(
+      Channels.queue,
+      JSON.stringify({ type: "queue:changed" }),
+    );
+  } catch (dbErr) {
+    logger.error("评测结果持久化失败", {
+      submission_id: judgeResult.submission_id,
+      err: dbErr,
+    });
+    // 不中断循环，错误仅记录日志
+  }
+}
 
 /**
  * 启动评测结果消费者（带自动重连）。
  *
- * 在 `startResultConsumer` 因 Redis 断开等原因退出时，
+ * 在内部因 Redis 断开等原因退出时，
  * 使用指数退避策略自动创建新连接并重新启动消费。
  * 此函数不会正常返回——它会持续尝试重连。
  */
-export async function startResultConsumerWithRetry(): Promise<void> {
-  let retryCount = 0;
-
-  while (true) {
-    consumerAlive = false;
-
-    logger.info("结果消费者正在启动...");
-
-    try {
-      await startResultConsumer();
-    } catch (err) {
-      // startResultConsumer 内部已捕获所有预期错误；
-      // 走到此处的异常是未预期的严重错误。
-      logger.error("结果消费者异常退出", { err });
-    }
-
-    consumerAlive = false;
-
-    // 指数退避：1s → 2s → 4s → 8s → ... → 上限 30s
-    const delay = Math.min(
-      INITIAL_RETRY_DELAY_MS * Math.pow(2, retryCount),
-      MAX_RETRY_DELAY_MS,
-    );
-    retryCount++;
-
-    logger.warn("结果消费者将重启", { delay_ms: delay, retry: retryCount });
-
-    await new Promise((r) => setTimeout(r, delay));
-  }
-}
-
-/**
- * 启动评测结果消费者（核心循环）。
- *
- * 在独立异步循环中运行，通过 BRPOP 阻塞等待 noj-judge 发布的评测结果，
- * 解析后持久化到数据库。
- *
- * 此函数内部处理所有预期的连接错误和解析错误，
- * 仅在不可恢复时返回（由外层 `startResultConsumerWithRetry` 负责重启）。
- */
-async function startResultConsumer(): Promise<void> {
-  const redis = createConsumerRedis();
-
-  // 连接 Redis
-  try {
-    await redis.connect();
-  } catch (err) {
-    logger.error("结果消费者 Redis 连接失败", { err });
-    redis.disconnect(); // 显式断开，防止 ioredis 在后台无限重试泄漏
-    return; // 连接失败，由外层重试循环处理
-  }
-
-  consumerAlive = true;
-  logger.info("结果消费者启动，等待评测结果...");
-
-  // @ts-ignore - ioredis 的 brpop 类型在 Deno 中解析受限
-  while (true) {
-    try {
-      // BRPOP 返回 [key, value] 或 null
-      const result: [string, string] | null = await redis.brpop(
-        RESULT_QUEUE,
-        BLPOP_TIMEOUT,
-      );
-
-      if (!result) {
-        // 超时，继续循环
-        continue;
-      }
-
-      const [, rawJson] = result;
-
-      let judgeResult: JudgeResult;
-      try {
-        judgeResult = JSON.parse(rawJson);
-      } catch (parseErr) {
-        logger.error("评测结果 JSON 解析失败，跳过", { err: parseErr });
-        continue;
-      }
-
-      if (!judgeResult.submission_id) {
-        logger.error("评测结果缺少 submission_id，跳过");
-        continue;
-      }
-
-      logJudgeResultReceived(
-        judgeResult.submission_id,
-        judgeResult.status,
-        judgeResult.score,
-      );
-
-      try {
-        await saveEvaluationResult(judgeResult);
-        logger.info("评测结果已持久化", {
-          submission_id: judgeResult.submission_id,
-        });
-
-        // 发布事件到 Redis Pub/Sub（fire-and-forget，不阻塞）
-        // 事件仅作触发通知，前端收到后主动通过 REST 接口拉取全量数据
-        publishEvent(
-          Channels.submission(judgeResult.submission_id),
-          JSON.stringify({
-            type: "submission:updated",
-            id: judgeResult.submission_id,
-          }),
-        );
-        publishEvent(
-          Channels.queue,
-          JSON.stringify({ type: "queue:changed" }),
-        );
-      } catch (dbErr) {
-        logger.error("评测结果持久化失败", {
-          submission_id: judgeResult.submission_id,
-          err: dbErr,
-        });
-        // 不中断循环，错误仅记录日志
-      }
-    } catch (err) {
-      logger.error("结果消费者错误", { err });
-      // 短暂等待后重试，避免空转
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-  }
-}
+export const startResultConsumerWithRetry = createConsumer({
+  queueName: RESULT_QUEUE,
+  logLabel: "结果",
+  aliveRef: consumerAlive,
+  handleMessage: handleResultMessage,
+});

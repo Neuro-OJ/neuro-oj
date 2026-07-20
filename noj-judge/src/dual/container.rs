@@ -11,11 +11,14 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use bollard::container::LogOutput;
 use bollard::exec::StartExecResults;
-use bollard::models::{ContainerCreateBody, ExecConfig, HostConfig};
+use bollard::models::{ContainerCreateBody, ExecConfig};
 use bollard::Docker;
 use tokio::io::AsyncWrite;
 use tokio::time::timeout;
-use tracing::{info, warn};
+use tracing::info;
+
+use crate::sandbox::cleanup::remove_container_force;
+use crate::sandbox::host_config::build_host_config;
 
 /// `DualContainer` 持有 Evaluator + Solution 两个容器 ID。
 ///
@@ -64,15 +67,11 @@ impl DualContainer {
     pub async fn destroy(mut self) -> Result<()> {
         // 先 Solution（如果有）
         if let Some(id) = self.solution_id.take() {
-            if let Err(e) = remove_force(&self.docker, &id).await {
-                warn!("清理 Solution 容器失败 {}: {}", id, e);
-            }
+            remove_container_force(&self.docker, &id).await;
         }
         // 再 Evaluator
         if let Some(id) = self.evaluator_id.take() {
-            if let Err(e) = remove_force(&self.docker, &id).await {
-                warn!("清理 Evaluator 容器失败 {}: {}", id, e);
-            }
+            remove_container_force(&self.docker, &id).await;
         }
         Ok(())
     }
@@ -84,17 +83,13 @@ impl Drop for DualContainer {
         if let Some(id) = self.solution_id.take() {
             let docker = self.docker.clone();
             tokio::spawn(async move {
-                if let Err(e) = remove_force(&docker, &id).await {
-                    warn!("Drop 时清理 Solution 容器失败 {}: {}", id, e);
-                }
+                remove_container_force(&docker, &id).await;
             });
         }
         if let Some(id) = self.evaluator_id.take() {
             let docker = self.docker.clone();
             tokio::spawn(async move {
-                if let Err(e) = remove_force(&docker, &id).await {
-                    warn!("Drop 时清理 Evaluator 容器失败 {}: {}", id, e);
-                }
+                remove_container_force(&docker, &id).await;
             });
         }
     }
@@ -173,22 +168,9 @@ async fn create_container_with_security(
     let memory_bytes = (memory_mb as i64) * 1024 * 1024;
 
     let mut tmpfs = std::collections::HashMap::new();
-    tmpfs.insert("/tmp".to_string(), "size=256M".to_string());
+    tmpfs.insert("/tmp", "size=256M");
 
-    let host_config = HostConfig {
-        cap_drop: Some(vec!["ALL".to_string()]),
-        security_opt: Some(vec!["no-new-privileges:true".to_string()]),
-        privileged: Some(false),
-        readonly_rootfs: Some(false),
-        network_mode: Some("none".to_string()),
-        ipc_mode: Some("none".to_string()),
-        pids_limit: Some(256),
-        tmpfs: Some(tmpfs),
-        memory: Some(memory_bytes),
-        memory_swap: Some(memory_bytes),
-        memory_swappiness: Some(0),
-        ..Default::default()
-    };
+    let host_config = build_host_config(memory_bytes, tmpfs, false);
 
     let body = ContainerCreateBody {
         image: Some(image.to_string()),
@@ -217,32 +199,6 @@ async fn create_container_with_security(
     .context("启动容器失败")?;
 
     Ok(result.id)
-}
-
-async fn remove_force(docker: &Docker, container_id: &str) -> Result<()> {
-    // 3 次重试：100ms / 500ms / 2s
-    for delay_ms in [100u64, 500, 2000] {
-        match docker
-            .remove_container(
-                container_id,
-                Some(bollard::query_parameters::RemoveContainerOptions {
-                    force: true,
-                    ..Default::default()
-                }),
-            )
-            .await
-        {
-            Ok(_) => return Ok(()),
-            Err(e) => {
-                warn!(
-                    "docker rm -f {} 失败 (重试前等 {}ms): {}",
-                    container_id, delay_ms, e
-                );
-                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-            }
-        }
-    }
-    anyhow::bail!("docker rm -f {} 失败，已重试 3 次", container_id)
 }
 
 #[cfg(test)]

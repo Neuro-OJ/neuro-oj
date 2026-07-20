@@ -8,7 +8,7 @@ const { isLoggedIn, user } = useAuth()
 
 const problemId = route.params.id as string
 
-const { data, pending, error } = useFetch<{
+const { data, pending, error, refresh } = useFetch<{
   data: {
     id: string
     title: string
@@ -43,18 +43,18 @@ function goToEditor() {
   <NuxtPage v-if="!isDetailPage" />
 
   <template v-else>
-    <div v-if="pending" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted">
-      <div class="h-[28px] w-[28px] border-[3px] border-border border-t-primary rounded-full animate-spin-slow" />
-      <span>加载中...</span>
-    </div>
+    <AsyncContent
+      :status="pending ? 'loading' : error ? 'error' : problem ? 'data' : 'empty'"
+      error="题目加载失败"
+      @retry="refresh"
+    >
+      <template #error>
+        <span class="flex items-center justify-center size-11 rounded-full bg-red-100 text-red-800 text-xl font-bold">!</span>
+        <p>题目加载失败</p>
+        <NuxtLink to="/problems" class="btn btn-outline">返回题目列表</NuxtLink>
+      </template>
 
-    <div v-else-if="error" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted">
-      <span class="flex items-center justify-center size-11 rounded-full bg-red-100 text-red-800 text-xl font-bold">!</span>
-      <p>题目加载失败</p>
-      <NuxtLink to="/problems" class="btn btn-outline">返回题目列表</NuxtLink>
-    </div>
-
-    <div v-else-if="problem" class="max-w-4xl mx-auto p-6 space-y-6">
+      <div class="max-w-4xl mx-auto p-6 space-y-6">
       <!-- 题目信息卡片 -->
       <div class="bg-white border border-border rounded-xl overflow-hidden">
         <div class="px-7 py-6 pb-5 border-b border-border">
@@ -134,5 +134,6 @@ function goToEditor() {
         后即可提交代码
       </div>
     </div>
+    </AsyncContent>
   </template>
 </template>

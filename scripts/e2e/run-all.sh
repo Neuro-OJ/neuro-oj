@@ -7,9 +7,7 @@
 #
 # 使用方法: bash scripts/e2e/run-all.sh
 
-set -euo pipefail
-
-ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+source "$(dirname "$0")/lib.sh"
 
 echo "=========================================="
 echo " Neuro OJ — E2E 测试套件"

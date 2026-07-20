@@ -5,13 +5,7 @@
 #
 # 使用方法: bash scripts/e2e/teardown.sh
 
-set -euo pipefail
-
-ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-
-RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
-ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
-info() { echo -e "  ${CYAN}→${NC} $1"; }
+source "$(dirname "$0")/lib.sh"
 
 echo ""
 echo -e "${BOLD}=========================================="

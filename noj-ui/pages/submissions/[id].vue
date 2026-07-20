@@ -186,12 +186,10 @@ watch(
       <ArrowLeft :size="16" />
       返回题目
     </NuxtLink>
-    <!-- Loading -->
-    <div v-if="!submission" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted">
-      <div class="h-[28px] w-[28px] border-[3px] border-border border-t-primary rounded-full animate-spin-slow" />
-      <span>加载中...</span>
-    </div>
-    <template v-else>
+    <!-- Loading 与内容 -->
+    <AsyncContent
+      :status="submission ? 'data' : 'loading'"
+    >
       <!-- 头部卡片 -->
       <div class="bg-white border border-border rounded-xl overflow-hidden">
         <div class="flex items-center justify-between px-6 pt-5">
@@ -340,6 +338,6 @@ watch(
           </NuxtLink>
         </div>
       </div>
-    </template>
+    </AsyncContent>
   </div>
 </template>

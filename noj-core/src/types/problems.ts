@@ -42,28 +42,12 @@ export function isValidProblemType(value: string): value is ProblemType {
 }
 
 /**
- * 双容器 Runtime 配置（与 noj-judge/src/types.ts RuntimeConfig 对齐）。
+ * 双容器 Runtime 配置（与 ./index.ts RuntimeConfig 对齐）。
  *
  * 仅 admin 可设置；普通用户创建题目时该字段被忽略。
  */
-export interface RuntimeConfig {
-  evaluator: EvaluatorRuntime;
-  solution: SolutionRuntime;
-}
-
-export interface EvaluatorRuntime {
-  image: string;
-  command: string;
-  time_limit_ms: number;
-  memory_limit_mb: number;
-}
-
-export interface SolutionRuntime {
-  image: string;
-  entry: string;
-  call_timeout_ms: number;
-  memory_limit_mb: number;
-}
+import { type EvaluatorRuntime, type SolutionRuntime, type RuntimeConfig } from "./index.ts";
+export { type EvaluatorRuntime, type SolutionRuntime, type RuntimeConfig };
 
 /**
  * 创建题目请求体。

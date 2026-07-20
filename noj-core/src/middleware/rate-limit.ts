@@ -76,7 +76,7 @@ function checkAndRecord(key: string, intervalMs: number): boolean {
 }
 
 /** 测试辅助：重置所有限流记录（生产环境不应调用）。 */
-export function _resetRateLimitForTests(): void {
+export function _resetRateLimitForTest(): void {
   trackedRequests.clear();
 }
 

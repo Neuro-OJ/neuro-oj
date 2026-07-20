@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { FileText } from "@lucide/vue"
 
 const router = useRouter()
 const route = useRoute()
@@ -155,35 +154,20 @@ function formatAcceptanceRate(rate: number | undefined): string {
       @update:problem-type="setFilter('type', $event)"
     />
 
-    <!-- 加载中 -->
-    <div v-if="pending" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted" role="status" aria-live="polite">
-      <div class="h-[28px] w-[28px] border-[3px] border-border border-t-primary rounded-full animate-spin-slow" />
-      <span>加载中...</span>
-    </div>
+    <!-- 异步内容 -->
+    <AsyncContent
+      :status="pending ? 'loading' : error ? 'error' : problems.length === 0 ? 'empty' : 'data'"
+      error="题目加载失败"
+      :empty-text="hasActiveFilters ? '没有找到符合条件的题目，试试其他筛选条件' : '暂无题目'"
+      @retry="refresh"
+    >
+      <template #empty-action v-if="hasActiveFilters">
+        <button class="btn btn-outline px-4 py-1.5 text-xs" @click="router.push({ query: {} })">
+          清除筛选
+        </button>
+      </template>
 
-    <!-- 加载失败 -->
-    <div v-else-if="error" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted" role="alert">
-      <span class="flex items-center justify-center size-11 rounded-full bg-red-100 text-red-800 text-xl font-bold">!</span>
-      <p>题目加载失败</p>
-      <button class="btn btn-outline px-4 py-1.5 text-xs" @click="refresh">重试</button>
-    </div>
-
-    <!-- 空数据 -->
-    <div v-else-if="problems.length === 0" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted" role="status" aria-live="polite">
-      <FileText :size="48" class="opacity-30" />
-      <p v-if="hasActiveFilters">没有找到符合条件的题目，试试其他筛选条件</p>
-      <p v-else>暂无题目</p>
-      <button
-        v-if="hasActiveFilters"
-        class="btn btn-outline px-4 py-1.5 text-xs"
-        @click="router.push({ query: {} })"
-      >
-        清除筛选
-      </button>
-    </div>
-
-    <!-- 题目表格 -->
-    <template v-else>
+      <!-- 题目表格 -->
       <div class="bg-white border border-border rounded-xl overflow-x-auto">
         <table class="w-full border-collapse">
           <thead>
@@ -256,6 +240,6 @@ function formatAcceptanceRate(rate: number | undefined): string {
         :total-pages="totalPages"
         @page-change="setFilter('page', String($event))"
       />
-    </template>
+    </AsyncContent>
   </div>
 </template>

@@ -114,10 +114,10 @@ Deno.test({
     // PR-7 评审修订：CIDR 支持是 K8s/Cloudflare 部署的关键
     await updateSetting("trusted_proxies", "10.0.0.0/8", "0");
     // 必须清缓存，因为 getTrustedProxyEntries 内部缓存
-    const { _clearTrustedProxyCacheForTest } = await import(
+    const { _resetTrustedProxyCacheForTest } = await import(
       "../../src/lib/rateLimitEnv.ts"
     );
-    _clearTrustedProxyCacheForTest();
+    _resetTrustedProxyCacheForTest();
 
     // XFF = "1.1.1.1, 10.0.0.5"：10.0.0.5 在 10.0.0.0/8 网段内 → 代理
     // 首个非代理 IP = "1.1.1.1"
@@ -128,7 +128,7 @@ Deno.test({
     assertEquals(body.ip, "1.1.1.1");
 
     await updateSetting("trusted_proxies", "", "0");
-    _clearTrustedProxyCacheForTest();
+    _resetTrustedProxyCacheForTest();
   },
 });
 

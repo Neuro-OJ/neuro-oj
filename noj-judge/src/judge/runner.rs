@@ -116,11 +116,7 @@ async fn fetch_and_cache_support_package(
 #[allow(dead_code)]
 pub fn process_output(task: &JudgeTask, output: &ContainerOutput) -> JudgeResult {
     let submission_id = &task.submission_id;
-    let full_output = if output.stderr.is_empty() {
-        output.stdout.clone()
-    } else {
-        format!("{}\n--- STDERR ---\n{}", output.stdout, output.stderr)
-    };
+    let full_output = crate::merge_output(&output.stdout, &output.stderr);
 
     // 超时检测（exit_code = -1）
     if output.exit_code == -1 {
