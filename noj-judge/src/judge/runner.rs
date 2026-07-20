@@ -17,18 +17,54 @@ pub async fn evaluate(
     docker: bollard::Docker,
     task: &JudgeTask,
     _work_dir_root: &Path,
-    _download_timeout_secs: u64,
+    download_timeout_secs: u64,
     cache_dir: String,
     cache_max_items: usize,
     cache_max_mb: u64,
 ) -> Result<JudgeResult> {
+    // 下载/获取支持包（含缓存）
+    let support_pkg = if let Some(ref url) = task.download_url {
+        if !url.is_empty() {
+            match fetch_and_cache_support_package(
+                url,
+                download_timeout_secs,
+                &cache_dir,
+                cache_max_items,
+                cache_max_mb,
+            )
+            .await
+            {
+                Ok(bytes) => {
+                    info!(
+                        submission_id = %task.submission_id,
+                        size = bytes.len(),
+                        "支持包已获取"
+                    );
+                    Some(bytes)
+                }
+                Err(e) => {
+                    error!(
+                        submission_id = %task.submission_id,
+                        error = %e,
+                        "支持包获取失败，继续执行（可能缺少评测文件）"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     crate::dual::evaluate_dual(
         docker,
         &task.submission_id,
         &task.runtime_config,
         &task.code,
         task.file_name.as_deref().unwrap_or("solution.py"),
-        None, // 支持包挂载（v1 暂未实现，预留）
+        support_pkg.as_deref(),
         &cache_dir,
         cache_max_items,
         cache_max_mb,
@@ -38,7 +74,6 @@ pub async fn evaluate(
 }
 
 /// 获取支持包：缓存优先 → 按 host 分派下载 → SHA-256 校验 → 写缓存。
-#[allow(dead_code)]
 async fn fetch_and_cache_support_package(
     download_url: &str,
     download_timeout_secs: u64,

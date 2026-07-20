@@ -6,7 +6,10 @@ T0-LMCC：A+B Problem — 参考实现（双容器版）
 输出：它们的和
 """
 
+from noj_solution_sdk import register
 
+
+@register
 def solve(input_str: str) -> str:
     """入口函数：由 noj_solution_sdk.host 调用"""
     line = input_str.strip()

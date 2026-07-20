@@ -36,7 +36,7 @@ except (AttributeError, ValueError):
     # reconfigure 在某些环境下不可用，回退到 flush
     pass
 
-from .registry import get_registry, NotRegisteredError
+from .registry import _REGISTRY, get_registry, NotRegisteredError
 from .sanitize import sanitize_trace
 from .serialization import decode_value, encode_value
 
@@ -179,7 +179,7 @@ def _install_signal_handlers() -> None:
 
 
 def _load_entry(entry_path: str) -> None:
-    """importlib 加载用户提交文件（不污染 host 模块命名空间）。"""
+    """importlib 加载用户提交文件，自动注册顶层函数。"""
     if not os.path.exists(entry_path):
         sys.stderr.write(f"[host] entry 文件不存在: {entry_path}\n")
         sys.stderr.flush()
@@ -194,6 +194,14 @@ def _load_entry(entry_path: str) -> None:
     module = importlib.util.module_from_spec(spec)
     sys.modules["user_solution"] = module
     spec.loader.exec_module(module)
+
+    # 自动注册模块中所有顶层函数，用户无需显式 @register
+    import inspect
+    for name, obj in inspect.getmembers(module, inspect.isfunction):
+        if obj.__module__ == module.__name__:
+            _REGISTRY.register(name, obj)
+            sys.stderr.write(f"[host] 已自动注册函数: {name}\n")
+    sys.stderr.flush()
 
 
 def main() -> None:

@@ -13,6 +13,7 @@
 pub mod container;
 pub mod protocol;
 
+use std::io::Read;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -20,7 +21,7 @@ use bollard::container::LogOutput;
 use futures_util::StreamExt;
 use serde_json::Value;
 use tokio::io::AsyncWriteExt;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use crate::dual::container::{start_exec, DualContainer, ExecSession};
 use crate::dual::protocol::{frame_type, EvaluatorLine, LineParser};
@@ -29,7 +30,74 @@ use crate::types::{JudgeResult, JudgeStatus, RuntimeConfig};
 
 /// 注入用户代码到指定容器的工作目录。
 ///
-/// 使用 `tar | docker exec tar xf` 模式，与现有 `archive_and_copy` 一致。
+/// 注入支持包（zip）到 Evaluator 容器的 /workspace 目录。
+///
+/// 先同步提取 zip 中所有文件到内存，再逐个异步注入到容器。
+async fn inject_support_package_to_evaluator(
+    docker: &bollard::Docker,
+    container_id: &str,
+    zip_bytes: &[u8],
+) -> Result<()> {
+    // 同步提取 zip 内容到内存（ZipFile 不是 Send，不能在 tokio::spawn 中跨 await 持有）
+    let entries = tokio::task::spawn_blocking({
+        let data = zip_bytes.to_vec();
+        move || -> Result<Vec<(String, Vec<u8>)>> {
+            let cursor = std::io::Cursor::new(data);
+            let mut archive = zip::ZipArchive::new(cursor).context("打开支持包 zip 文件失败")?;
+
+            if archive.len() > 1000 {
+                anyhow::bail!("zip 条目数 {} 超过上限 1000", archive.len());
+            }
+
+            let mut entries = Vec::new();
+            let mut total_size: u64 = 0;
+
+            for i in 0..archive.len() {
+                let mut file = archive.by_index(i).context("读取 zip 条目失败")?;
+                let file_name = file.name().to_string();
+
+                // 跳过目录项
+                if file_name.ends_with('/') || file_name.ends_with('\\') {
+                    continue;
+                }
+
+                // 路径穿越防护
+                if file_name.split(['/', '\\']).any(|part| part == "..") || file_name.starts_with('/') {
+                    anyhow::bail!("zip 包含非法路径条目: {}", file_name);
+                }
+
+                let mut content = Vec::new();
+                file.read_to_end(&mut content).context("读取 zip 条目内容失败")?;
+                total_size = total_size.saturating_add(content.len() as u64);
+
+                if total_size > 512 * 1024 * 1024 {
+                    anyhow::bail!("zip 总解压大小超过上限 512MB");
+                }
+
+                entries.push((file_name, content));
+            }
+
+            info!("支持包提取完成 ({} 个文件)", entries.len());
+            Ok(entries)
+        }
+    })
+    .await
+    .context("spawn_blocking 提取 zip 失败")??;
+
+    // 异步逐个注入到容器
+    for (file_name, content) in &entries {
+        // 只传文件名（相对路径），因为 docker exec 的 tar 已 -C /workspace
+        inject_file_to_container(docker, container_id, file_name, content)
+            .await
+            .context(format!("注入支持包文件 {} 失败", file_name))?;
+        info!("  已注入支持包文件: {}", file_name);
+    }
+
+    info!("支持包注入完成 (共 {} 个文件)", entries.len());
+    Ok(())
+}
+
+/// 使用 `tar | docker exec tar xf` 模式，注入文件到容器。
 async fn inject_file_to_container(
     docker: &bollard::Docker,
     container_id: &str,
@@ -92,8 +160,8 @@ pub async fn evaluate_dual(
     task_submission_id: &str,
     runtime_config: &RuntimeConfig,
     user_code: &str,
-    _file_name: &str,
-    _support_pkg_bytes: Option<&[u8]>,
+    _file_name_from_submission: &str,
+    support_pkg_bytes: Option<&[u8]>,
     _cache_dir: &str,
     _cache_max_items: usize,
     _cache_max_mb: u64,
@@ -119,9 +187,20 @@ pub async fn evaluate_dual(
     .await
     .context("创建 Solution 容器失败")?;
 
+    let evaluator_id = dual.evaluator_id.clone().expect("刚创建");
     let solution_id = dual.solution_id.clone().expect("刚创建");
 
-    // 3. 注入用户代码到 Solution 容器（使用 runtime_config.solution.entry 作为文件名）
+    // 3. 注入支持包到 Evaluator 容器（evaluate.py 等评测脚本）
+    if let Some(pkg_bytes) = support_pkg_bytes {
+        info!("注入支持包到 Evaluator 容器 ({} bytes)", pkg_bytes.len());
+        inject_support_package_to_evaluator(&docker, &evaluator_id, pkg_bytes)
+            .await
+            .context("注入支持包到 Evaluator 容器失败")?;
+    } else {
+        info!("无支持包，跳过注入");
+    }
+
+    // 4. 注入用户代码到 Solution 容器（使用 runtime_config.solution.entry 作为文件名）
     inject_file_to_container(
         &docker,
         &solution_id,
@@ -131,8 +210,7 @@ pub async fn evaluate_dual(
     .await
     .context("注入用户代码到 Solution 容器失败")?;
 
-    // 4. 启动 Evaluator exec
-    let evaluator_id = dual.evaluator_id.clone().expect("刚创建");
+    // 5. 启动 Evaluator exec
     let evaluator_exec = start_exec(&docker, &evaluator_id, evaluator_cmd)
         .await
         .context("启动 Evaluator exec 失败")?;
@@ -228,7 +306,7 @@ async fn run_dual_loop(
                     &mut eval_parser,
                     &mut eval_stderr_buf,
                     &mut eval_stdout_full,
-                    &mut eval_input,
+                    &mut sol_input,
                     &mut result_payload,
                     chunk,
                 )
@@ -250,7 +328,7 @@ async fn run_dual_loop(
                 };
                 handle_sol_chunk(
                     &mut sol_parser,
-                    &mut sol_input,
+                    &mut eval_input,
                     chunk,
                     &mut solution_ready,
                 )
