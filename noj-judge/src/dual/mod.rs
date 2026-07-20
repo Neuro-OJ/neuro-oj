@@ -62,12 +62,15 @@ async fn inject_support_package_to_evaluator(
                 }
 
                 // 路径穿越防护
-                if file_name.split(['/', '\\']).any(|part| part == "..") || file_name.starts_with('/') {
+                if file_name.split(['/', '\\']).any(|part| part == "..")
+                    || file_name.starts_with('/')
+                {
                     anyhow::bail!("zip 包含非法路径条目: {}", file_name);
                 }
 
                 let mut content = Vec::new();
-                file.read_to_end(&mut content).context("读取 zip 条目内容失败")?;
+                file.read_to_end(&mut content)
+                    .context("读取 zip 条目内容失败")?;
                 total_size = total_size.saturating_add(content.len() as u64);
 
                 if total_size > 512 * 1024 * 1024 {
