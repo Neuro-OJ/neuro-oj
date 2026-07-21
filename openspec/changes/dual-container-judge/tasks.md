@@ -113,6 +113,6 @@
 - [ ] `deno fmt --check` + `deno lint` + `deno task test` 全过
 - [ ] `npm run build`（no-jui）通过
 - [ ] Docker E2E：`NOJ_RUN_E2E=1 cargo test --test e2e_dual_container -- --ignored` 全过（PR-A2 起）
-- [ ] 全链路 E2E：`NOJ_RUN_E2E=1 deno task test:e2e` 全过（PR-C 起）
+- [ ] 全链路 E2E：`NOJ_RUN_E2E=1 deno task test` 全过（PR-C 起）
 - [ ] GPG 签名所有提交
 - [ ] 不存在除设计稿允许外的字段（任何 `JudgeTask` 字段新增需更新 design.md）

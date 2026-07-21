@@ -283,12 +283,11 @@ neuro-oj/
 │       ├── user-ranking/  # 活跃变更（当前开发中）
 │       └── archive/       # 已归档变更（35 个）
 │
-├── scripts/               # 构建与维护脚本
-│   ├── build-packages.sh
-│   ├── migrate.sh, seed.sh
-│   └── e2e/               # E2E 编排脚本
-│       ├── setup.sh, teardown.sh, run-all.sh
-│       ├── core.sh, judge.sh
+├── scripts/               # 构建与运维脚本(详见 scripts/README.md)
+│   ├── dev/               # 本地开发运行:一键启停 core/ui/judge(后台守护 + PID + 日志归集)
+│   ├── db/                # 数据库迁移(migrate.sh)与种子(seed.sh)
+│   ├── build/             # 题目支持包构建(build-packages.sh)
+│   └── e2e/               # 跨模块 E2E 编排脚本(setup/teardown/core/judge/run-all)
 │
 ├── .github/workflows/
 │   ├── ci.yml             # PR/推送: 并行检查三个模块
@@ -386,6 +385,24 @@ cargo run               # 需要 Docker daemon
 
 # 三模块可独立启动，开发时可以只跑需要的部分
 ```
+
+### 一键启动（推荐：scripts/dev/）
+
+上述手动启动需要多个终端窗口。仓库根 `scripts/dev/` 提供了一键启停封装
+（日志与 PID 文件统一托管在 `scripts/dev/logs/`），适合本地日常开发：
+
+```bash
+bash scripts/dev/install-deps.sh      # 检测 Deno / Rust / Docker / zip
+cp scripts/dev/env.example noj-core/.env   # 必填 DATABASE_URL 与 JWT_SECRET
+
+bash scripts/dev/start-all.sh         # infra + core + ui + judge 一键启动
+bash scripts/dev/status.sh            # 查看运行状态
+bash scripts/dev/stop-all.sh          # 一键停止
+```
+
+> 脚本仅封装原生命令 + 后台守护 + PID/日志归集。调试或单模块迭代时仍推荐
+> 直接 `deno task dev` / `cargo run` 前台运行以观察实时输出。
+> 详细 FAQ 见 `scripts/dev/README.md`。
 
 ### 创建第一个管理员
 
@@ -616,10 +633,11 @@ NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
 
 ```bash
 cd noj-tests
-NOJ_RUN_E2E=1 deno task test:e2e
+NOJ_RUN_E2E=1 deno task test
 ```
 
 覆盖场景：Accepted / WrongAnswer / TLE / MQ 可靠性 / 无效消息容错
+/ 鉴权守卫 / S3 存储 / SSE 等 18 个全链路测试文件
 
 ---
 
