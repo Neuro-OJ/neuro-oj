@@ -10,7 +10,17 @@
     "build-packages": "deno run -A scripts/build-packages.ts",
     "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts",
     "migrate": "deno run -A scripts/migrate.ts --env-file=.env",
-    "test:smoke": "deno test -A --no-check tests/smoke.test.ts"
+    "check:env": "deno run -A scripts/check-env.ts",
+    "check:env:strict": "deno run -A scripts/check-env.ts --strict",
+    "test": "deno test -A --no-check",
+    "test:smoke": "deno test -A --no-check tests/smoke.test.ts",
+    "test:watch": "deno test -A --no-check --watch",
+    "fmt": "deno fmt",
+    "fmt:check": "deno fmt --check",
+    "lint": "deno lint",
+    "lint:fix": "deno lint --fix",
+    "check": "deno fmt --check && deno lint && deno task check:types",
+    "check:types": "find src -name '*.ts' -print0 | xargs -0 deno check"
   },
   "imports": {
     "hono": "npm:hono@^4",
