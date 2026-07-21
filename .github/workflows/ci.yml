@@ -33,6 +33,56 @@ concurrency:
 jobs:
 
   # ===========================================================================
+  # noj-core — 快速静态检查（fmt + lint + typecheck，无外部服务）
+  #
+  # 目的：把 lint / 格式 / 类型错误在 30 秒内暴露，避免 core-test 跑满 15 分钟
+  # 才反馈。所有静态检查失败应在此层就被拦下。
+  # 修复 PR-2 review finding F3：原 CI 设计要求开发者在 PR 上等到
+  # 接近 15 分钟才收到 "deno fmt 没过" 这种秒级就能发现的问题。
+  # ===========================================================================
+  core-quick-check:
+    name: Core Quick Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-quick-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-quick-
+
+      - name: 格式检查 (deno fmt --check)
+        working-directory: noj-core
+        run: deno fmt --check
+
+      - name: 代码检查 (deno lint)
+        working-directory: noj-core
+        run: deno lint
+
+      - name: 类型检查 (deno check)
+        working-directory: noj-core
+        # 排除 tests/：测试中用 Deno.test 包装的 import 由 deno test -A 解析，
+        # 单文件 check 会因 import.meta 等特性报"未使用"，噪音大于价值。
+        # 用 find+xargs 是因为 87 个 .ts 文件 shell glob 展开会超 E2BIG (os error 7)。
+        run: find src -name '*.ts' -print0 | xargs -0 deno check
+
+      # 不在 CI 跑 check:env:strict：脚本是给本地开发者用的工具，
+      # CI 环境使用 GitHub Secrets 而非 .env。
+      # 强行 cp .env.example .env 会触发模板里"故意写的占位符"
+      # （JWT_SECRET=change-this-...），产生误报。
+
+  # ===========================================================================
   # noj-core — 快速冒烟测试（不依赖外部服务，使用 PGlite 内存数据库）
   # ===========================================================================
   core-smoke:
