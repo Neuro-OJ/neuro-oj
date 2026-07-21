@@ -87,7 +87,11 @@ neuro-oj/
 ├── noj-docs/          # 正式文档站 — 做题人/运营者/出题人文档 (MkDocs Material)
 ├── noj-tests/         # 跨模块全链路 E2E 测试
 ├── openspec/          # OpenSpec 规范驱动开发（38 specs + 变化管理）
-├── scripts/           # 构建与维护脚本
+├── scripts/           # 构建与维护脚本（详见 scripts/README.md）
+│   ├── dev/           #   本地开发运行（一键启停 noj-core / noj-ui / noj-judge）
+│   ├── db/            #   数据库迁移与种子
+│   ├── build/         #   题目支持包构建
+│   └── e2e/           #   跨模块 E2E 编排
 ├── docker-compose.yml # 开发基础设施 (PostgreSQL + Redis)
 └── docker-compose.e2e.yml # E2E 测试编排
 ```
@@ -117,6 +121,20 @@ neuro-oj/
 
 ```bash
 docker compose up -d    # PostgreSQL:5432 + Redis:6379
+```
+
+### 一键启动整套开发环境
+
+仓库根目录提供了封装好的本地开发脚本（日志与 PID 文件统一托管在
+`scripts/dev/logs/`）：
+
+```bash
+bash scripts/dev/install-deps.sh      # 检测 Deno / Rust / Docker / zip
+cp scripts/dev/env.example noj-core/.env   # 配置环境变量（必填 DATABASE_URL 与 JWT_SECRET）
+
+bash scripts/dev/start-all.sh         # 一键启动 infra + core + ui + judge
+bash scripts/dev/status.sh            # 查看运行状态
+bash scripts/dev/stop-all.sh          # 一键停止
 ```
 
 ### 启动后端 (noj-core)
@@ -185,10 +203,11 @@ mkdocs build --strict
 
 ```bash
 cd noj-tests
-NOJ_RUN_E2E=1 deno task test:e2e
+NOJ_RUN_E2E=1 deno task test
 ```
 
-覆盖：Accepted / WrongAnswer / TLE / MQ 可靠性 / 无效消息容错
+覆盖：Accepted / WrongAnswer / TLE / MQ 可靠性 / 无效消息容错 / 鉴权守卫
+等 18 个全链路测试文件
 
 ### 各模块测试
 
