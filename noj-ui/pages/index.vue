@@ -31,7 +31,9 @@
                     <div class="w-full lg:w-[300px] lg:aspect-square lg:self-start shrink-0 flex flex-col bg-gradient-to-br from-white to-gray-50/50">
                         <div class="flex flex-col items-center pt-5 text-xs text-text-muted leading-tight">
                             <span>{{ todayDateStr }}</span>
-                            <span class="tabular-nums mt-0.5">{{ todayTimeStr }}</span>
+                            <ClientOnly>
+                                <span class="tabular-nums mt-0.5">{{ todayTimeStr }}</span>
+                            </ClientOnly>
                         </div>
                         <CheckInCard
                             :is-logged-in="isLoggedIn"

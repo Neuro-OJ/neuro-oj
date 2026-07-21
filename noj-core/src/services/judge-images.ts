@@ -232,7 +232,11 @@ export async function validateJudgeImageWithKind(
   }
 
   // 2. 检查 kind 匹配
-  const matched = rows.find((r) => isImageInWhitelist(image, [r]));
+  // 优先精确匹配（image 完全相等），再回退到 mode-based 匹配
+  // 防止 all_versions 模式下，tagged 版本（如 noj-solution-python:3.12）
+  // 被错误地匹配到无 tag 的引用（如 noj-solution-python）
+  const exactMatch = rows.find((r) => r.image === image);
+  const matched = exactMatch ?? rows.find((r) => isImageInWhitelist(image, [r]));
   if (!matched) {
     throw new ValidationError(
       `评测镜像 '${image}' 未匹配任何白名单条目`,

@@ -27,22 +27,34 @@
 
                 <!-- row 2: 跨两列同行（time 左，stats 右） -->
                 <template v-if="submission.result">
-                    <div class="col-span-2 self-center flex items-center justify-between gap-2 text-[11px]">
-                        <span class="text-text-muted">{{ formatTime(submission.created_at) }}</span>
-                        <div class="flex items-center gap-px font-mono tabular-nums">
-                            <span :class="getUsageColor(submission.result.time_ms, submission.problem.runtime_config.evaluator.time_limit_ms)">
-                                {{ formatTimeMs(submission.result.time_ms) }}
-                            </span>
-                            <span class="text-text-muted">/</span>
-                            <span class="font-bold text-text-muted">{{ formatTimeMs(submission.problem.runtime_config.evaluator.time_limit_ms) }}</span>
-                            <span class="text-text-muted mx-px">-</span>
-                            <span :class="getUsageColor(submission.result.memory_kb, memoryLimitKb)">
-                                {{ formatMemory(submission.result.memory_kb) }}
-                            </span>
-                            <span class="text-text-muted">/</span>
-                            <span class="font-bold text-text-muted">{{ formatMemoryLimit(submission.problem.runtime_config.evaluator.memory_limit_mb) }}</span>
+                    <template v-if="hasRuntimeConfig">
+                        <div class="col-span-2 self-center flex items-center justify-between gap-2 text-[11px]">
+                            <span class="text-text-muted">{{ formatTime(submission.created_at) }}</span>
+                            <div class="flex items-center gap-px font-mono tabular-nums">
+                                <span :class="getUsageColor(submission.result.time_ms, submission.problem.runtime_config!.evaluator!.time_limit_ms)">
+                                    {{ formatTimeMs(submission.result.time_ms) }}
+                                </span>
+                                <span class="text-text-muted">/</span>
+                                <span class="font-bold text-text-muted">{{ formatTimeMs(submission.problem.runtime_config!.evaluator!.time_limit_ms) }}</span>
+                                <span class="text-text-muted mx-px">-</span>
+                                <span :class="getUsageColor(submission.result.memory_kb, memoryLimitKb)">
+                                    {{ formatMemory(submission.result.memory_kb) }}
+                                </span>
+                                <span class="text-text-muted">/</span>
+                                <span class="font-bold text-text-muted">{{ formatMemoryLimit(submission.problem.runtime_config!.evaluator!.memory_limit_mb) }}</span>
+                            </div>
                         </div>
-                    </div>
+                    </template>
+                    <template v-else>
+                        <div class="col-span-2 self-center flex items-center justify-between gap-2 text-[11px]">
+                            <span class="text-text-muted">{{ formatTime(submission.created_at) }}</span>
+                            <div class="flex items-center gap-px font-mono tabular-nums">
+                                <span class="text-text-muted">{{ formatTimeMs(submission.result.time_ms) }}</span>
+                                <span class="text-text-muted mx-px">-</span>
+                                <span class="text-text-muted">{{ formatMemory(submission.result.memory_kb) }}</span>
+                            </div>
+                        </div>
+                    </template>
                 </template>
                 <template v-else-if="submission.queue_position != null">
                     <div class="col-span-2 self-center flex items-center justify-between gap-2 text-[11px]">
@@ -70,7 +82,7 @@ interface Submission {
     problem_id: string
     problem: {
         title: string
-        runtime_config: { evaluator: { time_limit_ms: number; memory_limit_mb: number } }
+        runtime_config?: { evaluator?: { time_limit_ms?: number; memory_limit_mb?: number } } | null
     }
     status: string
     created_at: string
@@ -94,9 +106,12 @@ interface Props {
 
 const props = defineProps<Props>()
 
+/** runtime_config 是否可用 */
+const hasRuntimeConfig = computed(() => !!props.submission.problem.runtime_config?.evaluator?.time_limit_ms && !!props.submission.problem.runtime_config?.evaluator?.memory_limit_mb)
+
 /** 内存上限换算为 KB（用于百分比计算）；null/0 时返回 0（灰色） */
 const memoryLimitKb = computed(() =>
-    (props.submission.problem.runtime_config.evaluator.memory_limit_mb ?? 0) * 1024,
+    (props.submission.problem.runtime_config?.evaluator?.memory_limit_mb ?? 0) * 1024,
 )
 
 function formatTime(iso: string): string {
