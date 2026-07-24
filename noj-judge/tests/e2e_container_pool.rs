@@ -1,12 +1,11 @@
-#![allow(unused_doc_comments)]
 // 容器池 E2E 集成测试。
-///
-/// 验证：池初始化、容器分配、docker exec 执行、内存调整、超时处理、空闲回收、安全加固。
-///
-/// 运行方式：
-/// ```bash
-/// NOJ_RUN_E2E=1 cargo test --test e2e_container_pool -- --ignored
-/// ```
+//
+// 验证：池初始化、容器分配、docker exec 执行、内存调整、超时处理、空闲回收、安全加固。
+//
+// 运行方式：
+// ```bash
+// NOJ_RUN_E2E=1 cargo test --test e2e_container_pool -- --ignored
+// ```
 mod common;
 
 use std::time::Duration;
@@ -459,7 +458,6 @@ e2e_test!(
     test_pool_with_timeout,
     async {
         let docker = get_docker().expect("连接 Docker 失败");
-        ensure_test_image(&docker).await.expect("确保测试镜像失败");
 
         // 正常的调用应通过
         let result = with_timeout(5, "ping", async {

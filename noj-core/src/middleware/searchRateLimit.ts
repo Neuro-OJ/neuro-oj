@@ -66,7 +66,9 @@ export function searchRateLimit(
 
     if (!result.allowed) {
       throw new RateLimitedError(
-        "搜索请求过于频繁，请稍后再试",
+        `搜索请求过于频繁，请稍后再试（${
+          dimension === "anon" ? "IP" : "用户"
+        }维度）`,
         rateLimitHeaders(cfg, result),
       );
     }

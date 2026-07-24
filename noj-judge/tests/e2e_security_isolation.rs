@@ -1,7 +1,6 @@
-#![allow(unused_doc_comments)]
 // Docker 安全隔离集成测试。
-///
-/// 验证：NetworkMode=none 阻断网络、敏感路径不可访问。
+//
+// 验证：NetworkMode=none 阻断网络、敏感路径不可访问。
 mod common;
 use common::{create_test_container, ensure_test_image, get_docker, wait_container};
 
@@ -33,11 +32,11 @@ e2e_test!(
     }
 );
 
-/// 敏感路径不可访问测试。
-///
-/// 验证容器内无法访问宿主机敏感路径。
-/// 注意：/etc/passwd 和 /proc/* 在正常 Docker 容器中天然存在
-///（分别来自镜像和 /proc 挂载），不代表宿主机路径泄漏。
+// 敏感路径不可访问测试。
+//
+// 验证容器内无法访问宿主机敏感路径。
+// 注意：/etc/passwd 和 /proc/* 在正常 Docker 容器中天然存在
+//（分别来自镜像和 /proc 挂载），不代表宿主机路径泄漏。
 e2e_test!(
     #[ignore]
     test_container_no_sensitive_mounts,

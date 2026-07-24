@@ -1,7 +1,6 @@
-#![allow(unused_doc_comments)]
 // 支持包与评测流程集成测试。
-///
-/// 验证：evaluate.py 执行、---RESULT--- 标记输出、无支持包场景、无标记场景。
+//
+// 验证：evaluate.py 执行、---RESULT--- 标记输出、无支持包场景、无标记场景。
 mod common;
 use common::{create_test_container, ensure_test_image, get_docker, wait_container};
 

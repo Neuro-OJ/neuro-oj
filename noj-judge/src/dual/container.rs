@@ -15,7 +15,7 @@ use bollard::models::{ContainerCreateBody, ExecConfig};
 use bollard::Docker;
 use tokio::io::AsyncWrite;
 use tokio::time::timeout;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::sandbox::cleanup::remove_container_force;
 use crate::sandbox::host_config::build_host_config;
@@ -67,11 +67,15 @@ impl DualContainer {
     pub async fn destroy(mut self) -> Result<()> {
         // 先 Solution（如果有）
         if let Some(id) = self.solution_id.take() {
-            remove_container_force(&self.docker, &id).await;
+            if !remove_container_force(&self.docker, &id).await {
+                warn!("destroy 时清理 Solution 容器失败: {}", id);
+            }
         }
         // 再 Evaluator
         if let Some(id) = self.evaluator_id.take() {
-            remove_container_force(&self.docker, &id).await;
+            if !remove_container_force(&self.docker, &id).await {
+                warn!("destroy 时清理 Evaluator 容器失败: {}", id);
+            }
         }
         Ok(())
     }
@@ -83,13 +87,17 @@ impl Drop for DualContainer {
         if let Some(id) = self.solution_id.take() {
             let docker = self.docker.clone();
             tokio::spawn(async move {
-                remove_container_force(&docker, &id).await;
+                if !remove_container_force(&docker, &id).await {
+                    warn!("Drop 时清理 Solution 容器失败: {}", id);
+                }
             });
         }
         if let Some(id) = self.evaluator_id.take() {
             let docker = self.docker.clone();
             tokio::spawn(async move {
-                remove_container_force(&docker, &id).await;
+                if !remove_container_force(&docker, &id).await {
+                    warn!("Drop 时清理 Evaluator 容器失败: {}", id);
+                }
             });
         }
     }

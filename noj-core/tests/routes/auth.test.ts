@@ -696,7 +696,7 @@ Deno.test({
     const meRes2 = await jsonRequest(app, `${BASE}/me`, { token });
     assertEquals(meRes2.status, 401);
     const meBody = await meRes2.json();
-    assertEquals(meBody.error, "认证令牌已失效");
+    assertEquals(meBody.error, "认证令牌无效或已过期");
   },
 });
 

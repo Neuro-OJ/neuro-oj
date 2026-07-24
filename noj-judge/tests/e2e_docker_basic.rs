@@ -1,7 +1,6 @@
-#![allow(unused_doc_comments)]
 // Docker 容器生命周期集成测试。
-///
-/// 验证：创建 → 启动 → 执行 Python 代码 → 等待退出 → 日志捕获 → 容器清理。
+//
+// 验证：创建 → 启动 → 执行 Python 代码 → 等待退出 → 日志捕获 → 容器清理。
 mod common;
 use common::{create_test_container, ensure_test_image, get_docker, wait_container};
 

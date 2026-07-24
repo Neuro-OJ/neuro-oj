@@ -72,10 +72,11 @@ pub const MAX_FILE_SIZE: u64 = 64 * 1024 * 1024;
 /// 解压炸弹防护：总解压大小（512MB）。
 pub const MAX_TOTAL_SIZE: u64 = 512 * 1024 * 1024;
 
-/// ZIP 条目：文件名 + 内容字节。
+/// ZIP 条目：文件名 + 内容字节 + 是否为目录。
 pub struct ZipEntry {
     pub file_name: String,
     pub data: Vec<u8>,
+    pub is_dir: bool,
 }
 
 /// 安全解压 ZIP 到内存，返回条目列表。
@@ -84,7 +85,6 @@ pub struct ZipEntry {
 /// - 路径穿越防护：拒绝含 `..` 或 `/` 开头的条目
 /// - 炸弹防护：1000 条目 / 64MB 单文件 / 512MB 总解压
 /// - Overlapping entries 防护：重复文件名报错
-/// - 统一换行符：将 `\r\n` 转换为 `\n`
 pub fn extract_zip_entries(data: &[u8]) -> Result<Vec<ZipEntry>> {
     let cursor = std::io::Cursor::new(data);
     let mut archive = zip::ZipArchive::new(cursor).context("打开 zip 文件失败")?;
@@ -102,14 +102,28 @@ pub fn extract_zip_entries(data: &[u8]) -> Result<Vec<ZipEntry>> {
     let mut seen_paths = std::collections::HashSet::new();
 
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i)?;
+        let mut file = archive.by_index(i).context("读取 zip 条目失败")?;
         let original_name = file.name().to_string();
+        let is_dir = file.is_dir();
 
         // 路径穿越防护
         if original_name.split(['/', '\\']).any(|part| part == "..")
             || original_name.starts_with('/')
         {
             anyhow::bail!("ZIP 条目包含非法路径: {}", original_name);
+        }
+
+        // 目录条目：跳过文件大小校验和内容读取，直接记录
+        if is_dir {
+            if !seen_paths.insert(original_name.clone()) {
+                anyhow::bail!("ZIP 条目重复: {}", original_name);
+            }
+            entries.push(ZipEntry {
+                file_name: original_name,
+                data: Vec::new(),
+                is_dir: true,
+            });
+            continue;
         }
 
         // 单文件大小限制
@@ -127,27 +141,11 @@ pub fn extract_zip_entries(data: &[u8]) -> Result<Vec<ZipEntry>> {
             anyhow::bail!("ZIP 条目重复: {}", original_name);
         }
 
-        // 读取内容（统一换行符：将 CR+LF 转换为 LF）
+        // 读取内容
         let mut buf = Vec::with_capacity(file.size() as usize);
         file.read_to_end(&mut buf)?;
-        let normalized = if buf.contains(&b'\r') {
-            let mut result = Vec::with_capacity(buf.len());
-            let mut i = 0;
-            while i < buf.len() {
-                if i + 1 < buf.len() && buf[i] == b'\r' && buf[i + 1] == b'\n' {
-                    result.push(b'\n');
-                    i += 2;
-                } else {
-                    result.push(buf[i]);
-                    i += 1;
-                }
-            }
-            result
-        } else {
-            buf
-        };
 
-        total_size += normalized.len() as u64;
+        total_size += buf.len() as u64;
         if total_size > MAX_TOTAL_SIZE {
             anyhow::bail!(
                 "ZIP 解压总大小 {} 超过最大限制 {}",
@@ -158,7 +156,8 @@ pub fn extract_zip_entries(data: &[u8]) -> Result<Vec<ZipEntry>> {
 
         entries.push(ZipEntry {
             file_name: original_name,
-            data: normalized,
+            data: buf,
+            is_dir: false,
         });
     }
 
@@ -172,9 +171,7 @@ pub fn extract_zip_entries(data: &[u8]) -> Result<Vec<ZipEntry>> {
 fn extract_zip_sync(data: &[u8], target_dir: &Path) -> Result<()> {
     let entries = extract_zip_entries(data)?;
     for entry in &entries {
-        // extract_zip_entries 只返回文件条目，不返回目录条目，
-        // 但仍检查尾随 / 以防空文件名被 zip crate 特殊处理。
-        if entry.data.is_empty() && entry.file_name.ends_with('/') {
+        if entry.is_dir {
             let dir_path = target_dir.join(&entry.file_name);
             std::fs::create_dir_all(&dir_path)
                 .with_context(|| format!("创建目录失败: {}", dir_path.display()))?;

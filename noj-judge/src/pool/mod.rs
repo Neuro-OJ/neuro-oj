@@ -20,6 +20,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use crate::config::PoolConfig;
+use crate::sandbox::cleanup::remove_container_force;
 use crate::sandbox::host_config::build_host_config;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -951,19 +952,7 @@ impl PoolManager {
                 for c in &containers {
                     if let Some(ref id) = c.id {
                         warn!("清理孤儿容器: {}", id);
-                        let _ = with_timeout(10, "remove_container", async {
-                            docker
-                                .remove_container(
-                                    id.as_str(),
-                                    Some(bollard::query_parameters::RemoveContainerOptions {
-                                        force: true,
-                                        ..Default::default()
-                                    }),
-                                )
-                                .await
-                                .map_err(anyhow::Error::from)
-                        })
-                        .await;
+                        remove_container_force(docker, id.as_str()).await;
                     }
                 }
             }

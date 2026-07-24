@@ -143,6 +143,11 @@ export class RateLimitedError extends AppError {
       this.meta = { retry_after: retryAfterOrHeaders };
     } else if (retryAfterOrHeaders) {
       this.headers = retryAfterOrHeaders;
+      if ("Retry-After" in retryAfterOrHeaders) {
+        this.meta = {
+          retry_after: parseInt(retryAfterOrHeaders["Retry-After"]),
+        };
+      }
     }
   }
 }

@@ -1,12 +1,11 @@
-#![allow(unused_doc_comments)]
 // 题目资源限制集成测试。
-///
-/// 验证题目的 time_limit_ms 和 memory_limit_mb 实际约束了 Docker 容器执行。
-///
-/// 运行方式：
-/// ```bash
-/// NOJ_RUN_E2E=1 cargo test --test e2e_problem_limits -- --ignored
-/// ```
+//
+// 验证题目的 time_limit_ms 和 memory_limit_mb 实际约束了 Docker 容器执行。
+//
+// 运行方式：
+// ```bash
+// NOJ_RUN_E2E=1 cargo test --test e2e_problem_limits -- --ignored
+// ```
 mod common;
 use common::{create_test_container, ensure_test_image, get_docker, wait_container};
 

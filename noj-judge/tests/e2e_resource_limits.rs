@@ -1,7 +1,6 @@
-#![allow(unused_doc_comments)]
 // Docker 资源限制集成测试。
-///
-/// 验证：超时 kill、OOM 限制、正常内存使用。
+//
+// 验证：超时 kill、OOM 限制、正常内存使用。
 mod common;
 use common::{create_test_container, ensure_test_image, get_docker, wait_container};
 
