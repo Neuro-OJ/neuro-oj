@@ -1,8 +1,4 @@
-## Purpose
-
-定义 Neuro OJ 评测镜像白名单管理规范。管理员可管理允许使用的评测 Docker 镜像列表，题目创建和更新时校验镜像是否在白名单中。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: 管理员管理镜像白名单
 
@@ -27,11 +23,6 @@
 
 - **WHEN** 管理员发送 `POST /api/v1/admin/judge-images`，携带 `kind: "worker"`
 - **THEN** 系统返回 HTTP 400，提示 kind 仅允许 `evaluator` / `solution`
-
-#### Scenario: 管理员添加全版本镜像
-
-- **WHEN** 管理员发送 `POST /api/v1/admin/judge-images`，携带 `{ "image": "noj-judge-python", "mode": "all_versions", "kind": "evaluator", "description": "Python 3.12 评测环境" }`
-- **THEN** 系统创建白名单记录，`noj-judge-python`、`noj-judge-python:latest`、`noj-judge-python:v1.0` 等均匹配该条目，返回 HTTP 201
 
 #### Scenario: 管理员查看白名单列表
 
@@ -64,6 +55,12 @@
 
 系统 SHALL 对题目创建和更新请求中的 `judge_image` 与 `runtime_config` 字段执行白名单校验，并确保 `runtime_config` 中 Evaluator / Solution 镜像的 kind 与白名单条目一致。白名单为空时 SHALL 拒绝所有镜像名，返回明确错误提示。
 
+#### Scenario: 单容器题目白名单校验（向后兼容）
+
+- **WHEN** 白名单中存在 `exact: "noj-judge-cpp:gcc13"` 且 `kind='evaluator'` 条目
+- **WHEN** 用户创建单容器题目，传入 `judge_image: "noj-judge-cpp:gcc13"`
+- **THEN** 系统通过白名单校验，正常创建题目
+
 #### Scenario: 双容器题目 Evaluator 镜像校验
 
 - **WHEN** 白名单中存在 `exact: "noj-evaluator-python:3.12"` 且 `kind='evaluator'` 条目
@@ -80,20 +77,14 @@
 - **WHEN** 用户传入 `runtime_config.solution.image: "noj-evaluator-python:3.12"`（白名单 kind='evaluator'）
 - **THEN** 系统返回 HTTP 400，提示 `image kind mismatch: solution image required`
 
-#### Scenario: 单容器题目白名单校验（向后兼容）
-
-- **WHEN** 白名单中存在 `exact: "noj-judge-cpp:gcc13"` 且 `kind='evaluator'` 条目
-- **WHEN** 用户创建单容器题目，传入 `judge_image: "noj-judge-cpp:gcc13"`
-- **THEN** 系统通过白名单校验，正常创建题目
-
 #### Scenario: 白名单为空时拒绝所有镜像
 
 - **WHEN** `judge_images` 表为空，用户创建题目时传入任意 `judge_image` 字符串或 `runtime_config`
 - **THEN** 系统返回 HTTP 400，提示"系统尚未配置允许的评测镜像，请联系管理员"
 
-#### Scenario: 更新题目时校验镜像（runtime_config）
+#### Scenario: 更新题目时校验镜像
 
-- **WHEN** 白名单非空，用户编辑题目时修改 `runtime_config` 中 Evaluator / Solution 镜像为不在白名单中的值
+- **WHEN** 白名单非空，用户编辑题目时修改 `judge_image` 为不在白名单中的值
 - **THEN** 系统返回 HTTP 400，拒绝更新
 
 #### Scenario: 更新题目时清空 runtime_config
@@ -107,9 +98,9 @@
 
 系统 SHALL 提供 `GET /api/v1/judge-images` 端点（无需认证），返回所有白名单镜像记录供题目编辑器使用。客户端可按 `kind` 查询参数过滤。
 
-#### Scenario: 获取可用镜像列表
+#### Scenario: 获取全部可用镜像列表
 
-- **WHEN** 任意用户（含未登录）发送 `GET /api/v1/judge-images`
+- **WHEN** 任意用户发送 `GET /api/v1/judge-images`
 - **THEN** 系统返回所有白名单记录的数组，每条含 `id`、`image`、`mode`、`kind`、`description`
 
 #### Scenario: 按 kind 过滤

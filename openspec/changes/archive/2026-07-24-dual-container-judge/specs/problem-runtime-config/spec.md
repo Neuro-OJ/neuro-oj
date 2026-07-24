@@ -1,8 +1,4 @@
-## Purpose
-
-定义题目双容器评测运行时配置（`runtime_config`）的规范。该 JSONB 字段存储 Evaluator 与 Solution 容器的运行时参数，支持按题目独立配置双容器评测环境。
-
-## Requirements
+## ADDED Requirements
 
 ### Requirement: 题目运行时配置（runtime_config）
 
