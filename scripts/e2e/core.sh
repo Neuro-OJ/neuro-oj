@@ -12,22 +12,14 @@
 #   E2E_CORE_PORT - 端口（默认 8099）
 # ============================================================================
 
+source "$(dirname "$0")/lib.sh"
 set -uo pipefail
-
-ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 
 # 加载 E2E 环境（如果 setup.sh 有写入的话）
 [ -f /tmp/noj-e2e-env.sh ] && source /tmp/noj-e2e-env.sh
 
 E2E_CORE_URL="${E2E_CORE_URL:-http://localhost:8099}"
 E2E_CORE_PORT="${E2E_CORE_PORT:-8099}"
-
-# ── 颜色 ──
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'
-BOLD='\033[1m'; NC='\033[0m'
-ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
-fail() { echo -e "  ${RED}✗${NC} $1"; }
-info() { echo -e "  ${CYAN}→${NC} $1"; }
 
 echo ""
 echo -e "${BOLD}━━━ noj-core E2E ━━━${NC}"

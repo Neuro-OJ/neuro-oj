@@ -11,7 +11,7 @@
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { checkRateLimit } from "../../src/lib/rateLimit.ts";
 import {
-  _clearLoginBackoffForTest,
+  _resetLoginBackoffForTest,
   applyLoginBackoff,
   clearLoginFailure,
   isLoginLocked,
@@ -153,7 +153,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    _clearLoginBackoffForTest();
+    _resetLoginBackoffForTest();
     const t0 = Date.now();
     await applyLoginBackoff(`nodata_${Date.now()}_${Math.random()}`);
     const elapsed = Date.now() - t0;

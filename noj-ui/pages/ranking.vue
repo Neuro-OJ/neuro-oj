@@ -40,28 +40,19 @@ function setPage(p: number) {
       <span class="text-sm text-text-muted">共 {{ total }} 位上榜用户</span>
     </div>
 
-    <!-- 加载中 -->
-    <div v-if="pending" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted" role="status" aria-live="polite">
-      <div class="h-[28px] w-[28px] border-[3px] border-border border-t-primary rounded-full animate-spin-slow" />
-      <span>加载中...</span>
-    </div>
+    <!-- 异步内容 -->
+    <AsyncContent
+      :status="pending ? 'loading' : error ? 'error' : rows.length === 0 ? 'empty' : 'data'"
+      error="榜单加载失败"
+      @retry="refresh"
+    >
+      <template #empty>
+        <Trophy :size="48" class="opacity-30" />
+        <p>还没有用户通过任何题目，做第一个吧 👉</p>
+        <NuxtLink to="/problems" class="btn btn-primary px-4 py-1.5 text-xs">去做题</NuxtLink>
+      </template>
 
-    <!-- 加载失败 -->
-    <div v-else-if="error" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted" role="alert">
-      <span class="flex items-center justify-center size-11 rounded-full bg-red-100 text-red-800 text-xl font-bold">!</span>
-      <p>榜单加载失败</p>
-      <button class="btn btn-outline px-4 py-1.5 text-xs" @click="refresh">重试</button>
-    </div>
-
-    <!-- 空数据 -->
-    <div v-else-if="rows.length === 0" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted" role="status" aria-live="polite">
-      <Trophy :size="48" class="opacity-30" />
-      <p>还没有用户通过任何题目，做第一个吧 👉</p>
-      <NuxtLink to="/problems" class="btn btn-primary px-4 py-1.5 text-xs">去做题</NuxtLink>
-    </div>
-
-    <!-- 榜单表格 -->
-    <template v-else>
+      <!-- 榜单表格 -->
       <div class="bg-white border border-border rounded-xl overflow-x-auto">
         <table class="w-full border-collapse">
           <thead>
@@ -125,6 +116,6 @@ function setPage(p: number) {
         :total-pages="totalPages"
         @page-change="setPage($event)"
       />
-    </template>
+    </AsyncContent>
   </div>
 </template>

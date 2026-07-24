@@ -15,7 +15,7 @@ import {
   ArrowLeft,
   Lock,
 } from "@lucide/vue"
-import { getLanguageLabel, formatScore, formatTime, formatMemory } from "~/composables/use-submissions"
+import { getLanguageLabel, formatScore, formatTime, formatMemory, statusBadgeColors, getResultDef, verdictClasses, formatDateTime } from "~/composables/use-submissions"
 
 interface SubmissionResult {
   status: string
@@ -100,58 +100,6 @@ onUnmounted(() => {
   stopPolling()
   isMounted.value = false
 })
-// 状态标签
-const statusLabel: Record<string, string> = {
-  pending: "等待评测",
-  judging: "评测中",
-  finished: "已完成",
-  error: "系统错误",
-}
-// 结果状态映射
-interface ResultDef {
-  label: string
-  icon: string
-  class: string
-}
-const resultDefMap: Record<string, ResultDef> = {
-  Accepted: { label: "答案正确", icon: "check", class: "accepted" },
-  WrongAnswer: { label: "答案错误", icon: "x", class: "wrong" },
-  TimeLimitExceeded: { label: "超出时间限制", icon: "alert", class: "tle" },
-  MemoryLimitExceeded: { label: "超出内存限制", icon: "alert", class: "mle" },
-  RuntimeError: { label: "运行时错误", icon: "x", class: "re" },
-  SystemError: { label: "系统错误", icon: "x", class: "se" },
-}
-function getResultDef(status: string | undefined): ResultDef {
-  if (!status) return { label: status ?? "未知", icon: "x", class: "se" }
-  return resultDefMap[status] ?? { label: status, icon: "x", class: "se" }
-}
-// Tailwind 判定颜色（完整字面量确保 JIT 识别）
-const verdictClasses: Record<string, string> = {
-  accepted: "bg-green-50 border border-green-200 text-green-700",
-  wrong: "bg-red-50 border border-red-200 text-red-800",
-  tle: "bg-orange-50 border border-orange-200 text-orange-800",
-  mle: "bg-orange-50 border border-orange-200 text-orange-800",
-  re: "bg-red-50 border border-red-200 text-red-800",
-  se: "bg-red-50 border border-red-200 text-red-800",
-}
-const statusBadgeColors: Record<string, string> = {
-  pending: "bg-gray-50 text-slate-500 border border-border",
-  judging: "bg-blue-50 text-blue-700 border border-blue-200",
-  error: "bg-red-50 text-red-800 border border-red-200",
-}
-function formatDateTime(iso: string | undefined): string {
-  if (!iso) return "--"
-  const d = new Date(iso)
-  return d.toLocaleString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  })
-}
-// 语言标签
 // highlight.js 语言映射
 const hljsLangMap: Record<string, string> = {
   python3: "python",

@@ -172,6 +172,6 @@ export function recordLoginBackoff(
 }
 
 /** 测试用：清空内存退避 Map */
-export function _clearLoginBackoffForTest() {
+export function _resetLoginBackoffForTest() {
   inMemoryBackoff.clear();
 }

@@ -49,7 +49,7 @@ interface ProfileResponse {
   data: UserProfile
 }
 
-const { data, pending, error } = useFetch<ProfileResponse>(
+const { data, pending, error, refresh } = useFetch<ProfileResponse>(
   `/api/v1/users/${userId}/profile`,
 )
 
@@ -149,19 +149,18 @@ function formatScore(raw: number | null | undefined): string {
 
 <template>
   <div class="max-w-[900px] mx-auto px-4 py-6 sm:px-6 sm:py-8 flex flex-col gap-6">
-    <!-- Loading -->
-    <div v-if="pending" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted">
-      <div class="h-[28px] w-[28px] border-[3px] border-border border-t-primary rounded-full animate-spin-slow" />
-      <span>加载中...</span>
-    </div>
+    <!-- 异步内容 -->
+    <AsyncContent
+      :status="pending ? 'loading' : error ? 'error' : profile ? 'data' : 'empty'"
+      error="用户不存在"
+      @retry="refresh"
+    >
+      <template #error>
+        <span class="flex items-center justify-center size-11 rounded-full bg-red-100 text-red-800 text-xl font-bold">!</span>
+        <p>用户不存在</p>
+      </template>
 
-    <!-- 加载失败 -->
-    <div v-else-if="error" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted">
-      <span class="flex items-center justify-center size-11 rounded-full bg-red-100 text-red-800 text-xl font-bold">!</span>
-      <p>用户不存在</p>
-    </div>
-
-    <template v-else-if="profile">
+      <template v-if="profile">
       <!-- 用户信息卡片 -->
       <div class="bg-white border border-border rounded-xl overflow-hidden">
         <div class="px-6 py-6 sm:px-8 sm:py-8">
@@ -349,5 +348,6 @@ function formatScore(raw: number | null | undefined): string {
         </div>
       </div>
     </template>
+    </AsyncContent>
   </div>
 </template>

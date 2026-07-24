@@ -19,6 +19,13 @@ use tracing::{error, info, warn};
 use crate::config::Config;
 use crate::pool::PoolManager;
 
+/// 将 stdout 和 stderr 合并为单一输出字符串，中间以分隔符连接。
+///
+/// stderr 为空时直接返回 stdout，避免添加不必要的分隔符。
+///
+/// 实现在 lib.rs（单源，避免与集成测试的入径不同步）。
+pub use noj_judge::merge_output;
+
 /// 等待所有 in-flight 任务完成（带 30s 超时兜底）。
 ///
 /// 超时后必须**显式** `abort()` 剩余 `JoinHandle`，否则：

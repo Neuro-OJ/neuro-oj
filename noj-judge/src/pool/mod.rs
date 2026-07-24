@@ -20,6 +20,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use crate::config::PoolConfig;
+use crate::sandbox::cleanup::remove_container_force;
+use crate::sandbox::host_config::build_host_config;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AllowedImageMode {
@@ -38,8 +40,6 @@ pub struct AllowedImage {
 
 /// 健康检查间隔（秒）。
 const HEALTH_CHECK_INTERVAL_SECS: u64 = 5;
-/// docker rm -f 重试延迟序列（毫秒）。
-const RM_F_RETRY_DELAYS: &[u64] = &[100, 500, 2000];
 
 // ── 空闲容器条目 ────────────────────────────────────────
 
@@ -482,39 +482,7 @@ impl PoolManager {
 
     /// docker rm -f（带重试）。
     async fn remove_container_force(&self, container_id: &str) {
-        for (i, delay_ms) in RM_F_RETRY_DELAYS.iter().enumerate() {
-            match self
-                .timed_bollard(10, "remove_container", async {
-                    self.docker
-                        .remove_container(
-                            container_id,
-                            Some(bollard::query_parameters::RemoveContainerOptions {
-                                force: true,
-                                ..Default::default()
-                            }),
-                        )
-                        .await
-                        .map_err(anyhow::Error::from)
-                })
-                .await
-            {
-                Ok(_) => return,
-                Err(e) => {
-                    if i < RM_F_RETRY_DELAYS.len() - 1 {
-                        warn!(
-                            "rm -f 失败 (attempt {}/{}): container={}, error={}",
-                            i + 1,
-                            RM_F_RETRY_DELAYS.len(),
-                            container_id,
-                            e
-                        );
-                        tokio::time::sleep(Duration::from_millis(*delay_ms)).await;
-                    } else {
-                        error!("rm -f 最终失败: container={}, error={}", container_id, e);
-                    }
-                }
-            }
-        }
+        crate::sandbox::cleanup::remove_container_force(&self.docker, container_id).await;
     }
 
     /// 确保镜像在本地存在。
@@ -625,30 +593,19 @@ impl PoolManager {
             None
         };
 
-        let mut tmpfs = std::collections::HashMap::new();
-        tmpfs.insert("/tmp".to_string(), "size=256M".to_string());
-
         let memory_bytes = (self.config.memory_mb as i64) * 1024 * 1024;
+
+        let mut tmpfs = std::collections::HashMap::new();
+        tmpfs.insert("/tmp", "size=256M");
+
+        let mut host_config = build_host_config(memory_bytes, tmpfs, true);
+        host_config.nano_cpus = nano_cpus;
 
         let config = bollard::models::ContainerCreateBody {
             image: Some(image.to_string()),
             cmd: Some(vec!["sleep".to_string(), "infinity".to_string()]),
             labels: Some(labels),
-            host_config: Some(bollard::models::HostConfig {
-                cap_drop: Some(vec!["ALL".to_string()]),
-                security_opt: Some(vec!["no-new-privileges:true".to_string()]),
-                privileged: Some(false),
-                readonly_rootfs: Some(true),
-                network_mode: Some("none".to_string()),
-                ipc_mode: Some("none".to_string()),
-                pids_limit: Some(256),
-                tmpfs: Some(tmpfs),
-                nano_cpus,
-                memory: Some(memory_bytes),
-                memory_swap: Some(memory_bytes),
-                memory_swappiness: Some(0),
-                ..Default::default()
-            }),
+            host_config: Some(host_config),
             ..Default::default()
         };
 
@@ -695,15 +652,7 @@ impl PoolManager {
         let docker = self.docker.clone();
         let cid = container_id.to_string();
         tokio::spawn(async move {
-            let _ = docker
-                .remove_container(
-                    &cid,
-                    Some(bollard::query_parameters::RemoveContainerOptions {
-                        force: true,
-                        ..Default::default()
-                    }),
-                )
-                .await;
+            crate::sandbox::cleanup::remove_container_force(&docker, &cid).await;
         })
     }
 
@@ -1003,19 +952,7 @@ impl PoolManager {
                 for c in &containers {
                     if let Some(ref id) = c.id {
                         warn!("清理孤儿容器: {}", id);
-                        let _ = with_timeout(10, "remove_container", async {
-                            docker
-                                .remove_container(
-                                    id.as_str(),
-                                    Some(bollard::query_parameters::RemoveContainerOptions {
-                                        force: true,
-                                        ..Default::default()
-                                    }),
-                                )
-                                .await
-                                .map_err(anyhow::Error::from)
-                        })
-                        .await;
+                        remove_container_force(docker, id.as_str()).await;
                     }
                 }
             }

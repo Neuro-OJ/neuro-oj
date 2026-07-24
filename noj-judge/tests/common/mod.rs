@@ -150,11 +150,27 @@ pub async fn create_test_container(
     Ok((container.id, work_dir))
 }
 
-/// 等待容器退出并捕获输出。
+/// 等待容器执行完成并返回输出。
 ///
-/// `timeout_ms` 为超时阈值，超时返回 exit_code=-1。
+/// 内部包含 30s 全局超时，调用方无需额外包装 timeout。
 #[allow(dead_code)]
 pub async fn wait_container(
+    docker: &Docker,
+    container_id: &str,
+    poll_interval_ms: u64,
+) -> Result<ContainerOutput> {
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        wait_container_inner(docker, container_id, poll_interval_ms),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("容器执行超时（全局 30s）"))?
+    .map_err(|e| anyhow::anyhow!("等待容器失败: {}", e))?;
+    Ok(result)
+}
+
+/// 内部实现（不含外层 timeout，供 wait_container 使用）。
+async fn wait_container_inner(
     docker: &Docker,
     container_id: &str,
     timeout_ms: u64,
@@ -278,4 +294,40 @@ async fn capture_logs(docker: &Docker, container_id: &str) -> ContainerOutput {
         stderr,
         exit_code: 0,
     }
+}
+
+/// 创建 E2E 测试（自动处理 is_e2e_enabled 守卫 + 序列化执行）。
+///
+/// 宏只处理守卫和测试属性，测试体需自行声明 docker：
+///
+/// ```ignore
+/// e2e_test!(#[ignore] test_name, async {
+///     let docker = common::get_docker().expect("连接 Docker 失败");
+///     common::ensure_test_image(&docker).await.expect("确保测试镜像失败");
+///     // ... 测试逻辑
+/// });
+/// ```
+#[macro_export]
+macro_rules! e2e_test {
+    ($name:ident, async $body:block) => {
+        #[::serial_test::serial]
+        #[tokio::test]
+        async fn $name() {
+            if !$crate::common::is_e2e_enabled() {
+                return;
+            }
+            $body
+        }
+    };
+    (#[ignore] $name:ident, async $body:block) => {
+        #[ignore]
+        #[::serial_test::serial]
+        #[tokio::test]
+        async fn $name() {
+            if !$crate::common::is_e2e_enabled() {
+                return;
+            }
+            $body
+        }
+    };
 }

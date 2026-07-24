@@ -109,6 +109,7 @@
 
 <script setup lang="ts">
 import { Lock, Eye, EyeOff, Loader2, X } from "@lucide/vue"
+import { validatePassword, validatePasswordMatch } from "~/utils/validatePassword"
 
 definePageMeta({ layout: "auth" })
 
@@ -160,19 +161,15 @@ function validate(): boolean {
     if (!form.newPassword) {
         fieldErrors.newPassword = "请输入新密码"
         valid = false
-    } else if (form.newPassword.length < 12) {
-        fieldErrors.newPassword = "密码长度不能少于 12 位"
-        valid = false
-    } else if (!/[a-z]/.test(form.newPassword)) {
-        fieldErrors.newPassword = "密码必须包含至少一个小写字母"
-        valid = false
-    } else if (!/[A-Z]/.test(form.newPassword)) {
-        fieldErrors.newPassword = "密码必须包含至少一个大写字母"
-        valid = false
-    } else if (!/[0-9]/.test(form.newPassword)) {
-        fieldErrors.newPassword = "密码必须包含至少一个数字"
-        valid = false
-    } else if (form.newPassword === form.oldPassword) {
+    } else {
+        const pwResult = validatePassword(form.newPassword)
+        if (!pwResult.valid) {
+            fieldErrors.newPassword = pwResult.message
+            valid = false
+        }
+    }
+
+    if (form.newPassword && form.newPassword === form.oldPassword) {
         fieldErrors.newPassword = "新密码不能与原密码相同"
         valid = false
     }
@@ -180,9 +177,12 @@ function validate(): boolean {
     if (!form.confirmPassword) {
         fieldErrors.confirmPassword = "请确认密码"
         valid = false
-    } else if (form.newPassword !== form.confirmPassword) {
-        fieldErrors.confirmPassword = "两次输入的密码不一致"
-        valid = false
+    } else {
+        const matchError = validatePasswordMatch(form.newPassword, form.confirmPassword)
+        if (matchError) {
+            fieldErrors.confirmPassword = matchError
+            valid = false
+        }
     }
 
     return valid

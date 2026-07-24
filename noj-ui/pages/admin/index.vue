@@ -62,13 +62,14 @@ async function handleRefresh() {
   <!-- tailwind-dashboard -->
   <div class="flex flex-col gap-6">
     <!-- 顶栏 -->
-    <div class="flex items-center justify-between">
-      <h1 class="text-[22px] font-bold text-text">仪表盘</h1>
-      <button class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-text-secondary bg-white border border-border rounded-lg cursor-pointer transition-all hover:border-text-secondary disabled:opacity-50 disabled:cursor-not-allowed" :disabled="refreshing" @click="handleRefresh">
-        <RefreshCw :size="16" :class="{ 'animate-spin': refreshing }" />
-        {{ refreshing ? "刷新中..." : "刷新" }}
-      </button>
-    </div>
+    <PageHeader title="仪表盘">
+      <template #actions>
+        <button class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-text-secondary bg-white border border-border rounded-lg cursor-pointer transition-all hover:border-text-secondary disabled:opacity-50 disabled:cursor-not-allowed" :disabled="refreshing" @click="handleRefresh">
+          <RefreshCw :size="16" :class="{ 'animate-spin': refreshing }" />
+          {{ refreshing ? "刷新中..." : "刷新" }}
+        </button>
+      </template>
+    </PageHeader>
 
     <!-- 加载态 -->
     <div v-if="statsLoading && stats.length === 0" class="flex flex-col items-center justify-center gap-2.5 px-6 py-12 text-text-secondary text-sm bg-white border border-border rounded-xl">

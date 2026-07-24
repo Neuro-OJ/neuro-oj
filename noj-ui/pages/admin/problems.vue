@@ -146,16 +146,14 @@ async function batchRejudge(problemId: string) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <div class="flex items-start justify-between gap-3">
-      <div>
-        <h1 class="text-[22px] font-bold text-text">题目管理</h1>
-        <span class="text-sm text-text-secondary">管理所有题目</span>
-      </div>
-      <NuxtLink to="/admin/problem-new" class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark">
-        <Plus :size="16" />
-        创建题目
-      </NuxtLink>
-    </div>
+    <PageHeader title="题目管理" description="管理所有题目">
+      <template #actions>
+        <NuxtLink to="/admin/problem-new" class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark">
+          <Plus :size="16" />
+          创建题目
+        </NuxtLink>
+      </template>
+    </PageHeader>
 
     <AdminTable
       :columns="columns"

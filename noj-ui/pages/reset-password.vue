@@ -82,6 +82,7 @@
 
 <script setup lang="ts">
 import { Lock, Eye, EyeOff, Loader2, X } from "@lucide/vue"
+import { validatePassword, validatePasswordMatch } from "~/utils/validatePassword"
 
 definePageMeta({ layout: "auth" })
 
@@ -113,21 +114,13 @@ function clearError() {
 
 function validate(): boolean {
     const errors: Record<string, string> = {}
-    if (!form.password) {
-        errors.password = "请输入新密码"
-    } else if (form.password.length < 12) {
-        errors.password = "密码长度不能少于 12 位"
-    } else if (!/[a-z]/.test(form.password)) {
-        errors.password = "密码必须包含至少一个小写字母"
-    } else if (!/[A-Z]/.test(form.password)) {
-        errors.password = "密码必须包含至少一个大写字母"
-    } else if (!/[0-9]/.test(form.password)) {
-        errors.password = "密码必须包含至少一个数字"
+    const pwResult = validatePassword(form.password)
+    if (!pwResult.valid) {
+        errors.password = pwResult.message
     }
-    if (!form.confirmPassword) {
-        errors.confirmPassword = "请确认密码"
-    } else if (form.password !== form.confirmPassword) {
-        errors.confirmPassword = "两次输入的密码不一致"
+    const matchError = validatePasswordMatch(form.password, form.confirmPassword)
+    if (matchError) {
+        errors.confirmPassword = matchError
     }
     fieldErrors.value = errors
     return Object.keys(errors).length === 0

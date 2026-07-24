@@ -74,24 +74,26 @@ function onPageChange(page: number) {
       </NuxtLink>
     </div>
 
-    <div v-if="pageLoading" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted">
-      <div class="h-[28px] w-[28px] border-[3px] border-border border-t-primary rounded-full animate-spin-slow" />
-      <span>加载中...</span>
-    </div>
+    <AsyncContent
+      :status="pageLoading ? 'loading' : loadError ? 'error' : problems.length === 0 ? 'empty' : 'data'"
+      :error="loadError || undefined"
+      empty-text="你还没有创建任何题目"
+      @retry="loadProblems(currentPage)"
+    >
+      <template #error>
+        <span class="flex items-center justify-center size-11 rounded-full bg-red-100 text-red-800 text-xl font-bold">!</span>
+        <p>{{ loadError }}</p>
+        <button class="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-md border border-primary text-primary bg-transparent hover:bg-primary hover:text-white transition-colors cursor-pointer" @click="loadProblems(currentPage)">重试</button>
+      </template>
 
-    <div v-else-if="loadError" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted" role="alert">
-      <span class="flex items-center justify-center size-11 rounded-full bg-red-100 text-red-800 text-xl font-bold">!</span>
-      <p>{{ loadError }}</p>
-    </div>
+      <template #empty>
+        <p>你还没有创建任何题目</p>
+        <NuxtLink to="/problems/new" class="inline-flex items-center gap-1.5 text-sm px-4 py-2 bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark">
+          创建第一道题
+        </NuxtLink>
+      </template>
 
-    <div v-else-if="problems.length === 0" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted">
-      <p>你还没有创建任何题目</p>
-      <NuxtLink to="/problems/new" class="inline-flex items-center gap-1.5 text-sm px-4 py-2 bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark">
-        创建第一道题
-      </NuxtLink>
-    </div>
-
-    <div v-else class="bg-white border border-border rounded-xl overflow-x-auto">
+      <div class="bg-white border border-border rounded-xl overflow-x-auto">
       <table class="w-full border-collapse">
         <thead>
           <tr>
@@ -130,5 +132,6 @@ function onPageChange(page: number) {
         </tbody>
       </table>
     </div>
+    </AsyncContent>
   </div>
 </template>

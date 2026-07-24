@@ -16,7 +16,7 @@ health.get("/health", async (c) => {
     checkRedisHealth(),
   ]);
 
-  const consumerOk = consumerAlive;
+  const consumerOk = consumerAlive.value;
   const allOk = db.ok && redis.ok && consumerOk;
 
   // 生产环境隐藏错误详情，防止泄露内部信息

@@ -8,3 +8,14 @@ pub mod judge;
 pub mod pool;
 pub mod sandbox;
 pub mod types;
+
+/// 将 stdout 和 stderr 合并为单一输出字符串，中间以分隔符连接。
+///
+/// stderr 为空时直接返回 stdout，避免添加不必要的分隔符。
+pub fn merge_output(stdout: &str, stderr: &str) -> String {
+    if stderr.is_empty() {
+        stdout.to_string()
+    } else {
+        format!("{}\n--- STDERR ---\n{}", stdout, stderr)
+    }
+}

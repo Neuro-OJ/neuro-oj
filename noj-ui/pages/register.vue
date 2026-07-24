@@ -124,6 +124,7 @@
 
 <script setup lang="ts">
 import { User, Mail, Lock, Eye, EyeOff, Loader2, X } from "@lucide/vue"
+import { validatePassword, validatePasswordMatch, validateEmail } from "~/utils/validatePassword"
 
 definePageMeta({ layout: "auth" })
 
@@ -176,37 +177,32 @@ function validate(): boolean {
         valid = false
     }
 
-    if (!form.email.trim()) {
-        fieldErrors.email = "请输入邮箱地址"
-        valid = false
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-        fieldErrors.email = "邮箱格式不正确"
+    const emailError = validateEmail(form.email)
+    if (emailError) {
+        fieldErrors.email = emailError
         valid = false
     }
 
     if (!form.password) {
         fieldErrors.password = "请输入密码"
         valid = false
-    } else if (form.password.length < 12) {
-        fieldErrors.password = "密码长度不能少于 12 位"
-        valid = false
-    } else if (!/[a-z]/.test(form.password)) {
-        fieldErrors.password = "密码必须包含至少一个小写字母"
-        valid = false
-    } else if (!/[A-Z]/.test(form.password)) {
-        fieldErrors.password = "密码必须包含至少一个大写字母"
-        valid = false
-    } else if (!/[0-9]/.test(form.password)) {
-        fieldErrors.password = "密码必须包含至少一个数字"
-        valid = false
+    } else {
+        const pwResult = validatePassword(form.password)
+        if (!pwResult.valid) {
+            fieldErrors.password = pwResult.message
+            valid = false
+        }
     }
 
     if (!form.confirmPassword) {
         fieldErrors.confirmPassword = "请确认密码"
         valid = false
-    } else if (form.password !== form.confirmPassword) {
-        fieldErrors.confirmPassword = "两次输入的密码不一致"
-        valid = false
+    } else {
+        const matchError = validatePasswordMatch(form.password, form.confirmPassword)
+        if (matchError) {
+            fieldErrors.confirmPassword = matchError
+            valid = false
+        }
     }
 
     return valid

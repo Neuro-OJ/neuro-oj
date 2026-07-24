@@ -41,6 +41,8 @@ export const languageLabels: Record<string, string> = {
 export const statusColors: Record<string, string> = {
   pending: "#9ca3af",
   judging: "#3b82f6",
+  finished: "#10b981",
+  error: "#ef4444",
 }
 
 /**
@@ -49,6 +51,8 @@ export const statusColors: Record<string, string> = {
 export const statusLabels: Record<string, string> = {
   pending: "等待评测",
   judging: "评测中",
+  finished: "已完成",
+  error: "系统错误",
 }
 
 /**
@@ -61,6 +65,8 @@ export const resultLabels: Record<string, string> = {
   MemoryLimitExceeded: "超出内存限制",
   RuntimeError: "运行时错误",
   SystemError: "系统错误",
+  CompileError: "编译错误",
+  OutputLimitExceeded: "输出超出限制",
 }
 
 /**
@@ -73,6 +79,8 @@ export const resultColors: Record<string, string> = {
   MemoryLimitExceeded: "#f59e0b",
   RuntimeError: "#ef4444",
   SystemError: "#ef4444",
+  CompileError: "#a855f7",
+  OutputLimitExceeded: "#f97316",
 }
 
 /**
@@ -135,4 +143,72 @@ export function formatMemory(kb: number | undefined | null): string {
  */
 export function getLanguageLabel(lang: string): string {
   return languageLabels[lang] || lang
+}
+
+/**
+ * 评测结果详细定义（含图标和样式类）。
+ */
+export interface ResultDef {
+  label: string
+  icon: string
+  class: string
+}
+
+/**
+ * 评测结果状态 → 详细定义映射。
+ */
+export const resultDefMap: Record<string, ResultDef> = {
+  Accepted: { label: "答案正确", icon: "check", class: "accepted" },
+  WrongAnswer: { label: "答案错误", icon: "x", class: "wrong" },
+  TimeLimitExceeded: { label: "超出时间限制", icon: "alert", class: "tle" },
+  MemoryLimitExceeded: { label: "超出内存限制", icon: "alert", class: "mle" },
+  RuntimeError: { label: "运行时错误", icon: "x", class: "re" },
+  SystemError: { label: "系统错误", icon: "x", class: "se" },
+  CompileError: { label: "编译错误", icon: "x", class: "re" },
+  OutputLimitExceeded: { label: "输出超出限制", icon: "alert", class: "tle" },
+}
+
+/**
+ * 获取评测结果详细定义。
+ */
+export function getResultDef(status: string | undefined): ResultDef {
+  if (!status) return { label: status ?? "未知", icon: "x", class: "se" }
+  return resultDefMap[status] ?? { label: status, icon: "x", class: "se" }
+}
+
+/**
+ * 评测判定的 Tailwind 样式类。
+ */
+export const verdictClasses: Record<string, string> = {
+  accepted: "bg-green-50 border border-green-200 text-green-700",
+  wrong: "bg-red-50 border border-red-200 text-red-800",
+  tle: "bg-orange-50 border border-orange-200 text-orange-800",
+  mle: "bg-orange-50 border border-orange-200 text-orange-800",
+  re: "bg-red-50 border border-red-200 text-red-800",
+  se: "bg-red-50 border border-red-200 text-red-800",
+}
+
+/**
+ * 提交状态徽章的 Tailwind 样式类。
+ */
+export const statusBadgeColors: Record<string, string> = {
+  pending: "bg-gray-50 text-slate-500 border border-border",
+  judging: "bg-blue-50 text-blue-700 border border-blue-200",
+  error: "bg-red-50 text-red-800 border border-red-200",
+}
+
+/**
+ * 格式化 ISO 时间为中文可读格式。
+ */
+export function formatDateTime(iso: string | undefined): string {
+  if (!iso) return "--"
+  const d = new Date(iso)
+  return d.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
 }

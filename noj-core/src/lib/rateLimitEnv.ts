@@ -108,7 +108,7 @@ export function getTrustedProxyEntries(): Array<
 }
 
 /** 测试用：清空 trusted proxies 缓存（避免跨测试配置泄漏） */
-export function _clearTrustedProxyCacheForTest(): void {
+export function _resetTrustedProxyCacheForTest(): void {
   _trustedCache = null;
 }
 

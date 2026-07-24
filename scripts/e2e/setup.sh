@@ -8,9 +8,7 @@
 #
 # 停止:     bash scripts/e2e/teardown.sh
 
-set -euo pipefail
-
-ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+source "$(dirname "$0")/lib.sh"
 
 # ── E2E 配置 ──────────────────────────────────
 E2E_DB_URL="${E2E_DB_URL:-postgres://e2e:e2e@localhost:5433/e2e}"
@@ -22,14 +20,6 @@ E2E_JWT_SECRET="${E2E_JWT_SECRET:-e2e-test-secret}"
 # 导出供子脚本使用
 export E2E_DB_URL E2E_REDIS_URL E2E_CORE_PORT E2E_CORE_URL
 export JWT_SECRET="$E2E_JWT_SECRET"
-
-# ── 颜色 ──
-RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'
-BOLD='\033[1m'; NC='\033[0m'
-ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
-fail() { echo -e "  ${RED}✗${NC} $1"; }
-info() { echo -e "  ${CYAN}→${NC} $1"; }
-step() { echo -e "\n${BOLD}── ${CYAN}$1${NC} ──${NC}"; }
 
 echo ""
 echo -e "${BOLD}=========================================="
