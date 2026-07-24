@@ -61,7 +61,7 @@ issue #118 要求把单容器拆成双容器：**Evaluator（可信）+ Solution
 
 **关键路径**
 
-1. judge 启动 Evaluator 容器（挂载支持包），不立即执行 `evaluate.py`。
+1. judge 启动 Evaluator 容器（网络隔离），不立即执行 `evaluate.py`。
 2. judge 通过 `docker exec` 在 Evaluator 容器内启动 `python3 <evaluate.py>`（即 `judge_command`）。
 3. judge 启动 Solution 容器（无网络、无支持包），通过 `docker exec` 跑 `python3 -m noj_solution_sdk.host --entry <solution_entry>`（host 模块源码 `noj-judge/sdk/solution/noj_solution_sdk/host.py`，由 `solution-python` 镜像构建时安装）。
 4. **消息通路**（**Evaluator → Solution**：单方向）：
@@ -221,7 +221,7 @@ interface RuntimeConfig {
 | `noj-judge/sdk/evaluator/` (Python) | `noj_evaluator_sdk`：`SolutionRunner` / `result.accept` / `result.wrong_answer`、stdout/stderr 重定向配置 | 不碰容器 |
 | `noj-judge/sdk/solution/` (Python) | `noj_solution_sdk`：`register(fn)` | 不碰容器 |
 | `noj-judge/docker/solution-python/` | 内置 solution host + SDK，ReadonlyRootfs + tmpfs /tmp + network=none | 不含测试数据 |
-| `noj-judge/docker/evaluator-python/` | 内置 `noj_evaluator_sdk`；network=none（**第一阶段硬编码**，即便 admin 不配置）、无支持包挂载由 core 在注入时完成 | 不含测试数据 |
+| `noj-judge/docker/evaluator-python/` | 内置 `noj_evaluator_sdk`；network=none（**第一阶段硬编码**，即便 admin 不配置）、无支持包，由 judge 在运行时 tar 注入 | 不含测试数据 |
 | `noj-core` | `problems` Drizzle 列、admin CRUD、按模式调度 | 不懂 SDK |
 | `noj-ui` | admin 题目编辑表单加 runtime 配置块（含镜像 kind 下拉） | — |
 

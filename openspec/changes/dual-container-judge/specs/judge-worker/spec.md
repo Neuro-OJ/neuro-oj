@@ -7,8 +7,9 @@
 #### Scenario: 启动 Evaluator + Solution 双容器
 
 - **WHEN** JudgeTask.mode === 'dual'
-- **THEN** judge 启动 Evaluator 容器（挂载支持包、不立即执行 evaluate.py）
-- **THEN** judge 启动 Solution 容器（无网络、无支持包挂载、不传 Evaluator 环境变量）
+- **THEN** judge 启动 Evaluator 容器（网络隔离、不立即执行 evaluate.py）
+- **THEN** judge 通过 `docker exec tar xf` 注入支持包文件到 Evaluator 容器的 `/workspace` 目录
+- **THEN** judge 启动 Solution 容器（无网络、无支持包、不传 Evaluator 环境变量）
 - **THEN** judge 通过 docker exec 在 Evaluator 容器内运行 `runtime_config.evaluator.command`
 - **THEN** judge 通过 docker exec 在 Solution 容器内运行 `python3 -m noj_solution_sdk.host --entry <solution.entry>`
 - **THEN** Solution host 启动后 5 秒内必须发送 `ready` 帧，否则判 SystemError

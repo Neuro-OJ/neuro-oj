@@ -53,15 +53,17 @@ export default defineEventHandler(async (event) => {
   // 改密（issue #75 撤销机制）成功后服务端签发新 token，旧 token 被撤销；
   // 前端不感知，由 Nitro 代理同步替换 Cookie，避免「改密后被踢回登录页」的体验。
   if (shouldInterceptAuth(event)) {
-    const body = event.path.endsWith('/api/v1/auth/login')
-      ? await readBody(event)
-      : undefined;
+    const body = await readBody(event);
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (token) {
+      headers['authorization'] = `Bearer ${token}`;
+    }
 
     try {
       const response = await $fetch.raw(target, {
         method: 'POST',
-        ...(body !== undefined ? { body } : {}),
-        headers: { 'content-type': 'application/json' },
+        body,
+        headers,
       });
 
       const data = response._data as
