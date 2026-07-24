@@ -17,6 +17,19 @@ export interface LoginInput {
 }
 
 /**
+ * RBAC 角色类型。
+ */
+export type Role = "admin" | "user";
+
+/**
+ * 角色名称常量。
+ */
+export const ROLES = {
+  ADMIN: "admin",
+  USER: "user",
+} as const;
+
+/**
  * 公开的用户信息响应。
  * 不包含 password_hash，用于 API 返回。
  *
@@ -31,6 +44,7 @@ export interface UserResponse {
   username: string;
   email: string;
   role: string;
+  is_admin: boolean;
   must_change_password: boolean;
   active_ban: { reason: string; banned_until: string | null } | null;
   created_at: string;

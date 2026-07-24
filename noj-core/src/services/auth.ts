@@ -1,6 +1,7 @@
 import { and, eq, gte, ilike, isNull, lte, not, or, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { userBans, users } from "../db/schema.ts";
+import { roles, userRoles } from "../db/schema.ts";
 import { comparePassword, hashPassword } from "../lib/password.ts";
 import { signToken } from "../lib/jwt.ts";
 import { logAudit, logAuthEvent } from "./audit-log.ts";
@@ -74,15 +75,19 @@ export function validatePasswordStrength(
  */
 function toUserResponse(
   row: typeof users.$inferSelect,
-  activeBan?: { reason: string; banned_until: string | null } | null,
+  options?: {
+    activeBan?: { reason: string; banned_until: string | null } | null;
+    isAdmin?: boolean;
+  },
 ): UserResponse {
   return {
     id: row.id,
     username: row.username,
     email: row.email,
     role: row.role,
+    is_admin: options?.isAdmin ?? false,
     must_change_password: row.must_change_password,
-    active_ban: activeBan ?? null,
+    active_ban: options?.activeBan ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -143,6 +148,20 @@ export async function registerUser(
     updated_at: now,
   });
 
+  // 分配默认角色（is_default=true 的角色）
+  const [defaultRole] = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(eq(roles.is_default, true))
+    .limit(1);
+
+  if (defaultRole) {
+    await db.insert(userRoles).values({
+      user_id: id,
+      role_id: defaultRole.id,
+    }).onConflictDoNothing();
+  }
+
   // PR-2 审计：注册成功
   await logAuthEvent(
     id,
@@ -161,6 +180,7 @@ export async function registerUser(
     username: input.username,
     email: input.email,
     role: "user",
+    is_admin: false,
     must_change_password: false,
     active_ban: null,
     created_at: now,
@@ -276,10 +296,23 @@ export async function loginUser(
     }
   }
 
-  // 签发 JWT（携带 must_change_password 字段，issue #75）
+  // 查询用户角色（从 RBAC 表）
+  const roleRows = await db
+    .select({ name: roles.name, is_admin: roles.is_admin })
+    .from(userRoles)
+    .innerJoin(roles, eq(roles.id, userRoles.role_id))
+    .where(eq(userRoles.user_id, user.id));
+
+  const isAdmin = roleRows.some(r => r.is_admin);
+  const jwtRole = roleRows.find(r => r.is_admin)?.name
+    ?? roleRows.find(r => r.name === "user")?.name
+    ?? "user";
+
+  // 签发 JWT（携带 must_change_password、is_admin 字段）
   const token = await signToken({
     sub: user.id,
-    role: user.role,
+    role: jwtRole,
+    is_admin: isAdmin,
     must_change_password: user.must_change_password,
   });
 
@@ -296,7 +329,7 @@ export async function loginUser(
   );
 
   return {
-    user: toUserResponse(user, activeBan[0] ?? null),
+    user: toUserResponse(user, { activeBan: activeBan[0] ?? null, isAdmin }),
     token,
   };
 }
@@ -321,7 +354,7 @@ export async function getUserProfile(
     throw new UnauthorizedError("用户不存在");
   }
 
-  return toUserResponse(existing[0], null);
+  return toUserResponse(existing[0]);
 }
 
 /**
@@ -397,6 +430,7 @@ export async function promoteUser(
     username: existing[0].username,
     email: existing[0].email,
     role,
+    is_admin: role === "admin", // user_roles 会在后续操作中通过 PATCH 管理
     must_change_password: existing[0].must_change_password,
     active_ban: null,
     created_at: existing[0].created_at,
@@ -508,6 +542,7 @@ export async function listUsers(
     username: r.username,
     email: r.email,
     role: r.role,
+    is_admin: false, // TODO: 从 user_roles 查询，后续 PR 完善
     must_change_password: r.must_change_password,
     created_at: r.created_at,
     updated_at: r.updated_at,
@@ -602,11 +637,20 @@ export async function changePassword(
     { action: "auth.change_password", user_id: userId },
   );
 
+  // 查询用户的 admin 状态
+  const userRoleRows = await db
+    .select({ is_admin: roles.is_admin })
+    .from(userRoles)
+    .innerJoin(roles, eq(roles.id, userRoles.role_id))
+    .where(eq(userRoles.user_id, user.id));
+  const isAdmin = userRoleRows.some(r => r.is_admin);
+
   return {
     id: user.id,
     username: user.username,
     email: user.email,
     role: user.role,
+    is_admin: isAdmin,
     must_change_password: false,
     active_ban: null,
     created_at: user.created_at,

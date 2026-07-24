@@ -190,6 +190,13 @@ export async function resetDbForTest() {
     } catch {
       // 表可能还没建
     }
+    // 种子 RBAC 角色和权限
+    try {
+      const { ensureRbacSeeds } = await import("../services/seed-rbac.ts");
+      await ensureRbacSeeds();
+    } catch {
+      // 表可能还没建
+    }
     // 刷新物化视图（user_rankings，PGlite 不支持则忽略）
     try {
       await _pgliteInstance.query(

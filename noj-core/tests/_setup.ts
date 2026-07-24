@@ -63,4 +63,8 @@ export async function setupSchemaForTest(): Promise<void> {
      VALUES ('e0000000-0000-0000-0000-000000000003', 'noj-solution-python', 'all_versions', 'solution', 'Solution 运行时', '${now}', '${now}')
      ON CONFLICT (id) DO NOTHING`,
   );
+
+  // 种子 RBAC 数据
+  const { ensureRbacSeeds } = await import("../src/services/seed-rbac.ts");
+  await ensureRbacSeeds();
 }

@@ -486,6 +486,7 @@ export async function banUser(
     username: existing[0].username,
     email: existing[0].email,
     role: existing[0].role,
+    is_admin: false, // TODO: 从 user_roles 查询
     must_change_password: existing[0].must_change_password,
     active_ban: { reason: reason ?? "", banned_until: bannedUntil ?? null },
     created_at: existing[0].created_at,
@@ -529,6 +530,7 @@ export async function unbanUser(
     username: existing[0].username,
     email: existing[0].email,
     role: existing[0].role,
+    is_admin: false, // TODO: 从 user_roles 查询
     must_change_password: existing[0].must_change_password,
     active_ban: null,
     created_at: existing[0].created_at,
