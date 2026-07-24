@@ -71,6 +71,15 @@ async fn inject_support_package_to_evaluator(
                 let mut content = Vec::new();
                 file.read_to_end(&mut content)
                     .context("读取 zip 条目内容失败")?;
+
+                if content.len() > 64 * 1024 * 1024 {
+                    anyhow::bail!(
+                        "zip 单文件 {} ({} bytes) 超过上限 64MB",
+                        file_name,
+                        content.len()
+                    );
+                }
+
                 total_size = total_size.saturating_add(content.len() as u64);
 
                 if total_size > 512 * 1024 * 1024 {
