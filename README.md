@@ -16,22 +16,24 @@
 
 ## 什么是 Neuro OJ？
 
-Neuro OJ（NOJ）是一个面向**大模型实操能力评测**场景的在线评测系统。与传统的算法竞赛 OJ 不同，NOJ 评测的是指令微调、提示工程、Agent 构建、模型对齐等编程任务——这些任务需要灵活的评测逻辑、资源隔离和可扩展的 Worker 架构。
+Neuro OJ（NOJ）是一个面向**大模型实操能力评测**场景的在线评测系统。与传统算法竞赛 OJ 不同，NOJ 评测的是指令微调、提示工程、Agent 构建、模型对齐等编程任务——这些任务需要灵活的评测逻辑、严格的资源隔离和可水平扩展的 Worker 架构。
 
 ### 典型场景
 
 - **教学实训** — 大模型课程中的编程作业自动评测
-- **能力认证** — 支持类似 LMCC 第二轮编程题的机考环境
-- **模型评测** — 自动化评估模型在特定任务上的表现
+- **能力认证** — 复现类似 LMCC 第二轮编程题的机考环境
+- **模型评测** — 自动化评估模型在特定任务上的代码能力
+
+---
 
 ## 系统架构
 
-NOJ 由三个核心模块组成，通过 RESTful API 和 Redis 消息队列协作：
+NOJ 由三个模块通过 RESTful API 和 Redis 消息队列协作：
 
 ```
 +----------+   RESTful API   +----------+   Redis MQ    +--------------+
 |  noj-ui  | <-------------> | noj-core | --Producer--> |  noj-judge   |
-|  Nuxt 4  |                 | Deno+Hon | <--Consumer--|  Rust+Docker  |
+|  Nuxt 4  |                 | Deno+Hono| <--Consumer--|  Rust+Docker  |
 +----------+                 +----------+               +--------------+
                                    |
                               +----+----+
@@ -39,214 +41,225 @@ NOJ 由三个核心模块组成，通过 RESTful API 和 Redis 消息队列协�
                               +---------+
 ```
 
-### 消息流
+- **noj-ui**（Nuxt 4 + Vue 3）— Web 前端，提供题目列表、代码编辑器、提交结果页、管理后台等。
+- **noj-core**（Deno + Hono）— RESTful API 服务，负责用户/题目/提交/榜单等业务，并作为 Redis MQ 的生产者与消费者。
+- **noj-judge**（Rust + Tokio）— 评测 Worker，从 MQ 拉取任务，在 Docker 沙箱中执行评测脚本并回传结果。
+- **PostgreSQL 16** — 持久化存储；**Redis 7** — 消息队列与缓存。
 
-1. 用户通过 noj-ui 提交代码
-2. noj-core 接收请求，将评测任务发布到 Redis MQ（`noj:judge:queue`）
-3. noj-judge Worker 从 MQ 拉取任务（BRPOP）
-4. Worker 在 Docker 容器中执行评测（资源隔离、安全沙箱）
-5. 结果通过 Redis MQ 返回（`noj:judge:results`）
-6. noj-core 消费结果，持久化到 PostgreSQL
+### 评测消息流
 
-### Judge Worker 容器池模式
+1. 用户在 noj-ui 提交代码
+2. noj-core 接收请求，将评测任务发布到 Redis 队列（`noj:judge:queue`）
+3. noj-judge 从队列拉取任务
+4. Worker 在 Docker 容器中执行评测脚本（资源隔离、网络关闭）
+5. 结果回写 Redis（`noj:judge:results`）
+6. noj-core 消费结果并持久化到数据库
 
-- **Pool 模式** — 预创建固定容器池，懒回补，健康检查，RAII 自动回收（Semaphore 退化路径已移除）
+---
 
-## 技术栈
+## 环境要求
 
-| 模块 | 语言/运行时 | 核心框架 | 关键依赖 |
-|------|------------|----------|----------|
-| **noj-core** | Deno / TypeScript | Hono 4 | Drizzle ORM, postgres.js, ioredis, Jose (JWT), bcryptjs |
-| **noj-ui** | Deno / TypeScript | Nuxt 4 / Vue 3 | Tailwind CSS, Monaco Editor, Lucide Icons, SweetAlert2, markdown-it, KaTeX, highlight.js, DOMPurify |
-| **noj-judge** | Rust (Edition 2021) | Tokio | bollard (Docker API), redis-rs, serde, axum (metrics), zip, tar |
-| **基础设施** | — | — | PostgreSQL 16 / Redis 7 |
+| 组件 | 版本 / 说明 |
+|------|------------|
+| 操作系统 | Linux / macOS（推荐 Ubuntu 22.04+） |
+| [Deno](https://deno.com) | 2.x（运行 noj-core 与 noj-ui） |
+| [Rust](https://www.rust-lang.org/) | toolchain stable（编译 noj-judge） |
+| [Docker](https://www.docker.com/) | 20.10+，含 Docker Compose v2 |
+| zip / unzip | 系统命令行工具（构建支持包依赖，`install-deps.sh` 会自动安装） |
+| Git | 2.x |
+| 内存 | ≥ 4 GB（运行全部模块 + Postgres + Redis） |
+| 端口 | 3000（前端）/ 8000（后端）/ 5432（PG）/ 6379（Redis） |
 
-## 数据库 Schema
+> 一键检测脚本：`bash scripts/dev/install-deps.sh`，会自动安装 zip/unzip，并对其他依赖给出安装指引。
 
-```mermaid
-erDiagram
-    users ||--o{ submissions : ""
-    problems ||--o{ submissions : ""
-    submissions ||--|| evaluation_results : ""
-    problems }|--|{ categories : "problems_categories"
-    categories ||--o{ categories : "parent"
-    users ||--o{ check_ins : ""
-    users ||--o{ conversations : ""
-    conversations ||--o{ messages : ""
-```
-
-核心 7 张表 + 6 张辅助表：`users`, `problems`, `categories`, `problems_categories`, `submissions`, `evaluation_results`, `check_ins`, `judge_images`, `password_reset_tokens`, `conversations`, `messages`, `conversation_reads`, `message_deletions`。支持 U/P 双题库（用户题/主题题）、分类体系、每日签到、站内私信。
-
-## 项目结构
-
-```
-neuro-oj/
-├── noj-core/          # 核心后端 — RESTful API 服务 (Deno + Hono)
-├── noj-ui/            # 前端界面 — 用户交互 (Nuxt 4 + Vue 3)
-├── noj-judge/         # 评测 Worker — Docker 沙箱执行 (Rust + Tokio)
-├── noj-docs/          # 正式文档站 — 做题人/运营者/出题人文档 (MkDocs Material)
-├── noj-tests/         # 跨模块全链路 E2E 测试
-├── openspec/          # OpenSpec 规范驱动开发（38 specs + 变化管理）
-├── scripts/           # 构建与维护脚本（详见 scripts/README.md）
-│   ├── dev/           #   本地开发运行（一键启停 noj-core / noj-ui / noj-judge）
-│   ├── db/            #   数据库迁移与种子
-│   ├── build/         #   题目支持包构建
-│   └── e2e/           #   跨模块 E2E 编排
-├── docker-compose.yml # 开发基础设施 (PostgreSQL + Redis)
-└── docker-compose.e2e.yml # E2E 测试编排
-```
-
-## 安全模型
-
-| 维度 | 措施 |
-|------|------|
-| **认证** | JWT HS256, iss/aud 校验, HTTP-only Cookie, 24h 过期 |
-| **密码** | bcrypt cost 12, 最小 12 字符含大小写+数字 |
-| **容器** | cap_drop ALL, no-new-privileges, network_mode none, pids_limit 256, tmpfs /tmp |
-| **ZIP** | 路径穿越防护, 1000 条目 / 64MB 单文件 / 512MB 总解压上限 |
-| **XSS** | HTTP-only Cookie + DOMPurify Markdown 清洗 |
-| **授权** | 服务端强制角色校验, U/P 双题库权限隔离 |
-
-详见 [AGENTS.md](./AGENTS.md#7-安全模型总览)。
+---
 
 ## 快速开始
 
-### 环境要求
+### 方式 A：一键脚本（推荐）
 
-- [Deno](https://deno.com) 2.x
-- [Rust](https://www.rust-lang.org/)
-- [Docker](https://www.docker.com/)
-
-### 启动基础设施
+适合本地日常开发。脚本统一管理后台进程、PID 与日志到 `scripts/dev/logs/`。
 
 ```bash
-docker compose up -d    # PostgreSQL:5432 + Redis:6379
+# 1. 检测环境（自动安装 zip/unzip，提示其他依赖）
+bash scripts/dev/install-deps.sh
+
+# 2. 准备环境变量（必填 DATABASE_URL 与 JWT_SECRET，至少 32 字符）
+cp scripts/dev/env.example noj-core/.env
+$EDITOR noj-core/.env
+
+# 3. 一键启动整套环境（infra → core → ui → judge）
+bash scripts/dev/start-all.sh
+
+# 4. 查看状态
+bash scripts/dev/status.sh
+
+# 5. 停止全部模块
+bash scripts/dev/stop-all.sh
 ```
 
-### 一键启动整套开发环境
+启动完成后：
 
-仓库根目录提供了封装好的本地开发脚本（日志与 PID 文件统一托管在
-`scripts/dev/logs/`）：
+- 前端：<http://localhost:3000>
+- 后端 API：<http://localhost:8000>
+- 健康检查：`curl http://localhost:8000/health`
 
-```bash
-bash scripts/dev/install-deps.sh      # 检测 Deno / Rust / Docker / zip
-cp scripts/dev/env.example noj-core/.env   # 配置环境变量（必填 DATABASE_URL 与 JWT_SECRET）
+### 方式 B：手动分步启动
 
-bash scripts/dev/start-all.sh         # 一键启动 infra + core + ui + judge
-bash scripts/dev/status.sh            # 查看运行状态
-bash scripts/dev/stop-all.sh          # 一键停止
-```
-
-### 启动后端 (noj-core)
+需要单独调试某个模块时使用前台运行，实时查看日志。
 
 ```bash
+# 1. 基础设施
+docker compose up -d          # PostgreSQL + Redis
+
+# 2. 后端 noj-core
 cd noj-core
-deno task setup         # 构建支持包 + 填充种子数据
-deno task dev           # 热重载 (http://localhost:8000)
+deno task setup               # 构建支持包 + 填充种子数据
+deno task dev                 # 热重载 http://localhost:8000
+
+# 3. 前端 noj-ui（新开终端）
+cd ../noj-ui
+deno task dev                 # http://localhost:3000（首次运行会自动拉取依赖）
+
+# 4. 评测 Worker noj-judge（新开终端）
+cd ../noj-judge
+cargo run                     # 需 Docker daemon 运行中
 ```
 
-### 启动前端 (noj-ui)
+三模块相互独立，可只启动需要的部分（如只调试前端时无需启动 noj-judge）。
+
+### 首个管理员账号
+
+`deno task seed` 的行为依赖 `ADMIN_EMAIL` 是否设置：
+
+- **未设置 `ADMIN_EMAIL`** — 自动创建引导管理员（密码 24 位随机写入终端输出，**首次登录后必须修改**）。
+- **设置了 `ADMIN_EMAIL` 但未设置 `ADMIN_PASS`** — 仅提升该邮箱用户为管理员，不创建新用户。
+- **同时设置 `ADMIN_EMAIL` 和 `ADMIN_PASS`** — 用户不存在时自动创建并设为 admin。
+
+推荐做法——把凭据写进 `noj-core/.env` 后再运行 seed：
 
 ```bash
-cd noj-ui
-deno install
-deno task dev           # http://localhost:3000
+echo 'ADMIN_EMAIL=admin@example.com' >> noj-core/.env
+echo 'ADMIN_PASS=YourSecurePass123!' >> noj-core/.env
+cd noj-core && deno task seed
 ```
 
-### 启动评测 Worker (noj-judge)
+---
 
-```bash
-cd noj-judge
-cargo run               # 需要 Docker daemon
-```
+## 故障排查
 
-三模块可独立启动，开发时可以只跑需要的部分。
+### 启动相关
 
-## 文档站
+| 现象 | 可能原因 / 处理 |
+|------|----------------|
+| `JWT_SECRET 长度不足 32` | 在 `noj-core/.env` 设置 32+ 字符的随机字符串 |
+| `DATABASE_URL` 报错 / 连接拒绝 | 确认 `docker compose ps` 中 Postgres 已启动；端口 5432 未被占用 |
+| `deno task setup` 卡在 `zip: command not found` | `sudo apt install -y zip unzip` 后重试（或先跑 `install-deps.sh`） |
+| `cargo run` 报 `Cannot connect to Docker daemon` | 启动 Docker Desktop，或 `sudo systemctl start docker` |
+| 端口 3000 / 8000 冲突 | 修改对应模块配置，或先 `lsof -i :3000` 杀掉占用进程 |
+| 一键启动后某模块长时间未就绪 | 查看 `scripts/dev/status.sh` 输出与对应日志 |
 
-面向做题人、运营者和出题人的正式文档位于 [`noj-docs/`](./noj-docs/)。
+### 评测相关
 
-```bash
-cd noj-docs
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-mkdocs serve
-```
+| 现象 | 可能原因 / 处理 |
+|------|----------------|
+| 提交后状态长时间停留在 `Pending` | noj-judge 未启动或未连上 Redis；检查 `bash scripts/dev/status.sh` 与 `scripts/dev/logs/judge.log` |
+| 结果丢失 / 队列堆积 | 查看 Redis 长度：`redis-cli LLEN noj:judge:queue`；必要时重启 `noj-judge` 触发自动重连 |
+| 评测结果报错 `noj-download://` 解码失败 | `deno task build-packages` 重新构建题目支持包 |
+| 容器启动失败 `image not found` | 默认评测镜像为本地 `noj-judge-python`；检查 `noj-judge/docker/` 构建脚本 |
 
-提交文档变更前建议运行：
+### 数据库相关
 
-```bash
-cd noj-docs
-mkdocs build --strict
-```
+| 现象 | 可能原因 / 处理 |
+|------|----------------|
+| 迁移失败 | `cd noj-core && deno task migrate` 查看脱敏日志；常见原因是顺序错乱或与已应用迁移冲突 |
+| 种子数据缺失 / 管理员未创建 | 确认 `noj-core/.env` 已配置 `ADMIN_EMAIL`；必要时重新运行 `deno task seed` |
+| 想清空重置 | `docker compose down -v` 删除数据卷后重新 `up -d` + `deno task setup` |
+
+### 日志位置
+
+- 一键脚本：`scripts/dev/logs/{core,ui,judge}.log`（infra 由 docker compose 管理，无单独日志文件）
+- 手动运行：直接查看前台终端
+- 队列状态页：<http://localhost:3000/queue>（前端）
+
+更多 FAQ 见 [`scripts/dev/README.md`](./scripts/dev/README.md) 与 [`noj-docs/`](./noj-docs/) 文档站。
+
+---
 
 ## 开发流程
 
-本项目采用 **OpenSpec 规范驱动开发**：
+本项目使用 OpenSpec 规范驱动开发：
 
-1. 在 `openspec/specs/` 中定义行为规范
+1. 在 `openspec/specs/` 定义行为规范
 2. 创建变更提案 `openspec/changes/<name>/`
-3. 编写设计文档 + Delta 规范 + 任务拆分
-4. 实现 → 测试 → 归档
+3. 实现 → 测试 → 归档变更
 
 ### 版本控制
 
-- **Jujutsu (jj)** 管理本地仓库
-- **GPG 签名** 所有提交必须签名
-- **Conventional Commits** — `feat(core): 添加XX功能`
-- **PR 流程** — 禁止直接推送 main，所有变更通过 PR 合入
+- 本地使用 **Jujutsu (jj)** 管理仓库，推送使用 `jj git push`
+- 所有提交必须 **GPG 签名**，`Conventional Commits` 规范（中文描述）
+- 禁止直接推送到 `main`，所有变更通过 PR 合入
 
-## 测试体系
+完整的开发约定见 [`AGENTS.md`](./AGENTS.md) 以及各子模块的 `CLAUDE.md`：
+[`noj-core`](./noj-core/CLAUDE.md) · [`noj-ui`](./noj-ui/CLAUDE.md) · [`noj-judge`](./noj-judge/CLAUDE.md)。
 
-### 跨模块全链路 E2E 测试
-
-```bash
-cd noj-tests
-NOJ_RUN_E2E=1 deno task test
-```
-
-覆盖：Accepted / WrongAnswer / TLE / MQ 可靠性 / 无效消息容错 / 鉴权守卫
-等 18 个全链路测试文件
-
-### 各模块测试
+### 测试
 
 ```bash
-# noj-core（37 个测试文件）
+# noj-core 单元 + 集成测试（67 个测试文件）
 cd noj-core && deno task test
 
 # noj-judge 单元测试
 cd noj-judge && cargo test --lib
 
-# noj-judge Docker 沙箱 E2E
-cd noj-judge && NOJ_RUN_E2E=1 cargo test -- --ignored
+# noj-judge Docker 沙箱 E2E（需要 Docker 与 NOJ_RUN_E2E=1，7 个测试）
+cd noj-judge && NOJ_RUN_E2E=1 cargo test --test e2e -- --ignored
+
+# 跨模块全链路 E2E（17 个测试文件，需先启动完整环境）
+cd noj-tests && deno task test
 ```
 
-### CI/CD
+CI 通过 GitHub Actions 双重流水线保证质量：
 
-GitHub Actions 双流水线：
-- **ci.yml** — PR/推送触发，并行检查三个模块（fmt + lint + test + build）
-- **e2e.yml** — 全链路管道测试（70 API 测试 + 12 Docker 沙箱测试，5-15min）
+- **`ci.yml`** — PR/推送触发，并行检查三个模块（fmt + lint + test + build）
+- **`e2e.yml`** — 全链路管道测试（首次 ~15min，缓存命中后 ~5-8min）
 
-## 项目状态
+---
 
-当前处于 **Phase 1（MVP）** 阶段——注册 → 做题 → 提交 → 评测结果闭环已打通，题目筛选、管理后台可用。
+## 项目状态与路线图
 
-| 阶段 | 交付标准 |
-|------|----------|
-| Phase 0 | 浏览器注册 → 做题 → 提交 → 看到评测结果 |
-| Phase 1 | 榜单可查，题目可筛选，管理后台可用 |
-| Phase 2 | 可创建比赛 → 用户参赛 → 实时榜单 → 赛后复盘 |
-| Phase 3 | 多 Worker 并发评测，99.5% 可用性 |
+当前处于 **Phase 1（MVP）** 阶段——已打通"注册 → 做题 → 提交 → 评测结果"闭环，并具备题目筛选、管理后台、用户榜单、每日签到、站内私信等核心功能。当前遗留项：多语言评测（C++/Java/Node.js）、SPJ（Special Judge）。
 
-详见 [ROADMAP.md](./ROADMAP.md)。
+| 阶段 | 交付标准 | 状态 |
+|------|---------|------|
+| **Phase 0** | 浏览器注册 → 做题 → 提交 → 看到评测结果 | ✅ 完成 |
+| **Phase 1** | 榜单可查，题目可筛选，管理后台可用 | 🚧 进行中 |
+| **Phase 2** | 可创建比赛 → 用户参赛 → 实时榜单 → 赛后复盘 | ⏳ 规划 |
+| **Phase 3** | 多 Worker 并发评测，99.5% 可用性 | ⏳ 规划 |
+
+详见 [`ROADMAP.md`](./ROADMAP.md)。
+
+---
+
+## 文档
+
+- 用户文档站（做题人 / 运营者 / 出题人）：[`noj-docs/`](./noj-docs/)
+- 开发者总览：[`AGENTS.md`](./AGENTS.md)
+- 各模块详细约定：[`noj-core/CLAUDE.md`](./noj-core/CLAUDE.md) · [`noj-ui/CLAUDE.md`](./noj-ui/CLAUDE.md) · [`noj-judge/CLAUDE.md`](./noj-judge/CLAUDE.md)
+- 跨模块 E2E 测试指南：[`noj-tests/E2E_TESTING.md`](./noj-tests/E2E_TESTING.md)
+
+---
 
 ## 贡献
 
-- **GPG 签名** — 所有提交必须使用 GPG 密钥签名
-- **PR 流程** — 禁止直接推送 main 分支
-- 详细的开发约定见 [AGENTS.md](./AGENTS.md)
+欢迎以 PR 形式贡献代码。请先阅读 [`AGENTS.md`](./AGENTS.md) 中的贡献流程，重点关注：
+
+- 所有提交必须 GPG 签名
+- 通过 PR 合入，禁止直推 `main`
+- 遵循 OpenSpec 规范驱动流程
+
+---
 
 ## 许可证
 
-[GNU Affero General Public License v3.0](./LICENSE)
+本项目基于 [GNU Affero General Public License v3.0](./LICENSE) 开源。
