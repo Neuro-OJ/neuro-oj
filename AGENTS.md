@@ -493,6 +493,18 @@ U 型（用户题）：owner/admin 可 CRUD；P 型（主题题）：仅 admin �
 
 所有提交必须 GPG 签名。AI 在修改代码前必须先确认用户已配置签名。
 
+### 7.5 OpenSpec 归档目录命名（强制）
+
+OpenSpec 变更归档到 `openspec/changes/archive/` 时，目录名必须遵循：
+
+- **格式**：`YYYY-MM-DD-<kebab-case-name>`
+- **日期**：归档当日（UTC+8）的日期
+- **name**：与原 `openspec/changes/<name>/` 中的 `<name>` 完全一致（不重新命名）
+- **正确**：`2026-07-25-add-noj-docs/`、`2026-07-25-dual-container-judge/`
+- **错误**：`2026-07-06-2026-06-27-daily-checkin/`（双重日期，混淆了"原变更日"与"归档日"）
+
+禁止带 `git mv` 之外的拷贝方式（保留历史）。如果发现双重日期或格式不一致的归档目录，**新归档不要复用旧名**，直接以当日日期 + 原名建立新目录。
+
 ---
 
 ## 8. AI 必须遵守的要求
