@@ -1,7 +1,7 @@
 # Neuro OJ vs Hydro OJ：差异分析与未来发展方向
 
-> 文档日期：2026-07-03（更新）
-> 对比基于 Neuro OJ (NOJ) 当前 Phase 1 实现与 Hydro OJ v4.58.3 完整功能集。
+> 文档日期：2026-07-25（更新）
+> 对比基于 Neuro OJ (NOJ) 当前实现（PR #140 移除单容器池后）与 Hydro OJ v4.58.3 完整功能集。
 > **核心前提：NOJ 面向 LMCC（大语言模型能力认证），Hydro OJ 面向传统 OI（信息学竞赛）。**
 > 这导致两者在架构理念上存在根本性差异，而非简单的功能多寡。
 
@@ -80,7 +80,7 @@ LMCC 官方仅支持 Python，这是 CCF 的明确定位。因此 NOJ **不做**
 | | 子任务计分 | min/sum 规则 | 无（由 evaluate.py 自定） | 范式差异 |
 | | 检查器 | 5 种内置 | 无（由 evaluate.py 自定） | 范式差异 |
 | | 语言支持 | C/C++/Python/Java/... | **仅 Python（LMCC 定位）** | 有意识不做 |
-| | 容器预热 | 有限 | 容器池（固定池+懒回补+健康检查） | 固定池，无自动扩缩容 |
+| | 容器预热 | 有限 | 双容器编排（Evaluator + Solution，无池化） | 见 [judge-worker 主规范](../specs/judge-worker/spec.md) 与 [2026-07-25-container-pool-superseded README](../changes/archive/2026-07-25-container-pool-superseded/README.md) |
 | | 资源限制 | 支持 | cgroup 内存峰值 | 对等 |
 | | 评测队列 | MongoDB 轮询 | Redis MQ（LPUSH/BRPOP） | NOJ 支持水平扩展 |
 | | 编译缓存 | 支持 | 无 | LMCC 不需要 |
@@ -224,17 +224,21 @@ Hydro OJ 是经过 7 年迭代的成熟项目。NOJ 极其年轻，功能差距�
 | 评测沙箱 | Rust（内存安全） | Go sandbox daemon | Rust 资源控制更精细 |
 | 测试 | 70 E2E + 37 单元测试文件 | 有限 | 测试更体系化 |
 
-### 5.2 容器池和评测架构优势
+### 5.2 评测架构优势（双容器编排，2026-07 更新）
 
-NOJ 的 noj-judge 架构更精细：
+NOJ 的 noj-judge 当前采用 **双容器 NDJSON 协议** 编排，每评测一道题启动 Evaluator + Solution 两个隔离容器：
 
-- **PoolManager**：固定容器池，RAII Guard 自动归还，懒回补
-- **健康检查**：每 5s 检测空闲容器状态
-- **Redis RPC**：启动时通过 RPC 获取镜像白名单
-- **镜像白名单**：服务端控制允许的评测镜像
-- **支持包 Base64 内联**：无需共享文件系统
+- **Evaluator 容器**：跑 `evaluate.py`，通过 `SolutionRunner.call()` 调用 Solution 函数
+- **Solution 容器**：跑用户提交代码，被注入到独立进程，通过 NDJSON 帧通信
+- **网络隔离**：双方容器都 `network_mode none`；Solution 无法访问外部网络
+- **状态隔离**：Solution PYTHONPATH 不影响 Evaluator；Solution 看不到 Evaluator 环境变量
+- **Redis RPC**：启动时通过 `get_image_allowlist` RPC 拉取镜像白名单（含 `kind` 字段区分 Evaluator/Solution）
+- **支持包内容寻址**：SHA-256 缓存 `noj-download://` URL；本地 + S3 双 backend
+- **RAII Drop**：任何错误路径都 `docker rm -f` 双容器
 
-Hydro OJ 每次启动新容器，没有池化管理。NOJ 的容器池简化后聚焦稳定性，移除了自动扩缩容。
+> 历史：2026-07-02 之前曾有 `PoolManager` 固定容器池（含懒回补、健康检查），于 PR #140 + OpenSpec 变更 `remove-single-container-mode`（[归档目录](../changes/archive/2026-07-25-remove-single-container-mode/)）撤销。主规范 [container-pool](../changes/archive/2026-07-25-container-pool-superseded/spec.md) 已归档为 superseded。
+
+Hydro OJ 每次启动新容器，没有容器间隔离。NOJ 的双容器隔离在安全边界上更清晰。
 
 ### 5.3 安全设计
 
