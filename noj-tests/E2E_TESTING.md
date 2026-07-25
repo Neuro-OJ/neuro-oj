@@ -51,13 +51,13 @@ noj-tests/
 
 ```bash
 cd noj-tests
-NOJ_RUN_E2E=1 deno task test:e2e
+NOJ_RUN_E2E=1 deno task test
 ```
 
 ### 保留容器（调试用）
 
 ```bash
-E2E_NO_CLEANUP=1 NOJ_RUN_E2E=1 deno task test:e2e
+E2E_NO_CLEANUP=1 NOJ_RUN_E2E=1 deno task test
 ```
 
 测试结束后容器保留，可手动排查问题。

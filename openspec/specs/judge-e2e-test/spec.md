@@ -86,9 +86,9 @@
 #### Scenario: 全栈测试门控
 
 - **WHEN** 环境变量 `NOJ_RUN_E2E=1` 未设置
-- **THEN** `deno task test:e2e` 跳过所有全栈 E2E 测试
+- **THEN** `deno task test` 跳过所有全栈 E2E 测试
 - **WHEN** 环境变量 `NOJ_RUN_E2E=1` 已设置
-- **THEN** `deno task test:e2e` 启动测试栈并执行全链路测试
+- **THEN** `deno task test` 启动测试栈并执行全链路测试
 
 ### Requirement: 基础提交 Accepted 验证
 
