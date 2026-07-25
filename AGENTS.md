@@ -839,7 +839,9 @@ cd noj-tests && deno task test
 | E2E 测试指南 | [`noj-tests/E2E_TESTING.md`](./noj-tests/E2E_TESTING.md) | 跨模块 E2E 测试方法 |
 | 开发路线图 | [`ROADMAP.md`](./ROADMAP.md) | 阶段规划与待办 |
 | AI 入口（本文档） | [`AGENTS.md`](./AGENTS.md) | AI 编码助手项目知识库 |
-| OpenSpec 主规范 | [`openspec/specs/`](./openspec/) | 56 个行为规范 |
+| OpenSpec 主规范 | [`openspec/specs/`](./openspec/specs/) | 行为规范（Requirements + Scenarios） |
+| Superpowers 设计稿 | [`docs/superpowers/specs/`](./docs/superpowers/specs/) | 大型变更的设计文档（Context / Decisions / Risks），与 `openspec/specs/` 行为规范**分开** |
+| Superpowers 实施计划 | [`docs/superpowers/plans/`](./docs/superpowers/plans/) | 已批准设计的逐步实施计划（Task 拆分） |
 
 ---
 
