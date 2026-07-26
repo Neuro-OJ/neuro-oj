@@ -3,11 +3,15 @@
 # build-sdk-images.sh — 并行构建 noj-judge 双容器 SDK 镜像
 #
 # 构建产物：
-#   noj-evaluator-python:dev    -- docker/evaluator-python/
-#   noj-solution-python:dev     -- docker/solution-python/
+#   noj-evaluator-python:latest -- docker/evaluator-python/
+#   noj-solution-python:latest  -- docker/solution-python/
+#
+# 说明：默认 tag 为 latest，与 noj-core 种子数据 judge_images 中登记的裸镜像名
+#      （noj-evaluator-python / noj-solution-python，docker 解析为 :latest）保持一致，
+#      否则 judge 预热时会因找不到 :latest 而报 404。
 #
 # 用法：
-#   ./scripts/build-sdk-images.sh               # 构建两个镜像打 :dev tag
+#   ./scripts/build-sdk-images.sh               # 构建两个镜像打 :latest tag
 #   ./scripts/build-sdk-images.sh --no-cache    # 强制重建（忽略缓存）
 #   ./scripts/build-sdk-images.sh --tag v0.1.0  # 自定义 tag
 #
@@ -21,7 +25,7 @@ set -euo pipefail
 
 # ── 参数解析 ────────────────────────────────────────
 NO_CACHE=""
-TAG="dev"
+TAG="latest"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NOJ_JUDGE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 

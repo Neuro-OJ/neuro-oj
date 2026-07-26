@@ -63,6 +63,9 @@ coverage/
 noj-core/data/packages/
 !noj-core/data/packages/.gitkeep
 
+# --- Dev tool locks (devtool.sh advisory locks for concurrent safety) ---
+scripts/dev/locks/
+
 # --- IDE metadata (project-local, not shareable) ---
 *.iml
 *.idea/

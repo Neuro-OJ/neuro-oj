@@ -280,11 +280,12 @@ jobs:
       - name: 缓存 node_modules
         uses: actions/cache@v4
         with:
-          # cache key 同时 hash package.json 和 lockfile（修复 finding P8）。
+          # cache key 同时 hash package.json 和 deno.lock（修复 finding P8）。
           # 原单 hashFiles('package.json') 在 lockfile 隐式更新时不刷缓存，
-          # 会出现非确定性依赖版本。
+          # 会出现非确定性依赖版本。deno.lock 是本项目唯一的锁文件真源
+          # （已移除冗余的 package-lock.json / pnpm-lock.yaml）。
           path: noj-ui/node_modules
-          key: npm-${{ hashFiles('noj-ui/package.json', 'noj-ui/package-lock.json', 'noj-ui/pnpm-lock.yaml') }}
+          key: npm-${{ hashFiles('noj-ui/package.json', 'noj-ui/deno.lock') }}
           restore-keys: |
             npm-
 
