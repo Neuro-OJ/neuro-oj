@@ -39,7 +39,9 @@ services:
       retries: 10
 
   minio-init:
-    image: minio/mc:latest
+    # mc 与 server 不同期：mc 最新 stable 在 2025-08，server 当前用 2024-11。
+    # mc 是命令行客户端，跨 server 大半年版本无协议不兼容风险，比对齐版本更稳。
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     # 修复 finding C5：原 condition: service_started 在冷启动下过早触发，
     # mc alias set 连接偶尔被拒绝，entrypoint 里再 sleep 3 补补丁（脆弱）。
     # 改为 service_healthy 后等 minio 健康检查通过再起，sleep 3 也去掉。

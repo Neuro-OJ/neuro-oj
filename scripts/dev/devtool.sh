@@ -27,6 +27,27 @@
 
 set -eo pipefail
 
+# ── 版本下限（与各模块 lock 文件 / rust-toolchain.toml 保持一致） ─
+# Deno: 2.x 起有 jsr 协议 + byonm，本项目依赖
+DENO_MIN_VERSION="2.0.0"
+# Rust: 1.80 起是 msrv baseline，noj-judge 用 edition 2021 + 依赖项要求
+RUST_MIN_VERSION="1.80.0"
+
+# version_at_least ACTUAL MIN  → 0 满足 / 1 不满足（semver 三段比较）
+version_at_least() {
+  local actual="$1" min="$2"
+  local a_major a_minor a_patch m_major m_minor m_patch
+  IFS='.' read -r a_major a_minor a_patch <<<"${actual%%-*}"
+  IFS='.' read -r m_major m_minor m_patch <<<"${min%%-*}"
+  : "${a_patch:=0}"; : "${m_patch:=0}"
+  if ((a_major > m_major)); then return 0; fi
+  if ((a_major < m_major)); then return 1; fi
+  if ((a_minor > m_minor)); then return 0; fi
+  if ((a_minor < m_minor)); then return 1; fi
+  if ((a_patch >= m_patch)); then return 0; fi
+  return 1
+}
+
 # ── 路径常量 ─────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -219,7 +240,14 @@ check_zip() {
 check_deno() {
   section "检查 Deno"
   if command -v deno >/dev/null 2>&1; then
-    ok "deno $(deno --version | head -1 | awk '{print $2}')"
+    local v
+    v="$(deno --version | head -1 | awk '{print $2}')"
+    ok "deno $v"
+    # Deno 2.x 起才有 JSR 协议、unstable-byonm 等本项目依赖特性
+    if ! version_at_least "$v" "$DENO_MIN_VERSION"; then
+      warn "Deno 版本 $v 低于最低要求 $DENO_MIN_VERSION（jsr 协议 + byonm 要求 2.x）"
+      return 1
+    fi
     return 0
   fi
   warn "Deno 未安装（noj-core / noj-ui 运行时）"
@@ -231,12 +259,20 @@ check_deno() {
 check_rust() {
   section "检查 Rust"
   if command -v cargo >/dev/null 2>&1; then
-    ok "cargo $(cargo --version | awk '{print $2}')"
+    local v
+    v="$(cargo --version | awk '{print $2}')"
+    ok "cargo $v"
     ok "rustc $(rustc --version | awk '{print $2}')"
+    # Rust 1.80 起是本项目依赖的 msrv baseline
+    if ! version_at_least "$v" "$RUST_MIN_VERSION"; then
+      warn "Rust $v 低于最低要求 $RUST_MIN_VERSION"
+      return 1
+    fi
     return 0
   fi
   warn "Rust 未安装（noj-judge 编译工具链）"
   warn "安装: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+  warn "  然后在 noj-judge/ 下跑一次 cargo build 让 rust-toolchain.toml 自动拉取指定版本"
   return 1
 }
 
