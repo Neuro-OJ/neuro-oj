@@ -176,6 +176,13 @@
       "when": 1784400000000,
       "tag": "0020_user_rankings_view",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784400300000,
+      "tag": "0021_fix_legacy_columns_and_history",
+      "breakpoints": true
     }
   ]
 }
