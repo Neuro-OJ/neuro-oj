@@ -382,18 +382,19 @@ test:smoke   deno test -A --no-check tests/smoke.test.ts
 
 ### 5.3 一键脚本（推荐）
 
-`scripts/dev/` 提供 13 个启停脚本，统一管理日志与 PID：
+`scripts/dev/devtool.sh` 是单文件编排工具，整合原 12 个独立脚本（`install-deps` / `start-{all,infra,core,ui,judge}` / `stop-{all,infra,core,ui,judge}` / `status`），通过 5 个子命令分发：
 
 ```bash
-bash scripts/dev/install-deps.sh      # 检测/安装 zip、提示其他依赖
-cp scripts/dev/env.example noj-core/.env   # 必填 DATABASE_URL 与 JWT_SECRET（≥32 字符）
-
-bash scripts/dev/start-all.sh         # infra → core → ui → judge
-bash scripts/dev/status.sh            # 查看运行状态
-bash scripts/dev/stop-all.sh          # 一键停止
+bash scripts/dev/devtool.sh install-deps --check-only   # 检测 zip / Deno / Rust / Docker
+bash scripts/dev/devtool.sh init-env                    # 首次：复制 env.example → noj-core/.env
+bash scripts/dev/devtool.sh start                      # 默认 all：infra → core → ui → judge
+bash scripts/dev/devtool.sh status                     # 查看运行状态
+bash scripts/dev/devtool.sh stop                       # 反向顺序停止全部
 ```
 
-日志位置：`scripts/dev/logs/{core,ui,judge}.log`（infra 由 docker compose 管理）。
+子命令 `start` / `stop` 接受 TARGET：`infra | core | ui | judge | all`（默认 `all`），支持单模块启停（如 `devtool.sh start ui`）。`status` 支持 `--json` 与 `--watch SECS`，`init-env` 支持 `--merge`（追加模板缺失键）/ `--force`（覆盖），`start judge` 支持 `--build`（强制重编译）。
+
+日志位置：`scripts/dev/logs/{core,ui,judge}.log`（infra 由 docker compose 管理）。PID 锁：`scripts/dev/locks/<target>.lock`（同工具防双开）。详细用法见 `bash scripts/dev/devtool.sh help`。
 
 ### 5.4 手动分步启动
 
@@ -412,6 +413,8 @@ cd ../noj-judge && cargo run                      # 需要 Docker daemon
 ```
 
 三模块可独立启动；只调前端可省 noj-judge。
+
+或统一通过 `scripts/dev/devtool.sh` 编排（见 §5.3）：`devtool.sh start core` 等价于上面 `cd noj-core && deno task dev` 的封装。
 
 ---
 
@@ -805,10 +808,10 @@ cd noj-tests && deno task test
 |------|------|
 | `JWT_SECRET 长度不足 32` | 在 `noj-core/.env` 设置 32+ 字符随机串（`openssl rand -base64 48`） |
 | `DATABASE_URL` 连接拒绝 | `docker compose ps` 确认 PG 启动；端口 5432 未占用 |
-| `zip: command not found` | `sudo apt install -y zip unzip` 或先跑 `install-deps.sh` |
+| `zip: command not found` | `sudo apt install -y zip unzip` 或先跑 `devtool.sh install-deps` |
 | `Cannot connect to Docker daemon` | 启动 Docker Desktop 或 `sudo systemctl start docker` |
 | 端口 3000 / 8000 冲突 | `lsof -i :3000` 杀掉占用或修改 `PORT` |
-| 提交后长时间 `Pending` | noj-judge 未启/未连 Redis；查 `scripts/dev/logs/judge.log` |
+| 提交后长时间 `Pending` | noj-judge 未启/未连 Redis；查 `scripts/dev/logs/judge.log`，或 `devtool.sh status judge` |
 | 队列堆积 | `redis-cli LLEN noj:judge:queue`；重启 noj-judge 触发自动重连 |
 | `noj-download://` 解码失败 | `deno task build-packages` 重建支持包 |
 | `image not found` | 默认镜像 `noj-judge-python`；检查 `noj-judge/docker/` 构建脚本 |
@@ -818,6 +821,8 @@ cd noj-tests && deno task test
 | `deno task migrate` 不读 .env | deno.json task 已显式 `--env-file=.env`，正常应工作 |
 
 日志位置：`scripts/dev/logs/{core,ui,judge}.log`；前端队列状态页：<http://localhost:3000/queue>。
+
+工具异常排查：`RUST_LOG=noj_judge=debug` 调 judge 日志详细度；`devtool.sh status --json | python3 -m json.tool` 看结构化模块状态。
 
 ---
 
@@ -849,6 +854,7 @@ cd noj-tests && deno task test
 | noj-ui 详细文档 | [`noj-ui/CLAUDE.md`](./noj-ui/CLAUDE.md) | Nuxt + Vue 前端完整约定 |
 | noj-judge 详细文档 | [`noj-judge/CLAUDE.md`](./noj-judge/CLAUDE.md) | Rust Worker 完整约定 |
 | E2E 测试指南 | [`noj-tests/E2E_TESTING.md`](./noj-tests/E2E_TESTING.md) | 跨模块 E2E 测试方法 |
+| 开发工具 devtool.sh | [`scripts/dev/devtool.sh`](./scripts/dev/devtool.sh) | 本地开发编排（install-deps / init-env / start / stop / status） |
 | 开发路线图 | [`ROADMAP.md`](./ROADMAP.md) | 阶段规划与待办 |
 | AI 入口（本文档） | [`AGENTS.md`](./AGENTS.md) | AI 编码助手项目知识库 |
 | OpenSpec 主规范 | [`openspec/specs/`](./openspec/specs/) | 行为规范（Requirements + Scenarios） |

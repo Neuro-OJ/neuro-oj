@@ -65,12 +65,12 @@ NOJ 由三个模块通过 RESTful API 和 Redis 消息队列协作：
 | [Deno](https://deno.com) | 2.x（运行 noj-core 与 noj-ui） |
 | [Rust](https://www.rust-lang.org/) | toolchain stable（编译 noj-judge） |
 | [Docker](https://www.docker.com/) | 20.10+，含 Docker Compose v2 |
-| zip / unzip | 系统命令行工具（构建支持包依赖，`install-deps.sh` 会自动安装） |
+| zip / unzip | 系统命令行工具（构建支持包依赖，`devtool.sh install-deps` 会自动安装） |
 | Git | 2.x |
 | 内存 | ≥ 4 GB（运行全部模块 + Postgres + Redis） |
 | 端口 | 3000（前端）/ 8000（后端）/ 5432（PG）/ 6379（Redis） |
 
-> 一键检测脚本：`bash scripts/dev/install-deps.sh`，会自动安装 zip/unzip，并对其他依赖给出安装指引。
+> 一键检测脚本：`bash scripts/dev/devtool.sh install-deps`，会自动安装 zip/unzip，并对其他依赖给出安装指引。
 
 ---
 
@@ -78,25 +78,27 @@ NOJ 由三个模块通过 RESTful API 和 Redis 消息队列协作：
 
 ### 方式 A：一键脚本（推荐）
 
-适合本地日常开发。脚本统一管理后台进程、PID 与日志到 `scripts/dev/logs/`。
+适合本地日常开发。`scripts/dev/devtool.sh` 单文件编排工具，统一管理后台进程、PID 与日志到 `scripts/dev/logs/`。
 
 ```bash
 # 1. 检测环境（自动安装 zip/unzip，提示其他依赖）
-bash scripts/dev/install-deps.sh
+bash scripts/dev/devtool.sh install-deps
 
 # 2. 准备环境变量（必填 DATABASE_URL 与 JWT_SECRET，至少 32 字符）
-cp scripts/dev/env.example noj-core/.env
+bash scripts/dev/devtool.sh init-env          # 默认拒绝覆盖，--merge 仅追加模板缺失键
 $EDITOR noj-core/.env
 
 # 3. 一键启动整套环境（infra → core → ui → judge）
-bash scripts/dev/start-all.sh
+bash scripts/dev/devtool.sh start             # 单模块：start ui / start core / start judge
 
 # 4. 查看状态
-bash scripts/dev/status.sh
+bash scripts/dev/devtool.sh status            # 人类可读；--json 输出结构化
 
 # 5. 停止全部模块
-bash scripts/dev/stop-all.sh
+bash scripts/dev/devtool.sh stop              # 反向顺序：judge → ui → core → infra
 ```
+
+详细子命令用法：`bash scripts/dev/devtool.sh help` 或 `devtool.sh <子命令> --help`。
 
 启动完成后：
 
@@ -154,16 +156,16 @@ cd noj-core && deno task seed
 |------|----------------|
 | `JWT_SECRET 长度不足 32` | 在 `noj-core/.env` 设置 32+ 字符的随机字符串 |
 | `DATABASE_URL` 报错 / 连接拒绝 | 确认 `docker compose ps` 中 Postgres 已启动；端口 5432 未被占用 |
-| `deno task setup` 卡在 `zip: command not found` | `sudo apt install -y zip unzip` 后重试（或先跑 `install-deps.sh`） |
+| `deno task setup` 卡在 `zip: command not found` | `sudo apt install -y zip unzip` 后重试（或先跑 `devtool.sh install-deps`） |
 | `cargo run` 报 `Cannot connect to Docker daemon` | 启动 Docker Desktop，或 `sudo systemctl start docker` |
 | 端口 3000 / 8000 冲突 | 修改对应模块配置，或先 `lsof -i :3000` 杀掉占用进程 |
-| 一键启动后某模块长时间未就绪 | 查看 `scripts/dev/status.sh` 输出与对应日志 |
+| 一键启动后某模块长时间未就绪 | 查看 `devtool.sh status` 输出与对应日志 |
 
 ### 评测相关
 
 | 现象 | 可能原因 / 处理 |
 |------|----------------|
-| 提交后状态长时间停留在 `Pending` | noj-judge 未启动或未连上 Redis；检查 `bash scripts/dev/status.sh` 与 `scripts/dev/logs/judge.log` |
+| 提交后状态长时间停留在 `Pending` | noj-judge 未启动或未连上 Redis；检查 `bash scripts/dev/devtool.sh status` 与 `scripts/dev/logs/judge.log` |
 | 结果丢失 / 队列堆积 | 查看 Redis 长度：`redis-cli LLEN noj:judge:queue`；必要时重启 `noj-judge` 触发自动重连 |
 | 评测结果报错 `noj-download://` 解码失败 | `deno task build-packages` 重新构建题目支持包 |
 | 容器启动失败 `image not found` | 默认评测镜像为本地 `noj-judge-python`；检查 `noj-judge/docker/` 构建脚本 |
@@ -181,6 +183,7 @@ cd noj-core && deno task seed
 - 一键脚本：`scripts/dev/logs/{core,ui,judge}.log`（infra 由 docker compose 管理，无单独日志文件）
 - 手动运行：直接查看前台终端
 - 队列状态页：<http://localhost:3000/queue>（前端）
+- 结构化状态：`bash scripts/dev/devtool.sh status --json`
 
 更多 FAQ 见 [`scripts/dev/README.md`](./scripts/dev/README.md) 与 [`noj-docs/`](./noj-docs/) 文档站。
 
