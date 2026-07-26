@@ -1,0 +1,22 @@
+# Rust 工具链版本钉死
+#
+# 用法：
+#   - 任何 `cargo` 命令在 noj-judge/ 下会自动使用指定版本
+#   - 新机器开箱即用，无需手动 rustup override
+#   - CI 通过 `rustup show active-toolchain` 验证版本一致
+#
+# 升级流程：
+#   1. 本地 rustup install <新版本>
+#   2. cargo build 通过 + 测试通过
+#   3. rustup update
+#   4. 提 PR 修改本文件 channel 字段
+#
+# 选择理由：
+#   - 当前 cargo 1.96.1 (Jul 2026) 是 stable + edition 2024 支持
+#   - noj-judge 用 edition 2021，1.80 起都可用
+#   - 但钉死主版本避免不同开发者之间因 nightly feature / deprecation 行为漂移
+
+[toolchain]
+channel = "1.96.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
