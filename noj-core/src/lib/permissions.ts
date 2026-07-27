@@ -14,13 +14,14 @@ import { sql } from "drizzle-orm";
 import { Context, MiddlewareHandler, Next } from "hono";
 import { getDb } from "../db/connection.ts";
 import { ForbiddenError } from "./errors.ts";
+import { unwrapRows } from "./sql-rows.ts";
 
 // ── 数据库查询（只有这个函数访问 DB）──────────────────────
 
 export async function getUserPermissions(userId: string): Promise<Set<string>> {
   const db = getDb();
 
-  const rows = await db.execute<{ perm: string }>(sql`
+  const result = await db.execute<{ perm: string }>(sql`
     WITH RECURSIVE resolved AS (
       SELECT r.id, r.is_admin, r.parent_id
       FROM roles r
@@ -38,6 +39,7 @@ export async function getUserPermissions(userId: string): Promise<Set<string>> {
     WHERE rr.is_admin = false
   `);
 
+  const rows = unwrapRows<{ perm: string }>(result as never);
   return new Set(rows.map((r) => r.perm));
 }
 

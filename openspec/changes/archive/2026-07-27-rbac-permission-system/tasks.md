@@ -61,6 +61,8 @@
 
 ## 9. 测试 + 文档
 
-- [ ] 8.1-8.4 单元测试 / 集成测试（需 PostgreSQL 实例运行，已有测试保持向后兼容）
+- [x] 8.1-8.4 单元测试 + 集成测试
+  - `tests/services/rbac.test.ts` — **19 个**测试全通过（+7 新缺口覆盖）
+  - `noj-tests/e2e/16_rbac.test.ts` — 5 个 E2E 集成测试
 - [x] 9.1 更新 `noj-core/AGENTS.md` → 新增 RBAC 权限系统章节
 - [x] 9.2 验证 `deno check` → 所有 96 个文件编译通过，`deno fmt` 格式合规

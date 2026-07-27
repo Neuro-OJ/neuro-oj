@@ -19,7 +19,6 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../lib/errors.ts";
-import { logger } from "../lib/logging.ts";
 
 function uuid(): string {
   return crypto.randomUUID() as string;
@@ -492,14 +491,30 @@ async function wouldCreateCycle(
   const visited = new Set<string>();
 
   while (currentId) {
-    if (excludeId && currentId === excludeId) {
-      // Don't check the excluded role in cycle detection
-      // (it's the one being updated, we need to skip its current parent)
-    }
     if (currentId === checkId && currentId !== startId) return true;
     if (visited.has(currentId)) return false; // shouldn't happen, but guard
 
     visited.add(currentId);
+
+    if (excludeId && currentId === excludeId) {
+      // The excluded role's parent_id is about to change to startId.
+      // Check if startId's chain eventually reaches checkId.
+      // If it does, the update would create a cycle.
+      let nextId = startId;
+      while (nextId) {
+        if (nextId === checkId) return true;
+        if (visited.has(nextId)) break;
+        visited.add(nextId);
+        const nextRows = await db
+          .select({ parent_id: roles.parent_id })
+          .from(roles)
+          .where(eq(roles.id, nextId))
+          .limit(1);
+        if (nextRows.length === 0 || !nextRows[0].parent_id) break;
+        nextId = nextRows[0].parent_id;
+      }
+      break;
+    }
 
     const rows = await db
       .select({ parent_id: roles.parent_id })

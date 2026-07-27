@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { adminMiddleware, authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { BadRequestError, ValidationError } from "../lib/errors.ts";
-import { listUsers, promoteUser } from "../services/auth.ts";
+import { listUsers } from "../services/auth.ts";
 import { getDashboardStats } from "../services/dashboard.ts";
 import { listAllProblems } from "../services/problems.ts";
 import {
@@ -78,14 +78,16 @@ router.get("/users", async (c) => {
  */
 router.patch("/users/:id/role", async (c) => {
   const targetUserId = c.req.param("id") as string;
-  const body = await parseJsonBody<{ role: string }>(c);
+  const body = await parseJsonBody<{ role_ids: string[] }>(c);
 
-  if (!body.role) {
-    throw new ValidationError("缺少必填字段：role");
+  if (!body.role_ids || !Array.isArray(body.role_ids)) {
+    throw new ValidationError("缺少必填字段：role_ids（UUID 数组）");
   }
 
-  const user = await promoteUser(targetUserId, body.role, c.get("userId"));
-  return c.json({ data: user }, 200);
+  await updateUserRoles(targetUserId, body.role_ids, c.get("userId"));
+
+  // 返回更新结果
+  return c.json({ data: { id: targetUserId, role_ids: body.role_ids } }, 200);
 });
 
 /**

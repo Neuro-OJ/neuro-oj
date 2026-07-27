@@ -559,6 +559,7 @@ export const roles = pgTable(
     is_system: boolean("is_system").notNull().default(false),
     is_default: boolean("is_default").notNull().default(false),
     is_admin: boolean("is_admin").notNull().default(false),
+    // deno-lint-ignore no-explicit-any
     parent_id: text("parent_id").references((): any => roles.id, {
       onDelete: "set null",
     }),
