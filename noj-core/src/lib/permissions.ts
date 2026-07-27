@@ -38,7 +38,7 @@ export async function getUserPermissions(userId: string): Promise<Set<string>> {
     WHERE rr.is_admin = false
   `);
 
-  return new Set(rows.map(r => r.perm));
+  return new Set(rows.map((r) => r.perm));
 }
 
 // ── 请求级缓存 ────────────────────────────────────────────

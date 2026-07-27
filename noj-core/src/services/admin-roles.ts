@@ -6,7 +6,13 @@
 
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
-import { roles, permissions, rolePermissions, userRoles, users } from "../db/schema.ts";
+import {
+  permissions,
+  rolePermissions,
+  roles,
+  userRoles,
+  users,
+} from "../db/schema.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -32,7 +38,9 @@ interface RoleResponse {
   is_admin: boolean;
   parent_id: string | null;
   parent_name: string | null;
-  permissions: Array<{ id: string; resource: string; action: string; description: string }>;
+  permissions: Array<
+    { id: string; resource: string; action: string; description: string }
+  >;
 }
 
 interface PermissionResponse {
@@ -157,7 +165,7 @@ export async function createRole(data: {
       .from(permissions)
       .where(inArray(permissions.id, data.permission_ids));
 
-    const validIds = new Set(validPerms.map(p => p.id));
+    const validIds = new Set(validPerms.map((p) => p.id));
 
     for (const permId of data.permission_ids) {
       if (!validIds.has(permId)) continue;
@@ -175,7 +183,12 @@ export async function createRole(data: {
 
 export async function updateRole(
   id: string,
-  data: { name?: string; description?: string; parent_id?: string | null; permission_ids?: string[] },
+  data: {
+    name?: string;
+    description?: string;
+    parent_id?: string | null;
+    permission_ids?: string[];
+  },
 ): Promise<RoleResponse> {
   const db = getDb();
 
@@ -303,7 +316,9 @@ export async function deleteRole(id: string): Promise<void> {
 
 // ── 权限列表 ─────────────────────────────────────────────
 
-export async function listPermissions(): Promise<Record<string, PermissionResponse[]>> {
+export async function listPermissions(): Promise<
+  Record<string, PermissionResponse[]>
+> {
   const db = getDb();
 
   const rows = await db
@@ -363,13 +378,13 @@ export async function updateUserRoles(
     .from(roles)
     .where(inArray(roles.id, roleIds));
 
-  const validIdSet = new Set(validRoles.map(r => r.id));
-  const invalidIds = roleIds.filter(rid => !validIdSet.has(rid));
+  const validIdSet = new Set(validRoles.map((r) => r.id));
+  const invalidIds = roleIds.filter((rid) => !validIdSet.has(rid));
   if (invalidIds.length > 0) {
     throw new BadRequestError(`无效的角色 ID: ${invalidIds.join(", ")}`);
   }
 
-  const newRolesAreAdmin = validRoles.some(r => r.is_admin);
+  const newRolesAreAdmin = validRoles.some((r) => r.is_admin);
 
   // 如果正在移除 admin 标记，检查是否为最后一个 admin
   // 该用户的当前角色
@@ -379,7 +394,7 @@ export async function updateUserRoles(
     .innerJoin(roles, eq(roles.id, userRoles.role_id))
     .where(eq(userRoles.user_id, targetUserId));
 
-  const currentlyAdmin = currentRoles.some(r => r.is_admin);
+  const currentlyAdmin = currentRoles.some((r) => r.is_admin);
 
   if (currentlyAdmin && !newRolesAreAdmin) {
     // 正在移除该用户的 admin 角色

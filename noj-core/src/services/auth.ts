@@ -303,10 +303,10 @@ export async function loginUser(
     .innerJoin(roles, eq(roles.id, userRoles.role_id))
     .where(eq(userRoles.user_id, user.id));
 
-  const isAdmin = roleRows.some(r => r.is_admin);
-  const jwtRole = roleRows.find(r => r.is_admin)?.name
-    ?? roleRows.find(r => r.name === "user")?.name
-    ?? "user";
+  const isAdmin = roleRows.some((r) => r.is_admin);
+  const jwtRole = roleRows.find((r) => r.is_admin)?.name ??
+    roleRows.find((r) => r.name === "user")?.name ??
+    "user";
 
   // 签发 JWT（携带 must_change_password、is_admin 字段）
   const token = await signToken({
@@ -643,7 +643,7 @@ export async function changePassword(
     .from(userRoles)
     .innerJoin(roles, eq(roles.id, userRoles.role_id))
     .where(eq(userRoles.user_id, user.id));
-  const isAdmin = userRoleRows.some(r => r.is_admin);
+  const isAdmin = userRoleRows.some((r) => r.is_admin);
 
   return {
     id: user.id,

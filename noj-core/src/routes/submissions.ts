@@ -202,7 +202,8 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
   const result = await getSubmission(
     id,
     c.var.userId,
-    c.var.userRole,
+    undefined,
+    c,
   );
   return c.json({ data: result });
 });

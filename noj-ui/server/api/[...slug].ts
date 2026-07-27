@@ -99,6 +99,7 @@ export default defineEventHandler(async (event) => {
 
         // 可读 cookie：客户端用于快速判断登录状态
         // 包含 must_change_password（issue #75），前端路由守卫据此强制改密。
+        // 包含 is_admin（RBAC），供前端 admin 路由守卫判断。
         setCookie(
           event,
           'noj:session',
@@ -108,6 +109,7 @@ export default defineEventHandler(async (event) => {
             role: user.role,
             email: user.email,
             must_change_password: user.must_change_password ?? false,
+            is_admin: (user as Record<string, unknown>)?.is_admin ?? (user.role === 'admin'),
           }),
           {
             ...cookieOptions,

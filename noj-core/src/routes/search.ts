@@ -26,6 +26,7 @@ type Env = {
   Variables: {
     userId?: string;
     userRole?: string;
+    isAdmin?: boolean;
   };
 };
 
@@ -40,8 +41,8 @@ router.get("/", optionalAuthMiddleware, async (c) => {
   const includeUParam = c.req.query("include_u");
   const includeU = includeUParam === "true" || includeUParam === "1";
 
-  // 解析 userRole（未登录为 undefined）
-  const isAdmin = c.var.userRole === "admin";
+  // 解析 isAdmin（优先使用 JWT is_admin claim，向后兼容 userRole）
+  const isAdmin = c.var.isAdmin ?? c.var.userRole === "admin";
 
   // 校验
   if (q.length < 2) {

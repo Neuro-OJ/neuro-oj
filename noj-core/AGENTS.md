@@ -23,6 +23,67 @@
 | 消息队列 | Redis (ioredis)             |
 | 认证     | JWT (jose) + bcryptjs       |
 
+## RBAC 权限系统
+
+项目使用基于角色访问控制（RBAC）替代硬编码 `userRole === "admin"` 字符串比较。
+
+### 数据模型
+
+| 表 | 用途 |
+|----|------|
+| `roles` | 角色定义（`is_admin`/`is_default`/`is_system` 标记） |
+| `permissions` | 权限定义（`resource:action` 格式，22 个预置） |
+| `role_permissions` | 角色-权限多对多关联 |
+| `user_roles` | 用户-角色多对多关联 |
+
+### 权限检查层次
+
+一次 HTTP 请求中，权限检查有三个调用层次，共享请求级缓存：
+
+```
+authMiddleware → 注入 isAdmin
+    │
+    ├─ requireAdmin()          纯 JWT fast path，零 DB 查询
+    │   └─ 用于 /api/v1/admin/* 路由组
+    │
+    ├─ requirePermission("x")  中间件（isAdmin fast path | DB）
+    │   └─ 用于非 admin 路由的精确权限拦截
+    │
+    └─ checkPermission(c, "x") / assertPermission(c, "x")
+        工具函数（isAdmin fast path | DB）
+        └─ 用于 handler/service 内部的条件判断或断言
+```
+
+### 关键函数
+
+| 函数 | 位置 | 用途 |
+|------|------|------|
+| `getUserPermissions(userId)` | `src/lib/permissions.ts` | 递归 CTE 查询用户所有权限，返回 `Set<string>` |
+| `resolvePermissions(c)` | 同上 | 请求级缓存封装 |
+| `checkPermission(c, perm)` | 同上 | 返回 boolean，service 层条件判断 |
+| `assertPermission(c, perm)` | 同上 | 无权限时抛 ForbiddenError |
+| `requireAdmin()` | 同上 | 中间件，纯 JWT fast path |
+| `requirePermission(perm)` | 同上 | 中间件工厂函数 |
+| `ensureRbacSeeds()` | `src/services/seed-rbac.ts` | 全量幂等初始化 |
+
+### Permissions
+
+| `resource` | `action` | 说明 |
+|-----------|----------|------|
+| problem | create/create_p/read/write_own/write_any/delete_own/delete_any/package_manage_own/package_manage_any | 题目 CRUD + 支持包 |
+| submission | create/read_own/read_all/rejudge | 提交操作 |
+| user | read_profile/search/manage | 用户操作 |
+| category | read/manage | 分类操作 |
+| system | settings/judge_images/audit_logs/ip_bans | 系统管理 |
+
+### 迁移策略
+
+- `users.role` 列保留（标记为 deprecated），用于向前兼容和 JWT `role` claim
+- 旧服务函数保留 `userRole` 参数作为 fallback，新增 `c?: Context` 参数启用 RBAC
+- `createProblem`/`updateProblem`/`deleteProblem` 等已迁移到 `assertPermission()`
+- `getSubmission` 使用 `c.var.isAdmin` 替代 `viewerRole === "admin"`
+- 路由层通过 `c.var.isAdmin ?? c.var.userRole === "admin"` 双兼容
+
 ## 目录结构
 
 ```

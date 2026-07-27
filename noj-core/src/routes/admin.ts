@@ -199,7 +199,7 @@ router.get("/submissions", async (c) => {
 router.get("/submissions/:id", async (c) => {
   const id = c.req.param("id") as string;
   // 传入 userId/userRole 确保管理员能看到 code/output/details
-  const result = await getSubmission(id, c.get("userId"), c.get("userRole"));
+  const result = await getSubmission(id, c.get("userId"), undefined, c);
   return c.json({ data: result });
 });
 

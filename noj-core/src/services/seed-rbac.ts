@@ -11,7 +11,13 @@
 
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
-import { roles, permissions, rolePermissions, userRoles, users } from "../db/schema.ts";
+import {
+  permissions,
+  rolePermissions,
+  roles,
+  userRoles,
+  users,
+} from "../db/schema.ts";
 
 // ── 权限定义 ──────────────────────────────────────────────
 interface PermissionDef {
@@ -23,23 +29,43 @@ interface PermissionDef {
 const PERMISSION_DEFS: PermissionDef[] = [
   // 题目
   { resource: "problem", action: "create", description: "创建题目" },
-  { resource: "problem", action: "create_p", description: "创建管理题（P 型）" },
+  {
+    resource: "problem",
+    action: "create_p",
+    description: "创建管理题（P 型）",
+  },
   { resource: "problem", action: "read", description: "查看题目" },
   { resource: "problem", action: "write_own", description: "编辑自己的题目" },
   { resource: "problem", action: "write_any", description: "编辑任意题目" },
   { resource: "problem", action: "delete_own", description: "删除自己的题目" },
   { resource: "problem", action: "delete_any", description: "删除任意题目" },
-  { resource: "problem", action: "package_manage_own", description: "管理自己题目的支持包" },
-  { resource: "problem", action: "package_manage_any", description: "管理任意题目的支持包" },
+  {
+    resource: "problem",
+    action: "package_manage_own",
+    description: "管理自己题目的支持包",
+  },
+  {
+    resource: "problem",
+    action: "package_manage_any",
+    description: "管理任意题目的支持包",
+  },
   // 提交
   { resource: "submission", action: "create", description: "创建提交" },
   { resource: "submission", action: "read_own", description: "查看自己的提交" },
-  { resource: "submission", action: "read_all", description: "查看所有提交（含代码）" },
+  {
+    resource: "submission",
+    action: "read_all",
+    description: "查看所有提交（含代码）",
+  },
   { resource: "submission", action: "rejudge", description: "触发重测" },
   // 用户
   { resource: "user", action: "read_profile", description: "查看用户主页" },
   { resource: "user", action: "search", description: "搜索用户" },
-  { resource: "user", action: "manage", description: "管理用户（封禁/改角色）" },
+  {
+    resource: "user",
+    action: "manage",
+    description: "管理用户（封禁/改角色）",
+  },
   // 分类
   { resource: "category", action: "read", description: "查看分类" },
   { resource: "category", action: "manage", description: "管理分类" },
@@ -115,7 +141,9 @@ export async function ensurePermissions(): Promise<void> {
       resource: perm.resource,
       action: perm.action,
       description: perm.description,
-    }).onConflictDoNothing({ target: [permissions.resource, permissions.action] });
+    }).onConflictDoNothing({
+      target: [permissions.resource, permissions.action],
+    });
   }
 }
 
@@ -130,11 +158,15 @@ export async function ensureUserRolePermissions(): Promise<void> {
   if (!userRole) return;
 
   const allPerms = await db
-    .select({ id: permissions.id, resource: permissions.resource, action: permissions.action })
+    .select({
+      id: permissions.id,
+      resource: permissions.resource,
+      action: permissions.action,
+    })
     .from(permissions);
 
   const permMap = new Map(
-    allPerms.map(p => [`${p.resource}:${p.action}`, p.id]),
+    allPerms.map((p) => [`${p.resource}:${p.action}`, p.id]),
   );
 
   for (const { resource, action } of USER_DEFAULT_PERMISSIONS) {
@@ -158,7 +190,7 @@ export async function migrateExistingUsers(): Promise<void> {
   const roleRows = await db
     .select({ id: roles.id, name: roles.name })
     .from(roles);
-  const roleIdByName = new Map(roleRows.map(r => [r.name, r.id]));
+  const roleIdByName = new Map(roleRows.map((r) => [r.name, r.id]));
 
   for (const u of allUsers) {
     const targetRoleId = u.role === "admin"

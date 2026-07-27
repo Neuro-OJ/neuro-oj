@@ -13,6 +13,7 @@ import {
   Settings,
   Ban,
   ScrollText,
+  ShieldCheck,
 } from "@lucide/vue"
 
 const route = useRoute()
@@ -45,6 +46,7 @@ const navItems: NavItem[] = [
   { label: "分类管理", to: "/admin/categories", icon: Tags },
   { label: "评测镜像", to: "/admin/judge-images", icon: Container },
   { label: "系统设置", to: "/admin/settings", icon: Settings },
+  { label: "角色管理", to: "/admin/roles", icon: ShieldCheck },
   { label: "提交管理", to: "/admin/submissions", icon: Files },
   { label: "审计日志", to: "/admin/audit-logs", icon: ScrollText },
 ]
