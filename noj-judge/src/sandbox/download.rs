@@ -215,4 +215,73 @@ mod tests {
         .unwrap();
         assert_eq!(checksum, Some("abc123".to_string()));
     }
+
+    #[test]
+    fn test_parse_download_url_base64() {
+        let parsed = parse_download_url(
+            "noj-download://base64/?content=UEsDBBQAAAAI&checksum_sha256=def456",
+        )
+        .unwrap();
+        assert_eq!(parsed.host, "base64");
+        assert!(parsed.query.contains("content=UEsDBBQAAAAI"));
+        assert!(parsed.query.contains("checksum_sha256=def456"));
+        assert_eq!(parsed.checksum, Some("def456".to_string()));
+    }
+
+    #[test]
+    fn test_parse_download_url_s3() {
+        let parsed = parse_download_url(
+            "noj-download://s3?url=http%3A%2F%2Fbucket.s3.amazonaws.com%2Fpkg.zip",
+        )
+        .unwrap();
+        assert_eq!(parsed.host, "s3");
+        assert_eq!(parsed.checksum, None);
+    }
+
+    #[test]
+    fn test_parse_download_url_no_checksum() {
+        let parsed = parse_download_url("noj-download://base64/?content=UEsDBBQAAAAI").unwrap();
+        assert_eq!(parsed.host, "base64");
+        assert_eq!(parsed.checksum, None);
+    }
+
+    #[test]
+    fn test_parse_download_url_invalid_prefix() {
+        assert!(parse_download_url("http://example.com/package.zip").is_err());
+        assert!(parse_download_url("invalid-url").is_err());
+    }
+
+    #[test]
+    fn test_parse_download_url_host_without_query() {
+        let parsed = parse_download_url("noj-download://base64/").unwrap();
+        assert_eq!(parsed.host, "base64");
+        assert_eq!(parsed.query, "");
+    }
+
+    #[tokio::test]
+    async fn test_fetch_support_package_valid_base64() {
+        // 创建一个合法的 base64 内容（解码后 = "hello"）
+        let content = base64::engine::general_purpose::STANDARD.encode(b"hello");
+        let url = format!("noj-download://base64/?content={}", content);
+        let result = fetch_support_package(&url, 5).await;
+        assert!(result.is_ok());
+        let (bytes, checksum) = result.unwrap();
+        assert_eq!(bytes, b"hello");
+        assert_eq!(checksum, None);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_support_package_unknown_host() {
+        let result = fetch_support_package("noj-download://unknown/", 5).await;
+        assert!(result.is_err());
+        let err = format!("{}", result.err().unwrap());
+        assert!(err.contains("未知"));
+        assert!(err.contains("host"));
+    }
+
+    #[tokio::test]
+    async fn test_fetch_support_package_missing_content() {
+        let result = fetch_support_package("noj-download://base64/", 5).await;
+        assert!(result.is_err());
+    }
 }

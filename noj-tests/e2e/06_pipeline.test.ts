@@ -5,9 +5,9 @@
  */
 
 import {
-  BASE_URL,
   CODE_SAMPLES,
   isE2E,
+  isJudgeAvailable,
   pollSubmission,
   registerUser,
   submitCode,
@@ -17,30 +17,6 @@ import {
 const skip = !isE2E;
 let token = "";
 const PROBLEM_ID = "1001";
-
-// 检测 judge worker 是否可用（提交后 5s 内状态变为 judging 而非 pending）
-async function isJudgeAvailable(): Promise<boolean> {
-  try {
-    const ts = Date.now().toString(36);
-    const t = await registerUser(
-      "pipe_check_" + ts,
-      "pipe_check_" + ts + "@test.com",
-      "Test12345679",
-    );
-    const id = await submitCode(t, PROBLEM_ID, "print(1)");
-    // 等一小段时间看状态是否推进
-    await new Promise((r) => setTimeout(r, 2000));
-    const res = await fetch(`${BASE_URL}/api/v1/submissions/${id}`, {
-      headers: { Authorization: "Bearer " + t },
-    });
-    const data = await res.json();
-    const status = (data as { data?: { status?: string } })?.data?.status || "";
-    return status === "judging" || status === "finished";
-  } catch {
-    return false;
-  }
-}
-
 let judgeOk = false;
 
 Deno.test({
@@ -64,7 +40,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[e2e/pipeline] 1/5 Accepted",
+  name: "[e2e/pipeline] 1/8 Accepted",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -81,7 +57,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[e2e/pipeline] 2/5 Wrong Answer",
+  name: "[e2e/pipeline] 2/8 Wrong Answer",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -96,7 +72,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[e2e/pipeline] 3/5 TLE",
+  name: "[e2e/pipeline] 3/8 TLE",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -115,7 +91,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[e2e/pipeline] 4/5 MQ 可靠性",
+  name: "[e2e/pipeline] 4/8 MQ 可靠性",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -129,7 +105,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[e2e/pipeline] 5/5 无效消息容错",
+  name: "[e2e/pipeline] 5/8 无效消息容错",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,

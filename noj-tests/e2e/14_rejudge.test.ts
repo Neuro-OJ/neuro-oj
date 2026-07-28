@@ -16,6 +16,7 @@ import {
   CODE_SAMPLES,
   isE2E,
   getAdminToken,
+  isJudgeAvailable,
   pollSubmission,
   registerUser,
   submitCode,
@@ -29,27 +30,6 @@ let adminToken = "";
 let userToken = "";
 let submissionId = "";
 let judgeOk = false;
-
-async function isJudgeAvailable(): Promise<boolean> {
-  try {
-    const ts = Date.now().toString(36);
-    const t = await registerUser(
-      "rejudge_ck_" + ts,
-      "rejudge_ck_" + ts + "@test.com",
-      "Test12345679",
-    );
-    const id = await submitCode(t, PROBLEM_ID, "print(1)");
-    await new Promise((r) => setTimeout(r, 2000));
-    const res = await fetch(`${BASE_URL}/api/v1/submissions/${id}`, {
-      headers: { Authorization: "Bearer " + t },
-    });
-    const data = await res.json();
-    const status = (data as { data?: { status?: string } })?.data?.status || "";
-    return status === "judging" || status === "finished";
-  } catch {
-    return false;
-  }
-}
 
 Deno.test({
   name: "[e2e/rejudge] Setup",

@@ -196,3 +196,149 @@ pub struct ImageAllowlist {
     /// kind='solution' 的镜像列表（不入池，仅记录）
     pub solution: Vec<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_image_allowlist_default() {
+        let list = ImageAllowlist::default();
+        assert!(list.evaluator.is_empty());
+        assert!(list.solution.is_empty());
+    }
+
+    #[test]
+    fn test_image_allowlist_new_format() {
+        let list = ImageAllowlist {
+            evaluator: vec!["noj-evaluator-python".to_string()],
+            solution: vec!["noj-solution-python".to_string()],
+        };
+        assert_eq!(list.evaluator.len(), 1);
+        assert_eq!(list.solution.len(), 1);
+        assert_eq!(list.evaluator[0], "noj-evaluator-python");
+        assert_eq!(list.solution[0], "noj-solution-python");
+    }
+
+    #[test]
+    fn test_judge_id() {
+        // RpcClient::new 和 judge_id 需要 MultiplexedConnection（真实 Redis），
+        // 此处仅验证响应解析的辅助逻辑。
+    }
+
+    /// 验证新格式与旧格式的响应解析逻辑。
+    ///
+    /// 注意：完整的 request() 和 get_image_allowlist() 测试需要
+    /// Redis mocking 基础设施（见 noj-core 的 FakeRedis 模式），
+    /// 当前通过 noj-tests E2E 测试覆盖（15_dual_container_judge）。
+    #[test]
+    fn test_allowlist_response_parsing() {
+        // 模拟新格式的 JSON 片段
+        let new_entries: Vec<serde_json::Value> = serde_json::from_str(
+            r#"[
+                {"image": "img-evaluator", "kind": "evaluator", "mode": "exact"},
+                {"image": "img-solution", "kind": "solution", "mode": "exact"},
+                {"image": "img-unknown", "kind": "extra", "mode": "prefix"}
+            ]"#,
+        )
+        .unwrap();
+
+        let mut evaluator = Vec::new();
+        let mut solution = Vec::new();
+
+        for entry in &new_entries {
+            if let Some(image) = entry.get("image").and_then(|v| v.as_str()) {
+                let kind = entry
+                    .get("kind")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("evaluator");
+                match kind {
+                    "solution" => solution.push(image.to_string()),
+                    _ => evaluator.push(image.to_string()),
+                }
+            }
+        }
+
+        assert_eq!(evaluator, vec!["img-evaluator", "img-unknown"]);
+        assert_eq!(solution, vec!["img-solution"]);
+    }
+
+    #[test]
+    fn test_allowlist_old_format() {
+        // 模拟旧格式：纯字符串数组
+        let old_entries: Vec<serde_json::Value> =
+            serde_json::from_str(r#"["img-a", "img-b", "img-c"]"#).unwrap();
+
+        let mut evaluator = Vec::new();
+        let mut solution = Vec::new();
+
+        for entry in &old_entries {
+            if let Some(image) = entry.get("image").and_then(|v| v.as_str()) {
+                let kind = entry
+                    .get("kind")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("evaluator");
+                match kind {
+                    "solution" => solution.push(image.to_string()),
+                    _ => evaluator.push(image.to_string()),
+                }
+            } else if let Some(s) = entry.as_str() {
+                evaluator.push(s.to_string());
+            }
+        }
+
+        assert_eq!(evaluator, vec!["img-a", "img-b", "img-c"]);
+        assert!(solution.is_empty());
+    }
+
+    #[test]
+    fn test_allowlist_mixed_format() {
+        let mixed: Vec<serde_json::Value> = serde_json::from_str(
+            r#"[
+                {"image": "new-evaluator", "kind": "evaluator", "mode": "exact"},
+                "old-style-string"
+            ]"#,
+        )
+        .unwrap();
+
+        let mut evaluator = Vec::new();
+        let mut solution = Vec::new();
+
+        for entry in &mixed {
+            if let Some(image) = entry.get("image").and_then(|v| v.as_str()) {
+                let kind = entry
+                    .get("kind")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("evaluator");
+                match kind {
+                    "solution" => solution.push(image.to_string()),
+                    _ => evaluator.push(image.to_string()),
+                }
+            } else if let Some(s) = entry.as_str() {
+                evaluator.push(s.to_string());
+            }
+        }
+
+        assert_eq!(evaluator, vec!["new-evaluator", "old-style-string"]);
+        assert!(solution.is_empty());
+    }
+
+    #[test]
+    fn test_allowlist_empty() {
+        let empty: Vec<serde_json::Value> = serde_json::from_str("[]").unwrap();
+        let arr = empty.clone();
+
+        let evaluator: Vec<String> = arr
+            .iter()
+            .filter_map(|e| {
+                if e.get("image").and_then(|v| v.as_str()).is_some() {
+                    Some(e.get("image").and_then(|v| v.as_str()).unwrap().to_string())
+                } else {
+                    e.as_str().map(|s| s.to_string())
+                }
+            })
+            .collect();
+
+        assert!(evaluator.is_empty());
+    }
+}

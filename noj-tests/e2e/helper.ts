@@ -135,6 +135,33 @@ export async function getOrCreateUser(
 }
 
 /**
+ * 检测 judge worker 是否可用（提交后数秒内状态推进）。
+ *
+ * 创建一个临时用户提交一次，若 2s 内状态从 pending 变为 judging/finished
+ * 则判定 judge worker 正常工作。
+ */
+export async function isJudgeAvailable(): Promise<boolean> {
+  try {
+    const ts = Date.now().toString(36);
+    const t = await registerUser(
+      "judge_chk_" + ts,
+      "judge_chk_" + ts + "@test.com",
+      "Test12345679",
+    );
+    const id = await submitCode(t, "1001", "print(1)");
+    await new Promise((r) => setTimeout(r, 2000));
+    const res = await fetch(`${BASE_URL}/api/v1/submissions/${id}`, {
+      headers: { Authorization: "Bearer " + t },
+    });
+    const data = await res.json();
+    const status = (data as { data?: { status?: string } })?.data?.status || "";
+    return status === "judging" || status === "finished";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 注册用户并返回 token。如果已存在则登录。
  */
 export async function registerUser(

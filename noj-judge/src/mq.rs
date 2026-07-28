@@ -205,10 +205,22 @@ fn sanitize_submission_id_for_filename(submission_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::parse_task_message;
+    use super::sanitize_submission_id_for_filename;
 
     #[test]
     fn test_parse_task_message_invalid_json_returns_none() {
         assert!(parse_task_message("{invalid json").is_none());
+    }
+
+    #[test]
+    fn test_parse_task_message_empty_string_returns_none() {
+        assert!(parse_task_message("").is_none());
+    }
+
+    #[test]
+    fn test_parse_task_message_empty_object_returns_none() {
+        // 缺少必填字段的合法 JSON
+        assert!(parse_task_message("{}").is_none());
     }
 
     #[test]
@@ -226,5 +238,29 @@ mod tests {
         let task = parse_task_message(json).expect("应解析成功");
         assert_eq!(task.submission_id, "sid-1");
         assert_eq!(task.runtime_config.evaluator.image, "noj-evaluator-python");
+    }
+
+    #[test]
+    fn test_sanitize_id_normal() {
+        let id = "550e8400-e29b-41d4-a716-446655440000";
+        assert_eq!(sanitize_submission_id_for_filename(id), id);
+    }
+
+    #[test]
+    fn test_sanitize_id_special_chars_replaced() {
+        let id = "abc/def:ghi";
+        assert_eq!(sanitize_submission_id_for_filename(id), "abc_def_ghi");
+    }
+
+    #[test]
+    fn test_sanitize_id_empty_returns_unknown() {
+        assert_eq!(sanitize_submission_id_for_filename(""), "unknown");
+    }
+
+    #[test]
+    fn test_sanitize_id_all_special_chars() {
+        let id = "!@#$%^&*()";
+        // 特殊字符被替换为 _，但结果非空
+        assert_eq!(sanitize_submission_id_for_filename(id), "__________");
     }
 }

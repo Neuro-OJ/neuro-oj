@@ -510,10 +510,13 @@ sys.stdout.flush()
         mut input,
     } = started
     {
-        // 启动一个任务：发送一个 call 帧
+        // 启动一个任务：等 ready 帧后再发送 call 帧
+        let (ready_tx, mut ready_rx) = tokio::sync::oneshot::channel::<()>();
+        let mut ready_tx = Some(ready_tx);
+
         let send_task = tokio::spawn(async move {
-            // 等 ready 帧出现后再发（简化：等 200ms）
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            // 等 ready 信号（最多等 5s），收到后再发 call 帧
+            let _ = tokio::time::timeout(Duration::from_secs(5), &mut ready_rx).await;
             let call = serde_json::json!({
                 "type": "call",
                 "id": "test-1",
@@ -534,7 +537,14 @@ sys.stdout.flush()
                 for line in parser.feed(&message) {
                     if let EvaluatorLine::Frame(v) = line {
                         match frame_type(&v) {
-                            Some("ready") => received_ready = true,
+                            Some("ready") => {
+                                if !received_ready {
+                                    received_ready = true;
+                                    if let Some(tx) = ready_tx.take() {
+                                        let _ = tx.send(());
+                                    }
+                                }
+                            }
                             Some("result") => result_value = v.get("value").cloned(),
                             _ => {}
                         }
@@ -589,4 +599,62 @@ fn dual_task_runtime_config_serialization() {
 fn _force_use_dual_task() {
     // 静默 dead_code（dual_task 作为 fixture 暂未被所有测试用到）
     let _ = dual_task();
+}
+
+/// 完整的 dual-container 编排器 E2E。
+///
+/// 调用 `evaluate_dual` 检查完整流程（容器创建 → exec → 结果回传 → 清理）。
+/// 注：此测试中 solution 容器因缺少 `noj_solution_sdk.host` 会快速退出，
+/// 预期结果为 SystemError —— 这仍能验证编排器本身不崩且结果结构完整。
+#[ignore]
+#[serial_test::serial]
+#[tokio::test]
+async fn evaluate_dual_end_to_end() {
+    if !is_e2e_enabled() {
+        return;
+    }
+    let docker = get_docker().expect("docker");
+    common::ensure_test_image(&docker).await.unwrap();
+
+    let submission_id = format!("e2e-dual-{}", uuid::Uuid::new_v4());
+    let runtime_config = RuntimeConfig {
+        evaluator: EvaluatorRuntime {
+            image: "noj-judge-test-runner:latest".to_string(),
+            command: r#"python3 -c "import sys,json; sys.stdout.write('---RESULT---\n'); sys.stdout.write(json.dumps({'status':'Accepted','score':10000,'details':{}})); sys.stdout.flush()""#.to_string(),
+            time_limit_ms: 15000,
+            memory_limit_mb: 256,
+        },
+        solution: SolutionRuntime {
+            image: "noj-judge-test-runner:latest".to_string(),
+            entry: "solution.py".to_string(),
+            call_timeout_ms: 5000,
+            memory_limit_mb: 128,
+        },
+    };
+
+    let result = noj_judge::dual::evaluate_dual(
+        docker,
+        &submission_id,
+        &runtime_config,
+        "def solve(a,b): return a+b",
+        "solution.py",
+        None,
+        "/tmp/e2e-cache",
+        100,
+        64,
+        None,
+    )
+    .await;
+
+    match result {
+        Ok(judge_result) => {
+            // 即使结果是 SystemError（solution 失败），结构应完整
+            assert_eq!(judge_result.submission_id, submission_id);
+            assert!(!judge_result.status.is_empty());
+            assert!(judge_result.score >= 0);
+        }
+        Err(e) => {
+            panic!("evaluate_dual 返回 Err: {:?}", e);
+        }
+    }
 }

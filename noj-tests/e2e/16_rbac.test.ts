@@ -8,7 +8,7 @@
  * - 注册用户自动分配默认角色
  */
 
-import { api, isE2E, registerUser } from "./helper.ts";
+import { api, getAdminToken, isE2E, registerUser } from "./helper.ts";
 
 const skip = !isE2E;
 
@@ -41,19 +41,10 @@ Deno.test({
   name: "rbac-e2e: 管理员可获取角色列表",
   ignore: skip,
   fn: async () => {
-    // 用 root 管理员身份（seed 时创建）
-    const loginRes = await api("POST", "/api/v1/auth/login", {
-      body: { login: "root", password: "root" },
-    });
-    const loginBody = loginRes.body as { data?: { token?: string } };
-    const token = loginBody.data?.token ?? "";
+    // 用管理员身份（seed 时创建）
+    const adminToken = await getAdminToken();
 
-    if (!token) {
-      // 可能 root 没有密码，跳过
-      return;
-    }
-
-    const rolesRes = await api("GET", "/api/v1/admin/roles", { token });
+    const rolesRes = await api("GET", "/api/v1/admin/roles", { token: adminToken });
     const rolesBody = rolesRes.body as {
       data?: Array<Record<string, unknown>>;
     };
@@ -81,14 +72,9 @@ Deno.test({
   name: "rbac-e2e: 管理员可获取权限列表",
   ignore: skip,
   fn: async () => {
-    const loginRes = await api("POST", "/api/v1/auth/login", {
-      body: { login: "root", password: "root" },
-    });
-    const loginBody = loginRes.body as { data?: { token?: string } };
-    const token = loginBody.data?.token ?? "";
-    if (!token) return;
+    const adminToken = await getAdminToken();
 
-    const permRes = await api("GET", "/api/v1/admin/permissions", { token });
+    const permRes = await api("GET", "/api/v1/admin/permissions", { token: adminToken });
 
     if (permRes.status !== 200) {
       throw new Error(`获取权限列表失败: ${JSON.stringify(permRes.body)}`);
@@ -100,17 +86,12 @@ Deno.test({
   name: "rbac-e2e: 管理员可创建自定义角色",
   ignore: skip,
   fn: async () => {
-    const loginRes = await api("POST", "/api/v1/auth/login", {
-      body: { login: "root", password: "root" },
-    });
-    const loginBody = loginRes.body as { data?: { token?: string } };
-    const token = loginBody.data?.token ?? "";
-    if (!token) return;
+    const adminToken = await getAdminToken();
 
     // 创建自定义角色
     const ts = Date.now();
     const createRes = await api("POST", "/api/v1/admin/roles", {
-      token,
+      token: adminToken,
       body: {
         name: `e2e-moderator-${ts}`,
         description: "E2E 测试角色",

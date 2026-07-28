@@ -438,4 +438,33 @@ mod tests {
         // 目录及其所有内容应在 Drop 时被删除
         assert!(!path.exists(), "Drop 后整个临时目录应被递归删除");
     }
+
+    #[tokio::test]
+    async fn test_temp_dir_rejects_empty_prefix() {
+        let root = std::env::temp_dir();
+        let result = TempDir::new(&root, "").await;
+        assert!(result.is_err());
+        assert!(format!("{}", result.err().unwrap()).contains("不能为空"));
+    }
+
+    #[tokio::test]
+    async fn test_temp_dir_rejects_slash_in_prefix() {
+        let root = std::env::temp_dir();
+        let result = TempDir::new(&root, "a/b").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_temp_dir_rejects_backslash_in_prefix() {
+        let root = std::env::temp_dir();
+        let result = TempDir::new(&root, "a\\b").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_temp_dir_rejects_dotdot_in_prefix() {
+        let root = std::env::temp_dir();
+        let result = TempDir::new(&root, "..").await;
+        assert!(result.is_err());
+    }
 }
