@@ -29,6 +29,7 @@ export interface AuthEnv {
   Variables: {
     userId: string;
     userRole: string;
+    isAdmin: boolean;
     mustChangePassword: boolean;
     jti?: string;
   };
@@ -39,6 +40,7 @@ export interface OptionalAuthEnv {
   Variables: {
     userId?: string;
     userRole?: string;
+    isAdmin?: boolean;
     mustChangePassword?: boolean;
     jti?: string;
   };
@@ -163,6 +165,7 @@ export async function optionalAuthMiddleware(c: Context, next: Next) {
   if (payload) {
     c.set("userId", payload.sub);
     c.set("userRole", payload.role);
+    c.set("isAdmin", payload.is_admin ?? false);
     c.set("mustChangePassword", payload.must_change_password ?? false);
     if (payload.jti) c.set("jti", payload.jti);
 
@@ -213,6 +216,7 @@ export async function authMiddleware(c: Context, next: Next) {
 
   c.set("userId", payload.sub);
   c.set("userRole", payload.role);
+  c.set("isAdmin", payload.is_admin ?? false);
   c.set("mustChangePassword", payload.must_change_password ?? false);
   if (payload.jti) c.set("jti", payload.jti);
   await next();
@@ -251,16 +255,18 @@ export async function getUserBanState(userId: string): Promise<UserBanState> {
 /**
  * 管理员中间件——检查当前用户是否为管理员。
  *
- * 需要在 authMiddleware 之后使用，依赖其注入的 userRole 字段。
- * 若用户角色不为 "admin"，抛 ForbiddenError 由 app.ts onError 统一处理。
+ * 需要在 authMiddleware 之后使用，依赖其注入的 isAdmin 字段。
+ * 此版本基于 JWT 中的 isAdmin boolean claim 判断，不依赖角色名称。
  *
  * 注入 RequestContext 到 AsyncLocalStorage（issue #101），使下游 service 层
  * 通过 getRequestContext() 获取 actorId / actorIp / actorRole，
  * 用于审计日志埋点。
  */
 export async function adminMiddleware(c: Context, next: Next) {
-  const userRole = c.get("userRole");
-  if (userRole !== "admin") {
+  // 向后兼容：支持新旧两种判断方式
+  // 新版 JWT: isAdmin boolean claim
+  // 旧版 JWT: role === "admin"
+  if (!c.get("isAdmin") && c.get("userRole") !== "admin") {
     throw new ForbiddenError("需要管理员权限");
   }
 
@@ -268,7 +274,7 @@ export async function adminMiddleware(c: Context, next: Next) {
     {
       actorId: c.get("userId"),
       actorIp: getClientIp(c),
-      actorRole: userRole,
+      actorRole: c.get("userRole"),
     },
     () => next(),
   );

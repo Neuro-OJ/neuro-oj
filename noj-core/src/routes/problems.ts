@@ -138,8 +138,7 @@ router.post("/", authMiddleware, async (c) => {
   }
 
   const userId = c.get("userId");
-  const userRole = c.get("userRole");
-  const problem = await createProblem(body, userId, userRole);
+  const problem = await createProblem(body, userId, undefined, c);
   return c.json({ data: problem }, 201);
 });
 
@@ -151,11 +150,10 @@ router.put("/:id", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const body = await parseJsonBody<UpdateProblemInput>(c);
   const userId = c.get("userId");
-  const userRole = c.get("userRole");
 
   // 双索引解析获取实际题目 ID
   const problem = await resolveProblem(id);
-  const updated = await updateProblem(problem.id, body, userId, userRole);
+  const updated = await updateProblem(problem.id, body, userId, undefined, c);
   return c.json({ data: updated });
 });
 
@@ -179,7 +177,7 @@ router.delete("/:id", authMiddleware, async (c) => {
       actorRole: userRole,
     },
     async () => {
-      await deleteProblem(problem.id, userId, userRole);
+      await deleteProblem(problem.id, userId, undefined, c);
       return c.body(null, 204);
     },
   );
@@ -238,6 +236,7 @@ router.post("/:id/support-package", authMiddleware, async (c) => {
     userId,
     userRole,
     { type: problem.type, owner_id: problem.owner_id }, // 复用已获取的题目信息
+    c,
   );
 
   return c.json({ data: { support_package_storage_url: packagePath } });
@@ -251,13 +250,13 @@ router.post("/:id/support-package", authMiddleware, async (c) => {
 router.get("/:id/support-package", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const userId = c.get("userId");
-  const userRole = c.get("userRole");
 
   const problem = await resolveProblem(id);
   const zipBytes = await getSupportPackageBytes(
     problem.id,
     userId,
-    userRole,
+    undefined,
+    c,
   );
 
   if (!zipBytes) {
@@ -311,7 +310,7 @@ router.delete("/:id/support-package", authMiddleware, async (c) => {
   await deleteSupportPackage(problem.id, userId, userRole, {
     type: problem.type,
     owner_id: problem.owner_id,
-  });
+  }, c);
 
   return c.json({ data: { support_package_storage_url: null } });
 });

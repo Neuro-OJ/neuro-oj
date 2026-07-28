@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { adminMiddleware, authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { BadRequestError, ValidationError } from "../lib/errors.ts";
-import { listUsers, promoteUser } from "../services/auth.ts";
+import { listUsers } from "../services/auth.ts";
 import { getDashboardStats } from "../services/dashboard.ts";
 import { listAllProblems } from "../services/problems.ts";
 import {
@@ -36,6 +36,14 @@ import {
 } from "../services/system-settings.ts";
 import { listAuditLogs } from "../services/audit-log.ts";
 import type { AuditAction } from "../types/audit-log.ts";
+import {
+  createRole,
+  deleteRole,
+  listPermissions,
+  listRoles,
+  updateRole,
+  updateUserRoles,
+} from "../services/admin-roles.ts";
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
@@ -70,14 +78,16 @@ router.get("/users", async (c) => {
  */
 router.patch("/users/:id/role", async (c) => {
   const targetUserId = c.req.param("id") as string;
-  const body = await parseJsonBody<{ role: string }>(c);
+  const body = await parseJsonBody<{ role_ids: string[] }>(c);
 
-  if (!body.role) {
-    throw new ValidationError("缺少必填字段：role");
+  if (!body.role_ids || !Array.isArray(body.role_ids)) {
+    throw new ValidationError("缺少必填字段：role_ids（UUID 数组）");
   }
 
-  const user = await promoteUser(targetUserId, body.role, c.get("userId"));
-  return c.json({ data: user }, 200);
+  await updateUserRoles(targetUserId, body.role_ids, c.get("userId"));
+
+  // 返回更新结果
+  return c.json({ data: { id: targetUserId, role_ids: body.role_ids } }, 200);
 });
 
 /**
@@ -191,7 +201,7 @@ router.get("/submissions", async (c) => {
 router.get("/submissions/:id", async (c) => {
   const id = c.req.param("id") as string;
   // 传入 userId/userRole 确保管理员能看到 code/output/details
-  const result = await getSubmission(id, c.get("userId"), c.get("userRole"));
+  const result = await getSubmission(id, c.get("userId"), undefined, c);
   return c.json({ data: result });
 });
 
@@ -442,4 +452,82 @@ router.get("/audit-logs", async (c) => {
   });
   return c.json({ data: result.data, pagination: result.pagination });
 });
+
+// ─── 角色 RBAC 管理 ───────────────────────────────────────────
+
+/**
+ * 管理员获取角色列表。
+ * GET /api/v1/admin/roles
+ */
+router.get("/roles", async (c) => {
+  const result = await listRoles();
+  return c.json({ data: result });
+});
+
+/**
+ * 管理员创建角色。
+ * POST /api/v1/admin/roles
+ * body: { name, description?, parent_id?, permission_ids? }
+ */
+router.post("/roles", async (c) => {
+  const body = await parseJsonBody<{
+    name: string;
+    description?: string;
+    parent_id?: string;
+    permission_ids?: string[];
+  }>(c);
+  const result = await createRole(body);
+  return c.json({ data: result }, 201);
+});
+
+/**
+ * 管理员编辑角色。
+ * PUT /api/v1/admin/roles/:id
+ * body: { name?, description?, parent_id?, permission_ids? }
+ */
+router.put("/roles/:id", async (c) => {
+  const id = c.req.param("id") as string;
+  const body = await parseJsonBody<{
+    name?: string;
+    description?: string;
+    parent_id?: string | null;
+    permission_ids?: string[];
+  }>(c);
+  const result = await updateRole(id, body);
+  return c.json({ data: result });
+});
+
+/**
+ * 管理员删除角色。
+ * DELETE /api/v1/admin/roles/:id
+ */
+router.delete("/roles/:id", async (c) => {
+  const id = c.req.param("id") as string;
+  await deleteRole(id);
+  return c.body(null, 204);
+});
+
+/**
+ * 管理员获取权限列表（按 resource 分组）。
+ * GET /api/v1/admin/permissions
+ */
+router.get("/permissions", async (c) => {
+  const result = await listPermissions();
+  return c.json({ data: result });
+});
+
+/**
+ * 管理员修改用户角色分配。
+ * PATCH /api/v1/admin/users/:id/role
+ *
+ * **BREAKING**: 旧格式 `{ "role": "admin"|"user" }` 不再接受。
+ * 新格式: `{ "role_ids": ["<uuid>", ...] }`
+ */
+router.patch("/users/:id/role", async (c) => {
+  const targetUserId = c.req.param("id") as string;
+  const body = await parseJsonBody<{ role_ids: string[] }>(c);
+  await updateUserRoles(targetUserId, body.role_ids, c.get("userId"));
+  return c.json({ data: { message: "角色更新成功" } });
+});
+
 export default router;

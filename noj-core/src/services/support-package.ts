@@ -9,6 +9,8 @@ import {
 } from "../lib/errors.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { logger } from "../lib/logging.ts";
+import { assertPermission, checkPermission } from "../lib/permissions.ts";
+import type { Context } from "hono";
 
 /**
  * 支持包文件最大字节数（128 MiB）。
@@ -43,6 +45,7 @@ async function checkSupportPackagePermission(
   userId?: string,
   userRole?: string,
   problem?: { type: string; owner_id: string },
+  c?: Context,
 ): Promise<void> {
   const db = getDb();
 
@@ -60,7 +63,19 @@ async function checkSupportPackagePermission(
     problem = existing[0];
   }
 
-  // 管理员可管理任意题目
+  // 管理员可管理任意题目（当有 Context 时走 RBAC 权限检查）
+  if (c) {
+    const hasPerm = problem.type === "P"
+      ? await checkPermission(c, "problem:package_manage_any")
+      : await checkPermission(c, "problem:package_manage_own");
+    if (hasPerm) return;
+    if (problem.owner_id !== (c.var.userId as string)) {
+      throw new ForbiddenError("无权管理此题目的支持包");
+    }
+    return;
+  }
+
+  // 向后兼容：无 Context 时使用旧的 userRole 检查
   if (userRole === "admin") return;
 
   // 普通用户仅可管理自己的 U 型题目
@@ -89,8 +104,9 @@ export async function saveSupportPackage(
   userId?: string,
   userRole?: string,
   problem?: { type: string; owner_id: string },
+  c?: Context,
 ): Promise<string> {
-  await checkSupportPackagePermission(problemId, userId, userRole, problem);
+  await checkSupportPackagePermission(problemId, userId, userRole, problem, c);
 
   // 验证文件扩展名为 .zip（防御性校验，路由层已做相同检查）
   if (!file.name.toLowerCase().endsWith(".zip")) {
@@ -143,8 +159,9 @@ export async function deleteSupportPackage(
   userId?: string,
   userRole?: string,
   problem?: { type: string; owner_id: string },
+  c?: Context,
 ): Promise<void> {
-  await checkSupportPackagePermission(problemId, userId, userRole, problem);
+  await checkSupportPackagePermission(problemId, userId, userRole, problem, c);
 
   const db = getDb();
 
@@ -188,6 +205,7 @@ export async function getSupportPackageBytes(
   problemId: string,
   userId?: string,
   userRole?: string,
+  c?: Context,
 ): Promise<Uint8Array | null> {
   const db = getDb();
 
@@ -206,7 +224,11 @@ export async function getSupportPackageBytes(
   }
 
   // 权限校验
-  if (userRole !== "admin" && problem.owner_id !== userId) {
+  if (c) {
+    if (problem.owner_id !== (c.var.userId as string)) {
+      await assertPermission(c, "problem:package_manage_own");
+    }
+  } else if (userRole !== "admin" && problem.owner_id !== userId) {
     throw new ForbiddenError("无权下载此题目的支持包");
   }
 

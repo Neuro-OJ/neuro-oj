@@ -68,13 +68,19 @@ SSR 阶段，服务端 SHALL 根据 `noj:token` cookie 的存在情况预取用�
 
 ### Requirement: session cookie 内容规范
 
-`noj:session` cookie SHALL 包含以下 JSON 序列化信息：`userId`、`username`、`role`、`email`。
+`noj:session` cookie SHALL 包含以下 JSON 序列化信息：`userId`、`username`、`role`、`is_admin`、`email`。
+
+`role` 字段 SHALL 为用户关联的 `is_admin=true` 角色的名称（若存在），否则为 `is_default=true` 角色的名称。`is_admin` 字段 SHALL 为用户是否拥有 `is_admin=true` 的角色（布尔值）。
+
 SHALL NOT 包含 token 或任何敏感凭证。
 
-#### Scenario: 登录后 session cookie 内容
-- **WHEN** 用户登录成功，服务端设置 `noj:session` cookie
-- **THEN** cookie 值为 `{"userId":"<uuid>","username":"<name>","role":"<user|admin>","email":"<email>"}`，
-  不含 JWT 或密码
+#### Scenario: admin 角色的 session cookie
+- **WHEN** 用户登录且拥有 `is_admin=true` 的角色
+- **THEN** `noj:session` cookie 的 `role` 字段为该角色名称，`is_admin` 为 `true`
+
+#### Scenario: 多角色用户的 session cookie
+- **WHEN** 用户登录且同时拥有 "user" 和 "moderator" 两个角色（均非 is_admin=true）
+- **THEN** `noj:session` cookie 的 `role` 字段为 `is_default=true` 的角色名称，`is_admin` 为 `false`
 
 ### Requirement: Cookie 安全属性
 

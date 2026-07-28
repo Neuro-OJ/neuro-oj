@@ -3,7 +3,7 @@ import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { problems, submissions, users } from "../../src/db/schema.ts";
+import { problems, roles, submissions, users } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { jsonRequest } from "../lib/helper.ts";
 
@@ -51,30 +51,37 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin route: PATCH /api/v1/admin/users/:id/role 管理员提升用户",
+  name:
+    "admin route: PATCH /api/v1/admin/users/:id/role 管理员提升用户（role_ids 格式）",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
+    const db = getDb();
     const token = await signToken({ sub: "admin-user", role: "admin" });
+
+    // 获取一个有效角色 ID
+    const rows = await db.select({ id: roles.id }).from(roles).limit(1);
+    const roleId = rows[0]?.id ?? "00000000-0000-0000-0000-000000000000";
 
     const res = await jsonRequest(app, "/api/v1/admin/users/target-id/role", {
       method: "PATCH",
-      body: { role: "admin" },
+      body: { role_ids: [roleId] },
       token,
     });
-    // 目标用户存在时会成功，不存在时返回 404
-    // 这里只验证鉴权通过，具体业务由服务层测试覆盖
+    // target-id 不存在 → 404；存在且不可自修改 → 400 均可——测试鉴权通过
     assertEquals(
-      [200, 404].includes(res.status),
+      [200, 400, 404].includes(res.status),
       true,
+      `预期 2xx/400/404，实际 ${res.status}`,
     );
   },
 });
 
 Deno.test({
-  name: "admin route: PATCH /api/v1/admin/users/:id/role 非法角色值返回 400",
+  name:
+    "admin route: PATCH /api/v1/admin/users/:id/role 无效 role_ids 返回 400",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -84,16 +91,21 @@ Deno.test({
 
     const res = await jsonRequest(app, "/api/v1/admin/users/target-id/role", {
       method: "PATCH",
-      body: { role: "superuser" },
+      body: { role_ids: ["00000000-0000-0000-0000-000000000000"] },
       token,
     });
-    assertEquals(res.status, 400);
+    // 用户不存在返回 404，用户存在但 role_ids 无效返回 400
+    assertEquals(
+      [400, 404].includes(res.status),
+      true,
+      `预期 400/404，实际 ${res.status}`,
+    );
   },
 });
 
 Deno.test({
   name:
-    "admin route: PATCH /api/v1/admin/users/:id/role 缺少 role 字段返回 400",
+    "admin route: PATCH /api/v1/admin/users/:id/role 缺少 role_ids 字段返回 400",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,

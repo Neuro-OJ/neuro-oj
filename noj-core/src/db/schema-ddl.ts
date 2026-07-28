@@ -239,6 +239,36 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_ip_bans_expires_at ON ip_bans (expires_at)",
   "CREATE INDEX IF NOT EXISTS idx_user_bans_user ON user_bans (user_id)",
   "CREATE INDEX IF NOT EXISTS idx_user_bans_active ON user_bans (user_id) WHERE unbanned_at IS NULL",
+  // RBAC 权限系统
+  `CREATE TABLE IF NOT EXISTS roles (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    is_system BOOLEAN NOT NULL DEFAULT false,
+    is_default BOOLEAN NOT NULL DEFAULT false,
+    is_admin BOOLEAN NOT NULL DEFAULT false,
+    parent_id TEXT REFERENCES roles(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS permissions (
+    id TEXT PRIMARY KEY,
+    resource TEXT NOT NULL,
+    action TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    UNIQUE (resource, action)
+  )`,
+  `CREATE TABLE IF NOT EXISTS role_permissions (
+    role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+    PRIMARY KEY (role_id, permission_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS user_roles (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    PRIMARY KEY (user_id, role_id)
+  )`,
+  "CREATE INDEX IF NOT EXISTS idx_roles_parent_id ON roles (parent_id)",
 ];
 
 export const ALL_TABLES = [
@@ -259,4 +289,8 @@ export const ALL_TABLES = [
   "audit_logs",
   "ip_bans",
   "user_bans",
+  "roles",
+  "permissions",
+  "role_permissions",
+  "user_roles",
 ] as const;

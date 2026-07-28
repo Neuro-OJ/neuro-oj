@@ -189,15 +189,13 @@ tar 打包后上传到容器 `/tmp/`。
 - **WHEN** 缓存目录已有 500 个文件
 - **WHEN** 需要写入第 501 个缓存文件
 - **THEN** 系统删除至少一个 `atime` 最早的文件后写入新文件
-
 ### Requirement: 双容器评测编排（dual mode）
 
-系统 SHALL 支持按题目一次任务启动 Evaluator + Solution 两个容器，按 NDJSON
-协议在两个容器之间转发调用消息。
+系统 SHALL 支持按题目一次任务启动 Evaluator + Solution 两个容器，按 NDJSON 协议在两个容器之间转发调用消息。
 
 #### Scenario: 启动 Evaluator + Solution 双容器
 
-- **WHEN** JudgeTask 含 `runtime_config`
+- **WHEN** JudgeTask.mode === 'dual'
 - **THEN** judge 启动 Evaluator 容器（网络隔离、不立即执行 evaluate.py）
 - **THEN** judge 通过 `docker exec tar xf` 注入支持包文件到 Evaluator 容器的 `/workspace` 目录
 - **THEN** judge 启动 Solution 容器（无网络、无支持包、不传 Evaluator 环境变量）
@@ -280,8 +278,7 @@ tar 打包后上传到容器 `/tmp/`。
 
 ### Requirement: Log 消息限额
 
-系统 SHALL 对 Solution host 上报的 `log` 帧实施双限额，防止日志 spam 拖慢评测
-或撑爆 JudgeResult。
+系统 SHALL 对 Solution host 上报的 `log` 帧实施双限额，防止日志 spam 拖慢评测或撑爆 JudgeResult。
 
 #### Scenario: 单条 log 限额
 
@@ -306,8 +303,7 @@ tar 打包后上传到容器 `/tmp/`。
 
 ### Requirement: 输出缓冲约定
 
-系统 SHALL 要求 SDK / host 启动时配置 line buffering，避免 NDJSON 帧在管道
-block buffering 下卡住。
+系统 SHALL 要求 SDK / host 启动时配置 line buffering，避免 NDJSON 帧在管道 block buffering 下卡住。
 
 #### Scenario: Solution host line buffering
 
@@ -356,17 +352,6 @@ block buffering 下卡住。
 - **THEN** judge 关闭转发通道，SDK 收到 Timeout 错误
 - **THEN** Solution host 进程继续运行，下一次 `runner.call()` 可正常执行
 
-### Requirement: 镜像白名单防御（judge 侧）
-
-系统 SHALL 在 judge 准备创建 Evaluator / Solution 容器前做最终校验，避免 TOCTOU。
-
-#### Scenario: 镜像白名单校验（judge 防御）
-
-- **WHEN** judge 准备创建 Evaluator / Solution 容器前
-- **THEN** judge 校验本地缓存的镜像列表
-- **WHEN** 镜像不在本地缓存
-- **THEN** 判 SystemError + 提示 `image_not_in_local_cache`
-
 ### Requirement: runtime_config 必填校验
 
 系统 SHALL 在题目创建/更新 API 与提交流程中要求 `runtime_config` 必填，
@@ -376,3 +361,38 @@ block buffering 下卡住。
 
 - **WHEN** admin 创建或更新题目，`runtime_config` 缺失或缺任一必填字段
 - **THEN** API 返回 HTTP 400，错误信息明确指出缺失字段
+
+
+### Requirement: 兼容性回退
+
+系统 SHALL 在 runtime_config 缺失或镜像被下架时给出明确错误而非静默回退单容器。
+
+#### Scenario: 镜像白名单校验（admin）
+
+- **WHEN** admin 调用题目 CRUD API 设置 `runtime_config`
+- **THEN** `runtime_config.evaluator.image` 必须在 `judge_images` 白名单中且 `kind='evaluator'`
+- **THEN** `runtime_config.solution.image` 必须在 `judge_images` 白名单中且 `kind='solution'`
+- **WHEN** 任何 image 不满足
+- **THEN** API 返回 HTTP 400，提示 `image_not_allowlisted`
+
+#### Scenario: 镜像白名单校验（core 调度 final gate）
+
+- **WHEN** submissions service 推 MQ 前
+- **THEN** 再次读取白名单确认镜像仍可用且 kind 匹配
+- **WHEN** 镜像被下架或 kind 被改
+- **THEN** 返回 `image_not_allowlisted` 错误，不悄悄回退单容器
+
+#### Scenario: 镜像白名单校验（judge 防御）
+
+- **WHEN** judge 准备创建 Evaluator / Solution 容器前
+- **THEN** judge 校验本地缓存的镜像列表（防御 TOCTOU）
+- **WHEN** 镜像不在本地缓存
+- **THEN** 判 SystemError + 提示 `image_not_in_local_cache`
+
+#### Scenario: 单容器回退（仅在 runtime_config 缺失时）
+
+- **WHEN** `problems.runtime_config IS NULL`
+- **THEN** 走单容器路径，使用 `judge_image` / `judge_command` 字段
+- **WHEN** `problems.runtime_config IS NOT NULL`
+- **THEN** 走 dual 路径，忽略 `judge_image` / `judge_command`（仅保留显示）
+

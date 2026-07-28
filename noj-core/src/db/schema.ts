@@ -544,3 +544,88 @@ export const userBans = pgTable(
     ),
   }),
 );
+
+/**
+ * RBAC 角色表。
+ * 支持角色继承（parent_id 自引用）、is_admin 标记（隐式全权限）、
+ * is_default 标记（注册自动分配）、is_system 标记（系统保护角色）。
+ */
+export const roles = pgTable(
+  "roles",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull().unique(),
+    description: text("description").notNull().default(""),
+    is_system: boolean("is_system").notNull().default(false),
+    is_default: boolean("is_default").notNull().default(false),
+    is_admin: boolean("is_admin").notNull().default(false),
+    // deno-lint-ignore no-explicit-any
+    parent_id: text("parent_id").references((): any => roles.id, {
+      onDelete: "set null",
+    }),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    parentIdx: index("idx_roles_parent_id").on(table.parent_id),
+  }),
+);
+
+/**
+ * RBAC 权限定义表。
+ * 每个权限由 resource + action 唯一标识，格式 resource:action。
+ * 系统预置约 22 个权限，覆盖 problem/submission/user/category/system 五个资源域。
+ */
+export const permissions = pgTable(
+  "permissions",
+  {
+    id: text("id").primaryKey(),
+    resource: text("resource").notNull(),
+    action: text("action").notNull(),
+    description: text("description").notNull().default(""),
+  },
+  (table) => ({
+    resourceActionUnique: unique("permissions_resource_action_unique").on(
+      table.resource,
+      table.action,
+    ),
+  }),
+);
+
+/**
+ * 角色-权限关联表。
+ * 多对多，级联删除。
+ */
+export const rolePermissions = pgTable(
+  "role_permissions",
+  {
+    role_id: text("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "cascade" }),
+    permission_id: text("permission_id")
+      .notNull()
+      .references(() => permissions.id, { onDelete: "cascade" }),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.role_id, table.permission_id] }),
+  }),
+);
+
+/**
+ * 用户-角色关联表。
+ * 一个用户可拥有多个角色，多对多，级联删除。
+ */
+export const userRoles = pgTable(
+  "user_roles",
+  {
+    user_id: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role_id: text("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "cascade" }),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.user_id, table.role_id] }),
+  }),
+);

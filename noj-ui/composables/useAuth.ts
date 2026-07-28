@@ -3,6 +3,7 @@ interface UserResponse {
   username: string;
   email: string;
   role: string;
+  is_admin: boolean;
   must_change_password: boolean;
   created_at: string;
   updated_at: string;
@@ -13,6 +14,7 @@ interface SessionData {
   username: string;
   role: string;
   email: string;
+  is_admin: boolean;
   must_change_password: boolean;
 }
 
@@ -22,6 +24,7 @@ function sessionToUser(session: SessionData): UserResponse {
     username: session.username,
     role: session.role,
     email: session.email,
+    is_admin: session.is_admin ?? session.role === 'admin',
     must_change_password: session.must_change_password ?? false,
     created_at: '',
     updated_at: '',

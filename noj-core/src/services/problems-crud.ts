@@ -35,6 +35,8 @@ import {
 import { validateRuntimeConfig } from "./problems-types.ts";
 import { syncProblemCategories } from "./problems-categories.ts";
 import { getProblem } from "./problems-list.ts";
+import { assertPermission } from "../lib/permissions.ts";
+import type { Context } from "hono";
 
 /**
  * 创建题目。
@@ -49,6 +51,7 @@ export async function createProblem(
   input: CreateProblemInput,
   userId?: string,
   userRole?: string,
+  c?: Context,
 ): Promise<ProblemResponseWithCategories> {
   const db = getDb();
 
@@ -94,8 +97,12 @@ export async function createProblem(
   const type = rawType;
 
   // 权限检查：普通用户只能创建 U 型
-  if (type === "P" && userRole !== "admin") {
-    throw new ForbiddenError("仅管理员可创建管理题");
+  if (type === "P") {
+    if (c) {
+      await assertPermission(c, "problem:create_p");
+    } else if (userRole !== "admin") {
+      throw new ForbiddenError("仅管理员可创建管理题");
+    }
   }
 
   // 确定所有者
@@ -104,8 +111,12 @@ export async function createProblem(
   // 确定题号（同一 type 内自增，并发冲突时重试）
   // 仅 admin 可指定 number；普通用户强制 MAX+1
   const adminProvidedNumber = input.number !== undefined;
-  if (adminProvidedNumber && userRole !== "admin") {
-    throw new ForbiddenError("仅管理员可指定题号");
+  if (adminProvidedNumber) {
+    if (c) {
+      await assertPermission(c, "problem:write_any");
+    } else if (userRole !== "admin") {
+      throw new ForbiddenError("仅管理员可指定题号");
+    }
   }
   let number = input.number;
   // 确定题号 + 插入（MAX+1 并发冲突时最多重试 3 次）
@@ -181,6 +192,7 @@ export async function updateProblem(
   input: UpdateProblemInput,
   userId?: string,
   userRole?: string,
+  c?: Context,
 ): Promise<ProblemResponseWithCategories> {
   const db = getDb();
 
@@ -197,12 +209,18 @@ export async function updateProblem(
   const problem = existing[0];
 
   // 权限检查
-  if (userRole !== "admin") {
-    if (problem.type === "P") {
+  if (problem.type === "P" && !c?.var.isAdmin) {
+    if (c) {
+      await assertPermission(c, "problem:write_any");
+    } else if (userRole !== "admin") {
       throw new ForbiddenError("仅管理员可编辑管理题");
     }
-    // U 型：仅所有者可编辑
-    if (problem.owner_id !== userId) {
+  }
+  // U 型：仅所有者可编辑
+  if (problem.owner_id !== (c?.var.userId ?? userId)) {
+    if (c) {
+      await assertPermission(c, "problem:write_own");
+    } else if (userRole !== "admin") {
       throw new ForbiddenError("无权编辑此题目");
     }
   }
@@ -295,6 +313,7 @@ export async function deleteProblem(
   id: string,
   userId?: string,
   userRole?: string,
+  c?: Context,
 ): Promise<void> {
   const db = getDb();
 
@@ -311,11 +330,18 @@ export async function deleteProblem(
   const problem = existing[0];
 
   // 权限检查
-  if (userRole !== "admin") {
-    if (problem.type === "P") {
+  if (problem.type === "P" && !c?.var.isAdmin) {
+    if (c) {
+      await assertPermission(c, "problem:delete_any");
+    } else if (userRole !== "admin") {
       throw new ForbiddenError("仅管理员可删除管理题");
     }
-    if (problem.owner_id !== userId) {
+  }
+  // U 型：仅所有者可删除
+  if (problem.owner_id !== (c?.var.userId ?? userId)) {
+    if (c) {
+      await assertPermission(c, "problem:delete_own");
+    } else if (userRole !== "admin") {
       throw new ForbiddenError("无权删除此题目");
     }
   }

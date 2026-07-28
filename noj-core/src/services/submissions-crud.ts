@@ -46,6 +46,7 @@ import { getStorageProvider } from "../lib/storage/mod.ts";
 import { getPendingSubmissionIds } from "./queue.ts";
 import type { RuntimeConfig } from "../types/problems.ts";
 import type { JudgeTask, SubmissionStatus } from "../types/index.ts";
+import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";
 import type {
@@ -422,6 +423,7 @@ export async function getSubmission(
   id: string,
   viewerId?: string | null,
   viewerRole?: string | null,
+  c?: Context,
 ): Promise<SubmissionDetail> {
   const db = getDb();
 
@@ -439,8 +441,9 @@ export async function getSubmission(
 
   // 权限判断：仅 owner 或 admin 可看 code/output/details
   // 注意：基础数据（题号/状态/时间等）对所有访问者公开，不在这里做"非所有者 404"的拦截
-  const isOwner = !!viewerId && row.user_id === viewerId;
-  const isAdmin = viewerRole === "admin";
+  const isOwner = !!(c?.var.userId ?? viewerId) &&
+    row.user_id === (c?.var.userId ?? viewerId);
+  const isAdmin = c ? c.var.isAdmin : viewerRole === "admin";
   const canSeeDetails = isOwner || isAdmin;
 
   // 查询评测结果

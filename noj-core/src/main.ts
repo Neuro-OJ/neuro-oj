@@ -8,6 +8,7 @@ import { initEventSubscriber } from "./lib/event-bus.ts";
 import { snapshotEnv } from "./lib/env-snapshot.ts";
 import { validateRegistry } from "./lib/settings-registry.ts";
 import { ensureRootUser } from "./services/auth.ts";
+import { ensureRbacSeeds } from "./services/seed-rbac.ts";
 import { getStorageProvider } from "./lib/storage/mod.ts";
 import { getSetting, initSystemSettings } from "./services/system-settings.ts";
 import { startAuditLogRetentionTask } from "./services/audit-log.ts";
@@ -145,6 +146,14 @@ async function main() {
     await ensureRootUser();
   } catch (err) {
     logger.error("Root 用户创建失败，终止启动", { err });
+    Deno.exit(1);
+  }
+
+  // 初始化 RBAC 种子数据（幂等）
+  try {
+    await ensureRbacSeeds();
+  } catch (err) {
+    logger.error("RBAC 种子数据初始化失败，终止启动", { err });
     Deno.exit(1);
   }
 

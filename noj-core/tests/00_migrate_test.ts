@@ -8,6 +8,7 @@
  */
 import { runMigrations } from "../src/db/migrate.ts";
 import { ensureRootUser } from "../src/services/auth.ts";
+import { ensureRbacSeeds } from "../src/services/seed-rbac.ts";
 import { getDb } from "../src/db/connection.ts";
 import { setupSchemaForTest } from "./_setup.ts";
 import { judgeImages } from "../src/db/schema.ts";
@@ -24,6 +25,9 @@ if (hasDb) {
 
     await ensureRootUser();
     console.log("[setup] Root 用户就绪");
+
+    await ensureRbacSeeds();
+    console.log("[setup] RBAC 种子数据就绪");
 
     const db = getDb();
     const now = new Date().toISOString();

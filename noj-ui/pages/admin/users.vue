@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ShieldCheck, ShieldX, ShieldAlert } from "@lucide/vue"
+import { ShieldCheck, ShieldX, ShieldAlert, Plus, X } from "@lucide/vue"
 import type { Column } from "~/components/admin/AdminTable.vue"
 import { useAdminList } from "~/composables/useAdminList"
 
@@ -54,16 +54,74 @@ watch(isLoggedIn, (val) => {
   if (val) loadUsers()
 }, { immediate: true })
 
-// 角色切换
+// ─── 角色管理（RBAC PATCH ── role_ids）───────
+interface Role {
+  id: string
+  name: string
+  is_admin: boolean
+  is_system: boolean
+  is_default: boolean
+}
+
+const allRoles = ref<Role[]>([])
 const targetUser = ref<User | null>(null)
 const showRoleModal = ref(false)
 const switchingRole = ref(false)
 const switchError = ref("")
+const selectedRoleIds = ref<string[]>([])
+
+async function loadRoles() {
+  try {
+    const res = await $fetch<{ data: Role[] }>("/api/v1/admin/roles")
+    allRoles.value = res.data
+  } catch {
+    // 角色加载失败不影响用户列表
+  }
+}
 
 function confirmRoleSwitch(user: User) {
   targetUser.value = user
   switchError.value = ""
+  // 预填充当前角色（需先加载角色列表，这里在打开弹窗时异步获取）
+  selectedRoleIds.value = []
   showRoleModal.value = true
+  loadRolesInModal()
+}
+
+async function loadRolesInModal() {
+  try {
+    const res = await $fetch<{ data: Role[] }>("/api/v1/admin/roles")
+    allRoles.value = res.data
+  } catch {
+    // ignore
+  }
+}
+
+function toggleRoleId(roleId: string) {
+  const idx = selectedRoleIds.value.indexOf(roleId)
+  if (idx >= 0) {
+    selectedRoleIds.value.splice(idx, 1)
+  } else {
+    selectedRoleIds.value.push(roleId)
+  }
+}
+
+async function handleRoleSwitch() {
+  if (!targetUser.value) return
+  switchingRole.value = true
+  switchError.value = ""
+  try {
+    await $fetch(`/api/v1/admin/users/${targetUser.value.id}/role`, {
+      method: "PATCH",
+      body: { role_ids: selectedRoleIds.value },
+    })
+    showRoleModal.value = false
+    await loadUsers(currentPage.value)
+  } catch (err: unknown) {
+    switchError.value = err instanceof Error ? err.message : "操作失败"
+  } finally {
+    switchingRole.value = false
+  }
 }
 
 // ─── 封禁 / 解封（issue #102）─────────────────────
@@ -181,24 +239,6 @@ async function showBanHistory(user: User) {
   }
 }
 
-async function handleRoleSwitch() {
-  if (!targetUser.value) return
-  const newRole = targetUser.value.role === "admin" ? "user" : "admin"
-  switchingRole.value = true
-  switchError.value = ""
-  try {
-    await $fetch(`/api/v1/admin/users/${targetUser.value.id}/role`, {
-      method: "PATCH",
-      body: { role: newRole },
-    })
-    showRoleModal.value = false
-    await loadUsers(currentPage.value)
-  } catch (err: unknown) {
-    switchError.value = err instanceof Error ? err.message : "操作失败"
-  } finally {
-    switchingRole.value = false
-  }
-}
 </script>
 
 <template>
@@ -245,13 +285,10 @@ async function handleRoleSwitch() {
       <template #actions="{ row }">
         <div class="flex items-center gap-1.5">
           <button
-            class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-transparent"
-            :class="row.role === 'admin'
-              ? 'text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white'
-              : 'text-info-text border-info-text bg-transparent hover:bg-info-text hover:text-white'"
+            class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-info-text text-info-text bg-transparent hover:bg-info-text hover:text-white"
             @click="confirmRoleSwitch(row)"
           >
-            {{ row.role === "admin" ? "降为用户" : "设为管理员" }}
+            修改角色
           </button>
           <!-- user-ban-table：封禁 / 解封 / 历史按钮 -->
           <button
@@ -287,19 +324,37 @@ async function handleRoleSwitch() {
     />
   </div>
 
-  <!-- 角色切换确认弹窗 -->
+  <!-- 角色管理弹窗（RBAC role_ids） -->
   <AdminModal
     v-if="showRoleModal"
-    :title="`${targetUser?.role === 'admin' ? '降级' : '提升'}用户`"
-    :confirm-text="targetUser?.role === 'admin' ? '确认降级' : '确认提升'"
+    title="修改用户角色"
+    confirm-text="保存"
     :loading="switchingRole"
-    :danger="targetUser?.role === 'admin'"
     @confirm="handleRoleSwitch"
     @cancel="showRoleModal = false"
   >
-    <p>确定将 <strong>{{ targetUser?.username }}</strong> 的角色从
-    <strong>{{ targetUser?.role === "admin" ? "管理员" : "普通用户" }}</strong>
-    改为 <strong>{{ targetUser?.role === "admin" ? "普通用户" : "管理员" }}</strong> 吗？</p>
+    <p class="mb-3">为用户 <strong>{{ targetUser?.username }}</strong> 选择角色：</p>
+    <div class="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
+      <label
+        v-for="role in allRoles"
+        :key="role.id"
+        class="flex items-center gap-2 p-2.5 border border-border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+        :class="{ 'border-primary bg-primary-bg': selectedRoleIds.includes(role.id) }"
+      >
+        <input
+          type="checkbox"
+          :checked="selectedRoleIds.includes(role.id)"
+          class="accent-primary size-4"
+          @change="toggleRoleId(role.id)"
+        />
+        <div class="flex flex-col">
+          <span class="text-sm font-semibold text-text">{{ role.name }}</span>
+          <span v-if="role.is_admin" class="text-xs text-info-text">管理员角色（隐式全权限）</span>
+          <span v-else-if="role.is_default" class="text-xs text-text-secondary">默认角色</span>
+          <span v-else class="text-xs text-text-secondary">自定义角色</span>
+        </div>
+      </label>
+    </div>
     <p v-if="switchError" class="mt-2 text-error-text text-[13px]">{{ switchError }}</p>
   </AdminModal>
 

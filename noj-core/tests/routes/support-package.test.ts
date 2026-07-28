@@ -161,7 +161,7 @@ Deno.test({
     await resetDbForTest();
     await createTestProblem();
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await signToken({ sub: "0", role: "admin", is_admin: true });
 
     const zipContent = new Uint8Array([
       0x50,

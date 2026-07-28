@@ -6,14 +6,7 @@
 
 ### Requirement: 管理员管理镜像白名单
 
-系统 SHALL 提供管理员 API 管理评测镜像白名单（`judge_images` 表），支持增删改查操作。
-
-每条白名单记录包含 `image`（镜像名）、`mode`（`exact` 或 `all_versions`）、`kind`（`evaluator` 或 `solution`，必填）、`description`（介绍文案）。
-
-#### Scenario: 管理员添加精确版本镜像
-
-- **WHEN** 管理员发送 `POST /api/v1/admin/judge-images`，携带 `{ "image": "noj-judge-cpp:gcc13", "mode": "exact", "kind": "evaluator", "description": "C++ GCC 13 评测环境" }`
-- **THEN** 系统创建白名单记录，仅 `noj-judge-cpp:gcc13` 精确匹配该条目，返回 HTTP 201 及记录详情
+系统 SHALL 提供管理员 API 管理评测镜像白名单（`judge_images` 表），支持增删改查操作。每条白名单记录包含 `image`（镜像名）、`mode`（`exact` 或 `all_versions`）、`kind`（`evaluator` 或 `solution`，**第一阶段必填**）、`description`（介绍文案）。
 
 #### Scenario: 管理员添加 Evaluator 镜像
 
@@ -37,18 +30,20 @@
 
 #### Scenario: 管理员添加全版本镜像
 
-- **WHEN** 管理员发送 `POST /api/v1/admin/judge-images`，携带 `{ "image": "noj-judge-python", "mode": "all_versions", "description": "Python 3.12 评测环境" }`
+- **WHEN** 管理员发送 `POST /api/v1/admin/judge-images`，携带 `{ "image": "noj-judge-python", "mode": "all_versions", "kind": "evaluator", "description": "Python 3.12 评测环境" }`
 - **THEN** 系统创建白名单记录，`noj-judge-python`、`noj-judge-python:latest`、`noj-judge-python:v1.0` 等均匹配该条目，返回 HTTP 201
 
 #### Scenario: 管理员查看白名单列表
 
 - **WHEN** 管理员发送 `GET /api/v1/admin/judge-images`
-- **THEN** 系统返回所有白名单记录列表，每条含 `id`、`image`、`mode`、`description`、`created_at`、`updated_at`
+- **THEN** 系统返回所有白名单记录列表，每条含 `id`、`image`、`mode`、`kind`、`description`、`created_at`、`updated_at`
 
 #### Scenario: 管理员更新白名单条目
 
 - **WHEN** 管理员发送 `PUT /api/v1/admin/judge-images/:id`，携带 `{ "description": "更新后的介绍" }`
 - **THEN** 系统更新该条记录的指定字段，返回 HTTP 200 及更新后详情
+- **WHEN** 管理员显式更新 `kind` 字段
+- **THEN** 系统校验新 kind 仅允许 `evaluator` / `solution`
 
 #### Scenario: 管理员删除白名单条目
 
@@ -67,9 +62,7 @@
 
 ### Requirement: 题目创建/更新时校验镜像白名单（含 kind）
 
-系统 SHALL 对题目创建和更新请求中的 `runtime_config` 字段执行白名单校验，
-并确保 `runtime_config` 中 Evaluator / Solution 镜像的 kind 与白名单条目一致。
-白名单为空时 SHALL 拒绝所有镜像名，返回明确错误提示。
+系统 SHALL 对题目创建和更新请求中的 `judge_image` 与 `runtime_config` 字段执行白名单校验，并确保 `runtime_config` 中 Evaluator / Solution 镜像的 kind 与白名单条目一致。白名单为空时 SHALL 拒绝所有镜像名，返回明确错误提示。
 
 #### Scenario: 双容器题目 Evaluator 镜像校验
 
@@ -87,9 +80,15 @@
 - **WHEN** 用户传入 `runtime_config.solution.image: "noj-evaluator-python:3.12"`（白名单 kind='evaluator'）
 - **THEN** 系统返回 HTTP 400，提示 `image kind mismatch: solution image required`
 
+#### Scenario: 单容器题目白名单校验（向后兼容）
+
+- **WHEN** 白名单中存在 `exact: "noj-judge-cpp:gcc13"` 且 `kind='evaluator'` 条目
+- **WHEN** 用户创建单容器题目，传入 `judge_image: "noj-judge-cpp:gcc13"`
+- **THEN** 系统通过白名单校验，正常创建题目
+
 #### Scenario: 白名单为空时拒绝所有镜像
 
-- **WHEN** `judge_images` 表为空，用户创建题目时传入任意 `runtime_config`
+- **WHEN** `judge_images` 表为空，用户创建题目时传入任意 `judge_image` 字符串或 `runtime_config`
 - **THEN** 系统返回 HTTP 400，提示"系统尚未配置允许的评测镜像，请联系管理员"
 
 #### Scenario: 更新题目时校验镜像（runtime_config）
@@ -97,10 +96,16 @@
 - **WHEN** 白名单非空，用户编辑题目时修改 `runtime_config` 中 Evaluator / Solution 镜像为不在白名单中的值
 - **THEN** 系统返回 HTTP 400，拒绝更新
 
+#### Scenario: 更新题目时清空 runtime_config
+
+- **WHEN** 题目原 `runtime_config` 非空
+- **WHEN** admin 提交 `runtime_config: null`
+- **THEN** 系统清空该字段，题目回退到单容器路径
+- **THEN** 记录审计日志 `action=problems.runtime_config_changed`
+
 ### Requirement: 公开镜像列表 API（按 kind 过滤）
 
-系统 SHALL 提供 `GET /api/v1/judge-images` 端点（无需认证），返回所有白名单镜像
-记录供题目编辑器使用。客户端可按 `kind` 查询参数过滤。
+系统 SHALL 提供 `GET /api/v1/judge-images` 端点（无需认证），返回所有白名单镜像记录供题目编辑器使用。客户端可按 `kind` 查询参数过滤。
 
 #### Scenario: 获取可用镜像列表
 
@@ -128,15 +133,14 @@
 
 ### Requirement: get_image_allowlist RPC 响应升级
 
-系统 SHALL 在 `get_image_allowlist` RPC 响应中返回每条镜像的 `kind` 字段，
-供 judge 启动时按 kind 分别预热容器池（双容器模式下仅 `evaluator` kind 入池，
-`solution` kind 仅记录不下发容器）。
+系统 SHALL 在 `get_image_allowlist` RPC 响应中返回每条镜像的 `kind` 字段，供 judge 启动时按 kind 分池预热。
 
 #### Scenario: RPC 响应包含 kind
 
 - **WHEN** judge 发送 `get_image_allowlist` RPC 请求
 - **THEN** core 查询 `judge_images` 表中所有记录
 - **THEN** core 返回 JSON 数组，每项包含 `image`、`kind`（`evaluator` / `solution`）、`mode`（`exact` / `all_versions`）
+- **THEN** judge 按 kind 分别预热容器池（仅 `evaluator` kind 入池；`solution` kind 仅记录不下发容器）
 
 #### Scenario: 历史数据迁移（kind 默认值）
 

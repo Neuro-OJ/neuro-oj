@@ -36,7 +36,9 @@ export default defineNuxtRouteMiddleware(async (_to, _from) => {
   }
 
   // 非管理员 → 重定向首页（不给提示，静默拦截）
-  if (user.value?.role !== "admin") {
+  // 使用 isAdmin 字段（优先），向后兼容 role 字段
+  const isAdmin = (user.value as Record<string, unknown>)?.is_admin ?? (user.value?.role === "admin");
+  if (!isAdmin) {
     return navigateTo("/");
   }
 });

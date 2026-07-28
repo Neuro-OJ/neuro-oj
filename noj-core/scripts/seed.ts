@@ -576,6 +576,10 @@ async function main() {
     try {
       const { ensureRootUser } = await import("../src/services/auth.ts");
       await ensureRootUser();
+
+      // 初始化 RBAC 种子数据（幂等）
+      const { ensureRbacSeeds } = await import("../src/services/seed-rbac.ts");
+      await ensureRbacSeeds();
     } catch (err) {
       console.error("Root 用户初始化失败:", err);
       throw err;

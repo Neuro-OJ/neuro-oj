@@ -15,8 +15,8 @@ import {
   apiPatch,
   apiPost,
   apiPut,
-  isE2E,
   getAdminToken,
+  isE2E,
   registerUser,
   waitForServer,
 } from "./helper.ts";
@@ -27,6 +27,7 @@ let userToken = "";
 let targetUserId = "";
 let problemId = "";
 let categoryId = "";
+let adminRoleId = "";
 const ts = Date.now().toString(36);
 
 Deno.test({
@@ -38,6 +39,14 @@ Deno.test({
     if (!isE2E) return;
     await waitForServer();
     adminToken = await getAdminToken();
+
+    // 获取 admin 角色 ID
+    const rolesRes = await apiGet("/api/v1/admin/roles", adminToken);
+    const roles =
+      (rolesRes.body as { data: Array<{ id: string; name: string }> }).data ??
+        [];
+    const adminRole = roles.find((r) => r.name === "admin");
+    if (adminRole) adminRoleId = adminRole.id;
 
     // 注册普通用户（用于 role_change/ban/unban 操作）
     userToken = await registerUser(
@@ -54,11 +63,19 @@ Deno.test({
       description: "将被删除以产生审计日志",
       difficulty: "easy",
       runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
 
-        evaluator: { image: "noj-evaluator-python", command: "python3 /workspace/evaluate.py", time_limit_ms: 5000, memory_limit_mb: 512 },
-
-        solution: { image: "noj-solution-python", entry: "submission_sample.py", call_timeout_ms: 2000, memory_limit_mb: 512 },
-
+        solution: {
+          image: "noj-solution-python",
+          entry: "submission_sample.py",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
       },
       type: "P",
     }, adminToken);
@@ -98,17 +115,39 @@ Deno.test({
     // 先提升为 admin，再降回 user 确保产生记录
     const upRes = await apiPatch(
       `/api/v1/admin/users/${targetUserId}/role`,
-      { role: "admin" },
+      { role_ids: [adminRoleId] },
       adminToken,
     );
-    if (upRes.status !== 200) throw new Error("提权失败: " + upRes.status);
+    if (upRes.status !== 200) {
+      throw new Error(
+        "提权失败: " + upRes.status + " " + JSON.stringify(upRes.body),
+      );
+    }
 
     const downRes = await apiPatch(
       `/api/v1/admin/users/${targetUserId}/role`,
-      { role: "user" },
+      { role_ids: [] },
       adminToken,
     );
-    if (downRes.status !== 200) throw new Error("降权失败: " + downRes.status);
+    // 降权用空数组可能失败（"用户必须至少拥有一个角色"），需用 user 角色 ID
+    if (downRes.status !== 200) {
+      // 降权失败，尝试用 user 角色
+      const rolesRes2 = await apiGet("/api/v1/admin/roles", adminToken);
+      const roles2 =
+        (rolesRes2.body as { data: Array<{ id: string; name: string }> })
+          .data ?? [];
+      const userRole = roles2.find((r) => r.name === "user");
+      if (userRole) {
+        const downRes2 = await apiPatch(
+          `/api/v1/admin/users/${targetUserId}/role`,
+          { role_ids: [userRole.id] },
+          adminToken,
+        );
+        if (downRes2.status !== 200) {
+          throw new Error("降权失败: " + downRes2.status);
+        }
+      }
+    }
 
     // 验证审计记录
     const logs = await apiGet(
@@ -143,7 +182,9 @@ Deno.test({
       {},
       adminToken,
     );
-    if (unbanRes.status !== 200) throw new Error("解封失败: " + unbanRes.status);
+    if (unbanRes.status !== 200) {
+      throw new Error("解封失败: " + unbanRes.status);
+    }
 
     const banLogs = await apiGet(
       "/api/v1/admin/audit-logs?action=users.ban",
@@ -232,7 +273,9 @@ Deno.test({
       adminToken,
     );
     if (logs.status !== 200) throw new Error("时间筛选失败: " + logs.status);
-    const data = (logs.body as { data: Array<unknown>; pagination: { total: number } }).data;
+    const data =
+      (logs.body as { data: Array<unknown>; pagination: { total: number } })
+        .data;
     console.log("  ✓ 时间筛选返回 " + data.length + " 条记录");
   },
 });
@@ -249,7 +292,10 @@ Deno.test({
       adminToken,
     );
     if (logs.status !== 200) throw new Error("分页失败: " + logs.status);
-    const body = logs.body as { data: Array<unknown>; pagination: { per_page: number } };
+    const body = logs.body as {
+      data: Array<unknown>;
+      pagination: { per_page: number };
+    };
     if (body.data.length > 3) {
       throw new Error("per_page=3 但返回 " + body.data.length);
     }
