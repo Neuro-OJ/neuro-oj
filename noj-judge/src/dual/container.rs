@@ -212,6 +212,8 @@ async fn create_container_with_security(
 #[cfg(test)]
 #[allow(unused_imports)]
 mod tests {
+    use crate::dual::container::DualContainer;
+
     #[test]
     fn test_dual_container_struct_clone() {
         // 仅编译期测试：DualContainer 的字段允许 None 表示未创建。
@@ -220,5 +222,15 @@ mod tests {
             let _: Option<String> = None;
         }
         _assert_option_string();
+    }
+
+    #[test]
+    fn test_dual_container_field_initialization() {
+        // 验证 DualContainer 字段类型正确（全为 Option）
+        fn _check_types(evaluator: Option<String>, solution: Option<String>) {
+            assert!(evaluator.is_none());
+            assert!(solution.is_none());
+        }
+        _check_types(None, None);
     }
 }

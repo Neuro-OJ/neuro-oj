@@ -990,7 +990,62 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{AllowedImage, AllowedImageMode, PoolManager};
+    use super::{AllowedImage, AllowedImageMode, Pool, PoolManager};
+
+    #[test]
+    fn test_allowed_image_creation_exact() {
+        let img = AllowedImage {
+            image: "test:latest".to_string(),
+            mode: AllowedImageMode::Exact,
+        };
+        assert_eq!(img.image, "test:latest");
+        assert_eq!(img.mode, AllowedImageMode::Exact);
+    }
+
+    #[test]
+    fn test_allowed_image_creation_all_versions() {
+        let img = AllowedImage {
+            image: "test:v1".to_string(),
+            mode: AllowedImageMode::AllVersions,
+        };
+        assert_eq!(img.image, "test:v1");
+        assert_eq!(img.mode, AllowedImageMode::AllVersions);
+    }
+
+    #[test]
+    fn test_pool_new_initial_state() {
+        let pool = Pool::new("test-image:latest".to_string(), 1, 5);
+        assert_eq!(pool.min_size(), 1);
+        assert_eq!(pool.max_size(), 5);
+        assert_eq!(pool.image(), "test-image:latest");
+        assert_eq!(pool.in_flight(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_pool_push_and_acquire() {
+        let pool = Pool::new("test:latest".to_string(), 1, 5);
+        pool.push_idle("container-1".to_string()).await;
+        assert_eq!(pool.idle_count().await, 1);
+        let acquired = pool.acquire().await;
+        assert_eq!(acquired, Some("container-1".to_string()));
+        assert_eq!(pool.idle_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_pool_acquire_fifo() {
+        let pool = Pool::new("test:latest".to_string(), 1, 5);
+        pool.push_idle("first".to_string()).await;
+        pool.push_idle("second".to_string()).await;
+        assert_eq!(pool.acquire().await, Some("first".to_string()));
+        assert_eq!(pool.acquire().await, Some("second".to_string()));
+        assert!(pool.acquire().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_pool_acquire_from_empty_returns_none() {
+        let pool = Pool::new("test:latest".to_string(), 1, 5);
+        assert!(pool.acquire().await.is_none());
+    }
 
     #[test]
     fn test_allowed_image_exact_requires_full_match() {

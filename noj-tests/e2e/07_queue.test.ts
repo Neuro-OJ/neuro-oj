@@ -36,7 +36,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[e2e/queue] 6.1 公共队列概览结构",
+  name: "[e2e/queue] 7.1 公共队列概览结构",
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -71,7 +72,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[e2e/queue] 6.2 提交后出现在队列中",
+  name: "[e2e/queue] 7.2 提交后出现在队列中",
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -85,7 +87,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[e2e/queue] 6.3 状态端点正确",
+  name: "[e2e/queue] 7.3 状态端点正确",
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -111,7 +114,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[e2e/queue] 6.4 未认证 401",
+  name: "[e2e/queue] 7.4 未认证 401",
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -122,7 +126,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[e2e/queue] 6.5 不存在 404",
+  name: "[e2e/queue] 7.5 不存在 404",
+  ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

@@ -21,99 +21,94 @@ import {
   registerUser,
 } from "./helper.ts";
 
-if (!isE2E) {
-  // E2E 未启用：跳过整套测试
-  Deno.test({
-    name: "dual_container_judge: skipped (NOJ_RUN_E2E != 1)",
-    ignore: true,
-    fn: () => {},
-  });
-} else {
-  // ── 测试常量 ─────────────────────────────────────────
+const skip = !isE2E;
 
-  const EVALUATOR_IMAGE = "noj-evaluator-python:dev";
-  const SOLUTION_IMAGE = "noj-solution-python:dev";
-  const TEST_TAG = `e2e-${Date.now()}`;
+// ── 测试常量 ─────────────────────────────────────────
 
-  // ── 共享 fixtures ────────────────────────────────────
+const EVALUATOR_IMAGE = "noj-evaluator-python:dev";
+const SOLUTION_IMAGE = "noj-solution-python:dev";
+const TEST_TAG = `e2e-${Date.now()}`;
 
-  /** 创建（或复用）evaluator 镜像白名单条目 */
-  async function ensureImage(
-    image: string,
-    kind: "evaluator" | "solution",
-  ): Promise<string> {
-    const adminToken = await getAdminToken();
-    const list = await apiGet("/api/v1/admin/judge-images", adminToken);
-    type JiEntry = { id: string; image: string; kind: string };
-    const existing = ((list.body as { data: JiEntry[] }).data ?? []).find(
-      (ji) => ji.image === image && ji.kind === kind,
+// ── 共享 fixtures ────────────────────────────────────
+
+/** 创建（或复用）evaluator 镜像白名单条目 */
+async function ensureImage(
+  image: string,
+  kind: "evaluator" | "solution",
+): Promise<string> {
+  const adminToken = await getAdminToken();
+  const list = await apiGet("/api/v1/admin/judge-images", adminToken);
+  type JiEntry = { id: string; image: string; kind: string };
+  const existing = ((list.body as { data: JiEntry[] }).data ?? []).find(
+    (ji) => ji.image === image && ji.kind === kind,
+  );
+  if (existing) return existing.id;
+
+  const create = await apiPost(
+    "/api/v1/admin/judge-images",
+    {
+      image,
+      kind,
+      mode: "exact",
+      description: `e2e ${kind} image`,
+    },
+    adminToken,
+  );
+  if (create.status !== 201) {
+    throw new Error(
+      `Failed to create image ${image} (kind=${kind}): ${create.status} ${
+        JSON.stringify(create.body)
+      }`,
     );
-    if (existing) return existing.id;
-
-    const create = await apiPost(
-      "/api/v1/admin/judge-images",
-      {
-        image,
-        kind,
-        mode: "exact",
-        description: `e2e ${kind} image`,
-      },
-      adminToken,
-    );
-    if (create.status !== 201) {
-      throw new Error(
-        `Failed to create image ${image} (kind=${kind}): ${create.status} ${
-          JSON.stringify(create.body)
-        }`,
-      );
-    }
-    return (create.body as { data: JiEntry }).data.id;
   }
+  return (create.body as { data: JiEntry }).data.id;
+}
 
-  /** 创建题目（双 runtime_config），返回 problem_id */
-  async function createDualProblem(
-    adminToken: string,
-    title: string,
-  ): Promise<string> {
-    const res = await apiPost(
-      "/api/v1/problems",
-      {
-        title,
-        description: `# ${title}\n\nMarkdown 内容`,
-        difficulty: "medium",
-        type: "P",
-        number: Math.floor(Math.random() * 9000) + 1000,
-        runtime_config: {
-          evaluator: {
-            image: EVALUATOR_IMAGE,
-            command: "python3 /workspace/evaluate.py",
-            time_limit_ms: 10_000,
-            memory_limit_mb: 512,
-          },
-          solution: {
-            image: SOLUTION_IMAGE,
-            entry: "solution.py",
-            call_timeout_ms: 1_000,
-            memory_limit_mb: 256,
-          },
+/** 创建题目（双 runtime_config），返回 problem_id */
+async function createDualProblem(
+  adminToken: string,
+  title: string,
+): Promise<string> {
+  const res = await apiPost(
+    "/api/v1/problems",
+    {
+      title,
+      description: `# ${title}\n\nMarkdown 内容`,
+      difficulty: "medium",
+      type: "P",
+      number: Math.floor(Math.random() * 9000) + 1000,
+      runtime_config: {
+        evaluator: {
+          image: EVALUATOR_IMAGE,
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 10_000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: SOLUTION_IMAGE,
+          entry: "solution.py",
+          call_timeout_ms: 1_000,
+          memory_limit_mb: 256,
         },
       },
-      adminToken,
+    },
+    adminToken,
+  );
+  if (res.status !== 201) {
+    throw new Error(
+      `Failed to create dual problem: ${res.status} ${
+        JSON.stringify(res.body)
+      }`,
     );
-    if (res.status !== 201) {
-      throw new Error(
-        `Failed to create dual problem: ${res.status} ${
-          JSON.stringify(res.body)
-        }`,
-      );
-    }
-    return (res.body as { data: { id: string } }).data.id;
   }
+  return (res.body as { data: { id: string } }).data.id;
+}
 
   // ── Tests ────────────────────────────────────────────
 
   Deno.test({
     name: "dual_container_judge: admin 创建双容器题目成功（含 runtime_config）",
+    ignore: skip,
     sanitizeOps: false,
     sanitizeResources: false,
     fn: async () => {
@@ -136,8 +131,10 @@ if (!isE2E) {
     },
   });
 
+
   Deno.test({
-    name: "dual_container_judge: 普通用户尝试设置 runtime_config 被拒",
+    name: "dual_container_judge: 普通用户可正常设置 runtime_config（双容器是唯一模式）",
+    ignore: skip,
     sanitizeOps: false,
     sanitizeResources: false,
     fn: async () => {
@@ -184,8 +181,10 @@ if (!isE2E) {
     },
   });
 
+
   Deno.test({
     name: "dual_container_judge: 镜像白名单 kind 不匹配被拒",
+    ignore: skip,
     sanitizeOps: false,
     sanitizeResources: false,
     fn: async () => {
@@ -232,8 +231,10 @@ if (!isE2E) {
     },
   });
 
+
   Deno.test({
     name: "dual_container_judge: 清空 runtime_config 被拒（必填字段）",
+    ignore: skip,
     sanitizeOps: false,
     sanitizeResources: false,
     fn: async () => {
@@ -272,8 +273,10 @@ if (!isE2E) {
     },
   });
 
+
   Deno.test({
     name: "dual_container_judge: runtime_config 始终存在（双容器是唯一模式）",
+    ignore: skip,
     sanitizeOps: false,
     sanitizeResources: false,
     fn: async () => {
@@ -322,8 +325,10 @@ if (!isE2E) {
     },
   });
 
+
   Deno.test({
     name: "dual_container_judge: 普通用户提交双容器题目 → 走 dual 评测",
+    ignore: skip,
     sanitizeOps: false,
     sanitizeResources: false,
     fn: async () => {
@@ -359,4 +364,3 @@ if (!isE2E) {
       }
     },
   });
-}

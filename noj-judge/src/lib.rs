@@ -19,3 +19,36 @@ pub fn merge_output(stdout: &str, stderr: &str) -> String {
         format!("{}\n--- STDERR ---\n{}", stdout, stderr)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_merge_output_stdout_only() {
+        assert_eq!(merge_output("hello", ""), "hello");
+    }
+
+    #[test]
+    fn test_merge_output_with_stderr() {
+        let result = merge_output("stdout line", "stderr line");
+        assert_eq!(result, "stdout line\n--- STDERR ---\nstderr line");
+    }
+
+    #[test]
+    fn test_merge_output_both_empty() {
+        assert_eq!(merge_output("", ""), "");
+    }
+
+    #[test]
+    fn test_merge_output_stderr_only() {
+        let result = merge_output("", "error log");
+        assert_eq!(result, "\n--- STDERR ---\nerror log");
+    }
+
+    #[test]
+    fn test_merge_output_multiline() {
+        let result = merge_output("line1\nline2", "err1\nerr2");
+        assert_eq!(result, "line1\nline2\n--- STDERR ---\nerr1\nerr2");
+    }
+}

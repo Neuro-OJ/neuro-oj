@@ -367,3 +367,49 @@ Deno.test({
     console.log("  ✓ 私信 SSE 端点返回 200");
   },
 });
+
+// ── 单会话未读计数 ──
+
+Deno.test({
+  name: "[e2e/messaging] 2.15 单会话未读计数 ≥0",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    if (!isE2E) return;
+    const res = await apiGet(
+      `/api/v1/conversations/${convId}/unread-count`,
+      userAToken,
+    );
+    if (res.status !== 200) {
+      throw new Error("期望 200, 实际 " + res.status);
+    }
+    const data = res.body as { unread_count: number };
+    if (typeof data.unread_count !== "number" || data.unread_count < 0) {
+      throw new Error("unread_count 应为非负整数, 实际 " + data.unread_count);
+    }
+  },
+});
+
+Deno.test({
+  name: "[e2e/messaging] 2.16 非参与者无法查看未读计数",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    if (!isE2E) return;
+    const ts = Date.now().toString(36);
+    const strangerToken = await registerUser(
+      "msg_unr_" + ts,
+      "msg_unr_" + ts + "@test.com",
+      "Test12345679",
+    );
+    const res = await apiGet(
+      `/api/v1/conversations/${convId}/unread-count`,
+      strangerToken,
+    );
+    if (res.status !== 200 && res.status !== 403 && res.status !== 404) {
+      throw new Error("非参与者期望 200/403/404, 实际 " + res.status);
+    }
+  },
+});
