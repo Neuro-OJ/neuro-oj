@@ -521,6 +521,7 @@ OpenSpec 变更归档到 `openspec/changes/archive/` 时，目录名必须遵循
 5. **禁止修改 `deno.lock` / `Cargo.lock` 手动内容** — 通过 `deno cache` / `cargo update` 更新
 6. **禁止在 `.env` 中硬编码真实凭据** — 用 `.env.example` 模板 + `gitignore`
 7. **禁止向生产数据库直连变更 schema** — 走 Drizzle 迁移流程
+8. **优先使用开发工具（脚本）** — 标准操作（启停模块、查看状态、构建支持包、迁移数据库等）应先查 `scripts/` 下的开发脚本再动手；存在封装脚本时优先使用脚本而非手动拼接命令
 
 ### 8.2 编码规范
 
@@ -561,6 +562,7 @@ OpenSpec 变更归档到 `openspec/changes/archive/` 时，目录名必须遵循
 - [ ] 中文提交描述符合 Conventional Commits
 - [ ] GPG 签名可用
 - [ ] 若是功能变更，OpenSpec 变更已 `/opsx:propose` 起草
+- [ ] 优先使用 `scripts/` 下的开发工具脚本完成标准操作，而非手动拼接命令
 
 ---
 
