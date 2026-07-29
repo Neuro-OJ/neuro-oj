@@ -75,10 +75,10 @@
 
 ## 9. Tests — Backend
 
-- [ ] 9.1 创建 `tests/services/contests.test.ts`：CRUD + 参赛 + 边界条件
-- [ ] 9.2 创建 `tests/services/contest-ranking.test.ts`：ICPC 排名正确性（含罚时/封榜边缘情况）+ IOI 排名正确性
-- [ ] 9.3 创建 `tests/routes/contests.test.ts`：公开路由 + 管理路由集成测试
-- [ ] 9.4 扩展现有提交测试：验证 `contest_id` 字段正确写入和查询
+- [x] 9.1 创建 `tests/services/contests.test.ts`：CRUD + 参赛 + 边界条件
+- [x] 9.2 创建 `tests/services/contest-ranking.test.ts`：ICPC 排名正确性（含罚时/封榜边缘情况）+ IOI 排名正确性
+- [x] 9.3 创建 `tests/routes/contests.test.ts`：公开路由 + 管理路由集成测试
+- [x] 9.4 扩展现有提交测试：验证 `contest_id` 字段正确写入和查询
 
 ## 10. Frontend (Phase 3)
 
