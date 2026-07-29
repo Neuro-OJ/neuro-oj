@@ -76,6 +76,7 @@ Deno.test({
           unfreeze_after_end: true,
         },
         is_public: true,
+        password: "ContestPass123",
         affect_global_ranking: false,
         problems: [{ problem_id: "1001", sort_order: 0, label: "A" }],
       },
@@ -99,10 +100,21 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    if (!isE2E || !judgeAvailable) return;
+    if (!isE2E) return;
+    const invalidPassword = await apiPost(
+      `/api/v1/contests/${contestId}/register`,
+      { password: "wrong-password" },
+      participantToken,
+    );
+    if (invalidPassword.status !== 403) {
+      throw new Error(
+        `错误密码应被拒绝，实际状态码: ${invalidPassword.status}`,
+      );
+    }
+
     const registerResult = await apiPost(
       `/api/v1/contests/${contestId}/register`,
-      {},
+      { password: "ContestPass123" },
       participantToken,
     );
     if (registerResult.status !== 201) {
@@ -112,6 +124,7 @@ Deno.test({
         }`,
       );
     }
+    if (!judgeAvailable) return;
 
     const submitResult = await apiPost(
       `/api/v1/contests/${contestId}/submit`,

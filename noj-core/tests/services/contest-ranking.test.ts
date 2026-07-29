@@ -1,4 +1,4 @@
-import { assertEquals, assertExists } from "jsr:@std/assert@^1";
+import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert@^1";
 import { inArray } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import {
@@ -15,6 +15,7 @@ import {
   getIcpcRanking,
   getIoiRanking,
 } from "../../src/services/contest-ranking.ts";
+import { ForbiddenError, UnauthorizedError } from "../../src/lib/errors.ts";
 
 await resetDbForTest();
 
@@ -66,6 +67,7 @@ Deno.test({
     const problemB = crypto.randomUUID();
     const icpcId = crypto.randomUUID();
     const ioiId = crypto.randomUUID();
+    const oiId = crypto.randomUUID();
     const now = new Date().toISOString();
 
     await db.insert(users).values([
@@ -141,8 +143,19 @@ Deno.test({
         created_at: now,
         updated_at: now,
       },
+      {
+        id: oiId,
+        title: "OI 排名测试",
+        start_time: atMinutes(0),
+        end_time: atMinutes(120),
+        type: "oi",
+        config: { show_ranking_live: false },
+        created_by: userA,
+        created_at: now,
+        updated_at: now,
+      },
     ]);
-    for (const contestId of [icpcId, ioiId]) {
+    for (const contestId of [icpcId, ioiId, oiId]) {
       await db.insert(contestProblems).values([
         {
           contest_id: contestId,
@@ -210,10 +223,29 @@ Deno.test({
       assertEquals(ioiA.total_score, 8000);
       assertEquals(ioiA.problem_scores[0].attempts, 3);
       assertEquals(ioiA.rank, 1);
+
+      await insertSubmission(oiId, userA, problemA, 10, "Accepted", 9000);
+      await insertSubmission(oiId, userB, problemA, 20, "Accepted", 8000);
+      await assertRejects(
+        () => getContestRanking(oiId, "oi"),
+        UnauthorizedError,
+        "OI 竞赛进行期间需登录查看排名",
+      );
+      await assertRejects(
+        () => getContestRanking(oiId, "oi", false, crypto.randomUUID()),
+        ForbiddenError,
+        "仅参赛者可查看进行中的 OI 排名",
+      );
+      const ownOiRanking = await getContestRanking(oiId, "oi", false, userB);
+      assertEquals(ownOiRanking.length, 1);
+      assertEquals(ownOiRanking[0].user_id, userB);
+      const adminOiRanking = await getContestRanking(oiId, "oi", true);
+      assertEquals(adminOiRanking.length, 2);
+      assertEquals(adminOiRanking[0].user_id, userA);
     } finally {
       const submissionRows = await db.select({ id: submissions.id }).from(
         submissions,
-      ).where(inArray(submissions.contest_id, [icpcId, ioiId]));
+      ).where(inArray(submissions.contest_id, [icpcId, ioiId, oiId]));
       if (submissionRows.length > 0) {
         await db.delete(evaluationResults).where(inArray(
           evaluationResults.submission_id,
@@ -222,9 +254,11 @@ Deno.test({
       }
       await db.delete(submissions).where(inArray(
         submissions.contest_id,
-        [icpcId, ioiId],
+        [icpcId, ioiId, oiId],
       ));
-      await db.delete(contests).where(inArray(contests.id, [icpcId, ioiId]));
+      await db.delete(contests).where(
+        inArray(contests.id, [icpcId, ioiId, oiId]),
+      );
       await db.delete(problems).where(
         inArray(problems.id, [problemA, problemB]),
       );
