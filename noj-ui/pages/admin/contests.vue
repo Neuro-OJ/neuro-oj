@@ -24,6 +24,7 @@ const formOpen = ref(false)
 const editingContest = ref<AdminContestDetail | null>(null)
 const saving = ref(false)
 const formError = ref('')
+let contestRequestVersion = 0
 
 function reloadAfterContestMutation() {
   reloadNuxtApp({ path: '/admin/contests', persistState: false })
@@ -39,27 +40,34 @@ const columns: Column<Contest>[] = [
 ]
 
 async function loadContests(page = currentPage.value) {
+  const currentRequest = ++contestRequestVersion
   loading.value = true
   loadError.value = ''
   try {
     const response = await $fetch<{ data: Contest[]; pagination: Pagination }>(`/api/v1/admin/contests?page=${page}&per_page=20`)
+    if (currentRequest !== contestRequestVersion) return
     contests.value = response.data
     currentPage.value = response.pagination.page
     totalPages.value = response.pagination.total_pages
   } catch (fetchError: unknown) {
+    if (currentRequest !== contestRequestVersion) return
     const detail = fetchError as { data?: { error?: string }; message?: string }
     loadError.value = detail.data?.error || detail.message || '竞赛列表加载失败'
   } finally {
-    loading.value = false
+    if (currentRequest === contestRequestVersion) loading.value = false
   }
 }
 
-async function loadProblems() {
+let problemRequestVersion = 0
+
+async function loadProblems(keyword = '') {
+  const currentRequest = ++problemRequestVersion
   try {
-    const response = await $fetch<{ data: AdminProblemOption[] }>('/api/v1/admin/problems?page=1&limit=100')
+    const response = await $fetch<{ data: AdminProblemOption[] }>(`/api/v1/admin/problems?page=1&limit=20&keyword=${encodeURIComponent(keyword)}`)
+    if (currentRequest !== problemRequestVersion) return
     problems.value = response.data
   } catch {
-    problems.value = []
+    if (currentRequest === problemRequestVersion) problems.value = []
   }
 }
 
@@ -201,7 +209,7 @@ async function removeParticipant(participant: Participant) {
     <PaginationNav :current-page="currentPage" :total-pages="totalPages" @page-change="loadContests" />
   </div>
 
-  <ContestFormModal v-if="formOpen" :contest="editingContest" :problems="problems" :saving="saving" :error="formError" @save="saveContest" @cancel="formOpen = false" />
+  <ContestFormModal v-if="formOpen" :contest="editingContest" :problems="problems" :saving="saving" :error="formError" @save="saveContest" @search-problems="loadProblems" @cancel="formOpen = false" />
 
   <div v-if="participantContest" class="fixed inset-0 z-300 flex items-center justify-center bg-black/45 p-4" @click.self="participantContest = null">
     <div class="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-modal">

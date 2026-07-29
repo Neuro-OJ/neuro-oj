@@ -14,7 +14,11 @@ const { contest, problems, saving = false, error = '' } = defineProps<{
   saving?: boolean
   error?: string
 }>()
-const emit = defineEmits<{ save: [payload: ContestPayload]; cancel: [] }>()
+const emit = defineEmits<{
+  save: [payload: ContestPayload]
+  cancel: []
+  searchProblems: [keyword: string]
+}>()
 
 const title = ref('')
 const description = ref('')
@@ -31,6 +35,12 @@ const showRankingLive = ref(true)
 const selectedProblems = ref<ContestProblemInput[]>([])
 const problemQuery = ref('')
 const localError = ref('')
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+
+function searchProblems() {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => emit('searchProblems', problemQuery.value.trim()), 250)
+}
 
 const filteredProblems = computed(() => {
   const query = problemQuery.value.trim().toLowerCase()
@@ -102,7 +112,9 @@ function removeProblem(problemId: string) {
 
 function problemName(problemId: string) {
   const problem = problems.find((item) => item.id === problemId)
-  return problem ? `${problem.display_id} ${problem.title}` : problemId
+  if (problem) return `${problem.display_id} ${problem.title}`
+  const selected = contest?.problems.find((item) => item.problem_id === problemId)
+  return selected ? `${selected.display_id} ${selected.title}` : problemId
 }
 
 watch(type, normalizeProblems)
@@ -173,7 +185,7 @@ function submit() {
 
         <section class="flex min-h-[520px] flex-col rounded-xl border border-border bg-bg-page p-4">
           <div class="mb-3 flex items-center justify-between"><div><h3 class="text-sm font-bold text-text">竞赛题目</h3><p class="text-xs text-text-muted">已选 {{ selectedProblems.length }} 题</p></div></div>
-          <div class="relative mb-3"><Search :size="15" class="absolute left-3 top-2.5 text-text-muted" /><input v-model="problemQuery" class="w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-primary" placeholder="搜索题号或标题"></div>
+          <div class="relative mb-3"><Search :size="15" class="absolute left-3 top-2.5 text-text-muted" /><input v-model="problemQuery" class="w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-primary" placeholder="搜索题号或标题" @input="searchProblems"></div>
           <div class="mb-4 max-h-48 overflow-y-auto rounded-lg border border-border bg-white">
             <button v-for="problem in filteredProblems" :key="problem.id" class="flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left text-xs last:border-0 hover:bg-primary-bg" @click="addProblem(problem)"><Plus :size="14" class="text-primary" /><span class="font-mono text-primary">{{ problem.display_id }}</span><span class="truncate text-text">{{ problem.title }}</span></button>
             <p v-if="filteredProblems.length === 0" class="p-4 text-center text-xs text-text-muted">没有可添加的题目</p>

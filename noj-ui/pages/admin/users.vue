@@ -21,6 +21,7 @@ interface User {
   username: string
   email: string
   role: string
+  role_ids: string[]
   /** user-ban-table：活跃封禁信息 */
   active_ban: { reason: string; banned_until: string | null } | null
   created_at: string
@@ -82,19 +83,9 @@ async function loadRoles() {
 function confirmRoleSwitch(user: User) {
   targetUser.value = user
   switchError.value = ""
-  // 预填充当前角色（需先加载角色列表，这里在打开弹窗时异步获取）
-  selectedRoleIds.value = []
+  selectedRoleIds.value = [...user.role_ids]
   showRoleModal.value = true
-  loadRolesInModal()
-}
-
-async function loadRolesInModal() {
-  try {
-    const res = await $fetch<{ data: Role[] }>("/api/v1/admin/roles")
-    allRoles.value = res.data
-  } catch {
-    // ignore
-  }
+  void loadRoles()
 }
 
 function toggleRoleId(roleId: string) {
@@ -395,9 +386,8 @@ async function showBanHistory(user: User) {
   <AdminModal
     v-if="showHistoryModal"
     title="封禁历史"
-    confirm-text=""
+    hide-confirm
     :loading="historyLoading"
-    @confirm="showHistoryModal = false"
     @cancel="showHistoryModal = false"
   >
     <p v-if="historyTarget" class="mb-3">

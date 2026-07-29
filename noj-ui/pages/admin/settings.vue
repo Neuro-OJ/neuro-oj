@@ -71,15 +71,18 @@ const CATEGORY_LABEL: Record<SettingCategory, string> = {
 const settings = ref<SystemSetting[]>([])
 const tableLoading = ref(true)
 const tableError = ref("")
+let requestVersion = 0
 
 async function loadSettings() {
   if (!isLoggedIn.value) return
+  const currentRequest = ++requestVersion
   tableLoading.value = true
   tableError.value = ""
   try {
     const res = await $fetch<{ data: SystemSetting[] }>(
       "/api/v1/admin/settings",
     )
+    if (currentRequest !== requestVersion) return
     settings.value = res.data
     // 初始化草稿：普通字段同步当前值，敏感字段初始化为 null（需显式编辑）
     drafts.value = {}
@@ -87,11 +90,12 @@ async function loadSettings() {
       drafts.value[s.key] = s.is_secret ? null : s.effective_value
     }
   } catch (err: unknown) {
+    if (currentRequest !== requestVersion) return
     tableError.value = err instanceof Error
       ? err.message
       : "加载系统设置失败"
   } finally {
-    tableLoading.value = false
+    if (currentRequest === requestVersion) tableLoading.value = false
   }
 }
 
@@ -180,18 +184,27 @@ function deepEqual(a: unknown, b: unknown): boolean {
 
 // ─── 保存单个设置 ─────────────────────────────────────────
 
-const savingKey = ref<string | null>(null)
+const savingKeys = ref(new Set<string>())
 const { toast } = useToast()
+
+function applySetting(item: SystemSetting) {
+  const index = settings.value.findIndex((setting) => setting.key === item.key)
+  if (index >= 0) settings.value.splice(index, 1, item)
+  else settings.value.push(item)
+  drafts.value[item.key] = item.is_secret ? null : item.effective_value
+}
 
 async function saveSetting(key: string) {
   // 敏感字段未显式编辑 → 跳过保存
   if (drafts.value[key] === null) return
-  savingKey.value = key
+  if (savingKeys.value.has(key)) return
+  savingKeys.value = new Set(savingKeys.value).add(key)
   try {
-    await $fetch(`/api/v1/admin/settings/${key}`, {
+    const res = await $fetch<{ data: SystemSetting }>(`/api/v1/admin/settings/${key}`, {
       method: "PUT",
       body: { value: drafts.value[key] },
     })
+    applySetting(res.data)
     // 检查是否需要重启生效
     const s = settings.value.find((x) => x.key === key)
     if (s?.needsRestart) {
@@ -199,17 +212,18 @@ async function saveSetting(key: string) {
     } else {
       toast.success("设置已保存")
     }
-    await loadSettings()
   } catch (err: unknown) {
     toast.error(err instanceof Error ? err.message : "保存失败")
   } finally {
-    savingKey.value = null
+    const next = new Set(savingKeys.value)
+    next.delete(key)
+    savingKeys.value = next
   }
 }
 
 // ─── 重置单个设置 ─────────────────────────────────────────
 
-const resetting = ref(false)
+const resettingKeys = ref(new Set<string>())
 const { dialog } = useDialog()
 
 async function confirmReset(s: SystemSetting) {
@@ -225,17 +239,22 @@ async function confirmReset(s: SystemSetting) {
   })
   if (!ok) return
 
-  resetting.value = true
+  if (resettingKeys.value.has(s.key)) return
+  resettingKeys.value = new Set(resettingKeys.value).add(s.key)
   try {
     await $fetch(`/api/v1/admin/settings/${s.key}`, {
       method: "DELETE",
     })
+    const res = await $fetch<{ data: SystemSetting[] }>("/api/v1/admin/settings")
+    const updated = res.data.find((item) => item.key === s.key)
+    if (updated) applySetting(updated)
     toast.success(`已重置 ${s.key}`)
-    await loadSettings()
   } catch (err: unknown) {
     toast.error(err instanceof Error ? err.message : "重置失败")
   } finally {
-    resetting.value = false
+    const next = new Set(resettingKeys.value)
+    next.delete(s.key)
+    resettingKeys.value = next
   }
 }
 
@@ -415,15 +434,15 @@ async function confirmReset(s: SystemSetting) {
               <div class="flex items-center justify-end gap-1.5">
                 <button
                   class="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-semibold text-white bg-primary border-[1.5px] border-primary rounded cursor-pointer transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
-                  :disabled="!isDirty(s.key) || savingKey === s.key"
+                  :disabled="!isDirty(s.key) || savingKeys.has(s.key)"
                   @click="saveSetting(s.key)"
                 >
                   <Save :size="13" />
-                  {{ savingKey === s.key ? "保存中..." : "保存" }}
+                  {{ savingKeys.has(s.key) ? "保存中..." : "保存" }}
                 </button>
                 <button
                   class="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-semibold text-text-secondary bg-white border-[1.5px] border-border rounded cursor-pointer transition-all duration-150 hover:border-warning-text hover:text-warning-text disabled:opacity-50 disabled:cursor-not-allowed"
-                  :disabled="resetting"
+                  :disabled="resettingKeys.has(s.key)"
                   title="重置为默认值"
                   @click="confirmReset(s)"
                 >

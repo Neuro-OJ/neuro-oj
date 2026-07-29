@@ -32,6 +32,7 @@ const tableError = ref("")
 const currentPage = ref(1)
 const totalPages = ref(1)
 const perPage = 20
+let requestVersion = 0
 
 // 筛选条件
 const filters = reactive({
@@ -108,6 +109,7 @@ function buildQuery(page: number): string {
 
 async function loadSubmissions(page = 1) {
   if (!isLoggedIn.value) return
+  const currentRequest = ++requestVersion
   tableLoading.value = true
   tableError.value = ""
   currentPage.value = page
@@ -115,12 +117,14 @@ async function loadSubmissions(page = 1) {
     const res = await $fetch<{ data: SubmissionListItem[]; pagination: { total: number; total_pages: number } }>(
       `/api/v1/admin/submissions?${buildQuery(page)}`,
     )
+    if (currentRequest !== requestVersion) return
     submissions.value = res.data
     totalPages.value = res.pagination.total_pages
   } catch (err: unknown) {
+    if (currentRequest !== requestVersion) return
     tableError.value = err instanceof Error ? err.message : "加载提交记录失败"
   } finally {
-    tableLoading.value = false
+    if (currentRequest === requestVersion) tableLoading.value = false
   }
 }
 
@@ -152,14 +156,21 @@ function rowSub(row: Record<string, unknown>): SubmissionListItem {
 
 const toast = useToast()
 const { dialog } = useDialog()
+const rejudgingIds = ref(new Set<string>())
+
+function isRejudging(submissionId: string) {
+  return rejudgingIds.value.has(submissionId)
+}
 
 async function rejudge(submissionId: string) {
+  if (isRejudging(submissionId)) return
   const confirmed = await dialog.confirm(
     "确定要重测该提交吗？将重新运行评测并覆盖现有结果。",
     { title: "确认重测" },
   )
   if (!confirmed) return
 
+  rejudgingIds.value = new Set(rejudgingIds.value).add(submissionId)
   try {
     await $fetch(`/api/v1/admin/submissions/${submissionId}/rejudge`, {
       method: "POST",
@@ -171,6 +182,10 @@ async function rejudge(submissionId: string) {
       "error",
       err instanceof Error ? err.message : "重测失败",
     )
+  } finally {
+    const next = new Set(rejudgingIds.value)
+    next.delete(submissionId)
+    rejudgingIds.value = next
   }
 }
 </script>
@@ -261,7 +276,7 @@ async function rejudge(submissionId: string) {
       <!-- 操作列 -->
       <template #actions="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <button class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white" @click="rejudge(rowSub(row).id)">重测</button>
+          <button class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white disabled:cursor-not-allowed disabled:opacity-50" :disabled="isRejudging(rowSub(row).id)" @click="rejudge(rowSub(row).id)">{{ isRejudging(rowSub(row).id) ? '提交中...' : '重测' }}</button>
           <NuxtLink :to="`/submissions/${rowSub(row).id}`" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-primary border-primary bg-transparent hover:bg-primary hover:text-white">查看</NuxtLink>
         </div>
       </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Plus, Pencil, Trash2 } from "@lucide/vue"
 import type { Column } from "~/components/admin/AdminTable.vue"
+import { useToast } from "~/composables/useToast"
 
 definePageMeta({
   layout: "admin",
@@ -26,6 +27,8 @@ interface JudgeImage {
 const items = ref<JudgeImage[]>([])
 const tableLoading = ref(true)
 const tableError = ref("")
+const { toast } = useToast()
+let requestVersion = 0
 
 const columns: Column<JudgeImage>[] = [
   { key: "image", label: "镜像名" },
@@ -51,16 +54,19 @@ const columns: Column<JudgeImage>[] = [
 
 async function loadItems() {
   if (!isLoggedIn.value) return
+  const currentRequest = ++requestVersion
   tableLoading.value = true
   tableError.value = ""
   try {
     const res = await $fetch<{ data: JudgeImage[] }>("/api/v1/admin/judge-images")
+    if (currentRequest !== requestVersion) return
     items.value = res.data
   } catch (err: unknown) {
+    if (currentRequest !== requestVersion) return
     const apiErr = err as { data?: { error?: string }; message?: string } | undefined
     tableError.value = apiErr?.data?.error || apiErr?.message || "加载评测镜像列表失败"
   } finally {
-    tableLoading.value = false
+    if (currentRequest === requestVersion) tableLoading.value = false
   }
 }
 
@@ -162,7 +168,9 @@ async function handleDelete() {
     await $fetch(`/api/v1/admin/judge-images/${deleteTarget.value.id}`, {
       method: "DELETE",
     })
+    items.value = items.value.filter((item) => item.id !== deleteTarget.value!.id)
     showDeleteConfirm.value = false
+    toast.success("评测镜像已删除")
   } catch (err: unknown) {
     const apiErr = err as { data?: { error?: string }; message?: string } | undefined
     formError.value = apiErr?.data?.error || apiErr?.message || "删除失败"

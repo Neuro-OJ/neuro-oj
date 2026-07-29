@@ -39,18 +39,33 @@ interface NavItem {
   icon: Component
 }
 
-const navItems: NavItem[] = [
-  { label: "仪表盘", to: "/admin", icon: LayoutDashboard },
-  { label: "用户管理", to: "/admin/users", icon: Users },
-  { label: "黑名单管理", to: "/admin/blacklist", icon: Ban },
-  { label: "题目管理", to: "/admin/problems", icon: BookOpen },
-  { label: "竞赛管理", to: "/admin/contests", icon: Trophy },
-  { label: "分类管理", to: "/admin/categories", icon: Tags },
-  { label: "评测镜像", to: "/admin/judge-images", icon: Container },
-  { label: "系统设置", to: "/admin/settings", icon: Settings },
-  { label: "角色管理", to: "/admin/roles", icon: ShieldCheck },
-  { label: "提交管理", to: "/admin/submissions", icon: Files },
-  { label: "审计日志", to: "/admin/audit-logs", icon: ScrollText },
+interface NavGroup {
+  label: string
+  items: NavItem[]
+}
+
+const navGroups: NavGroup[] = [
+  { label: "概览", items: [{ label: "仪表盘", to: "/admin", icon: LayoutDashboard }] },
+  {
+    label: "内容与评测",
+    items: [
+      { label: "题目管理", to: "/admin/problems", icon: BookOpen },
+      { label: "分类管理", to: "/admin/categories", icon: Tags },
+      { label: "竞赛管理", to: "/admin/contests", icon: Trophy },
+      { label: "提交管理", to: "/admin/submissions", icon: Files },
+      { label: "评测镜像", to: "/admin/judge-images", icon: Container },
+    ],
+  },
+  {
+    label: "用户与系统",
+    items: [
+      { label: "用户管理", to: "/admin/users", icon: Users },
+      { label: "角色管理", to: "/admin/roles", icon: ShieldCheck },
+      { label: "黑名单管理", to: "/admin/blacklist", icon: Ban },
+      { label: "系统设置", to: "/admin/settings", icon: Settings },
+      { label: "审计日志", to: "/admin/audit-logs", icon: ScrollText },
+    ],
+  },
 ]
 
 function isActive(path: string) {
@@ -86,18 +101,21 @@ function isActive(path: string) {
         </button>
       </div>
 
-      <nav class="flex-1 p-2 flex flex-col gap-0.5 overflow-y-auto">
-        <NuxtLink
-          v-for="item in navItems"
-          :key="item.to"
-          :to="item.to"
-          class="flex items-center gap-2.5 px-3 py-2.5 text-sm text-text-secondary no-underline rounded-md transition-colors whitespace-nowrap overflow-hidden"
-          :class="{ 'bg-primary-bg text-primary font-semibold': isActive(item.to), 'hover:bg-gray-100 hover:text-text': !isActive(item.to) }"
-          @click="isMobile && (sidebarOpen = false)"
-        >
-          <component :is="item.icon" :size="18" />
-          <span v-show="sidebarOpen" class="flex-1">{{ item.label }}</span>
-        </NuxtLink>
+      <nav class="flex-1 p-2 flex flex-col gap-3 overflow-y-auto">
+        <section v-for="group in navGroups" :key="group.label" class="flex flex-col gap-0.5">
+          <h2 v-show="sidebarOpen" class="px-3 pt-1 text-[11px] font-semibold text-text-muted">{{ group.label }}</h2>
+          <NuxtLink
+            v-for="item in group.items"
+            :key="item.to"
+            :to="item.to"
+            class="flex items-center gap-2.5 px-3 py-2.5 text-sm text-text-secondary no-underline rounded-md transition-colors whitespace-nowrap overflow-hidden"
+            :class="{ 'bg-primary-bg text-primary font-semibold': isActive(item.to), 'hover:bg-gray-100 hover:text-text': !isActive(item.to) }"
+            @click="isMobile && (sidebarOpen = false)"
+          >
+            <component :is="item.icon" :size="18" />
+            <span v-show="sidebarOpen" class="flex-1">{{ item.label }}</span>
+          </NuxtLink>
+        </section>
       </nav>
 
       <div class="p-2 border-t border-border">

@@ -843,6 +843,77 @@ Deno.test({
 });
 
 Deno.test({
+  name: "admin route: POST /api/v1/admin/submissions/:id/rejudge 评测中时拒绝",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const app = createApp();
+    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const now = new Date().toISOString();
+    const ts = Date.now();
+    const problemId = `single-rej-problem-${ts}`;
+    const userId = await insertTestUser(
+      `single-rej-user-${ts}`,
+      `single-rej-${ts}@test.noj`,
+    );
+    const submissionId = `single-rej-submission-${ts}`;
+
+    await db.insert(problems).values({
+      id: problemId,
+      title: `单条重测测试 ${ts}`,
+      description: "测试",
+      difficulty: "easy",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: "noj-solution-python",
+          entry: "submission_sample.py",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
+      number: 81000 + (ts & 0x7fff),
+      owner_id: "0",
+      type: "P",
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      language: "python3",
+      code: "print(1)",
+      status: "judging",
+      judge_started_at: now,
+      created_at: now,
+    });
+
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/submissions/${submissionId}/rejudge`,
+      { method: "POST", token },
+    );
+    assertEquals(res.status, 400);
+    const body = await res.json();
+    assertEquals(body.error.includes("已完成或出错"), true);
+
+    const [submission] = await db.select().from(submissions).where(
+      eq(submissions.id, submissionId),
+    );
+    assertEquals(submission.status, "judging");
+  },
+});
+
+Deno.test({
   name:
     "admin route: POST /api/v1/admin/problems/:id/rejudge 无已完结提交返回空",
   ignore: skip,
