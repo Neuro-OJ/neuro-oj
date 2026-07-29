@@ -67,8 +67,10 @@ export function useAdminList<T = Record<string, unknown>>(
   const keyword = ref("")
 
   let searchTimer: ReturnType<typeof setTimeout> | undefined
+  let requestVersion = 0
 
   async function load(page = 1) {
+    const currentRequest = ++requestVersion
     loading.value = true
     error.value = ""
     currentPage.value = page
@@ -83,12 +85,14 @@ export function useAdminList<T = Record<string, unknown>>(
       if (options.transform) {
         const raw = await $fetch(`${options.path}?${params}`)
         const r = options.transform(raw)
+        if (currentRequest !== requestVersion) return
         items.value = r.items
         totalPages.value = Math.max(1, Math.ceil(r.total / perPageVal))
       } else {
         const dataField = options.fetchOptions?.dataField ?? "data"
         const totalField = options.fetchOptions?.totalField ?? "total"
         const res = await $fetch<Record<string, unknown>>(`${options.path}?${params}`)
+        if (currentRequest !== requestVersion) return
         const rawData = deepGet(res, dataField)
         items.value = (Array.isArray(rawData) ? rawData : []) as T[]
 
@@ -102,9 +106,10 @@ export function useAdminList<T = Record<string, unknown>>(
         }
       }
     } catch (err: unknown) {
+      if (currentRequest !== requestVersion) return
       error.value = err instanceof Error ? err.message : "加载失败"
     } finally {
-      loading.value = false
+      if (currentRequest === requestVersion) loading.value = false
     }
   }
 

@@ -61,6 +61,10 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     throw new NotFoundError("提交不存在");
   }
 
+  if (submission.status !== "finished" && submission.status !== "error") {
+    throw new BadRequestError("仅已完成或出错的提交可以重测");
+  }
+
   const problem = await getProblem(submission.problem_id);
 
   // 获取支持包 download URL

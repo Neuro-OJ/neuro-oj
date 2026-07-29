@@ -533,6 +533,19 @@ export async function listUsers(
       .where(where),
   ]);
 
+  const roleRows = rows.length === 0
+    ? []
+    : await db
+      .select({ user_id: userRoles.user_id, role_id: userRoles.role_id })
+      .from(userRoles)
+      .where(sql`${userRoles.user_id} IN ${rows.map((row) => row.id)}`);
+  const roleIdsByUser = new Map<string, string[]>();
+  for (const roleRow of roleRows) {
+    const roleIds = roleIdsByUser.get(roleRow.user_id) ?? [];
+    roleIds.push(roleRow.role_id);
+    roleIdsByUser.set(roleRow.user_id, roleIds);
+  }
+
   const total = Number(countResult[0]?.count ?? 0);
   const totalPages = Math.ceil(total / opts.perPage);
 
@@ -542,6 +555,7 @@ export async function listUsers(
     username: r.username,
     email: r.email,
     role: r.role,
+    role_ids: roleIdsByUser.get(r.id) ?? [],
     is_admin: false, // TODO: 从 user_roles 查询，后续 PR 完善
     must_change_password: r.must_change_password,
     created_at: r.created_at,
