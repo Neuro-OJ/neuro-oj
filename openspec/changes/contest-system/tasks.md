@@ -38,40 +38,40 @@
 
 ## 5. Routes — Public
 
-- [ ] 5.1 创建 `src/routes/contests.ts`：`GET /` 竞赛列表（分页，公开）
-- [ ] 5.2 `GET /:id` 竞赛详情（含 is_registered 判断）
-- [ ] 5.3 `POST /:id/register` 注册参赛（authMiddleware + 密码校验）
-- [ ] 5.4 `GET /:id/problems` 题目列表（authMiddleware + 参赛校验 + 非 pending 校验）
-- [ ] 5.5 `GET /:id/problems/:label` 单题详情
-- [ ] 5.6 `GET /:id/ranking` 排名（OI 模式权限控制）
-- [ ] 5.7 `POST /:id/submit` 竞赛提交（authMiddleware + 参赛 + running 校验）
-- [ ] 5.8 `GET /:id/my-submissions` 我的竞赛提交
-- [ ] 5.9 在 `src/app.ts` 注册：`app.route("/api/v1/contests", contests)`
+- [x] 5.1 创建 `src/routes/contests.ts`：`GET /` 竞赛列表（分页，公开）
+- [x] 5.2 `GET /:id` 竞赛详情（含 is_registered 判断）
+- [x] 5.3 `POST /:id/register` 注册参赛（authMiddleware + 密码校验）
+- [x] 5.4 `GET /:id/problems` 题目列表（authMiddleware + 参赛校验 + 非 pending 校验）
+- [x] 5.5 `GET /:id/problems/:label` 单题详情
+- [x] 5.6 `GET /:id/ranking` 排名（OI 模式权限控制）
+- [x] 5.7 `POST /:id/submit` 竞赛提交（authMiddleware + 参赛 + running 校验）
+- [x] 5.8 `GET /:id/my-submissions` 我的竞赛提交
+- [x] 5.9 在 `src/app.ts` 注册：`app.route("/api/v1/contests", contests)`
 
 ## 6. Routes — Admin
 
-- [ ] 6.1 在 `src/routes/admin.ts` 追加竞赛管理路由组
-- [ ] 6.2 `GET /admin/contests` — 全部竞赛列表（含非公开）
-- [ ] 6.3 `POST /admin/contests` — 创建竞赛
-- [ ] 6.4 `PUT /admin/contests/:id` — 编辑竞赛
-- [ ] 6.5 `DELETE /admin/contests/:id` — 删除竞赛
-- [ ] 6.6 `GET /admin/contests/:id/participants` — 参与者列表
-- [ ] 6.7 `POST /admin/contests/:id/participants` — 批量添加参与者
-- [ ] 6.8 `DELETE /admin/contests/:id/participants/:userId` — 移除参与者
-- [ ] 6.9 `GET /admin/contests/:id/submissions` — 竞赛全部提交
+- [x] 6.1 在 `src/routes/admin.ts` 追加竞赛管理路由组
+- [x] 6.2 `GET /admin/contests` — 全部竞赛列表（含非公开）
+- [x] 6.3 `POST /admin/contests` — 创建竞赛
+- [x] 6.4 `PUT /admin/contests/:id` — 编辑竞赛
+- [x] 6.5 `DELETE /admin/contests/:id` — 删除竞赛
+- [x] 6.6 `GET /admin/contests/:id/participants` — 参与者列表
+- [x] 6.7 `POST /admin/contests/:id/participants` — 批量添加参与者
+- [x] 6.8 `DELETE /admin/contests/:id/participants/:userId` — 移除参与者
+- [x] 6.9 `GET /admin/contests/:id/submissions` — 竞赛全部提交
 
 ## 7. Submission Integration
 
-- [ ] 7.1 扩展 `src/services/submissions-crud.ts` 的 `createSubmission(userId, input, contestId?)` 支持可选 contest_id 参数
-- [ ] 7.2 扩展 `src/types/index.ts` 的 `SubmissionInput` 类型，新增可选 `contest_id` 字段
-- [ ] 7.3 竞赛提交成功时发布 `Channels.contestSubmission(contestId)` 事件
+- [x] 7.1 扩展 `src/services/submissions-crud.ts` 的 `createSubmission(userId, input, contestId?)` 支持可选 contest_id 参数
+- [x] 7.2 扩展 `src/types/index.ts` 的 `SubmissionInput` 类型，新增可选 `contest_id` 字段
+- [x] 7.3 竞赛提交成功时发布 `Channels.contestSubmission(contestId)` 事件
 
 ## 8. Event Bus & SSE
 
-- [ ] 8.1 在 `src/lib/event-bus.ts` 的 `Channels` 中新增 `contestRanking(id)` 和 `contestSubmission(id)`
-- [ ] 8.2 扩展 SSE 路由：`GET /api/v1/contests/:id/events`（复用 streamSSE 模式）
-- [ ] 8.3 在 `src/services/submissions-result.ts` 的评测结果持久化后，检查 `contest_id` 并发布 `Channels.contestRanking` 事件
-- [ ] 8.4 排名推送限流：≥ 5s 间隔
+- [x] 8.1 在 `src/lib/event-bus.ts` 的 `Channels` 中新增 `contestRanking(id)` 和 `contestSubmission(id)`
+- [x] 8.2 扩展 SSE 路由：`GET /api/v1/contests/:id/events`（复用 streamSSE 模式）
+- [x] 8.3 在 `src/services/submissions-result.ts` 的评测结果持久化后，检查 `contest_id` 并发布 `Channels.contestRanking` 事件
+- [x] 8.4 排名推送限流：≥ 5s 间隔
 
 ## 9. Tests — Backend
 

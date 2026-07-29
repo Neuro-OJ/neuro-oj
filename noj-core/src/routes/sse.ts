@@ -1,13 +1,17 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { authMiddleware } from "../middleware/auth.ts";
-import { onEvent } from "../lib/event-bus.ts";
+import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
+import type { OptionalAuthEnv } from "../middleware/auth.ts";
+import { Channels, onEvent } from "../lib/event-bus.ts";
 import { getSubmission } from "../services/submissions.ts";
 import { getQueueOverview } from "../services/queue.ts";
 import {
   getCachedTodayStats,
   getCachedTotalStats,
 } from "../services/stats-cache.ts";
+import { getContestRanking } from "../services/contest-ranking.ts";
+import { getContest } from "../services/contests.ts";
+import { NotFoundError } from "../lib/errors.ts";
 
 /**
  * SSE（Server-Sent Events）路由。
@@ -261,5 +265,119 @@ statsSse.get("/submissions/stats/events", (c) => {
     });
   });
 });
+
+/** 竞赛事件 SSE 端点（公开赛可匿名，OI 进行中由服务层强制认证）。 */
+export const contestSse = new Hono<OptionalAuthEnv>();
+
+contestSse.get(
+  "/contests/:id/events",
+  optionalAuthMiddleware,
+  async (c) => {
+    const contestId = c.req.param("id")!;
+    const viewerId = c.var.userId;
+    const isAdmin = c.var.isAdmin ?? false;
+    const contest = await getContest(contestId, viewerId);
+    if (!contest.is_public && !isAdmin && !contest.is_registered) {
+      throw new NotFoundError("竞赛不存在");
+    }
+
+    return streamSSE(c, async (stream) => {
+      let streamClosed = false;
+      let resolveAbort: (() => void) | null = null;
+      let rankingTimer: ReturnType<typeof setTimeout> | undefined;
+      let rankingInFlight = false;
+      let lastRankingPushAt = 0;
+      let unsubscribeRanking = () => {};
+      let unsubscribeSubmission = () => {};
+
+      const keepAlive = setInterval(() => {
+        if (streamClosed) return;
+        stream.writeSSE({ event: "keepalive", data: "" }).catch(closeStream);
+      }, 30_000);
+      const safetyTimer = setTimeout(closeStream, 300_000);
+
+      function closeStream() {
+        if (streamClosed) return;
+        streamClosed = true;
+        clearTimeout(safetyTimer);
+        clearInterval(keepAlive);
+        if (rankingTimer !== undefined) clearTimeout(rankingTimer);
+        unsubscribeRanking();
+        unsubscribeSubmission();
+        resolveAbort?.();
+      }
+
+      async function pushRanking(event: string): Promise<void> {
+        if (streamClosed || rankingInFlight) return;
+        const waitMs = 5_000 - (Date.now() - lastRankingPushAt);
+        if (waitMs > 0) {
+          if (rankingTimer === undefined) {
+            rankingTimer = setTimeout(() => {
+              rankingTimer = undefined;
+              void pushRanking("contest:ranking:updated");
+            }, waitMs);
+          }
+          return;
+        }
+
+        rankingInFlight = true;
+        try {
+          const data = await getContestRanking(
+            contestId,
+            contest.type,
+            isAdmin,
+            viewerId,
+          );
+          await stream.writeSSE({
+            event,
+            data: JSON.stringify({
+              type: event,
+              contest_id: contestId,
+              data,
+            }),
+          });
+          lastRankingPushAt = Date.now();
+        } catch {
+          closeStream();
+        } finally {
+          rankingInFlight = false;
+        }
+      }
+
+      await pushRanking("contest:ranking:snapshot");
+      if (streamClosed) return;
+
+      unsubscribeRanking = onEvent(
+        Channels.contestRanking(contestId),
+        () => void pushRanking("contest:ranking:updated"),
+      );
+      unsubscribeSubmission = onEvent(
+        Channels.contestSubmission(contestId),
+        (_channel, message) => {
+          if (streamClosed) return;
+          if (
+            contest.type === "oi" && contest.status === "running" && !isAdmin
+          ) {
+            try {
+              const event = JSON.parse(message) as { user_id?: string };
+              if (!viewerId || event.user_id !== viewerId) return;
+            } catch {
+              return;
+            }
+          }
+          stream.writeSSE({
+            event: "contest:submission:created",
+            data: message,
+          }).catch(closeStream);
+        },
+      );
+
+      await new Promise<void>((resolve) => {
+        resolveAbort = resolve;
+        stream.onAbort(closeStream);
+      });
+    });
+  },
+);
 
 export default sse;

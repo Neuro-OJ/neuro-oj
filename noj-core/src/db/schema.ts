@@ -11,6 +11,7 @@ import {
   unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { SubmissionStatus } from "../types/index.ts";
 
@@ -299,9 +300,8 @@ export const contestClarifications = pgTable(
     }),
     sender_id: text("sender_id").notNull().references(() => users.id),
     content: text("content").notNull(),
-    // deno-lint-ignore no-explicit-any
     reply_to_id: text("reply_to_id").references(
-      (): any => contestClarifications.id,
+      (): AnyPgColumn => contestClarifications.id,
     ),
     is_public: boolean("is_public").notNull().default(false),
     created_at: text("created_at").notNull(),

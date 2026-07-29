@@ -188,7 +188,10 @@ function readRankingsInline(
         u.id AS user_id,
         u.username,
         COUNT(*)::int AS total_submissions,
-        COUNT(DISTINCT s.problem_id) FILTER (WHERE er.status = 'Accepted')::int AS solved_count,
+        COUNT(DISTINCT s.problem_id) FILTER (
+          WHERE er.status = 'Accepted'
+            AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
+        )::int AS solved_count,
         CASE WHEN COUNT(*) = 0 THEN 0
              ELSE ROUND(
                (COUNT(*) FILTER (WHERE er.status = 'Accepted')::float / COUNT(*))::numeric,
@@ -197,7 +200,10 @@ function readRankingsInline(
         END AS acceptance_rate,
         ROW_NUMBER() OVER (
           ORDER BY
-            COUNT(DISTINCT s.problem_id) FILTER (WHERE er.status = 'Accepted') DESC,
+            COUNT(DISTINCT s.problem_id) FILTER (
+              WHERE er.status = 'Accepted'
+                AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
+            ) DESC,
             CASE WHEN COUNT(*) = 0 THEN 0
                  ELSE COUNT(*) FILTER (WHERE er.status = 'Accepted')::float / COUNT(*)
             END DESC,
@@ -207,9 +213,13 @@ function readRankingsInline(
       FROM users u
       INNER JOIN submissions s ON s.user_id = u.id
       LEFT JOIN evaluation_results er ON er.submission_id = s.id
+      LEFT JOIN contests c ON c.id = s.contest_id
       WHERE u.id <> '0' AND s.status = 'finished'
       GROUP BY u.id, u.username, u.created_at
-      HAVING COUNT(*) FILTER (WHERE er.status = 'Accepted') > 0
+      HAVING COUNT(*) FILTER (
+        WHERE er.status = 'Accepted'
+          AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
+      ) > 0
       ORDER BY rank
       LIMIT ${limit} OFFSET ${offset}
     `),
@@ -220,9 +230,13 @@ function readRankingsInline(
         FROM users u
         INNER JOIN submissions s ON s.user_id = u.id
         LEFT JOIN evaluation_results er ON er.submission_id = s.id
+        LEFT JOIN contests c ON c.id = s.contest_id
         WHERE u.id <> '0' AND s.status = 'finished'
         GROUP BY u.id
-        HAVING COUNT(*) FILTER (WHERE er.status = 'Accepted') > 0
+        HAVING COUNT(*) FILTER (
+          WHERE er.status = 'Accepted'
+            AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
+        ) > 0
       ) AS ranked_users
     `),
   ]).then(([dataRes, totalRes]) => {
@@ -272,7 +286,10 @@ export async function getMyRanking(
           u.id AS user_id,
           u.username,
           COUNT(*)::int AS total_submissions,
-          COUNT(DISTINCT s.problem_id) FILTER (WHERE er.status = 'Accepted')::int AS solved_count,
+          COUNT(DISTINCT s.problem_id) FILTER (
+            WHERE er.status = 'Accepted'
+              AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
+          )::int AS solved_count,
           CASE WHEN COUNT(*) = 0 THEN 0
                ELSE ROUND(
                  (COUNT(*) FILTER (WHERE er.status = 'Accepted')::float / COUNT(*))::numeric,
@@ -281,7 +298,10 @@ export async function getMyRanking(
           END AS acceptance_rate,
           ROW_NUMBER() OVER (
             ORDER BY
-              COUNT(DISTINCT s.problem_id) FILTER (WHERE er.status = 'Accepted') DESC,
+              COUNT(DISTINCT s.problem_id) FILTER (
+                WHERE er.status = 'Accepted'
+                  AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
+              ) DESC,
               CASE WHEN COUNT(*) = 0 THEN 0
                    ELSE COUNT(*) FILTER (WHERE er.status = 'Accepted')::float / COUNT(*)
               END DESC,
@@ -291,9 +311,13 @@ export async function getMyRanking(
         FROM users u
         INNER JOIN submissions s ON s.user_id = u.id
         LEFT JOIN evaluation_results er ON er.submission_id = s.id
+        LEFT JOIN contests c ON c.id = s.contest_id
         WHERE u.id <> '0' AND s.status = 'finished'
         GROUP BY u.id, u.username, u.created_at
-        HAVING COUNT(*) FILTER (WHERE er.status = 'Accepted') > 0
+        HAVING COUNT(*) FILTER (
+          WHERE er.status = 'Accepted'
+            AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
+        ) > 0
       )
       SELECT * FROM ranked WHERE user_id = ${userId} LIMIT 1
     `);

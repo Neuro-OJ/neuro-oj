@@ -13,8 +13,9 @@ import users from "./routes/users.ts";
 import rankings from "./routes/rankings.ts";
 import conversations from "./routes/conversations.ts";
 import search from "./routes/search.ts";
+import contests from "./routes/contests.ts";
 import { searchRateLimit } from "./middleware/searchRateLimit.ts";
-import sse, { statsSse } from "./routes/sse.ts";
+import sse, { contestSse, statsSse } from "./routes/sse.ts";
 import { AppError } from "./lib/errors.ts";
 import { logger } from "./lib/logging.ts";
 import { listJudgeImages } from "./services/judge-images.ts";
@@ -146,6 +147,7 @@ export function createApp(): Hono {
   app.route("/api/v1/users", users);
   app.route("/api/v1/rankings", rankings);
   app.route("/api/v1/conversations", conversations);
+  app.route("/api/v1/contests", contests);
   app.use("/api/v1/search", searchRateLimit("anon"));
   app.route("/api/v1/search", search);
   // 评测镜像公开列表（必须在 sse 路由之前注册，避免被 SSE 的 authMiddleware 拦截）
@@ -156,6 +158,7 @@ export function createApp(): Hono {
 
   // 统计数据 SSE 端点（公开，无需 authMiddleware，必须在 sse 之前注册）
   app.route("/api/v1", statsSse);
+  app.route("/api/v1", contestSse);
   app.route("/api/v1", sse);
 
   return app;
