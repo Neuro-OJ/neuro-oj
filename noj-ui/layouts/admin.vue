@@ -14,6 +14,7 @@ import {
   Ban,
   ScrollText,
   ShieldCheck,
+  Trophy,
 } from "@lucide/vue"
 
 const route = useRoute()
@@ -43,6 +44,7 @@ const navItems: NavItem[] = [
   { label: "用户管理", to: "/admin/users", icon: Users },
   { label: "黑名单管理", to: "/admin/blacklist", icon: Ban },
   { label: "题目管理", to: "/admin/problems", icon: BookOpen },
+  { label: "竞赛管理", to: "/admin/contests", icon: Trophy },
   { label: "分类管理", to: "/admin/categories", icon: Tags },
   { label: "评测镜像", to: "/admin/judge-images", icon: Container },
   { label: "系统设置", to: "/admin/settings", icon: Settings },

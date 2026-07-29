@@ -82,12 +82,12 @@
 
 ## 10. Frontend (Phase 3)
 
-- [ ] 10.1 竞赛大厅页面 `/contests`：竞赛卡片列表 + 分页 + 类型/状态筛选
-- [ ] 10.2 竞赛详情页 `/contests/:id`：倒计时 + 题目列表 + 排名入口 + 提交入口
-- [ ] 10.3 竞赛做题页 `/contests/:id/problems/:label`：复用 MonacoEditor + ProblemEditor 组件，API 走竞赛端点
-- [ ] 10.4 竞赛排名页 `/contests/:id/ranking`：ICPC 表格（solved/penalty）+ IOI 表格（total_score）
-- [ ] 10.5 管理后台：竞赛列表 + 创建/编辑竞赛表单 + 参与者管理
-- [ ] 10.6 管理后台：竞赛题目选择器（从现有题库搜索/选择）
+- [x] 10.1 竞赛大厅页面 `/contests`：竞赛卡片列表 + 分页 + 类型/状态筛选
+- [x] 10.2 竞赛详情页 `/contests/:id`：倒计时 + 题目列表 + 排名入口 + 提交入口
+- [x] 10.3 竞赛做题页 `/contests/:id/problems/:label`：复用 MonacoEditor + ProblemEditor 组件，API 走竞赛端点
+- [x] 10.4 竞赛排名页 `/contests/:id/ranking`：ICPC 表格（solved/penalty）+ IOI 表格（total_score）
+- [x] 10.5 管理后台：竞赛列表 + 创建/编辑竞赛表单 + 参与者管理
+- [x] 10.6 管理后台：竞赛题目选择器（从现有题库搜索/选择）
 
 ## 11. E2E Tests (Phase 3)
 
