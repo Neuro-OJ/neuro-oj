@@ -17,7 +17,7 @@
 | is_public | BOOLEAN | NOT NULL, DEFAULT true |
 | password | TEXT | NULLable |
 | affect_global_ranking | BOOLEAN | NOT NULL, DEFAULT false |
-| created_by | TEXT | NOT NULL, REFERENCES users(id) ON DELETE SET NULL |
+| created_by | TEXT | NULLable, REFERENCES users(id) ON DELETE SET NULL |
 | announcement | TEXT | NOT NULL, DEFAULT '' |
 | created_at | TEXT | NOT NULL, ISO 8601 |
 | updated_at | TEXT | NOT NULL, ISO 8601 |

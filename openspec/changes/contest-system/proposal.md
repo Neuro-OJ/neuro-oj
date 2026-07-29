@@ -34,7 +34,7 @@ Neuro OJ 已完成用户系统、题目管理、提交评测、榜单等基础 O
 
 ## Impact
 
-- **数据库**: 4 张新表 + 1 列扩展 + 5 个新索引（通过 Drizzle 迁移生成）
+- **数据库**: 4 张新表 + 1 列扩展 + 6 个新索引（通过 Drizzle 迁移生成）
 - **后端路由**: 新增 `src/routes/contests.ts`（~200 行），追加 `src/routes/admin.ts`（~80 行），追加 `src/routes/sse.ts`（~50 行）
 - **后端服务**: 新增 `src/services/contests.ts`（~400 行）、`src/services/contest-ranking.ts`（~200 行），扩展 `src/services/submissions-crud.ts`（~20 行）
 - **类型定义**: 新增 `src/types/contests.ts`（~100 行），扩展 `src/types/index.ts`（~5 行）

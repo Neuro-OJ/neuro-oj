@@ -189,6 +189,126 @@ export const problemsCategories = pgTable(
 );
 
 /**
+ * 竞赛主表。
+ * 竞赛状态由 start_time/end_time 动态计算，不持久化状态字段。
+ */
+export const contests = pgTable(
+  "contests",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    start_time: text("start_time").notNull(),
+    end_time: text("end_time").notNull(),
+    type: text("type").notNull(),
+    config: jsonb("config").notNull().default({}),
+    is_public: boolean("is_public").notNull().default(true),
+    password: text("password"),
+    affect_global_ranking: boolean("affect_global_ranking").notNull().default(
+      false,
+    ),
+    created_by: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    announcement: text("announcement").notNull().default(""),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    typeCheck: check(
+      "contests_type_check",
+      sql`${table.type} IN ('icpc', 'ioi', 'oi')`,
+    ),
+    timeCheck: check(
+      "contests_time_check",
+      sql`${table.end_time} > ${table.start_time}`,
+    ),
+    configCheck: check(
+      "contests_config_check",
+      sql`jsonb_typeof(${table.config}) = 'object'`,
+    ),
+    createdByIdx: index("idx_contests_created_by").on(table.created_by),
+    startTimeIdx: index("idx_contests_start_time").on(table.start_time),
+    endTimeIdx: index("idx_contests_end_time").on(table.end_time),
+  }),
+);
+
+/**
+ * 竞赛题目关联表。
+ * label 和 sort_order 在单个竞赛内保持唯一。
+ */
+export const contestProblems = pgTable(
+  "contest_problems",
+  {
+    contest_id: text("contest_id")
+      .notNull()
+      .references(() => contests.id, { onDelete: "cascade" }),
+    problem_id: text("problem_id")
+      .notNull()
+      .references(() => problems.id, { onDelete: "cascade" }),
+    sort_order: integer("sort_order").notNull().default(0),
+    label: text("label").notNull(),
+    score: integer("score"),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.contest_id, table.problem_id] }),
+    labelUnique: unique("contest_problems_contest_label_unique").on(
+      table.contest_id,
+      table.label,
+    ),
+    sortOrderUnique: unique("contest_problems_contest_sort_order_unique").on(
+      table.contest_id,
+      table.sort_order,
+    ),
+  }),
+);
+
+/**
+ * 竞赛参与者表。
+ */
+export const contestParticipants = pgTable(
+  "contest_participants",
+  {
+    contest_id: text("contest_id")
+      .notNull()
+      .references(() => contests.id, { onDelete: "cascade" }),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    registered_at: text("registered_at").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.contest_id, table.user_id] }),
+    userIdx: index("idx_contest_participants_user").on(table.user_id),
+  }),
+);
+
+/**
+ * 竞赛答疑表。
+ * API 将在后续阶段实现，当前先建立数据模型。
+ */
+export const contestClarifications = pgTable(
+  "contest_clarifications",
+  {
+    id: text("id").primaryKey(),
+    contest_id: text("contest_id")
+      .notNull()
+      .references(() => contests.id, { onDelete: "cascade" }),
+    problem_id: text("problem_id").references(() => problems.id, {
+      onDelete: "set null",
+    }),
+    sender_id: text("sender_id").notNull().references(() => users.id),
+    content: text("content").notNull(),
+    // deno-lint-ignore no-explicit-any
+    reply_to_id: text("reply_to_id").references(
+      (): any => contestClarifications.id,
+    ),
+    is_public: boolean("is_public").notNull().default(false),
+    created_at: text("created_at").notNull(),
+  },
+);
+
+/**
  * 提交记录表。
  * 用户提交代码后生成一条记录，评测状态流转：
  * pending → judging → finished
@@ -199,6 +319,9 @@ export const submissions = pgTable(
     id: text("id").primaryKey(),
     user_id: text("user_id").notNull().references(() => users.id),
     problem_id: text("problem_id").notNull().references(() => problems.id),
+    contest_id: text("contest_id").references(() => contests.id, {
+      onDelete: "set null",
+    }),
     language: text("language").notNull(),
     code: text("code").notNull(),
     file_name: text("file_name"),
@@ -218,6 +341,15 @@ export const submissions = pgTable(
     problem_idx: index("idx_submissions_problem_id").on(table.problem_id),
     status_idx: index("idx_submissions_status").on(table.status),
     created_at_idx: index("idx_submissions_created_at").on(table.created_at),
+    contest_idx: index("idx_submissions_contest_id").on(table.contest_id),
+    contest_problem_user_idx: index(
+      "idx_submissions_contest_problem_user",
+    ).on(
+      table.contest_id,
+      table.problem_id,
+      table.user_id,
+      table.created_at,
+    ),
     // 复合索引：用户提交历史按时间倒序分页（issue 64 评论 §6.4）
     // 优化 "WHERE user_id = ? ORDER BY created_at DESC" 场景
     user_created_idx: index("idx_submissions_user_id_created_at").on(

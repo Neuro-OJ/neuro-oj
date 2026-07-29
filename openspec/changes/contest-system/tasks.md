@@ -1,11 +1,11 @@
 ## 1. Schema & Database Migration
 
-- [ ] 1.1 在 `src/db/schema.ts` 新增 `contests` 表定义（含 check 约束和索引）
-- [ ] 1.2 在 `src/db/schema.ts` 新增 `contest_problems` 表定义（含复合主键和唯一约束）
-- [ ] 1.3 在 `src/db/schema.ts` 新增 `contest_participants` 表定义
-- [ ] 1.4 在 `src/db/schema.ts` 新增 `contest_clarifications` 表定义
-- [ ] 1.5 在 `submissions` 表新增 `contest_id TEXT REFERENCES contests(id) ON DELETE SET NULL` 列
-- [ ] 1.6 新增索引：`idx_submissions_contest_id`、`idx_submissions_contest_problem_user`、`idx_contests_created_by`、`idx_contests_start_time`、`idx_contests_end_time`、`idx_contest_participants_user`
+- [x] 1.1 在 `src/db/schema.ts` 新增 `contests` 表定义（含 check 约束和索引）
+- [x] 1.2 在 `src/db/schema.ts` 新增 `contest_problems` 表定义（含复合主键和唯一约束）
+- [x] 1.3 在 `src/db/schema.ts` 新增 `contest_participants` 表定义
+- [x] 1.4 在 `src/db/schema.ts` 新增 `contest_clarifications` 表定义
+- [x] 1.5 在 `submissions` 表新增 `contest_id TEXT REFERENCES contests(id) ON DELETE SET NULL` 列
+- [x] 1.6 新增索引：`idx_submissions_contest_id`、`idx_submissions_contest_problem_user`、`idx_contests_created_by`、`idx_contests_start_time`、`idx_contests_end_time`、`idx_contest_participants_user`
 - [ ] 1.7 运行 `deno task db:generate` 生成迁移文件
 - [ ] 1.8 验证迁移：`deno task migrate` 成功执行
 
