@@ -6,35 +6,35 @@
 - [x] 1.4 在 `src/db/schema.ts` 新增 `contest_clarifications` 表定义
 - [x] 1.5 在 `submissions` 表新增 `contest_id TEXT REFERENCES contests(id) ON DELETE SET NULL` 列
 - [x] 1.6 新增索引：`idx_submissions_contest_id`、`idx_submissions_contest_problem_user`、`idx_contests_created_by`、`idx_contests_start_time`、`idx_contests_end_time`、`idx_contest_participants_user`
-- [ ] 1.7 运行 `deno task db:generate` 生成迁移文件
-- [ ] 1.8 验证迁移：`deno task migrate` 成功执行
+- [x] 1.7 运行 `deno task db:generate` 生成迁移文件
+- [x] 1.8 验证迁移：`deno task migrate` 成功执行
 
 ## 2. Types & Permissions
 
-- [ ] 2.1 创建 `src/types/contests.ts`：ContestType 常量 + 验证函数 + CreateContestInput / UpdateContestInput / ContestResponse / ContestProblemInput / ContestProblemResponse / IcpcRankingRow / IoiRankingRow 接口
-- [ ] 2.2 在 `src/types/index.ts` 的 `PERMISSION_DEFS` 中新增 contest:create、contest:manage、contest:participate
-- [ ] 2.3 在 `src/services/seed-rbac.ts` 中确保 3 个新权限被幂等初始化
+- [x] 2.1 创建 `src/types/contests.ts`：ContestType 常量 + 验证函数 + CreateContestInput / UpdateContestInput / ContestResponse / ContestProblemInput / ContestProblemResponse / IcpcRankingRow / IoiRankingRow 接口
+- [x] 2.2 在 `src/types/index.ts` 的 `PERMISSION_DEFS` 中新增 contest:create、contest:manage、contest:participate
+- [x] 2.3 在 `src/services/seed-rbac.ts` 中确保 3 个新权限被幂等初始化
 
 ## 3. Contest CRUD Service
 
-- [ ] 3.1 创建 `src/services/contests.ts`：`createContest(input, userId)` — 事务中同时创建竞赛 + 批量绑定题目
-- [ ] 3.2 `updateContest(id, input, userId)` — 修改竞赛字段 + DELETE/INSERT 题目绑定
-- [ ] 3.3 `deleteContest(id)` — 级联清理（依赖 DB CASCADE + SET NULL）
-- [ ] 3.4 `getContest(id)` — 单竞赛详情，含动态 status 计算、题目数、参与人数
-- [ ] 3.5 `listContests(params)` — 分页列表，支持 type 筛选、showAll（admin 看非公开）
-- [ ] 3.6 `registerForContest(contestId, userId, password?)` — 校验 is_public/password/status
-- [ ] 3.7 `addParticipants(contestId, userIds)` — 管理员批量添加
-- [ ] 3.8 `removeParticipant(contestId, userId)` — 管理员移除
-- [ ] 3.9 `listParticipants(contestId)` — 参与者列表
-- [ ] 3.10 `isParticipant(contestId, userId)` — 布尔判断
-- [ ] 3.11 `getContestProblems(contestId, userId?)` — 竞赛题目列表，含用户求解状态
-- [ ] 3.12 辅助函数：`computeContestStatus(startTime, endTime)` — 动态状态计算
+- [x] 3.1 创建 `src/services/contests.ts`：`createContest(input, userId)` — 事务中同时创建竞赛 + 批量绑定题目
+- [x] 3.2 `updateContest(id, input, userId)` — 修改竞赛字段 + DELETE/INSERT 题目绑定
+- [x] 3.3 `deleteContest(id)` — 级联清理（依赖 DB CASCADE + SET NULL）
+- [x] 3.4 `getContest(id)` — 单竞赛详情，含动态 status 计算、题目数、参与人数
+- [x] 3.5 `listContests(params)` — 分页列表，支持 type 筛选、showAll（admin 看非公开）
+- [x] 3.6 `registerForContest(contestId, userId, password?)` — 校验 is_public/password/status
+- [x] 3.7 `addParticipants(contestId, userIds)` — 管理员批量添加
+- [x] 3.8 `removeParticipant(contestId, userId)` — 管理员移除
+- [x] 3.9 `listParticipants(contestId)` — 参与者列表
+- [x] 3.10 `isParticipant(contestId, userId)` — 布尔判断
+- [x] 3.11 `getContestProblems(contestId, userId?)` — 竞赛题目列表，含用户求解状态
+- [x] 3.12 辅助函数：`computeContestStatus(startTime, endTime)` — 动态状态计算
 
 ## 4. Contest Ranking Service
 
-- [ ] 4.1 创建 `src/services/contest-ranking.ts`：`getIcpcRanking(contestId)` — ICPC 罚时排名 SQL
-- [ ] 4.2 `getIoiRanking(contestId)` — IOI/OI 总分排名 SQL
-- [ ] 4.3 `getContestRanking(contestId, type, isAdmin?, viewerId?)` — 统一入口，含封榜逻辑、OI 隐藏排名逻辑
+- [x] 4.1 创建 `src/services/contest-ranking.ts`：`getIcpcRanking(contestId)` — ICPC 罚时排名 SQL
+- [x] 4.2 `getIoiRanking(contestId)` — IOI/OI 总分排名 SQL
+- [x] 4.3 `getContestRanking(contestId, type, isAdmin?, viewerId?)` — 统一入口，含封榜逻辑、OI 隐藏排名逻辑
 
 ## 5. Routes — Public
 

@@ -72,11 +72,59 @@ export const SCHEMA_DDL: string[] = [
     PRIMARY KEY (problem_id, category_id)
   )`,
 
+  `CREATE TABLE IF NOT EXISTS contests (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('icpc', 'ioi', 'oi')),
+    config JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(config) = 'object'),
+    is_public BOOLEAN NOT NULL DEFAULT true,
+    password TEXT,
+    affect_global_ranking BOOLEAN NOT NULL DEFAULT false,
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    announcement TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK (end_time > start_time)
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS contest_problems (
+    contest_id TEXT NOT NULL REFERENCES contests(id) ON DELETE CASCADE,
+    problem_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    label TEXT NOT NULL,
+    score INTEGER,
+    PRIMARY KEY (contest_id, problem_id),
+    UNIQUE (contest_id, label),
+    UNIQUE (contest_id, sort_order)
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS contest_participants (
+    contest_id TEXT NOT NULL REFERENCES contests(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    registered_at TEXT NOT NULL,
+    PRIMARY KEY (contest_id, user_id)
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS contest_clarifications (
+    id TEXT PRIMARY KEY,
+    contest_id TEXT NOT NULL REFERENCES contests(id) ON DELETE CASCADE,
+    problem_id TEXT REFERENCES problems(id) ON DELETE SET NULL,
+    sender_id TEXT NOT NULL REFERENCES users(id),
+    content TEXT NOT NULL,
+    reply_to_id TEXT REFERENCES contest_clarifications(id),
+    is_public BOOLEAN NOT NULL DEFAULT false,
+    created_at TEXT NOT NULL
+  )`,
+
   // 6. submissions
   `CREATE TABLE IF NOT EXISTS submissions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id),
     problem_id TEXT NOT NULL REFERENCES problems(id),
+    contest_id TEXT REFERENCES contests(id) ON DELETE SET NULL,
     language TEXT NOT NULL,
     code TEXT NOT NULL,
     file_name TEXT,
@@ -221,6 +269,12 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions (status)",
   "CREATE INDEX IF NOT EXISTS idx_submissions_created_at ON submissions (created_at)",
   "CREATE INDEX IF NOT EXISTS idx_submissions_user_id_created_at ON submissions (user_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_submissions_contest_id ON submissions (contest_id)",
+  "CREATE INDEX IF NOT EXISTS idx_submissions_contest_problem_user ON submissions (contest_id, problem_id, user_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_contests_created_by ON contests (created_by)",
+  "CREATE INDEX IF NOT EXISTS idx_contests_start_time ON contests (start_time)",
+  "CREATE INDEX IF NOT EXISTS idx_contests_end_time ON contests (end_time)",
+  "CREATE INDEX IF NOT EXISTS idx_contest_participants_user ON contest_participants (user_id)",
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_results_submission_id ON evaluation_results (submission_id)",
   "CREATE INDEX IF NOT EXISTS idx_eval_results_created_at ON evaluation_results (created_at)",
   "CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens (user_id)",
@@ -277,6 +331,10 @@ export const ALL_TABLES = [
   "judge_images",
   "categories",
   "problems_categories",
+  "contests",
+  "contest_problems",
+  "contest_participants",
+  "contest_clarifications",
   "submissions",
   "evaluation_results",
   "check_ins",
