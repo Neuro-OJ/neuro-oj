@@ -89,7 +89,7 @@ onUnmounted(() => {
       <AsyncContent :status="pending ? 'loading' : error ? 'error' : contest ? 'data' : 'empty'" error="竞赛加载失败" @retry="refresh">
         <div v-if="contest" class="space-y-6">
           <section class="overflow-hidden rounded-2xl border border-border bg-white shadow-card">
-            <div class="bg-dark px-7 py-7 text-white">
+            <div class="bg-bg-dark px-7 py-7 text-white">
               <div class="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div class="mb-3 flex items-center gap-2 text-xs text-slate-300">
@@ -143,7 +143,7 @@ onUnmounted(() => {
             <div v-else-if="problemsError" class="py-8 text-center text-sm text-error-text">{{ problemsError }}</div>
             <div v-else-if="problems.length" class="divide-y divide-border overflow-hidden rounded-xl border border-border">
               <NuxtLink v-for="problem in problems" :key="problem.problem_id" :to="`/contests/${contest.id}/problems/${problem.label}`" class="flex items-center gap-4 px-5 py-4 text-text no-underline transition-colors hover:bg-primary-bg">
-                <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-dark font-mono text-sm font-bold text-white">{{ problem.label }}</span>
+                <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-bg-dark font-mono text-sm font-bold text-white">{{ problem.label }}</span>
                 <div class="min-w-0 flex-1"><div class="font-semibold">{{ problem.title }}</div><div class="mt-1 text-xs text-text-muted">{{ problem.display_id }} · {{ problem.difficulty }}</div></div>
                 <StatusBadge :status="problem.user_status === 'untouched' ? 'not_started' : problem.user_status" />
               </NuxtLink>

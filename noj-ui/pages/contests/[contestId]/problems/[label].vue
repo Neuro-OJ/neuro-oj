@@ -75,7 +75,7 @@ async function submit() {
         <header class="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-white px-4 py-3">
           <NuxtLink :to="`/contests/${contestId}`" class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"><ArrowLeft :size="16" />返回竞赛</NuxtLink>
           <span class="h-5 w-px bg-border" />
-          <span class="flex size-8 items-center justify-center rounded-lg bg-dark font-mono text-sm font-bold text-white">{{ problem.label }}</span>
+          <span class="flex size-8 items-center justify-center rounded-lg bg-bg-dark font-mono text-sm font-bold text-white">{{ problem.label }}</span>
           <div class="min-w-0 flex-1"><h1 class="truncate text-base font-bold text-text">{{ problem.title }}</h1><p class="text-xs text-text-muted">{{ contest?.title }}</p></div>
           <NuxtLink :to="`/contests/${contestId}/ranking`" class="btn btn-outline gap-1.5 px-3 py-1.5 text-xs"><Trophy :size="14" />排名</NuxtLink>
           <select v-model="language" class="rounded-lg border border-border bg-white px-3 py-2 text-xs text-text outline-none focus:border-primary"><option value="python3">Python 3</option><option value="cpp">C++</option><option value="c">C</option><option value="javascript">JavaScript</option></select>
@@ -102,7 +102,7 @@ async function submit() {
             </div>
           </section>
 
-          <section class="flex min-h-[680px] flex-col overflow-hidden rounded-xl border border-border bg-dark shadow-card">
+          <section class="flex min-h-[680px] flex-col overflow-hidden rounded-xl border border-border bg-bg-dark shadow-card">
             <div class="flex items-center justify-between border-b border-dark-3 px-4 py-2.5 text-xs text-slate-400"><span class="font-mono">submission.py</span><span>{{ code.length }} 字符</span></div>
             <div class="min-h-0 flex-1">
               <ClientOnly>
@@ -117,4 +117,3 @@ async function submit() {
     </AsyncContent>
   </div>
 </template>
-

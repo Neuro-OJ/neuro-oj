@@ -39,7 +39,7 @@ watch([selectedType, selectedStatus], () => {
 <template>
   <div class="min-h-full bg-bg-page py-10">
     <div class="container space-y-7">
-      <section class="relative overflow-hidden rounded-2xl bg-dark px-8 py-9 text-white shadow-card">
+      <section class="relative overflow-hidden rounded-2xl bg-bg-dark px-8 py-9 text-white shadow-card">
         <div class="absolute -right-20 -top-20 size-64 rounded-full bg-primary/30 blur-3xl" />
         <div class="relative max-w-2xl">
           <div class="mb-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs">
@@ -102,4 +102,3 @@ watch([selectedType, selectedStatus], () => {
     </div>
   </div>
 </template>
-

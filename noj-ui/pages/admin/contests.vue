@@ -25,6 +25,10 @@ const editingContest = ref<AdminContestDetail | null>(null)
 const saving = ref(false)
 const formError = ref('')
 
+function reloadAfterContestMutation() {
+  reloadNuxtApp({ path: '/admin/contests', persistState: false })
+}
+
 const columns: Column<Contest>[] = [
   { key: 'title', label: '竞赛' },
   { key: 'type', label: '赛制', format: (value) => typeLabels[value as Contest['type']] },
@@ -92,7 +96,7 @@ async function saveContest(payload: ContestPayload) {
     }
     toast.showToast('success', editingContest.value ? '竞赛已更新' : '竞赛已创建')
     formOpen.value = false
-    await loadContests()
+    reloadAfterContestMutation()
   } catch (saveError: unknown) {
     const detail = saveError as { data?: { error?: string }; message?: string }
     formError.value = detail.data?.error || detail.message || '竞赛保存失败'
@@ -107,7 +111,7 @@ async function removeContest(contest: Contest) {
   try {
     await $fetch(`/api/v1/admin/contests/${contest.id}`, { method: 'DELETE' })
     toast.showToast('success', '竞赛已删除')
-    await loadContests(contests.value.length === 1 && currentPage.value > 1 ? currentPage.value - 1 : currentPage.value)
+    reloadAfterContestMutation()
   } catch (deleteError: unknown) {
     const detail = deleteError as { data?: { error?: string }; message?: string }
     toast.showToast('error', detail.data?.error || detail.message || '删除失败')
@@ -207,4 +211,3 @@ async function removeParticipant(participant: Participant) {
     </div>
   </div>
 </template>
-

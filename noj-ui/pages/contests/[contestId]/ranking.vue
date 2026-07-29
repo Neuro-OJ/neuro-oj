@@ -64,7 +64,7 @@ function score(value: number) {
 <template>
   <div class="min-h-full bg-bg-page py-8">
     <div class="container space-y-5">
-      <header class="flex flex-wrap items-center gap-4 rounded-2xl bg-dark px-6 py-6 text-white shadow-card">
+      <header class="flex flex-wrap items-center gap-4 rounded-2xl bg-bg-dark px-6 py-6 text-white shadow-card">
         <NuxtLink :to="`/contests/${contestId}`" class="inline-flex items-center gap-1.5 text-sm text-slate-300 no-underline hover:text-white"><ArrowLeft :size="16" />返回竞赛</NuxtLink>
         <div class="h-8 w-px bg-white/15" />
         <Trophy :size="24" class="text-amber-300" />
@@ -96,4 +96,3 @@ function score(value: number) {
     </div>
   </div>
 </template>
-
