@@ -91,4 +91,4 @@
 
 ## 11. E2E Tests (Phase 3)
 
-- [ ] 11.1 创建 `noj-tests/e2e/22_contest_lifecycle.test.ts`：创建竞赛 → 注册 → 提交 → 排名 → 封榜 → 结束
+- [x] 11.1 创建 `noj-tests/e2e/22_contest_lifecycle.test.ts`：创建竞赛 → 注册 → 提交 → 排名 → 封榜 → 结束
