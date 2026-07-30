@@ -28,7 +28,7 @@ async function requireContestAccess(
   userId: string,
 ): Promise<Awaited<ReturnType<typeof getContest>>> {
   const contest = await getContest(contestId, userId);
-  if (!await isParticipant(contestId, userId)) {
+  if (contest.status !== "ended" && !await isParticipant(contestId, userId)) {
     throw new ForbiddenError("仅参赛者可访问竞赛题目");
   }
   if (contest.status === "pending") {

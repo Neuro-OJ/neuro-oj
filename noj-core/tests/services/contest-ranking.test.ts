@@ -1,5 +1,5 @@
 import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert@^1";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import {
   contestParticipants,
@@ -263,6 +263,99 @@ Deno.test({
         inArray(problems.id, [problemA, problemB]),
       );
       await db.delete(users).where(inArray(users.id, [userA, userB]));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking: ICPC 同分时按报名时间和用户 ID 稳定排序",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userIds = [
+      "contest-ranking-tie-early",
+      "contest-ranking-tie-late",
+      "contest-ranking-tie-a",
+      "contest-ranking-tie-b",
+    ];
+    const contestId = crypto.randomUUID();
+    const problemId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await db.insert(users).values(userIds.map((id) => ({
+      id,
+      username: `${id}-${Date.now()}`,
+      email: `${id}-${Date.now()}@example.com`,
+      password_hash: "hash",
+      role: "user" as const,
+      created_at: now,
+      updated_at: now,
+    })));
+    await db.insert(problems).values({
+      id: problemId,
+      title: "平局排序题",
+      description: "A",
+      difficulty: "easy",
+      runtime_config: {},
+      number: 920003,
+      owner_id: "0",
+      type: "P",
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contests).values({
+      id: contestId,
+      title: "ICPC 平局排序测试",
+      start_time: atMinutes(0),
+      end_time: atMinutes(120),
+      type: "icpc",
+      config: {},
+      created_by: userIds[0],
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: problemId,
+      label: "A",
+      sort_order: 0,
+      score: null,
+    });
+    await db.insert(contestParticipants).values([
+      {
+        contest_id: contestId,
+        user_id: userIds[0],
+        registered_at: atMinutes(0),
+      },
+      {
+        contest_id: contestId,
+        user_id: userIds[1],
+        registered_at: atMinutes(1),
+      },
+      {
+        contest_id: contestId,
+        user_id: userIds[2],
+        registered_at: atMinutes(2),
+      },
+      {
+        contest_id: contestId,
+        user_id: userIds[3],
+        registered_at: atMinutes(2),
+      },
+    ]);
+
+    try {
+      const ranking = await getIcpcRanking(contestId);
+      assertEquals(
+        ranking.map((row) => row.user_id),
+        userIds,
+      );
+      assertEquals(ranking.map((row) => row.rank), [1, 2, 3, 4]);
+    } finally {
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(users).where(inArray(users.id, userIds));
     }
   },
 });

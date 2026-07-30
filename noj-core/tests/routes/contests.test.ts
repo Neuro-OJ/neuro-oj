@@ -287,6 +287,26 @@ Deno.test({
       assertEquals(statusResponse.status, 200);
       assertEquals((await statusResponse.json()).contest_id, contestId);
 
+      await db.update(contests).set({
+        end_time: new Date(Date.now() - 60_000).toISOString(),
+      }).where(eq(contests.id, contestId));
+      const endedProblemList = await jsonRequest(
+        app,
+        `/api/v1/contests/${contestId}/problems`,
+        { token: invitedToken },
+      );
+      assertEquals(endedProblemList.status, 200);
+      const endedProblemDetail = await jsonRequest(
+        app,
+        `/api/v1/contests/${contestId}/problems/A`,
+        { token: invitedToken },
+      );
+      assertEquals(endedProblemDetail.status, 200);
+      assertEquals(
+        (await endedProblemDetail.json()).data.problem_id,
+        problemId,
+      );
+
       const update = await jsonRequest(
         app,
         `/api/v1/admin/contests/${contestId}`,
