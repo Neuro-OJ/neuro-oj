@@ -16,6 +16,7 @@ import type { JudgeResult, SubmissionStatus } from "../types/index.ts";
 import { applyNewResult } from "./stats-cache.ts";
 import { refreshRankingsView } from "./rankings.ts";
 import { logger } from "../lib/logging.ts";
+import { Channels, publishEvent } from "../lib/event-bus.ts";
 
 // 允许的状态转换
 const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
@@ -41,6 +42,7 @@ export async function saveEvaluationResult(
     .select({
       rejudge_seq: submissions.rejudge_seq,
       created_at: submissions.created_at,
+      contest_id: submissions.contest_id,
     })
     .from(submissions)
     .where(eq(submissions.id, result.submission_id))
@@ -113,6 +115,17 @@ export async function saveEvaluationResult(
   // 不 await：避免阻塞主业务（saveEvaluationResult 是热路径）
   // 失败仅 console.error（rankings.ts 内已处理）
   refreshRankingsView().catch(() => {/* ignore - rankings.ts 内已记录 */});
+
+  if (sub.contest_id) {
+    publishEvent(
+      Channels.contestRanking(sub.contest_id),
+      JSON.stringify({
+        type: "contest:ranking:updated",
+        contest_id: sub.contest_id,
+        submission_id: result.submission_id,
+      }),
+    );
+  }
 }
 
 /**

@@ -1,0 +1,187 @@
+import { Hono } from "hono";
+import type { OptionalAuthEnv } from "../middleware/auth.ts";
+import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
+import {
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+} from "../lib/errors.ts";
+import { buildPaginationMeta, parsePagination } from "../lib/pagination.ts";
+import { parseJsonBody } from "../lib/request.ts";
+import { getContestRanking } from "../services/contest-ranking.ts";
+import {
+  computeContestStatus,
+  getContest,
+  getContestProblems,
+  isParticipant,
+  listContests,
+  registerForContest,
+} from "../services/contests.ts";
+import { createSubmission, listSubmissions } from "../services/submissions.ts";
+import { isValidContestType } from "../types/contests.ts";
+
+const contests = new Hono<OptionalAuthEnv>();
+const MAX_CODE_LENGTH = 100 * 1024;
+
+async function requireContestAccess(
+  contestId: string,
+  userId: string,
+): Promise<Awaited<ReturnType<typeof getContest>>> {
+  const contest = await getContest(contestId, userId);
+  if (contest.status !== "ended" && !await isParticipant(contestId, userId)) {
+    throw new ForbiddenError("仅参赛者可访问竞赛题目");
+  }
+  if (contest.status === "pending") {
+    throw new ForbiddenError("竞赛尚未开始");
+  }
+  return contest;
+}
+
+contests.get("/", async (c) => {
+  const { page, perPage } = parsePagination(c);
+  const typeQuery = c.req.query("type");
+  if (typeQuery && !isValidContestType(typeQuery)) {
+    throw new BadRequestError("竞赛类型不合法");
+  }
+  const type = typeQuery && isValidContestType(typeQuery)
+    ? typeQuery
+    : undefined;
+  const result = await listContests({ page, perPage, type });
+  return c.json({
+    data: result.data,
+    pagination: buildPaginationMeta(page, perPage, result.total),
+  });
+});
+
+contests.post("/:id/register", authMiddleware, async (c) => {
+  const rawBody = await c.req.text();
+  let body: { password?: string } = {};
+  if (rawBody.trim()) {
+    try {
+      body = JSON.parse(rawBody) as { password?: string };
+    } catch {
+      throw new BadRequestError("请求体格式错误：需要有效的 JSON");
+    }
+  }
+  await registerForContest(c.req.param("id")!, c.var.userId!, body.password);
+  return c.json({ message: "竞赛注册成功" }, 201);
+});
+
+contests.get("/:id/problems", authMiddleware, async (c) => {
+  const contestId = c.req.param("id")!;
+  const userId = c.var.userId!;
+  await requireContestAccess(contestId, userId);
+  const data = await getContestProblems(contestId, userId);
+  return c.json({ data });
+});
+
+contests.get("/:id/problems/:label", authMiddleware, async (c) => {
+  const contestId = c.req.param("id")!;
+  const userId = c.var.userId!;
+  await requireContestAccess(contestId, userId);
+  const problem = (await getContestProblems(contestId, userId)).find(
+    (item) => item.label === c.req.param("label"),
+  );
+  if (!problem) {
+    throw new NotFoundError("竞赛题目不存在");
+  }
+  return c.json({ data: problem });
+});
+
+contests.get("/:id/ranking", optionalAuthMiddleware, async (c) => {
+  const contestId = c.req.param("id")!;
+  const contest = await getContest(contestId, c.var.userId);
+  if (!contest.is_public && !c.var.isAdmin && !contest.is_registered) {
+    throw new NotFoundError("竞赛不存在");
+  }
+  const type = c.req.query("type") ?? contest.type;
+  if (!isValidContestType(type)) {
+    throw new BadRequestError("排名类型不合法");
+  }
+  const data = await getContestRanking(
+    contestId,
+    type,
+    c.var.isAdmin ?? false,
+    c.var.userId,
+  );
+  return c.json({ data });
+});
+
+contests.post("/:id/submit", authMiddleware, async (c) => {
+  const contestId = c.req.param("id")!;
+  const userId = c.var.userId!;
+  const contest = await getContest(contestId, userId);
+  if (
+    computeContestStatus(contest.start_time, contest.end_time) !== "running"
+  ) {
+    throw new ForbiddenError("仅可在竞赛进行期间提交");
+  }
+  if (!await isParticipant(contestId, userId)) {
+    throw new ForbiddenError("仅参赛者可提交");
+  }
+
+  const body = await parseJsonBody<{
+    problem_id?: string;
+    language?: string;
+    code?: string;
+    file_name?: string;
+  }>(c);
+  if (!body.problem_id || !body.language || !body.code) {
+    throw new BadRequestError("缺少必填字段：problem_id、language 或 code");
+  }
+  if (typeof body.code !== "string") {
+    throw new BadRequestError("code 字段必须为字符串");
+  }
+  if (body.code.length > MAX_CODE_LENGTH) {
+    throw new BadRequestError(
+      `代码长度超过限制（${MAX_CODE_LENGTH} 字符），请精简后重新提交`,
+    );
+  }
+  const contestProblems = await getContestProblems(contestId, userId);
+  if (!contestProblems.some((item) => item.problem_id === body.problem_id)) {
+    throw new BadRequestError("题目不属于该竞赛");
+  }
+
+  const data = await createSubmission(
+    userId,
+    {
+      problem_id: body.problem_id,
+      language: body.language,
+      code: body.code,
+      file_name: body.file_name,
+      contest_id: contestId,
+    },
+    contestId,
+  );
+  return c.json({ data }, 201);
+});
+
+contests.get("/:id/my-submissions", authMiddleware, async (c) => {
+  const contestId = c.req.param("id")!;
+  const userId = c.var.userId!;
+  await getContest(contestId);
+  if (!await isParticipant(contestId, userId)) {
+    throw new ForbiddenError("仅参赛者可查看竞赛提交");
+  }
+  const { page, perPage } = parsePagination(c);
+  const result = await listSubmissions({
+    contestId,
+    userId,
+    page,
+    perPage,
+  });
+  return c.json({
+    data: result.data,
+    pagination: buildPaginationMeta(page, perPage, result.total),
+  });
+});
+
+contests.get("/:id", optionalAuthMiddleware, async (c) => {
+  const data = await getContest(c.req.param("id")!, c.var.userId);
+  if (!data.is_public && !c.var.isAdmin && !data.is_registered) {
+    throw new NotFoundError("竞赛不存在");
+  }
+  return c.json({ data });
+});
+
+export default contests;

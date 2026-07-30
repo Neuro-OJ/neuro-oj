@@ -2,6 +2,7 @@ import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import {
+  contests,
   evaluationResults,
   problems,
   submissions,
@@ -50,6 +51,7 @@ async function createSubmission(
   userId: string,
   problemId: string,
   resultStatus: "Accepted" | "WrongAnswer" | "TimeLimitExceeded",
+  contestId?: string,
 ): Promise<void> {
   const db = getDb();
   const submissionId = crypto.randomUUID();
@@ -58,6 +60,7 @@ async function createSubmission(
     id: submissionId,
     user_id: userId,
     problem_id: problemId,
+    contest_id: contestId,
     language: "python3",
     code: "print(1)",
     file_name: "main.py",
@@ -348,5 +351,78 @@ Deno.test({
     const result = await getGlobalRankings({ page: 1, limit: 500 });
     // 验证 limit=500 调用不抛错（service 层内部截断到 100）
     assertEquals(result.data.length <= 100, true);
+  },
+});
+
+Deno.test({
+  name: "rankings: 排除 affect_global_ranking=false 的竞赛 AC",
+  ignore: !hasEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const userId = await createTestUser("rankings_contest_filter");
+    const problem1 = await createTestProblem(900050);
+    const problem2 = await createTestProblem(900051);
+    const problem3 = await createTestProblem(900052);
+    const excludedContestId = crypto.randomUUID();
+    const includedContestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const db = getDb();
+    await db.insert(contests).values([
+      {
+        id: excludedContestId,
+        title: "不计入全局榜单",
+        start_time: new Date(Date.now() - 60_000).toISOString(),
+        end_time: new Date(Date.now() + 60_000).toISOString(),
+        type: "icpc",
+        config: {},
+        affect_global_ranking: false,
+        created_by: userId,
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: includedContestId,
+        title: "计入全局榜单",
+        start_time: new Date(Date.now() - 60_000).toISOString(),
+        end_time: new Date(Date.now() + 60_000).toISOString(),
+        type: "icpc",
+        config: {},
+        affect_global_ranking: true,
+        created_by: userId,
+        created_at: now,
+        updated_at: now,
+      },
+    ]);
+
+    try {
+      await createSubmission(userId, problem1, "Accepted");
+      await createSubmission(
+        userId,
+        problem2,
+        "Accepted",
+        excludedContestId,
+      );
+      await createSubmission(
+        userId,
+        problem3,
+        "Accepted",
+        includedContestId,
+      );
+      await refreshRankingsView();
+
+      const result = await getGlobalRankings({ page: 1, limit: 100 });
+      const row = result.data.find((item) => item.user_id === userId);
+      assertExists(row);
+      assertEquals(row.solved_count, 2);
+      assertEquals(row.total_submissions, 3);
+    } finally {
+      await cleanupUser(userId);
+      await db.delete(contests).where(eq(contests.id, excludedContestId));
+      await db.delete(contests).where(eq(contests.id, includedContestId));
+      await cleanupProblem(problem1);
+      await cleanupProblem(problem2);
+      await cleanupProblem(problem3);
+    }
   },
 });

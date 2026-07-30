@@ -96,6 +96,7 @@ export async function listSubmissions(
   const db = getDb();
   const {
     userId,
+    contestId,
     problemId,
     problemSearch,
     submissionId,
@@ -112,6 +113,7 @@ export async function listSubmissions(
   const conditions: ReturnType<typeof eq>[] = [];
 
   if (userId) conditions.push(eq(submissions.user_id, userId));
+  if (contestId) conditions.push(eq(submissions.contest_id, contestId));
   if (problemId) conditions.push(eq(submissions.problem_id, problemId));
   if (language) conditions.push(eq(submissions.language, language));
   if (status) {
@@ -177,6 +179,7 @@ export async function listSubmissions(
       id: submissions.id,
       user_id: submissions.user_id,
       problem_id: submissions.problem_id,
+      contest_id: submissions.contest_id,
       language: submissions.language,
       file_name: submissions.file_name,
       status: submissions.status,
@@ -234,6 +237,7 @@ export async function listSubmissions(
       id: row.id,
       user_id: row.user_id,
       problem_id: row.problem_id,
+      contest_id: row.contest_id,
       language: row.language,
       file_name: row.file_name,
       status: row.status,
@@ -268,8 +272,13 @@ export async function listSubmissions(
 export async function createSubmission(
   userId: string,
   input: SubmissionInput,
+  contestId?: string,
 ): Promise<SubmissionResponse> {
   const db = getDb();
+  if (contestId && input.contest_id && contestId !== input.contest_id) {
+    throw new BadRequestError("竞赛 ID 不一致");
+  }
+  const resolvedContestId = contestId ?? input.contest_id ?? null;
 
   // 行级锁 + 读取最新题目配置（避免 admin 在提交期间清空 runtime_config 导致竞态）
   const lockedRows = await db
@@ -354,6 +363,7 @@ export async function createSubmission(
       id,
       user_id: userId,
       problem_id: input.problem_id,
+      contest_id: resolvedContestId,
       language: input.language,
       code: input.code,
       file_name: fileName,
@@ -379,6 +389,18 @@ export async function createSubmission(
 
     // 发布队列变更事件，通知 SSE 等订阅者
     publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
+    if (resolvedContestId) {
+      publishEvent(
+        Channels.contestSubmission(resolvedContestId),
+        JSON.stringify({
+          type: "contest:submission:created",
+          contest_id: resolvedContestId,
+          submission_id: id,
+          user_id: userId,
+          problem_id: input.problem_id,
+        }),
+      );
+    }
   } catch (mqErr) {
     logger.error("评测任务推送失败", { submission_id: id, err: mqErr });
     // DB 成功但 MQ 失败，标记为 error 让用户重新提交
@@ -398,6 +420,7 @@ export async function createSubmission(
     id,
     user_id: userId,
     problem_id: input.problem_id,
+    contest_id: resolvedContestId,
     language: input.language,
     code: input.code,
     file_name: fileName,
@@ -493,6 +516,7 @@ export async function getSubmission(
     id: row.id,
     user_id: row.user_id,
     problem_id: row.problem_id,
+    contest_id: row.contest_id,
     language: row.language,
     code: canSeeDetails ? row.code : null,
     file_name: row.file_name,

@@ -51,6 +51,7 @@ export interface QueueResponse {
 export interface SubmissionStatusResponse {
   id: string;
   status: string;
+  contest_id: string | null;
   /** 1-based 排队位置；null 表示不在等待队列中。 */
   queue_position: number | null;
   /** 当前 pending 队列总长度。 */
@@ -267,6 +268,7 @@ export async function getSubmissionQueueStatus(
   const rows = await db
     .select({
       user_id: submissions.user_id,
+      contest_id: submissions.contest_id,
       status: submissions.status,
       judge_started_at: submissions.judge_started_at,
       judge_finished_at: submissions.judge_finished_at,
@@ -311,6 +313,7 @@ export async function getSubmissionQueueStatus(
   return {
     id: submissionId,
     status,
+    contest_id: row.contest_id,
     queue_position: queuePosition,
     queue_length: queueLength,
     judge_started_at: row.judge_started_at ?? null,

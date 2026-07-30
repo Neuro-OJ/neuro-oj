@@ -12,6 +12,7 @@ export interface SubmissionInput {
   language: string;
   code: string;
   file_name?: string;
+  contest_id?: string;
 }
 
 /** 创建提交成功后的响应（基础字段，不含 result） */
@@ -19,6 +20,7 @@ export interface SubmissionResponse {
   id: string;
   user_id: string;
   problem_id: string;
+  contest_id: string | null;
   language: string;
   code: string;
   file_name: string | null;
@@ -36,6 +38,7 @@ export interface SubmissionDetail {
   id: string;
   user_id: string;
   problem_id: string;
+  contest_id: string | null;
   language: string;
   /** 源代码：仅 owner/admin 可见，否则为 null */
   code: string | null;
@@ -71,6 +74,7 @@ export interface SubmissionListItem {
   id: string;
   user_id: string;
   problem_id: string;
+  contest_id: string | null;
   language: string;
   file_name: string | null;
   status: SubmissionStatus;
@@ -94,6 +98,7 @@ export interface SubmissionListItem {
 /** 列表查询参数 */
 export interface ListSubmissionsParams {
   userId?: string;
+  contestId?: string;
   problemId?: string;
   problemSearch?: string;
   submissionId?: string;

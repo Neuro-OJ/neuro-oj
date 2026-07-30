@@ -22,6 +22,14 @@ export const Channels = {
   user(id: string): string {
     return `${EVENT_CHANNEL_PREFIX}user:${id}`;
   },
+  /** 竞赛排名变更：noj:events:contest:<contest_id>:ranking */
+  contestRanking(id: string): string {
+    return `${EVENT_CHANNEL_PREFIX}contest:${id}:ranking`;
+  },
+  /** 竞赛新提交：noj:events:contest:<contest_id>:submission */
+  contestSubmission(id: string): string {
+    return `${EVENT_CHANNEL_PREFIX}contest:${id}:submission`;
+  },
   /** 统计数据变更：noj:events:stats */
   stats: `${EVENT_CHANNEL_PREFIX}stats`,
 } as const;

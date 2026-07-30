@@ -2,6 +2,7 @@ import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert@^1";
 import {
   createSubmission,
   getSubmission,
+  listSubmissions,
   rejudgeProblemSubmissions,
   rejudgeSubmission,
   saveEvaluationResult,
@@ -10,6 +11,7 @@ import {
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import {
   auditLogs,
+  contests,
   evaluationResults,
   problems,
   submissions,
@@ -23,6 +25,7 @@ import {
   resetLogSink,
   setLogSink,
 } from "../../src/lib/logging.ts";
+import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
 
 /**
  * 启动一个极简的 Redis RESP 协议 mock 服务器，仅响应 LPUSH / PING / QUIT，
@@ -261,6 +264,73 @@ Deno.test({
       NotFoundError,
       "提交不存在",
     );
+  },
+});
+
+Deno.test({
+  name: "submissions service: 竞赛提交写入并按 contest_id 查询",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.insert(contests).values({
+      id: contestId,
+      title: "提交关联竞赛",
+      start_time: new Date(Date.now() - 60_000).toISOString(),
+      end_time: new Date(Date.now() + 60_000).toISOString(),
+      type: "icpc",
+      config: { penalty_minutes: 20 },
+      created_by: TEST_USER_ID,
+      created_at: now,
+      updated_at: now,
+    });
+
+    resetRedisForTest();
+    const fakeRedis = await startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
+    Deno.env.set("REDIS_URL", fakeRedis.url);
+    const redis = getRedis();
+    await redis.connect();
+    await redis.ping();
+
+    let submissionId: string | undefined;
+    try {
+      const created = await createSubmission(TEST_USER_ID, {
+        problem_id: TEST_PROBLEM_ID,
+        language: "python3",
+        code: "print(1)",
+        contest_id: contestId,
+      }, contestId);
+      submissionId = created.id;
+      assertEquals(created.contest_id, contestId);
+
+      const stored = await db.select({ contest_id: submissions.contest_id })
+        .from(submissions).where(eq(submissions.id, created.id)).limit(1);
+      assertEquals(stored[0].contest_id, contestId);
+
+      const listed = await listSubmissions({
+        contestId,
+        page: 1,
+        perPage: 20,
+      });
+      assertEquals(listed.total, 1);
+      assertEquals(listed.data[0].contest_id, contestId);
+
+      const detail = await getSubmission(created.id, TEST_USER_ID);
+      assertEquals(detail.contest_id, contestId);
+    } finally {
+      if (submissionId) {
+        await db.delete(submissions).where(eq(submissions.id, submissionId));
+      }
+      await db.delete(contests).where(eq(contests.id, contestId));
+      resetRedisForTest();
+      await fakeRedis.stop();
+      if (previousRedisUrl) Deno.env.set("REDIS_URL", previousRedisUrl);
+      else Deno.env.delete("REDIS_URL");
+    }
   },
 });
 
@@ -574,8 +644,6 @@ Deno.test({
 // pushJudgeTask 的 LPUSH 调用不会失败。
 // 同时 resetDbForTest() 会清空模块级 setup 测试创建的 TEST_USER_ID/
 // TEST_PROBLEM_ID，因此这里为每个测试独立创建本地 fixture。
-
-import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
 
 Deno.test({
   name:

@@ -44,6 +44,23 @@ import {
   updateRole,
   updateUserRoles,
 } from "../services/admin-roles.ts";
+import {
+  addParticipants,
+  createContest,
+  deleteContest,
+  getContest,
+  getContestProblems,
+  listContests,
+  listParticipants,
+  removeParticipant,
+  updateContest,
+} from "../services/contests.ts";
+import type {
+  CreateContestInput,
+  UpdateContestInput,
+} from "../types/contests.ts";
+import { isValidContestType } from "../types/contests.ts";
+import { buildPaginationMeta, parsePagination } from "../lib/pagination.ts";
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
@@ -236,6 +253,84 @@ router.post("/problems/:id/rejudge", async (c) => {
     message: "批量重测任务已提交",
     problem_id: id,
     ...result,
+  });
+});
+
+// ─── 竞赛管理 ───────────────────────────────────────────────
+
+router.get("/contests", async (c) => {
+  const { page, perPage } = parsePagination(c);
+  const typeQuery = c.req.query("type");
+  if (typeQuery && !isValidContestType(typeQuery)) {
+    throw new BadRequestError("竞赛类型不合法");
+  }
+  const type = typeQuery && isValidContestType(typeQuery)
+    ? typeQuery
+    : undefined;
+  const result = await listContests({ page, perPage, type, showAll: true });
+  return c.json({
+    data: result.data,
+    pagination: buildPaginationMeta(page, perPage, result.total),
+  });
+});
+
+router.get("/contests/:id", async (c) => {
+  const contestId = c.req.param("id")!;
+  const [contest, problems] = await Promise.all([
+    getContest(contestId),
+    getContestProblems(contestId),
+  ]);
+  return c.json({ data: { ...contest, problems } });
+});
+
+router.post("/contests", async (c) => {
+  const body = await parseJsonBody<CreateContestInput>(c);
+  const data = await createContest(body, c.var.userId);
+  return c.json({ data }, 201);
+});
+
+router.put("/contests/:id", async (c) => {
+  const body = await parseJsonBody<UpdateContestInput>(c);
+  const data = await updateContest(
+    c.req.param("id")!,
+    body,
+    c.var.userId,
+  );
+  return c.json({ data });
+});
+
+router.delete("/contests/:id", async (c) => {
+  await deleteContest(c.req.param("id")!);
+  return c.body(null, 204);
+});
+
+router.get("/contests/:id/participants", async (c) => {
+  const data = await listParticipants(c.req.param("id")!);
+  return c.json({ data });
+});
+
+router.post("/contests/:id/participants", async (c) => {
+  const userIds = await parseJsonBody<string[]>(c);
+  if (!Array.isArray(userIds)) {
+    throw new BadRequestError("请求体必须为用户 ID 数组");
+  }
+  const added = await addParticipants(c.req.param("id")!, userIds);
+  return c.json({ data: { added } }, 201);
+});
+
+router.delete("/contests/:id/participants/:userId", async (c) => {
+  await removeParticipant(c.req.param("id")!, c.req.param("userId")!);
+  return c.body(null, 204);
+});
+
+router.get("/contests/:id/submissions", async (c) => {
+  const contestId = c.req.param("id")!;
+  await getContest(contestId);
+  const { page, perPage } = parsePagination(c);
+  const result = await listSubmissions({ contestId, page, perPage });
+  return c.json({
+    data: result.data,
+    pagination: buildPaginationMeta(page, perPage, result.total),
   });
 });
 

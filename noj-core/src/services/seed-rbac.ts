@@ -18,63 +18,7 @@ import {
   userRoles,
   users,
 } from "../db/schema.ts";
-
-// ── 权限定义 ──────────────────────────────────────────────
-interface PermissionDef {
-  resource: string;
-  action: string;
-  description: string;
-}
-
-const PERMISSION_DEFS: PermissionDef[] = [
-  // 题目
-  { resource: "problem", action: "create", description: "创建题目" },
-  {
-    resource: "problem",
-    action: "create_p",
-    description: "创建管理题（P 型）",
-  },
-  { resource: "problem", action: "read", description: "查看题目" },
-  { resource: "problem", action: "write_own", description: "编辑自己的题目" },
-  { resource: "problem", action: "write_any", description: "编辑任意题目" },
-  { resource: "problem", action: "delete_own", description: "删除自己的题目" },
-  { resource: "problem", action: "delete_any", description: "删除任意题目" },
-  {
-    resource: "problem",
-    action: "package_manage_own",
-    description: "管理自己题目的支持包",
-  },
-  {
-    resource: "problem",
-    action: "package_manage_any",
-    description: "管理任意题目的支持包",
-  },
-  // 提交
-  { resource: "submission", action: "create", description: "创建提交" },
-  { resource: "submission", action: "read_own", description: "查看自己的提交" },
-  {
-    resource: "submission",
-    action: "read_all",
-    description: "查看所有提交（含代码）",
-  },
-  { resource: "submission", action: "rejudge", description: "触发重测" },
-  // 用户
-  { resource: "user", action: "read_profile", description: "查看用户主页" },
-  { resource: "user", action: "search", description: "搜索用户" },
-  {
-    resource: "user",
-    action: "manage",
-    description: "管理用户（封禁/改角色）",
-  },
-  // 分类
-  { resource: "category", action: "read", description: "查看分类" },
-  { resource: "category", action: "manage", description: "管理分类" },
-  // 系统
-  { resource: "system", action: "settings", description: "系统设置" },
-  { resource: "system", action: "judge_images", description: "管理评测镜像" },
-  { resource: "system", action: "audit_logs", description: "查看审计日志" },
-  { resource: "system", action: "ip_bans", description: "管理 IP 黑名单" },
-];
+import { PERMISSION_DEFS } from "../types/index.ts";
 
 // user 角色的默认权限（action 列表）
 const USER_DEFAULT_PERMISSIONS: Array<{ resource: string; action: string }> = [
@@ -87,6 +31,7 @@ const USER_DEFAULT_PERMISSIONS: Array<{ resource: string; action: string }> = [
   { resource: "submission", action: "read_own" },
   { resource: "user", action: "read_profile" },
   { resource: "category", action: "read" },
+  { resource: "contest", action: "participate" },
 ];
 
 // ── 工具 ──────────────────────────────────────────────────

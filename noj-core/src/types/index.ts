@@ -178,6 +178,14 @@ export const PERMISSION_DEFS: Array<{
   // 分类
   { resource: "category", action: "read", description: "查看分类" },
   { resource: "category", action: "manage", description: "管理分类" },
+  // 竞赛
+  { resource: "contest", action: "create", description: "创建竞赛" },
+  {
+    resource: "contest",
+    action: "manage",
+    description: "管理任意竞赛（编辑、删除、参与者管理）",
+  },
+  { resource: "contest", action: "participate", description: "参加竞赛" },
   // 系统
   { resource: "system", action: "settings", description: "系统设置" },
   { resource: "system", action: "judge_images", description: "管理评测镜像" },

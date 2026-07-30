@@ -9,7 +9,7 @@
     "seed": "deno run --env-file=.env -A scripts/seed.ts",
     "build-packages": "deno run -A scripts/build-packages.ts",
     "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts",
-    "migrate": "deno run -A scripts/migrate.ts --env-file=.env",
+    "migrate": "deno run --env-file=.env -A scripts/migrate.ts",
     "check:env": "deno run -A scripts/check-env.ts",
     "check:env:strict": "deno run -A scripts/check-env.ts --strict",
     "test": "deno test -A --no-check",

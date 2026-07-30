@@ -211,17 +211,14 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
 /**
  * 获取提交的队列状态（排队位置、时间戳等）。
  * GET /api/v1/submissions/:id/status
- * 仅 admin 或提交所有者可查看；非授权用户返回 404。
+ * 任意已登录用户均可查看，不限制提交所有者身份。
  */
 router.get(
   "/:id/status",
   authMiddleware,
   async (c) => {
     const id = c.req.param("id")!;
-    const userId = c.var.userId!;
-    const userRole = c.var.userRole!;
-
-    const result = await getSubmissionQueueStatus(id, userId, userRole);
+    const result = await getSubmissionQueueStatus(id);
     if (!result) {
       throw new NotFoundError("提交不存在");
     }
