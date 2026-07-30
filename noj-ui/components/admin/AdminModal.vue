@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { X } from "@lucide/vue"
+import { nextTick, ref } from "vue"
 
 interface Props {
   title?: string
@@ -7,6 +8,7 @@ interface Props {
   cancelText?: string
   loading?: boolean
   danger?: boolean
+  hideConfirm?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -15,6 +17,7 @@ const props = withDefaults(defineProps<Props>(), {
   cancelText: "取消",
   loading: false,
   danger: false,
+  hideConfirm: false,
 })
 
 const emit = defineEmits<{
@@ -22,22 +25,64 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
-function onKeydown(e: KeyboardEvent) {
-  if (e.key === "Escape") emit("cancel")
+const modal = ref<HTMLElement | null>(null)
+const closeButton = ref<HTMLButtonElement | null>(null)
+let triggerElement: HTMLElement | null = null
+
+function focusableElements() {
+  return Array.from(
+    modal.value?.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ) ?? [],
+  )
 }
 
-onMounted(() => document.addEventListener("keydown", onKeydown))
-onUnmounted(() => document.removeEventListener("keydown", onKeydown))
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === "Escape") {
+    e.preventDefault()
+    emit("cancel")
+    return
+  }
+  if (e.key !== "Tab") return
+
+  const elements = focusableElements()
+  if (elements.length === 0) {
+    e.preventDefault()
+    return
+  }
+  const first = elements[0]
+  const last = elements[elements.length - 1]
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault()
+    first.focus()
+  }
+}
+
+onMounted(async () => {
+  triggerElement = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null
+  document.addEventListener("keydown", onKeydown)
+  await nextTick()
+  closeButton.value?.focus()
+})
+onUnmounted(() => {
+  document.removeEventListener("keydown", onKeydown)
+  triggerElement?.focus()
+})
 </script>
 
 <template>
   <Transition name="modal">
     <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-300 p-6" @click.self="emit('cancel')">
-      <div class="bg-white rounded-xl max-w-[420px] w-full shadow-modal">
+      <div ref="modal" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title" class="bg-white rounded-xl max-w-[420px] w-full shadow-modal">
         <!-- 标题 -->
         <div class="flex items-center justify-between pt-5 px-6">
-          <h3 class="text-lg font-bold text-text">{{ title }}</h3>
-          <button class="bg-none border-none text-text-secondary cursor-pointer p-1 rounded transition-colors hover:bg-gray-100" @click="emit('cancel')">
+          <h3 id="admin-modal-title" class="text-lg font-bold text-text">{{ title }}</h3>
+          <button ref="closeButton" aria-label="关闭弹窗" class="bg-none border-none text-text-secondary cursor-pointer p-1 rounded transition-colors hover:bg-gray-100" @click="emit('cancel')">
             <X :size="18" />
           </button>
         </div>
@@ -57,6 +102,7 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown))
             {{ cancelText }}
           </button>
           <button
+            v-if="!hideConfirm"
             class="px-5 py-2.5 text-sm font-semibold rounded-lg border border-transparent text-white cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             :class="danger ? 'bg-red-600 border-red-600 hover:bg-red-700 hover:border-red-700' : 'bg-primary border-primary hover:bg-primary-dark hover:border-primary-dark'"
             :disabled="loading"

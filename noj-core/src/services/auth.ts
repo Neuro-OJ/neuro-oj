@@ -1,4 +1,15 @@
-import { and, eq, gte, ilike, isNull, lte, not, or, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNull,
+  lte,
+  not,
+  or,
+  sql,
+} from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { userBans, users } from "../db/schema.ts";
 import { roles, userRoles } from "../db/schema.ts";
@@ -533,6 +544,29 @@ export async function listUsers(
       .where(where),
   ]);
 
+  const roleRows = rows.length === 0 ? [] : await db
+    .select({ user_id: userRoles.user_id, role_id: userRoles.role_id })
+    .from(userRoles)
+    .where(inArray(userRoles.user_id, rows.map((row) => row.id)));
+  const fallbackRoles = await db
+    .select({ id: roles.id, name: roles.name })
+    .from(roles)
+    .where(inArray(roles.name, ["admin", "user"]));
+  const fallbackRoleIds = new Map(
+    fallbackRoles.map((role) => [role.name, role.id]),
+  );
+  const roleIdsByUser = new Map<string, string[]>();
+  for (const roleRow of roleRows) {
+    const roleIds = roleIdsByUser.get(roleRow.user_id) ?? [];
+    roleIds.push(roleRow.role_id);
+    roleIdsByUser.set(roleRow.user_id, roleIds);
+  }
+  for (const row of rows) {
+    if (roleIdsByUser.has(row.id)) continue;
+    const fallbackRoleId = fallbackRoleIds.get(row.role);
+    if (fallbackRoleId) roleIdsByUser.set(row.id, [fallbackRoleId]);
+  }
+
   const total = Number(countResult[0]?.count ?? 0);
   const totalPages = Math.ceil(total / opts.perPage);
 
@@ -542,6 +576,7 @@ export async function listUsers(
     username: r.username,
     email: r.email,
     role: r.role,
+    role_ids: roleIdsByUser.get(r.id) ?? [],
     is_admin: false, // TODO: 从 user_roles 查询，后续 PR 完善
     must_change_password: r.must_change_password,
     created_at: r.created_at,

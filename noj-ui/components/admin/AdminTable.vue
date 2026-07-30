@@ -41,16 +41,17 @@ defineProps<Props>()
     </div>
 
     <!-- 表格 -->
-    <table v-else class="w-full border-collapse">
-      <thead>
+    <div v-else class="overflow-x-auto">
+      <table class="min-w-max w-full border-collapse">
+        <thead>
         <tr>
           <th v-for="col in columns" :key="col.key" class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-gray-50 border-b border-border">
             {{ col.label }}
           </th>
           <th v-if="$slots.actions" class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-center bg-gray-50 border-b border-border w-[120px]">操作</th>
         </tr>
-      </thead>
-      <tbody>
+        </thead>
+        <tbody>
         <tr v-for="(row, rowIdx) in data" :key="rowIdx" class="border-b border-border last:border-b-0 transition-colors hover:bg-gray-50">
           <td v-for="col in columns" :key="col.key" class="px-4 py-3 text-sm text-text">
             <slot
@@ -68,7 +69,8 @@ defineProps<Props>()
             <slot name="actions" :row="row" />
           </td>
         </tr>
-      </tbody>
-    </table>
+        </tbody>
+      </table>
+    </div>
   </div>
 </template>
