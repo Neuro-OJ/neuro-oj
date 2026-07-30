@@ -10,7 +10,7 @@
 
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
-import { auditLogs } from "../db/schema.ts";
+import { auditLogs, users } from "../db/schema.ts";
 import { getRequestContext } from "../lib/requestContext.ts";
 import { getSetting } from "./system-settings.ts";
 import { logger } from "../lib/logging.ts";
@@ -132,8 +132,19 @@ export async function listAuditLogs(
   const whereClause = and(...conditions);
 
   const [rows, totalResult] = await Promise.all([
-    db.select()
+    db.select({
+      id: auditLogs.id,
+      admin_id: auditLogs.admin_id,
+      admin_username: users.username,
+      action: auditLogs.action,
+      target_type: auditLogs.target_type,
+      target_id: auditLogs.target_id,
+      detail: auditLogs.detail,
+      ip_address: auditLogs.ip_address,
+      created_at: auditLogs.created_at,
+    })
       .from(auditLogs)
+      .leftJoin(users, eq(users.id, auditLogs.admin_id))
       .where(whereClause)
       .orderBy(desc(auditLogs.created_at))
       .limit(perPage)
@@ -147,6 +158,7 @@ export async function listAuditLogs(
     data: rows.map((r) => ({
       id: r.id,
       admin_id: r.admin_id,
+      admin_username: r.admin_username ?? null,
       action: r.action as AuditAction,
       target_type: r.target_type,
       target_id: r.target_id,

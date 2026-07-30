@@ -38,28 +38,45 @@ const columns: Column<Contest>[] = [
   { key: 'problem_count', label: '题目' },
 ]
 
+let requestSeq = 0
+
 async function loadContests(page = currentPage.value) {
   loading.value = true
   loadError.value = ''
+  const seq = ++requestSeq
   try {
     const response = await $fetch<{ data: Contest[]; pagination: Pagination }>(`/api/v1/admin/contests?page=${page}&per_page=20`)
+    if (seq !== requestSeq) return
     contests.value = response.data
     currentPage.value = response.pagination.page
     totalPages.value = response.pagination.total_pages
   } catch (fetchError: unknown) {
+    if (seq !== requestSeq) return
     const detail = fetchError as { data?: { error?: string }; message?: string }
     loadError.value = detail.data?.error || detail.message || '竞赛列表加载失败'
   } finally {
-    loading.value = false
+    if (seq === requestSeq) {
+      loading.value = false
+    }
   }
 }
 
-async function loadProblems() {
+let searchProblemTimer: ReturnType<typeof setTimeout> | undefined
+
+async function loadProblems(keyword = '') {
   try {
-    const response = await $fetch<{ data: AdminProblemOption[] }>('/api/v1/admin/problems?page=1&limit=100')
-    problems.value = response.data
+    const params = new URLSearchParams({ page: '1', limit: keyword ? '100' : '500' })
+    if (keyword) params.set('keyword', keyword)
+    const response = await $fetch<{ data: AdminProblemOption[] }>(`/api/v1/admin/problems?${params}`)
+    if (keyword) {
+      // 搜索模式下替换结果
+      problems.value = response.data
+    } else {
+      // 首次全部加载（上限 500 题）
+      problems.value = response.data
+    }
   } catch {
-    problems.value = []
+    problems.value = keyword ? [] : problems.value
   }
 }
 
@@ -195,13 +212,13 @@ async function removeParticipant(participant: Participant) {
       <template #cell-status="{ row }"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold" :class="statusClass(row.status)">{{ statusLabels[row.status] }}</span></template>
       <template #cell-participant_count="{ row }"><span>{{ row.participant_count }} 人</span></template>
       <template #cell-problem_count="{ row }"><span>{{ row.problem_count }} 题</span></template>
-      <template #actions="{ row }"><div class="flex justify-center gap-1.5"><button class="flex size-[30px] items-center justify-center rounded border border-border text-text-secondary hover:bg-blue-50 hover:text-primary" title="参与者" @click="openParticipants(row)"><Users :size="15" /></button><button class="flex size-[30px] items-center justify-center rounded border border-border text-text-secondary hover:bg-gray-100 hover:text-text" title="编辑" @click="openEdit(row)"><Pencil :size="15" /></button><button class="flex size-[30px] items-center justify-center rounded border border-border text-text-secondary hover:border-red-200 hover:bg-red-50 hover:text-error-text" title="删除" @click="removeContest(row)"><Trash2 :size="15" /></button></div></template>
+      <template #actions="{ row }"><div class="flex justify-center gap-1.5"><button class="flex size-[30px] items-center justify-center rounded border border-border text-text-secondary hover:bg-blue-50 hover:text-primary" :aria-label="`管理 ${row.title} 参与者`" @click="openParticipants(row)"><Users :size="15" /></button><button class="flex size-[30px] items-center justify-center rounded border border-border text-text-secondary hover:bg-gray-100 hover:text-text" :aria-label="`编辑 ${row.title}`" @click="openEdit(row)"><Pencil :size="15" /></button><button class="flex size-[30px] items-center justify-center rounded border border-border text-text-secondary hover:border-red-200 hover:bg-red-50 hover:text-error-text" :aria-label="`删除 ${row.title}`" @click="removeContest(row)"><Trash2 :size="15" /></button></div></template>
     </AdminTable>
 
     <PaginationNav :current-page="currentPage" :total-pages="totalPages" @page-change="loadContests" />
   </div>
 
-  <ContestFormModal v-if="formOpen" :contest="editingContest" :problems="problems" :saving="saving" :error="formError" @save="saveContest" @cancel="formOpen = false" />
+  <ContestFormModal v-if="formOpen" :contest="editingContest" :problems="problems" :saving="saving" :error="formError" @save="saveContest" @search="loadProblems" @cancel="formOpen = false" />
 
   <div v-if="participantContest" class="fixed inset-0 z-300 flex items-center justify-center bg-black/45 p-4" @click.self="participantContest = null">
     <div class="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-modal">

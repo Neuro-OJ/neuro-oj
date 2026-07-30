@@ -1,4 +1,15 @@
-import { and, eq, gte, ilike, isNull, lte, not, or, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNull,
+  lte,
+  not,
+  or,
+  sql,
+} from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { userBans, users } from "../db/schema.ts";
 import { roles, userRoles } from "../db/schema.ts";
@@ -536,13 +547,29 @@ export async function listUsers(
   const total = Number(countResult[0]?.count ?? 0);
   const totalPages = Math.ceil(total / opts.perPage);
 
+  // 批量查询用户当前角色 ID
+  const userIds = rows.map((r) => r.id);
+  const userRoleRows = userIds.length > 0
+    ? await db
+      .select({ user_id: userRoles.user_id, role_id: userRoles.role_id })
+      .from(userRoles)
+      .where(inArray(userRoles.user_id, userIds))
+    : [];
+  const roleIdsByUser = new Map<string, string[]>();
+  for (const ur of userRoleRows) {
+    const list = roleIdsByUser.get(ur.user_id) ?? [];
+    list.push(ur.role_id);
+    roleIdsByUser.set(ur.user_id, list);
+  }
+
   // 将 LEFT JOIN 结果映射为 UserResponse
   const data = rows.map((r) => ({
     id: r.id,
     username: r.username,
     email: r.email,
     role: r.role,
-    is_admin: false, // TODO: 从 user_roles 查询，后续 PR 完善
+    is_admin: false, // 遗留字段，后续从 RBAC 系统读取
+    role_ids: roleIdsByUser.get(r.id) ?? [],
     must_change_password: r.must_change_password,
     created_at: r.created_at,
     updated_at: r.updated_at,

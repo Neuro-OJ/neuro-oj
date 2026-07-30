@@ -46,6 +46,7 @@ export interface UserResponse {
   role: string;
   is_admin: boolean;
   must_change_password: boolean;
+  role_ids?: string[];
   active_ban: { reason: string; banned_until: string | null } | null;
   created_at: string;
   updated_at: string;

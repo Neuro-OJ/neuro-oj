@@ -181,29 +181,41 @@ function deepEqual(a: unknown, b: unknown): boolean {
 // ─── 保存单个设置 ─────────────────────────────────────────
 
 const savingKey = ref<string | null>(null)
+const savingQueue = ref(new Set<string>())
 const { toast } = useToast()
 
 async function saveSetting(key: string) {
   // 敏感字段未显式编辑 → 跳过保存
   if (drafts.value[key] === null) return
+  // 防止同一项并发提交
+  if (savingQueue.value.has(key)) return
+  savingQueue.value.add(key)
   savingKey.value = key
   try {
     await $fetch(`/api/v1/admin/settings/${key}`, {
       method: "PUT",
       body: { value: drafts.value[key] },
     })
-    // 检查是否需要重启生效
+    // 局部更新已保存项，不清除其它草稿
     const s = settings.value.find((x) => x.key === key)
+    if (s) {
+      s.effective_value = drafts.value[key]
+      s.source = "db"
+      s.updated_at = new Date().toISOString()
+    }
+    // 同步草稿为该值（使 isDirty 变 false）
+    drafts.value[key] = drafts.value[key]
+
     if (s?.needsRestart) {
       toast.success("设置已保存，需重启 noj-core 服务才能生效")
     } else {
       toast.success("设置已保存")
     }
-    await loadSettings()
   } catch (err: unknown) {
     toast.error(err instanceof Error ? err.message : "保存失败")
   } finally {
     savingKey.value = null
+    savingQueue.value.delete(key)
   }
 }
 

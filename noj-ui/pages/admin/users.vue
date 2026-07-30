@@ -21,6 +21,7 @@ interface User {
   username: string
   email: string
   role: string
+  role_ids?: string[]
   /** user-ban-table：活跃封禁信息 */
   active_ban: { reason: string; banned_until: string | null } | null
   created_at: string
@@ -82,8 +83,8 @@ async function loadRoles() {
 function confirmRoleSwitch(user: User) {
   targetUser.value = user
   switchError.value = ""
-  // 预填充当前角色（需先加载角色列表，这里在打开弹窗时异步获取）
-  selectedRoleIds.value = []
+  // 预填充当前角色（从 user.role_ids 读取）
+  selectedRoleIds.value = user.role_ids ? [...user.role_ids] : []
   showRoleModal.value = true
   loadRolesInModal()
 }
@@ -105,6 +106,16 @@ function toggleRoleId(roleId: string) {
     selectedRoleIds.value.push(roleId)
   }
 }
+
+// 计算角色变更差异
+const roleDiff = computed(() => {
+  if (!targetUser.value) return { added: [], removed: [] }
+  const current = new Set(targetUser.value.role_ids ?? [])
+  const next = new Set(selectedRoleIds.value)
+  const added = allRoles.value.filter((r) => next.has(r.id) && !current.has(r.id))
+  const removed = allRoles.value.filter((r) => current.has(r.id) && !next.has(r.id))
+  return { added, removed }
+})
 
 async function handleRoleSwitch() {
   if (!targetUser.value) return
@@ -286,6 +297,7 @@ async function showBanHistory(user: User) {
         <div class="flex items-center gap-1.5">
           <button
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-info-text text-info-text bg-transparent hover:bg-info-text hover:text-white"
+            :aria-label="`修改 ${row.username} 的角色`"
             @click="confirmRoleSwitch(row)"
           >
             修改角色
@@ -295,6 +307,7 @@ async function showBanHistory(user: User) {
             v-if="!row.active_ban"
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-error-text text-error-text bg-transparent hover:bg-error-text hover:text-white"
             :disabled="banning"
+            :aria-label="`封禁 ${row.username}`"
             @click="confirmBan(row)"
           >
             封禁
@@ -303,12 +316,14 @@ async function showBanHistory(user: User) {
             v-else
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-info-text text-info-text bg-transparent hover:bg-info-text hover:text-white"
             :disabled="banning"
+            :aria-label="`解封 ${row.username}`"
             @click="confirmUnban(row)"
           >
             解封
           </button>
           <button
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-border text-text-secondary bg-transparent hover:bg-page hover:text-text"
+            :aria-label="`查看 ${row.username} 封禁历史`"
             @click="showBanHistory(row)"
           >
             历史
@@ -355,6 +370,34 @@ async function showBanHistory(user: User) {
         </div>
       </label>
     </div>
+
+    <!-- 角色变更差异 -->
+    <div
+      v-if="roleDiff.added.length > 0 || roleDiff.removed.length > 0"
+      class="mt-3 space-y-1 text-[13px]"
+    >
+      <p class="font-semibold text-text">变更预览：</p>
+      <div v-if="roleDiff.added.length" class="flex flex-wrap gap-1">
+        <span class="text-success-text">+ 新增：</span>
+        <span
+          v-for="r in roleDiff.added"
+          :key="r.id"
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-green-50 text-success-text text-xs font-semibold"
+        >{{ r.name }}</span>
+      </div>
+      <div v-if="roleDiff.removed.length" class="flex flex-wrap gap-1">
+        <span class="text-error-text">- 移除：</span>
+        <span
+          v-for="r in roleDiff.removed"
+          :key="r.id"
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-50 text-error-text text-xs font-semibold"
+        >{{ r.name }}</span>
+      </div>
+      <p v-if="roleDiff.removed.length" class="text-warning-text text-xs mt-1">
+        ⚠ 移除角色可能影响该用户的部分权限，请确认后保存
+      </p>
+    </div>
+
     <p v-if="switchError" class="mt-2 text-error-text text-[13px]">{{ switchError }}</p>
   </AdminModal>
 

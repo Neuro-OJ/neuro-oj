@@ -33,24 +33,43 @@ onMounted(() => {
 })
 onUnmounted(() => window.removeEventListener("resize", onResize))
 
-interface NavItem {
+interface NavGroup {
   label: string
-  to: string
-  icon: Component
+  items: { label: string; to: string; icon: Component }[]
 }
 
-const navItems: NavItem[] = [
-  { label: "仪表盘", to: "/admin", icon: LayoutDashboard },
-  { label: "用户管理", to: "/admin/users", icon: Users },
-  { label: "黑名单管理", to: "/admin/blacklist", icon: Ban },
-  { label: "题目管理", to: "/admin/problems", icon: BookOpen },
-  { label: "竞赛管理", to: "/admin/contests", icon: Trophy },
-  { label: "分类管理", to: "/admin/categories", icon: Tags },
-  { label: "评测镜像", to: "/admin/judge-images", icon: Container },
-  { label: "系统设置", to: "/admin/settings", icon: Settings },
-  { label: "角色管理", to: "/admin/roles", icon: ShieldCheck },
-  { label: "提交管理", to: "/admin/submissions", icon: Files },
-  { label: "审计日志", to: "/admin/audit-logs", icon: ScrollText },
+const navGroups: NavGroup[] = [
+  {
+    label: "内容",
+    items: [
+      { label: "仪表盘", to: "/admin", icon: LayoutDashboard },
+      { label: "题目管理", to: "/admin/problems", icon: BookOpen },
+      { label: "竞赛管理", to: "/admin/contests", icon: Trophy },
+      { label: "分类管理", to: "/admin/categories", icon: Tags },
+    ],
+  },
+  {
+    label: "用户与权限",
+    items: [
+      { label: "用户管理", to: "/admin/users", icon: Users },
+      { label: "角色管理", to: "/admin/roles", icon: ShieldCheck },
+      { label: "黑名单管理", to: "/admin/blacklist", icon: Ban },
+    ],
+  },
+  {
+    label: "运行",
+    items: [
+      { label: "提交管理", to: "/admin/submissions", icon: Files },
+      { label: "评测镜像", to: "/admin/judge-images", icon: Container },
+    ],
+  },
+  {
+    label: "系统",
+    items: [
+      { label: "系统设置", to: "/admin/settings", icon: Settings },
+      { label: "审计日志", to: "/admin/audit-logs", icon: ScrollText },
+    ],
+  },
 ]
 
 function isActive(path: string) {
@@ -80,24 +99,29 @@ function isActive(path: string) {
           <img src="~/assets/img/logo.jpg" alt="NOJ" class="size-7 rounded-md shrink-0" />
           <span v-show="sidebarOpen" class="text-base font-bold text-primary whitespace-nowrap">管理后台</span>
         </NuxtLink>
-        <button class="bg-none border-none text-text-secondary cursor-pointer p-1 rounded shrink-0 hover:bg-gray-100 transition-colors" @click="sidebarOpen = !sidebarOpen">
+        <button class="bg-none border-none text-text-secondary cursor-pointer p-1 rounded shrink-0 hover:bg-gray-100 transition-colors" aria-label="切换侧栏" @click="sidebarOpen = !sidebarOpen">
           <PanelLeftClose v-if="sidebarOpen" :size="18" />
           <PanelLeft v-else :size="18" />
         </button>
       </div>
 
-      <nav class="flex-1 p-2 flex flex-col gap-0.5 overflow-y-auto">
-        <NuxtLink
-          v-for="item in navItems"
-          :key="item.to"
-          :to="item.to"
-          class="flex items-center gap-2.5 px-3 py-2.5 text-sm text-text-secondary no-underline rounded-md transition-colors whitespace-nowrap overflow-hidden"
-          :class="{ 'bg-primary-bg text-primary font-semibold': isActive(item.to), 'hover:bg-gray-100 hover:text-text': !isActive(item.to) }"
-          @click="isMobile && (sidebarOpen = false)"
-        >
-          <component :is="item.icon" :size="18" />
-          <span v-show="sidebarOpen" class="flex-1">{{ item.label }}</span>
-        </NuxtLink>
+      <nav class="flex-1 p-2 flex flex-col gap-3 overflow-y-auto">
+        <div v-for="group in navGroups" :key="group.label">
+          <p v-show="sidebarOpen" class="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">{{ group.label }}</p>
+          <div class="flex flex-col gap-0.5">
+            <NuxtLink
+              v-for="item in group.items"
+              :key="item.to"
+              :to="item.to"
+              class="flex items-center gap-2.5 px-3 py-2.5 text-sm text-text-secondary no-underline rounded-md transition-colors whitespace-nowrap overflow-hidden"
+              :class="{ 'bg-primary-bg text-primary font-semibold': isActive(item.to), 'hover:bg-gray-100 hover:text-text': !isActive(item.to) }"
+              @click="isMobile && (sidebarOpen = false)"
+            >
+              <component :is="item.icon" :size="18" />
+              <span v-show="sidebarOpen" class="flex-1">{{ item.label }}</span>
+            </NuxtLink>
+          </div>
+        </div>
       </nav>
 
       <div class="p-2 border-t border-border">

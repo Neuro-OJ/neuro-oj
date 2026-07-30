@@ -191,8 +191,14 @@ onMounted(fetch)
             <td class="px-4 py-3 text-sm text-text whitespace-nowrap">
               {{ new Date(entry.created_at).toLocaleString("zh-CN") }}
             </td>
-            <td class="px-4 py-3 text-sm font-mono text-text-secondary">
-              {{ entry.admin_id.slice(0, 8) }}...
+            <td class="px-4 py-3 text-sm text-text-secondary">
+              <span v-if="entry.admin_username" class="font-semibold text-text">{{ entry.admin_username }}</span>
+              <span class="inline-flex items-center gap-1 ml-1" :title="entry.admin_id">
+                <span class="font-mono text-[11px] text-text-muted">({{ entry.admin_id.slice(0, 8) }}…)</span>
+                <button class="inline-flex items-center justify-center w-5 h-5 rounded text-text-muted hover:text-primary hover:bg-primary-bg transition-colors" :aria-label="`复制管理员 ID ${entry.admin_id}`" @click="copy(entry.admin_id)">
+                  <Copy :size="11" />
+                </button>
+              </span>
             </td>
             <td class="px-4 py-3 text-sm">
               <span :class="['inline-block px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap', ACTION_COLORS[entry.action]]">
@@ -200,7 +206,15 @@ onMounted(fetch)
               </span>
             </td>
             <td class="px-4 py-3 text-sm text-text-secondary">
-              {{ entry.target_type }}:{{ entry.target_id?.slice(0, 8) }}...
+              <template v-if="entry.target_id">
+                <span class="inline-flex items-center gap-1" :title="`${entry.target_type}:${entry.target_id}`">
+                  <span class="font-mono text-xs">{{ entry.target_type }}:{{ entry.target_id.slice(0, 8) }}…</span>
+                  <button class="inline-flex items-center justify-center w-5 h-5 rounded text-text-muted hover:text-primary hover:bg-primary-bg transition-colors" :aria-label="`复制目标 ID ${entry.target_id}`" @click="copy(entry.target_id)">
+                    <Copy :size="11" />
+                  </button>
+                </span>
+              </template>
+              <span v-else class="text-text-muted">—</span>
             </td>
             <td class="px-4 py-3 text-sm text-text">
               {{ renderDetail(entry) }}

@@ -14,7 +14,7 @@ const { contest, problems, saving = false, error = '' } = defineProps<{
   saving?: boolean
   error?: string
 }>()
-const emit = defineEmits<{ save: [payload: ContestPayload]; cancel: [] }>()
+const emit = defineEmits<{ save: [payload: ContestPayload]; cancel: []; search: [query: string] }>()
 
 const title = ref('')
 const description = ref('')
@@ -38,6 +38,14 @@ const filteredProblems = computed(() => {
     if (selectedProblems.value.some((item) => item.problem_id === problem.id)) return false
     return !query || problem.title.toLowerCase().includes(query) || problem.display_id.toLowerCase().includes(query)
   }).slice(0, 20)
+})
+
+let searchEmitTimer: ReturnType<typeof setTimeout> | undefined
+watch(problemQuery, (val) => {
+  clearTimeout(searchEmitTimer)
+  if (val.trim()) {
+    searchEmitTimer = setTimeout(() => emit('search', val.trim()), 400)
+  }
 })
 
 function toLocalDateTime(value: string | undefined) {

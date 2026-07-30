@@ -49,18 +49,25 @@ const columns: Column<JudgeImage>[] = [
   },
 ]
 
+let requestSeq = 0
+
 async function loadItems() {
   if (!isLoggedIn.value) return
   tableLoading.value = true
   tableError.value = ""
+  const seq = ++requestSeq
   try {
     const res = await $fetch<{ data: JudgeImage[] }>("/api/v1/admin/judge-images")
+    if (seq !== requestSeq) return
     items.value = res.data
   } catch (err: unknown) {
+    if (seq !== requestSeq) return
     const apiErr = err as { data?: { error?: string }; message?: string } | undefined
     tableError.value = apiErr?.data?.error || apiErr?.message || "加载评测镜像列表失败"
   } finally {
-    tableLoading.value = false
+    if (seq === requestSeq) {
+      tableLoading.value = false
+    }
   }
 }
 
@@ -148,6 +155,7 @@ async function handleSave() {
 const deleteTarget = ref<JudgeImage | null>(null)
 const showDeleteConfirm = ref(false)
 const deleting = ref(false)
+const { toast } = useToast()
 
 function confirmDelete(item: JudgeImage) {
   deleteTarget.value = item
@@ -163,6 +171,8 @@ async function handleDelete() {
       method: "DELETE",
     })
     showDeleteConfirm.value = false
+    toast.success(`已删除评测镜像 ${deleteTarget.value.image}`)
+    await loadItems()
   } catch (err: unknown) {
     const apiErr = err as { data?: { error?: string }; message?: string } | undefined
     formError.value = apiErr?.data?.error || apiErr?.message || "删除失败"
@@ -192,10 +202,10 @@ async function handleDelete() {
     >
       <template #actions="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <button class="flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-[#f5f5f5] hover:text-text" title="编辑" @click="openEdit(row)">
+          <button class="flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-[#f5f5f5] hover:text-text" :aria-label="`编辑 ${row.image}`" @click="openEdit(row)">
             <Pencil :size="15" />
           </button>
-          <button class="flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" title="删除" @click="confirmDelete(row)">
+          <button class="flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" :aria-label="`删除 ${row.image}`" @click="confirmDelete(row)">
             <Trash2 :size="15" />
           </button>
         </div>

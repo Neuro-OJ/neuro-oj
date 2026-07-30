@@ -58,21 +58,28 @@ const columns: Column<Problem>[] = [
   },
 ]
 
+let requestSeq = 0
+
 async function loadProblems(page = 1) {
   if (!isLoggedIn.value) return
   tableLoading.value = true
   tableError.value = ""
   currentPage.value = page
+  const seq = ++requestSeq
   try {
     const res = await $fetch<{ data: Problem[]; total: number; page: number; limit: number }>(
       `/api/v1/problems?page=${page}&limit=${perPage}`,
     )
+    if (seq !== requestSeq) return
     problems.value = res.data
     totalPages.value = Math.ceil(res.total / perPage)
   } catch (err: unknown) {
+    if (seq !== requestSeq) return
     tableError.value = err instanceof Error ? err.message : "加载题目列表失败"
   } finally {
-    tableLoading.value = false
+    if (seq === requestSeq) {
+      tableLoading.value = false
+    }
   }
 }
 
@@ -129,11 +136,14 @@ async function batchRejudge(problemId: string) {
   if (!confirmed) return
 
   try {
-    const res = await $fetch<{ message: string; total: number; queued: number }>(
+    const res = await $fetch<{ message: string; total: number; queued: number; skipped: number }>(
       `/api/v1/admin/problems/${problemId}/rejudge`,
       { method: "POST" },
     )
-    toast.showToast("success", `批量重测任务已提交，共 ${res.total} 条`)
+    const parts: string[] = [`共 ${res.total} 条`]
+    if (res.queued > 0) parts.push(`已入队 ${res.queued} 条`)
+    if (res.skipped > 0) parts.push(`跳过 ${res.skipped} 条`)
+    toast.showToast("success", parts.join('，'))
     loadProblems(currentPage.value)
   } catch (err: unknown) {
     toast.showToast(
@@ -170,13 +180,13 @@ async function batchRejudge(problemId: string) {
 
       <template #actions="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <NuxtLink :to="`/admin/problem-edit/${row.id}`" class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer no-underline transition-all duration-150 hover:bg-[#f5f5f5] hover:text-text" title="编辑">
+          <NuxtLink :to="`/admin/problem-edit/${row.id}`" class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer no-underline transition-all duration-150 hover:bg-[#f5f5f5] hover:text-text" :aria-label="`编辑 ${row.title}`">
             <Pencil :size="15" />
           </NuxtLink>
-          <button class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-amber-50 hover:text-[#d97706] hover:border-amber-200" title="重测" @click="batchRejudge(row.id)">
+          <button class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-amber-50 hover:text-[#d97706] hover:border-amber-200" :aria-label="`批量重测 ${row.title}`" @click="batchRejudge(row.id)">
             <RefreshCw :size="15" />
           </button>
-          <button class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" title="删除" @click="confirmDelete(row)">
+          <button class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" :aria-label="`删除 ${row.title}`" @click="confirmDelete(row)">
             <Trash2 :size="15" />
           </button>
         </div>

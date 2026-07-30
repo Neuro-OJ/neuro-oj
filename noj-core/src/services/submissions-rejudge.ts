@@ -61,6 +61,11 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     throw new NotFoundError("提交不存在");
   }
 
+  // 防止在评测中重复重测
+  if (submission.status === "judging") {
+    throw new AppError(409, "该提交正在评测中，无法重复重测");
+  }
+
   const problem = await getProblem(submission.problem_id);
 
   // 获取支持包 download URL

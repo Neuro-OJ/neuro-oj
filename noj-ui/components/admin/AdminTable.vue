@@ -40,35 +40,37 @@ defineProps<Props>()
       </slot>
     </div>
 
-    <!-- 表格 -->
-    <table v-else class="w-full border-collapse">
-      <thead>
-        <tr>
-          <th v-for="col in columns" :key="col.key" class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-gray-50 border-b border-border">
-            {{ col.label }}
-          </th>
-          <th v-if="$slots.actions" class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-center bg-gray-50 border-b border-border w-[120px]">操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="(row, rowIdx) in data" :key="rowIdx" class="border-b border-border last:border-b-0 transition-colors hover:bg-gray-50">
-          <td v-for="col in columns" :key="col.key" class="px-4 py-3 text-sm text-text">
-            <slot
-              :name="`cell-${col.key}`"
-              :row="row"
-              :value="row[col.key as keyof typeof row]"
-            >
-              {{ col.format
-                ? col.format(row[col.key as keyof typeof row], row)
-                : row[col.key as keyof typeof row] ?? "-"
-              }}
-            </slot>
-          </td>
-          <td v-if="$slots.actions" class="px-4 py-3 text-sm text-text text-center">
-            <slot name="actions" :row="row" />
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <!-- 表格（移动端横向滚动） -->
+    <div v-else class="overflow-x-auto">
+      <table class="w-full border-collapse min-w-[640px]">
+        <thead>
+          <tr>
+            <th v-for="col in columns" :key="col.key" class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-gray-50 border-b border-border whitespace-nowrap">
+              {{ col.label }}
+            </th>
+            <th v-if="$slots.actions" class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-center bg-gray-50 border-b border-border w-[120px] min-w-[120px] sticky right-0 bg-gray-50 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.05)]">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="(row, rowIdx) in data" :key="rowIdx" class="border-b border-border last:border-b-0 transition-colors hover:bg-gray-50">
+            <td v-for="col in columns" :key="col.key" class="px-4 py-3 text-sm text-text whitespace-nowrap">
+              <slot
+                :name="`cell-${col.key}`"
+                :row="row"
+                :value="row[col.key as keyof typeof row]"
+              >
+                {{ col.format
+                  ? col.format(row[col.key as keyof typeof row], row)
+                  : row[col.key as keyof typeof row] ?? "-"
+                }}
+              </slot>
+            </td>
+            <td v-if="$slots.actions" class="px-4 py-3 text-sm text-text text-center sticky right-0 bg-white shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.05)]">
+              <slot name="actions" :row="row" />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </template>
