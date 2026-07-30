@@ -147,3 +147,11 @@
 - **WHEN** Drizzle 迁移 `0018_judge_images_kind.sql` 首次执行
 - **THEN** 历史记录 `kind` 默认填充为 `evaluator`
 - **THEN** admin 在迁移后需手动调整 `noj-solution-*` 镜像的 kind 为 `solution`
+
+### Requirement: 删除镜像后同步管理列表
+
+系统 SHALL 在镜像删除成功后立即从管理列表中移除该条目并显示成功反馈；后续操作不得继续针对已删除条目发起请求。
+
+#### Scenario: 删除镜像
+- **WHEN** 管理员确认删除一个评测镜像且 API 返回 204
+- **THEN** 该镜像从当前列表消失并显示删除成功提示

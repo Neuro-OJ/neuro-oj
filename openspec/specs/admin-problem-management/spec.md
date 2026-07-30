@@ -98,3 +98,11 @@
 
 - **WHEN** 批量重测 API 返回错误（如网络故障、服务不可用，或该题有 pending/judging 提交）
 - **THEN** 系统显示错误提示 Toast（包含服务端返回的具体错误信息）
+
+### Requirement: 批量重测反馈实际入队结果
+
+系统 SHALL 在批量重测完成后展示 total、queued 和 skipped 的实际数量；skipped 大于零时 SHALL 明确提示存在未入队任务。
+
+#### Scenario: 部分任务未入队
+- **WHEN** 批量重测响应的 total 为 10、queued 为 8、skipped 为 2
+- **THEN** 页面提示已入队 8 条、未入队 2 条，而非仅显示总数

@@ -18,6 +18,7 @@
   "status": "pending" | "judging" | "finished" | "error",
   "queue_position": 3,
   "queue_length": 12,
+  "contest_id": "uuid-or-null",
   "judge_started_at": "2024-01-15T10:30:00Z",
   "judge_finished_at": null
 }
@@ -27,8 +28,9 @@
 |------|------|------|
 | `id` | string | 提交 ID |
 | `status` | enum | 评测状态：pending / judging / finished / error |
-| `queue_position` | int? | 在 pending 队列中的 1-based 位置；`null` 表示不在排队中（已在 judging 或已完成） |
+| `queue_position` | int? | 在 pending 队列中的 1-based 位置；`null` 表示不在排队中 |
 | `queue_length` | int? | 当前 pending 队列总长度 |
+| `contest_id` | string? | 关联的竞赛 ID（新增），NULL = 非竞赛提交 |
 | `judge_started_at` | string? | ISO 8601，开始评测时间，`null` 表示尚未开始 |
 | `judge_finished_at` | string? | ISO 8601，完成时间，`null` 表示尚未完成 |
 
@@ -61,6 +63,10 @@
 
 - **WHEN** 已登录用户 A GET `/api/v1/submissions/<user-B-uuid>/status`
 - **THEN** 系统返回 200，正常返回状态信息（不限提交者身份）
+
+#### Scenario: 竞赛提交的状态查询
+- **WHEN** 已登录用户 GET `/api/v1/submissions/<contest-submission-uuid>/status`，该提交关联了 `contest_id`
+- **THEN** 系统返回 200，`contest_id` 字段非 null，指向对应的竞赛
 
 ### Requirement: 提交结果页排队状态展示
 
@@ -96,3 +102,15 @@
 
 - **WHEN** 已登录用户访问他人的 `/submissions/<other-uuid>` 提交页面
 - **THEN** 正常显示排队/评测状态信息，但不显示源代码
+
+### Requirement: 竞赛提交代码可见性
+
+竞赛提交的代码 SHALL 在竞赛期间仅提交者本人和管理员可见。竞赛结束后，竞赛提交 SHALL 按普通提交的可见性规则处理。
+
+#### Scenario: 竞赛期间非提交者无法查看代码
+- **WHEN** 竞赛 running 期间，参赛者 A 尝试 GET `/api/v1/submissions/<contest-submission-of-user-B>`
+- **THEN** 系统返回 200 但不包含 `code` 字段和 `result.output`/`result.details`
+
+#### Scenario: 竞赛结束后提交代码公开
+- **WHEN** 竞赛已 ended，任意用户 GET `/api/v1/submissions/<contest-submission>`
+- **THEN** 系统按普通提交的可见性规则处理（非所有者不返回 code 和 result 详情）

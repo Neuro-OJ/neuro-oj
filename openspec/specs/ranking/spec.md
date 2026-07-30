@@ -12,12 +12,22 @@
 
 榜单 SHALL 排除 root 系统用户（`users.id = '0'`），且 SHALL 仅展示至少通过一道题的用户。
 
+竞赛提交是否计入统计 SHALL 由 `contests.affect_global_ranking` 字段控制：
+- `affect_global_ranking = true` 的竞赛提交计入全局 `solved_count`
+- `affect_global_ranking = false` 的竞赛提交不计入全局 `solved_count`
+- 所有非竞赛提交（`contest_id IS NULL`）始终计入
+
 排序键 SHALL 为：`(solved_count DESC, acceptance_rate DESC, total_submissions ASC, users.created_at ASC)`，确保相同指标下排名稳定。
 
-#### Scenario: 正常查询全站榜单
+#### Scenario: 正常查询全站榜单（含计入统计的竞赛提交）
 
-- **WHEN** 系统中有用户 A（solved=5, total=10, rate=0.5）和用户 B（solved=3, total=5, rate=0.6）有通过记录，用户 C（solved=0）有提交但无通过记录
-- **THEN** `GET /api/v1/rankings` 返回两个条目，A.rank=1, B.rank=2，C 不在结果中
+- **WHEN** 用户 A 有 3 道普通 AC + 1 道 `affect_global_ranking=true` 的竞赛 AC（共 4 道）
+- **THEN** A 的 `solved_count` 为 4
+
+#### Scenario: 不计入全局排名的竞赛提交
+
+- **WHEN** 用户 B 有 2 道普通 AC + 2 道 `affect_global_ranking=false` 的竞赛 AC
+- **THEN** B 的 `solved_count` 为 2（竞赛 AC 不计入）
 
 #### Scenario: 排序稳定
 
@@ -85,3 +95,11 @@
 
 - **WHEN** 未携带有效 JWT 的访问者发送 `GET /api/v1/rankings/me`
 - **THEN** 系统返回 HTTP 401
+
+### Requirement: 竞赛维度排名过滤
+
+系统 SHALL 在全局排名统计 `solved_count` 时过滤掉 `affect_global_ranking = false` 的竞赛提交。过滤逻辑 SHALL 在 SQL 查询层实现，通过 LEFT JOIN `contests` 表并检查 `affect_global_ranking` 条件。
+
+#### Scenario: 混合提交的准确统计
+- **WHEN** 用户 C 有普通 AC（3 题）+ 竞赛 A AC（2 题，affect_global_ranking=true）+ 竞赛 B AC（1 题，affect_global_ranking=false）
+- **THEN** C 的 `solved_count` = 3 + 2 = 5（竞赛 B 不计入）

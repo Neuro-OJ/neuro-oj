@@ -93,3 +93,11 @@
 
 - **WHEN** 批量重测过程中某条入队失败
 - **THEN** 失败的提交不会被推进到 judging 状态（停留在 pending），其他提交正常处理。返回结果中 queued 数 < total 数
+
+### Requirement: 单条重测拒绝活跃评测
+
+系统 SHALL 仅在提交状态为 finished 或 error 时接受单条重测请求。pending 或 judging 提交的重测请求 SHALL 返回 HTTP 400，且不得删除旧结果或推送新任务。
+
+#### Scenario: 重测评测中的提交
+- **WHEN** 管理员调用 `POST /api/v1/admin/submissions/:id/rejudge`，且该提交状态为 judging
+- **THEN** 系统返回 HTTP 400 并保持该提交及其现有评测任务不变
