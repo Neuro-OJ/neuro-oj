@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Context, Next } from "hono";
 import { cors } from "hono/cors";
 import health from "./routes/health.ts";
+import stats from "./routes/stats.ts";
 import auth from "./routes/auth.ts";
 import admin from "./routes/admin.ts";
 import categories from "./routes/categories.ts";
@@ -157,6 +158,9 @@ export function createApp(): Hono {
     const items = await listJudgeImages();
     return c.json({ data: items });
   });
+
+  // 公开站点统计（关于页数据面板，无鉴权，同样必须在 sse 之前注册）
+  app.route("/api/v1", stats);
 
   // 统计数据 SSE 端点（公开，无需 authMiddleware，必须在 sse 之前注册）
   app.route("/api/v1", statsSse);
