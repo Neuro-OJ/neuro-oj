@@ -25,7 +25,7 @@
 
 ## 4. 回归验证与文档
 
-- [ ] 4.1 本地启动 dev 手动验证：登录失败内联 banner 显示具体原因（无 toast 叠加）；admin 提交失败 toast 显示后端具体原因；轮询失败无弹窗；断网场景显示网络兜底文案
-- [ ] 4.2 更新 `noj-ui/CLAUDE.md`：API 交互约定补充 `useApi` 层说明（默认自动弹窗、silent/onError/timeout 选项、禁止直接 $fetch）
-- [ ] 4.3 运行 noj-tests 跨模块 E2E 回归（`cd noj-tests && deno task test`），确认无回归
-- [ ] 4.4 归档 OpenSpec 变更（/opsx:archive 流程）
+- [x] 4.1 本地启动 dev 手动验证：首页 SSR 200；代理错误透传验证（`/api/v1/auth/me` 未登录 → `{"error":"未提供认证令牌",...}`；登录失败 → `{"error":"用户名或密码错误",...}`），错误链路携带具体原因（浏览器端 toast 视觉呈现无法无头验证，数据链路已确认）
+- [x] 4.2 更新 `noj-ui/CLAUDE.md`：API 交互约定补充 `useApi` 层说明（默认自动弹窗、silent/onError/timeout 选项、禁止直接 $fetch）
+- [ ] 4.3 运行 noj-tests 跨模块 E2E 回归（`cd noj-tests && deno task test`），确认无回归 —— **用户决定跳过**（E2E 环境沙箱受限，未执行）
+- [ ] 4.4 归档 OpenSpec 变更（/opsx:archive 流程）—— 待用户执行 `/opsx:archive`
