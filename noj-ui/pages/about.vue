@@ -1,11 +1,26 @@
 <script setup lang="ts">
-const contributors = [
-  { login: "hachimi-ak-ioi", contributions: 9 },
-  { login: "chenmou2012", contributions: 2 },
-  { login: "w1010tdev", contributions: 1 },
-]
+interface Contributor {
+  login: string
+  avatar_url: string
+  contributions: number
+}
 
 const repoUrl = "https://github.com/Neuro-OJ/neuro-oj"
+
+// 贡献者：Nitro 路由从 GitHub API 拉取（带缓存与回退）。
+// server: false 避免 SSR 阻塞在外部请求上，首屏后客户端填充。
+const { data: contributorsData } = await useAsyncData("about-contributors", () =>
+  $fetch<{ data: Contributor[] }>("/api/contributors"),
+  { server: false },
+)
+const contributors = computed(() => contributorsData.value?.data ?? [])
+
+// 头像加载失败时回退为首字母圆标
+const brokenAvatars = ref(new Set<string>())
+function onAvatarError(e: Event, c: Contributor) {
+  ;(e.target as HTMLImageElement).style.display = "none"
+  brokenAvatars.value.add(c.login)
+}
 </script>
 
 <template>
@@ -89,7 +104,7 @@ const repoUrl = "https://github.com/Neuro-OJ/neuro-oj"
             <div class="font-semibold text-orange-800 flex items-center gap-1.5 mb-1">
               <UIcon name="i-lucide-compass" class="size-4" /> noj-ui
             </div>
-            <div class="text-orange-700 text-xs">Nuxt 3 + Vue 3 · 用户界面</div>
+            <div class="text-orange-700 text-xs">Nuxt 4 + Vue 3 · 用户界面</div>
           </div>
           <div class="flex-1 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3.5">
             <div class="font-semibold text-blue-800 flex items-center gap-1.5 mb-1">
@@ -138,7 +153,16 @@ const repoUrl = "https://github.com/Neuro-OJ/neuro-oj"
             rel="noopener noreferrer"
             class="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-border rounded-full text-sm text-text-secondary no-underline hover:bg-primary-bg hover:text-primary hover:border-primary/30 transition-colors"
           >
-            <span class="w-5 h-5 rounded-full bg-primary-bg text-primary flex items-center justify-center text-xs font-bold">
+            <img
+              v-if="!brokenAvatars.has(c.login)"
+              :src="c.avatar_url"
+              :alt="`${c.login} 的头像`"
+              class="w-5 h-5 rounded-full bg-gray-200"
+              loading="lazy"
+              referrerpolicy="no-referrer"
+              @error="onAvatarError($event, c)"
+            />
+            <span v-else class="w-5 h-5 rounded-full bg-primary-bg text-primary flex items-center justify-center text-xs font-bold">
               {{ c.login.charAt(0).toUpperCase() }}
             </span>
             <span class="font-medium">{{ c.login }}</span>
