@@ -77,6 +77,7 @@
 
 <script setup lang="ts">
 import { validatePassword, validatePasswordMatch } from "~/utils/validatePassword"
+import { extractApiError } from "~/utils/apiError"
 
 definePageMeta({ layout: "auth" })
 
@@ -132,8 +133,8 @@ async function handleSubmit() {
         await auth.resetPassword(token.value, form.password)
         // 成功 → 跳登录页带成功 banner
         router.replace("/login?reset=1")
-    } catch (e: any) {
-        setError(typeof e.data?.error === "string" ? e.data.error : `服务器错误 (${e.status || 502})`)
+    } catch (e: unknown) {
+        setError(extractApiError(e).message)
         loading.value = false
     }
 }

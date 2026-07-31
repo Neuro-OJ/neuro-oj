@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Contest, ContestProblem } from '~/composables/useContests'
+import { extractApiError } from '~/utils/apiError'
 
 definePageMeta({ middleware: 'auth', ssr: false })
 
@@ -7,6 +8,7 @@ const route = useRoute()
 const contestId = route.params.contestId as string
 const label = route.params.label as string
 const toast = useToast()
+const { api } = useApi()
 const code = ref('')
 const language = ref('python3')
 const submitting = ref(false)
@@ -31,7 +33,7 @@ const submissions = ref<SubmissionItem[]>([])
 
 async function loadSubmissions() {
   try {
-    const response = await $fetch<{ data: SubmissionItem[] }>(`/api/v1/contests/${contestId}/my-submissions?per_page=100`)
+    const response = await api.get<{ data: SubmissionItem[] }>(`/api/v1/contests/${contestId}/my-submissions?per_page=100`, { silent: true })
     submissions.value = response.data.filter((item) => !problem.value || (item as SubmissionItem & { problem_id?: string }).problem_id === problem.value.problem_id)
   } catch {
     submissions.value = []
@@ -48,19 +50,15 @@ async function submit() {
   submitting.value = true
   submitError.value = ''
   try {
-    const response = await $fetch<{ data: { id: string } }>(`/api/v1/contests/${contestId}/submit`, {
-      method: 'POST',
-      body: {
-        problem_id: problem.value.problem_id,
-        language: language.value,
-        code: code.value,
-      },
+    const response = await api.post<{ data: { id: string } }>(`/api/v1/contests/${contestId}/submit`, {
+      problem_id: problem.value.problem_id,
+      language: language.value,
+      code: code.value,
     })
     toast.showToast('success', `提交成功：${response.data.id.slice(0, 8)}`)
     await loadSubmissions()
   } catch (submitFailure: unknown) {
-    const detail = submitFailure as { data?: { error?: string }; message?: string }
-    submitError.value = detail.data?.error || detail.message || '提交失败'
+    submitError.value = extractApiError(submitFailure).message
   } finally {
     submitting.value = false
   }

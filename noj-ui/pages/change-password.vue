@@ -104,6 +104,7 @@
 
 <script setup lang="ts">
 import { validatePassword, validatePasswordMatch } from "~/utils/validatePassword"
+import { extractApiError } from "~/utils/apiError"
 
 definePageMeta({ layout: "auth" })
 
@@ -195,8 +196,8 @@ async function handleSubmit() {
         // 无需再走 /login，直接回首页即可。
         showToast("success", "密码修改成功")
         router.replace("/settings")
-    } catch (e: any) {
-        setError(typeof e.data?.error === "string" ? e.data.error : `错误代码: ${e.response?.status || e.statusCode || e.status || 502}`)
+    } catch (e: unknown) {
+        setError(extractApiError(e).message)
     } finally {
         loading.value = false
     }

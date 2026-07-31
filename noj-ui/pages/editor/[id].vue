@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 import { onMounted, nextTick } from 'vue'
+import { extractApiError } from '~/utils/apiError'
 
 definePageMeta({
   layout: false,
@@ -11,6 +12,7 @@ const route = useRoute()
 const router = useRouter()
 const problemId = computed(() => route.params.id as string)
 const { isLoggedIn } = useAuth()
+const { api } = useApi()
 
 // 主题
 const { theme, set: setTheme } = useEditorTheme()
@@ -98,13 +100,10 @@ async function handleSubmit() {
   submitting.value = true
   submitError.value = ''
   try {
-    const res = await $fetch<{ data: { id: string } }>('/api/v1/submissions', {
-      method: 'POST',
-      body: {
-        problem_id: problemId.value,
-        language: language.value,
-        code: code.value,
-      },
+    const res = await api.post<{ data: { id: string } }>('/api/v1/submissions', {
+      problem_id: problemId.value,
+      language: language.value,
+      code: code.value,
     })
     // 留在编辑页：自动切到历史 tab + 启动实时轮询
     sidebarTab.value = 'history'
@@ -113,8 +112,7 @@ async function handleSubmit() {
     // 轮询约 2s 后（judge 入队 + 评测完成），刷新历史列表把最近一条移入
     setTimeout(() => refreshSubmissionsFn(), 2000)
   } catch (err: unknown) {
-    const e = err as { data?: { error?: string }; message?: string }
-    submitError.value = e.data?.error || e.message || '提交失败，请稍后重试'
+    submitError.value = extractApiError(err).message
   } finally {
     submitting.value = false
   }
@@ -135,8 +133,9 @@ onMounted(async () => {
   templateLoading.value = true
   templateError.value = ''
   try {
-    const res = await $fetch<{ data: { content: string; language: string } }>(
+    const res = await api.get<{ data: { content: string; language: string } }>(
       `/api/v1/problems/${problemId.value}/template`,
+      { silent: true },
     )
     if (res?.data?.content && code.value.trim() === '') {
       code.value = res.data.content
@@ -145,7 +144,7 @@ onMounted(async () => {
     const err = e as { statusCode?: number; data?: { error?: string }; message?: string }
     // 404 是预期：题目无 submission.py 模板
     if (err.statusCode !== 404) {
-      templateError.value = err.data?.error || err.message || '加载模板失败'
+      templateError.value = extractApiError(e).message
     }
   } finally {
     templateLoading.value = false

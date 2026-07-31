@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { extractApiError } from "~/utils/apiError"
 const { user, isLoggedIn, loading } = useAuth()
 const router = useRouter()
+const { api } = useApi()
 
 // 认证守卫：loading 就绪后检查登录状态
 watch(
@@ -26,8 +28,9 @@ watch(
   async (u) => {
     if (!u?.id) return
     try {
-      const res = await $fetch<{ data: { user: { bio: string } } }>(
+      const res = await api.get<{ data: { user: { bio: string } } }>(
         `/api/v1/users/${u.id}/profile`,
+        { silent: true },
       )
       bio.value = res.data.user.bio || ""
     } catch {
@@ -43,15 +46,11 @@ async function handleSave() {
   saveSuccess.value = false
   saveError.value = ""
   try {
-    await $fetch("/api/v1/users/me", {
-      method: "PUT",
-      body: { bio: bio.value },
-    })
+    await api.put("/api/v1/users/me", { bio: bio.value })
     saveSuccess.value = true
     setTimeout(() => { saveSuccess.value = false }, 3000)
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "保存失败"
-    saveError.value = msg
+    saveError.value = extractApiError(err).message
   } finally {
     saving.value = false
   }

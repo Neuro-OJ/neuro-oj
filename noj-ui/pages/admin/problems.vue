@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useToast } from "~/composables/useToast"
 import { useDialog } from "~/composables/useDialog"
+import { extractApiError } from '~/utils/apiError'
 
 definePageMeta({
   layout: "admin",
@@ -25,6 +26,8 @@ interface Problem {
   categories: { id: string; name: string }[]
   created_at: string
 }
+
+const { api } = useApi()
 
 const problems = ref<Problem[]>([])
 const tableLoading = ref(true)
@@ -65,15 +68,16 @@ async function loadProblems(page = 1) {
   tableError.value = ""
   currentPage.value = page
   try {
-    const res = await $fetch<{ data: Problem[]; total: number; page: number; limit: number }>(
+    const res = await api.get<{ data: Problem[]; total: number; page: number; limit: number }>(
       `/api/v1/problems?page=${page}&limit=${perPage}`,
+      { silent: true },
     )
     if (currentRequest !== requestVersion) return
     problems.value = res.data
     totalPages.value = Math.ceil(res.total / perPage)
   } catch (err: unknown) {
     if (currentRequest !== requestVersion) return
-    tableError.value = err instanceof Error ? err.message : "加载题目列表失败"
+    tableError.value = extractApiError(err).message
   } finally {
     if (currentRequest === requestVersion) tableLoading.value = false
   }
@@ -104,9 +108,7 @@ async function handleDelete() {
   deleting.value = true
   deleteError.value = ""
   try {
-    await $fetch(`/api/v1/problems/${deleteTarget.value.id}`, {
-      method: "DELETE",
-    })
+    await api.delete(`/api/v1/problems/${deleteTarget.value.id}`)
     showDeleteConfirm.value = false
     // 如果当前页只有这一个题目，删除后自动回到上一页
     if (problems.value.length <= 1 && currentPage.value > 1) {
@@ -115,7 +117,7 @@ async function handleDelete() {
       await loadProblems(currentPage.value)
     }
   } catch (err: unknown) {
-    deleteError.value = err instanceof Error ? err.message : "删除失败"
+    deleteError.value = extractApiError(err).message
   } finally {
     deleting.value = false
   }
@@ -135,20 +137,14 @@ async function batchRejudge(problemId: string) {
 
   rejudgingProblemIds.value = new Set(rejudgingProblemIds.value).add(problemId)
   try {
-    const res = await $fetch<{ message: string; total: number; queued: number; skipped: number }>(
+    const res = await api.post<{ message: string; total: number; queued: number; skipped: number }>(
       `/api/v1/admin/problems/${problemId}/rejudge`,
-      { method: "POST" },
     )
     toast.showToast(
       "success",
       `批量重测共 ${res.total} 条，已入队 ${res.queued} 条${res.skipped > 0 ? `，未入队 ${res.skipped} 条` : ""}`,
     )
     loadProblems(currentPage.value)
-  } catch (err: unknown) {
-    toast.showToast(
-      "error",
-      err instanceof Error ? err.message : "批量重测失败",
-    )
   } finally {
     const next = new Set(rejudgingProblemIds.value)
     next.delete(problemId)

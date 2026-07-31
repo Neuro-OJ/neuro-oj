@@ -23,6 +23,7 @@ interface StatsCard {
 const stats = ref<StatsCard[]>([])
 const statsLoading = ref(true)
 const statsError = ref("")
+const { api } = useApi()
 const queueStats = ref<{ pending_count: number; judging_count: number; completed_today: number } | null>(null)
 const queueError = ref("")
 const lastSuccessfulRefresh = ref<Date | null>(null)
@@ -51,10 +52,10 @@ async function loadStats() {
   statsError.value = ""
 
   const [userRes, problemRes, submissionRes, queueRes] = await Promise.allSettled([
-    $fetch<{ pagination: { total: number } }>("/api/v1/admin/users"),
-    $fetch<{ total: number }>("/api/v1/problems"),
-    $fetch<{ pagination: { total: number } }>("/api/v1/admin/submissions"),
-    $fetch<{ stats: { pending_count: number; judging_count: number; completed_today: number } }>("/api/v1/queue"),
+    api.get<{ pagination: { total: number } }>("/api/v1/admin/users", { silent: true }),
+    api.get<{ total: number }>("/api/v1/problems", { silent: true }),
+    api.get<{ pagination: { total: number } }>("/api/v1/admin/submissions", { silent: true }),
+    api.get<{ stats: { pending_count: number; judging_count: number; completed_today: number } }>("/api/v1/queue", { silent: true }),
   ])
   if (currentRequest !== requestVersion) return
 

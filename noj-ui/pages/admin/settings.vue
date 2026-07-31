@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { extractApiError } from '~/utils/apiError'
+
 definePageMeta({
   layout: "admin",
   middleware: "admin",
@@ -55,6 +57,8 @@ const CATEGORY_LABEL: Record<SettingCategory, string> = {
   other: "其他",
 }
 
+const { api } = useApi()
+
 // ─── 数据加载 ────────────────────────────────────────────
 
 const settings = ref<SystemSetting[]>([])
@@ -68,8 +72,9 @@ async function loadSettings() {
   tableLoading.value = true
   tableError.value = ""
   try {
-    const res = await $fetch<{ data: SystemSetting[] }>(
+    const res = await api.get<{ data: SystemSetting[] }>(
       "/api/v1/admin/settings",
+      { silent: true },
     )
     if (currentRequest !== requestVersion) return
     settings.value = res.data
@@ -80,9 +85,7 @@ async function loadSettings() {
     }
   } catch (err: unknown) {
     if (currentRequest !== requestVersion) return
-    tableError.value = err instanceof Error
-      ? err.message
-      : "加载系统设置失败"
+    tableError.value = extractApiError(err).message
   } finally {
     if (currentRequest === requestVersion) tableLoading.value = false
   }
@@ -189,9 +192,8 @@ async function saveSetting(key: string) {
   if (savingKeys.value.has(key)) return
   savingKeys.value = new Set(savingKeys.value).add(key)
   try {
-    const res = await $fetch<{ data: SystemSetting }>(`/api/v1/admin/settings/${key}`, {
-      method: "PUT",
-      body: { value: drafts.value[key] },
+    const res = await api.put<{ data: SystemSetting }>(`/api/v1/admin/settings/${key}`, {
+      value: drafts.value[key],
     })
     applySetting(res.data)
     // 检查是否需要重启生效
@@ -201,8 +203,6 @@ async function saveSetting(key: string) {
     } else {
       toast.success("设置已保存")
     }
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "保存失败")
   } finally {
     const next = new Set(savingKeys.value)
     next.delete(key)
@@ -231,15 +231,11 @@ async function confirmReset(s: SystemSetting) {
   if (resettingKeys.value.has(s.key)) return
   resettingKeys.value = new Set(resettingKeys.value).add(s.key)
   try {
-    await $fetch(`/api/v1/admin/settings/${s.key}`, {
-      method: "DELETE",
-    })
-    const res = await $fetch<{ data: SystemSetting[] }>("/api/v1/admin/settings")
+    await api.delete(`/api/v1/admin/settings/${s.key}`)
+    const res = await api.get<{ data: SystemSetting[] }>("/api/v1/admin/settings")
     const updated = res.data.find((item) => item.key === s.key)
     if (updated) applySetting(updated)
     toast.success(`已重置 ${s.key}`)
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "重置失败")
   } finally {
     const next = new Set(resettingKeys.value)
     next.delete(s.key)

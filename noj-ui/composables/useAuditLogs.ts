@@ -2,6 +2,7 @@
  * 审计日志列表 composable。
  * 状态：分页 + 筛选；自动请求 + 错误处理。
  */
+import { extractApiError } from '~/utils/apiError';
 
 export type AuditAction =
   | "users.role_change"
@@ -65,13 +66,14 @@ export function useAuditLogs(initial: Partial<AuditLogFilters> = {}) {
       if (filters.value.from) params.set("from", filters.value.from);
       if (filters.value.to) params.set("to", filters.value.to);
 
-      const res = await $fetch<AuditLogListResponse>(
+      const res = await useApi().api.get<AuditLogListResponse>(
         `/api/v1/admin/audit-logs?${params}`,
+        { silent: true },
       );
       data.value = res.data;
       pagination.value = res.pagination;
-    } catch (e: any) {
-      error.value = e?.message ?? "加载失败";
+    } catch (e: unknown) {
+      error.value = extractApiError(e).message;
     } finally {
       loading.value = false;
     }

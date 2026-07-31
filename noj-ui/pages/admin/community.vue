@@ -6,6 +6,7 @@ definePageMeta({ layout: "admin", middleware: "community-moderation", ssr: false
 const { toast } = useToast()
 const { dialog } = useDialog()
 const { config, loadConfig } = useCommunity()
+const { api } = useApi()
 
 const preset = ref("private")
 const applyingPreset = ref(false)
@@ -71,9 +72,9 @@ function configValue(configKey: string): unknown {
 
 async function load() {
   const [boardResult, reportResult, sanctionResult] = await Promise.all([
-    $fetch<{ data: { id: string; name: string; slug: string; description: string | null; is_archived: boolean }[] }>("/api/v1/community/boards"),
-    $fetch<{ data: ReportRow[] }>("/api/v1/community/admin/reports"),
-    $fetch<{ data: typeof sanctions.value }>("/api/v1/community/admin/sanctions"),
+    api.get<{ data: { id: string; name: string; slug: string; description: string | null; is_archived: boolean }[] }>("/api/v1/community/boards", { silent: true }),
+    api.get<{ data: ReportRow[] }>("/api/v1/community/admin/reports", { silent: true }),
+    api.get<{ data: typeof sanctions.value }>("/api/v1/community/admin/sanctions", { silent: true }),
   ])
   boards.value = boardResult.data
   reports.value = reportResult.data
@@ -84,7 +85,7 @@ async function load() {
 async function loadPending() {
   loadingPending.value = true
   try {
-    const result = await $fetch<{ data: PostRow[] }>("/api/v1/community/posts", { query: { limit: 100 } })
+    const result = await api.get<{ data: PostRow[] }>("/api/v1/community/posts", { query: { limit: 100 }, silent: true })
     pendingPosts.value = result.data.filter((p) => p.post.status === "pending")
   } catch {
     pendingPosts.value = []
@@ -96,9 +97,9 @@ async function loadPending() {
 async function loadPendingComments() {
   loadingPendingComments.value = true
   try {
-    const result = await $fetch<{ data: typeof pendingComments.value }>(
+    const result = await api.get<{ data: typeof pendingComments.value }>(
       "/api/v1/community/admin/comments/pending",
-      { query: { limit: 100 } },
+      { query: { limit: 100 }, silent: true },
     )
     pendingComments.value = result.data
   } catch {
@@ -112,11 +113,9 @@ async function applyPreset() {
   if (applyingPreset.value) return
   applyingPreset.value = true
   try {
-    await $fetch(`/api/v1/community/admin/preset/${preset.value}`, { method: "POST" })
+    await api.post(`/api/v1/community/admin/preset/${preset.value}`)
     toast.success("社区预设已应用")
     await load()
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "保存失败")
   } finally {
     applyingPreset.value = false
   }
@@ -127,14 +126,9 @@ async function toggleSetting(settingKey: string, configKey: string) {
   savingKey.value = settingKey
   try {
     const current = Boolean(configValue(configKey))
-    await $fetch(`/api/v1/admin/settings/${settingKey}`, {
-      method: "PUT",
-      body: { value: !current },
-    })
+    await api.put(`/api/v1/admin/settings/${settingKey}`, { value: !current })
     toast.success("设置已更新")
     await loadConfig(true)
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "保存失败")
   } finally {
     savingKey.value = null
   }
@@ -148,14 +142,9 @@ async function saveNumber(settingKey: string, configKey: string) {
   if (value === undefined || value === "" || savingKey.value) return
   savingKey.value = settingKey
   try {
-    await $fetch(`/api/v1/admin/settings/${settingKey}`, {
-      method: "PUT",
-      body: { value: Number(value) },
-    })
+    await api.put(`/api/v1/admin/settings/${settingKey}`, { value: Number(value) })
     toast.success("设置已更新")
     await loadConfig(true)
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "保存失败")
   } finally {
     savingKey.value = null
   }
@@ -165,14 +154,9 @@ async function moderatePost(id: string, status: "published" | "hidden") {
   if (moderatingId.value) return
   moderatingId.value = id
   try {
-    await $fetch(`/api/v1/community/admin/posts/${id}/${status}`, {
-      method: "POST",
-      body: { reason: "" },
-    })
+    await api.post(`/api/v1/community/admin/posts/${id}/${status}`, { reason: "" })
     toast.success(status === "published" ? "内容已批准" : "内容已驳回")
     await loadPending()
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "操作失败")
   } finally {
     moderatingId.value = null
   }
@@ -182,14 +166,9 @@ async function moderateComment(id: string, status: "published" | "hidden") {
   if (moderatingCommentId.value) return
   moderatingCommentId.value = id
   try {
-    await $fetch(`/api/v1/community/admin/comments/${id}/${status}`, {
-      method: "POST",
-      body: { reason: "" },
-    })
+    await api.post(`/api/v1/community/admin/comments/${id}/${status}`, { reason: "" })
     toast.success(status === "published" ? "评论已批准" : "评论已驳回")
     await loadPendingComments()
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "操作失败")
   } finally {
     moderatingCommentId.value = null
   }
@@ -202,44 +181,32 @@ async function createBoard() {
   }
   creatingBoard.value = true
   try {
-    await $fetch("/api/v1/community/admin/boards", {
-      method: "POST",
-      body: { slug: newBoard.slug, name: newBoard.name, description: newBoard.description },
+    await api.post("/api/v1/community/admin/boards", {
+      slug: newBoard.slug, name: newBoard.name, description: newBoard.description,
     })
     toast.success("板块已创建")
     newBoard.slug = ""
     newBoard.name = ""
     newBoard.description = ""
     await load()
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "创建失败")
   } finally {
     creatingBoard.value = false
   }
 }
 
 async function toggleArchive(boardId: string, archived: boolean) {
-  try {
-    await $fetch(`/api/v1/community/admin/boards/${boardId}`, {
-      method: "PATCH",
-      body: { is_archived: !archived },
-    })
-    toast.success(archived ? "板块已恢复" : "板块已归档")
-    await load()
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "操作失败")
-  }
+  await api.patch(`/api/v1/community/admin/boards/${boardId}`, { is_archived: !archived })
+  toast.success(archived ? "板块已恢复" : "板块已归档")
+  await load()
 }
 
 async function resolveReport(id: string, status: "resolved" | "dismissed") {
   if (resolvingReportId.value) return
   resolvingReportId.value = id
   try {
-    await $fetch(`/api/v1/community/admin/reports/${id}/${status}`, { method: "POST", body: {} })
+    await api.post(`/api/v1/community/admin/reports/${id}/${status}`, {})
     toast.success("举报已处理")
     await load()
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "处理失败")
   } finally {
     resolvingReportId.value = null
   }
@@ -253,9 +220,9 @@ async function searchSanctionUser() {
   }
   searchingSanctionUser.value = true
   try {
-    const result = await $fetch<{ data: { items: { id: string; username: string }[] } }>(
+    const result = await api.get<{ data: { items: { id: string; username: string }[] } }>(
       "/api/v1/search",
-      { query: { q, type: "user" } },
+      { query: { q, type: "user" }, silent: true },
     )
     sanctionUserResults.value = result.data.items
   } catch {
@@ -278,8 +245,9 @@ async function loadUserSanctions(userId?: string) {
     return
   }
   try {
-    const result = await $fetch<{ data: typeof userSanctions.value }>(
+    const result = await api.get<{ data: typeof userSanctions.value }>(
       `/api/v1/community/admin/users/${userId}/sanctions`,
+      { silent: true },
     )
     userSanctions.value = result.data
   } catch {
@@ -294,20 +262,15 @@ async function createSanction() {
   }
   creatingSanction.value = true
   try {
-    await $fetch("/api/v1/community/admin/sanctions", {
-      method: "POST",
-      body: {
-        user_id: selectedSanctionUser.value.id,
-        reason: sanctionReason.value,
-        expires_at: sanctionExpiresAt.value || null,
-      },
+    await api.post("/api/v1/community/admin/sanctions", {
+      user_id: selectedSanctionUser.value.id,
+      reason: sanctionReason.value,
+      expires_at: sanctionExpiresAt.value || null,
     })
     toast.success("处罚已生效")
     sanctionReason.value = ""
     sanctionExpiresAt.value = ""
     await Promise.all([load(), loadUserSanctions(selectedSanctionUser.value.id)])
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "创建失败")
   } finally {
     creatingSanction.value = false
   }
@@ -322,11 +285,9 @@ async function revokeSanction(sanctionId: string) {
   if (!ok || revokingId.value) return
   revokingId.value = sanctionId
   try {
-    await $fetch(`/api/v1/community/admin/sanctions/${sanctionId}`, { method: "DELETE" })
+    await api.delete(`/api/v1/community/admin/sanctions/${sanctionId}`)
     toast.success("已撤销")
     await Promise.all([load(), loadUserSanctions(selectedSanctionUser.value?.id)])
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "撤销失败")
   } finally {
     revokingId.value = null
   }

@@ -43,6 +43,8 @@
 </template>
 
 <script setup lang="ts">
+import { extractApiError } from "~/utils/apiError"
+
 definePageMeta({ layout: "auth" })
 
 const auth = useAuth()
@@ -74,8 +76,8 @@ async function handleSubmit() {
     submitted.value = true
     submittedEmail.value = email.value.trim()
     email.value = ""
-  } catch (e: any) {
-    setError(typeof e.data?.error === "string" ? e.data.error : `服务器错误 (${e.status || 502})`)
+  } catch (e: unknown) {
+    setError(extractApiError(e).message)
   } finally {
     loading.value = false
   }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const { api } = useApi()
 
 const router = useRouter()
 const route = useRoute()
@@ -61,7 +62,7 @@ const totalPages = computed(() => {
 
 // ── 获取分类树（客户端缓存） ──
 const { data: categoriesData } = await useAsyncData("problem-categories", () =>
-  $fetch<{ data: CategoryItem[] }>("/api/v1/categories"),
+  api.get<{ data: CategoryItem[] }>("/api/v1/categories", { silent: true }),
 )
 const categories = computed(() => categoriesData.value?.data ?? [])
 
@@ -75,10 +76,11 @@ async function fetchUserProblemStatus() {
   if (!isLoggedIn.value) return
   const gen = ++statusFetchGen
   try {
-    const res = await $fetch<{
+    const res = await api.get<{
       data: { problem_id: string; result: { score: number } | null }[]
     }>("/api/v1/submissions", {
       query: { per_page: 100 },
+      silent: true,
     })
     if (gen !== statusFetchGen) return // stale
     const subs = res.data ?? []

@@ -1,0 +1,75 @@
+import type { ApiErrorInfo } from '~/utils/apiError';
+import { extractApiError } from '~/utils/apiError';
+
+/**
+ * 统一 API 调用层。
+ *
+ * 封装 `$fetch`，非 2xx / 网络 / 超时错误时：
+ * 1. 自动提取后端 `error` 字段（具体错误原因）并通过 `useToast().toast.error()` 弹窗；
+ * 2. **原样重抛** 原错误对象（保留 `data`/`status` 结构），
+ *    现有依赖错误对象属性（如 `e.data?.code === "USER_BANNED"`、404 分支）的代码不受影响。
+ *
+ * 选项：
+ * - `silent: true`：不弹 toast（轮询、后台刷新、表单内联错误等场景），错误仍抛出
+ * - `onError(err, info)`：自定义错误处理，提供后替换默认 toast；与 `silent` 同时给出时
+ *   `silent` 优先（不弹窗，`onError` 仍执行）
+ * - `timeout`（ms）：透传 ofetch `timeout`（内部 `AbortSignal.timeout`）
+ *
+ * SSR 端（`import.meta.server`）不弹 toast（UToaster 依赖客户端渲染），仅抛错。
+ */
+
+/** $fetch 选项类型（排除 method/timeout，二者由 useApi 接管） */
+type FetchOptions = NonNullable<Parameters<typeof $fetch>[1]>;
+
+/** API 调用选项：silent/onError 为 API 层专属，其余透传 $fetch */
+export interface ApiCallOptions
+  extends Omit<FetchOptions, 'method' | 'timeout'> {
+  /** 静默模式：不弹 toast，错误仍抛出（由调用方处理） */
+  silent?: boolean;
+  /** 自定义错误处理：替换默认 toast；与 silent 同时给出时 silent 优先 */
+  onError?: (err: unknown, info: ApiErrorInfo) => void;
+  /** 请求超时（ms），透传 ofetch timeout */
+  timeout?: number;
+}
+
+type ApiMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
+
+export function useApi() {
+  const { toast } = useToast();
+
+  async function request<T = unknown>(
+    method: ApiMethod,
+    url: string,
+    options: ApiCallOptions = {},
+  ): Promise<T> {
+    const { silent = false, onError, ...fetchOptions } = options;
+    try {
+      return await $fetch<T>(url, { method, ...fetchOptions });
+    } catch (err) {
+      const info = extractApiError(err);
+      // silent 只抑制默认 toast；onError 自定义回调仍执行（设计 D4）
+      if (onError) {
+        onError(err, info);
+      } else if (!silent && import.meta.client) {
+        toast.error(info.message);
+      }
+      // 原样重抛：保留 $fetch 错误对象结构，调用方分支代码零破坏
+      throw err;
+    }
+  }
+
+  return {
+    api: {
+      get: <T = unknown>(url: string, options?: ApiCallOptions) =>
+        request<T>('get', url, options),
+      post: <T = unknown>(url: string, body?: unknown, options?: ApiCallOptions) =>
+        request<T>('post', url, { body, ...options }),
+      put: <T = unknown>(url: string, body?: unknown, options?: ApiCallOptions) =>
+        request<T>('put', url, { body, ...options }),
+      patch: <T = unknown>(url: string, body?: unknown, options?: ApiCallOptions) =>
+        request<T>('patch', url, { body, ...options }),
+      delete: <T = unknown>(url: string, options?: ApiCallOptions) =>
+        request<T>('delete', url, options),
+    },
+  };
+}

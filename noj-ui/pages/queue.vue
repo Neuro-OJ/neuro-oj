@@ -31,6 +31,8 @@ const data = ref<QueueData | null>(null)
 
 const isMounted = ref(true)
 
+const { api } = useApi()
+
 // 实时时钟——确保 elapsed 时间每秒更新而不是仅在轮询时刷新
 const now = ref(Date.now())
 let clockTimer: ReturnType<typeof setInterval> | null = null
@@ -73,7 +75,7 @@ useEventSource({
   onEvent: {
     "queue:changed": async () => {
       try {
-        data.value = await $fetch<QueueData>("/api/v1/queue")
+        data.value = await api.get<QueueData>("/api/v1/queue", { silent: true })
       } catch {
         // 静默
       }
@@ -81,7 +83,7 @@ useEventSource({
   },
   fetchFn: async () => {
     try {
-      data.value = await $fetch<QueueData>("/api/v1/queue")
+      data.value = await api.get<QueueData>("/api/v1/queue", { silent: true })
     } catch {
       // 静默
     }

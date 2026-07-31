@@ -32,6 +32,7 @@ interface SubmissionResponse {
   data: SubmissionData
 }
 const route = useRoute()
+const { api } = useApi()
 const { isLoggedIn, loading: authLoading } = useAuth()
 const submissionId = route.params.id as string
 // 不使用 useFetch（setup 阶段 token 可能未就绪），改为手动管理
@@ -50,8 +51,9 @@ async function pollSubmission() {
   if (!isMounted.value) return
   const thisReq = ++pollReqId
   try {
-    const res = await $fetch<SubmissionResponse>(
+    const res = await api.get<SubmissionResponse>(
       `/api/v1/submissions/${submissionId}`,
+      { silent: true },
     )
     if (!isMounted.value || thisReq !== pollReqId) return
       if (res) {

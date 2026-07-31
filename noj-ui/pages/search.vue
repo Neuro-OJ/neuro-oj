@@ -71,6 +71,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
+import { extractApiError } from "~/utils/apiError";
 
 import AsyncContent from "~/components/ui/AsyncContent.vue";
 import PaginationNav from "~/components/shared/PaginationNav.vue";
@@ -86,6 +87,7 @@ definePageMeta({ layout: "default" });
 
 const route = useRoute();
 const router = useRouter();
+const { api } = useApi();
 
 const query = ref<string>((route.query.q as string) ?? "");
 const type = ref<SearchType>(((route.query.type as string) ?? "problem") as SearchType);
@@ -130,21 +132,21 @@ async function fetchResults() {
   error.value = null;
 
   try {
-    const res = await $fetch("/api/v1/search", {
+    const res = await api.get("/api/v1/search", {
       params: {
         q,
         type: type.value,
         page: page.value,
         limit,
       },
+      silent: true,
     });
     const data = (res as { data: { items: (ProblemSearchResult | UserSearchResult | CommunitySearchResult)[]; total: number; took_ms: number } }).data;
     items.value = data.items;
     total.value = data.total;
     tookMs.value = data.took_ms;
   } catch (e: unknown) {
-    const err = e as { data?: { error?: string } };
-    error.value = err?.data?.error ?? "搜索失败";
+    error.value = extractApiError(e).message;
     items.value = [];
     total.value = 0;
     tookMs.value = null;

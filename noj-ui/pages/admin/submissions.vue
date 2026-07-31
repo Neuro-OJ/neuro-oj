@@ -10,6 +10,7 @@ import {
 } from "~/composables/use-submissions"
 import { useToast } from "~/composables/useToast"
 import { useDialog } from "~/composables/useDialog"
+import { extractApiError } from '~/utils/apiError'
 
 definePageMeta({
   layout: "admin",
@@ -23,6 +24,8 @@ const router = useRouter()
 watch(loading, (val) => {
   if (!val && !isLoggedIn.value) router.replace("/login")
 }, { immediate: true })
+
+const { api } = useApi()
 
 const submissions = ref<SubmissionListItem[]>([])
 const tableLoading = ref(true)
@@ -113,15 +116,16 @@ async function loadSubmissions(page = 1) {
   tableError.value = ""
   currentPage.value = page
   try {
-    const res = await $fetch<{ data: SubmissionListItem[]; pagination: { total: number; total_pages: number } }>(
+    const res = await api.get<{ data: SubmissionListItem[]; pagination: { total: number; total_pages: number } }>(
       `/api/v1/admin/submissions?${buildQuery(page)}`,
+      { silent: true },
     )
     if (currentRequest !== requestVersion) return
     submissions.value = res.data
     totalPages.value = res.pagination.total_pages
   } catch (err: unknown) {
     if (currentRequest !== requestVersion) return
-    tableError.value = err instanceof Error ? err.message : "加载提交记录失败"
+    tableError.value = extractApiError(err).message
   } finally {
     if (currentRequest === requestVersion) tableLoading.value = false
   }
@@ -171,16 +175,9 @@ async function rejudge(submissionId: string) {
 
   rejudgingIds.value = new Set(rejudgingIds.value).add(submissionId)
   try {
-    await $fetch(`/api/v1/admin/submissions/${submissionId}/rejudge`, {
-      method: "POST",
-    })
+    await api.post(`/api/v1/admin/submissions/${submissionId}/rejudge`)
     toast.showToast("success", "重测任务已提交")
     loadSubmissions(currentPage.value)
-  } catch (err: unknown) {
-    toast.showToast(
-      "error",
-      err instanceof Error ? err.message : "重测失败",
-    )
   } finally {
     const next = new Set(rejudgingIds.value)
     next.delete(submissionId)

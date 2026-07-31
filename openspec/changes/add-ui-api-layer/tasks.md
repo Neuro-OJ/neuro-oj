@@ -1,18 +1,18 @@
 ## 1. API 层基础设施
 
-- [ ] 1.1 新建 `noj-ui/utils/apiError.ts`：`extractApiError(err)` 纯函数，从任意异常提取 `{ message, code, status, requestId }`，覆盖后端错误响应（`data.error` 字符串）、无 error 字段兜底（`请求失败（HTTP <status>）`）、AbortError/超时（`请求超时，请稍后重试`）、网络错误（`网络连接失败，请检查网络`）、未知错误兜底（`操作失败，请稍后重试`）
-- [ ] 1.2 新建 `noj-ui/composables/useApi.ts`：`useApi()` 返回 `api.get/post/put/patch/delete`；内部封装 `$fetch`，非 2xx/网络/超时错误自动 `useToast().toast.error()` 后原样重抛原错误；支持 `{ silent, onError, timeout }` 选项（`silent` 优先于 `onError`，`timeout` 用 `AbortSignal.timeout`）；`import.meta.client` 守卫 SSR 端不弹窗
-- [ ] 1.3 为 `utils/apiError.ts` 编写单元测试（`tests/apiError_test.ts` 或 utils 旁置测试文件）：覆盖后端错误、无 error 字段、网络错误、AbortError 四类；`deno.json` 增加 `test` 任务
-- [ ] 1.4 验证：`deno task lint` + `deno task fmt` + `deno task test` 全部通过
+- [x] 1.1 新建 `noj-ui/utils/apiError.ts`：`extractApiError(err)` 纯函数，从任意异常提取 `{ message, code, status, requestId }`，覆盖后端错误响应（`data.error` 字符串）、无 error 字段兜底（`请求失败（HTTP <status>）`）、AbortError/超时（`请求超时，请稍后重试`）、网络错误（`网络连接失败，请检查网络`）、未知错误兜底（`操作失败，请稍后重试`）
+- [x] 1.2 新建 `noj-ui/composables/useApi.ts`：`useApi()` 返回 `api.get/post/put/patch/delete`；内部封装 `$fetch`，非 2xx/网络/超时错误自动 `useToast().toast.error()` 后原样重抛原错误；支持 `{ silent, onError, timeout }` 选项（`silent` 优先于 `onError`，`timeout` 用 `AbortSignal.timeout`）；`import.meta.client` 守卫 SSR 端不弹窗
+- [x] 1.3 为 `utils/apiError.ts` 编写单元测试（`tests/apiError_test.ts` 或 utils 旁置测试文件）：覆盖后端错误、无 error 字段、网络错误、AbortError 四类；`deno.json` 增加 `test` 任务
+- [x] 1.4 验证：`deno task lint` + `deno task fmt` + `deno task test` 全部通过
 
 ## 2. 迁移 composables
 
-- [ ] 2.1 迁移 `useAuth.ts`：5 个认证方法换 `api` 调用 + `silent: true`（页面统一展示错误）；login 的 5s 超时手写 `Promise.race` 替换为 `timeout` 选项；`fetchUser`/`logout` 保持静默 + 自动登出语义
-- [ ] 2.2 迁移 `useMessages.ts`（7 个方法）与 `useRankings.ts`：换 `api` 调用，保持裸抛语义（由调用方 catch），默认自动 toast
-- [ ] 2.3 迁移 `useCommunity.ts` / `useContests.ts` / `useCommunityNotifications.ts`：换 `api` 调用；通知未读数轮询用 `silent: true`
-- [ ] 2.4 迁移 `useSearch.ts`：换 `api` 调用 + `silent: true`（`Promise.allSettled` 分支与 `state.error` 逻辑保留）
-- [ ] 2.5 迁移 `useAdminList.ts` / `useAuditLogs.ts` / `useBanStatus.ts` / `useSubmissionPolling.ts`：换 `api` 调用；保留 error state 消费逻辑，轮询/后台用 `silent: true`
-- [ ] 2.6 验证：`deno task lint` + `deno task build` 通过；grep 确认 composables 目录不再有直接 `$fetch`
+- [x] 2.1 迁移 `useAuth.ts`：5 个认证方法换 `api` 调用 + `silent: true`（页面统一展示错误）；login 的 5s 超时手写 `Promise.race` 替换为 `timeout` 选项；`fetchUser`/`logout` 保持静默 + 自动登出语义
+- [x] 2.2 迁移 `useMessages.ts`（7 个方法）与 `useRankings.ts`：换 `api` 调用，保持裸抛语义（由调用方 catch），默认自动 toast
+- [x] 2.3 迁移 `useCommunity.ts` / `useContests.ts` / `useCommunityNotifications.ts`：换 `api` 调用；通知未读数轮询用 `silent: true`
+- [x] 2.4 迁移 `useSearch.ts`：换 `api` 调用 + `silent: true`（`Promise.allSettled` 分支与 `state.error` 逻辑保留）
+- [x] 2.5 迁移 `useAdminList.ts` / `useAuditLogs.ts` / `useBanStatus.ts` / `useSubmissionPolling.ts`：换 `api` 调用；保留 error state 消费逻辑，轮询/后台用 `silent: true`
+- [x] 2.6 验证：`deno task lint` + `deno task build` 通过；grep 确认 composables 目录不再有直接 `$fetch`
 
 ## 3. 迁移 pages + components
 

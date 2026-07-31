@@ -51,6 +51,7 @@
 const router = useRouter()
 const { user, isLoggedIn, logout } = useAuth()
 const { dialog } = useDialog()
+const { api } = useApi()
 
 // ── 下拉菜单：点击切换 + 键盘可达（WCAG 2.1.1） ──
 const menuButtonRef = ref<HTMLButtonElement | null>(null)
@@ -86,7 +87,10 @@ let unreadPollTimer: ReturnType<typeof setInterval> | null = null
 
 async function fetchUnreadCount() {
     try {
-        const res = await $fetch<{ data: { unread_count: number } }>("/api/v1/conversations/unread-count")
+        const res = await api.get<{ data: { unread_count: number } }>(
+            "/api/v1/conversations/unread-count",
+            { silent: true },
+        )
         unreadCount.value = res.data?.unread_count ?? 0
     } catch {
         // 静默失败

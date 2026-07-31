@@ -147,17 +147,22 @@ export function useSearch() {
         const limit = opts?.limit ?? 5;
 
         try {
+          // 搜索为静默请求：错误由 state.error 状态展示，不弹 toast
+          const { api } = useApi();
           if (type === "all") {
             // 并行请求题目 + 用户
             const [pRes, uRes, cRes] = await Promise.allSettled([
-              $fetch("/api/v1/search", {
+              api.get("/api/v1/search", {
                 params: { q: trimmed, type: "problem", limit },
+                silent: true,
               }),
-              $fetch("/api/v1/search", {
+              api.get("/api/v1/search", {
                 params: { q: trimmed, type: "user", limit: 3 },
+                silent: true,
               }),
-              $fetch("/api/v1/search", {
+              api.get("/api/v1/search", {
                 params: { q: trimmed, type: "community", limit: 3 },
+                silent: true,
               }),
             ]);
 
@@ -187,8 +192,9 @@ export function useSearch() {
               state.value.results.community = community;
             }
           } else {
-            const res = await $fetch("/api/v1/search", {
+            const res = await api.get("/api/v1/search", {
               params: { q: trimmed, type, limit },
+              silent: true,
             });
 
             // 已被更新的请求覆盖，跳过写入（请求竞态防护）

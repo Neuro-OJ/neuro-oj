@@ -13,12 +13,13 @@ interface SiteStats {
 }
 
 const repoUrl = "https://github.com/Neuro-OJ/neuro-oj"
+const { api } = useApi()
 
 // 站点统计：Nitro 代理转发到 noj-core /api/v1/stats。
 // server: false 避免 SSR 阻塞在外部请求上，首屏后客户端填充（与贡献者一致）。
 const { data: statsData } = await useAsyncData<{ data: SiteStats }>(
   "about-stats",
-  () => $fetch<{ data: SiteStats }>("/api/v1/stats"),
+  () => api.get<{ data: SiteStats }>("/api/v1/stats", { silent: true }),
   { server: false },
 )
 const stats = computed(() => statsData.value?.data)
@@ -33,7 +34,7 @@ const statItems = computed(() => [
 
 // 贡献者：Nitro 路由从 GitHub API 拉取（带缓存与回退）。
 const { data: contributorsData } = await useAsyncData("about-contributors", () =>
-  $fetch<{ data: Contributor[] }>("/api/contributors"),
+  api.get<{ data: Contributor[] }>("/api/contributors", { silent: true }),
   { server: false },
 )
 const contributors = computed(() => contributorsData.value?.data ?? [])

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { extractApiError } from "~/utils/apiError"
 import type {
   SubmissionListItem,
 } from "~/composables/use-submissions"
@@ -15,6 +16,7 @@ definePageMeta({
   ssr: false,
 })
 
+const { api } = useApi()
 const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
@@ -75,13 +77,14 @@ async function loadSubmissions(page = 1) {
   tableError.value = ""
   currentPage.value = page
   try {
-    const res = await $fetch<{ data: SubmissionListItem[]; pagination: { total: number; total_pages: number } }>(
+    const res = await api.get<{ data: SubmissionListItem[]; pagination: { total: number; total_pages: number } }>(
       `/api/v1/submissions?${buildQuery(page)}`,
+      { silent: true },
     )
     submissions.value = res.data
     totalPages.value = res.pagination.total_pages
   } catch (err: unknown) {
-    tableError.value = err instanceof Error ? err.message : "加载提交记录失败"
+    tableError.value = extractApiError(err).message
   } finally {
     tableLoading.value = false
   }

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { extractApiError } from '~/utils/apiError'
+
 definePageMeta({
   layout: "admin",
   middleware: "admin",
@@ -22,6 +24,8 @@ interface IpBan {
   created_by: string | null
 }
 
+const { api } = useApi()
+
 // ─── 数据加载 ────
 const items = ref<IpBan[]>([])
 const tableLoading = ref(true)
@@ -34,12 +38,13 @@ async function load() {
   try {
     const params = new URLSearchParams({ page: "1", per_page: "100" })
     if (search.value) params.set("keyword", search.value)
-    const res = await $fetch<{ data: IpBan[]; pagination: { total: number } }>(
+    const res = await api.get<{ data: IpBan[]; pagination: { total: number } }>(
       `/api/v1/admin/blacklist?${params.toString()}`,
+      { silent: true },
     )
     items.value = res.data
   } catch (err: unknown) {
-    tableError.value = err instanceof Error ? err.message : "加载黑名单失败"
+    tableError.value = extractApiError(err).message
   } finally {
     tableLoading.value = false
   }
@@ -69,19 +74,16 @@ async function handleSave() {
   saving.value = true
   formError.value = ""
   try {
-    await $fetch("/api/v1/admin/blacklist", {
-      method: "POST",
-      body: {
-        ip_or_cidr: form.ip_or_cidr.trim(),
-        reason: form.reason.trim(),
-        expires_at: form.expires_at.trim() || null,
-      },
+    await api.post("/api/v1/admin/blacklist", {
+      ip_or_cidr: form.ip_or_cidr.trim(),
+      reason: form.reason.trim(),
+      expires_at: form.expires_at.trim() || null,
     })
     showForm.value = false
     toast.success("已添加黑名单条目")
     await load()
   } catch (err: unknown) {
-    formError.value = err instanceof Error ? err.message : "添加失败"
+    formError.value = extractApiError(err).message
   } finally {
     saving.value = false
   }
@@ -104,11 +106,9 @@ async function confirmDelete(item: IpBan) {
   deleteTarget.value = item
   deleting.value = true
   try {
-    await $fetch(`/api/v1/admin/blacklist/${item.id}`, { method: "DELETE" })
+    await api.delete(`/api/v1/admin/blacklist/${item.id}`)
     toast.success(`已删除 ${item.ip_or_cidr}`)
     await load()
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "删除失败")
   } finally {
     deleting.value = false
     deleteTarget.value = null

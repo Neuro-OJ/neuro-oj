@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { extractApiError } from '~/utils/apiError'
+
 definePageMeta({
   layout: "admin",
   middleware: "admin",
@@ -19,6 +21,8 @@ interface Category {
   description: string
 }
 
+const { api } = useApi()
+
 const categories = ref<Category[]>([])
 const tableLoading = ref(true)
 const tableError = ref("")
@@ -35,10 +39,10 @@ async function loadCategories() {
   tableLoading.value = true
   tableError.value = ""
   try {
-    const res = await $fetch<{ data: Category[] }>("/api/v1/categories")
+    const res = await api.get<{ data: Category[] }>("/api/v1/categories", { silent: true })
     categories.value = res.data
   } catch (err: unknown) {
-    tableError.value = err instanceof Error ? err.message : "加载分类失败"
+    tableError.value = extractApiError(err).message
   } finally {
     tableLoading.value = false
   }
@@ -89,20 +93,18 @@ async function handleSave() {
   formError.value = ""
   try {
     if (editingCategory.value) {
-      await $fetch(`/api/v1/categories/${editingCategory.value.id}`, {
-        method: "PUT",
-        body: { name: formName.value, slug: formSlug.value, description: formDesc.value },
+      await api.put(`/api/v1/categories/${editingCategory.value.id}`, {
+        name: formName.value, slug: formSlug.value, description: formDesc.value,
       })
     } else {
-      await $fetch("/api/v1/categories", {
-        method: "POST",
-        body: { name: formName.value, slug: formSlug.value, description: formDesc.value },
+      await api.post("/api/v1/categories", {
+        name: formName.value, slug: formSlug.value, description: formDesc.value,
       })
     }
     showForm.value = false
     await loadCategories()
   } catch (err: unknown) {
-    formError.value = err instanceof Error ? err.message : "保存失败"
+    formError.value = extractApiError(err).message
   } finally {
     saving.value = false
   }
@@ -123,13 +125,11 @@ async function handleDelete() {
   if (!deleteTarget.value) return
   deleting.value = true
   try {
-    await $fetch(`/api/v1/categories/${deleteTarget.value.id}`, {
-      method: "DELETE",
-    })
+    await api.delete(`/api/v1/categories/${deleteTarget.value.id}`)
     showDeleteConfirm.value = false
     await loadCategories()
   } catch (err: unknown) {
-    formError.value = err instanceof Error ? err.message : "删除失败"
+    formError.value = extractApiError(err).message
   } finally {
     deleting.value = false
   }

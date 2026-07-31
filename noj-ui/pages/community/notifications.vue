@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { NotificationRow } from "~/composables/useCommunity"
+import { extractApiError } from "~/utils/apiError"
 
 definePageMeta({ middleware: "auth" })
 
 const { toast } = useToast()
+const { api } = useApi()
 const { loadUnreadCount } = useCommunityNotifications()
 
 const notifications = ref<NotificationRow[]>([])
@@ -31,13 +33,13 @@ async function load(reset = true) {
   else loadingMore.value = true
   error.value = ""
   try {
-    const result = await $fetch<{ data: NotificationRow[] }>(
+    const result = await api.get<{ data: NotificationRow[] }>(
       "/api/v1/community/notifications",
-      { query: { limit: limit.value } },
+      { query: { limit: limit.value }, silent: true },
     )
     notifications.value = result.data
   } catch (err: unknown) {
-    error.value = err instanceof Error ? err.message : "加载通知失败"
+    error.value = extractApiError(err).message
   } finally {
     loading.value = false
     loadingMore.value = false
@@ -54,11 +56,9 @@ async function markAllRead() {
   if (markingRead.value || notifications.value.length === 0) return
   markingRead.value = true
   try {
-    await $fetch("/api/v1/community/notifications/read", { method: "POST" })
+    await api.post("/api/v1/community/notifications/read")
     toast.success("通知已标记为已读")
     await Promise.all([load(), loadUnreadCount()])
-  } catch (error: unknown) {
-    toast.error(error instanceof Error ? error.message : "操作失败")
   } finally {
     markingRead.value = false
   }
@@ -74,7 +74,7 @@ async function handleClick(item: NotificationRow) {
   // 点击即标记单条已读，不阻塞跳转
   if (!item.notification.read_at) {
     try {
-      await $fetch(`/api/v1/community/notifications/${item.notification.id}/read`, { method: "POST" })
+      await api.post(`/api/v1/community/notifications/${item.notification.id}/read`, undefined, { silent: true })
       item.notification.read_at = new Date().toISOString()
       await loadUnreadCount()
     } catch {

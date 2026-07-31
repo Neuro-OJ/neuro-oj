@@ -93,6 +93,7 @@
 
 <script setup lang="ts">
 const { user, isLoggedIn } = useAuth()
+const { api } = useApi()
 
 // ── Announcement Carousel ──
 interface Announcement {
@@ -176,7 +177,10 @@ const checkInLoaded = ref(false)
 async function fetchTodayCheckIn() {
     if (!isLoggedIn.value) return
     try {
-        const res = await $fetch<{ data: { checked_in: boolean; streak: number } }>("/api/v1/checkin/today")
+        const res = await api.get<{ data: { checked_in: boolean; streak: number } }>(
+            "/api/v1/checkin/today",
+            { silent: true },
+        )
         if (res.data) {
             checkedIn.value = res.data.checked_in
             streakCount.value = res.data.streak
@@ -199,9 +203,9 @@ async function handleCheckIn() {
     if (checkInLoading.value || checkedIn.value) return
     checkInLoading.value = true
     try {
-        const res = await $fetch<{ data: { checked_in: boolean; streak: number } }>("/api/v1/checkin", {
-            method: "POST",
-        })
+        const res = await api.post<{ data: { checked_in: boolean; streak: number } }>(
+            "/api/v1/checkin",
+        )
         if (res.data) {
             checkedIn.value = res.data.checked_in
             streakCount.value = res.data.streak

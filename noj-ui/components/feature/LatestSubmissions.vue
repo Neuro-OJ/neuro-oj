@@ -39,6 +39,8 @@
 <script setup lang="ts">
 import { useEventSource } from "~/composables/useEventSource"
 
+const { api } = useApi()
+
 interface SubmissionItem {
     id: string
     problem_id: string
@@ -81,8 +83,8 @@ function onStatsUpdated(data: unknown) {
 async function fetchStatsFallback() {
     try {
         const [totalRes, todayRes] = await Promise.all([
-            $fetch<{ data: TodayStats }>("/api/v1/submissions/total-stats"),
-            $fetch<{ data: TodayStats }>("/api/v1/submissions/today-stats"),
+            api.get<{ data: TodayStats }>("/api/v1/submissions/total-stats", { silent: true }),
+            api.get<{ data: TodayStats }>("/api/v1/submissions/today-stats", { silent: true }),
         ])
         if (totalRes.data) totalStats.value = totalRes.data
         if (todayRes.data) todayStats.value = todayRes.data
@@ -107,8 +109,9 @@ async function fetchSubmissions() {
     try {
         // 未登录调用公开端点（全站最近评测），登录调用私有端点（我的提交）
         const url = isLoggedIn.value ? "/api/v1/submissions" : "/api/v1/submissions/public/recent"
-        const res = await $fetch<{ data: SubmissionItem[] }>(url, {
+        const res = await api.get<{ data: SubmissionItem[] }>(url, {
             query: { per_page: 10 },
+            silent: true,
         })
         const list = res.data ?? []
         const newPrev = new Map<string, string>()

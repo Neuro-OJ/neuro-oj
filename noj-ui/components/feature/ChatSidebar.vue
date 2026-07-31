@@ -2,6 +2,8 @@
 import { useEventSource } from "~/composables/useEventSource"
 import { useMessages, type Conversation } from "~/composables/useMessages"
 
+const { api } = useApi()
+
 const props = defineProps<{
   activeConversationId?: string
 }>()
@@ -60,8 +62,9 @@ watch(searchQuery, (val) => {
   searchTimer = setTimeout(async () => {
     searching.value = true
     try {
-      const res = await $fetch<{ data: { id: string; username: string }[] }>(
+      const res = await api.get<{ data: { id: string; username: string }[] }>(
         `/api/v1/users/search?q=${encodeURIComponent(val.trim())}`,
+        { silent: true },
       )
       searchResults.value = res.data
       showResults.value = true

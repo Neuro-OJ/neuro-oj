@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useToast } from "~/composables/useToast"
+import { extractApiError } from '~/utils/apiError'
 
 definePageMeta({
   layout: "admin",
@@ -21,6 +22,8 @@ interface JudgeImage {
   description: string
   created_at: string
 }
+
+const { api } = useApi()
 
 const items = ref<JudgeImage[]>([])
 const tableLoading = ref(true)
@@ -57,13 +60,12 @@ async function loadItems() {
   tableLoading.value = true
   tableError.value = ""
   try {
-    const res = await $fetch<{ data: JudgeImage[] }>("/api/v1/admin/judge-images")
+    const res = await api.get<{ data: JudgeImage[] }>("/api/v1/admin/judge-images", { silent: true })
     if (currentRequest !== requestVersion) return
     items.value = res.data
   } catch (err: unknown) {
     if (currentRequest !== requestVersion) return
-    const apiErr = err as { data?: { error?: string }; message?: string } | undefined
-    tableError.value = apiErr?.data?.error || apiErr?.message || "加载评测镜像列表失败"
+    tableError.value = extractApiError(err).message
   } finally {
     if (currentRequest === requestVersion) tableLoading.value = false
   }
@@ -121,29 +123,22 @@ async function handleSave() {
   formError.value = ""
   try {
     if (editingItem.value) {
-      await $fetch(`/api/v1/admin/judge-images/${editingItem.value.id}`, {
-        method: "PUT",
-        body: {
-          image: formImage.value.trim(),
-          mode: formMode.value,
-          description: formDescription.value.trim(),
-        },
+      await api.put(`/api/v1/admin/judge-images/${editingItem.value.id}`, {
+        image: formImage.value.trim(),
+        mode: formMode.value,
+        description: formDescription.value.trim(),
       })
     } else {
-      await $fetch("/api/v1/admin/judge-images", {
-        method: "POST",
-        body: {
-          image: formImage.value.trim(),
-          mode: formMode.value,
-          description: formDescription.value.trim(),
-        },
+      await api.post("/api/v1/admin/judge-images", {
+        image: formImage.value.trim(),
+        mode: formMode.value,
+        description: formDescription.value.trim(),
       })
     }
     showForm.value = false
     await loadItems()
   } catch (err: unknown) {
-    const apiErr = err as { data?: { error?: string }; message?: string } | undefined
-    formError.value = apiErr?.data?.error || apiErr?.message || "保存失败"
+    formError.value = extractApiError(err).message
   } finally {
     saving.value = false
   }
@@ -164,15 +159,12 @@ async function handleDelete() {
   if (!deleteTarget.value) return
   deleting.value = true
   try {
-    await $fetch(`/api/v1/admin/judge-images/${deleteTarget.value.id}`, {
-      method: "DELETE",
-    })
+    await api.delete(`/api/v1/admin/judge-images/${deleteTarget.value.id}`)
     items.value = items.value.filter((item) => item.id !== deleteTarget.value!.id)
     showDeleteConfirm.value = false
     toast.success("评测镜像已删除")
   } catch (err: unknown) {
-    const apiErr = err as { data?: { error?: string }; message?: string } | undefined
-    formError.value = apiErr?.data?.error || apiErr?.message || "删除失败"
+    formError.value = extractApiError(err).message
   } finally {
     deleting.value = false
   }

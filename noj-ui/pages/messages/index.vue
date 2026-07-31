@@ -87,8 +87,6 @@ async function send() {
     messages.value.push(result.data)
     newMessage.value = ""
     scrollToBottom()
-  } catch {
-    toast.error("发送失败")
   } finally {
     sending.value = false
   }

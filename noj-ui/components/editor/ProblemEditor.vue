@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import SupportPackageUpload from "../admin/SupportPackageUpload.vue"
+import { extractApiError } from "~/utils/apiError"
 
 interface RuntimeConfigPayload {
   evaluator: {
@@ -32,6 +33,7 @@ const emit = defineEmits<{
 
 const router = useRouter()
 const { user } = useAuth()
+const { api } = useApi()
 
 const isAdmin = computed(() => user.value?.role === "admin")
 
@@ -62,8 +64,9 @@ const judgeImagesLoading = ref(false)
 async function loadJudgeImages() {
   judgeImagesLoading.value = true
   try {
-    const res = await $fetch<{ data: { image: string; kind?: string }[] }>(
+    const res = await api.get<{ data: { image: string; kind?: string }[] }>(
       "/api/v1/judge-images",
+      { silent: true },
     )
     judgeImages.value = res.data ?? []
   } catch {
@@ -96,7 +99,10 @@ const categories = ref<{ id: string; name: string }[]>([])
 
 async function loadCategories() {
   try {
-    const res = await $fetch<{ data: { id: string; name: string }[] }>("/api/v1/categories")
+    const res = await api.get<{ data: { id: string; name: string }[] }>(
+      "/api/v1/categories",
+      { silent: true },
+    )
     categories.value = res.data
   } catch { /* 静默失败 */ }
 }
@@ -110,13 +116,13 @@ async function loadProblem() {
   if (!props.problemId) return
   pageLoading.value = true
   try {
-    const res = await $fetch<{ data: {
+    const res = await api.get<{ data: {
       title: string; description: string; difficulty: string
       time_limit_ms: number; memory_limit_mb: number
       display_id: string; type: string; number: number
       categories: { id: string }[]
       runtime_config: RuntimeConfigPayload | null
-    } }>(`/api/v1/problems/${props.problemId}`)
+    } }>(`/api/v1/problems/${props.problemId}`, { silent: true })
     const p = res.data
     displayId.value = p.display_id
     problemType.value = p.type
@@ -141,7 +147,7 @@ async function loadProblem() {
     if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) {
       notFound.value = true
     } else {
-      loadError.value = err instanceof Error ? err.message : "加载题目失败"
+      loadError.value = extractApiError(err).message
     }
   } finally {
     pageLoading.value = false
@@ -192,32 +198,26 @@ async function handleSubmit() {
       },
     }
     if (isEditMode.value) {
-      await $fetch(`/api/v1/problems/${props.problemId}`, {
-        method: "PUT",
-        body: {
-          title: title.value.trim(), description: description.value.trim(),
-          difficulty: difficulty.value,
-          category_ids: categoryIds.value,
-          runtime_config: runtimeConfigPayload,
-        },
+      await api.put(`/api/v1/problems/${props.problemId}`, {
+        title: title.value.trim(), description: description.value.trim(),
+        difficulty: difficulty.value,
+        category_ids: categoryIds.value,
+        runtime_config: runtimeConfigPayload,
       })
       emit("saved", props.problemId!)
     } else {
-      const res = await $fetch<{ data: { id: string } }>("/api/v1/problems", {
-        method: "POST",
-        body: {
-          title: title.value.trim(), description: description.value.trim(),
-          difficulty: difficulty.value,
-          category_ids: categoryIds.value,
-          type: problemType.value,
-          runtime_config: runtimeConfigPayload,
-        },
+      const res = await api.post<{ data: { id: string } }>("/api/v1/problems", {
+        title: title.value.trim(), description: description.value.trim(),
+        difficulty: difficulty.value,
+        category_ids: categoryIds.value,
+        type: problemType.value,
+        runtime_config: runtimeConfigPayload,
       })
       savedProblemId.value = res.data.id
       emit("saved", res.data.id)
     }
   } catch (err: unknown) {
-    saveError.value = err instanceof Error ? err.message : "保存失败"
+    saveError.value = extractApiError(err).message
   } finally {
     saving.value = false
   }

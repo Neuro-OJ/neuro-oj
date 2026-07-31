@@ -79,6 +79,7 @@
 
 <script setup lang="ts">
 import { validatePassword, validatePasswordMatch, validateEmail } from "~/utils/validatePassword"
+import { extractApiError } from "~/utils/apiError"
 
 definePageMeta({ layout: "auth" })
 
@@ -169,8 +170,8 @@ async function handleRegister() {
     try {
         // 先注册
         await auth.register(form.username.trim(), form.email.trim(), form.password)
-    } catch (e: any) {
-        setError(typeof e.data?.error === "string" ? e.data.error : `错误代码: ${e.status || 502}`)
+    } catch (e: unknown) {
+        setError(extractApiError(e).message)
         loading.value = false
         return
     }

@@ -56,6 +56,8 @@
 </template>
 
 <script setup lang="ts">
+import { extractApiError } from "~/utils/apiError"
+
 definePageMeta({ layout: "auth" })
 
 const router = useRouter()
@@ -121,7 +123,7 @@ async function handleLogin() {
         : `账号已被封禁。${reason ? `原因：${reason}。` : ""}请联系管理员。`;
       return;
     }
-    setError(typeof e.data?.error === "string" ? e.data.error : `服务器错误 (${e.status || 502})`)
+    setError(extractApiError(e).message)
   } finally {
     loading.value = false
   }

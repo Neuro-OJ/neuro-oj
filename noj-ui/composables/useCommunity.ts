@@ -136,12 +136,13 @@ export interface NotificationRow {
 export function useCommunity() {
   const config = useState<CommunityConfig | null>('community:config', () => null);
   const loading = useState('community:config-loading', () => false);
+  const { api } = useApi();
 
   async function loadConfig(force = false) {
     if (config.value && !force) return config.value;
     loading.value = true;
     try {
-      const response = await $fetch<{ data: CommunityConfig }>('/api/v1/community/config');
+      const response = await api.get<{ data: CommunityConfig }>('/api/v1/community/config');
       config.value = response.data;
       return response.data;
     } finally {
