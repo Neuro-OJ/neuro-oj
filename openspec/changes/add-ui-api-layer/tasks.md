@@ -16,12 +16,12 @@
 
 ## 3. 迁移 pages + components
 
-- [ ] 3.1 认证 5 页（login/register/forgot-password/reset-password/change-password）：换 `api` + `silent: true`，保留内联 banner、`USER_BANNED` 专用分支与 `useFormError` 模式不变
-- [ ] 3.2 admin 表单提交页（community/contests/users/roles/settings/blacklist/judge-images/submissions/problems/categories/index）：删除 catch 中重复 `toast.error`，依赖 API 层自动弹窗；error ref 内联场景改 `onError`/`silent`；消灭裸抛（load/Promise.all 无 catch 场景）
-- [ ] 3.3 社区/消息页（community/index、posts/[postId]、notifications、bookmarks、messages/index、users/[id]）：换 `api` 调用，删除重复 toast，保留静默场景
-- [ ] 3.4 轮询/后台静默场景（queue、submissions/[id]、UserMenu 未读数、LatestSubmissions、RandomProblems、index 签到、problems 通过状态、ChatSidebar、ProblemEditor 下拉加载、contests 下拉）：换 `api` + `silent: true`
-- [ ] 3.5 `useAsyncData` 包裹场景（about、problems、community posts）与 allSettled 场景（admin/index、community/index、useSearch 已迁移）：换 `api` + `silent`，错误仍由 useAsyncData/allSettled 状态接管
-- [ ] 3.6 验证：`deno task lint` + `deno task fmt` + `deno task build` 通过；grep 复查全仓 `$fetch` 仅存在于 `useApi.ts` 与 `server/api/` 代理
+- [x] 3.1 认证 5 页（login/register/forgot-password/reset-password/change-password）：换 `api` + `silent: true`，保留内联 banner、`USER_BANNED` 专用分支与 `useFormError` 模式不变
+- [x] 3.2 admin 表单提交页（community/contests/users/roles/settings/blacklist/judge-images/submissions/problems/categories/index）：删除 catch 中重复 `toast.error`，依赖 API 层自动弹窗；error ref 内联场景改 `onError`/`silent`；消灭裸抛（load/Promise.all 无 catch 场景）
+- [x] 3.3 社区/消息页（community/index、posts/[postId]、notifications、bookmarks、messages/index、users/[id]）：换 `api` 调用，删除重复 toast，保留静默场景
+- [x] 3.4 轮询/后台静默场景（queue、submissions/[id]、UserMenu 未读数、LatestSubmissions、RandomProblems、index 签到、problems 通过状态、ChatSidebar、ProblemEditor 下拉加载、contests 下拉）：换 `api` + `silent: true`
+- [x] 3.5 `useAsyncData` 包裹场景（about、problems、community posts）与 allSettled 场景（admin/index、community/index、useSearch 已迁移）：换 `api` + `silent`，错误仍由 useAsyncData/allSettled 状态接管
+- [x] 3.6 验证：`deno task lint` + `deno task fmt` + `deno task build` 通过；grep 复查全仓 `$fetch` 仅存在于 `useApi.ts` 与 `server/api/` 代理
 
 ## 4. 回归验证与文档
 

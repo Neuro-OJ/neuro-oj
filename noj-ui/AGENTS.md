@@ -169,6 +169,30 @@ cd dist
   - 自动从 Cookie 注入 `Authorization: Bearer` 头到转发请求
 - 注销：`server/api/auth/logout.post.ts` 删除两个 Cookie（**纯本地操作**，不调用后端 API）
 
+### useApi 统一 API 调用层
+
+- **业务代码禁止直接 `$fetch`**（Nitro 代理与 `composables/useApi.ts` 内部除外），统一通过 `useApi()`：
+  ```ts
+  const { api } = useApi()
+  await api.get<T>(url, options?)            // 原 $fetch<T>(url)
+  await api.post<T>(url, body?, options?)    // 原 $fetch<T>(url, { method: 'POST', body })
+  await api.put<T>(url, body?, options?)
+  await api.patch<T>(url, body?, options?)
+  await api.delete<T>(url, options?)
+  ```
+- **错误处理（默认）**：非 2xx / 网络 / 超时错误自动提取后端 `error` 字段（具体原因），
+  通过 `useToast().toast.error()` 弹窗（5s 自动消失），然后**原样重抛**原错误对象
+  （保留 `data`/`status` 结构，`e.data?.code` 等分支代码可直接使用）
+- **选项**：
+  - `silent: true`：不弹 toast（轮询、后台刷新、列表加载 error ref、表单内联错误等场景），错误仍抛出
+  - `onError(err, info)`：自定义处理，替换默认 toast；与 `silent` 同时给出时 `silent` 优先
+  - `timeout`（ms）：透传 ofetch 超时（内部 `AbortSignal.timeout`），替代手写 `Promise.race`
+  - 其余选项（`params`、`headers`、`query` 等）原样透传 `$fetch`
+- **错误文案**：需要把错误写入页面 error ref 时，用 `extractApiError(e).message`
+  （`import { extractApiError } from '~/utils/apiError'`），禁止手写 `e.data?.error || e.status` 提取
+- **SSR 端**不弹 toast（UToaster 依赖客户端），仅抛错
+- 后端错误响应格式：`{ error: "<具体原因>", code: "<机器码>", request_id }`（noj-core `AppError` 体系）
+
 ### 代理实现细节（[...slug].ts）
 
 - **仅拦截** `POST /api/v1/auth/login`：解析登录响应，提取 JWT 设置 Cookie，从响应体删除 `token` 字段
