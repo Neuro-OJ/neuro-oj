@@ -204,6 +204,20 @@
       "when": 1785317119735,
       "tag": "0028_contest_global_ranking",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1785392328557,
+      "tag": "0029_bizarre_mentallo",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1785393442651,
+      "tag": "0030_perfect_katie_power",
+      "breakpoints": true
     }
   ]
 }

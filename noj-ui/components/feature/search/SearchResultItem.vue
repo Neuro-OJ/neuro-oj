@@ -8,9 +8,10 @@
     <!-- 题号 / 用户头像占位 -->
     <div
       class="flex-shrink-0 w-10 h-10 rounded-md flex items-center justify-center text-sm font-mono font-semibold"
-      :class="kind === 'problem' ? 'bg-primary-bg text-primary' : 'bg-info-bg text-info-text'"
+      :class="kind === 'problem' ? 'bg-primary-bg text-primary' : kind === 'community' ? 'bg-amber-50 text-amber-700' : 'bg-info-bg text-info-text'"
     >
-      <span v-if="kind === 'problem'">{{ displayId || item.display_id }}</span>
+      <span v-if="kind === 'problem'">{{ displayId || (item as ProblemSearchResult).display_id }}</span>
+      <span v-else-if="kind === 'community'">帖子</span>
       <span v-else>{{ usernameInitial }}</span>
     </div>
 
@@ -21,6 +22,9 @@
         <span v-if="kind === 'problem'">
           {{ difficultyLabel }} · {{ rankText }}
         </span>
+        <span v-else-if="kind === 'community'">
+          {{ (item as CommunitySearchResult).type === 'solution' ? '题解' : '讨论' }} · {{ (item as CommunitySearchResult).author_username }}
+        </span>
         <span v-else>
           {{ roleLabel }}
         </span>
@@ -29,18 +33,18 @@
 
     <!-- 类型徽章 -->
     <div class="flex-shrink-0 text-xs text-text-muted">
-      {{ kind === "problem" ? "题目" : "用户" }}
+      {{ kind === "problem" ? "题目" : kind === "community" ? "帖子" : "用户" }}
     </div>
   </component>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { ProblemSearchResult, UserSearchResult } from "~/composables/useSearch";
+import type { CommunitySearchResult, ProblemSearchResult, UserSearchResult } from "~/composables/useSearch";
 
 const props = defineProps<{
-  item: ProblemSearchResult | UserSearchResult;
-  kind: "problem" | "user";
+  item: ProblemSearchResult | UserSearchResult | CommunitySearchResult;
+  kind: "problem" | "user" | "community";
   selected?: boolean;
   displayId?: string;
   rank?: number;
@@ -51,6 +55,7 @@ const href = computed(() => {
     const p = props.item as ProblemSearchResult;
     return `/problems/${p.display_id || p.id}`;
   }
+  if (props.kind === "community") return `/community/posts/${props.item.id}`;
   const u = props.item as UserSearchResult;
   return `/users/${u.id}`;
 });
@@ -76,9 +81,11 @@ const rankText = computed(() => {
 
 // 将 [[HIGHLIGHT]]...[[/HIGHLIGHT]] 转为 <mark>（受控渲染，marker 来自服务端 ts_headline）
 const highlightedTitle = computed(() => {
-  const item = props.item as ProblemSearchResult | UserSearchResult;
+  const item = props.item as ProblemSearchResult | UserSearchResult | CommunitySearchResult;
   const raw = props.kind === "problem"
     ? (item as ProblemSearchResult).highlight
+    : props.kind === "community"
+    ? (item as CommunitySearchResult).highlight
     : (item as UserSearchResult).highlight;
   return raw
     .replaceAll("[[HIGHLIGHT]]", '<mark class="bg-yellow-200">')

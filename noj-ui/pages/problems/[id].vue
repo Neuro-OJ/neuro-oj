@@ -133,6 +133,9 @@ function goToEditor() {
         <NuxtLink to="/login" class="text-primary no-underline hover:underline">登录</NuxtLink>
         后即可提交代码
       </div>
+      <section class="rounded-xl border border-border bg-white p-6">
+        <div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-base font-semibold text-text">题解与讨论</h2><p class="mt-1 text-sm text-text-secondary">查看本题的公开题解，或在通过后分享思路。</p></div><NuxtLink :to="`/community?type=solution&problem_id=${problem.id}`" class="btn-outline text-sm">查看题解</NuxtLink></div>
+      </section>
     </div>
     </AsyncContent>
   </template>

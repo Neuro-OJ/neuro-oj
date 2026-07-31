@@ -1,0 +1,125 @@
+<script setup lang="ts">
+import { Bell, CheckCheck, Reply, Heart, UserPlus, ShieldCheck } from "@lucide/vue"
+import type { NotificationRow } from "~/composables/useCommunity"
+
+definePageMeta({ middleware: "auth" })
+
+const { toast } = useToast()
+const { loadUnreadCount } = useCommunityNotifications()
+
+const notifications = ref<NotificationRow[]>([])
+const loading = ref(true)
+const loadingMore = ref(false)
+const error = ref("")
+const limit = ref(30)
+const markingRead = ref(false)
+
+const typeLabel: Record<NotificationRow["notification"]["type"], string> = {
+  reply: "回复了你",
+  like: "赞了你的内容",
+  follow: "关注了你",
+  moderation: "更新了内容审核状态",
+}
+const typeIcon = {
+  reply: Reply,
+  like: Heart,
+  follow: UserPlus,
+  moderation: ShieldCheck,
+}
+
+async function load(reset = true) {
+  if (reset) loading.value = true
+  else loadingMore.value = true
+  error.value = ""
+  try {
+    const result = await $fetch<{ data: NotificationRow[] }>(
+      "/api/v1/community/notifications",
+      { query: { limit: limit.value } },
+    )
+    notifications.value = result.data
+  } catch (err: unknown) {
+    error.value = err instanceof Error ? err.message : "加载通知失败"
+  } finally {
+    loading.value = false
+    loadingMore.value = false
+  }
+}
+
+async function loadMore() {
+  if (loadingMore.value || limit.value >= 100) return
+  limit.value = Math.min(limit.value + 30, 100)
+  await load(false)
+}
+
+async function markAllRead() {
+  if (markingRead.value || notifications.value.length === 0) return
+  markingRead.value = true
+  try {
+    await $fetch("/api/v1/community/notifications/read", { method: "POST" })
+    toast.success("通知已标记为已读")
+    await Promise.all([load(), loadUnreadCount()])
+  } catch (error: unknown) {
+    toast.error(error instanceof Error ? error.message : "操作失败")
+  } finally {
+    markingRead.value = false
+  }
+}
+
+function notificationHref(item: NotificationRow): string {
+  if (item.notification.post_id) return `/community/posts/${item.notification.post_id}`
+  if (item.notification.type === "follow" && item.actor) return `/users/${item.actor.id}`
+  return "/community"
+}
+
+async function handleClick(item: NotificationRow) {
+  // 点击即标记单条已读，不阻塞跳转
+  if (!item.notification.read_at) {
+    try {
+      await $fetch(`/api/v1/community/notifications/${item.notification.id}/read`, { method: "POST" })
+      item.notification.read_at = new Date().toISOString()
+      await loadUnreadCount()
+    } catch {
+      // 已读失败不阻塞跳转
+    }
+  }
+  navigateTo(notificationHref(item))
+}
+
+await load()
+</script>
+
+<template>
+  <main class="mx-auto w-full max-w-4xl px-6 py-10">
+    <div class="mb-6 flex items-center justify-between">
+      <div><h1 class="text-2xl font-bold text-text">社区通知</h1><p class="mt-1 text-sm text-text-secondary">回复、互动和审核结果会保留在这里。</p></div>
+      <button class="btn-outline" :disabled="markingRead || notifications.length === 0" @click="markAllRead"><CheckCheck :size="16" />{{ markingRead ? '处理中…' : '全部已读' }}</button>
+    </div>
+    <p v-if="error" class="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">{{ error }}</p>
+    <div v-else-if="loading" class="py-12 text-center text-text-secondary">加载中…</div>
+    <div v-else-if="notifications.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center text-text-secondary"><Bell class="mx-auto mb-3" :size="28" />暂无通知。</div>
+    <div v-else class="space-y-3">
+      <button
+        v-for="item in notifications"
+        :key="item.notification.id"
+        type="button"
+        class="block w-full rounded-lg border border-border bg-white p-4 text-left no-underline shadow-card transition-colors hover:bg-gray-50"
+        :class="!item.notification.read_at && 'border-primary/40 bg-primary-bg/30'"
+        @click="handleClick(item)"
+      >
+        <div class="flex items-start gap-3">
+          <span class="mt-0.5 flex size-8 flex-shrink-0 items-center justify-center rounded-full" :class="item.notification.type === 'moderation' ? 'bg-red-50 text-red-600' : 'bg-primary-bg text-primary'">
+            <component :is="typeIcon[item.notification.type]" :size="15" />
+          </span>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm text-text"><strong>{{ item.actor?.username ?? '系统' }}</strong>{{ typeLabel[item.notification.type] }}</p>
+            <p v-if="item.notification.data.reason" class="mt-1 text-xs text-text-secondary">{{ item.notification.data.reason }}</p>
+            <NuxtTime class="mt-1 block text-xs text-text-muted" :datetime="item.notification.created_at" relative locale="zh-CN" />
+          </div>
+        </div>
+      </button>
+      <div v-if="limit < 100" class="text-center">
+        <button class="btn-outline" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '加载中…' : '加载更多' }}</button>
+      </div>
+    </div>
+  </main>
+</template>

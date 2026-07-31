@@ -5,7 +5,10 @@ import katex from "katex"
 import hljs from "highlight.js"
 import "highlight.js/styles/github-dark.css"
 
-const props = defineProps<{ content: string }>()
+const { content, allowExternalImages = false } = defineProps<{
+  content: string
+  allowExternalImages?: boolean
+}>()
 
 const md = markdownit({
   html: true,
@@ -54,16 +57,26 @@ function renderMarkdown(src: string): string {
   return md.render(text)
 }
 
+function secureExternalImages(html: string): string {
+  return html.replace(/<img\b[^>]*\bsrc="([^"]*)"[^>]*>/gi, (_tag, src: string) => {
+    if (!src.startsWith("https://")) return ""
+    if (!allowExternalImages) {
+      return `<a href="${md.utils.escapeHtml(src)}" rel="nofollow noopener noreferrer" target="_blank">外链图片</a>`
+    }
+    return `<img src="${md.utils.escapeHtml(src)}" loading="lazy" referrerpolicy="no-referrer" alt="外链图片">`
+  })
+}
+
 // DOMPurify sanitize（防止 v-html XSS）
 // 客户端优先使用 DOMPurify，加载失败时使用标签白名单降级
 const renderedHtml = ref("")
 let renderId = 0
 
 watch(
-  () => props.content,
-  async (content) => {
+  [() => content, () => allowExternalImages],
+  async ([source]) => {
     const id = ++renderId
-    const raw = renderMarkdown(content)
+    const raw = secureExternalImages(renderMarkdown(source))
     const html = import.meta.client
       ? await sanitizeHtmlAsync(raw)
       : sanitizeHtmlSync(raw)

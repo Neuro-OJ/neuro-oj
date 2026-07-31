@@ -15,7 +15,7 @@
  * - 「all」模式下两个端点都失败时显式设置 error，不静默吞错。
  */
 
-export type SearchType = "all" | "problem" | "user";
+export type SearchType = "all" | "problem" | "user" | "community";
 
 export interface ProblemSearchResult {
   id: string;
@@ -37,6 +37,18 @@ export interface UserSearchResult {
   highlight: string;
 }
 
+export interface CommunitySearchResult {
+  id: string;
+  type: "solution" | "discussion";
+  title: string;
+  author_id: string;
+  author_username: string;
+  problem_id: string | null;
+  created_at: string;
+  rank: number;
+  highlight: string;
+}
+
 export interface SearchState {
   open: boolean;
   query: string;
@@ -44,6 +56,7 @@ export interface SearchState {
   results: {
     problems: ProblemSearchResult[];
     users: UserSearchResult[];
+    community: CommunitySearchResult[];
   };
   loading: boolean;
   error: string | null;
@@ -54,7 +67,7 @@ export function useSearch() {
     open: false,
     query: "",
     type: "all",
-    results: { problems: [], users: [] },
+    results: { problems: [], users: [], community: [] },
     loading: false,
     error: null,
   }));
@@ -115,7 +128,7 @@ export function useSearch() {
     if (opts?.type) state.value.type = opts.type;
 
     if (trimmed.length < 2) {
-      state.value.results = { problems: [], users: [] };
+      state.value.results = { problems: [], users: [], community: [] };
       state.value.loading = false;
       state.value.error = null;
       return;
@@ -136,12 +149,15 @@ export function useSearch() {
         try {
           if (type === "all") {
             // 并行请求题目 + 用户
-            const [pRes, uRes] = await Promise.allSettled([
+            const [pRes, uRes, cRes] = await Promise.allSettled([
               $fetch("/api/v1/search", {
                 params: { q: trimmed, type: "problem", limit },
               }),
               $fetch("/api/v1/search", {
                 params: { q: trimmed, type: "user", limit: 3 },
+              }),
+              $fetch("/api/v1/search", {
+                params: { q: trimmed, type: "community", limit: 3 },
               }),
             ]);
 
@@ -157,14 +173,18 @@ export function useSearch() {
             const users = uRes.status === "fulfilled"
               ? (uRes.value as { data: { items: UserSearchResult[] } }).data.items
               : [];
+            const community = cRes.status === "fulfilled"
+              ? (cRes.value as { data: { items: CommunitySearchResult[] } }).data.items
+              : [];
 
             // 两个端点都失败时显式设置 error（Promise.allSettled 不抛错）
-            if (pRes.status === "rejected" && uRes.status === "rejected") {
+            if (pRes.status === "rejected" && uRes.status === "rejected" && cRes.status === "rejected") {
               state.value.error = "搜索失败";
-              state.value.results = { problems: [], users: [] };
+              state.value.results = { problems: [], users: [], community: [] };
             } else {
               state.value.results.problems = problems;
               state.value.results.users = users;
+              state.value.results.community = community;
             }
           } else {
             const res = await $fetch("/api/v1/search", {
@@ -177,11 +197,12 @@ export function useSearch() {
               return;
             }
 
-            const items = (res as { data: { items: ProblemSearchResult[] | UserSearchResult[] } })
+            const items = (res as { data: { items: ProblemSearchResult[] | UserSearchResult[] | CommunitySearchResult[] } })
               .data.items;
             state.value.results = {
               problems: type === "problem" ? items as ProblemSearchResult[] : [],
               users: type === "user" ? items as UserSearchResult[] : [],
+              community: type === "community" ? items as CommunitySearchResult[] : [],
             };
           }
         } catch (e: unknown) {
@@ -189,7 +210,7 @@ export function useSearch() {
           if (mySeq === requestSeq) {
             state.value.error = (e as { data?: { error?: string } })?.data?.error
               ?? "搜索失败";
-            state.value.results = { problems: [], users: [] };
+            state.value.results = { problems: [], users: [], community: [] };
           }
         } finally {
           if (mySeq === requestSeq) {

@@ -15,8 +15,14 @@ import { sql } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { problems, users } from "../../src/db/schema.ts";
+import { signToken } from "../../src/lib/jwt.ts";
 import { jsonRequest } from "../lib/helper.ts";
 import { connectRedis, getRedis } from "../../src/mq/connection.ts";
+import {
+  _resetSystemSettingsForTest,
+  initSystemSettings,
+} from "../../src/services/system-settings.ts";
+import { createBoard, createPost } from "../../src/services/community.ts";
 
 // 模块加载时建立一次 Redis 连接（限流中间件依赖 Redis，必须先 connect）
 try {
@@ -178,6 +184,42 @@ Deno.test({
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.data.items.length, 0);
+  },
+});
+
+Deno.test({
+  name: "search route: type=community 返回匹配的帖子",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    _resetSystemSettingsForTest();
+    await initSystemSettings();
+    await seed();
+    const board = await createBoard({
+      slug: "search-community-board",
+      name: "搜索社区板块",
+    });
+    const post = await createPost("test-user", {
+      type: "discussion",
+      board_id: board.id,
+      title: "全局帖子检索标题",
+      content: "用于验证全局搜索的帖子正文",
+    });
+    const token = await signToken({ sub: "test-user", role: "user" });
+    const app = createApp();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/search?q=全局帖子&type=community",
+      { token },
+    );
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(
+      body.data.items.some((item: { id: string }) => item.id === post.id),
+      true,
+    );
   },
 });
 

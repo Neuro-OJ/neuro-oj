@@ -13,6 +13,8 @@ export const SCHEMA_DDL: string[] = [
     role TEXT NOT NULL DEFAULT 'user',
     bio TEXT NOT NULL DEFAULT '',
     must_change_password BOOLEAN NOT NULL DEFAULT false,
+    community_activity_visibility TEXT NOT NULL DEFAULT 'following'
+      CHECK (community_activity_visibility IN ('hidden', 'following', 'everyone')),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     search_vector tsvector GENERATED ALWAYS AS (
@@ -232,7 +234,9 @@ export const SCHEMA_DDL: string[] = [
       'ip_ban.create','ip_ban.delete',
       -- PR-2 新增 auth.* 动作
       'auth.login_success','auth.login_failure','auth.register',
-      'auth.change_password','auth.forgot_password_request','auth.password_reset')
+      'auth.change_password','auth.forgot_password_request','auth.password_reset',
+      'community.post_moderated','community.report_resolved',
+      'community.sanction_created','community.sanction_revoked','community.preset_applied')
     ))
   `,
 
@@ -256,6 +260,164 @@ export const SCHEMA_DDL: string[] = [
     banned_by TEXT REFERENCES users(id) ON DELETE SET NULL,
     unbanned_at TEXT,
     unbanned_by TEXT REFERENCES users(id) ON DELETE SET NULL
+  )`,
+
+  // 社区表依赖 RBAC 角色；在 PGlite 建表顺序中提前确保 roles 存在。
+  `CREATE TABLE IF NOT EXISTS roles (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    is_system BOOLEAN NOT NULL DEFAULT false,
+    is_default BOOLEAN NOT NULL DEFAULT false,
+    is_admin BOOLEAN NOT NULL DEFAULT false,
+    parent_id TEXT REFERENCES roles(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS community_boards (
+    id TEXT PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_archived BOOLEAN NOT NULL DEFAULT false,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS community_board_role_grants (
+    board_id TEXT NOT NULL REFERENCES community_boards(id) ON DELETE CASCADE,
+    role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    can_read BOOLEAN NOT NULL DEFAULT true,
+    can_post BOOLEAN NOT NULL DEFAULT false,
+    can_moderate BOOLEAN NOT NULL DEFAULT false,
+    PRIMARY KEY (board_id, role_id)
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS community_posts (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL CHECK (type IN ('solution', 'discussion', 'moment')),
+    author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    problem_id TEXT REFERENCES problems(id) ON DELETE CASCADE,
+    board_id TEXT REFERENCES community_boards(id) ON DELETE SET NULL,
+    title TEXT,
+    content TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'published'
+      CHECK (status IN ('draft', 'pending', 'published', 'hidden', 'deleted')),
+    is_locked BOOLEAN NOT NULL DEFAULT false,
+    is_pinned BOOLEAN NOT NULL DEFAULT false,
+    moderation_reason TEXT,
+    published_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK (
+      (type = 'solution' AND problem_id IS NOT NULL AND board_id IS NULL AND title IS NOT NULL)
+      OR (type = 'discussion' AND board_id IS NOT NULL AND problem_id IS NULL AND title IS NOT NULL)
+      OR (type = 'moment' AND problem_id IS NULL AND board_id IS NULL AND title IS NULL)
+    )
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS community_comments (
+    id TEXT PRIMARY KEY,
+    post_id TEXT NOT NULL REFERENCES community_posts(id) ON DELETE CASCADE,
+    author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    parent_id TEXT REFERENCES community_comments(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'published'
+      CHECK (status IN ('pending', 'published', 'hidden', 'deleted')),
+    moderation_reason TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS community_post_likes (
+    post_id TEXT NOT NULL REFERENCES community_posts(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (post_id, user_id)
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS community_comment_likes (
+    comment_id TEXT NOT NULL REFERENCES community_comments(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (comment_id, user_id)
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS community_bookmarks (
+    post_id TEXT NOT NULL REFERENCES community_posts(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (post_id, user_id)
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS community_follows (
+    follower_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    followee_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (follower_id, followee_id),
+    CHECK (follower_id <> followee_id)
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS community_activity_events (
+    id TEXT PRIMARY KEY,
+    actor_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK (type IN ('first_accepted', 'solution_published', 'contest_joined')),
+    subject_type TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    metadata JSONB NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    UNIQUE (actor_id, type, subject_type, subject_id)
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS community_reports (
+    id TEXT PRIMARY KEY,
+    reporter_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    post_id TEXT REFERENCES community_posts(id) ON DELETE SET NULL,
+    comment_id TEXT REFERENCES community_comments(id) ON DELETE SET NULL,
+    reason TEXT NOT NULL,
+    content_snapshot TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'resolved', 'dismissed')),
+    resolution TEXT,
+    resolved_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    resolved_at TEXT,
+    created_at TEXT NOT NULL,
+    CHECK (num_nonnulls(post_id, comment_id) = 1)
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS community_moderation_actions (
+    id TEXT PRIMARY KEY,
+    moderator_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    metadata JSONB NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS community_sanctions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reason TEXT NOT NULL,
+    expires_at TEXT,
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    revoked_at TEXT,
+    revoked_by TEXT REFERENCES users(id) ON DELETE SET NULL
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS community_notifications (
+    id TEXT PRIMARY KEY,
+    recipient_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    actor_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    type TEXT NOT NULL CHECK (type IN ('reply', 'like', 'follow', 'moderation')),
+    post_id TEXT REFERENCES community_posts(id) ON DELETE SET NULL,
+    comment_id TEXT REFERENCES community_comments(id) ON DELETE SET NULL,
+    data JSONB NOT NULL DEFAULT '{}',
+    read_at TEXT,
+    created_at TEXT NOT NULL
   )`,
 ];
 
@@ -293,6 +455,34 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_ip_bans_expires_at ON ip_bans (expires_at)",
   "CREATE INDEX IF NOT EXISTS idx_user_bans_user ON user_bans (user_id)",
   "CREATE INDEX IF NOT EXISTS idx_user_bans_active ON user_bans (user_id) WHERE unbanned_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS idx_community_boards_sort ON community_boards (is_archived, sort_order)",
+  "CREATE INDEX IF NOT EXISTS idx_community_board_role_grants_role ON community_board_role_grants (role_id)",
+  "CREATE INDEX IF NOT EXISTS idx_community_posts_author ON community_posts (author_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_community_posts_problem ON community_posts (problem_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_community_posts_board ON community_posts (board_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_community_posts_published ON community_posts (type, is_pinned, created_at) WHERE status = 'published'",
+  "CREATE INDEX IF NOT EXISTS idx_community_posts_pending ON community_posts (created_at) WHERE status = 'pending'",
+  "CREATE INDEX IF NOT EXISTS idx_community_comments_post ON community_comments (post_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_community_comments_author ON community_comments (author_id)",
+  "CREATE INDEX IF NOT EXISTS idx_community_comments_parent ON community_comments (parent_id)",
+  "CREATE INDEX IF NOT EXISTS idx_community_post_likes_user ON community_post_likes (user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_community_comment_likes_user ON community_comment_likes (user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_community_bookmarks_user ON community_bookmarks (user_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_community_follows_followee ON community_follows (followee_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_community_activity_events_actor ON community_activity_events (actor_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_community_reports_pending ON community_reports (created_at) WHERE status = 'pending'",
+  "CREATE INDEX IF NOT EXISTS idx_community_reports_reporter ON community_reports (reporter_id)",
+  "CREATE INDEX IF NOT EXISTS idx_community_reports_post ON community_reports (post_id)",
+  "CREATE INDEX IF NOT EXISTS idx_community_reports_comment ON community_reports (comment_id)",
+  "CREATE INDEX IF NOT EXISTS idx_community_moderation_actions_target ON community_moderation_actions (target_type, target_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_community_moderation_actions_moderator ON community_moderation_actions (moderator_id)",
+  "CREATE INDEX IF NOT EXISTS idx_community_sanctions_active ON community_sanctions (user_id) WHERE revoked_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS idx_community_sanctions_creator ON community_sanctions (created_by)",
+  "CREATE INDEX IF NOT EXISTS idx_community_notifications_recipient ON community_notifications (recipient_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_community_notifications_unread ON community_notifications (recipient_id, created_at) WHERE read_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS idx_community_notifications_actor ON community_notifications (actor_id)",
+  "CREATE INDEX IF NOT EXISTS idx_community_notifications_post ON community_notifications (post_id)",
+  "CREATE INDEX IF NOT EXISTS idx_community_notifications_comment ON community_notifications (comment_id)",
   // RBAC 权限系统
   `CREATE TABLE IF NOT EXISTS roles (
     id TEXT PRIMARY KEY,
@@ -351,4 +541,17 @@ export const ALL_TABLES = [
   "permissions",
   "role_permissions",
   "user_roles",
+  "community_boards",
+  "community_board_role_grants",
+  "community_posts",
+  "community_comments",
+  "community_post_likes",
+  "community_comment_likes",
+  "community_bookmarks",
+  "community_follows",
+  "community_activity_events",
+  "community_reports",
+  "community_moderation_actions",
+  "community_sanctions",
+  "community_notifications",
 ] as const;

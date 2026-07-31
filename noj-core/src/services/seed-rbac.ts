@@ -19,6 +19,7 @@ import {
   users,
 } from "../db/schema.ts";
 import { PERMISSION_DEFS } from "../types/index.ts";
+import { ensureCommunitySeeds } from "./community-seed.ts";
 
 // user 角色的默认权限（action 列表）
 const USER_DEFAULT_PERMISSIONS: Array<{ resource: string; action: string }> = [
@@ -32,6 +33,14 @@ const USER_DEFAULT_PERMISSIONS: Array<{ resource: string; action: string }> = [
   { resource: "user", action: "read_profile" },
   { resource: "category", action: "read" },
   { resource: "contest", action: "participate" },
+  { resource: "community", action: "read" },
+  { resource: "community", action: "create_solution" },
+  { resource: "community", action: "create_discussion" },
+  { resource: "community", action: "create_moment" },
+  { resource: "community", action: "comment" },
+  { resource: "community", action: "react" },
+  { resource: "community", action: "follow" },
+  { resource: "community", action: "report" },
 ];
 
 // ── 工具 ──────────────────────────────────────────────────
@@ -157,4 +166,5 @@ export async function ensureRbacSeeds(): Promise<void> {
   await ensurePermissions();
   await ensureUserRolePermissions();
   await migrateExistingUsers();
+  await ensureCommunitySeeds();
 }

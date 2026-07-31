@@ -185,6 +185,66 @@ export interface SearchUsersResult {
   took_ms: number;
 }
 
+export interface CommunitySearchItem {
+  id: string;
+  type: "solution" | "discussion";
+  title: string;
+  author_id: string;
+  author_username: string;
+  problem_id: string | null;
+  created_at: string;
+  rank: number;
+  highlight: string;
+}
+
+export async function searchCommunity(
+  params: { q: string; page: number; limit: number },
+): Promise<{ items: CommunitySearchItem[]; total: number; took_ms: number }> {
+  const db = getDb();
+  const { q, page, limit } = params;
+  const offset = (page - 1) * limit;
+  const likeQ = `%${escapeLikePattern(q)}%`;
+  const start = performance.now();
+  const rows = await db.execute<Record<string, unknown>>(sql`
+    SELECT p.id, p.type, p.title, p.author_id, u.username AS author_username,
+      p.problem_id, p.created_at,
+      ts_rank(to_tsvector('simple', coalesce(p.title, '') || ' ' || p.content), websearch_to_tsquery('simple', ${q})) AS rank,
+      ts_headline('simple', coalesce(p.title, p.content), websearch_to_tsquery('simple', ${q}),
+        'StartSel=[[HIGHLIGHT]], StopSel=[[/HIGHLIGHT]], MaxWords=20, MinWords=5') AS highlight
+    FROM community_posts p
+    JOIN users u ON u.id = p.author_id
+    LEFT JOIN problems problem ON problem.id = p.problem_id
+    WHERE p.status = 'published'
+      AND p.type IN ('solution', 'discussion')
+      AND (p.title ILIKE ${likeQ} ESCAPE '\\' OR p.content ILIKE ${likeQ} ESCAPE '\\'
+        OR p.problem_id ILIKE ${likeQ} ESCAPE '\\'
+        OR problem.title ILIKE ${likeQ} ESCAPE '\\'
+        OR to_tsvector('simple', coalesce(p.title, '') || ' ' || p.content) @@ websearch_to_tsquery('simple', ${q}))
+    ORDER BY rank DESC NULLS LAST, p.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `);
+  const resultRows = "rows" in rows
+    ? (rows as unknown as { rows: CommunitySearchItem[] }).rows
+    : (rows as unknown as CommunitySearchItem[]);
+  const countRows = await db.execute<{ count: string }>(sql`
+    SELECT count(*)::text AS count FROM community_posts p
+    LEFT JOIN problems problem ON problem.id = p.problem_id
+    WHERE p.status = 'published' AND p.type IN ('solution', 'discussion')
+      AND (p.title ILIKE ${likeQ} ESCAPE '\\' OR p.content ILIKE ${likeQ} ESCAPE '\\'
+        OR p.problem_id ILIKE ${likeQ} ESCAPE '\\'
+        OR problem.title ILIKE ${likeQ} ESCAPE '\\'
+        OR to_tsvector('simple', coalesce(p.title, '') || ' ' || p.content) @@ websearch_to_tsquery('simple', ${q}))
+  `);
+  const countResult = "rows" in countRows
+    ? (countRows as { rows: { count: string }[] }).rows
+    : (countRows as unknown as { count: string }[]);
+  return {
+    items: resultRows.map((item) => ({ ...item, rank: item.rank ?? 0 })),
+    total: Number(countResult[0]?.count ?? 0),
+    took_ms: Math.round(performance.now() - start),
+  };
+}
+
 /**
  * 搜索用户（admin only）。
  *

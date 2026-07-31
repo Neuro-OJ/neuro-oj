@@ -11,6 +11,7 @@
                 <NuxtLink to="/problems" class="px-3 py-1.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-gray-100 hover:text-text" active-class="text-primary font-semibold">题库</NuxtLink>
                 <NuxtLink to="/contests" class="px-3 py-1.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-gray-100 hover:text-text" active-class="text-primary font-semibold">竞赛</NuxtLink>
                 <NuxtLink to="/ranking" class="px-3 py-1.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-gray-100 hover:text-text" active-class="text-primary font-semibold">榜单</NuxtLink>
+                <NuxtLink v-if="communityConfig?.enabled" to="/community" class="px-3 py-1.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-gray-100 hover:text-text" active-class="text-primary font-semibold">社区</NuxtLink>
                 <NuxtLink to="/submissions" class="px-3 py-1.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-gray-100 hover:text-text" active-class="text-primary font-semibold">提交记录</NuxtLink>
                 <NuxtLink to="/queue" class="px-3 py-1.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-gray-100 hover:text-text" active-class="text-primary font-semibold">队列</NuxtLink>
                 <NuxtLink to="/about" class="px-3 py-1.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-gray-100 hover:text-text" active-class="text-primary font-semibold">关于</NuxtLink>
@@ -25,6 +26,10 @@
                 <kbd class="hidden md:inline-block px-1.5 py-0.5 text-xs bg-gray-100 border border-border rounded">Ctrl K</kbd>
             </button>
             <div class="flex items-center gap-3 ml-auto">
+                <NuxtLink v-if="user && communityConfig?.enabled" to="/community/notifications" class="relative rounded-md p-2 text-text-secondary no-underline transition-colors hover:bg-gray-100 hover:text-text" aria-label="社区通知">
+                    <Bell :size="18" />
+                    <span v-if="unreadCount > 0" class="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">{{ unreadCount > 9 ? '9+' : unreadCount }}</span>
+                </NuxtLink>
                 <UserMenu />
             </div>
         </div>
@@ -32,7 +37,29 @@
 </template>
 
 <script setup lang="ts">
-import { Search as SearchIcon } from "@lucide/vue";
+import { Bell, Search as SearchIcon } from "@lucide/vue";
 const { user } = useAuth();
 const { open: openSearch } = useSearch();
+const { config: communityConfig, loadConfig } = useCommunity();
+const { unreadCount, loadUnreadCount } = useCommunityNotifications();
+
+// 社区通知 SSE：仅登录且社区开启时连接，收到 notification:new 刷新未读数
+const notificationSseEnabled = computed(
+  () => !!user.value && communityConfig.value?.enabled === true,
+);
+
+onMounted(async () => {
+  await loadConfig();
+  await loadUnreadCount();
+});
+
+useEventSource({
+  url: "/api/v1/community/notifications/events",
+  enabled: notificationSseEnabled,
+  onEvent: {
+    "notification:new": () => loadUnreadCount(),
+  },
+  fetchFn: () => loadUnreadCount(),
+  fallbackIntervalMs: 30000,
+});
 </script>

@@ -1,6 +1,7 @@
 import { and, eq, isNull, not, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import {
+  communityPosts,
   evaluationResults,
   problems,
   submissions,
@@ -51,6 +52,14 @@ export interface UserProfileResponse {
     score: number | null;
     created_at: string;
   }[];
+  community_stats: {
+    following_count: number;
+    follower_count: number;
+    solution_count: number;
+    moment_count: number;
+  };
+  solutions: { id: string; title: string; created_at: string }[];
+  moments: { id: string; content: string; created_at: string }[];
 }
 
 /**
@@ -71,7 +80,15 @@ export async function getUserProfile(
   // PR-4：4 个独立 query 改为 Promise.all 并行执行
   // 原串行：~600ms（最慢 query × 4 + 网络 RTT 累加）
   // 并行后：~150ms（最慢那一个 + RTT），约 4x 提速
-  const [userRow, statsRow, solvedRows, recentRows] = await Promise.all([
+  const [
+    userRow,
+    statsRow,
+    solvedRows,
+    recentRows,
+    communityStats,
+    solutions,
+    moments,
+  ] = await Promise.all([
     // 1. 验证用户存在（同时取基础信息）
     db.select({
       id: users.id,
@@ -139,6 +156,44 @@ export async function getUserProfile(
       .where(eq(submissions.user_id, userId))
       .orderBy(sql`${submissions.created_at} DESC`)
       .limit(10),
+    db.select({
+      following_count: sql<
+        number
+      >`(select count(*) from community_follows where follower_id = ${userId})`,
+      follower_count: sql<
+        number
+      >`(select count(*) from community_follows where followee_id = ${userId})`,
+      solution_count: sql<
+        number
+      >`(select count(*) from community_posts where author_id = ${userId} and type = 'solution' and status = 'published')`,
+      moment_count: sql<
+        number
+      >`(select count(*) from community_posts where author_id = ${userId} and type = 'moment' and status = 'published')`,
+    }).from(users).where(eq(users.id, userId)).limit(1).then((rows) => rows[0]),
+    db.select({
+      id: communityPosts.id,
+      title: communityPosts.title,
+      created_at: communityPosts.created_at,
+    })
+      .from(communityPosts).where(
+        and(
+          eq(communityPosts.author_id, userId),
+          eq(communityPosts.type, "solution"),
+          eq(communityPosts.status, "published"),
+        ),
+      ).orderBy(sql`${communityPosts.created_at} DESC`).limit(10),
+    db.select({
+      id: communityPosts.id,
+      content: communityPosts.content,
+      created_at: communityPosts.created_at,
+    })
+      .from(communityPosts).where(
+        and(
+          eq(communityPosts.author_id, userId),
+          eq(communityPosts.type, "moment"),
+          eq(communityPosts.status, "published"),
+        ),
+      ).orderBy(sql`${communityPosts.created_at} DESC`).limit(10),
   ]);
 
   if (!userRow) {
@@ -202,6 +257,14 @@ export async function getUserProfile(
     },
     solved_problems: solvedProblems,
     recent_submissions: recentSubmissions,
+    community_stats: {
+      following_count: Number(communityStats?.following_count ?? 0),
+      follower_count: Number(communityStats?.follower_count ?? 0),
+      solution_count: Number(communityStats?.solution_count ?? 0),
+      moment_count: Number(communityStats?.moment_count ?? 0),
+    },
+    solutions: solutions.map((item) => ({ ...item, title: item.title ?? "" })),
+    moments,
   };
 }
 

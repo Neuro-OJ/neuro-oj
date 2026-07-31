@@ -31,7 +31,7 @@
           </div>
 
           <div
-            v-else-if="query.length >= 2 && state.results.problems.length === 0 && state.results.users.length === 0 && !state.loading"
+            v-else-if="query.length >= 2 && state.results.problems.length === 0 && state.results.users.length === 0 && state.results.community.length === 0 && !state.loading"
             class="px-4 py-8 text-center text-text-muted text-sm"
           >
             没有匹配结果
@@ -65,6 +65,18 @@
               :selected="selectedIndex === state.results.problems.length + j"
               @click="close"
             />
+
+            <div v-if="state.results.community.length > 0" class="px-4 pt-3 pb-1 text-xs text-text-muted font-medium">
+              帖子
+            </div>
+            <SearchResultItem
+              v-for="(post, k) in state.results.community"
+              :key="`c-${post.id}`"
+              :item="post"
+              kind="community"
+              :selected="selectedIndex === state.results.problems.length + state.results.users.length + k"
+              @click="close"
+            />
           </div>
 
           <!-- 底部提示 -->
@@ -90,18 +102,29 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from "vue";
 import { Search as SearchIcon } from "@lucide/vue";
-import { useSearch } from "~/composables/useSearch";
+import {
+  useSearch,
+  type CommunitySearchResult,
+  type ProblemSearchResult,
+  type UserSearchResult,
+} from "~/composables/useSearch";
 
 const { state, close, search } = useSearch();
 const query = ref("");
 const selectedIndex = ref(0);
 const inputRef = ref<HTMLInputElement | null>(null);
 
-const placeholder = computed(() => "搜索题目、用户...");
+const placeholder = computed(() => "搜索题目、用户、帖子...");
 
-const flatItems = computed(() => [
-  ...state.value.results.problems,
-  ...state.value.results.users,
+type PaletteItem =
+  | { kind: "problem"; item: ProblemSearchResult }
+  | { kind: "user"; item: UserSearchResult }
+  | { kind: "community"; item: CommunitySearchResult };
+
+const flatItems = computed<PaletteItem[]>(() => [
+  ...state.value.results.problems.map((item) => ({ kind: "problem" as const, item })),
+  ...state.value.results.users.map((item) => ({ kind: "user" as const, item })),
+  ...state.value.results.community.map((item) => ({ kind: "community" as const, item })),
 ]);
 
 watch(query, async (q) => {
@@ -136,14 +159,13 @@ function onKeydown(e: KeyboardEvent) {
     selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
   } else if (e.key === "Enter") {
     e.preventDefault();
-    const item = flatItems.value[selectedIndex.value];
-    if (item) {
-      const kind = selectedIndex.value < state.value.results.problems.length
-        ? "problem"
-        : "user";
-      const href = kind === "problem"
-        ? `/problems/${(item as any).display_id || (item as any).id}`
-        : `/users/${(item as any).id}`;
+    const selected = flatItems.value[selectedIndex.value];
+    if (selected) {
+      const href = selected.kind === "problem"
+        ? `/problems/${selected.item.display_id || selected.item.id}`
+        : selected.kind === "community"
+        ? `/community/posts/${selected.item.id}`
+        : `/users/${selected.item.id}`;
       close();
       navigateTo(href);
     } else if (query.value.trim().length >= 2) {

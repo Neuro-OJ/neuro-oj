@@ -43,6 +43,9 @@ interface UserProfile {
     score: number | null
     created_at: string
   }[]
+  community_stats: { following_count: number; follower_count: number; solution_count: number; moment_count: number }
+  solutions: { id: string; title: string; created_at: string }[]
+  moments: { id: string; content: string; created_at: string }[]
 }
 
 interface ProfileResponse {
@@ -54,6 +57,7 @@ const { data, pending, error, refresh } = useFetch<ProfileResponse>(
 )
 
 const profile = computed(() => data.value?.data ?? null)
+const following = ref(false)
 
 // 该用户创建的 U 型题目
 interface CreatedProblem {
@@ -141,6 +145,16 @@ async function startConversation() {
   }
 }
 
+async function toggleFollow() {
+  try {
+    const result = await $fetch<{ data: { following: boolean } }>(`/api/v1/community/users/${userId}/follow`, { method: "POST" })
+    following.value = result.data.following
+    toast.success(following.value ? "已关注" : "已取消关注")
+  } catch (error: unknown) {
+    toast.error(error instanceof Error ? error.message : "操作失败")
+  }
+}
+
 function formatScore(raw: number | null | undefined): string {
   if (raw === undefined || raw === null) return "--"
   return (raw / 100).toFixed(1)
@@ -195,6 +209,7 @@ function formatScore(raw: number | null | undefined): string {
               <Send :size="14" />
               发送私信
             </button>
+            <button v-if="currentUser && !isOwnProfile" class="btn btn-outline text-xs px-3 py-1.5" @click="toggleFollow">{{ following ? '已关注' : '关注' }}</button>
           </div>
 
           <!-- Bio（Markdown 渲染） -->
@@ -238,6 +253,15 @@ function formatScore(raw: number | null | undefined): string {
           </NuxtLink>
         </div>
       </div>
+
+      <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div class="rounded-xl border border-border bg-white px-5 py-4"><span class="text-xs text-text-muted">关注</span><p class="mt-1 text-xl font-bold text-text">{{ profile.community_stats.following_count }}</p></div>
+        <div class="rounded-xl border border-border bg-white px-5 py-4"><span class="text-xs text-text-muted">粉丝</span><p class="mt-1 text-xl font-bold text-text">{{ profile.community_stats.follower_count }}</p></div>
+        <div class="rounded-xl border border-border bg-white px-5 py-4"><span class="text-xs text-text-muted">题解</span><p class="mt-1 text-xl font-bold text-text">{{ profile.community_stats.solution_count }}</p></div>
+        <div class="rounded-xl border border-border bg-white px-5 py-4"><span class="text-xs text-text-muted">动态</span><p class="mt-1 text-xl font-bold text-text">{{ profile.community_stats.moment_count }}</p></div>
+      </div>
+
+      <section v-if="profile.solutions.length || profile.moments.length" class="rounded-xl border border-border bg-white p-6"><h2 class="text-base font-semibold text-text">社区内容</h2><div class="mt-3 space-y-2"><NuxtLink v-for="solution in profile.solutions" :key="solution.id" :to="`/community/posts/${solution.id}`" class="block text-sm text-primary no-underline hover:underline">题解 · {{ solution.title }}</NuxtLink><NuxtLink v-for="moment in profile.moments" :key="moment.id" :to="`/community/posts/${moment.id}`" class="block line-clamp-1 text-sm text-primary no-underline hover:underline">动态 · {{ moment.content }}</NuxtLink></div></section>
 
       <!-- 已通过题目 -->
       <div v-if="profile.solved_problems.length" class="bg-white border border-border rounded-xl overflow-hidden">

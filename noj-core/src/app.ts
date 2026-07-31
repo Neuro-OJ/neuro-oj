@@ -12,6 +12,7 @@ import submissions from "./routes/submissions.ts";
 import users from "./routes/users.ts";
 import rankings from "./routes/rankings.ts";
 import conversations from "./routes/conversations.ts";
+import community from "./routes/community.ts";
 import search from "./routes/search.ts";
 import contests from "./routes/contests.ts";
 import { searchRateLimit } from "./middleware/searchRateLimit.ts";
@@ -147,6 +148,7 @@ export function createApp(): Hono {
   app.route("/api/v1/users", users);
   app.route("/api/v1/rankings", rankings);
   app.route("/api/v1/conversations", conversations);
+  app.route("/api/v1/community", community);
   app.route("/api/v1/contests", contests);
   app.use("/api/v1/search", searchRateLimit("anon"));
   app.route("/api/v1/search", search);

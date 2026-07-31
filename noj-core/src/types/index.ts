@@ -186,6 +186,45 @@ export const PERMISSION_DEFS: Array<{
     description: "管理任意竞赛（编辑、删除、参与者管理）",
   },
   { resource: "contest", action: "participate", description: "参加竞赛" },
+  // 社区内容与互动
+  { resource: "community", action: "read", description: "查看社区内容" },
+  { resource: "community", action: "create_solution", description: "发布题解" },
+  {
+    resource: "community",
+    action: "create_discussion",
+    description: "发布讨论",
+  },
+  { resource: "community", action: "create_moment", description: "发布动态" },
+  { resource: "community", action: "comment", description: "发表评论" },
+  { resource: "community", action: "react", description: "点赞和收藏社区内容" },
+  { resource: "community", action: "follow", description: "关注社区用户" },
+  { resource: "community", action: "report", description: "举报社区内容" },
+  // 社区治理
+  {
+    resource: "community_moderation",
+    action: "review",
+    description: "审核社区内容",
+  },
+  {
+    resource: "community_moderation",
+    action: "hide",
+    description: "隐藏或恢复社区内容",
+  },
+  {
+    resource: "community_moderation",
+    action: "lock",
+    description: "锁定或置顶社区内容",
+  },
+  {
+    resource: "community_moderation",
+    action: "sanction",
+    description: "管理社区处罚",
+  },
+  {
+    resource: "community_board",
+    action: "manage",
+    description: "管理社区板块",
+  },
   // 系统
   { resource: "system", action: "settings", description: "系统设置" },
   { resource: "system", action: "judge_images", description: "管理评测镜像" },
