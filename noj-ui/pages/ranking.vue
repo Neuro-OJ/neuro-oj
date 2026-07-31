@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Trophy } from "@lucide/vue"
 import type { RankingRow } from "~/composables/useRankings"
 
 definePageMeta({
@@ -35,7 +34,7 @@ function setPage(p: number) {
 <template>
   <div class="px-4 py-5 sm:px-7 sm:py-8 max-w-[960px] mx-auto">
     <div class="flex items-baseline gap-3 mb-6">
-      <Trophy :size="22" class="text-primary self-center" />
+      <UIcon name="i-lucide-trophy" class="text-primary self-center size-[22px]" />
       <h1 class="text-2xl font-bold text-text">榜单</h1>
       <span class="text-sm text-text-muted">共 {{ total }} 位上榜用户</span>
     </div>
@@ -47,9 +46,9 @@ function setPage(p: number) {
       @retry="refresh"
     >
       <template #empty>
-        <Trophy :size="48" class="opacity-30" />
+        <UIcon name="i-lucide-trophy" class="opacity-30 size-[48px]" />
         <p>还没有用户通过任何题目，做第一个吧 👉</p>
-        <NuxtLink to="/problems" class="btn btn-primary px-4 py-1.5 text-xs">去做题</NuxtLink>
+        <UButton color="primary" class="px-4 py-1.5 text-xs" to="/problems">去做题</UButton>
       </template>
 
       <!-- 榜单表格 -->

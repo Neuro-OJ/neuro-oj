@@ -19,7 +19,7 @@
                             class="flex items-center gap-1.5 overflow-hidden transition-[max-width] duration-[1200ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
                             :class="checkedIn ? 'max-w-[280px] min-w-[70px]' : 'max-w-[70px]'"
                         >
-                            <CheckCircle2 v-if="checkedIn" :size="18" class="animate-[check-icon-pop_1.5s_cubic-bezier(0.16,1,0.3,1)] shrink-0 ml-0.5" />
+                            <UIcon name="i-lucide-check-circle-2" class="animate-[check-icon-pop_1.5s_cubic-bezier(0.16,1,0.3,1)] shrink-0 ml-0.5 size-4.5" v-if="checkedIn"/>
                             <span v-else class="size-[18px] rounded-full border-2 border-white/60 shrink-0 ml-0.5" />
                             <span class="whitespace-nowrap">
                                 <span class="inline-block overflow-hidden align-top transition-all duration-[600ms]" :class="checkedIn ? 'opacity-0 w-0' : 'opacity-100'">签到</span>
@@ -30,7 +30,7 @@
                 </template>
                 <div v-else class="inline-flex flex-col items-center animate-[moveUpCheckin_0.5s_ease_forwards] border border-transparent">
                     <span class="inline-flex items-center gap-1.5 text-green-700 text-sm font-semibold py-2 px-4">
-                        <CheckCircle2 :size="18" class="shrink-0" />
+                        <UIcon name="i-lucide-check-circle-2" class="shrink-0 size-4.5" />
                         已签到
                     </span>
                     <div class="overflow-hidden transition-all duration-500" :class="showStreak ? 'max-h-5 opacity-100' : 'max-h-0 opacity-0'">
@@ -49,7 +49,7 @@
                 to="/login"
                 class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-white border border-primary no-underline transition-all duration-200 animate-[fadeInUp_0.5s_ease_0.2s_both] hover:bg-primary-dark hover:border-primary-dark"
             >
-                <LogIn :size="16" />
+                <UIcon name="i-lucide-log-in" class="size-4" />
                 登录
             </NuxtLink>
             <div class="overflow-hidden transition-all duration-500" :class="showRegister ? 'max-h-5 opacity-100' : 'max-h-0 opacity-0'">
@@ -65,8 +65,6 @@
 </template>
 
 <script setup lang="ts">
-import { CheckCircle2, LogIn } from "@lucide/vue"
-
 interface Props {
     isLoggedIn: boolean
     username: string

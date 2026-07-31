@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { ArrowLeft } from "@lucide/vue"
-
 definePageMeta({
   layout: "admin",
   ssr: false,
@@ -16,7 +14,7 @@ function onSaved() {
 <template>
   <div class="flex flex-col gap-4 max-w-[800px]">
     <NuxtLink to="/admin/problems" class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline transition-colors hover:text-primary">
-      <ArrowLeft :size="16" />
+      <UIcon name="i-lucide-arrow-left" class="size-4" />
       返回题目列表
     </NuxtLink>
 

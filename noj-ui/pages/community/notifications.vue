@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Bell, CheckCheck, Reply, Heart, UserPlus, ShieldCheck } from "@lucide/vue"
 import type { NotificationRow } from "~/composables/useCommunity"
 
 definePageMeta({ middleware: "auth" })
@@ -21,10 +20,10 @@ const typeLabel: Record<NotificationRow["notification"]["type"], string> = {
   moderation: "更新了内容审核状态",
 }
 const typeIcon = {
-  reply: Reply,
-  like: Heart,
-  follow: UserPlus,
-  moderation: ShieldCheck,
+  reply: 'i-lucide-reply',
+  like: 'i-lucide-heart',
+  follow: 'i-lucide-user-plus',
+  moderation: 'i-lucide-shield-check',
 }
 
 async function load(reset = true) {
@@ -92,11 +91,11 @@ await load()
   <main class="mx-auto w-full max-w-4xl px-6 py-10">
     <div class="mb-6 flex items-center justify-between">
       <div><h1 class="text-2xl font-bold text-text">社区通知</h1><p class="mt-1 text-sm text-text-secondary">回复、互动和审核结果会保留在这里。</p></div>
-      <button class="btn-outline" :disabled="markingRead || notifications.length === 0" @click="markAllRead"><CheckCheck :size="16" />{{ markingRead ? '处理中…' : '全部已读' }}</button>
+      <UButton color="primary" variant="outline" :disabled="markingRead || notifications.length === 0" @click="markAllRead"><UIcon name="i-lucide-check-check" class="size-4" />{{ markingRead ? '处理中…' : '全部已读' }}</UButton>
     </div>
     <p v-if="error" class="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">{{ error }}</p>
     <div v-else-if="loading" class="py-12 text-center text-text-secondary">加载中…</div>
-    <div v-else-if="notifications.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center text-text-secondary"><Bell class="mx-auto mb-3" :size="28" />暂无通知。</div>
+    <div v-else-if="notifications.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center text-text-secondary"><UIcon name="i-lucide-bell" class="mx-auto mb-3 size-[28px]" />暂无通知。</div>
     <div v-else class="space-y-3">
       <button
         v-for="item in notifications"
@@ -108,7 +107,7 @@ await load()
       >
         <div class="flex items-start gap-3">
           <span class="mt-0.5 flex size-8 flex-shrink-0 items-center justify-center rounded-full" :class="item.notification.type === 'moderation' ? 'bg-red-50 text-red-600' : 'bg-primary-bg text-primary'">
-            <component :is="typeIcon[item.notification.type]" :size="15" />
+            <UIcon :name="typeIcon[item.notification.type]" class="size-3.5" />
           </span>
           <div class="min-w-0 flex-1">
             <p class="text-sm text-text"><strong>{{ item.actor?.username ?? '系统' }}</strong>{{ typeLabel[item.notification.type] }}</p>
@@ -118,7 +117,7 @@ await load()
         </div>
       </button>
       <div v-if="limit < 100" class="text-center">
-        <button class="btn-outline" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '加载中…' : '加载更多' }}</button>
+        <UButton color="primary" variant="outline" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '加载中…' : '加载更多' }}</UButton>
       </div>
     </div>
   </main>

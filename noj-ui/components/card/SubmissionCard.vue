@@ -6,7 +6,7 @@
         <div class="grid grid-cols-[auto_1fr] gap-x-2">
             <!-- 左列：icon + #id（跨两行） -->
             <div class="row-span-2 self-start flex items-center gap-1">
-                <FileText class="size-3.5 text-text-muted" />
+                <UIcon name="i-lucide-file-text" class="size-3.5 text-text-muted size-4" />
                 <span class="text-[10px] font-mono font-bold text-text-secondary">#{{ submission.id.slice(0, 8) }}</span>
             </div>
 
@@ -74,7 +74,6 @@
 </template>
 
 <script setup lang="ts">
-import { FileText } from "@lucide/vue"
 import { computed } from "vue"
 
 interface Submission {

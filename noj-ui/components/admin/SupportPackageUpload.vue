@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { Upload, Trash2, FileArchive, ChevronDown, ChevronUp, AlertCircle } from "@lucide/vue"
-
 interface Props {
   problemId: string | null
   hasPackage: boolean
@@ -130,8 +128,8 @@ async function handleDelete() {
         @click="showGuide = !showGuide"
       >
         {{ showGuide ? '收起' : '展开' }}文件结构说明
-        <ChevronDown v-if="!showGuide" :size="14" />
-        <ChevronUp v-else :size="14" />
+        <UIcon name="i-lucide-chevron-down" class="size-3.5" v-if="!showGuide"/>
+        <UIcon name="i-lucide-chevron-up" class="size-3.5" v-else/>
       </button>
     </div>
 
@@ -153,19 +151,19 @@ async function handleDelete() {
 
     <!-- 错误提示 -->
     <p v-if="uploadError" class="flex items-center gap-1.5 text-xs text-red-600">
-      <AlertCircle :size="13" />
+      <UIcon name="i-lucide-alert-circle" class="size-3" />
       {{ uploadError }}
     </p>
 
     <!-- 已有支持包：显示状态 + 替换/删除 -->
     <div v-if="hasPackage && !uploading" class="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-border rounded-md">
-      <FileArchive :size="16" class="text-text-secondary shrink-0" />
+      <UIcon name="i-lucide-file-archive" class="text-text-secondary shrink-0 size-4" />
       <span class="text-xs text-text flex-1">支持包已上传</span>
       <label
         class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-primary bg-transparent border border-primary rounded cursor-pointer transition-colors hover:bg-primary-bg"
         :class="{ 'opacity-50 pointer-events-none': disabled || uploading }"
       >
-        <Upload :size="12" />
+        <UIcon name="i-lucide-upload" class="size-3" />
         替换
         <input ref="fileInput" type="file" accept=".zip" class="hidden" @change="onFileSelect" />
       </label>
@@ -174,7 +172,7 @@ async function handleDelete() {
         :disabled="deleting"
         @click="handleDelete"
       >
-        <Trash2 :size="12" />
+        <UIcon name="i-lucide-trash-2" class="size-3" />
         {{ deleting ? "删除中..." : "删除" }}
       </button>
     </div>
@@ -196,7 +194,7 @@ async function handleDelete() {
         @drop="onDrop"
         @click="triggerFileSelect"
       >
-        <Upload v-if="!uploading" :size="24" class="text-text-secondary" />
+        <UIcon name="i-lucide-upload" class="text-text-secondary size-6" v-if="!uploading"/>
         <div v-else class="animate-spin">
           <svg class="size-6 text-primary" viewBox="0 0 24 24" fill="none">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />

@@ -12,7 +12,7 @@
         >
           <!-- 搜索输入 -->
           <div class="flex items-center gap-3 px-4 h-14 border-b border-border">
-            <SearchIcon class="w-5 h-5 text-text-muted" />
+            <UIcon name="i-lucide-search" class="w-5 h-5 text-text-muted size-4" />
             <input
               ref="inputRef"
               v-model="query"
@@ -101,7 +101,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from "vue";
-import { Search as SearchIcon } from "@lucide/vue";
+
 import {
   useSearch,
   type CommunitySearchResult,

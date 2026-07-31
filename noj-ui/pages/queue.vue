@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { getLanguageLabel, formatScore } from "~/composables/use-submissions"
 import { useEventSource } from "~/composables/useEventSource"
-import { Clock, CheckCircle, XCircle, Loader2, Play } from "@lucide/vue"
-
 interface QueueItem {
   id: string
   problem_id: string
@@ -100,21 +98,21 @@ useEventSource({
       <!-- 统计条 -->
       <div class="flex gap-3 mb-6 flex-wrap" v-if="data">
         <div class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#f0f0f0] text-text-secondary">
-          <Clock :size="14" />
+          <UIcon name="i-lucide-clock" class="size-3.5" />
           排队中 {{ data.stats.pending_count }}
         </div>
         <div class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#e8f0fe] text-[#1967d2]">
-          <Play :size="14" />
+          <UIcon name="i-lucide-play" class="size-3.5" />
           正在评测 {{ data.stats.judging_count }}
         </div>
         <div class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#e6f4ea] text-[var(--c-success-text)]">
-          <CheckCircle :size="14" />
+          <UIcon name="i-lucide-check-circle" class="size-3.5" />
           今日完成 {{ data.stats.completed_today }}
         </div>
       </div>
 
       <div v-if="!data" class="flex items-center justify-center gap-2 py-16 text-text-muted">
-        <Loader2 :size="24" />
+        <UIcon name="i-lucide-loader-2" class="size-6" />
         <span>加载中...</span>
       </div>
 
@@ -122,7 +120,7 @@ useEventSource({
         <!-- 正在评测 -->
         <section class="bg-white border border-border rounded-[10px] mb-4 overflow-hidden">
           <h2 class="flex items-center gap-2 px-4 py-3 m-0 text-[15px] font-bold border-b border-border text-[#1967d2]">
-            <Play :size="18" />
+            <UIcon name="i-lucide-play" class="size-4.5" />
             正在评测（{{ data.judging.length }}）
           </h2>
           <div v-if="data.judging.length === 0" class="p-4 text-center text-[#aaa] text-[13px]">暂无</div>
@@ -132,14 +130,14 @@ useEventSource({
             <span class="text-text-secondary min-w-[70px] text-center text-xs">{{ getLanguageLabel(item.language) }}</span>
             <span class="text-text-secondary min-w-[60px]">{{ item.submitted_by }}</span>
             <span class="text-text-muted text-xs min-w-[100px]">{{ formatDateTime(item.submitted_at) }}</span>
-            <span class="inline-flex items-center gap-[3px] text-[#1967d2] text-xs min-w-[70px]"><Clock :size="14" /> {{ elapsedSince(item.judge_started_at) }}</span>
+            <span class="inline-flex items-center gap-[3px] text-[#1967d2] text-xs min-w-[70px]"><UIcon name="i-lucide-clock" class="size-3.5" /> {{ elapsedSince(item.judge_started_at) }}</span>
           </div>
         </section>
 
         <!-- 排队中 -->
         <section class="bg-white border border-border rounded-[10px] mb-4 overflow-hidden">
           <h2 class="flex items-center gap-2 px-4 py-3 m-0 text-[15px] font-bold border-b border-border text-text-secondary">
-            <Clock :size="18" />
+            <UIcon name="i-lucide-clock" class="size-4.5" />
             排队中（{{ data.pending.length }}）
           </h2>
           <div v-if="data.pending.length === 0" class="p-4 text-center text-[#aaa] text-[13px]">暂无</div>
@@ -155,7 +153,7 @@ useEventSource({
         <!-- 最近完成 -->
         <section class="bg-white border border-border rounded-[10px] mb-4 overflow-hidden">
           <h2 class="flex items-center gap-2 px-4 py-3 m-0 text-[15px] font-bold border-b border-border text-[var(--c-success-text)]">
-            <CheckCircle :size="18" />
+            <UIcon name="i-lucide-check-circle" class="size-4.5" />
             最近完成（{{ data.recently_completed.length }}）
           </h2>
           <div v-if="data.recently_completed.length === 0" class="p-4 text-center text-[#aaa] text-[13px]">暂无</div>

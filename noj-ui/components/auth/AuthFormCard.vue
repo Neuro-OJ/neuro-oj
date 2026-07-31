@@ -18,17 +18,14 @@
       <h1 class="text-[22px] font-bold text-center mb-3 text-text animate-[fadeInUp_0.5s_ease_both]">{{ title }}</h1>
       <p v-if="subtitle" class="text-center text-sm text-text-secondary mb-6 animate-[fadeInUp_0.5s_ease_0.05s_both]">{{ subtitle }}</p>
 
-      <form @submit.prevent="$emit('submit')">
+      <form class="flex flex-col gap-6" @submit.prevent="$emit('submit')">
         <slot />
 
-        <button
-          type="submit"
-          :disabled="loading"
-          class="inline-flex items-center justify-center font-semibold no-underline cursor-pointer rounded-lg transition-all duration-200 bg-primary text-white border border-primary hover:bg-primary-dark hover:border-primary-dark w-full py-2.5 text-sm mt-1 disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          <Loader2 v-if="loading" class="animate-spin-slow mr-1.5" :size="18" />
+        <UButton color="primary" size="md" block type="submit"
+          :disabled="loading">
+          <UIcon name="i-lucide-loader-2" class="animate-spin-slow mr-1.5 size-4.5" v-if="loading"/>
           {{ loading ? loadingLabel || submitLabel + '中...' : submitLabel }}
-        </button>
+        </UButton>
       </form>
 
       <div v-if="$slots.footer" class="text-center mt-5 text-sm text-text-secondary">
@@ -39,8 +36,6 @@
 </template>
 
 <script setup lang="ts">
-import { Loader2 } from "@lucide/vue"
-
 defineProps<{
   title: string
   subtitle?: string

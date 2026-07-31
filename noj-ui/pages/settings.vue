@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { ArrowLeft, Save, Eye, Edit3, CheckCircle, AlertCircle } from "@lucide/vue"
-
 const { user, isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
@@ -68,7 +66,7 @@ async function handleSave() {
       :to="`/users/${user.id}`"
       class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
     >
-      <ArrowLeft :size="16" />
+      <UIcon name="i-lucide-arrow-left" class="size-4" />
       返回个人主页
     </NuxtLink>
 
@@ -76,7 +74,7 @@ async function handleSave() {
     <div class="bg-white border border-border rounded-xl overflow-hidden">
       <div class="px-6 py-5 border-b border-border">
         <h1 class="text-xl font-bold flex items-center gap-2">
-          <Edit3 :size="20" />
+          <UIcon name="i-lucide-edit-3" class="size-5" />
           个人资料编辑
         </h1>
       </div>
@@ -97,14 +95,11 @@ async function handleSave() {
         <div class="flex flex-col gap-3">
           <div class="flex items-center justify-between">
             <label class="text-sm font-semibold text-text">个人简介</label>
-            <button
-              class="btn text-xs px-3 py-1.5 flex items-center gap-1.5 text-text-secondary border border-border bg-transparent rounded-md cursor-pointer hover:bg-gray-100 hover:text-text transition-colors"
-              @click="previewMode = !previewMode"
-            >
-              <Eye v-if="!previewMode" :size="14" />
-              <Edit3 v-else :size="14" />
+            <UButton color="neutral" variant="outline" class="text-xs px-3 py-1.5 flex items-center gap-1.5 text-text-secondary border border-border bg-transparent rounded-md cursor-pointer hover:bg-gray-100 hover:text-text transition-colors" @click="previewMode = !previewMode">
+              <UIcon name="i-lucide-eye" class="size-3.5" v-if="!previewMode"/>
+              <UIcon name="i-lucide-edit-3" class="size-3.5" v-else/>
               {{ previewMode ? "编辑" : "预览" }}
-            </button>
+            </UButton>
           </div>
 
           <!-- 编辑器 -->
@@ -132,14 +127,11 @@ async function handleSave() {
         </div>
 
         <!-- 保存按钮 -->
-        <button
-          class="btn btn-primary flex items-center justify-center gap-2 py-2.5 px-6 self-start text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="saving"
-          @click="handleSave"
-        >
-          <Save :size="16" />
+        <UButton color="primary" class="flex items-center justify-center gap-2 py-2.5 px-6 self-start text-sm disabled:opacity-50 disabled:cursor-not-allowed" :disabled="saving"
+          @click="handleSave">
+          <UIcon name="i-lucide-save" class="size-4" />
           <span>{{ saving ? "保存中..." : "保存" }}</span>
-        </button>
+        </UButton>
       </div>
     </div>
   </div>

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { Search, X } from "@lucide/vue"
-import type { Column } from "~/components/admin/AdminTable.vue"
 import type { SubmissionListItem } from "~/composables/use-submissions"
 import {
   getStatusColor,
@@ -45,55 +43,56 @@ const filters = reactive({
 
 // 语言选项
 const languageOptions = [
-  { value: "", label: "全部" },
-  { value: "python3", label: "Python 3" },
-  { value: "python", label: "Python" },
-  { value: "cpp", label: "C++" },
-  { value: "c", label: "C" },
-  { value: "javascript", label: "JavaScript" },
+  { value: "", header: "全部" },
+  { value: "python3", header: "Python 3" },
+  { value: "python", header: "Python" },
+  { value: "cpp", header: "C++" },
+  { value: "c", header: "C" },
+  { value: "javascript", header: "JavaScript" },
 ]
 
 // 状态选项
 const statusOptions = [
-  { value: "", label: "全部" },
-  { value: "pending", label: "等待评测" },
-  { value: "judging", label: "评测中" },
-  { value: "finished", label: "已完成" },
-  { value: "error", label: "出错" },
+  { value: "", header: "全部" },
+  { value: "pending", header: "等待评测" },
+  { value: "judging", header: "评测中" },
+  { value: "finished", header: "已完成" },
+  { value: "error", header: "出错" },
 ]
 
-// AdminTable 的 Column 泛型默认为 Record<string, unknown>，format 中通过 rowSub 取值
-const columns: Column[] = [
-  { key: "id", label: "编号", format: (val) => (val as string).slice(0, 8) + "..." },
-  { key: "user_id", label: "用户" },
+// UTable 列 formatter 通过 row 取原始数据行
+const columns = [
+  { accessorKey: "id", header: "编号", cell: (info) => (info.getValue() as string).slice(0, 8) + "..." },
+  { accessorKey: "user_id", header: "用户" },
   {
-    key: "problem",
-    label: "题目",
-    format: (_, row) => rowSub(row).problem.title || rowSub(row).problem_id,
+    accessorKey: "problem",
+    header: "题目",
+    cell: (info) => rowSub(info.row.original).problem.title || rowSub(info.row.original).problem_id,
   },
-  { key: "language", label: "语言", format: (val) => getLanguageLabel(val as string) },
-  { key: "status", label: "状态" },
+  { accessorKey: "language", header: "语言", cell: (info) => getLanguageLabel(info.getValue() as string) },
+  { accessorKey: "status", header: "状态" },
   {
-    key: "score",
-    label: "得分",
-    format: (_, row) => rowSub(row).result ? formatScore(rowSub(row).result!.score) : "--",
-  },
-  {
-    key: "time_ms",
-    label: "耗时",
-    format: (_, row) => rowSub(row).result ? formatTime(rowSub(row).result!.time_ms) : "--",
+    accessorKey: "score",
+    header: "得分",
+    cell: (info) => rowSub(info.row.original).result ? formatScore(rowSub(info.row.original).result!.score) : "--",
   },
   {
-    key: "memory_kb",
-    label: "内存",
-    format: (_, row) => rowSub(row).result ? formatMemory(rowSub(row).result!.memory_kb) : "--",
+    accessorKey: "time_ms",
+    header: "耗时",
+    cell: (info) => rowSub(info.row.original).result ? formatTime(rowSub(info.row.original).result!.time_ms) : "--",
   },
   {
-    key: "created_at",
-    label: "提交时间",
-    format: (val) => new Date(val as string).toLocaleString("zh-CN"),
+    accessorKey: "memory_kb",
+    header: "内存",
+    cell: (info) => rowSub(info.row.original).result ? formatMemory(rowSub(info.row.original).result!.memory_kb) : "--",
   },
-]
+  {
+    accessorKey: "created_at",
+    header: "提交时间",
+    cell: (info) => new Date(info.getValue() as string).toLocaleString("zh-CN"),
+  },
+
+  { accessorKey: "actions", header: "操作" },]
 
 function buildQuery(page: number): string {
   const params = new URLSearchParams()
@@ -149,7 +148,7 @@ function clearFilters() {
   loadSubmissions(1)
 }
 
-// AdminTable slot 中 row 类型为 Record<string, unknown>，辅助函数用于安全取值
+// UTable cell slot 中 row 为原始数据行，辅助函数用于安全取值
 function rowSub(row: Record<string, unknown>): SubmissionListItem {
   return row as unknown as SubmissionListItem
 }
@@ -242,26 +241,25 @@ async function rejudge(submissionId: string) {
         </div>
       </div>
       <div class="flex gap-2">
-        <button class="inline-flex items-center gap-1 px-3.5 py-1.5 text-[13px] font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline bg-primary text-white border-primary hover:bg-primary-dark hover:border-primary-dark" @click="applyFilters">
-          <Search :size="14" />
+        <UButton color="primary" size="sm" class="px-3.5 leading-none" @click="applyFilters">
+          <UIcon name="i-lucide-search" class="size-3.5" />
           筛选
-        </button>
-        <button class="inline-flex items-center gap-1 px-3.5 py-1.5 text-[13px] font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-text-secondary border-border bg-transparent hover:border-text-secondary hover:text-text" @click="clearFilters">
-          <X :size="14" />
+        </UButton>
+        <UButton color="neutral" variant="outline" size="sm" class="px-3.5 leading-none text-text-secondary border-border hover:border-text-secondary hover:text-text" @click="clearFilters">
+          <UIcon name="i-lucide-x" class="size-3.5" />
           清空
-        </button>
+        </UButton>
       </div>
     </div>
 
-    <AdminTable
+    <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
+    <UTable
       :columns="columns"
       :data="submissions"
       :loading="tableLoading"
-      :error="tableError"
-      empty-text="暂无提交记录"
-    >
+      :empty="'暂无提交记录'">
       <!-- 状态标签列 -->
-      <template #cell-status="{ row }">
+      <template #status-cell="{ row }">
         <span
           class="inline-block px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap"
           :style="{
@@ -274,13 +272,13 @@ async function rejudge(submissionId: string) {
       </template>
 
       <!-- 操作列 -->
-      <template #actions="{ row }">
+      <template #actions-cell="{ row }">
         <div class="flex gap-1.5 justify-center">
           <button class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white disabled:cursor-not-allowed disabled:opacity-50" :disabled="isRejudging(rowSub(row).id)" @click="rejudge(rowSub(row).id)">{{ isRejudging(rowSub(row).id) ? '提交中...' : '重测' }}</button>
           <NuxtLink :to="`/submissions/${rowSub(row).id}`" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-primary border-primary bg-transparent hover:bg-primary hover:text-white">查看</NuxtLink>
         </div>
       </template>
-    </AdminTable>
+    </UTable>
 
     <PaginationNav
       :current-page="currentPage"

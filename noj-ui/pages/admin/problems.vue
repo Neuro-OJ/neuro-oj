@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { Plus, Trash2, Pencil, RefreshCw } from "@lucide/vue"
-import type { Column } from "~/components/admin/AdminTable.vue"
 import { useToast } from "~/composables/useToast"
 import { useDialog } from "~/composables/useDialog"
 
@@ -42,22 +40,23 @@ const difficultyLabels: Record<string, string> = {
   hard: "困难",
 }
 
-const columns: Column<Problem>[] = [
-  { key: "display_id", label: "题号" },
-  { key: "type", label: "类型", format: (val) => (val as string) === "U" ? "用户题库" : "主题库" },
-  { key: "title", label: "标题" },
-  { key: "difficulty", label: "难度", format: (val) => difficultyLabels[val as string] || (val as string) },
+const columns = [
+  { accessorKey: "display_id", header: "题号" },
+  { accessorKey: "type", header: "类型", cell: (info) => (info.getValue() as string) === "U" ? "用户题库" : "主题库" },
+  { accessorKey: "title", header: "标题" },
+  { accessorKey: "difficulty", header: "难度", cell: (info) => difficultyLabels[info.getValue() as string] || (info.getValue() as string) },
   {
-    key: "categories",
-    label: "分类",
-    format: (val) => (val as { name: string }[]).map((c) => c.name).join(", ") || "-",
+    accessorKey: "categories",
+    header: "分类",
+    cell: (info) => (info.getValue() as { name: string }[]).map((c) => c.name).join(", ") || "-",
   },
   {
-    key: "created_at",
-    label: "创建时间",
-    format: (val) => new Date(val as string).toLocaleDateString("zh-CN"),
+    accessorKey: "created_at",
+    header: "创建时间",
+    cell: (info) => new Date(info.getValue() as string).toLocaleDateString("zh-CN"),
   },
-]
+
+  { accessorKey: "actions", header: "操作" },]
 
 async function loadProblems(page = 1) {
   if (!isLoggedIn.value) return
@@ -163,39 +162,38 @@ async function batchRejudge(problemId: string) {
     <PageHeader title="题目管理" description="管理所有题目">
       <template #actions>
         <NuxtLink to="/admin/problem-new" class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark">
-          <Plus :size="16" />
+          <UIcon name="i-lucide-plus" class="size-4" />
           创建题目
         </NuxtLink>
       </template>
     </PageHeader>
 
-    <AdminTable
+    <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
+    <UTable
       :columns="columns"
       :data="problems"
       :loading="tableLoading"
-      :error="tableError"
-      empty-text="暂无题目"
-    >
-      <template #cell-difficulty="{ row }">
+      :empty="'暂无题目'">
+      <template #difficulty-cell="{ row }">
         <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold" :class="row.difficulty === 'easy' ? 'bg-green-50 text-success-text' : row.difficulty === 'medium' ? 'bg-amber-50 text-warning-text' : 'bg-red-50 text-error-text'">
           {{ difficultyLabels[row.difficulty] || row.difficulty }}
         </span>
       </template>
 
-      <template #actions="{ row }">
+      <template #actions-cell="{ row }">
         <div class="flex gap-1.5 justify-center">
           <NuxtLink :to="`/admin/problem-edit/${row.id}`" class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer no-underline transition-all duration-150 hover:bg-[#f5f5f5] hover:text-text" title="编辑">
-            <Pencil :size="15" />
+            <UIcon name="i-lucide-pencil" class="size-3.5" />
           </NuxtLink>
-          <button class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-amber-50 hover:text-[#d97706] hover:border-amber-200 disabled:cursor-not-allowed disabled:opacity-50" :disabled="rejudgingProblemIds.has(row.id)" :title="rejudgingProblemIds.has(row.id) ? '重测提交中' : '重测'" @click="batchRejudge(row.id)">
-            <RefreshCw :size="15" />
-          </button>
-          <button class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" title="删除" @click="confirmDelete(row)">
-            <Trash2 :size="15" />
-          </button>
+          <UButton color="neutral" variant="outline" class="w-[30px] h-[30px] border-border text-text-secondary hover:bg-amber-50 hover:text-[#d97706] hover:border-amber-200" :disabled="rejudgingProblemIds.has(row.id)" :title="rejudgingProblemIds.has(row.id) ? '重测提交中' : '重测'" @click="batchRejudge(row.id)">
+            <UIcon name="i-lucide-refresh-cw" class="size-3.5" />
+          </UButton>
+          <UButton color="neutral" variant="outline" class="w-[30px] h-[30px] border-border text-text-secondary hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" title="删除" @click="confirmDelete(row)">
+            <UIcon name="i-lucide-trash-2" class="size-3.5" />
+          </UButton>
         </div>
       </template>
-    </AdminTable>
+    </UTable>
 
     <PaginationNav
       :current-page="currentPage"
@@ -205,16 +203,13 @@ async function batchRejudge(problemId: string) {
   </div>
 
   <!-- 删除确认 -->
-  <AdminModal
-    v-if="showDeleteConfirm"
-    title="删除题目"
-    confirm-text="确认删除"
-    :loading="deleting"
-    danger
-    @confirm="handleDelete"
-    @cancel="showDeleteConfirm = false"
-  >
+  <UModal v-model:open="showDeleteConfirm" :title="'删除题目'" :unmount-on-hide="true">
     <p>确定要删除题目 <strong>{{ deleteTarget?.title }}</strong>（{{ deleteTarget?.id }}）吗？此操作不可撤销，相关提交记录也会被级联删除。</p>
     <p v-if="deleteError" class="mt-2 text-error-text text-[13px]">{{ deleteError }}</p>
-  </AdminModal>
+  
+    <template #footer>
+      <UButton color="neutral" variant="ghost" :disabled="deleting" @click="showDeleteConfirm = false">取消</UButton>
+      <UButton color="error" :loading="deleting" @click="handleDelete">确认删除</UButton>
+    </template>
+  </UModal>
 </template>

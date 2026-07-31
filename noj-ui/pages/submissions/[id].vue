@@ -2,19 +2,6 @@
 import { useRoute } from "vue-router"
 import hljs from "highlight.js"
 import "highlight.js/styles/github-dark.css"
-import {
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  Clock,
-  Server,
-  Loader2,
-  ChevronDown,
-  ChevronUp,
-  FileText,
-  ArrowLeft,
-  Lock,
-} from "@lucide/vue"
 import { getLanguageLabel, formatScore, formatTime, formatMemory, statusBadgeColors, getResultDef, verdictClasses, formatDateTime } from "~/composables/use-submissions"
 
 interface SubmissionResult {
@@ -131,7 +118,7 @@ watch(
       :to="`/problems/${submission.problem_id}`"
       class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
     >
-      <ArrowLeft :size="16" />
+      <UIcon name="i-lucide-arrow-left" class="size-4" />
       返回题目
     </NuxtLink>
     <!-- Loading -->
@@ -153,7 +140,7 @@ watch(
             class="inline-flex items-center gap-2.5 px-7 py-3 rounded-full text-base font-semibold"
             :class="statusBadgeColors[submission.status]"
           >
-            <Loader2 :size="20" class="animate-spin" />
+            <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
             <span>{{ submission.status === 'pending' ? '等待评测' : '评测中' }}</span>
             <span v-if="submission.status === 'pending' && submission.queue_position != null" class="queue-pos">
               #{{ submission.queue_position }}/{{ submission.queue_length }}
@@ -166,7 +153,7 @@ watch(
             v-else-if="submission.status === 'error'"
             class="inline-flex items-center gap-2.5 px-7 py-3 rounded-full text-base font-semibold bg-red-50 text-red-800 border border-red-200"
           >
-            <XCircle :size="22" />
+            <UIcon name="i-lucide-x-circle" class="size-[22px]" />
             <span>系统错误</span>
           </div>
           <!-- 已完成 -->
@@ -175,15 +162,9 @@ watch(
             class="flex items-center gap-4 px-9 py-5 rounded-2xl flex-col text-center sm:flex-row sm:text-left"
             :class="verdictClasses[getResultDef(submission.result.status).class] || verdictClasses.se"
           >
-            <CheckCircle
-              v-if="getResultDef(submission.result.status).icon === 'check'"
-              :size="32"
-            />
-            <XCircle
-              v-else-if="getResultDef(submission.result.status).icon === 'x'"
-              :size="32"
-            />
-            <AlertTriangle v-else :size="32" />
+            <UIcon name="i-lucide-check-circle" class="size-8" v-if="getResultDef(submission.result.status).icon === 'check'"/>
+            <UIcon name="i-lucide-x-circle" class="size-8" v-else-if="getResultDef(submission.result.status).icon === 'x'"/>
+            <UIcon name="i-lucide-alert-triangle" class="size-8" v-else/>
             <div class="flex flex-col gap-0.5">
               <span class="text-lg font-bold">
                 {{ getResultDef(submission.result.status).label }}
@@ -224,7 +205,7 @@ watch(
           class="flex flex-col sm:flex-row gap-3 sm:gap-8 px-6 py-4 border-t border-border bg-gray-50"
         >
           <div class="flex items-center gap-2.5 text-text-secondary">
-            <Clock :size="16" />
+            <UIcon name="i-lucide-clock" class="size-4" />
             <div class="flex flex-col gap-px">
               <span class="text-[11px] text-text-muted">耗时</span>
               <span class="text-sm font-semibold text-text">
@@ -233,7 +214,7 @@ watch(
             </div>
           </div>
           <div class="flex items-center gap-2.5 text-text-secondary">
-            <Server :size="16" />
+            <UIcon name="i-lucide-server" class="size-4" />
             <div class="flex flex-col gap-px">
               <span class="text-[11px] text-text-muted">内存</span>
               <span class="text-sm font-semibold text-text">
@@ -246,12 +227,12 @@ watch(
       <!-- 代码区 -->
       <div class="bg-[#0d1117] border border-[#30363d] rounded-xl overflow-hidden">
         <div class="flex items-center gap-2 px-4 py-2.5 bg-[#161b22] text-[#8b949e] text-xs font-mono border-b border-[#30363d]">
-          <FileText :size="16" />
+          <UIcon name="i-lucide-file-text" class="size-4" />
           <span>{{ submission.file_name || "main.py" }}</span>
         </div>
         <pre v-if="submission.code !== null" class="p-4 overflow-x-auto text-xs leading-relaxed"><code :ref="codeRef" :class="`language-${codeLanguage}`" class="font-mono text-[#e6edf3] whitespace-pre">{{ submission.code }}</code></pre>
         <div v-else class="flex flex-col items-center justify-center gap-2 py-12 text-[#8b949e] text-sm">
-          <Lock :size="24" />
+          <UIcon name="i-lucide-lock" class="size-6" />
           <span>登录后查看源代码</span>
           <NuxtLink
             v-if="!isLoggedIn"
@@ -272,12 +253,12 @@ watch(
           @click="showOutput = !showOutput"
         >
           <span>评测输出</span>
-          <ChevronDown v-if="!showOutput" :size="16" />
-          <ChevronUp v-else :size="16" />
+          <UIcon name="i-lucide-chevron-down" class="size-4" v-if="!showOutput"/>
+          <UIcon name="i-lucide-chevron-up" class="size-4" v-else/>
         </button>
         <pre v-if="submission.result.output !== null && submission.result.output !== undefined" v-show="showOutput" class="p-4 overflow-x-auto text-xs leading-relaxed bg-[#0d1117] text-[#e6edf3]"><code class="font-mono whitespace-pre-wrap break-all">{{ submission.result.output }}</code></pre>
         <div v-else class="flex flex-col items-center justify-center gap-2 py-8 text-text-muted text-sm">
-          <Lock :size="20" />
+          <UIcon name="i-lucide-lock" class="size-5" />
           <span>登录后查看评测输出</span>
           <NuxtLink
             v-if="!isLoggedIn"

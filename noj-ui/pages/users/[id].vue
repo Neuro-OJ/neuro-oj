@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useRoute } from "vue-router"
-import { CheckCircle, Clock, Server, Calendar, FileText, Code, Send } from "@lucide/vue"
 import { useMessages } from "~/composables/useMessages"
 import { useToast } from "~/composables/useToast"
 
@@ -187,29 +186,24 @@ function formatScore(raw: number | null | undefined): string {
               <div class="flex flex-col gap-1.5">
                 <h1 class="text-2xl font-bold text-text">{{ profile.user.username }}</h1>
                 <div class="flex items-center gap-2 text-sm text-text-muted">
-                  <Calendar :size="14" />
+                  <UIcon name="i-lucide-calendar" class="size-3.5" />
                   <span>{{ formatDate(profile.user.created_at) }} 注册</span>
                 </div>
               </div>
             </div>
             <!-- 编辑个人资料按钮（仅自己可见） -->
-            <NuxtLink
-              v-if="isOwnProfile"
-              to="/settings"
-              class="btn btn-outline text-xs px-3 py-1.5"
-            >
+            <UButton color="primary" variant="outline" class="text-xs px-3 py-1.5" v-if="isOwnProfile"
+              to="/settings">
               编辑个人资料
-            </NuxtLink>
+            </UButton>
             <!-- 发送私信按钮（查看他人主页时显示） -->
-            <button
-              v-else-if="currentUser"
-              class="btn btn-outline text-xs px-3 py-1.5 flex items-center gap-1.5"
-              @click="startConversation"
-            >
-              <Send :size="14" />
+            <UButton color="primary" variant="outline" class="text-xs px-3 py-1.5 flex items-center gap-1.5" v-else-if="currentUser"
+              
+              @click="startConversation">
+              <UIcon name="i-lucide-send" class="size-3.5" />
               发送私信
-            </button>
-            <button v-if="currentUser && !isOwnProfile" class="btn btn-outline text-xs px-3 py-1.5" @click="toggleFollow">{{ following ? '已关注' : '关注' }}</button>
+            </UButton>
+            <UButton color="primary" variant="outline" class="text-xs px-3 py-1.5" v-if="currentUser && !isOwnProfile"  @click="toggleFollow">{{ following ? '已关注' : '关注' }}</UButton>
           </div>
 
           <!-- Bio（Markdown 渲染） -->
@@ -267,7 +261,7 @@ function formatScore(raw: number | null | undefined): string {
       <div v-if="profile.solved_problems.length" class="bg-white border border-border rounded-xl overflow-hidden">
         <div class="px-6 py-4 border-b border-border bg-gray-50">
           <h2 class="text-base font-semibold flex items-center gap-2">
-            <CheckCircle :size="18" class="text-green-600" />
+            <UIcon name="i-lucide-check-circle" class="text-green-600 size-4.5" />
             已通过题目
           </h2>
         </div>
@@ -300,7 +294,7 @@ function formatScore(raw: number | null | undefined): string {
       <div v-if="createdProblems.length" class="bg-white border border-border rounded-xl overflow-hidden">
         <div class="px-6 py-4 border-b border-border bg-gray-50">
           <h2 class="text-base font-semibold flex items-center gap-2">
-            <FileText :size="18" class="text-primary" />
+            <UIcon name="i-lucide-file-text" class="text-primary size-4.5" />
             创建的题目
           </h2>
         </div>
@@ -336,7 +330,7 @@ function formatScore(raw: number | null | undefined): string {
       <div v-if="profile.recent_submissions.length" class="bg-white border border-border rounded-xl overflow-hidden">
         <div class="px-6 py-4 border-b border-border bg-gray-50">
           <h2 class="text-base font-semibold flex items-center gap-2">
-            <Clock :size="18" class="text-text-secondary" />
+            <UIcon name="i-lucide-clock" class="text-text-secondary size-4.5" />
             最近提交
           </h2>
         </div>

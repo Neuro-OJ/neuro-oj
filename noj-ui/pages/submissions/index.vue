@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Search, X } from "@lucide/vue"
 import type {
   SubmissionListItem,
 } from "~/composables/use-submissions"
@@ -126,7 +125,7 @@ function hasResult(item: SubmissionListItem): boolean {
 
 <template>
   <div class="py-8">
-    <div class="container">
+    <div class="mx-auto max-w-[960px] px-4 sm:px-7">
       <!-- 页面标题 -->
       <div class="mb-6">
         <h1 class="m-0 text-2xl font-bold text-text">提交历史</h1>
@@ -172,20 +171,14 @@ function hasResult(item: SubmissionListItem): boolean {
           </div>
         </div>
         <div class="flex gap-2">
-          <button
-            class="inline-flex cursor-pointer items-center gap-1 rounded border border-primary bg-primary px-3.5 py-1.5 text-[13px] font-semibold leading-none text-white no-underline transition-all duration-150 hover:border-primary-dark hover:bg-primary-dark"
-            @click="applyFilters"
-          >
-            <Search :size="14" />
+          <UButton color="primary" size="sm" class="px-3.5 leading-none" @click="applyFilters">
+            <UIcon name="i-lucide-search" class="size-3.5" />
             筛选
-          </button>
-          <button
-            class="inline-flex cursor-pointer items-center gap-1 rounded border border-border bg-transparent px-3.5 py-1.5 text-[13px] font-semibold leading-none text-text-secondary no-underline transition-all duration-150 hover:border-text-secondary hover:text-text"
-            @click="clearFilters"
-          >
-            <X :size="14" />
+          </UButton>
+          <UButton color="neutral" variant="outline" size="sm" class="border-border px-3.5 leading-none text-text-secondary hover:border-text-secondary hover:text-text" @click="clearFilters">
+            <UIcon name="i-lucide-x" class="size-3.5" />
             清空
-          </button>
+          </UButton>
         </div>
       </div>
 
@@ -198,12 +191,9 @@ function hasResult(item: SubmissionListItem): boolean {
       <!-- 错误态 -->
       <div v-else-if="tableError" class="flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-white px-6 py-16 text-sm text-red-600">
         <span>{{ tableError }}</span>
-        <button
-          class="inline-flex cursor-pointer items-center gap-1 rounded border border-primary bg-primary px-3.5 py-1.5 text-[13px] font-semibold leading-none text-white no-underline transition-all duration-150 hover:border-primary-dark hover:bg-primary-dark"
-          @click="loadSubmissions(currentPage)"
-        >
+        <UButton color="primary" size="sm" class="px-3.5 leading-none" @click="loadSubmissions(currentPage)">
           重试
-        </button>
+        </UButton>
       </div>
 
       <!-- 空态 -->

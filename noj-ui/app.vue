@@ -1,9 +1,11 @@
 <template>
-    <NuxtLayout>
-        <BanBanner v-if="ipBanned" type="ip" :ip-info="ipBanInfo" />
-        <BanBanner v-if="userBanned" type="user" :user-info="userBanInfo" />
-        <NuxtPage />
-    </NuxtLayout>
+    <UApp>
+        <NuxtLayout>
+            <BanBanner v-if="ipBanned" type="ip" :ip-info="ipBanInfo" />
+            <BanBanner v-if="userBanned" type="user" :user-info="userBanInfo" />
+            <NuxtPage />
+        </NuxtLayout>
+    </UApp>
 </template>
 
 <script setup lang="ts">
@@ -50,29 +52,7 @@ if (import.meta.client) {
   --tw-prose-code: #f472b6;
 }
 
-/* 全局按钮工具类：默认布局和管理布局均可独立使用。 */
-.btn,
-.btn-primary,
-.btn-outline {
-  @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 font-semibold no-underline cursor-pointer transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50;
-}
-
-.btn-primary {
-  @apply border border-primary bg-primary text-white;
-}
-
-.btn-primary:hover {
-  @apply border-primary-dark bg-primary-dark;
-}
-
-.btn-outline {
-  @apply border border-primary bg-transparent text-primary;
-}
-
-.btn-outline:hover {
-  @apply bg-primary text-white;
-}
-
-/* CSS 变量（设计 Token）统一在 :root 中定义，tailwind.config.ts 通过 var() 引用。
-   全局重置由 Tailwind Preflight 提供，字体和背景通过 Tailwind 类在 layouts 中应用。 */
+/* CSS 变量（设计 Token）统一在 :root 中定义，main.css 的 @theme 通过 var() 引用。
+   全局重置由 Tailwind Preflight 提供，字体和背景通过 Tailwind 类在 layouts 中应用。
+   通用按钮已全部迁移为 Nuxt UI <UButton>，不再保留全局按钮工具类。 */
 </style>

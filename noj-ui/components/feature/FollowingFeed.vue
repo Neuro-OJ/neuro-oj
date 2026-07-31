@@ -4,7 +4,7 @@
     class="flex h-full flex-col bg-white shadow-card animate-[fadeInUp_0.5s_ease_0.15s_both] border border-border rounded-xl"
   >
     <div class="flex items-center gap-2 px-5 py-3.5 border-b border-border">
-      <Users :size="16" class="text-primary shrink-0" />
+      <UIcon name="i-lucide-users" class="text-primary shrink-0 size-4" />
       <h3 class="text-sm font-semibold text-text m-0 leading-none">关注动态</h3>
       <button
         class="flex items-center justify-center w-7 h-7 ml-auto rounded-lg text-text-muted transition-colors duration-150 hover:text-primary active:scale-95 disabled:opacity-50"
@@ -12,7 +12,7 @@
         :disabled="refreshing"
         @click="refresh"
       >
-        <RefreshCw :size="15" :class="{ 'animate-spin-slow': refreshing }" />
+        <UIcon name="i-lucide-refresh-cw" :class="{ 'animate-spin-slow': refreshing }" class="size-3.5" />
       </button>
     </div>
     <div class="flex-1 flex flex-col">
@@ -58,13 +58,12 @@
       class="flex items-center justify-center gap-1 px-5 py-2.5 text-xs font-semibold text-primary no-underline border-t border-border transition-colors duration-150 hover:bg-primary-bg group"
     >
       进入社区
-      <ArrowRight :size="14" class="transition-transform duration-150 group-hover:translate-x-0.5" />
+      <UIcon name="i-lucide-arrow-right" class="transition-transform duration-150 group-hover:translate-x-0.5 size-3.5" />
     </NuxtLink>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Users, RefreshCw, ArrowRight } from "@lucide/vue"
 import type { FeedActivity, FeedItem } from "~/composables/useCommunity"
 import { stripMarkdown } from "~/utils/markdown"
 

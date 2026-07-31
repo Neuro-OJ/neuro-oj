@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { CalendarClock, LockKeyhole, Trophy, Users } from '@lucide/vue'
 import type { Contest, ContestStatus, ContestType } from '~/composables/useContests'
 
 useHead({ title: '竞赛大厅 - Neuro OJ' })
@@ -38,12 +37,12 @@ watch([selectedType, selectedStatus], () => {
 
 <template>
   <div class="min-h-full bg-bg-page py-10">
-    <div class="container space-y-7">
+    <div class="mx-auto max-w-[960px] space-y-7 px-4 sm:px-7">
       <section class="relative overflow-hidden rounded-2xl bg-bg-dark px-8 py-9 text-white shadow-card">
         <div class="absolute -right-20 -top-20 size-64 rounded-full bg-primary/30 blur-3xl" />
         <div class="relative max-w-2xl">
           <div class="mb-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs">
-            <Trophy :size="14" />
+            <UIcon name="i-lucide-trophy" class="size-3.5" />
             NOJ Contest
           </div>
           <h1 class="text-3xl font-bold">竞赛大厅</h1>
@@ -87,11 +86,11 @@ watch([selectedType, selectedStatus], () => {
             <h2 class="mt-5 line-clamp-2 text-lg font-bold transition-colors group-hover:text-primary">{{ contest.title }}</h2>
             <p class="mt-2 line-clamp-2 text-sm leading-6 text-text-secondary">{{ contest.description || '暂无竞赛简介' }}</p>
             <div class="mt-auto space-y-2 border-t border-border pt-4 text-xs text-text-secondary">
-              <div class="flex items-center gap-2"><CalendarClock :size="14" />{{ formatDateTime(contest.start_time) }} · {{ formatDuration(contest.start_time, contest.end_time) }}</div>
+              <div class="flex items-center gap-2"><UIcon name="i-lucide-calendar-clock" class="size-3.5" />{{ formatDateTime(contest.start_time) }} · {{ formatDuration(contest.start_time, contest.end_time) }}</div>
               <div class="flex items-center gap-4">
-                <span class="flex items-center gap-1.5"><Users :size="14" />{{ contest.participant_count }} 人</span>
+                <span class="flex items-center gap-1.5"><UIcon name="i-lucide-users" class="size-3.5" />{{ contest.participant_count }} 人</span>
                 <span>{{ contest.problem_count }} 题</span>
-                <span v-if="contest.has_password" class="ml-auto flex items-center gap-1 text-warning-text"><LockKeyhole :size="13" />密码</span>
+                <span v-if="contest.has_password" class="ml-auto flex items-center gap-1 text-warning-text"><UIcon name="i-lucide-lock-keyhole" class="size-3" />密码</span>
               </div>
             </div>
           </NuxtLink>

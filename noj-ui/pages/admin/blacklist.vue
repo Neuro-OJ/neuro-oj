@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { Plus, Trash2 } from "@lucide/vue"
-
 definePageMeta({
   layout: "admin",
   middleware: "admin",
@@ -144,13 +142,10 @@ function formatExpires(value: string | null) {
           搜索
         </button>
       </div>
-      <button
-        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-primary rounded cursor-pointer transition-colors hover:bg-primary-dark"
-        @click="openCreate"
-      >
-        <Plus :size="14" />
+      <UButton color="primary" size="md" @click="openCreate">
+        <UIcon name="i-lucide-plus" class="size-3.5" />
         新增黑名单
-      </button>
+      </UButton>
     </div>
 
     <!-- 错误条 -->
@@ -209,7 +204,7 @@ function formatExpires(value: string | null) {
                   title="删除"
                   @click="confirmDelete(item)"
                 >
-                  <Trash2 :size="13" />
+                  <UIcon name="i-lucide-trash-2" class="size-3" />
                   删除
                 </button>
               </div>
@@ -220,14 +215,7 @@ function formatExpires(value: string | null) {
     </section>
 
     <!-- 新增黑名单弹窗 -->
-    <AdminModal
-      v-if="showForm"
-      title="新增 IP 黑名单"
-      confirm-text="确认添加"
-      :loading="saving"
-      @confirm="handleSave"
-      @cancel="showForm = false"
-    >
+    <UModal v-model:open="showForm" :title="'新增 IP 黑名单'" :unmount-on-hide="true">
       <div class="flex flex-col gap-3">
         <div>
           <label class="block text-sm font-semibold text-text mb-1">
@@ -258,6 +246,11 @@ function formatExpires(value: string | null) {
         </div>
         <p v-if="formError" class="text-[13px] text-error-text">{{ formError }}</p>
       </div>
-    </AdminModal>
+    
+    <template #footer>
+      <UButton color="neutral" variant="ghost" :disabled="saving" @click="showForm = false">取消</UButton>
+      <UButton color="primary" :loading="saving" @click="handleSave">确认添加</UButton>
+    </template>
+  </UModal>
   </div>
 </template>

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { ExternalLink, Grid, Box, Monitor, Server, Compass, Terminal } from "@lucide/vue"
-
 const contributors = [
   { login: "hachimi-ak-ioi", contributions: 9 },
   { login: "chenmou2012", contributions: 2 },
@@ -32,7 +30,7 @@ const repoUrl = "https://github.com/Neuro-OJ/neuro-oj"
       <div class="px-6 py-6 flex flex-col gap-6">
         <div class="flex gap-4">
           <div class="w-10 h-10 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
-            <Grid :size="20" />
+            <UIcon name="i-lucide-grid" class="size-5" />
           </div>
           <div class="flex flex-col gap-1.5">
             <h3 class="font-semibold text-text">完全由题目自定义的评测过程</h3>
@@ -47,7 +45,7 @@ const repoUrl = "https://github.com/Neuro-OJ/neuro-oj"
 
         <div class="flex gap-4">
           <div class="w-10 h-10 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-            <Box :size="20" />
+            <UIcon name="i-lucide-box" class="size-5" />
           </div>
           <div class="flex flex-col gap-1.5">
             <h3 class="font-semibold text-text">容器级资源限制，适配 AI 场景</h3>
@@ -62,7 +60,7 @@ const repoUrl = "https://github.com/Neuro-OJ/neuro-oj"
 
         <div class="flex gap-4">
           <div class="w-10 h-10 rounded-lg bg-green-100 text-green-700 flex items-center justify-center shrink-0">
-            <Monitor :size="20" />
+            <UIcon name="i-lucide-monitor" class="size-5" />
           </div>
           <div class="flex flex-col gap-1.5">
             <h3 class="font-semibold text-text">全面容器化的评测环境</h3>
@@ -81,7 +79,7 @@ const repoUrl = "https://github.com/Neuro-OJ/neuro-oj"
     <div class="bg-white border border-border rounded-xl overflow-hidden">
       <div class="px-6 py-5 border-b border-border bg-gray-50">
         <h2 class="text-lg font-bold text-text flex items-center gap-2">
-          <Server :size="18" />
+          <UIcon name="i-lucide-server" class="size-4.5" />
           技术架构
         </h2>
       </div>
@@ -89,19 +87,19 @@ const repoUrl = "https://github.com/Neuro-OJ/neuro-oj"
         <div class="flex flex-col sm:flex-row gap-4 text-sm">
           <div class="flex-1 bg-orange-50 border border-orange-200 rounded-lg px-4 py-3.5">
             <div class="font-semibold text-orange-800 flex items-center gap-1.5 mb-1">
-              <Compass :size="16" /> noj-ui
+              <UIcon name="i-lucide-compass" class="size-4" /> noj-ui
             </div>
             <div class="text-orange-700 text-xs">Nuxt 3 + Vue 3 · 用户界面</div>
           </div>
           <div class="flex-1 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3.5">
             <div class="font-semibold text-blue-800 flex items-center gap-1.5 mb-1">
-              <Terminal :size="16" /> noj-core
+              <UIcon name="i-lucide-terminal" class="size-4" /> noj-core
             </div>
             <div class="text-blue-700 text-xs">Deno + Hono · RESTful API</div>
           </div>
           <div class="flex-1 bg-green-50 border border-green-200 rounded-lg px-4 py-3.5">
             <div class="font-semibold text-green-800 flex items-center gap-1.5 mb-1">
-              <Box :size="16" /> noj-judge
+              <UIcon name="i-lucide-box" class="size-4" /> noj-judge
             </div>
             <div class="text-green-700 text-xs">Rust + Docker · 评测 Worker</div>
           </div>
@@ -122,7 +120,7 @@ const repoUrl = "https://github.com/Neuro-OJ/neuro-oj"
           class="inline-flex items-center gap-1.5 text-sm text-primary no-underline hover:underline"
         >
           Neuro-OJ/neuro-oj
-          <ExternalLink :size="12" />
+          <UIcon name="i-lucide-external-link" class="size-3" />
         </a>
       </div>
       <div class="px-6 py-6">

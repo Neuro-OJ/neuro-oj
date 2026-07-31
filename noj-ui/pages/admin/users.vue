@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { ShieldCheck, ShieldX, ShieldAlert, Plus, X } from "@lucide/vue"
-import type { Column } from "~/components/admin/AdminTable.vue"
 import { useAdminList } from "~/composables/useAdminList"
 
 definePageMeta({
@@ -33,23 +31,24 @@ const { items: users, totalPages, loading: tableLoading, error: tableError, curr
   fetchOptions: { dataField: "data", totalField: "pagination.total_pages" },
 })
 
-const columns: Column<User>[] = [
-  { key: "username", label: "用户名" },
-  { key: "email", label: "邮箱" },
+const columns = [
+  { accessorKey: "username", header: "用户名" },
+  { accessorKey: "email", header: "邮箱" },
   {
-    key: "role",
-    label: "角色",
-    format: (val) => val === "admin" ? "管理员" : "用户",
+    accessorKey: "role",
+    header: "角色",
+    cell: (info) => info.getValue() === "admin" ? "管理员" : "用户",
   },
   {
-    key: "created_at",
-    label: "注册时间",
-    format: (val) => {
-      const d = new Date(val as string)
+    accessorKey: "created_at",
+    header: "注册时间",
+    cell: (info) => {
+      const d = new Date(info.getValue() as string)
       return d.toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" })
     },
   },
-]
+
+  { accessorKey: "actions", header: "操作" },]
 
 watch(isLoggedIn, (val) => {
   if (val) loadUsers()
@@ -245,21 +244,20 @@ async function showBanHistory(user: User) {
       />
     </div>
 
-    <AdminTable
+    <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
+    <UTable
       :columns="columns"
       :data="users"
       :loading="tableLoading"
-      :error="tableError"
-      empty-text="暂无用户"
-    >
-      <template #cell-role="{ row }">
+      :empty="'暂无用户'">
+      <template #role-cell="{ row }">
         <div class="flex items-center gap-1.5 flex-wrap">
           <span
             class="inline-flex items-center gap-1 px-2 py-[3px] rounded text-xs font-semibold"
             :class="row.role === 'admin' ? 'bg-blue-50 text-info-text' : 'bg-[#f5f5f5] text-[#6b7280]'"
           >
-            <ShieldCheck v-if="row.role === 'admin'" :size="14" />
-            <ShieldX v-else :size="14" />
+            <UIcon name="i-lucide-shield-check" class="size-3.5" v-if="row.role === 'admin'"/>
+            <UIcon name="i-lucide-shield-x" class="size-3.5" v-else/>
             {{ row.role === "admin" ? "管理员" : "用户" }}
           </span>
           <!-- user-ban-table：封禁 badge -->
@@ -273,7 +271,7 @@ async function showBanHistory(user: User) {
         </div>
       </template>
 
-      <template #actions="{ row }">
+      <template #actions-cell="{ row }">
         <div class="flex items-center gap-1.5">
           <button
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-info-text text-info-text bg-transparent hover:bg-info-text hover:text-white"
@@ -298,15 +296,12 @@ async function showBanHistory(user: User) {
           >
             解封
           </button>
-          <button
-            class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-border text-text-secondary bg-transparent hover:bg-page hover:text-text"
-            @click="showBanHistory(row)"
-          >
+          <UButton color="neutral" variant="outline" size="sm" class="py-1 border-border text-text-secondary hover:bg-page hover:text-text" @click="showBanHistory(row)">
             历史
-          </button>
+          </UButton>
         </div>
       </template>
-    </AdminTable>
+    </UTable>
 
     <PaginationNav
       :current-page="currentPage"
@@ -316,14 +311,7 @@ async function showBanHistory(user: User) {
   </div>
 
   <!-- 角色管理弹窗（RBAC role_ids） -->
-  <AdminModal
-    v-if="showRoleModal"
-    title="修改用户角色"
-    confirm-text="保存"
-    :loading="switchingRole"
-    @confirm="handleRoleSwitch"
-    @cancel="showRoleModal = false"
-  >
+  <UModal v-model:open="showRoleModal" :title="'修改用户角色'" :unmount-on-hide="true">
     <p class="mb-3">为用户 <strong>{{ targetUser?.username }}</strong> 选择角色：</p>
     <div class="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
       <label
@@ -347,18 +335,15 @@ async function showBanHistory(user: User) {
       </label>
     </div>
     <p v-if="switchError" class="mt-2 text-error-text text-[13px]">{{ switchError }}</p>
-  </AdminModal>
+  
+    <template #footer>
+      <UButton color="neutral" variant="ghost" :disabled="switchingRole" @click="showRoleModal = false">取消</UButton>
+      <UButton color="primary" :loading="switchingRole" @click="handleRoleSwitch">保存</UButton>
+    </template>
+  </UModal>
 
   <!-- 封禁用户弹窗（issue #102） -->
-  <AdminModal
-    v-if="showBanModal"
-    title="封禁用户"
-    confirm-text="确认封禁"
-    :loading="banning"
-    danger
-    @confirm="handleBan"
-    @cancel="showBanModal = false"
-  >
+  <UModal v-model:open="showBanModal" :title="'封禁用户'" :unmount-on-hide="true">
     <p class="mb-3">将封禁 <strong>{{ banTarget?.username }}</strong>。</p>
     <div class="flex flex-col gap-3">
       <div>
@@ -380,16 +365,15 @@ async function showBanHistory(user: User) {
       </div>
       <p v-if="banError" class="text-[13px] text-error-text">{{ banError }}</p>
     </div>
-  </AdminModal>
+  
+    <template #footer>
+      <UButton color="neutral" variant="ghost" :disabled="banning" @click="showBanModal = false">取消</UButton>
+      <UButton color="error" :loading="banning" @click="handleBan">确认封禁</UButton>
+    </template>
+  </UModal>
 
   <!-- 封禁历史弹窗（user-ban-table） -->
-  <AdminModal
-    v-if="showHistoryModal"
-    title="封禁历史"
-    hide-confirm
-    :loading="historyLoading"
-    @cancel="showHistoryModal = false"
-  >
+  <UModal v-model:open="showHistoryModal" :title="'封禁历史'" :unmount-on-hide="true">
     <p v-if="historyTarget" class="mb-3">
       <strong>{{ historyTarget.username }}</strong> 的封禁记录
     </p>
@@ -426,5 +410,9 @@ async function showBanHistory(user: User) {
         </div>
       </div>
     </div>
-  </AdminModal>
+  
+    <template #footer>
+      <UButton color="neutral" variant="ghost" :disabled="historyLoading" @click="showHistoryModal = false">取消</UButton>
+    </template>
+  </UModal>
 </template>

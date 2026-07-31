@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { Loader2, AlertCircle, FileText } from "@lucide/vue"
-
 type Status = "loading" | "error" | "empty" | "data"
 
 defineProps<{ status: Status; error?: string; emptyText?: string }>()
@@ -16,14 +14,14 @@ defineEmits<{ retry: [] }>()
     </div>
     <div v-else-if="status === 'error'" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted" role="alert">
       <slot name="error" :error="error">
-        <span class="flex items-center justify-center size-11 rounded-full bg-error-bg text-error-text text-xl font-bold"><AlertCircle :size="22" /></span>
+        <span class="flex items-center justify-center size-11 rounded-full bg-error-bg text-error-text text-xl font-bold"><UIcon name="i-lucide-alert-circle" class="size-[22px]" /></span>
         <p>{{ error ?? "加载失败" }}</p>
-        <button class="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-md border border-primary text-primary bg-transparent hover:bg-primary hover:text-white transition-colors cursor-pointer" @click="$emit('retry')">重试</button>
+        <UButton color="primary" variant="outline" size="sm" @click="$emit('retry')">重试</UButton>
       </slot>
     </div>
     <div v-else-if="status === 'empty'" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted" role="status" aria-live="polite">
       <slot name="empty">
-        <FileText :size="48" class="opacity-30" />
+        <UIcon name="i-lucide-file-text" class="opacity-30 size-[48px]" />
         <p>{{ emptyText ?? "暂无数据" }}</p>
         <slot name="empty-action" />
       </slot>

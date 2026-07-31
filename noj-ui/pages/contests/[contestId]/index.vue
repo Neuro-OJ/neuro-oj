@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { CalendarClock, KeyRound, ListChecks, Timer, Trophy, Users } from '@lucide/vue'
 import type { Contest, ContestProblem } from '~/composables/useContests'
 
 const route = useRoute()
@@ -85,7 +84,7 @@ onUnmounted(() => {
 
 <template>
   <div class="min-h-full bg-bg-page py-8">
-    <div class="container">
+    <div class="mx-auto max-w-[960px] px-4 sm:px-7">
       <AsyncContent :status="pending ? 'loading' : error ? 'error' : contest ? 'data' : 'empty'" error="竞赛加载失败" @retry="refresh">
         <div v-if="contest" class="space-y-6">
           <section class="overflow-hidden rounded-2xl border border-border bg-white shadow-card">
@@ -104,10 +103,10 @@ onUnmounted(() => {
                 </div>
               </div>
               <div class="mt-6 grid gap-3 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
-                <span class="flex items-center gap-2"><CalendarClock :size="16" />{{ formatDateTime(contest.start_time) }}</span>
-                <span class="flex items-center gap-2"><Timer :size="16" />{{ formatDuration(contest.start_time, contest.end_time) }}</span>
-                <span class="flex items-center gap-2"><ListChecks :size="16" />{{ contest.problem_count }} 道题</span>
-                <span class="flex items-center gap-2"><Users :size="16" />{{ contest.participant_count }} 名参赛者</span>
+                <span class="flex items-center gap-2"><UIcon name="i-lucide-calendar-clock" class="size-4" />{{ formatDateTime(contest.start_time) }}</span>
+                <span class="flex items-center gap-2"><UIcon name="i-lucide-timer" class="size-4" />{{ formatDuration(contest.start_time, contest.end_time) }}</span>
+                <span class="flex items-center gap-2"><UIcon name="i-lucide-list-checks" class="size-4" />{{ contest.problem_count }} 道题</span>
+                <span class="flex items-center gap-2"><UIcon name="i-lucide-users" class="size-4" />{{ contest.participant_count }} 名参赛者</span>
               </div>
             </div>
             <div class="grid gap-6 p-7 lg:grid-cols-[1fr_300px]">
@@ -122,10 +121,10 @@ onUnmounted(() => {
                 </div>
               </div>
               <aside class="space-y-3 rounded-xl border border-border bg-bg-page p-4">
-                <NuxtLink :to="`/contests/${contest.id}/ranking`" class="btn btn-outline w-full gap-2 py-2.5 text-sm"><Trophy :size="16" />查看排名</NuxtLink>
+                <UButton color="primary" variant="outline" class="w-full gap-2 py-2.5 text-sm" :to="`/contests/${contest.id}/ranking`"><UIcon name="i-lucide-trophy" class="size-4" />查看排名</UButton>
                 <template v-if="!contest.is_registered && contest.status !== 'ended'">
                   <input v-if="contest.has_password" v-model="password" type="password" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" placeholder="竞赛密码" @keyup.enter="register">
-                  <button class="btn btn-primary w-full gap-2 py-2.5 text-sm disabled:opacity-50" :disabled="registering" @click="register"><KeyRound :size="16" />{{ registering ? '报名中...' : '报名参赛' }}</button>
+                  <UButton color="primary" class="w-full gap-2 py-2.5 text-sm disabled:opacity-50" :disabled="registering" @click="register"><UIcon name="i-lucide-key-round" class="size-4" />{{ registering ? '报名中...' : '报名参赛' }}</UButton>
                   <p v-if="registerError" class="text-xs text-error-text">{{ registerError }}</p>
                 </template>
                 <div v-else-if="contest.is_registered" class="rounded-lg bg-green-50 p-3 text-center text-sm font-semibold text-success-text">已报名参赛</div>

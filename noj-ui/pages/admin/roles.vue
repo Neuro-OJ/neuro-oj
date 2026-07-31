@@ -1,7 +1,4 @@
 <script setup lang="ts">
-import { Plus, Pencil, Trash2, Lock, ShieldCheck, AlertTriangle } from "@lucide/vue"
-import type { Column } from "~/components/admin/AdminTable.vue"
-
 definePageMeta({
   layout: "admin",
   middleware: "admin",
@@ -54,29 +51,30 @@ const permissionGroups = computed<PermissionGroup[]>(() => {
 const tableLoading = ref(true)
 const tableError = ref("")
 
-const columns: Column<Role>[] = [
-  { key: "name", label: "角色名" },
+const columns = [
+  { accessorKey: "name", header: "角色名" },
   {
-    key: "parent_name",
-    label: "继承自",
-    format: (val) => (val as string) || "-",
+    accessorKey: "parent_name",
+    header: "继承自",
+    cell: (info) => (info.getValue() as string) || "-",
   },
   {
-    key: "is_admin",
-    label: "管理员",
-    format: (val) => (val as boolean) ? "是" : "否",
+    accessorKey: "is_admin",
+    header: "管理员",
+    cell: (info) => (info.getValue() as boolean) ? "是" : "否",
   },
   {
-    key: "is_default",
-    label: "默认角色",
-    format: (val) => (val as boolean) ? "是" : "否",
+    accessorKey: "is_default",
+    header: "默认角色",
+    cell: (info) => (info.getValue() as boolean) ? "是" : "否",
   },
   {
-    key: "is_system",
-    label: "系统角色",
-    format: (val) => (val as boolean) ? "是" : "否",
+    accessorKey: "is_system",
+    header: "系统角色",
+    cell: (info) => (info.getValue() as boolean) ? "是" : "否",
   },
-]
+
+  { accessorKey: "actions", header: "操作" },]
 
 async function loadRoles() {
   if (!isLoggedIn.value) return
@@ -225,37 +223,33 @@ async function confirmDelete(role: Role) {
       v-if="deleteError"
       class="flex items-center gap-2 px-4 py-3 text-sm text-error-text bg-red-50 border border-red-200 rounded-lg"
     >
-      <AlertTriangle :size="16" />
+      <UIcon name="i-lucide-alert-triangle" class="size-4" />
       <span>{{ deleteError }}</span>
     </div>
 
     <div class="flex items-center justify-between">
       <div />
-      <button
-        class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-primary rounded-lg cursor-pointer transition-all hover:bg-primary-dark disabled:opacity-50"
-        @click="openNewRole"
-      >
-        <Plus :size="16" />
+      <UButton color="primary" size="sm" @click="openNewRole">
+        <UIcon name="i-lucide-plus" class="size-4" />
         新建角色
-      </button>
+      </UButton>
     </div>
 
-    <AdminTable
+    <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
+    <UTable
       :columns="columns"
       :data="roles"
       :loading="tableLoading"
-      :error="tableError"
-      empty-text="暂无角色"
-    >
-      <template #cell-name="{ row }">
+      :empty="'暂无角色'">
+      <template #name-cell="{ row }">
         <div class="flex items-center gap-1.5">
-          <ShieldCheck v-if="row.is_admin" :size="16" class="text-info-text shrink-0" />
+          <UIcon name="i-lucide-shield-check" class="text-info-text shrink-0 size-4" v-if="row.is_admin"/>
           <span>{{ row.name }}</span>
-          <Lock v-if="row.is_system" :size="14" class="text-text-muted shrink-0" title="系统角色" />
+          <UIcon name="i-lucide-lock" class="text-text-muted shrink-0 size-3.5" v-if="row.is_system"   title="系统角色"/>
         </div>
       </template>
 
-      <template #actions="{ row }">
+      <template #actions-cell="{ row }">
         <div class="flex items-center gap-1.5">
           <button
             class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all border"
@@ -266,7 +260,7 @@ async function confirmDelete(role: Role) {
             :title="row.is_system ? '系统角色不可编辑' : '编辑角色'"
             @click="openEditRole(row)"
           >
-            <Pencil :size="14" />
+            <UIcon name="i-lucide-pencil" class="size-3.5" />
             编辑
           </button>
           <button
@@ -278,23 +272,16 @@ async function confirmDelete(role: Role) {
             :title="row.is_system ? '系统角色不可删除' : '删除角色'"
             @click="confirmDelete(row)"
           >
-            <Trash2 :size="14" />
+            <UIcon name="i-lucide-trash-2" class="size-3.5" />
             {{ deletingId === row.id ? "删除中..." : "删除" }}
           </button>
         </div>
       </template>
-    </AdminTable>
+    </UTable>
   </div>
 
   <!-- 角色编辑弹窗 -->
-  <AdminModal
-    v-if="showEditor"
-    :title="editingRole ? `编辑角色：${editingRole.name}` : '新建角色'"
-    :confirm-text="editingRole ? '保存' : '创建'"
-    :loading="saving"
-    @confirm="handleSave"
-    @cancel="showEditor = false"
-  >
+  <UModal v-model:open="showEditor" :title="editingRole ? `编辑角色：${editingRole.name}` : '新建角色'" :unmount-on-hide="true">
     <div class="flex flex-col gap-4">
       <!-- 名称 -->
       <div>
@@ -368,7 +355,7 @@ async function confirmDelete(role: Role) {
                     class="inline-flex items-center gap-0.5 text-xs text-text-muted"
                     title="来自继承角色"
                   >
-                    <Lock :size="12" /> 继承
+                    <UIcon name="i-lucide-lock" class="size-3" /> 继承
                   </span>
                 </label>
               </div>
@@ -382,11 +369,16 @@ async function confirmDelete(role: Role) {
         v-else
         class="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800"
       >
-        <AlertTriangle :size="18" class="shrink-0 mt-0.5" />
+        <UIcon name="i-lucide-alert-triangle" class="shrink-0 mt-0.5 size-4.5" />
         <span>⚠️ 管理员角色隐式拥有所有权限，无需单独配置</span>
       </div>
 
       <p v-if="editorError" class="text-[13px] text-error-text">{{ editorError }}</p>
     </div>
-  </AdminModal>
+  
+    <template #footer>
+      <UButton color="neutral" variant="ghost" :disabled="saving" @click="showEditor = false">取消</UButton>
+      <UButton color="primary" :loading="saving" @click="handleSave">editingRole ? '保存' : '创建'</UButton>
+    </template>
+  </UModal>
 </template>

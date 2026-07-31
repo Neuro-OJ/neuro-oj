@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Copy, ScrollText } from "@lucide/vue"
 import { useAuditLogs } from "~/composables/useAuditLogs"
 import type { AuditAction, AuditLogEntry } from "~/composables/useAuditLogs"
 import { useToast } from "~/composables/useToast"
@@ -87,7 +86,7 @@ onMounted(fetch)
   <div class="flex flex-col gap-4">
     <div class="flex flex-col gap-1">
       <h1 class="text-[22px] font-bold text-text flex items-center gap-2">
-        <ScrollText :size="22" />
+        <UIcon name="i-lucide-scroll-text" class="size-[22px]" />
         审计日志
       </h1>
       <span class="text-sm text-text-secondary">查看管理员操作的完整审计记录（保留 90 天）</span>
@@ -126,18 +125,12 @@ onMounted(fetch)
         </div>
       </div>
       <div class="flex gap-2">
-        <button
-          class="inline-flex items-center gap-1 px-3.5 py-1.5 text-[13px] font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline bg-primary text-white border-primary hover:bg-primary-dark hover:border-primary-dark"
-          @click="applyFilters"
-        >
+        <UButton color="primary" size="sm" class="px-3.5 leading-none" @click="applyFilters">
           筛选
-        </button>
-        <button
-          class="inline-flex items-center gap-1 px-3.5 py-1.5 text-[13px] font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-text-secondary border-border bg-transparent hover:border-text-secondary hover:text-text"
-          @click="reset(); fetch()"
-        >
+        </UButton>
+        <UButton color="neutral" variant="outline" size="sm" class="px-3.5 leading-none text-text-secondary border-border hover:border-text-secondary hover:text-text" @click="reset(); fetch()">
           重置
-        </button>
+        </UButton>
       </div>
     </div>
 
@@ -213,7 +206,7 @@ onMounted(fetch)
                   title="复制 IP"
                   @click="copy(entry.ip_address)"
                 >
-                  <Copy :size="13" />
+                  <UIcon name="i-lucide-copy" class="size-3" />
                 </button>
               </span>
             </td>

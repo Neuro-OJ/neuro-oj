@@ -1,23 +1,4 @@
 <script setup lang="ts">
-import {
-  LayoutDashboard,
-  Users,
-  BookOpen,
-  Tags,
-  Files,
-  ChevronLeft,
-  PanelLeftClose,
-  PanelLeft,
-  ArrowLeftFromLine,
-  Container,
-  Settings,
-  Ban,
-  ScrollText,
-  ShieldCheck,
-  Trophy,
-  MessagesSquare,
-} from "@lucide/vue"
-
 const route = useRoute()
 const sidebarOpen = ref(true)
 const isMobile = ref(false)
@@ -37,7 +18,7 @@ onUnmounted(() => window.removeEventListener("resize", onResize))
 interface NavItem {
   label: string
   to: string
-  icon: Component
+  icon: string
 }
 
 interface NavGroup {
@@ -46,26 +27,26 @@ interface NavGroup {
 }
 
 const navGroups: NavGroup[] = [
-  { label: "概览", items: [{ label: "仪表盘", to: "/admin", icon: LayoutDashboard }] },
+  { label: "概览", items: [{ label: "仪表盘", to: "/admin", icon: 'i-lucide-layout-dashboard' }] },
   {
     label: "内容与评测",
     items: [
-      { label: "题目管理", to: "/admin/problems", icon: BookOpen },
-      { label: "分类管理", to: "/admin/categories", icon: Tags },
-      { label: "竞赛管理", to: "/admin/contests", icon: Trophy },
-      { label: "提交管理", to: "/admin/submissions", icon: Files },
-      { label: "评测镜像", to: "/admin/judge-images", icon: Container },
-      { label: "社区管理", to: "/admin/community", icon: MessagesSquare },
+      { label: "题目管理", to: "/admin/problems", icon: 'i-lucide-book-open' },
+      { label: "分类管理", to: "/admin/categories", icon: 'i-lucide-tags' },
+      { label: "竞赛管理", to: "/admin/contests", icon: 'i-lucide-trophy' },
+      { label: "提交管理", to: "/admin/submissions", icon: 'i-lucide-files' },
+      { label: "评测镜像", to: "/admin/judge-images", icon: 'i-lucide-container' },
+      { label: "社区管理", to: "/admin/community", icon: 'i-lucide-messages-square' },
     ],
   },
   {
     label: "用户与系统",
     items: [
-      { label: "用户管理", to: "/admin/users", icon: Users },
-      { label: "角色管理", to: "/admin/roles", icon: ShieldCheck },
-      { label: "黑名单管理", to: "/admin/blacklist", icon: Ban },
-      { label: "系统设置", to: "/admin/settings", icon: Settings },
-      { label: "审计日志", to: "/admin/audit-logs", icon: ScrollText },
+      { label: "用户管理", to: "/admin/users", icon: 'i-lucide-users' },
+      { label: "角色管理", to: "/admin/roles", icon: 'i-lucide-shield-check' },
+      { label: "黑名单管理", to: "/admin/blacklist", icon: 'i-lucide-ban' },
+      { label: "系统设置", to: "/admin/settings", icon: 'i-lucide-settings' },
+      { label: "审计日志", to: "/admin/audit-logs", icon: 'i-lucide-scroll-text' },
     ],
   },
 ]
@@ -98,8 +79,8 @@ function isActive(path: string) {
           <span v-show="sidebarOpen" class="text-base font-bold text-primary whitespace-nowrap">管理后台</span>
         </NuxtLink>
         <button class="bg-none border-none text-text-secondary cursor-pointer p-1 rounded shrink-0 hover:bg-gray-100 transition-colors" @click="sidebarOpen = !sidebarOpen">
-          <PanelLeftClose v-if="sidebarOpen" :size="18" />
-          <PanelLeft v-else :size="18" />
+          <UIcon name="i-lucide-panel-left-close" class="size-4.5" v-if="sidebarOpen"/>
+          <UIcon name="i-lucide-panel-left" class="size-4.5" v-else/>
         </button>
       </div>
 
@@ -114,7 +95,7 @@ function isActive(path: string) {
             :class="{ 'bg-primary-bg text-primary font-semibold': isActive(item.to), 'hover:bg-gray-100 hover:text-text': !isActive(item.to) }"
             @click="isMobile && (sidebarOpen = false)"
           >
-            <component :is="item.icon" :size="18" />
+            <UIcon :name="item.icon" class="size-4.5" />
             <span v-show="sidebarOpen" class="flex-1">{{ item.label }}</span>
           </NuxtLink>
         </section>
@@ -122,7 +103,7 @@ function isActive(path: string) {
 
       <div class="p-2 border-t border-border">
         <NuxtLink to="/" class="flex items-center gap-2 px-3 py-2.5 text-xs text-text-secondary no-underline rounded-md transition-colors whitespace-nowrap overflow-hidden hover:bg-gray-100 hover:text-text">
-          <ArrowLeftFromLine :size="16" />
+          <UIcon name="i-lucide-arrow-left-from-line" class="size-4" />
           <span v-show="sidebarOpen">返回前台</span>
         </NuxtLink>
       </div>
@@ -133,7 +114,7 @@ function isActive(path: string) {
       <!-- 移动端顶栏 -->
       <header v-if="isMobile" class="flex items-center gap-3 px-4 py-3 bg-white border-b border-border sticky top-0 z-40">
         <button class="bg-none border-none text-text cursor-pointer p-1.5 rounded hover:bg-gray-100" @click="sidebarOpen = !sidebarOpen">
-          <PanelLeft :size="20" />
+          <UIcon name="i-lucide-panel-left" class="size-5" />
         </button>
         <span class="text-base font-semibold">管理后台</span>
       </header>

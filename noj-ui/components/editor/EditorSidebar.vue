@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Clock, Server, Sun, Moon, Trash2, ChevronRight, Loader2, Timer, MemoryStick } from '@lucide/vue'
 import MarkdownRenderer from '~/components/shared/MarkdownRenderer.vue'
 import { getStatusColor, getStatusLabel } from '~/composables/use-submissions'
 import type { EditorTheme } from '~/composables/useEditorTheme'
@@ -104,11 +103,11 @@ function formatElapsed(iso: string) {
             {{ problem.display_id }}
           </span>
           <span class="inline-flex items-center gap-1">
-            <Clock :size="12" />
+            <UIcon name="i-lucide-clock" class="size-3" />
             {{ problem.runtime_config.evaluator.time_limit_ms }}ms
           </span>
           <span class="inline-flex items-center gap-1">
-            <Server :size="12" />
+            <UIcon name="i-lucide-server" class="size-3" />
             {{ problem.runtime_config.evaluator.memory_limit_mb }}MB
           </span>
           <span class="font-medium">{{ problem.difficulty }}</span>
@@ -135,7 +134,7 @@ function formatElapsed(iso: string) {
       <div>
         <div class="flex items-center justify-between mb-2">
           <h3 class="text-sm font-semibold text-text">最近</h3>
-          <Loader2 v-if="isPollingActive" :size="12" class="animate-spin text-primary" />
+          <UIcon name="i-lucide-loader-2" class="animate-spin text-primary size-3" v-if="isPollingActive"/>
         </div>
         <div v-if="recentSubmissions.length === 0" class="text-xs text-text-muted text-center py-4 border border-dashed border-border rounded-md">
           点击「提交评测」开始
@@ -152,11 +151,7 @@ function formatElapsed(iso: string) {
               class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded font-semibold"
               :style="{ background: getStatusColor(sub.status, sub.result?.status) + '22', color: getStatusColor(sub.status, sub.result?.status) }"
             >
-              <Loader2
-                v-if="sub.status === 'pending' || sub.status === 'judging'"
-                :size="10"
-                class="animate-spin"
-              />
+              <UIcon name="i-lucide-loader-2" class="animate-spin size-[10px]" v-if="sub.status === 'pending' || sub.status === 'judging'"/>
               {{ getStatusLabel(sub.status, sub.result?.status) }}
             </span>
             <span class="text-sm font-mono font-semibold text-text">
@@ -173,11 +168,11 @@ function formatElapsed(iso: string) {
             class="flex items-center gap-3 text-xs text-text-muted mb-2"
           >
             <span v-if="sub.result?.time_ms" class="inline-flex items-center gap-1">
-              <Timer :size="11" />
+              <UIcon name="i-lucide-timer" class="size-[11px]" />
               {{ sub.result.time_ms }}ms
             </span>
             <span v-if="sub.result?.memory_kb" class="inline-flex items-center gap-1">
-              <MemoryStick :size="11" />
+              <UIcon name="i-lucide-memory-stick" class="size-[11px]" />
               {{ Math.round(sub.result.memory_kb / 1024) }}MB
             </span>
           </div>
@@ -191,10 +186,7 @@ function formatElapsed(iso: string) {
             <span v-else>{{ formatTime(sub.created_at) }}</span>
           </div>
 
-          <ChevronRight
-            :size="14"
-            class="absolute right-2 top-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity"
-          />
+          <UIcon name="i-lucide-chevron-right" class="absolute right-2 top-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity size-3.5" />
         </button>
       </div>
 
@@ -223,10 +215,7 @@ function formatElapsed(iso: string) {
             <span class="font-mono">{{ sub.language }}</span>
             <span>{{ formatTime(sub.created_at) }}</span>
           </div>
-          <ChevronRight
-            :size="14"
-            class="absolute right-2 top-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity"
-          />
+          <UIcon name="i-lucide-chevron-right" class="absolute right-2 top-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity size-3.5" />
         </button>
       </div>
     </div>
@@ -243,7 +232,7 @@ function formatElapsed(iso: string) {
             :class="themeMode === 'light' ? 'border-primary bg-primary-bg text-primary' : 'border-border hover:bg-bg-page'"
             @click="emit('update:themeMode', 'light')"
           >
-            <Sun :size="16" />
+            <UIcon name="i-lucide-sun" class="size-4" />
             亮色
           </button>
           <button
@@ -251,7 +240,7 @@ function formatElapsed(iso: string) {
             :class="themeMode === 'dark' ? 'border-primary bg-primary-bg text-primary' : 'border-border hover:bg-bg-page'"
             @click="emit('update:themeMode', 'dark')"
           >
-            <Moon :size="16" />
+            <UIcon name="i-lucide-moon" class="size-4" />
             暗色
           </button>
         </div>
@@ -278,7 +267,7 @@ function formatElapsed(iso: string) {
           class="w-full inline-flex items-center justify-center gap-2 py-2 px-3 border border-red-200 text-red-700 bg-red-50 rounded-md text-sm hover:bg-red-100 transition-colors"
           @click="emit('clear-draft')"
         >
-          <Trash2 :size="14" />
+          <UIcon name="i-lucide-trash-2" class="size-3.5" />
           清除当前草稿
         </button>
       </div>
