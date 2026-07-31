@@ -85,7 +85,7 @@ onMounted(fetch)
 <template>
   <div class="flex flex-col gap-4">
     <div class="flex flex-col gap-1">
-      <h1 class="text-[22px] font-bold text-text flex items-center gap-2">
+      <h1 class="text-22px font-bold text-text flex items-center gap-2">
         <UIcon name="i-lucide-scroll-text" class="size-[22px]" />
         审计日志
       </h1>
@@ -99,7 +99,7 @@ onMounted(fetch)
           <label class="text-xs font-semibold text-text-secondary">操作类型</label>
           <select
             v-model="filters.action"
-            class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
           >
             <option value="">全部</option>
             <option v-for="(label, action) in ACTION_LABELS" :key="action" :value="action">
@@ -112,7 +112,7 @@ onMounted(fetch)
           <input
             type="datetime-local"
             v-model="filters.from"
-            class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
           />
         </div>
         <div class="flex flex-col gap-1 min-w-[200px]">
@@ -120,7 +120,7 @@ onMounted(fetch)
           <input
             type="datetime-local"
             v-model="filters.to"
-            class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
           />
         </div>
       </div>

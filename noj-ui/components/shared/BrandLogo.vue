@@ -5,7 +5,7 @@
             :alt="brandName"
             :class="['rounded-md', sizeClass]"
         >
-        <span>{{ brandName }}</span>
+        <span :class="textClass">{{ brandName }}</span>
     </NuxtLink>
 </template>
 
@@ -20,12 +20,15 @@ interface Props {
     logoSrc?: string
     /** Logo 尺寸（Tailwind size-N，对应 size-N 类） */
     size?: number
+    /** 品牌文字额外类名（如移动端隐藏：hidden sm:inline） */
+    textClass?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
     brandName: "Neuro OJ",
     logoSrc: defaultLogo,
     size: 7,
+    textClass: "",
 })
 
 const sizeClass = computed(() => `size-${props.size}`)

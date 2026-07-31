@@ -1,14 +1,9 @@
 <template>
     <div class="w-full max-w-[380px] relative">
-        <Transition name="slide">
-            <div v-if="error" class="bg-red-50 border border-red-200 text-red-700 rounded-md px-3.5 py-2.5 text-sm flex items-center justify-between gap-3 fixed top-[74px] left-1/2 -translate-x-1/2 z-[99] max-w-[380px] w-[calc(100%-48px)]">
-                <span>{{ error }}</span>
-                <button class="bg-transparent border-0 text-red-700 cursor-pointer text-base p-0.5 leading-none opacity-70 shrink-0 hover:opacity-100" @click="clearError">&#10005;</button>
-            </div>
-        </Transition>
+        <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error" @close="clearError" />
 
         <div class="bg-white border border-border rounded-lg p-8">
-            <h1 class="text-[22px] font-bold text-center mb-6 text-text animate-[fadeInUp_0.5s_ease_both]">重置密码</h1>
+            <h1 class="text-22px font-bold text-center mb-6 text-text animate-[fadeInUp_0.5s_ease_both]">重置密码</h1>
 
             <form @submit.prevent="handleSubmit">
                 <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.05s_both]">
@@ -35,7 +30,7 @@
                         </button>
                     </div>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.password" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-[13px] text-red-700"><span>{{ fieldErrors.password }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
+                        <div v-if="fieldErrors.password" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-red-700"><span>{{ fieldErrors.password }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
                     </Transition>
                 </div>
 
@@ -63,7 +58,7 @@
                         </button>
                     </div>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.confirmPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-[13px] text-red-700"><span>{{ fieldErrors.confirmPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
+                        <div v-if="fieldErrors.confirmPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-red-700"><span>{{ fieldErrors.confirmPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
                     </Transition>
                 </div>
 

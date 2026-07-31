@@ -76,6 +76,27 @@
 
   /* 代码字体 */
   --font-mono: "SF Mono", "Fira Code", "Consolas", monospace;
+
+  /* 自定义字号刻度（对齐项目中使用的任意字号，命名 token 便于统一管理）
+   * Tailwind v4 中 --text-<name> 自动生成 text-<name> 工具类 */
+  --text-11px: 0.6875rem; /* 11px */
+  --text-13px: 0.8125rem; /* 13px */
+  --text-15px: 0.9375rem; /* 15px */
+  --text-17px: 1.0625rem; /* 17px */
+  --text-22px: 1.375rem;  /* 22px */
+  --text-28px: 1.75rem;   /* 28px */
+}
+
+/* ---- 无障碍：尊重系统 reduced-motion 偏好 ---- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ---- 将现有 token 映射到 Nuxt UI 语义变量，保持组件默认观感 ---- */

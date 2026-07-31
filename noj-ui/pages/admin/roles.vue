@@ -370,10 +370,10 @@ async function confirmDelete(role: Role) {
         class="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800"
       >
         <UIcon name="i-lucide-alert-triangle" class="shrink-0 mt-0.5 size-4.5" />
-        <span>⚠️ 管理员角色隐式拥有所有权限，无需单独配置</span>
+        <span>管理员角色隐式拥有所有权限，无需单独配置</span>
       </div>
 
-      <p v-if="editorError" class="text-[13px] text-error-text">{{ editorError }}</p>
+      <p v-if="editorError" class="text-13px text-error-text">{{ editorError }}</p>
     </div>
   
     <template #footer>

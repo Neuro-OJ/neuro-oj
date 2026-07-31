@@ -207,7 +207,7 @@ watch(
           <div class="flex items-center gap-2.5 text-text-secondary">
             <UIcon name="i-lucide-clock" class="size-4" />
             <div class="flex flex-col gap-px">
-              <span class="text-[11px] text-text-muted">耗时</span>
+              <span class="text-11px text-text-muted">耗时</span>
               <span class="text-sm font-semibold text-text">
                 {{ formatTime(submission.result.time_ms) }}
               </span>
@@ -216,7 +216,7 @@ watch(
           <div class="flex items-center gap-2.5 text-text-secondary">
             <UIcon name="i-lucide-server" class="size-4" />
             <div class="flex flex-col gap-px">
-              <span class="text-[11px] text-text-muted">内存</span>
+              <span class="text-11px text-text-muted">内存</span>
               <span class="text-sm font-semibold text-text">
                 {{ formatMemory(submission.result.memory_kb) }}
               </span>

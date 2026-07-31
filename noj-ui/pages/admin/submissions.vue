@@ -200,7 +200,7 @@ async function rejudge(submissionId: string) {
           <label class="text-xs font-semibold text-text-secondary">题目</label>
           <input
             v-model="filters.problem_search"
-            class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
             placeholder="题目 ID 或名称"
             @keyup.enter="applyFilters"
           />
@@ -209,7 +209,7 @@ async function rejudge(submissionId: string) {
           <label class="text-xs font-semibold text-text-secondary">用户</label>
           <input
             v-model="filters.user_search"
-            class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
             placeholder="用户名或用户 ID"
             @keyup.enter="applyFilters"
           />
@@ -218,14 +218,14 @@ async function rejudge(submissionId: string) {
           <label class="text-xs font-semibold text-text-secondary">提交 ID</label>
           <input
             v-model="filters.submission_id"
-            class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
             placeholder="提交 ID 前缀"
             @keyup.enter="applyFilters"
           />
         </div>
         <div class="flex flex-col gap-1 min-w-[140px] flex-1">
           <label class="text-xs font-semibold text-text-secondary">语言</label>
-          <select v-model="filters.language" class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" @change="applyFilters">
+          <select v-model="filters.language" class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" @change="applyFilters">
             <option v-for="opt in languageOptions" :key="opt.value" :value="opt.value">
               {{ opt.label }}
             </option>
@@ -233,7 +233,7 @@ async function rejudge(submissionId: string) {
         </div>
         <div class="flex flex-col gap-1 min-w-[140px] flex-1">
           <label class="text-xs font-semibold text-text-secondary">状态</label>
-          <select v-model="filters.status" class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" @change="applyFilters">
+          <select v-model="filters.status" class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" @change="applyFilters">
             <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
               {{ opt.label }}
             </option>

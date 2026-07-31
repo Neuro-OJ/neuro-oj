@@ -7,6 +7,10 @@
         @click.self="close"
       >
         <div
+          ref="panelRef"
+          role="dialog"
+          aria-modal="true"
+          aria-label="搜索"
           class="w-full max-w-2xl bg-white rounded-lg shadow-modal overflow-hidden"
           @keydown="onKeydown"
         >
@@ -18,6 +22,7 @@
               v-model="query"
               type="text"
               :placeholder="placeholder"
+              :aria-label="placeholder"
               class="flex-1 h-full bg-transparent outline-none text-base text-text placeholder:text-text-muted"
               autocomplete="off"
               spellcheck="false"
@@ -41,7 +46,7 @@
             请输入至少 2 个字符
           </div>
 
-          <div v-else class="max-h-[50vh] overflow-y-auto">
+          <div v-else class="max-h-[50vh] overflow-y-auto" role="listbox" aria-label="搜索结果">
             <div v-if="state.results.problems.length > 0" class="px-4 pt-3 pb-1 text-xs text-text-muted font-medium">
               题目
             </div>
@@ -113,6 +118,18 @@ const { state, close, search } = useSearch();
 const query = ref("");
 const selectedIndex = ref(0);
 const inputRef = ref<HTMLInputElement | null>(null);
+const panelRef = ref<HTMLElement | null>(null);
+let lastFocused: HTMLElement | null = null;
+
+// 焦点陷阱：Tab/Shift+Tab 在对话框内循环（WCAG 2.1.2）
+function getFocusable(): HTMLElement[] {
+  if (!panelRef.value) return [];
+  return Array.from(
+    panelRef.value.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+}
 
 const placeholder = computed(() => "搜索题目、用户、帖子...");
 
@@ -136,10 +153,14 @@ watch(
   () => state.value.open,
   async (open) => {
     if (open) {
+      lastFocused = document.activeElement as HTMLElement;
       query.value = state.value.query;
       selectedIndex.value = 0;
       await nextTick();
       inputRef.value?.focus();
+    } else if (lastFocused) {
+      lastFocused.focus();
+      lastFocused = null;
     }
   },
 );
@@ -148,6 +169,20 @@ function onKeydown(e: KeyboardEvent) {
   if (e.key === "Escape") {
     e.preventDefault();
     close();
+  } else if (e.key === "Tab") {
+    // 焦点陷阱：首尾循环
+    const items = getFocusable();
+    if (items.length === 0) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement as HTMLElement;
+    if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
   } else if (e.key === "ArrowDown") {
     e.preventDefault();
     selectedIndex.value = Math.min(

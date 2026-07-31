@@ -268,13 +268,12 @@ function onCursorChange(pos: { line: number; col: number }) {
             enter-from-class="opacity-0 -translate-y-1"
             leave-to-class="opacity-0 -translate-y-1"
           >
-            <div
-              v-if="submitError"
-              class="flex items-center gap-2 px-4 py-2.5 bg-red-50 border-t border-red-200 text-red-800 text-xs"
-            >
-              <UIcon name="i-lucide-alert-circle" class="size-3.5" />
-              <span class="flex-1">{{ submitError }}</span>
-              <button class="text-red-600 hover:text-red-800" @click="submitError = ''">×</button>
+            <div v-if="submitError" class="border-t border-red-200">
+              <UAlert color="error" icon="i-lucide-alert-circle" :title="submitError" :close="true" class="rounded-none">
+                <template #close>
+                  <UButton color="neutral" variant="link" icon="i-lucide-x" aria-label="关闭" @click="submitError = ''" />
+                </template>
+              </UAlert>
             </div>
           </Transition>
 

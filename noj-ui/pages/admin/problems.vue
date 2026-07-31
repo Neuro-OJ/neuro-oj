@@ -161,7 +161,7 @@ async function batchRejudge(problemId: string) {
   <div class="flex flex-col gap-4">
     <PageHeader title="题目管理" description="管理所有题目">
       <template #actions>
-        <NuxtLink to="/admin/problem-new" class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark">
+        <NuxtLink to="/admin/problem-new" class="inline-flex items-center gap-1.5 px-4 py-2 text-13px font-semibold bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark">
           <UIcon name="i-lucide-plus" class="size-4" />
           创建题目
         </NuxtLink>
@@ -205,7 +205,7 @@ async function batchRejudge(problemId: string) {
   <!-- 删除确认 -->
   <UModal v-model:open="showDeleteConfirm" :title="'删除题目'" :unmount-on-hide="true">
     <p>确定要删除题目 <strong>{{ deleteTarget?.title }}</strong>（{{ deleteTarget?.id }}）吗？此操作不可撤销，相关提交记录也会被级联删除。</p>
-    <p v-if="deleteError" class="mt-2 text-error-text text-[13px]">{{ deleteError }}</p>
+    <p v-if="deleteError" class="mt-2 text-error-text text-13px">{{ deleteError }}</p>
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="deleting" @click="showDeleteConfirm = false">取消</UButton>

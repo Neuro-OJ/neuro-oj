@@ -2,6 +2,8 @@
   <component
     :is="href ? resolveComponent('NuxtLink') : 'div'"
     :to="href"
+    role="option"
+    :aria-selected="selected"
     class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors rounded-md cursor-pointer"
     :class="{ 'bg-primary-bg/10': selected }"
   >

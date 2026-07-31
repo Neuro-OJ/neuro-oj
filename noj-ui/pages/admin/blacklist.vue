@@ -151,7 +151,7 @@ function formatExpires(value: string | null) {
     <!-- 错误条 -->
     <div
       v-if="tableError"
-      class="p-3 bg-red-50 border border-red-200 rounded-md text-[13px] text-error-text"
+      class="p-3 bg-red-50 border border-red-200 rounded-md text-13px text-error-text"
     >
       {{ tableError }}
       <button class="ml-2 underline cursor-pointer" @click="load">重试</button>
@@ -185,15 +185,15 @@ function formatExpires(value: string | null) {
             class="border-b border-border last:border-b-0 hover:bg-gray-50 transition-colors"
           >
             <td class="px-3 py-2.5 align-top">
-              <code class="font-mono text-[13px] font-semibold text-text">{{ item.ip_or_cidr }}</code>
+              <code class="font-mono text-13px font-semibold text-text">{{ item.ip_or_cidr }}</code>
             </td>
             <td class="px-3 py-2.5 align-top text-text-secondary">
               {{ item.reason || "—" }}
             </td>
-            <td class="px-3 py-2.5 align-top text-text-secondary text-[13px]">
+            <td class="px-3 py-2.5 align-top text-text-secondary text-13px">
               {{ formatExpires(item.expires_at) }}
             </td>
-            <td class="px-3 py-2.5 align-top text-text-secondary text-[13px]">
+            <td class="px-3 py-2.5 align-top text-text-secondary text-13px">
               {{ new Date(item.created_at).toLocaleString("zh-CN") }}
             </td>
             <td class="px-3 py-2.5 align-top">
@@ -244,7 +244,7 @@ function formatExpires(value: string | null) {
           />
           <p class="mt-1 text-[12px] text-text-secondary">留空表示永久封禁</p>
         </div>
-        <p v-if="formError" class="text-[13px] text-error-text">{{ formError }}</p>
+        <p v-if="formError" class="text-13px text-error-text">{{ formError }}</p>
       </div>
     
     <template #footer>

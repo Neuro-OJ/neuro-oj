@@ -174,7 +174,7 @@ function formatTime(iso: string): string {
         <div class="flex-1 min-w-0">
           <div class="flex items-center justify-between">
             <span class="text-sm font-medium text-text truncate">{{ conv.other_user_name }}</span>
-            <span class="text-[11px] text-text-secondary flex-shrink-0 ml-2">{{ formatTime(conv.last_message_at) }}</span>
+            <span class="text-11px text-text-secondary flex-shrink-0 ml-2">{{ formatTime(conv.last_message_at) }}</span>
           </div>
           <div class="flex items-center justify-between mt-0.5">
             <span class="text-xs text-text-secondary truncate">{{ conv.last_message_preview || "暂无消息" }}</span>

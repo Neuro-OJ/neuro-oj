@@ -45,9 +45,12 @@ function setPage(p: number) {
       error="榜单加载失败"
       @retry="refresh"
     >
+      <template #loading>
+        <TableSkeleton :rows="10" :columns="['w-16', 'flex-1', 'w-16', 'w-20', 'w-20']" />
+      </template>
       <template #empty>
         <UIcon name="i-lucide-trophy" class="opacity-30 size-[48px]" />
-        <p>还没有用户通过任何题目，做第一个吧 👉</p>
+        <p>还没有用户通过任何题目，来做第一个吧</p>
         <UButton color="primary" class="px-4 py-1.5 text-xs" to="/problems">去做题</UButton>
       </template>
 

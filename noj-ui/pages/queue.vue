@@ -97,15 +97,15 @@ useEventSource({
 
       <!-- 统计条 -->
       <div class="flex gap-3 mb-6 flex-wrap" v-if="data">
-        <div class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#f0f0f0] text-text-secondary">
+        <div class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-gray-100 text-text-secondary">
           <UIcon name="i-lucide-clock" class="size-3.5" />
           排队中 {{ data.stats.pending_count }}
         </div>
-        <div class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#e8f0fe] text-[#1967d2]">
+        <div class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
           <UIcon name="i-lucide-play" class="size-3.5" />
           正在评测 {{ data.stats.judging_count }}
         </div>
-        <div class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#e6f4ea] text-[var(--c-success-text)]">
+        <div class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-green-50 text-green-700">
           <UIcon name="i-lucide-check-circle" class="size-3.5" />
           今日完成 {{ data.stats.completed_today }}
         </div>
@@ -118,31 +118,31 @@ useEventSource({
 
       <template v-else>
         <!-- 正在评测 -->
-        <section class="bg-white border border-border rounded-[10px] mb-4 overflow-hidden">
-          <h2 class="flex items-center gap-2 px-4 py-3 m-0 text-[15px] font-bold border-b border-border text-[#1967d2]">
+        <section class="bg-white border border-border rounded-xl mb-4 overflow-x-auto">
+          <h2 class="flex items-center gap-2 px-4 py-3 m-0 text-15px font-bold border-b border-border text-blue-700">
             <UIcon name="i-lucide-play" class="size-4.5" />
             正在评测（{{ data.judging.length }}）
           </h2>
-          <div v-if="data.judging.length === 0" class="p-4 text-center text-[#aaa] text-[13px]">暂无</div>
-          <div v-for="item in data.judging" :key="item.id" class="flex items-center gap-3 px-4 py-2.5 text-[13px] border-b border-[#f3f4f6] last:border-b-0 hover:bg-bg-page">
-            <NuxtLink :to="`/submissions/${item.id}`" class="text-[#1967d2] no-underline font-mono whitespace-nowrap min-w-[80px] hover:underline">#{{ item.id.slice(0, 8) }}</NuxtLink>
+          <div v-if="data.judging.length === 0" class="p-4 text-center text-text-muted text-13px">暂无</div>
+          <div v-for="item in data.judging" :key="item.id" class="flex items-center gap-3 px-4 py-2.5 text-13px border-b border-border last:border-b-0 hover:bg-bg-page">
+            <NuxtLink :to="`/submissions/${item.id}`" class="text-blue-700 no-underline font-mono whitespace-nowrap min-w-[80px] hover:underline">#{{ item.id.slice(0, 8) }}</NuxtLink>
             <span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text">{{ item.problem_id }} {{ item.problem_title }}</span>
             <span class="text-text-secondary min-w-[70px] text-center text-xs">{{ getLanguageLabel(item.language) }}</span>
             <span class="text-text-secondary min-w-[60px]">{{ item.submitted_by }}</span>
             <span class="text-text-muted text-xs min-w-[100px]">{{ formatDateTime(item.submitted_at) }}</span>
-            <span class="inline-flex items-center gap-[3px] text-[#1967d2] text-xs min-w-[70px]"><UIcon name="i-lucide-clock" class="size-3.5" /> {{ elapsedSince(item.judge_started_at) }}</span>
+            <span class="inline-flex items-center gap-[3px] text-blue-700 text-xs min-w-[70px]"><UIcon name="i-lucide-clock" class="size-3.5" /> {{ elapsedSince(item.judge_started_at) }}</span>
           </div>
         </section>
 
         <!-- 排队中 -->
-        <section class="bg-white border border-border rounded-[10px] mb-4 overflow-hidden">
-          <h2 class="flex items-center gap-2 px-4 py-3 m-0 text-[15px] font-bold border-b border-border text-text-secondary">
+        <section class="bg-white border border-border rounded-xl mb-4 overflow-x-auto">
+          <h2 class="flex items-center gap-2 px-4 py-3 m-0 text-15px font-bold border-b border-border text-text-secondary">
             <UIcon name="i-lucide-clock" class="size-4.5" />
             排队中（{{ data.pending.length }}）
           </h2>
-          <div v-if="data.pending.length === 0" class="p-4 text-center text-[#aaa] text-[13px]">暂无</div>
-          <div v-for="item in data.pending" :key="item.id" class="flex items-center gap-3 px-4 py-2.5 text-[13px] border-b border-[#f3f4f6] last:border-b-0 hover:bg-bg-page">
-            <NuxtLink :to="`/submissions/${item.id}`" class="text-[#1967d2] no-underline font-mono whitespace-nowrap min-w-[80px] hover:underline">#{{ item.id.slice(0, 8) }}</NuxtLink>
+          <div v-if="data.pending.length === 0" class="p-4 text-center text-text-muted text-13px">暂无</div>
+          <div v-for="item in data.pending" :key="item.id" class="flex items-center gap-3 px-4 py-2.5 text-13px border-b border-border last:border-b-0 hover:bg-bg-page">
+            <NuxtLink :to="`/submissions/${item.id}`" class="text-blue-700 no-underline font-mono whitespace-nowrap min-w-[80px] hover:underline">#{{ item.id.slice(0, 8) }}</NuxtLink>
             <span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text">{{ item.problem_id }} {{ item.problem_title }}</span>
             <span class="text-text-secondary min-w-[70px] text-center text-xs">{{ getLanguageLabel(item.language) }}</span>
             <span class="text-text-secondary min-w-[60px]">{{ item.submitted_by }}</span>
@@ -151,19 +151,19 @@ useEventSource({
         </section>
 
         <!-- 最近完成 -->
-        <section class="bg-white border border-border rounded-[10px] mb-4 overflow-hidden">
-          <h2 class="flex items-center gap-2 px-4 py-3 m-0 text-[15px] font-bold border-b border-border text-[var(--c-success-text)]">
+        <section class="bg-white border border-border rounded-xl mb-4 overflow-x-auto">
+          <h2 class="flex items-center gap-2 px-4 py-3 m-0 text-15px font-bold border-b border-border text-green-700">
             <UIcon name="i-lucide-check-circle" class="size-4.5" />
             最近完成（{{ data.recently_completed.length }}）
           </h2>
-          <div v-if="data.recently_completed.length === 0" class="p-4 text-center text-[#aaa] text-[13px]">暂无</div>
-          <div v-for="item in data.recently_completed" :key="item.id" class="flex items-center gap-3 px-4 py-2.5 text-[13px] border-b border-[#f3f4f6] last:border-b-0 hover:bg-bg-page">
-            <NuxtLink :to="`/submissions/${item.id}`" class="text-[#1967d2] no-underline font-mono whitespace-nowrap min-w-[80px] hover:underline">#{{ item.id.slice(0, 8) }}</NuxtLink>
+          <div v-if="data.recently_completed.length === 0" class="p-4 text-center text-text-muted text-13px">暂无</div>
+          <div v-for="item in data.recently_completed" :key="item.id" class="flex items-center gap-3 px-4 py-2.5 text-13px border-b border-border last:border-b-0 hover:bg-bg-page">
+            <NuxtLink :to="`/submissions/${item.id}`" class="text-blue-700 no-underline font-mono whitespace-nowrap min-w-[80px] hover:underline">#{{ item.id.slice(0, 8) }}</NuxtLink>
             <span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text">{{ item.problem_id }} {{ item.problem_title }}</span>
             <span class="text-text-secondary min-w-[70px] text-center text-xs">{{ getLanguageLabel(item.language) }}</span>
             <span class="text-text-secondary min-w-[60px]">{{ item.submitted_by }}</span>
             <span class="text-text-muted text-xs min-w-[100px]">{{ formatDateTime(item.submitted_at) }}</span>
-            <span :class="['font-semibold min-w-[60px] text-right', item.status === 'error' || (item.score !== null && item.score === 0) ? 'text-[#d93025]' : '']">
+            <span :class="['font-semibold min-w-[60px] text-right', item.status === 'error' || (item.score !== null && item.score === 0) ? 'text-red-600' : '']">
               {{ formatScore(item.score) }} 分
             </span>
           </div>

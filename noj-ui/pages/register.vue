@@ -1,112 +1,67 @@
 <template>
     <div class="w-full max-w-[380px] relative">
-        <Transition name="slide">
-            <div v-if="error" class="bg-red-50 border border-red-200 text-red-700 rounded-md px-3.5 py-2.5 text-sm flex items-center justify-between gap-3 fixed top-[74px] left-1/2 -translate-x-1/2 z-[99] max-w-[380px] w-[calc(100%-48px)]">
-                <span>{{ error }}</span>
-                <button class="bg-transparent border-0 text-red-700 cursor-pointer text-base p-0.5 leading-none opacity-70 shrink-0 hover:opacity-100" @click="clearError">&#10005;</button>
-            </div>
-        </Transition>
+        <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error" @close="clearError" />
         <div class="bg-white border border-border rounded-lg p-8">
-            <h1 class="text-[22px] font-bold text-center mb-6 text-text animate-[fadeInUp_0.5s_ease_both]">注册</h1>
+            <h1 class="text-22px font-bold text-center mb-6 text-text animate-[fadeInUp_0.5s_ease_both]">注册</h1>
 
             <form @submit.prevent="handleRegister">
-                <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.05s_both]">
-                    <label for="username" class="block text-sm font-semibold text-text mb-1">用户名</label>
-                    <div class="relative flex items-center">
-                        <UIcon name="i-lucide-user" class="absolute left-[10px] text-text-muted pointer-events-none size-4.5" />
-                        <input
-                            id="username"
-                            v-model="form.username"
-                            type="text"
-                            placeholder="3-30 位字母、数字或下划线"
-                            autocomplete="username"
-                            :disabled="loading"
-                            class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
-                            @focus="fieldErrors.username = ''"
-                        />
-                    </div>
-                    <Transition name="drop">
-                        <div v-if="fieldErrors.username" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-[13px] text-red-700"><span>{{ fieldErrors.username }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
-                    </Transition>
+                <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.05s_both]">
+                    <TextInput
+                        id="username"
+                        v-model="form.username"
+                        label="用户名"
+                        placeholder="3-30 位字母、数字或下划线"
+                        autocomplete="username"
+                        :disabled="loading"
+                        :error="fieldErrors.username"
+                        @focus="fieldErrors.username = ''"
+                    >
+                        <template #icon><UIcon name="i-lucide-user" class="size-4.5" /></template>
+                    </TextInput>
                 </div>
 
-                <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.1s_both]">
-                    <label for="email" class="block text-sm font-semibold text-text mb-1">邮箱</label>
-                    <div class="relative flex items-center">
-                        <UIcon name="i-lucide-mail" class="absolute left-[10px] text-text-muted pointer-events-none size-4.5" />
-                        <input
-                            id="email"
-                            v-model="form.email"
-                            type="email"
-                            placeholder="请输入邮箱地址"
-                            autocomplete="email"
-                            :disabled="loading"
-                            class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
-                            @focus="fieldErrors.email = ''"
-                        />
-                    </div>
-                    <Transition name="drop">
-                        <div v-if="fieldErrors.email" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-[13px] text-red-700"><span>{{ fieldErrors.email }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
-                    </Transition>
+                <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.1s_both]">
+                    <TextInput
+                        id="email"
+                        v-model="form.email"
+                        type="email"
+                        label="邮箱"
+                        placeholder="请输入邮箱地址"
+                        autocomplete="email"
+                        :disabled="loading"
+                        :error="fieldErrors.email"
+                        @focus="fieldErrors.email = ''"
+                    >
+                        <template #icon><UIcon name="i-lucide-mail" class="size-4.5" /></template>
+                    </TextInput>
                 </div>
 
                 <!-- TODO 验证码 -->
 
-                <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.15s_both]">
-                    <label for="password" class="block text-sm font-semibold text-text mb-1">密码</label>
-                    <div class="relative flex items-center">
-                        <UIcon name="i-lucide-lock" class="absolute left-[10px] text-text-muted pointer-events-none size-4.5" />
-                        <input
-                            id="password"
-                            v-model="form.password"
-                            :type="showPassword ? 'text' : 'password'"
-                            placeholder="至少 12 位，需包含字母和数字"
-                            autocomplete="new-password"
-                            :disabled="loading"
-                            class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
-                            @focus="fieldErrors.password = ''"
-                        />
-                        <button type="button" class="absolute right-3 bg-transparent border-0 text-text-muted cursor-pointer p-0 flex items-center hover:text-text-secondary" @click="showPassword = !showPassword" tabindex="-1">
-                            <span class="flex items-center justify-center w-[18px] h-[18px]">
-                                <Transition name="icon" mode="out-in">
-                                    <UIcon name="i-lucide-eye-off" class="size-4.5" v-if="!showPassword"  key="off"/>
-                                    <UIcon name="i-lucide-eye" class="size-4.5" v-else  key="on"/>
-                                </Transition>
-                            </span>
-                        </button>
-                    </div>
-                    <Transition name="drop">
-                        <div v-if="fieldErrors.password" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-[13px] text-red-700"><span>{{ fieldErrors.password }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
-                    </Transition>
+                <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.15s_both]">
+                    <PasswordField
+                        id="password"
+                        v-model="form.password"
+                        label="密码"
+                        placeholder="至少 12 位，需包含字母和数字"
+                        autocomplete="new-password"
+                        :disabled="loading"
+                        :error="fieldErrors.password"
+                        @focus="fieldErrors.password = ''"
+                    />
                 </div>
 
-                <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.2s_both]">
-                    <label for="confirmPassword" class="block text-sm font-semibold text-text mb-1">确认密码</label>
-                    <div class="relative flex items-center">
-                        <UIcon name="i-lucide-lock" class="absolute left-[10px] text-text-muted pointer-events-none size-4.5" />
-                        <input
-                            id="confirmPassword"
-                            v-model="form.confirmPassword"
-                            :type="showConfirmPassword ? 'text' : 'password'"
-                            placeholder="再次输入密码"
-                            autocomplete="new-password"
-                            maxlength="30"
-                            :disabled="loading"
-                            class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
-                            @focus="fieldErrors.confirmPassword = ''"
-                        />
-                        <button type="button" class="absolute right-3 bg-transparent border-0 text-text-muted cursor-pointer p-0 flex items-center hover:text-text-secondary" @click="showConfirmPassword = !showConfirmPassword" tabindex="-1">
-                            <span class="flex items-center justify-center w-[18px] h-[18px]">
-                                <Transition name="icon" mode="out-in">
-                                    <UIcon name="i-lucide-eye-off" class="size-4.5" v-if="!showConfirmPassword"  key="off"/>
-                                    <UIcon name="i-lucide-eye" class="size-4.5" v-else  key="on"/>
-                                </Transition>
-                            </span>
-                        </button>
-                    </div>
-                    <Transition name="drop">
-                        <div v-if="fieldErrors.confirmPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-[13px] text-red-700"><span>{{ fieldErrors.confirmPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
-                    </Transition>
+                <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.2s_both]">
+                    <PasswordField
+                        id="confirmPassword"
+                        v-model="form.confirmPassword"
+                        label="确认密码"
+                        placeholder="再次输入密码"
+                        autocomplete="new-password"
+                        :disabled="loading"
+                        :error="fieldErrors.confirmPassword"
+                        @focus="fieldErrors.confirmPassword = ''"
+                    />
                 </div>
 
                 <UButton color="primary" size="md" block class="animate-[fadeInUp_0.5s_ease_0.25s_both]" type="submit"  :disabled="loading">
@@ -138,8 +93,6 @@ const form = reactive({
 })
 const loading = ref(false)
 const error = ref("")
-const showPassword = ref(false)
-const showConfirmPassword = ref(false)
 
 let errorTimer: ReturnType<typeof setTimeout> | null = null
 

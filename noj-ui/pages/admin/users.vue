@@ -334,7 +334,7 @@ async function showBanHistory(user: User) {
         </div>
       </label>
     </div>
-    <p v-if="switchError" class="mt-2 text-error-text text-[13px]">{{ switchError }}</p>
+    <p v-if="switchError" class="mt-2 text-error-text text-13px">{{ switchError }}</p>
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="switchingRole" @click="showRoleModal = false">取消</UButton>
@@ -363,7 +363,7 @@ async function showBanHistory(user: User) {
         />
         <p class="mt-1 text-[12px] text-text-secondary">留空表示永久封禁</p>
       </div>
-      <p v-if="banError" class="text-[13px] text-error-text">{{ banError }}</p>
+      <p v-if="banError" class="text-13px text-error-text">{{ banError }}</p>
     </div>
   
     <template #footer>

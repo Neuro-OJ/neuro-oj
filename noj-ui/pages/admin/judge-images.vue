@@ -213,11 +213,11 @@ async function handleDelete() {
   <UModal v-model:open="showForm" :title="editingItem ? '编辑评测镜像' : '新增评测镜像'" :unmount-on-hide="true">
     <div class="flex flex-col gap-3">
       <div class="flex flex-col gap-1">
-        <label class="text-[13px] font-semibold text-text">镜像名 <span class="text-error-text">*</span></label>
+        <label class="text-13px font-semibold text-text">镜像名 <span class="text-error-text">*</span></label>
         <input v-model="formImage" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="如：noj-judge-python" :disabled="!!editingItem" />
       </div>
       <div class="flex flex-col gap-1">
-        <label class="text-[13px] font-semibold text-text">匹配模式</label>
+        <label class="text-13px font-semibold text-text">匹配模式</label>
         <select v-model="formMode" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white" @change="onModeChange">
           <option value="exact">精确版本 — 仅匹配指定镜像名（含标签）</option>
           <option value="all_versions">所有版本 — 匹配镜像名所有标签</option>
@@ -226,16 +226,16 @@ async function handleDelete() {
 
       <!-- 全版本安全警告 -->
       <div v-if="showAllVersionsWarning" class="px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-        <p class="font-semibold mb-1">⚠ 安全风险</p>
+        <p class="font-semibold mb-1 flex items-center gap-1.5"><UIcon name="i-lucide-triangle-alert" class="size-4" />安全风险</p>
         <p>选择"所有版本"将允许该镜像的所有版本标签（如 <code>:latest</code>、<code>:dev</code> 等）。攻击者可能利用此宽松规则使用非预期镜像版本。</p>
         <p class="mt-1">请仅在完全信任该镜像所有版本的情况下使用此选项。</p>
       </div>
 
       <div class="flex flex-col gap-1">
-        <label class="text-[13px] font-semibold text-text">介绍</label>
+        <label class="text-13px font-semibold text-text">介绍</label>
         <input v-model="formDescription" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="在题目编辑器中展示的说明文字" />
       </div>
-      <p v-if="formError" class="text-error-text text-[13px]">{{ formError }}</p>
+      <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
     </div>
   
     <template #footer>
@@ -247,7 +247,7 @@ async function handleDelete() {
   <!-- 删除确认弹窗 -->
   <UModal v-model:open="showDeleteConfirm" :title="'删除评测镜像'" :unmount-on-hide="true">
     <p>确定要删除评测镜像 <strong>{{ deleteTarget?.image }}</strong> 吗？此操作将导致使用了此镜像的题目无法通过白名单校验。</p>
-    <p v-if="formError" class="text-error-text text-[13px]">{{ formError }}</p>
+    <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="deleting" @click="showDeleteConfirm = false">取消</UButton>

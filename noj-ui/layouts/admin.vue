@@ -59,6 +59,9 @@ function isActive(path: string) {
 
 <template>
   <div class="flex min-h-screen bg-gray-50">
+    <a href="#admin-main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-white focus:text-text focus:px-4 focus:py-2 focus:rounded-md focus:shadow-modal">
+      跳转到主要内容
+    </a>
     <!-- 移动端遮罩 -->
     <Transition name="fade">
       <div
@@ -86,7 +89,7 @@ function isActive(path: string) {
 
       <nav class="flex-1 p-2 flex flex-col gap-3 overflow-y-auto">
         <section v-for="group in navGroups" :key="group.label" class="flex flex-col gap-0.5">
-          <h2 v-show="sidebarOpen" class="px-3 pt-1 text-[11px] font-semibold text-text-muted">{{ group.label }}</h2>
+          <h2 v-show="sidebarOpen" class="px-3 pt-1 text-11px font-semibold text-text-muted">{{ group.label }}</h2>
           <NuxtLink
             v-for="item in group.items"
             :key="item.to"
@@ -119,7 +122,7 @@ function isActive(path: string) {
         <span class="text-base font-semibold">管理后台</span>
       </header>
 
-      <main class="p-6 max-w-[1200px]">
+      <main id="admin-main" class="p-6 max-w-[1200px]">
         <slot />
       </main>
     </div>

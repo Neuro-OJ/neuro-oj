@@ -255,7 +255,7 @@ async function confirmReset(s: SystemSetting) {
     <PageHeader title="系统设置" description="运行时可改的配置项，修改即时生效；只读配置需重启服务" />
 
     <!-- 顶部提示横幅 -->
-    <div class="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-[13px] text-info-text">
+    <div class="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-13px text-info-text">
       <UIcon name="i-lucide-info" class="size-4 shrink-0 mt-0.5" />
       <div>
         <strong>运行时可改：</strong>第一组设置项写入数据库，下次请求立即生效，可随时重置。
@@ -268,7 +268,7 @@ async function confirmReset(s: SystemSetting) {
     <!-- 错误条 -->
     <div
       v-if="tableError"
-      class="p-3 bg-red-50 border border-red-200 rounded-md text-[13px] text-error-text"
+      class="p-3 bg-red-50 border border-red-200 rounded-md text-13px text-error-text"
     >
       {{ tableError }}
       <UButton size="xs" color="primary" variant="ghost" @click="loadSettings">重试</UButton>
@@ -287,7 +287,7 @@ async function confirmReset(s: SystemSetting) {
         <p class="text-xs text-text-secondary mt-1">
           修改后点击行内「保存」按钮，写入数据库；点击「重置」恢复 env / 默认值
         </p>
-        <p class="text-[11px] text-text-muted mt-0.5">
+        <p class="text-11px text-text-muted mt-0.5">
           读取优先级：<span class="font-semibold">DB 写入值</span> → env 值（.env） → 系统默认值。
           带 <UIcon name="i-lucide-refresh-cw" class="size-3 inline -mt-0.5 text-warning-text" /> 标记的项保存后需要重启 noj-core 服务才能生效。
         </p>
@@ -317,8 +317,8 @@ async function confirmReset(s: SystemSetting) {
             <!-- 设置项 key + 类型 -->
             <td class="px-3 py-3 align-top">
               <div class="flex flex-col gap-0.5">
-                <code class="font-mono text-[13px] font-semibold text-text">{{ s.key }}</code>
-                <span class="text-[11px] text-text-secondary">{{ s.type }}</span>
+                <code class="font-mono text-13px font-semibold text-text">{{ s.key }}</code>
+                <span class="text-11px text-text-secondary">{{ s.type }}</span>
               </div>
             </td>
 
@@ -334,7 +334,7 @@ async function confirmReset(s: SystemSetting) {
                   @update:model-value="(v) => drafts[s.key] = v"
                   color="primary"
                 />
-                <span class="text-[13px] font-mono">{{ drafts[s.key] ? "true" : "false" }}</span>
+                <span class="text-13px font-mono">{{ drafts[s.key] ? "true" : "false" }}</span>
               </div>
 
               <!-- string：Input -->
@@ -348,7 +348,7 @@ async function confirmReset(s: SystemSetting) {
                     v-model="drafts[s.key]"
                     :disabled="drafts[s.key] === null"
                     :placeholder="drafts[s.key] === null ? '•••••••• 点击「编辑」以修改' : ''"
-                    class="w-full px-2.5 py-1.5 text-[13px] font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="w-full px-2.5 py-1.5 text-13px font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                   <UButton v-if="drafts[s.key] === null" size="xs" color="primary" variant="outline" @click="drafts[s.key] = ''">编辑</UButton>
                 </template>
@@ -356,7 +356,7 @@ async function confirmReset(s: SystemSetting) {
                 <input
                   v-else
                   v-model="drafts[s.key]"
-                  class="w-full px-2.5 py-1.5 text-[13px] font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+                  class="w-full px-2.5 py-1.5 text-13px font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
                 />
               </div>
 
@@ -366,7 +366,7 @@ async function confirmReset(s: SystemSetting) {
                 v-model="drafts[s.key]"
                 rows="2"
                 maxlength="1000"
-                class="w-full px-2.5 py-1.5 text-[13px] border border-border rounded outline-none transition-colors resize-y focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+                class="w-full px-2.5 py-1.5 text-13px border border-border rounded outline-none transition-colors resize-y focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
               />
 
               <!-- integer：number input -->
@@ -377,14 +377,14 @@ async function confirmReset(s: SystemSetting) {
                 step="1"
                 :min="s.min"
                 :max="s.max"
-                class="w-full px-2.5 py-1.5 text-[13px] font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+                class="w-full px-2.5 py-1.5 text-13px font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
               />
             </td>
 
             <!-- 来源标签 -->
             <td class="px-3 py-3 align-top">
               <span
-                class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold"
+                class="inline-flex items-center px-2 py-0.5 rounded text-11px font-semibold"
                 :class="{
                   'bg-blue-50 text-info-text': s.source === 'db',
                   'bg-gray-100 text-text-secondary': s.source !== 'db',
@@ -395,10 +395,10 @@ async function confirmReset(s: SystemSetting) {
             </td>
 
             <!-- 描述 -->
-            <td class="px-3 py-3 align-top text-[13px] text-text-secondary">
+            <td class="px-3 py-3 align-top text-13px text-text-secondary">
               <div class="flex flex-col gap-1">
                 <span>{{ s.description }}</span>
-                <span v-if="s.needsRestart" class="inline-flex items-center gap-0.5 text-[11px] font-semibold text-warning-text">
+                <span v-if="s.needsRestart" class="inline-flex items-center gap-0.5 text-11px font-semibold text-warning-text">
                   <UIcon name="i-lucide-refresh-cw" class="size-3" /> 需重启生效
                 </span>
               </div>
@@ -452,7 +452,7 @@ async function confirmReset(s: SystemSetting) {
         </summary>
 
         <!-- 顶部提示文字（spec 要求） -->
-        <div class="flex items-start gap-2 px-5 py-3 bg-blue-50 border-b border-blue-100 text-[13px] text-info-text">
+        <div class="flex items-start gap-2 px-5 py-3 bg-blue-50 border-b border-blue-100 text-13px text-info-text">
           <UIcon name="i-lucide-info" class="size-3.5 shrink-0 mt-0.5" />
           <div>
             修改这些项需要更新 .env 并重启 noj-core 服务。当前展示的是已
@@ -471,14 +471,14 @@ async function confirmReset(s: SystemSetting) {
           :loading="false"
         >
           <template #key-cell="{ row }">
-            <code class="font-mono text-[13px] text-text">{{ row.key }}</code>
+            <code class="font-mono text-13px text-text">{{ row.key }}</code>
           </template>
           <template #effective_value-cell="{ row }">
             <UTooltip v-if="row.is_secret" :text="getSecretTooltip(row.key)" class="cursor-help">
               <span class="inline-flex items-center gap-1">
                 <UIcon name="i-lucide-lock" class="size-3 shrink-0 text-amber-700" />
                 <code
-                  class="font-mono text-[13px] px-2 py-0.5 rounded underline decoration-dotted underline-offset-2 bg-amber-50 text-amber-800"
+                  class="font-mono text-13px px-2 py-0.5 rounded underline decoration-dotted underline-offset-2 bg-amber-50 text-amber-800"
                 >
                   {{ String(row.effective_value) }}
                 </code>
@@ -486,13 +486,13 @@ async function confirmReset(s: SystemSetting) {
             </UTooltip>
             <code
               v-else
-              class="font-mono text-[13px] px-2 py-0.5 rounded bg-gray-50 text-text"
+              class="font-mono text-13px px-2 py-0.5 rounded bg-gray-50 text-text"
             >
               {{ String(row.effective_value) }}
             </code>
           </template>
           <template #description-cell="{ row }">
-            <span class="text-[13px] text-text-secondary">{{ row.description }}</span>
+            <span class="text-13px text-text-secondary">{{ row.description }}</span>
           </template>
         </UTable>
       </details>
