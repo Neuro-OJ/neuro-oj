@@ -24,8 +24,7 @@ Neuro OJ 是一个面向 LMCC（CCF 大语言模型能力认证）的在线评�
 12. [测试体系](#12-测试体系)
 13. [CI/CD](#13-cicd)
 14. [故障排查速查](#14-故障排查速查)
-15. [项目状态与路线图](#15-项目状态与路线图)
-16. [参考文档](#16-参考文档)
+15. [参考文档](#15-参考文档)
 
 ---
 
@@ -48,7 +47,7 @@ NOJ 分为三个核心模块，通过 RESTful API 和 Redis 消息队列协作�
 
 | 模块 | 运行时 | 职责 |
 |------|--------|------|
-| **noj-core** | Deno 2 + Hono | RESTful API、JWT 鉴权、用户/题目/提交/榜单 CRUD、Redis MQ Producer 与 Consumer、审计日志 |
+| **noj-core** | Deno 2 + Hono | RESTful API、JWT 鉴权 + RBAC 权限、用户/题目/提交/榜单/竞赛/社区 CRUD、全局搜索、Redis MQ Producer 与 Consumer、审计日志 |
 | **noj-ui** | Nuxt 4 + Vue 3 | Web 前端、Nitro 反向代理注入 JWT Cookie、SSR + SPA 混合 |
 | **noj-judge** | Rust 2021 + Tokio | Docker 沙箱评测、Redis MQ Consumer、容器池（懒回补 + 健康检查）、双容器架构（dual container） |
 | **基础设施** | — | PostgreSQL 16（持久化） + Redis 7（MQ + 缓存） |
@@ -69,17 +68,31 @@ NOJ 分为三个核心模块，通过 RESTful API 和 Redis 消息队列协作�
 ```json
 {
   "submission_id": "uuid",
-  "problem_id": "1001",
-  "judge_image": "noj-judge-python",
-  "judge_command": "python3 /tmp/evaluate.py",
+  "problem_id": "uuid",
   "download_url": "noj-download://base64/?content=UEsDBBQAAAAIA...&checksum_sha256=abc123",
+  "runtime_config": {
+    "evaluator": {
+      "image": "noj-judge-python",
+      "command": "python3 /workspace/evaluate.py",
+      "time_limit_ms": 5000,
+      "memory_limit_mb": 512
+    },
+    "solution": {
+      "image": "noj-judge-python",
+      "entry": "solution.py",
+      "call_timeout_ms": 2000,
+      "memory_limit_mb": 512
+    }
+  },
   "language": "python3",
   "code": "...",
   "file_name": "submission.py",
-  "time_limit_ms": 5000,
-  "memory_limit_mb": 512
+  "rejudge_seq": 1
 }
 ```
+
+> 双容器架构后 `judge_image` / `judge_command` / `time_limit_ms` / `memory_limit_mb`
+> 顶层字段已移除，统一由 `runtime_config`（Evaluator + Solution）承载。
 
 ### 1.4 双层 URL 设计
 
@@ -154,12 +167,12 @@ neuro-oj/
 │   │   ├── main.ts            # 入口（启动校验 + 初始化顺序）
 │   │   ├── app.ts             # Hono 应用工厂（CORS + 路由 + 错误处理）
 │   │   ├── mod.ts             # 公共导出
-│   │   ├── routes/            # 11 个路由：admin / auth / categories / checkin / conversations / health / problems / queue / rankings / sse / submissions / users
-│   │   ├── services/          # 业务逻辑层：auth / categories / checkin / conversations / judge-images / passwordReset / problems / queue / rankings / sse / submissions / support-package / users / system-settings / audit-log
+│   │   ├── routes/            # 16 个路由：admin / auth / categories / checkin / community / contests / conversations / health / problems / queue / rankings / search / sse / stats / submissions / users
+│   │   ├── services/          # 业务逻辑层（34 个文件）：auth / categories / checkin / community / contests / conversations / dashboard / messages / problems-* / queue / rankings / search / submissions-* / support-package / system-settings / users / admin-roles / audit-log / banlist / judge-images / passwordReset / stats-cache / seed-rbac / community-seed 等
 │   │   ├── db/
 │   │   │   ├── connection.ts  # 数据库连接管理（单例）
 │   │   │   ├── migrate.ts     # 迁移执行器（绝对路径解析）
-│   │   │   └── schema.ts      # Drizzle 表定义（17 张表）
+│   │   │   └── schema.ts      # Drizzle 表定义（38 张表）
 │   │   ├── middleware/auth.ts # JWT 认证中间件
 │   │   ├── mq/
 │   │   │   ├── connection.ts  # Redis 连接（shared + consumer 双连接）
@@ -193,7 +206,7 @@ neuro-oj/
 │   │   │   ├── 1002/          # "传感器数据滤波" (medium, 无支持包)
 │   │   │   └── 1003/          # "A+B Problem" (easy)
 │   │   └── packages/          # 构建产物 (gitignored，local 模式)
-│   └── tests/                 # 67 个测试文件（与 src 镜像结构）
+│   └── tests/                 # 测试文件（与 src 镜像结构，以实际为准）
 │       ├── 00_migrate_test.ts # 迁移 + seed root 用户（最先执行）
 │       ├── app.test.ts, smoke.test.ts
 │       ├── services/          # 服务层测试
@@ -203,13 +216,12 @@ neuro-oj/
 │
 ├── noj-ui/                    # 前端 Nuxt 4 + Vue 3
 │   ├── deno.json              # 任务 + npm 兼容（nodeModulesDir: auto）
-│   ├── package.json           # @noj/ui v0.1.0
+│   ├── package.json           # @noj/ui v0.1.0（@nuxt/ui v4 + tailwindcss v4 + monaco-editor）
 │   ├── nuxt.config.ts         # vite, nitro preset, runtimeConfig
-│   ├── tailwind.config.ts     # Tailwind 主题（含 prose-neuro）
 │   ├── app.vue                # 根组件 + CSS 变量
-│   ├── pages/                 # 文件路由
-│   ├── components/            # Navbar / FooterBar / Sidebar / MonacoEditor / ProblemEditor / MarkdownRenderer / StatusBadge / PaginationNav / ProblemFilterBar / ProblemId / ui/* / admin/*
-│   ├── composables/           # useAuth / usePolling / useToast / useDialog / useProblemFilters / use-submissions
+│   ├── pages/                 # 文件路由：index / login / register / problems / submissions / ranking / queue / contests / community / messages / search / settings / users / admin / editor 等
+│   ├── components/            # 按功能分目录：layout/（Navbar、FooterBar、Sidebar）/ editor/（MonacoEditor、ProblemEditor）/ feature/（ProblemFilterBar、CheckInCard、SearchPalette、社区组件）/ shared/（MarkdownRenderer、PaginationNav）/ ui/（StatusBadge、AsyncContent 等）/ admin/ / auth/ / card/ / form/
+│   ├── composables/           # useApi（统一 API 调用层）/ useAuth / usePolling / useToast / useDialog / useProblemFilters / use-submissions / useCommunity / useContests / useMessages / useSearch / useRankings / useEventSource / useAdminList 等
 │   ├── layouts/               # default / auth / admin
 │   ├── server/
 │   │   ├── api/[...slug].ts   # Nitro 代理（拦截登录 + JWT 注入）
@@ -219,7 +231,7 @@ neuro-oj/
 │   └── assets/                # 静态资源（logo.jpg 等）
 │
 ├── noj-judge/                 # 评测 Worker Rust + Docker
-│   ├── Cargo.toml             # 依赖：tokio, bollard, redis-rs, reqwest, axum, zip, tar, ...
+│   ├── Cargo.toml             # 依赖：tokio, bollard, redis-rs, reqwest, zip, tar, ...
 │   ├── Cargo.lock             # 版本锁定（提交到 git）
 │   ├── .dockerignore          # 排除 target/ tests/ docker/
 │   ├── Dockerfile.e2e         # E2E 测试多阶段构建
@@ -229,13 +241,16 @@ neuro-oj/
 │   │   ├── lib.rs             # 库入口（暴露给集成测试）
 │   │   ├── config.rs          # 环境变量配置
 │   │   ├── types.rs           # JudgeTask / JudgeResult / CaseResult
+│   │   ├── drain.rs           # 优雅关闭时排空 in-flight 任务
 │   │   ├── mq.rs              # Redis MQ 拉取/推送（重试 + 文件 fallback）
 │   │   ├── mq/rpc.rs          # Redis RPC（core↔judge）
 │   │   ├── sandbox/           # 沙箱
 │   │   │   ├── mod.rs
 │   │   │   ├── container.rs   # 容器生命周期 + zip 解压
 │   │   │   ├── download.rs    # noj-download:// 下载（base64 / s3）
-│   │   │   └── cache.rs       # 内容寻址缓存
+│   │   │   ├── cache.rs       # 内容寻址缓存
+│   │   │   ├── cleanup.rs     # 孤儿容器清理
+│   │   │   └── host_config.rs # 容器 HostConfig 构造（安全项）
 │   │   ├── judge/             # 评测核心
 │   │   │   ├── mod.rs
 │   │   │   └── runner.rs      # ---RESULT--- 解析 + 超时/OOM 检测
@@ -243,53 +258,46 @@ neuro-oj/
 │   │   │   ├── mod.rs         # PoolManager（懒回补 + 健康检查）
 │   │   │   ├── copy.rs        # tar 打包 + docker exec 注入
 │   │   │   └── exec.rs        # docker exec + cgroup 内存读取
-│   │   └── dual/              # 双容器架构（新）
+│   │   └── dual/              # 双容器架构（Evaluator + Solution，NDJSON 编排）
 │   │       ├── mod.rs
 │   │       ├── container.rs
 │   │       └── protocol.rs
-│   └── tests/                 # 7 个 E2E 测试 + common/
+│   └── tests/                 # 7 个独立 E2E test binary（e2e_docker_basic / e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_container_pool / e2e_problem_limits / e2e_dual_container）+ common/ + e2e/
 │
 ├── noj-tests/                 # 跨模块全链路 E2E 测试
 │   ├── deno.json              # task: deno test -A --env-file=../env.e2e.template e2e/
 │   ├── E2E_TESTING.md         # 测试指南
 │   ├── run-e2e.sh             # 启动脚本
-│   └── e2e/                   # 17 个 .test.ts（含 helper.ts）
-│       ├── 01_categories.test.ts ... 07_queue.test.ts
-│       ├── 08_password_change_guard / 08_problem_template / 08_search
-│       ├── 09_checkin / 10_sse / 11_messaging / 12_audit_log
-│       ├── 13_support_package_s3 / 14_rejudge / 15_dual_container_judge
+│   └── e2e/                   # 23 个 .test.ts（含 helper.ts），覆盖评测 / 竞赛 / 社区 / RBAC / S3 / SSE / 私信 / 审计 / 重测 / 双容器等
 │
 ├── openspec/                  # OpenSpec 规范驱动开发
 │   ├── config.yaml            # schema: spec-driven
-│   ├── specs/                 # 56 个主规范
-│   └── changes/               # 49 个已归档 + 4 个活跃
-│       ├── add-noj-docs
-│       ├── dual-container-judge
-│       ├── remove-single-container-mode
-│       └── archive/
+│   ├── specs/                 # 72 个主规范
+│   └── changes/               # 64 个已归档（archive/）+ 当前活跃变更（以目录实际为准）
 │
 ├── scripts/                   # 构建与运维脚本
-│   ├── dev/                   # 本地一键启停 core/ui/judge（13 个脚本）
+│   ├── dev/                   # devtool.sh 单文件编排（install-deps / init-env / start / stop / status）+ env.example + logs/ + locks/
 │   ├── db/                    # 数据库迁移与种子
 │   ├── build/                 # 题目支持包构建
 │   └── e2e/                   # E2E 编排（setup / teardown / core / judge / run-all）
 │
 ├── .github/workflows/
 │   ├── ci.yml                 # PR/推送：并行 fmt + lint + test + build
-│   └── e2e.yml                # 全链路管道（17 + 7 ≈ 24 个测试，5-15min）
+│   └── e2e.yml                # 全链路管道（noj-tests 23 + noj-judge 7 ≈ 30 个测试，5-15min）
 │
 ├── docker-compose.yml         # 开发基础设施（PG:5432 + Redis:6379）
-├── docker-compose.e2e.yml     # E2E 测试编排（含 noj-core + noj-judge）
+├── docker-compose.e2e.yml     # E2E 测试编排（含 noj-core + noj-judge + MinIO）
 ├── env.e2e.template           # E2E 环境变量模板（DATABASE_URL=e2e@5433）
 │
 ├── .claude/                   # Claude Code 配置（skills / commands / settings / workflows / worktrees）
 ├── .opencode/                 # OpenCode 配置（commands / skills）
 ├── skills-lock.json           # 技能锁定
 │
+├── noj-docs/                  # 用户文档站（MkDocs Material）
+│
 ├── AGENTS.md                  # 本文档（AI 入口）
 ├── CLAUDE.md -> AGENTS.md     # Claude Code 软链
 ├── README.md                  # 用户面向 README
-├── ROADMAP.md                 # 开发路线图
 └── LICENSE                    # AGPL-3.0
 ```
 
@@ -314,9 +322,9 @@ neuro-oj/
 | @electric-sql/pglite | ^0.5.3 | 测试用嵌入式 PG |
 | @aws-sdk/client-s3 + s3-request-presigner | ^3 | S3 对象存储 |
 
-**noj-ui**（`package.json` + `deno.json`）：nuxt@^4, vue, tailwindcss, @nuxtjs/tailwindcss, @tailwindcss/typography, monaco-editor, sweetalert2, markdown-it, katex, highlight.js, dompurify, @lucide/vue
+**noj-ui**（`package.json`）：nuxt@^4, vue, @nuxt/ui@^4（Nuxt UI v4）, tailwindcss@^4, @nuxt/icon + @iconify-json/lucide, @nuxt/fonts, @nuxtjs/color-mode, monaco-editor, markdown-it, katex, highlight.js, dompurify
 
-**noj-judge**（`Cargo.toml`）：
+**noj-judge**（`Cargo.toml`，完整列表以 Cargo.toml 为准）：
 
 | 依赖 | 版本 | 用途 |
 |------|------|------|
@@ -331,7 +339,7 @@ neuro-oj/
 | uuid | 1 (v4) | UUID |
 | base64 | 0.22 | base64 编码 |
 | tar | 0.4 | tar 打包 |
-| axum | 0.8 | metrics 端点 |
+| sha2 / percent-encoding / filetime / gethostname / tokio-util / futures-util / tempfile / serial_test | 最新 | 哈希 / URL 编码 / 文件时间 / 主机名 / 任务编排 / 测试辅助 |
 
 ### 4.2 关键 deno.json 任务（noj-core）
 
@@ -420,27 +428,48 @@ cd ../noj-judge && cargo run                      # 需要 Docker daemon
 
 ## 6. 数据库 Schema
 
-### 6.1 表清单（17 张）
+### 6.1 表清单（38 张，完整定义以 `src/db/schema.ts` 为准）
+
+**核心业务**
 
 | 表 | 用途 |
 |----|------|
 | `users` | 用户账户（密码、角色、封禁状态） |
 | `problems` | 题目（含 type: U/P 双题库） |
 | `judgeImages` | 评测镜像白名单 |
-| `categories` | 题目分类（支持父子层级） |
-| `problemsCategories` | 题目-分类多对多关联 |
-| `submissions` | 用户提交 |
-| `evaluationResults` | 评测结果（耗时/内存/得分） |
+| `categories` / `problemsCategories` | 题目分类（父子层级）+ 多对多关联 |
+| `submissions` / `evaluationResults` | 用户提交 / 评测结果（耗时/内存/得分） |
 | `checkIns` | 每日签到 |
 | `passwordResetTokens` | 密码重置令牌 |
-| `conversations` | 站内私信会话 |
-| `messages` | 站内私信消息 |
-| `conversationReads` | 已读状态 |
-| `messageDeletions` | 消息删除记录 |
 | `systemSettings` | 系统设置（运行时可改） |
 | `auditLogs` | 审计日志（90 天保留，可配置） |
-| `ipBans` | IP 黑名单 |
-| `userBans` | 用户封禁记录 |
+| `ipBans` / `userBans` | IP 黑名单 / 用户封禁记录 |
+
+**站内私信**
+
+| 表 | 用途 |
+|----|------|
+| `conversations` / `messages` / `conversationReads` / `messageDeletions` | 会话 / 消息 / 已读状态 / 删除记录 |
+
+**竞赛（Phase 2）**
+
+| 表 | 用途 |
+|----|------|
+| `contests` / `contestProblems` / `contestParticipants` / `contestClarifications` | 竞赛、题目集、参赛者、答疑（Clarification API 待实现） |
+
+**RBAC（#171）**
+
+| 表 | 用途 |
+|----|------|
+| `roles` / `permissions` / `rolePermissions` / `userRoles` | 角色 / 权限（`resource:action`）/ 关联表 |
+
+**社区（#178）**
+
+| 表 | 用途 |
+|----|------|
+| `communityBoards` / `communityBoardRoleGrants` | 板块 / 角色授权 |
+| `communityPosts` / `communityComments` / `communityPostLikes` / `communityCommentLikes` / `communityBookmarks` / `communityFollows` / `communityActivityEvents` | 帖子 / 评论 / 点赞 / 收藏 / 关注 / 动态流 |
+| `communityReports` / `communityModerationActions` / `communitySanctions` / `communityNotifications` | 举报 / 审核动作 / 处罚 / 通知 |
 
 ### 6.2 迁移
 
@@ -488,7 +517,7 @@ U 型（用户题）：owner/admin 可 CRUD；P 型（主题题）：仅 admin �
 
 - 提交信息（type 英文，description 中文）
 - 代码注释
-- 文档（README、AGENTS.md、ROADMAP.md 等）
+- 文档（README、AGENTS.md、各模块 CLAUDE.md 等）
 - PR 描述与 Issue
 - **例外**：代码标识符（变量名、函数名）使用英文
 
@@ -615,7 +644,7 @@ jj config get signing.key 2>/dev/null
 ```
 openspec/
 ├── config.yaml              # schema: spec-driven
-├── specs/                   # 56 个主规范（活跃）
+├── specs/                   # 主规范（活跃，72 个）
 │   ├── database-schema/     # DB Schema
 │   ├── user-auth/           # 用户认证
 │   ├── problem-*/           # 题目管理
@@ -626,12 +655,12 @@ openspec/
 │   ├── private-messaging/   # 站内私信
 │   ├── sse-*/               # SSE 推送
 │   ├── ranking/             # 榜单
-│   └── ...（共 56 个）
+│   ├── contest-*/           # 竞赛
+│   ├── community-*          # 社区
+│   └── ...
 └── changes/                 # 变更提案
-    ├── add-noj-docs/        # 活跃
-    ├── dual-container-judge/# 活跃
-    ├── remove-single-container-mode/  # 活跃
-    └── archive/            # 49 个已归档
+    ├── <active-name>/       # 活跃变更（以实际目录为准）
+    └── archive/             # 已归档（64 个）
 ```
 
 ### 10.2 工作流（强制）
@@ -645,14 +674,6 @@ openspec/
 5. 测试通过后 **`/opsx:archive`** — 归档变更
 
 `/opsx:sync` 用于把已归档变更的增量同步到主规范。
-
-### 10.3 活跃变更示例
-
-当前活跃变更集中在评测容器架构演进：
-
-- `add-noj-docs` — 增加文档站（MkDocs Material）
-- `dual-container-judge` — 评测从单容器迁移到双容器
-- `remove-single-container-mode` — 移除单容器兼容路径
 
 ---
 
@@ -734,7 +755,7 @@ S3 配置：`S3_ENDPOINT / S3_REGION / S3_ACCESS_KEY / S3_SECRET_KEY / S3_BUCKET
 
 ## 12. 测试体系
 
-### 12.1 noj-core（67 个测试文件）
+### 12.1 noj-core
 
 ```bash
 cd noj-core && deno task test
@@ -757,17 +778,18 @@ cd noj-core && deno task test
 cd noj-judge && cargo test --lib
 ```
 
-**Docker 沙箱 E2E**（7 个 `e2e_*.rs`）：
+**Docker 沙箱 E2E**（7 个 `e2e_*.rs` test binary，需 Docker daemon）：
 
 ```bash
-cd noj-judge && NOJ_RUN_E2E=1 cargo test --test e2e -- --ignored
+cd noj-judge && NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
+# ...（其余 6 个同名：e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_container_pool / e2e_problem_limits / e2e_dual_container）
 ```
 
 - 集成测试 `#[ignore]` + `NOJ_RUN_E2E=1` 守卫
 - `#[serial_test::serial]` 序列化执行避免 Docker 资源竞争
 - 30s 外层超时：`tokio::time::timeout(30s, ...)`
 
-### 12.3 跨模块 E2E（noj-tests，17 个测试文件）
+### 12.3 跨模块 E2E（noj-tests）
 
 ```bash
 cd noj-tests && deno task test
@@ -796,7 +818,7 @@ cd noj-tests && deno task test
 
 - 构建支持包 + 评测镜像 + Docker Compose
 - 启动完整评测栈（noj-core + noj-judge + PG:5433 + Redis:6380）
-- 运行 noj-tests E2E（17 个测试）
+- 运行 noj-tests E2E（23 个测试）
 - 运行 noj-judge Docker 沙箱 E2E（7 个测试）
 - 首次 ~15min，缓存命中后 ~5-8min
 - 超时 60min，`always()` 输出诊断日志
@@ -828,26 +850,7 @@ cd noj-tests && deno task test
 
 ---
 
-## 15. 项目状态与路线图
-
-当前处于 **Phase 1（MVP）** 阶段——已打通"注册 → 做题 → 提交 → 评测结果"闭环，具备题目筛选、管理后台、用户榜单、每日签到、站内私信。
-
-| 阶段 | 交付标准 | 状态 |
-|------|---------|------|
-| **Phase 0** | 浏览器注册 → 做题 → 提交 → 看到评测结果 | ✅ 完成 |
-| **Phase 1** | 榜单可查，题目可筛选，管理后台可用 | 🚧 进行中（遗留：多语言 C++/Java/Node.js、SPJ） |
-| **Phase 2** | 可创建比赛 → 用户参赛 → 实时榜单 → 赛后复盘 | ⏳ 规划 |
-| **Phase 3** | 多 Worker 并发评测，99.5% 可用性 | ⏳ 规划 |
-
-详见 [`ROADMAP.md`](./ROADMAP.md)。
-
-### 已知遗留
-
-- **前端**：无 SEO（无 OG 标签 / sitemap）、无图片优化、无 web fonts（系统字体栈）、无单独 `types/` 目录、Composable 命名不一致（`useAuth` vs `use-submissions`）
-
----
-
-## 16. 参考文档
+## 15. 参考文档
 
 | 文档 | 路径 | 用途 |
 |------|------|------|
@@ -857,7 +860,6 @@ cd noj-tests && deno task test
 | noj-judge 详细文档 | [`noj-judge/CLAUDE.md`](./noj-judge/CLAUDE.md) | Rust Worker 完整约定 |
 | E2E 测试指南 | [`noj-tests/E2E_TESTING.md`](./noj-tests/E2E_TESTING.md) | 跨模块 E2E 测试方法 |
 | 开发工具 devtool.sh | [`scripts/dev/devtool.sh`](./scripts/dev/devtool.sh) | 本地开发编排（install-deps / init-env / start / stop / status） |
-| 开发路线图 | [`ROADMAP.md`](./ROADMAP.md) | 阶段规划与待办 |
 | AI 入口（本文档） | [`AGENTS.md`](./AGENTS.md) | AI 编码助手项目知识库 |
 | OpenSpec 主规范 | [`openspec/specs/`](./openspec/specs/) | 行为规范（Requirements + Scenarios） |
 | Superpowers 设计稿 | [`docs/superpowers/specs/`](./docs/superpowers/specs/) | 大型变更的设计文档（Context / Decisions / Risks），与 `openspec/specs/` 行为规范**分开** |

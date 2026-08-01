@@ -32,23 +32,32 @@ noj-judge/
 ├── Dockerfile.e2e          # E2E 测试用 Dockerfile（多阶段构建）
 ├── .dockerignore           # 排除 target/ tests/ docker/ 等
 ├── src/
-│   ├── main.rs             # 入口（容器池模式）
+│   ├── main.rs             # 入口（容器池 + dual container）
 │   ├── lib.rs              # 库入口（暴露模块给集成测试）
 │   ├── config.rs           # 环境变量配置（PoolConfig + 全局配置）
 │   ├── types.rs            # JudgeTask、JudgeResult、CaseResult 类型
+│   ├── drain.rs            # 优雅关闭时排空 in-flight 评测任务
 │   ├── mq.rs               # Redis MQ 任务拉取 + 结果推送（带重试 + fallback）
 │   ├── mq/
 │   │   └── rpc.rs           # Redis RPC 客户端（core↔judge 通信）
 │   ├── sandbox/
 │   │   ├── mod.rs
-│   │   └── container.rs    # 容器生命周期 + zip 解压 + 命令解析
+│   │   ├── container.rs    # 容器生命周期 + zip 解压 + 命令解析
+│   │   ├── download.rs     # noj-download:// 下载（base64 / s3）
+│   │   ├── cache.rs        # 内容寻址缓存
+│   │   ├── cleanup.rs      # 孤儿容器清理
+│   │   └── host_config.rs  # 容器 HostConfig 构造（安全项）
 │   ├── judge/
 │   │   ├── mod.rs
 │   │   └── runner.rs       # 评测逻辑（---RESULT--- 标记解析 + 超时/OOM 检测）
-│   └── pool/
-│       ├── mod.rs          # PoolManager（固定池，懒回补 + 健康检查）
-│       ├── copy.rs         # tar 打包 + docker exec 注入文件
-│       └── exec.rs         # docker exec 执行命令 + cgroup 内存峰值读取
+│   ├── pool/
+│   │   ├── mod.rs          # PoolManager（固定池，懒回补 + 健康检查）
+│   │   ├── copy.rs         # tar 打包 + docker exec 注入文件
+│   │   └── exec.rs         # docker exec 执行命令 + cgroup 内存峰值读取
+│   └── dual/
+│       ├── mod.rs          # 双容器编排（Evaluator + Solution）
+│       ├── container.rs    # 双容器生命周期
+│       └── protocol.rs     # NDJSON 编排协议
 └── tests/
     ├── common/mod.rs       # 测试公共辅助函数
     ├── e2e/
@@ -59,6 +68,7 @@ noj-judge/
     ├── e2e_security_isolation.rs
     ├── e2e_support_package.rs
     ├── e2e_container_pool.rs
+    ├── e2e_dual_container.rs  # 双容器 NDJSON 编排 E2E
     └── e2e_problem_limits.rs  # 验证 time_limit_ms/memory_limit_mb 实际生效
 ```
 
@@ -77,6 +87,7 @@ NOJ_RUN_E2E=1 cargo test --test e2e_resource_limits -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_security_isolation -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_support_package -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_container_pool -- --ignored
+NOJ_RUN_E2E=1 cargo test --test e2e_dual_container -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_problem_limits -- --ignored
 
 # 运行指定集成测试
@@ -122,7 +133,7 @@ cargo fmt
 | Exec 创建超时 | 10s                    | Docker daemon 响应超时              |
 | 内存读取超时  | 5s                     | cgroup 峰值读取超时                 |
 
-## 容器池架构（单一模式）
+## 容器池架构
 
 noj-judge 始终使用容器池模式，无 Semaphore 退化路径。
 
@@ -145,30 +156,34 @@ noj-judge 始终使用容器池模式，无 Semaphore 退化路径。
        └─ 创建新容器回补到空闲队列
 ```
 
-## 评测流程（核心）
+## 评测流程（核心，双容器）
+
+> 所有评测统一走 `dual::evaluate_dual()`（Evaluator + Solution 双容器 NDJSON 编排），
+> 旧的单容器路径已移除。核心流程（`src/dual/mod.rs`）：
 
 ```
 任务到达
   │
-  ├─ 1. get_support_package_bytes() — Base64 解码支持包 zip
-  ├─ 2. extract_zip() — 解压到工作目录（含路径穿越防护）
-  ├─ 3. write_user_code() — 写入用户代码（文件名安全校验）
-  ├─ 4. archive_and_copy() — tar 打包 + docker exec tar xf 注入容器
-  ├─ 5. execute_in_container() — 执行评测命令（竞速超时）
+  ├─ 1. 获取支持包 — 缓存优先 → 按 host 分派下载 → SHA-256 校验 → 写缓存（含 zip 路径穿越/炸弹防护）
+  ├─ 2. 创建 Evaluator + Solution 两个容器（安全 HostConfig：cap_drop ALL / network none / pids_limit 等）
+  ├─ 3. 注入用户代码到 Solution 容器
+  ├─ 4. 注入支持包 zip 到 Evaluator 容器 /workspace
+  ├─ 5. 启动两个 exec — Evaluator 跑 evaluate.py；Solution 跑 host.py
+  ├─ 6. 等待 Solution `ready` 帧（5s 超时）
+  ├─ 7. 双向消息转发 — evaluator stdout ↔ solution stdin/stderr（竞速超时）
   │     ├─ 超时 → stop_container(SIGTERM) + kill_container(SIGKILL) → exit_code = -1
-  │     │   └─ 超时后从 docker logs 捕获剩余输出
   │     └─ 正常 → 读取 stdout/stderr + exit_code
-  ├─ 6. read_memory_peak_kb() — 读取 cgroup 内存峰值
-  │     ├─ cgroup v2: /sys/fs/cgroup/memory.peak
-  │     ├─ cgroup v1: /sys/fs/cgroup/memory/memory.max_usage_in_bytes
-  │     └─ fallback: echo 0
-  └─ 7. process_output() — 解析 ---RESULT--- 标记
-        ├─ 有标记 → 解析 JSON {status, score, details}
-        ├─ 无标记 + exit 0 → SystemError
-        ├─ 无标记 + exit ≠ 0 → RuntimeError
-        ├─ exit = -1 → TimeLimitExceeded
-        └─ exit = 137 → MemoryLimitExceeded
+  ├─ 8. 等待 Evaluator stdout 出现 ---RESULT--- 标记，解析 JSON {status, score, details}
+  │     ├─ 有标记 → 解析结果
+  │     ├─ 无标记 + exit 0 → SystemError
+  │     ├─ 无标记 + exit ≠ 0 → RuntimeError
+  │     ├─ exit = -1 → TimeLimitExceeded
+  │     └─ exit = 137 → MemoryLimitExceeded
+  └─ 9. 发 `shutdown` 到 Solution → RAII 清理两个容器
 ```
+
+内存峰值读取（cgroup）：v2 用 `/sys/fs/cgroup/memory.peak`，v1 用
+`/sys/fs/cgroup/memory/memory.max_usage_in_bytes`，fallback 为 0。
 
 ### 超时处理细节
 
@@ -186,17 +201,31 @@ noj-judge 始终使用容器池模式，无 Semaphore 退化路径。
 ```json
 {
   "submission_id": "uuid",
-  "problem_id": "1001",
-  "judge_image": "noj-judge-python",
-  "judge_command": "python3 /tmp/evaluate.py",
+  "problem_id": "uuid",
   "download_url": "noj-download://base64/?content=UEsDBBQAAAAIA...&checksum_sha256=abc123",
+  "runtime_config": {
+    "evaluator": {
+      "image": "noj-judge-python",
+      "command": "python3 /workspace/evaluate.py",
+      "time_limit_ms": 5000,
+      "memory_limit_mb": 512
+    },
+    "solution": {
+      "image": "noj-judge-python",
+      "entry": "solution.py",
+      "call_timeout_ms": 2000,
+      "memory_limit_mb": 512
+    }
+  },
   "language": "python3",
   "code": "...",
   "file_name": "submission.py",
-  "time_limit_ms": 5000,
-  "memory_limit_mb": 512
+  "rejudge_seq": 1
 }
 ```
+
+> 双容器架构后 `judge_image` / `judge_command` / `time_limit_ms` / `memory_limit_mb`
+> 顶层字段已移除，统一由 `runtime_config`（Evaluator + Solution）承载。
 
 **JudgeResult（noj-judge → noj-core）**：
 

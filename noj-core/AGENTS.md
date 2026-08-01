@@ -104,25 +104,23 @@ noj-core/
 │   ├── main.ts            # 入口（启动校验 + 初始化顺序）
 │   ├── app.ts             # Hono 应用工厂（CORS + 路由 + 错误处理）
 │   ├── mod.ts             # 公共导出
-│   ├── routes/            # 路由层（参数校验 + 调用 service）
-│   ├── services/          # 业务逻辑层（数据库读写）
+│   ├── routes/            # 路由层（参数校验 + 调用 service）：admin / auth / categories / checkin / community / contests / conversations / health / problems / queue / rankings / search / sse / stats / submissions / users
+│   ├── services/          # 业务逻辑层（数据库读写，34 个文件，含 problems-*/submissions-* 拆分与 community/contests/dashboard/stats-cache 等）
 │   ├── db/                # 数据库连接 & Drizzle schema
 │   │   ├── index.ts       # 数据库连接管理（单例模式）
 │   │   ├── migrate.ts     # 迁移执行器（绝对路径解析，不依赖 CWD）
-│   │   └── schema.ts      # Drizzle 表定义（13 张表）
-│   ├── middleware/         # 认证中间件
+│   │   └── schema.ts      # Drizzle 表定义（38 张表）
+│   ├── middleware/         # 认证中间件（auth / banlist / rateLimit / searchRateLimit / request-context）
 │   ├── mq/                # Redis 消息队列（Producer + Consumer + RPC）
 │   │   ├── connection.ts   #   连接管理（共享 + 消费者 + Pub/Sub）
+│   │   ├── base-consumer.ts#   BRPOP 消费基类
 │   │   ├── consumer.ts     #   评测结果消费者（BRPOP 阻塞）
+│   │   ├── started_consumer.ts # 评测启动事件消费者
 │   │   ├── producer.ts     #   评测任务生产者（LPUSH）
 │   │   └── judge-rpc.ts   #   Judge RPC 处理器（镜像白名单等）
-│   ├── lib/               # 工具函数（JWT、密码、错误类、请求解析、日志、存储）
+│   ├── lib/               # 工具函数（JWT、密码、错误类、请求解析、日志、存储、限流、RBAC 等）
 │   │   ├── email.ts            # 邮件发送抽象入口（动态选择 Provider）
-│   │   ├── email-providers/    # 邮件 Provider 实现
-│   │   │   ├── types.ts        #   统一接口定义
-│   │   │   ├── mock.ts         #   Mock Provider（默认，控制台输出）
-│   │   │   ├── aliyun.ts       #   阿里云 DirectMail Provider
-│   │   │   └── tencent.ts      #   腾讯云 SES Provider
+│   │   ├── email-providers/    # 邮件 Provider 实现（types / mock / aliyun / tencent）
 │   │   ├── storage/            # 抽象存储层（StorageProvider）
 │   │   │   ├── types.ts        #   StorageProvider 接口 + URL 工具
 │   │   │   ├── local.ts        #   LocalStorageProvider（dev 专用）
@@ -133,7 +131,14 @@ noj-core/
 │   │   ├── jwt.ts              # JWT 签发/验证（HS256, iss/aud 校验）
 │   │   ├── password.ts         # bcrypt 哈希/比对（cost 12）
 │   │   ├── request.ts          # parseJsonBody<T>() 安全 JSON 解析
-│   │   └── logging.ts          # 生产安全日志（UUID 截断、分值隐藏）
+│   │   ├── permissions.ts      # RBAC 权限工具（getUserPermissions / requireAdmin / requirePermission 等）
+│   │   ├── logging.ts          # 生产安全日志（UUID 截断、分值隐藏）
+│   │   ├── event-bus.ts        # 进程内事件总线（SSE 推送）
+│   │   ├── env-snapshot.ts     # 环境变量快照（启动期记录）
+│   │   ├── settings-registry.ts# 系统设置注册表
+│   │   ├── rateLimit.ts / loginThrottle.ts / rateLimitEnv.ts / cidr.ts  # 速率限制
+│   │   ├── pagination.ts / samples.ts / sql-rows.ts / resetToken.ts / revokedTokens.ts / banCache.ts / requestContext.ts  # 其他工具
+│   │   └── ...
 │   └── types/             # 类型定义
 │       ├── index.ts        # JudgeTask, JudgeResult, SubmissionStatus, LANGUAGE_EXT_MAP
 │       ├── auth.ts         # RegisterInput, LoginInput, UserResponse
@@ -357,6 +362,17 @@ docker compose down     # 停止
 | `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                            | PK, FK→conversations, FK→users, UK(conversation_id,user_id)    |
 | `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                   | PK, FK→messages, FK→users                                      |
 
+> 上表为核心表速查。完整 Schema 共 38 张表（`src/db/schema.ts`），另有：
+>
+> - **竞赛**：`contests` / `contest_problems` / `contest_participants` /
+>   `contest_clarifications`
+> - **RBAC**：`roles` / `permissions` / `role_permissions` / `user_roles`
+> - **社区**：`community_boards` / `community_posts` / `community_comments` /
+>   `community_follows` / `community_activity_events` / `community_reports` /
+>   `community_moderation_actions` / `community_sanctions` /
+>   `community_notifications` 等 17 张
+> - **其他**：`system_settings` / `audit_logs` / `ip_bans` / `user_bans`
+
 **设计要点**：
 
 - 所有时间戳使用 ISO 8601 **文本**格式存储（非原生 `timestamptz`）
@@ -556,14 +572,18 @@ Retry-After: 25
 
 ## 评测脚本协议（Judge 集成）
 
-noj-core 不直接执行评测，但 `data/problems-src/` 中的 evaluate.py 遵循以下约定：
+noj-core 不直接执行评测，但 `data/problems-src/` 中的 evaluate.py 遵循以下约定
+（双容器架构）：
 
 - 可见测试用例：`visible.jsonl`，隐藏测试用例：`hidden.jsonl`（位于支持包 zip
   中）
-- 用户代码路径：`/tmp/main.py`（或对应扩展名）
+- evaluate.py 运行在 **Evaluator 容器**，通过
+  `noj_evaluator_sdk.runner.SolutionRunner` 与 **Solution
+  容器**（承载用户代码）交互（NDJSON 帧协议，见
+  `noj-judge/src/dual/protocol.rs`）
 - 输出格式：`---RESULT---` 标记行 + JSON `{status, score, details}`
-- 超时处理：evaluate.py 内部使用 `subprocess.run(timeout=TIMEOUT)`
 - 评分公式：每题独立定义在 evaluate.py 中（非通用可配置系统）
+- 镜像白名单：`judgeImages` 按 `evaluator` / `solution` 两类 kind 管理
 
 ## 题目数据约束
 

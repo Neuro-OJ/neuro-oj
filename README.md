@@ -209,16 +209,17 @@ cd noj-core && deno task seed
 ### 测试
 
 ```bash
-# noj-core 单元 + 集成测试（67 个测试文件）
+# noj-core 单元 + 集成测试（71 个测试文件）
 cd noj-core && deno task test
 
 # noj-judge 单元测试
 cd noj-judge && cargo test --lib
 
-# noj-judge Docker 沙箱 E2E（需要 Docker 与 NOJ_RUN_E2E=1，7 个测试）
-cd noj-judge && NOJ_RUN_E2E=1 cargo test --test e2e -- --ignored
+# noj-judge Docker 沙箱 E2E（需要 Docker 与 NOJ_RUN_E2E=1，7 个独立 test binary）
+cd noj-judge && NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
+# ...（其余：e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_container_pool / e2e_problem_limits / e2e_dual_container）
 
-# 跨模块全链路 E2E（17 个测试文件，需先启动完整环境）
+# 跨模块全链路 E2E（23 个测试文件，需先启动完整环境）
 cd noj-tests && deno task test
 ```
 
@@ -229,18 +230,18 @@ CI 通过 GitHub Actions 双重流水线保证质量：
 
 ---
 
-## 项目状态与路线图
+## 项目状态
 
-当前处于 **Phase 1（MVP）** 阶段——已打通"注册 → 做题 → 提交 → 评测结果"闭环，并具备题目筛选、管理后台、用户榜单、每日签到、站内私信等核心功能。当前遗留项：多语言评测（C++/Java/Node.js）、SPJ（Special Judge）。
+已打通"注册 → 做题 → 提交 → 评测结果"闭环，并具备题目筛选、管理后台、用户榜单、每日签到、站内私信，以及**竞赛**（icpc/ioi/oi 三赛制 + 封榜 + SSE 实时排名）、**社区**与 **RBAC 权限**等能力。考试/认证模式（Phase 2 主线）仍在推进中。
 
 | 阶段 | 交付标准 | 状态 |
 |------|---------|------|
 | **Phase 0** | 浏览器注册 → 做题 → 提交 → 看到评测结果 | ✅ 完成 |
-| **Phase 1** | 榜单可查，题目可筛选，管理后台可用 | 🚧 进行中 |
-| **Phase 2** | 可创建比赛 → 用户参赛 → 实时榜单 → 赛后复盘 | ⏳ 规划 |
+| **Phase 1** | 榜单可查，题目可筛选，管理后台可用（另已交付：比赛、社区、RBAC） | ✅ 完成 |
+| **Phase 2** | 可创建考试 → LMCC 认证闭环 | 🚧 进行中（比赛已交付，考试模式待做） |
 | **Phase 3** | 多 Worker 并发评测，99.5% 可用性 | ⏳ 规划 |
 
-详见 [`ROADMAP.md`](./ROADMAP.md)。
+> 注：多语言评测（C++/Java/Node.js）与 SPJ 为**决策性不做**（LMCC 仅 Python，见 `openspec/comparison-hydrooj.md`）。
 
 ---
 

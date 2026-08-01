@@ -33,42 +33,38 @@ noj-ui/
 ├── app.vue                # 根组件 + CSS 变量定义
 ├── pages/                 # 文件路由（Nuxt 自动路由）
 │   ├── index.vue          # 首页（Hero）
-│   ├── login.vue / register.vue
-│   ├── problems.vue       # 题目列表
-│   ├── problems/[id].vue  # 题目详情 + 代码提交
+│   ├── login.vue / register.vue / forgot-password.vue / reset-password.vue / change-password.vue
+│   ├── problems.vue + problems/       # 题目列表 / 题目详情 + 代码提交
 │   ├── submissions/       # 提交历史
-│   ├── change-password.vue  # 强制改密
-│   ├── forgot-password.vue  # 忘记密码
-│   ├── reset-password.vue   # 重置密码
-│   ├── ranking.vue          # 用户榜单
+│   ├── ranking.vue        # 用户榜单
+│   ├── queue.vue          # 评测队列状态
+│   ├── contests/          # 竞赛（列表 / 详情 / 榜单）
+│   ├── community/         # 社区（板块 / 帖子 / 动态流）
+│   ├── messages/          # 站内私信
+│   ├── search.vue / settings.vue / about.vue / users/ / my/
+│   ├── editor/            # 题目编辑器
 │   ├── admin/             # 管理后台（管理员，ssr: false）
 │   └── ...
-├── components/            # 可复用 Vue 组件
-│   ├── Navbar.vue         # 导航栏
-│   ├── Footer.vue         # 页脚
-│   ├── ProblemFilterBar.vue  # 题目筛选栏
-│   ├── ProblemEditor.vue  # 题目编辑器（管理后台）
-│   ├── MarkdownRenderer.vue  # Markdown 渲染（DOMPurify 清洗）
-│   ├── MonacoEditor.vue   # 代码编辑器（CDN 加载 Monaco）
-│   ├── SubmissionTable.vue   # 提交历史表格
-│   ├── ProblemId.vue          # 彩色题号
-│   ├── StatusBadge.vue        # 解决状态标签
-│   ├── PaginationNav.vue      # 智能分页
-│   ├── admin/                 # 管理后台组件
-│   │   ├── AdminTable.vue
-│   │   └── AdminModal.vue
-│   ├── ui/                # 通用 UI 组件
-│   │   ├── DialogModal.vue    # UModal 驱动的 confirm/alert/prompt
-│   │   ├── AsyncContent.vue
-│   │   ├── DifficultyBadge.vue / StatusBadge.vue / SubmissionResult.vue
-│   │   └── ...
-├── composables/           # 组合式函数
+├── components/            # 可复用 Vue 组件（按功能分目录）
+│   ├── layout/            # Navbar / FooterBar / Sidebar / UserMenu
+│   ├── editor/            # MonacoEditor / ProblemEditor / EditorSidebar / EditorToolbar / EditorStatusBar / ActivityBar / ResizableSplitter
+│   ├── feature/           # ProblemFilterBar / CheckInCard / RandomProblems / StatsToggle / FollowingFeed / LatestSubmissions / ChatSidebar / search（SearchPalette / SearchResultItem）/ community（CommentCard）
+│   ├── shared/            # MarkdownRenderer（DOMPurify 清洗）/ PaginationNav / BrandLogo / MarqueeTitle
+│   ├── ui/                # AsyncContent / DialogModal / DifficultyBadge / StatusBadge / ProblemId / SubmissionResult / TableSkeleton / ToastBanner / AnimatedCounter
+│   ├── card/              # ProblemCard / SubmissionCard
+│   ├── form/              # TextInput / PasswordField
+│   ├── auth/              # AuthFormCard
+│   ├── admin/             # PageHeader / ContestFormModal / SupportPackageUpload
+│   └── BanBanner.vue      # 封禁横幅
+├── composables/           # 组合式函数（22 个）
+│   ├── useApi.ts          # 统一 API 调用层（业务代码禁止直接 $fetch）
 │   ├── useAuth.ts         # 认证状态管理
 │   ├── usePolling.ts      # 轮询工具
 │   ├── useToast.ts        # Toast 通知（Nuxt UI useToast 封装）
 │   ├── useDialog.ts       # 弹窗（Nuxt UI useOverlay + DialogModal）
 │   ├── useProblemFilters.ts  # 题目筛选 URL 同步
-│   └── use-submissions.ts # 提交历史数据获取
+│   ├── use-submissions.ts # 提交历史数据获取
+│   ├── useCommunity.ts / useContests.ts / useMessages.ts / useSearch.ts / useRankings.ts / useAdminList.ts / useAuditLogs.ts / useBanStatus.ts / useEventSource.ts / useSubmissionPolling.ts / useEditorTheme.ts / useDraftStorage.ts / useFormError.ts / useResizableSplit.ts / useCommunityNotifications.ts  # 业务与工具 composables
 ├── layouts/               # 页面布局
 │   ├── default.vue        # 默认布局（导航栏 + 页脚）
 │   ├── auth.vue           # 认证页面布局（登录/注册）
@@ -355,13 +351,12 @@ cd dist
 
 | 组件 | 说明 |
 |------|------|
-| `MonacoEditor.vue` | 通过 CDN 加载 Monaco Editor（非 npm 包），`diff` 模式可选 |
+| `MonacoEditor.vue` | 基于 npm `monaco-editor` 包（postinstall 脚本自托管 `public/monaco`，非 CDN），`diff` 模式可选 |
 | `MarkdownRenderer.vue` | markdown-it + highlight.js + KaTeX 渲染，**DOMPurify 清洗 HTML** 防 XSS |
-| `ProblemEditor.vue` | 管理后台题目编辑器，支持 U/P 类型切换，必填字段校验 |
-| `DataTable.vue` | 通用数据表格，支持排序、分页、空状态、加载态 |
-| `BaseButton.vue` | 通用按钮，支持 `loading`、`disabled`、`to`（NuxtLink） |
+| `ProblemEditor.vue` | 题目编辑器（`editor/` 目录），支持 U/P 类型切换，必填字段校验 |
+| `ProblemCard.vue` / `SubmissionCard.vue` | 题目卡片 / 提交卡片（状态标签着色，点击跳转详情） |
 | `AsyncContent.vue` | 异步内容容器，统一处理 loading / empty / error 状态 |
-| `SubmissionTable.vue` | 提交历史表格，状态标签着色，点击跳转详情 |
+| `TableSkeleton.vue` | 表格骨架屏加载态 |
 
 ## 认证守卫
 
