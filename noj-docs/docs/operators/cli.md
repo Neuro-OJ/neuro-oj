@@ -51,7 +51,8 @@ deno task bootstrap:admin -- --email admin@example.com --password '...'
 ## 样例题同步
 
 `data/problems-src/` 中的 1001–1003 样例题通过 `problems:build` + `problems:import`
-同步（manifest 带固定 id，重复导入幂等更新，不会产生重复题目）。
+同步（manifest 带固定 `number`，id 一律由服务端生成 UUID；重复导入按
+(type, number) 幂等更新，不会产生重复题目）。
 
 正式出题建议：在 Web 管理界面创建题目，或打包统一题目包（见"出题人"文档）
 后通过管理界面上传 / `problems:import` 导入。

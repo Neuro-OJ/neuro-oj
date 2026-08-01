@@ -10,6 +10,10 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { dirname, join } from "jsr:@std/path@^1";
 import { LocalStorageProvider } from "../../../src/lib/storage/local.ts";
 
+// 项目根目录 = noj-core（本文件位于 tests/lib/storage/，向上 3 层：
+// storage → lib → tests → noj-core）。
+// 注意：LocalStorageProvider 默认目录 data/storage 是相对进程 cwd 解析的，
+// 测试须从 noj-core 目录运行（CI 与 deno task 均如此）。
 const PROJECT_ROOT = join(import.meta.dirname ?? ".", "..", "..", "..");
 
 Deno.test("LocalStorageProvider: 默认落盘到 data/storage 而非 data/packages", async () => {

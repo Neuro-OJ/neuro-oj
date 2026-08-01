@@ -52,6 +52,7 @@ noj-download://s3?url=<encoded-presigned-url>&checksum_sha256=...
 
 1. 维护者把样例题源文件放在 `noj-core/data/problems-src/<id>/`。
 2. 维护者运行 `deno task problems:build` 生成 `noj-core/data/packages/<id>.zip`。
-3. seed 把样例题支持包注册到 StorageProvider。
+3. 维护者运行 `deno task problems:import`（或 `deno task dev-setup`）导入统一题目包，
+   由 noj-core 剥离元数据并把纯净评测包注册到 StorageProvider。
 
 样例题流程用于开发和测试，不是正式出题发布路径。
