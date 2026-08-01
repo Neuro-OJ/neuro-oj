@@ -44,4 +44,6 @@
 - [x] 文档：AGENTS.md §12/§13、noj-core/CLAUDE.md、noj-judge/AGENTS.md
 - [x] 回归：`deno task test`（PGlite 串行）607 passed；`deno task test:parallel`
       全绿；fmt/lint 通过
-- [ ] 推送 PR（GPG 签名）后观察 CI 实际耗时对比
+- [x] 推送 PR（GPG 签名）后观察 CI 实际耗时对比（PR #183：12/12 checks
+      全绿；Full Pipeline 2m17s、Judge E2E 1m28s、Judge Sandbox 2m30s、
+      Core Test-DB 2m14s，对比优化前串行 ~15min）
