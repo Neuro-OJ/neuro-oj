@@ -148,7 +148,7 @@ neuro-oj/
 │   ├── deno.json              # 项目配置 + 导入映射
 │   ├── deno.lock              # 依赖锁定（提交到 git，用于 CI 缓存）
 │   ├── drizzle.config.ts      # Drizzle Kit 配置
-│   ├── drizzle/               # 26 个 SQL 迁移文件（自动生成，勿手改 _journal.json）
+│   ├── drizzle/               # 32 个 SQL 迁移文件（自动生成，勿手改 _journal.json）
 │   ├── .env.example           # 环境变量模板（不提交 .env）
 │   ├── src/
 │   │   ├── main.ts            # 入口（启动校验 + 初始化顺序）
@@ -214,7 +214,7 @@ neuro-oj/
 │   ├── server/
 │   │   ├── api/[...slug].ts   # Nitro 代理（拦截登录 + JWT 注入）
 │   │   └── api/auth/logout.post.ts # 本地注销
-│   ├── middleware/            # auth（5s 超时）+ admin（静默重定向）
+│   ├── middleware/            # auth（5s 超时）+ admin（静默重定向）+ community-moderation（社区审核员）
 │   ├── utils/sanitize.ts      # DOMPurify 异步加载
 │   └── assets/                # 静态资源（logo.jpg 等）
 │
@@ -444,7 +444,7 @@ cd ../noj-judge && cargo run                      # 需要 Docker daemon
 
 ### 6.2 迁移
 
-- 共 26 个迁移文件（`drizzle/0000_*.sql` 起）
+- 共 32 个迁移文件（`drizzle/0000_*.sql` 起）
 - 由 `deno task db:generate` 自动生成，**勿手动编辑 `_journal.json`**
 - 迁移顺序严格按编号；新迁移只能追加
 

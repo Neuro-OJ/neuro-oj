@@ -15,7 +15,7 @@
       <input
         v-model="query"
         type="text"
-        placeholder="搜索题目、用户..."
+        placeholder="搜索题目、用户、帖子..."
         class="flex-1 h-full bg-transparent outline-none text-base"
         @keydown.enter="onSearch"
       />
@@ -53,7 +53,7 @@
           v-for="item in items"
           :key="item.id || item.username"
           :item="item"
-          :kind="type === 'user' ? 'user' : 'problem'"
+          :kind="type === 'user' ? 'user' : type === 'community' ? 'community' : 'problem'"
         />
       </div>
 
@@ -79,6 +79,7 @@ import type {
   SearchType,
   ProblemSearchResult,
   UserSearchResult,
+  CommunitySearchResult,
 } from "~/composables/useSearch";
 
 definePageMeta({ layout: "default" });
@@ -92,7 +93,7 @@ const page = ref<number>(Number(route.query.page) || 1);
 const limit = 20;
 const loading = ref(false);
 const error = ref<string | null>(null);
-const items = ref<(ProblemSearchResult | UserSearchResult)[]>([]);
+const items = ref<(ProblemSearchResult | UserSearchResult | CommunitySearchResult)[]>([]);
 const total = ref(0);
 const tookMs = ref<number | null>(null);
 
@@ -112,6 +113,7 @@ const totalPages = computed(() => {
 const typeOptions = [
   { value: "problem" as SearchType, label: "题目" },
   { value: "user" as SearchType, label: "用户" },
+  { value: "community" as SearchType, label: "帖子" },
 ];
 
 async function fetchResults() {
@@ -131,12 +133,12 @@ async function fetchResults() {
     const res = await $fetch("/api/v1/search", {
       params: {
         q,
-        type: type.value === "user" ? "user" : "problem",
+        type: type.value,
         page: page.value,
         limit,
       },
     });
-    const data = (res as { data: { items: (ProblemSearchResult | UserSearchResult)[]; total: number; took_ms: number } }).data;
+    const data = (res as { data: { items: (ProblemSearchResult | UserSearchResult | CommunitySearchResult)[]; total: number; took_ms: number } }).data;
     items.value = data.items;
     total.value = data.total;
     tookMs.value = data.took_ms;

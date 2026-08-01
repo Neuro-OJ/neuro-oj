@@ -19,6 +19,7 @@ import {
 } from "../services/contests.ts";
 import { createSubmission, listSubmissions } from "../services/submissions.ts";
 import { isValidContestType } from "../types/contests.ts";
+import { createActivity } from "../services/community.ts";
 
 const contests = new Hono<OptionalAuthEnv>();
 const MAX_CODE_LENGTH = 100 * 1024;
@@ -64,6 +65,13 @@ contests.post("/:id/register", authMiddleware, async (c) => {
     }
   }
   await registerForContest(c.req.param("id")!, c.var.userId!, body.password);
+  await createActivity(
+    c.var.userId!,
+    "contest_joined",
+    "contest",
+    c.req.param("id")!,
+    {},
+  );
   return c.json({ message: "竞赛注册成功" }, 201);
 });
 

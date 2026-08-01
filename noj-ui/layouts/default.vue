@@ -34,35 +34,6 @@ onUnmounted(() => {
 </template>
 
 <style>
-/* 全局工具类 —— 由 Tailwind @apply 生成，迁移过渡期保留 */
-.container {
-    @apply mx-auto w-full;
-    max-width: 1200px;
-    padding: 0 24px;
-}
-
-.btn {
-    @apply inline-flex items-center justify-center font-semibold no-underline cursor-pointer rounded-lg transition-all duration-200;
-}
-
-.btn-primary {
-    @apply bg-primary text-white border border-primary;
-}
-
-.btn-primary:hover {
-    @apply bg-primary-dark border-primary-dark;
-}
-
-.btn-outline {
-    @apply bg-transparent text-primary border border-primary;
-}
-
-.btn-outline:hover {
-    @apply bg-primary text-white;
-}
-</style>
-
-<style>
 /* 动画关键帧 —— Tailwind animate-* 无法覆盖的自定义动画 */
 @keyframes gradientShift {
     0% { background-position: 0% 50%; }

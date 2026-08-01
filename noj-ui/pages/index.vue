@@ -52,6 +52,7 @@
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
                     <RandomProblems />
                     <LatestSubmissions />
+                    <FollowingFeed class="lg:col-span-full" />
                 </div>
             </div>
         </div>

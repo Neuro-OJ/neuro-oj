@@ -79,7 +79,8 @@ noj-ui/
 │       └── auth/logout.post.ts  # 注销端点（本地清除 Cookie）
 ├── middleware/             # Nuxt 路由守卫
 │   ├── auth.ts            # 登录守卫（5s 超时）
-│   └── admin.ts           # 管理员守卫（静默重定向）
+│   ├── admin.ts           # 管理员守卫（静默重定向）
+│   └── community-moderation.ts # 社区管理守卫（admin 或 community_moderation:review 审核员）
 ├── utils/                 # 工具函数（sanitize HTML）
 ├── assets/                # 静态资源（logo.jpg 等）
 └── .output/               # 构建产物（gitignored）

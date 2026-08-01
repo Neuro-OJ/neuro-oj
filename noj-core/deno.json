@@ -12,7 +12,7 @@
     "migrate": "deno run --env-file=.env -A scripts/migrate.ts",
     "check:env": "deno run -A scripts/check-env.ts",
     "check:env:strict": "deno run -A scripts/check-env.ts --strict",
-    "test": "deno test -A --no-check",
+    "test": "env -u DATABASE_URL deno test -A --no-check",
     "test:smoke": "deno test -A --no-check tests/smoke.test.ts",
     "test:watch": "deno test -A --no-check --watch",
     "fmt": "deno fmt",
@@ -20,7 +20,8 @@
     "lint": "deno lint",
     "lint:fix": "deno lint --fix",
     "check": "deno fmt --check && deno lint && deno task check:types",
-    "check:types": "find src -name '*.ts' -print0 | xargs -0 deno check"
+    "check:types": "find src -name '*.ts' -print0 | xargs -0 deno check",
+    "test:pg": "deno test -A --no-check"
   },
   "imports": {
     "hono": "npm:hono@^4",
@@ -50,7 +51,9 @@
   },
   "lint": {
     "rules": {
-      "tags": ["recommended"]
+      "tags": [
+        "recommended"
+      ]
     },
     "exclude": [
       ".deno_cache"

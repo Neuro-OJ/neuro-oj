@@ -8,7 +8,7 @@
  * 重测相关在 submissions-rejudge.ts；CRUD 在 submissions-crud.ts。
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { evaluationResults, submissions } from "../db/schema.ts";
 import { BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { getDb } from "../db/connection.ts";
@@ -17,6 +17,7 @@ import { applyNewResult } from "./stats-cache.ts";
 import { refreshRankingsView } from "./rankings.ts";
 import { logger } from "../lib/logging.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";
+import { createActivity } from "./community.ts";
 
 // 允许的状态转换
 const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
@@ -43,6 +44,8 @@ export async function saveEvaluationResult(
       rejudge_seq: submissions.rejudge_seq,
       created_at: submissions.created_at,
       contest_id: submissions.contest_id,
+      user_id: submissions.user_id,
+      problem_id: submissions.problem_id,
     })
     .from(submissions)
     .where(eq(submissions.id, result.submission_id))
@@ -115,6 +118,29 @@ export async function saveEvaluationResult(
   // 不 await：避免阻塞主业务（saveEvaluationResult 是热路径）
   // 失败仅 console.error（rankings.ts 内已处理）
   refreshRankingsView().catch(() => {/* ignore - rankings.ts 内已记录 */});
+
+  if (result.status === "Accepted") {
+    const previousAccepted = await db.select({ id: submissions.id }).from(
+      submissions,
+    ).innerJoin(
+      evaluationResults,
+      eq(evaluationResults.submission_id, submissions.id),
+    ).where(and(
+      eq(submissions.user_id, sub.user_id),
+      eq(submissions.problem_id, sub.problem_id),
+      eq(evaluationResults.status, "Accepted"),
+      ne(submissions.id, result.submission_id),
+    )).limit(1);
+    if (!previousAccepted[0]) {
+      await createActivity(
+        sub.user_id,
+        "first_accepted",
+        "problem",
+        sub.problem_id,
+        { submission_id: result.submission_id },
+      );
+    }
+  }
 
   if (sub.contest_id) {
     publishEvent(

@@ -12,7 +12,12 @@
 
 import { Hono } from "hono";
 import { optionalAuthMiddleware } from "../middleware/auth.ts";
-import { searchProblems, searchUsers } from "../services/search.ts";
+import {
+  searchCommunity,
+  searchProblems,
+  searchUsers,
+} from "../services/search.ts";
+import { getCommunityConfig } from "../services/community.ts";
 import { parsePagination } from "../lib/pagination.ts";
 import {
   ForbiddenError,
@@ -51,8 +56,8 @@ router.get("/", optionalAuthMiddleware, async (c) => {
   if (q.length > 100) {
     throw new ValidationError("搜索关键词最多 100 个字符");
   }
-  if (type !== "problem" && type !== "user") {
-    throw new ValidationError("type 参数必须为 problem 或 user");
+  if (type !== "problem" && type !== "user" && type !== "community") {
+    throw new ValidationError("type 参数必须为 problem、user 或 community");
   }
 
   // 用户搜索：admin only
@@ -79,6 +84,32 @@ router.get("/", optionalAuthMiddleware, async (c) => {
       page,
       limit,
     });
+    c.header("X-Search-Took-Ms", String(result.took_ms));
+    return c.json({
+      data: {
+        query: q,
+        type,
+        items: result.items,
+        total: result.total,
+        page,
+        limit,
+        took_ms: result.took_ms,
+      },
+    });
+  }
+
+  if (type === "community") {
+    const config = getCommunityConfig();
+    if (
+      !config.enabled ||
+      (!config.solutions_enabled && !config.discussions_enabled)
+    ) {
+      throw new ForbiddenError("该社区功能已关闭", "FEATURE_DISABLED");
+    }
+    if (!config.guest_read_enabled && !c.var.userId) {
+      throw new UnauthorizedError("登录后可搜索社区内容");
+    }
+    const result = await searchCommunity({ q, page, limit });
     c.header("X-Search-Took-Ms", String(result.took_ms));
     return c.json({
       data: {

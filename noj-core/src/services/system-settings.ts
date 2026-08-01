@@ -386,12 +386,19 @@ export async function listSettings(): Promise<SystemSettingListItem[]> {
 /**
  * 更新设置（UPSERT）。新值写入 DB，失效缓存，异步 reload。
  *
+ * 可选 `tx` 参数：传入事务时仅执行校验 + 事务内 UPSERT，
+ * 跳过缓存刷新与逐条审计（由调用方在事务提交后统一刷新，避免半途失败留下部分状态）。
+ *
  * @throws {ValidationError} key 未注册 / 类型错 / 长度超限 / email 格式错
  */
 export async function updateSetting(
   key: string,
   value: unknown,
   actorId: string,
+  // tx: 可选 Drizzle 事务实例（与 categories.ts 惯例一致）。传入时仅执行
+  // 校验 + 事务内 UPSERT，缓存刷新与逐条审计由调用方在提交后统一处理。
+  // deno-lint-ignore no-explicit-any
+  tx?: any,
 ): Promise<SystemSettingListItem> {
   const validation = validateValueType(key, value);
   if (!validation.ok) {
@@ -399,7 +406,7 @@ export async function updateSetting(
   }
 
   const now = new Date().toISOString();
-  const db = getDb();
+  const db = tx ?? getDb();
 
   // 获取旧值（用于审计对比）
   const oldSetting = getSetting(key);
@@ -424,6 +431,26 @@ export async function updateSetting(
         updated_by: actorId,
       },
     });
+
+  // 事务模式：缓存刷新与审计由调用方在提交后统一处理
+  if (tx) {
+    const def = findDefinition(key);
+    if (!def) {
+      throw new ValidationError(`未注册的设置项: ${key}`);
+    }
+    return {
+      key: def.key,
+      type: def.type,
+      effective_value: def.is_secret ? maskSecret(value) : value,
+      raw_value: validation.raw,
+      source: "db",
+      is_secret: def.is_secret,
+      description: def.description,
+      updated_at: now,
+      updated_by: actorId,
+      category: def.category,
+    };
+  }
 
   // 失效缓存单条，异步 reload
   cache.delete(key);
@@ -503,14 +530,18 @@ export async function resetSetting(
 // ─── 内部辅助 ───────────────────────────────────────────────
 
 /** 从 DB 重新加载单条 key 到缓存 */
-async function reloadSingleKey(key: string): Promise<void> {
+export async function reloadSingleKey(key: string): Promise<void> {
   const db = getDb();
   const rows = await db
     .select()
     .from(systemSettings)
     .where(eq(systemSettings.key, key))
     .limit(1);
-  if (rows.length === 0) return;
+  if (rows.length === 0) {
+    // DB 无该行（如事务中新增后未提交时查询不到），清空缓存回退兜底链
+    cache.delete(key);
+    return;
+  }
 
   const row = rows[0];
   let decoded: unknown;

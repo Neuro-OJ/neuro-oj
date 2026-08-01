@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
-import { BadRequestError } from "../lib/errors.ts";
+import { BadRequestError, ForbiddenError } from "../lib/errors.ts";
 import { Channels, onEvent } from "../lib/event-bus.ts";
 import {
   deleteMessage,
@@ -14,6 +14,7 @@ import {
   markConversationRead,
   sendMessage,
 } from "../services/messages.ts";
+import { getCommunityConfig } from "../services/community.ts";
 
 /** 消息内容最大长度 */
 const MAX_MESSAGE_LENGTH = 10_000;
@@ -22,6 +23,12 @@ const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
 // 所有私信端点需要认证
 router.use("*", authMiddleware);
+router.use("*", async (_c, next) => {
+  if (!getCommunityConfig().private_messaging_enabled) {
+    throw new ForbiddenError("站内私信功能已关闭", "FEATURE_DISABLED");
+  }
+  await next();
+});
 
 /**
  * GET /api/v1/conversations

@@ -22,7 +22,12 @@ export type AuditAction =
   | "auth.register"
   | "auth.change_password"
   | "auth.forgot_password_request"
-  | "auth.password_reset";
+  | "auth.password_reset"
+  | "community.post_moderated"
+  | "community.report_resolved"
+  | "community.sanction_created"
+  | "community.sanction_revoked"
+  | "community.preset_applied";
 
 /** 按 action 强类型的 detail（discriminated union） */
 export type AuditDetail =
@@ -88,7 +93,29 @@ export type AuditDetail =
     /** 是否真发了邮件（邮箱存在 → true；防枚举场景下 false） */
     email_exists: boolean;
   }
-  | { action: "auth.password_reset"; user_id: string };
+  | { action: "auth.password_reset"; user_id: string }
+  | {
+    action: "community.post_moderated";
+    status: string;
+    reason: string;
+    /** 作者自行删除而非审核员处置时为 true（detail 为 jsonb，无 DB CHECK） */
+    self_delete?: boolean;
+  }
+  | {
+    action: "community.report_resolved";
+    status: "resolved" | "dismissed";
+    resolution: string;
+  }
+  | {
+    action: "community.sanction_created";
+    reason: string;
+    expires_at: string | null;
+  }
+  | { action: "community.sanction_revoked" }
+  | {
+    action: "community.preset_applied";
+    preset: "public" | "private" | "knowledge";
+  };
 
 /** audit_logs 表的响应类型 */
 export interface AuditLogEntry {

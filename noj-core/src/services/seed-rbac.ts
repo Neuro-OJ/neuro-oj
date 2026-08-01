@@ -19,6 +19,7 @@ import {
   users,
 } from "../db/schema.ts";
 import { PERMISSION_DEFS } from "../types/index.ts";
+import { ensureCommunitySeeds } from "./community-seed.ts";
 
 // user 角色的默认权限（action 列表）
 const USER_DEFAULT_PERMISSIONS: Array<{ resource: string; action: string }> = [
@@ -32,6 +33,24 @@ const USER_DEFAULT_PERMISSIONS: Array<{ resource: string; action: string }> = [
   { resource: "user", action: "read_profile" },
   { resource: "category", action: "read" },
   { resource: "contest", action: "participate" },
+  { resource: "community", action: "read" },
+  { resource: "community", action: "create_solution" },
+  { resource: "community", action: "create_discussion" },
+  { resource: "community", action: "create_moment" },
+  { resource: "community", action: "comment" },
+  { resource: "community", action: "react" },
+  { resource: "community", action: "follow" },
+  { resource: "community", action: "report" },
+];
+
+// admin 角色的默认权限（action 列表）：社区治理与板块管理
+// （admin 有 is_admin fast path，显式授予便于角色权限表展示与继承）
+const ADMIN_DEFAULT_PERMISSIONS: Array<{ resource: string; action: string }> = [
+  { resource: "community_moderation", action: "review" },
+  { resource: "community_moderation", action: "hide" },
+  { resource: "community_moderation", action: "lock" },
+  { resource: "community_moderation", action: "sanction" },
+  { resource: "community_board", action: "manage" },
 ];
 
 // ── 工具 ──────────────────────────────────────────────────
@@ -124,6 +143,38 @@ export async function ensureUserRolePermissions(): Promise<void> {
   }
 }
 
+export async function ensureAdminRolePermissions(): Promise<void> {
+  const db = getDb();
+
+  const [adminRole] = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(eq(roles.name, ROLE_ADMIN))
+    .limit(1);
+  if (!adminRole) return;
+
+  const allPerms = await db
+    .select({
+      id: permissions.id,
+      resource: permissions.resource,
+      action: permissions.action,
+    })
+    .from(permissions);
+
+  const permMap = new Map(
+    allPerms.map((p) => [`${p.resource}:${p.action}`, p.id]),
+  );
+
+  for (const { resource, action } of ADMIN_DEFAULT_PERMISSIONS) {
+    const permId = permMap.get(`${resource}:${action}`);
+    if (!permId) continue;
+    await db.insert(rolePermissions).values({
+      role_id: adminRole.id,
+      permission_id: permId,
+    }).onConflictDoNothing();
+  }
+}
+
 export async function migrateExistingUsers(): Promise<void> {
   const db = getDb();
 
@@ -156,5 +207,7 @@ export async function ensureRbacSeeds(): Promise<void> {
   await ensureSystemRoles();
   await ensurePermissions();
   await ensureUserRolePermissions();
+  await ensureAdminRolePermissions();
   await migrateExistingUsers();
+  await ensureCommunitySeeds();
 }

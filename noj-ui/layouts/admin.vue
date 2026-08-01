@@ -15,6 +15,7 @@ import {
   ScrollText,
   ShieldCheck,
   Trophy,
+  MessagesSquare,
 } from "@lucide/vue"
 
 const route = useRoute()
@@ -54,6 +55,7 @@ const navGroups: NavGroup[] = [
       { label: "竞赛管理", to: "/admin/contests", icon: Trophy },
       { label: "提交管理", to: "/admin/submissions", icon: Files },
       { label: "评测镜像", to: "/admin/judge-images", icon: Container },
+      { label: "社区管理", to: "/admin/community", icon: MessagesSquare },
     ],
   },
   {
