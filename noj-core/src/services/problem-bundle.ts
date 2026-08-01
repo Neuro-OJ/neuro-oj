@@ -8,7 +8,9 @@
  * - manifest 不含 id：题目主键一律由服务端生成 UUID。
  * - manifest.number 仅 admin 生效，作为幂等键：按 (type, number) 匹配既有题目
  *   → 更新（元数据 + 替换评测包）；未命中 → 创建；(type, number) 由 DB 联合
- *   唯一约束保证唯一，缺省时自动分配 type 内 MAX+1。非 admin 的 number 忽略。
+ *   唯一约束保证唯一，缺省时自动分配 type 内 MAX+1。
+ * - 非 admin 提供 manifest.number 直接拒绝（400）：普通用户导入只能创建新题
+ *   （number 自动分配），避免"上传以为更新、实则新建"的误导。
  * - 题面唯一事实来源是数据库：statement.md 与 manifest.description 仅用于
  *   本次导入写入，评测包中不含这两个元数据文件。
  */
@@ -142,8 +144,15 @@ export async function importProblemBundle(
     );
   }
 
-  // 4. 权限与 number 语义：仅 admin 的 number 生效（幂等键）；非 admin 忽略（创建路径，自动分配）
+  // 4. 权限与 number 语义：number 是 admin 幂等键——admin 提供时按 (type, number)
+  //    匹配既有题目 → 更新、未命中 → 新建；非 admin 提供 number 直接拒绝（400），
+  //    普通用户导入仅走创建路径（number 自动分配）。
   const admin = await isAdminActor(actor, c);
+  if (!admin && manifest.number !== undefined) {
+    throw new BadRequestError(
+      "仅管理员可指定 number（按 (type, number) 幂等更新既有题目）；普通用户导入时题号由系统自动分配",
+    );
+  }
   const number = admin ? manifest.number : undefined;
 
   // 5. 剥离元数据，重建纯净评测包

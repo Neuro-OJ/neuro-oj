@@ -207,7 +207,8 @@ router.delete("/:id", authMiddleware, async (c) => {
  * POST /api/v1/problems/import-bundle
  *
  * 唯一上传入口：id 一律服务端生成；admin 可指定 number（幂等键，按 (type, number)
- * 匹配既有题目 → 更新元数据 + 替换评测包；未命中 → 创建）；owner 的 number 被忽略。
+ * 匹配既有题目 → 更新元数据 + 替换评测包；未命中 → 创建）；非 admin 提供 number
+ * 被拒（400），普通用户导入仅创建（number 自动分配）。
  */
 router.post("/import-bundle", authMiddleware, async (c) => {
   const userId = c.get("userId");

@@ -201,7 +201,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "import-bundle: 普通用户导入 U 型题目成功且 number 被忽略",
+  name: "import-bundle: 普通用户导入含 number 的包被拒（400）",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -210,6 +210,11 @@ Deno.test({
     await ensureUser(OWNER_ID);
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
+
+    const db = getDb();
+    const before = await db.select({ count: sql<number>`COUNT(*)` }).from(
+      problems,
+    );
 
     const formData = new FormData();
     formData.append(
@@ -223,10 +228,45 @@ Deno.test({
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
+    assertEquals(res.status, 400);
+    const body = (await res.json()) as { error?: string };
+    assertEquals(
+      body.error?.includes("仅管理员可指定 number"),
+      true,
+      "错误信息应说明 number 仅限管理员",
+    );
+
+    // 拒绝不得创建任何题目
+    const after = await db.select({ count: sql<number>`COUNT(*)` }).from(
+      problems,
+    );
+    assertEquals(after[0].count, before[0].count);
+  },
+});
+
+Deno.test({
+  name: "import-bundle: 普通用户导入无 number 的 U 型题目成功（自动分配）",
+  ignore: skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await ensureUser(OWNER_ID);
+    const app = createApp();
+    const token = await signToken({ sub: OWNER_ID, role: "user" });
+
+    const formData = new FormData();
+    formData.append("file", makeZipBlob(), "u2.zip");
+
+    const res = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
     assertEquals(res.status, 200);
     const body = await res.json();
-    // number 被忽略 → 自动分配（非 12345）；id 服务端生成 UUID
-    assertEquals(body.data.number !== 12345, true);
+    // number 由系统自动分配（type 内 MAX+1）；id 服务端生成 UUID
+    assertEquals(body.data.number >= 1, true);
     assertEquals(body.data.type, "U");
     assertEquals(body.data.owner_id, OWNER_ID);
   },

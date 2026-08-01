@@ -4,7 +4,7 @@
  * 使用 fflate zipSync 构造测试 zip（与生产代码同一依赖）。
  */
 
-import { assertEquals, assertThrows } from "jsr:@std/assert@^1";
+import { assertEquals, assertMatch, assertThrows } from "jsr:@std/assert@^1";
 import { unzipSync, zipSync } from "fflate";
 import { BadRequestError } from "../../src/lib/errors.ts";
 import {
@@ -69,11 +69,11 @@ Deno.test("parseBundleZip: 缺 problem.json 被拒", () => {
     "evaluate.py": "print('evaluator')",
     "visible.jsonl": "x",
   });
-  assertThrows(
+  const err = assertThrows(
     () => parseBundleZip(zip),
     BadRequestError,
-    /problem\.json/,
   );
+  assertMatch(err.message, /problem\.json/);
 });
 
 Deno.test("parseBundleZip: 根级缺 evaluate.py 被拒", () => {
@@ -81,11 +81,11 @@ Deno.test("parseBundleZip: 根级缺 evaluate.py 被拒", () => {
     "problem.json": MANIFEST,
     "evaluator/evaluate.py": "print('x')",
   });
-  assertThrows(
+  const err = assertThrows(
     () => parseBundleZip(zip),
     BadRequestError,
-    /evaluate\.py/,
   );
+  assertMatch(err.message, /evaluate\.py/);
 });
 
 Deno.test("parseBundleZip: 路径穿越条目被拒", () => {
@@ -94,11 +94,11 @@ Deno.test("parseBundleZip: 路径穿越条目被拒", () => {
     "evaluate.py": "print('x')",
     "../escape.txt": "evil",
   });
-  assertThrows(
+  const err = assertThrows(
     () => parseBundleZip(zip),
     BadRequestError,
-    /路径穿越/,
   );
+  assertMatch(err.message, /路径穿越/);
 });
 
 Deno.test("parseBundleZip: 条目数超过上限被拒", () => {
@@ -110,11 +110,26 @@ Deno.test("parseBundleZip: 条目数超过上限被拒", () => {
     files[`f${i}.txt`] = "x";
   }
   const zip = makeZip(files);
-  assertThrows(
+  const err = assertThrows(
     () => parseBundleZip(zip),
     BadRequestError,
-    /条目数/,
   );
+  assertMatch(err.message, /条目数/);
+});
+
+Deno.test("parseBundleZip: 单文件超过 64 MiB 上限被拒", () => {
+  // 64MiB 可压缩数据：zipSync 打包耗时可控，filter 预检基于 originalSize 早期拒绝
+  const big = new Uint8Array(64 * 1024 * 1024 + 1); // 全 0 → deflate 压缩率高
+  const zip = makeZip({
+    "problem.json": MANIFEST,
+    "evaluate.py": "print('x')",
+    "big.bin": big,
+  });
+  const err = assertThrows(
+    () => parseBundleZip(zip),
+    BadRequestError,
+  );
+  assertMatch(err.message, /单文件上限/);
 });
 
 Deno.test("parseBundleZip: manifest 非法 JSON 被拒", () => {
@@ -122,11 +137,11 @@ Deno.test("parseBundleZip: manifest 非法 JSON 被拒", () => {
     "problem.json": "not-json{{{",
     "evaluate.py": "print('x')",
   });
-  assertThrows(
+  const err = assertThrows(
     () => parseBundleZip(zip),
     BadRequestError,
-    /JSON/,
   );
+  assertMatch(err.message, /JSON/);
 });
 
 Deno.test("stripMetadataEntries: 剥离元数据后不含 problem.json/statement.md", () => {

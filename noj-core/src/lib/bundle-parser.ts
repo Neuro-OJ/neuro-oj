@@ -64,8 +64,36 @@ function assertSafeEntryPath(name: string): void {
 export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
   let files: Record<string, Uint8Array>;
   try {
-    files = unzipSync(data);
-  } catch {
+    // 解压前预检：fflate 的 filter 回调在中央目录阶段即可拿到条目元数据
+    // （name / originalSize），基于此早期拒绝超限条目，避免 zip 炸弹先全量
+    // 解压到内存再校验（压缩率极高的包可能在解压途中 OOM）。
+    let count = 0;
+    let totalSize = 0;
+    files = unzipSync(data, {
+      filter: (file) => {
+        count++;
+        if (count > MAX_ZIP_ENTRIES) {
+          throw new BadRequestError(`zip 条目数超过上限 ${MAX_ZIP_ENTRIES}`);
+        }
+        if (file.originalSize > MAX_FILE_SIZE) {
+          throw new BadRequestError(
+            `zip 条目超过单文件上限 ${
+              MAX_FILE_SIZE / 1024 / 1024
+            } MiB：${file.name}`,
+          );
+        }
+        totalSize += file.originalSize;
+        if (totalSize > MAX_TOTAL_SIZE) {
+          throw new BadRequestError(
+            `zip 总解压大小超过上限 ${MAX_TOTAL_SIZE / 1024 / 1024} MiB`,
+          );
+        }
+        return true;
+      },
+    });
+  } catch (err) {
+    // filter 预检抛出的 BadRequestError 原样上抛；其余视为 zip 格式错误
+    if (err instanceof BadRequestError) throw err;
     throw new BadRequestError("zip 解析失败：文件不是有效的 zip 格式");
   }
 

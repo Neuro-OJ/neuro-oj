@@ -32,7 +32,8 @@ FROM denoland/deno:alpine-2.8.0
 
 # docker-compose.e2e.yml noj-core healthcheck 用 wget 探测 /health 端点。
 # Alpine 基础镜像默认不带 wget，必须 apk add。--no-cache 避免增加镜像体积。
-RUN apk add --no-cache wget
+# zip：dev-setup（noj problems build）在容器内构建题目包依赖系统 zip 命令。
+RUN apk add --no-cache wget zip
 
 # 缓存破坏器：CI 传入 github.run_id 确保每次获取最新源码
 ARG CACHE_BUST

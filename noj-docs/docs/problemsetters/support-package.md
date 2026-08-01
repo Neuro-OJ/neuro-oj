@@ -9,7 +9,7 @@
 ```text
 <任意名>.zip
 ├── problem.json      # 必需：题目 manifest
-├── statement.md      # 必需：题面 Markdown
+├── statement.md      # 可选：题面 Markdown（与 manifest.description 二选一，文件优先）
 ├── evaluate.py       # 必需：评测脚本（必须位于 zip 根目录）
 ├── visible.jsonl     # 可选：测试数据（格式由题目自定）
 ├── hidden.jsonl
@@ -55,7 +55,7 @@
 | `format_version` | ✅ | 当前 `1` |
 | `title` | ✅ | 非空 |
 | `runtime_config` | ✅ | 双容器配置；`evaluator.command` 可缺省（默认 `python3 /workspace/evaluate.py`） |
-| `statement.md` 文件 | ✅ | 与 `manifest.description` 二选一（文件优先） |
+| `statement.md` 文件 | ❌ | 与 `manifest.description` 二选一（文件优先），二者皆缺 → 400 |
 | `evaluate.py` 文件 | ✅ | 根级缺失 → 400 |
 | `number` | ❌ | 仅 admin 生效：幂等键——按 (type, number) 匹配既有题目则更新；缺省 type 内自动分配 |
 | `difficulty` | ❌ | `easy` / `medium` / `hard`，缺省 `medium` |
@@ -69,7 +69,7 @@
   **纯净评测包**存入存储（`noj-storage://`），题面/元数据的唯一事实来源是数据库。
 - 重复导入幂等：admin 提供 `number` 且 (type, number) 匹配既有题目 → 更新元数据并替换评测包；
   未命中 → 创建（id 一律服务端生成 UUID，(type, number) 由数据库联合唯一约束保证唯一）。
-  非 admin 的 `number` 被忽略（自动分配）。
+  非 admin 提供 `number` 会被 400 拒绝，普通用户导入仅创建新题（题号自动分配）。
 - 旧的松散支持包上传端点（`POST /problems/:id/support-package`）已废弃，一律
   通过 `import-bundle` 导入。
 

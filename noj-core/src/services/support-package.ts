@@ -2,11 +2,7 @@ import { resolve } from "jsr:@std/path@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { problems } from "../db/schema.ts";
-import {
-  ForbiddenError,
-  NotFoundError,
-  ValidationError,
-} from "../lib/errors.ts";
+import { ForbiddenError, NotFoundError } from "../lib/errors.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { logger } from "../lib/logging.ts";
 import { assertPermission, checkPermission } from "../lib/permissions.ts";
@@ -19,18 +15,6 @@ import type { Context } from "hono";
  * 上限放宽至 128 MiB。
  */
 export const MAX_SUPPORT_PACKAGE_SIZE = 128 * 1024 * 1024; // 128MB
-
-/**
- * 支持包存储键前缀。
- */
-const PACKAGES_KEY_PREFIX = "packages/";
-
-/**
- * 构建支持包存储键。
- */
-function buildPackageKey(problemId: string): string {
-  return `${PACKAGES_KEY_PREFIX}${problemId}.zip`;
-}
 
 /**
  * 校验用户是否有权管理指定题目的支持包。

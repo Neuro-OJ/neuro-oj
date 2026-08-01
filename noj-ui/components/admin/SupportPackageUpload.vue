@@ -75,8 +75,9 @@ async function doUpload(file: File) {
   uploading.value = true
   uploadError.value = ""
   try {
-    // 统一题目包导入端点（problem-bundle-import）：manifest.id 必须与当前题目 id 一致才会更新，
-    // 否则会按 (type, number) 匹配或创建新题。
+    // 统一题目包导入端点（problem-bundle-import）：manifest.number 仅管理员
+    // 生效——按 (type, number) 匹配既有题目则更新（未命中则新建）；普通用户
+    // 提供 number 会被 400 拒绝，上传仅创建新题（题号自动分配）。
     const formData = new FormData()
     formData.append("file", file)
 
@@ -135,7 +136,7 @@ async function handleDelete() {
     <Transition name="fade">
       <div v-if="showGuide" class="px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
         <p class="font-semibold mb-1">统一题目包 zip 文件结构：</p>
-        <pre class="font-mono leading-relaxed whitespace-pre-wrap">├── problem.json      # 必需：题目 manifest（含 title / runtime_config / id）
+        <pre class="font-mono leading-relaxed whitespace-pre-wrap">├── problem.json      # 必需：题目 manifest（含 title / runtime_config，可选 number）
 ├── statement.md      # 可选：题面 Markdown（与 manifest.description 二选一）
 ├── evaluate.py       # 必需：评测脚本（必须位于根目录）
 ├── visible.jsonl     # 可选：公开测试用例
@@ -143,7 +144,7 @@ async function handleDelete() {
 └── ...               # 其他 evaluate.py 需要的文件</pre>
         <div class="mt-1.5 text-blue-700">
           <p>• <strong>problem.json</strong> 与 <strong>evaluate.py</strong> 必须位于 zip 根目录</p>
-          <p>• 替换当前题目评测包时，<code>manifest.id</code> 必须与当前题目 id 一致</p>
+          <p>• 上传将创建新题（题号自动分配）；管理员在 manifest 中提供 <code>number</code> 时按 (type, number) 幂等更新既有题目，普通用户提供 <code>number</code> 会被拒绝</p>
           <p>• <code>submission_sample.py</code> 等参考实现<strong>不要</strong>放入包中（打包时自动排除）</p>
           <p>• 上传后系统会剥离 problem.json / statement.md，仅存储纯净评测包</p>
         </div>

@@ -29,7 +29,7 @@
 | `format_version` | ✅ | 当前为 `1` |
 | `title` | ✅ | 非空字符串 |
 | `runtime_config` | ✅ | 遵循 `problem-runtime-config` 规范，`evaluator.command` 可缺省（缺省注入 `python3 /workspace/evaluate.py`） |
-| `number` | ❌ | 仅 admin 生效：幂等键——按 (type, number) 匹配既有题目则更新；缺省 type 内 MAX+1 |
+| `number` | ❌ | 仅 admin 生效：幂等键——按 (type, number) 匹配既有题目则更新；缺省 type 内 MAX+1。非 admin 提供 number MUST 返回 HTTP 400 |
 | `difficulty` | ❌ | `easy`/`medium`/`hard`，缺省 `medium` |
 | `type` | ❌ | `U`/`P`，缺省 `U`（P 型仅 admin） |
 | `description` | ❌ | 与 `statement.md` 二选一；两者均存在时以文件为准 |
@@ -105,9 +105,9 @@
 
 系统 SHALL 提供 `POST /api/v1/problems/import-bundle` 端点，接受 multipart/form-data 格式（文件字段名 `file`）的统一题目包 zip 上传，执行解析 → 校验 → 剥离 → 存储 → 元数据 upsert 全流程。
 
-权限：admin MUST 可导入任意 type 且可指定 `number`（幂等键）；题目所有者（U 型）MUST 可导入，其 `number` 被忽略（自动分配）；其他用户 MUST 返回 HTTP 403。
+权限：admin MUST 可导入任意 type 且可指定 `number`（幂等键）；题目所有者（U 型）MUST 可导入，其 manifest 提供 `number` 时 MUST 返回 HTTP 400（题号由系统自动分配）；其他用户 MUST 返回 HTTP 403。
 
-upsert 语义：admin 提供 `number` 且 (type, number) 匹配既有题目 → 更新元数据并替换评测包；未命中 → 创建新题目（id 一律由服务端生成 UUID，(type, number) 由 DB 联合唯一约束保证唯一）。
+upsert 语义：admin 提供 `number` 且 (type, number) 匹配既有题目 → 更新元数据并替换评测包；未命中 → 创建新题目（id 一律由服务端生成 UUID，(type, number) 由 DB 联合唯一约束保证唯一）。非 admin 的导入仅走创建路径。
 
 #### Scenario: admin 导入新题（P 型）
 
@@ -120,10 +120,16 @@ upsert 语义：admin 提供 `number` 且 (type, number) 匹配既有题目 → 
 - **THEN** 系统更新该题元数据并替换评测包，返回 HTTP 200
 - **THEN** 重复导入不产生新题目行（(type, number) 唯一）
 
-#### Scenario: 所有者导入 U 型题目（number 被忽略）
+#### Scenario: 所有者导入 U 型题目（number 自动分配）
+
+- **WHEN** 题目所有者上传合法统一包（manifest 无 `number`）
+- **THEN** 系统创建新 U 型题目（服务端生成 id），`number` 自动分配（type 内 MAX+1），所有者设为该用户
+
+#### Scenario: 所有者导入含 number 的包被拒
 
 - **WHEN** 题目所有者上传合法统一包（manifest 含 `number`）
-- **THEN** 系统创建新 U 型题目（服务端生成 id），`number` 被忽略（自动分配 type 内 MAX+1），所有者设为该用户
+- **THEN** 系统返回 HTTP 400，提示仅管理员可指定 number
+- **THEN** 不创建、不更新任何题目
 
 #### Scenario: 非所有者/非 admin 导入被拒
 

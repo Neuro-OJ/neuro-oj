@@ -12,12 +12,7 @@ import {
   deleteSupportPackage,
   getSupportPackageBytes,
 } from "../../src/services/support-package.ts";
-import {
-  ForbiddenError,
-  NotFoundError,
-  ValidationError,
-} from "../../src/lib/errors.ts";
-import { isStorageUrl, parseStorageUrl } from "../../src/lib/storage/types.ts";
+import { ForbiddenError, NotFoundError } from "../../src/lib/errors.ts";
 import {
   getStorageProvider,
   resetStorageProvider,

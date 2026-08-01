@@ -227,7 +227,12 @@ try {
     .command("help", new HelpCommand().global())
     .command("completions", new CompletionsCommand())
     .parse(Deno.args);
-} finally {
-  // 强制退出：postgres.js 连接会阻止进程自然终止（同 migrate.ts 处理）
-  Deno.exit(0);
+} catch (err) {
+  // 错误不得被吞：打印错误信息并以非零码退出（此前 finally exit(0)
+  // 会让 problems build / dev-setup 等失败时静默"成功"，误导 CI）。
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg) console.error(`noj: ${msg}`);
+  Deno.exit(1);
 }
+// 强制退出：postgres.js 连接会阻止进程自然终止（同 migrate.ts 处理）
+Deno.exit(0);
