@@ -198,22 +198,27 @@ export async function getProblemTemplate(
   problemId: string,
 ): Promise<{ content: string; language: string } | null> {
   // TODO: 生产环境从 support package 解压或单独的对象存储读取
-  const fsRoot = resolve(
-    Deno.cwd(),
-    "data",
-    "problems-src",
-    problemId,
-    "submission.py",
-  );
-
-  try {
-    const content = await Deno.readTextFile(fsRoot);
-    // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
-    return { content, language: "python3" };
-  } catch (err) {
-    if (err instanceof Deno.errors.NotFound) {
-      return null;
+  // 参考实现统一命名为 submission_sample.py（与 problem.json 的 solution.entry
+  // 一致）；兼容旧题目录仍保留 submission.py 的情况。
+  const candidates = ["submission_sample.py", "submission.py"];
+  for (const fileName of candidates) {
+    const fsPath = resolve(
+      Deno.cwd(),
+      "data",
+      "problems-src",
+      problemId,
+      fileName,
+    );
+    try {
+      const content = await Deno.readTextFile(fsPath);
+      // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
+      return { content, language: "python3" };
+    } catch (err) {
+      if (err instanceof Deno.errors.NotFound) {
+        continue;
+      }
+      throw err;
     }
-    throw err;
   }
+  return null;
 }
