@@ -23,7 +23,8 @@ import type {
 
 /**
  * 记录一条审计日志。必须在 admin 路由内调用（依赖 RequestContext）。
- * 失败仅 console.error，业务操作继续。
+ * CLI/脚本场景（无 RequestContext）静默跳过——非 HTTP 上下文不产生审计事件；
+ * 其他失败仅 logger.error，业务操作继续。
  */
 export async function logAudit(
   action: AuditAction,
@@ -44,6 +45,13 @@ export async function logAudit(
       created_at: new Date().toISOString(),
     });
   } catch (e) {
+    // CLI/脚本场景无 RequestContext 属预期行为，静默跳过
+    if (
+      e instanceof Error &&
+      e.message.includes("RequestContext 未注入")
+    ) {
+      return;
+    }
     const pgErr = e as Record<string, unknown>;
     logger.error("审计日志写入失败 (logAudit)", {
       action,

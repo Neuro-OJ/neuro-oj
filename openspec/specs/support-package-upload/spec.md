@@ -4,56 +4,6 @@
 
 ## Requirements
 
-### Requirement: 支持包上传
-
-系统 SHALL 提供 `POST /api/v1/problems/:id/support-package` 端点，接受 multipart/form-data 格式的 zip 文件上传，通过 StorageProvider 存储 zip 数据并更新数据库中 `support_package_storage_url` 字段。
-
-存储路径格式取决于当前 `STORAGE_PROVIDER`：
-- `STORAGE_PROVIDER=local`：`put()` 返回 `noj-storage://local/<base64>?checksum_sha256=<hex>`
-- `STORAGE_PROVIDER=s3`：`put()` 返回 `noj-storage://s3/<key>?checksum_sha256=<hex>`
-
-上传者 MUST 是题目所有者或管理员，否则返回 HTTP 403。
-
-上传文件大小 MUST 不超过 128 MiB。
-
-#### Scenario: 所有者上传支持包（local 模式）
-
-- **WHEN** `STORAGE_PROVIDER=local`
-- **WHEN** 题目所有者发送 `POST /api/v1/problems/:id/support-package`，携带有效的 `.zip` 文件
-- **THEN** 系统通过 `LocalStorageProvider.put()` 计算 SHA-256 并编码 base64
-- **THEN** 更新 `support_package_storage_url` 为 `"noj-storage://local/<base64>?checksum_sha256=<hex>"`，返回 HTTP 200
-
-#### Scenario: 所有者上传支持包（S3 模式）
-
-- **WHEN** `STORAGE_PROVIDER=s3`
-- **WHEN** 题目所有者发送 `POST /api/v1/problems/:id/support-package`，携带有效的 `.zip` 文件
-- **THEN** 系统通过 `S3StorageProvider.put()` 计算 SHA-256 并存入 S3
-- **THEN** 更新 `support_package_storage_url` 为 `"noj-storage://s3/packages/<problem_id>.zip?checksum_sha256=<hex>"`，返回 HTTP 200
-
-#### Scenario: 管理员为任意题目上传支持包
-
-- **WHEN** 管理员发送 `POST /api/v1/problems/:id/support-package`，题目的 owner_id 非管理员本人
-- **THEN** 系统仍允许上传，返回 HTTP 200
-
-#### Scenario: 非所有者上传被拒
-
-- **WHEN** 非所有者、非管理员的用户发送 `POST /api/v1/problems/:id/support-package`
-- **THEN** 系统返回 HTTP 403
-
-#### Scenario: 上传非 zip 文件被拒
-
-- **WHEN** 用户上传文件的 Content-Type 非 zip 或文件扩展名非 `.zip`
-- **THEN** 系统返回 HTTP 400，提示"仅支持 .zip 格式文件"
-
-#### Scenario: 题目不存在
-
-- **WHEN** 用户上传支持包至不存在的题目 ID
-- **THEN** 系统返回 HTTP 404
-
-#### Scenario: 替换已有支持包
-
-- **WHEN** 题目已有支持包，所有者上传新文件
-- **THEN** 系统重新计算 SHA-256，返回新的 `noj-storage://` URL（checksum 变化自动体现），返回 HTTP 200
 
 ### Requirement: 支持包删除
 

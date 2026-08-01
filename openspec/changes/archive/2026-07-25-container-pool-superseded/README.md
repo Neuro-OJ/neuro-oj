@@ -36,3 +36,9 @@ zip 完整性校验的多层防护（解压大小限制、overlapping entry 拒�
 
 2026-07-25（与 `add-noj-docs`、`dual-container-judge`、
 `remove-single-container-mode` 三个变更同期归档）。
+## 更正说明（2026-08-01）
+
+上述"具体撤销动作"中"删除整个 `noj-judge/src/pool/` 模块（PoolManager、懒回补、健康检查、文件注入）"
+与实际代码不符：`noj-judge/src/main.rs` 仍在使用 `PoolManager`（容器预热/分配，配合 dual 双容器评测），
+`src/pool/` 模块保留。实际删除的是**单容器评测路径**（`JudgeMode::Single` 枚举分支、`judge_image`/
+`judge_command` 顶层字段及其 DB 列），与本目录其余描述一致。

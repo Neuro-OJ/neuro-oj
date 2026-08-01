@@ -218,6 +218,13 @@
       "when": 1785393442651,
       "tag": "0030_perfect_katie_power",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1785571404958,
+      "tag": "0031_complete_green_goblin",
+      "breakpoints": true
     }
   ]
 }

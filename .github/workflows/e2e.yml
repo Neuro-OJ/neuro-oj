@@ -114,7 +114,7 @@ jobs:
 
       - name: 构建题目支持包 (packages/*.zip)
         working-directory: noj-core
-        run: deno task build-packages
+        run: deno task problems:build
         env:
           DENO_DIR: ${{ env.DENO_DIR }}
 

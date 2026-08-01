@@ -84,18 +84,18 @@
 
 ### Requirement: 种子脚本可初始化管理员
 
-系统 SHALL 在 `deno task seed` 执行时，依次执行 `ensureRootUser()` 和 `ensureBootstrapAdmin()`。`ensureBootstrapAdmin()` 在不存在"可登录 admin"（`user_roles` 表中关联了 `is_admin=true` 角色的用户，且 `users.id != '0'`）时自动创建一个临时管理员账号（`username='admin'`, `email='admin@noj.local'`, 24 字符 base64url 随机密码），并设置 `must_change_password=true`，终端以醒目格式打印临时凭证。
+系统 SHALL 在 `deno task init:system` 执行时执行 `ensureRootUser()`，并在 `deno task bootstrap:admin` / `deno task dev-setup` 执行时执行 `ensureBootstrapAdmin()`。`ensureBootstrapAdmin()` 在不存在"可登录 admin"（`user_roles` 表中关联了 `is_admin=true` 角色的用户，且 `users.id != '0'`）时自动创建一个临时管理员账号（`username='admin'`, `email='admin@noj.local'`, 24 字符 base64url 随机密码），并设置 `must_change_password=true`，终端以醒目格式打印临时凭证。
 
 管理员创建后 SHALL 将其关联到 `is_admin=true` 的角色（如预置的 "admin" 角色）。
 
 #### Scenario: 全新部署自动创建引导管理员
 
-- **WHEN** `deno task seed` 在全新数据库上执行，且不存在可登录 admin（通过 `user_roles` + `roles.is_admin=true` 判断）
+- **WHEN** `deno task dev-setup`（或 `deno task bootstrap:admin`）在全新数据库上执行，且不存在可登录 admin（通过 `user_roles` + `roles.is_admin=true` 判断）
 - **THEN** 系统创建 username=`admin` 的临时管理员，`must_change_password=true`，并将其关联到 admin 角色，在终端打印临时凭证（含强制改密提醒）
 
 #### Scenario: 已存在可登录 admin 时跳过
 
-- **WHEN** `deno task seed` 执行时 `user_roles` 表中已存在关联 `is_admin=true` 角色的用户
+- **WHEN** `deno task dev-setup`（或 `deno task bootstrap:admin`）执行时 `user_roles` 表中已存在关联 `is_admin=true` 角色的用户
 - **THEN** 系统跳过引导管理员创建，不打印临时凭证
 
 ### Requirement: 强制首次改密（管理员）

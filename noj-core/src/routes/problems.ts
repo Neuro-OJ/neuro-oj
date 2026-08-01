@@ -22,8 +22,8 @@ import {
   getProblemTemplate,
   getSupportPackageBytes,
   MAX_SUPPORT_PACKAGE_SIZE,
-  saveSupportPackage,
 } from "../services/support-package.ts";
+import { importProblemBundle } from "../services/problem-bundle.ts";
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
@@ -184,16 +184,15 @@ router.delete("/:id", authMiddleware, async (c) => {
 });
 
 /**
- * 上传支持包。
- * POST /api/v1/problems/:id/support-package
+ * 统一题目包导入。
+ * POST /api/v1/problems/import-bundle
+ *
+ * 唯一上传入口：manifest.id 匹配既有题目 → 更新（元数据 + 替换评测包）；
+ * 缺省/不存在 → 创建。admin 可指定 id/number，owner 仅 U 型且 id/number 被忽略。
  */
-router.post("/:id/support-package", authMiddleware, async (c) => {
-  const id = c.req.param("id") as string;
+router.post("/import-bundle", authMiddleware, async (c) => {
   const userId = c.get("userId");
   const userRole = c.get("userRole");
-
-  // 双索引解析获取实际题目 ID，同时获取题目信息用于权限校验
-  const problem = await resolveProblem(id);
 
   // 解析 multipart/form-data
   const body = await c.req.parseBody();
@@ -217,7 +216,7 @@ router.post("/:id/support-package", authMiddleware, async (c) => {
 
   if (file.size > MAX_SUPPORT_PACKAGE_SIZE) {
     throw new BadRequestError(
-      `支持包大小超过限制（最大 ${
+      `导入包大小超过限制（最大 ${
         (MAX_SUPPORT_PACKAGE_SIZE / 1024 / 1024).toFixed(0)
       }MB）`,
     );
@@ -230,16 +229,13 @@ router.post("/:id/support-package", authMiddleware, async (c) => {
     throw new BadRequestError("文件不是有效的 zip 格式");
   }
 
-  const packagePath = await saveSupportPackage(
-    problem.id,
+  const result = await importProblemBundle(
     { name: file.name, data: fileBytes },
-    userId,
-    userRole,
-    { type: problem.type, owner_id: problem.owner_id }, // 复用已获取的题目信息
+    { userId, userRole },
     c,
   );
 
-  return c.json({ data: { support_package_storage_url: packagePath } });
+  return c.json({ data: result });
 });
 
 /**

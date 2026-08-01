@@ -1,13 +1,20 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@cliffy/command@^1.2.1": "1.2.1",
+    "jsr:@cliffy/flags@1.2.1": "1.2.1",
+    "jsr:@cliffy/internal@1.2.1": "1.2.1",
+    "jsr:@cliffy/table@1.2.1": "1.2.1",
     "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/assert@^1.0.19": "1.0.19",
     "jsr:@std/encoding@1": "1.0.10",
+    "jsr:@std/fmt@^1.0.10": "1.0.10",
     "jsr:@std/internal@^1.0.12": "1.0.14",
     "jsr:@std/internal@^1.0.14": "1.0.14",
     "jsr:@std/path@1": "1.1.5",
+    "jsr:@std/semver@^1.0.8": "1.0.8",
     "jsr:@std/testing@1": "1.0.19",
+    "jsr:@std/text@^1.0.19": "1.0.19",
     "npm:@alicloud/dm20151123@*": "1.10.2",
     "npm:@alicloud/dm20151123@^1.10.2": "1.10.2",
     "npm:@alicloud/openapi-core@*": "1.0.7",
@@ -23,6 +30,7 @@
     "npm:drizzle-orm@*": "0.45.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5",
     "npm:drizzle-orm@0.35.2": "0.35.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5",
     "npm:drizzle-orm@0.45.2": "0.45.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5",
+    "npm:fflate@~0.8.3": "0.8.3",
     "npm:hono@4": "4.12.26",
     "npm:ioredis@5.11.1": "5.11.1",
     "npm:jose@5": "5.10.0",
@@ -33,6 +41,33 @@
     "npm:tencentcloud-sdk-nodejs-ses@^4.1.247": "4.1.247"
   },
   "jsr": {
+    "@cliffy/command@1.2.1": {
+      "integrity": "b7b017c81560d96580ea810c8564566884d8194416f6fc06bfdc8846e8fd590f",
+      "dependencies": [
+        "jsr:@cliffy/flags",
+        "jsr:@cliffy/internal",
+        "jsr:@cliffy/table",
+        "jsr:@std/fmt",
+        "jsr:@std/semver",
+        "jsr:@std/text"
+      ]
+    },
+    "@cliffy/flags@1.2.1": {
+      "integrity": "10034920ef7595db586fecec5a3b10a4ec800c513cbbc368414cd748dac706fb",
+      "dependencies": [
+        "jsr:@cliffy/internal",
+        "jsr:@std/text"
+      ]
+    },
+    "@cliffy/internal@1.2.1": {
+      "integrity": "e398f41c6839d3d4d249c963bfcb1058013091425926d53a3cb482b1ca70684b"
+    },
+    "@cliffy/table@1.2.1": {
+      "integrity": "be333e62f2c754f8bf75a38c8177515b152040572c9f75298e9bcef1314b82ff",
+      "dependencies": [
+        "jsr:@std/fmt"
+      ]
+    },
     "@std/assert@1.0.19": {
       "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
       "dependencies": [
@@ -41,6 +76,9 @@
     },
     "@std/encoding@1.0.10": {
       "integrity": "8783c6384a2d13abd5e9e87a7ae0520a30e9f56aeeaa3bdf910a3eaaf5c811a1"
+    },
+    "@std/fmt@1.0.10": {
+      "integrity": "90dfba288802ac6de82fb31d0917eb9e4450b9925b954d5e51fc29ac07419db5"
     },
     "@std/internal@1.0.14": {
       "integrity": "291516b3d4c35024d6ffbc0a9df5bf4c64116e05b50012cf846710152d2ffdf7"
@@ -51,11 +89,17 @@
         "jsr:@std/internal@^1.0.14"
       ]
     },
+    "@std/semver@1.0.8": {
+      "integrity": "dc830e8b8b6a380c895d53fbfd1258dc253704ca57bbe1629ac65fd7830179b7"
+    },
     "@std/testing@1.0.19": {
       "integrity": "f4236172365b216728dc3cc8b5e80a9f4c33083d1e4ede7613d5b25b4014898e",
       "dependencies": [
         "jsr:@std/assert@^1.0.19"
       ]
+    },
+    "@std/text@1.0.19": {
+      "integrity": "003a0e032d360e8c3a4e0410fb792c77a66bd6553fee9d60c6ec1bce30d29223"
     }
   },
   "npm": {
@@ -1080,6 +1124,9 @@
       "scripts": true,
       "bin": true
     },
+    "fflate@0.8.3": {
+      "integrity": "sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA=="
+    },
     "form-data@3.0.5": {
       "integrity": "sha512-j23EibVLnp4zNXGW7LjryXYa2X6U/M96yoOX+ybZxwkYajdxRNEqYY3zhh7y0i6kfISKS2jr+EJq1YTUDEv5+w==",
       "dependencies": [
@@ -1671,6 +1718,7 @@
   },
   "workspace": {
     "dependencies": [
+      "jsr:@cliffy/command@^1.2.1",
       "jsr:@std/encoding@1",
       "npm:@alicloud/dm20151123@^1.10.2",
       "npm:@aws-sdk/client-s3@3",
@@ -1679,6 +1727,7 @@
       "npm:bcryptjs@^2.4.3",
       "npm:drizzle-kit@*",
       "npm:drizzle-orm@0.45.2",
+      "npm:fflate@~0.8.3",
       "npm:hono@4",
       "npm:ioredis@5.11.1",
       "npm:jose@5",

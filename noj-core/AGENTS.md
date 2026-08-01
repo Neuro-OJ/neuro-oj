@@ -143,7 +143,7 @@ noj-core/
 │       ├── index.ts        # JudgeTask, JudgeResult, SubmissionStatus, LANGUAGE_EXT_MAP
 │       ├── auth.ts         # RegisterInput, LoginInput, UserResponse
 │       └── problems.ts     # DIFFICULTIES, PROBLEM_TYPES, 校验函数
-├── scripts/               # CLI 脚本（seed、build-packages、migrate）
+├── scripts/               # CLI 工具（noj.ts 单入口 + migrate.ts + check-env.ts）
 ├── data/
 │   ├── problems-src/<id>/ # 题目源文件（版本控制，仅样例题）
 │   └── packages/<id>.zip  # 构建产物（gitignored，local 模式使用）
@@ -214,19 +214,19 @@ deno task dev
 deno task start
 
 # 数据库迁移（启动时自动执行，也可单独运行）
-deno task migrate
+deno task db:migrate
 
 # 生成 Drizzle 迁移文件
 deno task db:generate
 
 # 种子数据（示例题 + 分类 + 管理员）
-deno task seed
+deno task dev-setup
 
 # 构建支持包
-deno task build-packages
+deno task problems:build
 
 # 一键初始化
-deno task setup          # = build-packages + seed
+deno task dev-setup          # = build-packages + seed
 
 # 测试
 deno task test
@@ -562,13 +562,13 @@ Retry-After: 25
 - 路由测试使用 `jsonRequest()` 辅助函数创建原始 `Request` 对象（确保 Hono
   路由兼容性）
 
-## 脚本说明
+## CLI 说明
 
-| 脚本                        | 行为                                                                                         |
-| --------------------------- | -------------------------------------------------------------------------------------------- |
-| `scripts/seed.ts`           | 幂等（`ON CONFLICT DO NOTHING`），先迁移→确保 root 用户→种子数据，`finally` 中关闭 DB 连接   |
-| `scripts/build-packages.ts` | 调用系统 `zip` 命令（非 JS 库），在 `data/problems-src/<id>/` 目录执行，排除 `submission.py` |
-| `scripts/migrate.ts`        | 日志中脱敏数据库密码（`"//***@"`），迁移后关闭 DB 连接确保进程退出                           |
+| 命令                                                          | 行为                                                                                                                    |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `deno task dev-setup`（`scripts/noj.ts dev-setup`）           | 幂等：迁移 → 系统基础数据（root/RBAC/镜像白名单/分类）→ 管理员引导 → 构建题目包 → 导入题目包 → dev 专用数据（E2E 用户） |
+| `deno task problems:build`（`scripts/noj.ts problems build`） | 调用系统 `zip` 命令（非 JS 库），在 `data/problems-src/<id>/` 目录执行，排除 `submission*`/`__pycache__`/`.git`         |
+| `deno task db:migrate`（`scripts/noj.ts db migrate`）         | 日志中脱敏数据库密码（`"//***@"`），迁移后关闭 DB 连接确保进程退出                                                      |
 
 ## 评测脚本协议（Judge 集成）
 

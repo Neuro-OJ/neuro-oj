@@ -2,10 +2,10 @@
 
 ## 1. 包格式类型与校验
 
-- [ ] 1.1 在 `noj-core/src/types/problem-bundle.ts` 定义 `ProblemBundleManifest` 接口（`format_version`/`id?`/`number?`/`title`/`difficulty?`/`type?`/`description?`/`categories?`/`samples?`/`runtime_config`）与 `BUNDLE_FORMAT_VERSION = 1` 常量
-- [ ] 1.2 实现 `validateBundleManifest(manifest)`：必填字段（`format_version`/`title`/`runtime_config`）缺失、`difficulty`/`type` 非法、`runtime_config` 未通过 `validateRuntimeConfig` 时抛出 `BadRequestError` 并指明字段
-- [ ] 1.3 实现 `resolveManifestCommand(runtimeConfig)`：`evaluator.command` 缺省时注入默认值 `python3 /workspace/evaluate.py`（对齐 `problem-runtime-config` delta spec）
-- [ ] 1.4 实现 `isValidProblemBundleName(name)`：仅接受 `.zip` 后缀（供路由层复用现有约定）
+- [x] 1.1 在 `noj-core/src/types/problem-bundle.ts` 定义 `ProblemBundleManifest` 接口（`format_version`/`id?`/`number?`/`title`/`difficulty?`/`type?`/`description?`/`categories?`/`samples?`/`runtime_config`）与 `BUNDLE_FORMAT_VERSION = 1` 常量
+- [x] 1.2 实现 `validateBundleManifest(manifest)`：必填字段（`format_version`/`title`/`runtime_config`）缺失、`difficulty`/`type` 非法、`runtime_config` 未通过 `validateRuntimeConfig` 时抛出 `BadRequestError` 并指明字段
+- [x] 1.3 实现 `resolveManifestCommand(runtimeConfig)`：`evaluator.command` 缺省时注入默认值 `python3 /workspace/evaluate.py`（对齐 `problem-runtime-config` delta spec）
+- [x] 1.4 实现 `isValidProblemBundleName(name)`：仅接受 `.zip` 后缀（供路由层复用现有约定）
 
 ## 2. core：zip 解析与剥离存储
 

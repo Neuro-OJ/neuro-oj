@@ -105,7 +105,7 @@ NOJ 分为三个核心模块，通过 RESTful API 和 Redis 消息队列协作�
 - `s3` 模式：`noj-storage://s3/<key>` ↔ `noj-download://s3?url=[presigned]`
 - SHA-256 校验贯穿两个层级，支持内容寻址缓存
 - 用户提交的代码**不**进支持包，由 noj-judge 运行时注入
-- 支持包（zip）由 `deno task build-packages` 从 `data/problems-src/<id>/` 构建
+- 支持包（zip）由 `deno task problems:build` 从 `data/problems-src/<id>/` 构建
 
 ---
 
@@ -197,8 +197,8 @@ neuro-oj/
 │   │   │       └── mod.ts     #   公共导出
 │   │   └── types/             # 跨模块类型：JudgeTask / JudgeResult / SubmissionStatus / LANGUAGE_EXT_MAP / 各类 Input/Response
 │   ├── scripts/
-│   │   ├── seed.ts            # 数据库种子（幂等，ON CONFLICT DO NOTHING）
-│   │   ├── build-packages.ts  # 构建支持包 zip（调用系统 zip）
+│   │   ├── noj.ts             # 管理 CLI 单入口（Cliffy：db migrate / init system / bootstrap admin / problems build / problems import / dev-setup）
+│   │   ├── check-env.ts       # 环境变量校验
 │   │   └── migrate.ts         # 迁移脚本（密码脱敏）
 │   ├── data/
 │   │   ├── problems-src/      # 题目源文件（版本控制）
@@ -346,11 +346,13 @@ neuro-oj/
 ```
 dev          deno run --watch --env-file=.env -A src/main.ts
 start        deno run --env-file=.env -A src/main.ts
-setup        deno task build-packages && deno task seed
-seed         deno run --env-file=.env -A scripts/seed.ts   # 已自动加载 .env
-build-packages  deno run -A scripts/build-packages.ts
+db:migrate   deno run --env-file=.env -A scripts/noj.ts db migrate
+init:system  deno run --env-file=.env -A scripts/noj.ts init system
+bootstrap:admin  deno run --env-file=.env -A scripts/noj.ts bootstrap admin
+problems:build   deno run -A scripts/noj.ts problems build
+problems:import  deno run --env-file=.env -A scripts/noj.ts problems import
+dev-setup    deno run --env-file=.env -A scripts/noj.ts dev-setup
 db:generate  deno -A npm:drizzle-kit generate --config=./drizzle.config.ts
-migrate      deno run -A scripts/migrate.ts --env-file=.env
 test:smoke   deno test -A --no-check tests/smoke.test.ts
 ```
 
@@ -411,7 +413,7 @@ bash scripts/dev/devtool.sh stop                       # 反向顺序停止全�
 docker compose up -d
 
 # 后端
-cd noj-core && deno task setup && deno task dev   # http://localhost:8000
+cd noj-core && deno task dev-setup && deno task dev   # http://localhost:8000
 
 # 前端
 cd ../noj-ui && deno task dev                    # http://localhost:3000
@@ -837,12 +839,12 @@ cd noj-tests && deno task test
 | 端口 3000 / 8000 冲突 | `lsof -i :3000` 杀掉占用或修改 `PORT` |
 | 提交后长时间 `Pending` | noj-judge 未启/未连 Redis；查 `scripts/dev/logs/judge.log`，或 `devtool.sh status judge` |
 | 队列堆积 | `redis-cli LLEN noj:judge:queue`；重启 noj-judge 触发自动重连 |
-| `noj-download://` 解码失败 | `deno task build-packages` 重建支持包 |
+| `noj-download://` 解码失败 | `deno task problems:build` 重建支持包 |
 | `image not found` | 默认镜像 `noj-judge-python`；检查 `noj-judge/docker/` 构建脚本 |
-| 迁移失败 | `cd noj-core && deno task migrate` 看脱敏日志 |
-| 种子数据缺失 | 确认 `noj-core/.env` 已配 `ADMIN_EMAIL`；重新 `deno task seed` |
-| 想清空重置 | `docker compose down -v` 删卷后 `up -d` + `deno task setup` |
-| `deno task migrate` 不读 .env | deno.json task 已显式 `--env-file=.env`，正常应工作 |
+| 迁移失败 | `cd noj-core && deno task db:migrate` 看脱敏日志 |
+| 种子数据缺失 | 确认 `noj-core/.env` 已配 `ADMIN_EMAIL`；重新 `deno task dev-setup` |
+| 想清空重置 | `docker compose down -v` 删卷后 `up -d` + `deno task dev-setup` |
+| `deno task db:migrate` 不读 .env | deno.json task 已显式 `--env-file=.env`，正常应工作 |
 
 日志位置：`scripts/dev/logs/{core,ui,judge}.log`；前端队列状态页：<http://localhost:3000/queue>。
 
