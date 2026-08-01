@@ -1,10 +1,13 @@
 import { assertEquals } from "jsr:@std/assert@^1";
+import { and, eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import {
   communityBoards,
+  permissions,
   problems,
+  rolePermissions,
   userRoles,
   users,
 } from "../../src/db/schema.ts";
@@ -775,5 +778,154 @@ Deno.test({
       entries.some((item) => item.notification.type === "reply"),
       true,
     );
+  },
+});
+
+Deno.test({
+  name: "community route: 题解发布资格端点返回模块开关、门槛与 Accepted 状态",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const app = createApp();
+    const authorToken = await signToken({ sub: authorId, role: "user" });
+    // 门槛已关闭（setup）：直接可创建
+    const response = await jsonRequest(
+      app,
+      "/api/v1/community/solutions/eligibility?problem_id=community-search-problem",
+      { token: authorToken },
+    );
+    assertEquals(response.status, 200);
+    const body = (await response.json()).data as {
+      enabled: boolean;
+      requires_accepted: boolean;
+      accepted: boolean;
+      can_create: boolean;
+    };
+    assertEquals(body.enabled, true);
+    assertEquals(body.requires_accepted, false);
+    assertEquals(body.accepted, true);
+    assertEquals(body.can_create, true);
+    // 题目不存在 → 404
+    const missing = await jsonRequest(
+      app,
+      "/api/v1/community/solutions/eligibility?problem_id=not-exist",
+      { token: authorToken },
+    );
+    assertEquals(missing.status, 404);
+    // 未登录 → 401
+    const guest = await jsonRequest(
+      app,
+      "/api/v1/community/solutions/eligibility?problem_id=community-search-problem",
+    );
+    assertEquals(guest.status, 401);
+  },
+});
+
+Deno.test({
+  name: "community route: 发布频率限制返回 POST_RATE_LIMITED 403",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const app = createApp();
+    const authorToken = await signToken({ sub: authorId, role: "user" });
+    enterTestContext({
+      actorId: "0",
+      actorIp: "127.0.0.1",
+      actorRole: "admin",
+    });
+    try {
+      await updateSetting("community_post_interval_seconds", 3600, "0");
+    } finally {
+      leaveTestContext();
+    }
+    const board = (await getDb().select().from(communityBoards))[0];
+    const body = {
+      type: "discussion",
+      board_id: board?.id,
+      title: "频率测试",
+      content: "内容",
+    };
+    const first = await jsonRequest(app, "/api/v1/community/posts", {
+      method: "POST",
+      body,
+      token: authorToken,
+    });
+    assertEquals(first.status, 201);
+    const second = await jsonRequest(app, "/api/v1/community/posts", {
+      method: "POST",
+      body,
+      token: authorToken,
+    });
+    assertEquals(second.status, 403);
+    const errorBody = await second.json();
+    assertEquals(errorBody.code, "POST_RATE_LIMITED");
+  },
+});
+
+Deno.test({
+  name: "community route: 社区管理端点按 moderation 权限而非仅 admin 开放",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const app = createApp();
+    const authorToken = await signToken({ sub: authorId, role: "user" });
+    // 普通用户（无 moderation 权限）访问待审评论队列 → 403
+    const forbidden = await jsonRequest(
+      app,
+      "/api/v1/community/admin/comments/pending",
+      { token: authorToken },
+    );
+    assertEquals(forbidden.status, 403);
+    // 未登录 → 401
+    const guest = await jsonRequest(
+      app,
+      "/api/v1/community/admin/comments/pending",
+    );
+    assertEquals(guest.status, 401);
+  },
+});
+
+Deno.test({
+  name: "community route: 具备 moderation 权限的审核员可访问社区管理端点",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const app = createApp();
+    // 给 responder 所在 user 角色授予 community_moderation:review
+    const permRows = await getDb().select({ id: permissions.id }).from(
+      permissions,
+    ).where(
+      and(
+        eq(permissions.resource, "community_moderation"),
+        eq(permissions.action, "review"),
+      ),
+    ).limit(1);
+    if (permRows[0]) {
+      await getDb().insert(rolePermissions).values({
+        role_id: "user",
+        permission_id: permRows[0].id,
+      }).onConflictDoNothing();
+    }
+    const responderToken = await signToken({
+      sub: responderId,
+      role: "user",
+    });
+    const response = await jsonRequest(
+      app,
+      "/api/v1/community/admin/comments/pending",
+      { token: responderToken },
+    );
+    assertEquals(response.status, 200);
+    // 板块管理仍需 community_board:manage（审核员无此权限 → 403）
+    const boardForbidden = await jsonRequest(
+      app,
+      "/api/v1/community/admin/boards",
+      { method: "POST", token: responderToken, body: { slug: "x", name: "X" } },
+    );
+    assertEquals(boardForbidden.status, 403);
   },
 });

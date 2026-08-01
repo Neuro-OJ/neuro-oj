@@ -33,6 +33,7 @@ export interface CommunityConfig {
   post_max_length: number;
   moment_max_length: number;
   comment_max_length: number;
+  post_interval_seconds: number;
 }
 
 export interface CommunityPostInput {

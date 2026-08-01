@@ -538,7 +538,7 @@ export async function banUser(
   });
 
   invalidateBanCache({ userId: targetUserId });
-  logAudit(
+  await logAudit(
     "users.ban",
     { action: "users.ban", reason: reason ?? "", until: bannedUntil ?? null },
     { type: "users", id: targetUserId },
@@ -582,7 +582,7 @@ export async function unbanUser(
     );
 
   invalidateBanCache({ userId: targetUserId });
-  logAudit(
+  await logAudit(
     "users.unban",
     { action: "users.unban" },
     { type: "users", id: targetUserId },

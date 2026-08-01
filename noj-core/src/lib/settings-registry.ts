@@ -566,6 +566,17 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     min: 20,
     max: 50000,
   },
+  {
+    key: "community_post_interval_seconds",
+    type: "integer",
+    default: 0,
+    description: "用户发布内容最小间隔秒数（0 为不限制）",
+    is_secret: false,
+    envFallback: "COMMUNITY_POST_INTERVAL_SECONDS",
+    category: "community",
+    min: 0,
+    max: 86400,
+  },
 
   // ── other ─────────────────────────────────────────────────
   {

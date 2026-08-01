@@ -218,6 +218,7 @@ export async function searchCommunity(
       AND p.type IN ('solution', 'discussion')
       AND (p.title ILIKE ${likeQ} ESCAPE '\\' OR p.content ILIKE ${likeQ} ESCAPE '\\'
         OR p.problem_id ILIKE ${likeQ} ESCAPE '\\'
+        OR (problem.type || problem.number::text) ILIKE ${likeQ} ESCAPE '\\'
         OR problem.title ILIKE ${likeQ} ESCAPE '\\'
         OR to_tsvector('simple', coalesce(p.title, '') || ' ' || p.content) @@ websearch_to_tsquery('simple', ${q}))
     ORDER BY rank DESC NULLS LAST, p.created_at DESC
@@ -232,6 +233,7 @@ export async function searchCommunity(
     WHERE p.status = 'published' AND p.type IN ('solution', 'discussion')
       AND (p.title ILIKE ${likeQ} ESCAPE '\\' OR p.content ILIKE ${likeQ} ESCAPE '\\'
         OR p.problem_id ILIKE ${likeQ} ESCAPE '\\'
+        OR (problem.type || problem.number::text) ILIKE ${likeQ} ESCAPE '\\'
         OR problem.title ILIKE ${likeQ} ESCAPE '\\'
         OR to_tsvector('simple', coalesce(p.title, '') || ' ' || p.content) @@ websearch_to_tsquery('simple', ${q}))
   `);

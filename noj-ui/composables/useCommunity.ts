@@ -21,6 +21,7 @@ export interface CommunityConfig {
   post_max_length?: number;
   moment_max_length?: number;
   comment_max_length?: number;
+  post_interval_seconds?: number;
   permissions: Record<string, boolean>;
 }
 
@@ -39,6 +40,21 @@ export interface CommunityPost {
   moderation_reason: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** 社区举报（来自后端 community_reports 行） */
+export interface ReportRow {
+  id: string;
+  reporter_id: string;
+  post_id: string | null;
+  comment_id: string | null;
+  reason: string;
+  content_snapshot: string;
+  status: 'pending' | 'resolved' | 'dismissed';
+  resolution: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
 }
 
 /** 社区帖子列表行 */

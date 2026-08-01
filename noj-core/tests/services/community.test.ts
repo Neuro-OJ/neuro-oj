@@ -26,8 +26,10 @@ import {
   createPost,
   createReport,
   createSanction,
+  deleteComment,
   getPost,
   listBookmarks,
+  listComments,
   listFeed,
   listNotifications,
   listPendingComments,
@@ -413,6 +415,12 @@ Deno.test({
       notifications.some((n) => n.notification.type === "reply"),
       true,
     );
+    // 评论作者本人收到审核结果通知（moderation）
+    const authorNotifications = await listNotifications(observerId);
+    assertEquals(
+      authorNotifications.some((n) => n.notification.type === "moderation"),
+      true,
+    );
     // 根评论（published）仍然可回复
     assertEquals(rootComment.status, "published");
   },
@@ -564,5 +572,184 @@ Deno.test({
     await updateActivityVisibility(actorId, "hidden");
     const feed = await listFeed("latest", observerId);
     assertEquals(feed.data.some((item) => item.kind === "activity"), false);
+  },
+});
+
+Deno.test({
+  name: "community service: 发布频率限制与题解门槛豁免审核员",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const board = await createBoard({ slug: "rate-board", name: "频率板块" });
+    enterTestContext({
+      actorId: "0",
+      actorIp: "127.0.0.1",
+      actorRole: "admin",
+    });
+    try {
+      await updateSetting("community_post_interval_seconds", 3600, "0");
+    } finally {
+      leaveTestContext();
+    }
+    await createPost(actorId, {
+      type: "discussion",
+      board_id: board.id,
+      title: "首次发布",
+      content: "内容",
+    });
+    await assertRejects(
+      () =>
+        createPost(actorId, {
+          type: "discussion",
+          board_id: board.id,
+          title: "二次发布",
+          content: "内容",
+        }),
+      ForbiddenError,
+      "发布过于频繁，请稍后再试",
+    );
+    // 门槛开启：普通用户未通过不能发题解，审核员豁免
+    enterTestContext({
+      actorId: "0",
+      actorIp: "127.0.0.1",
+      actorRole: "admin",
+    });
+    try {
+      await updateSetting("community_solution_requires_accepted", true, "0");
+      await updateSetting("community_post_interval_seconds", 0, "0");
+    } finally {
+      leaveTestContext();
+    }
+    await assertRejects(
+      () =>
+        createPost(actorId, {
+          type: "solution",
+          problem_id: "community-test-problem",
+          title: "未通过题解",
+          content: "内容",
+        }),
+      ForbiddenError,
+      "通过对应题目后才能发布题解",
+    );
+    const moderatorPost = await createPost(
+      actorId,
+      {
+        type: "solution",
+        problem_id: "community-test-problem",
+        title: "审核员题解",
+        content: "内容",
+      },
+      true,
+    );
+    assertEquals(moderatorPost.status, "published");
+  },
+});
+
+Deno.test({
+  name: "community service: 作者可见自己的待审评论，模块关闭时详情 403",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const board = await createBoard({ slug: "vis-board", name: "可见板块" });
+    const post = await createPost(actorId, {
+      type: "discussion",
+      board_id: board.id,
+      title: "可见性测试",
+      content: "内容",
+    });
+    enterTestContext({
+      actorId: "0",
+      actorIp: "127.0.0.1",
+      actorRole: "admin",
+    });
+    try {
+      await updateSetting("community_new_user_review_hours", 24, "0");
+    } finally {
+      leaveTestContext();
+    }
+    const pending = await createComment(observerId, post.id, "我的待审评论");
+    assertEquals(pending.status, "pending");
+    // 作者本人可见自己的 pending 评论
+    const own = await listComments(post.id, observerId);
+    assertEquals(own.some((c) => c.comment.id === pending.id), true);
+    // 其他用户不可见 pending 评论
+    const others = await listComments(post.id, actorId);
+    assertEquals(others.some((c) => c.comment.id === pending.id), false);
+    // 关闭讨论模块后详情返回 FEATURE_DISABLED 403（configuration spec）
+    enterTestContext({
+      actorId: "0",
+      actorIp: "127.0.0.1",
+      actorRole: "admin",
+    });
+    try {
+      await updateSetting("community_discussions_enabled", false, "0");
+    } finally {
+      leaveTestContext();
+    }
+    await assertRejects(() => getPost(post.id, observerId), ForbiddenError);
+  },
+});
+
+Deno.test({
+  name: "community service: 动态流复合游标翻页不重复不丢失",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    // 手动插入 3 条同 created_at 的 moment，验证 (created_at, id) 复合游标
+    const createdAt = new Date().toISOString();
+    const values = [1, 2, 3].map((i) => ({
+      id: `feed-moment-${i}`,
+      type: "moment" as const,
+      author_id: actorId,
+      problem_id: null,
+      board_id: null,
+      title: null,
+      content: `短动态 ${i}`,
+      status: "published" as const,
+      is_locked: false,
+      is_pinned: false,
+      moderation_reason: null,
+      published_at: createdAt,
+      created_at: createdAt,
+      updated_at: createdAt,
+    }));
+    await getDb().insert(communityPosts).values(values);
+    const page1 = await listFeed("latest", undefined, undefined, 2);
+    assertEquals(page1.data.length, 2);
+    assertEquals(page1.next_cursor !== null, true);
+    const page2 = await listFeed("latest", undefined, page1.next_cursor!, 2);
+    assertEquals(page2.data.length, 1);
+    const ids1 = new Set(
+      page1.data.map((i) => (i.kind === "moment" ? i.post.id : i.activity.id)),
+    );
+    const ids2 = new Set(
+      page2.data.map((i) => (i.kind === "moment" ? i.post.id : i.activity.id)),
+    );
+    for (const id of ids2) assertEquals(ids1.has(id), false);
+  },
+});
+
+Deno.test({
+  name: "community service: 点赞已删除评论返回 404",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    const board = await createBoard({ slug: "del-board", name: "删除板块" });
+    const post = await createPost(actorId, {
+      type: "discussion",
+      board_id: board.id,
+      title: "删除测试",
+      content: "内容",
+    });
+    const comment = await createComment(actorId, post.id, "将被删除");
+    await deleteComment(comment.id, actorId, false);
+    await assertRejects(
+      () => toggleCommentLike(observerId, comment.id),
+      NotFoundError,
+    );
   },
 });

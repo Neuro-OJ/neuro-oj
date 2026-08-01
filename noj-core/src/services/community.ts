@@ -6,6 +6,7 @@ import {
   inArray,
   isNull,
   lt,
+  ne,
   or,
   sql,
 } from "drizzle-orm";
@@ -38,7 +39,11 @@ import {
 } from "../lib/errors.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";
 import { logAudit } from "./audit-log.ts";
-import { getSetting, updateSetting } from "./system-settings.ts";
+import {
+  getSetting,
+  reloadSingleKey,
+  updateSetting,
+} from "./system-settings.ts";
 import type {
   CommunityConfig,
   CommunityPostInput,
@@ -83,6 +88,7 @@ export function getCommunityConfig(): CommunityConfig {
     post_max_length: settingNumber("community_post_max_length"),
     moment_max_length: settingNumber("community_moment_max_length"),
     comment_max_length: settingNumber("community_comment_max_length"),
+    post_interval_seconds: settingNumber("community_post_interval_seconds"),
   };
 }
 
@@ -143,7 +149,9 @@ async function publicationStatus(
  * 支持 UUID、display_id（P1001 / U42）、纯数字（兼容旧 seed 数据 1001/1002/1003）。
  * 题目不存在时返回 null。
  */
-async function resolveProblemId(reference: string): Promise<string | null> {
+export async function resolveProblemId(
+  reference: string,
+): Promise<string | null> {
   const db = getDb();
   const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -182,6 +190,19 @@ async function ensureSolutionAccepted(
   problemId: string,
 ): Promise<void> {
   if (!getCommunityConfig().solution_requires_accepted) return;
+  if (!(await hasAcceptedSolution(authorId, problemId))) {
+    throw new ForbiddenError(
+      "通过对应题目后才能发布题解",
+      "SOLUTION_NOT_ACCEPTED",
+    );
+  }
+}
+
+/** 查询用户是否已 Accepted 指定题目（供门槛判定与题解发布入口使用）。 */
+export async function hasAcceptedSolution(
+  authorId: string,
+  problemId: string,
+): Promise<boolean> {
   const db = getDb();
   const rows = await db.select({ id: submissions.id }).from(submissions)
     .innerJoin(
@@ -193,12 +214,7 @@ async function ensureSolutionAccepted(
       eq(submissions.problem_id, problemId),
       eq(evaluationResults.status, "Accepted"),
     )).limit(1);
-  if (!rows[0]) {
-    throw new ForbiddenError(
-      "通过对应题目后才能发布题解",
-      "SOLUTION_NOT_ACCEPTED",
-    );
-  }
+  return !!rows[0];
 }
 
 export async function listBoards(includeArchived = false) {
@@ -334,7 +350,8 @@ export async function createPost(
     if (!input.problem_id) throw new ValidationError("题解必须关联题目");
     const resolvedProblemId = await resolveProblemId(input.problem_id);
     if (!resolvedProblemId) throw new ValidationError("题目不存在");
-    await ensureSolutionAccepted(authorId, resolvedProblemId);
+    // 通过门槛仅约束普通用户：管理员/审核员不受限（community-content spec）
+    if (!moderator) await ensureSolutionAccepted(authorId, resolvedProblemId);
     input.problem_id = resolvedProblemId;
   }
   if (input.type === "discussion") {
@@ -350,6 +367,25 @@ export async function createPost(
     }
     if (!moderator && !await canPostToBoard(authorId, input.board_id)) {
       throw new ForbiddenError("你没有在该板块发帖的权限");
+    }
+  }
+  // 发布频率限制：配置的间隔秒数内禁止再次发布（0 为不限制）
+  const postIntervalSeconds = getCommunityConfig().post_interval_seconds;
+  if (postIntervalSeconds > 0) {
+    const lastRows = await getDb().select({
+      created_at: communityPosts.created_at,
+    })
+      .from(communityPosts).where(eq(communityPosts.author_id, authorId))
+      .orderBy(desc(communityPosts.created_at)).limit(1);
+    const lastCreatedAt = lastRows[0]?.created_at;
+    if (
+      lastCreatedAt &&
+      Date.now() - Date.parse(lastCreatedAt) < postIntervalSeconds * 1000
+    ) {
+      throw new ForbiddenError(
+        "发布过于频繁，请稍后再试",
+        "POST_RATE_LIMITED",
+      );
     }
   }
   const createdAt = now();
@@ -414,6 +450,8 @@ export async function getPost(
   ).limit(1);
   const row = rows[0];
   if (!row) throw new NotFoundError("社区内容不存在");
+  // 模块关闭时详情同样返回 FEATURE_DISABLED（configuration spec：既有数据不删除）
+  assertCommunityEnabled(featureForType(row.post.type as CommunityPostType));
   if (
     row.post.status !== "published" && row.post.author_id !== viewerId &&
     !moderator
@@ -699,6 +737,16 @@ export async function changeCommentStatus(
     { type: "community_comment", id: commentId },
   );
   if (status === "published" && existing[0].status === "pending") {
+    // 审核结果通知：评论作者本人收到 moderation 通知（community-moderation spec）
+    await createNotification(
+      existing[0].author_id,
+      actorId,
+      "moderation",
+      existing[0].post_id,
+      commentId,
+      { status: "published" },
+    );
+    // 补发回复通知：pending 创建时未发，批准后通知被回复者
     const recipient = existing[0].parent_id
       ? (await db.select({ author_id: communityComments.author_id }).from(
         communityComments,
@@ -746,7 +794,11 @@ export async function togglePostFlag(
   });
   await logAudit(
     "community.post_moderated",
-    { action: "community.post_moderated", status: field, reason: "" },
+    {
+      action: "community.post_moderated",
+      status: field === "is_locked" ? "locked" : "pinned",
+      reason: "",
+    },
     { type: "community_post", id: postId },
   );
   return rows[0];
@@ -819,7 +871,20 @@ export async function listComments(
   await getPost(postId, viewerId, moderator);
   const db = getDb();
   const conditions = [eq(communityComments.post_id, postId)];
-  if (!moderator) conditions.push(eq(communityComments.status, "published"));
+  if (!moderator) {
+    // 非审核员仅可见 published 评论；作者本人可见自己的非 deleted 评论（含 pending/hidden）
+    conditions.push(
+      viewerId
+        ? or(
+          eq(communityComments.status, "published"),
+          and(
+            eq(communityComments.author_id, viewerId),
+            ne(communityComments.status, "deleted"),
+          ),
+        ) ?? sql`false`
+        : eq(communityComments.status, "published"),
+    );
+  }
   return await db.select({
     comment: communityComments,
     author: { id: users.id, username: users.username },
@@ -975,9 +1040,14 @@ export async function toggleCommentLike(userId: string, commentId: string) {
   const comment = await db.select({
     author_id: communityComments.author_id,
     post_id: communityComments.post_id,
+    status: communityComments.status,
   }).from(communityComments).where(eq(communityComments.id, commentId))
     .limit(1);
   if (!comment[0]) throw new NotFoundError("评论不存在");
+  // 仅可点赞已发布评论，避免与 pending/hidden/deleted 内容互动
+  if (comment[0].status !== "published") {
+    throw new NotFoundError("评论不存在");
+  }
   const existing = await db.select().from(communityCommentLikes).where(
     and(
       eq(communityCommentLikes.comment_id, commentId),
@@ -1089,11 +1159,19 @@ export async function listFeed(
   }
   const db = getDb();
   const normalizedLimit = Math.min(Math.max(limit, 1), 100);
+  // 复合游标 (created_at, id)：避免同一时间戳条目在分页中重复/丢失（design.md）
+  const cursorParts = cursor ? parseFeedCursor(cursor) : null;
   const conditions = [
     eq(communityPosts.type, "moment"),
     eq(communityPosts.status, "published"),
   ];
-  if (cursor) conditions.push(lt(communityPosts.created_at, cursor));
+  if (cursorParts) {
+    conditions.push(
+      cursorParts.id
+        ? sql`(${communityPosts.created_at} < ${cursorParts.at} OR (${communityPosts.created_at} = ${cursorParts.at} AND ${communityPosts.id} < ${cursorParts.id}))`
+        : lt(communityPosts.created_at, cursorParts.at),
+    );
+  }
   if (view === "following") {
     if (!viewerId) throw new ForbiddenError("登录后可查看关注动态");
     const follows = await db.select({ id: communityFollows.followee_id }).from(
@@ -1111,14 +1189,21 @@ export async function listFeed(
     }).from(communityPosts).innerJoin(
       users,
       eq(users.id, communityPosts.author_id),
-    ).where(and(...conditions)).orderBy(desc(communityPosts.created_at)).limit(
+    ).where(and(...conditions)).orderBy(
+      desc(communityPosts.created_at),
+      desc(communityPosts.id),
+    ).limit(
       normalizedLimit + 1,
     )
     : [];
 
   const activityConditions = [];
-  if (cursor) {
-    activityConditions.push(lt(communityActivityEvents.created_at, cursor));
+  if (cursorParts) {
+    activityConditions.push(
+      cursorParts.id
+        ? sql`(${communityActivityEvents.created_at} < ${cursorParts.at} OR (${communityActivityEvents.created_at} = ${cursorParts.at} AND ${communityActivityEvents.id} < ${cursorParts.id}))`
+        : lt(communityActivityEvents.created_at, cursorParts.at),
+    );
   }
   if (view === "following") {
     if (!viewerId) throw new ForbiddenError("登录后可查看关注动态");
@@ -1157,6 +1242,7 @@ export async function listFeed(
     eq(users.id, communityActivityEvents.actor_id),
   ).where(and(...activityConditions)).orderBy(
     desc(communityActivityEvents.created_at),
+    desc(communityActivityEvents.id),
   ).limit(normalizedLimit + 1);
 
   const data = [
@@ -1169,7 +1255,11 @@ export async function listFeed(
     const rightCreatedAt = right.kind === "moment"
       ? right.post.created_at
       : right.activity.created_at;
-    return rightCreatedAt.localeCompare(leftCreatedAt);
+    const atCompare = rightCreatedAt.localeCompare(leftCreatedAt);
+    if (atCompare !== 0) return atCompare;
+    const leftId = left.kind === "moment" ? left.post.id : left.activity.id;
+    const rightId = right.kind === "moment" ? right.post.id : right.activity.id;
+    return rightId.localeCompare(leftId);
   });
   const hasMore = data.length > normalizedLimit;
   const page = hasMore ? data.slice(0, normalizedLimit) : data;
@@ -1177,10 +1267,18 @@ export async function listFeed(
   const lastCreatedAt = last?.kind === "moment"
     ? last.post.created_at
     : last?.activity.created_at;
+  const lastId = last?.kind === "moment" ? last.post.id : last?.activity.id;
   return {
     data: page,
-    next_cursor: hasMore ? lastCreatedAt ?? null : null,
+    next_cursor: hasMore && lastCreatedAt ? `${lastCreatedAt}|${lastId}` : null,
   };
+}
+
+/** 解析动态流复合游标 `createdAt|id`；兼容旧版纯时间戳游标。 */
+function parseFeedCursor(cursor: string): { at: string; id?: string } {
+  const sep = cursor.lastIndexOf("|");
+  if (sep === -1) return { at: cursor };
+  return { at: cursor.slice(0, sep), id: cursor.slice(sep + 1) };
 }
 
 async function createNotification(
@@ -1463,13 +1561,22 @@ export async function applyCommunityPreset(
   actorId: string,
   preset: keyof typeof PRESETS,
 ) {
-  for (const [key, value] of Object.entries(PRESETS[preset])) {
-    await updateSetting(key, value, actorId);
-  }
+  // 预设必须事务化写入（design.md / community-configuration spec），
+  // 中途失败不得留下部分应用状态；审计在提交成功后记录
+  const db = getDb();
+  await db.transaction(async (tx) => {
+    for (const [key, value] of Object.entries(PRESETS[preset])) {
+      await updateSetting(key, value, actorId, tx);
+    }
+  });
   await logAudit(
     "community.preset_applied",
     { action: "community.preset_applied", preset },
     { type: "community_preset", id: preset },
   );
+  // 事务提交后统一刷新内存缓存（事务模式下 updateSetting 跳过缓存刷新）
+  for (const key of Object.keys(PRESETS[preset])) {
+    await reloadSingleKey(key);
+  }
   return getCommunityConfig();
 }

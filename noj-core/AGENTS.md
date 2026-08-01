@@ -49,6 +49,11 @@ authMiddleware → 注入 isAdmin
     ├─ requirePermission("x")  中间件（isAdmin fast path | DB）
     │   └─ 用于非 admin 路由的精确权限拦截
     │
+    └─ 社区管理（routes/community.ts）：
+        requireCommunityModeration 守卫（admin 或 community_moderation:review）
+        └─ 端点细分：system:settings（预设）/ community_board:manage（板块）/
+           community_moderation:lock（锁定置顶）/ community_moderation:sanction（处罚）
+    │
     └─ checkPermission(c, "x") / assertPermission(c, "x")
         工具函数（isAdmin fast path | DB）
         └─ 用于 handler/service 内部的条件判断或断言

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Save, ShieldCheck, LayoutList, Flag, Search, MessageSquare } from "@lucide/vue"
-import type { CommunityConfig, PostRow } from "~/composables/useCommunity"
+import type { CommunityConfig, PostRow, ReportRow } from "~/composables/useCommunity"
 
-definePageMeta({ layout: "admin", middleware: "admin", ssr: false })
+definePageMeta({ layout: "admin", middleware: "community-moderation", ssr: false })
 
 const { toast } = useToast()
 const { dialog } = useDialog()
@@ -26,7 +26,7 @@ const boards = ref<{ id: string; name: string; slug: string; description: string
 const newBoard = reactive({ slug: "", name: "", description: "" })
 const creatingBoard = ref(false)
 
-const reports = ref<any[]>([])
+const reports = ref<ReportRow[]>([])
 const resolvingReportId = ref<string | null>(null)
 
 const sanctions = ref<Array<{ id: string; user_id: string; reason: string; expires_at: string | null; revoked_at: string | null; revoked_by: string | null; created_at: string }>>([])
@@ -63,6 +63,7 @@ const NUMBER_SETTINGS: Array<{ configKey: string; settingKey: string; label: str
   { configKey: "post_max_length", settingKey: "community_post_max_length", label: "帖子最大长度", suffix: "字符" },
   { configKey: "moment_max_length", settingKey: "community_moment_max_length", label: "动态最大长度", suffix: "字符" },
   { configKey: "comment_max_length", settingKey: "community_comment_max_length", label: "评论最大长度", suffix: "字符" },
+  { configKey: "post_interval_seconds", settingKey: "community_post_interval_seconds", label: "发布频率限制", suffix: "秒" },
 ]
 
 function configValue(configKey: string): unknown {
@@ -72,7 +73,7 @@ function configValue(configKey: string): unknown {
 async function load() {
   const [boardResult, reportResult, sanctionResult] = await Promise.all([
     $fetch<{ data: { id: string; name: string; slug: string; description: string | null; is_archived: boolean }[] }>("/api/v1/community/boards"),
-    $fetch<{ data: any[] }>("/api/v1/community/admin/reports"),
+    $fetch<{ data: ReportRow[] }>("/api/v1/community/admin/reports"),
     $fetch<{ data: typeof sanctions.value }>("/api/v1/community/admin/sanctions"),
   ])
   boards.value = boardResult.data

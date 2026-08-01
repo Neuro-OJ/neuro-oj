@@ -1,16 +1,14 @@
 import { Hono } from "hono";
+import type { Next } from "hono";
 import { streamSSE } from "hono/streaming";
 import { parseJsonBody } from "../lib/request.ts";
 import {
   BadRequestError,
   ForbiddenError,
+  NotFoundError,
   UnauthorizedError,
 } from "../lib/errors.ts";
-import {
-  assertPermission,
-  checkPermission,
-  requireAdmin,
-} from "../lib/permissions.ts";
+import { assertPermission, checkPermission } from "../lib/permissions.ts";
 import {
   authMiddleware,
   type OptionalAuthEnv,
@@ -38,6 +36,7 @@ import {
   getCommunityConfig,
   getNotificationUnreadCount,
   getPost,
+  hasAcceptedSolution,
   listBoardRoleGrants,
   listBoards,
   listBookmarks,
@@ -51,6 +50,7 @@ import {
   listUserSanctions,
   markNotificationRead,
   markNotificationsRead,
+  resolveProblemId,
   resolveReport,
   revokeSanction,
   toggleBookmark,
@@ -85,6 +85,21 @@ async function requirePostPermission(
   type: CommunityPostType,
 ): Promise<void> {
   await assertPermission(c, `community:create_${type}`);
+}
+
+/**
+ * 社区管理路由守卫：管理员（is_admin fast path）或具备
+ * `community_moderation:review` 权限的审核员可进入；
+ * 各端点再按操作细分（lock / sanction / board 等）。
+ */
+async function requireCommunityModeration(
+  c: Parameters<typeof checkPermission>[0],
+  next: Next,
+) {
+  if (!(await checkPermission(c, "community_moderation:review"))) {
+    throw new ForbiddenError("权限不足");
+  }
+  await next();
 }
 
 router.get("/config", optionalAuthMiddleware, async (c) => {
@@ -167,6 +182,35 @@ router.get("/posts/counts", optionalAuthMiddleware, async (c) => {
     throw new UnauthorizedError("登录后可查看社区");
   }
   return c.json({ data: await countPostsByType() });
+});
+
+/**
+ * 题解发布资格：题目页发布入口据此展示启用/禁用态与原因。
+ * 返回题解模块开关、门槛是否开启、当前用户是否已 Accepted 以及能否发布。
+ */
+router.get("/solutions/eligibility", authMiddleware, async (c) => {
+  const problemRef = c.req.query("problem_id");
+  if (!problemRef) throw new BadRequestError("缺少 problem_id");
+  const problemId = await resolveProblemId(problemRef);
+  if (!problemId) throw new NotFoundError("题目不存在");
+  const actorId = userId(c);
+  const config = getCommunityConfig();
+  const requiresAccepted = config.solution_requires_accepted;
+  const accepted = requiresAccepted
+    ? await hasAcceptedSolution(actorId, problemId)
+    : true;
+  const canCreate = config.solutions_enabled &&
+    (!config.read_only || await isModerator(c)) &&
+    (await checkPermission(c, "community:create_solution")) &&
+    (accepted || await isModerator(c));
+  return c.json({
+    data: {
+      enabled: config.solutions_enabled,
+      requires_accepted: requiresAccepted,
+      accepted,
+      can_create: canCreate,
+    },
+  });
 });
 
 router.get("/posts/:postId", optionalAuthMiddleware, async (c) => {
@@ -439,8 +483,10 @@ router.post("/reports", authMiddleware, async (c) => {
   }, 201);
 });
 
-router.use("/admin/*", authMiddleware, requireAdmin());
+router.use("/admin/*", authMiddleware, requireCommunityModeration);
 router.post("/admin/preset/:preset", async (c) => {
+  // 预设属于系统配置，仅管理员可应用
+  await assertPermission(c, "system:settings");
   const preset = c.req.param("preset");
   if (!(["public", "private", "knowledge"] as string[]).includes(preset)) {
     throw new BadRequestError("无效社区预设");
@@ -453,6 +499,8 @@ router.post("/admin/preset/:preset", async (c) => {
   });
 });
 router.post("/admin/boards", async (c) => {
+  // 板块管理：community_board:manage（默认仅 admin 角色被授予）
+  await assertPermission(c, "community_board:manage");
   const body = await parseJsonBody<
     { slug?: string; name?: string; description?: string; sort_order?: number }
   >(c);
@@ -470,17 +518,23 @@ router.post("/admin/boards", async (c) => {
 });
 router.patch(
   "/admin/boards/:boardId",
-  async (c) =>
-    c.json({
+  async (c) => {
+    // 板块管理：community_board:manage
+    await assertPermission(c, "community_board:manage");
+    return c.json({
       data: await updateBoard(c.req.param("boardId"), await parseJsonBody(c)),
-    }),
+    });
+  },
 );
 router.get(
   "/admin/boards/:boardId/role-grants",
-  async (c) =>
-    c.json({ data: await listBoardRoleGrants(c.req.param("boardId")) }),
+  async (c) => {
+    await assertPermission(c, "community_board:manage");
+    return c.json({ data: await listBoardRoleGrants(c.req.param("boardId")) });
+  },
 );
 router.put("/admin/boards/:boardId/role-grants/:roleId", async (c) => {
+  await assertPermission(c, "community_board:manage");
   const body = await parseJsonBody<{
     can_read?: boolean;
     can_post?: boolean;
@@ -495,6 +549,7 @@ router.put("/admin/boards/:boardId/role-grants/:roleId", async (c) => {
   });
 });
 router.delete("/admin/boards/:boardId/role-grants/:roleId", async (c) => {
+  await assertPermission(c, "community_board:manage");
   await deleteBoardRoleGrant(c.req.param("boardId"), c.req.param("roleId"));
   return c.body(null, 204);
 });
@@ -555,6 +610,8 @@ router.post("/admin/comments/:commentId/:status", async (c) => {
   });
 });
 router.post("/admin/posts/:postId/:flag", async (c) => {
+  // 锁定/置顶：community_moderation:lock
+  await assertPermission(c, "community_moderation:lock");
   const flag = c.req.param("flag");
   if (flag !== "lock" && flag !== "pin") {
     throw new BadRequestError("无效内容操作");
@@ -574,6 +631,8 @@ router.get(
   async (c) => c.json({ data: await listSanctions() }),
 );
 router.post("/admin/sanctions", async (c) => {
+  // 社区处罚：community_moderation:sanction
+  await assertPermission(c, "community_moderation:sanction");
   const body = await parseJsonBody<
     { user_id?: string; reason?: string; expires_at?: string }
   >(c);
@@ -591,10 +650,13 @@ router.post("/admin/sanctions", async (c) => {
 });
 router.delete(
   "/admin/sanctions/:sanctionId",
-  async (c) =>
-    c.json({
+  async (c) => {
+    // 撤销社区处罚：community_moderation:sanction
+    await assertPermission(c, "community_moderation:sanction");
+    return c.json({
       data: await revokeSanction(userId(c), c.req.param("sanctionId")),
-    }),
+    });
+  },
 );
 router.get(
   "/admin/users/:userId/sanctions",

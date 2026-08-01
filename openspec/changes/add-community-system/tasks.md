@@ -110,3 +110,32 @@
   - [x] 路由测试：`GET /feed?view=following`（关注流仅含已关注用户内容 + 游客 401）、`GET /admin/comments/pending`（普通用户 403）、`POST /admin/comments/:id/:status`（批准待审评论后作者收到回复通知）
   - [x] E2E：关注动态流主流程（关注后短动态进入 `view=following`）、新用户评论预审全流程（发帖→开启预审→评论 pending→管理员队列→批准→作者通知）
   - [x] 全部通过：core 测试 667 项、社区路由测试 13 项、社区 E2E 4 项（含新增 2 项）
+- [x] 9. 二轮评审修复（规范符合性 + 标准符合性）
+  - [x] 9.1 正确性修复
+    - [x] 题解通过门槛豁免管理员/审核员（`createPost` 仅普通用户校验 Accepted）
+    - [x] 模块关闭时帖子详情与评论列表返回 `FEATURE_DISABLED` 403（`getPost` 按内容类型断言模块开关）
+    - [x] 评论列表允许作者查看自己的 pending/hidden 评论（非 deleted）
+    - [x] 全局搜索命中题解关联题目的 display_id（`type || number` ILIKE 匹配）
+    - [x] 动态流改用 `(created_at, id)` 复合游标，兼容旧纯时间戳游标
+    - [x] `toggleCommentLike` 仅允许点赞已发布评论（pending/hidden/deleted 返回 404）
+    - [x] `togglePostFlag` 审计 detail 的 `status` 改为语义值（locked/pinned）
+    - [x] 批准待审评论时向评论作者补发 moderation 审核通知（保留被回复者 reply 通知）
+  - [x] 9.2 标准符合性修复
+    - [x] `applyCommunityPreset` 事务化写入（`updateSetting` 支持事务模式 + 提交后统一刷新缓存）
+    - [x] 社区设置 envFallback 全部补充到 `noj-core/.env.example` 与 `scripts/dev/env.example`
+    - [x] `schema-ddl.ts` roles 表定义去重（移至数组顶部依赖预置）
+    - [x] 管理后台移除 `any` 类型（新增共享 `ReportRow` 类型）
+    - [x] AGENTS.md 迁移文件数更新（26 → 32）
+  - [x] 9.3 发布频率设置（community-configuration spec 补齐）
+    - [x] 新增 `community_post_interval_seconds` 设置项与 `COMMUNITY_POST_INTERVAL_SECONDS` envFallback
+    - [x] `createPost` 按配置间隔限流（超频返回 `POST_RATE_LIMITED` 403）
+    - [x] 管理后台数字设置新增「发布频率限制」项
+  - [x] 9.4 题目页题解列表与发布入口（community-ui spec 补齐）
+    - [x] 新增 `GET /community/solutions/eligibility?problem_id=`（返回模块开关、门槛、Accepted 状态与能否发布）
+    - [x] 题目详情页展示题解列表（前 5 条 + 查看全部）
+    - [x] 发布入口服从题解模块与权限：未登录引导登录、无权限/未通过/只读禁用并说明原因
+  - [x] 9.5 moderation 权限体系（community-moderation spec 补齐）
+    - [x] `/admin/*` 从 `requireAdmin()` 改为 `community_moderation:review` 权限守卫（管理员 fast path 保留）
+    - [x] 细分：预设 `system:settings`、板块 `community_board:manage`、锁定/置顶 `community_moderation:lock`、处罚 `community_moderation:sanction`
+    - [x] seed-rbac 为 admin 角色显式授予治理权限（`ensureAdminRolePermissions`）
+    - [x] 前端 `community-moderation` middleware：非管理员审核员可进入社区管理页

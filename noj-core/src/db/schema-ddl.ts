@@ -23,7 +23,20 @@ export const SCHEMA_DDL: string[] = [
     ) STORED
   )`,
 
-  // 2. problems（issue #100：含 search_vector 列供 PGlite 模式测试）
+  // 2. roles（依赖预置：community 表与 RBAC 表均引用，需先于二者建表）
+  `CREATE TABLE IF NOT EXISTS roles (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    is_system BOOLEAN NOT NULL DEFAULT false,
+    is_default BOOLEAN NOT NULL DEFAULT false,
+    is_admin BOOLEAN NOT NULL DEFAULT false,
+    parent_id TEXT REFERENCES roles(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
+  // 3. problems（issue #100：含 search_vector 列供 PGlite 模式测试）
   `CREATE TABLE IF NOT EXISTS problems (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -262,18 +275,7 @@ export const SCHEMA_DDL: string[] = [
     unbanned_by TEXT REFERENCES users(id) ON DELETE SET NULL
   )`,
 
-  // 社区表依赖 RBAC 角色；在 PGlite 建表顺序中提前确保 roles 存在。
-  `CREATE TABLE IF NOT EXISTS roles (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
-    description TEXT NOT NULL DEFAULT '',
-    is_system BOOLEAN NOT NULL DEFAULT false,
-    is_default BOOLEAN NOT NULL DEFAULT false,
-    is_admin BOOLEAN NOT NULL DEFAULT false,
-    parent_id TEXT REFERENCES roles(id) ON DELETE SET NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  )`,
+  // 社区表依赖 RBAC 角色（roles 已在顶部预置，见 SCHEMA_DDL 第 2 项）
 
   `CREATE TABLE IF NOT EXISTS community_boards (
     id TEXT PRIMARY KEY,
@@ -483,18 +485,7 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_community_notifications_actor ON community_notifications (actor_id)",
   "CREATE INDEX IF NOT EXISTS idx_community_notifications_post ON community_notifications (post_id)",
   "CREATE INDEX IF NOT EXISTS idx_community_notifications_comment ON community_notifications (comment_id)",
-  // RBAC 权限系统
-  `CREATE TABLE IF NOT EXISTS roles (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
-    description TEXT NOT NULL DEFAULT '',
-    is_system BOOLEAN NOT NULL DEFAULT false,
-    is_default BOOLEAN NOT NULL DEFAULT false,
-    is_admin BOOLEAN NOT NULL DEFAULT false,
-    parent_id TEXT REFERENCES roles(id) ON DELETE SET NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  )`,
+  // RBAC 权限系统（roles 表已在顶部预置，见 SCHEMA_DDL 第 2 项）
   `CREATE TABLE IF NOT EXISTS permissions (
     id TEXT PRIMARY KEY,
     resource TEXT NOT NULL,

@@ -123,7 +123,7 @@ export async function addIpBan(
 
   // 失效 ip_bans 全表缓存
   invalidateBanCache({ ipOrCidr: trimmed });
-  logAudit(
+  await logAudit(
     "ip_ban.create",
     {
       action: "ip_ban.create",
@@ -159,7 +159,7 @@ export async function removeIpBan(
   await db.delete(ipBans).where(eq(ipBans.id, id));
 
   invalidateBanCache({ ipOrCidr: existing[0]!.ip_or_cidr });
-  logAudit(
+  await logAudit(
     "ip_ban.delete",
     { action: "ip_ban.delete", ip_or_cidr: existing[0]!.ip_or_cidr },
     { type: "ip_bans", id },
