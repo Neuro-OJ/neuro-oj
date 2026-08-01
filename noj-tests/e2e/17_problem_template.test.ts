@@ -31,7 +31,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     if (!isE2E) return;
-    const res = await apiGet("/api/v1/problems/1003/template", adminToken);
+    const res = await apiGet("/api/v1/problems/P1003/template", adminToken);
     if (res.status !== 200) {
       throw new Error(`期望 200，实际 ${res.status}`);
     }
@@ -55,7 +55,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     if (!isE2E) return;
-    const res = await apiGet("/api/v1/problems/1001/template", adminToken);
+    const res = await apiGet("/api/v1/problems/P1001/template", adminToken);
     if (res.status !== 200) {
       throw new Error(`期望 200，实际 ${res.status}`);
     }
@@ -73,7 +73,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     if (!isE2E) return;
-    const res = await apiGet("/api/v1/problems/1002/template", adminToken);
+    const res = await apiGet("/api/v1/problems/P1002/template", adminToken);
     if (res.status !== 200) {
       throw new Error(`期望 200，实际 ${res.status}`);
     }
@@ -105,7 +105,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     if (!isE2E) return;
-    const res = await apiGet("/api/v1/problems/1003/template");
+    const res = await apiGet("/api/v1/problems/P1003/template");
     if (res.status !== 401) {
       throw new Error(`期望 401，实际 ${res.status}`);
     }

@@ -5,8 +5,9 @@
 import {
   apiGet,
   CODE_SAMPLES,
-  isE2E,
   getAdminToken,
+  getProblemIdByNumber,
+  isE2E,
   registerUser,
   submitCode,
   waitForServer,
@@ -15,7 +16,7 @@ import {
 const skip = !isE2E;
 let token = "";
 let adminToken = "";
-const PROBLEM_ID = "1001";
+let PROBLEM_ID = "";
 
 Deno.test({
   name: "[e2e/queue] Setup",
@@ -32,6 +33,8 @@ Deno.test({
       "q_user_" + ts + "@test.com",
       "Pass1234Test",
     );
+    // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
+    PROBLEM_ID = await getProblemIdByNumber(1001);
   },
 });
 

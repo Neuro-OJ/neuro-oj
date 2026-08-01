@@ -307,7 +307,9 @@ router.get("/:id/support-package", authMiddleware, async (c) => {
 router.get("/:id/template", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const problem = await resolveProblem(id);
-  const tpl = await getProblemTemplate(problem.id);
+  // problems-src 目录按题号（number）命名；题目 id 为服务端生成的 UUID，
+  // 必须用 number 定位源码目录（如 data/problems-src/1001/）
+  const tpl = await getProblemTemplate(problem.number);
   if (!tpl) {
     return c.json({ error: "该题目没有初始代码模板" }, 404);
   }

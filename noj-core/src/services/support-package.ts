@@ -179,18 +179,20 @@ export async function getSupportPackageBytes(
  * 目前 dev 模式：直接从源码目录读取。
  */
 export async function getProblemTemplate(
-  problemId: string,
+  problemNumber: number,
 ): Promise<{ content: string; language: string } | null> {
   // TODO: 生产环境从 support package 解压或单独的对象存储读取
   // 参考实现统一命名为 submission_sample.py（与 problem.json 的 solution.entry
   // 一致）；兼容旧题目录仍保留 submission.py 的情况。
+  // problems-src 目录按题号命名（1001/1002/1003），题目 id 为 UUID，
+  // 因此调用方必须传入 number 而非 id。
   const candidates = ["submission_sample.py", "submission.py"];
   for (const fileName of candidates) {
     const fsPath = resolve(
       Deno.cwd(),
       "data",
       "problems-src",
-      problemId,
+      String(problemNumber),
       fileName,
     );
     try {
