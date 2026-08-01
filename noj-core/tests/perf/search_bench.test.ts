@@ -6,8 +6,14 @@ import { sql } from "drizzle-orm";
 
 await resetDbForTest();
 
+// 性能基准默认不跑：seed 100k problems + 10k users 在每次 PR 上都执行
+// 是 CI 的沉重负担（此前混在 core-test 串行里）。仅当 NOJ_RUN_PERF=1
+// 时启用（CI 的 core-perf job 在 main push / workflow_dispatch 运行）。
+const runPerf = Deno.env.get("NOJ_RUN_PERF") === "1";
+
 Deno.test({
   name: "search perf: 100k problems + 10k users 搜索响应 < 500ms",
+  ignore: !runPerf,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

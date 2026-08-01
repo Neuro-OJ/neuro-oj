@@ -74,11 +74,28 @@ export function getDb() {
       Deno.env.get("DATABASE_MAX_LIFETIME") || "3600",
       10,
     );
+    // TEST_SCHEMA：测试并行分片时每个 worker 进程指向独立的 PG schema，
+    // 使 resetDbForTest() 的 TRUNCATE 只影响本分片（进程间互不干扰）。
+    // 通过 libpq 的 startup 参数 `-csearch_path=...` 在每个物理连接建立时
+    // 生效（postgres.js 的 connection.options 传入 PG startup packet，
+    // 服务端作为 GUC 命令处理），保证连接池内所有连接（含 Drizzle migrator
+    // 使用的连接）都落在目标 schema；未限定表名按 search_path 解析，
+    // CREATE TABLE / TRUNCATE / SELECT 均自动隔离。
+    const testSchema = Deno.env.get("TEST_SCHEMA") || "";
+    if (testSchema && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(testSchema)) {
+      throw new Error(
+        `TEST_SCHEMA 非法: ${testSchema}（仅允许 SQL 标识符，防止 search_path 注入）`,
+      );
+    }
     _client = postgres(databaseUrl, {
       max: poolMax,
       connect_timeout: connectTimeout,
       idle_timeout: idleTimeout,
       max_lifetime: maxLifetime,
+      // 附带 public 兜底：系统/扩展对象（如 pg_trgm 运算符）仍可解析
+      connection: testSchema
+        ? { options: `-csearch_path=${testSchema},public` }
+        : undefined,
     });
     _db = drizzlePg(_client, { schema });
     return _db;

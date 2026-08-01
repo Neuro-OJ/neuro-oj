@@ -6,6 +6,14 @@
 #   - noj-core: Deno 后端（格式/代码检查/集成测试，需 PostgreSQL + Redis）
 #   - noj-ui:   Nuxt 4 前端（Deno 构建检查）
 #   - noj-judge: Rust Worker（格式/Clippy/单元测试）
+#
+# 性能优化（2026-07）：
+#   - 引入 dorny/paths-filter：PR 上按改动模块只跑相关 job
+#     （改 noj-ui 不再触发 judge/core 全套；push main / 手动触发仍全量）
+#   - 删除冗余 core-fmt / core-lint（core-quick-check 已覆盖 fmt+lint+typecheck）
+#   - judge-fmt / judge-clippy / judge-test 合并为 judge-check 单 job：
+#     共享同一 target 目录只编译一次，同时消除原 clippy/test 两 job
+#     用相同 cargo cache key 互相覆盖的问题
 # =============================================================================
 
 name: CI
@@ -33,6 +41,47 @@ concurrency:
 jobs:
 
   # ===========================================================================
+  # 变更检测（dorny/paths-filter）
+  #
+  # PR 上按改动路径生成 core/ui/judge 三个模块 flag；各模块 job 据此
+  # 条件化执行。push main 与 workflow_dispatch 始终全量执行（质量门禁）。
+  # ci.yml 自身改动视为三模块皆变更，保证 CI 配置调整会被完整验证。
+  # ===========================================================================
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      ui: ${{ steps.filter.outputs.ui }}
+      judge: ${{ steps.filter.outputs.judge }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          # paths-filter 需要比较 base/head，push 事件需完整历史
+          fetch-depth: 0
+
+      - name: 按模块路径过滤
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            core:
+              - 'noj-core/**'
+              - 'docker-compose.e2e.yml'
+              - 'env.e2e.template'
+              - '.github/workflows/ci.yml'
+            ui:
+              - 'noj-ui/**'
+              - '.github/workflows/ci.yml'
+            judge:
+              - 'noj-judge/**'
+              - 'docker-compose.e2e.yml'
+              - 'env.e2e.template'
+              - '.github/workflows/ci.yml'
+
+  # ===========================================================================
   # noj-core — 快速静态检查（fmt + lint + typecheck，无外部服务）
   #
   # 目的：把 lint / 格式 / 类型错误在 30 秒内暴露，避免 core-test 跑满 15 分钟
@@ -42,6 +91,9 @@ jobs:
   # ===========================================================================
   core-quick-check:
     name: Core Quick Check
+    needs: changes
+    # PR 按模块过滤；push main / 手动触发全量
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
 
@@ -87,6 +139,8 @@ jobs:
   # ===========================================================================
   core-smoke:
     name: Core Smoke
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-latest
     # 冒烟测试是唯一真实启动 Hono server 并验证 /health 的检查，必须在 main 推送 / 手动触发也执行，
     # 不只是 PR。core-test 直接 import router 不启 server，覆盖不到 HTTP 层。
@@ -121,12 +175,40 @@ jobs:
         run: deno task test:smoke
 
   # ===========================================================================
-  # noj-core — Deno 格式检查（轻量，无外部服务依赖）
+  # noj-core — 单元/轻量测试（PGlite 内存数据库 + Redis，无 PostgreSQL）
+  #
+  # 性能优化（2026-07）：原 core-test 单一 job 串行跑全部 71 个测试文件
+  # （需 PG + Redis，最慢可达 15 min）。拆分为 unit / db 两个并行 job：
+  #   - unit：tests/lib + middleware + types + data + app（纯逻辑 + PGlite，
+  #     无需 PG service，Redis 供 loginThrottle/revokedTokens/searchRateLimit）
+  #   - db：services + routes + mq + db + 迁移/种子（需要真实 PG 覆盖
+  #     pg_trgm / tsvector / GIN 等专属路径）
+  # 每组内仍串行（resetDbForTest 的 TRUNCATE 顺序假设），组间并行。
   # ===========================================================================
-  core-fmt:
-    name: Core Fmt
+  core-test-unit:
+    name: Core Test (Unit)
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+
+    services:
+      # lib/middleware 的 Redis 相关测试（loginThrottle / revokedTokens /
+      # searchRateLimit）需要可达的 Redis
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      REDIS_URL: redis://localhost:6379/
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
 
     steps:
       - name: 检出代码
@@ -137,36 +219,40 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: 格式检查 (deno fmt)
-        working-directory: noj-core
-        run: deno fmt --check
-
-  # ===========================================================================
-  # noj-core — Deno 代码检查（轻量，无外部服务依赖）
-  # ===========================================================================
-  core-lint:
-    name: Core Lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 安装 Deno
-        uses: denoland/setup-deno@v2
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
         with:
-          deno-version: v2.x
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
 
-      - name: 代码检查 (deno lint)
+      - name: 运行单元测试 (deno test)
         working-directory: noj-core
-        run: deno lint
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        # 不设 DATABASE_URL → PGlite 内存模式，零外部 DB 依赖
+        run: deno test -A tests/lib tests/middleware tests/types tests/data tests/app.test.ts
+
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-test-unit-logs
+          path: |
+            noj-core/test-logs/
+            noj-core/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true
 
   # ===========================================================================
   # noj-core — 集成测试（需 PostgreSQL + Redis 服务容器）
   # ===========================================================================
-  core-test:
-    name: Core Test
+  core-test-db:
+    name: Core Test (DB)
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -239,11 +325,11 @@ jobs:
         working-directory: noj-core
         env:
           BCRYPT_SALT_ROUNDS: 4
-        # 不加 --parallel：之前因为没设 DATABASE_URL 误走 PGlite 内存模式，单进程内
-        # --parallel 不会冲突。修好 DATABASE_URL 接通真实 PG 后，多 worker 并发
-        # TRUNCATE / INSERT 会导致死锁（CI 日志可见 Process 494 vs 495 互锁）。
-        # 串行执行匹配现有 resetDbForTest() 的顺序假设。
-        run: deno test -A
+        # 不加 --parallel：多 worker 并发 TRUNCATE / INSERT 会导致死锁
+        # （CI 日志可见 Process 494 vs 495 互锁）。串行执行匹配现有
+        # resetDbForTest() 的顺序假设。此 job 只包含 DB 依赖子集，
+        # 与 core-test-unit 并行互补。
+        run: deno test -A tests/services tests/routes tests/mq tests/db tests/00_migrate_test.ts tests/seed_bootstrap_admin_test.ts
 
       # 失败时上传日志（修复 finding M7）。CI 默认只在 UI 里保留日志，
       # 开发者必须本地复现才能排查；改为 actions/upload-artifact 上传到
@@ -252,7 +338,7 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
-          name: core-test-logs
+          name: core-test-db-logs
           path: |
             noj-core/test-logs/
             noj-core/test-output.log
@@ -261,10 +347,81 @@ jobs:
         continue-on-error: true
 
   # ===========================================================================
+  # noj-core — 性能基准（seed 100k problems，默认不跑）
+  #
+  # search_bench.test.ts 用 NOJ_RUN_PERF=1 guard；只在 main push 与手动
+  # 触发时执行，PR 上跳过（避免每次 PR 插入 10 万行拖慢 CI）。
+  # ===========================================================================
+  core-perf:
+    name: Core Perf (Benchmark)
+    needs: changes
+    # 仅 main push / workflow_dispatch；PR 一律跳过
+    if: ${{ github.event_name != 'pull_request' && (github.event_name != 'push' || github.ref == 'refs/heads/main') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      NOJ_RUN_PERF: "1"
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+
+      - name: 运行性能基准 (NOJ_RUN_PERF=1)
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: deno test -A tests/perf
+
+  # ===========================================================================
   # noj-ui — Nuxt 4 前端（Deno 构建检查）
   # ===========================================================================
   ui-check:
     name: UI (Nuxt)
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.ui == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -311,12 +468,26 @@ jobs:
         continue-on-error: true
 
   # ===========================================================================
-  # noj-judge — Rust 格式检查
+  # noj-judge — 格式 + Clippy + 单元测试（合并单 job）
+  #
+  # 性能优化：原 judge-fmt / judge-clippy / judge-test 三个独立 job 各自
+  # 全量编译同一份 target，且 clippy/test 共用相同 cargo cache key 会互相
+  # 覆盖。合并后 fmt → clippy → test 在同一 job 顺序执行，共享 target
+  # 目录只编译一次；cache key 竞争随之消除。
+  # 进一步加速（2026-07）：sccache 跨 job/跨 run 缓存编译产物，
+  # cargo-nextest 并行执行多个 test binary。
   # ===========================================================================
-  judge-fmt:
-    name: Judge Fmt
+  judge-check:
+    name: Judge Check
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.judge == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30
+    # sccache 通过 GHA cache backend 读写编译缓存，需要 actions: write
+    # （workflow 级默认只有 contents: read；fork PR 上 GitHub 自动降级为
+    # 只读，sccache 写缓存失败仅警告，不影响测试正确性）
+    permissions:
+      actions: write
 
     steps:
       - name: 检出代码
@@ -325,28 +496,17 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt, clippy
 
-      - name: 格式检查 (cargo fmt)
-        working-directory: noj-judge
-        run: cargo fmt --all --check
-
-  # ===========================================================================
-  # noj-judge — Clippy 检查（含编译，禁止 warnings）
-  # ===========================================================================
-  judge-clippy:
-    name: Judge Clippy
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 安装 Rust 工具链
-        uses: dtolnay/rust-toolchain@stable
+      - name: 启用 sccache（Rust 编译缓存）
+        uses: mozilla/sccache-action@v0.0.7
         with:
-          components: clippy
+          cache-name: judge-sccache
+
+      - name: 安装 cargo-nextest（并行测试运行器）
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
 
       - name: 缓存 Cargo 依赖
         uses: actions/cache@v4
@@ -359,60 +519,28 @@ jobs:
           restore-keys: |
             cargo-
 
+      - name: 格式检查 (cargo fmt)
+        working-directory: noj-judge
+        run: cargo fmt --all --check
+
       - name: Clippy 检查 (cargo clippy)
         working-directory: noj-judge
+        # 先编译（含测试目标），clippy 复用同一编译产物
         run: cargo clippy --all-targets -- -D warnings
+
+      - name: 运行测试 (cargo nextest)
+        working-directory: noj-judge
+        # nextest 并行执行 lib/unit/integration 测试，比 cargo test 快；
+        # 本项目无 doctest（src 无 /// ``` 示例），覆盖等价。
+        run: cargo nextest run --all-targets
 
       # 失败时上传 cargo 编译缓存（修复 finding M7）
       - name: 上传失败日志
         if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
-          name: judge-clippy-logs
+          name: judge-check-logs
           path: noj-judge/target/
-          retention-days: 7
-          if-no-files-found: ignore
-        continue-on-error: true
-
-  # ===========================================================================
-  # noj-judge — 单元测试（复用 clippy 编译产物）
-  # ===========================================================================
-  judge-test:
-    name: Judge Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 安装 Rust 工具链
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: 缓存 Cargo 依赖
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            noj-judge/target
-          key: cargo-${{ hashFiles('noj-judge/Cargo.lock') }}
-          restore-keys: |
-            cargo-
-
-      - name: 运行测试 (cargo test)
-        working-directory: noj-judge
-        run: cargo test
-
-      # 失败时上传 cargo test 日志
-      - name: 上传失败日志
-        if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
-        with:
-          name: judge-test-logs
-          path: |
-            noj-judge/target/**/test-*.log
-            noj-judge/target/**/deps/
           retention-days: 7
           if-no-files-found: ignore
         continue-on-error: true
@@ -427,10 +555,14 @@ jobs:
   # ===========================================================================
   judge-e2e:
     name: Judge E2E (Docker)
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.judge == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       NOJ_RUN_E2E: "1"
+    permissions:
+      actions: write
 
     steps:
       - name: 检出代码
@@ -438,8 +570,13 @@ jobs:
 
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
+        # 注意：不装 rustfmt/clippy 组件——本 job 只编译并运行测试；
+        # 曾因并行 cargo 触发 rustup sync 竞争导致 clippy 组件下载失败
+        # （component download failed），组件越少失败面越小。
+      - name: 启用 sccache（Rust 编译缓存）
+        uses: mozilla/sccache-action@v0.0.7
         with:
-          components: rustfmt, clippy
+          cache-name: judge-e2e-sccache
 
       - name: 缓存 Cargo 依赖
         uses: actions/cache@v4
@@ -456,7 +593,7 @@ jobs:
         working-directory: noj-judge/tests/e2e
         run: docker build -t noj-judge-test-runner -f Dockerfile.test-runner .
 
-      - name: 运行 E2E 集成测试
+      - name: 运行 E2E 集成测试（2 组并行）
         working-directory: noj-judge
         env:
           # judge-e2e job 现在默认在 push/PR 上也跑（之前仅 workflow_dispatch）。
@@ -465,19 +602,31 @@ jobs:
         run: |
           # set -euo pipefail：任一 cargo test 失败立即终止整个 job
           set -euo pipefail
+          # rustup 预热（修复 2026-08 并行竞争）：两个 run_group 同时启动
+          # cargo 会各自触发 rustup channel sync + 组件下载，竞争同一
+          # rustup 状态目录导致 "component download failed"（测试启动即死）。
+          # 先单进程触发一次 sync，之后并行 cargo 不再下载。
+          cargo --version >/dev/null
           # 与 e2e.yml 保持完全一致的 6 个目标清单（含 2026-07-02 重构后的
           # e2e_container_pool）。原 cargo test --test e2e 在没有 e2e.rs 的
           # 情况下 exit 101，从未暴露是因为 if: workflow_dispatch。
-          for target in \
-            e2e_docker_basic \
-            e2e_resource_limits \
-            e2e_security_isolation \
-            e2e_support_package \
-            e2e_problem_limits \
-            e2e_container_pool; do
-            echo "═══ $target ═══"
-            NOJ_RUN_E2E=1 cargo test --test "$target" -- --ignored --test-threads=1
-          done
+          # 性能优化（2026-07）：6 个目标分 2 组并行——组内串行
+          # （serial_test 保证单 binary 内串行），组间并行利用 runner 多核；
+          # 每组 3 个 Docker 沙箱并发为保守取值，避免资源竞争导致 flaky。
+          run_group() {
+            for target in "$@"; do
+              echo "═══ $target ═══"
+              NOJ_RUN_E2E=1 cargo test --test "$target" -- --ignored --test-threads=1
+            done
+          }
+          run_group e2e_docker_basic e2e_resource_limits e2e_security_isolation &
+          p1=$!
+          run_group e2e_support_package e2e_problem_limits e2e_container_pool &
+          p2=$!
+          fail=0
+          wait "$p1" || fail=1
+          wait "$p2" || fail=1
+          exit "$fail"
 
       # 失败时上传 Docker 沙箱产物
       - name: 上传失败日志
