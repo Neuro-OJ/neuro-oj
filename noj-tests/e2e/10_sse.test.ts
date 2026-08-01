@@ -11,6 +11,7 @@
 import {
   BASE_URL,
   CODE_SAMPLES,
+  getProblemIdByNumber,
   isE2E,
   registerUser,
   submitCode,
@@ -20,6 +21,7 @@ import {
 const skip = !isE2E;
 let token = "";
 let submissionId = "";
+let problemId = "";
 
 // 读取 SSE 流的前几个事件，带超时
 async function readSSEEvents(
@@ -93,8 +95,12 @@ Deno.test({
     );
     // 创建真实提交（用于 SSE 连接测试）
     try {
-      submissionId = await submitCode(token, "1001", CODE_SAMPLES.accepted);
-      console.log("  ✓ SSE 测试用户已注册，提交 ID: " + submissionId.slice(0, 8));
+      // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
+      problemId = await getProblemIdByNumber(1001);
+      submissionId = await submitCode(token, problemId, CODE_SAMPLES.accepted);
+      console.log(
+        "  ✓ SSE 测试用户已注册，提交 ID: " + submissionId.slice(0, 8),
+      );
     } catch {
       submissionId = "";
       console.log("  ✓ SSE 测试用户已注册（提交创建跳过）");

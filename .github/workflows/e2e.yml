@@ -118,17 +118,27 @@ jobs:
         env:
           DENO_DIR: ${{ env.DENO_DIR }}
 
-      - name: 构建评测镜像 (noj-judge-python, 带 GHA 缓存)
+      - name: 构建评测镜像 (noj-evaluator-python, 带 GHA 缓存)
         uses: docker/build-push-action@v6
         with:
           context: noj-judge
-          file: noj-judge/docker/python/Dockerfile
-          tags: noj-judge-python
+          file: noj-judge/docker/evaluator-python/Dockerfile
+          tags: noj-evaluator-python
           load: true
           cache-from: type=gha
           # Fork PR 的 GITHUB_TOKEN 是 read-only，cache 写入会失败且
           # 浪费存储（修复 finding S6 + P7）。原模式 mode=max 还会把缓存
           # 体积推到 5-10× image size。改用 fork 感知 + 较小 cache。
+          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
+
+      - name: 构建评测镜像 (noj-solution-python, 带 GHA 缓存)
+        uses: docker/build-push-action@v6
+        with:
+          context: noj-judge
+          file: noj-judge/docker/solution-python/Dockerfile
+          tags: noj-solution-python
+          load: true
+          cache-from: type=gha
           cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
 
       - name: 构建 Docker Compose 镜像 (noj-core, 带 GHA 缓存)
