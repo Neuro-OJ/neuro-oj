@@ -2,13 +2,22 @@
 # Neuro OJ — 全链路 E2E 测试
 #
 # 在每个 PR 和推送到 main 时运行完整的端到端测试：
-#   - noj-tests 全量 E2E（70 API + 管道 + 队列可见性测试）
-#   - noj-judge Docker 沙箱 E2E（12 个测试）
+#   - e2e-full：noj-tests 全量 E2E（70 API + 管道 + 队列可见性测试）
+#   - judge-sandbox：noj-judge Docker 沙箱 E2E（6 个 binary，独立 job）
 #
 # 使用 Docker Compose 编排完整评测栈（noj-core + noj-judge + PostgreSQL + Redis）。
 #
 # 技术栈：Deno + Rust + Docker Compose
 # 运行时间：首次 ~15min，缓存命中后 ~5-8min
+#
+# 性能优化（2026-07）：
+#   - judge 沙箱 E2E 拆为独立 job（它只依赖 Docker + Redis，测试内自建
+#     评测镜像 ensure_test_image，无需 noj-core 栈），与 API E2E 并行，
+#     总时长从串行 ~15min 降到 max(API, sandbox) ~8min
+#   - noj-tests 23 个文件分 3 组并行（组间独立进程；文件间无跨文件固定
+#     ID 依赖，admin 改密竞态由 helper.ts loginAndChangePassword 并发
+#     兜底处理）
+#   - judge-sandbox 复用 sccache 编译缓存 + 6 个 binary 分 2 组并行
 # =============================================================================
 
 name: E2E
@@ -24,14 +33,24 @@ on:
     # 纯文档 / 规范 / lint 配置类改动无需跑完整评测栈（节省 10-15 min / PR）。
     # push to main 仍全量跑；workflow_dispatch 仍可手动强跑。
     # 修复点：之前的 cache-to mode=min 拆分到独立的 workflow 安全与配置一致性 PR。
+    # 性能优化（2026-07）：扩充忽略清单——noj-ui 改动不涉及评测栈
+    # （E2E 只跑 noj-core API + judge 沙箱，不构建前端）；ci.yml 自身
+    # 改动不触发 e2e（ci.yml 不涉及评测栈镜像/编排）。
     paths-ignore:
       - 'docs/**'
       - 'noj-docs/**'
       - '**/*.md'
       - 'openspec/**'
       - '.opencode/**'
+      - '.claude/**'
+      - 'noj-ui/**'
+      - 'docker-compose.yml'
+      - 'LICENSE'
+      - 'scripts/dev/**'
+      - 'scripts/db/**'
       - '.github/dependabot.yml'
       - '.github/actionlint.yaml'
+      - '.github/workflows/ci.yml'
   workflow_dispatch:
 
 # 仅 PR 上可取消旧运行（修复 finding M4），main 推送不可被取消。
@@ -57,8 +76,11 @@ env:
   DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
 
 jobs:
+  # ===========================================================================
+  # e2e — noj-tests 全链路 API E2E（完整评测栈）
+  # ===========================================================================
   e2e:
-    name: Full Pipeline
+    name: Full Pipeline (API E2E)
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -214,46 +236,58 @@ jobs:
           exit 1
 
       # ════════════════════════════════════════════
-      # 3. noj-tests E2E 测试
+      # 3. noj-tests E2E 测试（3 组并行）
+      #
+      # 性能优化（2026-07）：23 个测试文件按字母序均分为 3 组，组间
+      # 独立进程并行。文件间无跨文件固定 ID 依赖（此前已审计）；唯一
+      # 共享状态是 admin 账户（getAdminToken 改密竞态由 helper.ts 并发
+      # 兜底）与评测队列（并发提交由 judge 容器池懒回补消化）。
       # ════════════════════════════════════════════
 
-      - name: E2E 测试 (noj-tests)
+      - name: E2E 测试 (noj-tests, 3 组并行)
         working-directory: noj-tests
-        run: deno test -A e2e/
         env:
           E2E_BASE_URL: ${{ env.E2E_BASE_URL }}
-
-      # ════════════════════════════════════════════
-      # 4. noj-judge Docker 沙箱 E2E 测试（一次性编译）
-      # ════════════════════════════════════════════
-
-      - name: 编译 Judge E2E 测试目标
-        working-directory: noj-judge
-        run: cargo build --tests
-
-      - name: Judge E2E 测试（Docker 沙箱）
-        working-directory: noj-judge
         run: |
-          # set -euo pipefail：任一 cargo test 失败立即终止整个 job，
-          # 修复原版 for 循环吞掉中间失败、只在最后一个目标失败时退出 0 的问题。
+          # set -euo pipefail：任一 deno test 失败立即终止整个 job
           set -euo pipefail
-          # 必须列出全部 6 个 e2e_* 测试文件；之前漏掉的 e2e_container_pool 正是
-          # 2026-07-02 container-pool-simplify 重构过的关键路径。
-          for target in \
-            e2e_docker_basic \
-            e2e_resource_limits \
-            e2e_security_isolation \
-            e2e_support_package \
-            e2e_problem_limits \
-            e2e_container_pool; do
-            echo ""
-            echo "───────────────────────────────────────"
-            echo "  $target"
-            echo "───────────────────────────────────────"
-            REDIS_URL=$E2E_REDIS_URL NOJ_RUN_E2E=1 cargo test --test "$target" -- --ignored --test-threads=1
-          done
-        env:
-          REDIS_URL: ${{ env.E2E_REDIS_URL }}
+          run_group() {
+            deno test -A "$@"
+          }
+          run_group \
+            e2e/01_categories.test.ts \
+            e2e/02_problems.test.ts \
+            e2e/03_auth.test.ts \
+            e2e/04_submissions.test.ts \
+            e2e/05_profile.test.ts \
+            e2e/06_pipeline.test.ts \
+            e2e/07_queue.test.ts \
+            e2e/08_password_change_guard.test.ts &
+          p1=$!
+          run_group \
+            e2e/09_checkin.test.ts \
+            e2e/10_sse.test.ts \
+            e2e/11_messaging.test.ts \
+            e2e/12_audit_log.test.ts \
+            e2e/13_support_package_s3.test.ts \
+            e2e/14_rejudge.test.ts \
+            e2e/15_dual_container_judge.test.ts &
+          p2=$!
+          run_group \
+            e2e/16_rbac.test.ts \
+            e2e/16_community.test.ts \
+            e2e/17_problem_template.test.ts \
+            e2e/18_search.test.ts \
+            e2e/19_admin_endpoints.test.ts \
+            e2e/20_password_reset.test.ts \
+            e2e/21_rankings.test.ts \
+            e2e/22_contest_lifecycle.test.ts &
+          p3=$!
+          fail=0
+          wait "$p1" || fail=1
+          wait "$p2" || fail=1
+          wait "$p3" || fail=1
+          exit "$fail"
 
       # ════════════════════════════════════════════
       # 6. 诊断日志（即使前面失败也执行）
@@ -304,8 +338,6 @@ jobs:
             noj-judge.log
             noj-migrate.log
             noj-core.log
-            noj-judge/target/**/test-*.log
-            noj-judge/target/**/deps/
             /tmp/noj-work/
           retention-days: 7
           if-no-files-found: ignore
@@ -319,3 +351,108 @@ jobs:
         if: always()
         run: |
           docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME down -v
+
+  # ===========================================================================
+  # judge-sandbox — noj-judge Docker 沙箱 E2E（独立 job）
+  #
+  # 性能优化（2026-07）：从原单一大 job 拆出。沙箱测试只依赖 Docker
+  # daemon + Redis（评测镜像由测试内 ensure_test_image 自建），不需要
+  # noj-core 栈，因此与 API E2E job 完全并行。结构上与 ci.yml 的
+  # judge-e2e 保持一致（sccache + 2 组并行）。
+  # ===========================================================================
+  judge-sandbox:
+    name: Judge Sandbox E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NOJ_RUN_E2E: "1"
+    permissions:
+      actions: write
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6380
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+        # 注意：不装 rustfmt/clippy 组件——本 job 只编译并运行测试，
+        # 组件越少 rustup 下载失败面越小（曾因并行 cargo 触发 rustup
+        # sync 竞争导致 clippy 组件下载失败、测试启动即死）
+      - name: 启用 sccache（Rust 编译缓存）
+        uses: mozilla/sccache-action@v0.0.7
+        with:
+          cache-name: judge-sandbox-sccache
+
+      - name: 缓存 Cargo 依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            noj-judge/target
+          key: cargo-e2e-${{ hashFiles('noj-judge/Cargo.lock') }}
+          restore-keys: |
+            cargo-e2e-
+
+      - name: 编译 Judge E2E 测试目标
+        working-directory: noj-judge
+        run: cargo build --tests
+
+      - name: Judge E2E 测试（Docker 沙箱，2 组并行）
+        working-directory: noj-judge
+        env:
+          REDIS_URL: redis://localhost:6380/
+        run: |
+          # set -euo pipefail：任一 cargo test 失败立即终止整个 job，
+          # 修复原版 for 循环吞掉中间失败、只在最后一个目标失败时退出 0 的问题。
+          set -euo pipefail
+          # rustup 预热（修复 2026-08 并行竞争）：两个 run_group 同时启动
+          # cargo 会各自触发 rustup channel sync + 组件下载，竞争同一
+          # rustup 状态目录导致 "component download failed"（测试启动即死）。
+          # 先单进程触发一次 sync，之后并行 cargo 不再下载。
+          cargo --version >/dev/null
+          # 必须列出全部 6 个 e2e_* 测试文件；之前漏掉的 e2e_container_pool 正是
+          # 2026-07-02 container-pool-simplify 重构过的关键路径。
+          # 性能优化（2026-07）：6 个目标分 2 组并行——组内串行
+          # （serial_test 保证单 binary 内串行），组间并行利用 runner 多核。
+          run_group() {
+            for target in "$@"; do
+              echo ""
+              echo "───────────────────────────────────────"
+              echo "  $target"
+              echo "───────────────────────────────────────"
+              NOJ_RUN_E2E=1 cargo test --test "$target" -- --ignored --test-threads=1
+            done
+          }
+          run_group e2e_docker_basic e2e_resource_limits e2e_security_isolation &
+          p1=$!
+          run_group e2e_support_package e2e_problem_limits e2e_container_pool &
+          p2=$!
+          fail=0
+          wait "$p1" || fail=1
+          wait "$p2" || fail=1
+          exit "$fail"
+
+      # 失败时上传 Docker 沙箱产物
+      - name: 上传失败日志
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: judge-sandbox-logs
+          path: |
+            noj-judge/target/**/test-*.log
+            noj-judge/target/**/deps/
+          retention-days: 7
+          if-no-files-found: ignore
+        continue-on-error: true

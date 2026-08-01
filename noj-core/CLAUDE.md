@@ -229,8 +229,31 @@ deno task problems:build
 deno task dev-setup          # 开发环境一键初始化（迁移 + 系统数据 + 题目导入）
 
 # 测试
-deno task test
+deno task test              # 串行全量（无 DATABASE_URL 时走 PGlite 内存库）
+deno task test:parallel     # 并行分片（需本地 PG：TEST_SCHEMA=test_unit/test_db
+                            # 双 schema 隔离，两组并行，全绿约 2-3 min）
+deno task test:smoke        # 快速冒烟（Hono server + /health，需 Redis）
 ```
+
+### 测试并行分片（TEST_SCHEMA）
+
+`deno task test:parallel`（`scripts/test-parallel.ts`）把测试按目录分为
+`unit`（lib/middleware/types/data/app）与
+`db`（services/routes/mq/db/迁移/种子） 两组，每组独占一个 PG
+schema（`test_unit` / `test_db`），进程级并行互不干扰：
+
+- `src/db/connection.ts` 支持 `TEST_SCHEMA` 环境变量：通过 libpq startup 参数
+  `-csearch_path=<schema>,public` 让连接池内所有连接落在目标 schema （TRUNCATE /
+  SELECT / INSERT 均自动隔离）
+- `src/db/migrate.ts` 在 TEST_SCHEMA 下把 `migrationsSchema` 指向同 schema，
+  避免各分片共享 `drizzle` 迁移记录导致"已迁移"误判跳过
+- 约束：分片目录集合与 CI 的 `core-test-db` 一致；CI 的 `core-test-unit` 是
+  PGlite 模式（无需迁移），本地 unit 分片走真实 PG（需 00_migrate_test）
+
+注意：迁移 SQL 中历史文件（0010/0027/0029）曾带 drizzle-kit 生成的
+`REFERENCES "public"."xxx"` 硬编码前缀，分片下 FK 会错指 public schema （已在
+2026-07 修复为不带前缀，按 search_path 解析）。新增迁移请保持 不带 schema
+前缀，否则分片测试会静默失败。
 
 ## 基础设施
 

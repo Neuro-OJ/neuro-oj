@@ -78,8 +78,14 @@ noj-judge/
 # 编译
 cargo build
 
-# 运行单元测试
-cargo test --lib
+# 运行单元测试（推荐 cargo-nextest：并行执行多个 test binary，更快）
+cargo nextest run --all-targets
+# 或等价的 cargo test（无 doctest，覆盖相同）
+cargo test
+
+# 加速本地 Rust 编译（可选，强烈推荐）：
+#   cargo install sccache --locked && export RUSTC_WRAPPER=sccache
+# CI 已内置 mozilla/sccache-action（GHA cache backend），跨 run 复用编译产物
 
 # 运行集成测试（需要 Docker daemon + NOJ_RUN_E2E=1）
 NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored

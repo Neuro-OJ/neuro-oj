@@ -269,11 +269,16 @@ async function tryLogin(
  * （评审修复 H2：E2E 必须走完整强制改密流程才能验证 403 守卫）。
  *
  * 幂等设计：E2E 各测试 setup 共享同一个 admin 账户，前序测试已把密码改为
- * newPassword。流程：
+ * newPassword。流程（整体包在最多 3 轮重试里）：
  *   1. 先用 newPassword 登录（如果成功 → 已经是无 flag 状态，直接返回）
  *   2. 失败 → 用 password 登录（拿 flag token）
  *   3. 调 change-password 完成改密
  *   4. 用 newPassword 重新登录拿到无 flag token
+ *
+ * 并发重试（2026-08 修复）：noj-tests 分 3 组并行时，多个进程同时执行
+ * 本流程存在竞态窗口——另一进程可能恰好在本进程"试旧密码"与"改密"之间
+ * 完成改密，导致旧密码失效（登录失败或 change-password 400）。任何一步
+ * 因竞态失败都重试整轮：下轮先试 newPassword 直接收敛。
  *
  * @param login    登录标识（邮箱或用户名）
  * @param password 当前密码（seed 设置的 ADMIN_PASS）
@@ -285,34 +290,41 @@ export async function loginAndChangePassword(
   password: string,
   newPassword: string,
 ): Promise<string> {
-  // 步骤 1：前序测试可能已改密。先用 newPassword 试登录拿无 flag token。
-  const cleanToken = await tryLogin(login, newPassword);
-  if (cleanToken) return cleanToken;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    // 步骤 1：前序测试可能已改密。先用 newPassword 试登录拿无 flag token。
+    const cleanToken = await tryLogin(login, newPassword);
+    if (cleanToken) return cleanToken;
 
-  // 步骤 2：用 password 登录拿 flag token（必须是 password，否则说明 admin
-  // 状态异常——既不是初始密码也不是改密后密码）。
-  const flagToken = await tryLogin(login, password);
-  if (!flagToken) {
-    throw new Error(
-      `loginAndChangePassword: ${login} 既无法用初始密码登录，也无法用改密后密码登录`,
+    // 步骤 2：用 password 登录拿 flag token。
+    const flagToken = await tryLogin(login, password);
+    if (!flagToken) {
+      // 并发竞态窗口：另一进程已先完成改密（旧密码失效）。
+      // 本轮重试（下轮步骤 1 会用 newPassword 登录收敛）。
+      continue;
+    }
+
+    // 步骤 3：调 change-password 完成改密。
+    // authMiddleware 在 must_change_password=true 状态下放行 /api/v1/auth/change-password。
+    const changeRes = await apiPost(
+      "/api/v1/auth/change-password",
+      { old_password: password, new_password: newPassword },
+      flagToken,
     );
+    if (changeRes.status !== 200) {
+      // 并发竞态窗口：另一进程已先完成改密（change-password 400）。
+      // 本轮重试（下轮步骤 1 用 newPassword 登录收敛）。
+      continue;
+    }
+
+    // 步骤 4：用 newPassword 重新登录拿到无 flag token。
+    return await loginUser(login, newPassword);
   }
 
-  // 步骤 3：调 change-password 完成改密。
-  // authMiddleware 在 must_change_password=true 状态下放行 /api/v1/auth/change-password。
-  const changeRes = await apiPost(
-    "/api/v1/auth/change-password",
-    { old_password: password, new_password: newPassword },
-    flagToken,
+  // 3 轮重试后仍未收敛：admin 账户状态异常（既不是初始密码也不是改密后
+  // 密码），或并发竞争持续存在。
+  throw new Error(
+    `loginAndChangePassword: ${login} 重试 3 轮后仍无法完成改密流程（既无法用初始密码登录，也无法用改密后密码登录）`,
   );
-  if (changeRes.status !== 200) {
-    throw new Error(
-      `E2E 强制改密失败: ${changeRes.status} ${JSON.stringify(changeRes.body)}`,
-    );
-  }
-
-  // 步骤 4：用 newPassword 重新登录拿到无 flag token。
-  return await loginUser(login, newPassword);
 }
 
 /**

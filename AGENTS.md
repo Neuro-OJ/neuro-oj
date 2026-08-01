@@ -760,7 +760,8 @@ S3 配置：`S3_ENDPOINT / S3_REGION / S3_ACCESS_KEY / S3_SECRET_KEY / S3_BUCKET
 ### 12.1 noj-core
 
 ```bash
-cd noj-core && deno task test
+cd noj-core && deno task test           # 串行全量（无 DATABASE_URL → PGlite 内存库）
+cd noj-core && deno task test:parallel  # 并行分片（TEST_SCHEMA=test_unit/test_db 双 schema）
 ```
 
 - DB 依赖测试检查 `DATABASE_URL` / `JWT_SECRET`，缺失时静默跳过
@@ -769,15 +770,23 @@ cd noj-core && deno task test
 - 测试数据用 `Date.now()` 生成唯一 username/email
 - 单元模块测试：`tests/lib/`、`tests/services/`、`tests/middleware/`
 - 集成测试：`tests/routes/`、`tests/mq/`
-- 性能测试：`tests/perf/`
+- 性能测试：`tests/perf/`（`NOJ_RUN_PERF=1` guard，默认不跑；CI 仅 main push / 手动触发）
 - 冒烟测试：`deno task test:smoke`
+- **并行分片**（2026-07 引入）：`scripts/test-parallel.ts` 将测试按目录分为
+  unit / db 两组，通过 `TEST_SCHEMA`（`connection.ts` 的 libpq
+  `-csearch_path` startup 参数）+ `migrationsSchema` 隔离到独立 PG schema，
+  进程级并行无死锁（原 `deno test --parallel` 因 TRUNCATE 互锁不可用）
+- **历史迁移陷阱**：0010/0027/0029 迁移 SQL 曾含 drizzle-kit 生成的
+  `REFERENCES "public"."xxx"` 硬编码前缀（分片下 FK 错指 public，已修复）。
+  新增迁移保持不带 schema 前缀
 
 ### 12.2 noj-judge
 
-**单元测试**（无需 Docker）：
+**单元测试**（无需 Docker，推荐 cargo-nextest 并行执行）：
 
 ```bash
-cd noj-judge && cargo test --lib
+cd noj-judge && cargo nextest run --all-targets
+cd noj-judge && cargo test              # 等价（无 doctest）
 ```
 
 **Docker 沙箱 E2E**（7 个 `e2e_*.rs` test binary，需 Docker daemon）：
@@ -790,6 +799,8 @@ cd noj-judge && NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
 - 集成测试 `#[ignore]` + `NOJ_RUN_E2E=1` 守卫
 - `#[serial_test::serial]` 序列化执行避免 Docker 资源竞争
 - 30s 外层超时：`tokio::time::timeout(30s, ...)`
+- CI 使用 `mozilla/sccache-action`（GHA cache backend）缓存编译产物；
+  本地可 `cargo install sccache --locked` + `RUSTC_WRAPPER=sccache` 加速
 
 ### 12.3 跨模块 E2E（noj-tests）
 
@@ -807,24 +818,31 @@ cd noj-tests && deno task test
 
 ### 13.1 GitHub Actions
 
-**`ci.yml`** — PR/推送触发，并行检查三个模块：
+**`ci.yml`** — PR/推送触发，并行检查三个模块（2026-07 起按模块路径过滤，
+PR 只跑改动涉及的 job；`changes` job 用 `dorny/paths-filter` 检测）：
 
 | Job | 检查项 | 依赖服务 |
 |-----|--------|----------|
-| core-test | deno fmt, deno lint, deno test | PostgreSQL + Redis |
+| changes | 路径过滤（PR 按 noj-core/ui/judge 改动集条件化后续 job） | 无 |
+| core-quick-check | deno fmt + lint + typecheck | 无 |
+| core-smoke | 冒烟测试（Hono /health） | Redis |
+| core-test-unit | tests/lib + middleware + types + data + app（PGlite 内存库） | Redis |
+| core-test-db | tests/services + routes + mq + db + 迁移/种子（真实 PG 覆盖 pg_trgm/GIN） | PostgreSQL + Redis |
+| core-perf | tests/perf（NOJ_RUN_PERF=1，仅 main push / workflow_dispatch） | PostgreSQL + Redis |
 | ui-check | deno lint, deno fmt, npm install, nuxt build | 无 |
-| judge-check | cargo fmt, clippy, build, test | 无 |
-| judge-e2e | cargo test --ignored | Docker（手动触发 workflow_dispatch） |
+| judge-check | cargo fmt + clippy + nextest（合并单 job 共享编译产物） | 无（sccache） |
+| judge-e2e | 6 个 Docker 沙箱 binary（2 组并行） | Docker + Redis（sccache） |
 
-**`e2e.yml`** — 全链路管道测试（PR/推送 main）：
+**`e2e.yml`** — 全链路管道测试（PR/推送 main，2026-07 起拆为两个并行 job）：
 
-- 构建支持包 + 评测镜像 + Docker Compose
-- 启动完整评测栈（noj-core + noj-judge + PG:5433 + Redis:6380）
-- 运行 noj-tests E2E（23 个测试）
-- 运行 noj-judge Docker 沙箱 E2E（7 个测试）
-- 首次 ~15min，缓存命中后 ~5-8min
-- 超时 60min，`always()` 输出诊断日志
+- `e2e`：构建支持包 + 评测镜像 + Docker Compose，启动完整评测栈
+  （noj-core + noj-judge + PG:5433 + Redis:6380），noj-tests E2E 23 个
+  文件分 3 组并行
+- `judge-sandbox`：noj-judge Docker 沙箱 E2E（只依赖 Docker + Redis，
+  测试内自建镜像，与 API E2E 完全并行；6 个 binary 2 组并行）
+- 首次 ~15min，缓存命中后 ~5-8min；超时 60min，`always()` 输出诊断日志
 - env：`JWT_SECRET=e2e-ci-secret-fixed-value-with-32-chars-min-abc`（≥32 字符，main.ts 强校验）
+- PR `paths-ignore`：docs / noj-ui / 纯配置类改动不触发（noj-ui 不涉及评测栈）
 
 ---
 

@@ -17,6 +17,7 @@
     "test": "env -u DATABASE_URL deno test -A --no-check",
     "test:smoke": "deno test -A --no-check tests/smoke.test.ts",
     "test:watch": "deno test -A --no-check --watch",
+    "test:parallel": "deno run -A --env-file=.env scripts/test-parallel.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
