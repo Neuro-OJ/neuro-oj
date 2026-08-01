@@ -11,7 +11,7 @@
 
     <!-- 搜索框 -->
     <div class="flex items-center gap-3 px-4 h-12 border border-border rounded-md bg-white mb-4">
-      <SearchIcon class="w-5 h-5 text-text-muted" />
+      <UIcon name="i-lucide-search" class="w-5 h-5 text-text-muted size-4" />
       <input
         v-model="query"
         type="text"
@@ -71,7 +71,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
-import { Search as SearchIcon } from "@lucide/vue";
+
 import AsyncContent from "~/components/ui/AsyncContent.vue";
 import PaginationNav from "~/components/shared/PaginationNav.vue";
 import SearchResultItem from "~/components/feature/search/SearchResultItem.vue";

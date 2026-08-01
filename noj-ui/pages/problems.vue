@@ -162,9 +162,9 @@ function formatAcceptanceRate(rate: number | undefined): string {
       @retry="refresh"
     >
       <template #empty-action v-if="hasActiveFilters">
-        <button class="btn btn-outline px-4 py-1.5 text-xs" @click="router.push({ query: {} })">
+        <UButton color="primary" variant="outline" class="px-4 py-1.5 text-xs" @click="router.push({ query: {} })">
           清除筛选
-        </button>
+        </UButton>
       </template>
 
       <!-- 题目表格 -->

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Save, ShieldCheck, LayoutList, Flag, Search, MessageSquare } from "@lucide/vue"
 import type { CommunityConfig, PostRow, ReportRow } from "~/composables/useCommunity"
 
 definePageMeta({ layout: "admin", middleware: "community-moderation", ssr: false })
@@ -345,19 +344,19 @@ await load()
     <div><h1 class="text-2xl font-bold text-text">社区管理</h1><p class="mt-1 text-sm text-text-secondary">配置私域策略、独立开关，处理待审内容、举报与处罚。</p></div>
 
     <section class="rounded-lg border border-border bg-white p-5 shadow-card">
-      <div class="flex items-center gap-2"><ShieldCheck :size="18" /><h2 class="font-semibold">部署预设</h2></div>
+      <div class="flex items-center gap-2"><UIcon name="i-lucide-shield-check" class="size-4.5" /><h2 class="font-semibold">部署预设</h2></div>
       <div class="mt-4 flex flex-wrap items-center gap-3">
         <select v-model="preset" class="rounded border border-border px-3 py-2" :disabled="applyingPreset">
           <option value="public">公开社区</option>
           <option value="private">私域社区</option>
           <option value="knowledge">只读知识库</option>
         </select>
-        <button class="btn-primary" :disabled="applyingPreset" @click="applyPreset"><Save :size="16" />{{ applyingPreset ? '应用中…' : '应用预设' }}</button>
+        <UButton color="primary" :disabled="applyingPreset" @click="applyPreset"><UIcon name="i-lucide-save" class="size-4" />{{ applyingPreset ? '应用中…' : '应用预设' }}</UButton>
       </div>
     </section>
 
     <section class="rounded-lg border border-border bg-white p-5 shadow-card">
-      <div class="flex items-center gap-2"><ShieldCheck :size="18" /><h2 class="font-semibold">独立开关</h2></div>
+      <div class="flex items-center gap-2"><UIcon name="i-lucide-shield-check" class="size-4.5" /><h2 class="font-semibold">独立开关</h2></div>
       <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div v-for="item in BOOLEAN_SETTINGS" :key="item.settingKey" class="flex items-center justify-between gap-3 rounded border border-border p-3">
           <div>
@@ -388,14 +387,14 @@ await load()
               :placeholder="String(configValue(item.configKey) ?? '')"
             >
             <span class="text-xs text-text-muted">{{ item.suffix }}</span>
-            <button class="btn-outline text-xs" :disabled="savingKey !== null || numberInputs[item.configKey] === undefined" @click="saveNumber(item.settingKey, item.configKey)">保存</button>
+            <UButton color="primary" variant="outline" class="text-xs" :disabled="savingKey !== null || numberInputs[item.configKey] === undefined" @click="saveNumber(item.settingKey, item.configKey)">保存</UButton>
           </div>
         </div>
       </div>
     </section>
 
     <section class="rounded-lg border border-border bg-white p-5 shadow-card">
-      <div class="flex items-center gap-2"><Flag :size="18" /><h2 class="font-semibold">待审内容</h2></div>
+      <div class="flex items-center gap-2"><UIcon name="i-lucide-flag" class="size-4.5" /><h2 class="font-semibold">待审内容</h2></div>
       <div v-if="loadingPending" class="py-6 text-sm text-text-secondary">加载中…</div>
       <div v-else-if="pendingPosts.length === 0" class="py-6 text-sm text-text-secondary">暂无待审内容。</div>
       <div v-else class="mt-4 space-y-3">
@@ -407,8 +406,8 @@ await load()
               <p class="mt-1 text-xs text-text-muted">{{ item.author.username }} · {{ item.post.type }}</p>
             </div>
             <div class="flex flex-shrink-0 gap-2">
-              <button class="btn-primary text-sm" :disabled="moderatingId !== null" @click="moderatePost(item.post.id, 'published')">{{ moderatingId === item.post.id ? '处理中…' : '批准' }}</button>
-              <button class="btn-outline text-sm" :disabled="moderatingId !== null" @click="moderatePost(item.post.id, 'hidden')">驳回</button>
+              <UButton color="primary" class="text-sm" :disabled="moderatingId !== null" @click="moderatePost(item.post.id, 'published')">{{ moderatingId === item.post.id ? '处理中…' : '批准' }}</UButton>
+              <UButton color="primary" variant="outline" class="text-sm" :disabled="moderatingId !== null" @click="moderatePost(item.post.id, 'hidden')">驳回</UButton>
             </div>
           </div>
         </article>
@@ -416,7 +415,7 @@ await load()
     </section>
 
     <section class="rounded-lg border border-border bg-white p-5 shadow-card">
-      <div class="flex items-center gap-2"><MessageSquare :size="18" /><h2 class="font-semibold">待审评论</h2></div>
+      <div class="flex items-center gap-2"><UIcon name="i-lucide-message-square" class="size-4.5" /><h2 class="font-semibold">待审评论</h2></div>
       <div v-if="loadingPendingComments" class="py-6 text-sm text-text-secondary">加载中…</div>
       <div v-else-if="pendingComments.length === 0" class="py-6 text-sm text-text-secondary">暂无待审评论。</div>
       <div v-else class="mt-4 space-y-3">
@@ -427,8 +426,8 @@ await load()
               <p class="mt-1 text-xs text-text-muted">{{ item.author.username }} 评论了「{{ item.post_title || '（无标题）' }}」</p>
             </div>
             <div class="flex flex-shrink-0 gap-2">
-              <button class="btn-primary text-sm" :disabled="moderatingCommentId !== null" @click="moderateComment(item.comment.id, 'published')">{{ moderatingCommentId === item.comment.id ? '处理中…' : '批准' }}</button>
-              <button class="btn-outline text-sm" :disabled="moderatingCommentId !== null" @click="moderateComment(item.comment.id, 'hidden')">驳回</button>
+              <UButton color="primary" class="text-sm" :disabled="moderatingCommentId !== null" @click="moderateComment(item.comment.id, 'published')">{{ moderatingCommentId === item.comment.id ? '处理中…' : '批准' }}</UButton>
+              <UButton color="primary" variant="outline" class="text-sm" :disabled="moderatingCommentId !== null" @click="moderateComment(item.comment.id, 'hidden')">驳回</UButton>
             </div>
           </div>
         </article>
@@ -436,28 +435,28 @@ await load()
     </section>
 
     <section class="rounded-lg border border-border bg-white p-5 shadow-card">
-      <div class="flex items-center gap-2"><Flag :size="18" /><h2 class="font-semibold">待处理举报</h2></div>
+      <div class="flex items-center gap-2"><UIcon name="i-lucide-flag" class="size-4.5" /><h2 class="font-semibold">待处理举报</h2></div>
       <div v-if="reports.length === 0" class="py-6 text-sm text-text-secondary">暂无待处理举报。</div>
       <div v-else class="mt-4 space-y-3">
         <article v-for="report in reports" :key="report.id" class="rounded border border-border p-3">
           <p class="text-sm font-medium">{{ report.reason }}</p>
           <p class="mt-1 line-clamp-2 text-sm text-text-secondary">{{ report.content_snapshot }}</p>
           <div class="mt-3 flex gap-2">
-            <button class="btn-primary text-sm" :disabled="resolvingReportId !== null" @click="resolveReport(report.id, 'resolved')">{{ resolvingReportId === report.id ? '处理中…' : '标记已处理' }}</button>
-            <button class="btn-outline text-sm" :disabled="resolvingReportId !== null" @click="resolveReport(report.id, 'dismissed')">驳回</button>
+            <UButton color="primary" class="text-sm" :disabled="resolvingReportId !== null" @click="resolveReport(report.id, 'resolved')">{{ resolvingReportId === report.id ? '处理中…' : '标记已处理' }}</UButton>
+            <UButton color="primary" variant="outline" class="text-sm" :disabled="resolvingReportId !== null" @click="resolveReport(report.id, 'dismissed')">驳回</UButton>
           </div>
         </article>
       </div>
     </section>
 
     <section class="rounded-lg border border-border bg-white p-5 shadow-card">
-      <div class="flex items-center gap-2"><ShieldCheck :size="18" /><h2 class="font-semibold">处罚管理（社区禁言）</h2></div>
+      <div class="flex items-center gap-2"><UIcon name="i-lucide-shield-check" class="size-4.5" /><h2 class="font-semibold">处罚管理（社区禁言）</h2></div>
       <div class="mt-4 grid gap-4 lg:grid-cols-2">
         <div>
           <p class="text-sm font-medium">选择用户</p>
           <div class="relative mt-2">
             <div class="relative">
-              <Search class="absolute left-2.5 top-2.5 text-text-secondary" :size="15" />
+              <UIcon name="i-lucide-search" class="absolute left-2.5 top-2.5 text-text-secondary size-3.5" />
               <input v-model="sanctionUserQuery" class="w-full rounded border border-border py-2 pl-8 pr-3 text-sm" placeholder="搜索用户名（至少 2 个字符）" @input="searchSanctionUser">
             </div>
             <ul v-if="sanctionUserResults.length > 0" class="absolute z-10 mt-1 max-h-40 w-full overflow-y-auto rounded border border-border bg-white shadow-modal">
@@ -469,7 +468,7 @@ await load()
           <div class="mt-3 space-y-2">
             <textarea v-model="sanctionReason" class="min-h-16 w-full rounded border border-border px-3 py-2 text-sm" placeholder="处罚原因" />
             <label class="block text-sm"><span class="mb-1 block text-xs text-text-secondary">截止时间（留空为永久）</span><input v-model="sanctionExpiresAt" type="datetime-local" class="w-full rounded border border-border px-3 py-2 text-sm"></label>
-            <button class="btn-primary" :disabled="creatingSanction || !selectedSanctionUser || !sanctionReason.trim()" @click="createSanction">{{ creatingSanction ? '创建中…' : '施加禁言' }}</button>
+            <UButton color="primary" :disabled="creatingSanction || !selectedSanctionUser || !sanctionReason.trim()" @click="createSanction">{{ creatingSanction ? '创建中…' : '施加禁言' }}</UButton>
           </div>
         </div>
         <div>
@@ -481,7 +480,7 @@ await load()
                 <p class="font-medium">{{ s.user_id }}</p>
                 <p class="text-xs text-text-secondary">{{ s.reason }} · {{ s.expires_at ? `截止 ${s.expires_at}` : '永久' }}</p>
               </div>
-              <button class="btn-outline text-xs text-red-600" :disabled="revokingId !== null" @click="revokeSanction(s.id)">{{ revokingId === s.id ? '处理中…' : '撤销' }}</button>
+              <UButton color="primary" variant="outline" class="text-xs text-red-600" :disabled="revokingId !== null" @click="revokeSanction(s.id)">{{ revokingId === s.id ? '处理中…' : '撤销' }}</UButton>
             </li>
           </ul>
           <p class="mt-4 text-sm font-medium">用户处罚历史</p>
@@ -499,7 +498,7 @@ await load()
     </section>
 
     <section class="rounded-lg border border-border bg-white p-5 shadow-card">
-      <div class="flex items-center gap-2"><LayoutList :size="18" /><h2 class="font-semibold">讨论板块</h2></div>
+      <div class="flex items-center gap-2"><UIcon name="i-lucide-layout-list" class="size-4.5" /><h2 class="font-semibold">讨论板块</h2></div>
       <div class="mt-4 grid gap-3 md:grid-cols-2">
         <article v-for="board in boards" :key="board.id" class="rounded border border-border p-3">
           <div class="flex items-center justify-between gap-2">
@@ -508,7 +507,7 @@ await load()
               <p class="mt-1 text-sm text-text-secondary">{{ board.description || '暂无描述' }}</p>
               <p class="mt-1 text-xs text-text-muted">{{ board.slug }}</p>
             </div>
-            <button class="btn-outline text-xs" @click="toggleArchive(board.id, board.is_archived)">{{ board.is_archived ? '恢复' : '归档' }}</button>
+            <UButton color="primary" variant="outline" class="text-xs" @click="toggleArchive(board.id, board.is_archived)">{{ board.is_archived ? '恢复' : '归档' }}</UButton>
           </div>
         </article>
       </div>
@@ -518,7 +517,7 @@ await load()
           <input v-model="newBoard.slug" class="w-32 rounded border border-border px-2 py-1 text-sm" placeholder="slug">
           <input v-model="newBoard.name" class="w-40 rounded border border-border px-2 py-1 text-sm" placeholder="名称">
           <input v-model="newBoard.description" class="w-52 flex-1 rounded border border-border px-2 py-1 text-sm" placeholder="描述（可选）">
-          <button class="btn-primary text-sm" :disabled="creatingBoard" @click="createBoard">{{ creatingBoard ? '创建中…' : '创建' }}</button>
+          <UButton color="primary" class="text-sm" :disabled="creatingBoard" @click="createBoard">{{ creatingBoard ? '创建中…' : '创建' }}</UButton>
         </div>
       </div>
     </section>

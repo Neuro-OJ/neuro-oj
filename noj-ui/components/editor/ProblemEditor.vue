@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ArrowLeft, Save, Eye, Edit3 } from "@lucide/vue"
 import SupportPackageUpload from "../admin/SupportPackageUpload.vue"
 
 interface RuntimeConfigPayload {
@@ -304,11 +303,11 @@ async function handleSubmit() {
     <section class="px-6 py-5 border-b border-border last:border-b-0">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-sm font-semibold text-text mb-0">题目描述 <span class="text-red-600">*</span></h2>
-        <button class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-text-secondary bg-transparent border border-border rounded-md cursor-pointer transition-colors hover:border-text-secondary hover:text-text" @click="previewMode = !previewMode">
-          <Eye v-if="!previewMode" :size="14" />
-          <Edit3 v-else :size="14" />
+        <UButton color="neutral" variant="outline" size="sm" class="py-1 text-text-secondary border-border hover:border-text-secondary hover:text-text" @click="previewMode = !previewMode">
+          <UIcon name="i-lucide-eye" class="size-3.5" v-if="!previewMode"/>
+          <UIcon name="i-lucide-edit-3" class="size-3.5" v-else/>
           {{ previewMode ? "编辑" : "预览" }}
-        </button>
+        </UButton>
       </div>
       <p v-if="fieldErrors.description" class="text-xs text-red-600 mb-2">{{ fieldErrors.description }}</p>
 
@@ -408,10 +407,10 @@ async function handleSubmit() {
 
     <!-- 提交按钮 -->
     <div class="flex gap-2.5 justify-end px-6 py-4">
-      <button class="btn btn-primary inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold rounded-lg border border-transparent bg-primary text-white cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary-dark hover:border-primary-dark" :disabled="saving" @click="handleSubmit">
-        <Save :size="16" />
+      <UButton color="primary" class="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold rounded-lg border border-transparent bg-primary text-white cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary-dark hover:border-primary-dark" :disabled="saving" @click="handleSubmit">
+        <UIcon name="i-lucide-save" class="size-4" />
         {{ saving ? (isEditMode ? "保存中..." : "创建中...") : (isEditMode ? "保存修改" : "创建题目") }}
-      </button>
+      </UButton>
     </div>
   </div>
 </template>

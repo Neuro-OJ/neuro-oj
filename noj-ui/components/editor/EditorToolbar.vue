@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ArrowLeft, Moon, Sun, Settings, Sidebar, Loader2, Send } from '@lucide/vue'
 import type { EditorTheme } from '~/composables/useEditorTheme'
 import type { DraftState } from '~/composables/useDraftStorage'
 
@@ -84,7 +83,7 @@ const draftDotClass = computed(() => {
       aria-label="返回题目详情"
       @click="emit('back')"
     >
-      <ArrowLeft :size="16" />
+      <UIcon name="i-lucide-arrow-left" class="size-4" />
     </button>
     <div class="flex items-center gap-2 min-w-0">
       <span
@@ -121,8 +120,8 @@ const draftDotClass = computed(() => {
         :title="themeMode === 'dark' ? '切换到亮色' : '切换到暗色'"
         @click="toggleTheme"
       >
-        <Moon v-if="themeMode === 'dark'" :size="16" />
-        <Sun v-else :size="16" />
+        <UIcon name="i-lucide-moon" class="size-4" v-if="themeMode === 'dark'"/>
+        <UIcon name="i-lucide-sun" class="size-4" v-else/>
       </button>
 
       <button
@@ -132,7 +131,7 @@ const draftDotClass = computed(() => {
         title="切换侧栏"
         @click="emit('toggle-sidebar')"
       >
-        <Sidebar :size="16" />
+        <UIcon name="i-lucide-sidebar" class="size-4" />
       </button>
 
       <button
@@ -141,18 +140,15 @@ const draftDotClass = computed(() => {
         title="设置"
         @click="emit('open-settings')"
       >
-        <Settings :size="16" />
+        <UIcon name="i-lucide-settings" class="size-4" />
       </button>
 
-      <button
-        class="ml-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-white hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        :disabled="!canSubmit || submitting"
-        @click="emit('submit')"
-      >
-        <Loader2 v-if="submitting" :size="14" class="animate-spin" />
-        <Send v-else :size="14" />
+      <UButton color="primary" size="md" class="ml-1 font-medium" :disabled="!canSubmit || submitting"
+        @click="emit('submit')">
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-3.5" v-if="submitting"/>
+        <UIcon name="i-lucide-send" class="size-3.5" v-else/>
         <span>{{ submitting ? '提交中...' : '提交评测' }}</span>
-      </button>
+      </UButton>
     </div>
   </div>
 </template>

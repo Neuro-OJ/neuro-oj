@@ -21,13 +21,13 @@
                 class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:bg-gray-100 rounded-md transition-colors"
                 @click="openSearch"
             >
-                <SearchIcon class="w-4 h-4" />
+                <UIcon name="i-lucide-search" class="w-4 h-4 size-4" />
                 <span>搜索</span>
                 <kbd class="hidden md:inline-block px-1.5 py-0.5 text-xs bg-gray-100 border border-border rounded">Ctrl K</kbd>
             </button>
             <div class="flex items-center gap-3 ml-auto">
                 <NuxtLink v-if="user && communityConfig?.enabled" to="/community/notifications" class="relative rounded-md p-2 text-text-secondary no-underline transition-colors hover:bg-gray-100 hover:text-text" aria-label="社区通知">
-                    <Bell :size="18" />
+                    <UIcon name="i-lucide-bell" class="size-4.5" />
                     <span v-if="unreadCount > 0" class="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">{{ unreadCount > 9 ? '9+' : unreadCount }}</span>
                 </NuxtLink>
                 <UserMenu />
@@ -37,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { Bell, Search as SearchIcon } from "@lucide/vue";
+
 const { user } = useAuth();
 const { open: openSearch } = useSearch();
 const { config: communityConfig, loadConfig } = useCommunity();

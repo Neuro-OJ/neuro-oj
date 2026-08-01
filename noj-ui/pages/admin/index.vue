@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { Users, BookOpen, Files, Activity, RefreshCw, Loader2, AlertCircle } from "@lucide/vue"
-
 definePageMeta({
   layout: "admin",
   middleware: "admin",
@@ -17,7 +15,7 @@ watch(loading, (val) => {
 interface StatsCard {
   label: string
   value: number | null
-  icon: Component
+  icon: string
   color: string
   error?: string
 }
@@ -32,7 +30,7 @@ let requestVersion = 0
 
 function statCard(
   label: string,
-  icon: Component,
+  icon: string,
   color: string,
   result: PromiseSettledResult<{ pagination?: { total: number }; total?: number }>,
 ): StatsCard {
@@ -61,9 +59,9 @@ async function loadStats() {
   if (currentRequest !== requestVersion) return
 
   stats.value = [
-    statCard("用户总数", Users, "#3b82f6", userRes),
-    statCard("题目总数", BookOpen, "#10b981", problemRes),
-    statCard("提交总数", Files, "#f59e0b", submissionRes),
+    statCard("用户总数", 'i-lucide-users', "#3b82f6", userRes),
+    statCard("题目总数", 'i-lucide-book-open', "#10b981", problemRes),
+    statCard("提交总数", 'i-lucide-files', "#f59e0b", submissionRes),
   ]
   queueStats.value = queueRes.status === "fulfilled" ? queueRes.value.stats : null
   queueError.value = queueRes.status === "rejected" ? "队列状态加载失败" : ""
@@ -90,24 +88,24 @@ async function handleRefresh() {
     <!-- 顶栏 -->
     <PageHeader title="仪表盘">
       <template #actions>
-        <button class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-text-secondary bg-white border border-border rounded-lg cursor-pointer transition-all hover:border-text-secondary disabled:opacity-50 disabled:cursor-not-allowed" :disabled="refreshing" @click="handleRefresh">
-          <RefreshCw :size="16" :class="{ 'animate-spin': refreshing }" />
+        <UButton color="neutral" variant="outline" size="sm" class="text-text-secondary bg-white border-border hover:border-text-secondary" :disabled="refreshing" @click="handleRefresh">
+          <UIcon name="i-lucide-refresh-cw" :class="{ 'animate-spin': refreshing }" class="size-4" />
           {{ refreshing ? "刷新中..." : "刷新" }}
-        </button>
+        </UButton>
       </template>
     </PageHeader>
 
     <!-- 加载态 -->
     <div v-if="statsLoading && stats.length === 0" class="flex flex-col items-center justify-center gap-2.5 px-6 py-12 text-text-secondary text-sm bg-white border border-border rounded-xl">
-      <Loader2 :size="24" class="animate-spin" />
+      <UIcon name="i-lucide-loader-2" class="animate-spin size-6" />
       <span>加载中...</span>
     </div>
 
     <!-- 错误态 -->
     <div v-else-if="statsError && stats.length === 0" class="flex flex-col items-center justify-center gap-2.5 px-6 py-12 text-red-600 text-sm bg-white border border-border rounded-xl">
-      <AlertCircle :size="20" />
+      <UIcon name="i-lucide-alert-circle" class="size-5" />
       <span>{{ statsError }}</span>
-      <button class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-text-secondary bg-white border border-border rounded-lg cursor-pointer transition-all hover:border-text-secondary mt-4" @click="loadStats">重试</button>
+      <UButton color="neutral" variant="outline" size="sm" class="text-text-secondary bg-white border-border hover:border-text-secondary mt-4" @click="loadStats">重试</UButton>
     </div>
 
     <!-- 统计卡片 -->
@@ -117,7 +115,7 @@ async function handleRefresh() {
         class="flex items-center gap-4 p-5 bg-white border border-border rounded-xl"
       >
         <div class="flex items-center justify-center size-12 rounded-xl shrink-0" :style="{ background: card.color + '15', color: card.color }">
-          <component :is="card.icon" :size="24" />
+          <UIcon :name="card.icon" class="size-6" />
         </div>
         <div class="flex flex-col gap-0.5">
           <span class="text-2xl font-bold text-text leading-tight">{{ card.value ?? "--" }}</span>
@@ -130,7 +128,7 @@ async function handleRefresh() {
     <!-- 队列状态 -->
     <div v-if="queueStats" class="bg-white border border-border rounded-xl p-5">
       <h2 class="flex items-center gap-2 text-base font-semibold text-text mb-4">
-        <Activity :size="18" />
+        <UIcon name="i-lucide-activity" class="size-4.5" />
         评测队列状态
       </h2>
       <div class="grid grid-cols-3 gap-4">
@@ -149,7 +147,7 @@ async function handleRefresh() {
       </div>
     </div>
     <div v-else-if="queueError" class="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-error-text">
-      <AlertCircle :size="18" />
+      <UIcon name="i-lucide-alert-circle" class="size-4.5" />
       <span>{{ queueError }}</span>
       <button class="underline" @click="loadStats">重试</button>
     </div>

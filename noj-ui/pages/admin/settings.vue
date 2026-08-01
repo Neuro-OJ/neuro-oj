@@ -1,15 +1,4 @@
 <script setup lang="ts">
-import { Switch } from "@headlessui/vue"
-import {
-  RotateCcw,
-  Save,
-  Info,
-  RefreshCw,
-  ChevronDown,
-  Database,
-  Lock,
-} from "@lucide/vue"
-
 definePageMeta({
   layout: "admin",
   middleware: "admin",
@@ -150,11 +139,11 @@ const envOnlyGrouped = computed(() => {
     .map((c) => ({ category: c, items: groups.get(c)! }))
 })
 
-/** AdminTable 列定义（env-only 只读面板） */
+/** UTable 列定义（env-only 只读面板） */
 const envOnlyColumns = [
-  { key: "key", label: "键名" },
-  { key: "effective_value", label: "当前值" },
-  { key: "description", label: "描述" },
+  { accessorKey: "key", header: "键名" },
+  { accessorKey: "effective_value", header: "当前值" },
+  { accessorKey: "description", header: "描述" },
 ]
 
 /** 获取敏感字段的脱敏方式说明（显示在 tooltip 中） */
@@ -267,7 +256,7 @@ async function confirmReset(s: SystemSetting) {
 
     <!-- 顶部提示横幅 -->
     <div class="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-[13px] text-info-text">
-      <Info :size="16" class="shrink-0 mt-0.5" />
+      <UIcon name="i-lucide-info" class="size-4 shrink-0 mt-0.5" />
       <div>
         <strong>运行时可改：</strong>第一组设置项写入数据库，下次请求立即生效，可随时重置。
         <strong>只读配置：</strong>第二组（折叠面板）展示当前
@@ -282,16 +271,14 @@ async function confirmReset(s: SystemSetting) {
       class="p-3 bg-red-50 border border-red-200 rounded-md text-[13px] text-error-text"
     >
       {{ tableError }}
-      <button class="ml-2 underline cursor-pointer" @click="loadSettings">
-        重试
-      </button>
+      <UButton size="xs" color="primary" variant="ghost" @click="loadSettings">重试</UButton>
     </div>
 
     <!-- ─── 第一组：DB-backed 可编辑设置 ─────────────── -->
     <section class="bg-white border border-border rounded-xl overflow-hidden">
       <div class="px-5 py-3 border-b border-border bg-gray-50">
         <div class="flex items-center gap-2">
-          <Database :size="16" class="text-primary" />
+          <UIcon name="i-lucide-database" class="size-4 text-primary" />
           <h2 class="text-base font-semibold text-text">
             运行时配置（可编辑）
             <span class="ml-1 text-sm font-normal text-text-secondary">{{ dbSettings.length }} 项</span>
@@ -302,7 +289,7 @@ async function confirmReset(s: SystemSetting) {
         </p>
         <p class="text-[11px] text-text-muted mt-0.5">
           读取优先级：<span class="font-semibold">DB 写入值</span> → env 值（.env） → 系统默认值。
-          带 <RefreshCw :size="12" class="inline -mt-0.5 text-warning-text" /> 标记的项保存后需要重启 noj-core 服务才能生效。
+          带 <UIcon name="i-lucide-refresh-cw" class="size-3 inline -mt-0.5 text-warning-text" /> 标记的项保存后需要重启 noj-core 服务才能生效。
         </p>
       </div>
 
@@ -342,17 +329,11 @@ async function confirmReset(s: SystemSetting) {
                 v-if="s.type === 'boolean'"
                 class="inline-flex items-center gap-2"
               >
-                <Switch
+                <USwitch
                   :model-value="!!drafts[s.key]"
                   @update:model-value="(v) => drafts[s.key] = v"
-                  :class="drafts[s.key] ? 'bg-primary' : 'bg-gray-300'"
-                  class="relative inline-flex h-5 w-10 shrink-0 items-center rounded-full transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-                >
-                  <span
-                    class="inline-block size-4 transform rounded-full bg-white shadow transition-transform duration-150"
-                    :class="drafts[s.key] ? 'translate-x-[22px]' : 'translate-x-[2px]'"
-                  />
-                </Switch>
+                  color="primary"
+                />
                 <span class="text-[13px] font-mono">{{ drafts[s.key] ? "true" : "false" }}</span>
               </div>
 
@@ -369,13 +350,7 @@ async function confirmReset(s: SystemSetting) {
                     :placeholder="drafts[s.key] === null ? '•••••••• 点击「编辑」以修改' : ''"
                     class="w-full px-2.5 py-1.5 text-[13px] font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] disabled:opacity-50 disabled:cursor-not-allowed"
                   />
-                  <button
-                    v-if="drafts[s.key] === null"
-                    class="shrink-0 px-2 py-1.5 text-[12px] font-semibold text-primary border border-primary rounded cursor-pointer hover:bg-primary-bg transition-colors"
-                    @click="drafts[s.key] = ''"
-                  >
-                    编辑
-                  </button>
+                  <UButton v-if="drafts[s.key] === null" size="xs" color="primary" variant="outline" @click="drafts[s.key] = ''">编辑</UButton>
                 </template>
                 <!-- 非敏感字段：正常可编辑 -->
                 <input
@@ -424,7 +399,7 @@ async function confirmReset(s: SystemSetting) {
               <div class="flex flex-col gap-1">
                 <span>{{ s.description }}</span>
                 <span v-if="s.needsRestart" class="inline-flex items-center gap-0.5 text-[11px] font-semibold text-warning-text">
-                  <RefreshCw :size="12" /> 需重启生效
+                  <UIcon name="i-lucide-refresh-cw" class="size-3" /> 需重启生效
                 </span>
               </div>
             </td>
@@ -432,23 +407,27 @@ async function confirmReset(s: SystemSetting) {
             <!-- 操作按钮 -->
             <td class="px-3 py-3 align-top">
               <div class="flex items-center justify-end gap-1.5">
-                <button
-                  class="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-semibold text-white bg-primary border-[1.5px] border-primary rounded cursor-pointer transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
-                  :disabled="!isDirty(s.key) || savingKeys.has(s.key)"
+                <UButton
+                  size="xs"
+                  color="primary"
+                  :loading="savingKeys.has(s.key)"
+                  :disabled="!isDirty(s.key)"
+                  icon="i-lucide-save"
                   @click="saveSetting(s.key)"
                 >
-                  <Save :size="13" />
                   {{ savingKeys.has(s.key) ? "保存中..." : "保存" }}
-                </button>
-                <button
-                  class="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-semibold text-text-secondary bg-white border-[1.5px] border-border rounded cursor-pointer transition-all duration-150 hover:border-warning-text hover:text-warning-text disabled:opacity-50 disabled:cursor-not-allowed"
+                </UButton>
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="outline"
                   :disabled="resettingKeys.has(s.key)"
                   title="重置为默认值"
+                  icon="i-lucide-rotate-ccw"
                   @click="confirmReset(s)"
                 >
-                  <RotateCcw :size="13" />
                   重置
-                </button>
+                </UButton>
               </div>
             </td>
           </tr>
@@ -462,10 +441,7 @@ async function confirmReset(s: SystemSetting) {
       <details class="group">
         <summary class="flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-border cursor-pointer select-none hover:bg-gray-100 transition-colors">
           <div class="flex items-center gap-2">
-            <ChevronDown
-              :size="16"
-              class="text-text-secondary transition-transform group-open:rotate-180"
-            />
+            <UIcon name="i-lucide-chevron-down" class="size-4 text-text-secondary transition-transform group-open:rotate-180" />
             <h2 class="text-base font-semibold text-text">
               环境变量（只读，需重启生效）
             </h2>
@@ -477,7 +453,7 @@ async function confirmReset(s: SystemSetting) {
 
         <!-- 顶部提示文字（spec 要求） -->
         <div class="flex items-start gap-2 px-5 py-3 bg-blue-50 border-b border-blue-100 text-[13px] text-info-text">
-          <Info :size="15" class="shrink-0 mt-0.5" />
+          <UIcon name="i-lucide-info" class="size-3.5 shrink-0 mt-0.5" />
           <div>
             修改这些项需要更新 .env 并重启 noj-core 服务。当前展示的是已
             <code class="px-1 py-0.5 bg-blue-100 rounded font-mono text-[12px]">snapshotEnv()</code>
@@ -488,26 +464,26 @@ async function confirmReset(s: SystemSetting) {
         <div v-if="envOnlySettings.length === 0" class="p-6 text-center text-sm text-text-secondary">
           当前 .env 中没有白名单内的环境变量
         </div>
-        <AdminTable
+        <UTable
           v-else
           :columns="envOnlyColumns"
           :data="envOnlySettings"
           :loading="false"
         >
-          <template #cell-key="{ row }">
+          <template #key-cell="{ row }">
             <code class="font-mono text-[13px] text-text">{{ row.key }}</code>
           </template>
-          <template #cell-effective_value="{ row }">
-            <Tooltip v-if="row.is_secret" :content="getSecretTooltip(row.key)" class="cursor-help">
+          <template #effective_value-cell="{ row }">
+            <UTooltip v-if="row.is_secret" :text="getSecretTooltip(row.key)" class="cursor-help">
               <span class="inline-flex items-center gap-1">
-                <Lock :size="12" class="shrink-0 text-amber-700" />
+                <UIcon name="i-lucide-lock" class="size-3 shrink-0 text-amber-700" />
                 <code
                   class="font-mono text-[13px] px-2 py-0.5 rounded underline decoration-dotted underline-offset-2 bg-amber-50 text-amber-800"
                 >
                   {{ String(row.effective_value) }}
                 </code>
               </span>
-            </Tooltip>
+            </UTooltip>
             <code
               v-else
               class="font-mono text-[13px] px-2 py-0.5 rounded bg-gray-50 text-text"
@@ -515,10 +491,10 @@ async function confirmReset(s: SystemSetting) {
               {{ String(row.effective_value) }}
             </code>
           </template>
-          <template #cell-description="{ row }">
+          <template #description-cell="{ row }">
             <span class="text-[13px] text-text-secondary">{{ row.description }}</span>
           </template>
-        </AdminTable>
+        </UTable>
       </details>
     </section>
   </div>

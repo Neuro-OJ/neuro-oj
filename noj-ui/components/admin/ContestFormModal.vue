@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Plus, Search, Trash2, X } from '@lucide/vue'
 import type {
   AdminContestDetail,
   AdminProblemOption,
@@ -168,7 +167,7 @@ function submit() {
     <div class="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-modal">
       <header class="flex items-center justify-between border-b border-border px-6 py-4">
         <div><h2 class="text-lg font-bold text-text">{{ contest ? '编辑竞赛' : '创建竞赛' }}</h2><p class="mt-1 text-xs text-text-muted">配置赛制、时间与竞赛题目</p></div>
-        <button class="rounded-lg p-2 text-text-secondary hover:bg-gray-100" @click="emit('cancel')"><X :size="18" /></button>
+        <button class="rounded-lg p-2 text-text-secondary hover:bg-gray-100" @click="emit('cancel')"><UIcon name="i-lucide-x" class="size-4.5" /></button>
       </header>
 
       <div class="grid flex-1 gap-6 overflow-y-auto p-6 lg:grid-cols-[1fr_1fr]">
@@ -185,9 +184,9 @@ function submit() {
 
         <section class="flex min-h-[520px] flex-col rounded-xl border border-border bg-bg-page p-4">
           <div class="mb-3 flex items-center justify-between"><div><h3 class="text-sm font-bold text-text">竞赛题目</h3><p class="text-xs text-text-muted">已选 {{ selectedProblems.length }} 题</p></div></div>
-          <div class="relative mb-3"><Search :size="15" class="absolute left-3 top-2.5 text-text-muted" /><input v-model="problemQuery" class="w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-primary" placeholder="搜索题号或标题" @input="searchProblems"></div>
+          <div class="relative mb-3"><UIcon name="i-lucide-search" class="absolute left-3 top-2.5 text-text-muted size-3.5" /><input v-model="problemQuery" class="w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-primary" placeholder="搜索题号或标题" @input="searchProblems"></div>
           <div class="mb-4 max-h-48 overflow-y-auto rounded-lg border border-border bg-white">
-            <button v-for="problem in filteredProblems" :key="problem.id" class="flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left text-xs last:border-0 hover:bg-primary-bg" @click="addProblem(problem)"><Plus :size="14" class="text-primary" /><span class="font-mono text-primary">{{ problem.display_id }}</span><span class="truncate text-text">{{ problem.title }}</span></button>
+            <button v-for="problem in filteredProblems" :key="problem.id" class="flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left text-xs last:border-0 hover:bg-primary-bg" @click="addProblem(problem)"><UIcon name="i-lucide-plus" class="text-primary size-3.5" /><span class="font-mono text-primary">{{ problem.display_id }}</span><span class="truncate text-text">{{ problem.title }}</span></button>
             <p v-if="filteredProblems.length === 0" class="p-4 text-center text-xs text-text-muted">没有可添加的题目</p>
           </div>
           <div class="flex-1 space-y-2 overflow-y-auto">
@@ -195,7 +194,7 @@ function submit() {
               <span class="flex size-8 shrink-0 items-center justify-center rounded-md bg-bg-dark font-mono text-xs font-bold text-white">{{ problem.label }}</span>
               <span class="min-w-0 flex-1 truncate text-xs font-medium text-text">{{ problemName(problem.problem_id) }}</span>
               <input v-if="type !== 'icpc'" :value="(problem.score ?? 10000) / 100" type="number" min="0" class="w-20 rounded border border-border px-2 py-1 text-xs" title="满分" @input="problem.score = Number(($event.target as HTMLInputElement).value) * 100">
-              <button class="rounded p-1.5 text-text-muted hover:bg-red-50 hover:text-error-text" @click="removeProblem(problem.problem_id)"><Trash2 :size="14" /></button>
+              <button class="rounded p-1.5 text-text-muted hover:bg-red-50 hover:text-error-text" @click="removeProblem(problem.problem_id)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></button>
               <span class="hidden">{{ index }}</span>
             </div>
           </div>
@@ -204,7 +203,7 @@ function submit() {
 
       <footer class="flex items-center justify-between border-t border-border px-6 py-4">
         <p class="text-xs text-error-text">{{ localError || error }}</p>
-        <div class="ml-auto flex gap-2"><button class="rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-gray-50" :disabled="saving" @click="emit('cancel')">取消</button><button class="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-50" :disabled="saving" @click="submit">{{ saving ? '保存中...' : '保存竞赛' }}</button></div>
+        <div class="ml-auto flex gap-2"><UButton color="neutral" variant="outline" size="md" class="border-border text-text-secondary hover:bg-gray-50" :disabled="saving" @click="emit('cancel')">取消</UButton><UButton color="primary" size="md" :disabled="saving" @click="submit">{{ saving ? '保存中...' : '保存竞赛' }}</UButton></div>
       </footer>
     </div>
   </div>

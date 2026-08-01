@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Send, User, MessageSquare } from "@lucide/vue"
 import { useMessages, type ConversationMessage } from "~/composables/useMessages"
 import { useAuth } from "~/composables/useAuth"
 import { useToast } from "~/composables/useToast"
@@ -170,7 +169,7 @@ function isSameDay(iso1: string, iso2: string): boolean {
       <!-- 未选中会话 → 占位 -->
       <div v-if="!selectedConversationId" class="flex-1 flex items-center justify-center bg-page">
         <div class="flex flex-col items-center text-text-secondary">
-          <MessageSquare :size="48" class="mb-4 opacity-30" />
+          <UIcon name="i-lucide-message-square" class="mb-4 opacity-30 size-[48px]" />
           <p class="text-lg">选择一个会话</p>
           <p class="text-sm mt-1">从左侧列表选择或搜索用户开始私信</p>
         </div>
@@ -206,7 +205,7 @@ function isSameDay(iso1: string, iso2: string): boolean {
 
           <!-- 空状态（无数据） -->
           <div v-if="messages.length === 0" class="flex flex-col items-center justify-center py-10 text-text-secondary">
-            <User :size="36" class="opacity-40 mb-2" />
+            <UIcon name="i-lucide-user" class="opacity-40 mb-2 size-[36px]" />
             <p class="text-sm">{{ loading ? "加载中..." : "暂无消息，发送第一条消息吧" }}</p>
           </div>
 
@@ -256,13 +255,10 @@ function isSameDay(iso1: string, iso2: string): boolean {
               class="flex-1 px-4 py-2 rounded-lg border border-border bg-page text-text text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
               @keydown.enter="send"
             />
-            <button
-              class="flex items-center justify-center w-9 h-9 rounded-full bg-primary text-white transition-opacity disabled:opacity-40"
-              :disabled="!newMessage.trim() || sending"
-              @click="send"
-            >
-              <Send :size="16" />
-            </button>
+            <UButton color="primary" class="flex w-9 h-9 rounded-full transition-opacity disabled:opacity-40" :disabled="!newMessage.trim() || sending"
+              @click="send">
+              <UIcon name="i-lucide-send" class="size-4" />
+            </UButton>
           </div>
         </div>
       </template>

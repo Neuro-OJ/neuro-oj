@@ -37,7 +37,7 @@
       @focus="fieldErrors.login = ''"
     >
       <template #icon>
-        <User :size="18" />
+        <UIcon name="i-lucide-user" class="size-4.5" />
       </template>
     </TextInput>
 
@@ -64,8 +64,6 @@
 </template>
 
 <script setup lang="ts">
-import { User } from "@lucide/vue"
-
 definePageMeta({ layout: "auth" })
 
 const router = useRouter()

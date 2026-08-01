@@ -14,7 +14,7 @@
                 <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.05s_both]">
                     <label for="password" class="block text-sm font-semibold text-text mb-1">新密码 <span class="text-red-600">*</span></label>
                     <div class="relative flex items-center">
-                        <Lock class="absolute left-[10px] text-text-muted pointer-events-none" :size="18" />
+                        <UIcon name="i-lucide-lock" class="absolute left-[10px] text-text-muted pointer-events-none size-4.5" />
                         <input
                             id="password"
                             v-model="form.password"
@@ -28,21 +28,21 @@
                         <button type="button" class="absolute right-3 bg-transparent border-0 text-text-muted cursor-pointer p-0 flex items-center hover:text-text-secondary" @click="showPassword = !showPassword" tabindex="-1">
                             <span class="flex items-center justify-center w-[18px] h-[18px]">
                                 <Transition name="icon" mode="out-in">
-                                    <EyeOff v-if="!showPassword" :size="18" key="off" />
-                                    <Eye v-else :size="18" key="on" />
+                                    <UIcon name="i-lucide-eye-off" class="size-4.5" v-if="!showPassword"  key="off"/>
+                                    <UIcon name="i-lucide-eye" class="size-4.5" v-else  key="on"/>
                                 </Transition>
                             </span>
                         </button>
                     </div>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.password" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-[13px] text-red-700"><span>{{ fieldErrors.password }}</span><X :size="14" /></div>
+                        <div v-if="fieldErrors.password" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-[13px] text-red-700"><span>{{ fieldErrors.password }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
                     </Transition>
                 </div>
 
                 <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.1s_both]">
                     <label for="confirmPassword" class="block text-sm font-semibold text-text mb-1">确认密码 <span class="text-red-600">*</span></label>
                     <div class="relative flex items-center">
-                        <Lock class="absolute left-[10px] text-text-muted pointer-events-none" :size="18" />
+                        <UIcon name="i-lucide-lock" class="absolute left-[10px] text-text-muted pointer-events-none size-4.5" />
                         <input
                             id="confirmPassword"
                             v-model="form.confirmPassword"
@@ -56,21 +56,21 @@
                         <button type="button" class="absolute right-3 bg-transparent border-0 text-text-muted cursor-pointer p-0 flex items-center hover:text-text-secondary" @click="showConfirmPassword = !showConfirmPassword" tabindex="-1">
                             <span class="flex items-center justify-center w-[18px] h-[18px]">
                                 <Transition name="icon" mode="out-in">
-                                    <EyeOff v-if="!showConfirmPassword" :size="18" key="off" />
-                                    <Eye v-else :size="18" key="on" />
+                                    <UIcon name="i-lucide-eye-off" class="size-4.5" v-if="!showConfirmPassword"  key="off"/>
+                                    <UIcon name="i-lucide-eye" class="size-4.5" v-else  key="on"/>
                                 </Transition>
                             </span>
                         </button>
                     </div>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.confirmPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-[13px] text-red-700"><span>{{ fieldErrors.confirmPassword }}</span><X :size="14" /></div>
+                        <div v-if="fieldErrors.confirmPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-[13px] text-red-700"><span>{{ fieldErrors.confirmPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
                     </Transition>
                 </div>
 
-                <button type="submit" class="inline-flex items-center justify-center font-semibold no-underline cursor-pointer rounded-lg transition-all duration-200 bg-primary text-white border border-primary hover:bg-primary-dark hover:border-primary-dark w-full py-2.5 text-sm mt-1 animate-[fadeInUp_0.5s_ease_0.15s_both] disabled:opacity-60 disabled:cursor-not-allowed" :disabled="loading">
-                    <Loader2 v-if="loading" class="animate-spin-slow mr-1.5" :size="18" />
+                <UButton color="primary" size="md" block class="animate-[fadeInUp_0.5s_ease_0.15s_both]" type="submit"  :disabled="loading">
+                    <UIcon name="i-lucide-loader-2" class="animate-spin-slow mr-1.5 size-4.5" v-if="loading"/>
                     {{ loading ? '重置中...' : '重置密码' }}
-                </button>
+                </UButton>
             </form>
 
             <p class="text-center mt-5 text-sm text-text-secondary animate-[fadeInUp_0.5s_ease_0.2s_both]">
@@ -81,7 +81,6 @@
 </template>
 
 <script setup lang="ts">
-import { Lock, Eye, EyeOff, Loader2, X } from "@lucide/vue"
 import { validatePassword, validatePasswordMatch } from "~/utils/validatePassword"
 
 definePageMeta({ layout: "auth" })

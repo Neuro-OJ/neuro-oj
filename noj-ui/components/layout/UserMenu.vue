@@ -1,21 +1,21 @@
 <template>
     <template v-if="!isLoggedIn">
-        <NuxtLink to="/login" class="btn-outline px-3.5 py-1.5 text-sm !rounded-full">登录</NuxtLink>
-        <NuxtLink to="/register" class="btn-primary px-3.5 py-1.5 text-sm !rounded-full">注册</NuxtLink>
+        <UButton color="primary" variant="outline" class="px-3.5 py-1.5 text-sm !rounded-full" to="/login">登录</UButton>
+        <UButton color="primary" class="px-3.5 py-1.5 text-sm !rounded-full" to="/register">注册</UButton>
     </template>
     <div v-else class="relative flex items-center gap-3" @mouseenter="onMenuEnter" @mouseleave="onMenuLeave">
         <NuxtLink :to="`/users/${user?.id}`" class="text-base text-text-secondary font-medium no-underline transition-colors hover:text-primary">{{ user?.username }}</NuxtLink>
         <button class="flex items-center justify-center size-9 rounded-full text-text-secondary bg-none border-none cursor-pointer transition-colors hover:bg-primary-hover-bg hover:text-primary">
-            <User :size="22" />
+            <UIcon name="i-lucide-user" class="size-[22px]" />
         </button>
         <div v-show="showDropdown" class="absolute right-0 top-[calc(100%+8px)] bg-white border border-border rounded-lg min-w-[210px] p-1 shadow-dropdown z-[200]">
-            <NuxtLink to="/my/problems" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100"><BookOpen :size="16" />我的题目</NuxtLink>
-            <NuxtLink to="/messages" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100 relative"><Mail :size="16" />消息<span v-if="unreadCount > 0" class="ml-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{{ unreadCount > 99 ? "99+" : unreadCount }}</span></NuxtLink>
-            <NuxtLink :to="`/users/${user?.id}`" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100"><Database :size="16" />数据</NuxtLink>
-            <NuxtLink to="/settings" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100"><Settings :size="16" />设置</NuxtLink>
-            <NuxtLink v-if="user?.role === 'admin'" to="/admin" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100"><ShieldCheck :size="16" />管理后台</NuxtLink>
+            <NuxtLink to="/my/problems" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100"><UIcon name="i-lucide-book-open" class="size-4" />我的题目</NuxtLink>
+            <NuxtLink to="/messages" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100 relative"><UIcon name="i-lucide-mail" class="size-4" />消息<span v-if="unreadCount > 0" class="ml-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{{ unreadCount > 99 ? "99+" : unreadCount }}</span></NuxtLink>
+            <NuxtLink :to="`/users/${user?.id}`" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100"><UIcon name="i-lucide-database" class="size-4" />数据</NuxtLink>
+            <NuxtLink to="/settings" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100"><UIcon name="i-lucide-settings" class="size-4" />设置</NuxtLink>
+            <NuxtLink v-if="user?.role === 'admin'" to="/admin" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100"><UIcon name="i-lucide-shield-check" class="size-4" />管理后台</NuxtLink>
             <div class="h-px bg-border my-1"></div>
-            <button class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-red-600 bg-none border-none rounded cursor-pointer text-left transition-colors hover:bg-red-50" @click="showLogoutConfirm = true"><LogOut :size="16" />登出</button>
+            <button class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-red-600 bg-none border-none rounded cursor-pointer text-left transition-colors hover:bg-red-50" @click="showLogoutConfirm = true"><UIcon name="i-lucide-log-out" class="size-4" />登出</button>
         </div>
 
         <Transition name="fade">
@@ -24,8 +24,8 @@
                     <h2 class="text-2xl font-bold mb-3">确认登出</h2>
                     <p class="text-[17px] text-text-secondary mb-6">确定要登出当前账号吗？</p>
                     <div class="flex gap-2.5 justify-center">
-                        <button ref="cancelBtnRef" class="px-7 py-3 text-base rounded-lg text-text-secondary border border-border bg-transparent cursor-pointer transition-colors hover:border-text-secondary" @click="showLogoutConfirm = false">取消</button>
-                        <button class="px-7 py-3 text-base rounded-lg text-white bg-red-600 border border-red-600 cursor-pointer transition-colors hover:bg-red-700" @click="handleLogout">确认登出</button>
+                        <UButton color="neutral" variant="outline" size="md" class="px-7 py-3 text-base text-text-secondary border-border hover:border-text-secondary" ref="cancelBtnRef"  @click="showLogoutConfirm = false">取消</UButton>
+                        <UButton color="error" size="md" class="px-7 py-3 text-base bg-red-600 border-red-600 hover:bg-red-700" @click="handleLogout">确认登出</UButton>
                     </div>
                 </div>
             </div>
@@ -34,8 +34,6 @@
 </template>
 
 <script setup lang="ts">
-import { User, Database, Settings, LogOut, ShieldCheck, BookOpen, Mail } from "@lucide/vue"
-
 const route = useRoute()
 const router = useRouter()
 const { user, isLoggedIn, logout } = useAuth()

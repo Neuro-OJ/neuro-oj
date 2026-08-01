@@ -30,7 +30,7 @@
       @focus="fieldErrors.email = ''"
     >
       <template #icon>
-        <Mail :size="18" />
+        <UIcon name="i-lucide-mail" class="size-4.5" />
       </template>
     </TextInput>
 
@@ -41,8 +41,6 @@
 </template>
 
 <script setup lang="ts">
-import { Mail } from "@lucide/vue"
-
 definePageMeta({ layout: "auth" })
 
 const auth = useAuth()

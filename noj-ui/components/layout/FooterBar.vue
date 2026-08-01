@@ -4,7 +4,7 @@
             <div class="flex justify-between gap-12 flex-wrap">
                 <div class="max-w-[280px]">
                     <div class="flex items-center gap-2 text-xl font-bold text-white">
-                        <Brain class="size-[22px]" />
+                        <UIcon name="i-lucide-brain" class="size-[22px] size-4" />
                         <span>Neuro OJ</span>
                     </div>
                     <p class="mt-2 text-sm leading-relaxed">面向 LMCC 的在线评测系统</p>
@@ -25,7 +25,5 @@
 </template>
 
 <script setup lang="ts">
-import { Brain } from "@lucide/vue"
-
 const year = new Date().getFullYear()
 </script>

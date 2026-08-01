@@ -83,7 +83,7 @@ function onPageChange(page: number) {
       <template #error>
         <span class="flex items-center justify-center size-11 rounded-full bg-red-100 text-red-800 text-xl font-bold">!</span>
         <p>{{ loadError }}</p>
-        <button class="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-md border border-primary text-primary bg-transparent hover:bg-primary hover:text-white transition-colors cursor-pointer" @click="loadProblems(currentPage)">重试</button>
+        <UButton color="primary" variant="outline" size="sm" @click="loadProblems(currentPage)">重试</UButton>
       </template>
 
       <template #empty>

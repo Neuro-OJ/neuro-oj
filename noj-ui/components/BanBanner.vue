@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { LogOut } from "@lucide/vue"
 import type { IpBanInfo, UserBanInfo } from "../composables/useBanStatus"
 
 definePageMeta({
@@ -71,7 +70,7 @@ function handleLogout() {
         class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-700 bg-red-100 border border-red-200 rounded-md hover:bg-red-200 transition-colors shrink-0"
         @click="handleLogout"
       >
-        <LogOut :size="14" />
+        <UIcon name="i-lucide-log-out" class="size-3.5" />
         登出
       </button>
     </div>

@@ -1,17 +1,5 @@
 <script setup lang="ts">
 import {
-  MessageSquare,
-  PenLine,
-  Lightbulb,
-  Heart,
-  Bookmark,
-  Plus,
-  Search,
-  Eye,
-  Edit3,
-  Lock,
-} from "@lucide/vue"
-import {
   type CommunityCounts,
   type CommunityConfig,
   type PostRow,
@@ -298,8 +286,8 @@ await init()
         <p class="mt-2 text-text-secondary">在题解、讨论和动态中一起成长。</p>
       </div>
       <div class="flex items-center gap-2">
-        <NuxtLink v-if="config?.enabled && isLoggedIn && config.bookmarks_enabled" to="/community/bookmarks" class="btn-outline"><Bookmark :size="16" />我的收藏</NuxtLink>
-        <button v-if="config?.enabled && isLoggedIn && !config.read_only" class="btn-primary" :disabled="!canCreateCurrentType" :title="canCreateCurrentType ? '发布内容' : '当前账号没有发布此类内容的权限'" @click="prepareEditor"><Plus :size="17" />发布内容</button>
+        <UButton color="primary" variant="outline" v-if="config?.enabled && isLoggedIn && config.bookmarks_enabled" to="/community/bookmarks"><UIcon name="i-lucide-bookmark" class="size-4" />我的收藏</UButton>
+        <UButton color="primary" v-if="config?.enabled && isLoggedIn && !config.read_only"  :disabled="!canCreateCurrentType" :title="canCreateCurrentType ? '发布内容' : '当前账号没有发布此类内容的权限'" @click="prepareEditor"><UIcon name="i-lucide-plus" class="size-4" />发布内容</UButton>
       </div>
     </div>
 
@@ -317,26 +305,26 @@ await init()
           :class="activeType === t ? 'border-b-2 border-primary font-semibold text-primary' : 'text-text-secondary'"
           @click="changeType(t)"
         >
-          <component :is="t === 'discussion' ? MessageSquare : t === 'solution' ? Lightbulb : PenLine" class="mr-1 inline" :size="16" />
+          <UIcon :name="t === 'discussion' ? 'i-lucide-message-square' : t === 'solution' ? 'i-lucide-lightbulb' : 'i-lucide-pen-line'" class="mr-1 inline size-4" />
           {{ typeLabel[t] }}
           <span v-if="counts && counts[t] > 0" class="ml-1 rounded-full bg-primary-bg px-1.5 py-0.5 text-xs text-primary">{{ counts[t] }}</span>
         </button>
       </div>
 
       <form class="mb-6 flex flex-wrap gap-3 rounded-lg border border-border bg-white p-4 shadow-card" @submit.prevent="applySearch">
-        <label class="min-w-52 flex-1"><span class="mb-1 block text-xs text-text-secondary">标题或正文</span><div class="relative"><Search class="absolute left-3 top-2.5 text-text-secondary" :size="16" /><input v-model="searchKeyword" class="w-full rounded border border-border py-2 pl-9 pr-3 text-sm" placeholder="搜索帖子标题或正文"></div></label>
+        <label class="min-w-52 flex-1"><span class="mb-1 block text-xs text-text-secondary">标题或正文</span><div class="relative"><UIcon name="i-lucide-search" class="absolute left-3 top-2.5 text-text-secondary size-4" /><input v-model="searchKeyword" class="w-full rounded border border-border py-2 pl-9 pr-3 text-sm" placeholder="搜索帖子标题或正文"></div></label>
         <label class="min-w-44 flex-1"><span class="mb-1 block text-xs text-text-secondary">关联题目 ID</span><input v-model="searchProblemId" class="w-full rounded border border-border px-3 py-2 text-sm" placeholder="例如 1001"></label>
-        <div class="flex items-end gap-2"><button class="btn-primary" type="submit"><Search :size="16" />搜索</button><button v-if="isFiltering" class="btn-outline" type="button" @click="clearSearch">清除</button></div>
+        <div class="flex items-end gap-2"><UButton color="primary" type="submit"><UIcon name="i-lucide-search" class="size-4" />搜索</UButton><UButton color="primary" variant="outline" v-if="isFiltering"  type="button" @click="clearSearch">清除</UButton></div>
       </form>
 
       <form v-if="showEditor" class="mb-6 rounded-lg border border-border bg-white p-5 shadow-card" @submit.prevent="publish">
         <div class="mb-3 flex items-center justify-between gap-2">
           <h2 class="font-semibold">发布{{ typeLabel[activeType] }}</h2>
-          <button type="button" class="inline-flex items-center gap-1 rounded border border-border px-2.5 py-1 text-xs text-text-secondary hover:bg-primary-bg" @click="previewMode = !previewMode">
-            <Eye v-if="!previewMode" :size="14" />
-            <Edit3 v-else :size="14" />
+          <UButton color="neutral" variant="outline" size="sm" class="border-border py-1 text-text-secondary hover:bg-primary-bg" type="button"  @click="previewMode = !previewMode">
+            <UIcon name="i-lucide-eye" class="size-3.5" v-if="!previewMode"/>
+            <UIcon name="i-lucide-edit-3" class="size-3.5" v-else/>
             {{ previewMode ? "编辑" : "预览" }}
-          </button>
+          </UButton>
         </div>
         <input v-if="activeType !== 'moment'" v-model="title" class="mb-3 w-full rounded border border-border px-3 py-2" :placeholder="activeType === 'solution' ? '题解标题' : '讨论标题'" required>
         <div v-if="activeType === 'solution'" class="relative mb-3">
@@ -361,7 +349,7 @@ await init()
         </template>
         <div class="mt-3 flex items-center justify-between gap-2">
           <p class="text-xs text-text-muted">{{ content.length }} / {{ postMaxLength }}</p>
-          <div class="flex gap-2"><button type="button" class="btn-outline" :disabled="publishing" @click="showEditor = false">取消</button><button class="btn-primary" :disabled="publishing || !content.trim() || content.length > postMaxLength">{{ publishing ? '发布中…' : '发布' }}</button></div>
+          <div class="flex gap-2"><UButton color="primary" variant="outline" type="button"  :disabled="publishing" @click="showEditor = false">取消</UButton><UButton color="primary" :disabled="publishing || !content.trim() || content.length > postMaxLength">{{ publishing ? '发布中…' : '发布' }}</UButton></div>
         </div>
       </form>
 
@@ -369,7 +357,7 @@ await init()
       <div v-else-if="loading" class="py-12 text-center text-text-secondary">加载中…</div>
       <div v-else-if="posts.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center text-text-secondary">
         <p>{{ isFiltering ? '没有匹配的帖子。' : '还没有内容，来发布第一篇吧。' }}</p>
-        <button v-if="isFiltering" class="btn-outline mt-4" type="button" @click="clearSearch">清除筛选</button>
+        <UButton color="primary" variant="outline" class="mt-4" v-if="isFiltering"  type="button" @click="clearSearch">清除筛选</UButton>
       </div>
       <div v-else class="space-y-4">
         <article v-for="item in posts" :key="item.post.id" class="rounded-lg border border-border bg-white p-5 shadow-card">
@@ -377,7 +365,7 @@ await init()
             <span class="rounded bg-primary-bg px-2 py-0.5 text-xs text-primary">{{ typeLabel[item.post.type] }}</span>
             <span v-if="item.post.status === 'pending'" class="rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">审核中</span>
             <span v-if="item.post.status === 'hidden'" class="rounded bg-red-50 px-2 py-0.5 text-xs text-red-700">已隐藏</span>
-            <span v-if="item.post.is_locked" class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-text-secondary"><Lock :size="10" />已锁定</span>
+            <span v-if="item.post.is_locked" class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-lock" class="size-[10px]" />已锁定</span>
           </div>
           <NuxtLink :to="`/community/posts/${item.post.id}`" class="block no-underline">
             <h2 v-if="item.post.title" class="text-lg font-semibold text-text hover:text-primary">{{ item.post.title }}</h2>
@@ -386,12 +374,12 @@ await init()
           <div class="mt-4 flex items-center gap-4 text-xs text-text-secondary">
             <NuxtLink :to="`/users/${item.author.id}`" class="text-text-secondary hover:text-primary">{{ item.author.username }}</NuxtLink>
             <NuxtTime :datetime="item.post.created_at" relative locale="zh-CN" />
-            <span aria-label="点赞数"><Heart class="mr-1 inline" :size="14" />{{ item.likes }}</span>
-            <span aria-label="评论数"><MessageSquare class="mr-1 inline" :size="14" />{{ item.comments }}</span>
+            <span aria-label="点赞数"><UIcon name="i-lucide-heart" class="mr-1 inline size-3.5" />{{ item.likes }}</span>
+            <span aria-label="评论数"><UIcon name="i-lucide-message-square" class="mr-1 inline size-3.5" />{{ item.comments }}</span>
           </div>
         </article>
         <div v-if="nextCursor" class="text-center">
-          <button class="btn-outline" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '加载中…' : '加载更多' }}</button>
+          <UButton color="primary" variant="outline" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '加载中…' : '加载更多' }}</UButton>
         </div>
       </div>
     </template>

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { Plus, Pencil, Trash2 } from "@lucide/vue"
-import type { Column } from "~/components/admin/AdminTable.vue"
 import { useToast } from "~/composables/useToast"
 
 definePageMeta({
@@ -30,27 +28,28 @@ const tableError = ref("")
 const { toast } = useToast()
 let requestVersion = 0
 
-const columns: Column<JudgeImage>[] = [
-  { key: "image", label: "镜像名" },
+const columns = [
+  { accessorKey: "image", header: "镜像名" },
   {
-    key: "mode",
-    label: "匹配模式",
-    format: (val) => (val as string) === "exact" ? "精确版本" : "所有版本",
+    accessorKey: "mode",
+    header: "匹配模式",
+    cell: (info) => (info.getValue() as string) === "exact" ? "精确版本" : "所有版本",
   },
   {
-    key: "description",
-    label: "介绍",
-    format: (val) => (val as string) || "-",
+    accessorKey: "description",
+    header: "介绍",
+    cell: (info) => (info.getValue() as string) || "-",
   },
   {
-    key: "created_at",
-    label: "创建时间",
-    format: (val) => {
-      const d = new Date(val as string)
+    accessorKey: "created_at",
+    header: "创建时间",
+    cell: (info) => {
+      const d = new Date(info.getValue() as string)
       return isNaN(d.getTime()) ? "-" : d.toLocaleString("zh-CN")
     },
   },
-]
+
+  { accessorKey: "actions", header: "操作" },]
 
 async function loadItems() {
   if (!isLoggedIn.value) return
@@ -184,42 +183,34 @@ async function handleDelete() {
   <div class="flex flex-col gap-4">
     <PageHeader title="评测镜像管理" description="配置允许使用的 Docker 评测镜像白名单">
       <template #actions>
-        <button class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark" @click="openCreate">
-          <Plus :size="16" />
+        <UButton color="primary" size="sm" @click="openCreate">
+          <UIcon name="i-lucide-plus" class="size-4" />
           新增镜像
-        </button>
+        </UButton>
       </template>
     </PageHeader>
 
-    <AdminTable
+    <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
+    <UTable
       :columns="columns"
       :data="items"
       :loading="tableLoading"
-      :error="tableError"
-      empty-text="暂无评测镜像"
-    >
-      <template #actions="{ row }">
+      :empty="'暂无评测镜像'">
+      <template #actions-cell="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <button class="flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-[#f5f5f5] hover:text-text" title="编辑" @click="openEdit(row)">
-            <Pencil :size="15" />
-          </button>
-          <button class="flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" title="删除" @click="confirmDelete(row)">
-            <Trash2 :size="15" />
-          </button>
+          <UButton color="neutral" variant="outline" class="flex w-[30px] h-[30px] border-border text-text-secondary hover:bg-[#f5f5f5] hover:text-text" title="编辑" @click="openEdit(row)">
+            <UIcon name="i-lucide-pencil" class="size-3.5" />
+          </UButton>
+          <UButton color="neutral" variant="outline" class="flex w-[30px] h-[30px] border-border text-text-secondary hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" title="删除" @click="confirmDelete(row)">
+            <UIcon name="i-lucide-trash-2" class="size-3.5" />
+          </UButton>
         </div>
       </template>
-    </AdminTable>
+    </UTable>
   </div>
 
   <!-- 创建/编辑弹窗 -->
-  <AdminModal
-    v-if="showForm"
-    :title="editingItem ? '编辑评测镜像' : '新增评测镜像'"
-    :confirm-text="editingItem ? '保存' : '新增'"
-    :loading="saving"
-    @confirm="handleSave"
-    @cancel="showForm = false"
-  >
+  <UModal v-model:open="showForm" :title="editingItem ? '编辑评测镜像' : '新增评测镜像'" :unmount-on-hide="true">
     <div class="flex flex-col gap-3">
       <div class="flex flex-col gap-1">
         <label class="text-[13px] font-semibold text-text">镜像名 <span class="text-error-text">*</span></label>
@@ -246,19 +237,21 @@ async function handleDelete() {
       </div>
       <p v-if="formError" class="text-error-text text-[13px]">{{ formError }}</p>
     </div>
-  </AdminModal>
+  
+    <template #footer>
+      <UButton color="neutral" variant="ghost" :disabled="saving" @click="showForm = false">取消</UButton>
+      <UButton color="primary" :loading="saving" @click="handleSave">editingItem ? '保存' : '新增'</UButton>
+    </template>
+  </UModal>
 
   <!-- 删除确认弹窗 -->
-  <AdminModal
-    v-if="showDeleteConfirm"
-    title="删除评测镜像"
-    confirm-text="确认删除"
-    :loading="deleting"
-    danger
-    @confirm="handleDelete"
-    @cancel="showDeleteConfirm = false"
-  >
+  <UModal v-model:open="showDeleteConfirm" :title="'删除评测镜像'" :unmount-on-hide="true">
     <p>确定要删除评测镜像 <strong>{{ deleteTarget?.image }}</strong> 吗？此操作将导致使用了此镜像的题目无法通过白名单校验。</p>
     <p v-if="formError" class="text-error-text text-[13px]">{{ formError }}</p>
-  </AdminModal>
+  
+    <template #footer>
+      <UButton color="neutral" variant="ghost" :disabled="deleting" @click="showDeleteConfirm = false">取消</UButton>
+      <UButton color="error" :loading="deleting" @click="handleDelete">确认删除</UButton>
+    </template>
+  </UModal>
 </template>

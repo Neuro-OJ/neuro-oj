@@ -1,14 +1,4 @@
 <script setup lang="ts">
-import {
-  Heart,
-  Bookmark,
-  Send,
-  Pencil,
-  Trash2,
-  Eye,
-  Edit3,
-  Lock,
-} from "@lucide/vue"
 import type {
   CommentRow,
   CommunityPost,
@@ -232,23 +222,23 @@ await load()
             <NuxtLink v-if="post.post.type === 'solution' && post.post.problem_id" :to="`/problems/${post.post.problem_id}`" class="inline-flex items-center gap-1 text-xs text-primary hover:underline">{{ post.problem_title ?? '关联题目' }} →</NuxtLink>
             <span v-if="post.post.status === 'pending'" class="rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">审核中</span>
             <span v-if="post.post.status === 'hidden'" class="rounded bg-red-50 px-2 py-0.5 text-xs text-red-700">已隐藏</span>
-            <span v-if="post.post.is_locked" class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-text-secondary"><Lock :size="10" />已锁定</span>
+            <span v-if="post.post.is_locked" class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-lock" class="size-[10px]" />已锁定</span>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <p class="text-xs text-text-secondary"><NuxtTime :datetime="post.post.created_at" locale="zh-CN" year="numeric" month="short" day="numeric" hour="2-digit" minute="2-digit" /></p>
-            <button v-if="canEditPost" class="btn-outline text-xs" type="button" @click="startEditPost"><Pencil :size="14" />编辑</button>
-            <button v-if="canEditPost" class="btn-outline text-xs text-red-600" type="button" @click="deletePost"><Trash2 :size="14" />删除</button>
+            <UButton color="primary" variant="outline" class="text-xs" v-if="canEditPost"  type="button" @click="startEditPost"><UIcon name="i-lucide-pencil" class="size-3.5" />编辑</UButton>
+            <UButton color="primary" variant="outline" class="text-xs text-red-600" v-if="canEditPost"  type="button" @click="deletePost"><UIcon name="i-lucide-trash-2" class="size-3.5" />删除</UButton>
           </div>
         </div>
 
         <template v-if="editingPost">
           <input v-if="post.post.type !== 'moment'" v-model="editTitle" class="mb-3 w-full rounded border border-border px-3 py-2" placeholder="标题" />
           <div class="mb-2 flex items-center justify-end">
-            <button type="button" class="inline-flex items-center gap-1 rounded border border-border px-2.5 py-1 text-xs text-text-secondary hover:bg-primary-bg" @click="editPreview = !editPreview">
-              <Eye v-if="!editPreview" :size="14" />
-              <Edit3 v-else :size="14" />
+            <UButton color="neutral" variant="outline" size="sm" class="border-border py-1 text-text-secondary hover:bg-primary-bg" type="button"  @click="editPreview = !editPreview">
+              <UIcon name="i-lucide-eye" class="size-3.5" v-if="!editPreview"/>
+              <UIcon name="i-lucide-edit-3" class="size-3.5" v-else/>
               {{ editPreview ? "编辑" : "预览" }}
-            </button>
+            </UButton>
           </div>
           <textarea v-if="!editPreview" v-model="editContent" class="min-h-40 w-full rounded border border-border px-3 py-2" required />
           <div v-else class="min-h-40 rounded border border-border px-3 py-2">
@@ -256,8 +246,8 @@ await load()
             <p v-else class="text-sm text-text-muted">暂无内容</p>
           </div>
           <div class="mt-3 flex justify-end gap-2">
-            <button class="btn-outline" type="button" :disabled="savingPost" @click="editingPost = false">取消</button>
-            <button class="btn-primary" :disabled="savingPost || !editContent.trim()" @click="saveEditPost">{{ savingPost ? '保存中…' : '保存' }}</button>
+            <UButton color="primary" variant="outline" type="button" :disabled="savingPost" @click="editingPost = false">取消</UButton>
+            <UButton color="primary" :disabled="savingPost || !editContent.trim()" @click="saveEditPost">{{ savingPost ? '保存中…' : '保存' }}</UButton>
           </div>
         </template>
         <template v-else>
@@ -266,8 +256,8 @@ await load()
         </template>
 
         <div class="mt-6 flex gap-3 border-t border-border pt-4">
-          <button class="btn-outline" aria-label="点赞" :class="{ 'border-primary bg-primary-bg text-primary': post.liked }" :disabled="!canReact || interaction !== null" @click="toggle('like', `/api/v1/community/posts/${post.post.id}/like`)"><Heart :size="16" />{{ interaction === 'like' ? '处理中…' : post.likes }}</button>
-          <button class="btn-outline" aria-label="收藏" :class="{ 'border-primary bg-primary-bg text-primary': post.bookmarked }" :disabled="!canBookmark || interaction !== null" @click="toggle('bookmark', `/api/v1/community/posts/${post.post.id}/bookmark`)"><Bookmark :size="16" />{{ interaction === 'bookmark' ? '处理中…' : post.bookmarked ? '已收藏' : '收藏' }}</button>
+          <UButton color="primary" variant="outline" aria-label="点赞" :class="{ 'border-primary bg-primary-bg text-primary': post.liked }" :disabled="!canReact || interaction !== null" @click="toggle('like', `/api/v1/community/posts/${post.post.id}/like`)"><UIcon name="i-lucide-heart" class="size-4" />{{ interaction === 'like' ? '处理中…' : post.likes }}</UButton>
+          <UButton color="primary" variant="outline" aria-label="收藏" :class="{ 'border-primary bg-primary-bg text-primary': post.bookmarked }" :disabled="!canBookmark || interaction !== null" @click="toggle('bookmark', `/api/v1/community/posts/${post.post.id}/bookmark`)"><UIcon name="i-lucide-bookmark" class="size-4" />{{ interaction === 'bookmark' ? '处理中…' : post.bookmarked ? '已收藏' : '收藏' }}</UButton>
         </div>
       </template>
     </article>
@@ -278,7 +268,7 @@ await load()
         <textarea v-model="comment" class="min-h-20 w-full rounded border border-border px-3 py-2" :placeholder="`写下你的想法（最长 ${commentMaxLength} 字符）`" />
         <div class="flex items-center justify-between gap-2">
           <p class="text-xs text-text-muted">{{ comment.length }} / {{ commentMaxLength }}</p>
-          <button class="btn-primary" :disabled="submittingComment || !comment.trim() || comment.length > commentMaxLength"><Send :size="16" />{{ submittingComment ? '发送中…' : '发送' }}</button>
+          <UButton color="primary" :disabled="submittingComment || !comment.trim() || comment.length > commentMaxLength"><UIcon name="i-lucide-send" class="size-4" />{{ submittingComment ? '发送中…' : '发送' }}</UButton>
         </div>
       </form>
       <p v-else-if="isLoggedIn && config?.comments_enabled" class="mb-5 rounded-md bg-primary-bg px-3 py-2 text-sm text-primary-text">当前账号没有评论权限。</p>
@@ -298,7 +288,7 @@ await load()
             <template v-if="replyingTo === item.comment.id">
               <form class="mt-3 flex gap-2" @submit.prevent="sendReply(item.comment.id)">
                 <input v-model="replyContent" class="flex-1 rounded border border-border px-3 py-2" placeholder="回复这条评论">
-                <button class="btn-primary text-sm" :disabled="submittingReply || !replyContent.trim()"><Send :size="14" />{{ submittingReply ? '发送中…' : '回复' }}</button>
+                <UButton color="primary" class="text-sm" :disabled="submittingReply || !replyContent.trim()"><UIcon name="i-lucide-send" class="size-3.5" />{{ submittingReply ? '发送中…' : '回复' }}</UButton>
               </form>
             </template>
           </CommentCard>

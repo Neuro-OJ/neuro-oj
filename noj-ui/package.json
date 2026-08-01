@@ -11,9 +11,11 @@
     "postinstall": "node scripts/copy-monaco.mjs"
   },
   "dependencies": {
-    "@headlessui/vue": "^1.7.23",
-    "@lucide/vue": "^1.25.0",
-    "@nuxtjs/tailwindcss": "^6.14.0",
+    "@iconify-json/lucide": "^1.2.121",
+    "@nuxt/fonts": "^0.14.0",
+    "@nuxt/icon": "^2.3.1",
+    "@nuxt/ui": "^4.10.0",
+    "@nuxtjs/color-mode": "^4.0.1",
     "@tailwindcss/typography": "^0.5.20",
     "dompurify": "^3.4.12",
     "highlight.js": "^11.11.1",
@@ -21,7 +23,7 @@
     "markdown-it": "^14.3.0",
     "monaco-editor": "^0.55.1",
     "nuxt": "4.4.8",
-    "sweetalert2": "^11.26.25"
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "typescript": "^5.0.0"

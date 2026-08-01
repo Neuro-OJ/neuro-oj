@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Mail, MessageSquare, Search, Plus, Loader2 } from "@lucide/vue"
 import { useEventSource } from "~/composables/useEventSource"
 import { useMessages, type Conversation } from "~/composables/useMessages"
 
@@ -101,25 +100,21 @@ function formatTime(iso: string): string {
   <div class="flex flex-col h-full border-r border-border bg-white relative">
     <!-- 标题 -->
     <div class="flex items-center gap-2 px-5 py-4 border-b border-border">
-      <Mail :size="20" class="text-primary" />
+      <UIcon name="i-lucide-mail" class="text-primary size-5" />
       <h2 class="text-base font-bold text-text">私信</h2>
     </div>
 
     <!-- 搜索框 -->
     <div class="px-4 py-3 border-b border-border">
       <div class="relative">
-        <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+        <UIcon name="i-lucide-search" class="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary size-3.5" />
         <input
           v-model="searchQuery"
           type="text"
           placeholder="搜索用户..."
           class="w-full pl-8 pr-3 py-1.5 text-sm rounded-md border border-border bg-page text-text outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
         />
-        <Loader2
-          v-if="searching"
-          :size="14"
-          class="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary animate-spin"
-        />
+        <UIcon name="i-lucide-loader-2" class="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary animate-spin size-3.5" v-if="searching"/>
       </div>
     </div>
 
@@ -143,7 +138,7 @@ function formatTime(iso: string): string {
           {{ u.username.charAt(0).toUpperCase() }}
         </div>
         <span class="text-text">{{ u.username }}</span>
-        <Plus :size="14" class="ml-auto text-text-secondary opacity-50" />
+        <UIcon name="i-lucide-plus" class="ml-auto text-text-secondary opacity-50 size-3.5" />
       </button>
     </div>
 
@@ -159,7 +154,7 @@ function formatTime(iso: string): string {
       v-else-if="conversations.length === 0"
       class="flex flex-col items-center justify-center py-12 text-text-secondary text-sm"
     >
-      <MessageSquare :size="32" class="mb-2 opacity-40" />
+      <UIcon name="i-lucide-message-square" class="mb-2 opacity-40 size-8" />
       <p>暂无会话</p>
     </div>
 

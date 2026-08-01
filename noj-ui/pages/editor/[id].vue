@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
-import { AlertCircle } from '@lucide/vue'
 import { onMounted, nextTick } from 'vue'
 
 definePageMeta({
@@ -186,7 +185,7 @@ function onCursorChange(pos: { line: number; col: number }) {
       <div class="flex flex-col items-center gap-3 text-text-muted">
         <span class="flex items-center justify-center size-11 rounded-full bg-red-100 text-red-800 text-xl font-bold">!</span>
         <p class="text-sm">题目加载失败</p>
-        <button class="btn btn-outline text-sm" @click="goBack">返回题目列表</button>
+        <UButton color="primary" variant="outline" class="text-sm" @click="goBack">返回题目列表</UButton>
       </div>
     </div>
 
@@ -273,7 +272,7 @@ function onCursorChange(pos: { line: number; col: number }) {
               v-if="submitError"
               class="flex items-center gap-2 px-4 py-2.5 bg-red-50 border-t border-red-200 text-red-800 text-xs"
             >
-              <AlertCircle :size="14" />
+              <UIcon name="i-lucide-alert-circle" class="size-3.5" />
               <span class="flex-1">{{ submitError }}</span>
               <button class="text-red-600 hover:text-red-800" @click="submitError = ''">×</button>
             </div>

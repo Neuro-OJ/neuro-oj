@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useRoute } from "vue-router"
-import { Clock, Server, Pencil, Code2, FileText, Lock, BookOpen } from "@lucide/vue"
 import type { PostRow } from "~/composables/useCommunity"
 
 const route = useRoute()
@@ -110,7 +109,7 @@ const publishBlockReason = computed(() => {
       <template #error>
         <span class="flex items-center justify-center size-11 rounded-full bg-red-100 text-red-800 text-xl font-bold">!</span>
         <p>题目加载失败</p>
-        <NuxtLink to="/problems" class="btn btn-outline">返回题目列表</NuxtLink>
+        <UButton color="primary" variant="outline" to="/problems">返回题目列表</UButton>
       </template>
 
       <div class="max-w-4xl mx-auto p-6 space-y-6">
@@ -140,18 +139,18 @@ const publishBlockReason = computed(() => {
               :to="`/problems/${problem.id}/edit`"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg text-text-secondary hover:text-primary hover:border-primary/40 transition-colors"
             >
-              <Pencil :size="14" />
+              <UIcon name="i-lucide-pencil" class="size-3.5" />
               编辑
             </NuxtLink>
           </div>
           <div class="flex items-center gap-5 flex-wrap">
             <DifficultyBadge :difficulty="problem.difficulty" />
             <span class="inline-flex items-center gap-1 text-xs text-text-secondary">
-              <Clock :size="14" />
+              <UIcon name="i-lucide-clock" class="size-3.5" />
               {{ problem.runtime_config.evaluator.time_limit_ms }}ms
             </span>
             <span class="inline-flex items-center gap-1 text-xs text-text-secondary">
-              <Server :size="14" />
+              <UIcon name="i-lucide-server" class="size-3.5" />
               {{ problem.runtime_config.evaluator.memory_limit_mb }}MB
             </span>
           </div>
@@ -179,13 +178,10 @@ const publishBlockReason = computed(() => {
             点击下方按钮进入独立编码页面，享受沉浸式编辑器体验。
           </p>
         </div>
-        <button
-          class="btn btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-sm"
-          @click="goToEditor"
-        >
-          <Code2 :size="16" />
+        <UButton color="primary" class="inline-flex items-center gap-2 px-5 py-2.5 text-sm" @click="goToEditor">
+          <UIcon name="i-lucide-code-2" class="size-4" />
           开始编码
-        </button>
+        </UButton>
       </div>
 
       <div v-if="!isLoggedIn" class="text-center text-sm text-text-muted">
@@ -200,37 +196,49 @@ const publishBlockReason = computed(() => {
           </div>
           <div class="flex items-center gap-2">
             <!-- 发布入口：服从题解模块开关与当前用户权限（community-ui spec） -->
-            <NuxtLink
+            <UButton
               v-if="config?.solutions_enabled === false"
               :to="`/community?type=solution&problem_id=${problem.id}`"
-              class="btn-outline text-sm"
+              color="primary"
+              variant="outline"
+              class="text-sm"
             >
               查看题解
-            </NuxtLink>
-            <button
+            </UButton>
+            <UButton
               v-else-if="!isLoggedIn"
-              class="btn-primary text-sm"
+              color="primary"
+              class="text-sm"
               @click="router.push('/login')"
             >
               登录后发布题解
-            </button>
-            <NuxtLink
+            </UButton>
+            <UButton
               v-else-if="eligibility?.can_create"
               :to="`/community?type=solution&problem_id=${problem.id}`"
-              class="btn-primary text-sm"
+              color="primary"
+              class="text-sm"
             >
-              <BookOpen :size="14" />
+              <UIcon name="i-lucide-book-open" class="size-3.5" />
               发布题解
-            </NuxtLink>
-            <button
+            </UButton>
+            <UButton
               v-else
-              class="btn-primary text-sm opacity-60 cursor-not-allowed"
+              color="primary"
+              class="text-sm opacity-60 cursor-not-allowed"
               :disabled="true"
               :title="publishBlockReason ?? '暂不可发布'"
             >
               发布题解
-            </button>
-            <NuxtLink :to="`/community?type=solution&problem_id=${problem.id}`" class="btn-outline text-sm">查看全部</NuxtLink>
+            </UButton>
+            <UButton
+              :to="`/community?type=solution&problem_id=${problem.id}`"
+              color="primary"
+              variant="outline"
+              class="text-sm"
+            >
+              查看全部
+            </UButton>
           </div>
         </div>
 
@@ -246,12 +254,12 @@ const publishBlockReason = computed(() => {
               class="group flex items-start justify-between gap-3"
             >
               <span class="flex items-center gap-2 text-sm font-medium text-text group-hover:text-primary">
-                <FileText :size="14" class="shrink-0 text-text-muted" />
+                <UIcon name="i-lucide-file-text" class="size-3.5 shrink-0 text-text-muted" />
                 {{ item.post.title || "题解" }}
               </span>
               <span class="flex shrink-0 items-center gap-2 text-xs text-text-secondary">
                 <span v-if="item.post.is_locked" class="inline-flex items-center gap-0.5">
-                  <Lock :size="11" />已锁定
+                  <UIcon name="i-lucide-lock" class="size-[10px]" />已锁定
                 </span>
                 <span>{{ item.author.username }}</span>
                 <NuxtTime :datetime="item.post.created_at" relative locale="zh-CN" />
@@ -262,7 +270,7 @@ const publishBlockReason = computed(() => {
 
         <!-- 门槛禁用说明（community-ui spec 场景：未通过用户受门槛限制） -->
         <p v-if="isLoggedIn && eligibility && !eligibility.can_create && eligibility.enabled" class="mt-3 flex items-center gap-1.5 text-xs text-text-muted">
-          <Lock :size="12" />
+          <UIcon name="i-lucide-lock" class="size-3" />
           {{ publishBlockReason }}。通过本题后即可发布题解。
         </p>
       </section>

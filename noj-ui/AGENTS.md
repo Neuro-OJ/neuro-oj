@@ -16,10 +16,10 @@
 | ------------ | ------------------------------------------------ |
 | 框架         | Nuxt 4 (Vue 3)                                   |
 | 语言         | TypeScript                                       |
-| 样式         | Tailwind CSS                                     |
+| 样式         | Nuxt UI v4 + Tailwind CSS v4                    |
 | 代码编辑器   | Monaco Editor                                    |
 | 运行时       | Deno 2（开发/构建） / 单二进制 `deno compile`（部署） |
-| 图标         | @lucide/vue                                      |
+| 图标         | Nuxt UI `UIcon`（`i-lucide-*`，离线打包）        |
 | Markdown     | markdown-it + highlight.js + KaTeX + DOMPurify    |
 
 ## 目录结构
@@ -29,7 +29,7 @@ noj-ui/
 ├── deno.json              # 任务定义 + npm 兼容配置
 ├── nuxt.config.ts         # Nuxt 配置（vite、nitro preset、runtimeConfig、hooks）
 ├── package.json
-├── tailwind.config.ts     # Tailwind 主题扩展（含 prose-neuro 排版插件）
+├── assets/css/main.css    # Tailwind v4 主题（@theme 映射 --c-*）+ Nuxt UI 变量 + prose-neuro
 ├── app.vue                # 根组件 + CSS 变量定义
 ├── pages/                 # 文件路由（Nuxt 自动路由）
 │   ├── index.vue          # 首页（Hero）
@@ -58,15 +58,15 @@ noj-ui/
 │   │   ├── AdminTable.vue
 │   │   └── AdminModal.vue
 │   ├── ui/                # 通用 UI 组件
-│   │   ├── BaseButton.vue
+│   │   ├── DialogModal.vue    # UModal 驱动的 confirm/alert/prompt
 │   │   ├── AsyncContent.vue
-│   │   ├── DataTable.vue
+│   │   ├── DifficultyBadge.vue / StatusBadge.vue / SubmissionResult.vue
 │   │   └── ...
 ├── composables/           # 组合式函数
 │   ├── useAuth.ts         # 认证状态管理
 │   ├── usePolling.ts      # 轮询工具
-│   ├── useToast.ts        # Toast 通知（SweetAlert2）
-│   ├── useDialog.ts       # 弹窗（SweetAlert2）
+│   ├── useToast.ts        # Toast 通知（Nuxt UI useToast 封装）
+│   ├── useDialog.ts       # 弹窗（Nuxt UI useOverlay + DialogModal）
 │   ├── useProblemFilters.ts  # 题目筛选 URL 同步
 │   └── use-submissions.ts # 提交历史数据获取
 ├── layouts/               # 页面布局
@@ -92,10 +92,10 @@ noj-ui/
 ## Nuxt 配置要点（nuxt.config.ts）
 
 ```typescript
-// @lucide/vue 的 SSR 兼容：强制 Vite 打包入 SSR bundle
-vite: {
-  ssr: { noExternal: ["@lucide/vue"] },
-  optimizeDeps: { include: ["@lucide/vue"] },
+// @nuxt/icon：lucide 集合本地打包，SSR/单二进制离线渲染图标
+icon: {
+  serverBundle: "local",
+  clientBundle: { scan: true, collections: ["lucide"], includeAllCollections: true },
 }
 
 // Nitro 部署预设（Deno compile 需要）
@@ -190,7 +190,8 @@ cd dist
 
 ## 样式规范
 
-- **必须使用 Tailwind CSS 编写，禁止手写 CSS**
+- **通用组件必须使用 Nuxt UI v4（`U*` 组件：UButton/UInput/UModal/UTable/UBadge 等），禁止手写通用组件**
+- **布局/排版样式使用 Tailwind CSS v4 utility 类，禁止手写 CSS**
 - 组件模板中直接使用 Tailwind utility 类
 
 ```
@@ -198,8 +199,8 @@ cd dist
 ```
 
 - 复杂或复用的样式组合使用 `@apply` 封装在 `<style>` 中
-- 全局主题定制（颜色、字体、阴影）统一在 `tailwind.config.ts` 的 `theme.extend` 中配置
-- CSS 变量（`--c-*`）仅在 `app.vue:root` 和 `tailwind.config.ts` 中定义
+- 全局主题定制（颜色、字体、阴影）统一在 `assets/css/main.css` 的 `@theme` 与 `--ui-*` 变量中配置
+- CSS 变量（`--c-*`）仅在 `app.vue:root` 定义，`assets/css/main.css` 的 `@theme`/`--ui-*` 引用
 - Vue Transition（`<Transition name="...">`）、`::before`/`::after` 伪元素、`@keyframes` 可保留 `<style>` 块
 
 ## 可用 Tailwind 主题色
@@ -233,7 +234,7 @@ cd dist
 - 全局状态通过 `useState()` 共享（如 `useAuth` 的 `auth:user`）
 - API 调用封装在 `composables/` 中
 - 类型定义放在组件内或 `composables/` 中（无单独 `types/` 目录）
-- SweetAlert2 用于弹窗（`useDialog`）和 Toast 通知（`useToast`）
+- 弹窗（`useDialog`）与 Toast（`useToast`）基于 Nuxt UI（`useModal`/`useToast`），已移除 SweetAlert2
 
 ## Composables 参考
 
@@ -252,13 +253,13 @@ cd dist
 - 使用请求 ID 模式防止竞态（旧响应的处理被跳过）
 
 ### useToast
-- 基于 SweetAlert2 的 Toast 通知
+- 基于 Nuxt UI `useToast` 的 Toast 通知
 - `showToast(type, title)`：`success` / `error` / `info` / `warning`
 - 自动消失（timer: 3000ms），无确认按钮
 - SSR 安全（`process.client` 守卫）
 
 ### useDialog
-- 基于 SweetAlert2 的确认弹窗
+- 基于 Nuxt UI `useOverlay` + `DialogModal`（UModal）的确认/提示/输入弹窗
 - `showConfirm(title, text, danger?)`：返回 Promise<boolean>
 - `danger: true` 时显示红色确认按钮（删除操作）
 - SSR 安全

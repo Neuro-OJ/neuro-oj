@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { AlertCircle, ArrowLeft, Send, Trophy } from '@lucide/vue'
 import type { Contest, ContestProblem } from '~/composables/useContests'
 
 definePageMeta({ middleware: 'auth', ssr: false })
@@ -73,13 +72,13 @@ async function submit() {
     <AsyncContent :status="pending ? 'loading' : error ? 'error' : problem ? 'data' : 'empty'" error="竞赛题目加载失败" @retry="refresh">
       <div v-if="problem" class="mx-auto flex max-w-[1500px] flex-col gap-4">
         <header class="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-white px-4 py-3">
-          <NuxtLink :to="`/contests/${contestId}`" class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"><ArrowLeft :size="16" />返回竞赛</NuxtLink>
+          <NuxtLink :to="`/contests/${contestId}`" class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"><UIcon name="i-lucide-arrow-left" class="size-4" />返回竞赛</NuxtLink>
           <span class="h-5 w-px bg-border" />
           <span class="flex size-8 items-center justify-center rounded-lg bg-bg-dark font-mono text-sm font-bold text-white">{{ problem.label }}</span>
           <div class="min-w-0 flex-1"><h1 class="truncate text-base font-bold text-text">{{ problem.title }}</h1><p class="text-xs text-text-muted">{{ contest?.title }}</p></div>
-          <NuxtLink :to="`/contests/${contestId}/ranking`" class="btn btn-outline gap-1.5 px-3 py-1.5 text-xs"><Trophy :size="14" />排名</NuxtLink>
+          <UButton color="primary" variant="outline" class="gap-1.5 px-3 py-1.5 text-xs" :to="`/contests/${contestId}/ranking`"><UIcon name="i-lucide-trophy" class="size-3.5" />排名</UButton>
           <select v-model="language" class="rounded-lg border border-border bg-white px-3 py-2 text-xs text-text outline-none focus:border-primary"><option value="python3">Python 3</option><option value="cpp">C++</option><option value="c">C</option><option value="javascript">JavaScript</option></select>
-          <button class="btn btn-primary gap-1.5 px-4 py-2 text-xs disabled:opacity-50" :disabled="submitting || contest?.status !== 'running'" @click="submit"><Send :size="14" />{{ submitting ? '提交中...' : '提交代码' }}</button>
+          <UButton color="primary" class="gap-1.5 px-4 py-2 text-xs disabled:opacity-50" :disabled="submitting || contest?.status !== 'running'" @click="submit"><UIcon name="i-lucide-send" class="size-3.5" />{{ submitting ? '提交中...' : '提交代码' }}</UButton>
         </header>
 
         <div class="grid min-h-[680px] gap-4 lg:grid-cols-[minmax(360px,42%)_1fr]">
@@ -110,7 +109,7 @@ async function submit() {
                 <template #fallback><div class="flex h-full items-center justify-center text-sm text-slate-400">编辑器加载中...</div></template>
               </ClientOnly>
             </div>
-            <div v-if="submitError" class="flex items-center gap-2 border-t border-red-900 bg-red-950/70 px-4 py-2 text-xs text-red-300"><AlertCircle :size="14" />{{ submitError }}</div>
+            <div v-if="submitError" class="flex items-center gap-2 border-t border-red-900 bg-red-950/70 px-4 py-2 text-xs text-red-300"><UIcon name="i-lucide-alert-circle" class="size-3.5" />{{ submitError }}</div>
           </section>
         </div>
       </div>

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Bookmark, Heart, MessageSquare, Trash2, RefreshCw } from "@lucide/vue"
 import type { BookmarkRow, PostType } from "~/composables/useCommunity"
 import { stripMarkdown } from "~/utils/markdown"
 
@@ -78,15 +77,15 @@ await loadBookmarks()
         <h1 class="mt-3 text-3xl font-bold text-text">我的收藏</h1>
         <p class="mt-2 text-text-secondary">集中查看你收藏的社区内容。</p>
       </div>
-      <button type="button" class="btn-outline" :disabled="loading" @click="loadBookmarks()">
-        <RefreshCw :size="16" :class="{ 'animate-spin': loading }" />刷新
-      </button>
+      <UButton color="primary" variant="outline" type="button"  :disabled="loading" @click="loadBookmarks()">
+        <UIcon name="i-lucide-refresh-cw" :class="{ 'animate-spin': loading }" class="size-4" />刷新
+      </UButton>
     </div>
 
     <p v-if="error" class="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">{{ error }}</p>
     <div v-else-if="loading" class="py-12 text-center text-text-secondary">加载中…</div>
     <div v-else-if="bookmarks.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center text-text-secondary">
-      <Bookmark class="mx-auto mb-3 text-text-secondary" :size="28" />
+      <UIcon name="i-lucide-bookmark" class="mx-auto mb-3 text-text-secondary size-[28px]" />
       还没有可展示的收藏内容。
     </div>
     <div v-else class="space-y-4">
@@ -103,13 +102,13 @@ await loadBookmarks()
         <div class="mt-4 flex flex-wrap items-center gap-4 text-xs text-text-secondary">
           <NuxtLink :to="`/users/${item.author.id}`" class="text-text-secondary hover:text-primary">{{ item.author.username }}</NuxtLink>
           <span>收藏于 <NuxtTime :datetime="item.bookmarked_at" relative locale="zh-CN" /></span>
-          <span><Heart class="mr-1 inline" :size="14" />{{ item.likes }}</span>
-          <span><MessageSquare class="mr-1 inline" :size="14" />{{ item.comments }}</span>
-          <button class="inline-flex items-center gap-1 text-red-600 hover:text-red-700" :disabled="removingId !== null" @click="removeBookmark(item)"><Trash2 :size="13" />{{ removingId === item.post.id ? '处理中…' : '取消收藏' }}</button>
+          <span><UIcon name="i-lucide-heart" class="mr-1 inline size-3.5" />{{ item.likes }}</span>
+          <span><UIcon name="i-lucide-message-square" class="mr-1 inline size-3.5" />{{ item.comments }}</span>
+          <button class="inline-flex items-center gap-1 text-red-600 hover:text-red-700" :disabled="removingId !== null" @click="removeBookmark(item)"><UIcon name="i-lucide-trash-2" class="size-3" />{{ removingId === item.post.id ? '处理中…' : '取消收藏' }}</button>
         </div>
       </article>
       <div v-if="nextCursor" class="text-center">
-        <button class="btn-outline" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '加载中…' : '加载更多' }}</button>
+        <UButton color="primary" variant="outline" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '加载中…' : '加载更多' }}</UButton>
       </div>
     </div>
   </main>

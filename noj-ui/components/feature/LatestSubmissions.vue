@@ -1,7 +1,7 @@
 <template>
     <div class="bg-white border border-border rounded-xl shadow-card animate-[fadeInUp_0.5s_ease_0.15s_both] h-full flex flex-col">
         <div class="flex items-center gap-2 px-5 py-3.5 border-b border-border shrink-0">
-            <Clock :size="16" class="text-primary shrink-0" />
+            <UIcon name="i-lucide-clock" class="text-primary shrink-0 size-4" />
             <h3 class="text-sm font-semibold text-text m-0">最新评测</h3>
             <StatsToggle :today-stats="todayStats" :total-stats="totalStats" />
         </div>
@@ -31,13 +31,12 @@
             class="flex items-center justify-center gap-1 px-5 py-2.5 text-xs font-semibold text-primary no-underline border-t border-border transition-colors duration-150 hover:bg-primary-bg group"
         >
             查看全部提交
-            <ArrowRight :size="14" class="transition-transform duration-150 group-hover:translate-x-0.5" />
+            <UIcon name="i-lucide-arrow-right" class="transition-transform duration-150 group-hover:translate-x-0.5 size-3.5" />
         </NuxtLink>
     </div>
 </template>
 
 <script setup lang="ts">
-import { Clock, ArrowRight } from "@lucide/vue"
 import { useEventSource } from "~/composables/useEventSource"
 
 interface SubmissionItem {

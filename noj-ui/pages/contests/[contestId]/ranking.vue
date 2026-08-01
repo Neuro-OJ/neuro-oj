@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ArrowLeft, Radio, RefreshCw, Trophy } from '@lucide/vue'
 import type { Contest, IcpcRankingRow, ScoreRankingRow } from '~/composables/useContests'
 
 const route = useRoute()
@@ -63,14 +62,14 @@ function score(value: number) {
 
 <template>
   <div class="min-h-full bg-bg-page py-8">
-    <div class="container space-y-5">
+    <div class="mx-auto max-w-[960px] space-y-5 px-4 sm:px-7">
       <header class="flex flex-wrap items-center gap-4 rounded-2xl bg-bg-dark px-6 py-6 text-white shadow-card">
-        <NuxtLink :to="`/contests/${contestId}`" class="inline-flex items-center gap-1.5 text-sm text-slate-300 no-underline hover:text-white"><ArrowLeft :size="16" />返回竞赛</NuxtLink>
+        <NuxtLink :to="`/contests/${contestId}`" class="inline-flex items-center gap-1.5 text-sm text-slate-300 no-underline hover:text-white"><UIcon name="i-lucide-arrow-left" class="size-4" />返回竞赛</NuxtLink>
         <div class="h-8 w-px bg-white/15" />
-        <Trophy :size="24" class="text-amber-300" />
+        <UIcon name="i-lucide-trophy" class="text-amber-300 size-6" />
         <div class="min-w-0 flex-1"><h1 class="truncate text-xl font-bold">{{ contest?.title || '竞赛排名' }}</h1><p class="mt-1 text-xs text-slate-400">{{ isIcpc ? '解题数优先，其次按罚时排序' : '总分优先，同分按总耗时排序' }}</p></div>
-        <div class="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs text-slate-300"><Radio :size="13" :class="eventState === 'connected' ? 'text-green-400' : 'text-amber-300'" />{{ eventState === 'connected' ? '实时更新' : eventState === 'fallback' ? '轮询更新' : '正在连接' }}</div>
-        <button class="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs hover:bg-white/10" @click="loadRanking"><RefreshCw :size="14" />刷新</button>
+        <div class="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs text-slate-300"><UIcon name="i-lucide-radio" :class="eventState === 'connected' ? 'text-green-400' : 'text-amber-300'" class="size-3" />{{ eventState === 'connected' ? '实时更新' : eventState === 'fallback' ? '轮询更新' : '正在连接' }}</div>
+        <button class="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs hover:bg-white/10" @click="loadRanking"><UIcon name="i-lucide-refresh-cw" class="size-3.5" />刷新</button>
       </header>
 
       <div v-if="contest?.type === 'oi' && contest.status === 'running'" class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-warning-text">OI 竞赛进行期间仅显示你自己的排名，竞赛结束后公开完整榜单。</div>

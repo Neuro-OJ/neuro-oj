@@ -1,53 +1,49 @@
-import Swal from 'sweetalert2';
+import { useToast as useNuxtToast } from '@nuxt/ui/composables'
 
-const ToastSwal = Swal.mixin({
-  toast: true,
-  position: 'top-end',
-  showConfirmButton: false,
-  timerProgressBar: false,
-  didOpen: (toast) => {
-    toast.addEventListener('mouseenter', () => Swal.stopTimer());
-    toast.addEventListener('mouseleave', () => Swal.resumeTimer());
-  },
-});
+// 与现有 SweetAlert2 图标语义对齐的 lucide 图标
+const ICONS = {
+  success: 'i-lucide-circle-check',
+  error: 'i-lucide-circle-x',
+  warn: 'i-lucide-triangle-alert',
+  info: 'i-lucide-info',
+} as const
 
 interface ToastMethods {
-  success(message: string): void;
-  error(message: string): void;
-  warn(message: string): void;
-  info(message: string): void;
+  success(message: string): void
+  error(message: string): void
+  warn(message: string): void
+  info(message: string): void
 }
 
-type ToastType = 'success' | 'error' | 'info' | 'warning';
+type ToastType = 'success' | 'error' | 'info' | 'warning'
 
 interface UseToastResult {
-  toast: ToastMethods;
-  showToast(type: ToastType, message: string): void;
+  toast: ToastMethods
+  showToast(type: ToastType, message: string): void
 }
 
 export function useToast(): UseToastResult {
+  const toastApi = useNuxtToast()
+
+  // SSR 阶段不发通知（Nuxt UI 的 toast 依赖客户端渲染的 UToaster）
+  const push = (toast: Parameters<typeof toastApi.add>[0]) => {
+    if (import.meta.client) toastApi.add(toast)
+  }
+
   const toast: ToastMethods = {
-    success: (msg) => {
-      ToastSwal.fire({ icon: 'success', title: msg, timer: 3000 });
-    },
-    error: (msg) => {
-      ToastSwal.fire({ icon: 'error', title: msg, timer: 5000 });
-    },
-    warn: (msg) => {
-      ToastSwal.fire({ icon: 'warning', title: msg, timer: 3000 });
-    },
-    info: (msg) => {
-      ToastSwal.fire({ icon: 'info', title: msg, timer: 2000 });
-    },
-  };
+    success: (msg) => push({ title: msg, color: 'success', icon: ICONS.success, timeout: 3000 }),
+    error: (msg) => push({ title: msg, color: 'error', icon: ICONS.error, timeout: 5000 }),
+    warn: (msg) => push({ title: msg, color: 'warning', icon: ICONS.warn, timeout: 3000 }),
+    info: (msg) => push({ title: msg, color: 'info', icon: ICONS.info, timeout: 2000 }),
+  }
 
   function showToast(type: ToastType, message: string) {
     if (type === 'warning') {
-      toast.warn(message);
-      return;
+      toast.warn(message)
+      return
     }
-    toast[type](message);
+    toast[type](message)
   }
 
-  return { toast, showToast };
+  return { toast, showToast }
 }
