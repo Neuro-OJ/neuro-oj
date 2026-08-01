@@ -22,8 +22,8 @@ import {
   getProblemTemplate,
   getSupportPackageBytes,
   MAX_SUPPORT_PACKAGE_SIZE,
-  saveSupportPackage,
 } from "../services/support-package.ts";
+import { importProblemBundle } from "../services/problem-bundle.ts";
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
@@ -150,11 +150,30 @@ router.put("/:id", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const body = await parseJsonBody<UpdateProblemInput>(c);
   const userId = c.get("userId");
+  const userRole = c.get("userRole");
 
   // 双索引解析获取实际题目 ID
   const problem = await resolveProblem(id);
-  const updated = await updateProblem(problem.id, body, userId, undefined, c);
-  return c.json({ data: updated });
+
+  // 注入 ALS 上下文使 logAudit 可获取 actor 信息（issue #101）
+  // （updateProblem 内部会记录 problems.runtime_config_changed 审计）
+  return await runWithContext(
+    {
+      actorId: userId,
+      actorIp: getClientIp(c),
+      actorRole: userRole,
+    },
+    async () => {
+      const updated = await updateProblem(
+        problem.id,
+        body,
+        userId,
+        undefined,
+        c,
+      );
+      return c.json({ data: updated });
+    },
+  );
 });
 
 /**
@@ -184,16 +203,16 @@ router.delete("/:id", authMiddleware, async (c) => {
 });
 
 /**
- * 上传支持包。
- * POST /api/v1/problems/:id/support-package
+ * 统一题目包导入。
+ * POST /api/v1/problems/import-bundle
+ *
+ * 唯一上传入口：id 一律服务端生成；admin 可指定 number（幂等键，按 (type, number)
+ * 匹配既有题目 → 更新元数据 + 替换评测包；未命中 → 创建）；非 admin 提供 number
+ * 被拒（400），普通用户导入仅创建（number 自动分配）。
  */
-router.post("/:id/support-package", authMiddleware, async (c) => {
-  const id = c.req.param("id") as string;
+router.post("/import-bundle", authMiddleware, async (c) => {
   const userId = c.get("userId");
   const userRole = c.get("userRole");
-
-  // 双索引解析获取实际题目 ID，同时获取题目信息用于权限校验
-  const problem = await resolveProblem(id);
 
   // 解析 multipart/form-data
   const body = await c.req.parseBody();
@@ -217,7 +236,7 @@ router.post("/:id/support-package", authMiddleware, async (c) => {
 
   if (file.size > MAX_SUPPORT_PACKAGE_SIZE) {
     throw new BadRequestError(
-      `支持包大小超过限制（最大 ${
+      `导入包大小超过限制（最大 ${
         (MAX_SUPPORT_PACKAGE_SIZE / 1024 / 1024).toFixed(0)
       }MB）`,
     );
@@ -230,16 +249,21 @@ router.post("/:id/support-package", authMiddleware, async (c) => {
     throw new BadRequestError("文件不是有效的 zip 格式");
   }
 
-  const packagePath = await saveSupportPackage(
-    problem.id,
-    { name: file.name, data: fileBytes },
-    userId,
-    userRole,
-    { type: problem.type, owner_id: problem.owner_id }, // 复用已获取的题目信息
-    c,
+  const result = await runWithContext(
+    {
+      actorId: userId,
+      actorIp: getClientIp(c),
+      actorRole: userRole,
+    },
+    () =>
+      importProblemBundle(
+        { name: file.name, data: fileBytes },
+        { userId, userRole },
+        c,
+      ),
   );
 
-  return c.json({ data: { support_package_storage_url: packagePath } });
+  return c.json({ data: result });
 });
 
 /**
@@ -283,7 +307,11 @@ router.get("/:id/support-package", authMiddleware, async (c) => {
 router.get("/:id/template", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const problem = await resolveProblem(id);
-  const tpl = await getProblemTemplate(problem.id);
+  // problems-src 目录按题号（number）命名；题目 id 为服务端生成的 UUID，
+  // 必须用 number 定位源码目录（如 data/problems-src/1001/）。
+  // 模板内容优先读取 submission_sample.py（与 solution.entry 一致），
+  // 兼容旧题目录的 submission.py。
+  const tpl = await getProblemTemplate(problem.number);
   if (!tpl) {
     return c.json({ error: "该题目没有初始代码模板" }, 404);
   }

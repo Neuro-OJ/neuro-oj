@@ -6,6 +6,7 @@
 
 import {
   CODE_SAMPLES,
+  getProblemIdByNumber,
   isE2E,
   isJudgeAvailable,
   pollSubmission,
@@ -16,7 +17,7 @@ import {
 
 const skip = !isE2E;
 let token = "";
-const PROBLEM_ID = "1001";
+let PROBLEM_ID = "";
 let judgeOk = false;
 
 Deno.test({
@@ -34,6 +35,8 @@ Deno.test({
       "Test12345679",
     );
     console.log("  → 用户已注册");
+    // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
+    PROBLEM_ID = await getProblemIdByNumber(1001);
     judgeOk = await isJudgeAvailable();
     if (!judgeOk) console.log("  ⚠ judge worker 不可用，管道测试将跳过");
   },
@@ -151,7 +154,10 @@ Deno.test({
       CODE_SAMPLES.memoryLimitExceeded,
     );
     const result = await pollSubmission(token, id, 15, 2000);
-    if (result.verdict !== "MemoryLimitExceeded" && result.verdict !== "RuntimeError") {
+    if (
+      result.verdict !== "MemoryLimitExceeded" &&
+      result.verdict !== "RuntimeError"
+    ) {
       throw new Error("期望 MLE 或 RuntimeError, 实际 " + result.verdict);
     }
     console.log("  → " + result.verdict);
@@ -190,7 +196,9 @@ Deno.test({
       CODE_SAMPLES.syntaxError,
     );
     const result = await pollSubmission(token, id, 15, 2000);
-    if (result.verdict !== "CompileError" && result.verdict !== "RuntimeError") {
+    if (
+      result.verdict !== "CompileError" && result.verdict !== "RuntimeError"
+    ) {
       throw new Error("期望 CompileError/RuntimeError, 实际 " + result.verdict);
     }
   },

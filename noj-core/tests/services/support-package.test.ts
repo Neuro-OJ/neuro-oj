@@ -11,15 +11,12 @@ import { eq } from "drizzle-orm";
 import {
   deleteSupportPackage,
   getSupportPackageBytes,
-  saveSupportPackage,
 } from "../../src/services/support-package.ts";
+import { ForbiddenError, NotFoundError } from "../../src/lib/errors.ts";
 import {
-  ForbiddenError,
-  NotFoundError,
-  ValidationError,
-} from "../../src/lib/errors.ts";
-import { isStorageUrl, parseStorageUrl } from "../../src/lib/storage/types.ts";
-import { resetStorageProvider } from "../../src/lib/storage/mod.ts";
+  getStorageProvider,
+  resetStorageProvider,
+} from "../../src/lib/storage/mod.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const skip = !hasDb;
@@ -97,177 +94,6 @@ async function createTestProblem(
 }
 
 Deno.test({
-  name:
-    "support-package service: saveSupportPackage 上传成功返回 noj-storage:// URL",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    Deno.env.set("STORAGE_PROVIDER", "local");
-    await resetDbForTest();
-    resetStorageProvider();
-    await createTestProblem();
-
-    const zipData = new Uint8Array([
-      0x50,
-      0x4b,
-      0x05,
-      0x06,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-    ]);
-    const result = await saveSupportPackage(
-      currentProblemId,
-      { name: "test.zip", data: zipData },
-      OWNER_ID,
-      "user",
-    );
-
-    // 验证返回的是 noj-storage:// URL
-    assertEquals(isStorageUrl(result), true);
-    const parsed = parseStorageUrl(result);
-    assertEquals(parsed.provider, "local");
-    assertEquals(typeof parsed.checksumSha256, "string");
-
-    // 验证 DB 已更新
-    const db = getDb();
-    const [row] = await db
-      .select({ url: problems.support_package_storage_url })
-      .from(problems)
-      .where(eq(problems.id, currentProblemId))
-      .limit(1);
-    assertEquals(row?.url, result);
-  },
-});
-
-Deno.test({
-  name: "support-package service: saveSupportPackage 非 zip 扩展名拒绝",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    resetStorageProvider();
-    await createTestProblem();
-
-    await assertRejects(
-      () =>
-        saveSupportPackage(
-          currentProblemId,
-          { name: "test.exe", data: new Uint8Array(10) },
-          OWNER_ID,
-          "user",
-        ),
-      ValidationError,
-      "仅支持 .zip 格式文件",
-    );
-  },
-});
-
-Deno.test({
-  name: "support-package service: saveSupportPackage 非 owner 返回 403",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    resetStorageProvider();
-    await createTestProblem();
-
-    await assertRejects(
-      () =>
-        saveSupportPackage(
-          currentProblemId,
-          { name: "test.zip", data: new Uint8Array(10) },
-          "other-user",
-          "user",
-        ),
-      ForbiddenError,
-    );
-  },
-});
-
-Deno.test({
-  name: "support-package service: saveSupportPackage admin 可替任意题上传",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    resetStorageProvider();
-    await createTestProblem("other-owner");
-
-    const zipData = new Uint8Array(10);
-    const result = await saveSupportPackage(
-      currentProblemId,
-      { name: "admin-test.zip", data: zipData },
-      ADMIN_ID,
-      "admin",
-    );
-    assertEquals(isStorageUrl(result), true);
-  },
-});
-
-Deno.test({
-  name: "support-package service: saveSupportPackage P 型非 admin 返回 403",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    resetStorageProvider();
-    await createTestProblem(OWNER_ID, "P");
-
-    await assertRejects(
-      () =>
-        saveSupportPackage(
-          currentProblemId,
-          { name: "test.zip", data: new Uint8Array(10) },
-          OWNER_ID,
-          "user",
-        ),
-      ForbiddenError,
-      "仅管理员可管理管理题的支持包",
-    );
-  },
-});
-
-Deno.test({
-  name: "support-package service: saveSupportPackage 不存在的题目返回 404",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    resetStorageProvider();
-    await assertRejects(
-      () =>
-        saveSupportPackage(
-          "nonexistent",
-          { name: "test.zip", data: new Uint8Array(10) },
-          ADMIN_ID,
-          "admin",
-        ),
-      NotFoundError,
-    );
-  },
-});
-
-Deno.test({
   name: "support-package service: deleteSupportPackage 删除成功",
   ignore: skip,
   sanitizeResources: false,
@@ -277,14 +103,16 @@ Deno.test({
     resetStorageProvider();
     await createTestProblem();
 
-    // 先上传
-    const url = await saveSupportPackage(
-      currentProblemId,
-      { name: "test.zip", data: new Uint8Array(10) },
-      OWNER_ID,
-      "user",
-    );
-    assertEquals(isStorageUrl(url), true);
+    // 直接设置评测包 URL（saveSupportPackage 已随上传端点废弃）
+    const db0 = getDb();
+    await db0
+      .update(problems)
+      .set({
+        support_package_storage_url:
+          "noj-storage://local/dGVzdA?checksum_sha256=abc",
+        updated_at: new Date().toISOString(),
+      })
+      .where(eq(problems.id, currentProblemId));
 
     // 再删除
     await deleteSupportPackage(currentProblemId, OWNER_ID, "user");
@@ -360,12 +188,17 @@ Deno.test({
     await createTestProblem();
 
     const zipData = new Uint8Array([0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0]);
-    await saveSupportPackage(
-      currentProblemId,
-      { name: "test.zip", data: zipData },
-      OWNER_ID,
-      "user",
-    );
+    // 通过 storage.put 写入真实对象，获得可读的 noj-storage:// URL
+    const storage = await getStorageProvider();
+    const url = await storage.put("test-key", zipData, "application/zip");
+    const db0 = getDb();
+    await db0
+      .update(problems)
+      .set({
+        support_package_storage_url: url,
+        updated_at: new Date().toISOString(),
+      })
+      .where(eq(problems.id, currentProblemId));
 
     const bytes = await getSupportPackageBytes(
       currentProblemId,

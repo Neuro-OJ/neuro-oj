@@ -59,7 +59,7 @@ export interface StorageProvider {
   /**
    * 根据 `noj-storage://` URL 读取数据
    *
-   * @param url `noj-storage://` URL 或 legacy 本地路径
+   * @param url `noj-storage://` URL
    * @returns 原始字节数据
    */
   get(url: string): Promise<Uint8Array>;

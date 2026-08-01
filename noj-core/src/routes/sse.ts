@@ -59,6 +59,17 @@ sse.get("/submissions/:id/events", async (c) => {
       closeStream();
     }, 300_000);
 
+    // 30s 心跳保持连接（防止代理/中间件超时断连）。
+    // 注意：必须在 closeStream 之前声明——终态提交会立即调用 closeStream()
+    // 并 clearInterval(keepAlive)，若此处晚于 closeStream 声明会触发 TDZ
+    // （ReferenceError: Cannot access 'keepAlive' before initialization）。
+    const keepAlive = setInterval(() => {
+      if (streamClosed) return;
+      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
+        closeStream();
+      });
+    }, 30_000);
+
     // 关闭流并清理资源
     function closeStream() {
       if (streamClosed) return;
@@ -95,14 +106,6 @@ sse.get("/submissions/:id/events", async (c) => {
       },
     );
 
-    // 30s 心跳保持连接（防止代理/中间件超时断连）
-    const keepAlive = setInterval(() => {
-      if (streamClosed) return;
-      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
-        closeStream();
-      });
-    }, 30_000);
-
     // 保持 stream 活跃，直到客户端断开
     await new Promise<void>((resolve) => {
       resolveAbort = resolve;
@@ -132,6 +135,14 @@ sse.get("/queue/events", (c) => {
     const safetyTimer = setTimeout(() => {
       closeStream();
     }, 300_000);
+
+    // 30s 心跳（须在 closeStream 之前声明，避免 TDZ，同 submissions 端点）
+    const keepAlive = setInterval(() => {
+      if (streamClosed) return;
+      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
+        closeStream();
+      });
+    }, 30_000);
 
     function closeStream() {
       if (streamClosed) return;
@@ -166,13 +177,6 @@ sse.get("/queue/events", (c) => {
       },
     );
 
-    const keepAlive = setInterval(() => {
-      if (streamClosed) return;
-      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
-        closeStream();
-      });
-    }, 30_000);
-
     await new Promise<void>((resolve) => {
       resolveAbort = resolve;
       stream.onAbort(() => {
@@ -202,6 +206,14 @@ statsSse.get("/submissions/stats/events", (c) => {
     const safetyTimer = setTimeout(() => {
       closeStream();
     }, 300_000);
+
+    // 30s 心跳（须在 closeStream 之前声明，避免 TDZ，同 submissions 端点）
+    const keepAlive = setInterval(() => {
+      if (streamClosed) return;
+      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
+        closeStream();
+      });
+    }, 30_000);
 
     function closeStream() {
       if (streamClosed) return;
@@ -249,13 +261,6 @@ statsSse.get("/submissions/stats/events", (c) => {
         }
       },
     );
-
-    const keepAlive = setInterval(() => {
-      if (streamClosed) return;
-      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
-        closeStream();
-      });
-    }, 30_000);
 
     await new Promise<void>((resolve) => {
       resolveAbort = resolve;

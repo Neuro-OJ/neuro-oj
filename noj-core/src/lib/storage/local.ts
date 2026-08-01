@@ -4,7 +4,7 @@
  * ⚠️ 仅用于开发测试，不应在生产环境中使用。
  * 首次实例化时输出明确废弃警告。
  *
- * 存储路径：`data/packages/<base64-key>.zip`
+ * 存储路径：`data/storage/<base64-key>.zip`（默认目录，可用 `SUPPORT_PACKAGE_DIR` 覆盖）
  * URL 格式：`noj-storage://local/<base64>?checksum_sha256=<hex>`
  *
  * Judge 传输：仍使用 Base64 编码内联（judge 在独立容器中无法访问 core 文件系统）
@@ -22,7 +22,12 @@ import {
 } from "./types.ts";
 import { logger } from "../logging.ts";
 
-const PACKAGES_DIR = "data/packages";
+/**
+ * 本地存储根目录（实例级，构造时解析，测试可用 SUPPORT_PACKAGE_DIR 覆盖）。
+ *
+ * 与构建产物目录（`data/packages/`）分离，避免混淆（problem-bundle-import）。
+ * 默认 `data/storage/`，可用 `SUPPORT_PACKAGE_DIR` 环境变量覆盖（历史配置名保留）。
+ */
 
 const DEPRECATED_WARNING = [
   `[storage/local] ⚠️  本地文件存储仅用于开发测试，不应在生产环境中使用。`,
@@ -32,11 +37,15 @@ const DEPRECATED_WARNING = [
 /**
  * 本地文件系统存储实现
  *
- * 数据以 zip 文件形式存储在 `data/packages/` 目录下，
+ * 数据以 zip 文件形式存储在 `${this.storageDir}/` 目录下，
  * 文件名使用 SHA-256 的 base64url 编码（URL 安全）。
  */
 export class LocalStorageProvider implements StorageProvider {
   private warned = false;
+
+  /** 存储根目录（构造时解析 SUPPORT_PACKAGE_DIR，缺省 data/storage）。 */
+  private readonly storageDir: string = Deno.env.get("SUPPORT_PACKAGE_DIR") ??
+    "data/storage";
 
   constructor() {
     this.emitDeprecationWarning();
@@ -53,7 +62,7 @@ export class LocalStorageProvider implements StorageProvider {
    *
    * 1. 计算 SHA-256 哈希
    * 2. 将哈希编码为 base64url（URL 安全）
-   * 3. 以哈希为文件名写入 `data/packages/`
+   * 3. 以哈希为文件名写入存储根目录（`_key` 忽略——文件名由内容寻址决定）
    * 4. 返回 `noj-storage://local/<base64>?checksum_sha256=<hex>`
    */
   async put(
@@ -64,11 +73,11 @@ export class LocalStorageProvider implements StorageProvider {
     const hashHex = await sha256Hex(data);
     // 使用 base64url 编码哈希作为文件名（URL 安全）
     const base64Key = this.hexToBase64url(hashHex);
-    const filePath = `${PACKAGES_DIR}/${base64Key}.zip`;
+    const filePath = `${this.storageDir}/${base64Key}.zip`;
 
     // 原子写入：tmp 文件 + rename
     const tmpPath = `${filePath}.tmp.${crypto.randomUUID()}`;
-    await Deno.mkdir(PACKAGES_DIR, { recursive: true });
+    await Deno.mkdir(this.storageDir, { recursive: true });
     await Deno.writeFile(tmpPath, data);
     try {
       await Deno.rename(tmpPath, filePath);
@@ -86,7 +95,7 @@ export class LocalStorageProvider implements StorageProvider {
    */
   async get(url: string): Promise<Uint8Array> {
     const parsed = parseStorageUrl(url);
-    const filePath = `${PACKAGES_DIR}/${parsed.key}.zip`;
+    const filePath = `${this.storageDir}/${parsed.key}.zip`;
 
     return await Deno.readFile(filePath);
   }
@@ -98,7 +107,7 @@ export class LocalStorageProvider implements StorageProvider {
    */
   async delete(url: string): Promise<void> {
     const parsed = parseStorageUrl(url);
-    const filePath = `${PACKAGES_DIR}/${parsed.key}.zip`;
+    const filePath = `${this.storageDir}/${parsed.key}.zip`;
     try {
       await Deno.remove(filePath);
     } catch (err) {

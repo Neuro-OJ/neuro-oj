@@ -23,7 +23,8 @@ import type {
 
 /**
  * 记录一条审计日志。必须在 admin 路由内调用（依赖 RequestContext）。
- * 失败仅 console.error，业务操作继续。
+ * CLI/脚本场景（无 RequestContext）静默跳过——非 HTTP 上下文不产生审计事件；
+ * 其他失败仅 logger.error，业务操作继续。
  */
 export async function logAudit(
   action: AuditAction,
@@ -44,6 +45,13 @@ export async function logAudit(
       created_at: new Date().toISOString(),
     });
   } catch (e) {
+    // CLI/脚本场景无 RequestContext 属预期行为，静默跳过
+    if (
+      e instanceof Error &&
+      e.message.includes("RequestContext 未注入")
+    ) {
+      return;
+    }
     const pgErr = e as Record<string, unknown>;
     logger.error("审计日志写入失败 (logAudit)", {
       action,
@@ -122,8 +130,10 @@ export async function listAuditLogs(
     conditions.push(eq(auditLogs.admin_id, admin_id));
   } else {
     // 默认排除 root (admin_id='0')；PR-2 auth.* 事件 admin_id 可为 null
-    // 也保留（登录失败等需要追溯），显式传 admin_id 仍可查询
-    conditions.push(sql`${auditLogs.admin_id} != '0'`);
+    // 也保留（登录失败等需要追溯），显式传 admin_id 仍可查询。
+    // 用 IS DISTINCT FROM 而非 !=：NULL 与 '0' 比较结果为 NULL（不成立），
+    // 会导致 admin_id=NULL 的 auth.* 行被误过滤。
+    conditions.push(sql`${auditLogs.admin_id} IS DISTINCT FROM '0'`);
   }
   if (action) conditions.push(eq(auditLogs.action, action));
   if (from) conditions.push(gte(auditLogs.created_at, from));

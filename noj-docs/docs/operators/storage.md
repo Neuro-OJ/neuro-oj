@@ -43,15 +43,16 @@ noj-download://s3?url=<encoded-presigned-url>&checksum_sha256=...
 正式题目的默认生命周期：
 
 1. 出题人在 Web 界面创建或编辑题目。
-2. 出题人上传支持包 zip。
-3. noj-core 校验 zip，并通过 StorageProvider 注册为 `noj-storage://` URL。
+2. 出题人上传统一题目包 zip（含 `problem.json`/`evaluate.py`；旧式松散支持包上传已废弃）。
+3. noj-core 校验并剥离元数据，通过 StorageProvider 注册纯净评测包为 `noj-storage://` URL。
 4. noj-core 创建评测任务时把存储 URL 转换为 Judge 可下载的 `noj-download://` URL。
 5. noj-judge 下载、校验并缓存支持包，再注入 Evaluator 容器执行评测。
 
 内置样例题的开发生命周期：
 
 1. 维护者把样例题源文件放在 `noj-core/data/problems-src/<id>/`。
-2. 维护者运行 `deno task build-packages` 生成 `noj-core/data/packages/<id>.zip`。
-3. seed 把样例题支持包注册到 StorageProvider。
+2. 维护者运行 `deno task problems:build` 生成 `noj-core/data/packages/<id>.zip`。
+3. 维护者运行 `deno task problems:import`（或 `deno task dev-setup`）导入统一题目包，
+   由 noj-core 剥离元数据并把纯净评测包注册到 StorageProvider。
 
 样例题流程用于开发和测试，不是正式出题发布路径。

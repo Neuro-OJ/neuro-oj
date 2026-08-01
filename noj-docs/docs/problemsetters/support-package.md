@@ -1,91 +1,88 @@
-# 题目支持包
+# 统一题目包（Problem Bundle）
 
-支持包是出题人交给 Judge Worker 的题目运行材料。它不包含用户提交代码。
+统一题目包是 NOJ 的**题目导入载体**：单个 zip 包含题面、评测内容与评测配置，
+通过 `POST /api/v1/problems/import-bundle`（管理界面上传）或 `noj problems import`
+一键导入，创建或更新题目。
 
-## 最小结构
-
-NOJ 对支持包的强制要求很少：zip 根层级必须包含 `evaluate.py`。其他文件如何组织由出题人决定。
-
-最小支持包可以只有：
+## 包结构
 
 ```text
-├── evaluate.py
-```
-
-样例题通常还会放入测试数据和维护文件，例如：
-
-```text
-noj-core/data/problems-src/<id>/
-├── evaluate.py
-├── visible.jsonl
+<任意名>.zip
+├── problem.json      # 必需：题目 manifest
+├── statement.md      # 可选：题面 Markdown（与 manifest.description 二选一，文件优先）
+├── evaluate.py       # 必需：评测脚本（必须位于 zip 根目录）
+├── visible.jsonl     # 可选：测试数据（格式由题目自定）
 ├── hidden.jsonl
-├── submission.py
-└── README.md
+└── assets/           # 可选：其他 evaluate.py 需要的文件
 ```
 
-其中：
+- `evaluate.py` **必须位于 zip 根级**——Judge 将包解压到容器 `/workspace` 后
+  路径固定为 `/workspace/evaluate.py`。
+- 测试数据（testcase）**不标准化**：`visible.jsonl` / `hidden.jsonl` 只是内置
+  样例题的约定，你可以用 `cases/*.json`、SQLite、CSV 等任何方式组织，只要
+  `evaluate.py` 自己能读取。
+- 参考实现（如 `submission_sample.py`）**不要**放入包中；`problems:build` 打包时
+  自动排除 `submission*` / `__pycache__` / `.git`。
 
-- `evaluate.py` 是评测入口，必须存在。
-- `visible.jsonl` 和 `hidden.jsonl` 是当前内置样例题采用的 JSONL 约定，不是 NOJ 的必选文件。
-- `submission.py` 或 `solution.py` 可作为参考实现，但不会打包进支持包。
-- `README.md` 可记录题目说明或维护信息。
+## manifest（problem.json）
 
-你也可以使用其他方式组织数据，例如：
-
-- `cases/*.json`
-- `fixtures/` 目录
-- SQLite 数据库文件
-- CSV、YAML、纯文本或二进制资源
-- 在 `evaluate.py` 中动态生成测试输入
-
-只要 `evaluate.py` 能在 Evaluator 容器内读取并完成评分即可。
-
-## 打包规则
-
-正式出题时，可以使用任意 zip 工具生成支持包。仓库中的 `deno task build-packages` 主要用于维护内置样例题和本地开发验证。
-
-运行：
-
-```bash
-cd noj-core
-deno task build-packages
+```json
+{
+  "format_version": 1,
+  "number": 1001,
+  "title": "题目标题",
+  "difficulty": "easy",
+  "type": "P",
+  "categories": ["算法"],
+  "runtime_config": {
+    "evaluator": {
+      "image": "noj-evaluator-python",
+      "time_limit_ms": 5000,
+      "memory_limit_mb": 512
+    },
+    "solution": {
+      "image": "noj-solution-python",
+      "entry": "submission_sample.py",
+      "call_timeout_ms": 5000,
+      "memory_limit_mb": 512
+    }
+  }
+}
 ```
 
-构建脚本会扫描 `data/problems-src/<id>/`，生成：
+| 字段 | 必填 | 说明 |
+|------|:---:|------|
+| `format_version` | ✅ | 当前 `1` |
+| `title` | ✅ | 非空 |
+| `runtime_config` | ✅ | 双容器配置；`evaluator.command` 可缺省（默认 `python3 /workspace/evaluate.py`） |
+| `statement.md` 文件 | ❌ | 与 `manifest.description` 二选一（文件优先），二者皆缺 → 400 |
+| `evaluate.py` 文件 | ✅ | 根级缺失 → 400 |
+| `number` | ❌ | 仅 admin 生效：幂等键——按 (type, number) 匹配既有题目则更新；缺省 type 内自动分配 |
+| `difficulty` | ❌ | `easy` / `medium` / `hard`，缺省 `medium` |
+| `type` | ❌ | `U` / `P`，缺省 `U`（P 型仅 admin） |
+| `categories` | ❌ | 分类名数组，按 name 匹配已有分类，缺省忽略 |
+| `samples` | ❌ | 预留；缺省从题面自动提取 |
+
+## 导入语义与存储
+
+- 上传的 zip 是**导入载体**；系统剥离 `problem.json` / `statement.md` 后重建
+  **纯净评测包**存入存储（`noj-storage://`），题面/元数据的唯一事实来源是数据库。
+- 重复导入幂等：admin 提供 `number` 且 (type, number) 匹配既有题目 → 更新元数据并替换评测包；
+  未命中 → 创建（id 一律服务端生成 UUID，(type, number) 由数据库联合唯一约束保证唯一）。
+  非 admin 提供 `number` 会被 400 拒绝，普通用户导入仅创建新题（题号自动分配）。
+- 旧的松散支持包上传端点（`POST /problems/:id/support-package`）已废弃，一律
+  通过 `import-bundle` 导入。
+
+## 目录三层模型
 
 ```text
-noj-core/data/packages/<id>.zip
+data/problems-src/<id>/    题目源目录（版本控制）
+        │  noj problems build（排除 submission* / __pycache__ / .git）
+        ▼
+data/packages/<id>.zip     构建产物 = 导入载体（gitignored，可重建）
+        │  noj problems import / 管理界面上传（剥离元数据）
+        ▼
+data/storage/<hash>.zip    LocalStorageProvider 存储后端（gitignored）
 ```
 
-构建时会排除：
-
-- `submission.py`
-- `solution.py`
-- `__pycache__`
-- `*.pyc`
-
-## 通过 Web 界面上传
-
-正式出题时，应通过 Web 管理界面上传支持包：
-
-1. 打开管理后台或“我的题目”中的题目编辑页。
-2. 创建题目并保存，或打开已有题目。
-3. 在“题目支持包”区域上传 zip 文件。
-4. 上传成功后，题目会显示“支持包已上传”。
-
-后端会把 zip 保存到 StorageProvider，并把生成的 `noj-storage://` URL 写入题目的 `support_package_storage_url` 字段。后续提交评测时，noj-core 会把该存储 URL 转换为 Judge Worker 可下载的 `noj-download://` URL。
-
-Web 上传会进行基础校验：
-
-- 只接受 `.zip` 文件。
-- 文件大小不能超过 128 MiB。
-- zip 根层级必须包含 `evaluate.py`。
-- zip 根层级不得包含 `solution.py` 或 `submission.py`。
-- 支持包可以包含子目录，但 `evaluate.py` 必须在 zip 根层级，不要把整个题目目录作为唯一顶级文件夹打进去。
-
-!!! warning "不要用 seed 发布正式题目"
-    `deno task seed` 用于初始化样例题、分类、默认镜像和开发测试数据。正式出题应通过 Web 界面创建或编辑题目，并上传支持包。
-
-## 支持包不包含什么
-
-支持包不包含用户提交代码。用户代码由 noj-core 在提交时放入评测任务，再由 noj-judge 注入 Solution 容器。
+`SUPPORT_PACKAGE_DIR` 环境变量可覆盖本地存储目录（默认 `data/storage/`）。

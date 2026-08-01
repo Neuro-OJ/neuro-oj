@@ -21,11 +21,11 @@ docker compose up -d
 
 ```bash
 cd noj-core
-deno task setup
+deno task dev-setup
 deno task dev
 ```
 
-`deno task setup` 会构建支持包并运行 seed。`deno task dev` 启动后端开发服务。
+`deno task dev-setup` 会依次执行数据库迁移、系统初始化、管理员引导，并构建/导入题目包。`deno task dev` 启动后端开发服务。
 
 ## 启动 noj-ui
 
@@ -49,6 +49,6 @@ Judge Worker 需要能访问 Docker daemon，并且 Redis 地址要与 noj-core 
 ## 推荐启动顺序
 
 1. PostgreSQL 和 Redis。
-2. `noj-core`，让数据库迁移、seed 和结果消费者先启动。
+2. `noj-core`，让数据库迁移、系统初始化和结果消费者先启动。
 3. `noj-ui`。
 4. `noj-judge`。

@@ -171,7 +171,7 @@ JWT SHALL 包含 `is_admin` 布尔 claim，由登录时从 `user_roles` + `roles
 
 ### Requirement: 系统预置角色与权限
 
-系统 SHALL 在 seed 时创建以下预置数据：
+系统 SHALL 在 `deno task init:system` 时创建以下预置数据：
 
 **角色**：
 - `admin`：`is_system=true`, `is_admin=true`, `is_default=false`，无 parent
@@ -191,12 +191,12 @@ JWT SHALL 包含 `is_admin` 布尔 claim，由登录时从 `user_roles` + `roles
 `user` 角色 SHALL 默认拥有以下权限：`problem:create`, `problem:read`, `problem:write_own`, `problem:delete_own`, `problem:package_manage_own`, `submission:create`, `submission:read_own`, `user:read_profile`, `category:read`。
 `admin` 角色 SHALL 不需要显式分配权限（`is_admin=true` 隐式全权限）。
 
-#### Scenario: 全新部署 seed 创建预置角色
-- **WHEN** `deno task seed` 在新数据库上执行
+#### Scenario: 全新部署 init:system 创建预置角色
+- **WHEN** `deno task init:system` 在新数据库上执行
 - **THEN** `roles` 表包含 admin 和 user 两个系统角色，`permissions` 表包含 22 条权限定义，`role_permissions` 表包含 user 角色的 9 条权限关联
 
-#### Scenario: 重复 seed 幂等
-- **WHEN** `deno task seed` 在已有预置数据的数据库上再次执行
+#### Scenario: 重复 init:system 幂等
+- **WHEN** `deno task init:system` 在已有预置数据的数据库上再次执行
 - **THEN** 系统跳过已存在的角色和权限（ON CONFLICT DO NOTHING）
 
 ### Requirement: 数据迁移——现有用户角色同步

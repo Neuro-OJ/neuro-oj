@@ -8,25 +8,39 @@
 
 系统 SHALL 在 `problems` 表中存储 JSONB 格式的 `runtime_config`，用于描述双容器评测模式下的 Evaluator 与 Solution 各自运行时参数。
 
-#### Scenario: problems 表新增 runtime_config 列
+#### Scenario: problems 表 runtime_config 列
 
-- **WHEN** Drizzle 迁移 `0017_problem_runtime_config.sql` 首次执行
-- **THEN** `problems` 表新增 `runtime_config JSONB NULL` 列
-- **THEN** 现有所有题目 `runtime_config` 均为 NULL（保持向后兼容）
-- **THEN** 附加 CHECK 约束：`runtime_config IS NULL OR jsonb_typeof(runtime_config) = 'object'`
+- **WHEN** 检查 `problems` 表结构
+- **THEN** `runtime_config` 为 JSONB NOT NULL 列（统一双容器模式，无单容器回退）
 
 #### Scenario: RuntimeConfig 结构
 
 - **WHEN** admin 设置 `runtime_config` 字段
 - **THEN** 必填结构：
   - `evaluator.image: string`（必填，Docker 镜像名）
-  - `evaluator.command: string`（必填，如 `python3 /workspace/evaluate.py`）
+  - `evaluator.command: string`（可选，缺省注入默认值 `python3 /workspace/evaluate.py`）
   - `evaluator.time_limit_ms: number`（必填，> 0）
   - `evaluator.memory_limit_mb: number`（必填，> 0）
   - `solution.image: string`（必填）
   - `solution.entry: string`（必填，如 `solution.py`）
   - `solution.call_timeout_ms: number`（必填，> 0）
   - `solution.memory_limit_mb: number`（必填，> 0）
+
+#### Scenario: evaluator.command 缺省注入默认值
+
+- **WHEN** 导入统一题目包时 `runtime_config.evaluator.command` 缺省
+- **THEN** 系统在落库前注入默认值 `python3 /workspace/evaluate.py`
+- **THEN** 落库后的 `runtime_config.evaluator.command` 为非空字符串，结构与既有题目一致
+
+#### Scenario: API 创建/更新路径 command 必填
+
+- **WHEN** 通过题目 CRUD API 创建/更新题目且 `runtime_config.evaluator.command` 缺省
+- **THEN** 系统返回 HTTP 400（command 为必填字段；默认值注入仅限统一题目包导入路径）
+
+#### Scenario: 显式提供 command
+
+- **WHEN** `runtime_config.evaluator.command` 显式提供（如 `python3 /workspace/evaluator/main.py`）
+- **THEN** 系统保留显式值，不做默认注入
 
 ### Requirement: admin API 处理 runtime_config
 
@@ -47,31 +61,23 @@
 - **THEN** 校验通过则更新 runtime_config 字段
 - **THEN** 记录审计日志 `action=problems.runtime_config_changed`
 
-#### Scenario: admin 清空 runtime_config 回退单容器
+#### Scenario: admin 尝试清空 runtime_config 被拒
 
 - **WHEN** admin 发送 `PUT /api/v1/admin/problems/:id`，payload 含 `runtime_config: null`
-- **THEN** 系统清空该字段，题目回退到单容器路径
-- **THEN** `judge_image` / `judge_command` 字段保留原值（最后一次同步值），不参与 dual 调度
-- **THEN** 记录审计日志 `action=problems.runtime_config_changed`，detail 包含旧值摘要
+- **THEN** 系统返回 HTTP 400（runtime_config 是必填字段，不可清空；统一双容器模式，无单容器回退路径）
 
 #### Scenario: 普通用户创建题目不允许双容器配置
 
 - **WHEN** 普通用户（role='user'）发送 `POST /api/v1/problems`，payload 含 `runtime_config`
 - **THEN** 系统返回 HTTP 403，提示仅 admin 可配置双容器评测
 
-### Requirement: 提交流程按 runtime_config 路径分流
+### Requirement: 提交流程统一使用双容器路径
 
-系统 SHALL 在 submissions service 推 MQ 前根据 `runtime_config` 是否为 NULL 选择单/双容器路径。
+系统 SHALL 在 submissions service 推 MQ 时统一使用双容器模式（`runtime_config` 必填，无单容器路径）。
 
-#### Scenario: 题目 runtime_config 为 NULL 走单容器
+#### Scenario: 提交走双容器
 
-- **WHEN** 题目 `runtime_config IS NULL`
-- **THEN** submissions service 按既有逻辑构造 JudgeTask：使用 `judge_image` / `judge_command` / `time_limit_ms` / `memory_limit_mb`
-- **THEN** 推 `noj:judge:queue`，judge 端按单容器路径执行
-
-#### Scenario: 题目 runtime_config 非 NULL 走双容器
-
-- **WHEN** 题目 `runtime_config IS NOT NULL`
+- **WHEN** 题目存在且 `runtime_config` 非空
 - **THEN** submissions service 构造 `JudgeTask { mode: 'dual', runtime_config, ... }`
 - **THEN** 推 `noj:judge:queue`，judge 端按 dual 路径执行
 
@@ -82,7 +88,7 @@
 - **THEN** 在同一事务内读取 `runtime_config` 并构造 task
 - **WHEN** admin 在此期间尝试更新题目
 - **THEN** admin 更新阻塞直到 submissions service 提交
-- **THEN** 避免 admin 清空 runtime_config 后提交仍走 dual 的竞态
+- **THEN** 避免 runtime_config 并发修改竞态
 
 #### Scenario: 推 MQ 前再校验白名单
 

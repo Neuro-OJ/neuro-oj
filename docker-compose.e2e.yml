@@ -59,7 +59,7 @@ services:
   # 抽出为独立 one-shot 任务。这样 noj-core 容器只跑 HTTP server，
   # 冷启动从 ~30min 降到 ~1s，单 PR Full Pipeline 从 10-30min 降到 4-6min。
   #
-  # noj-migrate 用 entrypoint "setup" 模式：migrate + seed 后退出。
+  # noj-migrate 用 entrypoint "setup" 模式：dev-setup（迁移 + 初始化 + 题目导入）后退出。
   # noj-core depends_on service_completed_successfully → 等 noj-migrate 完后才起。
   # ──────────────────────────────────────────────────────────────────────────
   noj-migrate:
@@ -78,11 +78,11 @@ services:
       JWT_SECRET: e2e-ci-secret-fixed-value-with-32-chars-min-abc
       ADMIN_EMAIL: e2e_admin@test.com
       ADMIN_PASS: e2e_admin_pass
-    # v13.4：seedSupportPackages 通过 LocalStorageProvider 把 zip 写入
-    # /app/data/packages/<hash>.zip。这是容器内文件系统，noj-core 看不到。
-    # 共享 volume 让 noj-migrate 写入的包对 noj-core 可见。
+    # problem-bundle-import：dev-setup 在容器内完成构建 + 导入，
+    # LocalStorageProvider 把剥离后评测包写入 /app/data/storage/<hash>.zip。
+    # 这是容器内文件系统，noj-core 看不到，共享 volume 让评测包对 noj-core 可见。
     volumes:
-      - noj-data-packages:/app/data/packages
+      - noj-data-storage:/app/data/storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -129,7 +129,7 @@ services:
     # v13.4：与 noj-migrate 共享 /app/data/packages/，让 LocalStorageProvider
     # 写入的支持包对 noj-core 可见。
     volumes:
-      - noj-data-packages:/app/data/packages
+      - noj-data-storage:/app/data/storage
 
   noj-judge:
     build:
@@ -157,4 +157,4 @@ services:
 
 volumes:
   noj-judge-work:
-  noj-data-packages:
+  noj-data-storage:

@@ -1,0 +1,388 @@
+/**
+ * 统一题目包导入服务（problem-bundle-import）。
+ *
+ * 编排流程：解析 zip → 校验 manifest → 剥离元数据重建评测包 →
+ * storage 注册 → 落库元数据（更新复用 updateProblem；创建复用 createProblem 校验语义）。
+ *
+ * 语义：
+ * - manifest 不含 id：题目主键一律由服务端生成 UUID。
+ * - manifest.number 仅 admin 生效，作为幂等键：按 (type, number) 匹配既有题目
+ *   → 更新（元数据 + 替换评测包）；未命中 → 创建；(type, number) 由 DB 联合
+ *   唯一约束保证唯一，缺省时自动分配 type 内 MAX+1。
+ * - 非 admin 提供 manifest.number 直接拒绝（400）：普通用户导入只能创建新题
+ *   （number 自动分配），避免"上传以为更新、实则新建"的误导。
+ * - 题面唯一事实来源是数据库：statement.md 与 manifest.description 仅用于
+ *   本次导入写入，评测包中不含这两个元数据文件。
+ */
+
+import type { Context } from "hono";
+import { and, eq, sql } from "drizzle-orm";
+import { getDb } from "../db/connection.ts";
+import { problems } from "../db/schema.ts";
+import {
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from "../lib/errors.ts";
+import { logger } from "../lib/logging.ts";
+import { checkPermission } from "../lib/permissions.ts";
+import { getStorageProvider } from "../lib/storage/mod.ts";
+import { parseBundleZip, stripMetadataEntries } from "../lib/bundle-parser.ts";
+import {
+  isValidProblemBundleName,
+  type ProblemBundleManifest,
+  validateBundleManifest,
+} from "../types/problem-bundle.ts";
+import type { ProblemResponseWithCategories } from "../types/problems.ts";
+import { updateProblem } from "./problems-crud.ts";
+import { validateJudgeImageWithKind } from "./judge-images.ts";
+import { syncProblemCategories } from "./problems-categories.ts";
+import { getProblem } from "./problems-list.ts";
+import { type CategoryTreeNode, listCategories } from "./categories.ts";
+import { logAudit } from "./audit-log.ts";
+import { MAX_SUPPORT_PACKAGE_SIZE } from "./support-package.ts";
+
+/** 导入执行者（CLI 场景无 Hono Context）。 */
+export interface BundleImportActor {
+  userId?: string;
+  userRole?: string;
+}
+
+/**
+ * 构建评测包存储键（与 support-package.ts 的 `packages/<problem_id>.zip` 约定一致）。
+ */
+function buildPackageKey(problemId: string): string {
+  return `packages/${problemId}.zip`;
+}
+
+/**
+ * 按分类名解析为分类 id 列表。
+ *
+ * 与既有导入语义一致：不存在的分类名被忽略并记录 warning。
+ * 注：listCategories 返回树形，这里扁平遍历收集 name → id。
+ */
+async function resolveCategoryIds(
+  names: string[] | undefined,
+): Promise<string[]> {
+  if (!names || names.length === 0) return [];
+  const tree = await listCategories();
+  const nameToId = new Map<string, string>();
+  const walk = (nodes: CategoryTreeNode[]): void => {
+    for (const node of nodes) {
+      nameToId.set(node.name, node.id);
+      walk(node.children);
+    }
+  };
+  walk(tree);
+
+  const ids: string[] = [];
+  for (const name of names) {
+    const id = nameToId.get(name);
+    if (id) {
+      ids.push(id);
+    } else {
+      logger.warn(`题目导入：分类 "${name}" 不存在，已忽略`);
+    }
+  }
+  return ids;
+}
+
+/**
+ * 判断执行者是否 admin。
+ *
+ * 有 Hono Context 时走 RBAC 权限检查（`problem:write_any` 为 admin 级权限），
+ * 否则退化为 userRole 判断（CLI 场景）。
+ */
+async function isAdminActor(
+  actor: BundleImportActor,
+  c?: Context,
+): Promise<boolean> {
+  if (c) {
+    return await checkPermission(c, "problem:write_any");
+  }
+  return actor.userRole === "admin";
+}
+
+/**
+ * 统一题目包导入入口。
+ *
+ * @param file 上传的 zip（导入载体，根级含 problem.json/evaluate.py）
+ * @param actor 执行者（userId/userRole）
+ * @param c 可选 Hono Context（HTTP 路由场景传入；CLI 场景为 undefined）
+ * @returns 导入/更新后的题目响应
+ * @throws {ValidationError} 非 zip / 超大小
+ * @throws {BadRequestError} 格式/校验失败
+ * @throws {ForbiddenError} 权限不足（由 createProblem/updateProblem 抛出）
+ */
+export async function importProblemBundle(
+  file: { name: string; data: Uint8Array },
+  actor: BundleImportActor,
+  c?: Context,
+): Promise<ProblemResponseWithCategories> {
+  // 1. 基础校验：后缀 + 大小（与 support-package 上传约定一致）
+  if (!isValidProblemBundleName(file.name)) {
+    throw new ValidationError("仅支持 .zip 格式文件");
+  }
+  if (file.data.length > MAX_SUPPORT_PACKAGE_SIZE) {
+    throw new ValidationError(
+      `导入包大小超过限制（最大 ${
+        (MAX_SUPPORT_PACKAGE_SIZE / 1024 / 1024).toFixed(0)
+      }MB）`,
+    );
+  }
+
+  // 2. 解析 + 校验（含 ZIP 安全与 manifest 结构校验、command 默认注入）
+  const parsed = parseBundleZip(file.data);
+  const manifest = validateBundleManifest(parsed.manifest);
+
+  // 3. 题面：statement.md 优先，manifest.description 兜底，二者皆缺 → 400
+  const description = parsed.statement ?? manifest.description;
+  if (!description || !description.trim()) {
+    throw new BadRequestError(
+      "缺少题面：zip 需包含 statement.md 或 manifest.description",
+    );
+  }
+
+  // 4. 权限与 number 语义：number 是 admin 幂等键——admin 提供时按 (type, number)
+  //    匹配既有题目 → 更新、未命中 → 新建；非 admin 提供 number 直接拒绝（400），
+  //    普通用户导入仅走创建路径（number 自动分配）。
+  const admin = await isAdminActor(actor, c);
+  if (!admin && manifest.number !== undefined) {
+    throw new BadRequestError(
+      "仅管理员可指定 number（按 (type, number) 幂等更新既有题目）；普通用户导入时题号由系统自动分配",
+    );
+  }
+  const number = admin ? manifest.number : undefined;
+
+  // 5. 剥离元数据，重建纯净评测包
+  const strippedZip = stripMetadataEntries(file.data);
+  const storage = await getStorageProvider();
+
+  // 6. 分发：manifest.number 提供时按 (type, number) 业务键匹配（命中 → 更新；
+  //    未命中 → 创建）；未提供 → 创建（number 自动分配）。id 一律由服务端生成，
+  //    (type, number) 由 DB 联合唯一约束保证唯一（problems_type_number_unique）。
+  let result: ProblemResponseWithCategories;
+  if (number !== undefined) {
+    const type = manifest.type ?? "U";
+    const db = getDb();
+    const byNumber = await db
+      .select({
+        id: problems.id,
+        storageUrl: problems.support_package_storage_url,
+      })
+      .from(problems)
+      .where(and(eq(problems.type, type), eq(problems.number, number)))
+      .limit(1);
+    if (byNumber.length > 0) {
+      result = await updateExisting(
+        byNumber[0].id,
+        byNumber[0].storageUrl,
+        manifest,
+        description,
+        actor,
+        c,
+        storage,
+        strippedZip,
+      );
+    } else {
+      result = await createViaCrud(
+        manifest,
+        description,
+        number,
+        actor,
+        c,
+        storage,
+        strippedZip,
+      );
+    }
+  } else {
+    // 创建路径（number 自动分配）
+    result = await createViaCrud(
+      manifest,
+      description,
+      number,
+      actor,
+      c,
+      storage,
+      strippedZip,
+    );
+  }
+
+  // 7. 审计日志（仅 HTTP 路由场景；CLI 无 RequestContext，跳过）
+  if (c) {
+    await logAudit(
+      "problems.imported",
+      {
+        action: "problems.imported",
+        title: result.title,
+        display_id: result.display_id,
+        imported_with_id: false,
+      },
+      { type: "problem", id: result.id },
+    );
+  }
+
+  return result;
+}
+
+/**
+ * 更新路径：替换评测包（尽力删除旧对象，失败不阻塞）+ 更新元数据。
+ */
+async function updateExisting(
+  problemId: string,
+  oldStorageUrl: string | null,
+  manifest: ProblemBundleManifest,
+  description: string,
+  actor: BundleImportActor,
+  c: Context | undefined,
+  storage: Awaited<ReturnType<typeof getStorageProvider>>,
+  strippedZip: Uint8Array,
+): Promise<ProblemResponseWithCategories> {
+  if (oldStorageUrl) {
+    try {
+      await storage.delete(oldStorageUrl);
+    } catch (err) {
+      logger.warn("题目导入：删除旧评测包失败", { problem_id: problemId, err });
+    }
+  }
+  const storageUrl = await storage.put(
+    buildPackageKey(problemId),
+    strippedZip,
+    "application/zip",
+  );
+  return await updateProblem(
+    problemId,
+    {
+      title: manifest.title,
+      description,
+      difficulty: manifest.difficulty,
+      runtime_config: manifest.runtime_config,
+      support_package_storage_url: storageUrl,
+      category_ids: await resolveCategoryIds(manifest.categories),
+    },
+    actor.userId,
+    actor.userRole,
+    c,
+  );
+}
+
+/**
+ * 创建路径。
+ *
+ * 与 createProblem 对齐的校验（P 型权限、镜像白名单、number 分配）。
+ * id 一律由服务端生成 UUID；(type, number) 由 DB 联合唯一约束保证唯一，
+ * 并发冲突（23505）时自动分配重试。
+ */
+async function createViaCrud(
+  manifest: ProblemBundleManifest,
+  description: string,
+  number: number | undefined,
+  actor: BundleImportActor,
+  c: Context | undefined,
+  storage: Awaited<ReturnType<typeof getStorageProvider>>,
+  strippedZip: Uint8Array,
+): Promise<ProblemResponseWithCategories> {
+  const type = manifest.type ?? "U";
+
+  // P 型仅 admin（与 createProblem 权限一致）
+  if (type === "P" && !(await isAdminActor(actor, c))) {
+    throw new ForbiddenError("仅管理员可创建管理题");
+  }
+
+  // 镜像白名单校验（与 createProblem 一致）
+  await validateJudgeImageWithKind(
+    manifest.runtime_config.evaluator.image,
+    "evaluator",
+  );
+  await validateJudgeImageWithKind(
+    manifest.runtime_config.solution.image,
+    "solution",
+  );
+
+  const db = getDb();
+  const categoryIds = await resolveCategoryIds(manifest.categories);
+
+  // number：admin 指定或 type 内 MAX+1（并发冲突 23505 时最多重试 3 次，
+  // 与 createProblem 的分配语义一致）
+  const MAX_RETRIES = 3;
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  let finalNumber = number;
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (finalNumber === undefined) {
+      const [row] = await db
+        .select({ max: sql<number>`COALESCE(MAX(${problems.number}), 0)` })
+        .from(problems)
+        .where(eq(problems.type, type));
+      finalNumber = Number(row?.max ?? 0) + 1;
+    }
+
+    try {
+      await db.insert(problems).values({
+        id,
+        title: manifest.title,
+        description,
+        difficulty: manifest.difficulty ?? "medium",
+        runtime_config: manifest.runtime_config,
+        number: finalNumber,
+        owner_id: actor.userId ?? "0",
+        type,
+        created_at: now,
+        updated_at: now,
+      });
+      break;
+    } catch (err) {
+      if (attempt === MAX_RETRIES - 1) throw err;
+      // PG 唯一约束冲突（type+number）
+      const pgCode = err && typeof err === "object"
+        ? (err as Record<string, unknown>).code ||
+          ((err as Record<string, unknown>).cause as Record<string, unknown>)
+            ?.code
+        : undefined;
+      if (pgCode === "23505") {
+        // admin 显式指定 number 冲突 → 直接报错
+        if (number !== undefined) throw err;
+        finalNumber = undefined;
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  if (categoryIds.length > 0) {
+    await syncProblemCategories(id, categoryIds);
+  }
+
+  // 注册评测包并回填
+  const storageUrl = await storage.put(
+    buildPackageKey(id),
+    strippedZip,
+    "application/zip",
+  );
+  await db
+    .update(problems)
+    .set({ support_package_storage_url: storageUrl, updated_at: now })
+    .where(eq(problems.id, id));
+
+  return getProblem(id);
+}
+
+/**
+ * 供 CLI 使用的题面兜底：按 id 查询题目（无 id 时抛 NotFoundError）。
+ * 仅导出给 scripts/noj.ts 复用，避免重复查询逻辑。
+ */
+export async function requireProblemById(id: string): Promise<void> {
+  const db = getDb();
+  const existing = await db
+    .select({ id: problems.id })
+    .from(problems)
+    .where(eq(problems.id, id))
+    .limit(1);
+  if (existing.length === 0) {
+    throw new NotFoundError(`题目不存在：${id}`);
+  }
+}
+
+export { getProblem };

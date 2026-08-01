@@ -5,11 +5,13 @@
   "tasks": {
     "dev": "deno run --watch --env-file=.env -A src/main.ts",
     "start": "deno run --env-file=.env -A src/main.ts",
-    "setup": "deno task build-packages && deno task seed",
-    "seed": "deno run --env-file=.env -A scripts/seed.ts",
-    "build-packages": "deno run -A scripts/build-packages.ts",
+    "db:migrate": "deno run --env-file=.env -A scripts/noj.ts db migrate",
+    "init:system": "deno run --env-file=.env -A scripts/noj.ts init system",
+    "bootstrap:admin": "deno run --env-file=.env -A scripts/noj.ts bootstrap admin",
+    "problems:build": "deno run -A scripts/noj.ts problems build",
+    "problems:import": "deno run --env-file=.env -A scripts/noj.ts problems import",
+    "dev-setup": "deno run --env-file=.env -A scripts/noj.ts dev-setup",
     "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts",
-    "migrate": "deno run --env-file=.env -A scripts/migrate.ts",
     "check:env": "deno run -A scripts/check-env.ts",
     "check:env:strict": "deno run -A scripts/check-env.ts --strict",
     "test": "env -u DATABASE_URL deno test -A --no-check",
@@ -24,6 +26,7 @@
     "test:pg": "deno test -A --no-check"
   },
   "imports": {
+    "@cliffy/command": "jsr:@cliffy/command@^1.2.1",
     "hono": "npm:hono@^4",
     "hono/": "npm:/hono@^4/",
     "hono/cors": "npm:hono@^4/cors",
@@ -38,7 +41,8 @@
     "@alicloud/dm": "npm:@alicloud/dm20151123@^1.10.2",
     "@electric-sql/pglite": "npm:@electric-sql/pglite@^0.5.3",
     "@aws-sdk/client-s3": "npm:@aws-sdk/client-s3@^3",
-    "@aws-sdk/s3-request-presigner": "npm:@aws-sdk/s3-request-presigner@^3"
+    "@aws-sdk/s3-request-presigner": "npm:@aws-sdk/s3-request-presigner@^3",
+    "fflate": "npm:fflate@~0.8.3"
   },
   "nodeModulesDir": "auto",
   "fmt": {

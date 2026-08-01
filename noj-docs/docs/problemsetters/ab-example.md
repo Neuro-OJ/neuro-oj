@@ -84,7 +84,7 @@ else:
 
 ```bash
 cd noj-core
-deno task build-packages
+deno task problems:build
 ```
 
 生成：
@@ -97,16 +97,16 @@ noj-core/data/packages/1003.zip
 
 ## 上传到题目
 
-正式出题时，不使用 seed 注册支持包。seed 只用于仓库内置样例题和开发环境初始化。
+正式出题时，不使用 `problems:import` 导入样例题。该流程只用于仓库内置样例题和开发环境初始化。
 
 推荐流程：
 
-1. 在 Web 管理界面创建 A+B 题，填写题面、难度、分类和运行时配置。
+1. 在 Web 管理界面创建 A+B 题，填写题面、难度、分类和运行时配置（或用统一题目包导入）。
 2. 保存题目。
-3. 在题目编辑页的“题目支持包”区域上传 `1003.zip`。
+3. 在题目编辑页的"题目支持包"区域上传统一题目包（zip 含 `problem.json` + `statement.md` + `evaluate.py`）。
 4. 上传成功后提交正确解法验证。
 
-上传成功后，后端会把 zip 注册到 StorageProvider，并更新题目的 `support_package_storage_url`。提交评测时，noj-core 会把它转换成 Judge Worker 可下载的 `noj-download://` URL。
+上传成功后，后端会剥离元数据、把纯净评测包注册到 StorageProvider，并更新题目的 `support_package_storage_url`。提交评测时，noj-core 会把它转换成 Judge Worker 可下载的 `noj-download://` URL。
 
 ## 本地样例题说明
 
@@ -114,7 +114,7 @@ noj-core/data/packages/1003.zip
 
 ```bash
 cd noj-core
-deno task setup
+deno task dev-setup
 ```
 
-该命令会构建样例支持包并执行 seed。这个流程服务于本地开发和测试，不是普通出题人的发布路径。
+该命令会依次执行数据库迁移、系统初始化、管理员引导，并构建/导入题目包。这个流程服务于本地开发和测试，不是普通出题人的发布路径。

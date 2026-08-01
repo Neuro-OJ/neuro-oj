@@ -143,7 +143,7 @@ noj-core/
 │       ├── index.ts        # JudgeTask, JudgeResult, SubmissionStatus, LANGUAGE_EXT_MAP
 │       ├── auth.ts         # RegisterInput, LoginInput, UserResponse
 │       └── problems.ts     # DIFFICULTIES, PROBLEM_TYPES, 校验函数
-├── scripts/               # CLI 脚本（seed、build-packages、migrate）
+├── scripts/               # CLI 工具（noj.ts 单入口 + migrate.ts + check-env.ts）
 ├── data/
 │   ├── problems-src/<id>/ # 题目源文件（版本控制，仅样例题）
 │   └── packages/<id>.zip  # 构建产物（gitignored，local 模式使用）
@@ -157,52 +157,52 @@ noj-core/
 
 从 `.env` 文件或 `Deno.env` 读取。**必须配置**：
 
-| 变量                              | 默认值                    | 说明                                                                  |
-| --------------------------------- | ------------------------- | --------------------------------------------------------------------- |
-| `DATABASE_URL`                    | —                         | PostgreSQL 连接串（无默认值）                                         |
-| `JWT_SECRET`                      | —                         | HS256 签名密钥（≥32 字符）                                            |
-| `JWT_EXPIRES_IN`                  | `24h`                     | Token 有效期                                                          |
-| `REDIS_URL`                       | `redis://127.0.0.1:6379/` | Redis 连接串                                                          |
-| `PORT`                            | `8000`                    | HTTP 监听端口                                                         |
-| `NOJ_ENV`                         | 空（development）         | `production` 启用生产模式                                             |
-| `LOG_LEVEL`                       | prod=info / dev=debug     | 日志级别：`debug`/`info`/`warn`/`error`，低于阈值的日志被抑制         |
-| `LOG_FORMAT`                      | prod=json / dev=pretty    | 日志输出格式：`json`（结构化）/ `pretty`（人类可读）                  |
-| `ADMIN_EMAIL`                     | —                         | Seed 管理员邮箱（**强烈推荐**）。未设置时 seed 自动创建临时引导管理员 |
-| `ADMIN_PASS`                      | —                         | Seed 管理员密码（需与 ADMIN_EMAIL 配合）                              |
-| `DATABASE_POOL_MAX`               | `10`                      | PostgreSQL 连接池大小                                                 |
-| `DATABASE_CONNECT_TIMEOUT`        | `10`                      | 连接超时秒数                                                          |
-| `DATABASE_IDLE_TIMEOUT`           | `300`                     | 空闲连接超时秒数                                                      |
-| `DATABASE_MAX_LIFETIME`           | `3600`                    | 连接最大生命周期秒数                                                  |
-| `CORS_ALLOWED_ORIGINS`            | —                         | 生产环境 CORS 白名单（逗号分隔）                                      |
-| `EMAIL_PROVIDER`                  | `mock`                    | 邮件 Provider：`mock`/`aliyun`/`tencent`                              |
-| `ALIBABA_ACCESS_KEY_ID`           | —                         | 阿里云 DirectMail AccessKey（aliyun 时必填）                          |
-| `ALIBABA_ACCESS_KEY_SECRET`       | —                         | 阿里云 DirectMail AccessKey Secret                                    |
-| `ALIBABA_FROM_EMAIL`              | —                         | 阿里云发信地址（需控制台验证域名）                                    |
-| `TENCENT_SECRET_ID`               | —                         | 腾讯云 SecretId（tencent 时必填）                                     |
-| `TENCENT_SECRET_KEY`              | —                         | 腾讯云 SecretKey                                                      |
-| `TENCENT_FROM_EMAIL`              | —                         | 腾讯云发信地址（需控制台验证域名）                                    |
-| `TENCENT_REGION`                  | `ap-guangzhou`            | 腾讯云地域                                                            |
-| `STORAGE_PROVIDER`                | `local`                   | 存储 Provider：`local`（开发测试）或 `s3`（生产环境）                 |
-| `S3_ENDPOINT`                     | —                         | S3 兼容对象存储端点（s3 模式必填）                                    |
-| `S3_REGION`                       | `us-east-1`               | S3 区域                                                               |
-| `S3_ACCESS_KEY`                   | —                         | S3 访问密钥（s3 模式必填）                                            |
-| `S3_SECRET_KEY`                   | —                         | S3 秘密密钥（s3 模式必填）                                            |
-| `S3_BUCKET`                       | `noj-support-packages`    | S3 存储桶名                                                           |
-| `S3_FORCE_PATH_STYLE`             | `false`                   | 使用路径风格 URL（MinIO 需要设为 `true`）                             |
-| `RATE_LIMIT_ENABLED`              | `true`                    | 速率限制总开关（NOJ_ENV=test 时强制关闭）                             |
-| `RATE_LIMIT_LOGIN_IP_WINDOW`      | `30`                      | IP 维度限流窗口（秒）                                                 |
-| `RATE_LIMIT_LOGIN_IP_MAX`         | `10`                      | IP 维度窗口内最大尝试次数                                             |
-| `RATE_LIMIT_LOGIN_ACC_WINDOW`     | `30`                      | 账号维度限流窗口（秒）                                                |
-| `RATE_LIMIT_LOGIN_ACC_MAX`        | `5`                       | 账号维度窗口内最大尝试次数                                            |
-| `RATE_LIMIT_LOGIN_BACKOFF_SEC`    | `15`                      | 每次失败累计退避秒数                                                  |
-| `RATE_LIMIT_LOGIN_LOCK_THRESHOLD` | `10`                      | 连续失败锁定阈值                                                      |
-| `RATE_LIMIT_LOGIN_LOCK_SECONDS`   | `3600`                    | 锁定时长（秒）                                                        |
-| `RATE_LIMIT_SEARCH_ENABLED`       | `true`                    | 搜索限流总开关（issue #100）                                          |
-| `RATE_LIMIT_SEARCH_WINDOW`        | `30`                      | 搜索限流窗口（秒）                                                    |
-| `RATE_LIMIT_SEARCH_MAX_ANON`      | `60`                      | 匿名 IP 窗口内最大搜索尝试次数                                        |
-| `RATE_LIMIT_SEARCH_MAX_AUTHED`    | `120`                     | 登录用户窗口内最大搜索尝试次数                                        |
-| `TRUSTED_PROXIES`                 | —                         | 可信代理白名单（逗号分隔 IP/CIDR）。生产环境**必须**配置              |
-| `AUDIT_LOG_RETENTION_DAYS`        | `90`                      | 审计日志保留天数（0 = 禁用清理）                                      |
+| 变量                              | 默认值                    | 说明                                                                        |
+| --------------------------------- | ------------------------- | --------------------------------------------------------------------------- |
+| `DATABASE_URL`                    | —                         | PostgreSQL 连接串（无默认值）                                               |
+| `JWT_SECRET`                      | —                         | HS256 签名密钥（≥32 字符）                                                  |
+| `JWT_EXPIRES_IN`                  | `24h`                     | Token 有效期                                                                |
+| `REDIS_URL`                       | `redis://127.0.0.1:6379/` | Redis 连接串                                                                |
+| `PORT`                            | `8000`                    | HTTP 监听端口                                                               |
+| `NOJ_ENV`                         | 空（development）         | `production` 启用生产模式                                                   |
+| `LOG_LEVEL`                       | prod=info / dev=debug     | 日志级别：`debug`/`info`/`warn`/`error`，低于阈值的日志被抑制               |
+| `LOG_FORMAT`                      | prod=json / dev=pretty    | 日志输出格式：`json`（结构化）/ `pretty`（人类可读）                        |
+| `ADMIN_EMAIL`                     | —                         | 管理员邮箱（**强烈推荐**）。未设置时 bootstrap:admin 自动创建临时引导管理员 |
+| `ADMIN_PASS`                      | —                         | 管理员密码（需与 ADMIN_EMAIL 配合）                                         |
+| `DATABASE_POOL_MAX`               | `10`                      | PostgreSQL 连接池大小                                                       |
+| `DATABASE_CONNECT_TIMEOUT`        | `10`                      | 连接超时秒数                                                                |
+| `DATABASE_IDLE_TIMEOUT`           | `300`                     | 空闲连接超时秒数                                                            |
+| `DATABASE_MAX_LIFETIME`           | `3600`                    | 连接最大生命周期秒数                                                        |
+| `CORS_ALLOWED_ORIGINS`            | —                         | 生产环境 CORS 白名单（逗号分隔）                                            |
+| `EMAIL_PROVIDER`                  | `mock`                    | 邮件 Provider：`mock`/`aliyun`/`tencent`                                    |
+| `ALIBABA_ACCESS_KEY_ID`           | —                         | 阿里云 DirectMail AccessKey（aliyun 时必填）                                |
+| `ALIBABA_ACCESS_KEY_SECRET`       | —                         | 阿里云 DirectMail AccessKey Secret                                          |
+| `ALIBABA_FROM_EMAIL`              | —                         | 阿里云发信地址（需控制台验证域名）                                          |
+| `TENCENT_SECRET_ID`               | —                         | 腾讯云 SecretId（tencent 时必填）                                           |
+| `TENCENT_SECRET_KEY`              | —                         | 腾讯云 SecretKey                                                            |
+| `TENCENT_FROM_EMAIL`              | —                         | 腾讯云发信地址（需控制台验证域名）                                          |
+| `TENCENT_REGION`                  | `ap-guangzhou`            | 腾讯云地域                                                                  |
+| `STORAGE_PROVIDER`                | `local`                   | 存储 Provider：`local`（开发测试）或 `s3`（生产环境）                       |
+| `S3_ENDPOINT`                     | —                         | S3 兼容对象存储端点（s3 模式必填）                                          |
+| `S3_REGION`                       | `us-east-1`               | S3 区域                                                                     |
+| `S3_ACCESS_KEY`                   | —                         | S3 访问密钥（s3 模式必填）                                                  |
+| `S3_SECRET_KEY`                   | —                         | S3 秘密密钥（s3 模式必填）                                                  |
+| `S3_BUCKET`                       | `noj-support-packages`    | S3 存储桶名                                                                 |
+| `S3_FORCE_PATH_STYLE`             | `false`                   | 使用路径风格 URL（MinIO 需要设为 `true`）                                   |
+| `RATE_LIMIT_ENABLED`              | `true`                    | 速率限制总开关（NOJ_ENV=test 时强制关闭）                                   |
+| `RATE_LIMIT_LOGIN_IP_WINDOW`      | `30`                      | IP 维度限流窗口（秒）                                                       |
+| `RATE_LIMIT_LOGIN_IP_MAX`         | `10`                      | IP 维度窗口内最大尝试次数                                                   |
+| `RATE_LIMIT_LOGIN_ACC_WINDOW`     | `30`                      | 账号维度限流窗口（秒）                                                      |
+| `RATE_LIMIT_LOGIN_ACC_MAX`        | `5`                       | 账号维度窗口内最大尝试次数                                                  |
+| `RATE_LIMIT_LOGIN_BACKOFF_SEC`    | `15`                      | 每次失败累计退避秒数                                                        |
+| `RATE_LIMIT_LOGIN_LOCK_THRESHOLD` | `10`                      | 连续失败锁定阈值                                                            |
+| `RATE_LIMIT_LOGIN_LOCK_SECONDS`   | `3600`                    | 锁定时长（秒）                                                              |
+| `RATE_LIMIT_SEARCH_ENABLED`       | `true`                    | 搜索限流总开关（issue #100）                                                |
+| `RATE_LIMIT_SEARCH_WINDOW`        | `30`                      | 搜索限流窗口（秒）                                                          |
+| `RATE_LIMIT_SEARCH_MAX_ANON`      | `60`                      | 匿名 IP 窗口内最大搜索尝试次数                                              |
+| `RATE_LIMIT_SEARCH_MAX_AUTHED`    | `120`                     | 登录用户窗口内最大搜索尝试次数                                              |
+| `TRUSTED_PROXIES`                 | —                         | 可信代理白名单（逗号分隔 IP/CIDR）。生产环境**必须**配置                    |
+| `AUDIT_LOG_RETENTION_DAYS`        | `90`                      | 审计日志保留天数（0 = 禁用清理）                                            |
 
 ## 开发命令
 
@@ -214,19 +214,20 @@ deno task dev
 deno task start
 
 # 数据库迁移（启动时自动执行，也可单独运行）
-deno task migrate
+deno task db:migrate
 
 # 生成 Drizzle 迁移文件
 deno task db:generate
 
-# 种子数据（示例题 + 分类 + 管理员）
-deno task seed
+# 一键初始化（数据库迁移 + 系统初始化 + 管理员引导 + 题目包构建/导入 + dev 数据）
+# 等价于依次执行：db:migrate → init:system → bootstrap:admin → problems:build → problems:import
+deno task dev-setup
 
-# 构建支持包
-deno task build-packages
+# 题目包构建（data/problems-src/ → data/packages/）
+deno task problems:build
 
-# 一键初始化
-deno task setup          # = build-packages + seed
+# 题目包导入（data/packages/ → 数据库 + 存储后端）
+deno task problems:import
 
 # 测试
 deno task test
@@ -397,28 +398,28 @@ docker compose down     # 停止
 
 ## 服务层业务规则
 
-| 规则                 | 说明                                                                                                                        |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| 提交状态机           | `pending → [judging, error]` → `judging → [finished, error]`，finished/error 为终态                                         |
-| 输出截断             | API 返回时截断至 8KB（`MAX_OUTPUT_LENGTH`），数据库保留完整内容                                                             |
-| 代码大小上限         | 100KB（`MAX_CODE_LENGTH`），路由层校验                                                                                      |
-| 个人简介上限         | 5000 字符                                                                                                                   |
-| 支持包读取失败       | 非致命：日志记录后继续（无支持包），由 judge 端处理                                                                         |
-| 题目更新             | 静默忽略 `type` 和 `number` 字段（API 接受但不处理）                                                                        |
-| 题目编号冲突         | 自动分配时重试 3 次（PG 23505），手动指定时立即报错                                                                         |
-| 评测结果写入         | UPSERT 语义（`onConflictDoUpdate`），用最新结果覆盖旧数据；配合 `rejudge_seq` 防护乱序覆盖                                  |
-| 队列位置查询         | 即使 DB 状态为 "judging" 也检查 Redis 队列（状态在入队时已更新）                                                            |
-| 问题列表默认         | 默认只显示 `type='P'` 的题目，U 类型需直接 URL 或所有者主页访问                                                             |
-| 分页默认值           | page=1, per_page=20, max per_page=100                                                                                       |
-| 用户枚举防护         | 登录失败统一返回"用户名或密码错误"，不区分"用户不存在"和"密码错误"                                                          |
-| Root 用户            | UID="0"，admin 角色，随机密码不可登录，不计入管理员统计，不出现在用户列表                                                   |
-| 密码重置邮箱枚举防护 | `POST /forgot-password` 不管邮箱是否存在都返 200 + 同一消息（与登录失败防枚举共存）                                         |
-| 密码重置令牌         | DB 存 SHA-256 hex 哈希（**不存明文**），URL 传明文 base64url；32 字节随机数                                                 |
-| 密码重置 TTL         | 15 分钟（OWASP 2025+ 建议 ≤ 15 分钟），单 SQL 原子消耗防并发                                                                |
-| 密码重置邮件         | 策略模式：`EMAIL_PROVIDER` 选择 mock（默认）/ aliyun / tencent；mock 为控制台输出；真实 Provider 在发送前校验环境变量完整性 |
-| 引导管理员           | 无可登录 admin 且未设 ADMIN_EMAIL 时，seed 自动创建 username=admin 临时账号，must_change_password=true，终端打印随机密码    |
-| 强制改密守卫         | authMiddleware 检测 token.must_change_password=true，白名单（/change-password, /me）外全部 403 PASSWORD_CHANGE_REQUIRED     |
-| change-password限流  | 独立 pwchange 命名空间，不污染 /login 限流桶（issue #75 评审 H4）                                                           |
+| 规则                 | 说明                                                                                                                                |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 提交状态机           | `pending → [judging, error]` → `judging → [finished, error]`，finished/error 为终态                                                 |
+| 输出截断             | API 返回时截断至 8KB（`MAX_OUTPUT_LENGTH`），数据库保留完整内容                                                                     |
+| 代码大小上限         | 100KB（`MAX_CODE_LENGTH`），路由层校验                                                                                              |
+| 个人简介上限         | 5000 字符                                                                                                                           |
+| 支持包读取失败       | 非致命：日志记录后继续（无支持包），由 judge 端处理                                                                                 |
+| 题目更新             | 静默忽略 `type` 和 `number` 字段（API 接受但不处理）                                                                                |
+| 题目编号冲突         | 自动分配时重试 3 次（PG 23505），手动指定时立即报错                                                                                 |
+| 评测结果写入         | UPSERT 语义（`onConflictDoUpdate`），用最新结果覆盖旧数据；配合 `rejudge_seq` 防护乱序覆盖                                          |
+| 队列位置查询         | 即使 DB 状态为 "judging" 也检查 Redis 队列（状态在入队时已更新）                                                                    |
+| 问题列表默认         | 默认只显示 `type='P'` 的题目，U 类型需直接 URL 或所有者主页访问                                                                     |
+| 分页默认值           | page=1, per_page=20, max per_page=100                                                                                               |
+| 用户枚举防护         | 登录失败统一返回"用户名或密码错误"，不区分"用户不存在"和"密码错误"                                                                  |
+| Root 用户            | UID="0"，admin 角色，随机密码不可登录，不计入管理员统计，不出现在用户列表                                                           |
+| 密码重置邮箱枚举防护 | `POST /forgot-password` 不管邮箱是否存在都返 200 + 同一消息（与登录失败防枚举共存）                                                 |
+| 密码重置令牌         | DB 存 SHA-256 hex 哈希（**不存明文**），URL 传明文 base64url；32 字节随机数                                                         |
+| 密码重置 TTL         | 15 分钟（OWASP 2025+ 建议 ≤ 15 分钟），单 SQL 原子消耗防并发                                                                        |
+| 密码重置邮件         | 策略模式：`EMAIL_PROVIDER` 选择 mock（默认）/ aliyun / tencent；mock 为控制台输出；真实 Provider 在发送前校验环境变量完整性         |
+| 引导管理员           | 无可登录 admin 且未设 ADMIN_EMAIL 时，bootstrap:admin 自动创建 username=admin 临时账号，must_change_password=true，终端打印随机密码 |
+| 强制改密守卫         | authMiddleware 检测 token.must_change_password=true，白名单（/change-password, /me）外全部 403 PASSWORD_CHANGE_REQUIRED             |
+| change-password限流  | 独立 pwchange 命名空间，不污染 /login 限流桶（issue #75 评审 H4）                                                                   |
 
 ## 登录速率限制（issue #73）
 
@@ -562,13 +563,13 @@ Retry-After: 25
 - 路由测试使用 `jsonRequest()` 辅助函数创建原始 `Request` 对象（确保 Hono
   路由兼容性）
 
-## 脚本说明
+## CLI 说明
 
-| 脚本                        | 行为                                                                                         |
-| --------------------------- | -------------------------------------------------------------------------------------------- |
-| `scripts/seed.ts`           | 幂等（`ON CONFLICT DO NOTHING`），先迁移→确保 root 用户→种子数据，`finally` 中关闭 DB 连接   |
-| `scripts/build-packages.ts` | 调用系统 `zip` 命令（非 JS 库），在 `data/problems-src/<id>/` 目录执行，排除 `submission.py` |
-| `scripts/migrate.ts`        | 日志中脱敏数据库密码（`"//***@"`），迁移后关闭 DB 连接确保进程退出                           |
+| 命令                                                          | 行为                                                                                                                    |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `deno task dev-setup`（`scripts/noj.ts dev-setup`）           | 幂等：迁移 → 系统基础数据（root/RBAC/镜像白名单/分类）→ 管理员引导 → 构建题目包 → 导入题目包 → dev 专用数据（E2E 用户） |
+| `deno task problems:build`（`scripts/noj.ts problems build`） | 调用系统 `zip` 命令（非 JS 库），在 `data/problems-src/<id>/` 目录执行，排除 `submission*`/`__pycache__`/`.git`         |
+| `deno task db:migrate`（`scripts/noj.ts db migrate`）         | 日志中脱敏数据库密码（`"//***@"`），迁移后关闭 DB 连接确保进程退出                                                      |
 
 ## 评测脚本协议（Judge 集成）
 

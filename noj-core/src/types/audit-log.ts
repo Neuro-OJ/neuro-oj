@@ -12,6 +12,7 @@ export type AuditAction =
   | "users.unban"
   | "problems.delete"
   | "problems.runtime_config_changed"
+  | "problems.imported"
   | "categories.delete"
   | "submissions.rejudge"
   | "settings.update"
@@ -41,6 +42,12 @@ export type AuditDetail =
     display_id: string;
     old_has_runtime_config: boolean;
     new_has_runtime_config: boolean;
+  }
+  | {
+    action: "problems.imported";
+    title: string;
+    display_id: string;
+    imported_with_id: boolean;
   }
   | {
     action: "categories.delete";

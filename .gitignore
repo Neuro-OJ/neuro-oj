@@ -62,6 +62,8 @@ coverage/
 # Support packages are build artifacts, not versioned
 noj-core/data/packages/
 !noj-core/data/packages/.gitkeep
+# Local storage backend (problem-bundle-import: separated from build artifacts)
+noj-core/data/storage/
 
 # --- Dev tool locks (devtool.sh advisory locks for concurrent safety) ---
 scripts/dev/locks/

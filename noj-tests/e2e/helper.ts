@@ -135,6 +135,39 @@ export async function getOrCreateUser(
 }
 
 /**
+ * 按题号获取样例题真实 id。
+ *
+ * problem-bundle-import 后题目 id 为服务端生成的 UUID（旧 seed 的数字 id
+ * 兼容已不存在），E2E 测试须通过列表接口按 number 筛选拿到真实 UUID。
+ *
+ * @param number 题号（如 1001）
+ * @param type 题目类型（默认 P，样例题均为 P 型）
+ */
+export async function getProblemIdByNumber(
+  number: number,
+  type = "P",
+): Promise<string> {
+  const token = await getAdminToken();
+  const res = await apiGet(
+    `/api/v1/problems?number=${number}&type=${type}&limit=1`,
+    token,
+  );
+  if (res.status !== 200) {
+    throw new Error(
+      `获取题目 ${type}${number} 失败: ${res.status} ${
+        JSON.stringify(res.body)
+      }`,
+    );
+  }
+  const items = (res.body as { data: { id: string }[] }).data;
+  const problem = items.find((p) => p.id);
+  if (!problem) {
+    throw new Error(`题目 ${type}${number} 不存在（dev-setup 未导入？）`);
+  }
+  return problem.id;
+}
+
+/**
  * 检测 judge worker 是否可用（提交后数秒内状态推进）。
  *
  * 创建一个临时用户提交一次，若 2s 内状态从 pending 变为 judging/finished
@@ -148,7 +181,9 @@ export async function isJudgeAvailable(): Promise<boolean> {
       "judge_chk_" + ts + "@test.com",
       "Test12345679",
     );
-    const id = await submitCode(t, "1001", "print(1)");
+    // 题目 id 为 UUID（统一题目包导入），须动态获取
+    const problemId = await getProblemIdByNumber(1001);
+    const id = await submitCode(t, problemId, "print(1)");
     await new Promise((r) => setTimeout(r, 2000));
     const res = await fetch(`${BASE_URL}/api/v1/submissions/${id}`, {
       headers: { Authorization: "Bearer " + t },

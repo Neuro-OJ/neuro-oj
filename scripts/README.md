@@ -16,12 +16,9 @@ scripts/
 │   ├── logs/              #   日志 + PID 文件目录
 │   └── locks/             #   devtool 同工具防双开锁
 │
-├── db/                    # 数据库脚本
-│   ├── migrate.sh         #   运行 Drizzle 迁移
-│   └── seed.sh            #   种子数据(题库/分类/管理员)
+├── db/                    # 数据库脚本（已废弃，收敛到 deno task db:migrate 等）
 │
-├── build/                 # 构建脚本
-│   └── build-packages.sh  #   构建题目支持包 zip
+├── build/                 # 构建脚本（已废弃，收敛到 deno task problems:build）
 │
 └── e2e/                   # 跨模块 E2E 测试
     ├── setup.sh           #   启动 E2E 环境
@@ -41,8 +38,8 @@ scripts/
 | **单模块启动**                           | `bash scripts/dev/devtool.sh start <core\|ui\|judge\|infra>`    |
 | **单模块重启**                           | `bash scripts/dev/devtool.sh stop <core\|ui\|judge> && bash scripts/dev/devtool.sh start <core\|ui\|judge>` |
 | **更新环境变量模板（保留自定义）**       | `bash scripts/dev/devtool.sh init-env --merge`                  |
-| **手动初始化数据库**                     | `bash scripts/db/migrate.sh && bash scripts/db/seed.sh`         |
-| **手动构建题目支持包**                   | `bash scripts/build/build-packages.sh`                          |
+| **手动初始化数据库**                     | `cd noj-core && deno task db:migrate`（初始化见 `deno task dev-setup`） |
+| **手动构建题目包**                       | `cd noj-core && deno task problems:build`                              |
 | **跑跨模块 E2E 测试**                    | `bash scripts/e2e/run-all.sh`                                   |
 
 devtool.sh 子命令完整列表：`bash scripts/dev/devtool.sh help` 或 `devtool.sh <子命令> --help`。

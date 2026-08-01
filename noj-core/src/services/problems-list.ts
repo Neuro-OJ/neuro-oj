@@ -4,7 +4,7 @@
  * 提供：
  * - listProblems / listAllProblems：分页 + 多维筛选
  * - getProblem / getProblemByTypeAndNumber：单条查询
- * - attachCategories：注入关联分类（被 problems-export.ts 复用）
+ * - attachCategories：注入关联分类（被题目导入/列表复用）
  * - toProblemResponse：DB 行 → 响应 DTO（仅本模块使用）
  *
  * 依赖：
@@ -68,7 +68,7 @@ function toProblemResponse(
 /**
  * 查询并注入题目的关联分类。
  *
- * 公开给 problems-export.ts 复用——导出场景同样需要按题目 id 拉分类。
+ * 公开给题目导入等场景复用——需要按题目 id 拉分类。
  */
 export async function attachCategories(
   problemIds: string[],

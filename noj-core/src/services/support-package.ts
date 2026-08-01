@@ -2,11 +2,7 @@ import { resolve } from "jsr:@std/path@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { problems } from "../db/schema.ts";
-import {
-  ForbiddenError,
-  NotFoundError,
-  ValidationError,
-} from "../lib/errors.ts";
+import { ForbiddenError, NotFoundError } from "../lib/errors.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { logger } from "../lib/logging.ts";
 import { assertPermission, checkPermission } from "../lib/permissions.ts";
@@ -19,18 +15,6 @@ import type { Context } from "hono";
  * 上限放宽至 128 MiB。
  */
 export const MAX_SUPPORT_PACKAGE_SIZE = 128 * 1024 * 1024; // 128MB
-
-/**
- * 支持包存储键前缀。
- */
-const PACKAGES_KEY_PREFIX = "packages/";
-
-/**
- * 构建支持包存储键。
- */
-function buildPackageKey(problemId: string): string {
-  return `${PACKAGES_KEY_PREFIX}${problemId}.zip`;
-}
 
 /**
  * 校验用户是否有权管理指定题目的支持包。
@@ -85,62 +69,6 @@ async function checkSupportPackagePermission(
   if (problem.owner_id !== userId) {
     throw new ForbiddenError("无权管理此题目的支持包");
   }
-}
-
-/**
- * 保存支持包。
- *
- * 通过 StorageProvider 存储 zip 数据，返回 `noj-storage://` URL，
- * 并更新数据库中的 `support_package_storage_url` 字段。
- *
- * @param problem - 可选的预获取题目信息（type, owner_id），避免重复查询
- * @returns `noj-storage://` URL
- * @throws {NotFoundError} 题目不存在
- * @throws {ForbiddenError} 无权操作
- */
-export async function saveSupportPackage(
-  problemId: string,
-  file: { name: string; data: Uint8Array },
-  userId?: string,
-  userRole?: string,
-  problem?: { type: string; owner_id: string },
-  c?: Context,
-): Promise<string> {
-  await checkSupportPackagePermission(problemId, userId, userRole, problem, c);
-
-  // 验证文件扩展名为 .zip（防御性校验，路由层已做相同检查）
-  if (!file.name.toLowerCase().endsWith(".zip")) {
-    throw new ValidationError("仅支持 .zip 格式文件");
-  }
-
-  // 验证文件大小（防御性校验，路由层已做相同检查）
-  if (file.data.length > MAX_SUPPORT_PACKAGE_SIZE) {
-    throw new ValidationError(
-      `支持包大小超过限制（最大 ${
-        (MAX_SUPPORT_PACKAGE_SIZE / 1024 / 1024).toFixed(0)
-      }MB）`,
-    );
-  }
-
-  // 通过 StorageProvider 存储
-  const storage = await getStorageProvider();
-  const storageUrl = await storage.put(
-    buildPackageKey(problemId),
-    file.data,
-    "application/zip",
-  );
-
-  // 更新数据库
-  const db = getDb();
-  await db
-    .update(problems)
-    .set({
-      support_package_storage_url: storageUrl,
-      updated_at: new Date().toISOString(),
-    })
-    .where(eq(problems.id, problemId));
-
-  return storageUrl;
 }
 
 /**
@@ -251,25 +179,32 @@ export async function getSupportPackageBytes(
  * 目前 dev 模式：直接从源码目录读取。
  */
 export async function getProblemTemplate(
-  problemId: string,
+  problemNumber: number,
 ): Promise<{ content: string; language: string } | null> {
   // TODO: 生产环境从 support package 解压或单独的对象存储读取
-  const fsRoot = resolve(
-    Deno.cwd(),
-    "data",
-    "problems-src",
-    problemId,
-    "submission.py",
-  );
-
-  try {
-    const content = await Deno.readTextFile(fsRoot);
-    // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
-    return { content, language: "python3" };
-  } catch (err) {
-    if (err instanceof Deno.errors.NotFound) {
-      return null;
+  // 参考实现统一命名为 submission_sample.py（与 problem.json 的 solution.entry
+  // 一致）；兼容旧题目录仍保留 submission.py 的情况。
+  // problems-src 目录按题号命名（1001/1002/1003），题目 id 为 UUID，
+  // 因此调用方必须传入 number 而非 id。
+  const candidates = ["submission_sample.py", "submission.py"];
+  for (const fileName of candidates) {
+    const fsPath = resolve(
+      Deno.cwd(),
+      "data",
+      "problems-src",
+      String(problemNumber),
+      fileName,
+    );
+    try {
+      const content = await Deno.readTextFile(fsPath);
+      // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
+      return { content, language: "python3" };
+    } catch (err) {
+      if (err instanceof Deno.errors.NotFound) {
+        continue;
+      }
+      throw err;
     }
-    throw err;
   }
+  return null;
 }

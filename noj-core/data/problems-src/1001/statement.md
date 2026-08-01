@@ -17,7 +17,7 @@ JSON。你的任务是通过 Prompt 约束，让模型把这些自然语言报�
 `gate_id` 的格式固定为 `X-YY`：
 
 - `X` 为区域字母，只能是 `E / W / N / S / I / O`
-- `YY` 为两位数字编号
+- `YY` 为两位数字编号（`01`–`12`）
 
 区域映射规则如下：
 
@@ -50,48 +50,64 @@ JSON。你的任务是通过 Prompt 约束，让模型把这些自然语言报�
 
 也就是说：`fault > closed > open`。
 
-## 你需要实现
+## 输入格式
 
-在 `submission.py` 中完成：
-
-1. `build_messages(raw_text: str) -> list[dict]`
-2. `build_generation_parameters() -> dict`
-
-## 输入输出样例
-
-### 样例输入 1
+输入是一个描述舱门状态的纯文本字符串 `report`（无需解析 JSON），例如：
 
 ```
-外环七号门完全拉不开
+东环七号门现在打不开，报个故障
 ```
 
-### 样例输出 1
+## 输出要求
 
-```json
-{ "gate_id": "O-07", "status": "fault" }
-```
+输出标准化的 JSON 字符串，恰含以下两个字段：
 
-### 样例输入 2
+- `gate_id` (`string`) — 标准化舱门编号，格式 `X-YY`（区域字母 + 两位编号）
+- `status` (`string`) — 标准化舱门状态（`open` / `closed` / `fault`）
 
-```
-主环8号门已经放行
-```
-
-### 样例输出 2
-
-```json
-{ "gate_id": "I-08", "status": "open" }
-```
-
-## 评分说明
+## 评分标准
 
 总分 `10` 分：
 
 - 内容正确 `8` 分：在可见集与隐藏集上联合按字段级准确率计分
 - 格式正确 `2` 分：在可见集与隐藏集上联合按格式命中率计分
 
-### 运行方式
+格式命中要求：JSON 恰好包含 `gate_id` / `status` 两个键，且 `gate_id` 符合
+`X-YY` 格式（编号 `01`–`12`）、`status` 属于 `open / closed / fault`。
 
-```bash
-python evaluate.py
+## 示例
+
+### 示例 1
+
+**输入**
+
 ```
+外环七号门完全拉不开
+```
+
+**输出**
+
+```json
+{ "gate_id": "O-07", "status": "fault" }
+```
+
+> 注意：输出的 JSON 键名使用 `snake_case`。
+
+### 示例 2
+
+**输入**
+
+```
+主环8号门已经放行
+```
+
+**输出**
+
+```json
+{ "gate_id": "I-08", "status": "open" }
+```
+
+## 参考实现
+
+参考实现见 `submission_sample.py`：在 `solve(report: str) -> str`
+中完成归一化逻辑， 返回标准化 JSON 字符串。

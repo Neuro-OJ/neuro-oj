@@ -14,8 +14,9 @@ import {
   apiPost,
   BASE_URL,
   CODE_SAMPLES,
-  isE2E,
   getAdminToken,
+  getProblemIdByNumber,
+  isE2E,
   isJudgeAvailable,
   pollSubmission,
   registerUser,
@@ -24,7 +25,7 @@ import {
 } from "./helper.ts";
 
 const skip = !isE2E;
-const PROBLEM_ID = "1001";
+let PROBLEM_ID = "";
 
 let adminToken = "";
 let userToken = "";
@@ -55,14 +56,23 @@ Deno.test({
       return;
     }
 
+    // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
+    PROBLEM_ID = await getProblemIdByNumber(1001);
+
     // 先提交一段正确代码，等待完成
-    submissionId = await submitCode(userToken, PROBLEM_ID, CODE_SAMPLES.accepted);
+    submissionId = await submitCode(
+      userToken,
+      PROBLEM_ID,
+      CODE_SAMPLES.accepted,
+    );
     console.log("  → 原始提交 ID: " + submissionId.slice(0, 8));
     const result = await pollSubmission(userToken, submissionId);
     if (result.verdict !== "Accepted") {
       throw new Error("期望原始提交 Accepted, 实际 " + result.verdict);
     }
-    console.log("  ✓ 原始提交完成: " + result.verdict + " (" + result.score + "分)");
+    console.log(
+      "  ✓ 原始提交完成: " + result.verdict + " (" + result.score + "分)",
+    );
   },
 });
 
@@ -82,10 +92,16 @@ Deno.test({
     );
 
     if (rejudgeRes.status !== 200) {
-      throw new Error("重测返回异常: " + rejudgeRes.status + " " + JSON.stringify(rejudgeRes.body));
+      throw new Error(
+        "重测返回异常: " + rejudgeRes.status + " " +
+          JSON.stringify(rejudgeRes.body),
+      );
     }
 
-    const body = rejudgeRes.body as { message?: string; submission_id?: string };
+    const body = rejudgeRes.body as {
+      message?: string;
+      submission_id?: string;
+    };
     if (!body.submission_id) {
       throw new Error("重测响应缺少 submission_id: " + JSON.stringify(body));
     }
@@ -96,7 +112,9 @@ Deno.test({
     if (result.verdict !== "Accepted") {
       throw new Error("重测结果期望 Accepted, 实际 " + result.verdict);
     }
-    console.log("  ✓ 重测完成: " + result.verdict + " (" + result.score + "分)");
+    console.log(
+      "  ✓ 重测完成: " + result.verdict + " (" + result.score + "分)",
+    );
   },
 });
 
@@ -164,9 +182,14 @@ Deno.test({
       throw new Error("批量重测返回异常: " + res.status);
     }
 
-    const body = res.body as { data?: { total?: number; queued?: number; skipped?: number } };
+    const body = res.body as {
+      data?: { total?: number; queued?: number; skipped?: number };
+    };
     if (body.data) {
-      console.log("  ✓ 批量重测: total=" + body.data.total + " queued=" + body.data.queued + " skipped=" + body.data.skipped);
+      console.log(
+        "  ✓ 批量重测: total=" + body.data.total + " queued=" +
+          body.data.queued + " skipped=" + body.data.skipped,
+      );
     }
   },
 });
@@ -182,10 +205,13 @@ Deno.test({
       "/api/v1/admin/audit-logs?action=submissions.rejudge",
       adminToken,
     );
-    const data = (logs.body as { data: Array<{ detail?: Record<string, unknown> }> }).data;
+    const data =
+      (logs.body as { data: Array<{ detail?: Record<string, unknown> }> }).data;
     // 至少有一条重测记录
     if (data.length === 0) {
-      console.log("  ⚠ 未找到 submissions.rejudge 审计记录（可能未启用审计日志）");
+      console.log(
+        "  ⚠ 未找到 submissions.rejudge 审计记录（可能未启用审计日志）",
+      );
       return;
     }
     const found = data.some((r) =>

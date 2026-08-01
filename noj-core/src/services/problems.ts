@@ -8,7 +8,6 @@
  *   getProblemByTypeAndNumber + attachCategories
  * - problems-categories.ts：syncProblemCategories
  * - problems-crud.ts：createProblem / updateProblem / deleteProblem
- * - problems-export.ts：buildExportPayload / importProblems
  *
  * 本文件仅 re-export 以保持向后兼容（routes/admin.ts、routes/problems.ts、
  * tests/services/problems.test.ts、tests/routes/problems.test.ts 等既有
@@ -31,8 +30,6 @@ export {
 } from "./problems-list.ts";
 
 export { syncProblemCategories } from "./problems-categories.ts";
-
-export { buildExportPayload, importProblems } from "./problems-export.ts";
 
 export { validateRuntimeConfig } from "./problems-types.ts";
 

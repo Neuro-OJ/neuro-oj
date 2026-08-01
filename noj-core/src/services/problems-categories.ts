@@ -6,7 +6,7 @@
  *
  * 独立的理由：
  * - 与 problems 表无强耦合，单独抽离便于后续拓展批量操作（如批量改分类）
- * - 被 problems-crud.ts（createProblem / updateProblem）与 problems-export.ts
+ * - 被 problems-crud.ts（createProblem / updateProblem）与题目导入服务复用
  *   （importOne overwrite 路径）共同依赖
  */
 import { eq, inArray } from "drizzle-orm";

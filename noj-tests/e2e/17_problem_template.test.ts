@@ -2,8 +2,8 @@
  * 题目初始代码模板 E2E 测试。
  *
  * 覆盖：
- * - GET /api/v1/problems/:id/template 读取 submission.py 作为初始代码
- * - 404 当题目无 submission.py
+ * - GET /api/v1/problems/:id/template 读取 submission_sample.py 作为初始代码
+ * - 404 当题目无参考实现
  * - 401 未登录
  */
 
@@ -25,13 +25,13 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[e2e/template] 8.1 1003 有 submission.py → 返回内容",
+  name: "[e2e/template] 8.1 1003 有 submission_sample.py → 返回内容",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     if (!isE2E) return;
-    const res = await apiGet("/api/v1/problems/1003/template", adminToken);
+    const res = await apiGet("/api/v1/problems/P1003/template", adminToken);
     if (res.status !== 200) {
       throw new Error(`期望 200，实际 ${res.status}`);
     }
@@ -49,13 +49,13 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[e2e/template] 8.2 1001 有 submission.py → 返回内容",
+  name: "[e2e/template] 8.2 1001 有 submission_sample.py → 返回内容",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     if (!isE2E) return;
-    const res = await apiGet("/api/v1/problems/1001/template", adminToken);
+    const res = await apiGet("/api/v1/problems/P1001/template", adminToken);
     if (res.status !== 200) {
       throw new Error(`期望 200，实际 ${res.status}`);
     }
@@ -67,15 +67,19 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[e2e/template] 8.3 1002 无 submission.py → 404",
+  name: "[e2e/template] 8.3 1002 有 submission_sample.py → 返回内容",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     if (!isE2E) return;
-    const res = await apiGet("/api/v1/problems/1002/template", adminToken);
-    if (res.status !== 404) {
-      throw new Error(`期望 404，实际 ${res.status}`);
+    const res = await apiGet("/api/v1/problems/P1002/template", adminToken);
+    if (res.status !== 200) {
+      throw new Error(`期望 200，实际 ${res.status}`);
+    }
+    const body = res.body as { data?: { content?: string } };
+    if (!body?.data?.content) {
+      throw new Error("响应 data.content 应存在");
     }
   },
 });
@@ -101,7 +105,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     if (!isE2E) return;
-    const res = await apiGet("/api/v1/problems/1003/template");
+    const res = await apiGet("/api/v1/problems/P1003/template");
     if (res.status !== 401) {
       throw new Error(`期望 401，实际 ${res.status}`);
     }

@@ -14,6 +14,6 @@
 ## 继续阅读
 
 - [本地启动](local-start.md)
-- [初始化与 seed](seed.md)
+- [初始化与 CLI](cli.md)
 - [存储与支持包交付](storage.md)
 - [Judge Worker 运维](judge-workers.md)

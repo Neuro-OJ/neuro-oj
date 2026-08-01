@@ -83,7 +83,7 @@ export const problems = pgTable(
     title: text("title").notNull(),
     description: text("description").notNull(),
     difficulty: text("difficulty").notNull().default("medium"),
-    /** 支持包存储 URL（`noj-storage://` 格式），或 legacy 本地路径 */
+    /** 支持包存储 URL（`noj-storage://` 格式） */
     support_package_storage_url: text("support_package_storage_url"),
     /**
      * 双容器 Runtime 配置（必填）。
@@ -612,6 +612,7 @@ export const auditLogs = pgTable(
         'users.unban',
         'problems.delete',
         'problems.runtime_config_changed',
+        'problems.imported',
         'categories.delete',
         'submissions.rejudge',
         'settings.update',

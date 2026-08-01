@@ -11,6 +11,7 @@ import {
   apiPut,
   CODE_SAMPLES,
   getAdminToken,
+  getProblemIdByNumber,
   isE2E,
   isJudgeAvailable,
   pollSubmission,
@@ -24,6 +25,7 @@ let adminToken = "";
 let participantToken = "";
 let contestId = "";
 let judgeAvailable = false;
+let problemId = "";
 
 interface ContestData {
   id: string;
@@ -48,6 +50,8 @@ Deno.test({
       `contest_user_${testSuffix}@test.com`,
       "Test12345679",
     );
+    // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
+    problemId = await getProblemIdByNumber(1001);
     judgeAvailable = await isJudgeAvailable();
     if (!judgeAvailable) {
       console.log("  ⚠ judge worker 不可用，提交与排名断言将跳过");
@@ -78,7 +82,7 @@ Deno.test({
         is_public: true,
         password: "ContestPass123",
         affect_global_ranking: false,
-        problems: [{ problem_id: "1001", sort_order: 0, label: "A" }],
+        problems: [{ problem_id: problemId, sort_order: 0, label: "A" }],
       },
       adminToken,
     );
@@ -128,7 +132,11 @@ Deno.test({
 
     const submitResult = await apiPost(
       `/api/v1/contests/${contestId}/submit`,
-      { problem_id: "1001", language: "python3", code: CODE_SAMPLES.accepted },
+      {
+        problem_id: problemId,
+        language: "python3",
+        code: CODE_SAMPLES.accepted,
+      },
       participantToken,
     );
     if (submitResult.status !== 201) {

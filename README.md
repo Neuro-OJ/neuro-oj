@@ -116,7 +116,7 @@ docker compose up -d          # PostgreSQL + Redis
 
 # 2. 后端 noj-core
 cd noj-core
-deno task setup               # 构建支持包 + 填充种子数据
+deno task dev-setup          # 一键初始化（迁移 + 系统数据 + 题目导入）
 deno task dev                 # 热重载 http://localhost:8000
 
 # 3. 前端 noj-ui（新开终端）
@@ -132,7 +132,7 @@ cargo run                     # 需 Docker daemon 运行中
 
 ### 首个管理员账号
 
-`deno task seed` 的行为依赖 `ADMIN_EMAIL` 是否设置：
+`deno task dev-setup` 的行为依赖 `ADMIN_EMAIL` 是否设置：
 
 - **未设置 `ADMIN_EMAIL`** — 自动创建引导管理员（密码 24 位随机写入终端输出，**首次登录后必须修改**）。
 - **设置了 `ADMIN_EMAIL` 但未设置 `ADMIN_PASS`** — 仅提升该邮箱用户为管理员，不创建新用户。
@@ -143,7 +143,7 @@ cargo run                     # 需 Docker daemon 运行中
 ```bash
 echo 'ADMIN_EMAIL=admin@example.com' >> noj-core/.env
 echo 'ADMIN_PASS=YourSecurePass123!' >> noj-core/.env
-cd noj-core && deno task seed
+cd noj-core && deno task dev-setup
 ```
 
 ---
@@ -156,7 +156,7 @@ cd noj-core && deno task seed
 |------|----------------|
 | `JWT_SECRET 长度不足 32` | 在 `noj-core/.env` 设置 32+ 字符的随机字符串 |
 | `DATABASE_URL` 报错 / 连接拒绝 | 确认 `docker compose ps` 中 Postgres 已启动；端口 5432 未被占用 |
-| `deno task setup` 卡在 `zip: command not found` | `sudo apt install -y zip unzip` 后重试（或先跑 `devtool.sh install-deps`） |
+| `deno task dev-setup` 卡在 `zip: command not found` | `sudo apt install -y zip unzip` 后重试（或先跑 `devtool.sh install-deps`） |
 | `cargo run` 报 `Cannot connect to Docker daemon` | 启动 Docker Desktop，或 `sudo systemctl start docker` |
 | 端口 3000 / 8000 冲突 | 修改对应模块配置，或先 `lsof -i :3000` 杀掉占用进程 |
 | 一键启动后某模块长时间未就绪 | 查看 `devtool.sh status` 输出与对应日志 |
@@ -167,16 +167,16 @@ cd noj-core && deno task seed
 |------|----------------|
 | 提交后状态长时间停留在 `Pending` | noj-judge 未启动或未连上 Redis；检查 `bash scripts/dev/devtool.sh status` 与 `scripts/dev/logs/judge.log` |
 | 结果丢失 / 队列堆积 | 查看 Redis 长度：`redis-cli LLEN noj:judge:queue`；必要时重启 `noj-judge` 触发自动重连 |
-| 评测结果报错 `noj-download://` 解码失败 | `deno task build-packages` 重新构建题目支持包 |
+| 评测结果报错 `noj-download://` 解码失败 | `deno task problems:build` 重新构建题目支持包 |
 | 容器启动失败 `image not found` | 默认评测镜像为本地 `noj-judge-python`；检查 `noj-judge/docker/` 构建脚本 |
 
 ### 数据库相关
 
 | 现象 | 可能原因 / 处理 |
 |------|----------------|
-| 迁移失败 | `cd noj-core && deno task migrate` 查看脱敏日志；常见原因是顺序错乱或与已应用迁移冲突 |
-| 种子数据缺失 / 管理员未创建 | 确认 `noj-core/.env` 已配置 `ADMIN_EMAIL`；必要时重新运行 `deno task seed` |
-| 想清空重置 | `docker compose down -v` 删除数据卷后重新 `up -d` + `deno task setup` |
+| 迁移失败 | `cd noj-core && deno task db:migrate` 查看脱敏日志；常见原因是顺序错乱或与已应用迁移冲突 |
+| 种子数据缺失 / 管理员未创建 | 确认 `noj-core/.env` 已配置 `ADMIN_EMAIL`；必要时重新运行 `deno task dev-setup` |
+| 想清空重置 | `docker compose down -v` 删除数据卷后重新 `up -d` + `deno task dev-setup` |
 
 ### 日志位置
 
