@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { extractApiError } from "~/utils/apiError"
 import type {
   SubmissionListItem,
 } from "~/composables/use-submissions"
@@ -15,6 +16,7 @@ definePageMeta({
   ssr: false,
 })
 
+const { api } = useApi()
 const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
@@ -75,13 +77,14 @@ async function loadSubmissions(page = 1) {
   tableError.value = ""
   currentPage.value = page
   try {
-    const res = await $fetch<{ data: SubmissionListItem[]; pagination: { total: number; total_pages: number } }>(
+    const res = await api.get<{ data: SubmissionListItem[]; pagination: { total: number; total_pages: number } }>(
       `/api/v1/submissions?${buildQuery(page)}`,
+      { silent: true },
     )
     submissions.value = res.data
     totalPages.value = res.pagination.total_pages
   } catch (err: unknown) {
-    tableError.value = err instanceof Error ? err.message : "加载提交记录失败"
+    tableError.value = extractApiError(err).message
   } finally {
     tableLoading.value = false
   }
@@ -139,7 +142,7 @@ function hasResult(item: SubmissionListItem): boolean {
             <label class="text-xs font-semibold text-text-secondary">题目</label>
             <input
               v-model="filters.problem_search"
-              class="rounded border border-border bg-white px-2.5 py-1.5 text-[13px] text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10"
+              class="rounded border border-border bg-white px-2.5 py-1.5 text-13px text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10"
               placeholder="题目 ID 或名称"
               @keyup.enter="applyFilters"
             />
@@ -148,14 +151,14 @@ function hasResult(item: SubmissionListItem): boolean {
             <label class="text-xs font-semibold text-text-secondary">提交 ID</label>
             <input
               v-model="filters.submission_id"
-              class="rounded border border-border bg-white px-2.5 py-1.5 text-[13px] text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10"
+              class="rounded border border-border bg-white px-2.5 py-1.5 text-13px text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10"
               placeholder="输入提交 ID 前缀"
               @keyup.enter="applyFilters"
             />
           </div>
           <div class="flex min-w-[140px] flex-1 flex-col gap-1">
             <label class="text-xs font-semibold text-text-secondary">语言</label>
-            <select v-model="filters.language" class="rounded border border-border bg-white px-2.5 py-1.5 text-[13px] text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10" @change="applyFilters">
+            <select v-model="filters.language" class="rounded border border-border bg-white px-2.5 py-1.5 text-13px text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10" @change="applyFilters">
               <option v-for="opt in languageOptions" :key="opt.value" :value="opt.value">
                 {{ opt.label }}
               </option>
@@ -163,7 +166,7 @@ function hasResult(item: SubmissionListItem): boolean {
           </div>
           <div class="flex min-w-[140px] flex-1 flex-col gap-1">
             <label class="text-xs font-semibold text-text-secondary">状态</label>
-            <select v-model="filters.status" class="rounded border border-border bg-white px-2.5 py-1.5 text-[13px] text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10" @change="applyFilters">
+            <select v-model="filters.status" class="rounded border border-border bg-white px-2.5 py-1.5 text-13px text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10" @change="applyFilters">
               <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
                 {{ opt.label }}
               </option>
@@ -183,10 +186,7 @@ function hasResult(item: SubmissionListItem): boolean {
       </div>
 
       <!-- 加载态 -->
-      <div v-if="tableLoading" class="flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-white px-6 py-16 text-sm text-text-secondary">
-        <div class="h-6 w-6 animate-spin-slow rounded-full border-[3px] border-border border-t-primary" />
-        <span>加载中...</span>
-      </div>
+      <TableSkeleton v-if="tableLoading" :rows="8" :columns="['w-20', 'flex-1', 'w-16', 'w-24', 'w-12', 'w-12', 'w-12', 'w-28', 'w-16']" />
 
       <!-- 错误态 -->
       <div v-else-if="tableError" class="flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-white px-6 py-16 text-sm text-red-600">
@@ -220,13 +220,13 @@ function hasResult(item: SubmissionListItem): boolean {
           <tbody>
             <tr v-for="sub in submissions" :key="sub.id" class="border-b border-border transition-colors duration-150 last:border-b-0 hover:bg-[#fafafa]">
               <td class="px-3.5 py-3 font-mono text-xs text-text-secondary">{{ sub.id.slice(0, 8) }}...</td>
-              <td class="px-3.5 py-3 text-[13px] text-text">
+              <td class="px-3.5 py-3 text-13px text-text">
                 <NuxtLink :to="`/problems/${sub.problem_id}`" class="font-medium text-primary no-underline hover:underline">
                   {{ sub.problem.title || sub.problem_id }}
                 </NuxtLink>
               </td>
-              <td class="px-3.5 py-3 text-[13px] text-text">{{ getLanguageLabel(sub.language) }}</td>
-              <td class="px-3.5 py-3 text-[13px] text-text">
+              <td class="px-3.5 py-3 text-13px text-text">{{ getLanguageLabel(sub.language) }}</td>
+              <td class="px-3.5 py-3 text-13px text-text">
                 <span
                   class="inline-block whitespace-nowrap rounded px-2 py-0.5 text-xs font-semibold"
                   :style="{
@@ -237,20 +237,20 @@ function hasResult(item: SubmissionListItem): boolean {
                   {{ getStatusLabel(sub.status, sub.result?.status) }}
                 </span>
               </td>
-              <td class="px-3.5 py-3 text-right text-[13px] tabular-nums text-text">
+              <td class="px-3.5 py-3 text-right text-13px tabular-nums text-text">
                 <template v-if="hasResult(sub)">{{ formatScore(sub.result!.score) }}</template>
                 <template v-else>--</template>
               </td>
-              <td class="px-3.5 py-3 text-right text-[13px] tabular-nums text-text">
+              <td class="px-3.5 py-3 text-right text-13px tabular-nums text-text">
                 <template v-if="hasResult(sub)">{{ formatTime(sub.result!.time_ms) }}</template>
                 <template v-else>--</template>
               </td>
-              <td class="px-3.5 py-3 text-right text-[13px] tabular-nums text-text">
+              <td class="px-3.5 py-3 text-right text-13px tabular-nums text-text">
                 <template v-if="hasResult(sub)">{{ formatMemory(sub.result!.memory_kb) }}</template>
                 <template v-else>--</template>
               </td>
-              <td class="px-3.5 py-3 text-[13px] text-text">{{ formatDateTime(sub.created_at) }}</td>
-              <td class="px-3.5 py-3 text-center text-[13px] text-text">
+              <td class="px-3.5 py-3 text-13px text-text">{{ formatDateTime(sub.created_at) }}</td>
+              <td class="px-3.5 py-3 text-center text-13px text-text">
                 <NuxtLink :to="`/submissions/${sub.id}`" class="inline-flex cursor-pointer items-center gap-1 rounded border border-primary bg-transparent px-2.5 py-1 text-xs font-semibold leading-none text-primary no-underline transition-all duration-150 hover:bg-primary hover:text-white">
                   查看
                 </NuxtLink>

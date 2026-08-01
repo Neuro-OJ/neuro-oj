@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useAdminList } from "~/composables/useAdminList"
+import { extractApiError } from '~/utils/apiError'
 
 definePageMeta({
   layout: "admin",
@@ -13,6 +14,8 @@ const router = useRouter()
 watch(loading, (val) => {
   if (!val && !isLoggedIn.value) router.replace("/login")
 }, { immediate: true })
+
+const { api } = useApi()
 
 interface User {
   id: string
@@ -72,7 +75,7 @@ const selectedRoleIds = ref<string[]>([])
 
 async function loadRoles() {
   try {
-    const res = await $fetch<{ data: Role[] }>("/api/v1/admin/roles")
+    const res = await api.get<{ data: Role[] }>("/api/v1/admin/roles", { silent: true })
     allRoles.value = res.data
   } catch {
     // 角色加载失败不影响用户列表
@@ -101,14 +104,13 @@ async function handleRoleSwitch() {
   switchingRole.value = true
   switchError.value = ""
   try {
-    await $fetch(`/api/v1/admin/users/${targetUser.value.id}/role`, {
-      method: "PATCH",
-      body: { role_ids: selectedRoleIds.value },
+    await api.patch(`/api/v1/admin/users/${targetUser.value.id}/role`, {
+      role_ids: selectedRoleIds.value,
     })
     showRoleModal.value = false
     await loadUsers(currentPage.value)
   } catch (err: unknown) {
-    switchError.value = err instanceof Error ? err.message : "操作失败"
+    switchError.value = extractApiError(err).message
   } finally {
     switchingRole.value = false
   }
@@ -136,19 +138,16 @@ async function handleBan() {
   banning.value = true
   banError.value = ""
   try {
-    await $fetch(`/api/v1/admin/users/${banTarget.value.id}/ban`, {
-      method: "PATCH",
-      body: {
-        reason: banForm.reason.trim() || undefined,
-        banned_until: banForm.banned_until
-          ? new Date(banForm.banned_until).toISOString()
-          : null,
-      },
+    await api.patch(`/api/v1/admin/users/${banTarget.value.id}/ban`, {
+      reason: banForm.reason.trim() || undefined,
+      banned_until: banForm.banned_until
+        ? new Date(banForm.banned_until).toISOString()
+        : null,
     })
     showBanModal.value = false
     toast.success(`已封禁 ${banTarget.value.username}`)
   } catch (err: unknown) {
-    banError.value = err instanceof Error ? err.message : "封禁失败"
+    banError.value = extractApiError(err).message
     banning.value = false
     return
   }
@@ -169,10 +168,9 @@ async function confirmUnban(user: User) {
   if (!ok) return
   banning.value = true
   try {
-    await $fetch(`/api/v1/admin/users/${user.id}/unban`, { method: "PATCH" })
+    await api.patch(`/api/v1/admin/users/${user.id}/unban`)
     toast.success(`已解封 ${user.username}`)
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "解封失败")
+  } catch {
     banning.value = false
     return
   }
@@ -218,12 +216,13 @@ async function showBanHistory(user: User) {
   historyLoading.value = true
   showHistoryModal.value = true
   try {
-    const res = await $fetch<{ data: BanRecord[] }>(
+    const res = await api.get<{ data: BanRecord[] }>(
       `/api/v1/admin/users/${user.id}/bans`,
+      { silent: true },
     )
     historyRecords.value = res.data
   } catch (err: unknown) {
-    historyError.value = err instanceof Error ? err.message : "加载封禁历史失败"
+    historyError.value = extractApiError(err).message
   } finally {
     historyLoading.value = false
   }
@@ -334,7 +333,7 @@ async function showBanHistory(user: User) {
         </div>
       </label>
     </div>
-    <p v-if="switchError" class="mt-2 text-error-text text-[13px]">{{ switchError }}</p>
+    <p v-if="switchError" class="mt-2 text-error-text text-13px">{{ switchError }}</p>
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="switchingRole" @click="showRoleModal = false">取消</UButton>
@@ -363,7 +362,7 @@ async function showBanHistory(user: User) {
         />
         <p class="mt-1 text-[12px] text-text-secondary">留空表示永久封禁</p>
       </div>
-      <p v-if="banError" class="text-[13px] text-error-text">{{ banError }}</p>
+      <p v-if="banError" class="text-13px text-error-text">{{ banError }}</p>
     </div>
   
     <template #footer>

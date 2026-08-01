@@ -6,6 +6,7 @@
  *
  * 使用 useState 确保 SSR → 客户端水合过程只调一次。
  */
+import { extractApiError } from '~/utils/apiError';
 
 export interface IpBanInfo {
   matched_cidr: string;
@@ -45,7 +46,11 @@ export function useBanStatus() {
     loading.value = true;
     error.value = "";
     try {
-      const res = await $fetch<BanStatusResponse>("/api/v1/auth/ban-status");
+      // 封禁状态为全局静默请求：失败由 BanBanner 依据 error state 处理，不弹 toast
+      const res = await useApi().api.get<BanStatusResponse>(
+        '/api/v1/auth/ban-status',
+        { silent: true },
+      );
       ipBanned.value = res.ip_banned;
       ipBanInfo.value = res.ip_ban_info;
       userBanned.value = res.user_banned;
@@ -55,7 +60,7 @@ export function useBanStatus() {
       fetched = true;
       return res;
     } catch (err: unknown) {
-      error.value = err instanceof Error ? err.message : "获取封禁状态失败";
+      error.value = extractApiError(err).message;
       return null;
     } finally {
       loading.value = false;

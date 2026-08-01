@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const { api } = useApi()
 
 const router = useRouter()
 const route = useRoute()
@@ -61,7 +62,7 @@ const totalPages = computed(() => {
 
 // ── 获取分类树（客户端缓存） ──
 const { data: categoriesData } = await useAsyncData("problem-categories", () =>
-  $fetch<{ data: CategoryItem[] }>("/api/v1/categories"),
+  api.get<{ data: CategoryItem[] }>("/api/v1/categories", { silent: true }),
 )
 const categories = computed(() => categoriesData.value?.data ?? [])
 
@@ -75,10 +76,11 @@ async function fetchUserProblemStatus() {
   if (!isLoggedIn.value) return
   const gen = ++statusFetchGen
   try {
-    const res = await $fetch<{
+    const res = await api.get<{
       data: { problem_id: string; result: { score: number } | null }[]
     }>("/api/v1/submissions", {
       query: { per_page: 100 },
+      silent: true,
     })
     if (gen !== statusFetchGen) return // stale
     const subs = res.data ?? []
@@ -130,6 +132,34 @@ function formatAcceptanceRate(rate: number | undefined): string {
   if (rate == null) return "--"
   return `${(rate * 100).toFixed(1)}%`
 }
+
+// 响应式列：sm 以下隐藏次要列（对齐原 hidden sm:table-cell 行为）
+const isDesktop = ref(false)
+function updateIsDesktop() {
+  isDesktop.value = window.matchMedia("(min-width: 640px)").matches
+}
+onMounted(() => {
+  updateIsDesktop()
+  window.addEventListener("resize", updateIsDesktop)
+})
+onUnmounted(() => window.removeEventListener("resize", updateIsDesktop))
+
+const columns = computed(() => {
+  const base: { accessorKey: string; header: string }[] = [
+    { accessorKey: "display_id", header: "#" },
+    { accessorKey: "title", header: "题目" },
+    { accessorKey: "difficulty", header: "难度" },
+    { accessorKey: "categories", header: "分类" },
+    { accessorKey: "time", header: "时间" },
+    { accessorKey: "memory", header: "内存" },
+    { accessorKey: "rate", header: "通过率" },
+  ]
+  if (isLoggedIn.value) base.push({ accessorKey: "status", header: "状态" })
+  if (!isDesktop.value) {
+    return base.filter((c) => !["categories", "time", "memory", "rate", "status"].includes(c.accessorKey))
+  }
+  return base
+})
 </script>
 
 <template>
@@ -161,6 +191,9 @@ function formatAcceptanceRate(rate: number | undefined): string {
       :empty-text="hasActiveFilters ? '没有找到符合条件的题目，试试其他筛选条件' : '暂无题目'"
       @retry="refresh"
     >
+      <template #loading>
+        <TableSkeleton :rows="8" :columns="['w-14', 'flex-1', 'w-16', 'w-24', 'w-16', 'w-16', 'w-20', 'w-16']" />
+      </template>
       <template #empty-action v-if="hasActiveFilters">
         <UButton color="primary" variant="outline" class="px-4 py-1.5 text-xs" @click="router.push({ query: {} })">
           清除筛选
@@ -169,69 +202,44 @@ function formatAcceptanceRate(rate: number | undefined): string {
 
       <!-- 题目表格 -->
       <div class="bg-white border border-border rounded-xl overflow-x-auto">
-        <table class="w-full border-collapse">
-          <thead>
-            <tr>
-              <th scope="col" class="w-24 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">#</th>
-              <th scope="col" class="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">题目</th>
-              <th scope="col" class="w-20 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border">难度</th>
-              <th scope="col" class="w-[120px] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border hidden sm:table-cell">分类</th>
-              <th scope="col" class="w-[90px] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border hidden sm:table-cell">时间</th>
-              <th scope="col" class="w-[90px] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border hidden sm:table-cell">内存</th>
-              <th scope="col" class="w-[80px] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border hidden sm:table-cell">通过率</th>
-              <th v-if="isLoggedIn" scope="col" class="w-[80px] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary text-left bg-gray-50 border-b border-border hidden sm:table-cell">状态</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-border">
-            <tr
-              v-for="problem in problems"
-              :key="problem.id"
-              tabindex="0"
-              role="link"
-              class="cursor-pointer transition-colors duration-150 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-inset"
-              @click="router.push(`/problems/${problem.id}`)"
-              @keydown.enter.prevent="router.push(`/problems/${problem.id}`)"
-              @keydown.space.prevent="router.push(`/problems/${problem.id}`)"
+        <UTable :columns="columns" :data="problems" :empty="'暂无题目'">
+          <template #display_id-cell="{ row }">
+            <ProblemId :display-id="row.display_id" :type="row.type" />
+          </template>
+          <template #title-cell="{ row }">
+            <NuxtLink
+              :to="`/problems/${row.id}`"
+              class="text-text no-underline font-medium hover:text-primary"
             >
-              <td class="w-24 px-4 py-3.5">
-                <ProblemId :display-id="problem.display_id" :type="problem.type" />
-              </td>
-              <td class="px-4 py-3.5">
-                <NuxtLink
-                  :to="`/problems/${problem.id}`"
-                  class="text-text no-underline font-medium hover:text-primary"
-                >
-                  {{ problem.title }}
-                </NuxtLink>
-              </td>
-              <td class="w-20 px-4 py-3.5">
-                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold" :class="badgeColors[problem.difficulty] || ''">
-                  {{ difficultyLabel[problem.difficulty] || problem.difficulty }}
-                </span>
-              </td>
-              <td class="w-[120px] px-4 py-3.5 hidden sm:table-cell">
-                <span
-                  v-for="cat in problem.categories"
-                  :key="cat.id"
-                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 mr-1"
-                >{{ cat.name }}</span>
-                <span v-if="!problem.categories?.length" class="text-xs text-text-muted">--</span>
-              </td>
-              <td class="w-[90px] px-4 py-3.5 text-xs text-text-secondary hidden sm:table-cell">
-                {{ problem.runtime_config.evaluator.time_limit_ms }}ms
-              </td>
-              <td class="w-[90px] px-4 py-3.5 text-xs text-text-secondary hidden sm:table-cell">
-                {{ problem.runtime_config.evaluator.memory_limit_mb }}MB
-              </td>
-              <td class="w-[80px] px-4 py-3.5 hidden sm:table-cell">
-                <span class="text-xs text-text-secondary">{{ formatAcceptanceRate(problem.acceptance_rate) }}</span>
-              </td>
-              <td v-if="isLoggedIn" class="w-[80px] px-4 py-3.5 hidden sm:table-cell">
-                <StatusBadge :status="getProblemStatus(problem.id)" />
-              </td>
-            </tr>
-          </tbody>
-        </table>
+              {{ row.title }}
+            </NuxtLink>
+          </template>
+          <template #difficulty-cell="{ row }">
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold" :class="badgeColors[row.difficulty] || ''">
+              {{ difficultyLabel[row.difficulty] || row.difficulty }}
+            </span>
+          </template>
+          <template #categories-cell="{ row }">
+            <span
+              v-for="cat in row.categories"
+              :key="cat.id"
+              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 mr-1"
+            >{{ cat.name }}</span>
+            <span v-if="!row.categories?.length" class="text-xs text-text-muted">--</span>
+          </template>
+          <template #time-cell="{ row }">
+            <span class="text-xs text-text-secondary">{{ row.runtime_config.evaluator.time_limit_ms }}ms</span>
+          </template>
+          <template #memory-cell="{ row }">
+            <span class="text-xs text-text-secondary">{{ row.runtime_config.evaluator.memory_limit_mb }}MB</span>
+          </template>
+          <template #rate-cell="{ row }">
+            <span class="text-xs text-text-secondary">{{ formatAcceptanceRate(row.acceptance_rate) }}</span>
+          </template>
+          <template #status-cell="{ row }">
+            <StatusBadge :status="getProblemStatus(row.id)" />
+          </template>
+        </UTable>
       </div>
 
       <!-- 分页 -->

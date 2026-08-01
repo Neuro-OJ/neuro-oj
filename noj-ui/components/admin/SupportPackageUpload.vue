@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { extractApiError } from '~/utils/apiError'
+
+const { api } = useApi()
 interface Props {
   problemId: string | null
   hasPackage: boolean
@@ -75,15 +78,11 @@ async function doUpload(file: File) {
     const formData = new FormData()
     formData.append("file", file)
 
-    await $fetch(`/api/v1/problems/${props.problemId}/support-package`, {
-      method: "POST",
-      body: formData,
-    })
+    await api.post(`/api/v1/problems/${props.problemId}/support-package`, formData)
 
     emit("package-changed", true)
   } catch (err: unknown) {
-    const apiErr = err as { data?: { error?: string }; message?: string } | undefined
-    uploadError.value = apiErr?.data?.error || apiErr?.message || "上传失败"
+    uploadError.value = extractApiError(err).message
   } finally {
     uploading.value = false
   }
@@ -105,13 +104,10 @@ async function handleDelete() {
   deleting.value = true
   uploadError.value = ""
   try {
-    await $fetch(`/api/v1/problems/${props.problemId}/support-package`, {
-      method: "DELETE",
-    })
+    await api.delete(`/api/v1/problems/${props.problemId}/support-package`)
     emit("package-changed", false)
   } catch (err: unknown) {
-    const apiErr = err as { data?: { error?: string }; message?: string } | undefined
-    uploadError.value = apiErr?.data?.error || apiErr?.message || "删除失败"
+    uploadError.value = extractApiError(err).message
   } finally {
     deleting.value = false
   }

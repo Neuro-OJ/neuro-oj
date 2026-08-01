@@ -1,6 +1,8 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@std/assert@1": "1.0.19",
+    "jsr:@std/internal@^1.0.12": "1.0.14",
     "npm:@iconify-json/lucide@^1.2.121": "1.2.121",
     "npm:@nuxt/fonts@0.14": "0.14.0_magic-string@0.30.21_vite@7.3.6__jiti@2.7.0__yaml@2.9.0",
     "npm:@nuxt/icon@^2.3.1": "2.4.1_magic-string@0.30.21_unplugin@3.3.0__esbuild@0.28.1__rollup@4.62.2__vite@7.3.6___jiti@2.7.0___yaml@2.9.0__jiti@2.7.0_vite@7.3.6__jiti@2.7.0__yaml@2.9.0_vue@3.5.40__typescript@5.9.3",
@@ -17,6 +19,17 @@
     "npm:playwright@*": "1.62.0",
     "npm:tailwindcss@^4.3.3": "4.3.3",
     "npm:typescript@5": "5.9.3"
+  },
+  "jsr": {
+    "@std/assert@1.0.19": {
+      "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
+    "@std/internal@1.0.14": {
+      "integrity": "291516b3d4c35024d6ffbc0a9df5bf4c64116e05b50012cf846710152d2ffdf7"
+    }
   },
   "npm": {
     "@alloc/quick-lru@5.2.0": {

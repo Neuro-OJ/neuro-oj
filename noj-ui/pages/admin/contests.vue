@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { extractApiError } from '~/utils/apiError'
 import type {
   AdminContestDetail,
   AdminProblemOption,
@@ -12,6 +13,7 @@ definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false })
 const { typeLabels, statusLabels, formatDateTime, statusClass } = useContests()
 const toast = useToast()
 const { dialog } = useDialog()
+const { api } = useApi()
 const contests = ref<Contest[]>([])
 const problems = ref<AdminProblemOption[]>([])
 const loading = ref(true)
@@ -43,15 +45,14 @@ async function loadContests(page = currentPage.value) {
   loading.value = true
   loadError.value = ''
   try {
-    const response = await $fetch<{ data: Contest[]; pagination: Pagination }>(`/api/v1/admin/contests?page=${page}&per_page=20`)
+    const response = await api.get<{ data: Contest[]; pagination: Pagination }>(`/api/v1/admin/contests?page=${page}&per_page=20`, { silent: true })
     if (currentRequest !== contestRequestVersion) return
     contests.value = response.data
     currentPage.value = response.pagination.page
     totalPages.value = response.pagination.total_pages
   } catch (fetchError: unknown) {
     if (currentRequest !== contestRequestVersion) return
-    const detail = fetchError as { data?: { error?: string }; message?: string }
-    loadError.value = detail.data?.error || detail.message || '竞赛列表加载失败'
+    loadError.value = extractApiError(fetchError).message
   } finally {
     if (currentRequest === contestRequestVersion) loading.value = false
   }
@@ -62,7 +63,7 @@ let problemRequestVersion = 0
 async function loadProblems(keyword = '') {
   const currentRequest = ++problemRequestVersion
   try {
-    const response = await $fetch<{ data: AdminProblemOption[] }>(`/api/v1/admin/problems?page=1&limit=20&keyword=${encodeURIComponent(keyword)}`)
+    const response = await api.get<{ data: AdminProblemOption[] }>(`/api/v1/admin/problems?page=1&limit=20&keyword=${encodeURIComponent(keyword)}`, { silent: true })
     if (currentRequest !== problemRequestVersion) return
     problems.value = response.data
   } catch {
@@ -82,14 +83,9 @@ function openCreate() {
 
 async function openEdit(contest: Contest) {
   formError.value = ''
-  try {
-    const response = await $fetch<{ data: AdminContestDetail }>(`/api/v1/admin/contests/${contest.id}`)
-    editingContest.value = response.data
-    formOpen.value = true
-  } catch (fetchError: unknown) {
-    const detail = fetchError as { data?: { error?: string }; message?: string }
-    toast.showToast('error', detail.data?.error || detail.message || '竞赛详情加载失败')
-  }
+  const response = await api.get<{ data: AdminContestDetail }>(`/api/v1/admin/contests/${contest.id}`)
+  editingContest.value = response.data
+  formOpen.value = true
 }
 
 async function saveContest(payload: ContestPayload) {
@@ -97,16 +93,15 @@ async function saveContest(payload: ContestPayload) {
   formError.value = ''
   try {
     if (editingContest.value) {
-      await $fetch(`/api/v1/admin/contests/${editingContest.value.id}`, { method: 'PUT', body: payload })
+      await api.put(`/api/v1/admin/contests/${editingContest.value.id}`, payload)
     } else {
-      await $fetch('/api/v1/admin/contests', { method: 'POST', body: payload })
+      await api.post('/api/v1/admin/contests', payload)
     }
     toast.showToast('success', editingContest.value ? '竞赛已更新' : '竞赛已创建')
     formOpen.value = false
     reloadAfterContestMutation()
   } catch (saveError: unknown) {
-    const detail = saveError as { data?: { error?: string }; message?: string }
-    formError.value = detail.data?.error || detail.message || '竞赛保存失败'
+    formError.value = extractApiError(saveError).message
   } finally {
     saving.value = false
   }
@@ -115,14 +110,9 @@ async function saveContest(payload: ContestPayload) {
 async function removeContest(contest: Contest) {
   const confirmed = await dialog.confirm(`确定删除竞赛“${contest.title}”吗？竞赛提交会保留，但将解除竞赛关联。`, { title: '删除竞赛', confirmText: '删除', danger: true })
   if (!confirmed) return
-  try {
-    await $fetch(`/api/v1/admin/contests/${contest.id}`, { method: 'DELETE' })
-    toast.showToast('success', '竞赛已删除')
-    reloadAfterContestMutation()
-  } catch (deleteError: unknown) {
-    const detail = deleteError as { data?: { error?: string }; message?: string }
-    toast.showToast('error', detail.data?.error || detail.message || '删除失败')
-  }
+  await api.delete(`/api/v1/admin/contests/${contest.id}`)
+  toast.showToast('success', '竞赛已删除')
+  reloadAfterContestMutation()
 }
 
 interface Participant {
@@ -156,7 +146,7 @@ async function loadParticipants() {
   if (!participantContest.value) return
   participantLoading.value = true
   try {
-    const response = await $fetch<{ data: Participant[] }>(`/api/v1/admin/contests/${participantContest.value.id}/participants`)
+    const response = await api.get<{ data: Participant[] }>(`/api/v1/admin/contests/${participantContest.value.id}/participants`, { silent: true })
     participants.value = response.data
   } finally {
     participantLoading.value = false
@@ -167,7 +157,7 @@ async function searchUsers() {
   if (userQuery.value.trim().length < 2) return
   searchingUsers.value = true
   try {
-    const response = await $fetch<{ data: UserSearchResult[] }>(`/api/v1/users/search?q=${encodeURIComponent(userQuery.value.trim())}`)
+    const response = await api.get<{ data: UserSearchResult[] }>(`/api/v1/users/search?q=${encodeURIComponent(userQuery.value.trim())}`)
     participants.value.forEach((participant) => {
       response.data = response.data.filter((user) => user.id !== participant.user_id)
     })
@@ -179,14 +169,14 @@ async function searchUsers() {
 
 async function addParticipant(user: UserSearchResult) {
   if (!participantContest.value) return
-  await $fetch(`/api/v1/admin/contests/${participantContest.value.id}/participants`, { method: 'POST', body: [user.id] })
+  await api.post(`/api/v1/admin/contests/${participantContest.value.id}/participants`, [user.id])
   userResults.value = userResults.value.filter((item) => item.id !== user.id)
   await loadParticipants()
 }
 
 async function removeParticipant(participant: Participant) {
   if (!participantContest.value) return
-  await $fetch(`/api/v1/admin/contests/${participantContest.value.id}/participants/${participant.user_id}`, { method: 'DELETE' })
+  await api.delete(`/api/v1/admin/contests/${participantContest.value.id}/participants/${participant.user_id}`)
   await loadParticipants()
 }
 </script>

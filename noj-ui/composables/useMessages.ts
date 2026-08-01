@@ -30,11 +30,14 @@ export interface Pagination {
  * 导航栏未读数通过定时轮询 fetchUnreadCount 获取。
  */
 export function useMessages() {
+  // 未读数查询（轮询/角标场景）内部静默：失败不影响主流程，不打扰用户
+  const { api } = useApi();
+
   /**
    * 获取会话列表。
    */
   async function fetchConversations(page = 1, perPage = 20) {
-    return $fetch<{
+    return api.get<{
       data: Conversation[];
       pagination: Pagination;
     }>(`/api/v1/conversations?page=${page}&per_page=${perPage}`);
@@ -44,9 +47,8 @@ export function useMessages() {
    * 查找或创建会话。
    */
   async function findOrCreateConversation(otherUserId: string) {
-    return $fetch<{ data: Conversation }>("/api/v1/conversations", {
-      method: "POST",
-      body: { other_user_id: otherUserId },
+    return api.post<{ data: Conversation }>('/api/v1/conversations', {
+      other_user_id: otherUserId,
     });
   }
 
@@ -54,7 +56,7 @@ export function useMessages() {
    * 获取消息列表。
    */
   async function fetchMessages(conversationId: string, page = 1, perPage = 50) {
-    return $fetch<{
+    return api.get<{
       data: ConversationMessage[];
       pagination: Pagination;
     }>(`/api/v1/conversations/${conversationId}/messages?page=${page}&per_page=${perPage}`);
@@ -64,12 +66,9 @@ export function useMessages() {
    * 发送消息。
    */
   async function sendMessage(conversationId: string, content: string) {
-    return $fetch<{ data: ConversationMessage }>(
+    return api.post<{ data: ConversationMessage }>(
       `/api/v1/conversations/${conversationId}/messages`,
-      {
-        method: "POST",
-        body: { content },
-      },
+      { content },
     );
   }
 
@@ -77,30 +76,33 @@ export function useMessages() {
    * 标记已读。
    */
   async function markRead(conversationId: string, lastReadMessageId: string) {
-    return $fetch(`/api/v1/conversations/${conversationId}/read`, {
-      method: "POST",
-      body: { last_read_message_id: lastReadMessageId },
+    return api.post(`/api/v1/conversations/${conversationId}/read`, {
+      last_read_message_id: lastReadMessageId,
     });
   }
 
   /**
    * 获取未读消息总数（用于导航栏徽标）。
+   * 静默模式：轮询失败不弹窗，返回 0。
    */
   async function fetchUnreadCount(): Promise<number> {
-    const res = await $fetch<{ unread_count: number }>(
-      "/api/v1/conversations/unread-count",
+    const res = await api.get<{ unread_count: number }>(
+      '/api/v1/conversations/unread-count',
+      { silent: true },
     );
     return res.unread_count;
   }
 
   /**
    * 获取单会话未读数。
+   * 静默模式：轮询失败不弹窗，返回 0。
    */
   async function fetchUnreadCountByConversation(
     conversationId: string,
   ): Promise<number> {
-    const res = await $fetch<{ unread_count: number }>(
+    const res = await api.get<{ unread_count: number }>(
       `/api/v1/conversations/${conversationId}/unread-count`,
+      { silent: true },
     );
     return res.unread_count;
   }

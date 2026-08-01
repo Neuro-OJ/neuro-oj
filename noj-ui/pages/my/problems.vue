@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { extractApiError } from "~/utils/apiError"
+
 definePageMeta({
   middleware: "auth",
 })
 
 const { isLoggedIn, loading, user } = useAuth()
 const router = useRouter()
+const { api } = useApi()
 
 watch(loading, (val) => {
   if (!val && !isLoggedIn.value) router.replace("/login")
@@ -40,14 +43,15 @@ async function loadProblems(page = 1) {
   loadError.value = ""
   currentPage.value = page
   try {
-    const res = await $fetch<{ data: ProblemItem[]; total: number }>(
+    const res = await api.get<{ data: ProblemItem[]; total: number }>(
       `/api/v1/problems?type=U&owner_id=${user.value.id}&page=${page}&limit=${perPage}`,
+      { silent: true },
     )
     // 后端已按 type=U + owner_id 过滤，直接使用分页结果
     problems.value = res.data
     totalPages.value = Math.ceil(res.total / perPage)
   } catch (err: unknown) {
-    loadError.value = err instanceof Error ? err.message : "加载题目失败"
+    loadError.value = extractApiError(err).message
   } finally {
     pageLoading.value = false
   }

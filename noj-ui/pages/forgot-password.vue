@@ -11,11 +11,13 @@
   >
     <!-- 成功 banner -->
     <template #banner-success>
-      <Transition name="slide">
-        <div v-if="submitted" class="bg-green-50 border border-green-200 text-green-700 rounded-md px-3.5 py-2.5 text-sm flex items-center justify-center gap-3 fixed top-[74px] left-1/2 -translate-x-1/2 z-[99] max-w-[380px] w-[calc(100%-48px)]">
-          <span>密码重置链接已发送到 {{ submittedEmail }}，请检查邮箱（链接 15 分钟内有效）</span>
-        </div>
-      </Transition>
+      <ToastBanner
+        :visible="submitted"
+        color="success"
+        icon="i-lucide-mail-check"
+        :message="`密码重置链接已发送到 ${submittedEmail}，请检查邮箱（链接 15 分钟内有效）`"
+        @close="submitted = false"
+      />
     </template>
 
     <TextInput
@@ -41,6 +43,8 @@
 </template>
 
 <script setup lang="ts">
+import { extractApiError } from "~/utils/apiError"
+
 definePageMeta({ layout: "auth" })
 
 const auth = useAuth()
@@ -72,8 +76,8 @@ async function handleSubmit() {
     submitted.value = true
     submittedEmail.value = email.value.trim()
     email.value = ""
-  } catch (e: any) {
-    setError(typeof e.data?.error === "string" ? e.data.error : `服务器错误 (${e.status || 502})`)
+  } catch (e: unknown) {
+    setError(extractApiError(e).message)
   } finally {
     loading.value = false
   }

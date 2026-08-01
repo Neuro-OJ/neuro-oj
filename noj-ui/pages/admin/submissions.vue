@@ -10,6 +10,7 @@ import {
 } from "~/composables/use-submissions"
 import { useToast } from "~/composables/useToast"
 import { useDialog } from "~/composables/useDialog"
+import { extractApiError } from '~/utils/apiError'
 
 definePageMeta({
   layout: "admin",
@@ -23,6 +24,8 @@ const router = useRouter()
 watch(loading, (val) => {
   if (!val && !isLoggedIn.value) router.replace("/login")
 }, { immediate: true })
+
+const { api } = useApi()
 
 const submissions = ref<SubmissionListItem[]>([])
 const tableLoading = ref(true)
@@ -113,15 +116,16 @@ async function loadSubmissions(page = 1) {
   tableError.value = ""
   currentPage.value = page
   try {
-    const res = await $fetch<{ data: SubmissionListItem[]; pagination: { total: number; total_pages: number } }>(
+    const res = await api.get<{ data: SubmissionListItem[]; pagination: { total: number; total_pages: number } }>(
       `/api/v1/admin/submissions?${buildQuery(page)}`,
+      { silent: true },
     )
     if (currentRequest !== requestVersion) return
     submissions.value = res.data
     totalPages.value = res.pagination.total_pages
   } catch (err: unknown) {
     if (currentRequest !== requestVersion) return
-    tableError.value = err instanceof Error ? err.message : "加载提交记录失败"
+    tableError.value = extractApiError(err).message
   } finally {
     if (currentRequest === requestVersion) tableLoading.value = false
   }
@@ -171,16 +175,9 @@ async function rejudge(submissionId: string) {
 
   rejudgingIds.value = new Set(rejudgingIds.value).add(submissionId)
   try {
-    await $fetch(`/api/v1/admin/submissions/${submissionId}/rejudge`, {
-      method: "POST",
-    })
+    await api.post(`/api/v1/admin/submissions/${submissionId}/rejudge`)
     toast.showToast("success", "重测任务已提交")
     loadSubmissions(currentPage.value)
-  } catch (err: unknown) {
-    toast.showToast(
-      "error",
-      err instanceof Error ? err.message : "重测失败",
-    )
   } finally {
     const next = new Set(rejudgingIds.value)
     next.delete(submissionId)
@@ -200,7 +197,7 @@ async function rejudge(submissionId: string) {
           <label class="text-xs font-semibold text-text-secondary">题目</label>
           <input
             v-model="filters.problem_search"
-            class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
             placeholder="题目 ID 或名称"
             @keyup.enter="applyFilters"
           />
@@ -209,7 +206,7 @@ async function rejudge(submissionId: string) {
           <label class="text-xs font-semibold text-text-secondary">用户</label>
           <input
             v-model="filters.user_search"
-            class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
             placeholder="用户名或用户 ID"
             @keyup.enter="applyFilters"
           />
@@ -218,14 +215,14 @@ async function rejudge(submissionId: string) {
           <label class="text-xs font-semibold text-text-secondary">提交 ID</label>
           <input
             v-model="filters.submission_id"
-            class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
             placeholder="提交 ID 前缀"
             @keyup.enter="applyFilters"
           />
         </div>
         <div class="flex flex-col gap-1 min-w-[140px] flex-1">
           <label class="text-xs font-semibold text-text-secondary">语言</label>
-          <select v-model="filters.language" class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" @change="applyFilters">
+          <select v-model="filters.language" class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" @change="applyFilters">
             <option v-for="opt in languageOptions" :key="opt.value" :value="opt.value">
               {{ opt.label }}
             </option>
@@ -233,7 +230,7 @@ async function rejudge(submissionId: string) {
         </div>
         <div class="flex flex-col gap-1 min-w-[140px] flex-1">
           <label class="text-xs font-semibold text-text-secondary">状态</label>
-          <select v-model="filters.status" class="px-2.5 py-1.5 text-[13px] border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" @change="applyFilters">
+          <select v-model="filters.status" class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" @change="applyFilters">
             <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
               {{ opt.label }}
             </option>

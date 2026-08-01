@@ -32,6 +32,7 @@ interface SubmissionResponse {
   data: SubmissionData
 }
 const route = useRoute()
+const { api } = useApi()
 const { isLoggedIn, loading: authLoading } = useAuth()
 const submissionId = route.params.id as string
 // 不使用 useFetch（setup 阶段 token 可能未就绪），改为手动管理
@@ -50,8 +51,9 @@ async function pollSubmission() {
   if (!isMounted.value) return
   const thisReq = ++pollReqId
   try {
-    const res = await $fetch<SubmissionResponse>(
+    const res = await api.get<SubmissionResponse>(
       `/api/v1/submissions/${submissionId}`,
+      { silent: true },
     )
     if (!isMounted.value || thisReq !== pollReqId) return
       if (res) {
@@ -207,7 +209,7 @@ watch(
           <div class="flex items-center gap-2.5 text-text-secondary">
             <UIcon name="i-lucide-clock" class="size-4" />
             <div class="flex flex-col gap-px">
-              <span class="text-[11px] text-text-muted">耗时</span>
+              <span class="text-11px text-text-muted">耗时</span>
               <span class="text-sm font-semibold text-text">
                 {{ formatTime(submission.result.time_ms) }}
               </span>
@@ -216,7 +218,7 @@ watch(
           <div class="flex items-center gap-2.5 text-text-secondary">
             <UIcon name="i-lucide-server" class="size-4" />
             <div class="flex flex-col gap-px">
-              <span class="text-[11px] text-text-muted">内存</span>
+              <span class="text-11px text-text-muted">内存</span>
               <span class="text-sm font-semibold text-text">
                 {{ formatMemory(submission.result.memory_kb) }}
               </span>

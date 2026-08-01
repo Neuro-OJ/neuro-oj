@@ -47,6 +47,8 @@
 </template>
 
 <script setup lang="ts">
+const { api } = useApi()
+
 interface ProblemItem {
     id: string
     title: string
@@ -64,8 +66,9 @@ const refreshKey = ref(0)
 
 async function fetchAndShuffle() {
     try {
-        const res = await $fetch<{ data: ProblemItem[] }>("/api/v1/problems", {
+        const res = await api.get<{ data: ProblemItem[] }>("/api/v1/problems", {
             query: { limit: 100 },
+            silent: true,
         })
         const list = res.data ?? []
         const shuffled = [...list].sort(() => Math.random() - 0.5)

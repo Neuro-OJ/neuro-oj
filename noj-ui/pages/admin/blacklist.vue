@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { extractApiError } from '~/utils/apiError'
+
 definePageMeta({
   layout: "admin",
   middleware: "admin",
@@ -22,6 +24,8 @@ interface IpBan {
   created_by: string | null
 }
 
+const { api } = useApi()
+
 // ─── 数据加载 ────
 const items = ref<IpBan[]>([])
 const tableLoading = ref(true)
@@ -34,12 +38,13 @@ async function load() {
   try {
     const params = new URLSearchParams({ page: "1", per_page: "100" })
     if (search.value) params.set("keyword", search.value)
-    const res = await $fetch<{ data: IpBan[]; pagination: { total: number } }>(
+    const res = await api.get<{ data: IpBan[]; pagination: { total: number } }>(
       `/api/v1/admin/blacklist?${params.toString()}`,
+      { silent: true },
     )
     items.value = res.data
   } catch (err: unknown) {
-    tableError.value = err instanceof Error ? err.message : "加载黑名单失败"
+    tableError.value = extractApiError(err).message
   } finally {
     tableLoading.value = false
   }
@@ -69,19 +74,16 @@ async function handleSave() {
   saving.value = true
   formError.value = ""
   try {
-    await $fetch("/api/v1/admin/blacklist", {
-      method: "POST",
-      body: {
-        ip_or_cidr: form.ip_or_cidr.trim(),
-        reason: form.reason.trim(),
-        expires_at: form.expires_at.trim() || null,
-      },
+    await api.post("/api/v1/admin/blacklist", {
+      ip_or_cidr: form.ip_or_cidr.trim(),
+      reason: form.reason.trim(),
+      expires_at: form.expires_at.trim() || null,
     })
     showForm.value = false
     toast.success("已添加黑名单条目")
     await load()
   } catch (err: unknown) {
-    formError.value = err instanceof Error ? err.message : "添加失败"
+    formError.value = extractApiError(err).message
   } finally {
     saving.value = false
   }
@@ -104,11 +106,9 @@ async function confirmDelete(item: IpBan) {
   deleteTarget.value = item
   deleting.value = true
   try {
-    await $fetch(`/api/v1/admin/blacklist/${item.id}`, { method: "DELETE" })
+    await api.delete(`/api/v1/admin/blacklist/${item.id}`)
     toast.success(`已删除 ${item.ip_or_cidr}`)
     await load()
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "删除失败")
   } finally {
     deleting.value = false
     deleteTarget.value = null
@@ -151,7 +151,7 @@ function formatExpires(value: string | null) {
     <!-- 错误条 -->
     <div
       v-if="tableError"
-      class="p-3 bg-red-50 border border-red-200 rounded-md text-[13px] text-error-text"
+      class="p-3 bg-red-50 border border-red-200 rounded-md text-13px text-error-text"
     >
       {{ tableError }}
       <button class="ml-2 underline cursor-pointer" @click="load">重试</button>
@@ -185,15 +185,15 @@ function formatExpires(value: string | null) {
             class="border-b border-border last:border-b-0 hover:bg-gray-50 transition-colors"
           >
             <td class="px-3 py-2.5 align-top">
-              <code class="font-mono text-[13px] font-semibold text-text">{{ item.ip_or_cidr }}</code>
+              <code class="font-mono text-13px font-semibold text-text">{{ item.ip_or_cidr }}</code>
             </td>
             <td class="px-3 py-2.5 align-top text-text-secondary">
               {{ item.reason || "—" }}
             </td>
-            <td class="px-3 py-2.5 align-top text-text-secondary text-[13px]">
+            <td class="px-3 py-2.5 align-top text-text-secondary text-13px">
               {{ formatExpires(item.expires_at) }}
             </td>
-            <td class="px-3 py-2.5 align-top text-text-secondary text-[13px]">
+            <td class="px-3 py-2.5 align-top text-text-secondary text-13px">
               {{ new Date(item.created_at).toLocaleString("zh-CN") }}
             </td>
             <td class="px-3 py-2.5 align-top">
@@ -244,7 +244,7 @@ function formatExpires(value: string | null) {
           />
           <p class="mt-1 text-[12px] text-text-secondary">留空表示永久封禁</p>
         </div>
-        <p v-if="formError" class="text-[13px] text-error-text">{{ formError }}</p>
+        <p v-if="formError" class="text-13px text-error-text">{{ formError }}</p>
       </div>
     
     <template #footer>

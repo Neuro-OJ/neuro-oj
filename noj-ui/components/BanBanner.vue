@@ -39,7 +39,7 @@ function handleLogout() {
   >
     <div class="max-w-4xl mx-auto flex items-center justify-between gap-4">
       <div class="flex items-center gap-2 text-amber-800 text-sm">
-        <span class="font-semibold">⚠ IP 限制访问</span>
+        <span class="font-semibold flex items-center gap-1"><UIcon name="i-lucide-triangle-alert" class="size-4" />IP 限制访问</span>
         <span class="text-amber-600">·</span>
         <span v-if="ipInfo">
           您的 IP（{{ ipInfo.matched_cidr }}）已被限制访问。
@@ -57,7 +57,7 @@ function handleLogout() {
   >
     <div class="max-w-4xl mx-auto flex items-center justify-between gap-4">
       <div class="flex items-center gap-2 text-red-800 text-sm">
-        <span class="font-semibold">🚫 账号被封禁</span>
+        <span class="font-semibold flex items-center gap-1"><UIcon name="i-lucide-ban" class="size-4" />账号被封禁</span>
         <span class="text-red-600">·</span>
         <span v-if="userInfo">
           您的账号已被封禁{{ userInfo.until ? `至 ${formatExpiry(userInfo.until)}` : "" }}。

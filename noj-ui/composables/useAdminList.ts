@@ -14,6 +14,7 @@
  */
 
 import { ref } from 'vue';
+import { extractApiError } from '~/utils/apiError';
 
 export interface AdminListOptions<T> {
   /** API 路径（如 "/api/v1/admin/users"） */
@@ -82,8 +83,10 @@ export function useAdminList<T = Record<string, unknown>>(
       });
       if (keyword.value) params.set('keyword', keyword.value);
 
+      // 列表加载为后台场景：错误写入 error state 由页面展示，不弹 toast
+      const { api } = useApi();
       if (options.transform) {
-        const raw = await $fetch(`${options.path}?${params}`);
+        const raw = await api.get(`${options.path}?${params}`, { silent: true });
         const r = options.transform(raw);
         if (currentRequest !== requestVersion) return;
         items.value = r.items;
@@ -91,7 +94,10 @@ export function useAdminList<T = Record<string, unknown>>(
       } else {
         const dataField = options.fetchOptions?.dataField ?? 'data';
         const totalField = options.fetchOptions?.totalField ?? 'total';
-        const res = await $fetch<Record<string, unknown>>(`${options.path}?${params}`);
+        const res = await api.get<Record<string, unknown>>(
+          `${options.path}?${params}`,
+          { silent: true },
+        );
         if (currentRequest !== requestVersion) return;
         const rawData = deepGet(res, dataField);
         items.value = (Array.isArray(rawData) ? rawData : []) as T[];
@@ -107,7 +113,8 @@ export function useAdminList<T = Record<string, unknown>>(
       }
     } catch (err: unknown) {
       if (currentRequest !== requestVersion) return;
-      error.value = err instanceof Error ? err.message : '加载失败';
+      // 展示后端具体错误原因（extractApiError 统一提取）
+      error.value = extractApiError(err).message;
     } finally {
       if (currentRequest === requestVersion) loading.value = false;
     }

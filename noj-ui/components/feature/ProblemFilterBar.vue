@@ -65,6 +65,22 @@ function selectCategory(value: string) {
 function selectType(value: string) {
   emit('update:problemType', value === props.problemType ? '' : value)
 }
+
+// radio 组方向键导航（WCAG 2.1.1）：左右/上下移动选中项并跟随焦点
+function onGroupKeydown(e: KeyboardEvent, values: { value: string }[], current: string, onSelect: (v: string) => void) {
+  let idx = values.findIndex((v) => v.value === current)
+  if (idx < 0) idx = 0
+  if (e.key === "ArrowRight" || e.key === "ArrowDown") idx = Math.min(idx + 1, values.length - 1)
+  else if (e.key === "ArrowLeft" || e.key === "ArrowUp") idx = Math.max(idx - 1, 0)
+  else return
+  e.preventDefault()
+  onSelect(values[idx].value)
+  ;(e.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('[role="radio"]')[idx]?.focus()
+}
+
+// roving tabindex：当前值不在选项内时默认聚焦第一项（如"全部"）
+const activeType = computed(() => types.some((t) => t.value === props.problemType) ? props.problemType : types[0].value)
+const activeDifficulty = computed(() => difficulties.some((d) => d.value === props.difficulty) ? props.difficulty : difficulties[0].value)
 </script>
 
 <template>
@@ -89,13 +105,14 @@ function selectType(value: string) {
     </div>
 
     <!-- 类型筛选 -->
-    <div class="flex items-center gap-1.5 flex-wrap" role="radiogroup" aria-labelledby="type-label">
+    <div class="flex items-center gap-1.5 flex-wrap" role="radiogroup" aria-labelledby="type-label" @keydown="onGroupKeydown($event, types, problemType, selectType)">
       <span class="text-xs text-text-muted mr-1" id="type-label">类型:</span>
       <button
         v-for="t in types"
         :key="t.value"
         role="radio"
         :aria-checked="problemType === t.value"
+        :tabindex="activeType === t.value ? 0 : -1"
         class="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors duration-150"
         :class="problemType === t.value
           ? t.value === 'U' ? 'bg-blue-100 text-blue-700 border-blue-300'
@@ -109,7 +126,7 @@ function selectType(value: string) {
     </div>
 
     <!-- 难度筛选 -->
-    <div class="flex items-center gap-1.5 flex-wrap" role="radiogroup" aria-labelledby="diff-label">
+    <div class="flex items-center gap-1.5 flex-wrap" role="radiogroup" aria-labelledby="diff-label" @keydown="onGroupKeydown($event, difficulties, difficulty, selectDifficulty)">
       <span class="text-xs text-text-muted mr-1" id="diff-label">难度:</span>
       <button
         v-for="d in difficulties"
@@ -117,6 +134,7 @@ function selectType(value: string) {
         role="radio"
         :aria-checked="difficulty === d.value"
         :aria-label="d.label"
+        :tabindex="activeDifficulty === d.value ? 0 : -1"
         class="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors duration-150"
         :class="difficulty === d.value
           ? 'bg-primary text-white border-primary'

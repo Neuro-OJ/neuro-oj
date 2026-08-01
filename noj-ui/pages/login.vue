@@ -10,20 +10,12 @@
   >
     <!-- 注册成功/密码重置成功 banner -->
     <template #banner-success>
-      <Transition name="slide">
-        <div v-if="registeredMsg" class="bg-green-50 border border-green-200 text-green-700 rounded-md px-3.5 py-2.5 text-sm flex items-center justify-center gap-3 fixed top-[74px] left-1/2 -translate-x-1/2 z-[99] max-w-[380px] w-[calc(100%-48px)]">
-          <span>{{ registeredMsg }}</span>
-        </div>
-      </Transition>
+      <ToastBanner :visible="!!registeredMsg" color="success" icon="i-lucide-check-circle" :message="registeredMsg" @close="registeredMsg = ''" />
     </template>
 
     <!-- 被封禁 banner -->
     <template #banner-info>
-      <Transition name="slide">
-        <div v-if="bannedMsg" class="bg-red-50 border border-red-200 text-red-700 rounded-md px-3.5 py-2.5 text-sm flex items-center justify-center gap-3 fixed top-[74px] left-1/2 -translate-x-1/2 z-[99] max-w-[380px] w-[calc(100%-48px)]">
-          <span>{{ bannedMsg }}</span>
-        </div>
-      </Transition>
+      <ToastBanner :visible="!!bannedMsg" color="error" icon="i-lucide-ban" :message="bannedMsg" @close="bannedMsg = ''" />
     </template>
 
     <TextInput
@@ -45,7 +37,7 @@
       id="password"
       v-model="form.password"
       label="密码"
-      placeholder="请输入密码（仅字母和数字）"
+      placeholder="至少 12 位，需包含字母和数字"
       autocomplete="current-password"
       :disabled="loading"
       :error="fieldErrors.password"
@@ -64,6 +56,8 @@
 </template>
 
 <script setup lang="ts">
+import { extractApiError } from "~/utils/apiError"
+
 definePageMeta({ layout: "auth" })
 
 const router = useRouter()
@@ -129,7 +123,7 @@ async function handleLogin() {
         : `账号已被封禁。${reason ? `原因：${reason}。` : ""}请联系管理员。`;
       return;
     }
-    setError(typeof e.data?.error === "string" ? e.data.error : `服务器错误 (${e.status || 502})`)
+    setError(extractApiError(e).message)
   } finally {
     loading.value = false
   }

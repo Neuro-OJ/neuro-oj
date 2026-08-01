@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import type { Contest, ContestProblem } from '~/composables/useContests'
+import { extractApiError } from '~/utils/apiError'
 
 const route = useRoute()
 const contestId = route.params.contestId as string
 const { isLoggedIn } = useAuth()
 const toast = useToast()
+const { api } = useApi()
 const { typeLabels, statusLabels, formatDateTime, formatDuration, statusClass } = useContests()
 const password = ref('')
 const registering = ref(false)
@@ -37,11 +39,10 @@ async function loadProblems() {
   problemsLoading.value = true
   problemsError.value = ''
   try {
-    const response = await $fetch<{ data: ContestProblem[] }>(`/api/v1/contests/${contestId}/problems`)
+    const response = await api.get<{ data: ContestProblem[] }>(`/api/v1/contests/${contestId}/problems`, { silent: true })
     problems.value = response.data
   } catch (fetchError: unknown) {
-    const detail = fetchError as { data?: { error?: string }; message?: string }
-    problemsError.value = detail.data?.error || detail.message || '题目加载失败'
+    problemsError.value = extractApiError(fetchError).message
   } finally {
     problemsLoading.value = false
   }
@@ -57,16 +58,12 @@ async function register() {
   registering.value = true
   registerError.value = ''
   try {
-    await $fetch(`/api/v1/contests/${contestId}/register`, {
-      method: 'POST',
-      body: password.value ? { password: password.value } : undefined,
-    })
+    await api.post(`/api/v1/contests/${contestId}/register`, password.value ? { password: password.value } : undefined)
     toast.showToast('success', '报名成功')
     await refresh()
     await loadProblems()
   } catch (registerFailure: unknown) {
-    const detail = registerFailure as { data?: { error?: string }; message?: string }
-    registerError.value = detail.data?.error || detail.message || '报名失败'
+    registerError.value = extractApiError(registerFailure).message
   } finally {
     registering.value = false
   }

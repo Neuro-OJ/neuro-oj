@@ -23,6 +23,7 @@ interface StatsCard {
 const stats = ref<StatsCard[]>([])
 const statsLoading = ref(true)
 const statsError = ref("")
+const { api } = useApi()
 const queueStats = ref<{ pending_count: number; judging_count: number; completed_today: number } | null>(null)
 const queueError = ref("")
 const lastSuccessfulRefresh = ref<Date | null>(null)
@@ -51,17 +52,17 @@ async function loadStats() {
   statsError.value = ""
 
   const [userRes, problemRes, submissionRes, queueRes] = await Promise.allSettled([
-    $fetch<{ pagination: { total: number } }>("/api/v1/admin/users"),
-    $fetch<{ total: number }>("/api/v1/problems"),
-    $fetch<{ pagination: { total: number } }>("/api/v1/admin/submissions"),
-    $fetch<{ stats: { pending_count: number; judging_count: number; completed_today: number } }>("/api/v1/queue"),
+    api.get<{ pagination: { total: number } }>("/api/v1/admin/users", { silent: true }),
+    api.get<{ total: number }>("/api/v1/problems", { silent: true }),
+    api.get<{ pagination: { total: number } }>("/api/v1/admin/submissions", { silent: true }),
+    api.get<{ stats: { pending_count: number; judging_count: number; completed_today: number } }>("/api/v1/queue", { silent: true }),
   ])
   if (currentRequest !== requestVersion) return
 
   stats.value = [
-    statCard("用户总数", 'i-lucide-users', "#3b82f6", userRes),
-    statCard("题目总数", 'i-lucide-book-open', "#10b981", problemRes),
-    statCard("提交总数", 'i-lucide-files', "#f59e0b", submissionRes),
+    statCard("用户总数", 'i-lucide-users', "#2563eb", userRes),
+    statCard("题目总数", 'i-lucide-book-open', "#16a34a", problemRes),
+    statCard("提交总数", 'i-lucide-files', "#d97706", submissionRes),
   ]
   queueStats.value = queueRes.status === "fulfilled" ? queueRes.value.stats : null
   queueError.value = queueRes.status === "rejected" ? "队列状态加载失败" : ""
@@ -133,24 +134,24 @@ async function handleRefresh() {
       </h2>
       <div class="grid grid-cols-3 gap-4">
         <div class="flex flex-col items-center gap-1 p-4 rounded-lg bg-gray-50">
-          <span class="text-[28px] font-bold text-amber-500">{{ queueStats.pending_count }}</span>
+          <span class="text-28px font-bold text-warning-600">{{ queueStats.pending_count }}</span>
           <span class="text-xs text-text-secondary">等待中</span>
         </div>
         <div class="flex flex-col items-center gap-1 p-4 rounded-lg bg-gray-50">
-          <span class="text-[28px] font-bold text-blue-500">{{ queueStats.judging_count }}</span>
+          <span class="text-28px font-bold text-info-600">{{ queueStats.judging_count }}</span>
           <span class="text-xs text-text-secondary">评测中</span>
         </div>
         <div class="flex flex-col items-center gap-1 p-4 rounded-lg bg-gray-50">
-          <span class="text-[28px] font-bold text-emerald-500">{{ queueStats.completed_today }}</span>
+          <span class="text-28px font-bold text-success-600">{{ queueStats.completed_today }}</span>
           <span class="text-xs text-text-secondary">今日完成</span>
         </div>
       </div>
     </div>
-    <div v-else-if="queueError" class="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-error-text">
-      <UIcon name="i-lucide-alert-circle" class="size-4.5" />
-      <span>{{ queueError }}</span>
-      <button class="underline" @click="loadStats">重试</button>
-    </div>
+    <UAlert v-else-if="queueError" color="error" icon="i-lucide-alert-circle" :title="queueError" class="rounded-xl">
+      <template #actions>
+        <UButton color="neutral" variant="link" size="sm" @click="loadStats">重试</UButton>
+      </template>
+    </UAlert>
 
     <p v-if="lastSuccessfulRefresh" class="text-xs text-text-muted">最近刷新：{{ lastSuccessfulRefresh.toLocaleString("zh-CN") }}</p>
   </div>

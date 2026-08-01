@@ -4,7 +4,15 @@
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col lg:flex-row flex-1 min-h-[320px] bg-white">
                     <!-- Carousel -->
-                    <div class="flex-1 min-w-0 relative overflow-hidden">
+                    <div
+                        class="flex-1 min-w-0 relative overflow-hidden"
+                        role="region"
+                        aria-roledescription="轮播图"
+                        aria-label="公告轮播"
+                        aria-live="off"
+                        @mouseenter="stopAuto"
+                        @mouseleave="() => { if (!paused) startAuto() }"
+                    >
                         <Transition name="carousel-fade">
                             <div
                                 :key="currentSlide"
@@ -15,15 +23,39 @@
                                 <p class="text-sm lg:text-base text-white/85 max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">{{ announcements[currentSlide].description }}</p>
                             </div>
                         </Transition>
+                        <!-- 暂停/继续（WCAG 2.2.2 自动更新内容可暂停） -->
+                        <button
+                            v-if="!paused"
+                            type="button"
+                            class="absolute bottom-4 right-4 z-10 p-2 rounded-full bg-black/30 text-white hover:bg-black/50 transition-colors"
+                            aria-label="暂停轮播"
+                            @click="togglePause"
+                        >
+                            <UIcon name="i-lucide-pause" class="size-4" />
+                        </button>
+                        <button
+                            v-else
+                            type="button"
+                            class="absolute bottom-4 right-4 z-10 p-2 rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors"
+                            aria-label="继续轮播"
+                            @click="togglePause"
+                        >
+                            <UIcon name="i-lucide-play" class="size-4" />
+                        </button>
                         <div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-10">
                             <button
                                 v-for="(_, i) in announcements"
                                 :key="i"
-                                class="size-2 rounded-full transition-all duration-300 cursor-pointer bg-white"
-                                :class="i === currentSlide ? 'opacity-100 scale-125' : 'opacity-50 hover:opacity-100'"
+                                class="p-2 -m-2 rounded-full transition-opacity cursor-pointer group"
                                 :aria-label="`切换到第 ${i + 1} 张`"
+                                :aria-current="i === currentSlide"
                                 @click="goToSlide(i)"
-                            />
+                            >
+                                <span
+                                    class="block size-2 rounded-full transition-all duration-300 bg-white"
+                                    :class="i === currentSlide ? 'opacity-100 scale-125' : 'opacity-50 group-hover:opacity-100'"
+                                />
+                            </button>
                         </div>
                     </div>
 
@@ -61,6 +93,7 @@
 
 <script setup lang="ts">
 const { user, isLoggedIn } = useAuth()
+const { api } = useApi()
 
 // ── Announcement Carousel ──
 interface Announcement {
@@ -88,10 +121,12 @@ const announcements: Announcement[] = [
 ]
 
 const currentSlide = ref(0)
+const paused = ref(false)
 let autoTimer: ReturnType<typeof setInterval> | null = null
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 
 function startAuto() {
+    if (paused.value) return
     stopAuto()
     autoTimer = setInterval(() => {
         currentSlide.value = (currentSlide.value + 1) % announcements.length
@@ -103,6 +138,12 @@ function stopAuto() {
         clearInterval(autoTimer)
         autoTimer = null
     }
+}
+
+function togglePause() {
+    paused.value = !paused.value
+    if (paused.value) stopAuto()
+    else startAuto()
 }
 
 function goToSlide(i: number) {
@@ -136,7 +177,10 @@ const checkInLoaded = ref(false)
 async function fetchTodayCheckIn() {
     if (!isLoggedIn.value) return
     try {
-        const res = await $fetch<{ data: { checked_in: boolean; streak: number } }>("/api/v1/checkin/today")
+        const res = await api.get<{ data: { checked_in: boolean; streak: number } }>(
+            "/api/v1/checkin/today",
+            { silent: true },
+        )
         if (res.data) {
             checkedIn.value = res.data.checked_in
             streakCount.value = res.data.streak
@@ -159,9 +203,9 @@ async function handleCheckIn() {
     if (checkInLoading.value || checkedIn.value) return
     checkInLoading.value = true
     try {
-        const res = await $fetch<{ data: { checked_in: boolean; streak: number } }>("/api/v1/checkin", {
-            method: "POST",
-        })
+        const res = await api.post<{ data: { checked_in: boolean; streak: number } }>(
+            "/api/v1/checkin",
+        )
         if (res.data) {
             checkedIn.value = res.data.checked_in
             streakCount.value = res.data.streak
@@ -195,7 +239,7 @@ const todayTimeStr = computed(() => new Date(now.value).toLocaleTimeString("zh-C
 }))
 
 onMounted(() => {
-    clockTimer = setInterval(() => { now.value = Date.now() }, 100)
+    clockTimer = setInterval(() => { now.value = Date.now() }, 1000)
     if (isLoggedIn.value) {
         fetchTodayCheckIn()
     }

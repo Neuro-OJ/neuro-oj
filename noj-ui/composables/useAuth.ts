@@ -65,18 +65,17 @@ export function useAuth() {
     loading.value = false;
   }
 
+  // 认证类调用统一 silent：错误由认证页面内联展示（banner/表单错误），
+  // 避免「页面提示 + toast」双重提示（ui-api-layer 设计 D6）
+  const { api } = useApi();
+
   async function login(login: string, password: string) {
-    // 5s 超时（评审修复 L2，与 fetchUser 一致）
-    const res = await Promise.race([
-      $fetch<{ data: { user: UserResponse } }>(
-        '/api/v1/auth/login',
-        {
-          method: 'POST',
-          body: { login, password },
-        },
-      ),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('login timeout')), 5000)),
-    ]);
+    // 5s 超时（评审修复 L2，与 fetchUser 一致），由 useApi timeout 选项实现
+    const res = await api.post<{ data: { user: UserResponse } }>(
+      '/api/v1/auth/login',
+      { login, password },
+      { silent: true, timeout: 5000 },
+    );
     // token 已由 Nitro 代理设置为 HTTP-only cookie，客户端不接收 token 字段
     const userData = res.data.user;
     user.value = userData;
@@ -84,10 +83,7 @@ export function useAuth() {
   }
 
   async function register(username: string, email: string, password: string) {
-    await $fetch('/api/v1/auth/register', {
-      method: 'POST',
-      body: { username, email, password },
-    });
+    await api.post('/api/v1/auth/register', { username, email, password }, { silent: true });
   }
 
   /**
@@ -95,10 +91,7 @@ export function useAuth() {
    * 邮箱是否存在对前端透明：服务端统一返 200 + 同一消息（防枚举）。
    */
   async function forgotPassword(email: string) {
-    await $fetch('/api/v1/auth/forgot-password', {
-      method: 'POST',
-      body: { email },
-    });
+    await api.post('/api/v1/auth/forgot-password', { email }, { silent: true });
   }
 
   /**
@@ -106,20 +99,21 @@ export function useAuth() {
    * @throws 令牌无效/过期/已用/弱密码时抛出错误（含后端 error 消息）
    */
   async function resetPassword(token: string, newPassword: string) {
-    await $fetch('/api/v1/auth/reset-password', {
-      method: 'POST',
-      body: { token, new_password: newPassword },
-    });
+    await api.post(
+      '/api/v1/auth/reset-password',
+      { token, new_password: newPassword },
+      { silent: true },
+    );
   }
 
   async function fetchUser() {
     if (!isLoggedIn.value) return null;
     try {
       // 5s 超时（评审修复 L2，与 middleware/auth.ts fetchUser 一致）
-      const res = await Promise.race([
-        $fetch<{ data: UserResponse }>('/api/v1/auth/me'),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('fetchUser timeout')), 5000)),
-      ]);
+      const res = await api.get<{ data: UserResponse }>(
+        '/api/v1/auth/me',
+        { silent: true, timeout: 5000 },
+      );
       user.value = res.data;
       return res.data;
     } catch {
@@ -135,12 +129,10 @@ export function useAuth() {
     //   3. 返回 { user, token }
     // Nitro 代理同步用新 token 替换 noj:token Cookie（user.must_change_password=false）。
     // 因此前端**不再需要** logout()+重登——直接更新本地 user 状态即可。
-    const res = await $fetch<{ data: { user: UserResponse } }>(
+    const res = await api.post<{ data: { user: UserResponse } }>(
       '/api/v1/auth/change-password',
-      {
-        method: 'POST',
-        body: { old_password: oldPassword, new_password: newPassword },
-      },
+      { old_password: oldPassword, new_password: newPassword },
+      { silent: true },
     );
     // 同步本地状态：must_change_password 现在是 false，前端路由守卫放行。
     user.value = res.data.user;
@@ -149,7 +141,8 @@ export function useAuth() {
 
   async function logout() {
     try {
-      await $fetch('/api/auth/logout', { method: 'POST' });
+      // 本地注销端点（Nitro 删除 Cookie），非 /api/v1/ 前缀；失败静默
+      await api.post('/api/auth/logout', undefined, { silent: true });
     } catch {
       // 即使网络错误也要清除本地状态
     }

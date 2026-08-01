@@ -4,6 +4,7 @@
  * 用于编辑器提交后留在页面时，实时显示评测进度。
  * 提交状态变为 finished / error 时自动停止轮询。
  */
+import { extractApiError } from '~/utils/apiError';
 
 export type SubmissionStatus =
   | "pending"
@@ -49,8 +50,10 @@ export function useSubmissionPolling(submissionIdRef: Ref<string | null>) {
     const id = submissionIdRef.value;
     if (!id) return;
     try {
-      const res = await $fetch<{ data: PolledSubmission }>(
+      // 轮询为静默请求：失败写入 error ref 由页面展示，不弹 toast
+      const res = await useApi().api.get<{ data: PolledSubmission }>(
         `/api/v1/submissions/${id}`,
+        { silent: true },
       );
       submission.value = res.data;
       error.value = null;
@@ -58,8 +61,7 @@ export function useSubmissionPolling(submissionIdRef: Ref<string | null>) {
         stop();
       }
     } catch (e) {
-      const err = e as { data?: { error?: string }; message?: string };
-      error.value = err.data?.error || err.message || "轮询失败";
+      error.value = extractApiError(e).message;
     }
   }
 

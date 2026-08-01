@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { extractApiError } from '~/utils/apiError'
+
 definePageMeta({
   layout: "admin",
   middleware: "admin",
@@ -36,6 +38,8 @@ interface PermissionGroup {
   resource: string
   items: Permission[]
 }
+
+const { api } = useApi()
 
 const roles = ref<Role[]>([])
 const permissions = ref<Permission[]>([])
@@ -82,14 +86,13 @@ async function loadRoles() {
   tableError.value = ""
   try {
     const [rolesRes, permsRes] = await Promise.all([
-      $fetch<{ data: Role[] }>("/api/v1/admin/roles"),
-      $fetch<{ data: Permission[] }>("/api/v1/admin/permissions"),
+      api.get<{ data: Role[] }>("/api/v1/admin/roles", { silent: true }),
+      api.get<{ data: Permission[] }>("/api/v1/admin/permissions", { silent: true }),
     ])
     roles.value = rolesRes.data
     permissions.value = permsRes.data
   } catch (err: unknown) {
-    const apiErr = err as { data?: { error?: string }; message?: string } | undefined
-    tableError.value = apiErr?.data?.error || apiErr?.message || "加载角色列表失败"
+    tableError.value = extractApiError(err).message
   } finally {
     tableLoading.value = false
   }
@@ -167,21 +170,14 @@ async function handleSave() {
       permission_ids: Array.from(editorPermissionIds.value),
     }
     if (editingRole.value) {
-      await $fetch(`/api/v1/admin/roles/${editingRole.value.id}`, {
-        method: "PUT",
-        body,
-      })
+      await api.put(`/api/v1/admin/roles/${editingRole.value.id}`, body)
     } else {
-      await $fetch("/api/v1/admin/roles", {
-        method: "POST",
-        body,
-      })
+      await api.post("/api/v1/admin/roles", body)
     }
     showEditor.value = false
     await loadRoles()
   } catch (err: unknown) {
-    const apiErr = err as { data?: { error?: string }; message?: string } | undefined
-    editorError.value = apiErr?.data?.error || apiErr?.message || "保存失败"
+    editorError.value = extractApiError(err).message
   } finally {
     saving.value = false
   }
@@ -203,11 +199,10 @@ async function confirmDelete(role: Role) {
   deletingId.value = role.id
   deleteError.value = ""
   try {
-    await $fetch(`/api/v1/admin/roles/${role.id}`, { method: "DELETE" })
+    await api.delete(`/api/v1/admin/roles/${role.id}`)
     await loadRoles()
   } catch (err: unknown) {
-    const apiErr = err as { data?: { error?: string }; message?: string } | undefined
-    deleteError.value = apiErr?.data?.error || apiErr?.message || "删除失败"
+    deleteError.value = extractApiError(err).message
   } finally {
     deletingId.value = null
   }
@@ -370,10 +365,10 @@ async function confirmDelete(role: Role) {
         class="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800"
       >
         <UIcon name="i-lucide-alert-triangle" class="shrink-0 mt-0.5 size-4.5" />
-        <span>⚠️ 管理员角色隐式拥有所有权限，无需单独配置</span>
+        <span>管理员角色隐式拥有所有权限，无需单独配置</span>
       </div>
 
-      <p v-if="editorError" class="text-[13px] text-error-text">{{ editorError }}</p>
+      <p v-if="editorError" class="text-13px text-error-text">{{ editorError }}</p>
     </div>
   
     <template #footer>

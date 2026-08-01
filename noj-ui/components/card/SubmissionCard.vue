@@ -28,7 +28,7 @@
                 <!-- row 2: 跨两列同行（time 左，stats 右） -->
                 <template v-if="submission.result">
                     <template v-if="hasRuntimeConfig">
-                        <div class="col-span-2 self-center flex items-center justify-between gap-2 text-[11px]">
+                        <div class="col-span-2 self-center flex items-center justify-between gap-2 text-11px">
                             <span class="text-text-muted">{{ formatTime(submission.created_at) }}</span>
                             <div class="flex items-center gap-px font-mono tabular-nums">
                                 <span :class="getUsageColor(submission.result.time_ms, submission.problem.runtime_config!.evaluator!.time_limit_ms)">
@@ -46,7 +46,7 @@
                         </div>
                     </template>
                     <template v-else>
-                        <div class="col-span-2 self-center flex items-center justify-between gap-2 text-[11px]">
+                        <div class="col-span-2 self-center flex items-center justify-between gap-2 text-11px">
                             <span class="text-text-muted">{{ formatTime(submission.created_at) }}</span>
                             <div class="flex items-center gap-px font-mono tabular-nums">
                                 <span class="text-text-muted">{{ formatTimeMs(submission.result.time_ms) }}</span>
@@ -57,13 +57,13 @@
                     </template>
                 </template>
                 <template v-else-if="submission.queue_position != null">
-                    <div class="col-span-2 self-center flex items-center justify-between gap-2 text-[11px]">
+                    <div class="col-span-2 self-center flex items-center justify-between gap-2 text-11px">
                         <span class="text-text-muted">{{ formatTime(submission.created_at) }}</span>
                         <span class="font-mono tabular-nums text-gray-400">排队中 <span class="font-bold">#{{ submission.queue_position }}</span></span>
                     </div>
                 </template>
                 <template v-else>
-                    <div class="col-span-2 self-center flex items-center justify-between gap-2 text-[11px]">
+                    <div class="col-span-2 self-center flex items-center justify-between gap-2 text-11px">
                         <span class="text-text-muted">{{ formatTime(submission.created_at) }}</span>
                         <span class="font-mono tabular-nums text-blue-500">{{ liveElapsed(submission.judge_started_at ?? submission.created_at) }}</span>
                     </div>

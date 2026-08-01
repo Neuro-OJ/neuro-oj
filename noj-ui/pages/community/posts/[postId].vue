@@ -10,6 +10,7 @@ const { isLoggedIn, user } = useAuth()
 const { config, loadConfig } = useCommunity()
 const { toast } = useToast()
 const { dialog } = useDialog()
+const { api } = useApi()
 
 interface PostDetail {
   post: CommunityPost
@@ -72,8 +73,8 @@ function canEditComment(row: CommentRow): boolean {
 
 async function load() {
   const [postResult, commentResult] = await Promise.all([
-    $fetch<{ data: PostDetail }>(`/api/v1/community/posts/${postId.value}`),
-    $fetch<{ data: CommentRow[] }>(`/api/v1/community/posts/${postId.value}/comments`),
+    api.get<{ data: PostDetail }>(`/api/v1/community/posts/${postId.value}`),
+    api.get<{ data: CommentRow[] }>(`/api/v1/community/posts/${postId.value}/comments`),
   ])
   post.value = postResult.data
   comments.value = commentResult.data
@@ -84,10 +85,8 @@ async function toggle(kind: "like" | "bookmark", path: string) {
   if ((kind === "like" ? !canReact.value : !canBookmark.value) || interaction.value) return
   interaction.value = kind
   try {
-    await $fetch(path, { method: "POST" })
+    await api.post(path)
     await load()
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "操作失败")
   } finally {
     interaction.value = null
   }
@@ -98,11 +97,9 @@ async function sendComment() {
   if (!content || !canComment.value || submittingComment.value) return
   submittingComment.value = true
   try {
-    await $fetch(`/api/v1/community/posts/${postId.value}/comments`, { method: "POST", body: { content } })
+    await api.post(`/api/v1/community/posts/${postId.value}/comments`, { content })
     comment.value = ""
     await load()
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "评论失败")
   } finally {
     submittingComment.value = false
   }
@@ -117,15 +114,13 @@ async function sendReply(parentId: string) {
   if (!content || !canComment.value || submittingReply.value) return
   submittingReply.value = true
   try {
-    await $fetch(`/api/v1/community/posts/${postId.value}/comments`, {
-      method: "POST",
-      body: { content, parent_id: parentId },
+    await api.post(`/api/v1/community/posts/${postId.value}/comments`, {
+      content,
+      parent_id: parentId,
     })
     replyContent.value = ""
     replyingTo.value = null
     await load()
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "回复失败")
   } finally {
     submittingReply.value = false
   }
@@ -134,16 +129,9 @@ async function sendReply(parentId: string) {
 async function saveEditComment(id: string, contentInput: string) {
   const content = contentInput.trim()
   if (!content) return
-  try {
-    await $fetch(`/api/v1/community/comments/${id}`, {
-      method: "PATCH",
-      body: { content },
-    })
-    toast.success("评论已更新")
-    await load()
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "编辑失败")
-  }
+  await api.patch(`/api/v1/community/comments/${id}`, { content })
+  toast.success("评论已更新")
+  await load()
 }
 
 async function removeComment(id: string) {
@@ -153,13 +141,9 @@ async function removeComment(id: string) {
     confirmText: "删除",
   })
   if (!ok) return
-  try {
-    await $fetch(`/api/v1/community/comments/${id}`, { method: "DELETE" })
-    toast.success("评论已删除")
-    await load()
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "删除失败")
-  }
+  await api.delete(`/api/v1/community/comments/${id}`)
+  toast.success("评论已删除")
+  await load()
 }
 
 function startEditPost() {
@@ -174,15 +158,10 @@ async function saveEditPost() {
   try {
     const body: Record<string, string | null> = { content: editContent.value }
     if (post.value?.post.type !== "moment") body.title = editTitle.value.trim() || null
-    await $fetch(`/api/v1/community/posts/${postId.value}`, {
-      method: "PATCH",
-      body,
-    })
+    await api.patch(`/api/v1/community/posts/${postId.value}`, body)
     toast.success("内容已更新")
     editingPost.value = false
     await load()
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "保存失败")
   } finally {
     savingPost.value = false
   }
@@ -194,13 +173,9 @@ async function deletePost() {
     confirmText: "删除",
   })
   if (!ok) return
-  try {
-    await $fetch(`/api/v1/community/posts/${postId.value}`, { method: "DELETE" })
-    toast.success("内容已删除")
-    navigateTo("/community")
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "删除失败")
-  }
+  await api.delete(`/api/v1/community/posts/${postId.value}`)
+  toast.success("内容已删除")
+  navigateTo("/community")
 }
 
 await loadConfig()

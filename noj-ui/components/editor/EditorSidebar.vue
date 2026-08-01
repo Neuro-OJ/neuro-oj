@@ -148,7 +148,7 @@ function formatElapsed(iso: string) {
           <!-- 行 1：状态徽章 + 得分 -->
           <div class="flex items-center justify-between mb-2">
             <span
-              class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded font-semibold"
+              class="inline-flex items-center gap-1 text-11px px-2 py-0.5 rounded font-semibold"
               :style="{ background: getStatusColor(sub.status, sub.result?.status) + '22', color: getStatusColor(sub.status, sub.result?.status) }"
             >
               <UIcon name="i-lucide-loader-2" class="animate-spin size-[10px]" v-if="sub.status === 'pending' || sub.status === 'judging'"/>

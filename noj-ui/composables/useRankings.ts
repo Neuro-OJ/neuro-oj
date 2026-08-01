@@ -52,7 +52,7 @@ export function useRankings(page: Ref<number>, limit: number = 50) {
  * 未登录或未上榜时返回 null。
  */
 export async function fetchMyRanking(): Promise<RankingRow | null> {
-  const res = await $fetch<MyRankingResponse>("/api/v1/rankings/me")
+  const res = await useApi().api.get<MyRankingResponse>('/api/v1/rankings/me')
   return res.data
 }
 

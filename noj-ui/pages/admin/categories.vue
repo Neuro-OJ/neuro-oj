@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { extractApiError } from '~/utils/apiError'
+
 definePageMeta({
   layout: "admin",
   middleware: "admin",
@@ -19,6 +21,8 @@ interface Category {
   description: string
 }
 
+const { api } = useApi()
+
 const categories = ref<Category[]>([])
 const tableLoading = ref(true)
 const tableError = ref("")
@@ -35,10 +39,10 @@ async function loadCategories() {
   tableLoading.value = true
   tableError.value = ""
   try {
-    const res = await $fetch<{ data: Category[] }>("/api/v1/categories")
+    const res = await api.get<{ data: Category[] }>("/api/v1/categories", { silent: true })
     categories.value = res.data
   } catch (err: unknown) {
-    tableError.value = err instanceof Error ? err.message : "加载分类失败"
+    tableError.value = extractApiError(err).message
   } finally {
     tableLoading.value = false
   }
@@ -89,20 +93,18 @@ async function handleSave() {
   formError.value = ""
   try {
     if (editingCategory.value) {
-      await $fetch(`/api/v1/categories/${editingCategory.value.id}`, {
-        method: "PUT",
-        body: { name: formName.value, slug: formSlug.value, description: formDesc.value },
+      await api.put(`/api/v1/categories/${editingCategory.value.id}`, {
+        name: formName.value, slug: formSlug.value, description: formDesc.value,
       })
     } else {
-      await $fetch("/api/v1/categories", {
-        method: "POST",
-        body: { name: formName.value, slug: formSlug.value, description: formDesc.value },
+      await api.post("/api/v1/categories", {
+        name: formName.value, slug: formSlug.value, description: formDesc.value,
       })
     }
     showForm.value = false
     await loadCategories()
   } catch (err: unknown) {
-    formError.value = err instanceof Error ? err.message : "保存失败"
+    formError.value = extractApiError(err).message
   } finally {
     saving.value = false
   }
@@ -123,13 +125,11 @@ async function handleDelete() {
   if (!deleteTarget.value) return
   deleting.value = true
   try {
-    await $fetch(`/api/v1/categories/${deleteTarget.value.id}`, {
-      method: "DELETE",
-    })
+    await api.delete(`/api/v1/categories/${deleteTarget.value.id}`)
     showDeleteConfirm.value = false
     await loadCategories()
   } catch (err: unknown) {
-    formError.value = err instanceof Error ? err.message : "删除失败"
+    formError.value = extractApiError(err).message
   } finally {
     deleting.value = false
   }
@@ -170,18 +170,18 @@ async function handleDelete() {
   <UModal v-model:open="showForm" :title="editingCategory ? '编辑分类' : '新建分类'" :unmount-on-hide="true">
     <div class="flex flex-col gap-3">
       <div class="flex flex-col gap-1">
-        <label class="text-[13px] font-semibold text-text">名称 <span class="text-error-text">*</span></label>
+        <label class="text-13px font-semibold text-text">名称 <span class="text-error-text">*</span></label>
         <input v-model="formName" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="分类名称" />
       </div>
       <div class="flex flex-col gap-1">
-        <label class="text-[13px] font-semibold text-text">标识 <span class="text-error-text">*</span></label>
+        <label class="text-13px font-semibold text-text">标识 <span class="text-error-text">*</span></label>
         <input v-model="formSlug" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="分类标识（英文）" />
       </div>
       <div class="flex flex-col gap-1">
-        <label class="text-[13px] font-semibold text-text">描述</label>
+        <label class="text-13px font-semibold text-text">描述</label>
         <input v-model="formDesc" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="可选描述" />
       </div>
-      <p v-if="formError" class="text-error-text text-[13px]">{{ formError }}</p>
+      <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
     </div>
   
     <template #footer>
@@ -193,7 +193,7 @@ async function handleDelete() {
   <!-- 删除确认弹窗 -->
   <UModal v-model:open="showDeleteConfirm" :title="'删除分类'" :unmount-on-hide="true">
     <p>确定要删除分类 <strong>{{ deleteTarget?.name }}</strong> 吗？此操作不可撤销。</p>
-    <p v-if="formError" class="text-error-text text-[13px]">{{ formError }}</p>
+    <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="deleting" @click="showDeleteConfirm = false">取消</UButton>

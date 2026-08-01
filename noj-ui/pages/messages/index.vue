@@ -87,8 +87,6 @@ async function send() {
     messages.value.push(result.data)
     newMessage.value = ""
     scrollToBottom()
-  } catch {
-    toast.error("发送失败")
   } finally {
     sending.value = false
   }
@@ -214,7 +212,7 @@ function isSameDay(iso1: string, iso2: string): boolean {
             <div v-for="(msg, idx) in messages" :key="msg.id">
               <div
                 v-if="idx === 0 || !isSameDay(msg.created_at, messages[idx - 1].created_at)"
-                class="text-center text-[11px] text-text-secondary mb-3 mt-2"
+                class="text-center text-11px text-text-secondary mb-3 mt-2"
               >
                 {{ formatDate(msg.created_at) }}
               </div>

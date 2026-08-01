@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 import { onMounted, nextTick } from 'vue'
+import { extractApiError } from '~/utils/apiError'
 
 definePageMeta({
   layout: false,
@@ -11,6 +12,7 @@ const route = useRoute()
 const router = useRouter()
 const problemId = computed(() => route.params.id as string)
 const { isLoggedIn } = useAuth()
+const { api } = useApi()
 
 // 主题
 const { theme, set: setTheme } = useEditorTheme()
@@ -98,13 +100,10 @@ async function handleSubmit() {
   submitting.value = true
   submitError.value = ''
   try {
-    const res = await $fetch<{ data: { id: string } }>('/api/v1/submissions', {
-      method: 'POST',
-      body: {
-        problem_id: problemId.value,
-        language: language.value,
-        code: code.value,
-      },
+    const res = await api.post<{ data: { id: string } }>('/api/v1/submissions', {
+      problem_id: problemId.value,
+      language: language.value,
+      code: code.value,
     })
     // 留在编辑页：自动切到历史 tab + 启动实时轮询
     sidebarTab.value = 'history'
@@ -113,8 +112,7 @@ async function handleSubmit() {
     // 轮询约 2s 后（judge 入队 + 评测完成），刷新历史列表把最近一条移入
     setTimeout(() => refreshSubmissionsFn(), 2000)
   } catch (err: unknown) {
-    const e = err as { data?: { error?: string }; message?: string }
-    submitError.value = e.data?.error || e.message || '提交失败，请稍后重试'
+    submitError.value = extractApiError(err).message
   } finally {
     submitting.value = false
   }
@@ -135,8 +133,9 @@ onMounted(async () => {
   templateLoading.value = true
   templateError.value = ''
   try {
-    const res = await $fetch<{ data: { content: string; language: string } }>(
+    const res = await api.get<{ data: { content: string; language: string } }>(
       `/api/v1/problems/${problemId.value}/template`,
+      { silent: true },
     )
     if (res?.data?.content && code.value.trim() === '') {
       code.value = res.data.content
@@ -145,7 +144,7 @@ onMounted(async () => {
     const err = e as { statusCode?: number; data?: { error?: string }; message?: string }
     // 404 是预期：题目无 submission.py 模板
     if (err.statusCode !== 404) {
-      templateError.value = err.data?.error || err.message || '加载模板失败'
+      templateError.value = extractApiError(e).message
     }
   } finally {
     templateLoading.value = false
@@ -268,13 +267,12 @@ function onCursorChange(pos: { line: number; col: number }) {
             enter-from-class="opacity-0 -translate-y-1"
             leave-to-class="opacity-0 -translate-y-1"
           >
-            <div
-              v-if="submitError"
-              class="flex items-center gap-2 px-4 py-2.5 bg-red-50 border-t border-red-200 text-red-800 text-xs"
-            >
-              <UIcon name="i-lucide-alert-circle" class="size-3.5" />
-              <span class="flex-1">{{ submitError }}</span>
-              <button class="text-red-600 hover:text-red-800" @click="submitError = ''">×</button>
+            <div v-if="submitError" class="border-t border-red-200">
+              <UAlert color="error" icon="i-lucide-alert-circle" :title="submitError" :close="true" class="rounded-none">
+                <template #close>
+                  <UButton color="neutral" variant="link" icon="i-lucide-x" aria-label="关闭" @click="submitError = ''" />
+                </template>
+              </UAlert>
             </div>
           </Transition>
 

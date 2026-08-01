@@ -6,12 +6,14 @@ import {
   type PostType,
 } from "~/composables/useCommunity"
 import { stripMarkdown } from "~/utils/markdown"
+import { extractApiError } from "~/utils/apiError"
 
 const { isLoggedIn } = useAuth()
 const route = useRoute()
 const router = useRouter()
 const { config, loadConfig } = useCommunity()
 const { toast } = useToast()
+const { api } = useApi()
 
 const ENABLED_TYPES: PostType[] = ["discussion", "solution", "moment"]
 const typeFlag: Record<PostType, keyof CommunityConfig> = {
@@ -95,7 +97,7 @@ async function loadPosts(reset = true, cursor?: string | null) {
   }
   error.value = ""
   try {
-    const result = await $fetch<{ data: PostRow[]; next_cursor: string | null }>(
+    const result = await api.get<{ data: PostRow[]; next_cursor: string | null }>(
       "/api/v1/community/posts",
       {
         query: {
@@ -104,12 +106,13 @@ async function loadPosts(reset = true, cursor?: string | null) {
           q: searchKeyword.value.trim() || undefined,
           cursor: cursor ?? undefined,
         },
+        silent: true,
       },
     )
     posts.value = reset ? result.data : [...posts.value, ...result.data]
     nextCursor.value = result.next_cursor ?? null
   } catch (err: unknown) {
-    error.value = err instanceof Error ? err.message : "加载社区内容失败"
+    error.value = extractApiError(err).message
   } finally {
     loading.value = false
     loadingMore.value = false
@@ -123,8 +126,9 @@ async function loadMore() {
 
 async function loadCounts() {
   try {
-    const result = await $fetch<{ data: CommunityCounts }>(
+    const result = await api.get<{ data: CommunityCounts }>(
       "/api/v1/community/posts/counts",
+      { silent: true },
     )
     counts.value = result.data
   } catch {
@@ -161,13 +165,12 @@ async function prepareEditor() {
   }
   if (activeType.value === "discussion" && boards.value.length === 0) {
     try {
-      const result = await $fetch<{ data: { id: string; name: string }[] }>(
+      const result = await api.get<{ data: { id: string; name: string }[] }>(
         "/api/v1/community/boards",
       )
       boards.value = result.data
       boardId.value = boards.value[0]?.id ?? ""
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "加载讨论板块失败")
+    } catch {
       return
     }
   }
@@ -185,9 +188,9 @@ async function searchProblems() {
   const seq = ++problemSearchSeq
   problemSearching.value = true
   try {
-    const result = await $fetch<{ data: { items: { id: string; display_id: string; title: string }[] } }>(
+    const result = await api.get<{ data: { items: { id: string; display_id: string; title: string }[] } }>(
       "/api/v1/search",
-      { query: { q, type: "problem" } },
+      { query: { q, type: "problem" }, silent: true },
     )
     if (seq !== problemSearchSeq) return
     problemResults.value = result.data.items
@@ -239,9 +242,9 @@ async function publish() {
       }
       body.problem_id = pid
     }
-    const result = await $fetch<{ data: { status: string } }>(
+    const result = await api.post<{ data: { status: string } }>(
       "/api/v1/community/posts",
-      { method: "POST", body },
+      body,
     )
     toast.success(result.data.status === "pending" ? "内容已提交审核" : "发布成功")
     title.value = ""
@@ -250,8 +253,6 @@ async function publish() {
     problemQuery.value = ""
     showEditor.value = false
     await Promise.all([loadPosts(), loadCounts()])
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "发布失败")
   } finally {
     publishing.value = false
   }

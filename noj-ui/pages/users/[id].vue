@@ -8,6 +8,7 @@ const router = useRouter()
 const { user: currentUser } = useAuth()
 const { findOrCreateConversation } = useMessages()
 const { toast } = useToast()
+const { api } = useApi()
 
 const userId = route.params.id as string
 
@@ -136,22 +137,14 @@ function formatDate(iso: string): string {
 }
 
 async function startConversation() {
-  try {
-    await findOrCreateConversation(userId)
-    router.push(`/messages`)
-  } catch {
-    toast.error("无法创建会话")
-  }
+  await findOrCreateConversation(userId)
+  router.push(`/messages`)
 }
 
 async function toggleFollow() {
-  try {
-    const result = await $fetch<{ data: { following: boolean } }>(`/api/v1/community/users/${userId}/follow`, { method: "POST" })
-    following.value = result.data.following
-    toast.success(following.value ? "已关注" : "已取消关注")
-  } catch (error: unknown) {
-    toast.error(error instanceof Error ? error.message : "操作失败")
-  }
+  const result = await api.post<{ data: { following: boolean } }>(`/api/v1/community/users/${userId}/follow`)
+  following.value = result.data.following
+  toast.success(following.value ? "已关注" : "已取消关注")
 }
 
 function formatScore(raw: number | null | undefined): string {

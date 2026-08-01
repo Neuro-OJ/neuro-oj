@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { BookmarkRow, PostType } from "~/composables/useCommunity"
 import { stripMarkdown } from "~/utils/markdown"
+import { extractApiError } from "~/utils/apiError"
 
 definePageMeta({ middleware: "auth" })
 
@@ -18,6 +19,7 @@ const nextCursor = ref<string | null>(null)
 const removingId = ref<string | null>(null)
 const { toast } = useToast()
 const { dialog } = useDialog()
+const { api } = useApi()
 
 async function loadBookmarks(reset = true, cursor?: string | null) {
   if (reset) {
@@ -28,14 +30,14 @@ async function loadBookmarks(reset = true, cursor?: string | null) {
   }
   error.value = ""
   try {
-    const result = await $fetch<{ data: BookmarkRow[]; next_cursor: string | null }>(
+    const result = await api.get<{ data: BookmarkRow[]; next_cursor: string | null }>(
       "/api/v1/community/bookmarks",
-      { query: { cursor: cursor ?? undefined } },
+      { query: { cursor: cursor ?? undefined }, silent: true },
     )
     bookmarks.value = reset ? result.data : [...bookmarks.value, ...result.data]
     nextCursor.value = result.next_cursor ?? null
   } catch (err: unknown) {
-    error.value = err instanceof Error ? err.message : "加载收藏内容失败"
+    error.value = extractApiError(err).message
   } finally {
     loading.value = false
     loadingMore.value = false
@@ -56,11 +58,9 @@ async function removeBookmark(item: BookmarkRow) {
   if (!ok || removingId.value) return
   removingId.value = item.post.id
   try {
-    await $fetch(`/api/v1/community/posts/${item.post.id}/bookmark`, { method: "POST" })
+    await api.post(`/api/v1/community/posts/${item.post.id}/bookmark`)
     toast.success("已取消收藏")
     bookmarks.value = bookmarks.value.filter((b) => b.post.id !== item.post.id)
-  } catch (err: unknown) {
-    toast.error(err instanceof Error ? err.message : "操作失败")
   } finally {
     removingId.value = null
   }

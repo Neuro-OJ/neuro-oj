@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { Contest, IcpcRankingRow, ScoreRankingRow } from '~/composables/useContests'
+import { extractApiError } from '~/utils/apiError'
 
 const route = useRoute()
 const contestId = route.params.contestId as string
 const { isLoggedIn } = useAuth()
+const { api } = useApi()
 const rows = ref<Array<IcpcRankingRow | ScoreRankingRow>>([])
 
 const { data: contestData, pending: contestPending } = await useFetch<{ data: Contest }>(
@@ -18,11 +20,10 @@ async function loadRanking() {
   rankingLoading.value = true
   rankingError.value = ''
   try {
-    const response = await $fetch<{ data: Array<IcpcRankingRow | ScoreRankingRow> }>(`/api/v1/contests/${contestId}/ranking`)
+    const response = await api.get<{ data: Array<IcpcRankingRow | ScoreRankingRow> }>(`/api/v1/contests/${contestId}/ranking`, { silent: true })
     rows.value = response.data
   } catch (fetchError: unknown) {
-    const detail = fetchError as { data?: { error?: string }; message?: string }
-    rankingError.value = detail.data?.error || detail.message || '排名加载失败'
+    rankingError.value = extractApiError(fetchError).message
   } finally {
     rankingLoading.value = false
   }

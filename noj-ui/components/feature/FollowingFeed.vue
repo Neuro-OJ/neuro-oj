@@ -66,6 +66,9 @@
 <script setup lang="ts">
 import type { FeedActivity, FeedItem } from "~/composables/useCommunity"
 import { stripMarkdown } from "~/utils/markdown"
+import { extractApiError } from "~/utils/apiError"
+
+const { api } = useApi()
 
 const { isLoggedIn } = useAuth()
 const { config, loadConfig } = useCommunity()
@@ -122,12 +125,13 @@ async function fetchFeed() {
   }
   loading.value = true
   try {
-    const res = await $fetch<{ data: FeedItem[] }>("/api/v1/community/feed", {
+    const res = await api.get<{ data: FeedItem[] }>("/api/v1/community/feed", {
       query: { view: "following", limit: 5 },
+      silent: true,
     })
     items.value = res.data ?? []
   } catch (err: unknown) {
-    error.value = err instanceof Error ? err.message : "加载失败"
+    error.value = extractApiError(err).message
   } finally {
     loading.value = false
   }
