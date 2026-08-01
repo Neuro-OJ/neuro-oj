@@ -110,31 +110,6 @@ export async function seedCategories(): Promise<void> {
 }
 
 /**
- * 关联示例题目与分类。
- *
- * 注：统一题目包机制下，题目-分类关联由导入流程按 manifest.categories
- * 完成（`problems import`），本函数不再被 init system 调用，保留仅供
- * 需要显式补关联的历史数据场景使用。
- */
-export async function seedProblemCategories(): Promise<void> {
-  const db = getDb();
-
-  const map: [string, string][] = [
-    ["1001", "cat-lmcc"],
-    ["1001", "cat-algorithm"],
-    ["1003", "cat-algorithm"],
-  ];
-
-  for (const [problemId, categoryId] of map) {
-    await db
-      .insert(problemsCategories)
-      .values({ problem_id: problemId, category_id: categoryId })
-      .onConflictDoNothing();
-    console.log(`  已关联题目 ${problemId} → 分类 ${categoryId}`);
-  }
-}
-
-/**
  * 根据 ADMIN_EMAIL 环境变量创建/提升管理员。
  *
  * ADMIN_EMAIL 必须设置。

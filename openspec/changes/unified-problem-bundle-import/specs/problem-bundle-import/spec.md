@@ -27,17 +27,21 @@
 | `format_version` | ✅ | 当前为 `1` |
 | `title` | ✅ | 非空字符串 |
 | `runtime_config` | ✅ | 遵循 `problem-runtime-config` 规范，`evaluator.command` 可缺省（缺省注入 `python3 /workspace/evaluate.py`） |
-| `id` | ❌ | 仅 admin 生效：存在 → upsert，缺省 → 服务端生成 UUID |
-| `number` | ❌ | 仅 admin 生效，缺省 type 内 MAX+1 |
+| `number` | ❌ | 仅 admin 生效：幂等键——按 (type, number) 匹配既有题目则更新；缺省 type 内 MAX+1 |
 | `difficulty` | ❌ | `easy`/`medium`/`hard`，缺省 `medium` |
 | `type` | ❌ | `U`/`P`，缺省 `U`（P 型仅 admin） |
 | `description` | ❌ | 与 `statement.md` 二选一；两者均存在时以文件为准 |
 | `categories` | ❌ | 字符串数组，按 name 匹配已有分类，缺省忽略 + warning |
-| `samples` | ❌ | `{input, output}[]`，缺省从题面用 `extractSamples` 提取，提取失败不影响导入 |
+| `samples` | ❌ | 预留字段（仅校验格式，不落库）：题目样例由展示层从题面（description）提取 |
+
+#### Scenario: 题面缺失被拒
+
+- **WHEN** zip 内无 `statement.md` 且 manifest 无 `description`
+- **THEN** 系统返回 HTTP 400，提示缺少题面（`statement.md` 与 `manifest.description` 至少提供其一）
 
 #### Scenario: 完整 manifest 导入
 
-- **WHEN** `problem.json` 含全部必填字段与部分可选字段（`id`/`number`/`difficulty`/`type`/`categories`/`samples`）
+- **WHEN** `problem.json` 含全部必填字段与部分可选字段（`number`/`difficulty`/`type`/`categories`/`samples`）
 - **THEN** 系统校验通过并按其声明创建/更新题目
 
 #### Scenario: 必填字段缺失
@@ -55,10 +59,11 @@
 - **WHEN** zip 内 `statement.md` 存在且 manifest 同时含 `description`
 - **THEN** 系统以 `statement.md` 内容作为题目 description 落库
 
-#### Scenario: 样例缺省提取
+#### Scenario: 样例由展示层提取
 
-- **WHEN** manifest 未提供 `samples` 且题面含 `## 样例输入 N` 格式代码块
-- **THEN** 系统用 `extractSamples` 从题面提取样例，不阻塞导入
+- **WHEN** manifest 提供 `samples`（或未提供）
+- **THEN** 系统仅校验其格式（`{input, output}` 字符串对），不落库
+- **THEN** 题目样例由展示层从落库后的题面（description）提取，不依赖 manifest.samples
 
 ### Requirement: 严格校验与 ZIP 安全
 
@@ -98,25 +103,25 @@
 
 系统 SHALL 提供 `POST /api/v1/problems/import-bundle` 端点，接受 multipart/form-data 格式（文件字段名 `file`）的统一题目包 zip 上传，执行解析 → 校验 → 剥离 → 存储 → 元数据 upsert 全流程。
 
-权限：admin MUST 可导入任意 type 且可指定 `id`/`number`；题目所有者（U 型）MUST 可导入但 `id`/`number` 被忽略（由服务端生成）；其他用户 MUST 返回 HTTP 403。
+权限：admin MUST 可导入任意 type 且可指定 `number`（幂等键）；题目所有者（U 型）MUST 可导入，其 `number` 被忽略（自动分配）；其他用户 MUST 返回 HTTP 403。
 
-upsert 语义：manifest 含 `id` 且题目存在 → 更新元数据并替换评测包；`id` 不存在 → 创建新题目。
+upsert 语义：admin 提供 `number` 且 (type, number) 匹配既有题目 → 更新元数据并替换评测包；未命中 → 创建新题目（id 一律由服务端生成 UUID，(type, number) 由 DB 联合唯一约束保证唯一）。
 
 #### Scenario: admin 导入新题（P 型）
 
-- **WHEN** admin 上传含 `type: "P"`、无 `id` 的合法统一包
-- **THEN** 系统创建 P 型题目（服务端 UUID），注册剥离后评测包，返回创建结果
+- **WHEN** admin 上传含 `type: "P"` 的合法统一包（无 `number`）
+- **THEN** 系统创建 P 型题目（服务端生成 UUID，number 自动分配），注册剥离后评测包，返回创建结果
 
-#### Scenario: admin 导入带 id 的包（幂等更新）
+#### Scenario: admin 导入带 number 的包（幂等更新）
 
-- **WHEN** admin 上传含 `id: "1001"` 的统一包，题目 1001 已存在
-- **THEN** 系统更新题目元数据并替换评测包，返回 HTTP 200
-- **THEN** 重复导入不产生新题目行
+- **WHEN** admin 上传含 `number: 1001`、`type: "P"` 的统一包，P 题库中题号 1001 已存在
+- **THEN** 系统更新该题元数据并替换评测包，返回 HTTP 200
+- **THEN** 重复导入不产生新题目行（(type, number) 唯一）
 
-#### Scenario: 所有者导入 U 型题目
+#### Scenario: 所有者导入 U 型题目（number 被忽略）
 
-- **WHEN** 题目所有者上传合法统一包（manifest 含 `id`/`number`）
-- **THEN** 系统创建新 U 型题目，`id`/`number` 被忽略，所有者设为该用户
+- **WHEN** 题目所有者上传合法统一包（manifest 含 `number`）
+- **THEN** 系统创建新 U 型题目（服务端生成 id），`number` 被忽略（自动分配 type 内 MAX+1），所有者设为该用户
 
 #### Scenario: 非所有者/非 admin 导入被拒
 

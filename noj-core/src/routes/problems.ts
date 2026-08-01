@@ -150,11 +150,30 @@ router.put("/:id", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const body = await parseJsonBody<UpdateProblemInput>(c);
   const userId = c.get("userId");
+  const userRole = c.get("userRole");
 
   // 双索引解析获取实际题目 ID
   const problem = await resolveProblem(id);
-  const updated = await updateProblem(problem.id, body, userId, undefined, c);
-  return c.json({ data: updated });
+
+  // 注入 ALS 上下文使 logAudit 可获取 actor 信息（issue #101）
+  // （updateProblem 内部会记录 problems.runtime_config_changed 审计）
+  return await runWithContext(
+    {
+      actorId: userId,
+      actorIp: getClientIp(c),
+      actorRole: userRole,
+    },
+    async () => {
+      const updated = await updateProblem(
+        problem.id,
+        body,
+        userId,
+        undefined,
+        c,
+      );
+      return c.json({ data: updated });
+    },
+  );
 });
 
 /**
@@ -187,8 +206,8 @@ router.delete("/:id", authMiddleware, async (c) => {
  * 统一题目包导入。
  * POST /api/v1/problems/import-bundle
  *
- * 唯一上传入口：manifest.id 匹配既有题目 → 更新（元数据 + 替换评测包）；
- * 缺省/不存在 → 创建。admin 可指定 id/number，owner 仅 U 型且 id/number 被忽略。
+ * 唯一上传入口：id 一律服务端生成；admin 可指定 number（幂等键，按 (type, number)
+ * 匹配既有题目 → 更新元数据 + 替换评测包；未命中 → 创建）；owner 的 number 被忽略。
  */
 router.post("/import-bundle", authMiddleware, async (c) => {
   const userId = c.get("userId");
@@ -229,10 +248,18 @@ router.post("/import-bundle", authMiddleware, async (c) => {
     throw new BadRequestError("文件不是有效的 zip 格式");
   }
 
-  const result = await importProblemBundle(
-    { name: file.name, data: fileBytes },
-    { userId, userRole },
-    c,
+  const result = await runWithContext(
+    {
+      actorId: userId,
+      actorIp: getClientIp(c),
+      actorRole: userRole,
+    },
+    () =>
+      importProblemBundle(
+        { name: file.name, data: fileBytes },
+        { userId, userRole },
+        c,
+      ),
   );
 
   return c.json({ data: result });

@@ -88,62 +88,6 @@ async function checkSupportPackagePermission(
 }
 
 /**
- * 保存支持包。
- *
- * 通过 StorageProvider 存储 zip 数据，返回 `noj-storage://` URL，
- * 并更新数据库中的 `support_package_storage_url` 字段。
- *
- * @param problem - 可选的预获取题目信息（type, owner_id），避免重复查询
- * @returns `noj-storage://` URL
- * @throws {NotFoundError} 题目不存在
- * @throws {ForbiddenError} 无权操作
- */
-export async function saveSupportPackage(
-  problemId: string,
-  file: { name: string; data: Uint8Array },
-  userId?: string,
-  userRole?: string,
-  problem?: { type: string; owner_id: string },
-  c?: Context,
-): Promise<string> {
-  await checkSupportPackagePermission(problemId, userId, userRole, problem, c);
-
-  // 验证文件扩展名为 .zip（防御性校验，路由层已做相同检查）
-  if (!file.name.toLowerCase().endsWith(".zip")) {
-    throw new ValidationError("仅支持 .zip 格式文件");
-  }
-
-  // 验证文件大小（防御性校验，路由层已做相同检查）
-  if (file.data.length > MAX_SUPPORT_PACKAGE_SIZE) {
-    throw new ValidationError(
-      `支持包大小超过限制（最大 ${
-        (MAX_SUPPORT_PACKAGE_SIZE / 1024 / 1024).toFixed(0)
-      }MB）`,
-    );
-  }
-
-  // 通过 StorageProvider 存储
-  const storage = await getStorageProvider();
-  const storageUrl = await storage.put(
-    buildPackageKey(problemId),
-    file.data,
-    "application/zip",
-  );
-
-  // 更新数据库
-  const db = getDb();
-  await db
-    .update(problems)
-    .set({
-      support_package_storage_url: storageUrl,
-      updated_at: new Date().toISOString(),
-    })
-    .where(eq(problems.id, problemId));
-
-  return storageUrl;
-}
-
-/**
  * 删除支持包。
  *
  * 通过 StorageProvider 删除已存储的数据，

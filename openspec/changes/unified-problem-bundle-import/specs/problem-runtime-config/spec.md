@@ -21,9 +21,14 @@
 
 #### Scenario: evaluator.command 缺省注入默认值
 
-- **WHEN** 导入统一题目包（或通过 API 创建/更新题目）时 `runtime_config.evaluator.command` 缺省
+- **WHEN** 导入统一题目包时 `runtime_config.evaluator.command` 缺省
 - **THEN** 系统在落库前注入默认值 `python3 /workspace/evaluate.py`
 - **THEN** 落库后的 `runtime_config.evaluator.command` 为非空字符串，结构与既有题目一致
+
+#### Scenario: API 创建/更新路径 command 必填
+
+- **WHEN** 通过题目 CRUD API 创建/更新题目且 `runtime_config.evaluator.command` 缺省
+- **THEN** 系统返回 HTTP 400（command 为必填字段；默认值注入仅限统一题目包导入路径）
 
 #### Scenario: 显式提供 command
 

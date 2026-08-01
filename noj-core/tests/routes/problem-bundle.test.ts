@@ -57,7 +57,14 @@ export function makeBundleZip(
 }
 
 function makeZipBlob(overrides: Record<string, unknown> = {}): Blob {
-  return new Blob([makeBundleZip(overrides)], { type: "application/zip" });
+  const zip = makeBundleZip(overrides);
+  return new Blob(
+    [zip.buffer.slice(
+      zip.byteOffset,
+      zip.byteOffset + zip.byteLength,
+    ) as ArrayBuffer],
+    { type: "application/zip" },
+  );
 }
 
 async function ensureUser(id: string): Promise<void> {
@@ -114,14 +121,16 @@ Deno.test({
       eq(problems.id, body.data.id),
     ).limit(1);
     assertEquals(
-      row.runtime_config.evaluator.command,
+      (row.runtime_config as { evaluator: { command: string } }).evaluator
+        .command,
       "python3 /workspace/evaluate.py",
     );
   },
 });
 
 Deno.test({
-  name: "import-bundle: admin 用 manifest.id 更新既有题目（upsert）",
+  name:
+    "import-bundle: admin 按 (type, number) 匹配更新既有题目（幂等 upsert）",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -166,7 +175,10 @@ Deno.test({
     const formData = new FormData();
     formData.append(
       "file",
-      makeZipBlob({ id: pid, title: "新标题" }),
+      makeZipBlob({
+        number: 70000 + (ts & 0x7fff),
+        title: "新标题",
+      }),
       "update.zip",
     );
 
@@ -177,6 +189,7 @@ Deno.test({
     });
     assertEquals(res.status, 200);
     const body = await res.json();
+    // id 由服务端生成（UUID），不因导入而改变
     assertEquals(body.data.id, pid);
     assertEquals(body.data.title, "新标题");
 
@@ -188,7 +201,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "import-bundle: 普通用户导入 U 型题目成功且 id/number 被忽略",
+  name: "import-bundle: 普通用户导入 U 型题目成功且 number 被忽略",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -201,7 +214,7 @@ Deno.test({
     const formData = new FormData();
     formData.append(
       "file",
-      makeZipBlob({ id: "should-be-ignored", number: 12345 }),
+      makeZipBlob({ number: 12345 }),
       "u1.zip",
     );
 
@@ -212,8 +225,8 @@ Deno.test({
     });
     assertEquals(res.status, 200);
     const body = await res.json();
-    // id 被忽略 → 服务端生成 UUID（非 "should-be-ignored"）
-    assertEquals(body.data.id.startsWith("should-be-ignored"), false);
+    // number 被忽略 → 自动分配（非 12345）；id 服务端生成 UUID
+    assertEquals(body.data.number !== 12345, true);
     assertEquals(body.data.type, "U");
     assertEquals(body.data.owner_id, OWNER_ID);
   },
@@ -312,6 +325,58 @@ Deno.test({
       body: formData,
     });
     assertEquals(res.status, 400);
+  },
+});
+
+Deno.test({
+  name: "import-bundle: admin 带 number 重复导入幂等（按 (type, number)）",
+  ignore: skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await signToken({
+      sub: ADMIN_ID,
+      role: "admin",
+      is_admin: true,
+    });
+
+    const fixedNumber = 72000 + (ts & 0x7fff);
+    const formData = new FormData();
+    // manifest 带 number（幂等键），id 由服务端生成
+    formData.append(
+      "file",
+      makeZipBlob({ number: fixedNumber }),
+      "fixed-number.zip",
+    );
+
+    const res = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    assertEquals(res.status, 200);
+    const body = (await res.json()) as { data: { id: string; number: number } };
+    // id 服务端生成（UUID 格式），number 使用 manifest 指定值
+    assertEquals(/^[0-9a-f-]{36}$/.test(body.data.id), true);
+    assertEquals(body.data.number, fixedNumber);
+
+    // 重复导入 → 按 (type, number) 命中更新路径，不产生新行
+    const res2 = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    assertEquals(res2.status, 200);
+    const body2 = (await res2.json()) as { data: { id: string } };
+    assertEquals(body2.data.id, body.data.id, "重复导入应更新同一题目");
+
+    const db = getDb();
+    const rows = await db.select().from(problems).where(
+      eq(problems.id, body.data.id),
+    );
+    assertEquals(rows.length, 1, "重复导入不应产生新行");
   },
 });
 

@@ -19,7 +19,7 @@
 - [ ] 3.1 实现 `src/services/problem-bundle.ts`：`importProblemBundle(data, actor)` 编排 解析 → 校验 manifest → 剥离重建 → `storage.put()` → 复用 `createProblem`/`updateProblem` upsert 元数据（`categories` 按 name 匹配缺省忽略 + warning、`samples` 缺省 `extractSamples`、`id`/`number` 仅 admin 生效）→ 更新 `support_package_storage_url`，返回题目响应
 - [ ] 3.2 在 `noj-core/src/routes/problems.ts` 新增 `POST /api/v1/problems/import-bundle`（multipart 字段 `file`；admin 任意 type 可带 `id`/`number`，owner 仅 U 型且忽略；128 MiB 上限；审计日志）
 - [ ] 3.3 移除 `POST /api/v1/problems/:id/support-package` 上传端点（删除 handler 与路由注册；GET 下载 / DELETE 删除端点保留），前端/文档同步切换 `import-bundle`
-- [ ] 3.4 routes 测试：`import-bundle` 创建/upsert（含 manifest.id 匹配既有题目的替换场景）/权限（admin、owner、非 owner）/400 场景（缺 manifest、根级缺 evaluate.py）；`support-package` 上传端点移除后返回 404 且 GET/DELETE 正常
+- [x] 3.4 routes 测试：`import-bundle` 创建/幂等 upsert（admin 按 (type, number) 匹配既有题目的替换场景）/权限（admin、owner、非 owner）/400 场景（缺 manifest、根级缺 evaluate.py）；`support-package` 上传端点移除后返回 404 且 GET/DELETE 正常
 
 ## 4. data 目录整治
 

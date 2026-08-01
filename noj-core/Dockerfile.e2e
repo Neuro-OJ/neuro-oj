@@ -52,7 +52,7 @@ COPY scripts/ ./scripts/
 # 避免 cache 写入 deno.lock 干扰 git diff。
 RUN deno cache \
       scripts/migrate.ts \
-      scripts/seed.ts \
+      scripts/noj.ts \
       src/main.ts \
       --no-lock 2>&1 || { echo "ERROR: deno cache warmup failed" >&2; exit 1; }
 

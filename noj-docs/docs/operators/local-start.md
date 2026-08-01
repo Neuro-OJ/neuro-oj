@@ -21,11 +21,11 @@ docker compose up -d
 
 ```bash
 cd noj-core
-deno task setup
+deno task dev-setup
 deno task dev
 ```
 
-`deno task setup` 会构建支持包并运行 seed。`deno task dev` 启动后端开发服务。
+`deno task dev-setup` 会构建支持包并运行 seed。`deno task dev` 启动后端开发服务。
 
 ## 启动 noj-ui
 

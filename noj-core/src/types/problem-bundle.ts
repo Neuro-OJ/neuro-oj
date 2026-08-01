@@ -49,9 +49,7 @@ export interface ProblemBundleManifest {
   description?: string;
   difficulty?: string;
   type?: string;
-  /** 仅 admin 生效：存在 → upsert；缺省 → 服务端生成 UUID */
-  id?: string;
-  /** 仅 admin 生效：缺省 → type 内 MAX+1 */
+  /** 仅 admin 生效：幂等键（(type, number) 匹配既有题目则更新）；缺省 → type 内 MAX+1 */
   number?: number;
   /** 分类名数组，按 name 匹配已有分类，缺省忽略 + warning */
   categories?: string[];
@@ -87,7 +85,7 @@ export function isValidProblemBundleName(name: string): boolean {
  * - `format_version` 必须等于 `BUNDLE_FORMAT_VERSION`
  * - `title` 非空字符串
  * - `difficulty`/`type` 枚举合法
- * - `id`/`number` 类型合法
+ * - `number` 类型合法
  * - `categories` 为字符串数组
  * - `samples` 为 `{ input, output }` 数组
  * - `runtime_config` 必填：先注入 command 默认值，再通过 `validateRuntimeConfig`
@@ -127,10 +125,6 @@ export function validateBundleManifest(
     throw new BadRequestError(
       `非法题目类型：${String(m.type)}，仅允许 U/P`,
     );
-  }
-
-  if (m.id !== undefined && (typeof m.id !== "string" || !m.id.trim())) {
-    throw new BadRequestError("manifest.id 必须是非空字符串");
   }
 
   if (
@@ -182,7 +176,6 @@ export function validateBundleManifest(
     description: m.description as string | undefined,
     difficulty: m.difficulty as string | undefined,
     type: m.type as string | undefined,
-    id: m.id as string | undefined,
     number: m.number as number | undefined,
     categories: m.categories as string[] | undefined,
     samples: m.samples as ProblemBundleSample[] | undefined,

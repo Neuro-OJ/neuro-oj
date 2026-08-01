@@ -29,7 +29,6 @@
 ```json
 {
   "format_version": 1,
-  "id": "1001",
   "number": 1001,
   "title": "题目标题",
   "difficulty": "easy",
@@ -58,8 +57,7 @@
 | `runtime_config` | ✅ | 双容器配置；`evaluator.command` 可缺省（默认 `python3 /workspace/evaluate.py`） |
 | `statement.md` 文件 | ✅ | 与 `manifest.description` 二选一（文件优先） |
 | `evaluate.py` 文件 | ✅ | 根级缺失 → 400 |
-| `id` | ❌ | 仅 admin 生效：命中主键 → 更新；未命中按 `(type, number)` 匹配；都不命中 → 以该 id 创建 |
-| `number` | ❌ | 仅 admin 生效，缺省 type 内自动分配 |
+| `number` | ❌ | 仅 admin 生效：幂等键——按 (type, number) 匹配既有题目则更新；缺省 type 内自动分配 |
 | `difficulty` | ❌ | `easy` / `medium` / `hard`，缺省 `medium` |
 | `type` | ❌ | `U` / `P`，缺省 `U`（P 型仅 admin） |
 | `categories` | ❌ | 分类名数组，按 name 匹配已有分类，缺省忽略 |
@@ -69,8 +67,9 @@
 
 - 上传的 zip 是**导入载体**；系统剥离 `problem.json` / `statement.md` 后重建
   **纯净评测包**存入存储（`noj-storage://`），题面/元数据的唯一事实来源是数据库。
-- 重复导入幂等：manifest 带 `id` 且题目存在 → 更新元数据并替换评测包；
-  带 `id` 且不存在 → 以该 id 创建（保证下次导入命中更新路径）。
+- 重复导入幂等：admin 提供 `number` 且 (type, number) 匹配既有题目 → 更新元数据并替换评测包；
+  未命中 → 创建（id 一律服务端生成 UUID，(type, number) 由数据库联合唯一约束保证唯一）。
+  非 admin 的 `number` 被忽略（自动分配）。
 - 旧的松散支持包上传端点（`POST /problems/:id/support-package`）已废弃，一律
   通过 `import-bundle` 导入。
 

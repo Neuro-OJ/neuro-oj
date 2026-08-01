@@ -5,8 +5,10 @@
  * storage 注册 → 落库元数据（更新复用 updateProblem；创建复用 createProblem 校验语义）。
  *
  * 语义：
- * - manifest.id 仅 admin 生效：匹配顺序 主键 id → (type, number) 业务键 → 以 manifest.id 创建；
- *   非 admin 提供 id/number → 忽略（创建路径）。
+ * - manifest 不含 id：题目主键一律由服务端生成 UUID。
+ * - manifest.number 仅 admin 生效，作为幂等键：按 (type, number) 匹配既有题目
+ *   → 更新（元数据 + 替换评测包）；未命中 → 创建；(type, number) 由 DB 联合
+ *   唯一约束保证唯一，缺省时自动分配 type 内 MAX+1。非 admin 的 number 忽略。
  * - 题面唯一事实来源是数据库：statement.md 与 manifest.description 仅用于
  *   本次导入写入，评测包中不含这两个元数据文件。
  */
@@ -140,30 +142,33 @@ export async function importProblemBundle(
     );
   }
 
-  // 4. 权限与 id 语义：仅 admin 的 id/number 生效；非 admin 忽略（走创建路径）
+  // 4. 权限与 number 语义：仅 admin 的 number 生效（幂等键）；非 admin 忽略（创建路径，自动分配）
   const admin = await isAdminActor(actor, c);
-  const upsertId = admin && manifest.id ? manifest.id : undefined;
   const number = admin ? manifest.number : undefined;
 
   // 5. 剥离元数据，重建纯净评测包
   const strippedZip = stripMetadataEntries(file.data);
   const storage = await getStorageProvider();
 
-  // 6. 分发：更新（id 或 (type, number) 业务键匹配既有题目）或创建
+  // 6. 分发：manifest.number 提供时按 (type, number) 业务键匹配（命中 → 更新；
+  //    未命中 → 创建）；未提供 → 创建（number 自动分配）。id 一律由服务端生成，
+  //    (type, number) 由 DB 联合唯一约束保证唯一（problems_type_number_unique）。
   let result: ProblemResponseWithCategories;
-  if (upsertId) {
+  if (number !== undefined) {
+    const type = manifest.type ?? "U";
     const db = getDb();
-    // 匹配顺序：主键 id 优先；其次 (type, number) 业务键（兼容历史 UUID 主键数据）
-    const existing = await db
-      .select({ storageUrl: problems.support_package_storage_url })
+    const byNumber = await db
+      .select({
+        id: problems.id,
+        storageUrl: problems.support_package_storage_url,
+      })
       .from(problems)
-      .where(eq(problems.id, upsertId))
+      .where(and(eq(problems.type, type), eq(problems.number, number)))
       .limit(1);
-
-    if (existing.length > 0) {
+    if (byNumber.length > 0) {
       result = await updateExisting(
-        upsertId,
-        existing[0].storageUrl,
+        byNumber[0].id,
+        byNumber[0].storageUrl,
         manifest,
         description,
         actor,
@@ -171,41 +176,6 @@ export async function importProblemBundle(
         storage,
         strippedZip,
       );
-    } else if (number !== undefined) {
-      // id 未命中，尝试按 (type, number) 匹配（幂等导入的关键兜底）
-      const type = manifest.type ?? "U";
-      const byNumber = await db
-        .select({
-          id: problems.id,
-          storageUrl: problems.support_package_storage_url,
-        })
-        .from(problems)
-        .where(and(eq(problems.type, type), eq(problems.number, number)))
-        .limit(1);
-      if (byNumber.length > 0) {
-        result = await updateExisting(
-          byNumber[0].id,
-          byNumber[0].storageUrl,
-          manifest,
-          description,
-          actor,
-          c,
-          storage,
-          strippedZip,
-        );
-      } else {
-        // id 声明了但题目不存在 → 以 manifest.id 为主键创建（保证后续幂等）
-        result = await createViaCrud(
-          manifest,
-          description,
-          number,
-          actor,
-          c,
-          storage,
-          strippedZip,
-          upsertId,
-        );
-      }
     } else {
       result = await createViaCrud(
         manifest,
@@ -218,7 +188,7 @@ export async function importProblemBundle(
       );
     }
   } else {
-    // 创建路径
+    // 创建路径（number 自动分配）
     result = await createViaCrud(
       manifest,
       description,
@@ -238,7 +208,7 @@ export async function importProblemBundle(
         action: "problems.imported",
         title: result.title,
         display_id: result.display_id,
-        imported_with_id: Boolean(upsertId),
+        imported_with_id: false,
       },
       { type: "problem", id: result.id },
     );
@@ -291,9 +261,9 @@ async function updateExisting(
 /**
  * 创建路径。
  *
- * 与 createProblem 对齐的校验（P 型权限、镜像白名单、number 分配），
- * 但支持 `preferredId`（仅 admin 的 manifest.id）：以固定主键创建，
- * 保证重复导入幂等（下次按 id 命中更新路径）。
+ * 与 createProblem 对齐的校验（P 型权限、镜像白名单、number 分配）。
+ * id 一律由服务端生成 UUID；(type, number) 由 DB 联合唯一约束保证唯一，
+ * 并发冲突（23505）时自动分配重试。
  */
 async function createViaCrud(
   manifest: ProblemBundleManifest,
@@ -303,7 +273,6 @@ async function createViaCrud(
   c: Context | undefined,
   storage: Awaited<ReturnType<typeof getStorageProvider>>,
   strippedZip: Uint8Array,
-  preferredId?: string,
 ): Promise<ProblemResponseWithCategories> {
   const type = manifest.type ?? "U";
 
@@ -325,30 +294,53 @@ async function createViaCrud(
   const db = getDb();
   const categoryIds = await resolveCategoryIds(manifest.categories);
 
-  // number：admin 指定或 type 内 MAX+1
-  let finalNumber = number;
-  if (finalNumber === undefined) {
-    const [row] = await db
-      .select({ max: sql<number>`COALESCE(MAX(${problems.number}), 0)` })
-      .from(problems)
-      .where(eq(problems.type, type));
-    finalNumber = Number(row?.max ?? 0) + 1;
-  }
-
-  const id = preferredId ?? crypto.randomUUID();
+  // number：admin 指定或 type 内 MAX+1（并发冲突 23505 时最多重试 3 次，
+  // 与 createProblem 的分配语义一致）
+  const MAX_RETRIES = 3;
   const now = new Date().toISOString();
-  await db.insert(problems).values({
-    id,
-    title: manifest.title,
-    description,
-    difficulty: manifest.difficulty ?? "medium",
-    runtime_config: manifest.runtime_config,
-    number: finalNumber,
-    owner_id: actor.userId ?? "0",
-    type,
-    created_at: now,
-    updated_at: now,
-  });
+  const id = crypto.randomUUID();
+  let finalNumber = number;
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (finalNumber === undefined) {
+      const [row] = await db
+        .select({ max: sql<number>`COALESCE(MAX(${problems.number}), 0)` })
+        .from(problems)
+        .where(eq(problems.type, type));
+      finalNumber = Number(row?.max ?? 0) + 1;
+    }
+
+    try {
+      await db.insert(problems).values({
+        id,
+        title: manifest.title,
+        description,
+        difficulty: manifest.difficulty ?? "medium",
+        runtime_config: manifest.runtime_config,
+        number: finalNumber,
+        owner_id: actor.userId ?? "0",
+        type,
+        created_at: now,
+        updated_at: now,
+      });
+      break;
+    } catch (err) {
+      if (attempt === MAX_RETRIES - 1) throw err;
+      // PG 唯一约束冲突（type+number）
+      const pgCode = err && typeof err === "object"
+        ? (err as Record<string, unknown>).code ||
+          ((err as Record<string, unknown>).cause as Record<string, unknown>)
+            ?.code
+        : undefined;
+      if (pgCode === "23505") {
+        // admin 显式指定 number 冲突 → 直接报错
+        if (number !== undefined) throw err;
+        finalNumber = undefined;
+        continue;
+      }
+      throw err;
+    }
+  }
 
   if (categoryIds.length > 0) {
     await syncProblemCategories(id, categoryIds);

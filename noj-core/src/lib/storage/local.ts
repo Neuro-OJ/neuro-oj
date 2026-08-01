@@ -62,7 +62,7 @@ export class LocalStorageProvider implements StorageProvider {
    *
    * 1. 计算 SHA-256 哈希
    * 2. 将哈希编码为 base64url（URL 安全）
-   * 3. 以哈希为文件名写入 `data/packages/`
+   * 3. 以哈希为文件名写入存储根目录（`_key` 忽略——文件名由内容寻址决定）
    * 4. 返回 `noj-storage://local/<base64>?checksum_sha256=<hex>`
    */
   async put(

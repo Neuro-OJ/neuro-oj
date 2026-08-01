@@ -1737,6 +1737,7 @@
       "dependencies": [
         "npm:@types/pg@^8.20.0",
         "npm:drizzle-orm@0.45.2",
+        "npm:fflate@~0.8.3",
         "npm:postgres@3.4.5"
       ]
     }

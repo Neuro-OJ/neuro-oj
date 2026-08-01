@@ -130,8 +130,10 @@ export async function listAuditLogs(
     conditions.push(eq(auditLogs.admin_id, admin_id));
   } else {
     // 默认排除 root (admin_id='0')；PR-2 auth.* 事件 admin_id 可为 null
-    // 也保留（登录失败等需要追溯），显式传 admin_id 仍可查询
-    conditions.push(sql`${auditLogs.admin_id} != '0'`);
+    // 也保留（登录失败等需要追溯），显式传 admin_id 仍可查询。
+    // 用 IS DISTINCT FROM 而非 !=：NULL 与 '0' 比较结果为 NULL（不成立），
+    // 会导致 admin_id=NULL 的 auth.* 行被误过滤。
+    conditions.push(sql`${auditLogs.admin_id} IS DISTINCT FROM '0'`);
   }
   if (action) conditions.push(eq(auditLogs.action, action));
   if (from) conditions.push(gte(auditLogs.created_at, from));

@@ -55,12 +55,11 @@ manifest 字段（与现有 API/表字段对齐）：
 | `statement.md` 文件 | ✅ | 与 `manifest.description` 二选一（`description` 保留兼容，缺省以文件为准） |
 | `evaluate.py` 文件 | ✅ | 根级缺失 → 400 |
 | `runtime_config` | ✅ | 复用 `validateRuntimeConfig` + 镜像白名单；`evaluator.command` 缺省注入 `python3 /workspace/evaluate.py` |
-| `id` | ❌ | 仅 admin 生效：有 → upsert，无 → 新建 UUID |
-| `number` | ❌ | 仅 admin 生效，缺省 type 内 MAX+1 |
+| `number` | ❌ | 仅 admin 生效：幂等键——(type, number) 匹配既有题目则更新；缺省 type 内 MAX+1 |
 | `difficulty` | ❌ | 缺省 `medium` |
 | `type` | ❌ | 缺省 `U`（P 型仅 admin） |
 | `categories` | ❌ | 按 name 匹配已有分类，缺省忽略 + warning（复用 `problems-export` 语义） |
-| `samples` | ❌ | 缺省从 statement 用 `extractSamples` 提取，失败不影响导入 |
+| `samples` | ❌ | 预留字段（仅校验格式，不落库）；样例由展示层从题面提取 |
 
 替代方案（否决）：manifest 内嵌 `description`（长题面 JSON 转义不友好）；testcase 标准化 in/out 文件对（用户明确否决，保持题目自定）。
 
@@ -73,8 +72,8 @@ manifest 字段（与现有 API/表字段对齐）：
 ### D3：严格新格式 + 端点收敛
 
 - 无 manifest 的 zip 一律 400（**BREAKING**）
-- 新增 `POST /api/v1/problems/import-bundle`（multipart `file` 字段；admin 任意 type 可带 `id`/`number`；owner 仅 U 型且忽略 `id`/`number`——延续"id 由服务端生成"的安全约定）为**唯一上传入口**：manifest 带 `id` 且题目存在 → 更新元数据 + 替换评测包；`id` 缺省或不存在 → 创建
-- **废弃** `POST /:id/support-package` 上传端点（GET 下载 / DELETE 删除保留）——严格化后它只是 `import-bundle` 的受限形态（manifest 必填 + `id === :id` + 题目必须存在），保留即冗余路径；前端改用 `import-bundle`
+- 新增 `POST /api/v1/problems/import-bundle`（multipart `file` 字段；admin 任意 type 可指定 `number` 作为幂等键；owner 仅 U 型且 `number` 被忽略——延续"id 由服务端生成"的安全约定）为**唯一上传入口**：admin 提供 `number` 且 (type, number) 匹配既有题目 → 更新元数据 + 替换评测包；未命中或未提供 → 创建（id 一律服务端生成 UUID，(type, number) 由 DB 联合唯一约束保证唯一）
+- **废弃** `POST /:id/support-package` 上传端点（GET 下载 / DELETE 删除保留）——严格化后它只是 `import-bundle` 的受限形态（manifest 必填 + 路径 id 必须与题目匹配 + 题目必须存在），保留即冗余路径；前端改用 `import-bundle`
 - 权限：导入创建 U 型=登录用户（owner），P 型=admin；审计日志沿用现有中间件；上传上限 128 MiB 沿用
 
 ### D4：目录三层模型
@@ -120,7 +119,7 @@ data/storage/<hash>.zip    LocalStorageProvider 存储后端（gitignored，新�
 
 - [fflate 重建 zip 的压缩级别与原包不同 → 字节/checksum 变化] → 无影响：checksum 由 `storage.put()` 存储时计算，评测校验链路不受影响；重建后体积差异不显著
 - [剥离后"下载支持包 ≠ 上传文件"（差两个元数据文件）] → 语义上说得通（下载的是评测包），UI 引导文案与文档明确注明
-- [seed 误扫 storage 目录导致重复/错误导入] → D4 目录分离后 `data/packages/` 只含构建产物，且导入幂等（upsert by id）
+- [seed 误扫 storage 目录导致重复/错误导入] → D4 目录分离后 `data/packages/` 只含构建产物，且导入幂等（admin 按 (type, number) upsert）
 - [解压 + 重建的内存峰值（512 MiB 上限）] → 导入是低频管理操作，128 MiB 上传上限下内存可接受
 - [现有存量题目（1001-1003）的支持包无 manifest] → seed 重构后由 `problems-src` 重新构建导入，一次迁移完成；存量数据库行由 seed 幂等更新
 - [BREAKING：旧客户端直接上传松散 zip 被拒] → 预期行为（严格新格式），文档与 UI 引导先行更新

@@ -46,6 +46,8 @@ const MANIFEST = JSON.stringify({
   title: `E2E 导入测试 ${testSuffix}`,
   difficulty: "easy",
   type: "U",
+  // number 作为幂等键：admin 导入时按 (type, number) 匹配更新
+  number: 90000 + (Date.now() % 9000),
   runtime_config: {
     evaluator: {
       image: "noj-evaluator-python",
