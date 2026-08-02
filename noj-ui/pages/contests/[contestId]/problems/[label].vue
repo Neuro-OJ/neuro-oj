@@ -87,7 +87,7 @@ const accessHint = computed(() => {
             <UButton
               color="primary"
               class="gap-1.5 px-4 py-2 text-xs"
-              :to="`/contests/${contestId}/editor/${label}`"
+              :to="`/editor/${problem.problem_id}?contest=${contestId}&label=${label}`"
             >
               <UIcon name="i-lucide-pencil-ruler" class="size-3.5" />去做题
             </UButton>

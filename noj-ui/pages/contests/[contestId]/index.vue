@@ -149,7 +149,7 @@ onUnmounted(() => {
                   color="primary"
                   size="sm"
                   class="gap-1.5 px-3 py-1.5 text-xs"
-                  :to="`/contests/${contest.id}/editor/${problem.label}`"
+                  :to="`/editor/${problem.problem_id}?contest=${contest.id}&label=${problem.label}`"
                 >
                   <UIcon name="i-lucide-pencil-ruler" class="size-3.5" />去做题
                 </UButton>
