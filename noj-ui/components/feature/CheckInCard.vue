@@ -37,6 +37,7 @@
                         <span class="text-xs text-green-800 block pb-0.5">你已经连续签到 {{ streakCount }} 天</span>
                     </div>
                 </div>
+                <p v-if="!checkedIn && streakCount > 0" class="text-xs text-text-muted mt-3 animate-[fadeInItem_0.45s_cubic-bezier(0.16,1,0.3,1)_both] [animation-delay:0.6s]">已连续签到 {{ streakCount }} 天</p>
                 <p class="text-xs text-text-muted mt-3 animate-[fadeInItem_0.45s_cubic-bezier(0.16,1,0.3,1)_both] [animation-delay:0.6s]">按 UTC 日期统计 · UTC 0 点刷新</p>
             </template>
         </template>

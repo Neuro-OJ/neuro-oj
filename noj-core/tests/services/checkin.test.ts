@@ -2,8 +2,13 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { checkIns, users } from "../../src/db/schema.ts";
-import { checkIn, getTodayCheckIn } from "../../src/services/checkin.ts";
-import { ConflictError } from "../../src/lib/errors.ts";
+import {
+  checkIn,
+  getCheckinHistory,
+  getCheckinStats,
+  getTodayCheckIn,
+} from "../../src/services/checkin.ts";
+import { BadRequestError, ConflictError } from "../../src/lib/errors.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建
@@ -39,6 +44,29 @@ async function cleanup(userId: string): Promise<void> {
   const db = getDb();
   await db.delete(checkIns).where(eq(checkIns.user_id, userId));
   await db.delete(users).where(eq(users.id, userId));
+}
+
+/** 以指定日期插入签到记录（UTC YYYY-MM-DD）。 */
+async function insertCheckin(
+  userId: string,
+  checkinDate: string,
+  streak: number,
+): Promise<void> {
+  const db = getDb();
+  await db.insert(checkIns).values({
+    id: crypto.randomUUID(),
+    user_id: userId,
+    checkin_date: checkinDate,
+    streak,
+    created_at: new Date().toISOString(),
+  });
+}
+
+/** 相对今天的日期字符串（UTC）。 */
+function daysAgoUtc(days: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
 }
 
 Deno.test({
@@ -203,6 +231,107 @@ Deno.test({
       const result = await getTodayCheckIn(userId);
       assertEquals(result.checked_in, true);
       assertEquals(result.streak, 1);
+    } finally {
+      await cleanup(userId);
+    }
+  },
+});
+
+Deno.test({
+  name: "checkin: getTodayCheckIn 今日未签到返回昨日 streak（issue #184）",
+  ignore: !hasEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const userId = await createTestUser();
+    try {
+      await insertCheckin(userId, daysAgoUtc(1), 5);
+      const result = await getTodayCheckIn(userId);
+      assertEquals(result.checked_in, false);
+      assertEquals(result.streak, 5);
+    } finally {
+      await cleanup(userId);
+    }
+  },
+});
+
+Deno.test({
+  name: "checkin: getCheckinStats 汇总 total/max/month/last（issue #184）",
+  ignore: !hasEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const userId = await createTestUser();
+    try {
+      const today = daysAgoUtc(0);
+      const yesterday = daysAgoUtc(1);
+      const fiveDaysAgo = daysAgoUtc(5);
+      await insertCheckin(userId, fiveDaysAgo, 1);
+      await insertCheckin(userId, yesterday, 2);
+      await insertCheckin(userId, today, 3);
+
+      const stats = await getCheckinStats(userId);
+      assertEquals(stats.total_days, 3);
+      assertEquals(stats.max_streak, 3);
+      assertEquals(stats.current_streak, 3);
+      assertEquals(stats.last_checkin_date, today);
+      // month_days：当前 UTC 月内的签到天数（跨月时按前缀过滤计算）
+      const monthPrefix = today.slice(0, 7);
+      const expectedMonthDays = [today, yesterday, fiveDaysAgo].filter(
+        (d) => d.startsWith(monthPrefix),
+      ).length;
+      assertEquals(stats.month_days, expectedMonthDays);
+    } finally {
+      await cleanup(userId);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "checkin: getCheckinStats 今日未签到 current_streak 取昨日（issue #184）",
+  ignore: !hasEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const userId = await createTestUser();
+    try {
+      await insertCheckin(userId, daysAgoUtc(1), 5);
+      const stats = await getCheckinStats(userId);
+      assertEquals(stats.current_streak, 5);
+      assertEquals(stats.total_days, 1);
+      assertEquals(stats.month_days, 1);
+    } finally {
+      await cleanup(userId);
+    }
+  },
+});
+
+Deno.test({
+  name: "checkin: getCheckinHistory 过滤最近 N 天与参数校验（issue #184）",
+  ignore: !hasEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const userId = await createTestUser();
+    try {
+      await insertCheckin(userId, daysAgoUtc(0), 1);
+      await insertCheckin(userId, daysAgoUtc(5), 1);
+      await insertCheckin(userId, daysAgoUtc(40), 1);
+
+      const history = await getCheckinHistory(userId, 30);
+      assertEquals(history.total_days, 2);
+      assertEquals(history.days, [daysAgoUtc(5), daysAgoUtc(0)]);
+
+      let caught: unknown = null;
+      try {
+        await getCheckinHistory(userId, 7);
+      } catch (e) {
+        caught = e;
+      }
+      if (!(caught instanceof BadRequestError)) {
+        throw new Error("期望 BadRequestError, 实际 " + caught);
+      }
     } finally {
       await cleanup(userId);
     }
