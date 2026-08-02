@@ -312,7 +312,7 @@ const toolbarProblem = computed(() => {
                 v-model="code"
                 :language="language"
                 :theme="theme === 'dark' ? 'vs-dark' : 'vs'"
-                :disabled="!isLoggedIn || submitting || !canSubmit"
+                :disabled="!isLoggedIn || submitting || !$props.canSubmit"
                 :min-height="400"
                 @cursor-change="onCursorChange"
               />
