@@ -307,28 +307,43 @@ async fn run_dual_loop(
     let mut sol_parser = LineParser::new();
     let mut solution_ready = false;
 
-    let deadline = tokio::time::sleep(Duration::from_millis(evaluator_timeout_ms));
-    tokio::pin!(deadline);
-
     let mut result_payload: Option<String> = None;
 
-    'outer: loop {
-        tokio::select! {
-            // 总超时
-            _ = &mut deadline => {
-                warn!("Evaluator 总超时: {}", submission_id);
-                return Ok(JudgeResult::timeout(submission_id, "evaluator total timeout", rejudge_seq));
-            }
+    // 评测程序启动等待上限：容器创建 / 文件注入 / Python 启动等开销
+    // 不计入题目时限（issue：秒过的代码不应因启动开销 TLE）。
+    const EVALUATOR_STARTUP_TIMEOUT_MS: u64 = 30_000;
 
-            // Evaluator stdout/stderr
+    // 阶段 1：等待评测程序真正开始运行（收到首条输出，通常为 ready 帧）。
+    // 启动阶段用独立宽松超时；评测程序开始运行后，总超时才按题目时限计时。
+    let startup_deadline = tokio::time::sleep(Duration::from_millis(EVALUATOR_STARTUP_TIMEOUT_MS));
+    tokio::pin!(startup_deadline);
+
+    let mut evaluator_started = false;
+    while !evaluator_started {
+        tokio::select! {
+            _ = &mut startup_deadline => {
+                warn!("Evaluator 启动超时（{}ms）: {}", EVALUATOR_STARTUP_TIMEOUT_MS, submission_id);
+                return Ok(JudgeResult::timeout(submission_id, "evaluator startup timeout", rejudge_seq));
+            }
             chunk = eval_output.next() => {
                 let chunk = match chunk {
                     Some(Ok(c)) => c,
                     Some(Err(e)) => {
                         error!("Evaluator exec 流错误: {}", e);
-                        break 'outer;
+                        return Ok(JudgeResult::system_error(
+                            submission_id,
+                            &format!("Evaluator 启动失败: {}", e),
+                            rejudge_seq,
+                        ));
                     }
-                    None => break 'outer,  // EOF
+                    None => {
+                        // 评测程序未输出任何内容即退出
+                        return Ok(JudgeResult::system_error(
+                            submission_id,
+                            "Evaluator 未启动（无输出即退出）",
+                            rejudge_seq,
+                        ));
+                    }
                 };
                 handle_eval_chunk(
                     &mut eval_parser,
@@ -340,30 +355,72 @@ async fn run_dual_loop(
                 )
                 .await?;
                 if result_payload.is_some() {
-                    break 'outer;
+                    break;
                 }
+                evaluator_started = true;
             }
+            else => break,
+        }
+    }
 
-            // Solution stdout/stderr
-            chunk = sol_output.next() => {
-                let chunk = match chunk {
-                    Some(Ok(c)) => c,
-                    Some(Err(e)) => {
-                        error!("Solution exec 流错误: {}", e);
+    // 阶段 2：正式评测——总超时从评测程序开始运行起算（题目 time_limit_ms）。
+    if result_payload.is_none() {
+        let deadline = tokio::time::sleep(Duration::from_millis(evaluator_timeout_ms));
+        tokio::pin!(deadline);
+
+        'outer: loop {
+            tokio::select! {
+                // 总超时
+                _ = &mut deadline => {
+                    warn!("Evaluator 总超时: {}", submission_id);
+                    return Ok(JudgeResult::timeout(submission_id, "evaluator total timeout", rejudge_seq));
+                }
+
+                // Evaluator stdout/stderr
+                chunk = eval_output.next() => {
+                    let chunk = match chunk {
+                        Some(Ok(c)) => c,
+                        Some(Err(e)) => {
+                            error!("Evaluator exec 流错误: {}", e);
+                            break 'outer;
+                        }
+                        None => break 'outer,  // EOF
+                    };
+                    handle_eval_chunk(
+                        &mut eval_parser,
+                        &mut eval_stderr_buf,
+                        &mut eval_stdout_full,
+                        &mut sol_input,
+                        &mut result_payload,
+                        chunk,
+                    )
+                    .await?;
+                    if result_payload.is_some() {
                         break 'outer;
                     }
-                    None => break 'outer,
-                };
-                handle_sol_chunk(
-                    &mut sol_parser,
-                    &mut eval_input,
-                    chunk,
-                    &mut solution_ready,
-                )
-                .await?;
-            }
+                }
 
-            else => break 'outer,
+                // Solution stdout/stderr
+                chunk = sol_output.next() => {
+                    let chunk = match chunk {
+                        Some(Ok(c)) => c,
+                        Some(Err(e)) => {
+                            error!("Solution exec 流错误: {}", e);
+                            break 'outer;
+                        }
+                        None => break 'outer,
+                    };
+                    handle_sol_chunk(
+                        &mut sol_parser,
+                        &mut eval_input,
+                        chunk,
+                        &mut solution_ready,
+                    )
+                    .await?;
+                }
+
+                else => break 'outer,
+            }
         }
     }
 
