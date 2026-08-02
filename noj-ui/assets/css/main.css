@@ -120,8 +120,11 @@
 
 /* ---- prose-neuro 自定义排版主题（原 tailwind.config.ts theme.extend.typography.neuro 移植） ---- */
 .prose-neuro {
+  /* 正文与标题跟随应用主题色（亮色深字 / 暗色浅字），避免暗色模式下侧栏白底浅字 */
+  --tw-prose-body: var(--c-text);
+  --tw-prose-headings: var(--c-text);
   --tw-prose-links: var(--c-primary);
-  --tw-prose-bold: #0f172a;
+  --tw-prose-bold: var(--c-text);
   --tw-prose-code: #be123c;
   --tw-prose-quotes: var(--c-text-secondary);
   --tw-prose-quote-borders: var(--c-primary);
@@ -147,7 +150,7 @@
 
 .prose-neuro strong {
   font-weight: 600;
-  color: #0f172a;
+  color: var(--c-text);
 }
 
 .prose-neuro pre {
