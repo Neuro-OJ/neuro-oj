@@ -5,6 +5,8 @@ import type { WorkspaceSubmission } from '~/components/editor/EditorWorkspace.vu
 /**
  * 竞赛做题页：复用独立做题工作区（EditorWorkspace），
  * 仅注入竞赛数据源与提交链路。
+ * 路径与详情页平级（/contests/:id/editor/:label），避免嵌套路由
+ * 依赖父页面渲染 <NuxtPage /> 的问题（NUXT_E4016）。
  */
 definePageMeta({ middleware: 'auth', ssr: false })
 
