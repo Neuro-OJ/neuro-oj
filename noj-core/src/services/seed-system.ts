@@ -54,6 +54,16 @@ async function ensureAdminRoleAssignment(userId: string): Promise<void> {
 }
 
 /**
+ * 引导管理员是否强制首次改密（issue #75 守卫）。
+ *
+ * 默认 true（生产安全基线）；devtool 的 `bootstrap admin` 子命令会设置
+ * `NOJ_FORCE_PASSWORD_CHANGE=false`，使开发环境管理员首次登录即可使用完整功能。
+ */
+function shouldForcePasswordChange(): boolean {
+  return Deno.env.get("NOJ_FORCE_PASSWORD_CHANGE") !== "false";
+}
+
+/**
  * 初始化评测镜像白名单。
  * 仅保留双容器镜像（noj-evaluator-python / noj-solution-python）。
  * 幂等：使用固定 UUID 确保重复运行不重复插入。
@@ -188,14 +198,15 @@ export async function ensureAdminFromEnv(): Promise<void> {
       email: adminEmail,
       password_hash: await hashPassword(adminPass),
       role: "admin",
-      must_change_password: true,
+      must_change_password: shouldForcePasswordChange(),
       created_at: now,
       updated_at: now,
     });
     await ensureAdminRoleAssignment(id);
-    console.log(
-      `  已创建管理员用户: ${adminEmail} (${username})，已强制首次改密`,
-    );
+    const guard = shouldForcePasswordChange()
+      ? "已强制首次改密"
+      : "开发模式：未强制首次改密";
+    console.log(`  已创建管理员用户: ${adminEmail} (${username})，${guard}`);
     return;
   }
 
@@ -268,7 +279,7 @@ export async function ensureBootstrapAdmin(): Promise<void> {
     email,
     password_hash: await hashPassword(password),
     role: "admin",
-    must_change_password: true,
+    must_change_password: shouldForcePasswordChange(),
     created_at: now,
     updated_at: now,
   });
@@ -276,13 +287,19 @@ export async function ensureBootstrapAdmin(): Promise<void> {
 
   console.log("");
   console.log("-".repeat(72));
-  console.log("⚠ 已创建临时引导管理员（首次登录后必须修改密码）");
+  if (shouldForcePasswordChange()) {
+    console.log("⚠ 已创建临时引导管理员（首次登录后必须修改密码）");
+  } else {
+    console.log("✓ 已创建开发引导管理员（未强制首次改密，可直接使用完整功能）");
+  }
   console.log("-".repeat(72));
   console.log(`  username: ${username}`);
   console.log(`  email:    ${email}`);
   console.log(`  password: ${password}`);
   console.log("-".repeat(72));
-  console.log("⚠ 请立即记录上述密码，首次登录后系统会强制要求修改密码。");
+  if (shouldForcePasswordChange()) {
+    console.log("⚠ 请立即记录上述密码，首次登录后系统会强制要求修改密码。");
+  }
   console.log("-".repeat(72));
   console.log("");
 }

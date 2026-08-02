@@ -13,6 +13,7 @@ import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../src/db/connection.ts";
 import { and, eq, not, sql } from "drizzle-orm";
 import {
+  auditLogs,
   conversationReads,
   conversations,
   evaluationResults,
@@ -85,6 +86,16 @@ async function countAdminRoleAssignments(userId: string): Promise<number> {
   return rows.length;
 }
 
+/**
+ * 清理测试创建的用户（含 audit_logs 引用与 user_roles 级联）。
+ * 每个用例自清理，避免依赖下一个用例的 cleanNonRootAdmins。
+ */
+async function cleanupUser(userId: string): Promise<void> {
+  const db = getDb();
+  await db.delete(auditLogs).where(eq(auditLogs.admin_id, userId));
+  await db.delete(users).where(eq(users.id, userId));
+}
+
 Deno.test({
   name: "seed bootstrap: 新数据库无可登录 admin",
   ignore: skip,
@@ -117,15 +128,19 @@ Deno.test({
       password: "TestPwd-2024-Xy9",
     });
 
-    // 直接提升为 admin
-    const db = getDb();
-    await db
-      .update(users)
-      .set({ role: "admin", updated_at: new Date().toISOString() })
-      .where(eq(users.id, user.id));
+    try {
+      // 直接提升为 admin
+      const db = getDb();
+      await db
+        .update(users)
+        .set({ role: "admin", updated_at: new Date().toISOString() })
+        .where(eq(users.id, user.id));
 
-    const beforeCount = await getAdminCount();
-    assertEquals(beforeCount, 1, "应有一个可登录 admin");
+      const beforeCount = await getAdminCount();
+      assertEquals(beforeCount, 1, "应有一个可登录 admin");
+    } finally {
+      await cleanupUser(user.id);
+    }
   },
 });
 
@@ -170,27 +185,31 @@ Deno.test({
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    await db.insert(users).values({
-      id,
-      username: "admin",
-      email: "admin@noj.local",
-      password_hash: await hashPassword(pwd),
-      role: "admin",
-      must_change_password: true,
-      created_at: now,
-      updated_at: now,
-    });
+    try {
+      await db.insert(users).values({
+        id,
+        username: "admin",
+        email: "admin@noj.local",
+        password_hash: await hashPassword(pwd),
+        role: "admin",
+        must_change_password: true,
+        created_at: now,
+        updated_at: now,
+      });
 
-    // 验证
-    const [admin] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, id))
-      .limit(1);
+      // 验证
+      const [admin] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, id))
+        .limit(1);
 
-    assertEquals(admin.must_change_password, true);
-    assertEquals(admin.role, "admin");
-    assertEquals(admin.username, "admin");
+      assertEquals(admin.must_change_password, true);
+      assertEquals(admin.role, "admin");
+      assertEquals(admin.username, "admin");
+    } finally {
+      await cleanupUser(id);
+    }
   },
 });
 
@@ -206,23 +225,26 @@ Deno.test({
     const origAdminEmail = Deno.env.get("ADMIN_EMAIL");
     if (origAdminEmail) Deno.env.delete("ADMIN_EMAIL");
 
-    // 直接调用真实 seed 函数，验证 user_roles 关联被写入
-    await ensureBootstrapAdmin();
+    try {
+      // 直接调用真实 seed 函数，验证 user_roles 关联被写入
+      await ensureBootstrapAdmin();
 
-    const db = getDb();
-    const [admin] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(and(eq(users.role, "admin"), not(eq(users.id, "0"))))
-      .limit(1);
-    assert(admin, "应创建引导管理员");
-    assertEquals(
-      await countAdminRoleAssignments(admin.id),
-      1,
-      "引导管理员应拥有 admin 角色关联",
-    );
-
-    if (origAdminEmail) Deno.env.set("ADMIN_EMAIL", origAdminEmail);
+      const db = getDb();
+      const [admin] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.role, "admin"), not(eq(users.id, "0"))))
+        .limit(1);
+      assert(admin, "应创建引导管理员");
+      assertEquals(
+        await countAdminRoleAssignments(admin.id),
+        1,
+        "引导管理员应拥有 admin 角色关联",
+      );
+      await cleanupUser(admin.id);
+    } finally {
+      if (origAdminEmail) Deno.env.set("ADMIN_EMAIL", origAdminEmail);
+    }
   },
 });
 
@@ -238,6 +260,7 @@ Deno.test({
     const origAdminEmail = Deno.env.get("ADMIN_EMAIL");
     const origAdminPass = Deno.env.get("ADMIN_PASS");
 
+    let adminId: string | null = null;
     Deno.env.set("ADMIN_EMAIL", "ops-186@noj.local");
     Deno.env.set("ADMIN_PASS", "OpsAdmin-2026-Xy9");
     try {
@@ -255,7 +278,9 @@ Deno.test({
         1,
         "环境变量管理员应拥有 admin 角色关联",
       );
+      adminId = admin.id;
     } finally {
+      if (adminId) await cleanupUser(adminId);
       if (origAdminEmail) {
         Deno.env.set("ADMIN_EMAIL", origAdminEmail);
       } else {
@@ -265,6 +290,54 @@ Deno.test({
         Deno.env.set("ADMIN_PASS", origAdminPass);
       } else {
         Deno.env.delete("ADMIN_PASS");
+      }
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "seed bootstrap: NOJ_FORCE_PASSWORD_CHANGE=false 时引导管理员不强制改密（devtool 默认）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await cleanNonRootAdmins();
+    const origAdminEmail = Deno.env.get("ADMIN_EMAIL");
+    const origForce = Deno.env.get("NOJ_FORCE_PASSWORD_CHANGE");
+    if (origAdminEmail) Deno.env.delete("ADMIN_EMAIL");
+    Deno.env.set("NOJ_FORCE_PASSWORD_CHANGE", "false");
+    try {
+      await ensureBootstrapAdmin();
+
+      const db = getDb();
+      const [admin] = await db
+        .select({
+          id: users.id,
+          must_change_password: users.must_change_password,
+        })
+        .from(users)
+        .where(and(eq(users.role, "admin"), not(eq(users.id, "0"))))
+        .limit(1);
+      assert(admin, "应创建引导管理员");
+      assertEquals(
+        admin.must_change_password,
+        false,
+        "NOJ_FORCE_PASSWORD_CHANGE=false 时不应强制首次改密",
+      );
+      assertEquals(await countAdminRoleAssignments(admin.id), 1);
+      await cleanupUser(admin.id);
+    } finally {
+      if (origAdminEmail) {
+        Deno.env.set("ADMIN_EMAIL", origAdminEmail);
+      } else {
+        Deno.env.delete("ADMIN_EMAIL");
+      }
+      if (origForce) {
+        Deno.env.set("NOJ_FORCE_PASSWORD_CHANGE", origForce);
+      } else {
+        Deno.env.delete("NOJ_FORCE_PASSWORD_CHANGE");
       }
     }
   },
@@ -299,6 +372,7 @@ Deno.test({
         "被提升的管理员应写入 admin 角色关联",
       );
     } finally {
+      await cleanupUser(user.id);
       if (origAdminEmail) {
         Deno.env.set("ADMIN_EMAIL", origAdminEmail);
       } else {

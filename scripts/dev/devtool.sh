@@ -346,6 +346,36 @@ cmd_install_deps() {
 }
 
 # ══════════════════════════════════════════════════════════════════
+#  bootstrap — 创建/引导管理员（开发环境默认不强制首次改密）
+# ══════════════════════════════════════════════════════════════════
+# devtool 托管的开发流程默认 NOJ_FORCE_PASSWORD_CHANGE=false：
+# 管理员首次登录即可使用完整功能，无需强制改密（issue #75 守卫仅在生产保留）。
+cmd_bootstrap_admin() {
+  local email="" password=""
+  # 兼容 `devtool.sh bootstrap admin [--email ...]` 写法
+  if [[ "$1" == "admin" ]]; then
+    shift
+  fi
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --email) email="$2"; shift 2 ;;
+      --password) password="$2"; shift 2 ;;
+      *) fail "未知参数: $1（用法: devtool.sh bootstrap admin [--email X --password Y]）" ;;
+    esac
+  done
+
+  if [[ ! -f "$ENV_TARGET" ]]; then
+    fail "$ENV_TARGET 不存在，请先运行: devtool.sh init-env"
+  fi
+
+  echo ">>> 创建/引导管理员（开发模式：NOJ_FORCE_PASSWORD_CHANGE=false）..."
+  local args=("task" "bootstrap:admin")
+  [[ -n "$email" ]] && args+=(--email "$email")
+  [[ -n "$password" ]] && args+=(--password "$password")
+  (cd "$NOJ_CORE_DIR" && NOJ_FORCE_PASSWORD_CHANGE=false deno "${args[@]}")
+}
+
+# ══════════════════════════════════════════════════════════════════
 #  init-env — 初始化 / 合并 noj-core/.env
 # ══════════════════════════════════════════════════════════════════
 # 解析 env 文件为 KEY=VALUE 对（忽略注释 / 空行），输出到 stdout
@@ -1045,6 +1075,7 @@ devtool.sh — Neuro OJ 本地开发编排工具（Linux + macOS）
 子命令:
   install-deps [--check-only]   检测 / 安装前置依赖（zip / Deno / Rust / Docker）
   init-env     [--merge|--force] 初始化 noj-core/.env（默认拒绝覆盖）
+  bootstrap admin [--email X] [--password Y] 创建/引导管理员（开发模式不强制首次改密）
   start        [TARGET] [--build] 启动 TARGET（infra|core|ui|judge|all，默认 all）
   stop         [TARGET]          停止 TARGET（同上，按反向依赖顺序）
   status       [--json] [--watch SECS] 查看运行状态
@@ -1053,6 +1084,8 @@ devtool.sh — Neuro OJ 本地开发编排工具（Linux + macOS）
 示例:
   devtool.sh install-deps            # 首次：检测 + 安装依赖
   devtool.sh init-env                # 首次：复制 env.example → noj-core/.env
+  devtool.sh bootstrap admin --email admin@noj.local --password 'Admin-2026-Xy9!'
+                                     # 创建管理员（默认不强制首次改密）
   devtool.sh start                   # 启动全部（infra → core → ui → judge）
   devtool.sh start ui                # 只启动前端（纯前端开发）
   devtool.sh start judge --build     # 启动 judge 并强制重新编译
@@ -1080,6 +1113,7 @@ shift || true
 case "$cmd" in
   install-deps) cmd_install_deps "$@" ;;
   init-env)     cmd_init_env     "$@" ;;
+  bootstrap)    cmd_bootstrap_admin "$@" ;;
   start)        cmd_start        "$@" ;;
   stop)         cmd_stop         "$@" ;;
   status)       cmd_status       "$@" ;;
