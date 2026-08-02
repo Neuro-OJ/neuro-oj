@@ -11,8 +11,47 @@
 
 import { and, eq, not, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
-import { categories, judgeImages, users } from "../db/schema.ts";
+import {
+  categories,
+  judgeImages,
+  roles,
+  userRoles,
+  users,
+} from "../db/schema.ts";
 import { hashPassword } from "../lib/password.ts";
+import { ensureSystemRoles } from "./seed-rbac.ts";
+
+/**
+ * 为管理员用户写入 RBAC 关联（issue #186）。
+ *
+ * RBAC 落地后（#171）管理权限由 `roles.is_admin` + `user_roles` 关联表决定，
+ * `users.role` 仅用于展示/向前兼容。bootstrap:admin 创建用户时若只写
+ * `users.role = 'admin'`，登录返回的 `is_admin`（来自 RBAC 表）仍为 false，
+ * 管理接口实际无权限。
+ *
+ * 幂等：先确保系统角色存在（兼容 bootstrap 早于 init system 的执行顺序），
+ * 再以 ON CONFLICT DO NOTHING 写入 user_roles。
+ */
+async function ensureAdminRoleAssignment(userId: string): Promise<void> {
+  const db = getDb();
+  // 确保 admin 角色存在（独立执行 bootstrap:admin 时 roles 可能尚未 seed）
+  await ensureSystemRoles();
+
+  const [adminRole] = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(eq(roles.name, "admin"))
+    .limit(1);
+  if (!adminRole) {
+    console.warn("  admin 角色不存在，无法写入 user_roles 关联");
+    return;
+  }
+
+  await db.insert(userRoles).values({
+    user_id: userId,
+    role_id: adminRole.id,
+  }).onConflictDoNothing();
+}
 
 /**
  * 初始化评测镜像白名单。
@@ -153,6 +192,7 @@ export async function ensureAdminFromEnv(): Promise<void> {
       created_at: now,
       updated_at: now,
     });
+    await ensureAdminRoleAssignment(id);
     console.log(
       `  已创建管理员用户: ${adminEmail} (${username})，已强制首次改密`,
     );
@@ -170,6 +210,7 @@ export async function ensureAdminFromEnv(): Promise<void> {
     .set({ role: "admin", updated_at: new Date().toISOString() })
     .where(eq(users.email, adminEmail));
 
+  await ensureAdminRoleAssignment(user.id);
   console.log(`  已提升用户 ${adminEmail} 为管理员`);
 }
 
@@ -231,6 +272,7 @@ export async function ensureBootstrapAdmin(): Promise<void> {
     created_at: now,
     updated_at: now,
   });
+  await ensureAdminRoleAssignment(id);
 
   console.log("");
   console.log("-".repeat(72));
