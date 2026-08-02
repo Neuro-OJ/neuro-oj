@@ -15,7 +15,7 @@
  * - 「all」模式下两个端点都失败时显式设置 error，不静默吞错。
  */
 
-export type SearchType = "all" | "problem" | "user" | "community";
+export type SearchType = 'all' | 'problem' | 'user' | 'community';
 
 export interface ProblemSearchResult {
   id: string;
@@ -39,7 +39,7 @@ export interface UserSearchResult {
 
 export interface CommunitySearchResult {
   id: string;
-  type: "solution" | "discussion";
+  type: 'solution' | 'discussion';
   title: string;
   author_id: string;
   author_username: string;
@@ -63,10 +63,10 @@ export interface SearchState {
 }
 
 export function useSearch() {
-  const state = useState<SearchState>("search:state", () => ({
+  const state = useState<SearchState>('search:state', () => ({
     open: false,
-    query: "",
-    type: "all",
+    query: '',
+    type: 'all',
     results: { problems: [], users: [], community: [] },
     loading: false,
     error: null,
@@ -108,7 +108,7 @@ export function useSearch() {
    * 防抖搜索（300ms）。
    * type="all" 时同时拉取题目 + 用户两个端点（前端合并展示）。
    */
-  const search = async (q: string, opts?: { type?: SearchType; limit?: number }) => {
+  const search = (q: string, opts?: { type?: SearchType; limit?: number }) => {
     // 1) 先取消上一次未触发的 debounce，并 resolve 旧 Promise。
     //    必须在短查询早退之前做，否则「ab → a」会让旧请求继续等待触发。
     if (debounceTimer) {
@@ -149,19 +149,19 @@ export function useSearch() {
         try {
           // 搜索为静默请求：错误由 state.error 状态展示，不弹 toast
           const { api } = useApi();
-          if (type === "all") {
+          if (type === 'all') {
             // 并行请求题目 + 用户
             const [pRes, uRes, cRes] = await Promise.allSettled([
-              api.get("/api/v1/search", {
-                params: { q: trimmed, type: "problem", limit },
+              api.get('/api/v1/search', {
+                params: { q: trimmed, type: 'problem', limit },
                 silent: true,
               }),
-              api.get("/api/v1/search", {
-                params: { q: trimmed, type: "user", limit: 3 },
+              api.get('/api/v1/search', {
+                params: { q: trimmed, type: 'user', limit: 3 },
                 silent: true,
               }),
-              api.get("/api/v1/search", {
-                params: { q: trimmed, type: "community", limit: 3 },
+              api.get('/api/v1/search', {
+                params: { q: trimmed, type: 'community', limit: 3 },
                 silent: true,
               }),
             ]);
@@ -172,19 +172,19 @@ export function useSearch() {
               return;
             }
 
-            const problems = pRes.status === "fulfilled"
+            const problems = pRes.status === 'fulfilled'
               ? (pRes.value as { data: { items: ProblemSearchResult[] } }).data.items
               : [];
-            const users = uRes.status === "fulfilled"
+            const users = uRes.status === 'fulfilled'
               ? (uRes.value as { data: { items: UserSearchResult[] } }).data.items
               : [];
-            const community = cRes.status === "fulfilled"
+            const community = cRes.status === 'fulfilled'
               ? (cRes.value as { data: { items: CommunitySearchResult[] } }).data.items
               : [];
 
             // 两个端点都失败时显式设置 error（Promise.allSettled 不抛错）
-            if (pRes.status === "rejected" && uRes.status === "rejected" && cRes.status === "rejected") {
-              state.value.error = "搜索失败";
+            if (pRes.status === 'rejected' && uRes.status === 'rejected' && cRes.status === 'rejected') {
+              state.value.error = '搜索失败';
               state.value.results = { problems: [], users: [], community: [] };
             } else {
               state.value.results.problems = problems;
@@ -192,7 +192,7 @@ export function useSearch() {
               state.value.results.community = community;
             }
           } else {
-            const res = await api.get("/api/v1/search", {
+            const res = await api.get('/api/v1/search', {
               params: { q: trimmed, type, limit },
               silent: true,
             });
@@ -203,19 +203,20 @@ export function useSearch() {
               return;
             }
 
-            const items = (res as { data: { items: ProblemSearchResult[] | UserSearchResult[] | CommunitySearchResult[] } })
-              .data.items;
+            const items =
+              (res as { data: { items: ProblemSearchResult[] | UserSearchResult[] | CommunitySearchResult[] } })
+                .data.items;
             state.value.results = {
-              problems: type === "problem" ? items as ProblemSearchResult[] : [],
-              users: type === "user" ? items as UserSearchResult[] : [],
-              community: type === "community" ? items as CommunitySearchResult[] : [],
+              problems: type === 'problem' ? items as ProblemSearchResult[] : [],
+              users: type === 'user' ? items as UserSearchResult[] : [],
+              community: type === 'community' ? items as CommunitySearchResult[] : [],
             };
           }
         } catch (e: unknown) {
           // 仅当本次请求仍是最新时才写入错误（避免覆盖更新的结果）
           if (mySeq === requestSeq) {
-            state.value.error = (e as { data?: { error?: string } })?.data?.error
-              ?? "搜索失败";
+            state.value.error = (e as { data?: { error?: string } })?.data?.error ??
+              '搜索失败';
             state.value.results = { problems: [], users: [], community: [] };
           }
         } finally {

@@ -36,7 +36,7 @@ export function useMessages() {
   /**
    * 获取会话列表。
    */
-  async function fetchConversations(page = 1, perPage = 20) {
+  function fetchConversations(page = 1, perPage = 20) {
     return api.get<{
       data: Conversation[];
       pagination: Pagination;
@@ -46,7 +46,7 @@ export function useMessages() {
   /**
    * 查找或创建会话。
    */
-  async function findOrCreateConversation(otherUserId: string) {
+  function findOrCreateConversation(otherUserId: string) {
     return api.post<{ data: Conversation }>('/api/v1/conversations', {
       other_user_id: otherUserId,
     });
@@ -55,7 +55,7 @@ export function useMessages() {
   /**
    * 获取消息列表。
    */
-  async function fetchMessages(conversationId: string, page = 1, perPage = 50) {
+  function fetchMessages(conversationId: string, page = 1, perPage = 50) {
     return api.get<{
       data: ConversationMessage[];
       pagination: Pagination;
@@ -65,7 +65,7 @@ export function useMessages() {
   /**
    * 发送消息。
    */
-  async function sendMessage(conversationId: string, content: string) {
+  function sendMessage(conversationId: string, content: string) {
     return api.post<{ data: ConversationMessage }>(
       `/api/v1/conversations/${conversationId}/messages`,
       { content },
@@ -75,7 +75,7 @@ export function useMessages() {
   /**
    * 标记已读。
    */
-  async function markRead(conversationId: string, lastReadMessageId: string) {
+  function markRead(conversationId: string, lastReadMessageId: string) {
     return api.post(`/api/v1/conversations/${conversationId}/read`, {
       last_read_message_id: lastReadMessageId,
     });

@@ -5,23 +5,21 @@
  * 提供统一的读写接口。筛选条件变化时自动重置页码。
  */
 export function useProblemFilters() {
-  const router = useRouter()
-  const route = useRoute()
+  const router = useRouter();
+  const route = useRoute();
 
   /** 从 URL 查询参数中读取筛选值（只读派生）。 */
-  const page = computed(() => Number(route.query.page) || 1)
-  const keyword = computed(() => (route.query.keyword as string) || "")
-  const difficulty = computed(() => (route.query.difficulty as string) || "")
-  const categoryId = computed(() => (route.query.category_id as string) || "")
+  const page = computed(() => Number(route.query.page) || 1);
+  const keyword = computed(() => (route.query.keyword as string) || '');
+  const difficulty = computed(() => (route.query.difficulty as string) || '');
+  const categoryId = computed(() => (route.query.category_id as string) || '');
   /** 题目类型筛选。空字符串 = 未选择（API 默认返回 P 型）。 */
-  const problemType = computed(() => (route.query.type as string) || "")
-  const problemNumber = computed(() => (route.query.number as string) || "")
+  const problemType = computed(() => (route.query.type as string) || '');
+  const problemNumber = computed(() => (route.query.number as string) || '');
 
-  const limit = 20
+  const limit = 20;
 
-  const hasActiveFilters = computed(() =>
-    !!keyword.value || !!difficulty.value || !!categoryId.value,
-  )
+  const hasActiveFilters = computed(() => !!keyword.value || !!difficulty.value || !!categoryId.value);
 
   /**
    * 更新单个筛选参数。
@@ -29,31 +27,31 @@ export function useProblemFilters() {
    * - 若非 page 参数变更，自动重置到第 1 页
    */
   function setFilter(key: string, value: string) {
-    const query = { ...route.query }
+    const query = { ...route.query };
     if (value) {
-      query[key] = value
+      query[key] = value;
     } else {
-      delete query[key]
+      delete query[key];
     }
-    if (key !== "page") {
-      delete query.page
+    if (key !== 'page') {
+      delete query.page;
     }
-    router.push({ query })
+    router.push({ query });
   }
 
   /** 构建给 API 的查询参数对象。 */
   const queryParams = computed(() => {
-    const params: Record<string, string> = {}
-    const p = page.value
-    if (p !== 1) params.page = String(p)
-    params.limit = String(limit)
-    if (keyword.value) params.keyword = keyword.value
-    if (difficulty.value) params.difficulty = difficulty.value
-    if (categoryId.value) params.category_id = categoryId.value
-    if (problemType.value) params.type = problemType.value
-    if (problemNumber.value) params.number = problemNumber.value
-    return params
-  })
+    const params: Record<string, string> = {};
+    const p = page.value;
+    if (p !== 1) params.page = String(p);
+    params.limit = String(limit);
+    if (keyword.value) params.keyword = keyword.value;
+    if (difficulty.value) params.difficulty = difficulty.value;
+    if (categoryId.value) params.category_id = categoryId.value;
+    if (problemType.value) params.type = problemType.value;
+    if (problemNumber.value) params.number = problemNumber.value;
+    return params;
+  });
 
   return {
     page,
@@ -66,5 +64,5 @@ export function useProblemFilters() {
     hasActiveFilters,
     setFilter,
     queryParams,
-  }
+  };
 }

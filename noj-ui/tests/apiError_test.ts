@@ -5,6 +5,7 @@
  * 以及未知错误兜底。
  */
 /// <reference lib="deno.ns" />
+// deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本，与 noj-core 测试写法一致
 import { assertEquals } from 'jsr:@std/assert@^1';
 import { extractApiError, isNetworkError, isTimeoutError } from '../utils/apiError.ts';
 
