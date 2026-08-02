@@ -14,6 +14,13 @@ interface Problem {
   difficulty: string
   type: 'U' | 'P'
   categories: { id: string; name: string; slug: string }[]
+  /** 运行时限制（竞赛题接口不返回，缺省时展示 --） */
+  runtime_config?: {
+    evaluator?: {
+      time_limit_ms?: number
+      memory_limit_mb?: number
+    }
+  }
 }
 
 interface Submission {
@@ -104,11 +111,11 @@ function formatElapsed(iso: string) {
           </span>
           <span class="inline-flex items-center gap-1">
             <UIcon name="i-lucide-clock" class="size-3" />
-            {{ problem.runtime_config.evaluator.time_limit_ms }}ms
+            {{ problem.runtime_config?.evaluator?.time_limit_ms ?? '--' }}ms
           </span>
           <span class="inline-flex items-center gap-1">
             <UIcon name="i-lucide-server" class="size-3" />
-            {{ problem.runtime_config.evaluator.memory_limit_mb }}MB
+            {{ problem.runtime_config?.evaluator?.memory_limit_mb ?? '--' }}MB
           </span>
           <span class="font-medium">{{ problem.difficulty }}</span>
       </div>
