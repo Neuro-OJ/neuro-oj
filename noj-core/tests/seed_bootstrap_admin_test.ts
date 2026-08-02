@@ -272,6 +272,53 @@ Deno.test({
 
 Deno.test({
   name:
+    "seed bootstrap: NOJ_FORCE_PASSWORD_CHANGE=false 时引导管理员不强制改密（devtool 默认）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await cleanNonRootAdmins();
+    const origAdminEmail = Deno.env.get("ADMIN_EMAIL");
+    const origForce = Deno.env.get("NOJ_FORCE_PASSWORD_CHANGE");
+    if (origAdminEmail) Deno.env.delete("ADMIN_EMAIL");
+    Deno.env.set("NOJ_FORCE_PASSWORD_CHANGE", "false");
+    try {
+      await ensureBootstrapAdmin();
+
+      const db = getDb();
+      const [admin] = await db
+        .select({
+          id: users.id,
+          must_change_password: users.must_change_password,
+        })
+        .from(users)
+        .where(and(eq(users.role, "admin"), not(eq(users.id, "0"))))
+        .limit(1);
+      assert(admin, "应创建引导管理员");
+      assertEquals(
+        admin.must_change_password,
+        false,
+        "NOJ_FORCE_PASSWORD_CHANGE=false 时不应强制首次改密",
+      );
+      assertEquals(await countAdminRoleAssignments(admin.id), 1);
+    } finally {
+      if (origAdminEmail) {
+        Deno.env.set("ADMIN_EMAIL", origAdminEmail);
+      } else {
+        Deno.env.delete("ADMIN_EMAIL");
+      }
+      if (origForce) {
+        Deno.env.set("NOJ_FORCE_PASSWORD_CHANGE", origForce);
+      } else {
+        Deno.env.delete("NOJ_FORCE_PASSWORD_CHANGE");
+      }
+    }
+  },
+});
+
+Deno.test({
+  name:
     "seed bootstrap: ensureAdminFromEnv 提升已有用户时写入 user_roles（issue #186）",
   ignore: skip,
   sanitizeResources: false,
