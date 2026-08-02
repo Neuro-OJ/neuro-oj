@@ -289,7 +289,7 @@ Deno.test({
 
       await db.update(contests).set({
         end_time: new Date(Date.now() - 60_000).toISOString(),
-      }).where(eq(contests.id, contestId));
+      }).where(eq(contests.id, contestId!));
       const endedProblemList = await jsonRequest(
         app,
         `/api/v1/contests/${contestId}/problems`,
@@ -476,7 +476,7 @@ Deno.test({
       // 结束后：题目可查看（管理员/未报名用户均可），提交一律拒绝
       await db.update(contests).set({
         end_time: new Date(Date.now() - 60_000).toISOString(),
-      }).where(eq(contests.id, contestId));
+      }).where(eq(contests.id, contestId!));
 
       const endedAdminProblems = await jsonRequest(
         app,
