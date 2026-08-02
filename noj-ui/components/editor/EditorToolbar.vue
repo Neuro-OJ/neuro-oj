@@ -24,6 +24,10 @@ const props = defineProps<{
   sidebarVisible: boolean
   draftState: DraftState
   draftSavedAt: Date | null
+  /** 竞赛题号徽标（如 A/B/C），非竞赛场景缺省 */
+  badge?: string
+  /** 工具栏副标题（如竞赛标题），非竞赛场景缺省 */
+  subtitle?: string
 }>()
 
 const emit = defineEmits<{
@@ -87,12 +91,21 @@ const draftDotClass = computed(() => {
     </button>
     <div class="flex items-center gap-2 min-w-0">
       <span
+        v-if="badge"
+        class="inline-flex size-7 items-center justify-center rounded-md bg-bg-dark font-mono text-xs font-bold text-white flex-shrink-0"
+      >
+        {{ badge }}
+      </span>
+      <span
         class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0"
         :class="problem.type === 'U' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'"
       >
         {{ problem.display_id }}
       </span>
-      <span class="text-sm font-medium text-text truncate">{{ problem.title }}</span>
+      <div class="min-w-0">
+        <span class="block text-sm font-medium text-text truncate">{{ problem.title }}</span>
+        <span v-if="subtitle" class="block text-[11px] leading-tight text-text-muted truncate">{{ subtitle }}</span>
+      </div>
     </div>
 
     <!-- 中部 spacer -->
@@ -106,6 +119,8 @@ const draftDotClass = computed(() => {
 
     <!-- 右：语言 + 主题 + 侧栏 + 设置 + 提交 -->
     <div class="flex items-center gap-1.5">
+      <slot name="actions" />
+
       <select
         :value="language"
         class="text-xs px-2 py-1 border border-border rounded-md bg-white text-text focus:outline-none focus:border-primary"

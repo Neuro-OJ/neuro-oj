@@ -138,11 +138,22 @@ onUnmounted(() => {
             <div v-if="problemsLoading" class="py-12 text-center text-sm text-text-muted">题目加载中...</div>
             <div v-else-if="problemsError" class="py-8 text-center text-sm text-error-text">{{ problemsError }}</div>
             <div v-else-if="problems.length" class="divide-y divide-border overflow-hidden rounded-xl border border-border">
-              <NuxtLink v-for="problem in problems" :key="problem.problem_id" :to="`/contests/${contest.id}/problems/${problem.label}`" class="flex items-center gap-4 px-5 py-4 text-text no-underline transition-colors hover:bg-primary-bg">
+              <div v-for="problem in problems" :key="problem.problem_id" class="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-primary-bg">
                 <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-bg-dark font-mono text-sm font-bold text-white">{{ problem.label }}</span>
-                <div class="min-w-0 flex-1"><div class="font-semibold">{{ problem.title }}</div><div class="mt-1 text-xs text-text-muted">{{ problem.display_id }} · {{ problem.difficulty }}</div></div>
+                <NuxtLink :to="`/contests/${contest.id}/problems/${problem.label}`" class="min-w-0 flex-1 text-text no-underline">
+                  <div class="font-semibold">{{ problem.title }}</div>
+                  <div class="mt-1 text-xs text-text-muted">{{ problem.display_id }} · {{ problem.difficulty }}</div>
+                </NuxtLink>
                 <StatusBadge :status="problem.user_status === 'untouched' ? 'not_started' : problem.user_status" />
-              </NuxtLink>
+                <UButton
+                  color="primary"
+                  size="sm"
+                  class="gap-1.5 px-3 py-1.5 text-xs"
+                  :to="`/editor/${problem.problem_id}?contest=${contest.id}&label=${problem.label}`"
+                >
+                  <UIcon name="i-lucide-pencil-ruler" class="size-3.5" />去做题
+                </UButton>
+              </div>
             </div>
             <div v-else class="py-12 text-center text-sm text-text-muted">{{ contest.is_registered ? '暂无题目' : '报名后可查看竞赛题目' }}</div>
           </section>

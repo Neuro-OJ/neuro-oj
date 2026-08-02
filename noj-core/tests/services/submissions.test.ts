@@ -657,6 +657,7 @@ Deno.test({
 
     // 启动 fake Redis，让 pushJudgeTask 走完整 LPUSH 路径
     const fakeRedis = await startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
     Deno.env.set("REDIS_URL", fakeRedis.url);
 
     // 触发 ioredis 单例的 connect + PING，让状态从 wait 转为 ready
@@ -787,7 +788,11 @@ Deno.test({
       }
     } finally {
       await fakeRedis.stop();
-      Deno.env.delete("REDIS_URL");
+      if (previousRedisUrl) {
+        Deno.env.set("REDIS_URL", previousRedisUrl);
+      } else {
+        Deno.env.delete("REDIS_URL");
+      }
     }
   },
 });
@@ -804,6 +809,7 @@ Deno.test({
 
     // 启动 fake Redis
     const fakeRedis = await startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
     Deno.env.set("REDIS_URL", fakeRedis.url);
 
     // 触发 ioredis 单例的 connect + PING
@@ -940,7 +946,11 @@ Deno.test({
       }
     } finally {
       await fakeRedis.stop();
-      Deno.env.delete("REDIS_URL");
+      if (previousRedisUrl) {
+        Deno.env.set("REDIS_URL", previousRedisUrl);
+      } else {
+        Deno.env.delete("REDIS_URL");
+      }
     }
   },
 });

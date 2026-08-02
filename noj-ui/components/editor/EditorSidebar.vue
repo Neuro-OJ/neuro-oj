@@ -14,6 +14,13 @@ interface Problem {
   difficulty: string
   type: 'U' | 'P'
   categories: { id: string; name: string; slug: string }[]
+  /** 运行时限制（竞赛题接口不返回，缺省时展示 --） */
+  runtime_config?: {
+    evaluator?: {
+      time_limit_ms?: number
+      memory_limit_mb?: number
+    }
+  }
 }
 
 interface Submission {
@@ -90,7 +97,7 @@ function formatElapsed(iso: string) {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-white border-r border-border transition-colors duration-300 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-text-muted">
+  <div class="h-full overflow-y-auto bg-white text-text border-r border-border transition-colors duration-300 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-text-muted">
    <Transition name="fade" mode="out-in">
     <div :key="active" class="h-full">
     <!-- 描述 tab -->
@@ -104,11 +111,11 @@ function formatElapsed(iso: string) {
           </span>
           <span class="inline-flex items-center gap-1">
             <UIcon name="i-lucide-clock" class="size-3" />
-            {{ problem.runtime_config.evaluator.time_limit_ms }}ms
+            {{ problem.runtime_config?.evaluator?.time_limit_ms ?? '--' }}ms
           </span>
           <span class="inline-flex items-center gap-1">
             <UIcon name="i-lucide-server" class="size-3" />
-            {{ problem.runtime_config.evaluator.memory_limit_mb }}MB
+            {{ problem.runtime_config?.evaluator?.memory_limit_mb ?? '--' }}MB
           </span>
           <span class="font-medium">{{ problem.difficulty }}</span>
       </div>
@@ -124,7 +131,7 @@ function formatElapsed(iso: string) {
       </div>
 
       <div class="prose prose-sm prose-neuro max-w-none">
-        <MarkdownRenderer :content="problem.description" />
+        <MarkdownRenderer class="editor-sidebar-prose" :content="problem.description" />
       </div>
     </div>
 
@@ -278,6 +285,35 @@ function formatElapsed(iso: string) {
 </template>
 
 <style scoped>
+/* 左侧题目文字：亮色模式纯黑；暗色模式恢复主题浅色保证可读 */
+.editor-sidebar-prose {
+  --tw-prose-body: #000;
+  --tw-prose-headings: #000;
+  --tw-prose-bold: #000;
+}
+
+:global(.editor-dark) .editor-sidebar-prose {
+  --tw-prose-body: #e2e8f0;
+  --tw-prose-headings: #e2e8f0;
+  --tw-prose-bold: #e2e8f0;
+}
+
+/* 亮色：加粗标签（如 **输入** / **输出**）与标题也强制纯黑 */
+.editor-sidebar-prose :deep(strong),
+.editor-sidebar-prose :deep(h1),
+.editor-sidebar-prose :deep(h2),
+.editor-sidebar-prose :deep(h3) {
+  color: #000;
+}
+
+/* 暗色：恢复主题浅色 */
+:global(.editor-dark) .editor-sidebar-prose :deep(strong),
+:global(.editor-dark) .editor-sidebar-prose :deep(h1),
+:global(.editor-dark) .editor-sidebar-prose :deep(h2),
+:global(.editor-dark) .editor-sidebar-prose :deep(h3) {
+  color: #e2e8f0;
+}
+
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 180ms ease, transform 180ms ease;
