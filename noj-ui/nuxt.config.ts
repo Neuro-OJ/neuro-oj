@@ -55,7 +55,12 @@ export default defineNuxtConfig({
   // Deno Compile 用，删了没法编译
   hooks: {
     close: () => {
-      process.exit(0);
+      // 仅在编译产物（deno compile 单二进制）中主动退出；
+      // nuxt dev 的配置变更重启也会触发 close，直接退出会杀掉整个开发服务器
+      // （管理后台创建竞赛时前端报「网络连接失败，请检查网络」的根因）。
+      if (!process.argv.includes('dev')) {
+        process.exit(0);
+      }
     },
   },
 
