@@ -381,3 +381,14 @@
   background: none;
   -webkit-text-fill-color: var(--vp-c-brand-1);
 }
+
+/* ---------- 长内容换行兜底 ----------
+ * 自定义容器与行内代码中的长 URL / 长标识符（如 noj-storage://...）
+ * 默认不换行会撑出容器，这里允许在任意断点换行；
+ * 代码块（pre）保留横向滚动，不受影响。
+ */
+.vp-doc .custom-block,
+.vp-doc :not(pre) > code {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}

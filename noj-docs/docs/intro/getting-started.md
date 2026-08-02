@@ -52,5 +52,5 @@
 完整状态说明见[理解结果](../users/results.md)与[结果状态](../reference/result-status.md)。
 
 ::: tip 建议
-    从一道简单题开始，先跑通「注册 → 找题 → 提交 → Accepted」闭环，再逐步深入。
+从一道简单题开始，先跑通「注册 → 找题 → 提交 → Accepted」闭环，再逐步深入。
 :::
