@@ -12,6 +12,7 @@ const route = useRoute()
 const contestId = route.params.contestId as string
 const label = route.params.label as string
 const { api } = useApi()
+const { user } = useAuth()
 
 const { data: contestData } = await useFetch<{ data: Contest }>(
   `/api/v1/contests/${contestId}`,
@@ -41,6 +42,27 @@ const workspaceProblem = computed(() => {
 
 const canSubmit = computed(() => contest.value?.status === 'running')
 
+// 编辑器访问控制：仅竞赛进行中且为参赛者/管理员可进入；
+// 结束后不允许使用编辑器（仅可查看题目，由详情页承担）。
+const canUseEditor = computed(() => {
+  const c = contest.value
+  if (!c) return false
+  const isAdmin = user.value?.is_admin === true
+  const isParticipant = c.is_registered === true
+  return c.status === 'running' && (isParticipant || isAdmin)
+})
+
+const accessMessage = computed(() => {
+  const c = contest.value
+  if (!c) return ''
+  if (c.status === 'pending') return '竞赛尚未开始，暂不能进入做题'
+  if (c.status === 'ended') return '比赛已结束，仅可查看题目'
+  if (!(c.is_registered === true || user.value?.is_admin === true)) {
+    return '仅参赛者可进入做题，请先报名参赛'
+  }
+  return ''
+})
+
 function submit(problemId: string, language: string, code: string) {
   return api
     .post<{ data: { id: string } }>(`/api/v1/contests/${contestId}/submit`, {
@@ -58,7 +80,34 @@ function submissionFilter(s: WorkspaceSubmission): boolean {
 </script>
 
 <template>
+  <!-- 访问拦截：结束后 / 未报名 / 未开始 → 仅提示并返回详情页 -->
+  <div
+    v-if="!pending && contest && !canUseEditor"
+    class="h-screen flex items-center justify-center bg-bg-page"
+  >
+    <div class="flex flex-col items-center gap-3 rounded-xl border border-border bg-white px-8 py-10 text-center">
+      <span class="flex size-11 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-xl font-bold">
+        <UIcon name="i-lucide-lock" class="size-5" />
+      </span>
+      <p class="text-sm font-medium text-text">{{ accessMessage || '暂无权限进入做题' }}</p>
+      <div class="mt-1 flex gap-2">
+        <UButton
+          color="neutral"
+          variant="outline"
+          size="sm"
+          :to="`/contests/${contestId}/problems/${label}`"
+        >
+          返回题目详情
+        </UButton>
+        <UButton color="neutral" variant="outline" size="sm" :to="`/contests/${contestId}`">
+          返回竞赛
+        </UButton>
+      </div>
+    </div>
+  </div>
+
   <EditorWorkspace
+    v-else
     :problem="workspaceProblem"
     :pending="pending"
     :error="error"

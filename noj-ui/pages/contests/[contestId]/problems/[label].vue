@@ -10,6 +10,7 @@ definePageMeta({ middleware: 'auth', ssr: false })
 const route = useRoute()
 const contestId = route.params.contestId as string
 const label = route.params.label as string
+const { user } = useAuth()
 
 const { data: contestData } = await useFetch<{ data: Contest }>(
   `/api/v1/contests/${contestId}`,
@@ -32,6 +33,27 @@ const badgeColors: Record<string, string> = {
   medium: 'bg-yellow-100 text-yellow-700',
   hard: 'bg-red-100 text-red-800',
 }
+
+// 去做题：仅竞赛进行中且为参赛者/管理员时可进入编辑器；
+// 结束后仅可查看题目（issue：编辑器权限控制）
+const canUseEditor = computed(() => {
+  const c = contest.value
+  if (!c) return false
+  const isAdmin = user.value?.is_admin === true
+  const isParticipant = c.is_registered === true
+  return c.status === 'running' && (isParticipant || isAdmin)
+})
+
+const accessHint = computed(() => {
+  const c = contest.value
+  if (!c) return ''
+  if (c.status === 'pending') return '竞赛尚未开始'
+  if (c.status === 'ended') return '比赛已结束，仅可查看题目'
+  if (!(c.is_registered === true || user.value?.is_admin === true)) {
+    return '报名后可进入做题'
+  }
+  return ''
+})
 </script>
 
 <template>
@@ -61,13 +83,16 @@ const badgeColors: Record<string, string> = {
           >
             {{ difficultyLabel[problem.difficulty] || problem.difficulty }}
           </span>
-          <UButton
-            color="primary"
-            class="gap-1.5 px-4 py-2 text-xs"
-            :to="`/contests/${contestId}/problems/${label}/editor`"
-          >
-            <UIcon name="i-lucide-pencil-ruler" class="size-3.5" />去做题
-          </UButton>
+          <template v-if="canUseEditor">
+            <UButton
+              color="primary"
+              class="gap-1.5 px-4 py-2 text-xs"
+              :to="`/contests/${contestId}/problems/${label}/editor`"
+            >
+              <UIcon name="i-lucide-pencil-ruler" class="size-3.5" />去做题
+            </UButton>
+          </template>
+          <span v-else-if="accessHint" class="text-xs text-text-muted">{{ accessHint }}</span>
         </header>
 
         <section class="rounded-xl border border-border bg-white p-6 lg:p-8">

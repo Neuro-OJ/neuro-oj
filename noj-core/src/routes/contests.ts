@@ -27,9 +27,13 @@ const MAX_CODE_LENGTH = 100 * 1024;
 async function requireContestAccess(
   contestId: string,
   userId: string,
+  isAdmin = false,
 ): Promise<Awaited<ReturnType<typeof getContest>>> {
   const contest = await getContest(contestId, userId);
-  if (contest.status !== "ended" && !await isParticipant(contestId, userId)) {
+  if (
+    contest.status !== "ended" && !isAdmin &&
+    !await isParticipant(contestId, userId)
+  ) {
     throw new ForbiddenError("仅参赛者可访问竞赛题目");
   }
   if (contest.status === "pending") {
@@ -78,7 +82,7 @@ contests.post("/:id/register", authMiddleware, async (c) => {
 contests.get("/:id/problems", authMiddleware, async (c) => {
   const contestId = c.req.param("id")!;
   const userId = c.var.userId!;
-  await requireContestAccess(contestId, userId);
+  await requireContestAccess(contestId, userId, c.var.isAdmin);
   const data = await getContestProblems(contestId, userId);
   return c.json({ data });
 });
@@ -86,7 +90,7 @@ contests.get("/:id/problems", authMiddleware, async (c) => {
 contests.get("/:id/problems/:label", authMiddleware, async (c) => {
   const contestId = c.req.param("id")!;
   const userId = c.var.userId!;
-  await requireContestAccess(contestId, userId);
+  await requireContestAccess(contestId, userId, c.var.isAdmin);
   const problem = (await getContestProblems(contestId, userId)).find(
     (item) => item.label === c.req.param("label"),
   );
@@ -124,7 +128,7 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
   ) {
     throw new ForbiddenError("仅可在竞赛进行期间提交");
   }
-  if (!await isParticipant(contestId, userId)) {
+  if (!await isParticipant(contestId, userId) && !c.var.isAdmin) {
     throw new ForbiddenError("仅参赛者可提交");
   }
 

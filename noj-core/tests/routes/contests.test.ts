@@ -354,3 +354,167 @@ Deno.test({
     assertEquals(body.code, "NOT_FOUND");
   },
 });
+
+Deno.test({
+  name:
+    "contests routes: 管理员未报名可访问/提交，结束后仅可查看（编辑器权限控制）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const adminId = crypto.randomUUID();
+    const userId = crypto.randomUUID();
+    const problemId = crypto.randomUUID();
+    const unique = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+    const now = new Date().toISOString();
+    const app = createApp();
+
+    await db.insert(users).values([
+      {
+        id: adminId,
+        username: `ac-admin-${unique}`,
+        email: `ac-admin-${unique}@example.com`,
+        password_hash: "hash",
+        role: "admin",
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: userId,
+        username: `ac-user-${unique}`,
+        email: `ac-user-${unique}@example.com`,
+        password_hash: "hash",
+        role: "user",
+        created_at: now,
+        updated_at: now,
+      },
+    ]);
+    await db.insert(problems).values({
+      id: problemId,
+      title: "A+B",
+      description: "测试题面",
+      difficulty: "easy",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 1000,
+          memory_limit_mb: 256,
+        },
+        solution: {
+          image: "noj-solution-python",
+          entry: "solution.py",
+          call_timeout_ms: 5000,
+          memory_limit_mb: 256,
+        },
+      },
+      number: 880001,
+      owner_id: adminId,
+      type: "P",
+      created_at: now,
+      updated_at: now,
+    });
+
+    const adminToken = await signToken({
+      sub: adminId,
+      role: "admin",
+      is_admin: true,
+    });
+    const userToken = await signToken({ sub: userId, role: "user" });
+
+    let contestId: string | undefined;
+    let adminSubmissionId: string | undefined;
+
+    try {
+      const create = await jsonRequest(app, "/api/v1/admin/contests", {
+        method: "POST",
+        token: adminToken,
+        body: {
+          title: "权限控制竞赛",
+          start_time: new Date(Date.now() - 60_000).toISOString(),
+          end_time: new Date(Date.now() + 3_600_000).toISOString(),
+          type: "icpc",
+          problems: [{ problem_id: problemId, label: "A", sort_order: 0 }],
+        },
+      });
+      assertEquals(create.status, 201);
+      contestId = (await create.json()).data.id;
+
+      // 未报名普通用户：进行中不可访问题目
+      const userProblems = await jsonRequest(
+        app,
+        `/api/v1/contests/${contestId}/problems`,
+        { token: userToken },
+      );
+      assertEquals(userProblems.status, 403);
+
+      // 管理员未报名：可访问题目
+      const adminProblems = await jsonRequest(
+        app,
+        `/api/v1/contests/${contestId}/problems`,
+        { token: adminToken },
+      );
+      assertEquals(adminProblems.status, 200);
+
+      // 管理员未报名：进行中可提交
+      const adminSubmit = await jsonRequest(
+        app,
+        `/api/v1/contests/${contestId}/submit`,
+        {
+          method: "POST",
+          token: adminToken,
+          body: {
+            problem_id: problemId,
+            language: "python3",
+            code: "print(1+2)",
+          },
+        },
+      );
+      assertEquals(adminSubmit.status, 201);
+      adminSubmissionId = (await adminSubmit.json()).data.id;
+
+      // 结束后：题目可查看（管理员/未报名用户均可），提交一律拒绝
+      await db.update(contests).set({
+        end_time: new Date(Date.now() - 60_000).toISOString(),
+      }).where(eq(contests.id, contestId));
+
+      const endedAdminProblems = await jsonRequest(
+        app,
+        `/api/v1/contests/${contestId}/problems`,
+        { token: adminToken },
+      );
+      assertEquals(endedAdminProblems.status, 200);
+
+      const endedUserProblems = await jsonRequest(
+        app,
+        `/api/v1/contests/${contestId}/problems`,
+        { token: userToken },
+      );
+      assertEquals(endedUserProblems.status, 200);
+
+      const endedAdminSubmit = await jsonRequest(
+        app,
+        `/api/v1/contests/${contestId}/submit`,
+        {
+          method: "POST",
+          token: adminToken,
+          body: {
+            problem_id: problemId,
+            language: "python3",
+            code: "print(1+2)",
+          },
+        },
+      );
+      assertEquals(endedAdminSubmit.status, 403);
+    } finally {
+      if (adminSubmissionId) {
+        await db.delete(submissions).where(
+          eq(submissions.id, adminSubmissionId),
+        );
+      }
+      if (contestId) {
+        await db.delete(contests).where(inArray(contests.id, [contestId]));
+      }
+    }
+  },
+});
