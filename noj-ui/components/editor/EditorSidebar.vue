@@ -298,6 +298,22 @@ function formatElapsed(iso: string) {
   --tw-prose-bold: #e2e8f0;
 }
 
+/* 亮色：加粗标签（如 **输入** / **输出**）与标题也强制纯黑 */
+.editor-sidebar-prose :deep(strong),
+.editor-sidebar-prose :deep(h1),
+.editor-sidebar-prose :deep(h2),
+.editor-sidebar-prose :deep(h3) {
+  color: #000;
+}
+
+/* 暗色：恢复主题浅色 */
+:global(.editor-dark) .editor-sidebar-prose :deep(strong),
+:global(.editor-dark) .editor-sidebar-prose :deep(h1),
+:global(.editor-dark) .editor-sidebar-prose :deep(h2),
+:global(.editor-dark) .editor-sidebar-prose :deep(h3) {
+  color: #e2e8f0;
+}
+
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 180ms ease, transform 180ms ease;
