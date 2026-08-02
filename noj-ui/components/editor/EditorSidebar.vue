@@ -131,7 +131,7 @@ function formatElapsed(iso: string) {
       </div>
 
       <div class="prose prose-sm prose-neuro max-w-none">
-        <MarkdownRenderer :content="problem.description" />
+        <MarkdownRenderer class="editor-sidebar-prose" :content="problem.description" />
       </div>
     </div>
 
@@ -285,6 +285,19 @@ function formatElapsed(iso: string) {
 </template>
 
 <style scoped>
+/* 左侧题目文字：亮色模式纯黑；暗色模式恢复主题浅色保证可读 */
+.editor-sidebar-prose {
+  --tw-prose-body: #000;
+  --tw-prose-headings: #000;
+  --tw-prose-bold: #000;
+}
+
+:global(.editor-dark) .editor-sidebar-prose {
+  --tw-prose-body: #e2e8f0;
+  --tw-prose-headings: #e2e8f0;
+  --tw-prose-bold: #e2e8f0;
+}
+
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 180ms ease, transform 180ms ease;
