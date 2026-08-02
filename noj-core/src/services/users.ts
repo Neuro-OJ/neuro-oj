@@ -264,7 +264,7 @@ export async function getUserProfile(
       moment_count: Number(communityStats?.moment_count ?? 0),
     },
     solutions: solutions.map(
-      (item: { id: string; title: string; created_at: string }) => ({
+      (item: { id: string; title: string | null; created_at: string }) => ({
         ...item,
         title: item.title ?? "",
       }),
