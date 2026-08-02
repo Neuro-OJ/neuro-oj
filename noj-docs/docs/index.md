@@ -6,7 +6,7 @@ NOJ（Neuro OJ）是面向大模型能力评测和编程实训场景的在线评
 
 - [做题人](users/index.md)：了解如何注册登录、查找题目、提交代码和理解评测结果。
 - [运营者](operators/index.md)：了解如何启动、初始化、部署和维护一个 NOJ 实例。
-- [出题人](problemsetters/index.md)：了解 NOJ 的评测模型、支持包结构、测试数据和 SDK 语义。
+- [出题人](problemsetters/index.md)：了解 NOJ 的评测模型、统一题目包结构、测试数据和 SDK 语义。
 - [参考](reference/index.md)：查询术语、结果状态和稳定概念。
 
 ## 推荐阅读路径

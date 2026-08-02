@@ -31,7 +31,7 @@ deno task dev-setup           # 开发环境一键初始化（= noj dev-setup）
 
 > dev-setup 面向开发、测试和首次初始化。**生产环境**请按需执行
 > `db:migrate` → `init:system` → `bootstrap:admin` → `problems:build` →
-> `problems:import`（正式题目包），不要执行 dev-setup 的 dev 数据部分。
+> `problems:import`（正式统一题目包），不要执行 dev-setup 的 dev 数据部分。
 
 ## 管理员初始化
 

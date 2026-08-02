@@ -27,5 +27,5 @@ mkdocs build --strict
 
 - 正文优先使用中文，代码标识符、命令、状态名和协议字段保留原文。
 - 面向读者写作，避免混入内部开发流程或实现讨论。
-- 出题人文档必须与 `noj-core/data/problems-src`、支持包构建脚本和 `noj-judge` Python SDK 的当前行为一致。
+- 出题人文档必须与 `noj-core/data/problems-src`、统一题目包构建脚本和 `noj-judge` Python SDK 的当前行为一致。
 - 当评测协议、SDK 或 seed 脚本变化时，同步更新对应文档。

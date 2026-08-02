@@ -55,4 +55,4 @@ from noj_solution_sdk import call_capability
 
 `call_capability()` 在第一阶段不支持 Solution 到 Evaluator 的能力调用，会抛出 `UnsupportedCapability`。普通题目不需要导入该 SDK。
 
-这也意味着当前 RPC 方向是 Evaluator 主动调用 Solution；Solution 不能主动读取 evaluator 的能力、文件或隐藏数据。
+这也意味着当前 RPC 方向是 Evaluator 主动调用 Solution；Solution 不能主动读取 evaluator 的能力、文件或隐藏用例数据。

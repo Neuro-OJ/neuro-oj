@@ -15,7 +15,7 @@ NOJ 的出题模型与传统 OJ 不同。你不是只准备输入输出文件，
 ## 推荐阅读顺序
 
 1. [评测模型](judge-model.md)
-2. [题目支持包](support-package.md)
+2. [统一题目包](support-package.md)
 3. [测试数据](cases.md)
 4. [Evaluator SDK](evaluator-sdk.md)
 5. [Solution SDK](solution-sdk.md)

@@ -166,8 +166,8 @@ NOJ RPC 使用 JSON 加一层 NOJ codec。当前支持：
 
 ## 传递数据的设计建议
 
-- 只把用户求解所需的输入传给 Solution，不要传隐藏答案。
-- 大型静态数据应放在支持包中由 Evaluator 读取，再传递必要片段给 Solution。
+- 只把用户求解所需的输入传给 Solution，不要传隐藏用例的期望答案。
+- 大型静态数据应放在纯净评测包中由 Evaluator 读取，再传递必要片段给 Solution。
 - 返回值应尽量稳定、可 JSON 化，便于 evaluator 比较和写入 `details`。
 - 对浮点题目，应在 evaluator 中定义误差容忍，而不是要求用户返回字符串。
 - 不要把 RPC 当作文件传输通道；大量数据会增加序列化和日志成本。
@@ -176,4 +176,4 @@ NOJ RPC 使用 JSON 加一层 NOJ codec。当前支持：
 
 Judge Worker 会限制收集到的容器输出大小。当前单个输出缓冲最多约 4 MiB，超过后会追加截断提示。
 
-当调用失败时，Judge Worker 会把 Solution stderr 的尾部片段附加到错误对象中，帮助 evaluator 记录调试信息。出题人应避免把完整 stderr 原样暴露给所有用户，尤其是隐藏测试场景。
+当调用失败时，Judge Worker 会把 Solution stderr 的尾部片段附加到错误对象中，帮助 evaluator 记录调试信息。出题人应避免把完整 stderr 原样暴露给所有用户，尤其是隐藏用例场景。

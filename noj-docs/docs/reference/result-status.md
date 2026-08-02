@@ -1,5 +1,7 @@
 # 结果状态
 
+结果状态（verdict）是一次提交的最终判定，由题目 evaluator 决定。术语定义见[术语表](glossary.md)。
+
 ## Accepted
 
 题目 evaluator 判定提交通过。是否满分由该题的评分逻辑决定；通常 Accepted 表示达到题目定义的通过条件。
@@ -11,7 +13,7 @@
 在 NOJ 的函数调用型评测中，`WrongAnswer` 的语义比传统 OJ 更宽：
 
 - 返回值、格式或评分结果不满足要求，会是 `WrongAnswer`。
-- 用户函数抛异常后，如果 evaluator 把该次调用按失败样例处理，最终也可能是 `WrongAnswer`。
+- 用户函数抛异常后，如果 evaluator 把该次调用按失败用例处理，最终也可能是 `WrongAnswer`。
 - 调用阶段的超时或资源异常，如果 evaluator 选择把它记为普通失败而不是直接中断整场评测，最终同样可能落成 `WrongAnswer`。
 
 ## TimeLimitExceeded
@@ -28,13 +30,13 @@
 
 ## SystemError
 
-系统错误。通常表示评测环境、支持包、镜像、协议、运行时配置或 evaluator 自身存在问题。
+系统错误。通常表示评测环境、纯净评测包、镜像、协议、运行时配置或 evaluator 自身存在问题。
 
 在当前双容器 Python 模型下，下面这些情况通常更容易得到 `SystemError`：
 
 - Solution Host 无法启动。
 - 用户代码语法错误，导致模块无法导入。
-- 支持包缺失 `evaluate.py` 或 evaluator 自身崩溃。
+- 纯净评测包缺失 `evaluate.py` 或 evaluator 自身崩溃。
 - 运行时镜像不存在或白名单配置错误。
 
 做题人遇到 SystemError 时，一般不应通过修改答案逻辑解决，而应联系运营者或出题人排查。

@@ -46,12 +46,12 @@ nav:
       - operators/index.md
       - 本地启动: operators/local-start.md
       - CLI 初始化: operators/cli.md
-      - 存储与支持包交付: operators/storage.md
+      - 存储与评测包交付: operators/storage.md
       - Judge Worker 运维: operators/judge-workers.md
   - 出题人:
       - problemsetters/index.md
       - 评测模型: problemsetters/judge-model.md
-      - 题目支持包: problemsetters/support-package.md
+      - 统一题目包: problemsetters/support-package.md
       - 测试数据: problemsetters/cases.md
       - Evaluator SDK: problemsetters/evaluator-sdk.md
       - Solution SDK: problemsetters/solution-sdk.md

@@ -2,7 +2,7 @@
 
 ## Worker 职责
 
-`noj-judge` 从 Redis 队列拉取评测任务，下载支持包，创建或复用 Docker 容器，运行 evaluator，并把结果写回 Redis。
+`noj-judge` 从 Redis 队列拉取评测任务，下载纯净评测包，创建或复用 Docker 容器，运行 evaluator，并把结果写回 Redis。
 
 ## 双容器运行时
 
@@ -20,7 +20,7 @@ noj-core 维护评测镜像白名单。Judge Worker 启动时会通过 Redis RPC
 镜像规则包含：
 
 - `image`：镜像名。
-- `role`：`evaluator` 或 `solution`。
+- `kind`：`evaluator` 或 `solution`。
 - `mode`：版本匹配模式。
 
 ## 容器池
@@ -33,4 +33,4 @@ Judge Worker 使用容器池预热 evaluator 和 solution 容器。空闲容器�
 - Docker 连接失败：确认 Docker daemon 可用，当前用户有权限访问。
 - 镜像不存在：先构建或拉取 `noj-evaluator-python:3.12` 与 `noj-solution-python:3.12`。
 - 白名单为空：确认 noj-core 已启动、`deno task dev-setup`（或 `init:system`）已执行，且 Judge Worker 能通过 Redis RPC 请求到白名单。
-- `SystemError`：通常是支持包、运行时配置、镜像、协议或 evaluator 本身异常，需要查看 Judge Worker 日志。
+- `SystemError`：通常是纯净评测包、运行时配置、镜像、协议或 evaluator 本身异常，需要查看 Judge Worker 日志。

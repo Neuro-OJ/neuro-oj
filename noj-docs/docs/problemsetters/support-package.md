@@ -2,7 +2,7 @@
 
 统一题目包是 NOJ 的**题目导入载体**：单个 zip 包含题面、评测内容与评测配置，
 通过 `POST /api/v1/problems/import-bundle`（管理界面上传）或 `noj problems import`
-一键导入，创建或更新题目。
+一键导入，创建或更新题目。术语说明见[术语表](../reference/glossary.md)。
 
 ## 包结构
 
@@ -16,7 +16,7 @@
 └── assets/           # 可选：其他 evaluate.py 需要的文件
 ```
 
-- `evaluate.py` **必须位于 zip 根级**——Judge 将包解压到容器 `/workspace` 后
+- `evaluate.py` **必须位于 zip 根级**——Judge Worker 将包解压到容器 `/workspace` 后
   路径固定为 `/workspace/evaluate.py`。
 - 测试数据（testcase）**不标准化**：`visible.jsonl` / `hidden.jsonl` 只是内置
   样例题的约定，你可以用 `cases/*.json`、SQLite、CSV 等任何方式组织，只要

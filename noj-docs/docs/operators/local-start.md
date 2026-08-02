@@ -25,7 +25,7 @@ deno task dev-setup
 deno task dev
 ```
 
-`deno task dev-setup` 会依次执行数据库迁移、系统初始化、管理员引导，并构建/导入题目包。`deno task dev` 启动后端开发服务。
+`deno task dev-setup` 会依次执行数据库迁移、系统初始化、管理员引导，并构建/导入统一题目包。`deno task dev` 启动后端开发服务。
 
 ## 启动 noj-ui
 
