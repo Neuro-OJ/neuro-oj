@@ -111,7 +111,7 @@ export default withMermaid(defineConfig({
             { text: "Evaluator SDK", link: "/problemsetters/evaluator-sdk" },
             { text: "Solution SDK", link: "/problemsetters/solution-sdk" },
             { text: "RPC 与可传递数据", link: "/problemsetters/rpc" },
-            { text: "评测镜像与多语言", link: "/problemsetters/runtimes" },
+            { text: "评测镜像与运行时", link: "/problemsetters/runtimes" },
           ],
         },
       ],

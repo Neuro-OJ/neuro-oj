@@ -56,6 +56,20 @@ except SolutionCallError as exc:
 | `InvalidRpcResponse` | Judge Worker 返回给 evaluator 的响应不是合法 JSON |
 | `RpcChannelClosed` | evaluator 无法继续从 Judge Worker 读取 RPC 响应 |
 
+### 参数与返回值类型校验（RejectedError）
+
+`runner.call()` 在发出 RPC 帧之前会**递归校验参数类型**：只允许 `None / bool / int / float / str / bytes / list / dict`（dict 的 key 必须是 `str`），任何其他类型——包括嵌套在 list / dict 中的自定义对象、`set`、`tuple`、函数、生成器、文件句柄等——都会**直接抛出 `RejectedError`**，错误消息带路径与类型名：
+
+```text
+arg[0]: 不支持的类型 MyClass（仅 None/bool/int/float/str/bytes/list/dict）
+```
+
+此时 RPC 帧**不会发出**，Solution 侧完全不知情。帧序列化超过 1 MiB 软上限时同样抛出 `RejectedError`。
+
+返回值路径对称：Solution 返回不支持类型时，Judge Worker 以 `code="Rejected"` 的错误帧返回，Evaluator 侧同样收到 `RejectedError`。
+
+出题人可以用 `try/except RejectedError` 把这类调用按失败用例处理；不捕获则 `evaluate.py` 异常退出，该次评测落为 `SystemError`。
+
 ## 输出评测结果
 
 Evaluator 使用 `result` 模块输出最终结果。

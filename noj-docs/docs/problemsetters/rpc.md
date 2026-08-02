@@ -162,6 +162,12 @@ Neuro OJ RPC 使用 JSON 加一层 Neuro OJ codec。当前支持：
 - 自定义对象实例。
 - 异常对象本身。
 
+### 行为
+
+- **Evaluator 传参**：`runner.call()` 在发出 RPC 帧之前递归校验参数（`validate_type`）。遇到不允许的类型**立即抛出 `RejectedError`**，错误消息带路径与类型名（如 `arg[0]: 不支持的类型 MyClass（仅 None/bool/int/float/str/bytes/list/dict）`）；RPC 帧不发出，Solution 侧完全不知情。帧序列化超过 1 MiB 软上限同理。
+- **Solution 返回值**：校验失败时 Judge Worker 返回 `code="Rejected"` 的错误帧，Evaluator 侧收到 `RejectedError`（与传参失败是同一个异常类型）。
+- 出题人可用 `try/except RejectedError` 把这类调用按失败用例处理；不捕获则 `evaluate.py` 异常退出，该次评测落为 `SystemError`。
+
 如果题目需要复杂结构，建议转换成由 `dict[str, ...]`、`list`、数字、字符串和字节串组成的数据结构。
 
 ## 传递数据的设计建议

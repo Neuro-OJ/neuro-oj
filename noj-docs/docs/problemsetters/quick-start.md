@@ -24,4 +24,4 @@
 ## 进阶
 
 - 自定义 evaluator 的调用细节与可传递数据类型：[Evaluator SDK](evaluator-sdk.md) / [RPC 与可传递数据](rpc.md)
-- 支持新评测语言或运行时镜像：[评测镜像与多语言](runtimes.md)
+- 镜像白名单与双容器运行时：[评测镜像与运行时](runtimes.md)
