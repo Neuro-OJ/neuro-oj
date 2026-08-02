@@ -1,10 +1,4 @@
-{"id":"h001","input":"2 2\n","expected":4}
-{"id":"h002","input":"-1 -1\n","expected":-2}
-{"id":"h003","input":"100000 200000\n","expected":300000}
-{"id":"h004","input":"-5000 3000\n","expected":-2000}
-{"id":"h005","input":"0 0\n","expected":0}
-{"id":"h006","input":"10 -10\n","expected":0}
-{"id":"h007","input":"999999 1\n","expected":1000000}
-{"id":"h008","input":"-123456 123456\n","expected":0}
-{"id":"h009","input":"1000000000 2000000000\n","expected":3000000000}
-{"id":"h010","input":"-999999999 999999999\n","expected":0}
+{"id":"t0_h001","text":"西区十号门关闭","expected_gate_id":"W-10","expected_status":"closed"}
+{"id":"t0_h002","text":"南侧4号门已开启","expected_gate_id":"S-04","expected_status":"open"}
+{"id":"t0_h003","text":"外环二号门报个故障","expected_gate_id":"O-02","expected_status":"fault"}
+{"id":"t0_h004","text":"北区五号门暂时封闭","expected_gate_id":"N-05","expected_status":"closed"}
