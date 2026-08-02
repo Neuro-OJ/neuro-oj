@@ -457,6 +457,8 @@ Deno.test({
       assertEquals(adminProblems.status, 200);
 
       // 管理员未报名：进行中可提交
+      // 确保共享 Redis 连接就绪（前序测试的 mock teardown 可能留下未就绪单例）
+      await initRedisForTest();
       const adminSubmit = await jsonRequest(
         app,
         `/api/v1/contests/${contestId}/submit`,
