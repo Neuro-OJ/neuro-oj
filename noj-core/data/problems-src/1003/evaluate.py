@@ -1,22 +1,20 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
 """
-T0-LMCC 评测脚本：星港舱门报码归一化（双容器版）
+T0-LMCC 评测脚本：A+B Problem（双容器版）
 
 评分（总分 10）：
-- 内容正确 8 分：按字段级准确率计分
-- 格式正确 2 分：按格式命中率计分
+- 内容正确 8 分：每通过一个测试点得 0.4 分
+- 格式正确 2 分：所有输出均为整数格式
 """
 
 import json
-import re
 import sys
+from pathlib import Path
 from typing import Any
 
 from noj_evaluator_sdk.runner import SolutionRunner
 
 # 路径配置
-DATA_DIR = __file__ and __file__[0] and "" or ""  # workaround
-from pathlib import Path
 DATA_DIR = Path(__file__).parent
 VISIBLE_DATA = DATA_DIR / "visible.jsonl"
 HIDDEN_DATA = DATA_DIR / "hidden.jsonl"
@@ -26,16 +24,12 @@ CONTENT_SCORE_FULL = 8.0
 FORMAT_SCORE_FULL = 2.0
 FULL_SCORE = CONTENT_SCORE_FULL + FORMAT_SCORE_FULL
 
-# 格式校验
-GATE_PATTERN = re.compile(r"^(E|W|N|S|I|O)-(\d{2})$")
-ALLOWED_STATUS = {"open", "closed", "fault"}
-
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
     """加载测试数据"""
-    rows = []
     if not path.exists():
-        return rows
+        return []
+    rows = []
     with path.open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -44,76 +38,60 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def gate_id_valid(gate_id: str) -> bool:
-    """校验 gate_id 是否符合 X-YY 格式，且编号在 01-12"""
-    match = GATE_PATTERN.fullmatch(str(gate_id))
-    if not match:
-        return False
-    return 1 <= int(match.group(2)) <= 12
-
-
-def parse_prediction(pred_text: str) -> tuple[dict | None, bool]:
-    """解析模型输出，返回 (解析结果, 格式是否正确)"""
-    try:
-        obj = json.loads(pred_text)
-    except Exception:
-        return None, False
-
-    if not isinstance(obj, dict):
-        return None, False
-
-    # 格式分：必须恰好两个键
-    if set(obj.keys()) != {"gate_id", "status"}:
-        return obj, False
-
-    fmt_ok = gate_id_valid(obj.get("gate_id", "")) and obj.get("status") in ALLOWED_STATUS
-    return obj, fmt_ok
-
-
-def call_solution(runner: SolutionRunner, text: str) -> str:
+def call_solution(runner: SolutionRunner, input_str: str) -> str:
     """通过 NDJSON 协议调用 Solution 容器中的用户代码"""
-    result = runner.call("solve", text)
-    # SDK 可能返回序列化后的值，确保为字符串
+    result = runner.call("solve", input_str)
     return str(result)
 
 
 def eval_split(runner: SolutionRunner, split_name: str, data: list[dict]) -> dict[str, Any]:
     """评测一个数据集"""
-    field_correct = 0
-    format_correct = 0
-    total_fields = len(data) * 2
+    passed = 0
+    total = len(data)
+    all_valid_int = True
     case_results = []
 
     for item in data:
-        raw_output = call_solution(runner, item["text"])
-        pred_obj, fmt_ok = parse_prediction(raw_output)
+        try:
+            output_line = call_solution(runner, item["input"])
+        except Exception as e:
+            output_line = ""
+            print(f"  [!] Solution 调用异常: {e}")
 
-        # 字段级匹配
-        hit_gate = pred_obj and pred_obj.get("gate_id") == item["expected_gate_id"]
-        hit_status = pred_obj and pred_obj.get("status") == item["expected_status"]
+        actual = output_line.strip().splitlines()[-1] if output_line.strip() else ""
+        expected = str(item["expected"]).strip()
 
-        field_correct += int(hit_gate) + int(hit_status)
-        format_correct += int(fmt_ok)
+        # 检查输出是否为有效整数
+        is_valid = False
+        try:
+            int(actual)
+            is_valid = True
+        except ValueError:
+            all_valid_int = False
+
+        # 内容匹配
+        content_ok = actual == expected
+        if content_ok:
+            passed += 1
 
         case_results.append({
             "id": item["id"],
-            "expected_gate_id": item["expected_gate_id"],
-            "actual_gate_id": pred_obj.get("gate_id") if pred_obj else None,
-            "expected_status": item["expected_status"],
-            "actual_status": pred_obj.get("status") if pred_obj else None,
-            "format_ok": fmt_ok,
+            "input": item["input"],
+            "expected": expected,
+            "actual": actual,
+            "content_ok": content_ok,
         })
 
-        print(f"[{split_name}] {item['id']}")
-        print(f"  输入: {item['text']}")
-        print(f"  输出: {raw_output.strip()}")
-        print(f"  命中: gate_id={hit_gate}, status={hit_status}, format={fmt_ok}")
+        status = "PASS" if content_ok else "FAIL"
+        print(f"[{split_name}] {item['id']}: {status}")
+        print(f"  输入: {repr(item['input'])}")
+        print(f"  期望: {expected}")
+        print(f"  输出: {actual}")
 
     return {
-        "field_correct": field_correct,
-        "total_fields": total_fields,
-        "format_correct": format_correct,
-        "total_cases": len(data),
+        "passed": passed,
+        "total": total,
+        "all_valid_int": all_valid_int,
         "cases": case_results,
     }
 
@@ -126,48 +104,40 @@ def main() -> None:
     hidden_missing = len(hidden_data) == 0
 
     print("=" * 48)
-    print("T0-LMCC 评测开始：星港舱门报码归一化（双容器）")
+    print("T0-LMCC 评测开始：A+B Problem（双容器版）")
     print("=" * 48)
 
-    # 评测可见集
     visible_stat = eval_split(runner, "VISIBLE", visible_data)
 
     if hidden_missing:
         print("\n⚠️ 隐藏数据未提供")
         hidden_stat = {
-            "field_correct": 0,
-            "total_fields": 0,
-            "format_correct": 0,
-            "total_cases": 0,
-            "cases": [],
+            "passed": 0, "total": 0, "all_valid_int": True, "cases": [],
         }
     else:
         hidden_stat = eval_split(runner, "HIDDEN", hidden_data)
 
-    # 计算分数
-    field_correct = visible_stat["field_correct"] + hidden_stat["field_correct"]
-    total_fields = visible_stat["total_fields"] + hidden_stat["total_fields"]
-    format_correct = visible_stat["format_correct"] + hidden_stat["format_correct"]
-    total_cases = visible_stat["total_cases"] + hidden_stat["total_cases"]
+    total_passed = visible_stat["passed"] + hidden_stat["passed"]
+    total_cases = visible_stat["total"] + hidden_stat["total"]
+    format_ok = visible_stat["all_valid_int"] and hidden_stat["all_valid_int"]
 
-    score_content = CONTENT_SCORE_FULL * field_correct / max(1, total_fields)
-    score_format = FORMAT_SCORE_FULL * format_correct / max(1, total_cases)
+    score_content = CONTENT_SCORE_FULL * total_passed / max(1, total_cases)
+    score_format = FORMAT_SCORE_FULL if format_ok else 0
     total_score = score_content + score_format
 
     print("\n" + "-" * 48)
-    print(f"可见字段: {visible_stat['field_correct']}/{visible_stat['total_fields']}")
-    print(f"隐藏字段: {hidden_stat['field_correct']}/{hidden_stat['total_fields']}")
-    print(f"总字段命中: {field_correct}/{total_fields} -> {score_content:.2f}/{CONTENT_SCORE_FULL}")
-    print(f"总格式命中: {format_correct}/{total_cases} -> {score_format:.2f}/{FORMAT_SCORE_FULL}")
+    print(f"可见: {visible_stat['passed']}/{visible_stat['total']}")
+    print(f"隐藏: {hidden_stat['passed']}/{hidden_stat['total']}")
+    print(f"总计: {total_passed}/{total_cases} -> {score_content:.2f}/{CONTENT_SCORE_FULL}")
+    print(f"格式: {'✅' if format_ok else '❌'} -> {score_format:.2f}/{FORMAT_SCORE_FULL}")
     print(f"总分: {total_score:.2f}/{FULL_SCORE}")
 
     if hidden_missing:
         print("说明: 当前分数仅基于公开数据")
 
-    # 输出结果
     result = {
         "status": "Accepted" if total_score == FULL_SCORE else "WrongAnswer",
-        "score": int(total_score * 100),  # 转换为整数
+        "score": int(total_score * 100),
         "details": {
             "score_content": round(score_content, 2),
             "score_format": round(score_format, 2),

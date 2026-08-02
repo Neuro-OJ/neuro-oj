@@ -1,21 +1,21 @@
 {
   "format_version": 1,
   "number": 1003,
-  "title": "1003 T0-LMCC：星港舱门报码归一化",
+  "title": "1003 T0-LMCC：A+B Problem",
   "difficulty": "easy",
   "type": "P",
-  "categories": ["LMCC 样例题", "算法"],
+  "categories": ["算法"],
   "runtime_config": {
     "evaluator": {
       "image": "noj-evaluator-python",
-      "time_limit_ms": 5000,
-      "memory_limit_mb": 512
+      "time_limit_ms": 1000,
+      "memory_limit_mb": 256
     },
     "solution": {
       "image": "noj-solution-python",
       "entry": "submission_sample.py",
       "call_timeout_ms": 5000,
-      "memory_limit_mb": 512
+      "memory_limit_mb": 256
     }
   }
 }
