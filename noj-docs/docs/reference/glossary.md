@@ -29,6 +29,7 @@ Neuro OJ 是本项目的全称（英文 "Neuro" + "Online Judge"）。文档正�
 ::: warning 易混淆
     提交（记录）≠ Solution（该代码在评测运行时的角色）。"提交"指整个记录，Solution 指其中代码在 Solution 容器中的执行身份。
 
+:::
 ### 结果状态
 
 （verdict，`submissions.status`）
@@ -48,6 +49,7 @@ Neuro OJ 评分的基本单位：Evaluator 通过 `SolutionRunner` 对用户函�
 ::: warning 易混淆
     Evaluator ≠ 评测（整个流程）≠ Judge Worker（执行评测的进程）。Evaluator 是运行在容器中的出题人代码。
 
+:::
 ### Solution
 
 用户提交的代码，运行在 Solution 容器中。
@@ -55,6 +57,7 @@ Neuro OJ 评分的基本单位：Evaluator 通过 `SolutionRunner` 对用户函�
 ::: warning 易混淆
     `solution` 在社区域另指**题解**（社区帖子类型，`type: "solution"`）。评测域中 Solution 指用户代码角色，社区域中 solution 指解题文章，二者同名不同义：评测任务字段 `runtime_config.solution` 指用户代码，社区帖子 `type: "solution"` 指题解。
 
+:::
 ### Solution Host
 
 Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 的函数调用请求、执行用户函数并返回结果或错误。
@@ -68,6 +71,7 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 ::: warning 易混淆
     运行时配置 ≠ 资源限制。资源限制（时间/内存上限）是运行时配置中的一组字段，评测资源的实际控制还受 Judge Worker 执行环境（容器安全设置）影响。
 
+:::
 ### Judge Worker
 
 （`noj-judge` 进程）
@@ -77,6 +81,7 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 ::: warning 易混淆
     "Judge"是 Judge Worker 的简称，正文应避免单独使用（如"Judge 交付层"应写作"评测交付层"）；`noj-judge` 是仓库/模块名，指实现 Judge Worker 的 Rust 项目。
 
+:::
 ### 评测镜像
 
 （judge image，DB 表 `judge_images`）
@@ -86,6 +91,7 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 ::: warning 易混淆
     评测镜像 ≠ 镜像白名单。评测镜像是具体镜像，镜像白名单是允许 Judge Worker 使用的评测镜像列表。
 
+:::
 ### 镜像白名单 {#judge-image-whitelist}
 
 （DB 表 `judge_images`，API 中称 judgeImages）
@@ -109,6 +115,7 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 ::: warning 易混淆
     统一题目包 ≠ 纯净评测包。统一题目包是导入前的形态（含题面与元数据）；导入时系统剥离 `problem.json` / `statement.md` 等元数据后，得到纯净评测包。
 
+:::
 ### 纯净评测包
 
 （旧称"支持包"，代码字段 `support_package_storage_url`）
@@ -118,6 +125,7 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 ::: warning 易混淆
     文档旧称"支持包"。`support_package_storage_url` 字段与 UI 中的"题目支持包"区域仍沿用旧名，指的就是纯净评测包。若旧文档中的"支持包"指含元数据的导入载体，实为"统一题目包"。
 
+:::
 ### 测试数据
 
 （testcase）
@@ -127,6 +135,7 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 ::: warning 易混淆
     测试数据 ≠ 用例。用例（case）是测试数据中的一个条目，按内置约定含 `id`、`input`、`expected`、`score` 等字段。
 
+:::
 ### 用例
 
 （case）
@@ -136,6 +145,7 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 ::: warning 易混淆
     用例 ≠ 调用。用例是数据条目，调用（`runner.call()`）是 Evaluator 对用户函数的 RPC 请求；一个用例可能需要多次调用或一次调用来完成评分。
 
+:::
 ### 可见用例
 
 （visible case）
@@ -145,6 +155,7 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 ::: warning 易混淆
     可见用例 ≠ 样例。样例（sample）是题面中展示给用户的输入输出示例，通常取自可见用例，但"样例"强调展示性，"用例"是评分材料。
 
+:::
 ### 隐藏用例
 
 （hidden case）
@@ -154,6 +165,7 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 ::: warning 易混淆
     文档中的"隐藏测试""隐藏数据""评分材料"均指隐藏用例或其数据，应统一表述为"隐藏用例"。Solution 容器不应直接读取隐藏用例。
 
+:::
 ### 样例
 
 （sample）
@@ -163,6 +175,7 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 ::: warning 易混淆
     样例 ≠ 用例。样例用于说明题意，用例用于评分（可见用例或隐藏用例）。
 
+:::
 ## 存储与交付
 
 ### `noj-storage://`
@@ -176,6 +189,7 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 ::: warning 易混淆
     两层 URL 分工不同：`noj-storage://` 标识资源在存储后端中的位置（持久），`noj-download://` 描述本次任务如何获取内容（交付）。同一个存储记录可以在 local、S3 等后端之间切换交付方式。
 
+:::
 ## 社区
 
 ### 题解
@@ -187,6 +201,7 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 ::: warning 易混淆
     与评测域的 **Solution**（用户提交的代码）同名。API 中二者均为 `solution`：评测任务字段 `runtime_config.solution` 指用户代码角色；社区帖子 `type: "solution"` 指题解。
 
+:::
 ## 能力
 
 ### 能力

@@ -7,14 +7,14 @@ hero:
   tagline: 函数调用型评测 / 双容器隔离沙箱 / 竞赛 · 社区 · RBAC
   actions:
     - theme: brand
-      text: 做题人快速开始
-      link: /users/getting-started
+      text: 什么是 Neuro OJ
+      link: /intro/what-is-noj
     - theme: alt
-      text: 本地启动
-      link: /operators/local-start
+      text: 快速开始
+      link: /intro/getting-started
     - theme: alt
-      text: 评测模型
-      link: /problemsetters/judge-model
+      text: 快速出一题
+      link: /problemsetters/quick-start
 
 features:
   - icon: 🧩

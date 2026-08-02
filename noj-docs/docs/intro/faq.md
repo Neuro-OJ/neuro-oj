@@ -1,6 +1,6 @@
 # 常见问题（FAQ）
 
-按角色整理的常见问题。找不到答案时，可查阅[术语表](glossary.md)与[结果状态](result-status.md)。
+按角色整理的常见问题。找不到答案时，可查阅[术语表](../reference/glossary.md)与[结果状态](../reference/result-status.md)。
 
 ## 做题人
 

@@ -57,27 +57,27 @@ print(2)
 `evaluate.py` 会读取 JSONL，用 `SolutionRunner` 调用 `solve`：
 
 ```python
-runner = SolutionRunner()
-a, b = parse_input(item["input"])
-raw_output = runner.call("solve", a, b)
+runner = SolutionRunner()                  # 创建调用器：负责向 Solution 容器转发 RPC 调用
+a, b = parse_input(item["input"])          # 解析当前用例输入（如 "1 2\n" → (1, 2)）
+raw_output = runner.call("solve", a, b)    # 调用用户实现的 solve(a, b)，返回其返回值
 ```
 
 调用失败时捕获 `SolutionCallError`：
 
 ```python
-except SolutionCallError as exc:
-    raw_output = None
-    output_text = ""
-    call_error = exc.error
+except SolutionCallError as exc:           # 用户函数调用失败（抛异常 / 超时 / 函数未定义等）
+    raw_output = None                      # 本次调用没有可用返回值
+    output_text = ""                       # 失败调用不产生输出文本
+    call_error = exc.error                 # 取出结构化错误：类型、消息与截断 traceback
 ```
 
 最终根据通过数量和格式检查计算分数：
 
 ```python
-if total_score == FULL_SCORE:
-    result.accept(score=score, details=details)
+if total_score == FULL_SCORE:                          # 全部用例通过且格式检查无误
+    result.accept(score=score, details=details)        # 判定 Accepted：写入总分与用例详情
 else:
-    result.wrong_answer(score=score, details=details)
+    result.wrong_answer(score=score, details=details)  # 未达满分：判定 WrongAnswer（可带部分分）
 ```
 
 ## 打包

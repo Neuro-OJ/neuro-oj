@@ -55,12 +55,21 @@ export default withMermaid(defineConfig({
       },
     ],
     sidebar: {
+      "/intro/": [
+        {
+          text: "入门",
+          items: [
+            { text: "什么是 Neuro OJ & 和传统 OJ 有什么不同", link: "/intro/what-is-noj" },
+            { text: "快速开始", link: "/intro/getting-started" },
+            { text: "常见问题", link: "/intro/faq" },
+          ],
+        },
+      ],
       "/users/": [
         {
           text: "做题人",
           items: [
             { text: "做题人文档", link: "/users/" },
-            { text: "快速开始", link: "/users/getting-started" },
             { text: "提交代码", link: "/users/submit" },
             { text: "理解结果", link: "/users/results" },
             { text: "账号与密码", link: "/users/account" },
@@ -84,18 +93,25 @@ export default withMermaid(defineConfig({
       ],
       "/problemsetters/": [
         {
-          text: "出题人",
+          text: "出题",
           items: [
             { text: "出题人文档", link: "/problemsetters/" },
+            { text: "快速出一题", link: "/problemsetters/quick-start" },
             { text: "评测模型", link: "/problemsetters/judge-model" },
             { text: "Web 题目编辑器", link: "/problemsetters/web-editor" },
             { text: "统一题目包", link: "/problemsetters/support-package" },
             { text: "测试数据", link: "/problemsetters/cases" },
+            { text: "A+B 示例题", link: "/problemsetters/ab-example" },
+          ],
+        },
+        {
+          text: "进阶",
+          collapsed: true,
+          items: [
             { text: "Evaluator SDK", link: "/problemsetters/evaluator-sdk" },
             { text: "Solution SDK", link: "/problemsetters/solution-sdk" },
             { text: "RPC 与可传递数据", link: "/problemsetters/rpc" },
             { text: "评测镜像与多语言", link: "/problemsetters/runtimes" },
-            { text: "A+B 示例题", link: "/problemsetters/ab-example" },
           ],
         },
       ],
@@ -106,7 +122,6 @@ export default withMermaid(defineConfig({
             { text: "参考文档", link: "/reference/" },
             { text: "术语表", link: "/reference/glossary" },
             { text: "结果状态", link: "/reference/result-status" },
-            { text: "常见问题（FAQ）", link: "/reference/faq" },
             { text: "更新日志", link: "/reference/changelog" },
           ],
         },

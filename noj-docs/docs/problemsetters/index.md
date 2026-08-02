@@ -1,25 +1,17 @@
 # 出题人文档
 
-Neuro OJ 的出题模型与传统 OJ 不同。你不是只准备输入输出文件，而是编写一个 evaluator，由 evaluator 调用用户提交的函数并决定评分。
+出题人文档帮助你把一道题从想法变成上线评测。与传统 OJ 不同，你不是准备输入输出文件，而是编写一个 evaluator，由它调用用户提交的函数并决定评分。
 
-## 核心概念
+## 文档内容
 
-- 用户提交 `solution.py`。
-- 出题人提供 `evaluate.py`、测试数据和其他支持文件。
-- Evaluator 运行在独立容器中。
-- Solution 运行在独立容器中。
-- Evaluator 通过 SDK 调用用户函数。
+- **快速出一题**：5 步端到端路径，新出题人从这里开始。
+- **评测模型**：双容器架构、调用链路与隔离边界。
+- **Web 题目编辑器**：创建题目、配置运行时与上传支持包。
+- **统一题目包**：zip 包结构、manifest 与导入语义。
+- **测试数据**：自由格式约定与隐藏用例防护建议。
+- **A+B 示例题**：一份完整可参考的样例题。
 
-正式出题的默认入口是 Web 管理界面：创建或编辑题目后，在题目编辑器中上传统一题目包 zip。仓库里的 `problems:import` / `dev-setup` 只用于样例题和开发环境初始化，不是正式出题发布流程。
+## 进阶
 
-## 推荐阅读顺序
-
-1. [评测模型](judge-model.md)
-2. [Web 题目编辑器](web-editor.md)
-3. [统一题目包](support-package.md)
-4. [测试数据](cases.md)
-5. [Evaluator SDK](evaluator-sdk.md)
-6. [Solution SDK](solution-sdk.md)
-7. [RPC 与可传递数据](rpc.md)
-8. [评测镜像与多语言](runtimes.md)
-9. [A+B 示例题](ab-example.md)
+- **Evaluator SDK / Solution SDK / RPC**：编写 evaluator、处理调用错误与可传递数据类型。
+- **评测镜像与多语言**：镜像白名单机制与如何添加新的评测运行时。

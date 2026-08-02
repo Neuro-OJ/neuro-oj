@@ -6,6 +6,7 @@ const route = useRoute()
 const { frontmatter } = useData()
 
 const tabs = [
+  { text: '入门', link: '/intro/', matchers: ['/intro/'] },
   { text: '做题人', link: '/users/', matchers: ['/users/'] },
   { text: '运营者', link: '/operators/', matchers: ['/operators/'] },
   { text: '出题人', link: '/problemsetters/', matchers: ['/problemsetters/'] },
