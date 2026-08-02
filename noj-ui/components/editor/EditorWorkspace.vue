@@ -222,7 +222,7 @@ const toolbarProblem = computed(() => {
 
 <template>
   <div
-    class="h-screen flex flex-col overflow-hidden"
+    class="h-screen flex flex-col overflow-hidden bg-bg-page"
     :class="{ 'editor-dark': theme === 'dark' }"
   >
     <ClientOnly>
