@@ -41,16 +41,18 @@
 **选择**：所有新指标均由 `check_ins` 聚合得出，不新增表、不写迁移。
 **理由**：表中每行 streak 即该连续段峰值，`MAX(streak)` 即可给出历史最长连续天数；累计/月度计数可直接 COUNT。
 
-### D2: 统计接口 `GET /api/v1/checkin/stats`（需登录，返回本人）
+### D2: 统计接口 `GET /api/v1/checkin/stats`
 
 响应：`{ total_days, current_streak, max_streak, month_days, last_checkin_date }`
 
 - `current_streak`：今日已签到 → 今日 streak；未签到 → 昨日 streak（昨日未签到则为 0）
 - `month_days`：默认当月（UTC）签到天数，支持 `month=YYYY-MM` 查询参数
+- 鉴权：`user_id` 参数缺省时返回本人（需登录）；传 `user_id` 时公开返回该用户统计（个人主页展示他人数据）
 
-### D3: 历史接口 `GET /api/v1/checkin/history?days=30|90|365`（需登录，返回本人）
+### D3: 历史接口 `GET /api/v1/checkin/history?days=30|90|365`
 
 响应：`{ days: ["YYYY-MM-DD", ...], total_days }`，`days` 为最近 N 天（含今日）中已签到的日期升序数组，供日历组件直接渲染。
+鉴权语义与 `/stats` 一致（user_id 缺省本人需登录，传 user_id 公开）。
 
 ### D4: `GET /api/v1/checkin/today` 语义微调
 

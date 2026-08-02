@@ -1,15 +1,15 @@
 import { Hono } from "hono";
-import { authMiddleware } from "../middleware/auth.ts";
-import { checkIn, getTodayCheckIn } from "../services/checkin.ts";
+import type { OptionalAuthEnv } from "../middleware/auth.ts";
+import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
+import { UnauthorizedError } from "../lib/errors.ts";
+import {
+  checkIn,
+  getCheckinHistory,
+  getCheckinStats,
+  getTodayCheckIn,
+} from "../services/checkin.ts";
 
-type Env = {
-  Variables: {
-    userId: string;
-    userRole: string;
-  };
-};
-
-const router = new Hono<Env>();
+const router = new Hono<OptionalAuthEnv>();
 
 /**
  * 签到。
@@ -29,6 +29,40 @@ router.get("/today", authMiddleware, async (c) => {
   const userId = c.var.userId!;
   const result = await getTodayCheckIn(userId);
   return c.json({ data: result });
+});
+
+/**
+ * 签到统计（issue #184）。
+ * GET /api/v1/checkin/stats?month=YYYY-MM&user_id=xxx
+ *
+ * 不传 user_id 时返回当前登录用户统计（需登录）；
+ * 传 user_id 时公开返回该用户统计（个人主页活跃度卡片展示他人数据）。
+ */
+router.get("/stats", optionalAuthMiddleware, async (c) => {
+  const targetUserId = c.req.query("user_id") ?? c.var.userId;
+  if (!targetUserId) {
+    throw new UnauthorizedError("未提供认证令牌");
+  }
+  const data = await getCheckinStats(
+    targetUserId,
+    c.req.query("month") ?? undefined,
+  );
+  return c.json({ data });
+});
+
+/**
+ * 签到历史（issue #184）。
+ * GET /api/v1/checkin/history?days=30|90|365&user_id=xxx
+ * 语义与 /stats 一致：user_id 缺省时返回本人（需登录）。
+ */
+router.get("/history", optionalAuthMiddleware, async (c) => {
+  const targetUserId = c.req.query("user_id") ?? c.var.userId;
+  if (!targetUserId) {
+    throw new UnauthorizedError("未提供认证令牌");
+  }
+  const days = Number(c.req.query("days") ?? "30");
+  const data = await getCheckinHistory(targetUserId, days);
+  return c.json({ data });
 });
 
 export default router;
