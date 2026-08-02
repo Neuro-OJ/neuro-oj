@@ -42,22 +42,30 @@ nav:
       - 快速开始: users/getting-started.md
       - 提交代码: users/submit.md
       - 理解结果: users/results.md
+      - 账号与密码: users/account.md
+      - 排行榜与签到: users/ranking.md
+      - 搜索与私信: users/search-messages.md
   - 运营者:
       - operators/index.md
       - 本地启动: operators/local-start.md
       - CLI 初始化: operators/cli.md
       - 存储与评测包交付: operators/storage.md
       - Judge Worker 运维: operators/judge-workers.md
+      - 后台管理指南: operators/admin-guide.md
   - 出题人:
       - problemsetters/index.md
       - 评测模型: problemsetters/judge-model.md
+      - Web 题目编辑器: problemsetters/web-editor.md
       - 统一题目包: problemsetters/support-package.md
       - 测试数据: problemsetters/cases.md
       - Evaluator SDK: problemsetters/evaluator-sdk.md
       - Solution SDK: problemsetters/solution-sdk.md
       - RPC 与可传递数据: problemsetters/rpc.md
+      - 评测镜像与多语言: problemsetters/runtimes.md
       - A+B 示例题: problemsetters/ab-example.md
   - 参考:
       - reference/index.md
       - 术语表: reference/glossary.md
       - 结果状态: reference/result-status.md
+      - 常见问题: reference/faq.md
+      - 更新日志: reference/changelog.md

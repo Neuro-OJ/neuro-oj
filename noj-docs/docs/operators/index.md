@@ -17,3 +17,4 @@
 - [初始化与 CLI](cli.md)
 - [存储与评测包交付](storage.md)
 - [Judge Worker 运维](judge-workers.md)
+- [后台管理指南](admin-guide.md)

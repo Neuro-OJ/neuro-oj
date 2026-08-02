@@ -161,18 +161,18 @@ neuro-oj/
 │   ├── deno.json              # 项目配置 + 导入映射
 │   ├── deno.lock              # 依赖锁定（提交到 git，用于 CI 缓存）
 │   ├── drizzle.config.ts      # Drizzle Kit 配置
-│   ├── drizzle/               # 32 个 SQL 迁移文件（自动生成，勿手改 _journal.json）
+│   ├── drizzle/               # SQL 迁移文件（自动生成，勿手改 _journal.json）
 │   ├── .env.example           # 环境变量模板（不提交 .env）
 │   ├── src/
 │   │   ├── main.ts            # 入口（启动校验 + 初始化顺序）
 │   │   ├── app.ts             # Hono 应用工厂（CORS + 路由 + 错误处理）
 │   │   ├── mod.ts             # 公共导出
-│   │   ├── routes/            # 16 个路由：admin / auth / categories / checkin / community / contests / conversations / health / problems / queue / rankings / search / sse / stats / submissions / users
-│   │   ├── services/          # 业务逻辑层（34 个文件）：auth / categories / checkin / community / contests / conversations / dashboard / messages / problems-* / queue / rankings / search / submissions-* / support-package / system-settings / users / admin-roles / audit-log / banlist / judge-images / passwordReset / stats-cache / seed-rbac / community-seed 等
+│   │   ├── routes/            # 路由：admin / auth / categories / checkin / community / contests / conversations / health / problems / queue / rankings / search / sse / stats / submissions / users
+│   │   ├── services/          # 业务逻辑层：auth / categories / checkin / community / contests / conversations / dashboard / messages / problems-* / queue / rankings / search / submissions-* / support-package / system-settings / users / admin-roles / audit-log / banlist / judge-images / passwordReset / stats-cache / seed-rbac / community-seed 等
 │   │   ├── db/
 │   │   │   ├── connection.ts  # 数据库连接管理（单例）
 │   │   │   ├── migrate.ts     # 迁移执行器（绝对路径解析）
-│   │   │   └── schema.ts      # Drizzle 表定义（38 张表）
+│   │   │   └── schema.ts      # Drizzle 表定义
 │   │   ├── middleware/auth.ts # JWT 认证中间件
 │   │   ├── mq/
 │   │   │   ├── connection.ts  # Redis 连接（shared + consumer 双连接）
@@ -216,7 +216,7 @@ neuro-oj/
 │
 ├── noj-ui/                    # 前端 Nuxt 4 + Vue 3
 │   ├── deno.json              # 任务 + npm 兼容（nodeModulesDir: auto）
-│   ├── package.json           # @noj/ui v0.1.0（@nuxt/ui v4 + tailwindcss v4 + monaco-editor）
+│   ├── package.json           # @noj/ui（@nuxt/ui + tailwindcss + monaco-editor）
 │   ├── nuxt.config.ts         # vite, nitro preset, runtimeConfig
 │   ├── app.vue                # 根组件 + CSS 变量
 │   ├── pages/                 # 文件路由：index / login / register / problems / submissions / ranking / queue / contests / community / messages / search / settings / users / admin / editor 等
@@ -262,18 +262,18 @@ neuro-oj/
 │   │       ├── mod.rs
 │   │       ├── container.rs
 │   │       └── protocol.rs
-│   └── tests/                 # 7 个独立 E2E test binary（e2e_docker_basic / e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_container_pool / e2e_problem_limits / e2e_dual_container）+ common/ + e2e/
+│   └── tests/                 # 独立 E2E test binary（e2e_docker_basic / e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_container_pool / e2e_problem_limits / e2e_dual_container）+ common/ + e2e/
 │
 ├── noj-tests/                 # 跨模块全链路 E2E 测试
 │   ├── deno.json              # task: deno test -A --env-file=../env.e2e.template e2e/
 │   ├── E2E_TESTING.md         # 测试指南
 │   ├── run-e2e.sh             # 启动脚本
-│   └── e2e/                   # 23 个 .test.ts（含 helper.ts），覆盖评测 / 竞赛 / 社区 / RBAC / S3 / SSE / 私信 / 审计 / 重测 / 双容器等
+│   └── e2e/                   # E2E 测试文件（含 helper.ts），覆盖评测 / 竞赛 / 社区 / RBAC / S3 / SSE / 私信 / 审计 / 重测 / 双容器等
 │
 ├── openspec/                  # OpenSpec 规范驱动开发
 │   ├── config.yaml            # schema: spec-driven
-│   ├── specs/                 # 72 个主规范
-│   └── changes/               # 64 个已归档（archive/）+ 当前活跃变更（以目录实际为准）
+│   ├── specs/                 # 主规范
+│   └── changes/               # 已归档（archive/）+ 当前活跃变更（以目录实际为准）
 │
 ├── scripts/                   # 构建与运维脚本
 │   ├── dev/                   # devtool.sh 单文件编排（install-deps / init-env / start / stop / status）+ env.example + logs/ + locks/
@@ -283,7 +283,7 @@ neuro-oj/
 │
 ├── .github/workflows/
 │   ├── ci.yml                 # PR/推送：并行 fmt + lint + test + build
-│   └── e2e.yml                # 全链路管道（noj-tests 23 + noj-judge 7 ≈ 30 个测试，5-15min）
+│   └── e2e.yml                # 全链路管道（noj-tests + noj-judge 全量测试）
 │
 ├── docker-compose.yml         # 开发基础设施（PG:5432 + Redis:6379）
 ├── docker-compose.e2e.yml     # E2E 测试编排（含 noj-core + noj-judge + MinIO）
@@ -293,7 +293,7 @@ neuro-oj/
 ├── .opencode/                 # OpenCode 配置（commands / skills）
 ├── skills-lock.json           # 技能锁定
 │
-├── noj-docs/                  # 用户文档站（MkDocs Material）
+├── noj-docs/                  # 用户文档站（MkDocs Material：做题人/运营者/出题人/参考）
 │
 ├── AGENTS.md                  # 本文档（AI 入口）
 ├── CLAUDE.md -> AGENTS.md     # Claude Code 软链
@@ -305,41 +305,41 @@ neuro-oj/
 
 ## 4. 技术栈与依赖
 
-### 4.1 关键依赖版本
+### 4.1 关键依赖
 
 **noj-core**（`deno.lock` + `deno.json`）：
 
-| 依赖 | 版本 | 用途 |
-|------|------|------|
-| hono | ^4 | Web 框架 |
-| drizzle-orm | 0.45.2 | ORM |
-| postgres | 3.4.5 | PG 驱动 |
-| ioredis | 5.11.1 | Redis 客户端 |
-| bcryptjs | ^2.4.3 | 密码哈希 |
-| jose | ^5 | JWT |
-| @std/encoding | ^1 | base64 / hex |
-| @alicloud/dm20151123 | ^1.10.2 | 阿里云邮件 |
-| @electric-sql/pglite | ^0.5.3 | 测试用嵌入式 PG |
-| @aws-sdk/client-s3 + s3-request-presigner | ^3 | S3 对象存储 |
+| 依赖 | 用途 |
+|------|------|
+| hono | Web 框架 |
+| drizzle-orm | ORM |
+| postgres | PG 驱动 |
+| ioredis | Redis 客户端 |
+| bcryptjs | 密码哈希 |
+| jose | JWT |
+| @std/encoding | base64 / hex |
+| @alicloud/dm20151123 | 阿里云邮件 |
+| @electric-sql/pglite | 测试用嵌入式 PG |
+| @aws-sdk/client-s3 + s3-request-presigner | S3 对象存储 |
 
-**noj-ui**（`package.json`）：nuxt@^4, vue, @nuxt/ui@^4（Nuxt UI v4）, tailwindcss@^4, @nuxt/icon + @iconify-json/lucide, @nuxt/fonts, @nuxtjs/color-mode, monaco-editor, markdown-it, katex, highlight.js, dompurify
+**noj-ui**（`package.json`）：nuxt, vue, @nuxt/ui, tailwindcss, @nuxt/icon + @iconify-json/lucide, @nuxt/fonts, @nuxtjs/color-mode, monaco-editor, markdown-it, katex, highlight.js, dompurify
 
 **noj-judge**（`Cargo.toml`，完整列表以 Cargo.toml 为准）：
 
-| 依赖 | 版本 | 用途 |
-|------|------|------|
-| redis | 0.27 (tokio-comp) | Redis 客户端 |
-| tokio | 1 (full) | 异步运行时 |
-| bollard | 0.21 | Docker API |
-| reqwest | 0.12 (rustls-tls) | HTTP 客户端（presigned 下载） |
-| zip | 2 (deflate) | 支持包解压 |
-| serde / serde_json | 1 | 序列化 |
-| anyhow | 1 | 错误处理 |
-| tracing / tracing-subscriber | 0.1 / 0.3 | 日志 |
-| uuid | 1 (v4) | UUID |
-| base64 | 0.22 | base64 编码 |
-| tar | 0.4 | tar 打包 |
-| sha2 / percent-encoding / filetime / gethostname / tokio-util / futures-util / tempfile / serial_test | 最新 | 哈希 / URL 编码 / 文件时间 / 主机名 / 任务编排 / 测试辅助 |
+| 依赖 | 用途 |
+|------|------|
+| redis | Redis 客户端（tokio-comp 特性） |
+| tokio | 异步运行时（full 特性） |
+| bollard | Docker API |
+| reqwest | HTTP 客户端（rustls-tls、presigned 下载） |
+| zip | 支持包解压（deflate） |
+| serde / serde_json | 序列化 |
+| anyhow | 错误处理 |
+| tracing / tracing-subscriber | 日志 |
+| uuid | UUID（v4 生成） |
+| base64 | base64 编码 |
+| tar | tar 打包 |
+| sha2 / percent-encoding / filetime / gethostname / tokio-util / futures-util / tempfile / serial_test | 哈希 / URL 编码 / 文件时间 / 主机名 / 任务编排 / 测试辅助 |
 
 ### 4.2 关键 deno.json 任务（noj-core）
 
@@ -392,7 +392,7 @@ test:smoke   deno test -A --no-check tests/smoke.test.ts
 
 ### 5.3 一键脚本（推荐）
 
-`scripts/dev/devtool.sh` 是单文件编排工具，整合原 12 个独立脚本（`install-deps` / `start-{all,infra,core,ui,judge}` / `stop-{all,infra,core,ui,judge}` / `status`），通过 5 个子命令分发：
+`scripts/dev/devtool.sh` 是单文件编排工具，整合原独立脚本（`install-deps` / `start-{all,infra,core,ui,judge}` / `stop-{all,infra,core,ui,judge}` / `status`），通过子命令分发：
 
 ```bash
 bash scripts/dev/devtool.sh install-deps --check-only   # 检测 zip / Deno / Rust / Docker
@@ -430,7 +430,7 @@ cd ../noj-judge && cargo run                      # 需要 Docker daemon
 
 ## 6. 数据库 Schema
 
-### 6.1 表清单（38 张，完整定义以 `src/db/schema.ts` 为准）
+### 6.1 表清单（完整定义以 `src/db/schema.ts` 为准）
 
 **核心业务**
 
@@ -475,7 +475,7 @@ cd ../noj-judge && cargo run                      # 需要 Docker daemon
 
 ### 6.2 迁移
 
-- 共 32 个迁移文件（`drizzle/0000_*.sql` 起）
+- 迁移文件（`drizzle/0000_*.sql` 起）
 - 由 `deno task db:generate` 自动生成，**勿手动编辑 `_journal.json`**
 - 迁移顺序严格按编号；新迁移只能追加
 
@@ -646,7 +646,7 @@ jj config get signing.key 2>/dev/null
 ```
 openspec/
 ├── config.yaml              # schema: spec-driven
-├── specs/                   # 主规范（活跃，72 个）
+├── specs/                   # 主规范（活跃）
 │   ├── database-schema/     # DB Schema
 │   ├── user-auth/           # 用户认证
 │   ├── problem-*/           # 题目管理
@@ -662,7 +662,7 @@ openspec/
 │   └── ...
 └── changes/                 # 变更提案
     ├── <active-name>/       # 活跃变更（以实际目录为准）
-    └── archive/             # 已归档（64 个）
+    └── archive/             # 已归档
 ```
 
 ### 10.2 工作流（强制）
@@ -789,11 +789,11 @@ cd noj-judge && cargo nextest run --all-targets
 cd noj-judge && cargo test              # 等价（无 doctest）
 ```
 
-**Docker 沙箱 E2E**（7 个 `e2e_*.rs` test binary，需 Docker daemon）：
+**Docker 沙箱 E2E**（`e2e_*.rs` test binary，需 Docker daemon）：
 
 ```bash
 cd noj-judge && NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
-# ...（其余 6 个同名：e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_container_pool / e2e_problem_limits / e2e_dual_container）
+# ...（其余同名：e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_container_pool / e2e_problem_limits / e2e_dual_container）
 ```
 
 - 集成测试 `#[ignore]` + `NOJ_RUN_E2E=1` 守卫
@@ -831,16 +831,16 @@ PR 只跑改动涉及的 job；`changes` job 用 `dorny/paths-filter` 检测）�
 | core-perf | tests/perf（NOJ_RUN_PERF=1，仅 main push / workflow_dispatch） | PostgreSQL + Redis |
 | ui-check | deno lint, deno fmt, npm install, nuxt build | 无 |
 | judge-check | cargo fmt + clippy + nextest（合并单 job 共享编译产物） | 无（sccache） |
-| judge-e2e | 6 个 Docker 沙箱 binary（2 组并行） | Docker + Redis（sccache） |
+| judge-e2e | Docker 沙箱 binary（分组并行） | Docker + Redis（sccache） |
 
 **`e2e.yml`** — 全链路管道测试（PR/推送 main，2026-07 起拆为两个并行 job）：
 
 - `e2e`：构建支持包 + 评测镜像 + Docker Compose，启动完整评测栈
-  （noj-core + noj-judge + PG:5433 + Redis:6380），noj-tests E2E 23 个
-  文件分 3 组并行
+  （noj-core + noj-judge + PG:5433 + Redis:6380），noj-tests E2E 文件
+  分组并行
 - `judge-sandbox`：noj-judge Docker 沙箱 E2E（只依赖 Docker + Redis，
-  测试内自建镜像，与 API E2E 完全并行；6 个 binary 2 组并行）
-- 首次 ~15min，缓存命中后 ~5-8min；超时 60min，`always()` 输出诊断日志
+  测试内自建镜像，与 API E2E 完全并行；binary 分组并行）
+- 超时 60min，`always()` 输出诊断日志
 - env：`JWT_SECRET=e2e-ci-secret-fixed-value-with-32-chars-min-abc`（≥32 字符，main.ts 强校验）
 - PR `paths-ignore`：docs / noj-ui / 纯配置类改动不触发（noj-ui 不涉及评测栈）
 
