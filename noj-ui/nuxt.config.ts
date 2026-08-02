@@ -17,6 +17,18 @@ export default defineNuxtConfig({
     },
   },
 
+  // @nuxt/fonts：仅保留本地 provider（fonts.google.com 元数据 API 在大陆网络不可达，
+  // 远程 provider 会导致 SSR 模块加载挂起；字体回退到系统字体栈）
+  fonts: {
+    providers: {
+      google: false,
+      googleicons: false,
+      bunny: false,
+      adobe: false,
+      fontshare: false,
+    },
+  },
+
   // 运行时配置（服务端私有，不暴露给浏览器）
   runtimeConfig: {
     apiBase,
