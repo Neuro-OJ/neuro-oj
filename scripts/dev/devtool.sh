@@ -120,7 +120,8 @@ read_pid() {
 wait_http() {
   local url="$1" secs="$2" i
   for ((i=1; i<=secs; i++)); do
-    if curl -fsS -o /dev/null "$url" 2>/dev/null; then
+    # --max-time：目标端口半开（LISTEN 但不响应 HTTP）时避免无限卡死（issue #188）
+    if curl -fsS --max-time 3 -o /dev/null "$url" 2>/dev/null; then
       return 0
     fi
     sleep 1
@@ -132,8 +133,10 @@ wait_http() {
 wait_port() {
   local port="$1" secs="$2" i
   for ((i=1; i<=secs; i++)); do
-    if curl -fsS -o /dev/null "http://localhost:$port/" 2>/dev/null \
-       || (command -v nc >/dev/null 2>&1 && nc -z localhost "$port" 2>/dev/null); then
+    # --max-time / -w：端口已 LISTEN 但 HTTP 不响应（半开状态）时，
+    # 每个探测尝试限时 3s，由外层轮询计数真正控制总超时（issue #188）
+    if curl -fsS --max-time 3 -o /dev/null "http://localhost:$port/" 2>/dev/null \
+       || (command -v nc >/dev/null 2>&1 && nc -z -w 3 localhost "$port" 2>/dev/null); then
       return 0
     fi
     sleep 1
@@ -147,7 +150,18 @@ acquire_lock() {
   local target="$1"
   if ! mkdir "$LOCK_DIR/$target.lock" 2>/dev/null; then
     if [[ -d "$LOCK_DIR/$target.lock" ]]; then
-      fail "$target 正在被另一个 devtool.sh 操作占用（lock: $LOCK_DIR/$target.lock）"
+      # 陈旧锁回收（issue #188）：devtool 被强杀（SIGKILL）时 trap 不执行，
+      # 遗留的 lock 目录会让后续启动永远报"占用"；持有者 PID 已退出则回收。
+      local holder
+      holder="$(cat "$LOCK_DIR/$target.lock/pid" 2>/dev/null)"
+      if [[ -n "$holder" ]] && is_pid_alive "$holder"; then
+        fail "$target 正在被另一个 devtool.sh 操作占用（lock: $LOCK_DIR/$target.lock）"
+      fi
+      echo "  清理陈旧锁: $LOCK_DIR/$target.lock（持有者 PID ${holder:-未知} 已退出）"
+      rm -rf "$LOCK_DIR/$target.lock" 2>/dev/null || true
+      if ! mkdir "$LOCK_DIR/$target.lock" 2>/dev/null; then
+        fail "无法创建 lock: $LOCK_DIR/$target.lock"
+      fi
     else
       fail "无法创建 lock: $LOCK_DIR/$target.lock"
     fi
