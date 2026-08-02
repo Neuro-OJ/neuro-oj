@@ -129,7 +129,7 @@ Evaluator SDK 会抛出 `SolutionCallError`，错误对象可通过 `exc.error` 
 
 ## 可传递的数据类型
 
-NOJ RPC 使用 JSON 加一层 NOJ codec。当前支持：
+Neuro OJ RPC 使用 JSON 加一层 Neuro OJ codec。当前支持：
 
 | Python 类型 | 传递语义 |
 | --- | --- |

@@ -10,7 +10,7 @@
 
 用户代码没有满足题目 evaluator 的通过条件。部分分题可以在 WrongAnswer 状态下返回非零分。
 
-在 NOJ 的函数调用型评测中，`WrongAnswer` 的语义比传统 OJ 更宽：
+在 Neuro OJ 的函数调用型评测中，`WrongAnswer` 的语义比传统 OJ 更宽：
 
 - 返回值、格式或评分结果不满足要求，会是 `WrongAnswer`。
 - 用户函数抛异常后，如果 evaluator 把该次调用按失败用例处理，最终也可能是 `WrongAnswer`。

@@ -1,6 +1,6 @@
 # 测试数据
 
-NOJ 不规定测试数据格式。出题人可以把测试数据放在纯净评测包里，也可以在 `evaluate.py` 中动态生成输入。只要 evaluator 能完成调用、评分和结果输出即可。用例与相关术语见[术语表](../reference/glossary.md)。
+Neuro OJ 不规定测试数据格式。出题人可以把测试数据放在纯净评测包里，也可以在 `evaluate.py` 中动态生成输入。只要 evaluator 能完成调用、评分和结果输出即可。用例与相关术语见[术语表](../reference/glossary.md)。
 
 当前内置样例题使用 JSON Lines 作为示例约定：每一行是一个独立 JSON 对象。下面内容描述的是这种样例约定，不是平台强制要求。
 
@@ -48,7 +48,7 @@ NOJ 不规定测试数据格式。出题人可以把测试数据放在纯净评�
 
 ## 其他组织方式
 
-NOJ 的自由度很高。以下方式都可以：
+Neuro OJ 的自由度很高。以下方式都可以：
 
 - 把可见用例和隐藏用例分别放在 `cases/visible/*.json` 与 `cases/hidden/*.json`。
 - 使用一个 `cases.db` SQLite 文件，由 evaluator 查询用例。

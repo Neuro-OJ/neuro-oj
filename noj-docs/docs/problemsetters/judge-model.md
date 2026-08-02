@@ -1,33 +1,18 @@
 # 评测模型
 
-NOJ 当前支持双容器评测模型。每次提交会同时涉及 Evaluator 容器和 Solution 容器。核心术语见[术语表](../reference/glossary.md)。
+Neuro OJ 当前支持双容器评测模型。每次提交会同时涉及 Evaluator 容器和 Solution 容器。核心术语见[术语表](../reference/glossary.md)。
 
-```text
-提交代码
-  |
-  v
-Solution 容器
-  - solution.py
-  - noj_solution_sdk
-  - Solution Host 加载用户模块
-  - 等待 Evaluator 调用函数
-  |
-  | runner.call(...)
-  v
-Evaluator 容器
-  - evaluate.py
-  - 测试数据或其他支持文件
-  - noj_evaluator_sdk
-  - 按题目自己的方式读取数据
-  - 调用用户函数
-  - 给出状态、分数和详情
+```mermaid
+flowchart TD
+    A[提交代码] --> B["Solution 容器<br/>solution.py<br/>noj_solution_sdk<br/>Solution Host 加载用户模块<br/>等待 Evaluator 调用函数"]
+    B -->|runner.call| C["Evaluator 容器<br/>evaluate.py<br/>测试数据或其他支持文件<br/>noj_evaluator_sdk<br/>按题目自己的方式读取数据<br/>调用用户函数<br/>给出状态、分数和详情"]
 ```
 
 ## 与传统 OJ 的差异
 
-传统 OJ 通常运行用户程序，把 stdin 输入喂给程序，再比对 stdout。NOJ 的 Python 题目不使用这种答案通道。
+传统 OJ 通常运行用户程序，把 stdin 输入喂给程序，再比对 stdout。Neuro OJ 的 Python 题目不使用这种答案通道。
 
-在 NOJ 中：
+在 Neuro OJ 中：
 
 - 用户提交的是可被调用的 Python 代码。
 - 题面会声明必须实现的函数，例如 `solve(a, b)`。
@@ -75,28 +60,16 @@ Solution 不应直接读取隐藏用例。隐藏用例的数据位于 Evaluator 
 
 一次 `runner.call("solve", 1, 2)` 的链路是：
 
-```text
-evaluate.py
-  |
-  | 1. Evaluator SDK 写出 __NOJ_RPC__ 请求帧到 evaluator stderr
-  v
-noj-judge
-  |
-  | 2. Judge Worker 截获 RPC 帧，转发到 Solution Host stdin
-  v
-Solution Host
-  |
-  | 3. 调用 solution.py 中的 solve(1, 2)
-  v
-noj-judge
-  |
-  | 4. Judge Worker 把响应 JSON 写回 evaluator stdin
-  v
-evaluate.py
-  |
-  | 5. runner.call() 返回结果或抛出 SolutionCallError
-  v
-评分逻辑
+```mermaid
+sequenceDiagram
+    participant E as evaluate.py
+    participant J as noj-judge
+    participant S as Solution Host
+    E->>J: 1. 写出 __NOJ_RPC__ 请求帧（evaluator stderr）
+    J->>S: 2. 截获 RPC 帧，转发到 Solution Host stdin
+    S->>S: 3. 调用 solution.py 中的 solve(1, 2)
+    J-->>E: 4. 把响应 JSON 写回 evaluator stdin
+    E->>E: 5. runner.call() 返回结果或抛出 SolutionCallError，进入评分逻辑
 ```
 
 出题人正常情况下只使用 `SolutionRunner`，不需要手写 RPC 帧。RPC 细节见 [RPC 与可传递数据](rpc.md)。

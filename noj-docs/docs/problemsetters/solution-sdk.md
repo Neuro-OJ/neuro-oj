@@ -43,7 +43,7 @@ def solve(a: int, b: int) -> int:
 - 用户异常：返回异常类型、消息和截断后的 traceback。
 - 返回值错误：通常由 evaluator 判定为 `WrongAnswer`。
 
-用户函数的参数和返回值会经过 NOJ codec 编码。支持的类型包括 `None`、布尔值、整数、有限浮点数、字符串、字节串、列表、元组和字符串键字典。更多限制见 [RPC 与可传递数据](rpc.md)。
+用户函数的参数和返回值会经过 Neuro OJ codec 编码。支持的类型包括 `None`、布尔值、整数、有限浮点数、字符串、字节串、列表、元组和字符串键字典。更多限制见 [RPC 与可传递数据](rpc.md)。
 
 ## `noj_solution_sdk`
 

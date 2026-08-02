@@ -15,7 +15,7 @@
 - `noj-evaluator-python`：运行出题人的 `evaluate.py`。
 - `noj-solution-python`：运行用户提交的 `solution.py` 和 Solution Host。
 
-Evaluator 容器可以通过 NOJ Evaluator SDK 调用 Solution 容器中的用户函数。
+Evaluator 容器可以通过 Neuro OJ Evaluator SDK 调用 Solution 容器中的用户函数。
 
 ### 构建评测镜像
 
@@ -75,7 +75,7 @@ bash scripts/dev/devtool.sh status --json
 RUST_LOG=noj_judge=debug cargo run
 ```
 
-## 队列监控 {: #queue-monitoring }
+## 队列监控 {#queue-monitoring}
 
 评测任务在 Redis 队列 `noj:judge:queue` 中排队，结果写回 `noj:judge:results`：
 

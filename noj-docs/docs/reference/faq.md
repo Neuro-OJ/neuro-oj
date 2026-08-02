@@ -32,7 +32,7 @@
 
 当前评测运行时仅完整支持 Python（多语言评测为项目的决策性不做项）。`cpp` / `c` / `javascript` 是提交接口预留的语言标识，尚无评测运行时，请使用 Python 提交。
 
-## 运营者 {: #operators }
+## 运营者 {#operators}
 
 ### 启动报 `JWT_SECRET 长度不足`？
 
@@ -52,7 +52,7 @@
 
 ### 限流把所有请求都拦了？
 
-如果部署了反向代理，必须在 noj-core 配置 `TRUSTED_PROXIES`（生产环境 `NOJ_ENV=production` 强制要求），否则所有请求都来自代理 IP，会被当成同一来源限流。
+如果部署了反向代理，必须在 noj-core 配置 `TRUSTED_PROXIES`（生产环境 `Neuro OJ_ENV=production` 强制要求），否则所有请求都来自代理 IP，会被当成同一来源限流。
 
 ## 出题人
 

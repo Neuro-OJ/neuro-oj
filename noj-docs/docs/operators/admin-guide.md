@@ -22,14 +22,14 @@
 
 ## RBAC 角色与权限
 
-NOJ 使用「角色 → 权限点」模型：权限格式为 `resource:action`（例如 `problem:create`、`submission:read_own`）。
+Neuro OJ 使用「角色 → 权限点」模型：权限格式为 `resource:action`（例如 `problem:create`、`submission:read_own`）。
 
 - 系统内置角色：`root`（UID=0 系统用户，不计入统计）、`admin`（管理后台）、`user`（普通用户默认权限集）。
 - 管理页「角色」可以创建自定义角色、编辑角色的权限点集合、删除不再使用的角色。
 - 用户的角色在「用户」页面通过「分配角色」调整。
 - 权限检查在服务端强制进行，前端菜单只是展示层。
 
-!!! warning "安全约束"
+::: warning 安全约束
     系统禁止降级最后一个可登录管理员——若当前只剩一个 admin，不能移除其管理角色，防止后台失守。
 
 ## 用户管理
@@ -59,7 +59,7 @@ NOJ 使用「角色 → 权限点」模型：权限格式为 `resource:action`�
 
 修改即时生效；涉及邮件、限流等键时请先确认新值正确，避免锁死服务。
 
-## 题目与分类 {: #problem-categories }
+## 题目与分类 {#problem-categories}
 
 - **题目类型**：U 型（用户题，创建者本人与 admin 可管理）与 P 型（主题题，仅 admin 管理）。admin 可创建任意类型。
 - **创建 / 编辑**：在管理页填写题面、限制条件、语言与运行时配置，并上传统一题目包 zip（见[出题人文档](../problemsetters/support-package.md)）。

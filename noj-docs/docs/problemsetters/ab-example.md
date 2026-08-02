@@ -2,7 +2,7 @@
 
 本页使用 `1003` 样例题说明一次完整出题流程。
 
-这里的 `visible.jsonl` 和 `hidden.jsonl` 是 A+B 样例题采用的数据组织方式，不是 NOJ 的必选文件。正式题目可以用任意 evaluator 能读取的文件结构。
+这里的 `visible.jsonl` 和 `hidden.jsonl` 是 A+B 样例题采用的数据组织方式，不是 Neuro OJ 的必选文件。正式题目可以用任意 evaluator 能读取的文件结构。
 
 ## 源文件
 

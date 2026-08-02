@@ -24,7 +24,7 @@ answer = runner.call("solve", 1, 2)
 
 `runner.call()` 会向 Solution Host 发起一次 RPC 调用。如果调用成功，返回用户函数的返回值。
 
-调用参数会经过 NOJ codec 编码后通过 RPC 传递。支持的类型和限制见 [RPC 与可传递数据](rpc.md)。
+调用参数会经过 Neuro OJ codec 编码后通过 RPC 传递。支持的类型和限制见 [RPC 与可传递数据](rpc.md)。
 
 ## 处理调用错误
 

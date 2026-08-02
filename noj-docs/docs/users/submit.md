@@ -12,7 +12,7 @@
 | `c` | C（标识已预留） |
 | `javascript` | JavaScript（标识已预留） |
 
-!!! warning "评测运行时现状"
+::: warning 评测运行时现状
     当前评测运行时**仅完整支持 Python**（双容器 Evaluator / Solution SDK 均为 Python 实现，支持包模板固定 `python3`）。`cpp` / `c` / `javascript` 标识已存在于提交接口，但尚无对应的评测运行时镜像，提交这类代码目前无法完成评测——多语言评测是项目的决策性不做项（LMCC 仅 Python）。
 
 题目可选的编程语言由出题人配置，列表以题目详情页显示为准。
@@ -26,7 +26,7 @@ def solve(a: int, b: int) -> int:
     return a + b
 ```
 
-不要依赖顶层 `print()` 作为答案输出。NOJ 的 Python 双容器评测会通过 Solution Host 加载你的模块，并由 evaluator 调用函数。
+不要依赖顶层 `print()` 作为答案输出。Neuro OJ 的 Python 双容器评测会通过 Solution Host 加载你的模块，并由 evaluator 调用函数。
 
 ## 调试输出
 

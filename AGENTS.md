@@ -293,7 +293,7 @@ neuro-oj/
 ├── .opencode/                 # OpenCode 配置（commands / skills）
 ├── skills-lock.json           # 技能锁定
 │
-├── noj-docs/                  # 用户文档站（MkDocs Material：做题人/运营者/出题人/参考）
+├── noj-docs/                  # 用户文档站（VitePress：做题人/运营者/出题人/参考）
 │
 ├── AGENTS.md                  # 本文档（AI 入口）
 ├── CLAUDE.md -> AGENTS.md     # Claude Code 软链

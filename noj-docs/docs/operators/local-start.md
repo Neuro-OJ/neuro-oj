@@ -1,6 +1,6 @@
 # 本地启动
 
-本文覆盖从零启动整套 NOJ 环境（PostgreSQL + Redis + noj-core + noj-ui + noj-judge），以及生产部署、环境变量与备份恢复的关键注意点。
+本文覆盖从零启动整套 Neuro OJ 环境（PostgreSQL + Redis + noj-core + noj-ui + noj-judge），以及生产部署、环境变量与备份恢复的关键注意点。
 
 ## 环境要求
 
@@ -87,7 +87,7 @@ Judge Worker 需要能访问 Docker daemon，并且 Redis 地址要与 noj-core 
 | `ADMIN_EMAIL` / `ADMIN_PASS` | 初始化管理员账号 |
 | `STORAGE_PROVIDER` | `local` 或 `s3`（支持包存储） |
 | `EMAIL_PROVIDER` | `mock` / `aliyun` / `tencent`（密码重置邮件） |
-| `NOJ_ENV` | `production` 时强制要求配置可信代理白名单并启用日志脱敏 |
+| `Neuro OJ_ENV` | `production` 时强制要求配置可信代理白名单并启用日志脱敏 |
 
 ### noj-ui
 
@@ -107,7 +107,7 @@ Judge Worker 需要能访问 Docker daemon，并且 Redis 地址要与 noj-core 
 ## 生产部署注意
 
 - **JWT_SECRET**：必须使用 32+ 字符的强随机串，任何环境不得使用示例值。
-- **NOJ_ENV=production**：会强制要求显式配置 `TRUSTED_PROXIES`（可信反向代理白名单），并启用日志安全（submission_id 截断、score 隐藏、DB 密码脱敏）。
+- **Neuro OJ_ENV=production**：会强制要求显式配置 `TRUSTED_PROXIES`（可信反向代理白名单），并启用日志安全（submission_id 截断、score 隐藏、DB 密码脱敏）。
 - **CORS**：生产环境通过 `CORS_ALLOWED_ORIGINS` 配置白名单域名，空列表拒绝所有跨域请求；开发环境默认放行 `*`。
 - **存储**：多实例或正式部署建议 `STORAGE_PROVIDER=s3`（兼容 MinIO / AWS S3），避免依赖单机文件系统。
 - **邮件**：密码重置依赖邮件发送，正式环境配置 `EMAIL_PROVIDER=aliyun` 或 `tencent`，`mock` 仅用于开发（输出到控制台）。
