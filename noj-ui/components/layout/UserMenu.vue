@@ -20,6 +20,7 @@
         </div>
         <div
             v-show="showDropdown"
+            ref="menuRef"
             role="menu"
             aria-label="用户菜单"
             class="absolute right-0 top-[calc(100%+8px)] bg-white border border-border rounded-lg min-w-[210px] p-1 shadow-dropdown z-[200]"
@@ -28,7 +29,7 @@
             <div class="px-3.5 py-2 border-b border-border mb-1">
                 <p class="text-sm font-semibold text-text truncate">{{ user?.username }}</p>
             </div>
-            <NuxtLink ref="firstItemRef" to="/my/problems" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100" @click="closeMenu"><UIcon name="i-lucide-book-open" class="size-4" />我的题目</NuxtLink>
+            <NuxtLink to="/my/problems" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100" @click="closeMenu"><UIcon name="i-lucide-book-open" class="size-4" />我的题目</NuxtLink>
             <NuxtLink to="/messages" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100 relative" @click="closeMenu"><UIcon name="i-lucide-mail" class="size-4" />消息<span v-if="unreadCount > 0" class="ml-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{{ unreadCount > 99 ? "99+" : unreadCount }}</span></NuxtLink>
             <NuxtLink :to="`/users/${user?.id}`" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100" @click="closeMenu"><UIcon name="i-lucide-database" class="size-4" />数据</NuxtLink>
             <NuxtLink to="/settings" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100" @click="closeMenu"><UIcon name="i-lucide-settings" class="size-4" />设置</NuxtLink>
@@ -55,12 +56,17 @@ const { api } = useApi()
 
 // ── 下拉菜单：点击切换 + 键盘可达（WCAG 2.1.1） ──
 const menuButtonRef = ref<HTMLButtonElement | null>(null)
-const firstItemRef = ref<HTMLElement | null>(null)
+const menuRef = ref<HTMLElement | null>(null)
 const showDropdown = ref(false)
 
 function openMenu() {
     showDropdown.value = true
-    nextTick(() => firstItemRef.value?.focus())
+    // Nuxt UI v4 下组件 ref 拿不到 DOM 元素（focus 不可用），
+    // 改为在菜单容器内查找第一个 menuitem 聚焦
+    nextTick(() => {
+        const first = menuRef.value?.querySelector<HTMLElement>('[role="menuitem"]')
+        first?.focus()
+    })
 }
 
 function closeMenu() {

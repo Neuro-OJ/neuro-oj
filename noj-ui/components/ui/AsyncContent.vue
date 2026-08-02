@@ -26,7 +26,12 @@ defineEmits<{ retry: [] }>()
         <slot name="empty-action" />
       </slot>
     </div>
-    <slot v-else-if="status === 'data'" />
+    <!-- data 分支包一层透明容器：Transition 只允许单元素，
+         调用方 data 插槽可能传多个根节点（如表格 + 分页），
+         display: contents 不改变布局语义 -->
+    <div v-else-if="status === 'data'" class="contents">
+      <slot />
+    </div>
   </Transition>
 </template>
 <style scoped>
