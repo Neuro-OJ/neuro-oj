@@ -1,17 +1,15 @@
 <script setup lang="ts">
 import type { Contest, ContestProblem } from '~/composables/useContests'
-import type { WorkspaceSubmission } from '~/components/editor/EditorWorkspace.vue'
 
 /**
- * 竞赛做题页：复用独立做题工作区（EditorWorkspace），
- * 仅注入竞赛数据源与提交链路。
+ * 竞赛题目详情页：仅展示题目陈述，做题跳转独立编辑器页
+ * （/contests/:id/problems/:label/editor）。
  */
 definePageMeta({ middleware: 'auth', ssr: false })
 
 const route = useRoute()
 const contestId = route.params.contestId as string
 const label = route.params.label as string
-const { api } = useApi()
 
 const { data: contestData } = await useFetch<{ data: Contest }>(
   `/api/v1/contests/${contestId}`,
@@ -24,65 +22,58 @@ const { data, pending, error, refresh } = await useFetch<{ data: ContestProblem 
 const problem = computed(() => data.value?.data ?? null)
 const contest = computed(() => contestData.value?.data ?? null)
 
-const workspaceProblem = computed(() => {
-  const p = problem.value
-  if (!p) return null
-  return {
-    id: p.problem_id,
-    display_id: p.display_id,
-    label: p.label,
-    title: p.title,
-    description: p.description,
-    difficulty: p.difficulty,
-    type: 'P' as const,
-    categories: [],
-  }
-})
-
-const canSubmit = computed(() => contest.value?.status === 'running')
-
-function submit(problemId: string, language: string, code: string) {
-  return api
-    .post<{ data: { id: string } }>(`/api/v1/contests/${contestId}/submit`, {
-      problem_id: problemId,
-      language,
-      code,
-    })
-    .then((r) => r.data)
+const difficultyLabel: Record<string, string> = {
+  easy: '简单',
+  medium: '中等',
+  hard: '困难',
 }
-
-// 竞赛 my-submissions 返回该竞赛全部提交，按当前题目过滤
-function submissionFilter(s: WorkspaceSubmission): boolean {
-  return !problem.value || s.problem_id === problem.value.problem_id
+const badgeColors: Record<string, string> = {
+  easy: 'bg-green-100 text-green-700',
+  medium: 'bg-yellow-100 text-yellow-700',
+  hard: 'bg-red-100 text-red-800',
 }
 </script>
 
 <template>
-  <EditorWorkspace
-    :problem="workspaceProblem"
-    :pending="pending"
-    :error="error"
-    :retry="refresh"
-    :history-url="`/api/v1/contests/${contestId}/my-submissions?per_page=100`"
-    :submit="submit"
-    :draft-key="`contest:${contestId}:${label}`"
-    :open-submission-url="(id: string) => `/submissions/${id}`"
-    :back-url="`/contests/${contestId}`"
-    :back-label="'返回竞赛'"
-    :subtitle="contest?.title ?? ''"
-    :can-submit="canSubmit"
-    :submission-filter="submissionFilter"
-  >
-    <template #toolbar-actions>
-      <UButton
-        color="neutral"
-        variant="outline"
-        size="sm"
-        class="gap-1.5 px-3 py-1.5 text-xs"
-        :to="`/contests/${contestId}/ranking`"
-      >
-        <UIcon name="i-lucide-trophy" class="size-3.5" />排名
-      </UButton>
-    </template>
-  </EditorWorkspace>
+  <div class="min-h-[calc(100vh-64px)] bg-bg-page p-4 lg:p-6">
+    <AsyncContent
+      :status="pending ? 'loading' : error ? 'error' : problem ? 'data' : 'empty'"
+      error="竞赛题目加载失败"
+      @retry="refresh"
+    >
+      <div v-if="problem" class="mx-auto flex max-w-[960px] flex-col gap-4">
+        <header class="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-white px-4 py-3">
+          <NuxtLink
+            :to="`/contests/${contestId}`"
+            class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
+          >
+            <UIcon name="i-lucide-arrow-left" class="size-4" />返回竞赛
+          </NuxtLink>
+          <span class="h-5 w-px bg-border" />
+          <span class="flex size-8 items-center justify-center rounded-lg bg-bg-dark font-mono text-sm font-bold text-white">{{ problem.label }}</span>
+          <div class="min-w-0 flex-1">
+            <h1 class="truncate text-base font-bold text-text">{{ problem.title }}</h1>
+            <p class="text-xs text-text-muted">{{ contest?.title }} · {{ problem.display_id }}</p>
+          </div>
+          <span
+            class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
+            :class="badgeColors[problem.difficulty] || ''"
+          >
+            {{ difficultyLabel[problem.difficulty] || problem.difficulty }}
+          </span>
+          <UButton
+            color="primary"
+            class="gap-1.5 px-4 py-2 text-xs"
+            :to="`/contests/${contestId}/problems/${label}/editor`"
+          >
+            <UIcon name="i-lucide-pencil-ruler" class="size-3.5" />去做题
+          </UButton>
+        </header>
+
+        <section class="rounded-xl border border-border bg-white p-6 lg:p-8">
+          <MarkdownRenderer :content="problem.description" />
+        </section>
+      </div>
+    </AsyncContent>
+  </div>
 </template>

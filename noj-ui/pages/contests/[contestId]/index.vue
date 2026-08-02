@@ -140,13 +140,16 @@ onUnmounted(() => {
             <div v-else-if="problems.length" class="divide-y divide-border overflow-hidden rounded-xl border border-border">
               <div v-for="problem in problems" :key="problem.problem_id" class="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-primary-bg">
                 <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-bg-dark font-mono text-sm font-bold text-white">{{ problem.label }}</span>
-                <div class="min-w-0 flex-1"><div class="font-semibold">{{ problem.title }}</div><div class="mt-1 text-xs text-text-muted">{{ problem.display_id }} · {{ problem.difficulty }}</div></div>
+                <NuxtLink :to="`/contests/${contest.id}/problems/${problem.label}`" class="min-w-0 flex-1 text-text no-underline">
+                  <div class="font-semibold">{{ problem.title }}</div>
+                  <div class="mt-1 text-xs text-text-muted">{{ problem.display_id }} · {{ problem.difficulty }}</div>
+                </NuxtLink>
                 <StatusBadge :status="problem.user_status === 'untouched' ? 'not_started' : problem.user_status" />
                 <UButton
                   color="primary"
                   size="sm"
                   class="gap-1.5 px-3 py-1.5 text-xs"
-                  :to="`/contests/${contest.id}/problems/${problem.label}`"
+                  :to="`/contests/${contest.id}/problems/${problem.label}/editor`"
                 >
                   <UIcon name="i-lucide-pencil-ruler" class="size-3.5" />去做题
                 </UButton>
