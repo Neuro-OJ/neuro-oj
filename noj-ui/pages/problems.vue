@@ -204,40 +204,40 @@ const columns = computed(() => {
       <div class="bg-white border border-border rounded-xl overflow-x-auto">
         <UTable :columns="columns" :data="problems" :empty="'暂无题目'">
           <template #display_id-cell="{ row }">
-            <ProblemId :display-id="row.display_id" :type="row.type" />
+            <ProblemId :display-id="row.original.display_id" :type="row.original.type" />
           </template>
           <template #title-cell="{ row }">
             <NuxtLink
-              :to="`/problems/${row.id}`"
+              :to="`/problems/${row.original.id}`"
               class="text-text no-underline font-medium hover:text-primary"
             >
-              {{ row.title }}
+              {{ row.original.title }}
             </NuxtLink>
           </template>
           <template #difficulty-cell="{ row }">
-            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold" :class="badgeColors[row.difficulty] || ''">
-              {{ difficultyLabel[row.difficulty] || row.difficulty }}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold" :class="badgeColors[row.original.difficulty] || ''">
+              {{ difficultyLabel[row.original.difficulty] || row.original.difficulty }}
             </span>
           </template>
           <template #categories-cell="{ row }">
             <span
-              v-for="cat in row.categories"
+              v-for="cat in row.original.categories"
               :key="cat.id"
               class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 mr-1"
             >{{ cat.name }}</span>
-            <span v-if="!row.categories?.length" class="text-xs text-text-muted">--</span>
+            <span v-if="!row.original.categories?.length" class="text-xs text-text-muted">--</span>
           </template>
           <template #time-cell="{ row }">
-            <span class="text-xs text-text-secondary">{{ row.runtime_config.evaluator.time_limit_ms }}ms</span>
+            <span class="text-xs text-text-secondary">{{ row.original.runtime_config.evaluator.time_limit_ms }}ms</span>
           </template>
           <template #memory-cell="{ row }">
-            <span class="text-xs text-text-secondary">{{ row.runtime_config.evaluator.memory_limit_mb }}MB</span>
+            <span class="text-xs text-text-secondary">{{ row.original.runtime_config.evaluator.memory_limit_mb }}MB</span>
           </template>
           <template #rate-cell="{ row }">
-            <span class="text-xs text-text-secondary">{{ formatAcceptanceRate(row.acceptance_rate) }}</span>
+            <span class="text-xs text-text-secondary">{{ formatAcceptanceRate(row.original.acceptance_rate) }}</span>
           </template>
           <template #status-cell="{ row }">
-            <StatusBadge :status="getProblemStatus(row.id)" />
+            <StatusBadge :status="getProblemStatus(row.original.id)" />
           </template>
         </UTable>
       </div>

@@ -467,16 +467,16 @@ async function confirmReset(s: SystemSetting) {
           :loading="false"
         >
           <template #key-cell="{ row }">
-            <code class="font-mono text-13px text-text">{{ row.key }}</code>
+            <code class="font-mono text-13px text-text">{{ row.original.key }}</code>
           </template>
           <template #effective_value-cell="{ row }">
-            <UTooltip v-if="row.is_secret" :text="getSecretTooltip(row.key)" class="cursor-help">
+            <UTooltip v-if="row.original.is_secret" :text="getSecretTooltip(row.original.key)" class="cursor-help">
               <span class="inline-flex items-center gap-1">
                 <UIcon name="i-lucide-lock" class="size-3 shrink-0 text-amber-700" />
                 <code
                   class="font-mono text-13px px-2 py-0.5 rounded underline decoration-dotted underline-offset-2 bg-amber-50 text-amber-800"
                 >
-                  {{ String(row.effective_value) }}
+                  {{ String(row.original.effective_value) }}
                 </code>
               </span>
             </UTooltip>
@@ -484,11 +484,11 @@ async function confirmReset(s: SystemSetting) {
               v-else
               class="font-mono text-13px px-2 py-0.5 rounded bg-gray-50 text-text"
             >
-              {{ String(row.effective_value) }}
+              {{ String(row.original.effective_value) }}
             </code>
           </template>
           <template #description-cell="{ row }">
-            <span class="text-13px text-text-secondary">{{ row.description }}</span>
+            <span class="text-13px text-text-secondary">{{ row.original.description }}</span>
           </template>
         </UTable>
       </details>

@@ -203,7 +203,8 @@ async function handleDelete() {
 
   <!-- 创建/编辑弹窗 -->
   <UModal v-model:open="showForm" :title="editingItem ? '编辑评测镜像' : '新增评测镜像'" :unmount-on-hide="true">
-    <div class="flex flex-col gap-3">
+    <template #body>
+      <div class="flex flex-col gap-3">
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">镜像名 <span class="text-error-text">*</span></label>
         <input v-model="formImage" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="如：noj-judge-python" :disabled="!!editingItem" />
@@ -228,7 +229,8 @@ async function handleDelete() {
         <input v-model="formDescription" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="在题目编辑器中展示的说明文字" />
       </div>
       <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
-    </div>
+      </div>
+    </template>
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="saving" @click="showForm = false">取消</UButton>
@@ -238,8 +240,10 @@ async function handleDelete() {
 
   <!-- 删除确认弹窗 -->
   <UModal v-model:open="showDeleteConfirm" :title="'删除评测镜像'" :unmount-on-hide="true">
-    <p>确定要删除评测镜像 <strong>{{ deleteTarget?.image }}</strong> 吗？此操作将导致使用了此镜像的题目无法通过白名单校验。</p>
-    <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
+    <template #body>
+      <p>确定要删除评测镜像 <strong>{{ deleteTarget?.image }}</strong> 吗？此操作将导致使用了此镜像的题目无法通过白名单校验。</p>
+      <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
+    </template>
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="deleting" @click="showDeleteConfirm = false">取消</UButton>

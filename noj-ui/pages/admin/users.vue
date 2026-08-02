@@ -311,8 +311,9 @@ async function showBanHistory(user: User) {
 
   <!-- 角色管理弹窗（RBAC role_ids） -->
   <UModal v-model:open="showRoleModal" :title="'修改用户角色'" :unmount-on-hide="true">
-    <p class="mb-3">为用户 <strong>{{ targetUser?.username }}</strong> 选择角色：</p>
-    <div class="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
+    <template #body>
+      <p class="mb-3">为用户 <strong>{{ targetUser?.username }}</strong> 选择角色：</p>
+      <div class="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
       <label
         v-for="role in allRoles"
         :key="role.id"
@@ -332,8 +333,9 @@ async function showBanHistory(user: User) {
           <span v-else class="text-xs text-text-secondary">自定义角色</span>
         </div>
       </label>
-    </div>
-    <p v-if="switchError" class="mt-2 text-error-text text-13px">{{ switchError }}</p>
+      </div>
+      <p v-if="switchError" class="mt-2 text-error-text text-13px">{{ switchError }}</p>
+    </template>
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="switchingRole" @click="showRoleModal = false">取消</UButton>
@@ -343,8 +345,9 @@ async function showBanHistory(user: User) {
 
   <!-- 封禁用户弹窗（issue #102） -->
   <UModal v-model:open="showBanModal" :title="'封禁用户'" :unmount-on-hide="true">
-    <p class="mb-3">将封禁 <strong>{{ banTarget?.username }}</strong>。</p>
-    <div class="flex flex-col gap-3">
+    <template #body>
+      <p class="mb-3">将封禁 <strong>{{ banTarget?.username }}</strong>。</p>
+      <div class="flex flex-col gap-3">
       <div>
         <label class="block text-sm font-semibold text-text mb-1">封禁原因</label>
         <input
@@ -362,8 +365,9 @@ async function showBanHistory(user: User) {
         />
         <p class="mt-1 text-[12px] text-text-secondary">留空表示永久封禁</p>
       </div>
-      <p v-if="banError" class="text-13px text-error-text">{{ banError }}</p>
-    </div>
+        <p v-if="banError" class="text-13px text-error-text">{{ banError }}</p>
+      </div>
+    </template>
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="banning" @click="showBanModal = false">取消</UButton>
@@ -373,19 +377,20 @@ async function showBanHistory(user: User) {
 
   <!-- 封禁历史弹窗（user-ban-table） -->
   <UModal v-model:open="showHistoryModal" :title="'封禁历史'" :unmount-on-hide="true">
-    <p v-if="historyTarget" class="mb-3">
-      <strong>{{ historyTarget.username }}</strong> 的封禁记录
-    </p>
-    <div v-if="historyLoading" class="text-center py-4 text-sm text-text-secondary">
-      加载中...
-    </div>
-    <div v-else-if="historyError" class="text-error-text text-sm">
-      {{ historyError }}
-    </div>
-    <div v-else-if="historyRecords.length === 0" class="text-center py-4 text-sm text-text-secondary">
-      暂无封禁记录
-    </div>
-    <div v-else class="space-y-3 max-h-[400px] overflow-y-auto">
+    <template #body>
+      <p v-if="historyTarget" class="mb-3">
+        <strong>{{ historyTarget.username }}</strong> 的封禁记录
+      </p>
+      <div v-if="historyLoading" class="text-center py-4 text-sm text-text-secondary">
+        加载中...
+      </div>
+      <div v-else-if="historyError" class="text-error-text text-sm">
+        {{ historyError }}
+      </div>
+      <div v-else-if="historyRecords.length === 0" class="text-center py-4 text-sm text-text-secondary">
+        暂无封禁记录
+      </div>
+      <div v-else class="space-y-3 max-h-[400px] overflow-y-auto">
       <div
         v-for="rec in historyRecords"
         :key="rec.id"
@@ -407,8 +412,9 @@ async function showBanHistory(user: User) {
             解封于 {{ formatDate(rec.unbanned_at) }} — {{ rec.unbanned_by?.username || '系统' }}
           </div>
         </div>
+        </div>
       </div>
-    </div>
+    </template>
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="historyLoading" @click="showHistoryModal = false">取消</UButton>

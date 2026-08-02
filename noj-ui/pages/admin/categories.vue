@@ -168,7 +168,8 @@ async function handleDelete() {
 
   <!-- 创建/编辑弹窗 -->
   <UModal v-model:open="showForm" :title="editingCategory ? '编辑分类' : '新建分类'" :unmount-on-hide="true">
-    <div class="flex flex-col gap-3">
+    <template #body>
+      <div class="flex flex-col gap-3">
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">名称 <span class="text-error-text">*</span></label>
         <input v-model="formName" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="分类名称" />
@@ -182,7 +183,8 @@ async function handleDelete() {
         <input v-model="formDesc" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="可选描述" />
       </div>
       <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
-    </div>
+      </div>
+    </template>
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="saving" @click="showForm = false">取消</UButton>
@@ -192,8 +194,10 @@ async function handleDelete() {
 
   <!-- 删除确认弹窗 -->
   <UModal v-model:open="showDeleteConfirm" :title="'删除分类'" :unmount-on-hide="true">
-    <p>确定要删除分类 <strong>{{ deleteTarget?.name }}</strong> 吗？此操作不可撤销。</p>
-    <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
+    <template #body>
+      <p>确定要删除分类 <strong>{{ deleteTarget?.name }}</strong> 吗？此操作不可撤销。</p>
+      <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
+    </template>
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="deleting" @click="showDeleteConfirm = false">取消</UButton>

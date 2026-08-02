@@ -59,8 +59,8 @@ function onCancel() {
     :ui="{ footer: 'flex justify-end gap-3' }"
     @after:leave="$emit('after:leave')"
   >
-    <template v-if="mode === 'prompt'">
-      <UInput v-model="input" :placeholder="placeholder" class="mt-1" @keyup.enter="onConfirm" />
+    <template #body>
+      <UInput v-if="mode === 'prompt'" v-model="input" :placeholder="placeholder" class="mt-1" @keyup.enter="onConfirm" />
     </template>
 
     <template #footer>

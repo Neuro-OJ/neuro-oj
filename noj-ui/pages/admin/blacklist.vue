@@ -216,7 +216,8 @@ function formatExpires(value: string | null) {
 
     <!-- 新增黑名单弹窗 -->
     <UModal v-model:open="showForm" :title="'新增 IP 黑名单'" :unmount-on-hide="true">
-      <div class="flex flex-col gap-3">
+      <template #body>
+        <div class="flex flex-col gap-3">
         <div>
           <label class="block text-sm font-semibold text-text mb-1">
             IP / CIDR <span class="text-error-text">*</span>
@@ -245,7 +246,8 @@ function formatExpires(value: string | null) {
           <p class="mt-1 text-[12px] text-text-secondary">留空表示永久封禁</p>
         </div>
         <p v-if="formError" class="text-13px text-error-text">{{ formError }}</p>
-      </div>
+        </div>
+      </template>
     
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="saving" @click="showForm = false">取消</UButton>
