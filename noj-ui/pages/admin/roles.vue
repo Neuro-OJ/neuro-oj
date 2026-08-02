@@ -238,9 +238,9 @@ async function confirmDelete(role: Role) {
       :empty="'暂无角色'">
       <template #name-cell="{ row }">
         <div class="flex items-center gap-1.5">
-          <UIcon name="i-lucide-shield-check" class="text-info-text shrink-0 size-4" v-if="row.is_admin"/>
-          <span>{{ row.name }}</span>
-          <UIcon name="i-lucide-lock" class="text-text-muted shrink-0 size-3.5" v-if="row.is_system"   title="系统角色"/>
+          <UIcon name="i-lucide-shield-check" class="text-info-text shrink-0 size-4" v-if="row.original.is_admin"/>
+          <span>{{ row.original.name }}</span>
+          <UIcon name="i-lucide-lock" class="text-text-muted shrink-0 size-3.5" v-if="row.original.is_system"   title="系统角色"/>
         </div>
       </template>
 
@@ -248,12 +248,12 @@ async function confirmDelete(role: Role) {
         <div class="flex items-center gap-1.5">
           <button
             class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all border"
-            :class="row.is_system
+            :class="row.original.is_system
               ? 'border-border text-text-muted cursor-not-allowed opacity-50'
               : 'border-border text-text-secondary hover:bg-page hover:text-text'"
-            :disabled="row.is_system"
-            :title="row.is_system ? '系统角色不可编辑' : '编辑角色'"
-            @click="openEditRole(row)"
+            :disabled="row.original.is_system"
+            :title="row.original.is_system ? '系统角色不可编辑' : '编辑角色'"
+            @click="openEditRole(row.original)"
           >
             <UIcon name="i-lucide-pencil" class="size-3.5" />
             编辑
@@ -277,7 +277,8 @@ async function confirmDelete(role: Role) {
 
   <!-- 角色编辑弹窗 -->
   <UModal v-model:open="showEditor" :title="editingRole ? `编辑角色：${editingRole.name}` : '新建角色'" :unmount-on-hide="true">
-    <div class="flex flex-col gap-4">
+    <template #body>
+      <div class="flex flex-col gap-4">
       <!-- 名称 -->
       <div>
         <label class="block text-sm font-semibold text-text mb-1">角色名 *</label>
@@ -369,7 +370,8 @@ async function confirmDelete(role: Role) {
       </div>
 
       <p v-if="editorError" class="text-13px text-error-text">{{ editorError }}</p>
-    </div>
+      </div>
+    </template>
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="saving" @click="showEditor = false">取消</UButton>

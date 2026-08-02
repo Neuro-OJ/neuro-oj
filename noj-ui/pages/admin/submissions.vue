@@ -260,19 +260,19 @@ async function rejudge(submissionId: string) {
         <span
           class="inline-block px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap"
           :style="{
-            background: getStatusColor(rowSub(row).status, rowSub(row).result?.status) + '15',
-            color: getStatusColor(rowSub(row).status, rowSub(row).result?.status),
+            background: getStatusColor(rowSub(row.original).status, rowSub(row.original).result?.status) + '15',
+            color: getStatusColor(rowSub(row.original).status, rowSub(row.original).result?.status),
           }"
         >
-          {{ getStatusLabel(rowSub(row).status, rowSub(row).result?.status) }}
+          {{ getStatusLabel(rowSub(row.original).status, rowSub(row.original).result?.status) }}
         </span>
       </template>
 
       <!-- 操作列 -->
       <template #actions-cell="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <button class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white disabled:cursor-not-allowed disabled:opacity-50" :disabled="isRejudging(rowSub(row).id)" @click="rejudge(rowSub(row).id)">{{ isRejudging(rowSub(row).id) ? '提交中...' : '重测' }}</button>
-          <NuxtLink :to="`/submissions/${rowSub(row).id}`" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-primary border-primary bg-transparent hover:bg-primary hover:text-white">查看</NuxtLink>
+          <button class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white disabled:cursor-not-allowed disabled:opacity-50" :disabled="isRejudging(rowSub(row.original).id)" @click="rejudge(rowSub(row.original).id)">{{ isRejudging(rowSub(row.original).id) ? '提交中...' : '重测' }}</button>
+          <NuxtLink :to="`/submissions/${rowSub(row.original).id}`" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-primary border-primary bg-transparent hover:bg-primary hover:text-white">查看</NuxtLink>
         </div>
       </template>
     </UTable>

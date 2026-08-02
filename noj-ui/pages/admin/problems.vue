@@ -171,20 +171,20 @@ async function batchRejudge(problemId: string) {
       :loading="tableLoading"
       :empty="'暂无题目'">
       <template #difficulty-cell="{ row }">
-        <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold" :class="row.difficulty === 'easy' ? 'bg-green-50 text-success-text' : row.difficulty === 'medium' ? 'bg-amber-50 text-warning-text' : 'bg-red-50 text-error-text'">
-          {{ difficultyLabels[row.difficulty] || row.difficulty }}
+        <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold" :class="row.original.difficulty === 'easy' ? 'bg-green-50 text-success-text' : row.original.difficulty === 'medium' ? 'bg-amber-50 text-warning-text' : 'bg-red-50 text-error-text'">
+          {{ difficultyLabels[row.original.difficulty] || row.original.difficulty }}
         </span>
       </template>
 
       <template #actions-cell="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <NuxtLink :to="`/admin/problem-edit/${row.id}`" class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer no-underline transition-all duration-150 hover:bg-[#f5f5f5] hover:text-text" title="编辑">
+          <NuxtLink :to="`/admin/problem-edit/${row.original.id}`" class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer no-underline transition-all duration-150 hover:bg-[#f5f5f5] hover:text-text" title="编辑">
             <UIcon name="i-lucide-pencil" class="size-3.5" />
           </NuxtLink>
-          <UButton color="neutral" variant="outline" class="w-[30px] h-[30px] border-border text-text-secondary hover:bg-amber-50 hover:text-[#d97706] hover:border-amber-200" :disabled="rejudgingProblemIds.has(row.id)" :title="rejudgingProblemIds.has(row.id) ? '重测提交中' : '重测'" @click="batchRejudge(row.id)">
+          <UButton color="neutral" variant="outline" class="w-[30px] h-[30px] border-border text-text-secondary hover:bg-amber-50 hover:text-[#d97706] hover:border-amber-200" :disabled="rejudgingProblemIds.has(row.original.id)" :title="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" @click="batchRejudge(row.original.id)">
             <UIcon name="i-lucide-refresh-cw" class="size-3.5" />
           </UButton>
-          <UButton color="neutral" variant="outline" class="w-[30px] h-[30px] border-border text-text-secondary hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" title="删除" @click="confirmDelete(row)">
+          <UButton color="neutral" variant="outline" class="w-[30px] h-[30px] border-border text-text-secondary hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" title="删除" @click="confirmDelete(row.original)">
             <UIcon name="i-lucide-trash-2" class="size-3.5" />
           </UButton>
         </div>
@@ -200,8 +200,10 @@ async function batchRejudge(problemId: string) {
 
   <!-- 删除确认 -->
   <UModal v-model:open="showDeleteConfirm" :title="'删除题目'" :unmount-on-hide="true">
-    <p>确定要删除题目 <strong>{{ deleteTarget?.title }}</strong>（{{ deleteTarget?.id }}）吗？此操作不可撤销，相关提交记录也会被级联删除。</p>
-    <p v-if="deleteError" class="mt-2 text-error-text text-13px">{{ deleteError }}</p>
+    <template #body>
+      <p>确定要删除题目 <strong>{{ deleteTarget?.title }}</strong>（{{ deleteTarget?.id }}）吗？此操作不可撤销，相关提交记录也会被级联删除。</p>
+      <p v-if="deleteError" class="mt-2 text-error-text text-13px">{{ deleteError }}</p>
+    </template>
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="deleting" @click="showDeleteConfirm = false">取消</UButton>
