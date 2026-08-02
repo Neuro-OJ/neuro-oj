@@ -22,8 +22,7 @@ import { extractApiError } from '~/utils/apiError';
 type FetchOptions = NonNullable<Parameters<typeof $fetch>[1]>;
 
 /** API 调用选项：silent/onError 为 API 层专属，其余透传 $fetch */
-export interface ApiCallOptions
-  extends Omit<FetchOptions, 'method' | 'timeout'> {
+export interface ApiCallOptions extends Omit<FetchOptions, 'method' | 'timeout'> {
   /** 静默模式：不弹 toast，错误仍抛出（由调用方处理） */
   silent?: boolean;
   /** 自定义错误处理：替换默认 toast；与 silent 同时给出时 silent 优先 */
@@ -60,16 +59,14 @@ export function useApi() {
 
   return {
     api: {
-      get: <T = unknown>(url: string, options?: ApiCallOptions) =>
-        request<T>('get', url, options),
+      get: <T = unknown>(url: string, options?: ApiCallOptions) => request<T>('get', url, options),
       post: <T = unknown>(url: string, body?: unknown, options?: ApiCallOptions) =>
         request<T>('post', url, { body, ...options }),
       put: <T = unknown>(url: string, body?: unknown, options?: ApiCallOptions) =>
         request<T>('put', url, { body, ...options }),
       patch: <T = unknown>(url: string, body?: unknown, options?: ApiCallOptions) =>
         request<T>('patch', url, { body, ...options }),
-      delete: <T = unknown>(url: string, options?: ApiCallOptions) =>
-        request<T>('delete', url, options),
+      delete: <T = unknown>(url: string, options?: ApiCallOptions) => request<T>('delete', url, options),
     },
   };
 }

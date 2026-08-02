@@ -30,21 +30,21 @@ export interface BanStatusResponse {
 }
 
 export function useBanStatus() {
-  const ipBanned = useState<boolean>("ban:ipBanned", () => false);
-  const userBanned = useState<boolean>("ban:userBanned", () => false);
-  const ipBanInfo = useState<IpBanInfo | null>("ban:ipBanInfo", () => null);
-  const userBanInfo = useState<UserBanInfo | null>("ban:userBanInfo", () => null);
-  const authenticated = useState<boolean>("ban:authenticated", () => false);
-  const user = useState<{ id: string; role: string } | null>("ban:user", () => null);
-  const loading = useState<boolean>("ban:loading", () => true);
-  const error = useState<string>("ban:error", () => "");
+  const ipBanned = useState<boolean>('ban:ipBanned', () => false);
+  const userBanned = useState<boolean>('ban:userBanned', () => false);
+  const ipBanInfo = useState<IpBanInfo | null>('ban:ipBanInfo', () => null);
+  const userBanInfo = useState<UserBanInfo | null>('ban:userBanInfo', () => null);
+  const authenticated = useState<boolean>('ban:authenticated', () => false);
+  const user = useState<{ id: string; role: string } | null>('ban:user', () => null);
+  const loading = useState<boolean>('ban:loading', () => true);
+  const error = useState<string>('ban:error', () => '');
 
   let fetched = false;
 
   async function fetch(): Promise<BanStatusResponse | null> {
     if (fetched && import.meta.client) return null;
     loading.value = true;
-    error.value = "";
+    error.value = '';
     try {
       // 封禁状态为全局静默请求：失败由 BanBanner 依据 error state 处理，不弹 toast
       const res = await useApi().api.get<BanStatusResponse>(

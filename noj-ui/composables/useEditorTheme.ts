@@ -5,33 +5,33 @@
  * - DOM 同步（外部职责）：调用方在主题根节点通过 `:class="{ 'editor-dark': ... }"` 切换
  * - Monaco 同步：调用方需在组件中 watch theme 后调 monaco.editor.setTheme()
  */
-export type EditorTheme = "light" | "dark"
+export type EditorTheme = 'light' | 'dark';
 
-const STORAGE_KEY = "noj:editor:theme"
+const STORAGE_KEY = 'noj:editor:theme';
 
 export function useEditorTheme() {
-  const theme = useState<EditorTheme>("editor:theme", () => {
+  const theme = useState<EditorTheme>('editor:theme', () => {
     if (import.meta.client) {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored === "light" || stored === "dark") return stored
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored === 'light' || stored === 'dark') return stored;
     }
-    return "dark" // 默认 dark（沉浸式场景）
-  })
+    return 'dark'; // 默认 dark（沉浸式场景）
+  });
 
   function set(t: EditorTheme) {
-    theme.value = t
+    theme.value = t;
   }
 
   function toggle() {
-    theme.value = theme.value === "dark" ? "light" : "dark"
+    theme.value = theme.value === 'dark' ? 'light' : 'dark';
   }
 
   // 写入 localStorage
   if (import.meta.client) {
     watch(theme, (t) => {
-      localStorage.setItem(STORAGE_KEY, t)
-    })
+      localStorage.setItem(STORAGE_KEY, t);
+    });
   }
 
-  return { theme, set, toggle }
+  return { theme, set, toggle };
 }

@@ -15,26 +15,26 @@
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
   const cookies = parseCookies(event);
-  const token = cookies["noj:token"];
+  const token = cookies['noj:token'];
 
   // 1. 通知后端撤销该 token（fail-open：失败时也要清本地 Cookie）
   if (token) {
     try {
       await $fetch(`${config.apiBase}/api/v1/auth/logout`, {
-        method: "POST",
+        method: 'POST',
         headers: { authorization: `Bearer ${token}` },
       });
     } catch (err) {
-      console.warn("[logout] 后端撤销失败，继续清本地 Cookie:", err);
+      console.warn('[logout] 后端撤销失败，继续清本地 Cookie:', err);
     }
   }
 
   // 2. 清除本地 Cookie
-  deleteCookie(event, "noj:token", {
-    path: "/",
+  deleteCookie(event, 'noj:token', {
+    path: '/',
   });
-  deleteCookie(event, "noj:session", {
-    path: "/",
+  deleteCookie(event, 'noj:session', {
+    path: '/',
   });
 
   return { success: true };

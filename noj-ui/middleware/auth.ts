@@ -3,10 +3,10 @@
  * 密码重置相关页面（forgot-password / reset-password）必须可匿名访问。
  */
 const PUBLIC_AUTH_PATHS = new Set([
-  "/login",
-  "/register",
-  "/forgot-password",
-  "/reset-password",
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/reset-password',
 ]);
 
 /**
@@ -14,9 +14,9 @@ const PUBLIC_AUTH_PATHS = new Set([
  * must_change_password=true 时仅允许访问这些路径。
  */
 const PASSWORD_CHANGE_WHITELIST = new Set<string>([
-  "/change-password",
-  "/login",
-  "/logout",
+  '/change-password',
+  '/login',
+  '/logout',
 ]);
 
 /**
@@ -52,7 +52,7 @@ export default defineNuxtRouteMiddleware(async (to, _from) => {
   }
 
   if (!isLoggedIn.value) {
-    return navigateTo("/login");
+    return navigateTo('/login');
   }
 
   // ── issue #75：session cookie 启动时可能只含基础字段，必须调一次 /me 拿到完整 UserResponse ──
@@ -65,7 +65,7 @@ export default defineNuxtRouteMiddleware(async (to, _from) => {
   if (user.value?.must_change_password === true) {
     const path = to.path;
     if (!PASSWORD_CHANGE_WHITELIST.has(path)) {
-      return navigateTo("/change-password");
+      return navigateTo('/change-password');
     }
   }
 });

@@ -1,4 +1,4 @@
-import { ref, watch, onUnmounted, type Ref } from "vue";
+import { onUnmounted, type Ref, ref, watch } from 'vue';
 
 /**
  * EventSource 连接状态。
@@ -8,7 +8,7 @@ import { ref, watch, onUnmounted, type Ref } from "vue";
  * - `fallback`: SSE 不可用，自动降级到轮询模式
  * - `disabled`: 被禁用（enabled = false）
  */
-type EventSourceState = "connecting" | "connected" | "fallback" | "disabled";
+type EventSourceState = 'connecting' | 'connected' | 'fallback' | 'disabled';
 
 /**
  * useEventSource 选项。
@@ -52,16 +52,14 @@ export interface UseEventSourceOptions {
  * ```
  */
 export function useEventSource(options: UseEventSourceOptions) {
-  const state = ref<EventSourceState>("disabled");
+  const state = ref<EventSourceState>('disabled');
 
   let eventSource: EventSource | null = null;
   let fallbackTimer: ReturnType<typeof setInterval> | null = null;
   let connectTimeout: ReturnType<typeof setTimeout> | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const urlRef = typeof options.url === "string"
-    ? ref(options.url)
-    : options.url;
+  const urlRef = typeof options.url === 'string' ? ref(options.url) : options.url;
 
   const enabled = options.enabled ?? ref(true);
   const onEvent = options.onEvent ?? {};
@@ -111,7 +109,7 @@ export function useEventSource(options: UseEventSourceOptions) {
    */
   function startFallback() {
     stopFallback();
-    state.value = "fallback";
+    state.value = 'fallback';
 
     // 立即执行一次
     if (fetchFn) {
@@ -130,7 +128,7 @@ export function useEventSource(options: UseEventSourceOptions) {
     // 30 秒后重试 SSE 连接（仅客户端）
     if (isClient) {
       retryTimer = setTimeout(() => {
-        if (state.value === "fallback" && enabled.value) {
+        if (state.value === 'fallback' && enabled.value) {
           connect();
         }
       }, 30_000);
@@ -147,30 +145,30 @@ export function useEventSource(options: UseEventSourceOptions) {
     closeEventSource();
     stopFallback();
 
-    const url = typeof urlRef.value === "string" ? urlRef.value : "";
+    const url = typeof urlRef.value === 'string' ? urlRef.value : '';
     if (!url) return;
 
     // 检查浏览器是否支持 EventSource
-    if (typeof EventSource === "undefined") {
-      console.warn("useEventSource: 浏览器不支持 EventSource，降级到轮询");
+    if (typeof EventSource === 'undefined') {
+      console.warn('useEventSource: 浏览器不支持 EventSource，降级到轮询');
       startFallback();
       return;
     }
 
-    state.value = "connecting";
+    state.value = 'connecting';
 
     try {
       eventSource = new EventSource(url);
     } catch {
-      console.warn("useEventSource: EventSource 创建失败，降级到轮询");
+      console.warn('useEventSource: EventSource 创建失败，降级到轮询');
       startFallback();
       return;
     }
 
     // 连接超时：10 秒未收到 open 事件则降级
     connectTimeout = setTimeout(() => {
-      if (state.value === "connecting") {
-        console.warn("useEventSource: 连接超时（10s），降级到轮询");
+      if (state.value === 'connecting') {
+        console.warn('useEventSource: 连接超时（10s），降级到轮询');
         closeEventSource();
         startFallback();
       }
@@ -182,13 +180,13 @@ export function useEventSource(options: UseEventSourceOptions) {
         clearTimeout(connectTimeout);
         connectTimeout = null;
       }
-      state.value = "connected";
+      state.value = 'connected';
     };
 
     // 错误处理：降级到 fallback
     eventSource.onerror = () => {
-      if (state.value === "connected" || state.value === "connecting") {
-        console.warn("useEventSource: 连接出错，降级到轮询");
+      if (state.value === 'connected' || state.value === 'connecting') {
+        console.warn('useEventSource: 连接出错，降级到轮询');
         closeEventSource();
         startFallback();
       }
@@ -196,14 +194,17 @@ export function useEventSource(options: UseEventSourceOptions) {
 
     // 注册事件监听
     for (const [event, callback] of Object.entries(onEvent)) {
-      eventSource.addEventListener(event, ((e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data);
-          callback(data);
-        } catch {
-          callback(e.data);
-        }
-      }) as EventListener);
+      eventSource.addEventListener(
+        event,
+        ((e: MessageEvent) => {
+          try {
+            const data = JSON.parse(e.data);
+            callback(data);
+          } catch {
+            callback(e.data);
+          }
+        }) as EventListener,
+      );
     }
 
     // 通用消息监听
@@ -211,9 +212,9 @@ export function useEventSource(options: UseEventSourceOptions) {
       eventSource.onmessage = ((e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data);
-          onMessage("message", data);
+          onMessage('message', data);
         } catch {
-          onMessage("message", e.data);
+          onMessage('message', e.data);
         }
       }) as unknown as (this: EventSource, ev: MessageEvent) => void;
     }
@@ -225,7 +226,7 @@ export function useEventSource(options: UseEventSourceOptions) {
   function disconnect() {
     closeEventSource();
     stopFallback();
-    state.value = "disabled";
+    state.value = 'disabled';
   }
 
   // 监听 enabled 和 url 变化（SSR 阶段不连接，客户端水合后自动执行）

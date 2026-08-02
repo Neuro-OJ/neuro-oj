@@ -12,47 +12,47 @@ export function useResizableSplit(
   min: number,
   max: number,
 ) {
-  const width = ref(initial)
+  const width = ref(initial);
 
   // 加载持久化宽度
   onMounted(() => {
-    if (!import.meta.client) return
-    const stored = Number(localStorage.getItem(storageKey))
+    if (!import.meta.client) return;
+    const stored = Number(localStorage.getItem(storageKey));
     if (Number.isFinite(stored) && stored >= min && stored <= max) {
-      width.value = stored
+      width.value = stored;
     }
-  })
+  });
 
   function persist(v: number) {
     if (import.meta.client) {
-      localStorage.setItem(storageKey, String(v))
+      localStorage.setItem(storageKey, String(v));
     }
   }
 
   function startDrag(e: MouseEvent) {
-    if (!import.meta.client) return
-    e.preventDefault()
-    const startX = e.clientX
-    const startWidth = width.value
+    if (!import.meta.client) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = width.value;
 
     function onMove(ev: MouseEvent) {
-      const dx = ev.clientX - startX
-      const next = Math.max(min, Math.min(max, startWidth + dx))
-      width.value = next
+      const dx = ev.clientX - startX;
+      const next = Math.max(min, Math.min(max, startWidth + dx));
+      width.value = next;
     }
     function onUp() {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-      persist(width.value)
+      globalThis.removeEventListener('mousemove', onMove);
+      globalThis.removeEventListener('mouseup', onUp);
+      persist(width.value);
     }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
+    globalThis.addEventListener('mousemove', onMove);
+    globalThis.addEventListener('mouseup', onUp);
   }
 
   function reset() {
-    width.value = Math.floor((min + max) / 2)
-    persist(width.value)
+    width.value = Math.floor((min + max) / 2);
+    persist(width.value);
   }
 
-  return { width, startDrag, reset }
+  return { width, startDrag, reset };
 }

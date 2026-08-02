@@ -32,13 +32,13 @@ export default defineNuxtRouteMiddleware(async (_to, _from) => {
 
   // 未登录 → 去登录页
   if (!isLoggedIn.value) {
-    return navigateTo("/login");
+    return navigateTo('/login');
   }
 
   // 非管理员 → 重定向首页（不给提示，静默拦截）
   // 使用 isAdmin 字段（优先），向后兼容 role 字段
-  const isAdmin = (user.value as Record<string, unknown>)?.is_admin ?? (user.value?.role === "admin");
+  const isAdmin = (user.value as Record<string, unknown>)?.is_admin ?? (user.value?.role === 'admin');
   if (!isAdmin) {
-    return navigateTo("/");
+    return navigateTo('/');
   }
 });

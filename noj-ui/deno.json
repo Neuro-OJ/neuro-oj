@@ -7,10 +7,15 @@
     "preview": "deno run -A npm:nuxt preview",
     "lint": "deno lint",
     "fmt": "deno fmt",
+    "check": "deno fmt --check && deno lint && deno task check:types",
+    "check:types": "deno check utils tests",
     "test": "deno test -A tests/"
   },
-  "lint": { "include": ["*.vue", "*.ts"] },
-  "fmt": { "include": ["*.vue", "*.ts"], "options": { "singleQuote": true, "lineWidth": 120 } },
+  "lint": {
+    "include": ["**/*.vue", "**/*.ts"],
+    "rules": { "exclude": ["no-sloppy-imports"] }
+  },
+  "fmt": { "include": ["**/*.vue", "**/*.ts"], "options": { "singleQuote": true, "lineWidth": 120 } },
   "nodeModulesDir": "auto",
   "allowScripts": [
     "npm:@parcel/watcher@2.5.6",

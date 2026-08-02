@@ -7,10 +7,10 @@
 import { extractApiError } from '~/utils/apiError';
 
 export type SubmissionStatus =
-  | "pending"
-  | "judging"
-  | "finished"
-  | "error";
+  | 'pending'
+  | 'judging'
+  | 'finished'
+  | 'error';
 
 export interface PolledSubmission {
   id: string;
@@ -28,7 +28,7 @@ export interface PolledSubmission {
   } | null;
 }
 
-const TERMINAL_STATUSES: SubmissionStatus[] = ["finished", "error"];
+const TERMINAL_STATUSES: SubmissionStatus[] = ['finished', 'error'];
 const POLL_INTERVAL_MS = 1500;
 
 export function useSubmissionPolling(submissionIdRef: Ref<string | null>) {
