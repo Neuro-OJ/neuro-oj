@@ -1,58 +1,18 @@
 <script setup lang="ts">
-import { useRoute, useRouter } from 'vue-router'
-import { onMounted, nextTick } from 'vue'
-import { extractApiError } from '~/utils/apiError'
-
+/**
+ * 标准题库独立做题页。
+ * 完整 IDE 工作区（草稿/轮询/侧栏/状态栏等）由 EditorWorkspace 提供。
+ */
 definePageMeta({
   layout: false,
   ssr: false,
 })
 
 const route = useRoute()
-const router = useRouter()
 const problemId = computed(() => route.params.id as string)
-const { isLoggedIn } = useAuth()
 const { api } = useApi()
 
-// 主题
-const { theme, set: setTheme } = useEditorTheme()
-
-// 草稿
-const code = ref('')
-const draftEnabled = ref(true)
-const { state: draftState, savedAt: draftSavedAt, clear: clearDraft } = useDraftStorage(problemId, code, draftEnabled)
-
-// 模板加载状态
-const templateLoading = ref(false)
-const templateError = ref('')
-
-// 侧栏
-const sidebarTab = ref<'description' | 'history' | 'settings'>('description')
-const sidebarVisible = ref(true)
-const sidebarWidth = useResizableSplit('editor:sidebar:width', 320, 240, 480)
-
-// 提交后实时状态轮询（留在编辑页，不跳转）
-const activeSubmissionId = ref<string | null>(null)
-const {
-  submission: activeSubmission,
-  isPolling: isPollingActive,
-  start: startPolling,
-  stop: stopPolling,
-} = useSubmissionPolling(activeSubmissionId)
-const sidebarWidthPx = computed({
-  get: () => sidebarWidth.width.value,
-  set: (value: number) => {
-    sidebarWidth.width.value = value
-  },
-})
-
-// 编辑器元数据（用于状态栏）
-const cursor = ref({ line: 1, col: 1 })
-const totalLines = computed(() => code.value.split('\n').length)
-const totalChars = computed(() => code.value.length)
-
-// 题目加载
-const { data: problemData, pending: problemPending, error: problemError } = useFetch<{
+const { data, pending, error, refresh } = useFetch<{
   data: {
     id: string
     display_id: string
@@ -64,227 +24,43 @@ const { data: problemData, pending: problemPending, error: problemError } = useF
   }
 }>(`/api/v1/problems/${problemId.value}`, { server: false })
 
-const problem = computed(() => problemData.value?.data ?? null)
-
-// 提交历史
-const { data: submissionsData, refresh: refreshSubmissionsFn } = useFetch<{
-  data: Array<{
-    id: string
-    status: string
-    score: number
-    language: string
-    created_at: string
-    result: { status: string; score: number } | null
-  }>
-}>(() => `/api/v1/submissions?problem_id=${problemId.value}&limit=20`, {
-  server: false,
-  default: () => ({ data: [] }),
+const workspaceProblem = computed(() => {
+  const p = data.value?.data
+  if (!p) return null
+  return {
+    id: p.id,
+    display_id: p.display_id,
+    title: p.title,
+    description: p.description,
+    difficulty: p.difficulty,
+    type: p.type,
+    categories: p.categories,
+  }
 })
 
-const submissions = computed(() => submissionsData.value?.data ?? [])
-
-// 语言（仅 Python 3，多语言切换器等 noj-judge 各语言镜像就绪后启用）
-const languages = [{ value: 'python3', label: 'Python 3' }]
-const language = ref('python3')
-
-// 提交
-const submitting = ref(false)
-const submitError = ref('')
-const canSubmit = computed(() => isLoggedIn.value && code.value.trim().length > 0)
-
-async function handleSubmit() {
-  if (!canSubmit.value) {
-    submitError.value = isLoggedIn.value ? '请先编写代码' : '请先登录'
-    return
-  }
-  submitting.value = true
-  submitError.value = ''
-  try {
-    const res = await api.post<{ data: { id: string } }>('/api/v1/submissions', {
-      problem_id: problemId.value,
-      language: language.value,
-      code: code.value,
+function submit(problemIdValue: string, language: string, code: string) {
+  return api
+    .post<{ data: { id: string } }>('/api/v1/submissions', {
+      problem_id: problemIdValue,
+      language,
+      code,
     })
-    // 留在编辑页：自动切到历史 tab + 启动实时轮询
-    sidebarTab.value = 'history'
-    sidebarVisible.value = true
-    startPolling(res.data.id)
-    // 轮询约 2s 后（judge 入队 + 评测完成），刷新历史列表把最近一条移入
-    setTimeout(() => refreshSubmissionsFn(), 2000)
-  } catch (err: unknown) {
-    submitError.value = extractApiError(err).message
-  } finally {
-    submitting.value = false
-  }
-}
-
-function openSettings() {
-  sidebarTab.value = 'settings'
-  sidebarVisible.value = true
-}
-
-// 页面挂载后：若没有本地草稿且 code 为空，尝试从后端拉取 submission.py 模板
-onMounted(async () => {
-  // 等一拍让 useDraftStorage 完成从 localStorage 同步
-  await nextTick()
-  if (code.value.trim() !== '') return
-  if (draftState.value === 'saved' || draftState.value === 'dirty' || draftState.value === 'saving') return
-
-  templateLoading.value = true
-  templateError.value = ''
-  try {
-    const res = await api.get<{ data: { content: string; language: string } }>(
-      `/api/v1/problems/${problemId.value}/template`,
-      { silent: true },
-    )
-    if (res?.data?.content && code.value.trim() === '') {
-      code.value = res.data.content
-    }
-  } catch (e: unknown) {
-    const err = e as { statusCode?: number; data?: { error?: string }; message?: string }
-    // 404 是预期：题目无 submission.py 模板
-    if (err.statusCode !== 404) {
-      templateError.value = extractApiError(e).message
-    }
-  } finally {
-    templateLoading.value = false
-  }
-})
-
-function openSubmission(id: string) {
-  router.push(`/submissions/${id}`)
-}
-
-function goBack() {
-  router.push(`/problems/${problemId.value}`)
-}
-
-// Monaco 光标变化回调（通过 ClientOnly 包装的 MonacoEditor 的 @cursor-change 事件接收）
-function onCursorChange(pos: { line: number; col: number }) {
-  cursor.value = pos
+    .then((r) => r.data)
 }
 </script>
 
 <template>
-  <div
-    class="h-screen flex flex-col overflow-hidden"
-    :class="{ 'editor-dark': theme === 'dark' }"
-  >
-   <ClientOnly>
-    <!-- 加载状态 -->
-    <div v-if="problemPending" class="flex-1 flex items-center justify-center bg-bg-page">
-      <div class="flex flex-col items-center gap-3 text-text-muted">
-        <div class="size-7 border-[3px] border-border border-t-primary rounded-full animate-spin-slow" />
-        <span class="text-sm">加载题目...</span>
-      </div>
-    </div>
-
-    <!-- 错误状态 -->
-    <div v-else-if="problemError || !problem" class="flex-1 flex items-center justify-center bg-bg-page">
-      <div class="flex flex-col items-center gap-3 text-text-muted">
-        <span class="flex items-center justify-center size-11 rounded-full bg-red-100 text-red-800 text-xl font-bold">!</span>
-        <p class="text-sm">题目加载失败</p>
-        <UButton color="primary" variant="outline" class="text-sm" @click="goBack">返回题目列表</UButton>
-      </div>
-    </div>
-
-    <!-- 正常状态 -->
-    <template v-else>
-      <EditorToolbar
-        :problem="problem"
-        :language="language"
-        :languages="languages"
-        :theme-mode="theme"
-        :can-submit="canSubmit"
-        :submitting="submitting"
-        :sidebar-visible="sidebarVisible"
-        :draft-state="draftState"
-        :draft-saved-at="draftSavedAt"
-        @update:language="language = $event"
-        @update:theme-mode="setTheme($event)"
-        @open-settings="openSettings"
-        @toggle-sidebar="sidebarVisible = !sidebarVisible"
-        @submit="handleSubmit"
-        @back="goBack"
-      />
-
-      <div class="flex-1 flex min-h-0">
-        <ActivityBar
-          :active="sidebarTab"
-          @select="(v) => { sidebarTab = v; sidebarVisible = true }"
-        />
-
-        <!-- 侧栏（可隐藏 + 可拖拽） -->
-        <template v-if="sidebarVisible">
-          <div :style="{ width: `${sidebarWidthPx}px` }" class="flex-shrink-0 transition-[width] duration-200">
-            <EditorSidebar
-              :active="sidebarTab"
-              :problem="problem"
-              :submissions="submissions"
-              :active-submission="activeSubmission"
-              :is-polling-active="isPollingActive"
-              :theme-mode="theme"
-              :draft-enabled="draftEnabled"
-              @update:theme-mode="setTheme($event)"
-              @update:draft-enabled="draftEnabled = $event"
-              @clear-draft="clearDraft"
-              @open-submission="openSubmission"
-            />
-          </div>
-          <ResizableSplitter
-            v-model="sidebarWidthPx"
-            :min="240"
-            :max="480"
-            side="right"
-          />
-        </template>
-
-        <!-- 主编辑区 -->
-        <main class="flex-1 flex flex-col min-w-0 h-full min-h-0">
-          <ClientOnly>
-            <MonacoEditor
-              v-model="code"
-              :language="language"
-              :theme="theme === 'dark' ? 'vs-dark' : 'vs'"
-              :disabled="!isLoggedIn || submitting"
-              :min-height="400"
-              @cursor-change="onCursorChange"
-            />
-            <template #fallback>
-              <div class="flex-1 flex items-center justify-center bg-[#0d1117] text-[#8b949e] text-sm">
-                <div class="flex flex-col items-center gap-3">
-                  <div class="size-7 border-[3px] border-border border-t-primary rounded-full animate-spin-slow" />
-                  <span>加载编辑器...</span>
-                </div>
-              </div>
-            </template>
-          </ClientOnly>
-
-          <!-- 提交错误 banner -->
-          <Transition
-            enter-active-class="transition-all duration-200 ease-out"
-            leave-active-class="transition-all duration-200 ease-in"
-            enter-from-class="opacity-0 -translate-y-1"
-            leave-to-class="opacity-0 -translate-y-1"
-          >
-            <div v-if="submitError" class="border-t border-red-200">
-              <UAlert color="error" icon="i-lucide-alert-circle" :title="submitError" :close="true" class="rounded-none">
-                <template #close>
-                  <UButton color="neutral" variant="link" icon="i-lucide-x" aria-label="关闭" @click="submitError = ''" />
-                </template>
-              </UAlert>
-            </div>
-          </Transition>
-
-          <EditorStatusBar
-            :language="language"
-            :cursor="cursor"
-            :total-lines="totalLines"
-            :total-chars="totalChars"
-          />
-        </main>
-      </div>
-    </template>
-   </ClientOnly>
-  </div>
+  <EditorWorkspace
+    :problem="workspaceProblem"
+    :pending="pending"
+    :error="error"
+    :retry="refresh"
+    :history-url="() => `/api/v1/submissions?problem_id=${problemId}&limit=20`"
+    :submit="submit"
+    :template-url="(id: string) => `/api/v1/problems/${id}/template`"
+    :draft-key="problemId"
+    :open-submission-url="(id: string) => `/submissions/${id}`"
+    :back-url="`/problems/${problemId}`"
+    :back-label="'返回题目详情'"
+  />
 </template>
