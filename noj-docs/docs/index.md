@@ -1,18 +1,32 @@
-# NOJ 文档
+---
+layout: home
 
-NOJ（Neuro OJ）是面向大模型能力评测和编程实训场景的在线评测系统。它提供题目管理、代码提交、评测队列、Docker 沙箱执行和结果回传能力。
+hero:
+  name: "Neuro OJ"
+  text: "面向 LMCC 的在线评测系统"
+  tagline: 函数调用型评测 / 双容器隔离沙箱 / 竞赛 · 社区 · RBAC
+  actions:
+    - theme: brand
+      text: 什么是 Neuro OJ
+      link: /intro/what-is-noj
+    - theme: alt
+      text: 快速开始
+      link: /intro/getting-started
+    - theme: alt
+      text: 快速出一题
+      link: /problemsetters/quick-start
 
-这份文档按读者组织：
-
-- [做题人](users/index.md)：了解如何注册登录、查找题目、提交代码和理解评测结果。
-- [运营者](operators/index.md)：了解如何启动、初始化、部署和维护一个 NOJ 实例。
-- [出题人](problemsetters/index.md)：了解 NOJ 的评测模型、支持包结构、测试数据和 SDK 语义。
-- [参考](reference/index.md)：查询术语、结果状态和稳定概念。
-
-## 推荐阅读路径
-
-如果你只是使用 NOJ 做题，从[做题人快速开始](users/getting-started.md)开始。
-
-如果你要运行一套 NOJ 实例，先阅读[本地启动](operators/local-start.md)，再阅读[初始化与 CLI](operators/cli.md)和[Judge Worker 运维](operators/judge-workers.md)。
-
-如果你要编写题目，先阅读[评测模型](problemsetters/judge-model.md)。NOJ 不是传统的 stdin/stdout OJ，出题人需要编写 evaluator，通过 SDK 调用用户提交的函数并决定评分。
+features:
+  - icon: 🧩
+    title: 函数调用型评测
+    details: 实现题面声明的函数，由 evaluator 调用并评分，而非传统的 stdin/stdout 判题。
+  - icon: 📦
+    title: 双容器隔离评测
+    details: 用户代码与评测代码在独立 Docker 沙箱容器中运行，网络关闭、无特权、资源受限。
+  - icon: ⌨️
+    title: 在线编辑器
+    details: Monaco 编辑器，支持语法高亮与提交历史，提交后立即可见排队与评测结果。
+  - icon: 🏆
+    title: 社区与竞赛
+    details: 帖子与关注动态流，icpc / ioi / oi 三赛制竞赛与实时排名，RBAC 权限管理。
+---

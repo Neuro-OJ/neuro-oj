@@ -1,5 +1,9 @@
 # CLI 初始化（dev-setup 与各子命令）
 
+::: danger 文档状态：部署运维方案尚未成熟
+本分区文档描述的是**开发期部署与运维方式**（手动分步启动、开发期脚本），**尚未提供面向生产的一键部署方案**——当前不具备守护进程管理、TLS、备份、升级等生产级能力，生产部署请谨慎参考。项目后续将提供成熟的一键部署方式，届时本文档将整体更新。
+:::
+
 ## 管理 CLI
 
 `noj-core/scripts/noj.ts` 是统一的命令行入口（Cliffy 框架），取代了早期的
@@ -31,7 +35,7 @@ deno task dev-setup           # 开发环境一键初始化（= noj dev-setup）
 
 > dev-setup 面向开发、测试和首次初始化。**生产环境**请按需执行
 > `db:migrate` → `init:system` → `bootstrap:admin` → `problems:build` →
-> `problems:import`（正式题目包），不要执行 dev-setup 的 dev 数据部分。
+> `problems:import`（正式统一题目包），不要执行 dev-setup 的 dev 数据部分。
 
 ## 管理员初始化
 

@@ -1,33 +1,18 @@
 # 评测模型
 
-NOJ 当前支持双容器评测模型。每次提交会同时涉及 Evaluator 容器和 Solution 容器。
+Neuro OJ 当前支持双容器评测模型。每次提交会同时涉及 Evaluator 容器和 Solution 容器。核心术语见[术语表](../reference/glossary.md)。
 
-```text
-提交代码
-  |
-  v
-Solution 容器
-  - solution.py
-  - noj_solution_sdk
-  - Solution Host 加载用户模块
-  - 等待 Evaluator 调用函数
-  |
-  | runner.call(...)
-  v
-Evaluator 容器
-  - evaluate.py
-  - 测试数据或其他支持文件
-  - noj_evaluator_sdk
-  - 按题目自己的方式读取数据
-  - 调用用户函数
-  - 给出状态、分数和详情
+```mermaid
+flowchart TD
+    A[提交代码] --> B["Solution 容器<br/>solution.py<br/>noj_solution_sdk<br/>Solution Host 加载用户模块<br/>等待 Evaluator 调用函数"]
+    B -->|runner.call| C["Evaluator 容器<br/>evaluate.py<br/>测试数据或其他支持文件<br/>noj_evaluator_sdk<br/>按题目自己的方式读取数据<br/>调用用户函数<br/>给出状态、分数和详情"]
 ```
 
 ## 与传统 OJ 的差异
 
-传统 OJ 通常运行用户程序，把 stdin 输入喂给程序，再比对 stdout。NOJ 的 Python 题目不使用这种答案通道。
+传统 OJ 通常运行用户程序，把 stdin 输入喂给程序，再比对 stdout。Neuro OJ 的 Python 题目不使用这种答案通道。
 
-在 NOJ 中：
+在 Neuro OJ 中：
 
 - 用户提交的是可被调用的 Python 代码。
 - 题面会声明必须实现的函数，例如 `solve(a, b)`。
@@ -36,7 +21,7 @@ Evaluator 容器
 
 ## Evaluator 容器
 
-Evaluator 容器运行出题人提供的 `evaluate.py`。它能读取支持包中的测试数据和辅助文件，也可以自行生成测试输入或调用本地辅助逻辑，并通过 `noj_evaluator_sdk` 调用 Solution。
+Evaluator 容器运行出题人提供的 `evaluate.py`。它能读取纯净评测包中的测试数据和辅助文件，也可以自行生成测试输入或调用本地辅助逻辑，并通过 `noj_evaluator_sdk` 调用 Solution。
 
 Evaluator 是评分逻辑的所有者。它决定：
 
@@ -54,10 +39,10 @@ Solution 容器运行用户提交的 `solution.py` 和 Solution Host。Solution 
 
 如果用户函数不存在，Solution Host 会返回 `FunctionNotFound`。如果用户函数抛异常，会返回异常类型、消息和截断后的 traceback。
 
-注意这里的“返回”指的是发回给 Evaluator 的调用错误对象，不等于最终提交 verdict。最终显示给做题人的 `Accepted`、`WrongAnswer`、`RuntimeError` 等状态，仍然由 `evaluate.py` 决定。也就是说：
+注意这里的“返回”指的是发回给 Evaluator 的调用错误对象，不等于最终提交的结果状态（verdict）。最终显示给做题人的 `Accepted`、`WrongAnswer`、`RuntimeError` 等状态，仍然由 `evaluate.py` 决定。也就是说：
 
 - 用户函数抛异常后，Evaluator 可以把它记成 `WrongAnswer`。
-- 调用超时或调用阶段资源异常后，Evaluator 也可以把它当作普通失败样例处理，最终给出 `WrongAnswer`。
+- 调用超时或调用阶段资源异常后，Evaluator 也可以把它当作普通失败用例处理，最终给出 `WrongAnswer`。
 - 只有当 Evaluator 自己显式返回 `runtime_error()`，或 Judge Worker / Solution Host 在调用前就无法正常工作时，才更可能看到 `RuntimeError` / `SystemError`。
 - 用户代码语法错误、模块导入失败、Solution Host 启动失败，通常会在调用前被判为 `SystemError`，因为这时 Evaluator 还没有拿到可继续评分的函数实例。
 
@@ -67,7 +52,7 @@ Solution Host 在同一次评测中是 persistent 的：多次 `runner.call()` �
 
 ## 隔离边界
 
-Solution 不应直接读取隐藏测试数据。隐藏数据或评分材料位于 Evaluator 支持包中，或由 Evaluator 在运行时生成，由 Evaluator 控制使用方式。
+Solution 不应直接读取隐藏用例。隐藏用例的数据位于 Evaluator 读取的纯净评测包中，或由 Evaluator 在运行时生成，由 Evaluator 控制使用方式。
 
 网络、内存、时间和进程数限制由 Judge Worker 和运行时配置控制。出题人应避免在 evaluator 中泄露隐藏用例内容。
 
@@ -75,28 +60,16 @@ Solution 不应直接读取隐藏测试数据。隐藏数据或评分材料位�
 
 一次 `runner.call("solve", 1, 2)` 的链路是：
 
-```text
-evaluate.py
-  |
-  | 1. Evaluator SDK 写出 __NOJ_RPC__ 请求帧到 evaluator stderr
-  v
-noj-judge
-  |
-  | 2. Judge Worker 截获 RPC 帧，转发到 Solution Host stdin
-  v
-Solution Host
-  |
-  | 3. 调用 solution.py 中的 solve(1, 2)
-  v
-noj-judge
-  |
-  | 4. Judge Worker 把响应 JSON 写回 evaluator stdin
-  v
-evaluate.py
-  |
-  | 5. runner.call() 返回结果或抛出 SolutionCallError
-  v
-评分逻辑
+```mermaid
+sequenceDiagram
+    participant E as evaluate.py
+    participant J as noj-judge
+    participant S as Solution Host
+    E->>J: 1. 写出 __NOJ_RPC__ 请求帧（evaluator stderr）
+    J->>S: 2. 截获 RPC 帧，转发到 Solution Host stdin
+    S->>S: 3. 调用 solution.py 中的 solve(1, 2)
+    J-->>E: 4. 把响应 JSON 写回 evaluator stdin
+    E->>E: 5. runner.call() 返回结果或抛出 SolutionCallError，进入评分逻辑
 ```
 
 出题人正常情况下只使用 `SolutionRunner`，不需要手写 RPC 帧。RPC 细节见 [RPC 与可传递数据](rpc.md)。

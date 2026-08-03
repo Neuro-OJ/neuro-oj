@@ -1,8 +1,8 @@
 # 统一题目包（Problem Bundle）
 
-统一题目包是 NOJ 的**题目导入载体**：单个 zip 包含题面、评测内容与评测配置，
+统一题目包是 Neuro OJ 的**题目导入载体**：单个 zip 包含题面、评测内容与评测配置，
 通过 `POST /api/v1/problems/import-bundle`（管理界面上传）或 `noj problems import`
-一键导入，创建或更新题目。
+一键导入，创建或更新题目。术语说明见[术语表](../reference/glossary.md)。
 
 ## 包结构
 
@@ -16,7 +16,7 @@
 └── assets/           # 可选：其他 evaluate.py 需要的文件
 ```
 
-- `evaluate.py` **必须位于 zip 根级**——Judge 将包解压到容器 `/workspace` 后
+- `evaluate.py` **必须位于 zip 根级**——Judge Worker 将包解压到容器 `/workspace` 后
   路径固定为 `/workspace/evaluate.py`。
 - 测试数据（testcase）**不标准化**：`visible.jsonl` / `hidden.jsonl` 只是内置
   样例题的约定，你可以用 `cases/*.json`、SQLite、CSV 等任何方式组织，只要
@@ -75,14 +75,11 @@
 
 ## 目录三层模型
 
-```text
-data/problems-src/<id>/    题目源目录（版本控制）
-        │  noj problems build（排除 submission* / __pycache__ / .git）
-        ▼
-data/packages/<id>.zip     构建产物 = 导入载体（gitignored，可重建）
-        │  noj problems import / 管理界面上传（剥离元数据）
-        ▼
-data/storage/<hash>.zip    LocalStorageProvider 存储后端（gitignored）
+```mermaid
+flowchart TD
+    A["data/problems-src/&lt;id&gt;/<br/>题目源目录（版本控制）"]
+    A -->|"noj problems build（排除 submission* / __pycache__ / .git）"| B["data/packages/&lt;id&gt;.zip<br/>构建产物 = 导入载体（gitignored，可重建）"]
+    B -->|"noj problems import / 管理界面上传（剥离元数据）"| C["data/storage/&lt;hash&gt;.zip<br/>LocalStorageProvider 存储后端（gitignored）"]
 ```
 
 `SUPPORT_PACKAGE_DIR` 环境变量可覆盖本地存储目录（默认 `data/storage/`）。

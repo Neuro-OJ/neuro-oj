@@ -129,7 +129,7 @@ Evaluator SDK 会抛出 `SolutionCallError`，错误对象可通过 `exc.error` 
 
 ## 可传递的数据类型
 
-NOJ RPC 使用 JSON 加一层 NOJ codec。当前支持：
+Neuro OJ RPC 使用 JSON 加一层 Neuro OJ codec。当前支持：
 
 | Python 类型 | 传递语义 |
 | --- | --- |
@@ -162,12 +162,18 @@ NOJ RPC 使用 JSON 加一层 NOJ codec。当前支持：
 - 自定义对象实例。
 - 异常对象本身。
 
+### 行为
+
+- **Evaluator 传参**：`runner.call()` 在发出 RPC 帧之前递归校验参数（`validate_type`）。遇到不允许的类型**立即抛出 `RejectedError`**，错误消息带路径与类型名（如 `arg[0]: 不支持的类型 MyClass（仅 None/bool/int/float/str/bytes/list/dict）`）；RPC 帧不发出，Solution 侧完全不知情。帧序列化超过 1 MiB 软上限同理。
+- **Solution 返回值**：校验失败时 Judge Worker 返回 `code="Rejected"` 的错误帧，Evaluator 侧收到 `RejectedError`（与传参失败是同一个异常类型）。
+- 出题人可用 `try/except RejectedError` 把这类调用按失败用例处理；不捕获则 `evaluate.py` 异常退出，该次评测落为 `SystemError`。
+
 如果题目需要复杂结构，建议转换成由 `dict[str, ...]`、`list`、数字、字符串和字节串组成的数据结构。
 
 ## 传递数据的设计建议
 
-- 只把用户求解所需的输入传给 Solution，不要传隐藏答案。
-- 大型静态数据应放在支持包中由 Evaluator 读取，再传递必要片段给 Solution。
+- 只把用户求解所需的输入传给 Solution，不要传隐藏用例的期望答案。
+- 大型静态数据应放在纯净评测包中由 Evaluator 读取，再传递必要片段给 Solution。
 - 返回值应尽量稳定、可 JSON 化，便于 evaluator 比较和写入 `details`。
 - 对浮点题目，应在 evaluator 中定义误差容忍，而不是要求用户返回字符串。
 - 不要把 RPC 当作文件传输通道；大量数据会增加序列化和日志成本。
@@ -176,4 +182,4 @@ NOJ RPC 使用 JSON 加一层 NOJ codec。当前支持：
 
 Judge Worker 会限制收集到的容器输出大小。当前单个输出缓冲最多约 4 MiB，超过后会追加截断提示。
 
-当调用失败时，Judge Worker 会把 Solution stderr 的尾部片段附加到错误对象中，帮助 evaluator 记录调试信息。出题人应避免把完整 stderr 原样暴露给所有用户，尤其是隐藏测试场景。
+当调用失败时，Judge Worker 会把 Solution stderr 的尾部片段附加到错误对象中，帮助 evaluator 记录调试信息。出题人应避免把完整 stderr 原样暴露给所有用户，尤其是隐藏用例场景。
