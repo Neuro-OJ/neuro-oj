@@ -238,6 +238,163 @@ class TestHostProcess(unittest.TestCase):
         finally:
             self._cleanup(proc, path)
 
+    # ── capability 调用 ──────────────────────────────
+
+    def test_capability_call_round_trip(self):
+        """用户函数内 call_capability：发 capability 帧，收 result 帧后返回。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register, call_capability
+            @register
+            def solve():
+                return call_capability("ping", "hello")
+        """)
+        proc, path = self._start_host(entry)
+        try:
+            ready = self._read_frame(proc)
+            self.assertEqual(ready["type"], "ready")
+
+            self._send_frame(proc, {"type": "call", "id": "c1", "fn": "solve", "args": []})
+            # host 发出 capability 帧（转发请求）
+            cap = self._read_frame(proc)
+            self.assertEqual(cap["type"], "capability")
+            self.assertEqual(cap["name"], "ping")
+            self.assertEqual(cap["args"], ["hello"])
+
+            # 模拟 evaluator 返回 result
+            self._send_frame(
+                proc, {"type": "result", "id": cap["id"], "value": "pong"}
+            )
+            resp = self._read_frame(proc)
+            self.assertEqual(resp["type"], "result")
+            self.assertEqual(resp["id"], "c1")
+            self.assertEqual(resp["value"], "pong")
+        finally:
+            self._cleanup(proc, path)
+
+    def test_capability_not_found_raises_in_call(self):
+        """evaluator 回 NotFound → call_capability 抛 CapabilityNotFoundError。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register, call_capability
+            @register
+            def solve():
+                return call_capability("missing")
+        """)
+        proc, path = self._start_host(entry)
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(proc, {"type": "call", "id": "c1", "fn": "solve", "args": []})
+
+            cap = self._read_frame(proc)
+            self.assertEqual(cap["name"], "missing")
+
+            # evaluator 回 NotFound
+            self._send_frame(
+                proc,
+                {
+                    "type": "error",
+                    "id": cap["id"],
+                    "code": "NotFound",
+                    "message": "capability 'missing' not registered",
+                },
+            )
+            # 异常在用户函数内传播 → host 回 Exception 错误帧
+            resp = self._read_frame(proc)
+            self.assertEqual(resp["type"], "error")
+            self.assertEqual(resp["code"], "Exception")
+            self.assertIn("capability 'missing' not registered", resp["message"])
+        finally:
+            self._cleanup(proc, path)
+
+    def test_capability_rejected_type(self):
+        """不可序列化参数 → CapabilityRejectedError（公共 API，可被用户捕获），不发 capability 帧。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register, call_capability, CapabilityRejectedError
+            class Foo:
+                pass
+            @register
+            def solve():
+                try:
+                    return call_capability("x", Foo())
+                except CapabilityRejectedError as e:
+                    return f"rejected: {e}"
+        """)
+        proc, path = self._start_host(entry)
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(proc, {"type": "call", "id": "c1", "fn": "solve", "args": []})
+
+            # 直接收到 result（未发出 capability 帧）——用户捕获到了 CapabilityRejectedError
+            resp = self._read_frame(proc)
+            self.assertEqual(resp["type"], "result")
+            self.assertIn("不支持的类型", resp["value"])
+        finally:
+            self._cleanup(proc, path)
+
+    def test_capability_call_at_module_top_level(self):
+        """模块顶层代码 call_capability：reader 先于 entry 加载启动，等待响应后继续。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register, call_capability
+            top = call_capability("ping", "top-level")
+            @register
+            def solve():
+                return top
+        """)
+        proc, path = self._start_host(entry)
+        try:
+            ready = self._read_frame(proc)
+            self.assertEqual(ready["type"], "ready")
+
+            # 顶层调用发出 capability 帧（entry 加载期间）
+            cap = self._read_frame(proc)
+            self.assertEqual(cap["type"], "capability")
+            self.assertEqual(cap["name"], "ping")
+            self.assertEqual(cap["args"], ["top-level"])
+
+            # evaluator 返回后，entry 加载继续，函数可正常调用
+            self._send_frame(
+                proc, {"type": "result", "id": cap["id"], "value": "top-ok"}
+            )
+            self._send_frame(proc, {"type": "call", "id": "c1", "fn": "solve", "args": []})
+            resp = self._read_frame(proc)
+            self.assertEqual(resp["type"], "result")
+            self.assertEqual(resp["value"], "top-ok")
+        finally:
+            self._cleanup(proc, path)
+
+    def test_capability_bytes_round_trip(self):
+        """capability 参数/返回值 bytes base64 编解码。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register, call_capability
+            @register
+            def solve():
+                return call_capability("echo", b"payload")
+        """)
+        proc, path = self._start_host(entry)
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(proc, {"type": "call", "id": "c1", "fn": "solve", "args": []})
+
+            cap = self._read_frame(proc)
+            self.assertEqual(cap["name"], "echo")
+            self.assertEqual(cap["args"], [{"__bytes__": base64.b64encode(b"payload").decode()}])
+
+            # 返回值也是 bytes（base64 结构）
+            self._send_frame(
+                proc,
+                {
+                    "type": "result",
+                    "id": cap["id"],
+                    "value": {"__bytes__": base64.b64encode(b"resp").decode()},
+                },
+            )
+            resp = self._read_frame(proc)
+            self.assertEqual(resp["type"], "result")
+            self.assertEqual(
+                resp["value"], {"__bytes__": base64.b64encode(b"resp").decode()}
+            )
+        finally:
+            self._cleanup(proc, path)
+
 
 if __name__ == "__main__":
     unittest.main()

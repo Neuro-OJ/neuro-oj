@@ -10,6 +10,10 @@ export interface EvaluatorRuntime {
   time_limit_ms: number;
   /** Evaluator 容器内存上限（MB） */
   memory_limit_mb: number;
+  /** 网络配置（可选，缺省 = 无网；开启后 evaluator 以 bridge 模式联网） */
+  network?: {
+    enabled: boolean;
+  };
 }
 
 /**

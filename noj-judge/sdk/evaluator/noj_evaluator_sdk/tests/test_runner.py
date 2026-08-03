@@ -293,5 +293,169 @@ class TestSolutionRunnerCall(unittest.TestCase):
             h.teardown()
 
 
+class TestCapability(unittest.TestCase):
+    """验证 capability 帧处理（register_capability → handler → 响应帧）。"""
+
+    def _wait_for_frames(self, harness, timeout=2.0):
+        """轮询 stdout，等待 reader 线程写出帧。返回所有帧列表。"""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            frames = harness.all_call_frames()
+            if frames:
+                return frames
+            time.sleep(0.02)
+        self.fail("capability 响应帧未在超时内写出")
+
+    def test_capability_round_trip(self):
+        from noj_evaluator_sdk.capability import (
+            _reset_capabilities_for_tests,
+            register_capability,
+        )
+
+        _reset_capabilities_for_tests()
+
+        def ping(msg: str) -> str:
+            return f"pong:{msg}"
+
+        register_capability("ping", ping)
+        h = IpcHarness()
+        try:
+            h.send_host_response(
+                {"type": "capability", "id": "cap1", "name": "ping", "args": ["hello"]}
+            )
+            frames = self._wait_for_frames(h)
+            resp = frames[-1]
+            self.assertEqual(resp["type"], "result")
+            self.assertEqual(resp["id"], "cap1")
+            self.assertEqual(resp["value"], "pong:hello")
+        finally:
+            h.teardown()
+            _reset_capabilities_for_tests()
+
+    def test_capability_not_found(self):
+        from noj_evaluator_sdk.capability import (
+            _reset_capabilities_for_tests,
+        )
+
+        _reset_capabilities_for_tests()
+        h = IpcHarness()
+        try:
+            h.send_host_response(
+                {"type": "capability", "id": "cap2", "name": "nope", "args": []}
+            )
+            frames = self._wait_for_frames(h)
+            resp = frames[-1]
+            self.assertEqual(resp["type"], "error")
+            self.assertEqual(resp["code"], "NotFound")
+            self.assertIn("nope", resp["message"])
+        finally:
+            h.teardown()
+            _reset_capabilities_for_tests()
+
+    def test_capability_handler_exception(self):
+        from noj_evaluator_sdk.capability import (
+            _reset_capabilities_for_tests,
+            register_capability,
+        )
+
+        _reset_capabilities_for_tests()
+
+        def boom():
+            raise ValueError("cap boom")
+
+        register_capability("boom", boom)
+        h = IpcHarness()
+        try:
+            h.send_host_response(
+                {"type": "capability", "id": "cap3", "name": "boom", "args": []}
+            )
+            frames = self._wait_for_frames(h)
+            resp = frames[-1]
+            self.assertEqual(resp["type"], "error")
+            self.assertEqual(resp["code"], "Exception")
+            self.assertIn("cap boom", resp["message"])
+            self.assertIn("ValueError", resp.get("trace", ""))
+            # trace 应已清洗：不含绝对路径（防泄露 evaluator 内部路径）
+            self.assertNotIn("/workspace/", resp.get("trace", ""))
+            self.assertNotIn("noj_evaluator_sdk", resp.get("trace", ""))
+        finally:
+            h.teardown()
+            _reset_capabilities_for_tests()
+
+    def test_capability_overwrite_wins(self):
+        from noj_evaluator_sdk.capability import (
+            _reset_capabilities_for_tests,
+            register_capability,
+        )
+
+        _reset_capabilities_for_tests()
+        register_capability("dup", lambda: "first")
+        register_capability("dup", lambda: "second")
+        h = IpcHarness()
+        try:
+            h.send_host_response(
+                {"type": "capability", "id": "cap4", "name": "dup", "args": []}
+            )
+            frames = self._wait_for_frames(h)
+            resp = frames[-1]
+            self.assertEqual(resp["type"], "result")
+            self.assertEqual(resp["value"], "second")
+        finally:
+            h.teardown()
+            _reset_capabilities_for_tests()
+
+    def test_capability_rejected_return_type(self):
+        from noj_evaluator_sdk.capability import (
+            _reset_capabilities_for_tests,
+            register_capability,
+        )
+
+        _reset_capabilities_for_tests()
+
+        def bad_return():
+            return object()  # 不可序列化
+
+        register_capability("bad", bad_return)
+        h = IpcHarness()
+        try:
+            h.send_host_response(
+                {"type": "capability", "id": "cap5", "name": "bad", "args": []}
+            )
+            frames = self._wait_for_frames(h)
+            resp = frames[-1]
+            self.assertEqual(resp["type"], "error")
+            self.assertEqual(resp["code"], "Rejected")
+        finally:
+            h.teardown()
+            _reset_capabilities_for_tests()
+
+    def test_capability_result_too_large_rejected(self):
+        """超大返回值（序列化后 > 1 MiB）：必须回 Rejected 帧，而不是丢失响应。"""
+        from noj_evaluator_sdk.capability import (
+            _reset_capabilities_for_tests,
+            register_capability,
+        )
+
+        _reset_capabilities_for_tests()
+
+        def big_return():
+            return "x" * (1024 * 1024 + 1024)  # 超过单帧 1 MiB 软上限
+
+        register_capability("big", big_return)
+        h = IpcHarness()
+        try:
+            h.send_host_response(
+                {"type": "capability", "id": "cap6", "name": "big", "args": []}
+            )
+            frames = self._wait_for_frames(h)
+            resp = frames[-1]
+            self.assertEqual(resp["type"], "error")
+            self.assertEqual(resp["code"], "Rejected")
+            self.assertIn("frame size", resp["message"])
+        finally:
+            h.teardown()
+            _reset_capabilities_for_tests()
+
+
 if __name__ == "__main__":
     unittest.main()

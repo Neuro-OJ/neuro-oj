@@ -235,6 +235,7 @@ mod tests {
                     command: "python3 /workspace/evaluate.py".to_string(),
                     time_limit_ms: 5000,
                     memory_limit_mb: 512,
+                    network: None,
                 },
                 solution: crate::types::SolutionRuntime {
                     image: "noj-solution-python".to_string(),

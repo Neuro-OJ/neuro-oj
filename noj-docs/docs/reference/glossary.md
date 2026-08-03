@@ -208,4 +208,4 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 
 （capability）
 
-Neuro OJ 面向大模型能力评测（LMCC）的评测对象。当前 Python 运行时中，用户以函数形式暴露能力，由 Evaluator 调用；`noj_solution_sdk.call_capability` 为预留的占位能力（当前不支持 Solution 到 Evaluator 的能力调用）。
+Neuro OJ 面向大模型能力评测（LMCC）的评测对象。当前 Python 运行时中，用户以函数形式暴露能力，由 Evaluator 调用。此外，出题人可通过 `noj_evaluator_sdk.register_capability` 注册**网络等能力**，solution 经 `noj_solution_sdk.call_capability` 调用（由 judge 转发到 evaluator 执行）——solution 容器本身无网，capability 是它使用网络的唯一入口。见[做题指南](../users/capability.md)与[出题指南](../problemsetters/capability-networking.md)。

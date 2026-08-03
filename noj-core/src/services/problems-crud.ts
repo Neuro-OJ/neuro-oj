@@ -78,6 +78,11 @@ export async function createProblem(
       logger.error("createProblem: runtime_config 镜像校验失败", { err });
       throw err;
     }
+
+    // evaluator 联网权限与题目创建权限一致：U 型任意登录用户可开启，
+    // P 型仅 admin（由下方类型权限检查保证）。
+    // 安全提醒：联网 + 可控 evaluator.command = 联网容器任意命令执行，
+    // 开启联网的题目等于把外部网络能力交给出题人（出题人可信边界）。
   } else {
     logger.error("createProblem: runtime_config 缺失", {
       input: JSON.stringify(input),
@@ -247,6 +252,9 @@ export async function updateProblem(
       input.runtime_config.solution.image,
       "solution",
     );
+
+    // evaluator 联网权限与题目编辑权限一致：U 型 owner/admin、P 型 admin
+    // （上方权限检查已保证）。
   }
 
   // 防御性忽略 type 和 number（spec 承诺这两个字段不可变更）

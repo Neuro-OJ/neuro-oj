@@ -62,19 +62,17 @@ Neuro OJ 提供完整的「注册 → 做题 → 提交 → 评测结果」闭�
 
 因此 **RPC 调用边界就是信任边界**：跨容器、显式序列化（NOJ codec）、只传递数据不传递引用。
 
-### 网络能力的差异（进行中）
+### 网络能力
 
 传统评测机对网络的处理通常是两个极端：要么**全部砍断**，要么**不做限制**。大模型应用可能涉及与外部网络 API 的交互，两种极端都不合适。
 
-Neuro OJ 的规划是通过双容器提供**有限的互联网能力**：
+Neuro OJ 通过双容器提供**有限的互联网能力**：
 
 - **solution 容器保持无网**——安全边界不变，用户代码无法直接发起网络请求；
-- **evaluator 容器获得联网能力**——出题人可以在评测脚本中访问外部 API；
-- **solution 通过 RPC 调用 evaluator 的转发能力**（`call_capability`）间接使用网络，调用边界仍是信任边界。
+- **evaluator 容器可按题目配置联网**——`runtime_config.evaluator.network.enabled`（默认关闭），开启后 evaluator 以 bridge 模式联网；
+- **solution 通过 RPC 调用 evaluator 注册的 capability**（`call_capability`）间接使用网络，调用边界仍是信任边界：capability 由出题人显式注册并负责参数校验，封装精确函数而非通用转发（见[出题指南](../problemsetters/capability-networking.md)）。
 
-::: warning 当前状态
-该能力**尚未实现**：当前沙箱对所有容器统一 `network_mode: none`（evaluator 同样无网），`call_capability` 仅为预留占位（调用会抛出 `UnsupportedCapability`）。实现进展见 [issue #197](https://github.com/Neuro-OJ/neuro-oj/issues/197)。
-:::
+实现由 [issue #197](https://github.com/Neuro-OJ/neuro-oj/issues/197) 落地。
 
 ### 时空限制方式
 
@@ -88,7 +86,7 @@ Neuro OJ 的规划是通过双容器提供**有限的互联网能力**：
 ### 评测运行时环境
 
 - **双容器隔离**：用户代码与出题人评测代码运行在**独立容器**中——用户代码无法直接读取 evaluator 侧的测试数据或评分逻辑。
-- **沙箱约束**：网络关闭（`network_mode none`）、无特权（`cap_drop ALL`）、进程数受限，容器资源由 Judge Worker 统一控制。
+- **沙箱约束**：solution 网络关闭（`network_mode none`，永远无网；evaluator 按题目配置可联网）、无特权（`cap_drop ALL`）、进程数受限，容器资源由 Judge Worker 统一控制。
 - **模块加载而非进程运行**：Solution Host 在容器内加载用户模块并保持存活（多次调用共享全局状态），用户函数的 `print()` 被重定向到 stderr 作为调试输出，不构成答案通道。
 - **运行时基础**：当前为 Python 3.12 精简镜像，不预装额外包；题目依赖由出题人在 evaluator 中自行管理。
 

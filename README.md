@@ -217,7 +217,7 @@ cd noj-judge && cargo test --lib
 
 # noj-judge Docker 沙箱 E2E（需要 Docker 与 NOJ_RUN_E2E=1，7 个独立 test binary）
 cd noj-judge && NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
-# ...（其余：e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_container_pool / e2e_problem_limits / e2e_dual_container）
+# ...（其余：e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_problem_limits / e2e_dual_container / e2e_network_capability）
 
 # 跨模块全链路 E2E（23 个测试文件，需先启动完整环境）
 cd noj-tests && deno task test

@@ -32,11 +32,14 @@ pub struct DualContainer {
 
 impl DualContainer {
     /// 创建并启动 Evaluator 容器（带支持包挂载路径）。
+    ///
+    /// `network_enabled`：true 时以 bridge 模式联网，false 时保持无网（默认）。
     pub async fn create_evaluator(
         docker: &Docker,
         image: &str,
         memory_mb: u64,
         support_pkg_mount: Option<&str>,
+        network_enabled: bool,
     ) -> Result<Self> {
         let id = create_container_with_security(
             docker,
@@ -44,6 +47,7 @@ impl DualContainer {
             memory_mb,
             support_pkg_mount,
             "evaluator",
+            network_enabled,
         )
         .await?;
         info!("Evaluator 容器创建: {}", id);
@@ -56,8 +60,9 @@ impl DualContainer {
 
     /// 在现有 DualContainer 上追加 Solution 容器。
     pub async fn create_solution(&mut self, image: &str, memory_mb: u64) -> Result<()> {
-        let id = create_container_with_security(&self.docker, image, memory_mb, None, "solution")
-            .await?;
+        let id =
+            create_container_with_security(&self.docker, image, memory_mb, None, "solution", false)
+                .await?;
         info!("Solution 容器创建: {}", id);
         self.solution_id = Some(id);
         Ok(())
@@ -169,6 +174,7 @@ async fn create_container_with_security(
     memory_mb: u64,
     support_pkg_mount: Option<&str>,
     kind: &str,
+    network_enabled: bool,
 ) -> Result<String> {
     let mut labels = std::collections::HashMap::new();
     labels.insert(format!("com.noj.judge.dual.{}", kind), "true".to_string());
@@ -178,7 +184,9 @@ async fn create_container_with_security(
     let mut tmpfs = std::collections::HashMap::new();
     tmpfs.insert("/tmp", "size=256M");
 
-    let host_config = build_host_config(memory_bytes, tmpfs, false);
+    // solution 容器恒无网；evaluator 按配置可选 bridge 联网
+    let network_mode = if network_enabled { "bridge" } else { "none" };
+    let host_config = build_host_config(memory_bytes, tmpfs, false, network_mode);
 
     let body = ContainerCreateBody {
         image: Some(image.to_string()),

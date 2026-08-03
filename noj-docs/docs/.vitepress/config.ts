@@ -71,6 +71,7 @@ export default withMermaid(defineConfig({
           items: [
             { text: "做题人文档", link: "/users/" },
             { text: "提交代码", link: "/users/submit" },
+            { text: "使用 capability", link: "/users/capability" },
             { text: "理解结果", link: "/users/results" },
             { text: "账号与密码", link: "/users/account" },
             { text: "排行榜与签到", link: "/users/ranking" },
@@ -110,6 +111,7 @@ export default withMermaid(defineConfig({
           items: [
             { text: "Evaluator SDK", link: "/problemsetters/evaluator-sdk" },
             { text: "Solution SDK", link: "/problemsetters/solution-sdk" },
+            { text: "如何提供受限网络能力", link: "/problemsetters/capability-networking" },
             { text: "RPC 与可传递数据", link: "/problemsetters/rpc" },
             { text: "评测镜像与运行时", link: "/problemsetters/runtimes" },
           ],

@@ -8,6 +8,7 @@ interface RuntimeConfigPayload {
     command: string
     time_limit_ms: number
     memory_limit_mb: number
+    network?: { enabled: boolean }
   }
   solution: {
     image: string
@@ -89,6 +90,7 @@ const evaluatorImage = ref("")
 const evaluatorCommand = ref("python3 /workspace/evaluate.py")
 const evaluatorTimeLimitMs = ref(5000)
 const evaluatorMemoryLimitMb = ref(512)
+const evaluatorNetworkEnabled = ref(false)
 const solutionImage = ref("")
 const solutionEntry = ref("submission_sample.py")
 const solutionCallTimeoutMs = ref(1000)
@@ -138,6 +140,7 @@ async function loadProblem() {
       evaluatorCommand.value = rc.evaluator.command
       evaluatorTimeLimitMs.value = rc.evaluator.time_limit_ms
       evaluatorMemoryLimitMb.value = rc.evaluator.memory_limit_mb
+      evaluatorNetworkEnabled.value = rc.evaluator.network?.enabled === true
       solutionImage.value = rc.solution.image
       solutionEntry.value = rc.solution.entry
       solutionCallTimeoutMs.value = rc.solution.call_timeout_ms
@@ -189,6 +192,7 @@ async function handleSubmit() {
         command: evaluatorCommand.value.trim(),
         time_limit_ms: evaluatorTimeLimitMs.value,
         memory_limit_mb: evaluatorMemoryLimitMb.value,
+        ...(evaluatorNetworkEnabled.value ? { network: { enabled: true } } : {}),
       },
       solution: {
         image: solutionImage.value.trim(),
@@ -361,6 +365,13 @@ async function handleSubmit() {
                 <input v-model.number="evaluatorMemoryLimitMb" type="number" class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white" min="32" max="8192" />
               </div>
             </div>
+            <label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text">
+              <input v-model="evaluatorNetworkEnabled" type="checkbox" class="size-4 accent-primary">
+              <span>
+                允许 Evaluator 联网
+                <span class="block text-xs text-text-muted">开启后 evaluator 容器以 bridge 模式联网（solution 保持无网，仅能通过 capability 调用间接使用网络）</span>
+              </span>
+            </label>
           </div>
         </div>
 

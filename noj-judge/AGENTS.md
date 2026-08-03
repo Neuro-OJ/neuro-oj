@@ -64,6 +64,7 @@ noj-judge/
     ├── e2e_security_isolation.rs
     ├── e2e_support_package.rs
     ├── e2e_dual_container.rs  # 双容器 NDJSON 编排 E2E
+    ├── e2e_network_capability.rs  # evaluator 联网 + capability 转发 E2E
     └── e2e_problem_limits.rs  # 验证 time_limit_ms/memory_limit_mb 实际生效
 ```
 
@@ -88,6 +89,7 @@ NOJ_RUN_E2E=1 cargo test --test e2e_resource_limits -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_security_isolation -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_support_package -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_dual_container -- --ignored
+NOJ_RUN_E2E=1 cargo test --test e2e_network_capability -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_problem_limits -- --ignored
 
 # 运行指定集成测试

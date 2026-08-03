@@ -422,3 +422,97 @@ Deno.test({
     assertEquals(result.limit, 1);
   },
 });
+
+Deno.test({
+  name: "problems service: 普通用户开启 evaluator 联网放行（有创建权限即可）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    // 创建 user-1 用户（owner_id FK）
+    const db = getDb();
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+      id: "user-1",
+      username: `net-user-${Date.now()}`,
+      email: `net-user-${Date.now()}@test.com`,
+      password_hash: "not-used",
+      role: "user",
+      created_at: now,
+      updated_at: now,
+    });
+    const created = await createProblem(
+      {
+        title: `普通用户联网题 ${Date.now()}`,
+        description: "普通用户可开启联网",
+        difficulty: "easy",
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+            network: { enabled: true },
+          },
+          solution: {
+            image: "noj-solution-python",
+            entry: "submission_sample.py",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
+      },
+      "user-1",
+      "user",
+    );
+    assertEquals(created.runtime_config.evaluator.network?.enabled, true);
+  },
+});
+
+Deno.test({
+  name: "problems service: admin 开启 evaluator 联网放行",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    // 创建 admin-1 用户（owner_id FK）
+    const db = getDb();
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+      id: "admin-1",
+      username: `net-admin-${Date.now()}`,
+      email: `net-admin-${Date.now()}@test.com`,
+      password_hash: "not-used",
+      role: "admin",
+      created_at: now,
+      updated_at: now,
+    });
+    const created = await createProblem(
+      {
+        title: `admin 联网题 ${Date.now()}`,
+        description: "admin 可开启联网",
+        difficulty: "easy",
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+            network: { enabled: true },
+          },
+          solution: {
+            image: "noj-solution-python",
+            entry: "submission_sample.py",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
+      },
+      "admin-1",
+      "admin",
+    );
+    assertEquals(created.runtime_config.evaluator.network?.enabled, true);
+  },
+});

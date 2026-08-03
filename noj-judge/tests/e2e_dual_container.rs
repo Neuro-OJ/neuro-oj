@@ -40,6 +40,7 @@ fn dual_task() -> JudgeTask {
                 command: "python3 -c \"print(1)\"".to_string(),
                 time_limit_ms: 10_000,
                 memory_limit_mb: 256,
+                network: None,
             },
             solution: SolutionRuntime {
                 image: "noj-judge-test-runner:latest".to_string(),
@@ -623,6 +624,7 @@ async fn evaluate_dual_end_to_end() {
             command: r#"python3 -c "import sys,json; sys.stdout.write('---RESULT---\n'); sys.stdout.write(json.dumps({'status':'Accepted','score':10000,'details':{}})); sys.stdout.flush()""#.to_string(),
             time_limit_ms: 15000,
             memory_limit_mb: 256,
+            network: None,
         },
         solution: SolutionRuntime {
             image: "noj-judge-test-runner:latest".to_string(),

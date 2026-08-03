@@ -1,9 +1,7 @@
 ## Purpose
 
 定义题目双容器评测运行时配置（`runtime_config`）的规范。该 JSONB 字段存储 Evaluator 与 Solution 容器的运行时参数，支持按题目独立配置双容器评测环境。
-
 ## Requirements
-
 ### Requirement: 题目运行时配置（runtime_config）
 
 系统 SHALL 在 `problems` 表中存储 JSONB 格式的 `runtime_config`，用于描述双容器评测模式下的 Evaluator 与 Solution 各自运行时参数。
@@ -21,6 +19,7 @@
   - `evaluator.command: string`（可选，缺省注入默认值 `python3 /workspace/evaluate.py`）
   - `evaluator.time_limit_ms: number`（必填，> 0）
   - `evaluator.memory_limit_mb: number`（必填，> 0）
+  - `evaluator.network: object`（可选，缺省视为 `{"enabled": false}`）
   - `solution.image: string`（必填）
   - `solution.entry: string`（必填，如 `solution.py`）
   - `solution.call_timeout_ms: number`（必填，> 0）
@@ -145,3 +144,25 @@
 - **WHEN** 用户查询题目列表
 - **THEN** 列表项不包含 `runtime_config` 字段（避免列表响应过大）
 - **THEN** 仅返回基础元数据（id / display_id / title / difficulty 等）
+
+### Requirement: evaluator 网络配置
+
+系统 SHALL 支持按题目配置 evaluator 容器联网开关 `runtime_config.evaluator.network`，缺省关闭（与现状一致）。
+
+#### Scenario: network 字段缺省
+
+- **WHEN** `runtime_config.evaluator.network` 缺省或为 `null`
+- **THEN** 系统视为 `{"enabled": false}`（evaluator 无网，向后兼容）
+
+#### Scenario: network.enabled 为布尔
+
+- **WHEN** admin 设置 `runtime_config.evaluator.network`
+- **THEN** 系统校验 `enabled` 必须为布尔值
+- **WHEN** `enabled` 非布尔（字符串/数字等）
+- **THEN** 返回 HTTP 400 + 明确错误信息（如 `runtime_config.evaluator.network 必须是对象` / `runtime_config.evaluator.network.enabled 必须是布尔值`）
+
+#### Scenario: network.enabled=true 生效
+
+- **WHEN** `runtime_config.evaluator.network.enabled = true` 且提交评测
+- **THEN** judge 以 bridge 网络模式创建 evaluator 容器
+- **THEN** solution 容器仍为 `network_mode: none`

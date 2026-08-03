@@ -70,6 +70,27 @@ arg[0]: 不支持的类型 MyClass（仅 None/bool/int/float/str/bytes/list/dict
 
 出题人可以用 `try/except RejectedError` 把这类调用按失败用例处理；不捕获则 `evaluate.py` 异常退出，该次评测落为 `SystemError`。
 
+## 注册 capability（供 Solution 调用）
+
+当题目需要让 solution 使用网络等能力时，用 `register_capability` 暴露一个**精确封装**的 handler：
+
+```python
+from noj_evaluator_sdk import register_capability
+
+def request_llm_completion(prompt: str) -> str:
+    # evaluator 已联网（runtime_config.evaluator.network.enabled = true）
+    # ... 调用固定 URL 的外部 API，参数校验由 handler 负责
+    return completion_text
+
+register_capability("request_llm_completion", request_llm_completion)
+```
+
+- Solution 通过 `noj_solution_sdk.call_capability(name, *args)` 调用；请求经 judge 转发到 evaluator，在 **runner 的 reader 线程**中同步执行 handler，结果以 `result` 帧返回。
+- 返回值与 `runner.call()` 相同约束（`None / bool / int / float / str / bytes / list / dict`）；返回值类型非法或帧超限（> 1 MiB）→ `code="Rejected"`（参数类型已在 solution 侧校验，不会到达 evaluator）；handler 异常 → `code="Exception"`（含清洗后 trace），未注册 → `code="NotFound"`。
+- **不要嵌套双向调用**：capability handler 在 reader 线程中同步执行，若 handler 内再调用 `runner.call()`（回调 solution），双方会互相等待而死锁，只能等评测总超时兜底——不支持这种嵌套。
+- 重复注册同名 capability：最近一次生效。
+- **安全模型**：capability 是 solution 使用网络的唯一入口，**不要注册通用 URL 转发**（如 `fetch_url(url)`）；应封装固定目标的业务函数并做参数校验。详细指南见 [如何提供受限网络能力](capability-networking.md)。
+
 ## 输出评测结果
 
 Evaluator 使用 `result` 模块输出最终结果。

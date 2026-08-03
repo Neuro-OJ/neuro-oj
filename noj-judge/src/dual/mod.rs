@@ -28,6 +28,20 @@ use crate::dual::protocol::{frame_type, EvaluatorLine, LineParser};
 use crate::sandbox::container::{parse_command, MAX_FILE_SIZE, MAX_TOTAL_SIZE, MAX_ZIP_ENTRIES};
 use crate::types::{JudgeResult, JudgeStatus, RuntimeConfig};
 
+/// 评测输出全文/错误累积上限（1 MiB）。恶意提交可无限打印，
+/// 若无限 append 会拖垮 judge 进程（容器内存限制不约束 judge）。
+pub const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
+
+/// 追加到累积缓冲：超过上限时丢弃头部、只保留尾部（诊断信息优先）。
+fn append_capped(buf: &mut String, s: &str) {
+    if buf.len() + s.len() > MAX_OUTPUT_BYTES {
+        let keep = MAX_OUTPUT_BYTES.saturating_sub(s.len());
+        let start = buf.len().saturating_sub(keep);
+        *buf = buf[start..].to_string();
+    }
+    buf.push_str(s);
+}
+
 /// 注入用户代码到指定容器的工作目录。
 ///
 /// 注入支持包（zip）到 Evaluator 容器的 /workspace 目录。
@@ -198,11 +212,18 @@ pub async fn evaluate_dual(
     let evaluator_cmd = parse_command(&runtime_config.evaluator.command);
 
     // 1. 创建 Evaluator 容器
+    let evaluator_network_enabled = runtime_config
+        .evaluator
+        .network
+        .as_ref()
+        .map(|n| n.enabled)
+        .unwrap_or(false);
     let mut dual = DualContainer::create_evaluator(
         &docker,
         &runtime_config.evaluator.image,
         runtime_config.evaluator.memory_limit_mb,
         None,
+        evaluator_network_enabled,
     )
     .await
     .context("创建 Evaluator 容器失败")?;
@@ -444,8 +465,8 @@ async fn run_dual_loop(
             let remaining = eval_parser.drain_remaining();
             for line in remaining {
                 if let EvaluatorLine::Unknown(s) = line {
-                    eval_stdout_full.push_str(&s);
-                    eval_stdout_full.push('\n');
+                    append_capped(&mut eval_stdout_full, &s);
+                    append_capped(&mut eval_stdout_full, "\n");
                 }
             }
             let full_output = crate::merge_output(&eval_stdout_full, &eval_stderr_buf);
@@ -476,7 +497,7 @@ async fn handle_eval_chunk(
 
     if is_err {
         let s = String::from_utf8_lossy(&data);
-        stderr_buf.push_str(&s);
+        append_capped(stderr_buf, &s);
         eprint!("[eval-stderr] {}", s);
         return Ok(());
     }
@@ -488,23 +509,26 @@ async fn handle_eval_chunk(
         match line {
             EvaluatorLine::ResultMarker => {
                 awaiting_result_payload = true;
-                stdout_full.push_str("---RESULT---\n");
+                append_capped(stdout_full, "---RESULT---\n");
             }
             EvaluatorLine::Frame(v) => {
-                // call 帧：转发到 solution stdin
-                if frame_type(&v) == Some("call") {
+                // 协议帧转发到 solution stdin：
+                // - call 帧：evaluator → solution 的函数调用（既有行为）
+                // - result/error 帧：capability 调用的响应（solution → evaluator 的反向结果）
+                // 其他类型（log 等）记录但不转发
+                let ft = frame_type(&v);
+                if ft == Some("call") || ft == Some("result") || ft == Some("error") {
                     forward_frame(eval_input, &v).await?;
                 }
-                // 其他类型（理论上 evaluator 不应在 stdout 写 result/error/log）
-                // 记录但不转发
+                // 记录所有帧到 stdout 全文（供结果展示）
                 let s = v.to_string();
-                stdout_full.push_str(&s);
-                stdout_full.push('\n');
+                append_capped(stdout_full, &s);
+                append_capped(stdout_full, "\n");
             }
             EvaluatorLine::Unknown(s) => {
                 // 普通 evaluate.py 输出，丢弃
-                stdout_full.push_str(&s);
-                stdout_full.push('\n');
+                append_capped(stdout_full, &s);
+                append_capped(stdout_full, "\n");
                 if awaiting_result_payload && !s.trim().is_empty() {
                     *result_payload = Some(s.trim().to_string());
                     awaiting_result_payload = false;
@@ -589,6 +613,45 @@ fn build_judge_result(
     }
 }
 
+/// 集成测试辅助（tests/ 目录 E2E 使用，复用真实转发逻辑）。
+///
+/// 封装 [`handle_eval_chunk`] / [`handle_sol_chunk`]，跳过 stdout/stderr 收集，
+/// 让 E2E 测试直接驱动 judge 转发语义。
+#[allow(dead_code)] // 仅 tests/ 集成测试引用（lib 目标下必然未使用）
+pub mod mod_test_helpers {
+    use super::*;
+
+    /// 等价 `handle_eval_chunk`，忽略 stderr/stdout 全文收集。
+    pub async fn handle_eval_chunk_probe(
+        parser: &mut LineParser,
+        eval_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
+        result_payload: &mut Option<String>,
+        chunk: LogOutput,
+    ) {
+        let mut stderr_buf = String::new();
+        let mut stdout_full = String::new();
+        let _ = super::handle_eval_chunk(
+            parser,
+            &mut stderr_buf,
+            &mut stdout_full,
+            eval_input,
+            result_payload,
+            chunk,
+        )
+        .await;
+    }
+
+    /// 等价 `handle_sol_chunk`。
+    pub async fn handle_sol_chunk_probe(
+        parser: &mut LineParser,
+        eval_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
+        chunk: LogOutput,
+        solution_ready: &mut bool,
+    ) {
+        let _ = super::handle_sol_chunk(parser, eval_input, chunk, solution_ready).await;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -635,5 +698,138 @@ mod tests {
         assert!(line.contains("\"type\":\"result\""));
         assert!(line.contains("\"value\":42"));
         // 实际写盘逻辑已通过 line_parser 单测间接覆盖（call 帧解析 → solution stdin 转发）
+    }
+
+    #[tokio::test]
+    async fn test_handle_eval_chunk_forwards_result_error_frames() {
+        // capability 响应（result/error）帧必须转发到 solution stdin；
+        // log 帧与普通文本不转发。
+        use bollard::container::LogOutput;
+        use tokio::io::AsyncReadExt;
+
+        let (sink, mut source) = tokio::io::duplex(8192);
+        let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(sink);
+
+        let mut parser = LineParser::new();
+        let mut stderr_buf = String::new();
+        let mut stdout_full = String::new();
+        let mut result_payload: Option<String> = None;
+
+        let chunk = LogOutput::StdOut {
+            message: bytes::Bytes::from_static(
+                b"{\"type\":\"result\",\"id\":\"abc\",\"value\":42}\n\
+                  {\"type\":\"error\",\"id\":\"def\",\"code\":\"NotFound\",\"message\":\"x\"}\n\
+                  {\"type\":\"log\",\"stream\":\"stdout\",\"data\":\"hi\"}\n",
+            ),
+        };
+
+        handle_eval_chunk(
+            &mut parser,
+            &mut stderr_buf,
+            &mut stdout_full,
+            &mut writer,
+            &mut result_payload,
+            chunk,
+        )
+        .await
+        .unwrap();
+
+        // 读取转发到 solution stdin 的内容
+        // 注意：duplex 的 read_to_end 需等写端 drop 才 EOF，这里用带超时的 read
+        let mut buf = [0u8; 4096];
+        let n = tokio::time::timeout(Duration::from_secs(2), source.read(&mut buf))
+            .await
+            .expect("读取转发内容超时")
+            .unwrap();
+        let text = String::from_utf8_lossy(&buf[..n]).to_string();
+
+        assert!(text.contains("\"type\":\"result\""));
+        assert!(text.contains("\"type\":\"error\""));
+        assert!(!text.contains("\"type\":\"log\""), "log 帧不应转发");
+        assert!(result_payload.is_none());
+        // 帧被记录到 stdout 全文（含未转发的 log）
+        assert!(stdout_full.contains("\"type\":\"log\""));
+    }
+
+    #[tokio::test]
+    async fn test_handle_eval_chunk_still_forwards_call_frames() {
+        // 既有行为回归：evaluator → solution 的 call 帧仍转发
+        use bollard::container::LogOutput;
+        use tokio::io::AsyncReadExt;
+
+        let (sink, mut source) = tokio::io::duplex(8192);
+        let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(sink);
+
+        let mut parser = LineParser::new();
+        let mut stderr_buf = String::new();
+        let mut stdout_full = String::new();
+        let mut result_payload: Option<String> = None;
+
+        let chunk = LogOutput::StdOut {
+            message: bytes::Bytes::from_static(
+                b"{\"type\":\"call\",\"id\":\"x\",\"fn\":\"solve\",\"args\":[1]}\nplain text\n",
+            ),
+        };
+
+        handle_eval_chunk(
+            &mut parser,
+            &mut stderr_buf,
+            &mut stdout_full,
+            &mut writer,
+            &mut result_payload,
+            chunk,
+        )
+        .await
+        .unwrap();
+
+        let mut buf = [0u8; 4096];
+        let n = tokio::time::timeout(Duration::from_secs(2), source.read(&mut buf))
+            .await
+            .expect("读取转发内容超时")
+            .unwrap();
+        let text = String::from_utf8_lossy(&buf[..n]).to_string();
+
+        assert!(text.contains("\"type\":\"call\""));
+        assert!(!text.contains("plain text"), "普通文本不应转发");
+    }
+
+    #[tokio::test]
+    async fn test_handle_eval_chunk_result_marker_sets_payload() {
+        // ---RESULT--- 标记行为回归：下一行 JSON 成为结果 payload
+        use bollard::container::LogOutput;
+
+        let (sink, _source) = tokio::io::duplex(8192);
+        let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(sink);
+
+        let mut parser = LineParser::new();
+        let mut stderr_buf = String::new();
+        let mut stdout_full = String::new();
+        let mut result_payload: Option<String> = None;
+
+        let chunk = LogOutput::StdOut {
+            message: bytes::Bytes::from_static(
+                b"---RESULT---\n{\"status\":\"Accepted\",\"score\":100}\n",
+            ),
+        };
+
+        handle_eval_chunk(
+            &mut parser,
+            &mut stderr_buf,
+            &mut stdout_full,
+            &mut writer,
+            &mut result_payload,
+            chunk,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            result_payload.as_deref(),
+            Some("{\"status\":\"Accepted\",\"score\":100}")
+        );
+        assert!(stdout_full.contains("---RESULT---"));
     }
 }

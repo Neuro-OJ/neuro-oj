@@ -43,12 +43,24 @@ pub struct RuntimeConfig {
     pub solution: SolutionRuntime,
 }
 
+/// Evaluator 容器网络配置（可选，缺省 = 无网）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvaluatorNetwork {
+    /// 是否启用网络（true = Docker bridge 模式联网）。
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+/// 双容器模式下的 Evaluator 运行时配置。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvaluatorRuntime {
     pub image: String,
     pub command: String,
     pub time_limit_ms: u64,
     pub memory_limit_mb: u64,
+    /// 网络配置；缺省/None = 容器保持 `network_mode: none`（与旧行为一致）。
+    #[serde(default)]
+    pub network: Option<EvaluatorNetwork>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
