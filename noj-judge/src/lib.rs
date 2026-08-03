@@ -5,7 +5,6 @@
 pub mod config;
 pub mod dual;
 pub mod judge;
-pub mod pool;
 pub mod sandbox;
 pub mod types;
 

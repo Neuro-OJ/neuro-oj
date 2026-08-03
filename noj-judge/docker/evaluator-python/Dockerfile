@@ -1,7 +1,7 @@
 # noj-evaluator-python: 双容器模式下 Evaluator 容器运行时
 #
 # 设计稿 §5：
-# - 默认 network_mode=none（评测时由 docker run / pool 加参数）
+# - 默认 network_mode=none（评测时由 noj-judge 双容器运行时加参数）
 # - 不挂载支持包（运行时由 noj-judge 注入）
 # - 内置 noj_evaluator_sdk（SolutionRunner + result.accept / wrong_answer）
 #

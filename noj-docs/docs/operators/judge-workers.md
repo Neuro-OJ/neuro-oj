@@ -4,11 +4,12 @@
 本分区文档描述的是**开发期部署与运维方式**（手动分步启动、开发期脚本），**尚未提供面向生产的一键部署方案**——当前不具备守护进程管理、TLS、备份、升级等生产级能力，生产部署请谨慎参考。项目后续将提供成熟的一键部署方式，届时本文档将整体更新。
 :::
 
-本文覆盖 noj-judge 的职责、运行时镜像、容器池、健康检查、队列监控、水平扩展与升级。
+本文覆盖 noj-judge 的职责、运行时镜像、评测流程、队列监控、水平扩展与升级。
 
 ## Worker 职责
 
-`noj-judge` 从 Redis 队列拉取评测任务，下载纯净评测包，创建或复用 Docker 容器，运行 evaluator，并把结果写回 Redis。
+`noj-judge` 从 Redis 队列拉取评测任务，下载纯净评测包，为每次评测即时创建
+Evaluator + Solution 双容器（用后即毁），并把结果写回 Redis。
 
 支持多个 Judge Worker 实例水平扩展：所有实例消费同一个 Redis 队列，互不冲突。
 
@@ -45,18 +46,19 @@ noj-core 维护评测镜像白名单（`judgeImages`）。Judge Worker 启动时
 - `kind`：`evaluator` 或 `solution`。
 - `mode`：版本匹配模式。
 
-新增或修改镜像后，需要在 noj-core 的白名单中登记，再重启 Judge Worker（或等待其重新拉取白名单）。
+新增或修改镜像后，需要在 noj-core 的白名单中登记（镜像白名单校验在 core 侧
+题目 CRUD 与调度阶段完成，judge 不再于启动时拉取）。
 
-## 容器池
+## 评测流程
 
-Judge Worker 使用容器池预热 evaluator 和 solution 容器。空闲容器会被复用；任务完成后池会回补容器。这样可以降低每次提交的冷启动成本。
+每次提交评测按以下流程执行：
 
-池的关键行为：
-
-- 启动时按 `POOL_INITIAL_SIZE` 预热每个白名单镜像的容器，池上限由 `POOL_MAX_SIZE` 控制。
-- 空闲容器超过 `POOL_IDLE_TIMEOUT` 会被清理，任务高峰时懒回补。
-- 定期健康检查空闲容器（硬编码 5s 间隔），异常容器会被替换。
-- 容器内存硬上限由 `POOL_MEMORY_MB` 控制。
+1. 从 Redis 队列拉取 JudgeTask。
+2. 获取支持包（缓存优先 → 按 `noj-download://` host 分派下载 → SHA-256 校验）。
+3. 为本次评测即时创建 Evaluator + Solution 两个容器（安全 HostConfig：
+   `cap_drop ALL` / `network_mode none` / `pids_limit` 等）。
+4. 注入用户代码与支持包，启动双容器 NDJSON 编排。
+5. 评测完成后按 RAII 顺序清理容器（先 Solution 后 Evaluator），下次评测重新创建。
 
 ## 健康检查与状态查看
 
@@ -103,9 +105,8 @@ redis-cli LLEN noj:judge:queue
 
 启动多个 noj-judge 实例即可分担负载：
 
-- 每个实例独立维护自己的容器池，消费同一个 `noj:judge:queue`。
-- 实例标识由 `JUDGE_ID`（默认主机名）区分，用于 Redis RPC 响应路由。
-- 新实例启动后会自动拉取白名单并预热容器，无需额外注册。
+- 所有实例消费同一个 `noj:judge:queue`，互不冲突。
+- 新实例启动后即可消费任务，无需额外注册。
 
 ## 升级与重启
 

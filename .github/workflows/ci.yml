@@ -607,10 +607,11 @@ jobs:
           # rustup 状态目录导致 "component download failed"（测试启动即死）。
           # 先单进程触发一次 sync，之后并行 cargo 不再下载。
           cargo --version >/dev/null
-          # 与 e2e.yml 保持完全一致的 6 个目标清单（含 2026-07-02 重构后的
-          # e2e_container_pool）。原 cargo test --test e2e 在没有 e2e.rs 的
+          # 与 e2e.yml 保持完全一致的 5 个目标清单（e2e_container_pool 已随
+          # 容器池移除而删除，见 remove-container-pool 变更）。
+          # 原 cargo test --test e2e 在没有 e2e.rs 的
           # 情况下 exit 101，从未暴露是因为 if: workflow_dispatch。
-          # 性能优化（2026-07）：6 个目标分 2 组并行——组内串行
+          # 性能优化（2026-07）：5 个目标分 2 组并行——组内串行
           # （serial_test 保证单 binary 内串行），组间并行利用 runner 多核；
           # 每组 3 个 Docker 沙箱并发为保守取值，避免资源竞争导致 flaky。
           run_group() {
@@ -621,7 +622,7 @@ jobs:
           }
           run_group e2e_docker_basic e2e_resource_limits e2e_security_isolation &
           p1=$!
-          run_group e2e_support_package e2e_problem_limits e2e_container_pool &
+          run_group e2e_support_package e2e_problem_limits &
           p2=$!
           fail=0
           wait "$p1" || fail=1

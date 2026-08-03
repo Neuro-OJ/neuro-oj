@@ -3,9 +3,7 @@
 定义 noj-judge（Rust 评测 Worker）的核心功能规范。judge-worker 通过 Redis MQ
 接收评测任务，在 Docker 容器中执行用户代码， 解析评分脚本的输出，并将结果返回给
 noj-core。
-
 ## Requirements
-
 ### Requirement: 任务拉取
 
 系统 SHALL 通过 BRPOP 命令从 `noj:judge:queue` 列表阻塞拉取评测任务，超时时间 5
@@ -63,9 +61,11 @@ JudgeTask SHALL 使用 `download_url` 替代
 
 ### Requirement: 评测编排
 
-系统 SHALL 依序执行：从池获取容器 → 解析 `download_url`（host 分派：`base64` 或
-`s3`）→ **优先尝试缓存** → 获取支持包 → 完整性校验 → 解压 → 写入用户代码 → tar
-打包 → docker exec 注入 → docker exec 评测 → 解析输出 → 释放容器。
+系统 SHALL 依序执行：解析 `download_url`（host 分派：`base64` 或 `s3`）→
+**优先尝试缓存** → 获取支持包 → 完整性校验 → 解压 → 写入用户代码 → 即时创建
+双容器（Evaluator + Solution）→ tar 打包 → docker exec 注入 → docker exec 评测
+→ 解析输出 → RAII 清理容器。评测容器每次即时创建、用后即毁，不再有容器池
+复用。
 
 #### Scenario: 评测成功（s3 模式）
 
@@ -118,10 +118,11 @@ JudgeTask SHALL 使用 `download_url` 替代
 #### Scenario: zip 解压防护
 
 - **WHEN** 解压支持包 zip
-- **THEN** 解压后总大小不超过 `POOL_MAX_ARCHIVE_MB`
+- **THEN** zip 条目数不超过 1000
+- **THEN** 单文件大小不超过 64 MiB
+- **THEN** 解压后总大小不超过 512 MiB
 - **THEN** 拒绝 overlapping entries（相同路径重复）
 - **THEN** 拒绝包含 `..` 组件的 entry
-- **THEN** 单文件大小不超过 `POOL_MAX_ARCHIVE_MB`
 
 #### Scenario: 临时目录在错误时仍清理
 
@@ -131,8 +132,8 @@ JudgeTask SHALL 使用 `download_url` 替代
 ### Requirement: 临时文件管理
 
 系统 SHALL 为每个评测任务创建独立临时目录
-`{WORK_DIR}/{submission_id}/`，评测完成后清理。此路径与池容器文件注入配合使用——目录被
-tar 打包后上传到容器 `/tmp/`。
+`{WORK_DIR}/{submission_id}/`，评测完成后清理。此路径与双容器文件注入配合使用
+——目录被 tar 打包后注入到容器的 `/workspace`。
 
 #### Scenario: 创建临时目录
 
@@ -146,7 +147,7 @@ tar 打包后上传到容器 `/tmp/`。
 
 ### Requirement: 支持包缓存
 
-系统 SHOULD 在本地磁盘缓存支持包，避免同一支持包被重复下载或解码。
+系统 SHALL 在本地磁盘缓存支持包，避免同一支持包被重复下载或解码。
 
 缓存键 MUST 为 `download_url` 中 `checksum_sha256` 的值（内容寻址，SHA-256
 算法唯一固定）。
@@ -189,6 +190,7 @@ tar 打包后上传到容器 `/tmp/`。
 - **WHEN** 缓存目录已有 500 个文件
 - **WHEN** 需要写入第 501 个缓存文件
 - **THEN** 系统删除至少一个 `atime` 最早的文件后写入新文件
+
 ### Requirement: 双容器评测编排（dual mode）
 
 系统 SHALL 支持按题目一次任务启动 Evaluator + Solution 两个容器，按 NDJSON 协议在两个容器之间转发调用消息。
@@ -362,7 +364,6 @@ tar 打包后上传到容器 `/tmp/`。
 - **WHEN** admin 创建或更新题目，`runtime_config` 缺失或缺任一必填字段
 - **THEN** API 返回 HTTP 400，错误信息明确指出缺失字段
 
-
 ### Requirement: 兼容性回退
 
 系统 SHALL 在 runtime_config 缺失或镜像被下架时给出明确错误而非静默回退单容器。
@@ -381,13 +382,6 @@ tar 打包后上传到容器 `/tmp/`。
 - **THEN** 再次读取白名单确认镜像仍可用且 kind 匹配
 - **WHEN** 镜像被下架或 kind 被改
 - **THEN** 返回 `image_not_allowlisted` 错误，不悄悄回退单容器
-
-#### Scenario: 镜像白名单校验（judge 防御）
-
-- **WHEN** judge 准备创建 Evaluator / Solution 容器前
-- **THEN** judge 校验本地缓存的镜像列表（防御 TOCTOU）
-- **WHEN** 镜像不在本地缓存
-- **THEN** 判 SystemError + 提示 `image_not_in_local_cache`
 
 #### Scenario: 单容器回退（仅在 runtime_config 缺失时）
 
