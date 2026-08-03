@@ -19,6 +19,10 @@ use serde_json::Value;
 use tracing::{info, warn};
 
 /// Redis RPC 客户端。
+///
+/// 当前 main.rs 启动流程不再调用 RPC（容器池已移除，无镜像预热消费方）；
+/// 保留为 core↔judge 协议能力，供未来复用。
+#[allow(dead_code)]
 pub struct RpcClient {
     /// Redis connection（共享 main.rs 中已有连接）
     conn: redis::aio::MultiplexedConnection,
@@ -30,6 +34,7 @@ impl RpcClient {
     /// 创建 RPC 客户端。
     ///
     /// `judge_id` 用于响应队列：`noj:rpc:v1:judge:{judge_id}:response`
+    #[allow(dead_code)]
     pub fn new(conn: redis::aio::MultiplexedConnection, judge_id: String) -> Self {
         Self { conn, judge_id }
     }
@@ -44,6 +49,7 @@ impl RpcClient {
     ///
     /// 将请求消息 LPUSH 到 `noj:rpc:v1:judge:core`，
     /// 然后 BRPOP 等待响应，超时后返回 Err。
+    #[allow(dead_code)]
     pub async fn request(
         &mut self,
         method: &str,
@@ -150,8 +156,8 @@ impl RpcClient {
     /// 调用 core 的 `get_image_allowlist` 方法，返回结构升级后含 `kind` 字段：
     /// `{"images": [{"image": "noj-judge-python", "kind": "evaluator", "mode": "exact"}, ...]}`
     ///
-    /// 返回分类后的镜像列表（evaluator / solution），便于 judge 启动时按 kind
-    /// 分别预热容器池。
+    /// 当前无调用方（容器池已移除，judge 启动不再预热容器），保留为协议能力。
+    #[allow(dead_code)]
     pub async fn get_image_allowlist(&mut self) -> Result<ImageAllowlist> {
         let result = self.request("get_image_allowlist", None, 5).await?;
 
@@ -189,11 +195,14 @@ impl RpcClient {
 }
 
 /// core `get_image_allowlist` 响应的分类结构。
+///
+/// 当前无消费方（judge 启动不再拉取白名单预热容器池），保留协议结构。
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
 pub struct ImageAllowlist {
-    /// kind='evaluator' 的镜像列表（进入容器池预热）
+    /// kind='evaluator' 的镜像列表（历史用途：进入容器池预热，现已无消费方）
     pub evaluator: Vec<String>,
-    /// kind='solution' 的镜像列表（不入池，仅记录）
+    /// kind='solution' 的镜像列表（历史用途：仅记录，现已无消费方）
     pub solution: Vec<String>,
 }
 

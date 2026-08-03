@@ -1,9 +1,7 @@
 ## Purpose
 
 定义 Neuro OJ 评测镜像白名单管理规范。管理员可管理允许使用的评测 Docker 镜像列表，题目创建和更新时校验镜像是否在白名单中。
-
 ## Requirements
-
 ### Requirement: 管理员管理镜像白名单
 
 系统 SHALL 提供管理员 API 管理评测镜像白名单（`judge_images` 表），支持增删改查操作。每条白名单记录包含 `image`（镜像名）、`mode`（`exact` 或 `all_versions`）、`kind`（`evaluator` 或 `solution`，**第一阶段必填**）、`description`（介绍文案）。
@@ -133,20 +131,15 @@
 
 ### Requirement: get_image_allowlist RPC 响应升级
 
-系统 SHALL 在 `get_image_allowlist` RPC 响应中返回每条镜像的 `kind` 字段，供 judge 启动时按 kind 分池预热。
+系统 SHALL 在 `get_image_allowlist` RPC 响应中返回每条镜像的 `kind` 字段（结构保留，
+供未来消费者区分 Evaluator / Solution 用途）。judge 已不再于启动时拉取该响应预热
+容器池，当前无分池消费方。
 
 #### Scenario: RPC 响应包含 kind
 
-- **WHEN** judge 发送 `get_image_allowlist` RPC 请求
+- **WHEN** 调用方发送 `get_image_allowlist` RPC 请求
 - **THEN** core 查询 `judge_images` 表中所有记录
 - **THEN** core 返回 JSON 数组，每项包含 `image`、`kind`（`evaluator` / `solution`）、`mode`（`exact` / `all_versions`）
-- **THEN** judge 按 kind 分别预热容器池（仅 `evaluator` kind 入池；`solution` kind 仅记录不下发容器）
-
-#### Scenario: 历史数据迁移（kind 默认值）
-
-- **WHEN** Drizzle 迁移 `0018_judge_images_kind.sql` 首次执行
-- **THEN** 历史记录 `kind` 默认填充为 `evaluator`
-- **THEN** admin 在迁移后需手动调整 `noj-solution-*` 镜像的 kind 为 `solution`
 
 ### Requirement: 删除镜像后同步管理列表
 
@@ -155,3 +148,4 @@
 #### Scenario: 删除镜像
 - **WHEN** 管理员确认删除一个评测镜像且 API 返回 204
 - **THEN** 该镜像从当前列表消失并显示删除成功提示
+

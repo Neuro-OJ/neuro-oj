@@ -32,9 +32,9 @@ noj-judge/
 ├── Dockerfile.e2e          # E2E 测试用 Dockerfile（多阶段构建）
 ├── .dockerignore           # 排除 target/ tests/ docker/ 等
 ├── src/
-│   ├── main.rs             # 入口（容器池 + dual container）
+│   ├── main.rs             # 入口（dual container 评测）
 │   ├── lib.rs              # 库入口（暴露模块给集成测试）
-│   ├── config.rs           # 环境变量配置（PoolConfig + 全局配置）
+│   ├── config.rs           # 环境变量配置
 │   ├── types.rs            # JudgeTask、JudgeResult、CaseResult 类型
 │   ├── drain.rs            # 优雅关闭时排空 in-flight 评测任务
 │   ├── mq.rs               # Redis MQ 任务拉取 + 结果推送（带重试 + fallback）
@@ -50,10 +50,6 @@ noj-judge/
 │   ├── judge/
 │   │   ├── mod.rs
 │   │   └── runner.rs       # 评测逻辑（---RESULT--- 标记解析 + 超时/OOM 检测）
-│   ├── pool/
-│   │   ├── mod.rs          # PoolManager（固定池，懒回补 + 健康检查）
-│   │   ├── copy.rs         # tar 打包 + docker exec 注入文件
-│   │   └── exec.rs         # docker exec 执行命令 + cgroup 内存峰值读取
 │   └── dual/
 │       ├── mod.rs          # 双容器编排（Evaluator + Solution）
 │       ├── container.rs    # 双容器生命周期
@@ -67,7 +63,6 @@ noj-judge/
     ├── e2e_resource_limits.rs
     ├── e2e_security_isolation.rs
     ├── e2e_support_package.rs
-    ├── e2e_container_pool.rs
     ├── e2e_dual_container.rs  # 双容器 NDJSON 编排 E2E
     └── e2e_problem_limits.rs  # 验证 time_limit_ms/memory_limit_mb 实际生效
 ```
@@ -92,12 +87,11 @@ NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_resource_limits -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_security_isolation -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_support_package -- --ignored
-NOJ_RUN_E2E=1 cargo test --test e2e_container_pool -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_dual_container -- --ignored
 NOJ_RUN_E2E=1 cargo test --test e2e_problem_limits -- --ignored
 
 # 运行指定集成测试
-NOJ_RUN_E2E=1 cargo test --test e2e_container_pool -- --ignored test_container_lifecycle
+NOJ_RUN_E2E=1 cargo test --test e2e_dual_container -- --ignored test_dual_container_basic
 
 # 代码检查
 cargo clippy
@@ -119,48 +113,8 @@ cargo fmt
 | `JUDGE_QUEUE`             | `noj:judge:queue`    | 评测任务队列名                            |
 | `RESULT_QUEUE`            | `noj:judge:results`  | 评测结果队列名                            |
 | `WORK_DIR`                | `/tmp/noj-judge`     | 临时工作目录                              |
-| `POOL_INITIAL_SIZE`       | `2`                  | 每镜像预热容器数                          |
-| `POOL_MAX_SIZE`           | `16`                 | 池最大深度                                |
-| `POOL_MIN_SIZE`           | `1`                  | 池最小深度                                |
-| `POOL_MEMORY_MB`          | `256`                | 容器内存硬上限（MB）                      |
-| `POOL_CPU`                | `0`                  | CPU 核数（0=无限制）                      |
-| `POOL_IDLE_TIMEOUT`       | `300`                | 空闲容器超时秒数                          |
-| `POOL_MAX_ARCHIVE_MB`     | `25`                 | 支持包最大 MB                             |
-| `POOL_KILL_GRACE_SECONDS` | `2`                  | SIGTERM→SIGKILL 等待秒数                  |
-| `POOL_LABEL_PREFIX`       | `com.noj.judge`      | Docker 容器标签前缀                       |
-| `JUDGE_ID`                | hostname             | Judge 实例标识（用于 Redis RPC 响应队列） |
 
-### 池内部常量（硬编码，不可配置）
-
-| 常量          | 值                     | 说明                                |
-| ------------- | ---------------------- | ----------------------------------- |
-| 健康检查间隔  | 5s                     | `start_health_check()` 轮询空闲容器 |
-| 容器 rm 重试  | 3 次（100ms/500ms/2s） | 清理容器时的退避重试                |
-| Exec 创建超时 | 10s                    | Docker daemon 响应超时              |
-| 内存读取超时  | 5s                     | cgroup 峰值读取超时                 |
-
-## 容器池架构
-
-noj-judge 始终使用容器池模式，无 Semaphore 退化路径。
-
-```
-主流程:
-  RPC 启动 → 通过 Redis RPC 从 core 获取镜像白名单
-  → PoolManager::init(images) → 预创建 POOL_INITIAL_SIZE 个容器/每个镜像
-  → start_background_tasks()
-      └─ start_health_check() — 每 5s 检查空闲容器状态 + 每 30s 输出池指标日志
-
-评测流程:
-  with_container(image, memory_mb, closure)
-   → acquire_with_pool()
-       ├─ 快速路径: idle.pop_front() — 从空闲队列取
-       └─ 慢路径: create_container() — 即时创建新容器
-   → evaluate_with_pool() → archive_and_copy() → execute_in_container()
-   → read_memory_peak_kb() → process_output()
-   → release()
-       ├─ docker rm -f (3次重试)
-       └─ 创建新容器回补到空闲队列
-```
+> `POOL_*` 环境变量已随容器池移除（见 remove-container-pool 变更），不再被读取。
 
 ## 评测流程（核心，双容器）
 
@@ -264,17 +218,7 @@ noj-judge 始终使用容器池模式，无 Semaphore 退化路径。
 ## 日志约定
 
 - 使用 `tracing` crate 输出结构化日志
-- 关键事件：任务到达、评测开始/完成、超时、OOM、池状态变化
-
-## 池指标日志
-
-池状态通过 tracing 日志输出（每 30s），无独立的 Prometheus 端点：
-
-```text
-pool_status=true image=noj-judge-python idle=2 in_flight=1 total=3 min=1 max=16
-```
-
-指标包括：`idle`（空闲容器数）、`in_flight`（运行中任务数）、`total`（总容器数）、`min`/`max`（池边界）。
+- 关键事件：任务到达、评测开始/完成、超时、OOM、容器状态变化
 
 ## 代码规范
 
@@ -283,8 +227,7 @@ pool_status=true image=noj-judge-python idle=2 in_flight=1 total=3 min=1 max=16
 - 日志：`tracing::info!` / `warn!` / `error!`
 - 异步优先：所有 I/O 操作用 async/await
 - `#[allow(dead_code)]` 合法使用位置：
-  - `pool/mod.rs`：`tasks_total()`、`errors_total()`、`timeouts_total()`、`all_pools()`、`get_pool()`、`is_shutting_down()`
-  - `mq/rpc.rs`：`judge_id()`
+  - `mq/rpc.rs`：`RpcClient` / `get_image_allowlist` / `ImageAllowlist`（容器池移除后无消费方，保留协议能力）
   - `types.rs`：`CaseResult` 结构体字段
 - `#[allow(unreachable_code)]`：`main.rs` 中 `rt.block_on` 后的
   `Ok(())`，属合法使用
@@ -292,7 +235,9 @@ pool_status=true image=noj-judge-python idle=2 in_flight=1 total=3 min=1 max=16
 
 ## Redis RPC 通信
 
-noj-judge 通过 Redis RPC 与 noj-core 通信，用于启动时获取镜像白名单。
+noj-judge 的 `mq/rpc.rs` 保留 core↔judge 的 Redis RPC 协议客户端（`RpcClient`）。
+**judge 启动流程当前不再调用 RPC**：镜像白名单拉取仅服务于已移除的容器池预热，
+协议与数据结构（`get_image_allowlist` / `ImageAllowlist`）作为能力保留，供未来复用。
 
 ### 协议
 
@@ -303,7 +248,7 @@ noj-judge 通过 Redis RPC 与 noj-core 通信，用于启动时获取镜像白�
 
 ### 消息格式
 
-**请求**：
+**请求**（历史样例，当前无调用方）：
 
 ```json
 {
@@ -325,15 +270,8 @@ noj-judge 通过 Redis RPC 与 noj-core 通信，用于启动时获取镜像白�
 }
 ```
 
-### 镜像发现流程
-
-```
-noj-judge 启动
-  → Redis RPC get_image_allowlist()
-      ├─ 成功 → 从返回列表预热容器
-      └─ 失败/超时 → error! 日志 + process::exit(1)（fail-fast）
-  → PoolManager::init(images)
-```
+> 镜像白名单校验由 noj-core 在题目 CRUD 与调度 final gate 阶段完成（见
+> judge-image-whitelist 规范），judge 侧不再拉取。
 
 ## 测试基础设施
 
@@ -344,7 +282,6 @@ noj-judge 启动
   `docker.m.daocloud.io/library/python:3.12-alpine`）
 - 测试用 evaluate.py
   支持标志：`--hang`（死循环）、`--memory-test`（OOM）、`--no-result`、`--result-json`、`--exit-code`
-- 池测试使用独立标签前缀 `com.noj.judge.test` 避免与生产容器冲突
 - 测试镜像通过 docker CLI 子进程构建（bollard tar 构建在测试环境中不可靠）
 
 ## Docker 构建

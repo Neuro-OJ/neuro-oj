@@ -7,17 +7,15 @@ mod drain;
 mod dual;
 mod judge;
 mod mq;
-mod pool;
 mod sandbox;
 mod types;
 
 use anyhow::{Context, Result};
 use bollard::Docker;
 use futures_util::stream::FuturesUnordered;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use crate::config::Config;
-use crate::pool::PoolManager;
 
 /// 将 stdout 和 stderr 合并为单一输出字符串，中间以分隔符连接。
 ///
@@ -35,8 +33,7 @@ async fn drain_tasks(tasks: &mut FuturesUnordered<tokio::task::JoinHandle<()>>) 
 
 /// noj-judge 入口点。
 ///
-/// 初始化 Tokio 运行时，连接 Redis 和 Docker，启动容器池管理器，
-/// 然后进入主循环阻塞拉取评测任务。
+/// 初始化 Tokio 运行时，连接 Redis 和 Docker，进入主循环阻塞拉取评测任务。
 fn main() -> Result<()> {
     let rt = tokio::runtime::Runtime::new().context("创建 Tokio 运行时失败")?;
     rt.block_on(async {
@@ -48,15 +45,7 @@ fn main() -> Result<()> {
             .init();
 
         let config = Config::from_env();
-        info!("noj-judge 启动 (pool_max_size={})", config.pool.max_size);
-
-        // 检测已废弃的 POOL_ENABLED 环境变量
-        if let Ok(val) = std::env::var("POOL_ENABLED") {
-            warn!(
-                "环境变量 POOL_ENABLED={} 已废弃（容器池始终启用），请移除该变量",
-                val
-            );
-        }
+        info!("noj-judge 启动");
 
         // 连接 Redis
         let redis_client =
@@ -84,73 +73,24 @@ fn main() -> Result<()> {
         let result_queue = config.result_queue.clone();
         let work_dir = config.work_dir.clone();
 
-        // ── 通过 Redis RPC 获取镜像白名单 ─────────────────
-        let judge_id = std::env::var("JUDGE_ID")
-            .unwrap_or_else(|_| gethostname::gethostname().to_string_lossy().to_string());
-        info!("judge_id = {}", judge_id);
-
-        // 创建专用于 RPC 的 Redis 连接（不与主循环共享）
-        let rpc_conn = redis_client
-            .get_multiplexed_async_connection()
-            .await
-            .context("创建 RPC Redis 连接失败")?;
-        let mut rpc_client = mq::rpc::RpcClient::new(rpc_conn, judge_id);
-
-        let images = match rpc_client.get_image_allowlist().await {
-            Ok(list) => {
-                // 仅 evaluator kind 的镜像入池；solution kind 仅记录
-                let pool_images = if !list.evaluator.is_empty() {
-                    info!(
-                        "从 core 获取镜像白名单: evaluator={:?}, solution={:?}",
-                        list.evaluator, list.solution
-                    );
-                    list.evaluator
-                } else {
-                    warn!(
-                        "core 返回的 evaluator 镜像列表为空，回退至配置文件默认值"
-                    );
-                    config.pool.images.clone()
-                };
-                pool_images
-            }
-            Err(e) => {
-                warn!("获取镜像白名单失败: {:#}，回退至配置文件默认值", e);
-                config.pool.images.clone()
-            }
-        };
-
-        // ── 初始化容器池 ──────────────────────────────
-        let allowed: Vec<_> = images.iter().map(|img| pool::AllowedImage {
-            image: img.clone(),
-            mode: pool::AllowedImageMode::Exact,
-        }).collect();
-        let pool = PoolManager::init(docker, config.pool.clone(), &allowed)
-            .await
-            .context("初始化容器池失败")?;
-
-        // 启动后台任务：健康检查（简化版，合并 Supervisor 日志）
-        pool.start_background_tasks().await;
-
-        let pool_ref = pool.clone();
-        // 注册优雅关闭信号处理
-        let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
-        tokio::spawn(async move {
-            tokio::signal::ctrl_c().await.ok();
-            info!("收到 SIGINT，开始优雅关闭...");
-            pool_ref.shutdown().await;
-            let _ = shutdown_tx.send(());
-        });
-
-        info!("等待评测任务（池模式）...");
-
-        // 使用 FuturesUnordered 跟踪所有 in-flight 任务
-        let mut tasks = FuturesUnordered::new();
-
-        // 克隆配置值供 tokio::spawn 使用
+        // ── 初始化缓存与下载配置 ────────────────────────
         let cache_dir = config.support_cache_dir.clone();
         let download_timeout = config.support_package_download_timeout_secs;
         let cache_max_items = config.support_cache_max_items;
         let cache_max_mb = config.support_cache_max_mb;
+
+        // 注册优雅关闭信号处理（排空 in-flight 任务）
+        let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(async move {
+            tokio::signal::ctrl_c().await.ok();
+            info!("收到 SIGINT，开始优雅关闭...");
+            let _ = shutdown_tx.send(());
+        });
+
+        info!("等待评测任务...");
+
+        // 使用 FuturesUnordered 跟踪所有 in-flight 任务
+        let mut tasks = FuturesUnordered::new();
 
         loop {
             tokio::select! {

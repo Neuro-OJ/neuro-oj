@@ -6,7 +6,7 @@ use std::collections::HashMap;
 /// Parameters:
 /// - `memory_bytes`: total memory limit (also applied to swap)
 /// - `tmpfs`: tmpfs mounts (e.g., `("/tmp", "size=256M")`)
-/// - `readonly_rootfs`: whether rootfs is read-only (pool containers = true, dual evaluator = false)
+/// - `readonly_rootfs`: whether rootfs is read-only (dual evaluator/solution = false)
 pub fn build_host_config(
     memory_bytes: i64,
     tmpfs: HashMap<&str, &str>,

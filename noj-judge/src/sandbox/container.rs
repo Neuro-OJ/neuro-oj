@@ -2,7 +2,7 @@
 //!
 //! 原本是 Semaphore 模式的容器生命周期管理模块，随 Semaphore 模式移除后
 //! 退化为纯工具库：提供临时目录创建、支持包解压、用户代码写入、命令解析等功能。
-//! 容器生命周期管理全部由 `pool/` 模块负责。
+//! 容器生命周期管理由 `dual/` 模块（双容器 RAII）负责。
 
 use std::io::Read;
 use std::path::{Path, PathBuf};

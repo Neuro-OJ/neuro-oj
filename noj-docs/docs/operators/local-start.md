@@ -109,8 +109,8 @@ Judge Worker 需要能访问 Docker daemon，并且 Redis 地址要与 noj-core 
 |------|------|
 | `REDIS_URL` | Redis 连接串，需与 noj-core 一致 |
 | `JUDGE_QUEUE` / `RESULT_QUEUE` | 评测任务 / 结果队列名 |
-| `POOL_INITIAL_SIZE` / `POOL_MAX_SIZE` | 容器池预热与上限 |
-| `POOL_MEMORY_MB` | 容器内存硬上限（MB） |
+
+> `POOL_*` 环境变量已随容器池移除（remove-container-pool 变更），不再被读取。
 
 ## 生产部署注意
 

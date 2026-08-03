@@ -49,7 +49,7 @@ NOJ 分为三个核心模块，通过 RESTful API 和 Redis 消息队列协作�
 |------|--------|------|
 | **noj-core** | Deno 2 + Hono | RESTful API、JWT 鉴权 + RBAC 权限、用户/题目/提交/榜单/竞赛/社区 CRUD、全局搜索、Redis MQ Producer 与 Consumer、审计日志 |
 | **noj-ui** | Nuxt 4 + Vue 3 | Web 前端、Nitro 反向代理注入 JWT Cookie、SSR + SPA 混合 |
-| **noj-judge** | Rust 2021 + Tokio | Docker 沙箱评测、Redis MQ Consumer、容器池（懒回补 + 健康检查）、双容器架构（dual container） |
+| **noj-judge** | Rust 2021 + Tokio | Docker 沙箱评测、Redis MQ Consumer、双容器架构（Evaluator + Solution，NDJSON 编排） |
 | **基础设施** | — | PostgreSQL 16（持久化） + Redis 7（MQ + 缓存） |
 
 ### 1.2 消息流（Producer-Consumer）
@@ -237,7 +237,7 @@ neuro-oj/
 │   ├── Dockerfile.e2e         # E2E 测试多阶段构建
 │   ├── docker/python/Dockerfile  # 评测运行时（python:3.12-slim）
 │   ├── src/
-│   │   ├── main.rs            # 入口（容器池 + dual container）
+│   │   ├── main.rs            # 入口（dual container 评测）
 │   │   ├── lib.rs             # 库入口（暴露给集成测试）
 │   │   ├── config.rs          # 环境变量配置
 │   │   ├── types.rs           # JudgeTask / JudgeResult / CaseResult
@@ -254,15 +254,11 @@ neuro-oj/
 │   │   ├── judge/             # 评测核心
 │   │   │   ├── mod.rs
 │   │   │   └── runner.rs      # ---RESULT--- 解析 + 超时/OOM 检测
-│   │   ├── pool/              # 容器池
-│   │   │   ├── mod.rs         # PoolManager（懒回补 + 健康检查）
-│   │   │   ├── copy.rs        # tar 打包 + docker exec 注入
-│   │   │   └── exec.rs        # docker exec + cgroup 内存读取
 │   │   └── dual/              # 双容器架构（Evaluator + Solution，NDJSON 编排）
 │   │       ├── mod.rs
 │   │       ├── container.rs
 │   │       └── protocol.rs
-│   └── tests/                 # 独立 E2E test binary（e2e_docker_basic / e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_container_pool / e2e_problem_limits / e2e_dual_container）+ common/ + e2e/
+│   └── tests/                 # 独立 E2E test binary（e2e_docker_basic / e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_problem_limits / e2e_dual_container）+ common/ + e2e/
 │
 ├── noj-tests/                 # 跨模块全链路 E2E 测试
 │   ├── deno.json              # task: deno test -A --env-file=../env.e2e.template e2e/
@@ -387,8 +383,7 @@ test:smoke   deno test -A --no-check tests/smoke.test.ts
 3. 加载环境变量配置
 4. Redis PING 验证
 5. Docker PING 验证
-6. `PoolManager::init`（启动后台任务 + 事件循环）
-7. `ctrl_c()` 优雅关闭
+6. `ctrl_c()` 优雅关闭（排空 in-flight 任务）
 
 ### 5.3 一键脚本（推荐）
 
@@ -652,7 +647,6 @@ openspec/
 │   ├── problem-*/           # 题目管理
 │   ├── judge-*/             # 评测相关
 │   ├── admin-*/             # 管理后台
-│   ├── container-pool/      # 容器池
 │   ├── checkin/             # 每日签到
 │   ├── private-messaging/   # 站内私信
 │   ├── sse-*/               # SSE 推送
@@ -793,7 +787,7 @@ cd noj-judge && cargo test              # 等价（无 doctest）
 
 ```bash
 cd noj-judge && NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
-# ...（其余同名：e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_container_pool / e2e_problem_limits / e2e_dual_container）
+# ...（其余同名：e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_problem_limits / e2e_dual_container）
 ```
 
 - 集成测试 `#[ignore]` + `NOJ_RUN_E2E=1` 守卫
