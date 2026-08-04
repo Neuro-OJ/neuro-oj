@@ -57,7 +57,7 @@ runner.call("solve", 1, 2)
 | `name` | 要调用的用户函数名 |
 | `args` | 编码后的定位参数列表 |
 | `kwargs` | 编码后的关键字参数字典 |
-| `timeout_ms` | **可选**。正整数 = 本次调用的超时（毫秒），仅由 Judge Worker 计时；缺省 / 非法时回退题目级 `runtime_config.solution.call_timeout_ms`。该字段不传给 Solution Host 的执行逻辑 |
+| `timeout_ms` | **可选**。正整数 = 本次调用的超时（毫秒），仅由 Judge Worker 计时；缺省 / 非法时回退题目级 `runtime_config.solution.call_timeout_ms`。帧会原样透传到 Solution Host，但 host 不消费该字段 |
 
 ### cap_reg 帧（capability 默认超时上报）
 
