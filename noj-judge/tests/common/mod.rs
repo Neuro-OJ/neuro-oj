@@ -331,3 +331,42 @@ macro_rules! e2e_test {
         }
     };
 }
+
+/// 确保带 SDK 的评测镜像存在（不存在则用仓库 Dockerfile 构建）。
+///
+/// 镜像内置 noj_evaluator_sdk / noj_solution_sdk 到 site-packages，
+/// 供真实 SDK 全链路测试使用（evaluate_dual 的 solution 启动命令
+/// 硬编码 `python3 -m noj_solution_sdk.host`，镜像必须含 SDK）。
+/// 仅部分 e2e_* 测试文件引用，未引用的 test binary 会报 dead_code。
+#[allow(dead_code)]
+pub async fn ensure_sdk_images(docker: &Docker) -> Result<()> {
+    for (tag, dockerfile) in [
+        (
+            "noj-e2e-sdk-evaluator:latest",
+            "docker/evaluator-python/Dockerfile",
+        ),
+        (
+            "noj-e2e-sdk-solution:latest",
+            "docker/solution-python/Dockerfile",
+        ),
+    ] {
+        let images = docker
+            .list_images(None::<bollard::query_parameters::ListImagesOptions>)
+            .await?;
+        if images.iter().any(|i| i.repo_tags.iter().any(|t| t == tag)) {
+            continue;
+        }
+        println!("构建 SDK 测试镜像 {} ...", tag);
+        let status = std::process::Command::new("docker")
+            .args(["build", "-t", tag, "-f", dockerfile, "."])
+            // buildx 在部分环境写 activity 文件失败（只读 HOME），退回 legacy builder
+            .env("DOCKER_BUILDKIT", "0")
+            .current_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")))
+            .status()
+            .context("执行 docker build 失败")?;
+        if !status.success() {
+            anyhow::bail!("docker build 失败: {}", tag);
+        }
+    }
+    Ok(())
+}
