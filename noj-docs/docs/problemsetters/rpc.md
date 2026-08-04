@@ -57,6 +57,19 @@ runner.call("solve", 1, 2)
 | `name` | 要调用的用户函数名 |
 | `args` | 编码后的定位参数列表 |
 | `kwargs` | 编码后的关键字参数字典 |
+| `timeout_ms` | **可选**。正整数 = 本次调用的超时（毫秒），仅由 Judge Worker 计时；缺省 / 非法时回退题目级 `runtime_config.solution.call_timeout_ms`。该字段不传给 Solution Host 的执行逻辑 |
+
+### cap_reg 帧（capability 默认超时上报）
+
+Evaluator 在 `register_capability(name, handler, timeout_ms=...)` 时向 stdout 写一次性 `cap_reg` 帧，上报 Judge 该 capability 的调用默认超时：
+
+```json
+{"type": "cap_reg", "name": "request_llm_completion", "timeout_ms": 10000}
+```
+
+- `timeout_ms` 缺省表示删除映射（该 capability 回退题目级 `call_timeout_ms`）。
+- **`cap_reg` 是 Evaluator → Judge 的私有协议帧，Judge 不转发给 Solution Host**。
+- 重复注册同名 capability：最近一次生效（含超时映射）。
 
 ## 成功响应
 
@@ -108,7 +121,7 @@ Evaluator SDK 会抛出 `SolutionCallError`，错误对象可通过 `exc.error` 
 | 用户异常类名 | Solution Host | 用户函数执行时抛出异常 |
 | `InvalidJson` | Solution Host | Host 收到的请求不是合法 JSON |
 | `UnknownMethod` | Solution Host | 请求方法未知 |
-| `CallTimeout` | Judge Worker | 单次调用超过 solution `call_timeout_ms` |
+| `CallTimeout` | Judge Worker | 单次调用超过调用级 `timeout_ms`（缺省回退题目级 `call_timeout_ms`）；capability 调用按注册时配置的默认超时 |
 | `HostWriteFailed` | Judge Worker | 无法向 Solution Host 写入请求 |
 | `InvalidHostResponse` | Judge Worker | Host 响应不是合法 JSON |
 | `RestartFailed` | Judge Worker | 重启 Solution Host 失败 |

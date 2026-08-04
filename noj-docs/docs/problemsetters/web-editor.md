@@ -23,9 +23,9 @@
 双容器评测模型下，每个题目声明两个运行时的资源限制：
 
 - **Evaluator**（出题人代码 `evaluate.py`）：`time_limit_ms`、`memory_limit_mb`
-- **Solution**（用户代码 `solution.py`）：调用超时 `call_timeout_ms`、`memory_limit_mb`
+- **Solution**（用户代码 `solution.py`）：调用超时 `call_timeout_ms`（**题目级默认值**）、`memory_limit_mb`
 
-配置保存在题目上，Judge Worker 评测时读取。合理设置 Solution 的调用超时可以防止用户代码死循环拖垮整场评测（见[评测模型](judge-model.md)）。
+配置保存在题目上，Judge Worker 评测时读取。`call_timeout_ms` 作为单次 SDK 调用的**默认**超时；出题人可在 `evaluate.py` 中用 `runner.call(..., timeout_ms=...)` 按调用覆盖（缺省时回退该默认值）。合理设置 Solution 的调用超时可以防止用户代码死循环拖垮整场评测（见[评测模型](judge-model.md)）。
 
 ### 统一题目包
 

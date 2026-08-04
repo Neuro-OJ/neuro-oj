@@ -24,7 +24,7 @@ export interface SolutionRuntime {
   image: string;
   /** Solution 容器内入口文件名，如 `solution.py` */
   entry: string;
-  /** 单次 SDK 调用的时间上限（毫秒）。单次超时不影响 host 进程 */
+  /** 单次 SDK 调用的时间上限（毫秒），作为调用级超时的题目级默认值（runner.call 可传 timeout_ms 覆盖；capability 可经 register_capability 配置）。单次超时不影响 host 进程 */
   call_timeout_ms: number;
   /** Solution 容器内存上限（MB） */
   memory_limit_mb: number;

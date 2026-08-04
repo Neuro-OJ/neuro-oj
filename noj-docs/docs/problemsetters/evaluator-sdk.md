@@ -24,6 +24,15 @@ answer = runner.call("solve", 1, 2)
 
 `runner.call()` 会向 Solution Host 发起一次 RPC 调用。如果调用成功，返回用户函数的返回值。
 
+**调用级超时**：`runner.call()` 支持可选 `timeout_ms` 参数，每次调用可指定独立超时（毫秒）。缺省（`None`）时由 Judge Worker 回退到题目的 `runtime_config.solution.call_timeout_ms`：
+
+```python
+answer = runner.call("solve", 1, 2)                    # 用题目级默认超时
+answer = runner.call("solve", 1, 2, timeout_ms=5000)   # 本次调用 5s 超时
+```
+
+`timeout_ms` 必须为正整数或 `None`，其他值（0 / 负数 / 非整数）抛出 `ValueError`。超时后 `runner.call()` 抛出 `SolutionTimeoutError`，可捕获后记为失败用例继续评测。
+
 调用参数会经过 Neuro OJ codec 编码后通过 RPC 传递。支持的类型和限制见 [RPC 与可传递数据](rpc.md)。
 
 ## 处理调用错误
@@ -83,6 +92,12 @@ def request_llm_completion(prompt: str) -> str:
     return completion_text
 
 register_capability("request_llm_completion", request_llm_completion)
+```
+
+**capability 默认超时**：`register_capability(name, handler, timeout_ms=None)` 可配置 solution 每次调用该 capability 的超时（毫秒）。注册时经 `cap_reg` 帧上报 Judge，缺省（`None`）回退题目级 `call_timeout_ms`：
+
+```python
+register_capability("request_llm_completion", handler, timeout_ms=10000)
 ```
 
 - Solution 通过 `noj_solution_sdk.call_capability(name, *args)` 调用；请求经 judge 转发到 evaluator，在 **runner 的 reader 线程**中同步执行 handler，结果以 `result` 帧返回。
