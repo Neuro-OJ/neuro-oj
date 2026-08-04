@@ -13,7 +13,7 @@
 
 #### Scenario: RuntimeConfig 结构
 
-- **WHEN** admin 设置 `runtime_config` 字段
+- **WHEN** 用户设置 `runtime_config` 字段
 - **THEN** 必填结构：
   - `evaluator.image: string`（必填，Docker 镜像名）
   - `evaluator.command: string`（可选，缺省注入默认值 `python3 /workspace/evaluate.py`）
@@ -65,10 +65,11 @@
 - **WHEN** admin 发送 `PUT /api/v1/admin/problems/:id`，payload 含 `runtime_config: null`
 - **THEN** 系统返回 HTTP 400（runtime_config 是必填字段，不可清空；统一双容器模式，无单容器回退路径）
 
-#### Scenario: 普通用户创建题目不允许双容器配置
+#### Scenario: 普通用户创建 U 型题目可配置双容器
 
 - **WHEN** 普通用户（role='user'）发送 `POST /api/v1/problems`，payload 含 `runtime_config`
-- **THEN** 系统返回 HTTP 403，提示仅 admin 可配置双容器评测
+- **THEN** 系统按题目类型校验：U 型放行（联网与双容器配置权限与题目创建权限一致，不要求 admin），P 型拒绝（仅 admin 可创建 P 型）
+- **THEN** evaluator 联网门禁与创建/编辑权限一致，不单独设限（设计决策：任何人可对自己题目开启 evaluator 联网）
 
 ### Requirement: 提交流程统一使用双容器路径
 
@@ -156,7 +157,7 @@
 
 #### Scenario: network.enabled 为布尔
 
-- **WHEN** admin 设置 `runtime_config.evaluator.network`
+- **WHEN** 用户设置 `runtime_config.evaluator.network`
 - **THEN** 系统校验 `enabled` 必须为布尔值
 - **WHEN** `enabled` 非布尔（字符串/数字等）
 - **THEN** 返回 HTTP 400 + 明确错误信息（如 `runtime_config.evaluator.network 必须是对象` / `runtime_config.evaluator.network.enabled 必须是布尔值`）

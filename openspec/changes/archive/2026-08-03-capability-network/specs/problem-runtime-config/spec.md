@@ -11,7 +11,7 @@
 
 #### Scenario: RuntimeConfig 结构
 
-- **WHEN** admin 设置 `runtime_config` 字段
+- **WHEN** 用户设置 `runtime_config` 字段
 - **THEN** 必填结构：
   - `evaluator.image: string`（必填，Docker 镜像名）
   - `evaluator.command: string`（可选，缺省注入默认值 `python3 /workspace/evaluate.py`）
@@ -52,7 +52,7 @@
 
 #### Scenario: network.enabled 为布尔
 
-- **WHEN** admin 设置 `runtime_config.evaluator.network`
+- **WHEN** 用户设置 `runtime_config.evaluator.network`
 - **THEN** 系统校验 `enabled` 必须为布尔值
 - **WHEN** `enabled` 非布尔（字符串/数字等）
 - **THEN** 返回 HTTP 400 + 明确错误信息（如 `runtime_config.evaluator.network 必须是对象` / `runtime_config.evaluator.network.enabled 必须是布尔值`）

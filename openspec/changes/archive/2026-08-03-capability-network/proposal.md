@@ -9,7 +9,7 @@ LMCC 大模型能力评测中，用户应用（solution）可能需要与外部�
 - **配置**：`runtime_config.evaluator.network` 新增可选对象字段（`enabled: boolean`，默认 `false`），开启后 evaluator 容器以 Docker `bridge` 模式联网；solution 容器保持 `network_mode: none` 不变。
 - **协议**：NDJSON 新增 `capability` 帧（`{"type":"capability","id","name","args":[...]}`），由 solution 发出、judge 转发至 evaluator；响应复用现有 `result/error` 帧按 `id` 匹配返回。judge 侧 `handle_eval_chunk` 需新增转发 evaluator stdout 的 `result/error` 帧。
 - **SDK**：`noj_solution_sdk` 新增 `call_capability(name, *args)`（替换现有文档占位，当前代码中不存在）；`noj_evaluator_sdk` 新增 `register_capability(name, handler)`。solution 侧 `host.py` 需从单线程 reader 重构为 reader 线程 + 单 worker 队列（避免用户函数内阻塞等待响应导致死锁）。
-- **UI**：admin 题目编辑表单（`ProblemEditor.vue`）新增「evaluator 联网」开关。
+- **UI**：题目编辑表单（`ProblemEditor.vue`，admin 与出题人通用）新增「evaluator 联网」开关。
 - **文档**：做题人文档新增 capability 使用说明；出题人文档新增 `register_capability` 用法与「如何提供受限网络能力」最佳实践（封装精确函数如 `request_llm_completion` 而非 `fetch_url`）；更新 `what-is-noj.md` / `glossary.md` 现状表述（移除"规划中"）。
 
 ## Capabilities

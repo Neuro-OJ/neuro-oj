@@ -33,13 +33,21 @@ from .errors import (
     SystemError,
 )
 from .serialization import (
+    MAX_FRAME_BYTES,
     check_frame_size,
     decode_value,
     encode_value,
+    estimate_frame_size,
     validate_type,
 )
 
 _TB_FILE_RE = re.compile(r'File "([^"]+)"')
+
+# 裸绝对路径（如 /workspace/secret/credentials.py）：message 中不总是带 File "..." 包装
+_ABS_PATH_RE = re.compile(r"/(?:[\w.\-]+/)+[\w.\-]+")
+
+# 透传给 solution 的异常 message 截断上限（防止超长消息 / 内嵌堆栈泄露）
+_MAX_MESSAGE_LEN = 1024
 
 
 def _sanitize_traceback(exc: BaseException) -> str:
@@ -53,6 +61,23 @@ def _sanitize_traceback(exc: BaseException) -> str:
         for line in lines
     ]
     return "".join(cleaned)
+
+
+def _sanitize_message(msg: str) -> str:
+    """净化透传给 solution 的异常 `message`：路径只保留 basename + 截断长度。
+
+    `str(e)` 可能内嵌绝对路径（`File "..."` 或裸路径）/ 长堆栈 / 敏感值，与
+    `_sanitize_traceback` 做一致的路径清洗，并截断到上限，防止信息泄露与超大帧。
+    """
+    cleaned = _TB_FILE_RE.sub(
+        lambda m: f'File "{os.path.basename(m.group(1))}"', msg
+    )
+    cleaned = _ABS_PATH_RE.sub(
+        lambda m: f"/{os.path.basename(m.group(0))}", cleaned
+    )
+    if len(cleaned) > _MAX_MESSAGE_LEN:
+        cleaned = cleaned[:_MAX_MESSAGE_LEN] + f"...（截断，原长度 {len(msg)}）"
+    return cleaned
 
 
 class SolutionRunner:
@@ -238,6 +263,13 @@ class SolutionRunner:
             result = handler(*decoded_args)
             # 返回值类型校验（与 runner.call 相同的 RPC 类型契约）
             validate_type(result, "<capability result>")
+            # 大小预检：在 encode_value（bytes → base64 膨胀 ~1.33×）之前估算，
+            # 超大返回值直接拒绝，避免先吃完整序列化内存（防恶意输出拖垮 evaluator）
+            if estimate_frame_size(result) > MAX_FRAME_BYTES:
+                raise RejectedError(
+                    f"capability 返回值过大（估算序列化 > {MAX_FRAME_BYTES} 字节，"
+                    "单帧 1 MiB 软上限）"
+                )
             encoded = encode_value(result)
             # 帧大小校验放在 try 内：超大返回值按 Rejected 回给 solution。
             # （_write_out 内部也会校验，但那里的异常会逃逸到 reader 循环，
@@ -256,7 +288,7 @@ class SolutionRunner:
                     "type": "error",
                     "id": cap_id,
                     "code": "Exception",
-                    "message": str(e),
+                    "message": _sanitize_message(str(e)),
                     "trace": _sanitize_traceback(e),
                 }
             )

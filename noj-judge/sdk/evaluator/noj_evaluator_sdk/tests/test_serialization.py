@@ -16,6 +16,7 @@ from noj_evaluator_sdk.serialization import (
     check_frame_size,
     decode_value,
     encode_value,
+    estimate_frame_size,
     validate_type,
 )
 
@@ -102,6 +103,45 @@ class TestFrameSizeLimit(unittest.TestCase):
         big = "x" * (MAX_FRAME_BYTES + 1)
         with self.assertRaises(RejectedError):
             check_frame_size(big)
+
+
+class TestEstimateFrameSize(unittest.TestCase):
+    """encode 前大小预算：估算为上界（≥ 实际序列化大小），超限即短路。"""
+
+    def _serialized_len(self, value) -> int:
+        """实际序列化帧长度（bytes 经 encode_value + json.dumps 后）。"""
+        return len(json.dumps(encode_value(value), ensure_ascii=False).encode("utf-8"))
+
+    def test_estimate_is_upper_bound_for_primitives(self):
+        for v in [None, True, False, 0, 42, -123456, 3.14, "hello", "中文", ""]:
+            self.assertGreaterEqual(estimate_frame_size(v), self._serialized_len(v))
+
+    def test_estimate_is_upper_bound_for_bytes(self):
+        # bytes base64 膨胀 ~1.33×，估算必须覆盖编码后大小
+        for size in [0, 1, 100, 1024, 1024 * 1024]:
+            v = b"x" * size
+            self.assertGreaterEqual(estimate_frame_size(v), self._serialized_len(v))
+
+    def test_estimate_is_upper_bound_for_nested(self):
+        v = {
+            "name": "test",
+            "data": b"\x00\x01" * 512,
+            "list": [1, 2, 3, "a" * 128],
+            "nested": {"k": [None, True, 3.14]},
+        }
+        self.assertGreaterEqual(estimate_frame_size(v), self._serialized_len(v))
+
+    def test_huge_dict_short_circuits_over_limit(self):
+        # 1 GB 级对象：估算应超限并短路（不完整遍历所有元素）
+        huge = {f"k{i}": "x" * 1024 for i in range(1024 * 1024)}  # ~1 GB str
+        self.assertGreater(estimate_frame_size(huge), MAX_FRAME_BYTES)
+
+    def test_oversize_bytes_over_limit(self):
+        big = b"x" * (MAX_FRAME_BYTES + 1)
+        self.assertGreater(estimate_frame_size(big), MAX_FRAME_BYTES)
+
+    def test_small_value_under_limit(self):
+        self.assertLessEqual(estimate_frame_size({"a": 1, "b": "hello"}), MAX_FRAME_BYTES)
 
 
 if __name__ == "__main__":

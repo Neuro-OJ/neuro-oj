@@ -194,11 +194,17 @@ def _worker_loop() -> None:
 
 
 def _install_signal_handlers() -> None:
-    """SIGTERM/SIGINT 优雅退出。"""
+    """SIGTERM/SIGINT 优雅退出。
+
+    先 `_shutdown_all()` 唤醒阻塞中的 pending capability 调用并给 worker 放哨兵，
+    再退出——否则 `sys.exit(0)` 后解释器会等待非 daemon 的 worker 线程，
+    worker 阻塞在 `_CALL_QUEUE.get()` 收不到哨兵，进程挂起不退出。
+    """
 
     def _handler(signum, frame):
         sys.stderr.write(f"[host] 收到信号 {signum}，退出\n")
         sys.stderr.flush()
+        _shutdown_all()
         sys.exit(0)
 
     try:

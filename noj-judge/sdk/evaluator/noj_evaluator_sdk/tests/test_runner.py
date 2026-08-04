@@ -382,6 +382,68 @@ class TestCapability(unittest.TestCase):
             h.teardown()
             _reset_capabilities_for_tests()
 
+    def test_capability_handler_exception_message_sanitized(self):
+        """F3：handler 异常 message 必须清洗——绝对路径 basename 化、超长截断。"""
+        from noj_evaluator_sdk.capability import (
+            _reset_capabilities_for_tests,
+            register_capability,
+        )
+
+        _reset_capabilities_for_tests()
+
+        def leaky():
+            raise ValueError(
+                f"failed at /workspace/secret/path/credentials.py, token=abc123"
+                + "x" * 5000  # 超长 message
+            )
+
+        register_capability("leaky", leaky)
+        h = IpcHarness()
+        try:
+            h.send_host_response(
+                {"type": "capability", "id": "cap7", "name": "leaky", "args": []}
+            )
+            frames = self._wait_for_frames(h)
+            resp = frames[-1]
+            self.assertEqual(resp["type"], "error")
+            self.assertEqual(resp["code"], "Exception")
+            # 绝对路径被 basename 化（不再泄露 evaluator 内部目录结构）
+            self.assertNotIn("/workspace/", resp["message"])
+            self.assertIn("credentials.py", resp["message"])
+            # 超长 message 被截断（上限 ~1024 字符）
+            self.assertLess(len(resp["message"]), 2048)
+            self.assertIn("截断", resp["message"])
+        finally:
+            h.teardown()
+            _reset_capabilities_for_tests()
+
+    def test_capability_oversize_bytes_rejected_before_encode(self):
+        """F2：超大 bytes 返回值在 encode_value（base64 膨胀）之前即被估算拒绝。"""
+        from noj_evaluator_sdk.capability import (
+            _reset_capabilities_for_tests,
+            register_capability,
+        )
+
+        _reset_capabilities_for_tests()
+
+        def big_bytes():
+            return b"x" * (1024 * 1024 + 4096)  # 编码后必超 1 MiB
+
+        register_capability("big_bytes", big_bytes)
+        h = IpcHarness()
+        try:
+            h.send_host_response(
+                {"type": "capability", "id": "cap8", "name": "big_bytes", "args": []}
+            )
+            frames = self._wait_for_frames(h)
+            resp = frames[-1]
+            self.assertEqual(resp["type"], "error")
+            self.assertEqual(resp["code"], "Rejected")
+            self.assertIn("返回值过大", resp["message"])
+        finally:
+            h.teardown()
+            _reset_capabilities_for_tests()
+
     def test_capability_overwrite_wins(self):
         from noj_evaluator_sdk.capability import (
             _reset_capabilities_for_tests,
@@ -451,7 +513,8 @@ class TestCapability(unittest.TestCase):
             resp = frames[-1]
             self.assertEqual(resp["type"], "error")
             self.assertEqual(resp["code"], "Rejected")
-            self.assertIn("frame size", resp["message"])
+            # 预检生效：encode 前估算拒绝，message 说明返回值过大
+            self.assertIn("返回值过大", resp["message"])
         finally:
             h.teardown()
             _reset_capabilities_for_tests()

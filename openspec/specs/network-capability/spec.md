@@ -66,6 +66,8 @@
 
 系统 SHALL 允许具有题目创建权限的用户在题目 `runtime_config.evaluator.network` 中启用联网（`enabled=true`），不要求 admin 角色；联网权限与题目创建/编辑权限一致，不单独设限。
 
+> **设计决策**：任何人无需 admin 权限即可在自己有权限的题目内开启 evaluator 联网。开启联网等于把外部网络能力交给出题人（出题人可信边界，与可控 `evaluator.command` 同级的既有信任模型）；网络层白名单代理 / egress 过滤不在本期范围，横向移动面（ICC 互通、SSRF）由出题人文档与威胁模型显式声明。
+
 #### Scenario: 普通用户创建 U 型题目开启联网
 
 - **WHEN** 任意登录用户创建 U 型题目且 `runtime_config.evaluator.network.enabled = true`

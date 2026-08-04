@@ -7,6 +7,7 @@ noj_solution_sdk 单测 —— host 主循环。
 import base64
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -189,6 +190,38 @@ class TestHostProcess(unittest.TestCase):
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.fail("host 未在 shutdown 后退出")
+        finally:
+            self._cleanup(proc, path)
+
+    def test_sigterm_exits_host(self):
+        """SIGTERM 优雅退出：退出码 0、无 hang（即使有 pending capability 调用）。
+
+        signal handler 直接 sys.exit(0) 不清理 pending，随进程退出被 OS 强杀，
+        因此不构成阻塞问题；此测试锁定"信号 → 快速退出、无死锁"契约。
+        """
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register
+            from noj_solution_sdk import call_capability
+            import time
+
+            @register
+            def slow_call():
+                # 阻塞在 capability 调用上：等待永远不会来的响应
+                call_capability("never", 1)
+                return 0
+        """)
+        proc, path = self._start_host(entry)
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(proc, {"type": "call", "id": "c1", "fn": "slow_call", "args": []})
+            # 等待 worker 进入 call_capability 阻塞态
+            time.sleep(0.5)
+            proc.send_signal(signal.SIGTERM)
+            try:
+                returncode = proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.fail("host 未在 SIGTERM 后退出（signal handler 挂起）")
+            self.assertEqual(returncode, 0)
         finally:
             self._cleanup(proc, path)
 
