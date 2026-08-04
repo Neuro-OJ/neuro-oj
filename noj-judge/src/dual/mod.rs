@@ -653,7 +653,10 @@ async fn handle_sol_chunk(
                         }
                     }
                 }
-                _ => {}
+                // log / shutdown 等其他帧：保持既有转发语义（solution → evaluator）
+                _ => {
+                    forward_frame(eval_input, &v).await?;
+                }
             }
         }
     }
@@ -1048,6 +1051,47 @@ mod tests {
         assert_eq!(
             tracker.on_capability_frame(&f, Instant::now()).unwrap().1,
             9000
+        );
+    }
+
+    #[tokio::test]
+    async fn test_sol_log_frame_still_forwarded() {
+        // 回归：solution 的 log 等非 call/capability 帧应保持既有转发语义
+        use bollard::container::LogOutput;
+        use tokio::io::AsyncReadExt;
+
+        let (sink, mut source) = tokio::io::duplex(8192);
+        let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(sink);
+
+        let mut parser = LineParser::new();
+        let mut solution_ready = true;
+        let mut tracker = InFlightTracker::new(2000);
+
+        let chunk = LogOutput::StdOut {
+            message: bytes::Bytes::from_static(
+                b"{\"type\":\"log\",\"stream\":\"stdout\",\"data\":\"hi\"}\n",
+            ),
+        };
+        handle_sol_chunk(
+            &mut parser,
+            &mut writer,
+            chunk,
+            &mut solution_ready,
+            &mut tracker,
+        )
+        .await
+        .unwrap();
+
+        let mut buf = [0u8; 4096];
+        let n = tokio::time::timeout(Duration::from_secs(2), source.read(&mut buf))
+            .await
+            .expect("读取转发内容超时")
+            .unwrap();
+        let text = String::from_utf8_lossy(&buf[..n]).to_string();
+        assert!(
+            text.contains("\"type\":\"log\""),
+            "solution log 帧应转发给 evaluator"
         );
     }
 }

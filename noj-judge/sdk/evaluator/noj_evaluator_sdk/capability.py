@@ -40,7 +40,7 @@ def register_capability(
     if not callable(handler):
         raise TypeError(f"handler 必须是 callable，实际 {type(handler).__name__}")
     if timeout_ms is not None and (
-        not isinstance(timeout_ms, int) or timeout_ms <= 0
+        type(timeout_ms) is not int or timeout_ms <= 0
     ):
         raise ValueError(
             f"timeout_ms 必须是正整数或 None，实际 {timeout_ms!r}"

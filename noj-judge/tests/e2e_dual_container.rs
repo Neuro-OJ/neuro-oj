@@ -701,19 +701,23 @@ except Exception as e:
     // solution 代码：sleep_solution 睡 300ms（> 100ms 默认超时）
     let code = "import time\ndef sleep_solution():\n    time.sleep(0.3)\n    return 1\n";
 
-    let result = noj_judge::dual::evaluate_dual(
-        docker.clone(),
-        "e2e-timeout-fallback",
-        &runtime_config,
-        code,
-        "solution.py",
-        None,
-        "/tmp/e2e-cache",
-        100,
-        64,
-        None,
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        noj_judge::dual::evaluate_dual(
+            docker.clone(),
+            "e2e-timeout-fallback",
+            &runtime_config,
+            code,
+            "solution.py",
+            None,
+            "/tmp/e2e-cache",
+            100,
+            64,
+            None,
+        ),
     )
     .await
+    .expect("评测 30s 外层超时")
     .expect("评测应正常返回");
 
     assert_eq!(result.status, "Accepted");
@@ -776,19 +780,23 @@ result.accept(score=1000, details={'cases': out})
     };
     let code = "import time\ndef sleep_solution():\n    time.sleep(0.3)\n    return 1\ndef fast_solution():\n    return 42\n";
 
-    let result = noj_judge::dual::evaluate_dual(
-        docker.clone(),
-        "e2e-timeout-per-call",
-        &runtime_config,
-        code,
-        "solution.py",
-        None,
-        "/tmp/e2e-cache",
-        100,
-        64,
-        None,
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        noj_judge::dual::evaluate_dual(
+            docker.clone(),
+            "e2e-timeout-per-call",
+            &runtime_config,
+            code,
+            "solution.py",
+            None,
+            "/tmp/e2e-cache",
+            100,
+            64,
+            None,
+        ),
     )
     .await
+    .expect("评测 30s 外层超时")
     .expect("评测应正常返回");
 
     assert_eq!(result.status, "Accepted");
@@ -802,5 +810,86 @@ result.accept(score=1000, details={'cases': out})
     assert_eq!(
         cases["fast"].as_array().unwrap(),
         &vec![serde_json::json!("ok"), serde_json::json!(42)]
+    );
+}
+
+/// capability 调用级超时：注册时配置的默认超时（cap_reg 上报）在真实容器中生效。
+#[ignore]
+#[serial_test::serial]
+#[tokio::test]
+async fn dual_capability_timeout_per_call() {
+    if !is_e2e_enabled() {
+        return;
+    }
+    let docker = get_docker().expect("docker");
+    common::ensure_sdk_images(&docker).await.unwrap();
+
+    // evaluator：注册慢 capability（默认超时 100ms），稍后从 solution 读取调用结果
+    let evaluator_cmd = r#"python3 -c "
+import json, time
+from noj_evaluator_sdk import register_capability, SolutionRunner, result
+def slow_cap(x):
+    time.sleep(0.3)
+    return x
+register_capability('slow_cap', slow_cap, timeout_ms=100)
+runner = SolutionRunner()
+time.sleep(2.5)
+try:
+    r = runner.call('report')
+    result.accept(score=1000, details={'cap': r})
+except Exception as e:
+    result.accept(score=0, details={'cap': type(e).__name__})
+""#;
+    let runtime_config = RuntimeConfig {
+        evaluator: EvaluatorRuntime {
+            image: "noj-e2e-sdk-evaluator:latest".to_string(),
+            command: evaluator_cmd.to_string(),
+            time_limit_ms: 15000,
+            memory_limit_mb: 256,
+            network: None,
+        },
+        solution: SolutionRuntime {
+            image: "noj-e2e-sdk-solution:latest".to_string(),
+            entry: "solution.py".to_string(),
+            call_timeout_ms: 5000, // 题目级默认宽松；验证 cap_reg 上报的 100ms 生效
+            memory_limit_mb: 128,
+        },
+    };
+    // solution：延迟 1s 调用 slow_cap（确保 evaluator 已完成 cap_reg 上报），
+    // 捕获超时结果，供 evaluator 的 report() 读取
+    let code = "import threading, time\nfrom noj_solution_sdk import call_capability\n_cap_result = {}\ndef _do():\n    time.sleep(1.0)\n    try:\n        call_capability('slow_cap', 1)\n        _cap_result['status'] = 'ok'\n    except Exception as e:\n        _cap_result['status'] = type(e).__name__\n        _cap_result['code'] = getattr(e, 'code', None)\nthreading.Thread(target=_do, daemon=True).start()\ndef report():\n    return _cap_result\n";
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        noj_judge::dual::evaluate_dual(
+            docker.clone(),
+            "e2e-capability-timeout",
+            &runtime_config,
+            code,
+            "solution.py",
+            None,
+            "/tmp/e2e-cache",
+            100,
+            64,
+            None,
+        ),
+    )
+    .await
+    .expect("评测 30s 外层超时")
+    .expect("评测应正常返回");
+
+    assert_eq!(result.status, "Accepted");
+    let cap = &result.details["cap"];
+    assert_eq!(
+        cap["status"].as_str().unwrap(),
+        "CapabilityError",
+        "solution 应收到 CapabilityError（cap_reg 100ms 超时）: {:?}",
+        result.details
+    );
+    assert_eq!(
+        cap["code"].as_str().unwrap(),
+        "Timeout",
+        "CapabilityError.code 应为 Timeout: {:?}",
+        result.details
     );
 }

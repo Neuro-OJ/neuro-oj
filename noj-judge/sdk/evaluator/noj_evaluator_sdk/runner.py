@@ -117,9 +117,9 @@ class SolutionRunner:
         if self._closed:
             raise ConnectionError("runner 已关闭")
 
-        # 0. timeout_ms 校验（None 或正整数）
+        # 0. timeout_ms 校验（None 或正整数；type is int 排除 bool）
         if timeout_ms is not None:
-            if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+            if type(timeout_ms) is not int or timeout_ms <= 0:
                 raise ValueError(
                     f"timeout_ms 必须是正整数或 None，实际 {timeout_ms!r}"
                 )

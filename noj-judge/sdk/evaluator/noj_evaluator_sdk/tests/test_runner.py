@@ -328,10 +328,10 @@ class TestSolutionRunnerCall(unittest.TestCase):
             harness.teardown()
 
     def test_call_invalid_timeout_ms_raises(self):
-        """timeout_ms 为 0 / 负数 / 非 int 时抛 ValueError。"""
+        """timeout_ms 为 0 / 负数 / 非 int（含 bool）时抛 ValueError。"""
         harness = IpcHarness()
         try:
-            for bad in (0, -1, "5000"):
+            for bad in (0, -1, "5000", True):
                 with self.assertRaises(ValueError):
                     harness.runner.call("solve", 1, timeout_ms=bad)
             # 非法值不应发出 call 帧

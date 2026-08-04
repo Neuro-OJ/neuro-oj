@@ -24,6 +24,9 @@ pub const FRAME_READY: &str = "ready";
 pub const FRAME_CALL: &str = "call";
 #[allow(dead_code)]
 pub const FRAME_CAPABILITY: &str = "capability";
+/// cap_reg：evaluator → judge 私有帧（capability 默认超时上报），judge 不转发
+#[allow(dead_code)]
+pub const FRAME_CAP_REG: &str = "cap_reg";
 #[allow(dead_code)]
 pub const FRAME_RESULT: &str = "result";
 #[allow(dead_code)]
