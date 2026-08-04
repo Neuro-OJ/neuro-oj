@@ -585,7 +585,12 @@ async fn handle_eval_chunk(
                             }
                         }
                     }
-                    _ => {}
+                    // log：合法帧，judge 收集但不转发（保持既有语义）
+                    Some("log") => {}
+                    // 未知/非法 type：按协议记录 warn 并丢弃
+                    _ => {
+                        warn!("丢弃未知 type 的 evaluator 帧: {}", v);
+                    }
                 }
                 // 记录所有帧到 stdout 全文（供结果展示）
                 let s = v.to_string();
@@ -653,9 +658,13 @@ async fn handle_sol_chunk(
                         }
                     }
                 }
-                // log / shutdown 等其他帧：保持既有转发语义（solution → evaluator）
-                _ => {
+                // log / shutdown 等合法帧：保持既有转发语义（solution → evaluator）
+                Some("log") | Some("shutdown") => {
                     forward_frame(eval_input, &v).await?;
+                }
+                // 未知/非法 type：按协议记录 warn 并丢弃
+                _ => {
+                    warn!("丢弃未知 type 的 solution 帧: {}", v);
                 }
             }
         }
@@ -1093,5 +1102,46 @@ mod tests {
             text.contains("\"type\":\"log\""),
             "solution log 帧应转发给 evaluator"
         );
+    }
+
+    #[tokio::test]
+    async fn test_sol_unknown_frame_dropped() {
+        // spec：未知/非法 type 帧应记录 warn 并丢弃（不转发）
+        use bollard::container::LogOutput;
+        use tokio::io::AsyncReadExt;
+
+        let (sink, mut source) = tokio::io::duplex(8192);
+        let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(sink);
+
+        let mut parser = LineParser::new();
+        let mut solution_ready = true;
+        let mut tracker = InFlightTracker::new(2000);
+
+        let chunk = LogOutput::StdOut {
+            message: bytes::Bytes::from_static(b"{\"type\":\"bogus\",\"id\":\"x\"}\n"),
+        };
+        handle_sol_chunk(
+            &mut parser,
+            &mut writer,
+            chunk,
+            &mut solution_ready,
+            &mut tracker,
+        )
+        .await
+        .unwrap();
+
+        // 未知 type 帧不应转发（duplex 写端未写数据 → read 超时/空）
+        let mut buf = [0u8; 4096];
+        let read = tokio::time::timeout(Duration::from_millis(300), source.read(&mut buf)).await;
+        match read {
+            Err(_) => {} // 超时 = 无数据转发，符合预期
+            Ok(Ok(0)) => {}
+            Ok(Ok(n)) => {
+                let text = String::from_utf8_lossy(&buf[..n]).to_string();
+                panic!("未知 type 帧不应转发: {}", text);
+            }
+            Ok(Err(e)) => panic!("读取出错: {}", e),
+        }
     }
 }
