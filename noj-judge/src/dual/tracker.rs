@@ -133,6 +133,8 @@ impl InFlightTracker {
         self.inflight.values().map(|e| e.deadline).min()
     }
 
+    /// 是否有 in-flight 调用（单测使用；生产路径通过 `next_deadline` 判断）。
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.inflight.is_empty()
     }
@@ -232,7 +234,6 @@ mod tests {
 
     #[test]
     fn test_resolve_response_unknown_false() {
-        let now = Instant::now();
         let mut t = InFlightTracker::new(2000);
         assert!(!t.resolve_response("ghost"));
     }

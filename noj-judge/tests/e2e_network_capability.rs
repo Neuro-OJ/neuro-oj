@@ -20,6 +20,7 @@ use bollard::models::ExecConfig;
 use common::{get_docker, is_e2e_enabled};
 use futures_util::StreamExt;
 use noj_judge::dual::protocol::LineParser;
+use noj_judge::dual::tracker::InFlightTracker;
 use noj_judge::types::{EvaluatorNetwork, EvaluatorRuntime, RuntimeConfig, SolutionRuntime};
 
 /// 创建带 sleep infinity 的测试容器。
@@ -261,6 +262,7 @@ sys.stderr.flush()
     let mut sol_parser = LineParser::new();
     let mut solution_ready = false;
     let mut result_payload: Option<String> = None;
+    let mut tracker = InFlightTracker::new(2000);
 
     let deadline = tokio::time::sleep(Duration::from_secs(30));
     tokio::pin!(deadline);
@@ -286,6 +288,7 @@ sys.stderr.flush()
                     &mut eval_parser,
                     &mut sol_input,
                     &mut result_payload,
+                    &mut tracker,
                     chunk,
                 )
                 .await;
@@ -307,6 +310,7 @@ sys.stderr.flush()
                     &mut eval_input,
                     chunk,
                     &mut solution_ready,
+                    &mut tracker,
                 )
                 .await;
             }
@@ -458,6 +462,7 @@ sys.stderr.flush()
     let mut sol_parser = LineParser::new();
     let mut solution_ready = false;
     let mut result_payload: Option<String> = None;
+    let mut tracker = InFlightTracker::new(2000);
 
     let deadline = tokio::time::sleep(Duration::from_secs(30));
     tokio::pin!(deadline);
@@ -478,6 +483,7 @@ sys.stderr.flush()
                     &mut eval_parser,
                     &mut sol_input,
                     &mut result_payload,
+                    &mut tracker,
                     chunk,
                 )
                 .await;
@@ -498,6 +504,7 @@ sys.stderr.flush()
                     &mut eval_input,
                     chunk,
                     &mut solution_ready,
+                    &mut tracker,
                 )
                 .await;
             }
@@ -644,6 +651,7 @@ sys.stderr.flush()
     let mut sol_parser = LineParser::new();
     let mut solution_ready = false;
     let mut result_payload: Option<String> = None;
+    let mut tracker = InFlightTracker::new(2000);
 
     let deadline = tokio::time::sleep(Duration::from_secs(30));
     tokio::pin!(deadline);
@@ -668,6 +676,7 @@ sys.stderr.flush()
                     &mut eval_parser,
                     &mut sol_input,
                     &mut result_payload,
+                    &mut tracker,
                     chunk,
                 )
                 .await;
@@ -688,6 +697,7 @@ sys.stderr.flush()
                     &mut eval_input,
                     chunk,
                     &mut solution_ready,
+                    &mut tracker,
                 )
                 .await;
             }

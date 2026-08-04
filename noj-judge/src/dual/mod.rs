@@ -15,17 +15,18 @@ pub mod protocol;
 pub mod tracker;
 
 use std::io::Read;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use bollard::container::LogOutput;
 use futures_util::StreamExt;
 use serde_json::Value;
 use tokio::io::AsyncWriteExt;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::dual::container::{start_exec, DualContainer, ExecSession};
 use crate::dual::protocol::{frame_type, EvaluatorLine, LineParser};
+use crate::dual::tracker::{InFlightTracker, WaitingSide};
 use crate::sandbox::container::{parse_command, MAX_FILE_SIZE, MAX_TOTAL_SIZE, MAX_ZIP_ENTRIES};
 use crate::types::{JudgeResult, JudgeStatus, RuntimeConfig};
 
@@ -307,7 +308,7 @@ async fn run_dual_loop(
     evaluator_exec: ExecSession,
     solution_exec: ExecSession,
     evaluator_timeout_ms: u64,
-    _call_timeout_ms: u64,
+    default_call_timeout_ms: u64,
     rejudge_seq: Option<i64>,
 ) -> Result<JudgeResult> {
     // 解构 exec 拿到 output/input
@@ -331,6 +332,9 @@ async fn run_dual_loop(
 
     let mut result_payload: Option<String> = None;
 
+    // 调用级超时追踪器（题目级 call_timeout_ms 作为缺省回退值）
+    let mut tracker = InFlightTracker::new(default_call_timeout_ms);
+
     // 评测程序启动等待上限：容器创建 / 文件注入 / Python 启动等开销
     // 不计入题目时限（issue：秒过的代码不应因启动开销 TLE）。
     const EVALUATOR_STARTUP_TIMEOUT_MS: u64 = 30_000;
@@ -346,6 +350,24 @@ async fn run_dual_loop(
             _ = &mut startup_deadline => {
                 warn!("Evaluator 启动超时（{}ms）: {}", EVALUATOR_STARTUP_TIMEOUT_MS, submission_id);
                 return Ok(JudgeResult::timeout(submission_id, "evaluator startup timeout", rejudge_seq));
+            }
+            // 调用级超时（in-flight 到期）
+            _ = async {
+                match tracker.next_deadline() {
+                    Some(d) => tokio::time::sleep_until(d.into()).await,
+                    None => std::future::pending::<()>().await,
+                }
+            } => {
+                for (id, side) in tracker.expire_now(Instant::now()) {
+                    match side {
+                        WaitingSide::Evaluator => {
+                            write_timeout_frame(&mut eval_input, &id).await?;
+                        }
+                        WaitingSide::Solution => {
+                            write_timeout_frame(&mut sol_input, &id).await?;
+                        }
+                    }
+                }
             }
             chunk = eval_output.next() => {
                 let chunk = match chunk {
@@ -373,6 +395,7 @@ async fn run_dual_loop(
                     &mut eval_stdout_full,
                     &mut sol_input,
                     &mut result_payload,
+                    &mut tracker,
                     chunk,
                 )
                 .await?;
@@ -398,6 +421,25 @@ async fn run_dual_loop(
                     return Ok(JudgeResult::timeout(submission_id, "evaluator total timeout", rejudge_seq));
                 }
 
+                // 调用级超时（in-flight 到期）
+                _ = async {
+                    match tracker.next_deadline() {
+                        Some(d) => tokio::time::sleep_until(d.into()).await,
+                        None => std::future::pending::<()>().await,
+                    }
+                } => {
+                    for (id, side) in tracker.expire_now(Instant::now()) {
+                        match side {
+                            WaitingSide::Evaluator => {
+                                write_timeout_frame(&mut eval_input, &id).await?;
+                            }
+                            WaitingSide::Solution => {
+                                write_timeout_frame(&mut sol_input, &id).await?;
+                            }
+                        }
+                    }
+                }
+
                 // Evaluator stdout/stderr
                 chunk = eval_output.next() => {
                     let chunk = match chunk {
@@ -414,6 +456,7 @@ async fn run_dual_loop(
                         &mut eval_stdout_full,
                         &mut sol_input,
                         &mut result_payload,
+                        &mut tracker,
                         chunk,
                     )
                     .await?;
@@ -437,6 +480,7 @@ async fn run_dual_loop(
                         &mut eval_input,
                         chunk,
                         &mut solution_ready,
+                        &mut tracker,
                     )
                     .await?;
                 }
@@ -486,8 +530,9 @@ async fn handle_eval_chunk(
     parser: &mut LineParser,
     stderr_buf: &mut String,
     stdout_full: &mut String,
-    eval_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
+    sol_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
     result_payload: &mut Option<String>,
+    tracker: &mut InFlightTracker,
     chunk: LogOutput,
 ) -> Result<()> {
     let (data, is_err) = match chunk {
@@ -513,13 +558,34 @@ async fn handle_eval_chunk(
                 append_capped(stdout_full, "---RESULT---\n");
             }
             EvaluatorLine::Frame(v) => {
-                // 协议帧转发到 solution stdin：
-                // - call 帧：evaluator → solution 的函数调用（既有行为）
-                // - result/error 帧：capability 调用的响应（solution → evaluator 的反向结果）
+                // 协议帧处理：
+                // - call 帧：evaluator → solution 的函数调用，登记调用级超时后原样转发
+                // - cap_reg 帧：judge 与 evaluator 的私有协议（capability 默认超时上报），不转发
+                // - result/error 帧：capability 调用的响应（solution 等待），按 id 命中判定转发
                 // 其他类型（log 等）记录但不转发
-                let ft = frame_type(&v);
-                if ft == Some("call") || ft == Some("result") || ft == Some("error") {
-                    forward_frame(eval_input, &v).await?;
+                let ft = frame_type(&v).map(|s| s.to_string());
+                match ft.as_deref() {
+                    Some("call") => {
+                        // 登记调用级超时（缺省回退题目级默认），原样转发
+                        tracker.on_call_frame(&v, Instant::now());
+                        forward_frame(sol_input, &v).await?;
+                    }
+                    Some("cap_reg") => {
+                        // judge 侧私有协议：更新 capability 超时映射，不转发给 solution
+                        tracker.on_cap_reg_frame(&v);
+                        debug!("cap_reg 帧已记录（不转发）: {}", v);
+                    }
+                    Some("result") | Some("error") => {
+                        // capability 响应帧：命中则转发给 solution，迟到/未知丢弃
+                        if let Some(id) = v.get("id").and_then(Value::as_str) {
+                            if tracker.resolve_response(id) {
+                                forward_frame(sol_input, &v).await?;
+                            } else {
+                                warn!("丢弃迟到的 evaluator 响应帧（id={}）", id);
+                            }
+                        }
+                    }
+                    _ => {}
                 }
                 // 记录所有帧到 stdout 全文（供结果展示）
                 let s = v.to_string();
@@ -546,6 +612,7 @@ async fn handle_sol_chunk(
     eval_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
     chunk: LogOutput,
     solution_ready: &mut bool,
+    tracker: &mut InFlightTracker,
 ) -> Result<()> {
     let data = match chunk {
         LogOutput::StdOut { message } => message,
@@ -561,18 +628,50 @@ async fn handle_sol_chunk(
     let lines = parser.feed(&data);
     for line in lines {
         if let EvaluatorLine::Frame(v) = line {
+            let ft = frame_type(&v).map(|s| s.to_string());
             if !*solution_ready {
-                if frame_type(&v) == Some("ready") {
+                if ft.as_deref() == Some("ready") {
                     *solution_ready = true;
                     continue;
                 }
                 // ready 之前的所有帧忽略（防御）
                 continue;
             }
-            forward_frame(eval_input, &v).await?;
+            match ft.as_deref() {
+                Some("capability") => {
+                    // solution 请求 capability：查注册超时登记后转发 evaluator
+                    tracker.on_capability_frame(&v, Instant::now());
+                    forward_frame(eval_input, &v).await?;
+                }
+                Some("result") | Some("error") => {
+                    // call 响应帧（evaluator 等待）：命中则转发，迟到/未知丢弃
+                    if let Some(id) = v.get("id").and_then(Value::as_str) {
+                        if tracker.resolve_response(id) {
+                            forward_frame(eval_input, &v).await?;
+                        } else {
+                            warn!("丢弃迟到的 solution 响应帧（id={}）", id);
+                        }
+                    }
+                }
+                _ => {}
+            }
         }
     }
     Ok(())
+}
+
+/// 向等待方写调用级超时错误帧。
+async fn write_timeout_frame(
+    writer: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
+    id: &str,
+) -> Result<()> {
+    let frame = serde_json::json!({
+        "type": "error",
+        "id": id,
+        "code": "Timeout",
+        "message": "call timeout",
+    });
+    forward_frame(writer, &frame).await
 }
 
 async fn forward_frame(
@@ -625,8 +724,9 @@ pub mod mod_test_helpers {
     /// 等价 `handle_eval_chunk`，忽略 stderr/stdout 全文收集。
     pub async fn handle_eval_chunk_probe(
         parser: &mut LineParser,
-        eval_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
+        sol_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
         result_payload: &mut Option<String>,
+        tracker: &mut InFlightTracker,
         chunk: LogOutput,
     ) {
         let mut stderr_buf = String::new();
@@ -635,8 +735,9 @@ pub mod mod_test_helpers {
             parser,
             &mut stderr_buf,
             &mut stdout_full,
-            eval_input,
+            sol_input,
             result_payload,
+            tracker,
             chunk,
         )
         .await;
@@ -648,8 +749,9 @@ pub mod mod_test_helpers {
         eval_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
         chunk: LogOutput,
         solution_ready: &mut bool,
+        tracker: &mut InFlightTracker,
     ) {
-        let _ = super::handle_sol_chunk(parser, eval_input, chunk, solution_ready).await;
+        let _ = super::handle_sol_chunk(parser, eval_input, chunk, solution_ready, tracker).await;
     }
 }
 
@@ -716,6 +818,16 @@ mod tests {
         let mut stderr_buf = String::new();
         let mut stdout_full = String::new();
         let mut result_payload: Option<String> = None;
+        let mut tracker = InFlightTracker::new(2000);
+        // 预登记 capability 调用（solution 已发过 capability 帧，等待响应）
+        tracker.on_capability_frame(
+            &serde_json::json!({"type":"capability","id":"abc","name":"x","args":[]}),
+            Instant::now(),
+        );
+        tracker.on_capability_frame(
+            &serde_json::json!({"type":"capability","id":"def","name":"x","args":[]}),
+            Instant::now(),
+        );
 
         let chunk = LogOutput::StdOut {
             message: bytes::Bytes::from_static(
@@ -731,6 +843,7 @@ mod tests {
             &mut stdout_full,
             &mut writer,
             &mut result_payload,
+            &mut tracker,
             chunk,
         )
         .await
@@ -767,6 +880,7 @@ mod tests {
         let mut stderr_buf = String::new();
         let mut stdout_full = String::new();
         let mut result_payload: Option<String> = None;
+        let mut tracker = InFlightTracker::new(2000);
 
         let chunk = LogOutput::StdOut {
             message: bytes::Bytes::from_static(
@@ -780,6 +894,7 @@ mod tests {
             &mut stdout_full,
             &mut writer,
             &mut result_payload,
+            &mut tracker,
             chunk,
         )
         .await
@@ -794,6 +909,8 @@ mod tests {
 
         assert!(text.contains("\"type\":\"call\""));
         assert!(!text.contains("plain text"), "普通文本不应转发");
+        // call 帧已被追踪：响应可命中
+        assert!(tracker.resolve_response("x"));
     }
 
     #[tokio::test]
@@ -809,6 +926,7 @@ mod tests {
         let mut stderr_buf = String::new();
         let mut stdout_full = String::new();
         let mut result_payload: Option<String> = None;
+        let mut tracker = InFlightTracker::new(2000);
 
         let chunk = LogOutput::StdOut {
             message: bytes::Bytes::from_static(
@@ -822,6 +940,7 @@ mod tests {
             &mut stdout_full,
             &mut writer,
             &mut result_payload,
+            &mut tracker,
             chunk,
         )
         .await
@@ -832,5 +951,103 @@ mod tests {
             Some("{\"status\":\"Accepted\",\"score\":100}")
         );
         assert!(stdout_full.contains("---RESULT---"));
+    }
+
+    #[tokio::test]
+    async fn test_eval_call_frame_tracked_and_forwarded() {
+        // call 帧：登记 in-flight 并原样转发（含 timeout_ms 字段）到 sol_input
+        use bollard::container::LogOutput;
+        use tokio::io::AsyncReadExt;
+
+        let (sink, mut source) = tokio::io::duplex(8192);
+        let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(sink);
+
+        let mut parser = LineParser::new();
+        let mut stderr_buf = String::new();
+        let mut stdout_full = String::new();
+        let mut result_payload: Option<String> = None;
+        let mut tracker = InFlightTracker::new(2000);
+
+        let chunk = LogOutput::StdOut {
+            message: bytes::Bytes::from_static(
+                b"{\"type\":\"call\",\"id\":\"c1\",\"fn\":\"solve\",\"args\":[1],\"timeout_ms\":500}\n",
+            ),
+        };
+        handle_eval_chunk(
+            &mut parser,
+            &mut stderr_buf,
+            &mut stdout_full,
+            &mut writer,
+            &mut result_payload,
+            &mut tracker,
+            chunk,
+        )
+        .await
+        .unwrap();
+
+        // 转发到 sol_input
+        let mut buf = [0u8; 4096];
+        let n = tokio::time::timeout(Duration::from_secs(2), source.read(&mut buf))
+            .await
+            .expect("读取转发内容超时")
+            .unwrap();
+        let text = String::from_utf8_lossy(&buf[..n]).to_string();
+        assert!(text.contains("\"type\":\"call\""));
+        assert!(text.contains("\"timeout_ms\":500"), "帧应原样透传");
+
+        // in-flight 已登记：响应命中可转发
+        assert!(tracker.resolve_response("c1"), "c1 应被追踪");
+    }
+
+    #[tokio::test]
+    async fn test_eval_cap_reg_frame_not_forwarded() {
+        // cap_reg 帧：仅更新映射，不转发给 solution（同批 call 帧正常转发）
+        use bollard::container::LogOutput;
+        use tokio::io::AsyncReadExt;
+
+        let (sink, mut source) = tokio::io::duplex(8192);
+        let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(sink);
+
+        let mut parser = LineParser::new();
+        let mut stderr_buf = String::new();
+        let mut stdout_full = String::new();
+        let mut result_payload: Option<String> = None;
+        let mut tracker = InFlightTracker::new(2000);
+
+        let chunk = LogOutput::StdOut {
+            message: bytes::Bytes::from_static(
+                b"{\"type\":\"cap_reg\",\"name\":\"ping\",\"timeout_ms\":9000}\n\
+                  {\"type\":\"call\",\"id\":\"c9\",\"fn\":\"solve\",\"args\":[1]}\n",
+            ),
+        };
+        handle_eval_chunk(
+            &mut parser,
+            &mut stderr_buf,
+            &mut stdout_full,
+            &mut writer,
+            &mut result_payload,
+            &mut tracker,
+            chunk,
+        )
+        .await
+        .unwrap();
+
+        // 只应转发 call 帧；cap_reg 帧不应出现
+        let mut buf = [0u8; 4096];
+        let n = tokio::time::timeout(Duration::from_secs(2), source.read(&mut buf))
+            .await
+            .expect("读取转发内容超时")
+            .unwrap();
+        let text = String::from_utf8_lossy(&buf[..n]).to_string();
+        assert!(text.contains("\"type\":\"call\""), "call 帧应转发");
+        assert!(!text.contains("cap_reg"), "cap_reg 帧不应转发到 solution");
+        // 映射已记录
+        let f = serde_json::json!({"type":"capability","id":"cap-1","name":"ping","args":[]});
+        assert_eq!(
+            tracker.on_capability_frame(&f, Instant::now()).unwrap().1,
+            9000
+        );
     }
 }
