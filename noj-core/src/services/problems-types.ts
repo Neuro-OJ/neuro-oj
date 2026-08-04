@@ -103,6 +103,21 @@ export function validateRuntimeConfig(rc: RuntimeConfig): void {
     );
   }
 
+  // evaluator.network（可选，缺省 = 无网）
+  if (e.network !== undefined && e.network !== null) {
+    if (typeof e.network !== "object" || Array.isArray(e.network)) {
+      throw new BadRequestError(
+        "runtime_config.evaluator.network 必须是对象",
+      );
+    }
+    const n = e.network as { enabled?: unknown };
+    if (typeof n.enabled !== "boolean") {
+      throw new BadRequestError(
+        "runtime_config.evaluator.network.enabled 必须是布尔值",
+      );
+    }
+  }
+
   const s = rc.solution;
   if (typeof s.image !== "string" || !s.image.trim()) {
     throw new BadRequestError("runtime_config.solution.image 必须是非空字符串");

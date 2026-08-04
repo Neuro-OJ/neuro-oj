@@ -21,12 +21,14 @@ from .errors import (
 from .result import Result
 from .runner import SolutionRunner
 from .logging_config import configure_logging
+from .capability import register_capability
 
 # 公开 result 单例（`from noj_evaluator_sdk import result; result.accept(...)`）
 result = Result()
 
 __all__ = [
     "SolutionRunner",
+    "register_capability",
     "result",
     "configure_logging",
     "ConnectionError",

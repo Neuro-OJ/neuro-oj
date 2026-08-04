@@ -13,6 +13,7 @@
 //! - 帧类型常量（与 Python SDK 协议对齐）
 
 use serde_json::Value;
+use tracing::warn;
 
 /// NDJSON 帧 `type` 字段允许的值（与 Python SDK `host.py` 对齐）。
 ///
@@ -21,6 +22,8 @@ use serde_json::Value;
 pub const FRAME_READY: &str = "ready";
 #[allow(dead_code)]
 pub const FRAME_CALL: &str = "call";
+#[allow(dead_code)]
+pub const FRAME_CAPABILITY: &str = "capability";
 #[allow(dead_code)]
 pub const FRAME_RESULT: &str = "result";
 #[allow(dead_code)]
@@ -56,10 +59,17 @@ pub enum EvaluatorLine {
 /// 把字节流切分为行的解析器。
 ///
 /// docker exec 的 stdout 是字节流，帧可能跨多个 chunk，因此需要缓冲。
+///
+/// 安全上限：恶意提交可向 stdout 输出超长无换行行，若无限缓冲会拖垮 judge
+/// 进程（容器内存限制不约束 judge）。超过 [`MAX_BUFFER_BYTES`] 时丢弃头部、
+/// 保留尾部（诊断信息优先，评测继续）。
 #[derive(Debug, Default)]
 pub struct LineParser {
     buf: Vec<u8>,
 }
+
+/// 缓冲上限：4 MiB（覆盖正常协议帧 + 日志余量，远超单帧 1 MiB 软上限）。
+pub const MAX_BUFFER_BYTES: usize = 4 * 1024 * 1024;
 
 impl LineParser {
     pub fn new() -> Self {
@@ -67,7 +77,32 @@ impl LineParser {
     }
 
     /// 喂入一个 chunk，返回所有切分完成的行。
+    ///
+    /// 若缓冲将超过 [`MAX_BUFFER_BYTES`]，丢弃头部、保留尾部
+    /// （诊断信息优先；避免恶意超长输出拖垮 judge 进程）。
     pub fn feed(&mut self, chunk: &[u8]) -> Vec<EvaluatorLine> {
+        if self.buf.len() + chunk.len() > MAX_BUFFER_BYTES {
+            warn!(
+                "LineParser 缓冲超过上限 {} 字节，丢弃头部（恶意超长输出？）",
+                MAX_BUFFER_BYTES
+            );
+            // 保留尾部：buf 超过保留阈值时丢头部到只剩一半；
+            // buf 本身很小（超大 chunk 一次灌入）则清空，避免无界累积
+            let keep = MAX_BUFFER_BYTES / 2;
+            if self.buf.len() > keep {
+                let start = self.buf.len() - keep;
+                self.buf.drain(..start);
+            } else {
+                self.buf.clear();
+            }
+            // chunk 仍超剩余空间时只取尾部（诊断信息优先），截断后不解析
+            let remaining = MAX_BUFFER_BYTES - self.buf.len();
+            if chunk.len() > remaining {
+                let from = chunk.len() - remaining;
+                self.buf.extend_from_slice(&chunk[from..]);
+                return Vec::new();
+            }
+        }
         self.buf.extend_from_slice(chunk);
         let mut out = Vec::new();
         while let Some(pos) = self.buf.iter().position(|&b| b == b'\n') {
@@ -259,5 +294,37 @@ mod tests {
         assert!(!p.buf.is_empty());
         p.discard();
         assert!(p.buf.is_empty());
+    }
+
+    #[test]
+    fn test_feed_buffer_limit_discards_on_overflow() {
+        // 恶意超长无换行输出：超过 MAX_BUFFER_BYTES 时丢弃头部（防 judge OOM）
+        let mut p = LineParser::new();
+        let big = vec![b'a'; MAX_BUFFER_BYTES + 1];
+        let lines = p.feed(&big);
+        assert!(lines.is_empty());
+        assert!(
+            p.buf.len() <= MAX_BUFFER_BYTES,
+            "超限后缓冲应被截断到上限内: {}",
+            p.buf.len()
+        );
+
+        // 截断后恢复正常解析（评测继续）——残留行先以换行结束，再解析合法帧
+        let lines = p.feed(b"\n{\"type\":\"call\",\"id\":\"x\"}\n");
+        assert!(
+            lines.iter().any(|l| matches!(l, EvaluatorLine::Frame(_))),
+            "超限截断后应能继续解析协议帧: {:?}",
+            lines
+        );
+    }
+
+    #[test]
+    fn test_feed_just_below_limit_ok() {
+        // 恰好低于上限的缓冲不丢弃
+        let mut p = LineParser::new();
+        let chunk = vec![b'a'; MAX_BUFFER_BYTES - 1024];
+        let lines = p.feed(&chunk);
+        assert!(lines.is_empty());
+        assert_eq!(p.buf.len(), MAX_BUFFER_BYTES - 1024);
     }
 }

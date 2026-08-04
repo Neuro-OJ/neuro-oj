@@ -1,8 +1,5 @@
-## Purpose
+## MODIFIED Requirements
 
-定义 Neuro OJ 评测沙箱的基础设施规范。no-judge 使用 Docker
-容器为每道题目创建隔离的评测环境，限制资源访问并防止恶意代码逃逸。
-## Requirements
 ### Requirement: 容器创建与配置
 
 系统 SHALL 使用 bollard 创建 Docker 容器。容器不再有池预创建：每次评测任务即时创建
@@ -53,83 +50,6 @@
 - **THEN** 返回 SystemError
 - **THEN** 错误信息包含镜像名和构建提示
 
-### Requirement: 容器执行与输出捕获
-
-系统 SHALL 通过 docker exec 在容器中执行评测命令（而非 create → start →
-run），捕获 stdout/stderr，并在超时时有序终止。
-
-#### Scenario: 正常执行
-
-- **WHEN** 文件已通过 docker exec `tar xf - -C /workspace` 注入到容器 `/workspace`
-- **WHEN** 系统通过 docker exec 执行评测命令
-- **THEN** 系统流式捕获 stdout/stderr
-- **THEN** `tokio::select!` 竞速 exec stream 与超时定时器
-
-#### Scenario: 执行超时
-
-- **WHEN** 容器内 exec 运行时间超过 `time_limit_ms + 5s`
-- **THEN** 系统先调用 `docker stop -t 2`（SIGTERM + 2s 等待）
-- **THEN** 若仍运行则 `docker kill`（SIGKILL）
-- **THEN** 捕获剩余日志输出
-
-#### Scenario: 正常退出
-
-- **WHEN** exec 内命令正常执行完毕
-- **THEN** 系统返回 stdout、stderr 和退出码
-
-#### Scenario: 非零退出
-
-- **WHEN** exec 内进程以非零退出码退出
-- **THEN** 系统保留 stdout/stderr 并标记 RuntimeError 等（由退出码映射）
-
-#### Scenario: 容器清理
-
-- **WHEN** 评测执行完毕（正常或异常）
-- **THEN** 容器按 RAII 顺序（Solution → Evaluator）被 `docker rm -f` 移除
-- **THEN** 工作目录被 `fs::remove_dir_all` 删除
-- **THEN** 无容器回补步骤（容器池已移除）
-
-### Requirement: 用户代码注入
-
-系统 SHALL 将 task.code 以 task.file_name
-为文件名写入临时目录，若文件已存在则覆盖。
-
-#### Scenario: 写入用户代码
-
-- **WHEN** 支持包已解压到临时目录
-- **THEN** 系统将 task.code 写入 `{work_dir}/{task.file_name}`
-
-#### Scenario: 覆盖已有文件
-
-- **WHEN** 支持包中包含同名的模板/示例文件
-- **THEN** 用户代码覆盖该文件
-
-### Requirement: 资源测量
-
-系统 SHALL 在评测容器执行完毕后，测量并返回执行时间和内存峰值。
-
-#### Scenario: 时间测量
-
-- **WHEN** 评测编排层执行评测命令
-- **THEN** 系统在 exec 启动前和返回后分别记录 `Instant::now()`，计算差值作为
-  `time_ms`
-- **THEN** `time_ms` 精度为毫秒（纳秒计时器读取），反映 wall-clock 时间
-
-#### Scenario: 内存峰值测量
-
-- **WHEN** exec 执行完毕
-- **THEN** 系统在容器内执行
-  `cat /sys/fs/cgroup/memory/memory.max_usage_in_bytes`（cgroup v1）或
-  `cat /sys/fs/cgroup/memory.peak`（cgroup v2）
-- **THEN** 解析输出字节数，转换为 KB 作为 `memory_kb`
-- **WHEN** cgroup 文件不存在或读取失败
-- **THEN** `memory_kb` 设为 0，不阻塞评测结果
-
-#### Scenario: 容器未运行或已删除
-
-- **WHEN** 容器已删除导致内存读取失败
-- **THEN** `memory_kb` 设为 0，错误记录日志
-
 ### Requirement: 安全隔离
 
 系统 SHALL 确保用户代码在隔离环境中执行：
@@ -166,4 +86,3 @@ run），捕获 stdout/stderr，并在超时时有序终止。
 
 - **WHEN** 用户代码分配内存超过 memory_limit_mb
 - **THEN** Docker OOM killer 终止进程，容器退出码 137
-

@@ -7,6 +7,7 @@ noj_solution_sdk 单测 —— host 主循环。
 import base64
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -192,6 +193,38 @@ class TestHostProcess(unittest.TestCase):
         finally:
             self._cleanup(proc, path)
 
+    def test_sigterm_exits_host(self):
+        """SIGTERM 优雅退出：退出码 0、无 hang（即使有 pending capability 调用）。
+
+        signal handler 直接 sys.exit(0) 不清理 pending，随进程退出被 OS 强杀，
+        因此不构成阻塞问题；此测试锁定"信号 → 快速退出、无死锁"契约。
+        """
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register
+            from noj_solution_sdk import call_capability
+            import time
+
+            @register
+            def slow_call():
+                # 阻塞在 capability 调用上：等待永远不会来的响应
+                call_capability("never", 1)
+                return 0
+        """)
+        proc, path = self._start_host(entry)
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(proc, {"type": "call", "id": "c1", "fn": "slow_call", "args": []})
+            # 等待 worker 进入 call_capability 阻塞态
+            time.sleep(0.5)
+            proc.send_signal(signal.SIGTERM)
+            try:
+                returncode = proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.fail("host 未在 SIGTERM 后退出（signal handler 挂起）")
+            self.assertEqual(returncode, 0)
+        finally:
+            self._cleanup(proc, path)
+
     def test_duplicate_register_raises_on_load(self):
         """entry 内重复注册同名函数时，host 加载失败但仍能 ready + 接收 shutdown。"""
         entry = textwrap.dedent("""
@@ -235,6 +268,163 @@ class TestHostProcess(unittest.TestCase):
             resp = self._read_frame(proc)
             self.assertEqual(resp["type"], "result")
             self.assertEqual(resp["value"], encoded)  # bytes 仍以 base64 形式回到 caller
+        finally:
+            self._cleanup(proc, path)
+
+    # ── capability 调用 ──────────────────────────────
+
+    def test_capability_call_round_trip(self):
+        """用户函数内 call_capability：发 capability 帧，收 result 帧后返回。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register, call_capability
+            @register
+            def solve():
+                return call_capability("ping", "hello")
+        """)
+        proc, path = self._start_host(entry)
+        try:
+            ready = self._read_frame(proc)
+            self.assertEqual(ready["type"], "ready")
+
+            self._send_frame(proc, {"type": "call", "id": "c1", "fn": "solve", "args": []})
+            # host 发出 capability 帧（转发请求）
+            cap = self._read_frame(proc)
+            self.assertEqual(cap["type"], "capability")
+            self.assertEqual(cap["name"], "ping")
+            self.assertEqual(cap["args"], ["hello"])
+
+            # 模拟 evaluator 返回 result
+            self._send_frame(
+                proc, {"type": "result", "id": cap["id"], "value": "pong"}
+            )
+            resp = self._read_frame(proc)
+            self.assertEqual(resp["type"], "result")
+            self.assertEqual(resp["id"], "c1")
+            self.assertEqual(resp["value"], "pong")
+        finally:
+            self._cleanup(proc, path)
+
+    def test_capability_not_found_raises_in_call(self):
+        """evaluator 回 NotFound → call_capability 抛 CapabilityNotFoundError。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register, call_capability
+            @register
+            def solve():
+                return call_capability("missing")
+        """)
+        proc, path = self._start_host(entry)
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(proc, {"type": "call", "id": "c1", "fn": "solve", "args": []})
+
+            cap = self._read_frame(proc)
+            self.assertEqual(cap["name"], "missing")
+
+            # evaluator 回 NotFound
+            self._send_frame(
+                proc,
+                {
+                    "type": "error",
+                    "id": cap["id"],
+                    "code": "NotFound",
+                    "message": "capability 'missing' not registered",
+                },
+            )
+            # 异常在用户函数内传播 → host 回 Exception 错误帧
+            resp = self._read_frame(proc)
+            self.assertEqual(resp["type"], "error")
+            self.assertEqual(resp["code"], "Exception")
+            self.assertIn("capability 'missing' not registered", resp["message"])
+        finally:
+            self._cleanup(proc, path)
+
+    def test_capability_rejected_type(self):
+        """不可序列化参数 → CapabilityRejectedError（公共 API，可被用户捕获），不发 capability 帧。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register, call_capability, CapabilityRejectedError
+            class Foo:
+                pass
+            @register
+            def solve():
+                try:
+                    return call_capability("x", Foo())
+                except CapabilityRejectedError as e:
+                    return f"rejected: {e}"
+        """)
+        proc, path = self._start_host(entry)
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(proc, {"type": "call", "id": "c1", "fn": "solve", "args": []})
+
+            # 直接收到 result（未发出 capability 帧）——用户捕获到了 CapabilityRejectedError
+            resp = self._read_frame(proc)
+            self.assertEqual(resp["type"], "result")
+            self.assertIn("不支持的类型", resp["value"])
+        finally:
+            self._cleanup(proc, path)
+
+    def test_capability_call_at_module_top_level(self):
+        """模块顶层代码 call_capability：reader 先于 entry 加载启动，等待响应后继续。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register, call_capability
+            top = call_capability("ping", "top-level")
+            @register
+            def solve():
+                return top
+        """)
+        proc, path = self._start_host(entry)
+        try:
+            ready = self._read_frame(proc)
+            self.assertEqual(ready["type"], "ready")
+
+            # 顶层调用发出 capability 帧（entry 加载期间）
+            cap = self._read_frame(proc)
+            self.assertEqual(cap["type"], "capability")
+            self.assertEqual(cap["name"], "ping")
+            self.assertEqual(cap["args"], ["top-level"])
+
+            # evaluator 返回后，entry 加载继续，函数可正常调用
+            self._send_frame(
+                proc, {"type": "result", "id": cap["id"], "value": "top-ok"}
+            )
+            self._send_frame(proc, {"type": "call", "id": "c1", "fn": "solve", "args": []})
+            resp = self._read_frame(proc)
+            self.assertEqual(resp["type"], "result")
+            self.assertEqual(resp["value"], "top-ok")
+        finally:
+            self._cleanup(proc, path)
+
+    def test_capability_bytes_round_trip(self):
+        """capability 参数/返回值 bytes base64 编解码。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register, call_capability
+            @register
+            def solve():
+                return call_capability("echo", b"payload")
+        """)
+        proc, path = self._start_host(entry)
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(proc, {"type": "call", "id": "c1", "fn": "solve", "args": []})
+
+            cap = self._read_frame(proc)
+            self.assertEqual(cap["name"], "echo")
+            self.assertEqual(cap["args"], [{"__bytes__": base64.b64encode(b"payload").decode()}])
+
+            # 返回值也是 bytes（base64 结构）
+            self._send_frame(
+                proc,
+                {
+                    "type": "result",
+                    "id": cap["id"],
+                    "value": {"__bytes__": base64.b64encode(b"resp").decode()},
+                },
+            )
+            resp = self._read_frame(proc)
+            self.assertEqual(resp["type"], "result")
+            self.assertEqual(
+                resp["value"], {"__bytes__": base64.b64encode(b"resp").decode()}
+            )
         finally:
             self._cleanup(proc, path)
 

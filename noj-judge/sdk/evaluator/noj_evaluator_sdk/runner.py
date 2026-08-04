@@ -15,12 +15,16 @@ noj_evaluator_sdk SolutionRunner。
 from __future__ import annotations
 
 import json
+import os
+import re
 import sys
 import threading
+import traceback
 import uuid
 from queue import Empty, Queue
 from typing import Any, Optional
 
+from .capability import _get_capability
 from .errors import (
     ConnectionError,
     NotFoundError,
@@ -29,11 +33,51 @@ from .errors import (
     SystemError,
 )
 from .serialization import (
+    MAX_FRAME_BYTES,
     check_frame_size,
     decode_value,
     encode_value,
+    estimate_frame_size,
     validate_type,
 )
+
+_TB_FILE_RE = re.compile(r'File "([^"]+)"')
+
+# 裸绝对路径（如 /workspace/secret/credentials.py）：message 中不总是带 File "..." 包装
+_ABS_PATH_RE = re.compile(r"/(?:[\w.\-]+/)+[\w.\-]+")
+
+# 透传给 solution 的异常 message 截断上限（防止超长消息 / 内嵌堆栈泄露）
+_MAX_MESSAGE_LEN = 1024
+
+
+def _sanitize_traceback(exc: BaseException) -> str:
+    """清洗 traceback：文件路径只保留 basename（与 solution 侧 sanitize_trace 对齐）。
+
+    error 帧会返回给 solution（做题人），不得泄露 evaluator 容器内部绝对路径。
+    """
+    lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
+    cleaned = [
+        _TB_FILE_RE.sub(lambda m: f'File "{os.path.basename(m.group(1))}"', line)
+        for line in lines
+    ]
+    return "".join(cleaned)
+
+
+def _sanitize_message(msg: str) -> str:
+    """净化透传给 solution 的异常 `message`：路径只保留 basename + 截断长度。
+
+    `str(e)` 可能内嵌绝对路径（`File "..."` 或裸路径）/ 长堆栈 / 敏感值，与
+    `_sanitize_traceback` 做一致的路径清洗，并截断到上限，防止信息泄露与超大帧。
+    """
+    cleaned = _TB_FILE_RE.sub(
+        lambda m: f'File "{os.path.basename(m.group(1))}"', msg
+    )
+    cleaned = _ABS_PATH_RE.sub(
+        lambda m: f"/{os.path.basename(m.group(0))}", cleaned
+    )
+    if len(cleaned) > _MAX_MESSAGE_LEN:
+        cleaned = cleaned[:_MAX_MESSAGE_LEN] + f"...（截断，原长度 {len(msg)}）"
+    return cleaned
 
 
 class SolutionRunner:
@@ -46,6 +90,8 @@ class SolutionRunner:
         self._pending: dict[str, Queue] = {}
         self._lock = threading.Lock()
         self._closed = False
+        # stdout 写入锁：call 帧（主线程）与 capability 响应（reader 线程）并发写
+        self._out_lock = threading.Lock()
         self._reader_thread = threading.Thread(
             target=self._reader_loop, name="noj-evaluator-stdin-reader", daemon=True
         )
@@ -87,15 +133,12 @@ class SolutionRunner:
             self._pending[call_id] = q
 
         # 4. 写帧到 stdout
-        line = json.dumps(frame, ensure_ascii=False, separators=(",", ":"))
         try:
-            check_frame_size(line)
+            self._write_out(frame)
         except RejectedError:
             with self._lock:
                 self._pending.pop(call_id, None)
             raise
-        sys.stdout.write(line + "\n")
-        sys.stdout.flush()
 
         # 5. 阻塞等响应（超时由 judge 端 call_timeout_ms 控制，
         #    SDK 这里不设超时——避免与 judge 双重超时逻辑混淆）
@@ -137,7 +180,10 @@ class SolutionRunner:
                 frame_type = frame.get("type")
                 frame_id = frame.get("id")
 
-                if frame_type in ("result", "error"):
+                if frame_type == "capability":
+                    # solution 请求调用 capability：查注册表并同步执行（写响应帧）
+                    self._handle_capability(frame)
+                elif frame_type in ("result", "error"):
                     with self._lock:
                         q = self._pending.pop(frame_id, None)
                     if q is not None:
@@ -178,6 +224,77 @@ class SolutionRunner:
             sys.stderr.write(f"[noj_evaluator_sdk] reader_loop 异常: {e}\n")
             sys.stderr.flush()
             self._closed = True
+
+    def _write_out(self, frame: dict) -> None:
+        """线程安全写 NDJSON 帧到 stdout（受单帧 1 MiB 软上限约束）。"""
+        line = json.dumps(frame, ensure_ascii=False, separators=(",", ":"))
+        check_frame_size(line)
+        with self._out_lock:
+            sys.stdout.write(line + "\n")
+            sys.stdout.flush()
+
+    def _handle_capability(self, frame: dict) -> None:
+        """处理 solution 的 capability 调用（在 reader 线程同步执行）。
+
+        语义：
+        - 未注册 → error 帧 code=NotFound
+        - 参数/返回值类型非法 → error 帧 code=Rejected
+        - handler 异常 → error 帧 code=Exception（含 trace）
+        - 成功 → result 帧（value 经 codec 编码）
+        """
+        cap_id = frame.get("id")
+        name = frame.get("name", "")
+        args = frame.get("args", [])
+
+        handler = _get_capability(name)
+        if handler is None:
+            self._write_out(
+                {
+                    "type": "error",
+                    "id": cap_id,
+                    "code": "NotFound",
+                    "message": f"capability {name!r} not registered",
+                }
+            )
+            return
+
+        try:
+            decoded_args = [decode_value(a) for a in args]
+            result = handler(*decoded_args)
+            # 返回值类型校验（与 runner.call 相同的 RPC 类型契约）
+            validate_type(result, "<capability result>")
+            # 大小预检：在 encode_value（bytes → base64 膨胀 ~1.33×）之前估算，
+            # 超大返回值直接拒绝，避免先吃完整序列化内存（防恶意输出拖垮 evaluator）
+            if estimate_frame_size(result) > MAX_FRAME_BYTES:
+                raise RejectedError(
+                    f"capability 返回值过大（估算序列化 > {MAX_FRAME_BYTES} 字节，"
+                    "单帧 1 MiB 软上限）"
+                )
+            encoded = encode_value(result)
+            # 帧大小校验放在 try 内：超大返回值按 Rejected 回给 solution。
+            # （_write_out 内部也会校验，但那里的异常会逃逸到 reader 循环，
+            #   导致响应帧丢失、solution 侧挂起至评测超时）
+            result_frame = {"type": "result", "id": cap_id, "value": encoded}
+            line = json.dumps(result_frame, ensure_ascii=False, separators=(",", ":"))
+            check_frame_size(line)
+        except RejectedError as e:
+            self._write_out(
+                {"type": "error", "id": cap_id, "code": "Rejected", "message": str(e)}
+            )
+            return
+        except Exception as e:
+            self._write_out(
+                {
+                    "type": "error",
+                    "id": cap_id,
+                    "code": "Exception",
+                    "message": _sanitize_message(str(e)),
+                    "trace": _sanitize_traceback(e),
+                }
+            )
+            return
+
+        self._write_out(result_frame)
 
     def _handle_response(self, frame: dict) -> Any:
         """处理 result/error 帧，抛出对应异常或返回值。"""

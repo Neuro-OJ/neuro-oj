@@ -300,6 +300,10 @@ async function createViaCrud(
     "solution",
   );
 
+  // evaluator 联网权限与题目创建权限一致：普通用户导入创建 U 型题可开网；
+  // P 型由上方类型检查保证仅 admin。安全提醒：联网 + 可控 evaluator.command
+  // = 联网容器任意命令执行，题目包 manifest.runtime_config 由上传者完全可控。
+
   const db = getDb();
   const categoryIds = await resolveCategoryIds(manifest.categories);
 

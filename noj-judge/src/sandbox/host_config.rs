@@ -7,17 +7,19 @@ use std::collections::HashMap;
 /// - `memory_bytes`: total memory limit (also applied to swap)
 /// - `tmpfs`: tmpfs mounts (e.g., `("/tmp", "size=256M")`)
 /// - `readonly_rootfs`: whether rootfs is read-only (dual evaluator/solution = false)
+/// - `network_mode`: container network mode (`"none"` = no network, `"bridge"` = default bridge)
 pub fn build_host_config(
     memory_bytes: i64,
     tmpfs: HashMap<&str, &str>,
     readonly_rootfs: bool,
+    network_mode: &str,
 ) -> HostConfig {
     HostConfig {
         cap_drop: Some(vec!["ALL".to_string()]),
         security_opt: Some(vec!["no-new-privileges:true".to_string()]),
         privileged: Some(false),
         readonly_rootfs: Some(readonly_rootfs),
-        network_mode: Some("none".to_string()),
+        network_mode: Some(network_mode.to_string()),
         ipc_mode: Some("none".to_string()),
         pids_limit: Some(256),
         tmpfs: Some(
@@ -39,7 +41,7 @@ mod tests {
 
     #[test]
     fn test_security_fields_are_set() {
-        let cfg = build_host_config(512 * 1024 * 1024, HashMap::new(), true);
+        let cfg = build_host_config(512 * 1024 * 1024, HashMap::new(), true, "none");
 
         assert_eq!(cfg.cap_drop, Some(vec!["ALL".to_string()]));
         assert_eq!(
@@ -55,7 +57,7 @@ mod tests {
     #[test]
     fn test_memory_swap_equals_memory() {
         let memory = 256 * 1024 * 1024;
-        let cfg = build_host_config(memory, HashMap::new(), true);
+        let cfg = build_host_config(memory, HashMap::new(), true, "none");
 
         assert_eq!(cfg.memory, Some(memory));
         assert_eq!(cfg.memory_swap, Some(memory));
@@ -64,10 +66,10 @@ mod tests {
 
     #[test]
     fn test_readonly_rootfs_honored() {
-        let cfg_ro = build_host_config(512 * 1024 * 1024, HashMap::new(), true);
+        let cfg_ro = build_host_config(512 * 1024 * 1024, HashMap::new(), true, "none");
         assert_eq!(cfg_ro.readonly_rootfs, Some(true));
 
-        let cfg_rw = build_host_config(512 * 1024 * 1024, HashMap::new(), false);
+        let cfg_rw = build_host_config(512 * 1024 * 1024, HashMap::new(), false, "none");
         assert_eq!(cfg_rw.readonly_rootfs, Some(false));
     }
 
@@ -77,7 +79,7 @@ mod tests {
         tmpfs.insert("/tmp", "size=256M");
         tmpfs.insert("/run", "size=64M");
 
-        let cfg = build_host_config(512 * 1024 * 1024, tmpfs, true);
+        let cfg = build_host_config(512 * 1024 * 1024, tmpfs, true, "none");
         let tmpfs_out = cfg.tmpfs.unwrap();
 
         assert_eq!(tmpfs_out.get("/tmp").unwrap(), "size=256M");
@@ -87,8 +89,17 @@ mod tests {
 
     #[test]
     fn test_empty_tmpfs() {
-        let cfg = build_host_config(512 * 1024 * 1024, HashMap::new(), true);
+        let cfg = build_host_config(512 * 1024 * 1024, HashMap::new(), true, "none");
         let tmpfs_out = cfg.tmpfs.unwrap();
         assert!(tmpfs_out.is_empty());
+    }
+
+    #[test]
+    fn test_network_mode_honored() {
+        let cfg_none = build_host_config(512 * 1024 * 1024, HashMap::new(), true, "none");
+        assert_eq!(cfg_none.network_mode, Some("none".to_string()));
+
+        let cfg_bridge = build_host_config(512 * 1024 * 1024, HashMap::new(), true, "bridge");
+        assert_eq!(cfg_bridge.network_mode, Some("bridge".to_string()));
     }
 }

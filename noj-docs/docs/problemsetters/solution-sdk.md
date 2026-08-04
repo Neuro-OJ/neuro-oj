@@ -47,14 +47,20 @@ def solve(a: int, b: int) -> int:
 
 ## `noj_solution_sdk`
 
-当前 `noj_solution_sdk` 仅提供占位能力：
+当题目声明了 capability（如外部网络 API）时，可以在注册函数内调用：
 
 ```python
 from noj_solution_sdk import call_capability
+
+def solve(prompt: str) -> str:
+    return call_capability("request_llm_completion", prompt)
 ```
 
-`call_capability()` 在第一阶段不支持 Solution 到 Evaluator 的能力调用，会抛出 `UnsupportedCapability`。普通题目不需要导入该 SDK。
+`call_capability(name, *args)` 把请求经 judge 转发到 Evaluator 执行，返回解码后的结果。能力名称、参数与返回值语义由题面声明。
 
-这也意味着当前 RPC 方向是 Evaluator 主动调用 Solution；Solution 不能主动读取 evaluator 的能力、文件或隐藏用例数据。
+- **RPC 方向**：Evaluator 主动调用 Solution（`runner.call()`）；Solution 通过 `call_capability` 反向调用 Evaluator 注册的能力（如网络请求）。Solution 不能读取 evaluator 的文件或隐藏用例数据。
+- **类型约束**：`call_capability` 的参数与返回值与 `runner.call()` **相同**：只允许 `None / bool / int / float / str / bytes / list / dict`，不可序列化的对象会被拒绝，不会进入 RPC 帧。
+- **错误**：未注册的 capability 抛 `CapabilityNotFoundError`；参数/返回值类型非法抛 `CapabilityRejectedError`；handler 异常抛 `CapabilityError`（含 `code` 与清洗后 trace）。
+- **安全**：Solution 容器始终无网；capability 由出题人显式注册并负责参数校验（见 [如何提供受限网络能力](capability-networking.md)）。
 
-即使未来实现能力转发，`call_capability` 的参数与返回值也受**与 `runner.call()` 相同的类型校验**约束：只允许 `None / bool / int / float / str / bytes / list / dict`，不可序列化的对象（自定义类实例、函数、文件句柄等）会被拒绝，不会进入 RPC 帧。
+普通不需要网络的题目无需导入该 SDK。

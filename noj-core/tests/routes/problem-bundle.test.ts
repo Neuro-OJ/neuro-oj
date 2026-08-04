@@ -30,7 +30,6 @@ export function makeBundleZip(
     title: `导入测试题 ${ts}`,
     difficulty: "easy",
     type: "U",
-    ...manifestOverrides,
     runtime_config: {
       evaluator: {
         image: "noj-evaluator-python",
@@ -44,6 +43,7 @@ export function makeBundleZip(
         memory_limit_mb: 512,
       },
     },
+    ...manifestOverrides,
   };
   const enc = new TextEncoder();
   return zipSync({
@@ -485,5 +485,53 @@ Deno.test({
     } catch {
       // ignore
     }
+  },
+});
+
+Deno.test({
+  name: "import-bundle: 普通用户导入开启 evaluator 联网放行（有创建权限即可）",
+  ignore: skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await ensureUser(OWNER_ID);
+    const app = createApp();
+    const token = await signToken({ sub: OWNER_ID, role: "user" });
+
+    // manifest.runtime_config.evaluator.network.enabled=true（上传者可控）
+    const formData = new FormData();
+    formData.append(
+      "file",
+      makeZipBlob({
+        runtime_config: {
+          evaluator: {
+            image: "noj-evaluator-python",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+            network: { enabled: true },
+          },
+          solution: {
+            image: "noj-solution-python",
+            entry: "submission_sample.py",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
+      }),
+      "u-net1.zip",
+    );
+
+    const res = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(
+      body.data.runtime_config.evaluator.network?.enabled,
+      true,
+    );
   },
 });
