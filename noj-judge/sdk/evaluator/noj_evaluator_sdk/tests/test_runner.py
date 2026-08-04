@@ -292,6 +292,53 @@ class TestSolutionRunnerCall(unittest.TestCase):
         finally:
             h.teardown()
 
+    def test_call_frame_with_timeout_ms(self):
+        """指定 timeout_ms 时 call 帧应带该字段。"""
+        harness = IpcHarness()
+        try:
+            def runner():
+                harness.runner.call("solve", 1, timeout_ms=5000)
+            t = threading.Thread(target=runner)
+            t.start()
+            frame = harness.last_call_frame()
+            self.assertEqual(frame.get("timeout_ms"), 5000)
+            harness.send_host_response(
+                {"type": "result", "id": frame["id"], "value": 3}
+            )
+            t.join(timeout=2.0)
+            self.assertFalse(t.is_alive(), "call 应已返回")
+        finally:
+            harness.teardown()
+
+    def test_call_frame_without_timeout_ms(self):
+        """缺省 timeout_ms 时 call 帧不应带该字段（向后兼容）。"""
+        harness = IpcHarness()
+        try:
+            def runner():
+                harness.runner.call("solve", 1)
+            t = threading.Thread(target=runner)
+            t.start()
+            frame = harness.last_call_frame()
+            self.assertNotIn("timeout_ms", frame)
+            harness.send_host_response(
+                {"type": "result", "id": frame["id"], "value": 3}
+            )
+            t.join(timeout=2.0)
+        finally:
+            harness.teardown()
+
+    def test_call_invalid_timeout_ms_raises(self):
+        """timeout_ms 为 0 / 负数 / 非 int 时抛 ValueError。"""
+        harness = IpcHarness()
+        try:
+            for bad in (0, -1, "5000"):
+                with self.assertRaises(ValueError):
+                    harness.runner.call("solve", 1, timeout_ms=bad)
+            # 非法值不应发出 call 帧
+            self.assertEqual(len(harness.all_call_frames()), 0)
+        finally:
+            harness.teardown()
+
 
 class TestCapability(unittest.TestCase):
     """验证 capability 帧处理（register_capability → handler → 响应帧）。"""
@@ -518,6 +565,44 @@ class TestCapability(unittest.TestCase):
         finally:
             h.teardown()
             _reset_capabilities_for_tests()
+
+    def test_register_capability_with_timeout_emits_cap_reg(self):
+        """注册时配置 timeout_ms → stdout 写 cap_reg 帧。"""
+        from noj_evaluator_sdk import register_capability
+        from noj_evaluator_sdk.capability import _reset_capabilities_for_tests
+        harness = IpcHarness()
+        try:
+            register_capability("ping", lambda x: x, timeout_ms=9000)
+            frames = harness.all_call_frames()
+            reg = [f for f in frames if f.get("type") == "cap_reg"]
+            self.assertEqual(len(reg), 1)
+            self.assertEqual(reg[0]["name"], "ping")
+            self.assertEqual(reg[0]["timeout_ms"], 9000)
+        finally:
+            harness.teardown()
+            _reset_capabilities_for_tests()
+
+    def test_register_capability_without_timeout_emits_cap_reg_no_field(self):
+        from noj_evaluator_sdk import register_capability
+        from noj_evaluator_sdk.capability import _reset_capabilities_for_tests
+        harness = IpcHarness()
+        try:
+            register_capability("ping2", lambda x: x)
+            frames = harness.all_call_frames()
+            reg = [f for f in frames if f.get("type") == "cap_reg"]
+            self.assertEqual(len(reg), 1)
+            self.assertEqual(reg[0]["name"], "ping2")
+            self.assertNotIn("timeout_ms", reg[0])
+        finally:
+            harness.teardown()
+            _reset_capabilities_for_tests()
+
+    def test_register_capability_invalid_timeout_raises(self):
+        from noj_evaluator_sdk import register_capability
+        from noj_evaluator_sdk.capability import _reset_capabilities_for_tests
+        with self.assertRaises(ValueError):
+            register_capability("bad", lambda x: x, timeout_ms=0)
+        _reset_capabilities_for_tests()
 
 
 if __name__ == "__main__":

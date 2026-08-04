@@ -99,8 +99,11 @@ class SolutionRunner:
 
     # ── 公开 API ────────────────────────────────────────
 
-    def call(self, fn: str, *args: Any) -> Any:
+    def call(self, fn: str, *args: Any, timeout_ms: Optional[int] = None) -> Any:
         """调用 Solution host 中的函数 `fn`。
+
+        `timeout_ms`：本次调用的超时（毫秒）。None = 由 judge 回退题目级默认；
+        正整数 = 按调用指定。0 / 负数 / 非 int 抛 ValueError。
 
         返回值由 SDK 自动反序列化（bytes base64 → bytes 等）。
 
@@ -114,6 +117,13 @@ class SolutionRunner:
         if self._closed:
             raise ConnectionError("runner 已关闭")
 
+        # 0. timeout_ms 校验（None 或正整数）
+        if timeout_ms is not None:
+            if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+                raise ValueError(
+                    f"timeout_ms 必须是正整数或 None，实际 {timeout_ms!r}"
+                )
+
         # 1. 参数校验
         for i, arg in enumerate(args):
             validate_type(arg, f"arg[{i}]")
@@ -126,6 +136,8 @@ class SolutionRunner:
             "fn": fn,
             "args": [encode_value(a) for a in args],
         }
+        if timeout_ms is not None:
+            frame["timeout_ms"] = timeout_ms
 
         # 3. 注册 pending
         q: Queue = Queue(maxsize=1)
