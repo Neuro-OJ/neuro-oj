@@ -61,7 +61,7 @@ except SolutionCallError as exc:
 | `NotCallable` | 同名对象存在，但不可调用 |
 | `InvalidFunctionName` | 函数名不是非空字符串 |
 | 用户异常类名 | 用户函数执行时抛出了该异常 |
-| `CallTimeout` | 单次调用超过 `call_timeout_ms` |
+| `CallTimeout` | 单次调用超过 `call_timeout_ms`。若 evaluator 未捕获（evaluate.py 异常退出、无 `---RESULT---`），最终状态为 `TimeLimitExceeded` |
 | `InvalidRpcResponse` | Judge Worker 返回给 evaluator 的响应不是合法 JSON |
 | `RpcChannelClosed` | evaluator 无法继续从 Judge Worker 读取 RPC 响应 |
 

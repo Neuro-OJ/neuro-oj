@@ -301,6 +301,32 @@ pub async fn evaluate_dual(
     result
 }
 
+/// 超时种类：判定最终状态时区分启动期与正式评测期。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TimeoutKind {
+    /// 阶段 1：评测程序启动等待超时（容器创建 / 文件注入 / 运行时启动开销）
+    Startup,
+    /// 阶段 2：evaluator 整体执行超过 time_limit_ms
+    Total,
+}
+
+/// 评测收尾判定：把「评测如何结束」映射为最终状态。
+///
+/// 仅在 evaluator 未正常输出 ---RESULT--- 时调用（有 RESULT 走 build_judge_result）。
+/// 规则（顺序即优先级）：
+/// 1. 总超时（Startup/Total）→ SystemError：评测流程未正常完成，做题人不可通过改代码解决；
+/// 2. 曾向 evaluator 发送过 CallTimeout 错误帧 → TimeLimitExceeded：用户代码慢是根因；
+/// 3. 否则 → SystemError：evaluator 自身异常。
+fn finalize_outcome(timed_out: Option<TimeoutKind>, sent_call_timeout: bool) -> JudgeStatus {
+    if timed_out.is_some() {
+        return JudgeStatus::SystemError;
+    }
+    if sent_call_timeout {
+        return JudgeStatus::TimeLimitExceeded;
+    }
+    JudgeStatus::SystemError
+}
+
 /// 主循环：双向 NDJSON 转发 + 解析 Evaluator 输出。
 #[allow(clippy::too_many_arguments)]
 async fn run_dual_loop(
@@ -335,6 +361,12 @@ async fn run_dual_loop(
     // 调用级超时追踪器（题目级 call_timeout_ms 作为缺省回退值）
     let mut tracker = InFlightTracker::new(default_call_timeout_ms);
 
+    // 是否向 evaluator 发送过 CallTimeout 错误帧（solution 调用超时）。
+    // 仅 WaitingSide::Evaluator（evaluator 等 solution 的 call）置位；
+    // WaitingSide::Solution（capability 反向调用超时）不置位——其错误帧写给 solution，
+    // 不构成「evaluator 未处理 CallTimeout」归因。
+    let mut sent_call_timeout = false;
+
     // 评测程序启动等待上限：容器创建 / 文件注入 / Python 启动等开销
     // 不计入题目时限（issue：秒过的代码不应因启动开销 TLE）。
     const EVALUATOR_STARTUP_TIMEOUT_MS: u64 = 30_000;
@@ -349,7 +381,21 @@ async fn run_dual_loop(
         tokio::select! {
             _ = &mut startup_deadline => {
                 warn!("Evaluator 启动超时（{}ms）: {}", EVALUATOR_STARTUP_TIMEOUT_MS, submission_id);
-                return Ok(JudgeResult::timeout(submission_id, "evaluator startup timeout", rejudge_seq));
+                return Ok(match finalize_outcome(
+                    Some(TimeoutKind::Startup),
+                    sent_call_timeout,
+                ) {
+                    JudgeStatus::TimeLimitExceeded => JudgeResult::timeout(
+                        submission_id,
+                        "evaluator startup timeout",
+                        rejudge_seq,
+                    ),
+                    _ => JudgeResult::system_error(
+                        submission_id,
+                        "evaluator startup timeout",
+                        rejudge_seq,
+                    ),
+                });
             }
             // 调用级超时（in-flight 到期）
             _ = async {
@@ -362,6 +408,7 @@ async fn run_dual_loop(
                     match side {
                         WaitingSide::Evaluator => {
                             write_timeout_frame(&mut eval_input, &id).await?;
+                            sent_call_timeout = true;
                         }
                         WaitingSide::Solution => {
                             write_timeout_frame(&mut sol_input, &id).await?;
@@ -418,7 +465,18 @@ async fn run_dual_loop(
                 // 总超时
                 _ = &mut deadline => {
                     warn!("Evaluator 总超时: {}", submission_id);
-                    return Ok(JudgeResult::timeout(submission_id, "evaluator total timeout", rejudge_seq));
+                    return Ok(match finalize_outcome(Some(TimeoutKind::Total), sent_call_timeout) {
+                        JudgeStatus::TimeLimitExceeded => JudgeResult::timeout(
+                            submission_id,
+                            "evaluator total timeout",
+                            rejudge_seq,
+                        ),
+                        _ => JudgeResult::system_error(
+                            submission_id,
+                            "evaluator total timeout",
+                            rejudge_seq,
+                        ),
+                    });
                 }
 
                 // 调用级超时（in-flight 到期）
@@ -432,6 +490,7 @@ async fn run_dual_loop(
                         match side {
                             WaitingSide::Evaluator => {
                                 write_timeout_frame(&mut eval_input, &id).await?;
+                                sent_call_timeout = true;
                             }
                             WaitingSide::Solution => {
                                 write_timeout_frame(&mut sol_input, &id).await?;
@@ -515,11 +574,18 @@ async fn run_dual_loop(
                 }
             }
             let full_output = crate::merge_output(&eval_stdout_full, &eval_stderr_buf);
-            Ok(JudgeResult::system_error(
-                submission_id,
-                &full_output,
-                rejudge_seq,
-            ))
+            match finalize_outcome(None, sent_call_timeout) {
+                JudgeStatus::TimeLimitExceeded => Ok(JudgeResult::timeout(
+                    submission_id,
+                    &full_output,
+                    rejudge_seq,
+                )),
+                _ => Ok(JudgeResult::system_error(
+                    submission_id,
+                    &full_output,
+                    rejudge_seq,
+                )),
+            }
         }
     }
 }
@@ -680,7 +746,7 @@ async fn write_timeout_frame(
     let frame = serde_json::json!({
         "type": "error",
         "id": id,
-        "code": "Timeout",
+        "code": "CallTimeout",
         "message": "call timeout",
     });
     forward_frame(writer, &frame).await
@@ -801,6 +867,31 @@ mod tests {
         let r = build_judge_result("sid-3", &parsed, "", "");
         assert_eq!(r.status, "SystemError");
         assert_eq!(r.score, 0);
+    }
+
+    #[test]
+    fn test_finalize_outcome_mapping() {
+        // 总超时优先：无论是否发过 CallTimeout 都归 SystemError
+        assert_eq!(
+            finalize_outcome(Some(TimeoutKind::Startup), false),
+            JudgeStatus::SystemError
+        );
+        assert_eq!(
+            finalize_outcome(Some(TimeoutKind::Startup), true),
+            JudgeStatus::SystemError
+        );
+        assert_eq!(
+            finalize_outcome(Some(TimeoutKind::Total), false),
+            JudgeStatus::SystemError
+        );
+        assert_eq!(
+            finalize_outcome(Some(TimeoutKind::Total), true),
+            JudgeStatus::SystemError
+        );
+        // 无总超时 + 发过 CallTimeout → TLE（用户代码慢是根因）
+        assert_eq!(finalize_outcome(None, true), JudgeStatus::TimeLimitExceeded);
+        // 无总超时 + 未发过 → SystemError（evaluator 自身异常）
+        assert_eq!(finalize_outcome(None, false), JudgeStatus::SystemError);
     }
 
     #[tokio::test]

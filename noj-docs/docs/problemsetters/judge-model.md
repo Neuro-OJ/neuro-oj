@@ -46,6 +46,19 @@ Solution 容器运行用户提交的 `solution.py` 和 Solution Host。Solution 
 - 只有当 Evaluator 自己显式返回 `runtime_error()`，或 Judge Worker / Solution Host 在调用前就无法正常工作时，才更可能看到 `RuntimeError` / `SystemError`。
 - 用户代码语法错误、模块导入失败、Solution Host 启动失败，通常会在调用前被判为 `SystemError`，因为这时 Evaluator 还没有拿到可继续评分的函数实例。
 
+### 超时与状态映射
+
+两层超时的最终状态映射：
+
+| 超时来源 | 触发 | 最终状态 |
+| --- | --- | --- |
+| evaluator 整体执行超时 | 评测总时长超过 `time_limit_ms` | `SystemError`（Judge Worker 强制终止，做题人不可通过改代码解决） |
+| 单次调用超时且 evaluator 未捕获 | 调用超过 `call_timeout_ms`，evaluate.py 异常退出、无 `---RESULT---` | `TimeLimitExceeded` |
+| 单次调用超时且 evaluator 捕获 | 同上，但 evaluator 记为失败用例 | 由 evaluator 决定（如 `WrongAnswer`） |
+| evaluator 异常退出且从未发生调用超时 | evaluate.py 自身 bug、环境问题、无 `---RESULT---` | `SystemError` |
+
+evaluator 启动超时（评测环境未就绪）同样归 `SystemError`。
+
 Solution Host 在同一次评测中是 persistent 的：多次 `runner.call()` 默认会调用同一个 Python 模块实例，因此用户模块的全局状态会在调用之间保留。Evaluator 可以通过 `runner.restart()` 请求重启 Solution Host，但普通题目通常不需要这样做。
 
 用户代码的 stdout 会被重定向到 stderr。这保证用户的 `print()` 不会污染 Solution Host 的协议 stdout。最终 Solution stderr 会附加到评测输出中，便于调试。

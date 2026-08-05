@@ -136,11 +136,10 @@ cargo fmt
   │     ├─ 超时 → stop_container(SIGTERM) + kill_container(SIGKILL) → exit_code = -1
   │     └─ 正常 → 读取 stdout/stderr + exit_code
   ├─ 8. 等待 Evaluator stdout 出现 ---RESULT--- 标记，解析 JSON {status, score, details}
-  │     ├─ 有标记 → 解析结果
-  │     ├─ 无标记 + exit 0 → SystemError
-  │     ├─ 无标记 + exit ≠ 0 → RuntimeError
-  │     ├─ exit = -1 → TimeLimitExceeded
-  │     └─ exit = 137 → MemoryLimitExceeded
+  │     ├─ 有标记 → 解析结果（状态由 evaluator 决定）
+  │     ├─ 总超时（启动超时 / time_limit_ms）→ SystemError（finalize_outcome 优先）
+  │     ├─ 无标记 + 曾发送 CallTimeout 错误帧 → TimeLimitExceeded
+  │     └─ 无标记 + 未发送 → SystemError
   └─ 9. 发 `shutdown` 到 Solution → RAII 清理两个容器
 ```
 
@@ -153,7 +152,7 @@ cargo fmt
 - 超时后两步终止：先 `stop_container(t: kill_grace_secs)` 发 SIGTERM，再
   `kill_container()` 发 SIGKILL
 - 超时后从 `docker logs` 捕获已产生的输出（`follow: false`）
-- 超时退出码固定为 `-1`（即使容器后来报告不同退出码）
+- 超时退出码固定为 `-1`（即使容器后来报告不同退出码；该值仅用于日志记录，不参与最终状态判定——状态由 `finalize_outcome` 按超时来源与 CallTimeout 归因决定）
 - 内存峰值读取使用相同 exec 基础设施，5s 超时 + 2s kill grace
 
 ## MQ 消息格式
