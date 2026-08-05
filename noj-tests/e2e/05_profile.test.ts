@@ -8,37 +8,28 @@ import {
   isE2E,
   registerUser,
   waitForServer,
+  e2eTest,
+  TEST_PASSWORD,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 let token = "";
 let userId = "";
 
-Deno.test({
-  name: "[e2e/profile] Setup",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/profile] Setup", async () => {
     if (!isE2E) return;
     await waitForServer();
     const ts = Date.now().toString(36);
     token = await registerUser(
       "prof_user_" + ts,
       "prof_user_" + ts + "@test.com",
-      "Pass1234Test",
+      TEST_PASSWORD,
     );
     const res = await apiGet("/api/v1/auth/me", token);
     userId = (res.body as { data: { id: string } }).data.id;
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/profile] 5.1 查看用户主页",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/profile] 5.1 查看用户主页", async () => {
     if (!isE2E) return;
     const { status, body } = await apiGet(
       "/api/v1/users/" + userId + "/profile",
@@ -57,15 +48,9 @@ Deno.test({
       throw new Error("solved_problems 应数组");
     }
     console.log("  ✓ 用户主页 OK");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/profile] 5.2 不存在用户 404",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/profile] 5.2 不存在用户 404", async () => {
     if (!isE2E) return;
     const { status, body } = await apiGet(
       "/api/v1/users/nonexistent-id/profile",
@@ -74,28 +59,16 @@ Deno.test({
     const d = body as { error: string };
     if (d.error !== "用户不存在") throw new Error("错误信息不匹配");
     console.log("  ✓ 不存在用户 404");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/profile] 5.3 主页无需认证",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/profile] 5.3 主页无需认证", async () => {
     if (!isE2E) return;
     const { status } = await apiGet("/api/v1/users/" + userId + "/profile");
     if (status !== 200) throw new Error("期望 200");
     console.log("  ✓ 主页无需认证");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/profile] 5.4 bio 默认为空",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/profile] 5.4 bio 默认为空", async () => {
     if (!isE2E) return;
     const { status, body } = await apiGet(
       "/api/v1/users/" + userId + "/profile",
@@ -104,15 +77,9 @@ Deno.test({
     const d = body as { data: { user: { bio: string } } };
     if (d.data.user.bio !== "") throw new Error("bio 默认应空");
     console.log("  ✓ bio 默认为空");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/profile] 5.5 PUT 未认证 401",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/profile] 5.5 PUT 未认证 401", async () => {
     if (!isE2E) return;
     const { status, body } = await apiPut("/api/v1/users/me", { bio: "test" });
     if (status !== 401) throw new Error("期望 401");
@@ -120,15 +87,9 @@ Deno.test({
       throw new Error("错误信息不匹配");
     }
     console.log("  ✓ PUT 未认证 401");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/profile] 5.6 缺 bio 400",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/profile] 5.6 缺 bio 400", async () => {
     if (!isE2E) return;
     const { status, body } = await apiPut("/api/v1/users/me", {}, token);
     if (status !== 400) throw new Error("期望 400");
@@ -136,15 +97,9 @@ Deno.test({
       throw new Error("错误信息不匹配");
     }
     console.log("  ✓ 缺 bio 400");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/profile] 5.7 bio 超长 400",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/profile] 5.7 bio 超长 400", async () => {
     if (!isE2E) return;
     const { status, body } = await apiPut("/api/v1/users/me", {
       bio: "x".repeat(5001),
@@ -154,15 +109,9 @@ Deno.test({
       throw new Error("错误信息不匹配");
     }
     console.log("  ✓ bio 超长 400");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/profile] 5.8 更新 bio 成功",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/profile] 5.8 更新 bio 成功", async () => {
     if (!isE2E) return;
     const markdownBio = "# 自我介绍\n\n热爱 **算法竞赛**\n";
     const { status, body } = await apiPut("/api/v1/users/me", {
@@ -173,15 +122,9 @@ Deno.test({
       throw new Error("bio 未更新");
     }
     console.log("  ✓ 更新 bio");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/profile] 5.9 主页反映更新",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/profile] 5.9 主页反映更新", async () => {
     if (!isE2E) return;
     const expectedBio = "# 自我介绍\n\n热爱 **算法竞赛**\n";
     const { body } = await apiGet("/api/v1/users/" + userId + "/profile");
@@ -190,15 +133,9 @@ Deno.test({
         expectedBio
     ) throw new Error("bio 不匹配");
     console.log("  ✓ 主页反映更新");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/profile] 5.10 清空 bio",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/profile] 5.10 清空 bio", async () => {
     if (!isE2E) return;
     const { status, body } = await apiPut(
       "/api/v1/users/me",
@@ -214,5 +151,4 @@ Deno.test({
       (getRes.body as { data: { user: { bio: string } } }).data.user.bio !== ""
     ) throw new Error("主页 bio 未清空");
     console.log("  ✓ 清空 bio");
-  },
-});
+  });

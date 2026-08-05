@@ -7,21 +7,18 @@ import {
   isE2E,
   registerUser,
   waitForServer,
+  e2eTest,
+  TEST_PASSWORD,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 let authorToken = "";
 let responderToken = "";
 let adminToken = "";
 let boardId = "";
 let postId = "";
 
-Deno.test({
-  name: "[e2e/community] 准备两个社区用户和默认板块",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/community] 准备两个社区用户和默认板块", async () => {
     if (!isE2E) return;
     await waitForServer();
     adminToken = await getAdminToken();
@@ -37,12 +34,12 @@ Deno.test({
     authorToken = await registerUser(
       `community_author_${suffix}`,
       `community_author_${suffix}@test.com`,
-      "Test12345679",
+      TEST_PASSWORD,
     );
     responderToken = await registerUser(
       `community_responder_${suffix}`,
       `community_responder_${suffix}@test.com`,
-      "Test12345679",
+      TEST_PASSWORD,
     );
     const boards = await apiGet("/api/v1/community/boards", authorToken);
     if (boards.status !== 200) {
@@ -51,15 +48,9 @@ Deno.test({
     boardId = (boards.body as { data: Array<{ id: string }> }).data[0]?.id ??
       "";
     if (!boardId) throw new Error("未找到默认社区板块");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/community] 发布、互动、治理、通知与软删除主流程",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/community] 发布、互动、治理、通知与软删除主流程", async () => {
     if (!isE2E) return;
     const created = await apiPost(
       "/api/v1/community/posts",
@@ -165,16 +156,16 @@ Deno.test({
       throw new Error("帖子详情未标记当前用户已收藏");
     }
 
-    const followedAuthor = await apiPost(
-      `/api/v1/community/users/${
-        (created.body as { data: { author_id: string } }).data.author_id
-      }/follow`,
+    // responder 关注帖子作者（生成关注通知；原实现为残缺坏代码，此处按 267 行
+    // 动态流测试的既有模式补全：先取作者 id 再 POST follow）
+    const authorMe = await apiGet("/api/v1/auth/me", authorToken);
+    const authorId = (authorMe.body as { data: { id: string } }).data.id;
+    const followed = await apiPost(
+      `/api/v1/community/users/${authorId}/follow`,
       {},
       responderToken,
     );
-    if (followedAuthor.status !== 200) {
-      throw new Error(`关注失败: ${followedAuthor.status}`);
-    }
+    if (followed.status !== 200) throw new Error(`关注失败: ${followed.status}`);
 
     const notifications = await apiGet(
       "/api/v1/community/notifications",
@@ -255,26 +246,21 @@ Deno.test({
     ) {
       throw new Error("已删除讨论仍出现在个人收藏列表中");
     }
-  },
-});
+  }
+);
 
-Deno.test({
-  name: "[e2e/community] 关注动态流：已关注用户发布的短动态进入关注流",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/community] 关注动态流：已关注用户发布的短动态进入关注流", async () => {
     if (!isE2E) return;
     const suffix = Date.now().toString(36) + "f";
     const aToken = await registerUser(
       `feed_a_${suffix}`,
       `feed_a_${suffix}@test.com`,
-      "Test12345679",
+      TEST_PASSWORD,
     );
     const bToken = await registerUser(
       `feed_b_${suffix}`,
       `feed_b_${suffix}@test.com`,
-      "Test12345679",
+      TEST_PASSWORD,
     );
     const aMe = await apiGet("/api/v1/auth/me", aToken);
     const aId = (aMe.body as { data: { id: string } }).data.id;
@@ -311,15 +297,9 @@ Deno.test({
     ) {
       throw new Error("已关注用户的短动态未出现在关注流中");
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/community] 新用户评论进入预审并可被管理员批准",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/community] 新用户评论进入预审并可被管理员批准", async () => {
     if (!isE2E) return;
     const admin = await getAdminToken();
     // 先创建讨论帖（此时未开启预审 → 立即发布），避免 root 也被视为新用户
@@ -353,7 +333,7 @@ Deno.test({
     const cToken = await registerUser(
       `comment_${suffix}`,
       `comment_${suffix}@test.com`,
-      "Test12345679",
+      TEST_PASSWORD,
     );
     const comment = await apiPost(
       `/api/v1/community/posts/${postId}/comments`,
@@ -410,5 +390,4 @@ Deno.test({
       { value: 0 },
       admin,
     );
-  },
-});
+  });

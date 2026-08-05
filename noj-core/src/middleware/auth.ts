@@ -230,8 +230,8 @@ export async function authMiddleware(c: Context, next: Next): Promise<void> {
  * 缓存 key: `user:${userId}` → UserBanState
  * 从 user_bans 表查询活跃封禁（unbanned_at IS NULL）。
  */
-export async function getUserBanState(userId: string): Promise<UserBanState> {
-  return await getCached(`user:${userId}`, async () => {
+export function getUserBanState(userId: string): Promise<UserBanState> {
+  return getCached(`user:${userId}`, async () => {
     const db = getDb();
     const rows = await db
       .select({
@@ -265,7 +265,10 @@ export async function getUserBanState(userId: string): Promise<UserBanState> {
  * 通过 getRequestContext() 获取 actorId / actorIp / actorRole，
  * 用于审计日志埋点。
  */
-export async function adminMiddleware(c: Context, next: Next): Promise<void> {
+export function adminMiddleware(
+  c: Context,
+  next: Next,
+): Promise<Response | void> {
   // 向后兼容：支持新旧两种判断方式
   // 新版 JWT: isAdmin boolean claim
   // 旧版 JWT: role === "admin"
@@ -273,7 +276,7 @@ export async function adminMiddleware(c: Context, next: Next): Promise<void> {
     throw new ForbiddenError("需要管理员权限");
   }
 
-  return await runWithContext(
+  return runWithContext(
     {
       actorId: c.get("userId"),
       actorIp: getClientIp(c),

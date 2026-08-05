@@ -17,9 +17,11 @@ import {
   pollSubmission,
   registerUser,
   waitForServer,
+  e2eTest,
+  TEST_PASSWORD,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 const testSuffix = Date.now().toString(36);
 let adminToken = "";
 let participantToken = "";
@@ -36,19 +38,14 @@ interface IcpcRankingRow {
   solved: number;
 }
 
-Deno.test({
-  name: "[e2e/contest] Setup",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/contest] Setup", async () => {
     if (!isE2E) return;
     await waitForServer();
     adminToken = await getAdminToken();
     participantToken = await registerUser(
       `contest_user_${testSuffix}`,
       `contest_user_${testSuffix}@test.com`,
-      "Test12345679",
+      TEST_PASSWORD,
     );
     // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
     problemId = await getProblemIdByNumber(1001);
@@ -56,15 +53,9 @@ Deno.test({
     if (!judgeAvailable) {
       console.log("  ⚠ judge worker 不可用，提交与排名断言将跳过");
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/contest] 1. 创建正在进行且已封榜的 ICPC 竞赛",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/contest] 1. 创建正在进行且已封榜的 ICPC 竞赛", async () => {
     if (!isE2E) return;
     const now = Date.now();
     const createResult = await apiPost(
@@ -94,16 +85,10 @@ Deno.test({
       );
     }
     contestId = (createResult.body as { data: ContestData }).data.id;
-    if (!contestId) throw new Error("创建竞赛响应缺少 id");
-  },
-});
+    }
+);
 
-Deno.test({
-  name: "[e2e/contest] 2. 用户注册并进行竞赛提交",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
     if (!isE2E) return;
     const invalidPassword = await apiPost(
       `/api/v1/contests/${contestId}/register`,
@@ -152,15 +137,10 @@ Deno.test({
     if (result.verdict !== "Accepted") {
       throw new Error(`期望 Accepted，实际 ${result.verdict}`);
     }
-  },
-});
+  }
+);
 
-Deno.test({
-  name: "[e2e/contest] 3. 封榜时公开排名冻结而管理员可见完整排名",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/contest] 3. 封榜时公开排名冻结而管理员可见完整排名", async () => {
     if (!isE2E || !judgeAvailable) return;
     const [publicResult, adminResult] = await Promise.all([
       apiGet(`/api/v1/contests/${contestId}/ranking`),
@@ -179,15 +159,9 @@ Deno.test({
     if (adminRows[0]?.solved !== 1) {
       throw new Error("管理员在封榜期间应看到完整排名");
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/contest] 4. 结束竞赛后自动解封并公开最终排名",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/contest] 4. 结束竞赛后自动解封并公开最终排名", async () => {
     if (!isE2E || !judgeAvailable) return;
     const updateResult = await apiPut(
       `/api/v1/admin/contests/${contestId}`,
@@ -214,5 +188,5 @@ Deno.test({
     if (rankingResult.status !== 200 || rows[0]?.solved !== 1) {
       throw new Error("竞赛结束后公开排名应自动解封并显示最终 AC");
     }
-  },
-});
+  }
+);

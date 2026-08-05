@@ -16,7 +16,7 @@ const router = new Hono<OptionalAuthEnv>();
  * POST /api/v1/checkin
  */
 router.post("/", authMiddleware, async (c) => {
-  const userId = c.var.userId!;
+  const userId = c.var.userId as string;
   const result = await checkIn(userId);
   return c.json({ data: result });
 });
@@ -26,7 +26,7 @@ router.post("/", authMiddleware, async (c) => {
  * GET /api/v1/checkin/today
  */
 router.get("/today", authMiddleware, async (c) => {
-  const userId = c.var.userId!;
+  const userId = c.var.userId as string;
   const result = await getTodayCheckIn(userId);
   return c.json({ data: result });
 });

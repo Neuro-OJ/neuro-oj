@@ -14,7 +14,7 @@ const router = new Hono<OptionalAuthEnv>();
  */
 router.get("/", async (c) => {
   // PR-6 评审修订：使用 parsePagination helper 替换 9 行样板
-  const { page, perPage, offset } = parsePagination(c, {
+  const { page, perPage } = parsePagination(c, {
     defaultPerPage: 50,
     maxPerPage: 100,
     pageField: "page",
@@ -26,8 +26,6 @@ router.get("/", async (c) => {
   return c.json({
     data,
     pagination: buildPaginationMeta(page, perPage, total),
-    // offset 仅用于未来若改用 keyset 分页的扩展性
-    _offset: offset,
   });
 });
 
@@ -37,7 +35,7 @@ router.get("/", async (c) => {
  * 需登录。未上榜（无通过记录）返回 null。
  */
 router.get("/me", authMiddleware, async (c) => {
-  const userId = c.var.userId!;
+  const userId = c.var.userId as string;
   const row = await getMyRanking(userId);
   return c.json({ data: row });
 });

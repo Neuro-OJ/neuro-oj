@@ -1,5 +1,8 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { getUserProfile, updateUserProfile } from "../../src/services/users.ts";
+import {
+  getUserProfileAggregate,
+  updateUserProfile,
+} from "../../src/services/users.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { users } from "../../src/db/schema.ts";
 import { NotFoundError, ValidationError } from "../../src/lib/errors.ts";
@@ -34,12 +37,12 @@ Deno.test({
 });
 
 Deno.test({
-  name: "users service: getUserProfile 返回完整用户主页数据",
+  name: "users service: getUserProfileAggregate 返回完整用户主页数据",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const profile = await getUserProfile(TEST_USER_ID);
+    const profile = await getUserProfileAggregate(TEST_USER_ID);
     assertEquals(profile.user.id, TEST_USER_ID);
     assertEquals(profile.user.username, `tstusr-${ts}`);
     assertEquals(typeof profile.stats.total_submissions, "number");
@@ -52,13 +55,13 @@ Deno.test({
 });
 
 Deno.test({
-  name: "users service: getUserProfile 不存在的用户抛出 NotFoundError",
+  name: "users service: getUserProfileAggregate 不存在的用户抛出 NotFoundError",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await assertRejects(
-      () => getUserProfile("nonexistent-user"),
+      () => getUserProfileAggregate("nonexistent-user"),
       NotFoundError,
       "用户不存在",
     );

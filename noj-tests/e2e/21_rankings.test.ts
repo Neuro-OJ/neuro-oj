@@ -11,18 +11,14 @@ import {
   isE2E,
   registerUser,
   waitForServer,
+  e2eTest,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 
 let userToken = "";
 
-Deno.test({
-  name: "[e2e/rankings] Setup",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/rankings] Setup", async () => {
     if (!isE2E) return;
     await waitForServer();
     const ts = Date.now().toString(36);
@@ -31,15 +27,9 @@ Deno.test({
       `rank_user_${ts}@test.com`,
       "RankPass1234",
     );
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/rankings] 1.1 GET /rankings 返回数组",
-  ignore: skip,
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+e2eTest("[e2e/rankings] 1.1 GET /rankings 返回数组", async () => {
     if (!isE2E) return;
     const { status, body } = await apiGet("/api/v1/rankings", userToken);
     if (status !== 200) throw new Error(`期望 200，实际 ${status}`);
@@ -47,15 +37,9 @@ Deno.test({
     if (!Array.isArray(data?.data)) {
       throw new Error("rankings data 应为数组");
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/rankings] 1.2 GET /rankings 支持分页",
-  ignore: skip,
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+e2eTest("[e2e/rankings] 1.2 GET /rankings 支持分页", async () => {
     if (!isE2E) return;
     const { body } = await apiGet(
       "/api/v1/rankings?limit=5&offset=0",
@@ -68,15 +52,9 @@ Deno.test({
     if (data.data.length > 5) {
       throw new Error("limit=5 应返回不超过 5 条");
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/rankings] 1.3 GET /rankings/me 返回当前用户信息",
-  ignore: skip,
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+e2eTest("[e2e/rankings] 1.3 GET /rankings/me 返回当前用户信息", async () => {
     if (!isE2E) return;
     const { status, body } = await apiGet(
       "/api/v1/rankings/me",
@@ -89,5 +67,4 @@ Deno.test({
     if (data?.data === undefined) {
       throw new Error("/rankings/me 应返回用户排名信息");
     }
-  },
-});
+  });

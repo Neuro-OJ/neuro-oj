@@ -12,7 +12,9 @@ import { getSubmissionQueueStatus } from "../services/queue.ts";
 import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
 import { rateLimit } from "../middleware/rate-limit.ts";
 import { BadRequestError, NotFoundError } from "../lib/errors.ts";
+import { parseJsonBody } from "../lib/request.ts";
 import { buildPaginationMeta, parsePagination } from "../lib/pagination.ts";
+import { SUBMISSION_STATUSES } from "../types/index.ts";
 
 // 扩展 Hono 类型，使 c.get("userId") 返回 string | undefined
 // （optionalAuthMiddleware 注入时可能为 undefined；authMiddleware 注入时一定有值）
@@ -43,7 +45,7 @@ const MAX_CODE_LENGTH = 100 * 1024;
  * 返回当前认证用户的提交记录，支持按 problem_id、language、status、日期范围筛选。
  */
 router.get("/", authMiddleware, async (c) => {
-  const userId = c.var.userId!;
+  const userId = c.var.userId as string;
 
   // PR-6 评审修订：使用 parsePagination helper 替换 6 行样板
   const { page, perPage } = parsePagination(c, {
@@ -61,8 +63,8 @@ router.get("/", authMiddleware, async (c) => {
   const to = c.req.query("to") || undefined;
 
   // status 参数校验
-  const validStatuses = ["pending", "judging", "finished", "error"];
-  if (status && !validStatuses.includes(status)) {
+  const validStatuses = SUBMISSION_STATUSES;
+  if (status && !(validStatuses as readonly string[]).includes(status)) {
     throw new BadRequestError(
       `无效的状态值：${status}，有效值：${validStatuses.join("、")}`,
     );
@@ -91,14 +93,9 @@ router.get("/", authMiddleware, async (c) => {
  * 创建提交。
  */
 router.post("/", authMiddleware, async (c) => {
-  const userId = c.var.userId!;
+  const userId = c.var.userId as string;
 
-  let body: Record<string, unknown>;
-  try {
-    body = await c.req.json();
-  } catch {
-    throw new BadRequestError("请求体格式错误：需要有效的 JSON");
-  }
+  const body = await parseJsonBody<Record<string, unknown>>(c);
 
   // 必填字段验证
   if (!body.problem_id || !body.language || !body.code) {
@@ -197,7 +194,7 @@ router.get(
  * 服务层 `getSubmission` 根据 viewerId/viewerRole 自动裁剪字段。
  */
 router.get("/:id", optionalAuthMiddleware, async (c) => {
-  const id = c.req.param("id")!;
+  const id = c.req.param("id") as string;
 
   const result = await getSubmission(
     id,
@@ -217,7 +214,7 @@ router.get(
   "/:id/status",
   authMiddleware,
   async (c) => {
-    const id = c.req.param("id")!;
+    const id = c.req.param("id") as string;
     const result = await getSubmissionQueueStatus(id);
     if (!result) {
       throw new NotFoundError("提交不存在");

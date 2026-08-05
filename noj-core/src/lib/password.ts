@@ -14,8 +14,8 @@ const SALT_ROUNDS = parseInt(Deno.env.get("BCRYPT_SALT_ROUNDS") || "12", 10);
  * @param plain - 明文密码
  * @returns bcrypt 哈希字符串
  */
-export async function hashPassword(plain: string): Promise<string> {
-  return await bcrypt.hash(plain, SALT_ROUNDS);
+export function hashPassword(plain: string): Promise<string> {
+  return bcrypt.hash(plain, SALT_ROUNDS);
 }
 
 /**
@@ -24,9 +24,9 @@ export async function hashPassword(plain: string): Promise<string> {
  * @param hash - bcrypt 哈希字符串
  * @returns 是否匹配
  */
-export async function comparePassword(
+export function comparePassword(
   plain: string,
   hash: string,
 ): Promise<boolean> {
-  return await bcrypt.compare(plain, hash);
+  return bcrypt.compare(plain, hash);
 }

@@ -49,7 +49,7 @@ export interface SettingDefinition {
   needsRestart?: boolean;
 }
 
-/** 35 个 DB-backed 设置项的元数据定义 */
+/** 54 个 DB-backed 设置项的元数据定义 */
 export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
   // ── auth ──────────────────────────────────────────────────
   {

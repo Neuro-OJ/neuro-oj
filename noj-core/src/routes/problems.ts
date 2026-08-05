@@ -35,12 +35,15 @@ const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
  * 先通过正则判断 id 格式，避免每次 display_id 请求都先多一次 UUID 查询。
  * 对于不匹配任何已知格式的 ID，fallback 到 `getProblem(id)` 直接查找。
  */
-async function resolveProblem(id: string) {
-  // UUID 格式：直接按 id 精确查找
+function resolveProblem(id: string) {
+  // UUID / 纯数字（兼容旧 seed 数据 1001/1002/1003 等）：直接按 id 精确查找
   if (
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      id,
+    ) ||
+    /^\d+$/.test(id)
   ) {
-    return await getProblem(id);
+    return getProblem(id);
   }
 
   // display_id 格式：解析 "P1001" / "U42" → (type, number)
@@ -48,16 +51,11 @@ async function resolveProblem(id: string) {
   if (match) {
     const type = match[1].toUpperCase();
     const number = parseInt(match[2], 10);
-    return await getProblemByTypeAndNumber(type, number);
-  }
-
-  // 纯数字 id（兼容旧 seed 数据 1001/1002/1003 等使用数字编号的题目）
-  if (/^\d+$/.test(id)) {
-    return await getProblem(id);
+    return getProblemByTypeAndNumber(type, number);
   }
 
   // fallback：尝试直接按 id 查找（兼容非标准 ID 格式）
-  return await getProblem(id);
+  return getProblem(id);
 }
 
 /**
@@ -157,7 +155,7 @@ router.put("/:id", authMiddleware, async (c) => {
 
   // 注入 ALS 上下文使 logAudit 可获取 actor 信息（issue #101）
   // （updateProblem 内部会记录 problems.runtime_config_changed 审计）
-  return await runWithContext(
+  return runWithContext(
     {
       actorId: userId,
       actorIp: getClientIp(c),
@@ -189,7 +187,7 @@ router.delete("/:id", authMiddleware, async (c) => {
   const problem = await resolveProblem(id);
 
   // 注入 ALS 上下文使 logAudit 可获取 actor 信息（issue #101）
-  return await runWithContext(
+  return runWithContext(
     {
       actorId: userId,
       actorIp: getClientIp(c),
@@ -287,7 +285,7 @@ router.get("/:id/support-package", authMiddleware, async (c) => {
     return c.json({ error: "该题目尚无支持包" }, 404);
   }
 
-  return new Response(zipBytes as unknown as BodyInit, {
+  return new Response(zipBytes as BodyInit, {
     status: 200,
     headers: {
       "Content-Type": "application/zip",

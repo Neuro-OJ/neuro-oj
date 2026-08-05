@@ -81,7 +81,7 @@ pub struct SolutionRuntime {
 pub struct JudgeTask {
     /// 提交 UUID
     pub submission_id: String,
-    /// 题目 UUID
+    /// 题目 UUID（消息协议字段，与 noj-core 的 JudgeTask 对齐；judge 当前不消费）
     #[allow(dead_code)]
     pub problem_id: String,
     /// 支持包下载 URL（`noj-download://` 格式）
@@ -134,17 +134,12 @@ impl JudgeResult {
     ///
     /// 内部错误详情由调用方负责记录日志；`output` 是返回给用户的友好信息。
     pub fn error(submission_id: &str, rejudge_seq: Option<i64>) -> Self {
-        Self {
-            submission_id: submission_id.to_string(),
-            status: JudgeStatus::SystemError.as_str().to_string(),
-            score: 0,
-            // 对用户隐藏内部错误细节，避免信息泄露
-            output: format!("系统内部错误 (submission: {})", submission_id),
-            details: Self::empty_details(),
-            time_ms: None,
-            memory_kb: None,
+        // 对用户隐藏内部错误细节，避免信息泄露
+        Self::system_error(
+            submission_id,
+            &format!("系统内部错误 (submission: {})", submission_id),
             rejudge_seq,
-        }
+        )
     }
 
     /// 构造一个超时结果。
@@ -180,6 +175,8 @@ impl JudgeResult {
 ///
 /// 由 evaluate.py 在 details.cases 数组中填充，用于前端统一渲染。
 /// 所有 output 字段均为可选的——有些题目不适合展示具体输入输出。
+///
+/// 作为协议文档类型保留：judge 生产路径不直接消费，仅对外契约参考与测试使用。
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CaseResult {

@@ -91,21 +91,9 @@ const form = reactive({ password: "", confirmPassword: "" })
 const showPassword = ref(false)
 const showConfirmPassword = ref(false)
 const loading = ref(false)
-const error = ref("")
 const fieldErrors = ref<Record<string, string>>({})
 
-let errorTimer: ReturnType<typeof setTimeout> | null = null
-
-function setError(msg: string) {
-    error.value = msg
-    if (errorTimer) clearTimeout(errorTimer)
-    errorTimer = setTimeout(clearError, 5000)
-}
-
-function clearError() {
-    error.value = ""
-    if (errorTimer) clearTimeout(errorTimer)
-}
+const { error, setError, clearError } = useFormError(5000)
 
 function validate(): boolean {
     const errors: Record<string, string> = {}

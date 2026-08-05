@@ -14,6 +14,20 @@ export const COMMUNITY_POST_STATUSES = [
 ] as const;
 export type CommunityPostStatus = (typeof COMMUNITY_POST_STATUSES)[number];
 
+/** 内容审核可切换的状态（路由层参数校验用）。 */
+export const MODERATION_STATUSES = [
+  "published",
+  "hidden",
+  "deleted",
+] as const;
+
+/** 社区预设（admin 路由参数校验用）。 */
+export const COMMUNITY_PRESETS = [
+  "public",
+  "private",
+  "knowledge",
+] as const;
+
 export interface CommunityConfig {
   enabled: boolean;
   guest_read_enabled: boolean;

@@ -274,14 +274,17 @@ jobs:
             e2e/15_dual_container_judge.test.ts &
           p2=$!
           run_group \
-            e2e/16_rbac.test.ts \
             e2e/16_community.test.ts \
             e2e/17_problem_template.test.ts \
             e2e/18_search.test.ts \
             e2e/19_admin_endpoints.test.ts \
             e2e/20_password_reset.test.ts \
             e2e/21_rankings.test.ts \
-            e2e/22_contest_lifecycle.test.ts &
+            e2e/22_contest_lifecycle.test.ts \
+            e2e/23_network_capability.test.ts \
+            e2e/24_import_bundle.test.ts \
+            e2e/25_rbac.test.ts \
+            e2e/26_call_timeout.test.ts &
           p3=$!
           fail=0
           wait "$p1" || fail=1

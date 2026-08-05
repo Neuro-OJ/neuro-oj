@@ -16,10 +16,6 @@ scripts/
 │   ├── logs/              #   日志 + PID 文件目录
 │   └── locks/             #   devtool 同工具防双开锁
 │
-├── db/                    # 数据库脚本（已废弃，收敛到 deno task db:migrate 等）
-│
-├── build/                 # 构建脚本（已废弃，收敛到 deno task problems:build）
-│
 └── e2e/                   # 跨模块 E2E 测试
     ├── setup.sh           #   启动 E2E 环境
     ├── teardown.sh        #   停止 E2E 环境

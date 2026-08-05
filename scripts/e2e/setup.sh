@@ -29,7 +29,7 @@ echo -e "==========================================${NC}"
 # ══════════════════════════════════════════════
 # 1. 启动 Docker Compose 评测栈
 # ══════════════════════════════════════════════
-step "1/2  Docker Compose 评测栈"
+step "1/3  Docker Compose 评测栈"
 
 if [ -z "${CI:-}" ]; then
   if ! docker info --format '{{.ServerVersion}}' > /dev/null 2>&1; then
@@ -48,7 +48,7 @@ fi
 # ══════════════════════════════════════════════
 # 2. 等待 noj-core 就绪
 # ══════════════════════════════════════════════
-step "2/2  等待 noj-core 就绪"
+step "2/3  等待 noj-core 就绪"
 
 info "等待 noj-core API (:$E2E_CORE_PORT)..."
 for i in $(seq 1 60); do

@@ -44,7 +44,7 @@ export async function requestReset(
       null,
       clientIp ?? "unknown",
       "auth.forgot_password_request",
-      { action: "auth.forgot_password_request", email_exists: false },
+      { email_exists: false },
     );
     return;
   }
@@ -79,7 +79,7 @@ export async function requestReset(
     userId,
     clientIp ?? "unknown",
     "auth.forgot_password_request",
-    { action: "auth.forgot_password_request", email_exists: true },
+    { email_exists: true },
   );
 }
 
@@ -171,6 +171,6 @@ export async function resetPassword(
     user.id,
     clientIp ?? "unknown",
     "auth.password_reset",
-    { action: "auth.password_reset", user_id: user.id },
+    { user_id: user.id },
   );
 }

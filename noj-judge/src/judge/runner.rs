@@ -73,7 +73,6 @@ async fn fetch_and_cache_support_package(
     let cache = SupportPackageCache::new(cache_dir, cache_max_items, cache_max_mb).await?;
 
     // 先解析 URL 获取 checksum（用于缓存查找）
-    let timeout = download_timeout_secs;
     let checksum = download::extract_checksum(download_url)?;
     if let Some(ref cs) = checksum {
         if let Some(cached) = cache.get(cs).await? {
@@ -83,7 +82,7 @@ async fn fetch_and_cache_support_package(
     }
 
     let (zip_data, fetched_checksum) =
-        download::fetch_support_package(download_url, timeout).await?;
+        download::fetch_support_package(download_url, download_timeout_secs).await?;
 
     // SHA-256 校验
     download::verify_checksum(&zip_data, fetched_checksum.as_deref())?;

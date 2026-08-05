@@ -29,7 +29,9 @@ pub const FRAME_SHUTDOWN: &str = "shutdown";
 /// 最终结果标记行（evaluator stdout 中的独立一行）。
 pub const RESULT_MARKER: &str = "---RESULT---";
 
-/// Evaluator stdout 的行分类。
+/// 行分类枚举（同时用于 Evaluator 与 Solution 的 stdout 行）。
+///
+/// 命名沿用早期仅覆盖 Evaluator 时期的 `EvaluatorLine`，现被 [`LineParser`] 双向复用。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EvaluatorLine {
     /// NDJSON 协议帧（必须是含 `type` 字段的合法 JSON 对象）。
@@ -107,9 +109,11 @@ impl LineParser {
         self.buf.clear();
         vec![classify_line(&s)]
     }
+}
 
+#[cfg(test)]
+impl LineParser {
     /// 丢弃所有缓冲（错误路径上避免被 Drop 时占用内存）。
-    #[allow(dead_code)]
     pub fn discard(&mut self) {
         self.buf.clear();
     }

@@ -11,9 +11,7 @@ definePageMeta({
 const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
-watch(loading, (val) => {
-  if (!val && !isLoggedIn.value) router.replace("/login")
-}, { immediate: true })
+useRequireLogin()
 
 const { api } = useApi()
 
@@ -310,7 +308,7 @@ async function showBanHistory(user: User) {
   </div>
 
   <!-- 角色管理弹窗（RBAC role_ids） -->
-  <UModal v-model:open="showRoleModal" :title="'修改用户角色'" :unmount-on-hide="true">
+  <UModal v-model:open="showRoleModal" title="修改用户角色" :unmount-on-hide="true">
     <template #body>
       <p class="mb-3">为用户 <strong>{{ targetUser?.username }}</strong> 选择角色：</p>
       <div class="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
@@ -344,7 +342,7 @@ async function showBanHistory(user: User) {
   </UModal>
 
   <!-- 封禁用户弹窗（issue #102） -->
-  <UModal v-model:open="showBanModal" :title="'封禁用户'" :unmount-on-hide="true">
+  <UModal v-model:open="showBanModal" title="封禁用户" :unmount-on-hide="true">
     <template #body>
       <p class="mb-3">将封禁 <strong>{{ banTarget?.username }}</strong>。</p>
       <div class="flex flex-col gap-3">
@@ -376,7 +374,7 @@ async function showBanHistory(user: User) {
   </UModal>
 
   <!-- 封禁历史弹窗（user-ban-table） -->
-  <UModal v-model:open="showHistoryModal" :title="'封禁历史'" :unmount-on-hide="true">
+  <UModal v-model:open="showHistoryModal" title="封禁历史" :unmount-on-hide="true">
     <template #body>
       <p v-if="historyTarget" class="mb-3">
         <strong>{{ historyTarget.username }}</strong> 的封禁记录

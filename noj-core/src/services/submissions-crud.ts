@@ -292,8 +292,8 @@ export async function createSubmission(
   }
   const problem = lockedRows[0];
 
-  // 验证语言
-  const supportedLanguages = ["python3", "python", "cpp", "c", "javascript"];
+  // 验证语言（与 LANGUAGE_EXT_MAP 键集保持一致）
+  const supportedLanguages = Object.keys(LANGUAGE_EXT_MAP);
   if (!supportedLanguages.includes(input.language)) {
     throw new BadRequestError(`不支持的语言: ${input.language}`);
   }

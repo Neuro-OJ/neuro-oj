@@ -68,28 +68,32 @@ contests.post("/:id/register", authMiddleware, async (c) => {
       throw new BadRequestError("请求体格式错误：需要有效的 JSON");
     }
   }
-  await registerForContest(c.req.param("id")!, c.var.userId!, body.password);
+  await registerForContest(
+    c.req.param("id") as string,
+    c.var.userId as string,
+    body.password,
+  );
   await createActivity(
-    c.var.userId!,
+    c.var.userId as string,
     "contest_joined",
     "contest",
-    c.req.param("id")!,
+    c.req.param("id") as string,
     {},
   );
   return c.json({ message: "竞赛注册成功" }, 201);
 });
 
 contests.get("/:id/problems", authMiddleware, async (c) => {
-  const contestId = c.req.param("id")!;
-  const userId = c.var.userId!;
+  const contestId = c.req.param("id") as string;
+  const userId = c.var.userId as string;
   await requireContestAccess(contestId, userId, c.var.isAdmin);
   const data = await getContestProblems(contestId, userId);
   return c.json({ data });
 });
 
 contests.get("/:id/problems/:label", authMiddleware, async (c) => {
-  const contestId = c.req.param("id")!;
-  const userId = c.var.userId!;
+  const contestId = c.req.param("id") as string;
+  const userId = c.var.userId as string;
   await requireContestAccess(contestId, userId, c.var.isAdmin);
   const problem = (await getContestProblems(contestId, userId)).find(
     (item) => item.label === c.req.param("label"),
@@ -101,7 +105,7 @@ contests.get("/:id/problems/:label", authMiddleware, async (c) => {
 });
 
 contests.get("/:id/ranking", optionalAuthMiddleware, async (c) => {
-  const contestId = c.req.param("id")!;
+  const contestId = c.req.param("id") as string;
   const contest = await getContest(contestId, c.var.userId);
   if (!contest.is_public && !c.var.isAdmin && !contest.is_registered) {
     throw new NotFoundError("竞赛不存在");
@@ -120,8 +124,8 @@ contests.get("/:id/ranking", optionalAuthMiddleware, async (c) => {
 });
 
 contests.post("/:id/submit", authMiddleware, async (c) => {
-  const contestId = c.req.param("id")!;
-  const userId = c.var.userId!;
+  const contestId = c.req.param("id") as string;
+  const userId = c.var.userId as string;
   const contest = await getContest(contestId, userId);
   if (
     computeContestStatus(contest.start_time, contest.end_time) !== "running"
@@ -169,8 +173,8 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
 });
 
 contests.get("/:id/my-submissions", authMiddleware, async (c) => {
-  const contestId = c.req.param("id")!;
-  const userId = c.var.userId!;
+  const contestId = c.req.param("id") as string;
+  const userId = c.var.userId as string;
   await getContest(contestId);
   if (!await isParticipant(contestId, userId)) {
     throw new ForbiddenError("仅参赛者可查看竞赛提交");
@@ -189,7 +193,7 @@ contests.get("/:id/my-submissions", authMiddleware, async (c) => {
 });
 
 contests.get("/:id", optionalAuthMiddleware, async (c) => {
-  const data = await getContest(c.req.param("id")!, c.var.userId);
+  const data = await getContest(c.req.param("id") as string, c.var.userId);
   if (!data.is_public && !c.var.isAdmin && !data.is_registered) {
     throw new NotFoundError("竞赛不存在");
   }

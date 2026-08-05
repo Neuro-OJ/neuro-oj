@@ -12,7 +12,7 @@ noj-tests/
 ├── E2E_TESTING.md             # 本文档
 ├── run-e2e.sh                 # 一键运行脚本
 └── e2e/
-    ├── helper.ts              # 辅助函数（API 客户端、Docker Compose 管理）
+    ├── helper.ts              # 辅助函数（API 客户端、用户注册、e2eTest 包装）
     ├── 01_categories.test.ts  # 分类管理（CRUD + 层级树）
     ├── 02_problems.test.ts    # 题目管理（U/P 型 CRUD + 筛选）
     ├── 03_auth.test.ts        # 认证流程（注册/登录/改密/管理员）
@@ -22,6 +22,23 @@ noj-tests/
     ├── 07_queue.test.ts       # 队列可见性+MQ可靠性
     ├── 08_password_change_guard.test.ts  # 强制改密守卫
     ├── 09_checkin.test.ts     # 每日签到
+    ├── 10_sse.test.ts         # SSE 推送（提交/队列/统计）
+    ├── 11_messaging.test.ts   # 站内私信
+    ├── 12_audit_log.test.ts   # 审计日志
+    ├── 13_support_package_s3.test.ts    # 支持包 S3 存储
+    ├── 14_rejudge.test.ts     # 重测
+    ├── 15_dual_container_judge.test.ts  # 双容器评测
+    ├── 16_community.test.ts   # 社区（帖子/评论/审核/动态流）
+    ├── 17_problem_template.test.ts      # 题目模板
+    ├── 18_search.test.ts      # 全局搜索
+    ├── 19_admin_endpoints.test.ts       # 管理端点
+    ├── 20_password_reset.test.ts        # 密码重置
+    ├── 21_rankings.test.ts    # 榜单
+    ├── 22_contest_lifecycle.test.ts     # 竞赛生命周期
+    ├── 23_network_capability.test.ts    # 评测网络能力
+    ├── 24_import_bundle.test.ts         # 题目包导入
+    ├── 25_rbac.test.ts        # RBAC 权限
+    ├── 26_call_timeout.test.ts          # 调用级超时
     └── support-package/       # 测试用支持包参考
         └── evaluate.py        # 示例评测脚本
 ```
@@ -39,6 +56,23 @@ noj-tests/
 | `07_queue.test.ts` | 队列可见性 + MQ 可靠性 | 队列状态，非法消息容错 |
 | `08_password_change_guard.test.ts` | 强制改密守卫 | 改密前访问限制 |
 | `09_checkin.test.ts` | 每日签到 | 连续签到天数计算 |
+| `10_sse.test.ts` | SSE 推送 | 提交/队列/统计事件流 |
+| `11_messaging.test.ts` | 站内私信 | 会话/消息/已读/删除 |
+| `12_audit_log.test.ts` | 审计日志 | 管理操作留痕 |
+| `13_support_package_s3.test.ts` | 支持包 S3 存储 | presigned URL 下载 |
+| `14_rejudge.test.ts` | 重测 | 单题/整题重测 |
+| `15_dual_container_judge.test.ts` | 双容器评测 | Evaluator + Solution |
+| `16_community.test.ts` | 社区 | 帖子/评论/审核/动态流/通知 |
+| `17_problem_template.test.ts` | 题目模板 | 代码模板注入 |
+| `18_search.test.ts` | 全局搜索 | 题目/用户/社区检索 |
+| `19_admin_endpoints.test.ts` | 管理端点 | 用户/题目/黑名单等 |
+| `20_password_reset.test.ts` | 密码重置 | 邮件令牌流程 |
+| `21_rankings.test.ts` | 榜单 | 全局/竞赛排名 |
+| `22_contest_lifecycle.test.ts` | 竞赛生命周期 | 创建/报名/提交/封榜/解封 |
+| `23_network_capability.test.ts` | 评测网络能力 | evaluator 联网与 capability |
+| `24_import_bundle.test.ts` | 题目包导入 | 统一题目包 |
+| `25_rbac.test.ts` | RBAC 权限 | 角色/权限/继承 |
+| `26_call_timeout.test.ts` | 调用级超时 | call_timeout_ms 生效 |
 
 ## 前置条件
 

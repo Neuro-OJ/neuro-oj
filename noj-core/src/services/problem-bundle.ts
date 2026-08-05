@@ -95,12 +95,12 @@ async function resolveCategoryIds(
  * 有 Hono Context 时走 RBAC 权限检查（`problem:write_any` 为 admin 级权限），
  * 否则退化为 userRole 判断（CLI 场景）。
  */
-async function isAdminActor(
+function isAdminActor(
   actor: BundleImportActor,
   c?: Context,
-): Promise<boolean> {
+): boolean | Promise<boolean> {
   if (c) {
-    return await checkPermission(c, "problem:write_any");
+    return checkPermission(c, "problem:write_any");
   }
   return actor.userRole === "admin";
 }
@@ -252,7 +252,7 @@ async function updateExisting(
     strippedZip,
     "application/zip",
   );
-  return await updateProblem(
+  return updateProblem(
     problemId,
     {
       title: manifest.title,

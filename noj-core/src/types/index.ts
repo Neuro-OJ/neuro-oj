@@ -89,6 +89,14 @@ export interface JudgeResult {
  */
 export type SubmissionStatus = "pending" | "judging" | "finished" | "error";
 
+/** 全部提交状态（与 SubmissionStatus 类型一一对应）。 */
+export const SUBMISSION_STATUSES: readonly SubmissionStatus[] = [
+  "pending",
+  "judging",
+  "finished",
+  "error",
+];
+
 /**
  * 分数精度常量。
  * score 以 ×100 的整数值存储，读取时除以 SCORE_SCALE 还原。

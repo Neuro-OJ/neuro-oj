@@ -9,45 +9,29 @@ import {
   getAdminToken,
   isE2E,
   waitForServer,
+  e2eTest,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 let adminToken = "";
 
-Deno.test({
-  name: "[e2e/categories] Setup",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/categories] Setup", async () => {
     if (!isE2E) return;
     await waitForServer();
     adminToken = await getAdminToken();
     console.log("  ✓ 管理员已登录并完成强制改密");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/categories] 1.1 GET 分类树",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/categories] 1.1 GET 分类树", async () => {
     if (!isE2E) return;
     const { status, body } = await apiGet("/api/v1/categories");
     if (status !== 200) throw new Error("期望 200");
     const d = body as { data: unknown[] };
     if (!Array.isArray(d.data)) throw new Error("data 应为数组");
     console.log("  ✓ 分类树正常");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/categories] 1.2 管理员创建顶级分类",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/categories] 1.2 管理员创建顶级分类", async () => {
     if (!isE2E) return;
     const slug = "e2e-cat-" + Date.now().toString(36);
     const { status, body } = await apiPost(
@@ -59,15 +43,9 @@ Deno.test({
     const level = (body as { data: { level: number } }).data.level;
     if (level !== 0) throw new Error("顶级分类 level 应 0");
     console.log("  ✓ 管理员创建顶级分类");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/categories] 1.3 创建子分类自动计算 level",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/categories] 1.3 创建子分类自动计算 level", async () => {
     if (!isE2E) return;
     const parentSlug = "e2e-parent-" + Date.now().toString(36);
     const parentRes = await apiPost("/api/v1/categories", {
@@ -88,15 +66,9 @@ Deno.test({
     if (d.data.level !== 1) throw new Error("子分类 level 应 1");
     if (d.data.parent_id !== parentId) throw new Error("parent_id 不匹配");
     console.log("  ✓ 管理员创建子分类");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/categories] 1.4 未认证创建分类被拒",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/categories] 1.4 未认证创建分类被拒", async () => {
     if (!isE2E) return;
     const { status } = await apiPost("/api/v1/categories", {
       name: "Hack",
@@ -104,15 +76,9 @@ Deno.test({
     });
     if (status !== 401) throw new Error("期望 401, 实际 " + status);
     console.log("  ✓ 未认证创建分类被拒");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/categories] 1.5 重复 slug 冲突",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/categories] 1.5 重复 slug 冲突", async () => {
     if (!isE2E) return;
     const slug = "e2e-dup-" + Date.now().toString(36);
     await apiPost("/api/v1/categories", { name: "原始", slug }, adminToken);
@@ -122,15 +88,9 @@ Deno.test({
     }, adminToken);
     if (status !== 409) throw new Error("期望 409, 实际 " + status);
     console.log("  ✓ 重复 slug 冲突检测正常");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/categories] 1.6 删除带子分类的分类被拒",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/categories] 1.6 删除带子分类的分类被拒", async () => {
     if (!isE2E) return;
     const slug = "e2e-del-parent-" + Date.now().toString(36);
     const parentRes = await apiPost("/api/v1/categories", {
@@ -150,5 +110,4 @@ Deno.test({
     );
     if (status !== 400) throw new Error("期望 400, 实际 " + status);
     console.log("  ✓ 删除带子分类的分类被拒");
-  },
-});
+  });

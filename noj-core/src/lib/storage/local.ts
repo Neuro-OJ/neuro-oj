@@ -93,11 +93,11 @@ export class LocalStorageProvider implements StorageProvider {
   /**
    * 根据 `noj-storage://` URL 读取数据
    */
-  async get(url: string): Promise<Uint8Array> {
+  get(url: string): Promise<Uint8Array> {
     const parsed = parseStorageUrl(url);
     const filePath = `${this.storageDir}/${parsed.key}.zip`;
 
-    return await Deno.readFile(filePath);
+    return Deno.readFile(filePath);
   }
 
   /**

@@ -14,14 +14,15 @@ import {
   apiGet,
   apiPatch,
   apiPost,
-  apiPut,
   getAdminToken,
   isE2E,
   registerUser,
   waitForServer,
+  e2eTest,
+  TEST_PASSWORD,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 let adminToken = "";
 let userToken = "";
 let targetUserId = "";
@@ -30,12 +31,7 @@ let categoryId = "";
 let adminRoleId = "";
 const ts = Date.now().toString(36);
 
-Deno.test({
-  name: "[e2e/audit-log] Setup",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/audit-log] Setup", async () => {
     if (!isE2E) return;
     await waitForServer();
     adminToken = await getAdminToken();
@@ -52,7 +48,7 @@ Deno.test({
     userToken = await registerUser(
       "audit_user_" + ts,
       "audit_user_" + ts + "@test.com",
-      "Test12345679",
+      TEST_PASSWORD,
     );
     const me = await apiGet("/api/v1/auth/me", userToken);
     targetUserId = (me.body as { data: { id: string } }).data.id;
@@ -100,17 +96,11 @@ Deno.test({
     }
 
     console.log("  ✓ 管理员已登录，测试资源已创建");
-  },
-});
+  });
 
 // ── 执行 7 类操作 ──
 
-Deno.test({
-  name: "[e2e/audit-log] 3.1a role_change 产生审计记录",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/audit-log] 3.1a role_change 产生审计记录", async () => {
     if (!isE2E) return;
     // 先提升为 admin，再降回 user 确保产生记录
     const upRes = await apiPatch(
@@ -160,15 +150,9 @@ Deno.test({
     } else {
       console.log("  ✓ role_change 审计记录: " + data.length + " 条");
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/audit-log] 3.1b ban/unban 产生审计记录",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/audit-log] 3.1b ban/unban 产生审计记录", async () => {
     if (!isE2E) return;
     const banRes = await apiPatch(
       `/api/v1/admin/users/${targetUserId}/ban`,
@@ -199,15 +183,9 @@ Deno.test({
     );
     const unbanData = (unbanLogs.body as { data: Array<unknown> }).data;
     console.log("  ✓ unban 审计记录: " + unbanData.length + " 条");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/audit-log] 3.1c problems.delete 产生审计记录",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/audit-log] 3.1c problems.delete 产生审计记录", async () => {
     if (!isE2E) return;
     const delRes = await apiDelete(
       `/api/v1/problems/${problemId}`,
@@ -226,15 +204,9 @@ Deno.test({
       throw new Error("problems.delete 审计记录未找到");
     }
     console.log("  ✓ problems.delete 审计记录: " + data.length + " 条");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/audit-log] 3.1d categories.delete 产生审计记录",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/audit-log] 3.1d categories.delete 产生审计记录", async () => {
     if (!isE2E) return;
     const delRes = await apiDelete(
       `/api/v1/categories/${categoryId}`,
@@ -253,17 +225,11 @@ Deno.test({
       throw new Error("categories.delete 审计记录未找到");
     }
     console.log("  ✓ categories.delete 审计记录: " + data.length + " 条");
-  },
-});
+  });
 
 // ── 列表查询 ──
 
-Deno.test({
-  name: "[e2e/audit-log] 3.2a 时间筛选",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/audit-log] 3.2a 时间筛选", async () => {
     if (!isE2E) return;
     const now = new Date();
     const from = new Date(now.getTime() - 3600000).toISOString(); // 1h ago
@@ -277,15 +243,9 @@ Deno.test({
       (logs.body as { data: Array<unknown>; pagination: { total: number } })
         .data;
     console.log("  ✓ 时间筛选返回 " + data.length + " 条记录");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/audit-log] 3.2b 分页正确",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/audit-log] 3.2b 分页正确", async () => {
     if (!isE2E) return;
     const logs = await apiGet(
       "/api/v1/admin/audit-logs?per_page=3&page=1",
@@ -300,20 +260,13 @@ Deno.test({
       throw new Error("per_page=3 但返回 " + body.data.length);
     }
     console.log("  ✓ 分页正确（per_page=" + body.data.length + "）");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/audit-log] 3.2c 非 admin 返回 403",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/audit-log] 3.2c 非 admin 返回 403", async () => {
     if (!isE2E) return;
     const logs = await apiGet("/api/v1/admin/audit-logs", userToken);
     if (logs.status !== 403) {
       throw new Error("期望 403, 实际 " + logs.status);
     }
     console.log("  ✓ 非 admin 访问审计日志被拒");
-  },
-});
+  });

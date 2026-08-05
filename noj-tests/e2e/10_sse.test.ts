@@ -16,9 +16,11 @@ import {
   registerUser,
   submitCode,
   waitForServer,
+  e2eTest,
+  TEST_PASSWORD,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 let token = "";
 let submissionId = "";
 let problemId = "";
@@ -79,19 +81,14 @@ async function readSSEEvents(
   }
 }
 
-Deno.test({
-  name: "[e2e/sse] Setup",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/sse] Setup", async () => {
     if (!isE2E) return;
     await waitForServer();
     const ts = Date.now().toString(36);
     token = await registerUser(
       "sse_user_" + ts,
       "sse_user_" + ts + "@test.com",
-      "Test12345679",
+      TEST_PASSWORD,
     );
     // 创建真实提交（用于 SSE 连接测试）
     try {
@@ -105,15 +102,9 @@ Deno.test({
       submissionId = "";
       console.log("  ✓ SSE 测试用户已注册（提交创建跳过）");
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/sse] 1.1 未认证用户 SSE 返回 401",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/sse] 1.1 未认证用户 SSE 返回 401", async () => {
     if (!isE2E) return;
     const res = await fetch(
       `${BASE_URL}/api/v1/submissions/00000000-0000-0000-0000-000000000000/events`,
@@ -122,30 +113,18 @@ Deno.test({
       throw new Error("期望 401, 实际 " + res.status);
     }
     console.log("  ✓ 未认证访问 SSE 返回 401");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/sse] 1.2 队列 SSE 未认证返回 401",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/sse] 1.2 队列 SSE 未认证返回 401", async () => {
     if (!isE2E) return;
     const res = await fetch(`${BASE_URL}/api/v1/queue/events`);
     if (res.status !== 401) {
       throw new Error("期望 401, 实际 " + res.status);
     }
     console.log("  ✓ 队列 SSE 未认证返回 401");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/sse] 1.3 队列 SSE 连接建立收到初始状态",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/sse] 1.3 队列 SSE 连接建立收到初始状态", async () => {
     if (!isE2E) return;
     const events = await readSSEEvents(
       `${BASE_URL}/api/v1/queue/events`,
@@ -159,15 +138,9 @@ Deno.test({
       return;
     }
     console.log("  ✓ 队列 SSE 收到事件: " + events.join(", "));
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/sse] 1.4 提交状态 SSE 端点连接正常",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/sse] 1.4 提交状态 SSE 端点连接正常", async () => {
     if (!isE2E) return;
     const sid = submissionId || "00000000-0000-0000-0000-000000000000";
     const res = await fetch(
@@ -193,5 +166,4 @@ Deno.test({
       console.log("  ⚠ Content-Type 非 event-stream: " + ct);
     }
     console.log("  ✓ SSE 端点返回 200");
-  },
-});
+  });

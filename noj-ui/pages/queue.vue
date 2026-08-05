@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { getLanguageLabel, formatScore, formatDateTime } from "~/utils/submissionFormat"
 import { useEventSource } from "~/composables/useEventSource"
 interface QueueItem {
   id: string
@@ -29,8 +28,6 @@ interface QueueData {
 
 const data = ref<QueueData | null>(null)
 
-const isMounted = ref(true)
-
 const { api } = useApi()
 
 // 实时时钟——确保 elapsed 时间每秒更新而不是仅在轮询时刷新
@@ -38,20 +35,10 @@ const now = ref(Date.now())
 let clockTimer: ReturnType<typeof setInterval> | null = null
 onMounted(() => { clockTimer = setInterval(() => { now.value = Date.now() }, 1000) })
 onUnmounted(() => {
-  isMounted.value = false
   if (clockTimer) clearInterval(clockTimer); clockTimer = null
 })
 
 // 语言标签映射
-
-function elapsedSince(iso: string | null | undefined): string {
-  if (!iso) return "--"
-  const ms = now.value - new Date(iso).getTime()
-  const seconds = Math.floor(ms / 1000)
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  return `${minutes}m ${seconds % 60}s`
-}
 
 // SSE 实时推送 + 轮询 fallback：优先通过 EventSource 接收队列变更通知
 // SSE 不可用时自动降级到 2s 轮询
@@ -111,14 +98,7 @@ useEventSource({
             正在评测（{{ data.judging.length }}）
           </h2>
           <div v-if="data.judging.length === 0" class="p-4 text-center text-text-muted text-13px">暂无</div>
-          <div v-for="item in data.judging" :key="item.id" class="flex items-center gap-3 px-4 py-2.5 text-13px border-b border-border last:border-b-0 hover:bg-bg-page">
-            <NuxtLink :to="`/submissions/${item.id}`" class="text-blue-700 no-underline font-mono whitespace-nowrap min-w-[80px] hover:underline">#{{ item.id.slice(0, 8) }}</NuxtLink>
-            <span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text">{{ item.problem_id }} {{ item.problem_title }}</span>
-            <span class="text-text-secondary min-w-[70px] text-center text-xs">{{ getLanguageLabel(item.language) }}</span>
-            <span class="text-text-secondary min-w-[60px]">{{ item.submitted_by }}</span>
-            <span class="text-text-muted text-xs min-w-[100px]">{{ formatDateTime(item.submitted_at) }}</span>
-            <span class="inline-flex items-center gap-[3px] text-blue-700 text-xs min-w-[70px]"><UIcon name="i-lucide-clock" class="size-3.5" /> {{ elapsedSince(item.judge_started_at) }}</span>
-          </div>
+          <QueueRow v-for="item in data.judging" :key="item.id" :item="item" :now="now" show-elapsed />
         </section>
 
         <!-- 排队中 -->
@@ -128,13 +108,7 @@ useEventSource({
             排队中（{{ data.pending.length }}）
           </h2>
           <div v-if="data.pending.length === 0" class="p-4 text-center text-text-muted text-13px">暂无</div>
-          <div v-for="item in data.pending" :key="item.id" class="flex items-center gap-3 px-4 py-2.5 text-13px border-b border-border last:border-b-0 hover:bg-bg-page">
-            <NuxtLink :to="`/submissions/${item.id}`" class="text-blue-700 no-underline font-mono whitespace-nowrap min-w-[80px] hover:underline">#{{ item.id.slice(0, 8) }}</NuxtLink>
-            <span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text">{{ item.problem_id }} {{ item.problem_title }}</span>
-            <span class="text-text-secondary min-w-[70px] text-center text-xs">{{ getLanguageLabel(item.language) }}</span>
-            <span class="text-text-secondary min-w-[60px]">{{ item.submitted_by }}</span>
-            <span class="text-text-muted text-xs min-w-[100px]">{{ formatDateTime(item.submitted_at) }}</span>
-          </div>
+          <QueueRow v-for="item in data.pending" :key="item.id" :item="item" :now="now" />
         </section>
 
         <!-- 最近完成 -->
@@ -144,16 +118,7 @@ useEventSource({
             最近完成（{{ data.recently_completed.length }}）
           </h2>
           <div v-if="data.recently_completed.length === 0" class="p-4 text-center text-text-muted text-13px">暂无</div>
-          <div v-for="item in data.recently_completed" :key="item.id" class="flex items-center gap-3 px-4 py-2.5 text-13px border-b border-border last:border-b-0 hover:bg-bg-page">
-            <NuxtLink :to="`/submissions/${item.id}`" class="text-blue-700 no-underline font-mono whitespace-nowrap min-w-[80px] hover:underline">#{{ item.id.slice(0, 8) }}</NuxtLink>
-            <span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text">{{ item.problem_id }} {{ item.problem_title }}</span>
-            <span class="text-text-secondary min-w-[70px] text-center text-xs">{{ getLanguageLabel(item.language) }}</span>
-            <span class="text-text-secondary min-w-[60px]">{{ item.submitted_by }}</span>
-            <span class="text-text-muted text-xs min-w-[100px]">{{ formatDateTime(item.submitted_at) }}</span>
-            <span :class="['font-semibold min-w-[60px] text-right', item.status === 'error' || (item.score !== null && item.score === 0) ? 'text-red-600' : '']">
-              {{ formatScore(item.score) }} 分
-            </span>
-          </div>
+          <QueueRow v-for="item in data.recently_completed" :key="item.id" :item="item" :now="now" show-score />
         </section>
       </template>
     </div>

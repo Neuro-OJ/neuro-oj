@@ -6,7 +6,6 @@
  * - submissions-crud.ts：listSubmissions / createSubmission / getSubmission / deleteSubmission
  * - submissions-result.ts：saveEvaluationResult / updateSubmissionStatus
  * - submissions-rejudge.ts：rejudgeSubmission / rejudgeProblemSubmissions
- * - submissions-stats.ts：getTotalStats / getTodayStats
  *
  * 本文件仅 re-export 以保持向后兼容（routes/admin.ts、routes/submissions.ts、
  * routes/sse.ts、mq/consumer.ts 等既有 import 路径不变）。
@@ -31,8 +30,6 @@ export {
   rejudgeProblemSubmissions,
   rejudgeSubmission,
 } from "./submissions-rejudge.ts";
-
-export { getTodayStats, getTotalStats } from "./submissions-stats.ts";
 
 export type {
   ListSubmissionsParams,

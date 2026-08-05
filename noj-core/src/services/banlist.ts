@@ -6,7 +6,7 @@
  * - removeIpBan：按 id 删除
  * - getBannedRanges：返回所有未过期的 ip_or_cidr 列表（给 banlistMiddleware 用，含 60s LRU 缓存）
  *
- * 审计日志：每次写操作 console.log "[admin] actor=... action=... key=... value=..."
+ * 审计日志：每次写操作通过 logAudit 写入 audit_log（action=ip_bans.*）
  */
 
 import { and, eq, isNull, like, or, sql } from "drizzle-orm";
@@ -170,8 +170,8 @@ export async function removeIpBan(
  * 获取所有未过期 ip_or_cidr（给中间件用，60s LRU 缓存）。
  * 已过期条目（expires_at < now）被自动过滤，避免过期封禁继续生效。
  */
-export async function getBannedRanges(): Promise<string[]> {
-  return await getCached("ip_bans:all", async () => {
+export function getBannedRanges(): Promise<string[]> {
+  return getCached("ip_bans:all", async () => {
     const db = getDb();
     const now = new Date().toISOString();
     const rows = await db.select({
@@ -203,9 +203,9 @@ export async function getBannedIpDetail(
   } | null
 > {
   // 使用全表缓存，但 key 独立于 getBannedRanges 避免序列化差异
-  const rows = await getCached("ip_bans:detail", async () => {
+  const rows = await getCached("ip_bans:detail", () => {
     const db = getDb();
-    return await db.select().from(ipBans);
+    return db.select().from(ipBans);
   });
   const now = new Date().toISOString();
   for (const row of rows) {

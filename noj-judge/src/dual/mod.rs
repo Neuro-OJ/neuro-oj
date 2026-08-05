@@ -1,13 +1,13 @@
 //! 双容器编排核心（设计稿 §1）。
 //!
 //! 关键路径：
-//! 1. 创建 Evaluator + Solution 容器
-//! 2. 注入用户代码到 Solution 容器
+//! 1. 创建 Evaluator + Solution 容器（Solution 恒无网；Evaluator 按配置可选联网）
+//! 2. 注入支持包到 Evaluator（如有）与用户代码到 Solution
 //! 3. 启动两个 exec（Evaluator 跑 evaluate.py；Solution 跑 host.py）
-//! 4. 等待 Solution `ready` 帧（5s 超时）
-//! 5. 双向消息转发（evaluator stdout ↔ solution stdin/stderr）
+//! 4. 阶段 1：等待 Evaluator 首条输出（30s 启动超时，不计入题目时限）
+//! 5. 阶段 2：双向消息转发（evaluator stdout ↔ solution stdin/stderr）+ 调用级超时
 //! 6. 等待 Evaluator stdout 出现 `---RESULT---` 标记，解析结果
-//! 7. 发 `shutdown` 到 Solution
+//! 7. 未出 RESULT 时按 finalize_outcome 判定（总超时 → SystemError；曾发 CallTimeout → TLE）
 //! 8. RAII 清理两个容器
 
 pub mod container;
@@ -35,6 +35,10 @@ use crate::types::{JudgeResult, JudgeStatus, RuntimeConfig};
 /// 评测输出全文/错误累积上限（1 MiB）。恶意提交可无限打印，
 /// 若无限 append 会拖垮 judge 进程（容器内存限制不约束 judge）。
 pub const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
+
+/// 文件注入 exec 完成轮询次数与间隔（50 × 100ms = 5s 上限）。
+const INJECT_POLL_ATTEMPTS: u32 = 50;
+const INJECT_POLL_INTERVAL_MS: u64 = 100;
 
 /// 追加到累积缓冲：超过上限时丢弃头部、只保留尾部（诊断信息优先）。
 fn append_capped(buf: &mut String, s: &str) {
@@ -71,7 +75,7 @@ async fn inject_support_package_to_evaluator(
         inject_file_to_container(docker, container_id, &entry.file_name, &entry.data)
             .await
             .context(format!("注入支持包文件 {} 失败", entry.file_name))?;
-        info!("  已注入支持包文件: {}", entry.file_name);
+        info!("已注入支持包文件: {}", entry.file_name);
     }
 
     info!("支持包注入完成 (共 {} 个文件)", entries.len());
@@ -124,12 +128,13 @@ async fn inject_file_to_container(
     }
 
     // 等 exec 完成（简化处理：用 inspect_exec 轮询直到退出）
-    for _ in 0..50 {
+    // 轮询上限 50 次 × 100ms = 5s
+    for _ in 0..INJECT_POLL_ATTEMPTS {
         let inspect = docker.inspect_exec(&exec.id).await?;
         if inspect.exit_code.is_some() {
             return Ok(());
         }
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(INJECT_POLL_INTERVAL_MS)).await;
     }
     anyhow::bail!("注入文件超时")
 }
@@ -156,7 +161,6 @@ pub async fn evaluate_dual(
         &docker,
         &runtime_config.evaluator.image,
         runtime_config.evaluator.memory_limit_mb,
-        None,
         evaluator_network_enabled,
     )
     .await
@@ -204,7 +208,7 @@ pub async fn evaluate_dual(
         .await
         .context("启动 Evaluator exec 失败")?;
 
-    // 5. 启动 Solution exec
+    // 6. 启动 Solution exec
     let solution_entry_path = format!("/workspace/{}", runtime_config.solution.entry);
     let solution_exec = start_exec(
         &docker,
@@ -220,7 +224,7 @@ pub async fn evaluate_dual(
     .await
     .context("启动 Solution exec 失败")?;
 
-    // 6. 运行主循环
+    // 7. 运行主循环
     let result = run_dual_loop(
         task_submission_id,
         evaluator_exec,
@@ -231,7 +235,7 @@ pub async fn evaluate_dual(
     )
     .await;
 
-    // 7. 显式销毁（不论成功失败）
+    // 8. 显式销毁（不论成功失败）
     if let Err(e) = dual.destroy().await {
         warn!("DualContainer 销毁警告: {}", e);
     }
@@ -350,7 +354,7 @@ async fn run_dual_loop(
     let mut sent_call_timeout = false;
 
     // 评测程序启动等待上限：容器创建 / 文件注入 / Python 启动等开销
-    // 不计入题目时限（issue：秒过的代码不应因启动开销 TLE）。
+    // 不计入题目时限：秒过的代码不应因启动开销 TLE。
     const EVALUATOR_STARTUP_TIMEOUT_MS: u64 = 30_000;
 
     // 阶段 1：等待评测程序真正开始运行（收到首条输出，通常为 ready 帧）。
@@ -368,7 +372,7 @@ async fn run_dual_loop(
                     rejudge_seq,
                     sent_call_timeout,
                     TimeoutKind::Startup,
-                    "evaluator startup timeout",
+                    "Evaluator 启动超时",
                 ));
             }
             // 调用级超时（in-flight 到期）
@@ -435,7 +439,7 @@ async fn run_dual_loop(
                         rejudge_seq,
                         sent_call_timeout,
                         TimeoutKind::Total,
-                        "evaluator total timeout",
+                        "Evaluator 总超时",
                     ));
                 }
 
@@ -582,8 +586,7 @@ async fn handle_eval_chunk(
                 // - cap_reg 帧：judge 与 evaluator 的私有协议（capability 默认超时上报），不转发
                 // - result/error 帧：capability 调用的响应（solution 等待），按 id 命中判定转发
                 // 其他类型（log 等）记录但不转发
-                let ft = frame_type(&v).map(|s| s.to_string());
-                match ft.as_deref() {
+                match frame_type(&v) {
                     Some(FRAME_CALL) => {
                         // 登记调用级超时（缺省回退题目级默认），原样转发
                         tracker.on_call_frame(&v, Instant::now());
@@ -652,16 +655,14 @@ async fn handle_sol_chunk(
     let lines = parser.feed(&data);
     for line in lines {
         if let EvaluatorLine::Frame(v) = line {
-            let ft = frame_type(&v).map(|s| s.to_string());
+            // ready 之前只接受 ready 帧，其余忽略（防御）
             if !*solution_ready {
-                if ft.as_deref() == Some(FRAME_READY) {
+                if frame_type(&v) == Some(FRAME_READY) {
                     *solution_ready = true;
-                    continue;
                 }
-                // ready 之前的所有帧忽略（防御）
                 continue;
             }
-            match ft.as_deref() {
+            match frame_type(&v) {
                 Some(FRAME_CAPABILITY) => {
                     // solution 请求 capability：查注册超时登记后转发 evaluator
                     tracker.on_capability_frame(&v, Instant::now());

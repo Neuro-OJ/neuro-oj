@@ -165,7 +165,7 @@ export async function getSupportPackageBytes(
   }
 
   const storage = await getStorageProvider();
-  return await storage.get(problem.storageUrl);
+  return storage.get(problem.storageUrl);
 }
 
 /**

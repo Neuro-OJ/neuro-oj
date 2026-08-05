@@ -44,6 +44,7 @@ import {
   updateRole,
   updateUserRoles,
 } from "../services/admin-roles.ts";
+import { SUBMISSION_STATUSES } from "../types/index.ts";
 import {
   addParticipants,
   createContest,
@@ -180,8 +181,8 @@ router.get("/submissions", async (c) => {
   const from = c.req.query("from") || undefined;
   const to = c.req.query("to") || undefined;
 
-  const validStatuses = ["pending", "judging", "finished", "error"];
-  if (status && !validStatuses.includes(status)) {
+  const validStatuses = SUBMISSION_STATUSES;
+  if (status && !(validStatuses as readonly string[]).includes(status)) {
     throw new BadRequestError(
       `无效的状态值：${status}，有效值：${validStatuses.join("、")}`,
     );
@@ -242,7 +243,7 @@ router.delete("/submissions/:id", async (c) => {
 router.post("/submissions/:id/rejudge", async (c) => {
   const id = c.req.param("id") as string;
   await rejudgeSubmission(id);
-  return c.json({ message: "重测任务已提交", submission_id: id });
+  return c.json({ data: { message: "重测任务已提交", submission_id: id } });
 });
 
 /**
@@ -253,9 +254,11 @@ router.post("/problems/:id/rejudge", async (c) => {
   const id = c.req.param("id") as string;
   const result = await rejudgeProblemSubmissions(id);
   return c.json({
-    message: "批量重测任务已提交",
-    problem_id: id,
-    ...result,
+    data: {
+      message: "批量重测任务已提交",
+      problem_id: id,
+      ...result,
+    },
   });
 });
 
@@ -278,7 +281,7 @@ router.get("/contests", async (c) => {
 });
 
 router.get("/contests/:id", async (c) => {
-  const contestId = c.req.param("id")!;
+  const contestId = c.req.param("id") as string;
   const [contest, problems] = await Promise.all([
     getContest(contestId),
     getContestProblems(contestId),
@@ -295,19 +298,19 @@ router.post("/contests", async (c) => {
 router.put("/contests/:id", async (c) => {
   const body = await parseJsonBody<UpdateContestInput>(c);
   const data = await updateContest(
-    c.req.param("id")!,
+    c.req.param("id") as string,
     body,
   );
   return c.json({ data });
 });
 
 router.delete("/contests/:id", async (c) => {
-  await deleteContest(c.req.param("id")!);
+  await deleteContest(c.req.param("id") as string);
   return c.body(null, 204);
 });
 
 router.get("/contests/:id/participants", async (c) => {
-  const data = await listParticipants(c.req.param("id")!);
+  const data = await listParticipants(c.req.param("id") as string);
   return c.json({ data });
 });
 
@@ -316,17 +319,20 @@ router.post("/contests/:id/participants", async (c) => {
   if (!Array.isArray(userIds)) {
     throw new BadRequestError("请求体必须为用户 ID 数组");
   }
-  const added = await addParticipants(c.req.param("id")!, userIds);
+  const added = await addParticipants(c.req.param("id") as string, userIds);
   return c.json({ data: { added } }, 201);
 });
 
 router.delete("/contests/:id/participants/:userId", async (c) => {
-  await removeParticipant(c.req.param("id")!, c.req.param("userId")!);
+  await removeParticipant(
+    c.req.param("id") as string,
+    c.req.param("userId") as string,
+  );
   return c.body(null, 204);
 });
 
 router.get("/contests/:id/submissions", async (c) => {
-  const contestId = c.req.param("id")!;
+  const contestId = c.req.param("id") as string;
   await getContest(contestId);
   const { page, perPage } = parsePagination(c);
   const result = await listSubmissions({ contestId, page, perPage });

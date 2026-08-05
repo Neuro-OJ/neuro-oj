@@ -6,21 +6,19 @@ import {
   inArray,
   isNull,
   lte,
-  not,
   or,
+  type SQL,
   sql,
 } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
-import { userBans, users } from "../db/schema.ts";
-import { roles, userRoles } from "../db/schema.ts";
+import { roles, userBans, userRoles, users } from "../db/schema.ts";
 import { comparePassword, hashPassword } from "../lib/password.ts";
 import { signToken } from "../lib/jwt.ts";
-import { logAudit, logAuthEvent } from "./audit-log.ts";
+import { logAuthEvent } from "./audit-log.ts";
 import {
   BadRequestError,
   ConflictError,
   ForbiddenError,
-  NotFoundError,
   UnauthorizedError,
 } from "../lib/errors.ts";
 import type { LoginInput, RegisterInput, UserResponse } from "../types/auth.ts";
@@ -180,7 +178,6 @@ export async function registerUser(
     clientIp ?? "unknown",
     "auth.register",
     {
-      action: "auth.register",
       user_id: id,
       username: input.username,
       email: input.email,
@@ -235,7 +232,6 @@ export async function loginUser(
       clientIp ?? "unknown",
       "auth.login_failure",
       {
-        action: "auth.login_failure",
         reason: "user_not_found",
         login: input.login,
       },
@@ -253,7 +249,6 @@ export async function loginUser(
       clientIp ?? "unknown",
       "auth.login_failure",
       {
-        action: "auth.login_failure",
         reason: "wrong_password",
         login: input.login,
       },
@@ -270,7 +265,6 @@ export async function loginUser(
         clientIp,
         "auth.login_failure",
         {
-          action: "auth.login_failure",
           reason: "ip_banned",
           login: input.login,
         },
@@ -296,7 +290,6 @@ export async function loginUser(
         clientIp ?? "unknown",
         "auth.login_failure",
         {
-          action: "auth.login_failure",
           reason: "user_banned",
           login: input.login,
         },
@@ -334,7 +327,6 @@ export async function loginUser(
     clientIp ?? "unknown",
     "auth.login_success",
     {
-      action: "auth.login_success",
       user_id: user.id,
       login: input.login,
     },
@@ -370,87 +362,6 @@ export async function getUserProfile(
 }
 
 /**
- * 管理员提升/降级用户角色。
- * 仅允许在 "admin" 和 "user" 之间切换。
- *
- * @param targetUserId 目标用户 ID
- * @param role 目标角色（"admin" | "user"）
- * @param currentUserId 当前操作用户 ID——禁止管理员撤销自己的权限
- * @throws {NotFoundError} 目标用户不存在
- * @throws {BadRequestError} 非法的角色值 或 操作自己的角色
- */
-export async function promoteUser(
-  targetUserId: string,
-  role: string,
-  currentUserId?: string,
-): Promise<UserResponse> {
-  const db = getDb();
-
-  if (role !== "admin" && role !== "user") {
-    throw new BadRequestError("角色值非法，仅允许 admin 或 user");
-  }
-
-  const existing = await db
-    .select()
-    .from(users)
-    .where(eq(users.id, targetUserId))
-    .limit(1);
-
-  if (existing.length === 0) {
-    throw new NotFoundError("用户不存在");
-  }
-
-  // 防止最后一个管理员误操作导致系统无管理员
-  if (currentUserId && targetUserId === currentUserId) {
-    throw new BadRequestError("不能修改自己的角色");
-  }
-
-  // 防止降级最后一个可登录 admin：
-  // - 若目标是 admin 且本次操作降级为 user
-  // - 且当前系统中仅有 1 个 admin（含目标）
-  // 则拒绝，防止系统进入无 admin 状态。
-  // 注意：root 系统用户（id='0'，PR #63 引入）虽然 role='admin' 但不可登录，
-  // 因此不计入"可登录 admin"统计。
-  if (existing[0].role === "admin" && role === "user") {
-    const [adminCountRow] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(users)
-      .where(and(eq(users.role, "admin"), not(eq(users.id, ROOT_USER_ID))));
-    const adminCount = Number(adminCountRow?.count ?? 0);
-    if (adminCount <= 1) {
-      throw new BadRequestError(
-        "系统当前仅有 1 个可登录管理员，不能降级；如需调整请先创建新的管理员账户",
-      );
-    }
-  }
-
-  const now = new Date().toISOString();
-  await db
-    .update(users)
-    .set({ role, updated_at: now })
-    .where(eq(users.id, targetUserId));
-
-  // 审计：角色变更（issue #101）
-  await logAudit(
-    "users.role_change",
-    { action: "users.role_change", from: existing[0].role, to: role },
-    { type: "user", id: targetUserId },
-  );
-
-  return {
-    id: existing[0].id,
-    username: existing[0].username,
-    email: existing[0].email,
-    role,
-    is_admin: role === "admin", // user_roles 会在后续操作中通过 PATCH 管理
-    must_change_password: existing[0].must_change_password,
-    active_ban: null,
-    created_at: existing[0].created_at,
-    updated_at: now,
-  };
-}
-
-/**
  * 管理员获取用户列表（分页，排除 root 系统用户）。
  * 返回用户基本信息，不含密码哈希。
  *
@@ -483,7 +394,7 @@ export async function listUsers(
   const offset = (opts.page - 1) * opts.perPage;
 
   // 构建筛选条件
-  const conditions: ReturnType<typeof sql>[] = [];
+  const conditions: SQL[] = [];
 
   // 排除 root 系统用户（id='0'）
   conditions.push(sql`${users.id} <> '0'`);
@@ -496,14 +407,8 @@ export async function listUsers(
   // 按关键词搜索（username 或 email ILIKE 模糊匹配）
   if (opts.keyword) {
     const kw = `%${opts.keyword}%`;
-    conditions.push(
-      or(
-        ilike(users.username, kw),
-        ilike(users.email, kw),
-      ) as unknown as ReturnType<
-        typeof sql
-      >,
-    );
+    // or() 在传参非空时必返回 SQL 实例（类型层面为 optional）
+    conditions.push(or(ilike(users.username, kw), ilike(users.email, kw))!);
   }
 
   // 按注册日期范围筛选
@@ -670,7 +575,7 @@ export async function changePassword(
     userId,
     clientIp ?? "unknown",
     "auth.change_password",
-    { action: "auth.change_password", user_id: userId },
+    { user_id: userId },
   );
 
   // 查询用户的 admin 状态

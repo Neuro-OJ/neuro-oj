@@ -15,7 +15,8 @@ interface ToastMethods {
   info(message: string): void;
 }
 
-type ToastType = 'success' | 'error' | 'info' | 'warning';
+/** showToast 的 type 参数与方法名一一对应，无需桥接映射。 */
+type ToastType = keyof ToastMethods;
 
 interface UseToastResult {
   toast: ToastMethods;
@@ -38,10 +39,6 @@ export function useToast(): UseToastResult {
   };
 
   function showToast(type: ToastType, message: string) {
-    if (type === 'warning') {
-      toast.warn(message);
-      return;
-    }
     toast[type](message);
   }
 

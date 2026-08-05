@@ -85,7 +85,7 @@ export function createApp(): Hono {
     "*",
     cors({
       origin: isProd
-        ? (allowedOrigins && allowedOrigins.length > 0 ? allowedOrigins : []) // 生产环境未配置白名单则拒绝跨域
+        ? (allowedOrigins ?? []) // 生产环境未配置白名单则拒绝跨域
         : "*", // 开发环境允许所有
       credentials: true,
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],

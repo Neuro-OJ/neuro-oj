@@ -256,7 +256,7 @@ export async function createContest(
     );
   });
 
-  return await getContest(id);
+  return getContest(id);
 }
 
 export async function updateContest(
@@ -331,7 +331,7 @@ export async function updateContest(
     }
   });
 
-  return await getContest(id);
+  return getContest(id);
 }
 
 export async function deleteContest(id: string): Promise<void> {
@@ -499,7 +499,7 @@ export async function listParticipants(
 ): Promise<ContestParticipantResponse[]> {
   await findContestRow(contestId);
   const db = getDb();
-  return await db.select({
+  return db.select({
     user_id: contestParticipants.user_id,
     username: users.username,
     registered_at: contestParticipants.registered_at,

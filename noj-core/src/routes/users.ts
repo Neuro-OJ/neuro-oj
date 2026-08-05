@@ -3,7 +3,7 @@ import { authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { ValidationError } from "../lib/errors.ts";
 import {
-  getUserProfile,
+  getUserProfileAggregate,
   searchUsers,
   updateUserProfile,
 } from "../services/users.ts";
@@ -49,7 +49,7 @@ users.put("/me", authMiddleware, async (c) => {
  */
 users.get("/:id/profile", async (c) => {
   const userId = c.req.param("id") as string;
-  const profile = await getUserProfile(userId);
+  const profile = await getUserProfileAggregate(userId);
   // 追加 rank 字段：复用 rankings service 的 getMyRanking，确保排序逻辑一致
   const ranking = await getMyRanking(userId);
   return c.json({ data: { ...profile, rank: ranking?.rank ?? null } }, 200);

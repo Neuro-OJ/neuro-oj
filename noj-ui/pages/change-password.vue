@@ -118,23 +118,11 @@ const form = reactive({
     confirmPassword: "",
 })
 const loading = ref(false)
-const error = ref("")
 const showOldPassword = ref(false)
 const showNewPassword = ref(false)
 const showConfirmPassword = ref(false)
 
-let errorTimer: ReturnType<typeof setTimeout> | null = null
-
-function setError(msg: string) {
-    error.value = msg
-    if (errorTimer) clearTimeout(errorTimer)
-    errorTimer = setTimeout(clearError, 3000)
-}
-
-function clearError() {
-    error.value = ""
-    if (errorTimer) clearTimeout(errorTimer)
-}
+const { error, setError, clearError } = useFormError(3000)
 
 const fieldErrors = reactive({
     oldPassword: "",

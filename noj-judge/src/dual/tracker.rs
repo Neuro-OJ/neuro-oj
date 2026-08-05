@@ -132,9 +132,11 @@ impl InFlightTracker {
     pub fn next_deadline(&self) -> Option<Instant> {
         self.inflight.values().map(|e| e.deadline).min()
     }
+}
 
-    /// 是否有 in-flight 调用（单测使用；生产路径通过 `next_deadline` 判断）。
-    #[allow(dead_code)]
+#[cfg(test)]
+impl InFlightTracker {
+    /// 是否有 in-flight 调用（生产路径通过 `next_deadline` 判断）。
     pub fn is_empty(&self) -> bool {
         self.inflight.is_empty()
     }

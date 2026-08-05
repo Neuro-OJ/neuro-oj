@@ -30,10 +30,10 @@ export interface BanStatusResponse {
 }
 
 export function useBanStatus() {
-  const ipBanned = useState<boolean>('ban:ipBanned', () => false);
-  const userBanned = useState<boolean>('ban:userBanned', () => false);
-  const ipBanInfo = useState<IpBanInfo | null>('ban:ipBanInfo', () => null);
-  const userBanInfo = useState<UserBanInfo | null>('ban:userBanInfo', () => null);
+  const ipBanned = useState<boolean>('ban:ip-banned', () => false);
+  const userBanned = useState<boolean>('ban:user-banned', () => false);
+  const ipBanInfo = useState<IpBanInfo | null>('ban:ip-ban-info', () => null);
+  const userBanInfo = useState<UserBanInfo | null>('ban:user-ban-info', () => null);
   const authenticated = useState<boolean>('ban:authenticated', () => false);
   const user = useState<{ id: string; role: string } | null>('ban:user', () => null);
   const loading = useState<boolean>('ban:loading', () => true);
@@ -67,15 +67,12 @@ export function useBanStatus() {
     }
   }
 
+  // 仅暴露消费方实际使用的状态；authenticated/user/loading/error 为内部状态
   return {
     ipBanned,
     userBanned,
     ipBanInfo,
     userBanInfo,
-    authenticated,
-    user,
-    loading,
-    error,
     fetch,
   };
 }

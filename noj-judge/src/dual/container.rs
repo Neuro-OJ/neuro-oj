@@ -31,25 +31,18 @@ pub struct DualContainer {
 }
 
 impl DualContainer {
-    /// 创建并启动 Evaluator 容器（带支持包挂载路径）。
+    /// 创建并启动 Evaluator 容器。
     ///
     /// `network_enabled`：true 时以 bridge 模式联网，false 时保持无网（默认）。
     pub async fn create_evaluator(
         docker: &Docker,
         image: &str,
         memory_mb: u64,
-        support_pkg_mount: Option<&str>,
         network_enabled: bool,
     ) -> Result<Self> {
-        let id = create_container_with_security(
-            docker,
-            image,
-            memory_mb,
-            support_pkg_mount,
-            "evaluator",
-            network_enabled,
-        )
-        .await?;
+        let id =
+            create_container_with_security(docker, image, memory_mb, "evaluator", network_enabled)
+                .await?;
         info!("Evaluator 容器创建: {}", id);
         Ok(Self {
             docker: docker.clone(),
@@ -60,9 +53,8 @@ impl DualContainer {
 
     /// 在现有 DualContainer 上追加 Solution 容器。
     pub async fn create_solution(&mut self, image: &str, memory_mb: u64) -> Result<()> {
-        let id =
-            create_container_with_security(&self.docker, image, memory_mb, None, "solution", false)
-                .await?;
+        let id = create_container_with_security(&self.docker, image, memory_mb, "solution", false)
+            .await?;
         info!("Solution 容器创建: {}", id);
         self.solution_id = Some(id);
         Ok(())
@@ -108,12 +100,8 @@ impl Drop for DualContainer {
     }
 }
 
-/// 一个 exec 会话：返回 (stdout stream, stdin writer)。
+/// 一个 exec 会话：`output` 为 combined stdout/stderr 流，`input` 为 stdin writer。
 pub struct ExecSession {
-    #[allow(dead_code)]
-    pub exec_id: String,
-    #[allow(dead_code)]
-    pub container_id: String,
     /// combined stdout/stderr stream (LogOutput 区分)
     pub output: std::pin::Pin<
         Box<dyn futures_util::Stream<Item = Result<LogOutput, bollard::errors::Error>> + Send>,
@@ -155,8 +143,6 @@ pub async fn start_exec(
 
     match started {
         StartExecResults::Attached { output, input } => Ok(ExecSession {
-            exec_id: exec.id,
-            container_id: container_id.to_string(),
             output: Box::pin(output),
             input: Box::pin(input),
         }),
@@ -166,13 +152,10 @@ pub async fn start_exec(
     }
 }
 
-// ── 私有辅助 ───────────────────────────────────────────
-
 async fn create_container_with_security(
     docker: &Docker,
     image: &str,
     memory_mb: u64,
-    support_pkg_mount: Option<&str>,
     kind: &str,
     network_enabled: bool,
 ) -> Result<String> {
@@ -201,10 +184,6 @@ async fn create_container_with_security(
         .await
         .context("创建容器超时")?
         .context("创建容器失败")?;
-
-    // 支持包不通过挂载注入：在容器创建后由 dual/mod.rs 的
-    // inject_support_package_to_evaluator 用 tar copy 写入 /workspace。
-    let _ = support_pkg_mount; // 预留扩展位：当前实现未使用挂载方式
 
     timeout(
         Duration::from_secs(5),

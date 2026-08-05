@@ -38,7 +38,7 @@ export async function banlistMiddleware(
   const clientIp = getClientIp(c);
   if (clientIp === "unknown") {
     // 没解析到 IP（如本机直连）—— 放行
-    return await next();
+    return next();
   }
 
   // 方法限制：非写操作放行
@@ -46,12 +46,12 @@ export async function banlistMiddleware(
     c.req.method === "GET" || c.req.method === "HEAD" ||
     c.req.method === "OPTIONS"
   ) {
-    return await next();
+    return next();
   }
 
   // 白名单：写操作但路径豁免
   if (WHITELIST.includes(c.req.path)) {
-    return await next();
+    return next();
   }
 
   const ranges = await getBannedRanges();
@@ -62,5 +62,5 @@ export async function banlistMiddleware(
       { client_ip: clientIp },
     );
   }
-  return await next();
+  return next();
 }

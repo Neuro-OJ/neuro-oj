@@ -174,6 +174,23 @@ const showStreak = ref(false)
 const checkInLoading = ref(false)
 const checkInLoaded = ref(false)
 
+// 签到动画时序（加载恢复 vs 手动签到，两套不同节奏）
+const RESTORE_ANIM_DELAYS = { anim: 600, white: 200, text: 400, streak: 700 }
+const CHECKIN_ANIM_DELAYS = { anim: 600, white: 1500, text: 2200, streak: 2500 }
+
+function playCheckInAnim(delays: {
+  anim: number
+  white: number
+  text: number
+  streak: number
+}) {
+  checkInAnim.value = true
+  setTimeout(() => { checkInAnim.value = false }, delays.anim)
+  setTimeout(() => { fadeWhite.value = true }, delays.white)
+  setTimeout(() => { showText.value = true }, delays.text)
+  setTimeout(() => { showStreak.value = true }, delays.streak)
+}
+
 async function fetchTodayCheckIn() {
     if (!isLoggedIn.value) return
     try {
@@ -185,11 +202,7 @@ async function fetchTodayCheckIn() {
             checkedIn.value = res.data.checked_in
             streakCount.value = res.data.streak
             if (res.data.checked_in) {
-                checkInAnim.value = true
-                setTimeout(() => { checkInAnim.value = false }, 600)
-                setTimeout(() => { fadeWhite.value = true }, 200)
-                setTimeout(() => { showText.value = true }, 400)
-                setTimeout(() => { showStreak.value = true }, 700)
+                playCheckInAnim(RESTORE_ANIM_DELAYS)
             }
         }
     } catch {
@@ -209,11 +222,7 @@ async function handleCheckIn() {
         if (res.data) {
             checkedIn.value = res.data.checked_in
             streakCount.value = res.data.streak
-            checkInAnim.value = true
-            setTimeout(() => { checkInAnim.value = false }, 600)
-            setTimeout(() => { fadeWhite.value = true }, 1500)
-            setTimeout(() => { showText.value = true }, 2200)
-            setTimeout(() => { showStreak.value = true }, 2500)
+            playCheckInAnim(CHECKIN_ANIM_DELAYS)
         }
     } catch {
         // silent

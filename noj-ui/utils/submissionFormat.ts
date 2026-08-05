@@ -114,6 +114,24 @@ export function getStatusLabel(
 }
 
 /**
+ * 难度标签（中文展示）。
+ */
+export const difficultyLabels: Record<string, string> = {
+  easy: '简单',
+  medium: '中等',
+  hard: '困难',
+};
+
+/**
+ * 难度徽章配色（与 DifficultyBadge 组件语义一致）。
+ */
+export const difficultyBadgeColors: Record<string, string> = {
+  easy: 'bg-green-100 text-green-700',
+  medium: 'bg-yellow-100 text-yellow-700',
+  hard: 'bg-red-100 text-red-700',
+};
+
+/**
  * 格式化得分（API 返回 ×100 的整数值）。
  */
 export function formatScore(raw: number | undefined | null): string {

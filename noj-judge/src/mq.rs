@@ -4,6 +4,9 @@ use tracing::{error, info, warn};
 
 use crate::types::{JudgeResult, JudgeTask};
 
+/// BRPOP 阻塞等待超时（秒）。
+const BRPOP_TIMEOUT_SECS: f64 = 5.0;
+
 /// 从 Redis 队列中拉取评测任务。
 ///
 /// 使用 BRPOP 阻塞等待，超时 5 秒后返回 None。
@@ -13,8 +16,10 @@ pub async fn pull_task(
     queue: &str,
 ) -> Result<Option<JudgeTask>> {
     // BRPOP 返回 (key, value) tuple，超时单位是秒
-    let result: Option<(String, String)> =
-        conn.brpop(queue, 5.0).await.context("BRPOP 拉取任务失败")?;
+    let result: Option<(String, String)> = conn
+        .brpop(queue, BRPOP_TIMEOUT_SECS)
+        .await
+        .context("BRPOP 拉取任务失败")?;
 
     match result {
         Some((_key, value)) => Ok(parse_task_message(&value)),
@@ -33,24 +38,6 @@ fn parse_task_message(value: &str) -> Option<JudgeTask> {
             None
         }
     }
-}
-
-/// 将尚未开始执行的任务重新放回队列尾部，保持 FIFO 顺序。
-#[allow(dead_code)]
-pub async fn requeue_task(
-    redis_client: &redis::Client,
-    queue: &str,
-    task: &JudgeTask,
-) -> Result<()> {
-    let json = serde_json::to_string(task).context("序列化 JudgeTask 失败")?;
-    let mut conn = redis_client
-        .get_multiplexed_async_connection()
-        .await
-        .context("创建 requeue Redis 连接失败")?;
-    conn.rpush::<&str, &str, usize>(queue, &json)
-        .await
-        .context("RPUSH 回队失败")?;
-    Ok(())
 }
 
 /// 带重试的结果推送。

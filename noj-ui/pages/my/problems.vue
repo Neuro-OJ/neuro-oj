@@ -9,9 +9,7 @@ const { isLoggedIn, loading, user } = useAuth()
 const router = useRouter()
 const { api } = useApi()
 
-watch(loading, (val) => {
-  if (!val && !isLoggedIn.value) router.replace("/login")
-}, { immediate: true })
+useRequireLogin()
 
 interface ProblemItem {
   id: string

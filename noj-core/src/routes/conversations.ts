@@ -1,9 +1,10 @@
 import { Hono } from "hono";
-import { streamSSE } from "hono/streaming";
 import { authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { BadRequestError, ForbiddenError } from "../lib/errors.ts";
+import { parsePagination } from "../lib/pagination.ts";
 import { Channels, onEvent } from "../lib/event-bus.ts";
+import { createSseStream } from "../lib/sse-stream.ts";
 import {
   deleteMessage,
   findOrCreateConversation,
@@ -36,17 +37,7 @@ router.use("*", async (_c, next) => {
  */
 router.get("/", async (c) => {
   const userId = c.get("userId");
-  const pageRaw = c.req.query("page");
-  const perPageRaw = c.req.query("per_page");
-  const page = pageRaw === undefined ? 1 : Number(pageRaw);
-  if (!Number.isInteger(page) || page < 1) {
-    throw new BadRequestError("page 必须为正整数");
-  }
-  let perPage = perPageRaw === undefined ? 20 : Number(perPageRaw);
-  if (!Number.isInteger(perPage) || perPage < 1) {
-    throw new BadRequestError("per_page 必须为正整数");
-  }
-  if (perPage > 100) perPage = 100;
+  const { page, perPage } = parsePagination(c);
 
   const result = await listConversations(userId, page, perPage);
   return c.json(result);
@@ -90,18 +81,7 @@ router.get("/unread-count", async (c) => {
 router.get("/:id/messages", async (c) => {
   const userId = c.get("userId");
   const conversationId = c.req.param("id");
-
-  const pageRaw = c.req.query("page");
-  const perPageRaw = c.req.query("per_page");
-  const page = pageRaw === undefined ? 1 : Number(pageRaw);
-  if (!Number.isInteger(page) || page < 1) {
-    throw new BadRequestError("page 必须为正整数");
-  }
-  let perPage = perPageRaw === undefined ? 50 : Number(perPageRaw);
-  if (!Number.isInteger(perPage) || perPage < 1) {
-    throw new BadRequestError("per_page 必须为正整数");
-  }
-  if (perPage > 100) perPage = 100;
+  const { page, perPage } = parsePagination(c, { defaultPerPage: 50 });
 
   const result = await listMessages(userId, conversationId, page, perPage);
   return c.json(result);
@@ -177,52 +157,33 @@ router.delete("/:id/messages/:messageId", async (c) => {
  */
 router.get("/events", (c) => {
   const userId = c.get("userId") as string;
-  return streamSSE(c, async (stream) => {
-    let streamClosed = false;
-    let resolveAbort: (() => void) | null = null;
+  // 私信端点不启用兜底超时：消息订阅为常驻连接（与原实现一致）
+  return createSseStream(
+    c,
+    async ({ stream, closed, close, onUnsubscribe }) => {
+      onUnsubscribe(
+        onEvent(
+          Channels.user(userId),
+          (_channel, message) => {
+            if (closed) return;
+            stream.writeSSE({
+              event: "message:new",
+              data: message,
+            }).catch(() => {
+              close();
+            });
+          },
+        ),
+      );
 
-    function closeStream() {
-      if (streamClosed) return;
-      streamClosed = true;
-      clearInterval(keepAlive);
-      unsub();
-      if (resolveAbort) resolveAbort();
-    }
-
-    const unsub = onEvent(
-      Channels.user(userId),
-      (_channel, message) => {
-        if (streamClosed) return;
-        stream.writeSSE({
-          event: "message:new",
-          data: message,
-        }).catch(() => {
-          closeStream();
-        });
-      },
-    );
-
-    // 30s 心跳保持连接
-    const keepAlive = setInterval(() => {
-      if (streamClosed) return;
-      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
-        closeStream();
+      // 发送初始化事件，触发代理 flush 响应头
+      await stream.writeSSE({
+        event: "connected",
+        data: JSON.stringify({ status: "connected" }),
       });
-    }, 30_000);
-
-    // 发送初始化事件，触发代理 flush 响应头
-    await stream.writeSSE({
-      event: "connected",
-      data: JSON.stringify({ status: "connected" }),
-    });
-
-    await new Promise<void>((resolve) => {
-      resolveAbort = resolve;
-      stream.onAbort(() => {
-        closeStream();
-      });
-    });
-  });
+    },
+    { safetyTimeoutMs: 0 },
+  );
 });
 
 export default router;
