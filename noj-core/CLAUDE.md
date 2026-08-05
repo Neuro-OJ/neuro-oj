@@ -111,13 +111,11 @@ noj-core/
 │   │   ├── migrate.ts     # 迁移执行器（绝对路径解析，不依赖 CWD）
 │   │   └── schema.ts      # Drizzle 表定义（38 张表）
 │   ├── middleware/         # 认证中间件（auth / banlist / rateLimit / searchRateLimit / request-context）
-│   ├── mq/                # Redis 消息队列（Producer + Consumer + RPC）
+│   ├── mq/                # Redis 消息队列（Producer + Consumer）
 │   │   ├── connection.ts   #   连接管理（共享 + 消费者 + Pub/Sub）
 │   │   ├── base-consumer.ts#   BRPOP 消费基类
 │   │   ├── consumer.ts     #   评测结果消费者（BRPOP 阻塞）
-│   │   ├── started_consumer.ts # 评测启动事件消费者
-│   │   ├── producer.ts     #   评测任务生产者（LPUSH）
-│   │   └── judge-rpc.ts   #   Judge RPC 处理器（镜像白名单等）
+│   │   └── producer.ts     #   评测任务生产者（LPUSH）
 │   ├── lib/               # 工具函数（JWT、密码、错误类、请求解析、日志、存储、限流、RBAC 等）
 │   │   ├── email.ts            # 邮件发送抽象入口（动态选择 Provider）
 │   │   ├── email-providers/    # 邮件 Provider 实现（types / mock / aliyun / tencent）
@@ -317,20 +315,17 @@ docker compose down     # 停止
 
 ## Redis MQ 约定
 
-| 队列                                   | 方向                 | 说明                    |
-| -------------------------------------- | -------------------- | ----------------------- |
-| `noj:judge:queue`                      | noj-core → noj-judge | 评测任务（LPUSH/BRPOP） |
-| `noj:judge:results`                    | noj-judge → noj-core | 评测结果（BRPOP/LPUSH） |
-| `noj:rpc:v1:judge:core`                | judge → noj-core     | Judge RPC 请求（BRPOP） |
-| `noj:rpc:v1:judge:{judge_id}:response` | noj-core → judge     | Judge RPC 响应（LPUSH） |
+| 队列                | 方向                 | 说明                    |
+| ------------------- | -------------------- | ----------------------- |
+| `noj:judge:queue`   | noj-core → noj-judge | 评测任务（LPUSH/BRPOP） |
+| `noj:judge:results` | noj-judge → noj-core | 评测结果（BRPOP/LPUSH） |
 
 **Redis 连接设计**：
 
 - `getRedis()` — 共享连接，用于 LPUSH
   评测任务（`enableOfflineQueue: false`，重试 5 次后停止）
 - `createConsumerRedis()` — 独立连接，用于 BRPOP
-  阻塞等待结果（`lazyConnect: true`，指数退避永不停止），也用于 Judge RPC
-  handler
+  阻塞等待结果（`lazyConnect: true`，指数退避永不停止）
 - `getRedis()` 在 `connect` 事件中清除错误状态，使健康检查可恢复
 
 **Producer 行为**：
@@ -346,15 +341,6 @@ docker compose down     # 停止
 - 数据库错误 → 记录日志后继续
 - 后台自动重连：指数退避 1s→2s→4s→…→30s 封顶
 
-**Judge RPC Handler 行为**：
-
-- 启动时创建独立 Redis 连接（`createConsumerRedis()`），BRPOP 监听
-  `noj:rpc:v1:judge:core`
-- 收到 `get_image_allowlist` 请求 → 查询 `judge_images` 表 → 返回镜像列表
-- 请求缺少 `id` 或 `method` → 静默跳过
-- 未知 method → 返回 `{ error: "unknown method: xxx" }`
-- Handler 错误 → 记录日志并继续下一轮循环
-
 ## 启动顺序（main.ts）
 
 1. **JWT_SECRET 强度校验** — ≥32 字符，不足则拒绝启动
@@ -363,9 +349,7 @@ docker compose down     # 停止
 4. **邮件 Provider 配置检查** — 非致命：配置缺失时降级到 mock 并 console.warn
 5. **连接 Redis** — 失败则 degraded 模式（HTTP 仍启动，评测功能不可用）
 6. **启动评测结果消费者** — 后台自动重连（指数退避 1s→2s→4s→…→30s）
-7. **启动 Judge RPC 处理器** — 使用独立连接监听 `noj:rpc:v1:judge:core`，响应
-   `get_image_allowlist` 等请求
-8. **启动 HTTP 服务**
+7. **启动 HTTP 服务**
 
 ## 数据库 Schema 设计
 

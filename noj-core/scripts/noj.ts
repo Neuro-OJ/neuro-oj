@@ -28,6 +28,7 @@ import {
   seedJudgeImages,
 } from "../src/services/seed-system.ts";
 import { importProblemBundle } from "../src/services/problem-bundle.ts";
+import { ROOT_USER_ID } from "../src/lib/constants.ts";
 
 const PROJECT_ROOT = join(import.meta.dirname ?? ".", "..");
 const SRC_DIR = join(PROJECT_ROOT, "data", "problems-src");
@@ -103,7 +104,7 @@ async function importProblemPackages(dir: string): Promise<void> {
       const data = await Deno.readFile(join(dir, entry.name));
       await importProblemBundle(
         { name: entry.name, data },
-        { userId: "0", userRole: "admin" },
+        { userId: ROOT_USER_ID, userRole: "admin" },
       );
       console.log(`  已导入: ${entry.name}`);
       imported++;

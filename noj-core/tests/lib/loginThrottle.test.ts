@@ -9,7 +9,7 @@
  */
 
 import { assert, assertEquals } from "jsr:@std/assert@^1";
-import { checkRateLimit } from "../../src/lib/rateLimit.ts";
+import { checkRateLimit } from "../../src/lib/rate-limit.ts";
 import {
   _resetLoginBackoffForTest,
   applyLoginBackoff,
@@ -167,7 +167,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const { rateLimitHeaders } = await import("../../src/lib/rateLimit.ts");
+    const { rateLimitHeaders } = await import("../../src/lib/rate-limit.ts");
     const headers = rateLimitHeaders(
       { windowSec: 30, max: 10 },
       { allowed: false, remaining: 0, resetAt: 1700000000, retryAfter: 25 },

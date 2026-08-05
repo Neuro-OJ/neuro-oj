@@ -177,9 +177,7 @@ neuro-oj/
 │   │   ├── mq/
 │   │   │   ├── connection.ts  # Redis 连接（shared + consumer 双连接）
 │   │   │   ├── consumer.ts    # 评测结果消费者
-│   │   │   ├── producer.ts    # 评测任务生产者
-│   │   │   ├── started_consumer.ts # 评测启动事件消费者
-│   │   │   └── judge-rpc.ts   # Judge RPC 处理
+│   │   │   └── producer.ts    # 评测任务生产者
 │   │   ├── lib/
 │   │   │   ├── errors.ts      # AppError 继承体系
 │   │   │   ├── jwt.ts         # JWT 签发/验证（HS256, iss/aud 校验）
@@ -221,7 +219,7 @@ neuro-oj/
 │   ├── app.vue                # 根组件 + CSS 变量
 │   ├── pages/                 # 文件路由：index / login / register / problems / submissions / ranking / queue / contests / community / messages / search / settings / users / admin / editor 等
 │   ├── components/            # 按功能分目录：layout/（Navbar、FooterBar、Sidebar）/ editor/（MonacoEditor、ProblemEditor）/ feature/（ProblemFilterBar、CheckInCard、SearchPalette、社区组件）/ shared/（MarkdownRenderer、PaginationNav）/ ui/（StatusBadge、AsyncContent 等）/ admin/ / auth/ / card/ / form/
-│   ├── composables/           # useApi（统一 API 调用层）/ useAuth / usePolling / useToast / useDialog / useProblemFilters / use-submissions / useCommunity / useContests / useMessages / useSearch / useRankings / useEventSource / useAdminList 等
+│   ├── composables/           # useApi（统一 API 调用层）/ useAuth / useToast / useDialog / useProblemFilters / use-submissions / useCommunity / useContests / useMessages / useSearch / useRankings / useEventSource / useAdminList 等
 │   ├── layouts/               # default / auth / admin
 │   ├── server/
 │   │   ├── api/[...slug].ts   # Nitro 代理（拦截登录 + JWT 注入）

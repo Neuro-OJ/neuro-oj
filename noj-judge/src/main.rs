@@ -17,21 +17,10 @@ use tracing::{error, info};
 
 use crate::config::Config;
 
-/// 将 stdout 和 stderr 合并为单一输出字符串，中间以分隔符连接。
-///
-/// stderr 为空时直接返回 stdout，避免添加不必要的分隔符。
-///
-/// 实现在 lib.rs（单源，避免与集成测试的入径不同步）。
-pub use noj_judge::merge_output;
+// merge_output 实现在 lib.rs；此处 use 使 bin 内的 `crate::merge_output` 路径可解析
+use noj_judge::merge_output;
 
 /// 等待所有 in-flight 任务完成（带 30s 超时兜底）。
-///
-/// 委托给 `drain::drain_tasks`，详见该模块文档。
-async fn drain_tasks(tasks: &mut FuturesUnordered<tokio::task::JoinHandle<()>>) {
-    drain::drain_tasks(tasks).await;
-}
-
-/// noj-judge 入口点。
 ///
 /// 初始化 Tokio 运行时，连接 Redis 和 Docker，进入主循环阻塞拉取评测任务。
 fn main() -> Result<()> {
@@ -69,7 +58,6 @@ fn main() -> Result<()> {
             .context("Docker daemon PING 失败（请确保 Docker 在运行中）")?;
         info!("Docker 连接成功");
 
-        let _redis_url = config.redis_url.clone();
         let result_queue = config.result_queue.clone();
         let work_dir = config.work_dir.clone();
 
@@ -96,7 +84,7 @@ fn main() -> Result<()> {
             tokio::select! {
                 biased;
                 _ = &mut shutdown_rx => {
-                    drain_tasks(&mut tasks).await;
+                    drain::drain_tasks(&mut tasks).await;
                     break;
                 }
                 task_result = mq::pull_task(&mut redis_conn, &config.judge_queue) => {
@@ -121,16 +109,29 @@ fn main() -> Result<()> {
                     let cache_dir = cache_dir.clone();
 
                     let handle = tokio::spawn(async move {
-                        let work_dir_path = std::path::Path::new(&work_dir);
                         let fallback_dir = std::path::Path::new(&work_dir).join("fallback-results");
 
                         // 统一使用双容器模式（Evaluator + Solution）
-                        let docker = Docker::connect_with_local_defaults()
-                            .expect("Docker 连接失败");
+                        let docker = match Docker::connect_with_local_defaults() {
+                            Ok(d) => d,
+                            Err(e) => {
+                                error!(submission_id = %task.submission_id, error = %e, "连接 Docker daemon 失败");
+                                let result = types::JudgeResult::error(
+                                    &task.submission_id,
+                                    task.rejudge_seq,
+                                );
+                                mq::push_result_with_retry(
+                                    &redis_client,
+                                    &result_queue,
+                                    &result,
+                                    &fallback_dir,
+                                ).await;
+                                return;
+                            }
+                        };
                         let result = match judge::runner::evaluate(
                             docker,
                             &task,
-                            work_dir_path,
                             download_timeout,
                             cache_dir.clone(),
                             cache_max_items,
@@ -138,8 +139,8 @@ fn main() -> Result<()> {
                         ).await {
                             Ok(r) => r,
                             Err(e) => {
-                                error!("双容器评测失败: {}: {:#}", task.submission_id, e);
-                                types::JudgeResult::error(&task.submission_id, &e.to_string(), task.rejudge_seq)
+                                error!(submission_id = %task.submission_id, error = %e, "双容器评测失败");
+                                types::JudgeResult::error(&task.submission_id, task.rejudge_seq)
                             }
                         };
 

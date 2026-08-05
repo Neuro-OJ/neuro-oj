@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { extractApiError } from "~/utils/apiError"
-import type {
-  SubmissionListItem,
-} from "~/composables/use-submissions"
+import type { SubmissionListItem } from "~/utils/submissionFormat"
 import {
   getStatusColor,
   getStatusLabel,
@@ -10,7 +8,8 @@ import {
   formatTime,
   formatMemory,
   getLanguageLabel,
-} from "~/composables/use-submissions"
+  formatDateTime,
+} from "~/utils/submissionFormat"
 
 definePageMeta({
   ssr: false,
@@ -110,18 +109,10 @@ function clearFilters() {
   loadSubmissions(1)
 }
 
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
-
-// 根据提交状态判断是否有评测结果可展示
-function hasResult(item: SubmissionListItem): boolean {
+// 根据提交状态判断是否有评测结果可展示（类型守卫，收窄后模板可直接访问 result 字段）
+function hasResult(
+  item: SubmissionListItem,
+): item is SubmissionListItem & { result: NonNullable<SubmissionListItem['result']> } {
   return !!(item.result && item.result.status)
 }
 </script>
@@ -238,15 +229,15 @@ function hasResult(item: SubmissionListItem): boolean {
                 </span>
               </td>
               <td class="px-3.5 py-3 text-right text-13px tabular-nums text-text">
-                <template v-if="hasResult(sub)">{{ formatScore(sub.result!.score) }}</template>
+                <template v-if="hasResult(sub)">{{ formatScore(sub.result.score) }}</template>
                 <template v-else>--</template>
               </td>
               <td class="px-3.5 py-3 text-right text-13px tabular-nums text-text">
-                <template v-if="hasResult(sub)">{{ formatTime(sub.result!.time_ms) }}</template>
+                <template v-if="hasResult(sub)">{{ formatTime(sub.result.time_ms) }}</template>
                 <template v-else>--</template>
               </td>
               <td class="px-3.5 py-3 text-right text-13px tabular-nums text-text">
-                <template v-if="hasResult(sub)">{{ formatMemory(sub.result!.memory_kb) }}</template>
+                <template v-if="hasResult(sub)">{{ formatMemory(sub.result.memory_kb) }}</template>
                 <template v-else>--</template>
               </td>
               <td class="px-3.5 py-3 text-13px text-text">{{ formatDateTime(sub.created_at) }}</td>

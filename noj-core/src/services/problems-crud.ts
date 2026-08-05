@@ -37,6 +37,7 @@ import { syncProblemCategories } from "./problems-categories.ts";
 import { getProblem } from "./problems-list.ts";
 import { assertPermission } from "../lib/permissions.ts";
 import type { Context } from "hono";
+import { ROOT_USER_ID } from "../lib/constants.ts";
 
 /**
  * 创建题目。
@@ -111,7 +112,7 @@ export async function createProblem(
   }
 
   // 确定所有者
-  const ownerId = userId ?? "0";
+  const ownerId = userId ?? ROOT_USER_ID;
 
   // 确定题号（同一 type 内自增，并发冲突时重试）
   // 仅 admin 可指定 number；普通用户强制 MAX+1

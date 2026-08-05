@@ -1,7 +1,7 @@
 /**
  * 系统设置注册表（issue #99）。
  *
- * 定义 35 个 DB-backed 设置项的元数据（含 boolean/string/text/integer 四种类型）。
+ * 定义 54 个 DB-backed 设置项的元数据（含 boolean/string/text/integer 四种类型）。
  * 启动期 validateRegistry() 校验注册表合法性；
  * service 层 updateSetting/getSetting 依赖本表做严格 type 校验。
  *

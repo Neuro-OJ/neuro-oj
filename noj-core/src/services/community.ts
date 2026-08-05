@@ -50,6 +50,7 @@ import type {
   CommunityPostStatus,
   CommunityPostType,
 } from "../types/community.ts";
+import { ROOT_USER_ID } from "../lib/constants.ts";
 
 function now(): string {
   return new Date().toISOString();
@@ -153,12 +154,16 @@ export async function resolveProblemId(
   reference: string,
 ): Promise<string | null> {
   const db = getDb();
+  // 按 problems.id 主键查找（UUID 或旧 seed 的数字 id）
+  const findByPk = async (id: string): Promise<string | null> => {
+    const row = await db.select({ id: problems.id }).from(problems)
+      .where(eq(problems.id, id)).limit(1);
+    return row[0]?.id ?? null;
+  };
   const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (uuidPattern.test(reference)) {
-    const row = await db.select({ id: problems.id }).from(problems)
-      .where(eq(problems.id, reference)).limit(1);
-    return row[0]?.id ?? null;
+    return findByPk(reference);
   }
   const match = reference.match(/^([UuPp])(\d+)$/);
   if (match) {
@@ -170,9 +175,8 @@ export async function resolveProblemId(
   }
   // 纯数字：先按 PK 查找（旧 seed 数据 1001/1002/1003 以数字为 id），再按 type=P+number 兜底
   if (/^\d+$/.test(reference)) {
-    const row = await db.select({ id: problems.id }).from(problems)
-      .where(eq(problems.id, reference)).limit(1);
-    if (row[0]) return row[0].id;
+    const byPk = await findByPk(reference);
+    if (byPk) return byPk;
     const fallback = await db.select({ id: problems.id }).from(problems)
       .where(and(
         eq(problems.type, "P"),
@@ -180,9 +184,8 @@ export async function resolveProblemId(
       )).limit(1);
     return fallback[0]?.id ?? null;
   }
-  const row = await db.select({ id: problems.id }).from(problems)
-    .where(eq(problems.id, reference)).limit(1);
-  return row[0]?.id ?? null;
+  // 兜底：其余格式按 PK 尝试
+  return findByPk(reference);
 }
 
 async function ensureSolutionAccepted(
@@ -1083,7 +1086,7 @@ export async function toggleCommentLike(userId: string, commentId: string) {
 
 export async function toggleFollow(followerId: string, followeeId: string) {
   assertCommunityEnabled("follows_enabled");
-  if (followerId === followeeId || followeeId === "0") {
+  if (followerId === followeeId || followeeId === ROOT_USER_ID) {
     throw new ValidationError("不能关注该用户");
   }
   const db = getDb();

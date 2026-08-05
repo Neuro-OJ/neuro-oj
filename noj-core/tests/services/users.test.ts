@@ -5,8 +5,8 @@ import { users } from "../../src/db/schema.ts";
 import { NotFoundError, ValidationError } from "../../src/lib/errors.ts";
 import { eq } from "drizzle-orm";
 
-const hasDb = !!Deno.env.get("DATABASE_URL");
-const skip = !hasDb;
+const hasRealPg = !!Deno.env.get("DATABASE_URL");
+const skip = !hasRealPg;
 
 const ts = Date.now();
 const TEST_USER_ID = `tst-u-${ts}`;

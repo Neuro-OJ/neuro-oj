@@ -20,6 +20,7 @@ import {
 } from "../db/schema.ts";
 import { hashPassword } from "../lib/password.ts";
 import { ensureSystemRoles } from "./seed-rbac.ts";
+import { ROOT_USER_ID } from "../lib/constants.ts";
 
 /**
  * 为管理员用户写入 RBAC 关联（issue #186）。
@@ -260,7 +261,7 @@ export async function ensureBootstrapAdmin(): Promise<void> {
   const [adminCountRow] = await db
     .select({ count: sql<number>`count(*)` })
     .from(users)
-    .where(and(eq(users.role, "admin"), not(eq(users.id, "0"))));
+    .where(and(eq(users.role, "admin"), not(eq(users.id, ROOT_USER_ID))));
   const adminCount = Number(adminCountRow?.count ?? 0);
   if (adminCount > 0) {
     console.log("  已存在可登录管理员，跳过引导管理员创建");

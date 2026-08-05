@@ -10,12 +10,13 @@ import { and, eq, gte, type SQL, sql } from "drizzle-orm";
 import { evaluationResults, submissions } from "../db/schema.ts";
 import { getDb } from "../db/connection.ts";
 import type { TodayStats } from "./submissions-types.ts";
+import { FULL_SCORE } from "../lib/constants.ts";
 
 /**
  * 获取全站历史累计提交统计（不受时间范围限制）。
  *
  * - total：全站 submission 总数
- * - full_score：score >= 10000 的提交数
+ * - full_score：score >= FULL_SCORE 的提交数
  * - not_full_score：其余
  */
 export async function getTotalStats(): Promise<TodayStats> {
@@ -26,7 +27,7 @@ export async function getTotalStats(): Promise<TodayStats> {
       total: sql<number>`count(*)::int`,
       full_score: sql<
         number
-      >`count(*) filter (where ${evaluationResults.score} >= 10000)::int`,
+      >`count(*) filter (where ${evaluationResults.score} >= ${FULL_SCORE})::int`,
     })
     .from(submissions)
     .leftJoin(
@@ -49,7 +50,7 @@ export async function getTotalStats(): Promise<TodayStats> {
  * 获取今日提交统计（可选按 userId 过滤）。
  *
  * - total：今日（UTC 日期）提交总数
- * - full_score：今日 score >= 10000 的提交数
+ * - full_score：今日 score >= FULL_SCORE 的提交数
  * - not_full_score：今日其余
  */
 export async function getTodayStats(userId?: string): Promise<TodayStats> {
@@ -64,7 +65,7 @@ export async function getTodayStats(userId?: string): Promise<TodayStats> {
       total: sql<number>`count(*)::int`,
       full_score: sql<
         number
-      >`count(*) filter (where ${evaluationResults.score} >= 10000)::int`,
+      >`count(*) filter (where ${evaluationResults.score} >= ${FULL_SCORE})::int`,
     })
     .from(submissions)
     .leftJoin(

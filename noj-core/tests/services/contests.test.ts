@@ -134,7 +134,7 @@ Deno.test({
           { problem_id: problemA, label: "A", sort_order: 0 },
           { problem_id: problemB, label: "B", sort_order: 1 },
         ],
-      }, creatorId);
+      });
       assertEquals(updated.title, "已更新竞赛");
       assertEquals(updated.has_password, false);
       assertEquals(updated.problem_count, 2);

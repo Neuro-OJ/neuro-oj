@@ -1,4 +1,7 @@
 import { Hono } from "hono";
+import { eq } from "drizzle-orm";
+import { getDb } from "../db/connection.ts";
+import { users } from "../db/schema.ts";
 import {
   type AuthEnv,
   authMiddleware,
@@ -21,10 +24,7 @@ import { parseJsonBody } from "../lib/request.ts";
 import { signToken, verifyToken } from "../lib/jwt.ts";
 import { remainingTtlFromExp, revokeJti } from "../lib/revokedTokens.ts";
 import { getSetting } from "../services/system-settings.ts";
-import { eq } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
-import { users } from "../db/schema.ts";
-import { getClientIp } from "../lib/rateLimitEnv.ts";
+import { getClientIp } from "../lib/rate-limit-env.ts";
 import { getBannedIpDetail } from "../services/banlist.ts";
 import {
   applyLoginBackoff,
@@ -38,7 +38,7 @@ import {
   LOGIN_LIMITS,
   loginIpRateLimit,
   throwRateLimited,
-} from "../middleware/rateLimit.ts";
+} from "../middleware/login-rate-limit.ts";
 import type {
   ChangePasswordInput,
   ForgotPasswordInput,
@@ -46,6 +46,7 @@ import type {
   RegisterInput,
   ResetPasswordInput,
 } from "../types/auth.ts";
+import { SECONDS_PER_DAY } from "../lib/constants.ts";
 
 // change-password 端点的限流命名空间（独立于登录端点）
 // 失败计数 / 锁定 / 退避均使用此前缀，避免改密失败反锁 /login（issue #75 评审 H4）
@@ -112,6 +113,36 @@ auth.post("/register", async (c) => {
  * 3. 失败退避：连续失败每次 +15s 等待（内存 Map）
  * 4. 失败锁定：连续 10 次失败 → 锁 1 小时
  */
+
+/** 执行账号维度限流三步检查（限流 + 退避 + 锁定）。
+ * namespace 区分登录（默认）与改密（PWCHANGE_NAMESPACE）。 */
+async function enforceAccountRateLimit(
+  account: string,
+  namespace?: string,
+): Promise<void> {
+  const accResult = await checkLoginAccountRateLimit(account, namespace);
+  if (!accResult.allowed) {
+    throwRateLimited(LOGIN_LIMITS.acc, accResult);
+  }
+
+  // 内存退避：未到 deadline 则 sleep
+  await applyLoginBackoff(account, namespace);
+
+  // 账号锁定检查
+  if (await isLoginLocked(account, namespace)) {
+    throw new UnauthorizedError("登录尝试过多，账号已临时锁定");
+  }
+}
+
+/** 记录一次认证失败（失败计数 + 退避），不阻塞响应。 */
+async function recordAuthFailure(
+  account: string,
+  namespace?: string,
+): Promise<void> {
+  const failCount = await recordLoginFailure(account, namespace);
+  await recordLoginBackoff(account, failCount, namespace);
+}
+
 auth.post("/login", loginIpRateLimit(), async (c) => {
   const body = await parseJsonBody<LoginInput>(c);
 
@@ -120,21 +151,10 @@ auth.post("/login", loginIpRateLimit(), async (c) => {
     throw new ValidationError("缺少必填字段：login, password");
   }
 
-  // 1. 账号维度限流
-  const accResult = await checkLoginAccountRateLimit(body.login);
-  if (!accResult.allowed) {
-    throwRateLimited(LOGIN_LIMITS.acc, accResult);
-  }
+  // 1. 账号维度限流（限流 + 退避 + 锁定）
+  await enforceAccountRateLimit(body.login);
 
-  // 2. 内存退避：未到 deadline 则 sleep
-  await applyLoginBackoff(body.login);
-
-  // 3. 账号锁定检查
-  if (await isLoginLocked(body.login)) {
-    throw new UnauthorizedError("登录尝试过多，账号已临时锁定");
-  }
-
-  // 4. 验证
+  // 2. 验证
   try {
     const clientIp = getClientIp(c);
     const result = await loginUser(body, clientIp);
@@ -142,9 +162,8 @@ auth.post("/login", loginIpRateLimit(), async (c) => {
     return c.json({ data: result }, 200);
   } catch (err) {
     if (err instanceof UnauthorizedError) {
-      // 5. 失败：记录（不阻塞响应）
-      const failCount = await recordLoginFailure(body.login);
-      await recordLoginBackoff(body.login, failCount);
+      // 失败：记录（不阻塞响应）
+      await recordAuthFailure(body.login);
     }
     throw err;
   }
@@ -202,18 +221,7 @@ auth.post(
     const userId = c.get("userId") as string;
 
     // 账号维度限流：按 userId 防止暴力试老密码（独立 namespace）
-    const accResult = await checkLoginAccountRateLimit(userId, "pwchange");
-    if (!accResult.allowed) {
-      throwRateLimited(LOGIN_LIMITS.acc, accResult);
-    }
-
-    // 内存退避（独立 namespace）
-    await applyLoginBackoff(userId, PWCHANGE_NAMESPACE);
-
-    // 账号锁定检查（独立 namespace）
-    if (await isLoginLocked(userId, PWCHANGE_NAMESPACE)) {
-      throw new UnauthorizedError("尝试次数过多，账号已临时锁定");
-    }
+    await enforceAccountRateLimit(userId, PWCHANGE_NAMESPACE);
 
     try {
       const user = await changePassword(
@@ -232,7 +240,7 @@ auth.post(
           // 直接用 24h 上限作为保守 TTL；jose 验证后 token 已解密在内存
           // 但此处拿不到原 exp，所以退化为 jwt_expires_in 默认 24h
           undefined,
-        ) || 24 * 60 * 60; // 24h 兜底
+        ) || SECONDS_PER_DAY; // 24h 兜底
         await revokeJti(oldJti, ttl);
       }
 
@@ -246,8 +254,7 @@ auth.post(
       return c.json({ data: { user, token: newToken } }, 200);
     } catch (err) {
       if (err instanceof UnauthorizedError) {
-        const failCount = await recordLoginFailure(userId, PWCHANGE_NAMESPACE);
-        await recordLoginBackoff(userId, failCount, PWCHANGE_NAMESPACE);
+        await recordAuthFailure(userId, PWCHANGE_NAMESPACE);
       }
       throw err;
     }
@@ -270,7 +277,7 @@ auth.post("/logout", authMiddleware, async (c) => {
   if (jti) {
     // TTL 取保守 24h（与 jwt_expires_in 默认一致）；
     // 精确的剩余 TTL 需要重新解析 token exp，复杂度高于收益。
-    await revokeJti(jti, 24 * 60 * 60);
+    await revokeJti(jti, SECONDS_PER_DAY);
   }
   return c.json({ data: { ok: true } }, 200);
 });

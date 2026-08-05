@@ -57,7 +57,7 @@ watch(isLoggedIn, (val) => {
   if (val) loadUsers()
 }, { immediate: true })
 
-// ─── 角色管理（RBAC PATCH ── role_ids）───────
+// ─── 角色管理（RBAC PATCH：role_ids）───────
 interface Role {
   id: string
   name: string

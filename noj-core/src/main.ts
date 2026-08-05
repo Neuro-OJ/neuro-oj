@@ -1,9 +1,7 @@
 import { createApp } from "./app.ts";
 import { runMigrations } from "./db/migrate.ts";
-import { connectRedis, createConsumerRedis } from "./mq/connection.ts";
+import { connectRedis } from "./mq/connection.ts";
 import { startResultConsumerWithRetry } from "./mq/consumer.ts";
-import { startStartedConsumerWithRetry } from "./mq/started_consumer.ts";
-import { startJudgeRpcHandler } from "./mq/judge-rpc.ts";
 import { initEventSubscriber } from "./lib/event-bus.ts";
 import { snapshotEnv } from "./lib/env-snapshot.ts";
 import { validateRegistry } from "./lib/settings-registry.ts";
@@ -13,6 +11,7 @@ import { getStorageProvider } from "./lib/storage/mod.ts";
 import { getSetting, initSystemSettings } from "./services/system-settings.ts";
 import { startAuditLogRetentionTask } from "./services/audit-log.ts";
 import { logger } from "./lib/logging.ts";
+import { MIN_JWT_SECRET_LENGTH } from "./lib/constants.ts";
 
 const app = createApp();
 
@@ -24,8 +23,6 @@ const port = parseInt(Deno.env.get("PORT") || "8000", 10);
  * HS256 算法要求密钥至少 256 bit（32 字节），不足则降低 token 防伪造强度，
  * 存在被暴力破解的理论风险。OWASP 2025+ 建议密钥强度不低于此阈值。
  */
-const MIN_JWT_SECRET_LENGTH = 32;
-
 /**
  * 检查邮件 Provider 运行时配置。
  *
@@ -48,8 +45,8 @@ function checkEmailProviderConfig(): void {
         ["alibaba_from_email", "ALIBABA_FROM_EMAIL"],
       ]
     ) {
-      const s = getSetting(key);
-      if (!(typeof s?.value === "string" && s.value.length > 0)) {
+      const setting = getSetting(key);
+      if (!(typeof setting?.value === "string" && setting.value.length > 0)) {
         missing.push(label);
       }
     }
@@ -70,8 +67,8 @@ function checkEmailProviderConfig(): void {
         ["tencent_region", "TENCENT_REGION"],
       ]
     ) {
-      const s = getSetting(key);
-      if (!(typeof s?.value === "string" && s.value.length > 0)) {
+      const setting = getSetting(key);
+      if (!(typeof setting?.value === "string" && setting.value.length > 0)) {
         missing.push(label);
       }
     }
@@ -203,20 +200,6 @@ async function main() {
 
   // 启动评测结果消费者（后台运行，带自动重连，不阻塞 HTTP）
   startResultConsumerWithRetry();
-
-  // 启动评测开始事件消费者（单独监听 noj:judge:started，更新 judge_started_at）
-  startStartedConsumerWithRetry();
-
-  // 启动 Judge RPC 处理器（响应 judge 的镜像白名单等请求）
-  const redisForRpc = createConsumerRedis();
-  try {
-    await redisForRpc.connect();
-  } catch (err) {
-    logger.error("Judge RPC Redis 连接失败", { err });
-    redisForRpc.disconnect();
-  }
-  // deno-lint-ignore no-explicit-any
-  startJudgeRpcHandler(redisForRpc as any);
 
   // 初始化 Redis Pub/Sub 事件订阅者（后台运行，用于 SSE 推送）
   initEventSubscriber();

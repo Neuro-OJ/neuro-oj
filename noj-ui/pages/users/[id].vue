@@ -2,6 +2,7 @@
 import { useRoute } from "vue-router"
 import { useMessages } from "~/composables/useMessages"
 import { useToast } from "~/composables/useToast"
+import { formatDateTime, getLanguageLabel } from "~/utils/submissionFormat"
 
 const route = useRoute()
 const router = useRouter()
@@ -136,16 +137,7 @@ const badgeColors: Record<string, string> = {
   hard: "bg-red-100 text-red-700",
 }
 
-// 语言标签
-const languageLabel: Record<string, string> = {
-  python3: "Python 3",
-  python: "Python",
-  cpp: "C++",
-  c: "C",
-  javascript: "JavaScript",
-  java: "Java",
-  nodejs: "Node.js",
-}
+// 语言标签（统一走 utils/submissionFormat 的 getLanguageLabel）
 
 // 结果状态
 const resultBadgeColors: Record<string, string> = {
@@ -155,18 +147,6 @@ const resultBadgeColors: Record<string, string> = {
   MemoryLimitExceeded: "bg-orange-100 text-orange-800",
   RuntimeError: "bg-red-100 text-red-800",
   SystemError: "bg-red-100 text-red-800",
-}
-
-function formatDateTime(iso: string | null | undefined): string {
-  if (!iso) return "--"
-  const d = new Date(iso)
-  return d.toLocaleString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
 }
 
 function formatDate(iso: string): string {
@@ -231,14 +211,14 @@ function formatScore(raw: number | null | undefined): string {
               to="/settings">
               编辑个人资料
             </UButton>
-            <!-- 发送私信按钮（查看他人主页时显示） -->
+            <!-- 发送私信按钮（查看他人主页时显示，与关注按钮并列） -->
             <UButton color="primary" variant="outline" class="text-xs px-3 py-1.5 flex items-center gap-1.5" v-else-if="currentUser"
-              
               @click="startConversation">
               <UIcon name="i-lucide-send" class="size-3.5" />
               发送私信
             </UButton>
-            <UButton color="primary" variant="outline" class="text-xs px-3 py-1.5" v-if="currentUser && !isOwnProfile"  @click="toggleFollow">{{ following ? '已关注' : '关注' }}</UButton>
+            <!-- 关注按钮：独立 v-if（需与私信按钮同时显示） -->
+            <UButton color="primary" variant="outline" class="text-xs px-3 py-1.5" v-if="currentUser && !isOwnProfile" @click="toggleFollow">{{ following ? '已关注' : '关注' }}</UButton>
           </div>
 
           <!-- Bio（Markdown 渲染） -->
@@ -399,7 +379,7 @@ function formatScore(raw: number | null | undefined): string {
                 {{ sub.problem_title || sub.problem_id }}
               </NuxtLink>
               <span class="text-xs text-text-muted whitespace-nowrap shrink-0">
-                {{ languageLabel[sub.language] || sub.language }}
+                {{ getLanguageLabel(sub.language) }}
               </span>
             </div>
             <div class="flex items-center gap-3 shrink-0">

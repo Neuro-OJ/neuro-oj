@@ -99,7 +99,7 @@ watch(isLoggedIn, (val) => {
 
 const drafts = ref<Record<string, unknown>>({})
 
-/** infrastructure env-only 键名白名单（与 ENV_ONLY_DEFINITIONS 同步） */
+/** infrastructure env-only 键名白名单（与 noj-core settings-registry 的 env-only 定义同步） */
 const ENV_ONLY_KEYS = new Set([
   "DATABASE_URL", "DATABASE_POOL_MAX", "DATABASE_CONNECT_TIMEOUT",
   "DATABASE_IDLE_TIMEOUT", "DATABASE_MAX_LIFETIME",

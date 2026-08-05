@@ -11,10 +11,10 @@ import {
 } from "../../src/lib/resetToken.ts";
 import { jsonRequest } from "../lib/helper.ts";
 
-const hasDb = true; // PGlite 内存数据库始终可用
+// PGlite 内存数据库始终可用，无需检测
 const hasJwt = !!Deno.env.get("JWT_SECRET");
 const hasRedis = !!Deno.env.get("REDIS_URL");
-const skip = !(hasDb && hasJwt);
+const skip = !hasJwt;
 
 // 模块加载时建立一次 Redis 连接（后续测试复用）
 // 路由层的登录限流依赖 Redis，必须在第一个测试运行前完成

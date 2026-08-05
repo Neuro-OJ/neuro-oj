@@ -80,6 +80,15 @@ async function isModerator(
     await checkPermission(c, "community_moderation:review");
 }
 
+/** 访客读社区守卫：guest_read_enabled 关闭时未登录用户禁止访问 */
+function requireGuestRead(
+  c: { get: (key: "userId") => string | undefined },
+): void {
+  if (!getCommunityConfig().guest_read_enabled && !c.get("userId")) {
+    throw new UnauthorizedError("登录后可查看社区");
+  }
+}
+
 async function requirePostPermission(
   c: Parameters<typeof assertPermission>[0],
   type: CommunityPostType,
@@ -88,8 +97,7 @@ async function requirePostPermission(
 }
 
 /**
- * 社区管理路由守卫：管理员（is_admin fast path）或具备
- * `community_moderation:review` 权限的审核员可进入；
+ * 社区管理路由守卫：具备 `community_moderation:review` 权限的审核员可进入；
  * 各端点再按操作细分（lock / sanction / board 等）。
  */
 async function requireCommunityModeration(
@@ -123,9 +131,7 @@ router.get("/config", optionalAuthMiddleware, async (c) => {
 
 router.get("/boards", optionalAuthMiddleware, async (c) => {
   assertCommunityEnabled("discussions_enabled");
-  if (!getCommunityConfig().guest_read_enabled && !c.get("userId")) {
-    throw new UnauthorizedError("登录后可查看社区");
-  }
+  requireGuestRead(c);
   return c.json({ data: await listBoards() });
 });
 
@@ -147,9 +153,7 @@ router.get("/posts", optionalAuthMiddleware, async (c) => {
       ? "moments_enabled"
       : undefined,
   );
-  if (!getCommunityConfig().guest_read_enabled && !c.get("userId")) {
-    throw new UnauthorizedError("登录后可查看社区");
-  }
+  requireGuestRead(c);
   const moderator = c.get("userId") ? await isModerator(c) : false;
   return c.json(
     await listPosts({
@@ -178,9 +182,7 @@ router.get("/bookmarks", authMiddleware, async (c) => {
 
 router.get("/posts/counts", optionalAuthMiddleware, async (c) => {
   assertCommunityEnabled();
-  if (!getCommunityConfig().guest_read_enabled && !c.get("userId")) {
-    throw new UnauthorizedError("登录后可查看社区");
-  }
+  requireGuestRead(c);
   return c.json({ data: await countPostsByType() });
 });
 
@@ -215,9 +217,7 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
 
 router.get("/posts/:postId", optionalAuthMiddleware, async (c) => {
   assertCommunityEnabled();
-  if (!getCommunityConfig().guest_read_enabled && !c.get("userId")) {
-    throw new UnauthorizedError("登录后可查看社区");
-  }
+  requireGuestRead(c);
   return c.json({
     data: await getPost(
       c.req.param("postId")!,
@@ -275,9 +275,7 @@ router.get(
   "/posts/:postId/comments",
   optionalAuthMiddleware,
   async (c) => {
-    if (!getCommunityConfig().guest_read_enabled && !c.get("userId")) {
-      throw new UnauthorizedError("登录后可查看社区");
-    }
+    requireGuestRead(c);
     return c.json({
       data: await listComments(
         c.req.param("postId")!,
@@ -378,9 +376,7 @@ router.put("/me/activity-visibility", authMiddleware, async (c) => {
 });
 
 router.get("/feed", optionalAuthMiddleware, async (c) => {
-  if (!getCommunityConfig().guest_read_enabled && !c.get("userId")) {
-    throw new UnauthorizedError("登录后可查看社区");
-  }
+  requireGuestRead(c);
   const view = c.req.query("view") === "following" ? "following" : "latest";
   return c.json(
     await listFeed(

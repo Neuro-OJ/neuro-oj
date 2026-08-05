@@ -13,6 +13,7 @@ import {
   userRoles,
   users,
 } from "../db/schema.ts";
+import { ROOT_USER_ID } from "../lib/constants.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -352,7 +353,7 @@ export async function updateUserRoles(
     throw new BadRequestError("不能修改自己的角色");
   }
 
-  if (targetUserId === "0") {
+  if (targetUserId === ROOT_USER_ID) {
     throw new BadRequestError("不能修改 root 用户的角色");
   }
 
@@ -492,14 +493,13 @@ async function wouldCreateCycle(
 
   while (currentId) {
     if (currentId === checkId && currentId !== startId) return true;
-    if (visited.has(currentId)) return false; // shouldn't happen, but guard
+    if (visited.has(currentId)) return false; // 防御：正常流程不会重复访问
 
     visited.add(currentId);
 
     if (excludeId && currentId === excludeId) {
-      // The excluded role's parent_id is about to change to startId.
-      // Check if startId's chain eventually reaches checkId.
-      // If it does, the update would create a cycle.
+      // excludeId 的 parent_id 即将改为 startId，
+      // 检查 startId 的祖先链是否最终到达 checkId——若到达则更新会形成环。
       let nextId = startId;
       while (nextId) {
         if (nextId === checkId) return true;

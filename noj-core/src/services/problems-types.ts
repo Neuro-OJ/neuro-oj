@@ -81,66 +81,81 @@ export function validateRuntimeConfig(rc: RuntimeConfig): void {
     throw new BadRequestError("runtime_config.solution 必须是对象");
   }
 
-  const e = rc.evaluator;
-  if (typeof e.image !== "string" || !e.image.trim()) {
+  const evaluator = rc.evaluator;
+  if (typeof evaluator.image !== "string" || !evaluator.image.trim()) {
     throw new BadRequestError(
       "runtime_config.evaluator.image 必须是非空字符串",
     );
   }
-  if (typeof e.command !== "string" || !e.command.trim()) {
+  if (typeof evaluator.command !== "string" || !evaluator.command.trim()) {
     throw new BadRequestError(
       "runtime_config.evaluator.command 必须是非空字符串",
     );
   }
-  if (typeof e.time_limit_ms !== "number" || e.time_limit_ms <= 0) {
+  if (
+    typeof evaluator.time_limit_ms !== "number" ||
+    evaluator.time_limit_ms <= 0
+  ) {
     throw new BadRequestError(
       "runtime_config.evaluator.time_limit_ms 必须为正整数",
     );
   }
-  if (typeof e.memory_limit_mb !== "number" || e.memory_limit_mb <= 0) {
+  if (
+    typeof evaluator.memory_limit_mb !== "number" ||
+    evaluator.memory_limit_mb <= 0
+  ) {
     throw new BadRequestError(
       "runtime_config.evaluator.memory_limit_mb 必须为正整数",
     );
   }
 
   // evaluator.network（可选，缺省 = 无网）
-  if (e.network !== undefined && e.network !== null) {
-    if (typeof e.network !== "object" || Array.isArray(e.network)) {
+  if (evaluator.network !== undefined && evaluator.network !== null) {
+    if (
+      typeof evaluator.network !== "object" || Array.isArray(evaluator.network)
+    ) {
       throw new BadRequestError(
         "runtime_config.evaluator.network 必须是对象",
       );
     }
-    const n = e.network as { enabled?: unknown };
-    if (typeof n.enabled !== "boolean") {
+    const network = evaluator.network as { enabled?: unknown };
+    if (typeof network.enabled !== "boolean") {
       throw new BadRequestError(
         "runtime_config.evaluator.network.enabled 必须是布尔值",
       );
     }
   }
 
-  const s = rc.solution;
-  if (typeof s.image !== "string" || !s.image.trim()) {
+  const solution = rc.solution;
+  if (typeof solution.image !== "string" || !solution.image.trim()) {
     throw new BadRequestError("runtime_config.solution.image 必须是非空字符串");
   }
-  if (typeof s.entry !== "string" || !s.entry.trim()) {
+  if (typeof solution.entry !== "string" || !solution.entry.trim()) {
     throw new BadRequestError("runtime_config.solution.entry 必须是非空字符串");
   }
   // entry 安全校验：禁止路径分隔符与 ..
   if (
-    s.entry.includes("/") || s.entry.includes("\\") || s.entry.includes("..")
+    solution.entry.includes("/") || solution.entry.includes("\\") ||
+    solution.entry.includes("..")
   ) {
     throw new BadRequestError(
-      `runtime_config.solution.entry 含非法字符：${s.entry}`,
+      `runtime_config.solution.entry 含非法字符：${solution.entry}`,
     );
   }
   // solution.call_timeout_ms：题目级默认调用超时（必填正整数）；
   // evaluator 的 runner.call(..., timeout_ms) 可按调用覆盖，capability 可经 register_capability(timeout_ms=...) 配置
-  if (typeof s.call_timeout_ms !== "number" || s.call_timeout_ms <= 0) {
+  if (
+    typeof solution.call_timeout_ms !== "number" ||
+    solution.call_timeout_ms <= 0
+  ) {
     throw new BadRequestError(
       "runtime_config.solution.call_timeout_ms 必须为正整数",
     );
   }
-  if (typeof s.memory_limit_mb !== "number" || s.memory_limit_mb <= 0) {
+  if (
+    typeof solution.memory_limit_mb !== "number" ||
+    solution.memory_limit_mb <= 0
+  ) {
     throw new BadRequestError(
       "runtime_config.solution.memory_limit_mb 必须为正整数",
     );

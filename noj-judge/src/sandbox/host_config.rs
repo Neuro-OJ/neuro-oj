@@ -1,13 +1,13 @@
 use bollard::models::HostConfig;
 use std::collections::HashMap;
 
-/// Build a Docker HostConfig with standard security hardening.
+/// 构造带标准安全加固的 Docker HostConfig。
 ///
-/// Parameters:
-/// - `memory_bytes`: total memory limit (also applied to swap)
-/// - `tmpfs`: tmpfs mounts (e.g., `("/tmp", "size=256M")`)
-/// - `readonly_rootfs`: whether rootfs is read-only (dual evaluator/solution = false)
-/// - `network_mode`: container network mode (`"none"` = no network, `"bridge"` = default bridge)
+/// 参数：
+/// - `memory_bytes`：内存上限（同时作用于 swap）
+/// - `tmpfs`：tmpfs 挂载（如 `("/tmp", "size=256M")`）
+/// - `readonly_rootfs`：rootfs 是否只读（双容器 evaluator/solution 均为 false）
+/// - `network_mode`：容器网络模式（`"none"` 无网，`"bridge"` 默认桥接）
 pub fn build_host_config(
     memory_bytes: i64,
     tmpfs: HashMap<&str, &str>,

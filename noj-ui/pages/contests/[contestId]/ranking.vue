@@ -80,13 +80,33 @@ function score(value: number) {
         <div v-if="contestPending || rankingLoading" class="py-20 text-center text-sm text-text-muted">排名计算中...</div>
         <div v-else-if="rows.length === 0" class="py-20 text-center text-sm text-text-muted">暂无排名数据</div>
         <table v-else class="w-full min-w-[760px] border-collapse">
-          <thead><tr class="border-b border-border bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-text-muted"><th class="px-4 py-3 text-center">排名</th><th class="px-4 py-3">参赛者</th><th v-for="labelName in problemLabels" :key="labelName" class="px-3 py-3 text-center">{{ labelName }}</th><th class="px-4 py-3 text-center">{{ isIcpc ? '解题' : '总分' }}</th><th class="px-4 py-3 text-center">{{ isIcpc ? '罚时' : '耗时' }}</th></tr></thead>
+          <thead>
+            <tr class="border-b border-border bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
+              <th class="px-4 py-3 text-center">排名</th>
+              <th class="px-4 py-3">参赛者</th>
+              <th v-for="labelName in problemLabels" :key="labelName" class="px-3 py-3 text-center">{{ labelName }}</th>
+              <th class="px-4 py-3 text-center">{{ isIcpc ? '解题' : '总分' }}</th>
+              <th class="px-4 py-3 text-center">{{ isIcpc ? '罚时' : '耗时' }}</th>
+            </tr>
+          </thead>
           <tbody>
             <tr v-for="row in rows" :key="row.user_id" class="border-b border-border last:border-0 hover:bg-bg-page">
               <td class="px-4 py-4 text-center"><span class="inline-flex size-8 items-center justify-center rounded-full font-mono text-sm font-bold" :class="row.rank <= 3 ? 'bg-amber-100 text-amber-800' : 'text-text-secondary'">{{ row.rank }}</span></td>
               <td class="px-4 py-4"><NuxtLink :to="`/users/${row.user_id}`" class="font-semibold text-text no-underline hover:text-primary">{{ row.username }}</NuxtLink></td>
-              <template v-if="'problem_details' in row"><td v-for="detail in row.problem_details" :key="detail.label" class="px-3 py-4 text-center"><span class="inline-flex min-w-12 flex-col rounded-md px-2 py-1 text-xs" :class="detail.solved ? 'bg-green-50 text-success-text' : detail.attempts ? 'bg-red-50 text-error-text' : 'text-text-muted'"><strong>{{ detail.solved ? `${detail.solve_time_minutes ?? 0}m` : detail.attempts ? `-${detail.attempts}` : '·' }}</strong><span v-if="detail.solved && detail.attempts">+{{ detail.attempts }}</span></span></td></template>
-              <template v-else><td v-for="detail in row.problem_scores" :key="detail.label" class="px-3 py-4 text-center"><span class="text-sm font-semibold" :class="detail.best_score > 0 ? 'text-success-text' : 'text-text-muted'">{{ score(detail.best_score) }}</span><div v-if="detail.attempts" class="text-[10px] text-text-muted">{{ detail.attempts }} 次</div></td></template>
+              <template v-if="'problem_details' in row">
+                <td v-for="detail in row.problem_details" :key="detail.label" class="px-3 py-4 text-center">
+                  <span class="inline-flex min-w-12 flex-col rounded-md px-2 py-1 text-xs" :class="detail.solved ? 'bg-green-50 text-success-text' : detail.attempts ? 'bg-red-50 text-error-text' : 'text-text-muted'">
+                    <strong>{{ detail.solved ? `${detail.solve_time_minutes ?? 0}m` : detail.attempts ? `-${detail.attempts}` : '·' }}</strong>
+                    <span v-if="detail.solved && detail.attempts">+{{ detail.attempts }}</span>
+                  </span>
+                </td>
+              </template>
+              <template v-else>
+                <td v-for="detail in row.problem_scores" :key="detail.label" class="px-3 py-4 text-center">
+                  <span class="text-sm font-semibold" :class="detail.best_score > 0 ? 'text-success-text' : 'text-text-muted'">{{ score(detail.best_score) }}</span>
+                  <div v-if="detail.attempts" class="text-[10px] text-text-muted">{{ detail.attempts }} 次</div>
+                </td>
+              </template>
               <td class="px-4 py-4 text-center text-lg font-bold text-text">{{ 'solved' in row ? row.solved : score(row.total_score) }}</td>
               <td class="px-4 py-4 text-center font-mono text-sm text-text-secondary">{{ 'penalty' in row ? `${row.penalty}m` : `${Math.floor(row.total_time_seconds / 60)}m` }}</td>
             </tr>

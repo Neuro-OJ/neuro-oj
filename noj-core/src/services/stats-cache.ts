@@ -2,6 +2,7 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { evaluationResults, submissions } from "../db/schema.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";
+import { FULL_SCORE } from "../lib/constants.ts";
 
 export interface StatsSnapshot {
   total: number;
@@ -28,7 +29,7 @@ async function ensureTotal(): Promise<void> {
       total: sql<number>`count(*)::int`,
       full_score: sql<
         number
-      >`count(*) filter (where ${evaluationResults.score} >= 10000)::int`,
+      >`count(*) filter (where ${evaluationResults.score} >= ${FULL_SCORE})::int`,
     })
     .from(submissions)
     .leftJoin(
@@ -48,7 +49,7 @@ async function ensureToday(): Promise<void> {
       total: sql<number>`count(*)::int`,
       full_score: sql<
         number
-      >`count(*) filter (where ${evaluationResults.score} >= 10000)::int`,
+      >`count(*) filter (where ${evaluationResults.score} >= ${FULL_SCORE})::int`,
     })
     .from(submissions)
     .leftJoin(
@@ -102,13 +103,13 @@ export function applyNewResult(score: number | null, createdAt: string): void {
   // 全站累计
   if (total !== null) {
     total++;
-    if (score !== null && score >= 10000) totalFullScore!++;
+    if (score !== null && score >= FULL_SCORE) totalFullScore!++;
   }
   // 今日统计
   const today = new Date().toISOString().slice(0, 10);
   if (todayTotal !== null && todayDate === today && createdAt >= today) {
     todayTotal++;
-    if (score !== null && score >= 10000) todayFullScore!++;
+    if (score !== null && score >= FULL_SCORE) todayFullScore!++;
   }
   // 推送 SSE 事件（fire-and-forget）
   publishEvent(Channels.stats, JSON.stringify({ type: "stats:updated" }));
@@ -135,7 +136,7 @@ async function getTodayStatsFromDb(userId: string): Promise<StatsSnapshot> {
       total: sql<number>`count(*)::int`,
       full_score: sql<
         number
-      >`count(*) filter (where ${evaluationResults.score} >= 10000)::int`,
+      >`count(*) filter (where ${evaluationResults.score} >= ${FULL_SCORE})::int`,
     })
     .from(submissions)
     .leftJoin(
@@ -145,7 +146,7 @@ async function getTodayStatsFromDb(userId: string): Promise<StatsSnapshot> {
     .where(
       and(gte(submissions.created_at, today), eq(submissions.user_id, userId)),
     );
-  const t = Number(row?.total ?? 0);
-  const f = Number(row?.full_score ?? 0);
-  return { total: t, full_score: f, not_full_score: t - f };
+  const total = Number(row?.total ?? 0);
+  const fullScore = Number(row?.full_score ?? 0);
+  return { total, full_score: fullScore, not_full_score: total - fullScore };
 }

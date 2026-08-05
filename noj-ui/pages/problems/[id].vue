@@ -20,6 +20,12 @@ const { data, pending, error, refresh } = useFetch<{
     owner_id: string
     number: number
     categories: { id: string; name: string; slug: string }[]
+    runtime_config?: {
+      evaluator?: {
+        time_limit_ms?: number
+        memory_limit_mb?: number
+      }
+    }
   }
 }>(`/api/v1/problems/${problemId}`)
 
@@ -147,11 +153,11 @@ const publishBlockReason = computed(() => {
             <DifficultyBadge :difficulty="problem.difficulty" />
             <span class="inline-flex items-center gap-1 text-xs text-text-secondary">
               <UIcon name="i-lucide-clock" class="size-3.5" />
-              {{ problem.runtime_config.evaluator.time_limit_ms }}ms
+              {{ problem.runtime_config?.evaluator?.time_limit_ms ?? '--' }}ms
             </span>
             <span class="inline-flex items-center gap-1 text-xs text-text-secondary">
               <UIcon name="i-lucide-server" class="size-3.5" />
-              {{ problem.runtime_config.evaluator.memory_limit_mb }}MB
+              {{ problem.runtime_config?.evaluator?.memory_limit_mb ?? '--' }}MB
             </span>
           </div>
           <div v-if="categories.length" class="flex flex-wrap gap-1.5 mt-2.5">

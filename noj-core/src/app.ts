@@ -16,7 +16,7 @@ import conversations from "./routes/conversations.ts";
 import community from "./routes/community.ts";
 import search from "./routes/search.ts";
 import contests from "./routes/contests.ts";
-import { searchRateLimit } from "./middleware/searchRateLimit.ts";
+import { searchRateLimit } from "./middleware/search-rate-limit.ts";
 import sse, { contestSse, statsSse } from "./routes/sse.ts";
 import { AppError } from "./lib/errors.ts";
 import { logger } from "./lib/logging.ts";
@@ -24,6 +24,7 @@ import { listJudgeImages } from "./services/judge-images.ts";
 import { banlistMiddleware } from "./middleware/banlist.ts";
 import { requestContext } from "./middleware/request-context.ts";
 import { getSetting } from "./services/system-settings.ts";
+import { SECONDS_PER_DAY } from "./lib/constants.ts";
 
 /**
  * 维护模式中间件（PR-2 死开关）。
@@ -89,7 +90,7 @@ export function createApp(): Hono {
       credentials: true,
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowHeaders: ["Content-Type", "Authorization"],
-      maxAge: 86400,
+      maxAge: SECONDS_PER_DAY,
     }),
   );
 

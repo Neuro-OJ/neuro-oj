@@ -36,6 +36,10 @@ const problemQuery = ref('')
 const localError = ref('')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 
+// 默认时长（新建竞赛预填：开始 +1h，结束 +3h）与满分（×100 存储）
+const HOUR_MS = 3_600_000
+const DEFAULT_FULL_SCORE = 10000
+
 function searchProblems() {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(() => emit('searchProblems', problemQuery.value.trim()), 250)
@@ -60,8 +64,8 @@ function resetForm() {
   title.value = contest?.title ?? ''
   description.value = contest?.description ?? ''
   announcement.value = contest?.announcement ?? ''
-  startTime.value = toLocalDateTime(contest?.start_time) || toLocalDateTime(new Date(Date.now() + 3_600_000).toISOString())
-  endTime.value = toLocalDateTime(contest?.end_time) || toLocalDateTime(new Date(Date.now() + 10_800_000).toISOString())
+  startTime.value = toLocalDateTime(contest?.start_time) || toLocalDateTime(new Date(Date.now() + HOUR_MS).toISOString())
+  endTime.value = toLocalDateTime(contest?.end_time) || toLocalDateTime(new Date(Date.now() + 3 * HOUR_MS).toISOString())
   type.value = contest?.type ?? 'icpc'
   isPublic.value = contest?.is_public ?? true
   password.value = ''
@@ -90,7 +94,7 @@ function normalizeProblems() {
     ...problem,
     label: labelFor(index),
     sort_order: index,
-    score: type.value === 'icpc' ? null : problem.score ?? 10000,
+    score: type.value === 'icpc' ? null : problem.score ?? DEFAULT_FULL_SCORE,
   }))
 }
 
@@ -99,7 +103,7 @@ function addProblem(problem: AdminProblemOption) {
     problem_id: problem.id,
     label: labelFor(selectedProblems.value.length),
     sort_order: selectedProblems.value.length,
-    score: type.value === 'icpc' ? null : 10000,
+    score: type.value === 'icpc' ? null : DEFAULT_FULL_SCORE,
   })
   normalizeProblems()
 }
@@ -154,7 +158,7 @@ function submit() {
       ...problem,
       sort_order: index,
       label: labelFor(index),
-      score: type.value === 'icpc' ? null : problem.score ?? 10000,
+      score: type.value === 'icpc' ? null : problem.score ?? DEFAULT_FULL_SCORE,
     })),
   }
   if (password.value) payload.password = password.value
@@ -190,12 +194,11 @@ function submit() {
             <p v-if="filteredProblems.length === 0" class="p-4 text-center text-xs text-text-muted">没有可添加的题目</p>
           </div>
           <div class="flex-1 space-y-2 overflow-y-auto">
-            <div v-for="(problem, index) in selectedProblems" :key="problem.problem_id" class="flex items-center gap-2 rounded-lg border border-border bg-white p-3">
+            <div v-for="problem in selectedProblems" :key="problem.problem_id" class="flex items-center gap-2 rounded-lg border border-border bg-white p-3">
               <span class="flex size-8 shrink-0 items-center justify-center rounded-md bg-bg-dark font-mono text-xs font-bold text-white">{{ problem.label }}</span>
               <span class="min-w-0 flex-1 truncate text-xs font-medium text-text">{{ problemName(problem.problem_id) }}</span>
-              <input v-if="type !== 'icpc'" :value="(problem.score ?? 10000) / 100" type="number" min="0" class="w-20 rounded border border-border px-2 py-1 text-xs" title="满分" @input="problem.score = Number(($event.target as HTMLInputElement).value) * 100">
+              <input v-if="type !== 'icpc'" :value="(problem.score ?? DEFAULT_FULL_SCORE) / 100" type="number" min="0" class="w-20 rounded border border-border px-2 py-1 text-xs" title="满分" @input="problem.score = Number(($event.target as HTMLInputElement).value) * 100">
               <button class="rounded p-1.5 text-text-muted hover:bg-red-50 hover:text-error-text" @click="removeProblem(problem.problem_id)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></button>
-              <span class="hidden">{{ index }}</span>
             </div>
           </div>
         </section>

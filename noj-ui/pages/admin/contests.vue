@@ -11,7 +11,7 @@ import type {
 definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false })
 
 const { typeLabels, statusLabels, formatDateTime, statusClass } = useContests()
-const toast = useToast()
+const { toast } = useToast()
 const { dialog } = useDialog()
 const { api } = useApi()
 const contests = ref<Contest[]>([])
@@ -97,7 +97,7 @@ async function saveContest(payload: ContestPayload) {
     } else {
       await api.post('/api/v1/admin/contests', payload)
     }
-    toast.showToast('success', editingContest.value ? '竞赛已更新' : '竞赛已创建')
+    toast.success(editingContest.value ? '竞赛已更新' : '竞赛已创建')
     formOpen.value = false
     reloadAfterContestMutation()
   } catch (saveError: unknown) {
@@ -111,7 +111,7 @@ async function removeContest(contest: Contest) {
   const confirmed = await dialog.confirm(`确定删除竞赛“${contest.title}”吗？竞赛提交会保留，但将解除竞赛关联。`, { title: '删除竞赛', confirmText: '删除', danger: true })
   if (!confirmed) return
   await api.delete(`/api/v1/admin/contests/${contest.id}`)
-  toast.showToast('success', '竞赛已删除')
+  toast.success('竞赛已删除')
   reloadAfterContestMutation()
 }
 
@@ -158,10 +158,9 @@ async function searchUsers() {
   searchingUsers.value = true
   try {
     const response = await api.get<{ data: UserSearchResult[] }>(`/api/v1/users/search?q=${encodeURIComponent(userQuery.value.trim())}`)
-    participants.value.forEach((participant) => {
-      response.data = response.data.filter((user) => user.id !== participant.user_id)
-    })
-    userResults.value = response.data
+    // 排除已是参赛者的用户
+    const participantIds = new Set(participants.value.map((p) => p.user_id))
+    userResults.value = response.data.filter((user) => !participantIds.has(user.id))
   } finally {
     searchingUsers.value = false
   }

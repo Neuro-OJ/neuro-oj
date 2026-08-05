@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import MarkdownRenderer from '~/components/shared/MarkdownRenderer.vue'
-import { getStatusColor, getStatusLabel } from '~/composables/use-submissions'
+import { getStatusColor, getStatusLabel } from '~/utils/submissionFormat'
 import type { EditorTheme } from '~/composables/useEditorTheme'
 import type { PolledSubmission } from '~/composables/useSubmissionPolling'
 
@@ -29,7 +29,12 @@ interface Submission {
   score: number
   language: string
   created_at: string
-  result: { status: string; score: number } | null
+  result: {
+    status: string
+    score: number
+    time_ms?: number
+    memory_kb?: number
+  } | null
 }
 
 const props = defineProps<{
@@ -55,13 +60,11 @@ const recentSubmissions = computed(() => {
     return [props.activeSubmission]
   }
   // 否则从历史里取最近的一条（API 已按 created_at DESC 排序）
-  if (historySubmissions.value.length > 0) {
-    return [historySubmissions.value[0]]
+  if (props.submissions.length > 0) {
+    return [props.submissions[0]]
   }
   return []
 })
-
-const historySubmissions = computed(() => props.submissions)
 
 // 实时时钟：用于卡片内「已等待 Ns」显示
 const liveNow = ref(Date.now())
@@ -200,11 +203,11 @@ function formatElapsed(iso: string) {
       <!-- 历史（已完成） -->
       <div>
         <h3 class="text-sm font-semibold text-text mb-2">历史</h3>
-        <div v-if="historySubmissions.length === 0" class="text-xs text-text-muted text-center py-4">
+        <div v-if="submissions.length === 0" class="text-xs text-text-muted text-center py-4">
           暂无提交记录
         </div>
         <button
-          v-for="sub in historySubmissions"
+          v-for="sub in submissions"
           :key="sub.id"
           class="w-full text-left p-3 rounded-md border border-border hover:border-primary hover:bg-bg-page transition-colors group relative mb-2"
           @click="emit('open-submission', sub.id)"

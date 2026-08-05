@@ -14,6 +14,7 @@ import {
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { SubmissionStatus } from "../types/index.ts";
+import { ROOT_USER_ID } from "../lib/constants.ts";
 
 /**
  * Postgres `tsvector` 列（用于全文搜索）。
@@ -93,7 +94,7 @@ export const problems = pgTable(
     /** 题号（同一 type 内独立自增） */
     number: integer("number").notNull(),
     /** 题目所有者 ID，默认 root (UID=0) */
-    owner_id: text("owner_id").notNull().default("0"),
+    owner_id: text("owner_id").notNull().default(ROOT_USER_ID),
     /** 题目类型：U=用户题库, P=主题库 */
     type: text("type").notNull().default("U"),
     created_at: text("created_at").notNull(),

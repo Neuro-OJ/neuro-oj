@@ -22,10 +22,6 @@ const pendingComments = ref<Array<{
 const loadingPendingComments = ref(false)
 const moderatingCommentId = ref<string | null>(null)
 
-const boards = ref<{ id: string; name: string; slug: string; description: string | null; is_archived: boolean }[]>([])
-const newBoard = reactive({ slug: "", name: "", description: "" })
-const creatingBoard = ref(false)
-
 const reports = ref<ReportRow[]>([])
 const resolvingReportId = ref<string | null>(null)
 
@@ -71,12 +67,10 @@ function configValue(configKey: string): unknown {
 }
 
 async function load() {
-  const [boardResult, reportResult, sanctionResult] = await Promise.all([
-    api.get<{ data: { id: string; name: string; slug: string; description: string | null; is_archived: boolean }[] }>("/api/v1/community/boards", { silent: true }),
+  const [reportResult, sanctionResult] = await Promise.all([
     api.get<{ data: ReportRow[] }>("/api/v1/community/admin/reports", { silent: true }),
     api.get<{ data: typeof sanctions.value }>("/api/v1/community/admin/sanctions", { silent: true }),
   ])
-  boards.value = boardResult.data
   reports.value = reportResult.data
   sanctions.value = sanctionResult.data
   await Promise.all([loadPending(), loadPendingComments(), loadConfig(true)])
@@ -172,32 +166,6 @@ async function moderateComment(id: string, status: "published" | "hidden") {
   } finally {
     moderatingCommentId.value = null
   }
-}
-
-async function createBoard() {
-  if (creatingBoard.value || !newBoard.slug || !newBoard.name) {
-    if (!newBoard.slug || !newBoard.name) toast.warn("请填写板块 slug 和名称")
-    return
-  }
-  creatingBoard.value = true
-  try {
-    await api.post("/api/v1/community/admin/boards", {
-      slug: newBoard.slug, name: newBoard.name, description: newBoard.description,
-    })
-    toast.success("板块已创建")
-    newBoard.slug = ""
-    newBoard.name = ""
-    newBoard.description = ""
-    await load()
-  } finally {
-    creatingBoard.value = false
-  }
-}
-
-async function toggleArchive(boardId: string, archived: boolean) {
-  await api.patch(`/api/v1/community/admin/boards/${boardId}`, { is_archived: !archived })
-  toast.success(archived ? "板块已恢复" : "板块已归档")
-  await load()
 }
 
 async function resolveReport(id: string, status: "resolved" | "dismissed") {
@@ -302,7 +270,10 @@ await load()
 
 <template>
   <div class="space-y-6 p-6">
-    <div><h1 class="text-2xl font-bold text-text">社区管理</h1><p class="mt-1 text-sm text-text-secondary">配置私域策略、独立开关，处理待审内容、举报与处罚。</p></div>
+    <div>
+      <h1 class="text-2xl font-bold text-text">社区管理</h1>
+      <p class="mt-1 text-sm text-text-secondary">配置私域策略、独立开关，处理待审内容、举报与处罚。</p>
+    </div>
 
     <section class="rounded-lg border border-border bg-white p-5 shadow-card">
       <div class="flex items-center gap-2"><UIcon name="i-lucide-shield-check" class="size-4.5" /><h2 class="font-semibold">部署预设</h2></div>
@@ -458,30 +429,8 @@ await load()
       </div>
     </section>
 
-    <section class="rounded-lg border border-border bg-white p-5 shadow-card">
-      <div class="flex items-center gap-2"><UIcon name="i-lucide-layout-list" class="size-4.5" /><h2 class="font-semibold">讨论板块</h2></div>
-      <div class="mt-4 grid gap-3 md:grid-cols-2">
-        <article v-for="board in boards" :key="board.id" class="rounded border border-border p-3">
-          <div class="flex items-center justify-between gap-2">
-            <div>
-              <h3 class="font-medium">{{ board.name }}</h3>
-              <p class="mt-1 text-sm text-text-secondary">{{ board.description || '暂无描述' }}</p>
-              <p class="mt-1 text-xs text-text-muted">{{ board.slug }}</p>
-            </div>
-            <UButton color="primary" variant="outline" class="text-xs" @click="toggleArchive(board.id, board.is_archived)">{{ board.is_archived ? '恢复' : '归档' }}</UButton>
-          </div>
-        </article>
-      </div>
-      <div class="mt-4 rounded border border-dashed border-border p-3">
-        <p class="text-sm font-medium">新建板块</p>
-        <div class="mt-2 flex flex-wrap gap-2">
-          <input v-model="newBoard.slug" class="w-32 rounded border border-border px-2 py-1 text-sm" placeholder="slug">
-          <input v-model="newBoard.name" class="w-40 rounded border border-border px-2 py-1 text-sm" placeholder="名称">
-          <input v-model="newBoard.description" class="w-52 flex-1 rounded border border-border px-2 py-1 text-sm" placeholder="描述（可选）">
-          <UButton color="primary" class="text-sm" :disabled="creatingBoard" @click="createBoard">{{ creatingBoard ? '创建中…' : '创建' }}</UButton>
-        </div>
-      </div>
-    </section>
+    <!-- 讨论板块（独立子组件，状态自持） -->
+    <CommunityBoardsSection />
   </div>
 </template>
 

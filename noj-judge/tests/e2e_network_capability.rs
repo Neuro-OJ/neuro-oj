@@ -926,11 +926,7 @@ def solve(msg: str) -> str:
         &submission_id,
         &runtime_config,
         user_code,
-        "solution.py",
         Some(&support_zip),
-        "/tmp/e2e-cache",
-        100,
-        64,
         None,
     )
     .await

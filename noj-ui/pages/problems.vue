@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatAcceptanceRate } from "~/utils/submissionFormat"
 const { api } = useApi()
 
 const router = useRouter()
@@ -126,11 +127,6 @@ const badgeColors: Record<string, string> = {
   easy: "bg-green-100 text-green-700",
   medium: "bg-yellow-100 text-yellow-700",
   hard: "bg-red-100 text-red-700",
-}
-
-function formatAcceptanceRate(rate: number | undefined): string {
-  if (rate == null) return "--"
-  return `${(rate * 100).toFixed(1)}%`
 }
 
 // 响应式列：sm 以下隐藏次要列（对齐原 hidden sm:table-cell 行为）

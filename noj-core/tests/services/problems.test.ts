@@ -18,6 +18,38 @@ const skip = !dbAvailable;
 
 const ts = Date.now();
 
+// 共享 runtime_config 样例（其余 9 处用例复用；带网络版用于 network 校验用例）
+const VALID_RUNTIME_CONFIG = {
+  evaluator: {
+    image: "noj-evaluator-python",
+    command: "python3 /workspace/evaluate.py",
+    time_limit_ms: 5000,
+    memory_limit_mb: 512,
+  },
+  solution: {
+    image: "noj-solution-python",
+    entry: "submission_sample.py",
+    call_timeout_ms: 2000,
+    memory_limit_mb: 512,
+  },
+};
+
+const NETWORKED_RUNTIME_CONFIG = {
+  evaluator: {
+    image: "noj-evaluator-python",
+    command: "python3 /workspace/evaluate.py",
+    time_limit_ms: 5000,
+    memory_limit_mb: 512,
+    network: { enabled: true },
+  },
+  solution: {
+    image: "noj-solution-python",
+    entry: "submission_sample.py",
+    call_timeout_ms: 2000,
+    memory_limit_mb: 512,
+  },
+};
+
 const now = new Date().toISOString();
 
 // 模块级 setup：创建共享测试题目
@@ -26,21 +58,7 @@ const MODULE_PROBLEM = await createProblem({
   title: `测试题目 ${ts}`,
   description: "测试描述",
   difficulty: "easy",
-  runtime_config: {
-    evaluator: {
-      image: "noj-evaluator-python",
-      command: "python3 /workspace/evaluate.py",
-      time_limit_ms: 5000,
-      memory_limit_mb: 512,
-    },
-
-    solution: {
-      image: "noj-solution-python",
-      entry: "submission_sample.py",
-      call_timeout_ms: 2000,
-      memory_limit_mb: 512,
-    },
-  },
+  runtime_config: VALID_RUNTIME_CONFIG,
 });
 const TEST_PROBLEM_ID = MODULE_PROBLEM.id;
 
@@ -68,21 +86,7 @@ Deno.test({
       title: `临时创建题 ${ts}`,
       description: "用来测创建的",
       difficulty: "easy",
-      runtime_config: {
-        evaluator: {
-          image: "noj-evaluator-python",
-          command: "python3 /workspace/evaluate.py",
-          time_limit_ms: 5000,
-          memory_limit_mb: 512,
-        },
-
-        solution: {
-          image: "noj-solution-python",
-          entry: "submission_sample.py",
-          call_timeout_ms: 2000,
-          memory_limit_mb: 512,
-        },
-      },
+      runtime_config: VALID_RUNTIME_CONFIG,
     });
     assertEquals(problem.title, `临时创建题 ${ts}`);
     assertEquals(problem.difficulty, "easy");
@@ -102,21 +106,7 @@ Deno.test({
           title: "非法难度题",
           description: "描述",
           difficulty: "expert",
-          runtime_config: {
-            evaluator: {
-              image: "noj-evaluator-python",
-              command: "python3 /workspace/evaluate.py",
-              time_limit_ms: 5000,
-              memory_limit_mb: 512,
-            },
-
-            solution: {
-              image: "noj-solution-python",
-              entry: "submission_sample.py",
-              call_timeout_ms: 2000,
-              memory_limit_mb: 512,
-            },
-          },
+          runtime_config: VALID_RUNTIME_CONFIG,
         }),
       BadRequestError,
     );
@@ -147,21 +137,7 @@ Deno.test({
       title: "带分类的题目",
       description: "描述",
       difficulty: "medium",
-      runtime_config: {
-        evaluator: {
-          image: "noj-evaluator-python",
-          command: "python3 /workspace/evaluate.py",
-          time_limit_ms: 5000,
-          memory_limit_mb: 512,
-        },
-
-        solution: {
-          image: "noj-solution-python",
-          entry: "submission_sample.py",
-          call_timeout_ms: 2000,
-          memory_limit_mb: 512,
-        },
-      },
+      runtime_config: VALID_RUNTIME_CONFIG,
       category_ids: [catId],
     });
     assertEquals(problem.categories.length, 1);
@@ -222,21 +198,7 @@ Deno.test({
       title: `测试题目 ${ts}`,
       description: "测试描述",
       difficulty: "easy",
-      runtime_config: {
-        evaluator: {
-          image: "noj-evaluator-python",
-          command: "python3 /workspace/evaluate.py",
-          time_limit_ms: 5000,
-          memory_limit_mb: 512,
-        },
-
-        solution: {
-          image: "noj-solution-python",
-          entry: "submission_sample.py",
-          call_timeout_ms: 2000,
-          memory_limit_mb: 512,
-        },
-      },
+      runtime_config: VALID_RUNTIME_CONFIG,
     });
     const result = await listProblems({ difficulty: "easy", type: "U" });
     assertEquals(result.items.every((i) => i.difficulty === "easy"), true);
@@ -256,21 +218,7 @@ Deno.test({
       title: `标题包含${keyword}`,
       description: `描述也包含${keyword}`,
       difficulty: "easy",
-      runtime_config: {
-        evaluator: {
-          image: "noj-evaluator-python",
-          command: "python3 /workspace/evaluate.py",
-          time_limit_ms: 5000,
-          memory_limit_mb: 512,
-        },
-
-        solution: {
-          image: "noj-solution-python",
-          entry: "submission_sample.py",
-          call_timeout_ms: 2000,
-          memory_limit_mb: 512,
-        },
-      },
+      runtime_config: VALID_RUNTIME_CONFIG,
     });
     const result = await listProblems({ keyword, type: "U" });
     assertEquals(result.items.length, 1);
@@ -289,21 +237,7 @@ Deno.test({
       title: `待删除题目 ${ts}`,
       description: "将被删除",
       difficulty: "easy",
-      runtime_config: {
-        evaluator: {
-          image: "noj-evaluator-python",
-          command: "python3 /workspace/evaluate.py",
-          time_limit_ms: 5000,
-          memory_limit_mb: 512,
-        },
-
-        solution: {
-          image: "noj-solution-python",
-          entry: "submission_sample.py",
-          call_timeout_ms: 2000,
-          memory_limit_mb: 512,
-        },
-      },
+      runtime_config: VALID_RUNTIME_CONFIG,
     });
     await deleteProblem(toDelete.id, "0");
     await assertRejects(
@@ -349,21 +283,7 @@ Deno.test({
         title: `待删除审计题 ${Date.now()}`,
         description: "将触发 problems.delete 审计",
         difficulty: "easy",
-        runtime_config: {
-          evaluator: {
-            image: "noj-evaluator-python",
-            command: "python3 /workspace/evaluate.py",
-            time_limit_ms: 5000,
-            memory_limit_mb: 512,
-          },
-
-          solution: {
-            image: "noj-solution-python",
-            entry: "submission_sample.py",
-            call_timeout_ms: 2000,
-            memory_limit_mb: 512,
-          },
-        },
+        runtime_config: VALID_RUNTIME_CONFIG,
       },
       adminId,
       "admin",
@@ -447,21 +367,7 @@ Deno.test({
         title: `普通用户联网题 ${Date.now()}`,
         description: "普通用户可开启联网",
         difficulty: "easy",
-        runtime_config: {
-          evaluator: {
-            image: "noj-evaluator-python",
-            command: "python3 /workspace/evaluate.py",
-            time_limit_ms: 5000,
-            memory_limit_mb: 512,
-            network: { enabled: true },
-          },
-          solution: {
-            image: "noj-solution-python",
-            entry: "submission_sample.py",
-            call_timeout_ms: 2000,
-            memory_limit_mb: 512,
-          },
-        },
+        runtime_config: NETWORKED_RUNTIME_CONFIG,
       },
       "user-1",
       "user",
@@ -494,21 +400,7 @@ Deno.test({
         title: `admin 联网题 ${Date.now()}`,
         description: "admin 可开启联网",
         difficulty: "easy",
-        runtime_config: {
-          evaluator: {
-            image: "noj-evaluator-python",
-            command: "python3 /workspace/evaluate.py",
-            time_limit_ms: 5000,
-            memory_limit_mb: 512,
-            network: { enabled: true },
-          },
-          solution: {
-            image: "noj-solution-python",
-            entry: "submission_sample.py",
-            call_timeout_ms: 2000,
-            memory_limit_mb: 512,
-          },
-        },
+        runtime_config: NETWORKED_RUNTIME_CONFIG,
       },
       "admin-1",
       "admin",

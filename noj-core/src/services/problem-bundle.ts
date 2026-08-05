@@ -42,6 +42,7 @@ import { getProblem } from "./problems-list.ts";
 import { type CategoryTreeNode, listCategories } from "./categories.ts";
 import { logAudit } from "./audit-log.ts";
 import { MAX_SUPPORT_PACKAGE_SIZE } from "./support-package.ts";
+import { ROOT_USER_ID } from "../lib/constants.ts";
 
 /** 导入执行者（CLI 场景无 Hono Context）。 */
 export interface BundleImportActor {
@@ -331,7 +332,7 @@ async function createViaCrud(
         difficulty: manifest.difficulty ?? "medium",
         runtime_config: manifest.runtime_config,
         number: finalNumber,
-        owner_id: actor.userId ?? "0",
+        owner_id: actor.userId ?? ROOT_USER_ID,
         type,
         created_at: now,
         updated_at: now,
