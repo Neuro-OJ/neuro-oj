@@ -316,7 +316,7 @@ class SolutionRunner:
         if frame.get("type") == "error":
             code = frame.get("code", "SystemError")
             message = frame.get("message", "")
-            if code == "Timeout":
+            if code == "CallTimeout":
                 raise SolutionTimeoutError(message)
             if code == "NotFound":
                 raise NotFoundError(message)

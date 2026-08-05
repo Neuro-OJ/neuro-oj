@@ -121,7 +121,7 @@ Evaluator SDK 会抛出 `SolutionCallError`，错误对象可通过 `exc.error` 
 | 用户异常类名 | Solution Host | 用户函数执行时抛出异常 |
 | `InvalidJson` | Solution Host | Host 收到的请求不是合法 JSON |
 | `UnknownMethod` | Solution Host | 请求方法未知 |
-| `CallTimeout` | Judge Worker | 单次调用超过调用级 `timeout_ms`（缺省回退题目级 `call_timeout_ms`）；capability 调用按注册时配置的默认超时 |
+| `CallTimeout` | Judge Worker | 单次调用超过调用级 `timeout_ms`（缺省回退题目级 `call_timeout_ms`）；capability 调用按注册时配置的默认超时。该错误由 Judge 直接注入；若 evaluator 未捕获（evaluate.py 异常退出、无 `---RESULT---`），最终状态为 `TimeLimitExceeded` |
 | `HostWriteFailed` | Judge Worker | 无法向 Solution Host 写入请求 |
 | `InvalidHostResponse` | Judge Worker | Host 响应不是合法 JSON |
 | `RestartFailed` | Judge Worker | 重启 Solution Host 失败 |

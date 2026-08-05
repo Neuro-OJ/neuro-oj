@@ -224,7 +224,7 @@ class TestSolutionRunnerCall(unittest.TestCase):
                 {
                     "type": "error",
                     "id": call_frame["id"],
-                    "code": "Timeout",
+                    "code": "CallTimeout",
                     "message": "exceeded 500ms",
                 }
             )

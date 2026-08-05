@@ -18,7 +18,10 @@
 
 ## TimeLimitExceeded
 
-提交超过时间限制。超时可能发生在 evaluator 执行、用户函数调用或整体评测流程中。
+提交超过时间限制。超时来源分两类：
+
+- **单次调用超时**（`call_timeout_ms`）：用户函数单次调用超过调用级超时。Judge Worker 向 evaluator 注入 `CallTimeout` 错误；若 evaluator 未捕获（evaluate.py 异常退出、无 `---RESULT---`），最终状态为 `TimeLimitExceeded`。若 evaluator 捕获并记为失败用例，最终状态由 evaluator 决定（如 `WrongAnswer`）。
+- **整体流程超时**（`time_limit_ms`）：evaluator 整体执行超过时限，由 Judge Worker 强制终止评测，最终状态为 `SystemError`（见下），**不会**落成 `TimeLimitExceeded`。
 
 ## MemoryLimitExceeded
 
@@ -38,5 +41,7 @@
 - 用户代码语法错误，导致模块无法导入。
 - 纯净评测包缺失 `evaluate.py` 或 evaluator 自身崩溃。
 - 运行时镜像不存在或白名单配置错误。
+- evaluator 整体执行超过 `time_limit_ms`（Judge Worker 强制终止）。
+- evaluator 启动超时（评测环境未就绪）。
 
 做题人遇到 SystemError 时，一般不应通过修改答案逻辑解决，而应联系运营者或出题人排查。

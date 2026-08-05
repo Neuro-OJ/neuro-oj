@@ -4,14 +4,19 @@
 //! - dual_basic: A+B Problem Accepted
 //! - dual_persistent: 多次 call 复用 host 状态
 //! - dual_timeout: call_timeout_ms 单次超时
+//! - dual_call_timeout_fallback: 调用级超时缺省回退题目级默认
+//! - dual_call_timeout_per_call_concurrent: 调用级超时按调用独立生效
+//! - dual_capability_timeout_per_call: capability 注册超时（cap_reg）
+//! - dual_evaluator_total_timeout: evaluator 总超时 → SystemError
+//! - dual_solution_timeout_unhandled: CallTimeout 未处理 → TLE
+//! - dual_solution_timeout_handled: CallTimeout 被捕获 → evaluator 决定
 //! - dual_solution_exception: 用户异常 + sanitize trace
 //! - dual_solution_no_network: Solution 无网络
 //! - dual_solution_module_shadowing: PYTHONPATH shadowing 不影响 Evaluator
 //! - dual_solution_read_evaluator_env: 隔离环境变量
-//! - dual_legacy_fallback: 旧 JudgeTask 走单容器
 //!
-//! 注：本测试使用现有 `noj-judge-test-runner` 镜像 + 容器内拷贝 SDK 源码。
-//! 不需要单独的 dual 镜像，验证 orchestrator 协议层正确性即可。
+//! 注：本测试使用 `noj-e2e-sdk-evaluator` / `noj-e2e-sdk-solution` 镜像
+//! （common::ensure_sdk_images 按需构建，内含 SDK 源码）。
 
 mod common;
 
@@ -888,8 +893,197 @@ except Exception as e:
     );
     assert_eq!(
         cap["code"].as_str().unwrap(),
-        "Timeout",
-        "CapabilityError.code 应为 Timeout: {:?}",
+        "CallTimeout",
+        "CapabilityError.code 应为 CallTimeout: {:?}",
         result.details
+    );
+}
+
+/// evaluator 整体超时（time_limit_ms 到期）→ SystemError（评测流程未正常完成）。
+#[ignore]
+#[serial_test::serial]
+#[tokio::test]
+async fn dual_evaluator_total_timeout_system_error() {
+    if !is_e2e_enabled() {
+        return;
+    }
+    let docker = get_docker().expect("docker");
+    common::ensure_sdk_images(&docker).await.unwrap();
+
+    // evaluator：打印首行（进入阶段 2）后死循环，永不输出 ---RESULT---
+    let evaluator_cmd = r#"python3 -c "
+import sys, time
+print('ready', flush=True)
+while True:
+    time.sleep(1)
+"#;
+    let runtime_config = RuntimeConfig {
+        evaluator: EvaluatorRuntime {
+            image: "noj-e2e-sdk-evaluator:latest".to_string(),
+            command: evaluator_cmd.to_string(),
+            time_limit_ms: 2000, // 2s 总超时
+            memory_limit_mb: 256,
+            network: None,
+        },
+        solution: SolutionRuntime {
+            image: "noj-e2e-sdk-solution:latest".to_string(),
+            entry: "solution.py".to_string(),
+            call_timeout_ms: 5000,
+            memory_limit_mb: 128,
+        },
+    };
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        noj_judge::dual::evaluate_dual(
+            docker.clone(),
+            "e2e-evaluator-total-timeout",
+            &runtime_config,
+            "def solve(): return 1",
+            "solution.py",
+            None,
+            "/tmp/e2e-cache",
+            100,
+            64,
+            None,
+        ),
+    )
+    .await
+    .expect("评测 30s 外层超时")
+    .expect("评测应正常返回");
+
+    assert_eq!(
+        result.status, "SystemError",
+        "evaluator 总超时应归 SystemError: {:?}",
+        result
+    );
+}
+
+/// solution 调用超时且 evaluator 未捕获（evaluate.py 崩溃、无 ---RESULT---）→ TLE。
+#[ignore]
+#[serial_test::serial]
+#[tokio::test]
+async fn dual_solution_timeout_unhandled_tle() {
+    if !is_e2e_enabled() {
+        return;
+    }
+    let docker = get_docker().expect("docker");
+    common::ensure_sdk_images(&docker).await.unwrap();
+
+    // evaluator：调用 sleep_solution 但不捕获 SolutionTimeoutError → 异常冒泡崩溃退出
+    let evaluator_cmd = r#"python3 -c "
+from noj_evaluator_sdk import SolutionRunner
+runner = SolutionRunner()
+runner.call('sleep_solution')
+"#;
+    let runtime_config = RuntimeConfig {
+        evaluator: EvaluatorRuntime {
+            image: "noj-e2e-sdk-evaluator:latest".to_string(),
+            command: evaluator_cmd.to_string(),
+            time_limit_ms: 15000,
+            memory_limit_mb: 256,
+            network: None,
+        },
+        solution: SolutionRuntime {
+            image: "noj-e2e-sdk-solution:latest".to_string(),
+            entry: "solution.py".to_string(),
+            call_timeout_ms: 100, // 100ms 调用超时
+            memory_limit_mb: 128,
+        },
+    };
+    // solution：sleep_solution 睡 300ms（> 100ms 调用超时）
+    let code = "import time\ndef sleep_solution():\n    time.sleep(0.3)\n    return 1\n";
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        noj_judge::dual::evaluate_dual(
+            docker.clone(),
+            "e2e-solution-timeout-unhandled",
+            &runtime_config,
+            code,
+            "solution.py",
+            None,
+            "/tmp/e2e-cache",
+            100,
+            64,
+            None,
+        ),
+    )
+    .await
+    .expect("评测 30s 外层超时")
+    .expect("评测应正常返回");
+
+    assert_eq!(
+        result.status, "TimeLimitExceeded",
+        "CallTimeout 未处理应归 TLE: {:?}",
+        result
+    );
+}
+
+/// solution 调用超时被 evaluator 捕获 → 最终状态由 evaluator 决定（此处为 WrongAnswer）。
+#[ignore]
+#[serial_test::serial]
+#[tokio::test]
+async fn dual_solution_timeout_handled_wrong_answer() {
+    if !is_e2e_enabled() {
+        return;
+    }
+    let docker = get_docker().expect("docker");
+    common::ensure_sdk_images(&docker).await.unwrap();
+
+    // evaluator：捕获 SolutionTimeoutError 后记为失败用例（WrongAnswer）
+    let evaluator_cmd = r#"python3 -c "
+from noj_evaluator_sdk import SolutionRunner, SolutionTimeoutError, result
+runner = SolutionRunner()
+try:
+    runner.call('sleep_solution')
+    result.accept(score=1000, details={'cases': [{'id': 'c1', 'status': 'Accepted'}]})
+except SolutionTimeoutError:
+    result.wrong_answer(
+        score=0,
+        message='c1 call timeout',
+        details={'cases': [{'id': 'c1', 'status': 'WrongAnswer'}]},
+    )
+"#;
+    let runtime_config = RuntimeConfig {
+        evaluator: EvaluatorRuntime {
+            image: "noj-e2e-sdk-evaluator:latest".to_string(),
+            command: evaluator_cmd.to_string(),
+            time_limit_ms: 15000,
+            memory_limit_mb: 256,
+            network: None,
+        },
+        solution: SolutionRuntime {
+            image: "noj-e2e-sdk-solution:latest".to_string(),
+            entry: "solution.py".to_string(),
+            call_timeout_ms: 100,
+            memory_limit_mb: 128,
+        },
+    };
+    let code = "import time\ndef sleep_solution():\n    time.sleep(0.3)\n    return 1\n";
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        noj_judge::dual::evaluate_dual(
+            docker.clone(),
+            "e2e-solution-timeout-handled",
+            &runtime_config,
+            code,
+            "solution.py",
+            None,
+            "/tmp/e2e-cache",
+            100,
+            64,
+            None,
+        ),
+    )
+    .await
+    .expect("评测 30s 外层超时")
+    .expect("评测应正常返回");
+
+    assert_eq!(
+        result.status, "WrongAnswer",
+        "CallTimeout 被捕获时状态由 evaluator 决定: {:?}",
+        result
     );
 }
