@@ -16,14 +16,14 @@ import {
   getAdminToken,
   isE2E,
   registerUser,
+  e2eTest,
 } from "./helper.ts";
 
-const skip = !isE2E;
 
 // ── 测试常量 ─────────────────────────────────────────
 
-const EVALUATOR_IMAGE = "noj-evaluator-python:dev";
-const SOLUTION_IMAGE = "noj-solution-python:dev";
+const EVALUATOR_IMAGE = "noj-evaluator-python";
+const SOLUTION_IMAGE = "noj-solution-python";
 const TEST_TAG = `e2e-${Date.now()}`;
 
 // ── 共享 fixtures ────────────────────────────────────
@@ -139,15 +139,18 @@ async function submitAndWait(
   }
   const submissionId = (sub.body as { data: { id: string } }).data.id;
 
-  // 轮询直到 finished（最多 60s）
-  for (let i = 0; i < 30; i++) {
+  // 轮询直到 finished（最多 120s；评测队列在 3 组并行下可能拥堵，
+  // 60s 上限曾在 CI 出现超时）
+  for (let i = 0; i < 60; i++) {
     const res = await apiGet(
       `/api/v1/submissions/${submissionId}`,
       userToken,
     );
     if (res.status === 200) {
       const data = (res.body as { data: Record<string, unknown> }).data;
-      if (data.status === "finished") {
+      // finished 与 error 都返回：error 让下方断言暴露真实原因，
+      // 避免镜像缺失等评测失败被误报为"超时未完成"
+      if (data.status === "finished" || data.status === "error") {
         return data;
       }
     }
@@ -158,12 +161,7 @@ async function submitAndWait(
 
 // ── Tests ────────────────────────────────────────────
 
-Deno.test({
-  name: "call_timeout: 调用级 timeout_ms 生效，慢调用记为失败用例且评测继续",
-  ignore: skip,
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+e2eTest("call_timeout: 调用级 timeout_ms 生效，慢调用记为失败用例且评测继续", async () => {
     const adminToken = await getAdminToken();
     await ensureImage(EVALUATOR_IMAGE, "evaluator");
     await ensureImage(SOLUTION_IMAGE, "solution");
@@ -209,15 +207,10 @@ Deno.test({
         }`,
       );
     }
-  },
-});
+  }
+);
 
-Deno.test({
-  name: "call_timeout: 缺省回退题目级 call_timeout_ms",
-  ignore: skip,
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+e2eTest("call_timeout: 缺省回退题目级 call_timeout_ms", async () => {
     const adminToken = await getAdminToken();
     await ensureImage(EVALUATOR_IMAGE, "evaluator");
     await ensureImage(SOLUTION_IMAGE, "solution");
@@ -262,5 +255,5 @@ Deno.test({
         }`,
       );
     }
-  },
-});
+  }
+);

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { IpBanInfo, UserBanInfo } from "../composables/useBanStatus"
+import type { IpBanInfo, UserBanInfo } from "~/composables/useBanStatus"
 
 definePageMeta({
   ssr: false,

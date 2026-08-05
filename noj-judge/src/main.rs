@@ -20,9 +20,13 @@ use crate::config::Config;
 // merge_output 实现在 lib.rs；此处 use 使 bin 内的 `crate::merge_output` 路径可解析
 use noj_judge::merge_output;
 
-/// 等待所有 in-flight 任务完成（带 30s 超时兜底）。
-///
-/// 初始化 Tokio 运行时，连接 Redis 和 Docker，进入主循环阻塞拉取评测任务。
+/// 拉取任务失败后的重试间隔。
+const PULL_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// 评测结果 fallback 文件目录名（相对 work_dir）。
+const FALLBACK_RESULTS_DIR: &str = "fallback-results";
+
+/// 初始化 Tokio 运行时，连接 Redis 与 Docker，进入主循环阻塞拉取评测任务。
 fn main() -> Result<()> {
     let rt = tokio::runtime::Runtime::new().context("创建 Tokio 运行时失败")?;
     rt.block_on(async {
@@ -61,6 +65,9 @@ fn main() -> Result<()> {
         let result_queue = config.result_queue.clone();
         let work_dir = config.work_dir.clone();
 
+        // fallback 目录在循环外构造一次，供所有任务 spawn 复用
+        let fallback_dir = std::path::Path::new(&work_dir).join(FALLBACK_RESULTS_DIR);
+
         // ── 初始化缓存与下载配置 ────────────────────────
         let cache_dir = config.support_cache_dir.clone();
         let download_timeout = config.support_package_download_timeout_secs;
@@ -93,7 +100,7 @@ fn main() -> Result<()> {
                         Ok(None) => continue,
                         Err(e) => {
                             error!("拉取任务失败: {}", e);
-                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                            tokio::time::sleep(PULL_RETRY_DELAY).await;
                             continue;
                         }
                     };
@@ -105,12 +112,10 @@ fn main() -> Result<()> {
 
                     let redis_client = redis_client.clone();
                     let result_queue = result_queue.clone();
-                    let work_dir = work_dir.clone();
                     let cache_dir = cache_dir.clone();
+                    let fallback_dir = fallback_dir.clone();
 
                     let handle = tokio::spawn(async move {
-                        let fallback_dir = std::path::Path::new(&work_dir).join("fallback-results");
-
                         // 统一使用双容器模式（Evaluator + Solution）
                         let docker = match Docker::connect_with_local_defaults() {
                             Ok(d) => d,
@@ -157,7 +162,6 @@ fn main() -> Result<()> {
             }
         }
 
-        #[allow(unreachable_code)]
         Ok(())
     })
 }

@@ -12,7 +12,6 @@
 import {
   apiGet,
   apiPost,
-  BASE_URL,
   CODE_SAMPLES,
   getAdminToken,
   getProblemIdByNumber,
@@ -22,9 +21,11 @@ import {
   registerUser,
   submitCode,
   waitForServer,
+  e2eTest,
+  TEST_PASSWORD,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 let PROBLEM_ID = "";
 
 let adminToken = "";
@@ -32,12 +33,7 @@ let userToken = "";
 let submissionId = "";
 let judgeOk = false;
 
-Deno.test({
-  name: "[e2e/rejudge] Setup",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/rejudge] Setup", async () => {
     if (!isE2E) return;
     await waitForServer();
 
@@ -47,7 +43,7 @@ Deno.test({
     userToken = await registerUser(
       "rejudge_user_" + ts,
       "rejudge_user_" + ts + "@test.com",
-      "Test12345679",
+      TEST_PASSWORD,
     );
 
     judgeOk = await isJudgeAvailable();
@@ -73,17 +69,11 @@ Deno.test({
     console.log(
       "  ✓ 原始提交完成: " + result.verdict + " (" + result.score + "分)",
     );
-  },
-});
+  });
 
 // ── 单条重测 ──
 
-Deno.test({
-  name: "[e2e/rejudge] 5.1 管理员单条重测完成提交",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/rejudge] 5.1 管理员单条重测完成提交", async () => {
     if (!isE2E || !judgeOk) return;
     const rejudgeRes = await apiPost(
       `/api/v1/admin/submissions/${submissionId}/rejudge`,
@@ -115,17 +105,11 @@ Deno.test({
     console.log(
       "  ✓ 重测完成: " + result.verdict + " (" + result.score + "分)",
     );
-  },
-});
+  });
 
 // ── 404 / 403 ──
 
-Deno.test({
-  name: "[e2e/rejudge] 5.2a 不存在的提交返回 404",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/rejudge] 5.2a 不存在的提交返回 404", async () => {
     if (!isE2E || !judgeOk) return;
     const res = await apiPost(
       "/api/v1/admin/submissions/00000000-0000-0000-0000-000000000000/rejudge",
@@ -136,15 +120,9 @@ Deno.test({
       throw new Error("期望 404, 实际 " + res.status);
     }
     console.log("  ✓ 不存在的提交返回 404");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/rejudge] 5.2b 非管理员重测被拒 403",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/rejudge] 5.2b 非管理员重测被拒 403", async () => {
     if (!isE2E || !judgeOk) return;
     const res = await apiPost(
       `/api/v1/admin/submissions/${submissionId}/rejudge`,
@@ -155,17 +133,11 @@ Deno.test({
       throw new Error("期望 403, 实际 " + res.status);
     }
     console.log("  ✓ 非管理员重测被拒");
-  },
-});
+  });
 
 // ── 批量重测 ──
 
-Deno.test({
-  name: "[e2e/rejudge] 5.3a 批量重测返回正确结构",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/rejudge] 5.3a 批量重测返回正确结构", async () => {
     if (!isE2E || !judgeOk) return;
     const res = await apiPost(
       `/api/v1/admin/problems/${PROBLEM_ID}/rejudge`,
@@ -191,15 +163,9 @@ Deno.test({
           body.data.queued + " skipped=" + body.data.skipped,
       );
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/rejudge] 5.3b 重测在审计日志中有记录",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/rejudge] 5.3b 重测在审计日志中有记录", async () => {
     if (!isE2E || !judgeOk) return;
     const logs = await apiGet(
       "/api/v1/admin/audit-logs?action=submissions.rejudge",
@@ -223,5 +189,4 @@ Deno.test({
       console.log("  ⚠ 重测审计记录不含 submission_id");
     }
     console.log("  ✓ 重测审计记录: " + data.length + " 条");
-  },
-});
+  });

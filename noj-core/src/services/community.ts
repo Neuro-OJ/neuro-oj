@@ -51,10 +51,7 @@ import type {
   CommunityPostType,
 } from "../types/community.ts";
 import { ROOT_USER_ID } from "../lib/constants.ts";
-
-function now(): string {
-  return new Date().toISOString();
-}
+import { nowIso } from "../lib/dates.ts";
 
 function settingBoolean(key: string): boolean {
   return getSetting(key)?.value === true;
@@ -115,7 +112,7 @@ export async function assertCommunityWritable(
     isNull(communitySanctions.revoked_at),
   )).limit(1);
   const sanction = rows[0];
-  if (sanction && (!sanction.expires_at || sanction.expires_at > now())) {
+  if (sanction && (!sanction.expires_at || sanction.expires_at > nowIso())) {
     throw new ForbiddenError("你已被限制社区互动", "COMMUNITY_SANCTIONED", {
       reason: sanction.reason,
       until: sanction.expires_at,
@@ -220,9 +217,9 @@ export async function hasAcceptedSolution(
   return !!rows[0];
 }
 
-export async function listBoards(includeArchived = false) {
+export function listBoards(includeArchived = false) {
   const db = getDb();
-  return await db.select().from(communityBoards)
+  return db.select().from(communityBoards)
     .where(includeArchived ? undefined : eq(communityBoards.is_archived, false))
     .orderBy(communityBoards.sort_order, communityBoards.created_at);
 }
@@ -236,7 +233,7 @@ export async function createBoard(
   },
 ) {
   const db = getDb();
-  const createdAt = now();
+  const createdAt = nowIso();
   const board = {
     id: crypto.randomUUID(),
     slug: input.slug,
@@ -265,15 +262,15 @@ export async function updateBoard(
   const db = getDb();
   const rows = await db.update(communityBoards).set({
     ...input,
-    updated_at: now(),
+    updated_at: nowIso(),
   }).where(eq(communityBoards.id, id)).returning();
   if (!rows[0]) throw new NotFoundError("板块不存在");
   return rows[0];
 }
 
-export async function listBoardRoleGrants(boardId: string) {
+export function listBoardRoleGrants(boardId: string) {
   const db = getDb();
-  return await db.select().from(communityBoardRoleGrants).where(
+  return db.select().from(communityBoardRoleGrants).where(
     eq(communityBoardRoleGrants.board_id, boardId),
   );
 }
@@ -391,7 +388,7 @@ export async function createPost(
       );
     }
   }
-  const createdAt = now();
+  const createdAt = nowIso();
   const status = await publicationStatus(authorId);
   const post = {
     id: crypto.randomUUID(),
@@ -648,7 +645,7 @@ export async function updatePost(
   const rows = await db.update(communityPosts).set({
     content,
     title: title || null,
-    updated_at: now(),
+    updated_at: nowIso(),
   }).where(eq(communityPosts.id, postId)).returning();
   return rows[0]!;
 }
@@ -663,8 +660,8 @@ export async function changePostStatus(
   const rows = await db.update(communityPosts).set({
     status,
     moderation_reason: reason || null,
-    published_at: status === "published" ? now() : null,
-    updated_at: now(),
+    published_at: status === "published" ? nowIso() : null,
+    updated_at: nowIso(),
   }).where(eq(communityPosts.id, postId)).returning();
   if (!rows[0]) throw new NotFoundError("社区内容不存在");
   await db.insert(communityModerationActions).values({
@@ -675,7 +672,7 @@ export async function changePostStatus(
     target_id: postId,
     reason,
     metadata: {},
-    created_at: now(),
+    created_at: nowIso(),
   });
   if (rows[0].author_id !== actorId) {
     await createNotification(
@@ -722,7 +719,7 @@ export async function changeCommentStatus(
   const rows = await db.update(communityComments).set({
     status,
     moderation_reason: reason || null,
-    updated_at: now(),
+    updated_at: nowIso(),
   }).where(eq(communityComments.id, commentId)).returning();
   await db.insert(communityModerationActions).values({
     id: crypto.randomUUID(),
@@ -732,7 +729,7 @@ export async function changeCommentStatus(
     target_id: commentId,
     reason,
     metadata: {},
-    created_at: now(),
+    created_at: nowIso(),
   });
   await logAudit(
     "community.post_moderated",
@@ -782,7 +779,7 @@ export async function togglePostFlag(
   const db = getDb();
   const rows = await db.update(communityPosts).set({
     [field]: value,
-    updated_at: now(),
+    updated_at: nowIso(),
   }).where(eq(communityPosts.id, postId)).returning();
   if (!rows[0]) throw new NotFoundError("社区内容不存在");
   await db.insert(communityModerationActions).values({
@@ -793,7 +790,7 @@ export async function togglePostFlag(
     target_id: postId,
     reason: "",
     metadata: { value },
-    created_at: now(),
+    created_at: nowIso(),
   });
   await logAudit(
     "community.post_moderated",
@@ -834,7 +831,7 @@ export async function createComment(
       throw new ValidationError("不能回复未发布或已删除的评论");
     }
   }
-  const createdAt = now();
+  const createdAt = nowIso();
   const status = await publicationStatus(authorId);
   const comment = {
     id: crypto.randomUUID(),
@@ -888,7 +885,7 @@ export async function listComments(
         : eq(communityComments.status, "published"),
     );
   }
-  return await db.select({
+  return db.select({
     comment: communityComments,
     author: { id: users.id, username: users.username },
     likes: sql<
@@ -944,7 +941,7 @@ export async function updateComment(
   }
   const rows = await db.update(communityComments).set({
     content,
-    updated_at: now(),
+    updated_at: nowIso(),
   }).where(eq(communityComments.id, commentId)).returning();
   return rows[0]!;
 }
@@ -969,7 +966,7 @@ export async function deleteComment(
   }
   const rows = await db.update(communityComments).set({
     status: "deleted",
-    updated_at: now(),
+    updated_at: nowIso(),
   }).where(eq(communityComments.id, commentId)).returning();
   // 审核员删除他人评论属治理操作，写入审计日志（复用 post_moderated 动作）
   if (moderator && current.author_id !== actorId) {
@@ -1005,7 +1002,7 @@ async function toggleRelation(
     );
     return false;
   }
-  await db.insert(table).values({ ...columns, created_at: now() });
+  await db.insert(table).values({ ...columns, created_at: nowIso() });
   return true;
 }
 
@@ -1030,8 +1027,8 @@ export async function togglePostLike(userId: string, postId: string) {
   return liked;
 }
 
-export async function toggleBookmark(userId: string, postId: string) {
-  return await toggleRelation(communityBookmarks, {
+export function toggleBookmark(userId: string, postId: string) {
+  return toggleRelation(communityBookmarks, {
     post_id: postId,
     user_id: userId,
   }, "bookmarks_enabled");
@@ -1069,7 +1066,7 @@ export async function toggleCommentLike(userId: string, commentId: string) {
   await db.insert(communityCommentLikes).values({
     comment_id: commentId,
     user_id: userId,
-    created_at: now(),
+    created_at: nowIso(),
   });
   if (comment[0].author_id !== userId) {
     await createNotification(
@@ -1108,7 +1105,7 @@ export async function toggleFollow(followerId: string, followeeId: string) {
   await db.insert(communityFollows).values({
     follower_id: followerId,
     followee_id: followeeId,
-    created_at: now(),
+    created_at: nowIso(),
   });
   await createNotification(followeeId, followerId, "follow", null, null, {});
   return true;
@@ -1121,7 +1118,7 @@ export async function updateActivityVisibility(
   const db = getDb();
   const rows = await db.update(users).set({
     community_activity_visibility: visibility,
-    updated_at: now(),
+    updated_at: nowIso(),
   }).where(eq(users.id, userId)).returning({
     id: users.id,
     community_activity_visibility: users.community_activity_visibility,
@@ -1146,7 +1143,7 @@ export async function createActivity(
     subject_type: subjectType,
     subject_id: subjectId,
     metadata,
-    created_at: now(),
+    created_at: nowIso(),
   }).onConflictDoNothing();
 }
 
@@ -1302,7 +1299,7 @@ async function createNotification(
     comment_id: commentId,
     data,
     read_at: null,
-    created_at: now(),
+    created_at: nowIso(),
   };
   const db = getDb();
   await db.insert(communityNotifications).values(notification);
@@ -1315,9 +1312,9 @@ async function createNotification(
   );
 }
 
-export async function listNotifications(userId: string, limit = 30) {
+export function listNotifications(userId: string, limit = 30) {
   const db = getDb();
-  return await db.select({
+  return db.select({
     notification: communityNotifications,
     actor: { id: users.id, username: users.username },
   }).from(communityNotifications).leftJoin(
@@ -1341,7 +1338,7 @@ export async function getNotificationUnreadCount(userId: string) {
 }
 export async function markNotificationsRead(userId: string) {
   const db = getDb();
-  await db.update(communityNotifications).set({ read_at: now() }).where(
+  await db.update(communityNotifications).set({ read_at: nowIso() }).where(
     and(
       eq(communityNotifications.recipient_id, userId),
       isNull(communityNotifications.read_at),
@@ -1363,7 +1360,7 @@ export async function markNotificationRead(
     ),
   ).limit(1);
   if (!existing[0]) throw new NotFoundError("通知不存在");
-  await db.update(communityNotifications).set({ read_at: now() }).where(
+  await db.update(communityNotifications).set({ read_at: nowIso() }).where(
     eq(communityNotifications.id, notificationId),
   );
 }
@@ -1419,15 +1416,15 @@ export async function createReport(
     resolution: null,
     resolved_by: null,
     resolved_at: null,
-    created_at: now(),
+    created_at: nowIso(),
   };
   await db.insert(communityReports).values(report);
   return report;
 }
 
-export async function listReports() {
+export function listReports() {
   const db = getDb();
-  return await db.select().from(communityReports).where(
+  return db.select().from(communityReports).where(
     eq(communityReports.status, "pending"),
   ).orderBy(communityReports.created_at);
 }
@@ -1442,7 +1439,7 @@ export async function resolveReport(
     status,
     resolution,
     resolved_by: actorId,
-    resolved_at: now(),
+    resolved_at: nowIso(),
   }).where(eq(communityReports.id, reportId)).returning();
   if (!rows[0]) throw new NotFoundError("举报不存在");
   await logAudit(
@@ -1466,7 +1463,7 @@ export async function createSanction(
     reason,
     expires_at: expiresAt ?? null,
     created_by: actorId,
-    created_at: now(),
+    created_at: nowIso(),
     revoked_at: null,
     revoked_by: null,
   };
@@ -1485,7 +1482,7 @@ export async function createSanction(
 export async function revokeSanction(actorId: string, sanctionId: string) {
   const db = getDb();
   const rows = await db.update(communitySanctions).set({
-    revoked_at: now(),
+    revoked_at: nowIso(),
     revoked_by: actorId,
   }).where(eq(communitySanctions.id, sanctionId)).returning();
   if (!rows[0]) throw new NotFoundError("社区处罚不存在");
@@ -1496,16 +1493,16 @@ export async function revokeSanction(actorId: string, sanctionId: string) {
   );
   return rows[0];
 }
-export async function listSanctions() {
+export function listSanctions() {
   const db = getDb();
-  return await db.select().from(communitySanctions).orderBy(
+  return db.select().from(communitySanctions).orderBy(
     desc(communitySanctions.created_at),
   );
 }
 /** 某用户的全部社区处罚历史（含已撤销记录），按创建时间倒序。 */
-export async function listUserSanctions(userId: string) {
+export function listUserSanctions(userId: string) {
   const db = getDb();
-  return await db.select().from(communitySanctions).where(
+  return db.select().from(communitySanctions).where(
     eq(communitySanctions.user_id, userId),
   ).orderBy(desc(communitySanctions.created_at));
 }

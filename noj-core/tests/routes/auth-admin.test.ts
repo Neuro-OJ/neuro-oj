@@ -962,9 +962,9 @@ Deno.test({
     );
     assertEquals(res.status, 200);
     const body = await res.json();
-    assertEquals(body.total, 0);
-    assertEquals(body.queued, 0);
-    assertEquals(body.skipped, 0);
+    assertEquals(body.data.total, 0);
+    assertEquals(body.data.queued, 0);
+    assertEquals(body.data.skipped, 0);
 
     await db.delete(problems).where(eq(problems.id, problemId));
   },

@@ -18,12 +18,6 @@ const app = createApp();
 const port = parseInt(Deno.env.get("PORT") || "8000", 10);
 
 /**
- * JWT 签名密钥最小长度（字符数）。
- *
- * HS256 算法要求密钥至少 256 bit（32 字节），不足则降低 token 防伪造强度，
- * 存在被暴力破解的理论风险。OWASP 2025+ 建议密钥强度不低于此阈值。
- */
-/**
  * 检查邮件 Provider 运行时配置。
  *
  * 非致命校验：配置缺失时降级到 mock 并输出警告，不阻塞启动。
@@ -93,6 +87,21 @@ function checkEmailProviderConfig(): void {
  * 6. 启动评测结果消费者（后台）
  * 7. 启动 HTTP 服务
  */
+/**
+ * 致命启动步骤：失败则记录错误并终止启动（避免带病运行）。
+ */
+async function fatalStep(
+  name: string,
+  fn: () => Promise<void> | void,
+): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    logger.error(`${name}失败，终止启动`, { err });
+    Deno.exit(1);
+  }
+}
+
 async function main() {
   // JWT 启动校验：HS256 要求至少 256 bit（32 字节）密钥强度
   // 修复 issue 64 评论 §5.2：默认 .env 模板是 27 字符，低于安全阈值
@@ -131,46 +140,21 @@ async function main() {
 
   // 初始化数据库：迁移失败为致命错误，终止启动避免带病运行
   // （与 PR #63 ensureRootUser 的失败处理保持一致策略）
-  try {
-    await runMigrations();
-  } catch (err) {
-    logger.error("数据库迁移失败，终止启动", { err });
-    Deno.exit(1);
-  }
+  await fatalStep("数据库迁移", () => runMigrations());
 
   // 确保 root 系统用户存在（必需依赖，失败时终止启动）
-  try {
-    await ensureRootUser();
-  } catch (err) {
-    logger.error("Root 用户创建失败，终止启动", { err });
-    Deno.exit(1);
-  }
+  await fatalStep("Root 用户创建", () => ensureRootUser());
 
   // 初始化 RBAC 种子数据（幂等）
-  try {
-    await ensureRbacSeeds();
-  } catch (err) {
-    logger.error("RBAC 种子数据初始化失败，终止启动", { err });
-    Deno.exit(1);
-  }
+  await fatalStep("RBAC 种子数据初始化", () => ensureRbacSeeds());
 
   // 校验系统设置注册表（issue #99）
   // 启动期检查：key 唯一、type 合法。开发期就发现问题。
-  try {
-    validateRegistry();
-  } catch (err) {
-    logger.error("系统设置注册表校验失败，终止启动", { err });
-    Deno.exit(1);
-  }
+  await fatalStep("系统设置注册表校验", () => validateRegistry());
 
   // 初始化系统设置缓存（issue #99）
   // 从 system_settings 全量加载到内存 Map，失败时终止启动。
-  try {
-    await initSystemSettings();
-  } catch (err) {
-    logger.error("系统设置缓存初始化失败，终止启动", { err });
-    Deno.exit(1);
-  }
+  await fatalStep("系统设置缓存初始化", () => initSystemSettings());
 
   // 启动期 env 快照（issue #99）
   // 一次性读取 env-only 设置项到内存 Map，admin 面板只读展示。

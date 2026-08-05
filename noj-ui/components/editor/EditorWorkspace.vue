@@ -5,7 +5,7 @@ import { extractApiError } from '~/utils/apiError'
 import { useEditorTheme } from '~/composables/useEditorTheme'
 import { useDraftStorage } from '~/composables/useDraftStorage'
 import { useSubmissionPolling } from '~/composables/useSubmissionPolling'
-import { useResizableSplit } from '~/composables/useResizableSplit'
+import { useResizableSplitter } from '~/composables/useResizableSplitter'
 
 /**
  * 独立做题工作区（从 pages/editor/[id].vue 抽出，供标准题库与竞赛共用）。
@@ -90,13 +90,7 @@ const { state: draftState, savedAt: draftSavedAt, clear: clearDraft } = useDraft
 // 侧栏
 const sidebarTab = ref<'description' | 'history' | 'settings'>('description')
 const sidebarVisible = ref(true)
-const sidebarWidth = useResizableSplit('editor:sidebar:width', 320, 240, 480)
-const sidebarWidthPx = computed({
-  get: () => sidebarWidth.width.value,
-  set: (value: number) => {
-    sidebarWidth.width.value = value
-  },
-})
+const sidebarWidth = useResizableSplitter('editor:sidebar:width', 320, 240, 480)
 
 // 提交后实时轮询
 const activeSubmissionId = ref<string | null>(null)
@@ -283,7 +277,7 @@ const toolbarProblem = computed(() => {
 
           <!-- 侧栏（可隐藏 + 可拖拽） -->
           <template v-if="sidebarVisible">
-            <div :style="{ width: `${sidebarWidthPx}px` }" class="flex-shrink-0 transition-[width] duration-200">
+            <div :style="{ width: `${sidebarWidth.width}px` }" class="flex-shrink-0 transition-[width] duration-200">
               <EditorSidebar
                 :active="sidebarTab"
                 :problem="problem"
@@ -299,7 +293,7 @@ const toolbarProblem = computed(() => {
               />
             </div>
             <ResizableSplitter
-              v-model="sidebarWidthPx"
+              v-model="sidebarWidth.width"
               :min="240"
               :max="480"
               side="right"

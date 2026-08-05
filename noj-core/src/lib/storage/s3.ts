@@ -111,7 +111,7 @@ export class S3StorageProvider implements StorageProvider {
     }
 
     // 将 ReadableStream 转换为 Uint8Array
-    return await body.transformToByteArray();
+    return body.transformToByteArray();
   }
 
   /**

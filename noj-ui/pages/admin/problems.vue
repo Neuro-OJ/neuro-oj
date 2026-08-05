@@ -12,9 +12,7 @@ definePageMeta({
 const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
-watch(loading, (val) => {
-  if (!val && !isLoggedIn.value) router.replace("/login")
-}, { immediate: true })
+useRequireLogin()
 
 interface Problem {
   id: string
@@ -199,7 +197,7 @@ async function batchRejudge(problemId: string) {
   </div>
 
   <!-- 删除确认 -->
-  <UModal v-model:open="showDeleteConfirm" :title="'删除题目'" :unmount-on-hide="true">
+  <UModal v-model:open="showDeleteConfirm" title="删除题目" :unmount-on-hide="true">
     <template #body>
       <p>确定要删除题目 <strong>{{ deleteTarget?.title }}</strong>（{{ deleteTarget?.id }}）吗？此操作不可撤销，相关提交记录也会被级联删除。</p>
       <p v-if="deleteError" class="mt-2 text-error-text text-13px">{{ deleteError }}</p>

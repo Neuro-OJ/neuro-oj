@@ -73,7 +73,7 @@ export interface UserProfileResponse {
  *
  * @throws {NotFoundError} 用户不存在
  */
-export async function getUserProfile(
+export async function getUserProfileAggregate(
   userId: string,
 ): Promise<UserProfileResponse> {
   const db = getDb();

@@ -22,7 +22,7 @@ export interface RankingRow {
   username: string;
   solved_count: number;
   total_submissions: number;
-  /** 0–1 浮点数，保留 3 位小数（与 users.ts:getUserProfile 一致） */
+  /** 0–1 浮点数，保留 3 位小数（与 users.ts:getUserProfileAggregate 一致） */
   acceptance_rate: number;
 }
 

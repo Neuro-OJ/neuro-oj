@@ -78,17 +78,16 @@ export function loginIpRateLimit(namespace: string = "login") {
  * namespace 参数（评审修复 M3）：与 loginIpRateLimit 对齐，确保
  * 改密失败只计入 pwchange 限流桶，不污染登录限流桶。
  */
-export async function checkLoginAccountRateLimit(
+export function checkLoginAccountRateLimit(
   login: string,
   namespace: string = "login",
-): Promise<RateLimitResult> {
+): RateLimitResult | Promise<RateLimitResult> {
   if (!isRateLimitEnabled()) {
     return { allowed: true, remaining: 0, resetAt: 0, retryAfter: 0 };
   }
   const key = (login || "anonymous").toLowerCase().slice(0, 64);
-  return await checkRateLimit(`${namespace}:acc:${key}`, LOGIN_LIMITS.acc);
+  return checkRateLimit(`${namespace}:acc:${key}`, LOGIN_LIMITS.acc);
 }
-
 /** 429 抛错器供路由层使用 */
 export function throwRateLimited(
   cfg: RateLimitConfig,

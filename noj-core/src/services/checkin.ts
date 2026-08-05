@@ -1,4 +1,5 @@
 import { eq, sql } from "drizzle-orm";
+import { todayUtc } from "../lib/dates.ts";
 import { getDb } from "../db/connection.ts";
 import { checkIns, users } from "../db/schema.ts";
 import {
@@ -82,10 +83,6 @@ async function assertUserExists(userId: string): Promise<void> {
  * 获取今日 UTC 日期字符串（YYYY-MM-DD）。
  * 所有签到相关日期统一使用 UTC，简化时区处理。
  */
-function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 /**
  * 获取昨日 UTC 日期字符串。
  * 用 setUTCDate(-1) 而非 Date.now() - 86400000，正确处理日历日偏移

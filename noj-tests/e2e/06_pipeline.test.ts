@@ -13,41 +13,32 @@ import {
   registerUser,
   submitCode,
   waitForServer,
+  e2eTest,
+  TEST_PASSWORD,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 let token = "";
 let PROBLEM_ID = "";
 let judgeOk = false;
 
-Deno.test({
-  name: "[e2e/pipeline] Setup",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/pipeline] Setup", async () => {
     if (!isE2E) return;
     await waitForServer();
     const ts = Date.now().toString(36);
     token = await registerUser(
       "pipe_user_" + ts,
       "pipe_user_" + ts + "@test.com",
-      "Test12345679",
+      TEST_PASSWORD,
     );
     console.log("  → 用户已注册");
     // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
     PROBLEM_ID = await getProblemIdByNumber(1001);
     judgeOk = await isJudgeAvailable();
     if (!judgeOk) console.log("  ⚠ judge worker 不可用，管道测试将跳过");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/pipeline] 1/8 Accepted",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/pipeline] 1/8 Accepted", async () => {
     if (!isE2E || !judgeOk) return;
     const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
     console.log("  → 提交 ID: " + id.slice(0, 8));
@@ -56,30 +47,18 @@ Deno.test({
     if (result.verdict !== "Accepted") {
       throw new Error("期望 Accepted, 实际 " + result.verdict);
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/pipeline] 2/8 Wrong Answer",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/pipeline] 2/8 Wrong Answer", async () => {
     if (!isE2E || !judgeOk) return;
     const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.wrongAnswer);
     const result = await pollSubmission(token, id);
     if (result.verdict !== "WrongAnswer") {
       throw new Error("期望 WrongAnswer, 实际 " + result.verdict);
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/pipeline] 3/8 TLE",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/pipeline] 3/8 TLE", async () => {
     if (!isE2E || !judgeOk) return;
     const id = await submitCode(
       token,
@@ -90,29 +69,17 @@ Deno.test({
     if (result.verdict !== "TimeLimitExceeded") {
       throw new Error("期望 TLE, 实际 " + result.verdict);
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/pipeline] 4/8 MQ 可靠性",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/pipeline] 4/8 MQ 可靠性", async () => {
     if (!isE2E || !judgeOk) return;
     const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
     const result = await pollSubmission(token, id);
     if (result.status !== "finished") throw new Error("状态非 finished");
     if (result.score <= 0) throw new Error("分数应 >0");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/pipeline] 5/8 无效消息容错",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/pipeline] 5/8 无效消息容错", async () => {
     if (!isE2E) return;
     if (!judgeOk) return;
     try {
@@ -138,15 +105,9 @@ Deno.test({
     const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
     const result = await pollSubmission(token, id);
     if (result.status !== "finished") throw new Error("非法消息后提交未完成");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/pipeline] 6/8 Memory Limit Exceeded",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/pipeline] 6/8 Memory Limit Exceeded", async () => {
     if (!isE2E || !judgeOk) return;
     const id = await submitCode(
       token,
@@ -161,15 +122,9 @@ Deno.test({
       throw new Error("期望 MLE 或 RuntimeError, 实际 " + result.verdict);
     }
     console.log("  → " + result.verdict);
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/pipeline] 7/8 Runtime Error",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/pipeline] 7/8 Runtime Error", async () => {
     if (!isE2E || !judgeOk) return;
     const id = await submitCode(
       token,
@@ -180,15 +135,9 @@ Deno.test({
     if (result.verdict !== "RuntimeError") {
       throw new Error("期望 RuntimeError, 实际 " + result.verdict);
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/pipeline] 8/8 Syntax Error",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/pipeline] 8/8 Syntax Error", async () => {
     if (!isE2E || !judgeOk) return;
     const id = await submitCode(
       token,
@@ -201,5 +150,4 @@ Deno.test({
     ) {
       throw new Error("期望 CompileError/RuntimeError, 实际 " + result.verdict);
     }
-  },
-});
+  });

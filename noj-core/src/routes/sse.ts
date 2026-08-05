@@ -3,6 +3,7 @@ import { streamSSE } from "hono/streaming";
 import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
 import type { OptionalAuthEnv } from "../middleware/auth.ts";
 import { Channels, onEvent } from "../lib/event-bus.ts";
+import { createSseStream } from "../lib/sse-stream.ts";
 import { getSubmission } from "../services/submissions.ts";
 import { getQueueOverview } from "../services/queue.ts";
 import {
@@ -44,76 +45,43 @@ sse.use("*", authMiddleware);
  */
 sse.get("/submissions/:id/events", async (c) => {
   const { id } = c.req.param();
-  const userId = c.get("userId") as string | undefined;
+  const userId = c.get("userId");
 
   // 校验提交存在并验证访问权限，同时获取当前状态
   const submission = await getSubmission(id, userId);
 
-  return streamSSE(c, async (stream) => {
-    // 当前 SSE 流是否已关闭（防止重复清理）
-    let streamClosed = false;
-    let resolveAbort: (() => void) | null = null;
-
-    // 兜底超时：5 分钟后自动关闭，防止 onAbort 不触发时泄漏 setInterval + 回调
-    const safetyTimer = setTimeout(() => {
-      closeStream();
-    }, 300_000);
-
-    // 30s 心跳保持连接（防止代理/中间件超时断连）。
-    // 注意：keepAlive 必须在 closeStream 之前声明——终态提交会立即调用
-    // closeStream() 并 clearInterval(keepAlive)，若此处晚于 closeStream 声明
-    // 会触发 TDZ（ReferenceError: Cannot access 'keepAlive' before initialization）。
-    const keepAlive = setInterval(() => {
-      if (streamClosed) return;
-      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
-        closeStream();
-      });
-    }, 30_000);
-
-    // 关闭流并清理资源
-    function closeStream() {
-      if (streamClosed) return;
-      streamClosed = true;
-      clearTimeout(safetyTimer);
-      clearInterval(keepAlive);
-      unsub();
-      if (resolveAbort) resolveAbort();
-    }
-
-    // 如果提交已经处于终态（finished/error），立即推送触发通知并关闭
-    if (submission.status === "finished" || submission.status === "error") {
-      await stream.writeSSE({
-        event: "submission:updated",
-        data: JSON.stringify({
-          type: "submission:updated",
-          id: id,
-        }),
-      });
-      closeStream();
-      return;
-    }
-
-    const unsub = onEvent(
-      `noj:events:submission:${id}`,
-      (_channel, message) => {
-        if (streamClosed) return;
-        stream.writeSSE({
+  return createSseStream(
+    c,
+    async ({ stream, closed, close, onUnsubscribe }) => {
+      // 如果提交已经处于终态（finished/error），立即推送触发通知并关闭
+      if (submission.status === "finished" || submission.status === "error") {
+        await stream.writeSSE({
           event: "submission:updated",
-          data: message,
-        }).catch(() => {
-          closeStream();
+          data: JSON.stringify({
+            type: "submission:updated",
+            id,
+          }),
         });
-      },
-    );
+        close();
+        return;
+      }
 
-    // 保持 stream 活跃，直到客户端断开
-    await new Promise<void>((resolve) => {
-      resolveAbort = resolve;
-      stream.onAbort(() => {
-        closeStream();
-      });
-    });
-  });
+      onUnsubscribe(
+        onEvent(
+          Channels.submission(id),
+          (_channel, message) => {
+            if (closed) return;
+            stream.writeSSE({
+              event: "submission:updated",
+              data: message,
+            }).catch(() => {
+              close();
+            });
+          },
+        ),
+      );
+    },
+  );
 });
 
 /**
@@ -127,63 +95,36 @@ sse.get("/submissions/:id/events", async (c) => {
  *   data: { type: "queue:changed" }
  */
 sse.get("/queue/events", (c) => {
-  return streamSSE(c, async (stream) => {
-    let streamClosed = false;
-    let resolveAbort: (() => void) | null = null;
-
-    // 兜底超时：5 分钟后自动关闭，防止 onAbort 不触发时泄漏 setInterval + 回调
-    const safetyTimer = setTimeout(() => {
-      closeStream();
-    }, 300_000);
-
-    // 30s 心跳（须在 closeStream 之前声明，避免 TDZ，同 submissions 端点）
-    const keepAlive = setInterval(() => {
-      if (streamClosed) return;
-      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
-        closeStream();
-      });
-    }, 30_000);
-
-    function closeStream() {
-      if (streamClosed) return;
-      streamClosed = true;
-      clearTimeout(safetyTimer);
-      clearInterval(keepAlive);
-      unsub();
-      if (resolveAbort) resolveAbort();
-    }
-
-    // 连接建立后立即推送当前队列全量数据（MQTT Retain 语义）
-    try {
-      await getQueueOverview();
-      await stream.writeSSE({
-        event: "queue:changed",
-        data: JSON.stringify({ type: "queue:changed" }),
-      });
-    } catch {
-      // 获取当前队列失败不影响后续订阅
-    }
-
-    const unsub = onEvent(
-      "noj:events:queue",
-      (_channel, message) => {
-        if (streamClosed) return;
-        stream.writeSSE({
+  return createSseStream(
+    c,
+    async ({ stream, closed, close, onUnsubscribe }) => {
+      // 连接建立后立即推送当前队列全量数据（MQTT Retain 语义）
+      try {
+        await getQueueOverview();
+        await stream.writeSSE({
           event: "queue:changed",
-          data: message,
-        }).catch(() => {
-          closeStream();
+          data: JSON.stringify({ type: "queue:changed" }),
         });
-      },
-    );
+      } catch {
+        // 获取当前队列失败不影响后续订阅
+      }
 
-    await new Promise<void>((resolve) => {
-      resolveAbort = resolve;
-      stream.onAbort(() => {
-        closeStream();
-      });
-    });
-  });
+      onUnsubscribe(
+        onEvent(
+          Channels.queue,
+          (_channel, message) => {
+            if (closed) return;
+            stream.writeSSE({
+              event: "queue:changed",
+              data: message,
+            }).catch(() => {
+              close();
+            });
+          },
+        ),
+      );
+    },
+  );
 });
 
 /**
@@ -199,76 +140,50 @@ sse.get("/queue/events", (c) => {
 export const statsSse = new Hono();
 
 statsSse.get("/submissions/stats/events", (c) => {
-  return streamSSE(c, async (stream) => {
-    let streamClosed = false;
-    let resolveAbort: (() => void) | null = null;
+  return createSseStream(
+    c,
+    async ({ stream, closed, onUnsubscribe }) => {
+      // 连接建立后立即推送当前统计数据（类似 MQTT Retain 语义）
+      try {
+        const [total, today] = await Promise.all([
+          getCachedTotalStats(),
+          getCachedTodayStats(),
+        ]);
+        await stream.writeSSE({
+          event: "stats:updated",
+          data: JSON.stringify({ type: "stats:updated", total, today }),
+        });
+      } catch {
+        // 初始化失败不影响后续订阅
+      }
 
-    const safetyTimer = setTimeout(() => {
-      closeStream();
-    }, 300_000);
-
-    // 30s 心跳（须在 closeStream 之前声明，避免 TDZ，同 submissions 端点）
-    const keepAlive = setInterval(() => {
-      if (streamClosed) return;
-      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
-        closeStream();
-      });
-    }, 30_000);
-
-    function closeStream() {
-      if (streamClosed) return;
-      streamClosed = true;
-      clearTimeout(safetyTimer);
-      clearInterval(keepAlive);
-      unsub();
-      if (resolveAbort) resolveAbort();
-    }
-
-    // 连接建立后立即推送当前统计数据（类似 MQTT Retain 语义）
-    try {
-      const [total, today] = await Promise.all([
-        getCachedTotalStats(),
-        getCachedTodayStats(),
-      ]);
-      await stream.writeSSE({
-        event: "stats:updated",
-        data: JSON.stringify({ type: "stats:updated", total, today }),
-      });
-    } catch {
-      // 初始化失败不影响后续订阅
-    }
-
-    const unsub = onEvent(
-      "noj:events:stats",
-      async (_channel, message) => {
-        if (streamClosed) return;
-        try {
-          const [total, today] = await Promise.all([
-            getCachedTotalStats(),
-            getCachedTodayStats(),
-          ]);
-          await stream.writeSSE({
-            event: "stats:updated",
-            data: JSON.stringify({
-              type: "stats:updated",
-              total,
-              today,
-              ...JSON.parse(message),
-            }),
-          });
-        } catch {
-          // 静默失败
-        }
-      },
-    );
-
-    await new Promise<void>((resolve) => {
-      resolveAbort = resolve;
-      stream.onAbort(() => {
-        closeStream();
-      });
-    });
-  });
+      onUnsubscribe(
+        onEvent(
+          Channels.stats,
+          async (_channel, message) => {
+            if (closed) return;
+            try {
+              const [total, today] = await Promise.all([
+                getCachedTotalStats(),
+                getCachedTodayStats(),
+              ]);
+              await stream.writeSSE({
+                event: "stats:updated",
+                data: JSON.stringify({
+                  type: "stats:updated",
+                  total,
+                  today,
+                  ...JSON.parse(message),
+                }),
+              });
+            } catch {
+              // 静默失败
+            }
+          },
+        ),
+      );
+    },
+  );
 });
 
 /** 竞赛事件 SSE 端点（公开赛可匿名，OI 进行中由服务层强制认证）。 */
@@ -278,7 +193,7 @@ contestSse.get(
   "/contests/:id/events",
   optionalAuthMiddleware,
   async (c) => {
-    const contestId = c.req.param("id")!;
+    const contestId = c.req.param("id") as string;
     const viewerId = c.var.userId;
     const isAdmin = c.var.isAdmin ?? false;
     const contest = await getContest(contestId, viewerId);

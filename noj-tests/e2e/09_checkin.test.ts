@@ -19,9 +19,10 @@ import {
   isE2E,
   registerUser,
   waitForServer,
+  e2eTest,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 let userToken = "";
 const ts = Date.now();
 const TEST_USER = {
@@ -30,12 +31,7 @@ const TEST_USER = {
   password: "E2eCheckinPass1",
 };
 
-Deno.test({
-  name: "[e2e/checkin] Setup",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/checkin] Setup", async () => {
     if (!isE2E) return;
     await waitForServer();
     userToken = await registerUser(
@@ -44,67 +40,37 @@ Deno.test({
       TEST_USER.password,
     );
     console.log("  ✓ 测试用户已注册并登录");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/checkin] 1.1 未登录 POST 返回 401",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/checkin] 1.1 未登录 POST 返回 401", async () => {
     if (!isE2E) return;
     const { status } = await apiPost("/api/v1/checkin", {});
     if (status !== 401) throw new Error("期望 401, 实际 " + status);
     console.log("  ✓ 未登录 POST → 401");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/checkin] 1.2 未登录 GET /today 返回 401",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/checkin] 1.2 未登录 GET /today 返回 401", async () => {
     if (!isE2E) return;
     const { status } = await apiGet("/api/v1/checkin/today");
     if (status !== 401) throw new Error("期望 401, 实际 " + status);
     console.log("  ✓ 未登录 GET /today → 401");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/checkin] 1.2b 无效 token POST 返回 401",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/checkin] 1.2b 无效 token POST 返回 401", async () => {
     if (!isE2E) return;
     const { status } = await apiPost("/api/v1/checkin", {}, "invalidtoken123");
     if (status !== 401) throw new Error("期望 401, 实际 " + status);
     console.log("  ✓ 无效 token POST → 401");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/checkin] 1.2c 无效 token GET /today 返回 401",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/checkin] 1.2c 无效 token GET /today 返回 401", async () => {
     if (!isE2E) return;
     const { status } = await apiGet("/api/v1/checkin/today", "invalidtoken123");
     if (status !== 401) throw new Error("期望 401, 实际 " + status);
     console.log("  ✓ 无效 token GET /today → 401");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/checkin] 1.2d 签到前 GET /today 返回 checked_in=false + streak=0",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/checkin] 1.2d 签到前 GET /today 返回 checked_in=false + streak=0", async () => {
     if (!isE2E) return;
     const ts2 = Date.now() + 1;
     const freshToken = await registerUser(
@@ -121,15 +87,9 @@ Deno.test({
       );
     }
     console.log("  ✓ 签到前 GET /today → checked_in=false, streak=0");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/checkin] 1.3 已登录首次签到返回 200 + streak=1",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/checkin] 1.3 已登录首次签到返回 200 + streak=1", async () => {
     if (!isE2E) return;
     const { status, body } = await apiPost("/api/v1/checkin", {}, userToken);
     if (status !== 200) {
@@ -140,15 +100,9 @@ Deno.test({
       throw new Error("期望 checked_in=true,streak=1, 实际 " + JSON.stringify(b));
     }
     console.log("  ✓ 首次签到 → 200 streak=1");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/checkin] 1.4 同日重复签到返回 409 + 完整错误体",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/checkin] 1.4 同日重复签到返回 409 + 完整错误体", async () => {
     if (!isE2E) return;
     const { status, body } = await apiPost("/api/v1/checkin", {}, userToken);
     if (status !== 409) {
@@ -162,15 +116,9 @@ Deno.test({
       throw new Error("期望 error='今天已签到', 实际 " + b.error);
     }
     console.log("  ✓ 重复签到 → 409 CONFLICT_ERROR \"今天已签到\"");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/checkin] 1.5 GET /today 已签到返回 streak",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/checkin] 1.5 GET /today 已签到返回 streak", async () => {
     if (!isE2E) return;
     const { status, body } = await apiGet("/api/v1/checkin/today", userToken);
     if (status !== 200) {
@@ -181,15 +129,9 @@ Deno.test({
       throw new Error("期望 checked_in=true 且 streak≥1, 实际 " + JSON.stringify(b));
     }
     console.log("  ✓ GET /today → streak=" + b.data.streak);
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/checkin] 1.6 并发签到：仅一个 200，其余 409（评审 H2）",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/checkin] 1.6 并发签到：仅一个 200，其余 409（评审 H2）", async () => {
     if (!isE2E) return;
     // 注册新用户避免 1.3 已签到污染
     const ts2 = Date.now() + 1;
@@ -217,15 +159,9 @@ Deno.test({
       );
     }
     console.log("  ✓ 并发签到 → 1×200 + 2×409 (无 500)");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/checkin] 1.7 多用户隔离：各自签到独立",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/checkin] 1.7 多用户隔离：各自签到独立", async () => {
     if (!isE2E) return;
     const ts3 = Date.now() + 2;
     // 用户 A 签到，用户 B 首次签到应不受影响
@@ -273,5 +209,4 @@ Deno.test({
     }
 
     console.log("  ✓ 多用户隔离 → 各自签到独立，互不影响");
-  },
-});
+  });

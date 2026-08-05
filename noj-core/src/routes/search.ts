@@ -75,15 +75,12 @@ router.get("/", optionalAuthMiddleware, async (c) => {
     maxPerPage: 50,
   });
 
-  // 调用 service
-  if (type === "problem") {
-    const result = await searchProblems({
-      q,
-      isAdmin,
-      includeU,
-      page,
-      limit,
-    });
+  // 统一响应构造：{ query, type, items, total, page, limit, took_ms }
+  const respond = <
+    T extends { items: unknown[]; total: number; took_ms: number },
+  >(
+    result: T,
+  ) => {
     c.header("X-Search-Took-Ms", String(result.took_ms));
     return c.json({
       data: {
@@ -96,6 +93,18 @@ router.get("/", optionalAuthMiddleware, async (c) => {
         took_ms: result.took_ms,
       },
     });
+  };
+
+  // 调用 service
+  if (type === "problem") {
+    const result = await searchProblems({
+      q,
+      isAdmin,
+      includeU,
+      page,
+      limit,
+    });
+    return respond(result);
   }
 
   if (type === "community") {
@@ -110,34 +119,12 @@ router.get("/", optionalAuthMiddleware, async (c) => {
       throw new UnauthorizedError("登录后可搜索社区内容");
     }
     const result = await searchCommunity({ q, page, limit });
-    c.header("X-Search-Took-Ms", String(result.took_ms));
-    return c.json({
-      data: {
-        query: q,
-        type,
-        items: result.items,
-        total: result.total,
-        page,
-        limit,
-        took_ms: result.took_ms,
-      },
-    });
+    return respond(result);
   }
 
   // type === "user"
   const result = await searchUsers({ q, isAdmin, page, limit });
-  c.header("X-Search-Took-Ms", String(result.took_ms));
-  return c.json({
-    data: {
-      query: q,
-      type,
-      items: result.items,
-      total: result.total,
-      page,
-      limit,
-      took_ms: result.took_ms,
-    },
-  });
+  return respond(result);
 });
 
 export default router;

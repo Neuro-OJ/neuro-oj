@@ -11,9 +11,7 @@ definePageMeta({
 const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
-watch(loading, (val) => {
-  if (!val && !isLoggedIn.value) router.replace("/login")
-}, { immediate: true })
+useRequireLogin()
 
 interface JudgeImage {
   id: string
@@ -239,7 +237,7 @@ async function handleDelete() {
   </UModal>
 
   <!-- 删除确认弹窗 -->
-  <UModal v-model:open="showDeleteConfirm" :title="'删除评测镜像'" :unmount-on-hide="true">
+  <UModal v-model:open="showDeleteConfirm" title="删除评测镜像" :unmount-on-hide="true">
     <template #body>
       <p>确定要删除评测镜像 <strong>{{ deleteTarget?.image }}</strong> 吗？此操作将导致使用了此镜像的题目无法通过白名单校验。</p>
       <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>

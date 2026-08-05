@@ -25,9 +25,12 @@ import {
   registerUser,
   submitCode,
   waitForServer,
+  BASE_URL,
+  e2eTest,
+  TEST_PASSWORD,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 
 // ── 测试常量 ─────────────────────────────────────────
 
@@ -36,7 +39,6 @@ const SOLUTION_IMAGE = "noj-solution-python";
 const TEST_TAG = `e2e-netcap-${Date.now()}`;
 
 let userToken = "";
-let problemId = ""; // API 创建的题目（用例 1）
 let bundleProblemId = ""; // import-bundle 导入的题目（用例 2）
 let judgeOk = false;
 
@@ -162,7 +164,7 @@ async function importBundle(zip: Uint8Array): Promise<string> {
     ),
     "netcap-bundle.zip",
   );
-  const baseUrl = Deno.env.get("E2E_BASE_URL") || "http://localhost:8099";
+  const baseUrl = BASE_URL;
   const res = await fetch(`${baseUrl}/api/v1/problems/import-bundle`, {
     method: "POST",
     headers: { Authorization: `Bearer ${userToken}` },
@@ -201,11 +203,11 @@ async function judgeAvailable(): Promise<boolean> {
     const t = await registerUser(
       "netcap_jchk_" + ts,
       "netcap_jchk_" + ts + "@test.com",
-      "Test12345679",
+      TEST_PASSWORD,
     );
     const problemId = await getProblemIdByNumber(1001);
     const id = await submitCode(t, problemId, "print(1)");
-    const baseUrl = Deno.env.get("E2E_BASE_URL") || "http://localhost:8099";
+    const baseUrl = BASE_URL;
     for (let i = 0; i < 10; i++) {
       await new Promise((r) => setTimeout(r, 1000));
       const res = await fetch(
@@ -229,34 +231,22 @@ async function judgeAvailable(): Promise<boolean> {
 
 // ── 测试 ────────────────────────────────────────────
 
-Deno.test({
-  name: "[e2e/network-capability] Setup",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/network-capability] Setup", async () => {
     if (!isE2E) return;
     await waitForServer();
     const ts = Date.now().toString(36);
     userToken = await registerUser(
       "netcap_" + ts,
       "netcap_" + ts + "@test.com",
-      "Test12345679",
+      TEST_PASSWORD,
     );
     await ensureImage(EVALUATOR_IMAGE, "evaluator");
     await ensureImage(SOLUTION_IMAGE, "solution");
     judgeOk = await judgeAvailable();
     if (!judgeOk) console.log("  ⚠ judge worker 不可用，评测用例将跳过");
-  },
-});
+  });
 
-Deno.test({
-  name:
-    "[e2e/network-capability] 普通用户创建联网题放行（network.enabled=true）",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/network-capability] 普通用户创建联网题放行（network.enabled=true）", async () => {
     if (!isE2E) return;
     const res = await apiPost(
       "/api/v1/problems",
@@ -297,36 +287,22 @@ Deno.test({
         };
       };
     }).data;
-    problemId = data.id;
     if (data.runtime_config.evaluator.network?.enabled !== true) {
       throw new Error("runtime_config.evaluator.network.enabled 未保留为 true");
     }
-    console.log(`  → 题目 ${problemId.slice(0, 8)} 创建成功（联网已开启）`);
-  },
-});
+    }
+);
 
-Deno.test({
-  name: "[e2e/network-capability] 普通用户导入联网统一包（import-bundle 放行）",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/network-capability] 普通用户导入联网统一包（import-bundle 放行）", async () => {
     if (!isE2E) return;
     const zip = await makeBundleZip();
     bundleProblemId = await importBundle(zip);
     console.log(
       `  → 导入题目 ${bundleProblemId.slice(0, 8)} 成功（联网已开启）`,
     );
-  },
-});
+  });
 
-Deno.test({
-  name:
-    "[e2e/network-capability] 提交 solution（call_capability）→ 评测 Accepted",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/network-capability] 提交 solution（call_capability）→ 评测 Accepted", async () => {
     if (!isE2E || !judgeOk) {
       console.log("  ⚠ judge 不可用，跳过评测断言");
       return;
@@ -347,5 +323,4 @@ def solve(msg: str) -> str:
         `期望 Accepted（evaluator 联网 + capability 全链路），实际 ${result.verdict}`,
       );
     }
-  },
-});
+  });

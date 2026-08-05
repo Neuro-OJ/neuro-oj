@@ -20,32 +20,22 @@ import {
   getAdminToken,
   registerUser,
   waitForServer,
+  e2eTest,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 
 // 测试 ID 后缀
 const TS = Date.now().toString(36);
 
-Deno.test({
-  name: "[e2e/admin] Setup",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/admin] Setup", async () => {
     if (!isE2E) return;
     await waitForServer();
     // 确保 admin 可用
     await getAdminToken();
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/admin] 1.1 dashboard/stats 返回统计数据",
-  ignore: skip,
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+e2eTest("[e2e/admin] 1.1 dashboard/stats 返回统计数据", async () => {
     if (!isE2E) return;
     const adminToken = await getAdminToken();
     const { status, body } = await apiGet(
@@ -69,15 +59,9 @@ Deno.test({
     if (typeof data?.data?.total_submissions !== "number") {
       throw new Error("total_submissions 应为数值");
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/admin] 1.2 普通用户无法访问 dashboard",
-  ignore: skip,
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+e2eTest("[e2e/admin] 1.2 普通用户无法访问 dashboard", async () => {
     if (!isE2E) return;
     const token = await registerUser(
       `admt_noadmin_${TS}`,
@@ -91,15 +75,9 @@ Deno.test({
     if (status !== 403 && status !== 401) {
       throw new Error(`期望 401/403，实际 ${status}`);
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/admin] 2.1 系统设置 GET/PUT",
-  ignore: skip,
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+e2eTest("[e2e/admin] 2.1 系统设置 GET/PUT", async () => {
     if (!isE2E) return;
     const adminToken = await getAdminToken();
 
@@ -138,15 +116,9 @@ Deno.test({
     if (!updated) {
       console.log("  ⚠ 未找到布尔类型的设置，跳过 PUT 验证");
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/admin] 2.2 普通用户无法修改设置",
-  ignore: skip,
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+e2eTest("[e2e/admin] 2.2 普通用户无法修改设置", async () => {
     if (!isE2E) return;
     const token = await registerUser(
       `admt_nosettings_${TS}`,
@@ -161,15 +133,9 @@ Deno.test({
     if (status !== 403 && status !== 401) {
       throw new Error(`期望 401/403，实际 ${status}`);
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/admin] 3.1 获取用户列表",
-  ignore: skip,
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+e2eTest("[e2e/admin] 3.1 获取用户列表", async () => {
     if (!isE2E) return;
     const adminToken = await getAdminToken();
     const { status, body } = await apiGet("/api/v1/admin/users", adminToken);
@@ -178,15 +144,9 @@ Deno.test({
     if (!Array.isArray(data?.data)) {
       throw new Error("users data 应为数组");
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/admin] 3.2 黑名单 CRUD",
-  ignore: skip,
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+e2eTest("[e2e/admin] 3.2 黑名单 CRUD", async () => {
     if (!isE2E) return;
     const adminToken = await getAdminToken();
     const testIp = `192.168.${Date.now() % 255}.1`;
@@ -219,15 +179,9 @@ Deno.test({
     if (delRes.status !== 200 && delRes.status !== 204) {
       throw new Error(`删除黑名单失败: ${delRes.status}`);
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/admin] 3.3 普通用户无法管理黑名单",
-  ignore: skip,
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+e2eTest("[e2e/admin] 3.3 普通用户无法管理黑名单", async () => {
     if (!isE2E) return;
     const token = await registerUser(
       `admt_noblack_${TS}`,
@@ -241,15 +195,9 @@ Deno.test({
     if (status !== 403 && status !== 401) {
       throw new Error(`期望 401/403，实际 ${status}`);
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/admin] 4.1 admin 提交详情",
-  ignore: skip,
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+e2eTest("[e2e/admin] 4.1 admin 提交详情", async () => {
     if (!isE2E) return;
     const adminToken = await getAdminToken();
     // 测试获取提交列表和详情
@@ -261,15 +209,9 @@ Deno.test({
     if (status === 401 || status === 403) {
       throw new Error(`admin 应能访问提交详情，实际 ${status}`);
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/admin] 4.2 普通用户无法删除提交",
-  ignore: skip,
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+e2eTest("[e2e/admin] 4.2 普通用户无法删除提交", async () => {
     if (!isE2E) return;
     const token = await registerUser(
       `admt_nodel_${TS}`,
@@ -283,5 +225,4 @@ Deno.test({
     if (status !== 403 && status !== 401) {
       throw new Error(`期望 401/403，实际 ${status}`);
     }
-  },
-});
+  });

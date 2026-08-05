@@ -6,7 +6,7 @@
  * - 移动端（< md）不调用 startDrag
  */
 
-export function useResizableSplit(
+export function useResizableSplitter(
   storageKey: string,
   initial: number,
   min: number,

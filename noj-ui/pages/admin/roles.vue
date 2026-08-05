@@ -10,9 +10,7 @@ definePageMeta({
 const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
-watch(loading, (val) => {
-  if (!val && !isLoggedIn.value) router.replace("/login")
-}, { immediate: true })
+useRequireLogin()
 
 interface Permission {
   id: string
@@ -375,7 +373,7 @@ async function confirmDelete(role: Role) {
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="saving" @click="showEditor = false">取消</UButton>
-      <UButton color="primary" :loading="saving" @click="handleSave">editingRole ? '保存' : '创建'</UButton>
+      <UButton color="primary" :loading="saving" @click="handleSave">{{ editingRole ? '保存' : '创建' }}</UButton>
     </template>
   </UModal>
 </template>

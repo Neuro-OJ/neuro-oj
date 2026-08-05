@@ -1,4 +1,5 @@
 import { and, eq, gte, sql } from "drizzle-orm";
+import { todayUtc } from "../lib/dates.ts";
 import { getDb } from "../db/connection.ts";
 import { evaluationResults, submissions } from "../db/schema.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";
@@ -41,7 +42,7 @@ async function ensureTotal(): Promise<void> {
 }
 
 async function ensureToday(): Promise<void> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayUtc();
   if (todayTotal !== null && todayDate === today) return;
   const db = getDb();
   const [row] = await db
@@ -106,7 +107,7 @@ export function applyNewResult(score: number | null, createdAt: string): void {
     if (score !== null && score >= FULL_SCORE) totalFullScore!++;
   }
   // 今日统计
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayUtc();
   if (todayTotal !== null && todayDate === today && createdAt >= today) {
     todayTotal++;
     if (score !== null && score >= FULL_SCORE) todayFullScore!++;
@@ -130,7 +131,7 @@ export function _resetStatsCacheForTest(): void {
 
 async function getTodayStatsFromDb(userId: string): Promise<StatsSnapshot> {
   const db = getDb();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayUtc();
   const [row] = await db
     .select({
       total: sql<number>`count(*)::int`,

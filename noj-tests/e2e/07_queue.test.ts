@@ -11,19 +11,16 @@ import {
   registerUser,
   submitCode,
   waitForServer,
+  e2eTest,
+  TEST_PASSWORD,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 let token = "";
 let adminToken = "";
 let PROBLEM_ID = "";
 
-Deno.test({
-  name: "[e2e/queue] Setup",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/queue] Setup", async () => {
     if (!isE2E) return;
     await waitForServer();
     adminToken = await getAdminToken();
@@ -31,19 +28,13 @@ Deno.test({
     token = await registerUser(
       "q_user_" + ts,
       "q_user_" + ts + "@test.com",
-      "Pass1234Test",
+      TEST_PASSWORD,
     );
     // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
     PROBLEM_ID = await getProblemIdByNumber(1001);
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/queue] 7.1 公共队列概览结构",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/queue] 7.1 公共队列概览结构", async () => {
     if (!isE2E) return;
     const { status, body } = await apiGet("/api/v1/queue", adminToken);
     if (status !== 200) throw new Error("期望 200");
@@ -71,30 +62,18 @@ Deno.test({
     if (typeof d.stats.completed_today !== "number") {
       throw new Error("completed_today 应数值");
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/queue] 7.2 提交后出现在队列中",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/queue] 7.2 提交后出现在队列中", async () => {
     if (!isE2E) return;
     const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
     const { body } = await apiGet("/api/v1/queue", adminToken);
     const q = body as { pending: { id: string }[]; judging: { id: string }[] };
     const ids = [...q.pending.map((x) => x.id), ...q.judging.map((x) => x.id)];
     if (!ids.includes(id)) throw new Error("提交未出现在队列");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/queue] 7.3 状态端点正确",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/queue] 7.3 状态端点正确", async () => {
     if (!isE2E) return;
     const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
     const { status, body } = await apiGet(
@@ -113,32 +92,19 @@ Deno.test({
     if (!["pending", "judging", "finished", "error"].includes(d.status)) {
       throw new Error("无效状态");
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/queue] 7.4 未认证 401",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/queue] 7.4 未认证 401", async () => {
     if (!isE2E) return;
     const { status } = await apiGet("/api/v1/submissions/dummy/status");
     if (status !== 401) throw new Error("期望 401");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/queue] 7.5 不存在 404",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/queue] 7.5 不存在 404", async () => {
     if (!isE2E) return;
     const { status } = await apiGet(
       "/api/v1/submissions/nonexistent/status",
       token,
     );
     if (status !== 404) throw new Error("期望 404");
-  },
-});
+  });

@@ -7,12 +7,10 @@ definePageMeta({
   ssr: false,
 })
 
-const { isLoggedIn, loading: authLoading } = useAuth()
+const { isLoggedIn } = useAuth()
 const router = useRouter()
 
-watch(authLoading, (val) => {
-  if (!val && !isLoggedIn.value) router.replace("/login")
-}, { immediate: true })
+useRequireLogin()
 
 // ─── 类型 ────
 interface IpBan {
@@ -215,7 +213,7 @@ function formatExpires(value: string | null) {
     </section>
 
     <!-- 新增黑名单弹窗 -->
-    <UModal v-model:open="showForm" :title="'新增 IP 黑名单'" :unmount-on-hide="true">
+    <UModal v-model:open="showForm" title="新增 IP 黑名单" :unmount-on-hide="true">
       <template #body>
         <div class="flex flex-col gap-3">
         <div>

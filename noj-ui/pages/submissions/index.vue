@@ -20,9 +20,7 @@ const { isLoggedIn, loading } = useAuth()
 const router = useRouter()
 
 // 认证守卫：未登录跳转到 /login
-watch(loading, (val) => {
-  if (!val && !isLoggedIn.value) router.replace("/login")
-}, { immediate: true })
+useRequireLogin()
 
 // 列表数据
 const submissions = ref<SubmissionListItem[]>([])

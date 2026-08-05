@@ -18,9 +18,12 @@ import {
   getAdminToken,
   registerUser,
   waitForServer,
+  BASE_URL,
+  e2eTest,
+  TEST_PASSWORD,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 
 // S3 模式检测：需要 MinIO 端点和 noj-core 以 S3 模式运行
 const s3Endpoint = Deno.env.get("S3_ENDPOINT");
@@ -28,7 +31,6 @@ const isS3Mode = !!(isE2E && s3Endpoint);
 
 let adminToken = "";
 let ownerToken = "";
-let ownerId = "";
 let problemId = "";
 let strangerToken = "";
 
@@ -56,12 +58,7 @@ function createZipBlob(): Blob {
   return new Blob([bytes.buffer as ArrayBuffer], { type: "application/zip" });
 }
 
-Deno.test({
-  name: "[e2e/s3-support-pkg] Setup",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/s3-support-pkg] Setup", async () => {
     if (!isE2E) return;
     await waitForServer();
 
@@ -76,10 +73,8 @@ Deno.test({
     ownerToken = await registerUser(
       "s3owner_" + ts,
       "s3owner_" + ts + "@test.com",
-      "Test12345679",
+      TEST_PASSWORD,
     );
-    const me = await apiGet("/api/v1/auth/me", ownerToken);
-    ownerId = (me.body as { data: { id: string } }).data.id;
 
     // 创建题目
     const probRes = await apiPost("/api/v1/problems", {
@@ -102,28 +97,22 @@ Deno.test({
     strangerToken = await registerUser(
       "s3stranger_" + ts,
       "s3stranger_" + ts + "@test.com",
-      "Test12345679",
+      TEST_PASSWORD,
     );
 
     console.log("  ✓ 测试资源已创建 (S3 mode=" + isS3Mode + ")");
-  },
-});
+  });
 
 // ── 上传 ──
 
-Deno.test({
-  name: "[e2e/s3-support-pkg] 4.1 所有者上传支持包（S3）",
-  ignore: skip || !isS3Mode,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/s3-support-pkg] 4.1 所有者上传支持包（S3）", async () => {
     if (!isE2E || !isS3Mode) return;
     // 使用 multipart/form-data 上传 zip
     const form = new FormData();
     form.append("file", createZipBlob(), "support.zip");
 
     const res = await fetch(
-      `${Deno.env.get("E2E_BASE_URL") || "http://localhost:8099"}/api/v1/problems/${problemId}/support-package`,
+      `${BASE_URL}/api/v1/problems/${problemId}/support-package`,
       {
         method: "POST",
         headers: { Authorization: "Bearer " + ownerToken },
@@ -143,21 +132,15 @@ Deno.test({
       throw new Error("期望 checksum_sha256 参数");
     }
     console.log("  ✓ S3 上传成功: " + storageUrl.slice(0, 60) + "...");
-  },
-});
+  }, !isS3Mode);
 
-Deno.test({
-  name: "[e2e/s3-support-pkg] 4.2 管理员为他人题目上传",
-  ignore: skip || !isS3Mode,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/s3-support-pkg] 4.2 管理员为他人题目上传", async () => {
     if (!isE2E || !isS3Mode) return;
     const form = new FormData();
     form.append("file", createZipBlob(), "admin-support.zip");
 
     const res = await fetch(
-      `${Deno.env.get("E2E_BASE_URL") || "http://localhost:8099"}/api/v1/problems/${problemId}/support-package`,
+      `${BASE_URL}/api/v1/problems/${problemId}/support-package`,
       {
         method: "POST",
         headers: { Authorization: "Bearer " + adminToken },
@@ -170,21 +153,15 @@ Deno.test({
       throw new Error("期望 200, 实际 " + res.status + " " + JSON.stringify(body));
     }
     console.log("  ✓ 管理员上传成功");
-  },
-});
+  }, !isS3Mode);
 
-Deno.test({
-  name: "[e2e/s3-support-pkg] 4.3 非所有者上传被拒 403",
-  ignore: skip || !isS3Mode,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/s3-support-pkg] 4.3 非所有者上传被拒 403", async () => {
     if (!isE2E || !isS3Mode) return;
     const form = new FormData();
     form.append("file", createZipBlob(), "hack.zip");
 
     const res = await fetch(
-      `${Deno.env.get("E2E_BASE_URL") || "http://localhost:8099"}/api/v1/problems/${problemId}/support-package`,
+      `${BASE_URL}/api/v1/problems/${problemId}/support-package`,
       {
         method: "POST",
         headers: { Authorization: "Bearer " + strangerToken },
@@ -196,21 +173,15 @@ Deno.test({
       throw new Error("期望 403, 实际 " + res.status);
     }
     console.log("  ✓ 非所有者上传被拒");
-  },
-});
+  }, !isS3Mode);
 
-Deno.test({
-  name: "[e2e/s3-support-pkg] 4.4 上传非 zip 文件被拒 400",
-  ignore: skip || !isS3Mode,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/s3-support-pkg] 4.4 上传非 zip 文件被拒 400", async () => {
     if (!isE2E || !isS3Mode) return;
     const form = new FormData();
     form.append("file", new Blob(["not a zip"], { type: "text/plain" }), "evil.txt");
 
     const res = await fetch(
-      `${Deno.env.get("E2E_BASE_URL") || "http://localhost:8099"}/api/v1/problems/${problemId}/support-package`,
+      `${BASE_URL}/api/v1/problems/${problemId}/support-package`,
       {
         method: "POST",
         headers: { Authorization: "Bearer " + ownerToken },
@@ -222,20 +193,14 @@ Deno.test({
       throw new Error("期望 400, 实际 " + res.status);
     }
     console.log("  ✓ 非 zip 上传被拒");
-  },
-});
+  }, !isS3Mode);
 
 // ── 下载 ──
 
-Deno.test({
-  name: "[e2e/s3-support-pkg] 4.5 下载支持包",
-  ignore: skip || !isS3Mode,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/s3-support-pkg] 4.5 下载支持包", async () => {
     if (!isE2E || !isS3Mode) return;
     const res = await fetch(
-      `${Deno.env.get("E2E_BASE_URL") || "http://localhost:8099"}/api/v1/problems/${problemId}/support-package`,
+      `${BASE_URL}/api/v1/problems/${problemId}/support-package`,
       {
         headers: { Authorization: "Bearer " + ownerToken },
       },
@@ -249,22 +214,16 @@ Deno.test({
       console.log("  ⚠ Content-Type 非预期: " + ct);
     }
     console.log("  ✓ 下载支持包成功");
-  },
-});
+  }, !isS3Mode);
 
-Deno.test({
-  name: "[e2e/s3-support-pkg] 4.6 无包题目下载返回 404",
-  ignore: skip || !isS3Mode,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/s3-support-pkg] 4.6 无包题目下载返回 404", async () => {
     if (!isE2E || !isS3Mode) return;
     // 创建新题目（无支持包）
     const ts2 = Date.now().toString(36) + "b";
     const t2 = await registerUser(
       "s3owner2_" + ts2,
       "s3owner2_" + ts2 + "@test.com",
-      "Test12345679",
+      TEST_PASSWORD,
     );
     const pr = await apiPost("/api/v1/problems", {
       title: "S3 无包测试",
@@ -282,7 +241,7 @@ Deno.test({
     const pid = (pr.body as { data: { id: string } }).data.id;
 
     const res = await fetch(
-      `${Deno.env.get("E2E_BASE_URL") || "http://localhost:8099"}/api/v1/problems/${pid}/support-package`,
+      `${BASE_URL}/api/v1/problems/${pid}/support-package`,
       {
         headers: { Authorization: "Bearer " + t2 },
       },
@@ -292,17 +251,11 @@ Deno.test({
       throw new Error("期望 404, 实际 " + res.status);
     }
     console.log("  ✓ 无包题目下载返回 404");
-  },
-});
+  }, !isS3Mode);
 
 // ── 删除 ──
 
-Deno.test({
-  name: "[e2e/s3-support-pkg] 4.7 所有者删除支持包",
-  ignore: skip || !isS3Mode,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/s3-support-pkg] 4.7 所有者删除支持包", async () => {
     if (!isE2E || !isS3Mode) return;
     const res = await apiDelete(
       `/api/v1/problems/${problemId}/support-package`,
@@ -319,22 +272,16 @@ Deno.test({
       console.log("  ⚠ 删除后 has_support_package 未更新");
     }
     console.log("  ✓ 支持包已删除");
-  },
-});
+  }, !isS3Mode);
 
-Deno.test({
-  name: "[e2e/s3-support-pkg] 4.8 非所有者删除被拒 403",
-  ignore: skip || !isS3Mode,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/s3-support-pkg] 4.8 非所有者删除被拒 403", async () => {
     if (!isE2E || !isS3Mode) return;
     // 创建新题目 + 上传包
     const ts3 = Date.now().toString(36) + "c";
     const t3 = await registerUser(
       "s3owner3_" + ts3,
       "s3owner3_" + ts3 + "@test.com",
-      "Test12345679",
+      TEST_PASSWORD,
     );
     const pr3 = await apiPost("/api/v1/problems", {
       title: "S3 权限测试",
@@ -355,7 +302,7 @@ Deno.test({
     const form = new FormData();
     form.append("file", createZipBlob(), "perm.zip");
     await fetch(
-      `${Deno.env.get("E2E_BASE_URL") || "http://localhost:8099"}/api/v1/problems/${pid3}/support-package`,
+      `${BASE_URL}/api/v1/problems/${pid3}/support-package`,
       {
         method: "POST",
         headers: { Authorization: "Bearer " + t3 },
@@ -372,5 +319,4 @@ Deno.test({
       throw new Error("期望 403, 实际 " + delRes.status);
     }
     console.log("  ✓ 非所有者删除被拒");
-  },
-});
+  }, !isS3Mode);

@@ -9,7 +9,7 @@
  * 注意：所有 admin 页面使用 ssr: false，服务端不渲染页面内容。
  * 因此在 SSR 阶段跳过守卫，由客户端水合后重新执行。
  */
-import { waitAuthReady } from '~/composables/waitAuthReady';
+import { useAuthReady } from '~/composables/useAuthReady';
 import { isAdminUser } from '~/utils/isAdminUser';
 
 export default defineNuxtRouteMiddleware(async (_to, _from) => {
@@ -19,7 +19,7 @@ export default defineNuxtRouteMiddleware(async (_to, _from) => {
   const { loading, isLoggedIn, user } = useAuth();
 
   // 等待认证状态就绪（5s 超时兜底）
-  await waitAuthReady(loading);
+  await useAuthReady(loading);
 
   // 未登录 → 去登录页
   if (!isLoggedIn.value) {

@@ -22,7 +22,7 @@ import {
 } from "../lib/errors.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { signToken, verifyToken } from "../lib/jwt.ts";
-import { remainingTtlFromExp, revokeJti } from "../lib/revokedTokens.ts";
+import { revokeJti } from "../lib/revokedTokens.ts";
 import { getSetting } from "../services/system-settings.ts";
 import { getClientIp } from "../lib/rate-limit-env.ts";
 import { getBannedIpDetail } from "../services/banlist.ts";
@@ -114,8 +114,10 @@ auth.post("/register", async (c) => {
  * 4. 失败锁定：连续 10 次失败 → 锁 1 小时
  */
 
-/** 执行账号维度限流三步检查（限流 + 退避 + 锁定）。
- * namespace 区分登录（默认）与改密（PWCHANGE_NAMESPACE）。 */
+/**
+ * 执行账号维度限流三步检查（限流 + 退避 + 锁定）。
+ * namespace 区分登录（默认）与改密（PWCHANGE_NAMESPACE）。
+ */
 async function enforceAccountRateLimit(
   account: string,
   namespace?: string,
@@ -206,7 +208,7 @@ auth.get("/me", authMiddleware, async (c) => {
  */
 auth.post(
   "/change-password",
-  loginIpRateLimit("pwchange"),
+  loginIpRateLimit(PWCHANGE_NAMESPACE),
   authMiddleware,
   async (c) => {
     const body = await parseJsonBody<ChangePasswordInput>(c);
@@ -232,16 +234,11 @@ auth.post(
       );
       await clearLoginFailure(userId, PWCHANGE_NAMESPACE);
 
-      // 撤销旧 jti（issue #75 JWT 撤销机制）：TTL 取 token 剩余有效期
+      // 撤销旧 jti（issue #75 JWT 撤销机制）：jose 验证后拿不到原 exp，
+      // 直接用 24h 上限（jwt_expires_in 默认值）作为保守 TTL
       const oldJti = c.get("jti");
       if (oldJti) {
-        const ttl = remainingTtlFromExp(
-          // c.req.raw 的 header 已经被中间件解析过；从 Authorization 重新提取 exp 不现实，
-          // 直接用 24h 上限作为保守 TTL；jose 验证后 token 已解密在内存
-          // 但此处拿不到原 exp，所以退化为 jwt_expires_in 默认 24h
-          undefined,
-        ) || SECONDS_PER_DAY; // 24h 兜底
-        await revokeJti(oldJti, ttl);
+        await revokeJti(oldJti, SECONDS_PER_DAY);
       }
 
       // 签发新 token（must_change_password 必为 false，changePassword 已 UPDATE）

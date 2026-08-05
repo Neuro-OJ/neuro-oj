@@ -19,14 +19,15 @@ import {
   getAdminToken,
   isE2E,
   registerUser,
+  e2eTest,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 
 // ── 测试常量 ─────────────────────────────────────────
 
-const EVALUATOR_IMAGE = "noj-evaluator-python:dev";
-const SOLUTION_IMAGE = "noj-solution-python:dev";
+const EVALUATOR_IMAGE = "noj-evaluator-python";
+const SOLUTION_IMAGE = "noj-solution-python";
 const TEST_TAG = `e2e-${Date.now()}`;
 
 // ── 共享 fixtures ────────────────────────────────────
@@ -106,12 +107,7 @@ async function createDualProblem(
 
   // ── Tests ────────────────────────────────────────────
 
-  Deno.test({
-    name: "dual_container_judge: admin 创建双容器题目成功（含 runtime_config）",
-    ignore: skip,
-    sanitizeOps: false,
-    sanitizeResources: false,
-    fn: async () => {
+e2eTest("dual_container_judge: admin 创建双容器题目成功（含 runtime_config）", async () => {
       const adminToken = await getAdminToken();
       await ensureImage(EVALUATOR_IMAGE, "evaluator");
       await ensureImage(SOLUTION_IMAGE, "solution");
@@ -128,16 +124,10 @@ async function createDualProblem(
       if (!problem.runtime_config) {
         throw new Error("Expected runtime_config to be present");
       }
-    },
-  });
+    });
 
 
-  Deno.test({
-    name: "dual_container_judge: 普通用户可正常设置 runtime_config（双容器是唯一模式）",
-    ignore: skip,
-    sanitizeOps: false,
-    sanitizeResources: false,
-    fn: async () => {
+e2eTest("dual_container_judge: 普通用户可正常设置 runtime_config（双容器是唯一模式）", async () => {
       // 普通用户注册
       const userToken = await registerUser(
         `dual_user_${Date.now()}`,
@@ -178,16 +168,10 @@ async function createDualProblem(
           }`,
         );
       }
-    },
   });
 
 
-  Deno.test({
-    name: "dual_container_judge: 镜像白名单 kind 不匹配被拒",
-    ignore: skip,
-    sanitizeOps: false,
-    sanitizeResources: false,
-    fn: async () => {
+e2eTest("dual_container_judge: 镜像白名单 kind 不匹配被拒", async () => {
       const adminToken = await getAdminToken();
       await ensureImage(EVALUATOR_IMAGE, "evaluator");
       // 注意：SOLUTION_IMAGE 在此测试中假定为 evaluator kind（已由其它测试设置）
@@ -228,16 +212,10 @@ async function createDualProblem(
           }`,
         );
       }
-    },
   });
 
 
-  Deno.test({
-    name: "dual_container_judge: 清空 runtime_config 被拒（必填字段）",
-    ignore: skip,
-    sanitizeOps: false,
-    sanitizeResources: false,
-    fn: async () => {
+e2eTest("dual_container_judge: 清空 runtime_config 被拒（必填字段）", async () => {
       const adminToken = await getAdminToken();
       await ensureImage(EVALUATOR_IMAGE, "evaluator");
 
@@ -270,16 +248,10 @@ async function createDualProblem(
           }`,
         );
       }
-    },
   });
 
 
-  Deno.test({
-    name: "dual_container_judge: runtime_config 始终存在（双容器是唯一模式）",
-    ignore: skip,
-    sanitizeOps: false,
-    sanitizeResources: false,
-    fn: async () => {
+e2eTest("dual_container_judge: runtime_config 始终存在（双容器是唯一模式）", async () => {
       const adminToken = await getAdminToken();
       await ensureImage(EVALUATOR_IMAGE, "evaluator");
 
@@ -322,16 +294,10 @@ async function createDualProblem(
           "Expected runtime_config to be present for dual-container mode",
         );
       }
-    },
-  });
+    });
 
 
-  Deno.test({
-    name: "dual_container_judge: 普通用户提交双容器题目 → 走 dual 评测",
-    ignore: skip,
-    sanitizeOps: false,
-    sanitizeResources: false,
-    fn: async () => {
+e2eTest("dual_container_judge: 普通用户提交双容器题目 → 走 dual 评测", async () => {
       const adminToken = await getAdminToken();
       await ensureImage(EVALUATOR_IMAGE, "evaluator");
       await ensureImage(SOLUTION_IMAGE, "solution");
@@ -362,5 +328,4 @@ async function createDualProblem(
           `Submit failed: ${sub.status} ${JSON.stringify(sub.body)}`,
         );
       }
-    },
-  });
+    });

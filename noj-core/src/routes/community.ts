@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import type { Next } from "hono";
-import { streamSSE } from "hono/streaming";
 import { parseJsonBody } from "../lib/request.ts";
 import {
   BadRequestError,
@@ -9,12 +8,14 @@ import {
   UnauthorizedError,
 } from "../lib/errors.ts";
 import { assertPermission, checkPermission } from "../lib/permissions.ts";
+import { COMMUNITY_PRESETS, MODERATION_STATUSES } from "../types/community.ts";
 import {
   authMiddleware,
   type OptionalAuthEnv,
   optionalAuthMiddleware,
 } from "../middleware/auth.ts";
 import { Channels, onEvent } from "../lib/event-bus.ts";
+import { createSseStream } from "../lib/sse-stream.ts";
 import type {
   CommunityPostInput,
   CommunityPostType,
@@ -220,7 +221,7 @@ router.get("/posts/:postId", optionalAuthMiddleware, async (c) => {
   requireGuestRead(c);
   return c.json({
     data: await getPost(
-      c.req.param("postId")!,
+      c.req.param("postId") as string,
       c.get("userId"),
       c.get("userId") ? await isModerator(c) : false,
     ),
@@ -247,7 +248,7 @@ router.patch("/posts/:postId", authMiddleware, async (c) => {
   >(c);
   return c.json({
     data: await updatePost(
-      c.req.param("postId")!,
+      c.req.param("postId") as string,
       actorId,
       await isModerator(c),
       input,
@@ -258,7 +259,7 @@ router.patch("/posts/:postId", authMiddleware, async (c) => {
 router.delete("/posts/:postId", authMiddleware, async (c) => {
   const actorId = userId(c);
   const post = await getPost(
-    c.req.param("postId")!,
+    c.req.param("postId") as string,
     actorId,
     await isModerator(c),
   );
@@ -267,7 +268,11 @@ router.delete("/posts/:postId", authMiddleware, async (c) => {
   }
   await assertCommunityWritable(actorId, await isModerator(c));
   return c.json({
-    data: await changePostStatus(c.req.param("postId")!, actorId, "deleted"),
+    data: await changePostStatus(
+      c.req.param("postId") as string,
+      actorId,
+      "deleted",
+    ),
   });
 });
 
@@ -278,7 +283,7 @@ router.get(
     requireGuestRead(c);
     return c.json({
       data: await listComments(
-        c.req.param("postId")!,
+        c.req.param("postId") as string,
         c.get("userId"),
         c.get("userId") ? await isModerator(c) : false,
       ),
@@ -294,7 +299,7 @@ router.post("/posts/:postId/comments", authMiddleware, async (c) => {
   return c.json({
     data: await createComment(
       actorId,
-      c.req.param("postId")!,
+      c.req.param("postId") as string,
       body.content,
       body.parent_id,
     ),
@@ -308,7 +313,7 @@ router.patch("/comments/:commentId", authMiddleware, async (c) => {
   if (!body.content) throw new BadRequestError("缺少评论内容");
   return c.json({
     data: await updateComment(
-      c.req.param("commentId")!,
+      c.req.param("commentId") as string,
       actorId,
       await isModerator(c),
       body.content,
@@ -320,7 +325,7 @@ router.delete("/comments/:commentId", authMiddleware, async (c) => {
   await assertCommunityWritable(actorId, await isModerator(c));
   return c.json({
     data: await deleteComment(
-      c.req.param("commentId")!,
+      c.req.param("commentId") as string,
       actorId,
       await isModerator(c),
     ),
@@ -332,7 +337,9 @@ router.post("/posts/:postId/like", authMiddleware, async (c) => {
   await assertPermission(c, "community:react");
   await assertCommunityWritable(actorId, await isModerator(c));
   return c.json({
-    data: { liked: await togglePostLike(actorId, c.req.param("postId")!) },
+    data: {
+      liked: await togglePostLike(actorId, c.req.param("postId") as string),
+    },
   });
 });
 router.post("/posts/:postId/bookmark", authMiddleware, async (c) => {
@@ -340,7 +347,12 @@ router.post("/posts/:postId/bookmark", authMiddleware, async (c) => {
   await assertPermission(c, "community:react");
   await assertCommunityWritable(actorId, await isModerator(c));
   return c.json({
-    data: { bookmarked: await toggleBookmark(actorId, c.req.param("postId")!) },
+    data: {
+      bookmarked: await toggleBookmark(
+        actorId,
+        c.req.param("postId") as string,
+      ),
+    },
   });
 });
 router.post("/comments/:commentId/like", authMiddleware, async (c) => {
@@ -349,7 +361,10 @@ router.post("/comments/:commentId/like", authMiddleware, async (c) => {
   await assertCommunityWritable(actorId, await isModerator(c));
   return c.json({
     data: {
-      liked: await toggleCommentLike(actorId, c.req.param("commentId")!),
+      liked: await toggleCommentLike(
+        actorId,
+        c.req.param("commentId") as string,
+      ),
     },
   });
 });
@@ -359,7 +374,9 @@ router.post("/users/:userId/follow", authMiddleware, async (c) => {
   await assertPermission(c, "community:follow");
   await assertCommunityWritable(actorId, await isModerator(c));
   return c.json({
-    data: { following: await toggleFollow(actorId, c.req.param("userId")!) },
+    data: {
+      following: await toggleFollow(actorId, c.req.param("userId") as string),
+    },
   });
 });
 router.put("/me/activity-visibility", authMiddleware, async (c) => {
@@ -419,51 +436,40 @@ router.post("/notifications/read", authMiddleware, async (c) => {
  */
 router.get("/notifications/events", authMiddleware, (c) => {
   const userId = c.get("userId") as string;
-  return streamSSE(c, async (stream) => {
-    let streamClosed = false;
+  // 通知端点不启用兜底超时：订阅为常驻连接（与原实现一致）
+  return createSseStream(
+    c,
+    async ({ stream, closed, close, onUnsubscribe }) => {
+      onUnsubscribe(
+        onEvent(
+          Channels.user(userId),
+          (_channel, message) => {
+            if (closed) return;
+            // 仅透传社区通知事件，避免与私信等同一用户通道事件交叉
+            try {
+              const payload = JSON.parse(message) as { type?: string };
+              if (payload.type !== "notification:new") return;
+            } catch {
+              return;
+            }
+            stream.writeSSE({
+              event: "notification:new",
+              data: message,
+            }).catch(() => {
+              close();
+            });
+          },
+        ),
+      );
 
-    function closeStream() {
-      if (streamClosed) return;
-      streamClosed = true;
-      clearInterval(keepAlive);
-      unsub();
-    }
-
-    const unsub = onEvent(
-      Channels.user(userId),
-      (_channel, message) => {
-        if (streamClosed) return;
-        // 仅透传社区通知事件，避免与私信等同一用户通道事件交叉
-        try {
-          const payload = JSON.parse(message) as { type?: string };
-          if (payload.type !== "notification:new") return;
-        } catch {
-          return;
-        }
-        stream.writeSSE({
-          event: "notification:new",
-          data: message,
-        }).catch(() => {
-          closeStream();
-        });
-      },
-    );
-
-    // 30s 心跳保持连接
-    const keepAlive = setInterval(() => {
-      if (streamClosed) return;
-      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
-        closeStream();
-      });
-    }, 30_000);
-
-    // 发送初始化事件，触发代理 flush 响应头
-    await stream.writeSSE({ event: "connected", data: "" });
-    stream.onAbort(() => closeStream());
-  });
+      // 发送初始化事件，触发代理 flush 响应头
+      await stream.writeSSE({ event: "connected", data: "" });
+    },
+    { safetyTimeoutMs: 0 },
+  );
 });
 router.post("/notifications/:id/read", authMiddleware, async (c) => {
-  await markNotificationRead(userId(c), c.req.param("id")!);
+  await markNotificationRead(userId(c), c.req.param("id") as string);
   return c.body(null, 204);
 });
 
@@ -484,7 +490,7 @@ router.post("/admin/preset/:preset", async (c) => {
   // 预设属于系统配置，仅管理员可应用
   await assertPermission(c, "system:settings");
   const preset = c.req.param("preset");
-  if (!(["public", "private", "knowledge"] as string[]).includes(preset)) {
+  if (!(COMMUNITY_PRESETS as readonly string[]).includes(preset)) {
     throw new BadRequestError("无效社区预设");
   }
   return c.json({
@@ -577,7 +583,7 @@ router.post("/admin/reports/:reportId/:status", async (c) => {
 });
 router.post("/admin/posts/:postId/:status", async (c) => {
   const status = c.req.param("status");
-  if (!(["published", "hidden", "deleted"] as string[]).includes(status)) {
+  if (!(MODERATION_STATUSES as readonly string[]).includes(status)) {
     throw new BadRequestError("无效内容状态");
   }
   const body = await parseJsonBody<{ reason?: string }>(c);
@@ -592,7 +598,7 @@ router.post("/admin/posts/:postId/:status", async (c) => {
 });
 router.post("/admin/comments/:commentId/:status", async (c) => {
   const status = c.req.param("status");
-  if (!(["published", "hidden", "deleted"] as string[]).includes(status)) {
+  if (!(MODERATION_STATUSES as readonly string[]).includes(status)) {
     throw new BadRequestError("无效内容状态");
   }
   const body = await parseJsonBody<{ reason?: string }>(c);
@@ -657,7 +663,7 @@ router.delete(
 router.get(
   "/admin/users/:userId/sanctions",
   async (c) =>
-    c.json({ data: await listUserSanctions(c.req.param("userId")!) }),
+    c.json({ data: await listUserSanctions(c.req.param("userId") as string) }),
 );
 
 export default router;

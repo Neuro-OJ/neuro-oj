@@ -6,7 +6,7 @@ import type { Ref } from 'vue';
  * 防止后端不可达时路由守卫/页面卡死。
  * loading 已为 false 时立即返回。
  */
-export async function waitAuthReady(loading: Ref<boolean>): Promise<void> {
+export async function useAuthReady(loading: Ref<boolean>): Promise<void> {
   if (!loading.value) return;
   await Promise.race([
     new Promise<void>((resolve) => {

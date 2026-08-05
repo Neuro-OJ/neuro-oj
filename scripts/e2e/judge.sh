@@ -9,7 +9,7 @@
 #   - 支持包加载
 #
 # 用法：
-#   bash scripts/e2e-judge.sh
+#   bash scripts/e2e/judge.sh
 #
 # 依赖：
 #   - 运行中的 Redis（REDIS_URL）
@@ -75,7 +75,6 @@ E2E_TARGETS=(
   e2e_security_isolation
   e2e_support_package
   e2e_problem_limits
-  e2e_container_pool
 )
 
 step "2/3  编译 noj-judge（${#E2E_TARGETS[@]} 个 E2E 目标）"

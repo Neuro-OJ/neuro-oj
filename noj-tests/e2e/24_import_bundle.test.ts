@@ -10,16 +10,16 @@
 import {
   apiDelete,
   apiGet,
-  apiPost,
   getAdminToken,
   isE2E,
   isJudgeAvailable,
   pollSubmission,
   submitCode,
   waitForServer,
+  e2eTest,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 const testSuffix = Date.now().toString(36);
 let adminToken = "";
 let problemId = "";
@@ -101,12 +101,7 @@ async function makeBundleZip(): Promise<Uint8Array> {
   }
 }
 
-Deno.test({
-  name: "[e2e/import-bundle] Setup: 管理员登录 + 构造统一包",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/import-bundle] Setup: 管理员登录 + 构造统一包", async () => {
     if (!isE2E) return;
     await waitForServer();
     adminToken = await getAdminToken();
@@ -114,15 +109,9 @@ Deno.test({
     // 构造 zip 提前验证可打包
     const zip = await makeBundleZip();
     if (zip.length === 0) throw new Error("统一包构造失败");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/import-bundle] admin 上传统一包创建题目",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/import-bundle] admin 上传统一包创建题目", async () => {
     if (!isE2E) return;
     const zip = await makeBundleZip();
     const formData = new FormData();
@@ -175,15 +164,10 @@ Deno.test({
     ) {
       throw new Error("evaluator.command 默认值未注入");
     }
-  },
-});
+  }
+);
 
-Deno.test({
-  name: "[e2e/import-bundle] 重复导入幂等（不产生新题）",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/import-bundle] 重复导入幂等（不产生新题）", async () => {
     if (!isE2E || !problemId) return;
     const zip = await makeBundleZip();
     const formData = new FormData();
@@ -209,15 +193,9 @@ Deno.test({
     if (body.data.id !== problemId) {
       throw new Error("重复导入应更新同一题目而非新建");
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/import-bundle] 提交评测闭环（judge 可用时）",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/import-bundle] 提交评测闭环（judge 可用时）", async () => {
     if (!isE2E || !problemId || !judgeAvailable) return;
     const submissionId = await submitCode(
       adminToken,
@@ -228,15 +206,9 @@ Deno.test({
     if (result.verdict !== "Accepted") {
       throw new Error(`评测结果异常: ${JSON.stringify(result)}`);
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/import-bundle] 删除导入的题目",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/import-bundle] 删除导入的题目", async () => {
     if (!isE2E || !problemId) return;
     const res = await apiDelete(`/api/v1/problems/${problemId}`, adminToken);
     if (res.status !== 204 && res.status !== 200) {
@@ -245,5 +217,4 @@ Deno.test({
     // 清理后查询应 404
     const check = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
     if (check.status !== 404) throw new Error("题目删除后仍可访问");
-  },
-});
+  });

@@ -23,7 +23,6 @@ pub struct SupportPackageCache {
     max_bytes: u64,
 }
 
-#[allow(dead_code)]
 impl SupportPackageCache {
     /// 创建新的缓存实例。
     ///

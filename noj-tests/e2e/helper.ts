@@ -1,27 +1,21 @@
 /**
  * noj-tests E2E 测试辅助函数。
  *
- * 提供 REST API 客户端、用户注册/提交辅助和 Docker Compose 生命周期管理。
+ * 提供 REST API 客户端、用户注册/提交辅助。
  *
- * Docker Compose 管理函数（composeUp/composeDown/isStackRunning）供本地手动调试使用，
- * CI 中由 .github/workflows/e2e.yml 直接管理容器生命周期，测试本身不自动启停。
+ * 容器生命周期由 .github/workflows/e2e.yml 或 scripts/e2e/setup.sh 管理，测试本身不自动启停。
  *
  * 环境变量：
  *   NOJ_RUN_E2E       - 设为 "1" 时启用 E2E 测试
  *   E2E_NO_CLEANUP    - 设为 "1" 时不自动清理容器（调试用）
  *   E2E_BASE_URL      - noj-core 服务地址（默认 http://localhost:8099）
- *   COMPOSE_FILE      - docker-compose.e2e.yml 路径
- */
+ * */
 
 // ── 配置 ──────────────────────────────────────────
 
 export const isE2E = Deno.env.get("NOJ_RUN_E2E") === "1";
-export const noCleanup = Deno.env.get("E2E_NO_CLEANUP") === "1";
 export const BASE_URL = Deno.env.get("E2E_BASE_URL") || "http://localhost:8099";
 
-const COMPOSE_FILE = Deno.env.get("COMPOSE_FILE") ||
-  "../docker-compose.e2e.yml";
-const COMPOSE_PROJECT = "noj-e2e";
 
 // ── API 客户端 ────────────────────────────────────
 
@@ -117,13 +111,13 @@ const _userCache = new Map<string, { token: string; password: string }>();
  * @param key   缓存键（如 "submissions_user"）
  * @param username 用户名
  * @param email    邮箱
- * @param password 密码（默认 Pass1234Test）
+ * @param password 密码（默认 TEST_PASSWORD）
  */
 export async function getOrCreateUser(
   key: string,
   username: string,
   email: string,
-  password = "Pass1234Test",
+  password = TEST_PASSWORD,
 ): Promise<{ token: string; password: string }> {
   const cached = _userCache.get(key);
   if (cached) return cached;
@@ -179,7 +173,7 @@ export async function isJudgeAvailable(): Promise<boolean> {
     const t = await registerUser(
       "judge_chk_" + ts,
       "judge_chk_" + ts + "@test.com",
-      "Test12345679",
+      TEST_PASSWORD,
     );
     // 题目 id 为 UUID（统一题目包导入），须动态获取
     const problemId = await getProblemIdByNumber(1001);
@@ -384,100 +378,32 @@ export async function pollSubmission(
   );
 }
 
-// ── Docker Compose 管理 ───────────────────────────
+/**
+ * E2E 测试统一密码（注册/登录用）。
+ */
+export const TEST_PASSWORD = "Test12345679";
 
 /**
- * 检查 Docker compose 是否可用。
+ * E2E 测试包装：统一处理非 E2E 环境的跳过标记与资源清理选项。
+ *
+ * 用法：
+ * ```ts
+ * e2eTest("用例名", async () => { ... });
+ * ```
+ * `extraIgnore` 为附加跳过条件（如 `!isS3Mode`）。
  */
-export async function checkDockerCompose(): Promise<boolean> {
-  try {
-    const cmd = new Deno.Command("docker", {
-      args: ["compose", "version"],
-    });
-    const { success } = await cmd.output();
-    return success;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 检查服务是否已在运行（跳过 compose up）。
- */
-export async function isStackRunning(): Promise<boolean> {
-  try {
-    const r = await fetch(`${BASE_URL}/health`);
-    return r.ok;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 启动 E2E 评测栈。如果已运行则跳过。
- */
-export async function composeUp(): Promise<void> {
-  if (await isStackRunning()) {
-    console.log("  → 评测栈已在运行，跳过启动");
-    return;
-  }
-
-  console.log("  → 启动 Docker Compose 评测栈...");
-  // 使用 --remove-orphans 处理容器名冲突
-  const args = [
-    "compose",
-    "-f",
-    COMPOSE_FILE,
-    "-p",
-    COMPOSE_PROJECT,
-    "up",
-    "-d",
-    "--remove-orphans",
-  ];
-
-  const cmd = new Deno.Command("docker", {
-    args,
-    stdout: "piped",
-    stderr: "piped",
+export function e2eTest(
+  name: string,
+  fn: () => Promise<void> | void,
+  extraIgnore = false,
+): void {
+  Deno.test({
+    name,
+    ignore: !isE2E || extraIgnore,
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn,
   });
-  const { success, stderr } = await cmd.output();
-  if (!success) {
-    const err = new TextDecoder().decode(stderr);
-    throw new Error(`Docker Compose 启动失败: ${err}`);
-  }
-  console.log("  ✓ Docker Compose 已启动");
-}
-
-/**
- * 停止并清理 E2E 评测栈。
- */
-export async function composeDown(): Promise<void> {
-  if (noCleanup) {
-    console.log("  → E2E_NO_CLEANUP=1，跳过容器清理");
-    return;
-  }
-
-  console.log("  → 停止 Docker Compose 评测栈...");
-  const cmd = new Deno.Command("docker", {
-    args: [
-      "compose",
-      "-f",
-      COMPOSE_FILE,
-      "-p",
-      COMPOSE_PROJECT,
-      "down",
-      "-v",
-    ],
-    stdout: "piped",
-    stderr: "piped",
-  });
-  const { success, stderr } = await cmd.output();
-  if (!success) {
-    const err = new TextDecoder().decode(stderr);
-    console.warn(`  ⚠ Docker Compose 停止警告: ${err}`);
-  } else {
-    console.log("  ✓ Docker Compose 已停止并清理");
-  }
 }
 
 /**

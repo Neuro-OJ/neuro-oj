@@ -22,7 +22,8 @@ export function ipv4ToInt(ip: string): number | null {
     parseInt(part!, 10)
   );
   for (const octet of octets) {
-    if (octet < 0 || octet > 255) return null;
+    // parseInt 结果不可能为负，仅需上限校验
+    if (octet > 255) return null;
   }
   return ((octets[0]! << 24) | (octets[1]! << 16) | (octets[2]! << 8) |
     octets[3]!) >>> 0;
@@ -34,7 +35,8 @@ export function parseCidr(cidr: string): CidrRange | null {
   if (!m) return null;
   for (let i = 1; i <= 4; i++) {
     const o = parseInt(m[i]!, 10);
-    if (o < 0 || o > 255) return null;
+    // parseInt 结果不可能为负，仅需上限校验
+    if (o > 255) return null;
   }
   const prefix = m[5] === undefined ? 32 : parseInt(m[5], 10);
   if (prefix < 0 || prefix > 32) return null;

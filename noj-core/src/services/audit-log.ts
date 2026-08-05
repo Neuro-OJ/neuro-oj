@@ -85,7 +85,8 @@ export async function logAuthEvent(
   actorUserId: string | null,
   clientIp: string,
   action: AuditAction,
-  detail: AuditDetail,
+  // action 由本函数自动填充，调用方无需（也不应）重复传入
+  detail: Omit<AuditDetail, "action">,
 ): Promise<void> {
   try {
     const db = getDb();
@@ -95,7 +96,8 @@ export async function logAuthEvent(
       action,
       target_type: actorUserId ? "user" : null,
       target_id: actorUserId,
-      detail: detail as unknown as Record<string, unknown>,
+      // action 以函数参数为准，detail 中的同名键被覆盖
+      detail: { ...detail, action } as unknown as Record<string, unknown>,
       ip_address: clientIp || "unknown",
       created_at: new Date().toISOString(),
     });

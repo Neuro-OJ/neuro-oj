@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import SupportPackageUpload from "../admin/SupportPackageUpload.vue"
+import SupportPackageUpload from "~/components/admin/SupportPackageUpload.vue"
 import { extractApiError } from "~/utils/apiError"
 
 interface RuntimeConfigPayload {

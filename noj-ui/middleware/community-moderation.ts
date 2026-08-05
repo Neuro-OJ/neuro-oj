@@ -8,7 +8,7 @@
  * - 未登录 → 重定向到 /login
  * - 无审核权限 → 重定向到 /（静默拦截，不给错误提示）
  */
-import { waitAuthReady } from '~/composables/waitAuthReady';
+import { useAuthReady } from '~/composables/useAuthReady';
 import { isAdminUser } from '~/utils/isAdminUser';
 
 export default defineNuxtRouteMiddleware(async (_to, _from) => {
@@ -18,7 +18,7 @@ export default defineNuxtRouteMiddleware(async (_to, _from) => {
   const { loading, isLoggedIn, user } = useAuth();
 
   // 等待认证状态就绪（5s 超时兜底）
-  await waitAuthReady(loading);
+  await useAuthReady(loading);
 
   // 未登录 → 去登录页
   if (!isLoggedIn.value) {

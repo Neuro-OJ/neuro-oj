@@ -69,7 +69,7 @@ async fn http_download(url: &str, timeout_secs: u64) -> Result<Vec<u8>> {
         .build()
         .context("创建 HTTP 客户端失败")?;
 
-    let response = client.get(url).send().await.context("HTTP 下载请求失败")?;
+    let mut response = client.get(url).send().await.context("HTTP 下载请求失败")?;
 
     if !response.status().is_success() {
         bail!("HTTP 下载返回非成功状态码: {}", response.status());
@@ -77,7 +77,6 @@ async fn http_download(url: &str, timeout_secs: u64) -> Result<Vec<u8>> {
 
     let mut total = 0usize;
     let mut data = Vec::new();
-    let mut response = response;
     while let Some(chunk) = response.chunk().await.context("读取 HTTP 响应体失败")? {
         total = total.saturating_add(chunk.len());
         if total > MAX_SUPPORT_PACKAGE_BYTES {

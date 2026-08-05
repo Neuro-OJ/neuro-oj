@@ -117,7 +117,7 @@ export interface ListSubmissionsResult {
   total: number;
 }
 
-/** 今日提交统计（PR-3 拆分至 submissions-stats.ts） */
+/** 今日提交统计（由 stats-cache.ts 消费） */
 export interface TodayStats {
   total: number;
   full_score: number;

@@ -29,12 +29,12 @@ REPORT=""
 
 run_test() {
   local name="$1"
-  local cmd="$2"
+  shift
   echo "=========================================="
   echo " 套件: $name"
   echo "=========================================="
   set +e
-  eval "$cmd"
+  "$@"
   local exit_code=$?
   set -e
   if [ $exit_code -eq 0 ]; then
@@ -48,8 +48,8 @@ run_test() {
 }
 
 # core + judge: 依赖 setup.sh 导出的环境变量
-run_test "noj-core E2E" "bash $ROOT_DIR/scripts/e2e/core.sh"
-run_test "noj-judge E2E" "bash $ROOT_DIR/scripts/e2e/judge.sh"
+run_test "noj-core E2E" bash "$ROOT_DIR/scripts/e2e/core.sh"
+run_test "noj-judge E2E" bash "$ROOT_DIR/scripts/e2e/judge.sh"
 
 # ── Step 3: 环境停止 ──
 echo ">>> [3/3] 停止 E2E 环境..."

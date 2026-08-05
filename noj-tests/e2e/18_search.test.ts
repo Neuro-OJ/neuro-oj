@@ -18,9 +18,11 @@ import {
   isE2E,
   registerUser,
   waitForServer,
+  e2eTest,
+  TEST_PASSWORD,
+
 } from "./helper.ts";
 
-const skip = !isE2E;
 let adminToken = "";
 let regularToken = "";
 
@@ -29,12 +31,7 @@ let regularToken = "";
 const ADMIN_EMAIL = Deno.env.get("E2E_ADMIN_EMAIL") || "e2e_admin@test.com";
 const ADMIN_USERNAME = ADMIN_EMAIL.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_");
 
-Deno.test({
-  name: "[e2e/search] Setup",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/search] Setup", async () => {
     if (!isE2E) return;
     await waitForServer();
     adminToken = await getAdminToken();
@@ -42,17 +39,11 @@ Deno.test({
     regularToken = await registerUser(
       `search_user_${ts}`,
       `search_user_${ts}@test.com`,
-      "Pass1234Test",
+      TEST_PASSWORD,
     );
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/search] 1.1 匿名题目搜索返回 200 + 标准结构",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/search] 1.1 匿名题目搜索返回 200 + 标准结构", async () => {
     if (!isE2E) return;
     // 1001 是 seed 自带的样例题（P 型 "星港舱门报码归一化"），关键词稳定可命中
     const { status, body } = await apiGet(
@@ -84,28 +75,16 @@ Deno.test({
       `  ✓ 题目搜索 OK（命中 ${d.data.items.length}/${d.data.total} 题, ` +
         `took_ms=${d.data.took_ms}）`,
     );
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/search] 1.2 匿名用户搜索返回 401",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/search] 1.2 匿名用户搜索返回 401", async () => {
     if (!isE2E) return;
     const { status } = await apiGet("/api/v1/search?q=alice&type=user");
     if (status !== 401) throw new Error(`期望 401, 实际 ${status}`);
     console.log("  ✓ 匿名用户搜索被拒");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/search] 1.3 已登录非 admin 用户搜索返回 403",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/search] 1.3 已登录非 admin 用户搜索返回 403", async () => {
     if (!isE2E) return;
     const { status } = await apiGet(
       "/api/v1/search?q=alice&type=user",
@@ -113,15 +92,9 @@ Deno.test({
     );
     if (status !== 403) throw new Error(`期望 403, 实际 ${status}`);
     console.log("  ✓ 普通用户搜索被拒");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/search] 1.4 admin 搜索用户返回 email 字段",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/search] 1.4 admin 搜索用户返回 email 字段", async () => {
     if (!isE2E) return;
     const { status, body } = await apiGet(
       `/api/v1/search?q=${ADMIN_USERNAME}&type=user&limit=10`,
@@ -152,31 +125,18 @@ Deno.test({
     console.log(
       `  ✓ admin 用户搜索 OK（找到 ${item.username} <${item.email}>）`,
     );
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/search] 1.5 非法 type 返回 400",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/search] 1.5 非法 type 返回 400", async () => {
     if (!isE2E) return;
     const { status } = await apiGet("/api/v1/search?q=test&type=invalid");
     if (status !== 400) throw new Error(`期望 400, 实际 ${status}`);
     console.log("  ✓ 非法 type 被拒");
-  },
-});
+  });
 
-Deno.test({
-  name: "[e2e/search] 1.6 q 过短（< 2 字符）返回 400",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
+e2eTest("[e2e/search] 1.6 q 过短（< 2 字符）返回 400", async () => {
     if (!isE2E) return;
     const { status } = await apiGet("/api/v1/search?q=a&type=problem");
     if (status !== 400) throw new Error(`期望 400, 实际 ${status}`);
     console.log("  ✓ 过短关键词被拒");
-  },
-});
+  });

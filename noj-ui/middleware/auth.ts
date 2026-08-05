@@ -30,7 +30,7 @@ const PASSWORD_CHANGE_WHITELIST = new Set<string>([
  * issue #75：must_change_password=true 时强制跳到 /change-password，
  * 白名单页面（改密/登录/登出）放行。
  */
-import { waitAuthReady } from '~/composables/waitAuthReady';
+import { useAuthReady } from '~/composables/useAuthReady';
 
 export default defineNuxtRouteMiddleware(async (to, _from) => {
   if (import.meta.server) return;
@@ -40,7 +40,7 @@ export default defineNuxtRouteMiddleware(async (to, _from) => {
   const { loading, isLoggedIn, user, fetchUser } = useAuth();
 
   // 等待认证状态就绪（5s 超时兜底）
-  await waitAuthReady(loading);
+  await useAuthReady(loading);
 
   if (!isLoggedIn.value) {
     return navigateTo('/login');

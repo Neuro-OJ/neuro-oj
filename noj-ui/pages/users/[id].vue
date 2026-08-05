@@ -2,7 +2,7 @@
 import { useRoute } from "vue-router"
 import { useMessages } from "~/composables/useMessages"
 import { useToast } from "~/composables/useToast"
-import { formatDateTime, getLanguageLabel } from "~/utils/submissionFormat"
+import { difficultyBadgeColors, difficultyLabels, formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
 
 const route = useRoute()
 const router = useRouter()
@@ -124,19 +124,6 @@ const isOwnProfile = computed(
   () => currentUser.value?.id === userId,
 )
 
-// 难度标签
-const difficultyLabel: Record<string, string> = {
-  easy: "简单",
-  medium: "中等",
-  hard: "困难",
-}
-
-const badgeColors: Record<string, string> = {
-  easy: "bg-green-100 text-green-700",
-  medium: "bg-yellow-100 text-yellow-700",
-  hard: "bg-red-100 text-red-700",
-}
-
 // 语言标签（统一走 utils/submissionFormat 的 getLanguageLabel）
 
 // 结果状态
@@ -169,10 +156,6 @@ async function toggleFollow() {
   toast.success(following.value ? "已关注" : "已取消关注")
 }
 
-function formatScore(raw: number | null | undefined): string {
-  if (raw === undefined || raw === null) return "--"
-  return (raw / 100).toFixed(1)
-}
 </script>
 
 <template>

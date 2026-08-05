@@ -30,13 +30,13 @@ export function searchRateLimit(
   return async (c: Context, next) => {
     // 总开关
     if (!settingBool("rate_limit_search_enabled")) {
-      return await next();
+      return next();
     }
 
     // 管理员跳过限流
     const role = c.get("userRole");
     if (role === "admin") {
-      return await next();
+      return next();
     }
 
     const windowSec = settingInt("rate_limit_search_window");
@@ -51,7 +51,7 @@ export function searchRateLimit(
       const userId = c.get("userId");
       if (!userId) {
         // 登录维度的中间件要求已登录，理论上 authMiddleware 在前已保证
-        return await next();
+        return next();
       }
       identifier = userId;
       key = `search:user:${identifier}`;

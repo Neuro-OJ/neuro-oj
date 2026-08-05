@@ -8,14 +8,10 @@
  * - 注册用户自动分配默认角色
  */
 
-import { api, getAdminToken, isE2E, registerUser } from "./helper.ts";
+import { api, getAdminToken, isE2E, registerUser, e2eTest} from "./helper.ts";
 
-const skip = !isE2E;
 
-Deno.test({
-  name: "rbac-e2e: 注册用户自动获得默认角色",
-  ignore: skip,
-  fn: async () => {
+e2eTest("rbac-e2e: 注册用户自动获得默认角色", async () => {
     const ts = Date.now();
     const token = await registerUser(
       `rbac_reg_${ts}`,
@@ -34,13 +30,9 @@ Deno.test({
         `注册用户 is_admin 应为 false，实际 ${me.is_admin}`,
       );
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "rbac-e2e: 管理员可获取角色列表",
-  ignore: skip,
-  fn: async () => {
+e2eTest("rbac-e2e: 管理员可获取角色列表", async () => {
     // 用管理员身份（seed 时创建）
     const adminToken = await getAdminToken();
 
@@ -65,13 +57,9 @@ Deno.test({
     if (userRole.is_default !== true) {
       throw new Error("user 角色 is_default 应为 true");
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "rbac-e2e: 管理员可获取权限列表",
-  ignore: skip,
-  fn: async () => {
+e2eTest("rbac-e2e: 管理员可获取权限列表", async () => {
     const adminToken = await getAdminToken();
 
     const permRes = await api("GET", "/api/v1/admin/permissions", { token: adminToken });
@@ -79,13 +67,9 @@ Deno.test({
     if (permRes.status !== 200) {
       throw new Error(`获取权限列表失败: ${JSON.stringify(permRes.body)}`);
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "rbac-e2e: 管理员可创建自定义角色",
-  ignore: skip,
-  fn: async () => {
+e2eTest("rbac-e2e: 管理员可创建自定义角色", async () => {
     const adminToken = await getAdminToken();
 
     // 创建自定义角色
@@ -108,13 +92,9 @@ Deno.test({
     if (!createdRole || createdRole.name !== `e2e-moderator-${ts}`) {
       throw new Error(`角色创建后名称不匹配: ${JSON.stringify(createdRole)}`);
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "rbac-e2e: 普通用户无法访问管理 API",
-  ignore: skip,
-  fn: async () => {
+e2eTest("rbac-e2e: 普通用户无法访问管理 API", async () => {
     const ts = Date.now();
     const token = await registerUser(
       `rbac_noadmin_${ts}`,
@@ -129,13 +109,9 @@ Deno.test({
         `普通用户访问 /admin/roles 应返回 401/403，实际 ${rolesRes.status}`,
       );
     }
-  },
-});
+  });
 
-Deno.test({
-  name: "rbac-e2e: 服务层权限校验——普通用户无法创建 P 型题",
-  ignore: skip,
-  fn: async () => {
+e2eTest("rbac-e2e: 服务层权限校验——普通用户无法创建 P 型题", async () => {
     const ts = Date.now();
     const token = await registerUser(
       `rbac_puser_${ts}`,
@@ -203,5 +179,5 @@ Deno.test({
         }`,
       );
     }
-  },
-});
+  }
+);

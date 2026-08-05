@@ -77,6 +77,10 @@ down()  { printf "${RED}●${RESET} %s\n" "$*"; }
 section() { printf "\n${GREEN}━━━ %s ━━━${RESET}\n" "$*"; }
 fail()  { printf "${RED}✗${RESET} %s\n" "$*" >&2; exit 1; }
 
+# ── 端口（与 docker-compose / nuxt.config 保持一致） ──────────────
+PORT_CORE=8000
+PORT_UI=3000
+
 # ── OS 检测 ─────────────────────────────────────────────────────
 detect_os() {
   if [[ -f /etc/os-release ]]; then
@@ -187,7 +191,7 @@ trap on_exit EXIT INT TERM
 
 # ── TARGET 解析（展开 all → 列表） ──────────────────────────────
 TARGETS_ALL=("infra" "core" "ui" "judge")
-START_ORDER=("infra" "core" "ui" "judge")
+START_ORDER=("${TARGETS_ALL[@]}")
 STOP_ORDER=("judge" "ui" "core" "infra")
 
 # validate_target TARGET  → 0 合法 / 1 非法
@@ -294,15 +298,11 @@ check_docker() {
   section "检查 Docker"
   if ! command -v docker >/dev/null 2>&1; then
     fail "Docker 未安装（基础设施 + noj-judge 沙箱均依赖）"
-    warn "安装: https://docs.docker.com/engine/install/"
-    return 1
   fi
   ok "docker $(docker --version | awk '{print $3}' | tr -d ',')"
 
   if ! docker info >/dev/null 2>&1; then
     fail "Docker daemon 未运行"
-    warn "请启动 Docker Desktop 或: sudo systemctl start docker"
-    return 1
   fi
   ok "Docker daemon 运行中"
 
@@ -312,7 +312,6 @@ check_docker() {
     warn "检测到 docker-compose v1，推荐升级到 v2 plugin"
   else
     fail "docker compose 不可用"
-    return 1
   fi
 }
 
@@ -503,7 +502,7 @@ spawn_target() {
 }
 
 start_infra() {
-  section "[1/N] 启动基础设施（PostgreSQL + Redis）"
+  section "启动基础设施（PostgreSQL + Redis）"
   if [[ ! -f "$COMPOSE_FILE" ]]; then
     fail "找不到 $COMPOSE_FILE"
   fi
@@ -545,7 +544,7 @@ start_infra() {
 }
 
 start_core() {
-  section "[N/N] 启动 noj-core（端口 8000）"
+  section "启动 noj-core（端口 ${PORT_CORE}）"
 
   # 守护检查
   local existing
@@ -573,14 +572,14 @@ start_core() {
   (cd "$NOJ_CORE_DIR" && spawn_target core deno task dev) >/dev/null
 
   echo ">>> 等待 /health 就绪..."
-  if wait_http "http://localhost:8000/health" 30; then
+  if wait_http "http://localhost:${PORT_CORE}/health" 30; then
     local pid
     pid="$(read_pid core)"
     echo ""
     ok "noj-core 已启动"
     echo "  PID:      $pid"
-    echo "  端口:     8000"
-    echo "  健康检查: curl http://localhost:8000/health"
+    echo "  端口:     ${PORT_CORE}"
+    echo "  健康检查: curl http://localhost:${PORT_CORE}/health"
     echo "  日志:     tail -f $LOG_DIR/core.log"
     echo "  停止:     bash scripts/dev/devtool.sh stop core"
   else
@@ -590,7 +589,7 @@ start_core() {
 }
 
 start_ui() {
-  section "[N/N] 启动 noj-ui（端口 3000）"
+  section "启动 noj-ui（端口 ${PORT_UI}）"
 
   local existing
   existing="$(read_pid ui)"
@@ -603,15 +602,15 @@ start_ui() {
   echo ">>> 启动 noj-ui（首次启动需 10-30s 准备依赖）..."
   (cd "$NOJ_UI_DIR" && spawn_target ui deno task dev) >/dev/null
 
-  echo ">>> 等待端口 3000..."
-  if wait_port 3000 60; then
+  echo ">>> 等待端口 ${PORT_UI}..."
+  if wait_port ${PORT_UI} 60; then
     local pid
     pid="$(read_pid ui)"
     echo ""
     ok "noj-ui 已启动"
     echo "  PID:  $pid"
-    echo "  端口: 3000"
-    echo "  访问: http://localhost:3000"
+    echo "  端口: ${PORT_UI}"
+    echo "  访问: http://localhost:${PORT_UI}"
     echo "  日志: tail -f $LOG_DIR/ui.log"
     echo "  停止: bash scripts/dev/devtool.sh stop ui"
   else
@@ -621,7 +620,7 @@ start_ui() {
 
 start_judge() {
   local force_build="${1:-no}"
-  section "[N/N] 启动 noj-judge（评测 Worker）"
+  section "启动 noj-judge（评测 Worker）"
 
   local existing
   existing="$(read_pid judge)"
@@ -736,9 +735,9 @@ EOF
     echo "=========================================="
     echo ""
     echo "访问入口:"
-    echo "  前端:     http://localhost:3000"
-    echo "  后端 API: http://localhost:8000"
-    echo "  健康检查: curl http://localhost:8000/health"
+    echo "  前端:     http://localhost:${PORT_UI}"
+    echo "  后端 API: http://localhost:${PORT_CORE}"
+    echo "  健康检查: curl http://localhost:${PORT_CORE}/health"
     echo ""
     echo "查看状态: bash scripts/dev/devtool.sh status"
     echo "停止全部: bash scripts/dev/devtool.sh stop"
@@ -784,14 +783,23 @@ stop_pid() {
     sleep 1
   done
 
-  echo "进程未响应信号，发送 SIGKILL"
-  kill -KILL "$pid" 2>/dev/null || true
+  # SIGINT 优雅关闭失败时，先降级 SIGTERM，最后 SIGKILL（对应 judge 的渐进停止）
+  if [[ "$initial_signal" == "INT" ]]; then
+    echo "未响应 SIGINT，发送 SIGTERM"
+    kill -TERM "$pid" 2>/dev/null || true
+    sleep 2
+  fi
+
+  if is_pid_alive "$pid"; then
+    echo "仍未退出，发送 SIGKILL"
+    kill -KILL "$pid" 2>/dev/null || true
+  fi
   rm -f "$pid_file"
   ok "$target 已强制停止"
 }
 
 stop_infra() {
-  section "[1/N] 停止基础设施（保留数据卷）"
+  section "停止基础设施（保留数据卷）"
   if ! command -v docker >/dev/null 2>&1; then
     warn "docker 命令不可用，跳过 infra 停止"
     return 0
@@ -813,43 +821,8 @@ stop_core() { stop_pid core TERM 10; }
 stop_ui()   { stop_pid ui   TERM 10; }
 
 stop_judge() {
-  # judge 特殊：用 SIGINT 触发 ctrl_c() 优雅关闭；不行再 SIGTERM；最后 SIGKILL
-  local pid_file="$LOG_DIR/judge.pid"
-  if [[ ! -f "$pid_file" ]]; then
-    echo "judge 未在运行（无 PID 文件）"
-    return 0
-  fi
-  local pid
-  pid="$(cat "$pid_file" 2>/dev/null)"
-  if ! is_pid_alive "$pid"; then
-    echo "PID $pid 已不存在，清理 PID 文件"
-    rm -f "$pid_file"
-    return 0
-  fi
-
-  echo ">>> 停止 judge（PID $pid，SIGINT 触发 ctrl_c）..."
-  kill -INT "$pid"
-
-  local i
-  for ((i=1; i<=10; i++)); do
-    if ! is_pid_alive "$pid"; then
-      rm -f "$pid_file"
-      ok "judge 已停止"
-      return 0
-    fi
-    sleep 1
-  done
-
-  echo "未响应 SIGINT，发送 SIGTERM"
-  kill -TERM "$pid" 2>/dev/null || true
-  sleep 2
-
-  if is_pid_alive "$pid"; then
-    echo "仍未退出，发送 SIGKILL"
-    kill -KILL "$pid" 2>/dev/null || true
-  fi
-  rm -f "$pid_file"
-  ok "judge 已停止"
+  # judge 特殊：用 SIGINT 触发 ctrl_c() 优雅关闭（渐进序列见 stop_pid INT 模式）
+  stop_pid judge INT 10
 }
 
 cmd_stop() {
@@ -922,14 +895,14 @@ status_human_line() {
 
   case "$target" in
     core)
-      if curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+      if curl -fsS http://localhost:${PORT_CORE}/health >/dev/null 2>&1; then
         health_color="$GREEN"; health_text="health OK"
       else
         health_color="$YELLOW"; health_text="health 不可达"
       fi
       ;;
     ui)
-      if curl -fsS -o /dev/null http://localhost:3000/ 2>/dev/null; then
+      if curl -fsS -o /dev/null http://localhost:${PORT_UI}/ 2>/dev/null; then
         health_color="$GREEN"; health_text="HTTP OK"
       else
         health_color="$YELLOW"; health_text="端口不可达"
@@ -981,14 +954,14 @@ status_json_module() {
 
   case "$target" in
     core)
-      port="8000"
+      port="${PORT_CORE}"
       if [[ -n "$pid" ]]; then running="true"; fi
-      if curl -fsS http://localhost:8000/health >/dev/null 2>&1; then health="ok"; else health="unreachable"; fi
+      if curl -fsS http://localhost:${PORT_CORE}/health >/dev/null 2>&1; then health="ok"; else health="unreachable"; fi
       ;;
     ui)
-      port="3000"
+      port="${PORT_UI}"
       if [[ -n "$pid" ]]; then running="true"; fi
-      if curl -fsS -o /dev/null http://localhost:3000/ 2>/dev/null; then health="ok"; else health="unreachable"; fi
+      if curl -fsS -o /dev/null http://localhost:${PORT_UI}/ 2>/dev/null; then health="ok"; else health="unreachable"; fi
       ;;
     judge)
       if [[ -n "$pid" ]]; then running="true"; fi

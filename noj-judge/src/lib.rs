@@ -8,6 +8,9 @@ pub mod judge;
 pub mod sandbox;
 pub mod types;
 
+/// stdout/stderr 合并分隔符。
+pub const STDERR_SEPARATOR: &str = "--- STDERR ---";
+
 /// 将 stdout 和 stderr 合并为单一输出字符串，中间以分隔符连接。
 ///
 /// stderr 为空时直接返回 stdout，避免添加不必要的分隔符。
@@ -15,7 +18,7 @@ pub fn merge_output(stdout: &str, stderr: &str) -> String {
     if stderr.is_empty() {
         stdout.to_string()
     } else {
-        format!("{}\n--- STDERR ---\n{}", stdout, stderr)
+        format!("{}\n{}\n{}", stdout, STDERR_SEPARATOR, stderr)
     }
 }
 

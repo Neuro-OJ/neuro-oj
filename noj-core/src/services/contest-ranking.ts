@@ -291,7 +291,7 @@ export async function getContestRanking(
   }
 
   if (type !== "icpc") {
-    return await getIoiRanking(contestId);
+    return getIoiRanking(contestId);
   }
 
   const config = contest.config as Record<string, unknown>;
@@ -303,7 +303,7 @@ export async function getContestRanking(
     Date.now() >= Date.parse(freezeTime) &&
     !(contest.status === "ended" && unfreezeAfterEnd);
   if (!isFrozen) {
-    return await getIcpcRanking(contestId);
+    return getIcpcRanking(contestId);
   }
 
   const frozen = await getIcpcRanking(contestId, {
