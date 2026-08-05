@@ -3,7 +3,7 @@ import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { resetDbForTest } from "../../src/db/connection.ts";
-import { jsonRequest } from "../lib/helper.ts";
+import { createUserToken, jsonRequest } from "../lib/helper.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建
 await resetDbForTest();
@@ -57,7 +57,7 @@ Deno.test({
   ignore: skip,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "test-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(app, "/api/v1/submissions", {
       method: "POST",
       body: { problem_id: "1001" }, // 缺少 language 和 code
@@ -89,7 +89,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "test-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(app, "/api/v1/submissions/nonexistent-id", {
       token,
     });
@@ -151,7 +151,7 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "test-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(app, "/api/v1/submissions?status=invalid", {
       token,
     });
@@ -166,7 +166,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "test-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(app, "/api/v1/submissions?per_page=999", {
       token,
     });
@@ -193,7 +193,7 @@ Deno.test({
   ignore: skip,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "test-regular", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(app, "/api/v1/admin/submissions", { token });
     assertEquals(res.status, 403);
     const body = await res.json();
@@ -208,7 +208,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "test-admin", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(app, "/api/v1/admin/submissions", { token });
     assertEquals(res.status, 200);
     const body = await res.json();
@@ -224,7 +224,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "test-admin", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
       "/api/v1/admin/submissions?user_id=nonexistent-user",
@@ -245,7 +245,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "test-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(
       app,
       "/api/v1/submissions/nonexistent-id/status",

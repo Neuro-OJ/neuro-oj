@@ -19,7 +19,7 @@ interface User {
   id: string
   username: string
   email: string
-  role: string
+  is_admin: boolean
   role_ids: string[]
   /** user-ban-table：活跃封禁信息 */
   active_ban: { reason: string; banned_until: string | null } | null
@@ -272,11 +272,11 @@ async function showBanHistory(user: User) {
         <div class="flex items-center gap-1.5 flex-wrap">
           <span
             class="inline-flex items-center gap-1 px-2 py-[3px] rounded text-xs font-semibold"
-            :class="row.original.role === 'admin' ? 'bg-blue-50 text-info-text' : 'bg-[#f5f5f5] text-[#6b7280]'"
+            :class="row.original.is_admin ? 'bg-blue-50 text-info-text' : 'bg-[#f5f5f5] text-[#6b7280]'"
           >
-            <UIcon name="i-lucide-shield-check" class="size-3.5" v-if="row.original.role === 'admin'"/>
+            <UIcon name="i-lucide-shield-check" class="size-3.5" v-if="row.original.is_admin"/>
             <UIcon name="i-lucide-shield-x" class="size-3.5" v-else/>
-            {{ row.original.role === "admin" ? "管理员" : "用户" }}
+            {{ row.original.is_admin ? "管理员" : "用户" }}
           </span>
           <!-- user-ban-table：封禁 badge -->
           <span

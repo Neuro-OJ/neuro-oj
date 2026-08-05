@@ -9,7 +9,7 @@
  * 全部幂等（ON CONFLICT DO NOTHING / 存在性检查）。
  */
 
-import { and, eq, not, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import {
   categories,
@@ -21,14 +21,18 @@ import {
 import { hashPassword } from "../lib/password.ts";
 import { ensureSystemRoles } from "./seed-rbac.ts";
 import { ROOT_USER_ID } from "../lib/constants.ts";
+import {
+  ADMIN_FULL_ACCESS,
+  getAdminUserIds,
+  getUserPermissions,
+} from "../lib/permissions.ts";
 
 /**
  * 为管理员用户写入 RBAC 关联（issue #186）。
  *
- * RBAC 落地后（#171）管理权限由 `roles.is_admin` + `user_roles` 关联表决定，
- * `users.role` 仅用于展示/向前兼容。bootstrap:admin 创建用户时若只写
- * `users.role = 'admin'`，登录返回的 `is_admin`（来自 RBAC 表）仍为 false，
- * 管理接口实际无权限。
+ * RBAC 落地后（#171）管理权限由 `admin:full_access` 权限（role_permissions）
+ * + `user_roles` 关联表决定。bootstrap:admin 创建用户时必须同时写入
+ * `user_roles` 关联（admin 角色），否则用户不具备管理员权限。
  *
  * 幂等：先确保系统角色存在（兼容 bootstrap 早于 init system 的执行顺序），
  * 再以 ON CONFLICT DO NOTHING 写入 user_roles。
@@ -198,7 +202,6 @@ export async function ensureAdminFromEnv(): Promise<void> {
       username,
       email: adminEmail,
       password_hash: await hashPassword(adminPass),
-      role: "admin",
       must_change_password: shouldForcePasswordChange(),
       created_at: now,
       updated_at: now,
@@ -212,15 +215,12 @@ export async function ensureAdminFromEnv(): Promise<void> {
   }
 
   const user = existing[0];
-  if (user.role === "admin") {
+  // 幂等判断：已通过 RBAC 拥有 admin:full_access 权限则跳过
+  const perms = await getUserPermissions(user.id);
+  if (perms.has(ADMIN_FULL_ACCESS)) {
     console.log(`  用户 ${adminEmail} 已是管理员，无需提升`);
     return;
   }
-
-  await db
-    .update(users)
-    .set({ role: "admin", updated_at: new Date().toISOString() })
-    .where(eq(users.email, adminEmail));
 
   await ensureAdminRoleAssignment(user.id);
   console.log(`  已提升用户 ${adminEmail} 为管理员`);
@@ -245,7 +245,7 @@ function generateStrongPassword(): string {
 /**
  * 引导管理员兜底（issue #75）。
  *
- * 当系统中不存在任何可登录管理员（role='admin' AND id!='0'）时，
+ * 当系统中不存在任何可登录管理员（权限集含 admin:full_access 且 id!='0'）时，
  * 自动创建一个临时管理员（username=admin / email=admin@noj.local /
  * 24 字符随机密码，must_change_password=true），凭据打印到终端。
  * 已存在可登录 admin 时本函数为 no-op，可重复运行（幂等）。
@@ -258,12 +258,10 @@ export async function ensureBootstrapAdmin(): Promise<void> {
 
   const db = getDb();
 
-  const [adminCountRow] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(users)
-    .where(and(eq(users.role, "admin"), not(eq(users.id, ROOT_USER_ID))));
-  const adminCount = Number(adminCountRow?.count ?? 0);
-  if (adminCount > 0) {
+  // 存在可登录管理员（admin:full_access 权限，含继承链，排除 root）则跳过
+  const adminIds = await getAdminUserIds();
+  const hasLoginableAdmin = [...adminIds].some((id) => id !== ROOT_USER_ID);
+  if (hasLoginableAdmin) {
     console.log("  已存在可登录管理员，跳过引导管理员创建");
     return;
   }
@@ -279,7 +277,6 @@ export async function ensureBootstrapAdmin(): Promise<void> {
     username,
     email,
     password_hash: await hashPassword(password),
-    role: "admin",
     must_change_password: shouldForcePasswordChange(),
     created_at: now,
     updated_at: now,
@@ -335,7 +332,6 @@ export async function ensureE2EPwChangeUser(): Promise<void> {
     username: "e2e_pwchange",
     email,
     password_hash: await hashPassword(pass),
-    role: "user",
     must_change_password: true,
     created_at: now,
     updated_at: now,

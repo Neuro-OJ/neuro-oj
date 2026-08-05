@@ -181,8 +181,8 @@ export async function resetDbForTest() {
     // Re-seed 必需数据
     try {
       await _pgliteInstance.query(
-        `INSERT INTO users (id, username, email, password_hash, role, bio, created_at, updated_at)
-         VALUES ('0', 'root', 'root@noj.local', '', 'admin', '', '${now}', '${now}')
+        `INSERT INTO users (id, username, email, password_hash, bio, created_at, updated_at)
+         VALUES ('0', 'root', 'root@noj.local', '', '', '${now}', '${now}')
          ON CONFLICT (id) DO NOTHING`,
       );
     } catch {
@@ -244,12 +244,17 @@ export async function resetDbForTest() {
     // 某些表可能不存在，忽略
   }
   try {
-    // re-seed root 用户
+    // re-seed root 用户（users.role 列已废弃删除）
     await getDb().execute(
-      `INSERT INTO users (id, username, email, password_hash, role, bio, created_at, updated_at)
-       VALUES ('0', 'root', 'root@noj.local', '', 'admin', '', '${now}', '${now}')
+      `INSERT INTO users (id, username, email, password_hash, bio, created_at, updated_at)
+       VALUES ('0', 'root', 'root@noj.local', '', '', '${now}', '${now}')
        ON CONFLICT (id) DO NOTHING`,
     );
+  } catch { /* 忽略 */ }
+  // 重建 RBAC 系统角色（TRUNCATE 清空了 roles / user_roles / role_permissions）
+  try {
+    const { ensureRbacSeeds } = await import("../services/seed-rbac.ts");
+    await ensureRbacSeeds();
   } catch { /* 忽略 */ }
   try {
     await getDb().execute(

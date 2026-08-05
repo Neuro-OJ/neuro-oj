@@ -40,7 +40,6 @@ export const users = pgTable(
     username: text("username").notNull().unique(),
     email: text("email").notNull().unique(),
     password_hash: text("password_hash").notNull(),
-    role: text("role").notNull().default("user"),
     /** 个人简介（Markdown 格式） */
     bio: text("bio").notNull().default(""),
     /**
@@ -710,7 +709,6 @@ export const roles = pgTable(
     description: text("description").notNull().default(""),
     is_system: boolean("is_system").notNull().default(false),
     is_default: boolean("is_default").notNull().default(false),
-    is_admin: boolean("is_admin").notNull().default(false),
     // deno-lint-ignore no-explicit-any
     parent_id: text("parent_id").references((): any => roles.id, {
       onDelete: "set null",

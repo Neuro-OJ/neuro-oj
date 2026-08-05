@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
+import { createUserToken, initRedisForTest } from "../lib/helper.ts";
 import {
   _resetRateLimitForTest,
   rateLimit,
@@ -88,7 +88,7 @@ Deno.test({
   fn: async () => {
     _resetRateLimitForTest();
     const app = createTestApp(1000, 5000);
-    const token = await signToken({ sub: "user-test", role: "user" });
+    const token = await createUserToken();
 
     const r1 = await app.request("/limited", {
       headers: { Authorization: `Bearer ${token}` },
@@ -139,7 +139,7 @@ Deno.test({
   fn: async () => {
     _resetRateLimitForTest();
     const app = createTestApp(1000, 5000);
-    const tokenA = await signToken({ sub: "user-a", role: "user" });
+    const tokenA = await createUserToken();
     const tokenB = await signToken({ sub: "user-b", role: "user" });
 
     const r1 = await app.request("/limited", {

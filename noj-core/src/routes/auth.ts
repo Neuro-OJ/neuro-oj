@@ -244,7 +244,7 @@ auth.post(
       // 签发新 token（must_change_password 必为 false，changePassword 已 UPDATE）
       const newToken = await signToken({
         sub: user.id,
-        role: user.role,
+        role: "user",
         must_change_password: false,
       });
 

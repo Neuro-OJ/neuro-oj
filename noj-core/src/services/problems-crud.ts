@@ -214,18 +214,18 @@ export async function updateProblem(
 
   const problem = existing[0];
 
-  // 权限检查
-  if (problem.type === "P" && !c?.var.isAdmin) {
+  // 权限检查（admin:full_access 通配放行由 assertPermission 内部处理）
+  if (problem.type === "P") {
     if (c) {
       await assertPermission(c, "problem:write_any");
     } else if (userRole !== "admin") {
       throw new ForbiddenError("仅管理员可编辑管理题");
     }
   }
-  // U 型：仅所有者可编辑
+  // U 型：仅所有者可编辑；非 owner 需 write_any（管理员）
   if (problem.owner_id !== (c?.var.userId ?? userId)) {
     if (c) {
-      await assertPermission(c, "problem:write_own");
+      await assertPermission(c, "problem:write_any");
     } else if (userRole !== "admin") {
       throw new ForbiddenError("无权编辑此题目");
     }
@@ -338,18 +338,18 @@ export async function deleteProblem(
 
   const problem = existing[0];
 
-  // 权限检查
-  if (problem.type === "P" && !c?.var.isAdmin) {
+  // 权限检查（admin:full_access 通配放行由 assertPermission 内部处理）
+  if (problem.type === "P") {
     if (c) {
       await assertPermission(c, "problem:delete_any");
     } else if (userRole !== "admin") {
       throw new ForbiddenError("仅管理员可删除管理题");
     }
   }
-  // U 型：仅所有者可删除
+  // U 型：仅所有者可删除；非 owner 需 delete_any（管理员）
   if (problem.owner_id !== (c?.var.userId ?? userId)) {
     if (c) {
-      await assertPermission(c, "problem:delete_own");
+      await assertPermission(c, "problem:delete_any");
     } else if (userRole !== "admin") {
       throw new ForbiddenError("无权删除此题目");
     }

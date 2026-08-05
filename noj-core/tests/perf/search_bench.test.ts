@@ -59,7 +59,6 @@ Deno.test({
         username: `user_${i * 1000 + j}`,
         email: `user_${i}_${j}@perf.test`,
         password_hash: "x",
-        role: "user",
         created_at: now,
         updated_at: now,
       }));

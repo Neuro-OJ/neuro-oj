@@ -40,13 +40,11 @@ for (
       id: ADMIN_USER_ID,
       username: `admin-${ts}`,
       email: `admin-${ts}@test.com`,
-      role: "admin",
     },
     {
       id: REGULAR_USER_ID,
       username: `user-${ts}`,
       email: `user-${ts}@test.com`,
-      role: "user",
     },
   ]
 ) {
@@ -55,7 +53,6 @@ for (
     username: u.username,
     email: u.email,
     password_hash: "x",
-    role: u.role,
     created_at: now,
     updated_at: now,
   }).onConflictDoNothing();
@@ -116,15 +113,16 @@ Deno.test({
 });
 
 Deno.test({
-  name: "rbac: admin 用户权限集为空（is_admin 不展开权限）",
+  name: "rbac: admin 用户权限集包含 admin:full_access",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const perms = await getUserPermissions(ADMIN_USER_ID);
-    // admin 角色 is_admin=true → SQL 中 WHERE is_admin=false 排除
-    // 返回空 Set，实际权限检查通过 isAdmin fast path 短路
-    assertEquals(perms.size, 0);
+    // admin 角色显式关联 admin:full_access → 权限集包含全权限通行证
+    assert(perms.has("admin:full_access"), "应有 admin:full_access");
+    // 社区治理权限（ADMIN_DEFAULT_PERMISSIONS 显式授权）同样在权限集中
+    assert(perms.has("community_moderation:review"), "应有社区治理权限");
   },
 });
 
@@ -174,11 +172,7 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const res = await jsonRequest(app, "/api/v1/admin/roles", {
-      token: await signToken({
-        sub: ADMIN_USER_ID,
-        role: "admin",
-        is_admin: true,
-      }),
+      token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
     });
     assertEquals(res.status, 200);
     const body = await res.json();
@@ -201,11 +195,7 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const res = await jsonRequest(app, "/api/v1/admin/permissions", {
-      token: await signToken({
-        sub: ADMIN_USER_ID,
-        role: "admin",
-        is_admin: true,
-      }),
+      token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
     });
     assertEquals(res.status, 200);
     const body = await res.json();
@@ -237,11 +227,7 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const res = await jsonRequest(app, "/api/v1/admin/roles", {
-      token: await signToken({
-        sub: REGULAR_USER_ID,
-        role: "user",
-        is_admin: false,
-      }),
+      token: await signToken({ sub: REGULAR_USER_ID, role: "user" }),
     });
     assertEquals(res.status, 403);
   },
@@ -256,11 +242,7 @@ Deno.test({
     const app = createApp();
     // 获取默认 user 角色的 permission_ids
     const permsRes = await jsonRequest(app, "/api/v1/admin/permissions", {
-      token: await signToken({
-        sub: ADMIN_USER_ID,
-        role: "admin",
-        is_admin: true,
-      }),
+      token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
     });
     // 返回格式：{ data: { problem: [...], submission: [...], ... } }
     const grouped = (await permsRes.json()).data as Record<
@@ -279,11 +261,7 @@ Deno.test({
         description: "测试角色",
         permission_ids: userPermIds,
       },
-      token: await signToken({
-        sub: ADMIN_USER_ID,
-        role: "admin",
-        is_admin: true,
-      }),
+      token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
     });
     assertEquals(res.status, 201);
     const body = await res.json();
@@ -304,11 +282,7 @@ Deno.test({
     const res = await jsonRequest(app, "/api/v1/admin/roles", {
       method: "POST",
       body: { name: "admin" },
-      token: await signToken({
-        sub: ADMIN_USER_ID,
-        role: "admin",
-        is_admin: true,
-      }),
+      token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
     });
     assertEquals(res.status, 409);
   },
@@ -322,11 +296,7 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const rolesRes = await jsonRequest(app, "/api/v1/admin/roles", {
-      token: await signToken({
-        sub: ADMIN_USER_ID,
-        role: "admin",
-        is_admin: true,
-      }),
+      token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
     });
     const allRoles = (await rolesRes.json()).data as Array<
       { id: string; name: string; is_system: boolean }
@@ -335,11 +305,7 @@ Deno.test({
     if (sysRole) {
       const res = await jsonRequest(app, `/api/v1/admin/roles/${sysRole.id}`, {
         method: "DELETE",
-        token: await signToken({
-          sub: ADMIN_USER_ID,
-          role: "admin",
-          is_admin: true,
-        }),
+        token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
       });
       assertEquals(res.status, 403);
     }
@@ -364,11 +330,7 @@ Deno.test({
       {
         method: "PATCH",
         body: { role_ids: [userRoleRow.id] },
-        token: await signToken({
-          sub: ADMIN_USER_ID,
-          role: "admin",
-          is_admin: true,
-        }),
+        token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
       },
     );
     const body = await res.json();
@@ -397,11 +359,7 @@ Deno.test({
       {
         method: "PATCH",
         body: { role_ids: [adminRoleRow.id] },
-        token: await signToken({
-          sub: ADMIN_USER_ID,
-          role: "admin",
-          is_admin: true,
-        }),
+        token: await signToken({ sub: ADMIN_USER_ID, role: "admin" }),
       },
     );
     assertEquals(res.status, 400, "不允许修改自己的角色");
@@ -420,7 +378,6 @@ Deno.test({
     const adminToken = await signToken({
       sub: ADMIN_USER_ID,
       role: "admin",
-      is_admin: true,
     });
 
     const ts = Date.now();
@@ -455,7 +412,6 @@ Deno.test({
       username: `inherit-${ts}`,
       email: `inherit-${ts}@test.com`,
       password_hash: "x",
-      role: "user",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).onConflictDoNothing();
@@ -501,7 +457,6 @@ Deno.test({
     const adminToken = await signToken({
       sub: ADMIN_USER_ID,
       role: "admin",
-      is_admin: true,
     });
 
     const role1 = await jsonRequest(app, "/api/v1/admin/roles", {
@@ -527,7 +482,6 @@ Deno.test({
       username: `multi-${ts}`,
       email: `multi-${ts}@test.com`,
       password_hash: "x",
-      role: "user",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).onConflictDoNothing();
@@ -587,7 +541,6 @@ Deno.test({
     const adminToken = await signToken({
       sub: ADMIN_USER_ID,
       role: "admin",
-      is_admin: true,
     });
     const ts = Date.now();
 
@@ -640,7 +593,6 @@ Deno.test({
     const adminToken = await signToken({
       sub: ADMIN_USER_ID,
       role: "admin",
-      is_admin: true,
     });
     const ts = Date.now();
 
@@ -673,7 +625,6 @@ Deno.test({
     const adminToken = await signToken({
       sub: ADMIN_USER_ID,
       role: "admin",
-      is_admin: true,
     });
 
     // 先给 ADMIN_USER_ID 一个 user 角色兜底
@@ -691,7 +642,7 @@ Deno.test({
       },
     );
 
-    // 因为 ADMIN_USER_ID 上还有 admin 角色（is_admin=true），
+    // 因为 ADMIN_USER_ID 上还有 admin 角色（admin:full_access），
     // 如果这是最后一个 admin，应该拒绝
     // 但这里 ADMIN_USER_ID 就是当前登录用户，自卫逻辑优先返回 400
     assertEquals(res.status, 400, "不能修改自己的角色 -> 400");
@@ -710,7 +661,6 @@ Deno.test({
     const adminToken = await signToken({
       sub: ADMIN_USER_ID,
       role: "admin",
-      is_admin: true,
     });
     const ts = Date.now();
 
@@ -776,8 +726,11 @@ Deno.test({
       "普通用户无 system:settings",
     );
 
-    // 验证 admin 拥有（通过 is_admin fast path，权限集为空但不影响检查）
+    // 验证 admin 拥有（admin:full_access 全权限通行证）
     const adminPerms = await getUserPermissions(ADMIN_USER_ID);
-    assertEquals(adminPerms.size, 0, "admin 权限集为空（is_admin 不展开）");
+    assert(
+      adminPerms.has("admin:full_access"),
+      "admin 权限集应包含 admin:full_access",
+    );
   },
 });

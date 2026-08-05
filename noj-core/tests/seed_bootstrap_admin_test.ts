@@ -11,7 +11,7 @@
 
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { getDb, resetDbForTest } from "../src/db/connection.ts";
-import { and, eq, not, sql } from "drizzle-orm";
+import { and, eq, not } from "drizzle-orm";
 import {
   auditLogs,
   conversationReads,
@@ -26,6 +26,7 @@ import {
 } from "../src/db/schema.ts";
 import { registerUser } from "../src/services/auth.ts";
 import { hashPassword } from "../src/lib/password.ts";
+import { getAdminUserIds } from "../src/lib/permissions.ts";
 import {
   ensureAdminFromEnv,
   ensureBootstrapAdmin,
@@ -43,12 +44,9 @@ const skip = !hasDb;
 const origAdminEmail = Deno.env.get("ADMIN_EMAIL");
 
 async function getAdminCount(): Promise<number> {
-  const db = getDb();
-  const [row] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(users)
-    .where(and(eq(users.role, "admin"), not(eq(users.id, "0"))));
-  return Number(row?.count ?? 0);
+  // 可登录管理员 = 权限集含 admin:full_access 的用户（排除 root）
+  const adminIds = await getAdminUserIds();
+  return [...adminIds].filter((id) => id !== "0").length;
 }
 
 /**
@@ -67,10 +65,15 @@ async function cleanNonRootAdmins(): Promise<void> {
   await db.delete(messages);
   await db.delete(conversationReads);
   await db.delete(conversations);
-  // 现在可以安全删除 admin 用户
-  await db.delete(users).where(
-    and(eq(users.role, "admin"), not(eq(users.id, "0"))),
-  );
+  // 现在可以安全删除 admin 用户（关联 admin 角色的非 root 用户）
+  const adminUsers = await db
+    .select({ user_id: userRoles.user_id })
+    .from(userRoles)
+    .innerJoin(roles, eq(roles.id, userRoles.role_id))
+    .where(and(eq(roles.name, "admin"), not(eq(userRoles.user_id, "0"))));
+  for (const u of adminUsers) {
+    await db.delete(users).where(eq(users.id, u.user_id));
+  }
 }
 
 /**
@@ -129,12 +132,14 @@ Deno.test({
     });
 
     try {
-      // 直接提升为 admin
+      // 直接提升为 admin（关联 admin 角色）
       const db = getDb();
-      await db
-        .update(users)
-        .set({ role: "admin", updated_at: new Date().toISOString() })
-        .where(eq(users.id, user.id));
+      const [adminRole] = await db.select({ id: roles.id }).from(roles)
+        .where(eq(roles.name, "admin")).limit(1);
+      await db.insert(userRoles).values({
+        user_id: user.id,
+        role_id: adminRole!.id,
+      }).onConflictDoNothing();
 
       const beforeCount = await getAdminCount();
       assertEquals(beforeCount, 1, "应有一个可登录 admin");
@@ -186,16 +191,24 @@ Deno.test({
     const now = new Date().toISOString();
 
     try {
+      const [adminRole] = await db.select({ id: roles.id }).from(roles)
+        .where(eq(roles.name, "admin")).limit(1);
       await db.insert(users).values({
         id,
         username: "admin",
         email: "admin@noj.local",
         password_hash: await hashPassword(pwd),
-        role: "admin",
         must_change_password: true,
         created_at: now,
         updated_at: now,
       });
+      // 模拟 ensureAdminRoleAssignment：关联 admin 角色
+      if (adminRole) {
+        await db.insert(userRoles).values({
+          user_id: id,
+          role_id: adminRole.id,
+        }).onConflictDoNothing();
+      }
 
       // 验证
       const [admin] = await db
@@ -205,7 +218,6 @@ Deno.test({
         .limit(1);
 
       assertEquals(admin.must_change_password, true);
-      assertEquals(admin.role, "admin");
       assertEquals(admin.username, "admin");
     } finally {
       await cleanupUser(id);
@@ -229,19 +241,16 @@ Deno.test({
       // 直接调用真实 seed 函数，验证 user_roles 关联被写入
       await ensureBootstrapAdmin();
 
-      const db = getDb();
-      const [admin] = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(and(eq(users.role, "admin"), not(eq(users.id, "0"))))
-        .limit(1);
-      assert(admin, "应创建引导管理员");
+      // 引导管理员 = 权限集含 admin:full_access 的非 root 用户
+      const adminIds = await getAdminUserIds();
+      const adminId = [...adminIds].find((id) => id !== "0");
+      assert(adminId, "应创建引导管理员");
       assertEquals(
-        await countAdminRoleAssignments(admin.id),
+        await countAdminRoleAssignments(adminId),
         1,
         "引导管理员应拥有 admin 角色关联",
       );
-      await cleanupUser(admin.id);
+      await cleanupUser(adminId);
     } finally {
       if (origAdminEmail) Deno.env.set("ADMIN_EMAIL", origAdminEmail);
     }
@@ -312,15 +321,18 @@ Deno.test({
       await ensureBootstrapAdmin();
 
       const db = getDb();
+      // 引导管理员 = 权限集含 admin:full_access 的非 root 用户
+      const adminIds = await getAdminUserIds();
+      const adminId = [...adminIds].find((id) => id !== "0");
+      assert(adminId, "应创建引导管理员");
       const [admin] = await db
         .select({
           id: users.id,
           must_change_password: users.must_change_password,
         })
         .from(users)
-        .where(and(eq(users.role, "admin"), not(eq(users.id, "0"))))
+        .where(eq(users.id, adminId))
         .limit(1);
-      assert(admin, "应创建引导管理员");
       assertEquals(
         admin.must_change_password,
         false,

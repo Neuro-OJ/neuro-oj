@@ -35,7 +35,6 @@ async function setupTestData() {
     username: `c-tester-${TS}`,
     email: `c-${TS}@test.noj`,
     password_hash: "hash",
-    role: "user",
     created_at: now,
     updated_at: now,
   });

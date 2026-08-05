@@ -13,7 +13,7 @@ Deno.test("schema: users table has correct columns", () => {
   assertEquals(columns.includes("username"), true);
   assertEquals(columns.includes("email"), true);
   assertEquals(columns.includes("password_hash"), true);
-  assertEquals(columns.includes("role"), true);
+  assertEquals(columns.includes("password_hash"), true);
   assertEquals(columns.includes("created_at"), true);
   assertEquals(columns.includes("updated_at"), true);
 });
@@ -26,9 +26,6 @@ Deno.test("schema: users columns have correct constraints", () => {
   assertEquals(users.email.notNull, true);
   assertEquals(users.email.isUnique, true); // UNIQUE
   assertEquals(users.password_hash.notNull, true);
-  assertEquals(users.role.notNull, true);
-  assertEquals(users.role.hasDefault, true);
-  assertEquals(users.role.default, "user"); // DEFAULT 'user'
   assertEquals(users.created_at.notNull, true);
   assertEquals(users.updated_at.notNull, true);
 });

@@ -181,3 +181,42 @@ export async function initRedisForTest(): Promise<void> {
     if (!String(e).includes("already connecting/connected")) throw e;
   }
 }
+
+/**
+ * 创建真实存在的测试用户并返回其 JWT。
+ *
+ * 权限判定（requireAdmin / checkPermission）实时查询 DB，JWT 仅含 sub/role，
+ * 因此 token 的 sub 必须对应一个真实用户且关联了相应角色：
+ * - `"admin"`：关联 admin 角色（其 admin:full_access 权限由 ensureRbacSeeds 预置）
+ * - `"user"`：关联 user 角色（默认权限集）
+ *
+ * 动态 import 避免本模块顶层引入 DB 依赖（helper 保持零副作用导入）。
+ */
+export async function createUserToken(
+  role: "admin" | "user" = "user",
+): Promise<string> {
+  const { getDb } = await import("../../src/db/connection.ts");
+  const { users, userRoles } = await import("../../src/db/schema.ts");
+  const { signToken } = await import("../../src/lib/jwt.ts");
+  const { ensureRbacSeeds } = await import("../../src/services/seed-rbac.ts");
+  const db = getDb();
+  // 幂等重建系统角色（resetDbForTest TRUNCATE 可能清空 roles 表）
+  await ensureRbacSeeds();
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const username = `test_${role}_${Date.now()}_${
+    Math.random().toString(36).slice(2, 8)
+  }`;
+  await db.insert(users).values({
+    id,
+    username,
+    email: `${id}@test.local`,
+    password_hash: "x",
+    must_change_password: false,
+    created_at: now,
+    updated_at: now,
+  });
+  await db.insert(userRoles).values({ user_id: id, role_id: role })
+    .onConflictDoNothing();
+  return await signToken({ sub: id, role });
+}

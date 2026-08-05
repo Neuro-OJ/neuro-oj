@@ -5,7 +5,7 @@ import { problems } from "../db/schema.ts";
 import { ForbiddenError, NotFoundError } from "../lib/errors.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { logger } from "../lib/logging.ts";
-import { assertPermission, checkPermission } from "../lib/permissions.ts";
+import { assertPermission } from "../lib/permissions.ts";
 import type { Context } from "hono";
 
 /**
@@ -49,13 +49,14 @@ async function checkSupportPackagePermission(
 
   // 管理员可管理任意题目（当有 Context 时走 RBAC 权限检查）
   if (c) {
-    const hasPerm = problem.type === "P"
-      ? await checkPermission(c, "problem:package_manage_any")
-      : await checkPermission(c, "problem:package_manage_own");
-    if (hasPerm) return;
-    if (problem.owner_id !== (c.var.userId as string)) {
-      throw new ForbiddenError("无权管理此题目的支持包");
+    // P 型题仅管理员（package_manage_any）
+    if (problem.type === "P") {
+      await assertPermission(c, "problem:package_manage_any");
+      return;
     }
+    // U 型题：owner 直接放行；非 owner 需管理员权限
+    if (problem.owner_id === (c.var.userId as string)) return;
+    await assertPermission(c, "problem:package_manage_any");
     return;
   }
 
@@ -151,10 +152,10 @@ export async function getSupportPackageBytes(
     throw new NotFoundError("题目不存在");
   }
 
-  // 权限校验
+  // 权限校验：owner 可管理自己的支持包；非 owner 仅管理员（package_manage_any）
   if (c) {
     if (problem.owner_id !== (c.var.userId as string)) {
-      await assertPermission(c, "problem:package_manage_own");
+      await assertPermission(c, "problem:package_manage_any");
     }
   } else if (userRole !== "admin" && problem.owner_id !== userId) {
     throw new ForbiddenError("无权下载此题目的支持包");

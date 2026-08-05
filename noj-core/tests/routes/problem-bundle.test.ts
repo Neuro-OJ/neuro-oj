@@ -10,13 +10,13 @@ import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { problems, users } from "../../src/db/schema.ts";
 import { eq, sql } from "drizzle-orm";
+import { createUserToken } from "../lib/helper.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skipEnv = !hasEnv;
 
 const ts = Date.now();
 const OWNER_ID = `bundle-owner-${ts}`;
-const ADMIN_ID = "0";
 
 /**
  * 构造统一题目包 zip。
@@ -80,7 +80,6 @@ async function ensureUser(id: string): Promise<void> {
       username: `bundle-${id}`,
       email: `bundle-${id}@test.com`,
       password_hash: "not-used",
-      role: "user",
       created_at: now,
       updated_at: now,
     });
@@ -95,11 +94,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({
-      sub: ADMIN_ID,
-      role: "admin",
-      is_admin: true,
-    });
+    const token = await createUserToken("admin");
 
     const formData = new FormData();
     formData.append("file", makeZipBlob({ type: "P" }), "p1.zip");
@@ -167,11 +162,7 @@ Deno.test({
     });
 
     const app = createApp();
-    const token = await signToken({
-      sub: ADMIN_ID,
-      role: "admin",
-      is_admin: true,
-    });
+    const token = await createUserToken("admin");
     const formData = new FormData();
     formData.append(
       "file",
@@ -303,11 +294,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({
-      sub: ADMIN_ID,
-      role: "admin",
-      is_admin: true,
-    });
+    const token = await createUserToken("admin");
 
     const enc = new TextEncoder();
     const looseZip = zipSync({
@@ -338,11 +325,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({
-      sub: ADMIN_ID,
-      role: "admin",
-      is_admin: true,
-    });
+    const token = await createUserToken("admin");
 
     const enc = new TextEncoder();
     const badZip = zipSync({
@@ -376,11 +359,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({
-      sub: ADMIN_ID,
-      role: "admin",
-      is_admin: true,
-    });
+    const token = await createUserToken("admin");
 
     const fixedNumber = 72000 + (ts & 0x7fff);
     const formData = new FormData();
@@ -428,11 +407,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({
-      sub: ADMIN_ID,
-      role: "admin",
-      is_admin: true,
-    });
+    const token = await createUserToken("admin");
 
     const formData = new FormData();
     formData.append(

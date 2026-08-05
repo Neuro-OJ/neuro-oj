@@ -43,9 +43,10 @@ const USER_DEFAULT_PERMISSIONS: Array<{ resource: string; action: string }> = [
   { resource: "community", action: "report" },
 ];
 
-// admin 角色的默认权限（action 列表）：社区治理与板块管理
-// （admin 有 is_admin fast path，显式授予便于角色权限表展示与继承）
+// admin 角色的默认权限（action 列表）：admin:full_access 全权限 + 社区治理与板块管理
+// （admin:full_access 为管理员判定权限，权限检查时通配放行一切权限）
 const ADMIN_DEFAULT_PERMISSIONS: Array<{ resource: string; action: string }> = [
+  { resource: "admin", action: "full_access" },
   { resource: "community_moderation", action: "review" },
   { resource: "community_moderation", action: "hide" },
   { resource: "community_moderation", action: "lock" },
@@ -77,7 +78,6 @@ export async function ensureSystemRoles(): Promise<void> {
     description: "系统管理员",
     is_system: true,
     is_default: false,
-    is_admin: true,
     parent_id: null,
     created_at: now(),
     updated_at: now(),
@@ -89,7 +89,6 @@ export async function ensureSystemRoles(): Promise<void> {
     description: "普通用户",
     is_system: true,
     is_default: true,
-    is_admin: false,
     parent_id: null,
     created_at: now(),
     updated_at: now(),
@@ -175,27 +174,35 @@ export async function ensureAdminRolePermissions(): Promise<void> {
   }
 }
 
+/**
+ * 为尚无任何 user_roles 关联的存量用户补齐默认 user 角色。
+ * （users.role 列已废弃删除；历史迁移过的数据不受影响）
+ */
 export async function migrateExistingUsers(): Promise<void> {
   const db = getDb();
 
   const allUsers = await db
-    .select({ id: users.id, role: users.role })
+    .select({ id: users.id })
     .from(users)
     .where(sql`${users.id} <> '0'`);
 
-  const roleRows = await db
-    .select({ id: roles.id, name: roles.name })
-    .from(roles);
-  const roleIdByName = new Map(roleRows.map((r) => [r.name, r.id]));
+  const [userRole] = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(eq(roles.name, ROLE_USER))
+    .limit(1);
+  if (!userRole || allUsers.length === 0) return;
+
+  const existingRows = await db
+    .select({ user_id: userRoles.user_id })
+    .from(userRoles);
+  const existingIds = new Set(existingRows.map((r) => r.user_id));
 
   for (const u of allUsers) {
-    const targetRoleId = u.role === "admin"
-      ? roleIdByName.get(ROLE_ADMIN)
-      : roleIdByName.get(ROLE_USER);
-    if (!targetRoleId) continue;
+    if (existingIds.has(u.id)) continue;
     await db.insert(userRoles).values({
       user_id: u.id,
-      role_id: targetRoleId,
+      role_id: userRole.id,
     }).onConflictDoNothing();
   }
 }

@@ -1,7 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
+import { createUserToken, initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
-import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { problems, roles, submissions, users } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
@@ -39,7 +38,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "regular-user", role: "user" });
+    const token = await createUserToken();
 
     const res = await jsonRequest(app, "/api/v1/admin/users/target-id/role", {
       method: "PATCH",
@@ -59,7 +58,7 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const db = getDb();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
 
     // 获取一个有效角色 ID
     const rows = await db.select({ id: roles.id }).from(roles).limit(1);
@@ -87,7 +86,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
 
     const res = await jsonRequest(app, "/api/v1/admin/users/target-id/role", {
       method: "PATCH",
@@ -111,7 +110,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
 
     const res = await jsonRequest(app, "/api/v1/admin/users/target-id/role", {
       method: "PATCH",
@@ -143,7 +142,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "regular-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(app, "/api/v1/admin/dashboard/stats", {
       token,
     });
@@ -158,7 +157,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(app, "/api/v1/admin/dashboard/stats", {
       token,
     });
@@ -179,7 +178,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "regular-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(app, "/api/v1/admin/problems", { token });
     assertEquals(res.status, 403);
   },
@@ -192,7 +191,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(app, "/api/v1/admin/problems", { token });
     assertEquals(res.status, 200);
     const body = await res.json();
@@ -222,7 +221,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "regular-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(app, "/api/v1/admin/submissions/some-id", {
       token,
     });
@@ -237,7 +236,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "regular-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(app, "/api/v1/admin/submissions/some-id", {
       method: "DELETE",
       token,
@@ -255,7 +254,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "regular-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(app, "/api/v1/admin/users/some-id", {
       method: "PUT",
       body: { bio: "新简介" },
@@ -272,7 +271,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(app, "/api/v1/admin/users/some-id", {
       method: "PUT",
       body: {},
@@ -289,7 +288,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(app, "/api/v1/admin/users/some-id", {
       method: "PUT",
       body: { email: "not-an-email" },
@@ -308,7 +307,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
       "/api/v1/admin/users?keyword=admin",
@@ -327,7 +326,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(app, "/api/v1/admin/users?role=admin", {
       token,
     });
@@ -353,7 +352,6 @@ async function insertTestUser(
     username,
     email,
     password_hash: "x",
-    role: "user",
     bio,
     created_at: now,
     updated_at: now,
@@ -391,7 +389,7 @@ Deno.test({
     const targetId = await insertTestUser(username, `${username}@example.com`);
 
     try {
-      const token = await signToken({ sub: "admin-user", role: "admin" });
+      const token = await createUserToken("admin");
       const res = await jsonRequest(app, `/api/v1/admin/users/${targetId}`, {
         method: "PUT",
         body: { bio: "管理员更新的简介" },
@@ -431,7 +429,7 @@ Deno.test({
     const idB = await insertTestUser(userB, emailB);
 
     try {
-      const token = await signToken({ sub: "admin-user", role: "admin" });
+      const token = await createUserToken("admin");
       // 试图把 B 的邮箱改成 A 的，应 409
       const res = await jsonRequest(app, `/api/v1/admin/users/${idB}`, {
         method: "PUT",
@@ -454,7 +452,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
       "/api/v1/admin/users/nonexistent-user-id",
@@ -476,7 +474,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(app, "/api/v1/admin/users/0", {
       method: "PUT",
       body: { bio: "试图改 root" },
@@ -498,7 +496,7 @@ Deno.test({
     const targetId = await insertTestUser(username, `${username}@example.com`);
 
     try {
-      const token = await signToken({ sub: "admin-user", role: "admin" });
+      const token = await createUserToken("admin");
       // "a@b.c" TLD 只有 1 字符 → 应被强化正则拒绝
       const res = await jsonRequest(app, `/api/v1/admin/users/${targetId}`, {
         method: "PUT",
@@ -525,7 +523,7 @@ Deno.test({
     const targetId = await insertTestUser(username, `${uniq}@example.com`);
 
     try {
-      const token = await signToken({ sub: "admin-user", role: "admin" });
+      const token = await createUserToken("admin");
       const res = await jsonRequest(
         app,
         `/api/v1/admin/users?keyword=${uniq}`,
@@ -563,7 +561,6 @@ Deno.test({
       username: userId,
       email: `${userId}@example.com`,
       password_hash: "x",
-      role: "user",
       created_at: now,
       updated_at: now,
     });
@@ -607,7 +604,7 @@ Deno.test({
     });
 
     try {
-      const token = await signToken({ sub: "admin-user", role: "admin" });
+      const token = await createUserToken("admin");
       const res = await jsonRequest(
         app,
         `/api/v1/admin/submissions/${submissionId}`,
@@ -638,7 +635,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
       "/api/v1/admin/submissions/00000000-0000-0000-0000-000000000000",
@@ -675,7 +672,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "regular-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(
       app,
       "/api/v1/admin/submissions/some-id/rejudge",
@@ -697,7 +694,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
       "/api/v1/admin/submissions/00000000-0000-0000-0000-000000000000/rejudge",
@@ -733,7 +730,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "regular-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(
       app,
       "/api/v1/admin/problems/some-id/rejudge",
@@ -755,7 +752,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
       "/api/v1/admin/problems/00000000-0000-0000-0000-000000000000/rejudge",
@@ -779,7 +776,7 @@ Deno.test({
     await resetDbForTest();
     const db = getDb();
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
     const now = new Date().toISOString();
     const ts = Date.now();
 
@@ -851,7 +848,7 @@ Deno.test({
     await resetDbForTest();
     const db = getDb();
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
     const now = new Date().toISOString();
     const ts = Date.now();
     const problemId = `single-rej-problem-${ts}`;
@@ -923,7 +920,7 @@ Deno.test({
     await resetDbForTest();
     const db = getDb();
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
     const now = new Date().toISOString();
     const ts = Date.now();
 
