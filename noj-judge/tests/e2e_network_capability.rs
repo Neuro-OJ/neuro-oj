@@ -10,16 +10,16 @@
 mod common;
 
 use std::io::{Cursor, Write};
-use std::path::PathBuf;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use bollard::container::LogOutput;
 use bollard::exec::StartExecResults;
 use bollard::models::ExecConfig;
 use common::{get_docker, is_e2e_enabled};
 use futures_util::StreamExt;
 use noj_judge::dual::protocol::LineParser;
+use noj_judge::dual::tracker::InFlightTracker;
 use noj_judge::types::{EvaluatorNetwork, EvaluatorRuntime, RuntimeConfig, SolutionRuntime};
 
 /// 创建带 sleep infinity 的测试容器。
@@ -261,6 +261,7 @@ sys.stderr.flush()
     let mut sol_parser = LineParser::new();
     let mut solution_ready = false;
     let mut result_payload: Option<String> = None;
+    let mut tracker = InFlightTracker::new(2000);
 
     let deadline = tokio::time::sleep(Duration::from_secs(30));
     tokio::pin!(deadline);
@@ -286,6 +287,7 @@ sys.stderr.flush()
                     &mut eval_parser,
                     &mut sol_input,
                     &mut result_payload,
+                    &mut tracker,
                     chunk,
                 )
                 .await;
@@ -307,6 +309,7 @@ sys.stderr.flush()
                     &mut eval_input,
                     chunk,
                     &mut solution_ready,
+                    &mut tracker,
                 )
                 .await;
             }
@@ -458,6 +461,7 @@ sys.stderr.flush()
     let mut sol_parser = LineParser::new();
     let mut solution_ready = false;
     let mut result_payload: Option<String> = None;
+    let mut tracker = InFlightTracker::new(2000);
 
     let deadline = tokio::time::sleep(Duration::from_secs(30));
     tokio::pin!(deadline);
@@ -478,6 +482,7 @@ sys.stderr.flush()
                     &mut eval_parser,
                     &mut sol_input,
                     &mut result_payload,
+                    &mut tracker,
                     chunk,
                 )
                 .await;
@@ -498,6 +503,7 @@ sys.stderr.flush()
                     &mut eval_input,
                     chunk,
                     &mut solution_ready,
+                    &mut tracker,
                 )
                 .await;
             }
@@ -644,6 +650,7 @@ sys.stderr.flush()
     let mut sol_parser = LineParser::new();
     let mut solution_ready = false;
     let mut result_payload: Option<String> = None;
+    let mut tracker = InFlightTracker::new(2000);
 
     let deadline = tokio::time::sleep(Duration::from_secs(30));
     tokio::pin!(deadline);
@@ -668,6 +675,7 @@ sys.stderr.flush()
                     &mut eval_parser,
                     &mut sol_input,
                     &mut result_payload,
+                    &mut tracker,
                     chunk,
                 )
                 .await;
@@ -688,6 +696,7 @@ sys.stderr.flush()
                     &mut eval_input,
                     chunk,
                     &mut solution_ready,
+                    &mut tracker,
                 )
                 .await;
             }
@@ -744,43 +753,6 @@ fn build_support_zip(evaluate_py: &str) -> Vec<u8> {
         zw.finish().unwrap();
     }
     buf.into_inner()
-}
-
-/// 确保带 SDK 的评测镜像存在（不存在则用仓库 Dockerfile 构建）。
-///
-/// 镜像内置 noj_evaluator_sdk / noj_solution_sdk 到 site-packages，
-/// 供真实 SDK 全链路测试使用（evaluate_dual 的 solution 启动命令
-/// 硬编码 `python3 -m noj_solution_sdk.host`，镜像必须含 SDK）。
-async fn ensure_sdk_images(docker: &bollard::Docker) -> Result<()> {
-    for (tag, dockerfile) in [
-        (
-            "noj-e2e-sdk-evaluator:latest",
-            "docker/evaluator-python/Dockerfile",
-        ),
-        (
-            "noj-e2e-sdk-solution:latest",
-            "docker/solution-python/Dockerfile",
-        ),
-    ] {
-        let images = docker
-            .list_images(None::<bollard::query_parameters::ListImagesOptions>)
-            .await?;
-        if images.iter().any(|i| i.repo_tags.iter().any(|t| t == tag)) {
-            continue;
-        }
-        println!("构建 SDK 测试镜像 {} ...", tag);
-        let status = std::process::Command::new("docker")
-            .args(["build", "-t", tag, "-f", dockerfile, "."])
-            // buildx 在部分环境写 activity 文件失败（只读 HOME），退回 legacy builder
-            .env("DOCKER_BUILDKIT", "0")
-            .current_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")))
-            .status()
-            .context("执行 docker build 失败")?;
-        if !status.success() {
-            anyhow::bail!("docker build 失败: {}", tag);
-        }
-    }
-    Ok(())
 }
 
 /// bridge 容器真实网络探测：真实 TCP 出网（example.com:443）+ 真实 DNS 解析
@@ -895,7 +867,7 @@ async fn capability_sdk_full_chain_with_network() {
     }
     let docker = get_docker().expect("docker");
     common::ensure_test_image(&docker).await.unwrap();
-    ensure_sdk_images(&docker).await.unwrap();
+    common::ensure_sdk_images(&docker).await.unwrap();
 
     let evaluate_py = r#"
 import socket

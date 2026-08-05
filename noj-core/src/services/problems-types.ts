@@ -133,6 +133,8 @@ export function validateRuntimeConfig(rc: RuntimeConfig): void {
       `runtime_config.solution.entry 含非法字符：${s.entry}`,
     );
   }
+  // solution.call_timeout_ms：题目级默认调用超时（必填正整数）；
+  // evaluator 的 runner.call(..., timeout_ms) 可按调用覆盖，capability 可经 register_capability(timeout_ms=...) 配置
   if (typeof s.call_timeout_ms !== "number" || s.call_timeout_ms <= 0) {
     throw new BadRequestError(
       "runtime_config.solution.call_timeout_ms 必须为正整数",
