@@ -259,39 +259,7 @@ Deno.test({
     // 准备：admin 操作者（满足 audit_logs.admin_id FK）
     const db = getDb();
     const adminId = crypto.randomUUID();
-    // 共享 runtime_config 样例（其余 9 处用例复用；带网络版用于 network 校验用例）
-const VALID_RUNTIME_CONFIG = {
-  evaluator: {
-    image: "noj-evaluator-python",
-    command: "python3 /workspace/evaluate.py",
-    time_limit_ms: 5000,
-    memory_limit_mb: 512,
-  },
-  solution: {
-    image: "noj-solution-python",
-    entry: "submission_sample.py",
-    call_timeout_ms: 2000,
-    memory_limit_mb: 512,
-  },
-};
-
-const NETWORKED_RUNTIME_CONFIG = {
-  evaluator: {
-    image: "noj-evaluator-python",
-    command: "python3 /workspace/evaluate.py",
-    time_limit_ms: 5000,
-    memory_limit_mb: 512,
-    network: { enabled: true },
-  },
-  solution: {
-    image: "noj-solution-python",
-    entry: "submission_sample.py",
-    call_timeout_ms: 2000,
-    memory_limit_mb: 512,
-  },
-};
-
-const now = new Date().toISOString();
+    const now = new Date().toISOString();
     await db.insert(users).values({
       id: adminId,
       username: `test-del-prob-admin-${Date.now()}`,
@@ -384,39 +352,7 @@ Deno.test({
     await resetDbForTest();
     // 创建 user-1 用户（owner_id FK）
     const db = getDb();
-    // 共享 runtime_config 样例（其余 9 处用例复用；带网络版用于 network 校验用例）
-const VALID_RUNTIME_CONFIG = {
-  evaluator: {
-    image: "noj-evaluator-python",
-    command: "python3 /workspace/evaluate.py",
-    time_limit_ms: 5000,
-    memory_limit_mb: 512,
-  },
-  solution: {
-    image: "noj-solution-python",
-    entry: "submission_sample.py",
-    call_timeout_ms: 2000,
-    memory_limit_mb: 512,
-  },
-};
-
-const NETWORKED_RUNTIME_CONFIG = {
-  evaluator: {
-    image: "noj-evaluator-python",
-    command: "python3 /workspace/evaluate.py",
-    time_limit_ms: 5000,
-    memory_limit_mb: 512,
-    network: { enabled: true },
-  },
-  solution: {
-    image: "noj-solution-python",
-    entry: "submission_sample.py",
-    call_timeout_ms: 2000,
-    memory_limit_mb: 512,
-  },
-};
-
-const now = new Date().toISOString();
+    const now = new Date().toISOString();
     await db.insert(users).values({
       id: "user-1",
       username: `net-user-${Date.now()}`,
@@ -449,39 +385,7 @@ Deno.test({
     await resetDbForTest();
     // 创建 admin-1 用户（owner_id FK）
     const db = getDb();
-    // 共享 runtime_config 样例（其余 9 处用例复用；带网络版用于 network 校验用例）
-const VALID_RUNTIME_CONFIG = {
-  evaluator: {
-    image: "noj-evaluator-python",
-    command: "python3 /workspace/evaluate.py",
-    time_limit_ms: 5000,
-    memory_limit_mb: 512,
-  },
-  solution: {
-    image: "noj-solution-python",
-    entry: "submission_sample.py",
-    call_timeout_ms: 2000,
-    memory_limit_mb: 512,
-  },
-};
-
-const NETWORKED_RUNTIME_CONFIG = {
-  evaluator: {
-    image: "noj-evaluator-python",
-    command: "python3 /workspace/evaluate.py",
-    time_limit_ms: 5000,
-    memory_limit_mb: 512,
-    network: { enabled: true },
-  },
-  solution: {
-    image: "noj-solution-python",
-    entry: "submission_sample.py",
-    call_timeout_ms: 2000,
-    memory_limit_mb: 512,
-  },
-};
-
-const now = new Date().toISOString();
+    const now = new Date().toISOString();
     await db.insert(users).values({
       id: "admin-1",
       username: `net-admin-${Date.now()}`,

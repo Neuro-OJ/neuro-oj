@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SubmissionListItem } from "~/composables/use-submissions"
+import type { SubmissionListItem } from "~/utils/submissionFormat"
 import {
   getStatusColor,
   getStatusLabel,
@@ -7,7 +7,7 @@ import {
   formatTime,
   formatMemory,
   getLanguageLabel,
-} from "~/composables/use-submissions"
+} from "~/utils/submissionFormat"
 import { useToast } from "~/composables/useToast"
 import { useDialog } from "~/composables/useDialog"
 import { extractApiError } from '~/utils/apiError'

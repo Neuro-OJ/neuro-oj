@@ -33,6 +33,8 @@ export const languageLabels: Record<string, string> = {
   cpp: 'C++',
   c: 'C',
   javascript: 'JavaScript',
+  java: 'Java',
+  nodejs: 'Node.js',
 };
 
 /**
@@ -99,7 +101,7 @@ export function getStatusColor(
 
 /**
  * 获取状态标签的文字。
- * 优先使用 result.status 的标，回退到提交流 state 的标签。
+ * 优先使用 result.status 的标签，回退到提交流 state 的标签。
  */
 export function getStatusLabel(
   status: string,
@@ -198,9 +200,17 @@ export const statusBadgeColors: Record<string, string> = {
 };
 
 /**
+ * 格式化通过率（0–1 → "xx.x%"）。
+ */
+export function formatAcceptanceRate(rate: number | null | undefined): string {
+  if (rate == null) return '--';
+  return `${(rate * 100).toFixed(1)}%`;
+}
+
+/**
  * 格式化 ISO 时间为中文可读格式。
  */
-export function formatDateTime(iso: string | undefined): string {
+export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '--';
   const d = new Date(iso);
   return d.toLocaleString('zh-CN', {

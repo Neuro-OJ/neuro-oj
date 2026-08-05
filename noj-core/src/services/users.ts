@@ -536,15 +536,10 @@ export async function banUser(
   }
 
   const db = getDb();
-  const existing = await db.select().from(users)
-    .where(eq(users.id, targetUserId))
-    .limit(1);
-  if (existing.length === 0) {
-    throw new NotFoundError("用户不存在");
-  }
+  const existing = await requireUser(targetUserId);
 
   // 防封禁最后一个 admin
-  if (existing[0].role === "admin") {
+  if (existing.role === "admin") {
     const [adminCountRow] = await db
       .select({ count: sql<number>`count(*)` })
       .from(users)
@@ -584,17 +579,11 @@ export async function banUser(
     { type: "users", id: targetUserId },
   );
 
-  return {
-    id: existing[0].id,
-    username: existing[0].username,
-    email: existing[0].email,
-    role: existing[0].role,
-    is_admin: false, // TODO: 从 user_roles 查询
-    must_change_password: existing[0].must_change_password,
-    active_ban: { reason: reason ?? "", banned_until: bannedUntil ?? null },
-    created_at: existing[0].created_at,
-    updated_at: now,
-  };
+  return toUserResponse(
+    existing,
+    { reason: reason ?? "", banned_until: bannedUntil ?? null },
+    now,
+  );
 }
 
 /**
@@ -607,12 +596,7 @@ export async function unbanUser(
   currentUserId: string,
 ): Promise<UserResponse> {
   const db = getDb();
-  const existing = await db.select().from(users)
-    .where(eq(users.id, targetUserId))
-    .limit(1);
-  if (existing.length === 0) {
-    throw new NotFoundError("用户不存在");
-  }
+  const existing = await requireUser(targetUserId);
 
   const now = new Date().toISOString();
   await db.update(userBans)
@@ -628,17 +612,7 @@ export async function unbanUser(
     { type: "users", id: targetUserId },
   );
 
-  return {
-    id: existing[0].id,
-    username: existing[0].username,
-    email: existing[0].email,
-    role: existing[0].role,
-    is_admin: false, // TODO: 从 user_roles 查询
-    must_change_password: existing[0].must_change_password,
-    active_ban: null,
-    created_at: existing[0].created_at,
-    updated_at: now,
-  };
+  return toUserResponse(existing, null, now);
 }
 
 /**

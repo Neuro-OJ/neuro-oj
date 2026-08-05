@@ -81,8 +81,12 @@ async function isModerator(
 }
 
 /** 访客读社区守卫：guest_read_enabled 关闭时未登录用户禁止访问 */
-function requireGuestRead(c: { get: (key: "userId") => string | undefined }): void {
-  requireGuestRead(c);
+function requireGuestRead(
+  c: { get: (key: "userId") => string | undefined },
+): void {
+  if (!getCommunityConfig().guest_read_enabled && !c.get("userId")) {
+    throw new UnauthorizedError("登录后可查看社区");
+  }
 }
 
 async function requirePostPermission(
@@ -93,8 +97,7 @@ async function requirePostPermission(
 }
 
 /**
- * 社区管理路由守卫：管理员（is_admin fast path）或具备
- * `community_moderation:review` 权限的审核员可进入；
+ * 社区管理路由守卫：具备 `community_moderation:review` 权限的审核员可进入；
  * 各端点再按操作细分（lock / sanction / board 等）。
  */
 async function requireCommunityModeration(

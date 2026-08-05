@@ -42,10 +42,9 @@ const contributors = computed(() => contributorsData.value?.data ?? [])
 // 头像加载失败时回退为首字母圆标
 const brokenAvatars = ref(new Set<string>())
 function onAvatarError(e: Event, c: Contributor) {
-  ;(e.target as HTMLImageElement).style.display = "none"
+  (e.target as HTMLImageElement).style.display = "none"
   brokenAvatars.value.add(c.login)
 }
-
 function formatNumber(n?: number): string {
   return (n ?? 0).toLocaleString("zh-CN")
 }

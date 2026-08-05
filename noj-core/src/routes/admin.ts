@@ -297,7 +297,6 @@ router.put("/contests/:id", async (c) => {
   const data = await updateContest(
     c.req.param("id")!,
     body,
-    c.get("userId"),
   );
   return c.json({ data });
 });

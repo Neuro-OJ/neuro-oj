@@ -159,7 +159,10 @@ async function resolveToken(
  * 适用于公开但支持个性化数据的端点（如公共提交列表、题目列表）。
  * 下游路由通过 `if (!c.get("userId"))` 判断是否匿名。
  */
-export async function optionalAuthMiddleware(c: Context, next: Next) {
+export async function optionalAuthMiddleware(
+  c: Context,
+  next: Next,
+): Promise<void> {
   const payload = await resolveToken(c);
 
   if (payload) {
@@ -190,7 +193,7 @@ export async function optionalAuthMiddleware(c: Context, next: Next) {
  * （60s LRU 缓存），命中且未过期则抛 ForbiddenError（USER_BANNED）。
  * `banUser`/`unbanUser` 写操作会调 `invalidateBanCache` 立即失效。
  */
-export async function authMiddleware(c: Context, next: Next) {
+export async function authMiddleware(c: Context, next: Next): Promise<void> {
   // 先检查请求头是否存在（提供精确的错误信息）
   const authHeader = c.req.header("Authorization");
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -262,7 +265,7 @@ export async function getUserBanState(userId: string): Promise<UserBanState> {
  * 通过 getRequestContext() 获取 actorId / actorIp / actorRole，
  * 用于审计日志埋点。
  */
-export async function adminMiddleware(c: Context, next: Next) {
+export async function adminMiddleware(c: Context, next: Next): Promise<void> {
   // 向后兼容：支持新旧两种判断方式
   // 新版 JWT: isAdmin boolean claim
   // 旧版 JWT: role === "admin"

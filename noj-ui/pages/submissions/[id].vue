@@ -2,7 +2,7 @@
 import { useRoute } from "vue-router"
 import hljs from "highlight.js"
 import "highlight.js/styles/github-dark.css"
-import { getLanguageLabel, formatScore, formatTime, formatMemory, statusBadgeColors, getResultDef, verdictClasses, formatDateTime } from "~/composables/use-submissions"
+import { getLanguageLabel, formatScore, formatTime, formatMemory, statusBadgeColors, getResultDef, verdictClasses, formatDateTime } from "~/utils/submissionFormat"
 
 interface SubmissionResult {
   status: string
@@ -56,7 +56,7 @@ async function pollSubmission() {
       { silent: true },
     )
     if (!isMounted.value || thisReq !== pollReqId) return
-      if (res) {
+    if (res) {
       data.value = res
       const status = res.data?.status
       if (status === "finished" || status === "error") {
@@ -258,7 +258,7 @@ watch(
           <UIcon name="i-lucide-chevron-down" class="size-4" v-if="!showOutput"/>
           <UIcon name="i-lucide-chevron-up" class="size-4" v-else/>
         </button>
-        <pre v-if="submission.result.output !== null && submission.result.output !== undefined" v-show="showOutput" class="p-4 overflow-x-auto text-xs leading-relaxed bg-[#0d1117] text-[#e6edf3]"><code class="font-mono whitespace-pre-wrap break-all">{{ submission.result.output }}</code></pre>
+        <pre v-if="submission.result.output != null" v-show="showOutput" class="p-4 overflow-x-auto text-xs leading-relaxed bg-[#0d1117] text-[#e6edf3]"><code class="font-mono whitespace-pre-wrap break-all">{{ submission.result.output }}</code></pre>
         <div v-else class="flex flex-col items-center justify-center gap-2 py-8 text-text-muted text-sm">
           <UIcon name="i-lucide-lock" class="size-5" />
           <span>登录后查看评测输出</span>

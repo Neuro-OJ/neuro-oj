@@ -27,7 +27,7 @@ export async function getTotalStats(): Promise<TodayStats> {
       total: sql<number>`count(*)::int`,
       full_score: sql<
         number
-      >`count(*) filter (where ${evaluationResults.score} >= FULL_SCORE)::int`,
+      >`count(*) filter (where ${evaluationResults.score} >= ${FULL_SCORE})::int`,
     })
     .from(submissions)
     .leftJoin(
@@ -65,7 +65,7 @@ export async function getTodayStats(userId?: string): Promise<TodayStats> {
       total: sql<number>`count(*)::int`,
       full_score: sql<
         number
-      >`count(*) filter (where ${evaluationResults.score} >= FULL_SCORE)::int`,
+      >`count(*) filter (where ${evaluationResults.score} >= ${FULL_SCORE})::int`,
     })
     .from(submissions)
     .leftJoin(

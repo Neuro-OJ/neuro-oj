@@ -146,6 +146,7 @@ async function handleSubmit() {
     sidebarTab.value = 'history'
     sidebarVisible.value = true
     startPolling(res.id)
+    // 提交后延迟刷新历史列表，等评测结果写入
     setTimeout(() => refreshSubmissionsFn(), 2000)
   } catch (err: unknown) {
     submitError.value = extractApiError(err).message

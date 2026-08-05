@@ -15,8 +15,8 @@ const emit = defineEmits<{
 }>()
 
 const containerRef = ref<HTMLDivElement | null>(null)
-let editor: any = null
-let monacoModule: any = null
+let editor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null
+let monacoModule: typeof import('monaco-editor') | null = null
 let modelContentDisposable: { dispose: () => void } | null = null
 
 // 字号（响应 Ctrl/Cmd + 滚轮缩放）
@@ -83,12 +83,12 @@ async function initMonaco() {
   })
 
   // Sync changes back to v-model
-  modelContentDisposable = editor.onDidChangeModelContent(() => {
-    emit("update:modelValue", editor.getValue())
+  modelContentDisposable = editor!.onDidChangeModelContent(() => {
+    emit("update:modelValue", editor!.getValue())
   })
 
   // Emit cursor position changes
-  editor.onDidChangeCursorPosition((e: any) => {
+  editor!.onDidChangeCursorPosition((e: import('monaco-editor').editor.ICursorPositionChangedEvent) => {
     emit("cursorChange", { line: e.position.lineNumber, col: e.position.column })
   })
 }

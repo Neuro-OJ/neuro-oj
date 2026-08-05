@@ -42,11 +42,3 @@ export function useRankings(page: Ref<number>, limit: number = 50) {
     return `/api/v1/rankings?${qs.toString()}`;
   });
 }
-
-/**
- * 格式化通过率（0–1 → "xx.x%"）。
- */
-export function formatAcceptanceRate(rate: number | null | undefined): string {
-  if (rate == null) return '--';
-  return `${(rate * 100).toFixed(1)}%`;
-}

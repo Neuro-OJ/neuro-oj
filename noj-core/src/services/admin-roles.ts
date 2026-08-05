@@ -493,14 +493,13 @@ async function wouldCreateCycle(
 
   while (currentId) {
     if (currentId === checkId && currentId !== startId) return true;
-    if (visited.has(currentId)) return false; // shouldn't happen, but guard
+    if (visited.has(currentId)) return false; // 防御：正常流程不会重复访问
 
     visited.add(currentId);
 
     if (excludeId && currentId === excludeId) {
-      // The excluded role's parent_id is about to change to startId.
-      // Check if startId's chain eventually reaches checkId.
-      // If it does, the update would create a cycle.
+      // excludeId 的 parent_id 即将改为 startId，
+      // 检查 startId 的祖先链是否最终到达 checkId——若到达则更新会形成环。
       let nextId = startId;
       while (nextId) {
         if (nextId === checkId) return true;

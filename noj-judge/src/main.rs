@@ -112,8 +112,23 @@ fn main() -> Result<()> {
                         let fallback_dir = std::path::Path::new(&work_dir).join("fallback-results");
 
                         // 统一使用双容器模式（Evaluator + Solution）
-                        let docker = Docker::connect_with_local_defaults()
-                            .expect("Docker 连接失败");
+                        let docker = match Docker::connect_with_local_defaults() {
+                            Ok(d) => d,
+                            Err(e) => {
+                                error!(submission_id = %task.submission_id, error = %e, "连接 Docker daemon 失败");
+                                let result = types::JudgeResult::error(
+                                    &task.submission_id,
+                                    task.rejudge_seq,
+                                );
+                                mq::push_result_with_retry(
+                                    &redis_client,
+                                    &result_queue,
+                                    &result,
+                                    &fallback_dir,
+                                ).await;
+                                return;
+                            }
+                        };
                         let result = match judge::runner::evaluate(
                             docker,
                             &task,
@@ -124,7 +139,7 @@ fn main() -> Result<()> {
                         ).await {
                             Ok(r) => r,
                             Err(e) => {
-                                error!("双容器评测失败: {}: {:#}", task.submission_id, e);
+                                error!(submission_id = %task.submission_id, error = %e, "双容器评测失败");
                                 types::JudgeResult::error(&task.submission_id, task.rejudge_seq)
                             }
                         };

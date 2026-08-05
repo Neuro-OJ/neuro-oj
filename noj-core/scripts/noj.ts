@@ -28,7 +28,7 @@ import {
   seedJudgeImages,
 } from "../src/services/seed-system.ts";
 import { importProblemBundle } from "../src/services/problem-bundle.ts";
-import { ROOT_USER_ID } from "../lib/constants.ts";
+import { ROOT_USER_ID } from "../src/lib/constants.ts";
 
 const PROJECT_ROOT = join(import.meta.dirname ?? ".", "..");
 const SRC_DIR = join(PROJECT_ROOT, "data", "problems-src");

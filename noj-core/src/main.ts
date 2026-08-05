@@ -1,9 +1,7 @@
 import { createApp } from "./app.ts";
 import { runMigrations } from "./db/migrate.ts";
-import { connectRedis, createConsumerRedis } from "./mq/connection.ts";
+import { connectRedis } from "./mq/connection.ts";
 import { startResultConsumerWithRetry } from "./mq/consumer.ts";
-import { startStartedConsumerWithRetry } from "./mq/started-consumer.ts";
-import { startJudgeRpcHandler } from "./mq/judge-rpc.ts";
 import { initEventSubscriber } from "./lib/event-bus.ts";
 import { snapshotEnv } from "./lib/env-snapshot.ts";
 import { validateRegistry } from "./lib/settings-registry.ts";
@@ -202,20 +200,6 @@ async function main() {
 
   // 启动评测结果消费者（后台运行，带自动重连，不阻塞 HTTP）
   startResultConsumerWithRetry();
-
-  // 启动评测开始事件消费者（单独监听 noj:judge:started，更新 judge_started_at）
-  startStartedConsumerWithRetry();
-
-  // 启动 Judge RPC 处理器（响应 judge 的镜像白名单等请求）
-  const redisForRpc = createConsumerRedis();
-  try {
-    await redisForRpc.connect();
-  } catch (err) {
-    logger.error("Judge RPC Redis 连接失败", { err });
-    redisForRpc.disconnect();
-  }
-  // deno-lint-ignore no-explicit-any
-  startJudgeRpcHandler(redisForRpc as any);
 
   // 初始化 Redis Pub/Sub 事件订阅者（后台运行，用于 SSE 推送）
   initEventSubscriber();

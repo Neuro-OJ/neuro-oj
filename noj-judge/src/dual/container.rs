@@ -202,9 +202,9 @@ async fn create_container_with_security(
         .context("创建容器超时")?
         .context("创建容器失败")?;
 
-    // 如需挂载支持包：在容器创建后用 tar copy 注入（v1 简化版：仅写入文件，
-    // 不挂载目录；mount 通过 working_dir + COPY 实现，docker exec 在 /workspace 内运行）
-    let _ = support_pkg_mount; // 当前实现未使用，预留扩展位
+    // 支持包不通过挂载注入：在容器创建后由 dual/mod.rs 的
+    // inject_support_package_to_evaluator 用 tar copy 写入 /workspace。
+    let _ = support_pkg_mount; // 预留扩展位：当前实现未使用挂载方式
 
     timeout(
         Duration::from_secs(5),
@@ -215,30 +215,4 @@ async fn create_container_with_security(
     .context("启动容器失败")?;
 
     Ok(result.id)
-}
-
-#[cfg(test)]
-#[allow(unused_imports)]
-mod tests {
-    use crate::dual::container::DualContainer;
-
-    #[test]
-    fn test_dual_container_struct_clone() {
-        // 仅编译期测试：DualContainer 的字段允许 None 表示未创建。
-        // 这里不直接构造实例（需要 Docker），仅验证字段可空。
-        fn _assert_option_string() {
-            let _: Option<String> = None;
-        }
-        _assert_option_string();
-    }
-
-    #[test]
-    fn test_dual_container_field_initialization() {
-        // 验证 DualContainer 字段类型正确（全为 Option）
-        fn _check_types(evaluator: Option<String>, solution: Option<String>) {
-            assert!(evaluator.is_none());
-            assert!(solution.is_none());
-        }
-        _check_types(None, None);
-    }
 }

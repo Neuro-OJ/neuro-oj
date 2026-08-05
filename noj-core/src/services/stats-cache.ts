@@ -29,7 +29,7 @@ async function ensureTotal(): Promise<void> {
       total: sql<number>`count(*)::int`,
       full_score: sql<
         number
-      >`count(*) filter (where ${evaluationResults.score} >= FULL_SCORE)::int`,
+      >`count(*) filter (where ${evaluationResults.score} >= ${FULL_SCORE})::int`,
     })
     .from(submissions)
     .leftJoin(
@@ -49,7 +49,7 @@ async function ensureToday(): Promise<void> {
       total: sql<number>`count(*)::int`,
       full_score: sql<
         number
-      >`count(*) filter (where ${evaluationResults.score} >= FULL_SCORE)::int`,
+      >`count(*) filter (where ${evaluationResults.score} >= ${FULL_SCORE})::int`,
     })
     .from(submissions)
     .leftJoin(
@@ -136,7 +136,7 @@ async function getTodayStatsFromDb(userId: string): Promise<StatsSnapshot> {
       total: sql<number>`count(*)::int`,
       full_score: sql<
         number
-      >`count(*) filter (where ${evaluationResults.score} >= FULL_SCORE)::int`,
+      >`count(*) filter (where ${evaluationResults.score} >= ${FULL_SCORE})::int`,
     })
     .from(submissions)
     .leftJoin(

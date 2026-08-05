@@ -60,9 +60,9 @@ sse.get("/submissions/:id/events", async (c) => {
     }, 300_000);
 
     // 30s 心跳保持连接（防止代理/中间件超时断连）。
-    // 注意：必须在 closeStream 之前声明——终态提交会立即调用 closeStream()
-    // 并 clearInterval(keepAlive)，若此处晚于 closeStream 声明会触发 TDZ
-    // （ReferenceError: Cannot access 'keepAlive' before initialization）。
+    // 注意：keepAlive 必须在 closeStream 之前声明——终态提交会立即调用
+    // closeStream() 并 clearInterval(keepAlive)，若此处晚于 closeStream 声明
+    // 会触发 TDZ（ReferenceError: Cannot access 'keepAlive' before initialization）。
     const keepAlive = setInterval(() => {
       if (streamClosed) return;
       stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {

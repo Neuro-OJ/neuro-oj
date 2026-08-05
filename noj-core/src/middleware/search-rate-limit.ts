@@ -13,8 +13,7 @@
  */
 
 import type { Context, MiddlewareHandler } from "hono";
-import { getClientIp } from "../lib/rate-limit-env.ts";
-import { settingBool, settingInt } from "../lib/rate-limit-env.ts";
+import { getClientIp, settingBool, settingInt } from "../lib/rate-limit-env.ts";
 import { RateLimitedError } from "../lib/errors.ts";
 import { checkRateLimit, rateLimitHeaders } from "../lib/rate-limit.ts";
 

@@ -4,8 +4,6 @@ use tracing::{error, info, warn};
 
 use crate::types::{JudgeResult, JudgeTask};
 
-pub mod rpc;
-
 /// 从 Redis 队列中拉取评测任务。
 ///
 /// 使用 BRPOP 阻塞等待，超时 5 秒后返回 None。
@@ -37,36 +35,8 @@ fn parse_task_message(value: &str) -> Option<JudgeTask> {
     }
 }
 
-/// 发布“开始评测”事件。
-///
-/// 该事件仅用于 noj-core 更新 `judge_started_at`，失败不影响评测主流程。
-#[allow(dead_code)]
-pub async fn push_started_event(redis_client: &redis::Client, submission_id: &str) {
-    let payload = serde_json::json!({ "submission_id": submission_id });
-    let json = match serde_json::to_string(&payload) {
-        Ok(value) => value,
-        Err(e) => {
-            warn!(submission_id, error = %e, "序列化 started 事件失败");
-            return;
-        }
-    };
-
-    match redis_client.get_multiplexed_async_connection().await {
-        Ok(mut conn) => {
-            let push_result: std::result::Result<usize, redis::RedisError> =
-                conn.lpush("noj:judge:started", json).await;
-            if let Err(e) = push_result {
-                warn!(submission_id, error = %e, "推送 started 事件失败");
-            }
-        }
-        Err(e) => {
-            warn!(submission_id, error = %e, "创建 started 事件 Redis 连接失败");
-        }
-    }
-}
-
-#[allow(dead_code)]
 /// 将尚未开始执行的任务重新放回队列尾部，保持 FIFO 顺序。
+#[allow(dead_code)]
 pub async fn requeue_task(
     redis_client: &redis::Client,
     queue: &str,
@@ -112,7 +82,7 @@ pub async fn push_result_with_retry(
                     conn.lpush::<&str, &str, usize>(queue, &json).await;
                 match push_result {
                     Ok(_) => {
-                        info!(submission_id, attempt, "评测结果已发布",);
+                        info!(submission_id, attempt, "评测结果已发布");
                         return;
                     }
                     Err(e) => {
@@ -121,8 +91,7 @@ pub async fn push_result_with_retry(
                             submission_id,
                             attempt,
                             error = %e,
-                            "LPUSH 失败（第 {}/3 次）",
-                            attempt,
+                            "LPUSH 失败",
                         );
                     }
                 }

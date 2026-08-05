@@ -1,6 +1,6 @@
 /**
- * Form error management with auto-dismiss timer.
- * Extracted from duplicated auth page patterns.
+ * 表单错误管理：自动计时消失。
+ * 从重复的 auth 页面模式中抽取。
  */
 export function useFormError(duration = 3000) {
   const error = ref('');

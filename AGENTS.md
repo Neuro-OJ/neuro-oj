@@ -177,9 +177,7 @@ neuro-oj/
 │   │   ├── mq/
 │   │   │   ├── connection.ts  # Redis 连接（shared + consumer 双连接）
 │   │   │   ├── consumer.ts    # 评测结果消费者
-│   │   │   ├── producer.ts    # 评测任务生产者
-│   │   │   ├── started_consumer.ts # 评测启动事件消费者
-│   │   │   └── judge-rpc.ts   # Judge RPC 处理
+│   │   │   └── producer.ts    # 评测任务生产者
 │   │   ├── lib/
 │   │   │   ├── errors.ts      # AppError 继承体系
 │   │   │   ├── jwt.ts         # JWT 签发/验证（HS256, iss/aud 校验）

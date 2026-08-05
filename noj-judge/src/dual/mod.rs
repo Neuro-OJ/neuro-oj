@@ -170,8 +170,14 @@ pub async fn evaluate_dual(
     .await
     .context("创建 Solution 容器失败")?;
 
-    let evaluator_id = dual.evaluator_id.clone().expect("刚创建");
-    let solution_id = dual.solution_id.clone().expect("刚创建");
+    let evaluator_id = dual
+        .evaluator_id
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("Evaluator 容器 ID 缺失"))?;
+    let solution_id = dual
+        .solution_id
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("Solution 容器 ID 缺失"))?;
 
     // 3. 注入支持包到 Evaluator 容器（evaluate.py 等评测脚本）
     if let Some(pkg_bytes) = support_pkg_bytes {
@@ -260,6 +266,50 @@ fn finalize_outcome(timed_out: Option<TimeoutKind>, sent_call_timeout: bool) -> 
 }
 
 /// 主循环：双向 NDJSON 转发 + 解析 Evaluator 输出。
+/// 等待下一个调用级超时到期（无 in-flight 调用时永久等待）。
+async fn next_call_timeout(tracker: &InFlightTracker) {
+    match tracker.next_deadline() {
+        Some(d) => tokio::time::sleep_until(d.into()).await,
+        None => std::future::pending::<()>().await,
+    }
+}
+
+/// 处理调用级超时到期：向等待方（Evaluator/Solution）写 timeout 帧。
+async fn expire_call_timeouts(
+    tracker: &mut InFlightTracker,
+    eval_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
+    sol_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
+    sent_call_timeout: &mut bool,
+) -> Result<()> {
+    for (id, side) in tracker.expire_now(Instant::now()) {
+        match side {
+            WaitingSide::Evaluator => {
+                write_timeout_frame(eval_input, &id).await?;
+                *sent_call_timeout = true;
+            }
+            WaitingSide::Solution => {
+                write_timeout_frame(sol_input, &id).await?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 超时收尾：按 finalize_outcome 判定结果（TLE 或 SystemError）。
+/// `kind` 区分启动超时（Startup）与评测总超时（Total），语义上两者归因相同。
+fn timeout_result(
+    submission_id: &str,
+    rejudge_seq: Option<i64>,
+    sent_call_timeout: bool,
+    kind: TimeoutKind,
+    message: &str,
+) -> JudgeResult {
+    match finalize_outcome(Some(kind), sent_call_timeout) {
+        JudgeStatus::TimeLimitExceeded => JudgeResult::timeout(submission_id, message, rejudge_seq),
+        _ => JudgeResult::system_error(submission_id, message, rejudge_seq),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_dual_loop(
     submission_id: &str,
@@ -313,40 +363,23 @@ async fn run_dual_loop(
         tokio::select! {
             _ = &mut startup_deadline => {
                 warn!("Evaluator 启动超时（{}ms）: {}", EVALUATOR_STARTUP_TIMEOUT_MS, submission_id);
-                return Ok(match finalize_outcome(
-                    Some(TimeoutKind::Startup),
+                return Ok(timeout_result(
+                    submission_id,
+                    rejudge_seq,
                     sent_call_timeout,
-                ) {
-                    JudgeStatus::TimeLimitExceeded => JudgeResult::timeout(
-                        submission_id,
-                        "evaluator startup timeout",
-                        rejudge_seq,
-                    ),
-                    _ => JudgeResult::system_error(
-                        submission_id,
-                        "evaluator startup timeout",
-                        rejudge_seq,
-                    ),
-                });
+                    TimeoutKind::Startup,
+                    "evaluator startup timeout",
+                ));
             }
             // 调用级超时（in-flight 到期）
-            _ = async {
-                match tracker.next_deadline() {
-                    Some(d) => tokio::time::sleep_until(d.into()).await,
-                    None => std::future::pending::<()>().await,
-                }
-            } => {
-                for (id, side) in tracker.expire_now(Instant::now()) {
-                    match side {
-                        WaitingSide::Evaluator => {
-                            write_timeout_frame(&mut eval_input, &id).await?;
-                            sent_call_timeout = true;
-                        }
-                        WaitingSide::Solution => {
-                            write_timeout_frame(&mut sol_input, &id).await?;
-                        }
-                    }
-                }
+            _ = next_call_timeout(&tracker) => {
+                expire_call_timeouts(
+                    &mut tracker,
+                    &mut eval_input,
+                    &mut sol_input,
+                    &mut sent_call_timeout,
+                )
+                .await?;
             }
             chunk = eval_output.next() => {
                 let chunk = match chunk {
@@ -397,38 +430,24 @@ async fn run_dual_loop(
                 // 总超时
                 _ = &mut deadline => {
                     warn!("Evaluator 总超时: {}", submission_id);
-                    return Ok(match finalize_outcome(Some(TimeoutKind::Total), sent_call_timeout) {
-                        JudgeStatus::TimeLimitExceeded => JudgeResult::timeout(
-                            submission_id,
-                            "evaluator total timeout",
-                            rejudge_seq,
-                        ),
-                        _ => JudgeResult::system_error(
-                            submission_id,
-                            "evaluator total timeout",
-                            rejudge_seq,
-                        ),
-                    });
+                    return Ok(timeout_result(
+                        submission_id,
+                        rejudge_seq,
+                        sent_call_timeout,
+                        TimeoutKind::Total,
+                        "evaluator total timeout",
+                    ));
                 }
 
                 // 调用级超时（in-flight 到期）
-                _ = async {
-                    match tracker.next_deadline() {
-                        Some(d) => tokio::time::sleep_until(d.into()).await,
-                        None => std::future::pending::<()>().await,
-                    }
-                } => {
-                    for (id, side) in tracker.expire_now(Instant::now()) {
-                        match side {
-                            WaitingSide::Evaluator => {
-                                write_timeout_frame(&mut eval_input, &id).await?;
-                                sent_call_timeout = true;
-                            }
-                            WaitingSide::Solution => {
-                                write_timeout_frame(&mut sol_input, &id).await?;
-                            }
-                        }
-                    }
+                _ = next_call_timeout(&tracker) => {
+                    expire_call_timeouts(
+                        &mut tracker,
+                        &mut eval_input,
+                        &mut sol_input,
+                        &mut sent_call_timeout,
+                    )
+                    .await?;
                 }
 
                 // Evaluator stdout/stderr
@@ -542,7 +561,8 @@ async fn handle_eval_chunk(
     if is_err {
         let s = String::from_utf8_lossy(&data);
         append_capped(stderr_buf, &s);
-        eprint!("[eval-stderr] {}", s);
+        // Evaluator stderr 透传到日志（诊断用）
+        debug!("[eval-stderr] {}", s);
         return Ok(());
     }
 
@@ -621,9 +641,9 @@ async fn handle_sol_chunk(
     let data = match chunk {
         LogOutput::StdOut { message } => message,
         LogOutput::StdErr { message } => {
-            // Solution stderr 写到本地 stderr 方便调试
+            // Solution stderr 透传到日志（诊断用）
             let s = String::from_utf8_lossy(&message);
-            eprint!("[sol-stderr] {}", s);
+            debug!("[sol-stderr] {}", s);
             return Ok(());
         }
         _ => return Ok(()),

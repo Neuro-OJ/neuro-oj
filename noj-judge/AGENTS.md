@@ -38,8 +38,6 @@ noj-judge/
 │   ├── types.rs            # JudgeTask、JudgeResult、CaseResult 类型
 │   ├── drain.rs            # 优雅关闭时排空 in-flight 评测任务
 │   ├── mq.rs               # Redis MQ 任务拉取 + 结果推送（带重试 + fallback）
-│   ├── mq/
-│   │   └── rpc.rs           # Redis RPC 客户端（core↔judge 通信）
 │   ├── sandbox/
 │   │   ├── mod.rs
 │   │   ├── container.rs    # 容器生命周期 + zip 解压 + 命令解析
@@ -49,7 +47,7 @@ noj-judge/
 │   │   └── host_config.rs  # 容器 HostConfig 构造（安全项）
 │   ├── judge/
 │   │   ├── mod.rs
-│   │   └── runner.rs       # 评测逻辑（---RESULT--- 标记解析 + 超时/OOM 检测）
+│   │   └── runner.rs       # 评测入口（支持包获取 + 双容器分发）
 │   └── dual/
 │       ├── mod.rs          # 双容器编排（Evaluator + Solution）
 │       ├── container.rs    # 双容器生命周期
@@ -228,51 +226,11 @@ cargo fmt
 - 日志：`tracing::info!` / `warn!` / `error!`
 - 异步优先：所有 I/O 操作用 async/await
 - `#[allow(dead_code)]` 合法使用位置：
-  - `mq/rpc.rs`：`RpcClient` / `get_image_allowlist` / `ImageAllowlist`（容器池移除后无消费方，保留协议能力）
   - `types.rs`：`CaseResult` 结构体字段
 - `#[allow(unreachable_code)]`：`main.rs` 中 `rt.block_on` 后的
   `Ok(())`，属合法使用
 - `#[ignore]`：集成测试，需要 `NOJ_RUN_E2E=1` + Docker 环境
 
-## Redis RPC 通信
-
-noj-judge 的 `mq/rpc.rs` 保留 core↔judge 的 Redis RPC 协议客户端（`RpcClient`）。
-**judge 启动流程当前不再调用 RPC**：镜像白名单拉取仅服务于已移除的容器池预热，
-协议与数据结构（`get_image_allowlist` / `ImageAllowlist`）作为能力保留，供未来复用。
-
-### 协议
-
-| 队列                                   | 方向         | 说明          |
-| -------------------------------------- | ------------ | ------------- |
-| `noj:rpc:v1:judge:core`                | judge → core | 请求（LPUSH） |
-| `noj:rpc:v1:judge:{judge_id}:response` | core → judge | 响应（BRPOP） |
-
-### 消息格式
-
-**请求**（历史样例，当前无调用方）：
-
-```json
-{
-  "id": "<uuid>",
-  "method": "get_image_allowlist",
-  "params": null,
-  "timestamp": 1767312345
-}
-```
-
-**响应**：
-
-```json
-{
-  "id": "<uuid>",
-  "result": { "images": ["noj-judge-python"] },
-  "error": null,
-  "timestamp": 1767312346
-}
-```
-
-> 镜像白名单校验由 noj-core 在题目 CRUD 与调度 final gate 阶段完成（见
-> judge-image-whitelist 规范），judge 侧不再拉取。
 
 ## 测试基础设施
 

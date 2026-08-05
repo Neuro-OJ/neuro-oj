@@ -19,7 +19,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue"
-import { getStatusColor, getStatusLabel } from "~/composables/use-submissions"
+import { getStatusColor, getStatusLabel } from "~/utils/submissionFormat"
 
 interface Props {
     /** 提交流 state（pending / judging / error） */

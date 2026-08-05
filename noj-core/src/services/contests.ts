@@ -262,7 +262,6 @@ export async function createContest(
 export async function updateContest(
   id: string,
   input: UpdateContestInput,
-  _userId: string,
 ): Promise<ContestResponse> {
   const existing = await findContestRow(id);
   const type = input.type ?? existing.type as ContestType;

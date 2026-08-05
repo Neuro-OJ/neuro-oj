@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getLanguageLabel, formatScore } from "~/composables/use-submissions"
+import { getLanguageLabel, formatScore, formatDateTime } from "~/utils/submissionFormat"
 import { useEventSource } from "~/composables/useEventSource"
 interface QueueItem {
   id: string
@@ -43,21 +43,6 @@ onUnmounted(() => {
 })
 
 // 语言标签映射
-function formatDateTime(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  })
-}
-
-function formatScore(raw: number | null | undefined): string {
-  if (raw === null || raw === undefined) return "--"
-  return (raw / 100).toFixed(1)
-}
 
 function elapsedSince(iso: string | null | undefined): string {
   if (!iso) return "--"
