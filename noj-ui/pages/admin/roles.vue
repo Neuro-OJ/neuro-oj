@@ -187,6 +187,11 @@ const deletingId = ref<string | null>(null)
 const deleteError = ref("")
 
 async function confirmDelete(role: Role) {
+  // 系统角色禁止删除（前端拦截，后端亦有校验）
+  if (role.is_system) {
+    deleteError.value = "系统角色不可删除"
+    return
+  }
   const { dialog } = useDialog()
   const ok = await dialog.confirm(
     `确定删除角色「${role.name}」？此操作不可撤销。`,
@@ -258,15 +263,15 @@ async function confirmDelete(role: Role) {
           </button>
           <button
             class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all border"
-            :class="row.is_system
+            :class="row.original.is_system
               ? 'border-border text-text-muted cursor-not-allowed opacity-50'
               : 'border-error-text text-error-text hover:bg-error-text hover:text-white'"
-            :disabled="row.is_system || deletingId === row.id"
-            :title="row.is_system ? '系统角色不可删除' : '删除角色'"
-            @click="confirmDelete(row)"
+            :disabled="row.original.is_system || deletingId === row.id"
+            :title="row.original.is_system ? '系统角色不可删除' : '删除角色'"
+            @click="confirmDelete(row.original)"
           >
             <UIcon name="i-lucide-trash-2" class="size-3.5" />
-            {{ deletingId === row.id ? "删除中..." : "删除" }}
+            {{ deletingId === row.original.id ? "删除中..." : "删除" }}
           </button>
         </div>
       </template>

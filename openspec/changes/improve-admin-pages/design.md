@@ -99,4 +99,4 @@ useAdminList<T>({ ..., polling?: { intervalMs: number; stopWhen?: () => boolean 
 
 ## Open Questions
 
-- `community.vue` 调用的后端 admin 待审/举报接口是否支持 `page/per_page`：实施 D5 时验证，不支持则按 Non-Goal 降级处理
+- `community.vue` 调用的后端 admin 待审/举报接口是否支持 `page/per_page`：**已验证不支持**（`GET /api/v1/community/posts` 为游标分页 cursor+limit，`GET /api/v1/community/admin/reports` 无分页参数，`GET /api/v1/community/admin/comments/pending` 仅 limit）→ 按设计 Non-Goal 降级处理：保留现有 limit 展示，分页留待后续后端变更。用户搜索防抖已实现（300ms）

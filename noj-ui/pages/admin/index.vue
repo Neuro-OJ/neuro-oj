@@ -27,6 +27,9 @@ const queueError = ref("")
 const lastSuccessfulRefresh = ref<Date | null>(null)
 let requestVersion = 0
 
+// 自动轮询间隔（默认 5s，可由刷新控制条切换/关闭）
+const pollInterval = ref<number | null>(5000)
+
 function statCard(
   label: string,
   icon: string,
@@ -44,10 +47,13 @@ function statCard(
   }
 }
 
-async function loadStats() {
+/** silent=true 用于轮询：不置 loading、不清错误，失败保留旧数据 */
+async function loadStats(silent = false) {
   const currentRequest = ++requestVersion
-  statsLoading.value = true
-  statsError.value = ""
+  if (!silent) {
+    statsLoading.value = true
+    statsError.value = ""
+  }
 
   const [userRes, problemRes, submissionRes, queueRes] = await Promise.allSettled([
     api.get<{ pagination: { total: number } }>("/api/v1/admin/users", { silent: true }),
@@ -63,17 +69,27 @@ async function loadStats() {
     statCard("提交总数", 'i-lucide-files', "#d97706", submissionRes),
   ]
   queueStats.value = queueRes.status === "fulfilled" ? queueRes.value.stats : null
-  queueError.value = queueRes.status === "rejected" ? "队列状态加载失败" : ""
+  // 轮询静默失败不写入错误横幅（避免打断用户），仅首载/手动刷新失败时展示
+  if (!silent) queueError.value = queueRes.status === "rejected" ? "队列状态加载失败" : ""
 
   if (stats.value.every((card) => card.error) && queueRes.status === "rejected") {
-    statsError.value = "加载统计数据失败"
+    if (!silent) statsError.value = "加载统计数据失败"
   } else {
     lastSuccessfulRefresh.value = new Date()
   }
+  // 无条件复位 loading（轮询静默请求不置 loading，但若成为最后一个请求需复位手动 loading）
   if (currentRequest === requestVersion) statsLoading.value = false
 }
 
 watch(isLoggedIn, (val) => { if (val) loadStats() }, { immediate: true })
+
+// 评测队列统计自动轮询（页面隐藏自动暂停，卸载自动清理）
+usePolling({
+  intervalMs: pollInterval,
+  fetcher: () => loadStats(true),
+  immediate: false,
+  active: isLoggedIn,
+})
 
 const refreshing = ref(false)
 async function handleRefresh() {
@@ -87,10 +103,12 @@ async function handleRefresh() {
     <!-- 顶栏 -->
     <PageHeader title="仪表盘">
       <template #actions>
-        <UButton color="neutral" variant="outline" size="sm" class="text-text-secondary bg-white border-border hover:border-text-secondary" :disabled="refreshing" @click="handleRefresh">
-          <UIcon name="i-lucide-refresh-cw" :class="{ 'animate-spin': refreshing }" class="size-4" />
-          {{ refreshing ? "刷新中..." : "刷新" }}
-        </UButton>
+        <RefreshControl
+          v-model:interval="pollInterval"
+          :last-refresh="lastSuccessfulRefresh"
+          :refreshing="refreshing"
+          @refresh="handleRefresh"
+        />
       </template>
     </PageHeader>
 
@@ -150,7 +168,5 @@ async function handleRefresh() {
         <UButton color="neutral" variant="link" size="sm" @click="loadStats">重试</UButton>
       </template>
     </UAlert>
-
-    <p v-if="lastSuccessfulRefresh" class="text-xs text-text-muted">最近刷新：{{ lastSuccessfulRefresh.toLocaleString("zh-CN") }}</p>
   </div>
 </template>

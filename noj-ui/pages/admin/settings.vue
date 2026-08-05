@@ -164,6 +164,9 @@ function isDirty(key: string): boolean {
   return !deepEqual(draft, s.effective_value)
 }
 
+/** 未保存修改项数（页面级标识用） */
+const dirtyCount = computed(() => settings.value.filter((s) => isDirty(s.key)).length)
+
 function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true
   if (typeof a !== typeof b) return false
@@ -175,6 +178,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
 // ─── 保存单个设置 ─────────────────────────────────────────
 
 const savingKeys = ref(new Set<string>())
+const saveErrors = ref<Record<string, string>>({})
 const { toast } = useToast()
 
 function applySetting(item: SystemSetting) {
@@ -189,10 +193,14 @@ async function saveSetting(key: string) {
   if (drafts.value[key] === null) return
   if (savingKeys.value.has(key)) return
   savingKeys.value = new Set(savingKeys.value).add(key)
+  const errors = { ...saveErrors.value }
+  delete errors[key]
+  saveErrors.value = errors
   try {
+    // silent: 错误由下方 catch 内联处理（saveErrors + 保留表单值），避免 useApi 默认 toast 双弹
     const res = await api.put<{ data: SystemSetting }>(`/api/v1/admin/settings/${key}`, {
       value: drafts.value[key],
-    })
+    }, { silent: true })
     applySetting(res.data)
     // 检查是否需要重启生效
     const s = settings.value.find((x) => x.key === key)
@@ -201,6 +209,9 @@ async function saveSetting(key: string) {
     } else {
       toast.success("设置已保存")
     }
+  } catch (err: unknown) {
+    // 内联错误提示：不丢失已填写的表单值
+    saveErrors.value = { ...saveErrors.value, [key]: extractApiError(err).message }
   } finally {
     const next = new Set(savingKeys.value)
     next.delete(key)
@@ -228,12 +239,18 @@ async function confirmReset(s: SystemSetting) {
 
   if (resettingKeys.value.has(s.key)) return
   resettingKeys.value = new Set(resettingKeys.value).add(s.key)
+  const errors = { ...saveErrors.value }
+  delete errors[s.key]
+  saveErrors.value = errors
   try {
-    await api.delete(`/api/v1/admin/settings/${s.key}`)
-    const res = await api.get<{ data: SystemSetting[] }>("/api/v1/admin/settings")
+    // silent: 错误由下方 catch 内联处理（saveErrors），避免 useApi 默认 toast 双弹
+    await api.delete(`/api/v1/admin/settings/${s.key}`, { silent: true })
+    const res = await api.get<{ data: SystemSetting[] }>("/api/v1/admin/settings", { silent: true })
     const updated = res.data.find((item) => item.key === s.key)
     if (updated) applySetting(updated)
     toast.success(`已重置 ${s.key}`)
+  } catch (err: unknown) {
+    saveErrors.value = { ...saveErrors.value, [s.key]: extractApiError(err).message }
   } finally {
     const next = new Set(resettingKeys.value)
     next.delete(s.key)
@@ -247,6 +264,16 @@ async function confirmReset(s: SystemSetting) {
 <template>
   <div class="flex flex-col gap-4">
     <PageHeader title="系统设置" description="运行时可改的配置项，修改即时生效；只读配置需重启服务" />
+
+    <!-- 未保存更改标识 -->
+    <div
+      v-if="dirtyCount > 0"
+      class="flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-md text-13px text-amber-800"
+    >
+      <UIcon name="i-lucide-triangle-alert" class="size-4 shrink-0 text-amber-600" />
+      <span class="font-medium">有未保存的更改（{{ dirtyCount }} 项）</span>
+      <span class="text-amber-700">修改后请逐项点击行内"保存"按钮写入数据库</span>
+    </div>
 
     <!-- 顶部提示横幅 -->
     <div class="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-13px text-info-text">
@@ -423,6 +450,7 @@ async function confirmReset(s: SystemSetting) {
                   重置
                 </UButton>
               </div>
+              <p v-if="saveErrors[s.key]" class="mt-1.5 text-11px text-error-text">{{ saveErrors[s.key] }}</p>
             </td>
           </tr>
         </tbody>

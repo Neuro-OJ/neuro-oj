@@ -14,9 +14,13 @@
   - 用户列表封禁状态：30s 低频轮询（封禁到期 badge 自动消失）
   - 竞赛状态/人数、社区待审/举报：30s 轮询
 - 新增"刷新控制条"（`components/admin/RefreshControl.vue`），所有启用自动刷新的页面提供：
-  - 轮询间隔选择下拉框（关闭 / 5s / 10s / 30s / 1min，切换即时生效）
+  - 轮询间隔选择下拉框（关闭 / 3s / 5s / 10s / 30s / 1min，切换即时生效）
   - 手动刷新按钮
-  - 最近一次成功刷新时间展示
+  - 最近一次成功刷新时间展示（100ms 精度相对时间，如 `1.0s`）
+- 社区预设前端化：`admin/community.vue` 预设选择改存 localStorage（`noj:community:preset`），应用预设仅更新前端页面配置草稿，不再调用后端 preset API；移除对 `POST /api/v1/community/admin/preset/:name` 的依赖
+- 未保存变更明确标识：
+  - `admin/community.vue` 配置区草稿化：开关/数字本地编辑 + 统一"保存更改"/"放弃更改" + 未保存 badge
+  - `admin/settings.vue` 顶部增加"有未保存的更改（N 项）"标识（复用现有 drafts/isDirty 机制）
 - `admin/blacklist.vue` 分页化，移除 `per_page: 100` 硬编码上限
 - `admin/community.vue` 待审/举报列表分页，用户搜索加防抖
 - `admin/problems.vue` 补搜索（后端接口支持时）
@@ -34,7 +38,8 @@
 - `admin-dashboard`: 统计数据刷新从"仅手动刷新按钮"升级为"自动轮询 + 手动刷新并存"
 - `admin-submission-management`: 新增提交列表对 pending/judging 进行中的提交自动更新状态的需求
 - `admin-system-settings`: 新增保存失败时内联错误反馈的需求
-- `admin-ui-interaction-resilience`: 新增自动刷新（轮询）静默不打断用户操作的需求
+- `admin-ui-interaction-resilience`: 新增自动刷新（轮询）静默不打断用户操作的需求；新增未保存变更明确标识的需求
+- `community-configuration`: 社区配置预设行为变更——从"后端事务化预设 + 审计"改为"前端本地应用 + localStorage 记忆选择"
 
 > 注：`admin-ip-blacklist` 的分页 + 搜索需求已存在于现有 spec（`admin-ip-blacklist/spec.md`），当前仅前端实现缺口（`per_page=100` 硬编码），属实现补齐，无需求变化，故不列 delta。
 

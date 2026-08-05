@@ -35,6 +35,17 @@ const totalPages = ref(1)
 const perPage = 20
 let requestVersion = 0
 
+// 搜索关键字（300ms 防抖，自动重置到第 1 页）
+const keyword = ref("")
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+function onSearchInput(val: string) {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    keyword.value = val
+    loadProblems(1)
+  }, 300)
+}
+
 const difficultyLabels: Record<string, string> = {
   easy: "简单",
   medium: "中等",
@@ -66,8 +77,10 @@ async function loadProblems(page = 1) {
   tableError.value = ""
   currentPage.value = page
   try {
+    const params = new URLSearchParams({ page: String(page), limit: String(perPage) })
+    if (keyword.value) params.set("keyword", keyword.value)
     const res = await api.get<{ data: Problem[]; total: number; page: number; limit: number }>(
-      `/api/v1/problems?page=${page}&limit=${perPage}`,
+      `/api/v1/problems?${params.toString()}`,
       { silent: true },
     )
     if (currentRequest !== requestVersion) return
@@ -155,10 +168,18 @@ async function batchRejudge(problemId: string) {
   <div class="flex flex-col gap-4">
     <PageHeader title="题目管理" description="管理所有题目">
       <template #actions>
-        <NuxtLink to="/admin/problem-new" class="inline-flex items-center gap-1.5 px-4 py-2 text-13px font-semibold bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark">
-          <UIcon name="i-lucide-plus" class="size-4" />
-          创建题目
-        </NuxtLink>
+        <div class="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="搜索题号或标题…"
+            class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary transition-colors"
+            @input="onSearchInput(($event.target as HTMLInputElement).value)"
+          />
+          <NuxtLink to="/admin/problem-new" class="inline-flex items-center gap-1.5 px-4 py-2 text-13px font-semibold bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark">
+            <UIcon name="i-lucide-plus" class="size-4" />
+            创建题目
+          </NuxtLink>
+        </div>
       </template>
     </PageHeader>
 

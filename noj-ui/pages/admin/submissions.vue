@@ -32,6 +32,10 @@ const currentPage = ref(1)
 const totalPages = ref(1)
 const perPage = 20
 let requestVersion = 0
+const lastRefresh = ref<Date | null>(null)
+
+// 自动轮询间隔（默认 3s，可由刷新控制条切换/关闭）
+const pollInterval = ref<number | null>(3000)
 
 // 筛选条件
 const filters = reactive({
@@ -44,21 +48,21 @@ const filters = reactive({
 
 // 语言选项
 const languageOptions = [
-  { value: "", header: "全部" },
-  { value: "python3", header: "Python 3" },
-  { value: "python", header: "Python" },
-  { value: "cpp", header: "C++" },
-  { value: "c", header: "C" },
-  { value: "javascript", header: "JavaScript" },
+  { value: "", label: "全部" },
+  { value: "python3", label: "Python 3" },
+  { value: "python", label: "Python" },
+  { value: "cpp", label: "C++" },
+  { value: "c", label: "C" },
+  { value: "javascript", label: "JavaScript" },
 ]
 
 // 状态选项
 const statusOptions = [
-  { value: "", header: "全部" },
-  { value: "pending", header: "等待评测" },
-  { value: "judging", header: "评测中" },
-  { value: "finished", header: "已完成" },
-  { value: "error", header: "出错" },
+  { value: "", label: "全部" },
+  { value: "pending", label: "等待评测" },
+  { value: "judging", label: "评测中" },
+  { value: "finished", label: "已完成" },
+  { value: "error", label: "出错" },
 ]
 
 // UTable 列 formatter 通过 row 取原始数据行
@@ -107,11 +111,14 @@ function buildQuery(page: number): string {
   return params.toString()
 }
 
-async function loadSubmissions(page = 1) {
+/** silent=true 用于轮询：不置 loading、不清错误，失败保留旧数据 */
+async function loadSubmissions(page = 1, silent = false) {
   if (!isLoggedIn.value) return
   const currentRequest = ++requestVersion
-  tableLoading.value = true
-  tableError.value = ""
+  if (!silent) {
+    tableLoading.value = true
+    tableError.value = ""
+  }
   currentPage.value = page
   try {
     const res = await api.get<{ data: SubmissionListItem[]; pagination: { total: number; total_pages: number } }>(
@@ -121,10 +128,12 @@ async function loadSubmissions(page = 1) {
     if (currentRequest !== requestVersion) return
     submissions.value = res.data
     totalPages.value = res.pagination.total_pages
+    lastRefresh.value = new Date()
   } catch (err: unknown) {
     if (currentRequest !== requestVersion) return
-    tableError.value = extractApiError(err).message
+    if (!silent) tableError.value = extractApiError(err).message
   } finally {
+    // 无条件复位：避免轮询抢占 requestVersion 后 loading 卡死
     if (currentRequest === requestVersion) tableLoading.value = false
   }
 }
@@ -132,6 +141,18 @@ async function loadSubmissions(page = 1) {
 watch(isLoggedIn, (val) => {
   if (val) loadSubmissions()
 }, { immediate: true })
+
+// 提交列表自动轮询：存在 pending/judging 时每 3s 刷新，全部终态自动停止
+const TERMINAL_STATUSES = ["finished", "error"]
+const polling = usePolling({
+  intervalMs: pollInterval,
+  fetcher: () => loadSubmissions(currentPage.value, true),
+  immediate: false,
+  active: isLoggedIn,
+  stopWhen: () =>
+    submissions.value.length > 0 &&
+    submissions.value.every((s) => TERMINAL_STATUSES.includes(s.status)),
+})
 
 function onPageChange(page: number) {
   loadSubmissions(page)
@@ -176,6 +197,8 @@ async function rejudge(submissionId: string) {
     await api.post(`/api/v1/admin/submissions/${submissionId}/rejudge`)
     toast.showToast("success", "重测任务已提交")
     loadSubmissions(currentPage.value)
+    // 重测后列表重新出现 pending，恢复自动轮询
+    polling.start()
   } finally {
     const next = new Set(rejudgingIds.value)
     next.delete(submissionId)
@@ -186,7 +209,15 @@ async function rejudge(submissionId: string) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="提交管理" description="查看所有用户的提交记录" />
+    <PageHeader title="提交管理" description="查看所有用户的提交记录">
+      <template #actions>
+        <RefreshControl
+          v-model:interval="pollInterval"
+          :last-refresh="lastRefresh"
+          @refresh="loadSubmissions(currentPage)"
+        />
+      </template>
+    </PageHeader>
 
     <!-- 筛选栏 -->
     <div class="bg-white border border-border rounded-lg p-4">

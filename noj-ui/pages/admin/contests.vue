@@ -24,7 +24,12 @@ const formOpen = ref(false)
 const editingContest = ref<AdminContestDetail | null>(null)
 const saving = ref(false)
 const formError = ref('')
+const editingId = ref<string | null>(null)
 let contestRequestVersion = 0
+
+// 自动轮询间隔（默认 30s，可由刷新控制条切换/关闭；竞赛状态/人数随刷新更新）
+const pollInterval = ref<number | null>(30000)
+const lastRefresh = ref<Date | null>(null)
 
 function reloadAfterContestMutation() {
   reloadNuxtApp({ path: '/admin/contests', persistState: false })
@@ -40,20 +45,25 @@ const columns = [
 
   { accessorKey: "actions", header: "操作" },]
 
-async function loadContests(page = currentPage.value) {
+/** silent=true 用于轮询：不置 loading、不清错误，失败保留旧数据 */
+async function loadContests(page = currentPage.value, silent = false) {
   const currentRequest = ++contestRequestVersion
-  loading.value = true
-  loadError.value = ''
+  if (!silent) {
+    loading.value = true
+    loadError.value = ''
+  }
   try {
     const response = await api.get<{ data: Contest[]; pagination: Pagination }>(`/api/v1/admin/contests?page=${page}&per_page=20`, { silent: true })
     if (currentRequest !== contestRequestVersion) return
     contests.value = response.data
     currentPage.value = response.pagination.page
     totalPages.value = response.pagination.total_pages
+    lastRefresh.value = new Date()
   } catch (fetchError: unknown) {
     if (currentRequest !== contestRequestVersion) return
-    loadError.value = extractApiError(fetchError).message
+    if (!silent) loadError.value = extractApiError(fetchError).message
   } finally {
+    // 无条件复位：避免轮询抢占 requestVersion 后 loading 卡死
     if (currentRequest === contestRequestVersion) loading.value = false
   }
 }
@@ -75,6 +85,13 @@ onMounted(() => {
   void Promise.all([loadContests(1), loadProblems()])
 })
 
+// 竞赛状态/人数自动轮询（页面隐藏自动暂停，卸载自动清理）
+usePolling({
+  intervalMs: pollInterval,
+  fetcher: () => loadContests(currentPage.value, true),
+  immediate: false,
+})
+
 function openCreate() {
   editingContest.value = null
   formError.value = ''
@@ -83,9 +100,18 @@ function openCreate() {
 
 async function openEdit(contest: Contest) {
   formError.value = ''
-  const response = await api.get<{ data: AdminContestDetail }>(`/api/v1/admin/contests/${contest.id}`)
-  editingContest.value = response.data
-  formOpen.value = true
+  editingId.value = contest.id
+  try {
+    // silent: 错误由下方 catch 内联处理（toast.error），避免 useApi 默认 toast 双弹
+    const response = await api.get<{ data: AdminContestDetail }>(`/api/v1/admin/contests/${contest.id}`, { silent: true })
+    editingContest.value = response.data
+    formOpen.value = true
+  } catch (err: unknown) {
+    formError.value = extractApiError(err).message
+    toast.error(extractApiError(err).message)
+  } finally {
+    editingId.value = null
+  }
 }
 
 async function saveContest(payload: ContestPayload) {
@@ -110,9 +136,14 @@ async function saveContest(payload: ContestPayload) {
 async function removeContest(contest: Contest) {
   const confirmed = await dialog.confirm(`确定删除竞赛“${contest.title}”吗？竞赛提交会保留，但将解除竞赛关联。`, { title: '删除竞赛', confirmText: '删除', danger: true })
   if (!confirmed) return
-  await api.delete(`/api/v1/admin/contests/${contest.id}`)
-  toast.success('竞赛已删除')
-  reloadAfterContestMutation()
+  try {
+    // silent: 错误由下方 catch 内联处理（toast.error），避免 useApi 默认 toast 双弹
+    await api.delete(`/api/v1/admin/contests/${contest.id}`, { silent: true })
+    toast.success('竞赛已删除')
+    reloadAfterContestMutation()
+  } catch (err: unknown) {
+    toast.error(extractApiError(err).message)
+  }
 }
 
 interface Participant {
@@ -183,7 +214,16 @@ async function removeParticipant(participant: Participant) {
 <template>
   <div class="flex flex-col gap-4">
     <PageHeader title="竞赛管理" description="创建竞赛、配置赛制并管理参赛者">
-      <template #actions><UButton color="primary" size="sm" @click="openCreate"><UIcon name="i-lucide-plus" class="size-4" />创建竞赛</UButton></template>
+      <template #actions>
+        <div class="flex items-center gap-2">
+          <RefreshControl
+            v-model:interval="pollInterval"
+            :last-refresh="lastRefresh"
+            @refresh="loadContests(currentPage)"
+          />
+          <UButton color="primary" size="sm" @click="openCreate"><UIcon name="i-lucide-plus" class="size-4" />创建竞赛</UButton>
+        </div>
+      </template>
     </PageHeader>
 
     <div v-if="loadError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ loadError }}</span></div>
@@ -192,7 +232,7 @@ async function removeParticipant(participant: Participant) {
       <template #status-cell="{ row }"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold" :class="statusClass(row.original.status)">{{ statusLabels[row.original.status] }}</span></template>
       <template #participant_count-cell="{ row }"><span>{{ row.original.participant_count }} 人</span></template>
       <template #problem_count-cell="{ row }"><span>{{ row.original.problem_count }} 题</span></template>
-      <template #actions-cell="{ row }"><div class="flex justify-center gap-1.5"><UButton color="neutral" variant="outline" class="flex size-[30px] border-border text-text-secondary hover:bg-blue-50 hover:text-primary" title="参与者" @click="openParticipants(row.original)"><UIcon name="i-lucide-users" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-[30px] border-border text-text-secondary hover:bg-gray-100 hover:text-text" title="编辑" @click="openEdit(row.original)"><UIcon name="i-lucide-pencil" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-[30px] border-border text-text-secondary hover:border-red-200 hover:bg-red-50 hover:text-error-text" title="删除" @click="removeContest(row.original)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></UButton></div></template>
+      <template #actions-cell="{ row }"><div class="flex justify-center gap-1.5"><UButton color="neutral" variant="outline" class="flex size-[30px] border-border text-text-secondary hover:bg-blue-50 hover:text-primary" title="参与者" @click="openParticipants(row.original)"><UIcon name="i-lucide-users" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-[30px] border-border text-text-secondary hover:bg-gray-100 hover:text-text" title="编辑" :loading="editingId === row.original.id" :disabled="editingId !== null" @click="openEdit(row.original)"><UIcon name="i-lucide-pencil" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-[30px] border-border text-text-secondary hover:border-red-200 hover:bg-red-50 hover:text-error-text" title="删除" @click="removeContest(row.original)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></UButton></div></template>
     </UTable>
 
     <PaginationNav :current-page="currentPage" :total-pages="totalPages" @page-change="loadContests" />

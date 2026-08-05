@@ -14,7 +14,9 @@
  */
 
 import { ref } from 'vue';
+import type { MaybeRefOrGetter } from 'vue';
 import { extractApiError } from '~/utils/apiError';
+import { usePolling } from '~/composables/usePolling';
 
 export interface AdminListOptions<T> {
   /** API 路径（如 "/api/v1/admin/users"） */
@@ -28,6 +30,13 @@ export interface AdminListOptions<T> {
   };
   /** 自定义转换函数 — 完全接管响应解析 */
   transform?: (raw: unknown) => { items: T[]; total: number };
+  /** 自动轮询配置（静默刷新：不置 loading、失败不弹错） */
+  polling?: {
+    /** 轮询间隔（ms）；null = 关闭。支持响应式源，切换即时生效 */
+    intervalMs: MaybeRefOrGetter<number | null>;
+    /** 返回 true 时自动停止轮询（如提交列表全部终态） */
+    stopWhen?: () => boolean;
+  };
 }
 
 export interface AdminListResult<T> {
@@ -44,6 +53,10 @@ export interface AdminListResult<T> {
   load: (page?: number) => Promise<void>;
   /** 分页切换 */
   onPageChange: (page: number) => void;
+  /** 轮询控制（仅配置了 polling 时返回）：start/stop/isPolling，供页面在 stopWhen 停轮询后手动恢复 */
+  pollingControl?: { start: () => void; stop: () => void; isPolling: Ref<boolean> };
+  /** 最近一次成功加载时间 */
+  lastRefresh: Ref<Date | null>;
 }
 
 /** 深层读取嵌套字段（支持 "pagination.total_pages" 路径） */
@@ -64,16 +77,20 @@ export function useAdminList<T = Record<string, unknown>>(
   const error = ref('');
   const currentPage = ref(1);
   const totalPages = ref(1);
+  const lastRefresh = ref<Date | null>(null);
   const perPageVal = options.perPage ?? 20;
   const keyword = ref('');
 
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   let requestVersion = 0;
 
-  async function load(page = 1) {
+  /** silent=true 用于轮询：不置 loading、不清 error，失败静默保留旧数据 */
+  async function load(page = 1, silent = false) {
     const currentRequest = ++requestVersion;
-    loading.value = true;
-    error.value = '';
+    if (!silent) {
+      loading.value = true;
+      error.value = '';
+    }
     currentPage.value = page;
 
     try {
@@ -91,6 +108,7 @@ export function useAdminList<T = Record<string, unknown>>(
         if (currentRequest !== requestVersion) return;
         items.value = r.items;
         totalPages.value = Math.max(1, Math.ceil(r.total / perPageVal));
+        lastRefresh.value = new Date();
       } else {
         const dataField = options.fetchOptions?.dataField ?? 'data';
         const totalField = options.fetchOptions?.totalField ?? 'total';
@@ -101,6 +119,7 @@ export function useAdminList<T = Record<string, unknown>>(
         if (currentRequest !== requestVersion) return;
         const rawData = deepGet(res, dataField);
         items.value = (Array.isArray(rawData) ? rawData : []) as T[];
+        lastRefresh.value = new Date();
 
         const rawTotal = deepGet(res, totalField);
         if (typeof rawTotal === 'number') {
@@ -113,9 +132,13 @@ export function useAdminList<T = Record<string, unknown>>(
       }
     } catch (err: unknown) {
       if (currentRequest !== requestVersion) return;
-      // 展示后端具体错误原因（extractApiError 统一提取）
-      error.value = extractApiError(err).message;
+      if (!silent) {
+        // 展示后端具体错误原因（extractApiError 统一提取）
+        error.value = extractApiError(err).message;
+      }
     } finally {
+      // 无条件复位 loading：silent 轮询若成为最后一个请求也要复位，
+      // 否则手动请求在途时被轮询抢占 requestVersion 会导致 loading 永久卡死
       if (currentRequest === requestVersion) loading.value = false;
     }
   }
@@ -132,6 +155,17 @@ export function useAdminList<T = Record<string, unknown>>(
     load(page);
   }
 
+  // 自动轮询（静默刷新，requestVersion 防竞态保证不覆盖用户搜索/分页结果）
+  let pollingControl: AdminListResult<T>['pollingControl'];
+  if (options.polling) {
+    const polling = usePolling({
+      intervalMs: options.polling.intervalMs,
+      fetcher: () => load(currentPage.value, true),
+      stopWhen: options.polling.stopWhen,
+    });
+    pollingControl = polling;
+  }
+
   return {
     items,
     totalPages,
@@ -140,8 +174,10 @@ export function useAdminList<T = Record<string, unknown>>(
     currentPage,
     perPage: perPageVal,
     keyword,
+    lastRefresh,
     searchInput,
     load,
     onPageChange,
+    ...(pollingControl ? { pollingControl } : {}),
   };
 }

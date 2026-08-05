@@ -27,10 +27,23 @@ interface User {
   updated_at: string
 }
 
-const { items: users, totalPages, loading: tableLoading, error: tableError, currentPage, perPage, searchInput, load: loadUsers, onPageChange } = useAdminList<User>({
+// 自动轮询间隔（默认 30s，可由刷新控制条切换/关闭；封禁到期 badge 随刷新自动消失）
+const pollInterval = ref<number | null>(30000)
+
+const { items: users, totalPages, loading: tableLoading, error: tableError, currentPage, perPage, searchInput, load: loadUsers, onPageChange, lastRefresh } = useAdminList<User>({
   path: "/api/v1/admin/users",
-  fetchOptions: { dataField: "data", totalField: "pagination.total_pages" },
+  fetchOptions: { dataField: "data", totalField: "pagination.total" },
+  polling: { intervalMs: pollInterval },
 })
+
+// 操作（封禁/解封/改角色）后刷新：若当前页超出总页数（删除/变更导致）则回退到最后一页，避免停在空页
+async function reloadAfterMutation() {
+  if (currentPage.value > totalPages.value && totalPages.value >= 1) {
+    await loadUsers(totalPages.value)
+  } else {
+    await loadUsers(currentPage.value)
+  }
+}
 
 const columns = [
   { accessorKey: "username", header: "用户名" },
@@ -106,7 +119,7 @@ async function handleRoleSwitch() {
       role_ids: selectedRoleIds.value,
     })
     showRoleModal.value = false
-    await loadUsers(currentPage.value)
+    await reloadAfterMutation()
   } catch (err: unknown) {
     switchError.value = extractApiError(err).message
   } finally {
@@ -150,7 +163,7 @@ async function handleBan() {
     return
   }
   try {
-    await loadUsers(currentPage.value)
+    await reloadAfterMutation()
   } catch {
     // 刷新失败不影响操作成功
   } finally {
@@ -173,7 +186,7 @@ async function confirmUnban(user: User) {
     return
   }
   try {
-    await loadUsers(currentPage.value)
+    await reloadAfterMutation()
   } catch {
     // 刷新失败不影响操作成功
   } finally {
@@ -230,7 +243,15 @@ async function showBanHistory(user: User) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="用户管理" description="管理所有用户的角色权限" />
+    <PageHeader title="用户管理" description="管理所有用户的角色权限">
+      <template #actions>
+        <RefreshControl
+          v-model:interval="pollInterval"
+          :last-refresh="lastRefresh"
+          @refresh="loadUsers(currentPage)"
+        />
+      </template>
+    </PageHeader>
 
     <div class="flex items-center gap-2">
       <input
@@ -251,17 +272,17 @@ async function showBanHistory(user: User) {
         <div class="flex items-center gap-1.5 flex-wrap">
           <span
             class="inline-flex items-center gap-1 px-2 py-[3px] rounded text-xs font-semibold"
-            :class="row.role === 'admin' ? 'bg-blue-50 text-info-text' : 'bg-[#f5f5f5] text-[#6b7280]'"
+            :class="row.original.role === 'admin' ? 'bg-blue-50 text-info-text' : 'bg-[#f5f5f5] text-[#6b7280]'"
           >
-            <UIcon name="i-lucide-shield-check" class="size-3.5" v-if="row.role === 'admin'"/>
+            <UIcon name="i-lucide-shield-check" class="size-3.5" v-if="row.original.role === 'admin'"/>
             <UIcon name="i-lucide-shield-x" class="size-3.5" v-else/>
-            {{ row.role === "admin" ? "管理员" : "用户" }}
+            {{ row.original.role === "admin" ? "管理员" : "用户" }}
           </span>
           <!-- user-ban-table：封禁 badge -->
           <span
-            v-if="row.active_ban"
+            v-if="row.original.active_ban"
             class="inline-flex items-center px-2 py-[3px] rounded text-xs font-semibold bg-red-50 text-error-text"
-            :title="row.active_ban.banned_until ? `至 ${row.active_ban.banned_until} 解封` : '永久封禁'"
+            :title="row.original.active_ban.banned_until ? `至 ${row.original.active_ban.banned_until} 解封` : '永久封禁'"
           >
             已封禁
           </span>
@@ -272,16 +293,16 @@ async function showBanHistory(user: User) {
         <div class="flex items-center gap-1.5">
           <button
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-info-text text-info-text bg-transparent hover:bg-info-text hover:text-white"
-            @click="confirmRoleSwitch(row)"
+            @click="confirmRoleSwitch(row.original)"
           >
             修改角色
           </button>
           <!-- user-ban-table：封禁 / 解封 / 历史按钮 -->
           <button
-            v-if="!row.active_ban"
+            v-if="!row.original.active_ban"
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-error-text text-error-text bg-transparent hover:bg-error-text hover:text-white"
             :disabled="banning"
-            @click="confirmBan(row)"
+            @click="confirmBan(row.original)"
           >
             封禁
           </button>
@@ -289,11 +310,11 @@ async function showBanHistory(user: User) {
             v-else
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-info-text text-info-text bg-transparent hover:bg-info-text hover:text-white"
             :disabled="banning"
-            @click="confirmUnban(row)"
+            @click="confirmUnban(row.original)"
           >
             解封
           </button>
-          <UButton color="neutral" variant="outline" size="sm" class="py-1 border-border text-text-secondary hover:bg-page hover:text-text" @click="showBanHistory(row)">
+          <UButton color="neutral" variant="outline" size="sm" class="py-1 border-border text-text-secondary hover:bg-page hover:text-text" @click="showBanHistory(row.original)">
             历史
           </UButton>
         </div>

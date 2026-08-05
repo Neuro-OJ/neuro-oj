@@ -24,29 +24,11 @@ interface IpBan {
 
 const { api } = useApi()
 
-// ─── 数据加载 ────
-const items = ref<IpBan[]>([])
-const tableLoading = ref(true)
-const tableError = ref("")
-const search = ref("")
-
-async function load() {
-  tableLoading.value = true
-  tableError.value = ""
-  try {
-    const params = new URLSearchParams({ page: "1", per_page: "100" })
-    if (search.value) params.set("keyword", search.value)
-    const res = await api.get<{ data: IpBan[]; pagination: { total: number } }>(
-      `/api/v1/admin/blacklist?${params.toString()}`,
-      { silent: true },
-    )
-    items.value = res.data
-  } catch (err: unknown) {
-    tableError.value = extractApiError(err).message
-  } finally {
-    tableLoading.value = false
-  }
-}
+// ─── 数据加载（useAdminList：分页 + 搜索防抖，后端支持 page/per_page/keyword）───
+const { items, totalPages, loading: tableLoading, error: tableError, currentPage, searchInput, load, onPageChange } = useAdminList<IpBan>({
+  path: "/api/v1/admin/blacklist",
+  fetchOptions: { dataField: "data", totalField: "pagination.total" },
+})
 
 watch(isLoggedIn, (val) => { if (val) load() }, { immediate: true })
 
@@ -104,9 +86,12 @@ async function confirmDelete(item: IpBan) {
   deleteTarget.value = item
   deleting.value = true
   try {
-    await api.delete(`/api/v1/admin/blacklist/${item.id}`)
+    // silent: 错误由下方 catch 内联处理（toast.error），避免 useApi 默认 toast 双弹
+    await api.delete(`/api/v1/admin/blacklist/${item.id}`, { silent: true })
     toast.success(`已删除 ${item.ip_or_cidr}`)
     await load()
+  } catch (err: unknown) {
+    toast.error(extractApiError(err).message)
   } finally {
     deleting.value = false
     deleteTarget.value = null
@@ -127,18 +112,11 @@ function formatExpires(value: string | null) {
     <div class="flex items-center justify-between gap-3 flex-wrap">
       <div class="flex items-center gap-2">
         <input
-          v-model="search"
           type="text"
           placeholder="搜索 IP 或 CIDR"
           class="px-3 py-1.5 text-sm border border-border rounded outline-none focus:border-primary"
-          @keyup.enter="load"
+          @input="searchInput(($event.target as HTMLInputElement).value)"
         />
-        <button
-          class="px-3 py-1.5 text-sm border border-border rounded bg-white text-text hover:bg-gray-50 transition-colors"
-          @click="load"
-        >
-          搜索
-        </button>
       </div>
       <UButton color="primary" size="md" @click="openCreate">
         <UIcon name="i-lucide-plus" class="size-3.5" />
@@ -211,6 +189,13 @@ function formatExpires(value: string | null) {
         </tbody>
       </table>
     </section>
+
+    <!-- 分页 -->
+    <PaginationNav
+      :current-page="currentPage"
+      :total-pages="totalPages"
+      @page-change="onPageChange"
+    />
 
     <!-- 新增黑名单弹窗 -->
     <UModal v-model:open="showForm" title="新增 IP 黑名单" :unmount-on-hide="true">
