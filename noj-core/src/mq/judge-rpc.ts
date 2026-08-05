@@ -97,13 +97,16 @@ export async function startJudgeRpcHandler(
   redis: Redis,
   abortSignal?: AbortSignal,
 ): Promise<void> {
+  /// RPC 请求队列 BRPOP 超时（秒）。注意与结果队列的 DEFAULT_BLPOP_TIMEOUT 相互独立。
+  const REQUEST_BLPOP_TIMEOUT = 5;
+
   const REQUEST_QUEUE = "noj:rpc:v1:judge:core";
 
   logger.info("Judge RPC handler 已启动，等待请求...");
 
   while (!abortSignal?.aborted) {
     try {
-      const result = await redis.brpop(REQUEST_QUEUE, 5);
+      const result = await redis.brpop(REQUEST_QUEUE, REQUEST_BLPOP_TIMEOUT);
       if (!result) continue;
 
       const [, rawMessage] = result;

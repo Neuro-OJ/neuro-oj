@@ -16,37 +16,18 @@ use serde_json::Value;
 use tracing::warn;
 
 /// NDJSON 帧 `type` 字段允许的值（与 Python SDK `host.py` 对齐）。
-///
-/// 这些常量目前未在生产代码中引用，但保留供 spec 对照与外部调用方使用。
-#[allow(dead_code)]
 pub const FRAME_READY: &str = "ready";
-#[allow(dead_code)]
 pub const FRAME_CALL: &str = "call";
-#[allow(dead_code)]
 pub const FRAME_CAPABILITY: &str = "capability";
 /// cap_reg：evaluator → judge 私有帧（capability 默认超时上报），judge 不转发
-#[allow(dead_code)]
 pub const FRAME_CAP_REG: &str = "cap_reg";
-#[allow(dead_code)]
 pub const FRAME_RESULT: &str = "result";
-#[allow(dead_code)]
 pub const FRAME_ERROR: &str = "error";
-#[allow(dead_code)]
 pub const FRAME_LOG: &str = "log";
-#[allow(dead_code)]
 pub const FRAME_SHUTDOWN: &str = "shutdown";
 
-/// 错误码允许的值。
-#[allow(dead_code)]
-pub const ERR_TIMEOUT: &str = "Timeout";
-#[allow(dead_code)]
-pub const ERR_NOT_FOUND: &str = "NotFound";
-#[allow(dead_code)]
-pub const ERR_EXCEPTION: &str = "Exception";
-#[allow(dead_code)]
-pub const ERR_SYSTEM: &str = "SystemError";
-#[allow(dead_code)]
-pub const ERR_REJECTED: &str = "Rejected";
+/// 最终结果标记行（evaluator stdout 中的独立一行）。
+pub const RESULT_MARKER: &str = "---RESULT---";
 
 /// Evaluator stdout 的行分类。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,7 +117,7 @@ impl LineParser {
 
 fn classify_line(line: &str) -> EvaluatorLine {
     let trimmed = line.trim();
-    if trimmed == "---RESULT---" {
+    if trimmed == RESULT_MARKER {
         return EvaluatorLine::ResultMarker;
     }
     if trimmed.is_empty() {

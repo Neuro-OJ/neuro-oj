@@ -1,6 +1,6 @@
 import type { Context, Next } from "hono";
 import { RateLimitedError } from "../lib/errors.ts";
-import { getClientIp, isRateLimitEnabled } from "../lib/rateLimitEnv.ts";
+import { getClientIp, isRateLimitEnabled } from "../lib/rate-limit-env.ts";
 
 /**
  * 滑动窗口限流中间件（内存版）。

@@ -28,10 +28,6 @@ export interface RankingsResponse {
   pagination: RankingsPagination;
 }
 
-export interface MyRankingResponse {
-  data: RankingRow | null;
-}
-
 /**
  * 获取全站榜单。
  * @param page 页码（从 1 开始）
@@ -45,15 +41,6 @@ export function useRankings(page: Ref<number>, limit: number = 50) {
     });
     return `/api/v1/rankings?${qs.toString()}`;
   });
-}
-
-/**
- * 获取当前登录用户的榜单条目。
- * 未登录或未上榜时返回 null。
- */
-export async function fetchMyRanking(): Promise<RankingRow | null> {
-  const res = await useApi().api.get<MyRankingResponse>('/api/v1/rankings/me');
-  return res.data;
 }
 
 /**

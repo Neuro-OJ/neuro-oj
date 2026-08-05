@@ -14,7 +14,6 @@ pub mod container;
 pub mod protocol;
 pub mod tracker;
 
-use std::io::Read;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
@@ -25,9 +24,12 @@ use tokio::io::AsyncWriteExt;
 use tracing::{debug, error, info, warn};
 
 use crate::dual::container::{start_exec, DualContainer, ExecSession};
-use crate::dual::protocol::{frame_type, EvaluatorLine, LineParser};
+use crate::dual::protocol::{
+    frame_type, EvaluatorLine, LineParser, FRAME_CALL, FRAME_CAPABILITY, FRAME_CAP_REG,
+    FRAME_ERROR, FRAME_LOG, FRAME_READY, FRAME_RESULT, FRAME_SHUTDOWN, RESULT_MARKER,
+};
 use crate::dual::tracker::{InFlightTracker, WaitingSide};
-use crate::sandbox::container::{parse_command, MAX_FILE_SIZE, MAX_TOTAL_SIZE, MAX_ZIP_ENTRIES};
+use crate::sandbox::container::{extract_zip_entries, parse_command};
 use crate::types::{JudgeResult, JudgeStatus, RuntimeConfig};
 
 /// 评测输出全文/错误累积上限（1 MiB）。恶意提交可无限打印，
@@ -44,8 +46,6 @@ fn append_capped(buf: &mut String, s: &str) {
     buf.push_str(s);
 }
 
-/// 注入用户代码到指定容器的工作目录。
-///
 /// 注入支持包（zip）到 Evaluator 容器的 /workspace 目录。
 ///
 /// 先同步提取 zip 中所有文件到内存，再逐个异步注入到容器。
@@ -57,84 +57,21 @@ async fn inject_support_package_to_evaluator(
     // 同步提取 zip 内容到内存（ZipFile 不是 Send，不能在 tokio::spawn 中跨 await 持有）
     let entries = tokio::task::spawn_blocking({
         let data = zip_bytes.to_vec();
-        move || -> Result<Vec<(String, Vec<u8>)>> {
-            let cursor = std::io::Cursor::new(data);
-            let mut archive = zip::ZipArchive::new(cursor).context("打开支持包 zip 文件失败")?;
-
-            if archive.len() > MAX_ZIP_ENTRIES {
-                anyhow::bail!("zip 条目数 {} 超过上限 {}", archive.len(), MAX_ZIP_ENTRIES);
-            }
-
-            let mut seen_paths = std::collections::HashSet::new();
-            let mut entries = Vec::new();
-            let mut total_size: u64 = 0;
-
-            for i in 0..archive.len() {
-                let mut file = archive.by_index(i).context("读取 zip 条目失败")?;
-                let file_name = file.name().to_string();
-
-                // 跳过目录项
-                if file_name.ends_with('/') || file_name.ends_with('\\') {
-                    continue;
-                }
-
-                // 路径穿越防护
-                if file_name.split(['/', '\\']).any(|part| part == "..")
-                    || file_name.starts_with('/')
-                {
-                    anyhow::bail!("zip 包含非法路径条目: {}", file_name);
-                }
-
-                // 拒绝 overlapping entries（同名路径出现两次）
-                if !seen_paths.insert(file_name.clone()) {
-                    anyhow::bail!("zip 包含重复条目: {}", file_name);
-                }
-
-                // 单文件大小限制
-                if file.size() > MAX_FILE_SIZE {
-                    anyhow::bail!(
-                        "zip 条目 '{}' 大小 {} 超过单文件上限 {}",
-                        file_name,
-                        file.size(),
-                        MAX_FILE_SIZE
-                    );
-                }
-
-                let mut content = Vec::new();
-                file.read_to_end(&mut content)
-                    .context("读取 zip 条目内容失败")?;
-
-                if content.len() > 64 * 1024 * 1024 {
-                    anyhow::bail!(
-                        "zip 单文件 {} ({} bytes) 超过上限 64MB",
-                        file_name,
-                        content.len()
-                    );
-                }
-
-                total_size = total_size.saturating_add(content.len() as u64);
-
-                if total_size > MAX_TOTAL_SIZE {
-                    anyhow::bail!("zip 总解压大小 {} 超过上限 {}", total_size, MAX_TOTAL_SIZE);
-                }
-
-                entries.push((file_name, content));
-            }
-
-            info!("支持包提取完成 ({} 个文件)", entries.len());
-            Ok(entries)
-        }
+        move || extract_zip_entries(&data)
     })
     .await
     .context("spawn_blocking 提取 zip 失败")??;
 
-    // 异步逐个注入到容器
-    for (file_name, content) in &entries {
+    // 异步逐个注入到容器（目录条目由 tar 解压自动创建，无需注入）
+    for entry in &entries {
+        if entry.is_dir {
+            continue;
+        }
         // 只传文件名（相对路径），因为 docker exec 的 tar 已 -C /workspace
-        inject_file_to_container(docker, container_id, file_name, content)
+        inject_file_to_container(docker, container_id, &entry.file_name, &entry.data)
             .await
-            .context(format!("注入支持包文件 {} 失败", file_name))?;
-        info!("  已注入支持包文件: {}", file_name);
+            .context(format!("注入支持包文件 {} 失败", entry.file_name))?;
+        info!("  已注入支持包文件: {}", entry.file_name);
     }
 
     info!("支持包注入完成 (共 {} 个文件)", entries.len());
@@ -198,17 +135,12 @@ async fn inject_file_to_container(
 }
 
 /// 双容器评测主入口。
-#[allow(clippy::too_many_arguments)]
 pub async fn evaluate_dual(
     docker: bollard::Docker,
     task_submission_id: &str,
     runtime_config: &RuntimeConfig,
     user_code: &str,
-    _file_name_from_submission: &str,
     support_pkg_bytes: Option<&[u8]>,
-    _cache_dir: &str,
-    _cache_max_items: usize,
-    _cache_max_mb: u64,
     task_rejudge_seq: Option<i64>,
 ) -> Result<JudgeResult> {
     let evaluator_cmd = parse_command(&runtime_config.evaluator.command);
@@ -621,7 +553,8 @@ async fn handle_eval_chunk(
         match line {
             EvaluatorLine::ResultMarker => {
                 awaiting_result_payload = true;
-                append_capped(stdout_full, "---RESULT---\n");
+                append_capped(stdout_full, RESULT_MARKER);
+                append_capped(stdout_full, "\n");
             }
             EvaluatorLine::Frame(v) => {
                 // 协议帧处理：
@@ -631,17 +564,17 @@ async fn handle_eval_chunk(
                 // 其他类型（log 等）记录但不转发
                 let ft = frame_type(&v).map(|s| s.to_string());
                 match ft.as_deref() {
-                    Some("call") => {
+                    Some(FRAME_CALL) => {
                         // 登记调用级超时（缺省回退题目级默认），原样转发
                         tracker.on_call_frame(&v, Instant::now());
                         forward_frame(sol_input, &v).await?;
                     }
-                    Some("cap_reg") => {
+                    Some(FRAME_CAP_REG) => {
                         // judge 侧私有协议：更新 capability 超时映射，不转发给 solution
                         tracker.on_cap_reg_frame(&v);
                         debug!("cap_reg 帧已记录（不转发）: {}", v);
                     }
-                    Some("result") | Some("error") => {
+                    Some(FRAME_RESULT) | Some(FRAME_ERROR) => {
                         // capability 响应帧：命中则转发给 solution，迟到/未知丢弃
                         if let Some(id) = v.get("id").and_then(Value::as_str) {
                             if tracker.resolve_response(id) {
@@ -652,7 +585,7 @@ async fn handle_eval_chunk(
                         }
                     }
                     // log：合法帧，judge 收集但不转发（保持既有语义）
-                    Some("log") => {}
+                    Some(FRAME_LOG) => {}
                     // 未知/非法 type：按协议记录 warn 并丢弃
                     _ => {
                         warn!("丢弃未知 type 的 evaluator 帧: {}", v);
@@ -701,7 +634,7 @@ async fn handle_sol_chunk(
         if let EvaluatorLine::Frame(v) = line {
             let ft = frame_type(&v).map(|s| s.to_string());
             if !*solution_ready {
-                if ft.as_deref() == Some("ready") {
+                if ft.as_deref() == Some(FRAME_READY) {
                     *solution_ready = true;
                     continue;
                 }
@@ -709,12 +642,12 @@ async fn handle_sol_chunk(
                 continue;
             }
             match ft.as_deref() {
-                Some("capability") => {
+                Some(FRAME_CAPABILITY) => {
                     // solution 请求 capability：查注册超时登记后转发 evaluator
                     tracker.on_capability_frame(&v, Instant::now());
                     forward_frame(eval_input, &v).await?;
                 }
-                Some("result") | Some("error") => {
+                Some(FRAME_RESULT) | Some(FRAME_ERROR) => {
                     // call 响应帧（evaluator 等待）：命中则转发，迟到/未知丢弃
                     if let Some(id) = v.get("id").and_then(Value::as_str) {
                         if tracker.resolve_response(id) {
@@ -725,7 +658,7 @@ async fn handle_sol_chunk(
                     }
                 }
                 // log / shutdown 等合法帧：保持既有转发语义（solution → evaluator）
-                Some("log") | Some("shutdown") => {
+                Some(FRAME_LOG) | Some(FRAME_SHUTDOWN) => {
                     forward_frame(eval_input, &v).await?;
                 }
                 // 未知/非法 type：按协议记录 warn 并丢弃

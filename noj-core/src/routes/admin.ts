@@ -90,8 +90,11 @@ router.get("/users", async (c) => {
 });
 
 /**
- * 管理员提升/降级用户角色。
+ * 管理员修改用户角色分配。
  * PATCH /api/v1/admin/users/:id/role
+ *
+ * **BREAKING**: 旧格式 `{ "role": "admin"|"user" }` 不再接受。
+ * 新格式: `{ "role_ids": ["<uuid>", ...] }`
  */
 router.patch("/users/:id/role", async (c) => {
   const targetUserId = c.req.param("id") as string;
@@ -285,7 +288,7 @@ router.get("/contests/:id", async (c) => {
 
 router.post("/contests", async (c) => {
   const body = await parseJsonBody<CreateContestInput>(c);
-  const data = await createContest(body, c.var.userId);
+  const data = await createContest(body, c.get("userId"));
   return c.json({ data }, 201);
 });
 
@@ -294,7 +297,7 @@ router.put("/contests/:id", async (c) => {
   const data = await updateContest(
     c.req.param("id")!,
     body,
-    c.var.userId,
+    c.get("userId"),
   );
   return c.json({ data });
 });
@@ -609,20 +612,6 @@ router.delete("/roles/:id", async (c) => {
 router.get("/permissions", async (c) => {
   const result = await listPermissions();
   return c.json({ data: result });
-});
-
-/**
- * 管理员修改用户角色分配。
- * PATCH /api/v1/admin/users/:id/role
- *
- * **BREAKING**: 旧格式 `{ "role": "admin"|"user" }` 不再接受。
- * 新格式: `{ "role_ids": ["<uuid>", ...] }`
- */
-router.patch("/users/:id/role", async (c) => {
-  const targetUserId = c.req.param("id") as string;
-  const body = await parseJsonBody<{ role_ids: string[] }>(c);
-  await updateUserRoles(targetUserId, body.role_ids, c.get("userId"));
-  return c.json({ data: { message: "角色更新成功" } });
 });
 
 export default router;

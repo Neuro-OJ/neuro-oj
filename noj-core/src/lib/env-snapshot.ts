@@ -153,11 +153,6 @@ export function getEnvSnapshotValue(key: string): string | undefined {
   return envSnapshot[key];
 }
 
-/** 完整快照（仅供测试用，正常代码走 getEnvSnapshotValue） */
-export function getEnvSnapshot(): Record<string, string | undefined> {
-  return envSnapshot;
-}
-
 /** 重置快照状态（仅供测试用） */
 export function _resetEnvSnapshotForTest(): void {
   envSnapshot = {};

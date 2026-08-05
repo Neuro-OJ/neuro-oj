@@ -27,6 +27,7 @@ import type { LoginInput, RegisterInput, UserResponse } from "../types/auth.ts";
 import { isBannedIp } from "../lib/cidr.ts";
 import { getBannedRanges } from "./banlist.ts";
 import { logger } from "../lib/logging.ts";
+import { ROOT_USER_ID } from "../lib/constants.ts";
 
 /**
  * 密码强度校验最小长度。
@@ -414,7 +415,7 @@ export async function promoteUser(
     const [adminCountRow] = await db
       .select({ count: sql<number>`count(*)` })
       .from(users)
-      .where(and(eq(users.role, "admin"), not(eq(users.id, "0"))));
+      .where(and(eq(users.role, "admin"), not(eq(users.id, ROOT_USER_ID))));
     const adminCount = Number(adminCountRow?.count ?? 0);
     if (adminCount <= 1) {
       throw new BadRequestError(
@@ -571,18 +572,18 @@ export async function listUsers(
   const totalPages = Math.ceil(total / opts.perPage);
 
   // 将 LEFT JOIN 结果映射为 UserResponse
-  const data = rows.map((r) => ({
-    id: r.id,
-    username: r.username,
-    email: r.email,
-    role: r.role,
-    role_ids: roleIdsByUser.get(r.id) ?? [],
+  const data = rows.map((row) => ({
+    id: row.id,
+    username: row.username,
+    email: row.email,
+    role: row.role,
+    role_ids: roleIdsByUser.get(row.id) ?? [],
     is_admin: false, // TODO: 从 user_roles 查询，后续 PR 完善
-    must_change_password: r.must_change_password,
-    created_at: r.created_at,
-    updated_at: r.updated_at,
-    active_ban: r.ban_reason !== null
-      ? { reason: r.ban_reason!, banned_until: r.ban_until }
+    must_change_password: row.must_change_password,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    active_ban: row.ban_reason !== null
+      ? { reason: row.ban_reason!, banned_until: row.ban_until }
       : null,
   }));
 
@@ -704,7 +705,7 @@ export async function ensureRootUser(): Promise<void> {
   const existing = await db
     .select()
     .from(users)
-    .where(eq(users.id, "0"))
+    .where(eq(users.id, ROOT_USER_ID))
     .limit(1);
 
   if (existing.length > 0) return;
@@ -715,7 +716,7 @@ export async function ensureRootUser(): Promise<void> {
 
   await db.insert(users)
     .values({
-      id: "0",
+      id: ROOT_USER_ID,
       username: "root",
       email: "root@noj.local",
       password_hash: await hashPassword(randomPassword),

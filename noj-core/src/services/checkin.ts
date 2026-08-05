@@ -92,9 +92,9 @@ function todayUtc(): string {
  * （评审 H3：跨 DST/夏令时/闰秒边界，固定 24h 偏移可能产生非预期日期）。
  */
 function yesterdayUtc(): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().slice(0, 10);
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
 }
 
 /**

@@ -19,8 +19,6 @@ let editor: any = null
 let monacoModule: any = null
 let modelContentDisposable: { dispose: () => void } | null = null
 
-const MONACO_VERSION = "0.55.1" // 须与 package.json 中的 monaco-editor 版本一致
-
 // 字号（响应 Ctrl/Cmd + 滚轮缩放）
 const MIN_FONT_SIZE = 10
 const MAX_FONT_SIZE = 32

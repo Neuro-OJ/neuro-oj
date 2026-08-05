@@ -19,6 +19,7 @@ import { scoreFromDb } from "../types/index.ts";
 import { invalidateBanCache } from "../lib/banCache.ts";
 import { logAudit } from "./audit-log.ts";
 import type { UserResponse } from "../types/auth.ts";
+import { ROOT_USER_ID } from "../lib/constants.ts";
 
 /**
  * 用户主页响应——聚合统计、已通过题目、最近提交。
@@ -372,7 +373,7 @@ export async function adminUpdateUserProfile(
   bio: string;
 }> {
   // 拒绝修改 root 系统用户，避免破坏系统惯例（root 不计入管理员统计、不可登录）
-  if (targetUserId === "0") {
+  if (targetUserId === ROOT_USER_ID) {
     throw new ForbiddenError("不能修改系统 root 用户");
   }
 
@@ -480,13 +481,47 @@ export async function adminUpdateUserProfile(
  * - 禁止封禁自己
  * - 禁止封禁最后一个可登录 admin
  */
+
+/** users 表行类型 */
+type UserRow = typeof users.$inferSelect;
+
+/** 按 ID 查询用户，不存在则抛 NotFoundError。 */
+async function requireUser(targetUserId: string): Promise<UserRow> {
+  const existing = await getDb().select().from(users)
+    .where(eq(users.id, targetUserId))
+    .limit(1);
+  if (existing.length === 0) {
+    throw new NotFoundError("用户不存在");
+  }
+  return existing[0];
+}
+
+/** 由 users 行构造 UserResponse（active_ban 由调用方提供）。 */
+function toUserResponse(
+  user: UserRow,
+  activeBan: UserResponse["active_ban"],
+  now: string,
+): UserResponse {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    role: user.role,
+    is_admin: false, // TODO: 从 user_roles 查询
+    must_change_password: user.must_change_password,
+    active_ban: activeBan,
+    created_at: user.created_at,
+    updated_at: now,
+  };
+}
+
 export async function banUser(
   targetUserId: string,
   reason: string | undefined,
   bannedUntil: string | null | undefined,
   currentUserId: string,
 ): Promise<UserResponse> {
-  if (targetUserId === "0") {
+  if (targetUserId === ROOT_USER_ID) {
     throw new BadRequestError("不能封禁 root 账户");
   }
   if (currentUserId === targetUserId) {
@@ -513,7 +548,7 @@ export async function banUser(
     const [adminCountRow] = await db
       .select({ count: sql<number>`count(*)` })
       .from(users)
-      .where(and(eq(users.role, "admin"), not(eq(users.id, "0"))));
+      .where(and(eq(users.role, "admin"), not(eq(users.id, ROOT_USER_ID))));
     const adminCount = Number(adminCountRow?.count ?? 0);
     if (adminCount <= 1) {
       throw new BadRequestError(

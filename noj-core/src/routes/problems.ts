@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { BadRequestError } from "../lib/errors.ts";
-import { getClientIp } from "../lib/rateLimitEnv.ts";
+import { getClientIp } from "../lib/rate-limit-env.ts";
 import { runWithContext } from "../lib/requestContext.ts";
 import {
   createProblem,

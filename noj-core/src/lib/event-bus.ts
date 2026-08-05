@@ -107,11 +107,6 @@ export function onEvent(
 let subscriberReady = false;
 
 /**
- * Redis Pub/Sub 连接实例引用（供重连时复用）。
- */
-let _subscriberRedis: ReturnType<typeof createPubSubRedis> | null = null;
-
-/**
  * 在 Redis 连接上注册 pmessage 分发监听器。
  */
 function registerPmessageHandler(redis: RedisClient): void {
@@ -165,7 +160,6 @@ async function doSubscribe(redis: RedisClient): Promise<void> {
  */
 export function initEventSubscriber(): void {
   const redis = createPubSubRedis();
-  _subscriberRedis = redis;
 
   // 先注册 pmessage 监听器再连接/订阅，避免竞态
   registerPmessageHandler(redis);

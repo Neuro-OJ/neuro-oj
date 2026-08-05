@@ -6,7 +6,7 @@ import { isJtiRevoked } from "../lib/revokedTokens.ts";
 import { getDb } from "../db/connection.ts";
 import { userBans } from "../db/schema.ts";
 import { getCached } from "../lib/banCache.ts";
-import { getClientIp } from "../lib/rateLimitEnv.ts";
+import { getClientIp } from "../lib/rate-limit-env.ts";
 import { runWithContext } from "../lib/requestContext.ts";
 
 /**

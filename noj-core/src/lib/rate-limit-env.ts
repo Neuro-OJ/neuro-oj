@@ -19,17 +19,17 @@ import { logger } from "./logging.ts";
 
 /** 读取整数环境变量（非正数或 NaN 时回退默认值） */
 export function envInt(name: string, def: number): number {
-  const v = Deno.env.get(name);
-  if (!v) return def;
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) && n > 0 ? n : def;
+  const raw = Deno.env.get(name);
+  if (!raw) return def;
+  const parsed = parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : def;
 }
 
 /** 从 DB-backed 设置读取整数（通过 getSetting），回退至注册表 default */
 export function settingInt(key: string): number {
-  const s = getSetting(key);
-  if (s?.value !== undefined && typeof s.value === "number") {
-    return s.value;
+  const setting = getSetting(key);
+  if (setting?.value !== undefined && typeof setting.value === "number") {
+    return setting.value;
   }
   const def = findDefinition(key);
   return typeof def?.default === "number" ? def.default : 0;

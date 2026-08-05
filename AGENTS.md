@@ -221,7 +221,7 @@ neuro-oj/
 │   ├── app.vue                # 根组件 + CSS 变量
 │   ├── pages/                 # 文件路由：index / login / register / problems / submissions / ranking / queue / contests / community / messages / search / settings / users / admin / editor 等
 │   ├── components/            # 按功能分目录：layout/（Navbar、FooterBar、Sidebar）/ editor/（MonacoEditor、ProblemEditor）/ feature/（ProblemFilterBar、CheckInCard、SearchPalette、社区组件）/ shared/（MarkdownRenderer、PaginationNav）/ ui/（StatusBadge、AsyncContent 等）/ admin/ / auth/ / card/ / form/
-│   ├── composables/           # useApi（统一 API 调用层）/ useAuth / usePolling / useToast / useDialog / useProblemFilters / use-submissions / useCommunity / useContests / useMessages / useSearch / useRankings / useEventSource / useAdminList 等
+│   ├── composables/           # useApi（统一 API 调用层）/ useAuth / useToast / useDialog / useProblemFilters / use-submissions / useCommunity / useContests / useMessages / useSearch / useRankings / useEventSource / useAdminList 等
 │   ├── layouts/               # default / auth / admin
 │   ├── server/
 │   │   ├── api/[...slug].ts   # Nitro 代理（拦截登录 + JWT 注入）

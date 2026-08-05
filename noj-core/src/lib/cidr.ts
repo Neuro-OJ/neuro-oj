@@ -16,11 +16,13 @@ const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\/(\d{1,2}))?$/;
 
 /** 字符串 IPv4 转 32-bit unsigned int。非法 IP 返 null。 */
 export function ipv4ToInt(ip: string): number | null {
-  const m = IPV4_RE.exec(ip);
-  if (!m) return null;
-  const octets = [m[1], m[2], m[3], m[4]].map((s) => parseInt(s!, 10));
-  for (const o of octets) {
-    if (o < 0 || o > 255) return null;
+  const match = IPV4_RE.exec(ip);
+  if (!match) return null;
+  const octets = [match[1], match[2], match[3], match[4]].map((part) =>
+    parseInt(part!, 10)
+  );
+  for (const octet of octets) {
+    if (octet < 0 || octet > 255) return null;
   }
   return ((octets[0]! << 24) | (octets[1]! << 16) | (octets[2]! << 8) |
     octets[3]!) >>> 0;

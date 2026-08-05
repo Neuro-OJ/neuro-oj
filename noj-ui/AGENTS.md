@@ -59,7 +59,6 @@ noj-ui/
 ├── composables/           # 组合式函数（22 个）
 │   ├── useApi.ts          # 统一 API 调用层（业务代码禁止直接 $fetch）
 │   ├── useAuth.ts         # 认证状态管理
-│   ├── usePolling.ts      # 轮询工具
 │   ├── useToast.ts        # Toast 通知（Nuxt UI useToast 封装）
 │   ├── useDialog.ts       # 弹窗（Nuxt UI useOverlay + DialogModal）
 │   ├── useProblemFilters.ts  # 题目筛选 URL 同步
@@ -266,12 +265,6 @@ cd dist
 - `logout()` 清除 `auth:user` 状态 + 调用 `/api/auth/logout` 删除 Cookie
 - 初始化时若 Cookie 存在则自动调用 `fetchUser()`（SSR 阶段跳过）
 
-### usePolling
-- `usePolling(fn, interval, immediate?)`：基于 `setInterval` 的轮询工具
-- 组件卸载时自动清理（`onUnmounted`）
-- 静默处理错误（catch 块为空，不向用户显示错误）
-- 使用请求 ID 模式防止竞态（旧响应的处理被跳过）
-
 ### useToast
 - 基于 Nuxt UI `useToast` 的 Toast 通知
 - `showToast(type, title)`：`success` / `error` / `info` / `warning`
@@ -326,7 +319,7 @@ cd dist
 |------|------|------|
 | 页面初始数据 | `useAsyncData` + `$fetch` | SSR 时在服务端获取，水合时复用 |
 | 客户端 API 调用 | `$fetch` | 通过 Nitro 代理转发 |
-| 轮询 | `usePolling` composable | 基于 `setInterval`，组件卸载自动清理 |
+| 轮询 | `useSubmissionPolling` composable | 基于 `setInterval`，状态终态自动停止 |
 | 表单提交 | `$fetch` + 手动错误处理 | 显示后端返回的错误信息 |
 
 ## 中间件

@@ -21,7 +21,7 @@
 
 import type { Context, Next } from "hono";
 import { ForbiddenError } from "../lib/errors.ts";
-import { getClientIp } from "../lib/rateLimitEnv.ts";
+import { getClientIp } from "../lib/rate-limit-env.ts";
 import { isBannedIp } from "../lib/cidr.ts";
 import { getBannedRanges } from "../services/banlist.ts";
 

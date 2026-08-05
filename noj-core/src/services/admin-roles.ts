@@ -13,6 +13,7 @@ import {
   userRoles,
   users,
 } from "../db/schema.ts";
+import { ROOT_USER_ID } from "../lib/constants.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -352,7 +353,7 @@ export async function updateUserRoles(
     throw new BadRequestError("不能修改自己的角色");
   }
 
-  if (targetUserId === "0") {
+  if (targetUserId === ROOT_USER_ID) {
     throw new BadRequestError("不能修改 root 用户的角色");
   }
 

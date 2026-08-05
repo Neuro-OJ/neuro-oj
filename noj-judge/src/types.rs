@@ -132,8 +132,8 @@ impl JudgeResult {
 
     /// 构造一个系统错误结果（对用户隐藏内部错误细节）。
     ///
-    /// `message` 是内部错误详情，仅记录到日志；`output` 是返回给用户的友好信息。
-    pub fn error(submission_id: &str, _message: &str, rejudge_seq: Option<i64>) -> Self {
+    /// 内部错误详情由调用方负责记录日志；`output` 是返回给用户的友好信息。
+    pub fn error(submission_id: &str, rejudge_seq: Option<i64>) -> Self {
         Self {
             submission_id: submission_id.to_string(),
             status: JudgeStatus::SystemError.as_str().to_string(),
@@ -161,39 +161,11 @@ impl JudgeResult {
         }
     }
 
-    /// 构造一个内存溢出结果。
-    pub fn memory_exceeded(submission_id: &str, output: &str, rejudge_seq: Option<i64>) -> Self {
-        Self {
-            submission_id: submission_id.to_string(),
-            status: JudgeStatus::MemoryLimitExceeded.as_str().to_string(),
-            score: 0,
-            output: output.to_string(),
-            details: Self::empty_details(),
-            time_ms: None,
-            memory_kb: None,
-            rejudge_seq,
-        }
-    }
-
     /// 构造一个系统错误结果（评测环境/脚本异常，非用户代码问题）。
     pub fn system_error(submission_id: &str, output: &str, rejudge_seq: Option<i64>) -> Self {
         Self {
             submission_id: submission_id.to_string(),
             status: JudgeStatus::SystemError.as_str().to_string(),
-            score: 0,
-            output: output.to_string(),
-            details: Self::empty_details(),
-            time_ms: None,
-            memory_kb: None,
-            rejudge_seq,
-        }
-    }
-
-    /// 构造一个运行时错误结果。
-    pub fn runtime_error(submission_id: &str, output: &str, rejudge_seq: Option<i64>) -> Self {
-        Self {
-            submission_id: submission_id.to_string(),
-            status: JudgeStatus::RuntimeError.as_str().to_string(),
             score: 0,
             output: output.to_string(),
             details: Self::empty_details(),
@@ -363,7 +335,7 @@ mod tests {
 
     #[test]
     fn test_judge_result_error() {
-        let r = JudgeResult::error("sid-err", "something went wrong", Some(9));
+        let r = JudgeResult::error("sid-err", Some(9));
         assert_eq!(r.submission_id, "sid-err");
         assert_eq!(r.status, "SystemError");
         assert_eq!(r.score, 0);
@@ -378,21 +350,6 @@ mod tests {
         assert_eq!(r.score, 0);
         assert_eq!(r.output, "timeout output");
         assert_eq!(r.rejudge_seq, Some(3));
-    }
-
-    #[test]
-    fn test_judge_result_memory_exceeded() {
-        let r = JudgeResult::memory_exceeded("sid-mle", "oom", Some(4));
-        assert_eq!(r.status, "MemoryLimitExceeded");
-        assert_eq!(r.rejudge_seq, Some(4));
-    }
-
-    #[test]
-    fn test_judge_result_runtime_error() {
-        let r = JudgeResult::runtime_error("sid-re", "traceback", Some(5));
-        assert_eq!(r.status, "RuntimeError");
-        assert_eq!(r.output, "traceback");
-        assert_eq!(r.rejudge_seq, Some(5));
     }
 
     #[test]
