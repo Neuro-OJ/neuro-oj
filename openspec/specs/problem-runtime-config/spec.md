@@ -22,7 +22,7 @@
   - `evaluator.network: object`（可选，缺省视为 `{"enabled": false}`）
   - `solution.image: string`（必填）
   - `solution.entry: string`（必填，如 `solution.py`）
-  - `solution.call_timeout_ms: number`（必填，> 0）
+  - `solution.call_timeout_ms: number`（必填，> 0；作为调用级超时的**题目级默认值**，`runner.call(..., timeout_ms)` 可按调用覆盖）
   - `solution.memory_limit_mb: number`（必填，> 0）
 
 #### Scenario: evaluator.command 缺省注入默认值

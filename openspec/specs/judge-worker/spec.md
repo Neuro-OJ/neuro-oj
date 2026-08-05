@@ -207,11 +207,11 @@ JudgeTask SHALL 使用 `download_url` 替代
 
 #### Scenario: NDJSON 帧转发（Evaluator → Solution）
 
-- **WHEN** Evaluator SDK 调用 `SolutionRunner.call(fn, ...args)`
-- **THEN** SDK 通过 stdout 输出一行 NDJSON 帧 `{type: 'call', id, fn, args}`
-- **THEN** judge 读取 evaluator exec stdout 中的 NDJSON 帧，原样转发到 solution host stdin
+- **WHEN** Evaluator SDK 调用 `SolutionRunner.call(fn, ...args, timeout_ms?)`
+- **THEN** SDK 通过 stdout 输出一行 NDJSON 帧 `{type: 'call', id, fn, args}`（可含可选 `timeout_ms` 字段）
+- **THEN** judge 读取 evaluator exec stdout 中的 NDJSON 帧，登记调用级超时后原样转发到 solution host stdin
 - **THEN** Solution host 处理后通过 stdout 输出 `result` 或 `error` 帧
-- **THEN** judge 读取 solution exec stdout 中的响应帧，原样回写到 evaluator exec stdin
+- **THEN** judge 按 id 命中判定后把响应帧原样回写到 evaluator exec stdin（迟到/未知响应丢弃）
 - **THEN** SDK 从 stdin 读到响应帧后阻塞调用返回
 
 #### Scenario: 多次调用复用同一 Solution host
@@ -222,12 +222,17 @@ JudgeTask SHALL 使用 `download_url` 替代
 - **WHEN** `runner.restart()` 被调用
 - **THEN** judge 关闭旧 Solution host 进程，启动新 host 进程
 
-#### Scenario: 单次调用超时（call_timeout_ms）
+#### Scenario: 单次调用超时（调用级 timeout_ms）
 
-- **WHEN** 某次 `runner.call()` 超过 `runtime_config.solution.call_timeout_ms`
-- **THEN** judge 停止向 solution host stdin 写入
-- **THEN** SDK 收到 `code: 'Timeout'` 错误帧
+- **WHEN** 某次 `runner.call()` 超过其生效超时（调用级 `timeout_ms` 或题目级默认 `runtime_config.solution.call_timeout_ms`）
+- **THEN** judge 向 evaluator 写 `code: 'CallTimeout'` 错误帧
+- **THEN** SDK 收到 CallTimeout 错误并抛出 `SolutionTimeoutError`
+- **THEN** 该调用 id 的迟到响应被 judge 丢弃
 - **THEN** Solution host 进程继续运行（不退出）
+- **WHEN** evaluator 未捕获 `SolutionTimeoutError`（evaluate.py 异常退出、未输出 `---RESULT---`）
+- **THEN** JudgeResult.status = 'TimeLimitExceeded'
+- **WHEN** evaluator 捕获 `SolutionTimeoutError` 并记为失败用例
+- **THEN** 最终状态由 evaluator 决定（如 `WrongAnswer`）
 
 #### Scenario: Evaluator 总时间超时
 
@@ -235,7 +240,13 @@ JudgeTask SHALL 使用 `download_url` 替代
 - **THEN** judge `docker stop -t kill_grace_secs` Evaluator 容器
 - **THEN** judge `docker kill` Evaluator 容器（如未退）
 - **THEN** judge `docker rm -f` Solution 容器
-- **THEN** JudgeResult.status = 'TimeLimitExceeded'
+- **THEN** JudgeResult.status = 'SystemError'
+
+#### Scenario: Evaluator 启动超时
+
+- **WHEN** Evaluator 启动等待超过宽松上限（容器创建 / 文件注入 / 运行时启动开销，不计入题目时限）
+- **THEN** judge 强制终止评测
+- **THEN** JudgeResult.status = 'SystemError'
 
 #### Scenario: Evaluator OOM
 
@@ -256,14 +267,16 @@ JudgeTask SHALL 使用 `download_url` 替代
 #### Scenario: 帧类型枚举
 
 - **WHEN** 任何容器发送 NDJSON 帧
-- **THEN** `type` 字段必须是下列之一：`ready` / `call` / `result` / `error` / `log` / `shutdown`
+- **THEN** `type` 字段必须是下列之一：`ready` / `call` / `result` / `error` / `log` / `shutdown` / `cap_reg`
+- **WHEN** `type` 为 `cap_reg`
+- **THEN** 该帧为 evaluator → judge 私有协议（capability 默认超时上报），judge 不转发给 Solution Host
 - **WHEN** `type` 为非法值
 - **THEN** 接收方记录 warn 日志并丢弃该帧
 
 #### Scenario: 错误码枚举
 
 - **WHEN** `type === 'error'`
-- **THEN** `code` 字段必须是下列之一：`Timeout` / `NotFound` / `Exception` / `SystemError` / `Rejected`
+- **THEN** `code` 字段必须是下列之一：`CallTimeout` / `NotFound` / `Exception` / `SystemError` / `Rejected`
 
 #### Scenario: 类型安全序列化
 
@@ -343,15 +356,15 @@ JudgeTask SHALL 使用 `download_url` 替代
 #### Scenario: 时间约束分层
 
 - **WHEN** dual mode 评测启动
-- **THEN** `runtime_config.solution.call_timeout_ms` 约束单次 `runner.call()`
+- **THEN** 单次 `runner.call()` 受调用级 `timeout_ms` 约束（缺省回退 `runtime_config.solution.call_timeout_ms` 默认值）
 - **THEN** `runtime_config.evaluator.time_limit_ms` 约束 Evaluator 容器总时间（含全部 SDK 调用）
 - **THEN** 评测实际总耗时 = sum(SDK 调用耗时) + overhead，且 ≤ `evaluator.time_limit_ms`
-- **THEN** `result.accept/wrong_answer` 调用本身不受 `call_timeout_ms` 限制
+- **THEN** `result.accept/wrong_answer` 调用本身不受调用超时限制
 
 #### Scenario: 单次超时不影响 host
 
-- **WHEN** 单次 `runner.call()` 超 `call_timeout_ms`
-- **THEN** judge 关闭转发通道，SDK 收到 Timeout 错误
+- **WHEN** 单次 `runner.call()` 超过其生效超时
+- **THEN** judge 向 evaluator 写 CallTimeout 错误帧，SDK 收到 CallTimeout 错误
 - **THEN** Solution host 进程继续运行，下一次 `runner.call()` 可正常执行
 
 ### Requirement: runtime_config 必填校验
