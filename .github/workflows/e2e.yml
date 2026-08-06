@@ -393,7 +393,7 @@ jobs:
         # 组件越少 rustup 下载失败面越小（曾因并行 cargo 触发 rustup
         # sync 竞争导致 clippy 组件下载失败、测试启动即死）
       - name: 启用 sccache（Rust 编译缓存）
-        uses: mozilla/sccache-action@v0.0.7
+        uses: mozilla/sccache-action@v0.0.11
         with:
           cache-name: judge-sandbox-sccache
 
