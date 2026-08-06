@@ -295,20 +295,23 @@ router.get("/:id/support-package", authMiddleware, async (c) => {
 });
 
 /**
- * 获取题目初始代码模板（submission.py）。
+ * 获取题目初始代码模板（starter code）。
  * GET /api/v1/problems/:id/template
  *
  * 用于编辑器在没有用户本地草稿时填入的初始代码：
- * - 题目源码目录有 submission.py → 返回内容
- * - 没有 → 404
+ * - 题目源码目录有 template.py → 返回内容（推荐：出题人提供 starter）
+ * - 没有 → 回退到 submission_sample.py / submission.py（reference solution，仅兜底）
+ * - 都没有 → 404
+ *
+ * template.py 与 submission_sample.py 是两种独立用途：
+ * - template.py：前端编辑器 starter（给用户看的）
+ * - submission_sample.py：评测 reference solution（给 judge 看的）
  */
 router.get("/:id/template", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const problem = await resolveProblem(id);
   // problems-src 目录按题号（number）命名；题目 id 为服务端生成的 UUID，
   // 必须用 number 定位源码目录（如 data/problems-src/1001/）。
-  // 模板内容优先读取 submission_sample.py（与 solution.entry 一致），
-  // 兼容旧题目录的 submission.py。
   const tpl = await getProblemTemplate(problem.number);
   if (!tpl) {
     return c.json({ error: "该题目没有初始代码模板" }, 404);
