@@ -16,6 +16,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import { getClientIp, settingBool, settingInt } from "../lib/rate-limit-env.ts";
 import { RateLimitedError } from "../lib/errors.ts";
 import { checkRateLimit, rateLimitHeaders } from "../lib/rate-limit.ts";
+import { checkPermission } from "../lib/permissions.ts";
 
 export type SearchRateLimitDimension = "anon" | "authed";
 
@@ -33,9 +34,8 @@ export function searchRateLimit(
       return next();
     }
 
-    // 管理员跳过限流
-    const role = c.get("userRole");
-    if (role === "admin") {
+    // 管理员跳过限流（权限集含 admin:full_access，含继承链）
+    if (await checkPermission(c, "admin:full_access")) {
       return next();
     }
 

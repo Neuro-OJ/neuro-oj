@@ -494,17 +494,18 @@ async function requireUser(targetUserId: string): Promise<UserRow> {
   return existing[0];
 }
 
-/** 由 users 行构造 UserResponse（active_ban 由调用方提供）。 */
-function toUserResponse(
+/** 由 users 行构造 UserResponse（active_ban 由调用方提供，is_admin 实时计算）。 */
+async function toUserResponse(
   user: UserRow,
   activeBan: UserResponse["active_ban"],
   now: string,
-): UserResponse {
+): Promise<UserResponse> {
+  const isAdmin = await isUserAdmin(user.id);
   return {
     id: user.id,
     username: user.username,
     email: user.email,
-    is_admin: false, // TODO: 从 user_roles 查询
+    is_admin: isAdmin,
     must_change_password: user.must_change_password,
     active_ban: activeBan,
     created_at: user.created_at,
@@ -573,7 +574,7 @@ export async function banUser(
     { type: "users", id: targetUserId },
   );
 
-  return toUserResponse(
+  return await toUserResponse(
     existing,
     { reason: reason ?? "", banned_until: bannedUntil ?? null },
     now,
@@ -606,7 +607,7 @@ export async function unbanUser(
     { type: "users", id: targetUserId },
   );
 
-  return toUserResponse(existing, null, now);
+  return await toUserResponse(existing, null, now);
 }
 
 /**

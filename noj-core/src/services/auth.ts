@@ -358,7 +358,10 @@ export async function getUserProfile(
     throw new UnauthorizedError("用户不存在");
   }
 
-  return toUserResponse(existing[0]);
+  // is_admin 实时计算（权限集含 admin:full_access，含继承链）
+  const isAdmin = await isUserAdmin(userId);
+
+  return toUserResponse(existing[0], { isAdmin });
 }
 
 /**

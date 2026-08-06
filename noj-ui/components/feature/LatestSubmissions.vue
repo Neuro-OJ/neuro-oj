@@ -20,7 +20,6 @@
                     v-for="(s, i) in displayList"
                     :key="s.id"
                     :submission="s"
-                    :now="now"
                     :style="{ '--i': i }"
                     :class="{ 'animate-pin': pinSet.has(s.id) }"
                 />
@@ -69,8 +68,6 @@ const pinSet = ref<Set<string>>(new Set())
 const todayStats = ref<TodayStats | null>(null)
 const totalStats = ref<TodayStats | null>(null)
 
-const now = ref(Date.now())
-let clockTimer: ReturnType<typeof setInterval> | null = null
 let pinTimer: ReturnType<typeof setTimeout> | null = null
 
 // SSE 事件处理：统计数据变更时从事件数据中获取最新值
@@ -144,8 +141,6 @@ async function fetchSubmissions() {
 }
 
 onMounted(() => {
-    clockTimer = setInterval(() => { now.value = Date.now() }, 100)
-
     // 首次加载
     fetchSubmissions()
     fetchStatsFallback()
@@ -169,7 +164,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-    if (clockTimer) clearInterval(clockTimer)
     if (pinTimer) clearTimeout(pinTimer)
 })
 </script>

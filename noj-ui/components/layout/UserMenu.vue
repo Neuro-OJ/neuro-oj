@@ -33,7 +33,7 @@
             <NuxtLink to="/messages" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100 relative" @click="closeMenu"><UIcon name="i-lucide-mail" class="size-4" />消息<span v-if="unreadCount > 0" class="ml-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{{ unreadCount > 99 ? "99+" : unreadCount }}</span></NuxtLink>
             <NuxtLink :to="`/users/${user?.id}`" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100" @click="closeMenu"><UIcon name="i-lucide-database" class="size-4" />数据</NuxtLink>
             <NuxtLink to="/settings" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100" @click="closeMenu"><UIcon name="i-lucide-settings" class="size-4" />设置</NuxtLink>
-            <NuxtLink v-if="user?.role === 'admin'" to="/admin" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100" @click="closeMenu"><UIcon name="i-lucide-shield-check" class="size-4" />管理后台</NuxtLink>
+            <NuxtLink v-if="user?.is_admin" to="/admin" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-gray-100" @click="closeMenu"><UIcon name="i-lucide-shield-check" class="size-4" />管理后台</NuxtLink>
             <div class="h-px bg-border my-1"></div>
             <button
                 type="button"
