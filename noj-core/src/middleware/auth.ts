@@ -8,6 +8,7 @@ import { userBans } from "../db/schema.ts";
 import { getCached } from "../lib/banCache.ts";
 import { getClientIp } from "../lib/rate-limit-env.ts";
 import { runWithContext } from "../lib/requestContext.ts";
+import { ADMIN_FULL_ACCESS, resolvePermissions } from "../lib/permissions.ts";
 
 /**
  * 认证相关 Hono Env 类型（PR-6 抽取）。
@@ -29,7 +30,6 @@ export interface AuthEnv {
   Variables: {
     userId: string;
     userRole: string;
-    isAdmin: boolean;
     mustChangePassword: boolean;
     jti?: string;
   };
@@ -40,7 +40,6 @@ export interface OptionalAuthEnv {
   Variables: {
     userId?: string;
     userRole?: string;
-    isAdmin?: boolean;
     mustChangePassword?: boolean;
     jti?: string;
   };
@@ -168,7 +167,6 @@ export async function optionalAuthMiddleware(
   if (payload) {
     c.set("userId", payload.sub);
     c.set("userRole", payload.role);
-    c.set("isAdmin", payload.is_admin ?? false);
     c.set("mustChangePassword", payload.must_change_password ?? false);
     if (payload.jti) c.set("jti", payload.jti);
 
@@ -219,7 +217,6 @@ export async function authMiddleware(c: Context, next: Next): Promise<void> {
 
   c.set("userId", payload.sub);
   c.set("userRole", payload.role);
-  c.set("isAdmin", payload.is_admin ?? false);
   c.set("mustChangePassword", payload.must_change_password ?? false);
   if (payload.jti) c.set("jti", payload.jti);
   await next();
@@ -258,21 +255,20 @@ export function getUserBanState(userId: string): Promise<UserBanState> {
 /**
  * 管理员中间件——检查当前用户是否为管理员。
  *
- * 需要在 authMiddleware 之后使用，依赖其注入的 isAdmin 字段。
- * 此版本基于 JWT 中的 isAdmin boolean claim 判断，不依赖角色名称。
+ * 需要在 authMiddleware 之后使用。基于实时权限查询判断：
+ * 权限集（含角色继承链）包含 `admin:full_access` 即视为管理员，
+ * 不依赖 JWT claim（JWT 不携带 is_admin）。
  *
  * 注入 RequestContext 到 AsyncLocalStorage（issue #101），使下游 service 层
  * 通过 getRequestContext() 获取 actorId / actorIp / actorRole，
  * 用于审计日志埋点。
  */
-export function adminMiddleware(
+export async function adminMiddleware(
   c: Context,
   next: Next,
 ): Promise<Response | void> {
-  // 向后兼容：支持新旧两种判断方式
-  // 新版 JWT: isAdmin boolean claim
-  // 旧版 JWT: role === "admin"
-  if (!c.get("isAdmin") && c.get("userRole") !== "admin") {
+  const perms = await resolvePermissions(c);
+  if (!perms.has(ADMIN_FULL_ACCESS)) {
     throw new ForbiddenError("需要管理员权限");
   }
 

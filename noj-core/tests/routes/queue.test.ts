@@ -9,8 +9,7 @@ import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 import { connectRedis } from "../../src/mq/connection.ts";
 import { runMigrations } from "../../src/db/migrate.ts";
-import { signToken } from "../../src/lib/jwt.ts";
-import { jsonRequest } from "../lib/helper.ts";
+import { createUserToken, jsonRequest } from "../lib/helper.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasEnv;
@@ -52,7 +51,7 @@ Deno.test({
     if (!ready) return;
 
     const app = createApp();
-    const token = await signToken({ sub: "test-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(app, "/api/v1/queue", { token });
     assertEquals(res.status, 200);
 
@@ -80,7 +79,7 @@ Deno.test({
     if (!ready) return;
 
     const app = createApp();
-    const token = await signToken({ sub: "admin-user", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(app, "/api/v1/queue", { token });
     assertEquals(res.status, 200);
 
@@ -118,7 +117,7 @@ Deno.test({
     if (!ready) return;
 
     const app = createApp();
-    const token = await signToken({ sub: "test-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(
       app,
       "/api/v1/submissions/nonexistent-id/status",
@@ -140,7 +139,7 @@ Deno.test({
     if (!ready) return;
 
     const app = createApp();
-    const token = await signToken({ sub: "user-a", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(
       app,
       "/api/v1/submissions/nonexistent-id/status",
@@ -160,7 +159,7 @@ Deno.test({
     if (!ready) return;
 
     const app = createApp();
-    const token = await signToken({ sub: "test-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(
       app,
       "/api/v1/submissions/nonexistent-id",

@@ -9,6 +9,7 @@ import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { problems, users } from "../../src/db/schema.ts";
 import { eq, sql } from "drizzle-orm";
+import { createUserToken } from "../lib/helper.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skipEnv = !hasEnv;
@@ -31,7 +32,6 @@ async function createTestUser(id: string): Promise<void> {
     username: `rtuser-${id}`,
     email: `rtuser-${id}@test.com`,
     password_hash: "not-used",
-    role: "user",
     created_at: now,
     updated_at: now,
   });
@@ -178,7 +178,7 @@ Deno.test({
     await resetDbForTest();
     await createTestProblem();
     const app = createApp();
-    const token = await signToken({ sub: "other-user", role: "user" });
+    const token = await createUserToken();
 
     const res = await app.request(
       `/api/v1/problems/${problemIdRef[0]}/support-package`,

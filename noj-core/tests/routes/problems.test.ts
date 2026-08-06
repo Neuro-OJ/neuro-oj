@@ -1,10 +1,9 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
-import { signToken } from "../../src/lib/jwt.ts";
 import { createProblem } from "../../src/services/problems.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { jsonRequest } from "../lib/helper.ts";
+import { createUserToken, jsonRequest } from "../lib/helper.ts";
 
 // PGlite 内存数据库始终可用
 const dbAvailable = true;
@@ -195,7 +194,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "test-user", role: "user" });
+    const token = await createUserToken();
 
     const res = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
@@ -232,7 +231,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await createUserToken("admin");
 
     const res = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
@@ -272,7 +271,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "test-user", role: "user" });
+    const token = await createUserToken();
 
     const res = await jsonRequest(app, `/api/v1/problems/${TEST_PROBLEM_ID}`, {
       method: "PUT",
@@ -290,7 +289,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "test-user", role: "user" });
+    const token = await createUserToken();
 
     const res = await jsonRequest(app, `/api/v1/problems/${TEST_PROBLEM_ID}`, {
       method: "DELETE",

@@ -219,7 +219,6 @@ Deno.test({
       username: `test-del-cat-admin-${Date.now()}`,
       email: `test-del-cat-admin-${Date.now()}@example.com`,
       password_hash: "",
-      role: "admin",
       created_at: now,
       updated_at: now,
     });

@@ -8,6 +8,7 @@ import {
 } from "../lib/errors.ts";
 import { buildPaginationMeta, parsePagination } from "../lib/pagination.ts";
 import { parseJsonBody } from "../lib/request.ts";
+import { checkPermission } from "../lib/permissions.ts";
 import { getContestRanking } from "../services/contest-ranking.ts";
 import {
   computeContestStatus,
@@ -86,7 +87,11 @@ contests.post("/:id/register", authMiddleware, async (c) => {
 contests.get("/:id/problems", authMiddleware, async (c) => {
   const contestId = c.req.param("id") as string;
   const userId = c.var.userId as string;
-  await requireContestAccess(contestId, userId, c.var.isAdmin);
+  await requireContestAccess(
+    contestId,
+    userId,
+    await checkPermission(c, "submission:read_all"),
+  );
   const data = await getContestProblems(contestId, userId);
   return c.json({ data });
 });
@@ -94,7 +99,11 @@ contests.get("/:id/problems", authMiddleware, async (c) => {
 contests.get("/:id/problems/:label", authMiddleware, async (c) => {
   const contestId = c.req.param("id") as string;
   const userId = c.var.userId as string;
-  await requireContestAccess(contestId, userId, c.var.isAdmin);
+  await requireContestAccess(
+    contestId,
+    userId,
+    await checkPermission(c, "submission:read_all"),
+  );
   const problem = (await getContestProblems(contestId, userId)).find(
     (item) => item.label === c.req.param("label"),
   );
@@ -107,17 +116,21 @@ contests.get("/:id/problems/:label", authMiddleware, async (c) => {
 contests.get("/:id/ranking", optionalAuthMiddleware, async (c) => {
   const contestId = c.req.param("id") as string;
   const contest = await getContest(contestId, c.var.userId);
-  if (!contest.is_public && !c.var.isAdmin && !contest.is_registered) {
+  if (
+    !contest.is_public && !await checkPermission(c, "submission:read_all") &&
+    !contest.is_registered
+  ) {
     throw new NotFoundError("竞赛不存在");
   }
   const type = c.req.query("type") ?? contest.type;
   if (!isValidContestType(type)) {
     throw new BadRequestError("排名类型不合法");
   }
+  const isAdmin = await checkPermission(c, "submission:read_all");
   const data = await getContestRanking(
     contestId,
     type,
-    c.var.isAdmin ?? false,
+    isAdmin,
     c.var.userId,
   );
   return c.json({ data });
@@ -132,7 +145,10 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
   ) {
     throw new ForbiddenError("仅可在竞赛进行期间提交");
   }
-  if (!await isParticipant(contestId, userId) && !c.var.isAdmin) {
+  if (
+    !await isParticipant(contestId, userId) &&
+    !await checkPermission(c, "submission:read_all")
+  ) {
     throw new ForbiddenError("仅参赛者可提交");
   }
 
@@ -194,7 +210,10 @@ contests.get("/:id/my-submissions", authMiddleware, async (c) => {
 
 contests.get("/:id", optionalAuthMiddleware, async (c) => {
   const data = await getContest(c.req.param("id") as string, c.var.userId);
-  if (!data.is_public && !c.var.isAdmin && !data.is_registered) {
+  if (
+    !data.is_public && !await checkPermission(c, "submission:read_all") &&
+    !data.is_registered
+  ) {
     throw new NotFoundError("竞赛不存在");
   }
   return c.json({ data });

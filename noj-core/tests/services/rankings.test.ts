@@ -37,7 +37,6 @@ async function createTestUser(
     username: `${usernamePrefix}_${unique}`,
     email: `${usernamePrefix}_${unique}@test.com`,
     password_hash: await hashPassword("TestRankingsPass1"),
-    role: "user",
     created_at: now,
     updated_at: now,
   });

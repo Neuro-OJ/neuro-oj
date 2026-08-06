@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import SupportPackageUpload from "~/components/admin/SupportPackageUpload.vue"
 import { extractApiError } from "~/utils/apiError"
+import { isAdminUser } from "~/utils/isAdminUser"
 
 interface RuntimeConfigPayload {
   evaluator: {
@@ -36,7 +37,7 @@ const router = useRouter()
 const { user } = useAuth()
 const { api } = useApi()
 
-const isAdmin = computed(() => user.value?.role === "admin")
+const isAdmin = computed(() => isAdminUser(user.value))
 
 // ── 表单数据 ──
 const title = ref("")

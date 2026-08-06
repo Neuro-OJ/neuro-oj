@@ -6,6 +6,7 @@ import {
   inArray,
   isNull,
   lte,
+  notInArray,
   or,
   type SQL,
   sql,
@@ -13,6 +14,7 @@ import {
 import { getDb } from "../db/connection.ts";
 import { roles, userBans, userRoles, users } from "../db/schema.ts";
 import { comparePassword, hashPassword } from "../lib/password.ts";
+import { getAdminUserIds, isUserAdmin } from "../lib/permissions.ts";
 import { signToken } from "../lib/jwt.ts";
 import { logAuthEvent } from "./audit-log.ts";
 import {
@@ -94,7 +96,6 @@ function toUserResponse(
     id: row.id,
     username: row.username,
     email: row.email,
-    role: row.role,
     is_admin: options?.isAdmin ?? false,
     must_change_password: row.must_change_password,
     active_ban: options?.activeBan ?? null,
@@ -153,7 +154,6 @@ export async function registerUser(
     username: input.username,
     email: input.email,
     password_hash: passwordHash,
-    role: "user",
     created_at: now,
     updated_at: now,
   });
@@ -188,7 +188,6 @@ export async function registerUser(
     id,
     username: input.username,
     email: input.email,
-    role: "user",
     is_admin: false,
     must_change_password: false,
     active_ban: null,
@@ -301,23 +300,24 @@ export async function loginUser(
     }
   }
 
-  // 查询用户角色（从 RBAC 表）
+  // 查询用户角色（从 RBAC 表；role claim 仅用于展示/审计，权限判定实时查询权限集）
   const roleRows = await db
-    .select({ name: roles.name, is_admin: roles.is_admin })
+    .select({ name: roles.name })
     .from(userRoles)
     .innerJoin(roles, eq(roles.id, userRoles.role_id))
     .where(eq(userRoles.user_id, user.id));
 
-  const isAdmin = roleRows.some((r) => r.is_admin);
-  const jwtRole = roleRows.find((r) => r.is_admin)?.name ??
+  const jwtRole = roleRows.find((r) => r.name === "admin")?.name ??
     roleRows.find((r) => r.name === "user")?.name ??
     "user";
 
-  // 签发 JWT（携带 must_change_password、is_admin 字段）
+  // 响应中的 is_admin 展示字段：权限集（含继承）是否含 admin:full_access
+  const isAdmin = await isUserAdmin(user.id);
+
+  // 签发 JWT（不携带 is_admin claim，权限判定实时查询）
   const token = await signToken({
     sub: user.id,
     role: jwtRole,
-    is_admin: isAdmin,
     must_change_password: user.must_change_password,
   });
 
@@ -358,7 +358,10 @@ export async function getUserProfile(
     throw new UnauthorizedError("用户不存在");
   }
 
-  return toUserResponse(existing[0]);
+  // is_admin 实时计算（权限集含 admin:full_access，含继承链）
+  const isAdmin = await isUserAdmin(userId);
+
+  return toUserResponse(existing[0], { isAdmin });
 }
 
 /**
@@ -366,7 +369,7 @@ export async function getUserProfile(
  * 返回用户基本信息，不含密码哈希。
  *
  * @param opts.keyword 搜索关键词（匹配 username 或 email，ILIKE 模糊搜索）
- * @param opts.role 按角色筛选（"admin" | "user"）
+ * @param opts.isAdmin 按管理员状态筛选（true | false，admin:full_access 权限含继承链）
  * @param opts.from 注册日期范围起始（ISO 字符串）
  * @param opts.to 注册日期范围截止（ISO 字符串）
  */
@@ -375,7 +378,7 @@ export async function listUsers(
     page: number;
     perPage: number;
     keyword?: string;
-    role?: string;
+    isAdmin?: boolean;
     from?: string;
     to?: string;
   },
@@ -399,9 +402,14 @@ export async function listUsers(
   // 排除 root 系统用户（id='0'）
   conditions.push(sql`${users.id} <> '0'`);
 
-  // 按角色筛选
-  if (opts.role) {
-    conditions.push(eq(users.role, opts.role));
+  // 按管理员状态筛选（admin:full_access 权限，含继承链）
+  if (opts.isAdmin !== undefined) {
+    const adminIds = await getAdminUserIds();
+    if (opts.isAdmin) {
+      conditions.push(inArray(users.id, [...adminIds]));
+    } else {
+      conditions.push(notInArray(users.id, [...adminIds]));
+    }
   }
 
   // 按关键词搜索（username 或 email ILIKE 模糊匹配）
@@ -427,7 +435,6 @@ export async function listUsers(
         id: users.id,
         username: users.username,
         email: users.email,
-        role: users.role,
         must_change_password: users.must_change_password,
         created_at: users.created_at,
         updated_at: users.updated_at,
@@ -454,24 +461,15 @@ export async function listUsers(
     .select({ user_id: userRoles.user_id, role_id: userRoles.role_id })
     .from(userRoles)
     .where(inArray(userRoles.user_id, rows.map((row) => row.id)));
-  const fallbackRoles = await db
-    .select({ id: roles.id, name: roles.name })
-    .from(roles)
-    .where(inArray(roles.name, ["admin", "user"]));
-  const fallbackRoleIds = new Map(
-    fallbackRoles.map((role) => [role.name, role.id]),
-  );
   const roleIdsByUser = new Map<string, string[]>();
   for (const roleRow of roleRows) {
     const roleIds = roleIdsByUser.get(roleRow.user_id) ?? [];
     roleIds.push(roleRow.role_id);
     roleIdsByUser.set(roleRow.user_id, roleIds);
   }
-  for (const row of rows) {
-    if (roleIdsByUser.has(row.id)) continue;
-    const fallbackRoleId = fallbackRoleIds.get(row.role);
-    if (fallbackRoleId) roleIdsByUser.set(row.id, [fallbackRoleId]);
-  }
+
+  // 本页用户的管理员状态（admin:full_access 权限，含继承链）
+  const allAdminIds = await getAdminUserIds();
 
   const total = Number(countResult[0]?.count ?? 0);
   const totalPages = Math.ceil(total / opts.perPage);
@@ -481,9 +479,8 @@ export async function listUsers(
     id: row.id,
     username: row.username,
     email: row.email,
-    role: row.role,
     role_ids: roleIdsByUser.get(row.id) ?? [],
-    is_admin: false, // TODO: 从 user_roles 查询，后续 PR 完善
+    is_admin: allAdminIds.has(row.id),
     must_change_password: row.must_change_password,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -578,19 +575,13 @@ export async function changePassword(
     { user_id: userId },
   );
 
-  // 查询用户的 admin 状态
-  const userRoleRows = await db
-    .select({ is_admin: roles.is_admin })
-    .from(userRoles)
-    .innerJoin(roles, eq(roles.id, userRoles.role_id))
-    .where(eq(userRoles.user_id, user.id));
-  const isAdmin = userRoleRows.some((r) => r.is_admin);
+  // 查询用户的 admin 状态（权限集含 admin:full_access，含继承）
+  const isAdmin = await isUserAdmin(user.id);
 
   return {
     id: user.id,
     username: user.username,
     email: user.email,
-    role: user.role,
     is_admin: isAdmin,
     must_change_password: false,
     active_ban: null,
@@ -625,7 +616,6 @@ export async function ensureRootUser(): Promise<void> {
       username: "root",
       email: "root@noj.local",
       password_hash: await hashPassword(randomPassword),
-      role: "admin",
       bio: "系统根用户",
       created_at: now,
       updated_at: now,

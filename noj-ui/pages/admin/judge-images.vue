@@ -158,8 +158,9 @@ async function handleDelete() {
   deleting.value = true
   try {
     await api.delete(`/api/v1/admin/judge-images/${deleteTarget.value.id}`)
-    items.value = items.value.filter((item) => item.id !== deleteTarget.value!.id)
     showDeleteConfirm.value = false
+    // 服务端重载而非本地 filter，保证与后续分页/刷新状态一致
+    await loadItems()
     toast.success("评测镜像已删除")
   } catch (err: unknown) {
     formError.value = extractApiError(err).message
@@ -188,10 +189,10 @@ async function handleDelete() {
       :empty="'暂无评测镜像'">
       <template #actions-cell="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <UButton color="neutral" variant="outline" class="flex w-[30px] h-[30px] border-border text-text-secondary hover:bg-[#f5f5f5] hover:text-text" title="编辑" @click="openEdit(row)">
+          <UButton color="neutral" variant="outline" class="flex w-[30px] h-[30px] border-border text-text-secondary hover:bg-[#f5f5f5] hover:text-text" title="编辑" @click="openEdit(row.original)">
             <UIcon name="i-lucide-pencil" class="size-3.5" />
           </UButton>
-          <UButton color="neutral" variant="outline" class="flex w-[30px] h-[30px] border-border text-text-secondary hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" title="删除" @click="confirmDelete(row)">
+          <UButton color="neutral" variant="outline" class="flex w-[30px] h-[30px] border-border text-text-secondary hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" title="删除" @click="confirmDelete(row.original)">
             <UIcon name="i-lucide-trash-2" class="size-3.5" />
           </UButton>
         </div>
@@ -232,7 +233,7 @@ async function handleDelete() {
   
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="saving" @click="showForm = false">取消</UButton>
-      <UButton color="primary" :loading="saving" @click="handleSave">editingItem ? '保存' : '新增'</UButton>
+      <UButton color="primary" :loading="saving" @click="handleSave">{{ editingItem ? '保存' : '新增' }}</UButton>
     </template>
   </UModal>
 

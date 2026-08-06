@@ -82,11 +82,17 @@ router.get("/users", async (c) => {
   if (perPage > 100) perPage = 100;
 
   const keyword = c.req.query("keyword") || undefined;
-  const role = c.req.query("role") || undefined;
+  // is_admin 筛选：true / false / 缺省（全部）
+  const isAdminParam = c.req.query("is_admin");
+  const isAdmin = isAdminParam === "true"
+    ? true
+    : isAdminParam === "false"
+    ? false
+    : undefined;
   const from = c.req.query("from") || undefined;
   const to = c.req.query("to") || undefined;
 
-  const result = await listUsers({ page, perPage, keyword, role, from, to });
+  const result = await listUsers({ page, perPage, keyword, isAdmin, from, to });
   return c.json({ data: result.data, pagination: result.pagination });
 });
 

@@ -5,9 +5,8 @@
  * 测试前自动运行迁移并 seed 默认白名单条目（见 00_migrate_test.ts）。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
+import { createUserToken, initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
-import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { judgeImages } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
@@ -61,7 +60,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await app.request("/api/v1/admin/judge-images", {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -79,7 +78,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({ sub: "test-user", role: "user" });
+    const token = await createUserToken();
     const res = await app.request("/api/v1/admin/judge-images", {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -95,7 +94,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await app.request("/api/v1/admin/judge-images", {
       method: "POST",
       headers: {
@@ -125,7 +124,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await app.request("/api/v1/admin/judge-images", {
       method: "POST",
       headers: {
@@ -149,7 +148,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await createUserToken("admin");
 
     // 先创建
     const createRes = await app.request("/api/v1/admin/judge-images", {
@@ -197,7 +196,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await createUserToken("admin");
 
     // 先创建
     const createRes = await app.request("/api/v1/admin/judge-images", {
@@ -232,7 +231,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await app.request(
       "/api/v1/admin/judge-images/nonexistent-id",
       {

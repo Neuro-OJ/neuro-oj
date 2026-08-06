@@ -28,7 +28,6 @@ Deno.test({
       username: `tstusr-${ts}`,
       email: `tstusr-${ts}@test.noj`,
       password_hash: "hash",
-      role: "user",
       bio: "",
       created_at: now,
       updated_at: now,

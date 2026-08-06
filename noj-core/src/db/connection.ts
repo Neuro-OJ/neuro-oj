@@ -149,30 +149,80 @@ export async function checkDbHealth(): Promise<
  *
  * postgres.js 模式：关闭连接池后清空单例（现有行为不变）。
  */
+/**
+ * PGlite 模式：确保实例已初始化并完成 Schema 引导 + 基础种子（幂等）。
+ *
+ * deno test 每个测试文件独立模块图，PGlite 单例与 bootstrap 不跨文件共享；
+ * 依赖 DB 的 helper（如 createUserToken）必须先调用本函数，否则表不存在。
+ */
+export async function ensurePGliteSchemaForTest(): Promise<void> {
+  if (!isPGliteMode()) return;
+  if (!_pgliteInstance) {
+    _pgliteInstance = new PGlite();
+  }
+  // 自动引导 Schema（首次调用时），await 确保引导完成
+  if (!_bootstrapPromise) {
+    _bootstrapPromise = (async () => {
+      for (const ddl of SCHEMA_DDL) {
+        await _pgliteInstance!.query(ddl);
+      }
+      for (const idx of SCHEMA_INDEXES) {
+        await _pgliteInstance!.query(idx);
+      }
+    })();
+  }
+  await _bootstrapPromise;
+  _db = null; // 清空 drizzle 包装，下次 getDb() 重新包装
+
+  // Re-seed 必需数据（幂等）
+  const now = new Date().toISOString();
+  try {
+    await _pgliteInstance!.query(
+      `INSERT INTO users (id, username, email, password_hash, bio, created_at, updated_at)
+       VALUES ('0', 'root', 'root@noj.local', '', '', '${now}', '${now}')
+       ON CONFLICT (id) DO NOTHING`,
+    );
+  } catch {
+    // 表可能还没建
+  }
+  try {
+    await _pgliteInstance!.query(
+      `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
+       VALUES ('e0000000-0000-0000-0000-000000000001', 'noj-judge-python', 'all_versions', 'evaluator', 'Python 3.12 评测环境', '${now}', '${now}')
+       ON CONFLICT (id) DO NOTHING`,
+    );
+    await _pgliteInstance!.query(
+      `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
+       VALUES ('e0000000-0000-0000-0000-000000000002', 'noj-evaluator-python', 'all_versions', 'evaluator', 'Evaluator 运行时', '${now}', '${now}')
+       ON CONFLICT (id) DO NOTHING`,
+    );
+    await _pgliteInstance!.query(
+      `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
+       VALUES ('e0000000-0000-0000-0000-000000000003', 'noj-solution-python', 'all_versions', 'solution', 'Solution 运行时', '${now}', '${now}')
+       ON CONFLICT (id) DO NOTHING`,
+    );
+  } catch {
+    // 表可能还没建
+  }
+  // 种子 RBAC 角色和权限
+  try {
+    const { ensureRbacSeeds } = await import("../services/seed-rbac.ts");
+    await ensureRbacSeeds();
+  } catch {
+    // 表可能还没建
+  }
+}
+
 export async function resetDbForTest() {
   if (isPGliteMode()) {
-    // PGlite 模式 — 确保实例已初始化
-    if (!_pgliteInstance) {
-      _pgliteInstance = new PGlite();
-    }
-    // 自动引导 Schema（首次调用时），await 确保引导完成
-    if (!_bootstrapPromise) {
-      _bootstrapPromise = (async () => {
-        for (const ddl of SCHEMA_DDL) {
-          await _pgliteInstance!.query(ddl);
-        }
-        for (const idx of SCHEMA_INDEXES) {
-          await _pgliteInstance!.query(idx);
-        }
-      })();
-    }
-    await _bootstrapPromise;
+    // PGlite 模式 — 确保实例已初始化并引导 Schema + 基础种子
+    await ensurePGliteSchemaForTest();
     _db = null; // 清空 drizzle 包装，下次 getDb() 重新包装
 
     // TRUNCATE 保留 schema + re-seed
     const now = new Date().toISOString();
     try {
-      await _pgliteInstance.query(
+      await _pgliteInstance!.query(
         `TRUNCATE TABLE ${ALL_TABLES.join(", ")} CASCADE`,
       );
     } catch {
@@ -180,26 +230,26 @@ export async function resetDbForTest() {
     }
     // Re-seed 必需数据
     try {
-      await _pgliteInstance.query(
-        `INSERT INTO users (id, username, email, password_hash, role, bio, created_at, updated_at)
-         VALUES ('0', 'root', 'root@noj.local', '', 'admin', '', '${now}', '${now}')
+      await _pgliteInstance!.query(
+        `INSERT INTO users (id, username, email, password_hash, bio, created_at, updated_at)
+         VALUES ('0', 'root', 'root@noj.local', '', '', '${now}', '${now}')
          ON CONFLICT (id) DO NOTHING`,
       );
     } catch {
       // 表可能还没建
     }
     try {
-      await _pgliteInstance.query(
+      await _pgliteInstance!.query(
         `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
          VALUES ('e0000000-0000-0000-0000-000000000001', 'noj-judge-python', 'all_versions', 'evaluator', 'Python 3.12 评测环境', '${now}', '${now}')
          ON CONFLICT (id) DO NOTHING`,
       );
-      await _pgliteInstance.query(
+      await _pgliteInstance!.query(
         `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
          VALUES ('e0000000-0000-0000-0000-000000000002', 'noj-evaluator-python', 'all_versions', 'evaluator', 'Evaluator 运行时', '${now}', '${now}')
          ON CONFLICT (id) DO NOTHING`,
       );
-      await _pgliteInstance.query(
+      await _pgliteInstance!.query(
         `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
          VALUES ('e0000000-0000-0000-0000-000000000003', 'noj-solution-python', 'all_versions', 'solution', 'Solution 运行时', '${now}', '${now}')
          ON CONFLICT (id) DO NOTHING`,
@@ -216,7 +266,7 @@ export async function resetDbForTest() {
     }
     // 刷新物化视图（user_rankings，PGlite 不支持则忽略）
     try {
-      await _pgliteInstance.query(
+      await _pgliteInstance!.query(
         `REFRESH MATERIALIZED VIEW CONCURRENTLY user_rankings`,
       );
     } catch { /* PGlite 无物化视图支持 */ }
@@ -244,12 +294,17 @@ export async function resetDbForTest() {
     // 某些表可能不存在，忽略
   }
   try {
-    // re-seed root 用户
+    // re-seed root 用户（users.role 列已废弃删除）
     await getDb().execute(
-      `INSERT INTO users (id, username, email, password_hash, role, bio, created_at, updated_at)
-       VALUES ('0', 'root', 'root@noj.local', '', 'admin', '', '${now}', '${now}')
+      `INSERT INTO users (id, username, email, password_hash, bio, created_at, updated_at)
+       VALUES ('0', 'root', 'root@noj.local', '', '', '${now}', '${now}')
        ON CONFLICT (id) DO NOTHING`,
     );
+  } catch { /* 忽略 */ }
+  // 重建 RBAC 系统角色（TRUNCATE 清空了 roles / user_roles / role_permissions）
+  try {
+    const { ensureRbacSeeds } = await import("../services/seed-rbac.ts");
+    await ensureRbacSeeds();
   } catch { /* 忽略 */ }
   try {
     await getDb().execute(

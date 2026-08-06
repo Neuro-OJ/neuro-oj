@@ -35,10 +35,8 @@ function getSecretKey(): Uint8Array {
 export interface TokenPayload {
   /** 用户 ID */
   sub: string;
-  /** 用户角色名（展示/向前兼容，权限判断依赖 is_admin 而非此字段） */
+  /** 用户角色名（仅展示/审计，权限判定实时查询权限集，不依赖此字段） */
   role: string;
-  /** 是否为管理员（拥有 is_admin=true 的角色） */
-  is_admin?: boolean;
   /** 是否必须修改密码（issue #75） */
   must_change_password?: boolean;
   /** JWT 唯一标识（用于未来实现 token 黑名单/撤销） */
@@ -65,9 +63,6 @@ export async function signToken(
   const token = await new SignJWT({
     role: payload.role,
     // 仅写入存在的字段，避免向 token 注入 undefined
-    ...(payload.is_admin !== undefined && {
-      is_admin: payload.is_admin,
-    }),
     ...(payload.must_change_password !== undefined && {
       must_change_password: payload.must_change_password,
     }),
@@ -109,7 +104,6 @@ export async function verifyToken(
   return {
     sub: payload.sub as string,
     role: payload.role as string,
-    is_admin: (payload.is_admin as boolean) ?? false,
     // 旧 token 无 must_change_password 字段，缺省视为 false
     must_change_password: (payload.must_change_password as boolean) ?? false,
     jti: payload.jti,

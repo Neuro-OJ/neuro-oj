@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRoute } from "vue-router"
 import type { PostRow } from "~/composables/useCommunity"
+import { isAdminUser } from "~/utils/isAdminUser"
 
 const route = useRoute()
 const router = useRouter()
@@ -36,7 +37,7 @@ const categories = computed(() => problem.value?.categories ?? [])
 const canEdit = computed(() => {
   const p = problem.value
   if (!p) return false
-  return user.value?.role === "admin" || (p.type === "U" && p.owner_id === user.value?.id)
+  return isAdminUser(user.value) || (p.type === "U" && p.owner_id === user.value?.id)
 })
 
 const isDetailPage = computed(() => route.path === `/problems/${problemId}`)

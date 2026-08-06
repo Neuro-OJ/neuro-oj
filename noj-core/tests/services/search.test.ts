@@ -111,7 +111,6 @@ async function seedUsers() {
       username: "alice_test",
       email: "alice@example.com",
       password_hash: "x",
-      role: "user",
       created_at: now,
       updated_at: now,
     },
@@ -120,7 +119,6 @@ async function seedUsers() {
       username: "admin_test",
       email: "admin@example.com",
       password_hash: "x",
-      role: "admin",
       created_at: now,
       updated_at: now,
     },
@@ -135,7 +133,6 @@ async function seedUsers() {
       username: "root",
       email: "root@noj.local",
       password_hash: "x",
-      role: "admin",
       created_at: now,
       updated_at: now,
     })

@@ -33,7 +33,6 @@ async function createUser(prefix: string): Promise<string> {
     username: `${prefix}-${unique}`,
     email: `${prefix}-${unique}@example.com`,
     password_hash: "hash",
-    role: "user",
     created_at: now,
     updated_at: now,
   });

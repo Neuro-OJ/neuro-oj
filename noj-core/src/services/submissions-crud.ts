@@ -40,6 +40,7 @@ import {
 } from "../db/schema.ts";
 import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { getDb } from "../db/connection.ts";
+import { checkPermission } from "../lib/permissions.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
 import { validateJudgeImageWithKind } from "./judge-images.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
@@ -466,7 +467,10 @@ export async function getSubmission(
   // 注意：基础数据（题号/状态/时间等）对所有访问者公开，不在这里做"非所有者 404"的拦截
   const isOwner = !!(c?.var.userId ?? viewerId) &&
     row.user_id === (c?.var.userId ?? viewerId);
-  const isAdmin = c ? c.var.isAdmin : viewerRole === "admin";
+  // 实时权限查询（submission:read_all，admin:full_access 通配）
+  const isAdmin = c
+    ? await checkPermission(c, "submission:read_all")
+    : viewerRole === "admin";
   const canSeeDetails = isOwner || isAdmin;
 
   // 查询评测结果

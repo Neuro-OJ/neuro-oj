@@ -1,10 +1,13 @@
 <script setup lang="ts">
 definePageMeta({
   layout: "admin",
+  middleware: "admin",
   ssr: false,
 })
 
 const router = useRouter()
+
+useRequireLogin()
 
 function onSaved() {
   router.replace("/admin/problems")

@@ -26,6 +26,7 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "@nuxt/devtools": "^3.4.1"
   }
 }

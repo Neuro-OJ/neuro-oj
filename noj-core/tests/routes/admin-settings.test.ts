@@ -11,7 +11,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
-import { signToken } from "../../src/lib/jwt.ts";
 import { resetDbForTest } from "../../src/db/connection.ts";
 import {
   _resetSystemSettingsForTest,
@@ -21,7 +20,7 @@ import {
   _resetEnvSnapshotForTest,
   snapshotEnv,
 } from "../../src/lib/env-snapshot.ts";
-import { jsonRequest } from "../lib/helper.ts";
+import { createUserToken, jsonRequest } from "../lib/helper.ts";
 
 // 测试需要 JWT_SECRET 签发 token
 if (!Deno.env.get("JWT_SECRET")) {
@@ -59,7 +58,7 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     const app = createApp();
-    const token = await signToken({ sub: "test-user", role: "user" });
+    const token = await createUserToken();
     const res = await jsonRequest(app, "/api/v1/admin/settings", { token });
     assertEquals(res.status, 403);
   },
@@ -72,7 +71,7 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(app, "/api/v1/admin/settings", { token });
     assertEquals(res.status, 200);
     const body = await res.json();
@@ -100,7 +99,7 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
       "/api/v1/admin/settings/allow_register",
@@ -135,7 +134,7 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
       "/api/v1/admin/settings/hacker_key",
@@ -156,7 +155,7 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
       "/api/v1/admin/settings/allow_register",
@@ -177,7 +176,7 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
       "/api/v1/admin/settings/smtp_from",
@@ -198,7 +197,7 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await createUserToken("admin");
 
     // 先写一个
     await jsonRequest(
@@ -237,7 +236,7 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await createUserToken("admin");
     const res = await jsonRequest(
       app,
       "/api/v1/admin/settings/maintenance_mode",
@@ -254,7 +253,7 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     const app = createApp();
-    const token = await signToken({ sub: "0", role: "admin" });
+    const token = await createUserToken("admin");
     // spec：DELETE /api/v1/admin/settings/nonexistent_key → 204 幂等
     const res = await jsonRequest(
       app,

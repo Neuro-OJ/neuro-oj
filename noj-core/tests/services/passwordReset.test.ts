@@ -43,7 +43,6 @@ async function seedUser() {
     username: TEST_USER.username,
     email: TEST_USER.email,
     password_hash: await hashPassword(TEST_USER.password),
-    role: "user",
     created_at: now,
     updated_at: now,
   });

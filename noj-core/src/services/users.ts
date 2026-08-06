@@ -1,4 +1,4 @@
-import { and, eq, isNull, not, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import {
   communityPosts,
@@ -20,6 +20,7 @@ import { invalidateBanCache } from "../lib/banCache.ts";
 import { logAudit } from "./audit-log.ts";
 import type { UserResponse } from "../types/auth.ts";
 import { ROOT_USER_ID } from "../lib/constants.ts";
+import { getAdminUserIds, isUserAdmin } from "../lib/permissions.ts";
 
 /**
  * 用户主页响应——聚合统计、已通过题目、最近提交。
@@ -369,7 +370,6 @@ export async function adminUpdateUserProfile(
   id: string;
   username: string;
   email: string;
-  role: string;
   bio: string;
 }> {
   // 拒绝修改 root 系统用户，避免破坏系统惯例（root 不计入管理员统计、不可登录）
@@ -441,7 +441,6 @@ export async function adminUpdateUserProfile(
       id: user.id,
       username: user.username,
       email: user.email,
-      role: user.role,
       bio: user.bio,
     };
   }
@@ -459,7 +458,6 @@ export async function adminUpdateUserProfile(
       id: users.id,
       username: users.username,
       email: users.email,
-      role: users.role,
       bio: users.bio,
     })
     .from(users)
@@ -496,18 +494,18 @@ async function requireUser(targetUserId: string): Promise<UserRow> {
   return existing[0];
 }
 
-/** 由 users 行构造 UserResponse（active_ban 由调用方提供）。 */
-function toUserResponse(
+/** 由 users 行构造 UserResponse（active_ban 由调用方提供，is_admin 实时计算）。 */
+async function toUserResponse(
   user: UserRow,
   activeBan: UserResponse["active_ban"],
   now: string,
-): UserResponse {
+): Promise<UserResponse> {
+  const isAdmin = await isUserAdmin(user.id);
   return {
     id: user.id,
     username: user.username,
     email: user.email,
-    role: user.role,
-    is_admin: false, // TODO: 从 user_roles 查询
+    is_admin: isAdmin,
     must_change_password: user.must_change_password,
     active_ban: activeBan,
     created_at: user.created_at,
@@ -538,13 +536,10 @@ export async function banUser(
   const db = getDb();
   const existing = await requireUser(targetUserId);
 
-  // 防封禁最后一个 admin
-  if (existing.role === "admin") {
-    const [adminCountRow] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(users)
-      .where(and(eq(users.role, "admin"), not(eq(users.id, ROOT_USER_ID))));
-    const adminCount = Number(adminCountRow?.count ?? 0);
+  // 防封禁最后一个 admin（admin:full_access 权限，含继承链，排除 root）
+  if (await isUserAdmin(existing.id)) {
+    const adminIds = await getAdminUserIds();
+    const adminCount = [...adminIds].filter((id) => id !== ROOT_USER_ID).length;
     if (adminCount <= 1) {
       throw new BadRequestError(
         "系统当前仅有 1 个可登录管理员，不能封禁；如需调整请先创建新的管理员账户",
@@ -579,7 +574,7 @@ export async function banUser(
     { type: "users", id: targetUserId },
   );
 
-  return toUserResponse(
+  return await toUserResponse(
     existing,
     { reason: reason ?? "", banned_until: bannedUntil ?? null },
     now,
@@ -612,7 +607,7 @@ export async function unbanUser(
     { type: "users", id: targetUserId },
   );
 
-  return toUserResponse(existing, null, now);
+  return await toUserResponse(existing, null, now);
 }
 
 /**

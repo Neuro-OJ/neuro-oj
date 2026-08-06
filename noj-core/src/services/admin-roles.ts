@@ -14,6 +14,7 @@ import {
   users,
 } from "../db/schema.ts";
 import { ROOT_USER_ID } from "../lib/constants.ts";
+import { getAdminUserIds, isUserAdmin } from "../lib/permissions.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -35,6 +36,7 @@ interface RoleResponse {
   description: string;
   is_system: boolean;
   is_default: boolean;
+  /** 是否为管理员角色：是否关联 admin:full_access 权限 */
   is_admin: boolean;
   parent_id: string | null;
   parent_name: string | null;
@@ -62,7 +64,6 @@ export async function listRoles(): Promise<RoleResponse[]> {
       description: roles.description,
       is_system: roles.is_system,
       is_default: roles.is_default,
-      is_admin: roles.is_admin,
       parent_id: roles.parent_id,
       parent_name: sql<string>`parent.name`,
     })
@@ -90,7 +91,9 @@ export async function listRoles(): Promise<RoleResponse[]> {
       description: row.description,
       is_system: row.is_system,
       is_default: row.is_default,
-      is_admin: row.is_admin,
+      is_admin: perms.some((p) =>
+        p.resource === "admin" && p.action === "full_access"
+      ),
       parent_id: row.parent_id,
       parent_name: row.parent_name ?? null,
       permissions: perms,
@@ -151,7 +154,6 @@ export async function createRole(data: {
     description: data.description?.trim() ?? "",
     is_system: false,
     is_default: false,
-    is_admin: false,
     parent_id: data.parent_id ?? null,
     created_at: timestamp,
     updated_at: timestamp,
@@ -374,7 +376,7 @@ export async function updateUserRoles(
   }
 
   const validRoles = await db
-    .select({ id: roles.id, is_admin: roles.is_admin })
+    .select({ id: roles.id })
     .from(roles)
     .where(inArray(roles.id, roleIds));
 
@@ -384,32 +386,29 @@ export async function updateUserRoles(
     throw new BadRequestError(`无效的角色 ID: ${invalidIds.join(", ")}`);
   }
 
-  const newRolesAreAdmin = validRoles.some((r) => r.is_admin);
+  // 新角色集是否含管理员权限（admin:full_access；角色自身关联，含继承链的由
+  // 权限实时判定兜底）
+  const adminRoleRows = await db
+    .select({ role_id: rolePermissions.role_id })
+    .from(rolePermissions)
+    .innerJoin(permissions, eq(permissions.id, rolePermissions.permission_id))
+    .where(and(
+      eq(permissions.resource, "admin"),
+      eq(permissions.action, "full_access"),
+    ));
+  const adminRoleIds = new Set(adminRoleRows.map((r) => r.role_id));
+  const newRolesAreAdmin = roleIds.some((rid) => adminRoleIds.has(rid));
 
-  // 如果正在移除 admin 标记，检查是否为最后一个 admin
-  // 该用户的当前角色
-  const currentRoles = await db
-    .select({ is_admin: roles.is_admin })
-    .from(userRoles)
-    .innerJoin(roles, eq(roles.id, userRoles.role_id))
-    .where(eq(userRoles.user_id, targetUserId));
-
-  const currentlyAdmin = currentRoles.some((r) => r.is_admin);
+  // 如果正在移除该用户的 admin 权限，检查是否为最后一个 admin
+  const currentlyAdmin = await isUserAdmin(targetUserId);
 
   if (currentlyAdmin && !newRolesAreAdmin) {
-    // 正在移除该用户的 admin 角色
-    const adminCount = await db.execute(sql`
-      SELECT COUNT(DISTINCT ur.user_id)::int AS count
-      FROM user_roles ur
-      JOIN roles r ON r.id = ur.role_id
-      WHERE r.is_admin = true
-        AND ur.user_id != ${targetUserId}
-        AND ur.user_id != '0'
-    `);
-
-    // deno-lint-ignore no-explicit-any
-    const count = Number((adminCount as any)[0]?.count ?? 0);
-    if (count === 0) {
+    // 正在移除该用户的管理员权限
+    const adminIds = await getAdminUserIds();
+    const adminCount = [...adminIds].filter((id) =>
+      id !== targetUserId && id !== ROOT_USER_ID
+    ).length;
+    if (adminCount === 0) {
       throw new BadRequestError("至少保留一个管理员");
     }
   }
@@ -438,7 +437,6 @@ async function getRoleById(id: string): Promise<RoleResponse | null> {
       description: roles.description,
       is_system: roles.is_system,
       is_default: roles.is_default,
-      is_admin: roles.is_admin,
       parent_id: roles.parent_id,
       parent_name: sql<string | null>`NULL`,
     })
@@ -474,6 +472,9 @@ async function getRoleById(id: string): Promise<RoleResponse | null> {
   return {
     ...row,
     description: row.description,
+    is_admin: perms.some((p) =>
+      p.resource === "admin" && p.action === "full_access"
+    ),
     permissions: perms,
   };
 }

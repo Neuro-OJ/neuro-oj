@@ -332,7 +332,7 @@ cd dist
 - **强制改密（issue #75）**：`user.must_change_password=true` 时强制跳 `/change-password`（白名单路径 `/change-password`、`/login`、`/logout` 放行）
 
 ### admin 守卫
-- 检查 `noj:session` Cookie 中的 `role` 字段
+- 检查 `noj:session` Cookie 中的 `is_admin` 字段（RBAC：权限集含 `admin:full_access`，登录/`/auth/me` 时实时计算）
 - 非管理员 → `navigateTo("/")`（静默重定向，无错误提示）
 - SSR 阶段跳过
 

@@ -37,7 +37,7 @@ Deno.test({
     });
     assertEquals(result.user.username, TEST_USER.username);
     assertEquals(result.user.email, TEST_USER.email);
-    assertEquals(result.user.role, "user");
+    assertEquals(result.user.is_admin, false);
     assertEquals(typeof result.user.id, "string");
     assertEquals("password_hash" in result.user, false);
   },

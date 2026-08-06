@@ -77,8 +77,8 @@ function userId(c: { get: (key: "userId") => string | undefined }): string {
 async function isModerator(
   c: Parameters<typeof checkPermission>[0],
 ): Promise<boolean> {
-  return c.var.isAdmin === true ||
-    await checkPermission(c, "community_moderation:review");
+  // admin:full_access 通配放行由 checkPermission 内部处理
+  return await checkPermission(c, "community_moderation:review");
 }
 
 /** 访客读社区守卫：guest_read_enabled 关闭时未登录用户禁止访问 */

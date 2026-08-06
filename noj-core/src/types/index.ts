@@ -148,6 +148,12 @@ export const PERMISSION_DEFS: Array<{
   action: string;
   description: string;
 }> = [
+  // 管理员全权限通行证（替代 roles.is_admin 语义；权限检查含此权限即视为管理员）
+  {
+    resource: "admin",
+    action: "full_access",
+    description: "管理员全权限（隐式拥有所有权限）",
+  },
   // 题目
   { resource: "problem", action: "create", description: "创建题目" },
   {

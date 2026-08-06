@@ -6,7 +6,13 @@ import {
 import { eq, inArray } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { contests, problems, submissions, users } from "../../src/db/schema.ts";
+import {
+  contests,
+  problems,
+  submissions,
+  userRoles,
+  users,
+} from "../../src/db/schema.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { initRedisForTest, jsonRequest } from "../lib/helper.ts";
 
@@ -34,7 +40,6 @@ Deno.test({
         username: `contest-admin-${unique}`,
         email: `contest-admin-${unique}@example.com`,
         password_hash: "hash",
-        role: "admin",
         created_at: now,
         updated_at: now,
       },
@@ -43,7 +48,6 @@ Deno.test({
         username: `contest-user-${unique}`,
         email: `contest-user-${unique}@example.com`,
         password_hash: "hash",
-        role: "user",
         created_at: now,
         updated_at: now,
       },
@@ -52,11 +56,14 @@ Deno.test({
         username: `contest-invited-${unique}`,
         email: `contest-invited-${unique}@example.com`,
         password_hash: "hash",
-        role: "user",
         created_at: now,
         updated_at: now,
       },
     ]);
+    await db.insert(userRoles).values({
+      user_id: adminId,
+      role_id: "admin",
+    }).onConflictDoNothing();
     await db.insert(problems).values([
       {
         id: problemId,
@@ -84,11 +91,7 @@ Deno.test({
       },
     ]);
 
-    const adminToken = await signToken({
-      sub: adminId,
-      role: "admin",
-      is_admin: true,
-    });
+    const adminToken = await signToken({ sub: adminId, role: "admin" });
     const userToken = await signToken({ sub: userId, role: "user" });
     const invitedToken = await signToken({ sub: invitedId, role: "user" });
     let contestId: string | undefined;
@@ -379,7 +382,6 @@ Deno.test({
         username: `ac-admin-${unique}`,
         email: `ac-admin-${unique}@example.com`,
         password_hash: "hash",
-        role: "admin",
         created_at: now,
         updated_at: now,
       },
@@ -388,11 +390,15 @@ Deno.test({
         username: `ac-user-${unique}`,
         email: `ac-user-${unique}@example.com`,
         password_hash: "hash",
-        role: "user",
         created_at: now,
         updated_at: now,
       },
     ]);
+    // 关联 admin 角色（admin:full_access 权限）
+    await db.insert(userRoles).values({
+      user_id: adminId,
+      role_id: "admin",
+    }).onConflictDoNothing();
     await db.insert(problems).values({
       id: problemId,
       title: "A+B",
@@ -419,11 +425,7 @@ Deno.test({
       updated_at: now,
     });
 
-    const adminToken = await signToken({
-      sub: adminId,
-      role: "admin",
-      is_admin: true,
-    });
+    const adminToken = await signToken({ sub: adminId, role: "admin" });
     const userToken = await signToken({ sub: userId, role: "user" });
 
     let contestId: string | undefined;

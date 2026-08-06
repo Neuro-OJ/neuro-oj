@@ -174,7 +174,6 @@ export interface UserSearchItem {
   id: string;
   username: string;
   email: string;
-  role: string;
   rank: number;
   highlight: string;
 }
@@ -274,12 +273,11 @@ export async function searchUsers(
     id: string;
     username: string;
     email: string;
-    role: string;
     rank: number | null;
     highlight: string;
   }>(sql`
     SELECT
-      u.id, u.username, u.email, u.role,
+      u.id, u.username, u.email,
       ts_rank(u.search_vector, websearch_to_tsquery('simple', ${q})) AS rank,
       ts_headline('simple', u.username, websearch_to_tsquery('simple', ${q}),
         'StartSel=[[HIGHLIGHT]], StopSel=[[/HIGHLIGHT]]'
@@ -300,7 +298,6 @@ export async function searchUsers(
         id: string;
         username: string;
         email: string;
-        role: string;
         rank: number | null;
         highlight: string;
       }>;
@@ -309,7 +306,6 @@ export async function searchUsers(
       id: string;
       username: string;
       email: string;
-      role: string;
       rank: number | null;
       highlight: string;
     }>);
@@ -334,7 +330,6 @@ export async function searchUsers(
     id: r.id,
     username: r.username,
     email: r.email,
-    role: r.role,
     rank: r.rank ?? 0,
     highlight: r.highlight,
   }));

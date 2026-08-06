@@ -6,6 +6,7 @@ import { Channels, onEvent } from "../lib/event-bus.ts";
 import { createSseStream } from "../lib/sse-stream.ts";
 import { getSubmission } from "../services/submissions.ts";
 import { getQueueOverview } from "../services/queue.ts";
+import { checkPermission } from "../lib/permissions.ts";
 import {
   getCachedTodayStats,
   getCachedTotalStats,
@@ -195,7 +196,10 @@ contestSse.get(
   async (c) => {
     const contestId = c.req.param("id") as string;
     const viewerId = c.var.userId;
-    const isAdmin = c.var.isAdmin ?? false;
+    // 实时权限查询（submission:read_all，admin:full_access 通配；匿名恒 false）
+    const isAdmin = c.var.userId
+      ? await checkPermission(c, "submission:read_all")
+      : false;
     const contest = await getContest(contestId, viewerId);
     if (!contest.is_public && !isAdmin && !contest.is_registered) {
       throw new NotFoundError("竞赛不存在");

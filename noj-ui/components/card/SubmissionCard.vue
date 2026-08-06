@@ -65,7 +65,7 @@
                 <template v-else>
                     <div class="col-span-2 self-center flex items-center justify-between gap-2 text-11px">
                         <span class="text-text-muted">{{ formatTime(submission.created_at) }}</span>
-                        <span class="font-mono tabular-nums text-blue-500">{{ liveElapsed(submission.judge_started_at ?? submission.created_at) }}</span>
+                        <span class="font-mono tabular-nums text-blue-500"><LiveElapsed :start-time="submission.judge_started_at ?? submission.created_at" /></span>
                     </div>
                 </template>
             </div>
@@ -99,8 +99,6 @@ interface Submission {
 
 interface Props {
     submission: Submission
-    /** 当前时间戳（毫秒），用于正在评测的实时秒数计算 */
-    now: number
 }
 
 const props = defineProps<Props>()
@@ -136,11 +134,6 @@ function formatMemory(kb: number | null | undefined): string {
 function formatMemoryLimit(mb: number | null | undefined): string {
     if (mb == null) return "? MB"
     return mb + " MB"
-}
-
-function liveElapsed(iso: string): string {
-    const ms = Math.max(0, props.now - new Date(iso).getTime())
-    return formatTimeMs(ms)
 }
 
 /**

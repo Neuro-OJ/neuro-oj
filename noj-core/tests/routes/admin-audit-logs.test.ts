@@ -2,7 +2,7 @@ import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { auditLogs, users } from "../../src/db/schema.ts";
+import { auditLogs, userRoles, users } from "../../src/db/schema.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
@@ -29,9 +29,13 @@ async function setupFixtureData() {
     username: `audit_route_admin_${TS}`,
     email: `audit-route-admin-${TS}@example.com`,
     password_hash: "x",
-    role: "admin",
     created_at: now,
     updated_at: now,
+  }).onConflictDoNothing();
+  // 关联 admin 角色（admin:full_access 权限，权限判定实时查询）
+  await db.insert(userRoles).values({
+    user_id: ADMIN_USER_ID,
+    role_id: "admin",
   }).onConflictDoNothing();
 
   // 再插普通用户
@@ -40,7 +44,6 @@ async function setupFixtureData() {
     username: `audit_route_user_${TS}`,
     email: `audit-route-user-${TS}@example.com`,
     password_hash: "x",
-    role: "user",
     created_at: now,
     updated_at: now,
   }).onConflictDoNothing();

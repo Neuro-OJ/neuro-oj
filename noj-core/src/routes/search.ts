@@ -12,6 +12,7 @@
 
 import { Hono } from "hono";
 import { optionalAuthMiddleware } from "../middleware/auth.ts";
+import { searchRateLimit } from "../middleware/search-rate-limit.ts";
 import {
   searchCommunity,
   searchProblems,
@@ -19,6 +20,7 @@ import {
 } from "../services/search.ts";
 import { getCommunityConfig } from "../services/community.ts";
 import { parsePagination } from "../lib/pagination.ts";
+import { checkPermission } from "../lib/permissions.ts";
 import {
   ForbiddenError,
   UnauthorizedError,
@@ -40,91 +42,96 @@ const router = new Hono<Env>();
 /**
  * GET /api/v1/search
  */
-router.get("/", optionalAuthMiddleware, async (c) => {
-  const q = (c.req.query("q") ?? "").trim();
-  const type = c.req.query("type") ?? "problem";
-  const includeUParam = c.req.query("include_u");
-  const includeU = includeUParam === "true" || includeUParam === "1";
+router.get(
+  "/",
+  optionalAuthMiddleware,
+  searchRateLimit("anon"),
+  async (c) => {
+    const q = (c.req.query("q") ?? "").trim();
+    const type = c.req.query("type") ?? "problem";
+    const includeUParam = c.req.query("include_u");
+    const includeU = includeUParam === "true" || includeUParam === "1";
 
-  // 解析 isAdmin（优先使用 JWT is_admin claim，向后兼容 userRole）
-  const isAdmin = c.var.isAdmin ?? c.var.userRole === "admin";
+    // 解析 isAdmin（实时权限查询：user:search 权限，admin:full_access 通配）
+    const isAdmin = await checkPermission(c, "user:search");
 
-  // 校验
-  if (q.length < 2) {
-    throw new ValidationError("搜索关键词至少需要 2 个字符");
-  }
-  if (q.length > 100) {
-    throw new ValidationError("搜索关键词最多 100 个字符");
-  }
-  if (type !== "problem" && type !== "user" && type !== "community") {
-    throw new ValidationError("type 参数必须为 problem、user 或 community");
-  }
-
-  // 用户搜索：admin only
-  if (type === "user" && !isAdmin) {
-    // 未登录返回 401，非 admin 返回 403
-    if (!c.var.userId) {
-      throw new UnauthorizedError("请先登录");
+    // 校验
+    if (q.length < 2) {
+      throw new ValidationError("搜索关键词至少需要 2 个字符");
     }
-    throw new ForbiddenError("仅管理员可搜索用户");
-  }
+    if (q.length > 100) {
+      throw new ValidationError("搜索关键词最多 100 个字符");
+    }
+    if (type !== "problem" && type !== "user" && type !== "community") {
+      throw new ValidationError("type 参数必须为 problem、user 或 community");
+    }
 
-  // 解析分页（PR-6 评审修订：使用 parsePagination helper）
-  const { page, perPage: limit } = parsePagination(c, {
-    defaultPerPage: 20,
-    maxPerPage: 50,
-  });
+    // 用户搜索：admin only
+    if (type === "user" && !isAdmin) {
+      // 未登录返回 401，非 admin 返回 403
+      if (!c.var.userId) {
+        throw new UnauthorizedError("请先登录");
+      }
+      throw new ForbiddenError("仅管理员可搜索用户");
+    }
 
-  // 统一响应构造：{ query, type, items, total, page, limit, took_ms }
-  const respond = <
-    T extends { items: unknown[]; total: number; took_ms: number },
-  >(
-    result: T,
-  ) => {
-    c.header("X-Search-Took-Ms", String(result.took_ms));
-    return c.json({
-      data: {
-        query: q,
-        type,
-        items: result.items,
-        total: result.total,
+    // 解析分页（PR-6 评审修订：使用 parsePagination helper）
+    const { page, perPage: limit } = parsePagination(c, {
+      defaultPerPage: 20,
+      maxPerPage: 50,
+    });
+
+    // 统一响应构造：{ query, type, items, total, page, limit, took_ms }
+    const respond = <
+      T extends { items: unknown[]; total: number; took_ms: number },
+    >(
+      result: T,
+    ) => {
+      c.header("X-Search-Took-Ms", String(result.took_ms));
+      return c.json({
+        data: {
+          query: q,
+          type,
+          items: result.items,
+          total: result.total,
+          page,
+          limit,
+          took_ms: result.took_ms,
+        },
+      });
+    };
+
+    // 调用 service
+    if (type === "problem") {
+      const result = await searchProblems({
+        q,
+        isAdmin,
+        includeU,
         page,
         limit,
-        took_ms: result.took_ms,
-      },
-    });
-  };
-
-  // 调用 service
-  if (type === "problem") {
-    const result = await searchProblems({
-      q,
-      isAdmin,
-      includeU,
-      page,
-      limit,
-    });
-    return respond(result);
-  }
-
-  if (type === "community") {
-    const config = getCommunityConfig();
-    if (
-      !config.enabled ||
-      (!config.solutions_enabled && !config.discussions_enabled)
-    ) {
-      throw new ForbiddenError("该社区功能已关闭", "FEATURE_DISABLED");
+      });
+      return respond(result);
     }
-    if (!config.guest_read_enabled && !c.var.userId) {
-      throw new UnauthorizedError("登录后可搜索社区内容");
-    }
-    const result = await searchCommunity({ q, page, limit });
-    return respond(result);
-  }
 
-  // type === "user"
-  const result = await searchUsers({ q, isAdmin, page, limit });
-  return respond(result);
-});
+    if (type === "community") {
+      const config = getCommunityConfig();
+      if (
+        !config.enabled ||
+        (!config.solutions_enabled && !config.discussions_enabled)
+      ) {
+        throw new ForbiddenError("该社区功能已关闭", "FEATURE_DISABLED");
+      }
+      if (!config.guest_read_enabled && !c.var.userId) {
+        throw new UnauthorizedError("登录后可搜索社区内容");
+      }
+      const result = await searchCommunity({ q, page, limit });
+      return respond(result);
+    }
+
+    // type === "user"
+    const result = await searchUsers({ q, isAdmin, page, limit });
+    return respond(result);
+  },
+);
 
 export default router;

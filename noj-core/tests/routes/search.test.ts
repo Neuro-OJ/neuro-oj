@@ -15,8 +15,7 @@ import { sql } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { problems, users } from "../../src/db/schema.ts";
-import { signToken } from "../../src/lib/jwt.ts";
-import { jsonRequest } from "../lib/helper.ts";
+import { createUserToken, jsonRequest } from "../lib/helper.ts";
 import { connectRedis, getRedis } from "../../src/mq/connection.ts";
 import {
   _resetSystemSettingsForTest,
@@ -104,7 +103,6 @@ async function seed() {
       username: "admin_test_search",
       email: "admin-test-search@example.com",
       password_hash: "x",
-      role: "admin",
       created_at: now,
       updated_at: now,
     },
@@ -113,7 +111,6 @@ async function seed() {
       username: "alice_test_search",
       email: "alice-test-search@example.com",
       password_hash: "x",
-      role: "user",
       created_at: now,
       updated_at: now,
     },
@@ -207,7 +204,7 @@ Deno.test({
       title: "全局帖子检索标题",
       content: "用于验证全局搜索的帖子正文",
     });
-    const token = await signToken({ sub: "test-user", role: "user" });
+    const token = await createUserToken();
     const app = createApp();
     const res = await jsonRequest(
       app,

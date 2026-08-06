@@ -43,7 +43,6 @@ export interface UserResponse {
   id: string;
   username: string;
   email: string;
-  role: string;
   /** 管理员列表使用的已分配角色 ID，避免编辑时误覆盖现有角色。 */
   role_ids?: string[];
   is_admin: boolean;

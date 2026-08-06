@@ -182,7 +182,6 @@ Deno.test({
       username: `tstuser-${ts}`,
       email: `tst-${ts}@test.noj`,
       password_hash: "hash",
-      role: "user",
       created_at: now,
       updated_at: now,
     });
@@ -499,7 +498,6 @@ Deno.test({
       username: `upsert_test_${Date.now()}`,
       email: `upsert_test_${Date.now()}@test.com`,
       password_hash: "x",
-      role: "user",
       created_at: now,
       updated_at: now,
     });
@@ -574,7 +572,6 @@ Deno.test({
       username: `seq_guard_${Date.now()}`,
       email: `seq_guard_${Date.now()}@test.com`,
       password_hash: "x",
-      role: "user",
       created_at: now,
       updated_at: now,
     });
@@ -678,7 +675,6 @@ Deno.test({
           username: `test-rej-sub-admin-${Date.now()}`,
           email: `test-rej-sub-admin-${Date.now()}@example.com`,
           password_hash: "",
-          role: "admin",
           created_at: now,
           updated_at: now,
         },
@@ -687,7 +683,6 @@ Deno.test({
           username: `test-rej-sub-user-${Date.now()}`,
           email: `test-rej-sub-user-${Date.now()}@example.com`,
           password_hash: "",
-          role: "user",
           created_at: now,
           updated_at: now,
         },
@@ -829,7 +824,6 @@ Deno.test({
           username: `test-rej-prb-admin-${Date.now()}`,
           email: `test-rej-prb-admin-${Date.now()}@example.com`,
           password_hash: "",
-          role: "admin",
           created_at: now,
           updated_at: now,
         },
@@ -838,7 +832,6 @@ Deno.test({
           username: `test-rej-prb-user-${Date.now()}`,
           email: `test-rej-prb-user-${Date.now()}@example.com`,
           password_hash: "",
-          role: "user",
           created_at: now,
           updated_at: now,
         },
@@ -980,7 +973,6 @@ Deno.test({
       username: `state_test_${Date.now()}`,
       email: `st_${Date.now()}@e.com`,
       password_hash: "x",
-      role: "user",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
@@ -1044,7 +1036,6 @@ Deno.test({
       username: `state_test2_${Date.now()}`,
       email: `st2_${Date.now()}@e.com`,
       password_hash: "x",
-      role: "user",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
@@ -1106,7 +1097,6 @@ Deno.test({
       username: `state_test3_${Date.now()}`,
       email: `st3_${Date.now()}@e.com`,
       password_hash: "x",
-      role: "user",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });

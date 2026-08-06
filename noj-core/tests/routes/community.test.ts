@@ -21,7 +21,7 @@ import {
   enterTestContext,
   leaveTestContext,
 } from "../../src/lib/requestContext.ts";
-import { jsonRequest } from "../lib/helper.ts";
+import { createUserToken, jsonRequest } from "../lib/helper.ts";
 
 if (!Deno.env.get("JWT_SECRET")) {
   Deno.env.set(
@@ -49,7 +49,6 @@ async function setup(): Promise<void> {
       username: authorId,
       email: `${authorId}@test.com`,
       password_hash: "hash",
-      role: "user",
       created_at: old,
       updated_at: old,
     },
@@ -58,7 +57,6 @@ async function setup(): Promise<void> {
       username: responderId,
       email: `${responderId}@test.com`,
       password_hash: "hash",
-      role: "user",
       created_at: now,
       updated_at: now,
     },
@@ -547,11 +545,7 @@ Deno.test({
   fn: async () => {
     await setup();
     const app = createApp();
-    const adminToken = await signToken({
-      sub: "0",
-      role: "admin",
-      is_admin: true,
-    });
+    const adminToken = await createUserToken("admin");
     const userToken = await signToken({ sub: authorId, role: "user" });
     const created = await jsonRequest(
       app,
@@ -702,11 +696,7 @@ Deno.test({
       leaveTestContext();
     }
     const app = createApp();
-    const adminToken = await signToken({
-      sub: "0",
-      role: "admin",
-      is_admin: true,
-    });
+    const adminToken = await createUserToken("admin");
     const authorToken = await signToken({ sub: authorId, role: "user" });
     const responderToken = await signToken({ sub: responderId, role: "user" });
 
