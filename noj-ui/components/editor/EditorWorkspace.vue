@@ -90,7 +90,10 @@ const { state: draftState, savedAt: draftSavedAt, clear: clearDraft } = useDraft
 // 侧栏
 const sidebarTab = ref<'description' | 'history' | 'settings'>('description')
 const sidebarVisible = ref(true)
-const sidebarWidth = useResizableSplitter('editor:sidebar:width', 320, 240, 480)
+// 结构出 width 让它成为顶层 ref：v-model 模板用法依赖 Vue 顶层 setup 绑定
+// 的自动 unwrap，对象属性访问的 ref 不会被 unwrap，会报
+// "Invalid prop: type check failed for prop 'modelValue'. Expected Number, got Object"。
+const { width: sidebarWidth } = useResizableSplitter('editor:sidebar:width', 320, 240, 480)
 
 // 提交后实时轮询
 const activeSubmissionId = ref<string | null>(null)
@@ -277,7 +280,7 @@ const toolbarProblem = computed(() => {
 
           <!-- 侧栏（可隐藏 + 可拖拽） -->
           <template v-if="sidebarVisible">
-            <div :style="{ width: `${sidebarWidth.width}px` }" class="flex-shrink-0 transition-[width] duration-200">
+            <div :style="{ width: `${sidebarWidth}px` }" class="flex-shrink-0 transition-[width] duration-200">
               <EditorSidebar
                 :active="sidebarTab"
                 :problem="problem"
@@ -293,7 +296,7 @@ const toolbarProblem = computed(() => {
               />
             </div>
             <ResizableSplitter
-              v-model="sidebarWidth.width"
+              v-model="sidebarWidth"
               :min="240"
               :max="480"
               side="right"
