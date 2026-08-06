@@ -32,7 +32,6 @@ async function cleanAuditLogs() {
     username: "test-admin",
     email: "test-admin@example.com",
     password_hash: "",
-    role: "admin",
     created_at: now,
     updated_at: now,
   }).onConflictDoNothing();

@@ -10,7 +10,7 @@ import { Hono } from "hono";
 import { adminMiddleware, authMiddleware } from "../../src/middleware/auth.ts";
 import { AppError } from "../../src/lib/errors.ts";
 import { signToken } from "../../src/lib/jwt.ts";
-import { jsonRequest } from "../lib/helper.ts";
+import { createUserToken, jsonRequest } from "../lib/helper.ts";
 
 // PR-1：authMiddleware 校验 JWT 撤销需 Redis
 await initRedisForTest();
@@ -173,7 +173,7 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createAdminTestApp();
-    const token = await signToken({ sub: "test-user-id", role: "user" });
+    const token = await createUserToken();
 
     const res = await jsonRequest(app, "/admin-only", { token });
     assertEquals(res.status, 403);
@@ -188,7 +188,7 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createAdminTestApp();
-    const token = await signToken({ sub: "admin-user-id", role: "admin" });
+    const token = await createUserToken("admin");
 
     const res = await jsonRequest(app, "/admin-only", { token });
     assertEquals(res.status, 200);

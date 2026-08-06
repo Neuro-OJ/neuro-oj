@@ -33,7 +33,6 @@ async function freshSetup() {
     username: `ban-admin-${Date.now()}`,
     email: `ban-admin-${Date.now()}@test.local`,
     password_hash: "x",
-    role: "admin",
     created_at: now,
     updated_at: now,
   });
@@ -42,7 +41,6 @@ async function freshSetup() {
     username: `ban-user-${Date.now()}`,
     email: `ban-user-${Date.now()}@test.local`,
     password_hash: "x",
-    role: "user",
     created_at: now,
     updated_at: now,
   });

@@ -265,7 +265,6 @@ Deno.test({
       username: `test-del-prob-admin-${Date.now()}`,
       email: `test-del-prob-admin-${Date.now()}@example.com`,
       password_hash: "",
-      role: "admin",
       created_at: now,
       updated_at: now,
     });
@@ -358,7 +357,6 @@ Deno.test({
       username: `net-user-${Date.now()}`,
       email: `net-user-${Date.now()}@test.com`,
       password_hash: "not-used",
-      role: "user",
       created_at: now,
       updated_at: now,
     });
@@ -391,7 +389,6 @@ Deno.test({
       username: `net-admin-${Date.now()}`,
       email: `net-admin-${Date.now()}@test.com`,
       password_hash: "not-used",
-      role: "admin",
       created_at: now,
       updated_at: now,
     });

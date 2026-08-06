@@ -129,7 +129,6 @@ async function seedCheckinUser(
     username,
     email: `${username}-${Date.now()}@test.com`,
     password_hash: await hashPassword("TestRankPass1"),
-    role: "user",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   });

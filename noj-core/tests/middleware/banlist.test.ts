@@ -38,7 +38,6 @@ async function seedUser() {
     username: `banned-user-${TEST_TS}`,
     email: `banned-${TEST_TS}@test.local`,
     password_hash: "x",
-    role: "user",
     created_at: now,
     updated_at: now,
   }).onConflictDoNothing();

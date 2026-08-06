@@ -39,7 +39,6 @@ async function freshSetup() {
     username: `test-admin-${TEST_TS}`,
     email: `test-admin-${TEST_TS}@noj.local`,
     password_hash: "x",
-    role: "admin",
     created_at: now,
     updated_at: now,
   });

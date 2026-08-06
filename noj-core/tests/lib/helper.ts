@@ -195,13 +195,31 @@ export async function initRedisForTest(): Promise<void> {
 export async function createUserToken(
   role: "admin" | "user" = "user",
 ): Promise<string> {
-  const { getDb } = await import("../../src/db/connection.ts");
+  const { getDb, ensurePGliteSchemaForTest } = await import(
+    "../../src/db/connection.ts"
+  );
   const { users, userRoles } = await import("../../src/db/schema.ts");
   const { signToken } = await import("../../src/lib/jwt.ts");
   const { ensureRbacSeeds } = await import("../../src/services/seed-rbac.ts");
+  // deno test 每个文件独立模块图：PGlite 模式下必须先引导 Schema，
+  // 否则 users/roles 等表不存在（PG 模式无操作）。
+  await ensurePGliteSchemaForTest();
   const db = getDb();
-  // 幂等重建系统角色（resetDbForTest TRUNCATE 可能清空 roles 表）
-  await ensureRbacSeeds();
+  // 幂等重建系统角色（resetDbForTest TRUNCATE 可能清空 roles 表）。
+  // deno test 并行执行文件时，其他文件的 resetDbForTest 可能在本函数执行
+  // 期间并发 TRUNCATE roles 表 → user_roles 插入 FK 失败。此处捕获 FK 错误
+  // 并重试一次（重试前重新 seed），消除并行竞态窗口。
+  async function insertWithRetry(): Promise<void> {
+    try {
+      await db.insert(userRoles).values({ user_id: id, role_id: role })
+        .onConflictDoNothing();
+    } catch (err) {
+      if (!String(err).includes("user_roles_role_id_fkey")) throw err;
+      await ensureRbacSeeds();
+      await db.insert(userRoles).values({ user_id: id, role_id: role })
+        .onConflictDoNothing();
+    }
+  }
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const username = `test_${role}_${Date.now()}_${
@@ -216,7 +234,6 @@ export async function createUserToken(
     created_at: now,
     updated_at: now,
   });
-  await db.insert(userRoles).values({ user_id: id, role_id: role })
-    .onConflictDoNothing();
+  await insertWithRetry();
   return await signToken({ sub: id, role });
 }

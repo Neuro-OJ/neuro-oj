@@ -107,7 +107,6 @@ e2eTest("[e2e/search] 1.4 admin 搜索用户返回 email 字段", async () => {
           id: string;
           username: string;
           email: string;
-          role: string;
         }>;
         total?: number;
       };
@@ -119,9 +118,7 @@ e2eTest("[e2e/search] 1.4 admin 搜索用户返回 email 字段", async () => {
     if (typeof item.email !== "string" || !item.email.includes("@")) {
       throw new Error(`email 字段缺失或非法: ${JSON.stringify(item)}`);
     }
-    if (item.role !== "admin") {
-      throw new Error(`搜索 admin 用户应返回 admin role, 实际 ${item.role}`);
-    }
+    // users.role 字段已废弃（RBAC：admin:full_access 权限判定），搜索响应不再包含 role
     console.log(
       `  ✓ admin 用户搜索 OK（找到 ${item.username} <${item.email}>）`,
     );

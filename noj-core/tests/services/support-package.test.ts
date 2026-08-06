@@ -41,7 +41,6 @@ async function createTestUser(id: string): Promise<void> {
     username: `tuser-${id}`,
     email: `tuser-${id}@test.com`,
     password_hash: "not-used",
-    role: "user",
     created_at: now,
     updated_at: now,
   });

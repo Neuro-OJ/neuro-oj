@@ -36,7 +36,6 @@ async function setup() {
     username: `tstqu-${ts}`,
     email: `tstqu-${ts}@test.noj`,
     password_hash: "hash",
-    role: "user",
     created_at: now,
     updated_at: now,
   });
