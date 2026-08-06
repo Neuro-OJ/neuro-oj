@@ -373,7 +373,7 @@ Deno.test({
       body: {
         username: "ab", // 2 字符，无效
         email: `bound_min_${ts}@example.com`,
-        password: "TestPwd-2024", // 11 字符，少于 12
+        password: "TestPwd-2024", // 11 字符，通过新 8 位规则
       },
     });
     assertEquals(res.status, 400);
@@ -395,7 +395,7 @@ Deno.test({
       body: {
         username: longName,
         email: `bound_max_${ts}@example.com`,
-        password: "TestPwd-2024", // 11 字符，少于 12
+        password: "TestPwd-2024", // 11 字符，通过新 8 位规则
       },
     });
     assertEquals(res.status, 400);
@@ -403,7 +403,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "routes: POST /register 密码恰好 12 字符边界",
+  name: "routes: POST /register 密码恰好 8 字符边界",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -416,7 +416,7 @@ Deno.test({
       body: {
         username: user,
         email: `${user}@example.com`,
-        password: "TestPwd-2024a", // 恰好 12 位
+        password: "TestPwd0", // 恰好 8 位（MIN_PASSWORD_LENGTH 边界）
       },
     });
     assertEquals(res.status, 201);
