@@ -301,10 +301,21 @@ jobs:
       # 校验 JWT_SECRET 长度 ≥32（修复 finding S7）。
       # noj-core main.ts 启动时硬校验，但 CI 在测试环节会先 launch main.ts；
       # 把校验提前到 step 层，错误信息更精准。
+      #
+      # Fork / Dependabot PR 拿不到仓库 secrets，JWT_SECRET 为空——这是
+      # GitHub 保护机制（不能给 untrusted code 跑涉及真 DB 的测试），
+      # 视为预期情况优雅跳过（warning）而非 fail（error）。
       - name: Validate secrets
+        id: validate-secrets
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: |
+          if [ -z "$JWT_SECRET" ]; then
+            echo "::warning::JWT_SECRET 为空（fork / 第三方 PR），跳过 core-test-db"
+            echo "::notice::本 job 需仓库 secrets，仅 trusted PR 跑全量 DB 测试"
+            echo "SKIPPED_NO_SECRETS=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
           if [ "${#JWT_SECRET}" -lt 32 ]; then
             echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
             exit 1
@@ -322,6 +333,9 @@ jobs:
             deno-
 
       - name: 运行测试 (deno test)
+        # JWT_SECRET 缺失时由 validate-secrets step 设置 SKIPPED_NO_SECRETS=true，
+        # 此处跳过整个测试步骤（已在 validate-secrets 阶段 warning 提示）。
+        if: env.SKIPPED_NO_SECRETS != 'true'
         working-directory: noj-core
         env:
           BCRYPT_SALT_ROUNDS: 4
@@ -409,11 +423,14 @@ jobs:
           restore-keys: |
             deno-
 
+      # 修复 core-perf 失败：tests/perf 在 resetDbForTest() 里需要
+      # 38 张表 + 种子数据已存在；未先跑 00_migrate_test.ts 时直接
+      # 撞 "relation does not exist"（2026-08-06 main push 红 CI 根因）。
       - name: 运行性能基准 (NOJ_RUN_PERF=1)
         working-directory: noj-core
         env:
           BCRYPT_SALT_ROUNDS: 4
-        run: deno test -A tests/perf
+        run: deno test -A tests/00_migrate_test.ts tests/perf
 
   # ===========================================================================
   # noj-ui — Nuxt 4 前端（Deno 构建检查）
