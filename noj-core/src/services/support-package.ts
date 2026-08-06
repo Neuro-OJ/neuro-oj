@@ -182,11 +182,13 @@ export async function getProblemTemplate(
   problemNumber: number,
 ): Promise<{ content: string; language: string } | null> {
   // TODO: 生产环境从 support package 解压或单独的对象存储读取
-  // 参考实现统一命名为 submission_sample.py（与 problem.json 的 solution.entry
-  // 一致）；兼容旧题目录仍保留 submission.py 的情况。
+  // 编辑器模板（前端 /editor/:id 初始填充）与评测参考实现是两种独立用途，
+  // 优先读取题目源目录的 template.py（题目出题人提供的 starter code），
+  // 缺失时回退到 submission_sample.py / submission.py（reference solution，
+  // 仅作为兜底，避免出题人未提供 template.py 时编辑器空白）。
   // problems-src 目录按题号命名（1001/1002/1003），题目 id 为 UUID，
   // 因此调用方必须传入 number 而非 id。
-  const candidates = ["submission_sample.py", "submission.py"];
+  const candidates = ["template.py", "submission_sample.py", "submission.py"];
   for (const fileName of candidates) {
     const fsPath = resolve(
       Deno.cwd(),
