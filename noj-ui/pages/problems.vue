@@ -199,8 +199,8 @@ const columns = computed(() => {
             </NuxtLink>
           </template>
           <template #difficulty-cell="{ row }">
-            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold" :class="badgeColors[row.original.difficulty] || ''">
-              {{ difficultyLabel[row.original.difficulty] || row.original.difficulty }}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold" :class="difficultyBadgeColors[row.original.difficulty] || ''">
+              {{ difficultyLabels[row.original.difficulty] || row.original.difficulty }}
             </span>
           </template>
           <template #categories-cell="{ row }">
