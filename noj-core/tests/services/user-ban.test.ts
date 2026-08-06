@@ -40,7 +40,6 @@ async function freshSetup() {
     username: `ban-admin-${TS}`,
     email: `ban-admin-${TS}@test.local`,
     password_hash: "x",
-    role: "admin",
     created_at: now,
     updated_at: now,
   });
@@ -49,7 +48,6 @@ async function freshSetup() {
     username: `ban-admin2-${TS}`,
     email: `ban-admin2-${TS}@test.local`,
     password_hash: "x",
-    role: "admin",
     created_at: now,
     updated_at: now,
   });
@@ -59,7 +57,6 @@ async function freshSetup() {
     username: `ban-target-${TS}`,
     email: `ban-target-${TS}@test.local`,
     password_hash: "x",
-    role: "user",
     created_at: now,
     updated_at: now,
   });

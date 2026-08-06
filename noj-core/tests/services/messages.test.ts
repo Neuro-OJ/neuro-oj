@@ -33,7 +33,6 @@ async function createTestUser(): Promise<string> {
     username: `msg_test_${unique}`,
     email: `msg_test_${unique}@test.com`,
     password_hash: await hashPassword("TestMsgPass1"),
-    role: "user",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   });

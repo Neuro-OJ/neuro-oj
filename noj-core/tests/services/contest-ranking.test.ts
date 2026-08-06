@@ -76,7 +76,6 @@ Deno.test({
         username: `rank-a-${Date.now()}`,
         email: `rank-a-${Date.now()}@example.com`,
         password_hash: "hash",
-        role: "user",
         created_at: now,
         updated_at: now,
       },
@@ -85,7 +84,6 @@ Deno.test({
         username: `rank-b-${Date.now()}`,
         email: `rank-b-${Date.now()}@example.com`,
         password_hash: "hash",
-        role: "user",
         created_at: now,
         updated_at: now,
       },
@@ -288,7 +286,6 @@ Deno.test({
       username: `${id}-${Date.now()}`,
       email: `${id}-${Date.now()}@example.com`,
       password_hash: "hash",
-      role: "user" as const,
       created_at: now,
       updated_at: now,
     })));

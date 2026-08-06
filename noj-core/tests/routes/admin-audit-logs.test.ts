@@ -29,7 +29,6 @@ async function setupFixtureData() {
     username: `audit_route_admin_${TS}`,
     email: `audit-route-admin-${TS}@example.com`,
     password_hash: "x",
-    role: "admin",
     created_at: now,
     updated_at: now,
   }).onConflictDoNothing();
@@ -40,7 +39,6 @@ async function setupFixtureData() {
     username: `audit_route_user_${TS}`,
     email: `audit-route-user-${TS}@example.com`,
     password_hash: "x",
-    role: "user",
     created_at: now,
     updated_at: now,
   }).onConflictDoNothing();
