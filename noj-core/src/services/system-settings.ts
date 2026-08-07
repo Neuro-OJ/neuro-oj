@@ -493,7 +493,10 @@ export async function updateSetting(
  * 重置设置（DELETE）。从 DB 删除该 key，回退到 env/default 兜底。
  *
  * 幂等（spec 要求）：
- * - 即使 key 未注册或 DB 中无该行也正常返回（DELETE 永远不会失败）
+ * - 仅接受已注册的设置项；已注册但 DB 中无该行也正常返回（DELETE 永远不会失败）
+ * - 未注册 key 抛 ValidationError：未注册 key 无 env/default 兜底，删除是
+ *   无效操作，且可能破坏内部状态（如删除 `rbac_sensitive_field_permissions_seeded`
+ *   标记会导致敏感字段收紧授权在重启后被 seed 恢复）
  * - 缓存条目清理后，下次读取会走 env/default 兜底链
  */
 export async function resetSetting(
@@ -501,6 +504,11 @@ export async function resetSetting(
   _actorId: string,
 ): Promise<void> {
   const db = getDb();
+
+  // 安全约束：与 updateSetting 的 validateValueType 行为一致，仅允许已注册 key。
+  if (!findDefinition(key)) {
+    throw new ValidationError(`未注册的设置项: ${key}`);
+  }
 
   // 获取旧值（用于审计对比）
   const oldSetting = getSetting(key);

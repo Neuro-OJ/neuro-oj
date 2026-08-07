@@ -12,7 +12,7 @@ issue #207：题目 `runtime_config` 的敏感字段（联网开关、评测命�
 ## Goals / Non-Goals
 
 **Goals:**
-- `evaluator.command`、`evaluator.network.enabled` 成为独立 RBAC 权限项，默认放行、可收紧，收紧后无权限者设置/修改返回 403
+- `evaluator.command`、`evaluator.network` 成为独立 RBAC 权限项，默认放行、可收紧，收紧后无权限者设置/修改返回 403
 - 资源限制字段（`evaluator.time_limit_ms` / `evaluator.memory_limit_mb` / `solution.call_timeout_ms` / `solution.memory_limit_mb`）由管理员后台全局上限约束，超限拒绝
 - 创建 / 更新 / 导入三条写入路径行为一致（含 CLI 导入，root 用户天然放行）
 - 服务层 + 路由层测试覆盖
@@ -54,7 +54,7 @@ issue #207：题目 `runtime_config` 的敏感字段（联网开关、评测命�
 // 敏感字段 → 权限项 静态映射（未来新增敏感字段只需在此扩展）
 const SENSITIVE_FIELD_PERMISSIONS: Record<string, PermissionName> = {
   "evaluator.command": "problem:field_evaluator_command",
-  "evaluator.network.enabled": "problem:field_evaluator_network",
+  "evaluator.network": "problem:field_evaluator_network",
 };
 // 资源限制字段 → 设置项 key 静态映射
 const RESOURCE_LIMIT_SETTINGS: Record<string, string> = {

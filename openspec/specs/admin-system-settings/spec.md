@@ -214,9 +214,15 @@
 - **AND** admin 调用 `DELETE /api/v1/admin/settings/maintenance_mode`
 - **THEN** 响应 204，DB 行删除，第二次 `GET` 该项 `source='default'` `effective_value=false`
 
-#### Scenario: 重置不存在的 key
+#### Scenario: 重置未注册 key 返回 400
 
-- **WHEN** admin 调用 `DELETE /api/v1/admin/settings/nonexistent_key`（DB 中无此行）
+- **WHEN** admin 调用 `DELETE /api/v1/admin/settings/nonexistent_key`（未注册的设置项）
+- **THEN** 响应 400，message: '未注册的设置项: nonexistent_key'
+- **AND** 不删除任何 DB 行（防止经 API 删除内部标记如 `rbac_sensitive_field_permissions_seeded`，导致敏感字段收紧授权在重启后被 seed 恢复）
+
+#### Scenario: 重置已注册但 DB 无行的 key（幂等）
+
+- **WHEN** admin 调用 `DELETE /api/v1/admin/settings/maintenance_mode`（已注册，DB 中无此行）
 - **THEN** 响应 204（幂等），不抛错
 
 #### Scenario: 重置后写审计日志

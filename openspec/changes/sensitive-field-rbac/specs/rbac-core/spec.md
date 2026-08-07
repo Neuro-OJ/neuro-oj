@@ -8,7 +8,7 @@
 - `admin`：`is_system=true`, `is_admin=true`, `is_default=false`，无 parent
 - `user`：`is_system=true`, `is_admin=false`, `is_default=true`，无 parent
 
-**权限**（核心权限 24 个，另含 contest/community 等资源域权限；完整清单以 `PERMISSION_DEFS` 为准）：
+**权限**（共 42 个，覆盖 problem/submission/user/category/contest/community/system 资源域；完整清单以 `PERMISSION_DEFS` 为准）：
 - `problem:create`, `problem:create_p`, `problem:read`
 - `problem:write_own`, `problem:write_any`
 - `problem:delete_own`, `problem:delete_any`
@@ -19,14 +19,16 @@
 - `submission:rejudge`
 - `user:read_profile`, `user:search`, `user:manage`
 - `category:read`, `category:manage`
+- `contest:participate` 及 `community:*` 域权限（read / create_solution / create_discussion / create_moment / comment / react / follow / report）
 - `system:settings`, `system:judge_images`, `system:audit_logs`, `system:ip_bans`
+- `admin:full_access`（管理员通配权限）
 
-`user` 角色 SHALL 默认拥有以下权限：`problem:create`, `problem:read`, `problem:write_own`, `problem:delete_own`, `problem:package_manage_own`, `problem:field_evaluator_command`, `problem:field_evaluator_network`, `submission:create`, `submission:read_own`, `user:read_profile`, `category:read`。
-`admin` 角色 SHALL 不需要显式分配权限（`is_admin=true` 隐式全权限）。
+`user` 角色 SHALL 默认拥有以下权限（`USER_DEFAULT_PERMISSIONS`，18 项）：`problem:create`, `problem:read`, `problem:write_own`, `problem:delete_own`, `problem:package_manage_own`, `submission:create`, `submission:read_own`, `user:read_profile`, `category:read`, `contest:participate`, `community:read`, `community:create_solution`, `community:create_discussion`, `community:create_moment`, `community:comment`, `community:react`, `community:follow`, `community:report`。
+`admin` 角色 SHALL 通过 `admin:full_access` 通配权限放行全部操作（无需逐项分配权限）。
 
 #### Scenario: 全新部署 init:system 创建预置角色
 - **WHEN** `deno task init:system` 在新数据库上执行
-- **THEN** `roles` 表包含 admin 和 user 两个系统角色，`permissions` 表包含 24 条权限定义，`role_permissions` 表包含 user 角色的 11 条权限关联（含两个敏感字段权限项）
+- **THEN** `roles` 表包含 admin 和 user 两个系统角色，`permissions` 表包含 42 条权限定义（`PERMISSION_DEFS` 全量），`role_permissions` 表包含 user 角色的 20 条权限关联（18 条常规默认授权 + 2 条敏感字段一次性授权）
 
 #### Scenario: 重复 init:system 幂等
 - **WHEN** `deno task init:system` 在已有预置数据的数据库上再次执行

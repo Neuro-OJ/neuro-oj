@@ -5,13 +5,13 @@
 
 ## 2. 资源上限设置项
 
-- [ ] 2.1 在 `noj-core/src/lib/settings-registry.ts` 扩展 `SettingCategory` 联合类型新增 `judge` 分类
-- [ ] 2.2 注册 4 个 integer 设置项：`judge_max_evaluator_time_limit_ms` / `judge_max_evaluator_memory_limit_mb` / `judge_max_solution_call_timeout_ms` / `judge_max_solution_memory_limit_mb`（default 0、min 0、category judge）
-- [ ] 2.3 验证 `validateRegistry()`、`GET /api/v1/admin/settings` 自动覆盖新设置项（无需前端改动，运行冒烟验证）
+- [x] 2.1 在 `noj-core/src/lib/settings-registry.ts` 扩展 `SettingCategory` 联合类型新增 `judge` 分类
+- [x] 2.2 注册 4 个 integer 设置项：`judge_max_evaluator_time_limit_ms` / `judge_max_evaluator_memory_limit_mb` / `judge_max_solution_call_timeout_ms` / `judge_max_solution_memory_limit_mb`（default 0、min 0、category judge）
+- [x] 2.3 验证 `validateRegistry()`、`GET /api/v1/admin/settings` 自动覆盖新设置项（无需前端改动，运行冒烟验证）
 
 ## 3. 共享守卫实现
 
-- [x] 3.1 新建 `noj-core/src/services/problem-field-guard.ts`：`SENSITIVE_FIELD_PERMISSIONS` 静态映射（evaluator.command / evaluator.network.enabled → 权限项）
+- [x] 3.1 新建 `noj-core/src/services/problem-field-guard.ts`：`SENSITIVE_FIELD_PERMISSIONS` 静态映射（evaluator.command / evaluator.network → 权限项）
 - [x] 3.2 实现 `assertSensitiveFieldPermissions(c, runtimeConfig)`：仅检查请求中显式存在的敏感字段，`assertPermission` 抛 403；兼容 CLI 无 Context 的 admin 退化路径（与 `isAdminActor` 一致）
 - [x] 3.3 实现 `enforceResourceLimits(runtimeConfig)`：`RESOURCE_LIMIT_SETTINGS` 映射 + 读取设置，值 >0 且超限时抛 AppError(400, "RESOURCE_LIMIT_EXCEEDED"，错误含上限与实际值)
 

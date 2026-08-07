@@ -247,19 +247,20 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin-settings route: DELETE /settings/:key 未注册 key 也 204（幂等）",
+  name: "admin-settings route: DELETE /settings/:key 未注册 key 返回 400",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
     const app = createApp();
     const token = await createUserToken("admin");
-    // spec：DELETE /api/v1/admin/settings/nonexistent_key → 204 幂等
+    // 安全约束：未注册 key（如内部标记 rbac_sensitive_field_permissions_seeded）
+    // 不可经 reset 删除——否则收紧的敏感字段授权会在重启后被 seed 恢复
     const res = await jsonRequest(
       app,
       "/api/v1/admin/settings/totally_unregistered_key",
       { method: "DELETE", token },
     );
-    assertEquals(res.status, 204);
+    assertEquals(res.status, 400);
   },
 });
