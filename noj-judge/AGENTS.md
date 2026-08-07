@@ -171,7 +171,6 @@ cargo fmt
     },
     "solution": {
       "image": "noj-judge-python",
-      "entry": "solution.py",
       "call_timeout_ms": 2000,
       "memory_limit_mb": 512
     }

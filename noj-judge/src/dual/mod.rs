@@ -36,6 +36,10 @@ use crate::types::{JudgeResult, JudgeStatus, RuntimeConfig};
 /// 若无限 append 会拖垮 judge 进程（容器内存限制不约束 judge）。
 pub const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
 
+/// Solution 容器入口文件名（评测内部约定，硬编码；与 noj_solution_sdk.host
+/// 的 `--entry` 路径一致，模块名固定为 `user_solution`，文件名不影响评测）。
+pub const SOLUTION_ENTRY_FILE: &str = "main.py";
+
 /// 文件注入 exec 完成轮询次数与间隔（50 × 100ms = 5s 上限）。
 const INJECT_POLL_ATTEMPTS: u32 = 50;
 const INJECT_POLL_INTERVAL_MS: u64 = 100;
@@ -193,11 +197,11 @@ pub async fn evaluate_dual(
         info!("无支持包，跳过注入");
     }
 
-    // 4. 注入用户代码到 Solution 容器（使用 runtime_config.solution.entry 作为文件名）
+    // 4. 注入用户代码到 Solution 容器（入口文件名硬编码，见 SOLUTION_ENTRY_FILE）
     inject_file_to_container(
         &docker,
         &solution_id,
-        &runtime_config.solution.entry,
+        SOLUTION_ENTRY_FILE,
         user_code.as_bytes(),
     )
     .await
@@ -209,7 +213,7 @@ pub async fn evaluate_dual(
         .context("启动 Evaluator exec 失败")?;
 
     // 6. 启动 Solution exec
-    let solution_entry_path = format!("/workspace/{}", runtime_config.solution.entry);
+    let solution_entry_path = format!("/workspace/{}", SOLUTION_ENTRY_FILE);
     let solution_exec = start_exec(
         &docker,
         &solution_id,

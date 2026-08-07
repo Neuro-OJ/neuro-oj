@@ -21,9 +21,9 @@
   - `evaluator.memory_limit_mb: number`（必填，> 0）
   - `evaluator.network: object`（可选，缺省视为 `{"enabled": false}`）
   - `solution.image: string`（必填）
-  - `solution.entry: string`（必填，如 `solution.py`）
   - `solution.call_timeout_ms: number`（必填，> 0；作为调用级超时的**题目级默认值**，`runner.call(..., timeout_ms)` 可按调用覆盖）
   - `solution.memory_limit_mb: number`（必填，> 0）
+- **THEN** `runtime_config` 结构 MUST 不包含 `solution.entry` 字段——Solution 入口为评测内部约定，由 judge 硬编码：用户代码以固定文件名 `main.py` 注入容器，SDK 经 `--entry /workspace/main.py` 加载（模块名固定 `user_solution`），出题人不可见、不可配置
 
 #### Scenario: evaluator.command 缺省注入默认值
 
@@ -40,6 +40,12 @@
 
 - **WHEN** `runtime_config.evaluator.command` 显式提供（如 `python3 /workspace/evaluator/main.py`）
 - **THEN** 系统保留显式值，不做默认注入
+
+#### Scenario: 评测注入名硬编码
+
+- **WHEN** 用户提交代码，judge 执行评测
+- **THEN** judge 将用户代码以固定文件名 `main.py` 注入 Solution 容器 `/workspace`
+- **THEN** SDK host 以 `--entry /workspace/main.py` 启动，以固定模块名 `user_solution` 加载，与题目配置无关
 
 ### Requirement: admin API 处理 runtime_config
 

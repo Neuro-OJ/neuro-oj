@@ -908,7 +908,6 @@ else:
         },
         solution: SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
-            entry: "solution.py".to_string(),
             call_timeout_ms: 8000,
             memory_limit_mb: 128,
         },

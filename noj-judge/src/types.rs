@@ -66,8 +66,6 @@ pub struct EvaluatorRuntime {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SolutionRuntime {
     pub image: String,
-    /// Solution 容器内入口文件名（例如 `solution.py`）。
-    pub entry: String,
     /// 单次 SDK 调用的时间上限（毫秒）。
     pub call_timeout_ms: u64,
     pub memory_limit_mb: u64,
@@ -231,7 +229,7 @@ mod tests {
             "problem_id": "1001",
             "runtime_config": {
                 "evaluator": {"image": "noj-evaluator-python", "command": "python3 /workspace/evaluate.py", "time_limit_ms": 5000, "memory_limit_mb": 512},
-                "solution": {"image": "noj-solution-python", "entry": "submission_sample.py", "call_timeout_ms": 2000, "memory_limit_mb": 512}
+                "solution": {"image": "noj-solution-python", "call_timeout_ms": 2000, "memory_limit_mb": 512}
             },
             "language": "python3",
             "code": "print('hello')",
@@ -252,7 +250,7 @@ mod tests {
             "problem_id": "2001",
             "runtime_config": {
                 "evaluator": {"image": "noj-evaluator-python", "command": "python3 /workspace/evaluate.py", "time_limit_ms": 5000, "memory_limit_mb": 512},
-                "solution": {"image": "noj-solution-python", "entry": "submission_sample.py", "call_timeout_ms": 2000, "memory_limit_mb": 512}
+                "solution": {"image": "noj-solution-python", "call_timeout_ms": 2000, "memory_limit_mb": 512}
             },
             "download_url": "noj-download://base64/?content=UEsDBBQAAAAIA",
             "language": "python3",
@@ -275,7 +273,7 @@ mod tests {
             "problem_id": "1001",
             "runtime_config": {
                 "evaluator": {"image": "noj-evaluator-python", "command": "python3 /workspace/evaluate.py", "time_limit_ms": 5000, "memory_limit_mb": 512},
-                "solution": {"image": "noj-solution-python", "entry": "submission_sample.py", "call_timeout_ms": 2000, "memory_limit_mb": 512}
+                "solution": {"image": "noj-solution-python", "call_timeout_ms": 2000, "memory_limit_mb": 512}
             },
             "download_url": "",
             "language": "python3",

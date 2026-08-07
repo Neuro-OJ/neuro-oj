@@ -56,7 +56,6 @@ async function createProblem(number: number): Promise<string> {
       },
       solution: {
         image: "noj-solution-python",
-        entry: "submission.py",
         call_timeout_ms: 2000,
         memory_limit_mb: 512,
       },

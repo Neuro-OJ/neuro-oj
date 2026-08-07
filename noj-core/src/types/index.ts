@@ -22,8 +22,6 @@ export interface EvaluatorRuntime {
 export interface SolutionRuntime {
   /** Docker 镜像名（须在 `judge_images` 白名单中且 kind='solution'） */
   image: string;
-  /** Solution 容器内入口文件名，如 `solution.py` */
-  entry: string;
   /** 单次 SDK 调用的时间上限（毫秒），作为调用级超时的题目级默认值（runner.call 可传 timeout_ms 覆盖；capability 可经 register_capability 配置）。单次超时不影响 host 进程 */
   call_timeout_ms: number;
   /** Solution 容器内存上限（MB） */
@@ -56,7 +54,7 @@ export interface JudgeTask {
   language: string;
   /** 用户源代码 */
   code: string;
-  /** 用户代码的文件名（用于界面展示，容器内以 runtime_config.solution.entry 为准） */
+  /** 用户代码的文件名（用于界面展示；容器内由 judge 以硬编码名 `main.py` 注入） */
   file_name?: string;
   /** 重测序列号（重测时递增）。首次提交不传，默认 0。 */
   rejudge_seq?: number;

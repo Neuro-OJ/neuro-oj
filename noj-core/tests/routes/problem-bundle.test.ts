@@ -38,7 +38,6 @@ export function makeBundleZip(
       },
       solution: {
         image: "noj-solution-python",
-        entry: "submission_sample.py",
         call_timeout_ms: 2000,
         memory_limit_mb: 512,
       },
@@ -124,6 +123,58 @@ Deno.test({
 });
 
 Deno.test({
+  name: "import-bundle: manifest.template 合法值导入成功",
+  ignore: skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+
+    const formData = new FormData();
+    formData.append(
+      "file",
+      makeZipBlob({ template: "starter.py" }),
+      "tpl1.zip",
+    );
+
+    const res = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    assertEquals(res.status, 200);
+  },
+});
+
+Deno.test({
+  name: "import-bundle: manifest.template 含路径分隔符/.. 被拒（400）",
+  ignore: skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+
+    const formData = new FormData();
+    formData.append(
+      "file",
+      makeZipBlob({ template: "../evil.py" }),
+      "tpl2.zip",
+    );
+
+    const res = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    assertEquals(res.status, 400);
+  },
+});
+
+Deno.test({
   name:
     "import-bundle: admin 按 (type, number) 匹配更新既有题目（幂等 upsert）",
   ignore: skipEnv,
@@ -149,7 +200,6 @@ Deno.test({
         },
         solution: {
           image: "noj-solution-python",
-          entry: "submission_sample.py",
           call_timeout_ms: 2000,
           memory_limit_mb: 512,
         },
@@ -488,7 +538,6 @@ Deno.test({
           },
           solution: {
             image: "noj-solution-python",
-            entry: "submission_sample.py",
             call_timeout_ms: 2000,
             memory_limit_mb: 512,
           },

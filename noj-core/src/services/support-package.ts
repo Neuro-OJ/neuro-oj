@@ -170,44 +170,50 @@ export async function getSupportPackageBytes(
 }
 
 /**
- * 获取题目的初始代码模板（submission.py）。
+ * 获取题目的初始代码模板（前端编辑器 starter code）。
  *
- * 优先级：
- * 1. 本地源目录 `data/problems-src/<id>/submission.py`（开发环境）
- * 2. 不支持包时返回 null（路由层返回 404）
+ * 读取题目源码目录 `data/problems-src/<number>/problem.json` 的 `template`
+ * 字段索引的文件（缺省默认 `"template.py"`，兼容未声明该字段的旧题目）。
  *
- * 生产环境需要将 submission.py 单独存储（TODO: 上传至 S3/对象存储）。
+ * 模板仅供前端编辑器初始填充，与评测参考实现解耦——不再回退
+ * `submission_sample.py` / `submission.py`（参考实现已从源码目录移除）。
+ *
+ * 生产环境需要将模板单独存储（TODO: 上传至 S3/对象存储）。
  * 目前 dev 模式：直接从源码目录读取。
  */
 export async function getProblemTemplate(
   problemNumber: number,
 ): Promise<{ content: string; language: string } | null> {
-  // TODO: 生产环境从 support package 解压或单独的对象存储读取
-  // 编辑器模板（前端 /editor/:id 初始填充）与评测参考实现是两种独立用途，
-  // 优先读取题目源目录的 template.py（题目出题人提供的 starter code），
-  // 缺失时回退到 submission_sample.py / submission.py（reference solution，
-  // 仅作为兜底，避免出题人未提供 template.py 时编辑器空白）。
   // problems-src 目录按题号命名（1001/1002/1003），题目 id 为 UUID，
   // 因此调用方必须传入 number 而非 id。
-  const candidates = ["template.py", "submission_sample.py", "submission.py"];
-  for (const fileName of candidates) {
-    const fsPath = resolve(
-      Deno.cwd(),
-      "data",
-      "problems-src",
-      String(problemNumber),
-      fileName,
-    );
-    try {
-      const content = await Deno.readTextFile(fsPath);
-      // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
-      return { content, language: "python3" };
-    } catch (err) {
-      if (err instanceof Deno.errors.NotFound) {
-        continue;
-      }
-      throw err;
+  const srcDir = resolve(
+    Deno.cwd(),
+    "data",
+    "problems-src",
+    String(problemNumber),
+  );
+
+  // 1. 读 manifest.template 字段（缺省 "template.py"）
+  let templateFile = "template.py";
+  try {
+    const manifest = JSON.parse(
+      await Deno.readTextFile(resolve(srcDir, "problem.json")),
+    ) as { template?: unknown };
+    if (
+      typeof manifest.template === "string" && manifest.template.trim()
+    ) {
+      templateFile = manifest.template;
     }
+  } catch {
+    // manifest 缺失或损坏：回退默认 template.py
   }
-  return null;
+
+  // 2. 读取模板文件
+  try {
+    const content = await Deno.readTextFile(resolve(srcDir, templateFile));
+    // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
+    return { content, language: "python3" };
+  } catch {
+    return null;
+  }
 }

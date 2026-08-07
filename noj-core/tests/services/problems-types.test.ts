@@ -7,8 +7,6 @@ import { assertThrows } from "jsr:@std/assert@^1";
 import { validateRuntimeConfig } from "../../src/services/problems-types.ts";
 import type { RuntimeConfig } from "../../src/types/problems.ts";
 
-const ts = Date.now();
-
 function validRuntimeConfig(): RuntimeConfig {
   return {
     evaluator: {
@@ -19,7 +17,6 @@ function validRuntimeConfig(): RuntimeConfig {
     },
     solution: {
       image: "noj-solution-python",
-      entry: `solution_${ts}.py`,
       call_timeout_ms: 2000,
       memory_limit_mb: 256,
     },

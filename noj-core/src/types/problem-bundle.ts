@@ -54,6 +54,8 @@ export interface ProblemBundleManifest {
   /** 分类名数组，按 name 匹配已有分类，缺省忽略 + warning */
   categories?: string[];
   samples?: ProblemBundleSample[];
+  /** 模板文件索引（纯文件名，缺省默认 "template.py"）：前端编辑器初始代码 */
+  template?: string;
   runtime_config: RuntimeConfig;
 }
 
@@ -160,6 +162,21 @@ export function validateBundleManifest(
     }
   }
 
+  if (m.template !== undefined) {
+    if (typeof m.template !== "string" || !m.template.trim()) {
+      throw new BadRequestError("manifest.template 必须是非空字符串");
+    }
+    // 模板安全校验：禁止路径分隔符与 ..（与 solution.entry 旧校验同风格）
+    if (
+      m.template.includes("/") || m.template.includes("\\") ||
+      m.template.includes("..")
+    ) {
+      throw new BadRequestError(
+        `manifest.template 含非法字符：${m.template}`,
+      );
+    }
+  }
+
   if (typeof m.runtime_config !== "object" || m.runtime_config === null) {
     throw new BadRequestError("manifest.runtime_config 是必填字段");
   }
@@ -179,6 +196,7 @@ export function validateBundleManifest(
     number: m.number as number | undefined,
     categories: m.categories as string[] | undefined,
     samples: m.samples as ProblemBundleSample[] | undefined,
+    template: m.template as string | undefined,
     runtime_config: runtimeConfig,
   };
 }

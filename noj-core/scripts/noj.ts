@@ -58,6 +58,8 @@ async function buildProblemPackage(id: string): Promise<void> {
       "-x",
       "submission*",
       "-x",
+      "template.py",
+      "-x",
       "*__pycache__*",
       "-x",
       ".git/*",

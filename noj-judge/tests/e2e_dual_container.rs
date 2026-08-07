@@ -49,7 +49,6 @@ fn dual_task() -> JudgeTask {
             },
             solution: SolutionRuntime {
                 image: "noj-judge-test-runner:latest".to_string(),
-                entry: "solution.py".to_string(),
                 call_timeout_ms: 1_000,
                 memory_limit_mb: 256,
             },
@@ -587,7 +586,6 @@ fn dual_task_runtime_config_serialization() {
             },
             "solution": {
                 "image": "noj-solution-python:3.12",
-                "entry": "solution.py",
                 "call_timeout_ms": 1000,
                 "memory_limit_mb": 256
             }
@@ -633,7 +631,6 @@ async fn evaluate_dual_end_to_end() {
         },
         solution: SolutionRuntime {
             image: "noj-judge-test-runner:latest".to_string(),
-            entry: "solution.py".to_string(),
             call_timeout_ms: 5000,
             memory_limit_mb: 128,
         },
@@ -694,7 +691,6 @@ except Exception as e:
         },
         solution: SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
-            entry: "solution.py".to_string(),
             call_timeout_ms: 100, // 题目级默认：100ms
             memory_limit_mb: 128,
         },
@@ -770,7 +766,6 @@ result.accept(score=1000, details={'cases': out})
         },
         solution: SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
-            entry: "solution.py".to_string(),
             call_timeout_ms: 5000, // 题目级默认宽松；验证调用级 50ms 覆盖
             memory_limit_mb: 128,
         },
@@ -843,7 +838,6 @@ except Exception as e:
         },
         solution: SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
-            entry: "solution.py".to_string(),
             call_timeout_ms: 5000, // 题目级默认宽松；验证 cap_reg 上报的 100ms 生效
             memory_limit_mb: 128,
         },
@@ -911,7 +905,6 @@ while True:
         },
         solution: SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
-            entry: "solution.py".to_string(),
             call_timeout_ms: 5000,
             memory_limit_mb: 128,
         },
@@ -966,7 +959,6 @@ runner.call('sleep_solution')
         },
         solution: SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
-            entry: "solution.py".to_string(),
             call_timeout_ms: 100, // 100ms 调用超时
             memory_limit_mb: 128,
         },
@@ -1031,7 +1023,6 @@ except SolutionTimeoutError:
         },
         solution: SolutionRuntime {
             image: "noj-e2e-sdk-solution:latest".to_string(),
-            entry: "solution.py".to_string(),
             call_timeout_ms: 100,
             memory_limit_mb: 128,
         },

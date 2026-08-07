@@ -299,13 +299,11 @@ router.get("/:id/support-package", authMiddleware, async (c) => {
  * GET /api/v1/problems/:id/template
  *
  * 用于编辑器在没有用户本地草稿时填入的初始代码：
- * - 题目源码目录有 template.py → 返回内容（推荐：出题人提供 starter）
- * - 没有 → 回退到 submission_sample.py / submission.py（reference solution，仅兜底）
- * - 都没有 → 404
+ * - 按 manifest `template` 字段索引题目源码目录中的模板文件（缺省 `template.py`）
+ * - 模板文件不存在 → 404
  *
- * template.py 与 submission_sample.py 是两种独立用途：
- * - template.py：前端编辑器 starter（给用户看的）
- * - submission_sample.py：评测 reference solution（给 judge 看的）
+ * 模板仅供前端编辑器初始填充（starter code），与评测参考实现解耦；
+ * 不再回退 submission_sample.py / submission.py。
  */
 router.get("/:id/template", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
