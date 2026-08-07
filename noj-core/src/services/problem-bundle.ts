@@ -37,6 +37,10 @@ import {
 import type { ProblemResponseWithCategories } from "../types/problems.ts";
 import { updateProblem } from "./problems-crud.ts";
 import { validateJudgeImageWithKind } from "./judge-images.ts";
+import {
+  assertSensitiveFieldPermissions,
+  enforceResourceLimits,
+} from "./problem-field-guard.ts";
 import { syncProblemCategories } from "./problems-categories.ts";
 import { getProblem } from "./problems-list.ts";
 import { type CategoryTreeNode, listCategories } from "./categories.ts";
@@ -240,6 +244,17 @@ async function updateExisting(
   storage: Awaited<ReturnType<typeof getStorageProvider>>,
   strippedZip: Uint8Array,
 ): Promise<ProblemResponseWithCategories> {
+  // issue #207：先于 storage 操作执行敏感字段权限 + 资源上限校验——
+  // 若在 storage 操作之后才失败（updateProblem 内部），旧评测包已被删除、
+  // 新包已上传而 DB 未更新，造成评测包指向不存在的对象（评审 I4）。
+  await assertSensitiveFieldPermissions(
+    c,
+    actor.userId,
+    actor.userRole,
+    manifest.runtime_config,
+  );
+  enforceResourceLimits(manifest.runtime_config);
+
   if (oldStorageUrl) {
     try {
       await storage.delete(oldStorageUrl);
@@ -304,6 +319,14 @@ async function createViaCrud(
   // evaluator 联网权限与题目创建权限一致：普通用户导入创建 U 型题可开网；
   // P 型由上方类型检查保证仅 admin。安全提醒：联网 + 可控 evaluator.command
   // = 联网容器任意命令执行，题目包 manifest.runtime_config 由上传者完全可控。
+  // issue #207：与 CRUD 创建路径一致的敏感字段权限检查 + 资源上限校验
+  await assertSensitiveFieldPermissions(
+    c,
+    actor.userId,
+    actor.userRole,
+    manifest.runtime_config,
+  );
+  enforceResourceLimits(manifest.runtime_config);
 
   const db = getDb();
   const categoryIds = await resolveCategoryIds(manifest.categories);

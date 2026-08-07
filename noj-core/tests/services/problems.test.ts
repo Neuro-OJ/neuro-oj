@@ -341,7 +341,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "problems service: 普通用户开启 evaluator 联网放行（有创建权限即可）",
+  name: "problems service: 系统调用（root 身份）开启 evaluator 联网放行",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -358,15 +358,15 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
+    // 无 c、无 userId/userRole = root 系统调用（守卫放行）；敏感字段权限的
+    // 真实用户路径由 tests/routes/problem-field-guard.test.ts 覆盖
     const created = await createProblem(
       {
-        title: `普通用户联网题 ${Date.now()}`,
-        description: "普通用户可开启联网",
+        title: `系统调用联网题 ${Date.now()}`,
+        description: "系统调用可开启联网",
         difficulty: "easy",
         runtime_config: NETWORKED_RUNTIME_CONFIG,
       },
-      "user-1",
-      "user",
     );
     assertEquals(created.runtime_config.evaluator.network?.enabled, true);
   },

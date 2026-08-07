@@ -302,16 +302,17 @@ Deno.test({
 });
 
 Deno.test({
-  name: "system-settings service: resetSetting 未注册 key 也幂等（不抛错）",
+  name: "system-settings service: resetSetting 未注册 key 抛 ValidationError",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
-    // spec：DELETE /api/v1/admin/settings/nonexistent_key 应当响应 204，不抛错
-    await resetSetting("totally_unregistered_key_xyz", "0");
-    // 后续再次调用同样幂等
-    await resetSetting("totally_unregistered_key_xyz", "0");
-    assertEquals(true, true);
+    // 安全约束：未注册 key（如内部标记 rbac_sensitive_field_permissions_seeded）
+    // 不可经 reset 删除——否则收紧的敏感字段授权会在重启后被 seed 恢复
+    await assertRejects(
+      () => resetSetting("totally_unregistered_key_xyz", "0"),
+      ValidationError,
+    );
   },
 });
 

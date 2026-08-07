@@ -13,6 +13,7 @@
  * - database: 数据库
  * - redis: Redis
  * - cors: 跨域
+ * - judge: 评测资源限制
  * - other: 其他
  */
 
@@ -28,6 +29,7 @@ export type SettingCategory =
   | "redis"
   | "cors"
   | "community"
+  | "judge"
   | "other";
 
 /** 注册表条目（DB-backed 设置项的元数据） */
@@ -576,6 +578,48 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "community",
     min: 0,
     max: 86400,
+  },
+
+  // ── judge ───────────────────────────────────────────────
+  {
+    key: "judge_max_evaluator_time_limit_ms",
+    type: "integer",
+    default: 0,
+    description: "evaluator 单用例时限上限（毫秒），0 = 不限制",
+    is_secret: false,
+    envFallback: "JUDGE_MAX_EVALUATOR_TIME_LIMIT_MS",
+    category: "judge",
+    min: 0,
+  },
+  {
+    key: "judge_max_evaluator_memory_limit_mb",
+    type: "integer",
+    default: 0,
+    description: "evaluator 内存上限（MB），0 = 不限制",
+    is_secret: false,
+    envFallback: "JUDGE_MAX_EVALUATOR_MEMORY_LIMIT_MB",
+    category: "judge",
+    min: 0,
+  },
+  {
+    key: "judge_max_solution_call_timeout_ms",
+    type: "integer",
+    default: 0,
+    description: "solution 调用超时上限（毫秒），0 = 不限制",
+    is_secret: false,
+    envFallback: "JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS",
+    category: "judge",
+    min: 0,
+  },
+  {
+    key: "judge_max_solution_memory_limit_mb",
+    type: "integer",
+    default: 0,
+    description: "solution 内存上限（MB），0 = 不限制",
+    is_secret: false,
+    envFallback: "JUDGE_MAX_SOLUTION_MEMORY_LIMIT_MB",
+    category: "judge",
+    min: 0,
   },
 
   // ── other ─────────────────────────────────────────────────

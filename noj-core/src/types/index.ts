@@ -174,6 +174,16 @@ export const PERMISSION_DEFS: Array<{
     action: "package_manage_any",
     description: "管理任意题目的支持包",
   },
+  {
+    resource: "problem",
+    action: "field_evaluator_command",
+    description: "设置/修改题目评测命令（evaluator.command）",
+  },
+  {
+    resource: "problem",
+    action: "field_evaluator_network",
+    description: "设置/修改题目评测联网开关（evaluator.network）",
+  },
   // 提交
   { resource: "submission", action: "create", description: "创建提交" },
   { resource: "submission", action: "read_own", description: "查看自己的提交" },
