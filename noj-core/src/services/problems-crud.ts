@@ -36,6 +36,10 @@ import { validateRuntimeConfig } from "./problems-types.ts";
 import { syncProblemCategories } from "./problems-categories.ts";
 import { getProblem } from "./problems-list.ts";
 import { assertPermission } from "../lib/permissions.ts";
+import {
+  assertSensitiveFieldPermissions,
+  enforceResourceLimits,
+} from "./problem-field-guard.ts";
 import type { Context } from "hono";
 import { ROOT_USER_ID } from "../lib/constants.ts";
 
@@ -84,6 +88,15 @@ export async function createProblem(
     // P 型仅 admin（由下方类型权限检查保证）。
     // 安全提醒：联网 + 可控 evaluator.command = 联网容器任意命令执行，
     // 开启联网的题目等于把外部网络能力交给出题人（出题人可信边界）。
+    // issue #207：敏感字段权限检查（显式设置的字段）——默认放行（default
+    // 角色默认授权），收紧后无权限者 403；资源限制字段受管理员全局上限约束。
+    await assertSensitiveFieldPermissions(
+      c,
+      userId,
+      userRole,
+      input.runtime_config,
+    );
+    enforceResourceLimits(input.runtime_config);
   } else {
     logger.error("createProblem: runtime_config 缺失", {
       input: JSON.stringify(input),
@@ -256,6 +269,14 @@ export async function updateProblem(
 
     // evaluator 联网权限与题目编辑权限一致：U 型 owner/admin、P 型 admin
     // （上方权限检查已保证）。
+    // issue #207：敏感字段权限检查 + 资源上限校验（与创建路径一致）
+    await assertSensitiveFieldPermissions(
+      c,
+      userId,
+      userRole,
+      input.runtime_config,
+    );
+    enforceResourceLimits(input.runtime_config);
   }
 
   // 防御性忽略 type 和 number（spec 承诺这两个字段不可变更）
