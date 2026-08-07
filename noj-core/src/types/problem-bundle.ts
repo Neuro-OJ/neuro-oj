@@ -81,6 +81,18 @@ export function isValidProblemBundleName(name: string): boolean {
 }
 
 /**
+ * 校验模板文件名是否合法（纯文件名）。
+ *
+ * 模板名禁止路径分隔符（`/`、`\`）与 `..`，防止读取/打包时路径穿越。
+ * 导入校验（validateBundleManifest）、模板读取（getProblemTemplate）与
+ * 打包排除（noj.ts resolveTemplateExclude）共用同一规则。
+ */
+export function isValidTemplateFileName(name: string): boolean {
+  return name.trim().length > 0 &&
+    !name.includes("/") && !name.includes("\\") && !name.includes("..");
+}
+
+/**
  * 校验 manifest 结构与字段合法性，返回规范化副本（不修改入参）。
  *
  * 校验项：
@@ -167,10 +179,7 @@ export function validateBundleManifest(
       throw new BadRequestError("manifest.template 必须是非空字符串");
     }
     // 模板安全校验：禁止路径分隔符与 ..（与 solution.entry 旧校验同风格）
-    if (
-      m.template.includes("/") || m.template.includes("\\") ||
-      m.template.includes("..")
-    ) {
+    if (!isValidTemplateFileName(m.template)) {
       throw new BadRequestError(
         `manifest.template 含非法字符：${m.template}`,
       );

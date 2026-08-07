@@ -6,6 +6,7 @@ import { ForbiddenError, NotFoundError } from "../lib/errors.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { logger } from "../lib/logging.ts";
 import { assertPermission } from "../lib/permissions.ts";
+import { isValidTemplateFileName } from "../types/problem-bundle.ts";
 import type { Context } from "hono";
 
 /**
@@ -180,27 +181,28 @@ export async function getSupportPackageBytes(
  *
  * 生产环境需要将模板单独存储（TODO: 上传至 S3/对象存储）。
  * 目前 dev 模式：直接从源码目录读取。
+ *
+ * @param problemNumber 题号（problems-src 目录按题号命名）
+ * @param srcRoot 源码目录根（默认 `data/problems-src`，测试可注入临时目录）
+ * @returns 模板内容，文件不存在返回 null
  */
 export async function getProblemTemplate(
   problemNumber: number,
+  srcRoot: string = resolve(Deno.cwd(), "data", "problems-src"),
 ): Promise<{ content: string; language: string } | null> {
   // problems-src 目录按题号命名（1001/1002/1003），题目 id 为 UUID，
   // 因此调用方必须传入 number 而非 id。
-  const srcDir = resolve(
-    Deno.cwd(),
-    "data",
-    "problems-src",
-    String(problemNumber),
-  );
+  const srcDir = resolve(srcRoot, String(problemNumber));
 
-  // 1. 读 manifest.template 字段（缺省 "template.py"）
+  // 1. 读 manifest.template 字段（缺省 "template.py"；非法值同样回退默认名）
   let templateFile = "template.py";
   try {
     const manifest = JSON.parse(
       await Deno.readTextFile(resolve(srcDir, "problem.json")),
     ) as { template?: unknown };
     if (
-      typeof manifest.template === "string" && manifest.template.trim()
+      typeof manifest.template === "string" &&
+      isValidTemplateFileName(manifest.template)
     ) {
       templateFile = manifest.template;
     }
@@ -213,7 +215,9 @@ export async function getProblemTemplate(
     const content = await Deno.readTextFile(resolve(srcDir, templateFile));
     // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
     return { content, language: "python3" };
-  } catch {
-    return null;
+  } catch (err) {
+    // 仅文件不存在视为"无模板"（404），其余错误（权限/IO）上抛便于排障
+    if (err instanceof Deno.errors.NotFound) return null;
+    throw err;
   }
 }

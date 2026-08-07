@@ -87,7 +87,6 @@ async function createDualProblem(
         },
         solution: {
           image: SOLUTION_IMAGE,
-          entry: "solution.py",
           call_timeout_ms: 1_000,
           memory_limit_mb: 256,
         },
@@ -151,7 +150,6 @@ e2eTest("dual_container_judge: 普通用户可正常设置 runtime_config（双�
             },
             solution: {
               image: SOLUTION_IMAGE,
-              entry: "solution.py",
               call_timeout_ms: 1000,
               memory_limit_mb: 256,
             },
@@ -195,7 +193,6 @@ e2eTest("dual_container_judge: 镜像白名单 kind 不匹配被拒", async () =
             solution: {
               // 这里故意把 evaluator 镜像当 solution 用 → kind mismatch
               image: EVALUATOR_IMAGE,
-              entry: "solution.py",
               call_timeout_ms: 1000,
               memory_limit_mb: 256,
             },
@@ -272,7 +269,6 @@ e2eTest("dual_container_judge: runtime_config 始终存在（双容器是唯一�
             },
             solution: {
               image: "noj-solution-python",
-              entry: "submission_sample.py",
               call_timeout_ms: 2000,
               memory_limit_mb: 512,
             },

@@ -28,6 +28,7 @@ import {
   seedJudgeImages,
 } from "../src/services/seed-system.ts";
 import { importProblemBundle } from "../src/services/problem-bundle.ts";
+import { isValidTemplateFileName } from "../src/types/problem-bundle.ts";
 import { ROOT_USER_ID } from "../src/lib/constants.ts";
 
 const PROJECT_ROOT = join(import.meta.dirname ?? ".", "..");
@@ -35,9 +36,33 @@ const SRC_DIR = join(PROJECT_ROOT, "data", "problems-src");
 const OUT_DIR = join(PROJECT_ROOT, "data", "packages");
 
 /**
+ * 读取题目 manifest 声明的模板文件名（缺省 "template.py"）。
+ *
+ * 模板仅供前端编辑器使用，不属于评测内容。打包时需动态排除
+ * manifest.template 索引的文件：仅排除字面 `template.py` 会让自定义
+ * 模板名（如 starter.py）混入评测包。manifest 缺失/损坏或模板值非法
+ * （含 `/`、`\`、`..`，与导入校验规则一致）时回退默认名。
+ */
+function resolveTemplateExclude(srcDir: string): string {
+  let templateFile = "template.py";
+  try {
+    const manifest = JSON.parse(
+      Deno.readTextFileSync(join(srcDir, "problem.json")),
+    ) as { template?: unknown };
+    const t = manifest.template;
+    if (typeof t === "string" && isValidTemplateFileName(t)) {
+      templateFile = t;
+    }
+  } catch {
+    // manifest 缺失或损坏：回退默认 template.py
+  }
+  return templateFile;
+}
+
+/**
  * 构建单个题目包（problems-src/<id>/ → packages/<id>.zip）。
  *
- * 排除规则：submission*（参考实现）、__pycache__（字节码）、.git。
+ * 排除规则：submission*（参考实现）、manifest.template 模板文件、__pycache__（字节码）、.git。
  */
 async function buildProblemPackage(id: string): Promise<void> {
   const srcDir = join(SRC_DIR, id);
@@ -58,7 +83,7 @@ async function buildProblemPackage(id: string): Promise<void> {
       "-x",
       "submission*",
       "-x",
-      "template.py",
+      resolveTemplateExclude(srcDir),
       "-x",
       "*__pycache__*",
       "-x",
