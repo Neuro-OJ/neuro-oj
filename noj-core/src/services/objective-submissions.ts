@@ -77,6 +77,20 @@ async function validateContestSubmission(
 }
 
 /**
+ * 裁剪判定详情中的期望答案（expected）。
+ * 竞赛模式防泄题：不向参赛者返回标准答案（与不展示解析同一立场）。
+ */
+function stripExpected(
+  details: Record<string, QuestionJudgement>,
+): Record<string, QuestionJudgement> {
+  const result: Record<string, QuestionJudgement> = {};
+  for (const [qid, judgement] of Object.entries(details)) {
+    result[qid] = { correct: judgement.correct, given: judgement.given };
+  }
+  return result;
+}
+
+/**
  * 合并解析到判定详情（仅练习模式返回 explanation，防泄题）。
  */
 function withExplanation(
@@ -173,7 +187,7 @@ export async function submitObjectivePaper(
     correct_count: judgement.correct_count,
     total_count: judgement.total_count,
     details: contestMode
-      ? judgement.details
+      ? stripExpected(judgement.details)
       : withExplanation(judgement.details, questions),
     contest_mode: contestMode,
   };
@@ -227,8 +241,11 @@ export async function getObjectiveSubmission(
 
   const response = toSubmissionResponse(row);
   if (row.submission_type === "contest") {
-    // 竞赛模式：隐藏解析（details 中本不含 explanation，直接返回）
-    return response;
+    // 竞赛模式：隐藏解析与期望答案（防泄题）
+    return {
+      ...response,
+      details: stripExpected(response.details),
+    };
   }
   // 练习模式：合并解析到逐题判定
   const questions = await db
@@ -323,6 +340,3 @@ export async function listObjectiveSubmissions(params: {
     best_score: bestScore,
   };
 }
-
-/** 竞赛客观题提交校验独立导出（供路由复用，若需要）。 */
-export { validateContestSubmission };

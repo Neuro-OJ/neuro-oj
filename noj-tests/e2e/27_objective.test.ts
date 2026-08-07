@@ -7,15 +7,15 @@
  * 3. 竞赛集成：套卷挂入 contest_problems、竞赛内一次性提交、排名计入
  */
 import {
+  apiDelete,
   apiGet,
   apiPost,
   apiPut,
-  apiDelete,
   e2eTest,
   getAdminToken,
   getOrCreateUser,
-  waitForServer,
   isE2E,
+  waitForServer,
 } from "./helper.ts";
 
 const testSuffix = Date.now().toString(36);
@@ -69,7 +69,9 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
     description: "LMCC 成人组模拟卷",
   }, ownerToken);
   if (paperRes.status !== 201) {
-    throw new Error(`创建套卷失败: ${paperRes.status} ${JSON.stringify(paperRes.body)}`);
+    throw new Error(
+      `创建套卷失败: ${paperRes.status} ${JSON.stringify(paperRes.body)}`,
+    );
   }
   const paper = (paperRes.body as { data: PaperData }).data;
   if (paper.type !== "O") throw new Error("套卷 type 应为 O");
@@ -91,7 +93,9 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
     ownerToken,
   );
   if (single.status !== 201) {
-    throw new Error(`创建单选失败: ${single.status} ${JSON.stringify(single.body)}`);
+    throw new Error(
+      `创建单选失败: ${single.status} ${JSON.stringify(single.body)}`,
+    );
   }
   singleId = (single.body as { data: QuestionData }).data.id;
 
@@ -111,7 +115,9 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
     ownerToken,
   );
   if (multiple.status !== 201) {
-    throw new Error(`创建多选失败: ${multiple.status} ${JSON.stringify(multiple.body)}`);
+    throw new Error(
+      `创建多选失败: ${multiple.status} ${JSON.stringify(multiple.body)}`,
+    );
   }
   multipleId = (multiple.body as { data: QuestionData }).data.id;
 
@@ -122,7 +128,9 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
     ownerToken,
   );
   if (judge.status !== 201) {
-    throw new Error(`创建判断失败: ${judge.status} ${JSON.stringify(judge.body)}`);
+    throw new Error(
+      `创建判断失败: ${judge.status} ${JSON.stringify(judge.body)}`,
+    );
   }
   judgeId = (judge.body as { data: QuestionData }).data.id;
 
@@ -146,8 +154,10 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
     throw new Error(`全对应得满分，实际 ${JSON.stringify(ok)}`);
   }
   const details = ok.details as Record<string, { correct: boolean }>;
-  if (!details[singleId]?.correct || !details[multipleId]?.correct ||
-      !details[judgeId]?.correct) {
+  if (
+    !details[singleId]?.correct || !details[multipleId]?.correct ||
+    !details[judgeId]?.correct
+  ) {
     throw new Error("三题型均应判对");
   }
 
@@ -157,80 +167,97 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
     solverToken,
   );
   if (hist.status !== 200) throw new Error("历史查询失败");
-  const histBody = (hist.body as { data: { total: number; best_score: number } }).data;
+  const histBody =
+    (hist.body as { data: { total: number; best_score: number } }).data;
   if (histBody.total !== 1 || histBody.best_score !== 10000) {
     throw new Error(`落库异常: ${JSON.stringify(histBody)}`);
   }
 });
 
-e2eTest("[e2e/objective] 2. 答错提交 + 重复提交最高分 + 答案不可见", async () => {
-  if (!isE2E) return;
-  // 2.1 答错 → 0 分（练习可重复提交）
-  const badRes = await apiPost(
-    `/api/v1/objective/papers/${paperId}/submit`,
-    {
-      answers: {
-        [singleId]: ["A"],
-        [multipleId]: ["A"],
-        [judgeId]: [false],
+e2eTest(
+  "[e2e/objective] 2. 答错提交 + 重复提交最高分 + 答案不可见",
+  async () => {
+    if (!isE2E) return;
+    // 2.1 答错 → 0 分（练习可重复提交）
+    const badRes = await apiPost(
+      `/api/v1/objective/papers/${paperId}/submit`,
+      {
+        answers: {
+          [singleId]: ["A"],
+          [multipleId]: ["A"],
+          [judgeId]: [false],
+        },
       },
-    },
-    solverToken,
-  );
-  if (badRes.status !== 201) throw new Error("答错提交应成功");
-  const bad = (badRes.body as { data: { score: number } }).data;
-  if (bad.score !== 0) throw new Error(`全错应 0 分，实际 ${bad.score}`);
-
-  // 2.2 再提交全对 → 最高分保持 10000（练习取 MAX）
-  const best = await apiGet(
-    `/api/v1/objective/submissions?paper_id=${paperId}`,
-    solverToken,
-  );
-  const bestBody = (best.body as { data: { total: number; best_score: number } }).data;
-  if (bestBody.total !== 2 || bestBody.best_score !== 10000) {
-    throw new Error(`最高分异常: ${JSON.stringify(bestBody)}`);
-  }
-
-  // 2.3 非 owner 公开视图裁剪答案
-  const qView = await apiGet(
-    `/api/v1/objective/papers/${paperId}/questions`,
-    solverToken,
-  );
-  if (qView.status !== 200) throw new Error("题目查询失败");
-  const questions = (qView.body as { data: QuestionData[] }).data;
-  for (const q of questions) {
-    if (q.answer !== undefined || q.explanation !== undefined) {
-      throw new Error("非 owner 不应看到答案与解析");
+      solverToken,
+    );
+    if (badRes.status !== 201) throw new Error("答错提交应成功");
+    const bad = (badRes.body as {
+      data: {
+        score: number;
+        details: Record<string, { expected?: unknown; explanation?: unknown }>;
+      };
+    }).data;
+    if (bad.score !== 0) throw new Error(`全错应 0 分，实际 ${bad.score}`);
+    // 练习模式：判定详情含期望答案与解析（可复盘）
+    if (bad.details[singleId]?.expected === undefined) {
+      throw new Error("练习模式应返回期望答案");
     }
-  }
+    if (bad.details[singleId]?.explanation === undefined) {
+      throw new Error("练习模式应返回解析");
+    }
 
-  // 2.4 owner 视图含答案
-  const ownerView = await apiGet(
-    `/api/v1/objective/papers/${paperId}/questions`,
-    ownerToken,
-  );
-  const ownerQuestions = (ownerView.body as { data: QuestionData[] }).data;
-  if (ownerQuestions.length !== 3 || ownerQuestions[0].answer === undefined) {
-    throw new Error("owner 视图应含答案");
-  }
+    // 2.2 再提交全对 → 最高分保持 10000（练习取 MAX）
+    const best = await apiGet(
+      `/api/v1/objective/submissions?paper_id=${paperId}`,
+      solverToken,
+    );
+    const bestBody =
+      (best.body as { data: { total: number; best_score: number } }).data;
+    if (bestBody.total !== 2 || bestBody.best_score !== 10000) {
+      throw new Error(`最高分异常: ${JSON.stringify(bestBody)}`);
+    }
 
-  // 2.5 非 owner 编辑小题被拒
-  const forbidden = await apiDelete(
-    `/api/v1/objective/questions/${singleId}`,
-    solverToken,
-  );
-  if (forbidden.status !== 403) {
-    throw new Error(`非 owner 删除应 403，实际 ${forbidden.status}`);
-  }
+    // 2.3 非 owner 公开视图裁剪答案
+    const qView = await apiGet(
+      `/api/v1/objective/papers/${paperId}/questions`,
+      solverToken,
+    );
+    if (qView.status !== 200) throw new Error("题目查询失败");
+    const questions = (qView.body as { data: QuestionData[] }).data;
+    for (const q of questions) {
+      if (q.answer !== undefined || q.explanation !== undefined) {
+        throw new Error("非 owner 不应看到答案与解析");
+      }
+    }
 
-  // 2.6 owner 更新小题解析
-  const upd = await apiPut(
-    `/api/v1/objective/questions/${singleId}`,
-    { explanation: "更新后的解析" },
-    ownerToken,
-  );
-  if (upd.status !== 200) throw new Error("更新小题失败");
-});
+    // 2.4 owner 视图含答案
+    const ownerView = await apiGet(
+      `/api/v1/objective/papers/${paperId}/questions`,
+      ownerToken,
+    );
+    const ownerQuestions = (ownerView.body as { data: QuestionData[] }).data;
+    if (ownerQuestions.length !== 3 || ownerQuestions[0].answer === undefined) {
+      throw new Error("owner 视图应含答案");
+    }
+
+    // 2.5 非 owner 编辑小题被拒
+    const forbidden = await apiDelete(
+      `/api/v1/objective/questions/${singleId}`,
+      solverToken,
+    );
+    if (forbidden.status !== 403) {
+      throw new Error(`非 owner 删除应 403，实际 ${forbidden.status}`);
+    }
+
+    // 2.6 owner 更新小题解析
+    const upd = await apiPut(
+      `/api/v1/objective/questions/${singleId}`,
+      { explanation: "更新后的解析" },
+      ownerToken,
+    );
+    if (upd.status !== 200) throw new Error("更新小题失败");
+  },
+);
 
 e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", async () => {
   if (!isE2E) return;
@@ -247,12 +274,18 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
     problems: [{ problem_id: paperId, sort_order: 0, label: "A" }],
   }, adminToken);
   if (contestRes.status !== 201) {
-    throw new Error(`创建竞赛失败: ${contestRes.status} ${JSON.stringify(contestRes.body)}`);
+    throw new Error(
+      `创建竞赛失败: ${contestRes.status} ${JSON.stringify(contestRes.body)}`,
+    );
   }
   const contestId = (contestRes.body as { data: { id: string } }).data.id;
 
   // 3.2 注册参赛
-  const reg = await apiPost(`/api/v1/contests/${contestId}/register`, {}, solverToken);
+  const reg = await apiPost(
+    `/api/v1/contests/${contestId}/register`,
+    {},
+    solverToken,
+  );
   if (reg.status !== 200 && reg.status !== 201) {
     throw new Error(`注册失败: ${reg.status}`);
   }
@@ -271,10 +304,24 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
     solverToken,
   );
   if (submit.status !== 201) {
-    throw new Error(`竞赛提交失败: ${submit.status} ${JSON.stringify(submit.body)}`);
+    throw new Error(
+      `竞赛提交失败: ${submit.status} ${JSON.stringify(submit.body)}`,
+    );
   }
-  const submitted = (submit.body as { data: { contest_mode: boolean } }).data;
+  const submitted = (submit.body as {
+    data: {
+      submission_id: string;
+      contest_mode: boolean;
+      details: Record<string, { expected?: unknown; explanation?: unknown }>;
+    };
+  }).data;
   if (!submitted.contest_mode) throw new Error("竞赛提交应标记 contest_mode");
+  // 竞赛模式：响应不得包含期望答案或解析（防泄题）
+  for (const d of Object.values(submitted.details)) {
+    if (d.expected !== undefined || d.explanation !== undefined) {
+      throw new Error("竞赛模式提交响应不应包含期望答案或解析");
+    }
+  }
 
   // 3.4 竞赛内重复提交被拒（一次性）
   const dup = await apiPost(
@@ -293,16 +340,59 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
     throw new Error(`竞赛重复提交应 4xx，实际 ${dup.status}`);
   }
 
-  // 3.5 排名计入：满分套卷计为已解（solved >= 1）
+  // 3.5 竞赛提交详情（本人）：同样不含期望答案与解析（防泄题）
+  const subDetail = await apiGet(
+    `/api/v1/objective/submissions/${submitted.submission_id}`,
+    solverToken,
+  );
+  if (subDetail.status !== 200) throw new Error("竞赛提交详情查询失败");
+  const detailData = (subDetail.body as {
+    data: {
+      details: Record<string, { expected?: unknown; explanation?: unknown }>;
+    };
+  }).data;
+  for (const d of Object.values(detailData.details)) {
+    if (d.expected !== undefined || d.explanation !== undefined) {
+      throw new Error("竞赛模式提交详情不应包含期望答案或解析");
+    }
+  }
+
+  // 3.6 排名计入：满分套卷计为已解（solved >= 1）
   const ranking = await apiGet(
     `/api/v1/contests/${contestId}/ranking?type=icpc`,
     adminToken,
   );
   if (ranking.status !== 200) {
-    throw new Error(`排名查询失败: ${ranking.status} ${JSON.stringify(ranking.body)}`);
+    throw new Error(
+      `排名查询失败: ${ranking.status} ${JSON.stringify(ranking.body)}`,
+    );
   }
   const rows = (ranking.body as { data: Array<{ solved: number }> }).data;
   if (rows.length === 0 || rows[0].solved < 1) {
-    throw new Error(`客观题提交应计入排名 solved，实际 ${JSON.stringify(rows)}`);
+    throw new Error(
+      `客观题提交应计入排名 solved，实际 ${JSON.stringify(rows)}`,
+    );
+  }
+
+  // 3.7 未注册用户竞赛提交被拒（403）
+  const outsider = await getOrCreateUser(
+    "objective_outsider",
+    `objective_outsider_${testSuffix}`,
+    `objective_outsider_${testSuffix}@test.com`,
+  );
+  const outsiderSubmit = await apiPost(
+    `/api/v1/objective/papers/${paperId}/submit`,
+    {
+      answers: {
+        [singleId]: ["B"],
+        [multipleId]: ["A", "B"],
+        [judgeId]: [true],
+      },
+      contest_id: contestId,
+    },
+    outsider.token,
+  );
+  if (outsiderSubmit.status !== 403) {
+    throw new Error(`未注册用户竞赛提交应 403，实际 ${outsiderSubmit.status}`);
   }
 });

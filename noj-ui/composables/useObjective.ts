@@ -94,7 +94,7 @@ export const QUESTION_TYPE_LABELS: Record<ObjectiveQuestionType, string> = {
 };
 
 export function useObjective() {
-  const api = useApi();
+  const { api } = useApi();
 
   /** 套卷列表（type=O） */
   function listPapers(page = 1, limit = 20) {

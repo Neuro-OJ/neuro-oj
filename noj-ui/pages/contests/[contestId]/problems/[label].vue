@@ -64,24 +64,33 @@ const accessHint = computed(() => {
 })
 
 // ── 客观题分支 ────────────────────────────────
-
+// paperId 未加载（problem 请求未返回）时 URL 返回 null，useFetch 跳过请求，
+// 避免对空 paperId 发出无效请求（404 / 误判已提交闪烁）
 const paperId = computed(() => problem.value?.problem_id ?? '')
 const { data: qData, error: qError } = await useFetch<{ data: ObjectiveQuestion[] }>(
-  computed(() => `/api/v1/objective/papers/${paperId.value}/questions`),
+  computed(() =>
+    paperId.value
+      ? `/api/v1/objective/papers/${paperId.value}/questions`
+      : null
+  ),
   { server: false },
 )
 const questions = computed(() => qData.value?.data ?? [])
 
-// 竞赛已提交状态（一次性）
+// 竞赛已提交状态（一次性）；仅当 paperId 已加载时判定
 const { data: subData, refresh: refreshSubs } = await useFetch<{
   data: { total: number; best_score: number | null }
 }>(
   computed(() =>
-    `/api/v1/objective/submissions?paper_id=${paperId.value}&contest_id=${contestId}&per_page=1`
+    paperId.value
+      ? `/api/v1/objective/submissions?paper_id=${paperId.value}&contest_id=${contestId}&per_page=1`
+      : null
   ),
   { server: false },
 )
-const alreadySubmitted = computed(() => (subData.value?.data?.total ?? 0) > 0)
+const alreadySubmitted = computed(() =>
+  paperId.value !== '' && (subData.value?.data?.total ?? 0) > 0
+)
 
 const answers = ref<Record<string, (string | boolean)[]>>({})
 const submitting = ref(false)

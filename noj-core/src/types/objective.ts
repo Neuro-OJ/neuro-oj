@@ -78,8 +78,8 @@ export interface SubmitObjectiveInput {
 /** 单题判定结果。 */
 export interface QuestionJudgement {
   correct: boolean;
-  /** 期望答案（判卷后展示） */
-  expected: ObjectiveAnswerValue[];
+  /** 期望答案（判卷后展示；竞赛模式响应不包含，防泄题） */
+  expected?: ObjectiveAnswerValue[];
   /** 用户给定答案 */
   given: ObjectiveAnswerValue[];
   /** 答案解析（练习模式响应/详情包含；竞赛模式不展示） */

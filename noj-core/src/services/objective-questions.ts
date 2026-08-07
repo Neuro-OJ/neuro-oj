@@ -188,7 +188,7 @@ export async function createQuestion(
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
 
-  // sort_order：默认追加到末尾（MAX+1）
+  // sort_order：默认追加到末尾（MAX+1）；显式传入必须为非负整数
   let sortOrder = input.sort_order;
   if (sortOrder === undefined) {
     const maxResult = await db
@@ -198,6 +198,8 @@ export async function createQuestion(
       .from(objectiveQuestions)
       .where(eq(objectiveQuestions.paper_id, paperId));
     sortOrder = (maxResult[0]?.max ?? -1) + 1;
+  } else if (!Number.isInteger(sortOrder) || sortOrder < 0) {
+    throw new BadRequestError("sort_order 必须是非负整数");
   }
 
   const row = {
@@ -263,7 +265,30 @@ export async function updateQuestion(
     ) {
       throw new BadRequestError("非法题型：仅允许 single/multiple/judge");
     }
+    const typeChanged = input.type !== existing.type;
     nextType = input.type;
+    // 改题型时校验既有答案对新题型是否仍合法
+    // （否则旧答案入库后该题永远无法答对，且 JSONB 无 DB 层约束兜底）
+    if (typeChanged && input.answer === undefined) {
+      try {
+        validateAnswerForType(nextType, nextAnswer);
+      } catch {
+        throw new BadRequestError(
+          "题型变更后现有答案不合法，请同时提交新的 answer",
+        );
+      }
+    }
+    if (typeChanged) {
+      if (nextType === "judge") {
+        // judge 型固定对/错选项，旧自定义选项作废
+        nextOptions = judgeOptions();
+      } else if (existing.type === "judge" && input.options === undefined) {
+        // 由判断题改为其他题型：固定对/错选项不可复用，必须显式提供
+        throw new BadRequestError(
+          "由判断题改为其他题型时，必须同时提供 options 与 answer",
+        );
+      }
+    }
   }
   if (input.prompt !== undefined) {
     if (!input.prompt) throw new BadRequestError("prompt 不能为空");
@@ -301,6 +326,9 @@ export async function updateQuestion(
     updates.explanation = input.explanation;
   }
   if (input.sort_order !== undefined) {
+    if (!Number.isInteger(input.sort_order) || input.sort_order < 0) {
+      throw new BadRequestError("sort_order 必须是非负整数");
+    }
     updates.sort_order = input.sort_order;
   }
 

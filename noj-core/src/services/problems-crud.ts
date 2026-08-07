@@ -297,7 +297,8 @@ export async function updateProblem(
   if (input.support_package_storage_url !== undefined) {
     updates.support_package_storage_url = input.support_package_storage_url;
   }
-  if (input.runtime_config !== undefined) {
+  if (input.runtime_config !== undefined && problem.type !== "O") {
+    // O 型客观题套卷：runtime_config 恒为 NULL（无评测容器），忽略写入
     updates.runtime_config = input.runtime_config;
   }
   updates.updated_at = new Date().toISOString();

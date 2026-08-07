@@ -419,3 +419,116 @@ Deno.test({
     assertEquals(dup.status, 400);
   },
 });
+
+Deno.test({
+  name: "objective route: sort_order 非整数/负数被拒",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const owner = await createUserToken("user");
+    const created = await jsonRequest(app, "/api/v1/problems", {
+      method: "POST",
+      token: owner,
+      body: { type: "O", title: `排序校验卷 ${Date.now()}`, description: "d" },
+    });
+    const paperId = (await created.json()).data.id;
+
+    for (const bad of [-1, 1.5]) {
+      const res = await jsonRequest(
+        app,
+        `/api/v1/objective/papers/${paperId}/questions`,
+        {
+          method: "POST",
+          token: owner,
+          body: {
+            type: "single",
+            prompt: "q",
+            options: [{ key: "A", text: "a" }],
+            answer: ["A"],
+            sort_order: bad,
+          },
+        },
+      );
+      assertEquals(res.status, 400, `sort_order=${bad} 应被拒`);
+    }
+  },
+});
+
+Deno.test({
+  name: "objective route: 改题型时既有答案必须对新题型合法",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const owner = await createUserToken("user");
+    const created = await jsonRequest(app, "/api/v1/problems", {
+      method: "POST",
+      token: owner,
+      body: { type: "O", title: `改题型卷 ${Date.now()}`, description: "d" },
+    });
+    const paperId = (await created.json()).data.id;
+
+    // 单选 → 判断题：旧答案 ["A"] 不是布尔 → 400（需同时传新 answer）
+    const single = await jsonRequest(
+      app,
+      `/api/v1/objective/papers/${paperId}/questions`,
+      {
+        method: "POST",
+        token: owner,
+        body: {
+          type: "single",
+          prompt: "q1",
+          options: [{ key: "A", text: "a" }, { key: "B", text: "b" }],
+          answer: ["A"],
+        },
+      },
+    );
+    const singleQ = (await single.json()).data;
+    const toJudge = await jsonRequest(
+      app,
+      `/api/v1/objective/questions/${singleQ.id}`,
+      {
+        method: "PUT",
+        token: owner,
+        body: { type: "judge" },
+      },
+    );
+    assertEquals(toJudge.status, 400);
+
+    // 判断题 → 单选：不传 options 固定对/错不可复用 → 400
+    const judge = await jsonRequest(
+      app,
+      `/api/v1/objective/papers/${paperId}/questions`,
+      {
+        method: "POST",
+        token: owner,
+        body: { type: "judge", prompt: "q2", answer: [true] },
+      },
+    );
+    const judgeQ = (await judge.json()).data;
+    const toSingle = await jsonRequest(
+      app,
+      `/api/v1/objective/questions/${judgeQ.id}`,
+      {
+        method: "PUT",
+        token: owner,
+        body: { type: "single" },
+      },
+    );
+    assertEquals(toSingle.status, 400);
+
+    // 单选 → 多选：旧答案 1 项对多选仍合法（非空不重复）→ 200
+    const toMultiple = await jsonRequest(
+      app,
+      `/api/v1/objective/questions/${singleQ.id}`,
+      {
+        method: "PUT",
+        token: owner,
+        body: { type: "multiple" },
+      },
+    );
+    assertEquals(toMultiple.status, 200);
+    assertEquals((await toMultiple.json()).data.answer, ["A"]);
+  },
+});

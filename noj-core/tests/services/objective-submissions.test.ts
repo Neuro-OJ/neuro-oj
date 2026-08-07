@@ -212,6 +212,7 @@ Deno.test({
     }, user);
     assertEquals(first.contest_mode, true);
     assertEquals(first.details[q1].explanation, undefined); // 竞赛模式无解析
+    assertEquals(first.details[q1].expected, undefined); // 竞赛模式不返回期望答案（防泄题）
 
     // 第二次提交被拒（先查后插 + 唯一索引兜底）
     await assertRejects(
@@ -320,10 +321,11 @@ Deno.test({
       answers: { [q1]: ["A"] },
     }, user);
 
-    // 提交者本人可读（练习模式含解析）
+    // 提交者本人可读（练习模式含解析与期望答案）
     const mine = await getObjectiveSubmission(result.submission_id, user);
     assertEquals(mine.score, 10000);
     assertEquals(mine.details[q1].explanation, "解析");
+    assertEquals(mine.details[q1].expected, ["A"]);
 
     // 他人读取被拒
     await assertRejects(
@@ -354,5 +356,119 @@ Deno.test({
         }, "0"),
       BadRequestError,
     );
+  },
+});
+
+Deno.test({
+  name: "objective submissions: 竞赛模式提交详情裁剪期望答案与解析",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const owner = await makeUser("owner");
+    const user = await makeUser("contestant3");
+    const paper = await makePaper(owner);
+    const q1 = await makeQuestion(paper, 1, "single", ["A"], "解析");
+
+    const now = new Date().toISOString();
+    const contestId = crypto.randomUUID();
+    await db.insert(contests).values({
+      id: contestId,
+      title: `客观题竞赛3 ${ts}`,
+      description: "",
+      start_time: new Date(Date.now() - 3600_000).toISOString(),
+      end_time: new Date(Date.now() + 3600_000).toISOString(),
+      type: "icpc",
+      config: {},
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: user,
+      registered_at: now,
+    });
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: paper,
+      sort_order: 1,
+      label: "A",
+    });
+
+    const result = await submitObjectivePaper(paper, {
+      answers: { [q1]: ["A"] },
+      contest_id: contestId,
+    }, user);
+
+    // 提交详情（竞赛模式）：提交者本人也看不到期望答案与解析（防泄题）
+    const mine = await getObjectiveSubmission(result.submission_id, user);
+    assertEquals(mine.submission_type, "contest");
+    assertEquals(mine.details[q1].expected, undefined);
+    assertEquals(mine.details[q1].explanation, undefined);
+    assertEquals(mine.details[q1].correct, true);
+
+    // admin 视图同样裁剪（统一防泄题立场；原始数据仍存 DB 供审计）
+    const byAdmin = await getObjectiveSubmission(
+      result.submission_id,
+      "0",
+      "admin",
+    );
+    assertEquals(byAdmin.details[q1].expected, undefined);
+  },
+});
+
+Deno.test({
+  name: "objective submissions: 唯一约束兜底（同卷同人同竞赛直插重复记录被拒）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const owner = await makeUser("owner");
+    const user = await makeUser("contestant4");
+    const paper = await makePaper(owner);
+
+    const now = new Date().toISOString();
+    const contestId = crypto.randomUUID();
+    // contest_id 存在 FK 引用，先建竞赛行
+    await db.insert(contests).values({
+      id: contestId,
+      title: `客观题竞赛4 ${ts}`,
+      description: "",
+      start_time: new Date(Date.now() - 3600_000).toISOString(),
+      end_time: new Date(Date.now() + 3600_000).toISOString(),
+      type: "icpc",
+      config: {},
+      created_at: now,
+      updated_at: now,
+    });
+    const row = {
+      id: crypto.randomUUID(),
+      paper_id: paper,
+      user_id: user,
+      contest_id: contestId,
+      submission_type: "contest" as const,
+      answers: {},
+      status: "finished",
+      score: 0,
+      details: {},
+      created_at: now,
+    };
+    await db.insert(objectiveSubmissions).values(row);
+    // 绕过先查直接插入同约束记录 → 触发 23505
+    await assertRejects(
+      () =>
+        db.insert(objectiveSubmissions).values({
+          ...row,
+          id: crypto.randomUUID(),
+        }),
+      // 允许任意错误类型（postgres.js 与 PGlite 错误结构不同），
+      // 仅验证唯一约束确实存在
+    );
+    const rows = await db.select().from(objectiveSubmissions).where(
+      and(
+        eq(objectiveSubmissions.paper_id, paper),
+        eq(objectiveSubmissions.user_id, user),
+        eq(objectiveSubmissions.contest_id, contestId),
+      ),
+    );
+    assertEquals(rows.length, 1);
   },
 });
