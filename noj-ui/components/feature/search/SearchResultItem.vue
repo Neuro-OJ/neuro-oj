@@ -10,7 +10,7 @@
     <!-- 题号 / 用户头像占位 -->
     <div
       class="flex-shrink-0 w-10 h-10 rounded-md flex items-center justify-center text-sm font-mono font-semibold"
-      :class="kind === 'problem' ? 'bg-primary-bg text-primary' : kind === 'community' ? 'bg-amber-50 text-amber-700' : 'bg-info-bg text-info-text'"
+      :class="kind === 'problem' ? 'bg-primary-bg text-primary' : kind === 'community' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-info-text'"
     >
       <span v-if="kind === 'problem'">{{ displayId || (item as ProblemSearchResult).display_id }}</span>
       <span v-else-if="kind === 'community'">帖子</span>

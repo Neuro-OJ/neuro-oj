@@ -19,6 +19,8 @@ defineEmits<{ close: [] }>()
   <Transition name="toast">
     <div
       v-if="visible"
+      role="status"
+      aria-live="polite"
       class="fixed top-[74px] left-1/2 -translate-x-1/2 z-[99] max-w-[380px] w-[calc(100%-48px)]"
     >
       <UAlert

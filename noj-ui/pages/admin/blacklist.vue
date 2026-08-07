@@ -146,7 +146,7 @@ function formatExpires(value: string | null) {
       </div>
       <table v-else class="w-full text-sm">
         <thead>
-          <tr class="bg-gray-50 border-b border-border">
+          <tr class="bg-bg-page border-b border-border">
             <th class="px-3 py-2.5 text-left font-semibold text-text w-[220px]">IP / CIDR</th>
             <th class="px-3 py-2.5 text-left font-semibold text-text">原因</th>
             <th class="px-3 py-2.5 text-left font-semibold text-text w-[200px]">过期时间</th>
@@ -158,7 +158,7 @@ function formatExpires(value: string | null) {
           <tr
             v-for="item in items"
             :key="item.id"
-            class="border-b border-border last:border-b-0 hover:bg-gray-50 transition-colors"
+            class="border-b border-border last:border-b-0 hover:bg-primary-bg transition-colors"
           >
             <td class="px-3 py-2.5 align-top">
               <code class="font-mono text-13px font-semibold text-text">{{ item.ip_or_cidr }}</code>

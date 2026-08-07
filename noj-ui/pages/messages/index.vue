@@ -156,6 +156,8 @@ function isSameDay(iso1: string, iso2: string): boolean {
 </script>
 
 <template>
+  <!-- 页面级标题（WCAG 1.3.1）：聊天页无可见 h1，用 sr-only 提供页面语义 -->
+  <h1 class="sr-only">私信</h1>
   <div class="flex h-[calc(100vh-4rem)] max-w-[1000px] mx-auto">
     <!-- 左侧会话列表 -->
     <div class="w-[280px] flex-shrink-0">

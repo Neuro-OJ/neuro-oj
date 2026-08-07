@@ -136,6 +136,8 @@ const templateUrl = computed(() => isContest.value
 </script>
 
 <template>
+  <!-- 页面级标题（WCAG 1.3.1）：编辑器为满屏工作区，无可见标题，用 sr-only 提供语义 -->
+  <h1 class="sr-only">做题</h1>
   <!-- 竞赛访问拦截：结束后 / 未报名 / 未开始 → 提示并返回详情页 -->
   <div
     v-if="isContest && !pending && contest && !canUseEditor"

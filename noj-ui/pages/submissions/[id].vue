@@ -204,7 +204,7 @@ watch(
         <!-- 资源消耗（仅 finished） -->
         <div
           v-if="submission.result && submission.status === 'finished'"
-          class="flex flex-col sm:flex-row gap-3 sm:gap-8 px-6 py-4 border-t border-border bg-gray-50"
+          class="flex flex-col sm:flex-row gap-3 sm:gap-8 px-6 py-4 border-t border-border bg-bg-page"
         >
           <div class="flex items-center gap-2.5 text-text-secondary">
             <UIcon name="i-lucide-clock" class="size-4" />
@@ -251,7 +251,7 @@ watch(
         class="bg-white border border-border rounded-xl overflow-hidden"
       >
         <button
-          class="flex items-center justify-between w-full px-4 py-3 bg-gray-50 border-0 border-b border-border text-sm font-semibold text-text cursor-pointer hover:bg-gray-100"
+          class="flex items-center justify-between w-full px-4 py-3 bg-bg-page border-0 border-b border-border text-sm font-semibold text-text cursor-pointer hover:bg-primary-hover"
           @click="showOutput = !showOutput"
         >
           <span>评测输出</span>

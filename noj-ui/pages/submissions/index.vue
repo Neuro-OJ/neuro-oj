@@ -191,23 +191,23 @@ function hasResult(
       </div>
 
       <!-- 表格 -->
-      <div v-else class="overflow-hidden rounded-lg border border-border bg-white">
+      <div v-else class="overflow-x-auto rounded-lg border border-border bg-white">
         <table class="w-full border-collapse">
           <thead>
             <tr>
-              <th class="w-[100px] whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">提交 ID</th>
-              <th class="whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">题目</th>
-              <th class="whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">语言</th>
-              <th class="whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">状态</th>
-              <th class="w-[70px] whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-muted">得分</th>
-              <th class="w-[70px] whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-muted">耗时</th>
-              <th class="w-[70px] whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-muted">内存</th>
-              <th class="whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">提交时间</th>
-              <th class="w-[80px] whitespace-nowrap border-b border-border bg-[#fafafa] px-3.5 py-3 text-center text-xs font-semibold uppercase tracking-wider text-text-muted">操作</th>
+              <th class="w-[100px] whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">提交 ID</th>
+              <th class="whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">题目</th>
+              <th class="whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">语言</th>
+              <th class="whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">状态</th>
+              <th class="w-[70px] whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-muted">得分</th>
+              <th class="w-[70px] whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-muted">耗时</th>
+              <th class="w-[70px] whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-muted">内存</th>
+              <th class="whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">提交时间</th>
+              <th class="w-[80px] whitespace-nowrap border-b border-border bg-bg-page px-3.5 py-3 text-center text-xs font-semibold uppercase tracking-wider text-text-muted">操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="sub in submissions" :key="sub.id" class="border-b border-border transition-colors duration-150 last:border-b-0 hover:bg-[#fafafa]">
+            <tr v-for="sub in submissions" :key="sub.id" class="border-b border-border transition-colors duration-150 last:border-b-0 hover:bg-bg-page">
               <td class="px-3.5 py-3 font-mono text-xs text-text-secondary">{{ sub.id.slice(0, 8) }}...</td>
               <td class="px-3.5 py-3 text-13px text-text">
                 <NuxtLink :to="`/problems/${sub.problem_id}`" class="font-medium text-primary no-underline hover:underline">

@@ -14,7 +14,8 @@ interface StatsCard {
   label: string
   value: number | null
   icon: string
-  color: string
+  /** 图标容器类（Tailwind 字面量，避免动态拼接不可扫描） */
+  colorClass: string
   error?: string
 }
 
@@ -33,17 +34,17 @@ const pollInterval = ref<number | null>(5000)
 function statCard(
   label: string,
   icon: string,
-  color: string,
+  colorClass: string,
   result: PromiseSettledResult<{ pagination?: { total: number }; total?: number }>,
 ): StatsCard {
   if (result.status === "rejected") {
-    return { label, value: null, icon, color, error: "加载失败" }
+    return { label, value: null, icon, colorClass, error: "加载失败" }
   }
   return {
     label,
     value: result.value.pagination?.total ?? result.value.total ?? 0,
     icon,
-    color,
+    colorClass,
   }
 }
 
@@ -64,9 +65,9 @@ async function loadStats(silent = false) {
   if (currentRequest !== requestVersion) return
 
   stats.value = [
-    statCard("用户总数", 'i-lucide-users', "#2563eb", userRes),
-    statCard("题目总数", 'i-lucide-book-open', "#16a34a", problemRes),
-    statCard("提交总数", 'i-lucide-files', "#d97706", submissionRes),
+    statCard("用户总数", 'i-lucide-users', "text-primary bg-primary-bg", userRes),
+    statCard("题目总数", 'i-lucide-book-open', "text-success-600 bg-green-50", problemRes),
+    statCard("提交总数", 'i-lucide-files', "text-warning-600 bg-amber-50", submissionRes),
   ]
   queueStats.value = queueRes.status === "fulfilled" ? queueRes.value.stats : null
   // 轮询静默失败不写入错误横幅（避免打断用户），仅首载/手动刷新失败时展示
@@ -125,17 +126,18 @@ async function handleRefresh() {
       <UButton color="neutral" variant="outline" size="sm" class="text-text-secondary bg-white border-border hover:border-text-secondary mt-4" @click="loadStats">重试</UButton>
     </div>
 
-    <!-- 统计卡片 -->
+    <!-- 统计卡片（首卡主视觉：跨两列 + 更大数字/图标，打破三卡等权） -->
     <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
       <div
-        v-for="card in stats" :key="card.label"
+        v-for="(card, i) in stats" :key="card.label"
         class="flex items-center gap-4 p-5 bg-white border border-border rounded-xl"
+        :class="i === 0 ? 'col-span-2 max-lg:col-span-1' : ''"
       >
-        <div class="flex items-center justify-center size-12 rounded-xl shrink-0" :style="{ background: card.color + '15', color: card.color }">
-          <UIcon :name="card.icon" class="size-6" />
+        <div class="flex items-center justify-center size-12 rounded-xl shrink-0" :class="card.colorClass">
+          <UIcon :name="card.icon" class="size-6" :class="i === 0 ? 'lg:size-7' : ''" />
         </div>
         <div class="flex flex-col gap-0.5">
-          <span class="text-2xl font-bold text-text leading-tight">{{ card.value ?? "--" }}</span>
+          <span class="text-2xl font-bold text-text leading-tight" :class="i === 0 ? 'lg:text-3xl' : ''">{{ card.value ?? "--" }}</span>
           <span class="text-xs text-text-secondary">{{ card.label }}</span>
           <button v-if="card.error" class="text-left text-xs text-error-text underline" @click="loadStats">{{ card.error }}，重试</button>
         </div>
@@ -149,15 +151,15 @@ async function handleRefresh() {
         评测队列状态
       </h2>
       <div class="grid grid-cols-3 gap-4">
-        <div class="flex flex-col items-center gap-1 p-4 rounded-lg bg-gray-50">
+        <div class="flex flex-col items-center gap-1 p-4 rounded-lg bg-bg-page">
           <span class="text-28px font-bold text-warning-600">{{ queueStats.pending_count }}</span>
           <span class="text-xs text-text-secondary">等待中</span>
         </div>
-        <div class="flex flex-col items-center gap-1 p-4 rounded-lg bg-gray-50">
+        <div class="flex flex-col items-center gap-1 p-4 rounded-lg bg-bg-page">
           <span class="text-28px font-bold text-info-600">{{ queueStats.judging_count }}</span>
           <span class="text-xs text-text-secondary">评测中</span>
         </div>
-        <div class="flex flex-col items-center gap-1 p-4 rounded-lg bg-gray-50">
+        <div class="flex flex-col items-center gap-1 p-4 rounded-lg bg-bg-page">
           <span class="text-28px font-bold text-success-600">{{ queueStats.completed_today }}</span>
           <span class="text-xs text-text-secondary">今日完成</span>
         </div>

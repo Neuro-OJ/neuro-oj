@@ -197,13 +197,13 @@ async function batchRejudge(problemId: string) {
 
       <template #actions-cell="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <NuxtLink :to="`/admin/problem-edit/${row.original.id}`" class="inline-flex items-center justify-center w-[30px] h-[30px] border border-border rounded bg-transparent text-text-secondary cursor-pointer no-underline transition-all duration-150 hover:bg-[#f5f5f5] hover:text-text" title="编辑">
+          <NuxtLink :to="`/admin/problem-edit/${row.original.id}`" class="inline-flex items-center justify-center w-9 h-9 border border-border rounded bg-transparent text-text-secondary cursor-pointer no-underline transition-all duration-150 hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑">
             <UIcon name="i-lucide-pencil" class="size-3.5" />
           </NuxtLink>
-          <UButton color="neutral" variant="outline" class="w-[30px] h-[30px] border-border text-text-secondary hover:bg-amber-50 hover:text-[#d97706] hover:border-amber-200" :disabled="rejudgingProblemIds.has(row.original.id)" :title="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" @click="batchRejudge(row.original.id)">
+          <UButton color="neutral" variant="outline" class="w-9 h-9 border-border text-text-secondary hover:bg-amber-50 hover:text-warning-600 hover:border-warning-600/30" :disabled="rejudgingProblemIds.has(row.original.id)" :title="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" :aria-label="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" @click="batchRejudge(row.original.id)">
             <UIcon name="i-lucide-refresh-cw" class="size-3.5" />
           </UButton>
-          <UButton color="neutral" variant="outline" class="w-[30px] h-[30px] border-border text-text-secondary hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" title="删除" @click="confirmDelete(row.original)">
+          <UButton color="neutral" variant="outline" class="w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row.original)">
             <UIcon name="i-lucide-trash-2" class="size-3.5" />
           </UButton>
         </div>

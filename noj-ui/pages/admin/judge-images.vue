@@ -189,10 +189,10 @@ async function handleDelete() {
       :empty="'暂无评测镜像'">
       <template #actions-cell="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <UButton color="neutral" variant="outline" class="flex w-[30px] h-[30px] border-border text-text-secondary hover:bg-[#f5f5f5] hover:text-text" title="编辑" @click="openEdit(row.original)">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row.original)">
             <UIcon name="i-lucide-pencil" class="size-3.5" />
           </UButton>
-          <UButton color="neutral" variant="outline" class="flex w-[30px] h-[30px] border-border text-text-secondary hover:bg-red-50 hover:text-[#dc2626] hover:border-red-200" title="删除" @click="confirmDelete(row.original)">
+          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row.original)">
             <UIcon name="i-lucide-trash-2" class="size-3.5" />
           </UButton>
         </div>
@@ -211,8 +211,8 @@ async function handleDelete() {
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">匹配模式</label>
         <select v-model="formMode" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white" @change="onModeChange">
-          <option value="exact">精确版本 — 仅匹配指定镜像名（含标签）</option>
-          <option value="all_versions">所有版本 — 匹配镜像名所有标签</option>
+          <option value="exact">精确版本：仅匹配指定镜像名（含标签）</option>
+          <option value="all_versions">所有版本：匹配镜像名所有标签</option>
         </select>
       </div>
 

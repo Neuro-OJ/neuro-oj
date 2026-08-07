@@ -1,5 +1,5 @@
 <template>
-    <footer class="bg-bg-dark text-text-muted px-0 py-12 pb-6">
+    <footer class="bg-bg-dark text-text-on-dark px-0 py-12 pb-6">
         <div class="mx-auto w-full max-w-[1200px] px-6">
             <div class="flex justify-between gap-12 flex-wrap">
                 <div class="max-w-[280px]">
@@ -12,8 +12,8 @@
                 <div class="flex gap-12">
                     <div class="footer-section">
                         <h4 class="text-white text-xs font-semibold mb-3 uppercase tracking-[0.5px]">了解我们</h4>
-                        <NuxtLink to="/about" class="block text-text-muted no-underline text-sm mb-2 transition-colors hover:text-primary-light">关于</NuxtLink>
-                        <a href="https://github.com/Neuro-OJ/neuro-oj" target="_blank" rel="noopener" class="block text-text-muted no-underline text-sm mb-2 transition-colors hover:text-primary-light">GitHub</a>
+                        <NuxtLink to="/about" class="block text-text-on-dark no-underline text-sm mb-2 transition-colors hover:text-primary-light">关于</NuxtLink>
+                        <a href="https://github.com/Neuro-OJ/neuro-oj" target="_blank" rel="noopener" class="block text-text-on-dark no-underline text-sm mb-2 transition-colors hover:text-primary-light">GitHub</a>
                     </div>
                 </div>
             </div>

@@ -99,11 +99,11 @@ function onPageChange(page: number) {
       <table class="w-full border-collapse">
         <thead>
           <tr>
-            <th class="px-4 py-3 text-xs font-semibold text-left bg-gray-50 border-b border-border">题号</th>
-            <th class="px-4 py-3 text-xs font-semibold text-left bg-gray-50 border-b border-border">标题</th>
-            <th class="px-4 py-3 text-xs font-semibold text-left bg-gray-50 border-b border-border">难度</th>
-            <th class="px-4 py-3 text-xs font-semibold text-left bg-gray-50 border-b border-border">创建时间</th>
-            <th class="px-4 py-3 text-xs font-semibold text-center bg-gray-50 border-b border-border">操作</th>
+            <th class="px-4 py-3 text-xs font-semibold text-left bg-bg-page border-b border-border">题号</th>
+            <th class="px-4 py-3 text-xs font-semibold text-left bg-bg-page border-b border-border">标题</th>
+            <th class="px-4 py-3 text-xs font-semibold text-left bg-bg-page border-b border-border">难度</th>
+            <th class="px-4 py-3 text-xs font-semibold text-left bg-bg-page border-b border-border">创建时间</th>
+            <th class="px-4 py-3 text-xs font-semibold text-center bg-bg-page border-b border-border">操作</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-border">

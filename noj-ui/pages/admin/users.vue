@@ -272,7 +272,7 @@ async function showBanHistory(user: User) {
         <div class="flex items-center gap-1.5 flex-wrap">
           <span
             class="inline-flex items-center gap-1 px-2 py-[3px] rounded text-xs font-semibold"
-            :class="row.original.is_admin ? 'bg-blue-50 text-info-text' : 'bg-[#f5f5f5] text-[#6b7280]'"
+            :class="row.original.is_admin ? 'bg-blue-50 text-info-text' : 'bg-bg-page text-text-muted'"
           >
             <UIcon name="i-lucide-shield-check" class="size-3.5" v-if="row.original.is_admin"/>
             <UIcon name="i-lucide-shield-x" class="size-3.5" v-else/>
@@ -336,7 +336,7 @@ async function showBanHistory(user: User) {
       <label
         v-for="role in allRoles"
         :key="role.id"
-        class="flex items-center gap-2 p-2.5 border border-border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+        class="flex items-center gap-2 p-2.5 border border-border rounded-lg cursor-pointer hover:bg-primary-bg transition-colors"
         :class="{ 'border-primary bg-primary-bg': selectedRoleIds.includes(role.id) }"
       >
         <input
@@ -425,10 +425,10 @@ async function showBanHistory(user: User) {
           </span>
         </div>
         <div class="text-text-secondary text-xs space-y-0.5">
-          <div>封禁于 {{ formatDate(rec.banned_at) }} — {{ rec.banned_by?.username || '系统' }}</div>
+          <div>封禁于 {{ formatDate(rec.banned_at) }}，由 {{ rec.banned_by?.username || '系统' }}执行</div>
           <div v-if="rec.banned_until">到期：{{ formatDate(rec.banned_until) }}</div>
           <div v-if="rec.unbanned_at" class="text-green-700">
-            解封于 {{ formatDate(rec.unbanned_at) }} — {{ rec.unbanned_by?.username || '系统' }}
+            解封于 {{ formatDate(rec.unbanned_at) }}，由 {{ rec.unbanned_by?.username || '系统' }}执行
           </div>
         </div>
         </div>

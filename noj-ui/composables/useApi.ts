@@ -35,6 +35,11 @@ type ApiMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 export function useApi() {
   const { toast } = useToast();
+  // 当前路由：401 时跳转登录页需要保留回跳目标（SSR 阶段不可跳转，仅客户端）
+  const route = useRoute();
+
+  // 认证相关页面：其自身的 401（如登录失败）不应触发跳转，避免死循环
+  const AUTH_PAGE_PREFIXES = ['/login', '/register', '/forgot-password', '/reset-password', '/change-password'];
 
   async function request<T = unknown>(
     method: ApiMethod,
@@ -51,6 +56,16 @@ export function useApi() {
         onError(err, info);
       } else if (!silent && import.meta.client) {
         toast.error(info.message);
+      }
+      // 未认证（401）：客户端统一跳转登录页并携带回跳目标。
+      // SSR 阶段无法跳转，错误继续抛出，由 Nuxt 渲染错误页（生产为 HTML）。
+      if (
+        import.meta.client &&
+        info.status === 401 &&
+        !AUTH_PAGE_PREFIXES.some((p) => route.path.startsWith(p))
+      ) {
+        const redirect = route.fullPath;
+        navigateTo({ path: '/login', query: { redirect } });
       }
       // 原样重抛：保留 $fetch 错误对象结构，调用方分支代码零破坏
       throw err;
