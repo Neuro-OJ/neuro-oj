@@ -67,8 +67,21 @@ export async function createProblem(
     );
   }
 
-  // 校验 runtime_config（所有题目统一使用双容器模式）
-  if (input.runtime_config !== undefined && input.runtime_config !== null) {
+  // 确定题目类型（默认 U）
+  const rawType = input.type?.toUpperCase() ?? "U";
+  if (!isValidProblemType(rawType)) {
+    throw new BadRequestError(`非法题目类型：${input.type}，仅允许 U/P/O`);
+  }
+  const type = rawType;
+
+  // 校验 runtime_config（U/P 型必填，双容器评测；O 型客观题套卷无评测容器）
+  if (type === "O") {
+    if (input.runtime_config !== undefined && input.runtime_config !== null) {
+      logger.warn("createProblem: O 型套卷忽略 runtime_config 字段");
+    }
+  } else if (
+    input.runtime_config !== undefined && input.runtime_config !== null
+  ) {
     validateRuntimeConfig(input.runtime_config);
     try {
       await validateJudgeImageWithKind(
@@ -107,13 +120,6 @@ export async function createProblem(
   // 题目主键统一由服务端生成 UUID，避免客户端注入字符串 id
   // 影响 display_id 双索引路由解析
   const id = crypto.randomUUID();
-
-  // 确定题目类型（默认 U）
-  const rawType = input.type?.toUpperCase() ?? "U";
-  if (!isValidProblemType(rawType)) {
-    throw new BadRequestError(`非法题目类型：${input.type}，仅允许 U/P`);
-  }
-  const type = rawType;
 
   // 权限检查：普通用户只能创建 U 型
   if (type === "P") {
@@ -252,8 +258,9 @@ export async function updateProblem(
   }
 
   // 校验 runtime_config
-  //   undefined → 不变；null → 拒绝（runtime_config 是必填字段）；object → 校验并写入
-  if (input.runtime_config !== undefined) {
+  //   undefined → 不变；null → 拒绝（U/P 型 runtime_config 是必填字段）；object → 校验并写入
+  //   O 型客观题套卷：忽略 runtime_config（无评测容器）
+  if (problem.type !== "O" && input.runtime_config !== undefined) {
     if (input.runtime_config === null) {
       throw new BadRequestError("runtime_config 是必填字段，不可清空");
     }
@@ -302,8 +309,8 @@ export async function updateProblem(
     await syncProblemCategories(id, input.category_ids);
   }
 
-  // 审计日志：runtime_config 变更
-  if (input.runtime_config !== undefined) {
+  // 审计日志：runtime_config 变更（O 型套卷无此字段，跳过）
+  if (problem.type !== "O" && input.runtime_config !== undefined) {
     const oldHas = problem.runtime_config !== null;
     const newHas = input.runtime_config !== null;
     if (

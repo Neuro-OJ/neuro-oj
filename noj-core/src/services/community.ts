@@ -162,7 +162,7 @@ export async function resolveProblemId(
   if (uuidPattern.test(reference)) {
     return findByPk(reference);
   }
-  const match = reference.match(/^([UuPp])(\d+)$/);
+  const match = reference.match(/^([UuPpOo])(\d+)$/);
   if (match) {
     const row = await db.select({ id: problems.id }).from(problems).where(and(
       eq(problems.type, match[1].toUpperCase()),

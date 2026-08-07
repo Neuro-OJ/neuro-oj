@@ -1,8 +1,5 @@
-## Purpose
+## MODIFIED Requirements
 
-定义 Neuro OJ 题目所有权机制规范，包括题目归属、类型驱动权限判断、
-题号自增、双索引路由查找。题目分为 U（用户题库）和 P（主题库）两种类型。
-## Requirements
 ### Requirement: 题目类型与题号
 
 系统 SHALL 在 problems 表中使用 `type`（TEXT, 'U'/'P'/'O'）和 `number`（INTEGER）字段，
@@ -23,18 +20,6 @@
 #### Scenario: U / P / O 题号独立
 - **WHEN** 分别创建 type='U'、type='P'、type='O' 的题目，三者 number 均为 1
 - **THEN** U1、P1、O1 是三道不同的题目，互不冲突
-
-### Requirement: 题目自动编号
-
-系统 SHALL 为每个 type 独立自增 number，使用 `SELECT COALESCE(MAX(number), 0) + 1` 分配。
-
-#### Scenario: U 型自动编号递增
-- **WHEN** 用户连续创建三道 U 型题目且未指定 number
-- **THEN** 三道题的 number 分别为 1、2、3
-
-#### Scenario: 管理员指定题号
-- **WHEN** 管理员创建 P 型题目时指定 number=2001
-- **THEN** 使用指定值，校验 UNIQUE(type, number) 不冲突则写入
 
 ### Requirement: 双索引路由查找
 
@@ -91,4 +76,3 @@
 #### Scenario: P 型仅管理员可删除
 - **WHEN** 普通用户删除 P 型题目
 - **THEN** 系统返回 HTTP 403
-

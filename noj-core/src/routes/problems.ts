@@ -46,8 +46,8 @@ function resolveProblem(id: string) {
     return getProblem(id);
   }
 
-  // display_id 格式：解析 "P1001" / "U42" → (type, number)
-  const match = id.match(/^([UuPp])(\d+)$/);
+  // display_id 格式：解析 "P1001" / "U42" / "O1001" → (type, number)
+  const match = id.match(/^([UuPpOo])(\d+)$/);
   if (match) {
     const type = match[1].toUpperCase();
     const number = parseInt(match[2], 10);
@@ -117,7 +117,7 @@ router.get("/:id", async (c) => {
 
 /**
  * 创建题目。
- * admin 可创建任意 type，普通用户仅限 U 型。
+ * admin 可创建任意 type，普通用户仅限 U/O 型。
  * POST /api/v1/problems
  */
 router.post("/", authMiddleware, async (c) => {
@@ -131,7 +131,9 @@ router.post("/", authMiddleware, async (c) => {
     throw new BadRequestError("缺少必填字段：description");
   }
 
-  if (!body.runtime_config) {
+  // O 型客观题套卷无需 runtime_config；U/P 型必填
+  const rawType = (body.type as string | undefined)?.toUpperCase() ?? "U";
+  if (rawType !== "O" && !body.runtime_config) {
     throw new BadRequestError("缺少必填字段：runtime_config");
   }
 

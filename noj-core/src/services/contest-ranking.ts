@@ -60,6 +60,15 @@ export async function getIcpcRanking(
       WHERE s.contest_id = ${contestId}
         AND s.created_at <= c.end_time
         AND (${cutoff}::text IS NULL OR s.created_at <= ${cutoff})
+      UNION ALL
+      -- 客观题提交：满分卷映射 Accepted，非满分映射 WrongAnswer
+      SELECT os.id, os.user_id, os.paper_id, os.created_at,
+        CASE WHEN os.score >= 10000 THEN 'Accepted' ELSE 'WrongAnswer' END AS status
+      FROM objective_submissions os
+      JOIN contest_data c ON c.id = os.contest_id
+      WHERE os.contest_id = ${contestId}
+        AND os.created_at <= c.end_time
+        AND (${cutoff}::text IS NULL OR os.created_at <= ${cutoff})
     ),
     first_accepts AS (
       SELECT user_id, problem_id, MIN(created_at) AS first_ac_at
@@ -192,6 +201,25 @@ export async function getIoiRanking(
       JOIN contest_data c ON c.id = s.contest_id
       WHERE s.contest_id = ${contestId}
         AND s.created_at <= c.end_time
+      UNION ALL
+      -- 客观题提交：score 同为 ×100 整数，直接参与总分
+      SELECT
+        os.id,
+        os.user_id,
+        os.paper_id,
+        os.created_at,
+        os.score,
+        ROW_NUMBER() OVER (
+          PARTITION BY os.user_id, os.paper_id
+          ORDER BY os.score DESC, os.created_at ASC, os.id ASC
+        ) AS score_order,
+        COUNT(*) OVER (
+          PARTITION BY os.user_id, os.paper_id
+        )::int AS attempts
+      FROM objective_submissions os
+      JOIN contest_data c ON c.id = os.contest_id
+      WHERE os.contest_id = ${contestId}
+        AND os.created_at <= c.end_time
     ),
     best_scores AS (
       SELECT user_id, problem_id, created_at, score, attempts

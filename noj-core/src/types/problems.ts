@@ -31,7 +31,7 @@ export function isValidDifficulty(value: string): value is Difficulty {
 /**
  * 允许的题目类型。
  */
-export const PROBLEM_TYPES = ["U", "P"] as const;
+export const PROBLEM_TYPES = ["U", "P", "O"] as const;
 export type ProblemType = typeof PROBLEM_TYPES[number];
 
 /**
@@ -70,7 +70,7 @@ export interface CreateProblemInput {
    */
   runtime_config?: RuntimeConfig | null;
   category_ids?: string[];
-  /** 题目类型：U（用户题）/ P（主题题），默认 U */
+  /** 题目类型：U（用户题）/ P（主题题）/ O（客观题套卷），默认 U */
   type?: string;
   /** 题号（仅 admin 可指定，普通用户自动分配） */
   number?: number;
