@@ -39,7 +39,6 @@ async function seedProblems() {
 
         solution: {
           image: "noj-solution-python",
-          entry: "submission_sample.py",
           call_timeout_ms: 2000,
           memory_limit_mb: 512,
         },
@@ -64,7 +63,6 @@ async function seedProblems() {
 
         solution: {
           image: "noj-solution-python",
-          entry: "submission_sample.py",
           call_timeout_ms: 2000,
           memory_limit_mb: 512,
         },
@@ -89,7 +87,6 @@ async function seedProblems() {
 
         solution: {
           image: "noj-solution-python",
-          entry: "submission_sample.py",
           call_timeout_ms: 2000,
           memory_limit_mb: 512,
         },

@@ -79,7 +79,6 @@ NOJ 分为三个核心模块，通过 RESTful API 和 Redis 消息队列协作�
     },
     "solution": {
       "image": "noj-judge-python",
-      "entry": "solution.py",
       "call_timeout_ms": 2000,
       "memory_limit_mb": 512
     }
@@ -93,6 +92,9 @@ NOJ 分为三个核心模块，通过 RESTful API 和 Redis 消息队列协作�
 
 > 双容器架构后 `judge_image` / `judge_command` / `time_limit_ms` / `memory_limit_mb`
 > 顶层字段已移除，统一由 `runtime_config`（Evaluator + Solution）承载。
+> Solution 入口为评测内部约定：用户代码由 judge 以硬编码名 `main.py` 注入容器，
+> SDK 经 `--entry /workspace/main.py` 加载（模块名固定 `user_solution`），
+> 出题人无需也不可配置入口文件名（`solution.entry` 已移除）。
 
 ### 1.4 双层 URL 设计
 

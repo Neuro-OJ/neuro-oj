@@ -130,18 +130,6 @@ export function validateRuntimeConfig(rc: RuntimeConfig): void {
   if (typeof solution.image !== "string" || !solution.image.trim()) {
     throw new BadRequestError("runtime_config.solution.image 必须是非空字符串");
   }
-  if (typeof solution.entry !== "string" || !solution.entry.trim()) {
-    throw new BadRequestError("runtime_config.solution.entry 必须是非空字符串");
-  }
-  // entry 安全校验：禁止路径分隔符与 ..
-  if (
-    solution.entry.includes("/") || solution.entry.includes("\\") ||
-    solution.entry.includes("..")
-  ) {
-    throw new BadRequestError(
-      `runtime_config.solution.entry 含非法字符：${solution.entry}`,
-    );
-  }
   // solution.call_timeout_ms：题目级默认调用超时（必填正整数）；
   // evaluator 的 runner.call(..., timeout_ms) 可按调用覆盖，capability 可经 register_capability(timeout_ms=...) 配置
   if (

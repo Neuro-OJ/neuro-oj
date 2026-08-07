@@ -107,7 +107,7 @@ JSON。你的任务是通过 Prompt 约束，让模型把这些自然语言报�
 { "gate_id": "I-08", "status": "open" }
 ```
 
-## 参考实现
+## 参考模板
 
-参考实现见 `submission_sample.py`：在 `solve(report: str) -> str`
-中完成归一化逻辑， 返回标准化 JSON 字符串。
+初始代码模板见 `template.py`：在 `solve(report: str) -> str` 中完成归一化逻辑，
+返回标准化 JSON 字符串。

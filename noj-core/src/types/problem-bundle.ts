@@ -54,6 +54,8 @@ export interface ProblemBundleManifest {
   /** 分类名数组，按 name 匹配已有分类，缺省忽略 + warning */
   categories?: string[];
   samples?: ProblemBundleSample[];
+  /** 模板文件索引（纯文件名，缺省默认 "template.py"）：前端编辑器初始代码 */
+  template?: string;
   runtime_config: RuntimeConfig;
 }
 
@@ -76,6 +78,18 @@ export function resolveManifestCommand(rc: RuntimeConfig): RuntimeConfig {
  */
 export function isValidProblemBundleName(name: string): boolean {
   return name.toLowerCase().endsWith(".zip");
+}
+
+/**
+ * 校验模板文件名是否合法（纯文件名）。
+ *
+ * 模板名禁止路径分隔符（`/`、`\`）与 `..`，防止读取/打包时路径穿越。
+ * 导入校验（validateBundleManifest）、模板读取（getProblemTemplate）与
+ * 打包排除（noj.ts resolveTemplateExclude）共用同一规则。
+ */
+export function isValidTemplateFileName(name: string): boolean {
+  return name.trim().length > 0 &&
+    !name.includes("/") && !name.includes("\\") && !name.includes("..");
 }
 
 /**
@@ -160,6 +174,18 @@ export function validateBundleManifest(
     }
   }
 
+  if (m.template !== undefined) {
+    if (typeof m.template !== "string" || !m.template.trim()) {
+      throw new BadRequestError("manifest.template 必须是非空字符串");
+    }
+    // 模板安全校验：禁止路径分隔符与 ..（与 solution.entry 旧校验同风格）
+    if (!isValidTemplateFileName(m.template)) {
+      throw new BadRequestError(
+        `manifest.template 含非法字符：${m.template}`,
+      );
+    }
+  }
+
   if (typeof m.runtime_config !== "object" || m.runtime_config === null) {
     throw new BadRequestError("manifest.runtime_config 是必填字段");
   }
@@ -179,6 +205,7 @@ export function validateBundleManifest(
     number: m.number as number | undefined,
     categories: m.categories as string[] | undefined,
     samples: m.samples as ProblemBundleSample[] | undefined,
+    template: m.template as string | undefined,
     runtime_config: runtimeConfig,
   };
 }

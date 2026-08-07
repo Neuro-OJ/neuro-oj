@@ -85,7 +85,7 @@ e2eTest("[e2e/s3-support-pkg] Setup", async () => {
 
         evaluator: { image: "noj-evaluator-python", command: "python3 /workspace/evaluate.py", time_limit_ms: 5000, memory_limit_mb: 512 },
 
-        solution: { image: "noj-solution-python", entry: "submission_sample.py", call_timeout_ms: 2000, memory_limit_mb: 512 },
+        solution: { image: "noj-solution-python", call_timeout_ms: 2000, memory_limit_mb: 512 },
 
       },
       type: "P",
@@ -233,7 +233,7 @@ e2eTest("[e2e/s3-support-pkg] 4.6 无包题目下载返回 404", async () => {
 
         evaluator: { image: "noj-evaluator-python", command: "python3 /workspace/evaluate.py", time_limit_ms: 5000, memory_limit_mb: 512 },
 
-        solution: { image: "noj-solution-python", entry: "submission_sample.py", call_timeout_ms: 2000, memory_limit_mb: 512 },
+        solution: { image: "noj-solution-python", call_timeout_ms: 2000, memory_limit_mb: 512 },
 
       },
       type: "P",
@@ -291,7 +291,7 @@ e2eTest("[e2e/s3-support-pkg] 4.8 非所有者删除被拒 403", async () => {
 
         evaluator: { image: "noj-evaluator-python", command: "python3 /workspace/evaluate.py", time_limit_ms: 5000, memory_limit_mb: 512 },
 
-        solution: { image: "noj-solution-python", entry: "submission_sample.py", call_timeout_ms: 2000, memory_limit_mb: 512 },
+        solution: { image: "noj-solution-python", call_timeout_ms: 2000, memory_limit_mb: 512 },
 
       },
       type: "P",

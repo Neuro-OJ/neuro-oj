@@ -35,6 +35,7 @@
 | `description` | ❌ | 与 `statement.md` 二选一；两者均存在时以文件为准 |
 | `categories` | ❌ | 字符串数组，按 name 匹配已有分类，缺省忽略 + warning |
 | `samples` | ❌ | 预留字段（仅校验格式，不落库）：题目样例由展示层从题面（description）提取 |
+| `template` | ❌ | 模板文件索引（纯文件名，禁止 `/`、`\`、`..`），缺省 `"template.py"`；前端编辑器初始代码 |
 
 #### Scenario: 题面缺失被拒
 
@@ -66,6 +67,13 @@
 - **WHEN** manifest 提供 `samples`（或未提供）
 - **THEN** 系统仅校验其格式（`{input, output}` 字符串对），不落库
 - **THEN** 题目样例由展示层从落库后的题面（description）提取，不依赖 manifest.samples
+
+#### Scenario: manifest.template 索引模板
+
+- **WHEN** `problem.json` 含 `"template": "template.py"`（或缺省）
+- **THEN** 系统校验通过（缺省默认 `"template.py"`），模板接口按该文件名读取源码目录内容
+- **WHEN** `template` 含 `/`、`\` 或 `..`
+- **THEN** 系统返回 HTTP 400，错误信息指明 `manifest.template` 非法
 
 ### Requirement: 严格校验与 ZIP 安全
 
@@ -181,7 +189,7 @@ CLI MUST 提供自动生成的 help（`-h/--help`）与错误退出码约定。`
 
 系统 SHALL 将题目数据按生命周期分层存储：`data/problems-src/<id>/`（源目录，版本控制）→ `build-packages` 构建产物 `data/packages/<id>.zip`（导入载体，gitignored）→ StorageProvider 存储后端目录（gitignored，默认 `data/storage/`，`SUPPORT_PACKAGE_DIR` 可覆盖）。存储后端目录 MUST 与构建产物目录分离，`seed` 导入扫描 MUST 仅扫描构建产物目录。
 
-构建排除规则：`build-packages` 打包时 MUST 排除 `submission*`（参考实现）、`__pycache__`、`.git` 等非评测内容。
+构建排除规则：`build-packages` 打包时 MUST 排除 `template.py`（模板仅供前端编辑器使用）、`submission*`、`__pycache__`、`.git` 等非评测内容。题目源码目录 MUST 不再维护参考实现文件（`submission_sample.py` / `submission.py`），`template.py`（或 manifest `template` 字段索引的文件）为模板唯一来源。
 
 #### Scenario: 存储与构建产物分离
 
@@ -189,7 +197,7 @@ CLI MUST 提供自动生成的 help（`-h/--help`）与错误退出码约定。`
 - **THEN** `storage.put()` 落盘到独立存储目录（默认 `data/storage/`），不写入 `data/packages/`
 - **THEN** `data/packages/` 仅含构建产物 zip
 
-#### Scenario: 参考实现不进入评测包
+#### Scenario: 非评测内容不进入评测包
 
-- **WHEN** `build-packages` 打包 `problems-src/<id>/`（含 `submission_sample.py` 与 `__pycache__/`）
-- **THEN** 构建产物与剥离后评测包均不含 `submission*` 与 `__pycache__` 条目
+- **WHEN** `build-packages` 打包 `problems-src/<id>/`（含 `template.py` 与 `__pycache__/`）
+- **THEN** 构建产物与剥离后评测包均不含 `template.py`、`submission*` 与 `__pycache__` 条目

@@ -13,7 +13,6 @@ interface RuntimeConfigPayload {
   }
   solution: {
     image: string
-    entry: string
     call_timeout_ms: number
     memory_limit_mb: number
   }
@@ -93,7 +92,6 @@ const evaluatorTimeLimitMs = ref(5000)
 const evaluatorMemoryLimitMb = ref(512)
 const evaluatorNetworkEnabled = ref(false)
 const solutionImage = ref("")
-const solutionEntry = ref("submission_sample.py")
 const solutionCallTimeoutMs = ref(1000)
 const solutionMemoryLimitMb = ref(256)
 
@@ -143,7 +141,6 @@ async function loadProblem() {
       evaluatorMemoryLimitMb.value = rc.evaluator.memory_limit_mb
       evaluatorNetworkEnabled.value = rc.evaluator.network?.enabled === true
       solutionImage.value = rc.solution.image
-      solutionEntry.value = rc.solution.entry
       solutionCallTimeoutMs.value = rc.solution.call_timeout_ms
       solutionMemoryLimitMb.value = rc.solution.memory_limit_mb
     }
@@ -197,7 +194,6 @@ async function handleSubmit() {
       },
       solution: {
         image: solutionImage.value.trim(),
-        entry: solutionEntry.value.trim(),
         call_timeout_ms: solutionCallTimeoutMs.value,
         memory_limit_mb: solutionMemoryLimitMb.value,
       },
@@ -391,11 +387,6 @@ async function handleSubmit() {
               </select>
               <p v-if="!judgeImagesLoading && solutionImages.length === 0" class="text-xs text-warning-text">白名单无 solution 类型镜像 — 管理员需先添加并标记 kind='solution'</p>
               <p v-if="fieldErrors.solution_image" class="text-xs text-red-600">{{ fieldErrors.solution_image }}</p>
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-xs font-semibold text-text">入口文件名 <span class="text-red-600">*</span></label>
-              <input v-model="solutionEntry" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" placeholder="如：submission_sample.py" />
-              <p class="text-xs text-text-muted">禁止包含路径分隔符或 ..</p>
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div class="flex flex-col gap-1">

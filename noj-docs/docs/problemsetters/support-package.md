@@ -21,8 +21,9 @@
 - 测试数据（testcase）**不标准化**：`visible.jsonl` / `hidden.jsonl` 只是内置
   样例题的约定，你可以用 `cases/*.json`、SQLite、CSV 等任何方式组织，只要
   `evaluate.py` 自己能读取。
-- 参考实现（如 `submission_sample.py`）**不要**放入包中；`problems:build` 打包时
-  自动排除 `submission*` / `__pycache__` / `.git`。
+- 模板文件（`template.py`）与参考实现（如 `submission_sample.py`）**不要**放入包中；
+  `problems:build` 打包时自动排除 `template.py` / `submission*` / `__pycache__` / `.git`。
+  模板仅供前端编辑器初始填充（starter code），通过 manifest `template` 字段索引。
 
 ## manifest（problem.json）
 
@@ -42,11 +43,11 @@
     },
     "solution": {
       "image": "noj-solution-python",
-      "entry": "submission_sample.py",
       "call_timeout_ms": 5000,
       "memory_limit_mb": 512
     }
-  }
+  },
+  "template": "template.py"
 }
 ```
 
@@ -62,6 +63,10 @@
 | `type` | ❌ | `U` / `P`，缺省 `U`（P 型仅 admin） |
 | `categories` | ❌ | 分类名数组，按 name 匹配已有分类，缺省忽略 |
 | `samples` | ❌ | 预留；缺省从题面自动提取 |
+| `template` | ❌ | 模板文件索引（纯文件名，禁止 `/`、`\`、`..`），缺省 `"template.py"`；前端编辑器用它作为初始代码 |
+
+> `runtime_config.solution` 无需配置入口文件名：Solution 入口为评测内部约定，
+> 用户代码由 Judge Worker 以硬编码名 `main.py` 注入容器，出题人不可见、不可配置。
 
 ## 导入语义与存储
 
@@ -78,7 +83,7 @@
 ```mermaid
 flowchart TD
     A["data/problems-src/&lt;id&gt;/<br/>题目源目录（版本控制）"]
-    A -->|"noj problems build（排除 submission* / __pycache__ / .git）"| B["data/packages/&lt;id&gt;.zip<br/>构建产物 = 导入载体（gitignored，可重建）"]
+    A -->|"noj problems build（排除 template.py / submission* / __pycache__ / .git）"| B["data/packages/&lt;id&gt;.zip<br/>构建产物 = 导入载体（gitignored，可重建）"]
     B -->|"noj problems import / 管理界面上传（剥离元数据）"| C["data/storage/&lt;hash&gt;.zip<br/>LocalStorageProvider 存储后端（gitignored）"]
 ```
 

@@ -103,7 +103,6 @@ async function createDualProblem(
         },
         solution: {
           image: SOLUTION_IMAGE,
-          entry: "solution.py",
           call_timeout_ms: callTimeoutMs,
           memory_limit_mb: 256,
         },

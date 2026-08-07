@@ -120,7 +120,6 @@ async function makeBundleZip(): Promise<Uint8Array> {
         },
         solution: {
           image: SOLUTION_IMAGE,
-          entry: "solution.py",
           call_timeout_ms: 5000,
           memory_limit_mb: 256,
         },
@@ -264,7 +263,6 @@ e2eTest("[e2e/network-capability] 普通用户创建联网题放行（network.en
           },
           solution: {
             image: SOLUTION_IMAGE,
-            entry: "solution.py",
             call_timeout_ms: 5000,
             memory_limit_mb: 256,
           },

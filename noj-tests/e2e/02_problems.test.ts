@@ -42,7 +42,7 @@ e2eTest("[e2e/problems] 2.2 管理员创建题目", async () => {
 
         evaluator: { image: "noj-evaluator-python", command: "python3 /workspace/evaluate.py", time_limit_ms: 5000, memory_limit_mb: 512 },
 
-        solution: { image: "noj-solution-python", entry: "submission_sample.py", call_timeout_ms: 2000, memory_limit_mb: 512 },
+        solution: { image: "noj-solution-python", call_timeout_ms: 2000, memory_limit_mb: 512 },
 
       },
       type: "P",
@@ -62,7 +62,7 @@ e2eTest("[e2e/problems] 2.3 未认证创建被拒", async () => {
 
         evaluator: { image: "noj-evaluator-python", command: "python3 /workspace/evaluate.py", time_limit_ms: 5000, memory_limit_mb: 512 },
 
-        solution: { image: "noj-solution-python", entry: "submission_sample.py", call_timeout_ms: 2000, memory_limit_mb: 512 },
+        solution: { image: "noj-solution-python", call_timeout_ms: 2000, memory_limit_mb: 512 },
 
       },
     });

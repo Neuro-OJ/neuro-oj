@@ -2,8 +2,8 @@
  * 题目初始代码模板 E2E 测试。
  *
  * 覆盖：
- * - GET /api/v1/problems/:id/template 读取 submission_sample.py 作为初始代码
- * - 404 当题目无参考实现
+ * - GET /api/v1/problems/:id/template 按 manifest.template 读取 template.py 作为初始代码
+ * - 404 当题目无模板文件
  * - 401 未登录
  */
 
@@ -17,7 +17,7 @@ e2eTest("[e2e/template] Setup", async () => {
     adminToken = await getAdminToken();
   });
 
-e2eTest("[e2e/template] 8.1 1003 有 submission_sample.py → 返回内容", async () => {
+e2eTest("[e2e/template] 8.1 1003 按 manifest.template 读取 template.py → 返回内容", async () => {
     if (!isE2E) return;
     const res = await apiGet("/api/v1/problems/P1003/template", adminToken);
     if (res.status !== 200) {
@@ -31,11 +31,11 @@ e2eTest("[e2e/template] 8.1 1003 有 submission_sample.py → 返回内容", asy
       throw new Error(`期望 language=python3，实际 ${body.data.language}`);
     }
     if (!body.data.content.includes("a + b")) {
-      throw new Error("模板内容应包含 a + b（A+B 参考解法）");
+      throw new Error("模板内容应包含 a + b（A+B starter code）");
     }
   });
 
-e2eTest("[e2e/template] 8.2 1001 有 submission_sample.py → 返回内容", async () => {
+e2eTest("[e2e/template] 8.2 1001 按 manifest.template 读取 template.py → 返回内容", async () => {
     if (!isE2E) return;
     const res = await apiGet("/api/v1/problems/P1001/template", adminToken);
     if (res.status !== 200) {
@@ -47,7 +47,7 @@ e2eTest("[e2e/template] 8.2 1001 有 submission_sample.py → 返回内容", asy
     }
   });
 
-e2eTest("[e2e/template] 8.3 1002 有 submission_sample.py → 返回内容", async () => {
+e2eTest("[e2e/template] 8.3 1002 按 manifest.template 读取 template.py → 返回内容", async () => {
     if (!isE2E) return;
     const res = await apiGet("/api/v1/problems/P1002/template", adminToken);
     if (res.status !== 200) {

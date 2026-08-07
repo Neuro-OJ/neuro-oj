@@ -186,7 +186,7 @@ mod tests {
             "problem_id":"1001",
             "runtime_config":{
                 "evaluator":{"image":"noj-evaluator-python","command":"python3 /workspace/evaluate.py","time_limit_ms":5000,"memory_limit_mb":512},
-                "solution":{"image":"noj-solution-python","entry":"submission_sample.py","call_timeout_ms":2000,"memory_limit_mb":512}
+                "solution":{"image":"noj-solution-python","call_timeout_ms":2000,"memory_limit_mb":512}
             },
             "language":"python3",
             "code":"print(1)"

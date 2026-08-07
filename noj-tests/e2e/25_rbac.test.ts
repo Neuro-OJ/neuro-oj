@@ -135,7 +135,6 @@ e2eTest("rbac-e2e: 服务层权限校验——普通用户无法创建 P 型题"
           },
           solution: {
             image: "noj-solution-python",
-            entry: "solution.py",
             call_timeout_ms: 2000,
             memory_limit_mb: 512,
           },
@@ -164,7 +163,6 @@ e2eTest("rbac-e2e: 服务层权限校验——普通用户无法创建 P 型题"
           },
           solution: {
             image: "noj-solution-python",
-            entry: "solution.py",
             call_timeout_ms: 2000,
             memory_limit_mb: 512,
           },
