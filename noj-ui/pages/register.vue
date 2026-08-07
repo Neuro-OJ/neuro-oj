@@ -43,7 +43,7 @@
                         id="password"
                         v-model="form.password"
                         label="密码"
-                        placeholder="至少 12 位，需包含字母和数字"
+                        placeholder="至少 8 位，需包含字母和数字"
                         autocomplete="new-password"
                         :disabled="loading"
                         :error="fieldErrors.password"

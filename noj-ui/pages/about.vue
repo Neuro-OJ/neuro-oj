@@ -281,6 +281,51 @@ function formatNumber(n?: number): string {
       </div>
     </section>
 
+    <!-- 常见问题（帮助入口） -->
+    <section id="faq" class="scroll-mt-24">
+      <h2 class="text-lg font-bold text-text flex items-center gap-2 mb-4">
+        <UIcon name="i-lucide-circle-help" class="size-5 text-primary" />
+        常见问题
+      </h2>
+      <div class="flex flex-col gap-2 max-w-[760px]">
+        <details class="group rounded-xl border border-border bg-white px-5 py-3.5">
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-text select-none [&::-webkit-details-marker]:hidden">
+            如何开始做题？
+            <UIcon name="i-lucide-chevron-down" class="size-4 text-text-muted transition-transform group-open:rotate-180" />
+          </summary>
+          <p class="mt-2 text-sm leading-relaxed text-text-secondary">注册并登录后，进入「题库」选择题目，点击「去解题」进入做题页，选择语言并提交代码即可。</p>
+        </details>
+        <details class="group rounded-xl border border-border bg-white px-5 py-3.5">
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-text select-none [&::-webkit-details-marker]:hidden">
+            提交后状态一直显示 Pending？
+            <UIcon name="i-lucide-chevron-down" class="size-4 text-text-muted transition-transform group-open:rotate-180" />
+          </summary>
+          <p class="mt-2 text-sm leading-relaxed text-text-secondary">评测任务进入队列后由评测 Worker 依次处理，可在「评测队列」页查看实时状态；评测完成后提交详情会自动更新。</p>
+        </details>
+        <details class="group rounded-xl border border-border bg-white px-5 py-3.5">
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-text select-none [&::-webkit-details-marker]:hidden">
+            密码有什么要求？
+            <UIcon name="i-lucide-chevron-down" class="size-4 text-text-muted transition-transform group-open:rotate-180" />
+          </summary>
+          <p class="mt-2 text-sm leading-relaxed text-text-secondary">密码至少 8 位，需同时包含字母和数字，且不能与用户名或邮箱前缀相同。</p>
+        </details>
+        <details class="group rounded-xl border border-border bg-white px-5 py-3.5">
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-text select-none [&::-webkit-details-marker]:hidden">
+            如何参加竞赛？
+            <UIcon name="i-lucide-chevron-down" class="size-4 text-text-muted transition-transform group-open:rotate-180" />
+          </summary>
+          <p class="mt-2 text-sm leading-relaxed text-text-secondary">在「竞赛大厅」查看进行中或未开始的竞赛，点击报名；开赛后即可进入做题页参赛。</p>
+        </details>
+        <details class="group rounded-xl border border-border bg-white px-5 py-3.5">
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-text select-none [&::-webkit-details-marker]:hidden">
+            支持哪些评测语言？
+            <UIcon name="i-lucide-chevron-down" class="size-4 text-text-muted transition-transform group-open:rotate-180" />
+          </summary>
+          <p class="mt-2 text-sm leading-relaxed text-text-secondary">默认提供 Python 3 评测环境，更多语言由管理员配置评测镜像后在「管理后台」启用。</p>
+        </details>
+      </div>
+    </section>
+
     <!-- Footer -->
     <footer class="text-center text-xs text-text-muted border-t border-border pt-6 flex flex-col gap-2">
       <p>

@@ -43,6 +43,10 @@ export default defineNuxtConfig({
 
   app: {
     head: {
+      // 页面语言声明（WCAG 3.1.1）：缺失时屏幕阅读器无法确定朗读语言
+      htmlAttrs: {
+        lang: 'zh-CN',
+      },
       title: 'Neuro OJ',
       meta: [
         { charset: 'utf-8' },

@@ -14,7 +14,7 @@ defineEmits<{ retry: [] }>()
     </div>
     <div v-else-if="status === 'error'" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted" role="alert">
       <slot name="error" :error="error">
-        <span class="flex items-center justify-center size-11 rounded-full bg-error-bg text-error-text text-xl font-bold"><UIcon name="i-lucide-alert-circle" class="size-[22px]" /></span>
+        <span class="flex items-center justify-center size-11 rounded-full bg-red-50 text-error-text text-xl font-bold"><UIcon name="i-lucide-alert-circle" class="size-[22px]" /></span>
         <p>{{ error ?? "加载失败" }}</p>
         <UButton color="primary" variant="outline" size="sm" @click="$emit('retry')">重试</UButton>
       </slot>

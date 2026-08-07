@@ -139,22 +139,22 @@ onMounted(fetch)
       <table class="w-full border-collapse">
         <thead>
           <tr>
-            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-gray-50 border-b border-border">
+            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-bg-page border-b border-border">
               时间
             </th>
-            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-gray-50 border-b border-border">
+            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-bg-page border-b border-border">
               管理员
             </th>
-            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-gray-50 border-b border-border">
+            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-bg-page border-b border-border">
               操作
             </th>
-            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-gray-50 border-b border-border">
+            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-bg-page border-b border-border">
               目标
             </th>
-            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-gray-50 border-b border-border">
+            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-bg-page border-b border-border">
               详情
             </th>
-            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-gray-50 border-b border-border">
+            <th class="px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider text-left bg-bg-page border-b border-border">
               IP
             </th>
           </tr>
@@ -179,7 +179,7 @@ onMounted(fetch)
             v-for="entry in data"
             v-else
             :key="entry.id"
-            class="border-b border-border last:border-b-0 transition-colors hover:bg-gray-50"
+            class="border-b border-border last:border-b-0 transition-colors hover:bg-primary-bg"
           >
             <td class="px-4 py-3 text-sm text-text whitespace-nowrap">
               {{ new Date(entry.created_at).toLocaleString("zh-CN") }}

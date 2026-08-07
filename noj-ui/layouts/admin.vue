@@ -58,7 +58,7 @@ function isActive(path: string) {
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-gray-50">
+  <div class="flex min-h-screen bg-bg-page">
     <a href="#admin-main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-white focus:text-text focus:px-4 focus:py-2 focus:rounded-md focus:shadow-modal">
       跳转到主要内容
     </a>
@@ -81,7 +81,7 @@ function isActive(path: string) {
           <img src="~/assets/img/logo.jpg" alt="NOJ" class="size-7 rounded-md shrink-0" />
           <span v-show="sidebarOpen" class="text-base font-bold text-primary whitespace-nowrap">管理后台</span>
         </NuxtLink>
-        <button class="bg-none border-none text-text-secondary cursor-pointer p-1 rounded shrink-0 hover:bg-gray-100 transition-colors" @click="sidebarOpen = !sidebarOpen">
+        <button class="bg-none border-none text-text-secondary cursor-pointer p-1 rounded shrink-0 hover:bg-primary-hover transition-colors" @click="sidebarOpen = !sidebarOpen">
           <UIcon name="i-lucide-panel-left-close" class="size-4.5" v-if="sidebarOpen"/>
           <UIcon name="i-lucide-panel-left" class="size-4.5" v-else/>
         </button>
@@ -95,7 +95,7 @@ function isActive(path: string) {
             :key="item.to"
             :to="item.to"
             class="flex items-center gap-2.5 px-3 py-2.5 text-sm text-text-secondary no-underline rounded-md transition-colors whitespace-nowrap overflow-hidden"
-            :class="{ 'bg-primary-bg text-primary font-semibold': isActive(item.to), 'hover:bg-gray-100 hover:text-text': !isActive(item.to) }"
+            :class="{ 'bg-primary-bg text-primary font-semibold': isActive(item.to), 'hover:bg-primary-hover hover:text-text': !isActive(item.to) }"
             @click="isMobile && (sidebarOpen = false)"
           >
             <UIcon :name="item.icon" class="size-4.5" />
@@ -105,7 +105,7 @@ function isActive(path: string) {
       </nav>
 
       <div class="p-2 border-t border-border">
-        <NuxtLink to="/" class="flex items-center gap-2 px-3 py-2.5 text-xs text-text-secondary no-underline rounded-md transition-colors whitespace-nowrap overflow-hidden hover:bg-gray-100 hover:text-text">
+        <NuxtLink to="/" class="flex items-center gap-2 px-3 py-2.5 text-xs text-text-secondary no-underline rounded-md transition-colors whitespace-nowrap overflow-hidden hover:bg-primary-hover hover:text-text">
           <UIcon name="i-lucide-arrow-left-from-line" class="size-4" />
           <span v-show="sidebarOpen">返回前台</span>
         </NuxtLink>
@@ -116,7 +116,7 @@ function isActive(path: string) {
     <div class="flex-1 min-h-screen transition-[margin-left] duration-200" :class="sidebarOpen ? 'ml-60 max-md:ml-0' : 'ml-15 max-md:ml-0'">
       <!-- 移动端顶栏 -->
       <header v-if="isMobile" class="flex items-center gap-3 px-4 py-3 bg-white border-b border-border sticky top-0 z-40">
-        <button class="bg-none border-none text-text cursor-pointer p-1.5 rounded hover:bg-gray-100" @click="sidebarOpen = !sidebarOpen">
+        <button class="bg-none border-none text-text cursor-pointer p-1.5 rounded hover:bg-primary-hover" @click="sidebarOpen = !sidebarOpen">
           <UIcon name="i-lucide-panel-left" class="size-5" />
         </button>
         <span class="text-base font-semibold">管理后台</span>

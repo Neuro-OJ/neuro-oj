@@ -81,7 +81,7 @@ function score(value: number) {
         <div v-else-if="rows.length === 0" class="py-20 text-center text-sm text-text-muted">暂无排名数据</div>
         <table v-else class="w-full min-w-[760px] border-collapse">
           <thead>
-            <tr class="border-b border-border bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
+            <tr class="border-b border-border bg-bg-page text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
               <th class="px-4 py-3 text-center">排名</th>
               <th class="px-4 py-3">参赛者</th>
               <th v-for="labelName in problemLabels" :key="labelName" class="px-3 py-3 text-center">{{ labelName }}</th>

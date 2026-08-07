@@ -273,7 +273,7 @@ async function toggleFollow() {
 
       <!-- 已通过题目 -->
       <div v-if="profile.solved_problems.length" class="bg-white border border-border rounded-xl overflow-hidden">
-        <div class="px-6 py-4 border-b border-border bg-gray-50">
+        <div class="px-6 py-4 border-b border-border bg-bg-page">
           <h2 class="text-base font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-check-circle" class="text-green-600 size-4.5" />
             已通过题目
@@ -283,7 +283,7 @@ async function toggleFollow() {
           <div
             v-for="problem in profile.solved_problems"
             :key="problem.id"
-            class="flex items-center justify-between px-6 py-3 hover:bg-gray-50"
+            class="flex items-center justify-between px-6 py-3 hover:bg-primary-bg"
           >
             <NuxtLink
               :to="`/problems/${problem.id}`"
@@ -306,7 +306,7 @@ async function toggleFollow() {
 
       <!-- 创建的题目 -->
       <div v-if="createdProblems.length" class="bg-white border border-border rounded-xl overflow-hidden">
-        <div class="px-6 py-4 border-b border-border bg-gray-50">
+        <div class="px-6 py-4 border-b border-border bg-bg-page">
           <h2 class="text-base font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-file-text" class="text-primary size-4.5" />
             创建的题目
@@ -316,7 +316,7 @@ async function toggleFollow() {
           <div
             v-for="problem in createdProblems"
             :key="problem.id"
-            class="flex items-center justify-between px-6 py-3 hover:bg-gray-50"
+            class="flex items-center justify-between px-6 py-3 hover:bg-primary-bg"
           >
             <div class="flex items-center gap-3">
               <ProblemId :display-id="problem.display_id" :type="'U'" />
@@ -342,7 +342,7 @@ async function toggleFollow() {
 
       <!-- 最近提交 -->
       <div v-if="profile.recent_submissions.length" class="bg-white border border-border rounded-xl overflow-hidden">
-        <div class="px-6 py-4 border-b border-border bg-gray-50">
+        <div class="px-6 py-4 border-b border-border bg-bg-page">
           <h2 class="text-base font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-clock" class="text-text-secondary size-4.5" />
             最近提交
@@ -352,7 +352,7 @@ async function toggleFollow() {
           <div
             v-for="sub in profile.recent_submissions"
             :key="sub.id"
-            class="flex items-center justify-between px-6 py-3 hover:bg-gray-50"
+            class="flex items-center justify-between px-6 py-3 hover:bg-primary-bg"
           >
             <div class="flex items-center gap-3 min-w-0">
               <NuxtLink

@@ -297,7 +297,7 @@ async function confirmReset(s: SystemSetting) {
 
     <!-- ─── 第一组：DB-backed 可编辑设置 ─────────────── -->
     <section class="bg-white border border-border rounded-xl overflow-hidden">
-      <div class="px-5 py-3 border-b border-border bg-gray-50">
+      <div class="px-5 py-3 border-b border-border bg-bg-page">
         <div class="flex items-center gap-2">
           <UIcon name="i-lucide-database" class="size-4 text-primary" />
           <h2 class="text-base font-semibold text-text">
@@ -320,7 +320,7 @@ async function confirmReset(s: SystemSetting) {
       >
         <table class="w-full text-sm">
           <thead>
-            <tr class="bg-gray-50 border-b border-border">
+            <tr class="bg-bg-page border-b border-border">
               <th class="px-3 py-2.5 text-left font-semibold text-text w-[180px]">设置项</th>
               <th class="px-3 py-2.5 text-left font-semibold text-text">当前值</th>
               <th class="px-3 py-2.5 text-left font-semibold text-text w-[90px]">来源</th>
@@ -333,7 +333,7 @@ async function confirmReset(s: SystemSetting) {
               v-for="s in dbSettings"
               :key="s.key"
             class="border-b border-border last:border-b-0 transition-colors"
-            :class="isDirty(s.key) ? 'bg-amber-50' : 'hover:bg-gray-50'"
+            :class="isDirty(s.key) ? 'bg-amber-50' : 'hover:bg-primary-bg'"
           >
             <!-- 设置项 key + 类型 -->
             <td class="px-3 py-3 align-top">
@@ -461,7 +461,7 @@ async function confirmReset(s: SystemSetting) {
     <!-- ─── 第二组：env-only 只读设置（折叠面板） ───────────── -->
     <section class="bg-white border border-border rounded-xl overflow-hidden">
       <details class="group">
-        <summary class="flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-border cursor-pointer select-none hover:bg-gray-100 transition-colors">
+        <summary class="flex items-center justify-between px-5 py-3 bg-bg-page border-b border-border cursor-pointer select-none hover:bg-primary-hover transition-colors">
           <div class="flex items-center gap-2">
             <UIcon name="i-lucide-chevron-down" class="size-4 text-text-secondary transition-transform group-open:rotate-180" />
             <h2 class="text-base font-semibold text-text">
@@ -508,7 +508,7 @@ async function confirmReset(s: SystemSetting) {
             </UTooltip>
             <code
               v-else
-              class="font-mono text-13px px-2 py-0.5 rounded bg-gray-50 text-text"
+              class="font-mono text-13px px-2 py-0.5 rounded bg-bg-page text-text"
             >
               {{ String(row.original.effective_value) }}
             </code>

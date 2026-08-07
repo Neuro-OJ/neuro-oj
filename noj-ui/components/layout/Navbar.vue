@@ -18,7 +18,7 @@
                 <template #body>
                     <button
                         type="button"
-                        class="flex items-center gap-2 px-3 py-2.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-gray-100 hover:text-text"
+                        class="flex items-center gap-2 px-3 py-2.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-primary-hover hover:text-text"
                         @click="openSearch; mobileOpen = false"
                     >
                         <UIcon name="i-lucide-search" class="size-4" />
@@ -28,7 +28,7 @@
                         v-for="item in navItems"
                         :key="item.to"
                         :to="item.to"
-                        class="flex items-center gap-2 px-3 py-2.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-gray-100 hover:text-text"
+                        class="flex items-center gap-2 px-3 py-2.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-primary-hover hover:text-text"
                         @click="mobileOpen = false"
                     >
                         <UIcon :name="item.icon" class="size-4" />
@@ -43,13 +43,13 @@
                     v-for="item in navItems"
                     :key="item.to"
                     :to="item.to"
-                    class="px-3 py-1.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-gray-100 hover:text-text"
+                    class="px-3 py-1.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-primary-hover hover:text-text"
                     active-class="text-primary font-semibold"
                 >{{ item.label }}</NuxtLink>
             </nav>
             <button
                 type="button"
-                class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:bg-gray-100 rounded-md transition-colors"
+                class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:bg-primary-hover rounded-md transition-colors"
                 aria-label="搜索"
                 @click="openSearch"
             >
@@ -58,7 +58,7 @@
                 <kbd class="hidden md:inline-block px-1.5 py-0.5 text-xs bg-gray-100 border border-border rounded">Ctrl K</kbd>
             </button>
             <div class="flex items-center gap-3 ml-auto">
-                <NuxtLink v-if="user && communityConfig?.enabled" to="/community/notifications" class="relative rounded-md p-2 text-text-secondary no-underline transition-colors hover:bg-gray-100 hover:text-text" aria-label="社区通知">
+                <NuxtLink v-if="user && communityConfig?.enabled" to="/community/notifications" class="relative rounded-md p-2 text-text-secondary no-underline transition-colors hover:bg-primary-hover hover:text-text" aria-label="社区通知">
                     <UIcon name="i-lucide-bell" class="size-4.5" />
                     <span v-if="unreadCount > 0" class="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">{{ unreadCount > 9 ? '9+' : unreadCount }}</span>
                 </NuxtLink>

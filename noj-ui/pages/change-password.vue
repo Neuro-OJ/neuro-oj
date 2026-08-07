@@ -41,7 +41,7 @@
                             id="newPassword"
                             v-model="form.newPassword"
                             :type="showNewPassword ? 'text' : 'password'"
-                            placeholder="至少 12 位，需包含字母和数字"
+                            placeholder="至少 8 位，需包含字母和数字"
                             autocomplete="new-password"
                             :disabled="loading"
                             class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"

@@ -101,7 +101,7 @@ await load()
         v-for="item in notifications"
         :key="item.notification.id"
         type="button"
-        class="block w-full rounded-lg border border-border bg-white p-4 text-left no-underline shadow-card transition-colors hover:bg-gray-50"
+        class="block w-full rounded-lg border border-border bg-white p-4 text-left no-underline shadow-card transition-colors hover:bg-primary-bg"
         :class="!item.notification.read_at && 'border-primary/40 bg-primary-bg/30'"
         @click="handleClick(item)"
       >
