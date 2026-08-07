@@ -81,4 +81,6 @@ aa.txt
 # --- Docker buildx cache ---
 .buildx/
 
+.reasonix/docs/review-snapshots/
+docs/review-snapshots/
 .reasonix/
