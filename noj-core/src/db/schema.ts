@@ -685,6 +685,42 @@ export const systemSettings = pgTable(
 );
 
 /**
+ * 公告表（issue #231）。
+ * 站内广播（维护通知、活动预告等），由运营者（admin）管理。
+ * - 公开列表仅返回 is_active=true，排序 is_pinned DESC, created_at DESC
+ * - 下架 = is_active 置 false（不物理删除，保留历史）
+ * - content 为 Markdown 文本
+ */
+export const announcements = pgTable(
+  "announcements",
+  {
+    id: text("id").primaryKey(),
+    /** 标题，1–100 字符 */
+    title: text("title").notNull(),
+    /** Markdown 正文，1–50000 字符 */
+    content: text("content").notNull(),
+    /** 是否置顶（公开列表优先展示） */
+    is_pinned: boolean("is_pinned").notNull().default(false),
+    /** 是否发布中（false = 已下架，公开列表不可见） */
+    is_active: boolean("is_active").notNull().default(true),
+    /** 创建者用户 id */
+    created_by: text("created_by").notNull().references(() => users.id),
+    /** ISO 8601，创建时间 */
+    created_at: text("created_at").notNull(),
+    /** ISO 8601，最后更新时间 */
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    /** 公开列表查询：仅 active + 置顶优先 + 最新在前 */
+    activePinnedCreatedIdx: index("idx_announcements_active_pinned_created").on(
+      table.is_active,
+      table.is_pinned,
+      table.created_at,
+    ),
+  }),
+);
+
+/**
  * 审计日志表（issue #101）。
  * 记录所有管理员操作的详细信息：admin_id、action、target、detail、ip、time。
  * service 层通过 logAudit() 同步写入；后台任务定期清理过期记录。
