@@ -8,7 +8,7 @@ interface Category {
 interface Props {
   keyword: string
   difficulty: string
-  categoryId: string
+  categoryId: string | null
   problemType: string
   categories: Category[]
 }
@@ -17,7 +17,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   'update:keyword': [value: string]
   'update:difficulty': [value: string]
-  'update:categoryId': [value: string]
+  'update:categoryId': [value: string | null]
   'update:problemType': [value: string]
 }>()
 
@@ -59,7 +59,7 @@ function selectDifficulty(value: string) {
 }
 
 function selectCategory(value: string) {
-  emit('update:categoryId', value === props.categoryId ? '' : value)
+  emit('update:categoryId', value === props.categoryId ? null : value)
 }
 
 function selectType(value: string) {
@@ -111,10 +111,10 @@ const activeDifficulty = computed(() => difficulties.some((d) => d.value === pro
         v-for="t in types"
         :key="t.value"
         role="radio"
-        :aria-checked="problemType === t.value"
+        :aria-checked="activeType === t.value"
         :tabindex="activeType === t.value ? 0 : -1"
         class="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors duration-150"
-        :class="problemType === t.value
+        :class="activeType === t.value
           ? t.value === 'U' ? 'bg-blue-100 text-blue-700 border-blue-300'
             : t.value === 'P' ? 'bg-purple-100 text-purple-700 border-purple-300'
             : 'bg-primary text-white border-primary'
@@ -148,21 +148,15 @@ const activeDifficulty = computed(() => difficulties.some((d) => d.value === pro
     <!-- 分类筛选 -->
     <div v-if="categories.length > 0" class="flex items-center gap-1.5">
       <span class="text-xs text-text-muted mr-1" id="cat-label">分类:</span>
-      <select
-        :value="categoryId"
+      <USelect
+        :model-value="categoryId"
+        :items="categories.map((cat) => ({ label: cat.name, value: cat.id }))"
+        size="xs"
+        class="min-w-[130px]"
+        placeholder="全部分类"
         aria-label="按分类筛选"
-        class="px-3 py-1.5 text-xs border border-border rounded-lg bg-white text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors duration-150"
-        @change="selectCategory(($event.target as HTMLSelectElement).value)"
-      >
-        <option value="">全部分类</option>
-        <option
-          v-for="cat in categories"
-          :key="cat.id"
-          :value="cat.id"
-        >
-          {{ cat.name }}
-        </option>
-      </select>
+        @update:model-value="selectCategory"
+      />
     </div>
   </div>
 </template>

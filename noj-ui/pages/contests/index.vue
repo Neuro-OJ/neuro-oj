@@ -4,8 +4,8 @@ import type { Contest, ContestStatus, ContestType } from '~/composables/useConte
 useHead({ title: '竞赛大厅 - Neuro OJ' })
 
 const { typeLabels, statusLabels, formatDateTime, formatDuration, statusClass } = useContests()
-const selectedType = ref<ContestType | ''>('')
-const selectedStatus = ref<ContestStatus | ''>('')
+const selectedType = ref<ContestType | null>(null)
+const selectedStatus = ref<ContestStatus | null>(null)
 const currentPage = ref(1)
 const perPage = 12
 
@@ -51,18 +51,8 @@ watch([selectedType, selectedStatus], () => {
       </section>
 
       <section class="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-white p-4">
-        <select v-model="selectedType" class="rounded-lg border border-border bg-white px-3 py-2 text-sm text-text outline-none focus:border-primary">
-          <option value="">全部赛制</option>
-          <option value="icpc">ICPC</option>
-          <option value="ioi">IOI</option>
-          <option value="oi">OI</option>
-        </select>
-        <select v-model="selectedStatus" class="rounded-lg border border-border bg-white px-3 py-2 text-sm text-text outline-none focus:border-primary">
-          <option value="">全部状态</option>
-          <option value="pending">未开始</option>
-          <option value="running">进行中</option>
-          <option value="ended">已结束</option>
-        </select>
+        <USelect v-model="selectedType" :items="[{ label: 'ICPC', value: 'icpc' }, { label: 'IOI', value: 'ioi' }, { label: 'OI', value: 'oi' }]" placeholder="全部赛制" class="min-w-[120px]" />
+        <USelect v-model="selectedStatus" :items="[{ label: '未开始', value: 'pending' }, { label: '进行中', value: 'running' }, { label: '已结束', value: 'ended' }]" placeholder="全部状态" class="min-w-[120px]" />
         <span class="ml-auto text-xs text-text-muted">共 {{ filteredContests.length }} 场竞赛</span>
       </section>
 

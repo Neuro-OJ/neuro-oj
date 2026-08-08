@@ -16,6 +16,7 @@ interface ProblemItem {
   type: string
   owner_id: string
   number: number
+  is_objective: boolean
   created_at: string
   updated_at: string
 }
@@ -199,7 +200,18 @@ const columns = computed(() => {
             </NuxtLink>
           </template>
           <template #difficulty-cell="{ row }">
-            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold" :class="difficultyBadgeColors[row.original.difficulty] || ''">
+            <!-- 客观题：在难度位置标记为「客观题」 -->
+            <span
+              v-if="row.original.is_objective"
+              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700"
+            >
+              客观题
+            </span>
+            <span
+              v-else
+              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+              :class="difficultyBadgeColors[row.original.difficulty] || ''"
+            >
               {{ difficultyLabels[row.original.difficulty] || row.original.difficulty }}
             </span>
           </template>
@@ -212,10 +224,13 @@ const columns = computed(() => {
             <span v-if="!row.original.categories?.length" class="text-xs text-text-muted">--</span>
           </template>
           <template #time-cell="{ row }">
-            <span class="text-xs text-text-secondary">{{ row.original.runtime_config.evaluator.time_limit_ms }}ms</span>
+            <!-- 客观题套卷无评测容器（runtime_config 为 NULL） -->
+            <span v-if="row.original.is_objective" class="text-xs text-text-secondary">即时判定</span>
+            <span v-else class="text-xs text-text-secondary">{{ row.original.runtime_config.evaluator.time_limit_ms }}ms</span>
           </template>
           <template #memory-cell="{ row }">
-            <span class="text-xs text-text-secondary">{{ row.original.runtime_config.evaluator.memory_limit_mb }}MB</span>
+            <span v-if="row.original.is_objective" class="text-xs text-text-muted">--</span>
+            <span v-else class="text-xs text-text-secondary">{{ row.original.runtime_config.evaluator.memory_limit_mb }}MB</span>
           </template>
           <template #rate-cell="{ row }">
             <span class="text-xs text-text-secondary">{{ formatAcceptanceRate(row.original.acceptance_rate) }}</span>

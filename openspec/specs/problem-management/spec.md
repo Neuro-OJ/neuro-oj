@@ -2,13 +2,13 @@
 
 定义 Neuro OJ 题目管理系统规范，包括题目 CRUD、多维度筛选与分页、难度约束。
 管理员可管理题目，普通用户可查看和筛选。
-
 ## Requirements
-
 ### Requirement: 用户可创建题目
 
 系统 SHALL 提供 `POST /api/v1/problems`，管理员可创建任意 type 的题目，
-普通用户可创建 type='U' 的题目（自动成为所有者）。
+普通用户可创建 type='U'（用户题）与 is_objective=true（客观题套卷）的题目（自动成为所有者）。
+
+创建 客观题套卷 SHALL 不要求 `runtime_config`（客观题无评测容器）；创建 U/P 型 SHALL 继续要求 `runtime_config`。
 
 #### Scenario: 管理员成功创建 P 型题目
 - **WHEN** 管理员发送 `POST /api/v1/problems` 并携带 type='P' 及有效字段
@@ -17,6 +17,10 @@
 #### Scenario: 普通用户成功创建 U 型题目
 - **WHEN** 普通用户发送 `POST /api/v1/problems` 并携带 type='U' 及有效字段
 - **THEN** 系统创建 U 型题目，自动设 owner_id 为当前用户，自动分配 number，返回 201
+
+#### Scenario: 普通用户成功创建 客观题套卷
+- **WHEN** 普通用户发送 `POST /api/v1/problems` 并携带 is_objective=true、title、description 且不含 runtime_config
+- **THEN** 系统创建 客观题套卷，自动设 owner_id 为当前用户，自动分配 number，返回 201
 
 #### Scenario: 普通用户尝试创建 P 型题目
 - **WHEN** 普通用户调用 `POST /api/v1/problems` 并携带 type='P'
@@ -187,3 +191,4 @@
 
 - **WHEN** 白名单中有多个条目，普通用户在题目编辑器下拉框中选择其中一项
 - **THEN** 创建请求携带所选镜像名，后端白名单校验通过，创建成功
+

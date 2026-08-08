@@ -34,13 +34,12 @@ const perPage = 20
 const filters = reactive({
   problem_search: "",
   submission_id: "",
-  language: "",
-  status: "",
+  language: null as string | null,
+  status: null as string | null,
 })
 
 // 语言选项
 const languageOptions = [
-  { value: "", label: "全部" },
   { value: "python3", label: "Python 3" },
   { value: "python", label: "Python" },
   { value: "cpp", label: "C++" },
@@ -50,7 +49,6 @@ const languageOptions = [
 
 // 状态选项
 const statusOptions = [
-  { value: "", label: "全部" },
   { value: "pending", label: "等待评测" },
   { value: "judging", label: "评测中" },
   { value: "finished", label: "已完成" },
@@ -102,8 +100,8 @@ function applyFilters() {
 function clearFilters() {
   filters.problem_search = ""
   filters.submission_id = ""
-  filters.language = ""
-  filters.status = ""
+  filters.language = null
+  filters.status = null
   loadSubmissions(1)
 }
 
@@ -147,19 +145,11 @@ function hasResult(
           </div>
           <div class="flex min-w-[140px] flex-1 flex-col gap-1">
             <label class="text-xs font-semibold text-text-secondary">语言</label>
-            <select v-model="filters.language" class="rounded border border-border bg-white px-2.5 py-1.5 text-13px text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10" @change="applyFilters">
-              <option v-for="opt in languageOptions" :key="opt.value" :value="opt.value">
-                {{ opt.label }}
-              </option>
-            </select>
+            <USelect v-model="filters.language" :items="languageOptions" placeholder="全部" class="min-w-[140px]" @change="applyFilters" />
           </div>
           <div class="flex min-w-[140px] flex-1 flex-col gap-1">
             <label class="text-xs font-semibold text-text-secondary">状态</label>
-            <select v-model="filters.status" class="rounded border border-border bg-white px-2.5 py-1.5 text-13px text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10" @change="applyFilters">
-              <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
-                {{ opt.label }}
-              </option>
-            </select>
+            <USelect v-model="filters.status" :items="statusOptions" placeholder="全部" class="min-w-[140px]" @change="applyFilters" />
           </div>
         </div>
         <div class="flex gap-2">

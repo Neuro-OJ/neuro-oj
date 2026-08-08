@@ -2,9 +2,7 @@
 
 定义 Neuro OJ 核心数据模型，支撑用户管理、题目管理、提交评测等业务功能。基于
 PostgreSQL + Drizzle ORM 实现持久化和迁移。
-
 ## Requirements
-
 ### Requirement: 用户表（users）
 
 系统 SHALL 提供 `users` 表存储用户信息，包含以下字段：
@@ -77,22 +75,20 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 
 ### Requirement: 题目表（problems）
 
-系统 SHALL 提供 `problems` 表存储 LMCC 题目信息，支持自定义评测环境配置：
+系统 SHALL 提供 `problems` 表存储题目信息。编程题（U/P 型）支持自定义评测环境配置；客观题套卷（客观题）无评测环境（`runtime_config` 可空）：
 
 | 字段                 | 类型    | 约束                                 | 说明                           |
 | -------------------- | ------- | ------------------------------------ | ------------------------------ |
 | id                   | TEXT    | PRIMARY KEY, UUID v4                 |                                |
-| title                | TEXT    | NOT NULL                             | 题目标题                       |
+| title                | TEXT    | NOT NULL                             | 题目标题 / 套卷标题            |
 | description          | TEXT    | NOT NULL                             | 题目描述（Markdown）           |
 | difficulty           | TEXT    | NOT NULL, DEFAULT 'medium'           | easy / medium / hard           |
-| judge_image          | TEXT    | NOT NULL                             | Docker 镜像名                  |
-| judge_command        | TEXT    | NOT NULL                             | 容器内评测命令                 |
-| support_package_path | TEXT    |                                      | 支持包 zip 路径，相对 CWD      |
-| time_limit_ms        | INTEGER | NOT NULL, DEFAULT 5000               | 时间限制（毫秒）               |
-| memory_limit_mb      | INTEGER | NOT NULL, DEFAULT 512                | 内存限制（MB）                 |
+| runtime_config       | JSONB   | 可空（U/P 型必填）                    | 双容器评测配置；客观题为 NULL    |
+| support_package_storage_url | TEXT | 可空                               | 支持包存储 URL（仅 U/P 型使用）|
 | number               | INTEGER | NOT NULL, UNIQUE(type, number)       | 题号（同一 type 内独立自增）   |
 | owner_id             | TEXT    | NOT NULL, DEFAULT '0', FK → users.id | 题目所有者 ID，默认 root       |
-| type                 | TEXT    | NOT NULL, DEFAULT 'U', CHECK('U','P')| 题目类型：U=用户题, P=管理题   |
+| type                 | TEXT    | NOT NULL, DEFAULT 'U', CHECK('U','P') | 题目类型：U=用户题, P=管理题 |
+| is_objective         | BOOLEAN | NOT NULL, DEFAULT false              | 客观题套卷标记（无评测容器，服务端即时判定） |
 | created_at           | TEXT    | NOT NULL, ISO 8601                   |                                |
 | updated_at           | TEXT    | NOT NULL, ISO 8601                   |                                |
 
@@ -120,10 +116,20 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 - **WHEN** 向 problems 表插入一条 type='P' 的记录
 - **THEN** 允许与 U 型题目有相同的 number 值（不同 type 独立编号）
 
+#### Scenario: 插入 客观题套卷
+
+- **WHEN** 向 problems 表插入一条 type='U'（或 'P'）、is_objective=true、runtime_config=NULL 的记录
+- **THEN** 允许插入，number 在所属 type 范围内独立自增
+
 #### Scenario: type + number 组合唯一约束
 
 - **WHEN** 尝试插入 type='U', number=1 且已存在同 type+number 的记录
 - **THEN** 数据库返回 UNIQUE 约束冲突错误
+
+#### Scenario: 非法 type 被拒
+
+- **WHEN** 尝试插入 type='X' 的记录
+- **THEN** 数据库 CHECK 约束拒绝插入
 
 ### Requirement: 提交表（submissions）
 
@@ -271,7 +277,6 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 
 - **WHEN** noj-core 启动且 migration 0004 未执行
 - **THEN** 系统执行 ALTER TABLE 添加 owner_id、type、number，创建 CHECK 和 UNIQUE 约束，迁移已有数据
-
 
 ### Requirement: 健康检查包含数据库状态
 
@@ -507,3 +512,73 @@ ORM 映射：Drizzle ORM 0.45.x 不导出原生 `tsvector` 列类型，使用
 
 - **WHEN** 创建新用户且未指定社区偏好
 - **THEN** 活动可见性默认为 `following`
+
+### Requirement: 客观题小题表（objective_questions）
+
+系统 SHALL 提供 `objective_questions` 表存储客观题小题，每道小题 SHALL 通过外键绑定所属套卷（problems.id，is_objective=true）：
+
+| 字段       | 类型    | 约束                                   | 说明                               |
+| ---------- | ------- | -------------------------------------- | ---------------------------------- |
+| id         | TEXT    | PRIMARY KEY, UUID v4                   |                                    |
+| paper_id   | TEXT    | NOT NULL, FK → problems.id, CASCADE    | 所属套卷，删除套卷级联删除         |
+| sort_order | INTEGER | NOT NULL                               | 卷内排序，UNIQUE(paper_id, sort_order) |
+| type       | TEXT    | NOT NULL, CHECK('single','multiple','judge') | 单选 / 多选 / 判断           |
+| prompt     | TEXT    | NOT NULL                               | 题干（Markdown）                   |
+| options    | JSONB   | NOT NULL, DEFAULT '[]'                 | 选项数组 `[{key, text}]`，judge 型为空 |
+| answer     | JSONB   | NOT NULL                               | 标准答案：`["A"]` / `["A","C"]` / `[true]` |
+| explanation| TEXT    | NOT NULL, DEFAULT ''                   | 答案解析（判卷后展示）             |
+| created_at | TEXT    | NOT NULL, ISO 8601                     |                                    |
+| updated_at | TEXT    | NOT NULL, ISO 8601                     |                                    |
+
+#### Scenario: 创建单选小题
+
+- **WHEN** 向 objective_questions 插入一条 type='single'、answer=['A'] 的记录
+- **THEN** 记录绑定 paper_id 指向的套卷，sort_order 在该卷内唯一
+
+#### Scenario: 多选答案集合
+
+- **WHEN** 插入 type='multiple'、answer=['A','C'] 的记录
+- **THEN** answer 保存为 JSON 数组，判分时要求完全匹配
+
+#### Scenario: 判断题型
+
+- **WHEN** 插入 type='judge'、answer=[true] 的记录
+- **THEN** options 可为空数组，标准答案为布尔值
+
+#### Scenario: 删除套卷级联删除小题
+
+- **WHEN** 删除套卷（problems 行）
+- **THEN** 该卷下全部 objective_questions 记录级联删除
+
+### Requirement: 客观题提交表（objective_submissions）
+
+系统 SHALL 提供 `objective_submissions` 表存储客观题提交记录（服务端即时判定，无评测队列参与）：
+
+| 字段            | 类型    | 约束                                    | 说明                               |
+| --------------- | ------- | --------------------------------------- | ---------------------------------- |
+| id              | TEXT    | PRIMARY KEY, UUID v4                    |                                    |
+| paper_id        | TEXT    | NOT NULL, FK → problems.id, CASCADE     | 套卷                               |
+| user_id         | TEXT    | NOT NULL, FK → users.id                 | 提交者                             |
+| contest_id      | TEXT    | 可空, FK → contests.id, SET NULL        | 竞赛提交时非空                     |
+| submission_type | TEXT    | NOT NULL, CHECK('practice','contest')   | 练习 / 竞赛模式                    |
+| answers         | JSONB   | NOT NULL                                | 用户答案 `{question_id: [选项...]}` |
+| status          | TEXT    | NOT NULL, DEFAULT 'finished'            | 即时判定完成                       |
+| score           | INTEGER | NOT NULL, DEFAULT 0                     | 卷面分 ×100（0-10000）             |
+| details         | JSONB   | NOT NULL, DEFAULT '{}'                  | 逐题判定 `{question_id: {correct, expected, given}}` |
+| created_at      | TEXT    | NOT NULL, ISO 8601                      |                                    |
+
+#### Scenario: 记录竞赛一次性提交
+
+- **WHEN** 参赛者在竞赛中提交套卷答案
+- **THEN** 记录 contest_id 与 submission_type='contest'，且 (paper_id, user_id, contest_id) 组合唯一（重复提交冲突）
+
+#### Scenario: 练习模式多次提交
+
+- **WHEN** 用户在练习模式下多次提交同一套卷
+- **THEN** 每次提交均生成独立记录，submission_type='practice'，contest_id 为 NULL
+
+#### Scenario: 删除套卷级联删除提交
+
+- **WHEN** 删除套卷（problems 行）
+- **THEN** 该卷下全部 objective_submissions 记录级联删除
+

@@ -432,7 +432,7 @@ cd ../noj-judge && cargo run                      # 需要 Docker daemon
 | 表 | 用途 |
 |----|------|
 | `users` | 用户账户（密码、角色、封禁状态） |
-| `problems` | 题目（含 type: U/P 双题库） |
+| `problems` | 题目（type: U/P 双题库；`is_objective` 标记客观题套卷，无独立类型） |
 | `judgeImages` | 评测镜像白名单 |
 | `categories` / `problemsCategories` | 题目分类（父子层级）+ 多对多关联 |
 | `submissions` / `evaluationResults` | 用户提交 / 评测结果（耗时/内存/得分） |

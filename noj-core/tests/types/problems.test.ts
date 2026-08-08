@@ -44,6 +44,7 @@ Deno.test({
   fn: () => {
     assertEquals(isValidProblemType("U"), true);
     assertEquals(isValidProblemType("P"), true);
+    assertEquals(isValidProblemType("O"), false);
   },
 });
 

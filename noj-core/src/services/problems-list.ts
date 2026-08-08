@@ -59,6 +59,7 @@ function toProblemResponse(
     number: row.number,
     owner_id: row.owner_id,
     type: row.type,
+    is_objective: row.is_objective,
     display_id: `${row.type}${row.number}`,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -269,6 +270,7 @@ export async function listAllProblems(
       owner_id: problems.owner_id,
       owner_username: users.username,
       type: problems.type,
+      is_objective: problems.is_objective,
     })
     .from(problems)
     .leftJoin(users, eq(problems.owner_id, users.id))
@@ -301,6 +303,7 @@ export async function listAllProblems(
       owner_id: r.owner_id,
       owner_username: r.owner_username ?? "未知",
       type: r.type,
+      is_objective: r.is_objective,
       display_id: `${r.type}${r.number}`,
     })),
     total,

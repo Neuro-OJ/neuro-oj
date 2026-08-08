@@ -97,15 +97,12 @@ onMounted(fetch)
       <div class="flex flex-wrap gap-3 mb-3">
         <div class="flex flex-col gap-1 min-w-[180px]">
           <label class="text-xs font-semibold text-text-secondary">操作类型</label>
-          <select
+          <USelect
             v-model="filters.action"
-            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
-          >
-            <option value="">全部</option>
-            <option v-for="(label, action) in ACTION_LABELS" :key="action" :value="action">
-              {{ label }}
-            </option>
-          </select>
+            :items="Object.entries(ACTION_LABELS).map(([value, label]) => ({ label, value }))"
+            placeholder="全部"
+            class="min-w-[180px]"
+          />
         </div>
         <div class="flex flex-col gap-1 min-w-[200px]">
           <label class="text-xs font-semibold text-text-secondary">起始时间</label>

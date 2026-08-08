@@ -338,7 +338,7 @@ await init()
           </ul>
           <p class="mt-1 text-xs text-text-muted">当前关联题目：{{ problemId || '未选择' }}（可手动输入题目 ID）</p>
         </div>
-        <select v-if="activeType === 'discussion'" v-model="boardId" class="mb-3 w-full rounded border border-border px-3 py-2" required><option v-for="board in boards" :key="board.id" :value="board.id">{{ board.name }}</option></select>
+        <USelect v-if="activeType === 'discussion'" v-model="boardId" :items="boards.map((b) => ({ label: b.name, value: b.id }))" class="mb-3 w-full" :placeholder="boards.length ? '选择板块' : '暂无可用板块'" />
         <template v-if="!previewMode">
           <textarea v-model="content" class="min-h-36 w-full rounded border border-border px-3 py-2" :placeholder="`支持 Markdown、代码和公式（最长 ${postMaxLength} 字符）`" required />
         </template>

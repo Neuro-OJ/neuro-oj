@@ -121,13 +121,13 @@ const draftDotClass = computed(() => {
     <div class="flex items-center gap-1.5">
       <slot name="actions" />
 
-      <select
-        :value="language"
-        class="text-xs px-2 py-1 border border-border rounded-md bg-white text-text focus:outline-none focus:border-primary"
-        @change="emit('update:language', ($event.target as HTMLSelectElement).value)"
-      >
-        <option v-for="opt in languages" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-      </select>
+      <USelect
+        :model-value="language"
+        :items="languages"
+        size="xs"
+        class="min-w-[110px]"
+        @update:model-value="(v) => emit('update:language', v as string)"
+      />
 
       <button
         class="size-8 inline-flex items-center justify-center rounded-md hover:bg-bg-page text-text-secondary transition-colors"

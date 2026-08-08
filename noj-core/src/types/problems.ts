@@ -72,6 +72,8 @@ export interface CreateProblemInput {
   category_ids?: string[];
   /** 题目类型：U（用户题）/ P（主题题），默认 U */
   type?: string;
+  /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
+  is_objective?: boolean;
   /** 题号（仅 admin 可指定，普通用户自动分配） */
   number?: number;
 }
@@ -89,6 +91,8 @@ export interface UpdateProblemInput {
    */
   runtime_config?: RuntimeConfig | null;
   category_ids?: string[];
+  /** 客观题标记变更（由客观题改回编程题时必须同时提供 runtime_config） */
+  is_objective?: boolean;
 }
 
 /**
@@ -132,6 +136,8 @@ export interface ProblemResponseWithCategories {
   owner_id: string;
   /** 题目类型：U / P */
   type: string;
+  /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
+  is_objective: boolean;
   /** 展示标识，格式：{type}{number}（如 P1001、U42） */
   display_id: string;
 }

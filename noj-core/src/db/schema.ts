@@ -86,16 +86,18 @@ export const problems = pgTable(
     /** 支持包存储 URL（`noj-storage://` 格式） */
     support_package_storage_url: text("support_package_storage_url"),
     /**
-     * 双容器 Runtime 配置（必填）。
+     * 双容器 Runtime 配置（U/P 型必填；客观题套卷 is_objective=true 时为 NULL）。
      * 包含 evaluator 和 solution 两个容器的运行时配置。
      */
-    runtime_config: jsonb("runtime_config").notNull(),
+    runtime_config: jsonb("runtime_config"),
     /** 题号（同一 type 内独立自增） */
     number: integer("number").notNull(),
     /** 题目所有者 ID，默认 root (UID=0) */
     owner_id: text("owner_id").notNull().default(ROOT_USER_ID),
     /** 题目类型：U=用户题库, P=主题库 */
     type: text("type").notNull().default("U"),
+    /** 客观题标记：true 表示该题目是客观题套卷（无评测容器，服务端即时判定） */
+    is_objective: boolean("is_objective").notNull().default(false),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
     /** tsvector 列，GENERATED 自动维护，ORM 不可写入 */
@@ -106,7 +108,10 @@ export const problems = pgTable(
       table.type,
       table.number,
     ),
-    typeCheck: check("problems_type_check", sql`${table.type} IN ('U', 'P')`),
+    typeCheck: check(
+      "problems_type_check",
+      sql`${table.type} IN ('U', 'P')`,
+    ),
     searchVectorIdx: index("idx_problems_search_vector").using(
       "gin",
       table.searchVector,
@@ -114,6 +119,100 @@ export const problems = pgTable(
     runtimeConfigCheck: check(
       "problems_runtime_config_check",
       sql`${table.runtime_config} IS NULL OR jsonb_typeof(${table.runtime_config}) = 'object'`,
+    ),
+  }),
+);
+
+/**
+ * 客观题小题表。
+ * 每道小题必须通过 paper_id 绑定所属套卷（problems 表 is_objective=true 行），
+ * 不可孤立存在；删除套卷时级联删除全部小题。
+ */
+export const objectiveQuestions = pgTable(
+  "objective_questions",
+  {
+    id: text("id").primaryKey(),
+    /** 所属套卷 ID（problems.id，is_objective=true） */
+    paper_id: text("paper_id")
+      .notNull()
+      .references(() => problems.id, { onDelete: "cascade" }),
+    /** 卷内排序，同一套卷内唯一 */
+    sort_order: integer("sort_order").notNull().default(0),
+    /** 题型：single=单选, multiple=多选, judge=判断 */
+    type: text("type").notNull(),
+    /** 题干（Markdown） */
+    prompt: text("prompt").notNull(),
+    /** 选项数组 [{key, text}]；judge 型为空数组 */
+    options: jsonb("options").notNull().default([]),
+    /** 标准答案：["A"] / ["A","C"] / [true] */
+    answer: jsonb("answer").notNull(),
+    /** 答案解析（判卷后展示） */
+    explanation: text("explanation").notNull().default(""),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    paperSortUnique: unique("objective_questions_paper_sort_unique").on(
+      table.paper_id,
+      table.sort_order,
+    ),
+    typeCheck: check(
+      "objective_questions_type_check",
+      sql`${table.type} IN ('single', 'multiple', 'judge')`,
+    ),
+    paperIdx: index("idx_objective_questions_paper_id").on(table.paper_id),
+  }),
+);
+
+/**
+ * 客观题提交表。
+ * 服务端即时判定（不走评测队列），status 直接为 finished。
+ * score 为 ×100 整数（0-10000），与 evaluationResults.score 约定一致。
+ */
+export const objectiveSubmissions = pgTable(
+  "objective_submissions",
+  {
+    id: text("id").primaryKey(),
+    /** 所属套卷 ID（problems.id，is_objective=true） */
+    paper_id: text("paper_id")
+      .notNull()
+      .references(() => problems.id, { onDelete: "cascade" }),
+    user_id: text("user_id").notNull().references(() => users.id),
+    /** 竞赛提交时非空；练习模式为 NULL */
+    contest_id: text("contest_id").references(() => contests.id, {
+      onDelete: "set null",
+    }),
+    /** 提交模式：practice=练习, contest=竞赛 */
+    submission_type: text("submission_type").notNull(),
+    /** 用户答案 {question_id: [选项...]} */
+    answers: jsonb("answers").notNull(),
+    /** 即时判定完成 */
+    status: text("status").notNull().default("finished"),
+    /** 卷面分 ×100（0-10000） */
+    score: integer("score").notNull().default(0),
+    /** 逐题判定 {question_id: {correct, expected, given}} */
+    details: jsonb("details").notNull().default({}),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    /** 竞赛一次性提交兜底：同一竞赛内同一用户对同一套卷仅一条 */
+    contestUnique: unique("objective_submissions_contest_unique").on(
+      table.paper_id,
+      table.user_id,
+      table.contest_id,
+    ),
+    typeCheck: check(
+      "objective_submissions_type_check",
+      sql`${table.submission_type} IN ('practice', 'contest')`,
+    ),
+    paperIdx: index("idx_objective_submissions_paper_id").on(table.paper_id),
+    userIdx: index("idx_objective_submissions_user_id").on(table.user_id),
+    /** 提交历史按用户+套卷+时间倒序分页 */
+    userPaperCreatedIdx: index(
+      "idx_objective_submissions_user_paper_created",
+    ).on(table.user_id, table.paper_id, table.created_at),
+    contestIdx: index("idx_objective_submissions_contest_id").on(
+      table.contest_id,
     ),
   }),
 );

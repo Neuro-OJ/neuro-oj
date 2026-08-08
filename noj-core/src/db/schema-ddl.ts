@@ -43,10 +43,11 @@ export const SCHEMA_DDL: string[] = [
     description TEXT NOT NULL,
     difficulty TEXT NOT NULL DEFAULT 'medium',
     support_package_storage_url TEXT,
-    runtime_config JSONB NOT NULL CHECK (jsonb_typeof(runtime_config) = 'object'),
+    runtime_config JSONB CHECK (jsonb_typeof(runtime_config) = 'object'),
     number INTEGER NOT NULL,
     owner_id TEXT NOT NULL DEFAULT '0',
     type TEXT NOT NULL DEFAULT 'U' CHECK (type IN ('U', 'P')),
+    is_objective BOOLEAN NOT NULL DEFAULT false,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     search_vector tsvector GENERATED ALWAYS AS (
@@ -55,6 +56,21 @@ export const SCHEMA_DDL: string[] = [
         coalesce(type, '') || ' ' || coalesce(number::text, '')
       ), 'B')
     ) STORED
+  )`,
+
+  // 3.1 objective_questions（客观题小题，必须绑定套卷）
+  `CREATE TABLE IF NOT EXISTS objective_questions (
+    id TEXT PRIMARY KEY,
+    paper_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    type TEXT NOT NULL CHECK (type IN ('single', 'multiple', 'judge')),
+    prompt TEXT NOT NULL,
+    options JSONB NOT NULL DEFAULT '[]',
+    answer JSONB NOT NULL,
+    explanation TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (paper_id, sort_order)
   )`,
 
   // 3. judge_images
@@ -121,6 +137,21 @@ export const SCHEMA_DDL: string[] = [
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     registered_at TEXT NOT NULL,
     PRIMARY KEY (contest_id, user_id)
+  )`,
+
+  // 3.3 objective_submissions（客观题提交，服务端即时判定；依赖 contests 表）
+  `CREATE TABLE IF NOT EXISTS objective_submissions (
+    id TEXT PRIMARY KEY,
+    paper_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    contest_id TEXT REFERENCES contests(id) ON DELETE SET NULL,
+    submission_type TEXT NOT NULL CHECK (submission_type IN ('practice', 'contest')),
+    answers JSONB NOT NULL,
+    status TEXT NOT NULL DEFAULT 'finished',
+    score INTEGER NOT NULL DEFAULT 0,
+    details JSONB NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    UNIQUE (paper_id, user_id, contest_id)
   )`,
 
   `CREATE TABLE IF NOT EXISTS contest_clarifications (
@@ -439,6 +470,12 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_contests_start_time ON contests (start_time)",
   "CREATE INDEX IF NOT EXISTS idx_contests_end_time ON contests (end_time)",
   "CREATE INDEX IF NOT EXISTS idx_contest_participants_user ON contest_participants (user_id)",
+  // 客观题表索引（与 schema.ts 定义一致，PGlite 测试模式）
+  "CREATE INDEX IF NOT EXISTS idx_objective_questions_paper_id ON objective_questions (paper_id)",
+  "CREATE INDEX IF NOT EXISTS idx_objective_submissions_paper_id ON objective_submissions (paper_id)",
+  "CREATE INDEX IF NOT EXISTS idx_objective_submissions_user_id ON objective_submissions (user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_objective_submissions_user_paper_created ON objective_submissions (user_id, paper_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_objective_submissions_contest_id ON objective_submissions (contest_id)",
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_results_submission_id ON evaluation_results (submission_id)",
   "CREATE INDEX IF NOT EXISTS idx_eval_results_created_at ON evaluation_results (created_at)",
   "CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens (user_id)",

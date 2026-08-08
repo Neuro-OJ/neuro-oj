@@ -30,6 +30,8 @@ export interface ProblemResponse {
   number: number;
   owner_id: string;
   type: string;
+  /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
+  is_objective: boolean;
   display_id: string;
   created_at: string;
   updated_at: string;

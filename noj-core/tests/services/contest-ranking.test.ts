@@ -6,6 +6,7 @@ import {
   contestProblems,
   contests,
   evaluationResults,
+  objectiveSubmissions,
   problems,
   submissions,
   users,
@@ -353,6 +354,131 @@ Deno.test({
       await db.delete(contests).where(eq(contests.id, contestId));
       await db.delete(problems).where(eq(problems.id, problemId));
       await db.delete(users).where(inArray(users.id, userIds));
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "contest ranking: 客观题提交计入排名（满分 Accepted / 非满分 WrongAnswer）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userFull = `obj-rank-full-${Date.now()}`;
+    const userPartial = `obj-rank-partial-${Date.now()}`;
+    const contestId = crypto.randomUUID();
+    const paperId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await db.insert(users).values([
+      {
+        id: userFull,
+        username: userFull,
+        email: `${userFull}@example.com`,
+        password_hash: "hash",
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: userPartial,
+        username: userPartial,
+        email: `${userPartial}@example.com`,
+        password_hash: "hash",
+        created_at: now,
+        updated_at: now,
+      },
+    ]);
+    // 客观题套卷（type='O'，无 runtime_config）
+    await db.insert(problems).values({
+      id: paperId,
+      title: "客观题排名卷",
+      description: "客观题",
+      difficulty: "easy",
+      runtime_config: null,
+      number: 920004,
+      owner_id: "0",
+      type: "U",
+      is_objective: true,
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contests).values({
+      id: contestId,
+      title: "ICPC 客观题排名测试",
+      start_time: atMinutes(0),
+      end_time: atMinutes(120),
+      type: "icpc",
+      config: {},
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: paperId,
+      label: "A",
+      sort_order: 0,
+      score: null,
+    });
+    await db.insert(contestParticipants).values([
+      { contest_id: contestId, user_id: userFull, registered_at: atMinutes(0) },
+      {
+        contest_id: contestId,
+        user_id: userPartial,
+        registered_at: atMinutes(0),
+      },
+    ]);
+    // 满分提交（×100 整数 10000）与非满分提交（6000）
+    await db.insert(objectiveSubmissions).values([
+      {
+        id: crypto.randomUUID(),
+        paper_id: paperId,
+        user_id: userFull,
+        contest_id: contestId,
+        submission_type: "contest",
+        answers: {},
+        status: "finished",
+        score: 10000,
+        details: {},
+        created_at: atMinutes(10),
+      },
+      {
+        id: crypto.randomUUID(),
+        paper_id: paperId,
+        user_id: userPartial,
+        contest_id: contestId,
+        submission_type: "contest",
+        answers: {},
+        status: "finished",
+        score: 6000,
+        details: {},
+        created_at: atMinutes(10),
+      },
+    ]);
+
+    try {
+      const ranking = await getIcpcRanking(contestId);
+      const full = ranking.find((r) => r.user_id === userFull);
+      const partial = ranking.find((r) => r.user_id === userPartial);
+      // 满分 → solved=1，罚时 = 解答分钟数
+      assertEquals(full?.solved, 1);
+      assertEquals(full?.penalty, 10);
+      // 非满分 → 视为 WA：solved=0、未解题不计罚时（ICPC 规则），
+      // 失败尝试计入 problem_details.attempts
+      assertEquals(partial?.solved, 0);
+      assertEquals(partial?.penalty, 0);
+      const partialDetail = partial?.problem_details.find(
+        (d) => d.label === "A",
+      );
+      assertEquals(partialDetail?.attempts, 1);
+      // 满分者排前
+      assertEquals(ranking[0].user_id, userFull);
+    } finally {
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await db.delete(problems).where(eq(problems.id, paperId));
+      await db.delete(users).where(
+        inArray(users.id, [userFull, userPartial]),
+      );
     }
   },
 });

@@ -20,6 +20,7 @@ const { data, pending, error, refresh } = useFetch<{
     type: string
     owner_id: string
     number: number
+    is_objective: boolean
     categories: { id: string; name: string; slug: string }[]
     runtime_config?: {
       evaluator?: {
@@ -41,6 +42,9 @@ const canEdit = computed(() => {
 })
 
 const isDetailPage = computed(() => route.path === `/problems/${problemId}`)
+
+/** 客观题套卷（并入 problems 体系：无评测容器，服务端即时判定） */
+const isObjective = computed(() => problem.value?.is_objective === true)
 
 function goToEditor() {
   router.push(`/editor/${problemId}`)
@@ -138,6 +142,12 @@ const publishBlockReason = computed(() => {
                 >
                   {{ problem.type === 'U' ? '用户题库' : '主题库' }}
                 </span>
+                <span
+                  v-if="isObjective"
+                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700"
+                >
+                  客观题
+                </span>
               </div>
               <h1 class="text-2xl font-bold mb-3 text-text">{{ problem.title }}</h1>
             </div>
@@ -152,14 +162,22 @@ const publishBlockReason = computed(() => {
           </div>
           <div class="flex items-center gap-5 flex-wrap">
             <DifficultyBadge :difficulty="problem.difficulty" />
-            <span class="inline-flex items-center gap-1 text-xs text-text-secondary">
-              <UIcon name="i-lucide-clock" class="size-3.5" />
-              {{ problem.runtime_config?.evaluator?.time_limit_ms ?? '--' }}ms
-            </span>
-            <span class="inline-flex items-center gap-1 text-xs text-text-secondary">
-              <UIcon name="i-lucide-server" class="size-3.5" />
-              {{ problem.runtime_config?.evaluator?.memory_limit_mb ?? '--' }}MB
-            </span>
+            <template v-if="isObjective">
+              <span class="inline-flex items-center gap-1 text-xs text-text-secondary">
+                <UIcon name="i-lucide-zap" class="size-3.5" />
+                服务端即时判定
+              </span>
+            </template>
+            <template v-else>
+              <span class="inline-flex items-center gap-1 text-xs text-text-secondary">
+                <UIcon name="i-lucide-clock" class="size-3.5" />
+                {{ problem.runtime_config?.evaluator?.time_limit_ms ?? '--' }}ms
+              </span>
+              <span class="inline-flex items-center gap-1 text-xs text-text-secondary">
+                <UIcon name="i-lucide-server" class="size-3.5" />
+                {{ problem.runtime_config?.evaluator?.memory_limit_mb ?? '--' }}MB
+              </span>
+            </template>
           </div>
           <div v-if="categories.length" class="flex flex-wrap gap-1.5 mt-2.5">
             <span
@@ -173,66 +191,70 @@ const publishBlockReason = computed(() => {
         </div>
 
         <div class="px-7 py-6">
-          <MarkdownRenderer :content="problem.description" />
+          <!-- 客观题：内联作答表单（练习模式） -->
+          <ObjectiveAnswerForm v-if="isObjective" :paper-id="problem.id" />
+          <MarkdownRenderer v-else :content="problem.description" />
         </div>
       </div>
 
-      <!-- 开始编码 CTA -->
-      <div class="bg-white border border-border rounded-xl p-6 flex items-center justify-between">
-        <div>
-          <h2 class="text-base font-semibold text-text mb-1">准备好开始编码了吗？</h2>
-          <p class="text-sm text-text-secondary">
-            点击下方按钮进入独立编码页面，享受沉浸式编辑器体验。
-          </p>
-        </div>
-        <UButton color="primary" class="inline-flex items-center gap-2 px-5 py-2.5 text-sm" @click="goToEditor">
-          <UIcon name="i-lucide-code-2" class="size-4" />
-          开始编码
-        </UButton>
-      </div>
-
-      <div v-if="!isLoggedIn" class="text-center text-sm text-text-muted">
-        <NuxtLink to="/login" class="text-primary no-underline hover:underline">登录</NuxtLink>
-        后即可提交代码
-      </div>
-      <section class="rounded-xl border border-border bg-white p-6">
-        <div class="flex flex-wrap items-center justify-between gap-3">
+      <!-- 客观题：不提供编码入口（无评测容器） -->
+      <template v-if="!isObjective">
+        <!-- 开始编码 CTA -->
+        <div class="bg-white border border-border rounded-xl p-6 flex items-center justify-between">
           <div>
-            <h2 class="text-base font-semibold text-text">题解与讨论</h2>
-            <p class="mt-1 text-sm text-text-secondary">查看本题的公开题解，或在通过后分享思路。</p>
+            <h2 class="text-base font-semibold text-text mb-1">准备好开始编码了吗？</h2>
+            <p class="text-sm text-text-secondary">
+              点击下方按钮进入独立编码页面，享受沉浸式编辑器体验。
+            </p>
           </div>
-          <div class="flex items-center gap-2">
-            <!-- 发布入口：服从题解模块开关与当前用户权限（community-ui spec） -->
-            <UButton
-              v-if="config?.solutions_enabled === false"
-              :to="`/community?type=solution&problem_id=${problem.id}`"
-              color="primary"
-              variant="outline"
-              class="text-sm"
-            >
-              查看题解
-            </UButton>
-            <UButton
-              v-else-if="!isLoggedIn"
-              color="primary"
-              class="text-sm"
-              @click="router.push('/login')"
-            >
-              登录后发布题解
-            </UButton>
-            <UButton
-              v-else-if="eligibility?.can_create"
-              :to="`/community?type=solution&problem_id=${problem.id}`"
-              color="primary"
-              class="text-sm"
-            >
-              <UIcon name="i-lucide-book-open" class="size-3.5" />
-              发布题解
-            </UButton>
-            <UButton
-              v-else
-              color="primary"
-              class="text-sm opacity-60 cursor-not-allowed"
+          <UButton color="primary" class="inline-flex items-center gap-2 px-5 py-2.5 text-sm" @click="goToEditor">
+            <UIcon name="i-lucide-code-2" class="size-4" />
+            开始编码
+          </UButton>
+        </div>
+
+        <div v-if="!isLoggedIn" class="text-center text-sm text-text-muted">
+          <NuxtLink to="/login" class="text-primary no-underline hover:underline">登录</NuxtLink>
+          后即可提交代码
+        </div>
+        <section class="rounded-xl border border-border bg-white p-6">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 class="text-base font-semibold text-text">题解与讨论</h2>
+              <p class="mt-1 text-sm text-text-secondary">查看本题的公开题解，或在通过后分享思路。</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <!-- 发布入口：服从题解模块开关与当前用户权限（community-ui spec） -->
+              <UButton
+                v-if="config?.solutions_enabled === false"
+                :to="`/community?type=solution&problem_id=${problem.id}`"
+                color="primary"
+                variant="outline"
+                class="text-sm"
+              >
+                查看题解
+              </UButton>
+              <UButton
+                v-else-if="!isLoggedIn"
+                color="primary"
+                class="text-sm"
+                @click="router.push('/login')"
+              >
+                登录后发布题解
+              </UButton>
+              <UButton
+                v-else-if="eligibility?.can_create"
+                :to="`/community?type=solution&problem_id=${problem.id}`"
+                color="primary"
+                class="text-sm"
+              >
+                <UIcon name="i-lucide-book-open" class="size-3.5" />
+                发布题解
+              </UButton>
+              <UButton
+                v-else
+                color="primary"
+                class="text-sm opacity-60 cursor-not-allowed"
               :disabled="true"
               :title="publishBlockReason ?? '暂不可发布'"
             >
@@ -281,6 +303,7 @@ const publishBlockReason = computed(() => {
           {{ publishBlockReason }}。通过本题后即可发布题解。
         </p>
       </section>
+      </template>
     </div>
     </AsyncContent>
   </template>

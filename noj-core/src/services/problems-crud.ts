@@ -67,8 +67,24 @@ export async function createProblem(
     );
   }
 
-  // 校验 runtime_config（所有题目统一使用双容器模式）
-  if (input.runtime_config !== undefined && input.runtime_config !== null) {
+  // 确定题目类型（默认 U）
+  const rawType = input.type?.toUpperCase() ?? "U";
+  if (!isValidProblemType(rawType)) {
+    throw new BadRequestError(`非法题目类型：${input.type}，仅允许 U/P`);
+  }
+  const type = rawType;
+
+  // 客观题标记（并入 U/P 题库；无评测容器，服务端即时判定）
+  const isObjective = input.is_objective === true;
+
+  // 校验 runtime_config（U/P 型必填，双容器评测；客观题套卷无评测容器）
+  if (isObjective) {
+    if (input.runtime_config !== undefined && input.runtime_config !== null) {
+      logger.warn("createProblem: 客观题套卷忽略 runtime_config 字段");
+    }
+  } else if (
+    input.runtime_config !== undefined && input.runtime_config !== null
+  ) {
     validateRuntimeConfig(input.runtime_config);
     try {
       await validateJudgeImageWithKind(
@@ -107,13 +123,6 @@ export async function createProblem(
   // 题目主键统一由服务端生成 UUID，避免客户端注入字符串 id
   // 影响 display_id 双索引路由解析
   const id = crypto.randomUUID();
-
-  // 确定题目类型（默认 U）
-  const rawType = input.type?.toUpperCase() ?? "U";
-  if (!isValidProblemType(rawType)) {
-    throw new BadRequestError(`非法题目类型：${input.type}，仅允许 U/P`);
-  }
-  const type = rawType;
 
   // 权限检查：普通用户只能创建 U 型
   if (type === "P") {
@@ -158,7 +167,8 @@ export async function createProblem(
         description: input.description,
         difficulty: input.difficulty ?? "medium",
         support_package_storage_url: input.support_package_storage_url ?? null,
-        runtime_config: input.runtime_config ?? null,
+        runtime_config: isObjective ? null : (input.runtime_config ?? null),
+        is_objective: isObjective,
         number,
         owner_id: ownerId,
         type,
@@ -252,8 +262,10 @@ export async function updateProblem(
   }
 
   // 校验 runtime_config
-  //   undefined → 不变；null → 拒绝（runtime_config 是必填字段）；object → 校验并写入
-  if (input.runtime_config !== undefined) {
+  //   undefined → 不变；null → 拒绝（编程题 runtime_config 是必填字段）；object → 校验并写入
+  //   客观题套卷（is_objective）：忽略 runtime_config（无评测容器）
+  const isObjective = input.is_objective ?? problem.is_objective;
+  if (!isObjective && input.runtime_config !== undefined) {
     if (input.runtime_config === null) {
       throw new BadRequestError("runtime_config 是必填字段，不可清空");
     }
@@ -290,7 +302,24 @@ export async function updateProblem(
   if (input.support_package_storage_url !== undefined) {
     updates.support_package_storage_url = input.support_package_storage_url;
   }
-  if (input.runtime_config !== undefined) {
+  // 客观题标记变更（由客观题改回编程题时必须同时提供 runtime_config）
+  if (
+    input.is_objective !== undefined &&
+    input.is_objective !== problem.is_objective
+  ) {
+    updates.is_objective = input.is_objective;
+    if (!input.is_objective && input.runtime_config === undefined) {
+      throw new BadRequestError(
+        "由客观题改为编程题时，必须提供 runtime_config",
+      );
+    }
+  }
+  if (isObjective) {
+    // 客观题套卷：runtime_config 恒为 NULL（无评测容器），忽略写入
+    if (input.runtime_config !== undefined) {
+      updates.runtime_config = null;
+    }
+  } else if (input.runtime_config !== undefined) {
     updates.runtime_config = input.runtime_config;
   }
   updates.updated_at = new Date().toISOString();
@@ -302,8 +331,8 @@ export async function updateProblem(
     await syncProblemCategories(id, input.category_ids);
   }
 
-  // 审计日志：runtime_config 变更
-  if (input.runtime_config !== undefined) {
+  // 审计日志：runtime_config 变更（客观题套卷无此字段，跳过）
+  if (!isObjective && input.runtime_config !== undefined) {
     const oldHas = problem.runtime_config !== null;
     const newHas = input.runtime_config !== null;
     if (

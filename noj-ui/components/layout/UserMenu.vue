@@ -78,10 +78,14 @@ function toggleMenu() {
     showDropdown.value ? closeMenu() : openMenu()
 }
 
-// 点击菜单外部关闭
+// 点击菜单外部关闭：仅关闭菜单，不移动焦点。
+// 浏览器默认已把焦点给了被点击元素（如输入框），
+// 若此处 focus 回菜单按钮会抢走用户正在交互的控件的焦点。
 function onDocumentClick(e: MouseEvent) {
     const el = menuButtonRef.value?.closest(".relative")
-    if (el && !el.contains(e.target as Node)) closeMenu()
+    if (el && !el.contains(e.target as Node)) {
+        showDropdown.value = false
+    }
 }
 
 onMounted(() => document.addEventListener("click", onDocumentClick))

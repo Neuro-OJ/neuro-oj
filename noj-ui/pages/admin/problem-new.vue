@@ -23,6 +23,6 @@ function onSaved() {
 
     <h1 class="text-22px font-bold text-text m-0">创建题目</h1>
 
-    <ProblemEditor mode="create" initial-type="P" @saved="onSaved" />
+    <CodingProblemEditor mode="create" initial-type="P" @saved="onSaved" />
   </div>
 </template>
