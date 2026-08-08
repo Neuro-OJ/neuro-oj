@@ -4,13 +4,6 @@ definePageMeta({
 })
 
 useHead({ title: '创建客观题套卷 - Neuro OJ' })
-
-const router = useRouter()
-
-function onSaved(id: string) {
-  // 创建后进入套卷编辑页添加小题（单选/多选/判断）
-  router.replace(`/problems/${id}/edit`)
-}
 </script>
 
 <template>
@@ -19,11 +12,8 @@ function onSaved(id: string) {
       &larr; 返回类型选择
     </NuxtLink>
 
-    <h1 class="text-2xl font-bold text-text mb-1">创建客观题套卷</h1>
-    <p class="mb-5 text-sm text-text-secondary">
-      单选 / 多选 / 判断小题，服务端即时判定；创建后可继续添加小题。
-    </p>
+    <h1 class="text-2xl font-bold text-text mb-5">创建客观题套卷</h1>
 
-    <ProblemEditor mode="create" initial-type="U" objective @saved="onSaved" />
+    <ObjectiveProblemEditor />
   </div>
 </template>

@@ -29,7 +29,7 @@ function onSaved() {
       {{ isObjective ? '编辑客观题套卷' : '编辑题目' }}
     </h1>
 
-    <ObjectivePaperEditor v-if="isObjective" :paper-id="problemId" />
-    <ProblemEditor v-else mode="edit" :problem-id="problemId" @saved="onSaved" />
+    <ObjectiveProblemEditor v-if="isObjective" :paper-id="problemId" />
+    <CodingProblemEditor v-else mode="edit" :problem-id="problemId" @saved="onSaved" />
   </div>
 </template>

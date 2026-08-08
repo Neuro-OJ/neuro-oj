@@ -3,7 +3,7 @@ definePageMeta({
   ssr: false,
 })
 
-useHead({ title: '创建 LMCC 编程题 - Neuro OJ' })
+useHead({ title: '创建 Coding 编程题 - Neuro OJ' })
 
 const router = useRouter()
 
@@ -18,8 +18,8 @@ function onSaved() {
       &larr; 返回类型选择
     </NuxtLink>
 
-    <h1 class="text-2xl font-bold text-text mb-5">创建 LMCC 编程题</h1>
+    <h1 class="text-2xl font-bold text-text mb-5">创建 Coding 编程题</h1>
 
-    <ProblemEditor mode="create" initial-type="U" @saved="onSaved" />
+    <CodingProblemEditor mode="create" initial-type="U" @saved="onSaved" />
   </div>
 </template>

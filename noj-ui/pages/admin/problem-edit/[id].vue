@@ -23,6 +23,6 @@ function onSaved() {
 
     <h1 class="text-22px font-bold text-text m-0">编辑题目</h1>
 
-    <ProblemEditor mode="edit" :problem-id="problemId" @saved="onSaved" />
+    <CodingProblemEditor mode="edit" :problem-id="problemId" @saved="onSaved" />
   </div>
 </template>

@@ -9,25 +9,83 @@ import { QUESTION_TYPE_LABELS } from '~/composables/useObjective'
 
 /**
  * 客观题套卷编辑器（并入 problems 体系：is_objective 题目）。
- * 管理套卷元信息与小题（单选/多选/判断）CRUD。
+ * 创建模式（无 paperId）：填元信息创建套卷后自动进入小题管理；
+ * 编辑模式（有 paperId）：管理套卷元信息与小题（单选/多选/判断）CRUD。
  */
 const props = defineProps<{
-  /** 套卷题目 ID（problems.id） */
-  paperId: string
+  /** 套卷题目 ID（problems.id）；缺省 = 创建模式 */
+  paperId?: string
 }>()
 
-const { updatePaper, deletePaper, listQuestions, createQuestion, updateQuestion, deleteQuestion } =
-  useObjective()
+const {
+  createPaper,
+  updatePaper,
+  deletePaper,
+  listQuestions,
+  createQuestion,
+  updateQuestion,
+  deleteQuestion,
+} = useObjective()
 const { toast } = useToast()
 const router = useRouter()
 
+// 创建模式：先填元信息创建套卷，创建成功后进入编辑模式
+const activePaperId = ref<string | null>(props.paperId ?? null)
+watchEffect(() => {
+  activePaperId.value = props.paperId ?? null
+})
+
+// ── 创建表单 ────────────────────────────────
+
+const creating = ref(false)
+const createType = ref<'U' | 'P'>('U')
+const createTitle = ref('')
+const createDescription = ref('')
+const createError = ref('')
+
+async function onCreate() {
+  if (creating.value) return
+  if (!createTitle.value.trim()) {
+    createError.value = '请输入套卷标题'
+    return
+  }
+  createError.value = ''
+  creating.value = true
+  try {
+    const res = await createPaper({
+      title: createTitle.value.trim(),
+      description: createDescription.value.trim(),
+      type: createType.value,
+    })
+    activePaperId.value = res.data.id
+    toast.success('套卷已创建，开始添加小题')
+  } catch {
+    // useApi 已弹错误
+  } finally {
+    creating.value = false
+  }
+}
+
+// ── 编辑模式数据加载（activePaperId 为 null 时跳过请求） ──
+
 const { data: paperData, error: paperError } = await useFetch<{ data: ObjectivePaper }>(
-  `/api/v1/problems/${props.paperId}`,
+  computed(() =>
+    activePaperId.value
+      ? `/api/v1/problems/${activePaperId.value}`
+      : null
+  ),
   { server: false },
 )
 const { data: qData, error: qError, refresh: refreshQuestions } = await useFetch<
   { data: ObjectiveQuestion[] }
->(`/api/v1/problems/${props.paperId}/questions`, { server: false })
+>(
+  computed(() =>
+    activePaperId.value
+      ? `/api/v1/problems/${activePaperId.value}/questions`
+      : null
+  ),
+  { server: false },
+)
 
 const paper = computed(() => paperData.value?.data ?? null)
 const questions = computed(() => qData.value?.data ?? [])
@@ -49,7 +107,7 @@ async function onSaveMeta() {
   }
   savingMeta.value = true
   try {
-    await updatePaper(props.paperId, { title: title.value.trim(), description: description.value.trim() })
+    await updatePaper(activePaperId.value!, { title: title.value.trim(), description: description.value.trim() })
     toast.success('套卷信息已保存')
   } catch {
     // useApi 已弹错误
@@ -61,7 +119,7 @@ async function onSaveMeta() {
 async function onDeletePaper() {
   if (!confirm('确定删除该套卷？其下全部小题与提交记录将一并删除。')) return
   try {
-    await deletePaper(props.paperId)
+    await deletePaper(activePaperId.value!)
     toast.success('套卷已删除')
     router.push('/problems')
   } catch {
@@ -165,10 +223,10 @@ async function onSaveQuestion() {
 
   try {
     if (e.id === null) {
-      await createQuestion(props.paperId, payload)
+      await createQuestion(activePaperId.value!, payload)
       toast.success('小题已添加')
     } else {
-      await updateQuestion(props.paperId, e.id, payload)
+      await updateQuestion(activePaperId.value!, e.id, payload)
       toast.success('小题已更新')
     }
     closeEditor()
@@ -181,7 +239,7 @@ async function onSaveQuestion() {
 async function onDeleteQuestion(q: ObjectiveQuestion) {
   if (!confirm(`确定删除小题「${q.prompt.slice(0, 20)}…」？`)) return
   try {
-    await deleteQuestion(props.paperId, q.id)
+    await deleteQuestion(activePaperId.value!, q.id)
     toast.success('小题已删除')
     await refreshQuestions()
   } catch {
@@ -191,7 +249,38 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
 </script>
 
 <template>
+  <!-- 创建模式：先填套卷元信息 -->
+  <div v-if="activePaperId === null" class="flex flex-col gap-4">
+    <section class="rounded-xl border border-border bg-white p-5">
+      <h2 class="mb-3 text-sm font-semibold text-text">套卷信息</h2>
+      <div class="flex flex-col gap-3">
+        <UFormGroup label="题目类型">
+          <USelect
+            v-model="createType"
+            :options="[
+              { label: '用户题库（U 型）', value: 'U' },
+              { label: '主题库（P 型，仅管理员）', value: 'P' },
+            ]"
+          />
+        </UFormGroup>
+        <UFormGroup label="标题">
+          <UInput v-model="createTitle" placeholder="套卷标题" />
+        </UFormGroup>
+        <UFormGroup label="描述">
+          <UTextarea v-model="createDescription" placeholder="套卷描述" :rows="3" />
+        </UFormGroup>
+        <p v-if="createError" class="text-sm text-red-600">{{ createError }}</p>
+        <div class="flex items-center gap-3">
+          <UButton color="primary" :loading="creating" @click="onCreate">创建套卷</UButton>
+          <span class="text-xs text-text-muted">创建后自动进入小题管理（单选 / 多选 / 判断）</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 编辑模式：元信息 + 小题管理 -->
   <AsyncContent
+    v-else
     :status="paperError ? 'error' : paper ? 'data' : 'loading'"
     error="套卷加载失败"
   >

@@ -32,16 +32,16 @@ useHead({ title: '创建题目 - Neuro OJ' })
         </span>
       </NuxtLink>
 
-      <!-- LMCC 编程题 -->
+      <!-- Coding 编程题 -->
       <NuxtLink
-        to="/problems/new/lmcc"
+        to="/problems/new/coding"
         class="group flex flex-col gap-3 rounded-xl border border-border bg-white p-6 no-underline transition-all duration-150 hover:border-primary/50 hover:shadow-md"
       >
         <span class="flex size-11 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
           <UIcon name="i-lucide-code-2" class="size-5" />
         </span>
         <div>
-          <h2 class="text-base font-semibold text-text group-hover:text-primary">LMCC 编程题</h2>
+          <h2 class="text-base font-semibold text-text group-hover:text-primary">Coding 编程题</h2>
           <p class="mt-1 text-sm text-text-secondary leading-relaxed">
             代码提交评测，双容器沙箱，需配置评测环境与支持包。
           </p>

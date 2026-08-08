@@ -22,13 +22,10 @@ interface Props {
   mode: "create" | "edit"
   problemId?: string
   initialType?: "U" | "P"
-  /** 客观题套卷：创建 is_objective=true 的题目（无评测配置，服务端即时判定） */
-  objective?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   initialType: "U",
-  objective: false,
 })
 
 const emit = defineEmits<{
@@ -176,11 +173,8 @@ function validate(): boolean {
   const errors: Record<string, string> = {}
   if (!title.value.trim()) errors.title = "请输入题目标题"
   if (!description.value.trim()) errors.description = "请输入题目描述"
-  // 客观题套卷无评测配置
-  if (!props.objective) {
-    if (!evaluatorImage.value.trim()) errors.evaluator_image = "请选择 evaluator 镜像"
-    if (!solutionImage.value.trim()) errors.solution_image = "请选择 solution 镜像"
-  }
+  if (!evaluatorImage.value.trim()) errors.evaluator_image = "请选择 evaluator 镜像"
+  if (!solutionImage.value.trim()) errors.solution_image = "请选择 solution 镜像"
   fieldErrors.value = errors
   return Object.keys(errors).length === 0
 }
@@ -218,8 +212,7 @@ async function handleSubmit() {
         difficulty: difficulty.value,
         category_ids: categoryIds.value,
         type: problemType.value,
-        is_objective: props.objective === true,
-        ...(props.objective ? {} : { runtime_config: runtimeConfigPayload }),
+        runtime_config: runtimeConfigPayload,
       })
       savedProblemId.value = res.data.id
       emit("saved", res.data.id)
@@ -332,8 +325,8 @@ async function handleSubmit() {
       </div>
     </section>
 
-    <!-- 评测配置（双容器模式）：客观题套卷无评测配置 -->
-    <section v-if="!objective" class="px-6 py-5 border-b border-border last:border-b-0">
+    <!-- 评测配置（双容器模式） -->
+    <section class="px-6 py-5 border-b border-border last:border-b-0">
       <h2 class="text-sm font-semibold text-text mb-3">评测配置（双容器）</h2>
       <p class="text-xs text-text-muted mb-3">
         所有题目统一使用双容器模式：Evaluator（可信）运行 evaluate.py + 支持包；Solution（不可信）单独运行用户代码。
