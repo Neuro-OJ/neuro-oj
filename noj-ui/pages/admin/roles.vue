@@ -106,14 +106,14 @@ const showEditor = ref(false)
 const editingRole = ref<Role | null>(null)
 const editorName = ref("")
 const editorDesc = ref("")
-const editorParentId = ref<string | null>(null)
+const editorParentId = ref<string>('__none__')
 const editorPermissionIds = ref<Set<string>>(new Set())
 const editorError = ref("")
 const saving = ref(false)
 
 // 计算继承的权限 ID 集合（来自父角色的权限）
 const inheritedPermissionIds = computed(() => {
-  if (!editorParentId.value) return new Set<string>()
+  if (!editorParentId.value || editorParentId.value === '__none__') return new Set<string>()
   const parent = roles.value.find(r => r.id === editorParentId.value)
   if (!parent) return new Set<string>()
   return new Set(parent.permissions)
@@ -123,7 +123,7 @@ function openNewRole() {
   editingRole.value = null
   editorName.value = ""
   editorDesc.value = ""
-  editorParentId.value = null
+  editorParentId.value = '__none__'
   editorPermissionIds.value = new Set()
   editorError.value = ""
   showEditor.value = true
@@ -133,7 +133,7 @@ function openEditRole(role: Role) {
   editingRole.value = role
   editorName.value = role.name
   editorDesc.value = role.description || ""
-  editorParentId.value = role.parent_id
+  editorParentId.value = role.parent_id ?? '__none__'
   editorPermissionIds.value = new Set(role.permissions)
   editorError.value = ""
   showEditor.value = true
@@ -164,7 +164,7 @@ async function handleSave() {
     const body = {
       name: editorName.value.trim(),
       description: editorDesc.value.trim() || undefined,
-      parent_id: editorParentId.value,
+      parent_id: editorParentId.value === '__none__' ? null : editorParentId.value,
       permission_ids: Array.from(editorPermissionIds.value),
     }
     if (editingRole.value) {
@@ -306,19 +306,14 @@ async function confirmDelete(role: Role) {
       <!-- 父角色 -->
       <div>
         <label class="block text-sm font-semibold text-text mb-1">继承自</label>
-        <select
+        <USelect
           v-model="editorParentId"
-          class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white"
-        >
-          <option :value="null">（无）</option>
-          <option
-            v-for="p in availableParents"
-            :key="p.id"
-            :value="p.id"
-          >
-            {{ p.name }}
-          </option>
-        </select>
+          :items="[
+            { label: '（无）', value: '__none__' },
+            ...availableParents.map((p) => ({ label: p.name, value: p.id })),
+          ]"
+          class="w-full"
+        />
       </div>
 
       <!-- 权限勾选（仅非 admin 角色显示） -->

@@ -438,11 +438,7 @@ await load()
     <section class="rounded-lg border border-border bg-white p-5 shadow-card">
       <div class="flex items-center gap-2"><UIcon name="i-lucide-shield-check" class="size-4.5" /><h2 class="font-semibold">部署预设</h2></div>
       <div class="mt-4 flex flex-wrap items-center gap-3">
-        <select v-model="preset" class="rounded border border-border px-3 py-2" :disabled="applyingPreset">
-          <option value="public">公开社区</option>
-          <option value="private">私域社区</option>
-          <option value="knowledge">只读知识库</option>
-        </select>
+        <USelect v-model="preset" :items="[{ label: '公开社区', value: 'public' }, { label: '私域社区', value: 'private' }, { label: '只读知识库', value: 'knowledge' }]" :disabled="applyingPreset" class="min-w-[140px]" />
         <UButton color="primary" :disabled="applyingPreset" @click="applyPreset"><UIcon name="i-lucide-save" class="size-4" />{{ applyingPreset ? '应用中…' : '应用预设' }}</UButton>
         <span class="text-xs text-text-muted">预设仅写入本页草稿，点击"保存更改"生效</span>
       </div>

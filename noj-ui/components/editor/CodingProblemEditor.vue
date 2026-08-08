@@ -265,10 +265,14 @@ async function handleSubmit() {
         <template v-else>
           <div class="flex flex-col gap-1">
             <label class="text-xs font-semibold text-text">题目类型</label>
-            <select v-model="problemType" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white">
-              <option v-if="isAdmin" value="P">主题库（P）</option>
-              <option value="U">用户题库（U）</option>
-            </select>
+          <USelect
+            v-model="problemType"
+            :items="[
+              ...(isAdmin ? [{ label: '主题库（P）', value: 'P' }] : []),
+              { label: '用户题库（U）', value: 'U' },
+            ]"
+            class="w-full"
+          />
           </div>
         </template>
 
@@ -280,11 +284,7 @@ async function handleSubmit() {
 
         <div class="flex flex-col gap-1">
           <label class="text-xs font-semibold text-text">难度</label>
-          <select v-model="difficulty" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white">
-            <option value="easy">简单</option>
-            <option value="medium">中等</option>
-            <option value="hard">困难</option>
-          </select>
+          <USelect v-model="difficulty" :items="[{ label: '简单', value: 'easy' }, { label: '中等', value: 'medium' }, { label: '困难', value: 'hard' }]" class="w-full" />
         </div>
 
         <div class="flex flex-col gap-1 col-span-2">
@@ -341,10 +341,13 @@ async function handleSubmit() {
           <div class="flex flex-col gap-2.5">
             <div class="flex flex-col gap-1">
               <label class="text-xs font-semibold text-text">镜像 <span class="text-red-600">*</span></label>
-              <select v-model="evaluatorImage" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" :disabled="judgeImagesLoading">
-                <option value="" disabled>{{ judgeImagesLoading ? "加载中..." : evaluatorImages.length === 0 ? "暂无可用 evaluator 镜像" : "请选择 evaluator 镜像" }}</option>
-                <option v-for="ji in evaluatorImages" :key="ji.image" :value="ji.image">{{ ji.image }}</option>
-              </select>
+              <USelect
+                v-model="evaluatorImage"
+                :items="evaluatorImages.map((ji) => ({ label: ji.image, value: ji.image }))"
+                :disabled="judgeImagesLoading"
+                placeholder="请选择 evaluator 镜像"
+                class="w-full"
+              />
               <p v-if="!judgeImagesLoading && evaluatorImages.length === 0" class="text-xs text-warning-text">白名单无 evaluator 类型镜像</p>
               <p v-if="fieldErrors.evaluator_image" class="text-xs text-red-600">{{ fieldErrors.evaluator_image }}</p>
             </div>
@@ -381,10 +384,13 @@ async function handleSubmit() {
           <div class="flex flex-col gap-2.5">
             <div class="flex flex-col gap-1">
               <label class="text-xs font-semibold text-text">镜像 <span class="text-red-600">*</span></label>
-              <select v-model="solutionImage" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" :disabled="judgeImagesLoading">
-                <option value="" disabled>{{ judgeImagesLoading ? "加载中..." : solutionImages.length === 0 ? "暂无可用 solution 镜像" : "请选择 solution 镜像" }}</option>
-                <option v-for="ji in solutionImages" :key="ji.image" :value="ji.image">{{ ji.image }}</option>
-              </select>
+              <USelect
+                v-model="solutionImage"
+                :items="solutionImages.map((ji) => ({ label: ji.image, value: ji.image }))"
+                :disabled="judgeImagesLoading"
+                placeholder="请选择 solution 镜像"
+                class="w-full"
+              />
               <p v-if="!judgeImagesLoading && solutionImages.length === 0" class="text-xs text-warning-text">白名单无 solution 类型镜像 — 管理员需先添加并标记 kind='solution'</p>
               <p v-if="fieldErrors.solution_image" class="text-xs text-red-600">{{ fieldErrors.solution_image }}</p>
             </div>
