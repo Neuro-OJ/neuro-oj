@@ -264,3 +264,13 @@
   overflow-x: auto;
   overflow-y: hidden;
 }
+
+/* ---- 弹层层级（Nuxt UI v4 / reka-ui）----
+ * USelect / UDropdown / UPopover 等弹出层 teleport 到 body，reka-ui 会把
+ * content 的 computed z-index（auto）写为 wrapper 的**内联样式**
+ * `z-index: auto`，页面内任意 z-index ≥ 1 的元素（如聚焦的 UInput
+ * 自带 focus-visible:z-[1]、固定导航栏）会盖住它们，导致「输入框盖住
+ * 下拉展开层」。须用 !important 压过内联样式（radix/reka 惯例层级）。 */
+[data-reka-popper-content-wrapper] {
+  z-index: 50 !important;
+}
