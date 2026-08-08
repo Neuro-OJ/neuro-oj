@@ -224,10 +224,13 @@ const columns = computed(() => {
             <span v-if="!row.original.categories?.length" class="text-xs text-text-muted">--</span>
           </template>
           <template #time-cell="{ row }">
-            <span class="text-xs text-text-secondary">{{ row.original.runtime_config.evaluator.time_limit_ms }}ms</span>
+            <!-- 客观题套卷无评测容器（runtime_config 为 NULL） -->
+            <span v-if="row.original.is_objective" class="text-xs text-text-secondary">即时判定</span>
+            <span v-else class="text-xs text-text-secondary">{{ row.original.runtime_config.evaluator.time_limit_ms }}ms</span>
           </template>
           <template #memory-cell="{ row }">
-            <span class="text-xs text-text-secondary">{{ row.original.runtime_config.evaluator.memory_limit_mb }}MB</span>
+            <span v-if="row.original.is_objective" class="text-xs text-text-muted">--</span>
+            <span v-else class="text-xs text-text-secondary">{{ row.original.runtime_config.evaluator.memory_limit_mb }}MB</span>
           </template>
           <template #rate-cell="{ row }">
             <span class="text-xs text-text-secondary">{{ formatAcceptanceRate(row.original.acceptance_rate) }}</span>

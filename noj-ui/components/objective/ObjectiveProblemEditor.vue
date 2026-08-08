@@ -254,21 +254,21 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
     <section class="rounded-xl border border-border bg-white p-5">
       <h2 class="mb-3 text-sm font-semibold text-text">套卷信息</h2>
       <div class="flex flex-col gap-3">
-        <UFormGroup label="题目类型">
+        <UField label="题目类型">
           <USelect
             v-model="createType"
-            :options="[
+            :items="[
               { label: '用户题库（U 型）', value: 'U' },
               { label: '主题库（P 型，仅管理员）', value: 'P' },
             ]"
           />
-        </UFormGroup>
-        <UFormGroup label="标题">
+        </UField>
+        <UField label="标题">
           <UInput v-model="createTitle" placeholder="套卷标题" />
-        </UFormGroup>
-        <UFormGroup label="描述">
+        </UField>
+        <UField label="描述">
           <UTextarea v-model="createDescription" placeholder="套卷描述" :rows="3" />
-        </UFormGroup>
+        </UField>
         <p v-if="createError" class="text-sm text-red-600">{{ createError }}</p>
         <div class="flex items-center gap-3">
           <UButton color="primary" :loading="creating" @click="onCreate">创建套卷</UButton>
@@ -299,12 +299,12 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
       <section class="rounded-xl border border-border bg-white p-5">
         <h2 class="mb-3 text-sm font-semibold text-text">套卷信息</h2>
         <div class="flex flex-col gap-3">
-          <UFormGroup label="标题">
+          <UField label="标题">
             <UInput v-model="title" placeholder="套卷标题" />
-          </UFormGroup>
-          <UFormGroup label="描述">
+          </UField>
+          <UField label="描述">
             <UTextarea v-model="description" placeholder="套卷描述" :rows="3" />
-          </UFormGroup>
+          </UField>
           <div class="flex gap-2">
             <UButton color="primary" :loading="savingMeta" @click="onSaveMeta">保存信息</UButton>
             <UButton color="red" variant="outline" @click="onDeletePaper">删除套卷</UButton>
@@ -349,23 +349,23 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
           {{ editing.id === null ? '添加小题' : '编辑小题' }}
         </h2>
         <div class="flex flex-col gap-3">
-          <UFormGroup label="题型">
+          <UField label="题型">
             <USelect
               v-model="editing.type"
-              :options="[
+              :items="[
                 { label: '单选', value: 'single' },
                 { label: '多选', value: 'multiple' },
                 { label: '判断', value: 'judge' },
               ]"
             />
-          </UFormGroup>
+          </UField>
 
-          <UFormGroup label="题干">
+          <UField label="题干">
             <UTextarea v-model="editing.prompt" :rows="2" placeholder="输入题目内容" />
-          </UFormGroup>
+          </UField>
 
           <!-- 选项（判断题固定对/错） -->
-          <UFormGroup v-if="editing.type !== 'judge'" label="选项与答案">
+          <UField v-if="editing.type !== 'judge'" label="选项与答案">
             <div class="flex flex-col gap-2">
               <div
                 v-for="(opt, i) in editing.options"
@@ -384,10 +384,10 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
               </div>
               <UButton size="sm" variant="outline" icon="i-lucide-plus" @click="addOption">添加选项</UButton>
             </div>
-          </UFormGroup>
+          </UField>
 
           <!-- 判断题答案 -->
-          <UFormGroup v-else label="正确答案">
+          <UField v-else label="正确答案">
             <div class="flex gap-4">
               <label class="flex items-center gap-1.5 text-sm">
                 <input type="radio" class="accent-primary" :checked="isAnswer('true')" @change="toggleAnswer('true')" />
@@ -398,11 +398,11 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
                 错误
               </label>
             </div>
-          </UFormGroup>
+          </UField>
 
-          <UFormGroup label="解析（判卷后展示，可选）">
+          <UField label="解析（判卷后展示，可选）">
             <UTextarea v-model="editing.explanation" :rows="2" placeholder="答案解析" />
-          </UFormGroup>
+          </UField>
 
           <div class="flex gap-2">
             <UButton color="primary" @click="onSaveQuestion">保存小题</UButton>

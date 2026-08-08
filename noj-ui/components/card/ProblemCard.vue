@@ -29,9 +29,10 @@
                         class="text-[10px] px-1.5 rounded bg-blue-50 text-blue-700 border border-blue-200 box-border h-full inline-flex items-center leading-none"
                     >{{ cat.name }}</span>
                 </div>
-                <!-- 右下：时间·内存限制 -->
+                <!-- 右下：时间·内存限制（客观题套卷无评测容器） -->
                 <div class="flex items-center justify-end h-[18px]">
-                    <span class="text-[10px] text-text-muted tabular-nums leading-none">{{ (runtime_config.evaluator.time_limit_ms / 1000).toFixed(0) }}s · {{ runtime_config.evaluator.memory_limit_mb }}MB</span>
+                    <span v-if="is_objective" class="text-[10px] text-text-muted leading-none">即时判定</span>
+                    <span v-else class="text-[10px] text-text-muted tabular-nums leading-none">{{ (runtime_config.evaluator.time_limit_ms / 1000).toFixed(0) }}s · {{ runtime_config.evaluator.memory_limit_mb }}MB</span>
                 </div>
             </div>
         </div>
@@ -51,7 +52,8 @@ interface Props {
     type: string
     title: string
     difficulty: string
-    runtime_config: { evaluator: { time_limit_ms: number; memory_limit_mb: number } }
+    runtime_config: { evaluator: { time_limit_ms: number; memory_limit_mb: number } } | null
+    is_objective: boolean
     categories?: Category[]
 }
 
