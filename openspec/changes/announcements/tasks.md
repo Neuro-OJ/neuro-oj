@@ -46,7 +46,7 @@
 
 - [x] 9.1 noj-core：`deno fmt` + `deno lint` + `deno task test` 全量通过（743 passed / 0 failed）
 - [x] 9.2 noj-ui：`deno fmt` + `deno lint` + `nuxt build` 通过
-- [ ] 9.3 noj-tests E2E 新增公告用例（`e2e/28_announcements.test.ts` 已编写：发布→公开可见→下架消失、非 admin 403、置顶排序、SSE 广播），`run-e2e.sh` 全量跑通**待执行**
+- [x] 9.3 noj-tests E2E 新增公告用例（`e2e/28_announcements.test.ts`：发布→公开可见→下架消失、非 admin 403、置顶排序、SSE 广播）——已纳入 `.github/workflows/e2e.yml` p3 分组，PR #234 CI 上 4/4 用例通过（Full Pipeline (API E2E) pass）
 
 ## 10. OpenSpec 归档
 
