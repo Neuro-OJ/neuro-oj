@@ -1,6 +1,6 @@
 {
-  "id": "e5c2d756-c62d-41df-8675-9b3487a73ef0",
-  "prevId": "0d1d118f-8e20-44a1-9158-2ade6f89dc30",
+  "id": "e4d67b89-57fc-474d-a40a-9a4d6f2cabf4",
+  "prevId": "e5c2d756-c62d-41df-8675-9b3487a73ef0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -231,7 +231,7 @@
       "checkConstraints": {
         "audit_logs_action_check": {
           "name": "audit_logs_action_check",
-          "value": "\"audit_logs\".\"action\" IN (\n        'users.role_change',\n        'users.ban',\n        'users.unban',\n        'problems.delete',\n        'problems.runtime_config_changed',\n        'problems.imported',\n        'categories.delete',\n        'submissions.rejudge',\n        'settings.update',\n        'ip_ban.create',\n        'ip_ban.delete',\n        'auth.login_success',\n        'auth.login_failure',\n        'auth.register',\n        'auth.change_password',\n        'auth.forgot_password_request',\n        'auth.password_reset',\n        'community.post_moderated',\n        'community.report_resolved',\n        'community.sanction_created',\n        'community.sanction_revoked',\n        'community.preset_applied'\n      )"
+          "value": "\"audit_logs\".\"action\" IN (\n        'users.role_change',\n        'users.ban',\n        'users.unban',\n        'problems.delete',\n        'problems.runtime_config_changed',\n        'problems.imported',\n        'categories.delete',\n        'submissions.rejudge',\n        'settings.update',\n        'ip_ban.create',\n        'ip_ban.delete',\n        'auth.login_success',\n        'auth.login_failure',\n        'auth.register',\n        'auth.change_password',\n        'auth.forgot_password_request',\n        'auth.password_reset',\n        'community.post_moderated',\n        'community.report_resolved',\n        'community.sanction_created',\n        'community.sanction_revoked',\n        'community.preset_applied',\n        'announcement.create',\n        'announcement.update',\n        'announcement.delete'\n      )"
         }
       },
       "isRLSEnabled": false

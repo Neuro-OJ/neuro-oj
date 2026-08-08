@@ -37,6 +37,7 @@ const navGroups: NavGroup[] = [
       { label: "提交管理", to: "/admin/submissions", icon: 'i-lucide-files' },
       { label: "评测镜像", to: "/admin/judge-images", icon: 'i-lucide-container' },
       { label: "社区管理", to: "/admin/community", icon: 'i-lucide-messages-square' },
+      { label: "公告管理", to: "/admin/announcements", icon: 'i-lucide-megaphone' },
     ],
   },
   {

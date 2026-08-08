@@ -32,6 +32,8 @@ export const Channels = {
   },
   /** 统计数据变更：noj:events:stats */
   stats: `${EVENT_CHANNEL_PREFIX}stats`,
+  /** 公告变更：noj:events:announcements */
+  announcements: `${EVENT_CHANNEL_PREFIX}announcements`,
 } as const;
 
 /**

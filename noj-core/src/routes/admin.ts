@@ -30,6 +30,17 @@ import {
 } from "../services/users.ts";
 import { addIpBan, listIpBans, removeIpBan } from "../services/banlist.ts";
 import {
+  createAnnouncement,
+  deleteAnnouncement,
+  listAdminAnnouncements,
+  updateAnnouncement,
+} from "../services/announcements.ts";
+import type {
+  CreateAnnouncementInput,
+  UpdateAnnouncementInput,
+} from "../services/announcements.ts";
+import { assertPermission } from "../lib/permissions.ts";
+import {
   listSettings,
   resetSetting,
   updateSetting,
@@ -623,6 +634,61 @@ router.delete("/roles/:id", async (c) => {
 router.get("/permissions", async (c) => {
   const result = await listPermissions();
   return c.json({ data: result });
+});
+
+// ─── 公告管理 ─────────────────────────────────────────────
+
+/**
+ * 管理员获取公告列表（含未发布/已下架）。
+ * GET /api/v1/admin/announcements?page=1&per_page=20&is_active=true
+ * is_active 筛选可选：true / false / 缺省（全部）。
+ */
+router.get("/announcements", async (c) => {
+  await assertPermission(c, "announcement:manage");
+  const { page, perPage } = parsePagination(c);
+  const isActiveParam = c.req.query("is_active");
+  const isActive = isActiveParam === "true"
+    ? true
+    : isActiveParam === "false"
+    ? false
+    : undefined;
+  const result = await listAdminAnnouncements(page, perPage, isActive);
+  return c.json(result);
+});
+
+/**
+ * 管理员创建公告。
+ * POST /api/v1/admin/announcements
+ * body: { title, content, is_pinned?, is_active? }
+ */
+router.post("/announcements", async (c) => {
+  await assertPermission(c, "announcement:manage");
+  const body = await parseJsonBody<CreateAnnouncementInput>(c);
+  const item = await createAnnouncement(body);
+  return c.json({ data: item }, 201);
+});
+
+/**
+ * 管理员更新公告（部分更新语义；发布/下架 = 更新 is_active）。
+ * PUT /api/v1/admin/announcements/:id
+ */
+router.put("/announcements/:id", async (c) => {
+  await assertPermission(c, "announcement:manage");
+  const id = c.req.param("id") as string;
+  const body = await parseJsonBody<UpdateAnnouncementInput>(c);
+  const item = await updateAnnouncement(id, body);
+  return c.json({ data: item });
+});
+
+/**
+ * 管理员删除公告。
+ * DELETE /api/v1/admin/announcements/:id
+ */
+router.delete("/announcements/:id", async (c) => {
+  await assertPermission(c, "announcement:manage");
+  const id = c.req.param("id") as string;
+  await deleteAnnouncement(id);
+  return c.body(null, 204);
 });
 
 export default router;

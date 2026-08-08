@@ -763,7 +763,10 @@ export const auditLogs = pgTable(
         'community.report_resolved',
         'community.sanction_created',
         'community.sanction_revoked',
-        'community.preset_applied'
+        'community.preset_applied',
+        'announcement.create',
+        'announcement.update',
+        'announcement.delete'
       )`,
     ),
     adminIdx: index("audit_logs_admin_id_idx").on(table.admin_id),

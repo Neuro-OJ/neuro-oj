@@ -251,6 +251,8 @@ export const PERMISSION_DEFS: Array<{
     action: "manage",
     description: "管理社区板块",
   },
+  // 公告
+  { resource: "announcement", action: "manage", description: "管理公告" },
   // 系统
   { resource: "system", action: "settings", description: "系统设置" },
   { resource: "system", action: "judge_images", description: "管理评测镜像" },

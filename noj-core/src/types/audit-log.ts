@@ -28,7 +28,10 @@ export type AuditAction =
   | "community.report_resolved"
   | "community.sanction_created"
   | "community.sanction_revoked"
-  | "community.preset_applied";
+  | "community.preset_applied"
+  | "announcement.create"
+  | "announcement.update"
+  | "announcement.delete";
 
 /** 按 action 强类型的 detail（discriminated union） */
 export type AuditDetail =
@@ -122,7 +125,10 @@ export type AuditDetail =
   | {
     action: "community.preset_applied";
     preset: "public" | "private" | "knowledge";
-  };
+  }
+  | { action: "announcement.create"; title: string }
+  | { action: "announcement.update"; title: string }
+  | { action: "announcement.delete"; title: string };
 
 /** audit_logs 表的响应类型 */
 export interface AuditLogEntry {
