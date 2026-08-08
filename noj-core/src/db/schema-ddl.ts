@@ -597,4 +597,5 @@ export const ALL_TABLES = [
   "community_moderation_actions",
   "community_sanctions",
   "community_notifications",
+  "announcements",
 ] as const;

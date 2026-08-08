@@ -54,6 +54,14 @@ const columns = [
       return isNaN(d.getTime()) ? "-" : d.toLocaleString("zh-CN")
     },
   },
+  {
+    accessorKey: "created_at",
+    header: "创建时间",
+    cell: (info: { getValue: () => string }) => {
+      const d = new Date(info.getValue() as string)
+      return isNaN(d.getTime()) ? "-" : d.toLocaleString("zh-CN")
+    },
+  },
   { accessorKey: "actions", header: "操作" },
 ]
 
