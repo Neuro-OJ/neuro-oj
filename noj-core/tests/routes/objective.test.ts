@@ -1,6 +1,6 @@
 /**
  * 客观题路由层测试。
- * 覆盖：套卷 CRUD（type='O' 无需 runtime_config）、display_id 查找、
+ * 覆盖：套卷 CRUD（is_objective 无需 runtime_config）、display_id 查找、
  * 小题 CRUD、提交端点即时判定、答案可见性裁剪、权限拒绝。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
@@ -19,7 +19,8 @@ await initRedisForTest();
 const db = getDb();
 
 Deno.test({
-  name: "objective route: 创建套卷（type=O 无需 runtime_config）→ 201",
+  name:
+    "objective route: 创建客观题套卷（is_objective 无需 runtime_config）→ 201",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -29,14 +30,16 @@ Deno.test({
       method: "POST",
       token,
       body: {
-        type: "O",
+        type: "U",
+        is_objective: true,
         title: `客观题套卷 ${Date.now()}`,
         description: "套卷描述",
       },
     });
     assertEquals(res.status, 201);
     const body = await res.json();
-    assertEquals(body.data.type, "O");
+    assertEquals(body.data.type, "U");
+    assertEquals(body.data.is_objective, true);
     assertEquals(body.data.runtime_config, null);
   },
 });
@@ -76,18 +79,19 @@ Deno.test({
 });
 
 Deno.test({
-  name: "objective route: 套卷 display_id 查找（O1001 前缀）",
+  name: "objective route: 套卷 display_id 查找（U/P 前缀）",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
     const token = await createUserToken("user");
-    // 创建一个 O 型套卷
+    // 创建一个客观题套卷（U 型）
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token,
       body: {
-        type: "O",
+        type: "U",
+        is_objective: true,
         title: `display 套卷 ${Date.now()}`,
         description: "d",
       },
@@ -115,14 +119,19 @@ Deno.test({
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
-      body: { type: "O", title: `CRUD 套卷 ${Date.now()}`, description: "d" },
+      body: {
+        type: "U",
+        is_objective: true,
+        title: `CRUD 套卷 ${Date.now()}`,
+        description: "d",
+      },
     });
     const paperId = (await created.json()).data.id;
 
     // 创建单选小题
     const qRes = await jsonRequest(
       app,
-      `/api/v1/objective/papers/${paperId}/questions`,
+      `/api/v1/problems/${paperId}/questions`,
       {
         method: "POST",
         token: owner,
@@ -143,7 +152,7 @@ Deno.test({
     // 创建判断题
     const jRes = await jsonRequest(
       app,
-      `/api/v1/objective/papers/${paperId}/questions`,
+      `/api/v1/problems/${paperId}/questions`,
       {
         method: "POST",
         token: owner,
@@ -157,7 +166,7 @@ Deno.test({
     // owner 视图含答案
     const ownerView = await jsonRequest(
       app,
-      `/api/v1/objective/papers/${paperId}/questions`,
+      `/api/v1/problems/${paperId}/questions`,
       { token: owner },
     );
     const ownerQuestions = (await ownerView.json()).data;
@@ -167,7 +176,7 @@ Deno.test({
     // 非 owner 视图裁剪答案与解析
     const otherView = await jsonRequest(
       app,
-      `/api/v1/objective/papers/${paperId}/questions`,
+      `/api/v1/problems/${paperId}/questions`,
       { token: other },
     );
     const otherQuestions = (await otherView.json()).data;
@@ -178,25 +187,33 @@ Deno.test({
     // 非 owner 管理小题被拒
     const forbidden = await jsonRequest(
       app,
-      `/api/v1/objective/questions/${q1.id}`,
+      `/api/v1/problems/${paperId}/questions/${q1.id}`,
       { method: "DELETE", token: other },
     );
     assertEquals(forbidden.status, 403);
 
     // 更新小题（owner）
-    const upd = await jsonRequest(app, `/api/v1/objective/questions/${q1.id}`, {
-      method: "PUT",
-      token: owner,
-      body: { explanation: "更新解析" },
-    });
+    const upd = await jsonRequest(
+      app,
+      `/api/v1/problems/${paperId}/questions/${q1.id}`,
+      {
+        method: "PUT",
+        token: owner,
+        body: { explanation: "更新解析" },
+      },
+    );
     assertEquals(upd.status, 200);
     assertEquals((await upd.json()).data.explanation, "更新解析");
 
     // 删除小题（owner）
-    const del = await jsonRequest(app, `/api/v1/objective/questions/${q1.id}`, {
-      method: "DELETE",
-      token: owner,
-    });
+    const del = await jsonRequest(
+      app,
+      `/api/v1/problems/${paperId}/questions/${q1.id}`,
+      {
+        method: "DELETE",
+        token: owner,
+      },
+    );
     assertEquals(del.status, 204);
   },
 });
@@ -213,13 +230,18 @@ Deno.test({
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
-      body: { type: "O", title: `提交套卷 ${Date.now()}`, description: "d" },
+      body: {
+        type: "U",
+        is_objective: true,
+        title: `提交套卷 ${Date.now()}`,
+        description: "d",
+      },
     });
     const paperId = (await created.json()).data.id;
 
     const qRes = await jsonRequest(
       app,
-      `/api/v1/objective/papers/${paperId}/questions`,
+      `/api/v1/problems/${paperId}/questions`,
       {
         method: "POST",
         token: owner,
@@ -237,7 +259,7 @@ Deno.test({
     // 答对 → 满分
     const okRes = await jsonRequest(
       app,
-      `/api/v1/objective/papers/${paperId}/submit`,
+      `/api/v1/problems/${paperId}/submit`,
       {
         method: "POST",
         token: solver,
@@ -253,7 +275,7 @@ Deno.test({
     // 答错 → 0 分（练习可重复提交）
     const badRes = await jsonRequest(
       app,
-      `/api/v1/objective/papers/${paperId}/submit`,
+      `/api/v1/problems/${paperId}/submit`,
       {
         method: "POST",
         token: solver,
@@ -266,7 +288,7 @@ Deno.test({
     // 历史 + 最高分
     const hist = await jsonRequest(
       app,
-      `/api/v1/objective/submissions?paper_id=${paperId}`,
+      `/api/v1/problems/submissions?paper_id=${paperId}`,
       { token: solver },
     );
     assertEquals(hist.status, 200);
@@ -277,7 +299,7 @@ Deno.test({
     // 单次详情
     const detail = await jsonRequest(
       app,
-      `/api/v1/objective/submissions/${ok.submission_id}`,
+      `/api/v1/problems/submissions/${ok.submission_id}`,
       { token: solver },
     );
     assertEquals(detail.status, 200);
@@ -297,11 +319,16 @@ Deno.test({
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
-      body: { type: "O", title: `删除套卷 ${Date.now()}`, description: "d" },
+      body: {
+        type: "U",
+        is_objective: true,
+        title: `删除套卷 ${Date.now()}`,
+        description: "d",
+      },
     });
     const paperId = (await created.json()).data.id;
 
-    await jsonRequest(app, `/api/v1/objective/papers/${paperId}/questions`, {
+    await jsonRequest(app, `/api/v1/problems/${paperId}/questions`, {
       method: "POST",
       token: owner,
       body: {
@@ -361,7 +388,7 @@ Deno.test({
 
     const res = await jsonRequest(
       app,
-      `/api/v1/objective/papers/${problemId}/questions`,
+      `/api/v1/problems/${problemId}/questions`,
       { token },
     );
     assertEquals(res.status, 400);
@@ -378,14 +405,19 @@ Deno.test({
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
-      body: { type: "O", title: `排序冲突卷 ${Date.now()}`, description: "d" },
+      body: {
+        type: "U",
+        is_objective: true,
+        title: `排序冲突卷 ${Date.now()}`,
+        description: "d",
+      },
     });
     const paperId = (await created.json()).data.id;
 
     // 指定 sort_order=5 创建第一题
     const first = await jsonRequest(
       app,
-      `/api/v1/objective/papers/${paperId}/questions`,
+      `/api/v1/problems/${paperId}/questions`,
       {
         method: "POST",
         token: owner,
@@ -403,7 +435,7 @@ Deno.test({
     // 第二题同样 sort_order=5 → 400
     const dup = await jsonRequest(
       app,
-      `/api/v1/objective/papers/${paperId}/questions`,
+      `/api/v1/problems/${paperId}/questions`,
       {
         method: "POST",
         token: owner,
@@ -430,14 +462,19 @@ Deno.test({
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
-      body: { type: "O", title: `排序校验卷 ${Date.now()}`, description: "d" },
+      body: {
+        type: "U",
+        is_objective: true,
+        title: `排序校验卷 ${Date.now()}`,
+        description: "d",
+      },
     });
     const paperId = (await created.json()).data.id;
 
     for (const bad of [-1, 1.5]) {
       const res = await jsonRequest(
         app,
-        `/api/v1/objective/papers/${paperId}/questions`,
+        `/api/v1/problems/${paperId}/questions`,
         {
           method: "POST",
           token: owner,
@@ -456,6 +493,84 @@ Deno.test({
 });
 
 Deno.test({
+  name: "objective route: P 型套卷仅 admin 可管理（权限随题目类型）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const admin = await createUserToken("admin");
+    const normal = await createUserToken("user");
+
+    // admin 创建 P 型客观题套卷
+    const created = await jsonRequest(app, "/api/v1/problems", {
+      method: "POST",
+      token: admin,
+      body: {
+        type: "P",
+        is_objective: true,
+        title: `P 型套卷 ${Date.now()}`,
+        description: "d",
+      },
+    });
+    assertEquals(created.status, 201);
+    const paperId = (await created.json()).data.id;
+
+    // 普通用户创建小题被拒（P 型仅 admin）
+    const qRes = await jsonRequest(
+      app,
+      `/api/v1/problems/${paperId}/questions`,
+      {
+        method: "POST",
+        token: normal,
+        body: {
+          type: "single",
+          prompt: "q",
+          options: [{ key: "A", text: "a" }],
+          answer: ["A"],
+        },
+      },
+    );
+    assertEquals(qRes.status, 403);
+
+    // admin 可创建小题并查看答案
+    const adminQ = await jsonRequest(
+      app,
+      `/api/v1/problems/${paperId}/questions`,
+      {
+        method: "POST",
+        token: admin,
+        body: {
+          type: "single",
+          prompt: "q",
+          options: [{ key: "A", text: "a" }],
+          answer: ["A"],
+        },
+      },
+    );
+    assertEquals(adminQ.status, 201);
+
+    // 普通用户公开视图：题目可读但答案被裁剪
+    const view = await jsonRequest(
+      app,
+      `/api/v1/problems/${paperId}/questions`,
+      { token: normal },
+    );
+    assertEquals(view.status, 200);
+    const ownerQuestions = (await view.json()).data;
+    assertEquals(ownerQuestions[0].answer, undefined);
+
+    // admin 视图含答案
+    const adminView = await jsonRequest(
+      app,
+      `/api/v1/problems/${paperId}/questions`,
+      { token: admin },
+    );
+    const adminQuestions = (await adminView.json()).data;
+    assertEquals(adminQuestions[0].answer, ["A"]);
+  },
+});
+
+Deno.test({
   name: "objective route: 改题型时既有答案必须对新题型合法",
   sanitizeResources: false,
   sanitizeOps: false,
@@ -465,14 +580,19 @@ Deno.test({
     const created = await jsonRequest(app, "/api/v1/problems", {
       method: "POST",
       token: owner,
-      body: { type: "O", title: `改题型卷 ${Date.now()}`, description: "d" },
+      body: {
+        type: "U",
+        is_objective: true,
+        title: `改题型卷 ${Date.now()}`,
+        description: "d",
+      },
     });
     const paperId = (await created.json()).data.id;
 
     // 单选 → 判断题：旧答案 ["A"] 不是布尔 → 400（需同时传新 answer）
     const single = await jsonRequest(
       app,
-      `/api/v1/objective/papers/${paperId}/questions`,
+      `/api/v1/problems/${paperId}/questions`,
       {
         method: "POST",
         token: owner,
@@ -487,7 +607,7 @@ Deno.test({
     const singleQ = (await single.json()).data;
     const toJudge = await jsonRequest(
       app,
-      `/api/v1/objective/questions/${singleQ.id}`,
+      `/api/v1/problems/${paperId}/questions/${singleQ.id}`,
       {
         method: "PUT",
         token: owner,
@@ -499,7 +619,7 @@ Deno.test({
     // 判断题 → 单选：不传 options 固定对/错不可复用 → 400
     const judge = await jsonRequest(
       app,
-      `/api/v1/objective/papers/${paperId}/questions`,
+      `/api/v1/problems/${paperId}/questions`,
       {
         method: "POST",
         token: owner,
@@ -509,7 +629,7 @@ Deno.test({
     const judgeQ = (await judge.json()).data;
     const toSingle = await jsonRequest(
       app,
-      `/api/v1/objective/questions/${judgeQ.id}`,
+      `/api/v1/problems/${paperId}/questions/${judgeQ.id}`,
       {
         method: "PUT",
         token: owner,
@@ -521,7 +641,7 @@ Deno.test({
     // 单选 → 多选：旧答案 1 项对多选仍合法（非空不重复）→ 200
     const toMultiple = await jsonRequest(
       app,
-      `/api/v1/objective/questions/${singleQ.id}`,
+      `/api/v1/problems/${paperId}/questions/${singleQ.id}`,
       {
         method: "PUT",
         token: owner,

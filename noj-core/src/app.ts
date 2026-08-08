@@ -16,7 +16,6 @@ import conversations from "./routes/conversations.ts";
 import community from "./routes/community.ts";
 import search from "./routes/search.ts";
 import contests from "./routes/contests.ts";
-import objective from "./routes/objective.ts";
 import sse, { contestSse, statsSse } from "./routes/sse.ts";
 import { AppError } from "./lib/errors.ts";
 import { logger } from "./lib/logging.ts";
@@ -152,7 +151,6 @@ export function createApp(): Hono {
   app.route("/api/v1/conversations", conversations);
   app.route("/api/v1/community", community);
   app.route("/api/v1/contests", contests);
-  app.route("/api/v1/objective", objective);
   app.route("/api/v1/search", search);
   // 评测镜像公开列表（必须在 sse 路由之前注册，避免被 SSE 的 authMiddleware 拦截）
   app.get("/api/v1/judge-images", async (c) => {

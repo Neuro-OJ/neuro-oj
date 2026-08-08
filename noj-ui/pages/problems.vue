@@ -16,6 +16,7 @@ interface ProblemItem {
   type: string
   owner_id: string
   number: number
+  is_objective: boolean
   created_at: string
   updated_at: string
 }
@@ -199,7 +200,18 @@ const columns = computed(() => {
             </NuxtLink>
           </template>
           <template #difficulty-cell="{ row }">
-            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold" :class="difficultyBadgeColors[row.original.difficulty] || ''">
+            <!-- 客观题：在难度位置标记为「客观题」 -->
+            <span
+              v-if="row.original.is_objective"
+              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700"
+            >
+              客观题
+            </span>
+            <span
+              v-else
+              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+              :class="difficultyBadgeColors[row.original.difficulty] || ''"
+            >
               {{ difficultyLabels[row.original.difficulty] || row.original.difficulty }}
             </span>
           </template>

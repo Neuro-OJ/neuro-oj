@@ -89,7 +89,6 @@ interface NavItem {
 const baseNavItems: NavItem[] = [
   { label: '首页', to: '/', icon: 'i-lucide-home' },
   { label: '题库', to: '/problems', icon: 'i-lucide-book-open' },
-  { label: '客观题', to: '/objective-papers', icon: 'i-lucide-clipboard-list' },
   { label: '竞赛', to: '/contests', icon: 'i-lucide-trophy' },
   { label: '榜单', to: '/ranking', icon: 'i-lucide-medal' },
   { label: '社区', to: '/community', icon: 'i-lucide-messages-square', needsCommunity: true },

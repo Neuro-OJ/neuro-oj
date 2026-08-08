@@ -3,9 +3,9 @@
 ### Requirement: 用户可创建题目
 
 系统 SHALL 提供 `POST /api/v1/problems`，管理员可创建任意 type 的题目，
-普通用户可创建 type='U'（用户题）与 type='O'（客观题套卷）的题目（自动成为所有者）。
+普通用户可创建 type='U'（用户题）与 is_objective=true（客观题套卷）的题目（自动成为所有者）。
 
-创建 O 型套卷 SHALL 不要求 `runtime_config`（客观题无评测容器）；创建 U/P 型 SHALL 继续要求 `runtime_config`。
+创建 客观题套卷 SHALL 不要求 `runtime_config`（客观题无评测容器）；创建 U/P 型 SHALL 继续要求 `runtime_config`。
 
 #### Scenario: 管理员成功创建 P 型题目
 - **WHEN** 管理员发送 `POST /api/v1/problems` 并携带 type='P' 及有效字段
@@ -15,9 +15,9 @@
 - **WHEN** 普通用户发送 `POST /api/v1/problems` 并携带 type='U' 及有效字段
 - **THEN** 系统创建 U 型题目，自动设 owner_id 为当前用户，自动分配 number，返回 201
 
-#### Scenario: 普通用户成功创建 O 型套卷
-- **WHEN** 普通用户发送 `POST /api/v1/problems` 并携带 type='O'、title、description 且不含 runtime_config
-- **THEN** 系统创建 O 型套卷，自动设 owner_id 为当前用户，自动分配 number，返回 201
+#### Scenario: 普通用户成功创建 客观题套卷
+- **WHEN** 普通用户发送 `POST /api/v1/problems` 并携带 is_objective=true、title、description 且不含 runtime_config
+- **THEN** 系统创建 客观题套卷，自动设 owner_id 为当前用户，自动分配 number，返回 201
 
 #### Scenario: 普通用户尝试创建 P 型题目
 - **WHEN** 普通用户调用 `POST /api/v1/problems` 并携带 type='P'

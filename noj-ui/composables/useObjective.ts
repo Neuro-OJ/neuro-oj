@@ -1,10 +1,10 @@
 import { useApi } from './useApi';
 
 /**
- * 客观题（objective）API 层（issue #222）。
+ * 客观题（objective）API 层（issue #222，并入 problems 体系）。
  *
- * 套卷 CRUD 复用 /api/v1/problems（type='O'），
- * 小题与提交走 /api/v1/objective/*。
+ * 套卷即 problems 表中的 is_objective=true 题目（type 仍为 U/P，权限随类型）；
+ * 小题与提交挂在 /api/v1/problems/:id/* 下。
  */
 
 export type ObjectiveQuestionType = 'single' | 'multiple' | 'judge';
@@ -34,9 +34,12 @@ export interface ObjectivePaper {
   description: string;
   difficulty: string;
   number: number;
-  type: 'O';
-  display_id: string;
+  /** 题目类型：U（用户题）/ P（主题题），权限随类型 */
+  type: 'U' | 'P';
+  /** 客观题标记（并入 problems 体系） */
+  is_objective: boolean;
   owner_id: string;
+  display_id: string;
   created_at: string;
   updated_at: string;
 }
@@ -96,10 +99,10 @@ export const QUESTION_TYPE_LABELS: Record<ObjectiveQuestionType, string> = {
 export function useObjective() {
   const { api } = useApi();
 
-  /** 套卷列表（type=O） */
+  /** 套卷列表（并入 problems 体系，由题库列表承担）——保留供后续扩展 */
   function listPapers(page = 1, limit = 20) {
     return api.get<{ data: ObjectivePaper[]; total: number; page: number; limit: number }>(
-      `/api/v1/problems?type=O&page=${page}&limit=${limit}`,
+      `/api/v1/problems?type=U&page=${page}&limit=${limit}`,
     );
   }
 
@@ -108,11 +111,11 @@ export function useObjective() {
     return api.get<{ data: ObjectivePaper }>(`/api/v1/problems/${id}`);
   }
 
-  /** 创建套卷（type=O，无需 runtime_config） */
-  function createPaper(payload: { title: string; description: string }) {
+  /** 创建套卷（is_objective=true，无需 runtime_config；type 默认 U，可 P） */
+  function createPaper(payload: { title: string; description: string; type?: 'U' | 'P' }) {
     return api.post<{ data: ObjectivePaper }>('/api/v1/problems', {
       ...payload,
-      type: 'O',
+      is_objective: true,
     });
   }
 
@@ -126,32 +129,32 @@ export function useObjective() {
     return api.delete<null>(`/api/v1/problems/${id}`);
   }
 
-  /** 小题列表（owner/admin 含答案，其余裁剪） */
+  /** 小题列表（owner/admin（U 型）或 admin（P 型）含答案，其余裁剪） */
   function listQuestions(paperId: string) {
     return api.get<{ data: ObjectiveQuestion[] }>(
-      `/api/v1/objective/papers/${paperId}/questions`,
+      `/api/v1/problems/${paperId}/questions`,
     );
   }
 
   /** 创建小题 */
   function createQuestion(paperId: string, payload: QuestionInput) {
     return api.post<{ data: ObjectiveQuestion }>(
-      `/api/v1/objective/papers/${paperId}/questions`,
+      `/api/v1/problems/${paperId}/questions`,
       payload,
     );
   }
 
   /** 更新小题 */
-  function updateQuestion(questionId: string, payload: Partial<QuestionInput>) {
+  function updateQuestion(paperId: string, questionId: string, payload: Partial<QuestionInput>) {
     return api.put<{ data: ObjectiveQuestion }>(
-      `/api/v1/objective/questions/${questionId}`,
+      `/api/v1/problems/${paperId}/questions/${questionId}`,
       payload,
     );
   }
 
   /** 删除小题 */
-  function deleteQuestion(questionId: string) {
-    return api.delete<null>(`/api/v1/objective/questions/${questionId}`);
+  function deleteQuestion(paperId: string, questionId: string) {
+    return api.delete<null>(`/api/v1/problems/${paperId}/questions/${questionId}`);
   }
 
   /** 提交套卷答案（即时判定；竞赛提交携带 contest_id） */
@@ -160,7 +163,7 @@ export function useObjective() {
     answers: Record<string, (string | boolean)[]>,
     contestId?: string,
   ) {
-    return api.post<{ data: SubmitResult }>(`/api/v1/objective/papers/${paperId}/submit`, {
+    return api.post<{ data: SubmitResult }>(`/api/v1/problems/${paperId}/submit`, {
       answers,
       ...(contestId ? { contest_id: contestId } : {}),
     });
@@ -180,13 +183,13 @@ export function useObjective() {
     if (params.perPage) query.set('per_page', String(params.perPage));
     const qs = query.toString();
     return api.get<{ data: ObjectiveSubmissionList }>(
-      `/api/v1/objective/submissions${qs ? `?${qs}` : ''}`,
+      `/api/v1/problems/submissions${qs ? `?${qs}` : ''}`,
     );
   }
 
   /** 单次提交详情 */
   function getSubmission(id: string) {
-    return api.get<{ data: ObjectiveSubmission }>(`/api/v1/objective/submissions/${id}`);
+    return api.get<{ data: ObjectiveSubmission }>(`/api/v1/problems/submissions/${id}`);
   }
 
   return {

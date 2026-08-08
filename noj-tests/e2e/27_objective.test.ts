@@ -23,6 +23,7 @@ const testSuffix = Date.now().toString(36);
 interface PaperData {
   id: string;
   type: string;
+  is_objective: boolean;
   number: number;
   owner_id: string;
 }
@@ -62,9 +63,10 @@ e2eTest("[e2e/objective] Setup: 管理端 + 出题人 + 答题人", async () => 
 
 e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落库", async () => {
   if (!isE2E) return;
-  // 1.1 创建客观题套卷（type=O，无需 runtime_config）
+  // 1.1 创建客观题套卷（U 型 + is_objective，无需 runtime_config）
   const paperRes = await apiPost("/api/v1/problems", {
-    type: "O",
+    type: "U",
+    is_objective: true,
     title: `E2E 客观题套卷 ${testSuffix}`,
     description: "LMCC 成人组模拟卷",
   }, ownerToken);
@@ -74,12 +76,12 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
     );
   }
   const paper = (paperRes.body as { data: PaperData }).data;
-  if (paper.type !== "O") throw new Error("套卷 type 应为 O");
+  if (!paper.is_objective) throw new Error("套卷 is_objective 应为 true");
   paperId = paper.id;
 
   // 1.2 单选小题
   const single = await apiPost(
-    `/api/v1/objective/papers/${paperId}/questions`,
+    `/api/v1/problems/${paperId}/questions`,
     {
       type: "single",
       prompt: "LMCC 全称对应的英文是？",
@@ -101,7 +103,7 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
 
   // 1.3 多选小题
   const multiple = await apiPost(
-    `/api/v1/objective/papers/${paperId}/questions`,
+    `/api/v1/problems/${paperId}/questions`,
     {
       type: "multiple",
       prompt: "以下哪些属于大模型基本素养？",
@@ -123,7 +125,7 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
 
   // 1.4 判断题
   const judge = await apiPost(
-    `/api/v1/objective/papers/${paperId}/questions`,
+    `/api/v1/problems/${paperId}/questions`,
     { type: "judge", prompt: "大语言模型具备逻辑推理能力", answer: [true] },
     ownerToken,
   );
@@ -136,7 +138,7 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
 
   // 1.5 答对提交 → 即时判定满分
   const okRes = await apiPost(
-    `/api/v1/objective/papers/${paperId}/submit`,
+    `/api/v1/problems/${paperId}/submit`,
     {
       answers: {
         [singleId]: ["B"],
@@ -163,7 +165,7 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
 
   // 1.6 落库验证：提交历史存在且为 finished
   const hist = await apiGet(
-    `/api/v1/objective/submissions?paper_id=${paperId}`,
+    `/api/v1/problems/submissions?paper_id=${paperId}`,
     solverToken,
   );
   if (hist.status !== 200) throw new Error("历史查询失败");
@@ -180,7 +182,7 @@ e2eTest(
     if (!isE2E) return;
     // 2.1 答错 → 0 分（练习可重复提交）
     const badRes = await apiPost(
-      `/api/v1/objective/papers/${paperId}/submit`,
+      `/api/v1/problems/${paperId}/submit`,
       {
         answers: {
           [singleId]: ["A"],
@@ -208,7 +210,7 @@ e2eTest(
 
     // 2.2 再提交全对 → 最高分保持 10000（练习取 MAX）
     const best = await apiGet(
-      `/api/v1/objective/submissions?paper_id=${paperId}`,
+      `/api/v1/problems/submissions?paper_id=${paperId}`,
       solverToken,
     );
     const bestBody =
@@ -219,7 +221,7 @@ e2eTest(
 
     // 2.3 非 owner 公开视图裁剪答案
     const qView = await apiGet(
-      `/api/v1/objective/papers/${paperId}/questions`,
+      `/api/v1/problems/${paperId}/questions`,
       solverToken,
     );
     if (qView.status !== 200) throw new Error("题目查询失败");
@@ -232,7 +234,7 @@ e2eTest(
 
     // 2.4 owner 视图含答案
     const ownerView = await apiGet(
-      `/api/v1/objective/papers/${paperId}/questions`,
+      `/api/v1/problems/${paperId}/questions`,
       ownerToken,
     );
     const ownerQuestions = (ownerView.body as { data: QuestionData[] }).data;
@@ -242,7 +244,7 @@ e2eTest(
 
     // 2.5 非 owner 编辑小题被拒
     const forbidden = await apiDelete(
-      `/api/v1/objective/questions/${singleId}`,
+      `/api/v1/problems/${paperId}/questions/${singleId}`,
       solverToken,
     );
     if (forbidden.status !== 403) {
@@ -251,7 +253,7 @@ e2eTest(
 
     // 2.6 owner 更新小题解析
     const upd = await apiPut(
-      `/api/v1/objective/questions/${singleId}`,
+      `/api/v1/problems/${paperId}/questions/${singleId}`,
       { explanation: "更新后的解析" },
       ownerToken,
     );
@@ -292,7 +294,7 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
 
   // 3.3 竞赛内提交（contest_id 携带）→ 判定满分
   const submit = await apiPost(
-    `/api/v1/objective/papers/${paperId}/submit`,
+    `/api/v1/problems/${paperId}/submit`,
     {
       answers: {
         [singleId]: ["B"],
@@ -325,7 +327,7 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
 
   // 3.4 竞赛内重复提交被拒（一次性）
   const dup = await apiPost(
-    `/api/v1/objective/papers/${paperId}/submit`,
+    `/api/v1/problems/${paperId}/submit`,
     {
       answers: {
         [singleId]: ["B"],
@@ -342,7 +344,7 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
 
   // 3.5 竞赛提交详情（本人）：同样不含期望答案与解析（防泄题）
   const subDetail = await apiGet(
-    `/api/v1/objective/submissions/${submitted.submission_id}`,
+    `/api/v1/problems/submissions/${submitted.submission_id}`,
     solverToken,
   );
   if (subDetail.status !== 200) throw new Error("竞赛提交详情查询失败");
@@ -381,7 +383,7 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
     `objective_outsider_${testSuffix}@test.com`,
   );
   const outsiderSubmit = await apiPost(
-    `/api/v1/objective/papers/${paperId}/submit`,
+    `/api/v1/problems/${paperId}/submit`,
     {
       answers: {
         [singleId]: ["B"],

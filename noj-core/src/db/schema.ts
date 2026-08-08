@@ -86,7 +86,7 @@ export const problems = pgTable(
     /** 支持包存储 URL（`noj-storage://` 格式） */
     support_package_storage_url: text("support_package_storage_url"),
     /**
-     * 双容器 Runtime 配置（U/P 型必填，O 型客观题套卷为 NULL）。
+     * 双容器 Runtime 配置（U/P 型必填；客观题套卷 is_objective=true 时为 NULL）。
      * 包含 evaluator 和 solution 两个容器的运行时配置。
      */
     runtime_config: jsonb("runtime_config"),
@@ -94,8 +94,10 @@ export const problems = pgTable(
     number: integer("number").notNull(),
     /** 题目所有者 ID，默认 root (UID=0) */
     owner_id: text("owner_id").notNull().default(ROOT_USER_ID),
-    /** 题目类型：U=用户题库, P=主题库, O=客观题套卷 */
+    /** 题目类型：U=用户题库, P=主题库 */
     type: text("type").notNull().default("U"),
+    /** 客观题标记：true 表示该题目是客观题套卷（无评测容器，服务端即时判定） */
+    is_objective: boolean("is_objective").notNull().default(false),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
     /** tsvector 列，GENERATED 自动维护，ORM 不可写入 */
@@ -108,7 +110,7 @@ export const problems = pgTable(
     ),
     typeCheck: check(
       "problems_type_check",
-      sql`${table.type} IN ('U', 'P', 'O')`,
+      sql`${table.type} IN ('U', 'P')`,
     ),
     searchVectorIdx: index("idx_problems_search_vector").using(
       "gin",
@@ -123,14 +125,14 @@ export const problems = pgTable(
 
 /**
  * 客观题小题表。
- * 每道小题必须通过 paper_id 绑定所属套卷（problems 表 type='O' 行），
+ * 每道小题必须通过 paper_id 绑定所属套卷（problems 表 is_objective=true 行），
  * 不可孤立存在；删除套卷时级联删除全部小题。
  */
 export const objectiveQuestions = pgTable(
   "objective_questions",
   {
     id: text("id").primaryKey(),
-    /** 所属套卷 ID（problems.id，type='O'） */
+    /** 所属套卷 ID（problems.id，is_objective=true） */
     paper_id: text("paper_id")
       .notNull()
       .references(() => problems.id, { onDelete: "cascade" }),
@@ -171,7 +173,7 @@ export const objectiveSubmissions = pgTable(
   "objective_submissions",
   {
     id: text("id").primaryKey(),
-    /** 所属套卷 ID（problems.id，type='O'） */
+    /** 所属套卷 ID（problems.id，is_objective=true） */
     paper_id: text("paper_id")
       .notNull()
       .references(() => problems.id, { onDelete: "cascade" }),

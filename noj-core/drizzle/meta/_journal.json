@@ -239,6 +239,13 @@
       "when": 1786104430080,
       "tag": "0033_violet_toro",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1786188250775,
+      "tag": "0034_known_rockslide",
+      "breakpoints": true
     }
   ]
 }

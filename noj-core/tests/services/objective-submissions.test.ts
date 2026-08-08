@@ -53,7 +53,8 @@ async function makePaper(ownerId: string): Promise<string> {
     runtime_config: null,
     number: Math.floor(Math.random() * 90000) + 10000,
     owner_id: ownerId,
-    type: "O",
+    type: "U",
+    is_objective: true,
     created_at: now,
     updated_at: now,
   });
@@ -344,7 +345,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "objective submissions: 非 O 型题目提交被拒",
+  name: "objective submissions: 非客观题题目提交被拒",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

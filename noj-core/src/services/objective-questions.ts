@@ -46,20 +46,39 @@ export async function getPaperOrThrow(paperId: string): Promise<PaperRow> {
   return rows[0];
 }
 
-/** 校验套卷类型为 'O'。 */
+/** 校验套卷标记为客观题（is_objective=true）。 */
 export function assertObjectivePaper(paper: PaperRow): void {
-  if (paper.type !== "O") {
-    throw new BadRequestError("该题目不是客观题套卷（type 必须为 O）");
+  if (!paper.is_objective) {
+    throw new BadRequestError(
+      "该题目不是客观题套卷（is_objective 必须为 true）",
+    );
   }
 }
 
-/** 判断是否为套卷 owner 或管理员。 */
+/** 判断套卷是否可管理/查看答案（权限随题目类型）：
+ * - P 型主题库：仅 admin（problem:write_any）
+ * - U 型：owner / admin
+ */
 export async function isPaperOwnerOrAdmin(
   paper: PaperRow,
   userId?: string,
   userRole?: string,
   c?: Context,
 ): Promise<boolean> {
+  // P 型：仅 admin 可管理（含查看答案）
+  if (paper.type === "P") {
+    if (userRole === "admin") return true;
+    if (c) {
+      try {
+        await assertPermission(c, "problem:write_any");
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }
+  // U 型：owner / admin
   if (paper.owner_id === (c?.var.userId ?? userId)) return true;
   if (userRole === "admin") return true;
   if (c) {

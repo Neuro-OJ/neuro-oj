@@ -1,7 +1,8 @@
 import { Hono } from "hono";
-import { authMiddleware } from "../middleware/auth.ts";
+import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { BadRequestError } from "../lib/errors.ts";
+import { parsePagination } from "../lib/pagination.ts";
 import { getClientIp } from "../lib/rate-limit-env.ts";
 import { runWithContext } from "../lib/requestContext.ts";
 import {
@@ -24,6 +25,25 @@ import {
   MAX_SUPPORT_PACKAGE_SIZE,
 } from "../services/support-package.ts";
 import { importProblemBundle } from "../services/problem-bundle.ts";
+import {
+  assertObjectivePaper,
+  createQuestion,
+  deleteQuestion,
+  getPaperOrThrow,
+  isPaperOwnerOrAdmin,
+  listPaperQuestions,
+  updateQuestion,
+} from "../services/objective-questions.ts";
+import {
+  getObjectiveSubmission,
+  listObjectiveSubmissions,
+  submitObjectivePaper,
+} from "../services/objective-submissions.ts";
+import type {
+  CreateQuestionInput,
+  SubmitObjectiveInput,
+  UpdateQuestionInput,
+} from "../types/objective.ts";
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
@@ -46,8 +66,8 @@ function resolveProblem(id: string) {
     return getProblem(id);
   }
 
-  // display_id 格式：解析 "P1001" / "U42" / "O1001" → (type, number)
-  const match = id.match(/^([UuPpOo])(\d+)$/);
+  // display_id 格式：解析 "P1001" / "U42" → (type, number)
+  const match = id.match(/^([UuPp])(\d+)$/);
   if (match) {
     const type = match[1].toUpperCase();
     const number = parseInt(match[2], 10);
@@ -107,6 +127,46 @@ router.get("/", async (c) => {
 });
 
 /**
+ * 客观题提交历史（本人；admin 可查他人）。
+ * 注意：静态路径须在 /:id 之前注册（Hono 按注册顺序匹配参数路由）。
+ * GET /api/v1/problems/submissions?paper_id=&contest_id=&user_id=&page=&per_page=
+ */
+router.get("/submissions", authMiddleware, async (c) => {
+  const userId = c.get("userId");
+  const userRole = c.get("userRole");
+  const { page, perPage } = parsePagination(c, {
+    defaultPerPage: 20,
+    maxPerPage: 100,
+  });
+
+  const result = await listObjectiveSubmissions({
+    viewerId: userId,
+    viewerRole: userRole,
+    c,
+    paperId: c.req.query("paper_id") || undefined,
+    contestId: c.req.query("contest_id") || undefined,
+    targetUserId: c.req.query("user_id") || undefined,
+    page,
+    perPage,
+  });
+  return c.json({ data: result });
+});
+
+/**
+ * 客观题单次提交详情。
+ * GET /api/v1/problems/submissions/:id
+ * 仅提交者本人或 admin 可读；竞赛模式不展示解析与期望答案。
+ */
+router.get("/submissions/:id", authMiddleware, async (c) => {
+  const id = c.req.param("id") as string;
+  const userId = c.get("userId");
+  const userRole = c.get("userRole");
+
+  const data = await getObjectiveSubmission(id, userId, userRole, c);
+  return c.json({ data });
+});
+
+/**
  * 获取题目详情（双索引：UUID 或 display_id）。
  */
 router.get("/:id", async (c) => {
@@ -117,7 +177,7 @@ router.get("/:id", async (c) => {
 
 /**
  * 创建题目。
- * admin 可创建任意 type，普通用户仅限 U/O 型。
+ * admin 可创建任意 type，普通用户仅限 U 型。
  * POST /api/v1/problems
  */
 router.post("/", authMiddleware, async (c) => {
@@ -131,9 +191,8 @@ router.post("/", authMiddleware, async (c) => {
     throw new BadRequestError("缺少必填字段：description");
   }
 
-  // O 型客观题套卷无需 runtime_config；U/P 型必填
-  const rawType = (body.type as string | undefined)?.toUpperCase() ?? "U";
-  if (rawType !== "O" && !body.runtime_config) {
+  // 客观题套卷（is_objective）无需 runtime_config；其余必填
+  if (!body.is_objective && !body.runtime_config) {
     throw new BadRequestError("缺少必填字段：runtime_config");
   }
 
@@ -342,6 +401,88 @@ router.delete("/:id/support-package", authMiddleware, async (c) => {
   }, c);
 
   return c.json({ data: { support_package_storage_url: null } });
+});
+
+// ── 客观题（并入 problems 体系，is_objective 标记）───────────────────────────
+
+/**
+ * 获取客观题套卷小题列表（公开可读）。
+ * GET /api/v1/problems/:id/questions
+ * U 型：owner/admin 视图含答案与解析；P 型：仅 admin；其余裁剪。
+ */
+router.get("/:id/questions", optionalAuthMiddleware, async (c) => {
+  const paperId = c.req.param("id") as string;
+  const userId = c.get("userId") as string | undefined;
+  const userRole = c.get("userRole") as string | undefined;
+
+  const paper = await getPaperOrThrow(paperId);
+  assertObjectivePaper(paper);
+  const includeAnswer = await isPaperOwnerOrAdmin(
+    paper,
+    userId,
+    userRole,
+    c,
+  );
+  const data = await listPaperQuestions(paperId, includeAnswer);
+  return c.json({ data });
+});
+
+/**
+ * 创建客观题小题（绑定套卷）。
+ * POST /api/v1/problems/:id/questions
+ */
+router.post("/:id/questions", authMiddleware, async (c) => {
+  const paperId = c.req.param("id") as string;
+  const userId = c.get("userId");
+  const userRole = c.get("userRole");
+  const body = await parseJsonBody<CreateQuestionInput>(c);
+
+  const data = await createQuestion(paperId, body, userId, userRole, c);
+  return c.json({ data }, 201);
+});
+
+/**
+ * 更新客观题小题。
+ * PUT /api/v1/problems/:id/questions/:qid
+ */
+router.put("/:id/questions/:qid", authMiddleware, async (c) => {
+  const qid = c.req.param("qid") as string;
+  const userId = c.get("userId");
+  const userRole = c.get("userRole");
+  const body = await parseJsonBody<UpdateQuestionInput>(c);
+
+  const data = await updateQuestion(qid, body, userId, userRole, c);
+  return c.json({ data });
+});
+
+/**
+ * 删除客观题小题。
+ * DELETE /api/v1/problems/:id/questions/:qid
+ */
+router.delete("/:id/questions/:qid", authMiddleware, async (c) => {
+  const qid = c.req.param("qid") as string;
+  const userId = c.get("userId");
+  const userRole = c.get("userRole");
+
+  await deleteQuestion(qid, userId, userRole, c);
+  return c.body(null, 204);
+});
+
+/**
+ * 提交套卷答案（即时判定）。
+ * POST /api/v1/problems/:id/submit
+ * body: { answers: {question_id: [...]}, contest_id?: string }
+ */
+router.post("/:id/submit", authMiddleware, async (c) => {
+  const paperId = c.req.param("id") as string;
+  const userId = c.get("userId");
+  const body = await parseJsonBody<SubmitObjectiveInput>(c);
+
+  if (!body.answers) {
+    throw new BadRequestError("缺少必填字段：answers");
+  }
+  const result = await submitObjectivePaper(paperId, body, userId);
+  return c.json({ data: result }, 201);
 });
 
 export default router;

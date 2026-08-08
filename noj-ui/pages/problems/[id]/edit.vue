@@ -7,6 +7,13 @@ const router = useRouter()
 const route = useRoute()
 const problemId = route.params.id as string
 
+// 客观题套卷（is_objective）走套卷编辑器，其余走编程题编辑器
+const { data } = await useFetch<{ data: { is_objective: boolean } }>(
+  `/api/v1/problems/${problemId}`,
+  { server: false },
+)
+const isObjective = computed(() => data.value?.data?.is_objective === true)
+
 function onSaved() {
   router.replace(`/problems/${problemId}`)
 }
@@ -18,8 +25,11 @@ function onSaved() {
       &larr; 返回题目
     </NuxtLink>
 
-    <h1 class="text-2xl font-bold text-text mb-5">编辑题目</h1>
+    <h1 class="text-2xl font-bold text-text mb-5">
+      {{ isObjective ? '编辑客观题套卷' : '编辑题目' }}
+    </h1>
 
-    <ProblemEditor mode="edit" :problem-id="problemId" @saved="onSaved" />
+    <ObjectivePaperEditor v-if="isObjective" :paper-id="problemId" />
+    <ProblemEditor v-else mode="edit" :problem-id="problemId" @saved="onSaved" />
   </div>
 </template>

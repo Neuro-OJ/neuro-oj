@@ -393,12 +393,13 @@ Deno.test({
     await db.insert(problems).values({
       id: paperId,
       title: "客观题排名卷",
-      description: "O",
+      description: "客观题",
       difficulty: "easy",
       runtime_config: null,
       number: 920004,
       owner_id: "0",
-      type: "O",
+      type: "U",
+      is_objective: true,
       created_at: now,
       updated_at: now,
     });

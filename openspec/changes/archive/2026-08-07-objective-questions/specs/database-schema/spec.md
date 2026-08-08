@@ -2,7 +2,7 @@
 
 ### Requirement: 题目表（problems）
 
-系统 SHALL 提供 `problems` 表存储题目信息。编程题（U/P 型）支持自定义评测环境配置；客观题套卷（O 型）无评测环境（`runtime_config` 可空）：
+系统 SHALL 提供 `problems` 表存储题目信息。编程题（U/P 型）支持自定义评测环境配置；客观题套卷（客观题）无评测环境（`runtime_config` 可空）：
 
 | 字段                 | 类型    | 约束                                 | 说明                           |
 | -------------------- | ------- | ------------------------------------ | ------------------------------ |
@@ -10,11 +10,11 @@
 | title                | TEXT    | NOT NULL                             | 题目标题 / 套卷标题            |
 | description          | TEXT    | NOT NULL                             | 题目描述（Markdown）           |
 | difficulty           | TEXT    | NOT NULL, DEFAULT 'medium'           | easy / medium / hard           |
-| runtime_config       | JSONB   | 可空（U/P 型必填）                    | 双容器评测配置；O 型为 NULL    |
+| runtime_config       | JSONB   | 可空（U/P 型必填）                    | 双容器评测配置；客观题为 NULL    |
 | support_package_storage_url | TEXT | 可空                               | 支持包存储 URL（仅 U/P 型使用）|
 | number               | INTEGER | NOT NULL, UNIQUE(type, number)       | 题号（同一 type 内独立自增）   |
 | owner_id             | TEXT    | NOT NULL, DEFAULT '0', FK → users.id | 题目所有者 ID，默认 root       |
-| type                 | TEXT    | NOT NULL, DEFAULT 'U', CHECK('U','P','O') | 题目类型：U=用户题, P=管理题, O=客观题套卷 |
+| type                 | TEXT    | NOT NULL, DEFAULT 'U', CHECK('U','P') | 题目类型：U=用户题, P=管理题,  |
 | created_at           | TEXT    | NOT NULL, ISO 8601                   |                                |
 | updated_at           | TEXT    | NOT NULL, ISO 8601                   |                                |
 
@@ -42,10 +42,10 @@
 - **WHEN** 向 problems 表插入一条 type='P' 的记录
 - **THEN** 允许与 U 型题目有相同的 number 值（不同 type 独立编号）
 
-#### Scenario: 插入 O 型套卷
+#### Scenario: 插入 客观题套卷
 
-- **WHEN** 向 problems 表插入一条 type='O'、runtime_config=NULL 的记录
-- **THEN** 允许插入，number 在 O 型范围内独立自增
+- **WHEN** 向 problems 表插入一条 type='U'（或 'P'）、is_objective=true、runtime_config=NULL 的记录
+- **THEN** 允许插入，number 在所属 type 范围内独立自增
 
 #### Scenario: type + number 组合唯一约束
 
@@ -61,7 +61,7 @@
 
 ### Requirement: 客观题小题表（objective_questions）
 
-系统 SHALL 提供 `objective_questions` 表存储客观题小题，每道小题 SHALL 通过外键绑定所属套卷（problems.id，type='O'）：
+系统 SHALL 提供 `objective_questions` 表存储客观题小题，每道小题 SHALL 通过外键绑定所属套卷（problems.id，is_objective=true）：
 
 | 字段       | 类型    | 约束                                   | 说明                               |
 | ---------- | ------- | -------------------------------------- | ---------------------------------- |

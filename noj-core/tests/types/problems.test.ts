@@ -35,7 +35,7 @@ Deno.test({
 Deno.test({
   name: "PROBLEM_TYPES 常量包含预期值",
   fn: () => {
-    assertEquals(PROBLEM_TYPES, ["U", "P", "O"]);
+    assertEquals(PROBLEM_TYPES, ["U", "P"]);
   },
 });
 
@@ -44,7 +44,7 @@ Deno.test({
   fn: () => {
     assertEquals(isValidProblemType("U"), true);
     assertEquals(isValidProblemType("P"), true);
-    assertEquals(isValidProblemType("O"), true);
+    assertEquals(isValidProblemType("O"), false);
   },
 });
 

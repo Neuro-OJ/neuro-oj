@@ -46,7 +46,8 @@ export const SCHEMA_DDL: string[] = [
     runtime_config JSONB CHECK (jsonb_typeof(runtime_config) = 'object'),
     number INTEGER NOT NULL,
     owner_id TEXT NOT NULL DEFAULT '0',
-    type TEXT NOT NULL DEFAULT 'U' CHECK (type IN ('U', 'P', 'O')),
+    type TEXT NOT NULL DEFAULT 'U' CHECK (type IN ('U', 'P')),
+    is_objective BOOLEAN NOT NULL DEFAULT false,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     search_vector tsvector GENERATED ALWAYS AS (

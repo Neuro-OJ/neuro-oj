@@ -2,24 +2,24 @@
 
 ### Requirement: 客观题卷管理
 
-系统 SHALL 提供客观题卷（套卷）的创建、编辑、删除与列表查询。套卷 SHALL 复用 problems 表（type='O'），使用 `display_id`（如 `O1001`）对外展示；创建时 SHALL 不要求 `runtime_config`。
+系统 SHALL 提供客观题卷（套卷）的创建、编辑、删除与列表查询。套卷 SHALL 复用 problems 表（is_objective=true），使用 `display_id`（如 `U1001`）对外展示；创建时 SHALL 不要求 `runtime_config`。
 
 套卷权限 SHALL 遵循 U 型规则：owner / admin 可 CRUD，普通用户可查看。
 
 #### Scenario: 普通用户创建套卷
-- **WHEN** 普通用户发送 `POST /api/v1/problems` 携带 type='O'、title、description 且不含 runtime_config
-- **THEN** 系统创建 O 型套卷，自动设 owner_id 为当前用户，自动分配 number，返回 201
+- **WHEN** 普通用户发送 `POST /api/v1/problems` 携带 is_objective=true、title、description 且不含 runtime_config
+- **THEN** 系统创建 客观题套卷，自动设 owner_id 为当前用户，自动分配 number，返回 201
 
 #### Scenario: 套卷列表筛选
-- **WHEN** 用户请求 `GET /api/v1/problems?type=O`
-- **THEN** 系统返回 O 型套卷分页列表，每条含 display_id（如 O1001）
+- **WHEN** 用户请求 `GET /api/v1/problems?type=U`
+- **THEN** 系统返回 客观题套卷分页列表，每条含 display_id（如 U1001）
 
 #### Scenario: 套卷按 display_id 查找
-- **WHEN** 用户请求 `GET /api/v1/problems/O1001`
+- **WHEN** 用户请求 `GET /api/v1/problems/U1001`
 - **THEN** 系统通过双索引解析返回该套卷详情
 
 #### Scenario: 非 owner 编辑套卷被拒
-- **WHEN** 普通用户编辑他人所有的 O 型套卷
+- **WHEN** 普通用户编辑他人所有的 客观题套卷
 - **THEN** 系统返回 HTTP 403
 
 #### Scenario: owner 删除套卷
@@ -38,7 +38,7 @@
 小题 SHALL 包含题干（prompt）、选项列表（options，judge 型可空）、标准答案（answer）、可选解析（explanation），并按 sort_order 排序展示。
 
 #### Scenario: 套卷下创建单选小题
-- **WHEN** owner 发送 `POST /api/v1/objective/papers/:id/questions` 携带 type='single'、prompt、options（A/B/C/D）与 answer=['A']
+- **WHEN** owner 发送 `POST /api/v1/problems/:id/questions` 携带 type='single'、prompt、options（A/B/C/D）与 answer=['A']
 - **THEN** 系统创建小题并绑定该套卷，返回 201
 
 #### Scenario: 创建多选小题

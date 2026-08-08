@@ -5,7 +5,7 @@
 ## Requirements
 ### Requirement: 客观题提交与即时判定
 
-系统 SHALL 提供 `POST /api/v1/objective/papers/:id/submit`（需登录）接受用户答案（`{question_id: [选项...]}`），在 noj-core 服务端即时比对判定，同步写入 `objective_submissions` 并返回判定结果。判定 SHALL 不走评测队列（noj-judge 无参与）。
+系统 SHALL 提供 `POST /api/v1/problems/:id/submit`（需登录）接受用户答案（`{question_id: [选项...]}`），在 noj-core 服务端即时比对判定，同步写入 `objective_submissions` 并返回判定结果。判定 SHALL 不走评测队列（noj-judge 无参与）。
 
 判定规则 SHALL 为：每道小题给定答案与标准答案集合精确相等才算正确（单选/判断单元素、多选全选对），正确数占比换算卷面分（×100 整数存储）。
 
@@ -25,8 +25,8 @@
 - **WHEN** 用户对不存在的套卷 ID 提交
 - **THEN** 系统返回 HTTP 404
 
-#### Scenario: 提交非 O 型题目被拒
-- **WHEN** 用户对 type='U' 或 type='P' 的题目调用客观题提交端点
+#### Scenario: 提交非客观题题目被拒
+- **WHEN** 用户对 is_objective=false 的题目调用客观题提交端点
 - **THEN** 系统返回 HTTP 400
 
 ### Requirement: 练习模式提交
@@ -84,7 +84,7 @@
 系统 SHALL 提供客观题提交记录查询：按用户 / 套卷 / 竞赛筛选的提交列表，以及单次提交详情（答案、得分、逐题判定）。判定详情（details，含期望答案）SHALL 仅提交者本人或 admin 可读。
 
 #### Scenario: 查询本人提交历史
-- **WHEN** 用户请求 `GET /api/v1/objective/submissions?paper_id=...`
+- **WHEN** 用户请求 `GET /api/v1/problems/submissions?paper_id=...`
 - **THEN** 系统返回该用户对该套卷的提交列表（练习模式含最高分汇总）
 
 #### Scenario: 他人提交详情不可读

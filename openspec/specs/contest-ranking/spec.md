@@ -102,7 +102,7 @@
 
 ### Requirement: 客观题提交计入竞赛排名
 
-系统 SHALL 将客观题套卷提交纳入竞赛排名计算：竞赛题单中的 O 型套卷，其 objective_submissions 提交 SHALL 参与 evaluated_submissions 计算（与编程题提交 UNION），满分卷映射为 `status='Accepted'`、非满分映射为 `'WrongAnswer'`，提交时间取客观题提交创建时间。三种赛制（ICPC 罚时 / IOI / OI 总分）的既有排名规则 SHALL 对客观题提交同样生效。
+系统 SHALL 将客观题套卷提交纳入竞赛排名计算：竞赛题单中的 客观题套卷，其 objective_submissions 提交 SHALL 参与 evaluated_submissions 计算（与编程题提交 UNION），满分卷映射为 `status='Accepted'`、非满分映射为 `'WrongAnswer'`，提交时间取客观题提交创建时间。三种赛制（ICPC 罚时 / IOI / OI 总分）的既有排名规则 SHALL 对客观题提交同样生效。
 
 #### Scenario: 竞赛中客观题满分计入 AC
 - **WHEN** ICPC 竞赛中参赛者对套卷提交答案且卷面满分

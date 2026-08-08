@@ -7,7 +7,7 @@ import { QUESTION_TYPE_LABELS } from '~/composables/useObjective'
  * 竞赛题目详情页：
  * - 编程题：仅展示题目陈述，做题跳转独立编辑器页
  *   （/contests/:id/problems/:label/editor）
- * - 客观题套卷（display_id 以 O 开头）：内联渲染客观题表单，
+ * - 客观题套卷（is_objective）：内联渲染客观题表单，
  *   竞赛模式一次性提交（contest_id 携带），不展示解析（防泄题）
  */
 definePageMeta({ middleware: 'auth', ssr: false })
@@ -29,7 +29,7 @@ const { data, pending, error, refresh } = await useFetch<{ data: ContestProblem 
 const problem = computed(() => data.value?.data ?? null)
 const contest = computed(() => contestData.value?.data ?? null)
 
-const isObjective = computed(() => problem.value?.display_id?.startsWith('O') === true)
+const isObjective = computed(() => problem.value?.is_objective === true)
 
 const difficultyLabel: Record<string, string> = {
   easy: '简单',
@@ -70,7 +70,7 @@ const paperId = computed(() => problem.value?.problem_id ?? '')
 const { data: qData, error: qError } = await useFetch<{ data: ObjectiveQuestion[] }>(
   computed(() =>
     paperId.value
-      ? `/api/v1/objective/papers/${paperId.value}/questions`
+      ? `/api/v1/problems/${paperId.value}/questions`
       : null
   ),
   { server: false },
@@ -83,7 +83,7 @@ const { data: subData, refresh: refreshSubs } = await useFetch<{
 }>(
   computed(() =>
     paperId.value
-      ? `/api/v1/objective/submissions?paper_id=${paperId.value}&contest_id=${contestId}&per_page=1`
+      ? `/api/v1/problems/submissions?paper_id=${paperId.value}&contest_id=${contestId}&per_page=1`
       : null
   ),
   { server: false },
