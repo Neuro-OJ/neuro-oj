@@ -111,10 +111,10 @@ const activeDifficulty = computed(() => difficulties.some((d) => d.value === pro
         v-for="t in types"
         :key="t.value"
         role="radio"
-        :aria-checked="problemType === t.value"
+        :aria-checked="activeType === t.value"
         :tabindex="activeType === t.value ? 0 : -1"
         class="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors duration-150"
-        :class="problemType === t.value
+        :class="activeType === t.value
           ? t.value === 'U' ? 'bg-blue-100 text-blue-700 border-blue-300'
             : t.value === 'P' ? 'bg-purple-100 text-purple-700 border-purple-300'
             : 'bg-primary text-white border-primary'
