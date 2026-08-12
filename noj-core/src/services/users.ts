@@ -725,8 +725,17 @@ export async function updateUserAvatar(
 ): Promise<{ avatar_url: string | null }> {
   const bytes = await validateAvatarFile(file);
   const provider = await getStorageProvider();
-  // 1. 先存新文件（key 带用户 id 便于追溯，文件名由内容哈希决定）
-  const newUrl = await provider.put(`avatar/${userId}`, bytes, file.type);
+  // 1. 先存新文件（key 带用户 id 与扩展名，供 S3 模式的 Content-Type 推断）
+  const ext = file.type === "image/png"
+    ? "png"
+    : file.type === "image/webp"
+    ? "webp"
+    : "jpg";
+  const newUrl = await provider.put(
+    `avatar/${userId}.${ext}`,
+    bytes,
+    file.type,
+  );
 
   const db = getDb();
   // 2. 更新 DB（先取旧 URL 用于清理）
