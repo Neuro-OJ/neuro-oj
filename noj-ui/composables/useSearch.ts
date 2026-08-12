@@ -34,6 +34,7 @@ export interface UserSearchResult {
   email: string;
   role: string;
   rank: number;
+  avatar_url?: string | null;
   highlight: string;
 }
 

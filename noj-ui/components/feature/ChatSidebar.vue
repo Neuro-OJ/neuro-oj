@@ -135,12 +135,7 @@ function formatTime(iso: string): string {
         class="flex items-center gap-3 w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 transition-colors"
         @click="startConversation(u.id)"
       >
-        <div
-          class="w-7 h-7 rounded-full bg-primary-bg flex items-center justify-center text-primary font-semibold text-[10px] flex-shrink-0"
-        >
-          {{ u.username.charAt(0).toUpperCase() }}
-        </div>
-        <span class="text-text">{{ u.username }}</span>
+        <UserIdentity :user="u" size="sm" />
         <UIcon name="i-lucide-plus" class="ml-auto text-text-secondary opacity-50 size-3.5" />
       </button>
     </div>
@@ -169,11 +164,11 @@ function formatTime(iso: string): string {
         :class="activeConversationId === conv.id ? 'bg-primary-bg/30' : ''"
         @click="emit('select', conv.id)"
       >
-        <div
-          class="flex-shrink-0 w-9 h-9 rounded-full bg-primary-bg flex items-center justify-center text-primary font-semibold text-xs"
-        >
-          {{ conv.other_user_name.charAt(0).toUpperCase() }}
-        </div>
+        <UserIdentity
+          :user="{ id: conv.other_user_id, username: conv.other_user_name, avatar_url: conv.other_user_avatar_url }"
+          size="sm"
+          :link="false"
+        />
         <div class="flex-1 min-w-0">
           <div class="flex items-center justify-between">
             <span class="text-sm font-medium text-text truncate">{{ conv.other_user_name }}</span>

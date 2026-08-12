@@ -12,9 +12,14 @@
       class="flex-shrink-0 w-10 h-10 rounded-md flex items-center justify-center text-sm font-mono font-semibold"
       :class="kind === 'problem' ? 'bg-primary-bg text-primary' : kind === 'community' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-info-text'"
     >
-      <span v-if="kind === 'problem'">{{ displayId || (item as ProblemSearchResult).display_id }}</span>
-      <span v-else-if="kind === 'community'">帖子</span>
-      <span v-else>{{ usernameInitial }}</span>
+      <UserIdentity
+        v-if="kind === 'user'"
+        :user="item as UserSearchResult"
+        :show-username="false"
+        size="md"
+      />
+      <span v-else-if="kind === 'problem'">{{ displayId || (item as ProblemSearchResult).display_id }}</span>
+      <span v-else>帖子</span>
     </div>
 
     <!-- 主信息 -->
@@ -60,11 +65,6 @@ const href = computed(() => {
   if (props.kind === "community") return `/community/posts/${props.item.id}`;
   const u = props.item as UserSearchResult;
   return `/users/${u.id}`;
-});
-
-const usernameInitial = computed(() => {
-  const u = props.item as UserSearchResult;
-  return u.username?.[0]?.toUpperCase() ?? "?";
 });
 
 const difficultyLabel = computed(() => {
