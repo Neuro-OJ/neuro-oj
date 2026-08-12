@@ -206,10 +206,20 @@ export async function listAdminAnnouncements(
 
 /**
  * 创建公告。created_by 写入当前操作者（RequestContext）。
+ *
+ * @throws {ValidationError} title / content 缺失或长度非法（HTTP 400）
  */
 export async function createAnnouncement(
   input: CreateAnnouncementInput,
 ): Promise<AdminAnnouncementItem> {
+  // 必填校验：title / content 必须存在（否则会绕过 validateFields，
+  // 落到 DB NOT NULL 约束抛 500，而非 spec 要求的 400）
+  if (
+    typeof input.title !== "string" ||
+    typeof input.content !== "string"
+  ) {
+    throw new ValidationError("缺少必填字段：title、content");
+  }
   validateFields(input.title, input.content);
 
   const db = getDb();

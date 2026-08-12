@@ -12,7 +12,13 @@ import { and, eq } from "drizzle-orm";
 import { createUserToken, initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { permissions, rolePermissions, roles } from "../../src/db/schema.ts";
+import {
+  permissions,
+  rolePermissions,
+  roles,
+  userRoles,
+  users,
+} from "../../src/db/schema.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const hasEnv = !!Deno.env.get("JWT_SECRET");
@@ -191,6 +197,28 @@ Deno.test({
     });
     assertEquals(bad.status, 400);
 
+    // 完全缺字段 → 400（不得落 DB NOT NULL 抛 500）
+    const emptyBody = await app.request("/api/v1/admin/announcements", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({}),
+    });
+    assertEquals(emptyBody.status, 400);
+
+    // 仅可选字段 → 400
+    const partialBody = await app.request("/api/v1/admin/announcements", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ is_pinned: true }),
+    });
+    assertEquals(partialBody.status, 400);
+
     // 更新不存在 → 404
     const missing = await app.request(
       "/api/v1/admin/announcements/00000000-0000-0000-0000-000000000000",
@@ -243,6 +271,78 @@ Deno.test({
     );
     const active = await activeRes.json();
     assertEquals(active.meta.total, 0);
+  },
+});
+
+Deno.test({
+  name:
+    "announcements route: 仅 announcement:manage 用户（无 full_access）可通过管理端点",
+  ignore: skipDb || skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await createUserToken("admin"); // 触发 ensureRbacSeeds
+
+    const db = getDb();
+    // 查 announcement:manage 权限 id
+    const [perm] = await db.select().from(permissions).where(
+      and(
+        eq(permissions.resource, "announcement"),
+        eq(permissions.action, "manage"),
+      ),
+    );
+    if (!perm) throw new Error("announcement:manage 权限未 seed");
+
+    // 创建仅含 announcement:manage 的自定义角色（无 admin:full_access）
+    const roleId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.insert(roles).values({
+      id: roleId,
+      name: `ann_operator_${Date.now()}`,
+      description: "公告运营角色（测试）",
+      is_system: false,
+      is_default: false,
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(rolePermissions).values({
+      role_id: roleId,
+      permission_id: perm.id,
+    });
+
+    // 创建用户并关联该角色（无 admin 角色 → 无 admin:full_access）
+    const userId = crypto.randomUUID();
+    await db.insert(users).values({
+      id: userId,
+      username: `ann_op_user_${Date.now()}`,
+      email: `${userId}@test.local`,
+      password_hash: "x",
+      must_change_password: false,
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(userRoles).values({ user_id: userId, role_id: roleId });
+
+    const { signToken } = await import("../../src/lib/jwt.ts");
+    const token = await signToken({ sub: userId, role: "user" });
+
+    const app = createApp();
+    const res = await app.request("/api/v1/admin/announcements", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ title: `运营公告-${ts}`, content: "正文" }),
+    });
+    assertEquals(res.status, 201);
+
+    // 管理列表同样放行
+    const listRes = await app.request("/api/v1/admin/announcements", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assertEquals(listRes.status, 200);
   },
 });
 

@@ -30,17 +30,6 @@ import {
 } from "../services/users.ts";
 import { addIpBan, listIpBans, removeIpBan } from "../services/banlist.ts";
 import {
-  createAnnouncement,
-  deleteAnnouncement,
-  listAdminAnnouncements,
-  updateAnnouncement,
-} from "../services/announcements.ts";
-import type {
-  CreateAnnouncementInput,
-  UpdateAnnouncementInput,
-} from "../services/announcements.ts";
-import { assertPermission } from "../lib/permissions.ts";
-import {
   listSettings,
   resetSetting,
   updateSetting,
@@ -76,8 +65,17 @@ import { buildPaginationMeta, parsePagination } from "../lib/pagination.ts";
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
-// 路由组级中间件：所有 admin 端点均需认证 + 管理员权限
-router.use("*", authMiddleware, adminMiddleware);
+// 路由组级中间件：所有 admin 端点均需认证 + 管理员权限。
+// 例外：公告管理端点（/announcements*）已抽至独立 router
+// （routes/admin-announcements.ts，细粒度权限 announcement:manage，
+// admin:full_access 通配放行或显式拥有该权限均可），此处对公告路径跳过
+// adminMiddleware——否则组级通配 use 会先行拦截细粒度权限持有者。
+router.use("*", authMiddleware, async (c, next) => {
+  if (c.req.path.startsWith("/api/v1/admin/announcements")) {
+    return next();
+  }
+  return await adminMiddleware(c, next);
+});
 
 // ─── 用户管理 ───────────────────────────────────────────────
 
@@ -634,61 +632,6 @@ router.delete("/roles/:id", async (c) => {
 router.get("/permissions", async (c) => {
   const result = await listPermissions();
   return c.json({ data: result });
-});
-
-// ─── 公告管理 ─────────────────────────────────────────────
-
-/**
- * 管理员获取公告列表（含未发布/已下架）。
- * GET /api/v1/admin/announcements?page=1&per_page=20&is_active=true
- * is_active 筛选可选：true / false / 缺省（全部）。
- */
-router.get("/announcements", async (c) => {
-  await assertPermission(c, "announcement:manage");
-  const { page, perPage } = parsePagination(c);
-  const isActiveParam = c.req.query("is_active");
-  const isActive = isActiveParam === "true"
-    ? true
-    : isActiveParam === "false"
-    ? false
-    : undefined;
-  const result = await listAdminAnnouncements(page, perPage, isActive);
-  return c.json(result);
-});
-
-/**
- * 管理员创建公告。
- * POST /api/v1/admin/announcements
- * body: { title, content, is_pinned?, is_active? }
- */
-router.post("/announcements", async (c) => {
-  await assertPermission(c, "announcement:manage");
-  const body = await parseJsonBody<CreateAnnouncementInput>(c);
-  const item = await createAnnouncement(body);
-  return c.json({ data: item }, 201);
-});
-
-/**
- * 管理员更新公告（部分更新语义；发布/下架 = 更新 is_active）。
- * PUT /api/v1/admin/announcements/:id
- */
-router.put("/announcements/:id", async (c) => {
-  await assertPermission(c, "announcement:manage");
-  const id = c.req.param("id") as string;
-  const body = await parseJsonBody<UpdateAnnouncementInput>(c);
-  const item = await updateAnnouncement(id, body);
-  return c.json({ data: item });
-});
-
-/**
- * 管理员删除公告。
- * DELETE /api/v1/admin/announcements/:id
- */
-router.delete("/announcements/:id", async (c) => {
-  await assertPermission(c, "announcement:manage");
-  const id = c.req.param("id") as string;
-  await deleteAnnouncement(id);
-  return c.body(null, 204);
 });
 
 export default router;
