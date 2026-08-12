@@ -100,7 +100,7 @@ await loadBookmarks()
           <p class="mt-2 line-clamp-3 text-sm leading-6 text-text-secondary">{{ stripMarkdown(item.post.content) }}</p>
         </NuxtLink>
         <div class="mt-4 flex flex-wrap items-center gap-4 text-xs text-text-secondary">
-          <NuxtLink :to="`/users/${item.author.id}`" class="text-text-secondary hover:text-primary">{{ item.author.username }}</NuxtLink>
+          <UserIdentity :user="item.author" size="sm" />
           <span>收藏于 <NuxtTime :datetime="item.bookmarked_at" relative locale="zh-CN" /></span>
           <span><UIcon name="i-lucide-heart" class="mr-1 inline size-3.5" />{{ item.likes }}</span>
           <span><UIcon name="i-lucide-message-square" class="mr-1 inline size-3.5" />{{ item.comments }}</span>

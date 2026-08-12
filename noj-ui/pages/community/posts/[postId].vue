@@ -192,7 +192,7 @@ await load()
       <template v-else>
         <div class="mb-5 flex flex-wrap items-center justify-between gap-4">
           <div class="flex flex-wrap items-center gap-2">
-            <NuxtLink :to="`/users/${post.author.id}`" class="font-medium text-text hover:text-primary">{{ post.author.username }}</NuxtLink>
+            <UserIdentity :user="post.author" size="sm" />
             <span class="rounded bg-primary-bg px-2 py-0.5 text-xs text-primary">{{ typeLabel[post.post.type] }}</span>
             <NuxtLink v-if="post.post.type === 'solution' && post.post.problem_id" :to="`/problems/${post.post.problem_id}`" class="inline-flex items-center gap-1 text-xs text-primary hover:underline">{{ post.problem_title ?? '关联题目' }} →</NuxtLink>
             <span v-if="post.post.status === 'pending'" class="rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">审核中</span>

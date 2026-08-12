@@ -35,7 +35,7 @@
           class="flex flex-col gap-1 rounded-lg border border-border p-3 no-underline animate-[fadeInUp_0.5s_ease_both] transition-colors duration-150 hover:bg-primary-bg"
         >
           <div class="flex items-center gap-2 text-xs">
-            <span class="truncate font-medium text-text">{{ item.author.username }}</span>
+            <UserIdentity :user="item.author" size="sm" />
             <span v-if="item.kind === 'activity'" class="shrink-0 rounded bg-primary-bg px-1.5 py-0.5 text-primary">
               {{ activityLabel(item.activity!) }}
             </span>
