@@ -65,8 +65,17 @@ import { buildPaginationMeta, parsePagination } from "../lib/pagination.ts";
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
-// 路由组级中间件：所有 admin 端点均需认证 + 管理员权限
-router.use("*", authMiddleware, adminMiddleware);
+// 路由组级中间件：所有 admin 端点均需认证 + 管理员权限。
+// 例外：公告管理端点（/announcements*）已抽至独立 router
+// （routes/admin-announcements.ts，细粒度权限 announcement:manage，
+// admin:full_access 通配放行或显式拥有该权限均可），此处对公告路径跳过
+// adminMiddleware——否则组级通配 use 会先行拦截细粒度权限持有者。
+router.use("*", authMiddleware, async (c, next) => {
+  if (c.req.path.startsWith("/api/v1/admin/announcements")) {
+    return next();
+  }
+  return await adminMiddleware(c, next);
+});
 
 // ─── 用户管理 ───────────────────────────────────────────────
 

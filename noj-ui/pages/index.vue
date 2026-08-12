@@ -15,12 +15,31 @@
                     >
                         <Transition name="carousel-fade">
                             <div
+                                v-if="announcements.length > 0"
                                 :key="currentSlide"
                                 class="absolute inset-0 bg-gradient-to-br p-8 lg:p-12 flex flex-col justify-center text-white"
-                                :class="announcements[currentSlide].gradient"
+                                :class="gradientFor(currentSlide)"
                             >
                                 <h2 class="text-2xl lg:text-3xl font-bold mb-3 animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_both]">{{ announcements[currentSlide].title }}</h2>
-                                <p class="text-sm lg:text-base text-white/85 max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">{{ announcements[currentSlide].description }}</p>
+                                <p class="text-sm lg:text-base text-white/85 max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">{{ announcements[currentSlide].excerpt }}</p>
+                                <!-- 点击跳转公告详情（整卡可点，按钮层 z-10 在其上不受影响） -->
+                                <NuxtLink
+                                    :to="`/announcements/${announcements[currentSlide].id}`"
+                                    class="absolute inset-0 z-[5]"
+                                    :aria-label="`查看公告：${announcements[currentSlide].title}`"
+                                />
+                                <span class="relative z-[6] mt-4 inline-flex items-center gap-1 text-sm font-medium text-white/90 pointer-events-none animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_300ms_both]">
+                                    查看详情
+                                    <UIcon name="i-lucide-arrow-right" class="size-4" />
+                                </span>
+                            </div>
+                            <!-- 空态：无 active 公告时显示默认欢迎占位 -->
+                            <div
+                                v-else
+                                class="absolute inset-0 bg-gradient-to-br from-blue-600 via-sky-500 to-cyan-400 p-8 lg:p-12 flex flex-col justify-center text-white"
+                            >
+                                <h2 class="text-2xl lg:text-3xl font-bold mb-3 animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_both]">Neuro OJ 正式上线</h2>
+                                <p class="text-sm lg:text-base text-white/85 max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">面向 LMCC 的在线评测系统现已开放注册，提供高效的代码评测服务和智能化的能力评估。</p>
                             </div>
                         </Transition>
                         <!-- 暂停/继续（WCAG 2.2.2 自动更新内容可暂停） -->
@@ -92,33 +111,62 @@
 </template>
 
 <script setup lang="ts">
+import { useEventSource } from "~/composables/useEventSource"
+
 const { user, isLoggedIn } = useAuth()
 const { api } = useApi()
 
-// ── Announcement Carousel ──
-interface Announcement {
+// ── Announcement Carousel（公告驱动，issue #231）──
+interface CarouselAnnouncement {
+    id: string
     title: string
-    description: string
-    gradient: string
+    excerpt: string
+    is_pinned: boolean
 }
 
-const announcements: Announcement[] = [
-    {
-        title: "Neuro OJ 正式上线",
-        description: "面向 LMCC 的在线评测系统现已开放注册，提供高效的代码评测服务和智能化的能力评估。",
-        gradient: "from-blue-600 via-sky-500 to-cyan-400",
-    },
-    {
-        title: "新题持续更新",
-        description: "题库不断扩充中，涵盖算法、数据结构等各类编程题目，满足不同水平的训练需求。",
-        gradient: "from-purple-600 via-fuchsia-500 to-pink-400",
-    },
-    {
-        title: "社区共建计划",
-        description: "欢迎为 Neuro OJ 贡献题目与代码，共同打造优秀的在线评测社区平台。",
-        gradient: "from-emerald-600 via-teal-500 to-cyan-400",
-    },
+/** 轮播背景渐变预设色板（按下标循环，不依赖公告数据） */
+const GRADIENTS = [
+    "from-blue-600 via-sky-500 to-cyan-400",
+    "from-purple-600 via-fuchsia-500 to-pink-400",
+    "from-emerald-600 via-teal-500 to-cyan-400",
 ]
+
+function gradientFor(i: number): string {
+    return GRADIENTS[i % GRADIENTS.length]
+}
+
+const announcements = ref<CarouselAnnouncement[]>([])
+
+async function fetchAnnouncements() {
+    try {
+        const res = await api.get<{ data: CarouselAnnouncement[] }>(
+            "/api/v1/announcements?per_page=5",
+            { silent: true },
+        )
+        announcements.value = res.data
+        // 数据变化后修正轮播位置并（重新）启动自动轮播
+        if (currentSlide.value >= announcements.value.length) {
+            currentSlide.value = 0
+        }
+        if (announcements.value.length > 0) {
+            stopAuto()
+            startAuto()
+        }
+    } catch {
+        // silent：轮播保持空态占位
+    }
+}
+
+// SSE 实时刷新（端点需登录；未登录用户靠页面加载拉取）
+useEventSource({
+    url: "/api/v1/announcements/events",
+    onEvent: {
+        "announcement:updated": fetchAnnouncements,
+    },
+    fetchFn: fetchAnnouncements,
+    fallbackIntervalMs: 60000,
+    enabled: isLoggedIn,
+})
 
 const currentSlide = ref(0)
 const paused = ref(false)
@@ -126,10 +174,10 @@ let autoTimer: ReturnType<typeof setInterval> | null = null
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 
 function startAuto() {
-    if (paused.value) return
+    if (paused.value || announcements.value.length === 0) return
     stopAuto()
     autoTimer = setInterval(() => {
-        currentSlide.value = (currentSlide.value + 1) % announcements.length
+        currentSlide.value = (currentSlide.value + 1) % announcements.value.length
     }, 5000)
 }
 
@@ -158,7 +206,7 @@ function resetIdle() {
     idleTimer = setTimeout(startAuto, 60000)
 }
 
-onMounted(startAuto)
+onMounted(fetchAnnouncements)
 onUnmounted(() => {
     stopAuto()
     if (idleTimer) clearTimeout(idleTimer)

@@ -246,6 +246,20 @@
       "when": 1786188250775,
       "tag": "0034_known_rockslide",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1786193874871,
+      "tag": "0035_spotty_mother_askani",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1786196950857,
+      "tag": "0036_glorious_nightshade",
+      "breakpoints": true
     }
   ]
 }
