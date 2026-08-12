@@ -424,7 +424,11 @@ export async function getPost(
   const db = getDb();
   const rows = await db.select({
     post: communityPosts,
-    author: { id: users.id, username: users.username },
+    author: {
+      id: users.id,
+      username: users.username,
+      avatar_url: users.avatar_url,
+    },
     problem_title: problems.title,
     likes: sql<
       number
@@ -521,7 +525,11 @@ export async function listPosts(
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
   const rows = await db.select({
     post: communityPosts,
-    author: { id: users.id, username: users.username },
+    author: {
+      id: users.id,
+      username: users.username,
+      avatar_url: users.avatar_url,
+    },
     likes: sql<
       number
     >`(select count(*) from community_post_likes where post_id = ${communityPosts.id})`,
@@ -589,7 +597,11 @@ export async function listBookmarks(
   const limit = Math.min(Math.max(requestedLimit ?? 20, 1), 100);
   const rows = await getDb().select({
     post: communityPosts,
-    author: { id: users.id, username: users.username },
+    author: {
+      id: users.id,
+      username: users.username,
+      avatar_url: users.avatar_url,
+    },
     bookmarked_at: communityBookmarks.created_at,
     likes: sql<
       number
@@ -887,7 +899,11 @@ export async function listComments(
   }
   return db.select({
     comment: communityComments,
-    author: { id: users.id, username: users.username },
+    author: {
+      id: users.id,
+      username: users.username,
+      avatar_url: users.avatar_url,
+    },
     likes: sql<
       number
     >`(select count(*) from community_comment_likes where comment_id = ${communityComments.id})`,
@@ -902,7 +918,11 @@ export async function listPendingComments(limit = 50) {
   const db = getDb();
   const rows = await db.select({
     comment: communityComments,
-    author: { id: users.id, username: users.username },
+    author: {
+      id: users.id,
+      username: users.username,
+      avatar_url: users.avatar_url,
+    },
     post_title: communityPosts.title,
   }).from(communityComments).innerJoin(
     users,
@@ -1185,7 +1205,11 @@ export async function listFeed(
   const momentRows = config.moments_enabled
     ? await db.select({
       post: communityPosts,
-      author: { id: users.id, username: users.username },
+      author: {
+        id: users.id,
+        username: users.username,
+        avatar_url: users.avatar_url,
+      },
     }).from(communityPosts).innerJoin(
       users,
       eq(users.id, communityPosts.author_id),
@@ -1236,7 +1260,11 @@ export async function listFeed(
   }
   const activityRows = await db.select({
     activity: communityActivityEvents,
-    author: { id: users.id, username: users.username },
+    author: {
+      id: users.id,
+      username: users.username,
+      avatar_url: users.avatar_url,
+    },
   }).from(communityActivityEvents).innerJoin(
     users,
     eq(users.id, communityActivityEvents.actor_id),
@@ -1285,7 +1313,11 @@ export function listNotifications(userId: string, limit = 30) {
   const db = getDb();
   return db.select({
     notification: communityNotifications,
-    actor: { id: users.id, username: users.username },
+    actor: {
+      id: users.id,
+      username: users.username,
+      avatar_url: users.avatar_url,
+    },
   }).from(communityNotifications).leftJoin(
     users,
     eq(users.id, communityNotifications.actor_id),

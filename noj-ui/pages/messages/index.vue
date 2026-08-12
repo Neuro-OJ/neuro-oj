@@ -26,6 +26,7 @@ const totalPages = ref(1)
 const loadingMore = ref(false)
 const otherUserName = ref("")
 const otherUserId = ref("")
+const otherUserAvatarUrl = ref<string | null>(null)
 const messagesContainer = ref<HTMLElement | null>(null)
 
 /**
@@ -39,6 +40,7 @@ async function fetchOtherUserName() {
     if (conv) {
       otherUserName.value = conv.other_user_name
       otherUserId.value = conv.other_user_id
+      otherUserAvatarUrl.value = conv.other_user_avatar_url ?? null
     }
   } catch {
     // 静默
@@ -179,11 +181,13 @@ function isSameDay(iso1: string, iso2: string): boolean {
       <template v-else>
         <!-- 顶部栏 -->
         <div class="flex items-center gap-3 px-5 py-3 border-b border-border bg-white">
-          <div
-            class="w-8 h-8 rounded-full bg-primary-bg flex items-center justify-center text-primary font-semibold text-xs flex-shrink-0"
-          >
-            {{ (otherUserName || "?").charAt(0).toUpperCase() }}
-          </div>
+          <UserIdentity
+            v-if="otherUserId"
+            :user="{ id: otherUserId, username: otherUserName || '?', avatar_url: otherUserAvatarUrl }"
+            size="sm"
+            :show-username="false"
+            :link="false"
+          />
           <NuxtLink
             v-if="otherUserId"
             :to="`/users/${otherUserId}`"

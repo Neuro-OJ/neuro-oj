@@ -236,11 +236,18 @@ export async function listConversations(
 
   // 批量查询对方用户信息
   const otherUsers = await getDb()
-    .select({ id: users.id, username: users.username })
+    .select({
+      id: users.id,
+      username: users.username,
+      avatar_url: users.avatar_url,
+    })
     .from(users)
     .where(or(...otherUserIds.map((id) => eq(users.id, id))));
 
   const userMap = new Map(otherUsers.map((u) => [u.id, u.username]));
+  const userAvatarMap = new Map(
+    otherUsers.map((u) => [u.id, u.avatar_url]),
+  );
 
   // 查询每个会话的最后一条消息预览
   const convIds = rows.map((r) => r.id);
@@ -280,6 +287,7 @@ export async function listConversations(
       id: r.id,
       other_user_id: otherUserId,
       other_user_name: userMap.get(otherUserId) ?? "已注销用户",
+      other_user_avatar_url: userAvatarMap.get(otherUserId) ?? null,
       last_message_preview: lastMsgMap.get(r.id) ?? "",
       last_message_at: r.last_message_at,
       unread_count: unreadCounts[i],

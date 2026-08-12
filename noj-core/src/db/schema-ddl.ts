@@ -15,6 +15,7 @@ export const SCHEMA_DDL: string[] = [
     must_change_password BOOLEAN NOT NULL DEFAULT false,
     community_activity_visibility TEXT NOT NULL DEFAULT 'following'
       CHECK (community_activity_visibility IN ('hidden', 'following', 'everyone')),
+    avatar_url TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     search_vector tsvector GENERATED ALWAYS AS (

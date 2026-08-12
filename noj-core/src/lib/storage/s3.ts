@@ -50,8 +50,12 @@ export class S3StorageProvider implements StorageProvider {
   private client: S3Client;
   private bucket: string;
 
-  constructor(config: S3StorageConfig) {
-    this.client = new S3Client({
+  /**
+   * @param config S3 连接配置
+   * @param client 可选注入的 S3 客户端（测试用；缺省时按 config 新建）
+   */
+  constructor(config: S3StorageConfig, client?: S3Client) {
+    this.client = client ?? new S3Client({
       endpoint: config.endpoint,
       region: config.region,
       credentials: {

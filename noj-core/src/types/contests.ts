@@ -123,6 +123,7 @@ export interface IcpcRankingRow {
   rank: number;
   user_id: string;
   username: string;
+  avatar_url: string | null;
   solved: number;
   penalty: number;
   last_ac_time: string | null;
@@ -139,6 +140,7 @@ export interface IoiRankingRow {
   rank: number;
   user_id: string;
   username: string;
+  avatar_url: string | null;
   total_score: number;
   total_time_seconds: number;
   problem_scores: IoiProblemScore[];

@@ -43,7 +43,7 @@ async function save() {
   <article class="rounded border border-border bg-white p-4">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div class="flex flex-wrap items-center gap-2">
-        <span class="text-sm font-medium">{{ row.author.username }}</span>
+        <UserIdentity :user="row.author" size="sm" />
         <span v-if="row.comment.status === 'pending'" class="rounded bg-yellow-100 px-1.5 py-0.5 text-xs text-yellow-800">审核中</span>
         <span v-if="row.comment.status === 'hidden'" class="rounded bg-red-50 px-1.5 py-0.5 text-xs text-red-700">已隐藏</span>
         <NuxtTime :datetime="row.comment.created_at" relative locale="zh-CN" class="text-xs text-text-secondary" />

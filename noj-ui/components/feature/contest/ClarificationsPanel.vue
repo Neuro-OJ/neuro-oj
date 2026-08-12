@@ -179,7 +179,7 @@ onMounted(() => void load())
       <div v-for="clarification in clarifications" :key="clarification.id" class="overflow-hidden rounded-xl border border-border bg-white">
         <div class="px-5 py-4">
           <div class="mb-2 flex flex-wrap items-center gap-2 text-xs">
-            <NuxtLink :to="`/users/${clarification.sender.id}`" class="font-semibold text-text no-underline hover:text-primary">{{ clarification.sender.username }}</NuxtLink>
+            <UserIdentity :user="clarification.sender" size="sm" />
             <span class="rounded bg-bg-page px-1.5 py-0.5 text-text-muted">{{ clarification.problem_label ? `${clarification.problem_label} 题` : '全局' }}</span>
             <NuxtTime class="text-text-muted" :datetime="clarification.created_at" relative locale="zh-CN" />
           </div>
@@ -192,7 +192,7 @@ onMounted(() => void load())
             <span class="mt-1.5 size-1.5 shrink-0 rounded-full bg-text-muted" />
             <div class="min-w-0 flex-1">
               <div class="mb-1 flex flex-wrap items-center gap-2 text-xs">
-                <span class="font-semibold text-text">{{ reply.sender.username }}</span>
+                <UserIdentity :user="reply.sender" size="sm" />
                 <span class="rounded px-1.5 py-0.5" :class="reply.is_public ? 'bg-green-50 text-success-text' : 'bg-amber-50 text-warning-text'">
                   <UIcon :name="reply.is_public ? 'i-lucide-globe' : 'i-lucide-lock'" class="size-3" />
                   {{ reply.is_public ? '公开' : isOwnQuestion(clarification) ? '仅你可见' : '私密' }}

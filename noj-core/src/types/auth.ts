@@ -48,6 +48,8 @@ export interface UserResponse {
   is_admin: boolean;
   must_change_password: boolean;
   active_ban: { reason: string; banned_until: string | null } | null;
+  /** 用户头像存储 URL（`noj-storage://`），null = 未设置 */
+  avatar_url: string | null;
   created_at: string;
   updated_at: string;
 }

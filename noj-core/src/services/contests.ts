@@ -43,6 +43,7 @@ export interface ListContestsResult {
 export interface ContestParticipantResponse {
   user_id: string;
   username: string;
+  avatar_url: string | null;
   registered_at: string;
 }
 
@@ -502,6 +503,7 @@ export async function listParticipants(
   return db.select({
     user_id: contestParticipants.user_id,
     username: users.username,
+    avatar_url: users.avatar_url,
     registered_at: contestParticipants.registered_at,
   }).from(contestParticipants).innerJoin(
     users,

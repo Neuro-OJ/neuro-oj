@@ -76,3 +76,13 @@ export async function getStorageProvider(): Promise<StorageProvider> {
 export function resetStorageProvider(): void {
   instance = null;
 }
+
+/**
+ * 注入自定义 StorageProvider 实例（测试用）
+ *
+ * 测试可注入 mock/内存实现（如带 fake S3 client 的 S3StorageProvider），
+ * 验证存储路径行为；测试结束后应 resetStorageProvider() 恢复默认。
+ */
+export function setStorageProviderForTest(provider: StorageProvider): void {
+  instance = provider;
+}

@@ -20,6 +20,7 @@ export interface RankingRow {
   rank: number;
   user_id: string;
   username: string;
+  avatar_url: string | null;
   solved_count: number;
   total_submissions: number;
   /** 0–1 浮点数，保留 3 位小数（与 users.ts:getUserProfileAggregate 一致） */
@@ -146,10 +147,12 @@ function readRankingsFromView(
   // db.execute<{ ... }> 需要具体类型；此处用 unknown 在 .map 时断言字段
   return Promise.all([
     db.execute(sql`
-      SELECT user_id, username, total_submissions, solved_count,
-             acceptance_rate, rank
-      FROM user_rankings
-      ORDER BY rank
+      SELECT vr.user_id, vr.username, u.avatar_url,
+             vr.total_submissions, vr.solved_count,
+             vr.acceptance_rate, vr.rank
+      FROM user_rankings vr
+      LEFT JOIN users u ON u.id = vr.user_id
+      ORDER BY vr.rank
       LIMIT ${limit} OFFSET ${offset}
     `),
     db.execute(
@@ -164,6 +167,7 @@ function readRankingsFromView(
         rank: Number(row.rank),
         user_id: row.user_id as string,
         username: row.username as string,
+        avatar_url: (row.avatar_url as string | null) ?? null,
         solved_count: Number(row.solved_count),
         total_submissions: Number(row.total_submissions),
         acceptance_rate: Number(row.acceptance_rate),
@@ -187,6 +191,7 @@ function readRankingsInline(
       SELECT
         u.id AS user_id,
         u.username,
+        u.avatar_url,
         COUNT(*)::int AS total_submissions,
         COUNT(DISTINCT s.problem_id) FILTER (
           WHERE er.status = 'Accepted'
@@ -215,7 +220,7 @@ function readRankingsInline(
       LEFT JOIN evaluation_results er ON er.submission_id = s.id
       LEFT JOIN contests c ON c.id = s.contest_id
       WHERE u.id <> '0' AND s.status = 'finished'
-      GROUP BY u.id, u.username, u.created_at
+      GROUP BY u.id, u.username, u.avatar_url, u.created_at
       HAVING COUNT(*) FILTER (
         WHERE er.status = 'Accepted'
           AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
@@ -248,6 +253,7 @@ function readRankingsInline(
         rank: Number(row.rank),
         user_id: row.user_id as string,
         username: row.username as string,
+        avatar_url: (row.avatar_url as string | null) ?? null,
         solved_count: Number(row.solved_count),
         total_submissions: Number(row.total_submissions),
         acceptance_rate: Number(row.acceptance_rate),
@@ -271,12 +277,14 @@ export async function getMyRanking(
   const useView = await hasMaterializedView();
 
   const rows = useView
-    // 物化视图路径：直接 WHERE user_id=? 查询
+    // 物化视图路径：直接 WHERE user_id=? 查询（LEFT JOIN users 取头像）
     ? await db.execute(sql`
-      SELECT user_id, username, total_submissions, solved_count,
-             acceptance_rate, rank
-      FROM user_rankings
-      WHERE user_id = ${userId}
+      SELECT vr.user_id, vr.username, u.avatar_url,
+             vr.total_submissions, vr.solved_count,
+             vr.acceptance_rate, vr.rank
+      FROM user_rankings vr
+      LEFT JOIN users u ON u.id = vr.user_id
+      WHERE vr.user_id = ${userId}
       LIMIT 1
     `)
     // 内联聚合回退路径：复用 getGlobalRankings 排序逻辑的子查询
@@ -285,6 +293,7 @@ export async function getMyRanking(
         SELECT
           u.id AS user_id,
           u.username,
+          u.avatar_url,
           COUNT(*)::int AS total_submissions,
           COUNT(DISTINCT s.problem_id) FILTER (
             WHERE er.status = 'Accepted'
@@ -313,7 +322,7 @@ export async function getMyRanking(
         LEFT JOIN evaluation_results er ON er.submission_id = s.id
         LEFT JOIN contests c ON c.id = s.contest_id
         WHERE u.id <> '0' AND s.status = 'finished'
-        GROUP BY u.id, u.username, u.created_at
+        GROUP BY u.id, u.username, u.avatar_url, u.created_at
         HAVING COUNT(*) FILTER (
           WHERE er.status = 'Accepted'
             AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
@@ -330,6 +339,7 @@ export async function getMyRanking(
     rank: Number(row.rank),
     user_id: row.user_id as string,
     username: row.username as string,
+    avatar_url: (row.avatar_url as string | null) ?? null,
     solved_count: Number(row.solved_count),
     total_submissions: Number(row.total_submissions),
     acceptance_rate: Number(row.acceptance_rate),

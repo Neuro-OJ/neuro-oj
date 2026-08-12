@@ -492,7 +492,7 @@ await load()
             <div class="min-w-0">
               <p class="text-sm font-medium">{{ item.post.title || '（无标题）' }}</p>
               <p class="mt-1 line-clamp-2 text-sm text-text-secondary">{{ item.post.content }}</p>
-              <p class="mt-1 text-xs text-text-muted">{{ item.author.username }} · {{ item.post.type }}</p>
+              <p class="mt-1 text-xs text-text-muted flex items-center gap-1.5"><UserIdentity :user="item.author" size="sm" /> · {{ item.post.type }}</p>
             </div>
             <div class="flex flex-shrink-0 gap-2">
               <UButton color="primary" class="text-sm" :disabled="moderatingId !== null" @click="moderatePost(item.post.id, 'published')">{{ moderatingId === item.post.id ? '处理中…' : '批准' }}</UButton>
@@ -512,7 +512,7 @@ await load()
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="min-w-0">
               <p class="line-clamp-2 text-sm text-text-secondary">{{ item.comment.content }}</p>
-              <p class="mt-1 text-xs text-text-muted">{{ item.author.username }} 评论了「{{ item.post_title || '（无标题）' }}」</p>
+              <p class="mt-1 text-xs text-text-muted flex items-center gap-1.5"><UserIdentity :user="item.author" size="sm" /> 评论了「{{ item.post_title || '（无标题）' }}」</p>
             </div>
             <div class="flex flex-shrink-0 gap-2">
               <UButton color="primary" class="text-sm" :disabled="moderatingCommentId !== null" @click="moderateComment(item.comment.id, 'published')">{{ moderatingCommentId === item.comment.id ? '处理中…' : '批准' }}</UButton>
