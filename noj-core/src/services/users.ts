@@ -18,6 +18,8 @@ import {
 import { scoreFromDb } from "../types/index.ts";
 import { invalidateBanCache } from "../lib/banCache.ts";
 import { logAudit } from "./audit-log.ts";
+import { getStorageProvider } from "../lib/storage/factory.ts";
+import { parseStorageUrl } from "../lib/storage/types.ts";
 import type { UserResponse } from "../types/auth.ts";
 import { ROOT_USER_ID } from "../lib/constants.ts";
 import { getAdminUserIds, isUserAdmin } from "../lib/permissions.ts";
@@ -30,6 +32,7 @@ export interface UserProfileResponse {
     id: string;
     username: string;
     bio: string;
+    avatar_url: string | null;
     created_at: string;
   };
   stats: {
@@ -96,6 +99,7 @@ export async function getUserProfileAggregate(
       id: users.id,
       username: users.username,
       bio: users.bio,
+      avatar_url: users.avatar_url,
       created_at: users.created_at,
     })
       .from(users)
@@ -249,6 +253,7 @@ export async function getUserProfileAggregate(
       id: userRow.id,
       username: userRow.username,
       bio: userRow.bio,
+      avatar_url: userRow.avatar_url ?? null,
       created_at: userRow.created_at,
     },
     stats: {
@@ -508,6 +513,7 @@ async function toUserResponse(
     is_admin: isAdmin,
     must_change_password: user.must_change_password,
     active_ban: activeBan,
+    avatar_url: user.avatar_url ?? null,
     created_at: user.created_at,
     updated_at: now,
   };
@@ -662,4 +668,142 @@ export async function getUserBanHistory(
       ? { id: r.unbanned_by_id, username: r.unbanned_by_username ?? "" }
       : null,
   }));
+}
+
+// ── 头像（issue #229）────────────────────────────────────────
+
+/** 头像大小上限（2MB） */
+export const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
+
+/** 允许的头像 MIME 类型 */
+const AVATAR_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+/** 允许的头像扩展名（jpeg 与 jpg 均接受） */
+const AVATAR_EXT = /\.(png|jpe?g|webp)$/i;
+
+/**
+ * 校验头像文件并返回字节。
+ *
+ * 校验链：扩展名 → Content-Type → 大小 → magic bytes。
+ * 拒绝 SVG（内嵌脚本 XSS 风险）。
+ *
+ * @throws {BadRequestError} 任一项不满足
+ */
+async function validateAvatarFile(file: File): Promise<Uint8Array> {
+  if (!AVATAR_EXT.test(file.name)) {
+    throw new BadRequestError("仅支持 png/jpeg/webp 图片");
+  }
+  if (file.type && !AVATAR_MIME.has(file.type)) {
+    throw new BadRequestError("仅支持 png/jpeg/webp 图片");
+  }
+  if (file.size > MAX_AVATAR_SIZE) {
+    throw new BadRequestError("头像大小超过限制（最大 2MB）");
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const isPng = bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 &&
+    bytes[2] === 0x4e && bytes[3] === 0x47;
+  const isJpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 &&
+    bytes[2] === 0xff;
+  const isWebp = bytes.length >= 12 &&
+    new TextDecoder().decode(bytes.slice(0, 4)) === "RIFF" &&
+    new TextDecoder().decode(bytes.slice(8, 12)) === "WEBP";
+  if (!(isPng || isJpeg || isWebp)) {
+    throw new BadRequestError("文件不是有效的图片");
+  }
+  return bytes;
+}
+
+/**
+ * 上传/替换头像。
+ *
+ * 顺序：先存新文件 → 更新 DB → 清理旧文件。
+ * 内容寻址下同图 URL 相同，重复上传不会误删。
+ */
+export async function updateUserAvatar(
+  userId: string,
+  file: File,
+): Promise<{ avatar_url: string | null }> {
+  const bytes = await validateAvatarFile(file);
+  const provider = await getStorageProvider();
+  // 1. 先存新文件（key 带用户 id 便于追溯，文件名由内容哈希决定）
+  const newUrl = await provider.put(`avatar/${userId}`, bytes, file.type);
+
+  const db = getDb();
+  // 2. 更新 DB（先取旧 URL 用于清理）
+  const old = await db.select({ avatar_url: users.avatar_url }).from(users)
+    .where(eq(users.id, userId)).limit(1);
+  if (!old[0]) {
+    throw new NotFoundError("用户不存在");
+  }
+  await db.update(users)
+    .set({ avatar_url: newUrl, updated_at: new Date().toISOString() })
+    .where(eq(users.id, userId));
+
+  // 3. 清理旧文件（幂等；同图 URL 相同不误删）
+  const oldUrl = old[0].avatar_url;
+  if (oldUrl && oldUrl !== newUrl) {
+    try {
+      await provider.delete(oldUrl);
+    } catch {
+      // 旧文件不存在时静默忽略
+    }
+  }
+  return { avatar_url: newUrl };
+}
+
+/**
+ * 删除头像：清空字段 + 删除文件（幂等）。
+ */
+export async function clearUserAvatar(
+  userId: string,
+): Promise<{ avatar_url: null }> {
+  const db = getDb();
+  const old = await db.select({ avatar_url: users.avatar_url }).from(users)
+    .where(eq(users.id, userId)).limit(1);
+  if (!old[0]) {
+    throw new NotFoundError("用户不存在");
+  }
+  await db.update(users)
+    .set({ avatar_url: null, updated_at: new Date().toISOString() })
+    .where(eq(users.id, userId));
+
+  const oldUrl = old[0].avatar_url;
+  if (oldUrl) {
+    const provider = await getStorageProvider();
+    try {
+      await provider.delete(oldUrl);
+    } catch {
+      // 幂等：文件不存在时静默忽略
+    }
+  }
+  return { avatar_url: null };
+}
+
+/**
+ * 读取头像字节与元数据。
+ *
+ * @throws {NotFoundError} 用户无头像
+ */
+export async function getUserAvatarBytes(
+  userId: string,
+): Promise<{ bytes: Uint8Array; contentType: string; etag: string }> {
+  const db = getDb();
+  const row = await db.select({ avatar_url: users.avatar_url }).from(users)
+    .where(eq(users.id, userId)).limit(1);
+  const url = row[0]?.avatar_url;
+  if (!url) {
+    throw new NotFoundError("该用户未设置头像");
+  }
+  const provider = await getStorageProvider();
+  const bytes = await provider.get(url);
+  const parsed = parseStorageUrl(url);
+  const contentType = /\.png$/i.test(parsed.key)
+    ? "image/png"
+    : /\.webp$/i.test(parsed.key)
+    ? "image/webp"
+    : "image/jpeg";
+  const etag = parsed.checksumSha256
+    ? `"${parsed.checksumSha256}"`
+    : `"${parsed.key}"`;
+  return { bytes, contentType, etag };
 }
