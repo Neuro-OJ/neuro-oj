@@ -123,10 +123,12 @@ async function handleSave() {
 const deleteTarget = ref<AdminAnnouncement | null>(null)
 const showDeleteConfirm = ref(false)
 const deleting = ref(false)
+// 删除错误独立于表单错误，避免两个 modal 间状态串台
+const deleteError = ref("")
 
 function confirmDelete(row: AdminAnnouncement) {
   deleteTarget.value = row
-  formError.value = ""
+  deleteError.value = ""
   showDeleteConfirm.value = true
 }
 
@@ -138,7 +140,7 @@ async function handleDelete() {
     showDeleteConfirm.value = false
     await load(currentPage.value)
   } catch (err: unknown) {
-    formError.value = extractApiError(err).message
+    deleteError.value = extractApiError(err).message
   } finally {
     deleting.value = false
   }
@@ -218,7 +220,7 @@ async function handleDelete() {
   <UModal v-model:open="showDeleteConfirm" title="删除公告" :unmount-on-hide="true">
     <template #body>
       <p>确定要删除公告 <strong>{{ deleteTarget?.title }}</strong> 吗？此操作不可撤销。</p>
-      <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
+      <p v-if="deleteError" class="text-error-text text-13px">{{ deleteError }}</p>
     </template>
 
     <template #footer>
