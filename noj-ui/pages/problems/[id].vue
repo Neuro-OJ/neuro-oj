@@ -290,7 +290,7 @@ const publishBlockReason = computed(() => {
                 <span v-if="item.post.is_locked" class="inline-flex items-center gap-0.5">
                   <UIcon name="i-lucide-lock" class="size-[10px]" />已锁定
                 </span>
-                <span>{{ item.author.username }}</span>
+                <UserIdentity :user="item.author" size="sm" />
                 <NuxtTime :datetime="item.post.created_at" relative locale="zh-CN" />
               </span>
             </NuxtLink>

@@ -177,10 +177,8 @@ async function toggleFollow() {
         <div class="px-6 py-6 sm:px-8 sm:py-8">
           <div class="flex items-start justify-between">
             <div class="flex items-center gap-5">
-              <!-- 头像占位 -->
-              <div class="w-16 h-16 rounded-full bg-primary-bg flex items-center justify-center text-primary text-2xl font-bold shrink-0">
-                {{ profile.user.username.charAt(0).toUpperCase() }}
-              </div>
+              <!-- 头像 -->
+              <UserIdentity :user="profile.user" :show-username="false" size="lg" />
               <div class="flex flex-col gap-1.5">
                 <h1 class="text-2xl font-bold text-text">{{ profile.user.username }}</h1>
                 <div class="flex items-center gap-2 text-sm text-text-muted">

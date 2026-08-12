@@ -88,7 +88,7 @@ function score(value: number) {
         <tbody>
           <tr v-for="row in rows" :key="row.user_id" class="border-b border-border last:border-0 hover:bg-bg-page">
             <td class="px-4 py-4 text-center"><span class="inline-flex size-8 items-center justify-center rounded-full font-mono text-sm font-bold" :class="row.rank <= 3 ? 'bg-amber-100 text-amber-800' : 'text-text-secondary'">{{ row.rank }}</span></td>
-            <td class="px-4 py-4"><NuxtLink :to="`/users/${row.user_id}`" class="font-semibold text-text no-underline hover:text-primary">{{ row.username }}</NuxtLink></td>
+            <td class="px-4 py-4"><UserIdentity :user="{ id: row.user_id, username: row.username }" size="sm" /></td>
             <template v-if="'problem_details' in row">
               <td v-for="detail in row.problem_details" :key="detail.label" class="px-3 py-4 text-center">
                 <span class="inline-flex min-w-12 flex-col rounded-md px-2 py-1 text-xs" :class="detail.solved ? 'bg-green-50 text-success-text' : detail.attempts ? 'bg-red-50 text-error-text' : 'text-text-muted'">

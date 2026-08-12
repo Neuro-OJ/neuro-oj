@@ -15,7 +15,7 @@
                 :aria-expanded="showDropdown"
                 @click="toggleMenu"
             >
-                <UIcon name="i-lucide-user" class="size-[22px]" />
+                <UserIdentity v-if="user" :user="user" :show-username="false" size="sm" :link="false" />
             </button>
         </div>
         <div
