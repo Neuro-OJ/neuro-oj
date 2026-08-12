@@ -66,7 +66,8 @@
 
 - `Channels`（`lib/event-bus.ts`）新增全局频道 `noj:events:announcements`
 - 服务层创建/更新/删除后 `publishEvent(Channels.announcements, JSON.stringify({ type: "announcement:updated" }))`（fire-and-forget，不阻塞写流程）
-- `routes/sse.ts` 新增监听：`onEvent(Channels.announcements, ...)` → 向全局 SSE 连接推送事件名 `announcement:updated`（与 `queue:changed` 同模式，对所有已连接客户端广播）
+- 监听注册在**独立 SSE 端点 `GET /api/v1/announcements/events`**（`routes/announcements.ts` 内，位于 `/:id` 参数路由之前），收到事件后以 SSE 事件名 `announcement:updated` 向订阅该端点的客户端推送（与 `queue:changed` 同模式，data 仅作触发通知）
+- **偏离说明（工程妥协）**：原计划在全局 SSE 端点（`routes/sse.ts`）注册监听，但 sse 实例挂载时带全局 `authMiddleware`，会拦截所有挂载在其后的公开路由（见 `app.ts` 挂载注释）。公告 SSE 端点因此注册在公告路由实例内、挂载于 sse 实例之前，行为等价（客户端订阅 `/api/v1/announcements/events` 即可收到广播），spec 文本（`specs/sse-endpoints/spec.md`）已同步此实现
 - 前端 `useEventSource` 监听 `announcement:updated` → 重拉公告列表（轮播数据源）；页面加载拉取为 fallback
 
 ### D6: UI 形态

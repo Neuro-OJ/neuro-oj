@@ -18,7 +18,7 @@
 ## 4. 路由与 SSE（noj-core）
 
 - [x] 4.1 新增 `routes/announcements.ts` 公开路由：`GET /`（列表）、`GET /:id`（详情）；`app.ts` 挂载 `/api/v1/announcements`（必须在 sse 实例之前注册——sse 全局 authMiddleware 会拦截其后的路由）
-- [x] 4.2 `routes/admin.ts` 追加：`GET/POST /announcements`、`PUT/DELETE /announcements/:id`（handler 内 `assertPermission(c, "announcement:manage")`）
+- [x] 4.2 新增 `routes/admin-announcements.ts` 管理路由：`GET/POST /`、`PUT/DELETE /:id`（独立 router 挂载 `/api/v1/admin/announcements`，仅 authMiddleware + 细粒度 `assertPermission("announcement:manage")` + RequestContext 注入——admin 实例组级 adminMiddleware 仅放行 `admin:full_access` 会拦截细粒度权限持有者，故 admin.ts 组级 use 对公告路径跳过 adminMiddleware；`app.ts` 在 admin 之后挂载）
 - [x] 4.3 `lib/event-bus.ts` `Channels` 新增 `announcements` 全局频道；SSE 端点 `GET /api/v1/announcements/events`（注册在 `routes/announcements.ts` 内、`/:id` 之前，单路由挂 authMiddleware）→ SSE 事件 `announcement:updated`（与 `queue:changed` 同模式）
 
 ## 5. core 测试
@@ -47,6 +47,7 @@
 - [x] 9.1 noj-core：`deno fmt` + `deno lint` + `deno task test` 全量通过（743 passed / 0 failed）
 - [x] 9.2 noj-ui：`deno fmt` + `deno lint` + `nuxt build` 通过
 - [x] 9.3 noj-tests E2E 新增公告用例（`e2e/28_announcements.test.ts`：发布→公开可见→下架消失、非 admin 403、置顶排序、SSE 广播）——已纳入 `.github/workflows/e2e.yml` p3 分组，PR #234 CI 上 4/4 用例通过（Full Pipeline (API E2E) pass）
+- [x] 9.4 评审修复（PR #234 review）：① P0 公告管理端点抽离 adminMiddleware 组级拦截（`routes/admin-announcements.ts` + admin.ts 组级 use 跳过公告路径），core route 测试新增「仅 announcement:manage（无 full_access）用户可管理」+ E2E 用例 5 端到端验证；② P1 SSE 端点 spec 同步（design.md D5 偏离说明 + sse-endpoints spec）；③ P1 E2E 新增首页轮播数据源契约断言（用例 1b：per_page=5 + 字段 + 置顶优先）；④ P2 创建公告必填字段缺失返回 400（`{}` / 仅可选字段）；⑤ P2 proposal.md 补通知中心聚合取舍说明；⑥ P3 管理页 `formError`/`deleteError` 拆分。全量 `deno task test` 744 passed / 0 failed
 
 ## 10. OpenSpec 归档
 

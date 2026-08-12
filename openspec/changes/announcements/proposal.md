@@ -11,6 +11,8 @@
 - **SSE 广播**：`Channels` 新增全局频道 `noj:events:announcements`，发布/下架/更新后 `publishEvent`；SSE 端点映射 `announcement:updated` 事件，前端 `useEventSource` 监听后重拉（沿用 queue/stats 模式，页面加载拉取为 fallback）
 - **UI**：首页轮播改公告驱动（删除硬编码数组，置顶优先取前 5 条，点击跳详情，空态占位）；新增公开列表页 `/announcements`（置顶标记 + 分页）与详情页 `/announcements/[id]`（Markdown 渲染）；新增管理后台页 `pages/admin/announcements.vue`（复用 `useAdminList`）+ 侧边栏入口
 
+> **取舍说明**：issue #231 §3 的「通知中心（铃铛）聚合推送」本期**不做**（design.md Non-Goals 已列明，SSE 横幅刷新已覆盖实时性诉求），留待后续 PR。
+
 ## Capabilities
 
 ### New Capabilities
