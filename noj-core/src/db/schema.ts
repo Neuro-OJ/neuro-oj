@@ -54,6 +54,8 @@ export const users = pgTable(
     /** 社区系统活动可见范围：hidden / following / everyone */
     community_activity_visibility: text("community_activity_visibility")
       .notNull().default("following"),
+    /** 用户头像存储 URL（`noj-storage://` 格式），NULL = 未设置 */
+    avatar_url: text("avatar_url"),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
     /** tsvector 列，GENERATED 自动维护 */
