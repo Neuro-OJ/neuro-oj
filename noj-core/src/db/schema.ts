@@ -412,6 +412,12 @@ export const contestClarifications = pgTable(
     is_public: boolean("is_public").notNull().default(false),
     created_at: text("created_at").notNull(),
   },
+  (table) => ({
+    contestIdx: index("idx_contest_clarifications_contest").on(
+      table.contest_id,
+      table.created_at,
+    ),
+  }),
 );
 
 /**
@@ -1294,7 +1300,7 @@ export const communityNotifications = pgTable(
   (table) => ({
     typeCheck: check(
       "community_notifications_type_check",
-      sql`${table.type} IN ('reply', 'like', 'follow', 'moderation')`,
+      sql`${table.type} IN ('reply', 'like', 'follow', 'moderation', 'clarification')`,
     ),
     recipientIdx: index("idx_community_notifications_recipient").on(
       table.recipient_id,

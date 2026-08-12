@@ -11,6 +11,11 @@ import { parseJsonBody } from "../lib/request.ts";
 import { checkPermission } from "../lib/permissions.ts";
 import { getContestRanking } from "../services/contest-ranking.ts";
 import {
+  createClarification,
+  listClarifications,
+  replyToClarification,
+} from "../services/contest-clarifications.ts";
+import {
   computeContestStatus,
   getContest,
   getContestProblems,
@@ -207,6 +212,54 @@ contests.get("/:id/my-submissions", authMiddleware, async (c) => {
     pagination: buildPaginationMeta(page, perPage, result.total),
   });
 });
+
+contests.get("/:id/clarifications", optionalAuthMiddleware, async (c) => {
+  const contestId = c.req.param("id") as string;
+  const userId = c.var.userId;
+  // 私有竞赛门禁：与 GET /:id 一致，仅 admin/参赛者可见（创建者通常为 admin）
+  const contest = await getContest(contestId, userId);
+  if (
+    !contest.is_public && !await checkPermission(c, "submission:read_all") &&
+    !contest.is_registered
+  ) {
+    throw new NotFoundError("竞赛不存在");
+  }
+  const { page, perPage } = parsePagination(c);
+  const result = await listClarifications(contestId, userId, {
+    page,
+    perPage,
+  });
+  return c.json({
+    data: result.data,
+    pagination: buildPaginationMeta(page, perPage, result.total),
+  });
+});
+
+contests.post("/:id/clarifications", authMiddleware, async (c) => {
+  const contestId = c.req.param("id") as string;
+  const userId = c.var.userId as string;
+  const body = await parseJsonBody<{
+    content?: string;
+    problem_id?: string;
+  }>(c);
+  const data = await createClarification(contestId, userId, body);
+  return c.json({ data }, 201);
+});
+
+contests.post(
+  "/:id/clarifications/:clarId/reply",
+  authMiddleware,
+  async (c) => {
+    const contestId = c.req.param("id") as string;
+    const clarId = c.req.param("clarId") as string;
+    const userId = c.var.userId as string;
+    const body = await parseJsonBody<{ content?: string; is_public?: boolean }>(
+      c,
+    );
+    const data = await replyToClarification(contestId, clarId, userId, body);
+    return c.json({ data }, 201);
+  },
+);
 
 contests.get("/:id", optionalAuthMiddleware, async (c) => {
   const data = await getContest(c.req.param("id") as string, c.var.userId);

@@ -20,12 +20,14 @@ const typeLabel: Record<NotificationRow["notification"]["type"], string> = {
   like: "赞了你的内容",
   follow: "关注了你",
   moderation: "更新了内容审核状态",
+  clarification: "回复了你的竞赛提问",
 }
 const typeIcon = {
   reply: 'i-lucide-reply',
   like: 'i-lucide-heart',
   follow: 'i-lucide-user-plus',
   moderation: 'i-lucide-shield-check',
+  clarification: 'i-lucide-message-circle-question',
 }
 
 async function load(reset = true) {
@@ -67,6 +69,7 @@ async function markAllRead() {
 function notificationHref(item: NotificationRow): string {
   if (item.notification.post_id) return `/community/posts/${item.notification.post_id}`
   if (item.notification.type === "follow" && item.actor) return `/users/${item.actor.id}`
+  if (item.notification.type === "clarification" && item.notification.data.contest_id) return `/contests/${item.notification.data.contest_id as string}?tab=clarifications`
   return "/community"
 }
 

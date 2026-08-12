@@ -37,8 +37,8 @@ import {
   NotFoundError,
   ValidationError,
 } from "../lib/errors.ts";
-import { Channels, publishEvent } from "../lib/event-bus.ts";
 import { logAudit } from "./audit-log.ts";
+import { createNotification } from "./notifications.ts";
 import {
   getSetting,
   reloadSingleKey,
@@ -1279,37 +1279,6 @@ function parseFeedCursor(cursor: string): { at: string; id?: string } {
   const sep = cursor.lastIndexOf("|");
   if (sep === -1) return { at: cursor };
   return { at: cursor.slice(0, sep), id: cursor.slice(sep + 1) };
-}
-
-async function createNotification(
-  recipientId: string,
-  actorId: string | null,
-  type: "reply" | "like" | "follow" | "moderation",
-  postId: string | null,
-  commentId: string | null,
-  data: Record<string, unknown>,
-) {
-  if (recipientId === actorId) return;
-  const notification = {
-    id: crypto.randomUUID(),
-    recipient_id: recipientId,
-    actor_id: actorId,
-    type,
-    post_id: postId,
-    comment_id: commentId,
-    data,
-    read_at: null,
-    created_at: nowIso(),
-  };
-  const db = getDb();
-  await db.insert(communityNotifications).values(notification);
-  publishEvent(
-    Channels.user(recipientId),
-    JSON.stringify({
-      type: "notification:new",
-      notification_id: notification.id,
-    }),
-  );
 }
 
 export function listNotifications(userId: string, limit = 30) {

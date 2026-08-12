@@ -260,6 +260,13 @@
       "when": 1786196950857,
       "tag": "0036_glorious_nightshade",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1786534840924,
+      "tag": "0037_parallel_gwen_stacy",
+      "breakpoints": true
     }
   ]
 }
