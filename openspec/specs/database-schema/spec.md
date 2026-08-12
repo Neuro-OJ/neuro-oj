@@ -16,10 +16,13 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 | role          | TEXT | NOT NULL, DEFAULT 'user' |
 | must_change_password | BOOLEAN | NOT NULL, DEFAULT false |
 | bio           | TEXT | DEFAULT ''               |
+| avatar_url    | TEXT | NULL（`noj-storage://` URL） |
 | created_at    | TEXT | NOT NULL, ISO 8601       |
 | updated_at    | TEXT | NOT NULL, ISO 8601       |
 
 > `bio` 字段存储用户个人简介（Markdown 格式），默认为空字符串。
+>
+> `avatar_url` 字段存储用户头像的 `noj-storage://` URL（local 或 s3 模式），未设置时为 NULL（issue #229）。
 
 #### Scenario: 插入新用户
 

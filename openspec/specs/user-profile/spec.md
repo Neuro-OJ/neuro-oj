@@ -21,6 +21,7 @@
     "id": "uuid",
     "username": "hachimi",
     "bio": "## 关于我\n\n热爱算法竞赛",
+    "avatar_url": "noj-storage://local/<hash>.png?checksum_sha256=<hex>",
     "created_at": "2026-01-01T00:00:00Z"
   },
   "stats": {
