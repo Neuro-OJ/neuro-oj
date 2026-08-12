@@ -689,16 +689,58 @@ const AVATAR_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
 /** 允许的头像扩展名（jpeg 与 jpg 均接受） */
 const AVATAR_EXT = /\.(png|jpe?g|webp)$/i;
 
+/** magic bytes 推导的图片类型 → 标准 MIME */
+const AVATAR_MAGIC_MIME: Record<"png" | "jpeg" | "webp", string> = {
+  png: "image/png",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+};
+
+/** 头像文件校验结果：字节 + magic bytes 推导的图片类型 */
+interface AvatarFile {
+  bytes: Uint8Array;
+  /** magic bytes 推导的类型（"png" | "jpeg" | "webp"） */
+  type: "png" | "jpeg" | "webp";
+}
+
+/** 由 magic bytes 推导图片类型；无法识别返回 null */
+function detectImageType(bytes: Uint8Array): "png" | "jpeg" | "webp" | null {
+  const isPng = bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 &&
+    bytes[2] === 0x4e && bytes[3] === 0x47;
+  if (isPng) return "png";
+  const isJpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 &&
+    bytes[2] === 0xff;
+  if (isJpeg) return "jpeg";
+  const isWebp = bytes.length >= 12 &&
+    new TextDecoder().decode(bytes.slice(0, 4)) === "RIFF" &&
+    new TextDecoder().decode(bytes.slice(8, 12)) === "WEBP";
+  if (isWebp) return "webp";
+  return null;
+}
+
+/** 文件名扩展名 → 图片类型；无扩展名返回 null */
+function imageTypeFromName(name: string): "png" | "jpeg" | "webp" | null {
+  const m = AVATAR_EXT.exec(name);
+  if (!m) return null;
+  const ext = m[1].toLowerCase();
+  if (ext === "png") return "png";
+  if (ext === "webp") return "webp";
+  return "jpeg"; // jpg / jpeg
+}
+
 /**
- * 校验头像文件并返回字节。
+ * 校验头像文件并返回字节与 magic 推导类型。
  *
- * 校验链：扩展名 → Content-Type → 大小 → magic bytes。
+ * 校验链：扩展名 → Content-Type → 大小 → magic bytes，
+ * 并要求扩展名 / Content-Type / magic bytes 三者推导的类型一致
+ * （如 `a.png` + `image/png` + JPEG 字节 MUST 400）。
  * 拒绝 SVG（内嵌脚本 XSS 风险）。
  *
  * @throws {BadRequestError} 任一项不满足
  */
-async function validateAvatarFile(file: File): Promise<Uint8Array> {
-  if (!AVATAR_EXT.test(file.name)) {
+async function validateAvatarFile(file: File): Promise<AvatarFile> {
+  const nameType = imageTypeFromName(file.name);
+  if (!nameType) {
     throw new BadRequestError("仅支持 png/jpeg/webp 图片");
   }
   if (file.type && !AVATAR_MIME.has(file.type)) {
@@ -708,41 +750,50 @@ async function validateAvatarFile(file: File): Promise<Uint8Array> {
     throw new BadRequestError("头像大小超过限制（最大 2MB）");
   }
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const isPng = bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 &&
-    bytes[2] === 0x4e && bytes[3] === 0x47;
-  const isJpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 &&
-    bytes[2] === 0xff;
-  const isWebp = bytes.length >= 12 &&
-    new TextDecoder().decode(bytes.slice(0, 4)) === "RIFF" &&
-    new TextDecoder().decode(bytes.slice(8, 12)) === "WEBP";
-  if (!(isPng || isJpeg || isWebp)) {
+  const magicType = detectImageType(bytes);
+  if (!magicType) {
     throw new BadRequestError("文件不是有效的图片");
   }
-  return bytes;
+  // 扩展名与内容一致性（spec：扩展名/Content-Type 不匹配 MUST 400）
+  if (nameType !== magicType) {
+    throw new BadRequestError("文件扩展名与图片内容不匹配");
+  }
+  // Content-Type 与内容一致性（file.type 为空时跳过）
+  if (file.type && file.type !== AVATAR_MAGIC_MIME[magicType]) {
+    throw new BadRequestError("文件 Content-Type 与图片内容不匹配");
+  }
+  return { bytes, type: magicType };
+}
+
+/**
+ * 判断两个存储 URL 是否指向同一存储对象。
+ *
+ * 以 key 为判等依据（同一 key 视为同一对象，校验和差异忽略）：
+ * S3 固定 key 模式下替换头像会覆盖同一对象，新旧 URL 仅 checksum
+ * 不同，直接比较字符串会误判为不同对象并删除刚写入的新文件。
+ */
+export function sameStorageObject(a: string, b: string): boolean {
+  return parseStorageUrl(a).key === parseStorageUrl(b).key;
 }
 
 /**
  * 上传/替换头像。
  *
  * 顺序：先存新文件 → 更新 DB → 清理旧文件。
- * 内容寻址下同图 URL 相同，重复上传不会误删。
+ * 内容寻址下同图 URL 相同，固定 key 模式下同 key 不误删。
  */
 export async function updateUserAvatar(
   userId: string,
   file: File,
 ): Promise<{ avatar_url: string | null }> {
-  const bytes = await validateAvatarFile(file);
+  const { bytes, type } = await validateAvatarFile(file);
   const provider = await getStorageProvider();
   // 1. 先存新文件（key 带用户 id 与扩展名，供 S3 模式的 Content-Type 推断）
-  const ext = file.type === "image/png"
-    ? "png"
-    : file.type === "image/webp"
-    ? "webp"
-    : "jpg";
+  const ext = type === "png" ? "png" : type === "webp" ? "webp" : "jpg";
   const newUrl = await provider.put(
     `avatar/${userId}.${ext}`,
     bytes,
-    file.type,
+    AVATAR_MAGIC_MIME[type],
   );
 
   const db = getDb();
@@ -756,9 +807,9 @@ export async function updateUserAvatar(
     .set({ avatar_url: newUrl, updated_at: new Date().toISOString() })
     .where(eq(users.id, userId));
 
-  // 3. 清理旧文件（幂等；同图 URL 相同不误删）
+  // 3. 清理旧文件（幂等；同 key 同一对象不误删）
   const oldUrl = old[0].avatar_url;
-  if (oldUrl && oldUrl !== newUrl) {
+  if (oldUrl && !sameStorageObject(oldUrl, newUrl)) {
     try {
       await provider.delete(oldUrl);
     } catch {

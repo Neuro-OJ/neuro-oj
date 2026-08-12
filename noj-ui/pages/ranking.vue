@@ -91,7 +91,7 @@ function setPage(p: number) {
                 </span>
               </td>
               <td class="px-4 py-3.5">
-                <UserIdentity :user="{ id: row.user_id, username: row.username }" size="sm" />
+                <UserIdentity :user="{ id: row.user_id, username: row.username, avatar_url: row.avatar_url }" size="sm" />
               </td>
               <td class="w-24 px-4 py-3.5 text-right text-base font-bold text-primary tabular-nums">
                 {{ row.solved_count }}

@@ -34,6 +34,7 @@ const MAX_PAGE_SIZE = 100;
 export interface ClarificationSender {
   id: string;
   username: string;
+  avatar_url: string | null;
 }
 
 export interface ClarificationReplyResponse {
@@ -116,11 +117,18 @@ async function getSenders(
 ): Promise<Map<string, ClarificationSender>> {
   if (ids.length === 0) return new Map();
   const db = getDb();
-  const rows = await db.select({ id: users.id, username: users.username }).from(
+  const rows = await db.select({
+    id: users.id,
+    username: users.username,
+    avatar_url: users.avatar_url,
+  }).from(
     users,
   ).where(inArray(users.id, ids));
   return new Map(
-    rows.map((row) => [row.id, { id: row.id, username: row.username }]),
+    rows.map((row) => [
+      row.id,
+      { id: row.id, username: row.username, avatar_url: row.avatar_url },
+    ]),
   );
 }
 

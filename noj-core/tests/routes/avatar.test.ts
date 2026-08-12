@@ -12,6 +12,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 import { resetDbForTest } from "../../src/db/connection.ts";
 import { createUserToken, jsonRequest } from "../lib/helper.ts";
+import { sameStorageObject } from "../../src/services/users.ts";
 import { getStorageProvider } from "../../src/lib/storage/factory.ts";
 
 if (!Deno.env.get("JWT_SECRET")) {
@@ -197,6 +198,47 @@ Deno.test("avatar: 非法类型（txt/svg）与伪造扩展名被拒", async () 
     const res = await uploadAvatar(app, token, avatarForm(name, type, data));
     assertEquals(res.status, 400, `应拒绝 ${name}`);
   }
+});
+
+Deno.test("avatar: 扩展名/Content-Type/magic 不一致被拒", async () => {
+  await resetDbForTest();
+  const app = createApp();
+  const { token } = await createUser(app);
+
+  const mismatchCases: [string, string, Uint8Array, string][] = [
+    // 扩展名与内容不符：jpg 扩展名 + PNG 字节
+    ["a.jpg", "image/jpeg", PNG_BYTES, "jpg 扩展名 + PNG 内容"],
+    // Content-Type 与内容不符：png 扩展名/类型 + JPEG 字节
+    ["a.png", "image/png", JPEG_BYTES, "png 声明 + JPEG 内容"],
+    // Content-Type 与内容不符：png 扩展名 + jpeg 声明 + PNG 字节
+    ["a.png", "image/jpeg", PNG_BYTES, "png 内容 + jpeg 声明"],
+    // Content-Type 与内容不符：webp 扩展名/类型 + PNG 字节
+    ["a.webp", "image/webp", PNG_BYTES, "webp 声明 + PNG 内容"],
+  ];
+  for (const [name, type, data, desc] of mismatchCases) {
+    const res = await uploadAvatar(app, token, avatarForm(name, type, data));
+    assertEquals(res.status, 400, `应拒绝 ${desc}`);
+  }
+});
+
+Deno.test("avatar: sameStorageObject 以 key 判等（S3 固定 key 替换场景）", () => {
+  // S3 固定 key：替换后新旧 URL 仅 checksum 不同 → 同一对象，不得误删
+  const oldUrl = "noj-storage://s3/avatar/u-1.png?checksum_sha256=aaaa";
+  const newUrl = "noj-storage://s3/avatar/u-1.png?checksum_sha256=bbbb";
+  assertEquals(sameStorageObject(oldUrl, newUrl), true);
+  // 扩展名变更 → key 不同 → 属于不同对象，可清理旧文件
+  const jpgUrl = "noj-storage://s3/avatar/u-1.jpg?checksum_sha256=bbbb";
+  assertEquals(sameStorageObject(oldUrl, jpgUrl), false);
+  // local 内容寻址：不同内容 → 不同 key
+  assertEquals(
+    sameStorageObject(
+      "noj-storage://local/abc123.png?checksum_sha256=aaaa",
+      "noj-storage://local/abc456.png?checksum_sha256=bbbb",
+    ),
+    false,
+  );
+  // 同一 URL 自然为同一对象
+  assertEquals(sameStorageObject(oldUrl, oldUrl), true);
 });
 
 Deno.test("avatar: 替换上传后旧文件被清理（local 存储断言）", async () => {
