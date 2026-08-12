@@ -12,6 +12,7 @@ import {
   api,
   apiDelete,
   apiGet,
+  apiPatch,
   apiPost,
   apiPut,
   BASE_URL,
@@ -148,6 +149,47 @@ e2eTest(
   },
 );
 
+e2eTest(
+  "[e2e/announcements] 1b. 首页轮播数据源契约（per_page=5）",
+  async () => {
+    if (!isE2E) return;
+    // 首页轮播消费 GET /api/v1/announcements?per_page=5（见 pages/index.vue），
+    // 此处验证该数据契约：分页参数、轮播渲染字段、置顶优先、不含 content 全文。
+    const res = await apiGet("/api/v1/announcements?per_page=5");
+    if (res.status !== 200) {
+      throw new Error(`轮播数据源请求失败: ${JSON.stringify(res.body)}`);
+    }
+    const body = res.body as {
+      data: Array<
+        { id: string; title: string; is_pinned: boolean; excerpt?: string }
+      >;
+      meta: { per_page: number; total: number };
+    };
+    if (body.meta.per_page !== 5) {
+      throw new Error(`轮播数据源 per_page 应为 5，实际 ${body.meta.per_page}`);
+    }
+    if (body.data.length === 0) {
+      throw new Error("轮播数据源不应为空（用例 1 已发布 2 条公告）");
+    }
+    // 字段契约：轮播渲染所需字段必须存在，content 全文不得包含
+    for (const item of body.data) {
+      for (const key of ["id", "title", "is_pinned", "excerpt"]) {
+        if (!(key in item)) {
+          throw new Error(`轮播项缺少字段 ${key}: ${JSON.stringify(item)}`);
+        }
+      }
+      if ("content" in item) {
+        throw new Error("轮播项不应包含 content 全文");
+      }
+    }
+    // 置顶优先（沿用用例 1 的置顶公告）
+    if (body.data[0].is_pinned !== true) {
+      throw new Error("轮播第一条应为置顶公告");
+    }
+    console.log("  ✓ 首页轮播数据契约（per_page=5 + 字段 + 置顶优先）");
+  },
+);
+
 e2eTest("[e2e/announcements] 2. 非 admin 无写权限", async () => {
   if (!isE2E) return;
   const res = await apiPost(
@@ -229,6 +271,91 @@ e2eTest("[e2e/announcements] 4. SSE 广播 announcement:updated", async () => {
   }
   console.log("  ✓ SSE announcement:updated 广播");
 });
+
+e2eTest(
+  "[e2e/announcements] 5. 仅 announcement:manage 用户可管理公告（细粒度 RBAC）",
+  async () => {
+    if (!isE2E) return;
+    // 验证 P0 修复：无 admin:full_access 但显式拥有 announcement:manage 的用户
+    // 可调用公告管理端点（spec: 持有 admin:full_access 通配放行或显式拥有该权限）。
+    // 1. 查 announcement:manage 权限 id（响应按 resource 分组）
+    const permRes = await apiGet("/api/v1/admin/permissions", adminToken);
+    const perms = permRes.body as {
+      data?: Record<string, Array<{ id: string; action: string }>>;
+    };
+    const annPerm = (perms.data?.announcement ?? []).find(
+      (p) => p.action === "manage",
+    );
+    if (!annPerm) throw new Error("缺少 announcement:manage 权限");
+
+    // 2. 查 user 角色 id（保留基础权限，避免影响测试用户其它行为）
+    const rolesRes = await apiGet("/api/v1/admin/roles", adminToken);
+    const roles = rolesRes.body as {
+      data?: Array<{ id: string; name: string }>;
+    };
+    const userRole = (roles.data ?? []).find((r) => r.name === "user");
+    if (!userRole) throw new Error("缺少 user 角色");
+
+    // 3. 创建仅含 announcement:manage 的自定义角色（无 admin:full_access）
+    const roleName = `ann_operator_${ts}`;
+    const createRes = await apiPost(
+      "/api/v1/admin/roles",
+      {
+        name: roleName,
+        description: "公告运营角色（E2E）",
+        permission_ids: [annPerm.id],
+      },
+      adminToken,
+    );
+    if (createRes.status !== 201) {
+      throw new Error(`创建角色失败: ${JSON.stringify(createRes.body)}`);
+    }
+    const roleId = (createRes.body as { data: { id: string } }).data.id;
+
+    // 4. 按 username 查测试用户 id
+    const userRes = await apiGet(
+      `/api/v1/admin/users?keyword=ann_user_${ts}`,
+      adminToken,
+    );
+    const userData = userRes.body as {
+      data?: Array<{ id: string; username: string }>;
+    };
+    const target = (userData.data ?? []).find(
+      (u) => u.username === `ann_user_${ts}`,
+    );
+    if (!target) throw new Error("找不到测试用户 ann_user_" + ts);
+
+    // 5. 赋角色（user + ann_operator）
+    const patchRes = await apiPatch(
+      `/api/v1/admin/users/${target.id}/role`,
+      { role_ids: [userRole.id, roleId] },
+      adminToken,
+    );
+    if (patchRes.status !== 200) {
+      throw new Error(`赋角色失败: ${JSON.stringify(patchRes.body)}`);
+    }
+
+    // 6. 该用户（无 admin:full_access）调用管理端点 → 应放行 201
+    const postRes = await apiPost(
+      "/api/v1/admin/announcements",
+      { title: `运营公告-${ts}`, content: "正文" },
+      userToken,
+    );
+    if (postRes.status !== 201) {
+      throw new Error(
+        `细粒度授权用户写入应 201，实际 ${postRes.status}: ${
+          JSON.stringify(postRes.body)
+        }`,
+      );
+    }
+    const opAnnId = (postRes.body as { data: { id: string } }).data.id;
+
+    // 7. 清理：删除公告 + 角色
+    await apiDelete(`/api/v1/admin/announcements/${opAnnId}`, adminToken);
+    await apiDelete(`/api/v1/admin/roles/${roleId}`, adminToken);
+    console.log("  ✓ 细粒度 announcement:manage 用户可管理公告");
+  },
+);
 
 e2eTest("[e2e/announcements] Cleanup: 删除公告", async () => {
   if (!isE2E) return;
