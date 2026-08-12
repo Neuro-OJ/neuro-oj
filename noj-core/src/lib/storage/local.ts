@@ -34,11 +34,33 @@ const DEPRECATED_WARNING = [
   `[storage/local]    请设置 STORAGE_PROVIDER=s3 并配置 S3_ENDPOINT 以启用对象存储。`,
 ].join("\n");
 
+/** contentType → 扩展名映射（仅图片需要；zip 保持无扩展名兼容既有 URL） */
+const EXT_BY_CONTENT_TYPE: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+};
+
+/** 已知扩展名（get/delete 解析 key 时使用） */
+const KNOWN_EXTS = /\.(png|jpe?g|webp)$/i;
+
+/** 根据 contentType 推导文件扩展名；未知（含 zip）返回空串（无扩展名） */
+function extensionFor(contentType?: string): string {
+  return (contentType && EXT_BY_CONTENT_TYPE[contentType]) ?? "";
+}
+
+/** key → 磁盘文件路径：key 已带已知扩展名直接用，否则回退 .zip（兼容旧支持包 URL） */
+function filePathFor(storageDir: string, key: string): string {
+  const suffix = KNOWN_EXTS.test(key) ? "" : ".zip";
+  return `${storageDir}/${key}${suffix}`;
+}
+
 /**
  * 本地文件系统存储实现
  *
  * 数据以 zip 文件形式存储在 `${this.storageDir}/` 目录下，
  * 文件名使用 SHA-256 的 base64url 编码（URL 安全）。
+ * 图片（头像等）按 contentType 附带扩展名：`<hash>.png` / `<hash>.jpg` / `<hash>.webp`。
  */
 export class LocalStorageProvider implements StorageProvider {
   private warned = false;
@@ -63,17 +85,24 @@ export class LocalStorageProvider implements StorageProvider {
    * 1. 计算 SHA-256 哈希
    * 2. 将哈希编码为 base64url（URL 安全）
    * 3. 以哈希为文件名写入存储根目录（`_key` 忽略——文件名由内容寻址决定）
-   * 4. 返回 `noj-storage://local/<base64>?checksum_sha256=<hex>`
+   * 4. 返回 `noj-storage://local/<base64>[.<ext>]?checksum_sha256=<hex>`
+   *
+   * 扩展名规则：`image/png→png`、`image/jpeg→jpg`、`image/webp→webp`；
+   * 其余 contentType（含 zip）保持无扩展名，兼容既有支持包 URL。
    */
   async put(
     _key: string,
     data: Uint8Array,
-    _contentType?: string,
+    contentType?: string,
   ): Promise<string> {
     const hashHex = await sha256Hex(data);
     // 使用 base64url 编码哈希作为文件名（URL 安全）
     const base64Key = this.hexToBase64url(hashHex);
-    const filePath = `${this.storageDir}/${base64Key}.zip`;
+    const ext = extensionFor(contentType);
+    // 磁盘文件：图片带扩展名（png/jpg/webp），zip 固定 .zip；
+    // URL key：图片带扩展名，zip 保持无扩展名（兼容既有 URL）
+    const fileName = ext ? `${base64Key}.${ext}` : `${base64Key}.zip`;
+    const filePath = `${this.storageDir}/${fileName}`;
 
     // 原子写入：tmp 文件 + rename
     const tmpPath = `${filePath}.tmp.${crypto.randomUUID()}`;
@@ -87,7 +116,7 @@ export class LocalStorageProvider implements StorageProvider {
       await Deno.remove(tmpPath);
     }
 
-    return buildStorageUrl("local", base64Key, hashHex);
+    return buildStorageUrl("local", ext ? fileName : base64Key, hashHex);
   }
 
   /**
@@ -95,7 +124,7 @@ export class LocalStorageProvider implements StorageProvider {
    */
   get(url: string): Promise<Uint8Array> {
     const parsed = parseStorageUrl(url);
-    const filePath = `${this.storageDir}/${parsed.key}.zip`;
+    const filePath = filePathFor(this.storageDir, parsed.key);
 
     return Deno.readFile(filePath);
   }
@@ -107,7 +136,7 @@ export class LocalStorageProvider implements StorageProvider {
    */
   async delete(url: string): Promise<void> {
     const parsed = parseStorageUrl(url);
-    const filePath = `${this.storageDir}/${parsed.key}.zip`;
+    const filePath = filePathFor(this.storageDir, parsed.key);
     try {
       await Deno.remove(filePath);
     } catch (err) {

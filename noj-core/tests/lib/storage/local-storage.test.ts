@@ -90,3 +90,69 @@ Deno.test("LocalStorageProvider: SUPPORT_PACKAGE_DIR 覆盖存储根目录", asy
 
 // 保留 dirname import 避免未使用警告（实际路径基于 import.meta.dirname）
 void dirname;
+
+// ── 头像图片扩展名支持（issue #229）───────────────────────────
+
+Deno.test("LocalStorageProvider: image/png 存为 .png key 并读回", async () => {
+  const provider = new LocalStorageProvider();
+  const data = new TextEncoder().encode("fake-png-bytes");
+  const url = await provider.put("avatar-key", data, "image/png");
+
+  const key = url.split("?")[0].replace("noj-storage://local/", "");
+  assertEquals(key.endsWith(".png"), true, "key 应带 .png 扩展名");
+
+  const readBack = await provider.get(url);
+  assertEquals(new TextDecoder().decode(readBack), "fake-png-bytes");
+});
+
+Deno.test("LocalStorageProvider: image/jpeg 存为 .jpg key（规范化）", async () => {
+  const provider = new LocalStorageProvider();
+  const url = await provider.put(
+    "k",
+    new TextEncoder().encode("jpeg"),
+    "image/jpeg",
+  );
+  const key = url.split("?")[0].replace("noj-storage://local/", "");
+  assertEquals(key.endsWith(".jpg"), true);
+});
+
+Deno.test("LocalStorageProvider: zip/未知 contentType 保持无扩展名 key", async () => {
+  const provider = new LocalStorageProvider();
+  const url = await provider.put(
+    "k",
+    new TextEncoder().encode("x"),
+    "application/zip",
+  );
+  const key = url.split("?")[0].replace("noj-storage://local/", "");
+  // 兼容既有支持包：key 无扩展名，文件落盘为 <key>.zip
+  assertEquals(/\.(png|jpg|webp)$/.test(key), false);
+  const readBack = await provider.get(url);
+  assertEquals(new TextDecoder().decode(readBack), "x");
+});
+
+Deno.test("LocalStorageProvider: 图片 key 的 get/delete 使用正确路径", async () => {
+  const provider = new LocalStorageProvider();
+  const url = await provider.put(
+    "k",
+    new TextEncoder().encode("img"),
+    "image/webp",
+  );
+  const key = url.split("?")[0].replace("noj-storage://local/", "");
+  const file = join(PROJECT_ROOT, "data", "storage", key);
+  let exists = true;
+  try {
+    await Deno.stat(file);
+  } catch {
+    exists = false;
+  }
+  assertEquals(exists, true, "图片文件应落盘为 <key>（含扩展名）");
+  // 删除后文件消失
+  await provider.delete(url);
+  let gone = false;
+  try {
+    await Deno.stat(file);
+  } catch {
+    gone = true;
+  }
+  assertEquals(gone, true, "delete 应删除带扩展名文件");
+});
