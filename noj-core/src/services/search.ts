@@ -175,6 +175,7 @@ export interface UserSearchItem {
   username: string;
   email: string;
   rank: number;
+  avatar_url: string | null;
   highlight: string;
 }
 
@@ -190,6 +191,7 @@ export interface CommunitySearchItem {
   title: string;
   author_id: string;
   author_username: string;
+  author_avatar_url: string | null;
   problem_id: string | null;
   created_at: string;
   rank: number;
@@ -205,7 +207,7 @@ export async function searchCommunity(
   const likeQ = `%${escapeLikePattern(q)}%`;
   const start = performance.now();
   const rows = await db.execute<Record<string, unknown>>(sql`
-    SELECT p.id, p.type, p.title, p.author_id, u.username AS author_username,
+    SELECT p.id, p.type, p.title, p.author_id, u.username AS author_username, u.avatar_url AS author_avatar_url,
       p.problem_id, p.created_at,
       ts_rank(to_tsvector('simple', coalesce(p.title, '') || ' ' || p.content), websearch_to_tsquery('simple', ${q})) AS rank,
       ts_headline('simple', coalesce(p.title, p.content), websearch_to_tsquery('simple', ${q}),
@@ -274,10 +276,11 @@ export async function searchUsers(
     username: string;
     email: string;
     rank: number | null;
+    avatar_url: string | null;
     highlight: string;
   }>(sql`
     SELECT
-      u.id, u.username, u.email,
+      u.id, u.username, u.email, u.avatar_url,
       ts_rank(u.search_vector, websearch_to_tsquery('simple', ${q})) AS rank,
       ts_headline('simple', u.username, websearch_to_tsquery('simple', ${q}),
         'StartSel=[[HIGHLIGHT]], StopSel=[[/HIGHLIGHT]]'
@@ -299,6 +302,7 @@ export async function searchUsers(
         username: string;
         email: string;
         rank: number | null;
+        avatar_url: string | null;
         highlight: string;
       }>;
     }).rows
@@ -307,6 +311,7 @@ export async function searchUsers(
       username: string;
       email: string;
       rank: number | null;
+      avatar_url: string | null;
       highlight: string;
     }>);
 
@@ -331,6 +336,7 @@ export async function searchUsers(
     username: r.username,
     email: r.email,
     rank: r.rank ?? 0,
+    avatar_url: r.avatar_url ?? null,
     highlight: r.highlight,
   }));
 

@@ -98,6 +98,7 @@ function toUserResponse(
     is_admin: options?.isAdmin ?? false,
     must_change_password: row.must_change_password,
     active_ban: options?.activeBan ?? null,
+    avatar_url: row.avatar_url ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -190,6 +191,7 @@ export async function registerUser(
     is_admin: false,
     must_change_password: false,
     active_ban: null,
+    avatar_url: null,
     created_at: now,
     updated_at: now,
   };
@@ -435,6 +437,7 @@ export async function listUsers(
         username: users.username,
         email: users.email,
         must_change_password: users.must_change_password,
+        avatar_url: users.avatar_url,
         created_at: users.created_at,
         updated_at: users.updated_at,
         // 活跃封禁信息（LEFT JOIN user_bans）
@@ -481,6 +484,7 @@ export async function listUsers(
     role_ids: roleIdsByUser.get(row.id) ?? [],
     is_admin: allAdminIds.has(row.id),
     must_change_password: row.must_change_password,
+    avatar_url: row.avatar_url ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
     active_ban: row.ban_reason !== null
@@ -584,6 +588,7 @@ export async function changePassword(
     is_admin: isAdmin,
     must_change_password: false,
     active_ban: null,
+    avatar_url: user.avatar_url ?? null,
     created_at: user.created_at,
     updated_at: now,
   };
