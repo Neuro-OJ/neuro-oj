@@ -4,7 +4,7 @@
 
 系统 SHALL 提供竞赛答疑提问端点 `POST /api/v1/contests/:id/clarifications`，供参赛者在竞赛进行期间提出问题。
 
-- 仅已注册参赛者可提问；未参赛或未登录用户 MUST 收到 403
+- 仅已注册参赛者可提问；未登录用户 MUST 收到 401，已登录但未参赛用户 MUST 收到 403
 - 竞赛状态 MUST 为 `running`；`pending` / `ended` 期间提问 MUST 收到 403
 - 请求体：`content`（必填，非空，≤ 5000 字符）、`problem_id`（可选）
 - `problem_id` 提供时 MUST 属于该竞赛（存在于 `contest_problems`），否则 400；省略时为全局提问
@@ -21,6 +21,10 @@
 #### Scenario: 非参赛者提问被拒
 - **WHEN** 未注册该竞赛的已登录用户 POST `/api/v1/contests/<running-contest-id>/clarifications`
 - **THEN** 系统返回 403
+
+#### Scenario: 匿名提问被拒
+- **WHEN** 未登录用户 POST `/api/v1/contests/<running-contest-id>/clarifications`
+- **THEN** 系统返回 401
 
 #### Scenario: 竞赛非进行期间提问被拒
 - **WHEN** 已参赛用户对 `pending` 或 `ended` 状态的竞赛 POST `/api/v1/contests/<id>/clarifications`
@@ -74,6 +78,7 @@
 - 未登录或未参赛用户：仅可见公开问答（提问与 `is_public=true` 的回复）
 - 参赛者：可见全部公开问答 + 自己的提问及挂在其下的私密回复；其他参赛者的私密回复不可见
 - admin / 竞赛创建者：可见全部（含所有私密回复）
+- 私有竞赛（`is_public=false`）MUST 仅对 admin/参赛者（含创建者）开放列表；其他用户（含未登录）MUST 收到 404，与 `GET /:id` 门禁一致（避免泄露私有竞赛存在性）
 - 分页基于提问数（`page` / `perPage`，默认 20，上限 100），回复跟随其根提问返回
 - 响应包含 `problem_id` 对应的竞赛题目标签 `problem_label`（全局提问为 null）
 
@@ -82,8 +87,12 @@
 - **THEN** 系统返回全部公开问答，以及该用户自己的提问（含其私密回复），不包含其他用户的私密回复
 
 #### Scenario: 未参赛者仅见公开答疑
-- **WHEN** 未参赛用户（或匿名）GET `/api/v1/contests/<id>/clarifications`
+- **WHEN** 未参赛用户（或匿名）GET `/api/v1/contests/<public-contest-id>/clarifications`
 - **THEN** 系统仅返回公开问答，所有私密回复均不出现
+
+#### Scenario: 非参赛者访问私有竞赛答疑列表被拒
+- **WHEN** 未注册私有竞赛的用户（或匿名）GET `/api/v1/contests/<private-contest-id>/clarifications`
+- **THEN** 系统返回 404
 
 #### Scenario: 主办方查看全部答疑
 - **WHEN** admin 或竞赛创建者 GET `/api/v1/contests/<id>/clarifications`

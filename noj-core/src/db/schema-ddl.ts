@@ -446,7 +446,7 @@ export const SCHEMA_DDL: string[] = [
     id TEXT PRIMARY KEY,
     recipient_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     actor_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-    type TEXT NOT NULL CHECK (type IN ('reply', 'like', 'follow', 'moderation')),
+    type TEXT NOT NULL CHECK (type IN ('reply', 'like', 'follow', 'moderation', 'clarification')),
     post_id TEXT REFERENCES community_posts(id) ON DELETE SET NULL,
     comment_id TEXT REFERENCES community_comments(id) ON DELETE SET NULL,
     data JSONB NOT NULL DEFAULT '{}',
@@ -482,6 +482,7 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_contests_created_by ON contests (created_by)",
   "CREATE INDEX IF NOT EXISTS idx_contests_start_time ON contests (start_time)",
   "CREATE INDEX IF NOT EXISTS idx_contests_end_time ON contests (end_time)",
+  "CREATE INDEX IF NOT EXISTS idx_contest_clarifications_contest ON contest_clarifications (contest_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_contest_participants_user ON contest_participants (user_id)",
   // 客观题表索引（与 schema.ts 定义一致，PGlite 测试模式）
   "CREATE INDEX IF NOT EXISTS idx_objective_questions_paper_id ON objective_questions (paper_id)",

@@ -21,6 +21,7 @@ export interface Contest {
   is_public: boolean;
   has_password: boolean;
   affect_global_ranking: boolean;
+  created_by: string | null;
   announcement: string;
   status: ContestStatus;
   problem_count: number;
@@ -103,6 +104,31 @@ export interface ScoreRankingRow {
   problem_scores: ScoreProblemDetail[];
 }
 
+export interface ClarificationSender {
+  id: string;
+  username: string;
+}
+
+export interface ClarificationReply {
+  id: string;
+  content: string;
+  is_public: boolean;
+  created_at: string;
+  sender: ClarificationSender;
+}
+
+export interface Clarification {
+  id: string;
+  contest_id: string;
+  problem_id: string | null;
+  problem_label: string | null;
+  content: string;
+  is_public: boolean;
+  created_at: string;
+  sender: ClarificationSender;
+  replies: ClarificationReply[];
+}
+
 export interface Pagination {
   page: number;
   per_page: number;
@@ -111,6 +137,7 @@ export interface Pagination {
 }
 
 export function useContests() {
+  const { api } = useApi();
   const typeLabels: Record<ContestType, string> = {
     icpc: 'ICPC 罚时赛',
     ioi: 'IOI 实时赛',
@@ -135,5 +162,33 @@ export function useContests() {
     return 'bg-gray-100 text-text-secondary border-border';
   }
 
-  return { typeLabels, statusLabels, formatDateTime, formatDuration, statusClass };
+  // ── 竞赛答疑 API ─────────────────────────────────────────────
+  function listClarifications(contestId: string, query?: { page?: number; per_page?: number }) {
+    return api.get<{ data: Clarification[]; pagination: Pagination }>(
+      `/api/v1/contests/${contestId}/clarifications`,
+      { query, silent: true },
+    );
+  }
+
+  function askClarification(contestId: string, body: { content: string; problem_id?: string }) {
+    return api.post<{ data: Clarification }>(`/api/v1/contests/${contestId}/clarifications`, body);
+  }
+
+  function replyClarification(contestId: string, clarId: string, body: { content: string; is_public: boolean }) {
+    return api.post<{ data: ClarificationReply }>(
+      `/api/v1/contests/${contestId}/clarifications/${clarId}/reply`,
+      body,
+    );
+  }
+
+  return {
+    typeLabels,
+    statusLabels,
+    formatDateTime,
+    formatDuration,
+    statusClass,
+    listClarifications,
+    askClarification,
+    replyClarification,
+  };
 }

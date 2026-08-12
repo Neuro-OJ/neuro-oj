@@ -123,12 +123,19 @@ export interface FeedItem {
 export interface NotificationRow {
   notification: {
     id: string;
-    type: 'reply' | 'like' | 'follow' | 'moderation';
+    type: 'reply' | 'like' | 'follow' | 'moderation' | 'clarification';
     post_id: string | null;
     comment_id: string | null;
     read_at: string | null;
     created_at: string;
-    data: { status?: string; reason?: string };
+    data: {
+      status?: string;
+      reason?: string;
+      contest_id?: string;
+      clarification_id?: string;
+      problem_label?: string | null;
+      is_public?: boolean;
+    };
   };
   actor: { id: string; username: string } | null;
 }

@@ -3,6 +3,7 @@ import type { Contest, ContestProblem } from '~/composables/useContests'
 import { extractApiError } from '~/utils/apiError'
 
 const route = useRoute()
+const router = useRouter()
 const contestId = route.params.contestId as string
 const { isLoggedIn } = useAuth()
 const toast = useToast()
@@ -22,6 +23,40 @@ const contest = computed(() => data.value?.data ?? null)
 const problems = ref<ContestProblem[]>([])
 const problemsLoading = ref(false)
 const problemsError = ref('')
+
+// ── Tabs（详情 / 题目 / 答疑 / 排名），状态同步到 ?tab= query ─────────
+const TAB_NAMES = ['detail', 'problems', 'clarifications', 'ranking'] as const
+const activeTab = ref(0)
+const queryTab = route.query.tab
+const queryTabIndex = typeof queryTab === 'string'
+  ? TAB_NAMES.indexOf(queryTab as (typeof TAB_NAMES)[number])
+  : -1
+if (queryTabIndex >= 0) activeTab.value = queryTabIndex
+
+// tab → URL：切换时写入 ?tab=（replace，不产生历史记录）
+watch(activeTab, (value) => {
+  const tab = TAB_NAMES[value]
+  if (route.query.tab !== tab) {
+    router.replace({ query: { ...route.query, tab } })
+  }
+})
+
+// URL → tab：浏览器前进/后退或站内跳转带 tab 参数时同步
+watch(() => route.query.tab, (value) => {
+  const index = typeof value === 'string'
+    ? TAB_NAMES.indexOf(value as (typeof TAB_NAMES)[number])
+    : -1
+  if (index >= 0 && index !== activeTab.value) {
+    activeTab.value = index
+  }
+})
+
+const tabItems = [
+  { label: '详情', icon: 'i-lucide-info', slot: 'detail' },
+  { label: '题目', icon: 'i-lucide-list-checks', slot: 'problems' },
+  { label: '答疑', icon: 'i-lucide-message-circle-question', slot: 'clarifications' },
+  { label: '排名', icon: 'i-lucide-trophy', slot: 'ranking' },
+]
 
 const countdown = computed(() => {
   if (!contest.value) return ''
@@ -106,56 +141,76 @@ onUnmounted(() => {
                 <span class="flex items-center gap-2"><UIcon name="i-lucide-users" class="size-4" />{{ contest.participant_count }} 名参赛者</span>
               </div>
             </div>
-            <div class="grid gap-6 p-7 lg:grid-cols-[1fr_300px]">
-              <div class="space-y-6">
-                <div v-if="contest.announcement" class="rounded-lg border border-blue-200 bg-blue-50 p-4">
-                  <h2 class="mb-2 text-sm font-bold text-info-text">竞赛公告</h2>
-                  <MarkdownRenderer :content="contest.announcement" />
-                </div>
-                <div>
-                  <h2 class="mb-3 text-lg font-bold text-text">竞赛说明</h2>
-                  <MarkdownRenderer :content="contest.description || '暂无竞赛说明'" />
-                </div>
-              </div>
-              <aside class="space-y-3 rounded-xl border border-border bg-bg-page p-4">
-                <UButton color="primary" variant="outline" class="w-full gap-2 py-2.5 text-sm" :to="`/contests/${contest.id}/ranking`"><UIcon name="i-lucide-trophy" class="size-4" />查看排名</UButton>
-                <template v-if="!contest.is_registered && contest.status !== 'ended'">
-                  <input v-if="contest.has_password" v-model="password" type="password" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" placeholder="竞赛密码" @keyup.enter="register">
-                  <UButton color="primary" class="w-full gap-2 py-2.5 text-sm disabled:opacity-50" :disabled="registering" @click="register"><UIcon name="i-lucide-key-round" class="size-4" />{{ registering ? '报名中...' : '报名参赛' }}</UButton>
-                  <p v-if="registerError" class="text-xs text-error-text">{{ registerError }}</p>
-                </template>
-                <div v-else-if="contest.is_registered" class="rounded-lg bg-green-50 p-3 text-center text-sm font-semibold text-success-text">已报名参赛</div>
-                <p class="text-xs leading-5 text-text-muted">{{ contest.affect_global_ranking ? '本竞赛成绩计入全局解题统计' : '本竞赛成绩不计入全局解题统计' }}</p>
-              </aside>
-            </div>
           </section>
 
-          <section class="rounded-2xl border border-border bg-white p-6">
-            <div class="mb-4 flex items-center justify-between">
-              <h2 class="text-lg font-bold text-text">竞赛题目</h2>
-              <span v-if="contest.status === 'pending'" class="text-xs text-text-muted">开赛后可见</span>
-            </div>
-            <div v-if="problemsLoading" class="py-12 text-center text-sm text-text-muted">题目加载中...</div>
-            <div v-else-if="problemsError" class="py-8 text-center text-sm text-error-text">{{ problemsError }}</div>
-            <div v-else-if="problems.length" class="divide-y divide-border overflow-hidden rounded-xl border border-border">
-              <div v-for="problem in problems" :key="problem.problem_id" class="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-primary-bg">
-                <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-bg-dark font-mono text-sm font-bold text-white">{{ problem.label }}</span>
-                <NuxtLink :to="`/contests/${contest.id}/problems/${problem.label}`" class="min-w-0 flex-1 text-text no-underline">
-                  <div class="font-semibold">{{ problem.title }}</div>
-                  <div class="mt-1 text-xs text-text-muted">{{ problem.display_id }} · {{ problem.difficulty }}</div>
-                </NuxtLink>
-                <StatusBadge :status="problem.user_status === 'untouched' ? 'not_started' : problem.user_status" />
-                <UButton
-                  color="primary"
-                  size="sm"
-                  class="gap-1.5 px-3 py-1.5 text-xs"
-                  :to="`/editor/${problem.problem_id}?contest=${contest.id}&label=${problem.label}`"
-                >
-                  <UIcon name="i-lucide-pencil-ruler" class="size-3.5" />去做题
-                </UButton>
-              </div>
-            </div>
-            <div v-else class="py-12 text-center text-sm text-text-muted">{{ contest.is_registered ? '暂无题目' : '报名后可查看竞赛题目' }}</div>
+          <section class="overflow-hidden rounded-2xl border border-border bg-white p-4 shadow-card sm:p-6">
+            <UTabs v-model="activeTab" :items="tabItems" class="w-full">
+              <template #detail>
+                <div class="grid gap-6 p-2 pt-5 sm:p-4 sm:pt-6 lg:grid-cols-[1fr_300px]">
+                  <div class="space-y-6">
+                    <div v-if="contest.announcement" class="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                      <h2 class="mb-2 text-sm font-bold text-info-text">竞赛公告</h2>
+                      <MarkdownRenderer :content="contest.announcement" />
+                    </div>
+                    <div>
+                      <h2 class="mb-3 text-lg font-bold text-text">竞赛说明</h2>
+                      <MarkdownRenderer :content="contest.description || '暂无竞赛说明'" />
+                    </div>
+                  </div>
+                  <aside class="space-y-3 rounded-xl border border-border bg-bg-page p-4">
+                    <template v-if="!contest.is_registered && contest.status !== 'ended'">
+                      <input v-if="contest.has_password" v-model="password" type="password" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" placeholder="竞赛密码" @keyup.enter="register">
+                      <UButton color="primary" class="w-full gap-2 py-2.5 text-sm disabled:opacity-50" :disabled="registering" @click="register"><UIcon name="i-lucide-key-round" class="size-4" />{{ registering ? '报名中...' : '报名参赛' }}</UButton>
+                      <p v-if="registerError" class="text-xs text-error-text">{{ registerError }}</p>
+                    </template>
+                    <div v-else-if="contest.is_registered" class="rounded-lg bg-green-50 p-3 text-center text-sm font-semibold text-success-text">已报名参赛</div>
+                    <p class="text-xs leading-5 text-text-muted">{{ contest.affect_global_ranking ? '本竞赛成绩计入全局解题统计' : '本竞赛成绩不计入全局解题统计' }}</p>
+                  </aside>
+                </div>
+              </template>
+
+              <template #problems>
+                <div class="p-2 pt-5 sm:p-4 sm:pt-6">
+                  <div class="mb-4 flex items-center justify-between">
+                    <h2 class="text-lg font-bold text-text">竞赛题目</h2>
+                    <span v-if="contest.status === 'pending'" class="text-xs text-text-muted">开赛后可见</span>
+                  </div>
+                  <div v-if="problemsLoading" class="py-12 text-center text-sm text-text-muted">题目加载中...</div>
+                  <div v-else-if="problemsError" class="py-8 text-center text-sm text-error-text">{{ problemsError }}</div>
+                  <div v-else-if="problems.length" class="divide-y divide-border overflow-hidden rounded-xl border border-border">
+                    <div v-for="problem in problems" :key="problem.problem_id" class="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-primary-bg">
+                      <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-bg-dark font-mono text-sm font-bold text-white">{{ problem.label }}</span>
+                      <NuxtLink :to="`/contests/${contest.id}/problems/${problem.label}`" class="min-w-0 flex-1 text-text no-underline">
+                        <div class="font-semibold">{{ problem.title }}</div>
+                        <div class="mt-1 text-xs text-text-muted">{{ problem.display_id }} · {{ problem.difficulty }}</div>
+                      </NuxtLink>
+                      <StatusBadge :status="problem.user_status === 'untouched' ? 'not_started' : problem.user_status" />
+                      <UButton
+                        color="primary"
+                        size="sm"
+                        class="gap-1.5 px-3 py-1.5 text-xs"
+                        :to="`/editor/${problem.problem_id}?contest=${contest.id}&label=${problem.label}`"
+                      >
+                        <UIcon name="i-lucide-pencil-ruler" class="size-3.5" />去做题
+                      </UButton>
+                    </div>
+                  </div>
+                  <div v-else class="py-12 text-center text-sm text-text-muted">{{ contest.is_registered ? '暂无题目' : '报名后可查看竞赛题目' }}</div>
+                </div>
+              </template>
+
+              <template #clarifications>
+                <div class="p-2 pt-5 sm:p-4 sm:pt-6">
+                  <ClarificationsPanel :contest="contest" :problems="problems" />
+                </div>
+              </template>
+
+              <template #ranking>
+                <div class="p-2 pt-5 sm:p-4 sm:pt-6">
+                  <ContestRanking :contest-id="contest.id" />
+                </div>
+              </template>
+            </UTabs>
           </section>
         </div>
       </AsyncContent>
