@@ -17,16 +17,43 @@ import {
 } from "./helper.ts";
 
 const PNG_BYTES = new Uint8Array([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
-  0x49, 0x48, 0x44, 0x52,
+  0x89,
+  0x50,
+  0x4e,
+  0x47,
+  0x0d,
+  0x0a,
+  0x1a,
+  0x0a,
+  0x00,
+  0x00,
+  0x00,
+  0x0d,
+  0x49,
+  0x48,
+  0x44,
+  0x52,
 ]);
 const JPEG_BYTES = new Uint8Array([
-  0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
+  0xff,
+  0xd8,
+  0xff,
+  0xe0,
+  0x00,
+  0x10,
+  0x4a,
+  0x46,
+  0x49,
+  0x46,
+  0x00,
+  0x01,
 ]);
 
 function avatarForm(name: string, type: string, data: Uint8Array): FormData {
   const fd = new FormData();
-  fd.append("file", new File([data], name, { type }));
+  // .buffer cast：规避 Deno 2.x 下 Uint8Array<ArrayBufferLike> 与 BlobPart 的
+  // 泛型不兼容（TS2322），行为等价
+  fd.append("file", new File([data.buffer as ArrayBuffer], name, { type }));
   return fd;
 }
 
@@ -51,7 +78,11 @@ async function uploadAvatar(
 e2eTest("头像：上传/替换/删除全流程", async () => {
   const ts = Date.now();
   const username = `avatar_${ts}`;
-  const token = await registerUser(username, `${username}@test.com`, TEST_PASSWORD);
+  const token = await registerUser(
+    username,
+    `${username}@test.com`,
+    TEST_PASSWORD,
+  );
 
   // 当前用户 id
   const me = await apiGet("/api/v1/auth/me", token);
@@ -138,7 +169,9 @@ e2eTest("头像：超限文件与非法类型被拒", async () => {
   for (const [name, type, data] of cases) {
     const res = await uploadAvatar(token, avatarForm(name, type, data));
     if (res.status !== 400) {
-      throw new Error(`应拒绝 ${name}，实际 ${res.status} ${JSON.stringify(res.body)}`);
+      throw new Error(
+        `应拒绝 ${name}，实际 ${res.status} ${JSON.stringify(res.body)}`,
+      );
     }
   }
 

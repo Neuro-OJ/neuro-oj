@@ -292,7 +292,14 @@ export async function getUserProfileAggregate(
 export async function searchUsers(
   query: string,
   limit = 10,
-): Promise<{ id: string; username: string; avatar_url: string | null; created_at: string }[]> {
+): Promise<
+  {
+    id: string;
+    username: string;
+    avatar_url: string | null;
+    created_at: string;
+  }[]
+> {
   if (query.length < 2) {
     return [];
   }
