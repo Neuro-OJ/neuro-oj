@@ -8,6 +8,7 @@ export interface RankingRow {
   rank: number;
   user_id: string;
   username: string;
+  avatar_url: string | null;
   /** 独立通过的题目数 */
   solved_count: number;
   /** 总提交数 */

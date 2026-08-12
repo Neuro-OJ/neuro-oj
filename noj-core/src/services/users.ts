@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import {
   communityPosts,
@@ -19,7 +19,7 @@ import { scoreFromDb } from "../types/index.ts";
 import { invalidateBanCache } from "../lib/banCache.ts";
 import { logAudit } from "./audit-log.ts";
 import { getStorageProvider } from "../lib/storage/factory.ts";
-import { parseStorageUrl } from "../lib/storage/types.ts";
+import { isStorageUrl, parseStorageUrl } from "../lib/storage/types.ts";
 import type { UserResponse } from "../types/auth.ts";
 import { ROOT_USER_ID } from "../lib/constants.ts";
 import { getAdminUserIds, isUserAdmin } from "../lib/permissions.ts";
@@ -768,12 +768,45 @@ async function validateAvatarFile(file: File): Promise<AvatarFile> {
 /**
  * 判断两个存储 URL 是否指向同一存储对象。
  *
- * 以 key 为判等依据（同一 key 视为同一对象，校验和差异忽略）：
+ * 以 provider + key 为判等依据（同一 key 视为同一对象，校验和差异忽略）：
  * S3 固定 key 模式下替换头像会覆盖同一对象，新旧 URL 仅 checksum
  * 不同，直接比较字符串会误判为不同对象并删除刚写入的新文件。
+ * provider 不同（local vs s3）即使 key 相同也属于不同对象；
+ * 非 `noj-storage://` URL（脏数据）短路返回 false，不抛错。
  */
 export function sameStorageObject(a: string, b: string): boolean {
-  return parseStorageUrl(a).key === parseStorageUrl(b).key;
+  if (!isStorageUrl(a) || !isStorageUrl(b)) return false;
+  const pa = parseStorageUrl(a);
+  const pb = parseStorageUrl(b);
+  return pa.provider === pb.provider && pa.key === pb.key;
+}
+
+/**
+ * 清理旧头像文件（仅当无其他用户仍引用同一存储对象时）。
+ *
+ * local 内容寻址模式下，字节相同的头像共享同一存储对象（URL 相同），
+ * 直接删除会破坏仍引用它的其他用户的头像；S3 固定 key 按用户隔离
+ * （avatar/<userId>.<ext>），不可能共享，无需检查。
+ * 仍有引用时跳过删除——内容寻址下文件按内容哈希命名，保留不产生孤儿。
+ *
+ * @param db 数据库连接
+ * @param userId 当前操作的用户（排除其自身引用）
+ * @param oldUrl 待清理的旧头像 URL
+ * @throws 沿用 provider.delete 的异常语义（调用方按需静默）
+ */
+async function deleteAvatarIfUnreferenced(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+  oldUrl: string,
+): Promise<void> {
+  const provider = await getStorageProvider();
+  if (parseStorageUrl(oldUrl).provider === "local") {
+    const refs = await db.select({ id: users.id }).from(users)
+      .where(and(eq(users.avatar_url, oldUrl), ne(users.id, userId)))
+      .limit(1);
+    if (refs.length > 0) return; // 仍有其他用户引用，跳过删除
+  }
+  await provider.delete(oldUrl);
 }
 
 /**
@@ -807,11 +840,11 @@ export async function updateUserAvatar(
     .set({ avatar_url: newUrl, updated_at: new Date().toISOString() })
     .where(eq(users.id, userId));
 
-  // 3. 清理旧文件（幂等；同 key 同一对象不误删）
+  // 3. 清理旧文件（幂等；同 key 同一对象不误删；local 共享引用不误删）
   const oldUrl = old[0].avatar_url;
   if (oldUrl && !sameStorageObject(oldUrl, newUrl)) {
     try {
-      await provider.delete(oldUrl);
+      await deleteAvatarIfUnreferenced(db, userId, oldUrl);
     } catch {
       // 旧文件不存在时静默忽略
     }
@@ -837,9 +870,8 @@ export async function clearUserAvatar(
 
   const oldUrl = old[0].avatar_url;
   if (oldUrl) {
-    const provider = await getStorageProvider();
     try {
-      await provider.delete(oldUrl);
+      await deleteAvatarIfUnreferenced(db, userId, oldUrl);
     } catch {
       // 幂等：文件不存在时静默忽略
     }

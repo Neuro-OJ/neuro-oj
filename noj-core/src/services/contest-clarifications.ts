@@ -202,7 +202,8 @@ export async function createClarification(
     content,
     is_public: true,
     created_at: createdAt,
-    sender: senders.get(userId) ?? { id: userId, username: "未知用户" },
+    sender: senders.get(userId) ??
+      { id: userId, username: "未知用户", avatar_url: null },
     replies: [],
   };
 }
@@ -281,7 +282,8 @@ export async function replyToClarification(
     content,
     is_public: input.is_public,
     created_at: createdAt,
-    sender: senders.get(userId) ?? { id: userId, username: "未知用户" },
+    sender: senders.get(userId) ??
+      { id: userId, username: "未知用户", avatar_url: null },
   };
 }
 
@@ -376,6 +378,7 @@ export async function listClarifications(
     sender: senders.get(question.sender_id) ?? {
       id: question.sender_id,
       username: "未知用户",
+      avatar_url: null,
     },
     replies: replies.filter((row) => row.reply_to_id === question.id).map(
       (row) => ({
@@ -386,6 +389,7 @@ export async function listClarifications(
         sender: senders.get(row.sender_id) ?? {
           id: row.sender_id,
           username: "未知用户",
+          avatar_url: null,
         },
       }),
     ),
