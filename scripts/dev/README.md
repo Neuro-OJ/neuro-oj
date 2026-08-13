@@ -82,6 +82,60 @@ bash scripts/dev/devtool.sh init-env --merge
 
 ---
 
+## 国内开发环境：镜像与阈值调优
+
+国内网络直连 crates.io / npmjs.org 经常出现"几十 KB 文件下载超时"、被 cargo / npm 误判为"传输过慢"。建议配置镜像 + 放宽阈值，否则首次 `start judge` 或 `npm install` 可能跑半小时才察觉是卡死。
+
+### Cargo（noj-judge 编译）
+
+新建 `~/.cargo/config.toml`：
+
+```toml
+# 用 TUNA 镜像替代 crates.io；sparse 协议对小文件响应更稳定
+[source.crates-io]
+replace-with = "tuna"
+
+[source.tuna]
+registry = "sparse+https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/"
+
+[registries.tuna]
+index = "sparse+https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/"
+
+[net]
+# git 协议拉取用系统 git（部分镜像不支持 git protocol）
+git-fetch-with-cli = true
+# 默认 http.timeout=30 / low-speed-limit=10 极易触发"spurious network error"
+http.timeout = 300
+http.low-speed-limit = 1
+```
+
+> 不调 `http.low-speed-limit` 时，cargo 在 TUNA 下会反复打 `warning: spurious network error (3 tries remaining): transfer too slow: failed to transfer more than 10 bytes in 30s`，看起来在下载实际上什么也下不动。
+
+### npm（noj-ui 依赖）
+
+新建 `~/.npmrc`：
+
+```
+registry=https://registry.npmmirror.com
+```
+
+Deno 的 `nodeModulesDir: auto` 会读 `~/.npmrc`；`deno task dev` 首次启动 Nuxt 时仍要数分钟下载 `@iconify-json/lucide` 等大包，属正常现象。
+
+### PATH 持久化（macOS + brew rustup）
+
+brew 安装的 `rustup` formula 不像 `rustup-init` 自动生成 `~/.cargo/bin` shim，需要手动软链并写入 shell rc：
+
+```bash
+mkdir -p ~/.cargo/bin
+for tool in cargo rustc rustup rustfmt cargo-clippy clippy; do
+  ln -sf "$HOME/.rustup/toolchains/stable-aarch64-apple-darwin/bin/$tool" \
+    "$HOME/.cargo/bin/$tool"
+done
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc
+```
+
+---
+
 ## 故障排查
 
 详细 FAQ 见：

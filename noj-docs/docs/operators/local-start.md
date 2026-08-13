@@ -13,6 +13,8 @@
 - Docker（noj-judge 评测沙箱必需）
 - 系统 `zip` 命令
 
+> 国内网络环境下，请额外配置 Cargo / npm 镜像与超时阈值，详见 [`scripts/dev/README.md` §国内开发环境：镜像与阈值调优](../../scripts/dev/README.md#国内开发环境镜像与阈值调优)。不配置时首次 `start judge` 可能卡住半小时才暴露。
+
 ## 开发期脚本（devtool.sh，不成熟）
 
 ::: danger 部署方式尚未成熟
