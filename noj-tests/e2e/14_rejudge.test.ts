@@ -98,7 +98,7 @@ e2eTest("[e2e/rejudge] 5.1 管理员单条重测完成提交", async () => {
     console.log("  ✓ 重测已发起: " + (body.message || ""));
 
     // 等待重测完成
-    const result = await pollSubmission(adminToken, submissionId, 15, 2000);
+    const result = await pollSubmission(adminToken, submissionId);
     if (result.verdict !== "Accepted") {
       throw new Error("重测结果期望 Accepted, 实际 " + result.verdict);
     }
