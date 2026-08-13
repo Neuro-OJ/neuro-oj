@@ -65,7 +65,7 @@ e2eTest("[e2e/pipeline] 3/8 TLE", async () => {
       PROBLEM_ID,
       CODE_SAMPLES.timeLimitExceeded,
     );
-    const result = await pollSubmission(token, id, 10, 2000);
+    const result = await pollSubmission(token, id);
     if (result.verdict !== "TimeLimitExceeded") {
       throw new Error("期望 TLE, 实际 " + result.verdict);
     }
@@ -114,7 +114,7 @@ e2eTest("[e2e/pipeline] 6/8 Memory Limit Exceeded", async () => {
       PROBLEM_ID,
       CODE_SAMPLES.memoryLimitExceeded,
     );
-    const result = await pollSubmission(token, id, 15, 2000);
+    const result = await pollSubmission(token, id);
     if (
       result.verdict !== "MemoryLimitExceeded" &&
       result.verdict !== "RuntimeError"
@@ -131,7 +131,7 @@ e2eTest("[e2e/pipeline] 7/8 Runtime Error", async () => {
       PROBLEM_ID,
       CODE_SAMPLES.runtimeError,
     );
-    const result = await pollSubmission(token, id, 15, 2000);
+    const result = await pollSubmission(token, id);
     if (result.verdict !== "RuntimeError") {
       throw new Error("期望 RuntimeError, 实际 " + result.verdict);
     }
@@ -144,7 +144,7 @@ e2eTest("[e2e/pipeline] 8/8 Syntax Error", async () => {
       PROBLEM_ID,
       CODE_SAMPLES.syntaxError,
     );
-    const result = await pollSubmission(token, id, 15, 2000);
+    const result = await pollSubmission(token, id);
     if (
       result.verdict !== "CompileError" && result.verdict !== "RuntimeError"
     ) {

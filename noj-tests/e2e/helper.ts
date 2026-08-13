@@ -346,22 +346,33 @@ export async function submitCode(
 
 /**
  * 轮询 submission 直到完成或超时。
+ *
+ * 默认阈值 90s（45 次 × 2s）：CI 上多组 E2E 并行提交真实评测时，
+ * judge 队列排队 + 容器启动开销叠加，原 30s 阈值会误判为超时。
+ * 超时错误会附带最后一次观测到的 status / HTTP 码，便于区分
+ * 「评测排队未完成」与「接口异常」。
  */
 export async function pollSubmission(
   token: string,
   submissionId: string,
-  maxRetries = 15,
+  maxRetries = 45,
   intervalMs = 2000,
 ): Promise<{ status: string; verdict: string; score: number }> {
+  // 记录最后一次观测状态，用于超时时给出可诊断的错误信息
+  let lastStatus = "(未取得)";
+  let lastHttpStatus = 0;
+
   for (let i = 0; i < maxRetries; i++) {
     const res = await apiGet(
       `/api/v1/submissions/${submissionId}`,
       token,
     );
+    lastHttpStatus = res.status;
 
     if (res.status === 200) {
       const data = (res.body as { data: Record<string, unknown> }).data;
       const subStatus = data.status as string;
+      lastStatus = subStatus;
 
       if (subStatus === "finished") {
         // API 返回 data.result.status / data.result.score（见 getSubmission）
@@ -373,8 +384,10 @@ export async function pollSubmission(
     }
     await new Promise((r) => setTimeout(r, intervalMs));
   }
+  const timeoutMs = maxRetries * intervalMs;
+  const detail = `status=${lastStatus}, HTTP=${lastHttpStatus}`;
   throw new Error(
-    `Submission ${submissionId} 超时（${maxRetries * intervalMs}ms 未完成）`,
+    `Submission ${submissionId} 超时（${timeoutMs}ms 未完成），最后状态 ${detail}`,
   );
 }
 
