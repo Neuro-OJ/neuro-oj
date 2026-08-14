@@ -257,43 +257,43 @@ export const judgeImages = pgTable(
 );
 
 /**
- * 分类表。
- * 树形结构，通过 parent_id 自引用实现多级分类。
- * level 字段缓存层级深度（顶级为 0），避免递归计算。
+ * 标签表（issue #223：category 系统退役，双类标签取代）。
+ * 扁平结构（无树）：name 全局唯一（跨 kind）。
+ * kind：problem=题目标签（人人可见）｜algorithm=算法标签（通过题目后可见）。
  */
-export const categories = pgTable(
-  "categories",
+export const tags = pgTable(
+  "tags",
   {
     id: text("id").primaryKey(),
-    name: text("name").notNull(),
-    slug: text("slug").notNull().unique(),
-    description: text("description").notNull().default(""),
-    // deno-lint-ignore no-explicit-any
-    parent_id: text("parent_id").references((): any => categories.id, {
-      onDelete: "set null",
-    }),
-    level: integer("level").notNull().default(0),
+    name: text("name").notNull().unique(),
+    kind: text("kind").notNull(),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
   },
+  (table) => ({
+    kindCheck: check(
+      "tags_kind_check",
+      sql`${table.kind} IN ('problem', 'algorithm')`,
+    ),
+  }),
 );
 
 /**
- * 题目-分类关联表。
- * 多对多关系，级联删除。
+ * 题目-标签关联表。
+ * 多对多关系，双级联删除。
  */
-export const problemsCategories = pgTable(
-  "problems_categories",
+export const problemTags = pgTable(
+  "problem_tags",
   {
     problem_id: text("problem_id")
       .notNull()
       .references(() => problems.id, { onDelete: "cascade" }),
-    category_id: text("category_id")
+    tag_id: text("tag_id")
       .notNull()
-      .references(() => categories.id, { onDelete: "cascade" }),
+      .references(() => tags.id, { onDelete: "cascade" }),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.problem_id, table.category_id] }),
+    pk: primaryKey({ columns: [table.problem_id, table.tag_id] }),
   }),
 );
 
@@ -756,7 +756,10 @@ export const auditLogs = pgTable(
         'problems.delete',
         'problems.runtime_config_changed',
         'problems.imported',
-        'categories.delete',
+        'tags.create',
+        'tags.update',
+        'tags.delete',
+        'tags.merge',
         'submissions.rejudge',
         'settings.update',
         'ip_ban.create',
@@ -870,7 +873,7 @@ export const roles = pgTable(
 /**
  * RBAC 权限定义表。
  * 每个权限由 resource + action 唯一标识，格式 resource:action。
- * 系统预置约 22 个权限，覆盖 problem/submission/user/category/system 五个资源域。
+ * 系统预置约 22 个权限，覆盖 problem/submission/user/tag/system 五个资源域。
  */
 export const permissions = pgTable(
   "permissions",

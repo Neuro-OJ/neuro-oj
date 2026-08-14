@@ -95,6 +95,11 @@ export async function searchProblems(
       p.search_vector @@ websearch_to_tsquery('simple', ${q})
       OR p.title ILIKE ${likeQ} ESCAPE '\\'
       OR (p.type || p.number::text) ILIKE ${likeQ} ESCAPE '\\'
+      OR EXISTS (
+        SELECT 1 FROM problem_tags pt
+        JOIN tags t ON t.id = pt.tag_id
+        WHERE pt.problem_id = p.id AND t.name ILIKE ${likeQ} ESCAPE '\\'
+      )
     )
     AND (
       ${includeUType} = TRUE
@@ -136,6 +141,11 @@ export async function searchProblems(
       p.search_vector @@ websearch_to_tsquery('simple', ${q})
       OR p.title ILIKE ${likeQ} ESCAPE '\\'
       OR (p.type || p.number::text) ILIKE ${likeQ} ESCAPE '\\'
+      OR EXISTS (
+        SELECT 1 FROM problem_tags pt
+        JOIN tags t ON t.id = pt.tag_id
+        WHERE pt.problem_id = p.id AND t.name ILIKE ${likeQ} ESCAPE '\\'
+      )
     )
     AND (
       ${includeUType} = TRUE

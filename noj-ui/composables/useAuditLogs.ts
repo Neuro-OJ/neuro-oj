@@ -9,7 +9,10 @@ export type AuditAction =
   | 'users.ban'
   | 'users.unban'
   | 'problems.delete'
-  | 'categories.delete'
+  | 'tags.create'
+  | 'tags.update'
+  | 'tags.delete'
+  | 'tags.merge'
   | 'submissions.rejudge'
   | 'settings.update';
 

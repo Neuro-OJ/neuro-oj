@@ -76,7 +76,7 @@
 
 ### Requirement: 标签合并 API
 
-系统 SHALL 提供 `POST /api/v1/tags/:id/merge`（body: `{target_id}`），仅拥有 `tag:manage` 权限的用户可调用（默认仅 admin，可经角色授权配置）。合并在单事务内完成：将 source 标签的全部 `problem_tags` 关联重指向 target（冲突关联 ON CONFLICT DO NOTHING）→ 删除 source → 写入 `tags.merge` 审计。合并结果保留 target 的 name 与 kind。
+系统 SHALL 提供 `POST /api/v1/tags/:id/merge`（body: `{target_id}`），仅拥有 `tag:manage` 权限的用户可调用（默认仅 admin，可经角色授权配置）。合并在单事务内完成：将 source 标签的全部 `problem_tags` 关联重指向 target（先删除与 target 冲突的重复关联，再重指向剩余关联）→ 删除 source → 写入 `tags.merge` 审计。合并结果保留 target 的 name 与 kind。
 
 #### Scenario: 合并成功
 

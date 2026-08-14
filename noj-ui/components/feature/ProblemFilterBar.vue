@@ -1,23 +1,23 @@
 <script setup lang="ts">
-interface Category {
+interface Tag {
   id: string
   name: string
-  slug: string
+  kind: 'problem' | 'algorithm'
 }
 
 interface Props {
   keyword: string
   difficulty: string
-  categoryId: string | null
+  tagId: string | null
   problemType: string
-  categories: Category[]
+  tags: Tag[]
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
   'update:keyword': [value: string]
   'update:difficulty': [value: string]
-  'update:categoryId': [value: string | null]
+  'update:tagId': [value: string | null]
   'update:problemType': [value: string]
 }>()
 
@@ -58,9 +58,22 @@ function selectDifficulty(value: string) {
   emit('update:difficulty', value === props.difficulty ? '' : value)
 }
 
-function selectCategory(value: string) {
-  emit('update:categoryId', value === props.categoryId ? null : value)
+function selectTag(value: string) {
+  emit('update:tagId', value === props.tagId ? null : value)
 }
+
+// 标签选项：按 kind 排序（题目标签在前），label 带 kind 前缀区分
+const tagItems = computed(() =>
+  [...props.tags]
+    .sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === 'problem' ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+    .map((t) => ({
+      label: `${t.kind === 'algorithm' ? '算法标签' : '题目标签'}: ${t.name}`,
+      value: t.id,
+    })),
+)
 
 function selectType(value: string) {
   emit('update:problemType', value === props.problemType ? '' : value)
@@ -145,17 +158,17 @@ const activeDifficulty = computed(() => difficulties.some((d) => d.value === pro
       </button>
     </div>
 
-    <!-- 分类筛选 -->
-    <div v-if="categories.length > 0" class="flex items-center gap-1.5">
-      <span class="text-xs text-text-muted mr-1" id="cat-label">分类:</span>
+    <!-- 标签筛选 -->
+    <div v-if="tags.length > 0" class="flex items-center gap-1.5">
+      <span class="text-xs text-text-muted mr-1" id="tag-label">标签:</span>
       <USelect
-        :model-value="categoryId"
-        :items="categories.map((cat) => ({ label: cat.name, value: cat.id }))"
+        :model-value="tagId"
+        :items="tagItems"
         size="xs"
-        class="min-w-[130px]"
-        placeholder="全部分类"
-        aria-label="按分类筛选"
-        @update:model-value="selectCategory"
+        class="min-w-[150px]"
+        placeholder="全部标签"
+        aria-label="按标签筛选"
+        @update:model-value="selectTag"
       />
     </div>
   </div>

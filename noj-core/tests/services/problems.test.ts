@@ -8,7 +8,7 @@ import {
   updateProblem,
 } from "../../src/services/problems.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { auditLogs, categories, users } from "../../src/db/schema.ts";
+import { auditLogs, tags, users } from "../../src/db/schema.ts";
 import { BadRequestError, NotFoundError } from "../../src/lib/errors.ts";
 import { enterTestContext } from "../../src/lib/requestContext.ts";
 
@@ -88,7 +88,8 @@ Deno.test({
     });
     assertEquals(problem.title, `临时创建题 ${ts}`);
     assertEquals(problem.difficulty, "easy");
-    assertEquals(problem.categories, []);
+    assertEquals(problem.tags, []);
+    assertEquals(problem.has_hidden_algorithm_tags, false);
   },
 });
 
@@ -112,39 +113,36 @@ Deno.test({
 });
 
 Deno.test({
-  name: "problems service: 创建题目时关联分类",
+  name: "problems service: 创建题目时关联标签",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    // 先创建一个分类
+    // 先创建一个标签
     const db = getDb();
-    const catId = `test-cat-${ts}`;
-    await db.insert(categories).values({
+    const catId = `test-tag-${ts}`;
+    await db.insert(tags).values({
       id: catId,
-      name: "测试分类",
-      slug: `test-cat-${ts}`,
-      description: "",
-      parent_id: null,
-      level: 0,
+      name: `测试标签-${ts}`,
+      kind: "problem",
       created_at: now,
       updated_at: now,
     });
 
     const problem = await createProblem({
-      title: "带分类的题目",
+      title: "带标签的题目",
       description: "描述",
       difficulty: "medium",
       runtime_config: VALID_RUNTIME_CONFIG,
-      category_ids: [catId],
+      tag_ids: [catId],
     });
-    assertEquals(problem.categories.length, 1);
-    assertEquals(problem.categories[0].id, catId);
+    assertEquals(problem.tags.length, 1);
+    assertEquals(problem.tags[0].id, catId);
   },
 });
 
 Deno.test({
-  name: "problems service: 获取题目详情含分类",
+  name: "problems service: 获取题目详情含标签",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -152,7 +150,7 @@ Deno.test({
     const problem = await getProblem(TEST_PROBLEM_ID);
     assertEquals(problem.id, TEST_PROBLEM_ID);
     assertEquals(problem.difficulty, "easy");
-    assertEquals(Array.isArray(problem.categories), true);
+    assertEquals(Array.isArray(problem.tags), true);
   },
 });
 

@@ -14,258 +14,282 @@ import {
   apiGet,
   apiPatch,
   apiPost,
+  e2eTest,
   getAdminToken,
   isE2E,
   registerUser,
-  waitForServer,
-  e2eTest,
   TEST_PASSWORD,
-
+  waitForServer,
 } from "./helper.ts";
 
 let adminToken = "";
 let userToken = "";
 let targetUserId = "";
 let problemId = "";
-let categoryId = "";
+let tagId = "";
 let adminRoleId = "";
 const ts = Date.now().toString(36);
 
 e2eTest("[e2e/audit-log] Setup", async () => {
-    if (!isE2E) return;
-    await waitForServer();
-    adminToken = await getAdminToken();
+  if (!isE2E) return;
+  await waitForServer();
+  adminToken = await getAdminToken();
 
-    // 获取 admin 角色 ID
-    const rolesRes = await apiGet("/api/v1/admin/roles", adminToken);
-    const roles =
-      (rolesRes.body as { data: Array<{ id: string; name: string }> }).data ??
-        [];
-    const adminRole = roles.find((r) => r.name === "admin");
-    if (adminRole) adminRoleId = adminRole.id;
+  // 获取 admin 角色 ID
+  const rolesRes = await apiGet("/api/v1/admin/roles", adminToken);
+  const roles =
+    (rolesRes.body as { data: Array<{ id: string; name: string }> }).data ??
+      [];
+  const adminRole = roles.find((r) => r.name === "admin");
+  if (adminRole) adminRoleId = adminRole.id;
 
-    // 注册普通用户（用于 role_change/ban/unban 操作）
-    userToken = await registerUser(
-      "audit_user_" + ts,
-      "audit_user_" + ts + "@test.com",
-      TEST_PASSWORD,
-    );
-    const me = await apiGet("/api/v1/auth/me", userToken);
-    targetUserId = (me.body as { data: { id: string } }).data.id;
+  // 注册普通用户（用于 role_change/ban/unban 操作）
+  userToken = await registerUser(
+    "audit_user_" + ts,
+    "audit_user_" + ts + "@test.com",
+    TEST_PASSWORD,
+  );
+  const me = await apiGet("/api/v1/auth/me", userToken);
+  targetUserId = (me.body as { data: { id: string } }).data.id;
 
-    // 创建题目（用于 problems.delete 审计）
-    const probRes = await apiPost("/api/v1/problems", {
-      title: "审计删除测试题",
-      description: "将被删除以产生审计日志",
-      difficulty: "easy",
-      runtime_config: {
-        evaluator: {
-          image: "noj-evaluator-python",
-          command: "python3 /workspace/evaluate.py",
-          time_limit_ms: 5000,
-          memory_limit_mb: 512,
-        },
-
-        solution: {
-          image: "noj-solution-python",
-          call_timeout_ms: 2000,
-          memory_limit_mb: 512,
-        },
+  // 创建题目（用于 problems.delete 审计）
+  const probRes = await apiPost("/api/v1/problems", {
+    title: "审计删除测试题",
+    description: "将被删除以产生审计日志",
+    difficulty: "easy",
+    runtime_config: {
+      evaluator: {
+        image: "noj-evaluator-python",
+        command: "python3 /workspace/evaluate.py",
+        time_limit_ms: 5000,
+        memory_limit_mb: 512,
       },
-      type: "P",
-    }, adminToken);
-    if (probRes.status !== 201) throw new Error("创建题目失败");
-    problemId = (probRes.body as { data: { id: string } }).data.id;
 
-    // 创建分类（用于 categories.delete 审计）
-    const catRes = await apiPost("/api/v1/categories", {
-      name: "审计测试分类",
-      slug: "audit-cat-" + ts,
-    }, adminToken);
-    if (catRes.status !== 201) {
-      // 可能 slug 已存在
-      const cRes = await apiPost("/api/v1/categories", {
-        name: "审计测试分类" + ts,
-        slug: "audit-cat-" + ts + "-alt",
-      }, adminToken);
-      if (cRes.status !== 201) throw new Error("创建分类失败");
-      categoryId = (cRes.body as { data: { id: string } }).data.id;
-    } else {
-      categoryId = (catRes.body as { data: { id: string } }).data.id;
-    }
+      solution: {
+        image: "noj-solution-python",
+        call_timeout_ms: 2000,
+        memory_limit_mb: 512,
+      },
+    },
+    type: "P",
+  }, adminToken);
+  if (probRes.status !== 201) throw new Error("创建题目失败");
+  problemId = (probRes.body as { data: { id: string } }).data.id;
 
-    console.log("  ✓ 管理员已登录，测试资源已创建");
-  });
+  // 创建标签（用于 tags.delete / tags.merge 审计）
+  const tagRes = await apiPost("/api/v1/tags", {
+    name: "审计测试标签" + ts,
+    kind: "problem",
+  }, adminToken);
+  if (tagRes.status !== 201) throw new Error("创建标签失败");
+  tagId = (tagRes.body as { data: { id: string } }).data.id;
+
+  console.log("  ✓ 管理员已登录，测试资源已创建");
+});
 
 // ── 执行 7 类操作 ──
 
 e2eTest("[e2e/audit-log] 3.1a role_change 产生审计记录", async () => {
-    if (!isE2E) return;
-    // 先提升为 admin，再降回 user 确保产生记录
-    const upRes = await apiPatch(
-      `/api/v1/admin/users/${targetUserId}/role`,
-      { role_ids: [adminRoleId] },
-      adminToken,
+  if (!isE2E) return;
+  // 先提升为 admin，再降回 user 确保产生记录
+  const upRes = await apiPatch(
+    `/api/v1/admin/users/${targetUserId}/role`,
+    { role_ids: [adminRoleId] },
+    adminToken,
+  );
+  if (upRes.status !== 200) {
+    throw new Error(
+      "提权失败: " + upRes.status + " " + JSON.stringify(upRes.body),
     );
-    if (upRes.status !== 200) {
-      throw new Error(
-        "提权失败: " + upRes.status + " " + JSON.stringify(upRes.body),
-      );
-    }
+  }
 
-    const downRes = await apiPatch(
-      `/api/v1/admin/users/${targetUserId}/role`,
-      { role_ids: [] },
-      adminToken,
-    );
-    // 降权用空数组可能失败（"用户必须至少拥有一个角色"），需用 user 角色 ID
-    if (downRes.status !== 200) {
-      // 降权失败，尝试用 user 角色
-      const rolesRes2 = await apiGet("/api/v1/admin/roles", adminToken);
-      const roles2 =
-        (rolesRes2.body as { data: Array<{ id: string; name: string }> })
-          .data ?? [];
-      const userRole = roles2.find((r) => r.name === "user");
-      if (userRole) {
-        const downRes2 = await apiPatch(
-          `/api/v1/admin/users/${targetUserId}/role`,
-          { role_ids: [userRole.id] },
-          adminToken,
-        );
-        if (downRes2.status !== 200) {
-          throw new Error("降权失败: " + downRes2.status);
-        }
+  const downRes = await apiPatch(
+    `/api/v1/admin/users/${targetUserId}/role`,
+    { role_ids: [] },
+    adminToken,
+  );
+  // 降权用空数组可能失败（"用户必须至少拥有一个角色"），需用 user 角色 ID
+  if (downRes.status !== 200) {
+    // 降权失败，尝试用 user 角色
+    const rolesRes2 = await apiGet("/api/v1/admin/roles", adminToken);
+    const roles2 =
+      (rolesRes2.body as { data: Array<{ id: string; name: string }> })
+        .data ?? [];
+    const userRole = roles2.find((r) => r.name === "user");
+    if (userRole) {
+      const downRes2 = await apiPatch(
+        `/api/v1/admin/users/${targetUserId}/role`,
+        { role_ids: [userRole.id] },
+        adminToken,
+      );
+      if (downRes2.status !== 200) {
+        throw new Error("降权失败: " + downRes2.status);
       }
     }
+  }
 
-    // 验证审计记录
-    const logs = await apiGet(
-      "/api/v1/admin/audit-logs?action=users.role_change",
-      adminToken,
-    );
-    const data = (logs.body as { data: Array<unknown> }).data;
-    if (data.length < 2) {
-      console.log("  ⚠ role_change 记录数不足: " + data.length);
-    } else {
-      console.log("  ✓ role_change 审计记录: " + data.length + " 条");
-    }
-  });
+  // 验证审计记录
+  const logs = await apiGet(
+    "/api/v1/admin/audit-logs?action=users.role_change",
+    adminToken,
+  );
+  const data = (logs.body as { data: Array<unknown> }).data;
+  if (data.length < 2) {
+    console.log("  ⚠ role_change 记录数不足: " + data.length);
+  } else {
+    console.log("  ✓ role_change 审计记录: " + data.length + " 条");
+  }
+});
 
 e2eTest("[e2e/audit-log] 3.1b ban/unban 产生审计记录", async () => {
-    if (!isE2E) return;
-    const banRes = await apiPatch(
-      `/api/v1/admin/users/${targetUserId}/ban`,
-      { reason: "E2E 测试封禁" },
-      adminToken,
-    );
-    if (banRes.status !== 200) throw new Error("封禁失败: " + banRes.status);
+  if (!isE2E) return;
+  const banRes = await apiPatch(
+    `/api/v1/admin/users/${targetUserId}/ban`,
+    { reason: "E2E 测试封禁" },
+    adminToken,
+  );
+  if (banRes.status !== 200) throw new Error("封禁失败: " + banRes.status);
 
-    const unbanRes = await apiPatch(
-      `/api/v1/admin/users/${targetUserId}/unban`,
-      {},
-      adminToken,
-    );
-    if (unbanRes.status !== 200) {
-      throw new Error("解封失败: " + unbanRes.status);
-    }
+  const unbanRes = await apiPatch(
+    `/api/v1/admin/users/${targetUserId}/unban`,
+    {},
+    adminToken,
+  );
+  if (unbanRes.status !== 200) {
+    throw new Error("解封失败: " + unbanRes.status);
+  }
 
-    const banLogs = await apiGet(
-      "/api/v1/admin/audit-logs?action=users.ban",
-      adminToken,
-    );
-    const banData = (banLogs.body as { data: Array<unknown> }).data;
-    console.log("  ✓ ban 审计记录: " + banData.length + " 条");
+  const banLogs = await apiGet(
+    "/api/v1/admin/audit-logs?action=users.ban",
+    adminToken,
+  );
+  const banData = (banLogs.body as { data: Array<unknown> }).data;
+  console.log("  ✓ ban 审计记录: " + banData.length + " 条");
 
-    const unbanLogs = await apiGet(
-      "/api/v1/admin/audit-logs?action=users.unban",
-      adminToken,
-    );
-    const unbanData = (unbanLogs.body as { data: Array<unknown> }).data;
-    console.log("  ✓ unban 审计记录: " + unbanData.length + " 条");
-  });
+  const unbanLogs = await apiGet(
+    "/api/v1/admin/audit-logs?action=users.unban",
+    adminToken,
+  );
+  const unbanData = (unbanLogs.body as { data: Array<unknown> }).data;
+  console.log("  ✓ unban 审计记录: " + unbanData.length + " 条");
+});
 
 e2eTest("[e2e/audit-log] 3.1c problems.delete 产生审计记录", async () => {
-    if (!isE2E) return;
-    const delRes = await apiDelete(
-      `/api/v1/problems/${problemId}`,
-      adminToken,
-    );
-    if (delRes.status !== 200 && delRes.status !== 204) {
-      throw new Error("删除题目失败: " + delRes.status);
-    }
+  if (!isE2E) return;
+  const delRes = await apiDelete(
+    `/api/v1/problems/${problemId}`,
+    adminToken,
+  );
+  if (delRes.status !== 200 && delRes.status !== 204) {
+    throw new Error("删除题目失败: " + delRes.status);
+  }
 
-    const logs = await apiGet(
-      "/api/v1/admin/audit-logs?action=problems.delete",
-      adminToken,
-    );
-    const data = (logs.body as { data: Array<unknown> }).data;
-    if (data.length === 0) {
-      throw new Error("problems.delete 审计记录未找到");
-    }
-    console.log("  ✓ problems.delete 审计记录: " + data.length + " 条");
-  });
+  const logs = await apiGet(
+    "/api/v1/admin/audit-logs?action=problems.delete",
+    adminToken,
+  );
+  const data = (logs.body as { data: Array<unknown> }).data;
+  if (data.length === 0) {
+    throw new Error("problems.delete 审计记录未找到");
+  }
+  console.log("  ✓ problems.delete 审计记录: " + data.length + " 条");
+});
 
-e2eTest("[e2e/audit-log] 3.1d categories.delete 产生审计记录", async () => {
-    if (!isE2E) return;
-    const delRes = await apiDelete(
-      `/api/v1/categories/${categoryId}`,
-      adminToken,
-    );
-    if (delRes.status !== 200 && delRes.status !== 204) {
-      throw new Error("删除分类失败: " + delRes.status);
-    }
+e2eTest("[e2e/audit-log] 3.1d tags.delete 产生审计记录", async () => {
+  if (!isE2E) return;
+  const delRes = await apiDelete(
+    `/api/v1/tags/${tagId}`,
+    adminToken,
+  );
+  if (delRes.status !== 200 && delRes.status !== 204) {
+    throw new Error("删除标签失败: " + delRes.status);
+  }
 
-    const logs = await apiGet(
-      "/api/v1/admin/audit-logs?action=categories.delete",
-      adminToken,
-    );
-    const data = (logs.body as { data: Array<unknown> }).data;
-    if (data.length === 0) {
-      throw new Error("categories.delete 审计记录未找到");
-    }
-    console.log("  ✓ categories.delete 审计记录: " + data.length + " 条");
-  });
+  const logs = await apiGet(
+    "/api/v1/admin/audit-logs?action=tags.delete",
+    adminToken,
+  );
+  const data = (logs.body as { data: Array<unknown> }).data;
+  if (data.length === 0) {
+    throw new Error("tags.delete 审计记录未找到");
+  }
+  console.log("  ✓ tags.delete 审计记录: " + data.length + " 条");
+});
+
+e2eTest("[e2e/audit-log] 3.1e tags.merge 产生审计记录", async () => {
+  if (!isE2E) return;
+  // 重建两个标签用于合并审计
+  const srcRes = await apiPost("/api/v1/tags", {
+    name: "审计合并源" + ts,
+    kind: "problem",
+  }, adminToken);
+  if (srcRes.status !== 201) throw new Error("创建源标签失败");
+  const srcId = (srcRes.body as { data: { id: string } }).data.id;
+  const dstRes = await apiPost("/api/v1/tags", {
+    name: "审计合并目标" + ts,
+    kind: "problem",
+  }, adminToken);
+  if (dstRes.status !== 201) throw new Error("创建目标标签失败");
+  const dstId = (dstRes.body as { data: { id: string } }).data.id;
+
+  const mergeRes = await apiPost(
+    `/api/v1/tags/${srcId}/merge`,
+    { target_id: dstId },
+    adminToken,
+  );
+  if (mergeRes.status !== 204) throw new Error("合并失败: " + mergeRes.status);
+
+  const logs = await apiGet(
+    "/api/v1/admin/audit-logs?action=tags.merge",
+    adminToken,
+  );
+  const data = (logs.body as { data: Array<unknown> }).data;
+  if (data.length === 0) {
+    throw new Error("tags.merge 审计记录未找到");
+  }
+  console.log("  ✓ tags.merge 审计记录: " + data.length + " 条");
+});
 
 // ── 列表查询 ──
 
 e2eTest("[e2e/audit-log] 3.2a 时间筛选", async () => {
-    if (!isE2E) return;
-    const now = new Date();
-    const from = new Date(now.getTime() - 3600000).toISOString(); // 1h ago
-    const to = now.toISOString();
-    const logs = await apiGet(
-      `/api/v1/admin/audit-logs?from=${from}&to=${to}`,
-      adminToken,
-    );
-    if (logs.status !== 200) throw new Error("时间筛选失败: " + logs.status);
-    const data =
-      (logs.body as { data: Array<unknown>; pagination: { total: number } })
-        .data;
-    console.log("  ✓ 时间筛选返回 " + data.length + " 条记录");
-  });
+  if (!isE2E) return;
+  const now = new Date();
+  const from = new Date(now.getTime() - 3600000).toISOString(); // 1h ago
+  const to = now.toISOString();
+  const logs = await apiGet(
+    `/api/v1/admin/audit-logs?from=${from}&to=${to}`,
+    adminToken,
+  );
+  if (logs.status !== 200) throw new Error("时间筛选失败: " + logs.status);
+  const data =
+    (logs.body as { data: Array<unknown>; pagination: { total: number } })
+      .data;
+  console.log("  ✓ 时间筛选返回 " + data.length + " 条记录");
+});
 
 e2eTest("[e2e/audit-log] 3.2b 分页正确", async () => {
-    if (!isE2E) return;
-    const logs = await apiGet(
-      "/api/v1/admin/audit-logs?per_page=3&page=1",
-      adminToken,
-    );
-    if (logs.status !== 200) throw new Error("分页失败: " + logs.status);
-    const body = logs.body as {
-      data: Array<unknown>;
-      pagination: { per_page: number };
-    };
-    if (body.data.length > 3) {
-      throw new Error("per_page=3 但返回 " + body.data.length);
-    }
-    console.log("  ✓ 分页正确（per_page=" + body.data.length + "）");
-  });
+  if (!isE2E) return;
+  const logs = await apiGet(
+    "/api/v1/admin/audit-logs?per_page=3&page=1",
+    adminToken,
+  );
+  if (logs.status !== 200) throw new Error("分页失败: " + logs.status);
+  const body = logs.body as {
+    data: Array<unknown>;
+    pagination: { per_page: number };
+  };
+  if (body.data.length > 3) {
+    throw new Error("per_page=3 但返回 " + body.data.length);
+  }
+  console.log("  ✓ 分页正确（per_page=" + body.data.length + "）");
+});
 
 e2eTest("[e2e/audit-log] 3.2c 非 admin 返回 403", async () => {
-    if (!isE2E) return;
-    const logs = await apiGet("/api/v1/admin/audit-logs", userToken);
-    if (logs.status !== 403) {
-      throw new Error("期望 403, 实际 " + logs.status);
-    }
-    console.log("  ✓ 非 admin 访问审计日志被拒");
-  });
+  if (!isE2E) return;
+  const logs = await apiGet("/api/v1/admin/audit-logs", userToken);
+  if (logs.status !== 403) {
+    throw new Error("期望 403, 实际 " + logs.status);
+  }
+  console.log("  ✓ 非 admin 访问审计日志被拒");
+});

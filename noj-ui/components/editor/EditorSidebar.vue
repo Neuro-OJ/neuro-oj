@@ -13,7 +13,7 @@ interface Problem {
   description: string
   difficulty: string
   type: 'U' | 'P'
-  categories: { id: string; name: string; slug: string }[]
+  tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
   /** 运行时限制（竞赛题接口不返回，缺省时展示 --） */
   runtime_config?: {
     evaluator?: {
@@ -123,13 +123,14 @@ function formatElapsed(iso: string) {
           <span class="font-medium">{{ problem.difficulty }}</span>
       </div>
 
-      <div v-if="problem.categories.length" class="flex flex-wrap gap-1.5">
+      <div v-if="problem.tags.length" class="flex flex-wrap gap-1.5">
         <span
-          v-for="cat in problem.categories"
-          :key="cat.id"
-          class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200"
+          v-for="tag in problem.tags"
+          :key="tag.id"
+          class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+          :class="tag.kind === 'algorithm' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-blue-50 text-blue-700 border border-blue-200'"
         >
-          {{ cat.name }}
+          {{ tag.name }}
         </span>
       </div>
 

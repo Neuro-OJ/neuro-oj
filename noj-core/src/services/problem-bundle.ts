@@ -34,16 +34,16 @@ import {
   type ProblemBundleManifest,
   validateBundleManifest,
 } from "../types/problem-bundle.ts";
-import type { ProblemResponseWithCategories } from "../types/problems.ts";
+import type { ProblemResponseWithTags } from "../types/problems.ts";
 import { updateProblem } from "./problems-crud.ts";
 import { validateJudgeImageWithKind } from "./judge-images.ts";
 import {
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
 } from "./problem-field-guard.ts";
-import { syncProblemCategories } from "./problems-categories.ts";
+import { syncProblemTags } from "./problems-tags.ts";
 import { getProblem } from "./problems-list.ts";
-import { type CategoryTreeNode, listCategories } from "./categories.ts";
+import { getTagIdsByNames, listTags } from "./tags.ts";
 import { logAudit } from "./audit-log.ts";
 import { MAX_SUPPORT_PACKAGE_SIZE } from "./support-package.ts";
 import { ROOT_USER_ID } from "../lib/constants.ts";
@@ -62,32 +62,24 @@ function buildPackageKey(problemId: string): string {
 }
 
 /**
- * 按分类名解析为分类 id 列表。
+ * 按标签名解析为标签 id 列表（issue #223：manifest.tags 取代 categories）。
  *
- * 与既有导入语义一致：不存在的分类名被忽略并记录 warning。
- * 注：listCategories 返回树形，这里扁平遍历收集 name → id。
+ * 与既有导入语义一致：不存在的标签名被忽略并记录 warning。
  */
-async function resolveCategoryIds(
+async function resolveTagIds(
   names: string[] | undefined,
 ): Promise<string[]> {
   if (!names || names.length === 0) return [];
-  const tree = await listCategories();
-  const nameToId = new Map<string, string>();
-  const walk = (nodes: CategoryTreeNode[]): void => {
-    for (const node of nodes) {
-      nameToId.set(node.name, node.id);
-      walk(node.children);
-    }
-  };
-  walk(tree);
 
-  const ids: string[] = [];
-  for (const name of names) {
-    const id = nameToId.get(name);
-    if (id) {
-      ids.push(id);
-    } else {
-      logger.warn(`题目导入：分类 "${name}" 不存在，已忽略`);
+  const uniqueNames = [...new Set(names)];
+  const ids = await getTagIdsByNames(uniqueNames);
+  if (ids.length !== uniqueNames.length) {
+    const all = await listTags();
+    const known = new Set(all.map((t) => t.name));
+    for (const name of uniqueNames) {
+      if (!known.has(name)) {
+        logger.warn(`题目导入：标签 "${name}" 不存在，已忽略`);
+      }
     }
   }
   return ids;
@@ -124,7 +116,7 @@ export async function importProblemBundle(
   file: { name: string; data: Uint8Array },
   actor: BundleImportActor,
   c?: Context,
-): Promise<ProblemResponseWithCategories> {
+): Promise<ProblemResponseWithTags> {
   // 1. 基础校验：后缀 + 大小（与 support-package 上传约定一致）
   if (!isValidProblemBundleName(file.name)) {
     throw new ValidationError("仅支持 .zip 格式文件");
@@ -167,7 +159,7 @@ export async function importProblemBundle(
   // 6. 分发：manifest.number 提供时按 (type, number) 业务键匹配（命中 → 更新；
   //    未命中 → 创建）；未提供 → 创建（number 自动分配）。id 一律由服务端生成，
   //    (type, number) 由 DB 联合唯一约束保证唯一（problems_type_number_unique）。
-  let result: ProblemResponseWithCategories;
+  let result: ProblemResponseWithTags;
   if (number !== undefined) {
     const type = manifest.type ?? "U";
     const db = getDb();
@@ -243,7 +235,7 @@ async function updateExisting(
   c: Context | undefined,
   storage: Awaited<ReturnType<typeof getStorageProvider>>,
   strippedZip: Uint8Array,
-): Promise<ProblemResponseWithCategories> {
+): Promise<ProblemResponseWithTags> {
   // issue #207：先于 storage 操作执行敏感字段权限 + 资源上限校验——
   // 若在 storage 操作之后才失败（updateProblem 内部），旧评测包已被删除、
   // 新包已上传而 DB 未更新，造成评测包指向不存在的对象（评审 I4）。
@@ -275,7 +267,7 @@ async function updateExisting(
       difficulty: manifest.difficulty,
       runtime_config: manifest.runtime_config,
       support_package_storage_url: storageUrl,
-      category_ids: await resolveCategoryIds(manifest.categories),
+      tag_ids: await resolveTagIds(manifest.tags),
     },
     actor.userId,
     actor.userRole,
@@ -299,7 +291,7 @@ async function createViaCrud(
   c: Context | undefined,
   storage: Awaited<ReturnType<typeof getStorageProvider>>,
   strippedZip: Uint8Array,
-): Promise<ProblemResponseWithCategories> {
+): Promise<ProblemResponseWithTags> {
   const type = manifest.type ?? "U";
 
   // NOJ-102：创建权限按类型强制执行（与 createProblem 一致）。
@@ -339,7 +331,7 @@ async function createViaCrud(
   enforceResourceLimits(manifest.runtime_config);
 
   const db = getDb();
-  const categoryIds = await resolveCategoryIds(manifest.categories);
+  const tagIds = await resolveTagIds(manifest.tags);
 
   // number：admin 指定或 type 内 MAX+1（并发冲突 23505 时最多重试 3 次，
   // 与 createProblem 的分配语义一致）
@@ -389,8 +381,8 @@ async function createViaCrud(
     }
   }
 
-  if (categoryIds.length > 0) {
-    await syncProblemCategories(id, categoryIds);
+  if (tagIds.length > 0) {
+    await syncProblemTags(id, tagIds);
   }
 
   // 注册评测包并回填

@@ -12,12 +12,13 @@
  */
 import { BadRequestError } from "../lib/errors.ts";
 import type {
-  ProblemResponseWithCategories,
+  ProblemResponseWithTags,
+  ProblemTagRef,
   RuntimeConfig,
 } from "../types/problems.ts";
 
 /**
- * 公开题目响应（不含关联分类）。
+ * 公开题目响应（不含关联标签）。
  */
 export interface ProblemResponse {
   id: string;
@@ -38,7 +39,7 @@ export interface ProblemResponse {
 }
 
 export interface ProblemListResponse {
-  items: ProblemResponseWithCategories[];
+  items: ProblemResponseWithTags[];
   total: number;
   page: number;
   limit: number;
@@ -53,7 +54,7 @@ export interface AdminProblemListItem {
   difficulty: string;
   support_package_storage_url: string | null;
   runtime_config: RuntimeConfig;
-  categories: { id: string; name: string; slug: string }[];
+  tags: ProblemTagRef[];
   created_at: string;
   updated_at: string;
   number: number;

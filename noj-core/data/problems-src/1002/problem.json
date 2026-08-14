@@ -16,5 +16,10 @@
       "memory_limit_mb": 256
     }
   },
-  "template": "template.py"
+  "template": "template.py",
+  "tags": [
+    "LMCC 样例题",
+    "滑动窗口",
+    "模拟"
+  ]
 }

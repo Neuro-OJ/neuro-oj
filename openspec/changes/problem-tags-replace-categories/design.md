@@ -73,7 +73,7 @@ NOJ 当前仅有 admin 管控的分类树（`categories`：parent_id 自引用 +
 
 `/api/v1/tags`（GET 公开，返回全量含 kind 与 `problem_count`（关联题目数，供管理页表格展示），按 name 升序）；`POST/PUT/DELETE /tags[/:id]` 与 `POST /tags/:id/merge` 走 `requirePermission("tag:manage")`（**RBAC 判定，不硬编码 adminMiddleware**）。RBAC seed 以 `tag:read`/`tag:manage` 替换 `category:*`（迁移 SQL 清理旧权限行）。`tag:read` 与旧 `category:read` 同现状——预置但当前无消费端点（`GET /tags` 公开），保留供未来按站点策略收口。
 
-- **merge 语义**：事务内 `problem_tags` source→target 重指向（ON CONFLICT DO NOTHING 去重）→ 删除 source → 审计 `tags.merge`；source==target → 400。
+- **merge 语义**：事务内先删除与 target 冲突的重复关联，再将剩余 `problem_tags` 关联 source→target 重指向 → 删除 source → 审计 `tags.merge`；source==target → 400。
 - **delete 语义**：DB 级联清 `problem_tags`，题目本身不受影响；审计 `tags.delete`。
 - **新建标签默认仅 admin（可配置）**：`tag:manage` 默认不授予任何角色（仅 admin 隐式全权限），但保留在预置权限目录中，运营者可经角色管理授予自定义角色——满足「默认收口、按需放开」的管控诉求。普通用户（含 U 型 owner）只能从已有标签中选择；编辑器「新建」按钮仅对拥有 `tag:manage` 的用户可见。
 - **备选方案（否决）**：U owner 随手新建（社区生长）——用户在讨论中明确选择 admin 管控；硬编码 `adminMiddleware`——不可配置，违背「权限系统化」诉求。

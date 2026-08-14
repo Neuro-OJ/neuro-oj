@@ -281,6 +281,13 @@
       "when": 1786883648647,
       "tag": "0039_community_search_index",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1786701211528,
+      "tag": "0040_drop_categories_add_tags",
+      "breakpoints": true
     }
   ]
 }

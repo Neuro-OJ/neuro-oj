@@ -85,23 +85,21 @@ export const SCHEMA_DDL: string[] = [
     updated_at TEXT NOT NULL
   )`,
 
-  // 4. categories
-  `CREATE TABLE IF NOT EXISTS categories (
+  // 4. tags（issue #223：category 系统退役，双类标签取代）
+  `CREATE TABLE IF NOT EXISTS tags (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    slug TEXT NOT NULL UNIQUE,
-    description TEXT NOT NULL DEFAULT '',
-    parent_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
-    level INTEGER NOT NULL DEFAULT 0,
+    name TEXT NOT NULL UNIQUE,
+    kind TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    CONSTRAINT tags_kind_check CHECK (kind IN ('problem', 'algorithm'))
   )`,
 
-  // 5. problems_categories
-  `CREATE TABLE IF NOT EXISTS problems_categories (
+  // 5. problem_tags
+  `CREATE TABLE IF NOT EXISTS problem_tags (
     problem_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
-    category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-    PRIMARY KEY (problem_id, category_id)
+    tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (problem_id, tag_id)
   )`,
 
   `CREATE TABLE IF NOT EXISTS contests (
@@ -275,7 +273,9 @@ export const SCHEMA_DDL: string[] = [
     created_at TEXT NOT NULL,
     CONSTRAINT audit_logs_action_check CHECK (action IN (
       'users.role_change','users.ban','users.unban',
-      'problems.delete','categories.delete','submissions.rejudge','settings.update',
+      'problems.delete','problems.runtime_config_changed','problems.imported',
+      'tags.create','tags.update','tags.delete','tags.merge',
+      'submissions.rejudge','settings.update',
       'ip_ban.create','ip_ban.delete',
       -- PR-2 新增 auth.* 动作
       'auth.login_success','auth.login_failure','auth.register',
@@ -566,8 +566,8 @@ export const ALL_TABLES = [
   "users",
   "problems",
   "judge_images",
-  "categories",
-  "problems_categories",
+  "tags",
+  "problem_tags",
   "contests",
   "contest_problems",
   "contest_participants",

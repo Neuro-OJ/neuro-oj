@@ -2,6 +2,7 @@
 import SupportPackageUpload from "~/components/admin/SupportPackageUpload.vue"
 import { extractApiError } from "~/utils/apiError"
 import { isAdminUser } from "~/utils/isAdminUser"
+import { useToast } from "~/composables/useToast"
 
 interface RuntimeConfigPayload {
   evaluator: {
@@ -35,6 +36,7 @@ const emit = defineEmits<{
 const router = useRouter()
 const { user } = useAuth()
 const { api } = useApi()
+const { toast } = useToast()
 
 const isAdmin = computed(() => isAdminUser(user.value))
 
@@ -42,7 +44,7 @@ const isAdmin = computed(() => isAdminUser(user.value))
 const title = ref("")
 const description = ref("")
 const difficulty = ref("medium")
-const categoryIds = ref<string[]>([])
+const tagIds = ref<string[]>([])
 const problemType = ref(props.initialType)
 
 // 编辑模式专用
@@ -95,17 +97,70 @@ const solutionImage = ref("")
 const solutionCallTimeoutMs = ref(1000)
 const solutionMemoryLimitMb = ref(256)
 
-// ── 分类选项 ──
-const categories = ref<{ id: string; name: string }[]>([])
+// ── 标签选项 ──
+const tags = ref<{ id: string; name: string; kind: 'problem' | 'algorithm' }[]>([])
 
-async function loadCategories() {
+async function loadTags() {
   try {
-    const res = await api.get<{ data: { id: string; name: string }[] }>(
-      "/api/v1/categories",
+    const res = await api.get<{ data: { id: string; name: string; kind: 'problem' | 'algorithm' }[] }>(
+      "/api/v1/tags",
       { silent: true },
     )
-    categories.value = res.data
+    tags.value = res.data
   } catch { /* 静默失败 */ }
+}
+
+// 标签选项：按 kind 排序（题目标签在前），label 带 kind 前缀区分
+const tagOptions = computed(() =>
+  [...tags.value]
+    .sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === 'problem' ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+    .map((t) => ({
+      label: `${t.kind === 'algorithm' ? '算法标签' : '题目标签'}: ${t.name}`,
+      value: t.id,
+    })),
+)
+
+// ── 新建标签（仅 admin 可见；API 层以 tag:manage RBAC 判定、默认仅 admin） ──
+const showNewTagForm = ref(false)
+const newTagName = ref("")
+const newTagKind = ref<'problem' | 'algorithm'>('problem')
+const creatingTag = ref(false)
+const newTagError = ref("")
+
+function openNewTag() {
+  newTagName.value = ""
+  newTagKind.value = "problem"
+  newTagError.value = ""
+  showNewTagForm.value = true
+}
+
+async function handleCreateTag() {
+  if (!newTagName.value.trim()) {
+    newTagError.value = "请输入标签名称"
+    return
+  }
+  creatingTag.value = true
+  newTagError.value = ""
+  try {
+    const res = await api.post<{ data: { id: string; name: string; kind: 'problem' | 'algorithm' } }>(
+      "/api/v1/tags",
+      { name: newTagName.value.trim(), kind: newTagKind.value },
+    )
+    // 成功后加入选项并自动选中
+    tags.value = [...tags.value, res.data]
+    if (!tagIds.value.includes(res.data.id)) {
+      tagIds.value = [...tagIds.value, res.data.id]
+    }
+    showNewTagForm.value = false
+    toast.success("标签已创建")
+  } catch (err: unknown) {
+    newTagError.value = extractApiError(err).message
+  } finally {
+    creatingTag.value = false
+  }
 }
 
 // ── 编辑模式：加载现有数据 ──
@@ -121,7 +176,7 @@ async function loadProblem() {
       title: string; description: string; difficulty: string
       time_limit_ms: number; memory_limit_mb: number
       display_id: string; type: string; number: number
-      categories: { id: string }[]
+      tags: { id: string }[]
       runtime_config: RuntimeConfigPayload | null
     } }>(`/api/v1/problems/${props.problemId}`, { silent: true })
     const p = res.data
@@ -129,7 +184,7 @@ async function loadProblem() {
     problemType.value = p.type
     title.value = p.title; description.value = p.description
     difficulty.value = p.difficulty
-    categoryIds.value = p.categories.map((c) => c.id)
+    tagIds.value = p.tags.map((c) => c.id)
     hasSupportPackage.value = (p as Record<string, unknown>).has_support_package === true
 
     // 加载 runtime_config
@@ -156,7 +211,7 @@ async function loadProblem() {
 }
 
 onMounted(() => {
-  loadCategories()
+  loadTags()
   loadJudgeImages()
   if (isEditMode.value) loadProblem()
 })
@@ -202,7 +257,7 @@ async function handleSubmit() {
       await api.put(`/api/v1/problems/${props.problemId}`, {
         title: title.value.trim(), description: description.value.trim(),
         difficulty: difficulty.value,
-        category_ids: categoryIds.value,
+        tag_ids: tagIds.value,
         runtime_config: runtimeConfigPayload,
       })
       emit("saved", props.problemId!)
@@ -210,7 +265,7 @@ async function handleSubmit() {
       const res = await api.post<{ data: { id: string } }>("/api/v1/problems", {
         title: title.value.trim(), description: description.value.trim(),
         difficulty: difficulty.value,
-        category_ids: categoryIds.value,
+        tag_ids: tagIds.value,
         type: problemType.value,
         runtime_config: runtimeConfigPayload,
       })
@@ -288,13 +343,19 @@ async function handleSubmit() {
         </div>
 
         <div class="flex flex-col gap-1 col-span-2">
-          <label class="text-xs font-semibold text-text">分类</label>
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-semibold text-text">标签</label>
+            <UButton v-if="isAdmin" color="neutral" variant="outline" size="xs" @click="openNewTag">
+              <UIcon name="i-lucide-plus" class="size-3" />
+              新建标签
+            </UButton>
+          </div>
           <div class="flex flex-wrap gap-2">
-            <label v-for="cat in categories" :key="cat.id" class="flex items-center gap-1 text-xs text-text cursor-pointer">
-              <input v-model="categoryIds" type="checkbox" :value="cat.id" class="accent-primary" />
-              {{ cat.name }}
+            <label v-for="t in tagOptions" :key="t.value" class="flex items-center gap-1 text-xs text-text cursor-pointer">
+              <input v-model="tagIds" type="checkbox" :value="t.value" class="accent-primary" />
+              {{ t.label }}
             </label>
-            <span v-if="categories.length === 0" class="text-xs text-text-muted">暂无分类</span>
+            <span v-if="tagOptions.length === 0" class="text-xs text-text-muted">暂无标签</span>
           </div>
         </div>
       </div>
@@ -422,4 +483,29 @@ async function handleSubmit() {
       </UButton>
     </div>
   </div>
+
+  <!-- 新建标签弹窗（仅 admin 可见；API 层以 tag:manage RBAC 判定、默认仅 admin） -->
+  <UModal v-model:open="showNewTagForm" title="新建标签" :unmount-on-hide="true">
+    <template #body>
+      <div class="flex flex-col gap-3">
+        <div class="flex flex-col gap-1">
+          <label class="text-13px font-semibold text-text">名称 <span class="text-error-text">*</span></label>
+          <input v-model="newTagName" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="标签名称" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-13px font-semibold text-text">类型 <span class="text-error-text">*</span></label>
+          <USelect
+            v-model="newTagKind"
+            :items="[{ label: '题目标签', value: 'problem' }, { label: '算法标签', value: 'algorithm' }]"
+            class="w-full"
+          />
+        </div>
+        <p v-if="newTagError" class="text-error-text text-13px">{{ newTagError }}</p>
+      </div>
+    </template>
+    <template #footer>
+      <UButton color="neutral" variant="ghost" :disabled="creatingTag" @click="showNewTagForm = false">取消</UButton>
+      <UButton color="primary" :loading="creatingTag" @click="handleCreateTag">创建</UButton>
+    </template>
+  </UModal>
 </template>

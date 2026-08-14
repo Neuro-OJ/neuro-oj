@@ -169,8 +169,8 @@ neuro-oj/
 │   │   ├── main.ts            # 入口（启动校验 + 初始化顺序）
 │   │   ├── app.ts             # Hono 应用工厂（CORS + 路由 + 错误处理）
 │   │   ├── mod.ts             # 公共导出
-│   │   ├── routes/            # 路由：admin / auth / categories / checkin / community / contests / conversations / health / problems / queue / rankings / search / sse / stats / submissions / users
-│   │   ├── services/          # 业务逻辑层：auth / categories / checkin / community / contests / conversations / dashboard / messages / problems-* / queue / rankings / search / submissions-* / support-package / system-settings / users / admin-roles / audit-log / banlist / judge-images / passwordReset / stats-cache / seed-rbac / community-seed 等
+│   │   ├── routes/            # 路由：admin / auth / tags / checkin / community / contests / conversations / health / problems / queue / rankings / search / sse / stats / submissions / users
+│   │   ├── services/          # 业务逻辑层：auth / tags / checkin / community / contests / conversations / dashboard / messages / problems-* / queue / rankings / search / submissions-* / support-package / system-settings / users / admin-roles / audit-log / banlist / judge-images / passwordReset / stats-cache / seed-rbac / community-seed 等
 │   │   ├── db/
 │   │   │   ├── connection.ts  # 数据库连接管理（单例）
 │   │   │   ├── migrate.ts     # 迁移执行器（绝对路径解析）
@@ -434,7 +434,7 @@ cd ../noj-judge && cargo run                      # 需要 Docker daemon
 | `users` | 用户账户（密码、角色、封禁状态） |
 | `problems` | 题目（type: U/P 双题库；`is_objective` 标记客观题套卷，无独立类型） |
 | `judgeImages` | 评测镜像白名单 |
-| `categories` / `problemsCategories` | 题目分类（父子层级）+ 多对多关联 |
+| `tags` / `problemTags` | 题目标签（kind=problem/algorithm，双类）+ 多对多关联 |
 | `submissions` / `evaluationResults` | 用户提交 / 评测结果（耗时/内存/得分） |
 | `checkIns` | 每日签到 |
 | `passwordResetTokens` | 密码重置令牌 |
@@ -478,7 +478,7 @@ cd ../noj-judge && cargo run                      # 需要 Docker daemon
 
 ```
 users ─< submissions >─ problems
-problems >─< problemsCategories >─ categories  (categories 自引用 parent)
+problems >─< problemTags >─ tags  (tags.kind: problem/algorithm；算法标签 AC 后可见)
 users ─< checkIns
 users ─< conversations ─< messages
 users ─< auditLogs

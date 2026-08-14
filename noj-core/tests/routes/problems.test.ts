@@ -111,17 +111,14 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const catId = `route-test-cat-${Date.now()}`;
+    const catId = `route-test-tag-${Date.now()}`;
     const db = getDb();
-    const { categories } = await import("../../src/db/schema.ts");
+    const { tags } = await import("../../src/db/schema.ts");
     const now = new Date().toISOString();
-    await db.insert(categories).values({
+    await db.insert(tags).values({
       id: catId,
-      name: "测试分类",
-      slug: `route-test-cat-${Date.now()}`,
-      description: "",
-      parent_id: null,
-      level: 0,
+      name: `路由测试标签-${Date.now()}`,
+      kind: "problem",
       created_at: now,
       updated_at: now,
     });
@@ -143,15 +140,15 @@ Deno.test({
           memory_limit_mb: 512,
         },
       },
-      category_ids: [catId],
+      tag_ids: [catId],
     });
     const res = await jsonRequest(app, `/api/v1/problems/${problem.id}`);
     assertEquals(res.status, 200);
 
     const body = await res.json();
     assertEquals(body.data.id, problem.id);
-    assertEquals(Array.isArray(body.data.categories), true);
-    assertEquals(body.data.categories.length, 1);
+    assertEquals(Array.isArray(body.data.tags), true);
+    assertEquals(body.data.tags.length, 1);
   },
 });
 

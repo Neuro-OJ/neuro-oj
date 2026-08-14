@@ -23,7 +23,7 @@ export interface WorkspaceProblem {
   description: string
   difficulty: string
   type: 'U' | 'P'
-  categories: { id: string; name: string; slug: string }[]
+  tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
 }
 
 export interface WorkspaceSubmission {

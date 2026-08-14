@@ -12,7 +12,7 @@
  * - POST /auth/login — 用户登录
  * - GET /auth/me — 当前用户
  * - GET /problems — 题目列表
- * - GET /categories — 分类树
+ * - GET /tags — 标签列表
  * - 401 认证检查
  */
 
@@ -195,15 +195,15 @@ Deno.test({
 // ── 分类树 ──
 
 Deno.test({
-  name: "[smoke] GET /categories 返回分类树",
+  name: "[smoke] GET /tags 返回标签列表",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const res = await app.request("/api/v1/categories");
+    const res = await app.request("/api/v1/tags");
     assertEquals(res.status, 200, "分类树应返回 200");
     const body = await res.json();
     assertExists(body.data, "响应应包含 data 字段");
-    console.log("  ✓ GET /categories → 200");
+    console.log("  ✓ GET /tags → 200");
   },
 });
 

@@ -19,17 +19,35 @@
 - `ip_address` (TEXT, NOT NULL) —— 操作来源 IP
 - `created_at` (TEXT, NOT NULL) —— ISO 8601 时间戳
 
-`action` CHECK 约束 SHALL 限定为以下 10 个值之一：
+`action` CHECK 约束 SHALL 限定为以下 28 个值之一（现行 25 值清单中 `categories.delete` 由 `tags.*` 四动作取代）：
 - `users.role_change`
 - `users.ban`
 - `users.unban`
 - `problems.delete`
+- `problems.runtime_config_changed`
+- `problems.imported`
 - `tags.create`
 - `tags.update`
 - `tags.delete`
 - `tags.merge`
 - `submissions.rejudge`
 - `settings.update`
+- `ip_ban.create`
+- `ip_ban.delete`
+- `auth.login_success`
+- `auth.login_failure`
+- `auth.register`
+- `auth.change_password`
+- `auth.forgot_password_request`
+- `auth.password_reset`
+- `community.post_moderated`
+- `community.report_resolved`
+- `community.sanction_created`
+- `community.sanction_revoked`
+- `community.preset_applied`
+- `announcement.create`
+- `announcement.update`
+- `announcement.delete`
 
 表 SHALL 建立以下索引：
 - `audit_logs_admin_id_idx` ON `admin_id`
@@ -45,7 +63,7 @@
 #### Scenario: 标签审计 action 入列
 
 - **WHEN** 执行标签系统迁移
-- **THEN** `action` CHECK 约束更新为 10 个值（含 `tags.create`/`tags.update`/`tags.delete`/`tags.merge`），`categories.delete` 不再合法
+- **THEN** `action` CHECK 约束更新为 28 个值（`categories.delete` 移除，新增 `tags.create`/`tags.update`/`tags.delete`/`tags.merge`），其余 24 个 action 保持不变
 
 #### Scenario: root 用户审计记录
 
@@ -55,7 +73,7 @@
 
 ### Requirement: AuditDetail 强类型
 
-系统 SHALL 通过 TypeScript discriminated union 定义 10 类操作的 detail 字段：
+系统 SHALL 通过 TypeScript discriminated union 定义 28 类操作的 detail 字段：
 
 ```ts
 type AuditDetail =
@@ -63,11 +81,30 @@ type AuditDetail =
   | { action: "users.ban"; reason: string; until: string | null }
   | { action: "users.unban" }
   | { action: "problems.delete"; title: string; display_id: string }
+  | { action: "problems.runtime_config_changed"; title: string; display_id: string; old_has_runtime_config: boolean; new_has_runtime_config: boolean }
+  | { action: "problems.imported"; title: string; display_id: string; imported_with_id: boolean }
   | { action: "tags.create"; name: string; kind: string }
   | { action: "tags.update"; from: string; to: string }
   | { action: "tags.delete"; name: string; kind: string }
-  | { action: "tags.merge"; source_name: string; target_name: string }  | { action: "submissions.rejudge"; submission_id?: string; problem_id?: string; count?: number }
-  | { action: "settings.update"; key: string; from: unknown; to: unknown };
+  | { action: "tags.merge"; source_name: string; target_name: string }
+  | { action: "submissions.rejudge"; submission_id?: string; problem_id?: string; count?: number }
+  | { action: "settings.update"; operation: "PUT" | "DELETE"; key: string; from: unknown; to: unknown }
+  | { action: "ip_ban.create"; ip_or_cidr: string; reason: string; expires_at: string | null }
+  | { action: "ip_ban.delete"; ip_or_cidr: string }
+  | { action: "auth.login_success"; user_id: string; login: string }
+  | { action: "auth.login_failure"; reason: "wrong_password" | "user_not_found" | "user_banned" | "ip_banned"; login: string }
+  | { action: "auth.register"; user_id: string; username: string; email: string }
+  | { action: "auth.change_password"; user_id: string }
+  | { action: "auth.forgot_password_request"; email_exists: boolean }
+  | { action: "auth.password_reset"; user_id: string }
+  | { action: "community.post_moderated"; status: string; reason: string; self_delete?: boolean }
+  | { action: "community.report_resolved"; status: "resolved" | "dismissed"; resolution: string }
+  | { action: "community.sanction_created"; reason: string; expires_at: string | null }
+  | { action: "community.sanction_revoked" }
+  | { action: "community.preset_applied"; preset: "public" | "private" | "knowledge" }
+  | { action: "announcement.create"; title: string }
+  | { action: "announcement.update"; title: string }
+  | { action: "announcement.delete"; title: string };
 ```
 
 `logAudit()` MUST 接受 `AuditDetail` 联合类型参数；编译期阻止传错字段。
@@ -99,7 +136,7 @@ type AuditDetail =
 | `rejudgeSubmission` | `submissions.rejudge` | `{submission_id}` | `{type: "submission", id: 提交}` |
 | `rejudgeProblemSubmissions` | `submissions.rejudge` | `{problem_id, count}` | `{type: "problem", id: 题目}` |
 
-`updateSystemSetting` 埋点 (`settings.update`) 仅在 `admin-system-settings` 合并后生效。
+`updateSystemSetting` 埋点 (`settings.update`) 仅在 `admin-system-settings` 合并后生效。其余 action（`ip_ban.*`/`auth.*`/`community.*`/`announcement.*`/`problems.imported`/`problems.runtime_config_changed`）的埋点由各自 service/route 维护，完整 action 清单以 `AuditAction` 类型与 DB CHECK 为准。
 
 #### Scenario: 埋点全覆盖
 
@@ -111,7 +148,7 @@ type AuditDetail =
 系统 SHALL 提供 `/admin/audit-logs` 页面。
 
 布局：
-- 顶部筛选条：操作类型下拉（10 个 action + "全部"）、管理员下拉（来自 `/api/v1/admin/users`）、时间范围（from/to 日期选择器）、重置按钮、筛选按钮
+- 顶部筛选条：操作类型下拉（28 个 action + "全部"）、管理员下拉（来自 `/api/v1/admin/users`）、时间范围（from/to 日期选择器）、重置按钮、筛选按钮
 - 中部表格列：时间（YYYY-MM-DD HH:mm:ss）、管理员（用户名）、操作（中文 label + 颜色 badge）、目标（type:id 简化展示）、详情（按 action narrow 渲染）、IP（带复制按钮）
 - 底部分页（复用 `paginationNav` 组件）
 
@@ -142,4 +179,3 @@ type AuditDetail =
 
 - **WHEN** admin 选择操作类型 "tags.delete" 并点击筛选
 - **THEN** 系统调用 `GET /api/v1/admin/audit-logs?action=tags.delete`，表格展示对应记录
-

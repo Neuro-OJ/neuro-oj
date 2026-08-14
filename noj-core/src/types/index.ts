@@ -201,9 +201,13 @@ export const PERMISSION_DEFS: Array<{
     action: "manage",
     description: "管理用户（封禁/改角色）",
   },
-  // 分类
-  { resource: "category", action: "read", description: "查看分类" },
-  { resource: "category", action: "manage", description: "管理分类" },
+  // 标签
+  { resource: "tag", action: "read", description: "查看标签" },
+  {
+    resource: "tag",
+    action: "manage",
+    description: "管理标签（创建/修改/删除/合并）",
+  },
   // 竞赛
   { resource: "contest", action: "create", description: "创建竞赛" },
   {

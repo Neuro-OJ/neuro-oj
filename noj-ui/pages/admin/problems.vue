@@ -21,7 +21,7 @@ interface Problem {
   display_id: string
   type: string
   owner_id: string
-  categories: { id: string; name: string }[]
+  tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
   created_at: string
 }
 
@@ -58,8 +58,8 @@ const columns = [
   { accessorKey: "title", header: "标题" },
   { accessorKey: "difficulty", header: "难度", cell: (info) => difficultyLabels[info.getValue() as string] || (info.getValue() as string) },
   {
-    accessorKey: "categories",
-    header: "分类",
+    accessorKey: "tags",
+    header: "标签",
     cell: (info) => (info.getValue() as { name: string }[]).map((c) => c.name).join(", ") || "-",
   },
   {
