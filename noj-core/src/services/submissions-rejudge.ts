@@ -258,13 +258,8 @@ export async function rejudgeProblemSubmissions(
     return { total: 0, queued: 0, skipped: 0 };
   }
 
-  const [seqRow] = await db
-    .select({ rejudge_seq: submissions.rejudge_seq })
-    .from(submissions)
-    .where(eq(submissions.id, allIds[0]))
-    .limit(1);
-  const currentSeq = seqRow?.rejudge_seq ?? 0;
-
+  // NOJ-075：不再用首条提交的 rejudge_seq 覆盖全部提交。
+  // 事务内已对每条提交递增各自的 rejudge_seq，逐行读取并透传。
   const rejudgeRows = await db
     .select()
     .from(submissions)
@@ -296,7 +291,7 @@ export async function rejudgeProblemSubmissions(
         code: sub.code,
         file_name: sub.file_name ??
           (LANGUAGE_EXT_MAP[sub.language] || "main.txt"),
-        rejudge_seq: currentSeq,
+        rejudge_seq: sub.rejudge_seq,
       };
 
       await pushJudgeTask(task);

@@ -55,8 +55,11 @@ async function checkSupportPackagePermission(
       await assertPermission(c, "problem:package_manage_any");
       return;
     }
-    // U 型题：owner 直接放行；非 owner 需管理员权限
-    if (problem.owner_id === (c.var.userId as string)) return;
+    // NOJ-102：U 型 owner 需 package_manage_own；非 owner 需管理员权限。
+    if (problem.owner_id === (c.var.userId as string)) {
+      await assertPermission(c, "problem:package_manage_own");
+      return;
+    }
     await assertPermission(c, "problem:package_manage_any");
     return;
   }
@@ -153,9 +156,11 @@ export async function getSupportPackageBytes(
     throw new NotFoundError("题目不存在");
   }
 
-  // 权限校验：owner 可管理自己的支持包；非 owner 仅管理员（package_manage_any）
+  // 权限校验：owner 需 package_manage_own；非 owner 仅管理员（package_manage_any）
   if (c) {
-    if (problem.owner_id !== (c.var.userId as string)) {
+    if (problem.owner_id === (c.var.userId as string)) {
+      await assertPermission(c, "problem:package_manage_own");
+    } else {
       await assertPermission(c, "problem:package_manage_any");
     }
   } else if (userRole !== "admin" && problem.owner_id !== userId) {

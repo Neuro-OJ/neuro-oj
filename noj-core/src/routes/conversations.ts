@@ -16,6 +16,7 @@ import {
   sendMessage,
 } from "../services/messages.ts";
 import { getCommunityConfig } from "../services/community.ts";
+import { enforceMessageSendRateLimit } from "../lib/hardening-rate-limit.ts";
 
 /** 消息内容最大长度 */
 const MAX_MESSAGE_LENGTH = 10_000;
@@ -103,6 +104,9 @@ router.post("/:id/messages", async (c) => {
   if (body.content.length > MAX_MESSAGE_LENGTH) {
     throw new BadRequestError(`消息内容不能超过 ${MAX_MESSAGE_LENGTH} 字符`);
   }
+
+  // NOJ-096：私信发送按用户维度限流。
+  await enforceMessageSendRateLimit(userId);
 
   const message = await sendMessage(userId, conversationId, body.content);
   return c.json({ data: message }, 201);

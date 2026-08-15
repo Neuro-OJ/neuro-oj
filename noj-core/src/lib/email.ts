@@ -33,6 +33,16 @@ async function loadSendFn(): Promise<SendPasswordResetEmail> {
   if (sendFn) return sendFn;
 
   const provider = String(getSetting("email_provider")?.value ?? "mock");
+
+  if (
+    Deno.env.get("NOJ_ENV") === "production" &&
+    (provider === "mock" || !PROVIDER_MODULES[provider])
+  ) {
+    throw new Error(
+      "生产环境禁止使用 mock 邮件 Provider；请配置 email_provider=aliyun 或 tencent",
+    );
+  }
+
   const modulePath = PROVIDER_MODULES[provider];
 
   if (!modulePath) {

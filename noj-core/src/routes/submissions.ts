@@ -10,11 +10,13 @@ import {
 } from "../services/stats-cache.ts";
 import { getSubmissionQueueStatus } from "../services/queue.ts";
 import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
+import { checkPermission } from "../lib/permissions.ts";
 import { rateLimit } from "../middleware/rate-limit.ts";
 import { BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { buildPaginationMeta, parsePagination } from "../lib/pagination.ts";
 import { SUBMISSION_STATUSES } from "../types/index.ts";
+import { enforceSubmissionRateLimit } from "../lib/hardening-rate-limit.ts";
 
 // 扩展 Hono 类型，使 c.get("userId") 返回 string | undefined
 // （optionalAuthMiddleware 注入时可能为 undefined；authMiddleware 注入时一定有值）
@@ -94,6 +96,9 @@ router.get("/", authMiddleware, async (c) => {
  */
 router.post("/", authMiddleware, async (c) => {
   const userId = c.var.userId as string;
+
+  // NOJ-069：提交创建 IP + 用户双维度限流。
+  await enforceSubmissionRateLimit(c, userId);
 
   const body = await parseJsonBody<Record<string, unknown>>(c);
 
@@ -215,7 +220,14 @@ router.get(
   authMiddleware,
   async (c) => {
     const id = c.req.param("id") as string;
-    const result = await getSubmissionQueueStatus(id);
+    const userId = c.var.userId as string;
+    // NOJ-049：仅提交所有者或实时 RBAC 的 submission:read_all 可查看队列状态。
+    const isAdmin = await checkPermission(c, "submission:read_all");
+    const result = await getSubmissionQueueStatus(
+      id,
+      userId,
+      isAdmin ? "admin" : undefined,
+    );
     if (!result) {
       throw new NotFoundError("提交不存在");
     }

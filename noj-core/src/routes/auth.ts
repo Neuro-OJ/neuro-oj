@@ -37,6 +37,7 @@ import {
   checkLoginAccountRateLimit,
   LOGIN_LIMITS,
   loginIpRateLimit,
+  resolveLoginAccountKey,
   throwRateLimited,
 } from "../middleware/login-rate-limit.ts";
 import type {
@@ -47,6 +48,11 @@ import type {
   ResetPasswordInput,
 } from "../types/auth.ts";
 import { SECONDS_PER_DAY } from "../lib/constants.ts";
+import {
+  enforcePasswordResetEmailRateLimit,
+  enforcePasswordResetIpRateLimit,
+  enforceRegisterRateLimit,
+} from "../lib/hardening-rate-limit.ts";
 
 // change-password 端点的限流命名空间（独立于登录端点）
 // 失败计数 / 锁定 / 退避均使用此前缀，避免改密失败反锁 /login（issue #75 评审 H4）
@@ -69,6 +75,9 @@ auth.post("/register", async (c) => {
   if (allowRegisterSetting?.value === false) {
     throw new ForbiddenError("注册已关闭", "REGISTER_DISABLED");
   }
+
+  // NOJ-093：注册端点 IP 限流。
+  await enforceRegisterRateLimit(c);
 
   const body = await parseJsonBody<RegisterInput>(c);
 
@@ -121,19 +130,21 @@ auth.post("/register", async (c) => {
 async function enforceAccountRateLimit(
   account: string,
   namespace?: string,
-): Promise<void> {
+): Promise<string> {
+  const accountKey = await resolveLoginAccountKey(account);
   const accResult = await checkLoginAccountRateLimit(account, namespace);
   if (!accResult.allowed) {
     throwRateLimited(LOGIN_LIMITS.acc, accResult);
   }
 
   // 内存退避：未到 deadline 则 sleep
-  await applyLoginBackoff(account, namespace);
+  await applyLoginBackoff(accountKey, namespace);
 
   // 账号锁定检查
-  if (await isLoginLocked(account, namespace)) {
+  if (await isLoginLocked(accountKey, namespace)) {
     throw new UnauthorizedError("登录尝试过多，账号已临时锁定");
   }
+  return accountKey;
 }
 
 /** 记录一次认证失败（失败计数 + 退避），不阻塞响应。 */
@@ -154,18 +165,18 @@ auth.post("/login", loginIpRateLimit(), async (c) => {
   }
 
   // 1. 账号维度限流（限流 + 退避 + 锁定）
-  await enforceAccountRateLimit(body.login);
+  const accountKey = await enforceAccountRateLimit(body.login);
 
   // 2. 验证
   try {
     const clientIp = getClientIp(c);
     const result = await loginUser(body, clientIp);
-    await clearLoginFailure(body.login);
+    await clearLoginFailure(accountKey);
     return c.json({ data: result }, 200);
   } catch (err) {
     if (err instanceof UnauthorizedError) {
       // 失败：记录（不阻塞响应）
-      await recordAuthFailure(body.login);
+      await recordAuthFailure(accountKey);
     }
     throw err;
   }
@@ -368,6 +379,10 @@ auth.post("/forgot-password", async (c) => {
     throw new BadRequestError("缺少字段 email");
   }
 
+  // NOJ-094：忘记密码 IP + 邮箱双维度限流。
+  await enforcePasswordResetIpRateLimit(c);
+  await enforcePasswordResetEmailRateLimit(body.email);
+
   // 应用基础 URL：从请求头 Host 拼出（生产环境后续接 APP_URL 环境变量）
   const proto = c.req.header("x-forwarded-proto") ?? "http";
   const host = c.req.header("host") ?? "localhost:3000";
@@ -400,6 +415,9 @@ auth.post("/reset-password", async (c) => {
     if (!body.new_password) missing.push("new_password");
     throw new BadRequestError(`缺少字段：${missing.join(", ")}`);
   }
+
+  // NOJ-094：重置密码 IP 维度限流。
+  await enforcePasswordResetIpRateLimit(c);
 
   await resetPassword(body.token, body.new_password, getClientIp(c));
 

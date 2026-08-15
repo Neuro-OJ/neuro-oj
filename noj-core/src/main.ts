@@ -1,7 +1,11 @@
 import { createApp } from "./app.ts";
+import { closeDbForShutdown } from "./db/connection.ts";
 import { runMigrations } from "./db/migrate.ts";
-import { connectRedis } from "./mq/connection.ts";
-import { startResultConsumerWithRetry } from "./mq/consumer.ts";
+import { closeRedisForShutdown, connectRedis } from "./mq/connection.ts";
+import {
+  requestResultConsumerShutdown,
+  startResultConsumerWithRetry,
+} from "./mq/consumer.ts";
 import { initEventSubscriber } from "./lib/event-bus.ts";
 import { snapshotEnv } from "./lib/env-snapshot.ts";
 import { validateRegistry } from "./lib/settings-registry.ts";
@@ -116,28 +120,6 @@ async function main() {
     Deno.exit(1);
   }
 
-  // PR-7：生产环境必须配置 TRUSTED_PROXIES。
-  // 否则 getClientIp() 会回退到 XFF 首项信任，攻击者可伪造 IP 绕过 30s/10 次登录限流
-  // 与 IP 黑名单（PR #95 ban-status-endpoint）。开发环境（NOJ_ENV != production）放行。
-  if (Deno.env.get("NOJ_ENV") === "production") {
-    const trustedProxiesSetting = getSetting("trusted_proxies");
-    const trustedProxiesValue = typeof trustedProxiesSetting?.value ===
-        "string"
-      ? trustedProxiesSetting.value
-      : "";
-    if (!trustedProxiesValue || trustedProxiesValue.trim() === "") {
-      logger.error(
-        "TRUSTED_PROXIES 未配置。\n" +
-          "生产环境（NOJ_ENV=production）必须显式配置可信代理白名单，\n" +
-          "否则 X-Forwarded-For 首项可被攻击者伪造以绕过 IP 限流和 IP 黑名单。\n" +
-          "配置方式：通过管理后台 → 系统设置 → trusted_proxies 项（DB-backed）。\n" +
-          "格式：逗号分隔的 IP 或 CIDR，如 `10.0.0.0/8,192.168.1.1`。\n" +
-          "（PR-7 评审修订：与运行时 getTrustedProxies() 共用同一数据源——system_settings 表）",
-      );
-      Deno.exit(1);
-    }
-  }
-
   // 初始化数据库：迁移失败为致命错误，终止启动避免带病运行
   // （与 PR #63 ensureRootUser 的失败处理保持一致策略）
   await fatalStep("数据库迁移", () => runMigrations());
@@ -155,6 +137,26 @@ async function main() {
   // 初始化系统设置缓存（issue #99）
   // 从 system_settings 全量加载到内存 Map，失败时终止启动。
   await fatalStep("系统设置缓存初始化", () => initSystemSettings());
+
+  // PR-7 / NOJ-031：TRUSTED_PROXIES 生产校验必须在 initSystemSettings() 之后执行，
+  // 与运行时 getTrustedProxies() 共用 system_settings 数据源，避免读空缓存误杀启动。
+  if (Deno.env.get("NOJ_ENV") === "production") {
+    const trustedProxiesSetting = getSetting("trusted_proxies");
+    const trustedProxiesValue = typeof trustedProxiesSetting?.value ===
+        "string"
+      ? trustedProxiesSetting.value
+      : "";
+    if (!trustedProxiesValue || trustedProxiesValue.trim() === "") {
+      logger.error(
+        "TRUSTED_PROXIES 未配置。\n" +
+          "生产环境（NOJ_ENV=production）必须显式配置可信代理白名单，\n" +
+          "否则 X-Forwarded-For 首项可被攻击者伪造以绕过 IP 限流和 IP 黑名单。\n" +
+          "配置方式：通过管理后台 → 系统设置 → trusted_proxies 项（DB-backed）。\n" +
+          "格式：逗号分隔的 IP 或 CIDR，如 `10.0.0.0/8,192.168.1.1`。",
+      );
+      Deno.exit(1);
+    }
+  }
 
   // 启动期 env 快照（issue #99）
   // 一次性读取 env-only 设置项到内存 Map，admin 面板只读展示。
@@ -188,13 +190,43 @@ async function main() {
   // 初始化 Redis Pub/Sub 事件订阅者（后台运行，用于 SSE 推送）
   initEventSubscriber();
 
-  // 启动 HTTP 服务
-  Deno.serve({ port }, app.fetch);
+  // 启动 HTTP 服务（保留 server 句柄用于优雅关闭）
+  const server = Deno.serve({ port }, app.fetch);
 
   logger.info("noj-core 已启动", { url: `http://localhost:${port}` });
 
   // 启动后台审计日志保留任务
   startAuditLogRetentionTask();
+
+  // NOJ-030：监听 SIGTERM/SIGINT，先停止接收新请求并排空，再关闭 Redis/DB。
+  let shuttingDown = false;
+  const gracefulShutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info("收到关闭信号，开始优雅关闭", { signal });
+
+    try {
+      requestResultConsumerShutdown();
+      await server.shutdown();
+      logger.info("HTTP 服务已停止接收新请求并完成排空");
+    } catch (err) {
+      logger.warn("HTTP 优雅关闭失败", { err });
+    }
+
+    await Promise.allSettled([
+      closeRedisForShutdown(),
+      closeDbForShutdown(),
+    ]);
+    logger.info("资源已清理，进程退出");
+    Deno.exit(0);
+  };
+
+  Deno.addSignalListener("SIGTERM", () => {
+    void gracefulShutdown("SIGTERM");
+  });
+  Deno.addSignalListener("SIGINT", () => {
+    void gracefulShutdown("SIGINT");
+  });
 }
 
 await main();

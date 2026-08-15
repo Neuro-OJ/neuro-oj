@@ -6,7 +6,7 @@ import { logJudgeTaskEnqueued } from "../lib/logging.ts";
  * 评测任务队列名称。
  * noj-judge 从该队列中 BRPOP 拉取任务。
  */
-const JUDGE_QUEUE = "noj:judge:queue";
+export const JUDGE_QUEUE = "noj:judge:queue";
 
 /**
  * Redis 队列消息最大字节数。
@@ -15,6 +15,9 @@ const JUDGE_QUEUE = "noj:judge:queue";
  * 同时阻止用户提交的 base64 编码支持包 + 代码占用过多内存。
  */
 const MAX_MESSAGE_BYTES = 16 * 1024 * 1024; // 16MB
+
+/** 队列最大待评测数：超过后拒绝新提交，避免 Redis 内存无限增长。 */
+export const MAX_JUDGE_QUEUE_LENGTH = 20_000;
 
 /**
  * 将评测任务推送到 Redis 消息队列。
@@ -41,6 +44,14 @@ export async function pushJudgeTask(task: JudgeTask): Promise<number> {
   if (messageBytes > MAX_MESSAGE_BYTES) {
     throw new Error(
       `评测任务消息超过大小限制（${messageBytes} > ${MAX_MESSAGE_BYTES} 字节），请检查支持包大小`,
+    );
+  }
+
+  // NOJ-077：入队前做长度上限保护（拒绝而不是静默丢最老任务）。
+  const currentLength = await redis.llen(JUDGE_QUEUE);
+  if (currentLength >= MAX_JUDGE_QUEUE_LENGTH) {
+    throw new Error(
+      `评测队列已满（${currentLength}/${MAX_JUDGE_QUEUE_LENGTH}），请稍后重试`,
     );
   }
 

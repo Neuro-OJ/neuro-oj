@@ -1,4 +1,4 @@
-import { createConsumer } from "./base-consumer.ts";
+import { createConsumer, requestConsumerShutdown } from "./base-consumer.ts";
 import { saveEvaluationResult } from "../services/submissions.ts";
 import { logger, logJudgeResultReceived } from "../lib/logging.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";
@@ -8,7 +8,7 @@ import type { JudgeResult } from "../types/index.ts";
  * 评测结果队列名称。
  * noj-judge 将评测结果 LPUSH 到此列表，消费者通过 BRPOP 阻塞读取。
  */
-const RESULT_QUEUE = "noj:judge:results";
+export const RESULT_QUEUE = "noj:judge:results";
 
 /**
  * 消费者活跃状态标识。
@@ -32,32 +32,34 @@ async function handleResultMessage(
     judgeResult.score,
   );
 
-  try {
-    await saveEvaluationResult(judgeResult);
-    logger.info("评测结果已持久化", {
+  // NOJ-074：写库失败必须向上抛出让消费者重投，
+  // 不再吞掉错误导致提交永久停留在 judging。
+  const applied = await saveEvaluationResult(judgeResult);
+  if (!applied) {
+    logger.info("评测结果为重复/过时消息，已幂等忽略", {
       submission_id: judgeResult.submission_id,
+      rejudge_seq: judgeResult.rejudge_seq ?? 0,
     });
-
-    // 发布事件到 Redis Pub/Sub（fire-and-forget，不阻塞）
-    // 事件仅作触发通知，前端收到后主动通过 REST 接口拉取全量数据
-    publishEvent(
-      Channels.submission(judgeResult.submission_id),
-      JSON.stringify({
-        type: "submission:updated",
-        id: judgeResult.submission_id,
-      }),
-    );
-    publishEvent(
-      Channels.queue,
-      JSON.stringify({ type: "queue:changed" }),
-    );
-  } catch (dbErr) {
-    logger.error("评测结果持久化失败", {
-      submission_id: judgeResult.submission_id,
-      err: dbErr,
-    });
-    // 不中断循环，错误仅记录日志
+    return;
   }
+
+  logger.info("评测结果已持久化", {
+    submission_id: judgeResult.submission_id,
+  });
+
+  // 发布事件到 Redis Pub/Sub（fire-and-forget，不阻塞）
+  // 事件仅作触发通知，前端收到后主动通过 REST 接口拉取全量数据
+  publishEvent(
+    Channels.submission(judgeResult.submission_id),
+    JSON.stringify({
+      type: "submission:updated",
+      id: judgeResult.submission_id,
+    }),
+  );
+  publishEvent(
+    Channels.queue,
+    JSON.stringify({ type: "queue:changed" }),
+  );
 }
 
 /**
@@ -72,4 +74,7 @@ export const startResultConsumerWithRetry = createConsumer({
   logLabel: "结果",
   aliveRef: consumerAlive,
   handleMessage: handleResultMessage,
+  requeueOnError: true,
 });
+
+export { requestConsumerShutdown as requestResultConsumerShutdown };

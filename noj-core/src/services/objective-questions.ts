@@ -65,9 +65,9 @@ export async function isPaperOwnerOrAdmin(
   userRole?: string,
   c?: Context,
 ): Promise<boolean> {
-  // P 型：仅 admin 可管理（含查看答案）
+  // P 型：仅实时 RBAC 的 problem:write_any 可管理（含查看答案）。
+  // NOJ-008：JWT 中的静态 role 不得短路 RBAC。
   if (paper.type === "P") {
-    if (userRole === "admin") return true;
     if (c) {
       try {
         await assertPermission(c, "problem:write_any");
@@ -76,11 +76,11 @@ export async function isPaperOwnerOrAdmin(
         return false;
       }
     }
-    return false;
+    // CLI/内部调用 fallback（无 Hono Context，无法实时查权限）
+    return userRole === "admin";
   }
-  // U 型：owner / admin
+  // U 型：owner 或实时 RBAC admin 权限
   if (paper.owner_id === (c?.var.userId ?? userId)) return true;
-  if (userRole === "admin") return true;
   if (c) {
     try {
       await assertPermission(c, "problem:write_any");
@@ -89,7 +89,7 @@ export async function isPaperOwnerOrAdmin(
       return false;
     }
   }
-  return false;
+  return userRole === "admin";
 }
 
 /** 断言套卷可管理（owner/admin），否则抛 403。 */

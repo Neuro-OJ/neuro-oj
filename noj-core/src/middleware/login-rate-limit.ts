@@ -12,6 +12,9 @@
  */
 
 import type { Context, Next } from "hono";
+import { eq, or } from "drizzle-orm";
+import { getDb } from "../db/connection.ts";
+import { users } from "../db/schema.ts";
 import { RateLimitedError } from "../lib/errors.ts";
 import {
   checkRateLimit,
@@ -78,15 +81,36 @@ export function loginIpRateLimit(namespace: string = "login") {
  * namespace 参数（评审修复 M3）：与 loginIpRateLimit 对齐，确保
  * 改密失败只计入 pwchange 限流桶，不污染登录限流桶。
  */
-export function checkLoginAccountRateLimit(
+export async function checkLoginAccountRateLimit(
   login: string,
   namespace: string = "login",
-): RateLimitResult | Promise<RateLimitResult> {
+): Promise<RateLimitResult> {
   if (!isRateLimitEnabled()) {
     return { allowed: true, remaining: 0, resetAt: 0, retryAfter: 0 };
   }
-  const key = (login || "anonymous").toLowerCase().slice(0, 64);
+  const key = await resolveLoginAccountKey(login);
   return checkRateLimit(`${namespace}:acc:${key}`, LOGIN_LIMITS.acc);
+}
+
+/**
+ * NOJ-092：账号维度限流 key 统一规范化为 users.id。
+ * 用户名/邮箱登录指向同一账号时共享限流与锁定桶，
+ * 避免攻击者用 `user@example.com` / `username` 交替绕过。
+ * 不存在的账号回退到规范化 login（仍限流，但不泄露账号存在性）。
+ */
+export async function resolveLoginAccountKey(login: string): Promise<string> {
+  const fallback = (login || "anonymous").toLowerCase().slice(0, 64);
+  try {
+    const db = getDb();
+    const rows = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(or(eq(users.username, login), eq(users.email, login)))
+      .limit(1);
+    return rows[0]?.id ?? `unknown:${fallback}`;
+  } catch {
+    return `unknown:${fallback}`;
+  }
 }
 /** 429 抛错器供路由层使用 */
 export function throwRateLimited(

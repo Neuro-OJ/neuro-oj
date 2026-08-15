@@ -13,12 +13,19 @@ export interface RedisClient {
   quit(): Promise<string>;
   status: string;
   lpush(...args: (string | number)[]): Promise<number>;
+  rpush(...args: (string | number)[]): Promise<number>;
   publish(channel: string, message: string): Promise<number>;
   subscribe(...channels: string[]): Promise<unknown>;
   psubscribe(...patterns: string[]): Promise<unknown>;
   brpop(...args: (string | number)[]): Promise<[string, string] | null>;
+  brpoplpush(
+    source: string,
+    destination: string,
+    timeout: number,
+  ): Promise<string | null>;
   lrange(...args: (string | number)[]): Promise<string[]>;
   llen(...args: (string | number)[]): Promise<number>;
+  lrem(key: string, count: number, value: string): Promise<number>;
   on(event: string, handler: (...args: unknown[]) => void): void;
   off(event: string, handler: (...args: unknown[]) => void): void;
   // 限流/计数（issue #73）
@@ -291,4 +298,27 @@ export function resetRedisForTest() {
   // 清空引用：让下次 getRedis() 按当前 REDIS_URL 重建
   _redis = null;
   _error = null;
+}
+
+/**
+ * 优雅关闭：主动结束共享 Redis 连接。
+ *
+ * ioredis 的 disconnect 不等待连接关闭完成（no ready check），
+ * 这里采用 quit + disconnect 双保险，并捕获所有错误——关闭路径不得阻断退出。
+ */
+export async function closeRedisForShutdown(): Promise<void> {
+  const redis = _redis;
+  _redis = null;
+  _error = null;
+  if (!redis) return;
+  try {
+    await redis.quit();
+  } catch {
+    // ignore
+  }
+  try {
+    await redis.disconnect();
+  } catch {
+    // ignore
+  }
 }

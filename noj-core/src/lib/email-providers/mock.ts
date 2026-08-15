@@ -15,17 +15,30 @@ import { logger } from "../logging.ts";
  * @param resetLink - 完整的密码重置链接（含 token）
  * @param expiresInMinutes - 过期时间（分钟），用于日志展示
  */
+function redactResetToken(resetLink: string): string {
+  return resetLink.replace(
+    /([?&](?:token|reset_token)=)[^&#]*/gi,
+    "$1[REDACTED]",
+  );
+}
+
 export const sendPasswordResetEmail: SendPasswordResetEmail = (
   email: string,
   resetLink: string,
   expiresInMinutes = 15,
 ) => {
-  // mock 仅用于开发/测试：完整打印收件人与链接，便于本地取得重置链接
+  // NOJ-005：mock 仅用于开发/测试。生产环境必须使用真实 Provider，
+  // 禁止把含明文重置令牌的链接写入日志。
+  if (Deno.env.get("NOJ_ENV") === "production") {
+    throw new Error(
+      "EMAIL_PROVIDER=mock 在生产环境不可用，请配置 aliyun/tencent 邮件 Provider",
+    );
+  }
   logger.info("密码重置邮件（mock）", {
     module: "email-mock",
     event: "password_reset",
     to: email,
-    link: resetLink,
+    link: redactResetToken(resetLink),
     expiresIn: `${expiresInMinutes} minutes`,
   });
   return Promise.resolve();

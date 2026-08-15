@@ -10,18 +10,16 @@
  * - ensureRbacSeeds() — 全量幂等初始化
  */
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import {
   permissions,
   rolePermissions,
   roles,
-  systemSettings,
   userRoles,
   users,
 } from "../db/schema.ts";
 import { PERMISSION_DEFS } from "../types/index.ts";
-import { ROOT_USER_ID } from "../lib/constants.ts";
 import { ensureCommunitySeeds } from "./community-seed.ts";
 
 // user 角色的默认权限（action 列表）
@@ -46,22 +44,17 @@ const USER_DEFAULT_PERMISSIONS: Array<{ resource: string; action: string }> = [
   { resource: "community", action: "report" },
 ];
 
-// 敏感字段权限项的默认授权（issue #207）。
-// 注意：**不在** USER_DEFAULT_PERMISSIONS 中——它的默认授权是**一次性**的：
-// 首次 seed 时补齐，之后管理员从 user 角色移除授权（收紧）后，重启不会被
-// 恢复。已 seed 的权限清单记录在 system_settings 内部标记
-// `rbac_sensitive_field_permissions_seeded`（JSON 数组，不注册、不展示）。
-// 未来新增敏感字段权限：加入此列表即可，首次 seed 自动补齐默认授权。
-const SENSITIVE_FIELD_DEFAULT_PERMISSIONS: Array<{
+// NOJ-062：普通注册用户不得默认持有 evaluator.command/network 等敏感字段
+// 修改权限。seed 时从 user 角色显式撤销这些权限；管理员角色通过
+// admin:full_access 通配放行。若部署确实需要开放给普通用户，
+// 应由管理员显式在 RBAC 面板中授权。
+const SENSITIVE_FIELD_REVOKE_PERMISSIONS: Array<{
   resource: string;
   action: string;
 }> = [
   { resource: "problem", action: "field_evaluator_command" },
   { resource: "problem", action: "field_evaluator_network" },
 ];
-
-/** 敏感字段默认授权 seed 标记（system_settings 内部 key，不注册进 registry） */
-const SENSITIVE_FIELD_SEED_KEY = "rbac_sensitive_field_permissions_seeded";
 
 // admin 角色的默认权限（action 列表）：admin:full_access 全权限 + 社区治理与板块管理
 // （admin:full_access 为管理员判定权限，权限检查时通配放行一切权限）
@@ -261,54 +254,16 @@ export async function ensureSensitiveFieldDefaultPermissions(): Promise<void> {
     allPerms.map((p) => [`${p.resource}:${p.action}`, p.id]),
   );
 
-  // 读取已 seed 标记（JSON 数组）
-  const seededRows = await db
-    .select({ value: systemSettings.value })
-    .from(systemSettings)
-    .where(eq(systemSettings.key, SENSITIVE_FIELD_SEED_KEY))
-    .limit(1);
-  let seeded = new Set<string>();
-  if (seededRows.length > 0) {
-    try {
-      const parsed = JSON.parse(seededRows[0].value);
-      if (Array.isArray(parsed)) seeded = new Set(parsed.map(String));
-    } catch {
-      // 标记损坏时按空处理（重新补齐一次，幂等）
-    }
-  }
-
-  const newlySeeded: string[] = [];
-  for (const { resource, action } of SENSITIVE_FIELD_DEFAULT_PERMISSIONS) {
-    const key = `${resource}:${action}`;
-    if (seeded.has(key)) continue; // 已 seed 过：管理员移除授权不恢复
-    const permId = permMap.get(key);
-    if (!permId) continue; // 权限项缺失（PERMISSION_DEFS 未含）时跳过
-    await db.insert(rolePermissions).values({
-      role_id: userRole.id,
-      permission_id: permId,
-    }).onConflictDoNothing();
-    seeded.add(key);
-    newlySeeded.push(key);
-  }
-
-  // 有新增时更新标记（幂等 upsert）
-  if (newlySeeded.length > 0) {
-    const nowIso = new Date().toISOString();
-    await db.insert(systemSettings).values({
-      key: SENSITIVE_FIELD_SEED_KEY,
-      value: JSON.stringify([...seeded]),
-      description: "内部：已默认授权的敏感字段权限（勿手动修改）",
-      is_secret: false,
-      updated_at: nowIso,
-      updated_by: ROOT_USER_ID,
-    }).onConflictDoUpdate({
-      target: systemSettings.key,
-      set: {
-        value: JSON.stringify([...seeded]),
-        updated_at: nowIso,
-        updated_by: ROOT_USER_ID,
-      },
-    });
+  // 幂等撤销：每次 seed 都确保 user 角色不持有敏感字段权限。
+  for (const { resource, action } of SENSITIVE_FIELD_REVOKE_PERMISSIONS) {
+    const permId = permMap.get(`${resource}:${action}`);
+    if (!permId) continue;
+    await db.delete(rolePermissions).where(
+      and(
+        eq(rolePermissions.role_id, userRole.id),
+        eq(rolePermissions.permission_id, permId),
+      ),
+    );
   }
 }
 

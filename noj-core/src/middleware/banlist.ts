@@ -21,7 +21,7 @@
 
 import type { Context, Next } from "hono";
 import { ForbiddenError } from "../lib/errors.ts";
-import { getClientIp } from "../lib/rate-limit-env.ts";
+import { getClientIp, hasDirectPeer } from "../lib/rate-limit-env.ts";
 import { isBannedIp } from "../lib/cidr.ts";
 import { getBannedRanges } from "../services/banlist.ts";
 
@@ -37,7 +37,18 @@ export async function banlistMiddleware(
 ): Promise<void> {
   const clientIp = getClientIp(c);
   if (clientIp === "unknown") {
-    // 没解析到 IP（如本机直连）—— 放行
+    // NOJ-097：真实请求解析不出 IP 时，受保护写端点 fail-closed。
+    // app.request() 单测上下文没有 socket 信息（hasDirectPeer=false）时放行，
+    // 避免测试框架的虚拟请求被误拦。
+    const isRead = c.req.method === "GET" || c.req.method === "HEAD" ||
+      c.req.method === "OPTIONS";
+    if (!isRead && !WHITELIST.includes(c.req.path) && hasDirectPeer(c)) {
+      throw new ForbiddenError(
+        "无法解析客户端 IP，请求已被拒绝",
+        "IP_UNKNOWN",
+        { client_ip: "unknown" },
+      );
+    }
     return next();
   }
 

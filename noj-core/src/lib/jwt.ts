@@ -99,6 +99,8 @@ export async function verifyToken(
   const { payload } = await jwtVerify(token, secret, {
     issuer: JWT_ISSUER,
     audience: JWT_AUDIENCE,
+    // 安全修复 NOJ-000：固定仅接受 HS256，拒绝 HS384/HS512 等算法混淆。
+    algorithms: ["HS256"],
   });
 
   return {

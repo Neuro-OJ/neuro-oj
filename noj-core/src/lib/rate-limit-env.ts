@@ -112,6 +112,36 @@ export function _resetTrustedProxyCacheForTest(): void {
   _trustedCache = null;
 }
 
+/** 判断 IP 是否命中可信代理白名单。 */
+function isTrustedProxyIp(
+  ip: string,
+  entries: Array<{ raw: string; range: CidrRange | null }>,
+): boolean {
+  if (ip === "unknown" || !ip) return false;
+  return entries.some((e) => e.range !== null && ipInRange(ip, e.range));
+}
+
+/**
+ * 从 Deno/Hono 连接信息中提取直连对端 IP。
+ * Hono 单测的 app.request() 没有 socket 信息，此时返回 null 以区分「测试上下文」。
+ */
+export function getDirectPeerIp(c: Context): string | null {
+  const env = c.env as
+    | { remoteAddr?: { hostname?: string; port?: number } }
+    | undefined;
+  const host = env?.remoteAddr?.hostname;
+  if (!host) return null;
+  if (host.startsWith("[")) {
+    return host.slice(1, host.indexOf("]")).toLowerCase();
+  }
+  return host.toLowerCase();
+}
+
+/** 请求是否携带真实 socket 地址（用于 fail-closed 判断与测试兼容）。 */
+export function hasDirectPeer(c: Context): boolean {
+  return getDirectPeerIp(c) !== null;
+}
+
 /**
  * 解析客户端真实 IP。
  *
@@ -135,19 +165,18 @@ export function _resetTrustedProxyCacheForTest(): void {
  */
 export function getClientIp(c: Context): string {
   const xff = c.req.header("x-forwarded-for");
+  const entries = getTrustedProxyEntries();
+  const directIp = getDirectPeerIp(c) ?? "unknown";
+
   if (xff) {
     const ips = xff.split(",").map((s) => s.trim()).filter(Boolean);
-    const entries = getTrustedProxyEntries();
     if (entries.length > 0) {
       // 从右往左（最接近客户端的代理）找第一个不在白名单的 IP
       // PR-7 评审修订：每条 entry 用 parseCidr + ipInRange 判定，
       // 支持 `1.2.3.4` 与 `10.0.0.0/8` 两种格式
       for (let i = ips.length - 1; i >= 0; i--) {
         const ip = ips[i]!;
-        const matched = entries.some((e) =>
-          e.range !== null && ipInRange(ip, e.range)
-        );
-        if (!matched) return ip;
+        if (!isTrustedProxyIp(ip, entries)) return ip;
       }
       return "unknown";
     }
@@ -163,5 +192,25 @@ export function getClientIp(c: Context): string {
     }
     return ips[0] ?? "unknown";
   }
-  return c.req.header("x-real-ip") || "unknown";
+
+  // NOJ-091：X-Real-IP 仅在直连对端命中可信代理时采用。
+  // 已配置白名单时，非代理直连伪造 X-Real-IP 一律拒绝。
+  const realIp = c.req.header("x-real-ip");
+  if (realIp) {
+    if (entries.length > 0) {
+      if (directIp !== "unknown" && isTrustedProxyIp(directIp, entries)) {
+        return realIp.trim();
+      }
+      // 伪造 / 直连绕过代理头：使用真实 socket 对端（测试上下文无 socket → unknown）
+      return directIp;
+    }
+    if (Deno.env.get("NOJ_ENV") === "production") {
+      logger.warn("生产环境未配置 TRUSTED_PROXIES，忽略 X-Real-IP → unknown");
+      return "unknown";
+    }
+    return realIp.trim();
+  }
+
+  // 没有任何代理头：真实请求回退到 socket 对端；测试上下文保持 unknown 兼容旧断言。
+  return directIp;
 }
