@@ -31,6 +31,8 @@ pub fn build_host_config(
         memory: Some(memory_bytes),
         memory_swap: Some(memory_bytes),
         memory_swappiness: Some(0),
+        // NOJ-188：默认限制单容器最多 1 个 CPU。
+        nano_cpus: Some(1_000_000_000),
         ..Default::default()
     }
 }
@@ -52,6 +54,12 @@ mod tests {
         assert_eq!(cfg.network_mode, Some("none".to_string()));
         assert_eq!(cfg.ipc_mode, Some("none".to_string()));
         assert_eq!(cfg.pids_limit, Some(256));
+    }
+
+    #[test]
+    fn test_cpu_limit_is_set() {
+        let cfg = build_host_config(512 * 1024 * 1024, HashMap::new(), true, "none");
+        assert_eq!(cfg.nano_cpus, Some(1_000_000_000));
     }
 
     #[test]

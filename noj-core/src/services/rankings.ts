@@ -75,7 +75,30 @@ async function hasMaterializedView(): Promise<boolean> {
  *
  * PGlite 不支持 MATERIALIZED VIEW 自动跳过（hasMaterializedView 返 false）。
  */
-export async function refreshRankingsView(): Promise<void> {
+// NOJ-085：物化视图全量刷新较贵，结果写回热路径上节流至 5s 一次，
+// 并保证节流窗口结束后至少再刷新一次（trailing refresh）。
+const RANKING_REFRESH_INTERVAL_MS = 5000;
+let _lastRankingRefreshAt = 0;
+let _pendingRankingRefresh: Promise<void> | null = null;
+
+export function refreshRankingsView(): Promise<void> {
+  const now = Date.now();
+  if (now - _lastRankingRefreshAt < RANKING_REFRESH_INTERVAL_MS) {
+    if (!_pendingRankingRefresh) {
+      _pendingRankingRefresh = new Promise((resolve) => {
+        setTimeout(() => {
+          _pendingRankingRefresh = null;
+          void doRefreshRankingsView().finally(resolve);
+        }, RANKING_REFRESH_INTERVAL_MS - (now - _lastRankingRefreshAt));
+      });
+    }
+    return _pendingRankingRefresh;
+  }
+  _lastRankingRefreshAt = now;
+  return doRefreshRankingsView();
+}
+
+async function doRefreshRankingsView(): Promise<void> {
   if (!(await hasMaterializedView())) return;
   try {
     const db = getDb();
@@ -91,6 +114,8 @@ export async function refreshRankingsView(): Promise<void> {
 /** 测试用：清除 hasMaterializedView 缓存 */
 export function _resetHasViewCacheForTest(): void {
   _hasViewCache = null;
+  _lastRankingRefreshAt = 0;
+  _pendingRankingRefresh = null;
 }
 
 /**

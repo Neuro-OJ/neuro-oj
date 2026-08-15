@@ -7,7 +7,7 @@
  *    提交，超过 2 分钟后自动重新构建 JudgeTask 入队。
  */
 
-import { eq, lte } from "drizzle-orm";
+import { and, eq, lte } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { problems, submissions } from "../db/schema.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
@@ -122,7 +122,10 @@ async function recoverPendingSubmissions(now: number): Promise<void> {
     .from(submissions)
     .innerJoin(problems, eq(submissions.problem_id, problems.id))
     .where(
-      andWhere(submissions.status, "pending", cutoff),
+      and(
+        eq(submissions.status, "pending"),
+        lte(submissions.created_at, cutoff),
+      ),
     )
     .limit(200);
 
@@ -176,15 +179,6 @@ async function recoverPendingSubmissions(now: number): Promise<void> {
       });
     }
   }
-}
-
-/** Drizzle 无法直接复用变量时使用的条件构建辅助。 */
-function andWhere(
-  column: typeof submissions.status,
-  status: string,
-  cutoff: string,
-) {
-  return eq(column, status) && lte(submissions.created_at, cutoff);
 }
 
 export async function runQueueSweeperOnce(): Promise<void> {

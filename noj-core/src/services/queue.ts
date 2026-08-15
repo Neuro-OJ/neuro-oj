@@ -65,12 +65,15 @@ export interface SubmissionStatusResponse {
 /**
  * 从 Redis 获取 pending 队列中的 submission_id 列表（按入队顺序）。
  */
-export async function getPendingSubmissionIds(): Promise<string[]> {
+export async function getPendingSubmissionIds(
+  limit = 1000,
+): Promise<string[]> {
   const redis = getRedis();
   if (redis.status !== "ready") {
     await redis.connect();
   }
-  const raw = await redis.lrange(JUDGE_QUEUE, 0, -1);
+  // NOJ-077：监控/列表路径不再全量 LRANGE；仅读取窗口内条目。
+  const raw = await redis.lrange(JUDGE_QUEUE, 0, Math.max(0, limit - 1));
   const ids: string[] = [];
   for (const item of raw) {
     try {
@@ -87,6 +90,15 @@ export async function getPendingSubmissionIds(): Promise<string[]> {
   return ids;
 }
 
+/** 获取 pending 队列实际长度（O(1)）。 */
+export async function getPendingQueueLength(): Promise<number> {
+  const redis = getRedis();
+  if (redis.status !== "ready") {
+    await redis.connect();
+  }
+  return redis.llen(JUDGE_QUEUE);
+}
+
 // ─── 公开 API ───────────────────────────────────────────────────────
 
 /**
@@ -95,8 +107,17 @@ export async function getPendingSubmissionIds(): Promise<string[]> {
 export async function getQueueOverview(): Promise<QueueResponse> {
   const db = getDb();
 
-  // 1. 从 Redis 获取 pending submission_id 列表
-  const pendingIds = await getPendingSubmissionIds();
+  // 1. 从 Redis 获取 pending submission_id 列表。
+  // NOJ-033：Redis 不可用时优雅降级——pending 为空、统计用 DB 数据，
+  // 不向队列页面抛 500。
+  let pendingIds: string[] = [];
+  let pendingQueueLength = 0;
+  try {
+    pendingIds = await getPendingSubmissionIds();
+    pendingQueueLength = await getPendingQueueLength();
+  } catch (err) {
+    logger.warn("Redis 不可用，队列 pending 信息降级为空", { err });
+  }
 
   // 2. 查询 pending 提交的元数据（保持 Redis 队列原有顺序）
   let pendingItems: QueueItem[] = [];
@@ -135,7 +156,7 @@ export async function getQueueOverview(): Promise<QueueResponse> {
         submitted_by: r.submitted_by,
       }));
   }
-  const pendingCount = pendingItems.length;
+  const pendingCount = pendingQueueLength;
 
   // 4. 查询 judging 列表：DB status="judging" 且不在 pending 中
   const judgingWhere = pendingIds.length > 0
@@ -295,8 +316,8 @@ export async function getSubmissionQueueStatus(
   //    Redis 不可用时静默失败，queue_position/queue_length 保持 null
   if (status === "judging" || status === "pending") {
     try {
+      queueLength = await getPendingQueueLength();
       const pendingIds = await getPendingSubmissionIds();
-      queueLength = pendingIds.length;
       const idx = pendingIds.indexOf(submissionId);
       if (idx !== -1) {
         // LRANGE 0 -1 返回最新优先（LPUSH），

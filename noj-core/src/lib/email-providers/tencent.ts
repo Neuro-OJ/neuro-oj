@@ -42,7 +42,7 @@ export const sendPasswordResetEmail: SendPasswordResetEmail = async (
 
   // 动态导入腾讯云 SES SDK
   // deno-lint-ignore no-explicit-any
-  const { ses }: any = await import("npm:tencentcloud-sdk-nodejs-ses@^4.1.247");
+  const { ses }: any = await import("tencentcloud-sdk-nodejs-ses");
 
   const client = new ses.v20201002.Client({
     credential: {

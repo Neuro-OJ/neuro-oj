@@ -44,7 +44,7 @@ import { checkPermission } from "../lib/permissions.ts";
 import { pushJudgeTask } from "../mq/producer.ts";
 import { validateJudgeImageWithKind } from "./judge-images.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
-import { getPendingSubmissionIds } from "./queue.ts";
+import { getPendingQueueLength, getPendingSubmissionIds } from "./queue.ts";
 import type { RuntimeConfig } from "../types/problems.ts";
 import type { JudgeTask, SubmissionStatus } from "../types/index.ts";
 import type { Context } from "hono";
@@ -58,7 +58,6 @@ import type {
   SubmissionListItem,
   SubmissionResponse,
 } from "./submissions-types.ts";
-import { updateSubmissionStatus } from "./submissions-result.ts";
 import { logger } from "../lib/logging.ts";
 
 /**
@@ -218,7 +217,7 @@ export async function listSubmissions(
   if (hasInProgress) {
     try {
       const pendingIds = await getPendingSubmissionIds();
-      queueLength = pendingIds.length;
+      queueLength = await getPendingQueueLength();
       // LRANGE 0 -1 返回最新优先（LPUSH），pendingIds.length - idx
       // 使队列位置从 1（下个出队）递增
       pendingPosMap = new Map(
@@ -404,12 +403,8 @@ export async function createSubmission(
     }
   } catch (mqErr) {
     logger.error("评测任务推送失败", { submission_id: id, err: mqErr });
-    // DB 成功但 MQ 失败，标记为 error 让用户重新提交
-    try {
-      await updateSubmissionStatus(id, "error");
-    } catch {
-      // 忽略 cleanup 失败
-    }
+    // NOJ-067：DB 写入与 LPUSH 无法事务化；崩溃/失败窗口内保留 pending，
+    // 由 mq/sweeper.ts 按超时恢复，避免永久 Pending 孤儿。
     throw new AppError(
       "提交失败：评测队列暂时不可用，请稍后重试",
       500,

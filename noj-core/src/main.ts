@@ -1,6 +1,7 @@
 import { createApp } from "./app.ts";
 import { closeDbForShutdown } from "./db/connection.ts";
 import { runMigrations } from "./db/migrate.ts";
+import { startQueueSweeper } from "./mq/sweeper.ts";
 import { closeRedisForShutdown, connectRedis } from "./mq/connection.ts";
 import {
   requestResultConsumerShutdown,
@@ -186,6 +187,9 @@ async function main() {
 
   // 启动评测结果消费者（后台运行，带自动重连，不阻塞 HTTP）
   startResultConsumerWithRetry();
+
+  // 启动 processing 超时重投 + pending 提交恢复 sweeper
+  startQueueSweeper();
 
   // 初始化 Redis Pub/Sub 事件订阅者（后台运行，用于 SSE 推送）
   initEventSubscriber();

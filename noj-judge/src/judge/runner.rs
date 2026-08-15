@@ -6,6 +6,7 @@ use crate::sandbox::download;
 use crate::types::{JudgeResult, JudgeTask};
 
 /// 评测任务入口——统一使用双容器模式（Evaluator + Solution）。
+#[allow(clippy::too_many_arguments)]
 pub async fn evaluate(
     docker: bollard::Docker,
     task: &JudgeTask,
@@ -13,6 +14,9 @@ pub async fn evaluate(
     cache_dir: String,
     cache_max_items: usize,
     cache_max_mb: u64,
+    allow_evaluator_network: bool,
+    image_prefix: &str,
+    command_whitelist: &[String],
 ) -> Result<JudgeResult> {
     // 下载/获取支持包（含缓存）
     let support_pkg = if let Some(ref url) = task.download_url {
@@ -57,6 +61,9 @@ pub async fn evaluate(
         &task.code,
         support_pkg.as_deref(),
         task.rejudge_seq,
+        allow_evaluator_network,
+        image_prefix,
+        command_whitelist,
     )
     .await
 }

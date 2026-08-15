@@ -301,9 +301,18 @@ async function createViaCrud(
 ): Promise<ProblemResponseWithCategories> {
   const type = manifest.type ?? "U";
 
-  // P 型仅 admin（与 createProblem 权限一致）
-  if (type === "P" && !(await isAdminActor(actor, c))) {
-    throw new ForbiddenError("仅管理员可创建管理题");
+  // NOJ-102：创建权限按类型强制执行（与 createProblem 一致）。
+  if (type === "P") {
+    if (!(await isAdminActor(actor, c))) {
+      throw new ForbiddenError("仅管理员可创建管理题");
+    }
+  } else if (c) {
+    const canCreate = await checkPermission(c, "problem:create");
+    if (!canCreate) {
+      throw new ForbiddenError("无权创建题目");
+    }
+  } else if (actor.userRole !== "admin" && actor.userRole !== "user") {
+    throw new ForbiddenError("无权创建题目");
   }
 
   // 镜像白名单校验（与 createProblem 一致）

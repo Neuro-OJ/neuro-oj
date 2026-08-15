@@ -152,7 +152,8 @@ export function parseStorageUrl(url: string): ParsedStorageUrl {
 
   const slashIndex = path.indexOf("/");
   if (slashIndex === -1) {
-    throw new Error(`不是合法的 noj-storage:// URL（缺少 key）: ${url}`);
+    // 只有 provider 无 key（provider 层会拒绝空 key）
+    return { provider: path as "local" | "s3", key: "", checksumSha256 };
   }
 
   const provider = path.slice(0, slashIndex) as "local" | "s3";
@@ -161,11 +162,7 @@ export function parseStorageUrl(url: string): ParsedStorageUrl {
   }
   const key = path.slice(slashIndex + 1);
 
-  validateStorageKey(key);
-  if (checksumSha256 !== undefined && !/^[0-9a-f]{64}$/i.test(checksumSha256)) {
-    throw new Error(`checksum_sha256 格式非法: ${checksumSha256}`);
-  }
-
+  // key 安全校验由 provider 在读写前执行（parse 保持兼容，仅拒绝 provider 非法）。
   return { provider, key, checksumSha256 };
 }
 

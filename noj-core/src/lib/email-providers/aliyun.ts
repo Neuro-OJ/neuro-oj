@@ -48,7 +48,7 @@ export const sendPasswordResetEmail: SendPasswordResetEmail = async (
   // deno-lint-ignore no-explicit-any
   const DMMod: any = await import("npm:@alicloud/dm20151123@^1.10.2");
   // deno-lint-ignore no-explicit-any
-  const OApi: any = await import("npm:@alicloud/openapi-core@^1.0.7");
+  const OApi: any = await import("@alicloud/openapi-core");
 
   const DMClient = DMMod["module.exports"].default;
   const ConfigClass = OApi["$OpenApiUtil"].Config;

@@ -19,6 +19,14 @@ pub struct Config {
     pub support_cache_max_items: usize,
     /// 支持包缓存最大磁盘占用 MB（默认: 2048）
     pub support_cache_max_mb: u64,
+    /// 实例标识（用于启动时清理本实例孤儿容器，默认 hostname-pid）
+    pub instance_id: String,
+    /// 受信评测镜像名前缀（镜像最后一段必须以此开头）
+    pub image_prefix: String,
+    /// 受信评测命令可执行文件白名单（逗号分隔）
+    pub command_whitelist: Vec<String>,
+    /// 是否允许消息开启 evaluator 网络（默认拒绝；E2E 可显式开启）
+    pub allow_evaluator_network: bool,
 }
 
 impl Config {
@@ -38,8 +46,34 @@ impl Config {
             support_cache_dir: env_or("SUPPORT_CACHE_DIR", "/tmp/noj-judge/support-cache"),
             support_cache_max_items: env_var_parse("SUPPORT_CACHE_MAX_ITEMS").unwrap_or(500),
             support_cache_max_mb: env_var_parse("SUPPORT_CACHE_MAX_MB").unwrap_or(2048),
+            instance_id: env_or(
+                "JUDGE_INSTANCE_ID",
+                &format!("{}-{}", hostname(), std::process::id()),
+            ),
+            image_prefix: env_or("JUDGE_IMAGE_PREFIX", "noj-"),
+            command_whitelist: env_or("JUDGE_COMMAND_WHITELIST", "python3,deno,node,bash,sh")
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            allow_evaluator_network: env_var_parse::<bool>("JUDGE_ALLOW_EVALUATOR_NETWORK")
+                .unwrap_or(false),
         }
     }
+
+    /// 优雅关闭排空超时：至少 30s，且覆盖支持包下载超时 + 结果推送余量。
+    pub fn drain_timeout_secs(&self) -> u64 {
+        (30u64).max(
+            self.support_package_download_timeout_secs
+                .saturating_add(30),
+        )
+    }
+}
+
+fn hostname() -> String {
+    std::env::var("HOSTNAME")
+        .or_else(|_| std::env::var("COMPUTERNAME"))
+        .unwrap_or_else(|_| "unknown".to_string())
 }
 
 /// 读取环境变量，不存在时返回默认值。

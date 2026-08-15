@@ -51,7 +51,7 @@ import type {
 } from "../types/objective.ts";
 
 const router = new Hono<
-  { Variables: { userId?: string; userRole?: string } }
+  { Variables: { userId: string; userRole: string } }
 >();
 
 /**
@@ -128,7 +128,7 @@ router.get("/", optionalAuthMiddleware, async (c) => {
   // U 型列表只能查本人（或由 problem:read_all/admin 查全部）。
   const requestedType = (query.type || "P").toUpperCase();
   if (requestedType === "U") {
-    const userId = c.var.userId;
+    const userId = c.get("userId") as string | undefined;
     if (!userId) {
       throw new UnauthorizedError("请先登录");
     }

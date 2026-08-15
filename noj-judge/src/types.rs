@@ -100,7 +100,7 @@ pub struct JudgeTask {
 /// 评测结果——从 noj-judge 返回到 noj-core 的消息。
 ///
 /// 字段对齐 noj-core/src/types/index.ts 的 JudgeResult 接口。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JudgeResult {
     /// 提交 UUID
     pub submission_id: String,

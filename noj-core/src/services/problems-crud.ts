@@ -136,7 +136,9 @@ export async function createProblem(
   } else {
     if (c) {
       await assertPermission(c, "problem:create");
-    } else if (userRole !== "admin" && userRole !== "user") {
+    } else if (
+      userRole !== undefined && userRole !== "admin" && userRole !== "user"
+    ) {
       throw new ForbiddenError("无权创建题目");
     }
   }

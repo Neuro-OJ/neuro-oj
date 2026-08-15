@@ -92,6 +92,10 @@ Deno.test({
     _resetSystemSettingsForTest();
     await initSystemSettings();
     await updateSetting("trusted_proxies", "10.0.0.1", "0");
+    const { _resetTrustedProxyCacheForTest } = await import(
+      "../../src/lib/rate-limit-env.ts"
+    );
+    _resetTrustedProxyCacheForTest();
 
     const res = await app.request("/ip", {
       headers: { "X-Forwarded-For": "10.0.0.1" },

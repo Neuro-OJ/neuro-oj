@@ -298,7 +298,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "import-bundle: 普通用户导入无 number 的 U 型题目成功（自动分配）",
+  name: "import-bundle: 普通用户导入含 evaluator.command 的 U 型题目被拒（NOJ-062）",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -316,12 +316,7 @@ Deno.test({
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
-    assertEquals(res.status, 200);
-    const body = await res.json();
-    // number 由系统自动分配（type 内 MAX+1）；id 服务端生成 UUID
-    assertEquals(body.data.number >= 1, true);
-    assertEquals(body.data.type, "U");
-    assertEquals(body.data.owner_id, OWNER_ID);
+    assertEquals(res.status, 403);
   },
 });
 
@@ -526,7 +521,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "import-bundle: 普通用户导入开启 evaluator 联网放行（有创建权限即可）",
+  name: "import-bundle: 普通用户导入开启 evaluator 联网/自定义命令被拒（NOJ-062/190 前置）",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -536,7 +531,7 @@ Deno.test({
     const app = createApp();
     const token = await signToken({ sub: OWNER_ID, role: "user" });
 
-    // manifest.runtime_config.evaluator.network.enabled=true（上传者可控）
+    // manifest.runtime_config 由上传者可控，普通用户默认无敏感字段权限 → 403。
     const formData = new FormData();
     formData.append(
       "file",
@@ -563,11 +558,6 @@ Deno.test({
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
-    assertEquals(res.status, 200);
-    const body = await res.json();
-    assertEquals(
-      body.data.runtime_config.evaluator.network?.enabled,
-      true,
-    );
+    assertEquals(res.status, 403);
   },
 });

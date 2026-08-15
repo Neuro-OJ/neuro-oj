@@ -10,17 +10,18 @@ use futures_util::StreamExt;
 use std::time::Duration;
 use tracing::{info, warn};
 
-const DRAIN_TIMEOUT_SECS: u64 = 30;
 const ABORT_JOIN_TIMEOUT_SECS: u64 = 5;
 
 /// 排空正在执行的任务列表。
 ///
 /// 行为：
-/// - 等待所有任务完成，最多等 `DRAIN_TIMEOUT_SECS` 秒
+/// - 等待所有任务完成，最多等 `drain_timeout_secs` 秒（NOJ-156：
+///   由下载超时 + 余量推导，不得小于下载超时）
 /// - 超时后主动 abort 剩余任务，再等待 `ABORT_JOIN_TIMEOUT_SECS` 秒收集结果
 /// - 调用后调用方应直接退出进程（本函数不保证所有 task 已完全停止）
 pub async fn drain_tasks(
     tasks: &mut futures_util::stream::FuturesUnordered<tokio::task::JoinHandle<()>>,
+    drain_timeout_secs: u64,
 ) {
     info!(
         "关闭信号已接收，等待 {} 个正在执行的任务完成...",
@@ -28,7 +29,7 @@ pub async fn drain_tasks(
     );
 
     // 使用 tokio::select! 自带的 pinning 等待所有任务完成
-    let deadline = tokio::time::sleep(Duration::from_secs(DRAIN_TIMEOUT_SECS));
+    let deadline = tokio::time::sleep(Duration::from_secs(drain_timeout_secs));
     tokio::pin!(deadline);
     loop {
         tokio::select! {
@@ -79,7 +80,7 @@ mod tests {
     #[tokio::test]
     async fn test_drain_empty() {
         let mut tasks: FuturesUnordered<tokio::task::JoinHandle<()>> = FuturesUnordered::new();
-        drain_tasks(&mut tasks).await;
+        drain_tasks(&mut tasks, 30).await;
         // 空列表应立即返回
     }
 
@@ -88,7 +89,7 @@ mod tests {
         let mut tasks: FuturesUnordered<tokio::task::JoinHandle<()>> = FuturesUnordered::new();
         tasks.push(tokio::spawn(async {}));
         tasks.push(tokio::spawn(async {}));
-        drain_tasks(&mut tasks).await;
+        drain_tasks(&mut tasks, 30).await;
     }
 
     #[tokio::test]
@@ -97,6 +98,6 @@ mod tests {
         tasks.push(tokio::spawn(async {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }));
-        drain_tasks(&mut tasks).await;
+        drain_tasks(&mut tasks, 30).await;
     }
 }

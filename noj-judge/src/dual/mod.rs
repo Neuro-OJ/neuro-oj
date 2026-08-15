@@ -44,6 +44,67 @@ pub const SOLUTION_ENTRY_FILE: &str = "main.py";
 const INJECT_POLL_ATTEMPTS: u32 = 50;
 const INJECT_POLL_INTERVAL_MS: u64 = 100;
 
+/// 校验镜像名最后一段是否匹配受信前缀。
+fn image_allowed(image: &str, prefix: &str) -> bool {
+    if image.is_empty() || image.contains("..") || image.contains('\0') {
+        return false;
+    }
+    let basename = image.rsplit('/').next().unwrap_or(image);
+    let name = basename.split(':').next().unwrap_or(basename);
+    name.starts_with(prefix)
+}
+
+/// NOJ-190：judge 侧对 MQ 消息中的镜像/命令/网络做白名单复验。
+fn validate_runtime_config(
+    submission_id: &str,
+    runtime_config: &RuntimeConfig,
+    allow_evaluator_network: bool,
+    image_prefix: &str,
+    command_whitelist: &[String],
+) -> Result<()> {
+    if !image_allowed(&runtime_config.evaluator.image, image_prefix) {
+        anyhow::bail!(
+            "submission {}: evaluator 镜像不在白名单前缀内: {}",
+            submission_id,
+            runtime_config.evaluator.image
+        );
+    }
+    if !image_allowed(&runtime_config.solution.image, image_prefix) {
+        anyhow::bail!(
+            "submission {}: solution 镜像不在白名单前缀内: {}",
+            submission_id,
+            runtime_config.solution.image
+        );
+    }
+
+    let argv = parse_command(&runtime_config.evaluator.command);
+    if argv.is_empty() {
+        anyhow::bail!("submission {}: evaluator 命令为空", submission_id);
+    }
+    let executable = &argv[0];
+    if !command_whitelist.iter().any(|w| w == executable) {
+        anyhow::bail!(
+            "submission {}: evaluator 可执行文件不在白名单内: {}",
+            submission_id,
+            executable
+        );
+    }
+
+    let network_enabled = runtime_config
+        .evaluator
+        .network
+        .as_ref()
+        .map(|n| n.enabled)
+        .unwrap_or(false);
+    if network_enabled && !allow_evaluator_network {
+        anyhow::bail!(
+            "submission {}: 消息请求开启 evaluator 网络，但 judge 未允许（JUDGE_ALLOW_EVALUATOR_NETWORK=false）",
+            submission_id
+        );
+    }
+    Ok(())
+}
+
 /// 追加到累积缓冲：超过上限时丢弃头部、只保留尾部（诊断信息优先）。
 fn append_capped(buf: &mut String, s: &str) {
     if buf.len() + s.len() > MAX_OUTPUT_BYTES {
@@ -144,6 +205,7 @@ async fn inject_file_to_container(
 }
 
 /// 双容器评测主入口。
+#[allow(clippy::too_many_arguments)]
 pub async fn evaluate_dual(
     docker: bollard::Docker,
     task_submission_id: &str,
@@ -151,7 +213,18 @@ pub async fn evaluate_dual(
     user_code: &str,
     support_pkg_bytes: Option<&[u8]>,
     task_rejudge_seq: Option<i64>,
+    allow_evaluator_network: bool,
+    image_prefix: &str,
+    command_whitelist: &[String],
 ) -> Result<JudgeResult> {
+    validate_runtime_config(
+        task_submission_id,
+        runtime_config,
+        allow_evaluator_network,
+        image_prefix,
+        command_whitelist,
+    )?;
+    let started = Instant::now();
     let evaluator_cmd = parse_command(&runtime_config.evaluator.command);
 
     // 1. 创建 Evaluator 容器
@@ -244,7 +317,13 @@ pub async fn evaluate_dual(
         warn!("DualContainer 销毁警告: {}", e);
     }
 
-    result
+    // NOJ-162（部分）：回填真实总耗时；memory_kb 当前 Docker API 未暴露峰值，
+    // 保持 None 并在文档中明确。
+    let mut result = result?;
+    if result.time_ms.is_none() {
+        result.time_ms = Some(started.elapsed().as_millis() as u64);
+    }
+    Ok(result)
 }
 
 /// 超时种类：判定最终状态时区分启动期与正式评测期。
@@ -419,7 +498,7 @@ async fn run_dual_loop(
                     chunk,
                 )
                 .await?;
-                if result_payload.is_some() {
+                if result_payload.as_ref().is_some_and(|p| !p.is_empty()) {
                     break;
                 }
                 evaluator_started = true;
@@ -478,7 +557,7 @@ async fn run_dual_loop(
                         chunk,
                     )
                     .await?;
-                    if result_payload.is_some() {
+                    if result_payload.as_ref().is_some_and(|p| !p.is_empty()) {
                         break 'outer;
                     }
                 }
@@ -510,7 +589,7 @@ async fn run_dual_loop(
 
     // 解析最终结果
     match result_payload {
-        Some(payload) => {
+        Some(payload) if !payload.is_empty() => {
             // payload 是 `---RESULT---` 后第一行 JSON
             let parsed: serde_json::Value =
                 serde_json::from_str(&payload).context("---RESULT--- JSON 解析失败")?;
@@ -519,9 +598,10 @@ async fn run_dual_loop(
                 &parsed,
                 &eval_stderr_buf,
                 &eval_stdout_full,
+                rejudge_seq,
             ))
         }
-        None => {
+        _ => {
             // 未拿到 RESULT 标记
             warn!("Evaluator 未输出 ---RESULT--- 标记: {}", submission_id);
             // drain 残留
@@ -576,11 +656,11 @@ async fn handle_eval_chunk(
 
     // stdout: feed 到 LineParser
     let lines = parser.feed(&data);
-    let mut awaiting_result_payload = false;
     for line in lines {
         match line {
             EvaluatorLine::ResultMarker => {
-                awaiting_result_payload = true;
+                // NOJ-160：用 Some("") 作为「已见标记、等待下一非空行」的跨 chunk 状态。
+                *result_payload = Some(String::new());
                 append_capped(stdout_full, RESULT_MARKER);
                 append_capped(stdout_full, "\n");
             }
@@ -627,9 +707,8 @@ async fn handle_eval_chunk(
                 // 普通 evaluate.py 输出，丢弃
                 append_capped(stdout_full, &s);
                 append_capped(stdout_full, "\n");
-                if awaiting_result_payload && !s.trim().is_empty() {
+                if result_payload.as_ref() == Some(&String::new()) && !s.trim().is_empty() {
                     *result_payload = Some(s.trim().to_string());
-                    awaiting_result_payload = false;
                 }
             }
         }
@@ -727,6 +806,7 @@ fn build_judge_result(
     parsed: &serde_json::Value,
     stderr: &str,
     stdout: &str,
+    rejudge_seq: Option<i64>,
 ) -> JudgeResult {
     let full_output = crate::merge_output(stdout, stderr);
     let status = parsed
@@ -745,7 +825,8 @@ fn build_judge_result(
         details,
         time_ms: None,
         memory_kb: None,
-        rejudge_seq: None,
+        // NOJ-161：成功路径必须透传任务 rejudge_seq。
+        rejudge_seq,
     }
 }
 
@@ -802,7 +883,8 @@ mod tests {
             "score": 10000,
             "details": {"cases": []}
         });
-        let r = build_judge_result("sid-1", &parsed, "", "");
+        let r = build_judge_result("sid-1", &parsed, "", "", Some(7));
+        assert_eq!(r.rejudge_seq, Some(7));
         assert_eq!(r.status, "Accepted");
         assert_eq!(r.score, 10000);
     }
@@ -814,7 +896,7 @@ mod tests {
             "score": 0,
             "details": {"message": "expected 3 got 4"}
         });
-        let r = build_judge_result("sid-2", &parsed, "stderr", "stdout");
+        let r = build_judge_result("sid-2", &parsed, "stderr", "stdout", None);
         assert_eq!(r.status, "WrongAnswer");
         assert!(r.output.contains("stderr"));
     }
@@ -822,7 +904,7 @@ mod tests {
     #[test]
     fn test_build_judge_result_missing_fields() {
         let parsed = serde_json::json!({});
-        let r = build_judge_result("sid-3", &parsed, "", "");
+        let r = build_judge_result("sid-3", &parsed, "", "", None);
         assert_eq!(r.status, "SystemError");
         assert_eq!(r.score, 0);
     }
@@ -1012,6 +1094,55 @@ mod tests {
             Some("{\"status\":\"Accepted\",\"score\":100}")
         );
         assert!(stdout_full.contains("---RESULT---"));
+    }
+
+    #[tokio::test]
+    async fn test_result_marker_and_payload_split_across_chunks() {
+        use bollard::container::LogOutput;
+
+        let (sink, _source) = tokio::io::duplex(8192);
+        let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(sink);
+
+        let mut parser = LineParser::new();
+        let mut stderr_buf = String::new();
+        let mut stdout_full = String::new();
+        let mut result_payload: Option<String> = None;
+        let mut tracker = InFlightTracker::new(2000);
+
+        handle_eval_chunk(
+            &mut parser,
+            &mut stderr_buf,
+            &mut stdout_full,
+            &mut writer,
+            &mut result_payload,
+            &mut tracker,
+            LogOutput::StdOut {
+                message: bytes::Bytes::from_static(b"---RESULT---\n"),
+            },
+        )
+        .await
+        .unwrap();
+        // 标记与 payload 跨 chunk 时，状态必须保持到下一 chunk。
+        assert_eq!(result_payload.as_deref(), Some(""));
+
+        handle_eval_chunk(
+            &mut parser,
+            &mut stderr_buf,
+            &mut stdout_full,
+            &mut writer,
+            &mut result_payload,
+            &mut tracker,
+            LogOutput::StdOut {
+                message: bytes::Bytes::from_static(b"{\"status\":\"Accepted\",\"score\":100}\n"),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            result_payload.as_deref(),
+            Some("{\"status\":\"Accepted\",\"score\":100}")
+        );
     }
 
     #[tokio::test]

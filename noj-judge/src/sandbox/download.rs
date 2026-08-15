@@ -53,6 +53,10 @@ pub async fn fetch_support_package(
             let decoded_url = percent_decode_str(&raw_url)
                 .decode_utf8()
                 .context("url percent 解码失败")?;
+            // NOJ-194：仅允许 HTTPS 下载 URL，拒绝 http 明文降级。
+            if !decoded_url.starts_with("https://") {
+                bail!("S3 下载 URL 必须使用 HTTPS: {}", redact_url(&decoded_url));
+            }
             let bytes = http_download(&decoded_url, download_timeout_secs).await?;
             Ok((bytes, checksum))
         }
@@ -62,14 +66,27 @@ pub async fn fetch_support_package(
     }
 }
 
-/// HTTP GET 下载支持包。
+/// 日志脱敏：避免把 presigned URL 中的签名 query 完整打进日志。
+fn redact_url(url: &str) -> String {
+    match url.find('?') {
+        Some(idx) => format!("{}?...", &url[..idx]),
+        None => url.to_string(),
+    }
+}
+
+/// HTTPS GET 下载支持包。
 async fn http_download(url: &str, timeout_secs: u64) -> Result<Vec<u8>> {
+    // NOJ-194：禁止跟随重定向（重定向可被用于 HTTP 降级/内网 SSRF）。
     let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
         .timeout(std::time::Duration::from_secs(timeout_secs))
         .build()
         .context("创建 HTTP 客户端失败")?;
 
     let mut response = client.get(url).send().await.context("HTTP 下载请求失败")?;
+    if response.status().is_redirection() {
+        bail!("S3 下载重定向被拒绝: {}", response.status());
+    }
 
     if !response.status().is_success() {
         bail!("HTTP 下载返回非成功状态码: {}", response.status());

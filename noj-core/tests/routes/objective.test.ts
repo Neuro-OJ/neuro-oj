@@ -11,6 +11,7 @@ import {
   jsonRequest,
 } from "../lib/helper.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { createProblem } from "../../src/services/problems.ts";
 import { problems } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 
@@ -360,31 +361,27 @@ Deno.test({
   fn: async () => {
     const app = createApp();
     const token = await createUserToken("user");
-    // 创建 U 型题目（需 runtime_config）
-    const created = await jsonRequest(app, "/api/v1/problems", {
-      method: "POST",
-      token,
-      body: {
-        type: "U",
-        title: `U 型题 ${Date.now()}`,
-        description: "d",
-        runtime_config: {
-          evaluator: {
-            image: "noj-judge-python",
-            command: "python3 /workspace/evaluate.py",
-            time_limit_ms: 5000,
-            memory_limit_mb: 512,
-          },
-          solution: {
-            image: "noj-solution-python",
-            entry: "solution.py",
-            call_timeout_ms: 2000,
-            memory_limit_mb: 512,
-          },
+    // 服务层直接创建 U 型编程题（内部 root 路径，不受普通用户敏感字段限制）
+    const created = await createProblem({
+      type: "U",
+      title: `U 型题 ${Date.now()}`,
+      description: "d",
+      runtime_config: {
+        evaluator: {
+          image: "noj-judge-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: "noj-solution-python",
+          entry: "solution.py",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
         },
       },
     });
-    const problemId = (await created.json()).data.id;
+    const problemId = created.id;
 
     const res = await jsonRequest(
       app,
