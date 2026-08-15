@@ -193,10 +193,13 @@ async fn inject_file_to_container(
     }
 
     // 等 exec 完成（简化处理：用 inspect_exec 轮询直到退出）
-    // 轮询上限 50 次 × 100ms = 5s
+    // 轮询上限 50 次 × 100ms = 5s；退出码非 0 时视为注入失败。
     for _ in 0..INJECT_POLL_ATTEMPTS {
         let inspect = docker.inspect_exec(&exec.id).await?;
-        if inspect.exit_code.is_some() {
+        if let Some(code) = inspect.exit_code {
+            if code != 0 {
+                anyhow::bail!("注入文件 {} 失败（exit_code={}）", file_name, code);
+            }
             return Ok(());
         }
         tokio::time::sleep(Duration::from_millis(INJECT_POLL_INTERVAL_MS)).await;

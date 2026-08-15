@@ -6,7 +6,7 @@ export interface ConsumerOptions {
   logLabel: string; // e.g. "结果", "评测开始事件"
   aliveRef: { value: boolean };
   /**
-   * 处理消息。返回 true 表示成功确认（从 processing 列表移除）；
+   * 处理消息。正常返回表示成功并会从 processing 列表确认；
    * 抛出异常表示处理失败，调用方会将其重新投递回主队列。
    */
   handleMessage: (data: Record<string, unknown>) => Promise<void>;
@@ -106,10 +106,16 @@ export function createConsumer(opts: ConsumerOptions): () => Promise<void> {
         try {
           message = JSON.parse(rawJson);
         } catch {
-          logger.error(`${label} JSON 解析失败，移入死信/丢弃`, {
+          logger.error(`${label} JSON 解析失败，移入死信队列`, {
             raw: rawJson.slice(0, 512),
           });
-          // 坏消息不能无限循环：从 processing 移除（业务侧可另行审计 Redis 历史）。
+          // 坏消息不能无限循环：先保留到 :dead 队列便于审计，再从 processing 移除。
+          const deadQueue = `${opts.queueName}:dead`;
+          try {
+            await redis.rpush(deadQueue, rawJson);
+          } catch (deadErr) {
+            logger.error(`${label} 写入死信队列失败`, { err: deadErr });
+          }
           await redis.lrem(processingQueue, 1, rawJson);
           continue;
         }

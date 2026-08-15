@@ -11,6 +11,7 @@ import { and, eq, lte } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { problems, submissions } from "../db/schema.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
+import { getSetting } from "../services/system-settings.ts";
 import { getRedis } from "./connection.ts";
 import { JUDGE_QUEUE } from "./producer.ts";
 import { logger } from "../lib/logging.ts";
@@ -24,6 +25,17 @@ const TASK_PROCESSING_TIMEOUT_MS = 10 * 60_000;
 const RESULT_PROCESSING_TIMEOUT_MS = 2 * 60_000;
 const PENDING_RECOVERY_MS = 2 * 60_000;
 const SWEEP_INTERVAL_MS = 30_000;
+
+/** 根据管理员配置的最大 evaluator 时限推导任务 processing 超时，避免长任务被提前重投。 */
+function taskProcessingTimeoutMs(): number {
+  const setting = getSetting("judge_max_evaluator_time_limit_ms");
+  const maxTimeLimit = typeof setting?.value === "number" ? setting.value : 0;
+  if (maxTimeLimit <= 0) {
+    return TASK_PROCESSING_TIMEOUT_MS;
+  }
+  // 至少保留 2 分钟结果推送/收尾余量。
+  return Math.max(TASK_PROCESSING_TIMEOUT_MS, maxTimeLimit + 2 * 60_000);
+}
 
 const _firstSeen = new Map<string, number>();
 const _lastRequeue = new Map<string, number>();
@@ -170,7 +182,9 @@ async function recoverPendingSubmissions(now: number): Promise<void> {
       await pushJudgeTask(task);
       await db.update(submissions)
         .set({ status: "judging" })
-        .where(eq(submissions.id, row.id));
+        .where(
+          and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
+        );
       logger.info("已恢复 pending 提交入队", { submission_id: row.id });
     } catch (err) {
       logger.error("pending 提交恢复失败（等待下轮重试）", {
@@ -187,7 +201,7 @@ export async function runQueueSweeperOnce(): Promise<void> {
     sweepProcessingQueue(
       `${JUDGE_QUEUE}:processing`,
       JUDGE_QUEUE,
-      TASK_PROCESSING_TIMEOUT_MS,
+      taskProcessingTimeoutMs(),
     ),
     sweepProcessingQueue(
       `${RESULT_QUEUE}:processing`,

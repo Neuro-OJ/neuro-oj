@@ -56,6 +56,8 @@ export async function pushJudgeTask(task: JudgeTask): Promise<number> {
   }
 
   const length = await redis.lpush(JUDGE_QUEUE, message);
+  // 注意：不要对主队列设置 EXPIRE。Redis 列表在变为空时会自动删除 key；
+  // 对非空列表设置 TTL 会在队列积压且没有新提交时把整个队列（含未消费任务）一起删掉。
   logJudgeTaskEnqueued(task.submission_id, length, messageBytes);
   return length;
 }

@@ -5,8 +5,8 @@
  * 的全局上限约束资源限制字段：
  *
  * - SENSITIVE_FIELD_PERMISSIONS：敏感字段路径 → 权限项 静态映射。
- *   权限项默认授予 default user 角色（seed-rbac，一次性 seed），因此默认
- *   放行；管理员从角色移除授权即收紧（重启不会恢复）。
+ *   seed-rbac 已按 NOJ-062 从 default user 角色撤销这些权限；管理员可显式
+ *   授权给特定角色，授权后不会被重启恢复覆盖。
  * - RESOURCE_LIMIT_SETTINGS：资源限制字段 → 全局上限设置项 key 映射。
  *   设置值 > 0 时启用上限，超限拒绝。
  *

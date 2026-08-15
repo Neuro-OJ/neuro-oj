@@ -381,10 +381,10 @@ export async function createSubmission(
 
   try {
     await pushJudgeTask(task);
-    // 入队成功后立即更新状态为 judging
-    // 注意：此处不设置 judge_started_at，它由 noj-judge 开始执行时通过 started 事件设置
+    // 入队成功后立即更新状态为 judging。
+    // 条件更新：极端竞态下结果可能已先落库，不能把 finished 覆盖回 judging。
     await db.update(submissions).set({ status: "judging" }).where(
-      eq(submissions.id, id),
+      and(eq(submissions.id, id), eq(submissions.status, "pending")),
     );
 
     // 发布队列变更事件，通知 SSE 等订阅者

@@ -211,7 +211,12 @@ async function main() {
 
     try {
       requestResultConsumerShutdown();
-      await server.shutdown();
+      // SSE 等长连接可能让 shutdown() 一直等待；加一个兜底超时，
+      // 超时后继续关闭资源并退出，避免被 K8s SIGKILL 前卡死。
+      await Promise.race([
+        server.shutdown(),
+        new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+      ]);
       logger.info("HTTP 服务已停止接收新请求并完成排空");
     } catch (err) {
       logger.warn("HTTP 优雅关闭失败", { err });

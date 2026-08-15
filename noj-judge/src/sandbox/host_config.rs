@@ -6,7 +6,7 @@ use std::collections::HashMap;
 /// 参数：
 /// - `memory_bytes`：内存上限（同时作用于 swap）
 /// - `tmpfs`：tmpfs 挂载（如 `("/tmp", "size=256M")`）
-/// - `readonly_rootfs`：rootfs 是否只读（双容器 evaluator/solution 均为 false）
+/// - `readonly_rootfs`：rootfs 是否只读（双容器当前为 true，配合 /tmp、/workspace tmpfs）
 /// - `network_mode`：容器网络模式（`"none"` 无网，`"bridge"` 默认桥接）
 pub fn build_host_config(
     memory_bytes: i64,

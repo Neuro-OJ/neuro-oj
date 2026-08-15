@@ -87,7 +87,10 @@ pub async fn remove_container_force(docker: &Docker, container_id: &str) -> bool
 /// 实例标签在 `dual/container.rs` 创建容器时写入；旧版本/崩溃残留均可回收。
 pub async fn cleanup_orphan_containers(docker: &Docker, instance_id: &str) -> usize {
     let mut filters = HashMap::new();
-    filters.insert(INSTANCE_LABEL.to_string(), vec![instance_id.to_string()]);
+    filters.insert(
+        "label".to_string(),
+        vec![format!("{}={}", INSTANCE_LABEL, instance_id)],
+    );
     let options = ListContainersOptionsBuilder::new()
         .all(true)
         .filters(&filters)

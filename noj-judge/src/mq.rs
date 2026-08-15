@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use redis::AsyncCommands;
-use sha2::{Digest, Sha256};
 use tracing::{error, info, warn};
 
 use crate::types::{JudgeResult, JudgeTask};
@@ -39,11 +38,13 @@ pub async fn pull_task(
         Some(raw) => match parse_task_message(&raw) {
             Some(task) => Ok(Some(PulledTask { task, raw })),
             None => {
-                // NOJ-181：坏消息记录原文并移出 processing，避免每次重启反复卡住。
+                // NOJ-181：坏消息记录原文，写入死信列表后移出 processing。
                 error!(
                     raw = %truncate_for_log(&raw),
-                    "反序列化 JudgeTask 失败，消息已移入处理队列外（死信）"
+                    "反序列化 JudgeTask 失败，消息已写入死信队列"
                 );
+                let dead_queue = format!("{}:dead", queue);
+                let _: redis::RedisResult<usize> = conn.lpush(&dead_queue, &raw).await;
                 let _: redis::RedisResult<usize> = conn.lrem(&processing, 1, &raw).await;
                 Ok(None)
             }
@@ -94,19 +95,14 @@ pub async fn ack_task(redis_client: &redis::Client, judge_queue: &str, raw: &str
     }
 }
 
-fn result_dedupe_key(json: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(json.as_bytes());
-    format!("noj:judge:result:dedupe:{:x}", hasher.finalize())
-}
-
 /// 带重试的结果推送。
 ///
 /// - 最多重试 3 次，间隔指数退避（1s, 2s, 4s）。
-/// - NOJ-182：LPUSH 成功后以 SHA-256 key 标记 24h，重试/网络歧义时避免重复推送；
-///   core 侧 `submission_id + rejudge_seq` 幂等作为最终兜底。
-/// - 所有重试均失败后写 fallback 文件；返回 false 仅当 fallback 也失败
-///   （此时调用方不得 ack 任务，等待 sweeper 重投）。
+/// - 网络歧义下重复 LPUSH 由 core 侧 `submission_id + rejudge_seq` 幂等吸收，
+///   这里不做 judge 侧去重（避免 SET-NX 先写标记后崩溃导致结果被误判已发送）。
+/// - 所有重试均失败后写 fallback 文件；**只要没有真正 LPUSH 成功就返回 false**，
+///   调用方不得 ACK 任务，留给 core sweeper 超时重投，避免“结果只落在磁盘但任务
+///   已确认”造成提交永久卡在 judging。
 pub async fn push_result_with_retry(
     redis_client: &redis::Client,
     queue: &str,
@@ -122,8 +118,6 @@ pub async fn push_result_with_retry(
         }
     };
 
-    let dedupe_key = result_dedupe_key(&json);
-
     let mut last_error = String::new();
     for attempt in 1..=3 {
         match redis_client.get_multiplexed_async_connection().await {
@@ -132,10 +126,6 @@ pub async fn push_result_with_retry(
                     conn.lpush::<&str, &str, usize>(queue, &json).await;
                 match push_result {
                     Ok(_) => {
-                        // 标记成功后失败也无关紧要：core 幂等吸收。
-                        let _: redis::RedisResult<bool> = conn
-                            .set_ex::<&str, &str, bool>(&dedupe_key, "1", 86_400)
-                            .await;
                         info!(submission_id, attempt, "评测结果已发布");
                         return true;
                     }
@@ -175,17 +165,18 @@ pub async fn push_result_with_retry(
     }
 
     let fallback_path = fallback_dir.join(format!(
-        "result-{}.json",
-        sanitize_submission_id_for_filename(submission_id)
+        "result-{}-seq{}.json",
+        sanitize_submission_id_for_filename(submission_id),
+        result.rejudge_seq.unwrap_or(0)
     ));
     match tokio::fs::write(&fallback_path, &json).await {
         Ok(_) => {
             info!(
                 submission_id,
                 path = %fallback_path.display(),
-                "评测结果已写入 fallback 文件",
+                "评测结果已写入 fallback 文件，但未投递 Redis；任务不 ACK，等待 sweeper 重投",
             );
-            true
+            false
         }
         Err(e) => {
             error!(

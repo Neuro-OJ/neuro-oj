@@ -171,6 +171,14 @@ export function getClientIp(c: Context): string {
   if (xff) {
     const ips = xff.split(",").map((s) => s.trim()).filter(Boolean);
     if (entries.length > 0) {
+      // NOJ-091：XFF 仅当请求来自可信代理链路时才可信；
+      // 直连对端不在白名单却携带 XFF 时，直接取 socket 对端。
+      if (hasDirectPeer(c) && !isTrustedProxyIp(directIp, entries)) {
+        logger.warn("不可信直连对端携带 X-Forwarded-For，忽略伪造头", {
+          direct_ip: directIp,
+        });
+        return directIp;
+      }
       // 从右往左（最接近客户端的代理）找第一个不在白名单的 IP
       // PR-7 评审修订：每条 entry 用 parseCidr + ipInRange 判定，
       // 支持 `1.2.3.4` 与 `10.0.0.0/8` 两种格式

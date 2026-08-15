@@ -66,9 +66,21 @@ const refreshKey = ref(0)
 
 async function fetchAndShuffle() {
     try {
-        // NOJ-227：不再一次拉 100 道完整题目；小窗口 + 随机页取 3 道展示。
+        // NOJ-227：不再一次拉 100 道完整题目；先取总数，再随机页取 6 道。
+        const meta = await api.get<{ data: ProblemItem[]; total: number }>("/api/v1/problems", {
+            query: { limit: 1, page: 1 },
+            silent: true,
+        })
+        const total = meta.total ?? meta.data?.length ?? 0
+        if (total === 0) {
+            problems.value = []
+            return
+        }
+        const pageSize = 6
+        const totalPages = Math.max(1, Math.ceil(total / pageSize))
+        const randomPage = Math.floor(Math.random() * totalPages) + 1
         const res = await api.get<{ data: ProblemItem[] }>("/api/v1/problems", {
-            query: { limit: 6, page: Math.floor(Math.random() * 5) + 1 },
+            query: { limit: pageSize, page: randomPage },
             silent: true,
         })
         const list = res.data ?? []

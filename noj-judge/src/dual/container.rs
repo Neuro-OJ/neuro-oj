@@ -164,7 +164,7 @@ async fn create_container_with_security(
     // NOJ-154：实例标签，供启动孤儿清扫精确匹配。
     labels.insert(INSTANCE_LABEL.to_string(), instance_label_value());
 
-    // NOJ-189：judge 侧封顶并拒绝 0 值（0 在 Docker 中表示不限制）。
+    // NOJ-189：judge 侧封顶；0 值在 Docker 中表示不限制，因此规范化为安全默认 512MB。
     let normalized_memory_mb = if memory_mb == 0 {
         512
     } else {
@@ -173,9 +173,9 @@ async fn create_container_with_security(
     let memory_bytes = (normalized_memory_mb as i64) * 1024 * 1024;
 
     let mut tmpfs = std::collections::HashMap::new();
-    tmpfs.insert("/tmp", "size=256M");
+    tmpfs.insert("/tmp", "size=256M,mode=1777");
     // NOJ-187：rootfs 只读，/workspace 用 tmpfs 承载运行时注入文件。
-    tmpfs.insert("/workspace", "size=512M");
+    tmpfs.insert("/workspace", "size=512M,mode=1777");
 
     // solution 容器恒无网；evaluator 按配置可选 bridge 联网
     let network_mode = if network_enabled { "bridge" } else { "none" };

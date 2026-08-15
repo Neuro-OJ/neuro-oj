@@ -68,7 +68,6 @@ Deno.test({
           },
           solution: {
             image: "noj-solution-python",
-            entry: "solution.py",
             call_timeout_ms: 2000,
             memory_limit_mb: 512,
           },
@@ -375,7 +374,6 @@ Deno.test({
         },
         solution: {
           image: "noj-solution-python",
-          entry: "solution.py",
           call_timeout_ms: 2000,
           memory_limit_mb: 512,
         },

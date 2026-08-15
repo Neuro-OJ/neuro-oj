@@ -3,6 +3,7 @@ import {
   assertNotEquals,
   assertRejects,
 } from "jsr:@std/assert@^1";
+import { SignJWT } from "jose";
 import { signToken, verifyToken } from "../../src/lib/jwt.ts";
 
 const hasJwtSecret = !!Deno.env.get("JWT_SECRET");
@@ -51,6 +52,23 @@ Deno.test({
       () => verifyToken("not-a-jwt"),
       Error,
     );
+  },
+});
+
+Deno.test({
+  name: "jwt: verifyToken 拒绝非 HS256 算法（NOJ-000）",
+  ignore: !hasJwtSecret,
+  fn: async () => {
+    const secret = new TextEncoder().encode(Deno.env.get("JWT_SECRET"));
+    const token = await new SignJWT({ role: "user" })
+      .setProtectedHeader({ alg: "HS384" })
+      .setIssuer("noj-core")
+      .setAudience("noj-ui")
+      .setSubject("alg-user")
+      .setIssuedAt()
+      .setExpirationTime("1h")
+      .sign(secret);
+    await assertRejects(() => verifyToken(token), Error);
   },
 });
 
