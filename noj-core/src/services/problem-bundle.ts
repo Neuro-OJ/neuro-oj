@@ -280,6 +280,7 @@ async function updateExisting(
     actor.userId,
     actor.userRole,
     c,
+    true, // import-bundle 是服务端生成 storage URL 的受控流程
   );
 }
 

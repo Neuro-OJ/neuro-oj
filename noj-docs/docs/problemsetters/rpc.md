@@ -153,7 +153,6 @@ Neuro OJ RPC 使用 JSON 加一层 Neuro OJ codec。当前支持：
 | `str` | 原样传递 |
 | `bytes` | 编码为 base64 包装对象 |
 | `list` | 递归编码元素 |
-| `tuple` | 编码为列表，返回后不保留 tuple 类型 |
 | `dict` | 递归编码值，但 key 必须是字符串 |
 
 `bytes` 的编码形式：

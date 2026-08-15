@@ -154,15 +154,15 @@ export function useSearch() {
             // 并行请求题目 + 用户
             const [pRes, uRes, cRes] = await Promise.allSettled([
               api.get('/api/v1/search', {
-                params: { q: trimmed, type: 'problem', limit },
+                params: { q: trimmed, type: 'problem', per_page: limit },
                 silent: true,
               }),
               api.get('/api/v1/search', {
-                params: { q: trimmed, type: 'user', limit: 3 },
+                params: { q: trimmed, type: 'user', per_page: 3 },
                 silent: true,
               }),
               api.get('/api/v1/search', {
-                params: { q: trimmed, type: 'community', limit: 3 },
+                params: { q: trimmed, type: 'community', per_page: 3 },
                 silent: true,
               }),
             ]);
@@ -194,7 +194,7 @@ export function useSearch() {
             }
           } else {
             const res = await api.get('/api/v1/search', {
-              params: { q: trimmed, type, limit },
+              params: { q: trimmed, type, per_page: limit },
               silent: true,
             });
 

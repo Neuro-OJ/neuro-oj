@@ -28,6 +28,8 @@ const otherUserName = ref("")
 const otherUserId = ref("")
 const otherUserAvatarUrl = ref<string | null>(null)
 const messagesContainer = ref<HTMLElement | null>(null)
+// NOJ-211：会话快速切换/SSE 并发时丢弃过期响应。
+let messageRequestVersion = 0
 
 /**
  * 从会话列表获取对方用户名。
@@ -50,9 +52,11 @@ async function fetchOtherUserName() {
 // 加载消息
 async function loadMessages(page = 1, append = false) {
   if (!selectedConversationId.value) return
+  const requestVersion = ++messageRequestVersion
   loading.value = true
   try {
     const result = await fetchMessages(selectedConversationId.value, page, 50)
+    if (requestVersion !== messageRequestVersion) return
     if (append) {
       messages.value = [...result.data.reverse(), ...messages.value]
     } else {
@@ -63,7 +67,7 @@ async function loadMessages(page = 1, append = false) {
   } catch {
     // 静默
   } finally {
-    loading.value = false
+    if (requestVersion === messageRequestVersion) loading.value = false
   }
 }
 
@@ -135,6 +139,7 @@ async function onSelect(id: string) {
   messages.value = []
   currentPage.value = 1
   totalPages.value = 1
+  messageRequestVersion++
 
   await loadMessages()
   if (messages.value.length > 0) {

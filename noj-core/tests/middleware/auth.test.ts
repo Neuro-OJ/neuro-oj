@@ -11,9 +11,12 @@ import { adminMiddleware, authMiddleware } from "../../src/middleware/auth.ts";
 import { AppError } from "../../src/lib/errors.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { createUserToken, jsonRequest } from "../lib/helper.ts";
+import { resetDbForTest } from "../../src/db/connection.ts";
 
 // PR-1：authMiddleware 校验 JWT 撤销需 Redis
 await initRedisForTest();
+// NOJ-007：authMiddleware 现在对所有请求实时查询封禁状态，需先引导 Schema。
+await resetDbForTest();
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 

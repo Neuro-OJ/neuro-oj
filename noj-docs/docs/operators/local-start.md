@@ -143,5 +143,5 @@ cd dist && ./noj-ui    # 默认监听 :3000
 - **PostgreSQL**：使用 `pg_dump` 定期备份，例如
   `pg_dump "postgres://noj:noj@localhost:5432/noj" -F c -f backup.dump`。
 - **Redis**：评测队列是瞬时数据（重启可恢复），但缓存与锁会重建；如需保留请备份 RDB/AOF 文件（docker 卷内）。
-- **支持包**：`local` 模式的支持包在 `noj-core/data/packages/`，应一并纳入备份；`s3` 模式由对象存储负责。
+- **支持包**：`local` 模式的纯净评测包在 `noj-core/data/storage/`，应一并纳入备份；`data/packages/` 是可重建的构建产物（`problems:build` 导入载体）。`s3` 模式由对象存储负责。
 - 迁移顺序：恢复数据库 → 启动 noj-core（自动执行迁移）→ noj-ui → noj-judge。

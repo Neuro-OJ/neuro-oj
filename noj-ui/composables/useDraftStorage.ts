@@ -27,8 +27,7 @@ export function useDraftStorage(
   const key = computed(() => `noj:draft:${problemId.value}`);
   let timer: ReturnType<typeof setTimeout> | null = null;
 
-  // 加载（仅客户端）
-  onMounted(() => {
+  function loadDraft() {
     if (!import.meta.client) return;
     try {
       const raw = localStorage.getItem(key.value);
@@ -38,12 +37,31 @@ export function useDraftStorage(
           code.value = data.content;
           savedAt.value = new Date(data.updatedAt);
           state.value = 'saved';
+          return;
         }
       }
+      state.value = 'idle';
     } catch {
       // 损坏的 JSON 忽略，当作无草稿
       state.value = 'idle';
     }
+  }
+
+  // 加载（仅客户端）
+  onMounted(loadDraft);
+
+  // NOJ-235：同一编辑器实例切换题目时，先清旧代码再加载新题草稿。
+  watch(problemId, (newId, oldId) => {
+    if (!import.meta.client || oldId === undefined || newId === oldId) return;
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    code.value = '';
+    savedAt.value = null;
+    state.value = 'idle';
+    // 等 code 重置提交后再读新 key，避免旧 watcher 竞态。
+    requestAnimationFrame(loadDraft);
   });
 
   // 监听变化写入（防抖）

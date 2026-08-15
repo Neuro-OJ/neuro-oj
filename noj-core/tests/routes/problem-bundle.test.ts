@@ -298,7 +298,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "import-bundle: 普通用户导入含 evaluator.command 的 U 型题目被拒（NOJ-062）",
+  name:
+    "import-bundle: 普通用户导入含 evaluator.command 的 U 型题目被拒（NOJ-062）",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -521,7 +522,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "import-bundle: 普通用户导入开启 evaluator 联网/自定义命令被拒（NOJ-062/190 前置）",
+  name:
+    "import-bundle: 普通用户导入开启 evaluator 联网/自定义命令被拒（NOJ-062/190 前置）",
   ignore: skipEnv,
   sanitizeResources: false,
   sanitizeOps: false,

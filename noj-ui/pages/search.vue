@@ -90,7 +90,9 @@ const router = useRouter();
 const { api } = useApi();
 
 const query = ref<string>((route.query.q as string) ?? "");
-const type = ref<SearchType>(((route.query.type as string) ?? "problem") as SearchType);
+// NOJ-207：命令面板跳转带 type=all，完整页后端只支持单类型；归一化为 problem。
+const rawType = (route.query.type as string) ?? "problem";
+const type = ref<SearchType>(rawType === "all" ? "problem" : rawType as SearchType);
 const page = ref<number>(Number(route.query.page) || 1);
 const limit = 20;
 const loading = ref(false);
@@ -98,6 +100,8 @@ const error = ref<string | null>(null);
 const items = ref<(ProblemSearchResult | UserSearchResult | CommunitySearchResult)[]>([]);
 const total = ref(0);
 const tookMs = ref<number | null>(null);
+// NOJ-208：输入实时搜索竞态防护，过期响应不得覆盖新结果。
+let searchRequestVersion = 0;
 
 // AsyncContent 实际使用单值 :status，把 loading/error/empty 折叠成状态机
 const asyncStatus = computed<"loading" | "error" | "empty" | "data">(() => {
@@ -120,6 +124,7 @@ const typeOptions = [
 
 async function fetchResults() {
   const q = query.value.trim();
+  const requestVersion = ++searchRequestVersion;
   if (q.length < 2) {
     items.value = [];
     total.value = 0;
@@ -137,21 +142,23 @@ async function fetchResults() {
         q,
         type: type.value,
         page: page.value,
-        limit,
+        per_page: limit,
       },
       silent: true,
     });
+    if (requestVersion !== searchRequestVersion) return;
     const data = (res as { data: { items: (ProblemSearchResult | UserSearchResult | CommunitySearchResult)[]; total: number; took_ms: number } }).data;
     items.value = data.items;
     total.value = data.total;
     tookMs.value = data.took_ms;
   } catch (e: unknown) {
+    if (requestVersion !== searchRequestVersion) return;
     error.value = extractApiError(e).message;
     items.value = [];
     total.value = 0;
     tookMs.value = null;
   } finally {
-    loading.value = false;
+    if (requestVersion === searchRequestVersion) loading.value = false;
   }
 }
 

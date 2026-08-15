@@ -37,6 +37,9 @@ const PLACEHOLDER_PATTERNS: readonly RegExp[] = [
   /your[-_]?(secret|password|key)/i,
   /replace-?me/i,
   /TODO/i,
+  // 审计 NOJ-131：仓库历史模板中公开过的默认管理员凭据
+  /^admin@noj\.local$/i,
+  /^AdminPass123!$/i,
 ];
 
 const STRICT_FLAG = "--strict";

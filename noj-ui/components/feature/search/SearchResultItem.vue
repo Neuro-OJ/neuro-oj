@@ -24,7 +24,12 @@
 
     <!-- 主信息 -->
     <div class="flex-1 min-w-0">
-      <div class="text-sm font-medium text-text truncate" v-html="highlightedTitle" />
+      <div class="text-sm font-medium text-text truncate">
+        <template v-for="(seg, i) in highlightedSegments" :key="i">
+          <mark v-if="seg.highlight" class="bg-yellow-200 text-inherit">{{ seg.text }}</mark>
+          <span v-else>{{ seg.text }}</span>
+        </template>
+      </div>
       <div class="text-xs text-text-secondary truncate">
         <span v-if="kind === 'problem'">
           {{ difficultyLabel }} · {{ rankText }}
@@ -81,16 +86,38 @@ const rankText = computed(() => {
   return props.rank !== undefined ? `相关度 ${(props.rank * 100).toFixed(0)}` : "";
 });
 
-// 将 [[HIGHLIGHT]]...[[/HIGHLIGHT]] 转为 <mark>（受控渲染，marker 来自服务端 ts_headline）
-const highlightedTitle = computed(() => {
+// NOJ-248：不使用 v-html。将 marker 拆成纯文本 segment，由 Vue 文本插值自动转义，
+// 仅受控输出 <mark> 标签，用户可控内容中的 HTML 只会显示为文本。
+const highlightedSegments = computed(() => {
   const item = props.item as ProblemSearchResult | UserSearchResult | CommunitySearchResult;
-  const raw = props.kind === "problem"
+  const raw = (props.kind === "problem"
     ? (item as ProblemSearchResult).highlight
     : props.kind === "community"
     ? (item as CommunitySearchResult).highlight
-    : (item as UserSearchResult).highlight;
-  return raw
-    .replaceAll("[[HIGHLIGHT]]", '<mark class="bg-yellow-200">')
-    .replaceAll("[[/HIGHLIGHT]]", "</mark>");
+    : (item as UserSearchResult).highlight) ?? "";
+  const segments: { text: string; highlight: boolean }[] = [];
+  const parts = raw.split("[[HIGHLIGHT]]");
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]!;
+    if (i === 0) {
+      if (part) segments.push({ text: part, highlight: false });
+      continue;
+    }
+    const end = part.indexOf("[[/HIGHLIGHT]]");
+    if (end === -1) {
+      if (part) segments.push({ text: part, highlight: true });
+      continue;
+    }
+    if (part.slice(0, end)) {
+      segments.push({ text: part.slice(0, end), highlight: true });
+    }
+    if (part.slice(end + "[[/HIGHLIGHT]]".length)) {
+      segments.push({
+        text: part.slice(end + "[[/HIGHLIGHT]]".length),
+        highlight: false,
+      });
+    }
+  }
+  return segments;
 });
 </script>

@@ -168,7 +168,7 @@ cd noj-core && deno task dev-setup
 | 提交后状态长时间停留在 `Pending` | noj-judge 未启动或未连上 Redis；检查 `bash scripts/dev/devtool.sh status` 与 `scripts/dev/logs/judge.log` |
 | 结果丢失 / 队列堆积 | 查看 Redis 长度：`redis-cli LLEN noj:judge:queue`；必要时重启 `noj-judge` 触发自动重连 |
 | 评测结果报错 `noj-download://` 解码失败 | `deno task problems:build` 重新构建题目支持包 |
-| 容器启动失败 `image not found` | 默认评测镜像为本地 `noj-judge-python`；检查 `noj-judge/docker/` 构建脚本 |
+| 容器启动失败 `image not found` | 默认评测镜像为 `noj-evaluator-python` / `noj-solution-python`；执行 `noj-judge/scripts/build-sdk-images.sh` 构建 |
 
 ### 数据库相关
 

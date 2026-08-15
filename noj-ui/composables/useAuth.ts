@@ -1,3 +1,5 @@
+import { extractApiError } from '~/utils/apiError';
+
 interface UserResponse {
   id: string;
   username: string;
@@ -117,8 +119,12 @@ export function useAuth() {
       );
       user.value = res.data;
       return res.data;
-    } catch {
-      await logout();
+    } catch (err) {
+      // NOJ-209：仅在明确 401 时登出；网络错误/超时/5xx 保留本地会话。
+      const info = extractApiError(err);
+      if (info.status === 401) {
+        await logout();
+      }
       return null;
     }
   }

@@ -64,6 +64,17 @@ export function useApi() {
         info.status === 401 &&
         !AUTH_PAGE_PREFIXES.some((p) => route.path.startsWith(p))
       ) {
+        // NOJ-210：统一 401 处理必须清掉僵尸登录态——
+        // 本地 user state、可读 session cookie，以及 HTTP-only token cookie。
+        const authUser = useState<unknown>('auth:user', () => null);
+        authUser.value = null;
+        try {
+          const session = useCookie('noj:session');
+          session.value = null;
+        } catch {
+          // ignore
+        }
+        void $fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
         const redirect = route.fullPath;
         navigateTo({ path: '/login', query: { redirect } });
       }

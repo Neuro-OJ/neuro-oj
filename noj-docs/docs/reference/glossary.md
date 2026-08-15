@@ -66,7 +66,7 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 
 （`runtime_config`）
 
-题目的双容器评测配置，包含 `evaluator` 与 `solution` 两段：evaluator 段指定 `image` 与 `command`，solution 段指定 `image` 与入口文件 `entry`，两段各自带时间限制（`time_limit_ms` / `call_timeout_ms`）与内存限制（`memory_limit_mb`）。manifest 中 `evaluator.command` 可缺省，导入时注入默认值 `python3 /workspace/evaluate.py`。
+题目的双容器评测配置，包含 `evaluator` 与 `solution` 两段：evaluator 段指定 `image` 与 `command`，solution 段指定 `image`，入口文件为评测内部约定（硬编码 `main.py`，出题人不可配置），两段各自带时间限制（`time_limit_ms` / `call_timeout_ms`）与内存限制（`memory_limit_mb`）。manifest 中 `evaluator.command` 可缺省，导入时注入默认值 `python3 /workspace/evaluate.py`。
 
 ::: warning 易混淆
 运行时配置 ≠ 资源限制。资源限制（时间/内存上限）是运行时配置中的一组字段，评测资源的实际控制还受 Judge Worker 执行环境（容器安全设置）影响。

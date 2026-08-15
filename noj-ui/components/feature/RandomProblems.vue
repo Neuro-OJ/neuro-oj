@@ -66,8 +66,9 @@ const refreshKey = ref(0)
 
 async function fetchAndShuffle() {
     try {
+        // NOJ-227：不再一次拉 100 道完整题目；小窗口 + 随机页取 3 道展示。
         const res = await api.get<{ data: ProblemItem[] }>("/api/v1/problems", {
-            query: { limit: 100 },
+            query: { limit: 6, page: Math.floor(Math.random() * 5) + 1 },
             silent: true,
         })
         const list = res.data ?? []

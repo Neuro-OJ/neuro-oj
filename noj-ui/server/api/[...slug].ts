@@ -33,6 +33,22 @@ function isProductionEnv(): boolean {
   return nojEnv === 'production' || nodeEnv === 'production';
 }
 
+/**
+ * NOJ-215：把浏览器原始请求的客户端网络信息透传到 noj-core，
+ * 否则后端登录 IP 限流与 IP 封禁会全部退化为同一个代理 IP 共享桶。
+ */
+function getClientNetworkHeaders(event: { node: { req: { headers: Record<string, string | string[] | undefined> } }; headers: Headers }): Record<string, string> {
+  const out: Record<string, string> = {};
+  const header = (name: string) => {
+    const raw = event.headers.get(name);
+    if (raw) out[name] = raw;
+  };
+  header('x-forwarded-for');
+  header('x-real-ip');
+  header('user-agent');
+  return out;
+}
+
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
 
@@ -48,13 +64,17 @@ export default defineEventHandler(async (event) => {
 
   const cookies = parseCookies(event);
   const token = cookies['noj:token'];
+  const clientNetworkHeaders = getClientNetworkHeaders(event);
 
   // ── 拦截登录/改密成功响应，设置 Cookie ──
   // 改密（issue #75 撤销机制）成功后服务端签发新 token，旧 token 被撤销；
   // 前端不感知，由 Nitro 代理同步替换 Cookie，避免「改密后被踢回登录页」的体验。
   if (shouldInterceptAuth(event)) {
     const body = await readBody(event);
-    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      ...clientNetworkHeaders,
+    };
     if (token) {
       headers['authorization'] = `Bearer ${token}`;
     }
@@ -150,6 +170,10 @@ export default defineEventHandler(async (event) => {
   // ── 从 Cookie 注入 Authorization 头到转发请求 ──
   if (token) {
     event.node.req.headers.authorization = `Bearer ${token}`;
+  }
+  // NOJ-215：透传客户端 IP/UA（proxyRequest 会沿用 event.node.req.headers）。
+  for (const [name, value] of Object.entries(clientNetworkHeaders)) {
+    event.node.req.headers[name] = value;
   }
 
   return proxyRequest(event, target);

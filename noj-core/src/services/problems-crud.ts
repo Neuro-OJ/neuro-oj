@@ -57,8 +57,20 @@ export async function createProblem(
   userId?: string,
   userRole?: string,
   c?: Context,
+  allowServerStorageUrl = false,
 ): Promise<ProblemResponseWithCategories> {
   const db = getDb();
+
+  // NOJ-115/116：服务端流程（import-bundle）以外禁止客户端直传存储 URL。
+  if (
+    input.support_package_storage_url !== undefined &&
+    input.support_package_storage_url !== null &&
+    !allowServerStorageUrl
+  ) {
+    throw new BadRequestError(
+      "support_package_storage_url 仅允许由服务端支持包上传/导入流程生成",
+    );
+  }
 
   // 校验难度
   if (input.difficulty && !isValidDifficulty(input.difficulty)) {
@@ -232,8 +244,20 @@ export async function updateProblem(
   userId?: string,
   userRole?: string,
   c?: Context,
+  allowServerStorageUrl = false,
 ): Promise<ProblemResponseWithCategories> {
   const db = getDb();
+
+  // NOJ-115/116：服务端流程（import-bundle）以外禁止客户端直传存储 URL。
+  if (
+    input.support_package_storage_url !== undefined &&
+    input.support_package_storage_url !== null &&
+    !allowServerStorageUrl
+  ) {
+    throw new BadRequestError(
+      "support_package_storage_url 仅允许由服务端支持包上传/导入流程生成",
+    );
+  }
 
   const existing = await db
     .select()

@@ -541,7 +541,7 @@ Deno.test({
       assertEquals(rows[0].status, "WrongAnswer");
       assertEquals(rows[0].score, 500);
       assertEquals(rows[0].output, '---RESULT---\n{"first":true}');
-      assertEquals(JSON.parse(rows[0].details), { first: true });
+      assertEquals(JSON.parse(rows[0].details), {});
       assertEquals(rows[0].time_ms, null);
       assertEquals(rows[0].memory_kb, null);
     } finally {

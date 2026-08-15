@@ -78,7 +78,6 @@ pub fn extract_zip_entries(data: &[u8]) -> Result<Vec<ZipEntry>> {
         let mut buf = Vec::with_capacity(capacity);
         let mut limited = (&mut file).take(MAX_FILE_SIZE + 1);
         limited.read_to_end(&mut buf)?;
-        drop(limited);
 
         if buf.len() as u64 > MAX_FILE_SIZE {
             anyhow::bail!(
