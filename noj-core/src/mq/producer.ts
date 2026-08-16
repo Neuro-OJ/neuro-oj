@@ -20,6 +20,18 @@ const MAX_MESSAGE_BYTES = 16 * 1024 * 1024; // 16MB
 export const MAX_JUDGE_QUEUE_LENGTH = 20_000;
 
 /**
+ * 判断评测任务入队失败是否可重试。
+ *
+ * 只有明确已知的永久错误（如消息超过大小限制）返回 false；
+ * Redis 不可用、队列已满以及未知错误都按可恢复处理，避免把瞬时故障误判为永久失败。
+ */
+export function isRetryableJudgeQueueError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  if (message.includes("超过大小限制")) return false;
+  return true;
+}
+
+/**
  * 将评测任务推送到 Redis 消息队列。
  * 使用 LPUSH 将任务添加到队列头部，noj-judge 通过 BRPOP 消费。
  *

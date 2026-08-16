@@ -12,6 +12,9 @@ import { logger } from "../lib/logging.ts";
 /** 评测任务队列名称（与 producer.ts 一致）。 */
 const JUDGE_QUEUE = "noj:judge:queue";
 
+/** 监控/列表路径默认只读取的 pending 条目数；超过时为保证正确性回退全量 LRANGE。 */
+const PENDING_LIST_LIMIT = 1000;
+
 // ─── 响应类型 ───────────────────────────────────────────────────────
 
 /** 队列中的一个条目（pending / judging / recently_completed 共用）。 */
@@ -66,14 +69,15 @@ export interface SubmissionStatusResponse {
  * 从 Redis 获取 pending 队列中的 submission_id 列表（按入队顺序）。
  */
 export async function getPendingSubmissionIds(
-  limit = 1000,
+  limit = PENDING_LIST_LIMIT,
 ): Promise<string[]> {
   const redis = getRedis();
   if (redis.status !== "ready") {
     await redis.connect();
   }
-  // NOJ-077：监控/列表路径不再全量 LRANGE；仅读取窗口内条目。
-  const raw = await redis.lrange(JUDGE_QUEUE, 0, Math.max(0, limit - 1));
+  // NOJ-077：监控/列表路径默认不全量 LRANGE；limit<=0 时仍允许调用方按需取全量。
+  const end = limit <= 0 ? -1 : Math.max(0, limit - 1);
+  const raw = await redis.lrange(JUDGE_QUEUE, 0, end);
   const ids: string[] = [];
   for (const item of raw) {
     try {
@@ -99,6 +103,23 @@ export async function getPendingQueueLength(): Promise<number> {
   return redis.llen(JUDGE_QUEUE);
 }
 
+/**
+ * 获取 pending 队列快照。
+ *
+ * 队列长度不超过 PENDING_LIST_LIMIT 时走限量 LRANGE；
+ * 超过时回退全量 LRANGE，保证队列位置与 judging 排除逻辑在积压场景下仍正确。
+ */
+export async function getPendingQueueSnapshot(): Promise<{
+  ids: string[];
+  length: number;
+}> {
+  const length = await getPendingQueueLength();
+  const ids = length > PENDING_LIST_LIMIT
+    ? await getPendingSubmissionIds(-1)
+    : await getPendingSubmissionIds();
+  return { ids, length };
+}
+
 // ─── 公开 API ───────────────────────────────────────────────────────
 
 /**
@@ -113,8 +134,9 @@ export async function getQueueOverview(): Promise<QueueResponse> {
   let pendingIds: string[] = [];
   let pendingQueueLength = 0;
   try {
-    pendingIds = await getPendingSubmissionIds();
-    pendingQueueLength = await getPendingQueueLength();
+    const snapshot = await getPendingQueueSnapshot();
+    pendingIds = snapshot.ids;
+    pendingQueueLength = snapshot.length;
   } catch (err) {
     logger.warn("Redis 不可用，队列 pending 信息降级为空", { err });
   }
@@ -316,12 +338,14 @@ export async function getSubmissionQueueStatus(
   //    Redis 不可用时静默失败，queue_position/queue_length 保持 null
   if (status === "judging" || status === "pending") {
     try {
-      queueLength = await getPendingQueueLength();
-      const pendingIds = await getPendingSubmissionIds();
+      const snapshot = await getPendingQueueSnapshot();
+      queueLength = snapshot.length;
+      const pendingIds = snapshot.ids;
       const idx = pendingIds.indexOf(submissionId);
       if (idx !== -1) {
-        // LRANGE 0 -1 返回最新优先（LPUSH），
-        // pendingIds.length - idx 使队列位置从 1（下个出队）递增
+        // LRANGE 返回最新优先（LPUSH），
+        // pendingIds.length - idx 使队列位置从 1（下个出队）递增。
+        // 超过 PENDING_LIST_LIMIT 时 snapshot 已回退全量，因此长度即真实队列长度。
         queuePosition = pendingIds.length - idx;
       }
     } catch {

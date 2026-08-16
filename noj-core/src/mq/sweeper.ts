@@ -7,13 +7,13 @@
  *    提交，超过 2 分钟后自动重新构建 JudgeTask 入队。
  */
 
-import { and, eq, lte } from "drizzle-orm";
+import { and, asc, eq, lte } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { problems, submissions } from "../db/schema.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { getSetting } from "../services/system-settings.ts";
 import { getRedis } from "./connection.ts";
-import { JUDGE_QUEUE } from "./producer.ts";
+import { isRetryableJudgeQueueError, JUDGE_QUEUE } from "./producer.ts";
 import { logger } from "../lib/logging.ts";
 import type { JudgeTask } from "../types/index.ts";
 import type { RuntimeConfig } from "../types/problems.ts";
@@ -96,7 +96,9 @@ async function sweepProcessingQueue(
     }
   }
 
-  const rawItems = await redis.lrange(processingQueue, 0, 999);
+  // 注意：BRPOPLPUSH 把消息压入 processing 头部，最早卡住的消息在尾部；
+  // 必须从尾部扫描，否则积压超过 1000 条时老消息永远不会被重投。
+  const rawItems = await redis.lrange(processingQueue, -1000, -1);
   const now = Date.now();
   for (const raw of rawItems) {
     if (!shouldRequeue(raw, now, timeoutMs)) continue;
@@ -139,6 +141,7 @@ async function recoverPendingSubmissions(now: number): Promise<void> {
         lte(submissions.created_at, cutoff),
       ),
     )
+    .orderBy(asc(submissions.created_at))
     .limit(200);
 
   for (const row of rows) {
@@ -187,6 +190,22 @@ async function recoverPendingSubmissions(now: number): Promise<void> {
         );
       logger.info("已恢复 pending 提交入队", { submission_id: row.id });
     } catch (err) {
+      if (!isRetryableJudgeQueueError(err)) {
+        // 永久错误（消息超限等）：标记 error，避免每轮 sweeper 无限重试。
+        await db.update(submissions)
+          .set({
+            status: "error",
+            judge_finished_at: new Date().toISOString(),
+          })
+          .where(
+            and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
+          );
+        logger.error("pending 提交因永久入队失败标记为 error", {
+          submission_id: row.id,
+          err,
+        });
+        continue;
+      }
       logger.error("pending 提交恢复失败（等待下轮重试）", {
         submission_id: row.id,
         err,
@@ -197,7 +216,7 @@ async function recoverPendingSubmissions(now: number): Promise<void> {
 
 export async function runQueueSweeperOnce(): Promise<void> {
   const now = Date.now();
-  await Promise.allSettled([
+  const results = await Promise.allSettled([
     sweepProcessingQueue(
       `${JUDGE_QUEUE}:processing`,
       JUDGE_QUEUE,
@@ -210,6 +229,11 @@ export async function runQueueSweeperOnce(): Promise<void> {
     ),
     recoverPendingSubmissions(now),
   ]);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      logger.error("队列 sweeper 子任务失败", { err: result.reason });
+    }
+  }
 }
 
 /** 启动后台 sweeper（幂等）。 */
