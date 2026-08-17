@@ -71,6 +71,10 @@ const props = withDefaults(
   },
 )
 
+const emit = defineEmits<{
+  accepted: []
+}>()
+
 const router = useRouter()
 const { isLoggedIn } = useAuth()
 const { api } = useApi()
@@ -102,6 +106,13 @@ const {
   isPolling: isPollingActive,
   start: startPolling,
 } = useSubmissionPolling(activeSubmissionId)
+
+// 提交终态为 Accepted 时通知调用方刷新题目详情（AC 后算法标签立即可见）
+watch(activeSubmission, (submission) => {
+  if (submission?.status === 'finished' && submission.result?.status === 'Accepted') {
+    emit('accepted')
+  }
+})
 
 // 编辑器元数据（状态栏）
 const cursor = ref({ line: 1, col: 1 })

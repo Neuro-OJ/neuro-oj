@@ -67,16 +67,18 @@ export async function syncProblemTags(
   // 去重 + 校验（失败时抛 400）
   const unique = await validateProblemTagIds(tagIds, isObjective);
 
-  // 先删后插
-  await db.delete(problemTags)
-    .where(eq(problemTags.problem_id, problemId));
+  // 先删后插（单事务：插入失败时原有关联不会被丢失）
+  await db.transaction(async (tx) => {
+    await tx.delete(problemTags)
+      .where(eq(problemTags.problem_id, problemId));
 
-  if (unique.length > 0) {
-    await db.insert(problemTags).values(
-      unique.map((tagId) => ({
-        problem_id: problemId,
-        tag_id: tagId,
-      })),
-    );
-  }
+    if (unique.length > 0) {
+      await tx.insert(problemTags).values(
+        unique.map((tagId) => ({
+          problem_id: problemId,
+          tag_id: tagId,
+        })),
+      );
+    }
+  });
 }

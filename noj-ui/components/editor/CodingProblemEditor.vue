@@ -34,7 +34,7 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
-const { user } = useAuth()
+const { user, fetchUser } = useAuth()
 const { api } = useApi()
 const { toast } = useToast()
 
@@ -111,6 +111,7 @@ async function loadTags() {
 }
 
 // 标签选项：按 kind 排序（题目标签在前），label 带 kind 前缀区分
+const tagSearch = ref("")
 const tagOptions = computed(() =>
   [...tags.value]
     .sort((a, b) => {
@@ -122,8 +123,19 @@ const tagOptions = computed(() =>
       value: t.id,
     })),
 )
+// 标签搜索过滤：匹配 label（含题目标签/算法标签前缀与名称）
+const filteredTagOptions = computed(() => {
+  const keyword = tagSearch.value.trim().toLowerCase()
+  if (!keyword) return tagOptions.value
+  return tagOptions.value.filter((t) => t.label.toLowerCase().includes(keyword))
+})
 
-// ── 新建标签（仅 admin 可见；API 层以 tag:manage RBAC 判定、默认仅 admin） ──
+// 新建标签：仅拥有 tag:manage 权限（或 admin 通配）的用户可见
+const canManageTags = computed(
+  () => isAdmin.value || user.value?.permissions?.includes("tag:manage") === true,
+)
+
+// ── 新建标签（API 层以 tag:manage RBAC 判定、默认仅 admin） ──
 const showNewTagForm = ref(false)
 const newTagName = ref("")
 const newTagKind = ref<'problem' | 'algorithm'>('problem')
@@ -210,7 +222,12 @@ async function loadProblem() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // 登录态可能只有 session 基础信息，先拉取完整用户（含 RBAC permissions），
+  // 供「新建标签」按钮按 tag:manage 权限正确显隐。
+  if (user.value && !user.value.permissions) {
+    await fetchUser()
+  }
   loadTags()
   loadJudgeImages()
   if (isEditMode.value) loadProblem()
@@ -345,17 +362,22 @@ async function handleSubmit() {
         <div class="flex flex-col gap-1 col-span-2">
           <div class="flex items-center justify-between">
             <label class="text-xs font-semibold text-text">标签</label>
-            <UButton v-if="isAdmin" color="neutral" variant="outline" size="xs" @click="openNewTag">
+            <UButton v-if="canManageTags" color="neutral" variant="outline" size="xs" @click="openNewTag">
               <UIcon name="i-lucide-plus" class="size-3" />
               新建标签
             </UButton>
           </div>
+          <input
+            v-model="tagSearch"
+            class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white"
+            placeholder="搜索标签..."
+          />
           <div class="flex flex-wrap gap-2">
-            <label v-for="t in tagOptions" :key="t.value" class="flex items-center gap-1 text-xs text-text cursor-pointer">
+            <label v-for="t in filteredTagOptions" :key="t.value" class="flex items-center gap-1 text-xs text-text cursor-pointer">
               <input v-model="tagIds" type="checkbox" :value="t.value" class="accent-primary" />
               {{ t.label }}
             </label>
-            <span v-if="tagOptions.length === 0" class="text-xs text-text-muted">暂无标签</span>
+            <span v-if="filteredTagOptions.length === 0" class="text-xs text-text-muted">{{ tags.length === 0 ? '暂无标签' : '无匹配标签' }}</span>
           </div>
         </div>
       </div>
@@ -484,7 +506,7 @@ async function handleSubmit() {
     </div>
   </div>
 
-  <!-- 新建标签弹窗（仅 admin 可见；API 层以 tag:manage RBAC 判定、默认仅 admin） -->
+  <!-- 新建标签弹窗（仅 tag:manage 权限可见；API 层仍以 tag:manage RBAC 判定） -->
   <UModal v-model:open="showNewTagForm" title="新建标签" :unmount-on-hide="true">
     <template #body>
       <div class="flex flex-col gap-3">

@@ -38,8 +38,17 @@ export interface ProblemResponse {
   updated_at: string;
 }
 
+/**
+ * 题目列表项：不返回详情页才有的算法标签门控占位标志。
+ * 列表/卡片接口只返回题目标签（kind='problem'）。
+ */
+export type ProblemListItem = Omit<
+  ProblemResponseWithTags,
+  "has_hidden_algorithm_tags"
+>;
+
 export interface ProblemListResponse {
-  items: ProblemResponseWithTags[];
+  items: ProblemListItem[];
   total: number;
   page: number;
   limit: number;

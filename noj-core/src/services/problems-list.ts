@@ -204,7 +204,6 @@ export async function listProblems(
     items: items.map((p) => ({
       ...toProblemResponse(p),
       tags: tagMap.get(p.id) ?? [],
-      has_hidden_algorithm_tags: false,
     })),
     total,
     page,

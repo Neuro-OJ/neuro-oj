@@ -181,6 +181,7 @@ const templateUrl = computed(() => isContest.value
     :subtitle="isContest ? (contest?.title ?? '') : ''"
     :can-submit="canSubmit"
     :submission-filter="submissionFilter"
+    @accepted="refresh"
   >
     <template v-if="isContest" #toolbar-actions>
       <UButton
