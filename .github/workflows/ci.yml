@@ -177,7 +177,7 @@ jobs:
   # ===========================================================================
   # noj-core — 单元/轻量测试（PGlite 内存数据库 + Redis，无 PostgreSQL）
   #
-  # 性能优化（2026-07）：原 core-test 单一 job 串行跑全部 71 个测试文件
+  # 性能优化（2026-07）：原 core-test 单一 job 串行跑全部测试文件
   # （需 PG + Redis，最慢可达 15 min）。拆分为 unit / db 两个并行 job：
   #   - unit：tests/lib + middleware + types + data + app（纯逻辑 + PGlite，
   #     无需 PG service，Redis 供 loginThrottle/revokedTokens/searchRateLimit）
@@ -471,6 +471,10 @@ jobs:
         working-directory: noj-ui
         run: deno task build
 
+      - name: 单元测试 (deno task test)
+        working-directory: noj-ui
+        run: deno task test
+
       # 失败时上传 Nuxt 构建日志与 .output（修复 finding M7）
       - name: 上传失败日志
         if: failure() || cancelled()
@@ -624,8 +628,8 @@ jobs:
           # rustup 状态目录导致 "component download failed"（测试启动即死）。
           # 先单进程触发一次 sync，之后并行 cargo 不再下载。
           cargo --version >/dev/null
-          # 与 e2e.yml 保持完全一致的 5 个目标清单（e2e_container_pool 已随
-          # 容器池移除而删除，见 remove-container-pool 变更）。
+          # ci.yml 此处跑 5 个基础沙箱目标；dual_container / network_capability
+          # 由 e2e.yml 的 judge-sandbox job 覆盖（共 7 个目标）。
           # 原 cargo test --test e2e 在没有 e2e.rs 的
           # 情况下 exit 101，从未暴露是因为 if: workflow_dispatch。
           # 性能优化（2026-07）：5 个目标分 2 组并行——组内串行
