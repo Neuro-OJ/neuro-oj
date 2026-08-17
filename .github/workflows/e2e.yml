@@ -2,8 +2,8 @@
 # Neuro OJ — 全链路 E2E 测试
 #
 # 在每个 PR 和推送到 main 时运行完整的端到端测试：
-#   - e2e-full：noj-tests 全量 E2E（70 API + 管道 + 队列可见性测试）
-#   - judge-sandbox：noj-judge Docker 沙箱 E2E（6 个 binary，独立 job）
+#   - e2e-full：noj-tests 全量 E2E（30 个测试文件 / 204 个 e2eTest 用例）
+#   - judge-sandbox：noj-judge Docker 沙箱 E2E（7 个 binary，独立 job）
 #
 # 使用 Docker Compose 编排完整评测栈（noj-core + noj-judge + PostgreSQL + Redis）。
 #
@@ -14,10 +14,10 @@
 #   - judge 沙箱 E2E 拆为独立 job（它只依赖 Docker + Redis，测试内自建
 #     评测镜像 ensure_test_image，无需 noj-core 栈），与 API E2E 并行，
 #     总时长从串行 ~15min 降到 max(API, sandbox) ~8min
-#   - noj-tests 23 个文件分 3 组并行（组间独立进程；文件间无跨文件固定
+#   - noj-tests 30 个文件分 3 组并行（组间独立进程；文件间无跨文件固定
 #     ID 依赖，admin 改密竞态由 helper.ts loginAndChangePassword 并发
 #     兜底处理）
-#   - judge-sandbox 复用 sccache 编译缓存 + 6 个 binary 分 2 组并行
+#   - judge-sandbox 复用 sccache 编译缓存 + 7 个 binary 分 3 组并行
 # =============================================================================
 
 name: E2E
@@ -238,11 +238,24 @@ jobs:
       # ════════════════════════════════════════════
       # 3. noj-tests E2E 测试（3 组并行）
       #
-      # 性能优化（2026-07）：23 个测试文件按字母序均分为 3 组，组间
+      # 性能优化（2026-07）：30 个测试文件按字母序均分为 3 组，组间
       # 独立进程并行。文件间无跨文件固定 ID 依赖（此前已审计）；唯一
       # 共享状态是 admin 账户（getAdminToken 改密竞态由 helper.ts 并发
       # 兜底）与评测队列（并发提交由 judge 多容器并行消化）。
       # ════════════════════════════════════════════
+
+      - name: 校验 E2E 文件均已加入 workflow 清单
+        working-directory: noj-tests
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          files = sorted(p.name for p in Path('e2e').glob('*.test.ts'))
+          wf = Path('../.github/workflows/e2e.yml').read_text(encoding='utf-8')
+          missing = [f for f in files if f not in wf]
+          if missing:
+              raise SystemExit(f"E2E 文件未在 e2e.yml 清单中: {', '.join(missing)}")
+          print(f"OK: {len(files)} 个 E2E 文件均已在 workflow 中")
+          PY
 
       - name: E2E 测试 (noj-tests, 3 组并行)
         working-directory: noj-tests
@@ -285,7 +298,10 @@ jobs:
             e2e/24_import_bundle.test.ts \
             e2e/25_rbac.test.ts \
             e2e/26_call_timeout.test.ts \
-            e2e/28_announcements.test.ts &
+            e2e/27_objective.test.ts \
+            e2e/28_announcements.test.ts \
+            e2e/28_clarifications.test.ts \
+            e2e/29_avatar.test.ts &
           p3=$!
           fail=0
           wait "$p1" || fail=1
