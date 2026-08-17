@@ -4,29 +4,60 @@ use tracing::{error, info, warn};
 
 use crate::types::{JudgeResult, JudgeTask};
 
-/// BRPOP 阻塞等待超时（秒）。
+/// BRPOPLPUSH 阻塞等待超时（秒）。
 const BRPOP_TIMEOUT_SECS: f64 = 5.0;
+const PROCESSING_SUFFIX: &str = ":processing";
+
+/// 从 Redis 队列拉取并暂存到 processing 列表的任务。
+pub struct PulledTask {
+    pub task: JudgeTask,
+    /// processing 列表中的原始消息，用于成功后 LREM 确认。
+    pub raw: String,
+}
+
+fn processing_queue(queue: &str) -> String {
+    format!("{}{}", queue, PROCESSING_SUFFIX)
+}
 
 /// 从 Redis 队列中拉取评测任务。
 ///
-/// 使用 BRPOP 阻塞等待，超时 5 秒后返回 None。
-/// 返回的任务是队列中最老的（FIFO 顺序）。
+/// NOJ-179：使用 BRPOPLPUSH 把消息先移入 processing 列表，
+/// 处理完成并成功投递结果后由 [`ack_task`] LREM 确认；
+/// 崩溃时消息留在 processing，由 noj-core sweeper 超时重投。
 pub async fn pull_task(
     conn: &mut redis::aio::MultiplexedConnection,
     queue: &str,
-) -> Result<Option<JudgeTask>> {
-    // BRPOP 返回 (key, value) tuple，超时单位是秒
-    let result: Option<(String, String)> = conn
-        .brpop(queue, BRPOP_TIMEOUT_SECS)
+) -> Result<Option<PulledTask>> {
+    let processing = processing_queue(queue);
+    let raw: Option<String> = conn
+        .brpoplpush(queue, &processing, BRPOP_TIMEOUT_SECS)
         .await
-        .context("BRPOP 拉取任务失败")?;
+        .context("BRPOPLPUSH 拉取任务失败")?;
 
-    match result {
-        Some((_key, value)) => Ok(parse_task_message(&value)),
-        None => {
-            // 超时返回，继续下一轮循环
-            Ok(None)
-        }
+    match raw {
+        Some(raw) => match parse_task_message(&raw) {
+            Some(task) => Ok(Some(PulledTask { task, raw })),
+            None => {
+                // NOJ-181：坏消息记录原文，写入死信列表后移出 processing。
+                error!(
+                    raw = %truncate_for_log(&raw),
+                    "反序列化 JudgeTask 失败，消息已写入死信队列"
+                );
+                let dead_queue = format!("{}:dead", queue);
+                let _: redis::RedisResult<usize> = conn.lpush(&dead_queue, &raw).await;
+                let _: redis::RedisResult<usize> = conn.lrem(&processing, 1, &raw).await;
+                Ok(None)
+            }
+        },
+        None => Ok(None),
+    }
+}
+
+fn truncate_for_log(raw: &str) -> String {
+    if raw.len() <= 1024 {
+        raw.to_string()
+    } else {
+        format!("{}...(truncated {} bytes)", &raw[..1024], raw.len())
     }
 }
 
@@ -34,33 +65,59 @@ fn parse_task_message(value: &str) -> Option<JudgeTask> {
     match serde_json::from_str::<JudgeTask>(value) {
         Ok(task) => Some(task),
         Err(e) => {
-            error!(error = %e, "反序列化 JudgeTask 失败，跳过该消息");
+            error!(error = %e, "反序列化 JudgeTask 失败");
             None
+        }
+    }
+}
+
+/// 确认任务完成：从 processing 列表移除原始消息。
+///
+/// 返回 false 表示确认失败（消息将由 sweeper 重投，at-least-once 可接受）。
+pub async fn ack_task(redis_client: &redis::Client, judge_queue: &str, raw: &str) -> bool {
+    match redis_client.get_multiplexed_async_connection().await {
+        Ok(mut conn) => {
+            let processing = processing_queue(judge_queue);
+            let removed: std::result::Result<usize, redis::RedisError> =
+                conn.lrem(&processing, 1, raw).await;
+            match removed {
+                Ok(_) => true,
+                Err(e) => {
+                    error!(error = %e, "任务 processing 确认失败");
+                    false
+                }
+            }
+        }
+        Err(e) => {
+            error!(error = %e, "任务 processing 确认时 Redis 连接失败");
+            false
         }
     }
 }
 
 /// 带重试的结果推送。
 ///
-/// 最多重试 3 次，间隔指数退避（1s, 2s, 4s）。
-/// 所有重试均失败后，将结果序列化到 `fallback_dir` 下的文件，
-/// 供运维恢复使用。
+/// - 最多重试 3 次，间隔指数退避（1s, 2s, 4s）。
+/// - 网络歧义下重复 LPUSH 由 core 侧 `submission_id + rejudge_seq` 幂等吸收，
+///   这里不做 judge 侧去重（避免 SET-NX 先写标记后崩溃导致结果被误判已发送）。
+/// - 所有重试均失败后写 fallback 文件；**只要没有真正 LPUSH 成功就返回 false**，
+///   调用方不得 ACK 任务，留给 core sweeper 超时重投，避免“结果只落在磁盘但任务
+///   已确认”造成提交永久卡在 judging。
 pub async fn push_result_with_retry(
     redis_client: &redis::Client,
     queue: &str,
     result: &JudgeResult,
     fallback_dir: &std::path::Path,
-) {
+) -> bool {
     let submission_id = &result.submission_id;
     let json = match serde_json::to_string(result) {
         Ok(j) => j,
         Err(e) => {
             error!(submission_id, error = %e, "序列化评测结果失败，无法推送");
-            return;
+            return false;
         }
     };
 
-    // 3 次指数退避重试
     let mut last_error = String::new();
     for attempt in 1..=3 {
         match redis_client.get_multiplexed_async_connection().await {
@@ -70,16 +127,11 @@ pub async fn push_result_with_retry(
                 match push_result {
                     Ok(_) => {
                         info!(submission_id, attempt, "评测结果已发布");
-                        return;
+                        return true;
                     }
                     Err(e) => {
                         last_error = e.to_string();
-                        warn!(
-                            submission_id,
-                            attempt,
-                            error = %e,
-                            "LPUSH 失败",
-                        );
+                        warn!(submission_id, attempt, error = %e, "LPUSH 失败");
                     }
                 }
             }
@@ -96,40 +148,35 @@ pub async fn push_result_with_retry(
         }
 
         if attempt < 3 {
-            let delay = std::time::Duration::from_secs(1 << (attempt - 1)); // 1s, 2s, 4s
+            let delay = std::time::Duration::from_secs(1 << (attempt - 1));
             tokio::time::sleep(delay).await;
         }
     }
 
-    // 所有重试均失败，序列化到本地文件系统
     error!(
         submission_id,
         error = last_error,
-        "评测结果推送失败（已重试 3 次），序列化到本地: {}",
-        submission_id,
+        "评测结果推送失败（已重试 3 次），写入 fallback 文件"
     );
 
-    // 确保 fallback 目录存在
     if let Err(e) = tokio::fs::create_dir_all(fallback_dir).await {
-        error!(
-            submission_id,
-            error = %e,
-            "创建 fallback 目录失败",
-        );
-        return;
+        error!(submission_id, error = %e, "创建 fallback 目录失败");
+        return false;
     }
 
     let fallback_path = fallback_dir.join(format!(
-        "result-{}.json",
-        sanitize_submission_id_for_filename(submission_id)
+        "result-{}-seq{}.json",
+        sanitize_submission_id_for_filename(submission_id),
+        result.rejudge_seq.unwrap_or(0)
     ));
     match tokio::fs::write(&fallback_path, &json).await {
         Ok(_) => {
             info!(
                 submission_id,
                 path = %fallback_path.display(),
-                "评测结果已写入 fallback 文件",
+                "评测结果已写入 fallback 文件，但未投递 Redis；任务不 ACK，等待 sweeper 重投",
             );
+            false
         }
         Err(e) => {
             error!(
@@ -138,6 +185,85 @@ pub async fn push_result_with_retry(
                 path = %fallback_path.display(),
                 "写入 fallback 文件失败",
             );
+            false
+        }
+    }
+}
+
+/// NOJ-180：启动时回放 fallback 结果文件，成功后删除原文件；
+/// 坏文件改名 .dead 保留现场并记录原文。
+pub async fn replay_fallback_results(
+    redis_client: &redis::Client,
+    queue: &str,
+    fallback_dir: &std::path::Path,
+) {
+    let mut read_dir = match tokio::fs::read_dir(fallback_dir).await {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+
+    while let Ok(Some(entry)) = read_dir.next_entry().await {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        let file_name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if !file_name.starts_with("result-") {
+            continue;
+        }
+
+        let raw = match tokio::fs::read_to_string(&path).await {
+            Ok(r) => r,
+            Err(e) => {
+                error!(path = %path.display(), error = %e, "读取 fallback 结果失败");
+                continue;
+            }
+        };
+
+        match serde_json::from_str::<JudgeResult>(&raw) {
+            Ok(result) => {
+                let json = match serde_json::to_string(&result) {
+                    Ok(j) => j,
+                    Err(e) => {
+                        error!(error = %e, "重新序列化 fallback 结果失败");
+                        continue;
+                    }
+                };
+                match redis_client.get_multiplexed_async_connection().await {
+                    Ok(mut conn) => match conn.lpush::<&str, &str, usize>(queue, &json).await {
+                        Ok(_) => {
+                            info!(
+                                submission_id = %result.submission_id,
+                                path = %path.display(),
+                                "fallback 结果已重放",
+                            );
+                            if let Err(e) = tokio::fs::remove_file(&path).await {
+                                error!(path = %path.display(), error = %e, "删除已重放 fallback 文件失败");
+                            }
+                        }
+                        Err(e) => {
+                            error!(submission_id = %result.submission_id, error = %e, "fallback 结果重放失败，保留文件");
+                        }
+                    },
+                    Err(e) => {
+                        error!(submission_id = %result.submission_id, error = %e, "fallback 重放连接 Redis 失败，保留文件");
+                        break;
+                    }
+                }
+            }
+            Err(e) => {
+                error!(
+                    path = %path.display(),
+                    error = %e,
+                    raw = %truncate_for_log(&raw),
+                    "fallback 文件反序列化失败，改名 .dead",
+                );
+                let dead = path.with_extension("json.dead");
+                let _ = tokio::fs::rename(&path, &dead).await;
+            }
         }
     }
 }

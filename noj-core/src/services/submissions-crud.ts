@@ -41,10 +41,10 @@ import {
 import { AppError, BadRequestError, NotFoundError } from "../lib/errors.ts";
 import { getDb } from "../db/connection.ts";
 import { checkPermission } from "../lib/permissions.ts";
-import { pushJudgeTask } from "../mq/producer.ts";
+import { isRetryableJudgeQueueError, pushJudgeTask } from "../mq/producer.ts";
 import { validateJudgeImageWithKind } from "./judge-images.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
-import { getPendingSubmissionIds } from "./queue.ts";
+import { getPendingQueueSnapshot } from "./queue.ts";
 import type { RuntimeConfig } from "../types/problems.ts";
 import type { JudgeTask, SubmissionStatus } from "../types/index.ts";
 import type { Context } from "hono";
@@ -58,7 +58,6 @@ import type {
   SubmissionListItem,
   SubmissionResponse,
 } from "./submissions-types.ts";
-import { updateSubmissionStatus } from "./submissions-result.ts";
 import { logger } from "../lib/logging.ts";
 
 /**
@@ -217,10 +216,11 @@ export async function listSubmissions(
   let queueLength: number | null = null;
   if (hasInProgress) {
     try {
-      const pendingIds = await getPendingSubmissionIds();
-      queueLength = pendingIds.length;
-      // LRANGE 0 -1 返回最新优先（LPUSH），pendingIds.length - idx
-      // 使队列位置从 1（下个出队）递增
+      const snapshot = await getPendingQueueSnapshot();
+      const pendingIds = snapshot.ids;
+      queueLength = snapshot.length;
+      // LRANGE 返回最新优先（LPUSH），pendingIds.length - idx
+      // 使队列位置从 1（下个出队）递增；积压时 snapshot 已回退全量
       pendingPosMap = new Map(
         pendingIds.map((id, idx) => [id, pendingIds.length - idx]),
       );
@@ -382,10 +382,10 @@ export async function createSubmission(
 
   try {
     await pushJudgeTask(task);
-    // 入队成功后立即更新状态为 judging
-    // 注意：此处不设置 judge_started_at，它由 noj-judge 开始执行时通过 started 事件设置
+    // 入队成功后立即更新状态为 judging。
+    // 条件更新：极端竞态下结果可能已先落库，不能把 finished 覆盖回 judging。
     await db.update(submissions).set({ status: "judging" }).where(
-      eq(submissions.id, id),
+      and(eq(submissions.id, id), eq(submissions.status, "pending")),
     );
 
     // 发布队列变更事件，通知 SSE 等订阅者
@@ -404,12 +404,17 @@ export async function createSubmission(
     }
   } catch (mqErr) {
     logger.error("评测任务推送失败", { submission_id: id, err: mqErr });
-    // DB 成功但 MQ 失败，标记为 error 让用户重新提交
-    try {
-      await updateSubmissionStatus(id, "error");
-    } catch {
-      // 忽略 cleanup 失败
+    if (!isRetryableJudgeQueueError(mqErr)) {
+      // 永久错误（如消息超过大小限制）直接置为 error，避免 sweeper 无限重试成永久 pending。
+      await db.update(submissions)
+        .set({
+          status: "error",
+          judge_finished_at: new Date().toISOString(),
+        })
+        .where(eq(submissions.id, id));
     }
+    // NOJ-067：DB 写入与 LPUSH 无法事务化；瞬时失败保留 pending，
+    // 由 mq/sweeper.ts 按超时恢复，避免永久 Pending 孤儿。
     throw new AppError(
       "提交失败：评测队列暂时不可用，请稍后重试",
       500,

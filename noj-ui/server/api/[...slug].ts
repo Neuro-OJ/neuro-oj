@@ -33,6 +33,57 @@ function isProductionEnv(): boolean {
   return nojEnv === 'production' || nodeEnv === 'production';
 }
 
+/**
+ * NOJ-215：把客户端网络信息安全地透传到 noj-core。
+ *
+ * 不能直接信任浏览器传入的 X-Forwarded-For / X-Real-IP：
+ * - 直接暴露 UI 时攻击者可伪造这些头，使 core 误以为来自任意 IP；
+ * - 因此这里把当前 TCP 对端追加到 XFF 末尾，让 core 从右往左解析时
+ *   优先得到真实 socket IP，同时保留上游代理已写入的 XFF。
+ * 如果 UI 前面有受信 edge，edge 写入的 XFF 会被保留，core 仍能取到真实客户端 IP。
+ */
+function normalizeIp(ip?: string | null): string | undefined {
+  if (!ip) return undefined;
+  let value = ip.trim();
+  if (value.startsWith('::ffff:')) value = value.slice('::ffff:'.length);
+  if (value.startsWith('[') && value.includes(']')) {
+    value = value.slice(1, value.indexOf(']'));
+  }
+  const zone = value.indexOf('%');
+  if (zone !== -1) value = value.slice(0, zone);
+  return value || undefined;
+}
+
+function getClientNetworkHeaders(event: {
+  node: {
+    req: {
+      headers: Record<string, string | string[] | undefined>;
+      socket?: { remoteAddress?: string };
+    };
+  };
+  headers: Headers;
+}): Record<string, string> {
+  const out: Record<string, string> = {};
+  const peerIp = normalizeIp(event.node.req.socket?.remoteAddress);
+  const existingXff = event.headers.get('x-forwarded-for')?.trim() ?? '';
+
+  if (existingXff && peerIp) {
+    // 总是把当前 TCP 对端放到最右，确保 core 从右往左解析时先看到真实 socket IP，
+    // 防止攻击者在 XFF 里夹带任意 IP 来伪造来源。
+    out['x-forwarded-for'] = `${existingXff}, ${peerIp}`;
+  } else if (peerIp) {
+    out['x-forwarded-for'] = peerIp;
+  } else if (existingXff) {
+    out['x-forwarded-for'] = existingXff;
+  }
+
+  if (peerIp) out['x-real-ip'] = peerIp;
+
+  const ua = event.headers.get('user-agent');
+  if (ua) out['user-agent'] = ua;
+  return out;
+}
+
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
 
@@ -48,13 +99,17 @@ export default defineEventHandler(async (event) => {
 
   const cookies = parseCookies(event);
   const token = cookies['noj:token'];
+  const clientNetworkHeaders = getClientNetworkHeaders(event);
 
   // ── 拦截登录/改密成功响应，设置 Cookie ──
   // 改密（issue #75 撤销机制）成功后服务端签发新 token，旧 token 被撤销；
   // 前端不感知，由 Nitro 代理同步替换 Cookie，避免「改密后被踢回登录页」的体验。
   if (shouldInterceptAuth(event)) {
     const body = await readBody(event);
-    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      ...clientNetworkHeaders,
+    };
     if (token) {
       headers['authorization'] = `Bearer ${token}`;
     }
@@ -150,6 +205,10 @@ export default defineEventHandler(async (event) => {
   // ── 从 Cookie 注入 Authorization 头到转发请求 ──
   if (token) {
     event.node.req.headers.authorization = `Bearer ${token}`;
+  }
+  // NOJ-215：透传客户端 IP/UA（proxyRequest 会沿用 event.node.req.headers）。
+  for (const [name, value] of Object.entries(clientNetworkHeaders)) {
+    event.node.req.headers[name] = value;
   }
 
   return proxyRequest(event, target);

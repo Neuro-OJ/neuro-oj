@@ -291,8 +291,8 @@ Deno.test({
         `/api/v1/submissions/${submissionId}/status`,
         { token: invitedToken },
       );
-      assertEquals(statusResponse.status, 200);
-      assertEquals((await statusResponse.json()).contest_id, contestId);
+      // NOJ-049：非提交所有者/管理员不得查看队列状态。
+      assertEquals(statusResponse.status, 404);
 
       await db.update(contests).set({
         end_time: new Date(Date.now() - 60_000).toISOString(),

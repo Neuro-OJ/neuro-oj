@@ -57,8 +57,20 @@ export async function createProblem(
   userId?: string,
   userRole?: string,
   c?: Context,
+  allowServerStorageUrl = false,
 ): Promise<ProblemResponseWithCategories> {
   const db = getDb();
+
+  // NOJ-115/116：服务端流程（import-bundle）以外禁止客户端直传存储 URL。
+  if (
+    input.support_package_storage_url !== undefined &&
+    input.support_package_storage_url !== null &&
+    !allowServerStorageUrl
+  ) {
+    throw new BadRequestError(
+      "support_package_storage_url 仅允许由服务端支持包上传/导入流程生成",
+    );
+  }
 
   // 校验难度
   if (input.difficulty && !isValidDifficulty(input.difficulty)) {
@@ -124,12 +136,22 @@ export async function createProblem(
   // 影响 display_id 双索引路由解析
   const id = crypto.randomUUID();
 
-  // 权限检查：普通用户只能创建 U 型
+  // NOJ-102：创建权限按题目类型细粒度强制执行。
+  // admin:full_access 通配放行；普通用户需 problem:create（U 型）/
+  // problem:create_p（P 型）。无 Context 的 CLI 场景保持旧回退。
   if (type === "P") {
     if (c) {
       await assertPermission(c, "problem:create_p");
     } else if (userRole !== "admin") {
       throw new ForbiddenError("仅管理员可创建管理题");
+    }
+  } else {
+    if (c) {
+      await assertPermission(c, "problem:create");
+    } else if (
+      userRole !== undefined && userRole !== "admin" && userRole !== "user"
+    ) {
+      throw new ForbiddenError("无权创建题目");
     }
   }
 
@@ -222,8 +244,20 @@ export async function updateProblem(
   userId?: string,
   userRole?: string,
   c?: Context,
+  allowServerStorageUrl = false,
 ): Promise<ProblemResponseWithCategories> {
   const db = getDb();
+
+  // NOJ-115/116：服务端流程（import-bundle）以外禁止客户端直传存储 URL。
+  if (
+    input.support_package_storage_url !== undefined &&
+    input.support_package_storage_url !== null &&
+    !allowServerStorageUrl
+  ) {
+    throw new BadRequestError(
+      "support_package_storage_url 仅允许由服务端支持包上传/导入流程生成",
+    );
+  }
 
   const existing = await db
     .select()
@@ -244,9 +278,13 @@ export async function updateProblem(
     } else if (userRole !== "admin") {
       throw new ForbiddenError("仅管理员可编辑管理题");
     }
-  }
-  // U 型：仅所有者可编辑；非 owner 需 write_any（管理员）
-  if (problem.owner_id !== (c?.var.userId ?? userId)) {
+  } else if (problem.owner_id === (c?.var.userId ?? userId)) {
+    // NOJ-102：U 型 owner 也必须持有 problem:write_own。
+    if (c) {
+      await assertPermission(c, "problem:write_own");
+    }
+  } else {
+    // U 型：非 owner 需 write_any（管理员）
     if (c) {
       await assertPermission(c, "problem:write_any");
     } else if (userRole !== "admin") {
@@ -395,9 +433,13 @@ export async function deleteProblem(
     } else if (userRole !== "admin") {
       throw new ForbiddenError("仅管理员可删除管理题");
     }
-  }
-  // U 型：仅所有者可删除；非 owner 需 delete_any（管理员）
-  if (problem.owner_id !== (c?.var.userId ?? userId)) {
+  } else if (problem.owner_id === (c?.var.userId ?? userId)) {
+    // NOJ-102：U 型 owner 也必须持有 problem:delete_own。
+    if (c) {
+      await assertPermission(c, "problem:delete_own");
+    }
+  } else {
+    // U 型：非 owner 需 delete_any（管理员）
     if (c) {
       await assertPermission(c, "problem:delete_any");
     } else if (userRole !== "admin") {

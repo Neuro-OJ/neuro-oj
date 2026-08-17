@@ -23,7 +23,7 @@ Neuro OJ 的评测通过 Docker 镜像承载：出题人代码（evaluator）与
 2. **运行时镜像**：Docker 镜像，分为 `evaluator`（跑出题人代码）与 `solution`（跑用户代码 + Solution Host）两类。
 3. **题目配置**：题目的 `runtime_config` 指定 evaluator / solution 的镜像、命令与资源限制。
 
-Judge Worker 只运行**白名单内**的镜像（`judgeImages` 表，含 `image` / `kind` / `mode` 匹配规则），启动时通过 Redis RPC 获取白名单。
+Judge Worker 只运行**白名单内**的镜像（`judgeImages` 表，含 `image` / `kind` / `mode` 匹配规则）；白名单校验在 noj-core 侧完成，judge 侧用 `JUDGE_IMAGE_PREFIX` 前缀白名单对 MQ 消息做纵深复验。
 
 ## Python 双容器是如何工作的
 

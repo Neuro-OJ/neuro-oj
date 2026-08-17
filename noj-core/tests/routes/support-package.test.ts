@@ -7,7 +7,8 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { problems, users } from "../../src/db/schema.ts";
+import { problems, roles, userRoles, users } from "../../src/db/schema.ts";
+import { ensureRbacSeeds } from "../../src/services/seed-rbac.ts";
 import { eq, sql } from "drizzle-orm";
 import { createUserToken } from "../lib/helper.ts";
 
@@ -35,6 +36,15 @@ async function createTestUser(id: string): Promise<void> {
     created_at: now,
     updated_at: now,
   });
+  // NOJ-102：owner 权限现在走实时 RBAC，测试用户需挂载默认 user 角色。
+  await ensureRbacSeeds();
+  const [userRole] = await db.select({ id: roles.id }).from(roles).where(
+    eq(roles.name, "user"),
+  ).limit(1);
+  if (userRole) {
+    await db.insert(userRoles).values({ user_id: id, role_id: userRole.id })
+      .onConflictDoNothing();
+  }
 }
 
 /**

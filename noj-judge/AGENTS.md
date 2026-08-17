@@ -124,34 +124,35 @@ cargo fmt
 ```
 任务到达
   │
-  ├─ 1. 获取支持包 — 缓存优先 → 按 host 分派下载 → SHA-256 校验 → 写缓存（含 zip 路径穿越/炸弹防护）
-  ├─ 2. 创建 Evaluator + Solution 两个容器（安全 HostConfig：cap_drop ALL / network none / pids_limit 等）
+  ├─ 0. 白名单复验（镜像前缀 JUDGE_IMAGE_PREFIX / 命令可执行文件白名单 / 网络开关）
+  ├─ 1. 获取支持包 — 缓存优先 → 按 host 分派下载（仅 HTTPS，禁重定向）→ SHA-256 校验 → 写缓存（含 zip 路径穿越/实时解压限额）
+  ├─ 2. 创建 Evaluator + Solution 两个容器（cap_drop ALL / network none 默认 / pids_limit / CPU 上限 / readonly rootfs + tmpfs）
   ├─ 3. 注入用户代码到 Solution 容器
   ├─ 4. 注入支持包 zip 到 Evaluator 容器 /workspace
   ├─ 5. 启动两个 exec — Evaluator 跑 evaluate.py；Solution 跑 host.py
   ├─ 6. 等待 Solution `ready` 帧（5s 超时）
-  ├─ 7. 双向消息转发 — evaluator stdout ↔ solution stdin/stderr（竞速超时）
-  │     ├─ 超时 → stop_container(SIGTERM) + kill_container(SIGKILL) → exit_code = -1
-  │     └─ 正常 → 读取 stdout/stderr + exit_code
+  ├─ 7. 双向消息转发 — evaluator stdout ↔ solution stdin/stderr（调用级超时）
+  │     ├─ 超时 → 向等待方写入 CallTimeout/error 帧
+  │     └─ 正常 → 读取 stdout/stderr 直到 RESULT 或 EOF
   ├─ 8. 等待 Evaluator stdout 出现 ---RESULT--- 标记，解析 JSON {status, score, details}
   │     ├─ 有标记 → 解析结果（状态由 evaluator 决定）
   │     ├─ 总超时（启动超时 / time_limit_ms）→ SystemError（finalize_outcome 优先）
   │     ├─ 无标记 + 曾发送 CallTimeout 错误帧 → TimeLimitExceeded
   │     └─ 无标记 + 未发送 → SystemError
-  └─ 9. 发 `shutdown` 到 Solution → RAII 清理两个容器
+  └─ 9. 发 `shutdown` 到 Solution → 显式 `dual.destroy()` 清理两个容器
 ```
 
-内存峰值读取（cgroup）：v2 用 `/sys/fs/cgroup/memory.peak`，v1 用
-`/sys/fs/cgroup/memory/memory.max_usage_in_bytes`，fallback 为 0。
+当前实现回填 `time_ms`（从评测开始到结果生成的墙上时钟耗时）；
+`memory_kb` 暂不读取（Docker API 未暴露 cgroup memory.peak，保持 `null`）。
+OOM 容器由 `docker rm -f` 回收，不映射 MemoryLimitExceeded。
 
 ### 超时处理细节
 
 - 判定超时阈值 = `time_limit_ms`
-- 超时后两步终止：先 `stop_container(t: kill_grace_secs)` 发 SIGTERM，再
-  `kill_container()` 发 SIGKILL
-- 超时后从 `docker logs` 捕获已产生的输出（`follow: false`）
-- 超时退出码固定为 `-1`（即使容器后来报告不同退出码；该值仅用于日志记录，不参与最终状态判定——状态由 `finalize_outcome` 按超时来源与 CallTimeout 归因决定）
-- 内存峰值读取使用相同 exec 基础设施，5s 超时 + 2s kill grace
+- 超时由 judge 内部 deadline 判定（启动 30s / 题目 `time_limit_ms` / 调用级 `call_timeout_ms`）
+- 超时后通过 `dual.destroy()` 的 `docker rm -f` 强制清理容器
+- 状态由 `finalize_outcome` 按超时来源与 CallTimeout 归因决定（总超时 → SystemError；仅调用级 CallTimeout → TLE）
+- 输出从 Bollard exec 流实时收集（非 `docker logs`）
 
 ## MQ 消息格式
 
@@ -164,13 +165,13 @@ cargo fmt
   "download_url": "noj-download://base64/?content=UEsDBBQAAAAIA...&checksum_sha256=abc123",
   "runtime_config": {
     "evaluator": {
-      "image": "noj-judge-python",
+      "image": "noj-evaluator-python",
       "command": "python3 /workspace/evaluate.py",
       "time_limit_ms": 5000,
       "memory_limit_mb": 512
     },
     "solution": {
-      "image": "noj-judge-python",
+      "image": "noj-solution-python",
       "call_timeout_ms": 2000,
       "memory_limit_mb": 512
     }
@@ -195,7 +196,7 @@ cargo fmt
   "output": "---RESULT---\n{\"status\":\"Accepted\",\"score\":1000,\"details\":{}}",
   "details": { "cases": [...] },
   "time_ms": 42,
-  "memory_kb": 8192
+  "memory_kb": null
 }
 ```
 
@@ -203,9 +204,9 @@ cargo fmt
 
 - **zip 路径穿越防护**：拒绝含 `..` 或 `/` 开头的 zip 条目
 - **zip 炸弹防护**：最大条目数 1000、单文件 64MB、总解压
-  512MB（硬编码，不可配置）
+  512MB（硬编码；按实际解压字节实时限额，不信任条目声明大小）
 - **文件名安全**：拒绝含 `/`、`\`、`..` 的文件名
-- **容器安全**：`cap_drop ALL`、`no-new-privileges`、`network_mode none`、`ipc_mode none`、`pids_limit 256`
+- **容器安全**：`cap_drop ALL`、`no-new-privileges`、`network_mode none`（默认）、`ipc_mode none`、`pids_limit 256`、CPU 上限、readonly rootfs + tmpfs /workspace
 - **结果重试**：推送结果最多重试 3
   次（指数退避），全部失败则序列化到本地文件系统
 - **孤儿容器清理**：启动时按标签清理残留容器

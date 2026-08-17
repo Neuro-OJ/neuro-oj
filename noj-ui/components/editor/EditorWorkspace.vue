@@ -82,7 +82,7 @@ const { theme, set: setTheme } = useEditorTheme()
 const code = ref('')
 const draftEnabled = ref(true)
 const { state: draftState, savedAt: draftSavedAt, clear: clearDraft } = useDraftStorage(
-  ref(props.draftKey),
+  computed(() => props.draftKey),
   code,
   draftEnabled,
 )

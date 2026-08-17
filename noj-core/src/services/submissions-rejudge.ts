@@ -103,8 +103,6 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     .where(eq(submissions.id, id))
     .limit(1);
 
-  await updateSubmissionStatus(id, "judging");
-
   const runtimeConfig = problem.runtime_config as
     | RuntimeConfig
     | null
@@ -134,6 +132,11 @@ export async function rejudgeSubmission(id: string): Promise<void> {
 
   try {
     await pushJudgeTask(task);
+    // 入队成功后才置为 judging，并且只在仍为 pending 时更新，
+    // 避免结果先落库后把 finished 覆盖回 judging（与批量重测路径一致）。
+    await db.update(submissions).set({ status: "judging" }).where(
+      and(eq(submissions.id, id), eq(submissions.status, "pending")),
+    );
   } catch (mqErr) {
     logger.error("重测任务推送失败", { submission_id: id, err: mqErr });
     try {
@@ -258,13 +261,8 @@ export async function rejudgeProblemSubmissions(
     return { total: 0, queued: 0, skipped: 0 };
   }
 
-  const [seqRow] = await db
-    .select({ rejudge_seq: submissions.rejudge_seq })
-    .from(submissions)
-    .where(eq(submissions.id, allIds[0]))
-    .limit(1);
-  const currentSeq = seqRow?.rejudge_seq ?? 0;
-
+  // NOJ-075：不再用首条提交的 rejudge_seq 覆盖全部提交。
+  // 事务内已对每条提交递增各自的 rejudge_seq，逐行读取并透传。
   const rejudgeRows = await db
     .select()
     .from(submissions)
@@ -296,11 +294,14 @@ export async function rejudgeProblemSubmissions(
         code: sub.code,
         file_name: sub.file_name ??
           (LANGUAGE_EXT_MAP[sub.language] || "main.txt"),
-        rejudge_seq: currentSeq,
+        rejudge_seq: sub.rejudge_seq,
       };
 
       await pushJudgeTask(task);
-      await updateSubmissionStatus(sub.id, "judging");
+      // 条件更新：结果可能在入队后立即回写，不得覆盖终态。
+      await db.update(submissions).set({ status: "judging" }).where(
+        and(eq(submissions.id, sub.id), eq(submissions.status, "pending")),
+      );
       queued++;
     } catch (err) {
       logger.error("批量重测入队失败", { submission_id: sub.id, err });

@@ -15,6 +15,11 @@ const MAX_MESSAGE_LENGTH = 10_000;
 /** 消息预览截断长度 */
 const PREVIEW_LENGTH = 50;
 
+/** 统一 postgres.js（array-like）与 PGlite（{rows}）的 execute 返回形态。 */
+function executeRows<T>(result: T[] | { rows: T[] }): T[] {
+  return Array.isArray(result) ? result : result.rows;
+}
+
 /**
  * 查找或创建与另一用户的会话。
  *
@@ -249,39 +254,60 @@ export async function listConversations(
     otherUsers.map((u) => [u.id, u.avatar_url]),
   );
 
-  // 查询每个会话的最后一条消息预览
+  // 查询每个会话的最后一条消息预览。
+  // NOJ-082：使用 DISTINCT ON 一次取每会话最新消息，避免拉全量消息再 JS 去重。
   const convIds = rows.map((r) => r.id);
-  const lastMessages = await getDb()
-    .select({
-      conversation_id: messages.conversation_id,
-      content: messages.content,
-    })
-    .from(messages)
-    .where(
-      or(...convIds.map((id) => eq(messages.conversation_id, id))),
-    )
-    .orderBy(desc(messages.created_at));
-
-  // 取每个会话的最新一条消息
+  const lastMessageResult = await getDb().execute<{
+    conversation_id: string;
+    content: string;
+  }>(sql`
+    SELECT DISTINCT ON (conversation_id)
+      conversation_id,
+      content
+    FROM messages
+    WHERE conversation_id IN (${
+    sql.join(convIds.map((id) => sql`${id}`), sql`, `)
+  })
+    ORDER BY conversation_id, created_at DESC
+  `);
   const lastMsgMap = new Map<string, string>();
-  const seen = new Set<string>();
-  for (const msg of lastMessages) {
-    if (!seen.has(msg.conversation_id)) {
-      seen.add(msg.conversation_id);
-      const preview = msg.content.length > PREVIEW_LENGTH
-        ? msg.content.slice(0, PREVIEW_LENGTH) + "..."
-        : msg.content;
-      lastMsgMap.set(msg.conversation_id, preview);
-    }
+  for (const msg of executeRows(lastMessageResult)) {
+    const preview = msg.content.length > PREVIEW_LENGTH
+      ? msg.content.slice(0, PREVIEW_LENGTH) + "..."
+      : msg.content;
+    lastMsgMap.set(msg.conversation_id, preview);
   }
 
-  // 查询未读计数（排除当前用户已删除的消息）
-  const unreadCounts = await Promise.all(
-    rows.map((r) => getUnreadCountByConversation(userId, r.id)),
-  );
+  // NOJ-081：一次聚合查询计算所有会话未读数，消除 N+1。
+  const unreadResult = await getDb().execute<{
+    conversation_id: string;
+    unread: string;
+  }>(sql`
+    SELECT m.conversation_id,
+           count(*)::text AS unread
+    FROM messages m
+    LEFT JOIN conversation_reads cr
+      ON cr.conversation_id = m.conversation_id
+     AND cr.user_id = ${userId}
+    LEFT JOIN messages lr
+      ON lr.id = cr.last_read_message_id
+    LEFT JOIN message_deletions md
+      ON md.message_id = m.id
+     AND md.user_id = ${userId}
+    WHERE m.conversation_id IN (${
+    sql.join(convIds.map((id) => sql`${id}`), sql`, `)
+  })
+      AND md.user_id IS NULL
+      AND (lr.id IS NULL OR m.created_at > lr.created_at)
+    GROUP BY m.conversation_id
+  `);
+  const unreadMap = new Map<string, number>();
+  for (const row of executeRows(unreadResult)) {
+    unreadMap.set(row.conversation_id, Number(row.unread));
+  }
 
   // 组装响应
-  const data = rows.map((r, i) => {
+  const data = rows.map((r) => {
     const otherUserId = r.user1_id === userId ? r.user2_id : r.user1_id;
     return {
       id: r.id,
@@ -290,7 +316,7 @@ export async function listConversations(
       other_user_avatar_url: userAvatarMap.get(otherUserId) ?? null,
       last_message_preview: lastMsgMap.get(r.id) ?? "",
       last_message_at: r.last_message_at,
-      unread_count: unreadCounts[i],
+      unread_count: unreadMap.get(r.id) ?? 0,
       created_at: r.created_at,
     };
   });
@@ -442,24 +468,26 @@ export async function markConversationRead(
  * 获取用户所有会话的未读消息总数（用于导航栏徽标）。
  */
 export async function getUnreadCount(userId: string): Promise<number> {
-  // 查询用户参与的所有会话
-  const convRows = await getDb()
-    .select({ id: conversations.id })
-    .from(conversations)
-    .where(
-      or(
-        eq(conversations.user1_id, userId),
-        eq(conversations.user2_id, userId),
-      ),
-    );
-
-  if (convRows.length === 0) return 0;
-
-  let total = 0;
-  for (const conv of convRows) {
-    total += await getUnreadCountByConversation(userId, conv.id);
-  }
-  return total;
+  // NOJ-081：单条 SQL 聚合用户所有会话的未读数，替代「逐会话查询」N+1。
+  const result = await getDb().execute<{ total: string }>(sql`
+    SELECT count(*)::text AS total
+    FROM messages m
+    JOIN conversations c
+      ON c.id = m.conversation_id
+    LEFT JOIN conversation_reads cr
+      ON cr.conversation_id = m.conversation_id
+     AND cr.user_id = ${userId}
+    LEFT JOIN messages lr
+      ON lr.id = cr.last_read_message_id
+    LEFT JOIN message_deletions md
+      ON md.message_id = m.id
+     AND md.user_id = ${userId}
+    WHERE (c.user1_id = ${userId} OR c.user2_id = ${userId})
+      AND md.user_id IS NULL
+      AND (lr.id IS NULL OR m.created_at > lr.created_at)
+  `);
+  const rows = executeRows(result);
+  return Number(rows[0]?.total ?? 0);
 }
 
 /**

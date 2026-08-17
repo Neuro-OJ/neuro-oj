@@ -6,7 +6,7 @@ use std::collections::HashMap;
 /// 参数：
 /// - `memory_bytes`：内存上限（同时作用于 swap）
 /// - `tmpfs`：tmpfs 挂载（如 `("/tmp", "size=256M")`）
-/// - `readonly_rootfs`：rootfs 是否只读（双容器 evaluator/solution 均为 false）
+/// - `readonly_rootfs`：rootfs 是否只读（双容器当前为 true，配合 /tmp、/workspace tmpfs）
 /// - `network_mode`：容器网络模式（`"none"` 无网，`"bridge"` 默认桥接）
 pub fn build_host_config(
     memory_bytes: i64,
@@ -31,6 +31,8 @@ pub fn build_host_config(
         memory: Some(memory_bytes),
         memory_swap: Some(memory_bytes),
         memory_swappiness: Some(0),
+        // NOJ-188：默认限制单容器最多 1 个 CPU。
+        nano_cpus: Some(1_000_000_000),
         ..Default::default()
     }
 }
@@ -52,6 +54,12 @@ mod tests {
         assert_eq!(cfg.network_mode, Some("none".to_string()));
         assert_eq!(cfg.ipc_mode, Some("none".to_string()));
         assert_eq!(cfg.pids_limit, Some(256));
+    }
+
+    #[test]
+    fn test_cpu_limit_is_set() {
+        let cfg = build_host_config(512 * 1024 * 1024, HashMap::new(), true, "none");
+        assert_eq!(cfg.nano_cpus, Some(1_000_000_000));
     }
 
     #[test]

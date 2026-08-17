@@ -28,48 +28,80 @@ const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
 };
 
 /**
- * 保存评测结果。
+ * 保存评测结果（幂等 + rejudge_seq 事务内校验）。
  *
- * 由结果消费者调用，将 noj-judge 返回的 JudgeResult 持久化到数据库。
- * 原子操作：更新 submission 状态 → INSERT evaluation_results。
+ * 返回 true 表示本次结果已应用；false 表示过时/重复消息已忽略。
+ * 事务内对 submissions 行加锁，避免 NOJ-065 的 TOCTOU 与 NOJ-068/182
+ * 的重复统计。
  */
 export async function saveEvaluationResult(
   result: JudgeResult,
-): Promise<void> {
+): Promise<boolean> {
   const db = getDb();
 
   const incomingSeq = result.rejudge_seq ?? 0;
-  const [sub] = await db
-    .select({
-      rejudge_seq: submissions.rejudge_seq,
-      created_at: submissions.created_at,
-      contest_id: submissions.contest_id,
-      user_id: submissions.user_id,
-      problem_id: submissions.problem_id,
-    })
-    .from(submissions)
-    .where(eq(submissions.id, result.submission_id))
-    .limit(1);
-
-  if (!sub) {
-    logger.warn("提交不存在，忽略评测结果", {
-      submission_id: result.submission_id,
-    });
-    return;
-  }
-
-  if (incomingSeq < sub.rejudge_seq) {
-    logger.warn("忽略过时的评测结果", {
-      submission_id: result.submission_id,
-      result_seq: incomingSeq,
-      current_seq: sub.rejudge_seq,
-    });
-    return;
-  }
-
   const now = new Date().toISOString();
 
-  await db.transaction(async (tx) => {
+  const outcome = await db.transaction(async (tx) => {
+    const [sub] = await tx
+      .select({
+        rejudge_seq: submissions.rejudge_seq,
+        created_at: submissions.created_at,
+        contest_id: submissions.contest_id,
+        user_id: submissions.user_id,
+        problem_id: submissions.problem_id,
+        status: submissions.status,
+      })
+      .from(submissions)
+      .where(eq(submissions.id, result.submission_id))
+      .for("update")
+      .limit(1);
+
+    if (!sub) {
+      logger.warn("提交不存在，忽略评测结果", {
+        submission_id: result.submission_id,
+      });
+      return null;
+    }
+
+    // 过时结果：本次消息早于当前重测序号，直接丢弃。
+    if (incomingSeq < sub.rejudge_seq) {
+      logger.warn("忽略过时的评测结果", {
+        submission_id: result.submission_id,
+        result_seq: incomingSeq,
+        current_seq: sub.rejudge_seq,
+      });
+      return null;
+    }
+
+    // 重复结果幂等：同一 submission + rejudge_seq 已落库时跳过。
+    const [existingResult] = await tx
+      .select({ id: evaluationResults.id })
+      .from(evaluationResults)
+      .where(eq(evaluationResults.submission_id, result.submission_id))
+      .limit(1);
+    if (existingResult && incomingSeq === sub.rejudge_seq) {
+      logger.info("重复评测结果，跳过", {
+        submission_id: result.submission_id,
+        rejudge_seq: incomingSeq,
+      });
+      return null;
+    }
+
+    // 状态机收紧：正常结果只允许 pending/judging → 终态。
+    // error 提交重测时会先重置为 pending，因此也允许从 error 修复。
+    const currentStatus = sub.status as SubmissionStatus;
+    if (
+      currentStatus !== "pending" && currentStatus !== "judging" &&
+      currentStatus !== "error"
+    ) {
+      logger.warn("提交状态不允许写入评测结果", {
+        submission_id: result.submission_id,
+        status: currentStatus,
+      });
+      return null;
+    }
+
     const submissionStatus: SubmissionStatus = result.status === "SystemError"
       ? "error"
       : "finished";
@@ -94,24 +126,23 @@ export async function saveEvaluationResult(
         time_ms: result.time_ms ?? null,
         memory_kb: result.memory_kb ?? null,
         created_at: now,
-      })
-      .onConflictDoUpdate({
-        target: evaluationResults.submission_id,
-        set: {
-          status: result.status,
-          score: result.score,
-          output: result.output,
-          details: JSON.stringify(result.details),
-          time_ms: result.time_ms ?? null,
-          memory_kb: result.memory_kb ?? null,
-          created_at: now,
-        },
       });
+
+    return {
+      applied: true,
+      created_at: sub.created_at,
+      contest_id: sub.contest_id,
+      user_id: sub.user_id,
+      problem_id: sub.problem_id,
+      is_rejudge: sub.rejudge_seq > 0,
+    };
   });
 
-  // 更新内存统计缓存（仅 net-new 结果，重测不计入避免 double-count）
-  if (sub.created_at) {
-    applyNewResult(result.score, sub.created_at);
+  if (!outcome) return false;
+
+  // 统计缓存仅对首次结果递增；重测结果不计入（NOJ-068）。
+  if (!outcome.is_rejudge && outcome.created_at) {
+    applyNewResult(result.score, outcome.created_at);
   }
 
   // PR-4 评审修订：异步触发榜单物化视图刷新
@@ -126,32 +157,34 @@ export async function saveEvaluationResult(
       evaluationResults,
       eq(evaluationResults.submission_id, submissions.id),
     ).where(and(
-      eq(submissions.user_id, sub.user_id),
-      eq(submissions.problem_id, sub.problem_id),
+      eq(submissions.user_id, outcome.user_id),
+      eq(submissions.problem_id, outcome.problem_id),
       eq(evaluationResults.status, "Accepted"),
       ne(submissions.id, result.submission_id),
     )).limit(1);
     if (!previousAccepted[0]) {
       await createActivity(
-        sub.user_id,
+        outcome.user_id,
         "first_accepted",
         "problem",
-        sub.problem_id,
+        outcome.problem_id,
         { submission_id: result.submission_id },
       );
     }
   }
 
-  if (sub.contest_id) {
+  if (outcome.contest_id) {
     publishEvent(
-      Channels.contestRanking(sub.contest_id),
+      Channels.contestRanking(outcome.contest_id),
       JSON.stringify({
         type: "contest:ranking:updated",
-        contest_id: sub.contest_id,
+        contest_id: outcome.contest_id,
         submission_id: result.submission_id,
       }),
     );
   }
+
+  return true;
 }
 
 /**

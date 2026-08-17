@@ -27,6 +27,7 @@ import {
   parseStorageUrl,
   sha256Hex,
   type StorageProvider,
+  validateStorageKey,
 } from "./types.ts";
 import { logger } from "../logging.ts";
 
@@ -79,6 +80,7 @@ export class S3StorageProvider implements StorageProvider {
     data: Uint8Array,
     contentType?: string,
   ): Promise<string> {
+    validateStorageKey(key);
     const hashHex = await sha256Hex(data);
 
     await this.client.send(
@@ -101,6 +103,10 @@ export class S3StorageProvider implements StorageProvider {
    */
   async get(url: string): Promise<Uint8Array> {
     const parsed = parseStorageUrl(url);
+    if (parsed.provider !== "s3") {
+      throw new Error(`s3 provider 拒绝 ${parsed.provider} URL`);
+    }
+    validateStorageKey(parsed.key);
 
     const response = await this.client.send(
       new GetObjectCommand({
@@ -125,7 +131,10 @@ export class S3StorageProvider implements StorageProvider {
    */
   async delete(url: string): Promise<void> {
     const parsed = parseStorageUrl(url);
-    if (!parsed.key) return;
+    if (parsed.provider !== "s3") {
+      throw new Error(`s3 provider 拒绝 ${parsed.provider} URL`);
+    }
+    validateStorageKey(parsed.key);
 
     try {
       await this.client.send(
@@ -152,6 +161,10 @@ export class S3StorageProvider implements StorageProvider {
    */
   async downloadUrl(storageUrl: string, expiresIn = 3600): Promise<string> {
     const parsed = parseStorageUrl(storageUrl);
+    if (parsed.provider !== "s3") {
+      throw new Error(`s3 provider 拒绝 ${parsed.provider} URL`);
+    }
+    validateStorageKey(parsed.key);
 
     const presignedUrl = await getSignedUrl(
       this.client,

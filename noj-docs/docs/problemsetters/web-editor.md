@@ -35,7 +35,7 @@
 
 - 仅支持 `.zip` 格式，且带合法 zip Content-Type；大小受系统限制。
 - 上传走 `POST /api/v1/problems/import-bundle`（multipart 文件字段 `file`）。
-- 包结构、`manifest.json`、导入语义（按 `(type, number)` 匹配更新/新建、管理员可指定题号等）见[统一题目包](support-package.md)；用例目录约定见[测试数据](cases.md)。
+- 包结构、`problem.json`、导入语义（按 `(type, number)` 匹配更新/新建、管理员可指定题号等）见[统一题目包](support-package.md)；用例目录约定见[测试数据](cases.md)。
 - 上传后可通过编辑器内的状态确认包是否已生效；管理端也可以下载或删除当前支持包。
 
 ## 保存与发布

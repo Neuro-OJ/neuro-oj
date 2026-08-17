@@ -48,7 +48,6 @@ const VALID_RUNTIME_CONFIG = {
   },
   solution: {
     image: "noj-solution-python",
-    entry: "submission_sample.py",
     call_timeout_ms: 2000,
     memory_limit_mb: 512,
   },
@@ -134,13 +133,31 @@ const tightenedRoleId = `tightened-role-${ts}`;
 await db.insert(roles).values({
   id: tightenedRoleId,
   name: `tightened-${ts}`,
-  description: "测试收紧角色（无敏感字段权限）",
+  description: "测试收紧角色（无敏感字段权限，但保留 write_own）",
   is_system: false,
   is_default: false,
   parent_id: null,
   created_at: now,
   updated_at: now,
 }).onConflictDoNothing();
+// NOJ-102：owner 编辑/删除现在需要细粒度权限；为隔离敏感字段变量，补 write_own。
+{
+  const [writeOwnPerm] = await db.select({ id: permissions.id })
+    .from(permissions)
+    .where(
+      and(
+        eq(permissions.resource, "problem"),
+        eq(permissions.action, "write_own"),
+      ),
+    )
+    .limit(1);
+  if (writeOwnPerm) {
+    await db.insert(rolePermissions).values({
+      role_id: tightenedRoleId,
+      permission_id: writeOwnPerm.id,
+    }).onConflictDoNothing();
+  }
+}
 
 // 仅收紧 network 权限的角色（保留 command 权限）：用于验证
 // `network: null` 不触发检查（I2 评审修复）
@@ -194,7 +211,7 @@ function makeToken(userId: string): Promise<string> {
 // ── 用例 ─────────────────────────────────────────
 
 Deno.test({
-  name: "POST /problems: 默认放行（user 角色用户设置 network）→ 201",
+  name: "POST /problems: 默认用户不再拥有敏感字段权限 → 403（NOJ-062）",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -208,13 +225,13 @@ Deno.test({
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        title: `默认放行 ${ts}`,
-        description: "默认放行",
+        title: `默认拒绝 ${ts}`,
+        description: "默认拒绝",
         difficulty: "easy",
         runtime_config: NETWORKED_RUNTIME_CONFIG,
       }),
     });
-    assertEquals(res.status, 201);
+    assertEquals(res.status, 403);
   },
 });
 
@@ -247,7 +264,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "POST /problems: network 收紧用户设置 network:null → 201 放行（null 视为未设置）",
+    "POST /problems: 默认用户即使 network:null，仍因 command 敏感字段被拒 → 403",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -270,7 +287,7 @@ Deno.test({
         },
       }),
     });
-    assertEquals(res.status, 201);
+    assertEquals(res.status, 403);
   },
 });
 
@@ -400,7 +417,7 @@ Deno.test({
     await updateSetting("judge_max_evaluator_memory_limit_mb", 512, ADMIN_ID);
     try {
       const app = createApp();
-      const token = await makeToken(USER_ID);
+      const token = await makeToken(ADMIN_ID);
       const res = await app.request("/api/v1/problems", {
         method: "POST",
         headers: {

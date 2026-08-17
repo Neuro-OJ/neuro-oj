@@ -18,19 +18,17 @@
 import {
   apiGet,
   apiPost,
+  BASE_URL,
+  e2eTest,
   getAdminToken,
   getProblemIdByNumber,
   isE2E,
   pollSubmission,
   registerUser,
   submitCode,
-  waitForServer,
-  BASE_URL,
-  e2eTest,
   TEST_PASSWORD,
-
+  waitForServer,
 } from "./helper.ts";
-
 
 // ── 测试常量 ─────────────────────────────────────────
 
@@ -38,6 +36,7 @@ const EVALUATOR_IMAGE = "noj-evaluator-python";
 const SOLUTION_IMAGE = "noj-solution-python";
 const TEST_TAG = `e2e-netcap-${Date.now()}`;
 
+let adminToken = "";
 let userToken = "";
 let bundleProblemId = ""; // import-bundle 导入的题目（用例 2）
 let judgeOk = false;
@@ -166,7 +165,7 @@ async function importBundle(zip: Uint8Array): Promise<string> {
   const baseUrl = BASE_URL;
   const res = await fetch(`${baseUrl}/api/v1/problems/import-bundle`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${userToken}` },
+    headers: { Authorization: `Bearer ${adminToken}` },
     body: formData,
   });
   if (res.status !== 200) {
@@ -231,27 +230,30 @@ async function judgeAvailable(): Promise<boolean> {
 // ── 测试 ────────────────────────────────────────────
 
 e2eTest("[e2e/network-capability] Setup", async () => {
-    if (!isE2E) return;
-    await waitForServer();
-    const ts = Date.now().toString(36);
-    userToken = await registerUser(
-      "netcap_" + ts,
-      "netcap_" + ts + "@test.com",
-      TEST_PASSWORD,
-    );
-    await ensureImage(EVALUATOR_IMAGE, "evaluator");
-    await ensureImage(SOLUTION_IMAGE, "solution");
-    judgeOk = await judgeAvailable();
-    if (!judgeOk) console.log("  ⚠ judge worker 不可用，评测用例将跳过");
-  });
+  if (!isE2E) return;
+  await waitForServer();
+  adminToken = await getAdminToken();
+  const ts = Date.now().toString(36);
+  userToken = await registerUser(
+    "netcap_" + ts,
+    "netcap_" + ts + "@test.com",
+    TEST_PASSWORD,
+  );
+  await ensureImage(EVALUATOR_IMAGE, "evaluator");
+  await ensureImage(SOLUTION_IMAGE, "solution");
+  judgeOk = await judgeAvailable();
+  if (!judgeOk) console.log("  ⚠ judge worker 不可用，评测用例将跳过");
+});
 
-e2eTest("[e2e/network-capability] 普通用户创建联网题放行（network.enabled=true）", async () => {
+e2eTest(
+  "[e2e/network-capability] 管理员创建联网题放行（network.enabled=true）",
+  async () => {
     if (!isE2E) return;
     const res = await apiPost(
       "/api/v1/problems",
       {
         title: `[${TEST_TAG}] 联网能力测试题`,
-        description: `# 联网能力测试题\n\n普通用户创建，evaluator 开启联网。`,
+        description: `# 联网能力测试题\n\n管理员创建，evaluator 开启联网。`,
         difficulty: "easy",
         runtime_config: {
           evaluator: {
@@ -268,11 +270,11 @@ e2eTest("[e2e/network-capability] 普通用户创建联网题放行（network.en
           },
         },
       },
-      userToken,
+      adminToken,
     );
     if (res.status !== 201) {
       throw new Error(
-        `普通用户创建联网题应放行（201），实际 ${res.status} ${
+        `管理员创建联网题应放行（201），实际 ${res.status} ${
           JSON.stringify(res.body)
         }`,
       );
@@ -288,19 +290,24 @@ e2eTest("[e2e/network-capability] 普通用户创建联网题放行（network.en
     if (data.runtime_config.evaluator.network?.enabled !== true) {
       throw new Error("runtime_config.evaluator.network.enabled 未保留为 true");
     }
-    }
+  },
 );
 
-e2eTest("[e2e/network-capability] 普通用户导入联网统一包（import-bundle 放行）", async () => {
+e2eTest(
+  "[e2e/network-capability] 管理员导入联网统一包（import-bundle 放行）",
+  async () => {
     if (!isE2E) return;
     const zip = await makeBundleZip();
     bundleProblemId = await importBundle(zip);
     console.log(
       `  → 导入题目 ${bundleProblemId.slice(0, 8)} 成功（联网已开启）`,
     );
-  });
+  },
+);
 
-e2eTest("[e2e/network-capability] 提交 solution（call_capability）→ 评测 Accepted", async () => {
+e2eTest(
+  "[e2e/network-capability] 提交 solution（call_capability）→ 评测 Accepted",
+  async () => {
     if (!isE2E || !judgeOk) {
       console.log("  ⚠ judge 不可用，跳过评测断言");
       return;
@@ -321,4 +328,5 @@ def solve(msg: str) -> str:
         `期望 Accepted（evaluator 联网 + capability 全链路），实际 ${result.verdict}`,
       );
     }
-  });
+  },
+);

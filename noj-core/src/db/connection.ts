@@ -28,9 +28,22 @@ export function registerDbResetCallback(fn: () => void): void {
 
 /**
  * 判断当前是否为 PGlite 模式（无 DATABASE_URL 时自动启用）。
+ *
+ * 安全修复 NOJ-032：仅测试/未显式声明环境的进程允许 PGlite 兜底。
+ * 显式声明了非 test 环境（如 production/staging）时，缺少 DATABASE_URL
+ * 直接失败，避免生产静默降级到内存数据库导致数据丢失。
  */
 function isPGliteMode(): boolean {
-  return !Deno.env.get("DATABASE_URL");
+  if (Deno.env.get("DATABASE_URL")) return false;
+
+  const nojEnv = Deno.env.get("NOJ_ENV");
+  if (nojEnv && nojEnv !== "test") {
+    throw new Error(
+      `NOJ_ENV=${nojEnv} 且未配置 DATABASE_URL。` +
+        "非测试环境必须显式配置外部 PostgreSQL，拒绝静默降级到 PGlite 内存数据库。",
+    );
+  }
+  return true;
 }
 
 /**
@@ -333,4 +346,24 @@ export async function resetDbForTest() {
   _client = null;
   // 通知已注册模块重置缓存（如 system_settings 内存缓存）
   for (const fn of _onDbResetCallbacks) fn();
+}
+
+/**
+ * 优雅关闭：结束 PGlite / postgres.js 连接。
+ * 关闭失败只记录，不阻断进程退出。
+ */
+export async function closeDbForShutdown(): Promise<void> {
+  try {
+    if (_client) {
+      await _client.end();
+      _client = null;
+    }
+    if (_pgliteInstance) {
+      await _pgliteInstance.close();
+      _pgliteInstance = null;
+    }
+    _db = null;
+  } catch (err) {
+    logger.error("数据库连接关闭失败", { err });
+  }
 }

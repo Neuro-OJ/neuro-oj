@@ -9,7 +9,7 @@
 # 入口：noj-judge 通过 docker exec 启动 `python3 -m noj_solution_sdk.host --entry <file>`
 # 容器默认 cmd 设为 sleep infinity（容器本身不主动跑东西，由 exec 注入 host 进程）。
 
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:d764629ce0ddd8c71fd371e9901efb324a95789d2315a47db7e4d27e78f1b0e9
 LABEL org.opencontainers.image.description="Neuro OJ Dual-container Solution (Python 3.12, noj_solution_sdk)"
 LABEL com.noj.judge.kind="solution"
 
@@ -21,4 +21,15 @@ COPY sdk/solution/noj_solution_sdk/ /usr/local/lib/python3.12/site-packages/noj_
 RUN python3 -c "import noj_solution_sdk; from noj_solution_sdk.host import main; from noj_solution_sdk.registry import register; print('noj_solution_sdk OK')"
 
 # 默认 cmd 为 sleep infinity —— 容器通过 docker exec 启动 host
+
+# NOJ-168/NOJ-171/NOJ-187：固定 base digest、非 root 运行、禁止 pycache 写 rootfs。
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin noj \
+    && mkdir -p /workspace \
+    && chown noj:noj /workspace
+USER noj
+WORKDIR /workspace
+
 CMD ["sleep", "infinity"]

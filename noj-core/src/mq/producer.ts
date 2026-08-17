@@ -6,7 +6,7 @@ import { logJudgeTaskEnqueued } from "../lib/logging.ts";
  * 评测任务队列名称。
  * noj-judge 从该队列中 BRPOP 拉取任务。
  */
-const JUDGE_QUEUE = "noj:judge:queue";
+export const JUDGE_QUEUE = "noj:judge:queue";
 
 /**
  * Redis 队列消息最大字节数。
@@ -15,6 +15,21 @@ const JUDGE_QUEUE = "noj:judge:queue";
  * 同时阻止用户提交的 base64 编码支持包 + 代码占用过多内存。
  */
 const MAX_MESSAGE_BYTES = 16 * 1024 * 1024; // 16MB
+
+/** 队列最大待评测数：超过后拒绝新提交，避免 Redis 内存无限增长。 */
+export const MAX_JUDGE_QUEUE_LENGTH = 20_000;
+
+/**
+ * 判断评测任务入队失败是否可重试。
+ *
+ * 只有明确已知的永久错误（如消息超过大小限制）返回 false；
+ * Redis 不可用、队列已满以及未知错误都按可恢复处理，避免把瞬时故障误判为永久失败。
+ */
+export function isRetryableJudgeQueueError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  if (message.includes("超过大小限制")) return false;
+  return true;
+}
 
 /**
  * 将评测任务推送到 Redis 消息队列。
@@ -44,7 +59,17 @@ export async function pushJudgeTask(task: JudgeTask): Promise<number> {
     );
   }
 
+  // NOJ-077：入队前做长度上限保护（拒绝而不是静默丢最老任务）。
+  const currentLength = await redis.llen(JUDGE_QUEUE);
+  if (currentLength >= MAX_JUDGE_QUEUE_LENGTH) {
+    throw new Error(
+      `评测队列已满（${currentLength}/${MAX_JUDGE_QUEUE_LENGTH}），请稍后重试`,
+    );
+  }
+
   const length = await redis.lpush(JUDGE_QUEUE, message);
+  // 注意：不要对主队列设置 EXPIRE。Redis 列表在变为空时会自动删除 key；
+  // 对非空列表设置 TTL 会在队列积压且没有新提交时把整个队列（含未消费任务）一起删掉。
   logJudgeTaskEnqueued(task.submission_id, length, messageBytes);
   return length;
 }

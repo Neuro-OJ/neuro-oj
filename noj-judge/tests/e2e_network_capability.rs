@@ -927,6 +927,9 @@ def solve(msg: str) -> str:
         user_code,
         Some(&support_zip),
         None,
+        true,
+        "noj-",
+        &["python3".to_string()],
     )
     .await
     .expect("evaluate_dual 返回 Err");

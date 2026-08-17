@@ -16,6 +16,7 @@ use futures_util::stream::FuturesUnordered;
 use tracing::{error, info};
 
 use crate::config::Config;
+use crate::mq::PulledTask;
 
 // merge_output 实现在 lib.rs；此处 use 使 bin 内的 `crate::merge_output` 路径可解析
 use noj_judge::merge_output;
@@ -63,22 +64,44 @@ fn main() -> Result<()> {
         info!("Docker 连接成功");
 
         let result_queue = config.result_queue.clone();
+        let judge_queue = config.judge_queue.clone();
         let work_dir = config.work_dir.clone();
+        let instance_id = config.instance_id.clone();
 
         // fallback 目录在循环外构造一次，供所有任务 spawn 复用
         let fallback_dir = std::path::Path::new(&work_dir).join(FALLBACK_RESULTS_DIR);
+
+        // NOJ-180：启动时回放上次未投递成功的 fallback 结果。
+        mq::replay_fallback_results(&redis_client, &result_queue, &fallback_dir).await;
+
+        // NOJ-154：启动时清理本实例残留的孤儿容器。
+        crate::sandbox::cleanup::cleanup_orphan_containers(&docker, &instance_id).await;
 
         // ── 初始化缓存与下载配置 ────────────────────────
         let cache_dir = config.support_cache_dir.clone();
         let download_timeout = config.support_package_download_timeout_secs;
         let cache_max_items = config.support_cache_max_items;
         let cache_max_mb = config.support_cache_max_mb;
+        let allow_evaluator_network = config.allow_evaluator_network;
+        let image_prefix = config.image_prefix.clone();
+        let command_whitelist = config.command_whitelist.clone();
+        let drain_timeout = config.drain_timeout_secs();
 
-        // 注册优雅关闭信号处理（排空 in-flight 任务）
+        // NOJ-152/155：同时监听 SIGTERM 与 SIGINT 触发优雅关闭。
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         tokio::spawn(async move {
-            tokio::signal::ctrl_c().await.ok();
-            info!("收到 SIGINT，开始优雅关闭...");
+            let mut sigterm = tokio::signal::unix::signal(
+                tokio::signal::unix::SignalKind::terminate(),
+            )
+            .expect("注册 SIGTERM 处理器失败");
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    info!("收到 SIGINT，开始优雅关闭...");
+                }
+                _ = sigterm.recv() => {
+                    info!("收到 SIGTERM，开始优雅关闭...");
+                }
+            }
             let _ = shutdown_tx.send(());
         });
 
@@ -91,12 +114,12 @@ fn main() -> Result<()> {
             tokio::select! {
                 biased;
                 _ = &mut shutdown_rx => {
-                    drain::drain_tasks(&mut tasks).await;
+                    drain::drain_tasks(&mut tasks, drain_timeout).await;
                     break;
                 }
-                task_result = mq::pull_task(&mut redis_conn, &config.judge_queue) => {
-                    let task = match task_result {
-                        Ok(Some(task)) => task,
+                task_result = mq::pull_task(&mut redis_conn, &judge_queue) => {
+                    let pulled: PulledTask = match task_result {
+                        Ok(Some(pulled)) => pulled,
                         Ok(None) => continue,
                         Err(e) => {
                             error!("拉取任务失败: {}", e);
@@ -107,15 +130,21 @@ fn main() -> Result<()> {
 
                     info!(
                         "收到评测任务: submission_id={}, language={}",
-                        task.submission_id, task.language
+                        pulled.task.submission_id, pulled.task.language
                     );
 
                     let redis_client = redis_client.clone();
                     let result_queue = result_queue.clone();
+                    let judge_queue = judge_queue.clone();
                     let cache_dir = cache_dir.clone();
                     let fallback_dir = fallback_dir.clone();
+                    let image_prefix = image_prefix.clone();
+                    let command_whitelist = command_whitelist.clone();
 
                     let handle = tokio::spawn(async move {
+                        let raw = pulled.raw;
+                        let task = pulled.task;
+
                         // 统一使用双容器模式（Evaluator + Solution）
                         let docker = match Docker::connect_with_local_defaults() {
                             Ok(d) => d,
@@ -125,12 +154,14 @@ fn main() -> Result<()> {
                                     &task.submission_id,
                                     task.rejudge_seq,
                                 );
-                                mq::push_result_with_retry(
+                                if mq::push_result_with_retry(
                                     &redis_client,
                                     &result_queue,
                                     &result,
                                     &fallback_dir,
-                                ).await;
+                                ).await {
+                                    mq::ack_task(&redis_client, &judge_queue, &raw).await;
+                                }
                                 return;
                             }
                         };
@@ -141,6 +172,9 @@ fn main() -> Result<()> {
                             cache_dir.clone(),
                             cache_max_items,
                             cache_max_mb,
+                            allow_evaluator_network,
+                            &image_prefix,
+                            &command_whitelist,
                         ).await {
                             Ok(r) => r,
                             Err(e) => {
@@ -149,13 +183,15 @@ fn main() -> Result<()> {
                             }
                         };
 
-                        // 使用带重试的推送
-                        mq::push_result_with_retry(
+                        // 使用带重试的推送；成功后确认任务，崩溃/失败则留给 sweeper。
+                        if mq::push_result_with_retry(
                             &redis_client,
                             &result_queue,
                             &result,
                             &fallback_dir,
-                        ).await;
+                        ).await {
+                            mq::ack_task(&redis_client, &judge_queue, &raw).await;
+                        }
                     });
                     tasks.push(handle);
                 }

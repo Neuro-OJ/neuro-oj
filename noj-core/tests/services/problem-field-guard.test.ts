@@ -46,7 +46,6 @@ const VALID_RUNTIME_CONFIG = {
   },
   solution: {
     image: "noj-solution-python",
-    entry: "submission_sample.py",
     call_timeout_ms: 2000,
     memory_limit_mb: 512,
   },
@@ -136,7 +135,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "seed: user 角色默认拥有敏感字段权限（默认放行）",
+  name: "seed: user 角色默认不拥有敏感字段权限（NOJ-062 安全默认）",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -153,12 +152,12 @@ Deno.test({
       .where(eq(rolePermissions.role_id, userRole.id));
     const perms = permRows.map((p) => `${p.resource}:${p.action}`);
     assert(
-      perms.includes("problem:field_evaluator_command"),
-      "user 角色应有 command 权限",
+      !perms.includes("problem:field_evaluator_command"),
+      "user 角色默认不应有 command 权限",
     );
     assert(
-      perms.includes("problem:field_evaluator_network"),
-      "user 角色应有 network 权限",
+      !perms.includes("problem:field_evaluator_network"),
+      "user 角色默认不应有 network 权限",
     );
   },
 });

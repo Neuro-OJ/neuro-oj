@@ -59,13 +59,58 @@ const SAFE_TAGS = new Set([
   'ul',
 ]);
 
-// 白名单属性
-const SAFE_ATTR_RE = /^(?:href|title|alt|src|class|width|height|target|rel|style|align|start)$/i;
+// NOJ-249：移除 style 白名单（未做 CSS 清洗前不得放行）。
+const SAFE_ATTR_RE = /^(?:href|title|alt|src|class|width|height|target|rel|align|start)$/i;
+
+/** 允许的 URL 协议（相对 URL / 锚点直接放行）。 */
+const SAFE_URL_PROTOCOLS = /^(?:https?|mailto|tel):/i;
+
+/** 解码常见 HTML 实体（数字 + named），避免 jav&#x61;script: 绕过协议检查。 */
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_m, hex: string) => {
+      const code = parseInt(hex, 16);
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff
+        ? String.fromCodePoint(code)
+        : "";
+    })
+    .replace(/&#([0-9]+);/g, (_m, dec: string) => {
+      const code = parseInt(dec, 10);
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff
+        ? String.fromCodePoint(code)
+        : "";
+    })
+    .replace(
+      /&(nbsp|amp|lt|gt|quot|apos|colon|tab|newline);/gi,
+      (_m, name: string) =>
+        ({
+          nbsp: "\u00a0",
+          amp: "&",
+          lt: "<",
+          gt: ">",
+          quot: '"',
+          apos: "'",
+          colon: ":",
+          tab: "\t",
+          newline: "\n",
+        })[name.toLowerCase()] ?? "",
+    );
+}
+
+/** 归一化 URL 用于协议判断：实体解码 + 去除浏览器会忽略的控制/空白字符。 */
+function isUnsafeUrl(value: string): boolean {
+  const decoded = decodeHtmlEntities(value).replace(
+    /[\u0000-\u0020\u007f-\u009f\u00a0]+/g,
+    "",
+  );
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(decoded)) return false;
+  return !SAFE_URL_PROTOCOLS.test(decoded);
+}
 
 /**
  * 简单标签白名单净化器 —— DOMPurify 不可用时的最后防线。
  * 移除所有不在白名单中的标签；过滤不在白名单中的属性；
- * 阻止 javascript: 协议。
+ * 阻止 javascript:/data:/vbscript:/file: 等危险协议（含实体与控制字符变体）。
  */
 function simpleSanitize(raw: string): string {
   // 首先移除所有 script / style 标签及内容
@@ -90,7 +135,7 @@ function simpleSanitize(raw: string): string {
           const attrLower = attrName.toLowerCase();
           if (!SAFE_ATTR_RE.test(attrLower)) return '';
           const val = dq ?? sq ?? nq ?? '';
-          if ((attrLower === 'href' || attrLower === 'src') && /^\s*javascript:/i.test(val)) {
+          if ((attrLower === 'href' || attrLower === 'src') && isUnsafeUrl(val)) {
             return '';
           }
           if (dq != null) return ` ${attrLower}="${dq.replace(/"/g, '&quot;')}"`;

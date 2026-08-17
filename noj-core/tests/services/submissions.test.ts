@@ -522,8 +522,8 @@ Deno.test({
         details: {},
       });
 
-      // 第二次写入：Accepted（rejudge 后）
-      await saveEvaluationResult({
+      // NOJ-068/182：同 rejudge_seq 的重复结果必须幂等忽略。
+      const appliedAgain = await saveEvaluationResult({
         submission_id: subId,
         status: "Accepted",
         score: 1000,
@@ -532,17 +532,18 @@ Deno.test({
         time_ms: 200,
         memory_kb: 2048,
       });
+      assertEquals(appliedAgain, false);
 
-      // 断言：只有 1 行（UNIQUE 保持），但内容是第二次的
+      // 断言：只有 1 行，内容保持第一次结果。
       const rows = await db.select().from(evaluationResults)
         .where(eq(evaluationResults.submission_id, subId));
       assertEquals(rows.length, 1);
-      assertEquals(rows[0].status, "Accepted");
-      assertEquals(rows[0].score, 1000);
-      assertEquals(rows[0].output, '---RESULT---\n{"new":true}');
-      assertEquals(JSON.parse(rows[0].details), { rejudge: true });
-      assertEquals(rows[0].time_ms, 200);
-      assertEquals(rows[0].memory_kb, 2048);
+      assertEquals(rows[0].status, "WrongAnswer");
+      assertEquals(rows[0].score, 500);
+      assertEquals(rows[0].output, '---RESULT---\n{"first":true}');
+      assertEquals(JSON.parse(rows[0].details), {});
+      assertEquals(rows[0].time_ms, null);
+      assertEquals(rows[0].memory_kb, null);
     } finally {
       // 清理
       await db.delete(evaluationResults).where(

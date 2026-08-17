@@ -206,8 +206,22 @@ async function addParticipant(user: UserSearchResult) {
 
 async function removeParticipant(participant: Participant) {
   if (!participantContest.value) return
-  await api.delete(`/api/v1/admin/contests/${participantContest.value.id}/participants/${participant.user_id}`)
-  await loadParticipants()
+  // NOJ-236：破坏性操作增加二次确认与成功反馈。
+  const confirmed = await dialog.confirm(
+    `确定移除参赛者“${participant.username}”吗？其竞赛提交关联将一并解除。`,
+    { title: '移除参赛者', confirmText: '移除', danger: true },
+  )
+  if (!confirmed) return
+  try {
+    await api.delete(
+      `/api/v1/admin/contests/${participantContest.value.id}/participants/${participant.user_id}`,
+      { silent: true },
+    )
+    toast.success(`已移除参赛者 ${participant.username}`)
+    await loadParticipants()
+  } catch (err: unknown) {
+    toast.error(extractApiError(err).message)
+  }
 }
 </script>
 

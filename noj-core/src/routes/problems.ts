@@ -1,9 +1,14 @@
 import { Hono } from "hono";
 import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
-import { BadRequestError } from "../lib/errors.ts";
+import {
+  BadRequestError,
+  ForbiddenError,
+  UnauthorizedError,
+} from "../lib/errors.ts";
 import { parsePagination } from "../lib/pagination.ts";
 import { getClientIp } from "../lib/rate-limit-env.ts";
+import { checkPermission } from "../lib/permissions.ts";
 import { runWithContext } from "../lib/requestContext.ts";
 import {
   createProblem,
@@ -45,7 +50,9 @@ import type {
   UpdateQuestionInput,
 } from "../types/objective.ts";
 
-const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
+const router = new Hono<
+  { Variables: { userId: string; userRole: string } }
+>();
 
 /**
  * 双索引查找工具函数。
@@ -82,7 +89,7 @@ function resolveProblem(id: string) {
  * 获取题目列表。
  * 支持分页与筛选：?page=1&limit=20&difficulty=easy&category_id=xxx&keyword=xxx&type=U&number=1001
  */
-router.get("/", async (c) => {
+router.get("/", optionalAuthMiddleware, async (c) => {
   const page = parseInt(c.req.query("page") || "1", 10);
   const limit = parseInt(c.req.query("limit") || "20", 10);
 
@@ -116,6 +123,24 @@ router.get("/", async (c) => {
 
   const ownerId = c.req.query("owner_id");
   if (ownerId) query.owner_id = ownerId;
+
+  // NOJ-103：禁止匿名/普通用户批量枚举他人 U 型题。
+  // U 型列表只能查本人（或由 problem:read_all/admin 查全部）。
+  const requestedType = (query.type || "P").toUpperCase();
+  if (requestedType === "U") {
+    const userId = c.get("userId") as string | undefined;
+    if (!userId) {
+      throw new UnauthorizedError("请先登录");
+    }
+    const isAdmin = await checkPermission(c, "problem:read_all");
+    if (ownerId && ownerId !== userId && !isAdmin) {
+      throw new ForbiddenError("无权查看其他用户的 U 型题列表");
+    }
+    if (!ownerId && !isAdmin) {
+      // 非管理员未指定 owner 时收窄为本人，避免匿名枚举全量 U 型题。
+      query.owner_id = userId;
+    }
+  }
 
   const result = await listProblems(query);
   return c.json({
@@ -196,6 +221,17 @@ router.post("/", authMiddleware, async (c) => {
     throw new BadRequestError("缺少必填字段：runtime_config");
   }
 
+  // NOJ-115/NOJ-116：support_package_storage_url 仅允许服务端
+  // import-bundle 流程生成，客户端直传一律拒绝。
+  if (
+    body.support_package_storage_url !== undefined &&
+    body.support_package_storage_url !== null
+  ) {
+    throw new BadRequestError(
+      "support_package_storage_url 仅允许由服务端支持包上传/导入流程生成",
+    );
+  }
+
   const userId = c.get("userId");
   const problem = await createProblem(body, userId, undefined, c);
   return c.json({ data: problem }, 201);
@@ -213,6 +249,16 @@ router.put("/:id", authMiddleware, async (c) => {
 
   // 双索引解析获取实际题目 ID
   const problem = await resolveProblem(id);
+
+  // NOJ-115/NOJ-116：客户端 PUT 不得直传存储 URL。
+  if (
+    body.support_package_storage_url !== undefined &&
+    body.support_package_storage_url !== null
+  ) {
+    throw new BadRequestError(
+      "support_package_storage_url 仅允许由服务端支持包上传/导入流程生成",
+    );
+  }
 
   // 注入 ALS 上下文使 logAudit 可获取 actor 信息（issue #101）
   // （updateProblem 内部会记录 problems.runtime_config_changed 审计）

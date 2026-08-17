@@ -143,12 +143,16 @@ services:
       RESULT_QUEUE: noj:judge:results
       MAX_CONCURRENT: "2"
       WORK_DIR: /tmp/noj-work
+      JUDGE_INSTANCE_ID: noj-e2e-judge-1
+      JUDGE_IMAGE_PREFIX: noj-
+      JUDGE_COMMAND_WHITELIST: python3,deno,node,bash,sh
+      # E2E capability-network 用例需要 evaluator 联网能力
+      JUDGE_ALLOW_EVALUATOR_NETWORK: "true"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - noj-judge-work:/tmp/noj-work
-    # v13.3：noj-judge 启动时立刻发 RPC `get_image_allowlist` 给 noj-core，
-    # 但 noj-core 这时还在下载 JSR deps（deno runtime 启动 4-5 min），
-    # RPC 5s 超时后 noj-judge 直接退出。改为等 noj-core healthy 后再起。
+    # noj-judge 不再启动时经 Redis RPC 拉白名单；等 noj-core healthy 后再起，
+    # 避免题目数据尚未迁移完成时评测任务消费异常。
     depends_on:
       redis:
         condition: service_healthy

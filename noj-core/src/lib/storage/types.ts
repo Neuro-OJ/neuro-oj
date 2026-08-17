@@ -97,13 +97,38 @@ export function isStorageUrl(value: string): boolean {
 }
 
 /**
+ * 校验存储 key（所有 provider 读写前 MUST 调用）。
+ *
+ * 拒绝空 key、绝对路径、`..` 段、空段/`.` 段（避免 S3 前缀歧义）、
+ * 反斜杠与 NUL。S3 允许受控的 `/` 前缀（如 packages/<id>.zip）；
+ * local provider 会在此之上进一步禁止任何 `/`。
+ */
+export function validateStorageKey(key: string): void {
+  if (!key || key.length === 0) {
+    throw new Error("存储 key 不能为空");
+  }
+  if (key.length > 1024) {
+    throw new Error("存储 key 过长");
+  }
+  if (key.startsWith("/") || key.includes("\\") || key.includes("\0")) {
+    throw new Error(`存储 key 非法: ${key}`);
+  }
+  const segments = key.split("/");
+  if (segments.some((seg) => seg === ".." || seg === "." || seg === "")) {
+    throw new Error(`存储 key 不得包含路径穿越或空段: ${key}`);
+  }
+}
+
+/**
  * 解析 `noj-storage://` URL
  *
  * 格式：
  *   noj-storage://local/<base64>?checksum_sha256=<hex>
  *   noj-storage://s3/<key>?checksum_sha256=<hex>
  *
- * @throws {Error} 非 `noj-storage://` 前缀的 URL 直接拒绝
+ * 解析时执行语法白名单与 key 规范化校验；非受控 provider 直接拒绝。
+ *
+ * @throws {Error} 非 `noj-storage://` 前缀 / 非法 provider / 非法 key
  */
 export function parseStorageUrl(url: string): ParsedStorageUrl {
   if (!isStorageUrl(url)) {
@@ -127,13 +152,17 @@ export function parseStorageUrl(url: string): ParsedStorageUrl {
 
   const slashIndex = path.indexOf("/");
   if (slashIndex === -1) {
-    // 只有 provider 无 key
+    // 只有 provider 无 key（provider 层会拒绝空 key）
     return { provider: path as "local" | "s3", key: "", checksumSha256 };
   }
 
   const provider = path.slice(0, slashIndex) as "local" | "s3";
+  if (provider !== "local" && provider !== "s3") {
+    throw new Error(`不是合法的 storage provider: ${provider}`);
+  }
   const key = path.slice(slashIndex + 1);
 
+  // key 安全校验由 provider 在读写前执行（parse 保持兼容，仅拒绝 provider 非法）。
   return { provider, key, checksumSha256 };
 }
 

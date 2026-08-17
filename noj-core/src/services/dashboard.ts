@@ -1,12 +1,15 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
-import {
-  categories,
-  evaluationResults,
-  problems,
-  submissions,
-  users,
-} from "../db/schema.ts";
+// deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
+import { categories } from "../db/schema.ts";
+// deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
+import { evaluationResults } from "../db/schema.ts";
+// deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
+import { problems } from "../db/schema.ts";
+// deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
+import { submissions } from "../db/schema.ts";
+// deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
+import { users } from "../db/schema.ts";
 import { AppError } from "../lib/errors.ts";
 
 /**
@@ -49,76 +52,67 @@ export async function getDashboardStats(): Promise<DashboardStats> {
  * 实际执行统计查询的内部函数。
  * 由 getDashboardStats() 调用，异常由外层统一转换为 DASHBOARD_STATS_ERROR。
  */
+// NOJ-084：5 秒基础缓存，避免管理首页反复全表 COUNT。
+let _dashboardCache: { at: number; data: DashboardStats } | null = null;
+const DASHBOARD_CACHE_TTL_MS = 5000;
+
+function executeRow<T>(
+  result: T[] | { rows: T[] },
+): T | undefined {
+  return Array.isArray(result) ? result[0] : result.rows[0];
+}
+
 async function queryDashboardStats(): Promise<DashboardStats> {
+  const now = Date.now();
+  if (_dashboardCache && now - _dashboardCache.at < DASHBOARD_CACHE_TTL_MS) {
+    return _dashboardCache.data;
+  }
+
   const db = getDb();
-  const now = new Date();
-  const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-    .toISOString();
+  const twentyFourHoursAgo = new Date(now - 24 * 60 * 60 * 1000).toISOString();
 
-  // 1. 用户统计：排除 root 系统用户（id='0'）
-  const [userRow] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(users)
-    .where(sql`${users.id} <> '0'`);
-  const totalUsers = Number(userRow?.count ?? 0);
+  // 原先 7 次串行 COUNT 合并为 1 次查询；子查询仍走各自表计数，
+  // 提交侧聚合用一次扫描完成。
+  const result = await db.execute<{
+    total_users: string;
+    total_problems: string;
+    total_categories: string;
+    total_submissions: string;
+    total_accepted: string;
+    total_judged: string;
+    total_pending: string;
+    recent_submissions_24h: string;
+    active_users_24h: string;
+  }>(sql`
+    SELECT
+      (SELECT count(*)::text FROM users WHERE id <> '0') AS total_users,
+      (SELECT count(*)::text FROM problems) AS total_problems,
+      (SELECT count(*)::text FROM categories) AS total_categories,
+      count(*)::text AS total_submissions,
+      count(*) FILTER (WHERE er.status = 'Accepted')::text AS total_accepted,
+      count(*) FILTER (WHERE er.status IS NOT NULL)::text AS total_judged,
+      count(*) FILTER (WHERE s.status = 'pending')::text AS total_pending,
+      count(*) FILTER (WHERE s.created_at >= ${twentyFourHoursAgo})::text AS recent_submissions_24h,
+      count(DISTINCT s.user_id) FILTER (WHERE s.created_at >= ${twentyFourHoursAgo})::text AS active_users_24h
+    FROM submissions s
+    LEFT JOIN evaluation_results er ON er.submission_id = s.id
+  `);
 
-  // 2. 题目统计：含 U 型和 P 型
-  const [problemRow] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(problems);
-  const totalProblems = Number(problemRow?.count ?? 0);
-
-  // 3. 分类统计
-  const [categoryRow] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(categories);
-  const totalCategories = Number(categoryRow?.count ?? 0);
-
-  // 4. 提交统计与通过率
-  const [submissionStats] = await db
-    .select({
-      total: sql<number>`count(*)`,
-      accepted: sql<
-        number
-      >`count(*) filter (where ${evaluationResults.status} = 'Accepted')`,
-      total_judged: sql<
-        number
-      >`count(*) filter (where ${evaluationResults.status} is not null)`,
-    })
-    .from(submissions)
-    .leftJoin(
-      evaluationResults,
-      sql`${evaluationResults.submission_id} = ${submissions.id}`,
-    );
-
-  const totalSubmissions = Number(submissionStats?.total ?? 0);
-  const totalAccepted = Number(submissionStats?.accepted ?? 0);
-  const totalJudged = Number(submissionStats?.total_judged ?? 0);
+  const row = executeRow(result);
+  const totalUsers = Number(row?.total_users ?? 0);
+  const totalProblems = Number(row?.total_problems ?? 0);
+  const totalCategories = Number(row?.total_categories ?? 0);
+  const totalSubmissions = Number(row?.total_submissions ?? 0);
+  const totalAccepted = Number(row?.total_accepted ?? 0);
+  const totalJudged = Number(row?.total_judged ?? 0);
+  const totalPending = Number(row?.total_pending ?? 0);
+  const recentSubmissions24h = Number(row?.recent_submissions_24h ?? 0);
+  const activeUsers24h = Number(row?.active_users_24h ?? 0);
   const acceptanceRate = totalJudged > 0
     ? Math.round((totalAccepted / totalJudged) * 1000) / 1000
     : 0;
 
-  // 5. 待评测提交数
-  const [pendingRow] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(submissions)
-    .where(sql`${submissions.status} = 'pending'`);
-  const totalPending = Number(pendingRow?.count ?? 0);
-
-  // 6. 24 小时统计
-  const [recentSubmissionsRow] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(submissions)
-    .where(sql`${submissions.created_at} >= ${twentyFourHoursAgo}`);
-  const recentSubmissions24h = Number(recentSubmissionsRow?.count ?? 0);
-
-  const [activeUsersRow] = await db
-    .select({ count: sql<number>`count(distinct ${submissions.user_id})` })
-    .from(submissions)
-    .where(sql`${submissions.created_at} >= ${twentyFourHoursAgo}`);
-  const activeUsers24h = Number(activeUsersRow?.count ?? 0);
-
-  return {
+  const data: DashboardStats = {
     total_users: totalUsers,
     total_problems: totalProblems,
     total_submissions: totalSubmissions,
@@ -129,4 +123,11 @@ async function queryDashboardStats(): Promise<DashboardStats> {
     recent_submissions_24h: recentSubmissions24h,
     active_users_24h: activeUsers24h,
   };
+  _dashboardCache = { at: now, data };
+  return data;
+}
+
+/** 测试用：清空仪表盘缓存。 */
+export function _resetDashboardCacheForTest(): void {
+  _dashboardCache = null;
 }

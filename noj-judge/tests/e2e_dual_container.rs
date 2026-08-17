@@ -643,6 +643,9 @@ async fn evaluate_dual_end_to_end() {
         "def solve(a,b): return a+b",
         None,
         None,
+        true,
+        "noj-",
+        &["python3".to_string()],
     )
     .await;
 
@@ -707,6 +710,9 @@ except Exception as e:
             code,
             None,
             None,
+            true,
+            "noj-",
+            &["python3".to_string()],
         ),
     )
     .await
@@ -781,6 +787,9 @@ result.accept(score=1000, details={'cases': out})
             code,
             None,
             None,
+            true,
+            "noj-",
+            &["python3".to_string()],
         ),
     )
     .await
@@ -855,6 +864,9 @@ except Exception as e:
             code,
             None,
             None,
+            true,
+            "noj-",
+            &["python3".to_string()],
         ),
     )
     .await
@@ -919,6 +931,9 @@ while True:
             "def solve(): return 1",
             None,
             None,
+            true,
+            "noj-",
+            &["python3".to_string()],
         ),
     )
     .await
@@ -975,6 +990,9 @@ runner.call('sleep_solution')
             code,
             None,
             None,
+            true,
+            "noj-",
+            &["python3".to_string()],
         ),
     )
     .await
@@ -1038,6 +1056,9 @@ except SolutionTimeoutError:
             code,
             None,
             None,
+            true,
+            "noj-",
+            &["python3".to_string()],
         ),
     )
     .await

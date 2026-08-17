@@ -66,26 +66,29 @@ pub fn extract_zip_entries(data: &[u8]) -> Result<Vec<ZipEntry>> {
             continue;
         }
 
-        // 单文件大小限制
-        if file.size() > MAX_FILE_SIZE {
-            anyhow::bail!(
-                "ZIP 条目 {} 大小 {} 超过最大限制 {}",
-                original_name,
-                file.size(),
-                MAX_FILE_SIZE
-            );
-        }
-
         // Overlapping entries 防护
         if !seen_paths.insert(original_name.clone()) {
             anyhow::bail!("ZIP 条目重复: {}", original_name);
         }
 
-        // 读取内容
-        let mut buf = Vec::with_capacity(file.size() as usize);
-        file.read_to_end(&mut buf)?;
+        // NOJ-193：解压限额以实际读取字节数为准，不信任 zip 条目声明大小。
+        // take(MAX_FILE_SIZE + 1) 读到超限字节即可判定，避免预分配超大 Vec。
+        let declared_size = file.size();
+        let capacity = usize::try_from(declared_size.min(MAX_FILE_SIZE + 1)).unwrap_or(0);
+        let mut buf = Vec::with_capacity(capacity);
+        let mut limited = (&mut file).take(MAX_FILE_SIZE + 1);
+        limited.read_to_end(&mut buf)?;
 
-        total_size += buf.len() as u64;
+        if buf.len() as u64 > MAX_FILE_SIZE {
+            anyhow::bail!(
+                "ZIP 条目 {} 实际解压大小 {} 超过最大限制 {}",
+                original_name,
+                buf.len(),
+                MAX_FILE_SIZE
+            );
+        }
+
+        total_size = total_size.saturating_add(buf.len() as u64);
         if total_size > MAX_TOTAL_SIZE {
             anyhow::bail!(
                 "ZIP 解压总大小 {} 超过最大限制 {}",

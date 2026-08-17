@@ -38,7 +38,7 @@ cd noj-judge
 
 ## 镜像白名单
 
-noj-core 维护评测镜像白名单（`judgeImages`）。Judge Worker 启动时会通过 Redis RPC 获取白名单，并只预热和使用允许的镜像。
+noj-core 维护评测镜像白名单（`judgeImages`），并在题目 CRUD / 调度阶段完成校验。Judge Worker 侧还会按 `JUDGE_IMAGE_PREFIX` / `JUDGE_COMMAND_WHITELIST` 对 MQ 消息做一次纵深复验，不再通过 Redis RPC 拉取白名单。
 
 镜像规则包含：
 
@@ -119,6 +119,6 @@ redis-cli LLEN noj:judge:queue
 - Redis 连接失败：检查 Redis 地址和服务状态。
 - Docker 连接失败：确认 Docker daemon 可用，当前用户有权限访问。
 - 镜像不存在：先执行 `noj-judge/scripts/build-sdk-images.sh` 构建 `noj-evaluator-python` 与 `noj-solution-python`。
-- 白名单为空：确认 noj-core 已启动、`deno task dev-setup`（或 `init:system`）已执行，且 Judge Worker 能通过 Redis RPC 请求到白名单。
+- 白名单为空：确认 noj-core 已启动、`deno task dev-setup`（或 `init:system`）已执行；白名单校验在 noj-core 侧完成，judge 侧使用镜像前缀白名单复验。
 - `SystemError`：通常是纯净评测包、运行时配置、镜像、协议或 evaluator 本身异常，需要查看 Judge Worker 日志。
 - 提交长时间 `Pending`：见上文「队列监控」。

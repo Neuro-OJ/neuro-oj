@@ -64,15 +64,10 @@ export const PASSWORD_CHANGE_WHITELIST: readonly string[] = [
 ] as const;
 
 /**
- * 封禁状态校验白名单（issue #102 / ban-status-endpoint）。
+ * 封禁状态校验白名单（issue #102 / audit NOJ-007）。
  *
- * 与 `banlistMiddleware` 统一采用"方法限制 + 最小白名单"策略：
- * - GET/HEAD/OPTIONS → 直接放行（被封用户可浏览、查 ban-status）
- * - POST/PUT/PATCH/DELETE → 检查封禁状态（白名单路径豁免）
- *
- * 白名单仅保留 logout——被封用户必须能登出。
- * login 不需要白名单（login 路由不经过 authMiddleware）；
- * /me 不需要白名单（GET 方法限制自动放行）。
+ * 安全修复：封禁用户的既有 JWT 对读写请求都必须失效，仅 logout 豁免
+ * （被封用户必须能登出）。GET 不再自动放行。
  */
 export const BAN_WHITELIST: readonly string[] = [
   "/api/v1/auth/logout",
@@ -94,11 +89,8 @@ export interface UserBanState {
  * 白名单：写操作中豁免的路径（如 logout）
  */
 async function checkBanStatus(c: Context, userId: string): Promise<void> {
-  if (
-    c.req.method !== "GET" && c.req.method !== "HEAD" &&
-    c.req.method !== "OPTIONS" &&
-    !BAN_WHITELIST.includes(c.req.path)
-  ) {
+  // NOJ-007：封禁后旧 JWT 对读写均失效，仅 logout 路径豁免。
+  if (!BAN_WHITELIST.includes(c.req.path)) {
     const banState = await getUserBanState(userId);
     const stillBanned = banState.banned &&
       (!banState.until || Date.parse(banState.until) > Date.now());
@@ -187,8 +179,9 @@ export async function optionalAuthMiddleware(
  * 不在白名单内，抛 ForbiddenError（PASSWORD_CHANGE_REQUIRED），
  * 由 app.ts onError 统一处理（评审修复 M1）。
  *
- * issue #102：扩展封禁校验——从 DB 查 users.banned/banned_reason/banned_until
- * （60s LRU 缓存），命中且未过期则抛 ForbiddenError（USER_BANNED）。
+ * issue #102 / audit NOJ-007：扩展封禁校验——从 DB 查 user_bans
+ * （60s LRU 缓存），命中且未过期则抛 ForbiddenError（USER_BANNED）；
+ * 封禁用户的既有 JWT 对读写请求均不可再用（logout 除外）。
  * `banUser`/`unbanUser` 写操作会调 `invalidateBanCache` 立即失效。
  */
 export async function authMiddleware(c: Context, next: Next): Promise<void> {

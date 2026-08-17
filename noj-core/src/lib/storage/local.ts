@@ -13,12 +13,14 @@
  * @module
  */
 
+import { relative, resolve } from "jsr:@std/path@^1";
 import {
   buildBase64DownloadUrl,
   buildStorageUrl,
   parseStorageUrl,
   sha256Hex,
   type StorageProvider,
+  validateStorageKey,
 } from "./types.ts";
 import { logger } from "../logging.ts";
 
@@ -49,10 +51,25 @@ function extensionFor(contentType?: string): string {
   return (contentType && EXT_BY_CONTENT_TYPE[contentType]) ?? "";
 }
 
-/** key → 磁盘文件路径：key 已带已知扩展名直接用，否则回退 .zip（兼容旧支持包 URL） */
+/**
+ * key → 磁盘文件路径（含根目录约束）。
+ *
+ * NOJ-061/NOJ-115：拒绝任何 `/`（local key 由服务端内容寻址生成，
+ * 天然无路径分隔），resolve 后再次断言仍在 storageDir 内。
+ */
 function filePathFor(storageDir: string, key: string): string {
+  validateStorageKey(key);
+  if (key.includes("/")) {
+    throw new Error(`local 存储 key 不得包含路径分隔符: ${key}`);
+  }
   const suffix = KNOWN_EXTS.test(key) ? "" : ".zip";
-  return `${storageDir}/${key}${suffix}`;
+  const root = resolve(storageDir);
+  const filePath = resolve(root, `${key}${suffix}`);
+  const rel = relative(root, filePath);
+  if (rel === "" || rel.startsWith("..") || rel.startsWith("/")) {
+    throw new Error(`local 存储 key 越界: ${key}`);
+  }
+  return filePath;
 }
 
 /**
@@ -124,6 +141,9 @@ export class LocalStorageProvider implements StorageProvider {
    */
   get(url: string): Promise<Uint8Array> {
     const parsed = parseStorageUrl(url);
+    if (parsed.provider !== "local") {
+      throw new Error(`local provider 拒绝 ${parsed.provider} URL`);
+    }
     const filePath = filePathFor(this.storageDir, parsed.key);
 
     return Deno.readFile(filePath);
@@ -136,6 +156,9 @@ export class LocalStorageProvider implements StorageProvider {
    */
   async delete(url: string): Promise<void> {
     const parsed = parseStorageUrl(url);
+    if (parsed.provider !== "local") {
+      throw new Error(`local provider 拒绝 ${parsed.provider} URL`);
+    }
     const filePath = filePathFor(this.storageDir, parsed.key);
     try {
       await Deno.remove(filePath);
@@ -154,8 +177,11 @@ export class LocalStorageProvider implements StorageProvider {
    * 读取文件 → Base64 编码 → 构建 download URL
    */
   async downloadUrl(storageUrl: string, _expiresIn?: number): Promise<string> {
-    const data = await this.get(storageUrl);
     const parsed = parseStorageUrl(storageUrl);
+    if (parsed.provider !== "local") {
+      throw new Error(`local provider 拒绝 ${parsed.provider} URL`);
+    }
+    const data = await this.get(storageUrl);
     const base64Content = this.uint8ArrayToBase64(data);
     return buildBase64DownloadUrl(base64Content, parsed.checksumSha256);
   }

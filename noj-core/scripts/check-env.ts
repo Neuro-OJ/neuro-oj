@@ -29,6 +29,7 @@ import { MIN_JWT_SECRET_LENGTH } from "../src/lib/constants.ts";
 // 已知占位值黑名单（不区分大小写）。命中即视为未配置。
 const PLACEHOLDER_PATTERNS: readonly RegExp[] = [
   /^change-?this/i,
+  /^change-?me/i,
   /^changeme$/i,
   /^example$/i,
   /^test$/i,
@@ -37,6 +38,9 @@ const PLACEHOLDER_PATTERNS: readonly RegExp[] = [
   /your[-_]?(secret|password|key)/i,
   /replace-?me/i,
   /TODO/i,
+  // 审计 NOJ-131：仓库历史模板中公开过的默认管理员凭据
+  /^admin@noj\.local$/i,
+  /^AdminPass123!$/i,
 ];
 
 const STRICT_FLAG = "--strict";
