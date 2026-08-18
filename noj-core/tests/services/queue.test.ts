@@ -13,10 +13,12 @@ import {
 import {
   evaluationResults,
   problems,
+  selfTests,
   submissions,
   users,
 } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
+import { SELF_TEST_ID_PREFIX } from "../../src/types/self-tests.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 const skip = !hasDb;
@@ -27,6 +29,7 @@ const PROBLEM_ID = `tst-queue-prob-${ts}`;
 const SUBMISSION_PENDING_ID = `tst-queue-pend-${ts}`;
 const SUBMISSION_JUDGING_ID = `tst-queue-judg-${ts}`;
 const SUBMISSION_FINISHED_ID = `tst-queue-fin-${ts}`;
+const SELF_TEST_FINISHED_ID = `${SELF_TEST_ID_PREFIX}tst-queue-fin-${ts}`;
 
 async function setup() {
   const db = getDb();
@@ -104,6 +107,21 @@ async function setup() {
     output: "---RESULT---\n{}",
     created_at: now,
   });
+  await db.insert(selfTests).values({
+    id: SELF_TEST_FINISHED_ID,
+    user_id: USER_ID,
+    problem_id: PROBLEM_ID,
+    language: "python3",
+    code: "print('self')",
+    status: "finished",
+    result_status: "Accepted",
+    score: 10000,
+    output: "---RESULT---\n{}",
+    details: "{}",
+    judge_started_at: now,
+    judge_finished_at: now,
+    created_at: now,
+  });
 }
 
 async function teardown() {
@@ -111,6 +129,9 @@ async function teardown() {
     const db = getDb();
     await db.delete(evaluationResults).where(
       eq(evaluationResults.submission_id, SUBMISSION_FINISHED_ID),
+    );
+    await db.delete(selfTests).where(
+      eq(selfTests.user_id, USER_ID),
     );
     await db.delete(submissions).where(
       eq(submissions.user_id, USER_ID),
@@ -234,6 +255,21 @@ Deno.test({
     assertEquals(typeof overview.stats.pending_count, "number");
     assertEquals(typeof overview.stats.judging_count, "number");
     assertEquals(typeof overview.stats.completed_today, "number");
+  },
+});
+
+Deno.test({
+  name: "queue service: getQueueOverview 最近完成包含自测并标记 kind",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const overview = await getQueueOverview();
+    const selfItem = overview.recently_completed.find(
+      (item) => item.id === SELF_TEST_FINISHED_ID,
+    );
+    assertEquals(selfItem !== undefined, true);
+    assertEquals(selfItem?.kind, "self_test");
   },
 });
 

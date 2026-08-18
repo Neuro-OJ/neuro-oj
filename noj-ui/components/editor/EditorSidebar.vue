@@ -3,8 +3,9 @@ import MarkdownRenderer from '~/components/shared/MarkdownRenderer.vue'
 import { getStatusColor, getStatusLabel } from '~/utils/submissionFormat'
 import type { EditorTheme } from '~/composables/useEditorTheme'
 import type { PolledSubmission } from '~/composables/useSubmissionPolling'
+import type { PolledSelfTest } from '~/composables/useSelfTestPolling'
 
-type Tab = 'description' | 'history' | 'settings'
+type Tab = 'description' | 'history' | 'settings' | 'self-test'
 
 interface Problem {
   id: string
@@ -37,15 +38,21 @@ interface Submission {
   } | null
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   active: Tab
   problem: Problem
   submissions: Submission[]
   activeSubmission: PolledSubmission | null
   isPollingActive: boolean
+  selfTest: PolledSelfTest | null
+  isPollingSelfTest: boolean
+  selfTestError: string
+  showSelfTest?: boolean
   themeMode: EditorTheme
   draftEnabled: boolean
-}>()
+}>(), {
+  showSelfTest: false,
+})
 
 const emit = defineEmits<{
   'update:themeMode': [value: EditorTheme]
@@ -228,6 +235,56 @@ function formatElapsed(iso: string) {
           </div>
           <UIcon name="i-lucide-chevron-right" class="absolute right-2 top-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity size-3.5" />
         </button>
+      </div>
+    </div>
+
+    <!-- 自测 tab -->
+    <div v-else-if="active === 'self-test' && showSelfTest" class="p-4 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-text">自测</h3>
+        <UIcon name="i-lucide-loader-2" class="animate-spin text-primary size-3" v-if="isPollingSelfTest" />
+      </div>
+
+      <div v-if="selfTestError" class="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+        {{ selfTestError }}
+      </div>
+
+      <div v-if="!selfTest && !isPollingSelfTest" class="text-xs text-text-muted text-center py-4 border border-dashed border-border rounded-md">
+        点击「自测」运行完整评测
+      </div>
+
+      <div v-if="selfTest" class="space-y-3">
+        <div class="flex items-center justify-between">
+          <span
+            class="inline-flex items-center gap-1 text-11px px-2 py-0.5 rounded font-semibold"
+            :style="{
+              background: getStatusColor(selfTest.status, selfTest.result_status) + '22',
+              color: getStatusColor(selfTest.status, selfTest.result_status),
+            }"
+          >
+            <UIcon name="i-lucide-loader-2" class="animate-spin size-[10px]" v-if="selfTest.status === 'pending' || selfTest.status === 'judging'" />
+            {{ getStatusLabel(selfTest.status, selfTest.result_status) }}
+          </span>
+          <span class="text-sm font-mono font-semibold text-text">
+            {{ selfTest.status === 'finished' ? `${formatScore(selfTest.score)} 分` : '—' }}
+          </span>
+        </div>
+
+        <div v-if="selfTest.status === 'finished' && (selfTest.time_ms || selfTest.memory_kb)" class="flex items-center gap-3 text-xs text-text-muted">
+          <span v-if="selfTest.time_ms" class="inline-flex items-center gap-1">
+            <UIcon name="i-lucide-timer" class="size-[11px]" />
+            {{ selfTest.time_ms }}ms
+          </span>
+          <span v-if="selfTest.memory_kb" class="inline-flex items-center gap-1">
+            <UIcon name="i-lucide-memory-stick" class="size-[11px]" />
+            {{ Math.round(selfTest.memory_kb / 1024) }}MB
+          </span>
+        </div>
+
+        <div v-if="selfTest.output" class="text-xs">
+          <div class="text-text-secondary mb-1 font-medium">输出</div>
+          <pre class="whitespace-pre-wrap break-words bg-bg-page border border-border rounded-md p-3 text-[11px] leading-relaxed max-h-72 overflow-y-auto">{{ selfTest.output }}</pre>
+        </div>
       </div>
     </div>
 

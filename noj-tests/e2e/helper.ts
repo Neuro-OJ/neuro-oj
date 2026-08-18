@@ -9,17 +9,16 @@
  *   NOJ_RUN_E2E       - 设为 "1" 时启用 E2E 测试
  *   E2E_NO_CLEANUP    - 设为 "1" 时不自动清理容器（调试用）
  *   E2E_BASE_URL      - noj-core 服务地址（默认 http://localhost:8099）
- * */
+ */
 
 // ── 配置 ──────────────────────────────────────────
 
 export const isE2E = Deno.env.get("NOJ_RUN_E2E") === "1";
 export const BASE_URL = Deno.env.get("E2E_BASE_URL") || "http://localhost:8099";
 
-
 // ── API 客户端 ────────────────────────────────────
 
-export async function api(
+async function request(
   method: string,
   path: string,
   options?: {
@@ -51,6 +50,31 @@ export async function api(
   }
 
   return { status: res.status, body };
+}
+
+export async function api(
+  method: string,
+  path: string,
+  options?: {
+    body?: unknown;
+    token?: string;
+    headers?: Record<string, string>;
+  },
+): Promise<{ status: number; body: unknown }> {
+  const result = await request(method, path, options);
+  // E2E 并行分组下，admin token 可能刚被其他进程刷新而短暂失效；
+  // 若本次请求使用的正是缓存的 admin token 且返回 401，重置后重试一次。
+  if (
+    result.status === 401 &&
+    options?.token &&
+    _adminToken &&
+    options.token === _adminToken
+  ) {
+    _adminToken = null;
+    const freshToken = await getAdminToken();
+    return await request(method, path, { ...options, token: freshToken });
+  }
+  return result;
 }
 
 export function apiPost(path: string, body: unknown, token?: string) {
@@ -141,11 +165,21 @@ export async function getProblemIdByNumber(
   number: number,
   type = "P",
 ): Promise<string> {
-  const token = await getAdminToken();
-  const res = await apiGet(
+  let token = await getAdminToken();
+  let res = await apiGet(
     `/api/v1/problems?number=${number}&type=${type}&limit=1`,
     token,
   );
+  // 并发 E2E 分组下 admin token 可能刚被其他进程刷新而短暂失效；
+  // 重置缓存后重试一次。
+  if (res.status === 401) {
+    _adminToken = null;
+    token = await getAdminToken();
+    res = await apiGet(
+      `/api/v1/problems?number=${number}&type=${type}&limit=1`,
+      token,
+    );
+  }
   if (res.status !== 200) {
     throw new Error(
       `获取题目 ${type}${number} 失败: ${res.status} ${

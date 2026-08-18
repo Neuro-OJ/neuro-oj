@@ -13,12 +13,11 @@ import { runWithContext } from "../lib/requestContext.ts";
 import {
   createProblem,
   deleteProblem,
-  getProblem,
-  getProblemByTypeAndNumber,
   listProblems,
   updateProblem,
 } from "../services/problems.ts";
 import { applyAlgorithmTagVisibility } from "../services/problems-list.ts";
+import { resolveProblem } from "../lib/problem-resolve.ts";
 import { ADMIN_FULL_ACCESS, resolvePermissions } from "../lib/permissions.ts";
 import type {
   CreateProblemInput,
@@ -55,37 +54,6 @@ import type {
 const router = new Hono<
   { Variables: { userId: string; userRole: string } }
 >();
-
-/**
- * 双索引查找工具函数。
- * 支持通过 UUID、display_id（如 P1001）、纯数字 ID（兼容旧 seed 数据 1001/1002/1003）
- * 以及其他任意非标准 ID 格式查找题目。
- *
- * 先通过正则判断 id 格式，避免每次 display_id 请求都先多一次 UUID 查询。
- * 对于不匹配任何已知格式的 ID，fallback 到 `getProblem(id)` 直接查找。
- */
-function resolveProblem(id: string) {
-  // UUID / 纯数字（兼容旧 seed 数据 1001/1002/1003 等）：直接按 id 精确查找
-  if (
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      id,
-    ) ||
-    /^\d+$/.test(id)
-  ) {
-    return getProblem(id);
-  }
-
-  // display_id 格式：解析 "P1001" / "U42" → (type, number)
-  const match = id.match(/^([UuPp])(\d+)$/);
-  if (match) {
-    const type = match[1].toUpperCase();
-    const number = parseInt(match[2], 10);
-    return getProblemByTypeAndNumber(type, number);
-  }
-
-  // fallback：尝试直接按 id 查找（兼容非标准 ID 格式）
-  return getProblem(id);
-}
 
 /**
  * 获取题目列表。

@@ -142,7 +142,10 @@ e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
   problemId = (res.body as { data: { id: string } }).data.id;
 
   // 按标签筛选命中
-  const listRes = await apiGet(`/api/v1/problems?tag=${tagId}&type=U`);
+  const listRes = await apiGet(
+    `/api/v1/problems?tag=${tagId}&type=U`,
+    adminToken,
+  );
   if (listRes.status !== 200) throw new Error("筛选失败: " + listRes.status);
   const items = (listRes.body as { data: { id: string }[] }).data;
   if (!items.some((p) => p.id === problemId)) {
@@ -155,6 +158,7 @@ e2eTest("[e2e/tags] 2.2 标签与难度组合筛选", async () => {
   if (!isE2E) return;
   const res = await apiGet(
     `/api/v1/problems?tag=${tagId}&difficulty=easy&type=U`,
+    adminToken,
   );
   if (res.status !== 200) throw new Error("组合筛选失败: " + res.status);
   const items = (res.body as { data: { id: string }[] }).data;
@@ -186,7 +190,10 @@ e2eTest("[e2e/tags] 3.1 合并标签后关联正确", async () => {
   }
 
   // 原标签已删除，关联重指向 target
-  const listRes = await apiGet(`/api/v1/problems?tag=${targetId}&type=U`);
+  const listRes = await apiGet(
+    `/api/v1/problems?tag=${targetId}&type=U`,
+    adminToken,
+  );
   const items = (listRes.body as { data: { id: string }[] }).data;
   if (!items.some((p) => p.id === problemId)) {
     throw new Error("合并后关联未重指向目标标签");

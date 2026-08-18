@@ -213,6 +213,26 @@ export const SCHEMA_DDL: string[] = [
     created_at TEXT NOT NULL
   )`,
 
+  // 7.1 self_tests（issue #221）
+  `CREATE TABLE IF NOT EXISTS self_tests (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    problem_id TEXT NOT NULL REFERENCES problems(id),
+    language TEXT NOT NULL,
+    code TEXT NOT NULL,
+    file_name TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    result_status TEXT,
+    score INTEGER NOT NULL DEFAULT 0,
+    output TEXT NOT NULL DEFAULT '',
+    details TEXT NOT NULL DEFAULT '{}',
+    time_ms INTEGER,
+    memory_kb INTEGER,
+    judge_started_at TEXT,
+    judge_finished_at TEXT,
+    created_at TEXT NOT NULL
+  )`,
+
   // 8. check_ins
   `CREATE TABLE IF NOT EXISTS check_ins (
     id TEXT PRIMARY KEY,
@@ -521,6 +541,10 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_contest_id ON objective_submissions (contest_id)",
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_results_submission_id ON evaluation_results (submission_id)",
   "CREATE INDEX IF NOT EXISTS idx_eval_results_created_at ON evaluation_results (created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_self_tests_user_id ON self_tests (user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_self_tests_problem_id ON self_tests (problem_id)",
+  "CREATE INDEX IF NOT EXISTS idx_self_tests_created_at ON self_tests (created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_self_tests_user_id_created_at ON self_tests (user_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens (user_id)",
   "CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires_at ON password_reset_tokens (expires_at)",
   "CREATE INDEX IF NOT EXISTS idx_conversations_user1_id ON conversations (user1_id)",

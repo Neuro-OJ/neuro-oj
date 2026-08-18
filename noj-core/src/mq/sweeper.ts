@@ -9,7 +9,7 @@
 
 import { and, asc, eq, lte } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
-import { problems, submissions } from "../db/schema.ts";
+import { problems, selfTests, submissions } from "../db/schema.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { getSetting } from "../services/system-settings.ts";
 import { getRedis } from "./connection.ts";
@@ -214,6 +214,111 @@ async function recoverPendingSubmissions(now: number): Promise<void> {
   }
 }
 
+/**
+ * 恢复自测 pending 记录（与正式提交同队列，需同样防孤儿）。
+ */
+export async function recoverPendingSelfTests(now: number): Promise<void> {
+  const cutoff = new Date(now - PENDING_RECOVERY_MS).toISOString();
+  const db = getDb();
+
+  const rows = await db
+    .select({
+      id: selfTests.id,
+      language: selfTests.language,
+      code: selfTests.code,
+      file_name: selfTests.file_name,
+      problem_id: selfTests.problem_id,
+      runtime_config: problems.runtime_config,
+      support_package_storage_url: problems.support_package_storage_url,
+    })
+    .from(selfTests)
+    .innerJoin(problems, eq(selfTests.problem_id, problems.id))
+    .where(
+      and(
+        eq(selfTests.status, "pending"),
+        lte(selfTests.created_at, cutoff),
+      ),
+    )
+    .orderBy(asc(selfTests.created_at))
+    .limit(200);
+
+  for (const row of rows) {
+    const runtimeConfig = row.runtime_config as RuntimeConfig | null;
+    if (!runtimeConfig) {
+      await db.update(selfTests)
+        .set({
+          status: "error",
+          judge_finished_at: new Date().toISOString(),
+        })
+        .where(eq(selfTests.id, row.id));
+      logger.error("pending 自测缺少 runtime_config，标记为 error", {
+        self_test_id: row.id,
+      });
+      continue;
+    }
+
+    let download_url: string | undefined;
+    if (row.support_package_storage_url) {
+      try {
+        const storage = await getStorageProvider();
+        download_url = await storage.downloadUrl(
+          row.support_package_storage_url,
+        );
+      } catch (err) {
+        logger.error("pending 自测恢复获取支持包失败，将以无支持包任务继续", {
+          self_test_id: row.id,
+          err,
+        });
+      }
+    }
+
+    const task: JudgeTask = {
+      submission_id: row.id,
+      problem_id: row.problem_id,
+      runtime_config: runtimeConfig,
+      download_url,
+      language: row.language,
+      code: row.code,
+      file_name: row.file_name ??
+        (LANGUAGE_EXT_MAP[row.language] || "main.txt"),
+    };
+
+    const { pushJudgeTask } = await import("./producer.ts");
+    try {
+      await pushJudgeTask(task);
+      await db.update(selfTests)
+        .set({
+          status: "judging",
+          judge_started_at: new Date().toISOString(),
+        })
+        .where(
+          and(eq(selfTests.id, row.id), eq(selfTests.status, "pending")),
+        );
+      logger.info("已恢复 pending 自测入队", { self_test_id: row.id });
+    } catch (err) {
+      if (!isRetryableJudgeQueueError(err)) {
+        await db.update(selfTests)
+          .set({
+            status: "error",
+            judge_finished_at: new Date().toISOString(),
+          })
+          .where(
+            and(eq(selfTests.id, row.id), eq(selfTests.status, "pending")),
+          );
+        logger.error("pending 自测因永久入队失败标记为 error", {
+          self_test_id: row.id,
+          err,
+        });
+        continue;
+      }
+      logger.error("pending 自测恢复失败（等待下轮重试）", {
+        self_test_id: row.id,
+        err,
+      });
+    }
+  }
+}
+
 export async function runQueueSweeperOnce(): Promise<void> {
   const now = Date.now();
   const results = await Promise.allSettled([
@@ -228,6 +333,7 @@ export async function runQueueSweeperOnce(): Promise<void> {
       RESULT_PROCESSING_TIMEOUT_MS,
     ),
     recoverPendingSubmissions(now),
+    recoverPendingSelfTests(now),
   ]);
   for (const result of results) {
     if (result.status === "rejected") {
