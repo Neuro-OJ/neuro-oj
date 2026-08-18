@@ -69,7 +69,7 @@ export interface CreateProblemInput {
    * 双容器 Runtime 配置。仅 admin 可设置。
    */
   runtime_config?: RuntimeConfig | null;
-  category_ids?: string[];
+  tag_ids?: string[];
   /** 题目类型：U（用户题）/ P（主题题），默认 U */
   type?: string;
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
@@ -90,7 +90,7 @@ export interface UpdateProblemInput {
    * 双容器 Runtime 配置。设为 null 即清空。
    */
   runtime_config?: RuntimeConfig | null;
-  category_ids?: string[];
+  tag_ids?: string[];
   /** 客观题标记变更（由客观题改回编程题时必须同时提供 runtime_config） */
   is_objective?: boolean;
 }
@@ -102,7 +102,7 @@ export interface ProblemListQuery {
   page?: number;
   limit?: number;
   difficulty?: string;
-  category_id?: string;
+  tag?: string;
   keyword?: string;
   /** 按类型筛选（U/P） */
   type?: string;
@@ -113,9 +113,18 @@ export interface ProblemListQuery {
 }
 
 /**
- * 题目响应（含分类信息）。
+ * 题目响应中的标签项。
  */
-export interface ProblemResponseWithCategories {
+export interface ProblemTagRef {
+  id: string;
+  name: string;
+  kind: string;
+}
+
+/**
+ * 题目响应（含标签信息）。
+ */
+export interface ProblemResponseWithTags {
   id: string;
   title: string;
   description: string;
@@ -127,7 +136,12 @@ export interface ProblemResponseWithCategories {
    * 双容器 Runtime 配置（所有题目统一使用双容器模式）。
    */
   runtime_config: RuntimeConfig;
-  categories: { id: string; name: string; slug: string }[];
+  tags: ProblemTagRef[];
+  /**
+   * 存在被隐藏的算法标签时为 true（spoiler 门控：匿名/未 AC viewer
+   * 收不到算法标签名称与数量，仅收到此布尔占位标志）。
+   */
+  has_hidden_algorithm_tags: boolean;
   created_at: string;
   updated_at: string;
   /** 题号（同一 type 内独立） */

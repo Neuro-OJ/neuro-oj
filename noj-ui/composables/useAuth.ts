@@ -8,6 +8,7 @@ interface UserResponse {
   is_admin: boolean;
   must_change_password: boolean;
   avatar_url?: string | null;
+  permissions?: string[];
   created_at: string;
   updated_at: string;
 }

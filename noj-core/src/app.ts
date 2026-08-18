@@ -6,7 +6,7 @@ import stats from "./routes/stats.ts";
 import auth from "./routes/auth.ts";
 import admin from "./routes/admin.ts";
 import adminAnnouncements from "./routes/admin-announcements.ts";
-import categories from "./routes/categories.ts";
+import tags from "./routes/tags.ts";
 import problems from "./routes/problems.ts";
 import checkin from "./routes/checkin.ts";
 import queue from "./routes/queue.ts";
@@ -146,7 +146,7 @@ export function createApp(): Hono {
   // 公告管理：细粒度权限（admin:full_access 通配放行 或 announcement:manage），
   // 独立于 admin 实例（admin 实例组级 adminMiddleware 仅放行 full_access）
   app.route("/api/v1/admin/announcements", adminAnnouncements);
-  app.route("/api/v1/categories", categories);
+  app.route("/api/v1/tags", tags);
   app.route("/api/v1/problems", problems);
   app.route("/api/v1/checkin", checkin);
   app.route("/api/v1/queue", queue);

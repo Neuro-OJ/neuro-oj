@@ -21,13 +21,13 @@
                 <!-- 右上：难度徽章 -->
                 <DifficultyBadge class="self-start" :difficulty="difficulty" />
 
-                <!-- 左下：分类 -->
+                <!-- 左下：标签（仅题目标签 kind='problem'，数据源已保证） -->
                 <div class="flex items-center gap-1 h-[18px] overflow-hidden">
                     <span
-                        v-for="cat in categories"
-                        :key="cat.id"
+                        v-for="tag in tags"
+                        :key="tag.id"
                         class="text-[10px] px-1.5 rounded bg-blue-50 text-blue-700 border border-blue-200 box-border h-full inline-flex items-center leading-none"
-                    >{{ cat.name }}</span>
+                    >{{ tag.name }}</span>
                 </div>
                 <!-- 右下：时间·内存限制（客观题套卷无评测容器） -->
                 <div class="flex items-center justify-end h-[18px]">
@@ -40,10 +40,10 @@
 </template>
 
 <script setup lang="ts">
-interface Category {
+interface Tag {
     id: string
     name: string
-    slug: string
+    kind: 'problem' | 'algorithm'
 }
 
 interface Props {
@@ -54,10 +54,10 @@ interface Props {
     difficulty: string
     runtime_config: { evaluator: { time_limit_ms: number; memory_limit_mb: number } } | null
     is_objective: boolean
-    categories?: Category[]
+    tags?: Tag[]
 }
 
 withDefaults(defineProps<Props>(), {
-    categories: () => [],
+    tags: () => [],
 })
 </script>

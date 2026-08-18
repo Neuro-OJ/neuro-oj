@@ -33,7 +33,7 @@ type StandardProblem = {
   description: string
   difficulty: string
   type: 'U' | 'P'
-  categories: { id: string; name: string; slug: string }[]
+  tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
 }
 
 const { data, pending, error, refresh } = useFetch<{
@@ -58,7 +58,7 @@ const workspaceProblem = computed(() => {
       description: p.description,
       difficulty: p.difficulty,
       type: 'P' as const,
-      categories: [],
+      tags: [],
     }
   }
   const p = d as StandardProblem
@@ -69,7 +69,7 @@ const workspaceProblem = computed(() => {
     description: p.description,
     difficulty: p.difficulty,
     type: p.type,
-    categories: p.categories ?? [],
+    tags: p.tags ?? [],
   }
 })
 
@@ -181,6 +181,7 @@ const templateUrl = computed(() => isContest.value
     :subtitle="isContest ? (contest?.title ?? '') : ''"
     :can-submit="canSubmit"
     :submission-filter="submissionFilter"
+    @accepted="refresh"
   >
     <template v-if="isContest" #toolbar-actions>
       <UButton

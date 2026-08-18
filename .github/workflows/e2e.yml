@@ -268,7 +268,7 @@ jobs:
             deno test -A "$@"
           }
           run_group \
-            e2e/01_categories.test.ts \
+            e2e/01_tags.test.ts \
             e2e/02_problems.test.ts \
             e2e/03_auth.test.ts \
             e2e/04_submissions.test.ts \

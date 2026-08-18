@@ -18,7 +18,7 @@ interface ProblemItem {
   display_id: string
   number: number
   owner_id: string
-  categories: { id: string; name: string }[]
+  tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
   created_at: string
 }
 

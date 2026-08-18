@@ -160,7 +160,7 @@ router.get("/problems", async (c) => {
     page: Math.max(1, page),
     limit: Math.min(100, Math.max(1, limit)),
     difficulty: c.req.query("difficulty") || undefined,
-    category_id: c.req.query("category_id") || undefined,
+    tag: c.req.query("tag") || undefined,
     keyword: c.req.query("keyword") || undefined,
   });
 

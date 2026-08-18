@@ -12,12 +12,13 @@
  */
 import { BadRequestError } from "../lib/errors.ts";
 import type {
-  ProblemResponseWithCategories,
+  ProblemResponseWithTags,
+  ProblemTagRef,
   RuntimeConfig,
 } from "../types/problems.ts";
 
 /**
- * 公开题目响应（不含关联分类）。
+ * 公开题目响应（不含关联标签）。
  */
 export interface ProblemResponse {
   id: string;
@@ -37,8 +38,17 @@ export interface ProblemResponse {
   updated_at: string;
 }
 
+/**
+ * 题目列表项：不返回详情页才有的算法标签门控占位标志。
+ * 列表/卡片接口只返回题目标签（kind='problem'）。
+ */
+export type ProblemListItem = Omit<
+  ProblemResponseWithTags,
+  "has_hidden_algorithm_tags"
+>;
+
 export interface ProblemListResponse {
-  items: ProblemResponseWithCategories[];
+  items: ProblemListItem[];
   total: number;
   page: number;
   limit: number;
@@ -53,7 +63,7 @@ export interface AdminProblemListItem {
   difficulty: string;
   support_package_storage_url: string | null;
   runtime_config: RuntimeConfig;
-  categories: { id: string; name: string; slug: string }[];
+  tags: ProblemTagRef[];
   created_at: string;
   updated_at: string;
   number: number;

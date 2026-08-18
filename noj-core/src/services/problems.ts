@@ -5,8 +5,8 @@
  * - problems-types.ts：响应 DTO（ProblemResponse / ProblemListResponse /
  *   AdminProblemList*） + validateRuntimeConfig
  * - problems-list.ts：listProblems / listAllProblems / getProblem /
- *   getProblemByTypeAndNumber + attachCategories
- * - problems-categories.ts：syncProblemCategories
+ *   getProblemByTypeAndNumber + attachTags
+ * - problems-tags.ts：syncProblemTags
  * - problems-crud.ts：createProblem / updateProblem / deleteProblem
  *
  * 本文件仅 re-export 以保持向后兼容（routes/admin.ts、routes/problems.ts、
@@ -29,7 +29,7 @@ export {
   listProblems,
 } from "./problems-list.ts";
 
-export { syncProblemCategories } from "./problems-categories.ts";
+export { syncProblemTags } from "./problems-tags.ts";
 
 export { validateRuntimeConfig } from "./problems-types.ts";
 

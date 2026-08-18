@@ -51,8 +51,8 @@ export interface ProblemBundleManifest {
   type?: string;
   /** 仅 admin 生效：幂等键（(type, number) 匹配既有题目则更新）；缺省 → type 内 MAX+1 */
   number?: number;
-  /** 分类名数组，按 name 匹配已有分类，缺省忽略 + warning */
-  categories?: string[];
+  /** 标签名数组，按 name 匹配已有标签，缺省忽略 + warning（issue #223） */
+  tags?: string[];
   samples?: ProblemBundleSample[];
   /** 模板文件索引（纯文件名，缺省默认 "template.py"）：前端编辑器初始代码 */
   template?: string;
@@ -100,7 +100,7 @@ export function isValidTemplateFileName(name: string): boolean {
  * - `title` 非空字符串
  * - `difficulty`/`type` 枚举合法
  * - `number` 类型合法
- * - `categories` 为字符串数组
+ * - `tags` 为字符串数组
  * - `samples` 为 `{ input, output }` 数组
  * - `runtime_config` 必填：先注入 command 默认值，再通过 `validateRuntimeConfig`
  *
@@ -150,11 +150,11 @@ export function validateBundleManifest(
   }
 
   if (
-    m.categories !== undefined &&
-    (!Array.isArray(m.categories) ||
-      m.categories.some((c) => typeof c !== "string" || !c.trim()))
+    m.tags !== undefined &&
+    (!Array.isArray(m.tags) ||
+      m.tags.some((c) => typeof c !== "string" || !c.trim()))
   ) {
-    throw new BadRequestError("manifest.categories 必须是字符串数组");
+    throw new BadRequestError("manifest.tags 必须是字符串数组");
   }
 
   if (m.samples !== undefined) {
@@ -203,7 +203,7 @@ export function validateBundleManifest(
     difficulty: m.difficulty as string | undefined,
     type: m.type as string | undefined,
     number: m.number as number | undefined,
-    categories: m.categories as string[] | undefined,
+    tags: m.tags as string[] | undefined,
     samples: m.samples as ProblemBundleSample[] | undefined,
     template: m.template as string | undefined,
     runtime_config: runtimeConfig,

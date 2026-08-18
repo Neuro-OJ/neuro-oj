@@ -18,6 +18,8 @@ import {
   listProblems,
   updateProblem,
 } from "../services/problems.ts";
+import { applyAlgorithmTagVisibility } from "../services/problems-list.ts";
+import { ADMIN_FULL_ACCESS, resolvePermissions } from "../lib/permissions.ts";
 import type {
   CreateProblemInput,
   ProblemListQuery,
@@ -87,7 +89,7 @@ function resolveProblem(id: string) {
 
 /**
  * 获取题目列表。
- * 支持分页与筛选：?page=1&limit=20&difficulty=easy&category_id=xxx&keyword=xxx&type=U&number=1001
+ * 支持分页与筛选：?page=1&limit=20&difficulty=easy&tag=xxx&keyword=xxx&type=U&number=1001
  */
 router.get("/", optionalAuthMiddleware, async (c) => {
   const page = parseInt(c.req.query("page") || "1", 10);
@@ -106,8 +108,8 @@ router.get("/", optionalAuthMiddleware, async (c) => {
   const difficulty = c.req.query("difficulty");
   if (difficulty) query.difficulty = difficulty;
 
-  const categoryId = c.req.query("category_id");
-  if (categoryId) query.category_id = categoryId;
+  const tagId = c.req.query("tag");
+  if (tagId) query.tag = tagId;
 
   const keyword = c.req.query("keyword");
   if (keyword) query.keyword = keyword;
@@ -192,12 +194,22 @@ router.get("/submissions/:id", authMiddleware, async (c) => {
 });
 
 /**
- * 获取题目详情（双索引：UUID 或 display_id）。
+ * 获取题目详情（双索引：UUID 或 display_id + 算法标签可视性门控，issue #223）。
+ *
+ * 算法标签仅 admin / 题主 / 有 Accepted 提交的 viewer 可见；
+ * 其余 viewer 收不到算法标签名，仅收到 has_hidden_algorithm_tags 占位标志。
  */
-router.get("/:id", async (c) => {
+router.get("/:id", optionalAuthMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const problem = await resolveProblem(id);
-  return c.json({ data: problem });
+
+  const userId = c.get("userId");
+  const isAdmin = userId
+    ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
+    : false;
+  const data = await applyAlgorithmTagVisibility(problem, { userId, isAdmin });
+
+  return c.json({ data });
 });
 
 /**

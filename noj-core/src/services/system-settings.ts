@@ -395,7 +395,7 @@ export async function updateSetting(
   key: string,
   value: unknown,
   actorId: string,
-  // tx: 可选 Drizzle 事务实例（与 categories.ts 惯例一致）。传入时仅执行
+  // tx: 可选 Drizzle 事务实例（与既有 service 惯例一致）。传入时仅执行
   // 校验 + 事务内 UPSERT，缓存刷新与逐条审计由调用方在提交后统一处理。
   // deno-lint-ignore no-explicit-any
   tx?: any,
