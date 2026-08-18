@@ -72,7 +72,7 @@
 
 #### Scenario: 管理员成功删除题目
 - **WHEN** 管理员调用 `DELETE /api/v1/problems/:id`
-- **THEN** 系统删除题目及其分类关联并返回 204
+- **THEN** 系统删除题目及其标签关联并返回 204
 
 #### Scenario: U 型所有者删除自己题目
 - **WHEN** 普通用户删除自己所有的 U 型题目
@@ -88,15 +88,15 @@
 
 ### Requirement: 题目列表支持多维度筛选与分页
 
-系统 SHALL 在 `GET /api/v1/problems` 上支持 `difficulty`、`category_id`、`keyword`、`type`、`number` 查询参数。
+系统 SHALL 在 `GET /api/v1/problems` 上支持 `difficulty`、`tag`、`keyword`、`type`、`number` 查询参数。
 
 #### Scenario: 按难度筛选
 - **WHEN** 用户请求 `GET /api/v1/problems?difficulty=easy`
 - **THEN** 系统仅返回难度为 easy 的题目
 
-#### Scenario: 按分类筛选
-- **WHEN** 用户请求 `GET /api/v1/problems?category_id=<category-id>`
-- **THEN** 系统仅返回属于该分类的题目
+#### Scenario: 按标签筛选
+- **WHEN** 用户请求 `GET /api/v1/problems?tag=<tag-id>`
+- **THEN** 系统仅返回关联该标签的题目
 
 #### Scenario: 按关键词搜索
 - **WHEN** 用户请求 `GET /api/v1/problems?keyword=归一化`
@@ -191,4 +191,20 @@
 
 - **WHEN** 白名单中有多个条目，普通用户在题目编辑器下拉框中选择其中一项
 - **THEN** 创建请求携带所选镜像名，后端白名单校验通过，创建成功
+
+### Requirement: 支持包 URL 服务端受控
+创建/更新题目的 `support_package_storage_url` SHALL 只接受服务端生成且匹配题目归属的 `noj-storage://` URL；客户端直接指定的任意 URL MUST 被拒绝或忽略。
+
+#### Scenario: 更新题目写入他人对象 key
+- **WHEN** 普通用户提交不属于自己题目的 S3 key
+- **THEN** 服务端拒绝更新
+
+### Requirement: 题目详情响应包含标签与算法标签可见性
+
+题目详情响应 SHALL 以 `tags: {id, name, kind}[]` 取代 `categories` 字段，并附带 `has_hidden_algorithm_tags: boolean` 标志，按 `problem-tags` 规范的门控规则裁剪（算法标签仅 admin/题主/有 Accepted 提交的 viewer 可见）。
+
+#### Scenario: 详情响应标签字段
+
+- **WHEN** 用户请求 `GET /api/v1/problems/:id`
+- **THEN** 响应包含 `tags` 数组（每项含 id/name/kind）与 `has_hidden_algorithm_tags` 布尔字段，不含 `categories` 字段
 

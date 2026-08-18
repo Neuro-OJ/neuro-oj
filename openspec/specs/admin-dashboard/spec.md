@@ -29,7 +29,7 @@
   - `total_users`: 平台注册用户总数（排除 root 系统用户）
   - `total_problems`: 题目总数（含 U 型和 P 型）
   - `total_submissions`: 提交记录总数
-  - `total_categories`: 分类总数
+  - `total_tags`: 标签总数
   - `total_accepted`: 通过的评测结果数（status = 'Accepted'）
   - `total_pending`: 待评测提交数
   - `acceptance_rate`: 整体通过率（accepted / total_judged）
@@ -53,12 +53,22 @@
 
 ### Requirement: 仪表盘统计数据自动刷新
 
-系统 SHOULD 在仪表盘页面提供刷新按钮，允许管理员手动刷新统计数据。
+系统 SHALL 在仪表盘页面自动轮询刷新统计数据（评测队列状态等动态指标），同时 SHALL 提供手动刷新按钮。页面不可见时 SHALL 暂停轮询，可见时恢复。
+
+#### Scenario: 仪表盘自动轮询统计数据
+
+- **WHEN** 管理员停留在仪表盘页面
+- **THEN** 系统每 5 秒自动重新请求队列统计并更新显示
 
 #### Scenario: 手动刷新统计数据
 
 - **WHEN** 管理员点击刷新按钮
-- **THEN** 系统重新请求统计数据并更新显示
+- **THEN** 系统立即重新请求统计数据并更新显示
+
+#### Scenario: 页面隐藏暂停轮询
+
+- **WHEN** 管理员切换标签页导致仪表盘页面不可见
+- **THEN** 系统暂停自动轮询，切回可见后恢复
 
 ### Requirement: 仪表盘显示部分统计失败
 

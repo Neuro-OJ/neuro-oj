@@ -16,3 +16,10 @@ judge SHALL 在执行前复验 `runtime_config.evaluator.image` 匹配受信镜�
 
 ### Requirement: 孤儿容器回收
 judge 启动时 SHALL 按带实例标识的标签清理本实例残留容器；正常路径容器清理 MUST 在显式路径执行而非 fire-and-forget。
+
+#### Scenario: 启动时清理残留容器
+
+- **WHEN** judge 启动且存在带本实例标识标签的残留容器
+- **THEN** 系统按标签清理这些容器，避免资源泄漏
+- **WHEN** 正常评测路径完成容器清理
+- **THEN** 清理操作在显式路径同步执行，不采用 fire-and-forget

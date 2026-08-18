@@ -13,7 +13,6 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 | username      | TEXT | NOT NULL, UNIQUE         |
 | email         | TEXT | NOT NULL, UNIQUE         |
 | password_hash | TEXT | NOT NULL                 |
-| role          | TEXT | NOT NULL, DEFAULT 'user' |
 | must_change_password | BOOLEAN | NOT NULL, DEFAULT false |
 | bio           | TEXT | DEFAULT ''               |
 | avatar_url    | TEXT | NULL（`noj-storage://` URL） |
@@ -27,7 +26,7 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 #### Scenario: 插入新用户
 
 - **WHEN** 向 `users` 表插入一条包含 username、email、password_hash 的记录
-- **THEN** 系统自动生成 UUID 主键，role 默认为 'user'，bio 默认为 ''，created_at 和 updated_at
+- **THEN** 系统自动生成 UUID 主键，bio 默认为 ''，created_at 和 updated_at
   自动填充当前 ISO 8601 时间戳
 
 #### Scenario: 用户名唯一约束
@@ -378,16 +377,15 @@ ORM 映射：Drizzle ORM 0.45.x 不导出原生 `tsvector` 列类型，使用
 | description | TEXT | |
 | is_system | BOOLEAN | NOT NULL, DEFAULT false |
 | is_default | BOOLEAN | NOT NULL, DEFAULT false |
-| is_admin | BOOLEAN | NOT NULL, DEFAULT false |
 | parent_id | UUID | REFERENCES roles(id) ON DELETE SET NULL |
 | created_at | TEXT | NOT NULL, ISO 8601 |
 | updated_at | TEXT | NOT NULL, ISO 8601 |
 
-系统 SHALL 预置两个角色：`admin`（is_admin=true, is_system=true）和 `user`（is_default=true, is_system=true）。
+系统 SHALL 预置两个角色：`admin`（is_system=true）和 `user`（is_default=true, is_system=true）。
 
 #### Scenario: 插入新角色
 - **WHEN** 向 `roles` 表插入一条记录
-- **THEN** 系统自动生成 UUID，is_system/is_default/is_admin 默认 false，created_at 和 updated_at 自动填充
+- **THEN** 系统自动生成 UUID，is_system/is_default 默认 false，created_at 和 updated_at 自动填充
 
 #### Scenario: 角色名唯一约束
 - **WHEN** 尝试插入与已存在记录相同 name 的角色
@@ -407,7 +405,7 @@ ORM 映射：Drizzle ORM 0.45.x 不导出原生 `tsvector` 列类型，使用
 
 权限名称为 `resource:action` 格式，由应用层拼接。
 
-系统 SHALL 预置 22 个权限定义，覆盖 problem、submission、user、category、system 五个资源域。
+系统 SHALL 预置 42 个权限定义，覆盖 admin、problem、submission、user、tag、contest、community、system 资源域。
 
 #### Scenario: 插入权限定义
 - **WHEN** seed 脚本插入 `resource='problem'`, `action='create'`, `description='创建题目'`
@@ -448,16 +446,6 @@ ORM 映射：Drizzle ORM 0.45.x 不导出原生 `tsvector` 列类型，使用
 #### Scenario: 级联删除角色时清理用户关联
 - **WHEN** 删除一个非系统角色
 - **THEN** `user_roles` 中所有关联该角色的行被级联删除
-
-### Requirement: users.role 列保留
-
-`users.role` 列 SHALL 保留不变（`TEXT NOT NULL DEFAULT 'user'`），但标记为 deprecated。新代码 SHALL 通过 `user_roles` 表判断权限，`users.role` 仅作为向前兼容字段和 JWT admin fast path 的值来源。
-
-注册时，`users.role` SHALL 设置为 `is_default=true` 角色的 `name`。
-
-#### Scenario: 新用户注册时 role 列同步
-- **WHEN** 新用户注册，默认角色名称为 "user"
-- **THEN** `users.role` 设置为 "user"，与 `user_roles` 关联一致
 
 ### Requirement: submissions.contest_id 列
 
@@ -584,4 +572,68 @@ ORM 映射：Drizzle ORM 0.45.x 不导出原生 `tsvector` 列类型，使用
 
 - **WHEN** 删除套卷（problems 行）
 - **THEN** 该卷下全部 objective_submissions 记录级联删除
+
+### Requirement: users.role 与 roles.is_admin 列移除
+
+数据库 Schema SHALL 移除 `users.role` 与 `roles.is_admin` 两列，由 Drizzle 迁移执行 `ALTER TABLE` 删列；相关读写点已在代码层全部清理（见 rbac-core / admin-authorization delta）。
+
+#### Scenario: 迁移删列成功
+
+- **WHEN** `deno task db:migrate` 执行删列迁移
+- **THEN** `users` 表与 `roles` 表不再包含 `role` / `is_admin` 列，`roles.parent_id`（角色继承）与其余 RBAC 列保持不变
+
+#### Scenario: 删列后系统功能不受影响
+
+- **WHEN** 删列迁移执行后运行 `init:system` / `bootstrap:admin` / 登录 / 权限检查
+- **THEN** 系统正常运行，无任何代码引用已删除列
+
+### Requirement: 公告表（announcements）
+
+系统 SHALL 提供 `announcements` 表：
+
+- `id` TEXT PRIMARY KEY（uuid）
+- `title` TEXT NOT NULL
+- `content` TEXT NOT NULL（Markdown）
+- `is_pinned` BOOLEAN NOT NULL DEFAULT FALSE
+- `is_active` BOOLEAN NOT NULL DEFAULT TRUE
+- `created_by` TEXT NOT NULL REFERENCES `users(id)`
+- `created_at` TEXT NOT NULL、`updated_at` TEXT NOT NULL（ISO 8601）
+
+系统 SHALL 为该表创建索引 `idx_announcements_active_pinned_created` ON `(is_active, is_pinned, created_at)`。表与索引通过 Drizzle 迁移（0035）创建，迁移由 `deno task db:generate` 生成，不可手改 `_journal.json`。
+
+#### Scenario: 迁移建表
+
+- **WHEN** 执行 0035 迁移
+- **THEN** `announcements` 表与索引创建成功
+
+#### Scenario: 级联行为
+
+- **WHEN** 引用 `users.id` 的 `created_by` 用户被删除
+- **THEN** 按既有约束行为处理（`users` 表无级联删除，公告保留，字段为历史记录）
+
+### Requirement: 标签表（tags）
+
+系统 SHALL 提供 `tags` 表：`id`(TEXT, PK)、`name`(TEXT, NOT NULL, UNIQUE)、`kind`(TEXT, NOT NULL, CHECK in ('problem','algorithm'))、`created_at`(TEXT, NOT NULL)、`updated_at`(TEXT, NOT NULL)。
+
+#### Scenario: 创建 tags 表
+- **WHEN** 执行新增迁移
+- **THEN** `tags` 表、name 唯一约束与 kind CHECK 约束被创建
+
+### Requirement: 题目-标签关联表（problem_tags）
+
+系统 SHALL 提供 `problem_tags` 表：`problem_id`(TEXT, NOT NULL, FK→problems ON DELETE CASCADE)、`tag_id`(TEXT, NOT NULL, FK→tags ON DELETE CASCADE)，复合主键 (problem_id, tag_id)。
+
+#### Scenario: 创建 problem_tags 表
+- **WHEN** 执行新增迁移
+- **THEN** `problem_tags` 表、复合主键与两个级联外键被创建
+- **THEN** 同一 (problem_id, tag_id) 重复插入被拒绝
+
+### Requirement: 移除分类表
+
+系统 SHALL 在新增迁移中删除 `categories` 与 `problems_categories` 表，并清理 `permissions`/`role_permissions` 中 `resource='category'` 的行。
+
+#### Scenario: 分类表被移除
+- **WHEN** 执行新增迁移
+- **THEN** `categories`、`problems_categories` 表不存在
+- **THEN** `permissions` 表中不存在 `resource='category'` 的记录
 

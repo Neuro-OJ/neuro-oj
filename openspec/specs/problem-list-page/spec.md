@@ -12,7 +12,7 @@
 - **类型**（`type`）：标签展示（U=用户题 蓝色标签 / P=专题 紫色标签）
 - **标题**（`title`）：可点击的链接，点击跳转至 `/problems/:id`
 - **难度**（`difficulty`）：带颜色标识的标签，easy=绿色/简单、medium=黄色/中等、hard=红色/困难
-- **分类**（`categories`）：分类标签列表；无分类时显示 `--`
+- **标签**（`tags`）：题目标签列表；无标签时显示 `--`
 - **通过率**（`acceptance_rate`）：百分比展示
 - **通过状态**（已解决/尝试过/未开始）：图标或文字标识
 
@@ -91,26 +91,26 @@
 - **WHEN** 用户再次点击已选中的难度
 - **THEN** 系统移除 `difficulty` 参数，清除筛选
 
-### Requirement: 按分类筛选
+### Requirement: 按标签筛选
 
-系统 SHALL 提供分类筛选下拉选择器，分类数据通过 `GET /api/v1/categories` 获取。筛选值 SHALL 通过 URL 参数 `category_id` 反映。
+系统 SHALL 提供标签筛选下拉选择器，标签数据通过 `GET /api/v1/tags` 获取并按 kind 分组展示。筛选值 SHALL 通过 URL 参数 `tag` 反映。
 
-分类列表 SHALL 仅在页面加载时获取一次并在客户端缓存。
+标签列表 SHALL 仅在页面加载时获取一次并在客户端缓存。
 
-#### Scenario: 加载分类选项
+#### Scenario: 加载标签选项
 
 - **WHEN** 用户访问 `/problems` 页面
-- **THEN** 系统调用 `GET /api/v1/categories` 获取分类树并渲染为分类筛选下拉框
+- **THEN** 系统调用 `GET /api/v1/tags` 获取标签并按 kind 分组渲染为标签筛选下拉框
 
-#### Scenario: 按分类筛选
+#### Scenario: 按标签筛选
 
-- **WHEN** 用户选择某个分类（如"数据结构"）
-- **THEN** 系统发起 `GET /api/v1/problems?category_id=<id>` 请求
+- **WHEN** 用户选择某个标签（如"数据结构"）
+- **THEN** 系统发起 `GET /api/v1/problems?tag=<id>` 请求
 
-#### Scenario: 分类加载失败
+#### Scenario: 标签加载失败
 
-- **WHEN** 分类 API 请求失败
-- **THEN** 系统隐藏分类筛选控件，不阻塞题目列表展示
+- **WHEN** 标签 API 请求失败
+- **THEN** 系统隐藏标签筛选控件，不阻塞题目列表展示
 
 ### Requirement: 分页导航
 
@@ -165,7 +165,7 @@
 系统 SHALL 适配移动端和桌面端布局：
 
 - **桌面端**（≥768px）：完整表格展示，含所有列
-- **移动端**（<768px）：隐藏非关键列（时间限制、内存限制、分类），保留题号、标题、难度、通过率、通过状态
+- **移动端**（<768px）：隐藏非关键列（时间限制、内存限制、标签），保留题号、标题、难度、通过率、通过状态
 
 #### Scenario: 移动端表格适配
 

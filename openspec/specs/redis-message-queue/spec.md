@@ -169,3 +169,10 @@ noj-core SHALL 在启动时运行结果消费者，通过 BRPOP 阻塞等待 `no
 - **WHEN** Pub/Sub 功能启用
 - **THEN** `noj:judge:queue` 和 `noj:judge:results` 的 LPUSH/BRPOP
   行为不变，所有现有评测流程正常工作
+
+### Requirement: At-least-once 评测投递
+评测任务与结果队列消费 SHALL 采用 processing 列表确认机制，重复投递 MUST 被 `submission_id` + `rejudge_seq` 幂等逻辑吸收。
+
+#### Scenario: 消息重复到达
+- **WHEN** 同一 `submission_id` + `rejudge_seq` 的任务或结果被处理两次
+- **THEN** 第二次处理不得覆盖更新的状态或重复累计统计

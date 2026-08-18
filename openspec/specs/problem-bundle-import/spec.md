@@ -33,9 +33,9 @@
 | `difficulty` | ❌ | `easy`/`medium`/`hard`，缺省 `medium` |
 | `type` | ❌ | `U`/`P`，缺省 `U`（P 型仅 admin） |
 | `description` | ❌ | 与 `statement.md` 二选一；两者均存在时以文件为准 |
-| `categories` | ❌ | 字符串数组，按 name 匹配已有分类，缺省忽略 + warning |
+| `tags` | ❌ | 字符串数组，按 name 匹配已有标签，缺省忽略 + warning |
 | `samples` | ❌ | 预留字段（仅校验格式，不落库）：题目样例由展示层从题面（description）提取 |
-| `template` | ❌ | 模板文件索引（纯文件名，禁止 `/`、`\`、`..`），缺省 `"template.py"`；前端编辑器初始代码 |
+| `template` | ❌ | 模板文件索引（纯文件名，禁止 `/`、`\`、`..`），缺省 `"template.py"`；非法值（含 `/`、`\`、`..`）MUST 返回 HTTP 400 |
 
 #### Scenario: 题面缺失被拒
 
@@ -44,7 +44,7 @@
 
 #### Scenario: 完整 manifest 导入
 
-- **WHEN** `problem.json` 含全部必填字段与部分可选字段（`number`/`difficulty`/`type`/`categories`/`samples`）
+- **WHEN** `problem.json` 含全部必填字段与部分可选字段（`number`/`difficulty`/`type`/`tags`/`samples`/`template`）
 - **THEN** 系统校验通过并按其声明创建/更新题目
 
 #### Scenario: 必填字段缺失
@@ -74,6 +74,33 @@
 - **THEN** 系统校验通过（缺省默认 `"template.py"`），模板接口按该文件名读取源码目录内容
 - **WHEN** `template` 含 `/`、`\` 或 `..`
 - **THEN** 系统返回 HTTP 400，错误信息指明 `manifest.template` 非法
+
+### Requirement: manifest 模板索引（template 字段）
+
+系统 SHALL 支持 `problem.json` 顶层可选字段 `template`，用于索引题目源码目录中的模板文件（前端编辑器初始代码）。`template` MUST 为纯文件名（不含 `/`、`\`、`..`），缺省默认 `"template.py"`（保证未声明该字段的既有题目兼容）。
+
+模板读取接口 `GET /api/v1/problems/:id/template` SHALL 按 manifest `template` 字段（缺省 `"template.py"`）定位题目源码目录中的对应文件并返回内容；文件不存在 MUST 返回 HTTP 404。模板候选集 MUST 不再包含 `submission_sample.py` / `submission.py`（参考实现从模板回退链中移除，**BREAKING**：仅提供参考实现而未提供 `template.py` 的题目模板接口返回 404）。
+
+#### Scenario: 声明 template 字段
+
+- **WHEN** `problem.json` 含 `"template": "template.py"`
+- **THEN** 系统校验通过，模板接口按该文件名读取源码目录内容
+
+#### Scenario: 缺省 template 字段（兼容旧题目）
+
+- **WHEN** `problem.json` 不含 `template` 字段
+- **THEN** 系统按默认值 `"template.py"` 索引模板，行为与显式声明一致
+
+#### Scenario: 模板文件缺失返回 404
+
+- **WHEN** 题目源码目录中 `template.py` 不存在且 manifest 未声明其他模板文件
+- **THEN** `GET /api/v1/problems/:id/template` 返回 HTTP 404
+- **THEN** 系统不再回退读取 `submission_sample.py` / `submission.py`
+
+#### Scenario: 非法 template 值被拒
+
+- **WHEN** `template` 字段含 `/`、`\` 或 `..`
+- **THEN** 题目包导入返回 HTTP 400，错误信息指明 `manifest.template` 非法
 
 ### Requirement: 严格校验与 ZIP 安全
 
@@ -117,6 +144,8 @@
 
 upsert 语义：admin 提供 `number` 且 (type, number) 匹配既有题目 → 更新元数据并替换评测包；未命中 → 创建新题目（id 一律由服务端生成 UUID，(type, number) 由 DB 联合唯一约束保证唯一）。非 admin 的导入仅走创建路径。
 
+导入路径 SHALL 对 manifest 的 `runtime_config` 执行与 CRUD 相同的敏感字段权限检查与资源上限校验（见 `sensitive-field-permissions` 与 `problem-resource-limits` spec）：manifest 中显式包含的敏感字段/资源字段按同一守卫校验，无权限返回 HTTP 403、超限返回 HTTP 400。CLI `problems import`（root 用户，`admin:full_access`）SHALL 天然放行。
+
 #### Scenario: admin 导入新题（P 型）
 
 - **WHEN** admin 上传含 `type: "P"` 的合法统一包（无 `number`）
@@ -149,6 +178,18 @@ upsert 语义：admin 提供 `number` 且 (type, number) 匹配既有题目 → 
 - **WHEN** 上传文件扩展名非 `.zip` 或 Content-Type 非 zip
 - **THEN** 系统返回 HTTP 400，提示"仅支持 .zip 格式文件"
 
+#### Scenario: 导入含敏感字段的包受权限约束
+
+- **WHEN** 无 `problem:field_evaluator_command` 权限的用户导入 manifest 显式含 `evaluator.command` 的题目包
+- **THEN** 系统返回 HTTP 403，不创建、不更新题目
+- **WHEN** admin 或 CLI root 用户导入相同包
+- **THEN** 导入成功（`admin:full_access` 放行）
+
+#### Scenario: 导入超限包被拒
+
+- **WHEN** 对应 `judge_max_*` 上限已配置且 manifest 中资源字段值超限
+- **THEN** 系统返回 HTTP 400（`RESOURCE_LIMIT_EXCEEDED`），不创建、不更新题目
+
 #### Scenario: 审计日志
 
 - **WHEN** admin 或所有者成功导入/更新题目
@@ -156,7 +197,7 @@ upsert 语义：admin 提供 `number` 且 (type, number) 匹配既有题目 → 
 
 ### Requirement: CLI 管理工具集
 
-系统 SHALL 提供基于 Cliffy 的单入口 CLI（`scripts/noj.ts`，task 前缀 `noj`），以子命令形式承载全部管理操作：`db migrate`（迁移）、`init system`（系统基础数据：root 用户 + RBAC 预置 + 镜像白名单 + 分类）、`bootstrap admin`（管理员引导，支持 `--email`/`--password` 传参）、`problems build`（源目录 → 统一题目包构建，`--id` 可选）、`problems import`（扫描目录导入统一题目包，`--dir` 可选）、`dev-setup`（开发环境聚合命令）。
+系统 SHALL 提供基于 Cliffy 的单入口 CLI（`scripts/noj.ts`，task 前缀 `noj`），以子命令形式承载全部管理操作：`db migrate`（迁移）、`init system`（系统基础数据：root 用户 + RBAC 预置 + 镜像白名单 + 标签）、`bootstrap admin`（管理员引导，支持 `--email`/`--password` 传参）、`problems build`（源目录 → 统一题目包构建，`--id` 可选）、`problems import`（扫描目录导入统一题目包，`--dir` 可选）、`dev-setup`（开发环境聚合命令）。
 
 `dev-setup` MUST 聚合 `db migrate` + `init system` + `bootstrap admin` + `problems build` + `problems import`，并额外填充仅适用于开发/测试环境的数据（示例题、E2E 守卫用户）；生产环境初始化 MUST 不执行 `dev-setup` 的 dev 数据部分。
 

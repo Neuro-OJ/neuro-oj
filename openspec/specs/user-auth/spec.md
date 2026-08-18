@@ -327,3 +327,33 @@ JWT 负载 MUST 包含 `must_change_password: boolean` claim，签发与验证�
 
 - **WHEN** `authMiddleware` 验证 JWT
 - **THEN** 中间件将 `payload.must_change_password` 写入 `c.set("mustChangePassword", ...)`，供下游使用
+
+### Requirement: JWT 不携带权限快照
+
+JWT 负载 SHALL NOT 包含 `is_admin` 或权限集合类 claim。管理员/权限判定 SHALL 由中间件通过 `resolvePermissions`（请求级缓存）实时查询数据库权限集完成，权限变更即时生效，无需重新登录。
+
+JWT 负载中的 `role` claim SHALL 仅用于审计日志（`actorRole`）与展示，不具备任何权限判定语义。
+
+#### Scenario: 签发 JWT 不含 is_admin
+
+- **WHEN** `loginUser()` 为任意用户签发 JWT
+- **THEN** JWT payload 不包含 `is_admin` 字段
+
+#### Scenario: 权限变更无需重新登录生效
+
+- **WHEN** 管理员移除某用户的 `admin:full_access` 权限，该用户使用既有 JWT 发起请求
+- **THEN** `requireAdmin()` 基于实时权限查询返回 403，旧 token 中的任何 `is_admin` claim 均被忽略
+
+### Requirement: JWT 算法与实时状态检查
+JWT 验证 SHALL 固定 HS256；认证中间件 MUST 对封禁用户拒绝读写请求，且不得信任 JWT 中的静态 role 作为 RBAC 或客观题权限依据。
+
+#### Scenario: 封禁用户旧 JWT 访问
+- **WHEN** 用户被封禁后携带既有 JWT 请求
+- **THEN** 认证失败并返回 403/401
+
+### Requirement: 高风险端点限流
+注册、忘记/重置密码、私信发送与提交创建端点 SHALL 实施 IP 或用户维度速率限制。
+
+#### Scenario: 高频注册
+- **WHEN** 同一 IP 在窗口内超过注册限制
+- **THEN** 服务端返回 429，不创建账号

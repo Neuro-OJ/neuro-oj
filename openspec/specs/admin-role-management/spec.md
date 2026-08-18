@@ -10,7 +10,7 @@
 
 #### Scenario: 管理员获取角色列表
 - **WHEN** 管理员 GET `/api/v1/admin/roles`
-- **THEN** 系统返回角色数组，每个角色包含 `id`, `name`, `description`, `is_system`, `is_default`, `is_admin`, `parent_id`, `parent_name`, `permissions`（权限 ID 数组）
+- **THEN** 系统返回角色数组，每个角色包含 `id`, `name`, `description`, `is_system`, `is_default`, `parent_id`, `parent_name`, `permissions`（权限 ID 数组）
 
 #### Scenario: 非管理员访问被拒绝
 - **WHEN** 普通用户 GET `/api/v1/admin/roles`
@@ -20,7 +20,7 @@
 
 系统 SHALL 提供 `POST /api/v1/admin/roles` 端点，允许管理员创建自定义角色。请求体包含 `name`（必填）、`description`（可选）、`parent_id`（可选，父角色 UUID）、`permission_ids`（可选，权限 UUID 数组）。
 
-新创建的角色 `is_system=false`、`is_admin=false`、`is_default=false`。
+新创建的角色 `is_system=false`、`is_default=false`。
 
 #### Scenario: 管理员创建角色成功
 - **WHEN** 管理员 POST `/api/v1/admin/roles` 传入 `{ "name": "moderator", "parent_id": "<user-uuid>", "permission_ids": ["<uuid1>", "<uuid2>"] }`
@@ -87,7 +87,7 @@
 - **THEN** 系统替换该用户的所有角色关联为新列表，返回更新后的用户信息
 
 #### Scenario: 移除用户的所有管理员角色
-- **WHEN** 管理员尝试将最后一个拥有 `is_admin=true` 角色的用户的 admin 角色移除
+- **WHEN** 管理员尝试将最后一个权限集包含 `admin:full_access` 的用户的 admin 角色移除
 - **THEN** 系统返回 HTTP 400，提示至少保留一个管理员
 
 #### Scenario: 管理员不能修改自己的角色
@@ -100,7 +100,7 @@
 - 角色列表表格（名称、继承自、默认标记、管理员标记、是否为系统角色、操作按钮）
 - 系统角色显示 🔒 图标，仅可查看不可编辑/删除
 - 新建/编辑角色弹窗：名称输入框、描述输入框、父角色下拉选择器
-- **管理员角色特殊处理**：若编辑的角色 `is_admin=true`，权限勾选区域**不可见**，显示提示"⚠️ 管理员角色隐式拥有所有权限，无需单独配置"
+- **管理员角色特殊处理**：若编辑的角色权限集包含 `admin:full_access`，权限勾选区域**不可见**，显示提示"⚠️ 管理员角色隐式拥有所有权限，无需单独配置"
 - 非管理员角色：显示按 resource 分组的权限勾选列表
   - 继承自父角色的权限 → 灰色 🔒（复选框 disabled，不可取消，title 提示"来自继承角色"）
   - 额外分配的权限 → 正常勾选（可自由增删）
@@ -113,8 +113,8 @@
 - **WHEN** 管理员点击"新建角色"，填写名称，选择父角色，勾选权限，点击保存
 - **THEN** 新角色出现在列表中
 
-#### Scenario: 编辑 is_admin 角色时权限区域不可见
-- **WHEN** 管理员编辑 `is_admin=true` 的角色（如系统默认 "admin" 角色）
+#### Scenario: 编辑 admin:full_access 角色时权限区域不可见
+- **WHEN** 管理员编辑权限集包含 `admin:full_access` 的角色（如系统默认 "admin" 角色）
 - **THEN** 权限勾选区域不渲染，显示提示文字"⚠️ 管理员角色隐式拥有所有权限，无需单独配置"
 
 #### Scenario: 编辑时看到继承权限（锁定显示）

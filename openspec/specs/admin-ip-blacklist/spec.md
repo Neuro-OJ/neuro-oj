@@ -98,7 +98,7 @@
 - 操作列：删除按钮 → `useDialog().confirm()` 二次确认 → `DELETE /api/v1/admin/blacklist/:id`
 - 分页（`PaginationNav`）+ 搜索（按 ip_or_cidr 模糊）
 
-页面 SHALL 复用 `AdminTable` / `AdminModal` / `useDialog` / `useToast`，与 `pages/admin/categories.vue` 风格保持一致。
+页面 SHALL 复用 `AdminTable` / `AdminModal` / `useDialog` / `useToast`，与 `pages/admin/tags.vue` 风格保持一致。
 
 #### Scenario: admin 访问页面
 
