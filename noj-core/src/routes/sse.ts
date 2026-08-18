@@ -4,15 +4,15 @@ import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
 import type { OptionalAuthEnv } from "../middleware/auth.ts";
 import { Channels, onEvent } from "../lib/event-bus.ts";
 import { createSseStream } from "../lib/sse-stream.ts";
-import { getSubmission } from "../services/submissions.ts";
+import { getSubmission } from "../services/submissions/submissions.ts";
 import { getQueueOverview } from "../services/queue.ts";
 import { checkPermission } from "../lib/permissions.ts";
 import {
   getCachedTodayStats,
   getCachedTotalStats,
 } from "../services/stats-cache.ts";
-import { getContestRanking } from "../services/contest-ranking.ts";
-import { getContest } from "../services/contests.ts";
+import { getContestRanking } from "../services/contest/contest-ranking.ts";
+import { getContest } from "../services/contest/contests.ts";
 import { NotFoundError } from "../lib/errors.ts";
 
 /**

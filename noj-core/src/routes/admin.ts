@@ -4,7 +4,7 @@ import { parseJsonBody } from "../lib/request.ts";
 import { BadRequestError, ValidationError } from "../lib/errors.ts";
 import { listUsers } from "../services/auth.ts";
 import { getDashboardStats } from "../services/dashboard.ts";
-import { listAllProblems } from "../services/problems.ts";
+import { listAllProblems } from "../services/problems/problems.ts";
 import {
   createJudgeImage,
   deleteJudgeImage,
@@ -21,7 +21,7 @@ import {
   listSubmissions,
   rejudgeProblemSubmissions,
   rejudgeSubmission,
-} from "../services/submissions.ts";
+} from "../services/submissions/submissions.ts";
 import {
   adminUpdateUserProfile,
   banUser,
@@ -55,7 +55,7 @@ import {
   listParticipants,
   removeParticipant,
   updateContest,
-} from "../services/contests.ts";
+} from "../services/contest/contests.ts";
 import type {
   CreateContestInput,
   UpdateContestInput,

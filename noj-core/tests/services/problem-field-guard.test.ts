@@ -22,9 +22,9 @@ import {
 } from "../../src/db/schema.ts";
 import { AppError, ForbiddenError } from "../../src/lib/errors.ts";
 import { ROOT_USER_ID } from "../../src/lib/constants.ts";
-import { ensureRbacSeeds } from "../../src/services/seed-rbac.ts";
-import { createProblem, updateProblem } from "../../src/services/problems.ts";
-import { importProblemBundle } from "../../src/services/problem-bundle.ts";
+import { ensureRbacSeeds } from "../../src/services/seed/seed-rbac.ts";
+import { createProblem, updateProblem } from "../../src/services/problems/problems.ts";
+import { importProblemBundle } from "../../src/services/problems/problem-bundle.ts";
 import {
   resetSetting,
   updateSetting,

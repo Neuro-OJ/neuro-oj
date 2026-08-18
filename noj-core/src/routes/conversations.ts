@@ -15,7 +15,7 @@ import {
   markConversationRead,
   sendMessage,
 } from "../services/messages.ts";
-import { getCommunityConfig } from "../services/community.ts";
+import { getCommunityConfig } from "../services/community/community.ts";
 import { enforceMessageSendRateLimit } from "../lib/hardening-rate-limit.ts";
 
 /** 消息内容最大长度 */

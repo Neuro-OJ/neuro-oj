@@ -17,11 +17,11 @@ import {
   createClarification,
   listClarifications,
   replyToClarification,
-} from "../../src/services/contest-clarifications.ts";
+} from "../../src/services/contest/contest-clarifications.ts";
 import {
   createContest,
   registerForContest,
-} from "../../src/services/contests.ts";
+} from "../../src/services/contest/contests.ts";
 
 await resetDbForTest();
 

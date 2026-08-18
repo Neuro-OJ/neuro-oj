@@ -19,15 +19,15 @@ import { HelpCommand } from "@cliffy/command/help";
 import { CompletionsCommand } from "@cliffy/command/completions";
 import { runMigrations } from "../src/db/migrate.ts";
 import { ensureRootUser } from "../src/services/auth.ts";
-import { ensureRbacSeeds } from "../src/services/seed-rbac.ts";
+import { ensureRbacSeeds } from "../src/services/seed/seed-rbac.ts";
 import {
   ensureAdminFromEnv,
   ensureBootstrapAdmin,
   ensureE2EPwChangeUser,
   seedCategories,
   seedJudgeImages,
-} from "../src/services/seed-system.ts";
-import { importProblemBundle } from "../src/services/problem-bundle.ts";
+} from "../src/services/seed/seed-system.ts";
+import { importProblemBundle } from "../src/services/problems/problem-bundle.ts";
 import { isValidTemplateFileName } from "../src/types/problem-bundle.ts";
 import { ROOT_USER_ID } from "../src/lib/constants.ts";
 

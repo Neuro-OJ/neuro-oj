@@ -65,6 +65,6 @@ export async function setupSchemaForTest(): Promise<void> {
   );
 
   // 种子 RBAC 数据
-  const { ensureRbacSeeds } = await import("../src/services/seed-rbac.ts");
+  const { ensureRbacSeeds } = await import("../src/services/seed/seed-rbac.ts");
   await ensureRbacSeeds();
 }

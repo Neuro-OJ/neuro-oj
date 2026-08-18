@@ -64,7 +64,7 @@ import {
   updateBoardRoleGrant,
   updateComment,
   updatePost,
-} from "../services/community.ts";
+} from "../services/community/community.ts";
 
 const router = new Hono<OptionalAuthEnv>();
 
