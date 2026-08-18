@@ -6,6 +6,7 @@ import stats from "./routes/stats.ts";
 import auth from "./routes/auth.ts";
 import admin from "./routes/admin.ts";
 import adminAnnouncements from "./routes/admin-announcements.ts";
+import adminTrainings from "./routes/admin-trainings.ts";
 import tags from "./routes/tags.ts";
 import problems from "./routes/problems.ts";
 import checkin from "./routes/checkin.ts";
@@ -17,6 +18,7 @@ import conversations from "./routes/conversations.ts";
 import community from "./routes/community.ts";
 import search from "./routes/search.ts";
 import contests from "./routes/contests.ts";
+import trainings from "./routes/trainings.ts";
 import announcements from "./routes/announcements.ts";
 import sse, { contestSse, statsSse } from "./routes/sse.ts";
 import { AppError } from "./lib/errors.ts";
@@ -146,6 +148,7 @@ export function createApp(): Hono {
   // 公告管理：细粒度权限（admin:full_access 通配放行 或 announcement:manage），
   // 独立于 admin 实例（admin 实例组级 adminMiddleware 仅放行 full_access）
   app.route("/api/v1/admin/announcements", adminAnnouncements);
+  app.route("/api/v1/admin/trainings", adminTrainings);
   app.route("/api/v1/tags", tags);
   app.route("/api/v1/problems", problems);
   app.route("/api/v1/checkin", checkin);
@@ -156,6 +159,7 @@ export function createApp(): Hono {
   app.route("/api/v1/conversations", conversations);
   app.route("/api/v1/community", community);
   app.route("/api/v1/contests", contests);
+  app.route("/api/v1/trainings", trainings);
   app.route("/api/v1/search", search);
   // 公告公开路由：必须在 sse 之前注册——sse 实例的全局 authMiddleware
   // 会拦截所有挂载在其后的路由；公告 SSE 端点 /announcements/events

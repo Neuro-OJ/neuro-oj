@@ -164,6 +164,26 @@ export const SCHEMA_DDL: string[] = [
     created_at TEXT NOT NULL
   )`,
 
+  // 3.4 trainings（题单，issue #224）
+  `CREATE TABLE IF NOT EXISTS trainings (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'unlisted', 'public')),
+    is_pinned BOOLEAN NOT NULL DEFAULT false,
+    created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS training_problems (
+    training_id TEXT NOT NULL REFERENCES trainings(id) ON DELETE CASCADE,
+    problem_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (training_id, problem_id),
+    UNIQUE (training_id, position)
+  )`,
+
   // 6. submissions
   `CREATE TABLE IF NOT EXISTS submissions (
     id TEXT PRIMARY KEY,
@@ -487,6 +507,10 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_contests_end_time ON contests (end_time)",
   "CREATE INDEX IF NOT EXISTS idx_contest_clarifications_contest ON contest_clarifications (contest_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_contest_participants_user ON contest_participants (user_id)",
+  // 题单索引（issue #224）
+  "CREATE INDEX IF NOT EXISTS idx_trainings_visibility_pinned_created ON trainings (visibility, is_pinned, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_trainings_created_by ON trainings (created_by)",
+  "CREATE INDEX IF NOT EXISTS idx_training_problems_training_position ON training_problems (training_id, position)",
   // 客观题表索引（与 schema.ts 定义一致，PGlite 测试模式）
   "CREATE INDEX IF NOT EXISTS idx_objective_questions_paper_id ON objective_questions (paper_id)",
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_paper_id ON objective_submissions (paper_id)",
@@ -572,6 +596,8 @@ export const ALL_TABLES = [
   "contest_problems",
   "contest_participants",
   "contest_clarifications",
+  "trainings",
+  "training_problems",
   "submissions",
   "evaluation_results",
   "check_ins",

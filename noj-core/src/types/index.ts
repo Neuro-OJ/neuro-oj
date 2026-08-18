@@ -255,6 +255,16 @@ export const PERMISSION_DEFS: Array<{
     action: "manage",
     description: "管理社区板块",
   },
+  // 题单（training）
+  { resource: "training", action: "create", description: "创建题单" },
+  { resource: "training", action: "read", description: "查看题单" },
+  { resource: "training", action: "read_any", description: "查看任意题单" },
+  { resource: "training", action: "write_own", description: "编辑自己的题单" },
+  { resource: "training", action: "write_any", description: "编辑任意题单" },
+  { resource: "training", action: "delete_own", description: "删除自己的题单" },
+  { resource: "training", action: "delete_any", description: "删除任意题单" },
+  { resource: "training", action: "publish", description: "将题单设为公开" },
+  { resource: "training", action: "pin", description: "置顶题单" },
   // 公告
   { resource: "announcement", action: "manage", description: "管理公告" },
   // 系统

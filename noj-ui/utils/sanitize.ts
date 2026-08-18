@@ -70,38 +70,35 @@ function decodeHtmlEntities(value: string): string {
   return value
     .replace(/&#x([0-9a-f]+);/gi, (_m, hex: string) => {
       const code = parseInt(hex, 16);
-      return Number.isFinite(code) && code > 0 && code <= 0x10ffff
-        ? String.fromCodePoint(code)
-        : "";
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '';
     })
     .replace(/&#([0-9]+);/g, (_m, dec: string) => {
       const code = parseInt(dec, 10);
-      return Number.isFinite(code) && code > 0 && code <= 0x10ffff
-        ? String.fromCodePoint(code)
-        : "";
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '';
     })
     .replace(
       /&(nbsp|amp|lt|gt|quot|apos|colon|tab|newline);/gi,
       (_m, name: string) =>
         ({
-          nbsp: "\u00a0",
-          amp: "&",
-          lt: "<",
-          gt: ">",
+          nbsp: '\u00a0',
+          amp: '&',
+          lt: '<',
+          gt: '>',
           quot: '"',
           apos: "'",
-          colon: ":",
-          tab: "\t",
-          newline: "\n",
-        })[name.toLowerCase()] ?? "",
+          colon: ':',
+          tab: '\t',
+          newline: '\n',
+        })[name.toLowerCase()] ?? '',
     );
 }
 
 /** 归一化 URL 用于协议判断：实体解码 + 去除浏览器会忽略的控制/空白字符。 */
 function isUnsafeUrl(value: string): boolean {
   const decoded = decodeHtmlEntities(value).replace(
+    // deno-lint-ignore no-control-regex -- 需要剥离 URL 中的控制字符
     /[\u0000-\u0020\u007f-\u009f\u00a0]+/g,
-    "",
+    '',
   );
   if (!/^[a-z][a-z0-9+.-]*:/i.test(decoded)) return false;
   return !SAFE_URL_PROTOCOLS.test(decoded);

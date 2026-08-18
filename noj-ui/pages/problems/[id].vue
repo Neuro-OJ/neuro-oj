@@ -165,14 +165,17 @@ const publishBlockReason = computed(() => {
               </div>
               <h1 class="text-2xl font-bold mb-3 text-text">{{ problem.title }}</h1>
             </div>
-            <NuxtLink
-              v-if="canEdit"
-              :to="`/problems/${problem.id}/edit`"
-              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg text-text-secondary hover:text-primary hover:border-primary/40 transition-colors"
-            >
-              <UIcon name="i-lucide-pencil" class="size-3.5" />
-              编辑
-            </NuxtLink>
+            <div class="flex items-center gap-2">
+              <AddToTrainingMenu v-if="isLoggedIn" :problem-id="problem.id" />
+              <NuxtLink
+                v-if="canEdit"
+                :to="`/problems/${problem.id}/edit`"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg text-text-secondary hover:text-primary hover:border-primary/40 transition-colors"
+              >
+                <UIcon name="i-lucide-pencil" class="size-3.5" />
+                编辑
+              </NuxtLink>
+            </div>
           </div>
           <div class="flex items-center gap-5 flex-wrap">
             <DifficultyBadge :difficulty="problem.difficulty" />

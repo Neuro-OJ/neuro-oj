@@ -44,6 +44,10 @@ const USER_DEFAULT_PERMISSIONS: Array<{ resource: string; action: string }> = [
   { resource: "community", action: "react" },
   { resource: "community", action: "follow" },
   { resource: "community", action: "report" },
+  { resource: "training", action: "create" },
+  { resource: "training", action: "read" },
+  { resource: "training", action: "write_own" },
+  { resource: "training", action: "delete_own" },
 ];
 
 // NOJ-062：普通注册用户不得默认持有 evaluator.command/network 等敏感字段

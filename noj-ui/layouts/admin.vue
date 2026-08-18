@@ -34,6 +34,7 @@ const navGroups: NavGroup[] = [
       { label: "题目管理", to: "/admin/problems", icon: 'i-lucide-book-open' },
       { label: "标签管理", to: "/admin/tags", icon: 'i-lucide-tags' },
       { label: "竞赛管理", to: "/admin/contests", icon: 'i-lucide-trophy' },
+      { label: "题单管理", to: "/admin/trainings", icon: 'i-lucide-list-todo' },
       { label: "提交管理", to: "/admin/submissions", icon: 'i-lucide-files' },
       { label: "评测镜像", to: "/admin/judge-images", icon: 'i-lucide-container' },
       { label: "社区管理", to: "/admin/community", icon: 'i-lucide-messages-square' },

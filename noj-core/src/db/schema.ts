@@ -373,6 +373,62 @@ export const contestProblems = pgTable(
 );
 
 /**
+ * 题单主表（issue #224）。
+ * visibility: private=仅创建者 / unlisted=URL 可访问 / public=出现在题单列表页。
+ */
+export const trainings = pgTable(
+  "trainings",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    visibility: text("visibility").notNull().default("private"),
+    is_pinned: boolean("is_pinned").notNull().default(false),
+    created_by: text("created_by").notNull().references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    visibilityCheck: check(
+      "trainings_visibility_check",
+      sql`${table.visibility} IN ('private', 'unlisted', 'public')`,
+    ),
+    visibilityPinnedCreatedIdx: index(
+      "idx_trainings_visibility_pinned_created",
+    ).on(table.visibility, table.is_pinned, table.created_at),
+    createdByIdx: index("idx_trainings_created_by").on(table.created_by),
+  }),
+);
+
+/**
+ * 题单题目关联表。
+ * position 在单个题单内保持唯一；题目删除时级联清理。
+ */
+export const trainingProblems = pgTable(
+  "training_problems",
+  {
+    training_id: text("training_id")
+      .notNull()
+      .references(() => trainings.id, { onDelete: "cascade" }),
+    problem_id: text("problem_id")
+      .notNull()
+      .references(() => problems.id, { onDelete: "cascade" }),
+    position: integer("position").notNull().default(0),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.training_id, table.problem_id] }),
+    positionUnique: unique(
+      "training_problems_training_position_unique",
+    ).on(table.training_id, table.position),
+    trainingPositionIdx: index(
+      "idx_training_problems_training_position",
+    ).on(table.training_id, table.position),
+  }),
+);
+
+/**
  * 竞赛参与者表。
  */
 export const contestParticipants = pgTable(
