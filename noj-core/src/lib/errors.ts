@@ -84,8 +84,12 @@ export class NotFoundError extends AppError {
  * 用于请求参数或内容错误。
  */
 export class BadRequestError extends AppError {
-  constructor(message: string) {
-    super(message, 400, "BAD_REQUEST");
+  constructor(
+    message: string,
+    code?: string,
+    meta?: Record<string, unknown>,
+  ) {
+    super(message, 400, code, meta);
     this.name = "BadRequestError";
   }
 }

@@ -45,7 +45,8 @@
     "@electric-sql/pglite": "npm:@electric-sql/pglite@^0.5.3",
     "@aws-sdk/client-s3": "npm:@aws-sdk/client-s3@^3",
     "@aws-sdk/s3-request-presigner": "npm:@aws-sdk/s3-request-presigner@^3",
-    "fflate": "npm:fflate@~0.8.3"
+    "fflate": "npm:fflate@~0.8.3",
+    "otpauth": "npm:otpauth@^9"
   },
   "nodeModulesDir": "auto",
   "fmt": {

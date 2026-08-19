@@ -71,6 +71,8 @@ env:
   # 统一使用此值；任何一处修改必须同步另外两处。
   # 长度 ≥32 满足 noj-core main.ts 的 JWT_SECRET ≥ 32 字符校验。
   JWT_SECRET: e2e-ci-secret-fixed-value-with-32-chars-min-abc
+  # TFA_ENCRYPTION_KEY 单一来源，与 docker-compose.e2e.yml / env.e2e.template 保持一致。
+  TFA_ENCRYPTION_KEY: e2e-ci-tfa-encryption-key-with-32-chars-min-abc
   NOJ_RUN_E2E: "1"
   BCRYPT_SALT_ROUNDS: 4
   DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
@@ -303,6 +305,7 @@ jobs:
             e2e/28_clarifications.test.ts \
             e2e/29_avatar.test.ts \
             e2e/30_self_test.test.ts \
+            e2e/31_tfa.test.ts \
             e2e/trainings.test.ts &
           p3=$!
           fail=0

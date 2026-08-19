@@ -44,6 +44,22 @@
       @focus="fieldErrors.password = ''"
     />
 
+    <TextInput
+      v-if="tfaRequired"
+      id="code"
+      v-model="form.code"
+      label="两步验证码"
+      placeholder="6 位验证码或恢复码"
+      autocomplete="one-time-code"
+      :disabled="loading"
+      :error="fieldErrors.code"
+      @focus="fieldErrors.code = ''"
+    >
+      <template #icon>
+        <UIcon name="i-lucide-shield-check" class="size-4.5" />
+      </template>
+    </TextInput>
+
     <template #footer>
       <p class="mb-2">
         还没有账号？<NuxtLink to="/register" class="text-primary no-underline font-semibold hover:underline">立即注册</NuxtLink>
@@ -65,8 +81,9 @@ const auth = useAuth()
 const route = useRoute()
 const { error, setError, clearError } = useFormError()
 
-const form = reactive({ login: "", password: "" })
+const form = reactive({ login: "", password: "", code: "" })
 const loading = ref(false)
+const tfaRequired = ref(false)
 
 // 注册成功后的提示
 const registeredMsg = ref("")
@@ -81,12 +98,14 @@ if (route.query.registered === "1") {
 const fieldErrors = reactive({
   login: "",
   password: "",
+  code: "",
 })
 
 function validate(): boolean {
   let valid = true
   fieldErrors.login = ""
   fieldErrors.password = ""
+  fieldErrors.code = ""
 
   if (!form.login.trim()) {
     fieldErrors.login = "请输入用户名或邮箱"
@@ -98,6 +117,11 @@ function validate(): boolean {
     valid = false
   }
 
+  if (tfaRequired.value && !form.code.trim()) {
+    fieldErrors.code = "请输入验证码或恢复码"
+    valid = false
+  }
+
   return valid
 }
 
@@ -106,7 +130,11 @@ async function handleLogin() {
 
   loading.value = true
   try {
-    const { user: loggedInUser } = await auth.login(form.login.trim(), form.password)
+    const { user: loggedInUser } = await auth.login(
+      form.login.trim(),
+      form.password,
+      tfaRequired.value ? form.code.trim() : undefined,
+    )
     // issue #75：临时引导管理员首次登录必须改密
     if (loggedInUser?.must_change_password === true) {
       router.replace("/change-password")
@@ -121,6 +149,12 @@ async function handleLogin() {
       bannedMsg.value = until
         ? `账号已被封禁至 ${until}。${reason ? `原因：${reason}。` : ""}请联系管理员。`
         : `账号已被封禁。${reason ? `原因：${reason}。` : ""}请联系管理员。`;
+      return;
+    }
+    // TFA：密码已通过，提示输入第二步验证码
+    if (e.data?.code === "TFA_REQUIRED") {
+      tfaRequired.value = true
+      setError("")
       return;
     }
     setError(extractApiError(e).message)

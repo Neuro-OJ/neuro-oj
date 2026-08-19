@@ -17,6 +17,7 @@ import { comparePassword, hashPassword } from "../lib/password.ts";
 import { getAdminUserIds, isUserAdmin } from "../lib/permissions.ts";
 import { signToken } from "../lib/jwt.ts";
 import { logAuthEvent } from "./audit-log.ts";
+import { verifyTfaCodeForUser } from "./tfa.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -99,6 +100,7 @@ function toUserResponse(
     must_change_password: row.must_change_password,
     active_ban: options?.activeBan ?? null,
     avatar_url: row.avatar_url ?? null,
+    tfa_enabled: row.tfa_enabled,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -192,6 +194,7 @@ export async function registerUser(
     must_change_password: false,
     active_ban: null,
     avatar_url: null,
+    tfa_enabled: false,
     created_at: now,
     updated_at: now,
   };
@@ -298,6 +301,30 @@ export async function loginUser(
         reason: activeBan[0].reason,
         until: activeBan[0].banned_until,
       });
+    }
+  }
+
+  // TFA 二次验证（issue #228）：已启用用户必须提供 TOTP 或恢复码
+  if (user.tfa_enabled) {
+    if (!input.code) {
+      throw new BadRequestError("需要两步验证码", "TFA_REQUIRED");
+    }
+    const tfaValid = await verifyTfaCodeForUser(
+      user.id,
+      input.code,
+      clientIp ?? "unknown",
+    );
+    if (!tfaValid) {
+      await logAuthEvent(
+        user.id,
+        clientIp ?? "unknown",
+        "auth.login_failure",
+        {
+          reason: "wrong_tfa_code",
+          login: input.login,
+        },
+      );
+      throw new UnauthorizedError("用户名或密码错误");
     }
   }
 
@@ -438,6 +465,7 @@ export async function listUsers(
         email: users.email,
         must_change_password: users.must_change_password,
         avatar_url: users.avatar_url,
+        tfa_enabled: users.tfa_enabled,
         created_at: users.created_at,
         updated_at: users.updated_at,
         // 活跃封禁信息（LEFT JOIN user_bans）
@@ -485,6 +513,7 @@ export async function listUsers(
     is_admin: allAdminIds.has(row.id),
     must_change_password: row.must_change_password,
     avatar_url: row.avatar_url ?? null,
+    tfa_enabled: row.tfa_enabled,
     created_at: row.created_at,
     updated_at: row.updated_at,
     active_ban: row.ban_reason !== null
@@ -589,6 +618,7 @@ export async function changePassword(
     must_change_password: false,
     active_ban: null,
     avatar_url: user.avatar_url ?? null,
+    tfa_enabled: user.tfa_enabled,
     created_at: user.created_at,
     updated_at: now,
   };

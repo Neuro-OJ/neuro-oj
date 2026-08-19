@@ -16,6 +16,8 @@ export const SCHEMA_DDL: string[] = [
     community_activity_visibility TEXT NOT NULL DEFAULT 'following'
       CHECK (community_activity_visibility IN ('hidden', 'following', 'everyone')),
     avatar_url TEXT,
+    tfa_secret_encrypted TEXT,
+    tfa_enabled BOOLEAN NOT NULL DEFAULT false,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     search_vector tsvector GENERATED ALWAYS AS (
@@ -254,6 +256,15 @@ export const SCHEMA_DDL: string[] = [
     created_at TEXT NOT NULL
   )`,
 
+  // 9.1 tfa_recovery_codes（issue #228）
+  `CREATE TABLE IF NOT EXISTS tfa_recovery_codes (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL
+  )`,
+
   // 10. conversations
   `CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
@@ -321,6 +332,8 @@ export const SCHEMA_DDL: string[] = [
       -- PR-2 新增 auth.* 动作
       'auth.login_success','auth.login_failure','auth.register',
       'auth.change_password','auth.forgot_password_request','auth.password_reset',
+      'auth.tfa_setup','auth.tfa_enabled','auth.tfa_disabled',
+      'auth.tfa_recovery_regenerated','auth.tfa_recovery_used',
       'community.post_moderated','community.report_resolved',
       'community.sanction_created','community.sanction_revoked','community.preset_applied',
       'announcement.create','announcement.update','announcement.delete')
@@ -628,6 +641,7 @@ export const ALL_TABLES = [
   "evaluation_results",
   "check_ins",
   "password_reset_tokens",
+  "tfa_recovery_codes",
   "conversations",
   "messages",
   "conversation_reads",

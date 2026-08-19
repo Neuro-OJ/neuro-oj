@@ -37,6 +37,7 @@
     "npm:jose@5": "5.10.0",
     "npm:keyv@4": "4.5.4",
     "npm:keyv@5": "5.6.0",
+    "npm:otpauth@9": "9.5.1",
     "npm:postgres@*": "3.4.5",
     "npm:postgres@3.4.5": "3.4.5",
     "npm:tencentcloud-sdk-nodejs-ses@^4.1.247": "4.1.247"
@@ -842,6 +843,9 @@
     "@keyv/serialize@1.1.1": {
       "integrity": "sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA=="
     },
+    "@noble/hashes@2.2.0": {
+      "integrity": "sha512-IYqDGiTXab6FniAgnSdZwgWbomxpy9FtYvLKs7wCUs2a8RkITG+DFGO1DM9cr+E3/RgADRpFjrKVaJ1z6sjtEg=="
+    },
     "@smithy/core@3.29.0": {
       "integrity": "sha512-sEvpvkBVoMxjoek35XyJFn2ZD3EJ1RpiZrT47WaZodxzAIWS44zkdvbqGE/ZlugtjiQp62cffYZ9ldyRkjAGnA==",
       "dependencies": [
@@ -1296,6 +1300,12 @@
         "whatwg-url"
       ]
     },
+    "otpauth@9.5.1": {
+      "integrity": "sha512-fJmDAHc8wImfqqqOXIlBvT1dEKrZK0Cmb2VEgScpNTolCz0PHh6ExUZGv4sLtOsWNaHCQlD+rRqaPgnoxFoZjQ==",
+      "dependencies": [
+        "@noble/hashes"
+      ]
+    },
     "pg-int8@1.0.1": {
       "integrity": "sha512-WCtabS6t3c8SkpDBUlb1kjOs7l66xsGdKpIPZsg4wR+B3+u9UAum2odSsF9tnvxg80h4ZxLWMy4pRjOsFIqQpw=="
     },
@@ -1733,6 +1743,7 @@
       "npm:hono@4",
       "npm:ioredis@5.11.1",
       "npm:jose@5",
+      "npm:otpauth@9",
       "npm:postgres@3.4.5",
       "npm:tencentcloud-sdk-nodejs-ses@^4.1.247"
     ],

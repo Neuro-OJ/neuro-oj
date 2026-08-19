@@ -14,6 +14,8 @@ export interface RegisterInput {
 export interface LoginInput {
   login: string;
   password: string;
+  /** TFA 验证码或恢复码；用户已启用 TFA 时必填 */
+  code?: string;
 }
 
 /**
@@ -50,6 +52,8 @@ export interface UserResponse {
   active_ban: { reason: string; banned_until: string | null } | null;
   /** 用户头像存储 URL（`noj-storage://`），null = 未设置 */
   avatar_url: string | null;
+  /** 是否已启用 TFA 二次验证 */
+  tfa_enabled: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -23,10 +23,12 @@
     "markdown-it": "^14.3.0",
     "monaco-editor": "^0.56.0",
     "nuxt": "4.5.2",
+    "qrcode": "^1.5.4",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
-    "@nuxt/devtools": "^3.4.1"
+    "@nuxt/devtools": "^3.4.1",
+    "@types/qrcode": "^1.5.5"
   }
 }

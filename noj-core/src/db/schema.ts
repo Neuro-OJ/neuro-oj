@@ -57,6 +57,10 @@ export const users = pgTable(
       .notNull().default("following"),
     /** 用户头像存储 URL（`noj-storage://` 格式），NULL = 未设置 */
     avatar_url: text("avatar_url"),
+    /** TOTP secret 加密后的密文（AES-256-GCM），NULL = 未设置 */
+    tfa_secret_encrypted: text("tfa_secret_encrypted"),
+    /** 是否已启用 TFA 二次验证 */
+    tfa_enabled: boolean("tfa_enabled").notNull().default(false),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
     /** tsvector 列，GENERATED 自动维护 */
@@ -665,6 +669,29 @@ export const passwordResetTokens = pgTable(
 );
 
 /**
+ * TFA 恢复码表（issue #228）。
+ * 存储一次性恢复码的 SHA-256 哈希（不存明文），用于 TOTP 丢失时登录/禁用 TFA。
+ * used_at NULL = 未使用，原子消费用单 SQL UPDATE 实现。
+ */
+export const tfaRecoveryCodes = pgTable(
+  "tfa_recovery_codes",
+  {
+    id: text("id").primaryKey(),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** 恢复码 SHA-256 hex 哈希 */
+    code_hash: text("code_hash").notNull(),
+    /** ISO 8601，使用时间。NULL = 未使用 */
+    used_at: text("used_at"),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    user_idx: index("idx_tfa_recovery_codes_user_id").on(table.user_id),
+  }),
+);
+
+/**
  * 私信会话表。
  * 每对用户只有一个会话，通过 user1_id < user2_id 约束确保去重。
  * last_message_at 为反范式缓存，用于会话列表排序。
@@ -877,6 +904,11 @@ export const auditLogs = pgTable(
         'auth.change_password',
         'auth.forgot_password_request',
         'auth.password_reset',
+        'auth.tfa_setup',
+        'auth.tfa_enabled',
+        'auth.tfa_disabled',
+        'auth.tfa_recovery_regenerated',
+        'auth.tfa_recovery_used',
         'community.post_moderated',
         'community.report_resolved',
         'community.sanction_created',

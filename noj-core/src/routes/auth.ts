@@ -13,6 +13,12 @@ import {
   loginUser,
   registerUser,
 } from "../services/auth.ts";
+import {
+  confirmTfa,
+  disableTfa,
+  regenerateRecoveryCodes,
+  setupTfa,
+} from "../services/tfa.ts";
 import { requestReset, resetPassword } from "../services/passwordReset.ts";
 import {
   BadRequestError,
@@ -270,6 +276,57 @@ auth.post(
     }
   },
 );
+
+/**
+ * TFA 管理端点（issue #228）。
+ * 以下端点均需登录，用于启用/禁用 TOTP 与恢复码管理。
+ */
+auth.post("/tfa/setup", authMiddleware, async (c) => {
+  const userId = c.get("userId") as string;
+  const result = await setupTfa(userId, "", getClientIp(c));
+  return c.json(
+    { data: { secret: result.secret, otpauth_url: result.otpauthUrl } },
+    200,
+  );
+});
+
+auth.post("/tfa/confirm", authMiddleware, async (c) => {
+  const body = await parseJsonBody<{ code?: string }>(c);
+  if (!body.code) {
+    throw new ValidationError("缺少字段 code");
+  }
+  const userId = c.get("userId") as string;
+  const recoveryCodes = await confirmTfa(
+    userId,
+    body.code,
+    getClientIp(c),
+  );
+  return c.json({ data: { recovery_codes: recoveryCodes } }, 200);
+});
+
+auth.post("/tfa/disable", authMiddleware, async (c) => {
+  const body = await parseJsonBody<{ code?: string }>(c);
+  if (!body.code) {
+    throw new ValidationError("缺少字段 code");
+  }
+  const userId = c.get("userId") as string;
+  await disableTfa(userId, body.code, getClientIp(c));
+  return c.json({ data: { ok: true } }, 200);
+});
+
+auth.post("/tfa/recovery-codes/regenerate", authMiddleware, async (c) => {
+  const body = await parseJsonBody<{ code?: string }>(c);
+  if (!body.code) {
+    throw new ValidationError("缺少字段 code");
+  }
+  const userId = c.get("userId") as string;
+  const recoveryCodes = await regenerateRecoveryCodes(
+    userId,
+    body.code,
+    getClientIp(c),
+  );
+  return c.json({ data: { recovery_codes: recoveryCodes } }, 200);
+});
 
 /**
  * 登出端点（issue #75 JWT 撤销机制）。
