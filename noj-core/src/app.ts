@@ -4,7 +4,7 @@ import { cors } from "hono/cors";
 import health from "./routes/health.ts";
 import stats from "./routes/stats.ts";
 import auth from "./routes/auth.ts";
-import admin from "./routes/admin.ts";
+import admin from "./routes/admin/index.ts";
 import adminAnnouncements from "./routes/admin-announcements.ts";
 import categories from "./routes/categories.ts";
 import problems from "./routes/problems.ts";
@@ -15,6 +15,7 @@ import users from "./routes/users.ts";
 import rankings from "./routes/rankings.ts";
 import conversations from "./routes/conversations.ts";
 import community from "./routes/community.ts";
+import communityAdmin from "./routes/community-admin.ts";
 import search from "./routes/search.ts";
 import contests from "./routes/contests.ts";
 import announcements from "./routes/announcements.ts";
@@ -155,6 +156,9 @@ export function createApp(): Hono {
   app.route("/api/v1/rankings", rankings);
   app.route("/api/v1/conversations", conversations);
   app.route("/api/v1/community", community);
+  // 社区管理路由（/api/v1/community/admin/*）：独立 router，组级
+  // requireCommunityModeration 守卫集中在 community-admin.ts 顶部
+  app.route("/api/v1/community", communityAdmin);
   app.route("/api/v1/contests", contests);
   app.route("/api/v1/search", search);
   // 公告公开路由：必须在 sse 之前注册——sse 实例的全局 authMiddleware
