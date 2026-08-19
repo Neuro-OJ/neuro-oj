@@ -53,6 +53,12 @@ docker-data/
 .jj/repo/op_heads/
 .jj/repo/store/
 
+# --- AI tool migration artifacts ---
+# `source-command-opsx-*` 是 opsx 命令的 source-command 包装 wrapper，
+# 与 `.agents/skills/openspec-*` 功能重复，迁移完成后应删除；
+# 在清理完成前临时忽略，防止误提交。
+.agents/skills/source-command-opsx-*/
+
 # --- Build Artifacts ---
 tmp/
 coverage/
@@ -67,6 +73,8 @@ noj-core/data/storage/
 
 # --- Dev tool locks (devtool.sh advisory locks for concurrent safety) ---
 scripts/dev/locks/
+# PID 文件由 `devtool.sh start` 启动模块时写入，用于模块存活追踪
+scripts/dev/logs/*.pid
 
 # --- IDE metadata (project-local, not shareable) ---
 *.iml
