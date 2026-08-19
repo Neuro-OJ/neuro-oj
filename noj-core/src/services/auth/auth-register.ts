@@ -1,0 +1,175 @@
+import { eq } from "drizzle-orm";
+import { getDb } from "../../db/connection.ts";
+import { roles, userRoles, users } from "../../db/schema.ts";
+import { hashPassword } from "../../lib/password.ts";
+import { logAuthEvent } from "../audit-log.ts";
+import { BadRequestError, ConflictError } from "../../lib/errors.ts";
+import type { RegisterInput, UserResponse } from "../../types/auth.ts";
+
+/**
+ * 密码强度校验最小长度。
+ *
+ * 当前值 8 字符。OWASP 2025+ 建议至少 12 字符（比 8 字符的破解空间大 1000+ 倍），
+ * 这里降到 8 是为了与 routes/auth.ts 的快速预检（< 8 → 400）对齐，并降低用户
+ * 注册摩擦；其余规则（大小写 + 数字 + 不能与用户/邮箱前缀相同）仍提供基本的
+ * 强度保证。
+ */
+const MIN_PASSWORD_LENGTH = 8;
+
+/**
+ * 校验密码强度。
+ *
+ * 规则：
+ * 1. 长度 >= 8 字符
+ * 2. 至少包含一个小写字母
+ * 3. 至少包含一个大写字母
+ * 4. 至少包含一个数字
+ * 5. 不能与用户名相同（不区分大小写）
+ * 6. 不能与邮箱前缀相同
+ *
+ * @throws {BadRequestError} 不符合任一规则
+ */
+export function validatePasswordStrength(
+  password: string,
+  username: string,
+  email: string,
+): void {
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    throw new BadRequestError(
+      `密码长度不足（当前 ${password.length} 字符，至少需要 ${MIN_PASSWORD_LENGTH} 字符）`,
+    );
+  }
+  if (!/[a-z]/.test(password)) {
+    throw new BadRequestError("密码必须包含至少一个小写字母");
+  }
+  if (!/[A-Z]/.test(password)) {
+    throw new BadRequestError("密码必须包含至少一个大写字母");
+  }
+  if (!/[0-9]/.test(password)) {
+    throw new BadRequestError("密码必须包含至少一个数字");
+  }
+  if (password.toLowerCase() === username.toLowerCase()) {
+    throw new BadRequestError("密码不能与用户名相同");
+  }
+  const emailPrefix = email.split("@")[0]?.toLowerCase() ?? "";
+  if (emailPrefix && password.toLowerCase() === emailPrefix) {
+    throw new BadRequestError("密码不能与邮箱前缀相同");
+  }
+}
+
+/**
+ * 将数据库行转换为公开的用户响应。
+ * 排除 password_hash 等敏感字段。
+ */
+export function toUserResponse(
+  row: typeof users.$inferSelect,
+  options?: {
+    activeBan?: { reason: string; banned_until: string | null } | null;
+    isAdmin?: boolean;
+  },
+): UserResponse {
+  return {
+    id: row.id,
+    username: row.username,
+    email: row.email,
+    is_admin: options?.isAdmin ?? false,
+    must_change_password: row.must_change_password,
+    active_ban: options?.activeBan ?? null,
+    avatar_url: row.avatar_url ?? null,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+/**
+ * 注册新用户。
+ * 检查用户名和邮箱的唯一性，密码使用 bcrypt 哈希后存储。
+ *
+ * @throws {BadRequestError} 密码不符合强度要求
+ * @throws {ConflictError} 用户名或邮箱已存在
+ */
+export async function registerUser(
+  input: RegisterInput,
+  clientIp?: string,
+): Promise<UserResponse> {
+  // 密码强度校验（issue 64 评论 §6.5）
+  validatePasswordStrength(input.password, input.username, input.email);
+
+  const db = getDb();
+
+  // 检查用户名是否已存在
+  const existingUsername = await db
+    .select()
+    .from(users)
+    .where(eq(users.username, input.username))
+    .limit(1);
+
+  if (existingUsername.length > 0) {
+    throw new ConflictError("用户名已存在");
+  }
+
+  // 检查邮箱是否已注册
+  const existingEmail = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, input.email))
+    .limit(1);
+
+  if (existingEmail.length > 0) {
+    throw new ConflictError("邮箱已被注册");
+  }
+
+  // 哈希密码
+  const passwordHash = await hashPassword(input.password);
+
+  // 创建用户
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  await db.insert(users).values({
+    id,
+    username: input.username,
+    email: input.email,
+    password_hash: passwordHash,
+    created_at: now,
+    updated_at: now,
+  });
+
+  // 分配默认角色（is_default=true 的角色）
+  const [defaultRole] = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(eq(roles.is_default, true))
+    .limit(1);
+
+  if (defaultRole) {
+    await db.insert(userRoles).values({
+      user_id: id,
+      role_id: defaultRole.id,
+    }).onConflictDoNothing();
+  }
+
+  // PR-2 审计：注册成功
+  await logAuthEvent(
+    id,
+    clientIp ?? "unknown",
+    "auth.register",
+    {
+      user_id: id,
+      username: input.username,
+      email: input.email,
+    },
+  );
+
+  return {
+    id,
+    username: input.username,
+    email: input.email,
+    is_admin: false,
+    must_change_password: false,
+    active_ban: null,
+    avatar_url: null,
+    created_at: now,
+    updated_at: now,
+  };
+}

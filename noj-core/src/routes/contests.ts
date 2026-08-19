@@ -23,7 +23,10 @@ import {
   listContests,
   registerForContest,
 } from "../services/contest/contests.ts";
-import { createSubmission, listSubmissions } from "../services/submissions/submissions.ts";
+import {
+  createSubmission,
+  listSubmissions,
+} from "../services/submissions/submissions.ts";
 import { isValidContestType } from "../types/contests.ts";
 import { createActivity } from "../services/community/community.ts";
 

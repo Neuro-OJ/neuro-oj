@@ -28,7 +28,10 @@ import {
 import { logger } from "../../lib/logging.ts";
 import { checkPermission } from "../../lib/permissions.ts";
 import { getStorageProvider } from "../../lib/storage/mod.ts";
-import { parseBundleZip, stripMetadataEntries } from "../../lib/bundle-parser.ts";
+import {
+  parseBundleZip,
+  stripMetadataEntries,
+} from "../../lib/bundle-parser.ts";
 import {
   isValidProblemBundleName,
   type ProblemBundleManifest,

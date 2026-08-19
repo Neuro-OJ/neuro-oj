@@ -85,7 +85,9 @@ async function ensureUser(id: string): Promise<void> {
   }
   // issue #207：普通用户 = 真实注册用户（user 角色默认拥有敏感字段权限）。
   // resetDbForTest 会 TRUNCATE roles，需先幂等重建系统角色再分配。
-  const { ensureRbacSeeds } = await import("../../src/services/seed/seed-rbac.ts");
+  const { ensureRbacSeeds } = await import(
+    "../../src/services/seed/seed-rbac.ts"
+  );
   await ensureRbacSeeds();
   const { roles, userRoles } = await import("../../src/db/schema.ts");
   const [userRole] = await db.select({ id: roles.id }).from(roles).where(

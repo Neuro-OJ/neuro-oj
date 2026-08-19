@@ -41,7 +41,10 @@ import {
 import { AppError, BadRequestError, NotFoundError } from "../../lib/errors.ts";
 import { getDb } from "../../db/connection.ts";
 import { checkPermission } from "../../lib/permissions.ts";
-import { isRetryableJudgeQueueError, pushJudgeTask } from "../../mq/producer.ts";
+import {
+  isRetryableJudgeQueueError,
+  pushJudgeTask,
+} from "../../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../judge-images.ts";
 import { getStorageProvider } from "../../lib/storage/mod.ts";
 import { getPendingQueueSnapshot } from "../queue.ts";

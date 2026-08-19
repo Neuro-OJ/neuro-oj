@@ -21,7 +21,10 @@ import {
   _resetSystemSettingsForTest,
   initSystemSettings,
 } from "../../src/services/system-settings.ts";
-import { createBoard, createPost } from "../../src/services/community/community.ts";
+import {
+  createBoard,
+  createPost,
+} from "../../src/services/community/community.ts";
 
 // 模块加载时建立一次 Redis 连接（限流中间件依赖 Redis，必须先 connect）
 try {
