@@ -14,6 +14,7 @@ import {
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { SubmissionStatus } from "../types/index.ts";
+import type { SelfTestStatus } from "../types/self-tests.ts";
 import { ROOT_USER_ID } from "../lib/constants.ts";
 
 /**
@@ -555,6 +556,56 @@ export const evaluationResults = pgTable(
     ),
     // created_at 索引：评测结果按时间分页与归档（issue 64 评论 §6.4）
     created_at_idx: index("idx_eval_results_created_at").on(table.created_at),
+  }),
+);
+
+/**
+ * 自测记录表（issue #221）。
+ * 与正式提交完全隔离，不参与统计/榜单/AC 活动。
+ */
+export const selfTests = pgTable(
+  "self_tests",
+  {
+    id: text("id").primaryKey(),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    problem_id: text("problem_id")
+      .notNull()
+      .references(() => problems.id),
+    language: text("language").notNull(),
+    code: text("code").notNull(),
+    file_name: text("file_name"),
+    status: text("status").$type<SelfTestStatus>().notNull().default(
+      "pending",
+    ),
+    /** 评测结果状态（如 Accepted / WrongAnswer），终态时由 JudgeResult 写入。 */
+    result_status: text("result_status"),
+    score: integer("score").notNull().default(0),
+    output: text("output").notNull().default(""),
+    details: text("details").notNull().default("{}"),
+    time_ms: integer("time_ms"),
+    memory_kb: integer("memory_kb"),
+    judge_started_at: text("judge_started_at"),
+    judge_finished_at: text("judge_finished_at"),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    user_idx: index("idx_self_tests_user_id").on(table.user_id),
+    problem_idx: index("idx_self_tests_problem_id").on(table.problem_id),
+    created_at_idx: index("idx_self_tests_created_at").on(table.created_at),
+    user_created_idx: index("idx_self_tests_user_id_created_at").on(
+      table.user_id,
+      table.created_at,
+    ),
+    status_created_idx: index("idx_self_tests_status_created_at").on(
+      table.status,
+      table.created_at,
+    ),
+    statusCheck: check(
+      "self_tests_status_check",
+      sql`${table.status} IN ('pending', 'judging', 'finished', 'error')`,
+    ),
   }),
 );
 

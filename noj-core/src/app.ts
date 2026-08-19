@@ -12,6 +12,7 @@ import problems from "./routes/problems.ts";
 import checkin from "./routes/checkin.ts";
 import queue from "./routes/queue.ts";
 import submissions from "./routes/submissions.ts";
+import selfTests from "./routes/self-tests.ts";
 import users from "./routes/users.ts";
 import rankings from "./routes/rankings.ts";
 import conversations from "./routes/conversations.ts";
@@ -154,6 +155,7 @@ export function createApp(): Hono {
   app.route("/api/v1/checkin", checkin);
   app.route("/api/v1/queue", queue);
   app.route("/api/v1/submissions", submissions);
+  app.route("/api/v1", selfTests);
   app.route("/api/v1/users", users);
   app.route("/api/v1/rankings", rankings);
   app.route("/api/v1/conversations", conversations);

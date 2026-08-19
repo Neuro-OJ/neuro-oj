@@ -112,6 +112,15 @@ function submit(pid: string, language: string, code: string) {
     .then((r) => r.data)
 }
 
+function selfTest(pid: string, language: string, code: string) {
+  return api
+    .post<{ data: { id: string } }>(`/api/v1/problems/${pid}/self-test`, {
+      language,
+      code,
+    })
+    .then((r) => r.data)
+}
+
 function submissionFilter(s: WorkspaceSubmission): boolean {
   if (!isContest.value) return true
   const p = data.value?.data as ContestProblem | undefined
@@ -173,6 +182,7 @@ const templateUrl = computed(() => isContest.value
     :retry="refresh"
     :history-url="historyUrl"
     :submit="submit"
+    :self-test="isContest ? undefined : selfTest"
     :template-url="templateUrl"
     :draft-key="draftKey"
     :open-submission-url="(id: string) => `/submissions/${id}`"

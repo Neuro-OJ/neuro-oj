@@ -301,7 +301,9 @@ jobs:
             e2e/27_objective.test.ts \
             e2e/28_announcements.test.ts \
             e2e/28_clarifications.test.ts \
-            e2e/29_avatar.test.ts &
+            e2e/29_avatar.test.ts \
+            e2e/30_self_test.test.ts \
+            e2e/trainings.test.ts &
           p3=$!
           fail=0
           wait "$p1" || fail=1

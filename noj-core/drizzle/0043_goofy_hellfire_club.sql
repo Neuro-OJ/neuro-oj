@@ -1,0 +1,1 @@
+ALTER TABLE "self_tests" ADD COLUMN "result_status" text;

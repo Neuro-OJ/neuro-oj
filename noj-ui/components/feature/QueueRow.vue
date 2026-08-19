@@ -9,6 +9,7 @@ interface QueueItemShape {
   language: string
   submitted_by: string
   submitted_at: string
+  kind?: 'submission' | 'self_test'
   judge_started_at?: string | null
   status?: string
   score?: number | null
@@ -41,8 +42,13 @@ function elapsed(): string {
 
 <template>
   <div class="flex items-center gap-3 px-4 py-2.5 text-13px border-b border-border last:border-b-0 hover:bg-bg-page">
-    <NuxtLink :to="`/submissions/${item.id}`" class="text-blue-700 no-underline font-mono whitespace-nowrap min-w-[80px] hover:underline">#{{ item.id.slice(0, 8) }}</NuxtLink>
+    <NuxtLink v-if="item.kind !== 'self_test'" :to="`/submissions/${item.id}`" class="text-blue-700 no-underline font-mono whitespace-nowrap min-w-[80px] hover:underline">#{{ item.id.slice(0, 8) }}</NuxtLink>
+    <span v-else class="inline-flex items-center gap-1 font-mono whitespace-nowrap min-w-[80px] text-purple-700">
+      <UIcon name="i-lucide-flask-conical" class="size-3.5" />
+      #{{ item.id.slice(0, 8) }}
+    </span>
     <span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text">{{ item.problem_id }} {{ item.problem_title }}</span>
+    <span v-if="item.kind === 'self_test'" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">自测</span>
     <span class="text-text-secondary min-w-[70px] text-center text-xs">{{ getLanguageLabel(item.language) }}</span>
     <span class="text-text-secondary min-w-[60px]">{{ item.submitted_by }}</span>
     <span class="text-text-muted text-xs min-w-[100px]">{{ formatDateTime(item.submitted_at) }}</span>
