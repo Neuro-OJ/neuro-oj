@@ -221,7 +221,8 @@ export const SCHEMA_DDL: string[] = [
     language TEXT NOT NULL,
     code TEXT NOT NULL,
     file_name TEXT,
-    status TEXT NOT NULL DEFAULT 'pending',
+    status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (status IN ('pending', 'judging', 'finished', 'error')),
     result_status TEXT,
     score INTEGER NOT NULL DEFAULT 0,
     output TEXT NOT NULL DEFAULT '',
@@ -545,6 +546,7 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_self_tests_problem_id ON self_tests (problem_id)",
   "CREATE INDEX IF NOT EXISTS idx_self_tests_created_at ON self_tests (created_at)",
   "CREATE INDEX IF NOT EXISTS idx_self_tests_user_id_created_at ON self_tests (user_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_self_tests_status_created_at ON self_tests (status, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens (user_id)",
   "CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires_at ON password_reset_tokens (expires_at)",
   "CREATE INDEX IF NOT EXISTS idx_conversations_user1_id ON conversations (user1_id)",

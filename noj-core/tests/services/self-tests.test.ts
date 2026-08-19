@@ -15,6 +15,7 @@ import {
 } from "../../src/services/self-tests.ts";
 import { SELF_TEST_ID_PREFIX } from "../../src/types/self-tests.ts";
 import type { JudgeResult } from "../../src/types/index.ts";
+import type { Context } from "hono";
 
 const skip = false; // PGlite 内存数据库始终可用
 
@@ -144,7 +145,11 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await assertRejects(
-      () => getSelfTest("st_nonexistent", USER_ID, "user"),
+      () =>
+        getSelfTest(
+          "st_nonexistent",
+          { var: { userId: USER_ID } } as unknown as Context,
+        ),
       NotFoundError,
     );
   },

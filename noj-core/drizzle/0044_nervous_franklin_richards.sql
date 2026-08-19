@@ -1,0 +1,2 @@
+CREATE INDEX "idx_self_tests_status_created_at" ON "self_tests" USING btree ("status","created_at");--> statement-breakpoint
+ALTER TABLE "self_tests" ADD CONSTRAINT "self_tests_status_check" CHECK ("self_tests"."status" IN ('pending', 'judging', 'finished', 'error'));

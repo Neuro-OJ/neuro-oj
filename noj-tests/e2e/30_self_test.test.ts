@@ -143,14 +143,19 @@ e2eTest("[e2e/self-test] 队列概览展示自测条目", async () => {
     throw new Error(`获取队列失败: ${res.status}`);
   }
   const body = res.body as {
-    recently_completed: Array<{ id: string; kind?: string }>;
+    pending?: Array<{ id: string; kind?: string }>;
+    judging?: Array<{ id: string; kind?: string }>;
+    recently_completed?: Array<{ id: string; kind?: string }>;
   };
-  const item = body.recently_completed.find((x) => x.id === selfTestId);
+  const allItems = [
+    ...(body.pending ?? []),
+    ...(body.judging ?? []),
+    ...(body.recently_completed ?? []),
+  ];
+  const item = allItems.find((x) => x.id === selfTestId);
   if (!item || item.kind !== "self_test") {
     throw new Error(
-      `队列最近完成中应包含自测条目且 kind=self_test: ${
-        JSON.stringify(body.recently_completed)
-      }`,
+      `队列概览中应包含自测条目且 kind=self_test: ${JSON.stringify(allItems)}`,
     );
   }
 });

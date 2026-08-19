@@ -598,6 +598,14 @@ export const selfTests = pgTable(
       table.user_id,
       table.created_at,
     ),
+    status_created_idx: index("idx_self_tests_status_created_at").on(
+      table.status,
+      table.created_at,
+    ),
+    statusCheck: check(
+      "self_tests_status_check",
+      sql`${table.status} IN ('pending', 'judging', 'finished', 'error')`,
+    ),
   }),
 );
 

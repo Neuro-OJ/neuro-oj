@@ -53,17 +53,16 @@ export async function createSelfTest(
 ): Promise<SelfTestResponse> {
   const db = getDb();
 
-  // 行级锁 + 读取最新题目配置，避免 admin 在自测期间清空 runtime_config 导致竞态
-  const lockedRows = await db
+  // 读取最新题目配置；不依赖行级锁（自测是只读快照，入队前若 config 变化由 judge 侧兜底）
+  const rows = await db
     .select()
     .from(problems)
     .where(eq(problems.id, problemId))
-    .for("update")
     .limit(1);
-  if (lockedRows.length === 0) {
+  if (rows.length === 0) {
     throw new NotFoundError("题目不存在");
   }
-  const problem = lockedRows[0];
+  const problem = rows[0];
 
   if (problem.is_objective) {
     throw new BadRequestError("客观题不支持代码自测");
@@ -197,9 +196,7 @@ export async function createSelfTest(
  */
 export async function getSelfTest(
   id: string,
-  viewerId?: string | null,
-  viewerRole?: string | null,
-  c?: Context,
+  c: Context,
 ): Promise<SelfTestDetail> {
   const db = getDb();
 
@@ -216,11 +213,8 @@ export async function getSelfTest(
   const row = rows[0];
 
   // 权限：owner 或 admin 可读
-  const isOwner = !!(c?.var.userId ?? viewerId) &&
-    row.user_id === (c?.var.userId ?? viewerId);
-  const isAdmin = c
-    ? await checkPermission(c, "submission:read_all")
-    : viewerRole === "admin";
+  const isOwner = !!c.var.userId && row.user_id === c.var.userId;
+  const isAdmin = await checkPermission(c, "submission:read_all");
   if (!isOwner && !isAdmin) {
     throw new NotFoundError("自测不存在");
   }
