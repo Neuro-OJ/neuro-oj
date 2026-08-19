@@ -2,7 +2,8 @@
  * 全局搜索 E2E 测试（issue #100）。
  *
  * 覆盖：
- * - 匿名 type=problem 搜索返回 200 + 标准响应结构（data.items / took_ms）
+ * - 匿名 type=problem 搜索返回 200 + 标准响应结构（data.items / has_more / took_ms）
+ * - include_total=true 时返回精确 total
  * - 匿名 type=user 返回 401（未登录）
  * - 已登录非 admin 用户 type=user 返回 403（无权限）
  * - admin type=user 返回 200 且 items 含 email 字段
@@ -55,7 +56,7 @@ e2eTest("[e2e/search] 1.1 匿名题目搜索返回 200 + 标准结构", async ()
         query?: string;
         type?: string;
         items?: Array<{ id: string; display_id: string; title: string }>;
-        total?: number;
+        has_more?: boolean;
         page?: number;
         limit?: number;
         took_ms?: number;
@@ -70,11 +71,29 @@ e2eTest("[e2e/search] 1.1 匿名题目搜索返回 200 + 标准结构", async ()
     if (!Array.isArray(d.data.items)) {
       throw new Error("items 应为数组");
     }
-    if (d.data.total === undefined) throw new Error("total 字段缺失");
+    if (typeof d.data.has_more !== "boolean") {
+      throw new Error("has_more 字段应为 boolean");
+    }
     console.log(
-      `  ✓ 题目搜索 OK（命中 ${d.data.items.length}/${d.data.total} 题, ` +
+      `  ✓ 题目搜索 OK（返回 ${d.data.items.length} 题, has_more=${d.data.has_more}, ` +
         `took_ms=${d.data.took_ms}）`,
     );
+  });
+
+e2eTest("[e2e/search] 1.1b include_total=true 返回精确总数", async () => {
+    if (!isE2E) return;
+    const { status, body } = await apiGet(
+      "/api/v1/search?q=1001&type=problem&limit=5&include_total=true",
+    );
+    if (status !== 200) throw new Error(`期望 200, 实际 ${status}`);
+    const d = body as { data?: { total?: number; has_more?: boolean } };
+    if (typeof d.data?.total !== "number") {
+      throw new Error("include_total=true 时 total 字段应为 number");
+    }
+    if (typeof d.data.has_more !== "boolean") {
+      throw new Error("include_total=true 时 has_more 字段应为 boolean");
+    }
+    console.log(`  ✓ 精确总数 OK（total=${d.data.total}）`);
   });
 
 e2eTest("[e2e/search] 1.2 匿名用户搜索返回 401", async () => {
