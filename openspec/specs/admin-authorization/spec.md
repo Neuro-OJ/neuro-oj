@@ -20,7 +20,7 @@
 
 ### Requirement: 管理路由统一组织
 
-系统 SHOULD 将所有 admin 端点集中到 `routes/admin.ts` 文件中统一管理，各功能模块在 admin.ts 内按 domain 分组，统一通过路由组级 `authMiddleware` + `adminMiddleware` 保护。
+系统 SHALL 将所有 admin 端点集中到 `routes/admin.ts` 文件中统一管理，各功能模块在 admin.ts 内按 domain 分组，统一通过路由组级 `authMiddleware` + `adminMiddleware` 保护。
 
 #### Scenario: 管理员访问统一后的管理端点
 - **WHEN** 管理员访问所有 `/api/v1/admin/*` 端点
@@ -31,7 +31,7 @@
 - **THEN** 因 root 密码为随机 UUID 且机制上不对外暴露，登录失败
 ### Requirement: 仅管理员可访问管理端点
 
-系统 SHALL 提供 `requireAdmin()` 中间件，用于保护管理端点。`requireAdmin()` 基于 JWT 的 `is_admin` 布尔 claim 判断，**不查询数据库、不依赖角色名称**。
+系统 SHALL 提供 `requireAdmin()` 中间件，用于保护管理端点。`requireAdmin()` 基于实时权限查询判断：通过 `resolvePermissions(c)`（请求级缓存）检查权限集是否包含 `admin:full_access`，**不依赖 JWT 中的 is_admin claim、不依赖角色名称**。
 
 非管理员访问时 SHALL 返回 HTTP 403，错误信息为 "需要管理员权限"。
 
@@ -41,7 +41,7 @@
 
 #### Scenario: 普通用户访问管理端点
 
-- **WHEN** 已登录但 JWT `is_admin=false` 的用户调用管理员端点
+- **WHEN** 已登录但权限集不含 `admin:full_access` 的用户调用管理员端点
 - **THEN** 系统返回 HTTP 403，错误信息为 "需要管理员权限"
 
 #### Scenario: 未登录用户访问管理端点
@@ -79,23 +79,23 @@
 - **THEN** 系统返回 HTTP 400，提示角色 ID 无效
 
 #### Scenario: 禁止移除最后一个 admin
-- **WHEN** 管理员尝试将最后一个拥有 `is_admin=true` 角色的用户的 admin 角色移除
+- **WHEN** 管理员尝试将最后一个权限集中包含 `admin:full_access` 的用户的 admin 角色移除
 - **THEN** 系统返回 HTTP 400，提示必须保留至少一个管理员
 
 ### Requirement: 种子脚本可初始化管理员
 
-系统 SHALL 在 `deno task init:system` 执行时执行 `ensureRootUser()`，并在 `deno task bootstrap:admin` / `deno task dev-setup` 执行时执行 `ensureBootstrapAdmin()`。`ensureBootstrapAdmin()` 在不存在"可登录 admin"（`user_roles` 表中关联了 `is_admin=true` 角色的用户，且 `users.id != '0'`）时自动创建一个临时管理员账号（`username='admin'`, `email='admin@noj.local'`, 24 字符 base64url 随机密码），并设置 `must_change_password=true`，终端以醒目格式打印临时凭证。
+系统 SHALL 在 `deno task init:system` 执行时执行 `ensureRootUser()`，并在 `deno task bootstrap:admin` / `deno task dev-setup` 执行时执行 `ensureBootstrapAdmin()`。`ensureBootstrapAdmin()` 在不存在"可登录 admin"（`user_roles` 关联角色的权限集中含 `admin:full_access` 的用户，且 `users.id != '0'`）时自动创建一个临时管理员账号（`username='admin'`, `email='admin@noj.local'`, 24 字符 base64url 随机密码），并设置 `must_change_password=true`，终端以醒目格式打印临时凭证。
 
-管理员创建后 SHALL 将其关联到 `is_admin=true` 的角色（如预置的 "admin" 角色）。
+管理员创建后 SHALL 将其关联到拥有 `admin:full_access` 权限的角色（如预置的 "admin" 角色）。
 
 #### Scenario: 全新部署自动创建引导管理员
 
-- **WHEN** `deno task dev-setup`（或 `deno task bootstrap:admin`）在全新数据库上执行，且不存在可登录 admin（通过 `user_roles` + `roles.is_admin=true` 判断）
+- **WHEN** `deno task dev-setup`（或 `deno task bootstrap:admin`）在全新数据库上执行，且不存在可登录 admin（通过 `user_roles` + `admin:full_access` 权限判断）
 - **THEN** 系统创建 username=`admin` 的临时管理员，`must_change_password=true`，并将其关联到 admin 角色，在终端打印临时凭证（含强制改密提醒）
 
 #### Scenario: 已存在可登录 admin 时跳过
 
-- **WHEN** `deno task dev-setup`（或 `deno task bootstrap:admin`）执行时 `user_roles` 表中已存在关联 `is_admin=true` 角色的用户
+- **WHEN** `deno task dev-setup`（或 `deno task bootstrap:admin`）执行时已存在拥有 `admin:full_access` 权限的用户
 - **THEN** 系统跳过引导管理员创建，不打印临时凭证
 
 ### Requirement: 强制首次改密（管理员）
@@ -192,13 +192,14 @@
 系统 SHALL 提供 `requirePermission(permission: string)` 中间件工厂函数，用于需要细粒度权限检查的路由。
 
 中间件逻辑：
-1. 若 `c.var.isAdmin === true` → `next()`（JWT fast path，零 DB 查询）
-2. 否则调用 `resolvePermissions(c)` 获取用户权限 `Set<string>` → 若 `Set.has(permission)` 则 `next()`，否则抛出 `ForbiddenError("权限不足")`
+1. 调用 `resolvePermissions(c)` 获取用户权限 `Set<string>`
+2. 若权限集包含 `admin:full_access` → `next()`（全权限放行）
+3. 否则若 `Set.has(permission)` → `next()`，否则抛出 `ForbiddenError("权限不足")`
 
 `resolvePermissions(c)` SHALL 实现请求级缓存：首次调用查询 DB 并写入 `c.set("userPerms", ...)`，后续调用直接返回缓存值，**同一请求内多权限检查不产生额外 DB 查询**。
 
 #### Scenario: admin 用户访问 requirePermission 保护的路由
-- **WHEN** `is_admin=true` 的用户访问受 `requirePermission("problem:create_p")` 保护的路由
+- **WHEN** 权限集包含 `admin:full_access` 的用户访问受 `requirePermission("problem:create_p")` 保护的路由
 - **THEN** 直接放行，不触发数据库查询
 
 #### Scenario: 有权限的普通用户访问
@@ -215,7 +216,7 @@
 
 - `checkPermission`：返回布尔值，用于条件判断
 - `assertPermission`：无权限时抛出 `ForbiddenError`，用于断言
-- 两者均遵循 `isAdmin` fast path → `resolvePermissions` DB fallback 的分层策略
+- 判定规则：权限集包含 `admin:full_access` 时直接放行，否则 `Set.has(permission)`
 - 两者均共享 `resolvePermissions` 的请求级缓存
 
 #### Scenario: handler 内条件判断
@@ -235,3 +236,28 @@
 #### Scenario: 服务层使用 checkPermission 检查创建 P 型题
 - **WHEN** 用户调用 `createProblem` 且题目类型为 "P"
 - **THEN** 服务层调用 `await assertPermission(c, "problem:create_p")` 进行检查，而非比较 `userRole === "admin"`
+
+### Requirement: 公告管理权限注册
+
+系统 SHALL 在 `PERMISSION_DEFS`（`src/types/index.ts`）注册公告管理权限：
+
+- `announcement:manage`（resource=`announcement`, action=`manage`，description「管理公告」）
+
+`ensurePermissions()`（`seed-rbac.ts`）SHALL 幂等插入该权限（ON CONFLICT DO NOTHING），admin 角色的 `ADMIN_DEFAULT_PERMISSIONS` SHALL 包含该项。`admin:full_access` 通配放行语义 SHALL 适用于该权限（admin 不受收紧影响）。
+
+公告管理端点（`/api/v1/admin/announcements*`）SHALL 在 handler 内调用 `assertPermission(c, "announcement:manage")` 执行细粒度检查，无权限返回 403。
+
+#### Scenario: 权限种子补齐
+
+- **WHEN** 已有数据库上启动并执行 `ensureRbacSeeds()`
+- **THEN** `permissions` 表存在 `announcement:manage` 记录（幂等，不重复）
+
+#### Scenario: admin 隐式拥有公告权限
+
+- **WHEN** 持有 `admin:full_access` 的用户调用公告管理端点
+- **THEN** 权限检查通过（通配放行），无需显式分配 `announcement:manage`
+
+#### Scenario: 无权限用户被拒
+
+- **WHEN** 无 `admin:full_access` 且无 `announcement:manage` 的用户调用公告管理端点
+- **THEN** 系统返回 HTTP 403

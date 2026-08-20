@@ -4,9 +4,6 @@
   "title": "1003 T0-LMCC：A+B Problem",
   "difficulty": "easy",
   "type": "P",
-  "categories": [
-    "算法"
-  ],
   "runtime_config": {
     "evaluator": {
       "image": "noj-evaluator-python",
@@ -19,5 +16,10 @@
       "memory_limit_mb": 256
     }
   },
-  "template": "template.py"
+  "template": "template.py",
+  "tags": [
+    "入门",
+    "LMCC 样例题",
+    "模拟"
+  ]
 }

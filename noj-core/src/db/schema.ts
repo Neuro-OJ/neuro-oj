@@ -14,6 +14,7 @@ import {
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { SubmissionStatus } from "../types/index.ts";
+import type { SelfTestStatus } from "../types/self-tests.ts";
 import { ROOT_USER_ID } from "../lib/constants.ts";
 
 /**
@@ -257,43 +258,43 @@ export const judgeImages = pgTable(
 );
 
 /**
- * 分类表。
- * 树形结构，通过 parent_id 自引用实现多级分类。
- * level 字段缓存层级深度（顶级为 0），避免递归计算。
+ * 标签表（issue #223：category 系统退役，双类标签取代）。
+ * 扁平结构（无树）：name 全局唯一（跨 kind）。
+ * kind：problem=题目标签（人人可见）｜algorithm=算法标签（通过题目后可见）。
  */
-export const categories = pgTable(
-  "categories",
+export const tags = pgTable(
+  "tags",
   {
     id: text("id").primaryKey(),
-    name: text("name").notNull(),
-    slug: text("slug").notNull().unique(),
-    description: text("description").notNull().default(""),
-    // deno-lint-ignore no-explicit-any
-    parent_id: text("parent_id").references((): any => categories.id, {
-      onDelete: "set null",
-    }),
-    level: integer("level").notNull().default(0),
+    name: text("name").notNull().unique(),
+    kind: text("kind").notNull(),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
   },
+  (table) => ({
+    kindCheck: check(
+      "tags_kind_check",
+      sql`${table.kind} IN ('problem', 'algorithm')`,
+    ),
+  }),
 );
 
 /**
- * 题目-分类关联表。
- * 多对多关系，级联删除。
+ * 题目-标签关联表。
+ * 多对多关系，双级联删除。
  */
-export const problemsCategories = pgTable(
-  "problems_categories",
+export const problemTags = pgTable(
+  "problem_tags",
   {
     problem_id: text("problem_id")
       .notNull()
       .references(() => problems.id, { onDelete: "cascade" }),
-    category_id: text("category_id")
+    tag_id: text("tag_id")
       .notNull()
-      .references(() => categories.id, { onDelete: "cascade" }),
+      .references(() => tags.id, { onDelete: "cascade" }),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.problem_id, table.category_id] }),
+    pk: primaryKey({ columns: [table.problem_id, table.tag_id] }),
   }),
 );
 
@@ -369,6 +370,62 @@ export const contestProblems = pgTable(
       table.contest_id,
       table.sort_order,
     ),
+  }),
+);
+
+/**
+ * 题单主表（issue #224）。
+ * visibility: private=仅创建者 / unlisted=URL 可访问 / public=出现在题单列表页。
+ */
+export const trainings = pgTable(
+  "trainings",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    visibility: text("visibility").notNull().default("private"),
+    is_pinned: boolean("is_pinned").notNull().default(false),
+    created_by: text("created_by").notNull().references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    visibilityCheck: check(
+      "trainings_visibility_check",
+      sql`${table.visibility} IN ('private', 'unlisted', 'public')`,
+    ),
+    visibilityPinnedCreatedIdx: index(
+      "idx_trainings_visibility_pinned_created",
+    ).on(table.visibility, table.is_pinned, table.created_at),
+    createdByIdx: index("idx_trainings_created_by").on(table.created_by),
+  }),
+);
+
+/**
+ * 题单题目关联表。
+ * position 在单个题单内保持唯一；题目删除时级联清理。
+ */
+export const trainingProblems = pgTable(
+  "training_problems",
+  {
+    training_id: text("training_id")
+      .notNull()
+      .references(() => trainings.id, { onDelete: "cascade" }),
+    problem_id: text("problem_id")
+      .notNull()
+      .references(() => problems.id, { onDelete: "cascade" }),
+    position: integer("position").notNull().default(0),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.training_id, table.problem_id] }),
+    positionUnique: unique(
+      "training_problems_training_position_unique",
+    ).on(table.training_id, table.position),
+    trainingPositionIdx: index(
+      "idx_training_problems_training_position",
+    ).on(table.training_id, table.position),
   }),
 );
 
@@ -499,6 +556,56 @@ export const evaluationResults = pgTable(
     ),
     // created_at 索引：评测结果按时间分页与归档（issue 64 评论 §6.4）
     created_at_idx: index("idx_eval_results_created_at").on(table.created_at),
+  }),
+);
+
+/**
+ * 自测记录表（issue #221）。
+ * 与正式提交完全隔离，不参与统计/榜单/AC 活动。
+ */
+export const selfTests = pgTable(
+  "self_tests",
+  {
+    id: text("id").primaryKey(),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    problem_id: text("problem_id")
+      .notNull()
+      .references(() => problems.id),
+    language: text("language").notNull(),
+    code: text("code").notNull(),
+    file_name: text("file_name"),
+    status: text("status").$type<SelfTestStatus>().notNull().default(
+      "pending",
+    ),
+    /** 评测结果状态（如 Accepted / WrongAnswer），终态时由 JudgeResult 写入。 */
+    result_status: text("result_status"),
+    score: integer("score").notNull().default(0),
+    output: text("output").notNull().default(""),
+    details: text("details").notNull().default("{}"),
+    time_ms: integer("time_ms"),
+    memory_kb: integer("memory_kb"),
+    judge_started_at: text("judge_started_at"),
+    judge_finished_at: text("judge_finished_at"),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    user_idx: index("idx_self_tests_user_id").on(table.user_id),
+    problem_idx: index("idx_self_tests_problem_id").on(table.problem_id),
+    created_at_idx: index("idx_self_tests_created_at").on(table.created_at),
+    user_created_idx: index("idx_self_tests_user_id_created_at").on(
+      table.user_id,
+      table.created_at,
+    ),
+    status_created_idx: index("idx_self_tests_status_created_at").on(
+      table.status,
+      table.created_at,
+    ),
+    statusCheck: check(
+      "self_tests_status_check",
+      sql`${table.status} IN ('pending', 'judging', 'finished', 'error')`,
+    ),
   }),
 );
 
@@ -756,7 +863,10 @@ export const auditLogs = pgTable(
         'problems.delete',
         'problems.runtime_config_changed',
         'problems.imported',
-        'categories.delete',
+        'tags.create',
+        'tags.update',
+        'tags.delete',
+        'tags.merge',
         'submissions.rejudge',
         'settings.update',
         'ip_ban.create',
@@ -870,7 +980,7 @@ export const roles = pgTable(
 /**
  * RBAC 权限定义表。
  * 每个权限由 resource + action 唯一标识，格式 resource:action。
- * 系统预置约 22 个权限，覆盖 problem/submission/user/category/system 五个资源域。
+ * 系统预置约 22 个权限，覆盖 problem/submission/user/tag/system 五个资源域。
  */
 export const permissions = pgTable(
   "permissions",

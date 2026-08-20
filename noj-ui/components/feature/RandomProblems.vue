@@ -32,7 +32,7 @@
                     :title="p.title"
                     :difficulty="p.difficulty"
                     :runtime_config="p.runtime_config"
-                    :categories="p.categories"
+                    :tags="p.tags"
                 />
             </div>
         </div>
@@ -56,7 +56,7 @@ interface ProblemItem {
     type: string
     difficulty: string
     runtime_config: { evaluator: { time_limit_ms: number; memory_limit_mb: number } }
-    categories: { id: string; name: string; slug: string }[]
+    tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
 }
 
 const problems = ref<ProblemItem[]>([])

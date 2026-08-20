@@ -281,6 +281,41 @@
       "when": 1786883648647,
       "tag": "0039_community_search_index",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1786701211528,
+      "tag": "0040_drop_categories_add_tags",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1786979668015,
+      "tag": "0041_harsh_lilandra",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1787064737751,
+      "tag": "0042_tough_saracen",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1787065084218,
+      "tag": "0043_goofy_hellfire_club",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1787125953031,
+      "tag": "0044_nervous_franklin_richards",
+      "breakpoints": true
     }
   ]
 }

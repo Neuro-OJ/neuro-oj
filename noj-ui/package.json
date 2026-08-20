@@ -22,7 +22,7 @@
     "katex": "^0.18.1",
     "markdown-it": "^14.3.0",
     "monaco-editor": "^0.56.0",
-    "nuxt": "4.5.1",
+    "nuxt": "4.5.2",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {

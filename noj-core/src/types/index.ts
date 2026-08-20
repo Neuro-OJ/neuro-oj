@@ -201,9 +201,13 @@ export const PERMISSION_DEFS: Array<{
     action: "manage",
     description: "管理用户（封禁/改角色）",
   },
-  // 分类
-  { resource: "category", action: "read", description: "查看分类" },
-  { resource: "category", action: "manage", description: "管理分类" },
+  // 标签
+  { resource: "tag", action: "read", description: "查看标签" },
+  {
+    resource: "tag",
+    action: "manage",
+    description: "管理标签（创建/修改/删除/合并）",
+  },
   // 竞赛
   { resource: "contest", action: "create", description: "创建竞赛" },
   {
@@ -251,6 +255,16 @@ export const PERMISSION_DEFS: Array<{
     action: "manage",
     description: "管理社区板块",
   },
+  // 题单（training）
+  { resource: "training", action: "create", description: "创建题单" },
+  { resource: "training", action: "read", description: "查看题单" },
+  { resource: "training", action: "read_any", description: "查看任意题单" },
+  { resource: "training", action: "write_own", description: "编辑自己的题单" },
+  { resource: "training", action: "write_any", description: "编辑任意题单" },
+  { resource: "training", action: "delete_own", description: "删除自己的题单" },
+  { resource: "training", action: "delete_any", description: "删除任意题单" },
+  { resource: "training", action: "publish", description: "将题单设为公开" },
+  { resource: "training", action: "pin", description: "置顶题单" },
   // 公告
   { resource: "announcement", action: "manage", description: "管理公告" },
   // 系统

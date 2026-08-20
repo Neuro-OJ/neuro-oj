@@ -70,16 +70,16 @@ SSR 阶段，服务端 SHALL 根据 `noj:token` cookie 的存在情况预取用�
 
 `noj:session` cookie SHALL 包含以下 JSON 序列化信息：`userId`、`username`、`role`、`is_admin`、`email`。
 
-`role` 字段 SHALL 为用户关联的 `is_admin=true` 角色的名称（若存在），否则为 `is_default=true` 角色的名称。`is_admin` 字段 SHALL 为用户是否拥有 `is_admin=true` 的角色（布尔值）。
+`role` 字段 SHALL 为用户权限集包含 `admin:full_access` 时其 admin 角色的名称（若存在），否则为 `is_default=true` 角色的名称。`is_admin` 字段 SHALL 为用户权限集是否包含 `admin:full_access`（布尔值）。
 
 SHALL NOT 包含 token 或任何敏感凭证。
 
 #### Scenario: admin 角色的 session cookie
-- **WHEN** 用户登录且拥有 `is_admin=true` 的角色
+- **WHEN** 用户登录且权限集包含 `admin:full_access`
 - **THEN** `noj:session` cookie 的 `role` 字段为该角色名称，`is_admin` 为 `true`
 
 #### Scenario: 多角色用户的 session cookie
-- **WHEN** 用户登录且同时拥有 "user" 和 "moderator" 两个角色（均非 is_admin=true）
+- **WHEN** 用户登录且同时拥有 "user" 和 "moderator" 两个角色（权限集均不含 admin:full_access）
 - **THEN** `noj:session` cookie 的 `role` 字段为 `is_default=true` 的角色名称，`is_admin` 为 `false`
 
 ### Requirement: Cookie 安全属性
@@ -92,3 +92,10 @@ SHALL NOT 包含 token 或任何敏感凭证。
 #### Scenario: 开发环境不强制 Secure
 - **WHEN** 应用在 `http://localhost` 开发模式下运行
 - **THEN** `Secure` 标记不设置（或通过配置控制），允许本地开发
+
+### Requirement: 代理透传客户端网络信息
+Nitro 代理 SHALL 将原始请求的 `x-forwarded-for`、`x-real-ip` 与 `user-agent` 透传至 noj-core，使登录限流与 IP 封禁基于真实客户端地址。
+
+#### Scenario: 客户端经代理登录
+- **WHEN** 浏览器通过 noj-ui 代理登录
+- **THEN** noj-core 看到的客户端 IP 与浏览器网络地址一致

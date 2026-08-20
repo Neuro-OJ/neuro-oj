@@ -13,11 +13,12 @@ import { runWithContext } from "../lib/requestContext.ts";
 import {
   createProblem,
   deleteProblem,
-  getProblem,
-  getProblemByTypeAndNumber,
   listProblems,
   updateProblem,
 } from "../services/problems/problems.ts";
+import { applyAlgorithmTagVisibility } from "../services/problems/problems-list.ts";
+import { resolveProblem } from "../lib/problem-resolve.ts";
+import { ADMIN_FULL_ACCESS, resolvePermissions } from "../lib/permissions.ts";
 import type {
   CreateProblemInput,
   ProblemListQuery,
@@ -55,39 +56,8 @@ const router = new Hono<
 >();
 
 /**
- * 双索引查找工具函数。
- * 支持通过 UUID、display_id（如 P1001）、纯数字 ID（兼容旧 seed 数据 1001/1002/1003）
- * 以及其他任意非标准 ID 格式查找题目。
- *
- * 先通过正则判断 id 格式，避免每次 display_id 请求都先多一次 UUID 查询。
- * 对于不匹配任何已知格式的 ID，fallback 到 `getProblem(id)` 直接查找。
- */
-function resolveProblem(id: string) {
-  // UUID / 纯数字（兼容旧 seed 数据 1001/1002/1003 等）：直接按 id 精确查找
-  if (
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      id,
-    ) ||
-    /^\d+$/.test(id)
-  ) {
-    return getProblem(id);
-  }
-
-  // display_id 格式：解析 "P1001" / "U42" → (type, number)
-  const match = id.match(/^([UuPp])(\d+)$/);
-  if (match) {
-    const type = match[1].toUpperCase();
-    const number = parseInt(match[2], 10);
-    return getProblemByTypeAndNumber(type, number);
-  }
-
-  // fallback：尝试直接按 id 查找（兼容非标准 ID 格式）
-  return getProblem(id);
-}
-
-/**
  * 获取题目列表。
- * 支持分页与筛选：?page=1&limit=20&difficulty=easy&category_id=xxx&keyword=xxx&type=U&number=1001
+ * 支持分页与筛选：?page=1&limit=20&difficulty=easy&tag=xxx&keyword=xxx&type=U&number=1001
  */
 router.get("/", optionalAuthMiddleware, async (c) => {
   const page = parseInt(c.req.query("page") || "1", 10);
@@ -106,8 +76,8 @@ router.get("/", optionalAuthMiddleware, async (c) => {
   const difficulty = c.req.query("difficulty");
   if (difficulty) query.difficulty = difficulty;
 
-  const categoryId = c.req.query("category_id");
-  if (categoryId) query.category_id = categoryId;
+  const tagId = c.req.query("tag");
+  if (tagId) query.tag = tagId;
 
   const keyword = c.req.query("keyword");
   if (keyword) query.keyword = keyword;
@@ -192,12 +162,22 @@ router.get("/submissions/:id", authMiddleware, async (c) => {
 });
 
 /**
- * 获取题目详情（双索引：UUID 或 display_id）。
+ * 获取题目详情（双索引：UUID 或 display_id + 算法标签可视性门控，issue #223）。
+ *
+ * 算法标签仅 admin / 题主 / 有 Accepted 提交的 viewer 可见；
+ * 其余 viewer 收不到算法标签名，仅收到 has_hidden_algorithm_tags 占位标志。
  */
-router.get("/:id", async (c) => {
+router.get("/:id", optionalAuthMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const problem = await resolveProblem(id);
-  return c.json({ data: problem });
+
+  const userId = c.get("userId");
+  const isAdmin = userId
+    ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
+    : false;
+  const data = await applyAlgorithmTagVisibility(problem, { userId, isAdmin });
+
+  return c.json({ data });
 });
 
 /**

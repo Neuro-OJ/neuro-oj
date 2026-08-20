@@ -24,8 +24,8 @@ import {
   ensureAdminFromEnv,
   ensureBootstrapAdmin,
   ensureE2EPwChangeUser,
-  seedCategories,
   seedJudgeImages,
+  seedTags,
 } from "../src/services/seed/seed-system.ts";
 import { importProblemBundle } from "../src/services/problems/problem-bundle.ts";
 import { isValidTemplateFileName } from "../src/types/problem-bundle.ts";
@@ -148,16 +148,16 @@ async function importProblemPackages(dir: string): Promise<void> {
   }
 }
 
-/** 系统基础数据：root + RBAC + 镜像白名单 + 分类（幂等）。 */
+/** 系统基础数据：root + RBAC + 镜像白名单 + 标签（幂等）。 */
 async function runInitSystem(): Promise<void> {
   console.log("初始化系统基础数据...");
   await ensureRootUser();
   await ensureRbacSeeds();
   console.log("初始化评测镜像白名单...");
   await seedJudgeImages();
-  console.log("初始化示例分类...");
-  await seedCategories();
-  // 注：题目-分类关联由 problems import 按 manifest.categories 完成
+  console.log("初始化种子标签...");
+  await seedTags();
+  // 注：题目-标签关联由 problems import 按 manifest.tags 完成
   console.log("系统基础数据初始化完成");
 }
 
@@ -208,7 +208,7 @@ const dbCmd = new Command()
 
 const initCmd = new Command()
   .description("系统初始化")
-  .command("system", "初始化系统基础数据（root + RBAC + 镜像白名单 + 分类）")
+  .command("system", "初始化系统基础数据（root + RBAC + 镜像白名单 + 标签）")
   .action(() => {
     return runInitSystem();
   });

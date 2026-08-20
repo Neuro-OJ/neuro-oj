@@ -85,23 +85,21 @@ export const SCHEMA_DDL: string[] = [
     updated_at TEXT NOT NULL
   )`,
 
-  // 4. categories
-  `CREATE TABLE IF NOT EXISTS categories (
+  // 4. tags（issue #223：category 系统退役，双类标签取代）
+  `CREATE TABLE IF NOT EXISTS tags (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    slug TEXT NOT NULL UNIQUE,
-    description TEXT NOT NULL DEFAULT '',
-    parent_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
-    level INTEGER NOT NULL DEFAULT 0,
+    name TEXT NOT NULL UNIQUE,
+    kind TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    CONSTRAINT tags_kind_check CHECK (kind IN ('problem', 'algorithm'))
   )`,
 
-  // 5. problems_categories
-  `CREATE TABLE IF NOT EXISTS problems_categories (
+  // 5. problem_tags
+  `CREATE TABLE IF NOT EXISTS problem_tags (
     problem_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
-    category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-    PRIMARY KEY (problem_id, category_id)
+    tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (problem_id, tag_id)
   )`,
 
   `CREATE TABLE IF NOT EXISTS contests (
@@ -166,6 +164,26 @@ export const SCHEMA_DDL: string[] = [
     created_at TEXT NOT NULL
   )`,
 
+  // 3.4 trainings（题单，issue #224）
+  `CREATE TABLE IF NOT EXISTS trainings (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'unlisted', 'public')),
+    is_pinned BOOLEAN NOT NULL DEFAULT false,
+    created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS training_problems (
+    training_id TEXT NOT NULL REFERENCES trainings(id) ON DELETE CASCADE,
+    problem_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (training_id, problem_id),
+    UNIQUE (training_id, position)
+  )`,
+
   // 6. submissions
   `CREATE TABLE IF NOT EXISTS submissions (
     id TEXT PRIMARY KEY,
@@ -192,6 +210,27 @@ export const SCHEMA_DDL: string[] = [
     details TEXT NOT NULL DEFAULT '{}',
     time_ms INTEGER,
     memory_kb INTEGER,
+    created_at TEXT NOT NULL
+  )`,
+
+  // 7.1 self_tests（issue #221）
+  `CREATE TABLE IF NOT EXISTS self_tests (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    problem_id TEXT NOT NULL REFERENCES problems(id),
+    language TEXT NOT NULL,
+    code TEXT NOT NULL,
+    file_name TEXT,
+    status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (status IN ('pending', 'judging', 'finished', 'error')),
+    result_status TEXT,
+    score INTEGER NOT NULL DEFAULT 0,
+    output TEXT NOT NULL DEFAULT '',
+    details TEXT NOT NULL DEFAULT '{}',
+    time_ms INTEGER,
+    memory_kb INTEGER,
+    judge_started_at TEXT,
+    judge_finished_at TEXT,
     created_at TEXT NOT NULL
   )`,
 
@@ -275,7 +314,9 @@ export const SCHEMA_DDL: string[] = [
     created_at TEXT NOT NULL,
     CONSTRAINT audit_logs_action_check CHECK (action IN (
       'users.role_change','users.ban','users.unban',
-      'problems.delete','categories.delete','submissions.rejudge','settings.update',
+      'problems.delete','problems.runtime_config_changed','problems.imported',
+      'tags.create','tags.update','tags.delete','tags.merge',
+      'submissions.rejudge','settings.update',
       'ip_ban.create','ip_ban.delete',
       -- PR-2 新增 auth.* 动作
       'auth.login_success','auth.login_failure','auth.register',
@@ -487,6 +528,10 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_contests_end_time ON contests (end_time)",
   "CREATE INDEX IF NOT EXISTS idx_contest_clarifications_contest ON contest_clarifications (contest_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_contest_participants_user ON contest_participants (user_id)",
+  // 题单索引（issue #224）
+  "CREATE INDEX IF NOT EXISTS idx_trainings_visibility_pinned_created ON trainings (visibility, is_pinned, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_trainings_created_by ON trainings (created_by)",
+  "CREATE INDEX IF NOT EXISTS idx_training_problems_training_position ON training_problems (training_id, position)",
   // 客观题表索引（与 schema.ts 定义一致，PGlite 测试模式）
   "CREATE INDEX IF NOT EXISTS idx_objective_questions_paper_id ON objective_questions (paper_id)",
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_paper_id ON objective_submissions (paper_id)",
@@ -497,6 +542,11 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_contest_id ON objective_submissions (contest_id)",
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_results_submission_id ON evaluation_results (submission_id)",
   "CREATE INDEX IF NOT EXISTS idx_eval_results_created_at ON evaluation_results (created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_self_tests_user_id ON self_tests (user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_self_tests_problem_id ON self_tests (problem_id)",
+  "CREATE INDEX IF NOT EXISTS idx_self_tests_created_at ON self_tests (created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_self_tests_user_id_created_at ON self_tests (user_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_self_tests_status_created_at ON self_tests (status, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens (user_id)",
   "CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires_at ON password_reset_tokens (expires_at)",
   "CREATE INDEX IF NOT EXISTS idx_conversations_user1_id ON conversations (user1_id)",
@@ -566,12 +616,14 @@ export const ALL_TABLES = [
   "users",
   "problems",
   "judge_images",
-  "categories",
-  "problems_categories",
+  "tags",
+  "problem_tags",
   "contests",
   "contest_problems",
   "contest_participants",
   "contest_clarifications",
+  "trainings",
+  "training_problems",
   "submissions",
   "evaluation_results",
   "check_ins",

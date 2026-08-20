@@ -16,7 +16,6 @@
 | description | TEXT | |
 | is_system | BOOLEAN | NOT NULL, DEFAULT false |
 | is_default | BOOLEAN | NOT NULL, DEFAULT false |
-| is_admin | BOOLEAN | NOT NULL, DEFAULT false |
 | parent_id | UUID | REFERENCES roles(id) ON DELETE SET NULL |
 | created_at | TEXT | NOT NULL, ISO 8601 |
 | updated_at | TEXT | NOT NULL, ISO 8601 |
@@ -56,25 +55,26 @@
 - **WHEN** 删除一个角色
 - **THEN** `role_permissions` 和 `user_roles` 中关联该角色的行被级联删除
 
-### Requirement: is_admin 标记
+### Requirement: admin:full_access 权限（替代 is_admin 标记）
 
-`is_admin=true` 的角色 SHALL 隐式拥有所有权限。权限检查函数遇到 `is_admin=true` 时直接返回 true，不查询 `role_permissions` 表。
+管理员的判定 SHALL 统一为权限 `admin:full_access`（resource=`admin`，action=`full_access`）：用户是否为管理员 = 其权限集（含角色继承链）是否包含 `admin:full_access`。权限检查函数 SHALL 在权限集包含 `admin:full_access` 时对任意权限检查直接放行，不依赖 `roles.is_admin` 布尔属性与角色名称。
 
-**权限判断 SHALL 依赖 `is_admin` 布尔属性，不依赖角色名称。**
+JWT SHALL 不包含 `is_admin` claim；`requireAdmin()` 与 `requirePermission()` SHALL 通过 `resolvePermissions`（请求级缓存）实时查询权限集判定。
 
-JWT SHALL 包含 `is_admin` 布尔 claim，由登录时从 `user_roles` + `roles.is_admin` 推导。`requireAdmin()` 和 `requirePermission()` 中间件 SHALL 通过 `c.var.isAdmin` 进行 fast path 判断。
+#### Scenario: 拥有 admin:full_access 权限的用户全权限放行
 
-#### Scenario: admin 角色无需显式分配权限
-- **WHEN** 用户拥有 `is_admin=true` 的角色
-- **THEN** `checkPermission(userId, anyPermission)` 始终返回 true，无论 `role_permissions` 中是否有记录
+- **WHEN** 用户的角色（含继承链）拥有 `admin:full_access` 权限
+- **THEN** `checkPermission(userId, anyPermission)` 返回 true，无论 `role_permissions` 中是否有该权限记录
 
-#### Scenario: 角色重命名后权限不受影响
-- **WHEN** 管理员将 `is_admin=true` 的角色名称从 "admin" 改为 "超级管理员"
-- **THEN** 拥有该角色的用户仍然通过 `is_admin` 标记获得所有权限，fast path 不受影响
+#### Scenario: 继承链上的管理员权限生效
 
-#### Scenario: 非 admin 角色需显式分配权限
-- **WHEN** 用户仅拥有 `is_admin=false` 的角色
-- **THEN** `checkPermission` 基于 `role_permissions` 中的实际记录进行判断
+- **WHEN** 用户拥有角色 A，角色 A 的 `parent_id` 指向拥有 `admin:full_access` 权限的角色 B
+- **THEN** 该用户获得管理员权限，`checkPermission(userId, anyPermission)` 返回 true
+
+#### Scenario: 权限变更即时生效
+
+- **WHEN** 管理员移除某用户的 `admin:full_access` 权限（重新登录前后）
+- **THEN** 该用户下一次请求即不再通过 `requireAdmin()`（JWT 无权限快照，实时查询）
 
 ### Requirement: is_default 标记
 
@@ -96,7 +96,7 @@ JWT SHALL 包含 `is_admin` 布尔 claim，由登录时从 `user_roles` + `roles
 
 ### Requirement: is_system 标记
 
-`is_system=true` 的角色 SHALL 不可删除、不可改名、不可修改 `is_admin`/`is_default` 标记。
+`is_system=true` 的角色 SHALL 不可删除、不可改名、不可修改 `is_default` 标记。
 
 #### Scenario: 尝试删除系统角色
 - **WHEN** 管理员尝试删除 `is_system=true` 的角色
@@ -126,15 +126,24 @@ JWT SHALL 包含 `is_admin` 布尔 claim，由登录时从 `user_roles` + `roles
 
 系统 SHALL 提供 `getUserPermissions(userId)` 函数，通过一次递归 CTE 查询返回用户所有有效权限的 `Set<string>`。
 
-权限格式为 `"resource:action"`（如 `"problem:create"`、`"submission:read_all"`）。
+权限格式为 `"resource:action"`（如 `"problem:create"`、`"admin:full_access"`）。
+
+递归 CTE SHALL 沿 `roles.parent_id` 聚合用户全部直接角色与祖先角色的权限，SHALL NOT 按 `is_admin` 过滤任何角色的权限行。
 
 #### Scenario: 普通用户获取权限集
+
 - **WHEN** 调用 `getUserPermissions(userId)` 且该用户仅拥有 "user" 角色（含 10 个权限）
 - **THEN** 返回包含 10 个 `"resource:action"` 字符串的 Set
 
 #### Scenario: 多角色用户获取权限并集
+
 - **WHEN** 用户同时拥有 "user"（10 个权限）和 "problem_setter"（额外 3 个权限）两个角色
 - **THEN** 返回 13 个权限的并集
+
+#### Scenario: admin 角色权限包含 admin:full_access
+
+- **WHEN** 调用 `getUserPermissions(userId)` 且该用户拥有 admin 角色
+- **THEN** 返回的 Set 包含 `"admin:full_access"`
 
 ### Requirement: checkPermission 函数
 
@@ -142,10 +151,8 @@ JWT SHALL 包含 `is_admin` 布尔 claim，由登录时从 `user_roles` + `roles
 
 - `checkPermission`：返回布尔值，用于条件判断
 - `assertPermission`：无权限时抛出 `ForbiddenError`，用于断言
-- 两者均遵循 `isAdmin` fast path → `resolvePermissions` DB fallback 的分层策略
-- 两者均共享 `resolvePermissions` 的请求级缓存
-
-若用户拥有 `is_admin=true` 的角色则直接返回 true，否则调用 `getUserPermissions` 后进行 `Set.has()` 检查。
+- 判定规则：权限集包含 `admin:full_access` 时直接放行，否则 `Set.has(permission)`
+- 两者均共享 `resolvePermissions` 的请求级缓存，SHALL NOT 依赖 JWT 中的 `is_admin` claim
 
 #### Scenario: 用户拥有请求的权限
 - **WHEN** `checkPermission(c, "problem:create")` 且用户拥有该权限
@@ -156,59 +163,75 @@ JWT SHALL 包含 `is_admin` 布尔 claim，由登录时从 `user_roles` + `roles
 - **THEN** 返回 false
 
 #### Scenario: admin 用户直接放行
-- **WHEN** `checkPermission(c, anyPermission)` 且用户拥有 `is_admin=true` 的角色
-- **THEN** 返回 true，不执行数据库查询
-
-### Requirement: 向前兼容 users.role 列
-
-系统 SHALL 保留 `users.role` 列，但所有新增的授权逻辑 MUST 使用 RBAC 表（`user_roles`）进行判断。`users.role` 仅用于：
-1. 现有代码的向前兼容（在逐步迁移期间）
-2. JWT 的 `role` claim（用于 admin fast path）
-
-#### Scenario: 新注册用户的 role 列与 RBAC 同步
-- **WHEN** 新用户注册
-- **THEN** `users.role` 设置为 user_roles 中 `is_default=true` 角色的 name 字段值
+- **WHEN** `checkPermission(c, anyPermission)` 且用户权限集包含 `admin:full_access`
+- **THEN** 返回 true
 
 ### Requirement: 系统预置角色与权限
 
 系统 SHALL 在 `deno task init:system` 时创建以下预置数据：
 
 **角色**：
-- `admin`：`is_system=true`, `is_admin=true`, `is_default=false`，无 parent
-- `user`：`is_system=true`, `is_admin=false`, `is_default=true`，无 parent
+- `admin`：`is_system=true`, `is_default=false`，无 parent
+- `user`：`is_system=true`, `is_default=true`，无 parent
 
-**权限**（22 个）：
+**权限**（共 42 个，覆盖 problem/submission/user/tag/contest/community/system 资源域；完整清单以 `PERMISSION_DEFS` 为准）：
 - `problem:create`, `problem:create_p`, `problem:read`
 - `problem:write_own`, `problem:write_any`
 - `problem:delete_own`, `problem:delete_any`
 - `problem:package_manage_own`, `problem:package_manage_any`
+- `problem:field_evaluator_command`（题目敏感字段：evaluator 评测命令）
+- `problem:field_evaluator_network`（题目敏感字段：evaluator 联网开关）
 - `submission:create`, `submission:read_own`, `submission:read_all`
 - `submission:rejudge`
 - `user:read_profile`, `user:search`, `user:manage`
-- `category:read`, `category:manage`
+- `tag:read`, `tag:manage`
+- `contest:participate` 及 `community:*` 域权限（read / create_solution / create_discussion / create_moment / comment / react / follow / report）
 - `system:settings`, `system:judge_images`, `system:audit_logs`, `system:ip_bans`
+- `admin:full_access`（管理员通配权限）
 
-`user` 角色 SHALL 默认拥有以下权限：`problem:create`, `problem:read`, `problem:write_own`, `problem:delete_own`, `problem:package_manage_own`, `submission:create`, `submission:read_own`, `user:read_profile`, `category:read`。
-`admin` 角色 SHALL 不需要显式分配权限（`is_admin=true` 隐式全权限）。
+`user` 角色 SHALL 默认拥有以下权限（`USER_DEFAULT_PERMISSIONS`，18 项）：`problem:create`, `problem:read`, `problem:write_own`, `problem:delete_own`, `problem:package_manage_own`, `submission:create`, `submission:read_own`, `user:read_profile`, `tag:read`, `contest:participate`, `community:read`, `community:create_solution`, `community:create_discussion`, `community:create_moment`, `community:comment`, `community:react`, `community:follow`, `community:report`。
+`admin` 角色 SHALL 通过 `admin:full_access` 通配权限放行全部操作（无需逐项分配权限）。
+
+标签管控权限 `tag:manage` SHALL 默认不授予任何角色（仅 admin 隐式拥有），但仍作为预置权限存在于 `permissions` 表中，运营者可经角色管理将其授予自定义角色以满足自身管控需求。
 
 #### Scenario: 全新部署 init:system 创建预置角色
 - **WHEN** `deno task init:system` 在新数据库上执行
-- **THEN** `roles` 表包含 admin 和 user 两个系统角色，`permissions` 表包含 22 条权限定义，`role_permissions` 表包含 user 角色的 9 条权限关联
+- **THEN** `roles` 表包含 admin 和 user 两个系统角色，`permissions` 表包含 42 条权限定义（`PERMISSION_DEFS` 全量），`role_permissions` 表包含 user 角色的 20 条权限关联（18 条常规默认授权 + 2 条敏感字段一次性授权）
 
 #### Scenario: 重复 init:system 幂等
 - **WHEN** `deno task init:system` 在已有预置数据的数据库上再次执行
 - **THEN** 系统跳过已存在的角色和权限（ON CONFLICT DO NOTHING）
 
+#### Scenario: 存量部署自动补齐敏感字段权限项
+- **WHEN** 已有数据库启动执行 `ensureRbacSeeds()`
+- **THEN** `permissions` 表新增 `problem:field_evaluator_command` 与 `problem:field_evaluator_network`，`role_permissions` 表为 user 角色补齐对应关联，已有授权不变
+
+#### Scenario: 旧分类权限被清理
+- **WHEN** 迁移在已存在 `category:read`/`category:manage` 权限的数据库上执行
+- **THEN** 这两条权限及其角色关联被删除，替换为 `tag:read`/`tag:manage`
+
+#### Scenario: tag:manage 默认仅 admin
+
+- **WHEN** 全新部署执行 `init:system`
+- **THEN** `role_permissions` 中不存在任何角色与 `tag:manage` 的关联（仅 admin 经 `admin:full_access` 隐式拥有）
+
+#### Scenario: 运营者可将 tag:manage 授予自定义角色
+
+- **WHEN** 运营者创建自定义角色并通过角色权限管理授予 `tag:manage`
+- **THEN** 该角色用户获得标签写接口调用权限，`user` 默认角色不受影响
+
 ### Requirement: 数据迁移——现有用户角色同步
 
-系统 SHALL 在 migration 执行时将现有 `users.role` 值同步到 `user_roles` 表：`role='admin'` 的用户关联到 admin 角色，`role='user'` 的用户关联到 user 角色。
+系统 SHALL 在 `deno task init:system` / `dev-setup` 执行时，为尚无任何 `user_roles` 关联的存量用户补齐默认 `user` 角色关联（`users.role` 列已删除，迁移不得再依赖该列）。
 
-#### Scenario: 现有管理员用户获得 RBAC 角色
-- **WHEN** migration 执行时 users 表中存在 `role='admin'` 的用户
-- **THEN** `user_roles` 表中插入对应行，关联该用户与 admin 角色
+#### Scenario: 无角色关联的存量用户获得默认角色
+
+- **WHEN** 初始化脚本执行时存在无 `user_roles` 关联的用户
+- **THEN** `user_roles` 表插入该用户与 user 角色的关联
 
 #### Scenario: root 用户不参与同步
-- **WHEN** migration 执行
+
+- **WHEN** 初始化脚本执行
 - **THEN** `id='0'` 的 root 用户不在同步范围内（root 用户不可登录，不需要 RBAC 角色）
 
 ### Requirement: contest 资源域权限
@@ -226,8 +249,8 @@ JWT SHALL 包含 `is_admin` 布尔 claim，由登录时从 `user_roles` + `roles
 竞赛公开列表查看和已结束竞赛访问 SHALL 为公开权限，无需显式 RBAC 权限。
 
 #### Scenario: 管理员拥有 contest 权限
-- **WHEN** RBAC seed 执行后，admin 角色（`is_admin=true`）的用户
-- **THEN** 隐式拥有所有 contest 权限（isAdmin fast path）
+- **WHEN** RBAC seed 执行后，admin 角色（权限集含 `admin:full_access`）的用户
+- **THEN** 隐式拥有所有 contest 权限（全权限放行）
 
 #### Scenario: 普通用户注册竞赛
 - **WHEN** 普通用户 POST `/api/v1/contests/:id/register`

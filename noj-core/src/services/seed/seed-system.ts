@@ -2,7 +2,7 @@
  * 系统初始化数据（原 scripts/seed.ts 拆分）。
  *
  * 供 CLI（scripts/noj.ts）子命令复用：
- * - `init system`：root 用户 + RBAC 预置 + 镜像白名单 + 分类
+ * - `init system`：root 用户 + RBAC 预置 + 镜像白名单 + 标签
  * - `bootstrap admin`：管理员引导
  * - `dev-setup`：额外填充 dev 专用数据（E2E 守卫用户）
  *
@@ -11,13 +11,7 @@
 
 import { eq } from "drizzle-orm";
 import { getDb } from "../../db/connection.ts";
-import {
-  categories,
-  judgeImages,
-  roles,
-  userRoles,
-  users,
-} from "../../db/schema.ts";
+import { judgeImages, roles, tags, userRoles, users } from "../../db/schema.ts";
 import { hashPassword } from "../../lib/password.ts";
 import { ensureSystemRoles } from "./seed-rbac.ts";
 import { ROOT_USER_ID } from "../../lib/constants.ts";
@@ -113,53 +107,34 @@ export async function seedJudgeImages(): Promise<void> {
 }
 
 /**
- * 初始化示例分类。
+ * 初始化种子标签（issue #223：category 系统退役，双类标签取代）。
  */
-export async function seedCategories(): Promise<void> {
+export async function seedTags(): Promise<void> {
   const db = getDb();
   const now = new Date().toISOString();
 
-  const cats = [
-    {
-      id: "cat-algorithm",
-      name: "算法",
-      slug: "algorithm",
-      description: "算法相关题目",
-      parent_id: null,
-      level: 0,
-    },
-    {
-      id: "cat-data-structure",
-      name: "数据结构",
-      slug: "data-structure",
-      description: "数据结构相关题目",
-      parent_id: null,
-      level: 0,
-    },
-    {
-      id: "cat-tree",
-      name: "树",
-      slug: "tree",
-      description: "树结构相关题目",
-      parent_id: "cat-data-structure",
-      level: 1,
-    },
-    {
-      id: "cat-lmcc",
-      name: "LMCC 样例题",
-      slug: "lmcc-sample",
-      description: "LMCC 样例题集",
-      parent_id: null,
-      level: 0,
-    },
+  const seed = [
+    // 题目标签（人人可见）
+    { id: "tag-lmcc", name: "LMCC 样例题", kind: "problem" },
+    { id: "tag-beginner", name: "入门", kind: "problem" },
+    // 算法标签（通过题目后可见）
+    { id: "tag-simulate", name: "模拟", kind: "algorithm" },
+    { id: "tag-sliding-window", name: "滑动窗口", kind: "algorithm" },
+    { id: "tag-prefix-sum", name: "前缀和", kind: "algorithm" },
+    { id: "tag-graph", name: "图论", kind: "algorithm" },
+    { id: "tag-dp", name: "DP", kind: "algorithm" },
+    { id: "tag-ds", name: "数据结构", kind: "algorithm" },
+    { id: "tag-tree", name: "树", kind: "algorithm" },
   ];
 
-  for (const cat of cats) {
+  for (const tag of seed) {
+    // 以 name 为幂等键：运营者若已手工创建同名标签（随机 UUID），
+    // 种子跳过而不触发 name UNIQUE 冲突（语义上 name 才是标签身份）。
     await db
-      .insert(categories)
-      .values({ ...cat, created_at: now, updated_at: now })
-      .onConflictDoNothing({ target: categories.id });
-    console.log(`  已同步分类: ${cat.name} (${cat.slug})`);
+      .insert(tags)
+      .values({ ...tag, created_at: now, updated_at: now })
+      .onConflictDoNothing({ target: tags.name });
+    console.log(`  已同步标签: ${tag.name} (${tag.kind})`);
   }
 }
 

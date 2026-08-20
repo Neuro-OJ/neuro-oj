@@ -1,7 +1,12 @@
 <script setup lang="ts">
-type Tab = 'description' | 'history' | 'settings'
+type Tab = 'description' | 'history' | 'settings' | 'self-test'
 
-defineProps<{ active: Tab }>()
+const props = withDefaults(defineProps<{
+  active: Tab
+  showSelfTest?: boolean
+}>(), {
+  showSelfTest: false,
+})
 defineEmits<{ select: [value: Tab] }>()
 
 interface Item {
@@ -10,11 +15,14 @@ interface Item {
   icon: string
 }
 
-const items: Item[] = [
+const items = computed<Item[]>(() => [
   { key: 'description', label: '题目描述', icon: 'i-lucide-book-open' },
   { key: 'history', label: '提交历史', icon: 'i-lucide-history' },
+  ...(props.showSelfTest
+    ? [{ key: 'self-test' as const, label: '自测', icon: 'i-lucide-flask-conical' }]
+    : []),
   { key: 'settings', label: '设置', icon: 'i-lucide-settings' },
-]
+])
 </script>
 
 <template>

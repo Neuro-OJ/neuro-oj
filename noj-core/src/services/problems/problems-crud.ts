@@ -8,7 +8,7 @@
  *
  * 依赖：
  * - validateRuntimeConfig / types.ts：DTO 与 runtime 校验
- * - syncProblemCategories / problems-categories.ts：分类关联维护
+ * - syncProblemTags / problems-tags.ts：标签关联维护（issue #223）
  * - getProblem / problems-list.ts：回读完整结果（避免与上面产生 init 顺序循环）
  *   —— getProblem 是函数级引用，运行时才解析，无循环问题
  */
@@ -29,11 +29,11 @@ import {
   DIFFICULTIES,
   isValidDifficulty,
   isValidProblemType,
-  type ProblemResponseWithCategories,
+  type ProblemResponseWithTags,
   type UpdateProblemInput,
 } from "../../types/problems.ts";
 import { validateRuntimeConfig } from "./problems-types.ts";
-import { syncProblemCategories } from "./problems-categories.ts";
+import { syncProblemTags, validateProblemTagIds } from "./problems-tags.ts";
 import { getProblem } from "./problems-list.ts";
 import { assertPermission } from "../../lib/permissions.ts";
 import {
@@ -58,7 +58,7 @@ export async function createProblem(
   userRole?: string,
   c?: Context,
   allowServerStorageUrl = false,
-): Promise<ProblemResponseWithCategories> {
+): Promise<ProblemResponseWithTags> {
   const db = getDb();
 
   // NOJ-115/116：服务端流程（import-bundle）以外禁止客户端直传存储 URL。
@@ -169,6 +169,12 @@ export async function createProblem(
     }
   }
   let number = input.number;
+  // 半写入防护：标签校验（存在性 + 客观题 kind 规则）在题目行写入之前完成，
+  // 校验失败（400）不产生孤儿题目（syncProblemTags 内部仍重复校验兜底）。
+  if (input.tag_ids && input.tag_ids.length > 0) {
+    await validateProblemTagIds(input.tag_ids, isObjective);
+  }
+
   // 确定题号 + 插入（MAX+1 并发冲突时最多重试 3 次）
   const MAX_RETRIES = 3;
   const now = new Date().toISOString();
@@ -217,9 +223,9 @@ export async function createProblem(
     }
   }
 
-  // 处理分类关联
-  if (input.category_ids && input.category_ids.length > 0) {
-    await syncProblemCategories(id, input.category_ids);
+  // 处理标签关联（客观题禁止算法标签，校验在 syncProblemTags 内）
+  if (input.tag_ids && input.tag_ids.length > 0) {
+    await syncProblemTags(id, input.tag_ids, isObjective);
   }
 
   return getProblem(id);
@@ -245,7 +251,7 @@ export async function updateProblem(
   userRole?: string,
   c?: Context,
   allowServerStorageUrl = false,
-): Promise<ProblemResponseWithCategories> {
+): Promise<ProblemResponseWithTags> {
   const db = getDb();
 
   // NOJ-115/116：服务端流程（import-bundle）以外禁止客户端直传存储 URL。
@@ -362,11 +368,17 @@ export async function updateProblem(
   }
   updates.updated_at = new Date().toISOString();
 
+  // 半写入防护：标签校验（存在性 + 客观题 kind 规则）在字段提交之前完成，
+  // 校验失败（400）不产生「客户端以为未改、实际已改」的半写入。
+  if (input.tag_ids !== undefined) {
+    await validateProblemTagIds(input.tag_ids, isObjective);
+  }
+
   await db.update(problems).set(updates).where(eq(problems.id, id));
 
-  // 处理分类关联
-  if (input.category_ids !== undefined) {
-    await syncProblemCategories(id, input.category_ids);
+  // 处理标签关联
+  if (input.tag_ids !== undefined) {
+    await syncProblemTags(id, input.tag_ids, isObjective);
   }
 
   // 审计日志：runtime_config 变更（客观题套卷无此字段，跳过）
@@ -470,7 +482,7 @@ export async function deleteProblem(
     );
   await db.delete(submissions).where(eq(submissions.problem_id, id));
 
-  // 级联删除（problems_categories 的 ON DELETE CASCADE 会自动清理关联）
+  // 级联删除（problem_tags 的 ON DELETE CASCADE 会自动清理关联）
   await db.delete(problems).where(eq(problems.id, id));
 
   // 审计日志：删除成功后才记录（display_id 由 type+number 派生）

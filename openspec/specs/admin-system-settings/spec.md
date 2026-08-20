@@ -99,7 +99,7 @@
 - `description`（string）
 - `updated_at`（string | null）
 - `updated_by`（string | null）
-- `category`（string，分组：'auth' | 'maintenance' | 'email' | 'rate_limit' | 'storage' | 'database' | 'redis' | 'cors' | 'other'）
+- `category`（string，分组：'auth' | 'maintenance' | 'email' | 'rate_limit' | 'judge' | 'storage' | 'database' | 'redis' | 'cors' | 'other'）
 - `min`（number | undefined，integer 类型专用）
 - `max`（number | undefined，integer 类型专用）
 - `needsRestart`（boolean | undefined，修改后需重启才能生效）
@@ -318,7 +318,7 @@
 
 ### Requirement: 初始注册表
 
-系统 SHALL 在 `lib/settings-registry.ts` 中预定义约 22 个 DB-backed 设置项，按 category 分组：
+系统 SHALL 在 `lib/settings-registry.ts` 中预定义约 26 个 DB-backed 设置项，按 category 分组：
 
 **auth（2 项）：**
 
@@ -362,6 +362,15 @@
 | `rate_limit_login_lock_threshold` | integer | `10` | 连续失败锁定阈值 | false | `RATE_LIMIT_LOGIN_LOCK_THRESHOLD` | 1 | 100 |
 | `rate_limit_login_lock_seconds` | integer | `3600` | 锁定时长（秒） | false | `RATE_LIMIT_LOGIN_LOCK_SECONDS` | 60 | 86400 |
 | `trusted_proxies` | string | `""` | 可信代理白名单（IP/CIDR，逗号分隔） | false | `TRUSTED_PROXIES` | — | — |
+
+**judge（4 项）：**
+
+| key | type | default | description | is_secret | envFallback | min |
+|-----|------|---------|-------------|-----------|-------------|-----|
+| `judge_max_evaluator_time_limit_ms` | integer | `0` | evaluator 单用例时限上限（毫秒），0=不限制 | false | `JUDGE_MAX_EVALUATOR_TIME_LIMIT_MS` | 0 |
+| `judge_max_evaluator_memory_limit_mb` | integer | `0` | evaluator 内存上限（MB），0=不限制 | false | `JUDGE_MAX_EVALUATOR_MEMORY_LIMIT_MB` | 0 |
+| `judge_max_solution_call_timeout_ms` | integer | `0` | solution 调用超时上限（毫秒），0=不限制 | false | `JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS` | 0 |
+| `judge_max_solution_memory_limit_mb` | integer | `0` | solution 内存上限（MB），0=不限制 | false | `JUDGE_MAX_SOLUTION_MEMORY_LIMIT_MB` | 0 |
 
 **storage（7 项，修改需重启生效）：**
 
@@ -413,3 +422,45 @@
 #### Scenario: 连续保存不同设置
 - **WHEN** 管理员修改设置 A 和 B，并在 B 仍有未保存草稿时保存 A
 - **THEN** 设置 B 的草稿保持不变
+
+### Requirement: 保存失败内联错误反馈
+
+系统 SHALL 在管理员保存或重置设置失败时，在设置页面内联显示错误信息，且不丢失已填写的表单值。
+
+#### Scenario: 保存设置失败
+
+- **WHEN** 管理员保存设置时请求失败（网络错误或服务端拒绝）
+- **THEN** 页面在保存区域内联显示错误信息，已填写的表单值保持不变
+
+#### Scenario: 保存成功后错误清除
+
+- **WHEN** 保存失败显示错误后管理员再次保存成功
+- **THEN** 内联错误信息被清除
+
+### Requirement: judge 分类资源上限设置项
+
+系统 SHALL 在 `lib/settings-registry.ts` 的注册表中新增 `judge` 分类（SettingCategory 联合类型扩展），包含 4 个 integer 类型设置项，default 均为 `0`（0 = 不限制），min 均为 `0`：
+
+| key | default | description | envFallback |
+|-----|---------|-------------|-------------|
+| `judge_max_evaluator_time_limit_ms` | `0` | evaluator 单用例时限上限（毫秒），0=不限制 | `JUDGE_MAX_EVALUATOR_TIME_LIMIT_MS` |
+| `judge_max_evaluator_memory_limit_mb` | `0` | evaluator 内存上限（MB），0=不限制 | `JUDGE_MAX_EVALUATOR_MEMORY_LIMIT_MB` |
+| `judge_max_solution_call_timeout_ms` | `0` | solution 调用超时上限（毫秒），0=不限制 | `JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS` |
+| `judge_max_solution_memory_limit_mb` | `0` | solution 内存上限（MB），0=不限制 | `JUDGE_MAX_SOLUTION_MEMORY_LIMIT_MB` |
+
+设置项 SHALL 遵循既有 DB-backed 设置机制（`is_secret=false`、`needsRestart=false`、启动期注册表校验、管理后台按 category 分组动态渲染），由 `GET /api/v1/admin/settings` 自动返回、`PUT /api/v1/admin/settings/:key` 自动更新，无需前端改动。
+
+#### Scenario: 设置项出现在设置列表中
+
+- **WHEN** 管理员请求 `GET /api/v1/admin/settings`
+- **THEN** 响应包含 4 个 `judge_max_*` 设置项，`category` 为 `judge`，默认值为 `0`
+
+#### Scenario: 管理员更新上限
+
+- **WHEN** 管理员 `PUT /api/v1/admin/settings/judge_max_evaluator_memory_limit_mb` 设置值为 `512`
+- **THEN** 更新成功，后续写入校验读取该值作为 evaluator 内存上限
+
+#### Scenario: 非法值被拒
+
+- **WHEN** 管理员尝试将上限设置为非整数或负数
+- **THEN** 系统按既有 integer 类型校验拒绝（min=0）

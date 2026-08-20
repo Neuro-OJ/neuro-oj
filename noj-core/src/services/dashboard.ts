@@ -1,13 +1,13 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
-import { categories } from "../db/schema.ts";
-// deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
 import { evaluationResults } from "../db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
 import { problems } from "../db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
 import { submissions } from "../db/schema.ts";
+// deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
+import { tags } from "../db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
 import { users } from "../db/schema.ts";
 import { AppError } from "../lib/errors.ts";
@@ -19,7 +19,7 @@ export interface DashboardStats {
   total_users: number;
   total_problems: number;
   total_submissions: number;
-  total_categories: number;
+  total_tags: number;
   total_accepted: number;
   total_pending: number;
   acceptance_rate: number;
@@ -76,7 +76,7 @@ async function queryDashboardStats(): Promise<DashboardStats> {
   const result = await db.execute<{
     total_users: string;
     total_problems: string;
-    total_categories: string;
+    total_tags: string;
     total_submissions: string;
     total_accepted: string;
     total_judged: string;
@@ -87,7 +87,7 @@ async function queryDashboardStats(): Promise<DashboardStats> {
     SELECT
       (SELECT count(*)::text FROM users WHERE id <> '0') AS total_users,
       (SELECT count(*)::text FROM problems) AS total_problems,
-      (SELECT count(*)::text FROM categories) AS total_categories,
+      (SELECT count(*)::text FROM tags) AS total_tags,
       count(*)::text AS total_submissions,
       count(*) FILTER (WHERE er.status = 'Accepted')::text AS total_accepted,
       count(*) FILTER (WHERE er.status IS NOT NULL)::text AS total_judged,
@@ -101,7 +101,7 @@ async function queryDashboardStats(): Promise<DashboardStats> {
   const row = executeRow(result);
   const totalUsers = Number(row?.total_users ?? 0);
   const totalProblems = Number(row?.total_problems ?? 0);
-  const totalCategories = Number(row?.total_categories ?? 0);
+  const totalTags = Number(row?.total_tags ?? 0);
   const totalSubmissions = Number(row?.total_submissions ?? 0);
   const totalAccepted = Number(row?.total_accepted ?? 0);
   const totalJudged = Number(row?.total_judged ?? 0);
@@ -116,7 +116,7 @@ async function queryDashboardStats(): Promise<DashboardStats> {
     total_users: totalUsers,
     total_problems: totalProblems,
     total_submissions: totalSubmissions,
-    total_categories: totalCategories,
+    total_tags: totalTags,
     total_accepted: totalAccepted,
     total_pending: totalPending,
     acceptance_rate: acceptanceRate,

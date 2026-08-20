@@ -13,7 +13,10 @@ export type AuditAction =
   | "problems.delete"
   | "problems.runtime_config_changed"
   | "problems.imported"
-  | "categories.delete"
+  | "tags.create"
+  | "tags.update"
+  | "tags.delete"
+  | "tags.merge"
   | "submissions.rejudge"
   | "settings.update"
   | "ip_ban.create"
@@ -53,9 +56,24 @@ export type AuditDetail =
     imported_with_id: boolean;
   }
   | {
-    action: "categories.delete";
+    action: "tags.create";
     name: string;
-    slug: string;
+    kind: string;
+  }
+  | {
+    action: "tags.update";
+    from: string;
+    to: string;
+  }
+  | {
+    action: "tags.delete";
+    name: string;
+    kind: string;
+  }
+  | {
+    action: "tags.merge";
+    source_name: string;
+    target_name: string;
   }
   | {
     action: "submissions.rejudge";

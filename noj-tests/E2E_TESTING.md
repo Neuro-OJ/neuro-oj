@@ -13,7 +13,7 @@ noj-tests/
 ├── run-e2e.sh                 # 一键运行脚本
 └── e2e/
     ├── helper.ts              # 辅助函数（API 客户端、用户注册、e2eTest 包装）
-    ├── 01_categories.test.ts  # 分类管理（CRUD + 层级树）
+    ├── 01_tags.test.ts        # 标签系统（CRUD/合并/筛选 + 算法标签门控）
     ├── 02_problems.test.ts    # 题目管理（U/P 型 CRUD + 筛选）
     ├── 03_auth.test.ts        # 认证流程（注册/登录/改密/管理员）
     ├── 04_submissions.test.ts # 提交流程（AC/WA/TLE + 查看结果）
@@ -47,7 +47,7 @@ noj-tests/
 
 | 测试文件 | 测试内容 | 关键验证点 |
 |---------|---------|------------|
-| `01_categories.test.ts` | 分类 CRUD + 层级树 | 创建/更新/删除分类，父子层级 |
+| `01_tags.test.ts` | 标签 CRUD/合并/筛选 + 算法标签门控 | 打标签→筛选命中→合并/删除清理；匿名/未 AC 隐藏、AC 后可见 |
 | `02_problems.test.ts` | 题目 CRUD + U/P 型 + 筛选 | 题型分离，URL 驱动筛选 |
 | `03_auth.test.ts` | 登录/注册/改密/管理员 | JWT Cookie，强制改密守卫 |
 | `04_submissions.test.ts` | 提交流程 AC/WA/TLE | 评测结果正确性 |

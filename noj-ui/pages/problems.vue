@@ -11,7 +11,7 @@ interface ProblemItem {
   description: string
   difficulty: string
   acceptance_rate?: number
-  categories: { id: string; name: string; slug: string }[]
+  tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
   display_id: string
   type: string
   owner_id: string
@@ -28,10 +28,10 @@ interface ProblemsResponse {
   limit: number
 }
 
-interface CategoryItem {
+interface TagItem {
   id: string
   name: string
-  slug: string
+  kind: 'problem' | 'algorithm'
 }
 
 // ── 筛选状态（URL 查询参数驱动） ──
@@ -39,7 +39,7 @@ const {
   page,
   keyword,
   difficulty,
-  categoryId,
+  tagId,
   problemType,
   limit,
   hasActiveFilters,
@@ -62,11 +62,11 @@ const totalPages = computed(() => {
   return Math.ceil(total.value / limit)
 })
 
-// ── 获取分类树（客户端缓存） ──
-const { data: categoriesData } = await useAsyncData("problem-categories", () =>
-  api.get<{ data: CategoryItem[] }>("/api/v1/categories", { silent: true }),
+// ── 获取标签列表（客户端缓存） ──
+const { data: tagsData } = await useAsyncData("problem-tags", () =>
+  api.get<{ data: TagItem[] }>("/api/v1/tags", { silent: true }),
 )
-const categories = computed(() => categoriesData.value?.data ?? [])
+const tags = computed(() => tagsData.value?.data ?? [])
 
 // ── 通过状态（仅已登录用户） ──
 const { isLoggedIn } = useAuth()
@@ -134,14 +134,14 @@ const columns = computed(() => {
     { accessorKey: "display_id", header: "#" },
     { accessorKey: "title", header: "题目" },
     { accessorKey: "difficulty", header: "难度" },
-    { accessorKey: "categories", header: "分类" },
+    { accessorKey: "tags", header: "标签" },
     { accessorKey: "time", header: "时间" },
     { accessorKey: "memory", header: "内存" },
     { accessorKey: "rate", header: "通过率" },
   ]
   if (isLoggedIn.value) base.push({ accessorKey: "status", header: "状态" })
   if (!isDesktop.value) {
-    return base.filter((c) => !["categories", "time", "memory", "rate", "status"].includes(c.accessorKey))
+    return base.filter((c) => !["tags", "time", "memory", "rate", "status"].includes(c.accessorKey))
   }
   return base
 })
@@ -160,12 +160,12 @@ const columns = computed(() => {
     <ProblemFilterBar
       :keyword="keyword"
       :difficulty="difficulty"
-      :category-id="categoryId"
+      :tag-id="tagId"
       :problem-type="problemType"
-      :categories="categories"
+      :tags="tags"
       @update:keyword="setFilter('keyword', $event)"
       @update:difficulty="setFilter('difficulty', $event)"
-      @update:category-id="setFilter('category_id', $event)"
+      @update:tag-id="setFilter('tag', $event)"
       @update:problem-type="setFilter('type', $event)"
     />
 
@@ -215,13 +215,13 @@ const columns = computed(() => {
               {{ difficultyLabels[row.original.difficulty] || row.original.difficulty }}
             </span>
           </template>
-          <template #categories-cell="{ row }">
+          <template #tags-cell="{ row }">
             <span
-              v-for="cat in row.original.categories"
-              :key="cat.id"
+              v-for="tag in row.original.tags"
+              :key="tag.id"
               class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 mr-1"
-            >{{ cat.name }}</span>
-            <span v-if="!row.original.categories?.length" class="text-xs text-text-muted">--</span>
+            >{{ tag.name }}</span>
+            <span v-if="!row.original.tags?.length" class="text-xs text-text-muted">--</span>
           </template>
           <template #time-cell="{ row }">
             <!-- 客观题套卷无评测容器（runtime_config 为 NULL） -->

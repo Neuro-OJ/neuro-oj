@@ -6,10 +6,8 @@
  *   /dashboard/stats、/settings、/blacklist、/audit-logs、/roles、/permissions
  *
  * 组级守卫：所有 admin 端点均需认证 + 管理员权限，在此统一挂载。
- * 例外：公告管理端点（/announcements*）已抽至独立 router
- * （routes/admin-announcements.ts，细粒度权限 announcement:manage，
- * admin:full_access 通配放行或显式拥有该权限均可），此处对公告路径跳过
- * adminMiddleware——否则组级通配 use 会先行拦截细粒度权限持有者。
+ * 例外：公告与题单管理端点已抽至独立 router，使用各自的细粒度权限。
+ * 此处必须跳过对应路径，否则组级通配 use 会先于独立 router 拦截请求。
  */
 import { Hono } from "hono";
 import type { AuthEnv } from "../../middleware/auth.ts";
@@ -27,9 +25,16 @@ import adminDashboard from "./admin-dashboard.ts";
 
 const router = new Hono<AuthEnv>();
 
+const FINE_GRAINED_ADMIN_PREFIXES = [
+  "/api/v1/admin/announcements",
+  "/api/v1/admin/trainings",
+] as const;
+
 // 路由组级中间件：所有 admin 端点均需认证 + 管理员权限。
 router.use("*", authMiddleware, async (c, next) => {
-  if (c.req.path.startsWith("/api/v1/admin/announcements")) {
+  if (
+    FINE_GRAINED_ADMIN_PREFIXES.some((prefix) => c.req.path.startsWith(prefix))
+  ) {
     return next();
   }
   return await adminMiddleware(c, next);

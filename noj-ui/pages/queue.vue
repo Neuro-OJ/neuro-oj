@@ -7,6 +7,7 @@ interface QueueItem {
   language: string
   submitted_at: string
   submitted_by: string
+  kind?: 'submission' | 'self_test'
   judge_started_at?: string | null
   judge_finished_at?: string | null
   status?: string

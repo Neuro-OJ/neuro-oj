@@ -78,7 +78,7 @@ authMiddleware → 注入 isAdmin
 | problem    | create/create_p/read/write_own/write_any/delete_own/delete_any/package_manage_own/package_manage_any | 题目 CRUD + 支持包 |
 | submission | create/read_own/read_all/rejudge                                                                     | 提交操作           |
 | user       | read_profile/search/manage                                                                           | 用户操作           |
-| category   | read/manage                                                                                          | 分类操作           |
+| tag        | read/manage                                                                                          | 标签操作           |
 | system     | settings/judge_images/audit_logs/ip_bans                                                             | 系统管理           |
 
 ### 迁移策略
@@ -104,7 +104,7 @@ noj-core/
 │   ├── main.ts            # 入口（启动校验 + 初始化顺序）
 │   ├── app.ts             # Hono 应用工厂（CORS + 路由 + 错误处理）
 │   ├── mod.ts             # 公共导出
-│   ├── routes/            # 路由层（参数校验 + 调用 service）：admin / auth / categories / checkin / community / contests / conversations / health / problems / queue / rankings / search / sse / stats / submissions / users
+│   ├── routes/            # 路由层（参数校验 + 调用 service）：admin / auth / tags / checkin / community / contests / conversations / health / problems / queue / rankings / search / sse / stats / submissions / users
 │   ├── services/          # 业务逻辑层（数据库读写，34 个文件，含 problems-*/submissions-* 拆分与 community/contests/dashboard/stats-cache 等）
 │   ├── db/                # 数据库连接 & Drizzle schema
 │   │   ├── index.ts       # 数据库连接管理（单例模式）
@@ -217,7 +217,7 @@ deno task db:migrate
 # 生成 Drizzle 迁移文件
 deno task db:generate
 
-# 种子数据（示例题 + 分类 + 管理员）
+# 种子数据（示例题 + 标签 + 管理员）
 deno task dev-setup
 
 # 构建支持包
@@ -267,11 +267,11 @@ docker compose down     # 停止
 | POST   | `/api/v1/auth/register`                | 公开        | 用户注册                                     |
 | POST   | `/api/v1/auth/login`                   | 公开        | 用户登录（返回 JWT）                         |
 | GET    | `/api/v1/auth/me`                      | 登录        | 当前用户信息                                 |
-| GET    | `/api/v1/categories`                   | 公开        | 分类树                                       |
-| POST   | `/api/v1/categories`                   | 管理员      | 创建分类                                     |
-| GET    | `/api/v1/categories/:id`               | 公开        | 分类详情                                     |
-| PUT    | `/api/v1/categories/:id`               | 管理员      | 更新分类                                     |
-| DELETE | `/api/v1/categories/:id`               | 管理员      | 删除分类                                     |
+| GET    | `/api/v1/tags`                         | 公开        | 标签列表（含算法标签名，发现路径）           |
+| POST   | `/api/v1/tags`                         | tag:manage  | 创建标签（默认仅 admin，可配置）             |
+| PUT    | `/api/v1/tags/:id`                     | tag:manage  | 更新标签（改名/改 kind）                     |
+| DELETE | `/api/v1/tags/:id`                     | tag:manage  | 删除标签（级联清理关联）                     |
+| POST   | `/api/v1/tags/:id/merge`               | tag:manage  | 合并标签（关联重指向后删除源标签）           |
 | GET    | `/api/v1/problems`                     | 公开        | 题目列表（分页+筛选）                        |
 | GET    | `/api/v1/problems/:id`                 | 公开        | 题目详情（**双索引**：UUID/display_id/数字） |
 | POST   | `/api/v1/problems`                     | 登录        | 创建题目（U/P 类型）                         |
@@ -353,21 +353,21 @@ docker compose down     # 停止
 
 ## 数据库 Schema 设计
 
-| 表                      | 关键列                                                                                                                    | 约束 / 索引                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `users`                 | `id`(UUID), `username`(unique), `email`(unique), `password_hash`, `role`(user/admin), `bio`, `must_change_password`(bool) | PK, UK(username), UK(email)                                    |
-| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`                           | PK, UK(display_id), UK(type,number), FK→users                  |
-| `categories`            | `id`(UUID), `name`, `parent_id`, `level`(缓存深度)                                                                        | PK, FK→categories(parent_id) ON DELETE SET NULL                |
-| `problems_categories`   | `problem_id`, `category_id`                                                                                               | FK→problems ON DELETE CASCADE, FK→categories ON DELETE CASCADE |
-| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                         | PK, FK→users, FK→problems, idx(user_id,created_at)             |
-| `evaluation_results`    | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                     | PK, UK(submission_id), FK→submissions                          |
-| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                           | PK, FK→users, UK(user_id,checkin_date)                         |
-| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                | PK, UK(image)                                                  |
-| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                               | PK, FK→users, UK(token_hash)                                   |
-| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                               | PK, FK→users, UK(participant_a,participant_b)                  |
-| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                           | PK, FK→conversations, idx(conversation_id,created_at)          |
-| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                            | PK, FK→conversations, FK→users, UK(conversation_id,user_id)    |
-| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                   | PK, FK→messages, FK→users                                      |
+| 表                      | 关键列                                                                                                                    | 约束 / 索引                                                 |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `users`                 | `id`(UUID), `username`(unique), `email`(unique), `password_hash`, `role`(user/admin), `bio`, `must_change_password`(bool) | PK, UK(username), UK(email)                                 |
+| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`                           | PK, UK(display_id), UK(type,number), FK→users               |
+| `tags`                  | `id`(UUID), `name`(unique), `kind`(problem/algorithm), `created_at`, `updated_at`                                         | PK, UK(name), CHECK(kind)                                   |
+| `problem_tags`          | `problem_id`, `tag_id`                                                                                                    | FK→problems ON DELETE CASCADE, FK→tags ON DELETE CASCADE    |
+| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                         | PK, FK→users, FK→problems, idx(user_id,created_at)          |
+| `evaluation_results`    | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                     | PK, UK(submission_id), FK→submissions                       |
+| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                           | PK, FK→users, UK(user_id,checkin_date)                      |
+| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                | PK, UK(image)                                               |
+| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                               | PK, FK→users, UK(token_hash)                                |
+| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                               | PK, FK→users, UK(participant_a,participant_b)               |
+| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                           | PK, FK→conversations, idx(conversation_id,created_at)       |
+| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                            | PK, FK→conversations, FK→users, UK(conversation_id,user_id) |
+| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                   | PK, FK→messages, FK→users                                   |
 
 > 上表为核心表速查。完整 Schema 共 38 张表（`src/db/schema.ts`），另有：
 >
@@ -386,7 +386,9 @@ docker compose down     # 停止
 - `evaluation_results.score` 为 `INTEGER`（×100），`scoreToDb`/`scoreFromDb`
   在应用层转换
 - `problems.number` 按 `type` 分别自增（`(type, number)` UNIQUE）
-- `categories.level` 为应用层计算的缓存深度（非触发器自动维护）
+- `tags.kind`
+  区分题目标签（problem，人人可见）与算法标签（algorithm，通过题目后可见，spoiler
+  门控后端强制）
 - `submissions` 有复合索引 `(user_id, created_at)` 优化"我的提交历史"查询
 
 ## 代码规范
@@ -573,7 +575,7 @@ Retry-After: 25
 
 | 命令                                                          | 行为                                                                                                                    |
 | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `deno task dev-setup`（`scripts/noj.ts dev-setup`）           | 幂等：迁移 → 系统基础数据（root/RBAC/镜像白名单/分类）→ 管理员引导 → 构建题目包 → 导入题目包 → dev 专用数据（E2E 用户） |
+| `deno task dev-setup`（`scripts/noj.ts dev-setup`）           | 幂等：迁移 → 系统基础数据（root/RBAC/镜像白名单/标签）→ 管理员引导 → 构建题目包 → 导入题目包 → dev 专用数据（E2E 用户） |
 | `deno task problems:build`（`scripts/noj.ts problems build`） | 调用系统 `zip` 命令（非 JS 库），在 `data/problems-src/<id>/` 目录执行，排除 `submission*`/`__pycache__`/`.git`         |
 | `deno task db:migrate`（`scripts/noj.ts db migrate`）         | 日志中脱敏数据库密码（`"//***@"`），迁移后关闭 DB 连接确保进程退出                                                      |
 

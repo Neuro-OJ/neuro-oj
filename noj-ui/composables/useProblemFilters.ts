@@ -1,7 +1,7 @@
 /**
  * 题目列表页的筛选状态管理 composable。
  *
- * 将 URL 查询参数（keyword、difficulty、category_id、page）作为筛选状态的单一来源，
+ * 将 URL 查询参数（keyword、difficulty、tag、page）作为筛选状态的单一来源，
  * 提供统一的读写接口。筛选条件变化时自动重置页码。
  */
 export function useProblemFilters() {
@@ -12,14 +12,14 @@ export function useProblemFilters() {
   const page = computed(() => Number(route.query.page) || 1);
   const keyword = computed(() => (route.query.keyword as string) || '');
   const difficulty = computed(() => (route.query.difficulty as string) || '');
-  const categoryId = computed(() => (route.query.category_id as string) || '');
+  const tagId = computed(() => (route.query.tag as string) || '');
   /** 题目类型筛选。空字符串 = 未选择（API 默认返回 P 型）。 */
   const problemType = computed(() => (route.query.type as string) || '');
   const problemNumber = computed(() => (route.query.number as string) || '');
 
   const limit = 20;
 
-  const hasActiveFilters = computed(() => !!keyword.value || !!difficulty.value || !!categoryId.value);
+  const hasActiveFilters = computed(() => !!keyword.value || !!difficulty.value || !!tagId.value);
 
   /**
    * 更新单个筛选参数。
@@ -47,7 +47,7 @@ export function useProblemFilters() {
     params.limit = String(limit);
     if (keyword.value) params.keyword = keyword.value;
     if (difficulty.value) params.difficulty = difficulty.value;
-    if (categoryId.value) params.category_id = categoryId.value;
+    if (tagId.value) params.tag = tagId.value;
     if (problemType.value) params.type = problemType.value;
     if (problemNumber.value) params.number = problemNumber.value;
     return params;
@@ -58,7 +58,7 @@ export function useProblemFilters() {
     limit,
     keyword,
     difficulty,
-    categoryId,
+    tagId,
     problemType,
     problemNumber,
     hasActiveFilters,

@@ -1,10 +1,10 @@
 ## Purpose
 
-定义审计日志 E2E 测试规范，验证 7 类管理员操作被正确记录，以及审计日志列表查询的正确性。
+定义审计日志 E2E 测试规范，验证管理操作被正确记录，以及审计日志列表查询的正确性。
 
 ## Requirements
 
-### Requirement: 审计日志 E2E——7 类操作记录验证
+### Requirement: 审计日志 E2E——管理操作记录验证
 
 测试 SHALL 验证管理员执行操作后对应的审计日志被正确记录。
 
@@ -28,11 +28,17 @@
 - **THEN** 审计日志中出现 `action=problems.delete` 记录
 - **THEN** `detail` 包含 `title` 和 `display_id`
 
-#### Scenario: 分类删除记录审计
+#### Scenario: 标签删除记录审计
 
-- **WHEN** admin 调用 `DELETE /api/v1/categories/:id`
-- **THEN** 审计日志中出现 `action=categories.delete` 记录
-- **THEN** `detail` 包含 `name` 和 `slug`
+- **WHEN** admin 调用 `DELETE /api/v1/tags/:id`
+- **THEN** 审计日志中出现 `action=tags.delete` 记录
+- **THEN** `detail` 包含 `name` 和 `kind`
+
+#### Scenario: 标签合并记录审计
+
+- **WHEN** admin 调用 `POST /api/v1/tags/:id/merge`
+- **THEN** 审计日志中出现 `action=tags.merge` 记录
+- **THEN** `detail` 包含 `source_name` 和 `target_name`
 
 ### Requirement: 审计日志列表查询 E2E
 

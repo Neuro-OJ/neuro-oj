@@ -5,6 +5,7 @@ import { extractApiError } from '~/utils/apiError'
 import { useEditorTheme } from '~/composables/useEditorTheme'
 import { useDraftStorage } from '~/composables/useDraftStorage'
 import { useSubmissionPolling } from '~/composables/useSubmissionPolling'
+import { useSelfTestPolling } from '~/composables/useSelfTestPolling'
 import { useResizableSplitter } from '~/composables/useResizableSplitter'
 
 /**
@@ -23,7 +24,7 @@ export interface WorkspaceProblem {
   description: string
   difficulty: string
   type: 'U' | 'P'
-  categories: { id: string; name: string; slug: string }[]
+  tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
 }
 
 export interface WorkspaceSubmission {
@@ -53,6 +54,11 @@ const props = withDefaults(
       language: string,
       code: string,
     ) => Promise<{ id: string }>
+    selfTest?: (
+      problemId: string,
+      language: string,
+      code: string,
+    ) => Promise<{ id: string }>
     templateUrl?: (problemId: string) => string
     draftKey: string
     openSubmissionUrl: (id: string) => string
@@ -68,8 +74,13 @@ const props = withDefaults(
     subtitle: '',
     canSubmit: true,
     submissionFilter: undefined,
+    selfTest: undefined,
   },
 )
+
+const emit = defineEmits<{
+  accepted: []
+}>()
 
 const router = useRouter()
 const { isLoggedIn } = useAuth()
@@ -88,7 +99,7 @@ const { state: draftState, savedAt: draftSavedAt, clear: clearDraft } = useDraft
 )
 
 // 侧栏
-const sidebarTab = ref<'description' | 'history' | 'settings'>('description')
+const sidebarTab = ref<'description' | 'history' | 'settings' | 'self-test'>('description')
 const sidebarVisible = ref(true)
 // 结构出 width 让它成为顶层 ref：v-model 模板用法依赖 Vue 顶层 setup 绑定
 // 的自动 unwrap，对象属性访问的 ref 不会被 unwrap，会报
@@ -102,6 +113,22 @@ const {
   isPolling: isPollingActive,
   start: startPolling,
 } = useSubmissionPolling(activeSubmissionId)
+
+// 自测轮询
+const activeSelfTestId = ref<string | null>(null)
+const {
+  selfTest: activeSelfTest,
+  isPolling: isPollingSelfTest,
+  error: selfTestPollError,
+  start: startSelfTestPolling,
+} = useSelfTestPolling(activeSelfTestId)
+
+// 提交终态为 Accepted 时通知调用方刷新题目详情（AC 后算法标签立即可见）
+watch(activeSubmission, (submission) => {
+  if (submission?.status === 'finished' && submission.result?.status === 'Accepted') {
+    emit('accepted')
+  }
+})
 
 // 编辑器元数据（状态栏）
 const cursor = ref({ line: 1, col: 1 })
@@ -149,6 +176,38 @@ async function handleSubmit() {
     submitError.value = extractApiError(err).message
   } finally {
     submitting.value = false
+  }
+}
+
+// 自测
+const selfTesting = ref(false)
+const selfTestError = ref('')
+const selfTestDisplayError = computed(
+  () => selfTestError.value || selfTestPollError.value,
+)
+const hasSelfTest = computed(() => !!props.selfTest)
+const canSelfTest = computed(
+  () => hasSelfTest.value && isLoggedIn.value && code.value.trim().length > 0,
+)
+
+async function handleSelfTest() {
+  if (!props.problem || !props.selfTest) return
+  if (!canSelfTest.value) {
+    selfTestError.value = isLoggedIn.value ? '请先编写代码' : '请先登录'
+    return
+  }
+  selfTesting.value = true
+  selfTestError.value = ''
+  try {
+    const res = await props.selfTest(props.problem.id, language.value, code.value)
+    // 自动切到自测 Tab + 启动轮询
+    sidebarTab.value = 'self-test'
+    sidebarVisible.value = true
+    startSelfTestPolling(res.id)
+  } catch (err: unknown) {
+    selfTestError.value = extractApiError(err).message
+  } finally {
+    selfTesting.value = false
   }
 }
 
@@ -255,6 +314,8 @@ const toolbarProblem = computed(() => {
           :theme-mode="theme"
           :can-submit="canSubmit"
           :submitting="submitting"
+          :can-self-test="canSelfTest"
+          :self-testing="selfTesting"
           :sidebar-visible="sidebarVisible"
           :draft-state="draftState"
           :draft-saved-at="draftSavedAt"
@@ -265,6 +326,7 @@ const toolbarProblem = computed(() => {
           @open-settings="openSettings"
           @toggle-sidebar="sidebarVisible = !sidebarVisible"
           @submit="handleSubmit"
+          @self-test="handleSelfTest"
           @back="goBack"
         >
           <template #actions>
@@ -275,6 +337,7 @@ const toolbarProblem = computed(() => {
         <div class="flex-1 flex min-h-0">
           <ActivityBar
             :active="sidebarTab"
+            :show-self-test="hasSelfTest"
             @select="(v) => { sidebarTab = v; sidebarVisible = true }"
           />
 
@@ -287,6 +350,10 @@ const toolbarProblem = computed(() => {
                 :submissions="submissions"
                 :active-submission="activeSubmission"
                 :is-polling-active="isPollingActive"
+                :self-test="activeSelfTest"
+                :is-polling-self-test="isPollingSelfTest"
+                :self-test-error="selfTestDisplayError"
+                :show-self-test="hasSelfTest"
                 :theme-mode="theme"
                 :draft-enabled="draftEnabled"
                 @update:theme-mode="setTheme($event)"

@@ -21,7 +21,8 @@ const { data, pending, error, refresh } = useFetch<{
     owner_id: string
     number: number
     is_objective: boolean
-    categories: { id: string; name: string; slug: string }[]
+    tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
+    has_hidden_algorithm_tags: boolean
     runtime_config?: {
       evaluator?: {
         time_limit_ms?: number
@@ -33,7 +34,20 @@ const { data, pending, error, refresh } = useFetch<{
 
 const problem = computed(() => data.value?.data ?? null)
 
-const categories = computed(() => problem.value?.categories ?? [])
+const tags = computed(() => problem.value?.tags ?? [])
+// 题目标签（kind='problem'）：点击可跳转到按该标签筛选的题库列表
+const problemTags = computed(() => tags.value.filter((t) => t.kind === 'problem'))
+// 算法标签（kind='algorithm'，仅 admin/题主/有 Accepted 提交的 viewer 可见，后端已裁剪）
+const algorithmTags = computed(() => tags.value.filter((t) => t.kind === 'algorithm'))
+// 存在不可见的算法标签时的占位提示（通过后可显示）
+const hasHiddenAlgorithmTags = computed(() => problem.value?.has_hidden_algorithm_tags === true)
+
+// 注：本详情页不包含提交轮询（useSubmissionPolling 仅存在于做题工作区 EditorWorkspace），
+// 无法在提交终态回调里即时刷新。退而求其次：每次挂载（含从编辑器返回）都重新拉取一次，
+// 保证用户通过本题（AC）后回到详情页即可看到算法标签与最新门控状态。
+onMounted(() => {
+  refresh()
+})
 
 const canEdit = computed(() => {
   const p = problem.value
@@ -151,14 +165,17 @@ const publishBlockReason = computed(() => {
               </div>
               <h1 class="text-2xl font-bold mb-3 text-text">{{ problem.title }}</h1>
             </div>
-            <NuxtLink
-              v-if="canEdit"
-              :to="`/problems/${problem.id}/edit`"
-              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg text-text-secondary hover:text-primary hover:border-primary/40 transition-colors"
-            >
-              <UIcon name="i-lucide-pencil" class="size-3.5" />
-              编辑
-            </NuxtLink>
+            <div class="flex items-center gap-2">
+              <AddToTrainingMenu v-if="isLoggedIn" :problem-id="problem.id" />
+              <NuxtLink
+                v-if="canEdit"
+                :to="`/problems/${problem.id}/edit`"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg text-text-secondary hover:text-primary hover:border-primary/40 transition-colors"
+              >
+                <UIcon name="i-lucide-pencil" class="size-3.5" />
+                编辑
+              </NuxtLink>
+            </div>
           </div>
           <div class="flex items-center gap-5 flex-wrap">
             <DifficultyBadge :difficulty="problem.difficulty" />
@@ -179,13 +196,31 @@ const publishBlockReason = computed(() => {
               </span>
             </template>
           </div>
-          <div v-if="categories.length" class="flex flex-wrap gap-1.5 mt-2.5">
-            <span
-              v-for="cat in categories"
-              :key="cat.id"
-              class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200"
+          <div v-if="problemTags.length || algorithmTags.length || hasHiddenAlgorithmTags" class="flex flex-wrap gap-1.5 mt-2.5">
+            <!-- 题目标签：点击跳转到题库列表按标签筛选 -->
+            <button
+              v-for="t in problemTags"
+              :key="t.id"
+              class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 cursor-pointer transition-colors"
+              @click="router.push(`/problems?tag=${t.id}`)"
             >
-              {{ cat.name }}
+              {{ t.name }}
+            </button>
+            <!-- 算法标签（已可见）：与题目标签用不同色系（靛蓝）区分 -->
+            <span
+              v-for="t in algorithmTags"
+              :key="t.id"
+              class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
+            >
+              {{ t.name }}
+            </span>
+            <!-- 隐藏算法标签占位：通过后可显示 -->
+            <span
+              v-if="hasHiddenAlgorithmTags"
+              class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200 cursor-default"
+              title="通过本题后可查看算法标签"
+            >
+              🔒 算法标签 · 通过后显示
             </span>
           </div>
         </div>

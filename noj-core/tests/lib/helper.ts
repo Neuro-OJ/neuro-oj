@@ -141,7 +141,7 @@ export async function jsonRequest<
  * `isJtiRevoked()` 查 Redis 黑名单。**fail-closed** 设计：Redis 不可用
  * 时直接抛 503。
  *
- * 因此**任何**走 authMiddleware 的路由测试（categories / checkin /
+ * 因此**任何**走 authMiddleware 的路由测试（tags / checkin /
  * messages / problems / submissions / support-package / admin-*）都
  * 必须在测试启动时确保 Redis 已连接。本函数统一封装连接逻辑，避免
  * 每个测试文件复制粘贴。

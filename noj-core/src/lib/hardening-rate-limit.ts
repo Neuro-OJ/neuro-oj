@@ -44,6 +44,16 @@ export const SUBMISSION_USER_LIMIT: RateLimitConfig = {
   max: 120,
 };
 
+export const SELF_TEST_IP_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 30,
+};
+
+export const SELF_TEST_USER_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 4,
+};
+
 function normalizeLimitKey(value: string): string {
   return value.trim().toLowerCase().slice(0, 128);
 }
@@ -114,5 +124,20 @@ export async function enforceSubmissionRateLimit(
   await enforceRateLimit(
     `submission:user:${userId}`,
     SUBMISSION_USER_LIMIT,
+  );
+}
+
+/** 自测创建：IP + 用户双维度，阈值比正式提交更严格（默认每用户 60s 4 次）。 */
+export async function enforceSelfTestRateLimit(
+  c: Context,
+  userId: string,
+): Promise<void> {
+  await enforceRateLimit(
+    `self-test:ip:${getClientIp(c)}`,
+    SELF_TEST_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `self-test:user:${userId}`,
+    SELF_TEST_USER_LIMIT,
   );
 }

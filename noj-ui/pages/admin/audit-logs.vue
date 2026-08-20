@@ -17,7 +17,10 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "users.ban": "用户封禁",
   "users.unban": "用户解封",
   "problems.delete": "删除题目",
-  "categories.delete": "删除分类",
+  "tags.create": "创建标签",
+  "tags.update": "更新标签",
+  "tags.delete": "删除标签",
+  "tags.merge": "合并标签",
   "submissions.rejudge": "重测提交",
   "settings.update": "修改设置",
 }
@@ -27,7 +30,10 @@ const ACTION_COLORS: Record<AuditAction, string> = {
   "users.ban": "bg-red-100 text-red-800",
   "users.unban": "bg-green-100 text-green-800",
   "problems.delete": "bg-red-100 text-red-800",
-  "categories.delete": "bg-orange-100 text-orange-800",
+  "tags.create": "bg-blue-100 text-blue-800",
+  "tags.update": "bg-gray-100 text-gray-800",
+  "tags.delete": "bg-gray-100 text-gray-800",
+  "tags.merge": "bg-blue-100 text-blue-800",
   "submissions.rejudge": "bg-purple-100 text-purple-800",
   "settings.update": "bg-yellow-100 text-yellow-800",
 }
@@ -43,8 +49,14 @@ function renderDetail(entry: AuditLogEntry): string {
       return "已解封"
     case "problems.delete":
       return `${d.title} (${d.display_id})`
-    case "categories.delete":
-      return `${d.name} (${d.slug})`
+    case "tags.create":
+      return `${d.name} (${d.kind})`
+    case "tags.update":
+      return `${d.from} → ${d.to}`
+    case "tags.delete":
+      return `${d.name} (${d.kind})`
+    case "tags.merge":
+      return `${d.source_name} → ${d.target_name}`
     case "submissions.rejudge":
       if (d.submission_id) return `submission: ${d.submission_id}`
       if (d.problem_id) return `problem: ${d.problem_id} (×${d.count ?? "?"})`

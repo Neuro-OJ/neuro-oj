@@ -21,6 +21,7 @@ import {
   ValidationError,
 } from "../lib/errors.ts";
 import { parseJsonBody } from "../lib/request.ts";
+import { getUserPermissions } from "../lib/permissions.ts";
 import { signToken, verifyToken } from "../lib/jwt.ts";
 import { revokeJti } from "../lib/revokedTokens.ts";
 import { getSetting } from "../services/system-settings.ts";
@@ -190,7 +191,8 @@ auth.post("/login", loginIpRateLimit(), async (c) => {
 auth.get("/me", authMiddleware, async (c) => {
   const userId = c.get("userId") as string;
   const user = await getUserProfile(userId);
-  return c.json({ data: user }, 200);
+  const permissions = await getUserPermissions(userId);
+  return c.json({ data: { ...user, permissions: [...permissions] } }, 200);
 });
 
 /**

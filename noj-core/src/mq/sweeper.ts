@@ -9,7 +9,7 @@
 
 import { and, asc, eq, lte } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
-import { problems, submissions } from "../db/schema.ts";
+import { problems, selfTests, submissions } from "../db/schema.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { getSetting } from "../services/system-settings.ts";
 import { getRedis } from "./connection.ts";
@@ -118,6 +118,100 @@ async function sweepProcessingQueue(
   }
 }
 
+interface PendingRecoveryRow {
+  id: string;
+  language: string;
+  code: string;
+  file_name: string | null;
+  rejudge_seq?: number;
+  problem_id: string;
+  runtime_config: unknown;
+  support_package_storage_url: string | null;
+  judge_started_at?: string | null;
+}
+
+interface PendingRecoveryActions<T extends PendingRecoveryRow> {
+  /** 日志字段名：提交用 submission_id，自测用 self_test_id。 */
+  idKey: "submission_id" | "self_test_id";
+  /** 日志展示名。 */
+  label: "提交" | "自测";
+  /** 缺少 runtime_config 时的处理（自行记录日志并收尾）。 */
+  onMissingRuntimeConfig(row: T): void | Promise<void>;
+  /** 入队成功后更新行状态（可保留原始 judge_started_at）。 */
+  onEnqueued(row: T): void | Promise<void>;
+  /** 永久入队失败（消息超限等）时标记 error。 */
+  onPermanentError(row: T, err: unknown): void | Promise<void>;
+}
+
+/**
+ * 恢复 pending 记录通用流程：构建 JudgeTask → 入队 → 更新状态。
+ * 正式提交与自测共用同一套恢复逻辑，仅保留各自的表更新/日志差异。
+ */
+async function recoverPendingRows<T extends PendingRecoveryRow>(
+  rows: T[],
+  actions: PendingRecoveryActions<T>,
+): Promise<void> {
+  for (const row of rows) {
+    const runtimeConfig = row.runtime_config as RuntimeConfig | null;
+    if (!runtimeConfig) {
+      await actions.onMissingRuntimeConfig(row);
+      continue;
+    }
+
+    let download_url: string | undefined;
+    if (row.support_package_storage_url) {
+      try {
+        const storage = await getStorageProvider();
+        download_url = await storage.downloadUrl(
+          row.support_package_storage_url,
+        );
+      } catch (err) {
+        logger.error("pending 恢复获取支持包失败，将以无支持包任务继续", {
+          [actions.idKey]: row.id,
+          err,
+        });
+      }
+    }
+
+    const task: JudgeTask = {
+      submission_id: row.id,
+      problem_id: row.problem_id,
+      runtime_config: runtimeConfig,
+      download_url,
+      language: row.language,
+      code: row.code,
+      file_name: row.file_name ??
+        (LANGUAGE_EXT_MAP[row.language] || "main.txt"),
+      ...(row.rejudge_seq !== undefined
+        ? { rejudge_seq: row.rejudge_seq }
+        : {}),
+    };
+
+    const { pushJudgeTask } = await import("./producer.ts");
+    try {
+      await pushJudgeTask(task);
+      await actions.onEnqueued(row);
+      logger.info(`已恢复 pending ${actions.label}入队`, {
+        [actions.idKey]: row.id,
+      });
+    } catch (err) {
+      if (!isRetryableJudgeQueueError(err)) {
+        // 永久错误（消息超限等）：标记 error，避免每轮 sweeper 无限重试。
+        await actions.onPermanentError(row, err);
+        logger.error(`pending ${actions.label}因永久入队失败标记为 error`, {
+          [actions.idKey]: row.id,
+          err,
+        });
+        continue;
+      }
+      logger.error(`pending ${actions.label}恢复失败（等待下轮重试）`, {
+        [actions.idKey]: row.id,
+        err,
+      });
+    }
+  }
+}
+
 async function recoverPendingSubmissions(now: number): Promise<void> {
   const cutoff = new Date(now - PENDING_RECOVERY_MS).toISOString();
   const db = getDb();
@@ -144,74 +238,99 @@ async function recoverPendingSubmissions(now: number): Promise<void> {
     .orderBy(asc(submissions.created_at))
     .limit(200);
 
-  for (const row of rows) {
-    const runtimeConfig = row.runtime_config as RuntimeConfig | null;
-    if (!runtimeConfig) {
+  await recoverPendingRows(rows, {
+    idKey: "submission_id",
+    label: "提交",
+    onMissingRuntimeConfig: (row) => {
       logger.error("pending 提交缺少 runtime_config，跳过恢复", {
         submission_id: row.id,
       });
-      continue;
-    }
-
-    let download_url: string | undefined;
-    if (row.support_package_storage_url) {
-      try {
-        const storage = await getStorageProvider();
-        download_url = await storage.downloadUrl(
-          row.support_package_storage_url,
-        );
-      } catch (err) {
-        logger.error("pending 恢复获取支持包失败，将以无支持包任务继续", {
-          submission_id: row.id,
-          err,
-        });
-      }
-    }
-
-    const task: JudgeTask = {
-      submission_id: row.id,
-      problem_id: row.problem_id,
-      runtime_config: runtimeConfig,
-      download_url,
-      language: row.language,
-      code: row.code,
-      file_name: row.file_name ??
-        (LANGUAGE_EXT_MAP[row.language] || "main.txt"),
-      rejudge_seq: row.rejudge_seq,
-    };
-
-    const { pushJudgeTask } = await import("./producer.ts");
-    try {
-      await pushJudgeTask(task);
+    },
+    onEnqueued: async (row) => {
       await db.update(submissions)
         .set({ status: "judging" })
         .where(
           and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
         );
-      logger.info("已恢复 pending 提交入队", { submission_id: row.id });
-    } catch (err) {
-      if (!isRetryableJudgeQueueError(err)) {
-        // 永久错误（消息超限等）：标记 error，避免每轮 sweeper 无限重试。
-        await db.update(submissions)
-          .set({
-            status: "error",
-            judge_finished_at: new Date().toISOString(),
-          })
-          .where(
-            and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
-          );
-        logger.error("pending 提交因永久入队失败标记为 error", {
-          submission_id: row.id,
-          err,
-        });
-        continue;
-      }
-      logger.error("pending 提交恢复失败（等待下轮重试）", {
-        submission_id: row.id,
-        err,
+    },
+    onPermanentError: async (row) => {
+      await db.update(submissions)
+        .set({
+          status: "error",
+          judge_finished_at: new Date().toISOString(),
+        })
+        .where(
+          and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
+        );
+    },
+  });
+}
+
+/**
+ * 恢复自测 pending 记录（与正式提交同队列，需同样防孤儿）。
+ */
+export async function recoverPendingSelfTests(now: number): Promise<void> {
+  const cutoff = new Date(now - PENDING_RECOVERY_MS).toISOString();
+  const db = getDb();
+
+  const rows = await db
+    .select({
+      id: selfTests.id,
+      language: selfTests.language,
+      code: selfTests.code,
+      file_name: selfTests.file_name,
+      problem_id: selfTests.problem_id,
+      runtime_config: problems.runtime_config,
+      support_package_storage_url: problems.support_package_storage_url,
+      judge_started_at: selfTests.judge_started_at,
+    })
+    .from(selfTests)
+    .innerJoin(problems, eq(selfTests.problem_id, problems.id))
+    .where(
+      and(
+        eq(selfTests.status, "pending"),
+        lte(selfTests.created_at, cutoff),
+      ),
+    )
+    .orderBy(asc(selfTests.created_at))
+    .limit(200);
+
+  await recoverPendingRows(rows, {
+    idKey: "self_test_id",
+    label: "自测",
+    onMissingRuntimeConfig: async (row) => {
+      await db.update(selfTests)
+        .set({
+          status: "error",
+          judge_finished_at: new Date().toISOString(),
+        })
+        .where(eq(selfTests.id, row.id));
+      logger.error("pending 自测缺少 runtime_config，标记为 error", {
+        self_test_id: row.id,
       });
-    }
-  }
+    },
+    onEnqueued: async (row) => {
+      await db.update(selfTests)
+        .set({
+          status: "judging",
+          // 恢复时保留原始 judge_started_at；只有原本为空才补当前时间。
+          judge_started_at: row.judge_started_at ?? new Date().toISOString(),
+        })
+        .where(
+          and(eq(selfTests.id, row.id), eq(selfTests.status, "pending")),
+        );
+    },
+    onPermanentError: async (row) => {
+      await db.update(selfTests)
+        .set({
+          status: "error",
+          judge_finished_at: new Date().toISOString(),
+        })
+        .where(
+          and(eq(selfTests.id, row.id), eq(selfTests.status, "pending")),
+        );
+    },
+  });
 }
 
 export async function runQueueSweeperOnce(): Promise<void> {
@@ -228,6 +347,7 @@ export async function runQueueSweeperOnce(): Promise<void> {
       RESULT_PROCESSING_TIMEOUT_MS,
     ),
     recoverPendingSubmissions(now),
+    recoverPendingSelfTests(now),
   ]);
   for (const result of results) {
     if (result.status === "rejected") {

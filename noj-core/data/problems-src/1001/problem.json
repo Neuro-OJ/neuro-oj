@@ -4,10 +4,6 @@
   "title": "1001 T0-LMCC：星港舱门报码归一化",
   "difficulty": "easy",
   "type": "P",
-  "categories": [
-    "LMCC 样例题",
-    "算法"
-  ],
   "runtime_config": {
     "evaluator": {
       "image": "noj-evaluator-python",
@@ -20,5 +16,9 @@
       "memory_limit_mb": 512
     }
   },
-  "template": "template.py"
+  "template": "template.py",
+  "tags": [
+    "LMCC 样例题",
+    "模拟"
+  ]
 }

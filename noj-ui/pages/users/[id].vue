@@ -119,6 +119,24 @@ const { data: createdData, pending: createdPending } = useFetch<{
 
 const createdProblems = computed(() => createdData.value?.data ?? [])
 
+interface TrainingProfile {
+  id: string
+  title: string
+  description: string
+  visibility: 'private' | 'unlisted' | 'public'
+  is_pinned: boolean
+  created_by: string
+  created_at: string
+  updated_at: string
+  problem_count: number
+}
+
+const { data: trainingsData } = useFetch<{ data: TrainingProfile[]; total: number }>(
+  `/api/v1/trainings?created_by=${userId}`,
+  { query: { page: 1, per_page: 100 }, silent: true },
+)
+const profileTrainings = computed(() => trainingsData.value?.data ?? [])
+
 // 当前登录用户是否在查看自己的主页
 const isOwnProfile = computed(
   () => currentUser.value?.id === userId,
@@ -335,6 +353,27 @@ async function toggleFollow() {
               <span class="text-xs text-text-muted">{{ formatDate(problem.created_at) }}</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- 我的题单 -->
+      <div v-if="profileTrainings.length" class="bg-white border border-border rounded-xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-border bg-bg-page">
+          <h2 class="text-base font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-list-todo" class="text-primary size-4.5" />
+            我的题单
+          </h2>
+        </div>
+        <div class="divide-y divide-border">
+          <NuxtLink
+            v-for="training in profileTrainings"
+            :key="training.id"
+            :to="`/trainings/${training.id}`"
+            class="flex items-center justify-between px-6 py-3 hover:bg-primary-bg no-underline"
+          >
+            <span class="text-sm text-primary">{{ training.title }}</span>
+            <span class="text-xs text-text-muted">{{ training.problem_count }} 题</span>
+          </NuxtLink>
         </div>
       </div>
 

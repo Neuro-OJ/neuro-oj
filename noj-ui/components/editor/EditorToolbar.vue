@@ -21,6 +21,8 @@ const props = defineProps<{
   themeMode: EditorTheme
   canSubmit: boolean
   submitting: boolean
+  canSelfTest: boolean
+  selfTesting: boolean
   sidebarVisible: boolean
   draftState: DraftState
   draftSavedAt: Date | null
@@ -36,6 +38,7 @@ const emit = defineEmits<{
   'toggle-sidebar': []
   'open-settings': []
   submit: []
+  'self-test': []
   back: []
 }>()
 
@@ -157,6 +160,20 @@ const draftDotClass = computed(() => {
       >
         <UIcon name="i-lucide-settings" class="size-4" />
       </button>
+
+      <UButton
+        v-if="canSelfTest"
+        color="neutral"
+        variant="outline"
+        size="md"
+        class="ml-1 font-medium"
+        :disabled="!canSelfTest || selfTesting"
+        @click="emit('self-test')"
+      >
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-3.5" v-if="selfTesting"/>
+        <UIcon name="i-lucide-flask-conical" class="size-3.5" v-else/>
+        <span>{{ selfTesting ? '自测中...' : '自测' }}</span>
+      </UButton>
 
       <UButton color="primary" size="md" class="ml-1 font-medium" :disabled="!canSubmit || submitting"
         @click="emit('submit')">
