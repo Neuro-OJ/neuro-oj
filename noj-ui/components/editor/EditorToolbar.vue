@@ -23,6 +23,8 @@ const props = defineProps<{
   submitting: boolean
   canSelfTest: boolean
   selfTesting: boolean
+  canResetTemplate: boolean
+  templateLoading: boolean
   sidebarVisible: boolean
   draftState: DraftState
   draftSavedAt: Date | null
@@ -39,6 +41,7 @@ const emit = defineEmits<{
   'open-settings': []
   submit: []
   'self-test': []
+  'reset-template': []
   back: []
 }>()
 
@@ -160,6 +163,20 @@ const draftDotClass = computed(() => {
       >
         <UIcon name="i-lucide-settings" class="size-4" />
       </button>
+
+      <UButton
+        v-if="canResetTemplate"
+        color="neutral"
+        variant="outline"
+        size="md"
+        class="ml-1 font-medium"
+        :disabled="templateLoading"
+        @click="emit('reset-template')"
+      >
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-3.5" v-if="templateLoading" />
+        <UIcon name="i-lucide-rotate-ccw" class="size-3.5" v-else />
+        <span>重置</span>
+      </UButton>
 
       <UButton
         v-if="canSelfTest"
