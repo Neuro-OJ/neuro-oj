@@ -560,6 +560,9 @@ start_core() {
     fail "$ENV_TARGET 不存在，请先运行: devtool.sh init-env"
   fi
 
+  # 确保开发环境拥有可登录管理员；引导失败时不启动后端进程。
+  cmd_bootstrap_admin
+
   # infra 提示
   if ! command -v docker >/dev/null 2>&1; then
     fail "未检测到 docker"
