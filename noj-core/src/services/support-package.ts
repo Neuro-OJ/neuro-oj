@@ -178,8 +178,8 @@ export async function getSupportPackageBytes(
 /**
  * 获取题目的初始代码模板（前端编辑器 starter code）。
  *
- * 读取题目源码目录 `data/problems-src/<number>/problem.json` 的 `template`
- * 字段索引的文件（缺省默认 `"template.py"`，兼容未声明该字段的旧题目）。
+ * 读取与数据库题目一致的源码目录中 `problem.json` 的 `template` 字段索引的文件
+ * （缺省默认 `"template.py"`，兼容未声明该字段的旧题目）。
  *
  * 模板仅供前端编辑器初始填充，与评测参考实现解耦——不再回退
  * `submission_sample.py` / `submission.py`（参考实现已从源码目录移除）。
@@ -187,17 +187,43 @@ export async function getSupportPackageBytes(
  * 生产环境需要将模板单独存储（TODO: 上传至 S3/对象存储）。
  * 目前 dev 模式：直接从源码目录读取。
  *
- * @param problemNumber 题号（problems-src 目录按题号命名）
+ * @param problem 用于确认源码归属的数据库题目元数据
  * @param srcRoot 源码目录根（默认 `data/problems-src`，测试可注入临时目录）
  * @returns 模板内容，文件不存在返回 null
  */
 export async function getProblemTemplate(
-  problemNumber: number,
+  problem: { number: number; title: string },
   srcRoot: string = resolve(Deno.cwd(), "data", "problems-src"),
 ): Promise<{ content: string; language: string } | null> {
-  // problems-src 目录按题号命名（1001/1002/1003），题目 id 为 UUID，
-  // 因此调用方必须传入 number 而非 id。
-  const srcDir = resolve(srcRoot, String(problemNumber));
+  const srcDirs: string[] = [];
+
+  try {
+    for await (const entry of Deno.readDir(srcRoot)) {
+      if (!entry.isDirectory) continue;
+
+      const srcDir = resolve(srcRoot, entry.name);
+      try {
+        const manifest = JSON.parse(
+          await Deno.readTextFile(resolve(srcDir, "problem.json")),
+        ) as { number?: unknown; title?: unknown };
+        if (
+          manifest.number === problem.number &&
+          manifest.title === problem.title
+        ) {
+          srcDirs.push(srcDir);
+        }
+      } catch {
+        // 忽略缺失或损坏 manifest 的目录：无法证明其属于当前题目。
+      }
+    }
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) return null;
+    throw err;
+  }
+
+  // 自动分配题号时目录名不可靠；没有唯一归属时不得返回其他题目的模板。
+  if (srcDirs.length !== 1) return null;
+  const srcDir = srcDirs[0];
 
   // 1. 读 manifest.template 字段（缺省 "template.py"；非法值同样回退默认名）
   let templateFile = "template.py";
