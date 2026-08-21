@@ -1,5 +1,5 @@
 import { createConsumer, requestConsumerShutdown } from "./base-consumer.ts";
-import { saveEvaluationResult } from "../services/submissions.ts";
+import { saveEvaluationResult } from "../services/submissions/submissions.ts";
 import { saveSelfTestResult } from "../services/self-tests.ts";
 import { logger, logJudgeResultReceived } from "../lib/logging.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";

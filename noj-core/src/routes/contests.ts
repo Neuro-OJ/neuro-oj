@@ -9,12 +9,12 @@ import {
 import { buildPaginationMeta, parsePagination } from "../lib/pagination.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { checkPermission } from "../lib/permissions.ts";
-import { getContestRanking } from "../services/contest-ranking.ts";
+import { getContestRanking } from "../services/contest/contest-ranking.ts";
 import {
   createClarification,
   listClarifications,
   replyToClarification,
-} from "../services/contest-clarifications.ts";
+} from "../services/contest/contest-clarifications.ts";
 import {
   computeContestStatus,
   getContest,
@@ -22,10 +22,13 @@ import {
   isParticipant,
   listContests,
   registerForContest,
-} from "../services/contests.ts";
-import { createSubmission, listSubmissions } from "../services/submissions.ts";
+} from "../services/contest/contests.ts";
+import {
+  createSubmission,
+  listSubmissions,
+} from "../services/submissions/submissions.ts";
 import { isValidContestType } from "../types/contests.ts";
-import { createActivity } from "../services/community.ts";
+import { createActivity } from "../services/community/community.ts";
 
 const contests = new Hono<OptionalAuthEnv>();
 const MAX_CODE_LENGTH = 100 * 1024;

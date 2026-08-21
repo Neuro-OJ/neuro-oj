@@ -3,7 +3,7 @@ import {
   createSubmission,
   getSubmission,
   listSubmissions,
-} from "../services/submissions.ts";
+} from "../services/submissions/submissions.ts";
 import {
   getCachedTodayStats,
   getCachedTotalStats,

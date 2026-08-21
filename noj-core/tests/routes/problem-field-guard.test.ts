@@ -22,7 +22,7 @@ import {
   users,
 } from "../../src/db/schema.ts";
 import { signToken } from "../../src/lib/jwt.ts";
-import { ensureRbacSeeds } from "../../src/services/seed-rbac.ts";
+import { ensureRbacSeeds } from "../../src/services/seed/seed-rbac.ts";
 import {
   resetSetting,
   updateSetting,

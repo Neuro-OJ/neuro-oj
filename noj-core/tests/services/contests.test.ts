@@ -15,7 +15,7 @@ import {
   registerForContest,
   removeParticipant,
   updateContest,
-} from "../../src/services/contests.ts";
+} from "../../src/services/contest/contests.ts";
 import {
   ConflictError,
   ForbiddenError,

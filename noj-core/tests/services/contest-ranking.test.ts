@@ -15,7 +15,7 @@ import {
   getContestRanking,
   getIcpcRanking,
   getIoiRanking,
-} from "../../src/services/contest-ranking.ts";
+} from "../../src/services/contest/contest-ranking.ts";
 import { ForbiddenError, UnauthorizedError } from "../../src/lib/errors.ts";
 
 await resetDbForTest();

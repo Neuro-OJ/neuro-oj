@@ -19,7 +19,7 @@ import {
   getObjectiveSubmission,
   listObjectiveSubmissions,
   submitObjectivePaper,
-} from "../../src/services/objective-submissions.ts";
+} from "../../src/services/objective/objective-submissions.ts";
 import { BadRequestError, ForbiddenError } from "../../src/lib/errors.ts";
 
 await resetDbForTest();

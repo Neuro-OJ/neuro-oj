@@ -16,7 +16,7 @@ import {
   initSystemSettings,
   updateSetting,
 } from "../../src/services/system-settings.ts";
-import { ensureRbacSeeds } from "../../src/services/seed-rbac.ts";
+import { ensureRbacSeeds } from "../../src/services/seed/seed-rbac.ts";
 import {
   enterTestContext,
   leaveTestContext,

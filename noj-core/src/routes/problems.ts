@@ -15,8 +15,8 @@ import {
   deleteProblem,
   listProblems,
   updateProblem,
-} from "../services/problems.ts";
-import { applyAlgorithmTagVisibility } from "../services/problems-list.ts";
+} from "../services/problems/problems.ts";
+import { applyAlgorithmTagVisibility } from "../services/problems/problems-list.ts";
 import { resolveProblem } from "../lib/problem-resolve.ts";
 import { ADMIN_FULL_ACCESS, resolvePermissions } from "../lib/permissions.ts";
 import type {
@@ -30,7 +30,7 @@ import {
   getSupportPackageBytes,
   MAX_SUPPORT_PACKAGE_SIZE,
 } from "../services/support-package.ts";
-import { importProblemBundle } from "../services/problem-bundle.ts";
+import { importProblemBundle } from "../services/problems/problem-bundle.ts";
 import {
   assertObjectivePaper,
   createQuestion,
@@ -39,12 +39,12 @@ import {
   isPaperOwnerOrAdmin,
   listPaperQuestions,
   updateQuestion,
-} from "../services/objective-questions.ts";
+} from "../services/objective/objective-questions.ts";
 import {
   getObjectiveSubmission,
   listObjectiveSubmissions,
   submitObjectivePaper,
-} from "../services/objective-submissions.ts";
+} from "../services/objective/objective-submissions.ts";
 import type {
   CreateQuestionInput,
   SubmitObjectiveInput,
