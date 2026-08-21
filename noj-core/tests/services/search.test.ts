@@ -150,8 +150,29 @@ Deno.test({
       limit: 20,
     });
     assertEquals(result.items.length, 1);
+    assertEquals(result.has_more, false);
+    assertEquals(result.total, undefined);
     assertEquals(result.items[0]?.id, "p-uuid-1");
     assertEquals(result.items[0]?.display_id, "P1001");
+  },
+});
+
+Deno.test({
+  name: "search service: includeTotal=true 时返回精确总数",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await seedProblems();
+    const result = await searchProblems({
+      q: "动态",
+      isAdmin: false,
+      includeTotal: true,
+      page: 1,
+      limit: 20,
+    });
+    assertEquals(result.total, 1);
+    assertEquals(result.has_more, false);
   },
 });
 
