@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
   requestReset,
@@ -12,6 +12,11 @@ import {
 } from "../../src/lib/resetToken.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 import { BadRequestError } from "../../src/lib/errors.ts";
+import {
+  type LogRecord,
+  resetLogSink,
+  setLogSink,
+} from "../../src/lib/logging.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const skip = !hasDb;
@@ -24,6 +29,22 @@ const TEST_USER = {
   newPassword: "NewPass-2024-Xy9",
 };
 const APP_BASE_URL = "http://localhost:3000";
+
+function preserveEnv(...keys: string[]): () => void {
+  const previous = new Map(keys.map((key) => [key, Deno.env.get(key)]));
+  return () => {
+    for (const [key, value] of previous) {
+      if (value === undefined) Deno.env.delete(key);
+      else Deno.env.set(key, value);
+    }
+  };
+}
+
+function getMockEmailLink(records: LogRecord[]): string {
+  const record = records.find((item) => item.msg === "密码重置邮件（mock）");
+  assertExists(record);
+  return String(record.fields.link);
+}
 
 async function cleanupUser(username: string) {
   try {
@@ -97,6 +118,116 @@ Deno.test({
       .select()
       .from(passwordResetTokens);
     assertEquals(after.length, beforeCount);
+  },
+});
+
+Deno.test({
+  name: "passwordReset: APP_URL 优先于请求头回退并去除尾斜杠",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const restoreEnv = preserveEnv("APP_URL", "NOJ_ENV");
+    const records: LogRecord[] = [];
+    setLogSink((record) => records.push(record));
+    Deno.env.set("NOJ_ENV", "development");
+    Deno.env.set("APP_URL", "https://trusted.example///");
+
+    try {
+      Deno.env.set("NOJ_ENV", "test");
+      await resetDbForTest();
+      await seedUser();
+      Deno.env.set("NOJ_ENV", "development");
+
+      // 第二个参数模拟由恶意 Host/X-Forwarded-Proto 产生的请求头回退值。
+      await requestReset(TEST_USER.email, "https://evil.example");
+
+      const link = getMockEmailLink(records);
+      assertEquals(
+        link.startsWith("https://trusted.example/reset-password?token="),
+        true,
+      );
+      assertEquals(link.includes("evil.example"), false);
+    } finally {
+      await cleanupUser(TEST_USER.username);
+      resetLogSink();
+      restoreEnv();
+    }
+  },
+});
+
+Deno.test({
+  name: "passwordReset: 非生产环境缺少 APP_URL 时使用请求回退值",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const restoreEnv = preserveEnv("APP_URL", "NOJ_ENV");
+    const records: LogRecord[] = [];
+    setLogSink((record) => records.push(record));
+    Deno.env.set("NOJ_ENV", "development");
+    Deno.env.delete("APP_URL");
+
+    try {
+      Deno.env.set("NOJ_ENV", "test");
+      await resetDbForTest();
+      await seedUser();
+      Deno.env.set("NOJ_ENV", "development");
+
+      await requestReset(TEST_USER.email, "http://localhost:3000/");
+
+      const link = getMockEmailLink(records);
+      assertEquals(
+        link.startsWith("http://localhost:3000/reset-password?token="),
+        true,
+      );
+    } finally {
+      await cleanupUser(TEST_USER.username);
+      resetLogSink();
+      restoreEnv();
+    }
+  },
+});
+
+Deno.test({
+  name: "passwordReset: 生产环境缺少 APP_URL 时不创建 token 或发送邮件",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const restoreEnv = preserveEnv("APP_URL", "NOJ_ENV");
+    const records: LogRecord[] = [];
+    setLogSink((record) => records.push(record));
+    Deno.env.set("NOJ_ENV", "production");
+    Deno.env.delete("APP_URL");
+
+    try {
+      Deno.env.set("NOJ_ENV", "test");
+      await resetDbForTest();
+      await seedUser();
+      Deno.env.set("NOJ_ENV", "production");
+
+      await requestReset(TEST_USER.email, "https://evil.example");
+
+      const rows = await getDb()
+        .select()
+        .from(passwordResetTokens);
+      assertEquals(rows.length, 0);
+      assertEquals(
+        records.some((record) =>
+          record.level === "error" && record.msg.includes("APP_URL")
+        ),
+        true,
+      );
+      assertEquals(
+        records.some((record) => record.msg === "密码重置邮件（mock）"),
+        false,
+      );
+    } finally {
+      await cleanupUser(TEST_USER.username);
+      resetLogSink();
+      restoreEnv();
+    }
   },
 });
 
