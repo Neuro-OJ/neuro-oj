@@ -15,8 +15,8 @@ import {
   deleteProblem,
   listProblems,
   updateProblem,
-} from "../services/problems.ts";
-import { applyAlgorithmTagVisibility } from "../services/problems-list.ts";
+} from "../services/problems/problems.ts";
+import { applyAlgorithmTagVisibility } from "../services/problems/problems-list.ts";
 import { resolveProblem } from "../lib/problem-resolve.ts";
 import { ADMIN_FULL_ACCESS, resolvePermissions } from "../lib/permissions.ts";
 import type {
@@ -30,7 +30,7 @@ import {
   getSupportPackageBytes,
   MAX_SUPPORT_PACKAGE_SIZE,
 } from "../services/support-package.ts";
-import { importProblemBundle } from "../services/problem-bundle.ts";
+import { importProblemBundle } from "../services/problems/problem-bundle.ts";
 import {
   assertObjectivePaper,
   createQuestion,
@@ -39,12 +39,12 @@ import {
   isPaperOwnerOrAdmin,
   listPaperQuestions,
   updateQuestion,
-} from "../services/objective-questions.ts";
+} from "../services/objective/objective-questions.ts";
 import {
   getObjectiveSubmission,
   listObjectiveSubmissions,
   submitObjectivePaper,
-} from "../services/objective-submissions.ts";
+} from "../services/objective/objective-submissions.ts";
 import type {
   CreateQuestionInput,
   SubmitObjectiveInput,
@@ -395,9 +395,11 @@ router.get("/:id/support-package", authMiddleware, async (c) => {
 router.get("/:id/template", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const problem = await resolveProblem(id);
-  // problems-src 目录按题号（number）命名；题目 id 为服务端生成的 UUID，
-  // 必须用 number 定位源码目录（如 data/problems-src/1001/）。
-  const tpl = await getProblemTemplate(problem.number);
+  // 通过题号和标题共同确认源码目录归属，不能假定目录名就是展示题号。
+  const tpl = await getProblemTemplate({
+    number: problem.number,
+    title: problem.title,
+  });
   if (!tpl) {
     return c.json({ error: "该题目没有初始代码模板" }, 404);
   }

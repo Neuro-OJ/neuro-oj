@@ -35,6 +35,7 @@ export interface SearchProblemsParams {
   q: string;
   isAdmin: boolean;
   includeU?: boolean;
+  includeTotal?: boolean;
   page: number;
   limit: number;
 }
@@ -52,7 +53,8 @@ export interface ProblemSearchItem {
 
 export interface SearchProblemsResult {
   items: ProblemSearchItem[];
-  total: number;
+  has_more: boolean;
+  total?: number;
   took_ms: number;
 }
 
@@ -68,7 +70,8 @@ export async function searchProblems(
   params: SearchProblemsParams,
 ): Promise<SearchProblemsResult> {
   const db = getDb();
-  const { q, isAdmin, includeU = false, page, limit } = params;
+  const { q, isAdmin, includeU = false, includeTotal = false, page, limit } =
+    params;
   const offset = (page - 1) * limit;
   const includeUType = isAdmin && includeU;
   const start = performance.now();
@@ -106,7 +109,7 @@ export async function searchProblems(
       OR p.type = 'P'
     )
     ORDER BY rank DESC NULLS LAST, p.number ASC
-    LIMIT ${limit} OFFSET ${offset}
+    LIMIT ${limit + 1} OFFSET ${offset}
   `);
 
   // postgres.js 返回 array-like 支持 .map()，PGlite 返回 { rows }
@@ -133,33 +136,35 @@ export async function searchProblems(
       highlight: string;
     }>);
 
-  // COUNT 查询
-  const countRows = await db.execute<{ count: string }>(sql`
-    SELECT count(*)::text AS count
-    FROM problems p
-    WHERE (
-      p.search_vector @@ websearch_to_tsquery('simple', ${q})
-      OR p.title ILIKE ${likeQ} ESCAPE '\\'
-      OR (p.type || p.number::text) ILIKE ${likeQ} ESCAPE '\\'
-      OR EXISTS (
-        SELECT 1 FROM problem_tags pt
-        JOIN tags t ON t.id = pt.tag_id
-        WHERE pt.problem_id = p.id AND t.name ILIKE ${likeQ} ESCAPE '\\'
+  let total: number | undefined;
+  if (includeTotal) {
+    const countRows = await db.execute<{ count: string }>(sql`
+      SELECT count(*)::text AS count
+      FROM problems p
+      WHERE (
+        p.search_vector @@ websearch_to_tsquery('simple', ${q})
+        OR p.title ILIKE ${likeQ} ESCAPE '\\'
+        OR (p.type || p.number::text) ILIKE ${likeQ} ESCAPE '\\'
+        OR EXISTS (
+          SELECT 1 FROM problem_tags pt
+          JOIN tags t ON t.id = pt.tag_id
+          WHERE pt.problem_id = p.id AND t.name ILIKE ${likeQ} ESCAPE '\\'
+        )
       )
-    )
-    AND (
-      ${includeUType} = TRUE
-      OR p.type = 'P'
-    )
-  `);
-
-  const countResult = "rows" in countRows
-    ? (countRows as { rows: { count: string }[] }).rows
-    : (countRows as unknown as { count: string }[]);
-  const total = Number(countResult[0]?.count ?? 0);
+      AND (
+        ${includeUType} = TRUE
+        OR p.type = 'P'
+      )
+    `);
+    const countResult = "rows" in countRows
+      ? (countRows as { rows: { count: string }[] }).rows
+      : (countRows as unknown as { count: string }[]);
+    total = Number(countResult[0]?.count ?? 0);
+  }
   const took_ms = Math.round(performance.now() - start);
+  const has_more = resultRows.length > limit;
 
-  const items: ProblemSearchItem[] = resultRows.map((r) => ({
+  const items: ProblemSearchItem[] = resultRows.slice(0, limit).map((r) => ({
     id: r.id,
     type: r.type,
     number: r.number,
@@ -170,12 +175,13 @@ export async function searchProblems(
     highlight: r.highlight,
   }));
 
-  return { items, total, took_ms };
+  return { items, has_more, total, took_ms };
 }
 
 export interface SearchUsersParams {
   q: string;
   isAdmin: boolean;
+  includeTotal?: boolean;
   page: number;
   limit: number;
 }
@@ -191,7 +197,8 @@ export interface UserSearchItem {
 
 export interface SearchUsersResult {
   items: UserSearchItem[];
-  total: number;
+  has_more: boolean;
+  total?: number;
   took_ms: number;
 }
 
@@ -209,10 +216,15 @@ export interface CommunitySearchItem {
 }
 
 export async function searchCommunity(
-  params: { q: string; page: number; limit: number },
-): Promise<{ items: CommunitySearchItem[]; total: number; took_ms: number }> {
+  params: { q: string; includeTotal?: boolean; page: number; limit: number },
+): Promise<{
+  items: CommunitySearchItem[];
+  has_more: boolean;
+  total?: number;
+  took_ms: number;
+}> {
   const db = getDb();
-  const { q, page, limit } = params;
+  const { q, includeTotal = false, page, limit } = params;
   const offset = (page - 1) * limit;
   const likeQ = `%${escapeLikePattern(q)}%`;
   const start = performance.now();
@@ -233,27 +245,35 @@ export async function searchCommunity(
         OR problem.title ILIKE ${likeQ} ESCAPE '\\'
         OR to_tsvector('simple', coalesce(p.title, '') || ' ' || p.content) @@ websearch_to_tsquery('simple', ${q}))
     ORDER BY rank DESC NULLS LAST, p.created_at DESC
-    LIMIT ${limit} OFFSET ${offset}
+    LIMIT ${limit + 1} OFFSET ${offset}
   `);
   const resultRows = "rows" in rows
     ? (rows as unknown as { rows: CommunitySearchItem[] }).rows
     : (rows as unknown as CommunitySearchItem[]);
-  const countRows = await db.execute<{ count: string }>(sql`
-    SELECT count(*)::text AS count FROM community_posts p
-    LEFT JOIN problems problem ON problem.id = p.problem_id
-    WHERE p.status = 'published' AND p.type IN ('solution', 'discussion')
-      AND (p.title ILIKE ${likeQ} ESCAPE '\\' OR p.content ILIKE ${likeQ} ESCAPE '\\'
-        OR p.problem_id ILIKE ${likeQ} ESCAPE '\\'
-        OR (problem.type || problem.number::text) ILIKE ${likeQ} ESCAPE '\\'
-        OR problem.title ILIKE ${likeQ} ESCAPE '\\'
-        OR to_tsvector('simple', coalesce(p.title, '') || ' ' || p.content) @@ websearch_to_tsquery('simple', ${q}))
-  `);
-  const countResult = "rows" in countRows
-    ? (countRows as { rows: { count: string }[] }).rows
-    : (countRows as unknown as { count: string }[]);
+  let total: number | undefined;
+  if (includeTotal) {
+    const countRows = await db.execute<{ count: string }>(sql`
+      SELECT count(*)::text AS count FROM community_posts p
+      LEFT JOIN problems problem ON problem.id = p.problem_id
+      WHERE p.status = 'published' AND p.type IN ('solution', 'discussion')
+        AND (p.title ILIKE ${likeQ} ESCAPE '\\' OR p.content ILIKE ${likeQ} ESCAPE '\\'
+          OR p.problem_id ILIKE ${likeQ} ESCAPE '\\'
+          OR (problem.type || problem.number::text) ILIKE ${likeQ} ESCAPE '\\'
+          OR problem.title ILIKE ${likeQ} ESCAPE '\\'
+          OR to_tsvector('simple', coalesce(p.title, '') || ' ' || p.content) @@ websearch_to_tsquery('simple', ${q}))
+    `);
+    const countResult = "rows" in countRows
+      ? (countRows as { rows: { count: string }[] }).rows
+      : (countRows as unknown as { count: string }[]);
+    total = Number(countResult[0]?.count ?? 0);
+  }
   return {
-    items: resultRows.map((item) => ({ ...item, rank: item.rank ?? 0 })),
-    total: Number(countResult[0]?.count ?? 0),
+    items: resultRows.slice(0, limit).map((item) => ({
+      ...item,
+      rank: item.rank ?? 0,
+    })),
+    has_more: resultRows.length > limit,
+    total,
     took_ms: Math.round(performance.now() - start),
   };
 }
@@ -276,7 +296,7 @@ export async function searchUsers(
     throw new ForbiddenError("用户搜索仅限管理员");
   }
   const db = getDb();
-  const { q, page, limit } = params;
+  const { q, includeTotal = false, page, limit } = params;
   const offset = (page - 1) * limit;
   const start = performance.now();
   const likeQ = `%${escapeLikePattern(q)}%`;
@@ -302,7 +322,7 @@ export async function searchUsers(
     )
     AND u.id <> '0'
     ORDER BY rank DESC NULLS LAST, u.username ASC
-    LIMIT ${limit} OFFSET ${offset}
+    LIMIT ${limit + 1} OFFSET ${offset}
   `);
 
   const resultRows = "rows" in rows
@@ -325,23 +345,26 @@ export async function searchUsers(
       highlight: string;
     }>);
 
-  const countRows = await db.execute<{ count: string }>(sql`
-    SELECT count(*)::text AS count
-    FROM users u
-    WHERE (
-      u.search_vector @@ websearch_to_tsquery('simple', ${q})
-      OR u.username ILIKE ${likeQ} ESCAPE '\\'
-    )
-    AND u.id <> '0'
-  `);
-
-  const countResult = "rows" in countRows
-    ? (countRows as { rows: { count: string }[] }).rows
-    : (countRows as unknown as { count: string }[]);
-  const total = Number(countResult[0]?.count ?? 0);
+  let total: number | undefined;
+  if (includeTotal) {
+    const countRows = await db.execute<{ count: string }>(sql`
+      SELECT count(*)::text AS count
+      FROM users u
+      WHERE (
+        u.search_vector @@ websearch_to_tsquery('simple', ${q})
+        OR u.username ILIKE ${likeQ} ESCAPE '\\'
+      )
+      AND u.id <> '0'
+    `);
+    const countResult = "rows" in countRows
+      ? (countRows as { rows: { count: string }[] }).rows
+      : (countRows as unknown as { count: string }[]);
+    total = Number(countResult[0]?.count ?? 0);
+  }
   const took_ms = Math.round(performance.now() - start);
+  const has_more = resultRows.length > limit;
 
-  const items: UserSearchItem[] = resultRows.map((r) => ({
+  const items: UserSearchItem[] = resultRows.slice(0, limit).map((r) => ({
     id: r.id,
     username: r.username,
     email: r.email,
@@ -350,5 +373,5 @@ export async function searchUsers(
     highlight: r.highlight,
   }));
 
-  return { items, total, took_ms };
+  return { items, has_more, total, took_ms };
 }

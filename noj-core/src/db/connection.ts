@@ -219,7 +219,7 @@ export async function ensurePGliteSchemaForTest(): Promise<void> {
   }
   // 种子 RBAC 角色和权限
   try {
-    const { ensureRbacSeeds } = await import("../services/seed-rbac.ts");
+    const { ensureRbacSeeds } = await import("../services/seed/seed-rbac.ts");
     await ensureRbacSeeds();
   } catch {
     // 表可能还没建
@@ -272,7 +272,7 @@ export async function resetDbForTest() {
     }
     // 种子 RBAC 角色和权限
     try {
-      const { ensureRbacSeeds } = await import("../services/seed-rbac.ts");
+      const { ensureRbacSeeds } = await import("../services/seed/seed-rbac.ts");
       await ensureRbacSeeds();
     } catch {
       // 表可能还没建
@@ -316,7 +316,7 @@ export async function resetDbForTest() {
   } catch { /* 忽略 */ }
   // 重建 RBAC 系统角色（TRUNCATE 清空了 roles / user_roles / role_permissions）
   try {
-    const { ensureRbacSeeds } = await import("../services/seed-rbac.ts");
+    const { ensureRbacSeeds } = await import("../services/seed/seed-rbac.ts");
     await ensureRbacSeeds();
   } catch { /* 忽略 */ }
   try {

@@ -11,7 +11,7 @@
  */
 
 import { BadRequestError } from "../lib/errors.ts";
-import { validateRuntimeConfig } from "../services/problems-types.ts";
+import { validateRuntimeConfig } from "../services/problems/problems-types.ts";
 import {
   DIFFICULTIES,
   isValidDifficulty,

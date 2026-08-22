@@ -21,7 +21,10 @@ import {
   _resetSystemSettingsForTest,
   initSystemSettings,
 } from "../../src/services/system-settings.ts";
-import { createBoard, createPost } from "../../src/services/community.ts";
+import {
+  createBoard,
+  createPost,
+} from "../../src/services/community/community.ts";
 
 // 模块加载时建立一次 Redis 连接（限流中间件依赖 Redis，必须先 connect）
 try {
@@ -163,6 +166,28 @@ Deno.test({
     assertExists(body.data);
     assertEquals(body.data.items.length >= 1, true);
     assertEquals(body.data.items[0]?.title, "动态规划");
+    assertEquals(body.data.has_more, false);
+    assertEquals("total" in body.data, false);
+  },
+});
+
+Deno.test({
+  name: "search route: include_total=true 返回精确总数",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await seed();
+    const app = createApp();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/search?q=动态&include_total=true",
+    );
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.data.total, 1);
+    assertEquals(body.data.has_more, false);
   },
 });
 

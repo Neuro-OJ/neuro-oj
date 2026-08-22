@@ -30,7 +30,7 @@ import { getAdminUserIds } from "../src/lib/permissions.ts";
 import {
   ensureAdminFromEnv,
   ensureBootstrapAdmin,
-} from "../src/services/seed-system.ts";
+} from "../src/services/seed/seed-system.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const skip = !hasDb;

@@ -18,7 +18,7 @@ import {
   searchProblems,
   searchUsers,
 } from "../services/search.ts";
-import { getCommunityConfig } from "../services/community.ts";
+import { getCommunityConfig } from "../services/community/community.ts";
 import { parsePagination } from "../lib/pagination.ts";
 import { checkPermission } from "../lib/permissions.ts";
 import {
@@ -51,6 +51,9 @@ router.get(
     const type = c.req.query("type") ?? "problem";
     const includeUParam = c.req.query("include_u");
     const includeU = includeUParam === "true" || includeUParam === "1";
+    const includeTotalParam = c.req.query("include_total");
+    const includeTotal = includeTotalParam === "true" ||
+      includeTotalParam === "1";
 
     // 解析 isAdmin（实时权限查询：user:search 权限，admin:full_access 通配）
     const isAdmin = await checkPermission(c, "user:search");
@@ -81,9 +84,14 @@ router.get(
       maxPerPage: 50,
     });
 
-    // 统一响应构造：{ query, type, items, total, page, limit, took_ms }
+    // 统一响应构造：默认通过 has_more 分页；仅显式请求时返回精确 total。
     const respond = <
-      T extends { items: unknown[]; total: number; took_ms: number },
+      T extends {
+        items: unknown[];
+        has_more: boolean;
+        total?: number;
+        took_ms: number;
+      },
     >(
       result: T,
     ) => {
@@ -93,7 +101,8 @@ router.get(
           query: q,
           type,
           items: result.items,
-          total: result.total,
+          has_more: result.has_more,
+          ...(result.total === undefined ? {} : { total: result.total }),
           page,
           limit,
           took_ms: result.took_ms,
@@ -107,6 +116,7 @@ router.get(
         q,
         isAdmin,
         includeU,
+        includeTotal,
         page,
         limit,
       });
@@ -124,12 +134,12 @@ router.get(
       if (!config.guest_read_enabled && !c.var.userId) {
         throw new UnauthorizedError("登录后可搜索社区内容");
       }
-      const result = await searchCommunity({ q, page, limit });
+      const result = await searchCommunity({ q, includeTotal, page, limit });
       return respond(result);
     }
 
     // type === "user"
-    const result = await searchUsers({ q, isAdmin, page, limit });
+    const result = await searchUsers({ q, isAdmin, includeTotal, page, limit });
     return respond(result);
   },
 );

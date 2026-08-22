@@ -28,7 +28,7 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../lib/errors.ts";
-import { getProblem, getProblemByTypeAndNumber } from "./problems.ts";
+import { getProblem, getProblemByTypeAndNumber } from "./problems/problems.ts";
 import {
   type CreateTrainingInput,
   isValidTrainingVisibility,

@@ -4,15 +4,15 @@ import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
 import type { OptionalAuthEnv } from "../middleware/auth.ts";
 import { Channels, onEvent } from "../lib/event-bus.ts";
 import { createSseStream } from "../lib/sse-stream.ts";
-import { getSubmission } from "../services/submissions.ts";
+import { getSubmission } from "../services/submissions/submissions.ts";
 import { getQueueOverview } from "../services/queue.ts";
 import { checkPermission } from "../lib/permissions.ts";
 import {
   getCachedTodayStats,
   getCachedTotalStats,
 } from "../services/stats-cache.ts";
-import { getContestRanking } from "../services/contest-ranking.ts";
-import { getContest } from "../services/contests.ts";
+import { getContestRanking } from "../services/contest/contest-ranking.ts";
+import { getContest } from "../services/contest/contests.ts";
 import { NotFoundError } from "../lib/errors.ts";
 
 /**
@@ -303,5 +303,47 @@ contestSse.get(
     });
   },
 );
+
+/**
+ * GET /api/v1/community/notifications/events
+ * 社区通知 SSE 端点。
+ *
+ * 收到 notification:new 事件后前端应刷新通知列表和未读计数。
+ * SSE 事件仅作触发器，不包含通知内容。
+ */
+sse.get("/community/notifications/events", (c) => {
+  const userId = c.get("userId") as string;
+  // 通知端点不启用兜底超时：订阅为常驻连接（与原实现一致）
+  return createSseStream(
+    c,
+    async ({ stream, closed, close, onUnsubscribe }) => {
+      onUnsubscribe(
+        onEvent(
+          Channels.user(userId),
+          (_channel, message) => {
+            if (closed) return;
+            // 仅透传社区通知事件，避免与私信等同一用户通道事件交叉
+            try {
+              const payload = JSON.parse(message) as { type?: string };
+              if (payload.type !== "notification:new") return;
+            } catch {
+              return;
+            }
+            stream.writeSSE({
+              event: "notification:new",
+              data: message,
+            }).catch(() => {
+              close();
+            });
+          },
+        ),
+      );
+
+      // 发送初始化事件，触发代理 flush 响应头
+      await stream.writeSSE({ event: "connected", data: "" });
+    },
+    { safetyTimeoutMs: 0 },
+  );
+});
 
 export default sse;

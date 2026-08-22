@@ -20,7 +20,16 @@ const mineTrainings = ref<Training[]>([])
 async function openModal() {
   mineTrainings.value = await load()
   selected.value = []
+  showCreate.value = false
+  newTitle.value = ''
   open.value = true
+}
+
+function closeModal() {
+  open.value = false
+  selected.value = []
+  showCreate.value = false
+  newTitle.value = ''
 }
 
 async function save() {
@@ -30,7 +39,7 @@ async function save() {
     for (const trainingId of selected.value) {
       await addProblem(trainingId, props.problemId)
     }
-    open.value = false
+    closeModal()
   } finally {
     saving.value = false
   }
@@ -43,9 +52,7 @@ async function createAndAdd() {
   try {
     const created = await createTraining({ title, visibility: 'private' })
     await addProblem(created.data.id, props.problemId)
-    showCreate.value = false
-    newTitle.value = ''
-    open.value = false
+    closeModal()
   } finally {
     saving.value = false
   }
@@ -57,12 +64,13 @@ async function createAndAdd() {
     <UButton icon="i-lucide-list-plus" @click="openModal">加入题单</UButton>
 
     <UModal
-      :open="open"
+      v-model:open="open"
       title="加入题单"
       :unmount-on-hide="true"
-      @update:open="open = $event"
+      @after:leave="closeModal"
     >
-      <div class="space-y-3 p-4">
+      <template #body>
+        <div class="space-y-3 p-4">
         <div class="space-y-2">
           <label
             v-for="training in mineTrainings"
@@ -91,12 +99,13 @@ async function createAndAdd() {
         </UButton>
 
         <div class="flex justify-end gap-3 pt-2">
-          <UButton color="gray" @click="open = false">取消</UButton>
+          <UButton color="gray" @click="closeModal">取消</UButton>
           <UButton color="primary" :loading="saving" :disabled="selected.length === 0" @click="save">
             加入选中题单
           </UButton>
         </div>
-      </div>
+        </div>
+      </template>
     </UModal>
   </div>
 </template>

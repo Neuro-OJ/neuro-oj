@@ -7,6 +7,8 @@ import { useDraftStorage } from '~/composables/useDraftStorage'
 import { useSubmissionPolling } from '~/composables/useSubmissionPolling'
 import { useSelfTestPolling } from '~/composables/useSelfTestPolling'
 import { useResizableSplitter } from '~/composables/useResizableSplitter'
+import { useDialog } from '~/composables/useDialog'
+import { useToast } from '~/composables/useToast'
 
 /**
  * 独立做题工作区（从 pages/editor/[id].vue 抽出，供标准题库与竞赛共用）。
@@ -85,6 +87,8 @@ const emit = defineEmits<{
 const router = useRouter()
 const { isLoggedIn } = useAuth()
 const { api } = useApi()
+const { dialog } = useDialog()
+const { toast } = useToast()
 
 // 主题
 const { theme, set: setTheme } = useEditorTheme()
@@ -215,6 +219,15 @@ async function handleSelfTest() {
 const templateLoading = ref(false)
 const templateError = ref('')
 
+async function fetchTemplate(problemId: string): Promise<string | null> {
+  if (!props.templateUrl) return null
+  const res = await api.get<{ data: { content: string; language: string } }>(
+    props.templateUrl(problemId),
+    { silent: true },
+  )
+  return res?.data?.content || null
+}
+
 watch(
   () => props.problem,
   async (p) => {
@@ -229,12 +242,9 @@ watch(
     templateLoading.value = true
     templateError.value = ''
     try {
-      const res = await api.get<{ data: { content: string; language: string } }>(
-        props.templateUrl(p.id),
-        { silent: true },
-      )
-      if (res?.data?.content && code.value.trim() === '') {
-        code.value = res.data.content
+      const template = await fetchTemplate(p.id)
+      if (template && code.value.trim() === '') {
+        code.value = template
       }
     } catch (e: unknown) {
       const err = e as { statusCode?: number }
@@ -247,6 +257,35 @@ watch(
   },
   { immediate: true },
 )
+
+async function resetTemplate() {
+  if (!props.problem || !props.templateUrl || templateLoading.value) return
+
+  const confirmed = await dialog.confirm(
+    '这将覆盖当前代码并替换本地草稿，是否继续？',
+    { title: '重置为模板', confirmText: '重置', danger: true },
+  )
+  if (!confirmed) return
+
+  templateLoading.value = true
+  templateError.value = ''
+  try {
+    const template = await fetchTemplate(props.problem.id)
+    if (!template) {
+      toast.error('该题没有可用的初始代码模板')
+      return
+    }
+    clearDraft()
+    code.value = template
+    toast.success('已恢复为题目模板')
+  } catch (e: unknown) {
+    const message = extractApiError(e).message
+    templateError.value = message
+    toast.error(`重置失败：${message}`)
+  } finally {
+    templateLoading.value = false
+  }
+}
 
 function openSettings() {
   sidebarTab.value = 'settings'
@@ -316,6 +355,8 @@ const toolbarProblem = computed(() => {
           :submitting="submitting"
           :can-self-test="canSelfTest"
           :self-testing="selfTesting"
+          :can-reset-template="!!templateUrl"
+          :template-loading="templateLoading"
           :sidebar-visible="sidebarVisible"
           :draft-state="draftState"
           :draft-saved-at="draftSavedAt"
@@ -327,6 +368,7 @@ const toolbarProblem = computed(() => {
           @toggle-sidebar="sidebarVisible = !sidebarVisible"
           @submit="handleSubmit"
           @self-test="handleSelfTest"
+          @reset-template="resetTemplate"
           @back="goBack"
         >
           <template #actions>

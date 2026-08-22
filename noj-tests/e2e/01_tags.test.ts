@@ -221,11 +221,10 @@ e2eTest("[e2e/tags] 3.2 删除标签后题目不受影响", async () => {
 e2eTest("[e2e/tags] 4.1 算法标签门控：匿名与未通过用户不可见", async () => {
   if (!isE2E) return;
   // 门控需要编程题（客观题禁止算法标签，打标会 400）：用经典 stdin/stdout
-  // 样例题 P1003（A+B）——P1001 为 LMCC 函数式题（需注册 solve），
-  // 不适合作为 AC 判定载体。
-  gatingProblemId = await getProblemIdByNumber(1003);
+  // 样例题 P1001（A+B）使用标准 stdin/stdout 格式，适合作为 AC 判定载体。
+  gatingProblemId = await getProblemIdByNumber(1001);
   if (!gatingProblemId) {
-    console.log("  ⚠ 未找到 P1003，跳过门控隐藏场景");
+    console.log("  ⚠ 未找到 P1001，跳过门控隐藏场景");
     return;
   }
 
@@ -284,7 +283,7 @@ e2eTest("[e2e/tags] 4.2 算法标签门控：AC 后可见", async () => {
     return;
   }
 
-  // 复用 4.1 获取的编程题；若 4.1 已跳过（无 P1003）则本场景同样跳过
+  // 复用 4.1 获取的编程题；若 4.1 已跳过（无 P1001）则本场景同样跳过
   if (!gatingProblemId) {
     console.log("  ⚠ 无编程题（4.1 已跳过），跳过 AC 门控场景");
     return;

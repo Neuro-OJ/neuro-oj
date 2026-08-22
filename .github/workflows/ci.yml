@@ -404,6 +404,7 @@ jobs:
       DATABASE_URL: postgres://noj:noj@localhost:5432/noj
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
       NOJ_RUN_PERF: "1"
+      NOJ_PERF_ALLOW_EXTERNAL_DB: "1"
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
 
     steps:

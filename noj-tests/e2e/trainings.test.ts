@@ -51,7 +51,7 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
     throw new Error(`建题失败: ${JSON.stringify(problemRes.body)}`);
   }
   const problemId = (problemRes.body as { data: { id: string } }).data.id;
-  const sampleProblemId = await getProblemIdByNumber(1003);
+  const sampleProblemId = await getProblemIdByNumber(1001);
 
   const created = await apiPost(
     "/api/v1/trainings",
@@ -79,7 +79,7 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
     throw new Error(`私有题单应对他人 404: ${hidden.status}`);
   }
 
-  // 用样例题 P1003（A+B）验证 AC 进度聚合
+  // 用样例题 P1001（A+B）验证 AC 进度聚合
   const subId = await submitCode(
     user.token,
     sampleProblemId,

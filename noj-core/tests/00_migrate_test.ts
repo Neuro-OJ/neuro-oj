@@ -8,7 +8,7 @@
  */
 import { runMigrations } from "../src/db/migrate.ts";
 import { ensureRootUser } from "../src/services/auth.ts";
-import { ensureRbacSeeds } from "../src/services/seed-rbac.ts";
+import { ensureRbacSeeds } from "../src/services/seed/seed-rbac.ts";
 import { getDb } from "../src/db/connection.ts";
 import { setupSchemaForTest } from "./_setup.ts";
 import { judgeImages } from "../src/db/schema.ts";
