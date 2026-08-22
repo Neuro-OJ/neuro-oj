@@ -91,6 +91,7 @@ Judge Worker 需要能访问 Docker daemon，并且 Redis 地址要与 noj-core 
 | `JWT_SECRET` | JWT 签名密钥，**至少 32 字符**的随机串（`openssl rand -base64 48`） |
 | `JWT_EXPIRES_IN` | 令牌有效期，默认 `24h` |
 | `REDIS_URL` | Redis 连接串 |
+| `RESULT_CONSUMER_CONCURRENCY` | 评测结果消费者连接数，默认 `4`，范围 `1-16` |
 | `PORT` | HTTP 监听端口，默认 `8000` |
 | `ADMIN_EMAIL` / `ADMIN_PASS` | 初始化管理员账号 |
 | `STORAGE_PROVIDER` | `local` 或 `s3`（支持包存储） |

@@ -103,12 +103,21 @@ Solution 两个容器，保持现有 JudgeTask/runtime_config 协议向后兼容
 兼容读取，缺失时使用普通/管理员的展示值补齐，但不再参与管理员判定。这样自定义角色拥有
 管理员权限时仍能通过前端 admin 守卫，普通角色名称也不会被错误授予管理员状态。
 
+### 15. 结果消费者使用有界连接池
+
+保留单个 `createConsumer` 的 at-least-once 流程和 `processing` 确认语义，启动时按
+`RESULT_CONSUMER_CONCURRENCY` 创建多个独立 Redis 消费连接。每个连接仍逐条执行
+“BRPOPLPUSH → handleMessage → LREM”，多个连接只并行处理不同消息；同一提交的重复/重测
+结果由数据库行锁、唯一结果记录和 `rejudge_seq` 继续保证幂等。默认并发为 4，限制在 1-16，
+避免误配置耗尽 Redis 或 PostgreSQL 连接；健康状态按消费者池中是否至少有一个连接活跃汇总。
+
 ## Risks / Trade-offs
 
 - [风险] Lua/EVAL 未被某些极简 fake Redis 或旧 Redis 代理支持 → 测试 fake 增加 EVAL 实现，并在运行时让 Redis 命令错误按现有队列错误路径返回。
 - [风险] 默认并发从无限制变为 2，可能降低高配置机器的吞吐 → 通过 `JUDGE_MAX_CONCURRENT_JUDGES` 显式调高，并在日志中记录生效值。
 - [风险] semaphore 闸门与已有 drain 交互不当可能导致关闭等待 → permit 只在成功拉取后交给 task，drain 继续等待同一个 `FuturesUnordered`，不增加额外后台 worker。
 - [风险] 开发环境存在非 3000 端口的前端实例 → 可通过生产式 `CORS_ALLOWED_ORIGINS` 配置或后续配置扩展解决；本次先覆盖仓库约定的本地 UI 端口。
+- [风险] 结果消费者并发提高数据库与后处理压力 → 默认仅启用 4 个连接并设置 16 的上限，部署方可按数据库连接池容量调低 `RESULT_CONSUMER_CONCURRENCY`。
 
 ## Migration Plan
 

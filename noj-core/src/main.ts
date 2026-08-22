@@ -197,7 +197,7 @@ async function main() {
   }
 
   // 启动评测结果消费者（后台运行，带自动重连，不阻塞 HTTP）
-  startResultConsumerWithRetry();
+  void startResultConsumerWithRetry();
 
   // 启动 processing 超时重投 + pending 提交恢复 sweeper
   startQueueSweeper();

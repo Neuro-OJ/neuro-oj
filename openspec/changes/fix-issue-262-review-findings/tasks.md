@@ -57,6 +57,10 @@
 
 - [x] 14.1 要求认证响应提供按 `admin:full_access` 计算的 `is_admin` 布尔值，session Cookie 不再根据 role 字符串回退，并补充自定义角色回归测试
 
-## 15. 综合验证
+## 15. Core 评测结果消费者池
 
-- [ ] 15.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
+- [x] 15.1 将结果消费者改为可配置的有界多连接池，默认 4、范围 1-16，汇总健康状态并补充配置测试、环境模板和运维文档
+
+## 16. 综合验证
+
+- [ ] 16.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
