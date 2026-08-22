@@ -58,6 +58,12 @@ SSE 仍只推送状态变更触发事件，不扩大事件载荷。
 不依赖 `submissions-crud.ts`。因此直接静态导入 `getSubmissionQueueStatus` 不会形成
 循环依赖，同时能让模块依赖在加载期可见，移除每次查询详情时的动态 import 开销。
 
+### 8. 生产日志默认级别
+
+`LOG_LEVEL` 显式配置继续拥有最高优先级；仅在生产环境未配置或配置非法时使用
+`warn`，开发/测试环境仍默认 `debug`。这样不会阻止临时的生产诊断配置，
+同时降低正常提交与评测流程的 info 日志量。
+
 ## Risks / Trade-offs
 
 - [风险] Lua/EVAL 未被某些极简 fake Redis 或旧 Redis 代理支持 → 测试 fake 增加 EVAL 实现，并在运行时让 Redis 命令错误按现有队列错误路径返回。

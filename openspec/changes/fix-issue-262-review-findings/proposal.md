@@ -11,6 +11,7 @@ Issue #262 发现了几处会在并发注册、评测队列积压或 judge 重�
 - 复用 judge 进程启动时建立的 Docker client，避免每个任务重复建立连接。
 - 为 judge 增加可配置的最大评测并发数，避免 backlog 触发无限制的 Docker 容器创建。
 - 将提交服务对队列状态的依赖改为静态导入，移除没有必要的运行时模块加载。
+- 将生产环境未配置 `LOG_LEVEL` 时的默认日志级别从 `info` 提升为 `warn`，并保留显式配置覆盖能力。
 - 为新增行为补充 core、Redis MQ 和 judge worker 测试，并同步配置/规范文档。
 
 ## Capabilities

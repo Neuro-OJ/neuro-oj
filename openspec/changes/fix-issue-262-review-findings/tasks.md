@@ -28,6 +28,10 @@
 
 - [x] 7.1 将 `getSubmissionQueueStatus` 从动态 import 改为静态导入，确认 `queue.ts` 不反向依赖提交 CRUD，并通过提交服务测试验证行为不变
 
-## 8. 综合验证
+## 8. 生产日志默认级别
 
-- [ ] 8.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
+- [x] 8.1 将生产环境未配置 `LOG_LEVEL` 时的默认级别设为 `warn`，更新环境模板，并补充显式配置覆盖与默认值测试
+
+## 9. 综合验证
+
+- [ ] 9.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
