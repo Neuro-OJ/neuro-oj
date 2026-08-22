@@ -95,6 +95,7 @@ export async function changePassword(
     must_change_password: false,
     active_ban: null,
     avatar_url: user.avatar_url ?? null,
+    tfa_enabled: user.tfa_enabled,
     created_at: user.created_at,
     updated_at: now,
   };

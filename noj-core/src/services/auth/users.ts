@@ -117,6 +117,7 @@ export async function listUsers(
         email: users.email,
         must_change_password: users.must_change_password,
         avatar_url: users.avatar_url,
+        tfa_enabled: users.tfa_enabled,
         created_at: users.created_at,
         updated_at: users.updated_at,
         // 活跃封禁信息（LEFT JOIN user_bans）
@@ -164,6 +165,7 @@ export async function listUsers(
     is_admin: allAdminIds.has(row.id),
     must_change_password: row.must_change_password,
     avatar_url: row.avatar_url ?? null,
+    tfa_enabled: row.tfa_enabled,
     created_at: row.created_at,
     updated_at: row.updated_at,
     active_ban: row.ban_reason !== null

@@ -54,6 +54,7 @@ async function toUserResponse(
     must_change_password: user.must_change_password,
     active_ban: activeBan,
     avatar_url: user.avatar_url ?? null,
+    tfa_enabled: user.tfa_enabled,
     created_at: user.created_at,
     updated_at: now,
   };

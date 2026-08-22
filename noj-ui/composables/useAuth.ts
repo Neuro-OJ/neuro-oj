@@ -7,6 +7,7 @@ interface UserResponse {
   role: string;
   is_admin: boolean;
   must_change_password: boolean;
+  tfa_enabled?: boolean;
   avatar_url?: string | null;
   permissions?: string[];
   created_at: string;
@@ -20,6 +21,7 @@ interface SessionData {
   email: string;
   is_admin: boolean;
   must_change_password: boolean;
+  tfa_enabled?: boolean;
 }
 
 function sessionToUser(session: SessionData): UserResponse {
@@ -30,6 +32,7 @@ function sessionToUser(session: SessionData): UserResponse {
     email: session.email,
     is_admin: session.is_admin ?? session.role === 'admin',
     must_change_password: session.must_change_password ?? false,
+    tfa_enabled: session.tfa_enabled ?? false,
     created_at: '',
     updated_at: '',
   };
@@ -73,11 +76,11 @@ export function useAuth() {
   // 避免「页面提示 + toast」双重提示（ui-api-layer 设计 D6）
   const { api } = useApi();
 
-  async function login(login: string, password: string) {
+  async function login(login: string, password: string, code?: string) {
     // 5s 超时（评审修复 L2，与 fetchUser 一致），由 useApi timeout 选项实现
     const res = await api.post<{ data: { user: UserResponse } }>(
       '/api/v1/auth/login',
-      { login, password },
+      { login, password, ...(code ? { code } : {}) },
       { silent: true, timeout: 5000 },
     );
     // token 已由 Nitro 代理设置为 HTTP-only cookie，客户端不接收 token 字段
@@ -87,7 +90,9 @@ export function useAuth() {
   }
 
   async function register(username: string, email: string, password: string) {
-    await api.post('/api/v1/auth/register', { username, email, password }, { silent: true });
+    await api.post('/api/v1/auth/register', { username, email, password }, {
+      silent: true,
+    });
   }
 
   /**

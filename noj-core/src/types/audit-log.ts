@@ -18,6 +18,7 @@ export type AuditAction =
   | "tags.delete"
   | "tags.merge"
   | "submissions.rejudge"
+  | "submissions.queue_removed"
   | "settings.update"
   | "ip_ban.create"
   | "ip_ban.delete"
@@ -27,6 +28,11 @@ export type AuditAction =
   | "auth.change_password"
   | "auth.forgot_password_request"
   | "auth.password_reset"
+  | "auth.tfa_setup"
+  | "auth.tfa_enabled"
+  | "auth.tfa_disabled"
+  | "auth.tfa_recovery_regenerated"
+  | "auth.tfa_recovery_used"
   | "community.post_moderated"
   | "community.report_resolved"
   | "community.sanction_created"
@@ -81,6 +87,7 @@ export type AuditDetail =
     problem_id?: string;
     count?: number;
   }
+  | { action: "submissions.queue_removed"; submission_id: string }
   | {
     action: "settings.update";
     operation: "PUT" | "DELETE";
@@ -105,7 +112,12 @@ export type AuditDetail =
   | {
     action: "auth.login_failure";
     /** 失败原因分类（wrong_password / user_not_found / user_banned / ip_banned） */
-    reason: "wrong_password" | "user_not_found" | "user_banned" | "ip_banned";
+    reason:
+      | "wrong_password"
+      | "user_not_found"
+      | "user_banned"
+      | "ip_banned"
+      | "wrong_tfa_code";
     /** 攻击者输入的登录标识（**不区分大小写**），用于撞库追溯 */
     login: string;
   }
@@ -122,6 +134,11 @@ export type AuditDetail =
     email_exists: boolean;
   }
   | { action: "auth.password_reset"; user_id: string }
+  | { action: "auth.tfa_setup"; user_id: string }
+  | { action: "auth.tfa_enabled"; user_id: string }
+  | { action: "auth.tfa_disabled"; user_id: string }
+  | { action: "auth.tfa_recovery_regenerated"; user_id: string }
+  | { action: "auth.tfa_recovery_used"; user_id: string }
   | {
     action: "community.post_moderated";
     status: string;

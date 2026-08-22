@@ -13,7 +13,8 @@
  * 检查项：
  *   1. .env 文件存在
  *   2. JWT_SECRET 长度 ≥ 32（与 main.ts MIN_JWT_SECRET_LENGTH 一致）
- *   3. 关键字段不含已知占位符（change-this-...、changeme、example、test、xxx、placeholder）
+ *   3. TFA_ENCRYPTION_KEY 长度 ≥ 32（TOTP secret 加密要求）
+ *   4. 关键字段不含已知占位符（change-this-...、changeme、example、test、xxx、placeholder）
  *
  * 行为：
  *   - 缺省模式（--strict 缺失）：仅打印警告，不阻塞
@@ -25,6 +26,7 @@
  */
 
 import { MIN_JWT_SECRET_LENGTH } from "../src/lib/constants.ts";
+import { MIN_TFA_ENCRYPTION_KEY_LENGTH } from "../src/lib/tfa.ts";
 
 // 已知占位值黑名单（不区分大小写）。命中即视为未配置。
 const PLACEHOLDER_PATTERNS: readonly RegExp[] = [
@@ -109,6 +111,21 @@ function inspect(env: Map<string, string>): Finding[] {
       key: "JWT_SECRET",
       value: `${jwt.length} 字符`,
       reason: "HS256 要求 ≥ 32 字符",
+    });
+  }
+
+  const tfaKey = env.get("TFA_ENCRYPTION_KEY");
+  if (!tfaKey) {
+    findings.push({
+      key: "TFA_ENCRYPTION_KEY",
+      value: "未设置",
+      reason: "TOTP secret 加密密钥为必填项",
+    });
+  } else if (tfaKey.length < MIN_TFA_ENCRYPTION_KEY_LENGTH) {
+    findings.push({
+      key: "TFA_ENCRYPTION_KEY",
+      value: `${tfaKey.length} 字符`,
+      reason: `AES-256-GCM 密钥要求 ≥ ${MIN_TFA_ENCRYPTION_KEY_LENGTH} 字符`,
     });
   }
 

@@ -76,6 +76,7 @@ export function toUserResponse(
     must_change_password: row.must_change_password,
     active_ban: options?.activeBan ?? null,
     avatar_url: row.avatar_url ?? null,
+    tfa_enabled: row.tfa_enabled,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -169,6 +170,7 @@ export async function registerUser(
     must_change_password: false,
     active_ban: null,
     avatar_url: null,
+    tfa_enabled: false,
     created_at: now,
     updated_at: now,
   };

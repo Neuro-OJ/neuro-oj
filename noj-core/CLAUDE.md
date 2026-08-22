@@ -159,6 +159,7 @@ noj-core/
 | --------------------------------- | ------------------------- | --------------------------------------------------------------------------- |
 | `DATABASE_URL`                    | —                         | PostgreSQL 连接串（无默认值）                                               |
 | `JWT_SECRET`                      | —                         | HS256 签名密钥（≥32 字符）                                                  |
+| `TFA_ENCRYPTION_KEY`              | —                         | TOTP secret 加密密钥（≥32 字符，与 JWT_SECRET 隔离）                        |
 | `JWT_EXPIRES_IN`                  | `24h`                     | Token 有效期                                                                |
 | `REDIS_URL`                       | `redis://127.0.0.1:6379/` | Redis 连接串                                                                |
 | `PORT`                            | `8000`                    | HTTP 监听端口                                                               |
@@ -262,37 +263,41 @@ docker compose down     # 停止
 
 ## API 路由
 
-| 方法   | 路径                                   | 权限        | 说明                                         |
-| ------ | -------------------------------------- | ----------- | -------------------------------------------- |
-| POST   | `/api/v1/auth/register`                | 公开        | 用户注册                                     |
-| POST   | `/api/v1/auth/login`                   | 公开        | 用户登录（返回 JWT）                         |
-| GET    | `/api/v1/auth/me`                      | 登录        | 当前用户信息                                 |
-| GET    | `/api/v1/tags`                         | 公开        | 标签列表（含算法标签名，发现路径）           |
-| POST   | `/api/v1/tags`                         | tag:manage  | 创建标签（默认仅 admin，可配置）             |
-| PUT    | `/api/v1/tags/:id`                     | tag:manage  | 更新标签（改名/改 kind）                     |
-| DELETE | `/api/v1/tags/:id`                     | tag:manage  | 删除标签（级联清理关联）                     |
-| POST   | `/api/v1/tags/:id/merge`               | tag:manage  | 合并标签（关联重指向后删除源标签）           |
-| GET    | `/api/v1/problems`                     | 公开        | 题目列表（分页+筛选）                        |
-| GET    | `/api/v1/problems/:id`                 | 公开        | 题目详情（**双索引**：UUID/display_id/数字） |
-| POST   | `/api/v1/problems`                     | 登录        | 创建题目（U/P 类型）                         |
-| PUT    | `/api/v1/problems/:id`                 | 登录        | 更新题目                                     |
-| DELETE | `/api/v1/problems/:id`                 | 登录        | 删除题目                                     |
-| GET    | `/api/v1/submissions`                  | 登录        | 我的提交列表                                 |
-| POST   | `/api/v1/submissions`                  | 登录        | 创建提交                                     |
-| GET    | `/api/v1/submissions/:id`              | 登录        | 提交详情                                     |
-| GET    | `/api/v1/submissions/:id/status`       | 登录        | 提交队列状态                                 |
-| GET    | `/api/v1/admin/submissions`            | 管理员      | 全部提交管理                                 |
-| GET    | `/api/v1/admin/users`                  | 管理员      | 用户列表                                     |
-| PATCH  | `/api/v1/admin/users/:id/role`         | 管理员      | 角色变更                                     |
-| GET    | `/api/v1/users/:id/profile`            | 公开        | 用户主页                                     |
-| PUT    | `/api/v1/users/me`                     | 登录        | 更新个人简介                                 |
-| POST   | `/api/v1/auth/change-password`         | 登录        | 修改密码（issue #75 强制改密）               |
-| POST   | `/api/v1/auth/logout`                  | 公开        | 登出（no-op stub，客户端自行清 Cookie）      |
-| GET    | `/api/v1/problems/:id/support-package` | 登录        | 下载支持包（通过 core 代理，不暴露 S3 URL）  |
-| POST   | `/api/v1/checkin`                      | 登录        | 每日签到（返回当前连续天数）                 |
-| GET    | `/api/v1/checkin/today`                | 登录        | 查询今日签到状态                             |
-| GET    | `/api/v1/search`                       | 公开/管理员 | 全局搜索（题目+用户，分页，issue #100）      |
-| GET    | `/health`                              | 公开        | 健康检查                                     |
+| 方法   | 路径                                         | 权限        | 说明                                          |
+| ------ | -------------------------------------------- | ----------- | --------------------------------------------- |
+| POST   | `/api/v1/auth/register`                      | 公开        | 用户注册                                      |
+| POST   | `/api/v1/auth/login`                         | 公开        | 用户登录（返回 JWT）                          |
+| GET    | `/api/v1/auth/me`                            | 登录        | 当前用户信息                                  |
+| GET    | `/api/v1/tags`                               | 公开        | 标签列表（含算法标签名，发现路径）            |
+| POST   | `/api/v1/tags`                               | tag:manage  | 创建标签（默认仅 admin，可配置）              |
+| PUT    | `/api/v1/tags/:id`                           | tag:manage  | 更新标签（改名/改 kind）                      |
+| DELETE | `/api/v1/tags/:id`                           | tag:manage  | 删除标签（级联清理关联）                      |
+| POST   | `/api/v1/tags/:id/merge`                     | tag:manage  | 合并标签（关联重指向后删除源标签）            |
+| GET    | `/api/v1/problems`                           | 公开        | 题目列表（分页+筛选）                         |
+| GET    | `/api/v1/problems/:id`                       | 公开        | 题目详情（**双索引**：UUID/display_id/数字）  |
+| POST   | `/api/v1/problems`                           | 登录        | 创建题目（U/P 类型）                          |
+| PUT    | `/api/v1/problems/:id`                       | 登录        | 更新题目                                      |
+| DELETE | `/api/v1/problems/:id`                       | 登录        | 删除题目                                      |
+| GET    | `/api/v1/submissions`                        | 登录        | 我的提交列表                                  |
+| POST   | `/api/v1/submissions`                        | 登录        | 创建提交                                      |
+| GET    | `/api/v1/submissions/:id`                    | 登录        | 提交详情                                      |
+| GET    | `/api/v1/submissions/:id/status`             | 登录        | 提交队列状态                                  |
+| GET    | `/api/v1/admin/submissions`                  | 管理员      | 全部提交管理                                  |
+| GET    | `/api/v1/admin/users`                        | 管理员      | 用户列表                                      |
+| PATCH  | `/api/v1/admin/users/:id/role`               | 管理员      | 角色变更                                      |
+| GET    | `/api/v1/users/:id/profile`                  | 公开        | 用户主页                                      |
+| PUT    | `/api/v1/users/me`                           | 登录        | 更新个人简介                                  |
+| POST   | `/api/v1/auth/change-password`               | 登录        | 修改密码（issue #75 强制改密）                |
+| POST   | `/api/v1/auth/tfa/setup`                     | 登录        | 生成 TOTP secret 与 otpauth URL（issue #228） |
+| POST   | `/api/v1/auth/tfa/confirm`                   | 登录        | 确认启用 TFA，返回一次性恢复码（issue #228）  |
+| POST   | `/api/v1/auth/tfa/disable`                   | 登录        | 禁用 TFA（需 TOTP/恢复码确认，issue #228）    |
+| POST   | `/api/v1/auth/tfa/recovery-codes/regenerate` | 登录        | 重新生成恢复码（issue #228）                  |
+| POST   | `/api/v1/auth/logout`                        | 公开        | 登出（no-op stub，客户端自行清 Cookie）       |
+| GET    | `/api/v1/problems/:id/support-package`       | 登录        | 下载支持包（通过 core 代理，不暴露 S3 URL）   |
+| POST   | `/api/v1/checkin`                            | 登录        | 每日签到（返回当前连续天数）                  |
+| GET    | `/api/v1/checkin/today`                      | 登录        | 查询今日签到状态                              |
+| GET    | `/api/v1/search`                             | 公开/管理员 | 全局搜索（题目+用户，分页，issue #100）       |
+| GET    | `/health`                                    | 公开        | 健康检查                                      |
 
 ### 路由层关键模式
 

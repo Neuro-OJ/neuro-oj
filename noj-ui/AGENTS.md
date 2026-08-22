@@ -191,6 +191,7 @@ cd dist
 ### 代理实现细节（[...slug].ts）
 
 - **仅拦截** `POST /api/v1/auth/login`：解析登录响应，提取 JWT 设置 Cookie，从响应体删除 `token` 字段
+- 若登录响应是 `TFA_REQUIRED`（已启用 TFA 但缺少 `code`），响应中没有 `token`，代理不会设置 Cookie，前端据此展示第二步验证码输入框
 - **不拦截**注册等其他认证端点
 - 非登录请求：从 Cookie 读取 `noj:token`，注入 `Authorization: Bearer` 头后直接 `proxyRequest()`
 - **路径白名单**：仅允许 `/api/v1/` 前缀的请求透传，非匹配路径返回 404
@@ -260,7 +261,7 @@ cd dist
 ### useAuth
 - `useState<AuthUser | null>("auth:user")` 存储用户信息（含 `must_change_password` 字段，issue #75）
 - `fetchUser()`：调用 `/api/v1/auth/me`，401 时自动调用 `logout()` 清除状态
-- `login(credentials)` / `register(data)` / `logout()`：封装对应 API 调用
+- `login(login, password, code?)` / `register(data)` / `logout()`：封装对应 API 调用；`code` 为 TFA 验证码/恢复码（issue #228）
 - `changePassword(oldPassword, newPassword)`：调用 `/api/v1/auth/change-password`，成功后自动 `logout()` 清 Cookie 并跳 `/login?reason=password_changed`（避免旧 JWT flag 残留致路由守卫死循环）
 - `logout()` 清除 `auth:user` 状态 + 调用 `/api/auth/logout` 删除 Cookie
 - 初始化时若 Cookie 存在则自动调用 `fetchUser()`（SSR 阶段跳过）

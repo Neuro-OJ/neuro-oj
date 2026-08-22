@@ -5,7 +5,12 @@ import { comparePassword } from "../../lib/password.ts";
 import { isUserAdmin } from "../../lib/permissions.ts";
 import { signToken } from "../../lib/jwt.ts";
 import { logAuthEvent } from "../audit-log.ts";
-import { ForbiddenError, UnauthorizedError } from "../../lib/errors.ts";
+import { verifyTfaCodeForUser } from "../tfa.ts";
+import {
+  BadRequestError,
+  ForbiddenError,
+  UnauthorizedError,
+} from "../../lib/errors.ts";
 import type { LoginInput, UserResponse } from "../../types/auth.ts";
 import { isBannedIp } from "../../lib/cidr.ts";
 import { getBannedRanges } from "../banlist.ts";
@@ -112,6 +117,27 @@ export async function loginUser(
         reason: activeBan[0].reason,
         until: activeBan[0].banned_until,
       });
+    }
+  }
+
+  // TFA 二次验证：已启用用户必须提供 TOTP 或恢复码。
+  if (user.tfa_enabled) {
+    if (!input.code) {
+      throw new BadRequestError("需要两步验证码", "TFA_REQUIRED");
+    }
+    const tfaValid = await verifyTfaCodeForUser(
+      user.id,
+      input.code,
+      clientIp ?? "unknown",
+    );
+    if (!tfaValid) {
+      await logAuthEvent(
+        user.id,
+        clientIp ?? "unknown",
+        "auth.login_failure",
+        { reason: "wrong_tfa_code", login: input.login },
+      );
+      throw new UnauthorizedError("用户名或密码错误");
     }
   }
 

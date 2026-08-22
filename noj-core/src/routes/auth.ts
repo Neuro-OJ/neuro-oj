@@ -13,6 +13,12 @@ import {
   loginUser,
   registerUser,
 } from "../services/auth.ts";
+import {
+  confirmTfa,
+  disableTfa,
+  regenerateRecoveryCodes,
+  setupTfa,
+} from "../services/tfa.ts";
 import { requestReset, resetPassword } from "../services/passwordReset.ts";
 import {
   BadRequestError,
@@ -58,6 +64,7 @@ import {
 // change-password 端点的限流命名空间（独立于登录端点）
 // 失败计数 / 锁定 / 退避均使用此前缀，避免改密失败反锁 /login（issue #75 评审 H4）
 const PWCHANGE_NAMESPACE = "pwchange";
+const TFA_NAMESPACE = "tfa";
 
 // PR-6 评审修订：使用 middleware/auth.ts 导出的 AuthEnv 类型
 // 避免与 inline 定义重复（之前两边各定义一份完全相同的 Variables 结构）
@@ -155,6 +162,24 @@ async function recordAuthFailure(
 ): Promise<void> {
   const failCount = await recordLoginFailure(account, namespace);
   await recordLoginBackoff(account, failCount, namespace);
+}
+
+/** 执行需验证码的 TFA 管理操作，并以独立限流桶防止验证码枚举。 */
+async function executeTfaProtectedAction<T>(
+  userId: string,
+  action: () => Promise<T>,
+): Promise<T> {
+  const accountKey = await enforceAccountRateLimit(userId, TFA_NAMESPACE);
+  try {
+    const result = await action();
+    await clearLoginFailure(accountKey, TFA_NAMESPACE);
+    return result;
+  } catch (err) {
+    if (err instanceof UnauthorizedError) {
+      await recordAuthFailure(accountKey, TFA_NAMESPACE);
+    }
+    throw err;
+  }
 }
 
 auth.post("/login", loginIpRateLimit(), async (c) => {
@@ -268,6 +293,78 @@ auth.post(
       }
       throw err;
     }
+  },
+);
+
+/**
+ * TFA 管理端点（issue #228）。
+ * 以下端点均需登录，用于启用/禁用 TOTP 与恢复码管理。
+ */
+auth.post("/tfa/setup", authMiddleware, async (c) => {
+  const userId = c.get("userId") as string;
+  const result = await setupTfa(userId, "", getClientIp(c));
+  return c.json(
+    { data: { secret: result.secret, otpauth_url: result.otpauthUrl } },
+    200,
+  );
+});
+
+auth.post(
+  "/tfa/confirm",
+  loginIpRateLimit(TFA_NAMESPACE),
+  authMiddleware,
+  async (c) => {
+    const body = await parseJsonBody<{ code?: string }>(c);
+    if (!body.code) {
+      throw new ValidationError("缺少字段 code");
+    }
+    const userId = c.get("userId") as string;
+    const recoveryCodes = await executeTfaProtectedAction(
+      userId,
+      () =>
+        confirmTfa(
+          userId,
+          body.code!,
+          getClientIp(c),
+        ),
+    );
+    return c.json({ data: { recovery_codes: recoveryCodes } }, 200);
+  },
+);
+
+auth.post(
+  "/tfa/disable",
+  loginIpRateLimit(TFA_NAMESPACE),
+  authMiddleware,
+  async (c) => {
+    const body = await parseJsonBody<{ code?: string }>(c);
+    if (!body.code) {
+      throw new ValidationError("缺少字段 code");
+    }
+    const userId = c.get("userId") as string;
+    await executeTfaProtectedAction(
+      userId,
+      () => disableTfa(userId, body.code!, getClientIp(c)),
+    );
+    return c.json({ data: { ok: true } }, 200);
+  },
+);
+
+auth.post(
+  "/tfa/recovery-codes/regenerate",
+  loginIpRateLimit(TFA_NAMESPACE),
+  authMiddleware,
+  async (c) => {
+    const body = await parseJsonBody<{ code?: string }>(c);
+    if (!body.code) {
+      throw new ValidationError("缺少字段 code");
+    }
+    const userId = c.get("userId") as string;
+    const recoveryCodes = await executeTfaProtectedAction(
+      userId,
+      () => regenerateRecoveryCodes(userId, body.code!, getClientIp(c)),
+    );
+    return c.json({ data: { recovery_codes: recoveryCodes } }, 200);
   },
 );
 

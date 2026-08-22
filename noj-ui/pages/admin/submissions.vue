@@ -177,6 +177,7 @@ function rowSub(row: Record<string, unknown>): SubmissionListItem {
 const toast = useToast()
 const { dialog } = useDialog()
 const rejudgingIds = ref(new Set<string>())
+const removingQueueIds = ref(new Set<string>())
 
 function isRejudging(submissionId: string) {
   return rejudgingIds.value.has(submissionId)
@@ -201,6 +202,32 @@ async function rejudge(submissionId: string) {
     const next = new Set(rejudgingIds.value)
     next.delete(submissionId)
     rejudgingIds.value = next
+  }
+}
+
+function isRemovingQueue(submissionId: string) {
+  return removingQueueIds.value.has(submissionId)
+}
+
+async function removeFromQueue(submissionId: string) {
+  if (isRemovingQueue(submissionId)) return
+  const confirmed = await dialog.confirm(
+    "该操作会从待处理队列移除任务，并将提交标记为出错。提交记录不会被删除。",
+    { title: "确认移出队列" },
+  )
+  if (!confirmed) return
+
+  removingQueueIds.value = new Set(removingQueueIds.value).add(submissionId)
+  try {
+    await api.delete(`/api/v1/admin/queue/submissions/${submissionId}`)
+    toast.showToast("success", "评测任务已移出队列")
+  } catch (err: unknown) {
+    toast.showToast("error", extractApiError(err).message)
+  } finally {
+    const next = new Set(removingQueueIds.value)
+    next.delete(submissionId)
+    removingQueueIds.value = next
+    await loadSubmissions(currentPage.value)
   }
 }
 </script>
@@ -290,6 +317,12 @@ async function rejudge(submissionId: string) {
       <!-- 操作列 -->
       <template #actions-cell="{ row }">
         <div class="flex gap-1.5 justify-center">
+          <button
+            v-if="rowSub(row.original).status === 'judging'"
+            class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-error-text border-error-text bg-transparent hover:bg-error-text hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="isRemovingQueue(rowSub(row.original).id)"
+            @click="removeFromQueue(rowSub(row.original).id)"
+          >{{ isRemovingQueue(rowSub(row.original).id) ? '移除中...' : '移出队列' }}</button>
           <button class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white disabled:cursor-not-allowed disabled:opacity-50" :disabled="isRejudging(rowSub(row.original).id)" @click="rejudge(rowSub(row.original).id)">{{ isRejudging(rowSub(row.original).id) ? '提交中...' : '重测' }}</button>
           <NuxtLink :to="`/submissions/${rowSub(row.original).id}`" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-primary border-primary bg-transparent hover:bg-primary hover:text-white">查看</NuxtLink>
         </div>
