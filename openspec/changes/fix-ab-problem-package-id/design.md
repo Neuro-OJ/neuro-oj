@@ -1,12 +1,13 @@
 ## Context
 
-统一题目包以根级 `problem.json` 的 `(type, number)` 作为幂等导入键。当前 A+B 示例题数据库记录为 P1001，而构建产物保留了 P1003 的 manifest。
+统一题目包以根级 `problem.json` 的 `(type, number)` 作为幂等导入键。当前 A+B 示例题数据库记录和 manifest 都是 P1001，但源目录与构建产物仍保留 1003 命名。
 
 ## Goals / Non-Goals
 
 **Goals:**
 
 - 让样例题 manifest、题面标题和数据库题号一致。
+- 让 A+B 源目录、构建产物和当前文档统一使用 1001。
 - 通过标准 CLI 重建和导入替换旧支持包。
 
 **Non-Goals:**
@@ -15,7 +16,7 @@
 
 ## Decisions
 
-- 保留源码目录 `1003` 作为内部样例路径，仅修正导入时生效的 manifest 与题面标题；这避免不必要的目录迁移，同时保证生成包和数据库键一致。
+- 将源码目录从 `1003` 重命名为 `1001`，使现有构建脚本按目录名生成的包名与 manifest.number 一致。
 - 使用现有 `problems build` 和 `problems import` CLI 重建并更新本地存储，避免手动修改数据库支持包地址。
 
 ## Risks / Trade-offs

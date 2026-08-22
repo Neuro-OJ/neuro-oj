@@ -1,16 +1,18 @@
 # A+B 示例题
 
-本页使用 `1003` 样例题说明一次完整出题流程。
+本页使用 `1001` 样例题说明一次完整出题流程。
 
 这里的 `visible.jsonl` 和 `hidden.jsonl` 是 A+B 样例题采用的数据组织方式，不是 Neuro OJ 的必选文件。正式题目可以用任意 evaluator 能读取的文件结构。
 
 ## 源文件
 
 ```text
-noj-core/data/problems-src/1003/
+noj-core/data/problems-src/1001/
 ├── evaluate.py
 ├── hidden.jsonl
-├── submission.py
+├── problem.json
+├── statement.md
+├── template.py
 └── visible.jsonl
 ```
 
@@ -90,7 +92,7 @@ deno task problems:build
 生成：
 
 ```text
-noj-core/data/packages/1003.zip
+noj-core/data/packages/1001.zip
 ```
 
 构建产物会包含 `evaluate.py`、`visible.jsonl` 和 `hidden.jsonl`，不会包含 `submission.py`。
@@ -110,7 +112,7 @@ noj-core/data/packages/1003.zip
 
 ## 本地样例题说明
 
-仓库内置的 `1003` 是开发样例题。维护样例题时可以运行：
+仓库内置的 `1001` 是开发样例题。维护样例题时可以运行：
 
 ```bash
 cd noj-core
