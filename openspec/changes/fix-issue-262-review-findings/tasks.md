@@ -41,6 +41,10 @@
 - [x] 10.1 增加 `JUDGE_CPU_LIMIT_MILLICORES` 配置及安全范围校验，默认保持 1 核
 - [x] 10.2 将 CPU 上限传递到 Evaluator/Solution HostConfig，补充配置与 HostConfig 单元测试并更新 judge 运维文档
 
-## 11. 综合验证
+## 11. Judge 命令转义分词
 
-- [ ] 11.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
+- [x] 11.1 在 `parse_command` 中支持反斜杠转义，补充引号、空格和末尾反斜杠测试，并通过 judge 单元测试
+
+## 12. 综合验证
+
+- [ ] 12.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更

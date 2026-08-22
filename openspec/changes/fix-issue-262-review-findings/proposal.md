@@ -14,6 +14,7 @@ Issue #262 发现了几处会在并发注册、评测队列积压或 judge 重�
 - 将生产环境未配置 `LOG_LEVEL` 时的默认日志级别从 `info` 提升为 `warn`，并保留显式配置覆盖能力。
 - 抽取邮件 Provider 必填设置的通用检查逻辑，消除 Aliyun/Tencent 配置校验的重复分支。
 - 将 judge 容器的固定 1 核 CPU 限制改为 Worker 级 `JUDGE_CPU_LIMIT_MILLICORES` 配置，默认与安全边界保持向后兼容。
+- 增强 judge 评测命令分词，支持反斜杠转义的引号与空格，同时保留孤立末尾反斜杠。
 - 为新增行为补充 core、Redis MQ 和 judge worker 测试，并同步配置/规范文档。
 
 ## Capabilities

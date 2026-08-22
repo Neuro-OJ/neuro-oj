@@ -109,14 +109,26 @@ pub fn extract_zip_entries(data: &[u8]) -> Result<Vec<ZipEntry>> {
 
 /// 解析评测命令为字符串数组。
 ///
-/// 简单 shell 风格分词，支持单引号和双引号。
+/// 简单 shell 风格分词，支持单引号、双引号和反斜杠转义。
 pub fn parse_command(command: &str) -> Vec<String> {
     let mut args = Vec::new();
     let mut current = String::new();
     let mut in_quote = false;
     let mut quote_char = ' ';
+    let mut escaped = false;
 
     for c in command.chars() {
+        if escaped {
+            current.push(c);
+            escaped = false;
+            continue;
+        }
+
+        if c == '\\' {
+            escaped = true;
+            continue;
+        }
+
         match c {
             '\'' | '"' if !in_quote => {
                 in_quote = true;
@@ -136,6 +148,10 @@ pub fn parse_command(command: &str) -> Vec<String> {
         }
     }
 
+    // 保留末尾孤立的反斜杠，避免静默丢失管理员配置的命令内容。
+    if escaped {
+        current.push('\\');
+    }
     if !current.is_empty() {
         args.push(current);
     }
@@ -199,5 +215,26 @@ mod tests {
             parse_command("sh -c \"echo 'hello'\""),
             vec!["sh", "-c", "echo 'hello'"]
         );
+    }
+
+    #[test]
+    fn test_parse_command_escaped_quotes() {
+        assert_eq!(
+            parse_command("echo \"hello\\\"world\""),
+            vec!["echo", "hello\"world"]
+        );
+    }
+
+    #[test]
+    fn test_parse_command_escaped_space() {
+        assert_eq!(
+            parse_command("python3 /tmp/my\\ script.py"),
+            vec!["python3", "/tmp/my script.py"]
+        );
+    }
+
+    #[test]
+    fn test_parse_command_trailing_backslash_is_preserved() {
+        assert_eq!(parse_command("echo trailing\\"), vec!["echo", "trailing\\"]);
     }
 }
