@@ -53,6 +53,10 @@
 
 - [x] 13.1 抽取并测试认证响应的 token/user 运行时校验，缺少有效字段时由代理返回 500 且不写 Cookie
 
-## 14. 综合验证
+## 14. Nuxt 管理员会话标记
 
-- [ ] 14.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
+- [x] 14.1 要求认证响应提供按 `admin:full_access` 计算的 `is_admin` 布尔值，session Cookie 不再根据 role 字符串回退，并补充自定义角色回归测试
+
+## 15. 综合验证
+
+- [ ] 15.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更

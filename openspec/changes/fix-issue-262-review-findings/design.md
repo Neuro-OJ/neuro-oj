@@ -96,6 +96,13 @@ Solution 两个容器，保持现有 JudgeTask/runtime_config 协议向后兼容
 才写 HTTP-only token Cookie 与 session Cookie。异常响应只记录固定的无敏感信息日志，
 返回 500 并丢弃上游响应，避免非空断言导致运行时异常或把无效数据写入客户端 Cookie。
 
+### 14. 管理员会话标记只信任权限计算结果
+
+核心认证响应中的 `is_admin` 已由 `isUserAdmin()` 按 `admin:full_access` 权限（含角色继承）
+实时计算。Nuxt 代理将其作为必需布尔字段写入 session Cookie；`role` 仅作为旧版展示字段
+兼容读取，缺失时使用普通/管理员的展示值补齐，但不再参与管理员判定。这样自定义角色拥有
+管理员权限时仍能通过前端 admin 守卫，普通角色名称也不会被错误授予管理员状态。
+
 ## Risks / Trade-offs
 
 - [风险] Lua/EVAL 未被某些极简 fake Redis 或旧 Redis 代理支持 → 测试 fake 增加 EVAL 实现，并在运行时让 Redis 命令错误按现有队列错误路径返回。

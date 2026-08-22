@@ -130,10 +130,11 @@ export default defineEventHandler(async (event) => {
             user?: {
               id: string;
               username: string;
-              role: string;
+              role?: string;
               email: string;
               must_change_password?: boolean;
               tfa_enabled?: boolean;
+              is_admin?: boolean;
             };
           };
         }
@@ -172,10 +173,11 @@ export default defineEventHandler(async (event) => {
           JSON.stringify({
             userId: user.id,
             username: user.username,
-            role: user.role,
+            role: user.role ?? (user.is_admin ? 'admin' : 'user'),
             email: user.email,
             must_change_password: user.must_change_password ?? false,
-            is_admin: (user as Record<string, unknown>)?.is_admin ?? (user.role === 'admin'),
+            // is_admin 由核心 API 按 admin:full_access 权限计算，不再根据角色名猜测。
+            is_admin: user.is_admin,
             tfa_enabled: user.tfa_enabled ?? false,
           }),
           {

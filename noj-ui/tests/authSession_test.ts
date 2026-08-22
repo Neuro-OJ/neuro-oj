@@ -8,7 +8,6 @@ const validResponse = {
     user: {
       id: 'user-1',
       username: 'alice',
-      role: 'user',
       email: 'alice@example.com',
       must_change_password: false,
       tfa_enabled: false,
@@ -38,4 +37,32 @@ Deno.test('parseAuthSession: user 字段类型错误时返回 null', () => {
     }),
     null,
   );
+});
+
+Deno.test('parseAuthSession: 缺少 is_admin 时返回 null', () => {
+  const { is_admin: _isAdmin, ...user } = validResponse.data.user;
+  assertEquals(
+    parseAuthSession({ data: { token: 'jwt-token', user } }),
+    null,
+  );
+});
+
+Deno.test('parseAuthSession: 自定义角色仍以 is_admin 为准', () => {
+  const response = {
+    data: {
+      ...validResponse.data,
+      user: { ...validResponse.data.user, role: 'content-manager', is_admin: true },
+    },
+  };
+  assertEquals(parseAuthSession(response)?.user.is_admin, true);
+});
+
+Deno.test('parseAuthSession: admin 角色名不能覆盖 false 标记', () => {
+  const response = {
+    data: {
+      ...validResponse.data,
+      user: { ...validResponse.data.user, role: 'admin' },
+    },
+  };
+  assertEquals(parseAuthSession(response)?.user.is_admin, false);
 });

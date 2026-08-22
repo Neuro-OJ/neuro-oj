@@ -7,11 +7,13 @@
 export interface AuthSessionUser {
   id: string;
   username: string;
-  role: string;
+  /** 旧版 API 的展示字段；核心 UserResponse 当前不返回该字段。 */
+  role?: string;
   email: string;
   must_change_password?: boolean;
   tfa_enabled?: boolean;
-  is_admin?: boolean;
+  /** 核心 API 按 admin:full_access 权限实时计算的管理员标记。 */
+  is_admin: boolean;
 }
 
 export interface AuthSession {
@@ -42,21 +44,24 @@ export function parseAuthSession(data: unknown): AuthSession | null {
     !isRecord(rawUser) ||
     typeof rawUser.id !== 'string' ||
     typeof rawUser.username !== 'string' ||
-    typeof rawUser.role !== 'string' ||
     typeof rawUser.email !== 'string' ||
+    typeof rawUser.is_admin !== 'boolean' ||
     !isOptionalBoolean(rawUser.must_change_password) ||
-    !isOptionalBoolean(rawUser.tfa_enabled) ||
-    !isOptionalBoolean(rawUser.is_admin)
+    !isOptionalBoolean(rawUser.tfa_enabled)
   ) {
     return null;
   }
+
+  const rawRole = rawUser.role;
+  if (rawRole !== undefined && typeof rawRole !== 'string') return null;
+  const role = typeof rawRole === 'string' ? rawRole : undefined;
 
   return {
     token,
     user: {
       id: rawUser.id,
       username: rawUser.username,
-      role: rawUser.role,
+      ...(role === undefined ? {} : { role }),
       email: rawUser.email,
       must_change_password: rawUser.must_change_password,
       tfa_enabled: rawUser.tfa_enabled,

@@ -17,6 +17,7 @@ Issue #262 发现了几处会在并发注册、评测队列积压或 judge 重�
 - 增强 judge 评测命令分词，支持反斜杠转义的引号与空格，同时保留孤立末尾反斜杠。
 - 为共享支持包缓存增加按目录的进程级并发锁，避免多个评测任务依据不同快照交叉淘汰文件。
 - 为 Nuxt 认证代理增加登录/改密成功响应的运行时结构校验，缺少有效 user/token 时返回 500 而不写入 Cookie。
+- 让 Nuxt session Cookie 的 `is_admin` 只使用核心按 `admin:full_access` 权限计算的字段，不再回退到角色名称判断。
 - 为新增行为补充 core、Redis MQ 和 judge worker 测试，并同步配置/规范文档。
 
 ## Capabilities
