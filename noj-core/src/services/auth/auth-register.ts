@@ -99,7 +99,10 @@ function conflictFromUniqueViolation(err: unknown): ConflictError | null {
   const code = error.code ?? cause?.code;
   if (code !== "23505") return null;
 
-  const constraint = String(error.constraint ?? cause?.constraint ?? "");
+  const constraint = String(
+    error.constraint ?? error.constraint_name ??
+      cause?.constraint ?? cause?.constraint_name ?? "",
+  );
   if (constraint.includes("username")) {
     return new ConflictError("用户名已存在");
   }
