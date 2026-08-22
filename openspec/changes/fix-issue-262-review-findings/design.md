@@ -111,6 +111,14 @@ Solution 两个容器，保持现有 JudgeTask/runtime_config 协议向后兼容
 结果由数据库行锁、唯一结果记录和 `rejudge_seq` 继续保证幂等。默认并发为 4，限制在 1-16，
 避免误配置耗尽 Redis 或 PostgreSQL 连接；健康状态按消费者池中是否至少有一个连接活跃汇总。
 
+### 16. 本地支持包内联传输暂不改协议
+
+local Provider 明确用于开发/测试，且当前 Judge 通过独立容器运行，不能直接读取 core
+的本地目录；其交付方式是 Base64 内联到 Redis 任务，受 16 MiB 序列化消息上限约束。
+生产环境已有 S3/MinIO presigned URL 路径，能避免该瓶颈。共享文件系统或带鉴权的 HTTP
+下载会同时涉及容器编排、访问控制、过期和回收策略，本次只补充限制文档并将大包部署引导
+到 S3，协议改造留给独立变更。
+
 ## Risks / Trade-offs
 
 - [风险] Lua/EVAL 未被某些极简 fake Redis 或旧 Redis 代理支持 → 测试 fake 增加 EVAL 实现，并在运行时让 Redis 命令错误按现有队列错误路径返回。

@@ -32,6 +32,11 @@ noj-storage://s3/<key>?checksum_sha256=...
 noj-download://base64/?content=<base64>&checksum_sha256=...
 ```
 
+local 模式会把支持包 Base64 内联到评测任务，再通过 Redis 传给 Judge；评测任务有
+16 MiB 的序列化消息上限，因此支持包还要与用户代码、运行配置共同占用这部分额度，
+可用的支持包大小会小于 16 MiB。该模式仅适合开发/测试和小型样例题；大支持包或多实例
+部署应使用 S3/MinIO 交付，避免把二进制内容重复编码并复制到 Redis 消息中。
+
 S3 交付示例：
 
 ```text
