@@ -20,6 +20,19 @@ const MAX_MESSAGE_BYTES = 16 * 1024 * 1024; // 16MB
 export const MAX_JUDGE_QUEUE_LENGTH = 20_000;
 
 /**
+ * 原子执行“容量检查 + 入队”，避免 LLEN 与 LPUSH 之间的竞态窗口。
+ * 返回 LPUSH 后的真实队列长度；容量已满时返回 -1。
+ */
+const QUEUE_CAPACITY_SCRIPT = `
+local current = redis.call("LLEN", KEYS[1])
+local max = tonumber(ARGV[1])
+if current >= max then
+  return -1
+end
+return redis.call("LPUSH", KEYS[1], ARGV[2])
+`;
+
+/**
  * 判断评测任务入队失败是否可重试。
  *
  * 只有明确已知的永久错误（如消息超过大小限制）返回 false；
@@ -59,15 +72,20 @@ export async function pushJudgeTask(task: JudgeTask): Promise<number> {
     );
   }
 
-  // NOJ-077：入队前做长度上限保护（拒绝而不是静默丢最老任务）。
-  const currentLength = await redis.llen(JUDGE_QUEUE);
-  if (currentLength >= MAX_JUDGE_QUEUE_LENGTH) {
+  // NOJ-077：用单条 Lua 脚本原子完成容量检查和入队，拒绝而不是静默丢最老任务。
+  const length = await redis.eval(
+    QUEUE_CAPACITY_SCRIPT,
+    1,
+    JUDGE_QUEUE,
+    MAX_JUDGE_QUEUE_LENGTH,
+    message,
+  );
+  if (length < 0) {
     throw new Error(
-      `评测队列已满（${currentLength}/${MAX_JUDGE_QUEUE_LENGTH}），请稍后重试`,
+      `评测队列已满（${MAX_JUDGE_QUEUE_LENGTH}/${MAX_JUDGE_QUEUE_LENGTH}），请稍后重试`,
     );
   }
 
-  const length = await redis.lpush(JUDGE_QUEUE, message);
   // 注意：不要对主队列设置 EXPIRE。Redis 列表在变为空时会自动删除 key；
   // 对非空列表设置 TTL 会在队列积压且没有新提交时把整个队列（含未消费任务）一起删掉。
   logJudgeTaskEnqueued(task.submission_id, length, messageBytes);

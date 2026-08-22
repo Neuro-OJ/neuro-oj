@@ -113,6 +113,7 @@ cargo fmt
 | `JUDGE_QUEUE`             | `noj:judge:queue`    | 评测任务队列名                            |
 | `RESULT_QUEUE`            | `noj:judge:results`  | 评测结果队列名                            |
 | `WORK_DIR`                | `/tmp/noj-judge`     | 临时工作目录                              |
+| `JUDGE_MAX_CONCURRENT_JUDGES` | `2`             | 同时执行的评测任务数（有效范围 1-1024） |
 
 > `POOL_*` 环境变量已随容器池移除（见 remove-container-pool 变更），不再被读取。
 

@@ -28,8 +28,8 @@ import {
 import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
 
 /**
- * 启动一个极简的 Redis RESP 协议 mock 服务器，仅响应 LPUSH / PING / QUIT，
- * 让 pushJudgeTask 的 LPUSH 调用不会触发真实 Redis 依赖。
+ * 启动一个极简的 Redis RESP 协议 mock 服务器，响应 EVAL/LPUSH/LLEN/PING，
+ * 让 pushJudgeTask 的队列操作不会触发真实 Redis 依赖。
  *
  * PGlite 测试模式下没有 Redis，但 Deno ESM 模块导出是 non-configurable，
  * 无法直接 monkey-patch pushJudgeTask。因此这里选择启动一个本地 mock Redis，
@@ -44,10 +44,11 @@ async function startFakeRedis(): Promise<
   const url = `redis://${addr.hostname}:${addr.port}/`;
 
   const connections = new Set<Deno.Conn>();
+  const queueLengths = new Map<string, number>();
   const acceptTask = (async () => {
     for await (const conn of listener) {
       connections.add(conn);
-      handleConnection(conn).catch(() => {/* ignore */});
+      handleConnection(conn, queueLengths).catch(() => {/* ignore */});
     }
   })();
 
@@ -67,7 +68,10 @@ async function startFakeRedis(): Promise<
   return { url, stop };
 }
 
-async function handleConnection(conn: Deno.Conn): Promise<void> {
+async function handleConnection(
+  conn: Deno.Conn,
+  queueLengths: Map<string, number>,
+): Promise<void> {
   const buf = new Uint8Array(4096);
   let pending: Uint8Array = new Uint8Array(0);
 
@@ -93,7 +97,32 @@ async function handleConnection(conn: Deno.Conn): Promise<void> {
         case "PING":
           reply = renderRespString("PONG");
           break;
-        case "LPUSH":
+        case "LPUSH": {
+          const queue = parsed.args[0] ?? "";
+          const length = (queueLengths.get(queue) ?? 0) + 1;
+          queueLengths.set(queue, length);
+          reply = renderRespInteger(length);
+          break;
+        }
+        case "LLEN": {
+          const queue = parsed.args[0] ?? "";
+          reply = renderRespInteger(queueLengths.get(queue) ?? 0);
+          break;
+        }
+        case "EVAL": {
+          // ioredis 参数顺序：script、numkeys、key、max、message。
+          const queue = parsed.args[2] ?? "";
+          const maxLength = Number(parsed.args[3]);
+          const current = queueLengths.get(queue) ?? 0;
+          if (current >= maxLength) {
+            reply = renderRespInteger(-1);
+          } else {
+            const length = current + 1;
+            queueLengths.set(queue, length);
+            reply = renderRespInteger(length);
+          }
+          break;
+        }
         case "CLIENT":
         case "SELECT":
         case "AUTH":
@@ -118,6 +147,7 @@ function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
 
 interface ParsedCommand {
   cmd: string;
+  args: string[];
   rest: Uint8Array;
 }
 
@@ -146,7 +176,11 @@ function tryParseRespCommand(buf: Uint8Array): ParsedCommand | null {
     pos += len + 2;
   }
 
-  return { cmd: (parts[0] ?? "").toUpperCase(), rest: buf.slice(pos) };
+  return {
+    cmd: (parts[0] ?? "").toUpperCase(),
+    args: parts.slice(1),
+    rest: buf.slice(pos),
+  };
 }
 
 function findCrlf(buf: Uint8Array, from: number): number {
@@ -158,6 +192,10 @@ function findCrlf(buf: Uint8Array, from: number): number {
 
 function renderRespString(s: string): Uint8Array {
   return new TextEncoder().encode(`+${s}\r\n`);
+}
+
+function renderRespInteger(n: number): Uint8Array {
+  return new TextEncoder().encode(`:${n}\r\n`);
 }
 
 const hasDb = true; // PGlite 内存数据库始终可用

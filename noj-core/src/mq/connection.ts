@@ -25,6 +25,11 @@ export interface RedisClient {
   ): Promise<string | null>;
   lrange(...args: (string | number)[]): Promise<string[]>;
   llen(...args: (string | number)[]): Promise<number>;
+  eval(
+    script: string,
+    numKeys: number,
+    ...args: (string | number)[]
+  ): Promise<number>;
   lrem(key: string, count: number, value: string): Promise<number>;
   on(event: string, handler: (...args: unknown[]) => void): void;
   off(event: string, handler: (...args: unknown[]) => void): void;

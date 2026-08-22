@@ -12,7 +12,9 @@ mod types;
 
 use anyhow::{Context, Result};
 use bollard::Docker;
-use futures_util::stream::FuturesUnordered;
+use futures_util::{stream::FuturesUnordered, StreamExt};
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 use tracing::{error, info};
 
 use crate::config::Config;
@@ -86,6 +88,9 @@ fn main() -> Result<()> {
         let image_prefix = config.image_prefix.clone();
         let command_whitelist = config.command_whitelist.clone();
         let drain_timeout = config.drain_timeout_secs();
+        let max_concurrent_judges = config.max_concurrent_judges;
+        let judge_semaphore = Arc::new(Semaphore::new(max_concurrent_judges));
+        info!("评测并发上限: {}", max_concurrent_judges);
 
         // NOJ-152/155：同时监听 SIGTERM 与 SIGINT 触发优雅关闭。
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -111,17 +116,38 @@ fn main() -> Result<()> {
         let mut tasks = FuturesUnordered::new();
 
         loop {
+            // 先取得一个并发许可，再执行 BRPOPLPUSH。许可在任务完成、失败或
+            // drain 时分别由任务结束/取消自动释放，确保 Redis processing 中的
+            // in-flight 任务数不超过配置上限。
+            let pull_next = async {
+                let permit = Arc::clone(&judge_semaphore)
+                    .acquire_owned()
+                    .await
+                    .context("获取评测并发许可失败")?;
+                let task_result = mq::pull_task(&mut redis_conn, &judge_queue).await;
+                Ok::<_, anyhow::Error>((permit, task_result))
+            };
+
             tokio::select! {
                 biased;
                 _ = &mut shutdown_rx => {
                     drain::drain_tasks(&mut tasks, drain_timeout).await;
                     break;
                 }
-                task_result = mq::pull_task(&mut redis_conn, &judge_queue) => {
+                pulled_result = pull_next => {
+                    let (permit, task_result) = match pulled_result {
+                        Ok(value) => value,
+                        Err(e) => return Err(e),
+                    };
+
                     let pulled: PulledTask = match task_result {
                         Ok(Some(pulled)) => pulled,
-                        Ok(None) => continue,
+                        Ok(None) => {
+                            drop(permit);
+                            continue;
+                        }
                         Err(e) => {
+                            drop(permit);
                             error!("拉取任务失败: {}", e);
                             tokio::time::sleep(PULL_RETRY_DELAY).await;
                             continue;
@@ -140,31 +166,14 @@ fn main() -> Result<()> {
                     let fallback_dir = fallback_dir.clone();
                     let image_prefix = image_prefix.clone();
                     let command_whitelist = command_whitelist.clone();
+                    let docker = docker.clone();
 
                     let handle = tokio::spawn(async move {
+                        let _permit = permit;
                         let raw = pulled.raw;
                         let task = pulled.task;
 
                         // 统一使用双容器模式（Evaluator + Solution）
-                        let docker = match Docker::connect_with_local_defaults() {
-                            Ok(d) => d,
-                            Err(e) => {
-                                error!(submission_id = %task.submission_id, error = %e, "连接 Docker daemon 失败");
-                                let result = types::JudgeResult::error(
-                                    &task.submission_id,
-                                    task.rejudge_seq,
-                                );
-                                if mq::push_result_with_retry(
-                                    &redis_client,
-                                    &result_queue,
-                                    &result,
-                                    &fallback_dir,
-                                ).await {
-                                    mq::ack_task(&redis_client, &judge_queue, &raw).await;
-                                }
-                                return;
-                            }
-                        };
                         let result = match judge::runner::evaluate(
                             docker,
                             &task,
@@ -194,6 +203,11 @@ fn main() -> Result<()> {
                         }
                     });
                     tasks.push(handle);
+                }
+                Some(join_result) = tasks.next(), if !tasks.is_empty() => {
+                    if let Err(e) = join_result {
+                        error!("评测任务异步执行失败: {}", e);
+                    }
                 }
             }
         }

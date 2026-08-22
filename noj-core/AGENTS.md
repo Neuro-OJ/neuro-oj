@@ -523,12 +523,14 @@ Retry-After: 25
 
 ## CORS 配置
 
-| 环境                                | 行为                                     |
-| ----------------------------------- | ---------------------------------------- |
-| 开发（默认）                        | `Access-Control-Allow-Origin: *`         |
-| 生产（`CORS_ALLOWED_ORIGINS` 设置） | 仅允许白名单域名，空列表拒绝所有跨域请求 |
+| 环境                                | 行为                                                      |
+| ----------------------------------- | --------------------------------------------------------- |
+| 开发（默认）                        | 仅允许 `http://localhost:3000` 与 `http://127.0.0.1:3000` |
+| 生产（`CORS_ALLOWED_ORIGINS` 设置） | 仅允许白名单域名，空列表拒绝所有跨域请求                  |
 
 - `credentials: true`（为 Cookie 认证预留）
+- 暴露 `Retry-After`、`X-RateLimit-*`、`X-Request-Id`
+  响应头，供前端读取限流和请求追踪信息
 - `maxAge: 86400`（预请求缓存 24h）
 - 允许方法：`GET, POST, PUT, PATCH, DELETE, OPTIONS`
 - 允许头：`Content-Type, Authorization`
