@@ -124,23 +124,10 @@ export default defineEventHandler(async (event) => {
       });
 
       const data = response._data as
-        | {
-          data?: {
-            token?: string;
-            user?: {
-              id: string;
-              username: string;
-              role?: string;
-              email: string;
-              must_change_password?: boolean;
-              tfa_enabled?: boolean;
-              is_admin?: boolean;
-            };
-          };
-        }
+        | { data?: { token?: unknown; user?: unknown } }
         | undefined;
 
-      if (response.status === 200 && data?.data?.token) {
+      if (response.status === 200) {
         const session = parseAuthSession(data);
         if (!session) {
           // 不记录上游响应，避免把 JWT 或用户字段写入日志。
@@ -187,7 +174,7 @@ export default defineEventHandler(async (event) => {
         );
 
         // 从响应体移除 token，避免通过 JSON 再次暴露
-        delete data.data.token;
+        if (data?.data) delete data.data.token;
       }
 
       setResponseStatus(event, response.status);

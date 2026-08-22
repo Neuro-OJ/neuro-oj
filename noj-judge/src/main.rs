@@ -29,6 +29,23 @@ const PULL_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 /// 评测结果 fallback 文件目录名（相对 work_dir）。
 const FALLBACK_RESULTS_DIR: &str = "fallback-results";
 
+/// 在拉取任务前获取评测许可；收到关闭信号时返回 `None`。
+///
+/// 将这段选择逻辑独立出来，确保主循环在等待并发额度时可立即进入 drain，
+/// 而拿到许可后不会再用可取消的 select 包住 BRPOPLPUSH。
+async fn acquire_judge_permit(
+    semaphore: Arc<Semaphore>,
+    shutdown_rx: &mut tokio::sync::oneshot::Receiver<()>,
+) -> Result<Option<tokio::sync::OwnedSemaphorePermit>> {
+    tokio::select! {
+        biased;
+        _ = shutdown_rx => Ok(None),
+        permit = semaphore.acquire_owned() => {
+            Ok(Some(permit.context("获取评测并发许可失败")?))
+        }
+    }
+}
+
 /// 初始化 Tokio 运行时，连接 Redis 与 Docker，进入主循环阻塞拉取评测任务。
 fn main() -> Result<()> {
     let rt = tokio::runtime::Runtime::new().context("创建 Tokio 运行时失败")?;
@@ -120,16 +137,14 @@ fn main() -> Result<()> {
             // 只允许在等待并发许可时响应关闭信号。拿到许可后必须完整执行
             // BRPOPLPUSH：Redis 可能已经把消息移入 processing，若此时取消
             // future，消息会留在 processing 却永远不会进入评测任务。
-            let permit = tokio::select! {
-                biased;
-                _ = &mut shutdown_rx => {
-                    drain::drain_tasks(&mut tasks, drain_timeout).await;
-                    break;
-                }
-                permit = Arc::clone(&judge_semaphore).acquire_owned() => {
-                    permit.context("获取评测并发许可失败")?
-                }
-            };
+            let permit =
+                match acquire_judge_permit(Arc::clone(&judge_semaphore), &mut shutdown_rx).await? {
+                    Some(permit) => permit,
+                    None => {
+                        drain::drain_tasks(&mut tasks, drain_timeout).await;
+                        break;
+                    }
+                };
 
             let task_result = mq::pull_task(&mut redis_conn, &judge_queue).await;
             let pulled: PulledTask = match task_result {
@@ -207,4 +222,36 @@ fn main() -> Result<()> {
 
         Ok(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn shutdown_signal_interrupts_waiting_for_judge_permit() {
+        let semaphore = Arc::new(Semaphore::new(0));
+        let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
+        shutdown_tx.send(()).unwrap();
+
+        let permit = acquire_judge_permit(semaphore, &mut shutdown_rx)
+            .await
+            .unwrap();
+        assert!(permit.is_none());
+    }
+
+    #[tokio::test]
+    async fn judge_permit_is_released_after_task_owns_it() {
+        let semaphore = Arc::new(Semaphore::new(1));
+        let (_shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
+
+        let permit = acquire_judge_permit(Arc::clone(&semaphore), &mut shutdown_rx)
+            .await
+            .unwrap()
+            .expect("应获取到评测许可");
+        assert_eq!(semaphore.available_permits(), 0);
+
+        drop(permit);
+        assert_eq!(semaphore.available_permits(), 1);
+    }
 }

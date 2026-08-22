@@ -28,6 +28,7 @@ const BAD_PROBLEM_ID = `tst-consumer-st-bad-problem-${ts}`;
 const PENDING_SELF_TEST_ID = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
 const RECOVERABLE_SELF_TEST_ID = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
 const RECOVERABLE_SUBMISSION_ID = `tst-consumer-st-recover-sub-${ts}`;
+const INVALID_SUBMISSION_ID = `tst-consumer-st-invalid-sub-${ts}`;
 const now = new Date().toISOString();
 const oldNow = new Date(Date.now() - 3 * 60_000).toISOString();
 
@@ -133,6 +134,15 @@ Deno.test({
       status: "pending",
       language: "python3",
       code: "print('recover')",
+      created_at: oldNow,
+    });
+    await db.insert(submissions).values({
+      id: INVALID_SUBMISSION_ID,
+      user_id: USER_ID,
+      problem_id: BAD_PROBLEM_ID,
+      status: "pending",
+      language: "python3",
+      code: "print('invalid')",
       created_at: oldNow,
     });
   },
@@ -313,6 +323,24 @@ Deno.test({
 });
 
 Deno.test({
+  name: "mq/consumer: pending 正式提交缺少 runtime_config 被标记 error",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await recoverPendingSubmissions(Date.now());
+
+    const db = getDb();
+    const [row] = await db
+      .select()
+      .from(submissions)
+      .where(eq(submissions.id, INVALID_SUBMISSION_ID))
+      .limit(1);
+    assertEquals(row.status, "error");
+  },
+});
+
+Deno.test({
   name: "mq/consumer self-test: 清理数据",
   ignore: skip,
   sanitizeResources: false,
@@ -325,6 +353,9 @@ Deno.test({
     await db.delete(submissions).where(eq(submissions.id, SUBMISSION_ID));
     await db.delete(submissions).where(
       eq(submissions.id, RECOVERABLE_SUBMISSION_ID),
+    );
+    await db.delete(submissions).where(
+      eq(submissions.id, INVALID_SUBMISSION_ID),
     );
     await db.delete(selfTests).where(
       eq(selfTests.id, SELF_TEST_ID),

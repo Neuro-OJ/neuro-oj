@@ -245,8 +245,16 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
   await recoverPendingRows(rows, {
     idKey: "submission_id",
     label: "提交",
-    onMissingRuntimeConfig: (row) => {
-      logger.error("pending 提交缺少 runtime_config，跳过恢复", {
+    onMissingRuntimeConfig: async (row) => {
+      await db.update(submissions)
+        .set({
+          status: "error",
+          judge_finished_at: new Date().toISOString(),
+        })
+        .where(
+          and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
+        );
+      logger.error("pending 提交缺少 runtime_config，标记为 error", {
         submission_id: row.id,
       });
     },

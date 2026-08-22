@@ -110,6 +110,8 @@ Judge Worker 需要能访问 Docker daemon，并且 Redis 地址要与 noj-core 
 |------|------|
 | `REDIS_URL` | Redis 连接串，需与 noj-core 一致 |
 | `JUDGE_QUEUE` / `RESULT_QUEUE` | 评测任务 / 结果队列名 |
+| `JUDGE_MAX_CONCURRENT_JUDGES` | 单个 Worker 同时执行的评测数，默认 `2`，范围 `1-1024` |
+| `JUDGE_CPU_LIMIT_MILLICORES` | 每个评测容器 CPU 上限，默认 `1000`（1 核），范围 `100-16000` |
 
 > `POOL_*` 环境变量已随容器池移除（remove-container-pool 变更），不再被读取。
 
@@ -117,7 +119,7 @@ Judge Worker 需要能访问 Docker daemon，并且 Redis 地址要与 noj-core 
 
 - **JWT_SECRET**：必须使用 32+ 字符的强随机串，任何环境不得使用示例值。
 - **Neuro OJ_ENV=production**：会强制要求显式配置 `TRUSTED_PROXIES`（可信反向代理白名单），并启用日志安全（submission_id 截断、score 隐藏、DB 密码脱敏）。
-- **CORS**：生产环境通过 `CORS_ALLOWED_ORIGINS` 配置白名单域名，空列表拒绝所有跨域请求；开发环境默认放行 `*`。
+- **CORS**：生产环境通过 `CORS_ALLOWED_ORIGINS` 配置白名单域名，空列表拒绝所有跨域请求；开发环境仅允许 `http://localhost:3000` 与 `http://127.0.0.1:3000`。
 - **存储**：多实例或正式部署建议 `STORAGE_PROVIDER=s3`（兼容 MinIO / AWS S3），避免依赖单机文件系统。
 - **邮件**：密码重置依赖邮件发送，正式环境配置 `EMAIL_PROVIDER=aliyun` 或 `tencent`，`mock` 仅用于开发（输出到控制台）。
 

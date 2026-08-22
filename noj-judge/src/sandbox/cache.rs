@@ -24,7 +24,12 @@ static CACHE_LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>
 
 fn cache_lock_for(dir: &Path) -> Arc<tokio::sync::Mutex<()>> {
     let locks = CACHE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut locks = locks.lock().expect("缓存锁表不应中毒");
+    // 锁表只保存目录对应的异步锁；即使某个调用方 panic 导致 std Mutex
+    // poisoning，也应继续复用已有锁，而不是让后续评测全部崩溃。
+    let mut locks = locks.lock().unwrap_or_else(|poisoned| {
+        warn!("缓存锁表发生 poisoning，继续使用已有锁状态");
+        poisoned.into_inner()
+    });
     locks
         .entry(dir.to_path_buf())
         .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))

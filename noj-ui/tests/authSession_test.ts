@@ -27,6 +27,13 @@ Deno.test('parseAuthSession: 缺少 user 时返回 null', () => {
   );
 });
 
+Deno.test('parseAuthSession: 缺少 token 时返回 null', () => {
+  assertEquals(
+    parseAuthSession({ data: { user: validResponse.data.user } }),
+    null,
+  );
+});
+
 Deno.test('parseAuthSession: user 字段类型错误时返回 null', () => {
   assertEquals(
     parseAuthSession({

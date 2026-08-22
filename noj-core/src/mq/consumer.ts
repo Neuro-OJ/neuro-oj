@@ -1,4 +1,8 @@
-import { createConsumer, requestConsumerShutdown } from "./base-consumer.ts";
+import {
+  type ConsumerOptions,
+  createConsumer,
+  requestConsumerShutdown,
+} from "./base-consumer.ts";
 import { saveEvaluationResult } from "../services/submissions/submissions.ts";
 import { saveSelfTestResult } from "../services/self-tests.ts";
 import { logger, logJudgeResultReceived } from "../lib/logging.ts";
@@ -36,6 +40,48 @@ export function parseResultConsumerConcurrency(
  * 供健康检查端点查询消费者是否在正常运行。
  */
 export const consumerAlive = { value: false };
+
+/** 结果消费者工厂，测试可注入以验证消费者池的编排行为。 */
+export type ResultConsumerFactory = (
+  options: ConsumerOptions,
+) => () => Promise<void>;
+
+/**
+ * 创建结果消费者池。
+ *
+ * 每个消费者共享同一个健康状态汇总，但各自持有独立的 aliveRef；只要有一个
+ * 消费者仍在运行，consumerAlive 就保持为 true。
+ */
+export function createResultConsumerPool(
+  concurrency: number,
+  consumerFactory: ResultConsumerFactory = createConsumer,
+): () => Promise<void> {
+  const states = Array.from({ length: concurrency }, () => false);
+  consumerAlive.value = false;
+  const aliveRefs = states.map((_, index) => ({
+    get value(): boolean {
+      return states[index] ?? false;
+    },
+    set value(value: boolean) {
+      states[index] = value;
+      consumerAlive.value = states.some(Boolean);
+    },
+  }));
+
+  const consumers = aliveRefs.map((aliveRef, index) =>
+    consumerFactory({
+      queueName: RESULT_QUEUE,
+      logLabel: `结果-${index + 1}/${concurrency}`,
+      aliveRef,
+      handleMessage: handleResultMessage,
+      requeueOnError: true,
+    })
+  );
+
+  return async () => {
+    await Promise.all(consumers.map((start) => start()));
+  };
+}
 
 export async function handleResultMessage(
   data: Record<string, unknown>,
@@ -99,29 +145,8 @@ export async function handleResultMessage(
  */
 export async function startResultConsumerWithRetry(): Promise<void> {
   const concurrency = parseResultConsumerConcurrency();
-  const states = Array.from({ length: concurrency }, () => false);
-  const aliveRefs = states.map((_, index) => ({
-    get value(): boolean {
-      return states[index] ?? false;
-    },
-    set value(value: boolean) {
-      states[index] = value;
-      consumerAlive.value = states.some(Boolean);
-    },
-  }));
-
-  const consumers = aliveRefs.map((aliveRef, index) =>
-    createConsumer({
-      queueName: RESULT_QUEUE,
-      logLabel: `结果-${index + 1}/${concurrency}`,
-      aliveRef,
-      handleMessage: handleResultMessage,
-      requeueOnError: true,
-    })
-  );
-
   logger.info("评测结果消费者池已配置", { concurrency });
-  await Promise.all(consumers.map((start) => start()));
+  await createResultConsumerPool(concurrency)();
 }
 
 export { requestConsumerShutdown as requestResultConsumerShutdown };

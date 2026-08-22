@@ -165,7 +165,7 @@ noj-core/
 | `RESULT_CONSUMER_CONCURRENCY`     | `4`                       | 评测结果消费者连接数（1-16）                                                |
 | `PORT`                            | `8000`                    | HTTP 监听端口                                                               |
 | `NOJ_ENV`                         | 空（development）         | `production` 启用生产模式                                                   |
-| `LOG_LEVEL`                       | prod=info / dev=debug     | 日志级别：`debug`/`info`/`warn`/`error`，低于阈值的日志被抑制               |
+| `LOG_LEVEL`                       | prod=warn / dev=debug     | 日志级别：`debug`/`info`/`warn`/`error`，低于阈值的日志被抑制               |
 | `LOG_FORMAT`                      | prod=json / dev=pretty    | 日志输出格式：`json`（结构化）/ `pretty`（人类可读）                        |
 | `ADMIN_EMAIL`                     | —                         | 管理员邮箱（**强烈推荐**）。未设置时 bootstrap admin 自动创建临时引导管理员 |
 | `ADMIN_PASS`                      | —                         | Seed 管理员密码（需与 ADMIN_EMAIL 配合）                                    |
