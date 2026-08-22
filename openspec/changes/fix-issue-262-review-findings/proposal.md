@@ -20,6 +20,7 @@ Issue #262 发现了几处会在并发注册、评测队列积压或 judge 重�
 - 让 Nuxt session Cookie 的 `is_admin` 只使用核心按 `admin:full_access` 权限计算的字段，不再回退到角色名称判断。
 - 将 core 评测结果消费者从单连接串行扩展为有界的多连接消费者池，默认并发 4 并支持通过 `RESULT_CONSUMER_CONCURRENCY` 调整。
 - 明确 local 支持包通过 Base64 内联 Redis 的 16 MiB 消息限制；大包和多实例部署继续使用 S3/MinIO presigned URL，暂不在本变更中引入共享卷或新的下载协议。
+- 核对并补测现有 pending 提交恢复机制（2 分钟阈值、30 秒周期、永久错误收尾），不对结果不确定的 Redis push 盲目立即重试，避免重复评测。
 - 为新增行为补充 core、Redis MQ 和 judge worker 测试，并同步配置/规范文档。
 
 ## Capabilities

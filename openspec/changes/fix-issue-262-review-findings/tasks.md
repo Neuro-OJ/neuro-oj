@@ -65,6 +65,10 @@
 
 - [x] 16.1 核对 local Base64 内联与 Redis 16 MiB 消息上限，补充运维文档；共享卷/鉴权下载协议留待独立变更，生产大包使用 S3/MinIO
 
-## 17. 综合验证
+## 17. 提交入队失败恢复评估
 
-- [ ] 17.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
+- [x] 17.1 核对现有 2 分钟 pending 恢复与 30 秒 sweeper 周期，补充正式提交恢复回归测试；保留未知 Redis push 的持久化兜底，不引入可能造成重复评测的盲目立即重试
+
+## 18. 综合验证
+
+- [ ] 18.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更

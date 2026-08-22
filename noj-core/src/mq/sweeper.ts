@@ -212,7 +212,11 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
   }
 }
 
-async function recoverPendingSubmissions(now: number): Promise<void> {
+/**
+ * 恢复因“写 DB → 入队”窗口失败而遗留的正式提交。
+ * 导出给 MQ 回归测试复用，生产入口仍由 runQueueSweeperOnce 调用。
+ */
+export async function recoverPendingSubmissions(now: number): Promise<void> {
   const cutoff = new Date(now - PENDING_RECOVERY_MS).toISOString();
   const db = getDb();
 
