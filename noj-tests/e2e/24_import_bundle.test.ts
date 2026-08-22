@@ -10,14 +10,13 @@
 import {
   apiDelete,
   apiGet,
+  e2eTest,
   getAdminToken,
   isE2E,
   isJudgeAvailable,
   pollSubmission,
   submitCode,
   waitForServer,
-  e2eTest,
-
 } from "./helper.ts";
 
 const testSuffix = Date.now().toString(36);
@@ -27,16 +26,26 @@ let judgeAvailable = false;
 
 const EVALUATOR_PY = `# E2E 统一包导入测试评测脚本
 import json
+from noj_evaluator_sdk.runner import SolutionRunner
 
-result = {
-    "status": "Accepted",
-    "score": 100,
-    "details": {
-        "cases": [
-            {"case_id": "1", "status": "Accepted", "score": 100, "time_ms": 1, "memory_kb": 1}
-        ]
-    },
-}
+runner = SolutionRunner()
+try:
+    actual = str(runner.call("solve", "1 2")).strip()
+    accepted = actual == "3"
+    result = {
+        "status": "Accepted" if accepted else "WrongAnswer",
+        "score": 100 if accepted else 0,
+        "details": {"actual": actual, "expected": "3"},
+    }
+except Exception as error:
+    result = {
+        "status": "RuntimeError",
+        "score": 0,
+        "details": {"error": str(error)},
+    }
+finally:
+    runner.close()
+
 print("---RESULT---")
 print(json.dumps(result))
 `;
@@ -101,119 +110,120 @@ async function makeBundleZip(): Promise<Uint8Array> {
 }
 
 e2eTest("[e2e/import-bundle] Setup: 管理员登录 + 构造统一包", async () => {
-    if (!isE2E) return;
-    await waitForServer();
-    adminToken = await getAdminToken();
-    judgeAvailable = await isJudgeAvailable();
-    // 构造 zip 提前验证可打包
-    const zip = await makeBundleZip();
-    if (zip.length === 0) throw new Error("统一包构造失败");
-  });
+  if (!isE2E) return;
+  await waitForServer();
+  adminToken = await getAdminToken();
+  judgeAvailable = await isJudgeAvailable();
+  // 构造 zip 提前验证可打包
+  const zip = await makeBundleZip();
+  if (zip.length === 0) throw new Error("统一包构造失败");
+});
 
 e2eTest("[e2e/import-bundle] admin 上传统一包创建题目", async () => {
-    if (!isE2E) return;
-    const zip = await makeBundleZip();
-    const formData = new FormData();
-    formData.append(
-      "file",
-      new Blob(
-        [zip.buffer.slice(
-          zip.byteOffset,
-          zip.byteOffset + zip.byteLength,
-        ) as ArrayBuffer],
-        { type: "application/zip" },
-      ),
-      "e2e-bundle.zip",
-    );
+  if (!isE2E) return;
+  const zip = await makeBundleZip();
+  const formData = new FormData();
+  formData.append(
+    "file",
+    new Blob(
+      [zip.buffer.slice(
+        zip.byteOffset,
+        zip.byteOffset + zip.byteLength,
+      ) as ArrayBuffer],
+      { type: "application/zip" },
+    ),
+    "e2e-bundle.zip",
+  );
 
-    const res = await fetch(
-      `${await import("./helper.ts").then((m) =>
-        m.BASE_URL
-      )}/api/v1/problems/import-bundle`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${adminToken}` },
-        body: formData,
-      },
-    );
-    if (res.status !== 200) {
-      throw new Error(
-        `导入失败: ${res.status} ${await res.text()}`,
-      );
-    }
-    const body = (await res.json()) as {
-      data: {
-        id: string;
-        type: string;
-        title: string;
-        support_package_storage_url: string | null;
-        runtime_config: { evaluator: { command: string } };
-      };
-    };
-    problemId = body.data.id;
-
-    if (body.data.type !== "U") throw new Error("type 应为 U");
-    if (!body.data.support_package_storage_url) {
-      throw new Error("评测包未注册");
-    }
-    // command 默认值注入验证
-    if (
-      body.data.runtime_config.evaluator.command !==
-        "python3 /workspace/evaluate.py"
-    ) {
-      throw new Error("evaluator.command 默认值未注入");
-    }
-  }
-);
-
-e2eTest("[e2e/import-bundle] 重复导入幂等（不产生新题）", async () => {
-    if (!isE2E || !problemId) return;
-    const zip = await makeBundleZip();
-    const formData = new FormData();
-    formData.append(
-      "file",
-      new Blob(
-        [zip.buffer.slice(
-          zip.byteOffset,
-          zip.byteOffset + zip.byteLength,
-        ) as ArrayBuffer],
-        { type: "application/zip" },
-      ),
-      "e2e-bundle.zip",
-    );
-    const { BASE_URL } = await import("./helper.ts");
-    const res = await fetch(`${BASE_URL}/api/v1/problems/import-bundle`, {
+  const res = await fetch(
+    `${await import("./helper.ts").then((m) =>
+      m.BASE_URL
+    )}/api/v1/problems/import-bundle`,
+    {
       method: "POST",
       headers: { Authorization: `Bearer ${adminToken}` },
       body: formData,
-    });
-    if (res.status !== 200) throw new Error("重复导入失败");
-    const body = (await res.json()) as { data: { id: string } };
-    if (body.data.id !== problemId) {
-      throw new Error("重复导入应更新同一题目而非新建");
-    }
+    },
+  );
+  if (res.status !== 200) {
+    throw new Error(
+      `导入失败: ${res.status} ${await res.text()}`,
+    );
+  }
+  const body = (await res.json()) as {
+    data: {
+      id: string;
+      type: string;
+      title: string;
+      support_package_storage_url: string | null;
+      runtime_config: { evaluator: { command: string } };
+    };
+  };
+  problemId = body.data.id;
+
+  if (body.data.type !== "U") throw new Error("type 应为 U");
+  if (!body.data.support_package_storage_url) {
+    throw new Error("评测包未注册");
+  }
+  // command 默认值注入验证
+  if (
+    body.data.runtime_config.evaluator.command !==
+      "python3 /workspace/evaluate.py"
+  ) {
+    throw new Error("evaluator.command 默认值未注入");
+  }
+});
+
+e2eTest("[e2e/import-bundle] 重复导入幂等（不产生新题）", async () => {
+  if (!isE2E || !problemId) return;
+  const zip = await makeBundleZip();
+  const formData = new FormData();
+  formData.append(
+    "file",
+    new Blob(
+      [zip.buffer.slice(
+        zip.byteOffset,
+        zip.byteOffset + zip.byteLength,
+      ) as ArrayBuffer],
+      { type: "application/zip" },
+    ),
+    "e2e-bundle.zip",
+  );
+  const { BASE_URL } = await import("./helper.ts");
+  const res = await fetch(`${BASE_URL}/api/v1/problems/import-bundle`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${adminToken}` },
+    body: formData,
   });
+  if (res.status !== 200) throw new Error("重复导入失败");
+  const body = (await res.json()) as { data: { id: string } };
+  if (body.data.id !== problemId) {
+    throw new Error("重复导入应更新同一题目而非新建");
+  }
+});
 
 e2eTest("[e2e/import-bundle] 提交评测闭环（judge 可用时）", async () => {
-    if (!isE2E || !problemId || !judgeAvailable) return;
-    const submissionId = await submitCode(
-      adminToken,
-      problemId,
-      "print('hello')",
-    );
-    const result = await pollSubmission(adminToken, submissionId);
-    if (result.verdict !== "Accepted") {
-      throw new Error(`评测结果异常: ${JSON.stringify(result)}`);
-    }
-  });
+  if (!isE2E || !problemId || !judgeAvailable) return;
+  const submissionId = await submitCode(
+    adminToken,
+    problemId,
+    `def solve(input_str: str) -> str:
+    a, b = map(int, input_str.split())
+    return str(a + b)`,
+  );
+  const result = await pollSubmission(adminToken, submissionId);
+  if (result.verdict !== "Accepted") {
+    throw new Error(`评测结果异常: ${JSON.stringify(result)}`);
+  }
+});
 
 e2eTest("[e2e/import-bundle] 删除导入的题目", async () => {
-    if (!isE2E || !problemId) return;
-    const res = await apiDelete(`/api/v1/problems/${problemId}`, adminToken);
-    if (res.status !== 204 && res.status !== 200) {
-      throw new Error(`删除失败: ${res.status}`);
-    }
-    // 清理后查询应 404
-    const check = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
-    if (check.status !== 404) throw new Error("题目删除后仍可访问");
-  });
+  if (!isE2E || !problemId) return;
+  const res = await apiDelete(`/api/v1/problems/${problemId}`, adminToken);
+  if (res.status !== 204 && res.status !== 200) {
+    throw new Error(`删除失败: ${res.status}`);
+  }
+  // 清理后查询应 404
+  const check = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
+  if (check.status !== 404) throw new Error("题目删除后仍可访问");
+});
