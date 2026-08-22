@@ -90,6 +90,12 @@ Solution 两个容器，保持现有 JudgeTask/runtime_config 协议向后兼容
 和淘汰共享临界区。写入仍先写唯一临时文件再 rename，锁只解决同一 Worker 进程内的
 并发快照问题，不改变跨进程共享目录的部署约束。
 
+### 13. 认证代理先校验再写 Cookie
+
+将登录/改密响应中的 token 与 user 提取为独立运行时校验函数；只有字段类型完整时
+才写 HTTP-only token Cookie 与 session Cookie。异常响应只记录固定的无敏感信息日志，
+返回 500 并丢弃上游响应，避免非空断言导致运行时异常或把无效数据写入客户端 Cookie。
+
 ## Risks / Trade-offs
 
 - [风险] Lua/EVAL 未被某些极简 fake Redis 或旧 Redis 代理支持 → 测试 fake 增加 EVAL 实现，并在运行时让 Redis 命令错误按现有队列错误路径返回。

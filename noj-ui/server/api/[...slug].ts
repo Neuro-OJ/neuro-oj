@@ -1,3 +1,5 @@
+import { parseAuthSession } from '../utils/auth-session.ts';
+
 const FORWARDABLE_HEADERS = new Set([
   'retry-after',
   'x-ratelimit-limit',
@@ -138,8 +140,16 @@ export default defineEventHandler(async (event) => {
         | undefined;
 
       if (response.status === 200 && data?.data?.token) {
-        const jwt = data.data.token;
-        const user = data.data.user!;
+        const session = parseAuthSession(data);
+        if (!session) {
+          // 不记录上游响应，避免把 JWT 或用户字段写入日志。
+          console.error('[auth-proxy] 认证响应缺少有效 token/user');
+          setResponseStatus(event, 500);
+          setHeader(event, 'cache-control', 'no-store, private');
+          return { error: '认证服务响应格式无效' };
+        }
+
+        const { token: jwt, user } = session;
 
         const cookieOptions = {
           httpOnly: true,
