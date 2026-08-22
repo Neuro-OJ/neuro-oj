@@ -114,6 +114,7 @@ cargo fmt
 | `RESULT_QUEUE`            | `noj:judge:results`  | 评测结果队列名                            |
 | `WORK_DIR`                | `/tmp/noj-judge`     | 临时工作目录                              |
 | `JUDGE_MAX_CONCURRENT_JUDGES` | `2`             | 同时执行的评测任务数（有效范围 1-1024） |
+| `JUDGE_CPU_LIMIT_MILLICORES` | `1000`          | 每个评测容器 CPU 上限（1000m = 1 核，有效范围 100-16000） |
 
 > `POOL_*` 环境变量已随容器池移除（见 remove-container-pool 变更），不再被读取。
 
@@ -127,7 +128,7 @@ cargo fmt
   │
   ├─ 0. 白名单复验（镜像前缀 JUDGE_IMAGE_PREFIX / 命令可执行文件白名单 / 网络开关）
   ├─ 1. 获取支持包 — 缓存优先 → 按 host 分派下载（仅 HTTPS，禁重定向）→ SHA-256 校验 → 写缓存（含 zip 路径穿越/实时解压限额）
-  ├─ 2. 创建 Evaluator + Solution 两个容器（cap_drop ALL / network none 默认 / pids_limit / CPU 上限 / readonly rootfs + tmpfs）
+  ├─ 2. 创建 Evaluator + Solution 两个容器（cap_drop ALL / network none 默认 / pids_limit / 可配置 CPU 上限 / readonly rootfs + tmpfs）
   ├─ 3. 注入用户代码到 Solution 容器
   ├─ 4. 注入支持包 zip 到 Evaluator 容器 /workspace
   ├─ 5. 启动两个 exec — Evaluator 跑 evaluate.py；Solution 跑 host.py

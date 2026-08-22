@@ -23,3 +23,20 @@
 
 - **WHEN** judge 收到关闭信号且仍有评测任务运行
 - **THEN** judge 仅等待当前受并发上限约束的 in-flight 任务，并按既有 drain 超时策略退出
+
+### Requirement: 评测容器 CPU 上限
+
+每个 noj-judge 创建的 Evaluator 与 Solution 容器 SHALL 设置 Docker CPU 限制。
+该限制 SHALL 通过 `JUDGE_CPU_LIMIT_MILLICORES` 配置，单位为 millicores，默认
+`1000`（1 个 CPU 核）；仅 `100` 至 `16000` 范围内的值有效，缺失、零值或越界值
+MUST 回退到默认值。CPU 限制不得因配置错误被解释为 Docker 的“不限制”。
+
+#### Scenario: 使用配置的 CPU 上限
+
+- **WHEN** Worker 配置 `JUDGE_CPU_LIMIT_MILLICORES=2500`
+- **THEN** Evaluator 与 Solution 容器的 Docker `nano_cpus` 均设置为 `2500000000`
+
+#### Scenario: CPU 配置无效时安全回退
+
+- **WHEN** CPU 配置缺失、为零或超出有效范围
+- **THEN** Worker 使用 `1000m` 的有限 CPU 上限并正常启动

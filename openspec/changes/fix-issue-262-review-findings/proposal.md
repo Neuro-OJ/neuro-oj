@@ -13,6 +13,7 @@ Issue #262 发现了几处会在并发注册、评测队列积压或 judge 重�
 - 将提交服务对队列状态的依赖改为静态导入，移除没有必要的运行时模块加载。
 - 将生产环境未配置 `LOG_LEVEL` 时的默认日志级别从 `info` 提升为 `warn`，并保留显式配置覆盖能力。
 - 抽取邮件 Provider 必填设置的通用检查逻辑，消除 Aliyun/Tencent 配置校验的重复分支。
+- 将 judge 容器的固定 1 核 CPU 限制改为 Worker 级 `JUDGE_CPU_LIMIT_MILLICORES` 配置，默认与安全边界保持向后兼容。
 - 为新增行为补充 core、Redis MQ 和 judge worker 测试，并同步配置/规范文档。
 
 ## Capabilities
@@ -34,4 +35,5 @@ Issue #262 发现了几处会在并发注册、评测队列积压或 judge 重�
 - 影响 `noj-judge` 主循环、运行时配置、Docker client 生命周期及配置测试。
 - 影响 `noj-core` 提交状态 SSE 路由及其权限回归测试。
 - 影响 `noj-core` 提交服务的模块依赖与相关服务测试。
+- 影响 `noj-judge` 资源配置、双容器 HostConfig、运维模板与 CPU 单元测试。
 - 不改变 JudgeTask 消息字段，不新增数据库迁移，不引入新的外部服务依赖。

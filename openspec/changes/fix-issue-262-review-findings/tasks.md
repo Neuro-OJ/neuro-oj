@@ -36,6 +36,11 @@
 
 - [x] 9.1 抽取 Aliyun/Tencent 的缺失设置检查逻辑，保持当前 warning 内容与启动行为，并通过 core 类型检查与相关测试
 
-## 10. 综合验证
+## 10. Judge 容器 CPU 上限
 
-- [ ] 10.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
+- [x] 10.1 增加 `JUDGE_CPU_LIMIT_MILLICORES` 配置及安全范围校验，默认保持 1 核
+- [x] 10.2 将 CPU 上限传递到 Evaluator/Solution HostConfig，补充配置与 HostConfig 单元测试并更新 judge 运维文档
+
+## 11. 综合验证
+
+- [ ] 11.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更

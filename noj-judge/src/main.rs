@@ -89,8 +89,10 @@ fn main() -> Result<()> {
         let command_whitelist = config.command_whitelist.clone();
         let drain_timeout = config.drain_timeout_secs();
         let max_concurrent_judges = config.max_concurrent_judges;
+        let cpu_limit_millicores = config.cpu_limit_millicores;
         let judge_semaphore = Arc::new(Semaphore::new(max_concurrent_judges));
         info!("评测并发上限: {}", max_concurrent_judges);
+        info!("每个评测容器 CPU 上限: {}m", cpu_limit_millicores);
 
         // NOJ-152/155：同时监听 SIGTERM 与 SIGINT 触发优雅关闭。
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -174,13 +176,14 @@ fn main() -> Result<()> {
                         let task = pulled.task;
 
                         // 统一使用双容器模式（Evaluator + Solution）
-                        let result = match judge::runner::evaluate(
+                        let result = match judge::runner::evaluate_with_cpu_limit(
                             docker,
                             &task,
                             download_timeout,
                             cache_dir.clone(),
                             cache_max_items,
                             cache_max_mb,
+                            cpu_limit_millicores,
                             allow_evaluator_network,
                             &image_prefix,
                             &command_whitelist,

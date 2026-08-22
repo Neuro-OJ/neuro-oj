@@ -70,6 +70,13 @@ SSE 仍只推送状态变更触发事件，不扩大事件载荷。
 判断空值、收集展示标签”的逻辑；警告消息仍保留当前 provider、缺失项和后台配置提示，
 不改变邮件 Provider 的选择或启动失败语义。
 
+### 10. Judge CPU 采用 Worker 级统一配置
+
+本次使用 `JUDGE_CPU_LIMIT_MILLICORES` 作为 Worker 级配置，同时约束 Evaluator 和
+Solution 两个容器，保持现有 JudgeTask/runtime_config 协议向后兼容；缺省仍为 1 核，
+后续如需按题目或容器角色细分，可在协议变更中新增字段。值在配置解析和 HostConfig
+构造两层均进行范围保护，避免 0 转化为 Docker 的无限制语义。
+
 ## Risks / Trade-offs
 
 - [风险] Lua/EVAL 未被某些极简 fake Redis 或旧 Redis 代理支持 → 测试 fake 增加 EVAL 实现，并在运行时让 Redis 命令错误按现有队列错误路径返回。

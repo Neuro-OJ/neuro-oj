@@ -920,13 +920,14 @@ def solve(msg: str) -> str:
     return call_capability("ping", msg)
 "#;
 
-    let result = noj_judge::dual::evaluate_dual(
+    let result = noj_judge::dual::evaluate_dual_with_cpu_limit(
         docker,
         &submission_id,
         &runtime_config,
         user_code,
         Some(&support_zip),
         None,
+        1000,
         true,
         "noj-",
         &["python3".to_string()],

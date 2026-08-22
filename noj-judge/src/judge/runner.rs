@@ -5,15 +5,16 @@ use crate::sandbox::cache::SupportPackageCache;
 use crate::sandbox::download;
 use crate::types::{JudgeResult, JudgeTask};
 
-/// 评测任务入口——统一使用双容器模式（Evaluator + Solution）。
+/// 评测任务入口，允许通过 Worker 配置传入每个容器的 CPU 上限。
 #[allow(clippy::too_many_arguments)]
-pub async fn evaluate(
+pub async fn evaluate_with_cpu_limit(
     docker: bollard::Docker,
     task: &JudgeTask,
     download_timeout_secs: u64,
     cache_dir: String,
     cache_max_items: usize,
     cache_max_mb: u64,
+    cpu_limit_millicores: u64,
     allow_evaluator_network: bool,
     image_prefix: &str,
     command_whitelist: &[String],
@@ -54,13 +55,14 @@ pub async fn evaluate(
         None
     };
 
-    crate::dual::evaluate_dual(
+    crate::dual::evaluate_dual_with_cpu_limit(
         docker,
         &task.submission_id,
         &task.runtime_config,
         &task.code,
         support_pkg.as_deref(),
         task.rejudge_seq,
+        cpu_limit_millicores,
         allow_evaluator_network,
         image_prefix,
         command_whitelist,
