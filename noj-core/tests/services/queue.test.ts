@@ -236,7 +236,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await clearQueue();
-    await pushToQueue(SUBMISSION_PENDING_ID);
+    await pushToQueue(SUBMISSION_JUDGING_ID);
     enterTestContext({
       actorId: USER_ID,
       actorIp: "127.0.0.1",
@@ -245,12 +245,12 @@ Deno.test({
 
     // 本地开发时 judge 可能已在消费同一 Redis 队列；任务被领取后，
     // 本测试不再拥有可删除的 pending 条目。CI 中无 worker 竞争时会覆盖成功路径。
-    if (!(await getPendingSubmissionIds()).includes(SUBMISSION_PENDING_ID)) {
+    if (!(await getPendingSubmissionIds()).includes(SUBMISSION_JUDGING_ID)) {
       return;
     }
 
     try {
-      await removePendingSubmission(SUBMISSION_PENDING_ID);
+      await removePendingSubmission(SUBMISSION_JUDGING_ID);
     } catch (err) {
       if (err instanceof Error && err.message === "待处理队列中不存在该提交") {
         return;
@@ -262,7 +262,7 @@ Deno.test({
     const tasks = await redis.lrange("noj:judge:queue", 0, -1);
     assertEquals(
       tasks.some((task) =>
-        JSON.parse(task).submission_id === SUBMISSION_PENDING_ID
+        JSON.parse(task).submission_id === SUBMISSION_JUDGING_ID
       ),
       false,
     );
@@ -270,14 +270,14 @@ Deno.test({
     const [submission] = await db.select({
       status: submissions.status,
       judge_finished_at: submissions.judge_finished_at,
-    }).from(submissions).where(eq(submissions.id, SUBMISSION_PENDING_ID));
+    }).from(submissions).where(eq(submissions.id, SUBMISSION_JUDGING_ID));
     assertEquals(submission?.status, "error");
     assert(submission?.judge_finished_at);
     const [audit] = await db.select({
       action: auditLogs.action,
       target_id: auditLogs.target_id,
     }).from(auditLogs).where(eq(auditLogs.action, "submissions.queue_removed"));
-    assertEquals(audit?.target_id, SUBMISSION_PENDING_ID);
+    assertEquals(audit?.target_id, SUBMISSION_JUDGING_ID);
   },
 });
 
