@@ -12,7 +12,7 @@ mod types;
 
 use anyhow::{Context, Result};
 use bollard::Docker;
-use futures_util::{stream::FuturesUnordered, StreamExt};
+use futures_util::{stream::FuturesUnordered, FutureExt, StreamExt};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tracing::{error, info};
@@ -97,10 +97,9 @@ fn main() -> Result<()> {
         // NOJ-152/155：同时监听 SIGTERM 与 SIGINT 触发优雅关闭。
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         tokio::spawn(async move {
-            let mut sigterm = tokio::signal::unix::signal(
-                tokio::signal::unix::SignalKind::terminate(),
-            )
-            .expect("注册 SIGTERM 处理器失败");
+            let mut sigterm =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("注册 SIGTERM 处理器失败");
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {
                     info!("收到 SIGINT，开始优雅关闭...");
@@ -118,99 +117,90 @@ fn main() -> Result<()> {
         let mut tasks = FuturesUnordered::new();
 
         loop {
-            // 先取得一个并发许可，再执行 BRPOPLPUSH。许可在任务完成、失败或
-            // drain 时分别由任务结束/取消自动释放，确保 Redis processing 中的
-            // in-flight 任务数不超过配置上限。
-            let pull_next = async {
-                let permit = Arc::clone(&judge_semaphore)
-                    .acquire_owned()
-                    .await
-                    .context("获取评测并发许可失败")?;
-                let task_result = mq::pull_task(&mut redis_conn, &judge_queue).await;
-                Ok::<_, anyhow::Error>((permit, task_result))
-            };
-
-            tokio::select! {
+            // 只允许在等待并发许可时响应关闭信号。拿到许可后必须完整执行
+            // BRPOPLPUSH：Redis 可能已经把消息移入 processing，若此时取消
+            // future，消息会留在 processing 却永远不会进入评测任务。
+            let permit = tokio::select! {
                 biased;
                 _ = &mut shutdown_rx => {
                     drain::drain_tasks(&mut tasks, drain_timeout).await;
                     break;
                 }
-                pulled_result = pull_next => {
-                    let (permit, task_result) = match pulled_result {
-                        Ok(value) => value,
-                        Err(e) => return Err(e),
-                    };
-
-                    let pulled: PulledTask = match task_result {
-                        Ok(Some(pulled)) => pulled,
-                        Ok(None) => {
-                            drop(permit);
-                            continue;
-                        }
-                        Err(e) => {
-                            drop(permit);
-                            error!("拉取任务失败: {}", e);
-                            tokio::time::sleep(PULL_RETRY_DELAY).await;
-                            continue;
-                        }
-                    };
-
-                    info!(
-                        "收到评测任务: submission_id={}, language={}",
-                        pulled.task.submission_id, pulled.task.language
-                    );
-
-                    let redis_client = redis_client.clone();
-                    let result_queue = result_queue.clone();
-                    let judge_queue = judge_queue.clone();
-                    let cache_dir = cache_dir.clone();
-                    let fallback_dir = fallback_dir.clone();
-                    let image_prefix = image_prefix.clone();
-                    let command_whitelist = command_whitelist.clone();
-                    let docker = docker.clone();
-
-                    let handle = tokio::spawn(async move {
-                        let _permit = permit;
-                        let raw = pulled.raw;
-                        let task = pulled.task;
-
-                        // 统一使用双容器模式（Evaluator + Solution）
-                        let result = match judge::runner::evaluate_with_cpu_limit(
-                            docker,
-                            &task,
-                            download_timeout,
-                            cache_dir.clone(),
-                            cache_max_items,
-                            cache_max_mb,
-                            cpu_limit_millicores,
-                            allow_evaluator_network,
-                            &image_prefix,
-                            &command_whitelist,
-                        ).await {
-                            Ok(r) => r,
-                            Err(e) => {
-                                error!(submission_id = %task.submission_id, error = %e, "双容器评测失败");
-                                types::JudgeResult::error(&task.submission_id, task.rejudge_seq)
-                            }
-                        };
-
-                        // 使用带重试的推送；成功后确认任务，崩溃/失败则留给 sweeper。
-                        if mq::push_result_with_retry(
-                            &redis_client,
-                            &result_queue,
-                            &result,
-                            &fallback_dir,
-                        ).await {
-                            mq::ack_task(&redis_client, &judge_queue, &raw).await;
-                        }
-                    });
-                    tasks.push(handle);
+                permit = Arc::clone(&judge_semaphore).acquire_owned() => {
+                    permit.context("获取评测并发许可失败")?
                 }
-                Some(join_result) = tasks.next(), if !tasks.is_empty() => {
-                    if let Err(e) = join_result {
-                        error!("评测任务异步执行失败: {}", e);
+            };
+
+            let task_result = mq::pull_task(&mut redis_conn, &judge_queue).await;
+            let pulled: PulledTask = match task_result {
+                Ok(Some(pulled)) => pulled,
+                Ok(None) => {
+                    drop(permit);
+                    continue;
+                }
+                Err(e) => {
+                    drop(permit);
+                    error!("拉取任务失败: {}", e);
+                    tokio::time::sleep(PULL_RETRY_DELAY).await;
+                    continue;
+                }
+            };
+
+            info!(
+                "收到评测任务: submission_id={}, language={}",
+                pulled.task.submission_id, pulled.task.language
+            );
+
+            let redis_client = redis_client.clone();
+            let result_queue = result_queue.clone();
+            let judge_queue = judge_queue.clone();
+            let cache_dir = cache_dir.clone();
+            let fallback_dir = fallback_dir.clone();
+            let image_prefix = image_prefix.clone();
+            let command_whitelist = command_whitelist.clone();
+            let docker = docker.clone();
+
+            let handle = tokio::spawn(async move {
+                let _permit = permit;
+                let raw = pulled.raw;
+                let task = pulled.task;
+
+                // 统一使用双容器模式（Evaluator + Solution）
+                let result = match judge::runner::evaluate_with_cpu_limit(
+                    docker,
+                    &task,
+                    download_timeout,
+                    cache_dir.clone(),
+                    cache_max_items,
+                    cache_max_mb,
+                    cpu_limit_millicores,
+                    allow_evaluator_network,
+                    &image_prefix,
+                    &command_whitelist,
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        error!(submission_id = %task.submission_id, error = %e, "双容器评测失败");
+                        types::JudgeResult::error(&task.submission_id, task.rejudge_seq)
                     }
+                };
+
+                // 使用带重试的推送；成功后确认任务，崩溃/失败则留给 sweeper。
+                if mq::push_result_with_retry(&redis_client, &result_queue, &result, &fallback_dir)
+                    .await
+                {
+                    mq::ack_task(&redis_client, &judge_queue, &raw).await;
+                }
+            });
+            tasks.push(handle);
+
+            // 不等待任务完成，只回收已经完成的 JoinHandle，避免长期运行时
+            // FuturesUnordered 无限增长；BRPOPLPUSH 本身不会在此处被取消。
+            while let Some(join_result) = tasks.next().now_or_never().flatten() {
+                if let Err(e) = join_result {
+                    error!("评测任务异步执行失败: {}", e);
                 }
             }
         }
