@@ -45,6 +45,13 @@ permit 由 task 持有到评测及结果投递完成，因此异常返回、结�
 
 新增配置采用 `JUDGE_MAX_CONCURRENT_JUDGES`，不复用历史上已删除的通用 `MAX_CONCURRENT`。配置文档与测试同步更新；不会读取旧变量，也不引入容器池相关配置。
 
+### 6. SSE 路由传递完整的权限上下文
+
+提交状态 SSE 路由使用与提交详情路由相同的 `getSubmission` 参数约定，
+同时传递 `userId`、`userRole` 和 Hono `Context`。这样 `getSubmission` 会执行实时
+RBAC 的 `submission:read_all` 检查，而不是因缺少 Context 退回到未定义角色的旧分支；
+SSE 仍只推送状态变更触发事件，不扩大事件载荷。
+
 ## Risks / Trade-offs
 
 - [风险] Lua/EVAL 未被某些极简 fake Redis 或旧 Redis 代理支持 → 测试 fake 增加 EVAL 实现，并在运行时让 Redis 命令错误按现有队列错误路径返回。

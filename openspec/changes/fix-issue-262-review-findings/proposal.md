@@ -23,9 +23,11 @@ Issue #262 发现了几处会在并发注册、评测队列积压或 judge 重�
 - `user-auth`: 并发触发用户名或邮箱唯一约束时仍返回 409，而不是 500。
 - `redis-message-queue`: 评测任务入队必须以原子方式执行容量检查，不能突破配置的主队列上限。
 - `judge-worker`: judge 必须限制同时执行的评测任务数量，并支持通过环境变量配置该上限。
+- `sse-endpoints`: 提交状态 SSE 订阅必须把当前请求的 RBAC 上下文传递给提交详情服务。
 
 ## Impact
 
 - 影响 `noj-core` 注册服务、Redis producer、Hono 应用 CORS 中间件及相关测试。
 - 影响 `noj-judge` 主循环、运行时配置、Docker client 生命周期及配置测试。
+- 影响 `noj-core` 提交状态 SSE 路由及其权限回归测试。
 - 不改变 JudgeTask 消息字段，不新增数据库迁移，不引入新的外部服务依赖。

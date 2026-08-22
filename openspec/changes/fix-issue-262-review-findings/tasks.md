@@ -20,6 +20,10 @@
 - [x] 5.1 在 judge Config 中加入 `JUDGE_MAX_CONCURRENT_JUDGES`，默认 2、无效值回退有限默认值，补充配置解析测试并更新 judge 文档/开发环境模板
 - [x] 5.2 在主循环拉取前接入 semaphore 闸门，保证 in-flight task 不超过配置上限、任务完成/失败/drain 都释放额度，并通过 cargo test 验证
 
-## 6. 综合验证
+## 6. SSE 订阅权限上下文
 
-- [x] 6.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
+- [x] 6.1 将提交 SSE 路由调用 `getSubmission` 时的 userRole 与 Hono Context 一并传递，确保实时 RBAC 权限检查与普通提交详情路由保持一致，并补充管理员订阅他人提交的路由测试
+
+## 7. 综合验证
+
+- [x] 7.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
