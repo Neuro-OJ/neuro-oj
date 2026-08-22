@@ -408,11 +408,18 @@ export async function pollSubmission(
       const subStatus = data.status as string;
       lastStatus = subStatus;
 
-      if (subStatus === "finished") {
+      if (subStatus === "finished" || subStatus === "error") {
         // API 返回 data.result.status / data.result.score（见 getSubmission）
         const resultData = data.result as Record<string, unknown> | null;
         const verdict = (resultData?.status as string) || "Unknown";
         const score = (resultData?.score as number) || 0;
+
+        if (subStatus === "error") {
+          throw new Error(
+            `Submission ${submissionId} 评测失败，verdict=${verdict}`,
+          );
+        }
+
         return { status: subStatus, verdict, score };
       }
     }
