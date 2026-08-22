@@ -16,8 +16,10 @@ import { getStorageProvider } from "./lib/storage/mod.ts";
 import { getSetting, initSystemSettings } from "./services/system-settings.ts";
 import { startAuditLogRetentionTask } from "./services/audit-log.ts";
 import { logger } from "./lib/logging.ts";
-import { MIN_JWT_SECRET_LENGTH } from "./lib/constants.ts";
-import { MIN_TFA_ENCRYPTION_KEY_LENGTH } from "./lib/tfa.ts";
+import {
+  MIN_JWT_SECRET_LENGTH,
+  MIN_TFA_ENCRYPTION_KEY_LENGTH,
+} from "./lib/constants.ts";
 
 const app = createApp();
 
