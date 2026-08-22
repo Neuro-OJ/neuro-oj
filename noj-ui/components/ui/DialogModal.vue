@@ -56,7 +56,7 @@ function onCancel() {
     v-model:open="open"
     :title="modalTitle"
     :description="message"
-    :ui="{ footer: 'flex justify-end gap-3' }"
+    :ui="{ content: 'bg-default flex flex-col focus:outline-none', footer: 'flex justify-end gap-3' }"
     @after:leave="$emit('after:leave')"
   >
     <template #body>
