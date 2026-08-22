@@ -8,6 +8,7 @@ import {
   rejudgeProblemSubmissions,
   rejudgeSubmission,
 } from "../../services/submissions/submissions.ts";
+import { removePendingSubmission } from "../../services/queue.ts";
 import { SUBMISSION_STATUSES } from "../../types/index.ts";
 
 /**
@@ -96,6 +97,12 @@ router.get("/submissions/:id", async (c) => {
 router.delete("/submissions/:id", async (c) => {
   const id = c.req.param("id") as string;
   await deleteSubmission(id);
+  return c.body(null, 204);
+});
+
+/** 管理员移除尚未领取的评测任务。 */
+router.delete("/queue/submissions/:id", async (c) => {
+  await removePendingSubmission(c.req.param("id") as string);
   return c.body(null, 204);
 });
 
