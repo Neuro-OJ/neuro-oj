@@ -17,7 +17,6 @@
 - 不改变数据库 schema、JudgeTask 字段或队列名称。
 - 不恢复已移除的容器池或旧的 `MAX_CONCURRENT`/Semaphore 模式。
 - 不新增题目级 CPU 配置，不改变容器固定 1 核的安全限制。
-- 不将结果 consumer 改造成并发 worker pool；该项留给后续有指标支持的变更。
 
 ## Decisions
 
