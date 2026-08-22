@@ -52,6 +52,12 @@ permit 由 task 持有到评测及结果投递完成，因此异常返回、结�
 RBAC 的 `submission:read_all` 检查，而不是因缺少 Context 退回到未定义角色的旧分支；
 SSE 仍只推送状态变更触发事件，不扩大事件载荷。
 
+### 7. 提交服务静态导入队列状态查询
+
+`submissions-crud.ts` 已经静态依赖 `queue.ts` 的队列快照函数，且 `queue.ts`
+不依赖 `submissions-crud.ts`。因此直接静态导入 `getSubmissionQueueStatus` 不会形成
+循环依赖，同时能让模块依赖在加载期可见，移除每次查询详情时的动态 import 开销。
+
 ## Risks / Trade-offs
 
 - [风险] Lua/EVAL 未被某些极简 fake Redis 或旧 Redis 代理支持 → 测试 fake 增加 EVAL 实现，并在运行时让 Redis 命令错误按现有队列错误路径返回。

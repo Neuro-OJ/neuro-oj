@@ -10,6 +10,7 @@ Issue #262 发现了几处会在并发注册、评测队列积压或 judge 重�
 - 修正开发环境 CORS 的凭证请求配置，允许受控的本地开发来源。
 - 复用 judge 进程启动时建立的 Docker client，避免每个任务重复建立连接。
 - 为 judge 增加可配置的最大评测并发数，避免 backlog 触发无限制的 Docker 容器创建。
+- 将提交服务对队列状态的依赖改为静态导入，移除没有必要的运行时模块加载。
 - 为新增行为补充 core、Redis MQ 和 judge worker 测试，并同步配置/规范文档。
 
 ## Capabilities
@@ -30,4 +31,5 @@ Issue #262 发现了几处会在并发注册、评测队列积压或 judge 重�
 - 影响 `noj-core` 注册服务、Redis producer、Hono 应用 CORS 中间件及相关测试。
 - 影响 `noj-judge` 主循环、运行时配置、Docker client 生命周期及配置测试。
 - 影响 `noj-core` 提交状态 SSE 路由及其权限回归测试。
+- 影响 `noj-core` 提交服务的模块依赖与相关服务测试。
 - 不改变 JudgeTask 消息字段，不新增数据库迁移，不引入新的外部服务依赖。

@@ -24,6 +24,10 @@
 
 - [x] 6.1 将提交 SSE 路由调用 `getSubmission` 时的 userRole 与 Hono Context 一并传递，确保实时 RBAC 权限检查与普通提交详情路由保持一致，并补充管理员订阅他人提交的路由测试
 
-## 7. 综合验证
+## 7. 提交服务模块依赖
 
-- [x] 7.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
+- [x] 7.1 将 `getSubmissionQueueStatus` 从动态 import 改为静态导入，确认 `queue.ts` 不反向依赖提交 CRUD，并通过提交服务测试验证行为不变
+
+## 8. 综合验证
+
+- [ ] 8.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
