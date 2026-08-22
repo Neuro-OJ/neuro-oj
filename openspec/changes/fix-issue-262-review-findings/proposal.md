@@ -15,6 +15,7 @@ Issue #262 发现了几处会在并发注册、评测队列积压或 judge 重�
 - 抽取邮件 Provider 必填设置的通用检查逻辑，消除 Aliyun/Tencent 配置校验的重复分支。
 - 将 judge 容器的固定 1 核 CPU 限制改为 Worker 级 `JUDGE_CPU_LIMIT_MILLICORES` 配置，默认与安全边界保持向后兼容。
 - 增强 judge 评测命令分词，支持反斜杠转义的引号与空格，同时保留孤立末尾反斜杠。
+- 为共享支持包缓存增加按目录的进程级并发锁，避免多个评测任务依据不同快照交叉淘汰文件。
 - 为新增行为补充 core、Redis MQ 和 judge worker 测试，并同步配置/规范文档。
 
 ## Capabilities

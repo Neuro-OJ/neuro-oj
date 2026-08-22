@@ -83,6 +83,13 @@ Solution 两个容器，保持现有 JudgeTask/runtime_config 协议向后兼容
 空格等命令参数中的常见场景；末尾孤立反斜杠原样保留。评测命令来自管理员配置，
 因此本次不引入 shell 解释器或额外 crate，也不改变命令白名单校验边界。
 
+### 12. 支持包缓存按目录串行化淘汰
+
+`SupportPackageCache` 实例按评测任务创建，实例级锁不能保护共享目录；使用进程级
+`OnceLock` 保存“缓存目录 → Tokio Mutex”的映射，使同一目录下的 get、set、atime 更新
+和淘汰共享临界区。写入仍先写唯一临时文件再 rename，锁只解决同一 Worker 进程内的
+并发快照问题，不改变跨进程共享目录的部署约束。
+
 ## Risks / Trade-offs
 
 - [风险] Lua/EVAL 未被某些极简 fake Redis 或旧 Redis 代理支持 → 测试 fake 增加 EVAL 实现，并在运行时让 Redis 命令错误按现有队列错误路径返回。

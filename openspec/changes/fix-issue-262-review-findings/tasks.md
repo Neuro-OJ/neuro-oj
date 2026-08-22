@@ -45,6 +45,10 @@
 
 - [x] 11.1 在 `parse_command` 中支持反斜杠转义，补充引号、空格和末尾反斜杠测试，并通过 judge 单元测试
 
-## 12. 综合验证
+## 12. Judge 支持包缓存并发淘汰
 
-- [ ] 12.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
+- [x] 12.1 为同一缓存目录增加进程级共享锁，覆盖 get/set/evict 临界区，并通过 judge 缓存测试验证并发写入不突破上限
+
+## 13. 综合验证
+
+- [ ] 13.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
