@@ -21,6 +21,7 @@ interface SessionData {
   email: string;
   is_admin: boolean;
   must_change_password: boolean;
+  tfa_enabled?: boolean;
 }
 
 function sessionToUser(session: SessionData): UserResponse {
@@ -31,7 +32,7 @@ function sessionToUser(session: SessionData): UserResponse {
     email: session.email,
     is_admin: session.is_admin ?? session.role === 'admin',
     must_change_password: session.must_change_password ?? false,
-    tfa_enabled: false,
+    tfa_enabled: session.tfa_enabled ?? false,
     created_at: '',
     updated_at: '',
   };

@@ -131,6 +131,7 @@ export default defineEventHandler(async (event) => {
               role: string;
               email: string;
               must_change_password?: boolean;
+              tfa_enabled?: boolean;
             };
           };
         }
@@ -165,6 +166,7 @@ export default defineEventHandler(async (event) => {
             email: user.email,
             must_change_password: user.must_change_password ?? false,
             is_admin: (user as Record<string, unknown>)?.is_admin ?? (user.role === 'admin'),
+            tfa_enabled: user.tfa_enabled ?? false,
           }),
           {
             ...cookieOptions,

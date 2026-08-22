@@ -16,8 +16,7 @@ import {
 
 Deno.env.set("TFA_ENCRYPTION_KEY", "test-tfa-encryption-key-with-32-chars-min");
 
-const hasDb = true;
-const skip = !hasDb;
+const skip = false;
 const ts = Date.now();
 
 async function seedUser() {

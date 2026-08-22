@@ -18,7 +18,7 @@ import { Buffer } from "node:buffer";
 import { Secret, TOTP } from "otpauth";
 
 /** TFA 加密密钥最小长度。 */
-const MIN_TFA_ENCRYPTION_KEY_LENGTH = 32;
+export const MIN_TFA_ENCRYPTION_KEY_LENGTH = 32;
 
 /** 恢复码字符集：去除 0/O/1/I，避免手输混淆。 */
 const RECOVERY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

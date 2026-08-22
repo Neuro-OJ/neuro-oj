@@ -26,9 +26,7 @@
  */
 
 import { MIN_JWT_SECRET_LENGTH } from "../src/lib/constants.ts";
-
-/** TFA 加密密钥最小长度（与 .env.example 说明一致）。 */
-const MIN_TFA_ENCRYPTION_KEY_LENGTH = 32;
+import { MIN_TFA_ENCRYPTION_KEY_LENGTH } from "../src/lib/tfa.ts";
 
 // 已知占位值黑名单（不区分大小写）。命中即视为未配置。
 const PLACEHOLDER_PATTERNS: readonly RegExp[] = [
@@ -116,13 +114,18 @@ function inspect(env: Map<string, string>): Finding[] {
     });
   }
 
-  // 专项：TFA_ENCRYPTION_KEY 长度（TOTP secret 加密要求）
   const tfaKey = env.get("TFA_ENCRYPTION_KEY");
-  if (tfaKey && tfaKey.length < MIN_TFA_ENCRYPTION_KEY_LENGTH) {
+  if (!tfaKey) {
+    findings.push({
+      key: "TFA_ENCRYPTION_KEY",
+      value: "未设置",
+      reason: "TOTP secret 加密密钥为必填项",
+    });
+  } else if (tfaKey.length < MIN_TFA_ENCRYPTION_KEY_LENGTH) {
     findings.push({
       key: "TFA_ENCRYPTION_KEY",
       value: `${tfaKey.length} 字符`,
-      reason: "TOTP secret 加密要求 ≥ 32 字符",
+      reason: `AES-256-GCM 密钥要求 ≥ ${MIN_TFA_ENCRYPTION_KEY_LENGTH} 字符`,
     });
   }
 

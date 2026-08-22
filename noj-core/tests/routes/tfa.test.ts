@@ -25,9 +25,8 @@ if (!Deno.env.get("REDIS_URL")) {
 
 await resetDbForTest();
 
-const hasDb = true;
 const hasJwt = !!Deno.env.get("JWT_SECRET");
-const skip = !(hasDb && hasJwt);
+const skip = !hasJwt;
 const BASE = "/api/v1/auth";
 const ts = Date.now();
 

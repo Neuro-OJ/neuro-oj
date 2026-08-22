@@ -216,15 +216,19 @@ export async function disableTfa(
     throw new UnauthorizedError("验证码错误");
   }
 
-  await db
-    .update(users)
-    .set({
-      tfa_enabled: false,
-      tfa_secret_encrypted: null,
-      updated_at: new Date().toISOString(),
-    })
-    .where(eq(users.id, userId));
-  await db.delete(tfaRecoveryCodes).where(eq(tfaRecoveryCodes.user_id, userId));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(users)
+      .set({
+        tfa_enabled: false,
+        tfa_secret_encrypted: null,
+        updated_at: new Date().toISOString(),
+      })
+      .where(eq(users.id, userId));
+    await tx.delete(tfaRecoveryCodes).where(
+      eq(tfaRecoveryCodes.user_id, userId),
+    );
+  });
 
   await logAuthEvent(userId, clientIp, "auth.tfa_disabled", {
     user_id: userId,
@@ -258,16 +262,21 @@ export async function regenerateRecoveryCodes(
 
   const recoveryCodes = generateRecoveryCodes();
   const now = new Date().toISOString();
-  await db.delete(tfaRecoveryCodes).where(eq(tfaRecoveryCodes.user_id, userId));
-  for (const recoveryCode of recoveryCodes) {
-    await db.insert(tfaRecoveryCodes).values({
+  const recoveryCodeRows = await Promise.all(
+    recoveryCodes.map(async (recoveryCode) => ({
       id: crypto.randomUUID(),
       user_id: userId,
       code_hash: await hashRecoveryCode(recoveryCode),
       used_at: null,
       created_at: now,
-    });
-  }
+    })),
+  );
+  await db.transaction(async (tx) => {
+    await tx.delete(tfaRecoveryCodes).where(
+      eq(tfaRecoveryCodes.user_id, userId),
+    );
+    await tx.insert(tfaRecoveryCodes).values(recoveryCodeRows);
+  });
 
   await logAuthEvent(userId, clientIp, "auth.tfa_recovery_regenerated", {
     user_id: userId,
