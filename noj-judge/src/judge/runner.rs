@@ -16,6 +16,7 @@ pub async fn evaluate_with_cpu_limit(
     cache_max_mb: u64,
     cpu_limit_millicores: u64,
     allow_evaluator_network: bool,
+    allow_http_s3: bool,
     image_prefix: &str,
     command_whitelist: &[String],
 ) -> Result<JudgeResult> {
@@ -25,6 +26,7 @@ pub async fn evaluate_with_cpu_limit(
             match fetch_and_cache_support_package(
                 url,
                 download_timeout_secs,
+                allow_http_s3,
                 &cache_dir,
                 cache_max_items,
                 cache_max_mb,
@@ -74,6 +76,7 @@ pub async fn evaluate_with_cpu_limit(
 async fn fetch_and_cache_support_package(
     download_url: &str,
     download_timeout_secs: u64,
+    allow_http_s3: bool,
     cache_dir: &str,
     cache_max_items: usize,
     cache_max_mb: u64,
@@ -91,7 +94,7 @@ async fn fetch_and_cache_support_package(
     }
 
     let (zip_data, fetched_checksum) =
-        download::fetch_support_package(download_url, download_timeout_secs).await?;
+        download::fetch_support_package(download_url, download_timeout_secs, allow_http_s3).await?;
 
     // SHA-256 校验
     download::verify_checksum(&zip_data, fetched_checksum.as_deref())?;

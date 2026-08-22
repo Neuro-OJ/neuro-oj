@@ -84,7 +84,7 @@ export default withMermaid(defineConfig({
           text: "运营者",
           items: [
             { text: "运营者文档", link: "/operators/" },
-            { text: "本地启动", link: "/operators/local-start" },
+            { text: "生产部署", link: "/operators/production-deploy" },
             { text: "CLI 初始化", link: "/operators/cli" },
             { text: "存储与评测包交付", link: "/operators/storage" },
             { text: "Judge Worker 运维", link: "/operators/judge-workers" },

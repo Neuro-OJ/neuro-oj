@@ -29,6 +29,10 @@
   "devDependencies": {
     "typescript": "^5.0.0",
     "@nuxt/devtools": "^3.4.1",
-    "@types/qrcode": "^1.5.5"
+    "@types/qrcode": "^1.5.5",
+    "rolldown": "1.2.5"
+  },
+  "overrides": {
+    "rolldown": "1.2.5"
   }
 }

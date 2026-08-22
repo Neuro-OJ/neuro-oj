@@ -1,41 +1,58 @@
-# CLI 初始化（dev-setup 与各子命令）
+# CLI 初始化
 
-::: danger 文档状态：部署运维方案尚未成熟
-本分区文档描述的是**开发期部署与运维方式**（手动分步启动、开发期脚本），**尚未提供面向生产的一键部署方案**——当前不具备守护进程管理、TLS、备份、升级等生产级能力，生产部署请谨慎参考。项目后续将提供成熟的一键部署方式，届时本文档将整体更新。
-:::
+`noj-core` 镜像内包含编译后的管理 CLI（`/app/bin/noj`），用于数据库迁移、系统初始化、管理员引导与题目包操作。
 
-## 管理 CLI
+## 生产环境执行方式
 
-`noj-core/scripts/noj.ts` 是统一的命令行入口（Cliffy 框架），取代了早期的
-`seed.ts` / `build-packages.ts` 脚本。所有管理操作通过子命令完成：
+生产环境不直接使用源码或 `deno task`，而是通过 Docker Compose 在 `noj-core` 镜像内执行 CLI：
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
+  --entrypoint /app/bin/noj migrate <子命令>
+```
+
+常用子命令：
+
+```bash
+# 数据库迁移
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
+  --entrypoint /app/bin/noj migrate db migrate
+
+# 系统基础数据：root + RBAC + 评测镜像白名单 + 标签
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
+  --entrypoint /app/bin/noj migrate init system
+
+# 管理员引导（从 .env.prod 读取 ADMIN_EMAIL / ADMIN_PASS）
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
+  --entrypoint /app/bin/noj migrate bootstrap admin
+
+# 构建统一题目包（需要在镜像内包含 data/problems-src）
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
+  --entrypoint /app/bin/noj migrate problems build
+
+# 导入统一题目包
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
+  --entrypoint /app/bin/noj migrate problems import
+```
+
+> 说明：`migrate` 服务本身已按顺序执行 `db migrate → init system → bootstrap admin`。
+> 上面的 `run --rm` 方式用于需要单独执行某个子命令的场景。
+
+## 开发环境
+
+开发环境仍可使用源码目录下的 CLI：
 
 ```bash
 cd noj-core
-deno task db:migrate          # 数据库迁移（= noj db migrate）
-deno task init:system         # 系统基础数据：root + RBAC + 镜像白名单 + 分类（= noj init system）
-deno task bootstrap:admin     # 管理员引导（= noj bootstrap admin）
-deno task problems:build      # 构建统一题目包（= noj problems build）
-deno task problems:import     # 批量导入统一题目包（= noj problems import）
-deno task dev-setup           # 开发环境一键初始化（= noj dev-setup）
+deno task db:migrate
+deno task init:system
+deno task bootstrap:admin
+deno task problems:build
+deno task problems:import
+deno task dev-setup   # 仅开发/测试使用，包含 dev 专用数据
 ```
 
-`deno task noj --help`（或任一子命令 `--help`）可查看完整用法。
-
-## dev-setup 做什么
-
-`dev-setup` 按顺序执行：
-
-1. `db migrate` — 数据库迁移
-2. `init system` — root 用户、RBAC 预置角色、评测镜像白名单、示例分类
-3. `bootstrap admin` — 管理员引导
-4. `problems build` — 从 `data/problems-src/<id>/` 构建统一题目包到 `data/packages/`
-5. `problems import` — 扫描 `data/packages/*.zip` 走统一导入（幂等 upsert）
-
-最后额外填充 **dev 专用数据**：E2E 守卫测试用户（`NOJ_RUN_E2E=1` 时）。
-
-> dev-setup 面向开发、测试和首次初始化。**生产环境**请按需执行
-> `db:migrate` → `init:system` → `bootstrap:admin` → `problems:build` →
-> `problems:import`（正式统一题目包），不要执行 dev-setup 的 dev 数据部分。
+`dev-setup` 是开发环境一键初始化，**不用于生产部署**。
 
 ## 管理员初始化
 

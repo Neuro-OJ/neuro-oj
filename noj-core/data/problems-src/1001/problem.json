@@ -1,17 +1,17 @@
 {
   "format_version": 1,
   "number": 1001,
-  "title": "1001 T0-LMCC：A+B Problem",
+  "title": "A+B Problem",
   "difficulty": "easy",
   "type": "P",
   "runtime_config": {
     "evaluator": {
-      "image": "noj-evaluator-python",
+      "image": "ghcr.io/neuro-oj/noj-evaluator-python",
       "time_limit_ms": 30000,
       "memory_limit_mb": 256
     },
     "solution": {
-      "image": "noj-solution-python",
+      "image": "ghcr.io/neuro-oj/noj-solution-python",
       "call_timeout_ms": 5000,
       "memory_limit_mb": 256
     }

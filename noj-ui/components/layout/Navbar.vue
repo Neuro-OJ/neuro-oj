@@ -124,6 +124,7 @@ const notificationSseEnabled = computed(
 
 onMounted(async () => {
   await loadConfig();
+  // 未读数接口需要登录且社区开启；游客/未开启时跳过，避免公共页面触发 401 跳转
   if (shouldLoadCommunityUnreadCount(user.value, communityConfig.value?.enabled)) {
     await loadUnreadCount();
   }

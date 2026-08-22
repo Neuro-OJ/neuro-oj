@@ -23,6 +23,7 @@ const MAX_SUPPORT_PACKAGE_BYTES: usize = 128 * 1024 * 1024;
 pub async fn fetch_support_package(
     download_url: &str,
     download_timeout_secs: u64,
+    allow_http_s3: bool,
 ) -> Result<(Vec<u8>, Option<String>)> {
     let ParsedDownloadUrl {
         host,
@@ -53,8 +54,9 @@ pub async fn fetch_support_package(
             let decoded_url = percent_decode_str(&raw_url)
                 .decode_utf8()
                 .context("url percent 解码失败")?;
-            // NOJ-194：仅允许 HTTPS 下载 URL，拒绝 http 明文降级。
-            if !decoded_url.starts_with("https://") {
+            // NOJ-194：默认仅允许 HTTPS 下载 URL，拒绝 http 明文降级。
+            // 自建 MinIO 内网走 HTTP 时可通过 JUDGE_ALLOW_HTTP_S3=true 显式放行。
+            if !allow_http_s3 && !decoded_url.starts_with("https://") {
                 bail!("S3 下载 URL 必须使用 HTTPS: {}", redact_url(&decoded_url));
             }
             let bytes = http_download(&decoded_url, download_timeout_secs).await?;
@@ -279,7 +281,7 @@ mod tests {
         // 创建一个合法的 base64 内容（解码后 = "hello"）
         let content = base64::engine::general_purpose::STANDARD.encode(b"hello");
         let url = format!("noj-download://base64/?content={}", content);
-        let result = fetch_support_package(&url, 5).await;
+        let result = fetch_support_package(&url, 5, false).await;
         assert!(result.is_ok());
         let (bytes, checksum) = result.unwrap();
         assert_eq!(bytes, b"hello");
@@ -288,7 +290,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_support_package_unknown_host() {
-        let result = fetch_support_package("noj-download://unknown/", 5).await;
+        let result = fetch_support_package("noj-download://unknown/", 5, false).await;
         assert!(result.is_err());
         let err = format!("{}", result.err().unwrap());
         assert!(err.contains("未知"));
@@ -297,7 +299,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_support_package_missing_content() {
-        let result = fetch_support_package("noj-download://base64/", 5).await;
+        let result = fetch_support_package("noj-download://base64/", 5, false).await;
         assert!(result.is_err());
     }
 }

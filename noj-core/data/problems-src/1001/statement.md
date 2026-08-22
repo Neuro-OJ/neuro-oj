@@ -1,4 +1,4 @@
-# 1001 T0-LMCC：A+B Problem
+# A+B Problem
 
 ## 题目描述
 

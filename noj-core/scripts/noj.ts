@@ -31,7 +31,8 @@ import { importProblemBundle } from "../src/services/problems/problem-bundle.ts"
 import { isValidTemplateFileName } from "../src/types/problem-bundle.ts";
 import { ROOT_USER_ID } from "../src/lib/constants.ts";
 
-const PROJECT_ROOT = join(import.meta.dirname ?? ".", "..");
+const PROJECT_ROOT = Deno.env.get("NOJ_PROJECT_ROOT") ??
+  join(import.meta.dirname ?? ".", "..");
 const SRC_DIR = join(PROJECT_ROOT, "data", "problems-src");
 const OUT_DIR = join(PROJECT_ROOT, "data", "packages");
 

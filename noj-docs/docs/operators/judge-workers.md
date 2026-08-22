@@ -1,9 +1,5 @@
 # Judge Worker 运维
 
-::: danger 文档状态：部署运维方案尚未成熟
-本分区文档描述的是**开发期部署与运维方式**（手动分步启动、开发期脚本），**尚未提供面向生产的一键部署方案**——当前不具备守护进程管理、TLS、备份、升级等生产级能力，生产部署请谨慎参考。项目后续将提供成熟的一键部署方式，届时本文档将整体更新。
-:::
-
 本文覆盖 noj-judge 的职责、运行时镜像、评测流程、队列监控、水平扩展与升级。
 
 ## Worker 职责
@@ -28,16 +24,18 @@ Evaluator + Solution 双容器（用后即毁），并把结果写回 Redis。
 
 ## 双容器运行时
 
-默认 Python 题目使用两个镜像：
+默认 Python 题目使用两个镜像（生产环境从 ghcr.io 拉取）：
 
-- `noj-evaluator-python`：运行出题人的 `evaluate.py`。
-- `noj-solution-python`：运行用户提交的 `solution.py` 和 Solution Host。
+- `ghcr.io/neuro-oj/noj-evaluator-python`：运行出题人的 `evaluate.py`。
+- `ghcr.io/neuro-oj/noj-solution-python`：运行用户提交的 `solution.py` 和 Solution Host。
 
 Evaluator 容器可以通过 Neuro OJ Evaluator SDK 调用 Solution 容器中的用户函数。
 
-### 构建评测镜像
+### 构建/发布评测镜像
 
-构建脚本位于 `noj-judge/scripts/build-sdk-images.sh`：
+评测镜像由 GitHub Actions 在 Release 时自动构建并推送到 ghcr.io，无需在服务器上构建。
+
+本地开发/调试时仍可使用 `noj-judge/scripts/build-sdk-images.sh`：
 
 ```bash
 cd noj-judge
@@ -45,7 +43,8 @@ cd noj-judge
 ./scripts/build-sdk-images.sh --tag v0.1.0  # 自定义 tag
 ```
 
-默认 `:latest` tag 与 noj-core 种子数据 `judge_images` 中登记的裸镜像名（`noj-evaluator-python` / `noj-solution-python`，docker 解析为 `:latest`）保持一致；自定义 tag 后需要同步更新 noj-core 的镜像白名单登记。
+生产部署时，`init system` 会根据 `JUDGE_IMAGE_BASE`（默认 `ghcr.io/neuro-oj/`）写入
+ghcr 全限定镜像名；若需要手工确认，见[生产部署](production-deploy.md#评测镜像白名单)。
 
 镜像基于 `python:3.12-slim`，不预装额外 Python 包，题目依赖由出题人在 evaluator 中自行管理。
 
@@ -75,27 +74,21 @@ noj-core 维护评测镜像白名单（`judgeImages`），并在题目 CRUD / �
 
 ## 健康检查与状态查看
 
-::: note 工具说明
-以下 `devtool.sh` 命令来自开发期脚本（见[本地启动](local-start.md#开发期脚本-devtool-sh-不成熟)的警告），适合本地与开发环境；生产实例建议直接使用 docker / 进程管理工具查看状态。
-:::
+生产环境使用 Docker Compose 管理：
 
 ```bash
-# 查看所有模块状态（含 judge 是否在线）
-bash scripts/dev/devtool.sh status
+# 查看所有服务状态（含 judge 是否在线）
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 
-# 结构化输出
-bash scripts/dev/devtool.sh status --json
+# 查看 judge 日志
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 judge
 ```
 
-日志位置：
-
-- `scripts/dev/logs/judge.log`（devtool.sh 启动时）
-- 手动 `cargo run` 时直接看终端输出
-
-调高日志详细度排查问题：
+调高日志详细度排查问题（临时覆盖环境变量）：
 
 ```bash
-RUST_LOG=noj_judge=debug cargo run
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
+  -e RUST_LOG=noj_judge=debug judge
 ```
 
 ## 队列监控 {#queue-monitoring}
@@ -103,15 +96,15 @@ RUST_LOG=noj_judge=debug cargo run
 评测任务在 Redis 队列 `noj:judge:queue` 中排队，结果写回 `noj:judge:results`：
 
 ```bash
-# 查看积压任务数
-redis-cli LLEN noj:judge:queue
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
+  redis-cli -a "$REDIS_PASSWORD" LLEN noj:judge:queue
 ```
 
 如果队列持续堆积：
 
-1. 确认 Judge Worker 在线且连接了同一个 Redis（`devtool.sh status`）。
+1. 确认 Judge Worker 在线且连接了同一个 Redis（`docker compose ps`）。
 2. 查看 judge 日志是否有拉取/容器错误。
-3. 检查 Docker daemon 是否可用、镜像是否已构建。
+3. 检查 Docker daemon 是否可用、评测镜像是否已从 ghcr.io 拉取。
 4. 如负载确实超过单实例能力，按下一节水平扩展。
 
 ## 水平扩展
@@ -124,14 +117,14 @@ redis-cli LLEN noj:judge:queue
 ## 升级与重启
 
 - 停止实例会进入优雅关闭流程：排空正在执行的 in-flight 任务后再退出，避免提交丢失。
-- 升级步骤：`devtool.sh stop judge` → 构建新版本（`cargo build --release`）或更新镜像 → `devtool.sh start judge`。
+- 升级步骤：修改 `.env.prod` 中的 `NOJ_VERSION` → `docker compose pull` → `docker compose up -d`。
 - 升级评测镜像后应先在 noj-core 白名单登记，再启动 Worker。
 
 ## 常见排查方向
 
 - Redis 连接失败：检查 Redis 地址和服务状态。
 - Docker 连接失败：确认 Docker daemon 可用，当前用户有权限访问。
-- 镜像不存在：先执行 `noj-judge/scripts/build-sdk-images.sh` 构建 `noj-evaluator-python` 与 `noj-solution-python`。
-- 白名单为空：确认 noj-core 已启动、`deno task dev-setup`（或 `init:system`）已执行；白名单校验在 noj-core 侧完成，judge 侧使用镜像前缀白名单复验。
+- 镜像不存在：确认 ghcr.io 镜像已发布，且 `judge_images` 白名单中的镜像名与发布的 ghcr 全限定名一致。
+- 白名单为空：确认 noj-core 已启动、`init system` 已执行；白名单校验在 noj-core 侧完成，judge 侧使用镜像前缀白名单复验。
 - `SystemError`：通常是纯净评测包、运行时配置、镜像、协议或 evaluator 本身异常，需要查看 Judge Worker 日志。
 - 提交长时间 `Pending`：见上文「队列监控」。

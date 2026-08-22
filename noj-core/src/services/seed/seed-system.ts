@@ -71,17 +71,25 @@ export async function seedJudgeImages(): Promise<void> {
   const db = getDb();
   const now = new Date().toISOString();
 
+  // 生产环境通过 JUDGE_IMAGE_BASE 指定 ghcr 仓库前缀（如 ghcr.io/neuro-oj/），
+  // 使白名单写入 ghcr 全限定镜像名；未设置时保持本地开发默认名。
+  const imageBase = (Deno.env.get("JUDGE_IMAGE_BASE") ?? "").replace(
+    /\/+$/,
+    "",
+  );
+  const withBase = (name: string) => imageBase ? `${imageBase}/${name}` : name;
+
   const images = [
     {
       id: "e0000000-0000-0000-0000-000000000002",
-      image: "noj-evaluator-python",
+      image: withBase("noj-evaluator-python"),
       mode: "all_versions",
       kind: "evaluator",
       description: "双容器 Evaluator (Python 3.12, noj_evaluator_sdk)",
     },
     {
       id: "e0000000-0000-0000-0000-000000000003",
-      image: "noj-solution-python",
+      image: withBase("noj-solution-python"),
       mode: "all_versions",
       kind: "solution",
       description: "双容器 Solution (Python 3.12, noj_solution_sdk)",

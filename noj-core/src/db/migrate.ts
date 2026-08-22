@@ -19,8 +19,11 @@ export async function runMigrations(): Promise<void> {
   try {
     const db = getDb();
 
-    // 基于 import.meta.url 解析绝对路径，避免 CWD 依赖
-    const migrationsFolder = resolve(__dirname, "../../drizzle");
+    // 基于 import.meta.url 解析绝对路径，避免 CWD 依赖；
+    // deno compile 后 import.meta.url 指向二进制路径，生产镜像通过
+    // NOJ_MIGRATIONS_DIR 显式指定迁移目录。
+    const migrationsFolder = Deno.env.get("NOJ_MIGRATIONS_DIR") ??
+      resolve(__dirname, "../../drizzle");
     const migrationsSchema = Deno.env.get("TEST_SCHEMA") || undefined;
     logger.info("开始数据库迁移", {
       migrations_folder: migrationsFolder,

@@ -16,6 +16,7 @@ Thumbs.db
 .env.*
 !.env.example
 !.env.e2e.template
+!.env.prod.example
 
 # --- Deno ---
 .deno_cache/
@@ -92,3 +93,6 @@ aa.txt
 .reasonix/docs/review-snapshots/
 docs/review-snapshots/
 .reasonix/
+
+# --- LMCC raw problem archive (downloaded from official site; not committed) ---
+/lmcc-problems/

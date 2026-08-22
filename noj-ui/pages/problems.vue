@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { difficultyBadgeColors, difficultyLabels, formatAcceptanceRate } from "~/utils/submissionFormat"
+import type { ObjectiveSubmission } from '~/composables/useObjective'
 const { api } = useApi()
 
 const router = useRouter()
@@ -72,6 +73,8 @@ const tags = computed(() => tagsData.value?.data ?? [])
 const { isLoggedIn } = useAuth()
 const solvedIds = ref<Set<string>>(new Set())
 const attemptedIds = ref<Set<string>>(new Set())
+/** 客观题：paper_id -> 练习模式最高分（×100），无作答时不存 key */
+const objectiveBestScores = ref<Record<string, number>>({})
 let statusFetchGen = 0
 
 async function fetchUserProblemStatus() {
@@ -84,7 +87,7 @@ async function fetchUserProblemStatus() {
       query: { per_page: 100 },
       silent: true,
     })
-    if (gen !== statusFetchGen) return // stale
+    if (gen !== statusFetchGen || !isLoggedIn.value) return // stale
     const subs = res.data ?? []
     const solved = new Set<string>()
     const attempted = new Set<string>()
@@ -100,6 +103,37 @@ async function fetchUserProblemStatus() {
   } catch {
     // 静默失败——通过状态是可选的
   }
+
+  // 客观题状态：拉取全部客观题提交，计算每个套卷的练习最高分
+  try {
+    const bestByPaper = new Map<string, number>()
+    let page = 1
+    const perPage = 100
+    while (true) {
+      const res = await api.get<{
+        data: { data: ObjectiveSubmission[]; total: number }
+      }>("/api/v1/problems/submissions", {
+        query: { page: String(page), per_page: String(perPage) },
+        silent: true,
+      })
+      if (gen !== statusFetchGen || !isLoggedIn.value) return // stale
+      const list = res.data?.data ?? []
+      for (const s of list) {
+        if (s.submission_type !== 'practice') continue
+        const prev = bestByPaper.get(s.paper_id)
+        if (prev === undefined || s.score > prev) {
+          bestByPaper.set(s.paper_id, s.score)
+        }
+      }
+      const total = res.data?.total ?? 0
+      if (list.length === 0 || page * perPage >= total) break
+      page++
+    }
+    if (gen !== statusFetchGen || !isLoggedIn.value) return // stale
+    objectiveBestScores.value = Object.fromEntries(bestByPaper)
+  } catch {
+    // 静默失败——客观题状态是可选的
+  }
 }
 
 watch(isLoggedIn, (loggedIn) => {
@@ -107,6 +141,7 @@ watch(isLoggedIn, (loggedIn) => {
   else {
     solvedIds.value = new Set()
     attemptedIds.value = new Set()
+    objectiveBestScores.value = {}
   }
 })
 if (isLoggedIn.value) fetchUserProblemStatus()
@@ -236,7 +271,14 @@ const columns = computed(() => {
             <span class="text-xs text-text-secondary">{{ formatAcceptanceRate(row.original.acceptance_rate) }}</span>
           </template>
           <template #status-cell="{ row }">
-            <StatusBadge :status="getProblemStatus(row.original.id)" />
+            <StatusBadge v-if="!row.original.is_objective" :status="getProblemStatus(row.original.id)" />
+            <span
+              v-else-if="objectiveBestScores[row.original.id] !== undefined"
+              class="inline-flex items-center gap-1 text-xs font-medium text-text-secondary"
+            >
+              {{ (objectiveBestScores[row.original.id] / 100).toFixed(0) }} 分
+            </span>
+            <StatusBadge v-else status="not_started" />
           </template>
         </UTable>
       </div>

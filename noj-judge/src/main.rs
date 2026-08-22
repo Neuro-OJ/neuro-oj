@@ -102,6 +102,7 @@ fn main() -> Result<()> {
         let cache_max_items = config.support_cache_max_items;
         let cache_max_mb = config.support_cache_max_mb;
         let allow_evaluator_network = config.allow_evaluator_network;
+        let allow_http_s3 = config.allow_http_s3;
         let image_prefix = config.image_prefix.clone();
         let command_whitelist = config.command_whitelist.clone();
         let drain_timeout = config.drain_timeout_secs();
@@ -190,6 +191,7 @@ fn main() -> Result<()> {
                     cache_max_mb,
                     cpu_limit_millicores,
                     allow_evaluator_network,
+                    allow_http_s3,
                     &image_prefix,
                     &command_whitelist,
                 )

@@ -1,0 +1,27 @@
+# 环境与密钥
+.env
+.env.*
+!.env.example
+
+# Deno / Node 缓存与依赖
+.deno_cache/
+node_modules/
+
+# 测试与开发文件
+tests/
+*.log
+*.pid
+
+# 构建产物（本地存储/题目包不应进入镜像构建上下文）
+data/packages/
+data/storage/
+dist/
+coverage/
+
+# 版本控制与 IDE
+.git/
+.gitignore
+.jj/
+.idea/
+.vscode/
+*.swp

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-T0-LMCC：A+B Problem（starter code）
+A+B Problem（starter code）
 
 你需要实现 solve 函数：
   - 输入：input_str 字符串（一行两个整数，空格分隔）

@@ -1,0 +1,24 @@
+# 环境与密钥
+.env
+.env.*
+!.env.example
+
+# 依赖与构建缓存
+node_modules/
+.deno_cache/
+.nuxt/
+.output/
+dist/
+
+# 测试与开发文件
+tests/
+*.log
+*.pid
+
+# 版本控制与 IDE
+.git/
+.gitignore
+.jj/
+.idea/
+.vscode/
+*.swp

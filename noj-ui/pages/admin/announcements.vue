@@ -21,11 +21,17 @@ interface AdminAnnouncement {
 }
 
 const { api } = useApi()
+const { isLoggedIn } = useAuth()
 
 const { items, loading, error, load, onPageChange, currentPage, totalPages } = useAdminList<AdminAnnouncement>({
   path: "/api/v1/admin/announcements",
   fetchOptions: { dataField: "data", totalField: "meta.total" },
 })
+
+// 首次进入页面时自动加载存量公告（认证状态就绪后再请求，避免使用未登录态请求）
+watch(isLoggedIn, (val) => {
+  if (val) load()
+}, { immediate: true })
 
 const columns = [
   {

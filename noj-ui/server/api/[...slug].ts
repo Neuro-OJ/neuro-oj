@@ -27,12 +27,14 @@ function shouldInterceptAuth(event: { path: string; method?: string }): boolean 
 
 /**
  * 生产环境下 Cookie 必须设置 secure 标志（HTTPS-only）。
- * 通过 NUXT_NOJ_ENV 或 NODE_ENV 检测；都未设置时按开发模式处理（不设 secure）。
+ * 以 NUXT_NOJ_ENV / NOJ_ENV 为准；未设置时才回退 NODE_ENV。
+ * 这样 HTTP 内网测试设置 NUXT_NOJ_ENV=development 时，即使 NODE_ENV=production
+ * 也不会下发 Secure Cookie，避免浏览器不保存 Cookie 导致“未提供认证令牌”。
  */
 function isProductionEnv(): boolean {
   const nojEnv = process.env.NUXT_NOJ_ENV ?? process.env.NOJ_ENV;
-  const nodeEnv = process.env.NODE_ENV;
-  return nojEnv === 'production' || nodeEnv === 'production';
+  if (nojEnv) return nojEnv === 'production';
+  return process.env.NODE_ENV === 'production';
 }
 
 /**
@@ -54,6 +56,83 @@ function normalizeIp(ip?: string | null): string | undefined {
   const zone = value.indexOf('%');
   if (zone !== -1) value = value.slice(0, zone);
   return value || undefined;
+}
+
+const HOP_BY_HOP_HEADERS = new Set([
+  'transfer-encoding',
+  'connection',
+  'keep-alive',
+  'upgrade',
+  'proxy-authorization',
+  'proxy-authenticate',
+  'te',
+  'trailer',
+]);
+
+/** 判断是否为 SSE 流式请求：路径以 /events 结尾，或客户端显式要求 text/event-stream。 */
+function isSseRequest(event: { path: string; headers: Headers }): boolean {
+  if (event.path.endsWith('/events')) return true;
+  const accept = event.headers.get('accept') ?? '';
+  return accept.includes('text/event-stream');
+}
+
+/**
+ * SSE 专用转发：直接返回 Web 标准的流式 Response。
+ *
+ * h3 的 proxyRequest/sendProxy 在 Deno 运行时下通过 event.node.res.write()
+ * 转发流式响应，但 Deno 的 Node 兼容层不会在 handler 结束前真正 flush 响应头，
+ * 导致 EventSource 一直等不到 open 事件而超时降级为轮询。
+ * 这里改用 fetch + Response(body stream)，让 Nitro 按 Web Stream 方式透传 SSE。
+ */
+async function proxySseRequest(
+  event: {
+    method: string;
+    path: string;
+    headers: Headers;
+  },
+  target: string,
+  token: string | undefined,
+  clientNetworkHeaders: Record<string, string>,
+): Promise<Response> {
+  const headers = new Headers();
+  for (const [name, value] of event.headers.entries()) {
+    const lower = name.toLowerCase();
+    if (HOP_BY_HOP_HEADERS.has(lower) || lower === 'host' || lower === 'accept-encoding') {
+      continue;
+    }
+    headers.set(name, value);
+  }
+  if (token) {
+    headers.set('authorization', `Bearer ${token}`);
+  }
+  for (const [name, value] of Object.entries(clientNetworkHeaders)) {
+    headers.set(name, value);
+  }
+
+  const upstream = await fetch(target, {
+    method: event.method,
+    headers,
+    redirect: 'manual',
+  });
+
+  const responseHeaders = new Headers();
+  for (const [name, value] of upstream.headers.entries()) {
+    const lower = name.toLowerCase();
+    if (
+      HOP_BY_HOP_HEADERS.has(lower) ||
+      lower === 'content-length' ||
+      lower === 'content-encoding'
+    ) {
+      continue;
+    }
+    responseHeaders.set(name, value);
+  }
+
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: responseHeaders,
+  });
 }
 
 function getClientNetworkHeaders(event: {
@@ -211,6 +290,12 @@ export default defineEventHandler(async (event) => {
   // NOJ-215：透传客户端 IP/UA（proxyRequest 会沿用 event.node.req.headers）。
   for (const [name, value] of Object.entries(clientNetworkHeaders)) {
     event.node.req.headers[name] = value;
+  }
+
+  // SSE 长连接在 Deno 运行时下不能走 h3 proxyRequest（Node res 兼容层不会及时
+  // flush 响应头），这里单独用 Web Stream Response 透传。
+  if (isSseRequest(event)) {
+    return proxySseRequest(event, target, token, clientNetworkHeaders);
   }
 
   try {
