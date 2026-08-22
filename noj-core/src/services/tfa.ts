@@ -216,6 +216,8 @@ export async function disableTfa(
     throw new UnauthorizedError("验证码错误");
   }
 
+  // 用户状态更新与恢复码删除放在同一事务，保证原子边界：
+  // 任一步失败都会回滚，避免出现"已禁用但残留恢复码"或"仍启用但恢复码被清空"。
   await db.transaction(async (tx) => {
     await tx
       .update(users)
@@ -225,9 +227,9 @@ export async function disableTfa(
         updated_at: new Date().toISOString(),
       })
       .where(eq(users.id, userId));
-    await tx.delete(tfaRecoveryCodes).where(
-      eq(tfaRecoveryCodes.user_id, userId),
-    );
+    await tx
+      .delete(tfaRecoveryCodes)
+      .where(eq(tfaRecoveryCodes.user_id, userId));
   });
 
   await logAuthEvent(userId, clientIp, "auth.tfa_disabled", {
@@ -262,20 +264,21 @@ export async function regenerateRecoveryCodes(
 
   const recoveryCodes = generateRecoveryCodes();
   const now = new Date().toISOString();
-  const recoveryCodeRows = await Promise.all(
-    recoveryCodes.map(async (recoveryCode) => ({
-      id: crypto.randomUUID(),
-      user_id: userId,
-      code_hash: await hashRecoveryCode(recoveryCode),
-      used_at: null,
-      created_at: now,
-    })),
-  );
+  // 作废旧码 + 批量插入新码放在同一事务：任一次插入失败都会整体回滚，
+  // 避免留下"零个或不足 10 个有效恢复码"的中间状态。
   await db.transaction(async (tx) => {
-    await tx.delete(tfaRecoveryCodes).where(
-      eq(tfaRecoveryCodes.user_id, userId),
-    );
-    await tx.insert(tfaRecoveryCodes).values(recoveryCodeRows);
+    await tx
+      .delete(tfaRecoveryCodes)
+      .where(eq(tfaRecoveryCodes.user_id, userId));
+    for (const recoveryCode of recoveryCodes) {
+      await tx.insert(tfaRecoveryCodes).values({
+        id: crypto.randomUUID(),
+        user_id: userId,
+        code_hash: await hashRecoveryCode(recoveryCode),
+        used_at: null,
+        created_at: now,
+      });
+    }
   });
 
   await logAuthEvent(userId, clientIp, "auth.tfa_recovery_regenerated", {
