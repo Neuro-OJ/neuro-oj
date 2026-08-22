@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from noj_evaluator_sdk.runner import SolutionRunner
+from noj_evaluator_sdk.runner import SolutionRunner, SolutionTimeoutError
 
 # 路径配置
 DATA_DIR = Path(__file__).parent
@@ -54,6 +54,9 @@ def eval_split(runner: SolutionRunner, split_name: str, data: list[dict]) -> dic
     for item in data:
         try:
             output_line = call_solution(runner, item["input"])
+        except SolutionTimeoutError:
+            # 交由评测机识别为单次调用超时，不能继续消耗其余测试点的总时限。
+            raise
         except Exception as e:
             output_line = ""
             print(f"  [!] Solution 调用异常: {e}")
