@@ -1,5 +1,6 @@
 import type { ApiErrorInfo } from '~/utils/apiError';
 import { extractApiError } from '~/utils/apiError';
+import { useToast } from '~/composables/useToast';
 
 /**
  * 统一 API 调用层。

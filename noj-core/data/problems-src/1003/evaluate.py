@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from noj_evaluator_sdk.runner import SolutionRunner
+from noj_evaluator_sdk.runner import SolutionRunner, SolutionTimeoutError
 
 # 路径配置
 DATA_DIR = Path(__file__).parent
@@ -49,13 +49,18 @@ def eval_split(runner: SolutionRunner, split_name: str, data: list[dict]) -> dic
     passed = 0
     total = len(data)
     all_valid_int = True
+    runtime_error = False
     case_results = []
 
     for item in data:
         try:
             output_line = call_solution(runner, item["input"])
+        except SolutionTimeoutError:
+            # 交由评测机识别为单次调用超时，不能继续消耗其余测试点的总时限。
+            raise
         except Exception as e:
             output_line = ""
+            runtime_error = True
             print(f"  [!] Solution 调用异常: {e}")
 
         actual = output_line.strip().splitlines()[-1] if output_line.strip() else ""
@@ -92,6 +97,7 @@ def eval_split(runner: SolutionRunner, split_name: str, data: list[dict]) -> dic
         "passed": passed,
         "total": total,
         "all_valid_int": all_valid_int,
+        "runtime_error": runtime_error,
         "cases": case_results,
     }
 
@@ -120,10 +126,11 @@ def main() -> None:
     total_passed = visible_stat["passed"] + hidden_stat["passed"]
     total_cases = visible_stat["total"] + hidden_stat["total"]
     format_ok = visible_stat["all_valid_int"] and hidden_stat["all_valid_int"]
+    runtime_error = visible_stat["runtime_error"] or hidden_stat["runtime_error"]
 
     score_content = CONTENT_SCORE_FULL * total_passed / max(1, total_cases)
     score_format = FORMAT_SCORE_FULL if format_ok else 0
-    total_score = score_content + score_format
+    total_score = 0 if runtime_error else score_content + score_format
 
     print("\n" + "-" * 48)
     print(f"可见: {visible_stat['passed']}/{visible_stat['total']}")
@@ -136,7 +143,11 @@ def main() -> None:
         print("说明: 当前分数仅基于公开数据")
 
     result = {
-        "status": "Accepted" if total_score == FULL_SCORE else "WrongAnswer",
+        "status": (
+            "RuntimeError" if runtime_error
+            else "Accepted" if total_score == FULL_SCORE
+            else "WrongAnswer"
+        ),
         "score": int(total_score * 100),
         "details": {
             "score_content": round(score_content, 2),
