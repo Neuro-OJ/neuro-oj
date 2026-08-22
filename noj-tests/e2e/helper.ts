@@ -483,29 +483,19 @@ export async function waitForServer(
 /**
  * 不同评测场景的代码模板。
  *
- * 对应 problem 1001（T0-LMCC 星港舱门报码归一化）：
- * - evaluate.py 接收文本输入，运行 python3 /tmp/main.py <text>
- * - 期望输出 JSON: {"gate_id":"X-YY","status":"open|closed|fault"}
+ * 对应 problem P1001（A+B Problem）：
+ * - evaluate.py 使用标准输入传入两个整数
+ * - 期望输出两个整数之和
  */
 export const CODE_SAMPLES = {
-  /** 正确实现：解析舱门报码 */
-  accepted: `import json, re, sys
+  /** 正确实现：读取两个整数并输出其和 */
+  accepted: `import sys
 
-CN_NUM = {"一":"01","二":"02","三":"03","四":"04","五":"05","六":"06","七":"07","八":"08","九":"09","十":"10","十一":"11","十二":"12"}
-AREA_MAP = {"东环":"E","东区":"E","东侧":"E","东":"E","西环":"W","西区":"W","西侧":"W","西":"W","北环":"N","北区":"N","北侧":"N","北":"N","南环":"S","南区":"S","南侧":"S","南":"S","主环":"I","内环":"I","内侧":"I","主":"I","内":"I","外环":"O","外侧":"O","外":"O"}
-FAULT_KW = ["故障","打不开","拉不开","失灵","卡住","异常","坏了"]
-CLOSED_KW = ["关闭","封闭","锁住","关着","暂停通行"]
-text = sys.argv[1]
-area = next((v for k,v in AREA_MAP.items() if k in text), "E")
-num = next((v for k,v in CN_NUM.items() if k in text), "01")
-m = re.search(r"(\\d+)", text)
-if m: num = f"{int(m.group(1)):02d}"
-status = "fault" if any(k in text for k in FAULT_KW) else ("closed" if any(k in text for k in CLOSED_KW) else "open")
-print(json.dumps({"gate_id":f"{area}-{num}","status":status}, ensure_ascii=False))`,
+a, b = map(int, sys.stdin.read().split())
+print(a + b)`,
 
-  /** 错误实现：总是输出默认值 */
-  wrongAnswer: `import json
-print(json.dumps({"gate_id":"E-01","status":"open"}, ensure_ascii=False))`,
+  /** 错误实现：总是输出错误结果 */
+  wrongAnswer: "print(0)",
 
   /** 死循环，触发 TLE */
   timeLimitExceeded: `import sys
