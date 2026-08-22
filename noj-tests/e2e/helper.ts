@@ -491,36 +491,37 @@ export async function waitForServer(
  * 不同评测场景的代码模板。
  *
  * 对应 problem P1001（A+B Problem）：
- * - evaluate.py 使用标准输入传入两个整数
- * - 期望输出两个整数之和
+ * - evaluate.py 通过 Solution SDK 调用 solve(input_str)
+ * - 函数返回两个整数之和
  */
 export const CODE_SAMPLES = {
-  /** 正确实现：读取两个整数并输出其和 */
-  accepted: `import sys
-
-a, b = map(int, sys.stdin.read().split())
-print(a + b)`,
+  /** 正确实现：解析输入字符串并返回两个整数之和 */
+  accepted: `def solve(input_str: str) -> str:
+    a, b = map(int, input_str.split())
+    return str(a + b)`,
 
   /** 错误实现：总是输出错误结果 */
-  wrongAnswer: "print(0)",
+  wrongAnswer: `def solve(_input_str: str) -> str:
+    return "0"`,
 
   /** 死循环，触发 TLE */
-  timeLimitExceeded: `import sys
-while True:
-    pass
-print("never reaches here")`,
+  timeLimitExceeded: `def solve(_input_str: str) -> str:
+    while True:
+        pass`,
 
   /** 内存无限分配，触发 MLE */
-  memoryLimitExceeded: `import time; data = []
-while True:
-    data.append([0] * 10_000_000)
-    time.sleep(0.1)`,
+  memoryLimitExceeded: `def solve(_input_str: str) -> str:
+    import time
+    data = []
+    while True:
+        data.append([0] * 10_000_000)
+        time.sleep(0.1)`,
 
   /** 运行时错误：非零退出码 */
-  runtimeError: `import sys; sys.exit(1)
-# 非零退出码 → Runtime Error`,
+  runtimeError: `def solve(_input_str: str) -> str:
+    raise RuntimeError("测试运行时异常")`,
 
   /** 语法错误 */
-  syntaxError: `def foo(:  # 语法错误
+  syntaxError: `def solve(:  # 语法错误
     print("never")`,
 };
