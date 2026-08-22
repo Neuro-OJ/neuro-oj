@@ -9,7 +9,7 @@
 use anyhow::{Context, Result};
 use filetime::FileTime;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::SystemTime;
 use tokio::fs;
@@ -22,11 +22,11 @@ use tracing::{info, warn};
 static CACHE_LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>> =
     OnceLock::new();
 
-fn cache_lock_for(dir: &PathBuf) -> Arc<tokio::sync::Mutex<()>> {
+fn cache_lock_for(dir: &Path) -> Arc<tokio::sync::Mutex<()>> {
     let locks = CACHE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
     let mut locks = locks.lock().expect("缓存锁表不应中毒");
     locks
-        .entry(dir.clone())
+        .entry(dir.to_path_buf())
         .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
         .clone()
 }
