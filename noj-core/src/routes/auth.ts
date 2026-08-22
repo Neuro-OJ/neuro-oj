@@ -385,7 +385,7 @@ auth.post("/forgot-password", async (c) => {
   await enforcePasswordResetIpRateLimit(c);
   await enforcePasswordResetEmailRateLimit(body.email);
 
-  // 应用基础 URL：从请求头 Host 拼出（生产环境后续接 APP_URL 环境变量）
+  // APP_URL 由 requestReset 优先使用；请求头仅作为非生产环境开发回退。
   const proto = c.req.header("x-forwarded-proto") ?? "http";
   const host = c.req.header("host") ?? "localhost:3000";
   const appBaseUrl = `${proto}://${host}`;

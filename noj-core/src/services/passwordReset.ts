@@ -5,11 +5,35 @@ import { hashPassword } from "../lib/password.ts";
 import { generateResetToken, hashResetToken } from "../lib/resetToken.ts";
 import { sendPasswordResetEmail } from "../lib/email.ts";
 import { BadRequestError } from "../lib/errors.ts";
+import { logger } from "../lib/logging.ts";
 import { logAuthEvent } from "./audit-log.ts";
 import { validatePasswordStrength } from "./auth.ts";
 
 /** 密码重置令牌有效期（分钟）。OWASP 2025+ 建议 ≤ 15 分钟。 */
 const TOKEN_TTL_MINUTES = 15;
+
+/**
+ * 解析密码重置链接基础 URL。
+ *
+ * APP_URL 是可信配置，生产环境不得回退到请求头，避免 Host Header 注入。
+ * 非生产环境保留请求层传入的 URL，仅用于本地开发和测试。
+ */
+function resolveResetBaseUrl(requestFallbackBaseUrl: string): string | null {
+  const configuredAppUrl = Deno.env.get("APP_URL")?.trim();
+  if (configuredAppUrl) {
+    return configuredAppUrl.replace(/\/+$/, "");
+  }
+
+  if (Deno.env.get("NOJ_ENV") === "production") {
+    logger.error("生产环境未配置 APP_URL，跳过密码重置邮件", {
+      module: "password-reset",
+      event: "missing_app_url",
+    });
+    return null;
+  }
+
+  return requestFallbackBaseUrl.replace(/\/+$/, "");
+}
 
 /**
  * 发起密码重置请求（issue #49 + PR-2 审计）。
@@ -21,14 +45,19 @@ const TOKEN_TTL_MINUTES = 15;
  * 标志用于追溯攻击者的撞邮箱行为。email 不写入 detail（防敏感信息泄露）。
  *
  * @param email - 用户输入的邮箱
- * @param appBaseUrl - 应用基础 URL（用于拼 reset link）
+ * @param requestFallbackBaseUrl - 请求层提供的开发环境回退 URL（生产环境不使用）
  * @param clientIp - 客户端 IP（用于审计 + 防滥用追溯）
  */
 export async function requestReset(
   email: string,
-  appBaseUrl: string,
+  requestFallbackBaseUrl: string,
   clientIp?: string,
 ): Promise<void> {
+  const appBaseUrl = resolveResetBaseUrl(requestFallbackBaseUrl);
+  if (!appBaseUrl) {
+    return;
+  }
+
   const db = getDb();
 
   // 查用户（按 email）

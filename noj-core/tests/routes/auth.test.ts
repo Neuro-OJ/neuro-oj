@@ -6,6 +6,11 @@ import { eq } from "drizzle-orm";
 import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
 import { _resetLoginBackoffForTest } from "../../src/lib/loginThrottle.ts";
 import {
+  type LogRecord,
+  resetLogSink,
+  setLogSink,
+} from "../../src/lib/logging.ts";
+import {
   generateResetToken,
   hashResetToken,
 } from "../../src/lib/resetToken.ts";
@@ -32,6 +37,16 @@ if (hasRedis) {
 
 const BASE = "/api/v1/auth";
 const ts = Date.now();
+
+function preserveEnv(...keys: string[]): () => void {
+  const previous = new Map(keys.map((key) => [key, Deno.env.get(key)]));
+  return () => {
+    for (const [key, value] of previous) {
+      if (value === undefined) Deno.env.delete(key);
+      else Deno.env.set(key, value);
+    }
+  };
+}
 
 /** 确保 Redis 已连接（幂等） */
 async function ensureRedisConnected() {
@@ -881,6 +896,133 @@ Deno.test({
     assertEquals(body.ok, true);
     // 响应消息应与已注册邮箱场景一致
     assertEquals(typeof body.message, "string");
+  },
+});
+
+Deno.test({
+  name: "routes: APP_URL 配置优先于 Host 和 X-Forwarded-Proto",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const restoreEnv = preserveEnv("APP_URL", "EMAIL_PROVIDER", "NOJ_ENV");
+    const records: LogRecord[] = [];
+    setLogSink((record) => records.push(record));
+    Deno.env.set("NOJ_ENV", "development");
+    Deno.env.set("APP_URL", "https://trusted.example///");
+    Deno.env.set("EMAIL_PROVIDER", "mock");
+
+    const username = `pwreset_trusted_url_${ts}`;
+    const email = `${username}@example.com`;
+
+    try {
+      Deno.env.set("NOJ_ENV", "test");
+      await resetDbForTest();
+      const now = new Date().toISOString();
+      await getDb().insert(users).values({
+        id: crypto.randomUUID(),
+        username,
+        email,
+        password_hash: "test-hash",
+        created_at: now,
+        updated_at: now,
+      });
+
+      Deno.env.set("NOJ_ENV", "development");
+      const app = createApp();
+      const res = await jsonRequest(app, `${BASE}/forgot-password`, {
+        method: "POST",
+        headers: {
+          Host: "evil.example",
+          "X-Forwarded-Proto": "http",
+        },
+        body: { email },
+      });
+
+      assertEquals(res.status, 200);
+      const mailRecord = records.find((record) =>
+        record.msg === "密码重置邮件（mock）"
+      );
+      assertEquals(mailRecord !== undefined, true);
+      const link = String(mailRecord?.fields.link);
+      assertEquals(
+        link.startsWith("https://trusted.example/reset-password?token="),
+        true,
+      );
+      assertEquals(link.includes("evil.example"), false);
+    } finally {
+      await cleanupUser(username);
+      resetLogSink();
+      restoreEnv();
+    }
+  },
+});
+
+Deno.test({
+  name: "routes: 生产环境缺少 APP_URL 仍返统一 200 且跳过邮件",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const restoreEnv = preserveEnv("APP_URL", "NOJ_ENV");
+    const records: LogRecord[] = [];
+    setLogSink((record) => records.push(record));
+    Deno.env.set("NOJ_ENV", "production");
+    Deno.env.delete("APP_URL");
+
+    const username = `pwreset_missing_url_${ts}`;
+    const email = `${username}@example.com`;
+
+    try {
+      Deno.env.set("NOJ_ENV", "test");
+      await resetDbForTest();
+      const now = new Date().toISOString();
+      const userId = crypto.randomUUID();
+      await getDb().insert(users).values({
+        id: userId,
+        username,
+        email,
+        password_hash: "test-hash",
+        created_at: now,
+        updated_at: now,
+      });
+
+      Deno.env.set("NOJ_ENV", "production");
+      const app = createApp();
+      const res = await jsonRequest(app, `${BASE}/forgot-password`, {
+        method: "POST",
+        headers: {
+          Host: "evil.example",
+          "X-Forwarded-Proto": "https",
+        },
+        body: { email },
+      });
+
+      assertEquals(res.status, 200);
+      const body = await res.json();
+      assertEquals(body.ok, true);
+      assertEquals(body.message, "如果该邮箱已注册，您将收到一封密码重置邮件");
+
+      const rows = await getDb()
+        .select()
+        .from(passwordResetTokens)
+        .where(eq(passwordResetTokens.user_id, userId));
+      assertEquals(rows.length, 0);
+      assertEquals(
+        records.some((record) =>
+          record.level === "error" && record.msg.includes("APP_URL")
+        ),
+        true,
+      );
+      assertEquals(
+        records.some((record) => record.msg === "密码重置邮件（mock）"),
+        false,
+      );
+    } finally {
+      await cleanupUser(username);
+      resetLogSink();
+      restoreEnv();
+    }
   },
 });
 
