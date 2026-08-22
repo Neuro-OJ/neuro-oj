@@ -391,6 +391,7 @@ export async function pollSubmission(
   submissionId: string,
   maxRetries = 45,
   intervalMs = 2000,
+  allowErrorResult = false,
 ): Promise<{ status: string; verdict: string; score: number }> {
   // 记录最后一次观测状态，用于超时时给出可诊断的错误信息
   let lastStatus = "(未取得)";
@@ -414,7 +415,7 @@ export async function pollSubmission(
         const verdict = (resultData?.status as string) || "Unknown";
         const score = (resultData?.score as number) || 0;
 
-        if (subStatus === "error") {
+        if (subStatus === "error" && !allowErrorResult) {
           throw new Error(
             `Submission ${submissionId} 评测失败，verdict=${verdict}`,
           );
