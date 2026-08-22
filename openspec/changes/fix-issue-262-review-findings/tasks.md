@@ -32,6 +32,10 @@
 
 - [x] 8.1 将生产环境未配置 `LOG_LEVEL` 时的默认级别设为 `warn`，更新环境模板，并补充显式配置覆盖与默认值测试
 
-## 9. 综合验证
+## 9. 邮件 Provider 配置校验
 
-- [ ] 9.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
+- [x] 9.1 抽取 Aliyun/Tencent 的缺失设置检查逻辑，保持当前 warning 内容与启动行为，并通过 core 类型检查与相关测试
+
+## 10. 综合验证
+
+- [ ] 10.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更
