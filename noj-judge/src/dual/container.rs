@@ -18,7 +18,7 @@ use tokio::time::timeout;
 use tracing::{info, warn};
 
 use crate::sandbox::cleanup::{instance_label_value, remove_container_force, INSTANCE_LABEL};
-use crate::sandbox::host_config::build_host_config;
+use crate::sandbox::host_config::build_host_config_with_cpu;
 
 /// `DualContainer` 持有 Evaluator + Solution 两个容器 ID。
 ///
@@ -39,10 +39,17 @@ impl DualContainer {
         image: &str,
         memory_mb: u64,
         network_enabled: bool,
+        cpu_limit_millicores: u64,
     ) -> Result<Self> {
-        let id =
-            create_container_with_security(docker, image, memory_mb, "evaluator", network_enabled)
-                .await?;
+        let id = create_container_with_security(
+            docker,
+            image,
+            memory_mb,
+            "evaluator",
+            network_enabled,
+            cpu_limit_millicores,
+        )
+        .await?;
         info!("Evaluator 容器创建: {}", id);
         Ok(Self {
             docker: docker.clone(),
@@ -52,9 +59,21 @@ impl DualContainer {
     }
 
     /// 在现有 DualContainer 上追加 Solution 容器。
-    pub async fn create_solution(&mut self, image: &str, memory_mb: u64) -> Result<()> {
-        let id = create_container_with_security(&self.docker, image, memory_mb, "solution", false)
-            .await?;
+    pub async fn create_solution(
+        &mut self,
+        image: &str,
+        memory_mb: u64,
+        cpu_limit_millicores: u64,
+    ) -> Result<()> {
+        let id = create_container_with_security(
+            &self.docker,
+            image,
+            memory_mb,
+            "solution",
+            false,
+            cpu_limit_millicores,
+        )
+        .await?;
         info!("Solution 容器创建: {}", id);
         self.solution_id = Some(id);
         Ok(())
@@ -158,6 +177,7 @@ async fn create_container_with_security(
     memory_mb: u64,
     kind: &str,
     network_enabled: bool,
+    cpu_limit_millicores: u64,
 ) -> Result<String> {
     let mut labels = std::collections::HashMap::new();
     labels.insert(format!("com.noj.judge.dual.{}", kind), "true".to_string());
@@ -179,7 +199,13 @@ async fn create_container_with_security(
 
     // solution 容器恒无网；evaluator 按配置可选 bridge 联网
     let network_mode = if network_enabled { "bridge" } else { "none" };
-    let host_config = build_host_config(memory_bytes, tmpfs, true, network_mode);
+    let host_config = build_host_config_with_cpu(
+        memory_bytes,
+        tmpfs,
+        true,
+        network_mode,
+        cpu_limit_millicores,
+    );
 
     let body = ContainerCreateBody {
         image: Some(image.to_string()),

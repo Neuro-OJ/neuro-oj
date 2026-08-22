@@ -12,7 +12,10 @@
  */
 
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { pushJudgeTask } from "../../src/mq/producer.ts";
+import {
+  MAX_JUDGE_QUEUE_LENGTH,
+  pushJudgeTask,
+} from "../../src/mq/producer.ts";
 import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
 import { startFakeRedis } from "./_setup.ts";
 import type { JudgeTask } from "../../src/types/index.ts";
@@ -64,7 +67,7 @@ Deno.test({
       const task = makeTask();
       const queueLen = await pushJudgeTask(task);
       assertEquals(typeof queueLen, "number", "应返回数字（队列长度）");
-      assertEquals(queueLen > 0, true, "队列长度应大于 0");
+      assertEquals(queueLen, 1, "首次入队应返回真实队列长度");
 
       // 验证消息被推送
       const messages = fake.getMessages("noj:judge:queue");
@@ -105,6 +108,46 @@ Deno.test({
         },
         Error,
         "Redis 连接不可用",
+      );
+    } finally {
+      await fake.stop();
+      resetRedisForTest();
+      Deno.env.delete("REDIS_URL");
+    }
+  },
+});
+
+Deno.test({
+  name: "mq/producer: 队列达到容量上限时原子拒绝且不写入",
+  ignore: !hasDb,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const fake = startFakeRedis();
+    try {
+      resetRedisForTest();
+      Deno.env.set("REDIS_URL", fake.url);
+      const redis = getRedis();
+      await redis.connect();
+      await redis.ping();
+
+      fake.seedQueue("noj:judge:queue", MAX_JUDGE_QUEUE_LENGTH);
+      const task = makeTask({ submission_id: "test-full-queue" });
+
+      await assertRejects(
+        async () => {
+          await pushJudgeTask(task);
+        },
+        Error,
+        "评测队列已满",
+      );
+
+      const messages = fake.getMessages("noj:judge:queue");
+      assertEquals(messages.length, MAX_JUDGE_QUEUE_LENGTH);
+      assertEquals(
+        messages.some((message) => message.includes("test-full-queue")),
+        false,
+        "队列已满时不应写入新任务",
       );
     } finally {
       await fake.stop();

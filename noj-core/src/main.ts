@@ -23,6 +23,31 @@ const app = createApp();
 
 const port = parseInt(Deno.env.get("PORT") || "8000", 10);
 
+const EMAIL_PROVIDER_REQUIRED_SETTINGS = {
+  aliyun: [
+    ["alibaba_access_key_id", "ALIBABA_ACCESS_KEY_ID"],
+    ["alibaba_access_key_secret", "ALIBABA_ACCESS_KEY_SECRET"],
+    ["alibaba_from_email", "ALIBABA_FROM_EMAIL"],
+  ],
+  tencent: [
+    ["tencent_secret_id", "TENCENT_SECRET_ID"],
+    ["tencent_secret_key", "TENCENT_SECRET_KEY"],
+    ["tencent_from_email", "TENCENT_FROM_EMAIL"],
+    ["tencent_region", "TENCENT_REGION"],
+  ],
+} as const;
+
+function findMissingEmailSettings(
+  required: readonly (readonly [string, string])[],
+): string[] {
+  return required
+    .filter(([key]) => {
+      const setting = getSetting(key);
+      return !(typeof setting?.value === "string" && setting.value.length > 0);
+    })
+    .map(([, label]) => label);
+}
+
 /**
  * 检查邮件 Provider 运行时配置。
  *
@@ -36,49 +61,20 @@ function checkEmailProviderConfig(): void {
     ? pSetting.value
     : "mock";
 
-  if (provider === "aliyun") {
-    const missing = [];
-    for (
-      const [key, label] of [
-        ["alibaba_access_key_id", "ALIBABA_ACCESS_KEY_ID"],
-        ["alibaba_access_key_secret", "ALIBABA_ACCESS_KEY_SECRET"],
-        ["alibaba_from_email", "ALIBABA_FROM_EMAIL"],
-      ]
-    ) {
-      const setting = getSetting(key);
-      if (!(typeof setting?.value === "string" && setting.value.length > 0)) {
-        missing.push(label);
-      }
-    }
-    if (missing.length > 0) {
-      logger.warn("email_provider=aliyun 但缺少配置", {
-        provider: "aliyun",
-        missing: missing.join(", "),
-        hint: "可通过管理后台 > 系统设置配置",
-      });
-    }
-  } else if (provider === "tencent") {
-    const missing = [];
-    for (
-      const [key, label] of [
-        ["tencent_secret_id", "TENCENT_SECRET_ID"],
-        ["tencent_secret_key", "TENCENT_SECRET_KEY"],
-        ["tencent_from_email", "TENCENT_FROM_EMAIL"],
-        ["tencent_region", "TENCENT_REGION"],
-      ]
-    ) {
-      const setting = getSetting(key);
-      if (!(typeof setting?.value === "string" && setting.value.length > 0)) {
-        missing.push(label);
-      }
-    }
-    if (missing.length > 0) {
-      logger.warn("email_provider=tencent 但缺少配置", {
-        provider: "tencent",
-        missing: missing.join(", "),
-        hint: "可通过管理后台 > 系统设置配置",
-      });
-    }
+  const required = provider === "aliyun"
+    ? EMAIL_PROVIDER_REQUIRED_SETTINGS.aliyun
+    : provider === "tencent"
+    ? EMAIL_PROVIDER_REQUIRED_SETTINGS.tencent
+    : undefined;
+  if (!required) return;
+
+  const missing = findMissingEmailSettings(required);
+  if (missing.length > 0) {
+    logger.warn(`email_provider=${provider} 但缺少配置`, {
+      provider,
+      missing: missing.join(", "),
+      hint: "可通过管理后台 > 系统设置配置",
+    });
   }
 }
 
@@ -201,7 +197,7 @@ async function main() {
   }
 
   // 启动评测结果消费者（后台运行，带自动重连，不阻塞 HTTP）
-  startResultConsumerWithRetry();
+  void startResultConsumerWithRetry();
 
   // 启动 processing 超时重投 + pending 提交恢复 sweeper
   startQueueSweeper();

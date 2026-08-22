@@ -207,15 +207,16 @@ async fn inject_file_to_container(
     anyhow::bail!("注入文件超时")
 }
 
-/// 双容器评测主入口。
+/// 双容器评测入口，允许通过 Worker 配置传入每个容器的 CPU 上限。
 #[allow(clippy::too_many_arguments)]
-pub async fn evaluate_dual(
+pub async fn evaluate_dual_with_cpu_limit(
     docker: bollard::Docker,
     task_submission_id: &str,
     runtime_config: &RuntimeConfig,
     user_code: &str,
     support_pkg_bytes: Option<&[u8]>,
     task_rejudge_seq: Option<i64>,
+    cpu_limit_millicores: u64,
     allow_evaluator_network: bool,
     image_prefix: &str,
     command_whitelist: &[String],
@@ -242,6 +243,7 @@ pub async fn evaluate_dual(
         &runtime_config.evaluator.image,
         runtime_config.evaluator.memory_limit_mb,
         evaluator_network_enabled,
+        cpu_limit_millicores,
     )
     .await
     .context("创建 Evaluator 容器失败")?;
@@ -250,6 +252,7 @@ pub async fn evaluate_dual(
     dual.create_solution(
         &runtime_config.solution.image,
         runtime_config.solution.memory_limit_mb,
+        cpu_limit_millicores,
     )
     .await
     .context("创建 Solution 容器失败")?;

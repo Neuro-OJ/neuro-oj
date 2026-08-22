@@ -1,0 +1,74 @@
+## 1. 注册并发冲突
+
+- [x] 1.1 在注册用户 INSERT 的异常路径识别 PostgreSQL/PGlite `23505`，按用户名/邮箱唯一约束返回对应 `ConflictError`，并用服务测试验证并发注册只有一个成功且其余返回 409
+
+## 2. 评测队列原子容量保护
+
+- [x] 2.1 扩展 Redis 最小客户端接口和 fake Redis，支持 EVAL/LLEN 所需的测试协议，并验证现有 producer 测试仍可运行
+- [x] 2.2 用 Redis Lua 原子脚本替换 producer 的 LLEN + LPUSH 竞态窗口，验证未满返回真实队列长度、已满拒绝且不写入
+
+## 3. CORS 凭证与响应头
+
+- [x] 3.1 将开发环境 CORS 改为受控本地来源，增加限流/请求追踪响应头的 exposeHeaders，并用 app 测试验证 Origin、credentials 和 expose headers
+
+## 4. Judge Docker client 生命周期
+
+- [x] 4.1 将启动时验证过的 Docker client clone 到评测任务，移除每任务重复连接，并通过 Rust 格式检查、cargo check 验证编译
+
+## 5. Judge 评测并发上限
+
+- [x] 5.1 在 judge Config 中加入 `JUDGE_MAX_CONCURRENT_JUDGES`，默认 2、无效值回退有限默认值，补充配置解析测试并更新 judge 文档/开发环境模板
+- [x] 5.2 在主循环拉取前接入 semaphore 闸门，保证 in-flight task 不超过配置上限、任务完成/失败/drain 都释放额度，并通过 cargo test 验证
+
+## 6. SSE 订阅权限上下文
+
+- [x] 6.1 将提交 SSE 路由调用 `getSubmission` 时的 userRole 与 Hono Context 一并传递，确保实时 RBAC 权限检查与普通提交详情路由保持一致，并补充管理员订阅他人提交的路由测试
+
+## 7. 提交服务模块依赖
+
+- [x] 7.1 将 `getSubmissionQueueStatus` 从动态 import 改为静态导入，确认 `queue.ts` 不反向依赖提交 CRUD，并通过提交服务测试验证行为不变
+
+## 8. 生产日志默认级别
+
+- [x] 8.1 将生产环境未配置 `LOG_LEVEL` 时的默认级别设为 `warn`，更新环境模板，并补充显式配置覆盖与默认值测试
+
+## 9. 邮件 Provider 配置校验
+
+- [x] 9.1 抽取 Aliyun/Tencent 的缺失设置检查逻辑，保持当前 warning 内容与启动行为，并通过 core 类型检查与相关测试
+
+## 10. Judge 容器 CPU 上限
+
+- [x] 10.1 增加 `JUDGE_CPU_LIMIT_MILLICORES` 配置及安全范围校验，默认保持 1 核
+- [x] 10.2 将 CPU 上限传递到 Evaluator/Solution HostConfig，补充配置与 HostConfig 单元测试并更新 judge 运维文档
+
+## 11. Judge 命令转义分词
+
+- [x] 11.1 在 `parse_command` 中支持反斜杠转义，补充引号、空格和末尾反斜杠测试，并通过 judge 单元测试
+
+## 12. Judge 支持包缓存并发淘汰
+
+- [x] 12.1 为同一缓存目录增加进程级共享锁，覆盖 get/set/evict 临界区，并通过 judge 缓存测试验证并发写入不突破上限
+
+## 13. Nuxt 认证代理响应校验
+
+- [x] 13.1 抽取并测试认证响应的 token/user 运行时校验，缺少有效字段时由代理返回 500 且不写 Cookie
+
+## 14. Nuxt 管理员会话标记
+
+- [x] 14.1 要求认证响应提供按 `admin:full_access` 计算的 `is_admin` 布尔值，session Cookie 不再根据 role 字符串回退，并补充自定义角色回归测试
+
+## 15. Core 评测结果消费者池
+
+- [x] 15.1 将结果消费者改为可配置的有界多连接池，默认 4、范围 1-16，汇总健康状态并补充配置测试、环境模板和运维文档
+
+## 16. Local 支持包传输评估
+
+- [x] 16.1 核对 local Base64 内联与 Redis 16 MiB 消息上限，补充运维文档；共享卷/鉴权下载协议留待独立变更，生产大包使用 S3/MinIO
+
+## 17. 提交入队失败恢复评估
+
+- [x] 17.1 核对现有 2 分钟 pending 恢复与 30 秒 sweeper 周期，补充正式提交恢复回归测试；保留未知 Redis push 的持久化兜底，不引入可能造成重复评测的盲目立即重试
+
+## 18. 综合验证
+
+- [x] 18.1 运行 OpenSpec validate、core deno fmt/lint/相关测试、judge Rust 格式检查/clippy/test，并审查最终 diff 确认没有混入工作区既有变更

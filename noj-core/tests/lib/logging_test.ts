@@ -80,6 +80,23 @@ Deno.test({
 });
 
 Deno.test({
+  name: "logging: 生产环境未配置 LOG_LEVEL 时默认 warn",
+  fn: () => {
+    const { records, restore } = withCapture();
+    try {
+      Deno.env.set("NOJ_ENV", "production");
+      Deno.env.delete("LOG_LEVEL");
+      logger.info("info 应被抑制");
+      logger.warn("warn 应输出");
+      assertEquals(records.length, 1);
+      assertEquals(records[0].level, "warn");
+    } finally {
+      restore();
+    }
+  },
+});
+
+Deno.test({
   name: "logging: 生产环境脱敏 submission_id / score / code",
   fn: () => {
     const { records, restore } = withCapture();

@@ -162,9 +162,10 @@ noj-core/
 | `TFA_ENCRYPTION_KEY`              | —                         | TOTP secret 加密密钥（≥32 字符，与 JWT_SECRET 隔离）                        |
 | `JWT_EXPIRES_IN`                  | `24h`                     | Token 有效期                                                                |
 | `REDIS_URL`                       | `redis://127.0.0.1:6379/` | Redis 连接串                                                                |
+| `RESULT_CONSUMER_CONCURRENCY`     | `4`                       | 评测结果消费者连接数（1-16）                                                |
 | `PORT`                            | `8000`                    | HTTP 监听端口                                                               |
 | `NOJ_ENV`                         | 空（development）         | `production` 启用生产模式                                                   |
-| `LOG_LEVEL`                       | prod=info / dev=debug     | 日志级别：`debug`/`info`/`warn`/`error`，低于阈值的日志被抑制               |
+| `LOG_LEVEL`                       | prod=warn / dev=debug     | 日志级别：`debug`/`info`/`warn`/`error`，低于阈值的日志被抑制               |
 | `LOG_FORMAT`                      | prod=json / dev=pretty    | 日志输出格式：`json`（结构化）/ `pretty`（人类可读）                        |
 | `ADMIN_EMAIL`                     | —                         | 管理员邮箱（**强烈推荐**）。未设置时 bootstrap admin 自动创建临时引导管理员 |
 | `ADMIN_PASS`                      | —                         | Seed 管理员密码（需与 ADMIN_EMAIL 配合）                                    |
@@ -552,12 +553,14 @@ Retry-After: 25
 
 ## CORS 配置
 
-| 环境                                | 行为                                     |
-| ----------------------------------- | ---------------------------------------- |
-| 开发（默认）                        | `Access-Control-Allow-Origin: *`         |
-| 生产（`CORS_ALLOWED_ORIGINS` 设置） | 仅允许白名单域名，空列表拒绝所有跨域请求 |
+| 环境                                | 行为                                                      |
+| ----------------------------------- | --------------------------------------------------------- |
+| 开发（默认）                        | 仅允许 `http://localhost:3000` 与 `http://127.0.0.1:3000` |
+| 生产（`CORS_ALLOWED_ORIGINS` 设置） | 仅允许白名单域名，空列表拒绝所有跨域请求                  |
 
 - `credentials: true`（为 Cookie 认证预留）
+- 暴露 `Retry-After`、`X-RateLimit-*`、`X-Request-Id`
+  响应头，供前端读取限流和请求追踪信息
 - `maxAge: 86400`（预请求缓存 24h）
 - 允许方法：`GET, POST, PUT, PATCH, DELETE, OPTIONS`
 - 允许头：`Content-Type, Authorization`

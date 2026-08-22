@@ -12,7 +12,9 @@ mod types;
 
 use anyhow::{Context, Result};
 use bollard::Docker;
-use futures_util::stream::FuturesUnordered;
+use futures_util::{stream::FuturesUnordered, FutureExt, StreamExt};
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 use tracing::{error, info};
 
 use crate::config::Config;
@@ -26,6 +28,23 @@ const PULL_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// 评测结果 fallback 文件目录名（相对 work_dir）。
 const FALLBACK_RESULTS_DIR: &str = "fallback-results";
+
+/// 在拉取任务前获取评测许可；收到关闭信号时返回 `None`。
+///
+/// 将这段选择逻辑独立出来，确保主循环在等待并发额度时可立即进入 drain，
+/// 而拿到许可后不会再用可取消的 select 包住 BRPOPLPUSH。
+async fn acquire_judge_permit(
+    semaphore: Arc<Semaphore>,
+    shutdown_rx: &mut tokio::sync::oneshot::Receiver<()>,
+) -> Result<Option<tokio::sync::OwnedSemaphorePermit>> {
+    tokio::select! {
+        biased;
+        _ = shutdown_rx => Ok(None),
+        permit = semaphore.acquire_owned() => {
+            Ok(Some(permit.context("获取评测并发许可失败")?))
+        }
+    }
+}
 
 /// 初始化 Tokio 运行时，连接 Redis 与 Docker，进入主循环阻塞拉取评测任务。
 fn main() -> Result<()> {
@@ -86,14 +105,18 @@ fn main() -> Result<()> {
         let image_prefix = config.image_prefix.clone();
         let command_whitelist = config.command_whitelist.clone();
         let drain_timeout = config.drain_timeout_secs();
+        let max_concurrent_judges = config.max_concurrent_judges;
+        let cpu_limit_millicores = config.cpu_limit_millicores;
+        let judge_semaphore = Arc::new(Semaphore::new(max_concurrent_judges));
+        info!("评测并发上限: {}", max_concurrent_judges);
+        info!("每个评测容器 CPU 上限: {}m", cpu_limit_millicores);
 
         // NOJ-152/155：同时监听 SIGTERM 与 SIGINT 触发优雅关闭。
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         tokio::spawn(async move {
-            let mut sigterm = tokio::signal::unix::signal(
-                tokio::signal::unix::SignalKind::terminate(),
-            )
-            .expect("注册 SIGTERM 处理器失败");
+            let mut sigterm =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("注册 SIGTERM 处理器失败");
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {
                     info!("收到 SIGINT，开始优雅关闭...");
@@ -111,93 +134,124 @@ fn main() -> Result<()> {
         let mut tasks = FuturesUnordered::new();
 
         loop {
-            tokio::select! {
-                biased;
-                _ = &mut shutdown_rx => {
-                    drain::drain_tasks(&mut tasks, drain_timeout).await;
-                    break;
+            // 只允许在等待并发许可时响应关闭信号。拿到许可后必须完整执行
+            // BRPOPLPUSH：Redis 可能已经把消息移入 processing，若此时取消
+            // future，消息会留在 processing 却永远不会进入评测任务。
+            let permit =
+                match acquire_judge_permit(Arc::clone(&judge_semaphore), &mut shutdown_rx).await? {
+                    Some(permit) => permit,
+                    None => {
+                        drain::drain_tasks(&mut tasks, drain_timeout).await;
+                        break;
+                    }
+                };
+
+            let task_result = mq::pull_task(&mut redis_conn, &judge_queue).await;
+            let pulled: PulledTask = match task_result {
+                Ok(Some(pulled)) => pulled,
+                Ok(None) => {
+                    drop(permit);
+                    continue;
                 }
-                task_result = mq::pull_task(&mut redis_conn, &judge_queue) => {
-                    let pulled: PulledTask = match task_result {
-                        Ok(Some(pulled)) => pulled,
-                        Ok(None) => continue,
-                        Err(e) => {
-                            error!("拉取任务失败: {}", e);
-                            tokio::time::sleep(PULL_RETRY_DELAY).await;
-                            continue;
-                        }
-                    };
+                Err(e) => {
+                    drop(permit);
+                    error!("拉取任务失败: {}", e);
+                    tokio::time::sleep(PULL_RETRY_DELAY).await;
+                    continue;
+                }
+            };
 
-                    info!(
-                        "收到评测任务: submission_id={}, language={}",
-                        pulled.task.submission_id, pulled.task.language
-                    );
+            info!(
+                "收到评测任务: submission_id={}, language={}",
+                pulled.task.submission_id, pulled.task.language
+            );
 
-                    let redis_client = redis_client.clone();
-                    let result_queue = result_queue.clone();
-                    let judge_queue = judge_queue.clone();
-                    let cache_dir = cache_dir.clone();
-                    let fallback_dir = fallback_dir.clone();
-                    let image_prefix = image_prefix.clone();
-                    let command_whitelist = command_whitelist.clone();
+            let redis_client = redis_client.clone();
+            let result_queue = result_queue.clone();
+            let judge_queue = judge_queue.clone();
+            let cache_dir = cache_dir.clone();
+            let fallback_dir = fallback_dir.clone();
+            let image_prefix = image_prefix.clone();
+            let command_whitelist = command_whitelist.clone();
+            let docker = docker.clone();
 
-                    let handle = tokio::spawn(async move {
-                        let raw = pulled.raw;
-                        let task = pulled.task;
+            let handle = tokio::spawn(async move {
+                let _permit = permit;
+                let raw = pulled.raw;
+                let task = pulled.task;
 
-                        // 统一使用双容器模式（Evaluator + Solution）
-                        let docker = match Docker::connect_with_local_defaults() {
-                            Ok(d) => d,
-                            Err(e) => {
-                                error!(submission_id = %task.submission_id, error = %e, "连接 Docker daemon 失败");
-                                let result = types::JudgeResult::error(
-                                    &task.submission_id,
-                                    task.rejudge_seq,
-                                );
-                                if mq::push_result_with_retry(
-                                    &redis_client,
-                                    &result_queue,
-                                    &result,
-                                    &fallback_dir,
-                                ).await {
-                                    mq::ack_task(&redis_client, &judge_queue, &raw).await;
-                                }
-                                return;
-                            }
-                        };
-                        let result = match judge::runner::evaluate(
-                            docker,
-                            &task,
-                            download_timeout,
-                            cache_dir.clone(),
-                            cache_max_items,
-                            cache_max_mb,
-                            allow_evaluator_network,
-                            &image_prefix,
-                            &command_whitelist,
-                        ).await {
-                            Ok(r) => r,
-                            Err(e) => {
-                                error!(submission_id = %task.submission_id, error = %e, "双容器评测失败");
-                                types::JudgeResult::error(&task.submission_id, task.rejudge_seq)
-                            }
-                        };
+                // 统一使用双容器模式（Evaluator + Solution）
+                let result = match judge::runner::evaluate_with_cpu_limit(
+                    docker,
+                    &task,
+                    download_timeout,
+                    cache_dir.clone(),
+                    cache_max_items,
+                    cache_max_mb,
+                    cpu_limit_millicores,
+                    allow_evaluator_network,
+                    &image_prefix,
+                    &command_whitelist,
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        error!(submission_id = %task.submission_id, error = %e, "双容器评测失败");
+                        types::JudgeResult::error(&task.submission_id, task.rejudge_seq)
+                    }
+                };
 
-                        // 使用带重试的推送；成功后确认任务，崩溃/失败则留给 sweeper。
-                        if mq::push_result_with_retry(
-                            &redis_client,
-                            &result_queue,
-                            &result,
-                            &fallback_dir,
-                        ).await {
-                            mq::ack_task(&redis_client, &judge_queue, &raw).await;
-                        }
-                    });
-                    tasks.push(handle);
+                // 使用带重试的推送；成功后确认任务，崩溃/失败则留给 sweeper。
+                if mq::push_result_with_retry(&redis_client, &result_queue, &result, &fallback_dir)
+                    .await
+                {
+                    mq::ack_task(&redis_client, &judge_queue, &raw).await;
+                }
+            });
+            tasks.push(handle);
+
+            // 不等待任务完成，只回收已经完成的 JoinHandle，避免长期运行时
+            // FuturesUnordered 无限增长；BRPOPLPUSH 本身不会在此处被取消。
+            while let Some(join_result) = tasks.next().now_or_never().flatten() {
+                if let Err(e) = join_result {
+                    error!("评测任务异步执行失败: {}", e);
                 }
             }
         }
 
         Ok(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn shutdown_signal_interrupts_waiting_for_judge_permit() {
+        let semaphore = Arc::new(Semaphore::new(0));
+        let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
+        shutdown_tx.send(()).unwrap();
+
+        let permit = acquire_judge_permit(semaphore, &mut shutdown_rx)
+            .await
+            .unwrap();
+        assert!(permit.is_none());
+    }
+
+    #[tokio::test]
+    async fn judge_permit_is_released_after_task_owns_it() {
+        let semaphore = Arc::new(Semaphore::new(1));
+        let (_shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
+
+        let permit = acquire_judge_permit(Arc::clone(&semaphore), &mut shutdown_rx)
+            .await
+            .unwrap()
+            .expect("应获取到评测许可");
+        assert_eq!(semaphore.available_permits(), 0);
+
+        drop(permit);
+        assert_eq!(semaphore.available_permits(), 1);
+    }
 }

@@ -1,4 +1,8 @@
-import { createConsumer, requestConsumerShutdown } from "./base-consumer.ts";
+import {
+  type ConsumerOptions,
+  createConsumer,
+  requestConsumerShutdown,
+} from "./base-consumer.ts";
 import { saveEvaluationResult } from "../services/submissions/submissions.ts";
 import { saveSelfTestResult } from "../services/self-tests.ts";
 import { logger, logJudgeResultReceived } from "../lib/logging.ts";
@@ -12,11 +16,72 @@ import type { JudgeResult } from "../types/index.ts";
  */
 export const RESULT_QUEUE = "noj:judge:results";
 
+/** 结果消费者默认并发连接数。 */
+export const DEFAULT_RESULT_CONSUMER_CONCURRENCY = 4;
+/** 结果消费者并发连接数上限，避免误配置耗尽 Redis/数据库连接。 */
+export const MAX_RESULT_CONSUMER_CONCURRENCY = 16;
+
+/**
+ * 解析结果消费者并发配置。
+ * 非正整数、超出上限或无法解析时回退到安全默认值。
+ */
+export function parseResultConsumerConcurrency(
+  raw: string | undefined = Deno.env.get("RESULT_CONSUMER_CONCURRENCY"),
+): number {
+  const value = raw === undefined ? NaN : Number(raw);
+  return Number.isInteger(value) && value >= 1 &&
+      value <= MAX_RESULT_CONSUMER_CONCURRENCY
+    ? value
+    : DEFAULT_RESULT_CONSUMER_CONCURRENCY;
+}
+
 /**
  * 消费者活跃状态标识。
  * 供健康检查端点查询消费者是否在正常运行。
  */
 export const consumerAlive = { value: false };
+
+/** 结果消费者工厂，测试可注入以验证消费者池的编排行为。 */
+export type ResultConsumerFactory = (
+  options: ConsumerOptions,
+) => () => Promise<void>;
+
+/**
+ * 创建结果消费者池。
+ *
+ * 每个消费者共享同一个健康状态汇总，但各自持有独立的 aliveRef；只要有一个
+ * 消费者仍在运行，consumerAlive 就保持为 true。
+ */
+export function createResultConsumerPool(
+  concurrency: number,
+  consumerFactory: ResultConsumerFactory = createConsumer,
+): () => Promise<void> {
+  const states = Array.from({ length: concurrency }, () => false);
+  consumerAlive.value = false;
+  const aliveRefs = states.map((_, index) => ({
+    get value(): boolean {
+      return states[index] ?? false;
+    },
+    set value(value: boolean) {
+      states[index] = value;
+      consumerAlive.value = states.some(Boolean);
+    },
+  }));
+
+  const consumers = aliveRefs.map((aliveRef, index) =>
+    consumerFactory({
+      queueName: RESULT_QUEUE,
+      logLabel: `结果-${index + 1}/${concurrency}`,
+      aliveRef,
+      handleMessage: handleResultMessage,
+      requeueOnError: true,
+    })
+  );
+
+  return async () => {
+    await Promise.all(consumers.map((start) => start()));
+  };
+}
 
 export async function handleResultMessage(
   data: Record<string, unknown>,
@@ -72,18 +137,16 @@ export async function handleResultMessage(
 }
 
 /**
- * 启动评测结果消费者（带自动重连）。
+ * 启动结果消费者池。
  *
- * 在内部因 Redis 断开等原因退出时，
- * 使用指数退避策略自动创建新连接并重新启动消费。
- * 此函数不会正常返回——它会持续尝试重连。
+ * 每个消费者使用独立 Redis 连接，但共享同一 processing 列表；Redis 的
+ * BRPOPLPUSH 保证一条消息只会被一个连接领取。单条消息仍按原有顺序完成
+ * “持久化 → LREM 确认”，因此不会改变 at-least-once 与幂等语义。
  */
-export const startResultConsumerWithRetry = createConsumer({
-  queueName: RESULT_QUEUE,
-  logLabel: "结果",
-  aliveRef: consumerAlive,
-  handleMessage: handleResultMessage,
-  requeueOnError: true,
-});
+export async function startResultConsumerWithRetry(): Promise<void> {
+  const concurrency = parseResultConsumerConcurrency();
+  logger.info("评测结果消费者池已配置", { concurrency });
+  await createResultConsumerPool(concurrency)();
+}
 
 export { requestConsumerShutdown as requestResultConsumerShutdown };

@@ -27,7 +27,26 @@ pub struct Config {
     pub command_whitelist: Vec<String>,
     /// 是否允许消息开启 evaluator 网络（默认拒绝；E2E 可显式开启）
     pub allow_evaluator_network: bool,
+    /// 同时执行的评测任务数（默认: 2）
+    pub max_concurrent_judges: usize,
+    /// 每个评测容器的 CPU 上限（单位：millicores，默认: 1000 = 1 核）
+    pub cpu_limit_millicores: u64,
 }
+
+/// 未配置或配置无效时的评测并发上限。
+pub const DEFAULT_MAX_CONCURRENT_JUDGES: usize = 2;
+
+/// 未配置或配置无效时的评测容器 CPU 上限。
+pub const DEFAULT_CPU_LIMIT_MILLICORES: u64 = 1000;
+
+/// CPU 配置的最小值（100m = 0.1 核）。
+pub const MIN_CPU_LIMIT_MILLICORES: u64 = 100;
+
+/// CPU 配置的最大值（16 核），防止错误配置绕过资源边界。
+pub const MAX_CPU_LIMIT_MILLICORES: u64 = 16_000;
+
+/// 防止错误配置创建过大的 semaphore 或占满调度资源。
+const MAX_CONFIGURED_CONCURRENT_JUDGES: usize = 1024;
 
 impl Config {
     /// 从环境变量加载配置。
@@ -58,6 +77,14 @@ impl Config {
                 .collect(),
             allow_evaluator_network: env_var_parse::<bool>("JUDGE_ALLOW_EVALUATOR_NETWORK")
                 .unwrap_or(false),
+            max_concurrent_judges: env_var_parse::<usize>("JUDGE_MAX_CONCURRENT_JUDGES")
+                .filter(|value| (1..=MAX_CONFIGURED_CONCURRENT_JUDGES).contains(value))
+                .unwrap_or(DEFAULT_MAX_CONCURRENT_JUDGES),
+            cpu_limit_millicores: env_var_parse::<u64>("JUDGE_CPU_LIMIT_MILLICORES")
+                .filter(|value| {
+                    (MIN_CPU_LIMIT_MILLICORES..=MAX_CPU_LIMIT_MILLICORES).contains(value)
+                })
+                .unwrap_or(DEFAULT_CPU_LIMIT_MILLICORES),
         }
     }
 
@@ -130,13 +157,22 @@ mod tests {
     #[test]
     fn test_config_defaults() {
         let _lock = ENV_TEST_MUTEX.lock().unwrap();
-        for key in &["REDIS_URL", "JUDGE_QUEUE", "RESULT_QUEUE", "WORK_DIR"] {
+        for key in &[
+            "REDIS_URL",
+            "JUDGE_QUEUE",
+            "RESULT_QUEUE",
+            "WORK_DIR",
+            "JUDGE_MAX_CONCURRENT_JUDGES",
+            "JUDGE_CPU_LIMIT_MILLICORES",
+        ] {
             std::env::remove_var(key);
         }
         let cfg = Config::from_env();
         assert_eq!(cfg.redis_url, "redis://127.0.0.1/");
         assert_eq!(cfg.judge_queue, "noj:judge:queue");
         assert_eq!(cfg.work_dir, "/tmp/noj-judge");
+        assert_eq!(cfg.max_concurrent_judges, DEFAULT_MAX_CONCURRENT_JUDGES);
+        assert_eq!(cfg.cpu_limit_millicores, DEFAULT_CPU_LIMIT_MILLICORES);
     }
 
     #[test]
@@ -147,11 +183,35 @@ mod tests {
             ("JUDGE_QUEUE", "custom:queue"),
             ("RESULT_QUEUE", "custom:results"),
             ("WORK_DIR", "/custom/path"),
+            ("JUDGE_MAX_CONCURRENT_JUDGES", "3"),
+            ("JUDGE_CPU_LIMIT_MILLICORES", "2500"),
         ]);
         let cfg = Config::from_env();
         assert_eq!(cfg.redis_url, "redis://custom:6379");
         assert_eq!(cfg.judge_queue, "custom:queue");
         assert_eq!(cfg.result_queue, "custom:results");
         assert_eq!(cfg.work_dir, "/custom/path");
+        assert_eq!(cfg.max_concurrent_judges, 3);
+        assert_eq!(cfg.cpu_limit_millicores, 2500);
+    }
+
+    #[test]
+    fn test_config_invalid_concurrency_falls_back_to_default() {
+        let _lock = ENV_TEST_MUTEX.lock().unwrap();
+        for value in ["0", "not-a-number", "999999999999999999999999999"] {
+            let _guard = EnvGuard::set(vec![("JUDGE_MAX_CONCURRENT_JUDGES", value)]);
+            let cfg = Config::from_env();
+            assert_eq!(cfg.max_concurrent_judges, DEFAULT_MAX_CONCURRENT_JUDGES);
+        }
+    }
+
+    #[test]
+    fn test_config_invalid_cpu_limit_falls_back_to_default() {
+        let _lock = ENV_TEST_MUTEX.lock().unwrap();
+        for value in ["0", "99", "16001", "not-a-number"] {
+            let _guard = EnvGuard::set(vec![("JUDGE_CPU_LIMIT_MILLICORES", value)]);
+            let cfg = Config::from_env();
+            assert_eq!(cfg.cpu_limit_millicores, DEFAULT_CPU_LIMIT_MILLICORES);
+        }
     }
 }

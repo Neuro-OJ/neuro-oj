@@ -8,11 +8,26 @@
  *
  * SSE 流式端点通过短超时 + AbortSignal 获取初始响应头。
  */
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals, assertStringIncludes } from "jsr:@std/assert@^1";
+import { eq } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
+import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import {
+  problems,
+  submissions,
+  userRoles,
+  users,
+} from "../../src/db/schema.ts";
+import { signToken } from "../../src/lib/jwt.ts";
+import { initRedisForTest } from "../lib/helper.ts";
+import { ensureRbacSeeds } from "../../src/services/seed/seed-rbac.ts";
 
 const app = createApp();
 const JWT_SECRET = Deno.env.get("JWT_SECRET");
+
+await resetDbForTest();
+await initRedisForTest();
+await ensureRbacSeeds();
 
 // ─── 统计数据 SSE（公开，无需认证） ──────────────────────────
 
@@ -60,6 +75,84 @@ Deno.test({
     // 此处只验证不会返回 500
     if (res.status >= 500) {
       throw new Error("不应返回 500, 实际 " + res.status);
+    }
+  },
+});
+
+Deno.test({
+  name: "sse: 管理员权限通过请求上下文传递后可订阅他人提交",
+  ignore: !JWT_SECRET,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const adminId = crypto.randomUUID();
+    const ownerId = crypto.randomUUID();
+    const problemId = crypto.randomUUID();
+    const submissionId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await db.insert(users).values([
+      {
+        id: adminId,
+        username: `sse-admin-${adminId}`,
+        email: `${adminId}@test.local`,
+        password_hash: "test",
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: ownerId,
+        username: `sse-owner-${ownerId}`,
+        email: `${ownerId}@test.local`,
+        password_hash: "test",
+        created_at: now,
+        updated_at: now,
+      },
+    ]);
+    await db.insert(userRoles).values({ user_id: adminId, role_id: "admin" });
+    await db.insert(userRoles).values({ user_id: ownerId, role_id: "user" });
+    await db.insert(problems).values({
+      id: problemId,
+      title: "SSE 权限测试题",
+      description: "SSE 权限测试",
+      difficulty: "easy",
+      runtime_config: {},
+      number: 990000 + (Date.now() & 0x7fff),
+      owner_id: adminId,
+      type: "U",
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: ownerId,
+      problem_id: problemId,
+      language: "python3",
+      code: "print(1)",
+      file_name: "main.py",
+      status: "finished",
+      created_at: now,
+    });
+
+    try {
+      // JWT 角色故意使用普通 user，验证权限来自请求上下文的实时 RBAC，
+      // 而不是依赖旧的 role 字段。
+      const token = await signToken({ sub: adminId, role: "user" });
+      const res = await app.request(
+        `/api/v1/submissions/${submissionId}/events`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(3000),
+        },
+      );
+      assertEquals(res.status, 200);
+      assertStringIncludes(await res.text(), "submission:updated");
+    } finally {
+      await db.delete(submissions).where(eq(submissions.id, submissionId));
+      await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, adminId));
+      await db.delete(users).where(eq(users.id, ownerId));
     }
   },
 });

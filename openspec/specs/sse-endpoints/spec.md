@@ -9,10 +9,17 @@
 系统 SHALL 提供 `GET /api/v1/submissions/:id/events` 端点，通过 SSE 流式推送提交状态变更。
 
 - 端点 SHALL 受 JWT 认证保护（复用 authMiddleware）
+- 路由调用提交详情服务时 MUST 传递当前请求的 userId、userRole 和 Hono Context，
+  使 `submission:read_all` 等实时 RBAC 权限可被正确判断
 - 响应 Content-Type SHALL 为 `text/event-stream`
 - 当 `noj:events:submission:<id>` 频道有事件时 SHALL 以 `submission:updated` 事件名推送，data 为 `{ type: "submission:updated", id: "<submission_id>" }`（仅作触发通知，不包含完整提交数据）
 - 每 30 秒 SHALL 发送心跳事件（`keepalive`）
 - 如果提交已处于终态（`finished`/`error`），连接建立后立即推送一次 `submission:updated` 事件并关闭连接
+
+#### Scenario: 管理员订阅他人提交
+
+- **WHEN** 已认证用户通过实时 RBAC 具备 `submission:read_all` 权限，并 GET 他人提交的 SSE 端点
+- **THEN** 路由将完整认证上下文传递给提交详情服务，连接建立成功并返回状态事件流
 
 #### Scenario: 提交状态实时推送
 

@@ -9,7 +9,10 @@ import {
   users,
 } from "../../src/db/schema.ts";
 import { handleResultMessage } from "../../src/mq/consumer.ts";
-import { recoverPendingSelfTests } from "../../src/mq/sweeper.ts";
+import {
+  recoverPendingSelfTests,
+  recoverPendingSubmissions,
+} from "../../src/mq/sweeper.ts";
 import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
 import { startFakeRedis } from "./_setup.ts";
 import { SELF_TEST_ID_PREFIX } from "../../src/types/self-tests.ts";
@@ -24,6 +27,8 @@ const SUBMISSION_ID = `tst-consumer-st-sub-${ts}`;
 const BAD_PROBLEM_ID = `tst-consumer-st-bad-problem-${ts}`;
 const PENDING_SELF_TEST_ID = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
 const RECOVERABLE_SELF_TEST_ID = `${SELF_TEST_ID_PREFIX}${crypto.randomUUID()}`;
+const RECOVERABLE_SUBMISSION_ID = `tst-consumer-st-recover-sub-${ts}`;
+const INVALID_SUBMISSION_ID = `tst-consumer-st-invalid-sub-${ts}`;
 const now = new Date().toISOString();
 const oldNow = new Date(Date.now() - 3 * 60_000).toISOString();
 
@@ -122,6 +127,24 @@ Deno.test({
       code: "print('hi')",
       created_at: now,
     });
+    await db.insert(submissions).values({
+      id: RECOVERABLE_SUBMISSION_ID,
+      user_id: USER_ID,
+      problem_id: PROBLEM_ID,
+      status: "pending",
+      language: "python3",
+      code: "print('recover')",
+      created_at: oldNow,
+    });
+    await db.insert(submissions).values({
+      id: INVALID_SUBMISSION_ID,
+      user_id: USER_ID,
+      problem_id: BAD_PROBLEM_ID,
+      status: "pending",
+      language: "python3",
+      code: "print('invalid')",
+      created_at: oldNow,
+    });
   },
 });
 
@@ -210,6 +233,41 @@ Deno.test({
 });
 
 Deno.test({
+  name: "mq/consumer: 2 分钟后恢复 pending 正式提交",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const fake = startFakeRedis();
+    const prevUrl = Deno.env.get("REDIS_URL") ?? null;
+    try {
+      resetRedisForTest();
+      Deno.env.set("REDIS_URL", fake.url);
+      const redis = getRedis();
+      await redis.connect();
+
+      await recoverPendingSubmissions(Date.now());
+
+      const db = getDb();
+      const [row] = await db
+        .select()
+        .from(submissions)
+        .where(eq(submissions.id, RECOVERABLE_SUBMISSION_ID))
+        .limit(1);
+      assertEquals(row.status, "judging");
+    } finally {
+      await fake.stop();
+      resetRedisForTest();
+      if (prevUrl !== null) {
+        Deno.env.set("REDIS_URL", prevUrl);
+      } else {
+        Deno.env.delete("REDIS_URL");
+      }
+    }
+  },
+});
+
+Deno.test({
   name:
     "mq/consumer self-test: 可恢复 pending 自测成功入队且保留 judge_started_at",
   ignore: skip,
@@ -265,6 +323,24 @@ Deno.test({
 });
 
 Deno.test({
+  name: "mq/consumer: pending 正式提交缺少 runtime_config 被标记 error",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await recoverPendingSubmissions(Date.now());
+
+    const db = getDb();
+    const [row] = await db
+      .select()
+      .from(submissions)
+      .where(eq(submissions.id, INVALID_SUBMISSION_ID))
+      .limit(1);
+    assertEquals(row.status, "error");
+  },
+});
+
+Deno.test({
   name: "mq/consumer self-test: 清理数据",
   ignore: skip,
   sanitizeResources: false,
@@ -275,6 +351,12 @@ Deno.test({
       eq(evaluationResults.submission_id, SUBMISSION_ID),
     );
     await db.delete(submissions).where(eq(submissions.id, SUBMISSION_ID));
+    await db.delete(submissions).where(
+      eq(submissions.id, RECOVERABLE_SUBMISSION_ID),
+    );
+    await db.delete(submissions).where(
+      eq(submissions.id, INVALID_SUBMISSION_ID),
+    );
     await db.delete(selfTests).where(
       eq(selfTests.id, SELF_TEST_ID),
     );

@@ -13,6 +13,19 @@ Evaluator + Solution 双容器（用后即毁），并把结果写回 Redis。
 
 支持多个 Judge Worker 实例水平扩展：所有实例消费同一个 Redis 队列，互不冲突。
 
+### 评测并发上限
+
+单个 Worker 同时执行的评测任务数由 `JUDGE_MAX_CONCURRENT_JUDGES` 控制，默认值为
+`2`，有效范围为 `1` 至 `1024`。未设置或超出范围时使用默认值；需要提高吞吐时，
+应结合 Docker、CPU、内存和数据库连接池容量调整该值。
+
+### 评测容器资源
+
+每个 Worker 创建的 Evaluator 和 Solution 容器默认限制为 1 个 CPU 核。可通过
+`JUDGE_CPU_LIMIT_MILLICORES` 调整该 Worker 的统一上限，单位为 millicores：
+`1000m = 1 核`，有效范围为 `100m` 至 `16000m`。未设置或超出范围时回退到
+`1000m`，不会因为配置为 `0` 而变成不限制 CPU。
+
 ## 双容器运行时
 
 默认 Python 题目使用两个镜像：

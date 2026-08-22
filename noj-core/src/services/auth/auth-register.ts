@@ -83,6 +83,37 @@ export function toUserResponse(
 }
 
 /**
+ * 将数据库唯一约束冲突转换为用户可理解的业务错误。
+ *
+ * PostgreSQL 通常把 code/constraint 直接放在错误对象上，PGlite
+ * 可能把它们放在 cause 中；两种结构都需要兼容。无法识别具体约束时
+ * 仍返回 409，但不向客户端暴露数据库错误详情。
+ */
+function conflictFromUniqueViolation(err: unknown): ConflictError | null {
+  if (!err || typeof err !== "object") return null;
+
+  const error = err as Record<string, unknown>;
+  const cause = error.cause && typeof error.cause === "object"
+    ? error.cause as Record<string, unknown>
+    : undefined;
+  const code = error.code ?? cause?.code;
+  if (code !== "23505") return null;
+
+  const constraint = String(
+    error.constraint ?? error.constraint_name ??
+      cause?.constraint ?? cause?.constraint_name ?? "",
+  );
+  if (constraint.includes("username")) {
+    return new ConflictError("用户名已存在");
+  }
+  if (constraint.includes("email")) {
+    return new ConflictError("邮箱已被注册");
+  }
+
+  return new ConflictError("用户名或邮箱已存在");
+}
+
+/**
  * 注册新用户。
  * 检查用户名和邮箱的唯一性，密码使用 bcrypt 哈希后存储。
  *
@@ -127,14 +158,20 @@ export async function registerUser(
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  await db.insert(users).values({
-    id,
-    username: input.username,
-    email: input.email,
-    password_hash: passwordHash,
-    created_at: now,
-    updated_at: now,
-  });
+  try {
+    await db.insert(users).values({
+      id,
+      username: input.username,
+      email: input.email,
+      password_hash: passwordHash,
+      created_at: now,
+      updated_at: now,
+    });
+  } catch (err) {
+    const conflict = conflictFromUniqueViolation(err);
+    if (conflict) throw conflict;
+    throw err;
+  }
 
   // 分配默认角色（is_default=true 的角色）
   const [defaultRole] = await db

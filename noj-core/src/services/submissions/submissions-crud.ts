@@ -47,7 +47,7 @@ import {
 } from "../../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../judge-images.ts";
 import { getStorageProvider } from "../../lib/storage/mod.ts";
-import { getPendingQueueSnapshot } from "../queue.ts";
+import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
 import type { RuntimeConfig } from "../../types/problems.ts";
 import type { JudgeTask, SubmissionStatus } from "../../types/index.ts";
 import type { Context } from "hono";
@@ -516,8 +516,6 @@ export async function getSubmission(
   // 查询队列状态信息（排队位置、时间戳）
   // getSubmissionQueueStatus 已实现三态权限：未登录 + owner + admin 可见，登录非 owner 不可见
   // Redis 不可用时内部静默失败，返回 null 时间戳回退至 DB 值
-  // 延迟 import 避免循环依赖（queue.ts 不依赖 submissions-crud）
-  const { getSubmissionQueueStatus } = await import("../queue.ts");
   const queueStatus = await getSubmissionQueueStatus(
     id,
     viewerId ?? undefined,

@@ -1,3 +1,5 @@
+import { parseAuthSession } from '../utils/auth-session.ts';
+
 const FORWARDABLE_HEADERS = new Set([
   'retry-after',
   'x-ratelimit-limit',
@@ -122,24 +124,20 @@ export default defineEventHandler(async (event) => {
       });
 
       const data = response._data as
-        | {
-          data?: {
-            token?: string;
-            user?: {
-              id: string;
-              username: string;
-              role: string;
-              email: string;
-              must_change_password?: boolean;
-              tfa_enabled?: boolean;
-            };
-          };
-        }
+        | { data?: { token?: unknown; user?: unknown } }
         | undefined;
 
-      if (response.status === 200 && data?.data?.token) {
-        const jwt = data.data.token;
-        const user = data.data.user!;
+      if (response.status === 200) {
+        const session = parseAuthSession(data);
+        if (!session) {
+          // 不记录上游响应，避免把 JWT 或用户字段写入日志。
+          console.error('[auth-proxy] 认证响应缺少有效 token/user');
+          setResponseStatus(event, 500);
+          setHeader(event, 'cache-control', 'no-store, private');
+          return { error: '认证服务响应格式无效' };
+        }
+
+        const { token: jwt, user } = session;
 
         const cookieOptions = {
           httpOnly: true,
@@ -162,10 +160,11 @@ export default defineEventHandler(async (event) => {
           JSON.stringify({
             userId: user.id,
             username: user.username,
-            role: user.role,
+            role: user.role ?? (user.is_admin ? 'admin' : 'user'),
             email: user.email,
             must_change_password: user.must_change_password ?? false,
-            is_admin: (user as Record<string, unknown>)?.is_admin ?? (user.role === 'admin'),
+            // is_admin 由核心 API 按 admin:full_access 权限计算，不再根据角色名猜测。
+            is_admin: user.is_admin,
             tfa_enabled: user.tfa_enabled ?? false,
           }),
           {
@@ -175,7 +174,7 @@ export default defineEventHandler(async (event) => {
         );
 
         // 从响应体移除 token，避免通过 JSON 再次暴露
-        delete data.data.token;
+        if (data?.data) delete data.data.token;
       }
 
       setResponseStatus(event, response.status);
