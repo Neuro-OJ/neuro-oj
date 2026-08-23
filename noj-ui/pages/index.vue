@@ -244,7 +244,7 @@ async function fetchTodayCheckIn() {
     try {
         const res = await api.get<{ data: { checked_in: boolean; streak: number } }>(
             "/api/v1/checkin/today",
-            { silent: true },
+            { silent: true, redirectOnUnauthorized: false },
         )
         if (res.data) {
             checkedIn.value = res.data.checked_in

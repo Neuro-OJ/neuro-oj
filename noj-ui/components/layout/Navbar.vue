@@ -69,6 +69,7 @@
 </template>
 
 <script setup lang="ts">
+import { shouldLoadCommunityUnreadCount } from '~/utils/communityNotifications';
 
 const { user } = useAuth();
 const { open: openSearch } = useSearch();
@@ -123,7 +124,9 @@ const notificationSseEnabled = computed(
 
 onMounted(async () => {
   await loadConfig();
-  await loadUnreadCount();
+  if (shouldLoadCommunityUnreadCount(user.value, communityConfig.value?.enabled)) {
+    await loadUnreadCount();
+  }
 });
 
 useEventSource({

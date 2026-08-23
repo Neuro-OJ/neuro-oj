@@ -11,7 +11,7 @@
             :style="{ width: `${sizePx}px`, height: `${sizePx}px` }"
         >
             <img
-                v-if="user.avatar_url && !imgFailed"
+                v-if="(user.avatar_url || (loadAvatarWhenUnknown && user.avatar_url === undefined)) && !imgFailed"
                 :src="`/api/v1/users/${user.id}/avatar`"
                 :alt="user.username"
                 class="size-full object-cover"
@@ -43,16 +43,21 @@ const props = withDefaults(defineProps<{
     size?: 'sm' | 'md' | 'lg';
     link?: boolean;
     to?: string;
+    loadAvatarWhenUnknown?: boolean;
 }>(), {
     showUsername: true,
     showAvatar: true,
     size: 'md',
     link: true,
+    loadAvatarWhenUnknown: false,
 });
 
 // 图片加载失败 → 兜底切回首字母占位
 const imgFailed = ref(false);
-watch(() => props.user.avatar_url, () => { imgFailed.value = false; });
+watch(
+    () => [props.user.id, props.user.avatar_url ?? ""],
+    () => { imgFailed.value = false; },
+);
 
 const SIZE_MAP = { sm: 24, md: 32, lg: 64 } as const;
 const sizePx = computed(() => SIZE_MAP[props.size]);

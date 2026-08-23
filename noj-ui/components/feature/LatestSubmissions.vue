@@ -109,6 +109,8 @@ async function fetchSubmissions() {
         const res = await api.get<{ data: SubmissionItem[] }>(url, {
             query: { per_page: 10 },
             silent: true,
+            // 首页后台刷新属于可选认证请求：失效登录态不能把公共首页重定向到登录页。
+            redirectOnUnauthorized: false,
         })
         const list = res.data ?? []
         const newPrev = new Map<string, string>()
