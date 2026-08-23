@@ -120,7 +120,7 @@ watch(
       :to="`/problems/${submission.problem_id}`"
       class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
     >
-      <UIcon name="i-lucide-arrow-left" class="size-4" />
+      <UIcon name="i-lucide-arrow-left" class="size-3.5" />
       返回题目
     </NuxtLink>
     <!-- Loading -->
