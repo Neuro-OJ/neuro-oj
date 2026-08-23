@@ -52,10 +52,10 @@ watch(() => route.query.tab, (value) => {
 })
 
 const tabItems = [
-  { label: '详情', icon: 'i-lucide-info', slot: 'detail' },
-  { label: '题目', icon: 'i-lucide-list-checks', slot: 'problems' },
-  { label: '答疑', icon: 'i-lucide-message-circle-question', slot: 'clarifications' },
-  { label: '排名', icon: 'i-lucide-trophy', slot: 'ranking' },
+  { value: 0, label: '详情', icon: 'i-lucide-info', slot: 'detail' },
+  { value: 1, label: '题目', icon: 'i-lucide-list-checks', slot: 'problems' },
+  { value: 2, label: '答疑', icon: 'i-lucide-message-circle-question', slot: 'clarifications' },
+  { value: 3, label: '排名', icon: 'i-lucide-trophy', slot: 'ranking' },
 ]
 
 const countdown = computed(() => {
