@@ -19,6 +19,7 @@ interface SessionData {
   username: string;
   role: string;
   email: string;
+  avatar_url?: string | null;
   is_admin: boolean;
   must_change_password: boolean;
   tfa_enabled?: boolean;
@@ -30,6 +31,7 @@ function sessionToUser(session: SessionData): UserResponse {
     username: session.username,
     role: session.role,
     email: session.email,
+    ...(session.avatar_url === undefined ? {} : { avatar_url: session.avatar_url }),
     is_admin: session.is_admin ?? session.role === 'admin',
     must_change_password: session.must_change_password ?? false,
     tfa_enabled: session.tfa_enabled ?? false,

@@ -1,3 +1,4 @@
+/// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
 import { parseAuthSession } from '../server/utils/auth-session.ts';
@@ -62,6 +63,40 @@ Deno.test('parseAuthSession: 自定义角色仍以 is_admin 为准', () => {
     },
   };
   assertEquals(parseAuthSession(response)?.user.is_admin, true);
+});
+
+Deno.test('parseAuthSession: 保留有头像用户的头像地址', () => {
+  const response = {
+    data: {
+      ...validResponse.data,
+      user: { ...validResponse.data.user, avatar_url: 'noj-storage://local/avatar' },
+    },
+  };
+  assertEquals(parseAuthSession(response)?.user.avatar_url, 'noj-storage://local/avatar');
+});
+
+Deno.test('parseAuthSession: 保留无头像用户的 null 状态', () => {
+  const response = {
+    data: {
+      ...validResponse.data,
+      user: { ...validResponse.data.user, avatar_url: null },
+    },
+  };
+  assertEquals(parseAuthSession(response)?.user.avatar_url, null);
+});
+
+Deno.test('parseAuthSession: 兼容缺少头像字段的旧响应', () => {
+  assertEquals(parseAuthSession(validResponse)?.user.avatar_url, undefined);
+});
+
+Deno.test('parseAuthSession: 头像字段类型错误时返回 null', () => {
+  const response = {
+    data: {
+      ...validResponse.data,
+      user: { ...validResponse.data.user, avatar_url: 42 },
+    },
+  };
+  assertEquals(parseAuthSession(response), null);
 });
 
 Deno.test('parseAuthSession: admin 角色名不能覆盖 false 标记', () => {
