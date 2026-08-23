@@ -15,7 +15,7 @@
                 :aria-expanded="showDropdown"
                 @click="toggleMenu"
             >
-                <UserIdentity v-if="user" :user="user" :show-username="false" size="sm" :link="false" :load-avatar-when-unknown="true" />
+                <UserIdentity v-if="user" :user="user" :show-username="false" size="sm" :link="false" />
             </button>
         </div>
         <div
@@ -50,7 +50,7 @@
 
 <script setup lang="ts">
 const router = useRouter()
-const { user, isLoggedIn, logout } = useAuth()
+const { user, isLoggedIn, logout, fetchUser } = useAuth()
 const { dialog } = useDialog()
 const { api } = useApi()
 
@@ -90,6 +90,14 @@ function onDocumentClick(e: MouseEvent) {
 
 onMounted(() => document.addEventListener("click", onDocumentClick))
 onUnmounted(() => document.removeEventListener("click", onDocumentClick))
+
+// 兼容部署前创建的旧 session：头像字段未知时刷新一次完整用户资料，
+// 刷新期间由 UserIdentity 展示本地首字母占位，避免先请求必然 404 的头像端点。
+onMounted(() => {
+    if (isLoggedIn.value && user.value?.avatar_url === undefined) {
+        void fetchUser()
+    }
+})
 
 // ── 未读消息计数（30s 轮询） ──
 const unreadCount = ref(0)
