@@ -118,9 +118,9 @@ watch(
     <NuxtLink
       v-if="submission"
       :to="`/problems/${submission.problem_id}`"
-      class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
+      class="inline-flex items-center gap-1.5 text-base text-text-secondary no-underline hover:text-primary"
     >
-      <UIcon name="i-lucide-arrow-left" class="size-3.5" />
+      <UIcon name="i-lucide-arrow-left" class="size-4" />
       返回题目
     </NuxtLink>
     <!-- Loading -->
