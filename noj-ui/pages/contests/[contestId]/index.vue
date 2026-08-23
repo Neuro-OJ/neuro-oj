@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Contest, ContestProblem } from '~/composables/useContests'
 import { extractApiError } from '~/utils/apiError'
+import { runContestRegistration } from '~/utils/contestRegistration'
 
 const route = useRoute()
 const router = useRouter()
@@ -87,17 +88,42 @@ async function register() {
     await navigateTo({ path: '/login', query: { redirect: route.fullPath } })
     return
   }
-  registering.value = true
   registerError.value = ''
   try {
-    await api.post(`/api/v1/contests/${contestId}/register`, password.value ? { password: password.value } : undefined)
-    toast.showToast('success', '报名成功')
-    await refresh()
-    await loadProblems()
+    await runContestRegistration({
+      isRegistering: () => registering.value,
+      setRegistering: (value) => {
+        registering.value = value
+      },
+      register: async () => {
+        await api.post(`/api/v1/contests/${contestId}/register`, password.value ? { password: password.value } : undefined)
+      },
+      onRegistered: () => {
+        const currentContest = data.value?.data
+        if (currentContest && !currentContest.is_registered) {
+          data.value = {
+            ...data.value,
+            data: {
+              ...currentContest,
+              is_registered: true,
+              participant_count: currentContest.participant_count + 1,
+            },
+          }
+        }
+        toast.showToast('success', '报名成功')
+      },
+      refresh: async () => {
+        await refresh()
+        await loadProblems()
+      },
+      onRefreshFailed: (refreshFailure) => {
+        if (import.meta.dev) {
+          console.warn('[contest-registration] 报名成功后的数据刷新失败', refreshFailure)
+        }
+      },
+    })
   } catch (registerFailure: unknown) {
     registerError.value = extractApiError(registerFailure).message
-  } finally {
-    registering.value = false
   }
 }
 

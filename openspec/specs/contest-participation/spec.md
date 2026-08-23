@@ -13,9 +13,15 @@
 
 注册前 SHALL 检查竞赛状态非 `ended`。重复注册同一竞赛 SHALL 返回 409。
 
+报名页面在注册接口返回成功后 SHALL 立即展示报名成功状态。注册成功后的竞赛信息刷新或题目加载失败 SHALL NOT 被当作注册失败显示，也不得诱导用户重复提交注册请求。
+
 #### Scenario: 自由注册公开竞赛
 - **WHEN** 已登录用户 POST `/api/v1/contests/<public-contest-id>/register`
-- **THEN** 系统返回 201，用户被添加为参赛者
+- **THEN** 系统返回 201，用户被添加为参赛者，报名页面展示已报名状态
+
+#### Scenario: 报名成功但后续刷新失败
+- **WHEN** 注册接口返回 201，但报名页面随后刷新竞赛信息或加载题目失败
+- **THEN** 页面仍展示已报名状态，不显示注册失败或网络连接失败提示
 
 #### Scenario: 密码保护竞赛注册
 - **WHEN** 已登录用户 POST `/api/v1/contests/<password-protected-id>/register` 并提供正确密码
