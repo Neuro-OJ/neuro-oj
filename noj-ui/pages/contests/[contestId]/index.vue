@@ -26,36 +26,33 @@ const problemsError = ref('')
 
 // ── Tabs（详情 / 题目 / 答疑 / 排名），状态同步到 ?tab= query ─────────
 const TAB_NAMES = ['detail', 'problems', 'clarifications', 'ranking'] as const
-const activeTab = ref(0)
+type TabName = typeof TAB_NAMES[number]
+const activeTab = ref<TabName>('detail')
 const queryTab = route.query.tab
 const queryTabIndex = typeof queryTab === 'string'
   ? TAB_NAMES.indexOf(queryTab as (typeof TAB_NAMES)[number])
   : -1
-if (queryTabIndex >= 0) activeTab.value = queryTabIndex
+if (queryTabIndex >= 0) activeTab.value = TAB_NAMES[queryTabIndex]
 
 // tab → URL：切换时写入 ?tab=（replace，不产生历史记录）
 watch(activeTab, (value) => {
-  const tab = TAB_NAMES[value]
-  if (route.query.tab !== tab) {
-    router.replace({ query: { ...route.query, tab } })
+  if (route.query.tab !== value) {
+    router.replace({ query: { ...route.query, tab: value } })
   }
 })
 
 // URL → tab：浏览器前进/后退或站内跳转带 tab 参数时同步
 watch(() => route.query.tab, (value) => {
-  const index = typeof value === 'string'
-    ? TAB_NAMES.indexOf(value as (typeof TAB_NAMES)[number])
-    : -1
-  if (index >= 0 && index !== activeTab.value) {
-    activeTab.value = index
+  if (typeof value === 'string' && TAB_NAMES.includes(value as TabName) && value !== activeTab.value) {
+    activeTab.value = value as TabName
   }
 })
 
 const tabItems = [
-  { label: '详情', icon: 'i-lucide-info', slot: 'detail' },
-  { label: '题目', icon: 'i-lucide-list-checks', slot: 'problems' },
-  { label: '答疑', icon: 'i-lucide-message-circle-question', slot: 'clarifications' },
-  { label: '排名', icon: 'i-lucide-trophy', slot: 'ranking' },
+  { value: 'detail', label: '详情', icon: 'i-lucide-info', slot: 'detail' },
+  { value: 'problems', label: '题目', icon: 'i-lucide-list-checks', slot: 'problems' },
+  { value: 'clarifications', label: '答疑', icon: 'i-lucide-message-circle-question', slot: 'clarifications' },
+  { value: 'ranking', label: '排名', icon: 'i-lucide-trophy', slot: 'ranking' },
 ]
 
 const countdown = computed(() => {
