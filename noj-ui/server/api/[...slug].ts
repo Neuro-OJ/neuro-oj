@@ -212,5 +212,17 @@ export default defineEventHandler(async (event) => {
     event.node.req.headers[name] = value;
   }
 
-  return proxyRequest(event, target);
+  try {
+    return await proxyRequest(event, target);
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error('[api-proxy] 上游请求失败', {
+      method: event.method,
+      path: event.path,
+      target,
+      message: error.message,
+      cause: error.cause,
+    });
+    throw err;
+  }
 });
