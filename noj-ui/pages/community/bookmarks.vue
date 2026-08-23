@@ -73,7 +73,7 @@ await loadBookmarks()
   <main class="mx-auto w-full max-w-4xl px-6 py-10">
     <div class="mb-7 flex flex-wrap items-center justify-between gap-4">
       <div>
-        <NuxtLink to="/community" class="text-sm text-text-secondary hover:text-primary">← 返回社区</NuxtLink>
+        <NuxtLink to="/community" class="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-primary"><UIcon name="i-lucide-arrow-left" class="size-4" />返回社区</NuxtLink>
         <h1 class="mt-3 text-3xl font-bold text-text">我的收藏</h1>
         <p class="mt-2 text-text-secondary">集中查看你收藏的社区内容。</p>
       </div>

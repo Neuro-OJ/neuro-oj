@@ -321,6 +321,38 @@ Deno.test({
 });
 
 Deno.test({
+  name: "messages: 自己发送的消息不产生未读",
+  ignore: !hasEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const userA = await createTestUser();
+    const userB = await createTestUser();
+    try {
+      const { conversation: conv } = await findOrCreateConversation(
+        userA,
+        userB,
+      );
+      await sendMessage(userA, conv.id, "hello from A");
+
+      // A 的会话列表未读数应为 0
+      const listA = await listConversations(userA, 1, 20);
+      assertEquals(listA.data[0].unread_count, 0);
+      assertEquals(await getUnreadCount(userA), 0);
+      assertEquals(await getUnreadCountByConversation(userA, conv.id), 0);
+
+      // B 仍未读 1 条
+      const listB = await listConversations(userB, 1, 20);
+      assertEquals(listB.data[0].unread_count, 1);
+      assertEquals(await getUnreadCount(userB), 1);
+      assertEquals(await getUnreadCountByConversation(userB, conv.id), 1);
+    } finally {
+      await cleanup(userA, userB);
+    }
+  },
+});
+
+Deno.test({
   name: "messages: 软删除消息",
   ignore: !hasEnv,
   sanitizeResources: false,

@@ -184,7 +184,7 @@ await load()
 
 <template>
   <main class="mx-auto w-full max-w-4xl px-6 py-10">
-    <NuxtLink to="/community" class="text-sm text-text-secondary hover:text-primary">← 返回社区</NuxtLink>
+    <NuxtLink to="/community" class="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-primary"><UIcon name="i-lucide-arrow-left" class="size-4" />返回社区</NuxtLink>
     <article v-if="post" class="mt-4 rounded-lg border border-border bg-white p-6 shadow-card">
       <template v-if="post.post.status === 'deleted'">
         <p class="py-8 text-center text-text-secondary">该内容已删除。</p>

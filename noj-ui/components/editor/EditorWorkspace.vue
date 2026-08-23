@@ -287,6 +287,37 @@ async function resetTemplate() {
   }
 }
 
+async function handleClearDraft() {
+  if (!props.problem) return
+  const confirmed = await dialog.confirm(
+    '确定清除当前草稿？清除后无法恢复。',
+    { title: '清除草稿', confirmText: '清除', danger: true },
+  )
+  if (!confirmed) return
+
+  // clearDraft() 会删除 localStorage、清空 code 并重置草稿状态
+  clearDraft()
+
+  // 若题目存在默认模板，清除后恢复为模板；无模板则留空
+  if (props.templateUrl) {
+    templateLoading.value = true
+    templateError.value = ''
+    try {
+      const template = await fetchTemplate(props.problem.id)
+      if (template) code.value = template
+    } catch (e: unknown) {
+      const err = e as { statusCode?: number }
+      if (err.statusCode !== 404) {
+        templateError.value = extractApiError(e).message
+      }
+    } finally {
+      templateLoading.value = false
+    }
+  }
+
+  toast.success('草稿已清除')
+}
+
 function openSettings() {
   sidebarTab.value = 'settings'
   sidebarVisible.value = true
@@ -400,7 +431,7 @@ const toolbarProblem = computed(() => {
                 :draft-enabled="draftEnabled"
                 @update:theme-mode="setTheme($event)"
                 @update:draft-enabled="draftEnabled = $event"
-                @clear-draft="clearDraft"
+                @clear-draft="handleClearDraft"
                 @open-submission="openSubmission"
               />
             </div>

@@ -38,14 +38,29 @@
             </UDrawer>
             <BrandLogo text-class="hidden sm:inline" />
             <!-- 桌面端导航（≥md 显示） -->
-            <nav class="hidden md:flex items-center gap-1 ml-6">
-                <NuxtLink
-                    v-for="item in navItems"
-                    :key="item.to"
-                    :to="item.to"
-                    class="px-3 py-1.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-primary-hover hover:text-text"
-                    active-class="text-primary font-semibold"
-                >{{ item.label }}</NuxtLink>
+            <nav ref="navRef" class="hidden md:flex items-center gap-1 ml-6 min-w-0">
+              <NuxtLink
+                v-for="item in visibleNavItems"
+                :key="item.to"
+                :to="item.to"
+                class="whitespace-nowrap px-3 py-1.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-primary-hover hover:text-text"
+                active-class="text-primary font-semibold"
+              >{{ item.label }}</NuxtLink>
+              <UDropdownMenu
+                v-if="overflowNavItems.length > 0"
+                :items="overflowMenuItems"
+                :content="{ side: 'bottom', sideOffset: 8, collisionPadding: 8 }"
+              >
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  class="whitespace-nowrap"
+                >
+                  <UIcon name="i-lucide-more-horizontal" class="size-4" />
+                  更多
+                </UButton>
+              </UDropdownMenu>
             </nav>
             <button
                 type="button"
@@ -100,6 +115,51 @@ const baseNavItems: NavItem[] = [
 
 const navItems = computed(() => baseNavItems.filter((i) => !i.needsCommunity || communityConfig.value?.enabled))
 
+// ── 桌面导航响应式折叠：ResizeObserver 动态计算可见项，放不下的进“更多” ──
+const navRef = ref<HTMLElement | null>(null)
+const itemWidths = ref<number[]>([])
+const visibleCount = ref(0)
+let navResizeObserver: ResizeObserver | null = null
+
+const visibleNavItems = computed(() => navItems.value.slice(0, visibleCount.value))
+const overflowNavItems = computed(() => navItems.value.slice(visibleCount.value))
+const overflowMenuItems = computed(() =>
+  overflowNavItems.value.map((item) => ({ label: item.label, icon: item.icon, to: item.to })),
+)
+
+function measureAndFit() {
+  const nav = navRef.value
+  if (!nav || typeof window === 'undefined') return
+  const links = Array.from(nav.querySelectorAll<HTMLElement>(':scope > a'))
+  // 首次测量所有链接宽度（仅首次全部可见时能拿到真实宽度；之后隐藏项不再测量）
+  if (itemWidths.value.length !== links.length) {
+    itemWidths.value = links.map((a) => a.getBoundingClientRect().width + 4) // gap-1 = 4px
+  }
+  const containerWidth = nav.clientWidth
+  const moreWidth = 72 // “更多”按钮的近似宽度
+  const widths = itemWidths.value
+  let best = 0
+  let sum = 0
+  for (let i = 0; i < widths.length; i++) {
+    sum += widths[i]
+    if (i === widths.length - 1) {
+      if (sum <= containerWidth) best = i + 1
+    } else if (sum + moreWidth <= containerWidth) {
+      best = i + 1
+    }
+  }
+  visibleCount.value = Math.max(1, Math.min(best, navItems.value.length))
+}
+
+// 导航项变化（如社区开关加载完成）后重新测量
+watch(navItems, () => {
+  itemWidths.value = []
+  visibleCount.value = navItems.value.length
+  if (typeof requestAnimationFrame !== 'undefined') {
+    requestAnimationFrame(() => measureAndFit())
+  }
+}, { immediate: true })
+
 // 将实际 header 高度同步为 CSS 变量 --header-h（default 布局的 pt 间距依赖它）
 const headerRef = ref<HTMLElement | null>(null)
 function syncHeaderHeight() {
@@ -114,6 +174,13 @@ onMounted(() => {
     const ro = new ResizeObserver(syncHeaderHeight)
     ro.observe(headerRef.value)
     onUnmounted(() => ro.disconnect())
+  }
+  // 桌面导航首次计算和后续自适应
+  measureAndFit()
+  if (navRef.value && typeof ResizeObserver !== 'undefined') {
+    navResizeObserver = new ResizeObserver(() => measureAndFit())
+    navResizeObserver.observe(navRef.value)
+    onUnmounted(() => navResizeObserver?.disconnect())
   }
 })
 

@@ -25,7 +25,9 @@ const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
 // 所有私信端点需要认证
 router.use("*", authMiddleware);
-router.use("*", async (_c, next) => {
+router.use("*", async (c, next) => {
+  // SSE 端点例外：私信关闭时发送 feature:disabled 事件后关闭，而不是直接 403
+  if (c.req.path.endsWith("/events")) return next();
   if (!getCommunityConfig().private_messaging_enabled) {
     throw new ForbiddenError("站内私信功能已关闭", "FEATURE_DISABLED");
   }
@@ -161,6 +163,20 @@ router.delete("/:id/messages/:messageId", async (c) => {
  */
 router.get("/events", (c) => {
   const userId = c.get("userId") as string;
+  // 私信功能关闭：发送一次性 feature:disabled 事件后关闭连接，避免客户端反复轮询报错
+  if (!getCommunityConfig().private_messaging_enabled) {
+    return createSseStream(
+      c,
+      async ({ stream, close }) => {
+        await stream.writeSSE({
+          event: "feature:disabled",
+          data: JSON.stringify({ message: "站内私信功能已关闭" }),
+        });
+        close();
+      },
+      { safetyTimeoutMs: 0 },
+    );
+  }
   // 私信端点不启用兜底超时：消息订阅为常驻连接（与原实现一致）
   return createSseStream(
     c,

@@ -11,6 +11,13 @@ const { data, pending, error, refresh } = await useFetch<{ data: Training[]; tot
   { query: { page: 1, per_page: 100 }, silent: true },
 )
 const showCreate = ref(false)
+const showEdit = ref(false)
+const editingTraining = ref<Training | null>(null)
+
+function onEdit(training: Training) {
+  editingTraining.value = training
+  showEdit.value = true
+}
 
 async function onDelete(id: string) {
   if (!confirm('确定删除该题单？')) return
@@ -40,19 +47,28 @@ async function onDelete(id: string) {
             class="relative"
           >
             <TrainingCard :training="training" />
-            <UButton
-              icon="i-lucide-trash"
-              size="xs"
-              color="red"
-              variant="ghost"
-              class="absolute right-2 top-2"
-              @click="onDelete(training.id)"
-            />
+            <div class="absolute right-2 top-2 flex gap-1">
+              <UButton
+                icon="i-lucide-pencil"
+                size="xs"
+                color="neutral"
+                variant="ghost"
+                @click="onEdit(training)"
+              />
+              <UButton
+                icon="i-lucide-trash"
+                size="xs"
+                color="red"
+                variant="ghost"
+                @click="onDelete(training.id)"
+              />
+            </div>
           </div>
         </div>
       </AsyncContent>
 
       <TrainingFormModal v-model="showCreate" @saved="refresh" />
+      <TrainingFormModal v-model="showEdit" :training="editingTraining" @saved="refresh" />
     </div>
   </div>
 </template>

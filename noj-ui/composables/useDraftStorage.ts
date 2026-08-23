@@ -26,6 +26,8 @@ export function useDraftStorage(
 
   const key = computed(() => `noj:draft:${problemId.value}`);
   let timer: ReturnType<typeof setTimeout> | null = null;
+  // 清除草稿时避免空内容被自动保存回 localStorage
+  let suppressNextWrite = false;
 
   function loadDraft() {
     if (!import.meta.client) return;
@@ -68,6 +70,10 @@ export function useDraftStorage(
   watch(code, (val) => {
     if (!import.meta.client) return;
     if (!enabled.value) return;
+    if (suppressNextWrite) {
+      suppressNextWrite = false;
+      return;
+    }
     if (timer) clearTimeout(timer);
     state.value = 'dirty';
     timer = setTimeout(() => {
@@ -91,10 +97,13 @@ export function useDraftStorage(
   });
 
   // 主动清除（设置面板"清除草稿"按钮调用）
+  // 除删除 localStorage 外，同时清空当前编辑器内容与草稿状态，避免“只删存储但界面不变”。
   function clear() {
     if (!import.meta.client) return;
     if (timer) clearTimeout(timer);
     localStorage.removeItem(key.value);
+    suppressNextWrite = true;
+    code.value = '';
     savedAt.value = null;
     state.value = 'idle';
   }
