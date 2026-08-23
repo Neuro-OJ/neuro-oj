@@ -70,6 +70,24 @@ Deno.test('contestMutation: 保存失败不会反馈成功或刷新列表', asyn
   assertEquals(getSaving(), false);
 });
 
+Deno.test('contestMutation: 网络异常但服务端已保存时恢复为成功', async () => {
+  const { options, events } = createOptions({
+    save: () => {
+      events.push('save');
+      return Promise.reject(new TypeError('Failed to fetch'));
+    },
+    recover: () => {
+      events.push('recover');
+      return Promise.resolve(true);
+    },
+  });
+
+  const result = await runContestMutation(options);
+
+  assertEquals(result, true);
+  assertEquals(events, ['saving', 'save', 'recover', 'saved', 'refresh', 'idle']);
+});
+
 Deno.test('contestMutation: 保存进行中时重复调用直接跳过', async () => {
   const { options, events } = createOptions();
   options.setSaving(true);

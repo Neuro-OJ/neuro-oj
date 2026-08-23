@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError'
+import { extractApiError, isNetworkError } from '~/utils/apiError'
 import type {
   AdminContestDetail,
   AdminProblemOption,
@@ -113,6 +113,18 @@ async function openEdit(contest: Contest) {
   }
 }
 
+async function recoverCreatedContest(payload: ContestPayload, error: unknown) {
+  if (!isNetworkError(error)) return false
+  if (!await loadContests(1)) return false
+  return contests.value.some((contest) =>
+    contest.title === payload.title &&
+    contest.start_time === payload.start_time &&
+    contest.end_time === payload.end_time &&
+    contest.type === payload.type &&
+    contest.problem_count === payload.problems.length
+  )
+}
+
 async function saveContest(payload: ContestPayload) {
   formError.value = ''
   const contestId = editingContest.value?.id
@@ -130,6 +142,7 @@ async function saveContest(payload: ContestPayload) {
           await api.post('/api/v1/admin/contests', payload)
         }
       },
+      recover: contestId ? undefined : (error) => recoverCreatedContest(payload, error),
       onSaved: () => {
         toast.success(successMessage)
         formOpen.value = false

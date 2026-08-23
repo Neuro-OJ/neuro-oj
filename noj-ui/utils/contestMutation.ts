@@ -2,6 +2,8 @@ export interface ContestMutationOptions {
   isSaving: () => boolean;
   setSaving: (saving: boolean) => void;
   save: () => Promise<void>;
+  /** 保存请求出现网络异常时，确认服务端是否已经完成写入。 */
+  recover?: (error: unknown) => Promise<boolean>;
   onSaved: () => void;
   refresh: () => Promise<boolean>;
   onRefreshFailed: () => void;
@@ -18,7 +20,12 @@ export async function runContestMutation(options: ContestMutationOptions): Promi
   // 在第一次 await 之前设置状态，保证同一事件循环内的重复调用也只能进入一次。
   options.setSaving(true);
   try {
-    await options.save();
+    try {
+      await options.save();
+    } catch (error) {
+      const recovered = options.recover ? await options.recover(error) : false;
+      if (!recovered) throw error;
+    }
     options.onSaved();
 
     let refreshed = false;
