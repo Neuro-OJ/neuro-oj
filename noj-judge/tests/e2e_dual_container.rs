@@ -636,13 +636,14 @@ async fn evaluate_dual_end_to_end() {
         },
     };
 
-    let result = noj_judge::dual::evaluate_dual(
+    let result = noj_judge::dual::evaluate_dual_with_cpu_limit(
         docker,
         &submission_id,
         &runtime_config,
         "def solve(a,b): return a+b",
         None,
         None,
+        1000,
         true,
         "noj-",
         &["python3".to_string()],
@@ -703,13 +704,14 @@ except Exception as e:
 
     let result = tokio::time::timeout(
         Duration::from_secs(30),
-        noj_judge::dual::evaluate_dual(
+        noj_judge::dual::evaluate_dual_with_cpu_limit(
             docker.clone(),
             "e2e-timeout-fallback",
             &runtime_config,
             code,
             None,
             None,
+            1000,
             true,
             "noj-",
             &["python3".to_string()],
@@ -780,13 +782,14 @@ result.accept(score=1000, details={'cases': out})
 
     let result = tokio::time::timeout(
         Duration::from_secs(30),
-        noj_judge::dual::evaluate_dual(
+        noj_judge::dual::evaluate_dual_with_cpu_limit(
             docker.clone(),
             "e2e-timeout-per-call",
             &runtime_config,
             code,
             None,
             None,
+            1000,
             true,
             "noj-",
             &["python3".to_string()],
@@ -857,13 +860,14 @@ except Exception as e:
 
     let result = tokio::time::timeout(
         Duration::from_secs(30),
-        noj_judge::dual::evaluate_dual(
+        noj_judge::dual::evaluate_dual_with_cpu_limit(
             docker.clone(),
             "e2e-capability-timeout",
             &runtime_config,
             code,
             None,
             None,
+            1000,
             true,
             "noj-",
             &["python3".to_string()],
@@ -924,13 +928,14 @@ while True:
 
     let result = tokio::time::timeout(
         Duration::from_secs(30),
-        noj_judge::dual::evaluate_dual(
+        noj_judge::dual::evaluate_dual_with_cpu_limit(
             docker.clone(),
             "e2e-evaluator-total-timeout",
             &runtime_config,
             "def solve(): return 1",
             None,
             None,
+            1000,
             true,
             "noj-",
             &["python3".to_string()],
@@ -983,13 +988,14 @@ runner.call('sleep_solution')
 
     let result = tokio::time::timeout(
         Duration::from_secs(30),
-        noj_judge::dual::evaluate_dual(
+        noj_judge::dual::evaluate_dual_with_cpu_limit(
             docker.clone(),
             "e2e-solution-timeout-unhandled",
             &runtime_config,
             code,
             None,
             None,
+            1000,
             true,
             "noj-",
             &["python3".to_string()],
@@ -1049,13 +1055,14 @@ except SolutionTimeoutError:
 
     let result = tokio::time::timeout(
         Duration::from_secs(30),
-        noj_judge::dual::evaluate_dual(
+        noj_judge::dual::evaluate_dual_with_cpu_limit(
             docker.clone(),
             "e2e-solution-timeout-handled",
             &runtime_config,
             code,
             None,
             None,
+            1000,
             true,
             "noj-",
             &["python3".to_string()],

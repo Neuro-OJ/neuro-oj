@@ -46,10 +46,11 @@ export function useBanStatus() {
     loading.value = true;
     error.value = '';
     try {
-      // 封禁状态为全局静默请求：失败由 BanBanner 依据 error state 处理，不弹 toast
+      // 封禁状态为全局静默请求：失败由 BanBanner 依据 error state 处理，不弹 toast。
+      // 该端点允许匿名访问；即便代理短暂返回 401，也不能把首页访客跳转到登录页。
       const res = await useApi().api.get<BanStatusResponse>(
         '/api/v1/auth/ban-status',
-        { silent: true },
+        { silent: true, redirectOnUnauthorized: false },
       );
       ipBanned.value = res.ip_banned;
       ipBanInfo.value = res.ip_ban_info;

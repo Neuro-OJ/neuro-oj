@@ -45,6 +45,22 @@
       @focus="fieldErrors.password = ''"
     />
 
+    <TextInput
+      v-if="tfaRequired"
+      id="code"
+      v-model="form.code"
+      label="两步验证码"
+      placeholder="6 位验证码或恢复码"
+      autocomplete="one-time-code"
+      :disabled="loading"
+      :error="fieldErrors.code"
+      @focus="fieldErrors.code = ''"
+    >
+      <template #icon>
+        <UIcon name="i-lucide-shield-check" class="size-4.5" />
+      </template>
+    </TextInput>
+
     <template #footer>
       <p class="mb-2">
         还没有账号？<NuxtLink to="/register" class="text-primary no-underline font-semibold hover:underline">立即注册</NuxtLink>
@@ -308,6 +324,11 @@ function validate(): boolean {
       fieldErrors.password = "请输入密码"
       valid = false
     }
+  }
+
+  if (tfaRequired.value && !form.code.trim()) {
+    fieldErrors.code = "请输入验证码或恢复码"
+    valid = false
   }
 
   return valid

@@ -98,7 +98,7 @@ await load()
     </div>
     <p v-if="error" class="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">{{ error }}</p>
     <div v-else-if="loading" class="py-12 text-center text-text-secondary">加载中…</div>
-    <div v-else-if="notifications.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center text-text-secondary"><UIcon name="i-lucide-bell" class="mx-auto mb-3 size-[28px]" />暂无通知。</div>
+    <div v-else-if="notifications.length === 0" class="rounded-lg border border-dashed border-border p-10 text-text-secondary flex items-center justify-center gap-2"><UIcon name="i-lucide-bell" class="size-[28px]" />暂无通知。</div>
     <div v-else class="space-y-3">
       <button
         v-for="item in notifications"

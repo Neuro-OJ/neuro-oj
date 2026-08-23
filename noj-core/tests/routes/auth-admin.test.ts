@@ -245,6 +245,41 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name:
+    "admin route: DELETE /api/v1/admin/queue/submissions/:id 未登录返回 401",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/queue/submissions/some-id",
+      { method: "DELETE" },
+    );
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name:
+    "admin route: DELETE /api/v1/admin/queue/submissions/:id 非管理员返回 403",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken();
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/queue/submissions/some-id",
+      { method: "DELETE", token },
+    );
+    assertEquals(res.status, 403);
+  },
+});
+
 // ─── 用户编辑 ───────────────────────────────────────────
 
 Deno.test({

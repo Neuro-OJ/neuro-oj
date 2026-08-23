@@ -8,10 +8,33 @@
 
 use anyhow::{Context, Result};
 use filetime::FileTime;
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::SystemTime;
 use tokio::fs;
 use tracing::{info, warn};
+
+/// 同一进程内共享缓存目录锁。
+///
+/// SupportPackageCache 按任务创建，实例级 Mutex 无法覆盖并发评测；按目录
+/// 复用锁可以把读、写、扫描和淘汰串行化，避免不同任务同时根据过期快照删除文件。
+static CACHE_LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>> =
+    OnceLock::new();
+
+fn cache_lock_for(dir: &Path) -> Arc<tokio::sync::Mutex<()>> {
+    let locks = CACHE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    // 锁表只保存目录对应的异步锁；即使某个调用方 panic 导致 std Mutex
+    // poisoning，也应继续复用已有锁，而不是让后续评测全部崩溃。
+    let mut locks = locks.lock().unwrap_or_else(|poisoned| {
+        warn!("缓存锁表发生 poisoning，继续使用已有锁状态");
+        poisoned.into_inner()
+    });
+    locks
+        .entry(dir.to_path_buf())
+        .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+        .clone()
+}
 
 /// 支持包磁盘缓存。
 pub struct SupportPackageCache {
@@ -21,6 +44,8 @@ pub struct SupportPackageCache {
     max_items: usize,
     /// 最大磁盘占用（字节）。
     max_bytes: u64,
+    /// 同一缓存目录内所有实例共享的异步锁。
+    lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl SupportPackageCache {
@@ -32,6 +57,7 @@ impl SupportPackageCache {
         fs::create_dir_all(&dir).await.context("创建缓存目录失败")?;
 
         Ok(Self {
+            lock: cache_lock_for(&dir),
             dir,
             max_items,
             max_bytes: max_mb.saturating_mul(1024 * 1024),
@@ -46,6 +72,8 @@ impl SupportPackageCache {
             return Ok(None);
         }
         validate_checksum_key(checksum)?;
+
+        let _guard = self.lock.lock().await;
 
         let path = self.cache_path(checksum);
         if !path.exists() {
@@ -68,6 +96,8 @@ impl SupportPackageCache {
             return Ok(());
         }
         validate_checksum_key(checksum)?;
+
+        let _guard = self.lock.lock().await;
 
         let path = self.cache_path(checksum);
 
@@ -92,6 +122,8 @@ impl SupportPackageCache {
     }
 
     /// 检查是否超出上限，超出时按 atime 淘汰。
+    ///
+    /// 调用方必须持有 `self.lock`；读写和淘汰需要共享同一临界区。
     async fn evict_if_needed(&self) -> Result<()> {
         let mut entries = self.scan_entries().await?;
         let total_bytes = entries.iter().map(|e| e.size_bytes).sum::<u64>();
@@ -195,6 +227,7 @@ fn validate_checksum_key(checksum: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
     use tempfile::TempDir;
 
     #[tokio::test]
@@ -324,5 +357,29 @@ mod tests {
             .await
             .unwrap()
             .is_some());
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_cache_instances_share_eviction_lock() {
+        let tmp = TempDir::new().unwrap();
+        let mut tasks = Vec::new();
+
+        // 每个任务都创建独立的 cache 实例，模拟 runner 的实际调用方式；
+        // 只有按目录共享的锁才能覆盖这些实例之间的淘汰竞态。
+        for index in 0..8u8 {
+            let cache = Arc::new(SupportPackageCache::new(tmp.path(), 2, 1).await.unwrap());
+            tasks.push(tokio::spawn(async move {
+                let checksum = format!("{:064x}", index as u64 + 1);
+                cache.set(&checksum, &[index; 1024]).await
+            }));
+        }
+
+        for task in tasks {
+            task.await.unwrap().unwrap();
+        }
+
+        let verifier = SupportPackageCache::new(tmp.path(), 2, 1).await.unwrap();
+        let entries = verifier.scan_entries().await.unwrap();
+        assert_eq!(entries.len(), 2);
     }
 }

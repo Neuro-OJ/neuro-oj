@@ -25,6 +25,31 @@ const app = createApp();
 
 const port = parseInt(Deno.env.get("PORT") || "8000", 10);
 
+const EMAIL_PROVIDER_REQUIRED_SETTINGS = {
+  aliyun: [
+    ["alibaba_access_key_id", "ALIBABA_ACCESS_KEY_ID"],
+    ["alibaba_access_key_secret", "ALIBABA_ACCESS_KEY_SECRET"],
+    ["alibaba_from_email", "ALIBABA_FROM_EMAIL"],
+  ],
+  tencent: [
+    ["tencent_secret_id", "TENCENT_SECRET_ID"],
+    ["tencent_secret_key", "TENCENT_SECRET_KEY"],
+    ["tencent_from_email", "TENCENT_FROM_EMAIL"],
+    ["tencent_region", "TENCENT_REGION"],
+  ],
+} as const;
+
+function findMissingEmailSettings(
+  required: readonly (readonly [string, string])[],
+): string[] {
+  return required
+    .filter(([key]) => {
+      const setting = getSetting(key);
+      return !(typeof setting?.value === "string" && setting.value.length > 0);
+    })
+    .map(([, label]) => label);
+}
+
 /**
  * 检查邮件 Provider 运行时配置。
  *
@@ -38,49 +63,20 @@ function checkEmailProviderConfig(): void {
     ? pSetting.value
     : "mock";
 
-  if (provider === "aliyun") {
-    const missing = [];
-    for (
-      const [key, label] of [
-        ["alibaba_access_key_id", "ALIBABA_ACCESS_KEY_ID"],
-        ["alibaba_access_key_secret", "ALIBABA_ACCESS_KEY_SECRET"],
-        ["alibaba_from_email", "ALIBABA_FROM_EMAIL"],
-      ]
-    ) {
-      const setting = getSetting(key);
-      if (!(typeof setting?.value === "string" && setting.value.length > 0)) {
-        missing.push(label);
-      }
-    }
-    if (missing.length > 0) {
-      logger.warn("email_provider=aliyun 但缺少配置", {
-        provider: "aliyun",
-        missing: missing.join(", "),
-        hint: "可通过管理后台 > 系统设置配置",
-      });
-    }
-  } else if (provider === "tencent") {
-    const missing = [];
-    for (
-      const [key, label] of [
-        ["tencent_secret_id", "TENCENT_SECRET_ID"],
-        ["tencent_secret_key", "TENCENT_SECRET_KEY"],
-        ["tencent_from_email", "TENCENT_FROM_EMAIL"],
-        ["tencent_region", "TENCENT_REGION"],
-      ]
-    ) {
-      const setting = getSetting(key);
-      if (!(typeof setting?.value === "string" && setting.value.length > 0)) {
-        missing.push(label);
-      }
-    }
-    if (missing.length > 0) {
-      logger.warn("email_provider=tencent 但缺少配置", {
-        provider: "tencent",
-        missing: missing.join(", "),
-        hint: "可通过管理后台 > 系统设置配置",
-      });
-    }
+  const required = provider === "aliyun"
+    ? EMAIL_PROVIDER_REQUIRED_SETTINGS.aliyun
+    : provider === "tencent"
+    ? EMAIL_PROVIDER_REQUIRED_SETTINGS.tencent
+    : undefined;
+  if (!required) return;
+
+  const missing = findMissingEmailSettings(required);
+  if (missing.length > 0) {
+    logger.warn(`email_provider=${provider} 但缺少配置`, {
+      provider,
+      missing: missing.join(", "),
+      hint: "可通过管理后台 > 系统设置配置",
+    });
   }
 }
 
@@ -124,16 +120,17 @@ async function main() {
     Deno.exit(1);
   }
 
-  // TOTP 密钥必须在启动期可用。否则已启用 TFA 的用户可能无法登录，
-  // 而首次 setup 也会在请求阶段才暴露为 500。
-  const tfaEncryptionKey = Deno.env.get("TFA_ENCRYPTION_KEY");
-  if (
-    !tfaEncryptionKey || tfaEncryptionKey.length < MIN_TFA_ENCRYPTION_KEY_LENGTH
-  ) {
-    const actualLength = tfaEncryptionKey ? tfaEncryptionKey.length : 0;
+  // TFA 加密密钥启动校验（fail-fast，评审 P2 修复）：
+  // TFA_ENCRYPTION_KEY 用于 AES-256-GCM 加密 TOTP secret，缺失/过短时
+  // 必须拒绝启动。否则 setup 请求会返回 500，或密钥丢失后已启用 TFA 的
+  // 用户无法登录（secret 无法解密）。
+  const tfaKey = Deno.env.get("TFA_ENCRYPTION_KEY");
+  if (!tfaKey || tfaKey.length < MIN_TFA_ENCRYPTION_KEY_LENGTH) {
+    const actualLength = tfaKey ? tfaKey.length : 0;
     logger.error(
       `TFA_ENCRYPTION_KEY 未设置或长度不足（当前 ${actualLength} 字符，需要至少 ${MIN_TFA_ENCRYPTION_KEY_LENGTH} 字符）。\n` +
-        "TFA 密钥用于 AES-256-GCM 加密 TOTP secret；请使用独立的强随机密钥。",
+        `TFA_ENCRYPTION_KEY 是 TOTP secret 的 AES-256-GCM 加密密钥，必须独立于 JWT_SECRET 配置。\n` +
+        `可通过 \`openssl rand -base64 48\` 生成强随机密钥。`,
     );
     Deno.exit(1);
   }
@@ -203,7 +200,7 @@ async function main() {
   }
 
   // 启动评测结果消费者（后台运行，带自动重连，不阻塞 HTTP）
-  startResultConsumerWithRetry();
+  void startResultConsumerWithRetry();
 
   // 启动 processing 超时重投 + pending 提交恢复 sweeper
   startQueueSweeper();

@@ -168,6 +168,7 @@ function formatTime(iso: string): string {
           :user="{ id: conv.other_user_id, username: conv.other_user_name, avatar_url: conv.other_user_avatar_url }"
           size="sm"
           :link="false"
+          :show-username="false"
         />
         <div class="flex-1 min-w-0">
           <div class="flex items-center justify-between">

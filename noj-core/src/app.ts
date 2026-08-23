@@ -78,23 +78,34 @@ export function createApp(): Hono {
   app.use("*", requestContext);
 
   // CORS 中间件
-  // - 开发环境：允许所有来源（便于本地调试与第三方工具）
+  // - 开发环境：只允许本地 UI 开发端口，避免 credentials 与通配来源组合
   // - 生产环境：从 CORS_ALLOWED_ORIGINS 环境变量读取白名单（逗号分隔）
   // - credentials: true 支持 noj-ui 通过 HTTP-only Cookie 携带认证信息
   const allowedOrigins = Deno.env.get("CORS_ALLOWED_ORIGINS")?.split(",")
     .map((s) => s.trim())
     .filter(Boolean);
   const isProd = Deno.env.get("NOJ_ENV") === "production";
+  const developmentOrigins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+  ];
 
   app.use(
     "*",
     cors({
       origin: isProd
         ? (allowedOrigins ?? []) // 生产环境未配置白名单则拒绝跨域
-        : "*", // 开发环境允许所有
+        : developmentOrigins,
       credentials: true,
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowHeaders: ["Content-Type", "Authorization"],
+      exposeHeaders: [
+        "Retry-After",
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+        "X-Request-Id",
+      ],
       maxAge: SECONDS_PER_DAY,
     }),
   );

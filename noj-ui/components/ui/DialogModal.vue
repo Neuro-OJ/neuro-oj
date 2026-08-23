@@ -56,11 +56,11 @@ function onCancel() {
     v-model:open="open"
     :title="modalTitle"
     :description="message"
-    :ui="{ footer: 'flex justify-end gap-3' }"
+    :ui="{ content: 'bg-default flex flex-col divide-y-0 focus:outline-none', footer: 'flex justify-end gap-3 border-t border-default' }"
     @after:leave="$emit('after:leave')"
   >
-    <template #body>
-      <UInput v-if="mode === 'prompt'" v-model="input" :placeholder="placeholder" class="mt-1" @keyup.enter="onConfirm" />
+    <template v-if="mode === 'prompt'" #body>
+      <UInput v-model="input" :placeholder="placeholder" class="mt-1" @keyup.enter="onConfirm" />
     </template>
 
     <template #footer>

@@ -18,6 +18,7 @@ export type AuditAction =
   | "tags.delete"
   | "tags.merge"
   | "submissions.rejudge"
+  | "submissions.queue_removed"
   | "settings.update"
   | "ip_ban.create"
   | "ip_ban.delete"
@@ -86,6 +87,7 @@ export type AuditDetail =
     problem_id?: string;
     count?: number;
   }
+  | { action: "submissions.queue_removed"; submission_id: string }
   | {
     action: "settings.update";
     operation: "PUT" | "DELETE";

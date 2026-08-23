@@ -8,7 +8,7 @@
  *    （含 service 层）的所有 logger 调用自动附带同一 `request_id`，
  *    无需逐层透传参数。
  *
- * 应在 app.ts 中尽量靠外层注册（CORS 之后、业务中间件之前）。
+ * 应在 app.ts 中尽量靠外层注册（CORS 与业务中间件之前）。
  */
 
 import type { Context, Next } from "hono";
@@ -24,5 +24,6 @@ declare module "hono" {
 export function requestContext(c: Context, next: Next): Promise<void> {
   const requestId = crypto.randomUUID();
   c.set("requestId", requestId);
+  c.header("X-Request-Id", requestId);
   return runWithRequestContext(requestId, () => next());
 }

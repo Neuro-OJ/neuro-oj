@@ -83,6 +83,63 @@ Deno.test({
 });
 
 Deno.test({
+  name: "auth service: 并发注册同一用户名仅一个成功，其余返回 ConflictError",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const username = `race-user-${Date.now()}-${Math.random()}`;
+    const email = `race-user-${Date.now()}@example.com`;
+    const input = {
+      username,
+      email,
+      password: "RacePwd-2024-Ab1",
+    };
+
+    const results = await Promise.allSettled([
+      registerUser(input),
+      registerUser({ ...input, email: `other-${email}` }),
+    ]);
+    const succeeded = results.filter((result) => result.status === "fulfilled");
+    const failed = results.filter((result) => result.status === "rejected");
+
+    assertEquals(succeeded.length, 1);
+    assertEquals(failed.length, 1);
+    const reason = failed[0].status === "rejected" ? failed[0].reason : null;
+    assertEquals(reason instanceof ConflictError, true);
+    assertEquals((reason as ConflictError).message, "用户名已存在");
+  },
+});
+
+Deno.test({
+  name: "auth service: 并发注册同一邮箱仅一个成功，其余返回 ConflictError",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const email = `race-email-${Date.now()}-${Math.random()}@example.com`;
+    const input = {
+      username: `race-email-a-${Date.now()}-${Math.random()}`,
+      email,
+      password: "RacePwd-2024-Ab1",
+    };
+
+    const results = await Promise.allSettled([
+      registerUser(input),
+      registerUser({ ...input, username: `${input.username}-other` }),
+    ]);
+    const succeeded = results.filter((result) => result.status === "fulfilled");
+    const failed = results.filter((result) => result.status === "rejected");
+
+    assertEquals(succeeded.length, 1);
+    assertEquals(failed.length, 1);
+    const reason = failed[0].status === "rejected" ? failed[0].reason : null;
+    assertEquals(reason instanceof ConflictError, true);
+    assertEquals((reason as ConflictError).message, "邮箱已被注册");
+  },
+});
+
+Deno.test({
   name: "auth service: loginUser 用用户名登录成功返回 token",
   ignore: skip,
   sanitizeResources: false,

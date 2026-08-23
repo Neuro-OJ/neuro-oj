@@ -895,6 +895,7 @@ export const auditLogs = pgTable(
         'tags.delete',
         'tags.merge',
         'submissions.rejudge',
+        'submissions.queue_removed',
         'settings.update',
         'ip_ban.create',
         'ip_ban.delete',

@@ -30,6 +30,8 @@ export interface ApiCallOptions extends Omit<FetchOptions, 'method' | 'timeout'>
   onError?: (err: unknown, info: ApiErrorInfo) => void;
   /** 请求超时（ms），透传 ofetch timeout */
   timeout?: number;
+  /** 401 时是否跳转登录页；全局状态探测等匿名请求可显式关闭。 */
+  redirectOnUnauthorized?: boolean;
 }
 
 type ApiMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
@@ -47,7 +49,7 @@ export function useApi() {
     url: string,
     options: ApiCallOptions = {},
   ): Promise<T> {
-    const { silent = false, onError, ...fetchOptions } = options;
+    const { silent = false, onError, redirectOnUnauthorized = true, ...fetchOptions } = options;
     try {
       return await $fetch<T>(url, { method, ...fetchOptions });
     } catch (err) {
@@ -62,6 +64,7 @@ export function useApi() {
       // SSR 阶段无法跳转，错误继续抛出，由 Nuxt 渲染错误页（生产为 HTML）。
       if (
         import.meta.client &&
+        redirectOnUnauthorized &&
         info.status === 401 &&
         !AUTH_PAGE_PREFIXES.some((p) => route.path.startsWith(p))
       ) {

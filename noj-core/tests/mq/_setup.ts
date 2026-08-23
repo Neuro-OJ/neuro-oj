@@ -25,6 +25,8 @@ export interface FakeRedis {
   stop: () => Promise<void>;
   /** 获取推送到指定队列的消息（LPUSH 存储的记录） */
   getMessages: (queue: string) => string[];
+  /** 预置指定长度的队列，便于测试容量上限 */
+  seedQueue: (queue: string, length: number) => void;
   /** 清除所有存储的队列数据 */
   clear: () => void;
 }
@@ -64,6 +66,15 @@ export function startFakeRedis(): FakeRedis {
     url,
     stop,
     getMessages: (queue: string) => queues.get(queue) ?? [],
+    seedQueue: (queue: string, length: number) => {
+      if (!Number.isInteger(length) || length < 0) {
+        throw new Error(`队列长度必须是非负整数: ${length}`);
+      }
+      queues.set(
+        queue,
+        Array.from({ length }, (_, index) => `seed-message-${index}`),
+      );
+    },
     clear: () => queues.clear(),
   };
 }
@@ -172,6 +183,10 @@ function handleCommand(
       return renderRespString("OK");
     case "LPUSH":
       return handleLpush(args, queues);
+    case "LLEN":
+      return handleLlen(args, queues);
+    case "EVAL":
+      return handleEval(args, queues);
     case "BRPOP":
       return handleBrpop(args, queues);
     case "PUBLISH":
@@ -198,6 +213,37 @@ function handleLpush(
   queues.get(key)!.unshift(value);
   // 返回队列长度（整数响应）
   return renderRespInteger(queues.get(key)!.length);
+}
+
+function handleLlen(
+  args: string[],
+  queues: Map<string, string[]>,
+): Uint8Array {
+  if (args.length < 1) return renderRespError("ERR wrong number of arguments");
+  return renderRespInteger(queues.get(args[0])?.length ?? 0);
+}
+
+function handleEval(
+  args: string[],
+  queues: Map<string, string[]>,
+): Uint8Array {
+  // ioredis 将 EVAL 参数编码为：script、numkeys、key、max、message。
+  if (args.length < 5 || args[1] !== "1") {
+    return renderRespError("ERR unsupported EVAL arguments");
+  }
+
+  const key = args[2];
+  const maxLength = Number(args[3]);
+  if (!Number.isInteger(maxLength) || maxLength < 0) {
+    return renderRespError("ERR invalid queue capacity");
+  }
+
+  const queue = queues.get(key) ?? [];
+  if (queue.length >= maxLength) return renderRespInteger(-1);
+
+  queue.unshift(args[4]);
+  queues.set(key, queue);
+  return renderRespInteger(queue.length);
 }
 
 function handleBrpop(

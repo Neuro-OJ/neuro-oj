@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { extractApiError } from "~/utils/apiError"
 import { formatRecoveryCodesFile } from "~/utils/recoveryCodes"
-const { user, isLoggedIn, loading } = useAuth()
+const { user, isLoggedIn, loading, fetchUser } = useAuth()
 const router = useRouter()
 const { api } = useApi()
 
@@ -11,6 +11,24 @@ watch(
   (loadingVal) => {
     if (!loadingVal && !isLoggedIn.value) {
       router.replace("/login")
+    }
+  },
+  { immediate: true },
+)
+
+// 评审 P1 修复：进入设置页时从 /auth/me 拉取真实 TFA 状态。
+// session cookie 只在登录时写入，若用户在本次会话中途启用/禁用 TFA，
+// 刷新后 cookie 中的 tfa_enabled 已过期；这里以服务端为准刷新一次，
+// 确保已启用用户能看到禁用/重新生成恢复码入口。
+watch(
+  loading,
+  async (loadingVal) => {
+    if (!loadingVal && isLoggedIn.value) {
+      try {
+        await fetchUser()
+      } catch {
+        // fetchUser 内部已处理 401 登出，其余错误静默保留本地会话
+      }
     }
   },
   { immediate: true },

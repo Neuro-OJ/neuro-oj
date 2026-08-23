@@ -49,7 +49,12 @@ sse.get("/submissions/:id/events", async (c) => {
   const userId = c.get("userId");
 
   // 校验提交存在并验证访问权限，同时获取当前状态
-  const submission = await getSubmission(id, userId);
+  const submission = await getSubmission(
+    id,
+    userId,
+    c.get("userRole"),
+    c,
+  );
 
   return createSseStream(
     c,

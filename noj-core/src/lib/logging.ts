@@ -2,7 +2,7 @@
  * 结构化日志与脱敏工具。
  *
  * 提供统一的轻量 logger（零外部依赖），支持：
- * - 级别控制：`LOG_LEVEL`（debug/info/warn/error），默认生产 info、开发 debug
+ * - 级别控制：`LOG_LEVEL`（debug/info/warn/error），默认生产 warn、开发 debug
  * - 输出格式：`LOG_FORMAT`（json/pretty），默认生产 json、开发 pretty
  * - 结构化字段优先（借鉴 noj-judge 的 tracing 风格）
  * - 内置脱敏：生产环境自动截断 *_id、隐藏 score、抹除 code/token/secret 等
@@ -39,14 +39,14 @@ export function isProduction(): boolean {
  * 解析当前生效的日志级别。
  *
  * 优先读取 `LOG_LEVEL`；非法或未设置时按环境回退
- * （生产 info，开发/测试 debug）。每次调用重新解析，便于测试动态切换。
+ * （生产 warn，开发/测试 debug）。每次调用重新解析，便于测试动态切换。
  */
 function resolveLevel(): LogLevel {
   const raw = Deno.env.get("LOG_LEVEL")?.trim().toLowerCase();
   if (raw && Object.prototype.hasOwnProperty.call(LEVEL_ORDER, raw)) {
     return raw as LogLevel;
   }
-  return isProduction() ? "info" : "debug";
+  return isProduction() ? "warn" : "debug";
 }
 
 /** 输出格式。 */

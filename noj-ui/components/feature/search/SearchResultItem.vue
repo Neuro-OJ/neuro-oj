@@ -4,8 +4,8 @@
     :to="href"
     role="option"
     :aria-selected="selected"
-    class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors rounded-md cursor-pointer"
-    :class="{ 'bg-primary-bg/10': selected }"
+    class="flex items-center gap-3 px-4 py-3 transition-colors rounded-md cursor-pointer"
+    :class="{ 'bg-primary-100': selected, 'hover:bg-gray-50': !selected }"
   >
     <!-- 题号 / 用户头像占位 -->
     <div

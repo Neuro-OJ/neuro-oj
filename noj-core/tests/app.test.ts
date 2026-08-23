@@ -1,5 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
+import { createApp } from "../src/app.ts";
 import { AppError } from "../src/lib/errors.ts";
 
 /**
@@ -46,4 +47,72 @@ Deno.test("app: 非 AppError 的未知错误返回 500", async () => {
   assertEquals(res.status, 500);
   const body = await res.json();
   assertEquals(body.error, "服务器内部错误");
+});
+
+Deno.test("app: 开发环境 CORS 允许本地 UI 并暴露公共响应头", async () => {
+  const previousNojEnv = Deno.env.get("NOJ_ENV");
+  const previousOrigins = Deno.env.get("CORS_ALLOWED_ORIGINS");
+  try {
+    Deno.env.delete("NOJ_ENV");
+    Deno.env.delete("CORS_ALLOWED_ORIGINS");
+
+    const app = createApp();
+    const response = await app.fetch(
+      new Request("http://localhost/health", {
+        method: "OPTIONS",
+        headers: {
+          Origin: "http://localhost:3000",
+          "Access-Control-Request-Method": "GET",
+        },
+      }),
+    );
+
+    assertEquals(response.status, 204);
+    assertEquals(
+      response.headers.get("Access-Control-Allow-Origin"),
+      "http://localhost:3000",
+    );
+    assertEquals(
+      response.headers.get("Access-Control-Allow-Credentials"),
+      "true",
+    );
+    const exposedHeaders =
+      response.headers.get("Access-Control-Expose-Headers") ??
+        "";
+    for (
+      const header of [
+        "Retry-After",
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+        "X-Request-Id",
+      ]
+    ) {
+      assertEquals(
+        exposedHeaders.toLowerCase().includes(header.toLowerCase()),
+        true,
+        `应暴露 ${header}`,
+      );
+    }
+    assertEquals(response.headers.has("X-Request-Id"), true);
+
+    const disallowed = await app.fetch(
+      new Request("http://localhost/health", {
+        method: "OPTIONS",
+        headers: {
+          Origin: "http://localhost:4000",
+          "Access-Control-Request-Method": "GET",
+        },
+      }),
+    );
+    assertEquals(disallowed.headers.has("Access-Control-Allow-Origin"), false);
+  } finally {
+    if (previousNojEnv === undefined) Deno.env.delete("NOJ_ENV");
+    else Deno.env.set("NOJ_ENV", previousNojEnv);
+    if (previousOrigins === undefined) {
+      Deno.env.delete("CORS_ALLOWED_ORIGINS");
+    } else {
+      Deno.env.set("CORS_ALLOWED_ORIGINS", previousOrigins);
+    }
+  }
 });

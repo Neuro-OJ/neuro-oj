@@ -54,7 +54,7 @@ deno task bootstrap:admin -- --email admin@example.com --password '...'
 
 ## 样例题同步
 
-`data/problems-src/` 中的 1001–1003 样例题通过 `problems:build` + `problems:import`
+`data/problems-src/1001/` 中的 A+B 样例题通过 `problems:build` + `problems:import`
 同步（manifest 带固定 `number`，id 一律由服务端生成 UUID；重复导入按
 (type, number) 幂等更新，不会产生重复题目）。
 

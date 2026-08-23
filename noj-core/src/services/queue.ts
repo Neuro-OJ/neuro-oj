@@ -9,6 +9,9 @@ import {
 } from "../db/schema.ts";
 import { getRedis } from "../mq/connection.ts";
 import { logger } from "../lib/logging.ts";
+import { NotFoundError } from "../lib/errors.ts";
+import { Channels, publishEvent } from "../lib/event-bus.ts";
+import { logAudit } from "./audit-log.ts";
 import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";
 
 /** 评测任务队列名称（与 producer.ts 一致）。 */
@@ -105,6 +108,48 @@ export async function getPendingQueueLength(): Promise<number> {
     await redis.connect();
   }
   return redis.llen(JUDGE_QUEUE);
+}
+
+/** 管理员移除尚未被 worker 领取的评测任务。 */
+export async function removePendingSubmission(id: string): Promise<void> {
+  const db = getDb();
+  const [submission] = await db
+    .select({ id: submissions.id, status: submissions.status })
+    .from(submissions)
+    .where(eq(submissions.id, id))
+    .limit(1);
+  if (!submission) {
+    throw new NotFoundError("提交不存在");
+  }
+
+  const redis = getRedis();
+  if (redis.status !== "ready") await redis.connect();
+  const rawItems = await redis.lrange(JUDGE_QUEUE, 0, -1);
+  const raw = rawItems.find((item) => {
+    try {
+      return JSON.parse(item).submission_id === id;
+    } catch {
+      return false;
+    }
+  });
+  if (!raw) throw new NotFoundError("待处理队列中不存在该提交");
+  const removed = await redis.lrem(JUDGE_QUEUE, 1, raw);
+  if (removed !== 1) throw new NotFoundError("待处理队列中不存在该提交");
+
+  if (submission.status === "judging") {
+    await db.update(submissions).set({
+      status: "error",
+      judge_finished_at: new Date().toISOString(),
+    })
+      .where(and(eq(submissions.id, id), eq(submissions.status, "judging")));
+  }
+
+  await logAudit(
+    "submissions.queue_removed",
+    { action: "submissions.queue_removed", submission_id: id },
+    { type: "submission", id },
+  );
+  publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
 }
 
 /**

@@ -3,6 +3,7 @@ import {
   getPendingSubmissionIds,
   getQueueOverview,
   getSubmissionQueueStatus,
+  removePendingSubmission,
 } from "../../src/services/queue.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import {
@@ -11,6 +12,7 @@ import {
   resetRedisForTest,
 } from "../../src/mq/connection.ts";
 import {
+  auditLogs,
   evaluationResults,
   problems,
   selfTests,
@@ -19,6 +21,7 @@ import {
 } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { SELF_TEST_ID_PREFIX } from "../../src/types/self-tests.ts";
+import { enterTestContext } from "../../src/lib/requestContext.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 const skip = !hasDb;
@@ -223,6 +226,58 @@ Deno.test({
     if (ids.length > 0) {
       assertEquals(ids.includes(SUBMISSION_PENDING_ID), true);
     }
+  },
+});
+
+Deno.test({
+  name: "queue service: 移除 pending 提交并记录审计日志",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await clearQueue();
+    await pushToQueue(SUBMISSION_JUDGING_ID);
+    enterTestContext({
+      actorId: USER_ID,
+      actorIp: "127.0.0.1",
+      actorRole: "admin",
+    });
+
+    // 本地开发时 judge 可能已在消费同一 Redis 队列；任务被领取后，
+    // 本测试不再拥有可删除的 pending 条目。CI 中无 worker 竞争时会覆盖成功路径。
+    if (!(await getPendingSubmissionIds()).includes(SUBMISSION_JUDGING_ID)) {
+      return;
+    }
+
+    try {
+      await removePendingSubmission(SUBMISSION_JUDGING_ID);
+    } catch (err) {
+      if (err instanceof Error && err.message === "待处理队列中不存在该提交") {
+        return;
+      }
+      throw err;
+    }
+
+    const redis = getRedis();
+    const tasks = await redis.lrange("noj:judge:queue", 0, -1);
+    assertEquals(
+      tasks.some((task) =>
+        JSON.parse(task).submission_id === SUBMISSION_JUDGING_ID
+      ),
+      false,
+    );
+    const db = getDb();
+    const [submission] = await db.select({
+      status: submissions.status,
+      judge_finished_at: submissions.judge_finished_at,
+    }).from(submissions).where(eq(submissions.id, SUBMISSION_JUDGING_ID));
+    assertEquals(submission?.status, "error");
+    assert(submission?.judge_finished_at);
+    const [audit] = await db.select({
+      action: auditLogs.action,
+      target_id: auditLogs.target_id,
+    }).from(auditLogs).where(eq(auditLogs.action, "submissions.queue_removed"));
+    assertEquals(audit?.target_id, SUBMISSION_JUDGING_ID);
   },
 });
 

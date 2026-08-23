@@ -46,7 +46,7 @@
                         <button
                             v-if="!paused"
                             type="button"
-                            class="absolute bottom-4 right-4 z-10 p-2 rounded-full bg-black/30 text-white hover:bg-black/50 transition-colors"
+                            class="absolute bottom-4 right-4 z-10 p-2 flex items-center justify-center rounded-full bg-black/30 text-white hover:bg-black/50 transition-colors"
                             aria-label="暂停轮播"
                             @click="togglePause"
                         >
@@ -55,7 +55,7 @@
                         <button
                             v-else
                             type="button"
-                            class="absolute bottom-4 right-4 z-10 p-2 rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors"
+                            class="absolute bottom-4 right-4 z-10 p-2 flex items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors"
                             aria-label="继续轮播"
                             @click="togglePause"
                         >

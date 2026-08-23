@@ -212,7 +212,11 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
   }
 }
 
-async function recoverPendingSubmissions(now: number): Promise<void> {
+/**
+ * 恢复因“写 DB → 入队”窗口失败而遗留的正式提交。
+ * 导出给 MQ 回归测试复用，生产入口仍由 runQueueSweeperOnce 调用。
+ */
+export async function recoverPendingSubmissions(now: number): Promise<void> {
   const cutoff = new Date(now - PENDING_RECOVERY_MS).toISOString();
   const db = getDb();
 
@@ -241,8 +245,16 @@ async function recoverPendingSubmissions(now: number): Promise<void> {
   await recoverPendingRows(rows, {
     idKey: "submission_id",
     label: "提交",
-    onMissingRuntimeConfig: (row) => {
-      logger.error("pending 提交缺少 runtime_config，跳过恢复", {
+    onMissingRuntimeConfig: async (row) => {
+      await db.update(submissions)
+        .set({
+          status: "error",
+          judge_finished_at: new Date().toISOString(),
+        })
+        .where(
+          and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
+        );
+      logger.error("pending 提交缺少 runtime_config，标记为 error", {
         submission_id: row.id,
       });
     },
