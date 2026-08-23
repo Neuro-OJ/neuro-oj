@@ -11,7 +11,7 @@
             :style="{ width: `${sizePx}px`, height: `${sizePx}px` }"
         >
             <img
-                v-if="user.avatar_url && !imgFailed"
+                v-if="!imgFailed"
                 :src="`/api/v1/users/${user.id}/avatar`"
                 :alt="user.username"
                 class="size-full object-cover"
