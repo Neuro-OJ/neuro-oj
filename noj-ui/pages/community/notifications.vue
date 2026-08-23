@@ -113,7 +113,7 @@ await load()
             <UIcon :name="typeIcon[item.notification.type]" class="size-3.5" />
           </span>
           <div class="min-w-0 flex-1">
-            <p class="text-sm text-text"><template v-if="item.actor"><UserIdentity :user="item.actor" size="sm" /></template><template v-else><strong>系统</strong></template>{{ typeLabel[item.notification.type] }}</p>
+            <p class="text-sm text-text flex items-center gap-1"><template v-if="item.actor"><UserIdentity :user="item.actor" size="sm" /></template><template v-else><strong>系统</strong></template>{{ typeLabel[item.notification.type] }}</p>
             <p v-if="item.notification.data.reason" class="mt-1 text-xs text-text-secondary">{{ item.notification.data.reason }}</p>
             <NuxtTime class="mt-1 block text-xs text-text-muted" :datetime="item.notification.created_at" relative locale="zh-CN" />
           </div>
