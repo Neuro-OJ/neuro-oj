@@ -7,6 +7,7 @@ import type {
   ContestPayload,
   Pagination,
 } from '~/composables/useContests'
+import { useToast } from '~/composables/useToast'
 import { runContestMutation } from '~/utils/contestMutation'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false })
