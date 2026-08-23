@@ -228,11 +228,15 @@ function isSameDay(iso1: string, iso2: string): boolean {
                 {{ formatDate(msg.created_at) }}
               </div>
               <div class="flex gap-2" :class="msg.sender_id === user?.id ? 'flex-row-reverse' : ''">
-                <div
-                  class="w-7 h-7 rounded-full bg-primary-bg flex items-center justify-center text-primary font-semibold text-[10px] flex-shrink-0 mt-0.5"
-                >
-                  {{ msg.sender_id === user?.id ? (user?.username?.charAt(0).toUpperCase() || "我") : (otherUserName?.charAt(0).toUpperCase() || "?") }}
-                </div>
+                <UserIdentity
+                  :user="msg.sender_id === user?.id
+                    ? { id: user?.id ?? '', username: user?.username ?? '我', avatar_url: user?.avatar_url ?? null }
+                    : { id: otherUserId, username: otherUserName || '?', avatar_url: otherUserAvatarUrl }"
+                  size="md"
+                  :show-username="false"
+                  :link="false"
+                  class="flex-shrink-0 mt-0.5"
+                />
                 <div class="max-w-[65%]">
                   <div
                     class="px-3 py-2 rounded-lg text-sm leading-relaxed break-words"
