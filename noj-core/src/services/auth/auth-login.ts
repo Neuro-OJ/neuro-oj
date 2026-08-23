@@ -137,7 +137,7 @@ export async function loginUser(
         "auth.login_failure",
         { reason: "wrong_tfa_code", login: input.login },
       );
-      throw new UnauthorizedError("用户名或密码错误");
+      throw new UnauthorizedError("验证码输入错误", "TFA_INVALID");
     }
   }
 

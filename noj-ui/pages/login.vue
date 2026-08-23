@@ -367,6 +367,12 @@ async function handleLogin() {
       clearError()
       return;
     }
+    // TFA 验证码/恢复码错误：不再误报为“用户名和密码错误”
+    if (e.data?.code === "TFA_INVALID") {
+      fieldErrors.code = "验证码输入错误，请重新输入"
+      clearError()
+      return;
+    }
     setError(extractApiError(e).message)
   } finally {
     loading.value = false

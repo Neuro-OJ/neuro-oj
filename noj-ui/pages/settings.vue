@@ -46,6 +46,7 @@ const saveError = ref("")
 const avatarUploading = ref(false)
 const avatarInput = ref<HTMLInputElement | null>(null)
 const avatarPreviewKey = ref(Date.now()) // 上传/删除后破缓存
+const avatarError = ref("") // issue #314：超过 2MB 等校验错误内联展示，避免“没有反应”
 const { dialog } = useDialog()
 const { toast } = useToast()
 
@@ -54,8 +55,10 @@ async function handleAvatarUpload(e: Event) {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
+  avatarError.value = ""
   const validationError = getAvatarUploadError(file)
   if (validationError) {
+    avatarError.value = validationError
     toast.error(validationError)
     input.value = ""
     return
@@ -71,8 +74,10 @@ async function handleAvatarUpload(e: Event) {
     )
     if (user.value) user.value.avatar_url = res.data.avatar_url
     avatarPreviewKey.value = Date.now()
+    avatarError.value = ""
     toast.success("头像已更新")
   } catch (err: unknown) {
+    avatarError.value = extractApiError(err).message
     toast.error(extractApiError(err).message)
   } finally {
     avatarUploading.value = false
@@ -250,6 +255,9 @@ async function handleTfaRegenerate() {
 function handleDownloadRecoveryCodes() {
   if (tfaRecoveryCodes.value.length === 0) return
 
+  // 清除上一次遗留的错误提示，避免“下载已成功但仍显示失败”
+  tfaError.value = ""
+
   try {
     const content = formatRecoveryCodesFile(tfaRecoveryCodes.value)
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" })
@@ -257,8 +265,12 @@ function handleDownloadRecoveryCodes() {
     const link = document.createElement("a")
     link.href = url
     link.download = `neuro-oj-recovery-codes-${new Date().toISOString().slice(0, 10)}.txt`
+    link.style.display = "none"
+    document.body.appendChild(link)
     link.click()
-    setTimeout(() => URL.revokeObjectURL(url), 0)
+    link.remove()
+    // 稍后释放 URL，避免下载尚未开始时提前回收
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
     toast.success("恢复码文件已下载")
   } catch {
     tfaError.value = "恢复码文件生成失败，请手动复制保存"
@@ -328,6 +340,7 @@ async function handleCopyRecoveryCodes() {
               <input ref="avatarInput" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" @change="handleAvatarUpload" />
             </div>
             <p class="text-xs text-text-muted">支持 png / jpeg / webp，最大 2MB</p>
+            <p v-if="avatarError" class="text-xs text-error-text">{{ avatarError }}</p>
           </div>
         </div>
 

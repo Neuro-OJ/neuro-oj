@@ -72,14 +72,13 @@ async function createAndAdd() {
       <template #body>
         <div class="space-y-3 p-4">
         <div class="space-y-2">
-          <label
-            v-for="training in mineTrainings"
-            :key="training.id"
-            class="flex items-center gap-2 text-sm"
-          >
-            <UCheckbox v-model="selected" :value="training.id" />
-            {{ training.title }}
-          </label>
+          <!-- issue #311：必须用 UCheckboxGroup 才能让 v-model 作为多选数组，
+               单独使用 UCheckbox v-model="selected" 会被 Reka 当成布尔值切换，
+               导致“选择一个题单后全部勾选/按钮状态异常”。 -->
+          <UCheckboxGroup
+            v-model="selected"
+            :items="mineTrainings.map((t) => ({ label: t.title, value: t.id }))"
+          />
           <p v-if="mineTrainings.length === 0" class="text-sm text-text-secondary">
             你还没有题单，可以新建一个。
           </p>

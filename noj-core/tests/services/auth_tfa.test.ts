@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { TOTP } from "otpauth";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
@@ -77,15 +77,19 @@ Deno.test({
     const userRows = await getDb().select().from(users).where(
       eq(users.id, userId),
     );
-    await assertRejects(
-      () =>
-        loginUser({
-          login: userRows[0].username,
-          password: "TestPwd-2024-Xy9",
-          code: "000000",
-        }),
-      UnauthorizedError,
-    );
+    let caught: { code?: string } | null = null;
+    try {
+      await loginUser({
+        login: userRows[0].username,
+        password: "TestPwd-2024-Xy9",
+        code: "000000",
+      });
+    } catch (err) {
+      caught = err as { code?: string };
+    }
+    assertEquals(caught instanceof UnauthorizedError, true);
+    // issue #316：错误验证码应返回可区分的 TFA_INVALID，而不是“用户名或密码错误”
+    assertEquals(caught?.code, "TFA_INVALID");
   },
 });
 

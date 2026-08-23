@@ -51,8 +51,8 @@ export class ConflictError extends AppError {
  * 用于认证失败场景（如密码错误、令牌无效）。
  */
 export class UnauthorizedError extends AppError {
-  constructor(message: string) {
-    super(message, 401, "UNAUTHORIZED");
+  constructor(message: string, code?: string) {
+    super(message, 401, code ?? "UNAUTHORIZED");
     this.name = "UnauthorizedError";
   }
 }

@@ -15,6 +15,21 @@ const { config, loadConfig } = useCommunity()
 const { toast } = useToast()
 const { api } = useApi()
 
+// NOJ-317：SSR 阶段可能拿到游客权限（permissions 为空），登录用户水合后
+// 需要强制刷新一次社区配置，否则“发布内容”按钮会一直处于灰色。
+let configRefreshedForLogin = false
+watch(
+  [isLoggedIn, config],
+  async ([loggedIn, cfg]) => {
+    if (!loggedIn || !cfg || configRefreshedForLogin) return
+    if (!cfg.permissions || Object.keys(cfg.permissions).length === 0) {
+      configRefreshedForLogin = true
+      await loadConfig(true)
+    }
+  },
+  { immediate: true },
+)
+
 const ENABLED_TYPES: PostType[] = ["discussion", "solution", "moment"]
 const typeFlag: Record<PostType, keyof CommunityConfig> = {
   discussion: "discussions_enabled",

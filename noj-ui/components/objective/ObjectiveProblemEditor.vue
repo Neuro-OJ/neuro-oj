@@ -185,6 +185,8 @@ function isAnswer(key: string) {
   if (!editing.value) return false
   const arr = editing.value.answer
   if (editing.value.type === 'judge') return arr.includes(key === 'true')
+  // 单选只允许一个答案被勾选；避免从多选/判断切换后旧答案导致多个 radio 同时高亮
+  if (editing.value.type === 'single') return arr.length === 1 && arr[0] === key
   return arr.includes(key)
 }
 
@@ -210,6 +212,11 @@ async function onSaveQuestion() {
     }
     if (e.answer.length === 0) {
       toast.error('请选择正确答案')
+      return
+    }
+    // 单选只允许一个答案；多选/判断切换残留的旧答案会在保存前被拦截
+    if (e.type === 'single' && e.answer.length !== 1) {
+      toast.error('单选题请只选择一个正确答案')
       return
     }
     payload = {
