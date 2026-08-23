@@ -297,6 +297,7 @@ export async function listConversations(
     WHERE m.conversation_id IN (${
     sql.join(convIds.map((id) => sql`${id}`), sql`, `)
   })
+      AND m.sender_id <> ${userId}
       AND md.user_id IS NULL
       AND (lr.id IS NULL OR m.created_at > lr.created_at)
     GROUP BY m.conversation_id
@@ -483,6 +484,7 @@ export async function getUnreadCount(userId: string): Promise<number> {
       ON md.message_id = m.id
      AND md.user_id = ${userId}
     WHERE (c.user1_id = ${userId} OR c.user2_id = ${userId})
+      AND m.sender_id <> ${userId}
       AND md.user_id IS NULL
       AND (lr.id IS NULL OR m.created_at > lr.created_at)
   `);
@@ -509,8 +511,11 @@ export async function getUnreadCountByConversation(
     )
     .limit(1);
 
-  // 构建查询：计数该会话中创建时间 > 已读位置的消息
-  let conditions = eq(messages.conversation_id, conversationId);
+  // 构建查询：计数该会话中创建时间 > 已读位置的消息（排除自己发送的）
+  let conditions = and(
+    eq(messages.conversation_id, conversationId),
+    sql`${messages.sender_id} <> ${userId}`,
+  )!;
 
   if (readState?.last_read_message_id) {
     // 查询已读消息的 created_at，然后计数之后的消息

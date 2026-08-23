@@ -3,6 +3,7 @@ import { useMessages, type ConversationMessage } from "~/composables/useMessages
 import { useAuth } from "~/composables/useAuth"
 import { useToast } from "~/composables/useToast"
 import { useEventSource } from "~/composables/useEventSource"
+import { extractApiError } from "~/utils/apiError"
 import ChatSidebar from "~/components/feature/ChatSidebar.vue"
 
 definePageMeta({
@@ -28,6 +29,10 @@ const otherUserName = ref("")
 const otherUserId = ref("")
 const otherUserAvatarUrl = ref<string | null>(null)
 const messagesContainer = ref<HTMLElement | null>(null)
+// ChatSidebar 暴露 refresh()，用于发送/已读后主动刷新会话列表
+const sidebarRef = ref<{ refresh: () => Promise<void> } | null>(null)
+// 私信功能关闭后停止本页 SSE/轮询，避免重复请求
+const messagingEnabled = ref(true)
 // NOJ-211：会话快速切换/SSE 并发时丢弃过期响应。
 let messageRequestVersion = 0
 
@@ -64,7 +69,11 @@ async function loadMessages(page = 1, append = false) {
     }
     totalPages.value = result.pagination.total_pages
     currentPage.value = result.pagination.page
-  } catch {
+  } catch (e) {
+    const info = extractApiError(e)
+    if (info.code === 'FEATURE_DISABLED') {
+      messagingEnabled.value = false
+    }
     // 静默
   } finally {
     if (requestVersion === messageRequestVersion) loading.value = false
@@ -93,6 +102,8 @@ async function send() {
     messages.value.push(result.data)
     newMessage.value = ""
     scrollToBottom()
+    // 发送成功后立即刷新左侧会话列表（预览/排序/未读）
+    await sidebarRef.value?.refresh()
   } finally {
     sending.value = false
   }
@@ -118,12 +129,19 @@ function scrollToBottom() {
 // SSE 实时接收新消息
 useEventSource({
   url: "/api/v1/conversations/events",
+  enabled: messagingEnabled,
   onEvent: {
-    "message:new": (data: unknown) => {
+    "message:new": async (data: unknown) => {
       const evt = data as { conversation_id: string }
       if (evt.conversation_id === selectedConversationId.value) {
-        loadMessages()
+        await loadMessages()
+        // 正在查看的会话收到新消息后立即已读，避免红点堆积
+        await markAsRead()
+        await sidebarRef.value?.refresh()
       }
+    },
+    "feature:disabled": () => {
+      messagingEnabled.value = false
     },
   },
   fetchFn: () => { if (selectedConversationId.value) loadMessages() },
@@ -144,6 +162,8 @@ async function onSelect(id: string) {
   await loadMessages()
   if (messages.value.length > 0) {
     await markAsRead()
+    // 已读后立即刷新侧栏未读红点
+    await sidebarRef.value?.refresh()
   }
   await fetchOtherUserName()
   scrollToBottom()
@@ -168,7 +188,7 @@ function isSameDay(iso1: string, iso2: string): boolean {
   <div class="flex h-[calc(100vh-4rem)] max-w-[1000px] mx-auto">
     <!-- 左侧会话列表 -->
     <div class="w-[280px] flex-shrink-0">
-      <ChatSidebar :active-conversation-id="selectedConversationId || undefined" @select="onSelect" />
+      <ChatSidebar ref="sidebarRef" :active-conversation-id="selectedConversationId || undefined" @select="onSelect" />
     </div>
 
     <!-- 右侧聊天区域 -->

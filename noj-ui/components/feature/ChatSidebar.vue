@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { useEventSource } from "~/composables/useEventSource"
 import { useMessages, type Conversation } from "~/composables/useMessages"
+import { extractApiError } from "~/utils/apiError"
+import { useToast } from "~/composables/useToast"
 
 const { api } = useApi()
+const { toast } = useToast()
 
 const props = defineProps<{
   activeConversationId?: string
@@ -18,6 +21,17 @@ const conversations = ref<Conversation[]>([])
 const loading = ref(true)
 const currentPage = ref(1)
 const totalPages = ref(1)
+// 私信功能关闭后停掉 SSE/轮询，只提示一次
+const messagingEnabled = ref(true)
+let disabledNotified = false
+
+function handleMessagingDisabled() {
+  messagingEnabled.value = false
+  if (!disabledNotified) {
+    toast.error("站内私信功能已关闭")
+    disabledNotified = true
+  }
+}
 
 // 搜索
 const searchQuery = ref("")
@@ -32,8 +46,13 @@ async function loadConversations(page = 1) {
     conversations.value = result.data
     totalPages.value = result.pagination.total_pages
     currentPage.value = result.pagination.page
-  } catch {
-    // 静默
+  } catch (e) {
+    const info = extractApiError(e)
+    if (info.code === 'FEATURE_DISABLED') {
+      handleMessagingDisabled()
+      return
+    }
+    // 其他错误静默
   } finally {
     loading.value = false
   }
@@ -42,14 +61,19 @@ async function loadConversations(page = 1) {
 // SSE 实时刷新
 useEventSource({
   url: "/api/v1/conversations/events",
+  enabled: messagingEnabled,
   onEvent: {
     "message:new": () => loadConversations(currentPage.value),
+    "feature:disabled": () => handleMessagingDisabled(),
   },
   fetchFn: () => loadConversations(currentPage.value),
   fallbackIntervalMs: 3000,
 })
 
 onMounted(() => { loadConversations() })
+
+// 供父页面在发送消息/标记已读后主动刷新会话列表
+defineExpose({ refresh: loadConversations })
 
 // 搜索用户（防抖 300ms）
 watch(searchQuery, (val) => {

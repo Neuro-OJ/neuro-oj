@@ -3,6 +3,7 @@ import { useRoute } from "vue-router"
 import { useMessages } from "~/composables/useMessages"
 import { useToast } from "~/composables/useToast"
 import { difficultyBadgeColors, difficultyLabels, formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
+import { buildMonthCalendar } from "~/utils/checkinCalendar"
 
 const route = useRoute()
 const router = useRouter()
@@ -73,32 +74,37 @@ interface CheckinHistoryData {
 }
 
 // 活跃度（issue #184）：stats/history 支持 user_id 参数公开查询
-const { data: checkinStats } = useFetch<{ data: CheckinStatsData }>(
+const {
+  data: checkinStats,
+  error: checkinError,
+  pending: checkinPending,
+  refresh: refreshCheckinStats,
+} = useFetch<{ data: CheckinStatsData }>(
   `/api/v1/checkin/stats?user_id=${userId}`,
 )
-const { data: checkinHistory } = useFetch<{ data: CheckinHistoryData }>(
+const {
+  data: checkinHistory,
+  error: checkinHistoryError,
+  pending: checkinHistoryPending,
+  refresh: refreshCheckinHistory,
+} = useFetch<{ data: CheckinHistoryData }>(
   `/api/v1/checkin/history?days=30&user_id=${userId}`,
 )
 
+const checkinLoading = computed(() => checkinPending.value || checkinHistoryPending.value)
+const checkinFailed = computed(() => !!checkinError.value || !!checkinHistoryError.value)
+
+async function retryCheckin() {
+  await Promise.all([refreshCheckinStats(), refreshCheckinHistory()])
+}
+
 // 本月 UTC 日历：已签到日期高亮，今日描边
-const monthCalendar = computed(() => {
-  const checkedSet = new Set(checkinHistory.value?.data?.days ?? [])
-  const month = new Date().toISOString().slice(0, 7)
-  const [year, mon] = month.split("-").map(Number)
-  const daysInMonth = new Date(Date.UTC(year, mon, 0)).getUTCDate()
-  const today = new Date().toISOString().slice(0, 10)
-  const cells: {
-    date: string
-    day: number
-    checked: boolean
-    isToday: boolean
-  }[] = []
-  for (let d = 1; d <= daysInMonth; d++) {
-    const date = `${month}-${String(d).padStart(2, "0")}`
-    cells.push({ date, day: d, checked: checkedSet.has(date), isToday: date === today })
-  }
-  return cells
-})
+const monthCalendar = computed(() =>
+  buildMonthCalendar(
+    checkinHistory.value?.data?.days ?? [],
+    new Date().toISOString().slice(0, 10),
+  ),
+)
 
 const following = ref(false)
 
@@ -270,19 +276,35 @@ async function toggleFollow() {
       </div>
 
       <!-- 活跃度（issue #184）：连续天数 + 累计 + 本月签到日历 -->
-      <section v-if="checkinStats" class="rounded-xl border border-border bg-white p-6">
+      <section class="rounded-xl border border-border bg-white p-6">
         <h2 class="text-base font-semibold text-text">活跃度</h2>
-        <div class="mt-3 grid grid-cols-3 gap-3">
-          <div class="rounded-lg bg-bg-page px-4 py-3 text-center"><span class="block text-xs text-text-muted">当前连续</span><p class="mt-1 text-xl font-bold text-primary">{{ checkinStats.current_streak }}<span class="text-xs font-normal text-text-muted"> 天</span></p></div>
-          <div class="rounded-lg bg-bg-page px-4 py-3 text-center"><span class="block text-xs text-text-muted">累计签到</span><p class="mt-1 text-xl font-bold text-text">{{ checkinStats.total_days }}<span class="text-xs font-normal text-text-muted"> 天</span></p></div>
-          <div class="rounded-lg bg-bg-page px-4 py-3 text-center"><span class="block text-xs text-text-muted">本月签到</span><p class="mt-1 text-xl font-bold text-text">{{ checkinStats.month_days }}<span class="text-xs font-normal text-text-muted"> 天</span></p></div>
+
+        <div v-if="checkinLoading" class="mt-3 text-sm text-text-muted">加载中...</div>
+
+        <div v-else-if="checkinFailed" class="mt-3 flex items-center justify-between gap-3">
+          <span class="text-sm text-text-secondary">活跃度加载失败</span>
+          <UButton size="xs" color="primary" variant="outline" @click="retryCheckin">
+            <UIcon name="i-lucide-rotate-cw" class="size-3.5" />重试
+          </UButton>
         </div>
-        <div class="mt-4">
-          <div class="mb-2 flex items-center justify-between text-xs text-text-muted"><span>本月签到日历（UTC）</span><span class="font-medium text-primary">最长连续 {{ checkinStats.max_streak }} 天</span></div>
-          <div class="grid grid-cols-7 gap-1.5">
-            <div v-for="cell in monthCalendar" :key="cell.date" class="flex aspect-square items-center justify-center rounded-md text-xs" :class="cell.checked ? 'bg-primary font-semibold text-white' : cell.isToday ? 'border border-primary text-primary' : 'bg-bg-page text-text-muted'">{{ cell.day }}</div>
+
+        <div v-else-if="!checkinStats" class="mt-3 text-sm text-text-muted">
+          暂无签到数据
+        </div>
+
+        <template v-else>
+          <div class="mt-3 grid grid-cols-3 gap-3">
+            <div class="rounded-lg bg-bg-page px-4 py-3 text-center"><span class="block text-xs text-text-muted">当前连续</span><p class="mt-1 text-xl font-bold text-primary">{{ checkinStats.current_streak }}<span class="text-xs font-normal text-text-muted"> 天</span></p></div>
+            <div class="rounded-lg bg-bg-page px-4 py-3 text-center"><span class="block text-xs text-text-muted">累计签到</span><p class="mt-1 text-xl font-bold text-text">{{ checkinStats.total_days }}<span class="text-xs font-normal text-text-muted"> 天</span></p></div>
+            <div class="rounded-lg bg-bg-page px-4 py-3 text-center"><span class="block text-xs text-text-muted">本月签到</span><p class="mt-1 text-xl font-bold text-text">{{ checkinStats.month_days }}<span class="text-xs font-normal text-text-muted"> 天</span></p></div>
           </div>
-        </div>
+          <div class="mt-4">
+            <div class="mb-2 flex items-center justify-between text-xs text-text-muted"><span>本月签到日历（UTC）</span><span class="font-medium text-primary">最长连续 {{ checkinStats.max_streak }} 天</span></div>
+            <div class="grid grid-cols-7 gap-1.5">
+              <div v-for="cell in monthCalendar" :key="cell.date" class="flex aspect-square items-center justify-center rounded-md text-xs" :class="cell.checked ? 'bg-primary font-semibold text-white' : cell.isToday ? 'border border-primary text-primary' : 'bg-bg-page text-text-muted'">{{ cell.day }}</div>
+            </div>
+          </div>
+        </template>
       </section>
 
       <section v-if="profile.solutions.length || profile.moments.length" class="rounded-xl border border-border bg-white p-6"><h2 class="text-base font-semibold text-text">社区内容</h2><div class="mt-3 space-y-2"><NuxtLink v-for="solution in profile.solutions" :key="solution.id" :to="`/community/posts/${solution.id}`" class="block text-sm text-primary no-underline hover:underline">题解 · {{ solution.title }}</NuxtLink><NuxtLink v-for="moment in profile.moments" :key="moment.id" :to="`/community/posts/${moment.id}`" class="block line-clamp-1 text-sm text-primary no-underline hover:underline">动态 · {{ moment.content }}</NuxtLink></div></section>

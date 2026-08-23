@@ -50,6 +50,7 @@ const title = ref("")
 const content = ref("")
 const boardId = ref("")
 const boards = ref<{ id: string; name: string }[]>([])
+const boardError = ref("")
 const publishing = ref(false)
 // 题解关联题目：problemId 为最终提交值，problemQuery 为搜索框显示文本
 const problemId = ref(
@@ -170,9 +171,15 @@ async function prepareEditor() {
       )
       boards.value = result.data
       boardId.value = boards.value[0]?.id ?? ""
+      boardError.value = ""
     } catch {
       return
     }
+  }
+  if (activeType.value === "discussion" && !boardId.value) {
+    boardError.value = "暂无可用板块，无法发布讨论"
+    toast.error("暂无可用板块，无法发布讨论")
+    return
   }
   previewMode.value = false
   showEditor.value = true
@@ -231,6 +238,11 @@ async function publish() {
   if (publishing.value || !canCreateCurrentType.value) return
   publishing.value = true
   try {
+    if (activeType.value === "discussion" && !boardId.value) {
+      boardError.value = "请先选择板块"
+      toast.error("请先选择板块")
+      return
+    }
     const body: Record<string, string> = { type: activeType.value, content: content.value }
     if (activeType.value !== "moment") body.title = title.value
     if (activeType.value === "discussion") body.board_id = boardId.value
@@ -253,6 +265,8 @@ async function publish() {
     problemQuery.value = ""
     showEditor.value = false
     await Promise.all([loadPosts(), loadCounts()])
+  } catch {
+    // useApi 已弹后端错误；保留已输入内容供用户修改
   } finally {
     publishing.value = false
   }
@@ -339,6 +353,7 @@ await init()
           <p class="mt-1 text-xs text-text-muted">当前关联题目：{{ problemId || '未选择' }}（可手动输入题目 ID）</p>
         </div>
         <USelect v-if="activeType === 'discussion'" v-model="boardId" :items="boards.map((b) => ({ label: b.name, value: b.id }))" class="mb-3 w-full" :placeholder="boards.length ? '选择板块' : '暂无可用板块'" />
+        <p v-if="boardError" class="mb-3 text-xs text-red-600">{{ boardError }}</p>
         <template v-if="!previewMode">
           <textarea v-model="content" class="min-h-36 w-full rounded border border-border px-3 py-2" :placeholder="`支持 Markdown、代码和公式（最长 ${postMaxLength} 字符）`" required />
         </template>

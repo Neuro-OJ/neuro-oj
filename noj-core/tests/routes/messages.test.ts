@@ -16,6 +16,15 @@ import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { conversations, users } from "../../src/db/schema.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 import { signToken } from "../../src/lib/jwt.ts";
+import {
+  _resetSystemSettingsForTest,
+  initSystemSettings,
+  updateSetting,
+} from "../../src/services/system-settings.ts";
+import {
+  enterTestContext,
+  leaveTestContext,
+} from "../../src/lib/requestContext.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建
 await resetDbForTest();
@@ -839,6 +848,44 @@ Deno.test({
       assertEquals(bodyB.data.length, 1);
     } finally {
       await cleanup(userA, userB);
+    }
+  },
+});
+
+// ─── 私信功能关闭：SSE 发送一次性关闭事件 ─────────────────────────
+
+Deno.test({
+  name: "messages route: 私信关闭时 SSE 返回 feature:disabled 事件",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const user = await createTestUser();
+    try {
+      _resetSystemSettingsForTest();
+      await initSystemSettings();
+      enterTestContext({
+        actorId: "0",
+        actorIp: "127.0.0.1",
+        actorRole: "admin",
+      });
+      try {
+        await updateSetting("private_messaging_enabled", false, "0");
+      } finally {
+        leaveTestContext();
+      }
+
+      const app = createApp();
+      const token = await getToken(user);
+      const res = await app.request(BASE + "/events", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      assertEquals(res.status, 200);
+      const text = await res.text();
+      assertExists(text);
+      assertEquals(text.includes("feature:disabled"), true);
+    } finally {
+      await cleanup(user);
     }
   },
 });

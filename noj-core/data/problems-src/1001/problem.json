@@ -6,12 +6,12 @@
   "type": "P",
   "runtime_config": {
     "evaluator": {
-      "image": "ghcr.io/neuro-oj/noj-evaluator-python",
+      "image": "noj-evaluator-python",
       "time_limit_ms": 30000,
       "memory_limit_mb": 256
     },
     "solution": {
-      "image": "ghcr.io/neuro-oj/noj-solution-python",
+      "image": "noj-solution-python",
       "call_timeout_ms": 5000,
       "memory_limit_mb": 256
     }

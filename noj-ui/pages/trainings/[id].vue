@@ -16,6 +16,7 @@ const { data: problemsData, refresh: refreshProblems } = await useFetch<{ data: 
 const training = computed(() => trainingData.value?.data)
 const problems = computed(() => problemsData.value?.data ?? [])
 const isOwner = computed(() => training.value?.created_by === user.value?.id)
+const showEdit = ref(false)
 </script>
 
 <template>
@@ -38,6 +39,17 @@ const isOwner = computed(() => training.value?.created_by === user.value?.id)
               class="rounded-full bg-white/10 px-3 py-1 text-xs"
             >链接可见</span>
             <span v-else class="rounded-full bg-white/10 px-3 py-1 text-xs">公开</span>
+            <UButton
+              v-if="isOwner"
+              icon="i-lucide-pencil"
+              size="xs"
+              color="white"
+              variant="ghost"
+              class="ml-auto text-white/80 hover:text-white"
+              @click="showEdit = true"
+            >
+              编辑
+            </UButton>
           </div>
           <p class="mt-4 whitespace-pre-line text-sm leading-6 text-slate-300">
             {{ training?.description }}
@@ -51,6 +63,13 @@ const isOwner = computed(() => training.value?.created_by === user.value?.id)
           :training-id="trainingId"
           :problems="problems"
           @changed="refreshProblems"
+        />
+
+        <TrainingFormModal
+          v-if="isOwner"
+          v-model="showEdit"
+          :training="training"
+          @saved="refresh"
         />
       </AsyncContent>
     </div>

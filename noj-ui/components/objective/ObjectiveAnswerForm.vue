@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { ObjectiveQuestion, SubmitResult } from '~/composables/useObjective'
+import type { ObjectiveQuestion, ObjectiveSubmission, SubmitResult } from '~/composables/useObjective'
 import { QUESTION_TYPE_LABELS } from '~/composables/useObjective'
+import { formatObjectiveAnswer } from '~/utils/objectiveFormat'
 
 /**
  * 客观题作答表单（练习模式；并入 problems 详情页）。
@@ -28,13 +29,32 @@ const submissionError = ref('')
 
 // 历史最高分（练习模式；竞赛提交不计入）
 const { data: histData, refresh: refreshHist } = await useFetch<{
-  data: { total: number; best_score: number | null }
+  data: {
+    data: ObjectiveSubmission[]
+    total: number
+    best_score: number | null
+  }
 }>(
-  `/api/v1/problems/submissions?paper_id=${props.paperId}&per_page=5`,
+  `/api/v1/problems/submissions?paper_id=${props.paperId}&per_page=20`,
   { server: false },
 )
 const bestScore = computed(() => histData.value?.data?.best_score ?? null)
 const submitCount = computed(() => histData.value?.data?.total ?? 0)
+const submissions = computed(() => histData.value?.data?.data ?? [])
+
+// 提交记录展开状态
+const showHistory = ref(false)
+const expandedSubmissionId = ref<string | null>(null)
+const questionMap = computed(() => new Map(questions.value.map((q) => [q.id, q])))
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
 
 function toggleOption(qid: string, value: string | boolean) {
   const q = questions.value.find((item) => item.id === qid)
@@ -191,6 +211,58 @@ async function onSubmit() {
           </span>
           <span v-if="lastResult.contest_mode" class="ml-2 text-text-muted">竞赛提交（仅一次）</span>
         </div>
+
+        <!-- 提交记录列表 -->
+        <section class="rounded-xl border border-border bg-white">
+          <button
+            type="button"
+            class="flex w-full items-center justify-between px-5 py-4 text-sm font-semibold text-text"
+            @click="showHistory = !showHistory"
+          >
+            <span class="flex items-center gap-2">
+              <UIcon name="i-lucide-history" class="size-4 text-text-muted" />
+              提交记录（{{ submitCount }}）
+            </span>
+            <UIcon
+              :name="showHistory ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+              class="size-4 text-text-muted"
+            />
+          </button>
+
+          <div v-if="showHistory" class="border-t border-border divide-y divide-border">
+            <p v-if="submissions.length === 0" class="px-5 py-4 text-sm text-text-secondary">
+              暂无提交记录
+            </p>
+            <div v-for="sub in submissions" :key="sub.id" class="px-5 py-3">
+              <button
+                type="button"
+                class="flex w-full items-center justify-between gap-3 text-left"
+                @click="expandedSubmissionId = expandedSubmissionId === sub.id ? null : sub.id"
+              >
+                <span class="text-sm text-text-secondary">{{ formatTime(sub.created_at) }}</span>
+                <span class="text-sm font-semibold text-primary">
+                  {{ (sub.score / 100).toFixed(0) }} 分
+                </span>
+              </button>
+
+              <div v-if="expandedSubmissionId === sub.id" class="mt-3 space-y-2 rounded-lg bg-bg-page p-3">
+                <div v-for="(detail, qid) in sub.details" :key="qid" class="text-xs">
+                  <div class="flex items-center gap-2">
+                    <UIcon
+                      :name="detail.correct ? 'i-lucide-check-circle' : 'i-lucide-x-circle'"
+                      class="size-3.5"
+                      :class="detail.correct ? 'text-green-600' : 'text-red-600'"
+                    />
+                    <span class="font-medium text-text">{{ questionMap.get(qid)?.prompt ?? '未知题目' }}</span>
+                  </div>
+                  <p class="mt-1 pl-5 text-text-secondary">
+                    作答：{{ formatObjectiveAnswer(questionMap.get(qid), detail.given) }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
 
         <p v-if="submissionError" class="text-sm text-red-600">{{ submissionError }}</p>
 

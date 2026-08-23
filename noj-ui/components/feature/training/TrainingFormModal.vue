@@ -1,14 +1,31 @@
 <script setup lang="ts">
-import type { TrainingPayload } from '~/composables/useTrainings'
+import type { Training, TrainingPayload } from '~/composables/useTrainings'
 
-const props = defineProps<{ modelValue: boolean }>()
+const props = defineProps<{
+  modelValue: boolean
+  /** 传入 training 时进入编辑模式 */
+  training?: Training | null
+}>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [] }>()
 
-const { createTraining } = useTrainings()
+const { createTraining, updateTraining } = useTrainings()
 const title = ref('')
 const description = ref('')
-const visibility = ref<'private' | 'unlisted'>('private')
+const visibility = ref<'private' | 'unlisted' | 'public'>('private')
 const saving = ref(false)
+
+const isEdit = computed(() => !!props.training)
+
+watch(
+  () => props.training,
+  (t) => {
+    if (!t) return
+    title.value = t.title
+    description.value = t.description
+    visibility.value = t.visibility
+  },
+  { immediate: true },
+)
 
 async function submit() {
   if (!title.value.trim()) return
@@ -19,7 +36,11 @@ async function submit() {
       description: description.value,
       visibility: visibility.value,
     }
-    await createTraining(body)
+    if (props.training) {
+      await updateTraining(props.training.id, body)
+    } else {
+      await createTraining(body)
+    }
     emit('update:modelValue', false)
     emit('saved')
   } finally {
@@ -31,7 +52,7 @@ async function submit() {
 <template>
   <UModal
     :open="props.modelValue"
-    title="新建题单"
+    :title="isEdit ? '编辑题单' : '新建题单'"
     :unmount-on-hide="true"
     @update:open="emit('update:modelValue', $event)"
   >
@@ -48,12 +69,13 @@ async function submit() {
           :items="[
             { label: '私有', value: 'private' },
             { label: '链接可见', value: 'unlisted' },
+            { label: '公开', value: 'public' },
           ]"
         />
       </UFormGroup>
       <div class="flex justify-end gap-3">
         <UButton color="gray" @click="emit('update:modelValue', false)">取消</UButton>
-        <UButton type="submit" :loading="saving">创建</UButton>
+        <UButton type="submit" :loading="saving">{{ isEdit ? '保存' : '创建' }}</UButton>
       </div>
     </UForm>
   </UModal>
