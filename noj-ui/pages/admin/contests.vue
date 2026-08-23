@@ -114,21 +114,48 @@ async function openEdit(contest: Contest) {
 }
 
 async function recoverCreatedContest(payload: ContestPayload, error: unknown) {
-  if (!isNetworkError(error)) return false
-  if (!await loadContests(1)) return false
-  return contests.value.some((contest) =>
+  const errorInfo = extractApiError(error)
+  const networkError = isNetworkError(error)
+  console.info('[contest-save] 开始确认网络异常后的保存结果', {
+    networkError,
+    status: errorInfo.status,
+    message: errorInfo.message,
+  })
+  if (!networkError) {
+    console.info('[contest-save] 非网络错误，不执行保存结果确认')
+    return false
+  }
+  const refreshed = await loadContests(1)
+  console.info('[contest-save] 保存结果确认列表刷新完成', {
+    refreshed,
+    contestCount: contests.value.length,
+  })
+  if (!refreshed) return false
+  const found = contests.value.some((contest) =>
     contest.title === payload.title &&
     contest.start_time === payload.start_time &&
     contest.end_time === payload.end_time &&
     contest.type === payload.type &&
     contest.problem_count === payload.problems.length
   )
+  console.info('[contest-save] 保存结果确认完成', { found })
+  return found
 }
 
 async function saveContest(payload: ContestPayload) {
   formError.value = ''
   const contestId = editingContest.value?.id
   const successMessage = contestId ? '竞赛已更新' : '竞赛已创建'
+  const context = {
+    mode: contestId ? 'update' : 'create',
+    contestId,
+    title: payload.title,
+    type: payload.type,
+    startTime: payload.start_time,
+    endTime: payload.end_time,
+    problemCount: payload.problems.length,
+  }
+  console.info('[contest-save] 提交流程开始', context)
   try {
     await runContestMutation({
       isSaving: () => saving.value,
@@ -136,24 +163,42 @@ async function saveContest(payload: ContestPayload) {
         saving.value = value
       },
       save: async () => {
+        console.info('[contest-save] 保存请求开始', context)
         if (contestId) {
           await api.put(`/api/v1/admin/contests/${contestId}`, payload)
         } else {
           await api.post('/api/v1/admin/contests', payload)
         }
+        console.info('[contest-save] 保存请求成功', context)
       },
       recover: contestId ? undefined : (error) => recoverCreatedContest(payload, error),
       onSaved: () => {
+        console.info('[contest-save] 保存结果确定成功，关闭表单', context)
         toast.success(successMessage)
         formOpen.value = false
       },
-      refresh: () => loadContests(currentPage.value),
+      refresh: async () => {
+        console.info('[contest-save] 开始刷新竞赛列表', { page: currentPage.value })
+        const refreshed = await loadContests(currentPage.value)
+        console.info('[contest-save] 竞赛列表刷新完成', { refreshed, page: currentPage.value })
+        return refreshed
+      },
       onRefreshFailed: () => {
+        console.error('[contest-save] 保存成功但竞赛列表刷新失败', context)
         toast.error('竞赛已保存，但竞赛列表刷新失败，请手动刷新')
       },
     })
   } catch (saveError: unknown) {
-    formError.value = extractApiError(saveError).message
+    const errorInfo = extractApiError(saveError)
+    console.error('[contest-save] 保存流程失败', {
+      ...context,
+      status: errorInfo.status,
+      code: errorInfo.code,
+      requestId: errorInfo.requestId,
+      message: errorInfo.message,
+      error: saveError,
+    })
+    formError.value = errorInfo.message
   }
 }
 
