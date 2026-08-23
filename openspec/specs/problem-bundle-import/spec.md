@@ -79,12 +79,12 @@
 
 系统 SHALL 支持 `problem.json` 顶层可选字段 `template`，用于索引题目源码目录中的模板文件（前端编辑器初始代码）。`template` MUST 为纯文件名（不含 `/`、`\`、`..`），缺省默认 `"template.py"`（保证未声明该字段的既有题目兼容）。
 
-模板读取接口 `GET /api/v1/problems/:id/template` SHALL 按 manifest `template` 字段（缺省 `"template.py"`）定位题目源码目录中的对应文件并返回内容；文件不存在 MUST 返回 HTTP 404。模板候选集 MUST 不再包含 `submission_sample.py` / `submission.py`（参考实现从模板回退链中移除，**BREAKING**：仅提供参考实现而未提供 `template.py` 的题目模板接口返回 404）。
+模板读取接口 `GET /api/v1/problems/:id/template` SHALL 按 manifest `template` 字段（缺省 `"template.py"`）定位已验证归属的源码目录中的对应文件并返回内容；文件不存在、目录无唯一归属或 manifest 不匹配 MUST 返回 HTTP 404。模板候选集 MUST 不再包含 `submission_sample.py` / `submission.py`（参考实现从模板回退链中移除，**BREAKING**：仅提供参考实现而未提供 `template.py` 的题目模板接口返回 404）。
 
 #### Scenario: 声明 template 字段
 
-- **WHEN** `problem.json` 含 `"template": "template.py"`
-- **THEN** 系统校验通过，模板接口按该文件名读取源码目录内容
+- **WHEN** 与数据库题目一致的 `problem.json` 含 `"template": "template.py"`
+- **THEN** 模板接口返回该源码目录中的 `template.py`
 
 #### Scenario: 缺省 template 字段（兼容旧题目）
 

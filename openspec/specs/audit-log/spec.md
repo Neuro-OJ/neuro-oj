@@ -18,7 +18,7 @@
 - `ip_address` (TEXT, NOT NULL) —— 操作来源 IP
 - `created_at` (TEXT, NOT NULL) —— ISO 8601 时间戳
 
-`action` CHECK 约束 SHALL 限定为以下 28 个值之一（现行 25 值清单中 `categories.delete` 由 `tags.*` 四动作取代）：
+`action` CHECK 约束 SHALL 限定为以下 29 个值之一（现行 25 值清单中 `categories.delete` 由 `tags.*` 四动作取代，并新增 `submissions.queue_removed`）：
 - `users.role_change`
 - `users.ban`
 - `users.unban`
@@ -30,6 +30,7 @@
 - `tags.delete`
 - `tags.merge`
 - `submissions.rejudge`
+- `submissions.queue_removed`
 - `settings.update`
 - `ip_ban.create`
 - `ip_ban.delete`
@@ -62,7 +63,7 @@
 #### Scenario: 标签审计 action 入列
 
 - **WHEN** 执行标签系统迁移
-- **THEN** `action` CHECK 约束更新为 28 个值（`categories.delete` 移除，新增 `tags.create`/`tags.update`/`tags.delete`/`tags.merge`），其余 24 个 action 保持不变
+- **THEN** `action` CHECK 约束更新为 29 个值（`categories.delete` 移除，新增 `tags.create`/`tags.update`/`tags.delete`/`tags.merge`，并纳入 `submissions.queue_removed`），其余 24 个 action 保持不变
 
 #### Scenario: root 用户审计记录
 
@@ -72,7 +73,7 @@
 
 ### Requirement: AuditDetail 强类型
 
-系统 SHALL 通过 TypeScript discriminated union 定义 28 类操作的 detail 字段：
+系统 SHALL 通过 TypeScript discriminated union 定义 29 类操作的 detail 字段：
 
 ```ts
 type AuditDetail =
@@ -87,6 +88,7 @@ type AuditDetail =
   | { action: "tags.delete"; name: string; kind: string }
   | { action: "tags.merge"; source_name: string; target_name: string }
   | { action: "submissions.rejudge"; submission_id?: string; problem_id?: string; count?: number }
+  | { action: "submissions.queue_removed" }
   | { action: "settings.update"; operation: "PUT" | "DELETE"; key: string; from: unknown; to: unknown }
   | { action: "ip_ban.create"; ip_or_cidr: string; reason: string; expires_at: string | null }
   | { action: "ip_ban.delete"; ip_or_cidr: string }
@@ -276,7 +278,7 @@ type AuditDetail =
 系统 SHALL 提供 `/admin/audit-logs` 页面。
 
 布局：
-- 顶部筛选条：操作类型下拉（28 个 action + "全部"）、管理员下拉（来自 `/api/v1/admin/users`）、时间范围（from/to 日期选择器）、重置按钮、筛选按钮
+- 顶部筛选条：操作类型下拉（29 个 action + "全部"）、管理员下拉（来自 `/api/v1/admin/users`）、时间范围（from/to 日期选择器）、重置按钮、筛选按钮
 - 中部表格列：时间（YYYY-MM-DD HH:mm:ss）、管理员（用户名）、操作（中文 label + 颜色 badge）、目标（type:id 简化展示）、详情（按 action narrow 渲染）、IP（带复制按钮）
 - 底部分页（复用 `paginationNav` 组件）
 
@@ -314,3 +316,13 @@ type AuditDetail =
 - **WHEN** admin 点击 IP 列旁的复制按钮
 - **THEN** IP 字符串写入剪贴板（navigator.clipboard.writeText）
 - **THEN** 显示 toast "已复制"
+
+### Requirement: 评测队列移除操作审计
+
+系统 SHALL 将 `submissions.queue_removed` 纳入 `audit_logs.action` 的 CHECK 约束和 `AuditAction` / `AuditDetail` 强类型定义，并在管理员成功移除 pending 评测任务时写入审计记录。
+
+#### Scenario: 成功移除任务产生审计记录
+
+- **WHEN** 管理员成功从 pending queue 移除正式提交任务
+- **THEN** `audit_logs` 新增 action 为 `submissions.queue_removed` 的记录
+- **THEN** 记录的 target 为 `{type: "submission", id: 提交 ID}`

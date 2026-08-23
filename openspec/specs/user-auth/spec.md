@@ -99,35 +99,39 @@ Hono + jose + bcryptjs 实现，API 路径前缀为 `/api/v1/auth`。
 
 - `login`（必填，string）：用户名或邮箱地址
 - `password`（必填，string）：密码
+- `code`（可选，string）：TFA 验证码或恢复码；用户已启用 TFA 时必填
 
 响应：
 
 - 成功：200，`{ "data": { "user": { "id", "username", "email", "role", "must_change_password", ... }, "token": "<jwt>" } }`（从 noj-core 直接调用时）
 - 成功（通过 Nitro 代理）：200，`{ "data": { "user": { ... } } }`（token 字段被 Nitro 代理拦截并转为 Set-Cookie）
-- 失败：400（验证失败）或 401（凭证无效）
+- 失败：400（验证失败或缺少 TFA code）或 401（凭证无效 / TFA 验证码错误）
 
 JWT 负载 MUST 包含 `sub`（用户 ID）、`role`（用户角色）和 `must_change_password`（布尔），过期时间默认 24 小时。
 
 为提高安全性，登录失败 MUST 返回统一消息
 `"用户名或密码错误"`，不区分"用户不存在"和"密码错误"。
 
+用户已启用 TFA 时，系统 MUST 在密码验证通过后继续校验 `code`；`code` 缺失时
+MUST 返回 400 且错误码为 `TFA_REQUIRED`，`code` 错误时 MUST 返回 401 且不签发 JWT。
+
 #### Scenario: 用用户名登录成功
 
-- **WHEN** 客户端 POST `/api/v1/auth/login` 提供有效的用户名和密码
+- **WHEN** 客户端 POST `/api/v1/auth/login` 提供有效的用户名和密码，且用户未启用 TFA
 - **THEN** 系统验证密码，返回 200 和包含用户信息及 JWT 的响应体
 
 #### Scenario: 用用户名登录成功（通过 Nitro 代理）
-- **WHEN** 客户端通过 Nitro 代理 POST `/api/v1/auth/login` 提供有效的用户名和密码
+- **WHEN** 客户端通过 Nitro 代理 POST `/api/v1/auth/login` 提供有效的用户名和密码，且用户未启用 TFA
 - **THEN** 代理将响应中的 `data.token` 提取为 HTTP-only Cookie `noj:token`，设置 readable cookie `noj:session`，移除响应体中的 `token` 字段，返回 200 和用户信息
 
 #### Scenario: 用邮箱登录成功
 
 - **WHEN** 客户端 POST `/api/v1/auth/login` 的 `login`
-  字段为已注册的邮箱地址，密码正确
+  字段为已注册的邮箱地址，密码正确，且用户未启用 TFA
 - **THEN** 系统按邮箱查找用户，验证密码，返回 200 和 JWT
 
 #### Scenario: 用邮箱登录成功（通过 Nitro 代理）
-- **WHEN** 客户端通过 Nitro 代理 POST `/api/v1/auth/login` 的 `login` 字段为已注册的邮箱地址，密码正确
+- **WHEN** 客户端通过 Nitro 代理 POST `/api/v1/auth/login` 的 `login` 字段为已注册的邮箱地址，密码正确，且用户未启用 TFA
 - **THEN** 代理设置认证 cookie，返回用户信息（不含 token）
 
 #### Scenario: 密码错误
@@ -141,6 +145,31 @@ JWT 负载 MUST 包含 `sub`（用户 ID）、`role`（用户角色）和 `must_
 - **THEN** 系统返回 401，错误消息
   `"用户名或密码错误"`（与密码错误消息一致，防止用户枚举），不设置任何 cookie
 
+#### Scenario: 已启用 TFA 但未提供验证码
+
+- **WHEN** 已启用 TFA 的用户以正确密码调用 `POST /api/v1/auth/login`，但请求体不含 `code`
+- **THEN** 系统返回 400，错误码 `TFA_REQUIRED`，不签发 JWT、不设置 cookie
+
+#### Scenario: 已启用 TFA 且 TOTP 验证码正确
+
+- **WHEN** 已启用 TFA 的用户以正确密码和正确 6 位 TOTP 验证码调用 `POST /api/v1/auth/login`
+- **THEN** 系统校验通过，返回 200 和包含用户信息及 JWT 的响应体
+
+#### Scenario: 已启用 TFA 且 TOTP 验证码错误
+
+- **WHEN** 已启用 TFA 的用户以正确密码但错误 TOTP 验证码调用 `POST /api/v1/auth/login`
+- **THEN** 系统返回 401，不签发 JWT、不设置 cookie
+
+#### Scenario: 已启用 TFA 且恢复码正确
+
+- **WHEN** 已启用 TFA 的用户以正确密码和未使用恢复码调用 `POST /api/v1/auth/login`
+- **THEN** 系统校验通过并消费该恢复码，返回 200 和包含用户信息及 JWT 的响应体
+
+#### Scenario: 已启用 TFA 且恢复码已使用
+
+- **WHEN** 已启用 TFA 的用户以正确密码但已使用过的恢复码调用 `POST /api/v1/auth/login`
+- **THEN** 系统返回 401，不签发 JWT、不设置 cookie
+
 ### Requirement: 获取当前用户信息
 
 系统 SHALL 提供 `GET /api/v1/auth/me` 端点，返回当前认证用户的完整信息。
@@ -150,7 +179,7 @@ JWT 负载 MUST 包含 `sub`（用户 ID）、`role`（用户角色）和 `must_
 
 响应：
 
-- 成功：200，`{ "data": { "id", "username", "email", "role", "must_change_password", "created_at", "updated_at" } }`
+- 成功：200，`{ "data": { "id", "username", "email", "role", "must_change_password", "tfa_enabled", "created_at", "updated_at" } }`
 - 失败：401（未认证或令牌无效）
 
 #### Scenario: 获取当前用户信息
@@ -216,8 +245,15 @@ JWT 负载 MUST 包含 `sub`（用户 ID）、`role`（用户角色）和 `must_
 **防枚举行为：**
 
 - 不管邮箱是否已注册，接口 MUST 统一返 200 + 同一响应消息：`{ "ok": true, "message": "如果该邮箱已注册，您将收到一封密码重置邮件" }`
-- 邮箱存在时 MUST 实际生成令牌并发送邮件（mock 模式：控制台日志）
+- 邮箱存在且可信的应用基础 URL 可用时 MUST 实际生成令牌并发送邮件（mock 模式：控制台日志）
 - 邮箱不存在或格式非法时 MUST 不发送邮件，但响应一致
+- `APP_URL` 配置为空时，`NOJ_ENV=production` 环境 MUST 不生成令牌、不发送邮件，并记录内部错误日志；接口仍 MUST 返回上述统一 200 响应
+
+**重置链接基础 URL：**
+
+- 系统 MUST 优先使用服务端配置的 `APP_URL` 作为邮件链接的应用基础 URL，不得使用请求中的 `Host` 或 `X-Forwarded-Proto` 覆盖它
+- 非生产环境未配置 `APP_URL` 时，系统 MAY 使用当前请求头拼接基础 URL 作为开发回退
+- `NOJ_ENV=production` 且未配置 `APP_URL` 时，系统 MUST 忽略请求头中的 `Host` 与 `X-Forwarded-Proto`，不得发送任何含有请求头来源 URL 的邮件
 
 **令牌生成：**
 
@@ -229,11 +265,30 @@ JWT 负载 MUST 包含 `sub`（用户 ID）、`role`（用户角色）和 `must_
 
 #### Scenario: 已注册邮箱请求重置
 
-- **WHEN** 已注册用户 POST `/api/v1/auth/forgot-password` 携带 `{"email": "<其注册邮箱>"}`
+- **WHEN** 已注册用户 POST `/api/v1/auth/forgot-password` 携带 `{"email": "<其注册邮箱>"}`，且可信的应用基础 URL 可用
 - **THEN** 系统生成 32 字节 base64url 令牌，计算 SHA-256 哈希
 - **THEN** 系统在 `password_reset_tokens` 表插入新行（user_id FK CASCADE、token_hash UNIQUE、expires_at = now + 15min、used_at = NULL）
 - **THEN** 系统调用 `sendPasswordResetEmail()`（mock 模式打印到 stdout）
 - **THEN** 系统返 200 和统一消息
+
+#### Scenario: 已配置 APP_URL 时抵御 Host Header 注入
+
+- **WHEN** 已注册用户请求重置，服务端已配置 `APP_URL=https://oj.example.com`，请求携带 `Host: evil.example` 或伪造的 `X-Forwarded-Proto`
+- **THEN** 邮件中的重置链接 MUST 以 `https://oj.example.com/reset-password` 开头，不得包含 `evil.example` 或伪造协议
+- **THEN** 系统返 200 和统一消息
+
+#### Scenario: 非生产环境缺少 APP_URL
+
+- **WHEN** `NOJ_ENV` 不是 `production`、服务端未配置 `APP_URL`，且请求携带 `Host: localhost:3000`
+- **THEN** 系统 MAY 使用请求头拼接 `http://localhost:3000` 作为重置链接基础 URL
+- **THEN** 系统返 200 和统一消息
+
+#### Scenario: 生产环境缺少 APP_URL
+
+- **WHEN** `NOJ_ENV=production`、服务端未配置 `APP_URL`，请求携带攻击者控制的 `Host: evil.example`
+- **THEN** 系统记录内部配置错误日志
+- **THEN** 系统 MUST 不创建密码重置令牌，不发送邮件，不使用 `evil.example` 构造链接
+- **THEN** 系统仍返 200 和与正常请求完全相同的统一消息
 
 #### Scenario: 未注册邮箱请求重置
 
