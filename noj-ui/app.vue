@@ -64,7 +64,7 @@ useHead({ title: computed(() => resolvePageTitle(route.path)) })
     --c-success-text: #137333; --c-info-text: #1967d2; --c-warning-text: #92400e; --c-error-text: #b91c1c;
     --c-text: #1e293b; --c-text-secondary: #64748b; --c-text-muted: #64748b;
     --header-h: 64px;
-    --c-border: #e2e8f0; --c-bg-page: #f8fafc; --c-white: #ffffff;
+    --c-border: #e2e8f0; --c-bg-page: #f8fafc; --c-white: #ffffff; --c-text-on-color: #ffffff;
     /* 深色背景上的正文色（footer 等）：#64748b on #0f172a 仅 3.75:1，不达 WCAG AA 4.5:1 */
     --c-text-on-dark: #94a3b8;
 }

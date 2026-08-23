@@ -35,6 +35,7 @@
   --color-text-muted: var(--c-text-muted);
   --color-border: var(--c-border);
   --color-white: var(--c-white);
+  --color-text-on-color: var(--c-text-on-color);
   --color-bg-page: var(--c-bg-page);
   --color-bg-dark: var(--c-bg-dark);
   --color-bg-dark-2: var(--c-bg-dark-2);
@@ -280,15 +281,16 @@
  * 在 dark 模式为 --ui-color-neutral-900（深色）：这是为 bg-inverted
  * （dark 下白底）元素设计的反转色，用在彩色 solid 按钮上就变成
  * 「primary 蓝底 + 深字」，对比度不足。
- * 这里仅对 solid 彩色按钮（class 含独立 token bg-primary/bg-success 等）
- * 强制白字；[class~="..."] 精确匹配 token，避免误伤 outline 变体的
- * hover:bg-primary/10（无独立 bg-* token），也不影响 neutral solid
- * 按钮与 bg-inverted 元素。未包 @layer，优先级高于 utilities layer。
+ * 这里仅对 button/a 形态的 solid 彩色按钮（class 含独立 token
+ * bg-primary/bg-success 等）使用主题前景色；[class~="..."] 精确匹配 token，
+ * 避免误伤 outline 变体的 hover:bg-primary/10（无独立 bg-* token），也不影响
+ * neutral solid 按钮与其他使用 data-slot="base" 的组件。未包 @layer，优先级高于
+ * utilities layer。
  *
  * ⚠️ 后期正式做深色模式（从根源修复按钮文字颜色，如在 Nuxt UI 主题
  * 覆盖中让 solid 彩色按钮在 dark 下使用对比色文字）后，本条补丁即
  * 冗余，应整体删除，避免与主题层重复设置。 */
-.dark [data-slot="base"]:is(
+.dark :is(button, a)[data-slot="base"]:is(
   [class~="bg-primary"],
   [class~="bg-secondary"],
   [class~="bg-success"],
@@ -296,5 +298,5 @@
   [class~="bg-warning"],
   [class~="bg-info"]
 ) {
-  color: var(--c-white);
+  color: var(--color-text-on-color);
 }
