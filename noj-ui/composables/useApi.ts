@@ -54,6 +54,16 @@ export function useApi() {
       return await $fetch<T>(url, { method, ...fetchOptions });
     } catch (err) {
       const info = extractApiError(err);
+      if (import.meta.client) {
+        console.error('[useApi] 请求失败', {
+          method: method.toUpperCase(),
+          url,
+          status: info.status,
+          code: info.code,
+          requestId: info.requestId,
+          message: info.message,
+        });
+      }
       // silent 只抑制默认 toast；onError 自定义回调仍执行（设计 D4）
       if (onError) {
         onError(err, info);
