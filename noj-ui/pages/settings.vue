@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { extractApiError } from "~/utils/apiError"
+import { getAvatarUploadError } from "~/utils/avatarUpload"
 const { user, isLoggedIn, loading, fetchUser } = useAuth()
 const router = useRouter()
 const { api } = useApi()
@@ -52,16 +53,9 @@ async function handleAvatarUpload(e: Event) {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
-  if (
-    !/\.(png|jpe?g|webp)$/i.test(file.name) ||
-    !["image/png", "image/jpeg", "image/webp"].includes(file.type)
-  ) {
-    toast.error("仅支持 png/jpeg/webp 图片")
-    input.value = ""
-    return
-  }
-  if (file.size > 2 * 1024 * 1024) {
-    toast.error("头像大小超过限制（最大 2MB）")
+  const validationError = getAvatarUploadError(file)
+  if (validationError) {
+    toast.error(validationError)
     input.value = ""
     return
   }
@@ -72,10 +66,13 @@ async function handleAvatarUpload(e: Event) {
     const res = await api.post<{ data: { avatar_url: string } }>(
       "/api/v1/users/me/avatar",
       fd,
+      { silent: true },
     )
     if (user.value) user.value.avatar_url = res.data.avatar_url
     avatarPreviewKey.value = Date.now()
     toast.success("头像已更新")
+  } catch (err: unknown) {
+    toast.error(extractApiError(err).message)
   } finally {
     avatarUploading.value = false
     input.value = ""
