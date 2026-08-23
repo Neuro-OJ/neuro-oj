@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Contest, ContestProblem } from '~/composables/useContests'
 import type { WorkspaceSubmission } from '~/components/editor/EditorWorkspace.vue'
+import { getProblemTemplateUrl } from '~/utils/problemTemplate'
 
 /**
  * 独立做题页（标准题库与竞赛共用）。
@@ -139,9 +140,7 @@ const draftKey = computed(() => isContest.value
   ? `contest:${contestId.value}:${label.value}`
   : problemId.value)
 
-const templateUrl = computed(() => isContest.value
-  ? undefined
-  : (id: string) => `/api/v1/problems/${id}/template`)
+const templateUrl = getProblemTemplateUrl
 </script>
 
 <template>
