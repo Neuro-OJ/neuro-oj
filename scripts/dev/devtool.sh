@@ -492,9 +492,12 @@ spawn_target() {
 
   # setsid 启动新进程组（部分内核支持，便于后续杀整组）
   if command -v setsid >/dev/null 2>&1; then
-    setsid "$@" >>"$log_file" 2>&1 &
+    setsid "$@" >>"$log_file" 2>&1 </dev/null &
+  elif command -v nohup >/dev/null 2>&1; then
+    # macOS 默认没有 setsid，使用 POSIX nohup 脱离终端会话。
+    nohup "$@" >>"$log_file" 2>&1 </dev/null &
   else
-    "$@" >>"$log_file" 2>&1 &
+    fail "未找到 setsid 或 nohup，无法将 $target 脱离终端启动"
   fi
   local pid=$!
   echo "$pid" >"$pid_file"
@@ -508,7 +511,7 @@ start_infra() {
   fi
 
   # 已运行则跳过
-  if docker compose -f "$COMPOSE_FILE" ps --status running 2>/dev/null | grep -qE 'postgres|redis'; then
+  if docker compose -f "$COMPOSE_FILE" ps --status running 2>/dev/null | grep -E 'postgres|redis' >/dev/null 2>&1; then
     ok "基础设施已在运行"
     return 0
   fi
@@ -567,7 +570,7 @@ start_core() {
   if ! command -v docker >/dev/null 2>&1; then
     fail "未检测到 docker"
   fi
-  if ! docker compose -f "$COMPOSE_FILE" ps --status running 2>/dev/null | grep -qE 'postgres|redis'; then
+  if ! docker compose -f "$COMPOSE_FILE" ps --status running 2>/dev/null | grep -E 'postgres|redis' >/dev/null 2>&1; then
     warn "基础设施未运行，建议先运行: devtool.sh start infra"
   fi
 
@@ -807,7 +810,7 @@ stop_infra() {
     warn "docker 命令不可用，跳过 infra 停止"
     return 0
   fi
-  if ! docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep -qE 'postgres|redis'; then
+  if ! docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep -E 'postgres|redis' >/dev/null 2>&1; then
     echo "基础设施未运行"
     return 0
   fi
@@ -923,7 +926,7 @@ status_human_line() {
 status_human() {
   echo "━━━ 基础设施 ━━━"
   if command -v docker >/dev/null 2>&1; then
-    if docker compose -f "$COMPOSE_FILE" ps --status running 2>/dev/null | grep -qE 'postgres|redis'; then
+    if docker compose -f "$COMPOSE_FILE" ps --status running 2>/dev/null | grep -E 'postgres|redis' >/dev/null 2>&1; then
       (cd "$REPO_ROOT" && docker compose -f "$COMPOSE_FILE" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null) \
         | grep -E 'postgres|redis|NAME' || true
     else
@@ -979,7 +982,7 @@ status_json_module() {
 status_json() {
   local infra_running="false"
   if command -v docker >/dev/null 2>&1 \
-     && docker compose -f "$COMPOSE_FILE" ps --status running 2>/dev/null | grep -qE 'postgres|redis'; then
+     && docker compose -f "$COMPOSE_FILE" ps --status running 2>/dev/null | grep -E 'postgres|redis' >/dev/null 2>&1; then
     infra_running="true"
   fi
 
