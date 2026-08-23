@@ -206,7 +206,7 @@ function submit() {
 
       <footer class="flex items-center justify-between border-t border-border px-6 py-4">
         <p class="text-xs text-error-text">{{ localError || error }}</p>
-        <div class="ml-auto flex gap-2"><UButton color="neutral" variant="outline" size="md" class="border-border text-text-secondary hover:bg-gray-50" :disabled="saving" @click="emit('cancel')">取消</UButton><UButton color="primary" size="md" :disabled="saving" @click="submit">{{ saving ? '保存中...' : '保存竞赛' }}</UButton></div>
+        <div class="ml-auto flex gap-2"><UButton color="neutral" variant="outline" size="md" class="border-border text-text-secondary hover:bg-gray-50" :disabled="saving" @click="emit('cancel')">取消</UButton><UButton color="primary" size="md" :loading="saving" :disabled="saving" @click="submit">{{ saving ? '保存中...' : '保存竞赛' }}</UButton></div>
       </footer>
     </div>
   </div>

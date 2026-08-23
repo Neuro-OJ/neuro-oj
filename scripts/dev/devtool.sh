@@ -106,9 +106,17 @@ is_pid_alive() {
   [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
 }
 
+# is_pgid_alive PGID  → 0 存活 / 1 不存在
+is_pgid_alive() {
+  local pgid="$1"
+  [[ "$pgid" =~ ^[0-9]+$ ]] && [[ "$pgid" != "0" ]] &&
+    kill -0 -- "-$pgid" 2>/dev/null
+}
+
 # read_pid TARGET  →  echo 存活 PID 或空
 read_pid() {
   local pid_file="$LOG_DIR/$1.pid"
+  local pgid_file="$LOG_DIR/$1.pgid"
   if [[ -f "$pid_file" ]]; then
     local pid
     pid="$(cat "$pid_file" 2>/dev/null)"
@@ -116,6 +124,8 @@ read_pid() {
       echo "$pid"
       return 0
     fi
+    # 进程已退出时一并清理 PGID，避免后续 status/start 误用陈旧元数据。
+    rm -f "$pid_file" "$pgid_file"
   fi
   echo ""
 }
@@ -486,21 +496,44 @@ cmd_init_env() {
 spawn_target() {
   local target="$1"; shift
   local pid_file="$LOG_DIR/$target.pid"
+  local pgid_file="$LOG_DIR/$target.pgid"
   local log_file="$LOG_DIR/$target.log"
 
-  rm -f "$pid_file"
+  rm -f "$pid_file" "$pgid_file"
 
-  # setsid 启动新进程组（部分内核支持，便于后续杀整组）
+  # 优先创建独立 session，避免启动脚本退出时 watcher 被终端回收。
+  # macOS 默认没有 setsid，使用 Python os.setsid() 作为等价回退。
+  local detached="no"
   if command -v setsid >/dev/null 2>&1; then
     setsid "$@" >>"$log_file" 2>&1 </dev/null &
+    detached="yes"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import os, sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' \
+      "$@" >>"$log_file" 2>&1 </dev/null &
+    detached="yes"
   elif command -v nohup >/dev/null 2>&1; then
-    # macOS 默认没有 setsid，使用 POSIX nohup 脱离终端会话。
+    # 无 setsid/Python3 时保留 POSIX nohup 兼容回退。
     nohup "$@" >>"$log_file" 2>&1 </dev/null &
   else
     fail "未找到 setsid 或 nohup，无法将 $target 脱离终端启动"
   fi
   local pid=$!
   echo "$pid" >"$pid_file"
+
+  if [[ "$detached" == "yes" ]]; then
+    # 等待 exec 完成后读取实际进程组，最多等待 5 秒。
+    # 独立 session 的 leader 具有 PGID == PID；Python wrapper 尚未 exec 时
+    # 可能暂时读到 wrapper 所在的旧 PGID，不能把它记录下来。
+    local pgid i
+    for ((i = 1; i <= 5; i++)); do
+      pgid="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d '[:space:]')"
+      if [[ "$pgid" =~ ^[0-9]+$ ]] && [[ "$pgid" == "$pid" ]]; then
+        echo "$pgid" >"$pgid_file"
+        break
+      fi
+      sleep 1
+    done
+  fi
   echo "$pid"
 }
 
@@ -757,6 +790,7 @@ EOF
 # 通用：优雅停止（SIGTERM → 等 → SIGKILL）
 stop_pid() {
   local target="$1" pid_file="$LOG_DIR/$target.pid"
+  local pgid_file="$LOG_DIR/$target.pgid"
   local initial_signal="${2:-TERM}" grace_secs="${3:-10}"
 
   if [[ ! -f "$pid_file" ]]; then
@@ -764,16 +798,19 @@ stop_pid() {
     return 0
   fi
 
-  local pid
+  local pid pgid
   pid="$(cat "$pid_file" 2>/dev/null)"
+  pgid="$(cat "$pgid_file" 2>/dev/null || true)"
   if ! is_pid_alive "$pid"; then
     echo "PID $pid 已不存在，清理 PID 文件"
-    rm -f "$pid_file"
+    rm -f "$pid_file" "$pgid_file"
     return 0
   fi
 
   echo ">>> 停止 $target（PID $pid）..."
-  if [[ "$initial_signal" == "INT" ]]; then
+  if is_pgid_alive "$pgid"; then
+    kill -"$initial_signal" -- "-$pgid"
+  elif [[ "$initial_signal" == "INT" ]]; then
     kill -INT "$pid"
   else
     kill -TERM "$pid"
@@ -781,26 +818,34 @@ stop_pid() {
 
   local i
   for ((i=1; i<=grace_secs; i++)); do
-    if ! is_pid_alive "$pid"; then
-      rm -f "$pid_file"
+    if is_pgid_alive "$pgid"; then
+      :
+    elif ! is_pid_alive "$pid"; then
+      rm -f "$pid_file" "$pgid_file"
       ok "$target 已停止"
       return 0
+    else
+      # 有 PGID 记录但进程组已退出时，PID 可能尚未被系统回收；继续等待。
+      :
     fi
     sleep 1
   done
 
   # SIGINT 优雅关闭失败时，先降级 SIGTERM，最后 SIGKILL（对应 judge 的渐进停止）
-  if [[ "$initial_signal" == "INT" ]]; then
+  if [[ "$initial_signal" == "INT" ]] && is_pgid_alive "$pgid"; then
     echo "未响应 SIGINT，发送 SIGTERM"
-    kill -TERM "$pid" 2>/dev/null || true
+    kill -TERM -- "-$pgid" 2>/dev/null || true
     sleep 2
   fi
 
-  if is_pid_alive "$pid"; then
+  if is_pgid_alive "$pgid"; then
+    echo "仍未退出，发送 SIGKILL"
+    kill -KILL -- "-$pgid" 2>/dev/null || true
+  elif is_pid_alive "$pid"; then
     echo "仍未退出，发送 SIGKILL"
     kill -KILL "$pid" 2>/dev/null || true
   fi
-  rm -f "$pid_file"
+  rm -f "$pid_file" "$pgid_file"
   ok "$target 已强制停止"
 }
 
