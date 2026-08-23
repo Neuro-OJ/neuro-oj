@@ -245,7 +245,7 @@ import {
 
 Deno.test('validatePassword: 空值、长度与字符组成校验', () => {
   assertEquals(validatePassword(''), { valid: false, message: '请输入密码' });
-  assertEquals(validatePassword('short'), { valid: false, message: '密码长度不能少于 12 位' });
+  assertEquals(validatePassword('short'), { valid: false, message: '密码长度不能少于 8 位' });
   assertEquals(validatePassword('UPPERCASE1234'), { valid: false, message: '密码必须包含至少一个小写字母' });
   assertEquals(validatePassword('lowercase1234'), { valid: false, message: '密码必须包含至少一个大写字母' });
   assertEquals(validatePassword('LowercaseLetters'), { valid: false, message: '密码必须包含至少一个数字' });

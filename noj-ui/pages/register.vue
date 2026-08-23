@@ -43,11 +43,12 @@
                         id="password"
                         v-model="form.password"
                         label="密码"
-                        placeholder="至少 8 位，需包含字母和数字"
+                        placeholder="至少 8 位，需包含大小写字母和数字"
                         autocomplete="new-password"
                         :disabled="loading"
                         :error="fieldErrors.password"
                         @focus="fieldErrors.password = ''"
+                        @blur="validatePasswordField"
                     />
                 </div>
 
@@ -124,15 +125,8 @@ function validate(): boolean {
         valid = false
     }
 
-    if (!form.password) {
-        fieldErrors.password = "请输入密码"
+    if (!validatePasswordField()) {
         valid = false
-    } else {
-        const pwResult = validatePassword(form.password)
-        if (!pwResult.valid) {
-            fieldErrors.password = pwResult.message
-            valid = false
-        }
     }
 
     if (!form.confirmPassword) {
@@ -147,6 +141,15 @@ function validate(): boolean {
     }
 
     return valid
+}
+
+function validatePasswordField(): boolean {
+    const pwResult = validatePassword(form.password, {
+        username: form.username.trim(),
+        email: form.email.trim(),
+    })
+    fieldErrors.password = pwResult.valid ? "" : pwResult.message
+    return pwResult.valid
 }
 
 async function handleRegister() {

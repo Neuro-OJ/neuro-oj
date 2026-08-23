@@ -307,7 +307,7 @@ function formatNumber(n?: number): string {
             密码有什么要求？
             <UIcon name="i-lucide-chevron-down" class="size-4 text-text-muted transition-transform group-open:rotate-180" />
           </summary>
-          <p class="mt-2 text-sm leading-relaxed text-text-secondary">密码至少 8 位，需同时包含字母和数字，且不能与用户名或邮箱前缀相同。</p>
+          <p class="mt-2 text-sm leading-relaxed text-text-secondary">密码至少 8 位，需同时包含大小写字母和数字，且不能与用户名或邮箱前缀相同。</p>
         </details>
         <details class="group rounded-xl border border-border bg-white px-5 py-3.5">
           <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-text select-none [&::-webkit-details-marker]:hidden">

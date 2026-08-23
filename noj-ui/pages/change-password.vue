@@ -41,11 +41,12 @@
                             id="newPassword"
                             v-model="form.newPassword"
                             :type="showNewPassword ? 'text' : 'password'"
-                            placeholder="至少 8 位，需包含字母和数字"
+                            placeholder="至少 8 位，需包含大小写字母和数字"
                             autocomplete="new-password"
                             :disabled="loading"
                             class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
                             @focus="fieldErrors.newPassword = ''"
+                            @blur="validateNewPasswordField"
                         />
                         <button type="button" class="absolute right-3 bg-transparent border-0 text-text-muted cursor-pointer p-0 flex items-center hover:text-text-secondary" @click="showNewPassword = !showNewPassword" tabindex="-1">
                             <span class="flex items-center justify-center w-[18px] h-[18px]">
@@ -141,15 +142,8 @@ function validate(): boolean {
         valid = false
     }
 
-    if (!form.newPassword) {
-        fieldErrors.newPassword = "请输入新密码"
+    if (!validateNewPasswordField()) {
         valid = false
-    } else {
-        const pwResult = validatePassword(form.newPassword)
-        if (!pwResult.valid) {
-            fieldErrors.newPassword = pwResult.message
-            valid = false
-        }
     }
 
     if (form.newPassword && form.newPassword === form.oldPassword) {
@@ -169,6 +163,15 @@ function validate(): boolean {
     }
 
     return valid
+}
+
+function validateNewPasswordField(): boolean {
+    const pwResult = validatePassword(form.newPassword, {
+        username: auth.user.value?.username,
+        email: auth.user.value?.email,
+    })
+    fieldErrors.newPassword = pwResult.valid ? "" : pwResult.message
+    return pwResult.valid
 }
 
 async function handleSubmit() {

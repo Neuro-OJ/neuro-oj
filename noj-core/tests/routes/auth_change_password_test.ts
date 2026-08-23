@@ -56,7 +56,7 @@ const TEST_USER = {
   password: "OrigPwd-2024-Xy9",
 };
 
-const NEW_PASS = "NewStr0ng!Pass-2024";
+const NEW_PASS = "Aa123456";
 
 function uniqueIp(): string {
   return `10.${Math.floor(Math.random() * 255)}.${
