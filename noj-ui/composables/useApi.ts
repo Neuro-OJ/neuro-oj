@@ -54,7 +54,7 @@ export function useApi() {
       return await $fetch<T>(url, { method, ...fetchOptions });
     } catch (err) {
       const info = extractApiError(err);
-      if (import.meta.client) {
+      if (import.meta.client && import.meta.dev) {
         console.error('[useApi] 请求失败', {
           method: method.toUpperCase(),
           url,
