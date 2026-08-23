@@ -202,9 +202,7 @@ neuro-oj/
 │   │   └── migrate.ts         # 迁移脚本（密码脱敏）
 │   ├── data/
 │   │   ├── problems-src/      # 题目源文件（版本控制）
-│   │   │   ├── 1001/          # "星港舱门报码归一化" (easy)
-│   │   │   ├── 1002/          # "传感器数据滤波" (medium, 无支持包)
-│   │   │   └── 1003/          # "A+B Problem" (easy)
+│   │   │   └── 1001/          # "A+B Problem" (easy)
 │   │   └── packages/          # 构建产物 (gitignored，local 模式)
 │   └── tests/                 # 测试文件（与 src 镜像结构，以实际为准）
 │       ├── 00_migrate_test.ts # 迁移 + seed root 用户（最先执行）
