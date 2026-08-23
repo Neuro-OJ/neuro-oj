@@ -11,6 +11,7 @@ import {
   changePassword,
   getUserProfile,
   loginUser,
+  MIN_PASSWORD_LENGTH,
   registerUser,
 } from "../services/auth.ts";
 import {
@@ -111,8 +112,8 @@ auth.post("/register", async (c) => {
   }
 
   // 验证密码长度
-  if (body.password.length < 8) {
-    throw new ValidationError("密码长度不能少于 8 位");
+  if (body.password.length < MIN_PASSWORD_LENGTH) {
+    throw new ValidationError(`密码长度不能少于 ${MIN_PASSWORD_LENGTH} 位`);
   }
 
   const clientIp = getClientIp(c);

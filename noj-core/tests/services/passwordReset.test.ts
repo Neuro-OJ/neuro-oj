@@ -26,7 +26,7 @@ const TEST_USER = {
   username: `test-pwreset-${ts}`,
   email: `test-pwreset-${ts}@example.com`,
   password: "OrigPass-2024-Ab1",
-  newPassword: "NewPass-2024-Xy9",
+  newPassword: "Aa123456",
 };
 const APP_BASE_URL = "http://localhost:3000";
 

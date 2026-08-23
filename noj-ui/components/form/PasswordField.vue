@@ -17,7 +17,7 @@ withDefaults(
   },
 )
 
-const emit = defineEmits<{ focus: [] }>()
+const emit = defineEmits<{ focus: []; blur: [] }>()
 
 const visible = ref(false)
 </script>
@@ -33,6 +33,7 @@ const visible = ref(false)
       class="w-full"
       :ui="{ base: 'w-full' }"
       @focus="emit('focus')"
+      @blur="emit('blur')"
     >
       <template #leading>
         <UIcon name="i-lucide-lock" class="size-4" />

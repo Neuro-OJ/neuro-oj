@@ -49,14 +49,14 @@ Deno.test({
     const result = await changePassword(
       testUserId,
       TEST_USER.password,
-      "NewStr0ng!Pass-2024",
+      "Aa123456",
     );
     assertEquals(result.must_change_password, false);
     assertEquals(result.id, testUserId);
     // 改密后能用新密码登录
     const loginResult = await loginUser({
       login: TEST_USER.email,
-      password: "NewStr0ng!Pass-2024",
+      password: "Aa123456",
     });
     assertEquals(loginResult.user.id, testUserId);
   },
@@ -82,9 +82,9 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    // 注册一个新用户，密码为 "NewStr0ng!Pass-2024"（上一步已改为此密码）
+    // 上一步已将测试用户密码改为恰好 8 位的 "Aa123456"
     await assertRejects(
-      () => changePassword(testUserId, "NewStr0ng!Pass-2024", "123"),
+      () => changePassword(testUserId, "Aa123456", "123"),
       BadRequestError,
     );
   },
@@ -100,8 +100,8 @@ Deno.test({
       () =>
         changePassword(
           testUserId,
-          "NewStr0ng!Pass-2024",
-          "NewStr0ng!Pass-2024",
+          "Aa123456",
+          "Aa123456",
         ),
       BadRequestError,
       "新密码不能与旧密码相同",
