@@ -310,9 +310,9 @@ async function toggleFollow() {
             <div class="flex items-center gap-3">
               <span
                 class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
-                :class="badgeColors[problem.difficulty] || ''"
+                :class="difficultyBadgeColors[problem.difficulty] || ''"
               >
-                {{ difficultyLabel[problem.difficulty] || problem.difficulty }}
+                {{ difficultyLabels[problem.difficulty] || problem.difficulty }}
               </span>
               <span class="text-xs text-text-muted">{{ formatDate(problem.accepted_at) }}</span>
             </div>
@@ -346,9 +346,9 @@ async function toggleFollow() {
             <div class="flex items-center gap-3">
               <span
                 class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
-                :class="badgeColors[problem.difficulty] || ''"
+                :class="difficultyBadgeColors[problem.difficulty] || ''"
               >
-                {{ difficultyLabel[problem.difficulty] || problem.difficulty }}
+                {{ difficultyLabels[problem.difficulty] || problem.difficulty }}
               </span>
               <span class="text-xs text-text-muted">{{ formatDate(problem.created_at) }}</span>
             </div>
