@@ -7,6 +7,7 @@ import type {
   ContestPayload,
   Pagination,
 } from '~/composables/useContests'
+import { runContestMutation } from '~/utils/contestMutation'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false })
 
@@ -31,10 +32,6 @@ let contestRequestVersion = 0
 const pollInterval = ref<number | null>(30000)
 const lastRefresh = ref<Date | null>(null)
 
-function reloadAfterContestMutation() {
-  reloadNuxtApp({ path: '/admin/contests', persistState: false })
-}
-
 const columns = [
   { accessorKey: 'title', header: '竞赛' },
   { accessorKey: 'type', header: '赛制', cell: (info) => typeLabels[info.getValue() as Contest['type']] },
@@ -46,7 +43,7 @@ const columns = [
   { accessorKey: "actions", header: "操作" },]
 
 /** silent=true 用于轮询：不置 loading、不清错误，失败保留旧数据 */
-async function loadContests(page = currentPage.value, silent = false) {
+async function loadContests(page = currentPage.value, silent = false): Promise<boolean> {
   const currentRequest = ++contestRequestVersion
   if (!silent) {
     loading.value = true
@@ -54,14 +51,16 @@ async function loadContests(page = currentPage.value, silent = false) {
   }
   try {
     const response = await api.get<{ data: Contest[]; pagination: Pagination }>(`/api/v1/admin/contests?page=${page}&per_page=20`, { silent: true })
-    if (currentRequest !== contestRequestVersion) return
+    if (currentRequest !== contestRequestVersion) return true
     contests.value = response.data
     currentPage.value = response.pagination.page
     totalPages.value = response.pagination.total_pages
     lastRefresh.value = new Date()
+    return true
   } catch (fetchError: unknown) {
-    if (currentRequest !== contestRequestVersion) return
+    if (currentRequest !== contestRequestVersion) return true
     if (!silent) loadError.value = extractApiError(fetchError).message
+    return false
   } finally {
     // 无条件复位：避免轮询抢占 requestVersion 后 loading 卡死
     if (currentRequest === contestRequestVersion) loading.value = false
@@ -115,21 +114,33 @@ async function openEdit(contest: Contest) {
 }
 
 async function saveContest(payload: ContestPayload) {
-  saving.value = true
   formError.value = ''
+  const contestId = editingContest.value?.id
+  const successMessage = contestId ? '竞赛已更新' : '竞赛已创建'
   try {
-    if (editingContest.value) {
-      await api.put(`/api/v1/admin/contests/${editingContest.value.id}`, payload)
-    } else {
-      await api.post('/api/v1/admin/contests', payload)
-    }
-    toast.success(editingContest.value ? '竞赛已更新' : '竞赛已创建')
-    formOpen.value = false
-    reloadAfterContestMutation()
+    await runContestMutation({
+      isSaving: () => saving.value,
+      setSaving: (value) => {
+        saving.value = value
+      },
+      save: async () => {
+        if (contestId) {
+          await api.put(`/api/v1/admin/contests/${contestId}`, payload)
+        } else {
+          await api.post('/api/v1/admin/contests', payload)
+        }
+      },
+      onSaved: () => {
+        toast.success(successMessage)
+        formOpen.value = false
+      },
+      refresh: () => loadContests(currentPage.value),
+      onRefreshFailed: () => {
+        toast.error('竞赛已保存，但竞赛列表刷新失败，请手动刷新')
+      },
+    })
   } catch (saveError: unknown) {
     formError.value = extractApiError(saveError).message
-  } finally {
-    saving.value = false
   }
 }
 
@@ -140,7 +151,7 @@ async function removeContest(contest: Contest) {
     // silent: 错误由下方 catch 内联处理（toast.error），避免 useApi 默认 toast 双弹
     await api.delete(`/api/v1/admin/contests/${contest.id}`, { silent: true })
     toast.success('竞赛已删除')
-    reloadAfterContestMutation()
+    await loadContests(currentPage.value)
   } catch (err: unknown) {
     toast.error(extractApiError(err).message)
   }
