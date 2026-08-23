@@ -84,8 +84,8 @@ await loadBookmarks()
 
     <p v-if="error" class="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">{{ error }}</p>
     <div v-else-if="loading" class="py-12 text-center text-text-secondary">加载中…</div>
-    <div v-else-if="bookmarks.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center text-text-secondary">
-      <UIcon name="i-lucide-bookmark" class="mx-auto mb-3 text-text-secondary size-[28px]" />
+    <div v-else-if="bookmarks.length === 0" class="rounded-lg border border-dashed border-border p-10 text-text-secondary flex items-center justify-center gap-2">
+      <UIcon name="i-lucide-bookmark" class="text-text-secondary size-[28px]" />
       还没有可展示的收藏内容。
     </div>
     <div v-else class="space-y-4">
