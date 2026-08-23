@@ -686,7 +686,7 @@ openspec/
 ### 11.2 密码安全
 
 - bcrypt cost 12（OWASP 2025+ 最低）
-- 最小 12 字符，含大小写字母 + 数字
+- 最小 8 字符，含大小写字母 + 数字
 - 不能与 username/email 前缀相同
 
 ### 11.3 速率限制（`noj-core/.env`）
