@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { extractApiError } from "~/utils/apiError"
+import { formatRecoveryCodesFile } from "~/utils/recoveryCodes"
 const { user, isLoggedIn, loading } = useAuth()
 const router = useRouter()
 const { api } = useApi()
@@ -116,10 +117,24 @@ const tfaRecoveryCodes = ref<string[]>([])
 const tfaLoading = ref(false)
 const tfaError = ref("")
 const qrDataUrl = ref("")
+const tfaUserId = ref(user.value?.id ?? null)
+
+function resetTfaTransientState() {
+  tfaSetup.value = null
+  tfaCode.value = ""
+  tfaRecoveryCodes.value = []
+  tfaError.value = ""
+  qrDataUrl.value = ""
+}
 
 watch(
   user,
   (u) => {
+    const nextUserId = u?.id ?? null
+    if (nextUserId !== tfaUserId.value) {
+      resetTfaTransientState()
+      tfaUserId.value = nextUserId
+    }
     tfaEnabled.value = u?.tfa_enabled ?? false
   },
   { immediate: true },
@@ -165,6 +180,8 @@ async function handleTfaConfirm() {
     tfaRecoveryCodes.value = res.data.recovery_codes
     tfaEnabled.value = true
     tfaSetup.value = null
+    tfaCode.value = ""
+    qrDataUrl.value = ""
     if (user.value) user.value.tfa_enabled = true
   } catch (err: unknown) {
     tfaError.value = extractApiError(err).message
@@ -183,9 +200,7 @@ async function handleTfaDisable() {
   try {
     await api.post("/api/v1/auth/tfa/disable", { code: tfaCode.value.trim() })
     tfaEnabled.value = false
-    tfaSetup.value = null
-    tfaRecoveryCodes.value = []
-    qrDataUrl.value = ""
+    resetTfaTransientState()
     if (user.value) user.value.tfa_enabled = false
     toast.success("两步验证已禁用")
   } catch (err: unknown) {
@@ -208,11 +223,42 @@ async function handleTfaRegenerate() {
       { code: tfaCode.value.trim() },
     )
     tfaRecoveryCodes.value = res.data.recovery_codes
+    tfaCode.value = ""
     toast.success("恢复码已重新生成")
   } catch (err: unknown) {
     tfaError.value = extractApiError(err).message
   } finally {
     tfaLoading.value = false
+  }
+}
+
+function handleDownloadRecoveryCodes() {
+  if (tfaRecoveryCodes.value.length === 0) return
+
+  try {
+    const content = formatRecoveryCodesFile(tfaRecoveryCodes.value)
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `neuro-oj-recovery-codes-${new Date().toISOString().slice(0, 10)}.txt`
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+    toast.success("恢复码文件已下载")
+  } catch {
+    tfaError.value = "恢复码文件生成失败，请手动复制保存"
+  }
+}
+
+async function handleCopyRecoveryCodes() {
+  if (tfaRecoveryCodes.value.length === 0) return
+
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable")
+    await navigator.clipboard.writeText(tfaRecoveryCodes.value.join("\n"))
+    toast.success("恢复码已复制")
+  } catch {
+    toast.error("复制失败，请手动复制恢复码")
   }
 }
 </script>
@@ -395,13 +441,36 @@ async function handleTfaRegenerate() {
           v-if="tfaRecoveryCodes.length > 0"
           class="border border-border rounded-lg p-4 bg-page flex flex-col gap-2"
         >
-          <p class="text-sm font-semibold">请保存以下恢复码（仅显示一次）</p>
+          <p class="text-sm font-semibold">请立即保存以下恢复码，刷新页面后无法找回</p>
           <div class="grid grid-cols-2 gap-2">
             <code
               v-for="c in tfaRecoveryCodes"
               :key="c"
               class="font-mono text-sm bg-white border border-border rounded px-2 py-1"
             >{{ c }}</code>
+          </div>
+          <p class="text-xs text-text-muted">
+            每个恢复码只能使用一次；重新生成后，旧恢复码全部失效。
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              color="primary"
+              variant="outline"
+              size="sm"
+              @click="handleDownloadRecoveryCodes"
+            >
+              <UIcon name="i-lucide-download" class="size-4" />
+              下载恢复码文件
+            </UButton>
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="sm"
+              @click="handleCopyRecoveryCodes"
+            >
+              <UIcon name="i-lucide-copy" class="size-4" />
+              复制全部
+            </UButton>
           </div>
         </div>
 
