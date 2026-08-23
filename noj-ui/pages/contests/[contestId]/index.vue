@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Contest, ContestProblem } from '~/composables/useContests'
 import { extractApiError } from '~/utils/apiError'
+import { runContestRegistration } from '~/utils/contestRegistration'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,36 +27,33 @@ const problemsError = ref('')
 
 // ── Tabs（详情 / 题目 / 答疑 / 排名），状态同步到 ?tab= query ─────────
 const TAB_NAMES = ['detail', 'problems', 'clarifications', 'ranking'] as const
-const activeTab = ref(0)
+type TabName = typeof TAB_NAMES[number]
+const activeTab = ref<TabName>('detail')
 const queryTab = route.query.tab
 const queryTabIndex = typeof queryTab === 'string'
   ? TAB_NAMES.indexOf(queryTab as (typeof TAB_NAMES)[number])
   : -1
-if (queryTabIndex >= 0) activeTab.value = queryTabIndex
+if (queryTabIndex >= 0) activeTab.value = TAB_NAMES[queryTabIndex]
 
 // tab → URL：切换时写入 ?tab=（replace，不产生历史记录）
 watch(activeTab, (value) => {
-  const tab = TAB_NAMES[value]
-  if (route.query.tab !== tab) {
-    router.replace({ query: { ...route.query, tab } })
+  if (route.query.tab !== value) {
+    router.replace({ query: { ...route.query, tab: value } })
   }
 })
 
 // URL → tab：浏览器前进/后退或站内跳转带 tab 参数时同步
 watch(() => route.query.tab, (value) => {
-  const index = typeof value === 'string'
-    ? TAB_NAMES.indexOf(value as (typeof TAB_NAMES)[number])
-    : -1
-  if (index >= 0 && index !== activeTab.value) {
-    activeTab.value = index
+  if (typeof value === 'string' && TAB_NAMES.includes(value as TabName) && value !== activeTab.value) {
+    activeTab.value = value as TabName
   }
 })
 
 const tabItems = [
-  { value: 0, label: '详情', icon: 'i-lucide-info', slot: 'detail' },
-  { value: 1, label: '题目', icon: 'i-lucide-list-checks', slot: 'problems' },
-  { value: 2, label: '答疑', icon: 'i-lucide-message-circle-question', slot: 'clarifications' },
-  { value: 3, label: '排名', icon: 'i-lucide-trophy', slot: 'ranking' },
+  { value: 'detail', label: '详情', icon: 'i-lucide-info', slot: 'detail' },
+  { value: 'problems', label: '题目', icon: 'i-lucide-list-checks', slot: 'problems' },
+  { value: 'clarifications', label: '答疑', icon: 'i-lucide-message-circle-question', slot: 'clarifications' },
+  { value: 'ranking', label: '排名', icon: 'i-lucide-trophy', slot: 'ranking' },
 ]
 
 const countdown = computed(() => {
@@ -90,17 +88,42 @@ async function register() {
     await navigateTo({ path: '/login', query: { redirect: route.fullPath } })
     return
   }
-  registering.value = true
   registerError.value = ''
   try {
-    await api.post(`/api/v1/contests/${contestId}/register`, password.value ? { password: password.value } : undefined)
-    toast.showToast('success', '报名成功')
-    await refresh()
-    await loadProblems()
+    await runContestRegistration({
+      isRegistering: () => registering.value,
+      setRegistering: (value) => {
+        registering.value = value
+      },
+      register: async () => {
+        await api.post(`/api/v1/contests/${contestId}/register`, password.value ? { password: password.value } : undefined)
+      },
+      onRegistered: () => {
+        const currentContest = data.value?.data
+        if (currentContest && !currentContest.is_registered) {
+          data.value = {
+            ...data.value,
+            data: {
+              ...currentContest,
+              is_registered: true,
+              participant_count: currentContest.participant_count + 1,
+            },
+          }
+        }
+        toast.showToast('success', '报名成功')
+      },
+      refresh: async () => {
+        await refresh()
+        await loadProblems()
+      },
+      onRefreshFailed: (refreshFailure) => {
+        if (import.meta.dev) {
+          console.warn('[contest-registration] 报名成功后的数据刷新失败', refreshFailure)
+        }
+      },
+    })
   } catch (registerFailure: unknown) {
     registerError.value = extractApiError(registerFailure).message
-  } finally {
-    registering.value = false
   }
 }
 
