@@ -288,7 +288,7 @@
  * ⚠️ 后期正式做深色模式（从根源修复按钮文字颜色，如在 Nuxt UI 主题
  * 覆盖中让 solid 彩色按钮在 dark 下使用对比色文字）后，本条补丁即
  * 冗余，应整体删除，避免与主题层重复设置。 */
-.dark button[data-slot="base"]:is(
+.dark [data-slot="base"]:is(
   [class~="bg-primary"],
   [class~="bg-secondary"],
   [class~="bg-success"],
@@ -296,5 +296,5 @@
   [class~="bg-warning"],
   [class~="bg-info"]
 ) {
-  color: #fff;
+  color: var(--c-white);
 }
