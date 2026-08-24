@@ -36,6 +36,7 @@ vim .env.prod
 | `ADMIN_EMAIL` / `ADMIN_PASS` | 公测管理员账号 |
 | `JUDGE_IMAGE_BASE` | 默认 `ghcr.io/neuro-oj/` |
 | `NGINX_PORT` | 容器 Nginx 映射到宿主机的端口，默认 `8080` |
+| `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID` | 独立 rootless Docker daemon 的 socket 与组 ID；禁止使用 `/var/run/docker.sock` |
 
 ```bash
 # 3) 配置外部 TLS 终止
@@ -54,6 +55,11 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 curl https://你的域名/healthz
 ```
+
+> 评测 Worker 不得挂载应用宿主机的 `/var/run/docker.sock`。生产 Compose 要求
+> `JUDGE_DOCKER_SOCKET` 指向只服务于 judge 的 rootless daemon socket，并以非 root
+> 用户运行 Worker；`JUDGE_REQUIRE_ISOLATED_DOCKER=true` 会在错误配置时阻止 Worker
+> 消费评测任务。
 
 ## 3. 评测镜像白名单
 

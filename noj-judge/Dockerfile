@@ -7,8 +7,8 @@
 #
 # 平台：linux/amd64（公测阶段只支持 amd64）。
 #
-# 注意：noj-judge 需要访问宿主 Docker socket（/var/run/docker.sock），
-# 因此生产 Compose 中保持 root 运行；真正的隔离边界在评测子容器。
+# 注意：生产 Compose 只挂载独立 rootless Docker daemon 的 Unix socket，
+# Worker 使用非 root 用户运行；禁止挂载应用宿主机的 /var/run/docker.sock。
 
 # ── Builder：编译 release 二进制 ────────────────────────────────────
 FROM rust:1.86-slim-bookworm AS builder
@@ -35,7 +35,14 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+RUN addgroup --system --gid 10001 noj \
+    && adduser --system --uid 10001 --gid 10001 --no-create-home noj \
+    && mkdir -p /run/noj-judge \
+    && chown noj:noj /run/noj-judge
+
 COPY --from=builder /tmp/noj-judge /usr/local/bin/noj-judge
+
+USER 10001:10001
 
 # 无 HTTP 端口；健康检查直接探测 PID 1 是否存活（shell 形式）
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

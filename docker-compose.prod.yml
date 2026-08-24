@@ -139,13 +139,19 @@ services:
       JUDGE_COMMAND_WHITELIST: ${JUDGE_COMMAND_WHITELIST:-python3,deno,node,bash,sh}
       JUDGE_ALLOW_EVALUATOR_NETWORK: ${JUDGE_ALLOW_EVALUATOR_NETWORK:-false}
       JUDGE_ALLOW_HTTP_S3: ${JUDGE_ALLOW_HTTP_S3:-false}
+      JUDGE_DOCKER_HOST: ${JUDGE_DOCKER_HOST:-unix:///run/noj-judge/docker.sock}
+      JUDGE_REQUIRE_ISOLATED_DOCKER: "true"
       SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT: ${SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT:-60}
       SUPPORT_CACHE_DIR: ${SUPPORT_CACHE_DIR:-/tmp/noj-judge/support-cache}
       SUPPORT_CACHE_MAX_ITEMS: ${SUPPORT_CACHE_MAX_ITEMS:-500}
       SUPPORT_CACHE_MAX_MB: ${SUPPORT_CACHE_MAX_MB:-2048}
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      # 仅挂载独立 rootless Docker daemon 的 socket；禁止使用应用宿主机 socket。
+      - ${JUDGE_DOCKER_SOCKET:?JUDGE_DOCKER_SOCKET is required}:/run/noj-judge/docker.sock
       - judge-cache:/tmp/noj-judge
+    user: "${JUDGE_UID:-10001}:${JUDGE_GID:-10001}"
+    group_add:
+      - "${JUDGE_DOCKER_SOCKET_GID:?JUDGE_DOCKER_SOCKET_GID is required}"
     depends_on:
       redis:
         condition: service_healthy

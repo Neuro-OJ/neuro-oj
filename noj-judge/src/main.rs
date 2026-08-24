@@ -3,6 +3,7 @@
 /// 从 Redis 消息队列中拉取评测任务，在 Docker 容器中执行评测，
 /// 并将结果返回给 noj-core。
 mod config;
+mod docker;
 mod drain;
 mod dual;
 mod judge;
@@ -11,7 +12,6 @@ mod sandbox;
 mod types;
 
 use anyhow::{Context, Result};
-use bollard::Docker;
 use futures_util::{stream::FuturesUnordered, FutureExt, StreamExt};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -74,8 +74,8 @@ fn main() -> Result<()> {
         info!("Redis 连接成功");
 
         // 连接 Docker
-        let docker = Docker::connect_with_local_defaults()
-            .context("连接 Docker daemon 失败（请确保 Docker 在运行中）")?;
+        let docker = docker::connect(&config.docker_host, config.require_isolated_docker)
+            .context("连接 Docker daemon 失败（请检查 JUDGE_DOCKER_HOST 与 daemon 隔离配置）")?;
         docker
             .ping()
             .await
