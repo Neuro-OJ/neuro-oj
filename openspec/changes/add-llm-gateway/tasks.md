@@ -1,21 +1,21 @@
 ## 1. 数据库与基础配置
 
-- [ ] 1.1 新增 `noj-llm-gateway` 服务目录与基础骨架（package.json/deno.json、入口、健康检查）
-- [ ] 1.2 新增数据库迁移：`problems.llm_config` JSONB 可空列
-- [ ] 1.3 新增数据库迁移：`llm_providers`、`llm_usage`、`llm_quotas` 表
-- [ ] 1.4 在 `.env.example` / `.env.prod.example` 增加 `NOJ_LLM_SERVICE_TOKEN`、`NOJ_LLM_STORE_KEY` 及说明
-- [ ] 1.5 在 docker-compose 增加 `noj-llm-gateway` 服务（环境变量、网络、依赖 Redis/PG）
+- [x] 1.1 新增 `noj-llm-gateway` 服务目录与基础骨架（package.json/deno.json、入口、健康检查）
+- [x] 1.2 新增数据库迁移：`problems.llm_config` JSONB 可空列
+- [x] 1.3 新增数据库迁移：`llm_providers`、`llm_usage`、`llm_quotas` 表
+- [x] 1.4 在 `.env.example` / `.env.prod.example` 增加 `NOJ_LLM_SERVICE_TOKEN`、`NOJ_LLM_STORE_KEY` 及说明
+- [x] 1.5 在 docker-compose 增加 `noj-llm-gateway` 服务（环境变量、网络、依赖 Redis/PG）
 
 ## 2. noj-llm-gateway 核心实现
 
-- [ ] 2.1 实现 `SecretStore` 接口与默认 Env 实现（`NOJ_LLM_STORE_KEY`）
-- [ ] 2.2 实现 Provider CRUD 服务：加密存储 API Key、脱敏返回、启停
-- [ ] 2.3 实现 AEAD `eval_token` 签发与校验工具（载荷、TTL = Time Limit × 4）
-- [ ] 2.4 实现 OpenAI 兼容代理端点 `POST /v1/chat/completions`（Bearer token 校验、转发、错误透传）
-- [ ] 2.5 实现 Redis 限流/额度计数：单次提交、用户日/月、全局日/月、题目日/月、用户/IP 速率窗口
-- [ ] 2.6 实现 `llm_usage` 审计写入：完整 `request_messages`、参数、token、费用、状态
-- [ ] 2.7 实现 core↔gateway 管理 API 鉴权（`NOJ_LLM_SERVICE_TOKEN`）
-- [ ] 2.8 为 gateway 核心服务编写单元测试（token 校验、限流、Provider 加密）
+- [x] 2.1 实现 `SecretStore` 接口与默认 Env 实现（`NOJ_LLM_STORE_KEY`）
+- [x] 2.2 实现 Provider CRUD 服务：加密存储 API Key、脱敏返回、启停
+- [x] 2.3 实现 AEAD `eval_token` 签发与校验工具（载荷、TTL = Time Limit × 4）
+- [x] 2.4 实现 OpenAI 兼容代理端点 `POST /v1/chat/completions`（Bearer token 校验、转发、错误透传）
+- [x] 2.5 实现 Redis 限流/额度计数：单次提交、用户日/月、全局日/月、题目日/月、用户/IP 速率窗口
+- [x] 2.6 实现 `llm_usage` 审计写入：完整 `request_messages`、参数、token、费用、状态
+- [x] 2.7 实现 core↔gateway 管理 API 鉴权（`NOJ_LLM_SERVICE_TOKEN`）
+- [x] 2.8 为 gateway 核心服务编写单元测试（token 校验、限流、Provider 加密）
 
 ## 3. noj-core 集成
 

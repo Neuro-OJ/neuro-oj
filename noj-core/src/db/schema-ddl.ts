@@ -51,6 +51,7 @@ export const SCHEMA_DDL: string[] = [
     owner_id TEXT NOT NULL DEFAULT '0',
     type TEXT NOT NULL DEFAULT 'U' CHECK (type IN ('U', 'P')),
     is_objective BOOLEAN NOT NULL DEFAULT false,
+    llm_config JSONB,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     search_vector tsvector GENERATED ALWAYS AS (
@@ -153,6 +154,50 @@ export const SCHEMA_DDL: string[] = [
     details JSONB NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,
     UNIQUE (paper_id, user_id, contest_id)
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS llm_providers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    base_url TEXT NOT NULL,
+    model TEXT NOT NULL,
+    encrypted_api_key TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    created_by TEXT NOT NULL DEFAULT '0',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS llm_usage (
+    id TEXT PRIMARY KEY,
+    submission_id TEXT NOT NULL,
+    problem_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    provider_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    request_messages JSONB NOT NULL,
+    request_params JSONB NOT NULL DEFAULT '{}',
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    estimated_cost INTEGER NOT NULL DEFAULT 0,
+    latency_ms INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'ok',
+    error_code TEXT,
+    prompt_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS llm_quotas (
+    id TEXT PRIMARY KEY,
+    scope_type TEXT NOT NULL,
+    scope_id TEXT NOT NULL DEFAULT '',
+    window_type TEXT NOT NULL DEFAULT 'day',
+    max_calls INTEGER NOT NULL DEFAULT 0,
+    max_tokens INTEGER NOT NULL DEFAULT 0,
+    max_cost INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
   )`,
 
   `CREATE TABLE IF NOT EXISTS contest_clarifications (
@@ -553,6 +598,14 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_user_id ON objective_submissions (user_id)",
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_user_paper_created ON objective_submissions (user_id, paper_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_contest_id ON objective_submissions (contest_id)",
+  // LLM 网关表索引（与 schema.ts 定义一致，PGlite 测试模式）
+  "CREATE INDEX IF NOT EXISTS idx_llm_providers_name ON llm_providers (name)",
+  "CREATE INDEX IF NOT EXISTS idx_llm_usage_submission_id ON llm_usage (submission_id)",
+  "CREATE INDEX IF NOT EXISTS idx_llm_usage_problem_id ON llm_usage (problem_id)",
+  "CREATE INDEX IF NOT EXISTS idx_llm_usage_user_id ON llm_usage (user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_llm_usage_provider_id ON llm_usage (provider_id)",
+  "CREATE INDEX IF NOT EXISTS idx_llm_usage_created_at ON llm_usage (created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_llm_quotas_scope ON llm_quotas (scope_type, scope_id, window_type)",
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_results_submission_id ON evaluation_results (submission_id)",
   "CREATE INDEX IF NOT EXISTS idx_eval_results_created_at ON evaluation_results (created_at)",
   "CREATE INDEX IF NOT EXISTS idx_self_tests_user_id ON self_tests (user_id)",
