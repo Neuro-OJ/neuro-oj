@@ -300,3 +300,13 @@
 ) {
   color: var(--color-text-on-color);
 }
+
+/* ---- dark 模式下选中 Tab 文字保持白色（可读性修复）----
+ * Nuxt UI Tabs pill 变体选中项用 data-[state=active]:text-inverted，
+ * 而 --ui-text-inverted 在 dark 模式为深色（与按钮白字问题同源），
+ * 导致竞赛页等选中 Tab 在深色模式下文字变深、对比度不足。
+ * 这里对选中 Tab 强制使用恒白 token --color-text-on-color（#ffffff），
+ * 与按钮规则一致；未包 @layer，优先级高于 utilities layer。 */
+.dark [data-slot="trigger"][data-state="active"] {
+  color: var(--color-text-on-color);
+}
