@@ -320,5 +320,3 @@
 .dark button[data-slot="base"][data-state="checked"] [data-slot="indicator"] {
   color: var(--color-text-on-color);
 }
-  color: var(--color-text-on-color);
-}

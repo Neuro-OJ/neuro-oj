@@ -20,11 +20,21 @@ async function load() {
 const mineTrainings = ref<Training[]>([])
 
 async function openModal() {
-  mineTrainings.value = await load()
-  // 预勾选：查当前用户哪些题单已含该题
-  const containing = await listContainingProblem(props.problemId, { silent: true })
-  initiallyContaining.value = containing.data
-  selected.value = [...containing.data]
+  // 加载失败时仍打开弹窗，避免“点加入题单没反应”
+  try {
+    mineTrainings.value = await load()
+  } catch {
+    mineTrainings.value = []
+  }
+  // 预勾选：查当前用户哪些题单已含该题；失败时降级为空选择
+  try {
+    const containing = await listContainingProblem(props.problemId, { silent: true })
+    initiallyContaining.value = containing.data
+    selected.value = [...containing.data]
+  } catch {
+    initiallyContaining.value = []
+    selected.value = []
+  }
   showCreate.value = false
   newTitle.value = ''
   open.value = true
