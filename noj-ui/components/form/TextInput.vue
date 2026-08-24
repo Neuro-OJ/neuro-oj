@@ -21,7 +21,7 @@ const emit = defineEmits<{ focus: [] }>()
 </script>
 
 <template>
-  <UField :label="label" :error="error">
+  <UFormField :label="label" :error="error">
     <UInput
       v-model="model"
       :type="type"
@@ -36,5 +36,5 @@ const emit = defineEmits<{ focus: [] }>()
         <slot name="icon" />
       </template>
     </UInput>
-  </UField>
+  </UFormField>
 </template>
