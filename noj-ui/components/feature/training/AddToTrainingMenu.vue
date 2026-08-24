@@ -38,6 +38,17 @@ function closeModal() {
   newTitle.value = ''
 }
 
+/** 是否有变更：勾选集合与初始已含集合不同即可提交（含全不选=从所有题单删除） */
+const hasChanges = computed(() => {
+  const selectedSet = new Set(selected.value)
+  const initialSet = new Set(initiallyContaining.value)
+  if (selectedSet.size !== initialSet.size) return true
+  for (const id of selectedSet) {
+    if (!initialSet.has(id)) return true
+  }
+  return false
+})
+
 async function save() {
   if (saving.value) return
   saving.value = true
@@ -116,8 +127,8 @@ async function createAndAdd() {
 
         <div class="flex justify-end gap-3 pt-2">
           <UButton color="gray" @click="closeModal">取消</UButton>
-          <UButton color="primary" :loading="saving" :disabled="selected.length === 0" @click="save">
-            加入选中题单
+          <UButton color="primary" :loading="saving" :disabled="!hasChanges" @click="save">
+            保存修改
           </UButton>
         </div>
         </div>
