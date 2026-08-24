@@ -56,27 +56,29 @@ async function submit() {
     :unmount-on-hide="true"
     @update:open="emit('update:modelValue', $event)"
   >
-    <UForm :state="{ title, description, visibility }" class="space-y-4" @submit="submit">
-      <UFormGroup label="标题" required>
-        <UInput v-model="title" placeholder="题单标题" />
-      </UFormGroup>
-      <UFormGroup label="简介">
-        <UTextarea v-model="description" placeholder="题单简介" />
-      </UFormGroup>
-      <UFormGroup label="可见性">
-        <USelect
-          v-model="visibility"
-          :items="[
-            { label: '私有', value: 'private' },
-            { label: '链接可见', value: 'unlisted' },
-            { label: '公开', value: 'public' },
-          ]"
-        />
-      </UFormGroup>
-      <div class="flex justify-end gap-3">
-        <UButton color="gray" @click="emit('update:modelValue', false)">取消</UButton>
-        <UButton type="submit" :loading="saving">{{ isEdit ? '保存' : '创建' }}</UButton>
-      </div>
-    </UForm>
+    <template #body>
+      <UForm :state="{ title, description, visibility }" class="space-y-4" @submit="submit">
+        <UFormField label="标题" required>
+          <UInput v-model="title" placeholder="题单标题" />
+        </UFormField>
+        <UFormField label="简介">
+          <UTextarea v-model="description" placeholder="题单简介" />
+        </UFormField>
+        <UFormField label="可见性">
+          <USelect
+            v-model="visibility"
+            :items="[
+              { label: '私有', value: 'private' },
+              { label: '链接可见', value: 'unlisted' },
+              { label: '公开', value: 'public' },
+            ]"
+          />
+        </UFormField>
+        <div class="flex justify-end gap-3">
+          <UButton color="gray" @click="emit('update:modelValue', false)">取消</UButton>
+          <UButton type="submit" :loading="saving">{{ isEdit ? '保存' : '创建' }}</UButton>
+        </div>
+      </UForm>
+    </template>
   </UModal>
 </template>
