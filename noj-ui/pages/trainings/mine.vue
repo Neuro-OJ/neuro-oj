@@ -6,6 +6,8 @@ useHead({ title: '我的题单 - Neuro OJ' })
 definePageMeta({ middleware: 'auth' })
 
 const { deleteTraining } = useTrainings()
+const { dialog } = useDialog()
+const { toast } = useToast()
 const { data, pending, error, refresh } = await useFetch<{ data: Training[]; total: number }>(
   '/api/v1/trainings/mine',
   { query: { page: 1, per_page: 100 }, silent: true },
@@ -20,9 +22,18 @@ function onEdit(training: Training) {
 }
 
 async function onDelete(id: string) {
-  if (!confirm('确定删除该题单？')) return
-  await deleteTraining(id)
-  await refresh()
+  const ok = await dialog.confirm(
+    '确定删除该题单？删除后题目关联也会一并清除，且无法恢复。',
+    { title: '删除题单', confirmText: '删除', danger: true },
+  )
+  if (!ok) return
+  try {
+    await deleteTraining(id)
+    toast.success('题单已删除')
+    await refresh()
+  } catch {
+    // useApi 已弹错误
+  }
 }
 </script>
 
