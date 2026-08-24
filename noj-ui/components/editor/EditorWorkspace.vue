@@ -9,6 +9,7 @@ import { useSelfTestPolling } from '~/composables/useSelfTestPolling'
 import { useResizableSplitter } from '~/composables/useResizableSplitter'
 import { useDialog } from '~/composables/useDialog'
 import { useToast } from '~/composables/useToast'
+import { restoreCodeTemplate } from '~/utils/codeEditorTemplate'
 
 /**
  * 独立做题工作区（从 pages/editor/[id].vue 抽出，供标准题库与竞赛共用）。
@@ -270,13 +271,17 @@ async function resetTemplate() {
   templateLoading.value = true
   templateError.value = ''
   try {
-    const template = await fetchTemplate(props.problem.id)
-    if (!template) {
+    const restored = await restoreCodeTemplate({
+      fetchTemplate: () => fetchTemplate(props.problem!.id),
+      clearDraft,
+      setCode: (template) => {
+        code.value = template
+      },
+    })
+    if (!restored) {
       toast.error('该题没有可用的初始代码模板')
       return
     }
-    clearDraft()
-    code.value = template
     toast.success('已恢复为题目模板')
   } catch (e: unknown) {
     const message = extractApiError(e).message
@@ -288,34 +293,35 @@ async function resetTemplate() {
 }
 
 async function handleClearDraft() {
-  if (!props.problem) return
+  if (!props.problem || !props.templateUrl || templateLoading.value) return
   const confirmed = await dialog.confirm(
-    '确定清除当前草稿？清除后无法恢复。',
+    '这将清除当前草稿并恢复题目模板，是否继续？',
     { title: '清除草稿', confirmText: '清除', danger: true },
   )
   if (!confirmed) return
 
-  // clearDraft() 会删除 localStorage、清空 code 并重置草稿状态
-  clearDraft()
-
-  // 若题目存在默认模板，清除后恢复为模板；无模板则留空
-  if (props.templateUrl) {
-    templateLoading.value = true
-    templateError.value = ''
-    try {
-      const template = await fetchTemplate(props.problem.id)
-      if (template) code.value = template
-    } catch (e: unknown) {
-      const err = e as { statusCode?: number }
-      if (err.statusCode !== 404) {
-        templateError.value = extractApiError(e).message
-      }
-    } finally {
-      templateLoading.value = false
+  templateLoading.value = true
+  templateError.value = ''
+  try {
+    const restored = await restoreCodeTemplate({
+      fetchTemplate: () => fetchTemplate(props.problem!.id),
+      clearDraft,
+      setCode: (template) => {
+        code.value = template
+      },
+    })
+    if (!restored) {
+      toast.error('该题没有可用的初始代码模板')
+      return
     }
+    toast.success('草稿已清除，已恢复为题目模板')
+  } catch (e: unknown) {
+    const message = extractApiError(e).message
+    templateError.value = message
+    toast.error(`清除失败：${message}`)
+  } finally {
+    templateLoading.value = false
   }
-
-  toast.success('草稿已清除')
 }
 
 function openSettings() {
