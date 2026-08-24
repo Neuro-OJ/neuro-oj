@@ -29,11 +29,17 @@ async function onDelete(id: string) {
   if (!ok) return
   try {
     await deleteTraining(id)
-    toast.success('题单已删除')
-    await refresh()
   } catch {
-    // useApi 已弹错误
+    // useApi 已弹错误；删除失败不刷新
+    return
   }
+  // 刷新优先：删除成功一定刷新列表，不依赖 toast（toast 异常不阻断刷新）
+  try {
+    toast.success('题单已删除')
+  } catch {
+    // toast 失败不影响删除与刷新
+  }
+  await refresh()
 }
 </script>
 
