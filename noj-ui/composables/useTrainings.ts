@@ -49,6 +49,13 @@ export function useTrainings() {
     return api.get<TrainingListResult>('/api/v1/trainings/mine', { query, silent: true, ...options });
   }
 
+  function listContainingProblem(problemId: string, options?: ApiCallOptions) {
+    return api.get<{ data: string[] }>(`/api/v1/trainings/containing?problem_id=${problemId}`, {
+      silent: true,
+      ...options,
+    });
+  }
+
   function listUserTrainings(
     createdBy: string,
     query?: { page?: number; per_page?: number },
@@ -116,6 +123,7 @@ export function useTrainings() {
   return {
     listPublic,
     listMine,
+    listContainingProblem,
     listUserTrainings,
     getTraining,
     createTraining,
