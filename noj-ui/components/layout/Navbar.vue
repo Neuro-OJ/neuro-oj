@@ -38,7 +38,7 @@
             </UDrawer>
             <BrandLogo text-class="hidden sm:inline" />
             <!-- 桌面端导航（≥md 显示） -->
-            <nav ref="navRef" class="hidden md:flex items-center gap-1 ml-6 min-w-0">
+            <nav ref="navRef" class="hidden md:flex flex-1 items-center gap-1 ml-6 min-w-0">
               <NuxtLink
                 v-for="item in visibleNavItems"
                 :key="item.to"
