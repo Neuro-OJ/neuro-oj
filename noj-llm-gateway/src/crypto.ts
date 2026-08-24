@@ -4,7 +4,7 @@
  * - NOJ_LLM_STORE_KEY：加密/解密上游 Provider API Key
  * - NOJ_LLM_SERVICE_TOKEN：签发/校验 eval_token
  */
-import { encodeBase64, decodeBase64 } from "@std/encoding/base64";
+import { decodeBase64, encodeBase64 } from "@std/encoding/base64";
 
 const IV_LENGTH = 12;
 
@@ -114,7 +114,9 @@ export async function verifyEvalToken(
   } catch {
     throw new Error("eval_token 校验失败");
   }
-  const payload = JSON.parse(new TextDecoder().decode(plaintext)) as EvalTokenPayload;
+  const payload = JSON.parse(
+    new TextDecoder().decode(plaintext),
+  ) as EvalTokenPayload;
   if (payload.exp < Math.floor(Date.now() / 1000)) {
     throw new Error("eval_token 已过期");
   }

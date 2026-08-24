@@ -16,7 +16,8 @@ import { pushJudgeTask } from "../../mq/producer.ts";
 import { getProblem } from "../problems/problems-list.ts";
 import { getStorageProvider } from "../../lib/storage/mod.ts";
 import { logAudit } from "../audit-log.ts";
-import type { JudgeTask } from "../../types/index.ts";
+import { buildJudgeTaskLlm } from "../../lib/llm-token.ts";
+import type { JudgeTask, JudgeTaskLlm } from "../../types/index.ts";
 import type { RuntimeConfig } from "../../types/problems.ts";
 import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
 import { Channels, publishEvent } from "../../lib/event-bus.ts";
@@ -108,6 +109,17 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     | null
     | undefined;
 
+  let llmTask: JudgeTaskLlm | undefined;
+  if (problem.llm_config && runtimeConfig) {
+    llmTask = await buildJudgeTaskLlm(
+      problem.llm_config,
+      id,
+      submission.problem_id,
+      submission.user_id,
+      runtimeConfig,
+    );
+  }
+
   const task: JudgeTask = {
     submission_id: id,
     problem_id: submission.problem_id,
@@ -118,6 +130,7 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     file_name: submission.file_name ??
       (LANGUAGE_EXT_MAP[submission.language] || "main.txt"),
     rejudge_seq: updated?.rejudge_seq ?? 0,
+    ...(llmTask ? { llm: llmTask } : {}),
   };
 
   // 审计日志：先写入审计再推送不可逆的 MQ 消息（issue #101）
@@ -285,16 +298,29 @@ export async function rejudgeProblemSubmissions(
   let queued = 0;
   for (const sub of rejudgeRows) {
     try {
+      let llmTask: JudgeTaskLlm | undefined;
+      const runtimeConfig = problem.runtime_config as RuntimeConfig | null;
+      if (problem.llm_config && runtimeConfig) {
+        llmTask = await buildJudgeTaskLlm(
+          problem.llm_config,
+          sub.id,
+          problemId,
+          sub.user_id,
+          runtimeConfig,
+        );
+      }
+
       const task: JudgeTask = {
         submission_id: sub.id,
         problem_id: problemId,
-        runtime_config: problem.runtime_config as RuntimeConfig,
+        runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
         download_url,
         language: sub.language,
         code: sub.code,
         file_name: sub.file_name ??
           (LANGUAGE_EXT_MAP[sub.language] || "main.txt"),
         rejudge_seq: sub.rejudge_seq,
+        ...(llmTask ? { llm: llmTask } : {}),
       };
 
       await pushJudgeTask(task);

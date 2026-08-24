@@ -37,6 +37,16 @@ export interface RuntimeConfig {
 }
 
 /**
+ * LLM 评测任务字段：携带 gateway 地址与短期 eval_token。
+ */
+export interface JudgeTaskLlm {
+  gateway_url: string;
+  eval_token: string;
+  provider_id: string;
+  allowed_models: string[];
+}
+
+/**
  * 评测任务——从 noj-core 发送到 noj-judge 的消息。
  *
  * 所有评测统一使用双容器模式（Evaluator + Solution）。
@@ -58,6 +68,8 @@ export interface JudgeTask {
   file_name?: string;
   /** 重测序列号（重测时递增）。首次提交不传，默认 0。 */
   rejudge_seq?: number;
+  /** LLM 评测字段（启用 LLM 的题目携带） */
+  llm?: JudgeTaskLlm;
 }
 
 /**

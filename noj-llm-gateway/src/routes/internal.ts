@@ -8,8 +8,8 @@ import { requireServiceToken } from "../auth.ts";
 import {
   createProvider,
   listProviders,
-  updateProvider,
   type ProviderInput,
+  updateProvider,
 } from "../providers.ts";
 
 export interface InternalDeps {
@@ -39,11 +39,19 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const id = c.req.param("id");
     const body = await c.req.json<Partial<ProviderInput>>();
     try {
-      const provider = await updateProvider(deps.db, id, body, deps.config.storeKey);
+      const provider = await updateProvider(
+        deps.db,
+        id,
+        body,
+        deps.config.storeKey,
+      );
       return c.json({ data: provider });
     } catch (err) {
       const message = err instanceof Error ? err.message : "update_failed";
-      return c.json({ error: message }, message === "provider_not_found" ? 404 : 400);
+      return c.json(
+        { error: message },
+        message === "provider_not_found" ? 404 : 400,
+      );
     }
   });
 
@@ -67,7 +75,9 @@ export function createInternalRouter(deps: InternalDeps): Hono {
       params.push(problemId);
       conditions.push(`problem_id = $${params.length}`);
     }
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const where = conditions.length > 0
+      ? `WHERE ${conditions.join(" AND ")}`
+      : "";
     const rows = await deps.db.unsafe(
       `SELECT * FROM llm_usage ${where} ORDER BY created_at DESC LIMIT ${limit}`,
       ...(params as never[]),
@@ -76,7 +86,8 @@ export function createInternalRouter(deps: InternalDeps): Hono {
   });
 
   app.get("/internal/quotas", async (c) => {
-    const rows = await deps.db`SELECT * FROM llm_quotas ORDER BY created_at DESC`;
+    const rows = await deps
+      .db`SELECT * FROM llm_quotas ORDER BY created_at DESC`;
     return c.json({ data: rows });
   });
 
@@ -90,7 +101,10 @@ export function createInternalRouter(deps: InternalDeps): Hono {
       max_tokens?: number;
       max_cost?: number;
     }>();
-    if (!body.scope_type || !["user", "problem", "global"].includes(body.scope_type)) {
+    if (
+      !body.scope_type ||
+      !["user", "problem", "global"].includes(body.scope_type)
+    ) {
       return c.json({ error: "invalid_scope_type" }, 400);
     }
     const id = body.id ?? crypto.randomUUID();
@@ -99,7 +113,9 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const windowType = body.window_type ?? "day";
     await deps.db`
       INSERT INTO llm_quotas (id, scope_type, scope_id, window_type, max_calls, max_tokens, max_cost, created_at, updated_at)
-      VALUES (${id}, ${body.scope_type}, ${scopeId}, ${windowType}, ${body.max_calls ?? 0}, ${body.max_tokens ?? 0}, ${body.max_cost ?? 0}, ${now}, ${now})
+      VALUES (${id}, ${body.scope_type}, ${scopeId}, ${windowType}, ${
+      body.max_calls ?? 0
+    }, ${body.max_tokens ?? 0}, ${body.max_cost ?? 0}, ${now}, ${now})
       ON CONFLICT (id) DO UPDATE SET
         scope_type = EXCLUDED.scope_type,
         scope_id = EXCLUDED.scope_id,

@@ -64,6 +64,7 @@ pub async fn evaluate_with_cpu_limit(
         &task.code,
         support_pkg.as_deref(),
         task.rejudge_seq,
+        task.llm.as_ref(),
         cpu_limit_millicores,
         allow_evaluator_network,
         image_prefix,

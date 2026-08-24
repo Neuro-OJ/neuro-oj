@@ -32,7 +32,9 @@ export async function recordUsage(db: Db, entry: UsageEntry): Promise<void> {
       prompt_hash, created_at
     ) VALUES (
       ${entry.id}, ${entry.submission_id}, ${entry.problem_id}, ${entry.user_id},
-      ${entry.provider_id}, ${entry.model}, ${JSON.stringify(entry.request_messages)},
+      ${entry.provider_id}, ${entry.model}, ${
+    JSON.stringify(entry.request_messages)
+  },
       ${JSON.stringify(entry.request_params)}, ${entry.prompt_tokens},
       ${entry.completion_tokens}, ${entry.total_tokens}, ${entry.estimated_cost},
       ${entry.latency_ms}, ${entry.status}, ${entry.error_code ?? null},

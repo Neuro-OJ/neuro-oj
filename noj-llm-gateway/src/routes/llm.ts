@@ -37,7 +37,8 @@ async function sha256Hex(input: string): Promise<string> {
     "SHA-256",
     new TextEncoder().encode(input),
   );
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export function createLlmRouter(deps: LlmDeps): Hono {
@@ -161,11 +162,16 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     const upstreamBody = await upstreamRes.json().catch(() => null);
     const latency = Date.now() - startedAt;
     const usage = upstreamBody?.usage as
-      | { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+      | {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+      }
       | undefined;
     const actualPromptTokens = usage?.prompt_tokens ?? promptTokens;
     const actualCompletionTokens = usage?.completion_tokens ?? 0;
-    const actualTotalTokens = usage?.total_tokens ?? (actualPromptTokens + actualCompletionTokens);
+    const actualTotalTokens = usage?.total_tokens ??
+      (actualPromptTokens + actualCompletionTokens);
 
     await recordUsage(deps.db, {
       id: crypto.randomUUID(),
@@ -189,7 +195,11 @@ export function createLlmRouter(deps: LlmDeps): Hono {
 
     if (!upstreamRes.ok) {
       return new Response(
-        JSON.stringify({ error: "upstream_error", status: upstreamRes.status, body: upstreamBody }),
+        JSON.stringify({
+          error: "upstream_error",
+          status: upstreamRes.status,
+          body: upstreamBody,
+        }),
         {
           status: upstreamRes.status,
           headers: { "content-type": "application/json" },
@@ -212,7 +222,17 @@ function estimateTokens(messages: unknown[]): number {
 
 function pickParams(body: ChatCompletionRequest): Record<string, unknown> {
   const params: Record<string, unknown> = {};
-  for (const key of ["model", "max_tokens", "temperature", "top_p", "top_k", "stop", "enable_thinking"]) {
+  for (
+    const key of [
+      "model",
+      "max_tokens",
+      "temperature",
+      "top_p",
+      "top_k",
+      "stop",
+      "enable_thinking",
+    ]
+  ) {
     if (body[key] !== undefined) params[key] = body[key];
   }
   return params;

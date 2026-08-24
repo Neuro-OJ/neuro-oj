@@ -28,23 +28,27 @@ Neuro OJ（NOJ）是一个面向**大模型实操能力评测**场景的在线�
 
 ## 系统架构
 
-NOJ 由三个模块通过 RESTful API 和 Redis 消息队列协作：
+NOJ 由多个模块通过 RESTful API、Redis 消息队列和内部 HTTP 协作：
 
 ```
 +----------+   RESTful API   +----------+   Redis MQ    +--------------+
 |  noj-ui  | <-------------> | noj-core | --Producer--> |  noj-judge   |
 |  Nuxt 4  |                 | Deno+Hono| <--Consumer--|  Rust+Docker  |
 +----------+                 +----------+               +--------------+
-                                   |
-                              +----+----+
-                              |  Redis   |
-                              +---------+
+                                   |                          |
+                                   | 内部 HTTP                 | 注入 env
+                                   v                          v
+                              +----------------+    LLM 调用题通过
+                              | noj-llm-gateway |    gateway 转发
+                              |   Deno + Hono   |    到上游 LLM API
+                              +----------------+
 ```
 
 - **noj-ui**（Nuxt 4 + Vue 3）— Web 前端，提供题目列表、代码编辑器、提交结果页、管理后台等。
 - **noj-core**（Deno + Hono）— RESTful API 服务，负责用户/题目/提交/榜单等业务，并作为 Redis MQ 的生产者与消费者。
 - **noj-judge**（Rust + Tokio）— 评测 Worker，从 MQ 拉取任务，在 Docker 沙箱中执行评测脚本并回传结果。
-- **PostgreSQL 16** — 持久化存储；**Redis 7** — 消息队列与缓存。
+- **noj-llm-gateway**（Deno + Hono）— LLM 调用网关，负责上游 API Key 加密托管、短期 eval_token、限流/额度、用量审计；evaluator 只通过它访问外部 LLM API。
+- **PostgreSQL 16** — 持久化存储；**Redis 7** — 消息队列、缓存与 LLM 限流计数。
 
 ### 评测消息流
 
@@ -84,7 +88,8 @@ NOJ 由三个模块通过 RESTful API 和 Redis 消息队列协作：
 # 1. 检测环境（自动安装 zip/unzip，提示其他依赖）
 bash scripts/dev/devtool.sh install-deps
 
-# 2. 准备环境变量（必填 DATABASE_URL 与 JWT_SECRET，至少 32 字符）
+# 2. 准备环境变量（必填 DATABASE_URL 与 JWT_SECRET，至少 32 字符；
+#    LLM 题目另需 NOJ_LLM_SERVICE_TOKEN / NOJ_LLM_STORE_KEY）
 bash scripts/dev/devtool.sh init-env          # 默认拒绝覆盖，--merge 仅追加模板缺失键
 $EDITOR noj-core/.env
 
@@ -126,9 +131,13 @@ deno task dev                 # http://localhost:3000（首次运行会自动拉
 # 4. 评测 Worker noj-judge（新开终端）
 cd ../noj-judge
 cargo run                     # 需 Docker daemon 运行中
+
+# 5. LLM Gateway（新开终端，可选；仅 LLM 调用题需要）
+cd ../noj-llm-gateway
+deno task dev                 # http://localhost:8001
 ```
 
-三模块相互独立，可只启动需要的部分（如只调试前端时无需启动 noj-judge）。
+各模块相互独立，可只启动需要的部分（如只调试前端时无需启动 noj-judge；不做 LLM 题时无需启动 noj-llm-gateway）。
 
 ### 首个管理员账号
 
@@ -169,6 +178,8 @@ cd noj-core && deno task dev-setup
 | 结果丢失 / 队列堆积 | 查看 Redis 长度：`redis-cli LLEN noj:judge:queue`；必要时重启 `noj-judge` 触发自动重连 |
 | 评测结果报错 `noj-download://` 解码失败 | `deno task problems:build` 重新构建题目支持包 |
 | 容器启动失败 `image not found` | 默认评测镜像为 `noj-evaluator-python` / `noj-solution-python`；执行 `noj-judge/scripts/build-sdk-images.sh` 构建 |
+| LLM 题提交后报 `Missing NOJ_LLM_GATEWAY_URL` | `noj-llm-gateway` 未启动，或 `noj-core/.env` 未配置 `NOJ_LLM_SERVICE_TOKEN` / `NOJ_LLM_GATEWAY_URL` |
+| LLM 题评测返回 `invalid_token` | `NOJ_LLM_SERVICE_TOKEN` 在 core 与 gateway 不一致，或题目 `llm` 配置使用了不存在/停用的 Provider |
 
 ### 数据库相关
 

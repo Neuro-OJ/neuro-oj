@@ -2,7 +2,7 @@
  * LLM Provider CRUD 服务。
  */
 import type { Db } from "./db.ts";
-import { encryptSecret, decryptSecret } from "./crypto.ts";
+import { decryptSecret, encryptSecret } from "./crypto.ts";
 
 export interface ProviderInput {
   name: string;
@@ -53,7 +53,9 @@ export function maskApiKey(key: string): string {
 }
 
 export async function listProviders(db: Db): Promise<ProviderView[]> {
-  const rows = await db<ProviderRow[]>`SELECT * FROM llm_providers ORDER BY created_at DESC`;
+  const rows = await db<
+    ProviderRow[]
+  >`SELECT * FROM llm_providers ORDER BY created_at DESC`;
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
@@ -70,7 +72,9 @@ export async function getProviderById(
   db: Db,
   id: string,
 ): Promise<ProviderRow | null> {
-  const rows = await db<ProviderRow[]>`SELECT * FROM llm_providers WHERE id = ${id}`;
+  const rows = await db<
+    ProviderRow[]
+  >`SELECT * FROM llm_providers WHERE id = ${id}`;
   return rows[0] ?? null;
 }
 
@@ -97,7 +101,9 @@ export async function createProvider(
   const encrypted = await encryptSecret(input.api_key, storeKey);
   await db`
     INSERT INTO llm_providers (id, name, base_url, model, encrypted_api_key, enabled, created_by, created_at, updated_at)
-    VALUES (${id}, ${input.name}, ${input.base_url}, ${input.model}, ${encrypted}, ${input.enabled ?? true}, ${input.created_by ?? "0"}, ${createdAt}, ${createdAt})
+    VALUES (${id}, ${input.name}, ${input.base_url}, ${input.model}, ${encrypted}, ${
+    input.enabled ?? true
+  }, ${input.created_by ?? "0"}, ${createdAt}, ${createdAt})
   `;
   return {
     id,
@@ -114,7 +120,9 @@ export async function createProvider(
 export async function updateProvider(
   db: Db,
   id: string,
-  input: Partial<Pick<ProviderInput, "name" | "base_url" | "model" | "api_key" | "enabled">>,
+  input: Partial<
+    Pick<ProviderInput, "name" | "base_url" | "model" | "api_key" | "enabled">
+  >,
   storeKey: string,
 ): Promise<ProviderView> {
   const existing = await getProviderById(db, id);

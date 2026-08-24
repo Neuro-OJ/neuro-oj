@@ -137,6 +137,7 @@ pub async fn start_exec(
     docker: &Docker,
     container_id: &str,
     cmd: Vec<String>,
+    env: Vec<String>,
 ) -> Result<ExecSession> {
     let exec = timeout(
         Duration::from_secs(10),
@@ -144,6 +145,7 @@ pub async fn start_exec(
             container_id,
             ExecConfig {
                 cmd: Some(cmd),
+                env: Some(env),
                 attach_stdout: Some(true),
                 attach_stderr: Some(true),
                 attach_stdin: Some(true),

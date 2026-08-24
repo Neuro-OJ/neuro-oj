@@ -1,5 +1,10 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert";
-import { encryptSecret, decryptSecret, mintEvalToken, verifyEvalToken } from "../src/crypto.ts";
+import {
+  decryptSecret,
+  encryptSecret,
+  mintEvalToken,
+  verifyEvalToken,
+} from "../src/crypto.ts";
 
 Deno.test("crypto: encrypt/decrypt roundtrip", async () => {
   const key = "test-store-key-0123456789abcdef";

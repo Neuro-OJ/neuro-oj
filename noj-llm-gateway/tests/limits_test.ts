@@ -1,6 +1,6 @@
 import { assertEquals } from "jsr:@std/assert";
 import type { RedisClient } from "../src/redis.ts";
-import { incrWithTtl, incrByWithTtl } from "../src/redis.ts";
+import { incrByWithTtl, incrWithTtl } from "../src/redis.ts";
 
 class FakeRedis implements RedisClient {
   data = new Map<string, number>();

@@ -186,6 +186,16 @@ jobs:
           cache-from: type=gha
           cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
 
+      - name: 构建 Docker Compose 镜像 (noj-llm-gateway, 带 GHA 缓存)
+        uses: docker/build-push-action@v6
+        with:
+          context: noj-llm-gateway
+          file: noj-llm-gateway/Dockerfile
+          tags: noj-e2e-llm-gateway
+          load: true
+          cache-from: type=gha
+          cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || 'type=gha,mode=min' }}
+
       - name: 初始化 MinIO bucket
         run: |
           docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME up -d minio minio-init
@@ -263,6 +273,7 @@ jobs:
         working-directory: noj-tests
         env:
           E2E_BASE_URL: ${{ env.E2E_BASE_URL }}
+          E2E_LLM_MOCK_URL: http://llm-mock:8002/v1
         run: |
           # set -euo pipefail：任一 deno test 失败立即终止整个 job
           set -euo pipefail
@@ -306,6 +317,7 @@ jobs:
             e2e/29_avatar.test.ts \
             e2e/30_self_test.test.ts \
             e2e/31_tfa.test.ts \
+            e2e/32_llm_gateway.test.ts \
             e2e/trainings.test.ts &
           p3=$!
           fail=0
@@ -336,6 +348,12 @@ jobs:
           echo "=== noj-core 日志 ==="
           docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 noj-core 2>&1 || echo "容器可能未启动"
 
+      - name: 输出 noj-llm-gateway 日志
+        if: always()
+        run: |
+          echo "=== noj-llm-gateway 日志 ==="
+          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 noj-llm-gateway 2>&1 || echo "容器可能未启动"
+
       # 失败时把诊断日志落盘 + 上传为 GitHub Actions artifact
       # (修复 finding M7/S8)。原版只 echo 到 GHA log，contributor 必须本地复现才能排查。
       # 改写为：docker logs 重定向到文件，再 upload-artifact。
@@ -354,6 +372,11 @@ jobs:
         run: |
           docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=500 noj-core > noj-core.log 2>&1 || echo "noj-core may not be running"
 
+      - name: 保存 + 上传 noj-llm-gateway 日志
+        if: always()
+        run: |
+          docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=500 noj-llm-gateway > noj-llm-gateway.log 2>&1 || echo "noj-llm-gateway may not be running"
+
       - name: 上传诊断日志
         if: failure() || cancelled()
         uses: actions/upload-artifact@v4
@@ -363,6 +386,7 @@ jobs:
             noj-judge.log
             noj-migrate.log
             noj-core.log
+            noj-llm-gateway.log
             /tmp/noj-work/
           retention-days: 7
           if-no-files-found: ignore

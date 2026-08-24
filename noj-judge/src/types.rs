@@ -71,6 +71,15 @@ pub struct SolutionRuntime {
     pub memory_limit_mb: u64,
 }
 
+/// LLM 评测任务字段（与 noj-core 的 JudgeTaskLlm 对齐）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JudgeTaskLlm {
+    pub gateway_url: String,
+    pub eval_token: String,
+    pub provider_id: String,
+    pub allowed_models: Vec<String>,
+}
+
 /// 评测任务——从 noj-core 发送到 noj-judge 的消息。
 ///
 /// 字段对齐 noj-core/src/types/index.ts 的 JudgeTask 接口。
@@ -95,6 +104,9 @@ pub struct JudgeTask {
     /// 重测序列号（透传回 JudgeResult）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rejudge_seq: Option<i64>,
+    /// LLM 评测字段（启用 LLM 的题目携带）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm: Option<JudgeTaskLlm>,
 }
 
 /// 评测结果——从 noj-judge 返回到 noj-core 的消息。

@@ -3,7 +3,7 @@
  */
 import type { Db } from "./db.ts";
 import type { RedisClient } from "./redis.ts";
-import { incrWithTtl, incrByWithTtl } from "./redis.ts";
+import { incrByWithTtl, incrWithTtl } from "./redis.ts";
 import type { EvalTokenPayload } from "./crypto.ts";
 
 export interface QuotaRow {
@@ -56,7 +56,8 @@ export async function enforceAndCount(
   const subTokensKey = `llm:sub:${payload.submission_id}:tokens`;
   const userDayCallsKey = `llm:user:${payload.user_id}:day:${dayKey()}:calls`;
   const globalDayCallsKey = `llm:global:day:${dayKey()}:calls`;
-  const problemDayCallsKey = `llm:problem:${payload.problem_id}:day:${dayKey()}:calls`;
+  const problemDayCallsKey =
+    `llm:problem:${payload.problem_id}:day:${dayKey()}:calls`;
   const rateKey = `llm:rate:${payload.user_id}:${minuteKey()}`;
 
   // 1. 单次提交调用次数 / token 上限（token 载荷内）
@@ -65,7 +66,11 @@ export async function enforceAndCount(
     throw new Error("submission_call_limit_exceeded");
   }
   const subTokens = await redis.get(subTokensKey);
-  if (payload.max_tokens > 0 && Number(subTokens ?? 0) + opts.promptTokens + opts.completionTokens > payload.max_tokens) {
+  if (
+    payload.max_tokens > 0 &&
+    Number(subTokens ?? 0) + opts.promptTokens + opts.completionTokens >
+      payload.max_tokens
+  ) {
     throw new Error("submission_token_limit_exceeded");
   }
 
@@ -106,11 +111,25 @@ export async function enforceAndCount(
   // 通过后累加计数
   await Promise.all([
     incrWithTtl(redis, subCallsKey, opts.ttlSeconds),
-    incrByWithTtl(redis, subTokensKey, opts.promptTokens + opts.completionTokens, opts.ttlSeconds),
+    incrByWithTtl(
+      redis,
+      subTokensKey,
+      opts.promptTokens + opts.completionTokens,
+      opts.ttlSeconds,
+    ),
     incrWithTtl(redis, userDayCallsKey, Math.ceil((dayEndMs() - now) / 1000)),
     incrWithTtl(redis, globalDayCallsKey, Math.ceil((dayEndMs() - now) / 1000)),
-    incrWithTtl(redis, problemDayCallsKey, Math.ceil((dayEndMs() - now) / 1000)),
-    incrByWithTtl(redis, `llm:sub:${payload.submission_id}:cost`, opts.estimatedCost, opts.ttlSeconds),
+    incrWithTtl(
+      redis,
+      problemDayCallsKey,
+      Math.ceil((dayEndMs() - now) / 1000),
+    ),
+    incrByWithTtl(
+      redis,
+      `llm:sub:${payload.submission_id}:cost`,
+      opts.estimatedCost,
+      opts.ttlSeconds,
+    ),
   ]);
 }
 

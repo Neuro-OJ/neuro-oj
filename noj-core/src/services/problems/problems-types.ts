@@ -12,6 +12,7 @@
  */
 import { BadRequestError } from "../../lib/errors.ts";
 import type {
+  LlmConfig,
   ProblemResponseWithTags,
   ProblemTagRef,
   RuntimeConfig,
@@ -33,6 +34,8 @@ export interface ProblemResponse {
   type: string;
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective: boolean;
+  /** LLM 配置（可空） */
+  llm_config: LlmConfig | null;
   display_id: string;
   created_at: string;
   updated_at: string;
@@ -63,6 +66,7 @@ export interface AdminProblemListItem {
   difficulty: string;
   support_package_storage_url: string | null;
   runtime_config: RuntimeConfig;
+  llm_config: LlmConfig | null;
   tags: ProblemTagRef[];
   created_at: string;
   updated_at: string;

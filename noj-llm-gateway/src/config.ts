@@ -16,7 +16,9 @@ export interface GatewayConfig {
   redisUrl: string;
 }
 
-export function loadConfig(env: Record<string, string | undefined> = Deno.env.toObject()): GatewayConfig {
+export function loadConfig(
+  env: Record<string, string | undefined> = Deno.env.toObject(),
+): GatewayConfig {
   const port = Number(env.NOJ_LLM_PORT ?? env.PORT ?? "8001");
   const serviceToken = env.NOJ_LLM_SERVICE_TOKEN ?? "";
   const storeKey = env.NOJ_LLM_STORE_KEY ?? "";

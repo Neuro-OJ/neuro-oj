@@ -97,6 +97,27 @@ const solutionImage = ref("")
 const solutionCallTimeoutMs = ref(1000)
 const solutionMemoryLimitMb = ref(256)
 
+// ── LLM 配置（仅 P 型/官方题可启用） ──
+const llmEnabled = ref(false)
+const llmProviderId = ref("")
+const llmModel = ref("")
+const llmProviders = ref<{ id: string; name: string; base_url: string; model: string }[]>([])
+
+async function loadLlmProviders() {
+  try {
+    const res = await api.get<{ data: { id: string; name: string; base_url: string; model: string }[] }>(
+      "/api/v1/admin/llm/providers",
+      { silent: true },
+    )
+    llmProviders.value = res.data ?? []
+  } catch { /* 非 admin 或 gateway 未启用时静默 */ }
+}
+
+// 启用 LLM 必须同时开启 evaluator 网络
+watch(llmEnabled, (val) => {
+  if (val) evaluatorNetworkEnabled.value = true
+})
+
 // ── 标签选项 ──
 const tags = ref<{ id: string; name: string; kind: 'problem' | 'algorithm' }[]>([])
 
@@ -211,6 +232,13 @@ async function loadProblem() {
       solutionCallTimeoutMs.value = rc.solution.call_timeout_ms
       solutionMemoryLimitMb.value = rc.solution.memory_limit_mb
     }
+    // 加载 LLM 配置
+    const llmConfig = (p as { llm_config?: { provider_id: string; model: string } | null }).llm_config
+    if (llmConfig) {
+      llmEnabled.value = true
+      llmProviderId.value = llmConfig.provider_id
+      llmModel.value = llmConfig.model
+    }
   } catch (err: unknown) {
     if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) {
       notFound.value = true
@@ -230,6 +258,7 @@ onMounted(async () => {
   }
   loadTags()
   loadJudgeImages()
+  loadLlmProviders()
   if (isEditMode.value) loadProblem()
 })
 
@@ -247,6 +276,11 @@ function validate(): boolean {
   if (!description.value.trim()) errors.description = "请输入题目描述"
   if (!evaluatorImage.value.trim()) errors.evaluator_image = "请选择 evaluator 镜像"
   if (!solutionImage.value.trim()) errors.solution_image = "请选择 solution 镜像"
+  if (llmEnabled.value) {
+    if (!llmProviderId.value.trim()) errors.llm_provider = "请选择 LLM Provider"
+    if (!llmModel.value.trim()) errors.llm_model = "请输入模型名"
+    if (!evaluatorNetworkEnabled.value) errors.evaluator_network = "启用 LLM 必须开启 Evaluator 联网"
+  }
   fieldErrors.value = errors
   return Object.keys(errors).length === 0
 }
@@ -270,12 +304,16 @@ async function handleSubmit() {
         memory_limit_mb: solutionMemoryLimitMb.value,
       },
     }
+    const llmPayload = llmEnabled.value
+      ? { provider_id: llmProviderId.value.trim(), model: llmModel.value.trim() }
+      : null
     if (isEditMode.value) {
       await api.put(`/api/v1/problems/${props.problemId}`, {
         title: title.value.trim(), description: description.value.trim(),
         difficulty: difficulty.value,
         tag_ids: tagIds.value,
         runtime_config: runtimeConfigPayload,
+        llm: llmPayload,
       })
       emit("saved", props.problemId!)
     } else {
@@ -285,6 +323,7 @@ async function handleSubmit() {
         tag_ids: tagIds.value,
         type: problemType.value,
         runtime_config: runtimeConfigPayload,
+        llm: llmPayload,
       })
       savedProblemId.value = res.data.id
       emit("saved", res.data.id)
@@ -449,12 +488,40 @@ async function handleSubmit() {
               </div>
             </div>
             <label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text">
-              <input v-model="evaluatorNetworkEnabled" type="checkbox" class="size-4 accent-primary">
+              <input v-model="evaluatorNetworkEnabled" type="checkbox" class="size-4 accent-primary" :disabled="llmEnabled">
               <span>
                 允许 Evaluator 联网
                 <span class="block text-xs text-text-muted">开启后 evaluator 容器以 bridge 模式联网（solution 保持无网，仅能通过 capability 调用间接使用网络）</span>
               </span>
             </label>
+
+            <!-- LLM 配置 -->
+            <div class="border-t border-border mt-2 pt-2.5 flex flex-col gap-2">
+              <label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text">
+                <input v-model="llmEnabled" type="checkbox" class="size-4 accent-primary">
+                <span>
+                  启用 LLM 调用（仅 P 型/官方题）
+                  <span class="block text-xs text-text-muted">启用后必须开启 Evaluator 联网，题目固定 provider/model</span>
+                </span>
+              </label>
+              <div v-if="llmEnabled" class="flex flex-col gap-2">
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs font-semibold text-text">LLM Provider <span class="text-red-600">*</span></label>
+                  <USelect v-model="llmProviderId" :items="llmProviders.map((p) => ({ label: `${p.name} (${p.model})`, value: p.id }))" placeholder="请选择 Provider" class="w-full" />
+                  <p v-if="fieldErrors.llm_provider" class="text-xs text-red-600">{{ fieldErrors.llm_provider }}</p>
+                </div>
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs font-semibold text-text">模型 <span class="text-red-600">*</span></label>
+                  <input v-model="llmModel" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none focus:border-primary bg-white" placeholder="如：qwen-plus" />
+                  <p v-if="fieldErrors.llm_model" class="text-xs text-red-600">{{ fieldErrors.llm_model }}</p>
+                </div>
+                <div class="px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                  <p class="font-semibold mb-1 flex items-center gap-1.5"><UIcon name="i-lucide-triangle-alert" class="size-3.5" />启用 LLM 调用必须开启 Evaluator 联网</p>
+                  <p>联网已自动开启且不可关闭，直到移除 LLM 配置。</p>
+                </div>
+                <p v-if="fieldErrors.evaluator_network" class="text-xs text-red-600">{{ fieldErrors.evaluator_network }}</p>
+              </div>
+            </div>
           </div>
         </div>
 
