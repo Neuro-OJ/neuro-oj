@@ -126,6 +126,13 @@ function scrollToBottom() {
   })
 }
 
+// 判断消息列表当前是否已接近底部；如果是，收到新消息后应自动滚动露出新消息
+function isNearBottom(threshold = 80) {
+  const el = messagesContainer.value
+  if (!el) return false
+  return el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+}
+
 // SSE 实时接收新消息
 useEventSource({
   url: "/api/v1/conversations/events",
@@ -134,7 +141,9 @@ useEventSource({
     "message:new": async (data: unknown) => {
       const evt = data as { conversation_id: string }
       if (evt.conversation_id === selectedConversationId.value) {
+        const shouldAutoScroll = isNearBottom()
         await loadMessages()
+        if (shouldAutoScroll) scrollToBottom()
         // 正在查看的会话收到新消息后立即已读，避免红点堆积
         await markAsRead()
         await sidebarRef.value?.refresh()
@@ -144,7 +153,12 @@ useEventSource({
       messagingEnabled.value = false
     },
   },
-  fetchFn: () => { if (selectedConversationId.value) loadMessages() },
+  fetchFn: async () => {
+    if (!selectedConversationId.value) return
+    const shouldAutoScroll = isNearBottom()
+    await loadMessages()
+    if (shouldAutoScroll) scrollToBottom()
+  },
   fallbackIntervalMs: 3000,
 })
 

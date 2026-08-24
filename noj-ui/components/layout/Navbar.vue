@@ -131,8 +131,13 @@ function measureAndFit() {
   const nav = navRef.value
   if (!nav || typeof window === 'undefined') return
   const links = Array.from(nav.querySelectorAll<HTMLElement>(':scope > a'))
-  // 首次测量所有链接宽度（仅首次全部可见时能拿到真实宽度；之后隐藏项不再测量）
-  if (itemWidths.value.length !== links.length) {
+  // 只在全部导航项都处于 DOM 中时重测宽度；一旦有项被收进“更多”，
+  // 隐藏项已从 DOM 移除，不能再用当前可见链接数覆盖完整宽度数组，
+  // 否则窗口重新拉大后“更多”中的项永远无法展开（issue #319）。
+  if (
+    visibleCount.value === navItems.value.length &&
+    links.length === navItems.value.length
+  ) {
     itemWidths.value = links.map((a) => a.getBoundingClientRect().width + 4) // gap-1 = 4px
   }
   const containerWidth = nav.clientWidth

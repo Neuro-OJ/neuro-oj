@@ -53,4 +53,10 @@ defineEmits<{ close: [] }>()
   transform: translateX(-50%) translateY(-20px);
   opacity: 0;
 }
+
+/* issue #316：深色模式功能未完善前，错误/提示横幅统一保持白字，避免被浏览器深色样式改成黑字 */
+:deep([data-slot="title"]),
+:deep([data-slot="description"]) {
+  color: white;
+}
 </style>
