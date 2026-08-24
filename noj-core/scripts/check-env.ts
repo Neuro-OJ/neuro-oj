@@ -7,8 +7,9 @@
  * 一段时间才看到真实错误信息。
  *
  * 用法（在 noj-core 目录）：
- *     deno task check:env          # 检查 .env
- *     deno task check:env --strict # CI 模式，任何占位值都 exit 1
+ *     deno task check:env                         # 检查 .env
+ *     deno task check:env --strict                # CI 模式，任何占位值都 exit 1
+ *     deno task check:env --strict --production --file ../.env.prod
  *
  * 检查项：
  *   1. .env 文件存在
@@ -19,6 +20,7 @@
  * 行为：
  *   - 缺省模式（--strict 缺失）：仅打印警告，不阻塞
  *   - --strict 模式：发现任一占位值即 exit 1
+ *   - --production 模式：额外检查生产必填项和 secret 文件权限
  *
  * 与 seed.ts 解耦：本脚本独立运行，**不依赖** PG/Redis，
  * 也不被 seed.ts 调用——避免与正在进行的 PR #69 撞 scripts/seed.ts。
@@ -46,6 +48,7 @@ const PLACEHOLDER_PATTERNS: readonly RegExp[] = [
 ];
 
 const STRICT_FLAG = "--strict";
+const PRODUCTION_FLAG = "--production";
 
 /** 从 key=value 文件读取。注释行（# 开头）和空行跳过。 */
 function parseEnvFile(path: string): Map<string, string> {
@@ -81,7 +84,7 @@ function parseEnvFile(path: string): Map<string, string> {
 
 interface Finding {
   key: string;
-  value: string;
+  display: string;
   reason: string;
 }
 
@@ -96,7 +99,7 @@ function inspect(env: Map<string, string>): Finding[] {
       if (pattern.test(value)) {
         findings.push({
           key,
-          value,
+          display: "[已隐藏]",
           reason: `命中占位符模式 ${pattern}`,
         });
         break;
@@ -109,7 +112,7 @@ function inspect(env: Map<string, string>): Finding[] {
   if (jwt && jwt.length < MIN_JWT_SECRET_LENGTH) {
     findings.push({
       key: "JWT_SECRET",
-      value: `${jwt.length} 字符`,
+      display: `${jwt.length} 字符`,
       reason: "HS256 要求 ≥ 32 字符",
     });
   }
@@ -121,7 +124,7 @@ function inspect(env: Map<string, string>): Finding[] {
   if (!tfaKey || tfaKey.length < MIN_TFA_ENCRYPTION_KEY_LENGTH) {
     findings.push({
       key: "TFA_ENCRYPTION_KEY",
-      value: tfaKey ? `${tfaKey.length} 字符` : "(缺失)",
+      display: tfaKey ? `${tfaKey.length} 字符` : "(缺失)",
       reason: tfaKey
         ? "TOTP secret 加密要求 ≥ 32 字符"
         : "TOTP secret 加密密钥为必填项，缺失将导致 noj-core 拒绝启动",
@@ -131,9 +134,106 @@ function inspect(env: Map<string, string>): Finding[] {
   return findings;
 }
 
+function inspectProduction(
+  env: Map<string, string>,
+  envPath: string,
+): Finding[] {
+  const findings: Finding[] = [];
+  const required = [
+    "NOJ_VERSION",
+    "APP_URL",
+    "CORS_ALLOWED_ORIGINS",
+    "TRUSTED_PROXIES",
+    "POSTGRES_PASSWORD",
+    "REDIS_PASSWORD",
+    "MINIO_ROOT_USER",
+    "MINIO_ROOT_PASSWORD",
+    "S3_ACCESS_KEY",
+    "S3_SECRET_KEY",
+    "S3_BUCKET",
+    "S3_ENDPOINT",
+    "JWT_SECRET",
+    "TFA_ENCRYPTION_KEY",
+    "ADMIN_EMAIL",
+    "ADMIN_PASS",
+    "EMAIL_PROVIDER",
+    "STORAGE_PROVIDER",
+  ];
+
+  for (const key of required) {
+    if (!env.get(key)?.trim()) {
+      findings.push({ key, display: "(缺失)", reason: "生产配置必填" });
+    }
+  }
+
+  const emailProvider = env.get("EMAIL_PROVIDER");
+  const emailKeys = emailProvider === "aliyun"
+    ? [
+      "ALIBABA_ACCESS_KEY_ID",
+      "ALIBABA_ACCESS_KEY_SECRET",
+      "ALIBABA_FROM_EMAIL",
+    ]
+    : emailProvider === "tencent"
+    ? [
+      "TENCENT_SECRET_ID",
+      "TENCENT_SECRET_KEY",
+      "TENCENT_FROM_EMAIL",
+      "TENCENT_REGION",
+    ]
+    : [];
+  if (emailProvider !== "aliyun" && emailProvider !== "tencent") {
+    findings.push({
+      key: "EMAIL_PROVIDER",
+      display: "[已隐藏]",
+      reason: "生产环境只能使用 aliyun 或 tencent",
+    });
+  }
+  for (const key of emailKeys) {
+    if (!env.get(key)?.trim()) {
+      findings.push({
+        key,
+        display: "(缺失)",
+        reason: "所选邮件 Provider 必填",
+      });
+    }
+  }
+
+  if (env.get("STORAGE_PROVIDER") !== "s3") {
+    findings.push({
+      key: "STORAGE_PROVIDER",
+      display: "[已隐藏]",
+      reason: "生产环境必须使用 s3",
+    });
+  }
+
+  try {
+    const mode = Deno.statSync(envPath).mode;
+    if (mode !== null && (mode & 0o077) !== 0) {
+      findings.push({
+        key: "secret 文件权限",
+        display: "[已隐藏]",
+        reason: "生产 secret 文件必须限制为属主可读写（建议 chmod 600）",
+      });
+    }
+  } catch {
+    // 文件路径由 main() 传入；这里无法访问时不重复报告文件不存在。
+  }
+
+  return findings;
+}
+
+function getFilePath(): string {
+  const inline = Deno.args.find((arg) => arg.startsWith("--file="));
+  if (inline) return inline.slice("--file=".length);
+  const index = Deno.args.indexOf("--file");
+  if (index >= 0 && Deno.args[index + 1]) return Deno.args[index + 1];
+  return ".env";
+}
+
 function main(): void {
   const strict = Deno.args.includes(STRICT_FLAG);
-  const envPath = ".env";
+  const production = Deno.args.includes(PRODUCTION_FLAG);
+  const envPath = getFilePath();
   const env = parseEnvFile(envPath);
 
   if (env.size === 0) {
@@ -143,7 +243,10 @@ function main(): void {
     return;
   }
 
-  const findings = inspect(env);
+  const findings = [
+    ...inspect(env),
+    ...(production ? inspectProduction(env, envPath) : []),
+  ];
 
   if (findings.length === 0) {
     console.log(
@@ -154,10 +257,7 @@ function main(): void {
 
   console.warn(`[check-env] ⚠️  发现 ${findings.length} 个可疑值：\n`);
   for (const f of findings) {
-    const preview = f.value.length > 60
-      ? `${f.value.slice(0, 57)}...`
-      : f.value;
-    console.warn(`  • ${f.key} = ${preview}`);
+    console.warn(`  • ${f.key} = ${f.display}`);
     console.warn(`    原因: ${f.reason}`);
   }
   console.warn("");
