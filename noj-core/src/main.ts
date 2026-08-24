@@ -17,6 +17,10 @@ import { getSetting, initSystemSettings } from "./services/system-settings.ts";
 import { startAuditLogRetentionTask } from "./services/audit-log.ts";
 import { logger } from "./lib/logging.ts";
 import {
+  assertProductionConfig,
+  type ProductionConfig,
+} from "./lib/production-config.ts";
+import {
   MIN_JWT_SECRET_LENGTH,
   MIN_TFA_ENCRYPTION_KEY_LENGTH,
 } from "./lib/constants.ts";
@@ -25,68 +29,50 @@ const app = createApp();
 
 const port = parseInt(Deno.env.get("PORT") || "8000", 10);
 
-const EMAIL_PROVIDER_REQUIRED_SETTINGS = {
-  aliyun: [
-    ["alibaba_access_key_id", "ALIBABA_ACCESS_KEY_ID"],
-    ["alibaba_access_key_secret", "ALIBABA_ACCESS_KEY_SECRET"],
-    ["alibaba_from_email", "ALIBABA_FROM_EMAIL"],
-  ],
-  tencent: [
-    ["tencent_secret_id", "TENCENT_SECRET_ID"],
-    ["tencent_secret_key", "TENCENT_SECRET_KEY"],
-    ["tencent_from_email", "TENCENT_FROM_EMAIL"],
-    ["tencent_region", "TENCENT_REGION"],
-  ],
-} as const;
-
-function findMissingEmailSettings(
-  required: readonly (readonly [string, string])[],
-): string[] {
-  return required
-    .filter(([key]) => {
-      const setting = getSetting(key);
-      return !(typeof setting?.value === "string" && setting.value.length > 0);
-    })
-    .map(([, label]) => label);
+function configuredSetting(key: string): string | undefined {
+  const setting = getSetting(key);
+  return typeof setting?.value === "string" && setting.value.length > 0
+    ? setting.value
+    : undefined;
 }
 
-/**
- * 检查邮件 Provider 运行时配置。
- *
- * 非致命校验：配置缺失时降级到 mock 并输出警告，不阻塞启动。
- * 因 email provider 凭证已迁移为 DB-backed 设置项，
- * 此函数仅作启动期警告提示，不再修改 provider 选择。
- */
-function checkEmailProviderConfig(): void {
-  const pSetting = getSetting("email_provider");
-  const provider = typeof pSetting?.value === "string"
-    ? pSetting.value
-    : "mock";
-
-  const required = provider === "aliyun"
-    ? EMAIL_PROVIDER_REQUIRED_SETTINGS.aliyun
-    : provider === "tencent"
-    ? EMAIL_PROVIDER_REQUIRED_SETTINGS.tencent
-    : undefined;
-  if (!required) return;
-
-  const missing = findMissingEmailSettings(required);
-  if (missing.length > 0) {
-    logger.warn(`email_provider=${provider} 但缺少配置`, {
-      provider,
-      missing: missing.join(", "),
-      hint: "可通过管理后台 > 系统设置配置",
-    });
-  }
+function buildProductionConfig(): ProductionConfig {
+  return {
+    environment: Deno.env.get("NOJ_ENV"),
+    databaseUrl: Deno.env.get("DATABASE_URL"),
+    redisUrl: Deno.env.get("REDIS_URL"),
+    jwtSecret: Deno.env.get("JWT_SECRET"),
+    tfaEncryptionKey: Deno.env.get("TFA_ENCRYPTION_KEY"),
+    adminEmail: Deno.env.get("ADMIN_EMAIL"),
+    adminPassword: Deno.env.get("ADMIN_PASS"),
+    appUrl: Deno.env.get("APP_URL"),
+    corsAllowedOrigins: Deno.env.get("CORS_ALLOWED_ORIGINS"),
+    trustedProxies: configuredSetting("trusted_proxies"),
+    emailProvider: configuredSetting("email_provider"),
+    emailSettings: {
+      alibaba_access_key_id: configuredSetting("alibaba_access_key_id"),
+      alibaba_access_key_secret: configuredSetting("alibaba_access_key_secret"),
+      alibaba_from_email: configuredSetting("alibaba_from_email"),
+      tencent_secret_id: configuredSetting("tencent_secret_id"),
+      tencent_secret_key: configuredSetting("tencent_secret_key"),
+      tencent_from_email: configuredSetting("tencent_from_email"),
+      tencent_region: configuredSetting("tencent_region"),
+    },
+    storageProvider: configuredSetting("storage_provider"),
+    s3Endpoint: configuredSetting("s3_endpoint"),
+    s3AccessKey: configuredSetting("s3_access_key"),
+    s3SecretKey: configuredSetting("s3_secret_key"),
+    s3Bucket: configuredSetting("s3_bucket"),
+  };
 }
 
 /**
  * 应用启动入口。
  * 初始化顺序：
  * 1. JWT_SECRET 强度校验（启动期致命错误）
- * 2. 生产环境 TRUSTED_PROXIES 校验（启动期致命错误，PR-7）
- * 3. 数据库迁移
- * 4. 邮件 Provider 配置检查（非致命，降级到 mock）
+ * 2. TFA 密钥强度校验（启动期致命错误）
+ * 3. 数据库迁移、Root/RBAC 和系统设置初始化
+ * 4. 生产配置校验
  * 5. Redis 连接验证
  * 6. 启动评测结果消费者（后台）
  * 7. 启动 HTTP 服务
@@ -153,32 +139,14 @@ async function main() {
   // 从 system_settings 全量加载到内存 Map，失败时终止启动。
   await fatalStep("系统设置缓存初始化", () => initSystemSettings());
 
-  // PR-7 / NOJ-031：TRUSTED_PROXIES 生产校验必须在 initSystemSettings() 之后执行，
-  // 与运行时 getTrustedProxies() 共用 system_settings 数据源，避免读空缓存误杀启动。
-  if (Deno.env.get("NOJ_ENV") === "production") {
-    const trustedProxiesSetting = getSetting("trusted_proxies");
-    const trustedProxiesValue = typeof trustedProxiesSetting?.value ===
-        "string"
-      ? trustedProxiesSetting.value
-      : "";
-    if (!trustedProxiesValue || trustedProxiesValue.trim() === "") {
-      logger.error(
-        "TRUSTED_PROXIES 未配置。\n" +
-          "生产环境（NOJ_ENV=production）必须显式配置可信代理白名单，\n" +
-          "否则 X-Forwarded-For 首项可被攻击者伪造以绕过 IP 限流和 IP 黑名单。\n" +
-          "配置方式：通过管理后台 → 系统设置 → trusted_proxies 项（DB-backed）。\n" +
-          "格式：逗号分隔的 IP 或 CIDR，如 `10.0.0.0/8,192.168.1.1`。",
-      );
-      Deno.exit(1);
-    }
-  }
-
   // 启动期 env 快照（issue #99）
   // 一次性读取 env-only 设置项到内存 Map，admin 面板只读展示。
   snapshotEnv();
 
-  // 邮件 Provider 配置检查（非致命，配置缺失时降级到 mock）
-  checkEmailProviderConfig();
+  // Issue #330：生产配置必须在 HTTP 监听前完成 fail-fast 校验。
+  await fatalStep("生产配置校验", () => {
+    assertProductionConfig(buildProductionConfig());
+  });
 
   // 存储 Provider 初始化（非致命，S3 bucket 创建失败仅 warn）
   try {

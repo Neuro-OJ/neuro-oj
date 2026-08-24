@@ -6,6 +6,7 @@
 ## 1. 前置条件
 
 - 一台 Linux 服务器（amd64），已安装 Docker Engine 与 Docker Compose v2。
+- Deno 2.x（仅用于部署前运行 `noj-core` 的配置检查命令）。
 - 一个已解析到服务器的域名。
 - 外部 TLS 终止（宿主机 Nginx / Caddy / 云负载均衡），负责 HTTPS → 容器 HTTP 端口。
 - GitHub 仓库已启用 GitHub Container Registry（ghcr.io）权限。
@@ -19,7 +20,13 @@ cd neuro-oj
 
 # 2) 准备环境变量
 cp .env.prod.example .env.prod
+chmod 600 .env.prod
 vim .env.prod
+
+# 生产部署前检查（不会打印 secret 明文）
+docker compose --env-file .env.prod -f docker-compose.prod.yml config >/dev/null
+cd noj-core && deno task check:prod
+cd ..
 ```
 
 `.env.prod` 中必须填写：
@@ -31,9 +38,12 @@ vim .env.prod
 | `CORS_ALLOWED_ORIGINS` | `https://你的域名` |
 | `POSTGRES_PASSWORD` | PostgreSQL 强密码 |
 | `REDIS_PASSWORD` | Redis 强密码 |
-| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | MinIO 管理员/S3 凭证 |
+| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | MinIO 管理员凭据，仅供 `minio-init` 使用 |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | 支持包 bucket 的最小权限应用凭据 |
+| `STORAGE_PROVIDER` / `S3_ENDPOINT` / `S3_BUCKET` | 生产必须使用 S3/MinIO |
 | `JWT_SECRET` / `TFA_ENCRYPTION_KEY` | ≥32 字符随机串 |
 | `ADMIN_EMAIL` / `ADMIN_PASS` | 公测管理员账号 |
+| `EMAIL_PROVIDER` 及对应凭据 | 生产必须使用 aliyun 或 tencent，禁止 mock |
 | `JUDGE_IMAGE_BASE` | 默认 `ghcr.io/neuro-oj/` |
 | `NGINX_PORT` | 容器 Nginx 映射到宿主机的端口，默认 `8080` |
 
@@ -117,6 +127,6 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 - PostgreSQL：`pg_dump -F c` 或云数据库快照。
 - Redis：AOF/RDB 文件（`redisdata` 卷）。
 - MinIO：`miniodata` 卷或 bucket 同步到异地存储。
-- `.env.prod`：包含密钥，务必加密保存。
+- `.env.prod`：包含密钥，文件权限设为 `600`，并使用 secrets manager 或加密存储保存。
 
-详细可靠性方案后续版本补充。
+密钥轮换和失效步骤见[生产密钥轮换 Runbook](./production-secrets)。

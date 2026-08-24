@@ -39,6 +39,8 @@ S3 交付示例：
 noj-download://s3?url=<encoded-presigned-url>&checksum_sha256=...
 ```
 
+生产环境必须使用独立的 S3 应用凭据。MinIO root 凭据仅供初始化和受限运维使用，不能注入 `noj-core`；生产配置和轮换步骤见[生产密钥轮换 Runbook](./production-secrets)。
+
 ## 为什么要分两层
 
 数据库只需要知道资源归属和校验和；Judge Worker 需要知道当前这次任务如何下载纯净评测包。把两者分开后，同一个数据库记录可以在 local、S3 或其他存储后端之间切换交付方式。
