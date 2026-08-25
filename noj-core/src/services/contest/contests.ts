@@ -206,16 +206,21 @@ async function findContestRow(id: string) {
   return row;
 }
 
-/** 将 UUID 或 public_id 解析为内部竞赛 UUID。 */
+/** 将 UUID 或 public_id 解析为内部竞赛 UUID；其它格式按主键兜底（兼容旧数据）。 */
 export async function resolveContestId(value: string): Promise<string> {
   const db = getDb();
   if (isUuid(value)) return value;
-  if (!isPublicId(value, "ct")) throw new NotFoundError("竞赛不存在");
-  const rows = await db.select({ id: contests.id }).from(contests)
-    .where(eq(contests.public_id, value)).limit(1);
-  const row = rows[0];
-  if (!row) throw new NotFoundError("竞赛不存在");
-  return row.id;
+  if (isPublicId(value, "ct")) {
+    const rows = await db.select({ id: contests.id }).from(contests)
+      .where(eq(contests.public_id, value)).limit(1);
+    const row = rows[0];
+    if (!row) throw new NotFoundError("竞赛不存在");
+    return row.id;
+  }
+  const byId = await db.select({ id: contests.id }).from(contests)
+    .where(eq(contests.id, value)).limit(1);
+  if (!byId[0]) throw new NotFoundError("竞赛不存在");
+  return byId[0].id;
 }
 
 export function computeContestStatus(

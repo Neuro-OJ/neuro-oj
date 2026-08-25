@@ -1,11 +1,7 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import {
-  problemUrl,
-  publicUrl,
-  userUrl,
-} from '../utils/publicIdentifiers.ts';
+import { problemUrl, publicUrl, userUrl } from '../utils/publicIdentifiers.ts';
 
 Deno.test('publicIdentifiers: problemUrl 优先 display_id', () => {
   assertEquals(problemUrl('uuid', 'P100'), '/problems/P100');

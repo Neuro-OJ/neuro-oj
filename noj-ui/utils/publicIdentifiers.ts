@@ -14,15 +14,15 @@ export function userUrl(username: string): string {
 }
 
 export function publicUrl(
-  kind: "contest" | "training" | "submission" | "post" | "announcement",
+  kind: 'contest' | 'training' | 'submission' | 'post' | 'announcement',
   publicId: string,
 ): string {
   const base = {
-    contest: "contests",
-    training: "trainings",
-    submission: "submissions",
-    post: "community/posts",
-    announcement: "announcements",
+    contest: 'contests',
+    training: 'trainings',
+    submission: 'submissions',
+    post: 'community/posts',
+    announcement: 'announcements',
   }[kind];
   return `/${base}/${publicId}`;
 }

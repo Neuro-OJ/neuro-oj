@@ -100,7 +100,10 @@ Deno.test({
       assertEquals(contest.status, "pending");
       assertEquals(contest.problem_count, 1);
       assertEquals(contest.has_password, true);
-      assertMatch(contest.public_id, /^ct-[123456789abcdefghjkmnpqrstuvwxyz]{8}$/);
+      assertMatch(
+        contest.public_id,
+        /^ct-[123456789abcdefghjkmnpqrstuvwxyz]{8}$/,
+      );
       assertEquals(await resolveContestId(contest.public_id), contest.id);
       assertEquals(await resolveContestId(contest.id), contest.id);
       assertEquals(computeContestStatus(startTime, endTime), "pending");

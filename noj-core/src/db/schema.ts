@@ -967,7 +967,9 @@ export const announcements = pgTable(
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
-    publicIdUnique: unique("announcements_public_id_unique").on(table.public_id),
+    publicIdUnique: unique("announcements_public_id_unique").on(
+      table.public_id,
+    ),
     /** 公开列表查询：仅 active + 置顶优先 + 最新在前 */
     activePinnedCreatedIdx: index("idx_announcements_active_pinned_created").on(
       table.is_active,

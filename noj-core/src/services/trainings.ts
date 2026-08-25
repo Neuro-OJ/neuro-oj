@@ -252,16 +252,21 @@ export async function createTraining(
   return getTraining(id, userId);
 }
 
-/** 将 UUID 或 public_id 解析为内部题单 UUID。 */
+/** 将 UUID 或 public_id 解析为内部题单 UUID；其它格式按主键兜底。 */
 export async function resolveTrainingId(value: string): Promise<string> {
   const db = getDb();
   if (isUuid(value)) return value;
-  if (!isPublicId(value, "tr")) throw new NotFoundError("题单不存在");
-  const rows = await db.select({ id: trainings.id }).from(trainings)
-    .where(eq(trainings.public_id, value)).limit(1);
-  const row = rows[0];
-  if (!row) throw new NotFoundError("题单不存在");
-  return row.id;
+  if (isPublicId(value, "tr")) {
+    const rows = await db.select({ id: trainings.id }).from(trainings)
+      .where(eq(trainings.public_id, value)).limit(1);
+    const row = rows[0];
+    if (!row) throw new NotFoundError("题单不存在");
+    return row.id;
+  }
+  const byId = await db.select({ id: trainings.id }).from(trainings)
+    .where(eq(trainings.id, value)).limit(1);
+  if (!byId[0]) throw new NotFoundError("题单不存在");
+  return byId[0].id;
 }
 
 export async function updateTraining(

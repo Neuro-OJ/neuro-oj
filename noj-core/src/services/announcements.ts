@@ -216,12 +216,17 @@ export async function listAdminAnnouncements(
 export async function resolveAnnouncementId(value: string): Promise<string> {
   const db = getDb();
   if (isUuid(value)) return value;
-  if (!isPublicId(value, "ann")) throw new NotFoundError("公告不存在");
-  const rows = await db.select({ id: announcements.id }).from(announcements)
-    .where(eq(announcements.public_id, value)).limit(1);
-  const row = rows[0];
-  if (!row) throw new NotFoundError("公告不存在");
-  return row.id;
+  if (isPublicId(value, "ann")) {
+    const rows = await db.select({ id: announcements.id }).from(announcements)
+      .where(eq(announcements.public_id, value)).limit(1);
+    const row = rows[0];
+    if (!row) throw new NotFoundError("公告不存在");
+    return row.id;
+  }
+  const byId = await db.select({ id: announcements.id }).from(announcements)
+    .where(eq(announcements.id, value)).limit(1);
+  if (!byId[0]) throw new NotFoundError("公告不存在");
+  return byId[0].id;
 }
 
 /**

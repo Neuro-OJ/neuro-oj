@@ -119,7 +119,7 @@ async function handleDelete() {
   deleting.value = true
   deleteError.value = ""
   try {
-    await api.delete(`/api/v1/problems/${deleteTarget.value.id}`)
+    await api.delete(`/api/v1/problems/${deleteTarget.value.display_id}`)
     showDeleteConfirm.value = false
     // 如果当前页只有这一个题目，删除后自动回到上一页
     if (problems.value.length <= 1 && currentPage.value > 1) {
