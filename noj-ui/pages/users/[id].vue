@@ -4,6 +4,7 @@ import { useMessages } from "~/composables/useMessages"
 import { useToast } from "~/composables/useToast"
 import { difficultyBadgeColors, difficultyLabels, formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
 import { buildMonthCalendar } from "~/utils/checkinCalendar"
+import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
 
 const route = useRoute()
 const router = useRouter()
@@ -31,12 +32,14 @@ interface UserProfile {
   rank: number | null
   solved_problems: {
     id: string
+    display_id?: string
     title: string
     difficulty: string
     accepted_at: string
   }[]
   recent_submissions: {
     id: string
+    public_id?: string
     problem_id: string
     problem_title: string
     language: string
@@ -46,8 +49,8 @@ interface UserProfile {
     created_at: string
   }[]
   community_stats: { following_count: number; follower_count: number; solution_count: number; moment_count: number }
-  solutions: { id: string; title: string; created_at: string }[]
-  moments: { id: string; content: string; created_at: string }[]
+  solutions: { id: string; public_id?: string; title: string; created_at: string }[]
+  moments: { id: string; public_id?: string; content: string; created_at: string }[]
 }
 
 interface ProfileResponse {
@@ -127,6 +130,7 @@ const createdProblems = computed(() => createdData.value?.data ?? [])
 
 interface TrainingProfile {
   id: string
+  public_id?: string
   title: string
   description: string
   visibility: 'private' | 'unlisted' | 'public'
@@ -307,7 +311,7 @@ async function toggleFollow() {
         </template>
       </section>
 
-      <section v-if="profile.solutions.length || profile.moments.length" class="rounded-xl border border-border bg-white p-6"><h2 class="text-base font-semibold text-text">社区内容</h2><div class="mt-3 space-y-2"><NuxtLink v-for="solution in profile.solutions" :key="solution.id" :to="`/community/posts/${solution.id}`" class="block text-sm text-primary no-underline hover:underline">题解 · {{ solution.title }}</NuxtLink><NuxtLink v-for="moment in profile.moments" :key="moment.id" :to="`/community/posts/${moment.id}`" class="block line-clamp-1 text-sm text-primary no-underline hover:underline">动态 · {{ moment.content }}</NuxtLink></div></section>
+      <section v-if="profile.solutions.length || profile.moments.length" class="rounded-xl border border-border bg-white p-6"><h2 class="text-base font-semibold text-text">社区内容</h2><div class="mt-3 space-y-2"><NuxtLink v-for="solution in profile.solutions" :key="solution.id" :to="publicUrl('post', solution.public_id || solution.id)" class="block text-sm text-primary no-underline hover:underline">题解 · {{ solution.title }}</NuxtLink><NuxtLink v-for="moment in profile.moments" :key="moment.id" :to="publicUrl('post', moment.public_id || moment.id)" class="block line-clamp-1 text-sm text-primary no-underline hover:underline">动态 · {{ moment.content }}</NuxtLink></div></section>
 
       <!-- 已通过题目 -->
       <div v-if="profile.solved_problems.length" class="bg-white border border-border rounded-xl overflow-hidden">
@@ -324,7 +328,7 @@ async function toggleFollow() {
             class="flex items-center justify-between px-6 py-3 hover:bg-primary-bg"
           >
             <NuxtLink
-              :to="`/problems/${problem.id}`"
+              :to="problemUrl(problem.id, problem.display_id)"
               class="text-sm text-primary no-underline hover:underline"
             >
               {{ problem.title }}
@@ -359,7 +363,7 @@ async function toggleFollow() {
             <div class="flex items-center gap-3">
               <ProblemId :display-id="problem.display_id" :type="'U'" />
               <NuxtLink
-                :to="`/problems/${problem.id}`"
+                :to="problemUrl(problem.id, problem.display_id)"
                 class="text-sm text-primary no-underline hover:underline"
               >
                 {{ problem.title }}
@@ -390,7 +394,7 @@ async function toggleFollow() {
           <NuxtLink
             v-for="training in profileTrainings"
             :key="training.id"
-            :to="`/trainings/${training.id}`"
+            :to="publicUrl('training', training.public_id || training.id)"
             class="flex items-center justify-between px-6 py-3 hover:bg-primary-bg no-underline"
           >
             <span class="text-sm text-primary">{{ training.title }}</span>
@@ -415,7 +419,7 @@ async function toggleFollow() {
           >
             <div class="flex items-center gap-3 min-w-0">
               <NuxtLink
-                :to="`/submissions/${sub.id}`"
+                :to="publicUrl('submission', sub.public_id || sub.id)"
                 class="text-sm text-primary no-underline hover:underline truncate"
               >
                 {{ sub.problem_title || sub.problem_id }}

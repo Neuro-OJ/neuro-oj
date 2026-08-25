@@ -2,6 +2,7 @@
 import type { BookmarkRow, PostType } from "~/composables/useCommunity"
 import { stripMarkdown } from "~/utils/markdown"
 import { extractApiError } from "~/utils/apiError"
+import { publicUrl } from "~/utils/publicIdentifiers"
 
 definePageMeta({ middleware: "auth" })
 
@@ -95,7 +96,7 @@ await loadBookmarks()
           <span v-if="item.post.status === 'pending'" class="rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">审核中</span>
           <span v-if="item.post.status === 'hidden'" class="rounded bg-red-50 px-2 py-0.5 text-xs text-red-700">已隐藏</span>
         </div>
-        <NuxtLink :to="`/community/posts/${item.post.id}`" class="block no-underline">
+        <NuxtLink :to="publicUrl('post', item.post.public_id || item.post.id)" class="block no-underline">
           <h2 v-if="item.post.title" class="text-lg font-semibold text-text hover:text-primary">{{ item.post.title }}</h2>
           <p class="mt-2 line-clamp-3 text-sm leading-6 text-text-secondary">{{ stripMarkdown(item.post.content) }}</p>
         </NuxtLink>

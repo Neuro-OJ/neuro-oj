@@ -6,6 +6,7 @@
 // API 返回的提列表项类型
 export interface SubmissionListItem {
   id: string;
+  public_id?: string;
   user_id: string;
   problem_id: string;
   language: string;
@@ -14,6 +15,7 @@ export interface SubmissionListItem {
   created_at: string;
   problem: {
     id: string;
+    display_id?: string;
     title: string;
   };
   result: {

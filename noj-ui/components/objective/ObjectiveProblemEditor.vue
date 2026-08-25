@@ -6,6 +6,7 @@ import type {
   QuestionInput,
 } from '~/composables/useObjective'
 import { QUESTION_TYPE_LABELS } from '~/composables/useObjective'
+import { problemUrl } from '~/utils/publicIdentifiers'
 
 /**
  * 客观题套卷编辑器（并入 problems 体系：is_objective 题目）。
@@ -297,7 +298,7 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
           <h1 class="text-lg font-bold text-text">编辑套卷：{{ paper.title }}</h1>
           <p class="text-xs text-text-secondary">{{ paper.display_id }} · 客观题</p>
         </div>
-        <UButton color="neutral" variant="outline" icon="i-lucide-arrow-left" :to="`/problems/${paper.id}`">
+        <UButton color="neutral" variant="outline" icon="i-lucide-arrow-left" :to="problemUrl(paper.id, paper.display_id)">
           返回答题页
         </UButton>
       </header>

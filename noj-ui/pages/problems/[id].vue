@@ -2,6 +2,7 @@
 import { useRoute } from "vue-router"
 import type { PostRow } from "~/composables/useCommunity"
 import { isAdminUser } from "~/utils/isAdminUser"
+import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
 
 const route = useRoute()
 const router = useRouter()
@@ -61,7 +62,7 @@ const isDetailPage = computed(() => route.path === `/problems/${problemId}`)
 const isObjective = computed(() => problem.value?.is_objective === true)
 
 function goToEditor() {
-  router.push(`/editor/${problemId}`)
+  router.push(`/editor/${problem.value?.display_id || problemId}`)
 }
 
 // ── 题解区（community-ui spec：题解列表 + 发布入口，服从模块开关与权限）──
@@ -169,7 +170,7 @@ const publishBlockReason = computed(() => {
               <AddToTrainingMenu v-if="isLoggedIn" :problem-id="problem.id" />
               <NuxtLink
                 v-if="canEdit"
-                :to="`/problems/${problem.id}/edit`"
+                :to="`${problemUrl(problem.id, problem.display_id)}/edit`"
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg text-text-secondary hover:text-primary hover:border-primary/40 transition-colors"
               >
                 <UIcon name="i-lucide-pencil" class="size-3.5" />
@@ -227,7 +228,7 @@ const publishBlockReason = computed(() => {
 
         <div class="px-7 py-6">
           <!-- 客观题：内联作答表单（练习模式） -->
-          <ObjectiveAnswerForm v-if="isObjective" :paper-id="problem.id" />
+          <ObjectiveAnswerForm v-if="isObjective" :paper-id="problem.display_id || problem.id" />
           <MarkdownRenderer v-else :content="problem.description" />
         </div>
       </div>
@@ -262,7 +263,7 @@ const publishBlockReason = computed(() => {
               <!-- 发布入口：服从题解模块开关与当前用户权限（community-ui spec） -->
               <UButton
                 v-if="config?.solutions_enabled === false"
-                :to="`/community?type=solution&problem_id=${problem.id}`"
+                :to="`/community?type=solution&problem_id=${problem.display_id || problem.id}`"
                 color="primary"
                 variant="outline"
                 class="text-sm"
@@ -279,7 +280,7 @@ const publishBlockReason = computed(() => {
               </UButton>
               <UButton
                 v-else-if="eligibility?.can_create"
-                :to="`/community?type=solution&problem_id=${problem.id}`"
+                :to="`/community?type=solution&problem_id=${problem.display_id || problem.id}`"
                 color="primary"
                 class="text-sm"
               >
@@ -314,7 +315,7 @@ const publishBlockReason = computed(() => {
         <ul v-else class="mt-4 divide-y divide-border">
           <li v-for="item in solutions" :key="item.post.id" class="py-3 first:pt-0 last:pb-0">
             <NuxtLink
-              :to="`/community/posts/${item.post.id}`"
+              :to="publicUrl('post', item.post.public_id || item.post.id)"
               class="group flex items-start justify-between gap-3"
             >
               <span class="flex items-center gap-2 text-sm font-medium text-text group-hover:text-primary">

@@ -2,6 +2,7 @@
 import type { Contest, ContestProblem } from '~/composables/useContests'
 import type { WorkspaceSubmission } from '~/components/editor/EditorWorkspace.vue'
 import { getProblemTemplateUrl } from '~/utils/problemTemplate'
+import { publicUrl } from '~/utils/publicIdentifiers'
 
 /**
  * 独立做题页（标准题库与竞赛共用）。
@@ -165,7 +166,7 @@ const templateUrl = getProblemTemplateUrl
           color="neutral"
           variant="outline"
           size="sm"
-          :to="`/contests/${contestId}`"
+          :to="publicUrl('contest', contestId)"
         >
           返回竞赛
         </UButton>
@@ -184,7 +185,7 @@ const templateUrl = getProblemTemplateUrl
     :self-test="isContest ? undefined : selfTest"
     :template-url="templateUrl"
     :draft-key="draftKey"
-    :open-submission-url="(id: string) => `/submissions/${id}`"
+    :open-submission-url="(id: string) => publicUrl('submission', id)"
     :back-url="backUrl"
     :back-label="'返回题目详情'"
     :subtitle="isContest ? (contest?.title ?? '') : ''"
@@ -198,7 +199,7 @@ const templateUrl = getProblemTemplateUrl
         variant="outline"
         size="sm"
         class="gap-1.5 px-3 py-1.5 text-xs"
-        :to="`/contests/${contestId}/ranking`"
+        :to="`${publicUrl('contest', contestId)}/ranking`"
       >
         <UIcon name="i-lucide-trophy" class="size-3.5" />排名
       </UButton>

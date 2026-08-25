@@ -113,6 +113,7 @@ import {
   type ProblemSearchResult,
   type UserSearchResult,
 } from "~/composables/useSearch";
+import { problemUrl, publicUrl, userUrl } from "~/utils/publicIdentifiers";
 
 const { state, close, search } = useSearch();
 const query = ref("");
@@ -197,10 +198,10 @@ function onKeydown(e: KeyboardEvent) {
     const selected = flatItems.value[selectedIndex.value];
     if (selected) {
       const href = selected.kind === "problem"
-        ? `/problems/${selected.item.display_id || selected.item.id}`
+        ? problemUrl(selected.item.id, selected.item.display_id)
         : selected.kind === "community"
-        ? `/community/posts/${selected.item.id}`
-        : `/users/${selected.item.id}`;
+        ? publicUrl("post", selected.item.public_id || selected.item.id)
+        : userUrl(selected.item.username);
       close();
       navigateTo(href);
     } else if (query.value.trim().length >= 2) {
