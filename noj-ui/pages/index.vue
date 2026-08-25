@@ -1,5 +1,5 @@
 <template>
-    <div class="py-6">
+    <div class="px-3 sm:px-5 py-6">
         <div class="mx-auto w-full max-w-[1320px] border border-border rounded-xl shadow-card flex flex-col overflow-hidden">
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col lg:flex-row flex-1 min-h-[320px] bg-white">
