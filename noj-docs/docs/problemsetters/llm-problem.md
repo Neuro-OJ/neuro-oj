@@ -16,7 +16,7 @@
 
 ## 题目配置
 
-在题目 JSON / 统一题目包 `manifest.json` 中增加 `llm` 字段：
+在题目 JSON / 统一题目包 `problem.json`（manifest）中增加 `llm` 字段：
 
 ```json
 {

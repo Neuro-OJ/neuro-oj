@@ -34,22 +34,28 @@ cd ..
 | 变量 | 说明 |
 |------|------|
 | `NOJ_VERSION` | 要部署的 Release 标签，如 `v0.1.0` |
+| `DOMAIN` | 对外域名（不含协议），compose/Nginx 使用 |
 | `APP_URL` | `https://你的域名` |
 | `CORS_ALLOWED_ORIGINS` | `https://你的域名` |
+| `TRUSTED_PROXIES` | 可信代理网段，必须与 compose 中 `noj-net` 子网一致（如 `172.28.0.0/16`）；生产必填 |
+| `NUXT_NOJ_ENV` | 前端环境标记，生产 HTTPS 环境保持 `production` |
 | `POSTGRES_PASSWORD` | PostgreSQL 强密码 |
 | `REDIS_PASSWORD` | Redis 强密码 |
 | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | MinIO 管理员凭据，仅供 `minio-init` 使用 |
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | 支持包 bucket 的最小权限应用凭据 |
 | `STORAGE_PROVIDER` / `S3_ENDPOINT` / `S3_BUCKET` | 生产必须使用 S3/MinIO |
+| `S3_REGION` | 可选，默认 `us-east-1` |
+| `S3_FORCE_PATH_STYLE` | 自建 MinIO 通常为 `true` |
 | `JWT_SECRET` / `TFA_ENCRYPTION_KEY` | ≥32 字符随机串 |
 | `ADMIN_EMAIL` / `ADMIN_PASS` | 公测管理员账号 |
 | `EMAIL_PROVIDER` 及对应凭据 | 生产必须使用 aliyun 或 tencent，禁止 mock |
 | `JUDGE_IMAGE_BASE` | 默认 `ghcr.io/neuro-oj/` |
 | `NGINX_PORT` | 容器 Nginx 映射到宿主机的端口，默认 `8080` |
-| `NOJ_LLM_SERVICE_TOKEN` | LLM Gateway 服务间鉴权 + eval_token 签发/校验密钥（≥16 字符）；不使用 LLM 调用题时可忽略 |
-| `NOJ_LLM_STORE_KEY` | LLM Gateway 加密 Provider API Key 的信封主密钥（≥16 字符）；不使用 LLM 调用题时可忽略 |
+| `NOJ_LLM_SERVICE_TOKEN` | LLM Gateway 服务间鉴权 + eval_token 签发/校验密钥（≥16 字符）；compose 默认始终启动 `llm-gateway`，因此生产**必须填写** |
+| `NOJ_LLM_STORE_KEY` | LLM Gateway 加密 Provider API Key 的信封主密钥（≥16 字符）；compose 默认必填 |
 | `JUDGE_ALLOW_EVALUATOR_NETWORK` | 是否允许 evaluator 联网；使用 LLM 调用题时必须设为 `true` |
 | `JUDGE_EVALUATOR_NETWORK` | evaluator 联网时加入的 Docker 网络；生产必须指向 `llm-gateway` 所在网络，默认 `noj-net` |
+| `JUDGE_ALLOW_HTTP_S3` | 自建 MinIO 走内网 HTTP 时设为 `true`，允许 judge 通过 HTTP 下载支持包 |
 
 ```bash
 # 3) 配置外部 TLS 终止
@@ -90,8 +96,9 @@ ghcr.io/neuro-oj/noj-solution-python   all_versions  solution
 ## 3.5 LLM Gateway 部署
 
 `docker-compose.prod.yml` 默认启动 `llm-gateway` 容器，并让 core 通过
-`http://llm-gateway:8001` 访问。若实例不需要 LLM 调用题，可忽略相关密钥，
-但建议保持容器启动以免 compose 环境不一致。
+`http://llm-gateway:8001` 访问。由于 compose 对 `NOJ_LLM_SERVICE_TOKEN` 和
+`NOJ_LLM_STORE_KEY` 使用 `${...:?}` 必填校验，即使不使用 LLM 调用题也必须
+在 `.env.prod` 中填写这两个密钥。
 
 使用 LLM 调用题时：
 

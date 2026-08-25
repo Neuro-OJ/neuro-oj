@@ -70,7 +70,7 @@ Neuro OJ 通过双容器提供**有限的互联网能力**：
 
 - **solution 容器保持无网**——安全边界不变，用户代码无法直接发起网络请求；
 - **evaluator 容器可按题目配置联网**——`runtime_config.evaluator.network.enabled`（默认关闭），开启后 evaluator 以 bridge 模式联网；
-- **solution 通过 RPC 调用 evaluator 注册的 capability**（`call_capability`）间接使用网络，调用边界仍是信任边界：capability 由出题人显式注册并负责参数校验，封装精确函数而非通用转发（见[出题指南](../problemsetters/capability-networking.md)）。
+- **solution 通过 RPC 调用 evaluator 注册的 capability**（`call_capability`）间接使用网络，调用边界仍是信任边界：capability 由出题人显式注册并负责参数校验，封装精确函数而非通用转发（见[出题指南](../mechanisms/capability-networking.md)）。
 
 实现由 [issue #197](https://github.com/Neuro-OJ/neuro-oj/issues/197) 落地。
 
@@ -87,7 +87,7 @@ Neuro OJ 通过双容器提供**有限的互联网能力**：
 
 - **双容器隔离**：用户代码与出题人评测代码运行在**独立容器**中——用户代码无法直接读取 evaluator 侧的测试数据或评分逻辑。
 - **沙箱约束**：solution 网络关闭（`network_mode none`，永远无网；evaluator 按题目配置可联网）、无特权（`cap_drop ALL`）、进程数受限，容器资源由 Judge Worker 统一控制。
-- **模块加载而非进程运行**：Solution Host 在容器内加载用户模块并保持存活（多次调用共享全局状态），用户函数的 `print()` 被重定向到 stderr 作为调试输出，不构成答案通道。
+- **模块加载而非进程运行**：Solution Host 在容器内加载用户模块并保持存活（多次调用共享全局状态），用户函数的 `print()` 不是答案通道；当前 Solution stdout 是协议通道，普通 `print()` 文本不会作为评测输出展示。
 - **运行时基础**：当前为 Python 3.12 精简镜像，不预装额外包；题目依赖由出题人在 evaluator 中自行管理。
 
 ## 文档概览
@@ -118,7 +118,7 @@ flowchart LR
 - **noj-core**：RESTful API 与业务逻辑，评测任务的生产者和结果消费者。
 - **noj-judge**：从队列拉取任务，在 Docker 沙箱容器中执行评测并回传结果。
 
-评测采用**双容器模型**：用户代码与出题人评测代码分别在独立容器中运行，Evaluator 通过 RPC 调用用户函数。详见[评测模型](../problemsetters/judge-model.md)。
+评测采用**双容器模型**：用户代码与出题人评测代码分别在独立容器中运行，Evaluator 通过 RPC 调用用户函数。详见[评测模型](../mechanisms/judge-model.md)。
 
 ## 说明
 

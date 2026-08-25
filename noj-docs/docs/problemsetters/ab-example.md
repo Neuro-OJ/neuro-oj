@@ -18,18 +18,21 @@ noj-core/data/problems-src/1001/
 
 ## 题面接口
 
-题目要求用户实现：
+当前仓库 `1001` 样例题要求用户实现：
 
 ```python
-def solve(a: int, b: int) -> int:
+def solve(input_str: str) -> str:
     ...
 ```
+
+输入是一行两个空格分隔的整数，返回它们的和（字符串形式）。
 
 正确提交：
 
 ```python
-def solve(a: int, b: int) -> int:
-    return a + b
+def solve(input_str: str) -> str:
+    a, b = map(int, input_str.split())
+    return str(a + b)
 ```
 
 错误提交：
@@ -38,7 +41,7 @@ def solve(a: int, b: int) -> int:
 print(2)
 ```
 
-这个提交没有实现 `solve`，因此 evaluator 调用时会收到 `FunctionNotFound`，不应被当作系统错误。
+这个提交没有实现 `solve`，因此 evaluator 调用时会收到 `NotFoundError`，不应被当作系统错误。
 
 ## 测试数据
 
@@ -60,17 +63,22 @@ print(2)
 
 ```python
 runner = SolutionRunner()                  # 创建调用器：负责向 Solution 容器转发 RPC 调用
-a, b = parse_input(item["input"])          # 解析当前用例输入（如 "1 2\n" → (1, 2)）
-raw_output = runner.call("solve", a, b)    # 调用用户实现的 solve(a, b)，返回其返回值
+output_line = runner.call("solve", item["input"])   # 传入原始 input 字符串
+actual = output_line.strip().splitlines()[-1] if output_line.strip() else ""
+expected = str(item["expected"]).strip()
 ```
 
-调用失败时捕获 `SolutionCallError`：
+调用失败时捕获 SDK 异常：
 
 ```python
-except SolutionCallError as exc:           # 用户函数调用失败（抛异常 / 超时 / 函数未定义等）
-    raw_output = None                      # 本次调用没有可用返回值
-    output_text = ""                       # 失败调用不产生输出文本
-    call_error = exc.error                 # 取出结构化错误：类型、消息与截断 traceback
+try:
+    output_line = runner.call("solve", item["input"])
+except SolutionTimeoutError:
+    raise                    # 交由评测机识别为单次调用超时
+except Exception as e:
+    output_line = ""
+    runtime_error = True
+    print(f"  [!] Solution 调用异常: {e}")
 ```
 
 最终根据通过数量和格式检查计算分数：
@@ -103,7 +111,7 @@ noj-core/data/packages/1001.zip
 
 推荐流程：
 
-1. 在 Web 管理界面创建 A+B 题，填写题面、难度、分类和运行时配置（或用统一题目包导入）。
+1. 在 Web 管理界面创建 A+B 题，填写题面、难度、标签和运行时配置（或用统一题目包导入）。
 2. 保存题目。
 3. 在题目编辑页的"题目支持包"区域上传统一题目包（zip 含 `problem.json` + `statement.md` + `evaluate.py`）。
 4. 上传成功后提交正确解法验证。

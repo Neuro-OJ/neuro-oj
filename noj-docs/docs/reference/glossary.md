@@ -6,7 +6,7 @@
 
 ### Neuro OJ
 
-Neuro OJ 是本项目的全称（英文 "Neuro" + "Online Judge"）。文档正文统一使用全称，不再使用 "NOJ" 简称；但代码、命令、队列名与协议标识（如 `noj-core`、`noj:judge:queue`、`__NOJ_RPC__`）仍保留原名。
+Neuro OJ 是本项目的全称（英文 "Neuro" + "Online Judge"）。文档正文统一使用全称，不再使用 "NOJ" 简称；但代码、命令、队列名与协议标识（如 `noj-core`、`noj:judge:queue`、NDJSON 帧 `type` 字段）仍保留原名。
 
 ## 评测核心
 
@@ -208,4 +208,4 @@ Solution 容器中的协议进程，负责加载用户模块、接收 Evaluator 
 
 （capability）
 
-Neuro OJ 面向大模型能力评测（LMCC）的评测对象。当前 Python 运行时中，用户以函数形式暴露能力，由 Evaluator 调用。此外，出题人可通过 `noj_evaluator_sdk.register_capability` 注册**网络等能力**，solution 经 `noj_solution_sdk.call_capability` 调用（由 judge 转发到 evaluator 执行）——solution 容器本身无网，capability 是它使用网络的唯一入口。见[做题指南](../users/capability.md)与[出题指南](../problemsetters/capability-networking.md)。
+Neuro OJ 面向大模型能力评测（LMCC）的评测对象。当前 Python 运行时中，用户以函数形式暴露能力，由 Evaluator 调用。此外，出题人可通过 `noj_evaluator_sdk.register_capability` 注册**网络等能力**，solution 经 `noj_solution_sdk.call_capability` 调用（由 judge 转发到 evaluator 执行）——solution 容器本身无网，capability 是它使用网络的唯一入口。见[做题指南](../users/capability.md)与[出题指南](../mechanisms/capability-networking.md)。
