@@ -3,9 +3,11 @@ import type { Training } from '~/composables/useTrainings'
 
 const props = defineProps<{ problemId: string }>()
 
-const { listMine, addProblem, createTraining } = useTrainings()
+const { listMine, listContainingProblem, addProblem, removeProblem, createTraining } = useTrainings()
 const open = ref(false)
 const selected = ref<string[]>([])
+/** 弹窗打开时已含该题的题单（用于对比：取消勾选 → 从题单删除） */
+const initiallyContaining = ref<string[]>([])
 const saving = ref(false)
 const showCreate = ref(false)
 const newTitle = ref('')
@@ -18,8 +20,21 @@ async function load() {
 const mineTrainings = ref<Training[]>([])
 
 async function openModal() {
-  mineTrainings.value = await load()
-  selected.value = []
+  // 加载失败时仍打开弹窗，避免“点加入题单没反应”
+  try {
+    mineTrainings.value = await load()
+  } catch {
+    mineTrainings.value = []
+  }
+  // 预勾选：查当前用户哪些题单已含该题；失败时降级为空选择
+  try {
+    const containing = await listContainingProblem(props.problemId, { silent: true })
+    initiallyContaining.value = containing.data
+    selected.value = [...containing.data]
+  } catch {
+    initiallyContaining.value = []
+    selected.value = []
+  }
   showCreate.value = false
   newTitle.value = ''
   open.value = true
@@ -28,16 +43,39 @@ async function openModal() {
 function closeModal() {
   open.value = false
   selected.value = []
+  initiallyContaining.value = []
   showCreate.value = false
   newTitle.value = ''
 }
+
+/** 是否有变更：勾选集合与初始已含集合不同即可提交（含全不选=从所有题单删除） */
+const hasChanges = computed(() => {
+  const selectedSet = new Set(selected.value)
+  const initialSet = new Set(initiallyContaining.value)
+  if (selectedSet.size !== initialSet.size) return true
+  for (const id of selectedSet) {
+    if (!initialSet.has(id)) return true
+  }
+  return false
+})
 
 async function save() {
   if (saving.value) return
   saving.value = true
   try {
+    const selectedSet = new Set(selected.value)
+    const initialSet = new Set(initiallyContaining.value)
+    // 新增勾选 → 加入
     for (const trainingId of selected.value) {
-      await addProblem(trainingId, props.problemId)
+      if (!initialSet.has(trainingId)) {
+        await addProblem(trainingId, props.problemId)
+      }
+    }
+    // 取消勾选（原本已含但不再选中）→ 从题单删除
+    for (const trainingId of initiallyContaining.value) {
+      if (!selectedSet.has(trainingId)) {
+        await removeProblem(trainingId, props.problemId)
+      }
     }
     closeModal()
   } finally {
@@ -99,8 +137,8 @@ async function createAndAdd() {
 
         <div class="flex justify-end gap-3 pt-2">
           <UButton color="gray" @click="closeModal">取消</UButton>
-          <UButton color="primary" :loading="saving" :disabled="selected.length === 0" @click="save">
-            加入选中题单
+          <UButton color="primary" :loading="saving" :disabled="!hasChanges" @click="save">
+            保存修改
           </UButton>
         </div>
         </div>

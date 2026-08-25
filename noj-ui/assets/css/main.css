@@ -310,3 +310,13 @@
 .dark [data-slot="trigger"][data-state="active"] {
   color: var(--color-text-on-color);
 }
+
+/* ---- dark 模式下复选框选中对勾保持白色（可读性修复）----
+ * Nuxt UI Checkbox 的 indicator 用 text-inverted 作为勾选图标颜色，
+ * 而 --ui-text-inverted 在 dark 模式为深色（与按钮/Tab 白字问题同源），
+ * 导致深色模式下选中复选框的对勾变黑、看不清。
+ * 这里对选中态 checkbox 的勾选图标强制使用恒白 token --color-text-on-color。
+ * 未包 @layer，优先级高于 utilities layer。 */
+.dark button[data-slot="base"][data-state="checked"] [data-slot="indicator"] {
+  color: var(--color-text-on-color);
+}

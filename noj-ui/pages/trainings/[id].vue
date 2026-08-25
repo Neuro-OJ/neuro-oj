@@ -32,10 +32,16 @@ async function handleDeleteTraining() {
   if (!ok) return
   try {
     await deleteTraining(trainingId)
-    toast.success('题单已删除')
-    router.push('/trainings')
   } catch {
-    // useApi 已弹错误
+    // useApi 已弹错误；删除失败不跳转
+    return
+  }
+  // 跳转优先：删除成功一定回列表，不依赖 toast（toast 异常不阻断跳转）
+  router.push('/trainings')
+  try {
+    toast.success('题单已删除')
+  } catch {
+    // toast 失败不影响删除与跳转
   }
 }
 </script>

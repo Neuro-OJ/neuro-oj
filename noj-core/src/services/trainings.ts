@@ -141,6 +141,30 @@ export async function listMyTrainings(
   return { data, total: totalRows[0]?.total ?? 0 };
 }
 
+/**
+ * 返回当前用户创建、且包含指定题目的题单 id 列表。
+ * 用于题目页「加入题单」弹窗预勾选已含该题的题单。
+ */
+export async function listTrainingsContainingProblem(
+  userId: string,
+  problemId: string,
+): Promise<string[]> {
+  const db = getDb();
+  const resolvedProblemId = await resolveProblemId(problemId);
+  const rows = await db
+    .select({ id: trainings.id })
+    .from(trainings)
+    .innerJoin(
+      trainingProblems,
+      eq(trainings.id, trainingProblems.training_id),
+    )
+    .where(and(
+      eq(trainings.created_by, userId),
+      eq(trainingProblems.problem_id, resolvedProblemId),
+    ));
+  return rows.map((r) => r.id);
+}
+
 export async function listAllTrainings(
   params: ListTrainingsParams,
 ): Promise<ListTrainingsResult> {

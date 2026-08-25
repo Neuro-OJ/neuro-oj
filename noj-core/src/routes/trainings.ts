@@ -19,6 +19,7 @@ import {
   listMyTrainings,
   listPublicTrainings,
   listTrainingProblems,
+  listTrainingsContainingProblem,
   listUserTrainings,
   removeTrainingProblem,
   reorderTrainingProblems,
@@ -80,6 +81,22 @@ router.get("/mine", authMiddleware, async (c) => {
     page,
     per_page: perPage,
   });
+});
+
+/**
+ * 查询当前用户创建的、包含指定题目的题单 id 列表。
+ * 用于题目页「加入题单」弹窗预勾选。
+ */
+router.get("/containing", authMiddleware, async (c) => {
+  const problemId = c.req.query("problem_id");
+  if (!problemId) {
+    throw new BadRequestError("缺少参数：problem_id");
+  }
+  const ids = await listTrainingsContainingProblem(
+    c.get("userId"),
+    problemId,
+  );
+  return c.json({ data: ids });
 });
 
 router.post("/", authMiddleware, async (c) => {
