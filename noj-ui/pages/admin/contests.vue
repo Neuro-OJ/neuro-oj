@@ -113,7 +113,7 @@ async function openEdit(contest: Contest) {
   editingId.value = contest.id
   try {
     // silent: 错误由下方 catch 内联处理（toast.error），避免 useApi 默认 toast 双弹
-    const response = await api.get<{ data: AdminContestDetail }>(`/api/v1/admin/contests/${contest.id}`, { silent: true })
+    const response = await api.get<{ data: AdminContestDetail }>(`/api/v1/admin/contests/${contest.public_id || contest.id}`, { silent: true })
     editingContest.value = response.data
     formOpen.value = true
   } catch (err: unknown) {
@@ -155,7 +155,7 @@ async function recoverCreatedContest(payload: ContestPayload, error: unknown) {
 
 async function saveContest(payload: ContestPayload) {
   formError.value = ''
-  const contestId = editingContest.value?.id
+  const contestId = editingContest.value?.public_id || editingContest.value?.id
   const successMessage = contestId ? '竞赛已更新' : '竞赛已创建'
   const context = {
     mode: contestId ? 'update' : 'create',
@@ -218,7 +218,7 @@ async function removeContest(contest: Contest) {
   if (!confirmed) return
   try {
     // silent: 错误由下方 catch 内联处理（toast.error），避免 useApi 默认 toast 双弹
-    await api.delete(`/api/v1/admin/contests/${contest.id}`, { silent: true })
+    await api.delete(`/api/v1/admin/contests/${contest.public_id || contest.id}`, { silent: true })
     toast.success('竞赛已删除')
     await loadContests(currentPage.value)
   } catch (err: unknown) {
@@ -257,7 +257,7 @@ async function loadParticipants() {
   if (!participantContest.value) return
   participantLoading.value = true
   try {
-    const response = await api.get<{ data: Participant[] }>(`/api/v1/admin/contests/${participantContest.value.id}/participants`, { silent: true })
+    const response = await api.get<{ data: Participant[] }>(`/api/v1/admin/contests/${participantContest.value.public_id || participantContest.value.id}/participants`, { silent: true })
     participants.value = response.data
   } finally {
     participantLoading.value = false
@@ -279,7 +279,7 @@ async function searchUsers() {
 
 async function addParticipant(user: UserSearchResult) {
   if (!participantContest.value) return
-  await api.post(`/api/v1/admin/contests/${participantContest.value.id}/participants`, [user.id])
+  await api.post(`/api/v1/admin/contests/${participantContest.value.public_id || participantContest.value.id}/participants`, [user.username])
   userResults.value = userResults.value.filter((item) => item.id !== user.id)
   await loadParticipants()
 }
@@ -294,7 +294,7 @@ async function removeParticipant(participant: Participant) {
   if (!confirmed) return
   try {
     await api.delete(
-      `/api/v1/admin/contests/${participantContest.value.id}/participants/${participant.user_id}`,
+      `/api/v1/admin/contests/${participantContest.value.public_id || participantContest.value.id}/participants/${participant.username}`,
       { silent: true },
     )
     toast.success(`已移除参赛者 ${participant.username}`)

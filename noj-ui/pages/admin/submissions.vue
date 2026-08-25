@@ -11,6 +11,7 @@ import {
 import { useToast } from "~/composables/useToast"
 import { useDialog } from "~/composables/useDialog"
 import { extractApiError } from '~/utils/apiError'
+import { publicUrl } from '~/utils/publicIdentifiers'
 
 definePageMeta({
   layout: "admin",
@@ -65,7 +66,7 @@ const statusOptions = [
 
 // UTable 列 formatter 通过 row 取原始数据行
 const columns = [
-  { accessorKey: "id", header: "编号", cell: (info) => (info.getValue() as string).slice(0, 8) + "..." },
+  { accessorKey: "id", header: "编号", cell: (info) => (info.row.original as SubmissionListItem).public_id || (info.getValue() as string).slice(0, 8) + "..." },
   { accessorKey: "user_id", header: "用户" },
   {
     accessorKey: "problem",
@@ -320,11 +321,11 @@ async function removeFromQueue(submissionId: string) {
           <button
             v-if="rowSub(row.original).status === 'judging'"
             class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-error-text border-error-text bg-transparent hover:bg-error-text hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="isRemovingQueue(rowSub(row.original).id)"
-            @click="removeFromQueue(rowSub(row.original).id)"
-          >{{ isRemovingQueue(rowSub(row.original).id) ? '移除中...' : '移出队列' }}</button>
-          <button class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white disabled:cursor-not-allowed disabled:opacity-50" :disabled="isRejudging(rowSub(row.original).id)" @click="rejudge(rowSub(row.original).id)">{{ isRejudging(rowSub(row.original).id) ? '提交中...' : '重测' }}</button>
-          <NuxtLink :to="`/submissions/${rowSub(row.original).id}`" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-primary border-primary bg-transparent hover:bg-primary hover:text-white">查看</NuxtLink>
+            :disabled="isRemovingQueue(rowSub(row.original).public_id || rowSub(row.original).id)"
+            @click="removeFromQueue(rowSub(row.original).public_id || rowSub(row.original).id)"
+          >{{ isRemovingQueue(rowSub(row.original).public_id || rowSub(row.original).id) ? '移除中...' : '移出队列' }}</button>
+          <button class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white disabled:cursor-not-allowed disabled:opacity-50" :disabled="isRejudging(rowSub(row.original).public_id || rowSub(row.original).id)" @click="rejudge(rowSub(row.original).public_id || rowSub(row.original).id)">{{ isRejudging(rowSub(row.original).public_id || rowSub(row.original).id) ? '提交中...' : '重测' }}</button>
+          <NuxtLink :to="publicUrl('submission', rowSub(row.original).public_id || rowSub(row.original).id)" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-primary border-primary bg-transparent hover:bg-primary hover:text-white">查看</NuxtLink>
         </div>
       </template>
     </UTable>

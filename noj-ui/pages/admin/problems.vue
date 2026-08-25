@@ -197,10 +197,10 @@ async function batchRejudge(problemId: string) {
 
       <template #actions-cell="{ row }">
         <div class="flex gap-1.5 justify-center">
-          <NuxtLink :to="`/admin/problem-edit/${row.original.id}`" class="inline-flex items-center justify-center w-9 h-9 border border-border rounded bg-transparent text-text-secondary cursor-pointer no-underline transition-all duration-150 hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑">
+          <NuxtLink :to="`/admin/problem-edit/${row.original.display_id}`" class="inline-flex items-center justify-center w-9 h-9 border border-border rounded bg-transparent text-text-secondary cursor-pointer no-underline transition-all duration-150 hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑">
             <UIcon name="i-lucide-pencil" class="size-3.5" />
           </NuxtLink>
-          <UButton color="neutral" variant="outline" class="w-9 h-9 border-border text-text-secondary hover:bg-amber-50 hover:text-warning-600 hover:border-warning-600/30" :disabled="rejudgingProblemIds.has(row.original.id)" :title="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" :aria-label="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" @click="batchRejudge(row.original.id)">
+          <UButton color="neutral" variant="outline" class="w-9 h-9 border-border text-text-secondary hover:bg-amber-50 hover:text-warning-600 hover:border-warning-600/30" :disabled="rejudgingProblemIds.has(row.original.id)" :title="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" :aria-label="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" @click="batchRejudge(row.original.display_id)">
             <UIcon name="i-lucide-refresh-cw" class="size-3.5" />
           </UButton>
           <UButton color="neutral" variant="outline" class="w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row.original)">
@@ -220,7 +220,7 @@ async function batchRejudge(problemId: string) {
   <!-- 删除确认 -->
   <UModal v-model:open="showDeleteConfirm" title="删除题目" :unmount-on-hide="true">
     <template #body>
-      <p>确定要删除题目 <strong>{{ deleteTarget?.title }}</strong>（{{ deleteTarget?.id }}）吗？此操作不可撤销，相关提交记录也会被级联删除。</p>
+      <p>确定要删除题目 <strong>{{ deleteTarget?.title }}</strong>（{{ deleteTarget?.display_id }}）吗？此操作不可撤销，相关提交记录也会被级联删除。</p>
       <p v-if="deleteError" class="mt-2 text-error-text text-13px">{{ deleteError }}</p>
     </template>
   

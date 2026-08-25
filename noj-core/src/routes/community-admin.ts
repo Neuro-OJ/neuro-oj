@@ -227,10 +227,11 @@ router.post("/admin/sanctions", async (c) => {
   if (!body.user_id || !body.reason) {
     throw new BadRequestError("缺少用户或处罚原因");
   }
+  const targetUserId = await resolveUserId(body.user_id);
   return c.json({
     data: await createSanction(
       userId(c),
-      body.user_id,
+      targetUserId,
       body.reason,
       body.expires_at,
     ),
