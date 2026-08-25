@@ -102,6 +102,7 @@ fn main() -> Result<()> {
         let cache_max_items = config.support_cache_max_items;
         let cache_max_mb = config.support_cache_max_mb;
         let allow_evaluator_network = config.allow_evaluator_network;
+        let evaluator_network_mode = config.evaluator_network_mode.clone();
         let allow_http_s3 = config.allow_http_s3;
         let image_prefix = config.image_prefix.clone();
         let command_whitelist = config.command_whitelist.clone();
@@ -173,6 +174,7 @@ fn main() -> Result<()> {
             let cache_dir = cache_dir.clone();
             let fallback_dir = fallback_dir.clone();
             let image_prefix = image_prefix.clone();
+            let evaluator_network_mode = evaluator_network_mode.clone();
             let command_whitelist = command_whitelist.clone();
             let docker = docker.clone();
 
@@ -191,6 +193,7 @@ fn main() -> Result<()> {
                     cache_max_mb,
                     cpu_limit_millicores,
                     allow_evaluator_network,
+                    &evaluator_network_mode,
                     allow_http_s3,
                     &image_prefix,
                     &command_whitelist,

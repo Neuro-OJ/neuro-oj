@@ -69,6 +69,9 @@ noj-core 维护评测镜像白名单（`judgeImages`），并在题目 CRUD / �
 2. 获取支持包（缓存优先 → 按 `noj-download://` host 分派下载 → SHA-256 校验）。
 3. 为本次评测即时创建 Evaluator + Solution 两个容器（安全 HostConfig：
    `cap_drop ALL` / `network_mode none` / `pids_limit` 等）。
+   - LLM 调用题会按 `JUDGE_ALLOW_EVALUATOR_NETWORK` / `JUDGE_EVALUATOR_NETWORK`
+     让 Evaluator 加入指定网络（如 `noj-net`）以访问 `noj-llm-gateway`；
+     Solution 容器始终 `network_mode=none`。
 4. 注入用户代码与支持包，启动双容器 NDJSON 编排。
 5. 评测完成后按 RAII 顺序清理容器（先 Solution 后 Evaluator），下次评测重新创建。
 

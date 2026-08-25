@@ -48,8 +48,13 @@ import {
 import { validateJudgeImageWithKind } from "../judge-images.ts";
 import { getStorageProvider } from "../../lib/storage/mod.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
-import type { RuntimeConfig } from "../../types/problems.ts";
-import type { JudgeTask, SubmissionStatus } from "../../types/index.ts";
+import { buildJudgeTaskLlm } from "../../lib/llm-token.ts";
+import type { LlmConfig, RuntimeConfig } from "../../types/problems.ts";
+import type {
+  JudgeTask,
+  JudgeTaskLlm,
+  SubmissionStatus,
+} from "../../types/index.ts";
 import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
 import { Channels, publishEvent } from "../../lib/event-bus.ts";
@@ -352,6 +357,18 @@ export async function createSubmission(
     "solution",
   );
 
+  let llmTask: JudgeTaskLlm | undefined;
+  const llmConfig = problem.llm_config as LlmConfig | null;
+  if (llmConfig) {
+    llmTask = await buildJudgeTaskLlm(
+      llmConfig,
+      id,
+      input.problem_id,
+      userId,
+      runtimeConfig,
+    );
+  }
+
   const task: JudgeTask = {
     submission_id: id,
     problem_id: input.problem_id,
@@ -360,6 +377,7 @@ export async function createSubmission(
     language: input.language,
     code: input.code,
     file_name: fileName,
+    ...(llmTask ? { llm: llmTask } : {}),
   };
 
   try {

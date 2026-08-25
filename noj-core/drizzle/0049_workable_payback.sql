@@ -1,0 +1,1 @@
+ALTER TABLE "llm_providers" ADD COLUMN "cost_per_1k_tokens" integer DEFAULT 0 NOT NULL;

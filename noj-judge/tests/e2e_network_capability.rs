@@ -927,8 +927,10 @@ def solve(msg: str) -> str:
         user_code,
         Some(&support_zip),
         None,
+        None,
         1000,
         true,
+        "bridge",
         "noj-",
         &["python3".to_string()],
     )

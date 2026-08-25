@@ -9,6 +9,13 @@
 2. **在 evaluate.py 中注册 capability**：用 `register_capability` 暴露一个**精确封装**的函数。
 3. **在题面中声明 capability**：明确写出名称、参数、返回值语义，做题人用 `call_capability` 调用。
 
+::: tip LLM 调用题请优先使用 noj-llm-gateway
+如果外部 API 是 OpenAI 兼容的 LLM 服务，**不要**在 evaluator 里保存上游 API Key，
+而是使用系统提供的 `noj-llm-gateway`（`llm.complete`）。这样真实 Key 只存在于
+gateway，并且自动获得 eval_token、限流/额度与用量审计。具体接入见
+[出 LLM 调用题](llm-problem.md)。
+:::
+
 ## 注册 capability
 
 ```python
@@ -73,7 +80,7 @@ register_capability("request_llm_completion", request_llm_completion)
 - [ ] 若确需调用方传 URL，校验：仅允许 `https://`、拒绝 IP 字面量、拒绝内网/链路本地地址段（`10.x`、`172.16-31.x`、`192.168.x`、`169.254.x`、`127.x`、`0.0.0.0`、IPv6 对应段）、**跟随重定向前再校验一次目标**
 - [ ] 绝不访问云元数据服务（`169.254.169.254` / `fd00:ec2::254`）
 - [ ] 网络请求设置超时（如 `timeout=10`），不要无限阻塞
-- [ ] API 密钥放在 evaluator 镜像环境变量中，**不放进支持包或题面**
+- [ ] API 密钥放在 evaluator 镜像环境变量中，**不放进支持包或题面**；若是 LLM 调用题，密钥应只存在于 `noj-llm-gateway`，evaluator 不持有上游 Key
 - [ ] 题面明确声明 capability 名称、参数、返回值与限制
 
 ## 常见陷阱
@@ -82,7 +89,7 @@ register_capability("request_llm_completion", request_llm_completion)
 - **重定向绕过**：请求 `https://safe.example.com` 被 302 到 `http://169.254.169.254/`。跟随重定向的库默认会跳转——每跳都要重新校验目标。
 - **DNS rebinding**：域名先解析到公网 IP 通过校验，随后解析到内网 IP。固定域名 + 服务端解析并校验实际 IP 可缓解。
 - **编码/别名绕过**：`http://127.0.0.1`、`http://2130706433`（十进制 IP）、`http://[::1]` 等写法都需要覆盖。
-- **secret 泄露**：把 `Authorization` 头、API key 写进 capability 参数或题面，会被任何提交者看到。密钥必须留在 evaluator 侧。
+- **secret 泄露**：把 `Authorization` 头、API key 写进 capability 参数或题面，会被任何提交者看到。普通网络能力中密钥必须留在 evaluator 侧；LLM 调用题则通过 `noj-llm-gateway` 托管，evaluator 不接触上游 Key。
 
 ## 网络模式说明
 
