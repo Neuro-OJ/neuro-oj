@@ -19,6 +19,7 @@ export {
   getSubmission,
   // CRUD
   listSubmissions,
+  resolveSubmissionId,
 } from "./submissions-crud.ts";
 
 export {

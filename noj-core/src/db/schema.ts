@@ -409,7 +409,9 @@ export const contests = pgTable(
   "contests",
   {
     id: text("id").primaryKey(),
-    public_id: text("public_id").notNull(),
+    public_id: text("public_id").notNull().default(
+      sql`'ct-' || substr(md5(random()::text), 1, 8)`,
+    ),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     start_time: text("start_time").notNull(),
@@ -486,7 +488,9 @@ export const trainings = pgTable(
   "trainings",
   {
     id: text("id").primaryKey(),
-    public_id: text("public_id").notNull(),
+    public_id: text("public_id").notNull().default(
+      sql`'tr-' || substr(md5(random()::text), 1, 8)`,
+    ),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     visibility: text("visibility").notNull().default("private"),
@@ -595,7 +599,9 @@ export const submissions = pgTable(
   "submissions",
   {
     id: text("id").primaryKey(),
-    public_id: text("public_id").notNull(),
+    public_id: text("public_id").notNull().default(
+      sql`'sub-' || substr(md5(random()::text), 1, 8)`,
+    ),
     user_id: text("user_id").notNull().references(() => users.id),
     problem_id: text("problem_id").notNull().references(() => problems.id),
     contest_id: text("contest_id").references(() => contests.id, {
@@ -942,7 +948,9 @@ export const announcements = pgTable(
   "announcements",
   {
     id: text("id").primaryKey(),
-    public_id: text("public_id").notNull(),
+    public_id: text("public_id").notNull().default(
+      sql`'ann-' || substr(md5(random()::text), 1, 8)`,
+    ),
     /** 标题，1–100 字符 */
     title: text("title").notNull(),
     /** Markdown 正文，1–50000 字符 */
@@ -1222,7 +1230,9 @@ export const communityPosts = pgTable(
   "community_posts",
   {
     id: text("id").primaryKey(),
-    public_id: text("public_id").notNull(),
+    public_id: text("public_id").notNull().default(
+      sql`'post-' || substr(md5(random()::text), 1, 8)`,
+    ),
     type: text("type").notNull(),
     author_id: text("author_id").notNull().references(() => users.id, {
       onDelete: "cascade",

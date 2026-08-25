@@ -17,6 +17,7 @@ import { getClientIp } from "../lib/rate-limit-env.ts";
 import {
   deleteTraining,
   listAllTrainings,
+  resolveTrainingId,
   updateTraining,
 } from "../services/trainings.ts";
 import type { UpdateTrainingInput } from "../types/trainings.ts";
@@ -60,7 +61,7 @@ router.get("/", async (c) => {
 });
 
 router.patch("/:id", async (c) => {
-  const id = c.req.param("id") as string;
+  const id = await resolveTrainingId(c.req.param("id") as string);
   const body = await parseJsonBody<UpdateTrainingInput>(c);
   assertObjectBody(body as unknown);
   const canPublish = await checkPermission(c, "training:publish");
@@ -90,7 +91,7 @@ router.patch("/:id", async (c) => {
 
 router.delete("/:id", async (c) => {
   await assertPermission(c, "training:delete_any");
-  const id = c.req.param("id") as string;
+  const id = await resolveTrainingId(c.req.param("id") as string);
   await deleteTraining(id, c.get("userId"), true);
   return c.body(null, 204);
 });

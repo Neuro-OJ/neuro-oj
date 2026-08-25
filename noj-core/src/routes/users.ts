@@ -6,6 +6,7 @@ import {
   clearUserAvatar,
   getUserAvatarBytes,
   getUserProfileAggregate,
+  resolveUserId,
   searchUsers,
   updateUserAvatar,
   updateUserProfile,
@@ -76,7 +77,7 @@ users.delete("/me/avatar", authMiddleware, async (c) => {
  * 无头像 → 404；有 → 图片字节流 + 缓存头（ETag = 内容 checksum）。
  */
 users.get("/:id/avatar", async (c) => {
-  const userId = c.req.param("id") as string;
+  const userId = await resolveUserId(c.req.param("id") as string);
   const { bytes, contentType, etag } = await getUserAvatarBytes(userId);
   return new Response(bytes as BodyInit, {
     status: 200,
@@ -95,7 +96,7 @@ users.get("/:id/avatar", async (c) => {
  * 响应对象额外包含 `rank` 字段（number | null），表示该用户全站榜单排名。
  */
 users.get("/:id/profile", async (c) => {
-  const userId = c.req.param("id") as string;
+  const userId = await resolveUserId(c.req.param("id") as string);
   const profile = await getUserProfileAggregate(userId);
   // 追加 rank 字段：复用 rankings service 的 getMyRanking，确保排序逻辑一致
   const ranking = await getMyRanking(userId);

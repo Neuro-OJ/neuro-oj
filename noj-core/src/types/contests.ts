@@ -83,6 +83,7 @@ export interface UpdateContestInput {
 
 export interface ContestResponse {
   id: string;
+  public_id: string;
   title: string;
   description: string;
   start_time: string;

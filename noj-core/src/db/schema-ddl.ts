@@ -107,6 +107,7 @@ export const SCHEMA_DDL: string[] = [
 
   `CREATE TABLE IF NOT EXISTS contests (
     id TEXT PRIMARY KEY,
+    public_id TEXT NOT NULL DEFAULT ('ct-' || substr(md5(random()::text),1,8)) UNIQUE,
     title TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     start_time TEXT NOT NULL,
@@ -215,6 +216,7 @@ export const SCHEMA_DDL: string[] = [
   // 3.4 trainings（题单，issue #224）
   `CREATE TABLE IF NOT EXISTS trainings (
     id TEXT PRIMARY KEY,
+    public_id TEXT NOT NULL DEFAULT ('tr-' || substr(md5(random()::text),1,8)) UNIQUE,
     title TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'unlisted', 'public')),
@@ -235,6 +237,7 @@ export const SCHEMA_DDL: string[] = [
   // 6. submissions
   `CREATE TABLE IF NOT EXISTS submissions (
     id TEXT PRIMARY KEY,
+    public_id TEXT NOT NULL DEFAULT ('sub-' || substr(md5(random()::text),1,8)) UNIQUE,
     user_id TEXT NOT NULL REFERENCES users(id),
     problem_id TEXT NOT NULL REFERENCES problems(id),
     contest_id TEXT REFERENCES contests(id) ON DELETE SET NULL,
@@ -432,6 +435,7 @@ export const SCHEMA_DDL: string[] = [
 
   `CREATE TABLE IF NOT EXISTS community_posts (
     id TEXT PRIMARY KEY,
+    public_id TEXT NOT NULL DEFAULT ('post-' || substr(md5(random()::text),1,8)) UNIQUE,
     type TEXT NOT NULL CHECK (type IN ('solution', 'discussion', 'moment')),
     author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     problem_id TEXT REFERENCES problems(id) ON DELETE CASCADE,
@@ -558,6 +562,7 @@ export const SCHEMA_DDL: string[] = [
   // 18. announcements (issue #231)
   `CREATE TABLE IF NOT EXISTS announcements (
     id TEXT PRIMARY KEY,
+    public_id TEXT NOT NULL DEFAULT ('ann-' || substr(md5(random()::text),1,8)) UNIQUE,
     title TEXT NOT NULL,
     content TEXT NOT NULL,
     is_pinned BOOLEAN NOT NULL DEFAULT false,

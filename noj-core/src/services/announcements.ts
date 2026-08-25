@@ -20,6 +20,7 @@ import { getDb } from "../db/connection.ts";
 import { announcements } from "../db/schema.ts";
 import { NotFoundError, ValidationError } from "../lib/errors.ts";
 import { Channels, publishEvent } from "../lib/event-bus.ts";
+import { generatePublicId, isPublicId, isUuid } from "../lib/public-id.ts";
 import { getRequestContext } from "../lib/requestContext.ts";
 import { buildPaginationMeta, type PaginationMeta } from "../lib/pagination.ts";
 import { logAudit } from "./audit-log.ts";
@@ -34,6 +35,7 @@ const CONTENT_MAX = 50000;
 /** 公开列表项（不含 content 全文） */
 export interface AnnouncementSummary {
   id: string;
+  public_id: string;
   title: string;
   is_pinned: boolean;
   created_at: string;
@@ -45,6 +47,7 @@ export interface AnnouncementSummary {
 /** 公开详情（含 content 全文） */
 export interface AnnouncementDetail {
   id: string;
+  public_id: string;
   title: string;
   content: string;
   is_pinned: boolean;
@@ -56,6 +59,7 @@ export interface AnnouncementDetail {
 /** 管理列表项（含 content 全文与发布状态） */
 export interface AdminAnnouncementItem {
   id: string;
+  public_id: string;
   title: string;
   content: string;
   is_pinned: boolean;
@@ -139,6 +143,7 @@ export async function listPublicAnnouncements(
 
   const data = rows.map((row) => ({
     id: row.id,
+    public_id: row.public_id,
     title: row.title,
     is_pinned: row.is_pinned,
     created_at: row.created_at,
@@ -166,6 +171,7 @@ export async function getPublicAnnouncement(
 
   return {
     id: row.id,
+    public_id: row.public_id,
     title: row.title,
     content: row.content,
     is_pinned: row.is_pinned,
@@ -205,6 +211,20 @@ export async function listAdminAnnouncements(
 }
 
 /**
+ * 将 UUID 或 public_id 解析为内部公告 UUID。
+ */
+export async function resolveAnnouncementId(value: string): Promise<string> {
+  const db = getDb();
+  if (isUuid(value)) return value;
+  if (!isPublicId(value, "ann")) throw new NotFoundError("公告不存在");
+  const rows = await db.select({ id: announcements.id }).from(announcements)
+    .where(eq(announcements.public_id, value)).limit(1);
+  const row = rows[0];
+  if (!row) throw new NotFoundError("公告不存在");
+  return row.id;
+}
+
+/**
  * 创建公告。created_by 写入当前操作者（RequestContext）。
  *
  * @throws {ValidationError} title / content 缺失或长度非法（HTTP 400）
@@ -225,10 +245,12 @@ export async function createAnnouncement(
   const db = getDb();
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
+  const publicId = generatePublicId("ann");
   const actorId = getRequestContext().actorId;
 
   await db.insert(announcements).values({
     id,
+    public_id: publicId,
     title: input.title.trim(),
     content: input.content.trim(),
     is_pinned: input.is_pinned ?? false,

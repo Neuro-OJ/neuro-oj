@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { assertEquals, assertMatch, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { problems, users } from "../../src/db/schema.ts";
@@ -14,6 +14,7 @@ import {
   listParticipants,
   registerForContest,
   removeParticipant,
+  resolveContestId,
   updateContest,
 } from "../../src/services/contest/contests.ts";
 import {
@@ -99,6 +100,9 @@ Deno.test({
       assertEquals(contest.status, "pending");
       assertEquals(contest.problem_count, 1);
       assertEquals(contest.has_password, true);
+      assertMatch(contest.public_id, /^ct-[123456789abcdefghjkmnpqrstuvwxyz]{8}$/);
+      assertEquals(await resolveContestId(contest.public_id), contest.id);
+      assertEquals(await resolveContestId(contest.id), contest.id);
       assertEquals(computeContestStatus(startTime, endTime), "pending");
 
       const listed = await listContests({ page: 1, perPage: 20 });

@@ -14,6 +14,7 @@ import {
   NotFoundError,
 } from "../../lib/errors.ts";
 import { comparePassword, hashPassword } from "../../lib/password.ts";
+import { generatePublicId, isPublicId, isUuid } from "../../lib/public-id.ts";
 import { unwrapRows } from "../../lib/sql-rows.ts";
 import {
   type ContestConfig,
@@ -172,6 +173,7 @@ function toContestResponse(
 ): ContestResponse {
   return {
     id: row.id,
+    public_id: row.public_id,
     title: row.title,
     description: row.description,
     start_time: row.start_time,
@@ -204,6 +206,18 @@ async function findContestRow(id: string) {
   return row;
 }
 
+/** 将 UUID 或 public_id 解析为内部竞赛 UUID。 */
+export async function resolveContestId(value: string): Promise<string> {
+  const db = getDb();
+  if (isUuid(value)) return value;
+  if (!isPublicId(value, "ct")) throw new NotFoundError("竞赛不存在");
+  const rows = await db.select({ id: contests.id }).from(contests)
+    .where(eq(contests.public_id, value)).limit(1);
+  const row = rows[0];
+  if (!row) throw new NotFoundError("竞赛不存在");
+  return row.id;
+}
+
 export function computeContestStatus(
   startTime: string,
   endTime: string,
@@ -231,6 +245,7 @@ export async function createContest(
     ? await hashPassword(input.password)
     : null;
   const id = crypto.randomUUID();
+  const publicId = generatePublicId("ct");
   const now = new Date().toISOString();
   const db = getDb();
 
@@ -238,6 +253,7 @@ export async function createContest(
     await assertProblemsExist(problemInputs, tx);
     await tx.insert(contests).values({
       id,
+      public_id: publicId,
       title: input.title.trim(),
       description: input.description ?? "",
       start_time: input.start_time,

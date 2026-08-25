@@ -19,6 +19,7 @@ import { parsePagination } from "../lib/pagination.ts";
 import {
   getPublicAnnouncement,
   listPublicAnnouncements,
+  resolveAnnouncementId,
 } from "../services/announcements.ts";
 
 const router = new Hono();
@@ -73,7 +74,7 @@ router.get("/events", authMiddleware, (c) => {
  * 非 active 或不存在 → 404（NotFoundError 由 app.ts 统一处理）。
  */
 router.get("/:id", async (c) => {
-  const id = c.req.param("id") as string;
+  const id = await resolveAnnouncementId(c.req.param("id") as string);
   const detail = await getPublicAnnouncement(id);
   return c.json(detail);
 });
