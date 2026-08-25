@@ -27,7 +27,7 @@ Evaluator + Solution 双容器（用后即毁），并把结果写回 Redis。
 默认 Python 题目使用两个镜像（生产环境从 ghcr.io 拉取）：
 
 - `ghcr.io/neuro-oj/noj-evaluator-python`：运行出题人的 `evaluate.py`。
-- `ghcr.io/neuro-oj/noj-solution-python`：运行用户提交的 `solution.py` 和 Solution Host。
+- `ghcr.io/neuro-oj/noj-solution-python`：运行用户提交的代码（硬编码 `main.py`）和 Solution Host。
 
 Evaluator 容器可以通过 Neuro OJ Evaluator SDK 调用 Solution 容器中的用户函数。
 

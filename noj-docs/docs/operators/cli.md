@@ -8,7 +8,7 @@
 
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
-  --entrypoint /app/bin/noj migrate <子命令>
+  --entrypoint /app/bin/noj <子命令>
 ```
 
 常用子命令：
@@ -16,23 +16,23 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
 ```bash
 # 数据库迁移
 docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
-  --entrypoint /app/bin/noj migrate db migrate
+  --entrypoint /app/bin/noj db migrate
 
 # 系统基础数据：root + RBAC + 评测镜像白名单 + 标签
 docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
-  --entrypoint /app/bin/noj migrate init system
+  --entrypoint /app/bin/noj init system
 
 # 管理员引导（从 .env.prod 读取 ADMIN_EMAIL / ADMIN_PASS）
 docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
-  --entrypoint /app/bin/noj migrate bootstrap admin
+  --entrypoint /app/bin/noj bootstrap admin
 
 # 构建统一题目包（需要在镜像内包含 data/problems-src）
 docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
-  --entrypoint /app/bin/noj migrate problems build
+  --entrypoint /app/bin/noj problems build
 
 # 导入统一题目包
 docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
-  --entrypoint /app/bin/noj migrate problems import
+  --entrypoint /app/bin/noj problems import
 ```
 
 > 说明：`migrate` 服务本身已按顺序执行 `db migrate → init system → bootstrap admin`。

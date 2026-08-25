@@ -21,7 +21,7 @@
 - 必须设置 `NOJ_LLM_STORE_KEY`（加密 Provider API Key）。
 - `llm-gateway` 容器加入 `noj-net`，core 通过 `http://llm-gateway:8001` 访问。
 
-不使用 LLM 调用题时可忽略上述密钥，但建议保持容器运行以保持环境一致。
+由于 `docker-compose.prod.yml` 默认始终启动 `llm-gateway` 且对这两个密钥使用 `${...:?}` 必填校验，**即使不使用 LLM 调用题也必须填写**这两个密钥。
 
 ## 2. 创建并启用 Provider
 
