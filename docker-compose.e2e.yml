@@ -170,7 +170,7 @@ services:
     container_name: noj-e2e-llm-mock
     ports:
       - "8002:8002"
-    command: >
+    command: |
       python3 -u -c "
       import json
       from http.server import BaseHTTPRequestHandler, HTTPServer
