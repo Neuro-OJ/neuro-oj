@@ -80,7 +80,7 @@ export function createInternalRouter(deps: InternalDeps): Hono {
       : "";
     const rows = await deps.db.unsafe(
       `SELECT * FROM llm_usage ${where} ORDER BY created_at DESC LIMIT ${limit}`,
-      ...(params as never[]),
+      params,
     );
     return c.json({ data: rows });
   });
