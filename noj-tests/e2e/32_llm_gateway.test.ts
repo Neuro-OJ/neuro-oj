@@ -225,9 +225,9 @@ e2eTest("[e2e/llm-gateway] 7.1 导入 P 型 LLM 题并提交评测", async () =>
   const result = await pollSubmission(adminToken, submissionId, 60, 2000, true);
   if (result.verdict !== "Accepted") {
     const detailRes = await apiGet(`/api/v1/submissions/${submissionId}`, adminToken);
-    const detail = (detailRes.body as { data?: { output?: string } }).data;
+    const detail = (detailRes.body as { data?: { result?: { output?: string; details?: unknown } } }).data;
     throw new Error(
-      `LLM 评测预期 Accepted，实际 ${result.verdict} (score=${result.score}) output=${detail?.output ?? "(无)"}`,
+      `LLM 评测预期 Accepted，实际 ${result.verdict} (score=${result.score}) output=${detail?.result?.output ?? "(无)"} details=${JSON.stringify(detail?.result?.details ?? {})}`,
     );
   }
 
