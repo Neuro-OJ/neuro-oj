@@ -244,7 +244,11 @@ async function handleTfaRegenerate() {
     )
     tfaRecoveryCodes.value = res.data.recovery_codes
     tfaCode.value = ""
-    toast.success("恢复码已重新生成")
+    try {
+      toast.success("恢复码已重新生成")
+    } catch {
+      // toast 异常不影响业务结果，静默忽略
+    }
   } catch (err: unknown) {
     tfaError.value = extractApiError(err).message
   } finally {
@@ -271,7 +275,11 @@ function handleDownloadRecoveryCodes() {
     link.remove()
     // 稍后释放 URL，避免下载尚未开始时提前回收
     setTimeout(() => URL.revokeObjectURL(url), 1000)
-    toast.success("恢复码文件已下载")
+    try {
+      toast.success("恢复码文件已下载")
+    } catch {
+      // toast 异常不影响下载结果，静默忽略
+    }
   } catch {
     tfaError.value = "恢复码文件生成失败，请手动复制保存"
   }
