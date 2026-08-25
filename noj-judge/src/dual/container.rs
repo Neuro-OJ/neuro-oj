@@ -33,12 +33,13 @@ pub struct DualContainer {
 impl DualContainer {
     /// 创建并启动 Evaluator 容器。
     ///
-    /// `network_enabled`：true 时以 bridge 模式联网，false 时保持无网（默认）。
+    /// `network_mode`：开启联网时通常为 "bridge"，生产可传 compose 网络名；
+    /// 关闭联网时传 "none"。
     pub async fn create_evaluator(
         docker: &Docker,
         image: &str,
         memory_mb: u64,
-        network_enabled: bool,
+        network_mode: &str,
         cpu_limit_millicores: u64,
     ) -> Result<Self> {
         let id = create_container_with_security(
@@ -46,7 +47,7 @@ impl DualContainer {
             image,
             memory_mb,
             "evaluator",
-            network_enabled,
+            network_mode,
             cpu_limit_millicores,
         )
         .await?;
@@ -70,7 +71,7 @@ impl DualContainer {
             image,
             memory_mb,
             "solution",
-            false,
+            "none",
             cpu_limit_millicores,
         )
         .await?;
@@ -178,7 +179,7 @@ async fn create_container_with_security(
     image: &str,
     memory_mb: u64,
     kind: &str,
-    network_enabled: bool,
+    network_mode: &str,
     cpu_limit_millicores: u64,
 ) -> Result<String> {
     let mut labels = std::collections::HashMap::new();
@@ -199,8 +200,6 @@ async fn create_container_with_security(
     // NOJ-187：rootfs 只读，/workspace 用 tmpfs 承载运行时注入文件。
     tmpfs.insert("/workspace", "size=512M,mode=1777");
 
-    // solution 容器恒无网；evaluator 按配置可选 bridge 联网
-    let network_mode = if network_enabled { "bridge" } else { "none" };
     let host_config = build_host_config_with_cpu(
         memory_bytes,
         tmpfs,

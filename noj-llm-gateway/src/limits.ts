@@ -1,15 +1,27 @@
 /**
  * 限流/额度检查与计数。
+ *
+ * 使用 Redis Lua 脚本原子完成“检查 + 自增”，避免并发下超限。
+ * 支持：
+ * - 单次提交 calls/tokens
+ * - 用户 / 全局 / 题目 的 day / month 维度 calls / tokens / cost
+ * - 用户与 IP 的分钟速率窗口
  */
 import type { Db } from "./db.ts";
 import type { RedisClient } from "./redis.ts";
-import { incrByWithTtl, incrWithTtl } from "./redis.ts";
 import type { EvalTokenPayload } from "./crypto.ts";
 
 export interface QuotaRow {
   max_calls: number;
   max_tokens: number;
   max_cost: number;
+}
+
+interface CounterSpec {
+  key: string;
+  limit: number;
+  inc: number;
+  ttl: number;
 }
 
 async function getQuota(
@@ -30,13 +42,211 @@ function dayKey(date = new Date()): string {
   return date.toISOString().slice(0, 10);
 }
 
+function monthKey(date = new Date()): string {
+  return date.toISOString().slice(0, 7);
+}
+
 function minuteKey(date = new Date()): string {
   return date.toISOString().slice(0, 16);
 }
 
+function dayEndMs(): number {
+  const d = new Date();
+  d.setUTCHours(24, 0, 0, 0);
+  return d.getTime();
+}
+
+function monthEndMs(): number {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  return d.getTime();
+}
+
+function scopePrefix(
+  scopeType: "user" | "global" | "problem",
+  scopeId: string,
+): string {
+  return scopeType === "global" ? "llm:global" : `llm:${scopeType}:${scopeId}`;
+}
+
+/** 构造某个作用域的 day/month 计数器（limit=0 表示不限，但仍计数）。 */
+function scopeCounters(
+  scopeType: "user" | "global" | "problem",
+  scopeId: string,
+  quota: QuotaRow | null,
+  tokens: number,
+  cost: number,
+  now: number,
+  includeCalls = true,
+): CounterSpec[] {
+  const prefix = scopePrefix(scopeType, scopeId);
+  const maxCalls = quota?.max_calls ?? 0;
+  const maxTokens = quota?.max_tokens ?? 0;
+  const maxCost = quota?.max_cost ?? 0;
+  const dayTtl = Math.max(1, Math.ceil((dayEndMs() - now) / 1000));
+  const monthTtl = Math.max(1, Math.ceil((monthEndMs() - now) / 1000));
+  const out: CounterSpec[] = [];
+  if (includeCalls) {
+    out.push(
+      {
+        key: `${prefix}:day:${dayKey()}:calls`,
+        limit: maxCalls,
+        inc: 1,
+        ttl: dayTtl,
+      },
+      {
+        key: `${prefix}:month:${monthKey()}:calls`,
+        limit: maxCalls,
+        inc: 1,
+        ttl: monthTtl,
+      },
+    );
+  }
+  out.push(
+    {
+      key: `${prefix}:day:${dayKey()}:tokens`,
+      limit: maxTokens,
+      inc: tokens,
+      ttl: dayTtl,
+    },
+    {
+      key: `${prefix}:day:${dayKey()}:cost`,
+      limit: maxCost,
+      inc: cost,
+      ttl: dayTtl,
+    },
+    {
+      key: `${prefix}:month:${monthKey()}:tokens`,
+      limit: maxTokens,
+      inc: tokens,
+      ttl: monthTtl,
+    },
+    {
+      key: `${prefix}:month:${monthKey()}:cost`,
+      limit: maxCost,
+      inc: cost,
+      ttl: monthTtl,
+    },
+  );
+  return out;
+}
+
+const LIMIT_SCRIPT = `
+local rate_limit = tonumber(ARGV[1])
+local rate_ttl = tonumber(ARGV[2])
+local meta = cjson.decode(ARGV[3])
+local limits = meta.limits
+local incs = meta.incs
+local ttls = meta.ttls
+
+local function bump(key, amount, ttl)
+  local new = redis.call('INCRBY', key, amount)
+  if new == amount then
+    redis.call('EXPIRE', key, ttl)
+  end
+  return new
+end
+
+local r1 = bump(KEYS[1], 1, rate_ttl)
+if r1 > rate_limit then
+  return 'rate_limit_exceeded'
+end
+local r2 = bump(KEYS[2], 1, rate_ttl)
+if r2 > rate_limit then
+  return 'rate_limit_exceeded'
+end
+
+for i = 3, #KEYS do
+  local j = i - 2
+  local limit = tonumber(limits[j])
+  local inc = tonumber(incs[j])
+  if limit > 0 then
+    local cur = tonumber(redis.call('GET', KEYS[i]) or '0')
+    if cur + inc > limit then
+      return 'limit_exceeded'
+    end
+  end
+end
+
+for i = 3, #KEYS do
+  local j = i - 2
+  bump(KEYS[i], tonumber(incs[j]), tonumber(ttls[j]))
+end
+
+return 'ok'
+`;
+
+const SETTLE_SCRIPT = `
+local meta = cjson.decode(ARGV[1])
+local limits = meta.limits
+local incs = meta.incs
+local ttls = meta.ttls
+
+for i = 1, #KEYS do
+  local new = redis.call('INCRBY', KEYS[i], tonumber(incs[i]))
+  if new == tonumber(incs[i]) then
+    redis.call('EXPIRE', KEYS[i], tonumber(ttls[i]))
+  end
+end
+
+for i = 1, #KEYS do
+  local limit = tonumber(limits[i])
+  if limit > 0 then
+    local cur = tonumber(redis.call('GET', KEYS[i]) or '0')
+    if cur > limit then
+      return 'limit_exceeded'
+    end
+  end
+end
+
+return 'ok'
+`;
+
+async function runLimitScript(
+  redis: RedisClient,
+  rateKeys: [string, string],
+  counters: CounterSpec[],
+  rateLimit: number,
+  rateTtl: number,
+): Promise<string> {
+  const keys = [
+    rateKeys[0],
+    rateKeys[1],
+    ...counters.map((c) => c.key),
+  ];
+  const meta = {
+    limits: counters.map((c) => c.limit),
+    incs: counters.map((c) => c.inc),
+    ttls: counters.map((c) => c.ttl),
+  };
+  const result = await redis.eval(LIMIT_SCRIPT, keys, [
+    rateLimit,
+    rateTtl,
+    JSON.stringify(meta),
+  ]);
+  return String(result ?? "ok");
+}
+
+async function runSettleScript(
+  redis: RedisClient,
+  counters: CounterSpec[],
+): Promise<string> {
+  const meta = {
+    limits: counters.map((c) => c.limit),
+    incs: counters.map((c) => c.inc),
+    ttls: counters.map((c) => c.ttl),
+  };
+  const result = await redis.eval(
+    SETTLE_SCRIPT,
+    counters.map((c) => c.key),
+    [JSON.stringify(meta)],
+  );
+  return String(result ?? "ok");
+}
+
 /**
- * 检查并累加限流计数。
- * 任一限制超限时返回错误消息；否则返回本次应累加的 token/费用信息。
+ * 转发前原子检查并累加调用次数、估计 token/费用。
+ * 任一限制超限时抛出错误；否则所有计数已原子自增。
  */
 export async function enforceAndCount(
   db: Db,
@@ -52,89 +262,194 @@ export async function enforceAndCount(
   },
 ): Promise<void> {
   const now = Date.now();
-  const subCallsKey = `llm:sub:${payload.submission_id}:calls`;
-  const subTokensKey = `llm:sub:${payload.submission_id}:tokens`;
-  const userDayCallsKey = `llm:user:${payload.user_id}:day:${dayKey()}:calls`;
-  const globalDayCallsKey = `llm:global:day:${dayKey()}:calls`;
-  const problemDayCallsKey =
-    `llm:problem:${payload.problem_id}:day:${dayKey()}:calls`;
-  const rateKey = `llm:rate:${payload.user_id}:${minuteKey()}`;
+  const tokens = opts.promptTokens + opts.completionTokens;
+  const cost = opts.estimatedCost;
 
-  // 1. 单次提交调用次数 / token 上限（token 载荷内）
-  const subCalls = await redis.get(subCallsKey);
-  if (payload.max_calls > 0 && Number(subCalls ?? 0) >= payload.max_calls) {
-    throw new Error("submission_call_limit_exceeded");
-  }
-  const subTokens = await redis.get(subTokensKey);
-  if (
-    payload.max_tokens > 0 &&
-    Number(subTokens ?? 0) + opts.promptTokens + opts.completionTokens >
-      payload.max_tokens
-  ) {
-    throw new Error("submission_token_limit_exceeded");
-  }
+  const userDay = await getQuota(db, "user", payload.user_id, "day");
+  const userMonth = await getQuota(db, "user", payload.user_id, "month");
+  const globalDay = await getQuota(db, "global", "", "day");
+  const globalMonth = await getQuota(db, "global", "", "month");
+  const problemDay = await getQuota(db, "problem", payload.problem_id, "day");
+  const problemMonth = await getQuota(
+    db,
+    "problem",
+    payload.problem_id,
+    "month",
+  );
 
-  // 2. 用户日额度（DB 配置）
-  const userQuota = await getQuota(db, "user", payload.user_id, "day");
-  if (userQuota) {
-    const used = Number(await redis.get(userDayCallsKey) ?? 0);
-    if (userQuota.max_calls > 0 && used >= userQuota.max_calls) {
-      throw new Error("user_daily_limit_exceeded");
-    }
-  }
-
-  // 3. 全局日额度（DB 配置）
-  const globalQuota = await getQuota(db, "global", "", "day");
-  if (globalQuota) {
-    const used = Number(await redis.get(globalDayCallsKey) ?? 0);
-    if (globalQuota.max_calls > 0 && used >= globalQuota.max_calls) {
-      throw new Error("global_daily_limit_exceeded");
-    }
-  }
-
-  // 4. 题目日额度（DB 配置）
-  const problemQuota = await getQuota(db, "problem", payload.problem_id, "day");
-  if (problemQuota) {
-    const used = Number(await redis.get(problemDayCallsKey) ?? 0);
-    if (problemQuota.max_calls > 0 && used >= problemQuota.max_calls) {
-      throw new Error("problem_daily_limit_exceeded");
-    }
-  }
-
-  // 5. 用户速率窗口（每分钟 60 次，硬编码默认；后续可配置）
-  const rateLimit = 60;
-  const rateUsed = await incrWithTtl(redis, rateKey, 60);
-  if (rateUsed > rateLimit) {
-    throw new Error("rate_limit_exceeded");
-  }
-
-  // 通过后累加计数
-  await Promise.all([
-    incrWithTtl(redis, subCallsKey, opts.ttlSeconds),
-    incrByWithTtl(
-      redis,
-      subTokensKey,
-      opts.promptTokens + opts.completionTokens,
-      opts.ttlSeconds,
+  const counters: CounterSpec[] = [
+    {
+      key: `llm:sub:${payload.submission_id}:calls`,
+      limit: payload.max_calls,
+      inc: 1,
+      ttl: opts.ttlSeconds,
+    },
+    {
+      key: `llm:sub:${payload.submission_id}:tokens`,
+      limit: payload.max_tokens,
+      inc: tokens,
+      ttl: opts.ttlSeconds,
+    },
+    {
+      key: `llm:sub:${payload.submission_id}:cost`,
+      limit: 0,
+      inc: cost,
+      ttl: opts.ttlSeconds,
+    },
+    ...scopeCounters("user", payload.user_id, userDay, tokens, cost, now, true),
+    ...scopeCounters(
+      "user",
+      payload.user_id,
+      userMonth,
+      tokens,
+      cost,
+      now,
+      true,
     ),
-    incrWithTtl(redis, userDayCallsKey, Math.ceil((dayEndMs() - now) / 1000)),
-    incrWithTtl(redis, globalDayCallsKey, Math.ceil((dayEndMs() - now) / 1000)),
-    incrWithTtl(
-      redis,
-      problemDayCallsKey,
-      Math.ceil((dayEndMs() - now) / 1000),
+    ...scopeCounters("global", "", globalDay, tokens, cost, now, true),
+    ...scopeCounters("global", "", globalMonth, tokens, cost, now, true),
+    ...scopeCounters(
+      "problem",
+      payload.problem_id,
+      problemDay,
+      tokens,
+      cost,
+      now,
+      true,
     ),
-    incrByWithTtl(
-      redis,
-      `llm:sub:${payload.submission_id}:cost`,
-      opts.estimatedCost,
-      opts.ttlSeconds,
+    ...scopeCounters(
+      "problem",
+      payload.problem_id,
+      problemMonth,
+      tokens,
+      cost,
+      now,
+      true,
     ),
-  ]);
+  ];
+
+  const result = await runLimitScript(
+    redis,
+    [
+      `llm:rate:${payload.user_id}:${minuteKey()}`,
+      `llm:rate:ip:${opts.ip || "unknown"}:${minuteKey()}`,
+    ],
+    counters,
+    60,
+    60,
+  );
+  if (result !== "ok") {
+    throw new Error(result);
+  }
 }
 
-function dayEndMs(): number {
-  const d = new Date();
-  d.setUTCHours(24, 0, 0, 0);
-  return d.getTime();
+/**
+ * 上游返回后按真实 token/费用结算，并再次检查配额是否超限。
+ * 如果超限抛出错误，调用方应记录 rejected 并返回 429。
+ */
+export async function settleUsage(
+  db: Db,
+  redis: RedisClient,
+  payload: EvalTokenPayload,
+  opts: {
+    promptTokens: number;
+    completionTokens: number;
+    estimatedCost: number;
+    actualPromptTokens: number;
+    actualCompletionTokens: number;
+    actualCost: number;
+    ip: string;
+    ttlSeconds: number;
+  },
+): Promise<void> {
+  const now = Date.now();
+  const deltaTokens = (opts.actualPromptTokens + opts.actualCompletionTokens) -
+    (opts.promptTokens + opts.completionTokens);
+  const deltaCost = opts.actualCost - opts.estimatedCost;
+
+  const userDay = await getQuota(db, "user", payload.user_id, "day");
+  const userMonth = await getQuota(db, "user", payload.user_id, "month");
+  const globalDay = await getQuota(db, "global", "", "day");
+  const globalMonth = await getQuota(db, "global", "", "month");
+  const problemDay = await getQuota(db, "problem", payload.problem_id, "day");
+  const problemMonth = await getQuota(
+    db,
+    "problem",
+    payload.problem_id,
+    "month",
+  );
+
+  const counters: CounterSpec[] = [
+    {
+      key: `llm:sub:${payload.submission_id}:tokens`,
+      limit: payload.max_tokens,
+      inc: deltaTokens,
+      ttl: opts.ttlSeconds,
+    },
+    {
+      key: `llm:sub:${payload.submission_id}:cost`,
+      limit: 0,
+      inc: deltaCost,
+      ttl: opts.ttlSeconds,
+    },
+    ...scopeCounters(
+      "user",
+      payload.user_id,
+      userDay,
+      deltaTokens,
+      deltaCost,
+      now,
+      false,
+    ),
+    ...scopeCounters(
+      "user",
+      payload.user_id,
+      userMonth,
+      deltaTokens,
+      deltaCost,
+      now,
+      false,
+    ),
+    ...scopeCounters(
+      "global",
+      "",
+      globalDay,
+      deltaTokens,
+      deltaCost,
+      now,
+      false,
+    ),
+    ...scopeCounters(
+      "global",
+      "",
+      globalMonth,
+      deltaTokens,
+      deltaCost,
+      now,
+      false,
+    ),
+    ...scopeCounters(
+      "problem",
+      payload.problem_id,
+      problemDay,
+      deltaTokens,
+      deltaCost,
+      now,
+      false,
+    ),
+    ...scopeCounters(
+      "problem",
+      payload.problem_id,
+      problemMonth,
+      deltaTokens,
+      deltaCost,
+      now,
+      false,
+    ),
+  ];
+
+  const result = await runSettleScript(redis, counters);
+  if (result !== "ok") {
+    throw new Error(result);
+  }
 }

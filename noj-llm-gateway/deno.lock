@@ -2,6 +2,7 @@
   "version": "5",
   "specifiers": {
     "jsr:@std/assert@*": "1.0.19",
+    "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/encoding@1": "1.0.10",
     "jsr:@std/internal@^1.0.12": "1.0.14",
     "npm:hono@4": "4.13.2",

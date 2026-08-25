@@ -12,8 +12,15 @@ export interface RedisClient {
   expire(key: string, seconds: number): Promise<number>;
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<unknown>;
+  /** 执行 Lua 脚本；keys 为 KEYS，args 为 ARGV */
+  eval(
+    script: string,
+    keys: string[],
+    args: (string | number)[],
+  ): Promise<unknown>;
 }
 
+/** 创建 Redis 客户端适配器，统一暴露限流所需的最小操作集。 */
 export function createRedis(redisUrl: string): RedisClient {
   // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
   const redis = new IORedis(redisUrl, {
@@ -26,6 +33,8 @@ export function createRedis(redisUrl: string): RedisClient {
     expire: (key, seconds) => redis.expire(key, seconds),
     get: (key) => redis.get(key),
     set: (key, value) => redis.set(key, value),
+    eval: (script, keys, args) =>
+      redis.eval(script, keys.length, ...keys, ...args),
   };
 }
 
@@ -42,6 +51,7 @@ export async function incrWithTtl(
   return value;
 }
 
+/** 原子自增指定数量并设置 TTL（首次自增时设置） */
 export async function incrByWithTtl(
   redis: RedisClient,
   key: string,

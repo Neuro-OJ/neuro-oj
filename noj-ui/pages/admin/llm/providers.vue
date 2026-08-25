@@ -16,6 +16,7 @@ interface LlmProvider {
   name: string
   base_url: string
   model: string
+  cost_per_1k_tokens: number
   api_key_masked: string
   enabled: boolean
   created_at: string
@@ -33,6 +34,7 @@ const columns = [
   { accessorKey: "name", header: "名称" },
   { accessorKey: "base_url", header: "Base URL" },
   { accessorKey: "model", header: "默认模型" },
+  { accessorKey: "cost_per_1k_tokens", header: "费用/1K token" },
   { accessorKey: "api_key_masked", header: "API Key" },
   {
     accessorKey: "enabled",
@@ -50,6 +52,7 @@ const columns = [
   { accessorKey: "actions", header: "操作" },
 ]
 
+// 加载 Provider 列表；用 requestVersion 防止快速切换时的旧响应覆盖新数据
 async function loadItems() {
   if (!isLoggedIn.value) return
   const currentRequest = ++requestVersion
@@ -74,33 +77,39 @@ const editingItem = ref<LlmProvider | null>(null)
 const formName = ref("")
 const formBaseUrl = ref("")
 const formModel = ref("")
+const formCostPer1k = ref(0)
 const formApiKey = ref("")
 const formEnabled = ref(true)
 const saving = ref(false)
 const formError = ref("")
 
+// 打开新增表单并清空状态
 function openCreate() {
   editingItem.value = null
   formName.value = ""
   formBaseUrl.value = ""
   formModel.value = ""
+  formCostPer1k.value = 0
   formApiKey.value = ""
   formEnabled.value = true
   formError.value = ""
   showForm.value = true
 }
 
+// 打开编辑表单；API Key 留空表示不修改
 function openEdit(item: LlmProvider) {
   editingItem.value = item
   formName.value = item.name
   formBaseUrl.value = item.base_url
   formModel.value = item.model
+  formCostPer1k.value = item.cost_per_1k_tokens ?? 0
   formApiKey.value = ""
   formEnabled.value = item.enabled
   formError.value = ""
   showForm.value = true
 }
 
+// 保存 Provider：编辑时未填 Key 则不更新；新增时 Key 必填
 async function handleSave() {
   if (!formName.value.trim() || !formBaseUrl.value.trim() || !formModel.value.trim()) {
     formError.value = "名称、Base URL 与默认模型均为必填"
@@ -114,6 +123,7 @@ async function handleSave() {
         name: formName.value.trim(),
         base_url: formBaseUrl.value.trim(),
         model: formModel.value.trim(),
+        cost_per_1k_tokens: Number(formCostPer1k.value) || 0,
         enabled: formEnabled.value,
       }
       if (formApiKey.value.trim()) payload.api_key = formApiKey.value.trim()
@@ -128,6 +138,7 @@ async function handleSave() {
         name: formName.value.trim(),
         base_url: formBaseUrl.value.trim(),
         model: formModel.value.trim(),
+        cost_per_1k_tokens: Number(formCostPer1k.value) || 0,
         api_key: formApiKey.value.trim(),
         enabled: formEnabled.value,
       })
@@ -184,6 +195,10 @@ async function handleSave() {
         <div class="flex flex-col gap-1">
           <label class="text-13px font-semibold text-text">默认模型 <span class="text-error-text">*</span></label>
           <input v-model="formModel" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="如：qwen-plus" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-13px font-semibold text-text">费用 / 1K token</label>
+          <input v-model.number="formCostPer1k" type="number" min="0" step="0.01" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary" placeholder="0" />
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-13px font-semibold text-text">API Key {{ editingItem ? "（留空则保持不变）" : "" }} <span v-if="!editingItem" class="text-error-text">*</span></label>

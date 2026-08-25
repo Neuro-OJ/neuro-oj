@@ -46,6 +46,10 @@ cd ..
 | `EMAIL_PROVIDER` 及对应凭据 | 生产必须使用 aliyun 或 tencent，禁止 mock |
 | `JUDGE_IMAGE_BASE` | 默认 `ghcr.io/neuro-oj/` |
 | `NGINX_PORT` | 容器 Nginx 映射到宿主机的端口，默认 `8080` |
+| `NOJ_LLM_SERVICE_TOKEN` | LLM Gateway 服务间鉴权 + eval_token 签发/校验密钥（≥16 字符）；不使用 LLM 调用题时可忽略 |
+| `NOJ_LLM_STORE_KEY` | LLM Gateway 加密 Provider API Key 的信封主密钥（≥16 字符）；不使用 LLM 调用题时可忽略 |
+| `JUDGE_ALLOW_EVALUATOR_NETWORK` | 是否允许 evaluator 联网；使用 LLM 调用题时必须设为 `true` |
+| `JUDGE_EVALUATOR_NETWORK` | evaluator 联网时加入的 Docker 网络；生产必须指向 `llm-gateway` 所在网络，默认 `noj-net` |
 
 ```bash
 # 3) 配置外部 TLS 终止
@@ -83,6 +87,26 @@ ghcr.io/neuro-oj/noj-evaluator-python  all_versions  evaluator
 ghcr.io/neuro-oj/noj-solution-python   all_versions  solution
 ```
 
+## 3.5 LLM Gateway 部署
+
+`docker-compose.prod.yml` 默认启动 `llm-gateway` 容器，并让 core 通过
+`http://llm-gateway:8001` 访问。若实例不需要 LLM 调用题，可忽略相关密钥，
+但建议保持容器启动以免 compose 环境不一致。
+
+使用 LLM 调用题时：
+
+- 必须设置 `NOJ_LLM_SERVICE_TOKEN` 与 `NOJ_LLM_STORE_KEY`，且 `NOJ_LLM_SERVICE_TOKEN`
+  与 noj-core 保持一致。
+- 必须开启 evaluator 联网：`JUDGE_ALLOW_EVALUATOR_NETWORK=true`。
+- `JUDGE_EVALUATOR_NETWORK` 必须指向 `llm-gateway` 所在网络（compose 中为 `noj-net`），
+  否则 evaluator 容器无法解析 `http://llm-gateway:8001`。
+- 在管理后台「LLM Providers」配置上游 OpenAI 兼容服务；Provider Key 仅加密存储在数据库。
+
+密钥轮换：
+
+- 轮换 `NOJ_LLM_SERVICE_TOKEN` 会让所有未过期 eval_token 失效，需同步更新 noj-core 与 gateway。
+- 轮换 `NOJ_LLM_STORE_KEY` 后，需要用新主密钥重新加密所有 Provider Key。
+
 ## 4. 日常运维
 
 ```bash
@@ -92,6 +116,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 # 查看日志
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 core
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 judge
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 llm-gateway
 
 # 健康检查（通过外部 TLS 终止后的地址）
 curl https://你的域名/healthz

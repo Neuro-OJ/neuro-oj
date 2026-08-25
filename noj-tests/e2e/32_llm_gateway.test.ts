@@ -16,6 +16,7 @@
 import {
   apiGet,
   apiPost,
+  apiPut,
   BASE_URL,
   e2eTest,
   getAdminToken,
@@ -28,7 +29,8 @@ import {
 
 const testSuffix = Date.now().toString(36);
 const MOCK_MODEL = Deno.env.get("E2E_LLM_MOCK_MODEL") || "e2e-mock";
-const MOCK_URL = Deno.env.get("E2E_LLM_MOCK_URL") || "http://noj-e2e-llm-mock:8002/v1";
+const MOCK_URL = Deno.env.get("E2E_LLM_MOCK_URL") ||
+  "http://noj-e2e-llm-mock:8002/v1";
 
 let adminToken = "";
 let judgeAvailable = false;
@@ -60,7 +62,7 @@ except Exception as error:
     }
 
 print("---RESULT---")
-print(json.dumps(result))
+print(json.dumps(result, default=str), flush=True)
 `;
 
 async function makeZip(
@@ -224,10 +226,17 @@ e2eTest("[e2e/llm-gateway] 7.1 导入 P 型 LLM 题并提交评测", async () =>
   );
   const result = await pollSubmission(adminToken, submissionId, 60, 2000, true);
   if (result.verdict !== "Accepted") {
-    const detailRes = await apiGet(`/api/v1/submissions/${submissionId}`, adminToken);
-    const detail = (detailRes.body as { data?: { result?: { output?: string; details?: unknown } } }).data;
+    const detailRes = await apiGet(
+      `/api/v1/submissions/${submissionId}`,
+      adminToken,
+    );
+    const detail = (detailRes.body as {
+      data?: { result?: { output?: string; details?: unknown } };
+    }).data;
     throw new Error(
-      `LLM 评测预期 Accepted，实际 ${result.verdict} (score=${result.score}) output=${detail?.result?.output ?? "(无)"} details=${JSON.stringify(detail?.result?.details ?? {})}`,
+      `LLM 评测预期 Accepted，实际 ${result.verdict} (score=${result.score}) output=${
+        detail?.result?.output ?? "(无)"
+      } details=${JSON.stringify(detail?.result?.details ?? {})}`,
     );
   }
 
@@ -279,3 +288,61 @@ e2eTest("[e2e/llm-gateway] 7.3 重测重新签发 token", async () => {
     throw new Error("重测后未产生新的 LLM 用量记录（token 可能未重新签发）");
   }
 });
+
+e2eTest("[e2e/llm-gateway] 更新 LLM 题关闭网络被拒", async () => {
+  if (!isE2E || !problemId) return;
+  const detail = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
+  const problem = (detail.body as {
+    data?: {
+      runtime_config?: { evaluator?: { network?: { enabled?: boolean } } };
+    };
+  }).data;
+  const rc = problem?.runtime_config as {
+    evaluator: {
+      image: string;
+      time_limit_ms: number;
+      memory_limit_mb: number;
+      network: { enabled: boolean };
+    };
+    solution: {
+      image: string;
+      call_timeout_ms: number;
+      memory_limit_mb: number;
+    };
+  };
+  const res = await apiPut(
+    `/api/v1/problems/${problemId}`,
+    {
+      runtime_config: {
+        ...rc,
+        evaluator: { ...rc.evaluator, network: { enabled: false } },
+      },
+    },
+    adminToken,
+  );
+  if (res.status < 400) {
+    throw new Error(`关闭 LLM 题网络应当失败，实际 ${res.status}`);
+  }
+});
+
+e2eTest(
+  "[e2e/llm-gateway] 更新 LLM 题为客观题后自动清空 llm_config",
+  async () => {
+    if (!isE2E || !problemId) return;
+    const res = await apiPut(
+      `/api/v1/problems/${problemId}`,
+      { is_objective: true },
+      adminToken,
+    );
+    if (res.status !== 200) {
+      throw new Error(
+        `更新为客观题失败: ${res.status} ${JSON.stringify(res.body)}`,
+      );
+    }
+    const detail = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
+    const problem = (detail.body as { data?: { llm_config?: unknown } }).data;
+    if (problem?.llm_config != null) {
+      throw new Error("LLM 题改为客观题后 llm_config 应被清空");
+    }
+  },
+);

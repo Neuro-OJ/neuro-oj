@@ -930,6 +930,7 @@ def solve(msg: str) -> str:
         None,
         1000,
         true,
+        "bridge",
         "noj-",
         &["python3".to_string()],
     )

@@ -4,6 +4,7 @@
 
 ## 2026-08
 
+- LLM Gateway：新增 `noj-llm-gateway` 服务，支持 Provider 托管、eval_token、限流/额度与用量审计；P 型题可接入 LLM 调用。
 - 统一题目包（Problem Bundle）导入：`import-bundle` 端点与 CLI 工具集，支持按 `(type, number)` 幂等更新/新建（#182）。
 - 优化 CI 与测试运行效率：按模块路径过滤 job、测试分组并行（#183）。
 - 社区系统：关注动态流与社区功能修复（#178）。

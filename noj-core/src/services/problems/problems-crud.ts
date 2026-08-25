@@ -24,6 +24,7 @@ import { getStorageProvider } from "../../lib/storage/mod.ts";
 import { logger } from "../../lib/logging.ts";
 import { validateJudgeImageWithKind } from "../judge-images.ts";
 import { logAudit } from "../audit-log.ts";
+import { getLlmProviderById } from "../llm.ts";
 import {
   type CreateProblemInput,
   DIFFICULTIES,
@@ -138,11 +139,20 @@ export async function createProblem(
   // LLM 配置准入校验：仅 P 型/官方题可启用，且必须开启 evaluator 网络。
   let llmConfig: LlmConfig | null = null;
   if (input.llm !== undefined && input.llm !== null) {
+    if (isObjective) {
+      throw new BadRequestError("客观题套卷不支持 LLM 配置");
+    }
     if (!isValidLlmConfig(input.llm)) {
       throw new BadRequestError("llm 配置格式非法");
     }
     if (type !== "P") {
       throw new ForbiddenError("仅 P 型/官方题可启用 LLM");
+    }
+    const provider = await getLlmProviderById(input.llm.provider_id).catch(
+      () => null,
+    );
+    if (!provider || !provider.enabled) {
+      throw new BadRequestError("LLM Provider 不存在或已停用");
     }
     const runtime = input.runtime_config;
     if (!runtime || !runtime.evaluator.network?.enabled) {
@@ -370,6 +380,12 @@ export async function updateProblem(
       if (isObjective) {
         throw new BadRequestError("客观题套卷不支持 LLM 配置");
       }
+      const provider = await getLlmProviderById(input.llm.provider_id).catch(
+        () => null,
+      );
+      if (!provider || !provider.enabled) {
+        throw new BadRequestError("LLM Provider 不存在或已停用");
+      }
       const effectiveRuntime = input.runtime_config ??
         (problem.runtime_config as RuntimeConfig | null);
       if (
@@ -379,6 +395,21 @@ export async function updateProblem(
         throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
       }
       llmConfig = input.llm;
+    }
+  }
+
+  // 若题目已有/仍有 LLM 配置，必须保持 evaluator 网络开启；改为客观题时自动清空。
+  const existingLlm = problem.llm_config as LlmConfig | null;
+  const nextLlm = llmConfig !== undefined ? llmConfig : existingLlm;
+  if (nextLlm) {
+    if (isObjective) {
+      llmConfig = null;
+    } else if (
+      input.runtime_config !== undefined &&
+      input.runtime_config !== null &&
+      !input.runtime_config.evaluator.network?.enabled
+    ) {
+      throw new BadRequestError("启用 LLM 的题目必须保持 evaluator 网络开启");
     }
   }
 

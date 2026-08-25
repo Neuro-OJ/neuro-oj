@@ -180,6 +180,7 @@ cd noj-core && deno task dev-setup
 | 容器启动失败 `image not found` | 默认评测镜像为 `noj-evaluator-python` / `noj-solution-python`；执行 `noj-judge/scripts/build-sdk-images.sh` 构建 |
 | LLM 题提交后报 `Missing NOJ_LLM_GATEWAY_URL` | `noj-llm-gateway` 未启动，或 `noj-core/.env` 未配置 `NOJ_LLM_SERVICE_TOKEN` / `NOJ_LLM_GATEWAY_URL` |
 | LLM 题评测返回 `invalid_token` | `NOJ_LLM_SERVICE_TOKEN` 在 core 与 gateway 不一致，或题目 `llm` 配置使用了不存在/停用的 Provider |
+| LLM 题容器无法连接 gateway | 生产环境需设置 `JUDGE_ALLOW_EVALUATOR_NETWORK=true` 且 `JUDGE_EVALUATOR_NETWORK` 指向 gateway 所在 Docker 网络（如 `noj-net`），`NOJ_LLM_GATEWAY_URL` 使用同一网络内可解析地址 |
 
 ### 数据库相关
 

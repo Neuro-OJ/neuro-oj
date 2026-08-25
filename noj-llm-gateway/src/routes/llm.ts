@@ -7,7 +7,7 @@ import type { RedisClient } from "../redis.ts";
 import type { GatewayConfig } from "../config.ts";
 import { verifyEvalToken } from "../crypto.ts";
 import { getProviderSecret } from "../providers.ts";
-import { enforceAndCount } from "../limits.ts";
+import { enforceAndCount, settleUsage } from "../limits.ts";
 import { recordUsage } from "../usage.ts";
 
 export interface LlmDeps {
@@ -25,6 +25,7 @@ interface ChatCompletionRequest {
   [key: string]: unknown;
 }
 
+/** 根据 Provider base_url 拼接 OpenAI 兼容 Chat Completions 地址。 */
 function buildChatUrl(baseUrl: string): string {
   const base = baseUrl.replace(/\/+$/, "");
   if (base.endsWith("/chat/completions")) return base;
@@ -32,6 +33,7 @@ function buildChatUrl(baseUrl: string): string {
   return `${base}/v1/chat/completions`;
 }
 
+/** 计算字符串 SHA-256 的十六进制摘要，用于用量审计的 prompt 哈希。 */
 async function sha256Hex(input: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -41,6 +43,7 @@ async function sha256Hex(input: string): Promise<string> {
     .join("");
 }
 
+/** 创建 OpenAI 兼容代理路由：校验 eval_token → 限流 → 转发 → 真实用量结算/审计。 */
 export function createLlmRouter(deps: LlmDeps): Hono {
   const app = new Hono();
 
@@ -81,14 +84,16 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       return c.json({ error: "provider_disabled" }, 403);
     }
 
-    const ttlSeconds = Math.max(
-      60,
-      Math.floor((payload.exp - payload.iat) * 1) ?? 3600,
-    );
+    const ttlSeconds = Math.max(60, Math.floor(payload.exp - payload.iat));
     const startedAt = Date.now();
     const promptTokens = estimateTokens(body.messages);
-    const completionTokens = 0;
-    const estimatedCost = 0;
+    const completionTokens = typeof body.max_tokens === "number"
+      ? Math.floor(Math.max(0, body.max_tokens))
+      : 0;
+    const estimatedCost = estimateCost(
+      promptTokens + completionTokens,
+      providerSecret.provider.cost_per_1k_tokens,
+    );
 
     try {
       await enforceAndCount(deps.db, deps.redis, payload, {
@@ -168,10 +173,52 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         total_tokens?: number;
       }
       | undefined;
-    const actualPromptTokens = usage?.prompt_tokens ?? promptTokens;
-    const actualCompletionTokens = usage?.completion_tokens ?? 0;
-    const actualTotalTokens = usage?.total_tokens ??
-      (actualPromptTokens + actualCompletionTokens);
+    const actualPromptTokens = Math.floor(usage?.prompt_tokens ?? promptTokens);
+    const actualCompletionTokens = Math.floor(
+      usage?.completion_tokens ?? 0,
+    );
+    const actualTotalTokens = Math.floor(
+      usage?.total_tokens ?? (actualPromptTokens + actualCompletionTokens),
+    );
+    const actualCost = estimateCost(
+      actualTotalTokens,
+      providerSecret.provider.cost_per_1k_tokens,
+    );
+
+    try {
+      await settleUsage(deps.db, deps.redis, payload, {
+        promptTokens,
+        completionTokens,
+        estimatedCost,
+        actualPromptTokens,
+        actualCompletionTokens,
+        actualCost,
+        ip: c.req.header("x-forwarded-for") ?? "unknown",
+        ttlSeconds,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "quota_exceeded";
+      await recordUsage(deps.db, {
+        id: crypto.randomUUID(),
+        submission_id: payload.submission_id,
+        problem_id: payload.problem_id,
+        user_id: payload.user_id,
+        provider_id: payload.provider_id,
+        model,
+        request_messages: body.messages,
+        request_params: pickParams(body),
+        prompt_tokens: actualPromptTokens,
+        completion_tokens: actualCompletionTokens,
+        total_tokens: actualTotalTokens,
+        estimated_cost: actualCost,
+        latency_ms: latency,
+        status: "rejected",
+        error_code: message,
+        prompt_hash: await sha256Hex(JSON.stringify(body.messages)),
+        created_at: new Date().toISOString(),
+      });
+      return c.json({ error: message }, 429);
+    }
 
     await recordUsage(deps.db, {
       id: crypto.randomUUID(),
@@ -185,7 +232,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       prompt_tokens: actualPromptTokens,
       completion_tokens: actualCompletionTokens,
       total_tokens: actualTotalTokens,
-      estimated_cost: 0,
+      estimated_cost: actualCost,
       latency_ms: latency,
       status: upstreamRes.ok ? "ok" : "error",
       error_code: upstreamRes.ok ? null : String(upstreamRes.status),
@@ -212,6 +259,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
   return app;
 }
 
+/** 粗略估算 prompt token：按 JSON 字符数 /4 向上取整。 */
 function estimateTokens(messages: unknown[]): number {
   try {
     return Math.ceil(JSON.stringify(messages).length / 4);
@@ -220,6 +268,13 @@ function estimateTokens(messages: unknown[]): number {
   }
 }
 
+/** 按单价（每 1k tokens）估算费用，结果取整。 */
+function estimateCost(totalTokens: number, costPer1k: number): number {
+  if (!costPer1k || totalTokens <= 0) return 0;
+  return Math.round((totalTokens / 1000) * costPer1k);
+}
+
+/** 从请求体中挑选需要审计的关键参数（排除 messages 等大字段）。 */
 function pickParams(body: ChatCompletionRequest): Record<string, unknown> {
   const params: Record<string, unknown> = {};
   for (

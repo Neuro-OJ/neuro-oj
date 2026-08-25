@@ -15,6 +15,8 @@
 | 提交 | 查看全部提交、删除提交、重测（rejudge） |
 | 竞赛 | 竞赛 CRUD 与参赛者管理 |
 | 评测镜像 | 评测镜像白名单维护 |
+| LLM Providers | 上游 LLM Provider 的新增、编辑、启停与 API Key 更新（脱敏展示） |
+| LLM 用量 | 按用户/题目/Provider/状态/时间范围查询 LLM 调用与费用 |
 | 黑名单 | IP 黑名单管理 |
 | 审计日志 | 操作审计记录查询 |
 | 系统设置 | 运行时可改的系统配置 |
@@ -67,6 +69,20 @@ Neuro OJ 使用「角色 → 权限点」模型：权限格式为 `resource:acti
 - **重测**：题目或单条提交支持 rejudge（仅已完成或出错的提交可重测），用于修正题目配置或评测环境后的批量重判。
 - **分类**：分类支持父子层级，题目与分类为多对多关系。
 - **评测镜像**：白名单登记 evaluator / solution 镜像名与匹配模式；新增镜像后需在 Judge Worker 侧构建并重启使其生效。
+
+## LLM 管理
+
+### LLM Providers
+
+- 新增 Provider 时填写名称、`base_url`、默认 `model`、API Key、单价（每 1k tokens）与启停状态。
+- API Key 保存后**不会**再明文返回，列表中只显示掩码（如 `sk-****abcd`）；需要更新时重新填写 Key。
+- 只有 `enabled=true` 的 Provider 可用于 LLM 题目；停用后已有评测 token 仍可能继续调用到过期，请先停止相关题目或等待 token 自然过期。
+
+### LLM 用量
+
+- 管理后台「LLM 用量」支持按 `submission_id`、用户、题目、Provider、状态、起止时间与分页查询。
+- 每条记录包含请求消息哈希、prompt/completion/total token、估算费用、延迟与状态（`ok / error / rejected`）。
+- 配额（`llm_quotas`）目前通过后台接口维护，支持用户/全局/题目维度的 day/month 的 calls/tokens/cost 上限；`0` 表示不限制但仍计数。
 
 ## 提交管理
 

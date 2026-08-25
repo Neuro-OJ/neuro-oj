@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "jsr:@std/assert@^1";
 import type { RedisClient } from "../src/redis.ts";
 import { incrByWithTtl, incrWithTtl } from "../src/redis.ts";
 
@@ -9,28 +9,38 @@ class FakeRedis implements RedisClient {
   async incr(key: string): Promise<number> {
     const next = (this.data.get(key) ?? 0) + 1;
     this.data.set(key, next);
-    return next;
+    return await Promise.resolve(next);
   }
 
   async incrby(key: string, amount: number): Promise<number> {
     const next = (this.data.get(key) ?? 0) + amount;
     this.data.set(key, next);
-    return next;
+    return await Promise.resolve(next);
   }
 
   async expire(key: string, seconds: number): Promise<number> {
     this.expires.set(key, seconds);
-    return 1;
+    return await Promise.resolve(1);
   }
 
   async get(key: string): Promise<string | null> {
     const value = this.data.get(key);
-    return value === undefined ? null : String(value);
+    return await Promise.resolve(
+      value === undefined ? null : String(value),
+    );
   }
 
   async set(key: string, value: string): Promise<unknown> {
     this.data.set(key, Number(value));
-    return "OK";
+    return await Promise.resolve("OK");
+  }
+
+  async eval(
+    _script: string,
+    _keys: string[],
+    _args: (string | number)[],
+  ): Promise<unknown> {
+    return await Promise.resolve("ok");
   }
 }
 

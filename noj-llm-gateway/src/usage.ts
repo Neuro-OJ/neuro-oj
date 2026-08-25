@@ -23,6 +23,7 @@ export interface UsageEntry {
   created_at: string;
 }
 
+/** 写入一条 LLM 用量审计记录；调用方负责在成功/失败/拒绝各分支调用。 */
 export async function recordUsage(db: Db, entry: UsageEntry): Promise<void> {
   await db`
     INSERT INTO llm_usage (

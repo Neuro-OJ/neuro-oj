@@ -16,6 +16,7 @@ pub async fn evaluate_with_cpu_limit(
     cache_max_mb: u64,
     cpu_limit_millicores: u64,
     allow_evaluator_network: bool,
+    evaluator_network_mode: &str,
     allow_http_s3: bool,
     image_prefix: &str,
     command_whitelist: &[String],
@@ -67,6 +68,7 @@ pub async fn evaluate_with_cpu_limit(
         task.llm.as_ref(),
         cpu_limit_millicores,
         allow_evaluator_network,
+        evaluator_network_mode,
         image_prefix,
         command_whitelist,
     )

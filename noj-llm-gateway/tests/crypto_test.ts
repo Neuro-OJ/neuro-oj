@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert";
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import {
   decryptSecret,
   encryptSecret,

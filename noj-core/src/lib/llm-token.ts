@@ -34,6 +34,7 @@ interface EvalTokenPayload {
   max_tokens: number;
 }
 
+/** 使用 NOJ_LLM_SERVICE_TOKEN 签发 AEAD eval_token（base64url）。 */
 export async function mintEvalToken(
   payload: EvalTokenPayload,
 ): Promise<string> {
@@ -85,8 +86,8 @@ export async function buildJudgeTaskLlm(
     allowed_models: [llmConfig.model],
     iat: now,
     exp: now + ttlSeconds,
-    max_calls: 100,
-    max_tokens: 50000,
+    max_calls: Number(Deno.env.get("NOJ_LLM_MAX_CALLS") ?? "100"),
+    max_tokens: Number(Deno.env.get("NOJ_LLM_MAX_TOKENS") ?? "50000"),
   });
   return {
     gateway_url: gatewayUrl,

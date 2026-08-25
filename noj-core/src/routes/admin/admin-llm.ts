@@ -49,7 +49,12 @@ router.get("/llm/usage", async (c) => {
     submission_id: c.req.query("submission_id") || undefined,
     user_id: c.req.query("user_id") || undefined,
     problem_id: c.req.query("problem_id") || undefined,
+    provider_id: c.req.query("provider_id") || undefined,
+    status: c.req.query("status") || undefined,
+    start_time: c.req.query("start_time") || undefined,
+    end_time: c.req.query("end_time") || undefined,
     limit: c.req.query("limit") ? Number(c.req.query("limit")) : undefined,
+    page: c.req.query("page") ? Number(c.req.query("page")) : undefined,
   };
   const data = await queryLlmUsage(query);
   return c.json({ data });
@@ -76,7 +81,9 @@ async function fetchLlmQuotas(): Promise<unknown[]> {
   const res = await fetch(`${gatewayUrl}/internal/quotas`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) return [];
+  if (!res.ok) {
+    throw new Error(`LLM Gateway 配额查询失败: ${res.status}`);
+  }
   const body = await res.json().catch(() => null) as
     | { data?: unknown[] }
     | null;

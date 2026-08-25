@@ -14,6 +14,7 @@ export interface LlmProviderInput {
   base_url: string;
   model: string;
   api_key: string;
+  cost_per_1k_tokens?: number;
   enabled?: boolean;
 }
 
@@ -22,6 +23,7 @@ export interface LlmProviderView {
   name: string;
   base_url: string;
   model: string;
+  cost_per_1k_tokens: number;
   api_key_masked: string;
   enabled: boolean;
   created_at: string;
@@ -32,7 +34,12 @@ export interface LlmUsageQuery {
   submission_id?: string;
   user_id?: string;
   problem_id?: string;
+  provider_id?: string;
+  status?: string;
+  start_time?: string;
+  end_time?: string;
   limit?: number;
+  page?: number;
 }
 
 export interface LlmQuotaInput {
@@ -69,6 +76,7 @@ async function request<T>(
   return body as T;
 }
 
+/** 获取 LLM Provider 列表（Key 已由 gateway 脱敏）。 */
 export async function listLlmProviders(): Promise<LlmProviderView[]> {
   const body = await request<{ data: LlmProviderView[] }>(
     "/internal/providers",
@@ -76,6 +84,17 @@ export async function listLlmProviders(): Promise<LlmProviderView[]> {
   return body.data;
 }
 
+/** 按 ID 获取 LLM Provider 精简信息（供题目 CRUD 校验使用）。 */
+export async function getLlmProviderById(
+  id: string,
+): Promise<LlmProviderView> {
+  const body = await request<{ data: LlmProviderView }>(
+    `/internal/providers/${id}`,
+  );
+  return body.data;
+}
+
+/** 创建 LLM Provider（API Key 由 gateway 加密存储）。 */
 export async function createLlmProvider(
   input: LlmProviderInput,
 ): Promise<LlmProviderView> {
@@ -89,6 +108,7 @@ export async function createLlmProvider(
   return body.data;
 }
 
+/** 更新 LLM Provider 的指定字段。 */
 export async function updateLlmProvider(
   id: string,
   input: Partial<LlmProviderInput>,
@@ -103,6 +123,7 @@ export async function updateLlmProvider(
   return body.data;
 }
 
+/** 按条件查询 LLM 用量记录（透传 gateway 分页/筛选参数）。 */
 export async function queryLlmUsage(
   query: LlmUsageQuery,
 ): Promise<unknown[]> {
@@ -110,7 +131,12 @@ export async function queryLlmUsage(
   if (query.submission_id) params.set("submission_id", query.submission_id);
   if (query.user_id) params.set("user_id", query.user_id);
   if (query.problem_id) params.set("problem_id", query.problem_id);
+  if (query.provider_id) params.set("provider_id", query.provider_id);
+  if (query.status) params.set("status", query.status);
+  if (query.start_time) params.set("start_time", query.start_time);
+  if (query.end_time) params.set("end_time", query.end_time);
   if (query.limit !== undefined) params.set("limit", String(query.limit));
+  if (query.page !== undefined) params.set("page", String(query.page));
   const qs = params.toString();
   const body = await request<{ data: unknown[] }>(
     `/internal/usage${qs ? `?${qs}` : ""}`,
@@ -118,6 +144,7 @@ export async function queryLlmUsage(
   return body.data;
 }
 
+/** 新增或更新 LLM 配额（按 id upsert）。 */
 export async function upsertLlmQuota(
   input: LlmQuotaInput,
 ): Promise<{ id: string }> {

@@ -38,7 +38,12 @@ const error = ref("")
 const filterUser = ref("")
 const filterProblem = ref("")
 const filterSubmission = ref("")
+const filterProvider = ref("")
+const filterStatus = ref("")
+const filterStart = ref("")
+const filterEnd = ref("")
 const limit = ref(100)
+const page = ref(1)
 
 const columns = [
   { accessorKey: "created_at", header: "时间" },
@@ -52,6 +57,7 @@ const columns = [
   { accessorKey: "actions", header: "操作" },
 ]
 
+// 按筛选条件加载用量列表
 async function load() {
   if (!isLoggedIn.value) return
   loading.value = true
@@ -61,7 +67,12 @@ async function load() {
     if (filterUser.value.trim()) params.set("user_id", filterUser.value.trim())
     if (filterProblem.value.trim()) params.set("problem_id", filterProblem.value.trim())
     if (filterSubmission.value.trim()) params.set("submission_id", filterSubmission.value.trim())
+    if (filterProvider.value.trim()) params.set("provider_id", filterProvider.value.trim())
+    if (filterStatus.value.trim()) params.set("status", filterStatus.value.trim())
+    if (filterStart.value) params.set("start_time", filterStart.value)
+    if (filterEnd.value) params.set("end_time", filterEnd.value)
     params.set("limit", String(limit.value))
+    params.set("page", String(page.value))
     const qs = params.toString()
     const res = await api.get<{ data: LlmUsageRow[] }>(`/api/v1/admin/llm/usage${qs ? `?${qs}` : ""}`, { silent: true })
     rows.value = res.data
@@ -83,6 +94,7 @@ const summary = computed(() => {
   }
 })
 
+// 导出当前页用量为 CSV（仅当前页数据）
 function exportCsv() {
   const header = ["created_at", "submission_id", "user_id", "problem_id", "provider_id", "model", "total_tokens", "estimated_cost", "status", "error_code"]
   const lines = rows.value.map((r) =>
@@ -104,6 +116,7 @@ function exportCsv() {
 const detail = ref<LlmUsageRow | null>(null)
 const showDetail = ref(false)
 
+// 打开调用详情弹窗
 function openDetail(row: LlmUsageRow) {
   detail.value = row
   showDetail.value = true
@@ -134,7 +147,23 @@ function openDetail(row: LlmUsageRow) {
         <label class="text-13px font-semibold text-text">提交 ID</label>
         <input v-model="filterSubmission" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" placeholder="submission_id" />
       </div>
-      <UButton color="primary" size="sm" :loading="loading" @click="load">查询</UButton>
+      <div class="flex flex-col gap-1">
+        <label class="text-13px font-semibold text-text">Provider ID</label>
+        <input v-model="filterProvider" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" placeholder="provider_id" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-13px font-semibold text-text">状态</label>
+        <USelect v-model="filterStatus" :items="['', 'ok', 'error', 'rejected'].map((s) => ({ label: s || '全部', value: s }))" class="w-32" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-13px font-semibold text-text">开始时间</label>
+        <input v-model="filterStart" type="datetime-local" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-13px font-semibold text-text">结束时间</label>
+        <input v-model="filterEnd" type="datetime-local" class="px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary" />
+      </div>
+      <UButton color="primary" size="sm" :loading="loading" @click="page = 1; load()">查询</UButton>
     </div>
 
     <div v-if="!loading" class="grid grid-cols-4 gap-3">
@@ -177,6 +206,12 @@ function openDetail(row: LlmUsageRow) {
         </UButton>
       </template>
     </UTable>
+
+    <div class="flex items-center justify-end gap-2">
+      <UButton color="neutral" variant="outline" size="sm" :disabled="page <= 1" @click="page--; load()">上一页</UButton>
+      <span class="text-sm text-text-secondary">第 {{ page }} 页</span>
+      <UButton color="neutral" variant="outline" size="sm" :disabled="rows.length < limit" @click="page++; load()">下一页</UButton>
+    </div>
 
     <UModal v-model:open="showDetail" title="LLM 调用详情" :unmount-on-hide="true">
       <template #body>

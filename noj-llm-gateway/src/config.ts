@@ -31,6 +31,12 @@ export function loadConfig(
   if (!storeKey || storeKey.length < 16) {
     throw new Error("NOJ_LLM_STORE_KEY 未设置或长度不足（至少 16 字符）");
   }
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL 未设置，noj-llm-gateway 无法启动");
+  }
+  if (!redisUrl) {
+    throw new Error("REDIS_URL 未设置，noj-llm-gateway 无法启动");
+  }
 
   return { port, serviceToken, storeKey, databaseUrl, redisUrl };
 }

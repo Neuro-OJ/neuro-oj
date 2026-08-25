@@ -85,6 +85,7 @@ export default withMermaid(defineConfig({
           items: [
             { text: "运营者文档", link: "/operators/" },
             { text: "生产部署", link: "/operators/production-deploy" },
+            { text: "如何提供 LLM 调用能力", link: "/operators/llm-call-capability" },
             { text: "CLI 初始化", link: "/operators/cli" },
             { text: "存储与评测包交付", link: "/operators/storage" },
             { text: "Judge Worker 运维", link: "/operators/judge-workers" },
@@ -103,6 +104,7 @@ export default withMermaid(defineConfig({
             { text: "统一题目包", link: "/problemsetters/support-package" },
             { text: "测试数据", link: "/problemsetters/cases" },
             { text: "A+B 示例题", link: "/problemsetters/ab-example" },
+            { text: "出 LLM 调用题", link: "/problemsetters/llm-problem" },
           ],
         },
         {

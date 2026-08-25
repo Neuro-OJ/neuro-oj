@@ -161,6 +161,7 @@ export const SCHEMA_DDL: string[] = [
     name TEXT NOT NULL,
     base_url TEXT NOT NULL,
     model TEXT NOT NULL,
+    cost_per_1k_tokens DOUBLE PRECISION NOT NULL DEFAULT 0,
     encrypted_api_key TEXT NOT NULL,
     enabled BOOLEAN NOT NULL DEFAULT true,
     created_by TEXT NOT NULL DEFAULT '0',

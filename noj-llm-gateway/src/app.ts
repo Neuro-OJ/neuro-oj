@@ -2,17 +2,15 @@
  * noj-llm-gateway Hono 应用工厂。
  */
 import { Hono } from "hono";
-import { cors } from "hono/cors";
 import type { GatewayConfig } from "./config.ts";
 import { createDb } from "./db.ts";
 import { createRedis } from "./redis.ts";
 import { createLlmRouter } from "./routes/llm.ts";
 import { createInternalRouter } from "./routes/internal.ts";
 
+/** 创建 Hono 应用；DB/Redis 可用时挂载代理与内部管理路由。 */
 export function createApp(config: GatewayConfig) {
   const app = new Hono();
-
-  app.use("*", cors());
 
   app.get("/health", (c) => {
     return c.json({

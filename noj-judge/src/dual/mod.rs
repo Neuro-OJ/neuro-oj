@@ -229,6 +229,7 @@ pub async fn evaluate_dual_with_cpu_limit(
     task_llm: Option<&JudgeTaskLlm>,
     cpu_limit_millicores: u64,
     allow_evaluator_network: bool,
+    evaluator_network_mode: &str,
     image_prefix: &str,
     command_whitelist: &[String],
 ) -> Result<JudgeResult> {
@@ -249,11 +250,16 @@ pub async fn evaluate_dual_with_cpu_limit(
         .as_ref()
         .map(|n| n.enabled)
         .unwrap_or(false);
+    let network_mode = if evaluator_network_enabled {
+        evaluator_network_mode
+    } else {
+        "none"
+    };
     let mut dual = DualContainer::create_evaluator(
         &docker,
         &runtime_config.evaluator.image,
         runtime_config.evaluator.memory_limit_mb,
-        evaluator_network_enabled,
+        network_mode,
         cpu_limit_millicores,
     )
     .await

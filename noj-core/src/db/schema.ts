@@ -2,6 +2,7 @@ import {
   boolean,
   check,
   customType,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -238,6 +239,10 @@ export const llmProviders = pgTable(
     base_url: text("base_url").notNull(),
     /** 默认模型名，题目可通过 llm_config.model 覆盖 */
     model: text("model").notNull(),
+    /** 每 1K token 费用（用于用量估算；0 表示不计费） */
+    cost_per_1k_tokens: doublePrecision("cost_per_1k_tokens").notNull().default(
+      0,
+    ),
     /** AES-256-GCM 加密后的上游 API Key */
     encrypted_api_key: text("encrypted_api_key").notNull(),
     /** 是否启用；停用后新评测不能选用 */

@@ -3,6 +3,7 @@
  */
 import type { MiddlewareHandler } from "hono";
 
+/** 校验 `Authorization: Bearer <token>` 与服务间密钥一致，否则返回 401。 */
 export function requireServiceToken(expected: string): MiddlewareHandler {
   return async (c, next) => {
     const auth = c.req.header("Authorization") ?? "";
