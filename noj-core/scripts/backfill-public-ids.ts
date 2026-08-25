@@ -18,14 +18,6 @@ import {
 } from "../src/db/schema.ts";
 import { generatePublicId } from "../src/lib/public-id.ts";
 
-// deno-lint-ignore no-explicit-any
-type PublicIdTable = {
-  id: string;
-  public_id: string | null;
-  // deno-lint-ignore no-explicit-any
-  [key: string]: any;
-};
-
 async function backfillOne(
   // deno-lint-ignore no-explicit-any
   table: any,
