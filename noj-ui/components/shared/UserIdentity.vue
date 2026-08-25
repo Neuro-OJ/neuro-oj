@@ -1,6 +1,6 @@
 <template>
     <component
-        :is="link ? 'NuxtLink' : 'span'"
+        :is="link ? NuxtLink : 'span'"
         :to="link ? (to ?? `/users/${user.id}`) : undefined"
         class="inline-flex items-center gap-2 no-underline"
         :class="{ 'cursor-pointer hover:opacity-80': link }"
@@ -30,6 +30,8 @@
 </template>
 
 <script setup lang="ts">
+import { NuxtLink } from "#components";
+
 interface IdentityUser {
     id: string;
     username: string;
