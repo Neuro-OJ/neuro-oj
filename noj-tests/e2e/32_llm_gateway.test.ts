@@ -28,7 +28,7 @@ import {
 
 const testSuffix = Date.now().toString(36);
 const MOCK_MODEL = Deno.env.get("E2E_LLM_MOCK_MODEL") || "e2e-mock";
-const MOCK_URL = Deno.env.get("E2E_LLM_MOCK_URL") || "http://llm-mock:8002/v1";
+const MOCK_URL = Deno.env.get("E2E_LLM_MOCK_URL") || "http://172.17.0.1:8002/v1";
 
 let adminToken = "";
 let judgeAvailable = false;

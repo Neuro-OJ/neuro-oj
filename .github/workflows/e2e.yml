@@ -273,7 +273,7 @@ jobs:
         working-directory: noj-tests
         env:
           E2E_BASE_URL: ${{ env.E2E_BASE_URL }}
-          E2E_LLM_MOCK_URL: http://llm-mock:8002/v1
+          E2E_LLM_MOCK_URL: http://172.17.0.1:8002/v1
         run: |
           # set -euo pipefail：任一 deno test 失败立即终止整个 job
           set -euo pipefail
