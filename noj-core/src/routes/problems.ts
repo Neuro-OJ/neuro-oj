@@ -458,7 +458,7 @@ router.get("/:id/questions", optionalAuthMiddleware, async (c) => {
     userRole,
     c,
   );
-  const data = await listPaperQuestions(paperId, includeAnswer);
+  const data = await listPaperQuestions(paper.id, includeAnswer);
   return c.json({ data });
 });
 

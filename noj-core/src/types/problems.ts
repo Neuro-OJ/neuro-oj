@@ -170,6 +170,8 @@ export interface ProblemResponseWithTags {
   number: number;
   /** 题目所有者 ID */
   owner_id: string;
+  /** 题目所有者用户名（详情/列表场景 JOIN users 返回；可能为"未知"） */
+  owner_username?: string;
   /** 题目类型：U / P */
   type: string;
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */

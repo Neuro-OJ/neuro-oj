@@ -182,10 +182,14 @@ export async function listProblems(
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-  // 查询列表（SQL 层完成全部过滤+分页）
-  const items = await db
-    .select()
+  // 查询列表（SQL 层完成全部过滤+分页；JOIN users 获取创建者用户名）
+  const rows = await db
+    .select({
+      problem: problems,
+      owner_username: users.username,
+    })
     .from(problems)
+    .leftJoin(users, eq(problems.owner_id, users.id))
     .where(whereClause)
     .orderBy(asc(problems.id))
     .limit(limit)
@@ -199,12 +203,13 @@ export async function listProblems(
   const total = Number(countResult[0]?.count ?? 0);
 
   // 注入关联标签（列表只返回题目标签，算法标签仅详情页出现）
-  const tagMap = await attachTags(items.map((p) => p.id), { kind: "problem" });
+  const tagMap = await attachTags(rows.map((r) => r.problem.id), { kind: "problem" });
 
   return {
-    items: items.map((p) => ({
-      ...toProblemResponse(p),
-      tags: tagMap.get(p.id) ?? [],
+    items: rows.map((r) => ({
+      ...toProblemResponse(r.problem),
+      owner_username: r.owner_username ?? "未知",
+      tags: tagMap.get(r.problem.id) ?? [],
     })),
     total,
     page,
@@ -342,8 +347,12 @@ export async function getProblem(
   const db = getDb();
 
   const existing = await db
-    .select()
+    .select({
+      problem: problems,
+      owner_username: users.username,
+    })
     .from(problems)
+    .leftJoin(users, eq(problems.owner_id, users.id))
     .where(eq(problems.id, id))
     .limit(1);
 
@@ -351,9 +360,11 @@ export async function getProblem(
     throw new NotFoundError("题目不存在");
   }
 
+  const row = existing[0];
   const tagMap = await attachTags([id]);
   return {
-    ...toProblemResponse(existing[0]),
+    ...toProblemResponse(row.problem),
+    owner_username: row.owner_username ?? "未知",
     tags: tagMap.get(id) ?? [],
     has_hidden_algorithm_tags: false,
   };
@@ -372,8 +383,12 @@ export async function getProblemByTypeAndNumber(
   const db = getDb();
 
   const existing = await db
-    .select()
+    .select({
+      problem: problems,
+      owner_username: users.username,
+    })
     .from(problems)
+    .leftJoin(users, eq(problems.owner_id, users.id))
     .where(
       and(
         eq(problems.type, type.toUpperCase()),
@@ -386,10 +401,12 @@ export async function getProblemByTypeAndNumber(
     throw new NotFoundError("题目不存在");
   }
 
-  const tagMap = await attachTags([existing[0].id]);
+  const row = existing[0];
+  const tagMap = await attachTags([row.problem.id]);
   return {
-    ...toProblemResponse(existing[0]),
-    tags: tagMap.get(existing[0].id) ?? [],
+    ...toProblemResponse(row.problem),
+    owner_username: row.owner_username ?? "未知",
+    tags: tagMap.get(row.problem.id) ?? [],
     has_hidden_algorithm_tags: false,
   };
 }
