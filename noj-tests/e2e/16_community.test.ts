@@ -199,7 +199,7 @@ e2eTest("[e2e/community] 发布、互动、治理、通知与软删除主流程"
 
     const report = await apiPost(
       "/api/v1/community/reports",
-      { post_id: postId, reason: "E2E 举报处置测试" },
+      { post_id: postId, reason: "E2E 举报处置测试", category: "垃圾信息" },
       responderToken,
     );
     if (report.status !== 201) throw new Error(`举报失败: ${report.status}`);
