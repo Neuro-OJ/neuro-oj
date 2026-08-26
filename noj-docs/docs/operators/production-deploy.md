@@ -64,6 +64,8 @@ bash scripts/deploy/deploy.sh install
 | `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID` | 独立 rootless Docker daemon 的 socket 与组 ID；禁止使用 `/var/run/docker.sock` |
 | `NOJ_LLM_SERVICE_TOKEN` | LLM Gateway 服务间鉴权 + eval_token 签发/校验密钥（≥16 字符）；compose 默认始终启动 `llm-gateway`，因此生产**必须填写** |
 | `NOJ_LLM_STORE_KEY` | LLM Gateway 加密 Provider API Key 的信封主密钥（≥16 字符）；compose 默认必填 |
+| `NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE` | 每个用户每 UTC 分钟的 LLM 调用上限；可选，默认 `60`，必须为正整数 |
+| `NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE` | 每个 IP 每 UTC 分钟的 LLM 调用上限；可选，默认 `60`，必须为正整数 |
 | `JUDGE_ALLOW_EVALUATOR_NETWORK` | 是否允许 evaluator 联网；使用 LLM 调用题时必须设为 `true` |
 | `JUDGE_EVALUATOR_NETWORK` | evaluator 联网时加入的 Docker 网络；生产必须指向 `llm-gateway` 所在网络，默认 `noj-net` |
 | `JUDGE_ALLOW_HTTP_S3` | 自建 MinIO 走内网 HTTP 时设为 `true`，允许 judge 通过 HTTP 下载支持包 |
@@ -130,6 +132,10 @@ ghcr.io/neuro-oj/noj-solution-python   all_versions  solution
 - `JUDGE_EVALUATOR_NETWORK` 必须指向 `llm-gateway` 所在网络（compose 中为 `noj-net`），
   否则 evaluator 容器无法解析 `http://llm-gateway:8001`。
 - 在管理后台「LLM Providers」配置上游 OpenAI 兼容服务；Provider Key 仅加密存储在数据库。
+
+用户和 IP 分钟限流分别由 `NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE` 与
+`NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE` 配置，缺失时均为每 UTC 分钟 60 次。
+配置必须是正整数，并在 `llm-gateway` 重启后生效；其它日/月调用量、Token 和费用配额不受影响。
 
 密钥轮换：
 
