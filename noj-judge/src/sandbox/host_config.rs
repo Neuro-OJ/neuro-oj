@@ -20,6 +20,17 @@ pub fn build_host_config_with_cpu(
     let nano_cpus = (normalized_cpu * 1_000_000) as i64;
 
     HostConfig {
+        // 评测容器不得获得任何宿主路径、设备或其他容器的挂载。
+        binds: None,
+        mounts: None,
+        volumes_from: None,
+        devices: None,
+        device_requests: None,
+        device_cgroup_rules: None,
+        cap_add: None,
+        pid_mode: None,
+        uts_mode: None,
+        userns_mode: None,
         cap_drop: Some(vec!["ALL".to_string()]),
         security_opt: Some(vec!["no-new-privileges:true".to_string()]),
         privileged: Some(false),
@@ -134,5 +145,22 @@ mod tests {
         let cfg_bridge =
             build_host_config_with_cpu(512 * 1024 * 1024, HashMap::new(), true, "bridge", 1000);
         assert_eq!(cfg_bridge.network_mode, Some("bridge".to_string()));
+    }
+
+    #[test]
+    fn test_host_boundary_fields_do_not_grant_host_access() {
+        let cfg = build_host_config_with_cpu(512 * 1024 * 1024, HashMap::new(), true, "none", 1000);
+
+        assert!(cfg.binds.is_none());
+        assert!(cfg.mounts.is_none());
+        assert!(cfg.volumes_from.is_none());
+        assert!(cfg.devices.is_none());
+        assert!(cfg.device_requests.is_none());
+        assert!(cfg.device_cgroup_rules.is_none());
+        assert!(cfg.cap_add.is_none());
+        assert!(cfg.pid_mode.is_none());
+        assert!(cfg.uts_mode.is_none());
+        assert!(cfg.userns_mode.is_none());
+        assert_eq!(cfg.privileged, Some(false));
     }
 }

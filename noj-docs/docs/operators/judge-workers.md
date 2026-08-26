@@ -22,6 +22,54 @@ Evaluator + Solution 双容器（用后即毁），并把结果写回 Redis。
 `1000m = 1 核`，有效范围为 `100m` 至 `16000m`。未设置或超出范围时回退到
 `1000m`，不会因为配置为 `0` 而变成不限制 CPU。
 
+## Docker daemon 权限边界
+
+`noj-judge` 需要调用 Docker API 创建评测容器。生产环境不得把应用宿主机的
+`/var/run/docker.sock` 直接挂载给 Worker；该 socket 等价于授予 Docker daemon
+控制权限，Worker 被攻破后可能影响宿主机上的其他服务。
+
+生产部署必须选择以下一种边界：
+
+1. 在独立 judge 主机上运行 Docker daemon；或
+2. 在应用主机上运行只服务于 judge 的 rootless Docker daemon，并使用独立 Unix
+   socket。
+
+生产 Compose 使用以下配置连接该 socket：
+
+```bash
+JUDGE_DOCKER_SOCKET=/run/noj-judge/docker.sock
+JUDGE_DOCKER_SOCKET_GID=10001
+JUDGE_DOCKER_HOST=unix:///run/noj-judge/docker.sock
+JUDGE_REQUIRE_ISOLATED_DOCKER=true
+```
+
+`JUDGE_DOCKER_SOCKET` 是宿主机上独立 daemon 的 socket 路径，不能填写应用宿主机
+的 `/var/run/docker.sock`。`JUDGE_DOCKER_SOCKET_GID` 必须匹配该 socket 的组权限，
+Compose 会以非 root 用户运行 Worker，并只挂载该 socket 和评测缓存。
+
+开启 `JUDGE_REQUIRE_ISOLATED_DOCKER=true` 后，Worker 会在启动阶段拒绝
+`/var/run/docker.sock` 与 `/run/docker.sock`，也会拒绝 `tcp://`、`http://` 等
+未实现安全认证的 endpoint；校验失败时不会开始消费评测队列。开发环境可以省略
+这两个变量，继续使用默认本地 daemon，但不应将该配置用于生产。
+
+部署前检查：
+
+```bash
+test "$JUDGE_DOCKER_HOST" = "unix:///run/noj-judge/docker.sock"
+test "$JUDGE_REQUIRE_ISOLATED_DOCKER" = "true"
+
+# 只应看到独立 daemon socket 和评测缓存，不得出现应用宿主机 socket、
+# /var/lib/docker、/etc 或其他宿主路径。
+docker compose --env-file .env.prod -f docker-compose.prod.yml config
+docker inspect "$(docker compose --env-file .env.prod -f docker-compose.prod.yml ps -q judge)" \
+  --format '{{json .Mounts}}'
+```
+
+首次发布时先启动一个 Worker，观察日志中的 Docker PING 成功信息，再执行一次
+无害的样例评测；确认结果正常后再扩容其他 Worker。升级时先停止 Worker，替换
+镜像并重复上述检查。若需回滚，恢复上一版本镜像和同一组 endpoint 配置，启动后
+确认带有本实例标签的孤儿容器已被清理；不要通过回滚重新挂载应用宿主机 socket。
+
 ## 双容器运行时
 
 默认 Python 题目使用两个镜像（生产环境从 ghcr.io 拉取）：

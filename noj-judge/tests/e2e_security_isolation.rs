@@ -1,8 +1,12 @@
 // Docker 安全隔离集成测试。
 //
 // 验证：NetworkMode=none 阻断网络、敏感路径不可访问。
+use std::collections::HashMap;
+
+use bollard::models::ContainerCreateBody;
 mod common;
 use common::{create_test_container, ensure_test_image, get_docker, wait_container};
+use noj_judge::sandbox::host_config::build_host_config_with_cpu;
 
 e2e_test!(
     #[ignore]
@@ -29,6 +33,81 @@ e2e_test!(
         // 网络请求应被阻断，退出码非 0
         assert_ne!(output.exit_code, 0, "网络隔离测试：请求应失败但退出了码 0");
         let _ = std::fs::remove_dir_all(&work_dir);
+    }
+);
+
+// 使用生产路径的 HostConfig 创建容器，避免测试辅助函数中的临时 /tmp bind
+// 掩盖评测容器不得挂载宿主路径这一安全约束。
+e2e_test!(
+    #[ignore]
+    test_evaluation_container_host_boundary,
+    async {
+        let docker = get_docker().expect("连接 Docker 失败");
+        ensure_test_image(&docker).await.expect("确保测试镜像失败");
+        let host_config =
+            build_host_config_with_cpu(256 * 1024 * 1024, HashMap::new(), true, "none", 1000);
+        let config = ContainerCreateBody {
+            image: Some("noj-judge-test-runner:latest".to_string()),
+            cmd: Some(vec![
+                "python3".to_string(),
+                "-c".to_string(),
+                "import os; paths=['/var/run/docker.sock','/host','/var/lib/docker']; [print(p) for p in paths if os.path.exists(p)]".to_string(),
+            ]),
+            host_config: Some(host_config),
+            ..Default::default()
+        };
+        let container = docker
+            .create_container(
+                Some(bollard::query_parameters::CreateContainerOptions {
+                    name: Some(format!("noj-security-{}", uuid::Uuid::new_v4())),
+                    platform: String::new(),
+                }),
+                config,
+            )
+            .await
+            .expect("创建安全隔离容器失败");
+
+        let inspected = docker
+            .inspect_container(
+                &container.id,
+                None::<bollard::query_parameters::InspectContainerOptions>,
+            )
+            .await
+            .expect("检查安全隔离容器失败");
+        let host_config = inspected.host_config.expect("容器缺少 HostConfig");
+        // Docker inspect 可能将未设置的 namespace 规范化为 Some("")；只要
+        // 不是 host 或 container:<id>，就不会共享宿主或其他容器的 namespace。
+        let no_host_access = host_config.binds.unwrap_or_default().is_empty()
+            && host_config.mounts.unwrap_or_default().is_empty()
+            && host_config.devices.unwrap_or_default().is_empty()
+            && host_config.cap_add.unwrap_or_default().is_empty()
+            && !host_config
+                .pid_mode
+                .as_deref()
+                .is_some_and(|mode| mode == "host" || mode.starts_with("container:"))
+            && !host_config
+                .uts_mode
+                .as_deref()
+                .is_some_and(|mode| mode == "host" || mode.starts_with("container:"))
+            && host_config.privileged == Some(false);
+
+        docker
+            .start_container(
+                &container.id,
+                None::<bollard::query_parameters::StartContainerOptions>,
+            )
+            .await
+            .expect("启动安全隔离容器失败");
+        let output = wait_container(&docker, &container.id, 10000)
+            .await
+            .expect("等待安全隔离容器失败");
+        assert!(no_host_access, "HostConfig 不得授予宿主或其他容器访问权限");
+        assert_eq!(output.exit_code, 0);
+        assert!(
+            output.stdout.trim().is_empty(),
+            "发现宿主机敏感路径: {}",
+            output.stdout
+        );
     }
 );
 

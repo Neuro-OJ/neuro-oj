@@ -35,6 +35,10 @@ pub struct Config {
     pub max_concurrent_judges: usize,
     /// 每个评测容器的 CPU 上限（单位：millicores，默认: 1000 = 1 核）
     pub cpu_limit_millicores: u64,
+    /// Docker daemon Unix endpoint（默认: unix:///var/run/docker.sock）
+    pub docker_host: String,
+    /// 是否拒绝连接默认宿主 Docker socket（生产环境应开启）
+    pub require_isolated_docker: bool,
 }
 
 /// 未配置或配置无效时的评测并发上限。
@@ -91,6 +95,9 @@ impl Config {
                     (MIN_CPU_LIMIT_MILLICORES..=MAX_CPU_LIMIT_MILLICORES).contains(value)
                 })
                 .unwrap_or(DEFAULT_CPU_LIMIT_MILLICORES),
+            docker_host: env_or("JUDGE_DOCKER_HOST", crate::docker::DEFAULT_DOCKER_HOST),
+            require_isolated_docker: env_var_parse::<bool>("JUDGE_REQUIRE_ISOLATED_DOCKER")
+                .unwrap_or(false),
         }
     }
 
@@ -170,6 +177,8 @@ mod tests {
             "WORK_DIR",
             "JUDGE_MAX_CONCURRENT_JUDGES",
             "JUDGE_CPU_LIMIT_MILLICORES",
+            "JUDGE_DOCKER_HOST",
+            "JUDGE_REQUIRE_ISOLATED_DOCKER",
         ] {
             std::env::remove_var(key);
         }
@@ -179,6 +188,8 @@ mod tests {
         assert_eq!(cfg.work_dir, "/tmp/noj-judge");
         assert_eq!(cfg.max_concurrent_judges, DEFAULT_MAX_CONCURRENT_JUDGES);
         assert_eq!(cfg.cpu_limit_millicores, DEFAULT_CPU_LIMIT_MILLICORES);
+        assert_eq!(cfg.docker_host, crate::docker::DEFAULT_DOCKER_HOST);
+        assert!(!cfg.require_isolated_docker);
     }
 
     #[test]
@@ -191,6 +202,8 @@ mod tests {
             ("WORK_DIR", "/custom/path"),
             ("JUDGE_MAX_CONCURRENT_JUDGES", "3"),
             ("JUDGE_CPU_LIMIT_MILLICORES", "2500"),
+            ("JUDGE_DOCKER_HOST", "unix:///run/noj-judge/docker.sock"),
+            ("JUDGE_REQUIRE_ISOLATED_DOCKER", "true"),
         ]);
         let cfg = Config::from_env();
         assert_eq!(cfg.redis_url, "redis://custom:6379");
@@ -199,6 +212,8 @@ mod tests {
         assert_eq!(cfg.work_dir, "/custom/path");
         assert_eq!(cfg.max_concurrent_judges, 3);
         assert_eq!(cfg.cpu_limit_millicores, 2500);
+        assert_eq!(cfg.docker_host, "unix:///run/noj-judge/docker.sock");
+        assert!(cfg.require_isolated_docker);
     }
 
     #[test]
