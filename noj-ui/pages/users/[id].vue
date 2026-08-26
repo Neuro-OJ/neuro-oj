@@ -3,7 +3,6 @@ import { useRoute } from "vue-router"
 import { useMessages } from "~/composables/useMessages"
 import { useToast } from "~/composables/useToast"
 import { difficultyBadgeColors, difficultyLabels, formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
-import { buildMonthCalendar } from "~/utils/checkinCalendar"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
 
 const route = useRoute()
@@ -91,23 +90,27 @@ const {
   pending: checkinHistoryPending,
   refresh: refreshCheckinHistory,
 } = useFetch<{ data: CheckinHistoryData }>(
-  `/api/v1/checkin/history?days=30&user_id=${userId}`,
+  `/api/v1/checkin/history?days=365&user_id=${userId}`,
 )
 
 const checkinLoading = computed(() => checkinPending.value || checkinHistoryPending.value)
 const checkinFailed = computed(() => !!checkinError.value || !!checkinHistoryError.value)
+// useFetch 返回 { data: CheckinStatsData }，解包出统计对象
+const checkinStatsData = computed(() => checkinStats.value?.data ?? null)
 
 async function retryCheckin() {
   await Promise.all([refreshCheckinStats(), refreshCheckinHistory()])
 }
 
-// 本月 UTC 日历：已签到日期高亮，今日描边
-const monthCalendar = computed(() =>
-  buildMonthCalendar(
-    checkinHistory.value?.data?.days ?? [],
-    new Date().toISOString().slice(0, 10),
-  ),
-)
+// GitHub 风格贡献图：起始日固定为一年前，保证至少展示一整年（对齐到所在周的周日）
+const todayStr = new Date().toISOString().slice(0, 10)
+const contributionStart = computed(() => {
+  const start = new Date(Date.now() - 364 * 86400_000)
+  const dow = start.getUTCDay()
+  if (dow !== 0) start.setUTCDate(start.getUTCDate() - dow)
+  return start.toISOString().slice(0, 10)
+})
+const contributionDays = computed(() => checkinHistory.value?.data?.days ?? [])
 
 const following = ref(false)
 
@@ -241,20 +244,27 @@ async function toggleFollow() {
       </div>
 
       <!-- 统计卡片 -->
-      <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <!-- 通过 / 总提交（合并，通过数字更大且为绿色） -->
         <div class="bg-white border border-border rounded-xl px-5 py-4 flex flex-col gap-1">
-          <span class="text-xs text-text-muted font-medium uppercase tracking-wide">总提交</span>
-          <span class="text-2xl font-bold text-text">{{ profile.stats.total_submissions }}</span>
+          <span class="text-xs text-text-muted font-medium uppercase tracking-wide">通过 / 提交</span>
+          <p class="flex items-baseline gap-1.5">
+            <span class="text-3xl font-bold text-green-600">{{ profile.stats.accepted }}</span>
+            <span class="text-lg font-semibold text-text-muted">/ {{ profile.stats.total_submissions }}</span>
+          </p>
         </div>
-        <div class="bg-white border border-border rounded-xl px-5 py-4 flex flex-col gap-1">
-          <span class="text-xs text-text-muted font-medium uppercase tracking-wide">通过</span>
-          <span class="text-2xl font-bold text-green-600">{{ profile.stats.accepted }}</span>
-        </div>
-        <div class="bg-white border border-border rounded-xl px-5 py-4 flex flex-col gap-1">
+        <!-- 通过率（蓝色渐变填充背景，随百分比变化） -->
+        <div class="bg-white border border-border rounded-xl px-5 py-4 flex flex-col gap-1 overflow-hidden">
           <span class="text-xs text-text-muted font-medium uppercase tracking-wide">通过率</span>
           <span class="text-2xl font-bold text-text">
             {{ (profile.stats.acceptance_rate * 100).toFixed(1) }}%
           </span>
+          <div class="mt-1 h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+            <div
+              class="h-full rounded-full bg-blue-500 transition-all duration-500"
+              :style="{ width: `${Math.min(100, Math.max(0, profile.stats.acceptance_rate * 100))}%` }"
+            ></div>
+          </div>
         </div>
         <div class="bg-white border border-border rounded-xl px-5 py-4 flex flex-col gap-1">
           <span class="text-xs text-text-muted font-medium uppercase tracking-wide">解题数</span>
@@ -275,11 +285,23 @@ async function toggleFollow() {
         </div>
       </div>
 
-      <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div class="rounded-xl border border-border bg-white px-5 py-4"><span class="text-xs text-text-muted">关注</span><p class="mt-1 text-xl font-bold text-text">{{ profile.community_stats.following_count }}</p></div>
-        <div class="rounded-xl border border-border bg-white px-5 py-4"><span class="text-xs text-text-muted">粉丝</span><p class="mt-1 text-xl font-bold text-text">{{ profile.community_stats.follower_count }}</p></div>
-        <div class="rounded-xl border border-border bg-white px-5 py-4"><span class="text-xs text-text-muted">题解</span><p class="mt-1 text-xl font-bold text-text">{{ profile.community_stats.solution_count }}</p></div>
-        <div class="rounded-xl border border-border bg-white px-5 py-4"><span class="text-xs text-text-muted">动态</span><p class="mt-1 text-xl font-bold text-text">{{ profile.community_stats.moment_count }}</p></div>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <!-- 社交：关注 + 粉丝 -->
+        <div class="rounded-xl border border-border bg-white px-5 py-4">
+          <h3 class="text-sm font-semibold text-text">社交</h3>
+          <div class="mt-3 flex items-center gap-8">
+            <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">关注</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.following_count }}</p></div>
+            <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">粉丝</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.follower_count }}</p></div>
+          </div>
+        </div>
+        <!-- 我的创作：题解 + 动态 -->
+        <div class="rounded-xl border border-border bg-white px-5 py-4">
+          <h3 class="text-sm font-semibold text-text">我的创作</h3>
+          <div class="mt-3 flex items-center gap-8">
+            <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">题解</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.solution_count }}</p></div>
+            <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">动态</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.moment_count }}</p></div>
+          </div>
+        </div>
       </div>
 
       <!-- 活跃度（issue #184）：连续天数 + 累计 + 本月签到日历 -->
@@ -295,20 +317,44 @@ async function toggleFollow() {
           </UButton>
         </div>
 
-        <div v-else-if="!checkinStats" class="mt-3 text-sm text-text-muted">
+        <div v-else-if="!checkinStatsData" class="mt-3 text-sm text-text-muted">
           暂无签到数据
         </div>
 
         <template v-else>
-          <div class="mt-3 grid grid-cols-3 gap-3">
-            <div class="rounded-lg bg-bg-page px-4 py-3 text-center"><span class="block text-xs text-text-muted">当前连续</span><p class="mt-1 text-xl font-bold text-primary">{{ checkinStats.current_streak }}<span class="text-xs font-normal text-text-muted"> 天</span></p></div>
-            <div class="rounded-lg bg-bg-page px-4 py-3 text-center"><span class="block text-xs text-text-muted">累计签到</span><p class="mt-1 text-xl font-bold text-text">{{ checkinStats.total_days }}<span class="text-xs font-normal text-text-muted"> 天</span></p></div>
-            <div class="rounded-lg bg-bg-page px-4 py-3 text-center"><span class="block text-xs text-text-muted">本月签到</span><p class="mt-1 text-xl font-bold text-text">{{ checkinStats.month_days }}<span class="text-xs font-normal text-text-muted"> 天</span></p></div>
-          </div>
-          <div class="mt-4">
-            <div class="mb-2 flex items-center justify-between text-xs text-text-muted"><span>本月签到日历（UTC）</span><span class="font-medium text-primary">最长连续 {{ checkinStats.max_streak }} 天</span></div>
-            <div class="grid grid-cols-7 gap-1.5">
-              <div v-for="cell in monthCalendar" :key="cell.date" class="flex aspect-square items-center justify-center rounded-md text-xs" :class="cell.checked ? 'bg-primary font-semibold text-white' : cell.isToday ? 'border border-primary text-primary' : 'bg-bg-page text-text-muted'">{{ cell.day }}</div>
+          <div class="mt-3 flex flex-col gap-5 lg:flex-row lg:items-stretch">
+            <!-- 数据卡片（竖屏在上，横屏在左；两卡各占 (日历高-间距)/2，与右侧日历等高） -->
+            <div class="flex shrink-0 flex-col self-stretch gap-3 lg:w-72">
+              <!-- 卡片 1：当前连续 | 最长连续 -->
+              <div class="grid min-h-0 flex-1 grid-cols-2 divide-x divide-border rounded-lg border border-border bg-white">
+                <div class="flex flex-col gap-1 px-4 py-3 text-center">
+                  <span class="text-xs text-text-muted">当前连续</span>
+                  <p class="text-xl font-bold text-primary">{{ checkinStatsData.current_streak }}<span class="text-xs font-normal text-text-muted"> 天</span></p>
+                </div>
+                <div class="flex flex-col gap-1 px-4 py-3 text-center">
+                  <span class="text-xs text-text-muted">最长连续</span>
+                  <p class="text-xl font-bold text-text">{{ checkinStatsData.max_streak }}<span class="text-xs font-normal text-text-muted"> 天</span></p>
+                </div>
+              </div>
+              <!-- 卡片 2：本月签到 + 累计签到 -->
+              <div class="grid min-h-0 flex-1 grid-cols-2 divide-x divide-border rounded-lg border border-border bg-white">
+                <div class="flex flex-col gap-1 px-4 py-3 text-center">
+                  <span class="text-xs text-text-muted">本月签到</span>
+                  <p class="text-xl font-bold text-text">{{ checkinStatsData.month_days }}<span class="text-xs font-normal text-text-muted"> 天</span></p>
+                </div>
+                <div class="flex flex-col gap-1 px-4 py-3 text-center">
+                  <span class="text-xs text-text-muted">累计签到</span>
+                  <p class="text-xl font-bold text-text">{{ checkinStatsData.total_days }}<span class="text-xs font-normal text-text-muted"> 天</span></p>
+                </div>
+              </div>
+            </div>
+            <!-- 贡献图（横屏时在右侧，与左侧两卡片组合等高） -->
+            <div class="flex min-w-0 flex-1 items-center rounded-lg border border-border bg-white p-4">
+              <CheckinContributionGraph
+                :days="contributionDays"
+                :start-date="contributionStart"
+                :today="todayStr"
+              />
             </div>
           </div>
         </template>
