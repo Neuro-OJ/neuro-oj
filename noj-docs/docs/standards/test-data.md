@@ -64,3 +64,48 @@ LMCC 官方标准区分可见与不可见测试数据。Neuro OJ 采用更严格
 - 可见用例可以展示输入、期望和实际输出。
 - 隐藏用例默认只展示用例 ID、通过状态和错误类型。
 - **不要把完整隐藏输入和标准答案直接放进面向用户的 `details`**。
+
+## 测试点结果详情（details.cases）
+
+为了让提交详情页统一展示测试点明细，新评测器建议在最终结果的 `details` 中输出扁平的 `cases` 数组。每个测试点至少包含 `case_id` 和 `status`，推荐字段如下：
+
+| 字段 | 说明 |
+|------|------|
+| `case_id` | 稳定用例 ID，与测试数据中的 `id` 对应 |
+| `status` | 该用例状态，如 `Accepted` / `WrongAnswer` / `RuntimeError` / `TimeLimitExceeded` |
+| `visibility` | `visible` 或 `hidden`；省略时按 `visible` 处理 |
+| `time_ms` | 可选，该用例耗时（毫秒） |
+| `memory_kb` | 可选，该用例内存（KB） |
+| `input` | 仅可见用例可包含 |
+| `expected_output` | 仅可见用例可包含 |
+| `actual_output` | 仅可见用例可包含 |
+
+示例：
+
+```json
+{
+  "cases": [
+    {
+      "case_id": "v001",
+      "status": "Accepted",
+      "visibility": "visible",
+      "time_ms": 12,
+      "expected_output": "3",
+      "actual_output": "3"
+    },
+    {
+      "case_id": "h001",
+      "status": "WrongAnswer",
+      "visibility": "hidden",
+      "time_ms": 15
+    }
+  ]
+}
+```
+
+约定：
+
+- **隐藏用例**可以展示 `case_id`、`status`、`visibility`、`time_ms`、`memory_kb`，但 MUST NOT 写入 `input`、`expected_output`、`actual_output`。
+- **可见用例**可以展示输入、期望输出和实际输出，用于做题人调试。
+- 历史格式 `visible.cases` / `hidden.cases` 以及旧字段 `id` / `expected` / `actual` 仍会被提交结果页兼容，但新评测器应使用上述标准字段。
+- 更完整的协议说明见 [Evaluator SDK](../mechanisms/evaluator-sdk.md)。
