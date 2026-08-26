@@ -4,8 +4,14 @@ import {
   loginUser,
   registerUser,
 } from "../../src/services/auth.ts";
-import { resetDbForTest } from "../../src/db/connection.ts";
+import {
+  disableTestTransactionForFile,
+  resetDbForTest,
+} from "../../src/db/connection.ts";
 import { ConflictError, UnauthorizedError } from "../../src/lib/errors.ts";
+
+// 并发注册用例依赖真实并发与唯一约束竞争，事务回滚隔离会改变语义，故关闭
+disableTestTransactionForFile();
 
 // PGlite 内存数据库始终可用
 const dbAvailable = true;

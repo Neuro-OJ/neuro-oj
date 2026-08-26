@@ -1,6 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+
 import {
   evaluationResults,
   problems,
@@ -46,106 +47,99 @@ const runtimeConfig = {
   },
 };
 
-Deno.test({
-  name: "mq/consumer self-test: 初始化数据",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const db = getDb();
-    await db.insert(users).values({
-      id: USER_ID,
-      username: `tstcst-${ts}`,
-      email: `tstcst-${ts}@test.noj`,
-      password_hash: "hash",
-      created_at: now,
-      updated_at: now,
-    });
-    await db.insert(problems).values([
-      {
-        id: PROBLEM_ID,
-        title: "消费者自测题",
-        description: "test",
-        difficulty: "easy",
-        runtime_config: runtimeConfig,
-        number: 95000 + (ts % 10000),
-        owner_id: USER_ID,
-        type: "P",
-        created_at: now,
-        updated_at: now,
-      },
-      {
-        id: BAD_PROBLEM_ID,
-        title: "缺少 runtime_config 的题",
-        description: "test",
-        difficulty: "easy",
-        runtime_config: null,
-        number: 96000 + (ts % 10000),
-        owner_id: USER_ID,
-        type: "P",
-        created_at: now,
-        updated_at: now,
-      },
-    ]);
-    await db.insert(selfTests).values([
-      {
-        id: SELF_TEST_ID,
-        user_id: USER_ID,
-        problem_id: PROBLEM_ID,
-        language: "python3",
-        code: "print('hi')",
-        status: "judging",
-        created_at: now,
-      },
-      {
-        id: PENDING_SELF_TEST_ID,
-        user_id: USER_ID,
-        problem_id: BAD_PROBLEM_ID,
-        language: "python3",
-        code: "print('bad')",
-        status: "pending",
-        created_at: oldNow,
-      },
-      {
-        id: RECOVERABLE_SELF_TEST_ID,
-        user_id: USER_ID,
-        problem_id: PROBLEM_ID,
-        language: "python3",
-        code: "print('recover')",
-        status: "pending",
-        judge_started_at: oldNow,
-        created_at: oldNow,
-      },
-    ]);
-    await db.insert(submissions).values({
-      id: SUBMISSION_ID,
-      user_id: USER_ID,
-      problem_id: PROBLEM_ID,
-      status: "judging",
-      language: "python3",
-      code: "print('hi')",
-      created_at: now,
-    });
-    await db.insert(submissions).values({
-      id: RECOVERABLE_SUBMISSION_ID,
-      user_id: USER_ID,
-      problem_id: PROBLEM_ID,
-      status: "pending",
-      language: "python3",
-      code: "print('recover')",
-      created_at: oldNow,
-    });
-    await db.insert(submissions).values({
-      id: INVALID_SUBMISSION_ID,
-      user_id: USER_ID,
-      problem_id: BAD_PROBLEM_ID,
-      status: "pending",
-      language: "python3",
-      code: "print('invalid')",
-      created_at: oldNow,
-    });
+// 模块级 setup：事务外初始化共享数据
+await resetDbForTest();
+const db = getDb();
+await db.insert(users).values({
+  id: USER_ID,
+  username: `tstcst-${ts}`,
+  email: `tstcst-${ts}@test.noj`,
+  password_hash: "hash",
+  created_at: now,
+  updated_at: now,
+});
+await db.insert(problems).values([
+  {
+    id: PROBLEM_ID,
+    title: "消费者自测题",
+    description: "test",
+    difficulty: "easy",
+    runtime_config: runtimeConfig,
+    number: 95000 + (ts % 10000),
+    owner_id: USER_ID,
+    type: "P",
+    created_at: now,
+    updated_at: now,
   },
+  {
+    id: BAD_PROBLEM_ID,
+    title: "缺少 runtime_config 的题",
+    description: "test",
+    difficulty: "easy",
+    runtime_config: null,
+    number: 96000 + (ts % 10000),
+    owner_id: USER_ID,
+    type: "P",
+    created_at: now,
+    updated_at: now,
+  },
+]);
+await db.insert(selfTests).values([
+  {
+    id: SELF_TEST_ID,
+    user_id: USER_ID,
+    problem_id: PROBLEM_ID,
+    language: "python3",
+    code: "print('hi')",
+    status: "judging",
+    created_at: now,
+  },
+  {
+    id: PENDING_SELF_TEST_ID,
+    user_id: USER_ID,
+    problem_id: BAD_PROBLEM_ID,
+    language: "python3",
+    code: "print('bad')",
+    status: "pending",
+    created_at: oldNow,
+  },
+  {
+    id: RECOVERABLE_SELF_TEST_ID,
+    user_id: USER_ID,
+    problem_id: PROBLEM_ID,
+    language: "python3",
+    code: "print('recover')",
+    status: "pending",
+    judge_started_at: oldNow,
+    created_at: oldNow,
+  },
+]);
+await db.insert(submissions).values({
+  id: SUBMISSION_ID,
+  user_id: USER_ID,
+  problem_id: PROBLEM_ID,
+  status: "judging",
+  language: "python3",
+  code: "print('hi')",
+  created_at: now,
+});
+await db.insert(submissions).values({
+  id: RECOVERABLE_SUBMISSION_ID,
+  user_id: USER_ID,
+  problem_id: PROBLEM_ID,
+  status: "pending",
+  language: "python3",
+  code: "print('recover')",
+  created_at: oldNow,
+});
+await db.insert(submissions).values({
+  id: INVALID_SUBMISSION_ID,
+  user_id: USER_ID,
+  problem_id: BAD_PROBLEM_ID,
+  status: "pending",
+  language: "python3",
+  code: "print('invalid')",
+  created_at: oldNow,
 });
 
 Deno.test({
@@ -213,6 +207,17 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
+    // 先产生一个终态 Accepted（本用例独立完成，不依赖上一个用例）
+    await handleResultMessage({
+      submission_id: SELF_TEST_ID,
+      status: "Accepted",
+      score: 10000,
+      output: "---RESULT---\n{}",
+      details: { cases: [] },
+      time_ms: 12,
+      memory_kb: 1024,
+    });
+    // 再发送重复终态，应被幂等忽略
     await handleResultMessage({
       submission_id: SELF_TEST_ID,
       status: "WrongAnswer",

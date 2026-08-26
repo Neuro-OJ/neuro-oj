@@ -8,7 +8,7 @@
  * 此文件为显式引导入口（用于 00_migrate_test.ts 等需要明确可见 bootstrap 的场景）。
  */
 
-import { getDb } from "../src/db/connection.ts";
+import { ensurePGliteSchemaForTest } from "../src/db/connection.ts";
 
 /**
  * 判断当前是否为 PGlite 模式（DATABASE_URL 未设置）。
@@ -20,7 +20,8 @@ function isPGliteMode(): boolean {
 /**
  * 执行 DDL 建表，并插入必需种子数据。
  *
- * PGlite 模式下：执行所有 DDL + 索引 + root 用户 + judge_images 种子。
+ * PGlite 模式下：优先从模板加载 schema，模板缺失时回退到 DDL 引导；
+ * 种子数据由 `ensurePGliteSchemaForTest()` 统一处理。
  * postgres.js 模式下：no-op（由 00_migrate_test.ts 使用文件迁移）。
  *
  * 幂等——使用 IF NOT EXISTS / ON CONFLICT DO NOTHING。
@@ -28,43 +29,5 @@ function isPGliteMode(): boolean {
 export async function setupSchemaForTest(): Promise<void> {
   if (!isPGliteMode()) return;
 
-  const db = getDb();
-
-  const { SCHEMA_DDL, SCHEMA_INDEXES } = await import(
-    "../src/db/schema-ddl.ts"
-  );
-
-  for (const ddl of SCHEMA_DDL) {
-    await db.execute(ddl);
-  }
-  for (const idx of SCHEMA_INDEXES) {
-    await db.execute(idx);
-  }
-
-  // 种子数据
-  const now = new Date().toISOString();
-  await db.execute(
-    `INSERT INTO users (id, username, email, password_hash, role, bio, created_at, updated_at)
-     VALUES ('0', 'root', 'root@noj.local', '', 'admin', '', '${now}', '${now}')
-     ON CONFLICT (id) DO NOTHING`,
-  );
-  await db.execute(
-    `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
-     VALUES ('e0000000-0000-0000-0000-000000000001', 'noj-judge-python', 'all_versions', 'evaluator', 'Python 3.12 评测环境', '${now}', '${now}')
-     ON CONFLICT (id) DO NOTHING`,
-  );
-  await db.execute(
-    `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
-     VALUES ('e0000000-0000-0000-0000-000000000002', 'noj-evaluator-python', 'all_versions', 'evaluator', 'Evaluator 运行时', '${now}', '${now}')
-     ON CONFLICT (id) DO NOTHING`,
-  );
-  await db.execute(
-    `INSERT INTO judge_images (id, image, mode, kind, description, created_at, updated_at)
-     VALUES ('e0000000-0000-0000-0000-000000000003', 'noj-solution-python', 'all_versions', 'solution', 'Solution 运行时', '${now}', '${now}')
-     ON CONFLICT (id) DO NOTHING`,
-  );
-
-  // 种子 RBAC 数据
-  const { ensureRbacSeeds } = await import("../src/services/seed/seed-rbac.ts");
-  await ensureRbacSeeds();
+  await ensurePGliteSchemaForTest();
 }

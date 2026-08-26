@@ -9,6 +9,7 @@ import {
   updateSubmissionStatus,
 } from "../../src/services/submissions/submissions.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+
 import {
   auditLogs,
   contests,
@@ -206,49 +207,42 @@ const TEST_PROBLEM_ID = `tst-pr-${ts}`;
 const TEST_USER_ID = `tst-user-${ts}`;
 const TEST_NUMBER = 50000 + (ts & 0x7fff);
 
-Deno.test({
-  name: "submissions service: 初始化测试题目和用户",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const db = getDb();
-    const now = new Date().toISOString();
-    await db.insert(users).values({
-      id: TEST_USER_ID,
-      username: `tstuser-${ts}`,
-      email: `tst-${ts}@test.noj`,
-      password_hash: "hash",
-      created_at: now,
-      updated_at: now,
-    });
-    await db.insert(problems).values({
-      id: TEST_PROBLEM_ID,
-      title: `测试题目 ${ts}`,
-      description: "测试描述",
-      difficulty: "easy",
-      runtime_config: {
-        evaluator: {
-          image: "noj-evaluator-python",
-          command: "python3 /workspace/evaluate.py",
-          time_limit_ms: 5000,
-          memory_limit_mb: 512,
-        },
+// 模块级 setup：事务外初始化共享测试题目和用户
+await resetDbForTest();
+const db = getDb();
+const now = new Date().toISOString();
+await db.insert(users).values({
+  id: TEST_USER_ID,
+  username: `tstuser-${ts}`,
+  email: `tst-${ts}@test.noj`,
+  password_hash: "hash",
+  created_at: now,
+  updated_at: now,
+});
+await db.insert(problems).values({
+  id: TEST_PROBLEM_ID,
+  title: `测试题目 ${ts}`,
+  description: "测试描述",
+  difficulty: "easy",
+  runtime_config: {
+    evaluator: {
+      image: "noj-evaluator-python",
+      command: "python3 /workspace/evaluate.py",
+      time_limit_ms: 5000,
+      memory_limit_mb: 512,
+    },
 
-        solution: {
-          image: "noj-solution-python",
-          call_timeout_ms: 2000,
-          memory_limit_mb: 512,
-        },
-      },
-      number: TEST_NUMBER,
-      owner_id: TEST_USER_ID,
-      type: "P",
-      created_at: now,
-      updated_at: now,
-    });
+    solution: {
+      image: "noj-solution-python",
+      call_timeout_ms: 2000,
+      memory_limit_mb: 512,
+    },
   },
+  number: TEST_NUMBER,
+  owner_id: TEST_USER_ID,
+  type: "P",
+  created_at: now,
+  updated_at: now,
 });
 
 Deno.test({

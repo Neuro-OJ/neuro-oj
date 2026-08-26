@@ -36,7 +36,7 @@ Deno.test({
   ignore: !JWT_SECRET,
   fn: async () => {
     const res = await app.request("/api/v1/submissions/stats/events", {
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(500),
     });
     // SSE 端点应返回 200（事件流在 AbortSignal 触发时关闭）
     assertEquals(res.status, 200);
@@ -50,7 +50,7 @@ Deno.test({
   ignore: !JWT_SECRET,
   fn: async () => {
     const res = await app.request("/api/v1/submissions/invalid-id/events", {
-      signal: AbortSignal.timeout(1000),
+      signal: AbortSignal.timeout(200),
     });
     // 未认证应返回 401，不会创建 SSE 流
     assertEquals(res.status, 401);
@@ -67,7 +67,7 @@ Deno.test({
         headers: {
           Authorization: "Bearer eyJhbGciOiJIUzI1NiJ9.dGVzdA.test",
         },
-        signal: AbortSignal.timeout(1000),
+        signal: AbortSignal.timeout(200),
       },
     );
     // 带 token 但 id 不存在 → 应由 getSubmission 返回 404
@@ -143,7 +143,7 @@ Deno.test({
         `/api/v1/submissions/${submissionId}/events`,
         {
           headers: { Authorization: `Bearer ${token}` },
-          signal: AbortSignal.timeout(3000),
+          signal: AbortSignal.timeout(500),
         },
       );
       assertEquals(res.status, 200);
@@ -164,7 +164,7 @@ Deno.test({
   ignore: !JWT_SECRET,
   fn: async () => {
     const res = await app.request("/api/v1/queue/events", {
-      signal: AbortSignal.timeout(1000),
+      signal: AbortSignal.timeout(200),
     });
     assertEquals(res.status, 401);
   },

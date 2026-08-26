@@ -15,17 +15,17 @@
     "check:env": "deno run -A scripts/check-env.ts",
     "check:env:strict": "deno run -A scripts/check-env.ts --strict",
     "check:prod": "deno run -A scripts/check-env.ts --strict --production --file ../.env.prod",
-    "test": "env -u DATABASE_URL deno test -A --no-check",
+    "test": "deno run -A scripts/prepare-pglite-template.ts && BCRYPT_SALT_ROUNDS=4 env -u DATABASE_URL deno test -A --no-check --preload=tests/preload.ts",
     "test:smoke": "deno test -A --no-check tests/smoke.test.ts",
-    "test:watch": "deno test -A --no-check --watch",
-    "test:parallel": "deno run -A --env-file=.env scripts/test-parallel.ts",
+    "test:watch": "BCRYPT_SALT_ROUNDS=4 deno test -A --no-check --preload=tests/preload.ts --watch",
+    "test:parallel": "BCRYPT_SALT_ROUNDS=4 deno run -A --env-file=.env scripts/test-parallel.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
     "lint:fix": "deno lint --fix",
     "check": "deno fmt --check && deno lint && deno task check:types",
     "check:types": "find src -name '*.ts' -print0 | xargs -0 deno check",
-    "test:pg": "deno test -A --no-check"
+    "test:pg": "BCRYPT_SALT_ROUNDS=4 deno test -A --no-check --preload=tests/preload.ts"
   },
   "imports": {
     "@cliffy/command": "jsr:@cliffy/command@^1.2.1",

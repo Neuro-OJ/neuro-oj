@@ -14,25 +14,18 @@ const skip = !hasRealPg;
 const ts = Date.now();
 const TEST_USER_ID = `tst-u-${ts}`;
 
-Deno.test({
-  name: "users service: 创建测试用户",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const db = getDb();
-    const now = new Date().toISOString();
-    await db.insert(users).values({
-      id: TEST_USER_ID,
-      username: `tstusr-${ts}`,
-      email: `tstusr-${ts}@test.noj`,
-      password_hash: "hash",
-      bio: "",
-      created_at: now,
-      updated_at: now,
-    });
-  },
+// 模块级 setup：事务外初始化共享测试用户
+await resetDbForTest();
+const db = getDb();
+const now = new Date().toISOString();
+await db.insert(users).values({
+  id: TEST_USER_ID,
+  username: `tstusr-${ts}`,
+  email: `tstusr-${ts}@test.noj`,
+  password_hash: "hash",
+  bio: "",
+  created_at: now,
+  updated_at: now,
 });
 
 Deno.test({

@@ -567,6 +567,10 @@ Retry-After: 25
 
 ## 测试约定
 
+- Agent 必须通过 `deno task` 运行测试，**优先 `deno task test:parallel`**；
+  零外部 PostgreSQL 时用 `deno task test`，快速反馈用 `deno task test:smoke`。
+  不要直接手拼 `deno test`（会丢失 BCRYPT_SALT_ROUNDS、PGlite 模板、preload
+  事务隔离等配置）。
 - DB 依赖测试检查 `!!Deno.env.get("DATABASE_URL")` 和
   `!!Deno.env.get("JWT_SECRET")`，缺失时设置 `ignore: true` 静默跳过
 - 使用 `sanitizeResources: false, sanitizeOps: false`（postgres.js 连接池触发

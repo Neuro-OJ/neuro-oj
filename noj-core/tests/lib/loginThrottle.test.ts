@@ -33,7 +33,7 @@ async function ensureConnected() {
       if (attempt === 2) throw e;
       if (String(e).includes("already connecting/connected")) return;
       // 重试前等待一小段时间（避免 parallel 模式下的连接竞争）
-      await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 10));
     }
   }
 }

@@ -1,6 +1,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+
 import {
   problems,
   selfTests,
@@ -41,51 +42,44 @@ const runtimeConfig = {
   },
 };
 
-Deno.test({
-  name: "self-tests service: 初始化测试数据",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const db = getDb();
-    await db.insert(users).values({
-      id: USER_ID,
-      username: `tstst-${ts}`,
-      email: `tstst-${ts}@test.noj`,
-      password_hash: "hash",
-      created_at: now,
-      updated_at: now,
-    });
-    await db.insert(problems).values([
-      {
-        id: PROBLEM_ID,
-        title: "自测测试题",
-        description: "测试描述",
-        difficulty: "easy",
-        runtime_config: runtimeConfig,
-        number: 70000 + (ts % 10000),
-        owner_id: USER_ID,
-        type: "P",
-        created_at: now,
-        updated_at: now,
-      },
-      {
-        id: OBJECTIVE_PROBLEM_ID,
-        title: "客观题套卷",
-        description: "客观题",
-        difficulty: "easy",
-        runtime_config: null,
-        is_objective: true,
-        number: 80000 + (ts % 10000),
-        owner_id: USER_ID,
-        type: "P",
-        created_at: now,
-        updated_at: now,
-      },
-    ]);
-  },
+// 模块级 setup：事务外初始化共享测试数据
+await resetDbForTest();
+const db = getDb();
+await db.insert(users).values({
+  id: USER_ID,
+  username: `tstst-${ts}`,
+  email: `tstst-${ts}@test.noj`,
+  password_hash: "hash",
+  created_at: now,
+  updated_at: now,
 });
+await db.insert(problems).values([
+  {
+    id: PROBLEM_ID,
+    title: "自测测试题",
+    description: "测试描述",
+    difficulty: "easy",
+    runtime_config: runtimeConfig,
+    number: 70000 + (ts % 10000),
+    owner_id: USER_ID,
+    type: "P",
+    created_at: now,
+    updated_at: now,
+  },
+  {
+    id: OBJECTIVE_PROBLEM_ID,
+    title: "客观题套卷",
+    description: "客观题",
+    difficulty: "easy",
+    runtime_config: null,
+    is_objective: true,
+    number: 80000 + (ts % 10000),
+    owner_id: USER_ID,
+    type: "P",
+    created_at: now,
+    updated_at: now,
+  },
+]);
 
 Deno.test({
   name: "self-tests service: 不支持的语言抛出 BadRequestError",

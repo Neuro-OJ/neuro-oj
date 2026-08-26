@@ -403,15 +403,6 @@ async function cleanupTestUser(id: string) {
   }
 }
 
-async function cleanupTestSubmission(id: string) {
-  try {
-    const db = getDb();
-    await db.delete(submissions).where(eq(submissions.id, id));
-  } catch {
-    // ignore
-  }
-}
-
 Deno.test({
   name: "admin route: PUT /api/v1/admin/users/:id 成功更新 bio",
   ignore: skip,
@@ -637,27 +628,22 @@ Deno.test({
       created_at: now,
     });
 
-    try {
-      const token = await createUserToken("admin");
-      const res = await jsonRequest(
-        app,
-        `/api/v1/admin/submissions/${submissionId}`,
-        { method: "DELETE", token },
-      );
-      assertEquals(res.status, 204);
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(
+      app,
+      `/api/v1/admin/submissions/${submissionId}`,
+      { method: "DELETE", token },
+    );
+    assertEquals(res.status, 204);
 
-      // 验证 DB 中已删除
-      const rows = await db
-        .select()
-        .from(submissions)
-        .where(eq(submissions.id, submissionId))
-        .limit(1);
-      assertEquals(rows.length, 0);
-    } finally {
-      await cleanupTestSubmission(submissionId);
-      await cleanupTestUser(userId);
-      await db.delete(problems).where(eq(problems.id, problemId));
-    }
+    // 验证 DB 中已删除
+    const rows = await db
+      .select()
+      .from(submissions)
+      .where(eq(submissions.id, submissionId))
+      .limit(1);
+    assertEquals(rows.length, 0);
+    // 事务回滚会自动清理本用例数据，无需手动 cleanup
   },
 });
 

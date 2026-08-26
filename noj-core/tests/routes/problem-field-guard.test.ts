@@ -14,6 +14,7 @@ import { and, eq } from "drizzle-orm";
 import { zipSync } from "fflate";
 import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+
 import {
   permissions,
   problems,
@@ -204,6 +205,21 @@ for (
     .onConflictDoNothing();
 }
 
+// 模块级预置收紧用户拥有的题目（供两个 PUT 用例复用）
+const FIELD_OWN_PROBLEM_ID = `field-own-${ts}`;
+await db.insert(problems).values({
+  id: FIELD_OWN_PROBLEM_ID,
+  title: "旧标题",
+  description: "旧题面",
+  difficulty: "medium",
+  runtime_config: VALID_RUNTIME_CONFIG,
+  number: 90000 + (ts % 5000),
+  owner_id: TIGHTENED_ID,
+  type: "U",
+  created_at: now,
+  updated_at: now,
+}).onConflictDoNothing();
+
 function makeToken(userId: string): Promise<string> {
   return signToken({ sub: userId, role: "user" });
 }
@@ -324,20 +340,8 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    // 预置收紧用户拥有的题目（不经过创建，避免触发权限）
-    const problemId = `field-own-${ts}`;
-    await db.insert(problems).values({
-      id: problemId,
-      title: "旧标题",
-      description: "旧题面",
-      difficulty: "medium",
-      runtime_config: VALID_RUNTIME_CONFIG,
-      number: 90000 + (ts % 5000),
-      owner_id: TIGHTENED_ID,
-      type: "U",
-      created_at: now,
-      updated_at: now,
-    }).onConflictDoNothing();
+    // 题目已在模块级 setup 中预置
+    const problemId = FIELD_OWN_PROBLEM_ID;
 
     const app = createApp();
     const token = await makeToken(TIGHTENED_ID);
@@ -361,7 +365,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const problemId = `field-own-${ts}`; // 复用上一用例的题目（owner=收紧用户）
+    const problemId = FIELD_OWN_PROBLEM_ID; // 复用模块级预置题目（owner=收紧用户）
     const app = createApp();
     const token = await makeToken(TIGHTENED_ID);
     const res = await app.request(`/api/v1/problems/${problemId}`, {
