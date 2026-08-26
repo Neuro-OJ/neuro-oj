@@ -2,6 +2,7 @@
 import { useRoute } from "vue-router"
 import hljs from "highlight.js"
 import "highlight.js/styles/github-dark.css"
+import SubmissionCaseResults from "~/components/submission/SubmissionCaseResults.vue"
 import { getLanguageLabel, formatScore, formatTime, formatMemory, statusBadgeColors, getResultDef, verdictClasses, formatDateTime } from "~/utils/submissionFormat"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
 
@@ -273,6 +274,10 @@ watch(
           </NuxtLink>
         </div>
       </div>
+      <SubmissionCaseResults
+        v-if="submission.status === 'finished' && submission.result"
+        :details="submission.result.details"
+      />
     </template>
   </div>
 </template>

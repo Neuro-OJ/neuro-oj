@@ -9,6 +9,7 @@ T0-LMCC 评测脚本：A+B Problem（双容器版）
 
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +45,12 @@ def call_solution(runner: SolutionRunner, input_str: str) -> str:
     return str(result)
 
 
-def eval_split(runner: SolutionRunner, split_name: str, data: list[dict]) -> dict[str, Any]:
+def eval_split(
+    runner: SolutionRunner,
+    split_name: str,
+    visibility: str,
+    data: list[dict],
+) -> dict[str, Any]:
     """评测一个数据集"""
     passed = 0
     total = len(data)
@@ -53,6 +59,8 @@ def eval_split(runner: SolutionRunner, split_name: str, data: list[dict]) -> dic
     case_results = []
 
     for item in data:
+        started_at = time.perf_counter()
+        case_status = "Accepted"
         try:
             output_line = call_solution(runner, item["input"])
         except SolutionTimeoutError:
@@ -61,10 +69,12 @@ def eval_split(runner: SolutionRunner, split_name: str, data: list[dict]) -> dic
         except Exception as e:
             output_line = ""
             runtime_error = True
+            case_status = "RuntimeError"
             print(f"  [!] Solution 调用异常: {e}")
 
         actual = output_line.strip().splitlines()[-1] if output_line.strip() else ""
         expected = str(item["expected"]).strip()
+        elapsed_ms = max(0, round((time.perf_counter() - started_at) * 1000))
 
         # 检查输出是否为有效整数
         is_valid = False
@@ -78,20 +88,31 @@ def eval_split(runner: SolutionRunner, split_name: str, data: list[dict]) -> dic
         content_ok = actual == expected
         if content_ok:
             passed += 1
+        elif case_status == "Accepted":
+            case_status = "WrongAnswer"
 
-        case_results.append({
-            "id": item["id"],
-            "input": item["input"],
-            "expected": expected,
-            "actual": actual,
-            "content_ok": content_ok,
-        })
+        case_result = {
+            "case_id": item["id"],
+            "status": case_status,
+            "visibility": visibility,
+            "time_ms": elapsed_ms,
+        }
+        if visibility == "visible":
+            case_result.update({
+                "input": item["input"],
+                "expected_output": expected,
+                "actual_output": actual,
+            })
+        case_results.append(case_result)
 
         status = "PASS" if content_ok else "FAIL"
         print(f"[{split_name}] {item['id']}: {status}")
-        print(f"  输入: {repr(item['input'])}")
-        print(f"  期望: {expected}")
-        print(f"  输出: {actual}")
+        if visibility == "visible":
+            print(f"  输入: {repr(item['input'])}")
+            print(f"  期望: {expected}")
+            print(f"  输出: {actual}")
+        else:
+            print("  隐藏测试点：不输出输入和结果详情")
 
     return {
         "passed": passed,
@@ -113,7 +134,7 @@ def main() -> None:
     print("T0-LMCC 评测开始：A+B Problem（双容器版）")
     print("=" * 48)
 
-    visible_stat = eval_split(runner, "VISIBLE", visible_data)
+    visible_stat = eval_split(runner, "VISIBLE", "visible", visible_data)
 
     if hidden_missing:
         print("\n⚠️ 隐藏数据未提供")
@@ -121,7 +142,7 @@ def main() -> None:
             "passed": 0, "total": 0, "all_valid_int": True, "cases": [],
         }
     else:
-        hidden_stat = eval_split(runner, "HIDDEN", hidden_data)
+        hidden_stat = eval_split(runner, "HIDDEN", "hidden", hidden_data)
 
     total_passed = visible_stat["passed"] + hidden_stat["passed"]
     total_cases = visible_stat["total"] + hidden_stat["total"]
@@ -152,6 +173,7 @@ def main() -> None:
         "details": {
             "score_content": round(score_content, 2),
             "score_format": round(score_format, 2),
+            "cases": visible_stat["cases"] + hidden_stat["cases"],
             "visible": visible_stat,
             "hidden": hidden_stat,
             "hidden_provided": not hidden_missing,
