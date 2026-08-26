@@ -412,28 +412,28 @@ docker compose down     # 停止
 
 ## 服务层业务规则
 
-| 规则                 | 说明                                                                                                                                |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 提交状态机           | `pending → [judging, error]` → `judging → [finished, error]`，finished/error 为终态                                                 |
-| 输出截断             | API 返回时截断至 8KB（`MAX_OUTPUT_LENGTH`），数据库保留完整内容                                                                     |
-| 代码大小上限         | 100KB（`MAX_CODE_LENGTH`），路由层校验                                                                                              |
-| 个人简介上限         | 5000 字符                                                                                                                           |
-| 支持包读取失败       | 非致命：日志记录后继续（无支持包），由 judge 端处理                                                                                 |
-| 题目更新             | 静默忽略 `type` 和 `number` 字段（API 接受但不处理）                                                                                |
-| 题目编号冲突         | 自动分配时重试 3 次（PG 23505），手动指定时立即报错                                                                                 |
-| 评测结果写入         | UPSERT 语义（`onConflictDoUpdate`），用最新结果覆盖旧数据；配合 `rejudge_seq` 防护乱序覆盖                                          |
-| 队列位置查询         | 即使 DB 状态为 "judging" 也检查 Redis 队列（状态在入队时已更新）                                                                    |
-| 问题列表默认         | 默认只显示 `type='P'` 的题目，U 类型需直接 URL 或所有者主页访问                                                                     |
-| 分页默认值           | page=1, per_page=20, max per_page=100                                                                                               |
-| 用户枚举防护         | 登录失败统一返回"用户名或密码错误"，不区分"用户不存在"和"密码错误"                                                                  |
-| Root 用户            | UID="0"，admin 角色，随机密码不可登录，不计入管理员统计，不出现在用户列表                                                           |
-| 密码重置邮箱枚举防护 | `POST /forgot-password` 不管邮箱是否存在都返 200 + 同一消息（与登录失败防枚举共存）                                                 |
-| 密码重置令牌         | DB 存 SHA-256 hex 哈希（**不存明文**），URL 传明文 base64url；32 字节随机数                                                         |
-| 密码重置 TTL         | 15 分钟（OWASP 2025+ 建议 ≤ 15 分钟），单 SQL 原子消耗防并发                                                                        |
-| 密码重置邮件         | 策略模式：`EMAIL_PROVIDER` 选择 mock（默认）/ aliyun / tencent；mock 为控制台输出；真实 Provider 在发送前校验环境变量完整性         |
-| 引导管理员           | 无可登录 admin 且未设 ADMIN_EMAIL 时，bootstrap admin 自动创建 username=admin 临时账号，must_change_password=true，终端打印随机密码 |
-| 强制改密守卫         | authMiddleware 检测 token.must_change_password=true，白名单（/change-password, /me）外全部 403 PASSWORD_CHANGE_REQUIRED             |
-| change-password限流  | 独立 pwchange 命名空间，不污染 /login 限流桶（issue #75 评审 H4）                                                                   |
+| 规则                 | 说明                                                                                                                                     |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 提交状态机           | `pending → [judging, error]` → `judging → [finished, error]`，finished/error 为终态；artifact 提交评测完成后立即删除存储对象，不支持重测 |
+| 输出截断             | API 返回时截断至 8KB（`MAX_OUTPUT_LENGTH`），数据库保留完整内容                                                                          |
+| 代码大小上限         | 100KB（`MAX_CODE_LENGTH`），路由层校验                                                                                                   |
+| 个人简介上限         | 5000 字符                                                                                                                                |
+| 支持包读取失败       | 非致命：日志记录后继续（无支持包），由 judge 端处理                                                                                      |
+| 题目更新             | 静默忽略 `type` 和 `number` 字段（API 接受但不处理）                                                                                     |
+| 题目编号冲突         | 自动分配时重试 3 次（PG 23505），手动指定时立即报错                                                                                      |
+| 评测结果写入         | UPSERT 语义（`onConflictDoUpdate`），用最新结果覆盖旧数据；配合 `rejudge_seq` 防护乱序覆盖                                               |
+| 队列位置查询         | 即使 DB 状态为 "judging" 也检查 Redis 队列（状态在入队时已更新）                                                                         |
+| 问题列表默认         | 默认只显示 `type='P'` 的题目，U 类型需直接 URL 或所有者主页访问                                                                          |
+| 分页默认值           | page=1, per_page=20, max per_page=100                                                                                                    |
+| 用户枚举防护         | 登录失败统一返回"用户名或密码错误"，不区分"用户不存在"和"密码错误"                                                                       |
+| Root 用户            | UID="0"，admin 角色，随机密码不可登录，不计入管理员统计，不出现在用户列表                                                                |
+| 密码重置邮箱枚举防护 | `POST /forgot-password` 不管邮箱是否存在都返 200 + 同一消息（与登录失败防枚举共存）                                                      |
+| 密码重置令牌         | DB 存 SHA-256 hex 哈希（**不存明文**），URL 传明文 base64url；32 字节随机数                                                              |
+| 密码重置 TTL         | 15 分钟（OWASP 2025+ 建议 ≤ 15 分钟），单 SQL 原子消耗防并发                                                                             |
+| 密码重置邮件         | 策略模式：`EMAIL_PROVIDER` 选择 mock（默认）/ aliyun / tencent；mock 为控制台输出；真实 Provider 在发送前校验环境变量完整性              |
+| 引导管理员           | 无可登录 admin 且未设 ADMIN_EMAIL 时，bootstrap admin 自动创建 username=admin 临时账号，must_change_password=true，终端打印随机密码      |
+| 强制改密守卫         | authMiddleware 检测 token.must_change_password=true，白名单（/change-password, /me）外全部 403 PASSWORD_CHANGE_REQUIRED                  |
+| change-password限流  | 独立 pwchange 命名空间，不污染 /login 限流桶（issue #75 评审 H4）                                                                        |
 
 ## 登录速率限制（issue #73）
 
@@ -602,7 +602,8 @@ noj-core 不直接执行评测，但 `data/problems-src/` 中的 evaluate.py 遵
   `noj_evaluator_sdk.runner.SolutionRunner` 与 **Solution
   容器**（承载用户代码）交互（NDJSON 帧协议，见
   `noj-judge/src/dual/protocol.rs`）
-- 输出格式：`---RESULT---` 标记行 + JSON `{status, score, details}`
+- 输出格式：`---RESULT---` 标记行 + JSON `{score, details}`（不再输出
+  `status`，judge 统一映射 `finished`/`error`）
 - 评分公式：每题独立定义在 evaluate.py 中（非通用可配置系统）
 - 镜像白名单：`judgeImages` 按 `evaluator` / `solution` 两类 kind 管理
 

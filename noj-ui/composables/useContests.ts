@@ -1,13 +1,10 @@
 import { formatDateTime } from '~/utils/submissionFormat';
 
-export type ContestType = 'icpc' | 'ioi' | 'oi';
+export type ContestType = 'kaggle';
 export type ContestStatus = 'pending' | 'running' | 'ended';
 
 export interface ContestConfig {
-  penalty_minutes?: number;
-  freeze_time?: string | null;
-  unfreeze_after_end?: boolean;
-  show_ranking_live?: boolean;
+  submission_limits?: Record<string, number>;
 }
 
 export interface Contest {
@@ -34,11 +31,13 @@ export interface ContestProblem {
   problem_id: string;
   sort_order: number;
   label: string;
-  score: number | null;
+  score: number;
   title: string;
   description: string;
   difficulty: string;
   display_id: string;
+  submission_mode: 'code' | 'artifact';
+  artifact_max_size_mb: number | null;
   user_status: 'solved' | 'attempted' | 'untouched';
 }
 
@@ -46,7 +45,7 @@ export interface ContestProblemInput {
   problem_id: string;
   sort_order: number;
   label: string;
-  score?: number | null;
+  score: number;
 }
 
 export interface ContestPayload {
@@ -74,37 +73,21 @@ export interface AdminProblemOption {
   difficulty: string;
 }
 
-export interface IcpcProblemDetail {
-  label: string;
-  solved: boolean;
-  attempts: number;
-  solve_time_minutes?: number | null;
-}
-
-export interface IcpcRankingRow {
-  rank: number;
-  user_id: string;
-  username: string;
-  avatar_url: string | null;
-  solved: number;
-  penalty: number;
-  problem_details: IcpcProblemDetail[];
-}
-
-export interface ScoreProblemDetail {
+export interface KaggleProblemScore {
   label: string;
   best_score: number;
   attempts: number;
+  last_best_at: string | null;
 }
 
-export interface ScoreRankingRow {
+export interface KaggleRankingRow {
   rank: number;
   user_id: string;
   username: string;
   avatar_url: string | null;
   total_score: number;
-  total_time_seconds: number;
-  problem_scores: ScoreProblemDetail[];
+  last_submission_at: string | null;
+  problem_scores: KaggleProblemScore[];
 }
 
 export interface ClarificationSender {
@@ -143,9 +126,7 @@ export interface Pagination {
 export function useContests() {
   const { api } = useApi();
   const typeLabels: Record<ContestType, string> = {
-    icpc: 'ICPC 罚时赛',
-    ioi: 'IOI 实时赛',
-    oi: 'OI 考试',
+    kaggle: '类 Kaggle 分数赛',
   };
   const statusLabels: Record<ContestStatus, string> = {
     pending: '未开始',

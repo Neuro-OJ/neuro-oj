@@ -36,9 +36,11 @@ export function isValidContestConfig(
     ) {
       return false;
     }
-    for (const v of Object.values(
-      values.submission_limits as Record<string, unknown>,
-    )) {
+    for (
+      const v of Object.values(
+        values.submission_limits as Record<string, unknown>,
+      )
+    ) {
       if (typeof v !== "number" || !Number.isInteger(v) || v <= 0) {
         return false;
       }
@@ -112,6 +114,8 @@ export interface ContestProblemResponse extends ContestProblemInput {
   description: string;
   difficulty: string;
   display_id: string;
+  submission_mode: "code" | "artifact";
+  artifact_max_size_mb: number | null;
   user_status: ContestProblemUserStatus;
 }
 

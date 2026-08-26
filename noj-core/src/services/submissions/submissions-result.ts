@@ -105,12 +105,12 @@ export async function saveEvaluationResult(
     }
 
     const submissionStatus: SubmissionStatus = [
-      "error",
-      "SystemError",
-      "TimeLimitExceeded",
-      "MemoryLimitExceeded",
-      "RuntimeError",
-    ].includes(result.status)
+        "error",
+        "SystemError",
+        "TimeLimitExceeded",
+        "MemoryLimitExceeded",
+        "RuntimeError",
+      ].includes(result.status)
       ? "error"
       : "finished";
 

@@ -20,6 +20,7 @@
 
 mod common;
 
+use std::io::Write;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -31,6 +32,7 @@ use futures_util::StreamExt;
 use noj_judge::dual::protocol::{frame_type, EvaluatorLine, LineParser};
 use noj_judge::types::{EvaluatorRuntime, JudgeTask, RuntimeConfig, SolutionRuntime};
 use tokio::io::AsyncWriteExt;
+use zip::write::SimpleFileOptions;
 
 // ── Test fixtures ─────────────────────────────────────────
 
@@ -1114,4 +1116,80 @@ except SolutionTimeoutError:
         "CallTimeout 被捕获时状态由 evaluator 决定: {:?}",
         result
     );
+}
+
+/// 构造包含 submission.py 的 artifact zip。
+fn build_artifact_zip() -> Vec<u8> {
+    let cursor = std::io::Cursor::new(Vec::new());
+    let mut zip = zip::ZipWriter::new(cursor);
+    let options = SimpleFileOptions::default();
+    zip.start_file("submission.py", options).unwrap();
+    zip.write_all(b"def solve():\n    return 42\n").unwrap();
+    zip.finish().unwrap().into_inner()
+}
+
+/// 验证 artifact zip 注入 Solution 容器后，Evaluator 可通过 SolutionRunner 调用 submission.py。
+#[ignore]
+#[serial_test::serial]
+#[tokio::test]
+async fn dual_artifact_zip_injection() {
+    if !is_e2e_enabled() {
+        return;
+    }
+    let docker = get_docker().expect("docker");
+    common::ensure_sdk_images(&docker).await.unwrap();
+
+    let evaluator_cmd = r#"python3 -c "
+import json
+from noj_evaluator_sdk import SolutionRunner, result
+runner = SolutionRunner()
+try:
+    value = runner.call('solve')
+    result.accept(score=10000, details={'value': value})
+except Exception as e:
+    result.accept(score=0, details={'error': type(e).__name__})
+""#;
+    let runtime_config = RuntimeConfig {
+        evaluator: EvaluatorRuntime {
+            image: "noj-e2e-sdk-evaluator:latest".to_string(),
+            command: evaluator_cmd.to_string(),
+            time_limit_ms: 15000,
+            memory_limit_mb: 256,
+            network: None,
+        },
+        solution: SolutionRuntime {
+            image: "noj-e2e-sdk-solution:latest".to_string(),
+            call_timeout_ms: 5000,
+            memory_limit_mb: 128,
+        },
+    };
+    let artifact_zip = build_artifact_zip();
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        noj_judge::dual::evaluate_dual_with_cpu_limit(
+            docker.clone(),
+            "e2e-artifact-zip",
+            &runtime_config,
+            "",
+            None,
+            Some(&artifact_zip),
+            None,
+            None,
+            1000,
+            true,
+            "bridge",
+            "noj-",
+            &["python3".to_string()],
+            300_000,
+            60_000,
+        ),
+    )
+    .await
+    .expect("评测 30s 外层超时")
+    .expect("评测应正常返回");
+
+    assert_eq!(result.status, "finished");
+    assert_eq!(result.score, 10000);
+    assert_eq!(result.details["value"], 42);
 }

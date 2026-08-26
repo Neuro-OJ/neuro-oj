@@ -213,7 +213,9 @@ export function validateBundleManifest(
       !Number.isInteger(m.artifact_max_size_mb) ||
       m.artifact_max_size_mb <= 0)
   ) {
-    throw new BadRequestError("manifest.artifact_max_size_mb 必须为正整数或 null");
+    throw new BadRequestError(
+      "manifest.artifact_max_size_mb 必须为正整数或 null",
+    );
   }
 
   // LLM 配置校验：仅 P 型/官方题可启用，且必须开启 evaluator 网络。

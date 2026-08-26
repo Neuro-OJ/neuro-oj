@@ -1,4 +1,4 @@
-import { Hono, type Context } from "hono";
+import { type Context, Hono } from "hono";
 import busboy from "busboy";
 import { Readable } from "node:stream";
 import type { OptionalAuthEnv } from "../middleware/auth.ts";
@@ -62,12 +62,14 @@ function parseContestArtifactMultipart(
     bb.on("field", (name: string, val: string) => {
       if (name === "problem_id") problemId = val;
     });
-    bb.on("file", (name: string, file: any, info: any) => {
+    bb.on("file", (name: string, file: unknown, info: { filename: string }) => {
       if (name === "file") {
         fileName = info.filename;
-        fileStream = Readable.toWeb(file) as unknown as ReadableStream<Uint8Array>;
+        fileStream = Readable.toWeb(
+          file as import("node:stream").Readable,
+        ) as unknown as ReadableStream<Uint8Array>;
       } else {
-        file.resume();
+        (file as import("node:stream").Readable).resume();
       }
     });
     bb.on("error", (err: unknown) => reject(err));
@@ -76,10 +78,16 @@ function parseContestArtifactMultipart(
         reject(new BadRequestError("缺少必填字段：problem_id 或 file"));
         return;
       }
-      resolve({ problem_id: problemId, file_name: fileName, file_stream: fileStream });
+      resolve({
+        problem_id: problemId,
+        file_name: fileName,
+        file_stream: fileStream,
+      });
     });
 
-    Readable.fromWeb(c.req.raw.body as any).pipe(bb);
+    Readable.fromWeb(
+      c.req.raw.body as unknown as import("node:stream/web").ReadableStream,
+    ).pipe(bb);
   });
 }
 

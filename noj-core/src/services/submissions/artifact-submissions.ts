@@ -12,14 +12,13 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../db/connection.ts";
 import { problems, submissions } from "../../db/schema.ts";
-import {
-  AppError,
-  BadRequestError,
-  NotFoundError,
-} from "../../lib/errors.ts";
+import { AppError, BadRequestError, NotFoundError } from "../../lib/errors.ts";
 import { getStorageProvider } from "../../lib/storage/mod.ts";
 import { generatePublicId } from "../../lib/public-id.ts";
-import { isRetryableJudgeQueueError, pushJudgeTask } from "../../mq/producer.ts";
+import {
+  isRetryableJudgeQueueError,
+  pushJudgeTask,
+} from "../../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../judge-images.ts";
 import { assertContestSubmissionLimit } from "../contest/contests.ts";
 import { buildJudgeTaskLlm } from "../../lib/llm-token.ts";
@@ -168,9 +167,7 @@ export async function createArtifactSubmission(
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("超过大小限制")) {
       throw new BadRequestError(
-        `文件超过大小限制（最大 ${
-          Math.floor(maxSizeBytes / 1024 / 1024)
-        }MB）`,
+        `文件超过大小限制（最大 ${Math.floor(maxSizeBytes / 1024 / 1024)}MB）`,
       );
     }
     throw err;
@@ -295,7 +292,10 @@ export async function createArtifactSubmission(
       );
     }
   } catch (mqErr) {
-    logger.error("artifact 评测任务推送失败", { submission_id: id, err: mqErr });
+    logger.error("artifact 评测任务推送失败", {
+      submission_id: id,
+      err: mqErr,
+    });
     // 入队失败：删除 artifact 并标记 error（artifact 不支持重测，不留孤儿）
     await storage.delete(artifactStorageUrl).catch(() => {});
     if (!isRetryableJudgeQueueError(mqErr)) {

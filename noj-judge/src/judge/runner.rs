@@ -63,13 +63,7 @@ pub async fn evaluate_with_cpu_limit(
     // 下载 artifact zip（一次性，不缓存）
     let artifact_zip = if let Some(ref url) = task.artifact_download_url {
         if !url.is_empty() {
-            match download::fetch_support_package(
-                url,
-                download_timeout_secs,
-                allow_http_s3,
-            )
-            .await
-            {
+            match download::fetch_support_package(url, download_timeout_secs, allow_http_s3).await {
                 Ok((bytes, checksum)) => {
                     if let Err(e) = download::verify_checksum(&bytes, checksum.as_deref()) {
                         error!(

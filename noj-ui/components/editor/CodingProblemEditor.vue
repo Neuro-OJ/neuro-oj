@@ -46,6 +46,8 @@ const description = ref("")
 const difficulty = ref("medium")
 const tagIds = ref<string[]>([])
 const problemType = ref(props.initialType)
+const submissionMode = ref<'code' | 'artifact'>('code')
+const artifactMaxSizeMb = ref<number | null>(null)
 
 // 编辑模式专用
 const displayId = ref("")
@@ -210,6 +212,8 @@ async function loadProblem() {
       time_limit_ms: number; memory_limit_mb: number
       display_id: string; type: string; number: number
       tags: { id: string }[]
+      submission_mode?: 'code' | 'artifact'
+      artifact_max_size_mb?: number | null
       runtime_config: RuntimeConfigPayload | null
     } }>(`/api/v1/problems/${props.problemId}`, { silent: true })
     const p = res.data
@@ -218,6 +222,8 @@ async function loadProblem() {
     title.value = p.title; description.value = p.description
     difficulty.value = p.difficulty
     tagIds.value = p.tags.map((c) => c.id)
+    submissionMode.value = p.submission_mode ?? 'code'
+    artifactMaxSizeMb.value = p.artifact_max_size_mb ?? null
     hasSupportPackage.value = (p as Record<string, unknown>).has_support_package === true
 
     // 加载 runtime_config
@@ -307,12 +313,16 @@ async function handleSubmit() {
     const llmPayload = llmEnabled.value
       ? { provider_id: llmProviderId.value.trim(), model: llmModel.value.trim() }
       : null
+    const submissionModePayload = submissionMode.value
+    const artifactMaxSizePayload = artifactMaxSizeMb.value
     if (isEditMode.value) {
       await api.put(`/api/v1/problems/${props.problemId}`, {
         title: title.value.trim(), description: description.value.trim(),
         difficulty: difficulty.value,
         tag_ids: tagIds.value,
         runtime_config: runtimeConfigPayload,
+        submission_mode: submissionModePayload,
+        artifact_max_size_mb: artifactMaxSizePayload,
         llm: llmPayload,
       })
       emit("saved", props.problemId!)
@@ -323,6 +333,8 @@ async function handleSubmit() {
         tag_ids: tagIds.value,
         type: problemType.value,
         runtime_config: runtimeConfigPayload,
+        submission_mode: submissionModePayload,
+        artifact_max_size_mb: artifactMaxSizePayload,
         llm: llmPayload,
       })
       savedProblemId.value = res.data.id
@@ -396,6 +408,23 @@ async function handleSubmit() {
         <div class="flex flex-col gap-1">
           <label class="text-xs font-semibold text-text">难度</label>
           <USelect v-model="difficulty" :items="[{ label: '简单', value: 'easy' }, { label: '中等', value: 'medium' }, { label: '困难', value: 'hard' }]" class="w-full" />
+        </div>
+
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">提交模式</label>
+          <USelect
+            v-model="submissionMode"
+            :items="[
+              { label: '代码提交（code）', value: 'code' },
+              { label: '产物提交（artifact / zip）', value: 'artifact' },
+            ]"
+            class="w-full"
+          />
+        </div>
+
+        <div v-if="submissionMode === 'artifact'" class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text">artifact 大小上限（MB）</label>
+          <input v-model.number="artifactMaxSizeMb" type="number" min="1" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white" placeholder="留空使用 NOJ 默认上限" />
         </div>
 
         <div class="flex flex-col gap-1 col-span-2">

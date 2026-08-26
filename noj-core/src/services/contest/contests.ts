@@ -57,11 +57,11 @@ function defaultContestConfig(_type: ContestType): ContestConfig {
 }
 
 function normalizeContestConfig(
-  type: ContestType,
+  _type: ContestType,
   config: ContestConfig | undefined,
 ): ContestConfig {
-  const value = config ?? defaultContestConfig(type);
-  if (!isValidContestConfig(type, value)) {
+  const value = config ?? defaultContestConfig(_type);
+  if (!isValidContestConfig(_type, value)) {
     throw new BadRequestError("竞赛配置不合法");
   }
 
@@ -88,7 +88,7 @@ function validateTimes(startTime: string, endTime: string): void {
 }
 
 function normalizeProblems(
-  type: ContestType,
+  _type: ContestType,
   values: ContestProblemInput[],
 ): ContestProblemInput[] {
   if (values.length === 0) {
@@ -581,6 +581,8 @@ export async function getContestProblems(
       p.title,
       p.description,
       p.difficulty,
+      p.submission_mode,
+      p.artifact_max_size_mb,
       CONCAT(p.type, p.number::text) AS display_id,
       CASE
         WHEN ${userId ?? null}::text IS NULL THEN 'untouched'
@@ -618,6 +620,11 @@ export async function getContestProblems(
     description: row.description as string,
     difficulty: row.difficulty as string,
     display_id: row.display_id as string,
+    submission_mode: row
+      .submission_mode as ContestProblemResponse["submission_mode"],
+    artifact_max_size_mb: row.artifact_max_size_mb === null
+      ? null
+      : Number(row.artifact_max_size_mb),
     user_status: row.user_status as ContestProblemResponse["user_status"],
   }));
 }

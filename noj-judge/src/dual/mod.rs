@@ -331,7 +331,10 @@ pub async fn evaluate_dual_with_cpu_limit(
         SOLUTION_ENTRY_FILE
     };
     if let Some(artifact_bytes) = artifact_zip_bytes {
-        info!("注入 artifact zip 到 Solution 容器 ({} bytes)", artifact_bytes.len());
+        info!(
+            "注入 artifact zip 到 Solution 容器 ({} bytes)",
+            artifact_bytes.len()
+        );
         inject_support_package_to_evaluator(&docker, &solution_id, artifact_bytes)
             .await
             .context("注入 artifact zip 到 Solution 容器失败")?;
@@ -884,8 +887,7 @@ fn build_judge_result(
     let raw_status = parsed.get("status").and_then(Value::as_str);
     let status = match raw_status {
         Some(
-            "error" | "SystemError" | "TimeLimitExceeded" | "MemoryLimitExceeded"
-            | "RuntimeError",
+            "error" | "SystemError" | "TimeLimitExceeded" | "MemoryLimitExceeded" | "RuntimeError",
         ) => "error",
         _ => "finished",
     }

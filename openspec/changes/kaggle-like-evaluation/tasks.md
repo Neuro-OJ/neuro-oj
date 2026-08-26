@@ -42,19 +42,19 @@
 
 ## 5. noj-ui：上传与展示
 
-- [ ] 5.1 题目详情页根据 `submission_mode` 显示 zip 上传控件或代码编辑器
-- [ ] 5.2 提交创建表单支持 multipart 上传 zip
-- [ ] 5.3 提交列表/详情状态展示改为“已评测 + 分数”，移除 AC/WA 文案
-- [ ] 5.4 竞赛排名页适配类 Kaggle 赛制（分数榜）
-- [ ] 5.5 管理后台题目编辑器支持设置 `submission_mode`
+- [x] 5.1 题目详情页根据 `submission_mode` 显示 zip 上传控件或代码编辑器
+- [x] 5.2 提交创建表单支持 multipart 上传 zip
+- [x] 5.3 提交列表/详情状态展示改为“已评测 + 分数”，移除 AC/WA 文案
+- [x] 5.4 竞赛排名页适配类 Kaggle 赛制（分数榜）
+- [x] 5.5 管理后台题目编辑器支持设置 `submission_mode`
 
 ## 6. 测试
 
-- [ ] 6.1 noj-core 单元/集成测试：artifact 提交创建、流式存储、JudgeTask 构造
-- [ ] 6.2 noj-core 测试：双层大小限制、评测后立即删除、rejudge 拒绝、孤儿清理
-- [ ] 6.3 noj-core 测试：类 Kaggle 排名（严格刷新）、提交次数限制（含 error 计数）
-- [ ] 6.4 noj-judge E2E：小 zip（含 submission.py）注入与调用
-- [ ] 6.5 noj-judge E2E：`noj-solution-ai` 镜像可导入 SDK 并跑通推理
-- [ ] 6.6 noj-judge 测试：evaluate.py 无 `status` 字段的结果解析
-- [ ] 6.7 noj-tests 跨模块 E2E：上传 zip → 评测 → 分数展示 → artifact 删除
-- [ ] 6.8 更新相关 OpenSpec 归档与文档
+- [x] 6.1 noj-core 单元/集成测试：artifact 提交创建、流式存储、JudgeTask 构造
+- [x] 6.2 noj-core 测试：双层大小限制、评测后立即删除、rejudge 拒绝、孤儿清理
+- [x] 6.3 noj-core 测试：类 Kaggle 排名（严格刷新）、提交次数限制（含 error 计数）
+- [x] 6.4 noj-judge E2E：小 zip（含 submission.py）注入与调用
+- [x] 6.5 noj-judge E2E：`noj-solution-ai` 镜像可导入 SDK 并跑通推理
+- [x] 6.6 noj-judge 测试：evaluate.py 无 `status` 字段的结果解析
+- [x] 6.7 noj-tests 跨模块 E2E：上传 zip → 评测 → 分数展示 → artifact 删除
+- [x] 6.8 更新相关 OpenSpec 归档与文档
