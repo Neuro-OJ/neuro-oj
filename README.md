@@ -1,6 +1,6 @@
 # NOJ · Neuro OJ
 
-**面向大模型能力评测场景的在线评测系统**
+**面向 AI 领域认证与竞赛的在线评测平台**
 
 [![Deno](https://img.shields.io/badge/Deno-2.x-000?logo=deno&logoColor=fff)](https://deno.com)
 [![Rust](https://img.shields.io/badge/Rust-2021-dea584?logo=rust&logoColor=000)](https://rust-lang.org)
@@ -10,19 +10,29 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue)](./LICENSE)
 [![CI](https://github.com/Neuro-OJ/neuro-oj/actions/workflows/ci.yml/badge.svg)](https://github.com/Neuro-OJ/neuro-oj/actions/workflows/ci.yml)
 
-> Neuro OJ 为独立社区项目，与 CCF（中国计算机学会）及 LMCC（大模型能力认证）无任何官方关系。
+> Neuro OJ 为独立社区项目，与 CCF（中国计算机学会）、LMCC（大模型能力认证）、IOAI（国际人工智能奥林匹克）及 NOAI 无任何官方关系。
 
 ---
 
 ## 什么是 Neuro OJ？
 
-Neuro OJ（NOJ）是一个面向**大模型实操能力评测**场景的在线评测系统。与传统算法竞赛 OJ 不同，NOJ 评测的是指令微调、提示工程、Agent 构建、模型对齐等编程任务——这些任务需要灵活的评测逻辑、严格的资源隔离和可水平扩展的 Worker 架构。
+Neuro OJ（NOJ）是一个面向 **AI 领域认证与竞赛** 的在线评测平台，覆盖 **IOAI / NOAI / LMCC** 等场景。它同时支持：
+
+- **客观题** — 单选 / 多选 / 判断，服务端即时判分
+- **代码题** — 函数式 / 算法题，双容器沙箱评测
+- **LLM 工程题** — Prompt、RAG、工具调用，通过 LLM 网关评测
+- **产物提交题** — 类 Kaggle：选手自训自提，提交预测结果 / 模型 / 代码，云端统一判分
+
+与传统算法竞赛 OJ 不同，NOJ 更关注大模型应用与工程能力，评测逻辑由题目支持包自定义，具备严格的资源隔离和可水平扩展的 Worker 架构。
 
 ### 典型场景
 
+- **AI 奥林匹克训练与选拔** — 支持 IOAI Individual Contest / Team Challenge、NOAI 部分题目的训练与模拟赛
+- **能力认证** — 复现类似 LMCC 第一轮客观题 + 第二轮编程题的机考环境
 - **教学实训** — 大模型课程中的编程作业自动评测
-- **能力认证** — 复现类似 LMCC 第二轮编程题的机考环境
-- **模型评测** — 自动化评估模型在特定任务上的代码能力
+- **模型评测竞赛** — 类 Kaggle 的产物提交：选手在自己的设备上完成训练 / 微调，提交预测结果或模型到云端判分
+
+> **边界说明**：NOJ 当前不提供 LLM 微调 / 训练执行环境。涉及训练 / 微调的题目，选手在自己的设备上完成，平台负责接收产物并统一评测。
 
 ---
 
@@ -244,16 +254,16 @@ CI 通过 GitHub Actions 双重流水线保证质量：
 
 ## 项目状态
 
-已打通"注册 → 做题 → 提交 → 评测结果"闭环，并具备题目筛选、管理后台、用户榜单、每日签到、站内私信，以及**竞赛**（icpc/ioi/oi 三赛制 + 封榜 + SSE 实时排名）、**社区**与 **RBAC 权限**等能力。考试/认证模式（Phase 2 主线）仍在推进中。
+已打通"注册 → 做题 → 提交 → 评测结果"闭环，并具备题目筛选、管理后台、用户榜单、每日签到、站内私信，以及**竞赛**（icpc/ioi/oi 三赛制 + 封榜 + SSE 实时排名）、**社区**与 **RBAC 权限**等能力。当前正在推进 **AI 认证 / 竞赛定位**：在既有客观题、代码题、LLM 工程题基础上，规划产物提交、隐藏测试集与排行榜（类 Kaggle）能力。
 
 | 阶段 | 交付标准 | 状态 |
 |------|---------|------|
 | **Phase 0** | 浏览器注册 → 做题 → 提交 → 看到评测结果 | ✅ 完成 |
 | **Phase 1** | 榜单可查，题目可筛选，管理后台可用（另已交付：比赛、社区、RBAC） | ✅ 完成 |
-| **Phase 2** | 可创建考试 → LMCC 认证闭环 | 🚧 进行中（比赛已交付，考试模式待做） |
-| **Phase 3** | 多 Worker 并发评测，99.5% 可用性 | ⏳ 规划 |
+| **Phase 2** | 可创建考试 → LMCC 认证闭环 + 产物提交 / 隐藏测试集 / 排行榜 | 🚧 进行中（比赛已交付，考试模式与类 Kaggle 评测待做） |
+| **Phase 3** | 多 Worker 并发评测，99.5% 可用性 + IOAI / NOAI 赛制模板 | ⏳ 规划 |
 
-> 注：多语言评测（C++/Java/Node.js）与 SPJ 为**决策性不做**（LMCC 仅 Python，见 `openspec/comparison-hydrooj.md`）。
+> 注：多语言评测（C++/Java/Node.js）与 SPJ 为**决策性不做**（LMCC/IOAI 以 Python 为主，见 `openspec/comparison-hydrooj.md`）。
 
 ---
 

@@ -39,7 +39,7 @@
                                 class="absolute inset-0 bg-gradient-to-br from-blue-600 via-sky-500 to-cyan-400 p-8 lg:p-12 flex flex-col justify-center text-white"
                             >
                                 <h2 class="text-2xl lg:text-3xl font-bold mb-3 animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_both]">Neuro OJ 正式上线</h2>
-                                <p class="text-sm lg:text-base text-white/85 max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">面向 LMCC 的在线评测系统现已开放注册，提供高效的代码评测服务和智能化的能力评估。</p>
+                                <p class="text-sm lg:text-base text-white/85 max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">面向 AI 领域认证与竞赛的在线评测平台现已开放注册，提供代码评测、LLM 工程题与类 Kaggle 产物提交评测。</p>
                             </div>
                         </Transition>
                         <!-- 暂停/继续（WCAG 2.2.2 自动更新内容可暂停） -->

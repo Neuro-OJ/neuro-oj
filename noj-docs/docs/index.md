@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: "Neuro OJ"
-  text: "面向 LMCC 的在线评测系统"
+  text: "面向 AI 领域认证与竞赛的在线评测平台"
   tagline: 函数调用型评测 / 双容器隔离沙箱 / 竞赛 · 社区 · RBAC
   actions:
     - theme: brand

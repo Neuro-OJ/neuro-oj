@@ -57,13 +57,13 @@ function formatNumber(n?: number): string {
       <div class="p-8 sm:p-10 lg:p-12 flex flex-col gap-6 text-white">
         <span class="self-start inline-flex items-center gap-1.5 rounded-full bg-white/10 border border-white/15 px-3 py-1 text-xs font-medium text-blue-100">
           <UIcon name="i-lucide-sparkles" class="size-3.5" />
-          面向 LMCC 的 AI 在线评测系统
+          面向 AI 领域认证与竞赛的在线评测平台
         </span>
         <div class="flex flex-col gap-3">
           <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">Neuro OJ</h1>
           <p class="text-blue-100/90 leading-relaxed max-w-[520px]">
-            一个面向 AI 时代程序设计与工程能力评测的在线评测系统，
-            以容器级资源隔离承载任意自定义评测逻辑，为 CCF 大语言模型能力认证（LMCC）设计。
+            一个面向 AI 时代程序设计与工程能力评测的在线评测平台，
+            以容器级资源隔离承载任意自定义评测逻辑，覆盖 IOAI / NOAI / LMCC 等认证与竞赛场景。
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-3">

@@ -3,10 +3,11 @@
 > 本文档面向 AI 编码助手（Claude Code、OpenCode 等）撰写，记录项目架构、规范、AI
 > 必须遵守的要求与开发约定。
 
-Neuro OJ 是一个面向 LMCC（CCF 大语言模型能力认证）的在线评测（Online
-Judge）系统。
+Neuro OJ 是一个面向 **AI 领域认证与竞赛** 的在线评测（Online
+Judge）平台，覆盖 **IOAI / NOAI / LMCC** 等场景，支持客观题、代码题、LLM
+工程题与产物提交（类 Kaggle）评测。
 
-> **注意：** Neuro OJ 与 CCF 及 LMCC 无任何官方关系，为独立社区项目。
+> **注意：** Neuro OJ 与 CCF、LMCC、IOAI 及 NOAI 无任何官方关系，为独立社区项目。
 
 ---
 

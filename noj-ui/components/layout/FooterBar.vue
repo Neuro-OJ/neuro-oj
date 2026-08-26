@@ -7,7 +7,7 @@
                         <UIcon name="i-lucide-brain" class="size-[22px] size-4" />
                         <span>Neuro OJ</span>
                     </div>
-                    <p class="mt-2 text-sm leading-relaxed">面向 LMCC 的在线评测系统</p>
+                    <p class="mt-2 text-sm leading-relaxed">面向 AI 领域认证与竞赛的在线评测平台</p>
                 </div>
                 <div class="flex gap-12">
                     <div class="footer-section">
