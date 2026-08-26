@@ -130,6 +130,8 @@ export interface ListSubmissionsParams {
   status?: string;
   from?: string;
   to?: string;
+  /** 为 true 时排除所有竞赛提交（contest_id IS NULL），用于公开列表。 */
+  excludeContest?: boolean;
   page: number;
   perPage: number;
 }

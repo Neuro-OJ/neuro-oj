@@ -9,6 +9,11 @@ import {
 import { parsePagination } from "../lib/pagination.ts";
 import { getClientIp } from "../lib/rate-limit-env.ts";
 import { checkPermission } from "../lib/permissions.ts";
+import {
+  enforceObjectiveSubmitRateLimit,
+  enforceProblemCreateRateLimit,
+  enforceProblemImportRateLimit,
+} from "../lib/hardening-rate-limit.ts";
 import { runWithContext } from "../lib/requestContext.ts";
 import {
   createProblem,
@@ -213,6 +218,7 @@ router.post("/", authMiddleware, async (c) => {
   }
 
   const userId = c.get("userId");
+  await enforceProblemCreateRateLimit(c, userId);
   const problem = await createProblem(body, userId, undefined, c);
   return c.json({ data: problem }, 201);
 });
@@ -298,6 +304,7 @@ router.delete("/:id", authMiddleware, async (c) => {
 router.post("/import-bundle", authMiddleware, async (c) => {
   const userId = c.get("userId");
   const userRole = c.get("userRole");
+  await enforceProblemImportRateLimit(c, userId);
 
   // 解析 multipart/form-data
   const body = await c.req.parseBody();
@@ -504,6 +511,7 @@ router.delete("/:id/questions/:qid", authMiddleware, async (c) => {
 router.post("/:id/submit", authMiddleware, async (c) => {
   const paperId = c.req.param("id") as string;
   const userId = c.get("userId");
+  await enforceObjectiveSubmitRateLimit(c, userId);
   const body = await parseJsonBody<SubmitObjectiveInput>(c);
 
   if (!body.answers) {

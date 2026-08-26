@@ -31,8 +31,9 @@
  * `SQL<unknown>`，与等价的 `eq()` 返回 `SQL<boolean>` 兼容。
  */
 
-import { and, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
+import { and, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
 import {
+  contests,
   evaluationResults,
   problems,
   submissions,
@@ -115,6 +116,7 @@ export async function listSubmissions(
     status,
     from,
     to,
+    excludeContest,
     page,
     perPage,
   } = params;
@@ -124,6 +126,11 @@ export async function listSubmissions(
 
   if (userId) conditions.push(eq(submissions.user_id, userId));
   if (contestId) conditions.push(eq(submissions.contest_id, contestId));
+  if (excludeContest) {
+    conditions.push(
+      isNull(submissions.contest_id) as unknown as ReturnType<typeof eq>,
+    );
+  }
   if (problemId) conditions.push(eq(submissions.problem_id, problemId));
   if (language) conditions.push(eq(submissions.language, language));
   if (status) {
@@ -506,6 +513,29 @@ export async function getSubmission(
     : viewerRole === "admin";
   const canSeeDetails = isOwner || isAdmin;
 
+  // 竞赛公平性：OI 进行中的竞赛提交，非 owner/admin 隐藏评测结果（得分/状态）
+  let hideResult = false;
+  if (row.contest_id && !canSeeDetails) {
+    const contestRows = await db
+      .select({
+        type: contests.type,
+        start_time: contests.start_time,
+        end_time: contests.end_time,
+      })
+      .from(contests)
+      .where(eq(contests.id, row.contest_id))
+      .limit(1);
+    if (contestRows.length > 0) {
+      const contest = contestRows[0];
+      const now = Date.now();
+      const start = new Date(contest.start_time).getTime();
+      const end = new Date(contest.end_time).getTime();
+      if (contest.type === "oi" && now >= start && now <= end) {
+        hideResult = true;
+      }
+    }
+  }
+
   // 查询评测结果
   const resultRows = await db
     .select()
@@ -513,7 +543,7 @@ export async function getSubmission(
     .where(eq(evaluationResults.submission_id, id))
     .limit(1);
 
-  const result = resultRows.length > 0
+  const result = !hideResult && resultRows.length > 0
     ? (() => {
       const rawOutput = resultRows[0].output ?? "";
       // API 层截断：原始 output 完整保留在 DB，仅响应层控制大小

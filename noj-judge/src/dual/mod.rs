@@ -115,6 +115,29 @@ fn validate_runtime_config(
     Ok(())
 }
 
+/// 对任务中的资源限制字段执行硬上限收敛，防止 core 配置缺失或消息被篡改。
+fn clamp_runtime_config(
+    rc: &RuntimeConfig,
+    max_evaluator_time_ms: u64,
+    max_solution_call_timeout_ms: u64,
+) -> RuntimeConfig {
+    let mut clamped = rc.clone();
+    if max_evaluator_time_ms > 0 {
+        clamped.evaluator.time_limit_ms =
+            clamped.evaluator.time_limit_ms.min(max_evaluator_time_ms);
+    }
+    if max_solution_call_timeout_ms > 0 {
+        clamped.solution.call_timeout_ms = clamped
+            .solution
+            .call_timeout_ms
+            .min(max_solution_call_timeout_ms);
+    }
+    // 内存硬上限与容器创建逻辑保持一致（0 由容器层规范化为 512MB，上限 4096MB）。
+    clamped.evaluator.memory_limit_mb = clamped.evaluator.memory_limit_mb.min(4096);
+    clamped.solution.memory_limit_mb = clamped.solution.memory_limit_mb.min(4096);
+    clamped
+}
+
 /// 追加到累积缓冲：超过上限时丢弃头部、只保留尾部（诊断信息优先）。
 fn append_capped(buf: &mut String, s: &str) {
     if buf.len() + s.len() > MAX_OUTPUT_BYTES {
@@ -232,10 +255,17 @@ pub async fn evaluate_dual_with_cpu_limit(
     evaluator_network_mode: &str,
     image_prefix: &str,
     command_whitelist: &[String],
+    max_evaluator_time_ms: u64,
+    max_solution_call_timeout_ms: u64,
 ) -> Result<JudgeResult> {
+    let runtime_config = clamp_runtime_config(
+        runtime_config,
+        max_evaluator_time_ms,
+        max_solution_call_timeout_ms,
+    );
     validate_runtime_config(
         task_submission_id,
-        runtime_config,
+        &runtime_config,
         allow_evaluator_network,
         image_prefix,
         command_whitelist,
@@ -836,12 +866,24 @@ fn build_judge_result(
     rejudge_seq: Option<i64>,
 ) -> JudgeResult {
     let full_output = crate::merge_output(stdout, stderr);
-    let status = parsed
+    let raw_status = parsed
         .get("status")
         .and_then(Value::as_str)
-        .unwrap_or(JudgeStatus::SystemError.as_str())
-        .to_string();
-    let score = parsed.get("score").and_then(Value::as_i64).unwrap_or(0) as i32;
+        .unwrap_or(JudgeStatus::SystemError.as_str());
+    let status = match raw_status {
+        "Accepted"
+        | "WrongAnswer"
+        | "TimeLimitExceeded"
+        | "MemoryLimitExceeded"
+        | "RuntimeError"
+        | "SystemError" => raw_status.to_string(),
+        _ => JudgeStatus::SystemError.as_str().to_string(),
+    };
+    let score = parsed
+        .get("score")
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+        .clamp(0, 10_000) as i32;
     let details = parsed.get("details").cloned().unwrap_or(Value::Null);
 
     JudgeResult {

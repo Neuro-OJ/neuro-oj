@@ -61,6 +61,26 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       return c.json({ error: "invalid_token" }, 401);
     }
 
+    // 监控：同一 submission 的 token 若从多个来源 IP 调用，记录告警（不阻断）。
+    const ttlSeconds = Math.max(60, Math.floor(payload.exp - payload.iat));
+    const clientIp = c.req.header("x-forwarded-for") ?? "unknown";
+    try {
+      const ipKey = `llm:token-ips:${payload.submission_id}`;
+      const added = await deps.redis.sadd(ipKey, clientIp);
+      if (added === 0) {
+        const ipCount = await deps.redis.scard(ipKey);
+        if (ipCount > 1) {
+          console.warn(
+            `[llm] eval_token 多来源 IP 调用: submission=${payload.submission_id} ip=${clientIp} ips=${ipCount}`,
+          );
+        }
+      } else {
+        await deps.redis.expire(ipKey, ttlSeconds);
+      }
+    } catch {
+      // 监控失败不阻断 LLM 调用
+    }
+
     const body = await c.req.json<ChatCompletionRequest>().catch(() => null);
     if (!body || !Array.isArray(body.messages)) {
       return c.json({ error: "invalid_request" }, 400);
@@ -84,7 +104,6 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       return c.json({ error: "provider_disabled" }, 403);
     }
 
-    const ttlSeconds = Math.max(60, Math.floor(payload.exp - payload.iat));
     const startedAt = Date.now();
     const promptTokens = estimateTokens(body.messages);
     const completionTokens = typeof body.max_tokens === "number"

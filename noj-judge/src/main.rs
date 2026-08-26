@@ -109,9 +109,13 @@ fn main() -> Result<()> {
         let drain_timeout = config.drain_timeout_secs();
         let max_concurrent_judges = config.max_concurrent_judges;
         let cpu_limit_millicores = config.cpu_limit_millicores;
+        let max_evaluator_time_ms = config.max_evaluator_time_ms;
+        let max_solution_call_timeout_ms = config.max_solution_call_timeout_ms;
         let judge_semaphore = Arc::new(Semaphore::new(max_concurrent_judges));
         info!("评测并发上限: {}", max_concurrent_judges);
         info!("每个评测容器 CPU 上限: {}m", cpu_limit_millicores);
+        info!("Evaluator 时间硬上限: {}ms", max_evaluator_time_ms);
+        info!("Solution 调用硬上限: {}ms", max_solution_call_timeout_ms);
 
         // NOJ-152/155：同时监听 SIGTERM 与 SIGINT 触发优雅关闭。
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -197,6 +201,8 @@ fn main() -> Result<()> {
                     allow_http_s3,
                     &image_prefix,
                     &command_whitelist,
+                    max_evaluator_time_ms,
+                    max_solution_call_timeout_ms,
                 )
                 .await
                 {

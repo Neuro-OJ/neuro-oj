@@ -650,6 +650,8 @@ async fn evaluate_dual_end_to_end() {
         "bridge",
         "noj-",
         &["python3".to_string()],
+        300_000,
+        60_000,
     )
     .await;
 
@@ -720,6 +722,8 @@ except Exception as e:
             "bridge",
             "noj-",
             &["python3".to_string()],
+            300_000,
+            60_000,
         ),
     )
     .await
@@ -800,6 +804,8 @@ result.accept(score=1000, details={'cases': out})
             "bridge",
             "noj-",
             &["python3".to_string()],
+            300_000,
+            60_000,
         ),
     )
     .await
@@ -880,6 +886,8 @@ except Exception as e:
             "bridge",
             "noj-",
             &["python3".to_string()],
+            300_000,
+            60_000,
         ),
     )
     .await
@@ -950,6 +958,8 @@ while True:
             "bridge",
             "noj-",
             &["python3".to_string()],
+            300_000,
+            60_000,
         ),
     )
     .await
@@ -1012,6 +1022,8 @@ runner.call('sleep_solution')
             "bridge",
             "noj-",
             &["python3".to_string()],
+            300_000,
+            60_000,
         ),
     )
     .await
@@ -1081,6 +1093,8 @@ except SolutionTimeoutError:
             "bridge",
             "noj-",
             &["python3".to_string()],
+            300_000,
+            60_000,
         ),
     )
     .await

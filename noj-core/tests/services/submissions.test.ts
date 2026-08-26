@@ -365,6 +365,147 @@ Deno.test({
 });
 
 Deno.test({
+  name: "submissions service: excludeContest 排除竞赛提交",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.insert(contests).values({
+      id: contestId,
+      title: "excludeContest 竞赛",
+      start_time: new Date(Date.now() - 60_000).toISOString(),
+      end_time: new Date(Date.now() + 60_000).toISOString(),
+      type: "icpc",
+      config: { penalty_minutes: 20 },
+      created_by: TEST_USER_ID,
+      created_at: now,
+      updated_at: now,
+    });
+
+    resetRedisForTest();
+    const fakeRedis = await startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
+    Deno.env.set("REDIS_URL", fakeRedis.url);
+    const redis = getRedis();
+    await redis.connect();
+    await redis.ping();
+
+    const ids: string[] = [];
+    try {
+      const contestSub = await createSubmission(TEST_USER_ID, {
+        problem_id: TEST_PROBLEM_ID,
+        language: "python3",
+        code: "print(1)",
+        contest_id: contestId,
+      }, contestId);
+      ids.push(contestSub.id);
+
+      const normalSub = await createSubmission(TEST_USER_ID, {
+        problem_id: TEST_PROBLEM_ID,
+        language: "python3",
+        code: "print(2)",
+      });
+      ids.push(normalSub.id);
+
+      const all = await listSubmissions({ page: 1, perPage: 20 });
+      assertEquals(all.total, 2);
+
+      const publicList = await listSubmissions({
+        page: 1,
+        perPage: 20,
+        excludeContest: true,
+      });
+      assertEquals(publicList.total, 1);
+      assertEquals(publicList.data[0].id, normalSub.id);
+      assertEquals(publicList.data[0].contest_id, null);
+    } finally {
+      for (const id of ids) {
+        await db.delete(submissions).where(eq(submissions.id, id));
+      }
+      await db.delete(contests).where(eq(contests.id, contestId));
+      resetRedisForTest();
+      await fakeRedis.stop();
+      if (previousRedisUrl) Deno.env.set("REDIS_URL", previousRedisUrl);
+      else Deno.env.delete("REDIS_URL");
+    }
+  },
+});
+
+Deno.test({
+  name: "submissions service: OI 进行中他人查看提交隐藏 result",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.insert(contests).values({
+      id: contestId,
+      title: "OI 隐藏得分竞赛",
+      start_time: new Date(Date.now() - 60_000).toISOString(),
+      end_time: new Date(Date.now() + 60_000).toISOString(),
+      type: "oi",
+      config: {},
+      created_by: TEST_USER_ID,
+      created_at: now,
+      updated_at: now,
+    });
+
+    resetRedisForTest();
+    const fakeRedis = await startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
+    Deno.env.set("REDIS_URL", fakeRedis.url);
+    const redis = getRedis();
+    await redis.connect();
+    await redis.ping();
+
+    let submissionId: string | undefined;
+    try {
+      const created = await createSubmission(TEST_USER_ID, {
+        problem_id: TEST_PROBLEM_ID,
+        language: "python3",
+        code: "print(1)",
+        contest_id: contestId,
+      }, contestId);
+      submissionId = created.id;
+
+      await db.insert(evaluationResults).values({
+        id: crypto.randomUUID(),
+        submission_id: created.id,
+        status: "Accepted",
+        score: 10000,
+        output: "ok",
+        details: "{}",
+        created_at: now,
+      });
+
+      const asOwner = await getSubmission(created.id, TEST_USER_ID);
+      assertExists(asOwner.result);
+      assertEquals(asOwner.result!.score, 10000);
+
+      const asOther = await getSubmission(created.id, "other-user");
+      assertEquals(asOther.result, null);
+    } finally {
+      if (submissionId) {
+        await db.delete(evaluationResults).where(
+          eq(evaluationResults.submission_id, submissionId),
+        );
+        await db.delete(submissions).where(eq(submissions.id, submissionId));
+      }
+      await db.delete(contests).where(eq(contests.id, contestId));
+      resetRedisForTest();
+      await fakeRedis.stop();
+      if (previousRedisUrl) Deno.env.set("REDIS_URL", previousRedisUrl);
+      else Deno.env.delete("REDIS_URL");
+    }
+  },
+});
+
+Deno.test({
   name: "submissions service: saveEvaluationResult 保存评测结果",
   ignore: skip,
   sanitizeResources: false,

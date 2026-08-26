@@ -20,6 +20,8 @@ pub async fn evaluate_with_cpu_limit(
     allow_http_s3: bool,
     image_prefix: &str,
     command_whitelist: &[String],
+    max_evaluator_time_ms: u64,
+    max_solution_call_timeout_ms: u64,
 ) -> Result<JudgeResult> {
     // 下载/获取支持包（含缓存）
     let support_pkg = if let Some(ref url) = task.download_url {
@@ -71,6 +73,8 @@ pub async fn evaluate_with_cpu_limit(
         evaluator_network_mode,
         image_prefix,
         command_whitelist,
+        max_evaluator_time_ms,
+        max_solution_call_timeout_ms,
     )
     .await
 }

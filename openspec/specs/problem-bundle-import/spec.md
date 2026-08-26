@@ -1,9 +1,7 @@
 ## Purpose
 
 定义统一题目包（Problem Bundle）导入规范。统一题目包是题目导入的唯一载体格式：单个 zip 文件（根级 `problem.json` manifest + `evaluate.py` 评测脚本 + 可选 `statement.md` 题面），经 `POST /api/v1/problems/import-bundle` 端点完成解析 → 校验 → 剥离 → 存储 → 元数据 upsert 全流程，替代旧式松散 zip 上传路径。评测内容统一走 CLI（`scripts/noj.ts`）构建与导入。
-
 ## Requirements
-
 ### Requirement: 统一题目包格式（导入载体）
 
 系统 SHALL 定义统一题目包（Problem Bundle）作为题目导入的唯一载体格式：单个 zip 文件，根级 MUST 包含 `problem.json`（manifest）与 `evaluate.py`（评测脚本入口），SHOULD 包含 `statement.md`（题面 Markdown），可包含任意其他评测内容文件（testcase 不标准化，格式由题目自定，`evaluate.py` 自行读取）。
@@ -242,3 +240,13 @@ CLI MUST 提供自动生成的 help（`-h/--help`）与错误退出码约定。`
 
 - **WHEN** `build-packages` 打包 `problems-src/<id>/`（含 `template.py` 与 `__pycache__/`）
 - **THEN** 构建产物与剥离后评测包均不含 `template.py`、`submission*` 与 `__pycache__` 条目
+
+### Requirement: 题目导入速率限制
+
+`POST /api/v1/problems/import-bundle` SHALL 受速率限制保护，防止大包上传造成资源消耗。
+
+#### Scenario: 导入超限返回 429
+
+- **WHEN** 用户短时间内调用 import-bundle 次数超过阈值
+- **THEN** 系统返回 HTTP 429，且不解析上传包
+

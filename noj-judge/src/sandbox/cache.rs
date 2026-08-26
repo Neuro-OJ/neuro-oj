@@ -55,6 +55,12 @@ impl SupportPackageCache {
     pub async fn new(dir: impl Into<PathBuf>, max_items: usize, max_mb: u64) -> Result<Self> {
         let dir = dir.into();
         fs::create_dir_all(&dir).await.context("创建缓存目录失败")?;
+        // 缓存目录权限收紧为 0700，避免其他系统用户读取题目支持包。
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).await;
+        }
 
         Ok(Self {
             lock: cache_lock_for(&dir),
@@ -108,9 +114,17 @@ impl SupportPackageCache {
         fs::write(&tmp_path, data)
             .await
             .context("写入缓存临时文件失败")?;
-        fs::rename(&tmp_path, &path)
-            .await
-            .context("重命名缓存文件失败")?;
+        // 临时文件权限收紧为 0600，rename 后保留该权限。
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600)).await;
+        }
+        if let Err(e) = fs::rename(&tmp_path, &path).await {
+            // rename 失败时清理残留临时文件，避免磁盘堆积。
+            let _ = fs::remove_file(&tmp_path).await;
+            return Err(e).context("重命名缓存文件失败");
+        }
         self.touch(&path).await?;
 
         info!("支持包缓存写入: checksum={}, size={}", checksum, data.len());

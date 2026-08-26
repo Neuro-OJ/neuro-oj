@@ -933,6 +933,8 @@ def solve(msg: str) -> str:
         "bridge",
         "noj-",
         &["python3".to_string()],
+        300_000,
+        60_000,
     )
     .await
     .expect("evaluate_dual 返回 Err");

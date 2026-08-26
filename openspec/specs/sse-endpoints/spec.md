@@ -1,9 +1,7 @@
 ## Purpose
 
 定义 Server-Sent Events（SSE）端点规范，用于向浏览器实时推送评测状态变更和队列变更通知。
-
 ## Requirements
-
 ### Requirement: 提交状态 SSE 端点
 
 系统 SHALL 提供 `GET /api/v1/submissions/:id/events` 端点，通过 SSE 流式推送提交状态变更。
@@ -96,3 +94,18 @@
 
 - **WHEN** Redis 不可用（订阅者未就绪）
 - **THEN** 公告写流程正常完成（publishEvent 跳过），前端通过页面加载/轮询 fallback 获取最新数据
+
+### Requirement: 竞赛 SSE 隐藏 user_id
+
+`GET /api/v1/contests/:id/events` 推送 `contest:submission:created` 事件时，对非 admin 订阅者 SHALL 隐藏事件中的 `user_id` 字段，避免实时泄露“谁在提交哪题”。
+
+#### Scenario: 非 admin 收到脱敏事件
+
+- **WHEN** 普通用户订阅竞赛 SSE 且收到 `contest:submission:created` 事件
+- **THEN** 事件数据不包含 `user_id`（或该字段为 null）
+
+#### Scenario: admin 收到完整事件
+
+- **WHEN** admin 订阅同一竞赛 SSE
+- **THEN** 事件数据包含完整 `user_id`
+

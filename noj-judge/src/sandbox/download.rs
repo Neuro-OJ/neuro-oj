@@ -115,16 +115,15 @@ pub fn sha256_hex(data: &[u8]) -> String {
 }
 
 /// 校验 SHA-256 是否匹配。
-/// 当 expected 为 None 时跳过校验。
+/// 当 expected 为 None 或空时拒绝（不允许跳过完整性校验）。
 pub fn verify_checksum(data: &[u8], expected: Option<&str>) -> Result<()> {
-    if let Some(expected) = expected {
-        if expected.is_empty() {
-            return Ok(());
-        }
-        let actual = sha256_hex(data);
-        if actual != expected {
-            bail!("SHA-256 校验和不匹配: 期望={}, 实际={}", expected, actual);
-        }
+    let expected = expected.ok_or_else(|| anyhow::anyhow!("缺少 checksum_sha256，拒绝下载内容"))?;
+    if expected.is_empty() {
+        bail!("checksum_sha256 为空，拒绝下载内容");
+    }
+    let actual = sha256_hex(data);
+    if actual != expected {
+        bail!("SHA-256 校验和不匹配: 期望={}, 实际={}", expected, actual);
     }
     Ok(())
 }
@@ -216,13 +215,13 @@ mod tests {
     #[test]
     fn test_verify_checksum_none() {
         let data = b"test data";
-        assert!(verify_checksum(data, None).is_ok());
+        assert!(verify_checksum(data, None).is_err());
     }
 
     #[test]
     fn test_verify_checksum_empty() {
         let data = b"test data";
-        assert!(verify_checksum(data, Some("")).is_ok());
+        assert!(verify_checksum(data, Some("")).is_err());
     }
 
     #[test]

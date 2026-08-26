@@ -54,6 +54,46 @@ export const SELF_TEST_USER_LIMIT: RateLimitConfig = {
   max: 4,
 };
 
+export const CONTEST_SUBMISSION_IP_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 120,
+};
+
+export const CONTEST_SUBMISSION_USER_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 120,
+};
+
+export const OBJECTIVE_SUBMIT_IP_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 60,
+};
+
+export const OBJECTIVE_SUBMIT_USER_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 60,
+};
+
+export const PROBLEM_CREATE_IP_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 30,
+};
+
+export const PROBLEM_CREATE_USER_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 30,
+};
+
+export const PROBLEM_IMPORT_IP_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 10,
+};
+
+export const PROBLEM_IMPORT_USER_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 10,
+};
+
 function normalizeLimitKey(value: string): string {
   return value.trim().toLowerCase().slice(0, 128);
 }
@@ -139,5 +179,65 @@ export async function enforceSelfTestRateLimit(
   await enforceRateLimit(
     `self-test:user:${userId}`,
     SELF_TEST_USER_LIMIT,
+  );
+}
+
+/** 竞赛提交：IP + 用户双维度，与普通提交阈值一致但独立计数。 */
+export async function enforceContestSubmissionRateLimit(
+  c: Context,
+  userId: string,
+): Promise<void> {
+  await enforceRateLimit(
+    `contest-submission:ip:${getClientIp(c)}`,
+    CONTEST_SUBMISSION_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `contest-submission:user:${userId}`,
+    CONTEST_SUBMISSION_USER_LIMIT,
+  );
+}
+
+/** 客观题提交：IP + 用户双维度。 */
+export async function enforceObjectiveSubmitRateLimit(
+  c: Context,
+  userId: string,
+): Promise<void> {
+  await enforceRateLimit(
+    `objective-submit:ip:${getClientIp(c)}`,
+    OBJECTIVE_SUBMIT_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `objective-submit:user:${userId}`,
+    OBJECTIVE_SUBMIT_USER_LIMIT,
+  );
+}
+
+/** 题目创建：IP + 用户双维度。 */
+export async function enforceProblemCreateRateLimit(
+  c: Context,
+  userId: string,
+): Promise<void> {
+  await enforceRateLimit(
+    `problem-create:ip:${getClientIp(c)}`,
+    PROBLEM_CREATE_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `problem-create:user:${userId}`,
+    PROBLEM_CREATE_USER_LIMIT,
+  );
+}
+
+/** 题目导入：IP + 用户双维度，阈值更严格（大包上传）。 */
+export async function enforceProblemImportRateLimit(
+  c: Context,
+  userId: string,
+): Promise<void> {
+  await enforceRateLimit(
+    `problem-import:ip:${getClientIp(c)}`,
+    PROBLEM_IMPORT_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `problem-import:user:${userId}`,
+    PROBLEM_IMPORT_USER_LIMIT,
   );
 }
