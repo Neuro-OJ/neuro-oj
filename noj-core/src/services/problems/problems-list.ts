@@ -203,7 +203,9 @@ export async function listProblems(
   const total = Number(countResult[0]?.count ?? 0);
 
   // 注入关联标签（列表只返回题目标签，算法标签仅详情页出现）
-  const tagMap = await attachTags(rows.map((r) => r.problem.id), { kind: "problem" });
+  const tagMap = await attachTags(rows.map((r) => r.problem.id), {
+    kind: "problem",
+  });
 
   return {
     items: rows.map((r) => ({
