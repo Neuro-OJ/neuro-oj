@@ -409,6 +409,9 @@ export const contests = pgTable(
   "contests",
   {
     id: text("id").primaryKey(),
+    public_id: text("public_id").notNull().default(
+      sql`'ct-' || substr(md5(random()::text), 1, 8)`,
+    ),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     start_time: text("start_time").notNull(),
@@ -428,6 +431,7 @@ export const contests = pgTable(
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
+    publicIdUnique: unique("contests_public_id_unique").on(table.public_id),
     typeCheck: check(
       "contests_type_check",
       sql`${table.type} IN ('icpc', 'ioi', 'oi')`,
@@ -484,6 +488,9 @@ export const trainings = pgTable(
   "trainings",
   {
     id: text("id").primaryKey(),
+    public_id: text("public_id").notNull().default(
+      sql`'tr-' || substr(md5(random()::text), 1, 8)`,
+    ),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     visibility: text("visibility").notNull().default("private"),
@@ -495,6 +502,7 @@ export const trainings = pgTable(
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
+    publicIdUnique: unique("trainings_public_id_unique").on(table.public_id),
     visibilityCheck: check(
       "trainings_visibility_check",
       sql`${table.visibility} IN ('private', 'unlisted', 'public')`,
@@ -591,6 +599,9 @@ export const submissions = pgTable(
   "submissions",
   {
     id: text("id").primaryKey(),
+    public_id: text("public_id").notNull().default(
+      sql`'sub-' || substr(md5(random()::text), 1, 8)`,
+    ),
     user_id: text("user_id").notNull().references(() => users.id),
     problem_id: text("problem_id").notNull().references(() => problems.id),
     contest_id: text("contest_id").references(() => contests.id, {
@@ -611,6 +622,7 @@ export const submissions = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
+    publicIdUnique: unique("submissions_public_id_unique").on(table.public_id),
     user_idx: index("idx_submissions_user_id").on(table.user_id),
     problem_idx: index("idx_submissions_problem_id").on(table.problem_id),
     status_idx: index("idx_submissions_status").on(table.status),
@@ -936,6 +948,9 @@ export const announcements = pgTable(
   "announcements",
   {
     id: text("id").primaryKey(),
+    public_id: text("public_id").notNull().default(
+      sql`'ann-' || substr(md5(random()::text), 1, 8)`,
+    ),
     /** 标题，1–100 字符 */
     title: text("title").notNull(),
     /** Markdown 正文，1–50000 字符 */
@@ -952,6 +967,9 @@ export const announcements = pgTable(
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
+    publicIdUnique: unique("announcements_public_id_unique").on(
+      table.public_id,
+    ),
     /** 公开列表查询：仅 active + 置顶优先 + 最新在前 */
     activePinnedCreatedIdx: index("idx_announcements_active_pinned_created").on(
       table.is_active,
@@ -1214,6 +1232,9 @@ export const communityPosts = pgTable(
   "community_posts",
   {
     id: text("id").primaryKey(),
+    public_id: text("public_id").notNull().default(
+      sql`'post-' || substr(md5(random()::text), 1, 8)`,
+    ),
     type: text("type").notNull(),
     author_id: text("author_id").notNull().references(() => users.id, {
       onDelete: "cascade",
@@ -1235,6 +1256,9 @@ export const communityPosts = pgTable(
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
+    publicIdUnique: unique("community_posts_public_id_unique").on(
+      table.public_id,
+    ),
     typeCheck: check(
       "community_posts_type_check",
       sql`${table.type} IN ('solution', 'discussion', 'moment')`,

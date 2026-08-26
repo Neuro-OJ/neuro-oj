@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { NotificationRow } from "~/composables/useCommunity"
 import { extractApiError } from "~/utils/apiError"
+import { publicUrl, userUrl } from "~/utils/publicIdentifiers"
 
 definePageMeta({ middleware: "auth" })
 
@@ -67,9 +68,9 @@ async function markAllRead() {
 }
 
 function notificationHref(item: NotificationRow): string {
-  if (item.notification.post_id) return `/community/posts/${item.notification.post_id}`
-  if (item.notification.type === "follow" && item.actor) return `/users/${item.actor.id}`
-  if (item.notification.type === "clarification" && item.notification.data.contest_id) return `/contests/${item.notification.data.contest_id as string}?tab=clarifications`
+  if (item.notification.post_id) return publicUrl("post", item.notification.post_id)
+  if (item.notification.type === "follow" && item.actor) return userUrl(item.actor.username)
+  if (item.notification.type === "clarification" && item.notification.data.contest_id) return `${publicUrl("contest", item.notification.data.contest_id as string)}?tab=clarifications`
   return "/community"
 }
 

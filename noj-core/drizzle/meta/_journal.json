@@ -358,6 +358,27 @@
       "when": 1787636326622,
       "tag": "0050_milky_kylun",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1787663828101,
+      "tag": "0051_good_korath",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1787663992905,
+      "tag": "0052_orange_jackpot",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1787665794280,
+      "tag": "0053_optimal_red_hulk",
+      "breakpoints": true
     }
   ]
 }

@@ -37,6 +37,7 @@ import {
   listPosts,
   markNotificationRead,
   markNotificationsRead,
+  resolvePostId,
   resolveProblemId,
   toggleBookmark,
   toggleCommentLike,
@@ -186,9 +187,10 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
 router.get("/posts/:postId", optionalAuthMiddleware, async (c) => {
   assertCommunityEnabled();
   requireGuestRead(c);
+  const postId = await resolvePostId(c.req.param("postId") as string);
   return c.json({
     data: await getPost(
-      c.req.param("postId") as string,
+      postId,
       c.get("userId"),
       c.get("userId") ? await isModerator(c) : false,
     ),
@@ -209,13 +211,14 @@ router.post("/posts", authMiddleware, async (c) => {
 
 router.patch("/posts/:postId", authMiddleware, async (c) => {
   const actorId = userId(c);
+  const postId = await resolvePostId(c.req.param("postId") as string);
   await assertCommunityWritable(actorId, await isModerator(c));
   const input = await parseJsonBody<
     Partial<Pick<CommunityPostInput, "title" | "content">>
   >(c);
   return c.json({
     data: await updatePost(
-      c.req.param("postId") as string,
+      postId,
       actorId,
       await isModerator(c),
       input,
@@ -225,8 +228,9 @@ router.patch("/posts/:postId", authMiddleware, async (c) => {
 
 router.delete("/posts/:postId", authMiddleware, async (c) => {
   const actorId = userId(c);
+  const postId = await resolvePostId(c.req.param("postId") as string);
   const post = await getPost(
-    c.req.param("postId") as string,
+    postId,
     actorId,
     await isModerator(c),
   );
@@ -236,7 +240,7 @@ router.delete("/posts/:postId", authMiddleware, async (c) => {
   await assertCommunityWritable(actorId, await isModerator(c));
   return c.json({
     data: await changePostStatus(
-      c.req.param("postId") as string,
+      postId,
       actorId,
       "deleted",
     ),
@@ -248,9 +252,10 @@ router.get(
   optionalAuthMiddleware,
   async (c) => {
     requireGuestRead(c);
+    const postId = await resolvePostId(c.req.param("postId") as string);
     return c.json({
       data: await listComments(
-        c.req.param("postId") as string,
+        postId,
         c.get("userId"),
         c.get("userId") ? await isModerator(c) : false,
       ),
@@ -259,6 +264,7 @@ router.get(
 );
 router.post("/posts/:postId/comments", authMiddleware, async (c) => {
   const actorId = userId(c);
+  const postId = await resolvePostId(c.req.param("postId") as string);
   await assertPermission(c, "community:comment");
   await assertCommunityWritable(actorId, await isModerator(c));
   const body = await parseJsonBody<{ content?: string; parent_id?: string }>(c);
@@ -266,7 +272,7 @@ router.post("/posts/:postId/comments", authMiddleware, async (c) => {
   return c.json({
     data: await createComment(
       actorId,
-      c.req.param("postId") as string,
+      postId,
       body.content,
       body.parent_id,
     ),
@@ -301,23 +307,25 @@ router.delete("/comments/:commentId", authMiddleware, async (c) => {
 
 router.post("/posts/:postId/like", authMiddleware, async (c) => {
   const actorId = userId(c);
+  const postId = await resolvePostId(c.req.param("postId") as string);
   await assertPermission(c, "community:react");
   await assertCommunityWritable(actorId, await isModerator(c));
   return c.json({
     data: {
-      liked: await togglePostLike(actorId, c.req.param("postId") as string),
+      liked: await togglePostLike(actorId, postId),
     },
   });
 });
 router.post("/posts/:postId/bookmark", authMiddleware, async (c) => {
   const actorId = userId(c);
+  const postId = await resolvePostId(c.req.param("postId") as string);
   await assertPermission(c, "community:react");
   await assertCommunityWritable(actorId, await isModerator(c));
   return c.json({
     data: {
       bookmarked: await toggleBookmark(
         actorId,
-        c.req.param("postId") as string,
+        postId,
       ),
     },
   });

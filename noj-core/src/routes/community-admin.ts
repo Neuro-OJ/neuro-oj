@@ -18,12 +18,14 @@ import {
   listReports,
   listSanctions,
   listUserSanctions,
+  resolvePostId,
   resolveReport,
   revokeSanction,
   togglePostFlag,
   updateBoard,
   updateBoardRoleGrant,
 } from "../services/community/community.ts";
+import { resolveUserId } from "../services/users.ts";
 
 /**
  * 社区管理路由（挂载前缀 /api/v1/community，见 app.ts）。
@@ -169,9 +171,10 @@ router.post("/admin/posts/:postId/:status", async (c) => {
     throw new BadRequestError("无效内容状态");
   }
   const body = await parseJsonBody<{ reason?: string }>(c);
+  const postId = await resolvePostId(c.req.param("postId") as string);
   return c.json({
     data: await changePostStatus(
-      c.req.param("postId"),
+      postId,
       userId(c),
       status as "published" | "hidden" | "deleted",
       body.reason,
@@ -201,9 +204,10 @@ router.post("/admin/posts/:postId/:flag", async (c) => {
     throw new BadRequestError("无效内容操作");
   }
   const body = await parseJsonBody<{ value?: boolean }>(c);
+  const postId = await resolvePostId(c.req.param("postId") as string);
   return c.json({
     data: await togglePostFlag(
-      c.req.param("postId"),
+      postId,
       userId(c),
       flag === "lock" ? "is_locked" : "is_pinned",
       body.value === true,
@@ -223,10 +227,11 @@ router.post("/admin/sanctions", async (c) => {
   if (!body.user_id || !body.reason) {
     throw new BadRequestError("缺少用户或处罚原因");
   }
+  const targetUserId = await resolveUserId(body.user_id);
   return c.json({
     data: await createSanction(
       userId(c),
-      body.user_id,
+      targetUserId,
       body.reason,
       body.expires_at,
     ),
@@ -244,8 +249,10 @@ router.delete(
 );
 router.get(
   "/admin/users/:userId/sanctions",
-  async (c) =>
-    c.json({ data: await listUserSanctions(c.req.param("userId") as string) }),
+  async (c) => {
+    const targetUserId = await resolveUserId(c.req.param("userId") as string);
+    return c.json({ data: await listUserSanctions(targetUserId) });
+  },
 );
 
 export default router;

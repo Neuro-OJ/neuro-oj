@@ -29,6 +29,7 @@ import {
   createAnnouncement,
   deleteAnnouncement,
   listAdminAnnouncements,
+  resolveAnnouncementId,
   updateAnnouncement,
 } from "../services/announcements.ts";
 import type {
@@ -88,7 +89,7 @@ router.post("/", async (c) => {
  */
 router.put("/:id", async (c) => {
   await assertPermission(c, "announcement:manage");
-  const id = c.req.param("id") as string;
+  const id = await resolveAnnouncementId(c.req.param("id") as string);
   const body = await parseJsonBody<UpdateAnnouncementInput>(c);
   const item = await updateAnnouncement(id, body);
   return c.json({ data: item });
@@ -100,7 +101,7 @@ router.put("/:id", async (c) => {
  */
 router.delete("/:id", async (c) => {
   await assertPermission(c, "announcement:manage");
-  const id = c.req.param("id") as string;
+  const id = await resolveAnnouncementId(c.req.param("id") as string);
   await deleteAnnouncement(id);
   return c.body(null, 204);
 });

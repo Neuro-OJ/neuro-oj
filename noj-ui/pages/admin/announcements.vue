@@ -11,6 +11,7 @@ useRequireLogin()
 
 interface AdminAnnouncement {
   id: string
+  public_id?: string
   title: string
   content: string
   is_pinned: boolean
@@ -112,7 +113,7 @@ async function handleSave() {
       is_active: formActive.value,
     }
     if (editing.value) {
-      await api.put(`/api/v1/admin/announcements/${editing.value.id}`, body)
+      await api.put(`/api/v1/admin/announcements/${editing.value.public_id || editing.value.id}`, body)
     } else {
       await api.post("/api/v1/admin/announcements", body)
     }
@@ -142,7 +143,7 @@ async function handleDelete() {
   if (!deleteTarget.value) return
   deleting.value = true
   try {
-    await api.delete(`/api/v1/admin/announcements/${deleteTarget.value.id}`)
+    await api.delete(`/api/v1/admin/announcements/${deleteTarget.value.public_id || deleteTarget.value.id}`)
     showDeleteConfirm.value = false
     await load(currentPage.value)
   } catch (err: unknown) {

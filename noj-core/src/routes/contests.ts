@@ -22,6 +22,7 @@ import {
   isParticipant,
   listContests,
   registerForContest,
+  resolveContestId,
 } from "../services/contest/contests.ts";
 import {
   createSubmission,
@@ -68,6 +69,7 @@ contests.get("/", async (c) => {
 });
 
 contests.post("/:id/register", authMiddleware, async (c) => {
+  const contestId = await resolveContestId(c.req.param("id") as string);
   const rawBody = await c.req.text();
   let body: { password?: string } = {};
   if (rawBody.trim()) {
@@ -78,7 +80,7 @@ contests.post("/:id/register", authMiddleware, async (c) => {
     }
   }
   await registerForContest(
-    c.req.param("id") as string,
+    contestId,
     c.var.userId as string,
     body.password,
   );
@@ -86,14 +88,14 @@ contests.post("/:id/register", authMiddleware, async (c) => {
     c.var.userId as string,
     "contest_joined",
     "contest",
-    c.req.param("id") as string,
+    contestId,
     {},
   );
   return c.json({ message: "竞赛注册成功" }, 201);
 });
 
 contests.get("/:id/problems", authMiddleware, async (c) => {
-  const contestId = c.req.param("id") as string;
+  const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId as string;
   await requireContestAccess(
     contestId,
@@ -105,7 +107,7 @@ contests.get("/:id/problems", authMiddleware, async (c) => {
 });
 
 contests.get("/:id/problems/:label", authMiddleware, async (c) => {
-  const contestId = c.req.param("id") as string;
+  const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId as string;
   await requireContestAccess(
     contestId,
@@ -122,7 +124,7 @@ contests.get("/:id/problems/:label", authMiddleware, async (c) => {
 });
 
 contests.get("/:id/ranking", optionalAuthMiddleware, async (c) => {
-  const contestId = c.req.param("id") as string;
+  const contestId = await resolveContestId(c.req.param("id") as string);
   const contest = await getContest(contestId, c.var.userId);
   if (
     !contest.is_public && !await checkPermission(c, "submission:read_all") &&
@@ -145,7 +147,7 @@ contests.get("/:id/ranking", optionalAuthMiddleware, async (c) => {
 });
 
 contests.post("/:id/submit", authMiddleware, async (c) => {
-  const contestId = c.req.param("id") as string;
+  const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId as string;
   const contest = await getContest(contestId, userId);
   if (
@@ -197,7 +199,7 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
 });
 
 contests.get("/:id/my-submissions", authMiddleware, async (c) => {
-  const contestId = c.req.param("id") as string;
+  const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId as string;
   await getContest(contestId);
   if (!await isParticipant(contestId, userId)) {
@@ -217,7 +219,7 @@ contests.get("/:id/my-submissions", authMiddleware, async (c) => {
 });
 
 contests.get("/:id/clarifications", optionalAuthMiddleware, async (c) => {
-  const contestId = c.req.param("id") as string;
+  const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId;
   // 私有竞赛门禁：与 GET /:id 一致，仅 admin/参赛者可见（创建者通常为 admin）
   const contest = await getContest(contestId, userId);
@@ -239,7 +241,7 @@ contests.get("/:id/clarifications", optionalAuthMiddleware, async (c) => {
 });
 
 contests.post("/:id/clarifications", authMiddleware, async (c) => {
-  const contestId = c.req.param("id") as string;
+  const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId as string;
   const body = await parseJsonBody<{
     content?: string;
@@ -253,7 +255,7 @@ contests.post(
   "/:id/clarifications/:clarId/reply",
   authMiddleware,
   async (c) => {
-    const contestId = c.req.param("id") as string;
+    const contestId = await resolveContestId(c.req.param("id") as string);
     const clarId = c.req.param("clarId") as string;
     const userId = c.var.userId as string;
     const body = await parseJsonBody<{ content?: string; is_public?: boolean }>(
@@ -265,7 +267,8 @@ contests.post(
 );
 
 contests.get("/:id", optionalAuthMiddleware, async (c) => {
-  const data = await getContest(c.req.param("id") as string, c.var.userId);
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const data = await getContest(contestId, c.var.userId);
   if (
     !data.is_public && !await checkPermission(c, "submission:read_all") &&
     !data.is_registered

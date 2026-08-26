@@ -13,6 +13,7 @@ import {
   ValidationError,
 } from "../../lib/errors.ts";
 import { nowIso } from "../../lib/dates.ts";
+import { generatePublicId, isPublicId, isUuid } from "../../lib/public-id.ts";
 import type {
   CommunityPostInput,
   CommunityPostType,
@@ -126,6 +127,7 @@ export async function createPost(
   const status = await publicationStatus(authorId);
   const post = {
     id: crypto.randomUUID(),
+    public_id: generatePublicId("post"),
     type: input.type,
     author_id: authorId,
     problem_id: input.type === "solution" ? input.problem_id! : null,
@@ -148,6 +150,23 @@ export async function createPost(
     });
   }
   return post;
+}
+
+/** 将 UUID 或 public_id 解析为内部帖子 UUID；其它格式按主键兜底。 */
+export async function resolvePostId(value: string): Promise<string> {
+  const db = getDb();
+  if (isUuid(value)) return value;
+  if (isPublicId(value, "post")) {
+    const rows = await db.select({ id: communityPosts.id }).from(communityPosts)
+      .where(eq(communityPosts.public_id, value)).limit(1);
+    const row = rows[0];
+    if (!row) throw new NotFoundError("社区内容不存在");
+    return row.id;
+  }
+  const byId = await db.select({ id: communityPosts.id }).from(communityPosts)
+    .where(eq(communityPosts.id, value)).limit(1);
+  if (!byId[0]) throw new NotFoundError("社区内容不存在");
+  return byId[0].id;
 }
 
 export async function getPost(

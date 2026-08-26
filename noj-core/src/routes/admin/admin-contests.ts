@@ -12,6 +12,7 @@ import {
   listContests,
   listParticipants,
   removeParticipant,
+  resolveContestId,
   updateContest,
 } from "../../services/contest/contests.ts";
 import type {
@@ -20,6 +21,7 @@ import type {
 } from "../../types/contests.ts";
 import { isValidContestType } from "../../types/contests.ts";
 import { listSubmissions } from "../../services/submissions/submissions.ts";
+import { resolveUserId } from "../../services/users.ts";
 
 /**
  * 管理端竞赛管理路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。
@@ -50,7 +52,7 @@ router.get("/contests", async (c) => {
 });
 
 router.get("/contests/:id", async (c) => {
-  const contestId = c.req.param("id") as string;
+  const contestId = await resolveContestId(c.req.param("id") as string);
   const [contest, problems] = await Promise.all([
     getContest(contestId),
     getContestProblems(contestId),
@@ -65,43 +67,50 @@ router.post("/contests", async (c) => {
 });
 
 router.put("/contests/:id", async (c) => {
+  const contestId = await resolveContestId(c.req.param("id") as string);
   const body = await parseJsonBody<UpdateContestInput>(c);
   const data = await updateContest(
-    c.req.param("id") as string,
+    contestId,
     body,
   );
   return c.json({ data });
 });
 
 router.delete("/contests/:id", async (c) => {
-  await deleteContest(c.req.param("id") as string);
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  await deleteContest(contestId);
   return c.body(null, 204);
 });
 
 router.get("/contests/:id/participants", async (c) => {
-  const data = await listParticipants(c.req.param("id") as string);
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const data = await listParticipants(contestId);
   return c.json({ data });
 });
 
 router.post("/contests/:id/participants", async (c) => {
+  const contestId = await resolveContestId(c.req.param("id") as string);
   const userIds = await parseJsonBody<string[]>(c);
   if (!Array.isArray(userIds)) {
     throw new BadRequestError("请求体必须为用户 ID 数组");
   }
-  const added = await addParticipants(c.req.param("id") as string, userIds);
+  const resolvedIds = await Promise.all(userIds.map((v) => resolveUserId(v)));
+  const added = await addParticipants(contestId, resolvedIds);
   return c.json({ data: { added } }, 201);
 });
 
 router.delete("/contests/:id/participants/:userId", async (c) => {
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const targetUserId = await resolveUserId(c.req.param("userId") as string);
   await removeParticipant(
-    c.req.param("id") as string,
-    c.req.param("userId") as string,
+    contestId,
+    targetUserId,
   );
   return c.body(null, 204);
 });
 
 router.get("/contests/:id/submissions", async (c) => {
-  const contestId = c.req.param("id") as string;
+  const contestId = await resolveContestId(c.req.param("id") as string);
   await getContest(contestId);
   const { page, perPage } = parsePagination(c);
   const result = await listSubmissions({ contestId, page, perPage });

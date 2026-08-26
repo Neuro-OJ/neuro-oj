@@ -342,7 +342,7 @@ async function selectSanctionUser(u: { id: string; username: string }) {
   selectedSanctionUser.value = u
   sanctionUserQuery.value = u.username
   sanctionUserResults.value = []
-  await loadUserSanctions(u.id)
+  await loadUserSanctions(u.username)
 }
 
 async function loadUserSanctions(userId?: string) {
@@ -369,14 +369,14 @@ async function createSanction() {
   creatingSanction.value = true
   try {
     await api.post("/api/v1/community/admin/sanctions", {
-      user_id: selectedSanctionUser.value.id,
+      user_id: selectedSanctionUser.value.username,
       reason: sanctionReason.value,
       expires_at: sanctionExpiresAt.value || null,
     })
     toast.success("处罚已生效")
     sanctionReason.value = ""
     sanctionExpiresAt.value = ""
-    await Promise.all([load(), loadUserSanctions(selectedSanctionUser.value.id)])
+    await Promise.all([load(), loadUserSanctions(selectedSanctionUser.value.username)])
   } finally {
     creatingSanction.value = false
   }

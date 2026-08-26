@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { difficultyBadgeColors, difficultyLabels, formatAcceptanceRate } from "~/utils/submissionFormat"
+import { problemUrl } from "~/utils/publicIdentifiers"
 import type { ObjectiveSubmission } from '~/composables/useObjective'
 const { api } = useApi()
 
@@ -228,7 +229,7 @@ const columns = computed(() => {
           </template>
           <template #title-cell="{ row }">
             <NuxtLink
-              :to="`/problems/${row.original.id}`"
+              :to="problemUrl(row.original.id, row.original.display_id)"
               class="text-text no-underline font-medium hover:text-primary"
             >
               {{ row.original.title }}

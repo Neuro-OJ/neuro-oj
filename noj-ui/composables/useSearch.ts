@@ -40,6 +40,7 @@ export interface UserSearchResult {
 
 export interface CommunitySearchResult {
   id: string;
+  public_id?: string;
   type: 'solution' | 'discussion';
   title: string;
   author_id: string;

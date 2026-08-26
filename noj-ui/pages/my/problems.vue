@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { extractApiError } from "~/utils/apiError"
+import { problemUrl } from "~/utils/publicIdentifiers"
 
 definePageMeta({
   middleware: "auth",
@@ -112,7 +113,7 @@ function onPageChange(page: number) {
               <ProblemId :display-id="problem.display_id" type="U" />
             </td>
             <td class="px-4 py-3.5">
-              <NuxtLink :to="`/problems/${problem.id}`" class="text-text no-underline font-medium hover:text-primary">
+              <NuxtLink :to="problemUrl(problem.id, problem.display_id)" class="text-text no-underline font-medium hover:text-primary">
                 {{ problem.title }}
               </NuxtLink>
             </td>
@@ -124,7 +125,7 @@ function onPageChange(page: number) {
             </td>
             <td class="px-4 py-3.5 text-center">
               <NuxtLink
-                :to="`/problems/${problem.id}/edit`"
+                :to="`/problems/${problem.display_id}/edit`"
                 class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium border border-border rounded-md text-text-secondary hover:text-primary hover:border-primary/40 transition-colors"
               >
                 编辑

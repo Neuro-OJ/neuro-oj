@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { formatDateTime } from "~/utils/submissionFormat"
+import { publicUrl } from "~/utils/publicIdentifiers"
 
 interface AnnouncementSummary {
   id: string
+  public_id?: string
   title: string
   excerpt: string
   is_pinned: boolean
@@ -62,7 +64,7 @@ onMounted(() => load(1))
         <NuxtLink
           v-for="item in data.data"
           :key="item.id"
-          :to="`/announcements/${item.id}`"
+          :to="publicUrl('announcement', item.public_id || item.id)"
           class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 px-5 py-4 hover:bg-gray-50 transition-colors"
         >
           <div class="flex items-center gap-2 min-w-0 flex-1">

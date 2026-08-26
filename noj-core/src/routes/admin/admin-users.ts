@@ -7,6 +7,7 @@ import {
   adminUpdateUserProfile,
   banUser,
   getUserBanHistory,
+  resolveUserId,
   unbanUser,
 } from "../../services/users.ts";
 import { updateUserRoles } from "../../services/admin-roles.ts";
@@ -58,13 +59,13 @@ router.get("/users", async (c) => {
  * 新格式: `{ "role_ids": ["<uuid>", ...] }`
  */
 router.patch("/users/:id/role", async (c) => {
-  const targetUserId = c.req.param("id") as string;
   const body = await parseJsonBody<{ role_ids: string[] }>(c);
 
   if (!body.role_ids || !Array.isArray(body.role_ids)) {
     throw new ValidationError("缺少必填字段：role_ids（UUID 数组）");
   }
 
+  const targetUserId = await resolveUserId(c.req.param("id") as string);
   await updateUserRoles(targetUserId, body.role_ids, c.get("userId"));
 
   // 返回更新结果
@@ -76,13 +77,22 @@ router.patch("/users/:id/role", async (c) => {
  * PUT /api/v1/admin/users/:id
  */
 router.put("/users/:id", async (c) => {
-  const targetUserId = c.req.param("id") as string;
   const body = await parseJsonBody<{ email?: string; bio?: string }>(c);
 
   if (body.email === undefined && body.bio === undefined) {
     throw new BadRequestError("至少需要提供一个可更新字段（email 或 bio）");
   }
 
+  if (
+    body.email !== undefined &&
+    !/^(?!\.)(?!.*\.\.)[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(
+      body.email,
+    )
+  ) {
+    throw new BadRequestError("邮箱格式不正确");
+  }
+
+  const targetUserId = await resolveUserId(c.req.param("id") as string);
   const user = await adminUpdateUserProfile(targetUserId, body);
   return c.json({ data: user }, 200);
 });
@@ -93,7 +103,7 @@ router.put("/users/:id", async (c) => {
  * body: { reason?, banned_until? }
  */
 router.patch("/users/:id/ban", async (c) => {
-  const targetUserId = c.req.param("id") as string;
+  const targetUserId = await resolveUserId(c.req.param("id") as string);
   const body = await parseJsonBody<{
     reason?: string;
     banned_until?: string | null;
@@ -112,7 +122,7 @@ router.patch("/users/:id/ban", async (c) => {
  * PATCH /api/v1/admin/users/:id/unban
  */
 router.patch("/users/:id/unban", async (c) => {
-  const targetUserId = c.req.param("id") as string;
+  const targetUserId = await resolveUserId(c.req.param("id") as string);
   const user = await unbanUser(targetUserId, c.get("userId"));
   return c.json({ data: user }, 200);
 });
@@ -122,7 +132,7 @@ router.patch("/users/:id/unban", async (c) => {
  * GET /api/v1/admin/users/:id/bans
  */
 router.get("/users/:id/bans", async (c) => {
-  const targetUserId = c.req.param("id") as string;
+  const targetUserId = await resolveUserId(c.req.param("id") as string);
   const records = await getUserBanHistory(targetUserId);
   return c.json({ data: records }, 200);
 });

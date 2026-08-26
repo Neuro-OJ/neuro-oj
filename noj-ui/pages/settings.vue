@@ -2,6 +2,7 @@
 import { extractApiError } from "~/utils/apiError"
 import { getAvatarUploadError } from "~/utils/avatarUpload"
 import { formatRecoveryCodesFile } from "~/utils/recoveryCodes"
+import { userUrl } from "~/utils/publicIdentifiers"
 const { user, isLoggedIn, loading, fetchUser } = useAuth()
 const router = useRouter()
 const { api } = useApi()
@@ -102,7 +103,7 @@ watch(
     if (!u?.id) return
     try {
       const res = await api.get<{ data: { user: { bio: string } } }>(
-        `/api/v1/users/${u.id}/profile`,
+        `/api/v1/users/${u.username}/profile`,
         { silent: true },
       )
       bio.value = res.data.user.bio || ""
@@ -303,7 +304,7 @@ async function handleCopyRecoveryCodes() {
     <!-- 返回 -->
     <NuxtLink
       v-if="user?.id"
-      :to="`/users/${user.id}`"
+      :to="userUrl(user?.username ?? '')"
       class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
     >
       <UIcon name="i-lucide-arrow-left" class="size-4" />
@@ -325,7 +326,7 @@ async function handleCopyRecoveryCodes() {
           <span class="relative inline-block rounded-full overflow-hidden shrink-0" :style="{ width: '64px', height: '64px' }">
             <img
               v-if="user?.avatar_url"
-              :src="`/api/v1/users/${user.id}/avatar?t=${avatarPreviewKey}`"
+              :src="`/api/v1/users/${user.username}/avatar?t=${avatarPreviewKey}`"
               alt="当前头像"
               class="size-full object-cover"
             />

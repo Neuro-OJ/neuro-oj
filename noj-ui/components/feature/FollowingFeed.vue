@@ -67,6 +67,7 @@
 import type { FeedActivity, FeedItem } from "~/composables/useCommunity"
 import { stripMarkdown } from "~/utils/markdown"
 import { extractApiError } from "~/utils/apiError"
+import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
 
 const { api } = useApi()
 
@@ -96,14 +97,14 @@ function activityLabel(a: FeedActivity): string {
 }
 
 function activityHref(a: FeedActivity): string {
-  if (a.subject_type === "post") return `/community/posts/${a.subject_id}`
-  if (a.subject_type === "problem") return `/problems/${a.subject_id}`
-  if (a.subject_type === "contest") return `/contests/${a.subject_id}`
+  if (a.subject_type === "post") return publicUrl("post", a.subject_id)
+  if (a.subject_type === "problem") return problemUrl(a.subject_id)
+  if (a.subject_type === "contest") return publicUrl("contest", a.subject_id)
   return "/community"
 }
 
 function itemHref(item: FeedItem): string {
-  if (item.kind === "moment" && item.post) return `/community/posts/${item.post.id}`
+  if (item.kind === "moment" && item.post) return publicUrl("post", item.post.public_id || item.post.id)
   if (item.kind === "activity" && item.activity) return activityHref(item.activity)
   return "/community"
 }

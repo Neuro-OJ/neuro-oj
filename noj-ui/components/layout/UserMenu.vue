@@ -5,7 +5,7 @@
     </template>
     <div v-else class="relative">
         <div class="flex items-center gap-3">
-            <NuxtLink :to="`/users/${user?.id}`" class="hidden sm:inline text-base text-text-secondary font-medium no-underline transition-colors hover:text-primary">{{ user?.username }}</NuxtLink>
+            <NuxtLink :to="userUrl(user?.username ?? '')" class="hidden sm:inline text-base text-text-secondary font-medium no-underline transition-colors hover:text-primary">{{ user?.username }}</NuxtLink>
             <button
                 type="button"
                 ref="menuButtonRef"
@@ -29,7 +29,7 @@
             <div class="px-3.5 py-2 border-b border-border mb-1">
                 <p class="text-sm font-semibold text-text truncate">{{ user?.username }}</p>
             </div>
-            <NuxtLink :to="`/users/${user?.id}`" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-primary-hover" @click="closeMenu"><UIcon name="i-lucide-user-round" class="size-4" />用户主页</NuxtLink>
+            <NuxtLink :to="userUrl(user?.username ?? '')" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-primary-hover" @click="closeMenu"><UIcon name="i-lucide-user-round" class="size-4" />用户主页</NuxtLink>
             <NuxtLink to="/my/problems" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-primary-hover" @click="closeMenu"><UIcon name="i-lucide-book-open" class="size-4" />我的题目</NuxtLink>
             <NuxtLink to="/messages" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-primary-hover relative" @click="closeMenu"><UIcon name="i-lucide-mail" class="size-4" />消息<span v-if="unreadCount > 0" class="ml-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{{ unreadCount > 99 ? "99+" : unreadCount }}</span></NuxtLink>
             <NuxtLink to="/settings" role="menuitem" class="flex items-center gap-2 w-full px-3.5 py-2 text-sm text-text no-underline rounded hover:bg-primary-hover" @click="closeMenu"><UIcon name="i-lucide-settings" class="size-4" />设置</NuxtLink>
@@ -49,6 +49,7 @@
 </template>
 
 <script setup lang="ts">
+import { userUrl } from "~/utils/publicIdentifiers";
 const router = useRouter()
 const { user, isLoggedIn, logout, fetchUser } = useAuth()
 const { dialog } = useDialog()

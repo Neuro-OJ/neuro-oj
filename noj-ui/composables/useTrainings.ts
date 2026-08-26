@@ -4,6 +4,7 @@ export type TrainingVisibility = 'private' | 'unlisted' | 'public';
 
 export interface Training {
   id: string;
+  public_id?: string;
   title: string;
   description: string;
   visibility: TrainingVisibility;

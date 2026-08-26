@@ -7,6 +7,7 @@ import {
 } from "~/composables/useCommunity"
 import { stripMarkdown } from "~/utils/markdown"
 import { extractApiError } from "~/utils/apiError"
+import { publicUrl } from "~/utils/publicIdentifiers"
 
 const { isLoggedIn } = useAuth()
 const route = useRoute()
@@ -365,7 +366,7 @@ await init()
             <li v-for="p in problemResults" :key="p.id" class="cursor-pointer px-3 py-2 text-sm hover:bg-primary-bg" @mousedown.prevent="selectProblem(p)">{{ p.display_id }} · {{ p.title }}</li>
             <li v-if="!problemSearching && problemResults.length === 0" class="px-3 py-2 text-xs text-text-secondary">无匹配题目</li>
           </ul>
-          <p class="mt-1 text-xs text-text-muted">当前关联题目：{{ problemId || '未选择' }}（可手动输入题目 ID）</p>
+          <p class="mt-1 text-xs text-text-muted">当前关联题目：{{ problemQuery || '未选择' }}（可手动输入题目 ID）</p>
         </div>
         <USelect v-if="activeType === 'discussion'" v-model="boardId" :items="boards.map((b) => ({ label: b.name, value: b.id }))" class="mb-3 w-full" :placeholder="boards.length ? '选择板块' : '暂无可用板块'" />
         <p v-if="boardError" class="mb-3 text-xs text-red-600">{{ boardError }}</p>
@@ -398,7 +399,7 @@ await init()
             <span v-if="item.post.status === 'hidden'" class="rounded bg-red-50 px-2 py-0.5 text-xs text-red-700">已隐藏</span>
             <span v-if="item.post.is_locked" class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-lock" class="size-[10px]" />已锁定</span>
           </div>
-          <NuxtLink :to="`/community/posts/${item.post.id}`" class="block no-underline">
+          <NuxtLink :to="publicUrl('post', item.post.public_id || item.post.id)" class="block no-underline">
             <h2 v-if="item.post.title" class="text-lg font-semibold text-text hover:text-primary">{{ item.post.title }}</h2>
             <p class="mt-2 line-clamp-3 text-sm leading-6 text-text-secondary">{{ stripMarkdown(item.post.content) }}</p>
           </NuxtLink>

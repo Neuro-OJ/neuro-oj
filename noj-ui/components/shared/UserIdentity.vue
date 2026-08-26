@@ -1,7 +1,7 @@
 <template>
     <component
         :is="link ? NuxtLink : 'span'"
-        :to="link ? (to ?? `/users/${user.id}`) : undefined"
+        :to="link ? (to ?? userUrl(user.username)) : undefined"
         class="inline-flex items-center gap-2 no-underline"
         :class="{ 'cursor-pointer hover:opacity-80': link }"
     >
@@ -12,7 +12,7 @@
         >
             <img
                 v-if="(user.avatar_url || (loadAvatarWhenUnknown && user.avatar_url === undefined)) && !imgFailed"
-                :src="`/api/v1/users/${user.id}/avatar`"
+                :src="`/api/v1/users/${user.username}/avatar`"
                 :alt="user.username"
                 class="size-full object-cover"
                 loading="lazy"
@@ -31,6 +31,7 @@
 
 <script setup lang="ts">
 import { NuxtLink } from "#components";
+import { userUrl } from "~/utils/publicIdentifiers";
 
 interface IdentityUser {
     id: string;

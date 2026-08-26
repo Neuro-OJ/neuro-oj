@@ -1,13 +1,13 @@
 <template>
     <NuxtLink
-        :to="`/submissions/${submission.id}`"
+        :to="publicUrl('submission', submission.public_id || submission.id)"
         class="relative block px-2.5 py-1.5 border-2 border-border rounded-md bg-white no-underline transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-primary hover:shadow-dropdown group"
     >
         <div class="grid grid-cols-[auto_1fr] gap-x-2">
             <!-- 左列：icon + #id（跨两行） -->
             <div class="row-span-2 self-start flex items-center gap-1">
                 <UIcon name="i-lucide-file-text" class="size-4 text-text-muted" />
-                <span class="text-[10px] font-mono font-bold text-text-secondary">#{{ submission.id.slice(0, 8) }}</span>
+                <span class="text-[10px] font-mono font-bold text-text-secondary">#{{ submission.public_id || submission.id.slice(0, 8) }}</span>
             </div>
 
             <div class="grid grid-cols-[minmax(0,75%)_minmax(0,1fr)] gap-x-2 items-start min-w-0">
@@ -75,9 +75,11 @@
 
 <script setup lang="ts">
 import { computed } from "vue"
+import { publicUrl } from "~/utils/publicIdentifiers"
 
 interface Submission {
     id: string
+    public_id?: string
     problem_id: string
     problem: {
         title: string
