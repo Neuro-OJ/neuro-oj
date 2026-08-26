@@ -181,9 +181,10 @@ function scopeCounters(
 }
 
 const LIMIT_SCRIPT = `
-local rate_limit = tonumber(ARGV[1])
-local rate_ttl = tonumber(ARGV[2])
-local meta = cjson.decode(ARGV[3])
+local user_rate_limit = tonumber(ARGV[1])
+local ip_rate_limit = tonumber(ARGV[2])
+local rate_ttl = tonumber(ARGV[3])
+local meta = cjson.decode(ARGV[4])
 local limits = meta.limits
 local incs = meta.incs
 local ttls = meta.ttls
@@ -197,11 +198,11 @@ local function bump(key, amount, ttl)
 end
 
 local r1 = bump(KEYS[1], 1, rate_ttl)
-if r1 > rate_limit then
+if r1 > user_rate_limit then
   return 'rate_limit_exceeded'
 end
 local r2 = bump(KEYS[2], 1, rate_ttl)
-if r2 > rate_limit then
+if r2 > ip_rate_limit then
   return 'rate_limit_exceeded'
 end
 
@@ -255,7 +256,8 @@ async function runLimitScript(
   redis: RedisClient,
   rateKeys: [string, string],
   counters: CounterSpec[],
-  rateLimit: number,
+  userRateLimit: number,
+  ipRateLimit: number,
   rateTtl: number,
 ): Promise<string> {
   const keys = [
@@ -269,7 +271,8 @@ async function runLimitScript(
     ttls: counters.map((c) => c.ttl),
   };
   const result = await redis.eval(LIMIT_SCRIPT, keys, [
-    rateLimit,
+    userRateLimit,
+    ipRateLimit,
     rateTtl,
     JSON.stringify(meta),
   ]);
@@ -308,6 +311,8 @@ export async function enforceAndCount(
     estimatedCost: number;
     ip: string;
     ttlSeconds: number;
+    userRateLimitPerMinute: number;
+    ipRateLimitPerMinute: number;
   },
 ): Promise<void> {
   const now = Date.now();
@@ -384,7 +389,8 @@ export async function enforceAndCount(
       `llm:rate:ip:${opts.ip || "unknown"}:${minuteKey()}`,
     ],
     counters,
-    60,
+    opts.userRateLimitPerMinute,
+    opts.ipRateLimitPerMinute,
     60,
   );
   if (result !== "ok") {
