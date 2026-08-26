@@ -6,6 +6,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+
 import {
   contestParticipants,
   contestProblems,
@@ -454,11 +455,15 @@ Deno.test({
     };
     await db.insert(objectiveSubmissions).values(row);
     // 绕过先查直接插入同约束记录 → 触发 23505
+    // 放在 savepoint 中执行，避免错误中断外层测试事务
+    const txDb = getDb();
     await assertRejects(
       () =>
-        db.insert(objectiveSubmissions).values({
-          ...row,
-          id: crypto.randomUUID(),
+        txDb.transaction(async (tx) => {
+          await tx.insert(objectiveSubmissions).values({
+            ...row,
+            id: crypto.randomUUID(),
+          });
         }),
       // 允许任意错误类型（postgres.js 与 PGlite 错误结构不同），
       // 仅验证唯一约束确实存在

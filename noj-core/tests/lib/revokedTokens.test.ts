@@ -105,12 +105,18 @@ Deno.test({
 
     const jti = `test-expire-${Date.now()}-${crypto.randomUUID()}`;
 
-    // 设置极短 TTL（1 秒）
+    // 设置 Redis 支持的最短 TTL（1 秒）
     await revokeJti(jti, 1);
     assertEquals(await isJtiRevoked(jti), true);
 
-    // 等待 1.5s 让 Redis 自动清理
-    await new Promise((r) => setTimeout(r, 1500));
+    // 条件等待：轮询直到 key 过期，避免固定 1.5s sleep
+    const start = Date.now();
+    while (await isJtiRevoked(jti)) {
+      if (Date.now() - start > 3000) {
+        throw new Error("等待 Redis TTL 过期超时");
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
     assertEquals(await isJtiRevoked(jti), false);
   },
 });
@@ -126,6 +132,9 @@ Deno.test({
     // 设置错误的 REDIS_URL 让 getRedis() 抛错
     const prevUrl = Deno.env.get("REDIS_URL");
     Deno.env.set("REDIS_URL", "redis://127.0.0.1:1/"); // 端口 1 不存在
+    // 并行模式下其他 worker 可能设置了 NOJ_BYPASS_JWT_REVOKE=1，这里临时清除
+    const prevBypass = Deno.env.get("NOJ_BYPASS_JWT_REVOKE");
+    Deno.env.delete("NOJ_BYPASS_JWT_REVOKE");
 
     try {
       await assertRejects(
@@ -133,6 +142,11 @@ Deno.test({
         Error,
       );
     } finally {
+      if (prevBypass !== undefined) {
+        Deno.env.set("NOJ_BYPASS_JWT_REVOKE", prevBypass);
+      } else {
+        Deno.env.delete("NOJ_BYPASS_JWT_REVOKE");
+      }
       if (prevUrl !== undefined) {
         Deno.env.set("REDIS_URL", prevUrl);
       } else {

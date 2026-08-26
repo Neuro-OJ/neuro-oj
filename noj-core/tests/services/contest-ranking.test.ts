@@ -18,7 +18,7 @@ import {
 } from "../../src/services/contest/contest-ranking.ts";
 import { ForbiddenError, UnauthorizedError } from "../../src/lib/errors.ts";
 
-await resetDbForTest();
+await resetDbForTest({ refreshRankings: true });
 
 const baseTime = Date.now() - 3_600_000;
 const atMinutes = (minutes: number) =>

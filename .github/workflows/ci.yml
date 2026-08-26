@@ -279,8 +279,9 @@ jobs:
         working-directory: noj-core
         env:
           BCRYPT_SALT_ROUNDS: 4
-        # 不设 DATABASE_URL → PGlite 内存模式，零外部 DB 依赖
-        run: deno test -A tests/lib tests/middleware tests/types tests/data tests/app.test.ts
+        # 不设 DATABASE_URL → PGlite 内存模式，零外部 DB 依赖；
+        # 单元测试暂不并行：Redis fail-closed 测试在并行下会互相干扰（已实测 flaky）。
+        run: deno test -A --no-check --preload=tests/preload.ts tests/lib tests/middleware tests/types tests/data tests/app.test.ts
 
       - name: 上传失败日志
         if: failure() || cancelled()

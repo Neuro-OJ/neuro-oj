@@ -186,18 +186,11 @@ async function clearQueue() {
   } catch { /* ignore */ }
 }
 
-Deno.test({
-  name: "queue service: 创建测试数据",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    resetRedisForTest();
-    await connectRedis();
-    await setup();
-  },
-});
+// 模块级 setup：事务外初始化共享队列测试数据
+await resetDbForTest();
+resetRedisForTest();
+await connectRedis();
+await setup();
 
 Deno.test({
   name: "queue service: getPendingSubmissionIds 返回空列表（队列空）",

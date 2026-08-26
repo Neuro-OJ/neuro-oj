@@ -16,7 +16,7 @@ import {
 import { hashPassword } from "../../src/lib/password.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建
-await resetDbForTest();
+await resetDbForTest({ refreshRankings: true });
 
 const hasEnv = true && // DATABASE_URL 未设置时 PGlite 可用
   !!Deno.env.get("JWT_SECRET");

@@ -1,8 +1,10 @@
 # Neuro OJ (NOJ) — AI 编码助手项目知识库
 
-> 本文档面向 AI 编码助手（Claude Code、OpenCode 等）撰写，记录项目架构、规范、AI 必须遵守的要求与开发约定。
+> 本文档面向 AI 编码助手（Claude Code、OpenCode 等）撰写，记录项目架构、规范、AI
+> 必须遵守的要求与开发约定。
 
-Neuro OJ 是一个面向 LMCC（CCF 大语言模型能力认证）的在线评测（Online Judge）系统。
+Neuro OJ 是一个面向 LMCC（CCF 大语言模型能力认证）的在线评测（Online
+Judge）系统。
 
 > **注意：** Neuro OJ 与 CCF 及 LMCC 无任何官方关系，为独立社区项目。
 
@@ -45,12 +47,12 @@ NOJ 分为三个核心模块，通过 RESTful API 和 Redis 消息队列协作�
 
 ### 1.1 模块职责
 
-| 模块 | 运行时 | 职责 |
-|------|--------|------|
-| **noj-core** | Deno 2 + Hono | RESTful API、JWT 鉴权 + RBAC 权限、用户/题目/提交/榜单/竞赛/社区 CRUD、全局搜索、Redis MQ Producer 与 Consumer、审计日志 |
-| **noj-ui** | Nuxt 4 + Vue 3 | Web 前端、Nitro 反向代理注入 JWT Cookie、SSR + SPA 混合 |
-| **noj-judge** | Rust 2021 + Tokio | Docker 沙箱评测、Redis MQ Consumer、双容器架构（Evaluator + Solution，NDJSON 编排） |
-| **基础设施** | — | PostgreSQL 16（持久化） + Redis 7（MQ + 缓存） |
+| 模块          | 运行时            | 职责                                                                                                                     |
+| ------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **noj-core**  | Deno 2 + Hono     | RESTful API、JWT 鉴权 + RBAC 权限、用户/题目/提交/榜单/竞赛/社区 CRUD、全局搜索、Redis MQ Producer 与 Consumer、审计日志 |
+| **noj-ui**    | Nuxt 4 + Vue 3    | Web 前端、Nitro 反向代理注入 JWT Cookie、SSR + SPA 混合                                                                  |
+| **noj-judge** | Rust 2021 + Tokio | Docker 沙箱评测、Redis MQ Consumer、双容器架构（Evaluator + Solution，NDJSON 编排）                                      |
+| **基础设施**  | —                 | PostgreSQL 16（持久化） + Redis 7（MQ + 缓存）                                                                           |
 
 ### 1.2 消息流（Producer-Consumer）
 
@@ -90,20 +92,22 @@ NOJ 分为三个核心模块，通过 RESTful API 和 Redis 消息队列协作�
 }
 ```
 
-> 双容器架构后 `judge_image` / `judge_command` / `time_limit_ms` / `memory_limit_mb`
-> 顶层字段已移除，统一由 `runtime_config`（Evaluator + Solution）承载。
-> Solution 入口为评测内部约定：用户代码由 judge 以硬编码名 `main.py` 注入容器，
-> SDK 经 `--entry /workspace/main.py` 加载（模块名固定 `user_solution`），
-> 出题人无需也不可配置入口文件名（`solution.entry` 已移除）。
+> 双容器架构后 `judge_image` / `judge_command` / `time_limit_ms` /
+> `memory_limit_mb` 顶层字段已移除，统一由 `runtime_config`（Evaluator +
+> Solution）承载。 Solution 入口为评测内部约定：用户代码由 judge 以硬编码名
+> `main.py` 注入容器， SDK 经 `--entry /workspace/main.py` 加载（模块名固定
+> `user_solution`）， 出题人无需也不可配置入口文件名（`solution.entry`
+> 已移除）。
 
 ### 1.4 双层 URL 设计
 
-| 层级 | URL 前缀 | 用途 | 字段 |
-|------|---------|------|------|
-| **DB 存储层** | `noj-storage://` | 标识资源在存储后端的位置 | `support_package_storage_url` |
-| **Judge 交付层** | `noj-download://` | 描述 judge 如何获取支持包内容 | `JudgeTask.download_url` |
+| 层级             | URL 前缀          | 用途                          | 字段                          |
+| ---------------- | ----------------- | ----------------------------- | ----------------------------- |
+| **DB 存储层**    | `noj-storage://`  | 标识资源在存储后端的位置      | `support_package_storage_url` |
+| **Judge 交付层** | `noj-download://` | 描述 judge 如何获取支持包内容 | `JudgeTask.download_url`      |
 
-- `local` 模式：`noj-storage://local/<base64>` ↔ `noj-download://base64/?content=[base64]`
+- `local` 模式：`noj-storage://local/<base64>` ↔
+  `noj-download://base64/?content=[base64]`
 - `s3` 模式：`noj-storage://s3/<key>` ↔ `noj-download://s3?url=[presigned]`
 - SHA-256 校验贯穿两个层级，支持内容寻址缓存
 - 用户提交的代码**不**进支持包，由 noj-judge 运行时注入
@@ -113,45 +117,47 @@ NOJ 分为三个核心模块，通过 RESTful API 和 Redis 消息队列协作�
 
 ## 2. AI 工具集成
 
-本项目同时支持 **Claude Code**（`.claude/`）与 **OpenCode**（`.opencode/`），二者镜像配置。
+本项目同时支持 **Claude Code**（`.claude/`）与
+**OpenCode**（`.opencode/`），二者镜像配置。
 
 ### 2.1 AI 技能（按需通过 Skill 工具加载）
 
 位于 `.claude/skills/` 与 `.opencode/skills/`，AI 应在相关任务中主动加载：
 
-| 技能 | 适用场景 |
-|------|---------|
-| `deno-expert` | noj-core / noj-ui 的 Deno/TypeScript 开发 |
-| `nuxt` / `vue` | noj-ui 前端开发 |
-| `hono` | noj-core 后端路由开发 |
-| `redis-core` | Redis MQ / 缓存相关 |
-| `docker-expert` | noj-judge 沙箱、docker-compose |
-| `supabase-postgres-best-practices` | PostgreSQL + Drizzle ORM |
-| `review` | 代码评审 |
-| `openspec-explore` / `openspec-propose` / `openspec-apply-change` / `openspec-archive-change` / `openspec-sync-specs` | OpenSpec 规范驱动开发全流程 |
+| 技能                                                                                                                  | 适用场景                                  |
+| --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `deno-expert`                                                                                                         | noj-core / noj-ui 的 Deno/TypeScript 开发 |
+| `nuxt` / `vue`                                                                                                        | noj-ui 前端开发                           |
+| `hono`                                                                                                                | noj-core 后端路由开发                     |
+| `redis-core`                                                                                                          | Redis MQ / 缓存相关                       |
+| `docker-expert`                                                                                                       | noj-judge 沙箱、docker-compose            |
+| `supabase-postgres-best-practices`                                                                                    | PostgreSQL + Drizzle ORM                  |
+| `review`                                                                                                              | 代码评审                                  |
+| `openspec-explore` / `openspec-propose` / `openspec-apply-change` / `openspec-archive-change` / `openspec-sync-specs` | OpenSpec 规范驱动开发全流程               |
 
 ### 2.2 AI 命令（通过 `/` 触发）
 
-| 命令 | 作用 |
-|------|------|
-| `/opsx:explore` | 探索现有规范 |
-| `/opsx:propose` | 起草变更提案 |
-| `/opsx:apply` | 实施已批准变更 |
-| `/opsx:archive` | 归档已完成变更 |
-| `/opsx:sync` | 同步 spec 增量到主规范 |
+| 命令            | 作用                   |
+| --------------- | ---------------------- |
+| `/opsx:explore` | 探索现有规范           |
+| `/opsx:propose` | 起草变更提案           |
+| `/opsx:apply`   | 实施已批准变更         |
+| `/opsx:archive` | 归档已完成变更         |
+| `/opsx:sync`    | 同步 spec 增量到主规范 |
 
 ### 2.3 子模块文档优先加载
 
 工作目录决定上下文优先级：
 
-| 当前路径 | 优先加载 |
-|---------|---------|
-| `/noj-core/` | `noj-core/CLAUDE.md` |
-| `/noj-ui/` | `noj-ui/CLAUDE.md` |
+| 当前路径      | 优先加载              |
+| ------------- | --------------------- |
+| `/noj-core/`  | `noj-core/CLAUDE.md`  |
+| `/noj-ui/`    | `noj-ui/CLAUDE.md`    |
 | `/noj-judge/` | `noj-judge/CLAUDE.md` |
-| 仓库根目录 | 本文档 |
+| 仓库根目录    | 本文档                |
 
-子模块文档包含：API 端点、Schema 字段、组件层级、模块特有规范，进入模块目录前应先读取对应 `CLAUDE.md`。
+子模块文档包含：API 端点、Schema
+字段、组件层级、模块特有规范，进入模块目录前应先读取对应 `CLAUDE.md`。
 
 ---
 
@@ -303,36 +309,38 @@ neuro-oj/
 
 **noj-core**（`deno.lock` + `deno.json`）：
 
-| 依赖 | 用途 |
-|------|------|
-| hono | Web 框架 |
-| drizzle-orm | ORM |
-| postgres | PG 驱动 |
-| ioredis | Redis 客户端 |
-| bcryptjs | 密码哈希 |
-| jose | JWT |
-| @std/encoding | base64 / hex |
-| @alicloud/dm20151123 | 阿里云邮件 |
-| @electric-sql/pglite | 测试用嵌入式 PG |
-| @aws-sdk/client-s3 + s3-request-presigner | S3 对象存储 |
+| 依赖                                      | 用途            |
+| ----------------------------------------- | --------------- |
+| hono                                      | Web 框架        |
+| drizzle-orm                               | ORM             |
+| postgres                                  | PG 驱动         |
+| ioredis                                   | Redis 客户端    |
+| bcryptjs                                  | 密码哈希        |
+| jose                                      | JWT             |
+| @std/encoding                             | base64 / hex    |
+| @alicloud/dm20151123                      | 阿里云邮件      |
+| @electric-sql/pglite                      | 测试用嵌入式 PG |
+| @aws-sdk/client-s3 + s3-request-presigner | S3 对象存储     |
 
-**noj-ui**（`package.json`）：nuxt, vue, @nuxt/ui, tailwindcss, @nuxt/icon + @iconify-json/lucide, @nuxt/fonts, @nuxtjs/color-mode, monaco-editor, markdown-it, katex, highlight.js, dompurify
+**noj-ui**（`package.json`）：nuxt, vue, @nuxt/ui, tailwindcss, @nuxt/icon +
+@iconify-json/lucide, @nuxt/fonts, @nuxtjs/color-mode, monaco-editor,
+markdown-it, katex, highlight.js, dompurify
 
 **noj-judge**（`Cargo.toml`，完整列表以 Cargo.toml 为准）：
 
-| 依赖 | 用途 |
-|------|------|
-| redis | Redis 客户端（tokio-comp 特性） |
-| tokio | 异步运行时（full 特性） |
-| bollard | Docker API |
-| reqwest | HTTP 客户端（rustls-tls、presigned 下载） |
-| zip | 支持包解压（deflate） |
-| serde / serde_json | 序列化 |
-| anyhow | 错误处理 |
-| tracing / tracing-subscriber | 日志 |
-| uuid | UUID（v4 生成） |
-| base64 | base64 编码 |
-| tar | tar 打包 |
+| 依赖                                                                                                  | 用途                                                      |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| redis                                                                                                 | Redis 客户端（tokio-comp 特性）                           |
+| tokio                                                                                                 | 异步运行时（full 特性）                                   |
+| bollard                                                                                               | Docker API                                                |
+| reqwest                                                                                               | HTTP 客户端（rustls-tls、presigned 下载）                 |
+| zip                                                                                                   | 支持包解压（deflate）                                     |
+| serde / serde_json                                                                                    | 序列化                                                    |
+| anyhow                                                                                                | 错误处理                                                  |
+| tracing / tracing-subscriber                                                                          | 日志                                                      |
+| uuid                                                                                                  | UUID（v4 生成）                                           |
+| base64                                                                                                | base64 编码                                               |
+| tar                                                                                                   | tar 打包                                                  |
 | sha2 / percent-encoding / filetime / gethostname / tokio-util / futures-util / tempfile / serial_test | 哈希 / URL 编码 / 文件时间 / 主机名 / 任务编排 / 测试辅助 |
 
 ### 4.2 关键 deno.json 任务（noj-core）
@@ -356,12 +364,13 @@ test:smoke   deno test -A --no-check tests/smoke.test.ts
 
 ### 5.1 Docker Compose 默认凭据
 
-| 服务 | 镜像 | 端口 | 凭据 |
-|------|------|------|------|
+| 服务       | 镜像                 | 端口 | 凭据                                      |
+| ---------- | -------------------- | ---- | ----------------------------------------- |
 | PostgreSQL | `postgres:16-alpine` | 5432 | `noj / noj / noj`（用户 / 密码 / 数据库） |
-| Redis | `redis:7-alpine` | 6379 | 无认证 |
+| Redis      | `redis:7-alpine`     | 6379 | 无认证                                    |
 
-数据卷：`redis-data`、`postgres-data`（`docker compose down` 不丢失；`-v` 才删）。
+数据卷：`redis-data`、`postgres-data`（`docker compose down` 不丢失；`-v`
+才删）。
 
 ### 5.2 启动顺序（严格）
 
@@ -385,7 +394,9 @@ test:smoke   deno test -A --no-check tests/smoke.test.ts
 
 ### 5.3 一键脚本（推荐）
 
-`scripts/dev/devtool.sh` 是单文件编排工具，整合原独立脚本（`install-deps` / `start-{all,infra,core,ui,judge}` / `stop-{all,infra,core,ui,judge}` / `status`），通过子命令分发：
+`scripts/dev/devtool.sh` 是单文件编排工具，整合原独立脚本（`install-deps` /
+`start-{all,infra,core,ui,judge}` / `stop-{all,infra,core,ui,judge}` /
+`status`），通过子命令分发：
 
 ```bash
 bash scripts/dev/devtool.sh install-deps --check-only   # 检测 zip / Deno / Rust / Docker
@@ -395,9 +406,14 @@ bash scripts/dev/devtool.sh status                     # 查看运行状态
 bash scripts/dev/devtool.sh stop                       # 反向顺序停止全部
 ```
 
-子命令 `start` / `stop` 接受 TARGET：`infra | core | ui | judge | all`（默认 `all`），支持单模块启停（如 `devtool.sh start ui`）。`status` 支持 `--json` 与 `--watch SECS`，`init-env` 支持 `--merge`（追加模板缺失键）/ `--force`（覆盖），`start judge` 支持 `--build`（强制重编译）。
+子命令 `start` / `stop` 接受 TARGET：`infra | core | ui | judge | all`（默认
+`all`），支持单模块启停（如 `devtool.sh start ui`）。`status` 支持 `--json` 与
+`--watch SECS`，`init-env` 支持 `--merge`（追加模板缺失键）/
+`--force`（覆盖），`start judge` 支持 `--build`（强制重编译）。
 
-日志位置：`scripts/dev/logs/{core,ui,judge}.log`（infra 由 docker compose 管理）。PID 锁：`scripts/dev/locks/<target>.lock`（同工具防双开）。详细用法见 `bash scripts/dev/devtool.sh help`。
+日志位置：`scripts/dev/logs/{core,ui,judge}.log`（infra 由 docker compose
+管理）。PID 锁：`scripts/dev/locks/<target>.lock`（同工具防双开）。详细用法见
+`bash scripts/dev/devtool.sh help`。
 
 ### 5.4 手动分步启动
 
@@ -417,7 +433,8 @@ cd ../noj-judge && cargo run                      # 需要 Docker daemon
 
 三模块可独立启动；只调前端可省 noj-judge。
 
-或统一通过 `scripts/dev/devtool.sh` 编排（见 §5.3）：`devtool.sh start core` 等价于上面 `cd noj-core && deno task dev` 的封装。
+或统一通过 `scripts/dev/devtool.sh` 编排（见 §5.3）：`devtool.sh start core`
+等价于上面 `cd noj-core && deno task dev` 的封装。
 
 ---
 
@@ -427,44 +444,44 @@ cd ../noj-judge && cargo run                      # 需要 Docker daemon
 
 **核心业务**
 
-| 表 | 用途 |
-|----|------|
-| `users` | 用户账户（密码、角色、封禁状态） |
-| `problems` | 题目（type: U/P 双题库；`is_objective` 标记客观题套卷，无独立类型） |
-| `judgeImages` | 评测镜像白名单 |
-| `tags` / `problemTags` | 题目标签（kind=problem/algorithm，双类）+ 多对多关联 |
-| `submissions` / `evaluationResults` | 用户提交 / 评测结果（耗时/内存/得分） |
-| `checkIns` | 每日签到 |
-| `passwordResetTokens` | 密码重置令牌 |
-| `systemSettings` | 系统设置（运行时可改） |
-| `auditLogs` | 审计日志（90 天保留，可配置） |
-| `ipBans` / `userBans` | IP 黑名单 / 用户封禁记录 |
+| 表                                  | 用途                                                                |
+| ----------------------------------- | ------------------------------------------------------------------- |
+| `users`                             | 用户账户（密码、角色、封禁状态）                                    |
+| `problems`                          | 题目（type: U/P 双题库；`is_objective` 标记客观题套卷，无独立类型） |
+| `judgeImages`                       | 评测镜像白名单                                                      |
+| `tags` / `problemTags`              | 题目标签（kind=problem/algorithm，双类）+ 多对多关联                |
+| `submissions` / `evaluationResults` | 用户提交 / 评测结果（耗时/内存/得分）                               |
+| `checkIns`                          | 每日签到                                                            |
+| `passwordResetTokens`               | 密码重置令牌                                                        |
+| `systemSettings`                    | 系统设置（运行时可改）                                              |
+| `auditLogs`                         | 审计日志（90 天保留，可配置）                                       |
+| `ipBans` / `userBans`               | IP 黑名单 / 用户封禁记录                                            |
 
 **站内私信**
 
-| 表 | 用途 |
-|----|------|
+| 表                                                                      | 用途                              |
+| ----------------------------------------------------------------------- | --------------------------------- |
 | `conversations` / `messages` / `conversationReads` / `messageDeletions` | 会话 / 消息 / 已读状态 / 删除记录 |
 
 **竞赛（Phase 2）**
 
-| 表 | 用途 |
-|----|------|
+| 表                                                                               | 用途                                                   |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | `contests` / `contestProblems` / `contestParticipants` / `contestClarifications` | 竞赛、题目集、参赛者、答疑（Clarification API 待实现） |
 
 **RBAC（#171）**
 
-| 表 | 用途 |
-|----|------|
+| 表                                                        | 用途                                     |
+| --------------------------------------------------------- | ---------------------------------------- |
 | `roles` / `permissions` / `rolePermissions` / `userRoles` | 角色 / 权限（`resource:action`）/ 关联表 |
 
 **社区（#178）**
 
-| 表 | 用途 |
-|----|------|
-| `communityBoards` / `communityBoardRoleGrants` | 板块 / 角色授权 |
+| 表                                                                                                                                                              | 用途                                      |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `communityBoards` / `communityBoardRoleGrants`                                                                                                                  | 板块 / 角色授权                           |
 | `communityPosts` / `communityComments` / `communityPostLikes` / `communityCommentLikes` / `communityBookmarks` / `communityFollows` / `communityActivityEvents` | 帖子 / 评论 / 点赞 / 收藏 / 关注 / 动态流 |
-| `communityReports` / `communityModerationActions` / `communitySanctions` / `communityNotifications` | 举报 / 审核动作 / 处罚 / 通知 |
+| `communityReports` / `communityModerationActions` / `communitySanctions` / `communityNotifications`                                                             | 举报 / 审核动作 / 处罚 / 通知             |
 
 ### 6.2 迁移
 
@@ -501,7 +518,8 @@ U 型（用户题）：owner/admin 可 CRUD；P 型（主题题）：仅 admin �
 ### 7.2 提交信息（Conventional Commits）
 
 - 格式：`<type>(<scope>): <description>`
-- type：`feat` `fix` `docs` `style` `refactor` `perf` `test` `chore` `ci` `build`
+- type：`feat` `fix` `docs` `style` `refactor` `perf` `test` `chore` `ci`
+  `build`
 - scope：`core` / `ui` / `judge` / `root`；多 scope 用逗号：`fix(core,ui): 描述`
 - description 使用**中文**
 - 示例：`feat(core): 添加评测任务分发 API` / `fix(judge): 修复容器超时未清理`
@@ -530,7 +548,9 @@ OpenSpec 变更归档到 `openspec/changes/archive/` 时，目录名必须遵循
 - **正确**：`2026-07-25-add-noj-docs/`、`2026-07-25-dual-container-judge/`
 - **错误**：`2026-07-06-2026-06-27-daily-checkin/`（双重日期，混淆了"原变更日"与"归档日"）
 
-禁止带 `git mv` 之外的拷贝方式（保留历史）。如果发现双重日期或格式不一致的归档目录，**新归档不要复用旧名**，直接以当日日期 + 原名建立新目录。
+禁止带 `git mv`
+之外的拷贝方式（保留历史）。如果发现双重日期或格式不一致的归档目录，**新归档不要复用旧名**，直接以当日日期 +
+原名建立新目录。
 
 ---
 
@@ -542,10 +562,13 @@ OpenSpec 变更归档到 `openspec/changes/archive/` 时，目录名必须遵循
 2. **禁止未签名提交** — GPG 未就绪时不得提交代码，应引导用户配置
 3. **禁止跳过 OpenSpec** — 功能性变更必须先有 `/opsx:propose` 提案
 4. **禁止修改 `_journal.json`** — Drizzle 迁移元数据由工具管理
-5. **禁止修改 `deno.lock` / `Cargo.lock` 手动内容** — 通过 `deno cache` / `cargo update` 更新
+5. **禁止修改 `deno.lock` / `Cargo.lock` 手动内容** — 通过 `deno cache` /
+   `cargo update` 更新
 6. **禁止在 `.env` 中硬编码真实凭据** — 用 `.env.example` 模板 + `gitignore`
 7. **禁止向生产数据库直连变更 schema** — 走 Drizzle 迁移流程
-8. **优先使用开发工具（脚本）** — 标准操作（启停模块、查看状态、构建支持包、迁移数据库等）应先查 `scripts/` 下的开发脚本再动手；存在封装脚本时优先使用脚本而非手动拼接命令
+8. **优先使用开发工具（脚本）** —
+   标准操作（启停模块、查看状态、构建支持包、迁移数据库等）应先查 `scripts/`
+   下的开发脚本再动手；存在封装脚本时优先使用脚本而非手动拼接命令
 
 ### 8.2 编码规范
 
@@ -554,22 +577,24 @@ OpenSpec 变更归档到 `openspec/changes/archive/` 时，目录名必须遵循
 - **Vue**：遵循 `deno lint` + `deno fmt`（`include: ["*.vue", "*.ts"]`）
 - **中文注释 + 英文标识符**：参考既有代码风格
 - **错误处理**：Deno 用 `AppError` 继承体系；Rust 用 `anyhow::Result`
-- **日志**：生产环境 `logger` 自动 UUID 截断 + score 隐藏，不得直接 `console.log` 输出敏感字段
+- **日志**：生产环境 `logger` 自动 UUID 截断 + score 隐藏，不得直接
+  `console.log` 输出敏感字段
 
 ### 8.3 修改前必读
 
 进入模块目录前，**先读对应 `CLAUDE.md`**：
 
-| 路径 | 必读 |
-|------|------|
-| 仓库根 | 本文档 |
-| `noj-core/` | `noj-core/CLAUDE.md` |
-| `noj-ui/` | `noj-ui/CLAUDE.md` |
+| 路径         | 必读                  |
+| ------------ | --------------------- |
+| 仓库根       | 本文档                |
+| `noj-core/`  | `noj-core/CLAUDE.md`  |
+| `noj-ui/`    | `noj-ui/CLAUDE.md`    |
 | `noj-judge/` | `noj-judge/CLAUDE.md` |
 
 涉及对应领域时主动加载技能：
 
-- TypeScript / Hono / Drizzle → `deno-expert` / `hono` / `supabase-postgres-best-practices`
+- TypeScript / Hono / Drizzle → `deno-expert` / `hono` /
+  `supabase-postgres-best-practices`
 - Nuxt / Vue → `nuxt` / `vue`
 - Rust / Docker / Redis → `docker-expert` / `redis-core`
 - 规范变更 → `openspec-*` 技能
@@ -580,13 +605,31 @@ OpenSpec 变更归档到 `openspec/changes/archive/` 时，目录名必须遵循
 
 - [ ] `deno fmt` / `cargo fmt` 已运行
 - [ ] `deno lint` / `cargo clippy` 无警告
-- [ ] 新功能/修复有对应测试（core 走 `tests/services`/`routes`；judge 走单元 + E2E）
+- [ ] 新功能/修复有对应测试（core 走 `tests/services`/`routes`；judge 走单元 +
+      E2E）
 - [ ] 新表/字段已通过 `deno task db:generate` 生成迁移
 - [ ] 新环境变量已加入 `.env.example` + `scripts/dev/env.example`
 - [ ] 中文提交描述符合 Conventional Commits
 - [ ] GPG 签名可用
 - [ ] 若是功能变更，OpenSpec 变更已 `/opsx:propose` 起草
 - [ ] 优先使用 `scripts/` 下的开发工具脚本完成标准操作，而非手动拼接命令
+- [ ] 测试通过 `deno task` 运行（优先 `deno task test:parallel`），不直接手拼
+      `deno test` 命令
+
+### 8.5 测试执行要求
+
+Agent 在 noj-core 及相关 Deno 模块中运行测试时，**必须使用 `deno task`
+封装命令**，不得直接手拼 `deno test`：
+
+- **优先使用 `deno task test:parallel`**：本地 PostgreSQL/Redis
+  可用时，用它跑完整并行分片（已做 Redis DB / 本地存储 / S3 隔离，稳定不
+  flaky）。
+- **零依赖场景使用 `deno task test`**：无外部 PostgreSQL 时，走 PGlite
+  串行全量。
+- **快速反馈使用 `deno task test:smoke`**：仅验证核心 HTTP 冒烟路径。
+- 原因：`deno task` 已封装 `BCRYPT_SALT_ROUNDS=4`、PGlite
+  模板预构建、`--preload=tests/preload.ts` 事务回滚隔离等必要环境；直接
+  `deno test` 会丢失这些配置，导致测试变慢或行为不一致。
 
 ---
 
@@ -723,7 +766,8 @@ STORAGE_PROVIDER=local | s3           # 必填
 EMAIL_PROVIDER=mock | aliyun | tencent # 默认 mock（仅输出到控制台）
 ```
 
-S3 配置：`S3_ENDPOINT / S3_REGION / S3_ACCESS_KEY / S3_SECRET_KEY / S3_BUCKET / S3_FORCE_PATH_STYLE`。
+S3
+配置：`S3_ENDPOINT / S3_REGION / S3_ACCESS_KEY / S3_SECRET_KEY / S3_BUCKET / S3_FORCE_PATH_STYLE`。
 
 ### 11.7 授权与防护
 
@@ -735,7 +779,8 @@ S3 配置：`S3_ENDPOINT / S3_REGION / S3_ACCESS_KEY / S3_SECRET_KEY / S3_BUCKET
 - XSS：HTTP-only Cookie + DOMPurify Markdown 清洗
 - CSRF：Cookie `sameSite: 'lax'`（已知无 token）
 - CORS：开发 `*`；生产仅白名单域名；`credentials: true, maxAge: 86400`
-- 日志安全（`NOJ_ENV=production`）：submission_id 截断前 8 字符、score 隐藏、DB 密码脱敏
+- 日志安全（`NOJ_ENV=production`）：submission_id 截断前 8 字符、score 隐藏、DB
+  密码脱敏
 - 审计日志保留 90 天（`AUDIT_LOG_RETENTION_DAYS` 可配置；0 = 禁用）
 
 ### 11.8 已知限制（设计决策）
@@ -762,12 +807,13 @@ cd noj-core && deno task test:parallel  # 并行分片（TEST_SCHEMA=test_unit/t
 - 测试数据用 `Date.now()` 生成唯一 username/email
 - 单元模块测试：`tests/lib/`、`tests/services/`、`tests/middleware/`
 - 集成测试：`tests/routes/`、`tests/mq/`
-- 性能测试：`tests/perf/`（`NOJ_RUN_PERF=1` guard，默认不跑；CI 仅 main push / 手动触发）
+- 性能测试：`tests/perf/`（`NOJ_RUN_PERF=1` guard，默认不跑；CI 仅 main push /
+  手动触发）
 - 冒烟测试：`deno task test:smoke`
-- **并行分片**（2026-07 引入）：`scripts/test-parallel.ts` 将测试按目录分为
-  unit / db 两组，通过 `TEST_SCHEMA`（`connection.ts` 的 libpq
-  `-csearch_path` startup 参数）+ `migrationsSchema` 隔离到独立 PG schema，
-  进程级并行无死锁（原 `deno test --parallel` 因 TRUNCATE 互锁不可用）
+- **并行分片**（2026-07 引入）：`scripts/test-parallel.ts` 将测试按目录分为 unit
+  / db 两组，通过 `TEST_SCHEMA`（`connection.ts` 的 libpq `-csearch_path`
+  startup 参数）+ `migrationsSchema` 隔离到独立 PG schema， 进程级并行无死锁（原
+  `deno test --parallel` 因 TRUNCATE 互锁不可用）
 - **历史迁移陷阱**：0010/0027/0029 迁移 SQL 曾含 drizzle-kit 生成的
   `REFERENCES "public"."xxx"` 硬编码前缀（分片下 FK 错指 public，已修复）。
   新增迁移保持不带 schema 前缀
@@ -791,8 +837,8 @@ cd noj-judge && NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
 - 集成测试 `#[ignore]` + `NOJ_RUN_E2E=1` 守卫
 - `#[serial_test::serial]` 序列化执行避免 Docker 资源竞争
 - 30s 外层超时：`tokio::time::timeout(30s, ...)`
-- CI 使用 `mozilla/sccache-action`（GHA cache backend）缓存编译产物；
-  本地可 `cargo install sccache --locked` + `RUSTC_WRAPPER=sccache` 加速
+- CI 使用 `mozilla/sccache-action`（GHA cache backend）缓存编译产物； 本地可
+  `cargo install sccache --locked` + `RUSTC_WRAPPER=sccache` 加速
 
 ### 12.3 跨模块 E2E（noj-tests）
 
@@ -800,8 +846,10 @@ cd noj-judge && NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
 cd noj-tests && deno task test
 ```
 
-- `deno.json` task 已自动 `--env-file=../env.e2e.template`，**无需前缀 `NOJ_RUN_E2E=1`**
-- 覆盖：Accepted / WrongAnswer / TLE / MQ 可靠性 / 无效消息容错 / 鉴权守卫 / S3 存储 / SSE / 私信 / 审计日志 / 重测 / 双容器等
+- `deno.json` task 已自动 `--env-file=../env.e2e.template`，**无需前缀
+  `NOJ_RUN_E2E=1`**
+- 覆盖：Accepted / WrongAnswer / TLE / MQ 可靠性 / 无效消息容错 / 鉴权守卫 / S3
+  存储 / SSE / 私信 / 审计日志 / 重测 / 双容器等
 - 辅助启动：`./run-e2e.sh`
 
 ---
@@ -810,73 +858,75 @@ cd noj-tests && deno task test
 
 ### 13.1 GitHub Actions
 
-**`ci.yml`** — PR/推送触发，并行检查三个模块（2026-07 起按模块路径过滤，
-PR 只跑改动涉及的 job；`changes` job 用 `dorny/paths-filter` 检测）：
+**`ci.yml`** — PR/推送触发，并行检查三个模块（2026-07 起按模块路径过滤， PR
+只跑改动涉及的 job；`changes` job 用 `dorny/paths-filter` 检测）：
 
-| Job | 检查项 | 依赖服务 |
-|-----|--------|----------|
-| changes | 路径过滤（PR 按 noj-core/ui/judge 改动集条件化后续 job） | 无 |
-| core-quick-check | deno fmt + lint + typecheck | 无 |
-| core-smoke | 冒烟测试（Hono /health） | Redis |
-| core-test-unit | tests/lib + middleware + types + data + app（PGlite 内存库） | Redis |
-| core-test-db | tests/services + routes + mq + db + 迁移/种子（真实 PG 覆盖 pg_trgm/GIN） | PostgreSQL + Redis |
-| core-perf | tests/perf（NOJ_RUN_PERF=1，仅 main push / workflow_dispatch） | PostgreSQL + Redis |
-| ui-check | deno lint, deno fmt, npm install, nuxt build | 无 |
-| judge-check | cargo fmt + clippy + nextest（合并单 job 共享编译产物） | 无（sccache） |
-| judge-e2e | Docker 沙箱 binary（分组并行） | Docker + Redis（sccache） |
+| Job              | 检查项                                                                    | 依赖服务                  |
+| ---------------- | ------------------------------------------------------------------------- | ------------------------- |
+| changes          | 路径过滤（PR 按 noj-core/ui/judge 改动集条件化后续 job）                  | 无                        |
+| core-quick-check | deno fmt + lint + typecheck                                               | 无                        |
+| core-smoke       | 冒烟测试（Hono /health）                                                  | Redis                     |
+| core-test-unit   | tests/lib + middleware + types + data + app（PGlite 内存库）              | Redis                     |
+| core-test-db     | tests/services + routes + mq + db + 迁移/种子（真实 PG 覆盖 pg_trgm/GIN） | PostgreSQL + Redis        |
+| core-perf        | tests/perf（NOJ_RUN_PERF=1，仅 main push / workflow_dispatch）            | PostgreSQL + Redis        |
+| ui-check         | deno lint, deno fmt, npm install, nuxt build                              | 无                        |
+| judge-check      | cargo fmt + clippy + nextest（合并单 job 共享编译产物）                   | 无（sccache）             |
+| judge-e2e        | Docker 沙箱 binary（分组并行）                                            | Docker + Redis（sccache） |
 
 **`e2e.yml`** — 全链路管道测试（PR/推送 main，2026-07 起拆为两个并行 job）：
 
-- `e2e`：构建支持包 + 评测镜像 + Docker Compose，启动完整评测栈
-  （noj-core + noj-judge + PG:5433 + Redis:6380），noj-tests E2E 文件
-  分组并行
+- `e2e`：构建支持包 + 评测镜像 + Docker Compose，启动完整评测栈 （noj-core +
+  noj-judge + PG:5433 + Redis:6380），noj-tests E2E 文件 分组并行
 - `judge-sandbox`：noj-judge Docker 沙箱 E2E（只依赖 Docker + Redis，
   测试内自建镜像，与 API E2E 完全并行；binary 分组并行）
 - 超时 60min，`always()` 输出诊断日志
-- env：`JWT_SECRET=e2e-ci-secret-fixed-value-with-32-chars-min-abc`（≥32 字符，main.ts 强校验）
+- env：`JWT_SECRET=e2e-ci-secret-fixed-value-with-32-chars-min-abc`（≥32
+  字符，main.ts 强校验）
 - PR `paths-ignore`：docs / noj-ui / 纯配置类改动不触发（noj-ui 不涉及评测栈）
 
 ---
 
 ## 14. 故障排查速查
 
-| 现象 | 处理 |
-|------|------|
-| `JWT_SECRET 长度不足 32` | 在 `noj-core/.env` 设置 32+ 字符随机串（`openssl rand -base64 48`） |
-| `DATABASE_URL` 连接拒绝 | `docker compose ps` 确认 PG 启动；端口 5432 未占用 |
-| `zip: command not found` | `sudo apt install -y zip unzip` 或先跑 `devtool.sh install-deps` |
-| `Cannot connect to Docker daemon` | 启动 Docker Desktop 或 `sudo systemctl start docker` |
-| 端口 3000 / 8000 冲突 | `lsof -i :3000` 杀掉占用或修改 `PORT` |
-| 提交后长时间 `Pending` | noj-judge 未启/未连 Redis；查 `scripts/dev/logs/judge.log`，或 `devtool.sh status judge` |
-| 队列堆积 | `redis-cli LLEN noj:judge:queue`；重启 noj-judge 触发自动重连 |
-| `noj-download://` 解码失败 | `deno task problems:build` 重建支持包 |
-| `image not found` | 默认镜像 `noj-judge-python`；检查 `noj-judge/docker/` 构建脚本 |
-| 迁移失败 | `cd noj-core && deno task db:migrate` 看脱敏日志 |
-| 种子数据缺失 | 确认 `noj-core/.env` 已配 `ADMIN_EMAIL`；重新 `deno task dev-setup` |
-| 想清空重置 | `docker compose down -v` 删卷后 `up -d` + `deno task dev-setup` |
-| `deno task db:migrate` 不读 .env | deno.json task 已显式 `--env-file=.env`，正常应工作 |
+| 现象                              | 处理                                                                                     |
+| --------------------------------- | ---------------------------------------------------------------------------------------- |
+| `JWT_SECRET 长度不足 32`          | 在 `noj-core/.env` 设置 32+ 字符随机串（`openssl rand -base64 48`）                      |
+| `DATABASE_URL` 连接拒绝           | `docker compose ps` 确认 PG 启动；端口 5432 未占用                                       |
+| `zip: command not found`          | `sudo apt install -y zip unzip` 或先跑 `devtool.sh install-deps`                         |
+| `Cannot connect to Docker daemon` | 启动 Docker Desktop 或 `sudo systemctl start docker`                                     |
+| 端口 3000 / 8000 冲突             | `lsof -i :3000` 杀掉占用或修改 `PORT`                                                    |
+| 提交后长时间 `Pending`            | noj-judge 未启/未连 Redis；查 `scripts/dev/logs/judge.log`，或 `devtool.sh status judge` |
+| 队列堆积                          | `redis-cli LLEN noj:judge:queue`；重启 noj-judge 触发自动重连                            |
+| `noj-download://` 解码失败        | `deno task problems:build` 重建支持包                                                    |
+| `image not found`                 | 默认镜像 `noj-judge-python`；检查 `noj-judge/docker/` 构建脚本                           |
+| 迁移失败                          | `cd noj-core && deno task db:migrate` 看脱敏日志                                         |
+| 种子数据缺失                      | 确认 `noj-core/.env` 已配 `ADMIN_EMAIL`；重新 `deno task dev-setup`                      |
+| 想清空重置                        | `docker compose down -v` 删卷后 `up -d` + `deno task dev-setup`                          |
+| `deno task db:migrate` 不读 .env  | deno.json task 已显式 `--env-file=.env`，正常应工作                                      |
 
 日志位置：`scripts/dev/logs/{core,ui,judge}.log`；前端队列状态页：<http://localhost:3000/queue>。
 
-工具异常排查：`RUST_LOG=noj_judge=debug` 调 judge 日志详细度；`devtool.sh status --json | python3 -m json.tool` 看结构化模块状态。
+工具异常排查：`RUST_LOG=noj_judge=debug` 调 judge
+日志详细度；`devtool.sh status --json | python3 -m json.tool` 看结构化模块状态。
 
 ---
 
 ## 15. 参考文档
 
-| 文档 | 路径 | 用途 |
-|------|------|------|
-| 用户 README | [`README.md`](./README.md) | 用户面向的项目说明 |
-| noj-core 详细文档 | [`noj-core/CLAUDE.md`](./noj-core/CLAUDE.md) | Deno + Hono 后端完整约定 |
-| noj-ui 详细文档 | [`noj-ui/CLAUDE.md`](./noj-ui/CLAUDE.md) | Nuxt + Vue 前端完整约定 |
-| noj-judge 详细文档 | [`noj-judge/CLAUDE.md`](./noj-judge/CLAUDE.md) | Rust Worker 完整约定 |
-| E2E 测试指南 | [`noj-tests/E2E_TESTING.md`](./noj-tests/E2E_TESTING.md) | 跨模块 E2E 测试方法 |
-| 开发工具 devtool.sh | [`scripts/dev/devtool.sh`](./scripts/dev/devtool.sh) | 本地开发编排（install-deps / init-env / start / stop / status） |
-| AI 入口（本文档） | [`AGENTS.md`](./AGENTS.md) | AI 编码助手项目知识库 |
-| OpenSpec 主规范 | [`openspec/specs/`](./openspec/specs/) | 行为规范（Requirements + Scenarios） |
-| Superpowers 设计稿 | [`docs/superpowers/specs/`](./docs/superpowers/specs/) | 大型变更的设计文档（Context / Decisions / Risks），与 `openspec/specs/` 行为规范**分开** |
-| Superpowers 实施计划 | [`docs/superpowers/plans/`](./docs/superpowers/plans/) | 已批准设计的逐步实施计划（Task 拆分） |
+| 文档                 | 路径                                                     | 用途                                                                                     |
+| -------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| 用户 README          | [`README.md`](./README.md)                               | 用户面向的项目说明                                                                       |
+| noj-core 详细文档    | [`noj-core/CLAUDE.md`](./noj-core/CLAUDE.md)             | Deno + Hono 后端完整约定                                                                 |
+| noj-ui 详细文档      | [`noj-ui/CLAUDE.md`](./noj-ui/CLAUDE.md)                 | Nuxt + Vue 前端完整约定                                                                  |
+| noj-judge 详细文档   | [`noj-judge/CLAUDE.md`](./noj-judge/CLAUDE.md)           | Rust Worker 完整约定                                                                     |
+| E2E 测试指南         | [`noj-tests/E2E_TESTING.md`](./noj-tests/E2E_TESTING.md) | 跨模块 E2E 测试方法                                                                      |
+| 开发工具 devtool.sh  | [`scripts/dev/devtool.sh`](./scripts/dev/devtool.sh)     | 本地开发编排（install-deps / init-env / start / stop / status）                          |
+| AI 入口（本文档）    | [`AGENTS.md`](./AGENTS.md)                               | AI 编码助手项目知识库                                                                    |
+| OpenSpec 主规范      | [`openspec/specs/`](./openspec/specs/)                   | 行为规范（Requirements + Scenarios）                                                     |
+| Superpowers 设计稿   | [`docs/superpowers/specs/`](./docs/superpowers/specs/)   | 大型变更的设计文档（Context / Decisions / Risks），与 `openspec/specs/` 行为规范**分开** |
+| Superpowers 实施计划 | [`docs/superpowers/plans/`](./docs/superpowers/plans/)   | 已批准设计的逐步实施计划（Task 拆分）                                                    |
 
 ---
 
-*本文档为顶层 AI 入口。各模块详细约定、API 端点、Schema 字段、组件层级请参考对应子目录 `CLAUDE.md`。*
+_本文档为顶层 AI 入口。各模块详细约定、API 端点、Schema
+字段、组件层级请参考对应子目录 `CLAUDE.md`。_

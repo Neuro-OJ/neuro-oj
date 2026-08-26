@@ -2,6 +2,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+
 import { problems, selfTests, users } from "../../src/db/schema.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { initRedisForTest, jsonRequest } from "../lib/helper.ts";
@@ -26,58 +27,66 @@ const now = new Date().toISOString();
 let TEST_TOKEN = "";
 let CREATED_SELF_TEST_ID = "";
 
-Deno.test({
-  name: "self-tests route: 初始化测试用户和题目",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const db = getDb();
-    await db.insert(users).values([
-      {
-        id: USER_ID,
-        username: `tststroute-${ts}`,
-        email: `tststroute-${ts}@test.noj`,
-        password_hash: "hash",
-        created_at: now,
-        updated_at: now,
-      },
-      {
-        id: OTHER_USER_ID,
-        username: `tststroute-other-${ts}`,
-        email: `tststroute-other-${ts}@test.noj`,
-        password_hash: "hash",
-        created_at: now,
-        updated_at: now,
-      },
-    ]);
-    await db.insert(problems).values({
-      id: PROBLEM_ID,
-      title: "路由自测题",
-      description: "测试",
-      difficulty: "easy",
-      runtime_config: {
-        evaluator: {
-          image: "noj-evaluator-python",
-          command: "python3 /workspace/evaluate.py",
-          time_limit_ms: 5000,
-          memory_limit_mb: 512,
-        },
-        solution: {
-          image: "noj-solution-python",
-          call_timeout_ms: 2000,
-          memory_limit_mb: 512,
-        },
-      },
-      number: PROBLEM_NUMBER,
-      owner_id: USER_ID,
-      type: "P",
+// 模块级 setup：事务外初始化共享测试用户、题目和一个自测记录
+if (!skip) {
+  const db = getDb();
+  await db.insert(users).values([
+    {
+      id: USER_ID,
+      username: `tststroute-${ts}`,
+      email: `tststroute-${ts}@test.noj`,
+      password_hash: "hash",
       created_at: now,
       updated_at: now,
-    });
-    TEST_TOKEN = await signToken({ sub: USER_ID, role: "user" });
-  },
-});
+    },
+    {
+      id: OTHER_USER_ID,
+      username: `tststroute-other-${ts}`,
+      email: `tststroute-other-${ts}@test.noj`,
+      password_hash: "hash",
+      created_at: now,
+      updated_at: now,
+    },
+  ]);
+  await db.insert(problems).values({
+    id: PROBLEM_ID,
+    title: "路由自测题",
+    description: "测试",
+    difficulty: "easy",
+    runtime_config: {
+      evaluator: {
+        image: "noj-evaluator-python",
+        command: "python3 /workspace/evaluate.py",
+        time_limit_ms: 5000,
+        memory_limit_mb: 512,
+      },
+      solution: {
+        image: "noj-solution-python",
+        call_timeout_ms: 2000,
+        memory_limit_mb: 512,
+      },
+    },
+    number: PROBLEM_NUMBER,
+    owner_id: USER_ID,
+    type: "P",
+    created_at: now,
+    updated_at: now,
+  });
+  TEST_TOKEN = await signToken({ sub: USER_ID, role: "user" });
+
+  const app = createApp();
+  const createRes = await jsonRequest(
+    app,
+    `/api/v1/problems/${PROBLEM_ID}/self-test`,
+    {
+      method: "POST",
+      body: { language: "python3", code: "print(1)" },
+      token: TEST_TOKEN,
+    },
+  );
+  const createBody = await createRes.json();
+  CREATED_SELF_TEST_ID = createBody.data.id;
+}
 
 Deno.test({
   name:
@@ -153,7 +162,6 @@ Deno.test({
     const body = await res.json();
     assertEquals(body.data.id.startsWith("st_"), true);
     assertEquals(body.data.status, "judging");
-    CREATED_SELF_TEST_ID = body.data.id;
   },
 });
 

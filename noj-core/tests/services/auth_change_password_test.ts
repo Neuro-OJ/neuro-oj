@@ -10,7 +10,15 @@ import {
   loginUser,
   registerUser,
 } from "../../src/services/auth.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import {
+  disableTestTransactionForFile,
+  getDb,
+  resetDbForTest,
+} from "../../src/db/connection.ts";
+
+// 本文件用例依赖“改密结果在后续用例中持续生效”，关闭事务回滚隔离
+disableTestTransactionForFile();
+
 import { users } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { BadRequestError, UnauthorizedError } from "../../src/lib/errors.ts";
@@ -25,20 +33,11 @@ const TEST_USER = {
   email: `cp-svc-${ts}@example.com`,
   password: "OrigPwd-2024-Xy9",
 };
-let testUserId = "";
-
-Deno.test({
-  name: "auth service changePassword: 注册测试用户",
-  ignore: skip,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const user = await registerUser(TEST_USER);
-    testUserId = user.id;
-    assertEquals(user.must_change_password, false);
-  },
-});
+// 模块级 setup：事务外注册共享测试用户
+await resetDbForTest();
+const registeredUser = await registerUser(TEST_USER);
+const testUserId = registeredUser.id;
+assertEquals(registeredUser.must_change_password, false);
 
 Deno.test({
   name: "auth service changePassword: 正常改密返回 must_change_password=false",
