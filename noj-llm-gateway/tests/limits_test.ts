@@ -1,10 +1,14 @@
 import { assertEquals } from "jsr:@std/assert@^1";
+import type { Db } from "../src/db.ts";
+import type { EvalTokenPayload } from "../src/crypto.ts";
+import { enforceAndCount } from "../src/limits.ts";
 import type { RedisClient } from "../src/redis.ts";
 import { incrByWithTtl, incrWithTtl } from "../src/redis.ts";
 
 class FakeRedis implements RedisClient {
   data = new Map<string, number>();
   expires = new Map<string, number>();
+  lastEvalArgs: (string | number)[] = [];
 
   async incr(key: string): Promise<number> {
     const next = (this.data.get(key) ?? 0) + 1;
@@ -38,11 +42,30 @@ class FakeRedis implements RedisClient {
   async eval(
     _script: string,
     _keys: string[],
-    _args: (string | number)[],
+    args: (string | number)[],
   ): Promise<unknown> {
+    this.lastEvalArgs = args;
     return await Promise.resolve("ok");
   }
 }
+
+const emptyDb = ((
+  _strings: TemplateStringsArray,
+  ..._values: unknown[]
+) => Promise.resolve([])) as unknown as Db;
+
+const payload: EvalTokenPayload = {
+  jti: "jti-1",
+  submission_id: "submission-1",
+  problem_id: "problem-1",
+  user_id: "user-1",
+  provider_id: "provider-1",
+  allowed_models: ["model-1"],
+  iat: Math.floor(Date.now() / 1000),
+  exp: Math.floor(Date.now() / 1000) + 60,
+  max_calls: 10,
+  max_tokens: 1000,
+};
 
 Deno.test("limits: incrWithTtl sets TTL on first increment", async () => {
   const redis = new FakeRedis();
@@ -58,4 +81,29 @@ Deno.test("limits: incrByWithTtl increments and sets TTL", async () => {
   const value = await incrByWithTtl(redis, "llm:test:tokens", 25, 120);
   assertEquals(value, 25);
   assertEquals(redis.expires.get("llm:test:tokens"), 120);
+});
+
+Deno.test("limits: enforceAndCount passes independent minute limits", async () => {
+  const redis = new FakeRedis();
+  await enforceAndCount(emptyDb, redis, payload, {
+    model: "model-1",
+    promptTokens: 10,
+    completionTokens: 5,
+    estimatedCost: 1,
+    ip: "127.0.0.1",
+    ttlSeconds: 60,
+    userRateLimitPerMinute: 120,
+    ipRateLimitPerMinute: 30,
+  });
+
+  assertEquals(redis.lastEvalArgs[0], 120);
+  assertEquals(redis.lastEvalArgs[1], 30);
+  assertEquals(redis.lastEvalArgs[2], 60);
+  const meta = JSON.parse(String(redis.lastEvalArgs[3])) as {
+    limits: number[];
+    incs: number[];
+    ttls: number[];
+  };
+  assertEquals(meta.limits[0], payload.max_calls);
+  assertEquals(meta.incs[0], 1);
 });

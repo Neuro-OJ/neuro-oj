@@ -122,6 +122,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         estimatedCost,
         ip: c.req.header("x-forwarded-for") ?? "unknown",
         ttlSeconds,
+        userRateLimitPerMinute: deps.config.userRateLimitPerMinute,
+        ipRateLimitPerMinute: deps.config.ipRateLimitPerMinute,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "limit_exceeded";

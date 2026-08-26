@@ -29,6 +29,16 @@ cd noj-core && deno task check:prod
 cd ..
 ```
 
+也可以使用仓库提供的生产部署入口完成检查和启动：
+
+```bash
+bash scripts/deploy/deploy.sh install
+```
+
+首次执行会创建权限为 `600` 的 `.env.prod` 并生成部分随机密钥，然后停止并提示
+填写域名、版本、邮件 Provider、管理员账号和 Judge 隔离 Docker socket。填写完成
+后再次执行同一命令即可继续部署。
+
 `.env.prod` 中必须填写：
 
 | 变量 | 说明 |
@@ -54,6 +64,8 @@ cd ..
 | `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID` | 独立 rootless Docker daemon 的 socket 与组 ID；禁止使用 `/var/run/docker.sock` |
 | `NOJ_LLM_SERVICE_TOKEN` | LLM Gateway 服务间鉴权 + eval_token 签发/校验密钥（≥16 字符）；compose 默认始终启动 `llm-gateway`，因此生产**必须填写** |
 | `NOJ_LLM_STORE_KEY` | LLM Gateway 加密 Provider API Key 的信封主密钥（≥16 字符）；compose 默认必填 |
+| `NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE` | 每个用户每 UTC 分钟的 LLM 调用上限；可选，默认 `60`，必须为正整数 |
+| `NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE` | 每个 IP 每 UTC 分钟的 LLM 调用上限；可选，默认 `60`，必须为正整数 |
 | `JUDGE_ALLOW_EVALUATOR_NETWORK` | 是否允许 evaluator 联网；使用 LLM 调用题时必须设为 `true` |
 | `JUDGE_EVALUATOR_NETWORK` | evaluator 联网时加入的 Docker 网络；生产必须指向 `llm-gateway` 所在网络，默认 `noj-net` |
 | `JUDGE_ALLOW_HTTP_S3` | 自建 MinIO 走内网 HTTP 时设为 `true`，允许 judge 通过 HTTP 下载支持包 |
@@ -64,16 +76,22 @@ cd ..
 # 并将解密后的 HTTP 流量转发到本机 ${NGINX_PORT:-8080} 端口（默认 8080）。
 # 示例见 deploy/README.md。
 
-# 4) 执行一次性初始化（迁移 + 系统数据 + 管理员）
+# 4) 手动方式：执行一次性初始化（迁移 + 系统数据 + 管理员）
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d migrate
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs migrate
 
-# 5) 启动全部服务
+# 5) 手动方式：启动全部服务
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 
 # 6) 查看状态
 docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 curl https://你的域名/healthz
+```
+
+使用部署脚本时，上述初始化、启动和健康检查由以下命令统一完成：
+
+```bash
+bash scripts/deploy/deploy.sh install
 ```
 
 > 评测 Worker 不得挂载应用宿主机的 `/var/run/docker.sock`。生产 Compose 要求
@@ -115,12 +133,71 @@ ghcr.io/neuro-oj/noj-solution-python   all_versions  solution
   否则 evaluator 容器无法解析 `http://llm-gateway:8001`。
 - 在管理后台「LLM Providers」配置上游 OpenAI 兼容服务；Provider Key 仅加密存储在数据库。
 
+用户和 IP 分钟限流分别由 `NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE` 与
+`NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE` 配置，缺失时均为每 UTC 分钟 60 次。
+配置必须是正整数，并在 `llm-gateway` 重启后生效；其它日/月调用量、Token 和费用配额不受影响。
+
 密钥轮换：
 
 - 轮换 `NOJ_LLM_SERVICE_TOKEN` 会让所有未过期 eval_token 失效，需同步更新 noj-core 与 gateway。
 - 轮换 `NOJ_LLM_STORE_KEY` 后，需要用新主密钥重新加密所有 Provider Key。
 
-## 4. 日常运维
+## 4. staging 验收门禁
+
+生产候选版本必须先在 staging 使用与生产相同的 Compose 文件和六类镜像完成验收，
+再进入 Release。验收脚本要求工作树洁净，默认只接受 `main`、`release/*` 或版本
+标签；生产验收不得使用 `latest` 作为版本标识。
+
+准备验收环境文件：
+
+```bash
+cp scripts/staging/env.example .env.staging
+chmod 600 .env.staging
+vim .env.staging
+```
+
+其中 `STAGING_BASE_URL` 必须是已经配置好外部 TLS 终止和反向代理的 HTTPS 地址，
+`STAGING_CORS_ORIGIN` 必须与浏览器实际来源一致。执行完整验收：
+
+```bash
+bash scripts/staging/acceptance.sh all \
+  --env-file .env.staging \
+  --artifact-dir artifacts/staging/$(grep '^NOJ_VERSION=' .env.staging | cut -d= -f2)
+```
+
+脚本会构建并启动 `noj-core`、`noj-ui`、`noj-judge`、`noj-llm-gateway`、
+`noj-evaluator-python`、`noj-solution-python` 六类生产镜像，然后依次验证：
+
+- Compose 健康检查、`/healthz`、HTTPS、CORS，以及 `HttpOnly`/`Secure`/`SameSite=Lax` Cookie；
+- 管理员登录与强制改密、普通用户登录、TFA 启用与登录；
+- 题包导入、S3/MinIO 支持包下载、真实代码提交与完整评测；
+- 提交 SSE 推送和管理员重测。
+
+失败时不会自动清理 staging 服务，并将 `compose ps`、最近 500 行服务日志、Docker
+信息和版本元数据写入报告目录；修复后应重新执行完整验收。成功时默认停止服务但保留
+数据卷，调试时可加 `--keep-stack` 保留服务。仅本地调试允许使用 `--allow-http`。
+
+发布前人工确认清单：
+
+1. staging 验收报告为成功，且包含候选提交、镜像仓库/版本和数据库迁移结果。
+2. 失败日志与已知限制已归档，未遗留未处理的队列、容器或数据问题。
+3. 已创建并验证 GPG 签名的提交或版本标签。
+4. 发布负责人完成手工批准后，才执行 GitHub Release 和生产升级。
+
+## 5. 日常运维
+
+推荐使用部署脚本：
+
+```bash
+bash scripts/deploy/deploy.sh status
+bash scripts/deploy/deploy.sh logs core
+bash scripts/deploy/deploy.sh logs judge --follow
+bash scripts/deploy/deploy.sh backup --passphrase-file /etc/noj/backup-passphrase
+```
+
+`backup` 会创建包含 PostgreSQL、Redis RDB、MinIO/S3 对象镜像和 GPG 加密
+`.env.prod` 的完整快照。快照目录位于 `backups/snapshot-*`，目录权限为 `700`，
+文件权限不对其他用户开放；组件失败时不会留下可被误用的半成品快照。
 
 ```bash
 # 查看服务状态
@@ -139,7 +216,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
   redis-cli -a "$REDIS_PASSWORD" LLEN noj:judge:queue
 ```
 
-## 5. 升级
+## 6. 升级
 
 1. 在 GitHub 发布新 Release（如 `v0.1.1`），`release.yml` 会自动推送镜像。
 2. 在服务器修改 `.env.prod` 中的 `NOJ_VERSION=v0.1.1`。
@@ -152,19 +229,64 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 
 4. 数据库迁移由 `core` 启动时自动执行；也可先手动跑一次 `migrate` 服务。
 
-## 6. 回滚
+## 7. 回滚
 
 - 将 `.env.prod` 的 `NOJ_VERSION` 改回上一版本，重新 `pull` + `up -d`。
 - 数据库 schema 采用只追加迁移，**不自动回滚**；如需回退 schema，请人工评估并备份后操作。
 - 评测镜像也按 Release tag 发布，回滚时需要把 `judge_images` 白名单指向旧 tag（若使用 `all_versions` 则无需改白名单，只需题目/系统设置中的镜像 tag 指向旧版本）。
 
-## 7. 备份提示
+## 8. 备份提示
 
-当前公测方案尚未包含自动化备份/高可用，请至少定期备份：
+### 8.1 初始化口令与创建快照
 
-- PostgreSQL：`pg_dump -F c` 或云数据库快照。
-- Redis：AOF/RDB 文件（`redisdata` 卷）。
-- MinIO：`miniodata` 卷或 bucket 同步到异地存储。
-- `.env.prod`：包含密钥，文件权限设为 `600`，并使用 secrets manager 或加密存储保存。
+备份口令只保存在仓库外的受限文件中，不要写入 `.env.prod` 或提交到 Git：
+
+```bash
+sudo install -d -m 700 /etc/noj
+openssl rand -hex 32 | sudo tee /etc/noj/backup-passphrase >/dev/null
+sudo chmod 600 /etc/noj/backup-passphrase
+
+export NOJ_BACKUP_PASSPHRASE_FILE=/etc/noj/backup-passphrase
+bash scripts/deploy/deploy.sh backup --backup-dir /srv/noj/backups
+```
+
+每次快照都会生成 SHA-256 清单、PostgreSQL dump 结构清单、迁移状态和 `SUCCESS`
+标记；默认保留 30 天，默认要求备份目录至少有 1GiB 可用空间。可通过
+`NOJ_BACKUP_RETENTION_DAYS` 和 `NOJ_BACKUP_MIN_FREE_MB` 调整。
+
+### 8.2 校验、恢复与恢复演练
+
+```bash
+snapshot=/srv/noj/backups/snapshot-YYYYMMDD-HHMMSS
+bash scripts/deploy/backup.sh verify "$snapshot"
+bash scripts/deploy/backup.sh drill "$snapshot" --report /srv/noj/restore-drill.txt
+```
+
+`drill` 不会触碰当前生产数据，只验证解密、校验和、PostgreSQL 结构、Redis RDB
+以及对象镜像。周期性演练应在隔离 Compose project 中执行实际恢复：
+
+```bash
+bash scripts/deploy/backup.sh restore "$snapshot" \
+  --project-name noj-restore-drill \
+  --restore-env /srv/noj/restore-drill.env \
+  --confirm
+```
+
+恢复会覆盖目标数据库、Redis 数据和对象存储，因此必须显式 `--confirm`，且目标
+Compose 服务必须已经停止。建议恢复到单独主机或单独数据卷，人工检查后再启动业务
+服务；脚本不会执行 `down -v`，也不会删除生产数据卷。
+
+### 8.3 RPO/RTO 与自动化
+
+- 默认快照是 PostgreSQL 完整逻辑备份；Redis 使用 RDB，评测队列属于可恢复的瞬态
+  数据，故障后允许重新提交或重新入队。
+- 可按 6 小时执行一次 `backup`，将业务 RPO 目标设为不超过 6 小时；实际 RPO 取决于
+  调度器是否成功完成并收到告警。需要分钟级 RPO 时，应额外配置 PostgreSQL WAL/PITR
+  和异地对象存储，不能只依赖本脚本。
+- RTO 由 PostgreSQL 数据量、对象数量和网络决定。每月至少在隔离环境跑一次实际
+  `restore --confirm`，记录从快照开始到健康检查通过的耗时，作为真实 RTO 基线。
+- 建议由 systemd timer、cron 或外部调度平台执行 `backup.sh create`，并对非零退出码、
+  磁盘空间不足、`verify` 失败和恢复演练失败发送告警。备份目录应同步到与生产主机
+  不同故障域的加密存储。
 
 密钥轮换和失效步骤见[生产密钥轮换 Runbook](./production-secrets)。
