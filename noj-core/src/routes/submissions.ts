@@ -3,6 +3,7 @@ import {
   createSubmission,
   getSubmission,
   listSubmissions,
+  resolveSubmissionId,
 } from "../services/submissions/submissions.ts";
 import {
   getCachedTodayStats,
@@ -199,7 +200,7 @@ router.get(
  * 服务层 `getSubmission` 根据 viewerId/viewerRole 自动裁剪字段。
  */
 router.get("/:id", optionalAuthMiddleware, async (c) => {
-  const id = c.req.param("id") as string;
+  const id = await resolveSubmissionId(c.req.param("id") as string);
 
   const result = await getSubmission(
     id,
@@ -219,7 +220,7 @@ router.get(
   "/:id/status",
   authMiddleware,
   async (c) => {
-    const id = c.req.param("id") as string;
+    const id = await resolveSubmissionId(c.req.param("id") as string);
     const userId = c.var.userId as string;
     // NOJ-049：仅提交所有者或实时 RBAC 的 submission:read_all 可查看队列状态。
     const isAdmin = await checkPermission(c, "submission:read_all");

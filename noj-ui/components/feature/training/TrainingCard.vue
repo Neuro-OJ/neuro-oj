@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import type { Training } from '~/composables/useTrainings'
+import { publicUrl } from '~/utils/publicIdentifiers'
 
 defineProps<{ training: Training }>()
 </script>
 
 <template>
   <NuxtLink
-    :to="`/trainings/${training.id}`"
+    :to="publicUrl('training', training.public_id || training.id)"
     class="group flex min-h-44 flex-col rounded-xl border border-border bg-white p-5 text-text no-underline shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-card"
   >
     <div class="flex items-start justify-between gap-3">

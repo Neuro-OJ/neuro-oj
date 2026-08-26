@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { extractApiError } from "~/utils/apiError"
 import type { SubmissionListItem } from "~/utils/submissionFormat"
+import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
 import {
   getStatusColor,
   getStatusLabel,
@@ -198,9 +199,9 @@ function hasResult(
           </thead>
           <tbody>
             <tr v-for="sub in submissions" :key="sub.id" class="border-b border-border transition-colors duration-150 last:border-b-0 hover:bg-bg-page">
-              <td class="px-3.5 py-3 font-mono text-xs text-text-secondary">{{ sub.id.slice(0, 8) }}...</td>
+              <td class="px-3.5 py-3 font-mono text-xs text-text-secondary">{{ sub.public_id || sub.id.slice(0, 8) }}...</td>
               <td class="px-3.5 py-3 text-13px text-text">
-                <NuxtLink :to="`/problems/${sub.problem_id}`" class="font-medium text-primary no-underline hover:underline">
+                <NuxtLink :to="problemUrl(sub.problem_id, sub.problem.display_id)" class="font-medium text-primary no-underline hover:underline">
                   {{ sub.problem.title || sub.problem_id }}
                 </NuxtLink>
               </td>
@@ -230,7 +231,7 @@ function hasResult(
               </td>
               <td class="px-3.5 py-3 text-13px text-text">{{ formatDateTime(sub.created_at) }}</td>
               <td class="px-3.5 py-3 text-center text-13px text-text">
-                <NuxtLink :to="`/submissions/${sub.id}`" class="inline-flex cursor-pointer items-center gap-1 rounded border border-primary bg-transparent px-2.5 py-1 text-xs font-semibold leading-none text-primary no-underline transition-all duration-150 hover:bg-primary hover:text-white">
+                <NuxtLink :to="publicUrl('submission', sub.public_id || sub.id)" class="inline-flex cursor-pointer items-center gap-1 rounded border border-primary bg-transparent px-2.5 py-1 text-xs font-semibold leading-none text-primary no-underline transition-all duration-150 hover:bg-primary hover:text-white">
                   查看
                 </NuxtLink>
               </td>

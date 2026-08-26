@@ -1,9 +1,11 @@
 <!-- 队列行（正在评测 / 排队中 / 最近完成 三个分区共用）。 -->
 <script setup lang="ts">
 import { formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
+import { publicUrl } from "~/utils/publicIdentifiers"
 
 interface QueueItemShape {
   id: string
+  public_id?: string
   problem_id: string
   problem_title: string
   language: string
@@ -42,10 +44,10 @@ function elapsed(): string {
 
 <template>
   <div class="flex items-center gap-3 px-4 py-2.5 text-13px border-b border-border last:border-b-0 hover:bg-bg-page">
-    <NuxtLink v-if="item.kind !== 'self_test'" :to="`/submissions/${item.id}`" class="text-blue-700 no-underline font-mono whitespace-nowrap min-w-[80px] hover:underline">#{{ item.id.slice(0, 8) }}</NuxtLink>
+    <NuxtLink v-if="item.kind !== 'self_test'" :to="publicUrl('submission', item.public_id || item.id)" class="text-blue-700 no-underline font-mono whitespace-nowrap min-w-[80px] hover:underline">#{{ item.public_id || item.id.slice(0, 8) }}</NuxtLink>
     <span v-else class="inline-flex items-center gap-1 font-mono whitespace-nowrap min-w-[80px] text-purple-700">
       <UIcon name="i-lucide-flask-conical" class="size-3.5" />
-      #{{ item.id.slice(0, 8) }}
+      #{{ item.public_id || item.id.slice(0, 8) }}
     </span>
     <span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text">{{ item.problem_id }} {{ item.problem_title }}</span>
     <span v-if="item.kind === 'self_test'" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">自测</span>

@@ -24,7 +24,7 @@ def solve(prompt: str) -> str:
 
 ## 参数与返回值约束
 
-与普通函数调用相同的 [RPC 类型约束](../problemsetters/rpc.md)：
+与普通函数调用相同的 [RPC 类型约束](../mechanisms/rpc.md)：
 
 - 只允许 `None` / `bool` / `int` / `float` / `str` / `bytes` / `list` / `dict`
 - `bytes` 会自动进行 base64 编码传输

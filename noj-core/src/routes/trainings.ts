@@ -19,9 +19,11 @@ import {
   listMyTrainings,
   listPublicTrainings,
   listTrainingProblems,
+  listTrainingsContainingProblem,
   listUserTrainings,
   removeTrainingProblem,
   reorderTrainingProblems,
+  resolveTrainingId,
   updateTraining,
 } from "../services/trainings.ts";
 import type {
@@ -82,6 +84,22 @@ router.get("/mine", authMiddleware, async (c) => {
   });
 });
 
+/**
+ * 查询当前用户创建的、包含指定题目的题单 id 列表。
+ * 用于题目页「加入题单」弹窗预勾选。
+ */
+router.get("/containing", authMiddleware, async (c) => {
+  const problemId = c.req.query("problem_id");
+  if (!problemId) {
+    throw new BadRequestError("缺少参数：problem_id");
+  }
+  const ids = await listTrainingsContainingProblem(
+    c.get("userId"),
+    problemId,
+  );
+  return c.json({ data: ids });
+});
+
 router.post("/", authMiddleware, async (c) => {
   await assertPermission(c, "training:create");
   const body = await parseJsonBody<CreateTrainingInput>(c);
@@ -91,12 +109,13 @@ router.post("/", authMiddleware, async (c) => {
 });
 
 router.get("/:id", optionalAuthMiddleware, async (c) => {
+  const id = await resolveTrainingId(c.req.param("id") as string);
   const viewerId = c.get("userId") as string | undefined;
   const isAdmin = viewerId
     ? await checkPermission(c, "training:read_any")
     : false;
   const training = await getTraining(
-    c.req.param("id") as string,
+    id,
     viewerId,
     isAdmin,
   );
@@ -104,7 +123,7 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
 });
 
 router.put("/:id", authMiddleware, async (c) => {
-  const id = c.req.param("id") as string;
+  const id = await resolveTrainingId(c.req.param("id") as string);
   const actorId = c.get("userId");
   const isAdmin = await checkPermission(c, "training:write_any");
   const training = await getTraining(id, actorId, isAdmin);
@@ -133,7 +152,7 @@ router.put("/:id", authMiddleware, async (c) => {
 });
 
 router.delete("/:id", authMiddleware, async (c) => {
-  const id = c.req.param("id") as string;
+  const id = await resolveTrainingId(c.req.param("id") as string);
   const actorId = c.get("userId");
   const isAdmin = await checkPermission(c, "training:delete_any");
   const training = await getTraining(id, actorId, isAdmin);
@@ -147,12 +166,13 @@ router.delete("/:id", authMiddleware, async (c) => {
 });
 
 router.get("/:id/problems", optionalAuthMiddleware, async (c) => {
+  const id = await resolveTrainingId(c.req.param("id") as string);
   const viewerId = c.get("userId") as string | undefined;
   const isAdmin = viewerId
     ? await checkPermission(c, "training:read_any")
     : false;
   const data = await listTrainingProblems(
-    c.req.param("id") as string,
+    id,
     viewerId,
     isAdmin,
   );
@@ -160,7 +180,7 @@ router.get("/:id/problems", optionalAuthMiddleware, async (c) => {
 });
 
 router.post("/:id/problems", authMiddleware, async (c) => {
-  const id = c.req.param("id") as string;
+  const id = await resolveTrainingId(c.req.param("id") as string);
   const actorId = c.get("userId");
   const isAdmin = await checkPermission(c, "training:write_any");
   const training = await getTraining(id, actorId, isAdmin);
@@ -186,7 +206,7 @@ router.post("/:id/problems", authMiddleware, async (c) => {
 });
 
 router.put("/:id/problems", authMiddleware, async (c) => {
-  const id = c.req.param("id") as string;
+  const id = await resolveTrainingId(c.req.param("id") as string);
   const actorId = c.get("userId");
   const isAdmin = await checkPermission(c, "training:write_any");
   const training = await getTraining(id, actorId, isAdmin);
@@ -213,7 +233,7 @@ router.put("/:id/problems", authMiddleware, async (c) => {
 });
 
 router.delete("/:id/problems/:problemId", authMiddleware, async (c) => {
-  const id = c.req.param("id") as string;
+  const id = await resolveTrainingId(c.req.param("id") as string);
   const problemId = c.req.param("problemId") as string;
   const actorId = c.get("userId");
   const isAdmin = await checkPermission(c, "training:write_any");

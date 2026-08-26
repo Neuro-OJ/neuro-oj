@@ -52,13 +52,13 @@
 
 ### 限流把所有请求都拦了？
 
-如果部署了反向代理，必须在 noj-core 配置 `TRUSTED_PROXIES`（生产环境 `Neuro OJ_ENV=production` 强制要求），否则所有请求都来自代理 IP，会被当成同一来源限流。
+如果部署了反向代理，必须在 noj-core 配置 `TRUSTED_PROXIES`（生产环境 `NOJ_ENV=production` 强制要求），否则所有请求都来自代理 IP，会被当成同一来源限流。
 
 ## 出题人
 
 ### 上传支持包提示格式错误？
 
-统一题目包必须是 `.zip` 格式且 Content-Type 合法。请用「上传」而非压缩软件的特殊格式；包结构与 manifest 要求见[统一题目包](../problemsetters/support-package.md)。
+统一题目包必须是 `.zip` 格式且 Content-Type 合法。请用「上传」而非压缩软件的特殊格式；包结构与 manifest 要求见[题目包格式规范](../standards/problem-bundle.md)。
 
 ### 题目编辑器中看不到语言选项？
 
@@ -68,6 +68,6 @@
 
 上传按 manifest 的 `(type, number)` 匹配：命中既有题目则更新，未命中则新建。检查 manifest 中的 `type` / `number` 是否与目标题目一致。修改题目配置后，可对旧提交触发 rejudge 重新评测。
 
-### 用户提交出现 FunctionNotFound？
+### 用户提交提示函数不存在？
 
 题面声明的函数名与 evaluator 实际调用的函数名不一致，或用户代码模块无法导入。检查 evaluator 的调用名与题面示例是否一致。

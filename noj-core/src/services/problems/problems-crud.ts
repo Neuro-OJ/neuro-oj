@@ -24,12 +24,16 @@ import { getStorageProvider } from "../../lib/storage/mod.ts";
 import { logger } from "../../lib/logging.ts";
 import { validateJudgeImageWithKind } from "../judge-images.ts";
 import { logAudit } from "../audit-log.ts";
+import { getLlmProviderById } from "../llm.ts";
 import {
   type CreateProblemInput,
   DIFFICULTIES,
   isValidDifficulty,
+  isValidLlmConfig,
   isValidProblemType,
+  type LlmConfig,
   type ProblemResponseWithTags,
+  type RuntimeConfig,
   type UpdateProblemInput,
 } from "../../types/problems.ts";
 import { validateRuntimeConfig } from "./problems-types.ts";
@@ -132,6 +136,31 @@ export async function createProblem(
     throw new BadRequestError("runtime_config 是必填字段");
   }
 
+  // LLM 配置准入校验：仅 P 型/官方题可启用，且必须开启 evaluator 网络。
+  let llmConfig: LlmConfig | null = null;
+  if (input.llm !== undefined && input.llm !== null) {
+    if (isObjective) {
+      throw new BadRequestError("客观题套卷不支持 LLM 配置");
+    }
+    if (!isValidLlmConfig(input.llm)) {
+      throw new BadRequestError("llm 配置格式非法");
+    }
+    if (type !== "P") {
+      throw new ForbiddenError("仅 P 型/官方题可启用 LLM");
+    }
+    const provider = await getLlmProviderById(input.llm.provider_id).catch(
+      () => null,
+    );
+    if (!provider || !provider.enabled) {
+      throw new BadRequestError("LLM Provider 不存在或已停用");
+    }
+    const runtime = input.runtime_config;
+    if (!runtime || !runtime.evaluator.network?.enabled) {
+      throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
+    }
+    llmConfig = input.llm;
+  }
+
   // 题目主键统一由服务端生成 UUID，避免客户端注入字符串 id
   // 影响 display_id 双索引路由解析
   const id = crypto.randomUUID();
@@ -197,6 +226,7 @@ export async function createProblem(
         support_package_storage_url: input.support_package_storage_url ?? null,
         runtime_config: isObjective ? null : (input.runtime_config ?? null),
         is_objective: isObjective,
+        llm_config: llmConfig,
         number,
         owner_id: ownerId,
         type,
@@ -335,6 +365,54 @@ export async function updateProblem(
     enforceResourceLimits(input.runtime_config);
   }
 
+  // LLM 配置变更校验：仅 P 型/官方题可启用，且必须保持 evaluator 网络开启。
+  let llmConfig: LlmConfig | null | undefined;
+  if (input.llm !== undefined) {
+    if (input.llm === null) {
+      llmConfig = null;
+    } else {
+      if (!isValidLlmConfig(input.llm)) {
+        throw new BadRequestError("llm 配置格式非法");
+      }
+      if (problem.type !== "P") {
+        throw new ForbiddenError("仅 P 型/官方题可启用 LLM");
+      }
+      if (isObjective) {
+        throw new BadRequestError("客观题套卷不支持 LLM 配置");
+      }
+      const provider = await getLlmProviderById(input.llm.provider_id).catch(
+        () => null,
+      );
+      if (!provider || !provider.enabled) {
+        throw new BadRequestError("LLM Provider 不存在或已停用");
+      }
+      const effectiveRuntime = input.runtime_config ??
+        (problem.runtime_config as RuntimeConfig | null);
+      if (
+        !effectiveRuntime ||
+        !effectiveRuntime.evaluator.network?.enabled
+      ) {
+        throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
+      }
+      llmConfig = input.llm;
+    }
+  }
+
+  // 若题目已有/仍有 LLM 配置，必须保持 evaluator 网络开启；改为客观题时自动清空。
+  const existingLlm = problem.llm_config as LlmConfig | null;
+  const nextLlm = llmConfig !== undefined ? llmConfig : existingLlm;
+  if (nextLlm) {
+    if (isObjective) {
+      llmConfig = null;
+    } else if (
+      input.runtime_config !== undefined &&
+      input.runtime_config !== null &&
+      !input.runtime_config.evaluator.network?.enabled
+    ) {
+      throw new BadRequestError("启用 LLM 的题目必须保持 evaluator 网络开启");
+    }
+  }
+
   // 防御性忽略 type 和 number（spec 承诺这两个字段不可变更）
   delete (input as Record<string, unknown>)["type"];
   delete (input as Record<string, unknown>)["number"];
@@ -365,6 +443,9 @@ export async function updateProblem(
     }
   } else if (input.runtime_config !== undefined) {
     updates.runtime_config = input.runtime_config;
+  }
+  if (llmConfig !== undefined) {
+    updates.llm_config = llmConfig;
   }
   updates.updated_at = new Date().toISOString();
 

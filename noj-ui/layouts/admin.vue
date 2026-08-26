@@ -37,6 +37,8 @@ const navGroups: NavGroup[] = [
       { label: "题单管理", to: "/admin/trainings", icon: 'i-lucide-list-todo' },
       { label: "提交管理", to: "/admin/submissions", icon: 'i-lucide-files' },
       { label: "评测镜像", to: "/admin/judge-images", icon: 'i-lucide-container' },
+      { label: "LLM Provider", to: "/admin/llm/providers", icon: 'i-lucide-server' },
+      { label: "LLM 用量", to: "/admin/llm/usage", icon: 'i-lucide-bar-chart-3' },
       { label: "社区管理", to: "/admin/community", icon: 'i-lucide-messages-square' },
       { label: "公告管理", to: "/admin/announcements", icon: 'i-lucide-megaphone' },
     ],

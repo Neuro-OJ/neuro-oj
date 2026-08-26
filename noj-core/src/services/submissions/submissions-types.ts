@@ -18,6 +18,7 @@ export interface SubmissionInput {
 /** 创建提交成功后的响应（基础字段，不含 result） */
 export interface SubmissionResponse {
   id: string;
+  public_id: string;
   user_id: string;
   problem_id: string;
   contest_id: string | null;
@@ -36,6 +37,7 @@ export interface SubmissionResponse {
  */
 export interface SubmissionDetail {
   id: string;
+  public_id: string;
   user_id: string;
   problem_id: string;
   contest_id: string | null;
@@ -72,6 +74,7 @@ export interface SubmissionDetail {
  */
 export interface SubmissionListItem {
   id: string;
+  public_id: string;
   user_id: string;
   problem_id: string;
   contest_id: string | null;

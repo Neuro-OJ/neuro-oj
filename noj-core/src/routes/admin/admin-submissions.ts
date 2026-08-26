@@ -7,8 +7,10 @@ import {
   listSubmissions,
   rejudgeProblemSubmissions,
   rejudgeSubmission,
+  resolveSubmissionId,
 } from "../../services/submissions/submissions.ts";
 import { removePendingSubmission } from "../../services/queue.ts";
+import { resolveProblem } from "../../lib/problem-resolve.ts";
 import { SUBMISSION_STATUSES } from "../../types/index.ts";
 
 /**
@@ -84,7 +86,7 @@ router.get("/submissions", async (c) => {
  * GET /api/v1/admin/submissions/:id
  */
 router.get("/submissions/:id", async (c) => {
-  const id = c.req.param("id") as string;
+  const id = await resolveSubmissionId(c.req.param("id") as string);
   // 传入 userId/userRole 确保管理员能看到 code/output/details
   const result = await getSubmission(id, c.get("userId"), undefined, c);
   return c.json({ data: result });
@@ -95,14 +97,15 @@ router.get("/submissions/:id", async (c) => {
  * DELETE /api/v1/admin/submissions/:id
  */
 router.delete("/submissions/:id", async (c) => {
-  const id = c.req.param("id") as string;
+  const id = await resolveSubmissionId(c.req.param("id") as string);
   await deleteSubmission(id);
   return c.body(null, 204);
 });
 
 /** 管理员移除尚未领取的评测任务。 */
 router.delete("/queue/submissions/:id", async (c) => {
-  await removePendingSubmission(c.req.param("id") as string);
+  const id = await resolveSubmissionId(c.req.param("id") as string);
+  await removePendingSubmission(id);
   return c.body(null, 204);
 });
 
@@ -111,7 +114,7 @@ router.delete("/queue/submissions/:id", async (c) => {
  * POST /api/v1/admin/submissions/:id/rejudge
  */
 router.post("/submissions/:id/rejudge", async (c) => {
-  const id = c.req.param("id") as string;
+  const id = await resolveSubmissionId(c.req.param("id") as string);
   await rejudgeSubmission(id);
   return c.json({ data: { message: "重测任务已提交", submission_id: id } });
 });
@@ -121,7 +124,8 @@ router.post("/submissions/:id/rejudge", async (c) => {
  * POST /api/v1/admin/problems/:id/rejudge
  */
 router.post("/problems/:id/rejudge", async (c) => {
-  const id = c.req.param("id") as string;
+  const problem = await resolveProblem(c.req.param("id") as string);
+  const id = problem.id;
   const result = await rejudgeProblemSubmissions(id);
   return c.json({
     data: {

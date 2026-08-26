@@ -1,5 +1,5 @@
 <template>
-    <div class="py-6">
+    <div class="px-3 sm:px-5 py-6">
         <div class="mx-auto w-full max-w-[1320px] border border-border rounded-xl shadow-card flex flex-col overflow-hidden">
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col lg:flex-row flex-1 min-h-[320px] bg-white">
@@ -24,7 +24,7 @@
                                 <p class="text-sm lg:text-base text-white/85 max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">{{ announcements[currentSlide].excerpt }}</p>
                                 <!-- 点击跳转公告详情（整卡可点，按钮层 z-10 在其上不受影响） -->
                                 <NuxtLink
-                                    :to="`/announcements/${announcements[currentSlide].id}`"
+                                    :to="publicUrl('announcement', announcements[currentSlide].public_id || announcements[currentSlide].id)"
                                     class="absolute inset-0 z-[5]"
                                     :aria-label="`查看公告：${announcements[currentSlide].title}`"
                                 />
@@ -112,6 +112,7 @@
 
 <script setup lang="ts">
 import { useEventSource } from "~/composables/useEventSource"
+import { publicUrl } from "~/utils/publicIdentifiers"
 
 const { user, isLoggedIn } = useAuth()
 const { api } = useApi()
@@ -119,6 +120,7 @@ const { api } = useApi()
 // ── Announcement Carousel（公告驱动，issue #231）──
 interface CarouselAnnouncement {
     id: string
+    public_id?: string
     title: string
     excerpt: string
     is_pinned: boolean

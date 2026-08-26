@@ -55,76 +55,109 @@ export default withMermaid(defineConfig({
       },
     ],
     sidebar: {
-      "/intro/": [
+      "/": [
         {
-          text: "入门",
+          text: "快速开始",
           items: [
-            { text: "什么是 Neuro OJ & 和传统 OJ 有什么不同", link: "/intro/what-is-noj" },
+            { text: "什么是 Neuro OJ", link: "/intro/what-is-noj" },
             { text: "快速开始", link: "/intro/getting-started" },
             { text: "常见问题", link: "/intro/faq" },
           ],
         },
-      ],
-      "/users/": [
         {
-          text: "做题人",
-          items: [
-            { text: "做题人文档", link: "/users/" },
-            { text: "提交代码", link: "/users/submit" },
-            { text: "使用 capability", link: "/users/capability" },
-            { text: "理解结果", link: "/users/results" },
-            { text: "账号与密码", link: "/users/account" },
-            { text: "排行榜与签到", link: "/users/ranking" },
-            { text: "搜索与私信", link: "/users/search-messages" },
-          ],
-        },
-      ],
-      "/operators/": [
-        {
-          text: "运营者",
-          items: [
-            { text: "运营者文档", link: "/operators/" },
-            { text: "生产部署", link: "/operators/production-deploy" },
-            { text: "CLI 初始化", link: "/operators/cli" },
-            { text: "存储与评测包交付", link: "/operators/storage" },
-            { text: "Judge Worker 运维", link: "/operators/judge-workers" },
-            { text: "后台管理指南", link: "/operators/admin-guide" },
-          ],
-        },
-      ],
-      "/problemsetters/": [
-        {
-          text: "出题",
-          items: [
-            { text: "出题人文档", link: "/problemsetters/" },
-            { text: "快速出一题", link: "/problemsetters/quick-start" },
-            { text: "评测模型", link: "/problemsetters/judge-model" },
-            { text: "Web 题目编辑器", link: "/problemsetters/web-editor" },
-            { text: "统一题目包", link: "/problemsetters/support-package" },
-            { text: "测试数据", link: "/problemsetters/cases" },
-            { text: "A+B 示例题", link: "/problemsetters/ab-example" },
-          ],
-        },
-        {
-          text: "进阶",
+          text: "面向角色",
           collapsed: true,
           items: [
-            { text: "Evaluator SDK", link: "/problemsetters/evaluator-sdk" },
-            { text: "Solution SDK", link: "/problemsetters/solution-sdk" },
-            { text: "如何提供受限网络能力", link: "/problemsetters/capability-networking" },
-            { text: "RPC 与可传递数据", link: "/problemsetters/rpc" },
-            { text: "评测镜像与运行时", link: "/problemsetters/runtimes" },
+            {
+              text: "做题人",
+              items: [
+                { text: "做题人文档", link: "/users/" },
+                { text: "提交代码", link: "/users/submit" },
+                { text: "使用 capability", link: "/users/capability" },
+                { text: "理解结果", link: "/users/results" },
+                { text: "账号与密码", link: "/users/account" },
+              ],
+            },
+            {
+              text: "出题人",
+              items: [
+                { text: "出题人文档", link: "/problemsetters/" },
+                { text: "快速出一题", link: "/problemsetters/quick-start" },
+                { text: "Web 题目编辑器", link: "/problemsetters/web-editor" },
+                { text: "A+B 示例题", link: "/problemsetters/ab-example" },
+                { text: "出 LLM 调用题", link: "/problemsetters/llm-problem" },
+              ],
+            },
+            {
+              text: "运营者",
+              items: [
+                { text: "运营者文档", link: "/operators/" },
+                { text: "生产部署", link: "/operators/production-deploy" },
+                { text: "如何提供 LLM 调用能力", link: "/operators/llm-call-capability" },
+                { text: "CLI 初始化", link: "/operators/cli" },
+                { text: "Judge Worker 运维", link: "/operators/judge-workers" },
+                { text: "后台管理指南", link: "/operators/admin-guide" },
+                { text: "生产密钥", link: "/operators/production-secrets" },
+              ],
+            },
           ],
         },
-      ],
-      "/reference/": [
         {
-          text: "参考",
+          text: "面向主题",
+          collapsed: true,
           items: [
-            { text: "参考文档", link: "/reference/" },
-            { text: "术语表", link: "/reference/glossary" },
-            { text: "结果状态", link: "/reference/result-status" },
-            { text: "更新日志", link: "/reference/changelog" },
+            {
+              text: "题目规范及质量要求",
+              items: [
+                { text: "总览", link: "/standards/" },
+                { text: "题目包格式规范", link: "/standards/problem-bundle" },
+                { text: "测试数据与样例规范", link: "/standards/test-data" },
+                { text: "题目质量要求", link: "/standards/quality" },
+              ],
+            },
+            {
+              text: "评测机制与 SDK",
+              items: [
+                { text: "总览", link: "/mechanisms/" },
+                { text: "评测模型", link: "/mechanisms/judge-model" },
+                { text: "Evaluator SDK", link: "/mechanisms/evaluator-sdk" },
+                { text: "Solution SDK", link: "/mechanisms/solution-sdk" },
+                { text: "RPC 与可传递数据", link: "/mechanisms/rpc" },
+                { text: "评测镜像与运行时", link: "/mechanisms/runtimes" },
+                { text: "如何提供受限网络能力", link: "/mechanisms/capability-networking" },
+              ],
+            },
+            {
+              text: "系统架构与运维主题",
+              items: [
+                { text: "总览", link: "/system/" },
+                { text: "系统架构", link: "/system/architecture" },
+                { text: "安全模型", link: "/system/security" },
+                { text: "存储与评测包交付", link: "/system/storage" },
+              ],
+            },
+            {
+              text: "功能主题",
+              items: [
+                { text: "总览", link: "/features/" },
+                { text: "排行榜与签到", link: "/features/ranking" },
+                { text: "搜索与私信", link: "/features/search-messages" },
+                { text: "社区", link: "/features/community" },
+                { text: "竞赛", link: "/features/contests" },
+                { text: "题单", link: "/features/trainings" },
+                { text: "公告", link: "/features/announcements" },
+                { text: "客观题套卷", link: "/features/objective" },
+              ],
+            },
+            {
+              text: "参考",
+              items: [
+                { text: "参考文档", link: "/reference/" },
+                { text: "术语表", link: "/reference/glossary" },
+                { text: "结果状态", link: "/reference/result-status" },
+                { text: "更新日志", link: "/reference/changelog" },
+              ],
+            },
           ],
         },
       ],

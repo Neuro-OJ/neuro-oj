@@ -115,7 +115,7 @@ async function handleRoleSwitch() {
   switchingRole.value = true
   switchError.value = ""
   try {
-    await api.patch(`/api/v1/admin/users/${targetUser.value.id}/role`, {
+    await api.patch(`/api/v1/admin/users/${targetUser.value.username}/role`, {
       role_ids: selectedRoleIds.value,
     })
     showRoleModal.value = false
@@ -149,7 +149,7 @@ async function handleBan() {
   banning.value = true
   banError.value = ""
   try {
-    await api.patch(`/api/v1/admin/users/${banTarget.value.id}/ban`, {
+    await api.patch(`/api/v1/admin/users/${banTarget.value.username}/ban`, {
       reason: banForm.reason.trim() || undefined,
       banned_until: banForm.banned_until
         ? new Date(banForm.banned_until).toISOString()
@@ -179,7 +179,7 @@ async function confirmUnban(user: User) {
   if (!ok) return
   banning.value = true
   try {
-    await api.patch(`/api/v1/admin/users/${user.id}/unban`)
+    await api.patch(`/api/v1/admin/users/${user.username}/unban`)
     toast.success(`已解封 ${user.username}`)
   } catch {
     banning.value = false
@@ -228,7 +228,7 @@ async function showBanHistory(user: User) {
   showHistoryModal.value = true
   try {
     const res = await api.get<{ data: BanRecord[] }>(
-      `/api/v1/admin/users/${user.id}/bans`,
+      `/api/v1/admin/users/${user.username}/bans`,
       { silent: true },
     )
     historyRecords.value = res.data

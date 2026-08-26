@@ -23,7 +23,7 @@ const visible = ref(false)
 </script>
 
 <template>
-  <UField :label="label" :error="error" :required="required">
+  <UFormField :label="label" :error="error" :required="required">
     <UInput
       v-model="model"
       :type="visible ? 'text' : 'password'"
@@ -50,5 +50,5 @@ const visible = ref(false)
         </button>
       </template>
     </UInput>
-  </UField>
+  </UFormField>
 </template>

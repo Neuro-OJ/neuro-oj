@@ -16,14 +16,6 @@
             >
                 <UButton class="md:hidden" color="neutral" variant="ghost" square icon="i-lucide-menu" aria-label="打开菜单" />
                 <template #body>
-                    <button
-                        type="button"
-                        class="flex items-center gap-2 px-3 py-2.5 text-sm text-text-secondary no-underline rounded-md transition-colors hover:bg-primary-hover hover:text-text"
-                        @click="openSearch; mobileOpen = false"
-                    >
-                        <UIcon name="i-lucide-search" class="size-4" />
-                        搜索
-                    </button>
                     <NuxtLink
                         v-for="item in navItems"
                         :key="item.to"
@@ -38,7 +30,7 @@
             </UDrawer>
             <BrandLogo text-class="hidden sm:inline" />
             <!-- 桌面端导航（≥md 显示） -->
-            <nav ref="navRef" class="hidden md:flex items-center gap-1 ml-6 min-w-0">
+            <nav ref="navRef" class="hidden md:flex flex-1 items-center gap-1 ml-6 min-w-0">
               <NuxtLink
                 v-for="item in visibleNavItems"
                 :key="item.to"
@@ -107,6 +99,7 @@ const baseNavItems: NavItem[] = [
   { label: '题库', to: '/problems', icon: 'i-lucide-book-open' },
   { label: '竞赛', to: '/contests', icon: 'i-lucide-trophy' },
   { label: '榜单', to: '/ranking', icon: 'i-lucide-medal' },
+  { label: '题单', to: '/trainings', icon: 'i-lucide-list-todo' },
   { label: '社区', to: '/community', icon: 'i-lucide-messages-square', needsCommunity: true },
   { label: '提交记录', to: '/submissions', icon: 'i-lucide-file-text' },
   { label: '队列', to: '/queue', icon: 'i-lucide-list-ordered' },

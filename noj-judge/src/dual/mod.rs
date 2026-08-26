@@ -30,7 +30,7 @@ use crate::dual::protocol::{
 };
 use crate::dual::tracker::{InFlightTracker, WaitingSide};
 use crate::sandbox::container::{extract_zip_entries, parse_command};
-use crate::types::{JudgeResult, JudgeStatus, RuntimeConfig};
+use crate::types::{JudgeResult, JudgeStatus, JudgeTaskLlm, RuntimeConfig};
 
 /// 评测输出全文/错误累积上限（1 MiB）。恶意提交可无限打印，
 /// 若无限 append 会拖垮 judge 进程（容器内存限制不约束 judge）。
@@ -39,6 +39,16 @@ pub const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
 /// Solution 容器入口文件名（评测内部约定，硬编码；与 noj_solution_sdk.host
 /// 的 `--entry` 路径一致，模块名固定为 `user_solution`，文件名不影响评测）。
 pub const SOLUTION_ENTRY_FILE: &str = "main.py";
+
+/// 构造 Evaluator 的 LLM 环境变量（Solution 容器始终不注入）。
+fn build_llm_env(llm: &JudgeTaskLlm) -> Vec<String> {
+    vec![
+        format!("NOJ_LLM_GATEWAY_URL={}", llm.gateway_url),
+        format!("NOJ_LLM_TOKEN={}", llm.eval_token),
+        format!("NOJ_LLM_PROVIDER_ID={}", llm.provider_id),
+        format!("NOJ_LLM_ALLOWED_MODELS={}", llm.allowed_models.join(",")),
+    ]
+}
 
 /// 文件注入 exec 完成轮询次数与间隔（50 × 100ms = 5s 上限）。
 const INJECT_POLL_ATTEMPTS: u32 = 50;
@@ -216,8 +226,10 @@ pub async fn evaluate_dual_with_cpu_limit(
     user_code: &str,
     support_pkg_bytes: Option<&[u8]>,
     task_rejudge_seq: Option<i64>,
+    task_llm: Option<&JudgeTaskLlm>,
     cpu_limit_millicores: u64,
     allow_evaluator_network: bool,
+    evaluator_network_mode: &str,
     image_prefix: &str,
     command_whitelist: &[String],
 ) -> Result<JudgeResult> {
@@ -238,11 +250,16 @@ pub async fn evaluate_dual_with_cpu_limit(
         .as_ref()
         .map(|n| n.enabled)
         .unwrap_or(false);
+    let network_mode = if evaluator_network_enabled {
+        evaluator_network_mode
+    } else {
+        "none"
+    };
     let mut dual = DualContainer::create_evaluator(
         &docker,
         &runtime_config.evaluator.image,
         runtime_config.evaluator.memory_limit_mb,
-        evaluator_network_enabled,
+        network_mode,
         cpu_limit_millicores,
     )
     .await
@@ -286,12 +303,15 @@ pub async fn evaluate_dual_with_cpu_limit(
     .await
     .context("注入用户代码到 Solution 容器失败")?;
 
-    // 5. 启动 Evaluator exec
-    let evaluator_exec = start_exec(&docker, &evaluator_id, evaluator_cmd)
+    // 5. 构造 Evaluator 环境变量（LLM 任务注入 gateway 地址与 eval_token）
+    let evaluator_env = task_llm.map(build_llm_env).unwrap_or_default();
+
+    // 6. 启动 Evaluator exec
+    let evaluator_exec = start_exec(&docker, &evaluator_id, evaluator_cmd, evaluator_env)
         .await
         .context("启动 Evaluator exec 失败")?;
 
-    // 6. 启动 Solution exec
+    // 7. 启动 Solution exec（Solution 容器不注入任何 NOJ_LLM_* 环境变量）
     let solution_entry_path = format!("/workspace/{}", SOLUTION_ENTRY_FILE);
     let solution_exec = start_exec(
         &docker,
@@ -303,6 +323,7 @@ pub async fn evaluate_dual_with_cpu_limit(
             "--entry".to_string(),
             solution_entry_path,
         ],
+        vec![],
     )
     .await
     .context("启动 Solution exec 失败")?;
@@ -881,6 +902,21 @@ pub mod mod_test_helpers {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_build_llm_env() {
+        let llm = JudgeTaskLlm {
+            gateway_url: "http://llm-gateway:8001".to_string(),
+            eval_token: "token-abc".to_string(),
+            provider_id: "prov-1".to_string(),
+            allowed_models: vec!["qwen-plus".to_string(), "qwen-max".to_string()],
+        };
+        let env = build_llm_env(&llm);
+        assert!(env.contains(&"NOJ_LLM_GATEWAY_URL=http://llm-gateway:8001".to_string()));
+        assert!(env.contains(&"NOJ_LLM_TOKEN=token-abc".to_string()));
+        assert!(env.contains(&"NOJ_LLM_PROVIDER_ID=prov-1".to_string()));
+        assert!(env.contains(&"NOJ_LLM_ALLOWED_MODELS=qwen-plus,qwen-max".to_string()));
+    }
 
     #[test]
     fn test_build_judge_result_accepted() {

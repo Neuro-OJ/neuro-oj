@@ -12,6 +12,7 @@
  */
 export * from "./users/users-avatar.ts";
 export * from "./users/users-bans.ts";
+export * from "./users/users-id.ts";
 export * from "./users/users-profile.ts";
 export * from "./users/users-profile-edit.ts";
 export * from "./users/users-search.ts";

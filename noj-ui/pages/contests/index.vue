@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Contest, ContestStatus, ContestType } from '~/composables/useContests'
+import { publicUrl } from '~/utils/publicIdentifiers'
 
 useHead({ title: '竞赛大厅 - Neuro OJ' })
 
@@ -66,7 +67,7 @@ watch([selectedType, selectedStatus], () => {
           <NuxtLink
             v-for="contest in pagedContests"
             :key="contest.id"
-            :to="`/contests/${contest.id}`"
+            :to="publicUrl('contest', contest.public_id || contest.id)"
             class="group flex min-h-64 flex-col rounded-xl border border-border bg-white p-5 text-text no-underline shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-card"
           >
             <div class="flex items-start justify-between gap-3">

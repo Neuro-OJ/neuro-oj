@@ -22,6 +22,7 @@ import adminBlacklist from "./admin-blacklist.ts";
 import adminRoles from "./admin-roles.ts";
 import adminAudit from "./admin-audit.ts";
 import adminDashboard from "./admin-dashboard.ts";
+import adminLlm from "./admin-llm.ts";
 
 const router = new Hono<AuthEnv>();
 
@@ -51,5 +52,6 @@ router.route("/", adminBlacklist);
 router.route("/", adminRoles);
 router.route("/", adminAudit);
 router.route("/", adminDashboard);
+router.route("/", adminLlm);
 
 export default router;

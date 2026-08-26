@@ -4,6 +4,7 @@ import type {
   CommunityPost,
   PostType,
 } from "~/composables/useCommunity"
+import { problemUrl } from "~/utils/publicIdentifiers"
 
 const route = useRoute()
 const { isLoggedIn, user } = useAuth()
@@ -194,7 +195,7 @@ await load()
           <div class="flex flex-wrap items-center gap-2">
             <UserIdentity :user="post.author" size="sm" />
             <span class="rounded bg-primary-bg px-2 py-0.5 text-xs text-primary">{{ typeLabel[post.post.type] }}</span>
-            <NuxtLink v-if="post.post.type === 'solution' && post.post.problem_id" :to="`/problems/${post.post.problem_id}`" class="inline-flex items-center gap-1 text-xs text-primary hover:underline">{{ post.problem_title ?? '关联题目' }} →</NuxtLink>
+            <NuxtLink v-if="post.post.type === 'solution' && post.post.problem_id" :to="problemUrl(post.post.problem_id)" class="inline-flex items-center gap-1 text-xs text-primary hover:underline">{{ post.problem_title ?? '关联题目' }} →</NuxtLink>
             <span v-if="post.post.status === 'pending'" class="rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">审核中</span>
             <span v-if="post.post.status === 'hidden'" class="rounded bg-red-50 px-2 py-0.5 text-xs text-red-700">已隐藏</span>
             <span v-if="post.post.is_locked" class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-lock" class="size-[10px]" />已锁定</span>

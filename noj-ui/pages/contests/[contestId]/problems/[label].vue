@@ -2,6 +2,7 @@
 import type { Contest, ContestProblem } from '~/composables/useContests'
 import type { ObjectiveQuestion } from '~/composables/useObjective'
 import { QUESTION_TYPE_LABELS } from '~/composables/useObjective'
+import { publicUrl } from '~/utils/publicIdentifiers'
 
 /**
  * 竞赛题目详情页：
@@ -66,7 +67,7 @@ const accessHint = computed(() => {
 // ── 客观题分支 ────────────────────────────────
 // paperId 未加载（problem 请求未返回）时 URL 返回 null，useFetch 跳过请求，
 // 避免对空 paperId 发出无效请求（404 / 误判已提交闪烁）
-const paperId = computed(() => problem.value?.problem_id ?? '')
+const paperId = computed(() => problem.value?.display_id ?? problem.value?.problem_id ?? '')
 const { data: qData, error: qError } = await useFetch<{ data: ObjectiveQuestion[] }>(
   computed(() =>
     paperId.value
@@ -146,7 +147,7 @@ async function onSubmit() {
       <div v-if="problem" class="mx-auto flex max-w-[960px] flex-col gap-4">
         <header class="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-white px-4 py-3">
           <NuxtLink
-            :to="`/contests/${contestId}`"
+            :to="publicUrl('contest', contestId)"
             class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
           >
             <UIcon name="i-lucide-arrow-left" class="size-4" />返回竞赛
@@ -174,7 +175,7 @@ async function onSubmit() {
             <UButton
               color="primary"
               class="gap-1.5 px-4 py-2 text-xs"
-              :to="`/editor/${problem.problem_id}?contest=${contestId}&label=${label}`"
+              :to="`/editor/${problem.display_id}?contest=${contestId}&label=${label}`"
             >
               <UIcon name="i-lucide-pencil-ruler" class="size-3.5" />去做题
             </UButton>

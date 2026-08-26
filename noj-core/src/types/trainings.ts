@@ -27,6 +27,7 @@ export interface UpdateTrainingInput {
 
 export interface TrainingResponse {
   id: string;
+  public_id: string;
   title: string;
   description: string;
   visibility: TrainingVisibility;

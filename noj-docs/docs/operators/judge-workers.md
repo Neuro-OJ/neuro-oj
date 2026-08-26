@@ -75,7 +75,7 @@ docker inspect "$(docker compose --env-file .env.prod -f docker-compose.prod.yml
 默认 Python 题目使用两个镜像（生产环境从 ghcr.io 拉取）：
 
 - `ghcr.io/neuro-oj/noj-evaluator-python`：运行出题人的 `evaluate.py`。
-- `ghcr.io/neuro-oj/noj-solution-python`：运行用户提交的 `solution.py` 和 Solution Host。
+- `ghcr.io/neuro-oj/noj-solution-python`：运行用户提交的代码（硬编码 `main.py`）和 Solution Host。
 
 Evaluator 容器可以通过 Neuro OJ Evaluator SDK 调用 Solution 容器中的用户函数。
 
@@ -117,6 +117,9 @@ noj-core 维护评测镜像白名单（`judgeImages`），并在题目 CRUD / �
 2. 获取支持包（缓存优先 → 按 `noj-download://` host 分派下载 → SHA-256 校验）。
 3. 为本次评测即时创建 Evaluator + Solution 两个容器（安全 HostConfig：
    `cap_drop ALL` / `network_mode none` / `pids_limit` 等）。
+   - LLM 调用题会按 `JUDGE_ALLOW_EVALUATOR_NETWORK` / `JUDGE_EVALUATOR_NETWORK`
+     让 Evaluator 加入指定网络（如 `noj-net`）以访问 `noj-llm-gateway`；
+     Solution 容器始终 `network_mode=none`。
 4. 注入用户代码与支持包，启动双容器 NDJSON 编排。
 5. 评测完成后按 RAII 顺序清理容器（先 Solution 后 Evaluator），下次评测重新创建。
 

@@ -12,6 +12,7 @@ export interface ContestConfig {
 
 export interface Contest {
   id: string;
+  public_id?: string;
   title: string;
   description: string;
   start_time: string;

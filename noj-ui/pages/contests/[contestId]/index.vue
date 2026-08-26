@@ -2,6 +2,7 @@
 import type { Contest, ContestProblem } from '~/composables/useContests'
 import { extractApiError } from '~/utils/apiError'
 import { runContestRegistration } from '~/utils/contestRegistration'
+import { publicUrl } from '~/utils/publicIdentifiers'
 
 const route = useRoute()
 const router = useRouter()
@@ -203,7 +204,7 @@ onUnmounted(() => {
                   <div v-else-if="problems.length" class="divide-y divide-border overflow-hidden rounded-xl border border-border">
                     <div v-for="problem in problems" :key="problem.problem_id" class="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-primary-bg">
                       <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-bg-dark font-mono text-sm font-bold text-white">{{ problem.label }}</span>
-                      <NuxtLink :to="`/contests/${contest.id}/problems/${problem.label}`" class="min-w-0 flex-1 text-text no-underline">
+                      <NuxtLink :to="`${publicUrl('contest', contest.public_id || contest.id)}/problems/${problem.label}`" class="min-w-0 flex-1 text-text no-underline">
                         <div class="font-semibold">{{ problem.title }}</div>
                         <div class="mt-1 text-xs text-text-muted">{{ problem.display_id }} · {{ problem.difficulty }}</div>
                       </NuxtLink>
@@ -212,7 +213,7 @@ onUnmounted(() => {
                         color="primary"
                         size="sm"
                         class="gap-1.5 px-3 py-1.5 text-xs"
-                        :to="`/editor/${problem.problem_id}?contest=${contest.id}&label=${problem.label}`"
+                        :to="`/editor/${problem.display_id}?contest=${contest.public_id || contest.id}&label=${problem.label}`"
                       >
                         <UIcon name="i-lucide-pencil-ruler" class="size-3.5" />去做题
                       </UButton>
@@ -230,7 +231,7 @@ onUnmounted(() => {
 
               <template #ranking>
                 <div class="p-2 pt-5 sm:p-4 sm:pt-6">
-                  <ContestRanking :contest-id="contest.id" />
+                  <ContestRanking :contest-id="contest.public_id || contest.id" />
                 </div>
               </template>
             </UTabs>

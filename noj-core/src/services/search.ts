@@ -204,6 +204,7 @@ export interface SearchUsersResult {
 
 export interface CommunitySearchItem {
   id: string;
+  public_id: string;
   type: "solution" | "discussion";
   title: string;
   author_id: string;
@@ -229,7 +230,7 @@ export async function searchCommunity(
   const likeQ = `%${escapeLikePattern(q)}%`;
   const start = performance.now();
   const rows = await db.execute<Record<string, unknown>>(sql`
-    SELECT p.id, p.type, p.title, p.author_id, u.username AS author_username, u.avatar_url AS author_avatar_url,
+    SELECT p.id, p.public_id, p.type, p.title, p.author_id, u.username AS author_username, u.avatar_url AS author_avatar_url,
       p.problem_id, p.created_at,
       ts_rank(to_tsvector('simple', coalesce(p.title, '') || ' ' || p.content), websearch_to_tsquery('simple', ${q})) AS rank,
       ts_headline('simple', coalesce(p.title, p.content), websearch_to_tsquery('simple', ${q}),

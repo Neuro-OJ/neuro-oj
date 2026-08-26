@@ -18,20 +18,22 @@ x-core-env: &core-env
   REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
   JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
   TFA_ENCRYPTION_KEY: ${TFA_ENCRYPTION_KEY:?TFA_ENCRYPTION_KEY is required}
+  NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:?NOJ_LLM_SERVICE_TOKEN is required}
+  NOJ_LLM_GATEWAY_URL: http://llm-gateway:8001
   JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
   APP_URL: ${APP_URL:?APP_URL is required}
   CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
-  TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.28.0.0/16}
-  STORAGE_PROVIDER: s3
-  S3_ENDPOINT: http://minio:9000
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES:?TRUSTED_PROXIES is required}
+  STORAGE_PROVIDER: ${STORAGE_PROVIDER:?STORAGE_PROVIDER is required}
+  S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
   S3_REGION: ${S3_REGION:-us-east-1}
-  S3_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
-  S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
-  S3_BUCKET: ${S3_BUCKET:-noj-support-packages}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:?S3_ACCESS_KEY is required}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY is required}
+  S3_BUCKET: ${S3_BUCKET:?S3_BUCKET is required}
   S3_FORCE_PATH_STYLE: "true"
-  EMAIL_PROVIDER: ${EMAIL_PROVIDER:-mock}
-  ADMIN_EMAIL: ${ADMIN_EMAIL:-}
-  ADMIN_PASS: ${ADMIN_PASS:-}
+  EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER is required}
+  ADMIN_EMAIL: ${ADMIN_EMAIL:?ADMIN_EMAIL is required}
+  ADMIN_PASS: ${ADMIN_PASS:?ADMIN_PASS is required}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   LOG_FORMAT: ${LOG_FORMAT:-json}
   JUDGE_IMAGE_BASE: ${JUDGE_IMAGE_BASE:-ghcr.io/neuro-oj/}
@@ -138,6 +140,7 @@ services:
       JUDGE_IMAGE_PREFIX: ${JUDGE_IMAGE_PREFIX:-noj-}
       JUDGE_COMMAND_WHITELIST: ${JUDGE_COMMAND_WHITELIST:-python3,deno,node,bash,sh}
       JUDGE_ALLOW_EVALUATOR_NETWORK: ${JUDGE_ALLOW_EVALUATOR_NETWORK:-false}
+      JUDGE_EVALUATOR_NETWORK: ${JUDGE_EVALUATOR_NETWORK:-noj-net}
       JUDGE_ALLOW_HTTP_S3: ${JUDGE_ALLOW_HTTP_S3:-false}
       JUDGE_DOCKER_HOST: ${JUDGE_DOCKER_HOST:-unix:///run/noj-judge/docker.sock}
       JUDGE_REQUIRE_ISOLATED_DOCKER: "true"
@@ -164,6 +167,32 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    restart: unless-stopped
+    networks:
+      - noj-net
+
+  # ── LLM Gateway ───────────────────────────────────────────────────
+  llm-gateway:
+    image: ghcr.io/neuro-oj/noj-llm-gateway:${NOJ_VERSION:-latest}
+    environment:
+      NOJ_LLM_PORT: "8001"
+      NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:?NOJ_LLM_SERVICE_TOKEN is required}
+      NOJ_LLM_STORE_KEY: ${NOJ_LLM_STORE_KEY:?NOJ_LLM_STORE_KEY is required}
+      DATABASE_URL: postgres://${POSTGRES_USER:-noj}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-noj}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
+    expose:
+      - "8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8001/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     restart: unless-stopped
     networks:
       - noj-net
@@ -245,7 +274,18 @@ services:
       - >-
         for i in $(seq 1 30); do
           if mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; then
+            case "$$S3_BUCKET" in
+              ""|*[!a-z0-9.-]*) echo "S3_BUCKET 包含非法字符" >&2; exit 1;;
+            esac;
+            if [ "$$S3_ACCESS_KEY" = "$$MINIO_ROOT_USER" ] || [ "$$S3_SECRET_KEY" = "$$MINIO_ROOT_PASSWORD" ]; then
+              echo "S3 应用凭据不得复用 MinIO root 凭据" >&2; exit 1;
+            fi;
             mc mb --ignore-existing "local/$$S3_BUCKET";
+            sed "s|__S3_BUCKET__|$${S3_BUCKET}|g" /etc/noj/minio-policy.json.tpl > /tmp/noj-minio-policy.json;
+            mc admin policy remove local noj-support-packages-app >/dev/null 2>&1 || true;
+            mc admin policy create local noj-support-packages-app /tmp/noj-minio-policy.json;
+            mc admin user add local "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" >/dev/null 2>&1 || true;
+            mc admin policy attach local noj-support-packages-app --user "$$S3_ACCESS_KEY";
             exit 0;
           fi;
           sleep 2;
@@ -255,7 +295,11 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      S3_BUCKET: ${S3_BUCKET:-noj-support-packages}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?S3_ACCESS_KEY is required}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY is required}
+      S3_BUCKET: ${S3_BUCKET:?S3_BUCKET is required}
+    volumes:
+      - ./deploy/minio/noj-support-packages-policy.json.tpl:/etc/noj/minio-policy.json.tpl:ro
     depends_on:
       minio:
         condition: service_started

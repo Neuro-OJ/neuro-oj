@@ -278,6 +278,7 @@ Deno.test({
       submissionId = crypto.randomUUID();
       await db.insert(submissions).values({
         id: submissionId,
+        public_id: "sub-test0001",
         user_id: userId,
         problem_id: problemId,
         contest_id: contestId,

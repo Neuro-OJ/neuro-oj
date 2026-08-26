@@ -27,6 +27,8 @@ pub struct Config {
     pub command_whitelist: Vec<String>,
     /// 是否允许消息开启 evaluator 网络（默认拒绝；E2E 可显式开启）
     pub allow_evaluator_network: bool,
+    /// evaluator 开启联网时使用的 Docker 网络模式（默认 "bridge"；生产可设为 compose 网络名如 "noj-net"）
+    pub evaluator_network_mode: String,
     /// 是否允许通过 HTTP 下载 S3 支持包（默认拒绝；自建 MinIO 内网 HTTP 场景可开启）
     pub allow_http_s3: bool,
     /// 同时执行的评测任务数（默认: 2）
@@ -83,6 +85,7 @@ impl Config {
                 .collect(),
             allow_evaluator_network: env_var_parse::<bool>("JUDGE_ALLOW_EVALUATOR_NETWORK")
                 .unwrap_or(false),
+            evaluator_network_mode: env_or("JUDGE_EVALUATOR_NETWORK", "bridge"),
             allow_http_s3: env_var_parse::<bool>("JUDGE_ALLOW_HTTP_S3").unwrap_or(false),
             max_concurrent_judges: env_var_parse::<usize>("JUDGE_MAX_CONCURRENT_JUDGES")
                 .filter(|value| (1..=MAX_CONFIGURED_CONCURRENT_JUDGES).contains(value))

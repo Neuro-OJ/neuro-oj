@@ -28,6 +28,7 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../lib/errors.ts";
+import { generatePublicId, isPublicId, isUuid } from "../lib/public-id.ts";
 import { getProblem, getProblemByTypeAndNumber } from "./problems/problems.ts";
 import {
   type CreateTrainingInput,
@@ -95,6 +96,7 @@ function toResponse(
 ): TrainingResponse {
   return {
     id: row.id,
+    public_id: row.public_id,
     title: row.title,
     description: row.description,
     visibility: row.visibility as TrainingVisibility,
@@ -139,6 +141,30 @@ export async function listMyTrainings(
   const counts = await countProblems(rows.map((r) => r.id));
   const data = rows.map((r) => toResponse(r, counts.get(r.id) ?? 0));
   return { data, total: totalRows[0]?.total ?? 0 };
+}
+
+/**
+ * 返回当前用户创建、且包含指定题目的题单 id 列表。
+ * 用于题目页「加入题单」弹窗预勾选已含该题的题单。
+ */
+export async function listTrainingsContainingProblem(
+  userId: string,
+  problemId: string,
+): Promise<string[]> {
+  const db = getDb();
+  const resolvedProblemId = await resolveProblemId(problemId);
+  const rows = await db
+    .select({ id: trainings.id })
+    .from(trainings)
+    .innerJoin(
+      trainingProblems,
+      eq(trainings.id, trainingProblems.training_id),
+    )
+    .where(and(
+      eq(trainings.created_by, userId),
+      eq(trainingProblems.problem_id, resolvedProblemId),
+    ));
+  return rows.map((r) => r.id);
 }
 
 export async function listAllTrainings(
@@ -211,8 +237,10 @@ export async function createTraining(
   const db = getDb();
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
+  const publicId = generatePublicId("tr");
   await db.insert(trainings).values({
     id,
+    public_id: publicId,
     title,
     description: input.description?.trim() ?? "",
     visibility,
@@ -222,6 +250,23 @@ export async function createTraining(
     updated_at: now,
   });
   return getTraining(id, userId);
+}
+
+/** 将 UUID 或 public_id 解析为内部题单 UUID；其它格式按主键兜底。 */
+export async function resolveTrainingId(value: string): Promise<string> {
+  const db = getDb();
+  if (isUuid(value)) return value;
+  if (isPublicId(value, "tr")) {
+    const rows = await db.select({ id: trainings.id }).from(trainings)
+      .where(eq(trainings.public_id, value)).limit(1);
+    const row = rows[0];
+    if (!row) throw new NotFoundError("题单不存在");
+    return row.id;
+  }
+  const byId = await db.select({ id: trainings.id }).from(trainings)
+    .where(eq(trainings.id, value)).limit(1);
+  if (!byId[0]) throw new NotFoundError("题单不存在");
+  return byId[0].id;
 }
 
 export async function updateTraining(

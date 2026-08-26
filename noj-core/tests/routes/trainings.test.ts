@@ -130,6 +130,31 @@ Deno.test({
       );
       assertEquals(addRes.status, 201);
 
+      // 新增 /containing：预勾选已含题目的题单
+      const containingRes = await jsonRequest(
+        app,
+        `/api/v1/trainings/containing?problem_id=${problemId}`,
+        { token: userToken },
+      );
+      assertEquals(containingRes.status, 200);
+      const containingBody = await containingRes.json();
+      assertEquals(containingBody.data.includes(trainingId), true);
+      // 只返回当前用户创建的题单，不包含管理员创建的题单
+      assertEquals(containingBody.data.includes(publicTrainingId), false);
+
+      const containingMissingParam = await jsonRequest(
+        app,
+        "/api/v1/trainings/containing",
+        { token: userToken },
+      );
+      assertEquals(containingMissingParam.status, 400);
+
+      const containingUnauthorized = await jsonRequest(
+        app,
+        `/api/v1/trainings/containing?problem_id=${problemId}`,
+      );
+      assertEquals(containingUnauthorized.status, 401);
+
       const problemsRes = await jsonRequest(
         app,
         `/api/v1/trainings/${trainingId}/problems`,

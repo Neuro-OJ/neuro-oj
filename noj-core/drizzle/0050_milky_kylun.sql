@@ -1,0 +1,1 @@
+ALTER TABLE "llm_providers" ALTER COLUMN "cost_per_1k_tokens" SET DATA TYPE double precision;

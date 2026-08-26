@@ -3,6 +3,7 @@ import { useRoute } from "vue-router"
 import hljs from "highlight.js"
 import "highlight.js/styles/github-dark.css"
 import { getLanguageLabel, formatScore, formatTime, formatMemory, statusBadgeColors, getResultDef, verdictClasses, formatDateTime } from "~/utils/submissionFormat"
+import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
 
 interface SubmissionResult {
   status: string
@@ -16,6 +17,7 @@ interface SubmissionResult {
 }
 interface SubmissionData {
   id: string
+  public_id?: string
   problem_id: string
   language: string
   /** 源代码：未登录或非 owner/admin 时为 null */
@@ -117,7 +119,7 @@ watch(
     <!-- 回退链接 -->
     <NuxtLink
       v-if="submission"
-      :to="`/problems/${submission.problem_id}`"
+      :to="problemUrl(submission.problem_id)"
       class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
     >
       <UIcon name="i-lucide-arrow-left" class="size-4" />
@@ -133,7 +135,7 @@ watch(
       <div class="bg-white border border-border rounded-xl overflow-hidden">
         <div class="flex items-center justify-between px-6 pt-5">
           <h1 class="text-lg font-bold">提交结果</h1>
-          <span class="font-mono text-xs text-text-muted">#{{ submission.id.slice(0, 8) }}</span>
+          <span class="font-mono text-xs text-text-muted">#{{ submission.public_id || submission.id.slice(0, 8) }}</span>
         </div>
         <div class="px-6 py-7 flex justify-center">
           <!-- 等待/评测中 -->
@@ -182,7 +184,7 @@ watch(
           <div class="flex gap-3 text-sm">
             <span class="text-text-muted min-w-[70px] shrink-0">题目</span>
             <NuxtLink
-              :to="`/problems/${submission.problem_id}`"
+              :to="problemUrl(submission.problem_id)"
               class="text-primary no-underline hover:underline"
             >
               {{ submission.problem_id }}

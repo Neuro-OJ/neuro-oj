@@ -53,6 +53,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { CommunitySearchResult, ProblemSearchResult, UserSearchResult } from "~/composables/useSearch";
+import { problemUrl, publicUrl, userUrl } from "~/utils/publicIdentifiers";
 
 const props = defineProps<{
   item: ProblemSearchResult | UserSearchResult | CommunitySearchResult;
@@ -65,11 +66,14 @@ const props = defineProps<{
 const href = computed(() => {
   if (props.kind === "problem") {
     const p = props.item as ProblemSearchResult;
-    return `/problems/${p.display_id || p.id}`;
+    return problemUrl(p.id, p.display_id);
   }
-  if (props.kind === "community") return `/community/posts/${props.item.id}`;
+  if (props.kind === "community") {
+    const c = props.item as CommunitySearchResult;
+    return publicUrl("post", c.public_id || c.id);
+  }
   const u = props.item as UserSearchResult;
-  return `/users/${u.id}`;
+  return userUrl(u.username);
 });
 
 const difficultyLabel = computed(() => {

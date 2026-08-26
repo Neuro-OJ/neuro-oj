@@ -4,6 +4,7 @@ import { useAuth } from "~/composables/useAuth"
 import { useToast } from "~/composables/useToast"
 import { useEventSource } from "~/composables/useEventSource"
 import { extractApiError } from "~/utils/apiError"
+import { userUrl } from "~/utils/publicIdentifiers"
 import ChatSidebar from "~/components/feature/ChatSidebar.vue"
 
 definePageMeta({
@@ -229,7 +230,7 @@ function isSameDay(iso1: string, iso2: string): boolean {
           />
           <NuxtLink
             v-if="otherUserId"
-            :to="`/users/${otherUserId}`"
+            :to="userUrl(otherUserName || otherUserId)"
             class="text-sm font-semibold text-text hover:text-primary no-underline"
           >
             {{ otherUserName || "加载中..." }}

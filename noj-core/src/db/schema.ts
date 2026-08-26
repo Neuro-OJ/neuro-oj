@@ -2,6 +2,7 @@ import {
   boolean,
   check,
   customType,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -105,6 +106,8 @@ export const problems = pgTable(
     type: text("type").notNull().default("U"),
     /** 客观题标记：true 表示该题目是客观题套卷（无评测容器，服务端即时判定） */
     is_objective: boolean("is_objective").notNull().default(false),
+    /** LLM 网关配置（可空）：{ provider_id, model }，仅受信题目可启用 */
+    llm_config: jsonb("llm_config"),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
     /** tsvector 列，GENERATED 自动维护，ORM 不可写入 */
@@ -225,6 +228,102 @@ export const objectiveSubmissions = pgTable(
 );
 
 /**
+ * LLM Provider 表。
+ * 存储上游 OpenAI 兼容服务的配置；API Key 使用 NOJ_LLM_STORE_KEY 信封加密后存储。
+ */
+export const llmProviders = pgTable(
+  "llm_providers",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    base_url: text("base_url").notNull(),
+    /** 默认模型名，题目可通过 llm_config.model 覆盖 */
+    model: text("model").notNull(),
+    /** 每 1K token 费用（用于用量估算；0 表示不计费） */
+    cost_per_1k_tokens: doublePrecision("cost_per_1k_tokens").notNull().default(
+      0,
+    ),
+    /** AES-256-GCM 加密后的上游 API Key */
+    encrypted_api_key: text("encrypted_api_key").notNull(),
+    /** 是否启用；停用后新评测不能选用 */
+    enabled: boolean("enabled").notNull().default(true),
+    /** 创建者用户 ID（一般为 admin） */
+    created_by: text("created_by").notNull().default("0"),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    nameIdx: index("idx_llm_providers_name").on(table.name),
+  }),
+);
+
+/**
+ * LLM 调用审计表。
+ * 记录每次经 gateway 转发的请求，完整保留 request_messages，不自动清理。
+ */
+export const llmUsage = pgTable(
+  "llm_usage",
+  {
+    id: text("id").primaryKey(),
+    submission_id: text("submission_id").notNull(),
+    problem_id: text("problem_id").notNull(),
+    user_id: text("user_id").notNull(),
+    provider_id: text("provider_id").notNull(),
+    model: text("model").notNull(),
+    /** 发送给上游的完整原始 messages JSON */
+    request_messages: jsonb("request_messages").notNull(),
+    /** 生成参数快照（temperature/max_tokens 等） */
+    request_params: jsonb("request_params").notNull().default({}),
+    prompt_tokens: integer("prompt_tokens").notNull().default(0),
+    completion_tokens: integer("completion_tokens").notNull().default(0),
+    total_tokens: integer("total_tokens").notNull().default(0),
+    estimated_cost: integer("estimated_cost").notNull().default(0),
+    latency_ms: integer("latency_ms").notNull().default(0),
+    status: text("status").notNull().default("ok"),
+    error_code: text("error_code"),
+    /** 请求内容哈希，用于快速去重/风控 */
+    prompt_hash: text("prompt_hash").notNull(),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    submissionIdx: index("idx_llm_usage_submission_id").on(table.submission_id),
+    problemIdx: index("idx_llm_usage_problem_id").on(table.problem_id),
+    userIdx: index("idx_llm_usage_user_id").on(table.user_id),
+    providerIdx: index("idx_llm_usage_provider_id").on(table.provider_id),
+    createdIdx: index("idx_llm_usage_created_at").on(table.created_at),
+  }),
+);
+
+/**
+ * LLM 配额配置表。
+ * 支持按用户 / 题目 / 全局维度配置日/月限额。
+ */
+export const llmQuotas = pgTable(
+  "llm_quotas",
+  {
+    id: text("id").primaryKey(),
+    /** 配额作用域：user / problem / global */
+    scope_type: text("scope_type").notNull(),
+    /** 对应作用域 ID；global 时为空字符串 */
+    scope_id: text("scope_id").notNull().default(""),
+    /** 窗口类型：day / month */
+    window_type: text("window_type").notNull().default("day"),
+    max_calls: integer("max_calls").notNull().default(0),
+    max_tokens: integer("max_tokens").notNull().default(0),
+    max_cost: integer("max_cost").notNull().default(0),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    scopeIdx: index("idx_llm_quotas_scope").on(
+      table.scope_type,
+      table.scope_id,
+      table.window_type,
+    ),
+  }),
+);
+
+/**
  * 评测镜像白名单表。
  * 管理员通过此表配置允许使用的 Docker 评测镜像。
  * mode='exact' 时仅精确匹配指定镜像名；
@@ -310,6 +409,9 @@ export const contests = pgTable(
   "contests",
   {
     id: text("id").primaryKey(),
+    public_id: text("public_id").notNull().default(
+      sql`'ct-' || substr(md5(random()::text), 1, 8)`,
+    ),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     start_time: text("start_time").notNull(),
@@ -329,6 +431,7 @@ export const contests = pgTable(
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
+    publicIdUnique: unique("contests_public_id_unique").on(table.public_id),
     typeCheck: check(
       "contests_type_check",
       sql`${table.type} IN ('icpc', 'ioi', 'oi')`,
@@ -385,6 +488,9 @@ export const trainings = pgTable(
   "trainings",
   {
     id: text("id").primaryKey(),
+    public_id: text("public_id").notNull().default(
+      sql`'tr-' || substr(md5(random()::text), 1, 8)`,
+    ),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     visibility: text("visibility").notNull().default("private"),
@@ -396,6 +502,7 @@ export const trainings = pgTable(
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
+    publicIdUnique: unique("trainings_public_id_unique").on(table.public_id),
     visibilityCheck: check(
       "trainings_visibility_check",
       sql`${table.visibility} IN ('private', 'unlisted', 'public')`,
@@ -492,6 +599,9 @@ export const submissions = pgTable(
   "submissions",
   {
     id: text("id").primaryKey(),
+    public_id: text("public_id").notNull().default(
+      sql`'sub-' || substr(md5(random()::text), 1, 8)`,
+    ),
     user_id: text("user_id").notNull().references(() => users.id),
     problem_id: text("problem_id").notNull().references(() => problems.id),
     contest_id: text("contest_id").references(() => contests.id, {
@@ -512,6 +622,7 @@ export const submissions = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
+    publicIdUnique: unique("submissions_public_id_unique").on(table.public_id),
     user_idx: index("idx_submissions_user_id").on(table.user_id),
     problem_idx: index("idx_submissions_problem_id").on(table.problem_id),
     status_idx: index("idx_submissions_status").on(table.status),
@@ -837,6 +948,9 @@ export const announcements = pgTable(
   "announcements",
   {
     id: text("id").primaryKey(),
+    public_id: text("public_id").notNull().default(
+      sql`'ann-' || substr(md5(random()::text), 1, 8)`,
+    ),
     /** 标题，1–100 字符 */
     title: text("title").notNull(),
     /** Markdown 正文，1–50000 字符 */
@@ -853,6 +967,9 @@ export const announcements = pgTable(
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
+    publicIdUnique: unique("announcements_public_id_unique").on(
+      table.public_id,
+    ),
     /** 公开列表查询：仅 active + 置顶优先 + 最新在前 */
     activePinnedCreatedIdx: index("idx_announcements_active_pinned_created").on(
       table.is_active,
@@ -1115,6 +1232,9 @@ export const communityPosts = pgTable(
   "community_posts",
   {
     id: text("id").primaryKey(),
+    public_id: text("public_id").notNull().default(
+      sql`'post-' || substr(md5(random()::text), 1, 8)`,
+    ),
     type: text("type").notNull(),
     author_id: text("author_id").notNull().references(() => users.id, {
       onDelete: "cascade",
@@ -1136,6 +1256,9 @@ export const communityPosts = pgTable(
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
+    publicIdUnique: unique("community_posts_public_id_unique").on(
+      table.public_id,
+    ),
     typeCheck: check(
       "community_posts_type_check",
       sql`${table.type} IN ('solution', 'discussion', 'moment')`,

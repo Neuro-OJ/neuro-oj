@@ -15,7 +15,9 @@ import { validateRuntimeConfig } from "../services/problems/problems-types.ts";
 import {
   DIFFICULTIES,
   isValidDifficulty,
+  isValidLlmConfig,
   isValidProblemType,
+  type LlmConfig,
   type RuntimeConfig,
 } from "./problems.ts";
 
@@ -56,6 +58,8 @@ export interface ProblemBundleManifest {
   samples?: ProblemBundleSample[];
   /** 模板文件索引（纯文件名，缺省默认 "template.py"）：前端编辑器初始代码 */
   template?: string;
+  /** LLM 配置（可空）：仅 P 型/官方题可启用，且必须开启 evaluator 网络 */
+  llm?: LlmConfig;
   runtime_config: RuntimeConfig;
 }
 
@@ -186,6 +190,18 @@ export function validateBundleManifest(
     }
   }
 
+  // LLM 配置校验：仅 P 型/官方题可启用，且必须开启 evaluator 网络。
+  let llm: LlmConfig | undefined;
+  if (m.llm !== undefined && m.llm !== null) {
+    if (!isValidLlmConfig(m.llm)) {
+      throw new BadRequestError("manifest.llm 格式非法");
+    }
+    if ((m.type ?? "U") !== "P") {
+      throw new BadRequestError("仅 P 型/官方题可启用 LLM");
+    }
+    llm = m.llm as LlmConfig;
+  }
+
   if (typeof m.runtime_config !== "object" || m.runtime_config === null) {
     throw new BadRequestError("manifest.runtime_config 是必填字段");
   }
@@ -195,6 +211,10 @@ export function validateBundleManifest(
     m.runtime_config as RuntimeConfig,
   );
   validateRuntimeConfig(runtimeConfig);
+
+  if (llm !== undefined && !runtimeConfig.evaluator.network?.enabled) {
+    throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
+  }
 
   return {
     format_version: m.format_version as number,
@@ -206,6 +226,7 @@ export function validateBundleManifest(
     tags: m.tags as string[] | undefined,
     samples: m.samples as ProblemBundleSample[] | undefined,
     template: m.template as string | undefined,
+    llm,
     runtime_config: runtimeConfig,
   };
 }

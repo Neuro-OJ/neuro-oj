@@ -41,6 +41,7 @@ import {
 import { AppError, BadRequestError, NotFoundError } from "../../lib/errors.ts";
 import { getDb } from "../../db/connection.ts";
 import { checkPermission } from "../../lib/permissions.ts";
+import { generatePublicId, isPublicId, isUuid } from "../../lib/public-id.ts";
 import {
   isRetryableJudgeQueueError,
   pushJudgeTask,
@@ -48,8 +49,13 @@ import {
 import { validateJudgeImageWithKind } from "../judge-images.ts";
 import { getStorageProvider } from "../../lib/storage/mod.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
-import type { RuntimeConfig } from "../../types/problems.ts";
-import type { JudgeTask, SubmissionStatus } from "../../types/index.ts";
+import { buildJudgeTaskLlm } from "../../lib/llm-token.ts";
+import type { LlmConfig, RuntimeConfig } from "../../types/problems.ts";
+import type {
+  JudgeTask,
+  JudgeTaskLlm,
+  SubmissionStatus,
+} from "../../types/index.ts";
 import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
 import { Channels, publishEvent } from "../../lib/event-bus.ts";
@@ -180,6 +186,7 @@ export async function listSubmissions(
   let dataQuery = db
     .select({
       id: submissions.id,
+      public_id: submissions.public_id,
       user_id: submissions.user_id,
       problem_id: submissions.problem_id,
       contest_id: submissions.contest_id,
@@ -239,6 +246,7 @@ export async function listSubmissions(
       : null;
     return {
       id: row.id,
+      public_id: row.public_id,
       user_id: row.user_id,
       problem_id: row.problem_id,
       contest_id: row.contest_id,
@@ -308,6 +316,7 @@ export async function createSubmission(
 
   // 创建提交记录并推送到评测队列（在同一个 try 块中保证一致性）
   const id = crypto.randomUUID();
+  const publicId = generatePublicId("sub");
   const now = new Date().toISOString();
 
   // 获取支持包 download URL
@@ -352,6 +361,18 @@ export async function createSubmission(
     "solution",
   );
 
+  let llmTask: JudgeTaskLlm | undefined;
+  const llmConfig = problem.llm_config as LlmConfig | null;
+  if (llmConfig) {
+    llmTask = await buildJudgeTaskLlm(
+      llmConfig,
+      id,
+      input.problem_id,
+      userId,
+      runtimeConfig,
+    );
+  }
+
   const task: JudgeTask = {
     submission_id: id,
     problem_id: input.problem_id,
@@ -360,11 +381,13 @@ export async function createSubmission(
     language: input.language,
     code: input.code,
     file_name: fileName,
+    ...(llmTask ? { llm: llmTask } : {}),
   };
 
   try {
     await db.insert(submissions).values({
       id,
+      public_id: publicId,
       user_id: userId,
       problem_id: input.problem_id,
       contest_id: resolvedContestId,
@@ -427,6 +450,7 @@ export async function createSubmission(
 
   return {
     id,
+    public_id: publicId,
     user_id: userId,
     problem_id: input.problem_id,
     contest_id: resolvedContestId,
@@ -524,6 +548,7 @@ export async function getSubmission(
 
   return {
     id: row.id,
+    public_id: row.public_id,
     user_id: row.user_id,
     problem_id: row.problem_id,
     contest_id: row.contest_id,
@@ -540,6 +565,25 @@ export async function getSubmission(
     judge_finished_at: queueStatus?.judge_finished_at ??
       row.judge_finished_at ?? null,
   };
+}
+
+/**
+ * 将 UUID 或 public_id 解析为内部提交 UUID；其它格式按主键兜底。
+ */
+export async function resolveSubmissionId(value: string): Promise<string> {
+  const db = getDb();
+  if (isUuid(value)) return value;
+  if (isPublicId(value, "sub")) {
+    const rows = await db.select({ id: submissions.id }).from(submissions)
+      .where(eq(submissions.public_id, value)).limit(1);
+    const row = rows[0];
+    if (!row) throw new NotFoundError("提交不存在");
+    return row.id;
+  }
+  const byId = await db.select({ id: submissions.id }).from(submissions)
+    .where(eq(submissions.id, value)).limit(1);
+  if (!byId[0]) throw new NotFoundError("提交不存在");
+  return byId[0].id;
 }
 
 /**

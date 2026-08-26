@@ -8,13 +8,13 @@
 
 ## 步骤
 
-1. **设计题目**：确定题面、函数签名与评分规则（如 `solve(a, b) -> int`，按返回值判分）。参考[A+B 示例题](ab-example.md)。
+1. **设计题目**：确定题面、函数签名与评分规则（例如 `solve(input_str) -> str`，按返回值判分）。参考[A+B 示例题](ab-example.md)。
 
-2. **创建题目**：在管理后台「题目」→「新建题目」，填写标题、描述（Markdown）、难度、题型与分类，并配置运行时限制（Evaluator / Solution 的时间与内存）。见[Web 题目编辑器](web-editor.md)。
+2. **创建题目**：在管理后台「题目」→「新建题目」，填写标题、描述（Markdown）、难度、题型与标签，并配置运行时限制（Evaluator / Solution 的时间与内存）。见[Web 题目编辑器](web-editor.md)。
 
-3. **编写评测内容**：在本地编写 `evaluate.py` 与测试数据。测试数据格式**完全自由**（`visible.jsonl` / `hidden.jsonl` / SQLite / CSV 均可），只要 evaluator 能读取。见[测试数据](cases.md)。
+3. **编写评测内容**：在本地编写 `evaluate.py` 与测试数据。测试数据格式**完全自由**（`visible.jsonl` / `hidden.jsonl` / SQLite / CSV 均可），只要 evaluator 能读取。见[测试数据与样例规范](../standards/test-data.md)。
 
-4. **打包上传**：将题面、`evaluate.py` 与测试数据整理为统一题目包 zip，在编辑器中上传。包结构与 manifest 要求见[统一题目包](support-package.md)。
+4. **打包上传**：将题面、`evaluate.py` 与测试数据整理为统一题目包 zip，在编辑器中上传。包结构与 manifest 要求见[题目包格式规范](../standards/problem-bundle.md)。
 
 5. **自测发布**：
    - 用一版参考答案提交，确认状态与得分符合预期。

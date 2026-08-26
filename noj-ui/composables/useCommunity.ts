@@ -28,6 +28,7 @@ export interface CommunityConfig {
 /** 社区帖子（来自后端完整行） */
 export interface CommunityPost {
   id: string;
+  public_id?: string;
   type: PostType;
   title: string | null;
   content: string;

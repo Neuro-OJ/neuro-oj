@@ -42,6 +42,24 @@ export function isValidProblemType(value: string): value is ProblemType {
 }
 
 /**
+ * 题目 LLM 配置：出题人固定 provider 与 model，做题人不可选择。
+ */
+export interface LlmConfig {
+  provider_id: string;
+  model: string;
+}
+
+/**
+ * 校验 LLM 配置是否合法。
+ */
+export function isValidLlmConfig(value: unknown): value is LlmConfig {
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj.provider_id === "string" && obj.provider_id.length > 0 &&
+    typeof obj.model === "string" && obj.model.length > 0;
+}
+
+/**
  * 双容器 Runtime 配置（与 ./index.ts RuntimeConfig 对齐）。
  *
  * 仅 admin 可设置；普通用户创建题目时该字段被忽略。
@@ -74,6 +92,8 @@ export interface CreateProblemInput {
   type?: string;
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective?: boolean;
+  /** LLM 配置（可空）：仅管理员 P 型/官方题或审核题可启用 */
+  llm?: LlmConfig | null;
   /** 题号（仅 admin 可指定，普通用户自动分配） */
   number?: number;
 }
@@ -93,6 +113,8 @@ export interface UpdateProblemInput {
   tag_ids?: string[];
   /** 客观题标记变更（由客观题改回编程题时必须同时提供 runtime_config） */
   is_objective?: boolean;
+  /** LLM 配置变更（可空）；设为 null 表示移除 LLM 配置 */
+  llm?: LlmConfig | null;
 }
 
 /**
@@ -152,6 +174,8 @@ export interface ProblemResponseWithTags {
   type: string;
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective: boolean;
+  /** LLM 配置（可空） */
+  llm_config: LlmConfig | null;
   /** 展示标识，格式：{type}{number}（如 P1001、U42） */
   display_id: string;
 }

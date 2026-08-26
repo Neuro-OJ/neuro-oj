@@ -55,6 +55,7 @@ jobs:
       core: ${{ steps.filter.outputs.core }}
       ui: ${{ steps.filter.outputs.ui }}
       judge: ${{ steps.filter.outputs.judge }}
+      gateway: ${{ steps.filter.outputs.gateway }}
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -77,6 +78,11 @@ jobs:
               - '.github/workflows/ci.yml'
             judge:
               - 'noj-judge/**'
+              - 'docker-compose.e2e.yml'
+              - 'env.e2e.template'
+              - '.github/workflows/ci.yml'
+            gateway:
+              - 'noj-llm-gateway/**'
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
               - '.github/workflows/ci.yml'
@@ -133,6 +139,48 @@ jobs:
       # CI 环境使用 GitHub Secrets 而非 .env。
       # 强行 cp .env.example .env 会触发模板里"故意写的占位符"
       # （JWT_SECRET=change-this-...），产生误报。
+
+  # ===========================================================================
+  # noj-llm-gateway — 快速静态检查 + 单元测试
+  # ===========================================================================
+  gateway-check:
+    name: Gateway Check
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.gateway == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            noj-llm-gateway/.deno_cache
+          key: gateway-deno-${{ hashFiles('noj-llm-gateway/deno.lock', 'noj-llm-gateway/deno.json') }}
+
+      - name: 格式检查 (deno fmt)
+        working-directory: noj-llm-gateway
+        run: deno fmt --check
+
+      - name: Lint (deno lint)
+        working-directory: noj-llm-gateway
+        run: deno lint
+
+      - name: 类型检查 (deno check)
+        working-directory: noj-llm-gateway
+        run: deno check src/mod.ts
+
+      - name: 单元测试 (deno test)
+        working-directory: noj-llm-gateway
+        run: deno test -A --no-check
 
   # ===========================================================================
   # noj-core — 快速冒烟测试（不依赖外部服务，使用 PGlite 内存数据库）
@@ -526,7 +574,7 @@ jobs:
           cache-name: judge-sccache
 
       - name: 安装 cargo-nextest（并行测试运行器）
-        uses: taiki-e/install-action@v2.85.13
+        uses: taiki-e/install-action@v2.86.5
         with:
           tool: cargo-nextest
 

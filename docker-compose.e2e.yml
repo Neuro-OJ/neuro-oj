@@ -117,6 +117,10 @@ services:
       STORAGE_PROVIDER: local
       RATE_LIMIT_ENABLED: "false"
       BCRYPT_SALT_ROUNDS: "4"
+      # LLM Gateway：core 本地 mint eval_token 需要与 gateway 共享 service token。
+      # evaluator 容器运行在默认 bridge，只能经宿主机 bridge 网关 IP 访问已发布端口的 gateway。
+      NOJ_LLM_SERVICE_TOKEN: e2e-ci-llm-service-token-0123456789abcdef
+      NOJ_LLM_GATEWAY_URL: http://172.17.0.1:8001
       # seed 管理员凭证（需与 noj-core/tests/e2e/helper.ts 默认值一致）
       ADMIN_EMAIL: e2e_admin@test.com
       ADMIN_PASS: e2e_admin_pass
@@ -158,6 +162,48 @@ services:
       redis:
         condition: service_healthy
       noj-core:
+        condition: service_healthy
+
+  # Mock LLM：OpenAI 兼容的假上游，供 LLM Gateway E2E 使用
+  llm-mock:
+    image: python:3.12-slim
+    container_name: noj-e2e-llm-mock
+    ports:
+      - "8002:8002"
+    command: |
+      python3 -u -c "
+      import json
+      from http.server import BaseHTTPRequestHandler, HTTPServer
+      class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+          self.send_response(200); self.end_headers(); self.wfile.write(b'{\"ok\": true}')
+        def do_POST(self):
+          length = int(self.headers.get('Content-Length', 0)); self.rfile.read(length)
+          body = json.dumps({'ok': True, 'choices': [], 'usage': {'prompt_tokens': 5, 'completion_tokens': 3, 'total_tokens': 8}}).encode()
+          self.send_response(200)
+          self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(body))); self.end_headers()
+          self.wfile.write(body)
+        def log_message(self, *args): pass
+      HTTPServer(('0.0.0.0', 8002), H).serve_forever()
+      "
+
+  noj-llm-gateway:
+    build:
+      context: ./noj-llm-gateway
+    image: noj-e2e-llm-gateway
+    container_name: noj-e2e-llm-gateway
+    ports:
+      - "8001:8001"
+    environment:
+      NOJ_LLM_PORT: "8001"
+      NOJ_LLM_SERVICE_TOKEN: e2e-ci-llm-service-token-0123456789abcdef
+      NOJ_LLM_STORE_KEY: e2e-ci-llm-store-key-0123456789abcdef
+      DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e
+      REDIS_URL: redis://redis:6379/1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:

@@ -16,14 +16,14 @@
 | 描述 | 必填，Markdown 格式，支持公式与代码块（题面） |
 | 难度 | `easy` / `medium` / `hard` |
 | 题型 | U 型（用户题，创建者本人与 admin 可管理）或 P 型（主题题，仅 admin） |
-| 分类 | 多选，来自[分类管理](../operators/admin-guide.md#problem-categories)的层级分类 |
+| 标签 | 多选，来自[标签管理](../operators/admin-guide.md#problem-tags) |
 
 ### 运行时配置（runtime_config）
 
 双容器评测模型下，每个题目声明两个运行时的资源限制：
 
 - **Evaluator**（出题人代码 `evaluate.py`）：`time_limit_ms`、`memory_limit_mb`
-- **Solution**（用户代码 `solution.py`）：调用超时 `call_timeout_ms`（**题目级默认值**）、`memory_limit_mb`
+- **Solution**（用户代码，Judge Worker 以硬编码名 `main.py` 注入）：调用超时 `call_timeout_ms`（**题目级默认值**）、`memory_limit_mb`
 
 配置保存在题目上，Judge Worker 评测时读取。`call_timeout_ms` 作为单次 SDK 调用的**默认**超时；出题人可在 `evaluate.py` 中用 `runner.call(..., timeout_ms=...)` 按调用覆盖（缺省时回退该默认值）。合理设置 Solution 的调用超时可以防止用户代码死循环拖垮整场评测（见[评测模型](judge-model.md)）。
 
@@ -35,7 +35,7 @@
 
 - 仅支持 `.zip` 格式，且带合法 zip Content-Type；大小受系统限制。
 - 上传走 `POST /api/v1/problems/import-bundle`（multipart 文件字段 `file`）。
-- 包结构、`problem.json`、导入语义（按 `(type, number)` 匹配更新/新建、管理员可指定题号等）见[统一题目包](support-package.md)；用例目录约定见[测试数据](cases.md)。
+- 包结构、`problem.json`、导入语义（按 `(type, number)` 匹配更新/新建、管理员可指定题号等）见[题目包格式规范](../standards/problem-bundle.md)；用例目录约定见[测试数据与样例规范](../standards/test-data.md)。
 - 上传后可通过编辑器内的状态确认包是否已生效；管理端也可以下载或删除当前支持包。
 
 ## 保存与发布
