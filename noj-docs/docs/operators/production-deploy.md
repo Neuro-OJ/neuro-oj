@@ -142,7 +142,49 @@ ghcr.io/neuro-oj/noj-solution-python   all_versions  solution
 - 轮换 `NOJ_LLM_SERVICE_TOKEN` 会让所有未过期 eval_token 失效，需同步更新 noj-core 与 gateway。
 - 轮换 `NOJ_LLM_STORE_KEY` 后，需要用新主密钥重新加密所有 Provider Key。
 
-## 4. 日常运维
+## 4. staging 验收门禁
+
+生产候选版本必须先在 staging 使用与生产相同的 Compose 文件和六类镜像完成验收，
+再进入 Release。验收脚本要求工作树洁净，默认只接受 `main`、`release/*` 或版本
+标签；生产验收不得使用 `latest` 作为版本标识。
+
+准备验收环境文件：
+
+```bash
+cp scripts/staging/env.example .env.staging
+chmod 600 .env.staging
+vim .env.staging
+```
+
+其中 `STAGING_BASE_URL` 必须是已经配置好外部 TLS 终止和反向代理的 HTTPS 地址，
+`STAGING_CORS_ORIGIN` 必须与浏览器实际来源一致。执行完整验收：
+
+```bash
+bash scripts/staging/acceptance.sh all \
+  --env-file .env.staging \
+  --artifact-dir artifacts/staging/$(grep '^NOJ_VERSION=' .env.staging | cut -d= -f2)
+```
+
+脚本会构建并启动 `noj-core`、`noj-ui`、`noj-judge`、`noj-llm-gateway`、
+`noj-evaluator-python`、`noj-solution-python` 六类生产镜像，然后依次验证：
+
+- Compose 健康检查、`/healthz`、HTTPS、CORS，以及 `HttpOnly`/`Secure`/`SameSite=Lax` Cookie；
+- 管理员登录与强制改密、普通用户登录、TFA 启用与登录；
+- 题包导入、S3/MinIO 支持包下载、真实代码提交与完整评测；
+- 提交 SSE 推送和管理员重测。
+
+失败时不会自动清理 staging 服务，并将 `compose ps`、最近 500 行服务日志、Docker
+信息和版本元数据写入报告目录；修复后应重新执行完整验收。成功时默认停止服务但保留
+数据卷，调试时可加 `--keep-stack` 保留服务。仅本地调试允许使用 `--allow-http`。
+
+发布前人工确认清单：
+
+1. staging 验收报告为成功，且包含候选提交、镜像仓库/版本和数据库迁移结果。
+2. 失败日志与已知限制已归档，未遗留未处理的队列、容器或数据问题。
+3. 已创建并验证 GPG 签名的提交或版本标签。
+4. 发布负责人完成手工批准后，才执行 GitHub Release 和生产升级。
+
+## 5. 日常运维
 
 推荐使用部署脚本：
 
@@ -174,7 +216,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
   redis-cli -a "$REDIS_PASSWORD" LLEN noj:judge:queue
 ```
 
-## 5. 升级
+## 6. 升级
 
 1. 在 GitHub 发布新 Release（如 `v0.1.1`），`release.yml` 会自动推送镜像。
 2. 在服务器修改 `.env.prod` 中的 `NOJ_VERSION=v0.1.1`。
@@ -187,13 +229,13 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 
 4. 数据库迁移由 `core` 启动时自动执行；也可先手动跑一次 `migrate` 服务。
 
-## 6. 回滚
+## 7. 回滚
 
 - 将 `.env.prod` 的 `NOJ_VERSION` 改回上一版本，重新 `pull` + `up -d`。
 - 数据库 schema 采用只追加迁移，**不自动回滚**；如需回退 schema，请人工评估并备份后操作。
 - 评测镜像也按 Release tag 发布，回滚时需要把 `judge_images` 白名单指向旧 tag（若使用 `all_versions` 则无需改白名单，只需题目/系统设置中的镜像 tag 指向旧版本）。
 
-## 7. 备份提示
+## 8. 备份提示
 
 当前公测方案尚未包含自动化备份/高可用，请至少定期备份：
 

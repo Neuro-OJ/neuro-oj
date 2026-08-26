@@ -6,7 +6,7 @@
 #   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 #
 # 仅 Nginx 对外暴露 80（TLS 由外部边缘终止）；core/judge/db/redis/minio 不暴露到宿主机。
-# 镜像从 ghcr.io/neuro-oj/ 拉取，版本由 NOJ_VERSION 控制。
+# 镜像从 NOJ_IMAGE_REGISTRY 拉取，版本由 NOJ_VERSION 控制。
 name: noj-prod
 
 x-core-env: &core-env
@@ -36,14 +36,14 @@ x-core-env: &core-env
   ADMIN_PASS: ${ADMIN_PASS:?ADMIN_PASS is required}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   LOG_FORMAT: ${LOG_FORMAT:-json}
-  JUDGE_IMAGE_BASE: ${JUDGE_IMAGE_BASE:-ghcr.io/neuro-oj/}
+  JUDGE_IMAGE_BASE: ${JUDGE_IMAGE_BASE-ghcr.io/neuro-oj/}
   RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
   AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-90}
 
 services:
   # ── 一次性初始化：迁移 + 系统数据 + 管理员引导 ────────────────────
   migrate:
-    image: ghcr.io/neuro-oj/noj-core:${NOJ_VERSION:-latest}
+    image: ${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-core:${NOJ_VERSION:-latest}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -63,7 +63,7 @@ services:
 
   # ── 核心 API ──────────────────────────────────────────────────────
   core:
-    image: ghcr.io/neuro-oj/noj-core:${NOJ_VERSION:-latest}
+    image: ${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-core:${NOJ_VERSION:-latest}
     environment:
       <<: *core-env
     depends_on:
@@ -99,7 +99,7 @@ services:
 
   # ── 前端 SSR ──────────────────────────────────────────────────────
   ui:
-    image: ghcr.io/neuro-oj/noj-ui:${NOJ_VERSION:-latest}
+    image: ${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-ui:${NOJ_VERSION:-latest}
     environment:
       NUXT_API_BASE: http://core:8000
       NUXT_NOJ_ENV: ${NUXT_NOJ_ENV:-production}
@@ -129,7 +129,7 @@ services:
 
   # ── 评测 Worker ───────────────────────────────────────────────────
   judge:
-    image: ghcr.io/neuro-oj/noj-judge:${NOJ_VERSION:-latest}
+    image: ${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-judge:${NOJ_VERSION:-latest}
     environment:
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
       JUDGE_QUEUE: ${JUDGE_QUEUE:-noj:judge:queue}
@@ -175,7 +175,7 @@ services:
 
   # ── LLM Gateway ───────────────────────────────────────────────────
   llm-gateway:
-    image: ghcr.io/neuro-oj/noj-llm-gateway:${NOJ_VERSION:-latest}
+    image: ${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-llm-gateway:${NOJ_VERSION:-latest}
     environment:
       NOJ_LLM_PORT: "8001"
       NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:?NOJ_LLM_SERVICE_TOKEN is required}

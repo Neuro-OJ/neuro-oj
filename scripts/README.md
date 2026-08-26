@@ -20,6 +20,11 @@ scripts/
 │   ├── deploy.sh          #   生产安装、启动、升级、停止、备份入口
 │   └── test-deploy.sh     #   不依赖真实生产资源的部署脚本测试
 │
+├── staging/               # 生产候选版本验收门禁
+│   ├── acceptance.sh      #   构建、启动、边缘检查与业务 smoke test
+│   ├── env.example        #   staging 验收环境变量模板
+│   └── test-acceptance.sh #   不依赖真实 Docker 的脚本测试
+│
 └── e2e/                   # 跨模块 E2E 测试
     ├── setup.sh           #   启动 E2E 环境
     ├── check-setup.sh     #   检查 E2E SDK 镜像刷新与失败传播
@@ -44,6 +49,8 @@ scripts/
 | **升级生产版本**                         | `bash scripts/deploy/deploy.sh upgrade`                          |
 | **查看生产状态/日志**                    | `bash scripts/deploy/deploy.sh status` / `logs [service]`        |
 | **创建 PostgreSQL 备份**                 | `bash scripts/deploy/deploy.sh backup`                          |
+| **执行 staging 验收**                    | `bash scripts/staging/acceptance.sh all --env-file .env.staging` |
+| **仅检查 staging 配置**                  | `bash scripts/staging/acceptance.sh check --env-file .env.staging` |
 | **手动初始化数据库**                     | `cd noj-core && deno task db:migrate`（初始化见 `deno task dev-setup`） |
 | **手动构建题目包**                       | `cd noj-core && deno task problems:build`                              |
 | **跑跨模块 E2E 测试**                    | `bash scripts/e2e/run-all.sh`                                   |
@@ -64,4 +71,6 @@ cd noj-judge && cargo run
 详细开发指南见 [`dev/README.md`](dev/README.md)。
 
 生产部署脚本使用 `.env.prod` 和 `docker-compose.prod.yml`，详细说明见
-[`生产部署文档`](../noj-docs/docs/operators/production-deploy.md)。
+[`生产部署文档`](../noj-docs/docs/operators/production-deploy.md)。发布前必须先通过
+`staging/acceptance.sh all`；失败时脚本会把 Compose、Docker 和服务日志保存到
+`artifacts/staging/<版本>/`。

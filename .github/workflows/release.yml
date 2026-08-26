@@ -6,8 +6,8 @@
 #   - 手动 workflow_dispatch（补发）
 #
 # 不在 push / pull_request 上触发。
-# 每次 Release 构建并推送 5 个镜像：
-#   noj-core / noj-ui / noj-judge / noj-evaluator-python / noj-solution-python
+# 每次 Release 构建并推送 6 个镜像：
+#   noj-core / noj-ui / noj-judge / noj-llm-gateway / noj-evaluator-python / noj-solution-python
 # 平台：linux/amd64（公测阶段只支持 amd64）
 # =============================================================================
 
@@ -45,6 +45,9 @@ jobs:
           - name: noj-judge
             context: noj-judge
             file: noj-judge/Dockerfile
+          - name: noj-llm-gateway
+            context: noj-llm-gateway
+            file: noj-llm-gateway/Dockerfile
           - name: noj-evaluator-python
             context: noj-judge
             file: noj-judge/docker/evaluator-python/Dockerfile
