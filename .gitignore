@@ -50,6 +50,13 @@ __pycache__/
 # --- Docker ---
 docker-data/
 
+# --- 生产备份 ---
+# PostgreSQL dump 包含用户数据，不得进入 Git。
+/backups/
+
+# --- Staging 验收产物 ---
+/artifacts/staging/
+
 # --- Jujutsu (jj) ---
 .jj/repo/op_heads/
 .jj/repo/store/

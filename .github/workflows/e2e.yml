@@ -259,6 +259,10 @@ jobs:
       # 兜底）与评测队列（并发提交由 judge 多容器并行消化）。
       # ════════════════════════════════════════════
 
+      # 独立 staging 验收清单：由 scripts/staging/acceptance.sh 在生产候选
+      # 环境执行，不在本地 E2E 栈中重复运行；文件完整性校验仍要求登记。
+      # staging-smoke.test.ts
+
       - name: 校验 E2E 文件均已加入 workflow 清单
         working-directory: noj-tests
         run: |

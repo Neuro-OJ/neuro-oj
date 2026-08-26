@@ -23,6 +23,13 @@
 
 由于 `docker-compose.prod.yml` 默认始终启动 `llm-gateway` 且对这两个密钥使用 `${...:?}` 必填校验，**即使不使用 LLM 调用题也必须填写**这两个密钥。
 
+网关分钟限流可通过环境变量调整：
+
+- `NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE`：每个用户在 UTC 分钟窗口内的调用上限。
+- `NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE`：每个 IP 在 UTC 分钟窗口内的调用上限。
+- 两项均为可选正整数，默认均为 `60`；配置缺失不会改变既有行为。
+- 配置在网关启动时读取，修改后需重启 `llm-gateway`；非法值会导致启动失败。
+
 ## 2. 创建并启用 Provider
 
 在管理后台「LLM Providers」新增上游 OpenAI 兼容服务：
