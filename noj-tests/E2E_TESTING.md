@@ -80,6 +80,8 @@ noj-tests/
 
 - Docker 及 Docker Compose V2
 - 无需手动启动任何服务（测试自动管理）
+- 本地启动时会自动从当前工作树刷新 `noj-evaluator-python` 与
+  `noj-solution-python` SDK 镜像，无需手动执行构建脚本
 
 ## 运行方式
 
@@ -88,6 +90,12 @@ noj-tests/
 ```bash
 cd noj-tests
 NOJ_RUN_E2E=1 deno task test
+```
+
+启动脚本回归检查：
+
+```bash
+bash ../scripts/e2e/check-setup.sh
 ```
 
 ### 保留容器（调试用）
