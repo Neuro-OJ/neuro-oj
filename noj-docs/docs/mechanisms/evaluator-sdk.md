@@ -125,23 +125,37 @@ result.system_error(message="评测脚本配置错误")
 
 ## details
 
-`details` 会作为结构化结果透传给前端。建议内容稳定、可序列化，并注意不要泄露隐藏用例数据。
+`details` 会作为结构化结果透传给前端。若需要展示测试点明细，推荐使用扁平的
+`cases` 数组。每个测试点至少包含 `case_id` 和 `status`，还可以提供
+`visibility`（`visible`/`hidden`）、`time_ms`、`memory_kb`、
+`input`、`expected_output` 和 `actual_output`。
 
 常见结构：
 
 ```python
 details = {
-    "visible": {
-        "passed": 3,
-        "total": 3,
-        "cases": [],
-    },
-    "hidden": {
-        "passed": 7,
-        "total": 10,
-    },
+    "cases": [
+        {
+            "case_id": "v001",
+            "status": "Accepted",
+            "visibility": "visible",
+            "time_ms": 12,
+            "expected_output": "3",
+            "actual_output": "3",
+        },
+        {
+            "case_id": "h001",
+            "status": "WrongAnswer",
+            "visibility": "hidden",
+            "time_ms": 15,
+        },
+    ],
 }
 ```
+
+隐藏测试点可以展示状态、耗时和内存，但 MUST NOT 在 `details` 中写入输入、期望
+输出或实际输出。历史的 `visible.cases`/`hidden.cases` 以及 `id`/`expected`/`actual`
+字段仍可被提交结果页兼容，但新评测器应使用上述标准字段。
 
 ## 关闭 runner
 

@@ -63,6 +63,7 @@ import type {
   ListSubmissionsParams,
   ListSubmissionsResult,
   SubmissionDetail,
+  SubmissionEvaluationDetails,
   SubmissionInput,
   SubmissionListItem,
   SubmissionResponse,
@@ -84,10 +85,10 @@ const MAX_OUTPUT_LENGTH = 8 * 1024;
  * 解析 details 字段。
  * 数据库中以 JSON 字符串存储，解析为对象返回。
  */
-function parseDetails(raw: string | null): Record<string, unknown> | null {
+function parseDetails(raw: string | null): SubmissionEvaluationDetails | null {
   if (raw === null || raw === undefined) return null;
   try {
-    return JSON.parse(raw) as Record<string, unknown>;
+    return JSON.parse(raw) as SubmissionEvaluationDetails;
   } catch {
     return null;
   }

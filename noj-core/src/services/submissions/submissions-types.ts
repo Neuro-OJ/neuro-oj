@@ -29,6 +29,26 @@ export interface SubmissionResponse {
   created_at: string;
 }
 
+/** 测试点可见性。省略时按 visible 处理。 */
+export type SubmissionCaseVisibility = "visible" | "hidden";
+
+/** 评测结果中的标准测试点详情。 */
+export interface SubmissionCaseResult {
+  case_id: string;
+  status: string;
+  visibility?: SubmissionCaseVisibility;
+  time_ms?: number | null;
+  memory_kb?: number | null;
+  input?: string;
+  expected_output?: string;
+  actual_output?: string;
+}
+
+/** 评测详情的公共扩展字段；题目仍可携带自定义汇总数据。 */
+export interface SubmissionEvaluationDetails extends Record<string, unknown> {
+  cases?: SubmissionCaseResult[];
+}
+
 /**
  * 提交详情响应——基础数据公开，详细内容（code/output/details）按权限裁剪。
  *
@@ -57,7 +77,7 @@ export interface SubmissionDetail {
     time_ms: number | null;
     memory_kb: number | null;
     /** 评测用例级详情：仅 owner/admin 可见，否则为 null */
-    details: Record<string, unknown> | null;
+    details: SubmissionEvaluationDetails | null;
   } | null;
   /** 排队位置（1-based），仅在 pending/等待中时有值。 */
   queue_position?: number | null;

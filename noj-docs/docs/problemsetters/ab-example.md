@@ -59,13 +59,15 @@ print(2)
 
 ## evaluator 关键逻辑
 
-`evaluate.py` 会读取 JSONL，用 `SolutionRunner` 调用 `solve`：
+`evaluate.py` 会读取 JSONL，用 `SolutionRunner` 调用 `solve`，并将每个可见测试点
+的结果写入标准 `details.cases`：
 
 ```python
 runner = SolutionRunner()                  # 创建调用器：负责向 Solution 容器转发 RPC 调用
 output_line = runner.call("solve", item["input"])   # 传入原始 input 字符串
 actual = output_line.strip().splitlines()[-1] if output_line.strip() else ""
 expected = str(item["expected"]).strip()
+# 记录本次调用耗时，并输出 case_id/status/time_ms/expected_output/actual_output
 ```
 
 调用失败时捕获 SDK 异常：
@@ -87,8 +89,12 @@ except Exception as e:
 if total_score == FULL_SCORE:                          # 全部用例通过且格式检查无误
     result.accept(score=score, details=details)        # 判定 Accepted：写入总分与用例详情
 else:
-    result.wrong_answer(score=score, details=details)  # 未达满分：判定 WrongAnswer（可带部分分）
+result.wrong_answer(score=score, details=details)  # 未达满分：判定 WrongAnswer（可带部分分）
 ```
+
+标准测试点字段至少包含 `case_id`、`status` 和 `time_ms`。可见测试点可以额外包含
+`input`、`expected_output` 和 `actual_output`；隐藏测试点只返回用例 ID、状态与资源
+耗时，不得把隐藏输入或标准答案写入 `details`。
 
 ## 打包
 
