@@ -6,6 +6,7 @@ import type {
   QuestionInput,
 } from '~/composables/useObjective'
 import { QUESTION_TYPE_LABELS } from '~/composables/useObjective'
+import { useToast } from '~/composables/useToast'
 import { problemUrl } from '~/utils/publicIdentifiers'
 
 /**
@@ -28,6 +29,8 @@ const {
   deleteQuestion,
 } = useObjective()
 const { toast } = useToast()
+const { dialog } = useDialog()
+const { api } = useApi()
 const router = useRouter()
 
 // 创建模式：先填元信息创建套卷，创建成功后进入编辑模式
@@ -44,6 +47,39 @@ const createTitle = ref('')
 const createDescription = ref('')
 const createError = ref('')
 
+// ── 标签选择（仅允许选用已有标签；客观题只展示题目标签） ──
+const tagOptions = ref<{ id: string; name: string; kind: 'problem' | 'algorithm' }[]>([])
+const tagSearch = ref("")
+// 创建模式勾选的标签
+const createTagIds = ref<string[]>([])
+
+async function loadTagOptions() {
+  try {
+    const res = await api.get<{ data: { id: string; name: string; kind: 'problem' | 'algorithm' }[] }>(
+      "/api/v1/tags",
+      { silent: true },
+    )
+    // 客观题套卷只允许题目标签（kind=problem）
+    tagOptions.value = (res.data ?? []).filter((t) => t.kind === "problem")
+  } catch {
+    tagOptions.value = []
+  }
+}
+
+// 标签选项：题目标签按名称排序，label 仅展示名称（客观题仅 problem 标签）
+const filteredTagOptions = computed(() => {
+  const keyword = tagSearch.value.trim().toLowerCase()
+  const sorted = [...tagOptions.value].sort((a, b) => a.name.localeCompare(b.name))
+  if (!keyword) return sorted.map((t) => ({ label: t.name, value: t.id }))
+  return sorted
+    .filter((t) => t.name.toLowerCase().includes(keyword))
+    .map((t) => ({ label: t.name, value: t.id }))
+})
+
+onMounted(() => {
+  loadTagOptions()
+})
+
 async function onCreate() {
   if (creating.value) return
   if (!createTitle.value.trim()) {
@@ -57,9 +93,13 @@ async function onCreate() {
       title: createTitle.value.trim(),
       description: createDescription.value.trim(),
       type: createType.value,
+      tag_ids: createTagIds.value,
     })
-    activePaperId.value = res.data.id
     toast.success('套卷已创建，开始添加小题')
+    // 创建成功后跳转到编辑套卷地址（display_id 可读可分享）。
+    // 不在此处设置 activePaperId：让路由跳转驱动组件重新挂载为编辑模式。
+    const id = res.data.display_id || res.data.id
+    await router.push(`/problems/${id}/edit`)
   } catch {
     // useApi 已弹错误
   } finally {
@@ -77,26 +117,47 @@ const { data: paperData, error: paperError } = await useFetch<{ data: ObjectiveP
   ),
   { server: false },
 )
-const { data: qData, error: qError, refresh: refreshQuestions } = await useFetch<
-  { data: ObjectiveQuestion[] }
->(
-  computed(() =>
-    activePaperId.value
-      ? `/api/v1/problems/${activePaperId.value}/questions`
-      : null
-  ),
-  { server: false },
-)
+
+// 小题列表用手动 API 拉取（不用 useFetch），确保保存/删除后刷新绝对生效。
+const questions = ref<ObjectiveQuestion[]>([])
+const qError = ref(false)
+const qLoading = ref(false)
+
+async function loadQuestions() {
+  if (!activePaperId.value) return
+  qLoading.value = true
+  qError.value = false
+  try {
+    const res = await listQuestions(activePaperId.value)
+    questions.value = res.data ?? []
+  } catch {
+    qError.value = true
+    questions.value = []
+  } finally {
+    qLoading.value = false
+  }
+}
 
 const paper = computed(() => paperData.value?.data ?? null)
-const questions = computed(() => qData.value?.data ?? [])
 
 const title = ref('')
 const description = ref('')
+// 编辑模式已选标签（仅套卷自己的题目标签 id）
+const editTagIds = ref<string[]>([])
 watchEffect(() => {
   if (paper.value) {
     title.value = paper.value.title
     description.value = paper.value.description
+    editTagIds.value = (paper.value.tags ?? []).map((t) => t.id)
+  }
+})
+
+// activePaperId 变化时重新加载套卷元信息与小题列表
+watchEffect(() => {
+  if (activePaperId.value) {
+    loadQuestions()
+  } else {
+    questions.value = []
   }
 })
 
@@ -108,7 +169,11 @@ async function onSaveMeta() {
   }
   savingMeta.value = true
   try {
-    await updatePaper(activePaperId.value!, { title: title.value.trim(), description: description.value.trim() })
+    await updatePaper(activePaperId.value!, {
+      title: title.value.trim(),
+      description: description.value.trim(),
+      tag_ids: editTagIds.value,
+    })
     toast.success('套卷信息已保存')
   } catch {
     // useApi 已弹错误
@@ -118,7 +183,12 @@ async function onSaveMeta() {
 }
 
 async function onDeletePaper() {
-  if (!confirm('确定删除该套卷？其下全部小题与提交记录将一并删除。')) return
+  const ok = await dialog.confirm('确定删除该套卷？其下全部小题与提交记录将一并删除。', {
+    title: '删除套卷',
+    danger: true,
+    confirmText: '删除',
+  })
+  if (!ok) return
   try {
     await deletePaper(activePaperId.value!)
     toast.success('套卷已删除')
@@ -191,9 +261,12 @@ function isAnswer(key: string) {
   return arr.includes(key)
 }
 
+// 防止连点「保存小题」导致同一小题被重复创建
+const savingQuestion = ref(false)
+
 async function onSaveQuestion() {
   const e = editing.value
-  if (!e) return
+  if (!e || savingQuestion.value) return
   if (!e.prompt.trim()) {
     toast.error('题干不能为空')
     return
@@ -229,6 +302,7 @@ async function onSaveQuestion() {
     }
   }
 
+  savingQuestion.value = true
   try {
     if (e.id === null) {
       await createQuestion(activePaperId.value!, payload)
@@ -238,18 +312,28 @@ async function onSaveQuestion() {
       toast.success('小题已更新')
     }
     closeEditor()
-    await refreshQuestions()
+    // 重新拉取题单，确保新增/编辑的小题立即出现在列表中
+    await loadQuestions()
   } catch {
     // useApi 已弹错误
+  } finally {
+    savingQuestion.value = false
   }
 }
 
 async function onDeleteQuestion(q: ObjectiveQuestion) {
-  if (!confirm(`确定删除小题「${q.prompt.slice(0, 20)}…」？`)) return
+  // 只对超长题干做截断并追加省略号；短题干不显示「…」
+  const preview = q.prompt.length > 20 ? `${q.prompt.slice(0, 20)}…` : q.prompt
+  const ok = await dialog.confirm(`确定删除小题「${preview}」？`, {
+    title: '删除小题',
+    danger: true,
+    confirmText: '删除',
+  })
+  if (!ok) return
   try {
     await deleteQuestion(activePaperId.value!, q.id)
     toast.success('小题已删除')
-    await refreshQuestions()
+    await loadQuestions()
   } catch {
     // useApi 已弹错误
   }
@@ -276,6 +360,22 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
         </UFormField>
         <UFormField label="描述">
           <UTextarea v-model="createDescription" placeholder="套卷描述" :rows="3" />
+        </UFormField>
+        <UFormField label="标签">
+          <div class="flex flex-col gap-1">
+            <input
+              v-model="tagSearch"
+              class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white"
+              placeholder="搜索标签..."
+            />
+            <div class="flex flex-wrap gap-2">
+              <label v-for="t in filteredTagOptions" :key="t.value" class="flex items-center gap-1 text-xs text-text cursor-pointer">
+                <input v-model="createTagIds" type="checkbox" :value="t.value" class="accent-primary" />
+                {{ t.label }}
+              </label>
+              <span v-if="filteredTagOptions.length === 0" class="text-xs text-text-muted">{{ tagOptions.length === 0 ? '暂无标签' : '无匹配标签' }}</span>
+            </div>
+          </div>
         </UFormField>
         <p v-if="createError" class="text-sm text-red-600">{{ createError }}</p>
         <div class="flex items-center gap-3">
@@ -313,6 +413,22 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
           <UFormField label="描述">
             <UTextarea v-model="description" placeholder="套卷描述" :rows="3" />
           </UFormField>
+          <UFormField label="标签">
+            <div class="flex flex-col gap-1">
+              <input
+                v-model="tagSearch"
+                class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white"
+                placeholder="搜索标签..."
+              />
+              <div class="flex flex-wrap gap-2">
+                <label v-for="t in filteredTagOptions" :key="t.value" class="flex items-center gap-1 text-xs text-text cursor-pointer">
+                  <input v-model="editTagIds" type="checkbox" :value="t.value" class="accent-primary" />
+                  {{ t.label }}
+                </label>
+                <span v-if="filteredTagOptions.length === 0" class="text-xs text-text-muted">{{ tagOptions.length === 0 ? '暂无标签' : '无匹配标签' }}</span>
+              </div>
+            </div>
+          </UFormField>
           <div class="flex gap-2">
             <UButton color="primary" :loading="savingMeta" @click="onSaveMeta">保存信息</UButton>
             <UButton color="red" variant="outline" @click="onDeletePaper">删除套卷</UButton>
@@ -328,10 +444,10 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
         </div>
 
         <AsyncContent
-          :status="qError ? 'error' : questions.length ? 'data' : 'empty'"
+          :status="qLoading ? 'loading' : qError ? 'error' : questions.length ? 'data' : 'empty'"
           error="小题加载失败"
           empty-text="暂无小题，点击「添加小题」开始出题"
-          @retry="refreshQuestions"
+          @retry="loadQuestions"
         >
           <div v-if="questions.length" class="flex flex-col gap-2">
             <div
@@ -413,7 +529,7 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
           </UFormField>
 
           <div class="flex gap-2">
-            <UButton color="primary" @click="onSaveQuestion">保存小题</UButton>
+            <UButton color="primary" :loading="savingQuestion" :disabled="savingQuestion" @click="onSaveQuestion">保存小题</UButton>
             <UButton color="neutral" variant="outline" @click="closeEditor">取消</UButton>
           </div>
         </div>
