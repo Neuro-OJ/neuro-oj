@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+# deploy.sh 的无 Docker 生产资源测试。
+
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEPLOY_SCRIPT="$SCRIPT_DIR/deploy.sh"
+TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/noj-deploy-test.XXXXXX")"
+FAKE_DOCKER="$TEST_ROOT/fake-docker"
+FAKE_LOG="$TEST_ROOT/docker.log"
+ENV_FILE="$TEST_ROOT/.env.prod"
+COMPOSE_FILE="$TEST_ROOT/docker-compose.prod.yml"
+
+cleanup() { rm -rf "$TEST_ROOT"; }
+trap cleanup EXIT
+
+pass() { printf '✓ %s\n' "$*"; }
+fail() { printf '✗ %s\n' "$*" >&2; exit 1; }
+
+cat >"$FAKE_DOCKER" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+printf '%s\n' "$*" >>"${NOJ_DEPLOY_TEST_LOG:?}"
+if [[ "${NOJ_DEPLOY_TEST_FAIL:-}" == "up" && " $* " == *" up "* ]]; then
+  exit 23
+fi
+if [[ "${1:-}" == "compose" && " $* " == *" pg_dump "* ]]; then
+  printf 'fake postgres dump\n'
+fi
+EOF
+chmod +x "$FAKE_DOCKER"
+
+cat >"$ENV_FILE" <<'EOF'
+NOJ_VERSION=v0.1.0
+APP_URL=https://noj.test
+CORS_ALLOWED_ORIGINS=https://noj.test
+TRUSTED_PROXIES=172.28.0.0/16
+POSTGRES_PASSWORD=strong-postgres-password
+POSTGRES_USER=noj
+POSTGRES_DB=noj
+REDIS_PASSWORD=strong-redis-password
+MINIO_ROOT_USER=minio-root
+MINIO_ROOT_PASSWORD=strong-minio-password
+S3_ACCESS_KEY=noj-storage
+S3_SECRET_KEY=strong-storage-password
+S3_BUCKET=noj-support-packages
+S3_ENDPOINT=http://minio:9000
+STORAGE_PROVIDER=s3
+JWT_SECRET=strong-random-jwt-secret-value-1234567890
+TFA_ENCRYPTION_KEY=strong-random-tfa-secret-value-1234567890
+NOJ_LLM_SERVICE_TOKEN=strong-llm-service-token
+NOJ_LLM_STORE_KEY=strong-llm-store-key
+ADMIN_EMAIL=admin@noj.test
+ADMIN_PASS=strong-admin-password
+EMAIL_PROVIDER=aliyun
+ALIBABA_ACCESS_KEY_ID=aliyun-id
+ALIBABA_ACCESS_KEY_SECRET=aliyun-secret
+ALIBABA_FROM_EMAIL=admin@noj.test
+JUDGE_DOCKER_SOCKET=__TEST_ROOT__/isolated-docker.sock
+JUDGE_DOCKER_SOCKET_GID=10001
+NGINX_PORT=18080
+EOF
+sed -i.bak "s#__TEST_ROOT__#$TEST_ROOT#g" "$ENV_FILE"
+touch "$TEST_ROOT/isolated-docker.sock"
+chmod 600 "$ENV_FILE"
+printf 'services:\n  fake:\n    image: alpine:3\n' >"$COMPOSE_FILE"
+
+run_deploy() {
+  NOJ_DEPLOY_DOCKER_BIN="$FAKE_DOCKER" \
+  NOJ_DEPLOY_TEST_LOG="$FAKE_LOG" \
+    bash "$DEPLOY_SCRIPT" "$@" --env-file "$ENV_FILE" --compose-file "$COMPOSE_FILE"
+}
+
+[[ "$(bash "$DEPLOY_SCRIPT" --help)" == *"生产部署工具"* ]] || fail "帮助输出缺少工具标题"
+pass "帮助输出"
+
+new_env="$TEST_ROOT/new.env"
+if NOJ_DEPLOY_DOCKER_BIN="$FAKE_DOCKER" NOJ_DEPLOY_TEST_LOG="$FAKE_LOG" \
+  bash "$DEPLOY_SCRIPT" install --env-file "$new_env" --compose-file "$COMPOSE_FILE" \
+  >"$TEST_ROOT/install.out" 2>"$TEST_ROOT/install.err"; then
+  fail "首次初始化应该提示补齐配置并返回非零"
+fi
+[[ -f "$new_env" ]] || fail "首次初始化未创建配置文件"
+[[ "$(stat -f '%Lp' "$new_env" 2>/dev/null || stat -c '%a' "$new_env")" == "600" ]] ||
+  fail "新建配置文件权限不是 600"
+grep -q '^JWT_SECRET=' "$new_env" || fail "首次初始化未写入随机密钥"
+if grep -q '^JWT_SECRET=change-' "$new_env"; then fail "首次初始化仍保留 JWT 占位值"; fi
+pass "首次配置初始化与权限保护"
+
+if run_deploy start >/dev/null 2>"$TEST_ROOT/start.err"; then
+  :
+else
+  fail "合法配置的 start 不应失败"
+fi
+grep -q 'compose.*up -d --wait' "$FAKE_LOG" || fail "start 未调用 Compose 健康等待"
+if grep -q 'down -v' "$FAKE_LOG"; then fail "部署脚本不得删除数据卷"; fi
+pass "启动参数与数据卷安全边界"
+
+run_deploy stop >/dev/null 2>"$TEST_ROOT/stop.err" || fail "合法配置的 stop 不应失败"
+grep -q 'compose.*stop' "$FAKE_LOG" || fail "stop 未调用 Compose stop"
+run_deploy upgrade >/dev/null 2>"$TEST_ROOT/upgrade.err" || fail "合法配置的 upgrade 不应失败"
+grep -q 'compose.*pull' "$FAKE_LOG" || fail "upgrade 未拉取镜像"
+run_deploy logs core >/dev/null 2>"$TEST_ROOT/logs.err" || fail "合法配置的 logs 不应失败"
+grep -q 'compose.*logs.*core' "$FAKE_LOG" || fail "logs 未传递服务名"
+log_lines_before="$(wc -l <"$FAKE_LOG")"
+run_deploy upgrade --dry-run >/dev/null 2>"$TEST_ROOT/dry-run.err" || fail "合法配置的 dry-run 不应失败"
+if tail -n +$((log_lines_before + 1)) "$FAKE_LOG" | grep -E ' pull| up ' >/dev/null; then
+  fail "dry-run 不应执行 Compose 变更操作"
+fi
+pass "生命周期命令"
+
+set +e
+NOJ_DEPLOY_DOCKER_BIN="$FAKE_DOCKER" \
+NOJ_DEPLOY_TEST_LOG="$FAKE_LOG" \
+NOJ_DEPLOY_TEST_FAIL=up \
+  bash "$DEPLOY_SCRIPT" start --env-file "$ENV_FILE" --compose-file "$COMPOSE_FILE" \
+  >"$TEST_ROOT/failed.out" 2>"$TEST_ROOT/failed.err"
+failed_status=$?
+set -e
+[[ "$failed_status" != "0" ]] || fail "Compose 失败未传递为部署失败"
+pass "Compose 失败状态传递"
+
+cp "$ENV_FILE" "$TEST_ROOT/unsafe.env"
+sed -i.bak 's#JUDGE_DOCKER_SOCKET=.*#JUDGE_DOCKER_SOCKET=/var/run/docker.sock#' "$TEST_ROOT/unsafe.env"
+chmod 600 "$TEST_ROOT/unsafe.env"
+if NOJ_DEPLOY_DOCKER_BIN="$FAKE_DOCKER" NOJ_DEPLOY_TEST_LOG="$FAKE_LOG" \
+  bash "$DEPLOY_SCRIPT" start --env-file "$TEST_ROOT/unsafe.env" --compose-file "$COMPOSE_FILE" \
+  >"$TEST_ROOT/unsafe.out" 2>"$TEST_ROOT/unsafe.err"; then
+  fail "应用宿主机 Docker socket 应该被拒绝"
+fi
+grep -q '应用宿主机 Docker socket' "$TEST_ROOT/unsafe.err" || fail "危险 socket 错误提示缺失"
+pass "Judge Docker socket 隔离检查"
+
+cp "$ENV_FILE" "$TEST_ROOT/missing-socket.env"
+sed -i.bak "s#JUDGE_DOCKER_SOCKET=.*#JUDGE_DOCKER_SOCKET=$TEST_ROOT/missing.sock#" "$TEST_ROOT/missing-socket.env"
+chmod 600 "$TEST_ROOT/missing-socket.env"
+if NOJ_DEPLOY_DOCKER_BIN="$FAKE_DOCKER" NOJ_DEPLOY_TEST_LOG="$FAKE_LOG" \
+  bash "$DEPLOY_SCRIPT" start --env-file "$TEST_ROOT/missing-socket.env" --compose-file "$COMPOSE_FILE" \
+  >"$TEST_ROOT/missing-socket.out" 2>"$TEST_ROOT/missing-socket.err"; then
+  fail "缺失的 Judge Docker socket 应该被拒绝"
+fi
+grep -q 'Docker socket 不存在' "$TEST_ROOT/missing-socket.err" || fail "缺失 socket 错误提示缺失"
+pass "Judge Docker socket 存在性检查"
+
+cp "$ENV_FILE" "$TEST_ROOT/invalid.env"
+sed -i.bak 's/NOJ_VERSION=v0.1.0/NOJ_VERSION=change-me-release-tag/' "$TEST_ROOT/invalid.env"
+chmod 600 "$TEST_ROOT/invalid.env"
+if NOJ_DEPLOY_DOCKER_BIN="$FAKE_DOCKER" NOJ_DEPLOY_TEST_LOG="$FAKE_LOG" \
+  bash "$DEPLOY_SCRIPT" start --env-file "$TEST_ROOT/invalid.env" --compose-file "$COMPOSE_FILE" \
+  >"$TEST_ROOT/invalid.out" 2>"$TEST_ROOT/invalid.err"; then
+  fail "占位配置应该失败"
+fi
+grep -q 'NOJ_VERSION' "$TEST_ROOT/invalid.err" || fail "占位配置错误未指出配置键"
+if grep -q 'strong-' "$TEST_ROOT/invalid.err" "$TEST_ROOT/invalid.out"; then
+  fail "配置检查输出泄露了 secret"
+fi
+pass "占位配置拒绝与 secret 不泄露"
+
+if run_deploy backup --backup-dir "$TEST_ROOT/backups" >/dev/null 2>"$TEST_ROOT/backup.err"; then
+  :
+else
+  fail "合法配置的 backup 不应失败"
+fi
+backup_file="$(find "$TEST_ROOT/backups" -type f -name 'postgres-*.dump' -print -quit)"
+[[ -n "$backup_file" ]] || fail "未生成 PostgreSQL 备份"
+[[ "$(stat -f '%Lp' "$backup_file" 2>/dev/null || stat -c '%a' "$backup_file")" == "600" ]] ||
+  fail "备份文件权限不是 600"
+pass "PostgreSQL 备份与文件权限"
+
+printf '全部部署脚本测试通过\n'
