@@ -272,6 +272,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
+        set -eu;
         for i in $(seq 1 30); do
           if mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; then
             case "$$S3_BUCKET" in
@@ -281,7 +282,9 @@ services:
               echo "S3 应用凭据不得复用 MinIO root 凭据" >&2; exit 1;
             fi;
             mc mb --ignore-existing "local/$$S3_BUCKET";
-            sed "s|__S3_BUCKET__|$${S3_BUCKET}|g" /etc/noj/minio-policy.json.tpl > /tmp/noj-minio-policy.json;
+            policy=$$(cat /etc/noj/minio-policy.json.tpl);
+            policy=$${policy//__S3_BUCKET__/$${S3_BUCKET}};
+            printf '%s' "$${policy}" > /tmp/noj-minio-policy.json;
             mc admin policy remove local noj-support-packages-app >/dev/null 2>&1 || true;
             mc admin policy create local noj-support-packages-app /tmp/noj-minio-policy.json;
             mc admin user add local "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" >/dev/null 2>&1 || true;
