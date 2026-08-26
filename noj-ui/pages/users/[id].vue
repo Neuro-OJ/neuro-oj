@@ -147,9 +147,12 @@ const { data: trainingsData } = useFetch<{ data: TrainingProfile[]; total: numbe
 )
 const profileTrainings = computed(() => trainingsData.value?.data ?? [])
 
-// 当前登录用户是否在查看自己的主页
+// 当前登录用户是否在查看自己的主页。
+// userId 来自 URL（userUrl 生成 /users/{username}），故用 username 对比；
+// 用 id 对比会因类型不同（UUID vs username）导致自己主页误判为他人主页，
+// 从而错误地显示关注/私信按钮。
 const isOwnProfile = computed(
-  () => currentUser.value?.id === userId,
+  () => currentUser.value?.username === userId,
 )
 
 // 语言标签（统一走 utils/submissionFormat 的 getLanguageLabel）

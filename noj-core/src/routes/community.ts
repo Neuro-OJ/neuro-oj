@@ -7,6 +7,7 @@ import {
   UnauthorizedError,
 } from "../lib/errors.ts";
 import { assertPermission, checkPermission } from "../lib/permissions.ts";
+import { resolveUserId } from "../services/users/users-id.ts";
 import {
   authMiddleware,
   type OptionalAuthEnv,
@@ -348,9 +349,11 @@ router.post("/users/:userId/follow", authMiddleware, async (c) => {
   const actorId = userId(c);
   await assertPermission(c, "community:follow");
   await assertCommunityWritable(actorId, await isModerator(c));
+  // followeeId 可能是 username，解析为 UUID（与 profile 路由一致）
+  const followeeId = await resolveUserId(c.req.param("userId") as string);
   return c.json({
     data: {
-      following: await toggleFollow(actorId, c.req.param("userId") as string),
+      following: await toggleFollow(actorId, followeeId),
     },
   });
 });

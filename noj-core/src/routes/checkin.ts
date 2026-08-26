@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { OptionalAuthEnv } from "../middleware/auth.ts";
 import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
 import { UnauthorizedError } from "../lib/errors.ts";
+import { resolveUserId } from "../services/users/users-id.ts";
 import {
   checkIn,
   getCheckinHistory,
@@ -44,7 +45,7 @@ router.get("/stats", optionalAuthMiddleware, async (c) => {
     throw new UnauthorizedError("未提供认证令牌");
   }
   const data = await getCheckinStats(
-    targetUserId,
+    await resolveUserId(targetUserId),
     c.req.query("month") ?? undefined,
   );
   return c.json({ data });
@@ -61,7 +62,7 @@ router.get("/history", optionalAuthMiddleware, async (c) => {
     throw new UnauthorizedError("未提供认证令牌");
   }
   const days = Number(c.req.query("days") ?? "30");
-  const data = await getCheckinHistory(targetUserId, days);
+  const data = await getCheckinHistory(await resolveUserId(targetUserId), days);
   return c.json({ data });
 });
 
