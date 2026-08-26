@@ -10,16 +10,15 @@ import {
   apiPost,
   apiPut,
   CODE_SAMPLES,
+  e2eTest,
   getAdminToken,
   getProblemIdByNumber,
   isE2E,
   isJudgeAvailable,
   pollSubmission,
   registerUser,
-  waitForServer,
-  e2eTest,
   TEST_PASSWORD,
-
+  waitForServer,
 } from "./helper.ts";
 
 const testSuffix = Date.now().toString(36);
@@ -39,154 +38,150 @@ interface IcpcRankingRow {
 }
 
 e2eTest("[e2e/contest] Setup", async () => {
-    if (!isE2E) return;
-    await waitForServer();
-    adminToken = await getAdminToken();
-    participantToken = await registerUser(
-      `contest_user_${testSuffix}`,
-      `contest_user_${testSuffix}@test.com`,
-      TEST_PASSWORD,
-    );
-    // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
-    problemId = await getProblemIdByNumber(1001);
-    judgeAvailable = await isJudgeAvailable();
-    if (!judgeAvailable) {
-      console.log("  ⚠ judge worker 不可用，提交与排名断言将跳过");
-    }
-  });
+  if (!isE2E) return;
+  await waitForServer();
+  adminToken = await getAdminToken();
+  participantToken = await registerUser(
+    `contest_user_${testSuffix}`,
+    `contest_user_${testSuffix}@test.com`,
+    TEST_PASSWORD,
+  );
+  // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
+  problemId = await getProblemIdByNumber(1001);
+  judgeAvailable = await isJudgeAvailable();
+  if (!judgeAvailable) {
+    console.log("  ⚠ judge worker 不可用，提交与排名断言将跳过");
+  }
+});
 
 e2eTest("[e2e/contest] 1. 创建正在进行且已封榜的 ICPC 竞赛", async () => {
-    if (!isE2E) return;
-    const now = Date.now();
-    const createResult = await apiPost(
-      "/api/v1/admin/contests",
-      {
-        title: `E2E 生命周期竞赛 ${testSuffix}`,
-        start_time: new Date(now - 60 * 60 * 1000).toISOString(),
-        end_time: new Date(now + 60 * 60 * 1000).toISOString(),
-        type: "icpc",
-        config: {
-          penalty_minutes: 20,
-          freeze_time: new Date(now - 60 * 1000).toISOString(),
-          unfreeze_after_end: true,
-        },
-        is_public: true,
-        password: "ContestPass123",
-        affect_global_ranking: false,
-        problems: [{ problem_id: problemId, sort_order: 0, label: "A" }],
+  if (!isE2E) return;
+  const now = Date.now();
+  const createResult = await apiPost(
+    "/api/v1/admin/contests",
+    {
+      title: `E2E 生命周期竞赛 ${testSuffix}`,
+      start_time: new Date(now - 60 * 60 * 1000).toISOString(),
+      end_time: new Date(now + 60 * 60 * 1000).toISOString(),
+      type: "icpc",
+      config: {
+        penalty_minutes: 20,
+        freeze_time: new Date(now - 60 * 1000).toISOString(),
+        unfreeze_after_end: true,
       },
-      adminToken,
+      is_public: true,
+      password: "ContestPass123",
+      affect_global_ranking: false,
+      problems: [{ problem_id: problemId, sort_order: 0, label: "A" }],
+    },
+    adminToken,
+  );
+  if (createResult.status !== 201) {
+    throw new Error(
+      `创建竞赛失败: ${createResult.status} ${
+        JSON.stringify(createResult.body)
+      }`,
     );
-    if (createResult.status !== 201) {
-      throw new Error(
-        `创建竞赛失败: ${createResult.status} ${
-          JSON.stringify(createResult.body)
-        }`,
-      );
-    }
-    contestId = (createResult.body as { data: ContestData }).data.id;
-    }
-);
+  }
+  contestId = (createResult.body as { data: ContestData }).data.id;
+});
 
 e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
-    if (!isE2E) return;
-    const invalidPassword = await apiPost(
-      `/api/v1/contests/${contestId}/register`,
-      { password: "wrong-password" },
-      participantToken,
+  if (!isE2E) return;
+  const invalidPassword = await apiPost(
+    `/api/v1/contests/${contestId}/register`,
+    { password: "wrong-password" },
+    participantToken,
+  );
+  if (invalidPassword.status !== 403) {
+    throw new Error(
+      `错误密码应被拒绝，实际状态码: ${invalidPassword.status}`,
     );
-    if (invalidPassword.status !== 403) {
-      throw new Error(
-        `错误密码应被拒绝，实际状态码: ${invalidPassword.status}`,
-      );
-    }
-
-    const registerResult = await apiPost(
-      `/api/v1/contests/${contestId}/register`,
-      { password: "ContestPass123" },
-      participantToken,
-    );
-    if (registerResult.status !== 201) {
-      throw new Error(
-        `注册竞赛失败: ${registerResult.status} ${
-          JSON.stringify(registerResult.body)
-        }`,
-      );
-    }
-    if (!judgeAvailable) return;
-
-    const submitResult = await apiPost(
-      `/api/v1/contests/${contestId}/submit`,
-      {
-        problem_id: problemId,
-        language: "python3",
-        code: CODE_SAMPLES.accepted,
-      },
-      participantToken,
-    );
-    if (submitResult.status !== 201) {
-      throw new Error(
-        `竞赛提交失败: ${submitResult.status} ${
-          JSON.stringify(submitResult.body)
-        }`,
-      );
-    }
-    const submissionId =
-      (submitResult.body as { data: { id: string } }).data.id;
-    const result = await pollSubmission(participantToken, submissionId);
-    if (result.verdict !== "Accepted") {
-      throw new Error(`期望 Accepted，实际 ${result.verdict}`);
-    }
   }
-);
+
+  const registerResult = await apiPost(
+    `/api/v1/contests/${contestId}/register`,
+    { password: "ContestPass123" },
+    participantToken,
+  );
+  if (registerResult.status !== 201) {
+    throw new Error(
+      `注册竞赛失败: ${registerResult.status} ${
+        JSON.stringify(registerResult.body)
+      }`,
+    );
+  }
+  if (!judgeAvailable) return;
+
+  const submitResult = await apiPost(
+    `/api/v1/contests/${contestId}/submit`,
+    {
+      problem_id: problemId,
+      language: "python3",
+      code: CODE_SAMPLES.accepted,
+    },
+    participantToken,
+  );
+  if (submitResult.status !== 201) {
+    throw new Error(
+      `竞赛提交失败: ${submitResult.status} ${
+        JSON.stringify(submitResult.body)
+      }`,
+    );
+  }
+  const submissionId = (submitResult.body as { data: { id: string } }).data.id;
+  const result = await pollSubmission(participantToken, submissionId);
+  if (result.status !== "finished" || result.score <= 0) {
+    throw new Error(`期望 finished 且分数 >0，实际 ${result.status}`);
+  }
+});
 
 e2eTest("[e2e/contest] 3. 封榜时公开排名冻结而管理员可见完整排名", async () => {
-    if (!isE2E || !judgeAvailable) return;
-    const [publicResult, adminResult] = await Promise.all([
-      apiGet(`/api/v1/contests/${contestId}/ranking`),
-      apiGet(`/api/v1/contests/${contestId}/ranking`, adminToken),
-    ]);
-    if (publicResult.status !== 200 || adminResult.status !== 200) {
-      throw new Error(
-        `读取封榜排名失败: ${publicResult.status}/${adminResult.status}`,
-      );
-    }
-    const publicRows = (publicResult.body as { data: IcpcRankingRow[] }).data;
-    const adminRows = (adminResult.body as { data: IcpcRankingRow[] }).data;
-    if (publicRows[0]?.solved !== 0) {
-      throw new Error("封榜期间公开排名不应包含封榜后的 AC");
-    }
-    if (adminRows[0]?.solved !== 1) {
-      throw new Error("管理员在封榜期间应看到完整排名");
-    }
-  });
+  if (!isE2E || !judgeAvailable) return;
+  const [publicResult, adminResult] = await Promise.all([
+    apiGet(`/api/v1/contests/${contestId}/ranking`),
+    apiGet(`/api/v1/contests/${contestId}/ranking`, adminToken),
+  ]);
+  if (publicResult.status !== 200 || adminResult.status !== 200) {
+    throw new Error(
+      `读取封榜排名失败: ${publicResult.status}/${adminResult.status}`,
+    );
+  }
+  const publicRows = (publicResult.body as { data: IcpcRankingRow[] }).data;
+  const adminRows = (adminResult.body as { data: IcpcRankingRow[] }).data;
+  if (publicRows[0]?.solved !== 0) {
+    throw new Error("封榜期间公开排名不应包含封榜后的 AC");
+  }
+  if (adminRows[0]?.solved !== 1) {
+    throw new Error("管理员在封榜期间应看到完整排名");
+  }
+});
 
 e2eTest("[e2e/contest] 4. 结束竞赛后自动解封并公开最终排名", async () => {
-    if (!isE2E || !judgeAvailable) return;
-    const updateResult = await apiPut(
-      `/api/v1/admin/contests/${contestId}`,
-      { end_time: new Date(Date.now() - 1000).toISOString() },
-      adminToken,
+  if (!isE2E || !judgeAvailable) return;
+  const updateResult = await apiPut(
+    `/api/v1/admin/contests/${contestId}`,
+    { end_time: new Date(Date.now() - 1000).toISOString() },
+    adminToken,
+  );
+  if (updateResult.status !== 200) {
+    throw new Error(
+      `结束竞赛失败: ${updateResult.status} ${
+        JSON.stringify(updateResult.body)
+      }`,
     );
-    if (updateResult.status !== 200) {
-      throw new Error(
-        `结束竞赛失败: ${updateResult.status} ${
-          JSON.stringify(updateResult.body)
-        }`,
-      );
-    }
-
-    const [contestResult, rankingResult] = await Promise.all([
-      apiGet(`/api/v1/contests/${contestId}`),
-      apiGet(`/api/v1/contests/${contestId}/ranking`),
-    ]);
-    const contest = (contestResult.body as { data: ContestData }).data;
-    const rows = (rankingResult.body as { data: IcpcRankingRow[] }).data;
-    if (contestResult.status !== 200 || contest.status !== "ended") {
-      throw new Error("竞赛结束后状态应为 ended");
-    }
-    if (rankingResult.status !== 200 || rows[0]?.solved !== 1) {
-      throw new Error("竞赛结束后公开排名应自动解封并显示最终 AC");
-    }
   }
-);
+
+  const [contestResult, rankingResult] = await Promise.all([
+    apiGet(`/api/v1/contests/${contestId}`),
+    apiGet(`/api/v1/contests/${contestId}/ranking`),
+  ]);
+  const contest = (contestResult.body as { data: ContestData }).data;
+  const rows = (rankingResult.body as { data: IcpcRankingRow[] }).data;
+  if (contestResult.status !== 200 || contest.status !== "ended") {
+    throw new Error("竞赛结束后状态应为 ended");
+  }
+  if (rankingResult.status !== 200 || rows[0]?.solved !== 1) {
+    throw new Error("竞赛结束后公开排名应自动解封并显示最终 AC");
+  }
+});

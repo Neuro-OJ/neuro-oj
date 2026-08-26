@@ -131,7 +131,8 @@ export class S3StorageProvider implements StorageProvider {
     const PART_SIZE = 5 * 1024 * 1024;
     let partNumber = 1;
     let total = 0;
-    let buffer = new Uint8Array(0);
+    let buffer = new Uint8Array(PART_SIZE);
+    let bufferLen = 0;
     const uploadedParts: { PartNumber: number; ETag: string }[] = [];
     const reader = stream.getReader();
 
@@ -145,36 +146,43 @@ export class S3StorageProvider implements StorageProvider {
             throw new Error(`文件超过大小限制（${maxSizeBytes} 字节）`);
           }
           hash.update(value);
-          const merged = new Uint8Array(buffer.length + value.length);
-          merged.set(buffer);
-          merged.set(value, buffer.length);
-          buffer = merged;
-          if (buffer.length >= PART_SIZE) {
-            const part = await this.client.send(
-              new UploadPartCommand({
-                Bucket: this.bucket,
-                Key: key,
-                UploadId: uploadId,
-                PartNumber: partNumber,
-                Body: buffer,
-              }),
-            );
-            uploadedParts.push({ PartNumber: partNumber, ETag: part.ETag! });
-            partNumber++;
-            buffer = new Uint8Array(0);
+          let offset = 0;
+          while (offset < value.length) {
+            const copy = Math.min(PART_SIZE - bufferLen, value.length - offset);
+            buffer.set(value.subarray(offset, offset + copy), bufferLen);
+            bufferLen += copy;
+            offset += copy;
+            if (bufferLen === PART_SIZE) {
+              const part = await this.client.send(
+                new UploadPartCommand({
+                  Bucket: this.bucket,
+                  Key: key,
+                  UploadId: uploadId,
+                  PartNumber: partNumber,
+                  Body: buffer,
+                }),
+              );
+              uploadedParts.push({ PartNumber: partNumber, ETag: part.ETag! });
+              partNumber++;
+              bufferLen = 0;
+              buffer = new Uint8Array(PART_SIZE);
+            }
           }
         }
       }
 
       // 空文件或最后不足 5MB 的部分
-      if (buffer.length > 0 || uploadedParts.length === 0) {
+      if (bufferLen > 0 || uploadedParts.length === 0) {
+        const partBody = bufferLen === buffer.length
+          ? buffer
+          : buffer.slice(0, bufferLen);
         const part = await this.client.send(
           new UploadPartCommand({
             Bucket: this.bucket,
             Key: key,
             UploadId: uploadId,
             PartNumber: partNumber,
-            Body: buffer,
+            Body: partBody,
           }),
         );
         uploadedParts.push({ PartNumber: partNumber, ETag: part.ETag! });

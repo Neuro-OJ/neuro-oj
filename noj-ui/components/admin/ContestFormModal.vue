@@ -110,6 +110,15 @@ function removeProblem(problemId: string) {
   normalizeProblems()
 }
 
+function setSubmissionLimit(problemId: string, event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  if (value === '') {
+    delete submissionLimits.value[problemId]
+  } else {
+    submissionLimits.value[problemId] = Number(value)
+  }
+}
+
 function problemName(problemId: string) {
   const problem = problems.find((item) => item.id === problemId)
   if (problem) return `${problem.display_id} ${problem.title}`
@@ -192,7 +201,7 @@ function submit() {
               <span class="flex size-8 shrink-0 items-center justify-center rounded-md bg-bg-dark font-mono text-xs font-bold text-white">{{ problem.label }}</span>
               <span class="min-w-0 flex-1 truncate text-xs font-medium text-text">{{ problemName(problem.problem_id) }}</span>
               <input :value="(problem.score ?? DEFAULT_FULL_SCORE) / 100" type="number" min="0" class="w-20 rounded border border-border px-2 py-1 text-xs" title="满分" @input="problem.score = Number(($event.target as HTMLInputElement).value) * 100">
-              <input :value="submissionLimits[problem.problem_id] ?? ''" type="number" min="1" class="w-20 rounded border border-border px-2 py-1 text-xs" title="提交次数上限（留空不限）" placeholder="上限" @input="submissionLimits[problem.problem_id] = Number(($event.target as HTMLInputElement).value)">
+              <input :value="submissionLimits[problem.problem_id] ?? ''" type="number" min="1" class="w-20 rounded border border-border px-2 py-1 text-xs" title="提交次数上限（留空不限）" placeholder="上限" @input="setSubmissionLimit(problem.problem_id, $event)">
               <button class="rounded p-1.5 text-text-muted hover:bg-red-50 hover:text-error-text" @click="removeProblem(problem.problem_id)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></button>
             </div>
           </div>

@@ -303,8 +303,8 @@ e2eTest("[e2e/tags] 4.2 算法标签门控：AC 后可见", async () => {
     "a, b = map(int, input().split())\nprint(a + b)\n",
   );
   const result = await pollSubmission(token, submissionId);
-  if (result.verdict !== "Accepted") {
-    console.log(`  ⚠ 评测结果 ${result.verdict}，跳过 AC 可见性断言`);
+  if (result.status !== "finished" || result.score <= 0) {
+    console.log(`  ⚠ 评测结果 ${result.status}，跳过 AC 可见性断言`);
     return;
   }
 

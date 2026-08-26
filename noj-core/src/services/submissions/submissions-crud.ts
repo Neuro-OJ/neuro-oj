@@ -337,6 +337,11 @@ export async function createSubmission(
   }
   const problem = lockedRows[0];
 
+  // artifact 题目必须走 multipart zip 上传，拒绝 JSON 代码提交
+  if (problem.submission_mode === "artifact") {
+    throw new BadRequestError("该题目要求上传 zip 产物");
+  }
+
   // 验证语言（与 LANGUAGE_EXT_MAP 键集保持一致）
   const supportedLanguages = Object.keys(LANGUAGE_EXT_MAP);
   if (!supportedLanguages.includes(input.language)) {

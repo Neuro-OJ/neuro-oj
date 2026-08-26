@@ -17,7 +17,7 @@ e2e_test!(
                 "python3",
                 "/evaluate.py",
                 "--result-json",
-                r#"{"status":"Accepted","score":1000,"details":{}}"#,
+                r#"{"score":1000,"details":{}}"#,
             ],
             256,
             10000,
@@ -39,8 +39,8 @@ e2e_test!(
             "stdout 应包含 ---RESULT--- 标记"
         );
         assert!(
-            output.stdout.contains("finished"),
-            "stdout 应包含 'Accepted'"
+            output.stdout.contains("\"score\""),
+            "stdout 应包含 score 字段"
         );
         let _ = std::fs::remove_dir_all(&work_dir);
     }

@@ -391,7 +391,7 @@ for i in range(3):
     sys.stdout.write(json.dumps({"type":"call","id":f"c{i}","fn":"solve","args":[i]}) + "\n")
     sys.stdout.flush()
 sys.stdout.write("---RESULT---\n")
-sys.stdout.write('{"status":"Accepted","score":10000,"details":{}}\n')
+sys.stdout.write('{"score":10000,"details":{}}\n')
 sys.stdout.flush()
 "#;
     let exec = docker
@@ -448,8 +448,8 @@ sys.stdout.flush()
     assert_eq!(frames[2]["args"][0], 2);
     assert!(result_payload.is_some(), "应捕获 RESULT 后的 JSON");
     let parsed: serde_json::Value = serde_json::from_str(&result_payload.unwrap()).unwrap();
-    assert_eq!(parsed["status"], "finished");
     assert_eq!(parsed["score"], 10000);
+    assert!(parsed.get("status").is_none(), "新协议不应输出 status");
 
     cleanup_container(&docker, &id).await;
 }

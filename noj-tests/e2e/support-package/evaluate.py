@@ -48,7 +48,6 @@ def main():
     if not cases:
         # 没有测试用例：直接输出结果
         result = {
-            "status": "Accepted",
             "score": 1000,
             "details": {"message": "no test cases, default pass"},
         }
@@ -73,7 +72,6 @@ def main():
             # TLE 模式：如果评测走到了这里，说明超时 kill 后返回了部分输出
             # 直接标记为 Time Limit Exceeded
             result = {
-                "status": "TimeLimitExceeded",
                 "score": 0,
                 "details": {
                     "message": "Code execution timed out",
@@ -96,17 +94,13 @@ def main():
 
     # 判定最终结果
     if passed == len(cases):
-        status = "Accepted"
         score = max_score
     elif failed_cases:
-        status = "WrongAnswer"
         score = total_score
     else:
-        status = "SystemError"
         score = 0
 
     result = {
-        "status": status,
         "score": score,
         "details": {
             "passed": passed,

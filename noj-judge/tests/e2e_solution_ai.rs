@@ -23,6 +23,12 @@ fn solution_ai_dockerfile_contains_expected_packages() {
     );
     assert!(content.contains("opencv-python-headless"), "应安装 opencv");
     assert!(content.contains("safetensors"), "应安装 safetensors");
+    assert!(content.contains("numpy"), "应安装 numpy");
+    assert!(content.contains("scipy"), "应安装 scipy");
+    assert!(content.contains("pandas"), "应安装 pandas");
+    assert!(content.contains("scikit-learn"), "应安装 scikit-learn");
+    assert!(content.contains("Pillow"), "应安装 Pillow");
+    assert!(content.contains("matplotlib"), "应安装 matplotlib");
 }
 
 /// 完整 E2E：构建 noj-solution-ai 并验证 SDK/torch 可导入。

@@ -322,10 +322,10 @@ def solve(msg: str) -> str:
     const id = await submitCode(userToken, bundleProblemId, code);
     console.log(`  → 提交 ID: ${id.slice(0, 8)}`);
     const result = await pollSubmission(userToken, id, 40, 3000);
-    console.log(`  → ${result.verdict} (${result.score}分)`);
-    if (result.verdict !== "Accepted") {
+    console.log(`  → ${result.status} (${result.score}分)`);
+    if (result.status !== "finished" || result.score <= 0) {
       throw new Error(
-        `期望 Accepted（evaluator 联网 + capability 全链路），实际 ${result.verdict}`,
+        `期望 finished 且分数 >0（evaluator 联网 + capability 全链路），实际 ${result.status}`,
       );
     }
   },

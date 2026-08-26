@@ -41,7 +41,7 @@ noj-judge/
 │   ├── sandbox/
 │   │   ├── mod.rs
 │   │   ├── container.rs    # 容器生命周期 + zip 解压 + 命令解析
-│   │   ├── download.rs     # noj-download:// 下载（base64 / s3）
+│   │   ├── download.rs     # noj-download:// 下载（base64 / s3 / local）
 │   │   ├── cache.rs        # 内容寻址缓存
 │   │   ├── cleanup.rs      # 孤儿容器清理
 │   │   └── host_config.rs  # 容器 HostConfig 构造（安全项）

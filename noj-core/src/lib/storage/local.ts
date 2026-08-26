@@ -7,8 +7,9 @@
  * 存储路径：`data/storage/<base64-key>.zip`（默认目录，可用 `SUPPORT_PACKAGE_DIR` 覆盖）
  * URL 格式：`noj-storage://local/<base64>?checksum_sha256=<hex>`
  *
- * Judge 传输：仍使用 Base64 编码内联（judge 在独立容器中无法访问 core 文件系统）
- *   downloadUrl() 返回 `noj-download://base64/?content=[base64]&checksum_sha256=...`
+ * Judge 传输：返回 `noj-download://local?path=<绝对路径>&checksum_sha256=...`。
+ * 本地模式要求 core 与 judge 共享同一文件系统（同机开发，或容器化部署时挂载同一
+ * 存储卷），judge 直接读取磁盘文件，避免大文件 base64 内联到 Redis 消息。
  *
  * @module
  */
@@ -16,7 +17,7 @@
 import { relative, resolve } from "jsr:@std/path@^1";
 import { sha256 } from "npm:@noble/hashes@2.2.0/sha2.js";
 import {
-  buildBase64DownloadUrl,
+  buildLocalDownloadUrl,
   buildStorageUrl,
   parseStorageUrl,
   sha256Hex,
@@ -240,18 +241,21 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   /**
-   * 将 `noj-storage://` URL 转换为 `noj-download://base64/` URL
+   * 将 `noj-storage://` URL 转换为 `noj-download://local` URL。
    *
-   * 读取文件 → Base64 编码 → 构建 download URL
+   * 本地模式 core 与 judge 共享文件系统，直接返回磁盘路径让 judge 读取，
+   * 避免把大文件 base64 内联到 Redis 消息（否则 artifact 上限会被 16MB
+   * 消息大小限制卡死）。
    */
-  async downloadUrl(storageUrl: string, _expiresIn?: number): Promise<string> {
+  downloadUrl(storageUrl: string, _expiresIn?: number): Promise<string> {
     const parsed = parseStorageUrl(storageUrl);
     if (parsed.provider !== "local") {
       throw new Error(`local provider 拒绝 ${parsed.provider} URL`);
     }
-    const data = await this.get(storageUrl);
-    const base64Content = this.uint8ArrayToBase64(data);
-    return buildBase64DownloadUrl(base64Content, parsed.checksumSha256);
+    const filePath = filePathFor(this.storageDir, parsed.key);
+    return Promise.resolve(
+      buildLocalDownloadUrl(filePath, parsed.checksumSha256),
+    );
   }
 
   // ── 内部工具 ─────────────────────────────────────────────

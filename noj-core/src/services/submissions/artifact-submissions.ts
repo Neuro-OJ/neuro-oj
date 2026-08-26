@@ -63,21 +63,24 @@ async function peekFirstChunk(
     };
   }
   const first = value ?? new Uint8Array(0);
+  let firstPending = true;
   const rest = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      controller.enqueue(first);
-      try {
-        while (true) {
-          const r = await reader.read();
-          if (r.done) break;
-          if (r.value && r.value.length > 0) controller.enqueue(r.value);
-        }
-        controller.close();
-      } catch (err) {
-        controller.error(err);
-      } finally {
-        reader.releaseLock();
+    async pull(controller) {
+      if (firstPending) {
+        firstPending = false;
+        controller.enqueue(first);
+        return;
       }
+      const r = await reader.read();
+      if (r.done) {
+        controller.close();
+        reader.releaseLock();
+      } else if (r.value && r.value.length > 0) {
+        controller.enqueue(r.value);
+      }
+    },
+    cancel() {
+      reader.releaseLock();
     },
   });
   return { first, rest };

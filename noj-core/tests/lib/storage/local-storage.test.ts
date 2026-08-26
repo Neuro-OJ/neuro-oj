@@ -130,6 +130,19 @@ Deno.test("LocalStorageProvider: zip/未知 contentType 保持无扩展名 key",
   assertEquals(new TextDecoder().decode(readBack), "x");
 });
 
+Deno.test("LocalStorageProvider: downloadUrl 返回 noj-download://local 路径", async () => {
+  const provider = new LocalStorageProvider();
+  const url = await provider.put(
+    "download-key",
+    new TextEncoder().encode("data"),
+    "application/zip",
+  );
+  const downloadUrl = await provider.downloadUrl(url);
+  assertEquals(downloadUrl.startsWith("noj-download://local?path="), true);
+  assertEquals(downloadUrl.includes("checksum_sha256="), true);
+  await provider.delete(url);
+});
+
 Deno.test("LocalStorageProvider: putStream 流式写入并读回", async () => {
   const provider = new LocalStorageProvider();
   const chunks = [
