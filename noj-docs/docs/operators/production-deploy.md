@@ -192,12 +192,12 @@ bash scripts/staging/acceptance.sh all \
 bash scripts/deploy/deploy.sh status
 bash scripts/deploy/deploy.sh logs core
 bash scripts/deploy/deploy.sh logs judge --follow
-bash scripts/deploy/deploy.sh backup
+bash scripts/deploy/deploy.sh backup --passphrase-file /etc/noj/backup-passphrase
 ```
 
-`backup` 只创建 PostgreSQL custom-format 备份；Redis、MinIO 和 `.env.prod` 的备份
-仍需按照 [备份与灾备 Issue #326](https://github.com/Neuro-OJ/neuro-oj/issues/326)
-另行规划，备份文件默认保存在仓库根目录的 `backups/` 且权限为 `600`。
+`backup` 会创建包含 PostgreSQL、Redis RDB、MinIO/S3 对象镜像和 GPG 加密
+`.env.prod` 的完整快照。快照目录位于 `backups/snapshot-*`，目录权限为 `700`，
+文件权限不对其他用户开放；组件失败时不会留下可被误用的半成品快照。
 
 ```bash
 # 查看服务状态
@@ -237,11 +237,56 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 
 ## 8. 备份提示
 
-当前公测方案尚未包含自动化备份/高可用，请至少定期备份：
+### 8.1 初始化口令与创建快照
 
-- PostgreSQL：`pg_dump -F c` 或云数据库快照。
-- Redis：AOF/RDB 文件（`redisdata` 卷）。
-- MinIO：`miniodata` 卷或 bucket 同步到异地存储。
-- `.env.prod`：包含密钥，文件权限设为 `600`，并使用 secrets manager 或加密存储保存。
+备份口令只保存在仓库外的受限文件中，不要写入 `.env.prod` 或提交到 Git：
+
+```bash
+sudo install -d -m 700 /etc/noj
+openssl rand -hex 32 | sudo tee /etc/noj/backup-passphrase >/dev/null
+sudo chmod 600 /etc/noj/backup-passphrase
+
+export NOJ_BACKUP_PASSPHRASE_FILE=/etc/noj/backup-passphrase
+bash scripts/deploy/deploy.sh backup --backup-dir /srv/noj/backups
+```
+
+每次快照都会生成 SHA-256 清单、PostgreSQL dump 结构清单、迁移状态和 `SUCCESS`
+标记；默认保留 30 天，默认要求备份目录至少有 1GiB 可用空间。可通过
+`NOJ_BACKUP_RETENTION_DAYS` 和 `NOJ_BACKUP_MIN_FREE_MB` 调整。
+
+### 8.2 校验、恢复与恢复演练
+
+```bash
+snapshot=/srv/noj/backups/snapshot-YYYYMMDD-HHMMSS
+bash scripts/deploy/backup.sh verify "$snapshot"
+bash scripts/deploy/backup.sh drill "$snapshot" --report /srv/noj/restore-drill.txt
+```
+
+`drill` 不会触碰当前生产数据，只验证解密、校验和、PostgreSQL 结构、Redis RDB
+以及对象镜像。周期性演练应在隔离 Compose project 中执行实际恢复：
+
+```bash
+bash scripts/deploy/backup.sh restore "$snapshot" \
+  --project-name noj-restore-drill \
+  --restore-env /srv/noj/restore-drill.env \
+  --confirm
+```
+
+恢复会覆盖目标数据库、Redis 数据和对象存储，因此必须显式 `--confirm`，且目标
+Compose 服务必须已经停止。建议恢复到单独主机或单独数据卷，人工检查后再启动业务
+服务；脚本不会执行 `down -v`，也不会删除生产数据卷。
+
+### 8.3 RPO/RTO 与自动化
+
+- 默认快照是 PostgreSQL 完整逻辑备份；Redis 使用 RDB，评测队列属于可恢复的瞬态
+  数据，故障后允许重新提交或重新入队。
+- 可按 6 小时执行一次 `backup`，将业务 RPO 目标设为不超过 6 小时；实际 RPO 取决于
+  调度器是否成功完成并收到告警。需要分钟级 RPO 时，应额外配置 PostgreSQL WAL/PITR
+  和异地对象存储，不能只依赖本脚本。
+- RTO 由 PostgreSQL 数据量、对象数量和网络决定。每月至少在隔离环境跑一次实际
+  `restore --confirm`，记录从快照开始到健康检查通过的耗时，作为真实 RTO 基线。
+- 建议由 systemd timer、cron 或外部调度平台执行 `backup.sh create`，并对非零退出码、
+  磁盘空间不足、`verify` 失败和恢复演练失败发送告警。备份目录应同步到与生产主机
+  不同故障域的加密存储。
 
 密钥轮换和失效步骤见[生产密钥轮换 Runbook](./production-secrets)。
