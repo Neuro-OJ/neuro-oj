@@ -29,6 +29,16 @@ cd noj-core && deno task check:prod
 cd ..
 ```
 
+也可以使用仓库提供的生产部署入口完成检查和启动：
+
+```bash
+bash scripts/deploy/deploy.sh install
+```
+
+首次执行会创建权限为 `600` 的 `.env.prod` 并生成部分随机密钥，然后停止并提示
+填写域名、版本、邮件 Provider、管理员账号和 Judge 隔离 Docker socket。填写完成
+后再次执行同一命令即可继续部署。
+
 `.env.prod` 中必须填写：
 
 | 变量 | 说明 |
@@ -64,16 +74,22 @@ cd ..
 # 并将解密后的 HTTP 流量转发到本机 ${NGINX_PORT:-8080} 端口（默认 8080）。
 # 示例见 deploy/README.md。
 
-# 4) 执行一次性初始化（迁移 + 系统数据 + 管理员）
+# 4) 手动方式：执行一次性初始化（迁移 + 系统数据 + 管理员）
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d migrate
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs migrate
 
-# 5) 启动全部服务
+# 5) 手动方式：启动全部服务
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 
 # 6) 查看状态
 docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 curl https://你的域名/healthz
+```
+
+使用部署脚本时，上述初始化、启动和健康检查由以下命令统一完成：
+
+```bash
+bash scripts/deploy/deploy.sh install
 ```
 
 > 评测 Worker 不得挂载应用宿主机的 `/var/run/docker.sock`。生产 Compose 要求
@@ -121,6 +137,19 @@ ghcr.io/neuro-oj/noj-solution-python   all_versions  solution
 - 轮换 `NOJ_LLM_STORE_KEY` 后，需要用新主密钥重新加密所有 Provider Key。
 
 ## 4. 日常运维
+
+推荐使用部署脚本：
+
+```bash
+bash scripts/deploy/deploy.sh status
+bash scripts/deploy/deploy.sh logs core
+bash scripts/deploy/deploy.sh logs judge --follow
+bash scripts/deploy/deploy.sh backup
+```
+
+`backup` 只创建 PostgreSQL custom-format 备份；Redis、MinIO 和 `.env.prod` 的备份
+仍需按照 [备份与灾备 Issue #326](https://github.com/Neuro-OJ/neuro-oj/issues/326)
+另行规划，备份文件默认保存在仓库根目录的 `backups/` 且权限为 `600`。
 
 ```bash
 # 查看服务状态

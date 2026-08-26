@@ -31,7 +31,27 @@ server {
 }
 ```
 
-## 启动
+## 生产部署脚本
+
+推荐使用仓库根目录的部署入口，脚本会检查生产配置、保护环境文件、复用生产
+Compose、等待健康检查，并且不会删除数据卷：
+
+```bash
+# 首次执行：创建 .env.prod 和随机密钥；填写提示的人工配置后再次执行
+bash scripts/deploy/deploy.sh install
+
+# 日常运维
+bash scripts/deploy/deploy.sh status
+bash scripts/deploy/deploy.sh logs core
+bash scripts/deploy/deploy.sh backup
+bash scripts/deploy/deploy.sh upgrade
+```
+
+镜像拉取由 Docker daemon 负责。若官方源访问不稳定，请在 Docker daemon 配置
+registry mirror 或 HTTP(S) proxy 后重试；评测镜像仍可通过 `JUDGE_IMAGE_BASE`
+配置镜像前缀。部署脚本不会把代理凭据写入仓库或日志。
+
+## 手动启动
 
 ```bash
 cp .env.prod.example .env.prod
