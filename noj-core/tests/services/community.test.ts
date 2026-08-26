@@ -542,7 +542,12 @@ Deno.test({
       category: "违法违规",
     });
     await assertRejects(
-      () => createReport(observerId, { post_id: post.id, reason: "重复举报", category: "违法违规" }),
+      () =>
+        createReport(observerId, {
+          post_id: post.id,
+          reason: "重复举报",
+          category: "违法违规",
+        }),
       ConflictError,
       "已举报该内容",
     );

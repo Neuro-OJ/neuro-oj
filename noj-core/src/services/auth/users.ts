@@ -173,7 +173,9 @@ export async function listUsers(
       ? {
         reason: row.ban_reason!,
         banned_until: row.ban_until,
-        scope: (row.ban_scope === "social" ? "social" : "platform") as "platform" | "social",
+        scope: (row.ban_scope === "social" ? "social" : "platform") as
+          | "platform"
+          | "social",
       }
       : null,
   }));

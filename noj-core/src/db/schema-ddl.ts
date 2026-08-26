@@ -404,6 +404,7 @@ export const SCHEMA_DDL: string[] = [
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     reason TEXT NOT NULL DEFAULT '',
+    scope TEXT NOT NULL DEFAULT 'platform' CHECK (scope IN ('platform', 'social')),
     banned_until TEXT,
     banned_at TEXT NOT NULL,
     banned_by TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -510,21 +511,6 @@ export const SCHEMA_DDL: string[] = [
     UNIQUE (actor_id, type, subject_type, subject_id)
   )`,
 
-  `CREATE TABLE IF NOT EXISTS community_reports (
-    id TEXT PRIMARY KEY,
-    reporter_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    post_id TEXT REFERENCES community_posts(id) ON DELETE SET NULL,
-    comment_id TEXT REFERENCES community_comments(id) ON DELETE SET NULL,
-    reason TEXT NOT NULL,
-    content_snapshot TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'resolved', 'dismissed')),
-    resolution TEXT,
-    resolved_by TEXT REFERENCES users(id) ON DELETE SET NULL,
-    resolved_at TEXT,
-    created_at TEXT NOT NULL,
-    CHECK (num_nonnulls(post_id, comment_id) = 1)
-  )`,
-
   `CREATE TABLE IF NOT EXISTS community_moderation_actions (
     id TEXT PRIMARY KEY,
     moderator_id TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -547,11 +533,30 @@ export const SCHEMA_DDL: string[] = [
     revoked_by TEXT REFERENCES users(id) ON DELETE SET NULL
   )`,
 
+  `CREATE TABLE IF NOT EXISTS community_reports (
+    id TEXT PRIMARY KEY,
+    reporter_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    post_id TEXT REFERENCES community_posts(id) ON DELETE SET NULL,
+    comment_id TEXT REFERENCES community_comments(id) ON DELETE SET NULL,
+    content_type TEXT NOT NULL DEFAULT 'post',
+    sanction_id TEXT REFERENCES community_sanctions(id) ON DELETE SET NULL,
+    ban_id TEXT REFERENCES user_bans(id) ON DELETE SET NULL,
+    category TEXT NOT NULL DEFAULT '其他' CHECK (category IN ('违法违规', '人身侵权', '涉嫌欺诈', '侵权抄袭', '垃圾信息', '站外风险引流', 'AI生成内容问题', '其他')),
+    reason TEXT NOT NULL,
+    content_snapshot TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'resolved', 'dismissed')),
+    resolution TEXT,
+    resolved_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    resolved_at TEXT,
+    created_at TEXT NOT NULL,
+    CHECK (num_nonnulls(post_id, comment_id) = 1)
+  )`,
+
   `CREATE TABLE IF NOT EXISTS community_notifications (
     id TEXT PRIMARY KEY,
     recipient_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     actor_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-    type TEXT NOT NULL CHECK (type IN ('reply', 'like', 'follow', 'moderation', 'clarification')),
+    type TEXT NOT NULL CHECK (type IN ('reply', 'like', 'follow', 'moderation', 'clarification', 'report', 'ban')),
     post_id TEXT REFERENCES community_posts(id) ON DELETE SET NULL,
     comment_id TEXT REFERENCES community_comments(id) ON DELETE SET NULL,
     data JSONB NOT NULL DEFAULT '{}',

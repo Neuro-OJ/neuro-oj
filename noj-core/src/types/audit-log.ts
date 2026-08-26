@@ -45,7 +45,12 @@ export type AuditAction =
 /** 按 action 强类型的 detail（discriminated union） */
 export type AuditDetail =
   | { action: "users.role_change"; from: string; to: string }
-  | { action: "users.ban"; reason: string; until: string | null; scope?: "platform" | "social" }
+  | {
+    action: "users.ban";
+    reason: string;
+    until: string | null;
+    scope?: "platform" | "social";
+  }
   | { action: "users.unban" }
   | { action: "problems.delete"; title: string; display_id: string }
   | {

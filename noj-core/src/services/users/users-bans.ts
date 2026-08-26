@@ -123,7 +123,12 @@ export async function banUser(
   invalidateBanCache({ userId: targetUserId });
   await logAudit(
     "users.ban",
-    { action: "users.ban", reason: reason ?? "", until: bannedUntil ?? null, scope },
+    {
+      action: "users.ban",
+      reason: reason ?? "",
+      until: bannedUntil ?? null,
+      scope,
+    },
     { type: "users", id: targetUserId },
   );
 
@@ -237,7 +242,9 @@ export async function getUserBanHistory(
 }
 
 /** 获取用户最新一条活跃封禁记录的 id（供举报处理关联 ban_id）。 */
-export async function getLatestActiveBanId(userId: string): Promise<string | undefined> {
+export async function getLatestActiveBanId(
+  userId: string,
+): Promise<string | undefined> {
   const rows = await getDb().select({ id: userBans.id })
     .from(userBans)
     .where(and(eq(userBans.user_id, userId), isNull(userBans.unbanned_at)))

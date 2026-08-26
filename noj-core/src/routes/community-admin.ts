@@ -147,7 +147,12 @@ router.delete("/admin/boards/:boardId/role-grants/:roleId", async (c) => {
 router.get(
   "/admin/reports",
   async (c) => {
-    const status = c.req.query("status") as "pending" | "resolved" | "dismissed" | "all" | undefined;
+    const status = c.req.query("status") as
+      | "pending"
+      | "resolved"
+      | "dismissed"
+      | "all"
+      | undefined;
     const s = status ?? "pending";
     if (!["pending", "resolved", "dismissed", "all"].includes(s)) {
       throw new BadRequestError("无效举报状态");
@@ -197,7 +202,12 @@ router.post("/admin/reports/:reportId/:status", async (c) => {
   // 驳回：仅标记，不处理内容/用户
   if (status === "dismissed") {
     return c.json({
-      data: await resolveReport(reportId, actorId, "dismissed", body.resolution),
+      data: await resolveReport(
+        reportId,
+        actorId,
+        "dismissed",
+        body.resolution,
+      ),
     });
   }
 
@@ -218,7 +228,9 @@ router.post("/admin/reports/:reportId/:status", async (c) => {
     if (body.scope !== "platform") {
       const existing = await getUserBanState(targetUserId);
       if (existing.banned && existing.scope === "platform") {
-        throw new BadRequestError("该用户已被平台级封禁，如需调整请使用管理员封禁功能");
+        throw new BadRequestError(
+          "该用户已被平台级封禁，如需调整请使用管理员封禁功能",
+        );
       }
     }
     const created = await banUser(
@@ -228,7 +240,9 @@ router.post("/admin/reports/:reportId/:status", async (c) => {
       actorId,
       body.scope ?? "social",
     );
-    banId = created.active_ban ? await getLatestActiveBanId(targetUserId) : undefined;
+    banId = created.active_ban
+      ? await getLatestActiveBanId(targetUserId)
+      : undefined;
   } else {
     // 默认移除内容：隐藏帖子或评论
     const reason = body.resolution || "被举报隐藏";

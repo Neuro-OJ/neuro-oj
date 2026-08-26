@@ -18,7 +18,10 @@ import {
   assertCommunityEnabled,
   getCommunityConfig,
 } from "./community-config.ts";
-import { REPORT_CATEGORIES, type ReportCategory } from "../../types/community.ts";
+import {
+  REPORT_CATEGORIES,
+  type ReportCategory,
+} from "../../types/community.ts";
 import { reloadSingleKey, updateSetting } from "../system-settings.ts";
 import { nowIso } from "../../lib/dates.ts";
 import { createNotification } from "../notifications.ts";
@@ -28,7 +31,12 @@ export { banUser, getLatestActiveBanId } from "../users/users-bans.ts";
 
 export async function createReport(
   reporterId: string,
-  input: { post_id?: string; comment_id?: string; reason: string; category?: string },
+  input: {
+    post_id?: string;
+    comment_id?: string;
+    reason: string;
+    category?: string;
+  },
 ) {
   assertCommunityEnabled();
   if (!!input.post_id === !!input.comment_id) {
@@ -103,9 +111,13 @@ export async function createReport(
   return report;
 }
 
-export function listReports(status: "pending" | "resolved" | "dismissed" | "all" = "pending") {
+export function listReports(
+  status: "pending" | "resolved" | "dismissed" | "all" = "pending",
+) {
   const db = getDb();
-  const conditions = status === "all" ? [] : [eq(communityReports.status, status)];
+  const conditions = status === "all"
+    ? []
+    : [eq(communityReports.status, status)];
   const targetAuthor = aliasedTable(users, "target_author");
   const resolvedByUser = aliasedTable(users, "resolved_by_user");
   return db.select({
@@ -232,17 +244,26 @@ export async function reopenReport(reportId: string) {
     // 恢复被隐藏的内容（处理时若隐藏了帖子/评论则恢复为 published）
     if (current[0].post_id) {
       const post = await tx.select({ status: communityPosts.status })
-        .from(communityPosts).where(eq(communityPosts.id, current[0].post_id)).limit(1);
+        .from(communityPosts).where(eq(communityPosts.id, current[0].post_id))
+        .limit(1);
       if (post[0] && post[0].status === "hidden") {
-        await tx.update(communityPosts).set({ status: "published", updated_at: nowIso() })
+        await tx.update(communityPosts).set({
+          status: "published",
+          updated_at: nowIso(),
+        })
           .where(eq(communityPosts.id, current[0].post_id));
       }
     }
     if (current[0].comment_id) {
       const comment = await tx.select({ status: communityComments.status })
-        .from(communityComments).where(eq(communityComments.id, current[0].comment_id)).limit(1);
+        .from(communityComments).where(
+          eq(communityComments.id, current[0].comment_id),
+        ).limit(1);
       if (comment[0] && comment[0].status === "hidden") {
-        await tx.update(communityComments).set({ status: "published", updated_at: nowIso() })
+        await tx.update(communityComments).set({
+          status: "published",
+          updated_at: nowIso(),
+        })
           .where(eq(communityComments.id, current[0].comment_id));
       }
     }
@@ -254,7 +275,9 @@ export async function reopenReport(reportId: string) {
       await tx.update(userBans).set({
         unbanned_at: nowIso(),
         unbanned_by: null,
-      }).where(and(eq(userBans.id, current[0].ban_id), isNull(userBans.unbanned_at)));
+      }).where(
+        and(eq(userBans.id, current[0].ban_id), isNull(userBans.unbanned_at)),
+      );
       if (banRows[0]) {
         invalidateBanCache({ userId: banRows[0].user_id });
       }
@@ -264,7 +287,12 @@ export async function reopenReport(reportId: string) {
       await tx.update(communitySanctions).set({
         revoked_at: nowIso(),
         revoked_by: null,
-      }).where(and(eq(communitySanctions.id, current[0].sanction_id), isNull(communitySanctions.revoked_at)));
+      }).where(
+        and(
+          eq(communitySanctions.id, current[0].sanction_id),
+          isNull(communitySanctions.revoked_at),
+        ),
+      );
     }
 
     return await tx.update(communityReports).set({
@@ -284,7 +312,11 @@ export async function reopenReport(reportId: string) {
       "report",
       rows[0].post_id,
       rows[0].comment_id,
-      { report_id: reportId, status: "pending", message: "你的举报已重新开启，等待管理员审核" },
+      {
+        report_id: reportId,
+        status: "pending",
+        message: "你的举报已重新开启，等待管理员审核",
+      },
     );
   }
   return rows[0];
@@ -317,7 +349,9 @@ export async function getReportTarget(reportId: string) {
 }
 
 /** 举报关联封禁的 scope（用于撤销时判断是否需要管理员权限）。 */
-export async function getReportBanScope(reportId: string): Promise<"platform" | "social" | null> {
+export async function getReportBanScope(
+  reportId: string,
+): Promise<"platform" | "social" | null> {
   const db = getDb();
   const rows = await db.select({ scope: userBans.scope })
     .from(communityReports)
@@ -330,7 +364,8 @@ export async function getReportBanScope(reportId: string): Promise<"platform" | 
 /**
  * 获取单个举报详情（供用户可见的举报工单页）。
  * 仅举报者本人或审核员可查看。
- */export async function getReportDetail(reportId: string, viewerId: string) {
+ */
+export async function getReportDetail(reportId: string, _viewerId: string) {
   const db = getDb();
   const rows = await db.select({
     report: communityReports,

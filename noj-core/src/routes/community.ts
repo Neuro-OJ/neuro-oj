@@ -414,7 +414,12 @@ router.post("/reports", authMiddleware, async (c) => {
   // social 封禁用户不可提交举报（防止作为骚扰/滥用通道）
   await assertCommunityWritable(actorId, await isModerator(c));
   const body = await parseJsonBody<
-    { post_id?: string; comment_id?: string; reason?: string; category?: string }
+    {
+      post_id?: string;
+      comment_id?: string;
+      reason?: string;
+      category?: string;
+    }
   >(c);
   if (!body.reason?.trim()) throw new BadRequestError("缺少举报原因");
   return c.json({
@@ -424,7 +429,10 @@ router.post("/reports", authMiddleware, async (c) => {
 // 举报工单详情（举报者本人可查，供用户可见的举报工单页）
 router.get("/reports/:reportId", authMiddleware, async (c) => {
   const actorId = userId(c);
-  const detail = await getReportDetail(c.req.param("reportId") as string, actorId);
+  const detail = await getReportDetail(
+    c.req.param("reportId") as string,
+    actorId,
+  );
   if (detail.report.reporter_id !== actorId && !(await isModerator(c))) {
     throw new ForbiddenError("无权查看该举报");
   }
