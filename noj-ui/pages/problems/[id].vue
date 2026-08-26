@@ -20,6 +20,7 @@ const { data, pending, error, refresh } = useFetch<{
     display_id: string
     type: string
     owner_id: string
+    owner_username?: string
     number: number
     is_objective: boolean
     tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
@@ -165,6 +166,13 @@ const publishBlockReason = computed(() => {
                 </span>
               </div>
               <h1 class="text-2xl font-bold mb-3 text-text">{{ problem.title }}</h1>
+              <!-- 创建者（用户题库 U 型展示；主题库为平台官方题） -->
+              <UserIdentity
+                v-if="problem.type === 'U' && problem.owner_username"
+                :user="{ id: problem.owner_id, username: problem.owner_username }"
+                size="sm"
+                class="mb-3"
+              />
             </div>
             <div class="flex items-center gap-2">
               <AddToTrainingMenu v-if="isLoggedIn" :problem-id="problem.id" />

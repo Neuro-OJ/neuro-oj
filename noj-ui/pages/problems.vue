@@ -17,6 +17,7 @@ interface ProblemItem {
   display_id: string
   type: string
   owner_id: string
+  owner_username?: string
   number: number
   is_objective: boolean
   created_at: string
@@ -175,6 +176,10 @@ const columns = computed(() => {
     { accessorKey: "memory", header: "内存" },
     { accessorKey: "rate", header: "通过率" },
   ]
+  // 用户题库（U 型）展示创建者；主题库（P 型）为平台官方题，不展示
+  if (problemType.value === 'U') {
+    base.splice(2, 0, { accessorKey: "owner", header: "创建者" })
+  }
   if (isLoggedIn.value) base.push({ accessorKey: "status", header: "状态" })
   if (!isDesktop.value) {
     return base.filter((c) => !["tags", "time", "memory", "rate", "status"].includes(c.accessorKey))
@@ -234,6 +239,12 @@ const columns = computed(() => {
             >
               {{ row.original.title }}
             </NuxtLink>
+          </template>
+          <template #owner-cell="{ row }">
+            <UserIdentity
+              :user="{ id: row.original.owner_id, username: row.original.owner_username || '未知' }"
+              size="sm"
+            />
           </template>
           <template #difficulty-cell="{ row }">
             <!-- 客观题：在难度位置标记为「客观题」 -->
