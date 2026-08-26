@@ -248,6 +248,7 @@ pub async fn evaluate_dual_with_cpu_limit(
     runtime_config: &RuntimeConfig,
     user_code: &str,
     support_pkg_bytes: Option<&[u8]>,
+    artifact_zip_bytes: Option<&[u8]>,
     task_rejudge_seq: Option<i64>,
     task_llm: Option<&JudgeTaskLlm>,
     cpu_limit_millicores: u64,
@@ -323,15 +324,27 @@ pub async fn evaluate_dual_with_cpu_limit(
         info!("无支持包，跳过注入");
     }
 
-    // 4. 注入用户代码到 Solution 容器（入口文件名硬编码，见 SOLUTION_ENTRY_FILE）
-    inject_file_to_container(
-        &docker,
-        &solution_id,
-        SOLUTION_ENTRY_FILE,
-        user_code.as_bytes(),
-    )
-    .await
-    .context("注入用户代码到 Solution 容器失败")?;
+    // 4. 注入用户代码/artifact 到 Solution 容器
+    let solution_entry_file = if artifact_zip_bytes.is_some() {
+        "submission.py"
+    } else {
+        SOLUTION_ENTRY_FILE
+    };
+    if let Some(artifact_bytes) = artifact_zip_bytes {
+        info!("注入 artifact zip 到 Solution 容器 ({} bytes)", artifact_bytes.len());
+        inject_support_package_to_evaluator(&docker, &solution_id, artifact_bytes)
+            .await
+            .context("注入 artifact zip 到 Solution 容器失败")?;
+    } else {
+        inject_file_to_container(
+            &docker,
+            &solution_id,
+            SOLUTION_ENTRY_FILE,
+            user_code.as_bytes(),
+        )
+        .await
+        .context("注入用户代码到 Solution 容器失败")?;
+    }
 
     // 5. 构造 Evaluator 环境变量（LLM 任务注入 gateway 地址与 eval_token）
     let evaluator_env = task_llm.map(build_llm_env).unwrap_or_default();
@@ -342,7 +355,7 @@ pub async fn evaluate_dual_with_cpu_limit(
         .context("启动 Evaluator exec 失败")?;
 
     // 7. 启动 Solution exec（Solution 容器不注入任何 NOJ_LLM_* 环境变量）
-    let solution_entry_path = format!("/workspace/{}", SOLUTION_ENTRY_FILE);
+    let solution_entry_path = format!("/workspace/{}", solution_entry_file);
     let solution_exec = start_exec(
         &docker,
         &solution_id,
@@ -866,19 +879,17 @@ fn build_judge_result(
     rejudge_seq: Option<i64>,
 ) -> JudgeResult {
     let full_output = crate::merge_output(stdout, stderr);
-    let raw_status = parsed
-        .get("status")
-        .and_then(Value::as_str)
-        .unwrap_or(JudgeStatus::SystemError.as_str());
+    // evaluate.py 结果 JSON 不再输出 status；即使携带旧 status 也统一映射为
+    // finished / error，分数是唯一结果。
+    let raw_status = parsed.get("status").and_then(Value::as_str);
     let status = match raw_status {
-        "Accepted"
-        | "WrongAnswer"
-        | "TimeLimitExceeded"
-        | "MemoryLimitExceeded"
-        | "RuntimeError"
-        | "SystemError" => raw_status.to_string(),
-        _ => JudgeStatus::SystemError.as_str().to_string(),
-    };
+        Some(
+            "error" | "SystemError" | "TimeLimitExceeded" | "MemoryLimitExceeded"
+            | "RuntimeError",
+        ) => "error",
+        _ => "finished",
+    }
+    .to_string();
     let score = parsed
         .get("score")
         .and_then(Value::as_i64)
@@ -969,7 +980,7 @@ mod tests {
         });
         let r = build_judge_result("sid-1", &parsed, "", "", Some(7));
         assert_eq!(r.rejudge_seq, Some(7));
-        assert_eq!(r.status, "Accepted");
+        assert_eq!(r.status, "finished");
         assert_eq!(r.score, 10000);
     }
 
@@ -981,7 +992,7 @@ mod tests {
             "details": {"message": "expected 3 got 4"}
         });
         let r = build_judge_result("sid-2", &parsed, "stderr", "stdout", None);
-        assert_eq!(r.status, "WrongAnswer");
+        assert_eq!(r.status, "finished");
         assert!(r.output.contains("stderr"));
     }
 
@@ -989,7 +1000,7 @@ mod tests {
     fn test_build_judge_result_missing_fields() {
         let parsed = serde_json::json!({});
         let r = build_judge_result("sid-3", &parsed, "", "", None);
-        assert_eq!(r.status, "SystemError");
+        assert_eq!(r.status, "finished");
         assert_eq!(r.score, 0);
     }
 

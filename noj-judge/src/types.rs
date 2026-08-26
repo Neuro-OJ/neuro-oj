@@ -24,6 +24,7 @@ pub enum JudgeStatus {
 
 impl JudgeStatus {
     /// 返回状态的字符串表示，用于序列化和日志记录。
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
         match self {
             JudgeStatus::Accepted => "Accepted",
@@ -93,6 +94,9 @@ pub struct JudgeTask {
     pub problem_id: String,
     /// 支持包下载 URL（`noj-download://` 格式）
     pub download_url: Option<String>,
+    /// artifact 提交的下载 URL（`noj-download://` 格式），仅 artifact 模式携带
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_download_url: Option<String>,
     /// 双容器 Runtime 配置（必填）
     pub runtime_config: RuntimeConfig,
     /// 编程语言标识
@@ -152,11 +156,11 @@ impl JudgeResult {
         )
     }
 
-    /// 构造一个超时结果。
+    /// 构造一个超时结果（统一映射为 error）。
     pub fn timeout(submission_id: &str, output: &str, rejudge_seq: Option<i64>) -> Self {
         Self {
             submission_id: submission_id.to_string(),
-            status: JudgeStatus::TimeLimitExceeded.as_str().to_string(),
+            status: "error".to_string(),
             score: 0,
             output: output.to_string(),
             details: Self::empty_details(),
@@ -170,7 +174,7 @@ impl JudgeResult {
     pub fn system_error(submission_id: &str, output: &str, rejudge_seq: Option<i64>) -> Self {
         Self {
             submission_id: submission_id.to_string(),
-            status: JudgeStatus::SystemError.as_str().to_string(),
+            status: "error".to_string(),
             score: 0,
             output: output.to_string(),
             details: Self::empty_details(),
@@ -344,7 +348,7 @@ mod tests {
     fn test_judge_result_error() {
         let r = JudgeResult::error("sid-err", Some(9));
         assert_eq!(r.submission_id, "sid-err");
-        assert_eq!(r.status, "SystemError");
+        assert_eq!(r.status, "error");
         assert_eq!(r.score, 0);
         assert_eq!(r.details, json!({}));
         assert_eq!(r.rejudge_seq, Some(9));
@@ -353,7 +357,7 @@ mod tests {
     #[test]
     fn test_judge_result_timeout() {
         let r = JudgeResult::timeout("sid-tle", "timeout output", Some(3));
-        assert_eq!(r.status, "TimeLimitExceeded");
+        assert_eq!(r.status, "error");
         assert_eq!(r.score, 0);
         assert_eq!(r.output, "timeout output");
         assert_eq!(r.rejudge_seq, Some(3));
@@ -362,7 +366,7 @@ mod tests {
     #[test]
     fn test_judge_result_system_error() {
         let r = JudgeResult::system_error("sid-se", "评测脚本未输出结果标记", Some(6));
-        assert_eq!(r.status, "SystemError");
+        assert_eq!(r.status, "error");
         assert_eq!(r.score, 0);
         assert_eq!(r.output, "评测脚本未输出结果标记");
         assert_eq!(r.rejudge_seq, Some(6));

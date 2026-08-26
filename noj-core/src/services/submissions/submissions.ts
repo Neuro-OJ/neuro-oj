@@ -22,6 +22,8 @@ export {
   resolveSubmissionId,
 } from "./submissions-crud.ts";
 
+export { createArtifactSubmission } from "./artifact-submissions.ts";
+
 export {
   saveEvaluationResult,
   updateSubmissionStatus,

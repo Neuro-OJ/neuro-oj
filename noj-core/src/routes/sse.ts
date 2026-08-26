@@ -284,16 +284,6 @@ contestSse.get(
         Channels.contestSubmission(contestId),
         (_channel, message) => {
           if (streamClosed) return;
-          if (
-            contest.type === "oi" && contest.status === "running" && !isAdmin
-          ) {
-            try {
-              const event = JSON.parse(message) as { user_id?: string };
-              if (!viewerId || event.user_id !== viewerId) return;
-            } catch {
-              return;
-            }
-          }
           // 非 admin 订阅者隐藏 user_id，避免泄露“谁在提交哪题”。
           let payload = message;
           if (!isAdmin) {

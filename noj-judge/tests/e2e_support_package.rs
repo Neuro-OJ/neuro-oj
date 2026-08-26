@@ -39,7 +39,7 @@ e2e_test!(
             "stdout 应包含 ---RESULT--- 标记"
         );
         assert!(
-            output.stdout.contains("Accepted"),
+            output.stdout.contains("finished"),
             "stdout 应包含 'Accepted'"
         );
         let _ = std::fs::remove_dir_all(&work_dir);

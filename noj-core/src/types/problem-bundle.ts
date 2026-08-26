@@ -17,6 +17,7 @@ import {
   isValidDifficulty,
   isValidLlmConfig,
   isValidProblemType,
+  isValidSubmissionMode,
   type LlmConfig,
   type RuntimeConfig,
 } from "./problems.ts";
@@ -58,6 +59,10 @@ export interface ProblemBundleManifest {
   samples?: ProblemBundleSample[];
   /** 模板文件索引（纯文件名，缺省默认 "template.py"）：前端编辑器初始代码 */
   template?: string;
+  /** 提交模式：code（默认）或 artifact */
+  submission_mode?: string;
+  /** artifact 提交大小上限（MB），可空 */
+  artifact_max_size_mb?: number | null;
   /** LLM 配置（可空）：仅 P 型/官方题可启用，且必须开启 evaluator 网络 */
   llm?: LlmConfig;
   runtime_config: RuntimeConfig;
@@ -190,6 +195,27 @@ export function validateBundleManifest(
     }
   }
 
+  // 提交模式校验
+  if (
+    m.submission_mode !== undefined &&
+    !isValidSubmissionMode(m.submission_mode as string)
+  ) {
+    throw new BadRequestError(
+      `非法提交模式：${String(m.submission_mode)}，仅允许 code / artifact`,
+    );
+  }
+
+  // artifact 大小上限校验
+  if (
+    m.artifact_max_size_mb !== undefined &&
+    m.artifact_max_size_mb !== null &&
+    (typeof m.artifact_max_size_mb !== "number" ||
+      !Number.isInteger(m.artifact_max_size_mb) ||
+      m.artifact_max_size_mb <= 0)
+  ) {
+    throw new BadRequestError("manifest.artifact_max_size_mb 必须为正整数或 null");
+  }
+
   // LLM 配置校验：仅 P 型/官方题可启用，且必须开启 evaluator 网络。
   let llm: LlmConfig | undefined;
   if (m.llm !== undefined && m.llm !== null) {
@@ -226,6 +252,8 @@ export function validateBundleManifest(
     tags: m.tags as string[] | undefined,
     samples: m.samples as ProblemBundleSample[] | undefined,
     template: m.template as string | undefined,
+    submission_mode: m.submission_mode as string | undefined,
+    artifact_max_size_mb: m.artifact_max_size_mb as number | null | undefined,
     llm,
     runtime_config: runtimeConfig,
   };

@@ -66,6 +66,8 @@ function toProblemResponse(
     owner_id: row.owner_id,
     type: row.type,
     is_objective: row.is_objective,
+    submission_mode: row.submission_mode as ProblemResponse["submission_mode"],
+    artifact_max_size_mb: row.artifact_max_size_mb,
     display_id: `${row.type}${row.number}`,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -287,6 +289,8 @@ export async function listAllProblems(
       owner_username: users.username,
       type: problems.type,
       is_objective: problems.is_objective,
+      submission_mode: problems.submission_mode,
+      artifact_max_size_mb: problems.artifact_max_size_mb,
     })
     .from(problems)
     .leftJoin(users, eq(problems.owner_id, users.id))
@@ -321,6 +325,8 @@ export async function listAllProblems(
       owner_username: r.owner_username ?? "未知",
       type: r.type,
       is_objective: r.is_objective,
+      submission_mode: r.submission_mode as ProblemResponse["submission_mode"],
+      artifact_max_size_mb: r.artifact_max_size_mb,
       display_id: `${r.type}${r.number}`,
     })),
     total,
@@ -468,7 +474,8 @@ async function hasAcceptedSubmission(
       and(
         eq(submissions.problem_id, problemId),
         eq(submissions.user_id, userId),
-        eq(evaluationResults.status, "Accepted"),
+        eq(evaluationResults.status, "finished"),
+        sql`${evaluationResults.score} > 0`,
       ),
     )
     .limit(1);

@@ -1,5 +1,8 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
+import busboy from "busboy";
+import { Readable } from "node:stream";
 import {
+  createArtifactSubmission,
   createSubmission,
   getSubmission,
   listSubmissions,
@@ -93,6 +96,52 @@ router.get("/", authMiddleware, async (c) => {
 });
 
 /**
+ * 解析 artifact 提交的 multipart/form-data 请求。
+ * 使用 busboy 流式解析，文件以 web ReadableStream 返回，避免整包读入内存。
+ */
+function parseArtifactMultipart(
+  c: Context,
+): Promise<{
+  problem_id: string;
+  file_name: string;
+  file_stream: ReadableStream<Uint8Array>;
+}> {
+  return new Promise((resolve, reject) => {
+    const contentType = c.req.header("content-type");
+    if (!contentType) {
+      reject(new BadRequestError("缺少 Content-Type"));
+      return;
+    }
+    const bb = busboy({ headers: { "content-type": contentType } });
+    let problemId = "";
+    let fileName = "";
+    let fileStream: ReadableStream<Uint8Array> | null = null;
+
+    bb.on("field", (name: string, val: string) => {
+      if (name === "problem_id") problemId = val;
+    });
+    bb.on("file", (name: string, file: any, info: any) => {
+      if (name === "file") {
+        fileName = info.filename;
+        fileStream = Readable.toWeb(file) as unknown as ReadableStream<Uint8Array>;
+      } else {
+        file.resume();
+      }
+    });
+    bb.on("error", (err: unknown) => reject(err));
+    bb.on("close", () => {
+      if (!problemId || !fileName || !fileStream) {
+        reject(new BadRequestError("缺少必填字段：problem_id 或 file"));
+        return;
+      }
+      resolve({ problem_id: problemId, file_name: fileName, file_stream: fileStream });
+    });
+
+    Readable.fromWeb(c.req.raw.body as any).pipe(bb);
+  });
+}
+
+/**
  * 创建提交。
  */
 router.post("/", authMiddleware, async (c) => {
@@ -100,6 +149,13 @@ router.post("/", authMiddleware, async (c) => {
 
   // NOJ-069：提交创建 IP + 用户双维度限流。
   await enforceSubmissionRateLimit(c, userId);
+
+  const contentType = c.req.header("content-type") ?? "";
+  if (contentType.startsWith("multipart/form-data")) {
+    const parsed = await parseArtifactMultipart(c);
+    const result = await createArtifactSubmission(userId, parsed);
+    return c.json({ data: result }, 201);
+  }
 
   const body = await parseJsonBody<Record<string, unknown>>(c);
 

@@ -39,6 +39,7 @@ fn dual_task() -> JudgeTask {
         submission_id: format!("sub-{}", uuid::Uuid::new_v4()),
         problem_id: "1001".to_string(),
         download_url: None,
+        artifact_download_url: None,
         runtime_config: RuntimeConfig {
             evaluator: EvaluatorRuntime {
                 image: "noj-judge-test-runner:latest".to_string(),
@@ -445,7 +446,7 @@ sys.stdout.flush()
     assert_eq!(frames[2]["args"][0], 2);
     assert!(result_payload.is_some(), "应捕获 RESULT 后的 JSON");
     let parsed: serde_json::Value = serde_json::from_str(&result_payload.unwrap()).unwrap();
-    assert_eq!(parsed["status"], "Accepted");
+    assert_eq!(parsed["status"], "finished");
     assert_eq!(parsed["score"], 10000);
 
     cleanup_container(&docker, &id).await;
@@ -645,6 +646,7 @@ async fn evaluate_dual_end_to_end() {
         None,
         None,
         None,
+        None,
         1000,
         true,
         "bridge",
@@ -717,6 +719,7 @@ except Exception as e:
             None,
             None,
             None,
+            None,
             1000,
             true,
             "bridge",
@@ -730,7 +733,7 @@ except Exception as e:
     .expect("评测 30s 外层超时")
     .expect("评测应正常返回");
 
-    assert_eq!(result.status, "Accepted");
+    assert_eq!(result.status, "finished");
     let cases = result.details["cases"].as_array().expect("details.cases");
     assert_eq!(
         cases[0]["status"].as_str().unwrap(),
@@ -799,6 +802,7 @@ result.accept(score=1000, details={'cases': out})
             None,
             None,
             None,
+            None,
             1000,
             true,
             "bridge",
@@ -812,7 +816,7 @@ result.accept(score=1000, details={'cases': out})
     .expect("评测 30s 外层超时")
     .expect("评测应正常返回");
 
-    assert_eq!(result.status, "Accepted");
+    assert_eq!(result.status, "finished");
     let cases = result.details["cases"].as_object().expect("details.cases");
     assert_eq!(
         cases["slow"].as_str().unwrap(),
@@ -881,6 +885,7 @@ except Exception as e:
             None,
             None,
             None,
+            None,
             1000,
             true,
             "bridge",
@@ -894,7 +899,7 @@ except Exception as e:
     .expect("评测 30s 外层超时")
     .expect("评测应正常返回");
 
-    assert_eq!(result.status, "Accepted");
+    assert_eq!(result.status, "finished");
     let cap = &result.details["cap"];
     assert_eq!(
         cap["status"].as_str().unwrap(),
@@ -953,6 +958,7 @@ while True:
             None,
             None,
             None,
+            None,
             1000,
             true,
             "bridge",
@@ -967,7 +973,7 @@ while True:
     .expect("评测应正常返回");
 
     assert_eq!(
-        result.status, "SystemError",
+        result.status, "error",
         "evaluator 总超时应归 SystemError: {:?}",
         result
     );
@@ -1017,6 +1023,7 @@ runner.call('sleep_solution')
             None,
             None,
             None,
+            None,
             1000,
             true,
             "bridge",
@@ -1031,7 +1038,7 @@ runner.call('sleep_solution')
     .expect("评测应正常返回");
 
     assert_eq!(
-        result.status, "TimeLimitExceeded",
+        result.status, "error",
         "CallTimeout 未处理应归 TLE: {:?}",
         result
     );
@@ -1088,6 +1095,7 @@ except SolutionTimeoutError:
             None,
             None,
             None,
+            None,
             1000,
             true,
             "bridge",
@@ -1102,7 +1110,7 @@ except SolutionTimeoutError:
     .expect("评测应正常返回");
 
     assert_eq!(
-        result.status, "WrongAnswer",
+        result.status, "finished",
         "CallTimeout 被捕获时状态由 evaluator 决定: {:?}",
         result
     );

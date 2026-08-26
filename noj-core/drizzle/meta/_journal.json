@@ -379,6 +379,13 @@
       "when": 1787665794280,
       "tag": "0053_optimal_red_hulk",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1787733803651,
+      "tag": "0054_hard_scalphunter",
+      "breakpoints": true
     }
   ]
 }

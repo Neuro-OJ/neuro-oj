@@ -33,7 +33,6 @@
 
 import { and, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
 import {
-  contests,
   evaluationResults,
   problems,
   submissions,
@@ -48,6 +47,7 @@ import {
   pushJudgeTask,
 } from "../../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../judge-images.ts";
+import { assertContestSubmissionLimit } from "../contest/contests.ts";
 import { getStorageProvider } from "../../lib/storage/mod.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
 import { buildJudgeTaskLlm } from "../../lib/llm-token.ts";
@@ -93,6 +93,22 @@ function parseDetails(raw: string | null): SubmissionEvaluationDetails | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * 将评测结果状态归一化为提交状态：只保留 finished / error。
+ * 旧数据中的 Accepted / WrongAnswer 等按分数制语义映射。
+ */
+function normalizeResultStatus(status: string | null): string | null {
+  if (!status) return null;
+  if (
+    status === "error" || status === "SystemError" ||
+    status === "TimeLimitExceeded" || status === "MemoryLimitExceeded" ||
+    status === "RuntimeError"
+  ) {
+    return "error";
+  }
+  return "finished";
 }
 
 /**
@@ -272,7 +288,7 @@ export async function listSubmissions(
       },
       result: row.result_status
         ? {
-          status: row.result_status,
+          status: normalizeResultStatus(row.result_status) ?? "finished",
           score: row.result_score ?? 0,
           time_ms: row.result_time_ms,
           memory_kb: row.result_memory_kb,
@@ -299,6 +315,15 @@ export async function createSubmission(
     throw new BadRequestError("竞赛 ID 不一致");
   }
   const resolvedContestId = contestId ?? input.contest_id ?? null;
+
+  // 比赛内每道题提交次数上限（含 error 计数）
+  if (resolvedContestId) {
+    await assertContestSubmissionLimit(
+      resolvedContestId,
+      userId,
+      input.problem_id,
+    );
+  }
 
   // 行级锁 + 读取最新题目配置（避免 admin 在提交期间清空 runtime_config 导致竞态）
   const lockedRows = await db
@@ -513,28 +538,8 @@ export async function getSubmission(
     : viewerRole === "admin";
   const canSeeDetails = isOwner || isAdmin;
 
-  // 竞赛公平性：OI 进行中的竞赛提交，非 owner/admin 隐藏评测结果（得分/状态）
-  let hideResult = false;
-  if (row.contest_id && !canSeeDetails) {
-    const contestRows = await db
-      .select({
-        type: contests.type,
-        start_time: contests.start_time,
-        end_time: contests.end_time,
-      })
-      .from(contests)
-      .where(eq(contests.id, row.contest_id))
-      .limit(1);
-    if (contestRows.length > 0) {
-      const contest = contestRows[0];
-      const now = Date.now();
-      const start = new Date(contest.start_time).getTime();
-      const end = new Date(contest.end_time).getTime();
-      if (contest.type === "oi" && now >= start && now <= end) {
-        hideResult = true;
-      }
-    }
-  }
+  // 类 Kaggle 赛制不隐藏进行中的评测结果（实时榜按排名接口权限控制）
+  const hideResult = false;
 
   // 查询评测结果
   const resultRows = await db
@@ -557,7 +562,7 @@ export async function getSubmission(
         ? parseDetails(resultRows[0].details)
         : null;
       return {
-        status: resultRows[0].status,
+        status: normalizeResultStatus(resultRows[0].status) ?? "finished",
         score: resultRows[0].score,
         output,
         output_truncated: canSeeDetails ? output_truncated : null,

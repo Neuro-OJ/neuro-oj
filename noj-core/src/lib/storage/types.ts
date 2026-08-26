@@ -57,6 +57,25 @@ export interface StorageProvider {
   put(key: string, data: Uint8Array, contentType?: string): Promise<string>;
 
   /**
+   * 流式存储数据并返回 `noj-storage://` URL。
+   *
+   * 用于大文件（如 artifact zip）上传，内存占用 O(1)（S3 模式使用固定
+   * 5MB 分片缓冲）。实现必须计算 SHA-256 并写入返回 URL 的 checksum。
+   *
+   * @param key 存储键（local 模式下忽略，内容寻址；S3 模式下为对象键）
+   * @param stream 输入字节流
+   * @param contentType 内容类型（S3 模式下使用）
+   * @param maxSizeBytes 可选大小上限，超过时中止并抛错
+   * @returns `noj-storage://` URL，包含 checksum_sha256
+   */
+  putStream(
+    key: string,
+    stream: ReadableStream<Uint8Array>,
+    contentType?: string,
+    maxSizeBytes?: number,
+  ): Promise<string>;
+
+  /**
    * 根据 `noj-storage://` URL 读取数据
    *
    * @param url `noj-storage://` URL

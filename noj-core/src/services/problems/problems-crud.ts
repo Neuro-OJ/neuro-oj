@@ -31,6 +31,7 @@ import {
   isValidDifficulty,
   isValidLlmConfig,
   isValidProblemType,
+  isValidSubmissionMode,
   type LlmConfig,
   type ProblemResponseWithTags,
   type RuntimeConfig,
@@ -81,6 +82,24 @@ export async function createProblem(
     throw new BadRequestError(
       `非法难度值：${input.difficulty}，仅允许 ${DIFFICULTIES.join("/")}`,
     );
+  }
+
+  // 校验提交模式
+  const submissionMode = input.submission_mode ?? "code";
+  if (!isValidSubmissionMode(submissionMode)) {
+    throw new BadRequestError(
+      `非法提交模式：${input.submission_mode}，仅允许 code / artifact`,
+    );
+  }
+
+  // 校验 artifact 大小上限
+  if (
+    input.artifact_max_size_mb !== undefined &&
+    input.artifact_max_size_mb !== null &&
+    (!Number.isInteger(input.artifact_max_size_mb) ||
+      input.artifact_max_size_mb <= 0)
+  ) {
+    throw new BadRequestError("artifact_max_size_mb 必须为正整数或 null");
   }
 
   // 确定题目类型（默认 U）
@@ -226,6 +245,8 @@ export async function createProblem(
         support_package_storage_url: input.support_package_storage_url ?? null,
         runtime_config: isObjective ? null : (input.runtime_config ?? null),
         is_objective: isObjective,
+        submission_mode: submissionMode,
+        artifact_max_size_mb: input.artifact_max_size_mb ?? null,
         llm_config: llmConfig,
         number,
         owner_id: ownerId,
@@ -333,6 +354,26 @@ export async function updateProblem(
     throw new BadRequestError(
       `非法难度值：${input.difficulty}，仅允许 ${DIFFICULTIES.join("/")}`,
     );
+  }
+
+  // 校验提交模式
+  if (
+    input.submission_mode !== undefined &&
+    !isValidSubmissionMode(input.submission_mode)
+  ) {
+    throw new BadRequestError(
+      `非法提交模式：${input.submission_mode}，仅允许 code / artifact`,
+    );
+  }
+
+  // 校验 artifact 大小上限
+  if (
+    input.artifact_max_size_mb !== undefined &&
+    input.artifact_max_size_mb !== null &&
+    (!Number.isInteger(input.artifact_max_size_mb) ||
+      input.artifact_max_size_mb <= 0)
+  ) {
+    throw new BadRequestError("artifact_max_size_mb 必须为正整数或 null");
   }
 
   // 校验 runtime_config
@@ -446,6 +487,12 @@ export async function updateProblem(
   }
   if (llmConfig !== undefined) {
     updates.llm_config = llmConfig;
+  }
+  if (input.submission_mode !== undefined) {
+    updates.submission_mode = input.submission_mode;
+  }
+  if (input.artifact_max_size_mb !== undefined) {
+    updates.artifact_max_size_mb = input.artifact_max_size_mb;
   }
   updates.updated_at = new Date().toISOString();
 

@@ -14,6 +14,7 @@
  */
 
 import { relative, resolve } from "jsr:@std/path@^1";
+import { sha256 } from "npm:@noble/hashes@2.2.0/sha2.js";
 import {
   buildBase64DownloadUrl,
   buildStorageUrl,
@@ -125,6 +126,73 @@ export class LocalStorageProvider implements StorageProvider {
     const tmpPath = `${filePath}.tmp.${crypto.randomUUID()}`;
     await Deno.mkdir(this.storageDir, { recursive: true });
     await Deno.writeFile(tmpPath, data);
+    try {
+      await Deno.rename(tmpPath, filePath);
+    } catch {
+      // Windows 跨设备 rename 可能失败，fallback 到 copy + remove
+      await Deno.copyFile(tmpPath, filePath);
+      await Deno.remove(tmpPath);
+    }
+
+    return buildStorageUrl("local", ext ? fileName : base64Key, hashHex);
+  }
+
+  /**
+   * 流式存储数据到本地文件系统。
+   *
+   * 与 put() 相同的内容寻址语义：先写临时文件，边写边计算 SHA-256，
+   * 完成后以哈希为文件名原子 rename 到存储目录。
+   */
+  async putStream(
+    _key: string,
+    stream: ReadableStream<Uint8Array>,
+    contentType?: string,
+    maxSizeBytes?: number,
+  ): Promise<string> {
+    const hash = sha256.create();
+    const ext = extensionFor(contentType);
+    const tmpPath = `${this.storageDir}/.tmp-${crypto.randomUUID()}`;
+    await Deno.mkdir(this.storageDir, { recursive: true });
+    const file = await Deno.open(tmpPath, {
+      write: true,
+      create: true,
+      truncate: true,
+    });
+    let total = 0;
+    try {
+      const reader = stream.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value && value.length > 0) {
+          total += value.length;
+          if (maxSizeBytes !== undefined && total > maxSizeBytes) {
+            throw new Error(
+              `文件超过大小限制（${maxSizeBytes} 字节）`,
+            );
+          }
+          hash.update(value);
+          await file.write(value);
+        }
+      }
+    } catch (err) {
+      try {
+        file.close();
+      } catch {
+        // ignore close failure
+      }
+      await Deno.remove(tmpPath).catch(() => {});
+      throw err;
+    }
+    file.close();
+
+    const hashHex = Array.from(hash.digest())
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const base64Key = this.hexToBase64url(hashHex);
+    const fileName = ext ? `${base64Key}.${ext}` : `${base64Key}.zip`;
+    const filePath = `${this.storageDir}/${fileName}`;
+
     try {
       await Deno.rename(tmpPath, filePath);
     } catch {

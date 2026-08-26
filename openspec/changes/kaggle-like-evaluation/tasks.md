@@ -1,44 +1,44 @@
 ## 1. 数据库 Schema 与迁移
 
-- [ ] 1.1 `problems` 表新增 `submission_mode` 字段（默认 `code`），生成 Drizzle 迁移
-- [ ] 1.2 `problems` 表新增 `artifact_max_size_mb` 字段（可空），生成迁移
-- [ ] 1.3 `submissions` 表新增 `artifact_storage_url` 字段，生成迁移
-- [ ] 1.4 `contests.type` 约束改为仅 `kaggle`，`contest_problems.score` 改为 NOT NULL，生成迁移
-- [ ] 1.5 清理/废弃旧赛制竞赛数据（icpc/ioi/oi）
-- [ ] 1.6 更新 `schema-ddl.ts` 与 `schema.ts` 保持同步
+- [x] 1.1 `problems` 表新增 `submission_mode` 字段（默认 `code`），生成 Drizzle 迁移
+- [x] 1.2 `problems` 表新增 `artifact_max_size_mb` 字段（可空），生成迁移
+- [x] 1.3 `submissions` 表新增 `artifact_storage_url` 字段，生成迁移
+- [x] 1.4 `contests.type` 约束改为仅 `kaggle`，`contest_problems.score` 改为 NOT NULL，生成迁移
+- [x] 1.5 清理/废弃旧赛制竞赛数据（icpc/ioi/oi）
+- [x] 1.6 更新 `schema-ddl.ts` 与 `schema.ts` 保持同步
 
 ## 2. noj-core：题目与提交 API
 
-- [ ] 2.1 题目创建/更新/响应 DTO 支持 `submission_mode` 与 `artifact_max_size_mb` 字段
-- [ ] 2.2 题目 manifest 校验支持 `submission_mode: "artifact"` 与 `artifact_max_size_mb`
-- [ ] 2.3 提交创建接口支持 multipart/form-data 上传 zip（artifact 模式）
-- [ ] 2.4 实现 artifact zip **流式上传**到存储（local 临时文件 / S3 multipart）
-- [ ] 2.5 实现双层大小限制（题目 `artifact_max_size_mb` + NOJ 硬上限）
-- [ ] 2.6 实现 artifact 评测完成后立即删除存储对象
-- [ ] 2.7 rejudge 接口对 artifact 提交返回“不支持重测”
-- [ ] 2.8 artifact 提交语言固定为 `python3`
-- [ ] 2.9 实现孤儿 artifact 兜底清理（超时 pending → 删除 + error）
-- [ ] 2.10 提交列表/详情接口返回 `result.score`，`result.status` 仅 `finished`/`error`
-- [ ] 2.11 移除 AC/WA 相关状态映射，evaluate.py 结果 JSON 移除 `status` 字段，按 `score` 解析
+- [x] 2.1 题目创建/更新/响应 DTO 支持 `submission_mode` 与 `artifact_max_size_mb` 字段
+- [x] 2.2 题目 manifest 校验支持 `submission_mode: "artifact"` 与 `artifact_max_size_mb`
+- [x] 2.3 提交创建接口支持 multipart/form-data 上传 zip（artifact 模式）
+- [x] 2.4 实现 artifact zip **流式上传**到存储（local 临时文件 / S3 multipart）
+- [x] 2.5 实现双层大小限制（题目 `artifact_max_size_mb` + NOJ 硬上限）
+- [x] 2.6 实现 artifact 评测完成后立即删除存储对象
+- [x] 2.7 rejudge 接口对 artifact 提交返回“不支持重测”
+- [x] 2.8 artifact 提交语言固定为 `python3`
+- [x] 2.9 实现孤儿 artifact 兜底清理（超时 pending → 删除 + error）
+- [x] 2.10 提交列表/详情接口返回 `result.score`，`result.status` 仅 `finished`/`error`
+- [x] 2.11 移除 AC/WA 相关状态映射，evaluate.py 结果 JSON 移除 `status` 字段，按 `score` 解析
 
 ## 3. noj-core：JudgeTask 与竞赛
 
-- [ ] 3.1 `JudgeTask` 类型新增 `artifact_download_url`
-- [ ] 3.2 构建 JudgeTask 时把 artifact 存储 URL 转为 `noj-download://`
-- [ ] 3.3 竞赛创建/更新 API 仅允许 `type='kaggle'`，支持 `config.submission_limits`
-- [ ] 3.4 提交创建时校验比赛内每道题提交次数上限
-- [ ] 3.5 实现类 Kaggle 排名计算（最高分求和 + 时间平局）
-- [ ] 3.6 竞赛排名 API 返回实时榜/最终榜，移除 ICPC/IOI/OI 分支
+- [x] 3.1 `JudgeTask` 类型新增 `artifact_download_url`
+- [x] 3.2 构建 JudgeTask 时把 artifact 存储 URL 转为 `noj-download://`
+- [x] 3.3 竞赛创建/更新 API 仅允许 `type='kaggle'`，支持 `config.submission_limits`
+- [x] 3.4 提交创建时校验比赛内每道题提交次数上限
+- [x] 3.5 实现类 Kaggle 排名计算（最高分求和 + 时间平局）
+- [x] 3.6 竞赛排名 API 返回实时榜/最终榜，移除 ICPC/IOI/OI 分支
 
 ## 4. noj-judge：artifact 注入与镜像
 
-- [ ] 4.1 `JudgeTask` Rust 类型新增 `artifact_download_url`
-- [ ] 4.2 双容器流程支持下载并解压 artifact zip 注入 Solution 容器 `/workspace/`
-- [ ] 4.3 Solution 入口在 artifact 模式下使用 `/workspace/submission.py`
-- [ ] 4.4 新增 `noj-solution-ai` Dockerfile（python:3.12-slim + CPU torch + CV/ML 库 + SDK）
-- [ ] 4.5 更新 `build-sdk-images.sh` 构建 `noj-solution-ai`
-- [ ] 4.6 更新 `judge_images` 种子数据，注册 `noj-solution-ai`
-- [ ] 4.7 更新 judge 结果解析：evaluate.py 结果无 `status` 字段，统一映射 `finished`/`error`
+- [x] 4.1 `JudgeTask` Rust 类型新增 `artifact_download_url`
+- [x] 4.2 双容器流程支持下载并解压 artifact zip 注入 Solution 容器 `/workspace/`
+- [x] 4.3 Solution 入口在 artifact 模式下使用 `/workspace/submission.py`
+- [x] 4.4 新增 `noj-solution-ai` Dockerfile（python:3.12-slim + CPU torch + CV/ML 库 + SDK）
+- [x] 4.5 更新 `build-sdk-images.sh` 构建 `noj-solution-ai`
+- [x] 4.6 更新 `judge_images` 种子数据，注册 `noj-solution-ai`
+- [x] 4.7 更新 judge 结果解析：evaluate.py 结果无 `status` 字段，统一映射 `finished`/`error`
 
 ## 5. noj-ui：上传与展示
 

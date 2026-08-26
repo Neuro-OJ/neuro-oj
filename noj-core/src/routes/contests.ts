@@ -1,4 +1,6 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
+import busboy from "busboy";
+import { Readable } from "node:stream";
 import type { OptionalAuthEnv } from "../middleware/auth.ts";
 import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
 import {
@@ -25,6 +27,7 @@ import {
   resolveContestId,
 } from "../services/contest/contests.ts";
 import {
+  createArtifactSubmission,
   createSubmission,
   listSubmissions,
 } from "../services/submissions/submissions.ts";
@@ -34,6 +37,51 @@ import { enforceContestSubmissionRateLimit } from "../lib/hardening-rate-limit.t
 
 const contests = new Hono<OptionalAuthEnv>();
 const MAX_CODE_LENGTH = 100 * 1024;
+
+/**
+ * 解析竞赛 artifact 提交的 multipart/form-data 请求。
+ */
+function parseContestArtifactMultipart(
+  c: Context,
+): Promise<{
+  problem_id: string;
+  file_name: string;
+  file_stream: ReadableStream<Uint8Array>;
+}> {
+  return new Promise((resolve, reject) => {
+    const contentType = c.req.header("content-type");
+    if (!contentType) {
+      reject(new BadRequestError("缺少 Content-Type"));
+      return;
+    }
+    const bb = busboy({ headers: { "content-type": contentType } });
+    let problemId = "";
+    let fileName = "";
+    let fileStream: ReadableStream<Uint8Array> | null = null;
+
+    bb.on("field", (name: string, val: string) => {
+      if (name === "problem_id") problemId = val;
+    });
+    bb.on("file", (name: string, file: any, info: any) => {
+      if (name === "file") {
+        fileName = info.filename;
+        fileStream = Readable.toWeb(file) as unknown as ReadableStream<Uint8Array>;
+      } else {
+        file.resume();
+      }
+    });
+    bb.on("error", (err: unknown) => reject(err));
+    bb.on("close", () => {
+      if (!problemId || !fileName || !fileStream) {
+        reject(new BadRequestError("缺少必填字段：problem_id 或 file"));
+        return;
+      }
+      resolve({ problem_id: problemId, file_name: fileName, file_stream: fileStream });
+    });
+
+    Readable.fromWeb(c.req.raw.body as any).pipe(bb);
+  });
+}
 
 async function requireContestAccess(
   contestId: string,
@@ -162,6 +210,23 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
     !await checkPermission(c, "submission:read_all")
   ) {
     throw new ForbiddenError("仅参赛者可提交");
+  }
+
+  const contentType = c.req.header("content-type") ?? "";
+  if (contentType.startsWith("multipart/form-data")) {
+    const parsed = await parseContestArtifactMultipart(c);
+    const contestProblems = await getContestProblems(contestId, userId);
+    if (
+      !contestProblems.some((item) => item.problem_id === parsed.problem_id)
+    ) {
+      throw new BadRequestError("题目不属于该竞赛");
+    }
+    const data = await createArtifactSubmission(
+      userId,
+      { ...parsed, contest_id: contestId },
+      contestId,
+    );
+    return c.json({ data }, 201);
   }
 
   const body = await parseJsonBody<{

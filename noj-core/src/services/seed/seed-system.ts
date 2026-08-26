@@ -101,6 +101,13 @@ export async function seedJudgeImages(): Promise<void> {
       kind: "solution",
       description: "双容器 Solution (Python 3.12, noj_solution_sdk)",
     },
+    {
+      id: "e0000000-0000-0000-0000-000000000004",
+      image: withBase("noj-solution-ai"),
+      mode: "all_versions",
+      kind: "solution",
+      description: "双容器 Solution AI (Python 3.12, CPU torch, CV/ML 库)",
+    },
   ];
 
   for (const img of images) {

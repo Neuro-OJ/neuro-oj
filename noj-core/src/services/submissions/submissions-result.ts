@@ -8,10 +8,11 @@
  * 重测相关在 submissions-rejudge.ts；CRUD 在 submissions-crud.ts。
  */
 
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { evaluationResults, submissions } from "../../db/schema.ts";
 import { BadRequestError, NotFoundError } from "../../lib/errors.ts";
 import { getDb } from "../../db/connection.ts";
+import { getStorageProvider } from "../../lib/storage/mod.ts";
 import type { JudgeResult, SubmissionStatus } from "../../types/index.ts";
 import { applyNewResult } from "../stats-cache.ts";
 import { refreshRankingsView } from "../rankings.ts";
@@ -51,6 +52,7 @@ export async function saveEvaluationResult(
         user_id: submissions.user_id,
         problem_id: submissions.problem_id,
         status: submissions.status,
+        artifact_storage_url: submissions.artifact_storage_url,
       })
       .from(submissions)
       .where(eq(submissions.id, result.submission_id))
@@ -102,7 +104,13 @@ export async function saveEvaluationResult(
       return null;
     }
 
-    const submissionStatus: SubmissionStatus = result.status === "SystemError"
+    const submissionStatus: SubmissionStatus = [
+      "error",
+      "SystemError",
+      "TimeLimitExceeded",
+      "MemoryLimitExceeded",
+      "RuntimeError",
+    ].includes(result.status)
       ? "error"
       : "finished";
 
@@ -135,10 +143,28 @@ export async function saveEvaluationResult(
       user_id: sub.user_id,
       problem_id: sub.problem_id,
       is_rejudge: sub.rejudge_seq > 0,
+      artifact_storage_url: sub.artifact_storage_url,
     };
   });
 
   if (!outcome) return false;
+
+  // artifact 评测完成（finished/error）后立即删除存储对象
+  if (outcome.artifact_storage_url) {
+    try {
+      const storage = await getStorageProvider();
+      await storage.delete(outcome.artifact_storage_url);
+      logger.info("artifact 评测完成，已删除存储对象", {
+        submission_id: result.submission_id,
+      });
+    } catch (err) {
+      logger.error("artifact 评测后删除失败", {
+        submission_id: result.submission_id,
+        storage_url: outcome.artifact_storage_url,
+        err,
+      });
+    }
+  }
 
   // 统计缓存仅对首次结果递增；重测结果不计入（NOJ-068）。
   if (!outcome.is_rejudge && outcome.created_at) {
@@ -150,8 +176,8 @@ export async function saveEvaluationResult(
   // 失败仅 console.error（rankings.ts 内已处理）
   refreshRankingsView().catch(() => {/* ignore - rankings.ts 内已记录 */});
 
-  if (result.status === "Accepted") {
-    const previousAccepted = await db.select({ id: submissions.id }).from(
+  if (result.score > 0) {
+    const previousScored = await db.select({ id: submissions.id }).from(
       submissions,
     ).innerJoin(
       evaluationResults,
@@ -159,10 +185,11 @@ export async function saveEvaluationResult(
     ).where(and(
       eq(submissions.user_id, outcome.user_id),
       eq(submissions.problem_id, outcome.problem_id),
-      eq(evaluationResults.status, "Accepted"),
+      eq(evaluationResults.status, "finished"),
+      sql`${evaluationResults.score} > 0`,
       ne(submissions.id, result.submission_id),
     )).limit(1);
-    if (!previousAccepted[0]) {
+    if (!previousScored[0]) {
       await createActivity(
         outcome.user_id,
         "first_accepted",
