@@ -5,7 +5,7 @@
                 <div class="flex flex-col lg:flex-row flex-1 min-h-[320px] bg-white">
                     <!-- Carousel -->
                     <div
-                        class="flex-1 min-w-0 relative overflow-hidden"
+                        class="flex-1 min-w-0 relative overflow-hidden min-h-[320px]"
                         role="region"
                         aria-roledescription="轮播图"
                         aria-label="公告轮播"
