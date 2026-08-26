@@ -22,6 +22,7 @@ ENV_FILE="$REPO_ROOT/.env.prod"
 ENV_TEMPLATE="$REPO_ROOT/.env.prod.example"
 COMPOSE_FILE="$REPO_ROOT/docker-compose.prod.yml"
 BACKUP_DIR="$REPO_ROOT/backups"
+BACKUP_PASSPHRASE_FILE="${NOJ_BACKUP_PASSPHRASE_FILE:-}"
 DOCKER_BIN="${NOJ_DEPLOY_DOCKER_BIN:-docker}"
 DRY_RUN=0
 FOLLOW=0
@@ -52,12 +53,14 @@ Neuro OJ 生产部署工具
   deploy.sh status                   查看服务状态
   deploy.sh logs [service]           查看最近日志
   deploy.sh logs [service] --follow  持续查看日志
-  deploy.sh backup                   创建 PostgreSQL 备份
+  deploy.sh backup                   创建完整生产备份
 
 选项：
   --env-file FILE       使用指定的生产环境文件
   --compose-file FILE   使用指定的 Compose 文件
   --backup-dir DIR      指定备份目录（默认 ./backups）
+  --passphrase-file FILE
+                        GPG 备份口令文件（默认读取 NOJ_BACKUP_PASSPHRASE_FILE）
   --dry-run             只检查并显示将执行的操作，不修改服务或文件
   -h, --help            显示帮助
 
@@ -96,6 +99,12 @@ parse_args() {
         shift
         ;;
       --backup-dir=*) BACKUP_DIR="${1#*=}" ;;
+      --passphrase-file)
+        (($# >= 2)) || fail "--passphrase-file 需要一个文件路径"
+        BACKUP_PASSPHRASE_FILE="$2"
+        shift
+        ;;
+      --passphrase-file=*) BACKUP_PASSPHRASE_FILE="${1#*=}" ;;
       --follow|-f) FOLLOW=1 ;;
       --dry-run) DRY_RUN=1 ;;
       -h|--help) usage; exit 0 ;;
@@ -354,6 +363,7 @@ start() {
 
 upgrade() {
   prepare_and_check
+  run_backup "upgrade"
   section "拉取目标版本镜像"
   run_compose pull
   wait_for_stack
@@ -380,37 +390,20 @@ logs() {
   run_compose "${args[@]}"
 }
 
-backup() {
-  prepare_and_check
-  local pg_user pg_db timestamp target index
-  pg_user="$(env_value POSTGRES_USER)"
-  pg_db="$(env_value POSTGRES_DB)"
-  pg_user="${pg_user:-noj}"
-  pg_db="${pg_db:-noj}"
-  timestamp="$(date '+%Y%m%d-%H%M%S')"
-  target="$BACKUP_DIR/postgres-$timestamp.dump"
-  index=1
-  while [[ -e "$target" ]]; do
-    target="$BACKUP_DIR/postgres-$timestamp-$index.dump"
-    index=$((index + 1))
-  done
-
+run_backup() {
+  local reason="${1:-manual}"
   if ((DRY_RUN)); then
-    ok "[dry-run] 将创建 PostgreSQL 备份：$target"
+    ok "[dry-run] 将在${reason}流程中创建并校验完整生产备份"
     return 0
   fi
+  local args=(create --env-file "$ENV_FILE" --compose-file "$COMPOSE_FILE" --backup-dir "$BACKUP_DIR")
+  [[ -n "$BACKUP_PASSPHRASE_FILE" ]] && args+=(--passphrase-file "$BACKUP_PASSPHRASE_FILE")
+  NOJ_BACKUP_DOCKER_BIN="$DOCKER_BIN" bash "$SCRIPT_DIR/backup.sh" "${args[@]}"
+}
 
-  umask 077
-  mkdir -p "$BACKUP_DIR"
-  chmod 700 "$BACKUP_DIR"
-  if ! "$DOCKER_BIN" compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" \
-    exec -T postgres pg_dump -U "$pg_user" -d "$pg_db" -Fc >"$target"; then
-    rm -f "$target"
-    fail "PostgreSQL 备份失败；已有备份未被修改"
-  fi
-  chmod 600 "$target"
-  ok "PostgreSQL 备份已创建：$target"
-  warn "该备份不包含 Redis、MinIO 和环境文件；完整灾备请参照 #326"
+backup() {
+  prepare_and_check
+  run_backup "手动备份"
 }
 
 main() {

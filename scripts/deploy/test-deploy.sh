@@ -10,6 +10,7 @@ FAKE_DOCKER="$TEST_ROOT/fake-docker"
 FAKE_LOG="$TEST_ROOT/docker.log"
 ENV_FILE="$TEST_ROOT/.env.prod"
 COMPOSE_FILE="$TEST_ROOT/docker-compose.prod.yml"
+PASSPHRASE_FILE="$TEST_ROOT/passphrase"
 
 cleanup() { rm -rf "$TEST_ROOT"; }
 trap cleanup EXIT
@@ -24,8 +25,25 @@ printf '%s\n' "$*" >>"${NOJ_DEPLOY_TEST_LOG:?}"
 if [[ "${NOJ_DEPLOY_TEST_FAIL:-}" == "up" && " $* " == *" up "* ]]; then
   exit 23
 fi
-if [[ "${1:-}" == "compose" && " $* " == *" pg_dump "* ]]; then
+if [[ "${NOJ_BACKUP_TEST_FAIL:-}" == "redis" && " $* " == *" redis "* ]]; then
+  exit 31
+fi
+if [[ "${1:-}" == "info" ]]; then
+  exit 0
+elif [[ "${1:-}" == "compose" && " $* " == *" pg_dumpall "* ]]; then
+  printf 'CREATE ROLE noj;\n'
+elif [[ "${1:-}" == "compose" && " $* " == *" pg_dump "* ]]; then
   printf 'fake postgres dump\n'
+elif [[ "${1:-}" == "compose" && "$*" == *"pg_restore --list"* ]]; then
+  printf '1; TABLE public users noj\n'
+elif [[ "${1:-}" == "compose" && "$*" == *"to_regclass"* ]]; then
+  printf 'drizzle.__drizzle_migrations\n'
+elif [[ "${1:-}" == "compose" && " $* " == *" psql "* ]]; then
+  printf 'migration-hash:2026-08-26\n'
+elif [[ "${1:-}" == "compose" && "$*" == *"--rdb -"* ]]; then
+  printf 'fake redis rdb\n'
+elif [[ "${1:-}" == "compose" && "$*" == *"INFO persistence"* ]]; then
+  printf 'aof_enabled:1\n'
 fi
 EOF
 chmod +x "$FAKE_DOCKER"
@@ -64,10 +82,15 @@ sed -i.bak "s#__TEST_ROOT__#$TEST_ROOT#g" "$ENV_FILE"
 touch "$TEST_ROOT/isolated-docker.sock"
 chmod 600 "$ENV_FILE"
 printf 'services:\n  fake:\n    image: alpine:3\n' >"$COMPOSE_FILE"
+printf 'test-passphrase\n' >"$PASSPHRASE_FILE"
+chmod 600 "$PASSPHRASE_FILE"
 
 run_deploy() {
   NOJ_DEPLOY_DOCKER_BIN="$FAKE_DOCKER" \
   NOJ_DEPLOY_TEST_LOG="$FAKE_LOG" \
+  NOJ_BACKUP_TEST_LOG="$FAKE_LOG" \
+  NOJ_BACKUP_PASSPHRASE_FILE="$PASSPHRASE_FILE" \
+  NOJ_BACKUP_TEST_FAIL="${NOJ_BACKUP_TEST_FAIL:-}" \
     bash "$DEPLOY_SCRIPT" "$@" --env-file "$ENV_FILE" --compose-file "$COMPOSE_FILE"
 }
 
@@ -100,6 +123,16 @@ run_deploy stop >/dev/null 2>"$TEST_ROOT/stop.err" || fail "合法配置的 stop
 grep -q 'compose.*stop' "$FAKE_LOG" || fail "stop 未调用 Compose stop"
 run_deploy upgrade >/dev/null 2>"$TEST_ROOT/upgrade.err" || fail "合法配置的 upgrade 不应失败"
 grep -q 'compose.*pull' "$FAKE_LOG" || fail "upgrade 未拉取镜像"
+upgrade_failure_log_lines="$(wc -l <"$FAKE_LOG")"
+set +e
+NOJ_BACKUP_TEST_FAIL=redis run_deploy upgrade >/dev/null 2>"$TEST_ROOT/upgrade-backup-failure.err"
+upgrade_backup_status=$?
+set -e
+[[ "$upgrade_backup_status" != "0" ]] || fail "升级前备份失败未阻断升级"
+if tail -n +$((upgrade_failure_log_lines + 1)) "$FAKE_LOG" | grep -E ' pull| up ' >/dev/null; then
+  fail "升级前备份失败后仍执行了镜像拉取或启动"
+fi
+pass "升级前备份门禁"
 run_deploy logs core >/dev/null 2>"$TEST_ROOT/logs.err" || fail "合法配置的 logs 不应失败"
 grep -q 'compose.*logs.*core' "$FAKE_LOG" || fail "logs 未传递服务名"
 log_lines_before="$(wc -l <"$FAKE_LOG")"
@@ -161,10 +194,12 @@ if run_deploy backup --backup-dir "$TEST_ROOT/backups" >/dev/null 2>"$TEST_ROOT/
 else
   fail "合法配置的 backup 不应失败"
 fi
-backup_file="$(find "$TEST_ROOT/backups" -type f -name 'postgres-*.dump' -print -quit)"
-[[ -n "$backup_file" ]] || fail "未生成 PostgreSQL 备份"
-[[ "$(stat -f '%Lp' "$backup_file" 2>/dev/null || stat -c '%a' "$backup_file")" == "600" ]] ||
-  fail "备份文件权限不是 600"
-pass "PostgreSQL 备份与文件权限"
+snapshot="$(find "$TEST_ROOT/backups" -mindepth 1 -maxdepth 1 -type d -name 'snapshot-*' -print -quit)"
+[[ -n "$snapshot" ]] || fail "未生成完整生产快照"
+[[ -f "$snapshot/postgres.dump" && -f "$snapshot/redis.rdb" && -f "$snapshot/env.prod.gpg" ]] ||
+  fail "完整快照缺少核心数据"
+[[ "$(stat -f '%Lp' "$snapshot" 2>/dev/null || stat -c '%a' "$snapshot")" == "700" ]] ||
+  fail "快照目录权限不是 700"
+pass "完整生产备份与文件权限"
 
 printf '全部部署脚本测试通过\n'
