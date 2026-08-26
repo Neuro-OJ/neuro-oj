@@ -1,5 +1,5 @@
 import type { Context, Next } from "hono";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { ForbiddenError, UnauthorizedError } from "../lib/errors.ts";
 import { verifyToken } from "../lib/jwt.ts";
 import { isJtiRevoked } from "../lib/revokedTokens.ts";
@@ -80,6 +80,8 @@ export interface UserBanState {
   banned: boolean;
   reason: string;
   until: string | null;
+  /** 封禁范围：platform=限制使用平台；social=仅限制社区发布 */
+  scope: "platform" | "social" | null;
 }
 
 /**
@@ -89,10 +91,13 @@ export interface UserBanState {
  * 白名单：写操作中豁免的路径（如 logout）
  */
 async function checkBanStatus(c: Context, userId: string): Promise<void> {
-  // NOJ-007：封禁后旧 JWT 对读写均失效，仅 logout 路径豁免。
+  // 仅 platform 封禁在此拦截（限制使用平台：登录/评测/一切写操作）。
+  // social 封禁只限制社区发布，由 assertCommunityWritable 在社区写操作时拦截，
+  // 不影响登录与评测（用户仍可使用平台）。
   if (!BAN_WHITELIST.includes(c.req.path)) {
     const banState = await getUserBanState(userId);
     const stillBanned = banState.banned &&
+      banState.scope === "platform" &&
       (!banState.until || Date.parse(banState.until) > Date.now());
     if (stillBanned) {
       throw new ForbiddenError("账号已被封禁", "USER_BANNED", {
@@ -227,20 +232,23 @@ export function getUserBanState(userId: string): Promise<UserBanState> {
       .select({
         reason: userBans.reason,
         banned_until: userBans.banned_until,
+        scope: userBans.scope,
       })
       .from(userBans)
       .where(and(
         eq(userBans.user_id, userId),
         isNull(userBans.unbanned_at),
       ))
+      .orderBy(desc(userBans.banned_at))
       .limit(1);
     if (rows.length === 0) {
-      return { banned: false, reason: "", until: null };
+      return { banned: false, reason: "", until: null, scope: null };
     }
     return {
       banned: true,
       reason: rows[0].reason,
       until: rows[0].banned_until,
+      scope: rows[0].scope === "social" ? "social" : "platform",
     };
   });
 }

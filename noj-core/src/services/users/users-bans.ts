@@ -19,6 +19,7 @@ import { logAudit } from "../audit-log.ts";
 import type { UserResponse } from "../../types/auth.ts";
 import { ROOT_USER_ID } from "../../lib/constants.ts";
 import { getAdminUserIds, isUserAdmin } from "../../lib/permissions.ts";
+import { createNotification } from "../notifications.ts";
 import {
   BadRequestError,
   NotFoundError,
@@ -65,6 +66,7 @@ export async function banUser(
   reason: string | undefined,
   bannedUntil: string | null | undefined,
   currentUserId: string,
+  scope: "platform" | "social" = "platform",
 ): Promise<UserResponse> {
   if (targetUserId === ROOT_USER_ID) {
     throw new BadRequestError("不能封禁 root 账户");
@@ -78,6 +80,9 @@ export async function banUser(
     if (Number.isNaN(t)) {
       throw new ValidationError("banned_until 必须是有效 ISO 8601 字符串");
     }
+  }
+  if (scope !== "platform" && scope !== "social") {
+    throw new ValidationError("scope 必须是 platform 或 social");
   }
 
   const db = getDb();
@@ -109,6 +114,7 @@ export async function banUser(
     id: banId,
     user_id: targetUserId,
     reason: reason ?? "",
+    scope,
     banned_until: bannedUntil ?? null,
     banned_at: now,
     banned_by: currentUserId,
@@ -117,13 +123,29 @@ export async function banUser(
   invalidateBanCache({ userId: targetUserId });
   await logAudit(
     "users.ban",
-    { action: "users.ban", reason: reason ?? "", until: bannedUntil ?? null },
+    { action: "users.ban", reason: reason ?? "", until: bannedUntil ?? null, scope },
     { type: "users", id: targetUserId },
+  );
+
+  // 通知被封禁用户：封禁范围/理由/时间（撤销举报不删此通知，保留记录）
+  await createNotification(
+    targetUserId,
+    currentUserId,
+    "ban",
+    null,
+    null,
+    {
+      scope,
+      reason: reason ?? "",
+      banned_until: bannedUntil ?? null,
+      banned_at: now,
+      message: scope === "social" ? "你已被限制社区发布" : "你的账号已被封禁",
+    },
   );
 
   return await toUserResponse(
     existing,
-    { reason: reason ?? "", banned_until: bannedUntil ?? null },
+    { reason: reason ?? "", banned_until: bannedUntil ?? null, scope },
     now,
   );
 }
@@ -165,6 +187,7 @@ export async function unbanUser(
 export interface BanRecord {
   id: string;
   reason: string;
+  scope: "platform" | "social";
   banned_until: string | null;
   banned_at: string;
   banned_by: { id: string; username: string } | null;
@@ -182,6 +205,7 @@ export async function getUserBanHistory(
     .select({
       id: userBans.id,
       reason: userBans.reason,
+      scope: userBans.scope,
       banned_until: userBans.banned_until,
       banned_at: userBans.banned_at,
       banned_by_id: userBans.banned_by,
@@ -199,6 +223,7 @@ export async function getUserBanHistory(
   return rows.map((r) => ({
     id: r.id,
     reason: r.reason,
+    scope: r.scope === "social" ? "social" : "platform",
     banned_until: r.banned_until,
     banned_at: r.banned_at,
     banned_by: r.banned_by_id
@@ -209,4 +234,14 @@ export async function getUserBanHistory(
       ? { id: r.unbanned_by_id, username: r.unbanned_by_username ?? "" }
       : null,
   }));
+}
+
+/** 获取用户最新一条活跃封禁记录的 id（供举报处理关联 ban_id）。 */
+export async function getLatestActiveBanId(userId: string): Promise<string | undefined> {
+  const rows = await getDb().select({ id: userBans.id })
+    .from(userBans)
+    .where(and(eq(userBans.user_id, userId), isNull(userBans.unbanned_at)))
+    .orderBy(sql`${userBans.banned_at} DESC`)
+    .limit(1);
+  return rows[0]?.id;
 }

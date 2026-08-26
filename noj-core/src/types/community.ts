@@ -21,6 +21,19 @@ export const MODERATION_STATUSES = [
   "deleted",
 ] as const;
 
+/** 举报分类（用户侧必选，工单/后台展示）。 */
+export const REPORT_CATEGORIES = [
+  "违法违规",
+  "人身侵权",
+  "涉嫌欺诈",
+  "侵权抄袭",
+  "垃圾信息",
+  "站外风险引流",
+  "AI生成内容问题",
+  "其他",
+] as const;
+export type ReportCategory = (typeof REPORT_CATEGORIES)[number];
+
 /** 社区预设（admin 路由参数校验用）。 */
 export const COMMUNITY_PRESETS = [
   "public",

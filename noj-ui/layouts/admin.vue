@@ -40,6 +40,7 @@ const navGroups: NavGroup[] = [
       { label: "LLM Provider", to: "/admin/llm/providers", icon: 'i-lucide-server' },
       { label: "LLM 用量", to: "/admin/llm/usage", icon: 'i-lucide-bar-chart-3' },
       { label: "社区管理", to: "/admin/community", icon: 'i-lucide-messages-square' },
+      { label: "举报管理", to: "/admin/reports", icon: 'i-lucide-flag' },
       { label: "公告管理", to: "/admin/announcements", icon: 'i-lucide-megaphone' },
     ],
   },

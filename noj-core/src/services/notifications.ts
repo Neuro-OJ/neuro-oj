@@ -20,7 +20,9 @@ export type NotificationType =
   | "like"
   | "follow"
   | "moderation"
-  | "clarification";
+  | "clarification"
+  | "report"
+  | "ban";
 
 /**
  * 创建通知并推送 SSE。

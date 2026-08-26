@@ -1,4 +1,4 @@
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { getDb } from "../../db/connection.ts";
 import { roles, userBans, userRoles, users } from "../../db/schema.ts";
 import { comparePassword } from "../../lib/password.ts";
@@ -96,11 +96,13 @@ export async function loginUser(
   const activeBan = await db.select({
     reason: userBans.reason,
     banned_until: userBans.banned_until,
+    scope: userBans.scope,
   })
     .from(userBans)
     .where(and(eq(userBans.user_id, user.id), isNull(userBans.unbanned_at)))
+    .orderBy(desc(userBans.banned_at))
     .limit(1);
-  if (activeBan.length > 0) {
+  if (activeBan.length > 0 && activeBan[0].scope !== "social") {
     const stillBanned = !activeBan[0].banned_until ||
       Date.parse(activeBan[0].banned_until) > Date.now();
     if (stillBanned) {

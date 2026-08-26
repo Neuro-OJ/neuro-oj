@@ -1,6 +1,6 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "../../db/connection.ts";
-import { communitySanctions } from "../../db/schema.ts";
+import { communitySanctions, userBans } from "../../db/schema.ts";
 import { ForbiddenError } from "../../lib/errors.ts";
 import { nowIso } from "../../lib/dates.ts";
 import { getSetting } from "../system-settings.ts";
@@ -60,10 +60,27 @@ export async function assertCommunityWritable(
   }
   if (isModerator) return;
   const db = getDb();
+  // 平台封禁或社交封禁都限制社区发布（social 不限制登录/评测，仅在此处拦截社区写操作）
+  const banRows = await db.select({
+    reason: userBans.reason,
+    scope: userBans.scope,
+    banned_until: userBans.banned_until,
+  }).from(userBans).where(and(
+    eq(userBans.user_id, userId),
+    isNull(userBans.unbanned_at),
+  )).orderBy(desc(userBans.banned_at)).limit(1);
+  const ban = banRows[0];
+  if (ban && (!ban.banned_until || ban.banned_until > nowIso())) {
+    throw new ForbiddenError(
+      ban.scope === "social" ? "你已被限制社区发布" : "账号已被封禁",
+      "USER_BANNED",
+      { reason: ban.reason, until: ban.banned_until },
+    );
+  }
   const rows = await db.select().from(communitySanctions).where(and(
     eq(communitySanctions.user_id, userId),
     isNull(communitySanctions.revoked_at),
-  )).limit(1);
+  )).orderBy(desc(communitySanctions.created_at)).limit(1);
   const sanction = rows[0];
   if (sanction && (!sanction.expires_at || sanction.expires_at > nowIso())) {
     throw new ForbiddenError("你已被限制社区互动", "COMMUNITY_SANCTIONED", {

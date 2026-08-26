@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import BanBanner from "~/components/BanBanner.vue"
 import SearchPalette from "~/components/feature/search/SearchPalette.vue";
+import { useBanStatus } from "~/composables/useBanStatus"
+
+const { ipBanned, ipBanInfo, userBanned, userBanInfo } = useBanStatus()
 
 const { state, open, close } = useSearch();
 
@@ -26,6 +30,8 @@ onUnmounted(() => {
             跳转到主要内容
         </a>
         <Navbar />
+        <BanBanner v-if="ipBanned" type="ip" :ip-info="ipBanInfo" />
+        <BanBanner v-if="userBanned" type="user" :user-info="userBanInfo" />
         <div class="flex flex-1 min-h-[calc(100vh-var(--header-h))] w-full pt-(--header-h)">
             <main id="main" class="flex-1 min-w-0 w-full">
                 <slot />

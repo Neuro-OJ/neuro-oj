@@ -311,7 +311,22 @@ async function toggleFollow() {
         </template>
       </section>
 
-      <section v-if="profile.solutions.length || profile.moments.length" class="rounded-xl border border-border bg-white p-6"><h2 class="text-base font-semibold text-text">社区内容</h2><div class="mt-3 space-y-2"><NuxtLink v-for="solution in profile.solutions" :key="solution.id" :to="publicUrl('post', solution.public_id || solution.id)" class="block text-sm text-primary no-underline hover:underline">题解 · {{ solution.title }}</NuxtLink><NuxtLink v-for="moment in profile.moments" :key="moment.id" :to="publicUrl('post', moment.public_id || moment.id)" class="block line-clamp-1 text-sm text-primary no-underline hover:underline">动态 · {{ moment.content }}</NuxtLink></div></section>
+      <section v-if="profile.solutions.length || profile.moments.length" class="bg-white border border-border rounded-xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-border bg-bg-page">
+          <h2 class="text-base font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-messages-square" class="text-primary size-4.5" />
+            社区内容
+          </h2>
+        </div>
+        <div class="divide-y divide-border">
+          <NuxtLink v-for="solution in profile.solutions" :key="solution.id" :to="publicUrl('post', solution.public_id || solution.id)" class="flex items-center gap-2 px-6 py-3 text-sm text-primary no-underline hover:bg-primary-bg">
+            <UIcon name="i-lucide-lightbulb" class="size-4 shrink-0" />题解 · {{ solution.title }}
+          </NuxtLink>
+          <NuxtLink v-for="moment in profile.moments" :key="moment.id" :to="publicUrl('post', moment.public_id || moment.id)" class="flex items-center gap-2 px-6 py-3 text-sm text-primary no-underline hover:bg-primary-bg">
+            <UIcon name="i-lucide-pen-line" class="size-4 shrink-0" /><span class="line-clamp-1">动态 · {{ moment.content }}</span>
+          </NuxtLink>
+        </div>
+      </section>
 
       <!-- 已通过题目 -->
       <div v-if="profile.solved_problems.length" class="bg-white border border-border rounded-xl overflow-hidden">

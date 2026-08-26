@@ -41,6 +41,14 @@ export function useApi() {
   // 当前路由：401 时跳转登录页需要保留回跳目标（SSR 阶段不可跳转，仅客户端）
   const route = useRoute();
 
+  // SSR 端 $fetch 不会自动携带浏览器 Cookie（server→server 直连）。
+  // 必须在 useApi() 的同步 setup 上下文捕获请求头（useRequestHeaders 不能在异步
+  // request() 闭包内调用，否则 SSR 抛 NUXT_E1001），供下面的 request() 闭包使用。
+  // 不转发则后端把登录用户当成游客，community/config 等接口返回空 permissions，
+  // 导致「发布内容」按钮 SSR 渲染为 disabled，且被 hydration mismatch 卡死（切页才恢复）。
+  // 客户端浏览器会自动带上 Cookie，无需注入。
+  const serverCookie = import.meta.server ? { cookie: useRequestHeaders(['cookie']).cookie } : undefined;
+
   // 认证相关页面：其自身的 401（如登录失败）不应触发跳转，避免死循环
   const AUTH_PAGE_PREFIXES = ['/login', '/register', '/forgot-password', '/reset-password', '/change-password'];
 
@@ -50,6 +58,10 @@ export function useApi() {
     options: ApiCallOptions = {},
   ): Promise<T> {
     const { silent = false, onError, redirectOnUnauthorized = true, ...fetchOptions } = options;
+    // SSR 端补上已捕获的 Cookie（见 useApi() 顶部 serverCookie 说明）
+    if (serverCookie?.cookie) {
+      fetchOptions.headers = { ...(fetchOptions.headers as Record<string, string> | undefined), ...serverCookie };
+    }
     try {
       return await $fetch<T>(url, { method, ...fetchOptions });
     } catch (err) {
