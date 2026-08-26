@@ -18,6 +18,7 @@ scripts/
 │
 └── e2e/                   # 跨模块 E2E 测试
     ├── setup.sh           #   启动 E2E 环境
+    ├── check-setup.sh     #   检查 E2E SDK 镜像刷新与失败传播
     ├── teardown.sh        #   停止 E2E 环境
     ├── core.sh            #   运行 noj-core E2E
     ├── judge.sh           #   运行 noj-judge E2E

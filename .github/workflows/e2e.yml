@@ -107,6 +107,9 @@ jobs:
       - name: 设置 Docker BuildKit
         uses: docker/setup-buildx-action@v3
 
+      - name: 校验本地 E2E SDK 镜像刷新逻辑
+        run: bash scripts/e2e/check-setup.sh
+
       # ── 缓存依赖 ──────────────────────────────
 
       - name: 缓存 Deno 依赖

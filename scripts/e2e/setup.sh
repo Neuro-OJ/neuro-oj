@@ -16,6 +16,7 @@ E2E_REDIS_URL="${E2E_REDIS_URL:-redis://localhost:6380/1}"
 E2E_CORE_PORT="${E2E_CORE_PORT:-8099}"
 E2E_CORE_URL="http://localhost:$E2E_CORE_PORT"
 E2E_JWT_SECRET="${E2E_JWT_SECRET:-e2e-test-secret}"
+SDK_IMAGE_BUILDER="${NOJ_E2E_SDK_IMAGE_BUILDER:-$ROOT_DIR/noj-judge/scripts/build-sdk-images.sh}"
 
 # 导出供子脚本使用
 export E2E_DB_URL E2E_REDIS_URL E2E_CORE_PORT E2E_CORE_URL
@@ -37,6 +38,13 @@ if [ -z "${CI:-}" ]; then
     exit 1
   fi
   ok "Docker 运行中"
+
+  info "刷新本地 SDK 镜像..."
+  if ! "$SDK_IMAGE_BUILDER"; then
+    fail "SDK 镜像构建失败，停止 E2E 启动"
+    exit 1
+  fi
+  ok "SDK 镜像已从当前工作树构建"
 
   info "构建并启动服务..."
   docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" up -d --build
