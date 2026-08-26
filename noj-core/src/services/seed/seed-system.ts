@@ -9,9 +9,16 @@
  * 全部幂等（ON CONFLICT DO NOTHING / 存在性检查）。
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "../../db/connection.ts";
-import { judgeImages, roles, tags, userRoles, users } from "../../db/schema.ts";
+import {
+  judgeImages,
+  llmQuotas,
+  roles,
+  tags,
+  userRoles,
+  users,
+} from "../../db/schema.ts";
 import { hashPassword } from "../../lib/password.ts";
 import { ensureSystemRoles } from "./seed-rbac.ts";
 import { ROOT_USER_ID } from "../../lib/constants.ts";
@@ -143,6 +150,92 @@ export async function seedTags(): Promise<void> {
       .values({ ...tag, created_at: now, updated_at: now })
       .onConflictDoNothing({ target: tags.name });
     console.log(`  已同步标签: ${tag.name} (${tag.kind})`);
+  }
+}
+
+/**
+ * 初始化 LLM 默认配额（幂等）。
+ *
+ * 仅当对应 scope 尚无配额行时写入默认值；管理员已配置的行不会被覆盖。
+ * 默认值偏保守，生产环境可通过管理 API 调整。
+ */
+export async function seedLlmQuotas(): Promise<void> {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  const defaults: Array<{
+    id: string;
+    scope_type: "user" | "problem" | "global";
+    scope_id: string;
+    window_type: "day" | "month";
+    max_calls: number;
+    max_tokens: number;
+    max_cost: number;
+  }> = [
+    {
+      id: "llm-quota-global-day",
+      scope_type: "global",
+      scope_id: "",
+      window_type: "day",
+      max_calls: 10000,
+      max_tokens: 1_000_000,
+      max_cost: 1000,
+    },
+    {
+      id: "llm-quota-global-month",
+      scope_type: "global",
+      scope_id: "",
+      window_type: "month",
+      max_calls: 100_000,
+      max_tokens: 10_000_000,
+      max_cost: 10_000,
+    },
+    {
+      id: "llm-quota-user-day",
+      scope_type: "user",
+      scope_id: "",
+      window_type: "day",
+      max_calls: 1000,
+      max_tokens: 100_000,
+      max_cost: 100,
+    },
+    {
+      id: "llm-quota-problem-day",
+      scope_type: "problem",
+      scope_id: "",
+      window_type: "day",
+      max_calls: 5000,
+      max_tokens: 500_000,
+      max_cost: 500,
+    },
+  ];
+
+  for (const quota of defaults) {
+    const existing = await db
+      .select({ id: llmQuotas.id })
+      .from(llmQuotas)
+      .where(
+        and(
+          eq(llmQuotas.scope_type, quota.scope_type),
+          eq(llmQuotas.scope_id, quota.scope_id),
+          eq(llmQuotas.window_type, quota.window_type),
+        ),
+      )
+      .limit(1);
+    if (existing.length > 0) {
+      console.log(
+        `  LLM 配额已存在，跳过: ${quota.scope_type}/${quota.window_type}`,
+      );
+      continue;
+    }
+    await db.insert(llmQuotas).values({
+      ...quota,
+      created_at: now,
+      updated_at: now,
+    });
+    console.log(
+      `  已写入默认 LLM 配额: ${quota.scope_type}/${quota.window_type}`,
+    );
   }
 }
 

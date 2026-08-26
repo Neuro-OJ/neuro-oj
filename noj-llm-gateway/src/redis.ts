@@ -12,6 +12,8 @@ export interface RedisClient {
   expire(key: string, seconds: number): Promise<number>;
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<unknown>;
+  sadd(key: string, member: string): Promise<number>;
+  scard(key: string): Promise<number>;
   /** 执行 Lua 脚本；keys 为 KEYS，args 为 ARGV */
   eval(
     script: string,
@@ -33,6 +35,8 @@ export function createRedis(redisUrl: string): RedisClient {
     expire: (key, seconds) => redis.expire(key, seconds),
     get: (key) => redis.get(key),
     set: (key, value) => redis.set(key, value),
+    sadd: (key, member) => redis.sadd(key, member),
+    scard: (key) => redis.scard(key),
     eval: (script, keys, args) =>
       redis.eval(script, keys.length, ...keys, ...args),
   };

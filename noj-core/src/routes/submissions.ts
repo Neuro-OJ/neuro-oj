@@ -155,7 +155,11 @@ router.get(
       maxPerPage: isLoggedIn ? 100 : 50,
     });
 
-    const result = await listSubmissions({ page: 1, perPage });
+    const result = await listSubmissions({
+      page: 1,
+      perPage,
+      excludeContest: true,
+    });
     return c.json({ data: result.data });
   },
 );

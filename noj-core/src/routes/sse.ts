@@ -294,9 +294,20 @@ contestSse.get(
               return;
             }
           }
+          // 非 admin 订阅者隐藏 user_id，避免泄露“谁在提交哪题”。
+          let payload = message;
+          if (!isAdmin) {
+            try {
+              const event = JSON.parse(message) as Record<string, unknown>;
+              delete event.user_id;
+              payload = JSON.stringify(event);
+            } catch {
+              // 解析失败时保持原样（不阻断推送）
+            }
+          }
           stream.writeSSE({
             event: "contest:submission:created",
-            data: message,
+            data: payload,
           }).catch(closeStream);
         },
       );

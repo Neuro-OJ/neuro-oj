@@ -30,6 +30,7 @@ import {
 } from "../services/submissions/submissions.ts";
 import { isValidContestType } from "../types/contests.ts";
 import { createActivity } from "../services/community/community.ts";
+import { enforceContestSubmissionRateLimit } from "../lib/hardening-rate-limit.ts";
 
 const contests = new Hono<OptionalAuthEnv>();
 const MAX_CODE_LENGTH = 100 * 1024;
@@ -149,6 +150,7 @@ contests.get("/:id/ranking", optionalAuthMiddleware, async (c) => {
 contests.post("/:id/submit", authMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId as string;
+  await enforceContestSubmissionRateLimit(c, userId);
   const contest = await getContest(contestId, userId);
   if (
     computeContestStatus(contest.start_time, contest.end_time) !== "running"

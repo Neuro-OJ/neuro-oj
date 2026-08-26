@@ -35,7 +35,56 @@ async function getQuota(
     WHERE scope_type = ${scopeType} AND scope_id = ${scopeId} AND window_type = ${windowType}
     LIMIT 1
   `;
-  return rows[0] ?? null;
+  return rows[0] ?? fallbackQuota(scopeType, windowType);
+}
+
+/**
+ * 无配额记录时的安全 fallback。
+ *
+ * 默认值与 noj-core 初始化种子一致；可通过环境变量覆盖。
+ * 缺失配额 MUST NOT 视为无限。
+ */
+function fallbackQuota(
+  scopeType: string,
+  windowType: string,
+): QuotaRow {
+  const env = Deno.env.toObject();
+  const prefix =
+    `NOJ_LLM_DEFAULT_${scopeType.toUpperCase()}_${windowType.toUpperCase()}`;
+  const num = (key: string, fallback: number): number => {
+    const raw = env[key];
+    if (raw === undefined || raw === "") return fallback;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
+  };
+
+  const defaults: Record<string, QuotaRow> = {
+    "global/day": { max_calls: 10000, max_tokens: 1_000_000, max_cost: 1000 },
+    "global/month": {
+      max_calls: 100_000,
+      max_tokens: 10_000_000,
+      max_cost: 10_000,
+    },
+    "user/day": { max_calls: 1000, max_tokens: 100_000, max_cost: 100 },
+    "user/month": { max_calls: 10_000, max_tokens: 1_000_000, max_cost: 1000 },
+    "problem/day": { max_calls: 5000, max_tokens: 500_000, max_cost: 500 },
+    "problem/month": {
+      max_calls: 50_000,
+      max_tokens: 5_000_000,
+      max_cost: 5000,
+    },
+  };
+  const d = defaults[`${scopeType}/${windowType}`] ?? {
+    max_calls: 1000,
+    max_tokens: 100_000,
+    max_cost: 100,
+  };
+
+  return {
+    max_calls: num(`${prefix}_CALLS`, d.max_calls),
+    max_tokens: num(`${prefix}_TOKENS`, d.max_tokens),
+    max_cost: num(`${prefix}_COST`, d.max_cost),
+  };
 }
 
 function dayKey(date = new Date()): string {

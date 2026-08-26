@@ -1,7 +1,7 @@
 /// noj-judge 运行时配置。
 ///
 /// 所有配置项均从环境变量读取，提供合理的默认值。
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
     /// Redis 连接 URL
     pub redis_url: String,
@@ -35,10 +35,47 @@ pub struct Config {
     pub max_concurrent_judges: usize,
     /// 每个评测容器的 CPU 上限（单位：millicores，默认: 1000 = 1 核）
     pub cpu_limit_millicores: u64,
+    /// Evaluator 单次评测时间硬上限（毫秒，默认: 300000）
+    pub max_evaluator_time_ms: u64,
+    /// Solution 单次调用超时硬上限（毫秒，默认: 60000）
+    pub max_solution_call_timeout_ms: u64,
     /// Docker daemon Unix endpoint（默认: unix:///var/run/docker.sock）
     pub docker_host: String,
     /// 是否拒绝连接默认宿主 Docker socket（生产环境应开启）
     pub require_isolated_docker: bool,
+}
+
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("redis_url", &"<redacted>")
+            .field("judge_queue", &self.judge_queue)
+            .field("result_queue", &self.result_queue)
+            .field("work_dir", &self.work_dir)
+            .field(
+                "support_package_download_timeout_secs",
+                &self.support_package_download_timeout_secs,
+            )
+            .field("support_cache_dir", &self.support_cache_dir)
+            .field("support_cache_max_items", &self.support_cache_max_items)
+            .field("support_cache_max_mb", &self.support_cache_max_mb)
+            .field("instance_id", &self.instance_id)
+            .field("image_prefix", &self.image_prefix)
+            .field("command_whitelist", &self.command_whitelist)
+            .field("allow_evaluator_network", &self.allow_evaluator_network)
+            .field("evaluator_network_mode", &self.evaluator_network_mode)
+            .field("allow_http_s3", &self.allow_http_s3)
+            .field("max_concurrent_judges", &self.max_concurrent_judges)
+            .field("cpu_limit_millicores", &self.cpu_limit_millicores)
+            .field("max_evaluator_time_ms", &self.max_evaluator_time_ms)
+            .field(
+                "max_solution_call_timeout_ms",
+                &self.max_solution_call_timeout_ms,
+            )
+            .field("docker_host", &self.docker_host)
+            .field("require_isolated_docker", &self.require_isolated_docker)
+            .finish()
+    }
 }
 
 /// 未配置或配置无效时的评测并发上限。
@@ -52,6 +89,12 @@ pub const MIN_CPU_LIMIT_MILLICORES: u64 = 100;
 
 /// CPU 配置的最大值（16 核），防止错误配置绕过资源边界。
 pub const MAX_CPU_LIMIT_MILLICORES: u64 = 16_000;
+
+/// Evaluator 单次评测时间硬上限（毫秒）。
+pub const DEFAULT_MAX_EVALUATOR_TIME_MS: u64 = 300_000;
+
+/// Solution 单次调用超时硬上限（毫秒）。
+pub const DEFAULT_MAX_SOLUTION_CALL_TIMEOUT_MS: u64 = 60_000;
 
 /// 防止错误配置创建过大的 semaphore 或占满调度资源。
 const MAX_CONFIGURED_CONCURRENT_JUDGES: usize = 1024;
@@ -95,6 +138,12 @@ impl Config {
                     (MIN_CPU_LIMIT_MILLICORES..=MAX_CPU_LIMIT_MILLICORES).contains(value)
                 })
                 .unwrap_or(DEFAULT_CPU_LIMIT_MILLICORES),
+            max_evaluator_time_ms: env_var_parse::<u64>("JUDGE_MAX_EVALUATOR_TIME_MS")
+                .unwrap_or(DEFAULT_MAX_EVALUATOR_TIME_MS),
+            max_solution_call_timeout_ms: env_var_parse::<u64>(
+                "JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS",
+            )
+            .unwrap_or(DEFAULT_MAX_SOLUTION_CALL_TIMEOUT_MS),
             docker_host: env_or("JUDGE_DOCKER_HOST", crate::docker::DEFAULT_DOCKER_HOST),
             require_isolated_docker: env_var_parse::<bool>("JUDGE_REQUIRE_ISOLATED_DOCKER")
                 .unwrap_or(false),
