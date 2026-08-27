@@ -51,6 +51,8 @@ import { assertContestSubmissionLimit } from "../contest/contests.ts";
 import { getStorageProvider } from "../../lib/storage/mod.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
 import { buildJudgeTaskLlm } from "../../lib/llm-token.ts";
+import { buildJudgeTaskLlmForProvider } from "../../lib/llm-token.ts";
+import { getUserLlmProvider } from "../llm.ts";
 import type { LlmConfig, RuntimeConfig } from "../../types/problems.ts";
 import type {
   JudgeTask,
@@ -410,6 +412,27 @@ export async function createSubmission(
       runtimeConfig,
     );
   }
+  let userLlmTask: JudgeTaskLlm | undefined;
+  if (input.llm_provider_config_id) {
+    const provider = await getUserLlmProvider(
+      userId,
+      input.llm_provider_config_id,
+    );
+    if (!provider.enabled) {
+      throw new BadRequestError(
+        "用户模型配置已停用",
+        "BYOK_CONFIG_UNAVAILABLE",
+      );
+    }
+    userLlmTask = await buildJudgeTaskLlmForProvider(
+      provider.id,
+      provider.model,
+      id,
+      input.problem_id,
+      userId,
+      runtimeConfig,
+    );
+  }
 
   const task: JudgeTask = {
     submission_id: id,
@@ -420,6 +443,7 @@ export async function createSubmission(
     code: input.code,
     file_name: fileName,
     ...(llmTask ? { llm: llmTask } : {}),
+    ...(userLlmTask ? { user_llm: userLlmTask } : {}),
   };
 
   try {
@@ -432,6 +456,7 @@ export async function createSubmission(
       language: input.language,
       code: input.code,
       file_name: fileName,
+      llm_provider_config_id: input.llm_provider_config_id,
       status: "pending",
       created_at: now,
     });

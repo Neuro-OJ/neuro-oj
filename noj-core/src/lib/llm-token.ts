@@ -65,8 +65,27 @@ export async function mintEvalToken(
  * @param userId 提交用户 ID
  * @param runtimeConfig 题目 runtime_config（用于 TTL）
  */
-export async function buildJudgeTaskLlm(
+export function buildJudgeTaskLlm(
   llmConfig: LlmConfig,
+  submissionId: string,
+  problemId: string,
+  userId: string,
+  runtimeConfig: RuntimeConfig,
+): Promise<JudgeTaskLlm> {
+  return buildJudgeTaskLlmForProvider(
+    llmConfig.provider_id,
+    llmConfig.model,
+    submissionId,
+    problemId,
+    userId,
+    runtimeConfig,
+  );
+}
+
+/** 为指定 Provider 构造短期 LLM token，平台题目和用户 BYOK 共用该契约。 */
+export async function buildJudgeTaskLlmForProvider(
+  providerId: string,
+  model: string,
   submissionId: string,
   problemId: string,
   userId: string,
@@ -82,8 +101,8 @@ export async function buildJudgeTaskLlm(
     submission_id: submissionId,
     problem_id: problemId,
     user_id: userId,
-    provider_id: llmConfig.provider_id,
-    allowed_models: [llmConfig.model],
+    provider_id: providerId,
+    allowed_models: [model],
     iat: now,
     exp: now + ttlSeconds,
     max_calls: Number(Deno.env.get("NOJ_LLM_MAX_CALLS") ?? "100"),
@@ -92,7 +111,7 @@ export async function buildJudgeTaskLlm(
   return {
     gateway_url: gatewayUrl,
     eval_token: token,
-    provider_id: llmConfig.provider_id,
-    allowed_models: [llmConfig.model],
+    provider_id: providerId,
+    allowed_models: [model],
   };
 }

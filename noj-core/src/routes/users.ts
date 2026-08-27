@@ -1,7 +1,19 @@
 import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
-import { BadRequestError, ValidationError } from "../lib/errors.ts";
+import {
+  BadRequestError,
+  NotFoundError,
+  ValidationError,
+} from "../lib/errors.ts";
+import {
+  createUserLlmProvider,
+  deleteUserLlmProvider,
+  listUserLlmProviders,
+  LlmGatewayError,
+  testUserLlmProvider,
+  updateUserLlmProvider,
+} from "../services/llm.ts";
 import {
   clearUserAvatar,
   getUserAvatarBytes,
@@ -14,6 +26,83 @@ import {
 import { getMyRanking } from "../services/rankings.ts";
 
 const users = new Hono<{ Variables: { userId: string; userRole: string } }>();
+
+function mapLlmError(error: unknown): never {
+  if (error instanceof LlmGatewayError) {
+    if (error.status === 404) throw new NotFoundError("模型配置不存在");
+    if (error.status === 400) throw new BadRequestError(error.code, error.code);
+    throw new BadRequestError("模型服务暂时不可用", "BYOK_GATEWAY_UNAVAILABLE");
+  }
+  throw error;
+}
+
+users.get("/me/llm-providers", authMiddleware, async (c) => {
+  try {
+    return c.json({
+      data: await listUserLlmProviders(c.get("userId") as string),
+    });
+  } catch (error) {
+    return mapLlmError(error);
+  }
+});
+
+users.post("/me/llm-providers", authMiddleware, async (c) => {
+  const body = await parseJsonBody<Record<string, unknown>>(c);
+  if (!body.name || !body.model || !body.api_key) {
+    throw new BadRequestError("缺少必填字段：name、model、api_key");
+  }
+  try {
+    const data = await createUserLlmProvider(c.get("userId") as string, {
+      name: String(body.name),
+      base_url: String(body.base_url ?? "https://api.openai.com/v1"),
+      model: String(body.model),
+      api_key: String(body.api_key),
+    });
+    return c.json({ data }, 201);
+  } catch (error) {
+    return mapLlmError(error);
+  }
+});
+
+users.put("/me/llm-providers/:id", authMiddleware, async (c) => {
+  const body = await parseJsonBody<
+    Partial<{ name: string; base_url: string; model: string; api_key: string }>
+  >(c);
+  try {
+    const data = await updateUserLlmProvider(
+      c.get("userId") as string,
+      c.req.param("id") as string,
+      body,
+    );
+    return c.json({ data });
+  } catch (error) {
+    return mapLlmError(error);
+  }
+});
+
+users.delete("/me/llm-providers/:id", authMiddleware, async (c) => {
+  try {
+    await deleteUserLlmProvider(
+      c.get("userId") as string,
+      c.req.param("id") as string,
+    );
+    return c.body(null, 204);
+  } catch (error) {
+    return mapLlmError(error);
+  }
+});
+
+users.post("/me/llm-providers/:id/test", authMiddleware, async (c) => {
+  try {
+    await testUserLlmProvider(
+      c.get("userId") as string,
+      c.req.param("id") as string,
+    );
+    return c.json({ data: { status: "ok" } });
+  } catch (error) {
+    return mapLlmError(error);
+  }
+});
 
 /**
  * 搜索用户。

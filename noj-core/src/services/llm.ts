@@ -18,6 +18,16 @@ export interface LlmProviderInput {
   enabled?: boolean;
 }
 
+export class LlmGatewayError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly code: string,
+  ) {
+    super(code);
+    this.name = "LlmGatewayError";
+  }
+}
+
 export interface LlmProviderView {
   id: string;
   name: string;
@@ -69,8 +79,9 @@ async function request<T>(
   });
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error(
-      body?.error ?? `LLM Gateway 请求失败: ${res.status}`,
+    throw new LlmGatewayError(
+      res.status,
+      typeof body?.error === "string" ? body.error : "gateway_error",
     );
   }
   return body as T;
@@ -82,6 +93,85 @@ export async function listLlmProviders(): Promise<LlmProviderView[]> {
     "/internal/providers",
   );
   return body.data;
+}
+
+/** 获取当前用户拥有的 BYOK Provider。 */
+export async function listUserLlmProviders(
+  userId: string,
+): Promise<LlmProviderView[]> {
+  const body = await request<{ data: LlmProviderView[] }>(
+    `/internal/providers?created_by=${encodeURIComponent(userId)}`,
+  );
+  return body.data;
+}
+
+/** 获取当前用户拥有的指定 BYOK Provider。 */
+export async function getUserLlmProvider(
+  userId: string,
+  id: string,
+): Promise<LlmProviderView> {
+  const body = await request<{ data: LlmProviderView }>(
+    `/internal/providers/${encodeURIComponent(id)}?created_by=${
+      encodeURIComponent(userId)
+    }`,
+  );
+  return body.data;
+}
+
+/** 创建用户 BYOK Provider；真实 Key 只发送给 gateway 内部管理端点。 */
+export async function createUserLlmProvider(
+  userId: string,
+  input: LlmProviderInput,
+): Promise<LlmProviderView> {
+  const body = await request<{ data: LlmProviderView }>(
+    "/internal/providers",
+    {
+      method: "POST",
+      body: JSON.stringify({ ...input, created_by: userId }),
+    },
+  );
+  return body.data;
+}
+
+/** 更新用户 BYOK Provider。 */
+export async function updateUserLlmProvider(
+  userId: string,
+  id: string,
+  input: Partial<LlmProviderInput>,
+): Promise<LlmProviderView> {
+  const body = await request<{ data: LlmProviderView }>(
+    `/internal/providers/${encodeURIComponent(id)}?created_by=${
+      encodeURIComponent(userId)
+    }`,
+    { method: "PUT", body: JSON.stringify(input) },
+  );
+  return body.data;
+}
+
+/** 删除用户 BYOK Provider。 */
+export async function deleteUserLlmProvider(
+  userId: string,
+  id: string,
+): Promise<void> {
+  await request<unknown>(
+    `/internal/providers/${encodeURIComponent(id)}?created_by=${
+      encodeURIComponent(userId)
+    }`,
+    { method: "DELETE" },
+  );
+}
+
+/** 测试用户 BYOK Provider 连通性。 */
+export async function testUserLlmProvider(
+  userId: string,
+  id: string,
+): Promise<void> {
+  await request<unknown>(
+    `/internal/providers/${encodeURIComponent(id)}/test?created_by=${
+      encodeURIComponent(userId)
+    }`,
+    { method: "POST", body: "{}" },
+  );
 }
 
 /** 按 ID 获取 LLM Provider 精简信息（供题目 CRUD 校验使用）。 */

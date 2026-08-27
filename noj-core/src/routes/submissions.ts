@@ -194,6 +194,7 @@ function parseArtifactMultipart(
   problem_id: string;
   file_name: string;
   file_stream: ReadableStream<Uint8Array>;
+  llm_provider_config_id?: string;
 }> {
   return new Promise((resolve, reject) => {
     const contentType = c.req.header("content-type");
@@ -204,6 +205,7 @@ function parseArtifactMultipart(
     const bb = busboy({ headers: { "content-type": contentType } });
     let problemId = "";
     let fileName = "";
+    let llmProviderConfigId = "";
     let fileStream: ReadableStream<Uint8Array> | null = null;
     let resolved = false;
 
@@ -215,12 +217,14 @@ function parseArtifactMultipart(
           problem_id: problemId,
           file_name: fileName,
           file_stream: fileStream,
+          llm_provider_config_id: llmProviderConfigId || undefined,
         });
       }
     }
 
     bb.on("field", (name: string, val: string) => {
       if (name === "problem_id") problemId = val;
+      if (name === "llm_provider_config_id") llmProviderConfigId = val;
       maybeResolve();
     });
     bb.on("file", (name: string, file: unknown, info: { filename: string }) => {
@@ -290,6 +294,7 @@ router.post("/", authMiddleware, async (c) => {
     language: body.language as string,
     code: body.code as string,
     file_name: body.file_name as string | undefined,
+    llm_provider_config_id: body.llm_provider_config_id as string | undefined,
   });
 
   return c.json({ data: result }, 201);

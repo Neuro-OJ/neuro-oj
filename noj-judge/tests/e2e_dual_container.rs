@@ -61,6 +61,7 @@ fn dual_task() -> JudgeTask {
         file_name: Some("solution.py".to_string()),
         rejudge_seq: None,
         llm: None,
+        user_llm: None,
     }
 }
 
