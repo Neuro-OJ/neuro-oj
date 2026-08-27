@@ -3,6 +3,7 @@ import type { Contest, ContestProblem } from '~/composables/useContests'
 import type { ObjectiveQuestion } from '~/composables/useObjective'
 import { QUESTION_TYPE_LABELS } from '~/composables/useObjective'
 import { publicUrl } from '~/utils/publicIdentifiers'
+import { extractApiError } from '~/utils/apiError'
 
 /**
  * 竞赛题目详情页：
@@ -31,6 +32,45 @@ const problem = computed(() => data.value?.data ?? null)
 const contest = computed(() => contestData.value?.data ?? null)
 
 const isObjective = computed(() => problem.value?.is_objective === true)
+const isArtifact = computed(() => problem.value?.submission_mode === 'artifact')
+
+// ── artifact 提交 ──
+const artifactFile = ref<File | null>(null)
+const artifactSubmitting = ref(false)
+const artifactError = ref('')
+const artifactSuccessId = ref('')
+const { api } = useApi()
+
+function formatMb(mb: number | null | undefined): string {
+  if (mb == null) return 'NOJ 默认上限'
+  return `${mb} MB`
+}
+
+async function handleArtifactSubmit() {
+  if (!problem.value) return
+  if (!artifactFile.value) {
+    artifactError.value = '请选择 zip 文件'
+    return
+  }
+  artifactError.value = ''
+  artifactSubmitting.value = true
+  try {
+    const form = new FormData()
+    form.append('problem_id', problem.value.problem_id)
+    form.append('language', 'python3')
+    form.append('file', artifactFile.value)
+    const res = await api.post<{ data: { id: string; public_id?: string } }>(
+      `/api/v1/contests/${contestId}/submit`,
+      form,
+    )
+    artifactSuccessId.value = res.data.id
+    artifactFile.value = null
+  } catch (err: unknown) {
+    artifactError.value = extractApiError(err).message
+  } finally {
+    artifactSubmitting.value = false
+  }
+}
 
 const difficultyLabel: Record<string, string> = {
   easy: '简单',
@@ -171,7 +211,7 @@ async function onSubmit() {
           >
             客观题
           </span>
-          <template v-if="!isObjective && canUseEditor">
+          <template v-if="!isObjective && !isArtifact && canUseEditor">
             <UButton
               color="primary"
               class="gap-1.5 px-4 py-2 text-xs"
@@ -180,7 +220,7 @@ async function onSubmit() {
               <UIcon name="i-lucide-pencil-ruler" class="size-3.5" />去做题
             </UButton>
           </template>
-          <span v-else-if="!isObjective && accessHint" class="text-xs text-text-muted">{{ accessHint }}</span>
+          <span v-else-if="!isObjective && !isArtifact && accessHint" class="text-xs text-text-muted">{{ accessHint }}</span>
         </header>
 
         <!-- 客观题：内联答题表单（竞赛一次性提交） -->
@@ -287,6 +327,34 @@ async function onSubmit() {
 
         <!-- 编程题：题目陈述 -->
         <section v-else class="rounded-xl border border-border bg-white p-6 lg:p-8">
+          <!-- artifact 题：zip 上传提交 -->
+          <div v-if="isArtifact" class="mb-6 rounded-xl border border-border bg-bg-page p-5">
+            <h2 class="text-base font-semibold text-text mb-1">提交产物（zip）</h2>
+            <p class="text-sm text-text-secondary">
+              请上传包含 <code class="font-mono text-primary">submission.py</code> 的 zip 压缩包。
+              大小上限：{{ formatMb(problem.artifact_max_size_mb) }}。
+            </p>
+            <div class="mt-4 flex flex-col gap-3">
+              <input
+                type="file"
+                accept=".zip,application/zip,application/x-zip-compressed"
+                class="block w-full text-sm text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-primary-dark"
+                @change="(e) => artifactFile = (e.target as HTMLInputElement).files?.[0] ?? null"
+              />
+              <div v-if="artifactError" class="text-sm text-red-600">{{ artifactError }}</div>
+              <div v-if="artifactSuccessId" class="text-sm text-green-600">
+                提交成功！
+                <NuxtLink :to="publicUrl('submission', artifactSuccessId)" class="text-primary no-underline hover:underline">查看评测结果</NuxtLink>
+              </div>
+              <div class="flex items-center gap-3">
+                <UButton color="primary" :loading="artifactSubmitting" :disabled="!canUseEditor || artifactSubmitting" @click="handleArtifactSubmit">
+                  <UIcon name="i-lucide-upload" class="size-4" />
+                  上传并提交
+                </UButton>
+                <span v-if="!canUseEditor" class="text-xs text-text-muted">{{ accessHint }}</span>
+              </div>
+            </div>
+          </div>
           <MarkdownRenderer :content="problem.description" />
         </section>
       </div>

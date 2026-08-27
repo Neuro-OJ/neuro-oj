@@ -62,6 +62,10 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     throw new NotFoundError("提交不存在");
   }
 
+  if (submission.artifact_storage_url) {
+    throw new BadRequestError("artifact 提交不支持重测");
+  }
+
   if (submission.status !== "finished" && submission.status !== "error") {
     throw new BadRequestError("仅已完成或出错的提交可以重测");
   }
@@ -227,6 +231,7 @@ export async function rejudgeProblemSubmissions(
         language: submissions.language,
         code: submissions.code,
         file_name: submissions.file_name,
+        artifact_storage_url: submissions.artifact_storage_url,
       })
       .from(submissions)
       .where(
@@ -238,6 +243,12 @@ export async function rejudgeProblemSubmissions(
 
     if (rows.length === 0) {
       return { ids: [], count: 0 };
+    }
+
+    if (rows.some((r) => r.artifact_storage_url)) {
+      return {
+        error: "该题目包含 artifact 提交，artifact 提交不支持重测",
+      };
     }
 
     if (rows.length > MAX_BATCH_REJUDGE) {

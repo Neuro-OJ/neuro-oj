@@ -34,6 +34,10 @@ export interface ProblemResponse {
   type: string;
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective: boolean;
+  /** 提交模式：code / artifact */
+  submission_mode: "code" | "artifact";
+  /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
+  artifact_max_size_mb: number | null;
   /** LLM 配置（可空） */
   llm_config: LlmConfig | null;
   display_id: string;
@@ -74,6 +78,8 @@ export interface AdminProblemListItem {
   owner_id: string;
   owner_username: string;
   type: string;
+  submission_mode: "code" | "artifact";
+  artifact_max_size_mb: number | null;
   display_id: string;
 }
 
