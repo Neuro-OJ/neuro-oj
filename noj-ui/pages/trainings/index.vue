@@ -20,11 +20,11 @@ const { data, pending, error, refresh } = await useFetch<{ data: Training[]; tot
 const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / perPage))
 
 async function onCreate() {
-  await refresh()
   try {
+    await refresh()
     toast.success('题单已创建')
   } catch {
-    // toast 失败不影响刷新
+    toast.error('题单已创建，但列表刷新失败')
   }
 }
 </script>
