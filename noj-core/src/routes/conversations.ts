@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth.ts";
 import { parseJsonBody } from "../lib/request.ts";
 import { BadRequestError, ForbiddenError } from "../lib/errors.ts";
+import { resolveUserId } from "../services/users/users-id.ts";
 import { parsePagination } from "../lib/pagination.ts";
 import { Channels, onEvent } from "../lib/event-bus.ts";
 import { createSseStream } from "../lib/sse-stream.ts";
@@ -61,7 +62,8 @@ router.post("/", async (c) => {
 
   const { conversation, created } = await findOrCreateConversation(
     userId,
-    body.other_user_id,
+    // 对方可能传 username，解析为 UUID（与用户主页私信入口一致）
+    await resolveUserId(body.other_user_id),
   );
 
   return c.json({ data: conversation }, created ? 201 : 200);

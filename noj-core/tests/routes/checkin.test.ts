@@ -297,6 +297,33 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "checkin route: GET /stats?user_id=支持 username 解析（issue 用户主页活跃度）",
+  ignore: !hasEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const userId = await createTestUser();
+    try {
+      const app = createTestApp();
+      // 查真实 username，用 username 而非 UUID 查询（用户主页 URL 传 username）
+      const db = getDb();
+      const [row] = await db.select({ username: users.username }).from(users)
+        .where(eq(users.id, userId)).limit(1);
+      const res = await jsonRequest(
+        app,
+        `/api/v1/checkin/stats?user_id=${row?.username}`,
+      );
+      assertEquals(res.status, 200);
+      const body = await res.json() as { data: { total_days: number } };
+      assertEquals(body.data.total_days, 0);
+    } finally {
+      await cleanup(userId);
+    }
+  },
+});
+
+Deno.test({
   name: "checkin route: GET /stats?user_id=不存在返回 404（issue #184）",
   ignore: !hasEnv,
   sanitizeResources: false,
