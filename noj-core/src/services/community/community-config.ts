@@ -53,6 +53,7 @@ export function assertCommunityEnabled(feature?: keyof CommunityConfig): void {
 export async function assertCommunityWritable(
   userId: string,
   isModerator: boolean,
+  opts: { allowSocialBan?: boolean } = {},
 ): Promise<void> {
   const config = getCommunityConfig();
   if (config.read_only && !isModerator) {
@@ -71,11 +72,16 @@ export async function assertCommunityWritable(
   )).orderBy(desc(userBans.banned_at)).limit(1);
   const ban = banRows[0];
   if (ban && (!ban.banned_until || ban.banned_until > nowIso())) {
-    throw new ForbiddenError(
-      ban.scope === "social" ? "你已被限制社区发布" : "账号已被封禁",
-      "USER_BANNED",
-      { reason: ban.reason, until: ban.banned_until },
-    );
+    // 社交封禁只限制发布；删除/管理自己的内容仍应允许
+    if (ban.scope === "social" && opts.allowSocialBan) {
+      // 放行
+    } else {
+      throw new ForbiddenError(
+        ban.scope === "social" ? "你已被限制社区发布" : "账号已被封禁",
+        "USER_BANNED",
+        { reason: ban.reason, until: ban.banned_until },
+      );
+    }
   }
   const rows = await db.select().from(communitySanctions).where(and(
     eq(communitySanctions.user_id, userId),

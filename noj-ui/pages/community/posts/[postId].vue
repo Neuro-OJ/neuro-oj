@@ -5,6 +5,7 @@ import type {
   PostType,
 } from "~/composables/useCommunity"
 import { useToast } from "~/composables/useToast"
+import { useBanStatus } from "~/composables/useBanStatus"
 import { isCommunityEdited } from "~/utils/communityEdited"
 import { problemUrl } from "~/utils/publicIdentifiers"
 
@@ -15,6 +16,7 @@ const { toast } = useToast()
 const { dialog } = useDialog()
 const { open: reportModal } = useReportModal()
 const { api } = useApi()
+const { userBanned } = useBanStatus()
 
 interface PostDetail {
   post: CommunityPost
@@ -62,7 +64,8 @@ const canComment = computed(
 )
 const canModerate = computed(() => config.value?.permissions.moderate === true)
 const canReport = computed(
-  () => isLoggedIn.value && config.value?.permissions.report === true,
+  () => isLoggedIn.value && config.value?.permissions.report === true &&
+    !userBanned.value,
 )
 const isAuthor = computed(() => post.value?.post.author_id === currentUserId.value)
 const canEditPost = computed(() => isAuthor.value || canModerate.value)
@@ -198,7 +201,7 @@ async function reportPost() {
     await api.post("/api/v1/community/reports", {
       post_id: postId.value,
       category: result.category,
-      reason: result.reason || "（未填写）",
+      reason: result.reason,
     })
     toast.success("举报已提交，感谢反馈")
   } catch (err: unknown) {
@@ -212,7 +215,7 @@ async function reportComment(commentId: string) {
     await api.post("/api/v1/community/reports", {
       comment_id: commentId,
       category: result.category,
-      reason: result.reason || "（未填写）",
+      reason: result.reason,
     })
     toast.success("举报已提交，感谢反馈")
   } catch (err: unknown) {

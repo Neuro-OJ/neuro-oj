@@ -2,7 +2,11 @@ import { Hono } from "hono";
 import type { Next } from "hono";
 import { parseJsonBody } from "../lib/request.ts";
 import { BadRequestError, ForbiddenError } from "../lib/errors.ts";
-import { assertPermission, checkPermission } from "../lib/permissions.ts";
+import {
+  assertPermission,
+  checkPermission,
+  getUserPermissions,
+} from "../lib/permissions.ts";
 import { COMMUNITY_PRESETS, MODERATION_STATUSES } from "../types/community.ts";
 import { authMiddleware, getUserBanState } from "../middleware/auth.ts";
 import type { OptionalAuthEnv } from "../middleware/auth.ts";
@@ -215,6 +219,18 @@ router.post("/admin/reports/:reportId/:status", async (c) => {
   const target = await getReportTarget(reportId);
   const targetUserId = target.post?.author_id ?? target.comment?.author_id;
   if (!targetUserId) throw new BadRequestError("举报目标用户不存在");
+
+  // 审核员不能借举报流程对管理员/其他审核员施加社交封禁（需 admin:full_access）
+  if (body.action === "ban" && body.scope !== "platform") {
+    const targetPerms = await getUserPermissions(targetUserId);
+    const targetIsPrivileged = targetPerms.has("admin:full_access") ||
+      targetPerms.has("community_moderation:review");
+    if (
+      targetIsPrivileged && !(await checkPermission(c, "admin:full_access"))
+    ) {
+      throw new ForbiddenError("无权对管理员/审核员执行社交封禁");
+    }
+  }
 
   let banId: string | undefined;
   if (body.action === "ban") {

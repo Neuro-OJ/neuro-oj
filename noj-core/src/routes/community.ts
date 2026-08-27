@@ -238,7 +238,9 @@ router.delete("/posts/:postId", authMiddleware, async (c) => {
   if (post.post.author_id !== actorId && !(await isModerator(c))) {
     throw new ForbiddenError("无权删除该内容");
   }
-  await assertCommunityWritable(actorId, await isModerator(c));
+  await assertCommunityWritable(actorId, await isModerator(c), {
+    allowSocialBan: true,
+  });
   return c.json({
     data: await changePostStatus(
       postId,
@@ -296,7 +298,9 @@ router.patch("/comments/:commentId", authMiddleware, async (c) => {
 });
 router.delete("/comments/:commentId", authMiddleware, async (c) => {
   const actorId = userId(c);
-  await assertCommunityWritable(actorId, await isModerator(c));
+  await assertCommunityWritable(actorId, await isModerator(c), {
+    allowSocialBan: true,
+  });
   return c.json({
     data: await deleteComment(
       c.req.param("commentId") as string,

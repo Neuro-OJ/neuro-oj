@@ -6,6 +6,7 @@ import {
   type PostType,
 } from "~/composables/useCommunity"
 import { useToast } from "~/composables/useToast"
+import { useBanStatus } from "~/composables/useBanStatus"
 import { stripMarkdown } from "~/utils/markdown"
 import { extractApiError } from "~/utils/apiError"
 import { publicUrl } from "~/utils/publicIdentifiers"
@@ -19,6 +20,7 @@ const { toast } = useToast()
 const { dialog } = useDialog()
 const { open: reportModal } = useReportModal()
 const { api } = useApi()
+const { userBanned } = useBanStatus()
 
 // NOJ-317：SSR 阶段可能拿到游客权限（permissions 为空），登录用户水合后
 // 需要强制刷新一次社区配置，否则“发布内容”按钮会一直处于灰色。
@@ -93,7 +95,8 @@ const canCreateCurrentType = computed(() => {
 })
 
 const canReport = computed(
-  () => isLoggedIn.value && config.value?.permissions.report === true,
+  () => isLoggedIn.value && config.value?.permissions.report === true &&
+    !userBanned.value,
 )
 
 const enabledTypes = computed<PostType[]>(() =>
@@ -172,7 +175,7 @@ async function reportPost(item: PostRow) {
     await api.post("/api/v1/community/reports", {
       post_id: item.post.id,
       category: result.category,
-      reason: result.reason || "（未填写）",
+      reason: result.reason,
     })
     toast.success("举报已提交，感谢反馈")
   } catch (err: unknown) {

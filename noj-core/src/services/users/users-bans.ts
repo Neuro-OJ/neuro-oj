@@ -80,6 +80,9 @@ export async function banUser(
     if (Number.isNaN(t)) {
       throw new ValidationError("banned_until 必须是有效 ISO 8601 字符串");
     }
+    if (t <= Date.now()) {
+      throw new ValidationError("banned_until 必须晚于当前时间");
+    }
   }
   if (scope !== "platform" && scope !== "social") {
     throw new ValidationError("scope 必须是 platform 或 social");
