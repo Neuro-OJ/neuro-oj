@@ -263,17 +263,17 @@ e2eTest(
 
 e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", async () => {
   if (!isE2E) return;
-  // 3.1 管理员创建 ICPC 竞赛并挂入套卷
+  // 3.1 管理员创建 Kaggle 竞赛并挂入套卷
   const now = Date.now();
   const contestRes = await apiPost("/api/v1/admin/contests", {
     title: `E2E 客观题竞赛 ${testSuffix}`,
     start_time: new Date(now - 60 * 60 * 1000).toISOString(),
     end_time: new Date(now + 60 * 60 * 1000).toISOString(),
-    type: "icpc",
-    config: { penalty_minutes: 20 },
+    type: "kaggle",
+    config: {},
     is_public: true,
     affect_global_ranking: false,
-    problems: [{ problem_id: paperId, sort_order: 0, label: "A" }],
+    problems: [{ problem_id: paperId, sort_order: 0, label: "A", score: 100 }],
   }, adminToken);
   if (contestRes.status !== 201) {
     throw new Error(
@@ -359,9 +359,9 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
     }
   }
 
-  // 3.6 排名计入：满分套卷计为已解（solved >= 1）
+  // 3.6 排名计入：满分套卷应计入 total_score
   const ranking = await apiGet(
-    `/api/v1/contests/${contestId}/ranking?type=icpc`,
+    `/api/v1/contests/${contestId}/ranking?type=kaggle`,
     adminToken,
   );
   if (ranking.status !== 200) {
@@ -369,10 +369,10 @@ e2eTest("[e2e/objective] 3. 竞赛集成：一次性提交 + 排名计入", asyn
       `排名查询失败: ${ranking.status} ${JSON.stringify(ranking.body)}`,
     );
   }
-  const rows = (ranking.body as { data: Array<{ solved: number }> }).data;
-  if (rows.length === 0 || rows[0].solved < 1) {
+  const rows = (ranking.body as { data: Array<{ total_score: number }> }).data;
+  if (rows.length === 0 || rows[0].total_score <= 0) {
     throw new Error(
-      `客观题提交应计入排名 solved，实际 ${JSON.stringify(rows)}`,
+      `客观题提交应计入排名 total_score，实际 ${JSON.stringify(rows)}`,
     );
   }
 

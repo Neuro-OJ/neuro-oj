@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { getDb } from "../../db/connection.ts";
 import {
   evaluationResults,
@@ -93,7 +93,8 @@ export async function hasAcceptedSolution(
     .where(and(
       eq(submissions.user_id, authorId),
       eq(submissions.problem_id, problemId),
-      eq(evaluationResults.status, "Accepted"),
+      eq(evaluationResults.status, "finished"),
+      gt(evaluationResults.score, 0),
     )).limit(1);
   return !!rows[0];
 }

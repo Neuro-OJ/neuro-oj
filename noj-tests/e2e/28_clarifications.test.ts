@@ -74,7 +74,7 @@ e2eTest("[e2e/clarifications] 1. 创建进行中的竞赛并注册参赛者", as
       title: `E2E 答疑竞赛 ${testSuffix}`,
       start_time: new Date(now - 60 * 60 * 1000).toISOString(),
       end_time: new Date(now + 60 * 60 * 1000).toISOString(),
-      type: "icpc",
+      type: "kaggle",
       config: {
         penalty_minutes: 20,
         freeze_time: null,
@@ -82,7 +82,12 @@ e2eTest("[e2e/clarifications] 1. 创建进行中的竞赛并注册参赛者", as
       },
       is_public: true,
       affect_global_ranking: false,
-      problems: [{ problem_id: problemId, sort_order: 0, label: "A" }],
+      problems: [{
+        problem_id: problemId,
+        sort_order: 0,
+        label: "A",
+        score: 100,
+      }],
     },
     adminToken,
   );
@@ -165,7 +170,7 @@ e2eTest(
         title: `E2E 已结束答疑竞赛 ${testSuffix}`,
         start_time: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
         end_time: new Date(now - 60 * 60 * 1000).toISOString(),
-        type: "icpc",
+        type: "kaggle",
         config: {
           penalty_minutes: 20,
           freeze_time: null,
@@ -173,7 +178,12 @@ e2eTest(
         },
         is_public: true,
         affect_global_ranking: false,
-        problems: [{ problem_id: problemId, sort_order: 0, label: "A" }],
+        problems: [{
+          problem_id: problemId,
+          sort_order: 0,
+          label: "A",
+          score: 100,
+        }],
       },
       adminToken,
     );
@@ -196,7 +206,7 @@ e2eTest(
         title: `E2E 待开始答疑竞赛 ${testSuffix}`,
         start_time: new Date(now + 60 * 60 * 1000).toISOString(),
         end_time: new Date(now + 120 * 60 * 1000).toISOString(),
-        type: "icpc",
+        type: "kaggle",
         config: {
           penalty_minutes: 20,
           freeze_time: null,
@@ -204,7 +214,12 @@ e2eTest(
         },
         is_public: true,
         affect_global_ranking: false,
-        problems: [{ problem_id: problemId, sort_order: 0, label: "A" }],
+        problems: [{
+          problem_id: problemId,
+          sort_order: 0,
+          label: "A",
+          score: 100,
+        }],
       },
       adminToken,
     );
@@ -249,7 +264,7 @@ e2eTest(
         title: `E2E 赛后提问竞赛 ${testSuffix}`,
         start_time: new Date(now - 60 * 60 * 1000).toISOString(),
         end_time: new Date(now + 60 * 60 * 1000).toISOString(),
-        type: "icpc",
+        type: "kaggle",
         config: {
           penalty_minutes: 20,
           freeze_time: null,
@@ -257,7 +272,12 @@ e2eTest(
         },
         is_public: true,
         affect_global_ranking: false,
-        problems: [{ problem_id: problemId, sort_order: 0, label: "A" }],
+        problems: [{
+          problem_id: problemId,
+          sort_order: 0,
+          label: "A",
+          score: 100,
+        }],
       },
       adminToken,
     );

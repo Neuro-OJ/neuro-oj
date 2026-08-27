@@ -3,6 +3,7 @@ import {
   apiGet,
   apiPatch,
   apiPost,
+  CODE_SAMPLES,
   e2eTest,
   getAdminToken,
   getOrCreateUser,
@@ -83,13 +84,7 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
   const subId = await submitCode(
     user.token,
     sampleProblemId,
-    `from noj_solution_sdk import register
-
-@register
-def solve(text: str) -> str:
-    a, b = map(int, text.strip().split())
-    return str(a + b)
-`,
+    CODE_SAMPLES.accepted,
   );
   await pollSubmission(user.token, subId);
   const problems = await apiGet(

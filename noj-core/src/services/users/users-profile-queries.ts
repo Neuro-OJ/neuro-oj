@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { getDb } from "../../db/connection.ts";
 import {
   communityPosts,
@@ -46,10 +46,10 @@ export function queryProfileStats(
     total_submissions: sql<number>`count(*)`,
     accepted: sql<
       number
-    >`count(*) filter (where ${evaluationResults.status} = 'Accepted')`,
+    >`count(*) filter (where ${evaluationResults.status} = 'finished' and ${evaluationResults.score} > 0)`,
     solved_count: sql<
       number
-    >`count(distinct ${submissions.problem_id}) filter (where ${evaluationResults.status} = 'Accepted')`,
+    >`count(distinct ${submissions.problem_id}) filter (where ${evaluationResults.status} = 'finished' and ${evaluationResults.score} > 0)`,
   })
     .from(submissions)
     .leftJoin(
@@ -77,7 +77,8 @@ export function querySolvedProblems(
       evaluationResults,
       and(
         eq(evaluationResults.submission_id, submissions.id),
-        eq(evaluationResults.status, "Accepted"),
+        eq(evaluationResults.status, "finished"),
+        gt(evaluationResults.score, 0),
       ),
     )
     .where(eq(submissions.user_id, userId))

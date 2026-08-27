@@ -33,8 +33,8 @@ interface ContestData {
   status: string;
 }
 
-interface IcpcRankingRow {
-  solved: number;
+interface KaggleRankingRow {
+  total_score: number;
 }
 
 e2eTest("[e2e/contest] Setup", async () => {
@@ -54,7 +54,7 @@ e2eTest("[e2e/contest] Setup", async () => {
   }
 });
 
-e2eTest("[e2e/contest] 1. 创建正在进行且已封榜的 ICPC 竞赛", async () => {
+e2eTest("[e2e/contest] 1. 创建正在进行中的 Kaggle 竞赛", async () => {
   if (!isE2E) return;
   const now = Date.now();
   const createResult = await apiPost(
@@ -63,16 +63,17 @@ e2eTest("[e2e/contest] 1. 创建正在进行且已封榜的 ICPC 竞赛", async 
       title: `E2E 生命周期竞赛 ${testSuffix}`,
       start_time: new Date(now - 60 * 60 * 1000).toISOString(),
       end_time: new Date(now + 60 * 60 * 1000).toISOString(),
-      type: "icpc",
-      config: {
-        penalty_minutes: 20,
-        freeze_time: new Date(now - 60 * 1000).toISOString(),
-        unfreeze_after_end: true,
-      },
+      type: "kaggle",
+      config: {},
       is_public: true,
       password: "ContestPass123",
       affect_global_ranking: false,
-      problems: [{ problem_id: problemId, sort_order: 0, label: "A" }],
+      problems: [{
+        problem_id: problemId,
+        sort_order: 0,
+        label: "A",
+        score: 100,
+      }],
     },
     adminToken,
   );
@@ -136,7 +137,7 @@ e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
   }
 });
 
-e2eTest("[e2e/contest] 3. 封榜时公开排名冻结而管理员可见完整排名", async () => {
+e2eTest("[e2e/contest] 3. 排名包含提交分数", async () => {
   if (!isE2E || !judgeAvailable) return;
   const [publicResult, adminResult] = await Promise.all([
     apiGet(`/api/v1/contests/${contestId}/ranking`),
@@ -144,20 +145,20 @@ e2eTest("[e2e/contest] 3. 封榜时公开排名冻结而管理员可见完整排
   ]);
   if (publicResult.status !== 200 || adminResult.status !== 200) {
     throw new Error(
-      `读取封榜排名失败: ${publicResult.status}/${adminResult.status}`,
+      `读取排名失败: ${publicResult.status}/${adminResult.status}`,
     );
   }
-  const publicRows = (publicResult.body as { data: IcpcRankingRow[] }).data;
-  const adminRows = (adminResult.body as { data: IcpcRankingRow[] }).data;
-  if (publicRows[0]?.solved !== 0) {
-    throw new Error("封榜期间公开排名不应包含封榜后的 AC");
+  const publicRows = (publicResult.body as { data: KaggleRankingRow[] }).data;
+  const adminRows = (adminResult.body as { data: KaggleRankingRow[] }).data;
+  if (publicRows[0]?.total_score <= 0) {
+    throw new Error("公开排名应包含提交分数");
   }
-  if (adminRows[0]?.solved !== 1) {
-    throw new Error("管理员在封榜期间应看到完整排名");
+  if (adminRows[0]?.total_score <= 0) {
+    throw new Error("管理员排名应包含提交分数");
   }
 });
 
-e2eTest("[e2e/contest] 4. 结束竞赛后自动解封并公开最终排名", async () => {
+e2eTest("[e2e/contest] 4. 结束竞赛后公开最终排名", async () => {
   if (!isE2E || !judgeAvailable) return;
   const updateResult = await apiPut(
     `/api/v1/admin/contests/${contestId}`,
@@ -177,11 +178,11 @@ e2eTest("[e2e/contest] 4. 结束竞赛后自动解封并公开最终排名", asy
     apiGet(`/api/v1/contests/${contestId}/ranking`),
   ]);
   const contest = (contestResult.body as { data: ContestData }).data;
-  const rows = (rankingResult.body as { data: IcpcRankingRow[] }).data;
+  const rows = (rankingResult.body as { data: KaggleRankingRow[] }).data;
   if (contestResult.status !== 200 || contest.status !== "ended") {
     throw new Error("竞赛结束后状态应为 ended");
   }
-  if (rankingResult.status !== 200 || rows[0]?.solved !== 1) {
-    throw new Error("竞赛结束后公开排名应自动解封并显示最终 AC");
+  if (rankingResult.status !== 200 || rows[0]?.total_score <= 0) {
+    throw new Error("竞赛结束后公开排名应显示最终分数");
   }
 });
