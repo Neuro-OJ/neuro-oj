@@ -3,7 +3,7 @@ import { useRoute } from "vue-router"
 import hljs from "highlight.js"
 import "highlight.js/styles/github-dark.css"
 import SubmissionCaseResults from "~/components/submission/SubmissionCaseResults.vue"
-import { useToast } from "~/composables/useToast"
+import { useCopyText } from "~/composables/useCopyText"
 import { getLanguageLabel, formatScore, formatTime, formatMemory, statusBadgeColors, getResultDef, verdictClasses, formatDateTime } from "~/utils/submissionFormat"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
 
@@ -48,17 +48,7 @@ const isFinished = computed(
 )
 const showOutput = ref(false)
 const showCode = ref(false)
-const { toast } = useToast()
-
-async function copyText(text: string | null, label: string) {
-  if (!text) return
-  try {
-    await navigator.clipboard.writeText(text)
-    toast.success(`${label}已复制`)
-  } catch {
-    toast.error("复制失败，请手动复制")
-  }
-}
+const { copyText } = useCopyText()
 // 自动轮询：基础数据公开访问，未登录也能查看；等 auth token 就绪后开始轮询
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let pollReqId = 0

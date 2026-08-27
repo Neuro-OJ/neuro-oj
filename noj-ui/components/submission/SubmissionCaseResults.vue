@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { formatMemory, formatTime } from '~/utils/submissionFormat'
-import { isSubmissionCasePassed, normalizeSubmissionCases } from '~/utils/submissionCaseResults'
-import { useToast } from '~/composables/useToast'
+import { isSubmissionCasePassed, normalizeSubmissionCases, type SubmissionCaseResult } from '~/utils/submissionCaseResults'
+import { useCopyText } from '~/composables/useCopyText'
 
 const props = defineProps<{
   details: unknown
 }>()
 
-const { toast } = useToast()
+const { copyText } = useCopyText()
 
 const cases = computed(() => normalizeSubmissionCases(props.details))
 const passedCount = computed(() => cases.value.filter((item) => isSubmissionCasePassed(item.status)).length)
@@ -18,18 +18,17 @@ const hiddenCount = computed(() => cases.value.length - visibleCount.value)
 // 当前展开的测试点（单行展开）
 const expandedId = ref<string | null>(null)
 
-function toggleExpand(caseId: string) {
-  expandedId.value = expandedId.value === caseId ? null : caseId
+function hasOutput(item: SubmissionCaseResult) {
+  return item.expectedOutput !== null || item.actualOutput !== null
 }
 
-async function copyText(text: string | null, label: string) {
-  if (!text) return
-  try {
-    await navigator.clipboard.writeText(text)
-    toast.success(`${label}已复制`)
-  } catch {
-    toast.error("复制失败，请手动复制")
-  }
+function canExpand(item: SubmissionCaseResult) {
+  return item.visibility !== 'hidden' && hasOutput(item)
+}
+
+function toggleExpand(item: SubmissionCaseResult) {
+  if (!canExpand(item)) return
+  expandedId.value = expandedId.value === item.caseId ? null : item.caseId
 }
 
 const statusLabels: Record<string, string> = {
@@ -90,8 +89,14 @@ function statusClass(status: string) {
         <tbody>
           <template v-for="item in cases" :key="`${item.visibility}-${item.caseId}`">
             <tr
-              class="cursor-pointer border-b border-border last:border-0 transition-colors hover:bg-primary-hover"
-              @click="toggleExpand(item.caseId)"
+              class="border-b border-border last:border-0 transition-colors"
+              :class="canExpand(item) ? 'cursor-pointer hover:bg-primary-hover' : ''"
+              :tabindex="canExpand(item) ? 0 : undefined"
+              :role="canExpand(item) ? 'button' : undefined"
+              :aria-expanded="canExpand(item) ? expandedId === item.caseId : undefined"
+              @click="toggleExpand(item)"
+              @keydown.enter.prevent="toggleExpand(item)"
+              @keydown.space.prevent="toggleExpand(item)"
             >
               <th scope="row" class="px-4 py-3 text-left font-mono text-xs font-medium text-text">
                 {{ item.caseId }}
@@ -116,10 +121,11 @@ function statusClass(status: string) {
                 </span>
                 <span v-else class="inline-flex items-center gap-1">
                   <UIcon
+                    v-if="hasOutput(item)"
                     :name="expandedId === item.caseId ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
                     class="size-3.5"
                   />
-                  <span v-if="item.expectedOutput !== null || item.actualOutput !== null">查看期望与实际输出</span>
+                  <span v-if="hasOutput(item)">查看期望与实际输出</span>
                   <span v-else class="text-text-muted">--</span>
                 </span>
               </td>
