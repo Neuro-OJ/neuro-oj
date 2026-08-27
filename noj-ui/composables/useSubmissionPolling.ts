@@ -32,6 +32,7 @@ const TERMINAL_STATUSES: SubmissionStatus[] = ['finished', 'error'];
 const POLL_INTERVAL_MS = 1500;
 
 export function useSubmissionPolling(submissionIdRef: Ref<string | null>) {
+  const { api } = useApi();
   const submission = ref<PolledSubmission | null>(null);
   const isPolling = ref(false);
   const error = ref<string | null>(null);
@@ -51,7 +52,7 @@ export function useSubmissionPolling(submissionIdRef: Ref<string | null>) {
     if (!id) return;
     try {
       // 轮询为静默请求：失败写入 error ref 由页面展示，不弹 toast
-      const res = await useApi().api.get<{ data: PolledSubmission }>(
+      const res = await api.get<{ data: PolledSubmission }>(
         `/api/v1/submissions/${id}`,
         { silent: true },
       );

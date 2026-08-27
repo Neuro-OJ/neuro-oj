@@ -126,7 +126,7 @@ watch(
     loadingSolutions.value = true
     try {
       const [solRes, cfg] = await Promise.all([
-        $fetch<{ data: PostRow[] }>(
+        api.get<{ data: PostRow[] }>(
           `/api/v1/community/posts?type=solution&problem_id=${p.id}&limit=5`,
         ),
         loadConfig(),
@@ -134,7 +134,7 @@ watch(
       solutions.value = solRes.data
       if (isLoggedIn.value) {
         try {
-          const el = await $fetch<{ data: typeof eligibility.value }>(
+          const el = await api.get<{ data: typeof eligibility.value }>(
             `/api/v1/community/solutions/eligibility?problem_id=${p.id}`,
           )
           eligibility.value = el.data

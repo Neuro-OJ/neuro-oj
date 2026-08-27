@@ -72,6 +72,7 @@ function deepGet(obj: unknown, path: string): unknown {
 export function useAdminList<T = Record<string, unknown>>(
   options: AdminListOptions<T>,
 ): AdminListResult<T> {
+  const { api } = useApi();
   const items = ref<T[]>([]) as Ref<T[]>;
   const loading = ref(true);
   const error = ref('');
@@ -101,7 +102,6 @@ export function useAdminList<T = Record<string, unknown>>(
       if (keyword.value) params.set('keyword', keyword.value);
 
       // 列表加载为后台场景：错误写入 error state 由页面展示，不弹 toast
-      const { api } = useApi();
       if (options.transform) {
         const raw = await api.get(`${options.path}?${params}`, { silent: true });
         const r = options.transform(raw);

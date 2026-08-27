@@ -1,10 +1,10 @@
 ## 1. 基础与止血
 
-- [ ] 1.1 修改 `useApi`：服务端使用 `useRequestFetch` 统一转发 Cookie/请求头，替换手动 `useRequestHeaders(['cookie'])`
-- [ ] 1.2 将 `useAdminList`、`useAuditLogs`、`useSearch`、`useBanStatus`、轮询类 composable 中的 `useApi()` 调用移到 composable 同步 setup 顶部
-- [ ] 1.3 修改 `useCommunity.loadConfig`：`api.get` 失败时 catch 并返回安全默认配置，不向上抛错
-- [ ] 1.4 修改 `community/index.vue` 与 `community/posts/[postId].vue` 的初始化流程：配置失败不得导致 SSR 502
-- [ ] 1.5 迁移 `pages/problems/[id].vue` 中两处直接 `$fetch` 到 `useApi`/`useAsyncData`
+- [x] 1.1 修改 `useApi`：服务端使用 `useRequestFetch` 统一转发 Cookie/请求头，替换手动 `useRequestHeaders(['cookie'])`
+- [x] 1.2 将 `useAdminList`、`useAuditLogs`、`useSearch`、`useBanStatus`、轮询类 composable 中的 `useApi()` 调用移到 composable 同步 setup 顶部
+- [x] 1.3 修改 `useCommunity.loadConfig`：`api.get` 失败时 catch 并返回安全默认配置，不向上抛错
+- [x] 1.4 修改 `community/index.vue` 与 `community/posts/[postId].vue` 的初始化流程：配置失败不得导致 SSR 502
+- [x] 1.5 迁移 `pages/problems/[id].vue` 中两处直接 `$fetch` 到 `useApi`/`useAsyncData`
 
 ## 2. 社区 SSR 改造
 

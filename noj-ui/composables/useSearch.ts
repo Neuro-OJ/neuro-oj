@@ -65,6 +65,7 @@ export interface SearchState {
 }
 
 export function useSearch() {
+  const { api } = useApi();
   const state = useState<SearchState>('search:state', () => ({
     open: false,
     query: '',
@@ -150,7 +151,6 @@ export function useSearch() {
 
         try {
           // 搜索为静默请求：错误由 state.error 状态展示，不弹 toast
-          const { api } = useApi();
           if (type === 'all') {
             // 并行请求题目 + 用户
             const [pRes, uRes, cRes] = await Promise.allSettled([
