@@ -142,6 +142,10 @@ async function onDeleteProblem(problem: ProblemItem) {
   try {
     await api.delete(`/api/v1/problems/${problem.display_id}`)
     await loadProblems()
+    // 删除末页最后一条后回退一页，避免停在空页
+    if (problems.value.length === 0 && page.value > 1) {
+      setFilter('page', String(Math.max(1, page.value - 1)))
+    }
   } catch {
     // useApi 已弹错误
   } finally {
@@ -193,7 +197,7 @@ const columns = [
       </div>
 
       <!-- 难度筛选 -->
-      <div class="flex items-center gap-1.5 flex-wrap">
+      <div role="radiogroup" aria-label="按难度筛选" class="flex items-center gap-1.5 flex-wrap">
         <span class="text-xs text-text-muted mr-1">难度:</span>
         <button
           v-for="d in [{ value: '', label: '全部' }, { value: 'easy', label: '简单' }, { value: 'medium', label: '中等' }, { value: 'hard', label: '困难' }]"
@@ -307,6 +311,13 @@ const columns = [
           </template>
         </UTable>
       </div>
+
+      <!-- 分页 -->
+      <PaginationNav
+        :current-page="page"
+        :total-pages="totalPages"
+        @page-change="setFilter('page', String($event))"
+      />
     </AsyncContent>
   </div>
 </template>

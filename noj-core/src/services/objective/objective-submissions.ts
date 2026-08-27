@@ -22,7 +22,7 @@ import { judgePaper } from "./objective-judge.ts";
 import {
   assertObjectivePaper,
   getPaperOrThrow,
-  resolvePaperIdToUuid,
+  resolvePaperId,
 } from "./objective-questions.ts";
 import { getContest, getContestProblems } from "../contest/contests.ts";
 import type {
@@ -301,7 +301,12 @@ export async function listObjectiveSubmissions(params: {
   const userId = targetUserId && isAdmin ? targetUserId : viewerId;
 
   // paper_id 支持 display_id / UUID 双索引（解析为规范 UUID 后过滤提交记录）
-  const paperUuid = paperId ? await resolvePaperIdToUuid(paperId) : undefined;
+  // 套卷不存在时按“无该套卷提交”处理，保持列表接口返回空结果而非 404
+  const paper = paperId ? await resolvePaperId(paperId) : null;
+  if (paperId && !paper) {
+    return { data: [], total: 0, best_score: null };
+  }
+  const paperUuid = paper?.id;
 
   const conditions = [eq(objectiveSubmissions.user_id, userId)];
   if (paperUuid) conditions.push(eq(objectiveSubmissions.paper_id, paperUuid));

@@ -367,6 +367,7 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
               v-model="tagSearch"
               class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white"
               placeholder="搜索标签..."
+              aria-label="搜索标签"
             />
             <div class="flex flex-wrap gap-2">
               <label v-for="t in filteredTagOptions" :key="t.value" class="flex items-center gap-1 text-xs text-text cursor-pointer">

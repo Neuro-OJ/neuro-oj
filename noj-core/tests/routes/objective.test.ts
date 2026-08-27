@@ -182,6 +182,24 @@ Deno.test({
 });
 
 Deno.test({
+  name: "objective route: 提交历史 paper_id 不存在时返回空列表而非 404",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const owner = await createUserToken("user");
+    const res = await jsonRequest(
+      app,
+      "/api/v1/problems/submissions?paper_id=00000000-0000-0000-0000-000000000000",
+      { token: owner },
+    );
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.data.total, 0);
+  },
+});
+
+Deno.test({
   name: "objective route: 小题 CRUD 全流程 + 答案可见性裁剪",
   sanitizeResources: false,
   sanitizeOps: false,
