@@ -15,30 +15,33 @@
 ## 2. 初始化
 
 ```bash
-# 1) 获取项目（只需要部署文件与镜像，不需要源码运行）
-git clone https://github.com/Neuro-OJ/neuro-oj.git
-cd neuro-oj
+# 只下载一个 bootstrap 脚本；生产环境建议固定到 Release tag
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/install.sh \
+  -o noj-install.sh
+chmod +x noj-install.sh
 
-# 2) 准备环境变量
-cp .env.prod.example .env.prod
-chmod 600 .env.prod
-vim .env.prod
-
-# 生产部署前检查（不会打印 secret 明文）
-docker compose --env-file .env.prod -f docker-compose.prod.yml config >/dev/null
-cd noj-core && deno task check:prod
-cd ..
+# 下载指定版本源码并调用生产部署入口
+sudo bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj
 ```
 
-也可以使用仓库提供的生产部署入口完成检查和启动：
+首次执行会将源码放入 `/opt/neuro-oj`，随后创建权限为 `600` 的 `.env.prod` 并生成
+部分随机密钥，然后停止并提示填写配置。编辑配置后重新执行：
 
 ```bash
-bash scripts/deploy/deploy.sh install
+sudo vim /opt/neuro-oj/.env.prod
+sudo chmod 600 /opt/neuro-oj/.env.prod
+sudo bash /opt/neuro-oj/scripts/deploy/deploy.sh install
 ```
 
-首次执行会创建权限为 `600` 的 `.env.prod` 并生成部分随机密钥，然后停止并提示
-填写域名、版本、邮件 Provider、管理员账号和 Judge 隔离 Docker socket。填写完成
-后再次执行同一命令即可继续部署。
+bootstrap 默认使用 `v0.1.0`，可通过 `--ref` 指定其他分支或 Release tag；生产环境应
+使用不可变 Release tag，并让 `--ref` 与 `.env.prod` 中的 `NOJ_VERSION` 保持一致。
+也可以使用 `--download-only` 只获取源码，或使用 `--dry-run` 查看下载计划。目标目录
+非空时 bootstrap 会拒绝覆盖已有 `.env.prod`、备份和部署文件；已有安装请直接执行
+`/opt/neuro-oj/scripts/deploy/deploy.sh upgrade`。
+
+如果不希望在 shell 中直接执行网络下载内容，可以先保存脚本并人工检查；确认后再运行
+上面的 `sudo bash noj-install.sh ...`。bootstrap 只依赖 Linux 上常见的 Bash、`curl`
+或 `wget`、`tar`，实际服务部署仍需要 Docker Engine 与 Docker Compose v2。
 
 `.env.prod` 中必须填写：
 
