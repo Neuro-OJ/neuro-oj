@@ -13,6 +13,7 @@ export interface SubmissionInput {
   code: string;
   file_name?: string;
   contest_id?: string;
+  llm_provider_config_id?: string;
 }
 
 /** 创建提交成功后的响应（基础字段，不含 result） */

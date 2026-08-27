@@ -106,7 +106,7 @@ const canSubmit = computed(
   () => !isContest.value || contest.value?.status === 'running',
 )
 
-function submit(pid: string, language: string, code: string) {
+function submit(pid: string, language: string, code: string, llmProviderConfigId?: string) {
   const url = isContest.value
     ? `/api/v1/contests/${contestId.value}/submit`
     : '/api/v1/submissions'
@@ -115,6 +115,7 @@ function submit(pid: string, language: string, code: string) {
       problem_id: pid,
       language,
       code,
+      ...(llmProviderConfigId ? { llm_provider_config_id: llmProviderConfigId } : {}),
     })
     .then((r) => r.data)
 }
@@ -212,6 +213,7 @@ const templateUrl = getProblemTemplateUrl
     :subtitle="isContest ? (contest?.title ?? '') : ''"
     :can-submit="canSubmit"
     :submission-filter="submissionFilter"
+    :enable-byok="!isContest"
     @accepted="refresh"
   >
     <template v-if="isContest" #toolbar-actions>

@@ -6,7 +6,7 @@ import type { Db } from "../db.ts";
 import type { RedisClient } from "../redis.ts";
 import type { GatewayConfig } from "../config.ts";
 import { verifyEvalToken } from "../crypto.ts";
-import { getProviderSecret } from "../providers.ts";
+import { getProviderSecret, validateByokBaseUrl } from "../providers.ts";
 import { enforceAndCount, settleUsage } from "../limits.ts";
 import { recordUsage } from "../usage.ts";
 
@@ -24,6 +24,8 @@ interface ChatCompletionRequest {
   top_p?: number;
   [key: string]: unknown;
 }
+
+const MAX_UPSTREAM_BODY_BYTES = 1024 * 1024;
 
 /** 根据 Provider base_url 拼接 OpenAI 兼容 Chat Completions 地址。 */
 function buildChatUrl(baseUrl: string): string {
@@ -103,6 +105,13 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     if (!providerSecret.provider.enabled) {
       return c.json({ error: "provider_disabled" }, 403);
     }
+    if (providerSecret.provider.created_by !== "0") {
+      try {
+        validateByokBaseUrl(providerSecret.provider.base_url);
+      } catch {
+        return c.json({ error: "provider_target_rejected" }, 403);
+      }
+    }
 
     const startedAt = Date.now();
     const promptTokens = estimateTokens(body.messages);
@@ -161,8 +170,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(120_000),
       });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "upstream_error";
+    } catch {
       await recordUsage(deps.db, {
         id: crypto.randomUUID(),
         submission_id: payload.submission_id,
@@ -178,14 +186,17 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         estimated_cost: 0,
         latency_ms: Date.now() - startedAt,
         status: "error",
-        error_code: message,
+        error_code: "upstream_error",
         prompt_hash: await sha256Hex(JSON.stringify(body.messages)),
         created_at: new Date().toISOString(),
       });
-      return c.json({ error: "upstream_error", message }, 502);
+      return c.json({ error: "upstream_error" }, 502);
     }
 
-    const upstreamBody = await upstreamRes.json().catch(() => null);
+    const upstreamText = await upstreamRes.text();
+    const upstreamBody = upstreamText.length <= MAX_UPSTREAM_BODY_BYTES
+      ? await Promise.resolve(JSON.parse(upstreamText)).catch(() => null)
+      : null;
     const latency = Date.now() - startedAt;
     const usage = upstreamBody?.usage as
       | {
@@ -266,7 +277,6 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         JSON.stringify({
           error: "upstream_error",
           status: upstreamRes.status,
-          body: upstreamBody,
         }),
         {
           status: upstreamRes.status,

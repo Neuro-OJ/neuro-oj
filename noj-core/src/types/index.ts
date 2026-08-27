@@ -72,6 +72,8 @@ export interface JudgeTask {
   rejudge_seq?: number;
   /** LLM 评测字段（启用 LLM 的题目携带） */
   llm?: JudgeTaskLlm;
+  /** 用户 BYOK LLM 字段；只供 judge 处理，不注入 Evaluator 环境。 */
+  user_llm?: JudgeTaskLlm;
 }
 
 /**

@@ -40,6 +40,57 @@ export interface ProviderView {
   updated_at: string;
 }
 
+/** BYOK Provider 仅允许运维配置的 HTTPS 公共主机。 */
+export function validateByokBaseUrl(raw: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw.trim());
+  } catch {
+    throw new Error("provider_target_rejected");
+  }
+  const allowed = new Set(
+    (Deno.env.get("NOJ_LLM_BYOK_ALLOWED_HOSTS") ?? "api.openai.com")
+      .split(",")
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const hostname = parsed.hostname.toLowerCase();
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash ||
+    (parsed.port && parsed.port !== "443") ||
+    !allowed.has(hostname) ||
+    isPrivateHostname(hostname)
+  ) {
+    throw new Error("provider_target_rejected");
+  }
+  parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+  return parsed.toString();
+}
+
+function isPrivateHostname(hostname: string): boolean {
+  if (
+    hostname === "localhost" ||
+    hostname === "metadata.google.internal" ||
+    hostname === "169.254.169.254" ||
+    hostname === "::1"
+  ) return true;
+  const octets = hostname.split(".").map(Number);
+  if (
+    octets.length !== 4 ||
+    octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)
+  ) {
+    return false;
+  }
+  return octets[0] === 10 || octets[0] === 127 ||
+    (octets[0] === 169 && octets[1] === 254) ||
+    (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+    (octets[0] === 192 && octets[1] === 168);
+}
+
 function uuid(): string {
   return crypto.randomUUID();
 }
@@ -70,14 +121,44 @@ function toView(row: ProviderRow, apiKey: string): ProviderView {
   };
 }
 
+function validateByokFields(input: {
+  name?: string;
+  model?: string;
+  api_key?: string;
+}): void {
+  if (
+    input.name !== undefined &&
+    (input.name.trim().length === 0 || input.name.length > 200)
+  ) {
+    throw new Error("provider_invalid");
+  }
+  if (
+    input.model !== undefined &&
+    (input.model.trim().length === 0 || input.model.length > 200)
+  ) {
+    throw new Error("provider_invalid");
+  }
+  if (
+    input.api_key !== undefined &&
+    (input.api_key.trim().length === 0 || input.api_key.length > 8192)
+  ) {
+    throw new Error("provider_invalid");
+  }
+}
+
 /** 列出全部 Provider；解密失败时返回不可用的掩码，不阻断列表。 */
 export async function listProviders(
   db: Db,
   storeKey: string,
+  createdBy?: string,
 ): Promise<ProviderView[]> {
-  const rows = await db<
-    ProviderRow[]
-  >`SELECT * FROM llm_providers ORDER BY created_at DESC`;
+  const rows = createdBy === undefined
+    ? await db<
+      ProviderRow[]
+    >`SELECT * FROM llm_providers ORDER BY created_at DESC`
+    : await db<
+      ProviderRow[]
+    >`SELECT * FROM llm_providers WHERE created_by = ${createdBy} ORDER BY created_at DESC`;
   const views: ProviderView[] = [];
   for (const row of rows) {
     let apiKey = "";
@@ -122,6 +203,10 @@ export async function createProvider(
   input: ProviderInput,
   storeKey: string,
 ): Promise<ProviderView> {
+  if (input.created_by && input.created_by !== "0") {
+    validateByokFields(input);
+    input = { ...input, base_url: validateByokBaseUrl(input.base_url) };
+  }
   const id = uuid();
   const createdAt = now();
   const encrypted = await encryptSecret(input.api_key, storeKey);
@@ -159,6 +244,9 @@ export async function updateProvider(
   if (!existing) {
     throw new Error("provider_not_found");
   }
+  if (existing.created_by !== "0") {
+    validateByokFields(input);
+  }
   const updatedAt = now();
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -168,7 +256,11 @@ export async function updateProvider(
     sets.push(`name = $${params.length}`);
   }
   if (input.base_url !== undefined) {
-    params.push(input.base_url);
+    params.push(
+      existing.created_by !== "0"
+        ? validateByokBaseUrl(input.base_url)
+        : input.base_url,
+    );
     sets.push(`base_url = $${params.length}`);
   }
   if (input.model !== undefined) {
@@ -206,4 +298,59 @@ export async function updateProvider(
   const apiKey = input.api_key ??
     (await decryptSecret(row.encrypted_api_key, storeKey).catch(() => ""));
   return toView(row, apiKey);
+}
+
+/** 删除 Provider；若指定 owner 则同时校验归属。 */
+export async function deleteProvider(
+  db: Db,
+  id: string,
+  createdBy?: string,
+): Promise<boolean> {
+  const row = await getProviderById(db, id);
+  if (!row || (createdBy !== undefined && row.created_by !== createdBy)) {
+    return false;
+  }
+  await db`DELETE FROM llm_providers WHERE id = ${id}`;
+  return true;
+}
+
+/** 使用固定的最小请求测试 Provider 连通性，不返回上游响应。 */
+export async function testProviderConnection(
+  db: Db,
+  id: string,
+  storeKey: string,
+  createdBy?: string,
+): Promise<void> {
+  const row = await getProviderById(db, id);
+  if (!row || (createdBy !== undefined && row.created_by !== createdBy)) {
+    throw new Error("provider_not_found");
+  }
+  const baseUrl = row.created_by !== "0"
+    ? validateByokBaseUrl(row.base_url)
+    : row.base_url;
+  const { apiKey } = await getProviderSecret(db, id, storeKey);
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl.replace(/\/+$/, "")}/chat/completions`, {
+      method: "POST",
+      redirect: "error",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: row.model,
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 1,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new Error("provider_unavailable");
+  }
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("provider_auth_failed");
+  }
+  if (response.status === 429) throw new Error("provider_rate_limited");
+  if (!response.ok) throw new Error("provider_error");
 }

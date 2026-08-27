@@ -76,6 +76,7 @@ export default withMermaid(defineConfig({
                 { text: "使用 capability", link: "/users/capability" },
                 { text: "理解结果", link: "/users/results" },
                 { text: "账号与密码", link: "/users/account" },
+                { text: "使用自带模型（BYOK）", link: "/users/byok" },
               ],
             },
             {

@@ -620,6 +620,11 @@ export const submissions = pgTable(
     file_name: text("file_name"),
     /** artifact 提交的存储 URL（`noj-storage://`），code 模式为 NULL */
     artifact_storage_url: text("artifact_storage_url"),
+    /** 可选的用户 BYOK Provider；密钥由 noj-llm-gateway 托管 */
+    llm_provider_config_id: text("llm_provider_config_id").references(
+      () => llmProviders.id,
+      { onDelete: "set null" },
+    ),
     status: text("status").$type<SubmissionStatus>().notNull().default(
       "pending",
     ),
@@ -638,6 +643,9 @@ export const submissions = pgTable(
     status_idx: index("idx_submissions_status").on(table.status),
     created_at_idx: index("idx_submissions_created_at").on(table.created_at),
     contest_idx: index("idx_submissions_contest_id").on(table.contest_id),
+    llm_provider_config_idx: index("idx_submissions_llm_provider_config_id").on(
+      table.llm_provider_config_id,
+    ),
     contest_problem_user_idx: index(
       "idx_submissions_contest_problem_user",
     ).on(
