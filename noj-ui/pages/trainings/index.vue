@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import type { Training } from '~/composables/useTrainings'
+import { useToast } from '~/composables/useToast'
 
 useHead({ title: '题单 - Neuro OJ' })
 
 const currentPage = ref(1)
 const perPage = 12
+
+const { isLoggedIn } = useAuth()
+const { toast } = useToast()
+const showCreate = ref(false)
 
 const { data, pending, error, refresh } = await useFetch<{ data: Training[]; total: number }>(
   '/api/v1/trainings',
@@ -13,14 +18,33 @@ const { data, pending, error, refresh } = await useFetch<{ data: Training[]; tot
   },
 )
 const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / perPage))
+
+async function onCreate() {
+  try {
+    await refresh()
+    toast.success('题单已创建')
+  } catch {
+    toast.error('题单已创建，但列表刷新失败')
+  }
+}
 </script>
 
 <template>
   <div class="min-h-full bg-bg-page py-10">
     <div class="mx-auto max-w-[960px] space-y-7 px-4 sm:px-7">
       <section class="rounded-2xl bg-bg-dark px-8 py-9 text-white shadow-card">
-        <h1 class="text-3xl font-bold">题单</h1>
-        <p class="mt-3 text-sm leading-6 text-slate-300">按学习路径刷题，整理自己的题目集合。</p>
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <h1 class="text-3xl font-bold">题单</h1>
+            <p class="mt-3 text-sm leading-6 text-slate-300">按学习路径刷题，整理自己的题目集合。</p>
+          </div>
+          <UButton
+            v-if="isLoggedIn"
+            icon="i-lucide-plus"
+            color="primary"
+            @click="showCreate = true"
+          >新建题单</UButton>
+        </div>
       </section>
 
       <AsyncContent
@@ -43,6 +67,8 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / perPage))
         :total-pages="totalPages"
         @page-change="currentPage = $event"
       />
+
+      <TrainingFormModal v-model="showCreate" @saved="onCreate" />
     </div>
   </div>
 </template>

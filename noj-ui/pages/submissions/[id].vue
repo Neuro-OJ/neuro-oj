@@ -3,6 +3,7 @@ import { useRoute } from "vue-router"
 import hljs from "highlight.js"
 import "highlight.js/styles/github-dark.css"
 import SubmissionCaseResults from "~/components/submission/SubmissionCaseResults.vue"
+import { useCopyText } from "~/composables/useCopyText"
 import { getLanguageLabel, formatScore, formatTime, formatMemory, statusBadgeColors, getResultDef, verdictClasses, formatDateTime } from "~/utils/submissionFormat"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
 
@@ -45,7 +46,9 @@ const submission = computed(() => data.value?.data ?? null)
 const isFinished = computed(
   () => submission.value?.status === "finished" || submission.value?.status === "error",
 )
-const showOutput = ref(true)
+const showOutput = ref(false)
+const showCode = ref(false)
+const { copyText } = useCopyText()
 // 自动轮询：基础数据公开访问，未登录也能查看；等 auth token 就绪后开始轮询
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let pollReqId = 0
@@ -229,13 +232,35 @@ watch(
           </div>
         </div>
       </div>
-      <!-- 代码区 -->
+      <!-- 测试点明细（挪到提交代码上方） -->
+      <SubmissionCaseResults
+        v-if="submission.status === 'finished' && submission.result"
+        :details="submission.result.details"
+      />
+      <!-- 提交代码 -->
       <div class="bg-[#0d1117] border border-[#30363d] rounded-xl overflow-hidden">
-        <div class="flex items-center gap-2 px-4 py-2.5 bg-[#161b22] text-[#8b949e] text-xs font-mono border-b border-[#30363d]">
-          <UIcon name="i-lucide-file-text" class="size-4" />
-          <span>{{ submission.file_name || "main.py" }}</span>
-        </div>
-        <pre v-if="submission.code !== null" class="p-4 overflow-x-auto text-xs leading-relaxed"><code :ref="codeRef" :class="`language-${codeLanguage}`" class="font-mono text-[#e6edf3] whitespace-pre">{{ submission.code }}</code></pre>
+        <button
+          class="flex items-center justify-between w-full px-4 py-3 bg-[#161b22] text-[#8b949e] text-xs font-mono border-b border-[#30363d] cursor-pointer hover:bg-[#1c2128]"
+          @click="showCode = !showCode"
+        >
+          <span class="flex items-center gap-2">
+            <UIcon name="i-lucide-file-text" class="size-4" />
+            <span>提交代码</span>
+            <span class="text-[#8b949e]/60">{{ submission.file_name || "main.py" }}</span>
+          </span>
+          <span class="flex items-center gap-2">
+            <UIcon
+              v-if="submission.code !== null"
+              name="i-lucide-copy"
+              class="size-4 hover:text-[#e6edf3]"
+              title="复制代码"
+              @click.stop="copyText(submission.code, '代码')"
+            />
+            <UIcon name="i-lucide-chevron-down" class="size-4" v-if="!showCode"/>
+            <UIcon name="i-lucide-chevron-up" class="size-4" v-else/>
+          </span>
+        </button>
+        <pre v-if="submission.code !== null" v-show="showCode" class="p-4 overflow-x-auto text-xs leading-relaxed"><code :ref="codeRef" :class="`language-${codeLanguage}`" class="font-mono text-[#e6edf3] whitespace-pre">{{ submission.code }}</code></pre>
         <div v-else class="flex flex-col items-center justify-center gap-2 py-12 text-[#8b949e] text-sm">
           <UIcon name="i-lucide-lock" class="size-6" />
           <span>登录后查看源代码</span>
@@ -251,15 +276,27 @@ watch(
       <!-- 输出区（仅 finished 有内容） -->
       <div
         v-if="submission.status === 'finished' && submission.result"
-        class="bg-white border border-border rounded-xl overflow-hidden"
+        class="bg-[#0d1117] border border-[#30363d] rounded-xl overflow-hidden"
       >
         <button
-          class="flex items-center justify-between w-full px-4 py-3 bg-bg-page border-0 border-b border-border text-sm font-semibold text-text cursor-pointer hover:bg-primary-hover"
+          class="flex items-center justify-between w-full px-4 py-3 bg-[#161b22] text-[#8b949e] text-xs font-mono border-b border-[#30363d] cursor-pointer hover:bg-[#1c2128]"
           @click="showOutput = !showOutput"
         >
-          <span>评测输出</span>
-          <UIcon name="i-lucide-chevron-down" class="size-4" v-if="!showOutput"/>
-          <UIcon name="i-lucide-chevron-up" class="size-4" v-else/>
+          <span class="flex items-center gap-2">
+            <UIcon name="i-lucide-terminal" class="size-4" />
+            <span>评测输出</span>
+          </span>
+          <span class="flex items-center gap-2">
+            <UIcon
+              v-if="submission.result?.output != null"
+              name="i-lucide-copy"
+              class="size-4 hover:text-[#e6edf3]"
+              title="复制评测输出"
+              @click.stop="copyText(submission.result?.output ?? null, '评测输出')"
+            />
+            <UIcon name="i-lucide-chevron-down" class="size-4" v-if="!showOutput"/>
+            <UIcon name="i-lucide-chevron-up" class="size-4" v-else/>
+          </span>
         </button>
         <pre v-if="submission.result.output != null" v-show="showOutput" class="p-4 overflow-x-auto text-xs leading-relaxed bg-[#0d1117] text-[#e6edf3]"><code class="font-mono whitespace-pre-wrap break-all">{{ submission.result.output }}</code></pre>
         <div v-else class="flex flex-col items-center justify-center gap-2 py-8 text-text-muted text-sm">
@@ -274,10 +311,6 @@ watch(
           </NuxtLink>
         </div>
       </div>
-      <SubmissionCaseResults
-        v-if="submission.status === 'finished' && submission.result"
-        :details="submission.result.details"
-      />
     </template>
   </div>
 </template>

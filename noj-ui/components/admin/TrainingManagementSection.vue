@@ -8,11 +8,11 @@ const { data, pending, error, refresh } = await useFetch<{ data: Training[]; tot
 )
 
 const columns = [
-  { key: 'title', label: '标题' },
-  { key: 'visibility', label: '可见性' },
-  { key: 'is_pinned', label: '置顶' },
-  { key: 'problem_count', label: '题目数' },
-  { key: 'actions', label: '操作' },
+  { accessorKey: 'title', header: '标题' },
+  { accessorKey: 'visibility', header: '可见性' },
+  { accessorKey: 'is_pinned', header: '置顶' },
+  { accessorKey: 'problem_count', header: '题目数' },
+  { accessorKey: 'actions', header: '操作' },
 ]
 
 async function setVisibility(training: Training, visibility: TrainingVisibility) {
