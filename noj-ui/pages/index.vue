@@ -4,6 +4,7 @@
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col lg:flex-row flex-1 min-h-[320px] bg-white">
                     <!-- Carousel -->
+                    <!-- 手机模式下内容为 absolute 定位，容器需 min-h 保底，避免高度塌缩被签到区顶塌 -->
                     <div
                         class="flex-1 min-w-0 relative overflow-hidden min-h-[320px]"
                         role="region"
