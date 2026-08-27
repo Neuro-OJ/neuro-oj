@@ -22,12 +22,14 @@ export interface ParsedStorageUrl {
 
 /** `noj-download://` URL 的解析结果 */
 export interface ParsedDownloadUrl {
-  /** 下载方式：`base64`（内嵌数据）或 `s3`（presigned URL） */
-  mode: "base64" | "s3";
+  /** 下载方式：`base64`（内嵌数据）、`s3`（presigned URL）或 `local`（本地共享文件系统） */
+  mode: "base64" | "s3" | "local";
   /** base64 模式下的原始内容（base64 编码） */
   content?: string;
   /** S3 模式下的 presigned URL（已百分号解码） */
   url?: string;
+  /** local 模式下的绝对文件路径（已百分号解码） */
+  path?: string;
   /** SHA-256 校验和（十六进制），可能为空 */
   checksumSha256?: string;
 }
@@ -55,6 +57,25 @@ export interface StorageProvider {
    * @returns `noj-storage://` URL，包含 checksum_sha256
    */
   put(key: string, data: Uint8Array, contentType?: string): Promise<string>;
+
+  /**
+   * 流式存储数据并返回 `noj-storage://` URL。
+   *
+   * 用于大文件（如 artifact zip）上传，内存占用 O(1)（S3 模式使用固定
+   * 5MB 分片缓冲）。实现必须计算 SHA-256 并写入返回 URL 的 checksum。
+   *
+   * @param key 存储键（local 模式下忽略，内容寻址；S3 模式下为对象键）
+   * @param stream 输入字节流
+   * @param contentType 内容类型（S3 模式下使用）
+   * @param maxSizeBytes 可选大小上限，超过时中止并抛错
+   * @returns `noj-storage://` URL，包含 checksum_sha256
+   */
+  putStream(
+    key: string,
+    stream: ReadableStream<Uint8Array>,
+    contentType?: string,
+    maxSizeBytes?: number,
+  ): Promise<string>;
 
   /**
    * 根据 `noj-storage://` URL 读取数据
@@ -230,6 +251,15 @@ export function parseDownloadUrl(url: string): ParsedDownloadUrl {
     };
   }
 
+  if (host === "local") {
+    const rawPath = params.get("path");
+    return {
+      mode: "local",
+      path: rawPath ? decodeURIComponent(rawPath) : undefined,
+      checksumSha256,
+    };
+  }
+
   throw new Error(`Unknown noj-download:// host: ${host}`);
 }
 
@@ -241,6 +271,25 @@ export function buildBase64DownloadUrl(
   checksumSha256?: string,
 ): string {
   let url = `${DOWNLOAD_URL_PREFIX}base64/?content=${content}`;
+  if (checksumSha256) {
+    url += `&checksum_sha256=${checksumSha256}`;
+  }
+  return url;
+}
+
+/**
+ * 构建 `noj-download://local` URL。
+ *
+ * 仅用于本地开发模式：core 与 judge 共享文件系统，judge 直接从磁盘读取
+ * artifact/支持包文件，避免 base64 内联导致的 Redis 消息大小限制。
+ * 生产环境应使用 S3。
+ */
+export function buildLocalDownloadUrl(
+  path: string,
+  checksumSha256?: string,
+): string {
+  const encoded = encodeURIComponent(path);
+  let url = `${DOWNLOAD_URL_PREFIX}local?path=${encoded}`;
   if (checksumSha256) {
     url += `&checksum_sha256=${checksumSha256}`;
   }

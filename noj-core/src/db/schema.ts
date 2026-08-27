@@ -106,6 +106,10 @@ export const problems = pgTable(
     type: text("type").notNull().default("U"),
     /** 客观题标记：true 表示该题目是客观题套卷（无评测容器，服务端即时判定） */
     is_objective: boolean("is_objective").notNull().default(false),
+    /** 提交模式：code=单文件代码提交（默认），artifact=zip 产物提交 */
+    submission_mode: text("submission_mode").notNull().default("code"),
+    /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
+    artifact_max_size_mb: integer("artifact_max_size_mb"),
     /** LLM 网关配置（可空）：{ provider_id, model }，仅受信题目可启用 */
     llm_config: jsonb("llm_config"),
     created_at: text("created_at").notNull(),
@@ -121,6 +125,10 @@ export const problems = pgTable(
     typeCheck: check(
       "problems_type_check",
       sql`${table.type} IN ('U', 'P')`,
+    ),
+    submissionModeCheck: check(
+      "problems_submission_mode_check",
+      sql`${table.submission_mode} IN ('code', 'artifact')`,
     ),
     searchVectorIdx: index("idx_problems_search_vector").using(
       "gin",
@@ -434,7 +442,7 @@ export const contests = pgTable(
     publicIdUnique: unique("contests_public_id_unique").on(table.public_id),
     typeCheck: check(
       "contests_type_check",
-      sql`${table.type} IN ('icpc', 'ioi', 'oi')`,
+      sql`${table.type} IN ('kaggle')`,
     ),
     timeCheck: check(
       "contests_time_check",
@@ -465,7 +473,7 @@ export const contestProblems = pgTable(
       .references(() => problems.id, { onDelete: "cascade" }),
     sort_order: integer("sort_order").notNull().default(0),
     label: text("label").notNull(),
-    score: integer("score"),
+    score: integer("score").notNull(),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.contest_id, table.problem_id] }),
@@ -610,6 +618,8 @@ export const submissions = pgTable(
     language: text("language").notNull(),
     code: text("code").notNull(),
     file_name: text("file_name"),
+    /** artifact 提交的存储 URL（`noj-storage://`），code 模式为 NULL */
+    artifact_storage_url: text("artifact_storage_url"),
     status: text("status").$type<SubmissionStatus>().notNull().default(
       "pending",
     ),

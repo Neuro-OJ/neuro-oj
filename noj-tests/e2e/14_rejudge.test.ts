@@ -62,11 +62,11 @@ e2eTest("[e2e/rejudge] Setup", async () => {
   );
   console.log("  → 原始提交 ID: " + submissionId.slice(0, 8));
   const result = await pollSubmission(userToken, submissionId);
-  if (result.verdict !== "Accepted") {
-    throw new Error("期望原始提交 Accepted, 实际 " + result.verdict);
+  if (result.status !== "finished" || result.score <= 0) {
+    throw new Error("期望原始提交 finished 且分数 >0, 实际 " + result.status);
   }
   console.log(
-    "  ✓ 原始提交完成: " + result.verdict + " (" + result.score + "分)",
+    "  ✓ 原始提交完成: " + result.status + " (" + result.score + "分)",
   );
 });
 
@@ -100,11 +100,11 @@ e2eTest("[e2e/rejudge] 5.1 管理员单条重测完成提交", async () => {
 
   // 等待重测完成
   const result = await pollSubmission(adminToken, submissionId);
-  if (result.verdict !== "Accepted") {
-    throw new Error("重测结果期望 Accepted, 实际 " + result.verdict);
+  if (result.status !== "finished" || result.score <= 0) {
+    throw new Error("重测结果期望 finished 且分数 >0, 实际 " + result.status);
   }
   console.log(
-    "  ✓ 重测完成: " + result.verdict + " (" + result.score + "分)",
+    "  ✓ 重测完成: " + result.status + " (" + result.score + "分)",
   );
 });
 

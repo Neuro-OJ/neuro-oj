@@ -50,13 +50,11 @@ try:
     )
     ok = bool(resp.get("ok"))
     result = {
-        "status": "Accepted" if ok else "WrongAnswer",
         "score": 100 if ok else 0,
         "details": resp,
     }
 except Exception as error:
     result = {
-        "status": "RuntimeError",
         "score": 0,
         "details": {"error": str(error)},
     }
@@ -225,7 +223,7 @@ e2eTest("[e2e/llm-gateway] 7.1 导入 P 型 LLM 题并提交评测", async () =>
     "def solve(): return 1",
   );
   const result = await pollSubmission(adminToken, submissionId, 60, 2000, true);
-  if (result.verdict !== "Accepted") {
+  if (result.status !== "finished" || result.score <= 0) {
     const detailRes = await apiGet(
       `/api/v1/submissions/${submissionId}`,
       adminToken,
@@ -234,7 +232,7 @@ e2eTest("[e2e/llm-gateway] 7.1 导入 P 型 LLM 题并提交评测", async () =>
       data?: { result?: { output?: string; details?: unknown } };
     }).data;
     throw new Error(
-      `LLM 评测预期 Accepted，实际 ${result.verdict} (score=${result.score}) output=${
+      `LLM 评测预期 finished 且分数 >0，实际 ${result.status} (score=${result.score}) output=${
         detail?.result?.output ?? "(无)"
       } details=${JSON.stringify(detail?.result?.details ?? {})}`,
     );

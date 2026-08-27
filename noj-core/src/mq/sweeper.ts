@@ -7,7 +7,7 @@
  *    提交，超过 2 分钟后自动重新构建 JudgeTask 入队。
  */
 
-import { and, asc, eq, lte } from "drizzle-orm";
+import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { problems, selfTests, submissions } from "../db/schema.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
@@ -24,6 +24,7 @@ const RESULT_QUEUE = "noj:judge:results";
 const TASK_PROCESSING_TIMEOUT_MS = 10 * 60_000;
 const RESULT_PROCESSING_TIMEOUT_MS = 2 * 60_000;
 const PENDING_RECOVERY_MS = 2 * 60_000;
+const ARTIFACT_PENDING_CLEANUP_MS = 10 * 60_000;
 const SWEEP_INTERVAL_MS = 30_000;
 
 /** 根据管理员配置的最大 evaluator 时限推导任务 processing 超时，避免长任务被提前重投。 */
@@ -236,6 +237,7 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
     .where(
       and(
         eq(submissions.status, "pending"),
+        isNull(submissions.artifact_storage_url),
         lte(submissions.created_at, cutoff),
       ),
     )
@@ -345,6 +347,56 @@ export async function recoverPendingSelfTests(now: number): Promise<void> {
   });
 }
 
+/**
+ * 清理孤儿 artifact 提交：超过 N 分钟仍处于 pending 的 artifact 提交，
+ * 删除其存储对象并标记为 error（artifact 不支持重测，不重新入队）。
+ */
+export async function cleanupOrphanArtifacts(now: number): Promise<void> {
+  const cutoff = new Date(now - ARTIFACT_PENDING_CLEANUP_MS).toISOString();
+  const db = getDb();
+
+  const rows = await db
+    .select({
+      id: submissions.id,
+      artifact_storage_url: submissions.artifact_storage_url,
+    })
+    .from(submissions)
+    .where(
+      and(
+        eq(submissions.status, "pending"),
+        sql`${submissions.artifact_storage_url} IS NOT NULL`,
+        lte(submissions.created_at, cutoff),
+      ),
+    )
+    .limit(200);
+
+  const storage = await getStorageProvider();
+  for (const row of rows) {
+    if (row.artifact_storage_url) {
+      try {
+        await storage.delete(row.artifact_storage_url);
+      } catch (err) {
+        logger.error("清理孤儿 artifact 存储对象失败", {
+          submission_id: row.id,
+          storage_url: row.artifact_storage_url,
+          err,
+        });
+      }
+    }
+    await db.update(submissions)
+      .set({
+        status: "error",
+        judge_finished_at: new Date().toISOString(),
+      })
+      .where(
+        and(eq(submissions.id, row.id), eq(submissions.status, "pending")),
+      );
+    logger.warn("孤儿 artifact 提交已清理并标记 error", {
+      submission_id: row.id,
+    });
+  }
+}
+
 export async function runQueueSweeperOnce(): Promise<void> {
   const now = Date.now();
   const results = await Promise.allSettled([
@@ -360,6 +412,7 @@ export async function runQueueSweeperOnce(): Promise<void> {
     ),
     recoverPendingSubmissions(now),
     recoverPendingSelfTests(now),
+    cleanupOrphanArtifacts(now),
   ]);
   for (const result of results) {
     if (result.status === "rejected") {

@@ -35,6 +35,7 @@ type StandardProblem = {
   description: string
   difficulty: string
   type: 'U' | 'P'
+  submission_mode?: 'code' | 'artifact'
   tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
 }
 
@@ -60,6 +61,7 @@ const workspaceProblem = computed(() => {
       description: p.description,
       difficulty: p.difficulty,
       type: 'P' as const,
+      submission_mode: p.submission_mode ?? 'code',
       tags: [],
     }
   }
@@ -71,9 +73,12 @@ const workspaceProblem = computed(() => {
     description: p.description,
     difficulty: p.difficulty,
     type: p.type,
+    submission_mode: p.submission_mode ?? 'code',
     tags: p.tags ?? [],
   }
 })
+
+const isArtifact = computed(() => workspaceProblem.value?.submission_mode === 'artifact')
 
 // 竞赛访问控制：仅进行中且参赛者/管理员可进入编辑器
 const canUseEditor = computed(() => {
@@ -171,6 +176,22 @@ const templateUrl = getProblemTemplateUrl
           返回竞赛
         </UButton>
       </div>
+    </div>
+  </div>
+
+  <!-- artifact 题：不使用代码编辑器，引导返回详情页上传 zip -->
+  <div
+    v-else-if="isArtifact"
+    class="h-screen flex items-center justify-center bg-bg-page"
+  >
+    <div class="flex flex-col items-center gap-3 rounded-xl border border-border bg-white px-8 py-10 text-center">
+      <span class="flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary text-xl font-bold">
+        <UIcon name="i-lucide-package" class="size-5" />
+      </span>
+      <p class="text-sm font-medium text-text">该题为产物提交题，请返回题目详情上传 zip 文件。</p>
+      <UButton color="primary" variant="outline" size="sm" :to="backUrl">
+        返回题目详情
+      </UButton>
     </div>
   </div>
 

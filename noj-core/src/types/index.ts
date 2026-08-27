@@ -60,6 +60,8 @@ export interface JudgeTask {
   runtime_config: RuntimeConfig;
   /** 支持包下载 URL（`noj-download://` 格式） */
   download_url?: string;
+  /** artifact 提交的下载 URL（`noj-download://` 格式），仅 artifact 模式携带 */
+  artifact_download_url?: string;
   /** 编程语言标识 */
   language: string;
   /** 用户源代码 */

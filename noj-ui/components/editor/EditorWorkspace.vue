@@ -27,6 +27,7 @@ export interface WorkspaceProblem {
   description: string
   difficulty: string
   type: 'U' | 'P'
+  submission_mode?: 'code' | 'artifact'
   tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
 }
 
@@ -130,7 +131,7 @@ const {
 
 // 提交终态为 Accepted 时通知调用方刷新题目详情（AC 后算法标签立即可见）
 watch(activeSubmission, (submission) => {
-  if (submission?.status === 'finished' && submission.result?.status === 'Accepted') {
+  if (submission?.status === 'finished' && submission.result?.status === 'finished' && (submission.result?.score ?? 0) > 0) {
     emit('accepted')
   }
 })

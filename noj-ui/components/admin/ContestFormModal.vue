@@ -24,13 +24,11 @@ const description = ref('')
 const announcement = ref('')
 const startTime = ref('')
 const endTime = ref('')
-const type = ref<ContestType>('icpc')
+const type = ref<ContestType>('kaggle')
 const isPublic = ref(true)
 const password = ref('')
 const affectGlobalRanking = ref(false)
-const penaltyMinutes = ref(20)
-const freezeTime = ref('')
-const showRankingLive = ref(true)
+const submissionLimits = ref<Record<string, number>>({})
 const selectedProblems = ref<ContestProblemInput[]>([])
 const problemQuery = ref('')
 const localError = ref('')
@@ -66,13 +64,11 @@ function resetForm() {
   announcement.value = contest?.announcement ?? ''
   startTime.value = toLocalDateTime(contest?.start_time) || toLocalDateTime(new Date(Date.now() + HOUR_MS).toISOString())
   endTime.value = toLocalDateTime(contest?.end_time) || toLocalDateTime(new Date(Date.now() + 3 * HOUR_MS).toISOString())
-  type.value = contest?.type ?? 'icpc'
+  type.value = contest?.type ?? 'kaggle'
   isPublic.value = contest?.is_public ?? true
   password.value = ''
   affectGlobalRanking.value = contest?.affect_global_ranking ?? false
-  penaltyMinutes.value = contest?.config.penalty_minutes ?? 20
-  freezeTime.value = toLocalDateTime(contest?.config.freeze_time ?? undefined)
-  showRankingLive.value = contest?.config.show_ranking_live ?? type.value === 'ioi'
+  submissionLimits.value = { ...(contest?.config.submission_limits ?? {}) }
   selectedProblems.value = (contest?.problems ?? []).map((problem, index) => ({
     problem_id: problem.problem_id,
     label: problem.label,
@@ -94,7 +90,7 @@ function normalizeProblems() {
     ...problem,
     label: labelFor(index),
     sort_order: index,
-    score: type.value === 'icpc' ? null : problem.score ?? DEFAULT_FULL_SCORE,
+    score: problem.score ?? DEFAULT_FULL_SCORE,
   }))
 }
 
@@ -103,14 +99,24 @@ function addProblem(problem: AdminProblemOption) {
     problem_id: problem.id,
     label: labelFor(selectedProblems.value.length),
     sort_order: selectedProblems.value.length,
-    score: type.value === 'icpc' ? null : DEFAULT_FULL_SCORE,
+    score: DEFAULT_FULL_SCORE,
   })
   normalizeProblems()
 }
 
 function removeProblem(problemId: string) {
   selectedProblems.value = selectedProblems.value.filter((item) => item.problem_id !== problemId)
+  delete submissionLimits.value[problemId]
   normalizeProblems()
+}
+
+function setSubmissionLimit(problemId: string, event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  if (value === '') {
+    delete submissionLimits.value[problemId]
+  } else {
+    submissionLimits.value[problemId] = Number(value)
+  }
 }
 
 function problemName(problemId: string) {
@@ -137,13 +143,11 @@ function submit() {
     return
   }
 
-  const config = type.value === 'icpc'
-    ? {
-        penalty_minutes: penaltyMinutes.value,
-        freeze_time: freezeTime.value ? new Date(freezeTime.value).toISOString() : null,
-        unfreeze_after_end: true,
-      }
-    : { show_ranking_live: type.value === 'ioi' ? showRankingLive.value : false }
+  const config = {
+    ...(Object.keys(submissionLimits.value).length > 0
+      ? { submission_limits: { ...submissionLimits.value } }
+      : {}),
+  }
   const payload: ContestPayload = {
     title: title.value.trim(),
     description: description.value,
@@ -158,7 +162,7 @@ function submit() {
       ...problem,
       sort_order: index,
       label: labelFor(index),
-      score: type.value === 'icpc' ? null : problem.score ?? DEFAULT_FULL_SCORE,
+      score: problem.score ?? DEFAULT_FULL_SCORE,
     })),
   }
   if (password.value) payload.password = password.value
@@ -178,9 +182,8 @@ function submit() {
         <section class="space-y-4">
           <div><label class="mb-1 block text-xs font-semibold text-text">竞赛标题 *</label><input v-model="title" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" placeholder="例如：NOJ 夏季挑战赛"></div>
           <div class="grid gap-3 sm:grid-cols-2"><div><label class="mb-1 block text-xs font-semibold text-text">开始时间 *</label><input v-model="startTime" type="datetime-local" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"></div><div><label class="mb-1 block text-xs font-semibold text-text">结束时间 *</label><input v-model="endTime" type="datetime-local" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"></div></div>
-          <div class="grid gap-3 sm:grid-cols-2"><div><label class="mb-1 block text-xs font-semibold text-text">赛制 *</label><USelect v-model="type" :items="[{ label: 'ICPC 罚时制', value: 'icpc' }, { label: 'IOI 总分制', value: 'ioi' }, { label: 'OI 隐藏排名', value: 'oi' }]" class="w-full" /></div><div><label class="mb-1 block text-xs font-semibold text-text">竞赛密码</label><input v-model="password" type="password" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" :placeholder="contest?.has_password ? '留空则保持原密码' : '留空表示无密码'"></div></div>
-          <div v-if="type === 'icpc'" class="grid gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:grid-cols-2"><div><label class="mb-1 block text-xs font-semibold text-info-text">错误罚时（分钟）</label><input v-model.number="penaltyMinutes" type="number" min="1" class="w-full rounded-lg border border-blue-200 px-3 py-2 text-sm outline-none focus:border-primary"></div><div><label class="mb-1 block text-xs font-semibold text-info-text">封榜时间</label><input v-model="freezeTime" type="datetime-local" class="w-full rounded-lg border border-blue-200 px-3 py-2 text-sm outline-none focus:border-primary"></div></div>
-          <label v-if="type === 'ioi'" class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text"><input v-model="showRankingLive" type="checkbox" class="size-4 accent-primary">实时公开排名</label>
+          <div class="grid gap-3 sm:grid-cols-2"><div><label class="mb-1 block text-xs font-semibold text-text">赛制 *</label><span class="block rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm text-text-secondary">类 Kaggle 分数赛</span></div><div><label class="mb-1 block text-xs font-semibold text-text">竞赛密码</label><input v-model="password" type="password" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" :placeholder="contest?.has_password ? '留空则保持原密码' : '留空表示无密码'"></div></div>
+          <p class="text-xs text-text-muted">类 Kaggle 赛制：每题取历史最高分，总分求和；可在题目列表中为每道题设置提交次数上限。</p>
           <div><label class="mb-1 block text-xs font-semibold text-text">竞赛说明</label><textarea v-model="description" rows="4" class="w-full resize-y rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" placeholder="支持 Markdown"></textarea></div>
           <div><label class="mb-1 block text-xs font-semibold text-text">竞赛公告</label><textarea v-model="announcement" rows="3" class="w-full resize-y rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" placeholder="显示在竞赛详情页顶部"></textarea></div>
           <div class="grid gap-2 sm:grid-cols-2"><label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text"><input v-model="isPublic" type="checkbox" class="size-4 accent-primary">公开竞赛</label><label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text"><input v-model="affectGlobalRanking" type="checkbox" class="size-4 accent-primary">计入全局统计</label></div>
@@ -197,7 +200,8 @@ function submit() {
             <div v-for="problem in selectedProblems" :key="problem.problem_id" class="flex items-center gap-2 rounded-lg border border-border bg-white p-3">
               <span class="flex size-8 shrink-0 items-center justify-center rounded-md bg-bg-dark font-mono text-xs font-bold text-white">{{ problem.label }}</span>
               <span class="min-w-0 flex-1 truncate text-xs font-medium text-text">{{ problemName(problem.problem_id) }}</span>
-              <input v-if="type !== 'icpc'" :value="(problem.score ?? DEFAULT_FULL_SCORE) / 100" type="number" min="0" class="w-20 rounded border border-border px-2 py-1 text-xs" title="满分" @input="problem.score = Number(($event.target as HTMLInputElement).value) * 100">
+              <input :value="(problem.score ?? DEFAULT_FULL_SCORE) / 100" type="number" min="0" class="w-20 rounded border border-border px-2 py-1 text-xs" title="满分" @input="problem.score = Number(($event.target as HTMLInputElement).value) * 100">
+              <input :value="submissionLimits[problem.problem_id] ?? ''" type="number" min="1" class="w-20 rounded border border-border px-2 py-1 text-xs" title="提交次数上限（留空不限）" placeholder="上限" @input="setSubmissionLimit(problem.problem_id, $event)">
               <button class="rounded p-1.5 text-text-muted hover:bg-red-50 hover:text-error-text" @click="removeProblem(problem.problem_id)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></button>
             </div>
           </div>

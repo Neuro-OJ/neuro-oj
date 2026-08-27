@@ -84,15 +84,16 @@ Deno.test({
     const endTime = new Date(Date.now() + 3_600_000).toISOString();
 
     const contest = await createContest({
-      title: "测试 ICPC 竞赛",
+      title: "测试 Kaggle 竞赛",
       start_time: startTime,
       end_time: endTime,
-      type: "icpc",
+      type: "kaggle",
       password: "ContestPass123",
       problems: [{
         problem_id: problemA,
         label: "A",
         sort_order: 0,
+        score: 10000,
       }],
     }, creatorId);
 
@@ -136,8 +137,8 @@ Deno.test({
         title: "已更新竞赛",
         password: null,
         problems: [
-          { problem_id: problemA, label: "A", sort_order: 0 },
-          { problem_id: problemB, label: "B", sort_order: 1 },
+          { problem_id: problemA, label: "A", sort_order: 0, score: 10000 },
+          { problem_id: problemB, label: "B", sort_order: 1, score: 10000 },
         ],
       });
       assertEquals(updated.title, "已更新竞赛");

@@ -108,7 +108,8 @@ NOJ 分为三个核心模块，通过 RESTful API 和 Redis 消息队列协作�
 | **Judge 交付层** | `noj-download://` | 描述 judge 如何获取支持包内容 | `JudgeTask.download_url`      |
 
 - `local` 模式：`noj-storage://local/<base64>` ↔
-  `noj-download://base64/?content=[base64]`
+  `noj-download://local?path=[绝对路径]`（要求 core 与 judge 共享文件系统，如同一
+  主机或容器挂载同一存储卷）
 - `s3` 模式：`noj-storage://s3/<key>` ↔ `noj-download://s3?url=[presigned]`
 - SHA-256 校验贯穿两个层级，支持内容寻址缓存
 - 用户提交的代码**不**进支持包，由 noj-judge 运行时注入

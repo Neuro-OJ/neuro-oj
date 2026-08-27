@@ -159,7 +159,7 @@ watch(
             class="inline-flex items-center gap-2.5 px-7 py-3 rounded-full text-base font-semibold bg-red-50 text-red-800 border border-red-200"
           >
             <UIcon name="i-lucide-x-circle" class="size-[22px]" />
-            <span>系统错误</span>
+            <span>出错</span>
           </div>
           <!-- 已完成 -->
           <div

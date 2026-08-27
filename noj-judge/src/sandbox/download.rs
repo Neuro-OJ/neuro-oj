@@ -6,12 +6,17 @@
 //!
 //! 两种路径最终都产生 zip 字节数组供解压。
 
+use std::path::Path;
+
 use anyhow::{bail, Context, Result};
 use base64::Engine;
 use percent_encoding::percent_decode_str;
 use sha2::{Digest, Sha256};
 
-const MAX_SUPPORT_PACKAGE_BYTES: usize = 128 * 1024 * 1024;
+// 与 noj-core 的 NOJ artifact 硬上限（默认 2GB）对齐。
+// 注意：当前实现仍将下载内容载入内存，超大文件可能造成内存压力；
+// 后续可改为流式落盘/注入以支持 2GB 级别产物。
+const MAX_SUPPORT_PACKAGE_BYTES: usize = 2 * 1024 * 1024 * 1024;
 
 /// 解析 `noj-download://` URL 并获取支持包字节。
 ///
@@ -60,6 +65,29 @@ pub async fn fetch_support_package(
                 bail!("S3 下载 URL 必须使用 HTTPS: {}", redact_url(&decoded_url));
             }
             let bytes = http_download(&decoded_url, download_timeout_secs).await?;
+            Ok((bytes, checksum))
+        }
+        "local" => {
+            let raw_path =
+                parse_query_param(&query, "path").context("noj-download://local 缺少 path 参数")?;
+            let path = percent_decode_str(&raw_path)
+                .decode_utf8()
+                .context("path percent 解码失败")?;
+            // 本地开发模式：仅允许绝对路径的 .zip 文件，拒绝路径穿越，避免消息被篡改后任意读文件。
+            let path_ref = Path::new(path.as_ref());
+            if !path_ref.is_absolute() || !path.ends_with(".zip") || path.contains("..") {
+                bail!("local 下载路径非法: {}", redact_url(&path));
+            }
+            // 先检查文件大小，避免把超大文件整体读入内存后才拒绝。
+            let meta = tokio::fs::metadata(path_ref)
+                .await
+                .with_context(|| format!("读取 local 文件元数据失败: {}", redact_url(&path)))?;
+            if meta.len() > MAX_SUPPORT_PACKAGE_BYTES as u64 {
+                bail!("支持包大小超过上限 {}", MAX_SUPPORT_PACKAGE_BYTES);
+            }
+            let bytes = tokio::fs::read(path_ref)
+                .await
+                .with_context(|| format!("读取 local 文件失败: {}", redact_url(&path)))?;
             Ok((bytes, checksum))
         }
         _ => {
