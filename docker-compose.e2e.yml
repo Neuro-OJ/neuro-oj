@@ -156,6 +156,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - noj-judge-work:/tmp/noj-work
+      # local 存储模式下 core 与 judge 共享文件系统，judge 直接读取 artifact/支持包
+      - noj-data-storage:/app/data/storage
     # noj-judge 不再启动时经 Redis RPC 拉白名单；等 noj-core healthy 后再起，
     # 避免题目数据尚未迁移完成时评测任务消费异常。
     depends_on:

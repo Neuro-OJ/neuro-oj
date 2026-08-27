@@ -63,6 +63,8 @@ export const statusLabels: Record<string, string> = {
  * 评测结果状态 → 显示标签。
  */
 export const resultLabels: Record<string, string> = {
+  finished: '已评测',
+  error: '出错',
   Accepted: '答案正确',
   WrongAnswer: '答案错误',
   TimeLimitExceeded: '超出时间限制',
@@ -77,6 +79,8 @@ export const resultLabels: Record<string, string> = {
  * 评测结果状态 → 标签颜色。
  */
 export const resultColors: Record<string, string> = {
+  finished: '#10b981',
+  error: '#ef4444',
   Accepted: '#10b981',
   WrongAnswer: '#ef4444',
   TimeLimitExceeded: '#f59e0b',
@@ -180,6 +184,8 @@ export interface ResultDef {
  * 评测结果状态 → 详细定义映射。
  */
 export const resultDefMap: Record<string, ResultDef> = {
+  finished: { label: '已评测', icon: 'check', class: 'accepted' },
+  error: { label: '出错', icon: 'x', class: 'se' },
   Accepted: { label: '答案正确', icon: 'check', class: 'accepted' },
   WrongAnswer: { label: '答案错误', icon: 'x', class: 'wrong' },
   TimeLimitExceeded: { label: '超出时间限制', icon: 'alert', class: 'tle' },

@@ -12,14 +12,19 @@
  */
 
 import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
   CreateBucketCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   PutObjectCommand,
   S3Client,
+  UploadPartCommand,
 } from "npm:@aws-sdk/client-s3@^3";
 import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner@^3";
+import { sha256 } from "npm:@noble/hashes@2.2.0/sha2.js";
 
 import {
   buildS3DownloadUrl,
@@ -95,6 +100,116 @@ export class S3StorageProvider implements StorageProvider {
       }),
     );
 
+    return buildStorageUrl("s3", key, hashHex);
+  }
+
+  /**
+   * 流式存储数据到 S3（multipart upload）。
+   *
+   * 使用固定 5MB 分片缓冲，内存占用 O(1)；边传边计算 SHA-256。
+   */
+  async putStream(
+    key: string,
+    stream: ReadableStream<Uint8Array>,
+    contentType?: string,
+    maxSizeBytes?: number,
+  ): Promise<string> {
+    validateStorageKey(key);
+    const hash = sha256.create();
+    const create = await this.client.send(
+      new CreateMultipartUploadCommand({
+        Bucket: this.bucket,
+        Key: key,
+        ContentType: contentType || "application/zip",
+      }),
+    );
+    const uploadId = create.UploadId;
+    if (!uploadId) {
+      throw new Error("S3 CreateMultipartUpload 未返回 UploadId");
+    }
+
+    const PART_SIZE = 5 * 1024 * 1024;
+    let partNumber = 1;
+    let total = 0;
+    let buffer = new Uint8Array(PART_SIZE);
+    let bufferLen = 0;
+    const uploadedParts: { PartNumber: number; ETag: string }[] = [];
+    const reader = stream.getReader();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value && value.length > 0) {
+          total += value.length;
+          if (maxSizeBytes !== undefined && total > maxSizeBytes) {
+            throw new Error(`文件超过大小限制（${maxSizeBytes} 字节）`);
+          }
+          hash.update(value);
+          let offset = 0;
+          while (offset < value.length) {
+            const copy = Math.min(PART_SIZE - bufferLen, value.length - offset);
+            buffer.set(value.subarray(offset, offset + copy), bufferLen);
+            bufferLen += copy;
+            offset += copy;
+            if (bufferLen === PART_SIZE) {
+              const part = await this.client.send(
+                new UploadPartCommand({
+                  Bucket: this.bucket,
+                  Key: key,
+                  UploadId: uploadId,
+                  PartNumber: partNumber,
+                  Body: buffer,
+                }),
+              );
+              uploadedParts.push({ PartNumber: partNumber, ETag: part.ETag! });
+              partNumber++;
+              bufferLen = 0;
+              buffer = new Uint8Array(PART_SIZE);
+            }
+          }
+        }
+      }
+
+      // 空文件或最后不足 5MB 的部分
+      if (bufferLen > 0 || uploadedParts.length === 0) {
+        const partBody = bufferLen === buffer.length
+          ? buffer
+          : buffer.slice(0, bufferLen);
+        const part = await this.client.send(
+          new UploadPartCommand({
+            Bucket: this.bucket,
+            Key: key,
+            UploadId: uploadId,
+            PartNumber: partNumber,
+            Body: partBody,
+          }),
+        );
+        uploadedParts.push({ PartNumber: partNumber, ETag: part.ETag! });
+      }
+
+      await this.client.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: this.bucket,
+          Key: key,
+          UploadId: uploadId,
+          MultipartUpload: { Parts: uploadedParts },
+        }),
+      );
+    } catch (err) {
+      await this.client.send(
+        new AbortMultipartUploadCommand({
+          Bucket: this.bucket,
+          Key: key,
+          UploadId: uploadId,
+        }),
+      ).catch(() => {});
+      throw err;
+    }
+
+    const hashHex = Array.from(hash.digest())
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
     return buildStorageUrl("s3", key, hashHex);
   }
 

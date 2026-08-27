@@ -383,8 +383,15 @@
     {
       "idx": 54,
       "version": "7",
+      "when": 1787733803651,
+      "tag": "0054_hard_scalphunter",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
       "when": 1787750569587,
-      "tag": "0054_aspiring_reaper",
+      "tag": "0055_aspiring_reaper",
       "breakpoints": true
     }
   ]

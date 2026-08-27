@@ -49,7 +49,7 @@ def main():
 
     if not args.no_result:
         result = args.result_json or json.dumps({
-            "status": "Accepted", "score": 1000, "details": {}
+            "score": 1000, "details": {}
         })
         print("---RESULT---")
         print(result)

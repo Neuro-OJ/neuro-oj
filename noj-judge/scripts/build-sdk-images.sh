@@ -5,9 +5,10 @@
 # 构建产物：
 #   noj-evaluator-python:latest -- docker/evaluator-python/
 #   noj-solution-python:latest  -- docker/solution-python/
+#   noj-solution-ai:latest      -- docker/solution-ai/
 #
 # 说明：默认 tag 为 latest，与 noj-core 种子数据 judge_images 中登记的裸镜像名
-#      （noj-evaluator-python / noj-solution-python，docker 解析为 :latest）保持一致，
+#      （noj-evaluator-python / noj-solution-python / noj-solution-ai，docker 解析为 :latest）保持一致，
 #      否则 judge 预热时会因找不到 :latest 而报 404。
 #
 # 用法：
@@ -65,14 +66,16 @@ cd "$NOJ_JUDGE_DIR"
 
 EVAL_IMAGE="noj-evaluator-python:${TAG}"
 SOL_IMAGE="noj-solution-python:${TAG}"
+SOL_AI_IMAGE="noj-solution-ai:${TAG}"
 
 echo "=== 并行构建 SDK 镜像 ==="
 echo "镜像 1: $EVAL_IMAGE  (构建上下文: docker/evaluator-python/)"
 echo "镜像 2: $SOL_IMAGE   (构建上下文: docker/solution-python/)"
+echo "镜像 3: $SOL_AI_IMAGE (构建上下文: docker/solution-ai/)"
 echo
 
 # ── 并行构建 ────────────────────────────────────────
-# 启动两个 docker build 后台任务，捕获 PID
+# 启动三个 docker build 后台任务，捕获 PID
 docker build $NO_CACHE \
   -t "$EVAL_IMAGE" \
   -f docker/evaluator-python/Dockerfile \
@@ -85,17 +88,27 @@ docker build $NO_CACHE \
   . > /tmp/noj-build-sol.log 2>&1 &
 SOL_PID=$!
 
-# 等待两个构建完成（收集退出码）
+docker build $NO_CACHE \
+  -t "$SOL_AI_IMAGE" \
+  -f docker/solution-ai/Dockerfile \
+  . > /tmp/noj-build-sol-ai.log 2>&1 &
+SOL_AI_PID=$!
+
+# 等待三个构建完成（收集退出码）
 EVAL_EXIT=0
 SOL_EXIT=0
+SOL_AI_EXIT=0
 wait $EVAL_PID || EVAL_EXIT=$?
 wait $SOL_PID || SOL_EXIT=$?
+wait $SOL_AI_PID || SOL_AI_EXIT=$?
 
 # ── 报告结果 ────────────────────────────────────────
 echo "--- evaluator-python 构建日志 ---"
 cat /tmp/noj-build-eval.log
 echo "--- solution-python 构建日志 ---"
 cat /tmp/noj-build-sol.log
+echo "--- solution-ai 构建日志 ---"
+cat /tmp/noj-build-sol-ai.log
 
 if [[ $EVAL_EXIT -ne 0 ]]; then
   echo "❌ evaluator-python 构建失败 (exit=$EVAL_EXIT)" >&2
@@ -103,15 +116,18 @@ fi
 if [[ $SOL_EXIT -ne 0 ]]; then
   echo "❌ solution-python 构建失败 (exit=$SOL_EXIT)" >&2
 fi
+if [[ $SOL_AI_EXIT -ne 0 ]]; then
+  echo "❌ solution-ai 构建失败 (exit=$SOL_AI_EXIT)" >&2
+fi
 
-if [[ $EVAL_EXIT -ne 0 || $SOL_EXIT -ne 0 ]]; then
+if [[ $EVAL_EXIT -ne 0 || $SOL_EXIT -ne 0 || $SOL_AI_EXIT -ne 0 ]]; then
   exit 1
 fi
 
 echo
 echo "=== 构建完成 ==="
 docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}" \
-  | grep -E "REPOSITORY|noj-(evaluator|solution)-python"
+  | grep -E "REPOSITORY|noj-(evaluator|solution)-python|noj-solution-ai"
 
 # 清理临时日志
-rm -f /tmp/noj-build-eval.log /tmp/noj-build-sol.log
+rm -f /tmp/noj-build-eval.log /tmp/noj-build-sol.log /tmp/noj-build-sol-ai.log

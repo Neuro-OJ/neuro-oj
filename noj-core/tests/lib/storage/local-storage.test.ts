@@ -6,7 +6,7 @@
  * - SUPPORT_PACKAGE_DIR 可覆盖存储根目录
  */
 
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { dirname, join } from "jsr:@std/path@^1";
 import { LocalStorageProvider } from "../../../src/lib/storage/local.ts";
 
@@ -128,6 +128,52 @@ Deno.test("LocalStorageProvider: zip/未知 contentType 保持无扩展名 key",
   assertEquals(/\.(png|jpg|webp)$/.test(key), false);
   const readBack = await provider.get(url);
   assertEquals(new TextDecoder().decode(readBack), "x");
+});
+
+Deno.test("LocalStorageProvider: downloadUrl 返回 noj-download://local 路径", async () => {
+  const provider = new LocalStorageProvider();
+  const url = await provider.put(
+    "download-key",
+    new TextEncoder().encode("data"),
+    "application/zip",
+  );
+  const downloadUrl = await provider.downloadUrl(url);
+  assertEquals(downloadUrl.startsWith("noj-download://local?path="), true);
+  assertEquals(downloadUrl.includes("checksum_sha256="), true);
+  await provider.delete(url);
+});
+
+Deno.test("LocalStorageProvider: putStream 流式写入并读回", async () => {
+  const provider = new LocalStorageProvider();
+  const chunks = [
+    new TextEncoder().encode("hello "),
+    new TextEncoder().encode("world"),
+  ];
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const c of chunks) controller.enqueue(c);
+      controller.close();
+    },
+  });
+  const url = await provider.putStream("stream-key", stream, "application/zip");
+  const readBack = await provider.get(url);
+  assertEquals(new TextDecoder().decode(readBack), "hello world");
+  await provider.delete(url);
+});
+
+Deno.test("LocalStorageProvider: putStream 超过大小限制时中止", async () => {
+  const provider = new LocalStorageProvider();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode("12345"));
+      controller.close();
+    },
+  });
+  await assertRejects(
+    () => provider.putStream("stream-key-limit", stream, "application/zip", 4),
+    Error,
+    "超过大小限制",
+  );
 });
 
 Deno.test("LocalStorageProvider: 图片 key 的 get/delete 使用正确路径", async () => {

@@ -325,6 +325,7 @@ jobs:
             e2e/30_self_test.test.ts \
             e2e/31_tfa.test.ts \
             e2e/32_llm_gateway.test.ts \
+            e2e/33_artifact_submission.test.ts \
             e2e/trainings.test.ts &
           p3=$!
           fail=0

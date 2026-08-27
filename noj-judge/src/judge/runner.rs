@@ -60,12 +60,49 @@ pub async fn evaluate_with_cpu_limit(
         None
     };
 
+    // 下载 artifact zip（一次性，不缓存）
+    let artifact_zip = if let Some(ref url) = task.artifact_download_url {
+        if !url.is_empty() {
+            match download::fetch_support_package(url, download_timeout_secs, allow_http_s3).await {
+                Ok((bytes, checksum)) => {
+                    if let Err(e) = download::verify_checksum(&bytes, checksum.as_deref()) {
+                        error!(
+                            submission_id = %task.submission_id,
+                            error = %e,
+                            "artifact 校验失败，评测将失败"
+                        );
+                        return Err(e);
+                    }
+                    info!(
+                        submission_id = %task.submission_id,
+                        size = bytes.len(),
+                        "artifact zip 已获取"
+                    );
+                    Some(bytes)
+                }
+                Err(e) => {
+                    error!(
+                        submission_id = %task.submission_id,
+                        error = %e,
+                        "artifact 下载失败"
+                    );
+                    return Err(e);
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     crate::dual::evaluate_dual_with_cpu_limit(
         docker,
         &task.submission_id,
         &task.runtime_config,
         &task.code,
         support_pkg.as_deref(),
+        artifact_zip.as_deref(),
         task.rejudge_seq,
         task.llm.as_ref(),
         cpu_limit_millicores,

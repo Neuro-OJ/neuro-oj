@@ -1,5 +1,5 @@
 {
-  "id": "57d766d9-9be8-4855-99ba-c29a6939b83f",
+  "id": "e9afcfcd-ecf4-4ab0-8f82-0407c8fc85ac",
   "prevId": "0ae3e683-18d9-40c3-b028-b893000e36e6",
   "version": "7",
   "dialect": "postgresql",
@@ -1375,7 +1375,7 @@
       "checkConstraints": {
         "community_notifications_type_check": {
           "name": "community_notifications_type_check",
-          "value": "\"community_notifications\".\"type\" IN ('reply', 'like', 'follow', 'moderation', 'clarification', 'report', 'ban')"
+          "value": "\"community_notifications\".\"type\" IN ('reply', 'like', 'follow', 'moderation', 'clarification')"
         }
       },
       "isRLSEnabled": false
@@ -1766,32 +1766,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "content_type": {
-          "name": "content_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'post'"
-        },
-        "sanction_id": {
-          "name": "sanction_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ban_id": {
-          "name": "ban_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "category": {
-          "name": "category",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'其他'"
-        },
         "reason": {
           "name": "reason",
           "type": "text",
@@ -1939,32 +1913,6 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
-        "community_reports_sanction_id_community_sanctions_id_fk": {
-          "name": "community_reports_sanction_id_community_sanctions_id_fk",
-          "tableFrom": "community_reports",
-          "tableTo": "community_sanctions",
-          "columnsFrom": [
-            "sanction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "community_reports_ban_id_user_bans_id_fk": {
-          "name": "community_reports_ban_id_user_bans_id_fk",
-          "tableFrom": "community_reports",
-          "tableTo": "user_bans",
-          "columnsFrom": [
-            "ban_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "community_reports_resolved_by_users_id_fk": {
           "name": "community_reports_resolved_by_users_id_fk",
           "tableFrom": "community_reports",
@@ -1990,10 +1938,6 @@
         "community_reports_status_check": {
           "name": "community_reports_status_check",
           "value": "\"community_reports\".\"status\" IN ('pending', 'resolved', 'dismissed')"
-        },
-        "community_reports_category_check": {
-          "name": "community_reports_category_check",
-          "value": "\"community_reports\".\"category\" IN ('违法违规', '人身侵权', '涉嫌欺诈', '侵权抄袭', '垃圾信息', '站外风险引流', 'AI生成内容问题', '其他')"
         }
       },
       "isRLSEnabled": false
@@ -2383,7 +2327,7 @@
           "name": "score",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         }
       },
       "indexes": {},
@@ -2623,7 +2567,7 @@
       "checkConstraints": {
         "contests_type_check": {
           "name": "contests_type_check",
-          "value": "\"contests\".\"type\" IN ('icpc', 'ioi', 'oi')"
+          "value": "\"contests\".\"type\" IN ('kaggle')"
         },
         "contests_time_check": {
           "name": "contests_time_check",
@@ -4295,6 +4239,19 @@
           "notNull": true,
           "default": false
         },
+        "submission_mode": {
+          "name": "submission_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'code'"
+        },
+        "artifact_max_size_mb": {
+          "name": "artifact_max_size_mb",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "llm_config": {
           "name": "llm_config",
           "type": "jsonb",
@@ -4354,6 +4311,10 @@
         "problems_type_check": {
           "name": "problems_type_check",
           "value": "\"problems\".\"type\" IN ('U', 'P')"
+        },
+        "problems_submission_mode_check": {
+          "name": "problems_submission_mode_check",
+          "value": "\"problems\".\"submission_mode\" IN ('code', 'artifact')"
         },
         "problems_runtime_config_check": {
           "name": "problems_runtime_config_check",
@@ -4806,6 +4767,12 @@
         },
         "file_name": {
           "name": "file_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "artifact_storage_url": {
+          "name": "artifact_storage_url",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -5501,13 +5468,6 @@
           "notNull": true,
           "default": "''"
         },
-        "scope": {
-          "name": "scope",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'platform'"
-        },
         "banned_until": {
           "name": "banned_until",
           "type": "text",
@@ -5616,12 +5576,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "user_bans_scope_check": {
-          "name": "user_bans_scope_check",
-          "value": "\"user_bans\".\"scope\" IN ('platform', 'social')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.user_roles": {

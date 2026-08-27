@@ -41,7 +41,7 @@ noj-judge/
 │   ├── sandbox/
 │   │   ├── mod.rs
 │   │   ├── container.rs    # 容器生命周期 + zip 解压 + 命令解析
-│   │   ├── download.rs     # noj-download:// 下载（base64 / s3）
+│   │   ├── download.rs     # noj-download:// 下载（base64 / s3 / local）
 │   │   ├── cache.rs        # 内容寻址缓存
 │   │   ├── cleanup.rs      # 孤儿容器清理
 │   │   └── host_config.rs  # 容器 HostConfig 构造（安全项）
@@ -129,15 +129,15 @@ cargo fmt
   ├─ 0. 白名单复验（镜像前缀 JUDGE_IMAGE_PREFIX / 命令可执行文件白名单 / 网络开关）
   ├─ 1. 获取支持包 — 缓存优先 → 按 host 分派下载（仅 HTTPS，禁重定向）→ SHA-256 校验 → 写缓存（含 zip 路径穿越/实时解压限额）
   ├─ 2. 创建 Evaluator + Solution 两个容器（cap_drop ALL / network none 默认 / pids_limit / 可配置 CPU 上限 / readonly rootfs + tmpfs）
-  ├─ 3. 注入用户代码到 Solution 容器
+  ├─ 3. 注入用户代码/artifact zip 到 Solution 容器（artifact 模式解压到 /workspace，入口 submission.py）
   ├─ 4. 注入支持包 zip 到 Evaluator 容器 /workspace
   ├─ 5. 启动两个 exec — Evaluator 跑 evaluate.py；Solution 跑 host.py
   ├─ 6. 等待 Solution `ready` 帧（5s 超时）
   ├─ 7. 双向消息转发 — evaluator stdout ↔ solution stdin/stderr（调用级超时）
   │     ├─ 超时 → 向等待方写入 CallTimeout/error 帧
   │     └─ 正常 → 读取 stdout/stderr 直到 RESULT 或 EOF
-  ├─ 8. 等待 Evaluator stdout 出现 ---RESULT--- 标记，解析 JSON {status, score, details}
-  │     ├─ 有标记 → 解析结果（状态由 evaluator 决定）
+  ├─ 8. 等待 Evaluator stdout 出现 ---RESULT--- 标记，解析 JSON {score, details}
+  │     ├─ 有标记 → 统一映射 finished/error（分数是唯一结果）
   │     ├─ 总超时（启动超时 / time_limit_ms）→ SystemError（finalize_outcome 优先）
   │     ├─ 无标记 + 曾发送 CallTimeout 错误帧 → TimeLimitExceeded
   │     └─ 无标记 + 未发送 → SystemError
@@ -165,6 +165,7 @@ OOM 容器由 `docker rm -f` 回收，不映射 MemoryLimitExceeded。
   "submission_id": "uuid",
   "problem_id": "uuid",
   "download_url": "noj-download://base64/?content=UEsDBBQAAAAIA...&checksum_sha256=abc123",
+  "artifact_download_url": "noj-download://s3?url=...&checksum_sha256=abc123",
   "runtime_config": {
     "evaluator": {
       "image": "noj-evaluator-python",
@@ -252,6 +253,12 @@ OOM 容器由 `docker rm -f` 回收，不映射 MemoryLimitExceeded。
 - 基于 `python:3.12-slim`，无额外包
 - 依赖由 evaluate.py 自身管理
 - 本地构建：`docker build -t noj-judge-python docker/python/`
+
+**Solution AI 镜像**（`docker/solution-ai/Dockerfile`）：
+
+- 基于 `python:3.12-slim` + CPU 版 torch/torchvision + CV/ML 常用库 + noj_solution_sdk
+- 供 artifact 题（CV/ML 小模型）推理使用
+- 构建：`./scripts/build-sdk-images.sh`（同时构建 evaluator/solution/solution-ai）
 
 **E2E 测试镜像**（`Dockerfile.e2e`）：
 
