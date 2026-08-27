@@ -6,7 +6,7 @@
  * - owner/admin 视图：含 answer / explanation
  * - 公开视图：裁剪 answer / explanation
  */
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { Context } from "hono";
 import { getDb } from "../../db/connection.ts";
 import { objectiveQuestions, problems } from "../../db/schema.ts";
@@ -35,15 +35,57 @@ export function judgeOptions(): ObjectiveOption[] {
   return JUDGE_OPTIONS.map((o) => ({ key: o.key, text: o.text }));
 }
 
-/** 按 id 查询套卷（problems 行），不存在抛 404。 */
+/** 按 id 查询套卷（problems 行），不存在抛 404。支持 UUID / display_id（如 U42）/ 纯数字。 */
 export async function getPaperOrThrow(paperId: string): Promise<PaperRow> {
-  const db = getDb();
-  const rows = await db.select().from(problems).where(eq(problems.id, paperId))
-    .limit(1);
-  if (rows.length === 0) {
+  const paper = await resolvePaperId(paperId);
+  if (!paper) {
     throw new NotFoundError("套卷不存在");
   }
-  return rows[0];
+  return paper;
+}
+
+/**
+ * 解析套卷 ID（双索引，同 problem-resolve）：
+ * - UUID / 纯数字：直接按 id 精确查找
+ * - display_id（如 "U42" / "P7"）：按 (type, number) 查找
+ * 返回完整套卷行；找不到返回 null。
+ */
+export async function resolvePaperId(
+  paperId: string,
+): Promise<PaperRow | null> {
+  const db = getDb();
+  if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      paperId,
+    ) ||
+    /^\d+$/.test(paperId)
+  ) {
+    const rows = await db.select().from(problems).where(
+      eq(problems.id, paperId),
+    )
+      .limit(1);
+    return rows[0] ?? null;
+  }
+  const match = paperId.match(/^([UuPp])(\d+)$/);
+  if (match) {
+    const type = match[1].toUpperCase();
+    const number = parseInt(match[2], 10);
+    const rows = await db
+      .select()
+      .from(problems)
+      .where(and(eq(problems.type, type), eq(problems.number, number)))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+  const rows = await db.select().from(problems).where(eq(problems.id, paperId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** 把套卷引用解析为规范 UUID（display_id → 真实 id），用于小题/提交落库。 */
+export async function resolvePaperIdToUuid(paperId: string): Promise<string> {
+  const paper = await getPaperOrThrow(paperId);
+  return paper.id;
 }
 
 /** 校验套卷标记为客观题（is_objective=true）。 */
@@ -163,6 +205,8 @@ export async function createQuestion(
   const paper = await getPaperOrThrow(paperId);
   assertObjectivePaper(paper);
   await assertPaperManageable(paper, userId, userRole, c);
+  // 落库一律使用规范 UUID（display_id 引用解析为真实 id）
+  const paperUuid = paper.id;
 
   const type = input.type;
   if (!type || !(typeof type === "string")) {
@@ -215,7 +259,7 @@ export async function createQuestion(
         max: sql<number>`COALESCE(MAX(${objectiveQuestions.sort_order}), -1)`,
       })
       .from(objectiveQuestions)
-      .where(eq(objectiveQuestions.paper_id, paperId));
+      .where(eq(objectiveQuestions.paper_id, paperUuid));
     sortOrder = (maxResult[0]?.max ?? -1) + 1;
   } else if (!Number.isInteger(sortOrder) || sortOrder < 0) {
     throw new BadRequestError("sort_order 必须是非负整数");
@@ -223,7 +267,7 @@ export async function createQuestion(
 
   const row = {
     id,
-    paper_id: paperId,
+    paper_id: paperUuid,
     sort_order: sortOrder,
     type,
     prompt: input.prompt,

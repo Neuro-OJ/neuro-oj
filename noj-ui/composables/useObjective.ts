@@ -40,6 +40,7 @@ export interface ObjectivePaper {
   is_objective: boolean;
   owner_id: string;
   display_id: string;
+  tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[];
   created_at: string;
   updated_at: string;
 }
@@ -112,7 +113,7 @@ export function useObjective() {
   }
 
   /** 创建套卷（is_objective=true，无需 runtime_config；type 默认 U，可 P） */
-  function createPaper(payload: { title: string; description: string; type?: 'U' | 'P' }) {
+  function createPaper(payload: { title: string; description: string; type?: 'U' | 'P'; tag_ids?: string[] }) {
     return api.post<{ data: ObjectivePaper }>('/api/v1/problems', {
       ...payload,
       is_objective: true,
@@ -120,7 +121,7 @@ export function useObjective() {
   }
 
   /** 更新套卷元信息 */
-  function updatePaper(id: string, payload: { title?: string; description?: string }) {
+  function updatePaper(id: string, payload: { title?: string; description?: string; tag_ids?: string[] }) {
     return api.put<{ data: ObjectivePaper }>(`/api/v1/problems/${id}`, payload);
   }
 

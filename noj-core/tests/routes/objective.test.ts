@@ -107,6 +107,99 @@ Deno.test({
 });
 
 Deno.test({
+  name: "objective route: display_id 可创建/查询小题并提交（双索引落库）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const owner = await createUserToken("user");
+    // 创建套卷
+    const created = await jsonRequest(app, "/api/v1/problems", {
+      method: "POST",
+      token: owner,
+      body: {
+        type: "U",
+        is_objective: true,
+        title: `display 小题 ${Date.now()}`,
+        description: "d",
+      },
+    });
+    const paper = (await created.json()).data;
+    const displayId = `${paper.type}${paper.number}`;
+
+    // 用 display_id 创建小题（不再只支持 UUID）
+    const qRes = await jsonRequest(
+      app,
+      `/api/v1/problems/${displayId}/questions`,
+      {
+        method: "POST",
+        token: owner,
+        body: {
+          type: "single",
+          prompt: "display id 小题",
+          options: [{ key: "A", text: "1" }, { key: "B", text: "2" }],
+          answer: ["B"],
+        },
+      },
+    );
+    assertEquals(qRes.status, 201);
+    const q = (await qRes.json()).data;
+
+    // 用 display_id 读取小题列表
+    const listRes = await jsonRequest(
+      app,
+      `/api/v1/problems/${displayId}/questions`,
+    );
+    assertEquals(listRes.status, 200);
+    const listBody = await listRes.json();
+    assertEquals(listBody.data.length, 1);
+    assertEquals(listBody.data[0].id, q.id);
+
+    // 用 display_id 提交套卷答案（落库用 UUID）
+    const subRes = await jsonRequest(
+      app,
+      `/api/v1/problems/${displayId}/submit`,
+      {
+        method: "POST",
+        token: owner,
+        body: { answers: { [q.id]: ["B"] } },
+      },
+    );
+    assertEquals(subRes.status, 201);
+    const subBody = await subRes.json();
+    assertEquals(subBody.data.score, 100);
+
+    // 用 display_id 查提交历史（落库以 UUID 为键，display_id 应可命中）
+    const histRes = await jsonRequest(
+      app,
+      `/api/v1/problems/submissions?paper_id=${displayId}`,
+      { token: owner },
+    );
+    assertEquals(histRes.status, 200);
+    const histBody = await histRes.json();
+    assertEquals(histBody.data.total, 1);
+  },
+});
+
+Deno.test({
+  name: "objective route: 提交历史 paper_id 不存在时返回空列表而非 404",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const owner = await createUserToken("user");
+    const res = await jsonRequest(
+      app,
+      "/api/v1/problems/submissions?paper_id=00000000-0000-0000-0000-000000000000",
+      { token: owner },
+    );
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.data.total, 0);
+  },
+});
+
+Deno.test({
   name: "objective route: 小题 CRUD 全流程 + 答案可见性裁剪",
   sanitizeResources: false,
   sanitizeOps: false,

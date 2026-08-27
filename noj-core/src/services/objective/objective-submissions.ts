@@ -22,6 +22,7 @@ import { judgePaper } from "./objective-judge.ts";
 import {
   assertObjectivePaper,
   getPaperOrThrow,
+  resolvePaperId,
 } from "./objective-questions.ts";
 import { getContest, getContestProblems } from "../contest/contests.ts";
 import type {
@@ -121,6 +122,7 @@ export async function submitObjectivePaper(
   const db = getDb();
   const paper = await getPaperOrThrow(paperId);
   assertObjectivePaper(paper);
+  const paperUuid = paper.id;
 
   // 载荷校验
   try {
@@ -132,12 +134,12 @@ export async function submitObjectivePaper(
   const questions = await db
     .select()
     .from(objectiveQuestions)
-    .where(eq(objectiveQuestions.paper_id, paperId));
+    .where(eq(objectiveQuestions.paper_id, paperUuid));
 
   const contestId = input.contest_id ?? null;
   const contestMode = contestId !== null;
   if (contestMode) {
-    await validateContestSubmission(contestId, paperId, userId);
+    await validateContestSubmission(contestId, paperUuid, userId);
   }
 
   // 服务端即时判定（纯函数）
@@ -155,7 +157,7 @@ export async function submitObjectivePaper(
   const submissionId = crypto.randomUUID();
   const row = {
     id: submissionId,
-    paper_id: paperId,
+    paper_id: paperUuid,
     user_id: userId,
     contest_id: contestId,
     submission_type: contestMode ? ("contest" as const) : ("practice" as const),
@@ -298,8 +300,16 @@ export async function listObjectiveSubmissions(params: {
     : viewerRole === "admin";
   const userId = targetUserId && isAdmin ? targetUserId : viewerId;
 
+  // paper_id 支持 display_id / UUID 双索引（解析为规范 UUID 后过滤提交记录）
+  // 套卷不存在时按“无该套卷提交”处理，保持列表接口返回空结果而非 404
+  const paper = paperId ? await resolvePaperId(paperId) : null;
+  if (paperId && !paper) {
+    return { data: [], total: 0, best_score: null };
+  }
+  const paperUuid = paper?.id;
+
   const conditions = [eq(objectiveSubmissions.user_id, userId)];
-  if (paperId) conditions.push(eq(objectiveSubmissions.paper_id, paperId));
+  if (paperUuid) conditions.push(eq(objectiveSubmissions.paper_id, paperUuid));
   if (contestId) {
     conditions.push(eq(objectiveSubmissions.contest_id, contestId));
   }
@@ -320,14 +330,14 @@ export async function listObjectiveSubmissions(params: {
 
   // 练习模式最高分（仅按套卷筛选时有意义；竞赛提交不计入最高分）
   let bestScore: number | null = null;
-  if (paperId) {
+  if (paperUuid) {
     const best = await db
       .select({ best: max(objectiveSubmissions.score) })
       .from(objectiveSubmissions)
       .where(
         and(
           eq(objectiveSubmissions.user_id, userId),
-          eq(objectiveSubmissions.paper_id, paperId),
+          eq(objectiveSubmissions.paper_id, paperUuid),
           eq(objectiveSubmissions.submission_type, "practice"),
         ),
       );
