@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { count, eq } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import {
   evaluationResults,
@@ -13,9 +13,9 @@ const stats = new Hono();
 /**
  * 公开站点统计端点（只读、无鉴权）。
  *
- * 返回题目数、提交总数、注册用户数、评测通过数（Accepted），
+ * 返回题目数、提交总数、注册用户数、评测通过数，
  * 供「关于」页数据面板展示。统计口径与 rankings / dashboard 服务一致：
- * 通过数 = evaluation_results.status = 'Accepted' 的行数。
+ * 通过数 = evaluation_results.status = 'finished' 且 score > 0 的行数。
  *
  * 四个 count() 并发执行；MVP 阶段数据量可接受，后续量大时可加缓存（见 design.md Risks）。
  */
@@ -27,7 +27,10 @@ stats.get("/stats", async (c) => {
       db.select({ n: count() }).from(submissions),
       db.select({ n: count() }).from(users),
       db.select({ n: count() }).from(evaluationResults).where(
-        eq(evaluationResults.status, "Accepted"),
+        and(
+          eq(evaluationResults.status, "finished"),
+          sql`${evaluationResults.score} > 0`,
+        ),
       ),
     ]);
 
