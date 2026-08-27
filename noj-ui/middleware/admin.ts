@@ -13,9 +13,6 @@ import { useAuthReady } from '~/composables/useAuthReady';
 import { isAdminUser } from '~/utils/isAdminUser';
 
 export default defineNuxtRouteMiddleware(async (_to, _from) => {
-  // SSR 阶段跳过守卫——页面是客户端渲染，水合后会重新执行
-  if (import.meta.server) return;
-
   const { loading, isLoggedIn, user } = useAuth();
 
   // 等待认证状态就绪（5s 超时兜底）

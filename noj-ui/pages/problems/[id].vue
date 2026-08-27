@@ -39,6 +39,13 @@ const { data, pending, error, refresh } = useFetch<{
 
 const problem = computed(() => data.value?.data ?? null)
 
+useSeoMeta({
+  title: () => problem.value?.title ? `${problem.value.title} - Neuro OJ` : '题目 - Neuro OJ',
+  description: () => problem.value?.description ? problem.value.description.slice(0, 160) : 'Neuro OJ 在线评测题目',
+  ogTitle: () => problem.value?.title ?? 'Neuro OJ',
+  ogDescription: () => problem.value?.description ? problem.value.description.slice(0, 160) : 'Neuro OJ 在线评测平台',
+})
+
 const tags = computed(() => problem.value?.tags ?? [])
 // 题目标签（kind='problem'）：点击可跳转到按该标签筛选的题库列表
 const problemTags = computed(() => tags.value.filter((t) => t.kind === 'problem'))

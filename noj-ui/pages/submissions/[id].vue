@@ -43,6 +43,14 @@ const submissionId = route.params.id as string
 const isMounted = ref(true)
 const data = ref<SubmissionResponse | null>(null)
 const submission = computed(() => data.value?.data ?? null)
+
+useSeoMeta({
+  title: () => submission.value?.public_id ? `提交 #${submission.value.public_id} - Neuro OJ` : '提交结果 - Neuro OJ',
+  description: 'Neuro OJ 提交结果详情',
+  ogTitle: () => submission.value?.public_id ? `提交 #${submission.value.public_id} - Neuro OJ` : 'Neuro OJ',
+  ogDescription: 'Neuro OJ 提交结果详情',
+})
+
 const isFinished = computed(
   () => submission.value?.status === "finished" || submission.value?.status === "error",
 )

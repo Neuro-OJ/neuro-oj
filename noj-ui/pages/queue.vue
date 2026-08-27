@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { useEventSource } from "~/composables/useEventSource"
+
+definePageMeta({ ssr: false })
+
 interface QueueItem {
   id: string
   problem_id: string

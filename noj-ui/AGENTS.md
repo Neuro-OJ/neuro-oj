@@ -264,7 +264,7 @@ cd dist
 - `login(login, password, code?)` / `register(data)` / `logout()`：封装对应 API 调用；`code` 为 TFA 验证码/恢复码（issue #228）
 - `changePassword(oldPassword, newPassword)`：调用 `/api/v1/auth/change-password`，成功后自动 `logout()` 清 Cookie 并跳 `/login?reason=password_changed`（避免旧 JWT flag 残留致路由守卫死循环）
 - `logout()` 清除 `auth:user` 状态 + 调用 `/api/auth/logout` 删除 Cookie
-- 初始化时若 Cookie 存在则自动调用 `fetchUser()`（SSR 阶段跳过）
+- 初始化时若 Cookie 存在则自动调用 `fetchUser()`；SSR 阶段通过 `/api/v1/auth/me` 获取完整用户与权限
 
 ### useToast
 - 基于 Nuxt UI `useToast` 的 Toast 通知
@@ -318,10 +318,17 @@ cd dist
 
 | 场景 | 方法 | 说明 |
 |------|------|------|
-| 页面初始数据 | `useAsyncData` + `$fetch` | SSR 时在服务端获取，水合时复用 |
-| 客户端 API 调用 | `$fetch` | 通过 Nitro 代理转发 |
+| 页面初始数据 | `useAsyncData` / `useFetch` | SSR 时在服务端获取，结果序列化到 payload，水合时复用 |
+| 交互 / 轮询 / 表单 | `useApi` | 统一错误处理；禁止在 setup 顶层 `await api.get` 写普通 `ref` |
 | 轮询 | `useSubmissionPolling` composable | 基于 `setInterval`，状态终态自动停止 |
-| 表单提交 | `$fetch` + 手动错误处理 | 显示后端返回的错误信息 |
+| 表单提交 | `useApi` | 显示后端返回的错误信息 |
+
+### SSR 数据获取约定
+
+- 页面初始数据 MUST 使用 `useAsyncData`/`useFetch`，不得在 `<script setup>` 顶层 `await api.get(...)` 写入普通 `ref`。
+- `useApi` 服务端通过 `useRequestFetch` 转发 Cookie/请求头；`useApi()` 调用 MUST 发生在同步 setup 上下文，异步回调内不得再次调用。
+- 非关键数据（社区配置、首页公告等）SSR 失败 MUST 降级为空态/默认值，不得导致整页 502。
+- `ssr: false` 边界：管理后台、编辑器、新建/编辑题目、竞赛做题页、私信、我的题目、设置、队列、竞赛排名、社区收藏/通知/举报详情使用 `ssr: false`；内容/SEO 页保持 SSR。
 
 ## 中间件
 
@@ -329,13 +336,13 @@ cd dist
 - 检查 `noj:session` Cookie 是否存在
 - 不存在 → `navigateTo("/login")`
 - 存在但需要验证 → 调用 `fetchUser()`，5 秒超时
-- SSR 阶段跳过守卫，客户端水合后重新执行
+- SSR 阶段同样执行守卫：服务端基于 `/auth/me` 填充的完整用户状态做重定向，客户端水合后再次校验
 - **强制改密（issue #75）**：`user.must_change_password=true` 时强制跳 `/change-password`（白名单路径 `/change-password`、`/login`、`/logout` 放行）
 
 ### admin 守卫
 - 检查 `noj:session` Cookie 中的 `is_admin` 字段（RBAC：权限集含 `admin:full_access`，登录/`/auth/me` 时实时计算）
 - 非管理员 → `navigateTo("/")`（静默重定向，无错误提示）
-- SSR 阶段跳过
+- SSR 阶段同样执行守卫
 
 ### ssr: false 页面
 - 所有 `/admin/*` 页面
@@ -359,7 +366,7 @@ cd dist
 | `auth` | 所有需登录页面 | 未登录 → `/login` |
 | `admin` | `/admin/*` | 未登录 → `/login`，非管理员 → `/`（静默拦截） |
 
-> SSR 阶段跳过守卫，客户端水合后重新执行。所有 admin 页面使用 `ssr: false`。
+> SSR 阶段同样执行守卫，客户端水合后再次校验。所有 admin 页面使用 `ssr: false`。
 
 ## 密码重置页面（issue #49）
 
@@ -386,7 +393,7 @@ cd dist
 ## 已知限制
 
 - **无前端单元测试**：组件未配置独立的测试框架（跨模块 E2E 测试见 noj-tests）
-- **无 SEO 优化**：无 Open Graph 标签、结构化数据、sitemap
+- **SEO 基础已具备**：动态页 `useSeoMeta`、OG、sitemap、robots 已加入；结构化数据与完整关键词策略仍待补充
 - **无图片优化**：仅 `logo.jpg`，未使用 Nuxt 图片优化
 - **无字体优化**：使用系统字体栈，无 web font 加载
 - **Composable 命名不一致**：部分使用 camelCase（`useAuth`），部分使用 kebab-case（`use-submissions`）
