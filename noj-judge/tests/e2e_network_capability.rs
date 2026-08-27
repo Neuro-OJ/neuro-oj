@@ -928,6 +928,7 @@ def solve(msg: str) -> str:
         Some(&support_zip),
         None,
         None,
+        None,
         1000,
         true,
         "bridge",
@@ -940,7 +941,7 @@ def solve(msg: str) -> str:
     .expect("evaluate_dual 返回 Err");
 
     assert_eq!(
-        result.status, "Accepted",
+        result.status, "finished",
         "SDK 全链路应 Accepted（evaluator 联网 + capability 转发），实际 {:?} score={}",
         result.status, result.score
     );

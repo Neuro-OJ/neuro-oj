@@ -287,7 +287,7 @@ cd dist
 - `useSubmissions()`：获取提交历史列表
 - `useSubmissionDetail(id)`：获取单个提交详情（含轮询 pending 状态）
 - 分值格式化：`score / 100`（数据库存储 ×100）
-- 状态/颜色映射：`Accepted→green`、`WrongAnswer→red`、`TimeLimitExceeded→yellow` 等
+- 状态/颜色映射：`finished→green`（已评测 + 分数）、`error→red`（出错）等；不再使用 AC/WA 文案
 
 ### useSearch
 全局搜索状态 + 防抖 fetch（issue #100），命令面板与结果页共享同一 `useState`
@@ -347,7 +347,7 @@ cd dist
 |------|------|
 | `MonacoEditor.vue` | 基于 npm `monaco-editor` 包（postinstall 脚本自托管 `public/monaco`，非 CDN），`diff` 模式可选 |
 | `MarkdownRenderer.vue` | markdown-it + highlight.js + KaTeX 渲染，**DOMPurify 清洗 HTML** 防 XSS |
-| `ProblemEditor.vue` | 题目编辑器（`editor/` 目录），支持 U/P 类型切换，必填字段校验 |
+| `ProblemEditor.vue` | 题目编辑器（`editor/` 目录），支持 U/P 类型切换、`submission_mode`（code/artifact）与 artifact 大小上限，必填字段校验 |
 | `ProblemCard.vue` / `SubmissionCard.vue` | 题目卡片 / 提交卡片（状态标签着色，点击跳转详情） |
 | `AsyncContent.vue` | 异步内容容器，统一处理 loading / empty / error 状态 |
 | `TableSkeleton.vue` | 表格骨架屏加载态 |

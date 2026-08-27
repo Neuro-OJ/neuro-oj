@@ -191,7 +191,7 @@ Deno.test({
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),
-      type: "icpc",
+      type: "kaggle",
       config: {},
       created_at: now,
       updated_at: now,
@@ -206,6 +206,7 @@ Deno.test({
       problem_id: paper,
       sort_order: 1,
       label: "A",
+      score: 10000,
     });
 
     const first = await submitObjectivePaper(paper, {
@@ -255,7 +256,7 @@ Deno.test({
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),
-      type: "icpc",
+      type: "kaggle",
       config: {},
       created_at: now,
       updated_at: now,
@@ -292,6 +293,7 @@ Deno.test({
       problem_id: paper,
       sort_order: 1,
       label: "A",
+      score: 10000,
     });
     await db.update(contests).set({
       start_time: new Date(Date.now() + 3600_000).toISOString(),
@@ -379,7 +381,7 @@ Deno.test({
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),
-      type: "icpc",
+      type: "kaggle",
       config: {},
       created_at: now,
       updated_at: now,
@@ -394,6 +396,7 @@ Deno.test({
       problem_id: paper,
       sort_order: 1,
       label: "A",
+      score: 10000,
     });
 
     const result = await submitObjectivePaper(paper, {
@@ -436,7 +439,7 @@ Deno.test({
       description: "",
       start_time: new Date(Date.now() - 3600_000).toISOString(),
       end_time: new Date(Date.now() + 3600_000).toISOString(),
-      type: "icpc",
+      type: "kaggle",
       config: {},
       created_at: now,
       updated_at: now,

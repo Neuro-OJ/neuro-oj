@@ -156,6 +156,8 @@ const isOwnProfile = computed(
 
 // 结果状态
 const resultBadgeColors: Record<string, string> = {
+  finished: "bg-green-100 text-green-700",
+  error: "bg-red-100 text-red-800",
   Accepted: "bg-green-100 text-green-700",
   WrongAnswer: "bg-red-100 text-red-800",
   TimeLimitExceeded: "bg-orange-100 text-orange-800",

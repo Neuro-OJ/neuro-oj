@@ -3,6 +3,7 @@ import { useRoute } from "vue-router"
 import type { PostRow } from "~/composables/useCommunity"
 import { isAdminUser } from "~/utils/isAdminUser"
 import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
+import { extractApiError } from "~/utils/apiError"
 
 const route = useRoute()
 const router = useRouter()
@@ -23,6 +24,8 @@ const { data, pending, error, refresh } = useFetch<{
     owner_username?: string
     number: number
     is_objective: boolean
+    submission_mode?: 'code' | 'artifact'
+    artifact_max_size_mb?: number | null
     tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
     has_hidden_algorithm_tags: boolean
     runtime_config?: {
@@ -61,9 +64,49 @@ const isDetailPage = computed(() => route.path === `/problems/${problemId}`)
 
 /** 客观题套卷（并入 problems 体系：无评测容器，服务端即时判定） */
 const isObjective = computed(() => problem.value?.is_objective === true)
+/** artifact 提交模式：选手上传 zip 产物 */
+const isArtifact = computed(() => problem.value?.submission_mode === 'artifact')
 
 function goToEditor() {
   router.push(`/editor/${problem.value?.display_id || problemId}`)
+}
+
+// ── artifact 提交 ──
+const artifactFile = ref<File | null>(null)
+const artifactSubmitting = ref(false)
+const artifactError = ref('')
+const artifactSuccessId = ref('')
+const { api } = useApi()
+
+function formatMb(mb: number | null | undefined): string {
+  if (mb == null) return 'NOJ 默认上限'
+  return `${mb} MB`
+}
+
+async function handleArtifactSubmit() {
+  if (!problem.value) return
+  if (!artifactFile.value) {
+    artifactError.value = '请选择 zip 文件'
+    return
+  }
+  artifactError.value = ''
+  artifactSubmitting.value = true
+  try {
+    const form = new FormData()
+    form.append('problem_id', problem.value.id)
+    form.append('language', 'python3')
+    form.append('file', artifactFile.value)
+    const res = await api.post<{ data: { id: string; public_id?: string } }>(
+      '/api/v1/submissions',
+      form,
+    )
+    artifactSuccessId.value = res.data.id
+    artifactFile.value = null
+  } catch (err: unknown) {
+    artifactError.value = extractApiError(err).message
+  } finally {
+    artifactSubmitting.value = false
+  }
 }
 
 // ── 题解区（community-ui spec：题解列表 + 发布入口，服从模块开关与权限）──
@@ -243,8 +286,8 @@ const publishBlockReason = computed(() => {
 
       <!-- 客观题：不提供编码入口（无评测容器） -->
       <template v-if="!isObjective">
-        <!-- 开始编码 CTA -->
-        <div class="bg-white border border-border rounded-xl p-6 flex items-center justify-between">
+        <!-- 代码题：开始编码 CTA -->
+        <div v-if="!isArtifact" class="bg-white border border-border rounded-xl p-6 flex items-center justify-between">
           <div>
             <h2 class="text-base font-semibold text-text mb-1">准备好开始编码了吗？</h2>
             <p class="text-sm text-text-secondary">
@@ -257,7 +300,43 @@ const publishBlockReason = computed(() => {
           </UButton>
         </div>
 
-        <div v-if="!isLoggedIn" class="text-center text-sm text-text-muted">
+        <!-- artifact 题：zip 上传提交 -->
+        <div v-else class="bg-white border border-border rounded-xl p-6">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 class="text-base font-semibold text-text mb-1">提交产物（zip）</h2>
+              <p class="text-sm text-text-secondary">
+                请上传包含 <code class="font-mono text-primary">submission.py</code> 的 zip 压缩包，平台将在云端评测。
+                大小上限：{{ formatMb(problem.artifact_max_size_mb) }}。
+              </p>
+            </div>
+          </div>
+          <div class="mt-4 flex flex-col gap-3">
+            <input
+              type="file"
+              accept=".zip,application/zip,application/x-zip-compressed"
+              class="block w-full text-sm text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-primary-dark"
+              @change="(e) => artifactFile = (e.target as HTMLInputElement).files?.[0] ?? null"
+            />
+            <div v-if="artifactError" class="text-sm text-red-600">{{ artifactError }}</div>
+            <div v-if="artifactSuccessId" class="text-sm text-green-600">
+              提交成功！
+              <NuxtLink :to="publicUrl('submission', artifactSuccessId)" class="text-primary no-underline hover:underline">查看评测结果</NuxtLink>
+            </div>
+            <div class="flex items-center gap-3">
+              <UButton color="primary" :loading="artifactSubmitting" :disabled="!isLoggedIn || artifactSubmitting" @click="handleArtifactSubmit">
+                <UIcon name="i-lucide-upload" class="size-4" />
+                上传并提交
+              </UButton>
+              <span v-if="!isLoggedIn" class="text-sm text-text-muted">
+                <NuxtLink to="/login" class="text-primary no-underline hover:underline">登录</NuxtLink>
+                后即可提交
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!isLoggedIn && !isArtifact" class="text-center text-sm text-text-muted">
           <NuxtLink to="/login" class="text-primary no-underline hover:underline">登录</NuxtLink>
           后即可提交代码
         </div>

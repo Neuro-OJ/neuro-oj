@@ -246,7 +246,7 @@ Deno.test({
     await db.insert(evaluationResults).values({
       id: crypto.randomUUID(),
       submission_id: submissionId,
-      status: "Accepted",
+      status: "finished",
       score: 10000,
       created_at: now,
     });

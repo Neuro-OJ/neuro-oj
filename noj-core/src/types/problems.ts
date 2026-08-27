@@ -35,6 +35,19 @@ export const PROBLEM_TYPES = ["U", "P"] as const;
 export type ProblemType = typeof PROBLEM_TYPES[number];
 
 /**
+ * 允许的提交模式。
+ */
+export const SUBMISSION_MODES = ["code", "artifact"] as const;
+export type SubmissionMode = typeof SUBMISSION_MODES[number];
+
+/**
+ * 校验提交模式是否合法。
+ */
+export function isValidSubmissionMode(value: string): value is SubmissionMode {
+  return SUBMISSION_MODES.includes(value as SubmissionMode);
+}
+
+/**
  * 校验题目类型是否合法。
  */
 export function isValidProblemType(value: string): value is ProblemType {
@@ -92,6 +105,10 @@ export interface CreateProblemInput {
   type?: string;
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective?: boolean;
+  /** 提交模式：code（默认）或 artifact */
+  submission_mode?: string;
+  /** artifact 提交大小上限（MB），可空 */
+  artifact_max_size_mb?: number | null;
   /** LLM 配置（可空）：仅管理员 P 型/官方题或审核题可启用 */
   llm?: LlmConfig | null;
   /** 题号（仅 admin 可指定，普通用户自动分配） */
@@ -113,6 +130,10 @@ export interface UpdateProblemInput {
   tag_ids?: string[];
   /** 客观题标记变更（由客观题改回编程题时必须同时提供 runtime_config） */
   is_objective?: boolean;
+  /** 提交模式变更：code / artifact */
+  submission_mode?: string;
+  /** artifact 提交大小上限（MB），可空 */
+  artifact_max_size_mb?: number | null;
   /** LLM 配置变更（可空）；设为 null 表示移除 LLM 配置 */
   llm?: LlmConfig | null;
 }
@@ -176,6 +197,10 @@ export interface ProblemResponseWithTags {
   type: string;
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective: boolean;
+  /** 提交模式：code / artifact */
+  submission_mode: SubmissionMode;
+  /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
+  artifact_max_size_mb: number | null;
   /** LLM 配置（可空） */
   llm_config: LlmConfig | null;
   /** 展示标识，格式：{type}{number}（如 P1001、U42） */

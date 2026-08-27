@@ -13,12 +13,11 @@
 import {
   apiGet,
   apiPost,
+  e2eTest,
   getAdminToken,
   isE2E,
   registerUser,
-  e2eTest,
 } from "./helper.ts";
-
 
 // ── 测试常量 ─────────────────────────────────────────
 
@@ -160,7 +159,9 @@ async function submitAndWait(
 
 // ── Tests ────────────────────────────────────────────
 
-e2eTest("call_timeout: 调用级 timeout_ms 生效，慢调用记为失败用例且评测继续", async () => {
+e2eTest(
+  "call_timeout: 调用级 timeout_ms 生效，慢调用记为失败用例且评测继续",
+  async () => {
     const adminToken = await getAdminToken();
     await ensureImage(EVALUATOR_IMAGE, "evaluator");
     await ensureImage(SOLUTION_IMAGE, "solution");
@@ -189,9 +190,9 @@ e2eTest("call_timeout: 调用级 timeout_ms 生效，慢调用记为失败用例
       status: string;
       details?: { cases?: unknown[] };
     };
-    if (result.status !== "Accepted") {
+    if (result.status !== "finished") {
       throw new Error(
-        `评测应继续完成（Accepted），实际 ${result.status}: ${
+        `评测应继续完成（finished），实际 ${result.status}: ${
           JSON.stringify(data)
         }`,
       );
@@ -206,53 +207,52 @@ e2eTest("call_timeout: 调用级 timeout_ms 生效，慢调用记为失败用例
         }`,
       );
     }
-  }
+  },
 );
 
 e2eTest("call_timeout: 缺省回退题目级 call_timeout_ms", async () => {
-    const adminToken = await getAdminToken();
-    await ensureImage(EVALUATOR_IMAGE, "evaluator");
-    await ensureImage(SOLUTION_IMAGE, "solution");
+  const adminToken = await getAdminToken();
+  await ensureImage(EVALUATOR_IMAGE, "evaluator");
+  await ensureImage(SOLUTION_IMAGE, "solution");
 
-    const problemId = await createDualProblem(
-      adminToken,
-      `[${TEST_TAG}] 缺省回退`,
-      evaluatorCommand(), // 不传 timeout_ms → 回退题目级 100ms
-      100, // 题目级默认：100ms
+  const problemId = await createDualProblem(
+    adminToken,
+    `[${TEST_TAG}] 缺省回退`,
+    evaluatorCommand(), // 不传 timeout_ms → 回退题目级 100ms
+    100, // 题目级默认：100ms
+  );
+
+  const userToken = await registerUser(
+    `callfb_${Date.now()}`,
+    `callfb_${Date.now()}@test.local`,
+    "UserPass123!",
+  );
+
+  const data = await submitAndWait(
+    userToken,
+    problemId,
+    "import time\ndef sleep_solution():\n    time.sleep(0.3)\n    return 1\n",
+  );
+
+  const result = data.result as {
+    status: string;
+    details?: { cases?: unknown[] };
+  };
+  if (result.status !== "finished") {
+    throw new Error(
+      `评测应继续完成（finished），实际 ${result.status}: ${
+        JSON.stringify(data)
+      }`,
     );
-
-    const userToken = await registerUser(
-      `callfb_${Date.now()}`,
-      `callfb_${Date.now()}@test.local`,
-      "UserPass123!",
-    );
-
-    const data = await submitAndWait(
-      userToken,
-      problemId,
-      "import time\ndef sleep_solution():\n    time.sleep(0.3)\n    return 1\n",
-    );
-
-    const result = data.result as {
-      status: string;
-      details?: { cases?: unknown[] };
-    };
-    if (result.status !== "Accepted") {
-      throw new Error(
-        `评测应继续完成（Accepted），实际 ${result.status}: ${
-          JSON.stringify(data)
-        }`,
-      );
-    }
-    const cases = result.details?.cases as Array<
-      { id: string; status: string }
-    >;
-    if (!cases || cases[0]?.status !== "SolutionTimeoutError") {
-      throw new Error(
-        `缺省回退应触发题目级超时并记录 SolutionTimeoutError: ${
-          JSON.stringify(result.details)
-        }`,
-      );
-    }
   }
-);
+  const cases = result.details?.cases as Array<
+    { id: string; status: string }
+  >;
+  if (!cases || cases[0]?.status !== "SolutionTimeoutError") {
+    throw new Error(
+      `缺省回退应触发题目级超时并记录 SolutionTimeoutError: ${
+        JSON.stringify(result.details)
+      }`,
+    );
+  }
+});

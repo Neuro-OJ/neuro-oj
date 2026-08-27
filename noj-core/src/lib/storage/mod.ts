@@ -18,6 +18,7 @@ export { LocalStorageProvider } from "./local.ts";
 export { S3StorageProvider } from "./s3.ts";
 export {
   buildBase64DownloadUrl,
+  buildLocalDownloadUrl,
   buildS3DownloadUrl,
   buildStorageUrl,
   isDownloadUrl,

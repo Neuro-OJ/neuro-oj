@@ -42,9 +42,9 @@ e2eTest("[e2e/pipeline] 1/8 Accepted", async () => {
   const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
   console.log("  → 提交 ID: " + id.slice(0, 8));
   const result = await pollSubmission(token, id);
-  console.log("  → " + result.verdict + " (" + result.score + "分)");
-  if (result.verdict !== "Accepted") {
-    throw new Error("期望 Accepted, 实际 " + result.verdict);
+  console.log("  → " + result.status + " (" + result.score + "分)");
+  if (result.status !== "finished" || result.score <= 0) {
+    throw new Error("期望 finished 且分数 >0, 实际 " + result.status);
   }
 });
 
@@ -52,8 +52,8 @@ e2eTest("[e2e/pipeline] 2/8 Wrong Answer", async () => {
   if (!isE2E || !judgeOk) return;
   const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.wrongAnswer);
   const result = await pollSubmission(token, id);
-  if (result.verdict !== "WrongAnswer") {
-    throw new Error("期望 WrongAnswer, 实际 " + result.verdict);
+  if (result.status !== "finished" || result.score >= 10000) {
+    throw new Error("期望 finished 且非满分, 实际 " + result.status);
   }
 });
 
@@ -65,8 +65,8 @@ e2eTest("[e2e/pipeline] 3/8 TLE", async () => {
     CODE_SAMPLES.timeLimitExceeded,
   );
   const result = await pollSubmission(token, id);
-  if (result.verdict !== "TimeLimitExceeded") {
-    throw new Error("期望 TLE, 实际 " + result.verdict);
+  if (result.status !== "error") {
+    throw new Error("期望 error（TLE）, 实际 " + result.status);
   }
 });
 
@@ -114,16 +114,12 @@ e2eTest("[e2e/pipeline] 6/8 Memory Limit Exceeded", async () => {
     CODE_SAMPLES.memoryLimitExceeded,
   );
   const result = await pollSubmission(token, id, 45, 2000, true);
-  if (
-    result.verdict !== "MemoryLimitExceeded" &&
-    result.verdict !== "RuntimeError" &&
-    result.verdict !== "SystemError"
-  ) {
+  if (result.status !== "error") {
     throw new Error(
-      "期望 MLE、RuntimeError 或 SystemError, 实际 " + result.verdict,
+      "期望 error（MLE/RuntimeError/SystemError）, 实际 " + result.status,
     );
   }
-  console.log("  → " + result.verdict);
+  console.log("  → " + result.status);
 });
 
 e2eTest("[e2e/pipeline] 7/8 Runtime Error", async () => {
@@ -134,8 +130,8 @@ e2eTest("[e2e/pipeline] 7/8 Runtime Error", async () => {
     CODE_SAMPLES.runtimeError,
   );
   const result = await pollSubmission(token, id);
-  if (result.verdict !== "RuntimeError") {
-    throw new Error("期望 RuntimeError, 实际 " + result.verdict);
+  if (result.status !== "error") {
+    throw new Error("期望 error（RuntimeError）, 实际 " + result.status);
   }
 });
 
@@ -147,9 +143,9 @@ e2eTest("[e2e/pipeline] 8/8 Syntax Error", async () => {
     CODE_SAMPLES.syntaxError,
   );
   const result = await pollSubmission(token, id);
-  if (
-    result.verdict !== "CompileError" && result.verdict !== "RuntimeError"
-  ) {
-    throw new Error("期望 CompileError/RuntimeError, 实际 " + result.verdict);
+  if (result.status !== "error") {
+    throw new Error(
+      "期望 error（CompileError/RuntimeError）, 实际 " + result.status,
+    );
   }
 });

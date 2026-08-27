@@ -5,6 +5,7 @@ import {
   contestProblems,
   contests,
   problems,
+  submissions,
   users,
 } from "../../db/schema.ts";
 import {
@@ -51,40 +52,25 @@ export interface ContestParticipantResponse {
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
 
-function defaultContestConfig(type: ContestType): ContestConfig {
-  if (type === "icpc") {
-    return {
-      penalty_minutes: 20,
-      freeze_time: null,
-      unfreeze_after_end: true,
-    };
-  }
-  return { show_ranking_live: type === "ioi" };
+function defaultContestConfig(_type: ContestType): ContestConfig {
+  return {};
 }
 
 function normalizeContestConfig(
-  type: ContestType,
+  _type: ContestType,
   config: ContestConfig | undefined,
 ): ContestConfig {
-  const value = config ?? defaultContestConfig(type);
-  if (!isValidContestConfig(type, value)) {
+  const value = config ?? defaultContestConfig(_type);
+  if (!isValidContestConfig(_type, value)) {
     throw new BadRequestError("竞赛配置不合法");
   }
 
-  if (type === "icpc") {
-    const icpc = value as Record<string, unknown>;
-    return {
-      penalty_minutes: Number(icpc.penalty_minutes ?? 20),
-      freeze_time: (icpc.freeze_time as string | null | undefined) ?? null,
-      unfreeze_after_end: (icpc.unfreeze_after_end as boolean | undefined) ??
-        true,
-    };
-  }
-
-  const score = value as Record<string, unknown>;
+  const raw = value as Record<string, unknown>;
+  const submissionLimits = raw.submission_limits as
+    | Record<string, number>
+    | undefined;
   return {
-    show_ranking_live: (score.show_ranking_live as boolean | undefined) ??
-      type === "ioi",
+    ...(submissionLimits ? { submission_limits: submissionLimits } : {}),
   };
 }
 
@@ -102,7 +88,7 @@ function validateTimes(startTime: string, endTime: string): void {
 }
 
 function normalizeProblems(
-  type: ContestType,
+  _type: ContestType,
   values: ContestProblemInput[],
 ): ContestProblemInput[] {
   if (values.length === 0) {
@@ -123,8 +109,8 @@ function normalizeProblems(
       throw new BadRequestError("竞赛题目 sort_order 必须为非负整数");
     }
     if (
-      value.score !== undefined && value.score !== null &&
-      (!Number.isInteger(value.score) || value.score < 0)
+      value.score === undefined || value.score === null ||
+      !Number.isInteger(value.score) || value.score < 0
     ) {
       throw new BadRequestError("竞赛题目 score 必须为非负整数");
     }
@@ -145,7 +131,7 @@ function normalizeProblems(
       problem_id: problemId,
       label,
       sort_order: value.sort_order,
-      score: type === "icpc" ? null : value.score ?? null,
+      score: value.score,
     };
   });
 }
@@ -346,10 +332,6 @@ export async function updateContest(
       await tx.insert(contestProblems).values(
         problemInputs.map((value) => ({ contest_id: id, ...value })),
       );
-    } else if (input.type === "icpc") {
-      await tx.update(contestProblems).set({ score: null }).where(
-        eq(contestProblems.contest_id, id),
-      );
     }
   });
 
@@ -535,6 +517,39 @@ export async function listParticipants(
   );
 }
 
+/**
+ * 校验比赛内每道题提交次数上限。
+ * 未配置 `submission_limits` 的题目不限制；所有提交（含 error）都计入。
+ *
+ * @throws {BadRequestError} 达到上限时
+ */
+export async function assertContestSubmissionLimit(
+  contestId: string,
+  userId: string,
+  problemId: string,
+): Promise<void> {
+  const contest = await findContestRow(contestId);
+  const config = contest.config as ContestConfig;
+  const limit = config.submission_limits?.[problemId];
+  if (!limit) return;
+
+  const db = getDb();
+  const [row] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(submissions)
+    .where(
+      and(
+        eq(submissions.contest_id, contestId),
+        eq(submissions.user_id, userId),
+        eq(submissions.problem_id, problemId),
+      ),
+    );
+  const count = Number(row?.count ?? 0);
+  if (count >= limit) {
+    throw new BadRequestError(`该题提交次数已达上限（${limit} 次）`);
+  }
+}
+
 export async function isParticipant(
   contestId: string,
   userId: string,
@@ -566,6 +581,8 @@ export async function getContestProblems(
       p.title,
       p.description,
       p.difficulty,
+      p.submission_mode,
+      p.artifact_max_size_mb,
       CONCAT(p.type, p.number::text) AS display_id,
       CASE
         WHEN ${userId ?? null}::text IS NULL THEN 'untouched'
@@ -576,7 +593,8 @@ export async function getContestProblems(
           WHERE s.contest_id = cp.contest_id
             AND s.problem_id = cp.problem_id
             AND s.user_id = ${userId ?? null}
-            AND er.status = 'Accepted'
+            AND er.status = 'finished'
+            AND er.score > 0
         ) THEN 'solved'
         WHEN EXISTS (
           SELECT 1
@@ -597,11 +615,16 @@ export async function getContestProblems(
     problem_id: row.problem_id as string,
     sort_order: Number(row.sort_order),
     label: row.label as string,
-    score: row.score === null ? null : Number(row.score),
+    score: Number(row.score),
     title: row.title as string,
     description: row.description as string,
     difficulty: row.difficulty as string,
     display_id: row.display_id as string,
+    submission_mode: row
+      .submission_mode as ContestProblemResponse["submission_mode"],
+    artifact_max_size_mb: row.artifact_max_size_mb === null
+      ? null
+      : Number(row.artifact_max_size_mb),
     user_status: row.user_status as ContestProblemResponse["user_status"],
   }));
 }

@@ -116,11 +116,12 @@ Deno.test({
             title: "公开进行中竞赛",
             start_time: new Date(Date.now() - 60_000).toISOString(),
             end_time: new Date(Date.now() + 3_600_000).toISOString(),
-            type: "icpc",
+            type: "kaggle",
             problems: [{
               problem_id: problemId,
               label: "A",
               sort_order: 0,
+              score: 10000,
             }],
           },
         },
@@ -140,7 +141,7 @@ Deno.test({
             title: "邀请制竞赛",
             start_time: new Date(Date.now() + 60_000).toISOString(),
             end_time: new Date(Date.now() + 3_600_000).toISOString(),
-            type: "oi",
+            type: "kaggle",
             is_public: false,
             problems: [{
               problem_id: problemId,
@@ -211,6 +212,7 @@ Deno.test({
       const ranking = await jsonRequest(
         app,
         `/api/v1/contests/${contestId}/ranking`,
+        { token: userToken },
       );
       assertEquals(ranking.status, 200);
       assertEquals((await ranking.json()).data.length, 1);
@@ -439,8 +441,13 @@ Deno.test({
           title: "权限控制竞赛",
           start_time: new Date(Date.now() - 60_000).toISOString(),
           end_time: new Date(Date.now() + 3_600_000).toISOString(),
-          type: "icpc",
-          problems: [{ problem_id: problemId, label: "A", sort_order: 0 }],
+          type: "kaggle",
+          problems: [{
+            problem_id: problemId,
+            label: "A",
+            sort_order: 0,
+            score: 10000,
+          }],
         },
       });
       assertEquals(create.status, 201);

@@ -81,11 +81,12 @@ async function createContestWithWindow(
     title: "答疑测试竞赛",
     start_time: new Date(Date.now() + startOffsetMs).toISOString(),
     end_time: new Date(Date.now() + endOffsetMs).toISOString(),
-    type: "icpc",
+    type: "kaggle",
     problems: problemIds.map((problemId, index) => ({
       problem_id: problemId,
       label: String.fromCharCode(65 + index),
       sort_order: index,
+      score: 10000,
     })),
   }, creatorId);
   return contest.id;
