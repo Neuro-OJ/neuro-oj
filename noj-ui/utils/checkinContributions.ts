@@ -4,9 +4,9 @@
  * 网格模型（对齐 GitHub contribution graph）：
  * - 每一行是一个星期几，共 7 行，固定首行周日、末行周六
  * - 每一列是一周（含该周 7 天）
- * - 列从左到右：最早展示日所在周 → 当前周（含未签到的今天/未来格子）
+ * - 列从左到右：起始展示日所在周 → 当前周（含未签到的今天/未来格子）
  * - 左右显示月轴（每列开头所在月份）
- * - 上下显示星期轴（周日…周六）
+ * - 每列固定 7 行（周日…周六）
  * - 界面过长时外层横向滚动
  *
  * 数据来源：后端 getCheckinHistory 返回的已签到日期数组（YYYY-MM-DD）。
@@ -68,7 +68,7 @@ function dayOfWeek(dateStr: string): number {
  * 生成贡献图网格。
  *
  * @param checkedDays 已签到日期集合（YYYY-MM-DD）
- * @param startDate   最早展示日（通常是"最早签到日"或"一年前"，取较晚者）
+ * @param startDate   起始展示日（通常为一年前；组件会对齐到所在周起点）
  * @param today       今天日期 YYYY-MM-DD
  */
 export function buildContributionGrid(

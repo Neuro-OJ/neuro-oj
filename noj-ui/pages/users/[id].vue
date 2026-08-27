@@ -99,13 +99,15 @@ const checkinFailed = computed(() => !!checkinError.value || !!checkinHistoryErr
 const checkinStatsData = computed(() => checkinStats.value?.data ?? null)
 
 async function retryCheckin() {
+  todayStr.value = new Date().toISOString().slice(0, 10)
   await Promise.all([refreshCheckinStats(), refreshCheckinHistory()])
 }
 
 // GitHub 风格贡献图：起始日固定为一年前，保证至少展示一整年（对齐到所在周的周日）
-const todayStr = new Date().toISOString().slice(0, 10)
+const todayStr = ref(new Date().toISOString().slice(0, 10))
 const contributionStart = computed(() => {
-  const start = new Date(Date.now() - 364 * 86400_000)
+  const start = new Date(`${todayStr.value}T00:00:00Z`)
+  start.setUTCDate(start.getUTCDate() - 364)
   const dow = start.getUTCDay()
   if (dow !== 0) start.setUTCDate(start.getUTCDate() - dow)
   return start.toISOString().slice(0, 10)

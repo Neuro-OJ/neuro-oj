@@ -10,7 +10,7 @@ import { buildContributionGrid, formatDateFull } from '~/utils/checkinContributi
 const props = defineProps<{
   /** 已签到日期（YYYY-MM-DD，升序） */
   days: string[]
-  /** 最早展示日（最早签到日所在周起点） */
+  /** 起始展示日（通常为一年前，组件内部会对齐到所在周起点） */
   startDate: string
   /** 今天日期 YYYY-MM-DD */
   today: string
@@ -48,6 +48,10 @@ function onHover(e: MouseEvent, cell: { date: string; checked: boolean }) {
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
   hover.value = { cell, x: rect.left, y: rect.top }
 }
+function onFocus(e: FocusEvent, cell: { date: string; checked: boolean }) {
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  hover.value = { cell, x: rect.left, y: rect.top }
+}
 function onLeave() {
   hover.value = { cell: null, x: 0, y: 0 }
 }
@@ -73,14 +77,19 @@ function onLeave() {
           <template v-for="(cell, ci) in week.cells" :key="ci">
             <div
               v-if="cell"
-              class="m-[1px] h-3.5 w-3.5 rounded-[3px]"
+              class="m-[1px] h-3.5 w-3.5 rounded-[3px] outline-none focus-visible:ring-2 focus-visible:ring-primary"
               :class="cell.checked
                 ? 'bg-primary'
                 : cell.isToday
                   ? 'border border-primary'
                   : 'bg-gray-200'"
+              :tabindex="0"
+              :aria-label="`${cell.checked ? '已签到' : '未签到'} ${formatDateFull(cell.date)}`"
               @mouseenter="onHover($event, cell)"
               @mouseleave="onLeave"
+              @focus="onFocus($event, cell)"
+              @blur="onLeave"
+              @click="onHover($event, cell)"
             ></div>
           </template>
         </div>
