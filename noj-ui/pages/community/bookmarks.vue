@@ -2,6 +2,7 @@
 import type { BookmarkRow, PostType } from "~/composables/useCommunity"
 import { stripMarkdown } from "~/utils/markdown"
 import { extractApiError } from "~/utils/apiError"
+import { useToast } from "~/composables/useToast"
 import { publicUrl } from "~/utils/publicIdentifiers"
 
 definePageMeta({ middleware: "auth" })
@@ -103,8 +104,8 @@ await loadBookmarks()
         <div class="mt-4 flex flex-wrap items-center gap-4 text-xs text-text-secondary">
           <UserIdentity :user="item.author" size="sm" />
           <span>收藏于 <NuxtTime :datetime="item.bookmarked_at" relative locale="zh-CN" /></span>
-          <span><UIcon name="i-lucide-heart" class="mr-1 inline size-3.5" />{{ item.likes }}</span>
-          <span><UIcon name="i-lucide-message-square" class="mr-1 inline size-3.5" />{{ item.comments }}</span>
+          <span class="inline-flex items-center"><UIcon name="i-lucide-heart" class="mr-1 size-3.5" />{{ item.likes }}</span>
+          <span class="inline-flex items-center"><UIcon name="i-lucide-message-square" class="mr-1 size-3.5" />{{ item.comments }}</span>
           <button class="inline-flex items-center gap-1 text-red-600 hover:text-red-700" :disabled="removingId !== null" @click="removeBookmark(item)"><UIcon name="i-lucide-trash-2" class="size-3" />{{ removingId === item.post.id ? '处理中…' : '取消收藏' }}</button>
         </div>
       </article>

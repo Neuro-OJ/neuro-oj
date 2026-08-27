@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { NotificationRow } from "~/composables/useCommunity"
 import { extractApiError } from "~/utils/apiError"
+import { useToast } from "~/composables/useToast"
 import { publicUrl, userUrl } from "~/utils/publicIdentifiers"
 
 definePageMeta({ middleware: "auth" })
@@ -22,6 +23,8 @@ const typeLabel: Record<NotificationRow["notification"]["type"], string> = {
   follow: "关注了你",
   moderation: "更新了内容审核状态",
   clarification: "回复了你的竞赛提问",
+  report: "举报通知",
+  ban: "封禁通知",
 }
 const typeIcon = {
   reply: 'i-lucide-reply',
@@ -29,6 +32,8 @@ const typeIcon = {
   follow: 'i-lucide-user-plus',
   moderation: 'i-lucide-shield-check',
   clarification: 'i-lucide-message-circle-question',
+  report: 'i-lucide-flag',
+  ban: 'i-lucide-ban',
 }
 
 async function load(reset = true) {
@@ -68,6 +73,9 @@ async function markAllRead() {
 }
 
 function notificationHref(item: NotificationRow): string {
+  if (item.notification.type === "report" && item.notification.data.report_id) {
+    return `/community/reports/${item.notification.data.report_id}`
+  }
   if (item.notification.post_id) return publicUrl("post", item.notification.post_id)
   if (item.notification.type === "follow" && item.actor) return userUrl(item.actor.username)
   if (item.notification.type === "clarification" && item.notification.data.contest_id) return `${publicUrl("contest", item.notification.data.contest_id as string)}?tab=clarifications`
@@ -115,7 +123,14 @@ await load()
           </span>
           <div class="min-w-0 flex-1">
             <p class="text-sm text-text flex items-center gap-1"><template v-if="item.actor"><UserIdentity :user="item.actor" size="sm" /></template><template v-else><strong>系统</strong></template>{{ typeLabel[item.notification.type] }}</p>
-            <p v-if="item.notification.data.reason" class="mt-1 text-xs text-text-secondary">{{ item.notification.data.reason }}</p>
+            <p v-if="item.notification.data.message" class="mt-1 text-xs text-text-secondary">{{ item.notification.data.message }}</p>
+            <p v-else-if="item.notification.data.reason" class="mt-1 text-xs text-text-secondary">{{ item.notification.data.reason }}</p>
+            <p v-if="item.notification.type === 'ban'" class="mt-1 text-xs text-text-secondary">
+              封禁范围：{{ item.notification.data.scope === "social" ? "仅限制社交功能" : "限制使用平台" }}。
+              理由：{{ item.notification.data.reason || "（未填写）" }}。
+              封禁时间：{{ item.notification.data.banned_at ? new Date(item.notification.data.banned_at).toLocaleString("zh-CN") : "" }}
+              {{ item.notification.data.banned_until ? `，封禁至 ${new Date(item.notification.data.banned_until).toLocaleString("zh-CN")}` : "（永久封禁）" }}
+            </p>
             <NuxtTime class="mt-1 block text-xs text-text-muted" :datetime="item.notification.created_at" relative locale="zh-CN" />
           </div>
         </div>

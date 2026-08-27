@@ -123,6 +123,7 @@ export async function listUsers(
         // 活跃封禁信息（LEFT JOIN user_bans）
         ban_reason: userBans.reason,
         ban_until: userBans.banned_until,
+        ban_scope: userBans.scope,
       })
       .from(users)
       .leftJoin(
@@ -169,7 +170,13 @@ export async function listUsers(
     created_at: row.created_at,
     updated_at: row.updated_at,
     active_ban: row.ban_reason !== null
-      ? { reason: row.ban_reason!, banned_until: row.ban_until }
+      ? {
+        reason: row.ban_reason!,
+        banned_until: row.ban_until,
+        scope: (row.ban_scope === "social" ? "social" : "platform") as
+          | "platform"
+          | "social",
+      }
       : null,
   }));
 

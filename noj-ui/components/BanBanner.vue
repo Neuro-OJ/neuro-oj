@@ -60,7 +60,7 @@ function handleLogout() {
         <span class="font-semibold flex items-center gap-1"><UIcon name="i-lucide-ban" class="size-4" />账号被封禁</span>
         <span class="text-red-600">·</span>
         <span v-if="userInfo">
-          您的账号已被封禁{{ userInfo.until ? `至 ${formatExpiry(userInfo.until)}` : "" }}。
+          您的账号已被{{ userInfo.until ? `封禁至 ${formatExpiry(userInfo.until)}` : "永久封禁" }}。
           {{ userInfo.reason ? `原因：${userInfo.reason}。` : "" }}
           请联系管理员。
         </span>

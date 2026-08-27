@@ -4,6 +4,9 @@ import type {
   CommunityPost,
   PostType,
 } from "~/composables/useCommunity"
+import { useToast } from "~/composables/useToast"
+import { useBanStatus } from "~/composables/useBanStatus"
+import { isCommunityEdited } from "~/utils/communityEdited"
 import { problemUrl } from "~/utils/publicIdentifiers"
 
 const route = useRoute()
@@ -11,7 +14,9 @@ const { isLoggedIn, user } = useAuth()
 const { config, loadConfig } = useCommunity()
 const { toast } = useToast()
 const { dialog } = useDialog()
+const { open: reportModal } = useReportModal()
 const { api } = useApi()
+const { userBanned } = useBanStatus()
 
 interface PostDetail {
   post: CommunityPost
@@ -58,6 +63,10 @@ const canComment = computed(
     config.value.permissions.comment === true,
 )
 const canModerate = computed(() => config.value?.permissions.moderate === true)
+const canReport = computed(
+  () => isLoggedIn.value && config.value?.permissions.report === true &&
+    !userBanned.value,
+)
 const isAuthor = computed(() => post.value?.post.author_id === currentUserId.value)
 const canEditPost = computed(() => isAuthor.value || canModerate.value)
 const commentMaxLength = computed(() => config.value?.comment_max_length ?? 1000)
@@ -70,6 +79,9 @@ function repliesOf(parentId: string): CommentRow[] {
 }
 function canEditComment(row: CommentRow): boolean {
   return row.author.id === currentUserId.value || canModerate.value
+}
+function canReportComment(row: CommentRow): boolean {
+  return canReport.value && row.author.id !== currentUserId.value
 }
 
 async function load() {
@@ -178,6 +190,38 @@ async function deletePost() {
   toast.success("内容已删除")
   navigateTo("/community")
 }
+async function reportPost() {
+  if (!canReport.value) {
+    toast.error("当前账号没有举报权限")
+    return
+  }
+  const result = await reportModal()
+  if (!result) return
+  try {
+    await api.post("/api/v1/community/reports", {
+      post_id: postId.value,
+      category: result.category,
+      reason: result.reason,
+    })
+    toast.success("举报已提交，感谢反馈")
+  } catch (err: unknown) {
+    // useApi 已弹后端错误（如重复举报）
+  }
+}
+async function reportComment(commentId: string) {
+  const result = await reportModal()
+  if (!result) return
+  try {
+    await api.post("/api/v1/community/reports", {
+      comment_id: commentId,
+      category: result.category,
+      reason: result.reason,
+    })
+    toast.success("举报已提交，感谢反馈")
+  } catch (err: unknown) {
+    // useApi 已弹后端错误（如重复举报）
+  }
+}
 
 await loadConfig()
 await load()
@@ -195,15 +239,17 @@ await load()
           <div class="flex flex-wrap items-center gap-2">
             <UserIdentity :user="post.author" size="sm" />
             <span class="rounded bg-primary-bg px-2 py-0.5 text-xs text-primary">{{ typeLabel[post.post.type] }}</span>
-            <NuxtLink v-if="post.post.type === 'solution' && post.post.problem_id" :to="problemUrl(post.post.problem_id)" class="inline-flex items-center gap-1 text-xs text-primary hover:underline">{{ post.problem_title ?? '关联题目' }} →</NuxtLink>
+            <NuxtLink v-if="post.post.type === 'solution' && post.post.problem_id" :to="problemUrl(post.post.problem_id)" class="inline-flex items-center gap-1 text-xs text-primary hover:underline">{{ post.problem_title ?? '关联题目' }}<UIcon name="i-lucide-arrow-right" class="size-3.5" /></NuxtLink>
             <span v-if="post.post.status === 'pending'" class="rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">审核中</span>
             <span v-if="post.post.status === 'hidden'" class="rounded bg-red-50 px-2 py-0.5 text-xs text-red-700">已隐藏</span>
             <span v-if="post.post.is_locked" class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-lock" class="size-[10px]" />已锁定</span>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <p class="text-xs text-text-secondary"><NuxtTime :datetime="post.post.created_at" locale="zh-CN" year="numeric" month="short" day="numeric" hour="2-digit" minute="2-digit" /></p>
+            <span v-if="isCommunityEdited(post.post.created_at, post.post.updated_at)" class="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-pencil" class="size-[10px]" />已编辑</span>
             <UButton color="primary" variant="outline" class="text-xs" v-if="canEditPost"  type="button" @click="startEditPost"><UIcon name="i-lucide-pencil" class="size-3.5" />编辑</UButton>
             <UButton color="primary" variant="outline" class="text-xs text-red-600" v-if="canEditPost"  type="button" @click="deletePost"><UIcon name="i-lucide-trash-2" class="size-3.5" />删除</UButton>
+            <UButton color="neutral" variant="outline" class="text-xs" v-if="canReport && !isAuthor" type="button" @click="reportPost"><UIcon name="i-lucide-flag" class="size-3.5" />举报</UButton>
           </div>
         </div>
 
@@ -244,7 +290,7 @@ await load()
         <textarea v-model="comment" class="min-h-20 w-full rounded border border-border px-3 py-2" :placeholder="`写下你的想法（最长 ${commentMaxLength} 字符）`" />
         <div class="flex items-center justify-between gap-2">
           <p class="text-xs text-text-muted">{{ comment.length }} / {{ commentMaxLength }}</p>
-          <UButton color="primary" :disabled="submittingComment || !comment.trim() || comment.length > commentMaxLength"><UIcon name="i-lucide-send" class="size-4" />{{ submittingComment ? '发送中…' : '发送' }}</UButton>
+          <UButton color="primary" type="submit" :disabled="submittingComment || !comment.trim() || comment.length > commentMaxLength"><UIcon name="i-lucide-send" class="size-4" />{{ submittingComment ? '发送中…' : '发送' }}</UButton>
         </div>
       </form>
       <p v-else-if="isLoggedIn && config?.comments_enabled" class="mb-5 rounded-md bg-primary-bg px-3 py-2 text-sm text-primary-text">当前账号没有评论权限。</p>
@@ -256,15 +302,17 @@ await load()
             :row="item"
             :can-comment="canComment"
             :can-edit="canEditComment(item)"
+            :can-report="canReportComment(item)"
             :comment-max-length="commentMaxLength"
             @start-reply="startReply(item.comment.id)"
             @save-edit="(c) => saveEditComment(item.comment.id, c)"
             @remove="removeComment(item.comment.id)"
+            @report="reportComment(item.comment.id)"
           >
             <template v-if="replyingTo === item.comment.id">
               <form class="mt-3 flex gap-2" @submit.prevent="sendReply(item.comment.id)">
                 <input v-model="replyContent" class="flex-1 rounded border border-border px-3 py-2" placeholder="回复这条评论">
-                <UButton color="primary" class="text-sm" :disabled="submittingReply || !replyContent.trim()"><UIcon name="i-lucide-send" class="size-3.5" />{{ submittingReply ? '发送中…' : '回复' }}</UButton>
+                <UButton color="primary" class="text-sm" type="submit" :disabled="submittingReply || !replyContent.trim()"><UIcon name="i-lucide-send" class="size-3.5" />{{ submittingReply ? '发送中…' : '回复' }}</UButton>
               </form>
             </template>
           </CommentCard>
@@ -273,9 +321,11 @@ await load()
               :row="reply"
               :can-comment="false"
               :can-edit="canEditComment(reply)"
+              :can-report="canReportComment(reply)"
               :comment-max-length="commentMaxLength"
               @save-edit="(c) => saveEditComment(reply.comment.id, c)"
               @remove="removeComment(reply.comment.id)"
+              @report="reportComment(reply.comment.id)"
             />
           </div>
         </article>

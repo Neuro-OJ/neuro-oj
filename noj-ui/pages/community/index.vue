@@ -5,16 +5,22 @@ import {
   type PostRow,
   type PostType,
 } from "~/composables/useCommunity"
+import { useToast } from "~/composables/useToast"
+import { useBanStatus } from "~/composables/useBanStatus"
 import { stripMarkdown } from "~/utils/markdown"
 import { extractApiError } from "~/utils/apiError"
 import { publicUrl } from "~/utils/publicIdentifiers"
+import { isCommunityEdited } from "~/utils/communityEdited"
 
-const { isLoggedIn } = useAuth()
+const { isLoggedIn, user } = useAuth()
 const route = useRoute()
 const router = useRouter()
 const { config, loadConfig } = useCommunity()
 const { toast } = useToast()
+const { dialog } = useDialog()
+const { open: reportModal } = useReportModal()
 const { api } = useApi()
+const { userBanned } = useBanStatus()
 
 // NOJ-317：SSR 阶段可能拿到游客权限（permissions 为空），登录用户水合后
 // 需要强制刷新一次社区配置，否则“发布内容”按钮会一直处于灰色。
@@ -88,6 +94,11 @@ const canCreateCurrentType = computed(() => {
   return config.value.permissions[permission] === true
 })
 
+const canReport = computed(
+  () => isLoggedIn.value && config.value?.permissions.report === true &&
+    !userBanned.value,
+)
+
 const enabledTypes = computed<PostType[]>(() =>
   ENABLED_TYPES.filter((t) => config.value?.[typeFlag[t]] === true),
 )
@@ -150,6 +161,25 @@ async function loadCounts() {
     counts.value = result.data
   } catch {
     counts.value = null
+  }
+}
+
+async function reportPost(item: PostRow) {
+  if (!canReport.value) {
+    toast.error("当前账号没有举报权限")
+    return
+  }
+  const result = await reportModal()
+  if (!result) return
+  try {
+    await api.post("/api/v1/community/reports", {
+      post_id: item.post.id,
+      category: result.category,
+      reason: result.reason,
+    })
+    toast.success("举报已提交，感谢反馈")
+  } catch (err: unknown) {
+    // useApi 已弹后端错误（如重复举报）
   }
 }
 
@@ -336,7 +366,7 @@ await init()
           :class="activeType === t ? 'border-b-2 border-primary font-semibold text-primary' : 'text-text-secondary'"
           @click="changeType(t)"
         >
-          <UIcon :name="t === 'discussion' ? 'i-lucide-message-square' : t === 'solution' ? 'i-lucide-lightbulb' : 'i-lucide-pen-line'" class="mr-1 inline size-4" />
+          <UIcon :name="t === 'discussion' ? 'i-lucide-message-square' : t === 'solution' ? 'i-lucide-lightbulb' : 'i-lucide-pen-line'" class="mr-1 inline-flex size-4" />
           {{ typeLabel[t] }}
           <span v-if="counts && counts[t] > 0" class="ml-1 rounded-full bg-primary-bg px-1.5 py-0.5 text-xs text-primary">{{ counts[t] }}</span>
         </button>
@@ -381,7 +411,7 @@ await init()
         </template>
         <div class="mt-3 flex items-center justify-between gap-2">
           <p class="text-xs text-text-muted">{{ content.length }} / {{ postMaxLength }}</p>
-          <div class="flex gap-2"><UButton color="primary" variant="outline" type="button"  :disabled="publishing" @click="showEditor = false">取消</UButton><UButton color="primary" :disabled="publishing || !content.trim() || content.length > postMaxLength">{{ publishing ? '发布中…' : '发布' }}</UButton></div>
+          <div class="flex gap-2"><UButton color="primary" variant="outline" type="button"  :disabled="publishing" @click="showEditor = false">取消</UButton><UButton color="primary" type="submit" :disabled="publishing || !content.trim() || content.length > postMaxLength">{{ publishing ? '发布中…' : '发布' }}</UButton></div>
         </div>
       </form>
 
@@ -406,8 +436,10 @@ await init()
           <div class="mt-4 flex items-center gap-4 text-xs text-text-secondary">
             <UserIdentity :user="item.author" size="sm" />
             <NuxtTime :datetime="item.post.created_at" relative locale="zh-CN" />
-            <span aria-label="点赞数"><UIcon name="i-lucide-heart" class="mr-1 inline size-3.5" />{{ item.likes }}</span>
-            <span aria-label="评论数"><UIcon name="i-lucide-message-square" class="mr-1 inline size-3.5" />{{ item.comments }}</span>
+            <span v-if="isCommunityEdited(item.post.created_at, item.post.updated_at)" class="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-pencil" class="size-[10px]" />已编辑</span>
+            <span aria-label="点赞数" class="inline-flex items-center"><UIcon name="i-lucide-heart" class="mr-1 size-3.5" />{{ item.likes }}</span>
+            <span aria-label="评论数" class="inline-flex items-center"><UIcon name="i-lucide-message-square" class="mr-1 size-3.5" />{{ item.comments }}</span>
+            <UButton color="neutral" variant="ghost" size="xs" class="ml-auto" v-if="canReport && user?.id !== item.post.author_id" type="button" @click="reportPost(item)"><UIcon name="i-lucide-flag" class="size-3.5" />举报</UButton>
           </div>
         </article>
         <div v-if="nextCursor" class="text-center">

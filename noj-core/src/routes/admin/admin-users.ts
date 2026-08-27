@@ -107,12 +107,14 @@ router.patch("/users/:id/ban", async (c) => {
   const body = await parseJsonBody<{
     reason?: string;
     banned_until?: string | null;
+    scope?: "platform" | "social";
   }>(c);
   const user = await banUser(
     targetUserId,
     body.reason,
     body.banned_until,
     c.get("userId"),
+    body.scope ?? "platform",
   );
   return c.json({ data: user }, 200);
 });

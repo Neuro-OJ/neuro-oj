@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, inArray, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { getDb } from "../../db/connection.ts";
 import { communityBookmarks, communityPosts, users } from "../../db/schema.ts";
 import type { CommunityPostType } from "../../types/community.ts";
@@ -61,6 +61,10 @@ export async function listPosts(
   }
   if (!options.moderator) {
     conditions.push(eq(communityPosts.status, "published"));
+  } else {
+    // moderator 跳过 published 过滤以看到 pending/hidden（管理后台审核用），
+    // 但已删除内容仍应在任何列表中隐藏，避免删除后仍出现在社区主页。
+    conditions.push(ne(communityPosts.status, "deleted"));
   }
   if (options.cursor) {
     conditions.push(lt(communityPosts.created_at, options.cursor));

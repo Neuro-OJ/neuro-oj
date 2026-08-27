@@ -90,6 +90,7 @@ Deno.test({
         action: "users.ban",
         reason: "违规行为",
         until: null,
+        scope: "platform",
       });
     } finally {
       leaveTestContext();

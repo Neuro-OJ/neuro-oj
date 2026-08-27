@@ -1092,6 +1092,8 @@ export const userBans = pgTable(
       onDelete: "cascade",
     }),
     reason: text("reason").notNull().default(""),
+    /** 封禁范围：platform=限制使用平台（登录/评测/一切写操作）；social=仅限制社区发布 */
+    scope: text("scope").notNull().default("platform"),
     /** ISO 8601；NULL = 永久封禁 */
     banned_until: text("banned_until"),
     banned_at: text("banned_at").notNull(),
@@ -1105,6 +1107,10 @@ export const userBans = pgTable(
     }),
   },
   (table) => ({
+    scopeCheck: check(
+      "user_bans_scope_check",
+      sql`${table.scope} IN ('platform', 'social')`,
+    ),
     userIdx: index("idx_user_bans_user").on(table.user_id),
     activeIdx: index("idx_user_bans_active").on(table.user_id).where(
       sql`unbanned_at IS NULL`,
@@ -1472,6 +1478,16 @@ export const communityReports = pgTable(
     comment_id: text("comment_id").references(() => communityComments.id, {
       onDelete: "set null",
     }),
+    content_type: text("content_type").notNull().default("post"),
+    sanction_id: text("sanction_id").references(() => communitySanctions.id, {
+      onDelete: "set null",
+    }),
+    /** 举报处理时创建的封禁记录（复用 user_bans 封禁逻辑） */
+    ban_id: text("ban_id").references(() => userBans.id, {
+      onDelete: "set null",
+    }),
+    /** 举报分类（用户必选） */
+    category: text("category").notNull().default("其他"),
     reason: text("reason").notNull(),
     content_snapshot: text("content_snapshot").notNull(),
     status: text("status").notNull().default("pending"),
@@ -1490,6 +1506,10 @@ export const communityReports = pgTable(
     statusCheck: check(
       "community_reports_status_check",
       sql`${table.status} IN ('pending', 'resolved', 'dismissed')`,
+    ),
+    categoryCheck: check(
+      "community_reports_category_check",
+      sql`${table.category} IN ('违法违规', '人身侵权', '涉嫌欺诈', '侵权抄袭', '垃圾信息', '站外风险引流', 'AI生成内容问题', '其他')`,
     ),
     pendingIdx: index("idx_community_reports_pending").on(table.created_at)
       .where(sql`${table.status} = 'pending'`),
@@ -1578,7 +1598,7 @@ export const communityNotifications = pgTable(
   (table) => ({
     typeCheck: check(
       "community_notifications_type_check",
-      sql`${table.type} IN ('reply', 'like', 'follow', 'moderation', 'clarification')`,
+      sql`${table.type} IN ('reply', 'like', 'follow', 'moderation', 'clarification', 'report', 'ban')`,
     ),
     recipientIdx: index("idx_community_notifications_recipient").on(
       table.recipient_id,

@@ -1,23 +1,28 @@
 <template>
     <UApp>
         <NuxtLayout>
-            <BanBanner v-if="ipBanned" type="ip" :ip-info="ipBanInfo" />
-            <BanBanner v-if="userBanned" type="user" :user-info="userBanInfo" />
             <NuxtPage />
         </NuxtLayout>
     </UApp>
 </template>
 
 <script setup lang="ts">
-import BanBanner from "~/components/BanBanner.vue"
 import { useBanStatus } from "~/composables/useBanStatus"
 
-const { ipBanned, ipBanInfo, userBanned, userBanInfo, fetch } = useBanStatus()
+const { fetch } = useBanStatus()
+const { isLoggedIn } = useAuth()
 
 // 首次加载时获取封禁状态
 if (import.meta.client) {
   fetch()
 }
+
+// 登录/登出状态变化时重新获取封禁状态（SPA 导航不会重载页面，需手动刷新）
+watch(isLoggedIn, () => {
+  if (import.meta.client) {
+    fetch()
+  }
+})
 
 // ─── 页面级标题（WCAG 2.4.2）：按路由路径生成描述性 <title>，替代全站统一标题 ───
 const route = useRoute()

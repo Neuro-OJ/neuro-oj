@@ -49,7 +49,11 @@ export interface UserResponse {
   role_ids?: string[];
   is_admin: boolean;
   must_change_password: boolean;
-  active_ban: { reason: string; banned_until: string | null } | null;
+  active_ban: {
+    reason: string;
+    banned_until: string | null;
+    scope?: "platform" | "social" | null;
+  } | null;
   /** 用户头像存储 URL（`noj-storage://`），null = 未设置 */
   avatar_url: string | null;
   /** 是否已启用 TFA 二次验证 */

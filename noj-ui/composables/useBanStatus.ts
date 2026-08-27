@@ -42,7 +42,8 @@ export function useBanStatus() {
   let fetched = false;
 
   async function fetch(): Promise<BanStatusResponse | null> {
-    if (fetched && import.meta.client) return null;
+    // 客户端每次调用都重新请求，避免 SSR 填充的封禁状态在解封/封禁后不刷新
+    if (fetched && import.meta.server) return null;
     loading.value = true;
     error.value = '';
     try {

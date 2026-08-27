@@ -124,7 +124,7 @@ export interface FeedItem {
 export interface NotificationRow {
   notification: {
     id: string;
-    type: 'reply' | 'like' | 'follow' | 'moderation' | 'clarification';
+    type: 'reply' | 'like' | 'follow' | 'moderation' | 'clarification' | 'report' | 'ban';
     post_id: string | null;
     comment_id: string | null;
     read_at: string | null;
@@ -136,6 +136,12 @@ export interface NotificationRow {
       clarification_id?: string;
       problem_label?: string | null;
       is_public?: boolean;
+      report_id?: string;
+      scope?: string;
+      banned_until?: string | null;
+      banned_at?: string;
+      message?: string;
+      resolution?: string;
     };
   };
   actor: { id: string; username: string } | null;

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAdminList } from "~/composables/useAdminList"
 import { extractApiError } from '~/utils/apiError'
+import { useToast } from "~/composables/useToast"
 
 definePageMeta({
   layout: "admin",
@@ -22,7 +23,7 @@ interface User {
   is_admin: boolean
   role_ids: string[]
   /** user-ban-table：活跃封禁信息 */
-  active_ban: { reason: string; banned_until: string | null } | null
+  active_ban: { reason: string; banned_until: string | null; scope?: "platform" | "social" | null } | null
   created_at: string
   updated_at: string
 }
@@ -130,7 +131,7 @@ async function handleRoleSwitch() {
 // ─── 封禁 / 解封（issue #102）─────────────────────
 const showBanModal = ref(false)
 const banTarget = ref<User | null>(null)
-const banForm = reactive({ reason: "", banned_until: "" })
+const banForm = reactive({ reason: "", banned_until: "", scope: "platform" as "platform" | "social" })
 const banning = ref(false)
 const banError = ref("")
 const { dialog } = useDialog()
@@ -140,6 +141,7 @@ function confirmBan(user: User) {
   banTarget.value = user
   banForm.reason = ""
   banForm.banned_until = ""
+  banForm.scope = "platform"
   banError.value = ""
   showBanModal.value = true
 }
@@ -154,6 +156,7 @@ async function handleBan() {
       banned_until: banForm.banned_until
         ? new Date(banForm.banned_until).toISOString()
         : null,
+      scope: banForm.scope,
     })
     showBanModal.value = false
     toast.success(`已封禁 ${banTarget.value.username}`)
@@ -198,6 +201,7 @@ async function confirmUnban(user: User) {
 interface BanRecord {
   id: string
   reason: string
+  scope: "platform" | "social"
   banned_until: string | null
   banned_at: string
   banned_by: { id: string; username: string } | null
@@ -284,7 +288,7 @@ async function showBanHistory(user: User) {
             class="inline-flex items-center px-2 py-[3px] rounded text-xs font-semibold bg-red-50 text-error-text"
             :title="row.original.active_ban.banned_until ? `至 ${row.original.active_ban.banned_until} 解封` : '永久封禁'"
           >
-            已封禁
+            {{ row.original.active_ban.scope === "social" ? "已封禁·仅社交" : "已封禁" }}
           </span>
         </div>
       </template>
@@ -368,6 +372,20 @@ async function showBanHistory(user: User) {
       <p class="mb-3">将封禁 <strong>{{ banTarget?.username }}</strong>。</p>
       <div class="flex flex-col gap-3">
       <div>
+        <label class="block text-sm font-semibold text-text mb-1">封禁类型</label>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-2 text-sm">
+            <input v-model="banForm.scope" type="radio" value="platform" class="accent-primary" />
+            限制使用平台
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input v-model="banForm.scope" type="radio" value="social" class="accent-primary" />
+            仅限制社交功能
+          </label>
+        </div>
+        <p class="mt-1 text-[12px] text-text-secondary">平台封禁禁止登录与评测；社交封禁仅限制社区发布，仍可使用平台。</p>
+      </div>
+      <div>
         <label class="block text-sm font-semibold text-text mb-1">封禁原因</label>
         <input
           v-model="banForm.reason"
@@ -417,12 +435,19 @@ async function showBanHistory(user: User) {
       >
         <div class="flex items-center justify-between mb-1">
           <span class="font-semibold">{{ rec.reason || '(无原因)' }}</span>
-          <span
-            class="text-xs px-2 py-0.5 rounded"
-            :class="rec.unbanned_at ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'"
-          >
-            {{ rec.unbanned_at ? '已解封' : '封禁中' }}
-          </span>
+          <div class="flex items-center gap-2">
+            <span
+              class="text-xs px-2 py-0.5 rounded bg-gray-100 text-text-secondary"
+            >
+              {{ rec.scope === "social" ? "仅社交" : "平台封禁" }}
+            </span>
+            <span
+              class="text-xs px-2 py-0.5 rounded"
+              :class="rec.unbanned_at ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'"
+            >
+              {{ rec.unbanned_at ? '已解封' : '封禁中' }}
+            </span>
+          </div>
         </div>
         <div class="text-text-secondary text-xs space-y-0.5">
           <div>封禁于 {{ formatDate(rec.banned_at) }}，由 {{ rec.banned_by?.username || '系统' }}执行</div>
