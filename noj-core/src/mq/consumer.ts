@@ -6,7 +6,7 @@ import {
 import { saveEvaluationResult } from "../services/submissions/submissions.ts";
 import { saveSelfTestResult } from "../services/self-tests.ts";
 import { logger, logJudgeResultReceived } from "../lib/logging.ts";
-import { Channels, publishEvent } from "../lib/event-bus.ts";
+import { Channels, publishSseEvent } from "../lib/event-bus.ts";
 import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";
 import type { JudgeResult } from "../types/index.ts";
 
@@ -119,20 +119,19 @@ export async function handleResultMessage(
     kind: isSelfTest ? "self_test" : "submission",
   });
 
-  // 发布事件到 Redis Pub/Sub（fire-and-forget，不阻塞）
-  // 事件仅作触发通知，前端收到后主动通过 REST 接口拉取全量数据
+  // 写入 SSE 事件日志并发布 Redis 通知（事件带 seq，供重放/去重）
   if (!isSelfTest) {
-    publishEvent(
+    await publishSseEvent(
       Channels.submission(judgeResult.submission_id),
-      JSON.stringify({
+      {
         type: "submission:updated",
         id: judgeResult.submission_id,
-      }),
+      },
     );
   }
-  publishEvent(
+  await publishSseEvent(
     Channels.queue,
-    JSON.stringify({ type: "queue:changed" }),
+    { type: "queue:changed" },
   );
 }
 

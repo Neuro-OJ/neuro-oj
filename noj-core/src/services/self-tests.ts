@@ -14,7 +14,7 @@ import { getStorageProvider } from "../lib/storage/mod.ts";
 import { isRetryableJudgeQueueError, pushJudgeTask } from "../mq/producer.ts";
 import { validateJudgeImageWithKind } from "./judge-images.ts";
 import { logger } from "../lib/logging.ts";
-import { Channels, publishEvent } from "../lib/event-bus.ts";
+import { Channels, publishSseEvent } from "../lib/event-bus.ts";
 import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import type { JudgeResult, JudgeTask } from "../types/index.ts";
@@ -159,7 +159,7 @@ export async function createSelfTest(
     }).where(
       and(eq(selfTests.id, id), eq(selfTests.status, "pending")),
     );
-    publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
+    await publishSseEvent(Channels.queue, { type: "queue:changed" });
   } catch (mqErr) {
     logger.error("自测任务推送失败", { self_test_id: id, err: mqErr });
     if (!isRetryableJudgeQueueError(mqErr)) {

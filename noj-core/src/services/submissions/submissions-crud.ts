@@ -61,7 +61,7 @@ import type {
 } from "../../types/index.ts";
 import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
-import { Channels, publishEvent } from "../../lib/event-bus.ts";
+import { Channels, publishSseEvent } from "../../lib/event-bus.ts";
 import type {
   ListSubmissionsParams,
   ListSubmissionsResult,
@@ -477,18 +477,18 @@ export async function createSubmission(
       and(eq(submissions.id, id), eq(submissions.status, "pending")),
     );
 
-    // 发布队列变更事件，通知 SSE 等订阅者
-    publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
+    // 写入 SSE 事件日志并发布队列变更事件
+    await publishSseEvent(Channels.queue, { type: "queue:changed" });
     if (resolvedContestId) {
-      publishEvent(
+      await publishSseEvent(
         Channels.contestSubmission(resolvedContestId),
-        JSON.stringify({
+        {
           type: "contest:submission:created",
           contest_id: resolvedContestId,
           submission_id: id,
           user_id: userId,
           problem_id: input.problem_id,
-        }),
+        },
       );
     }
   } catch (mqErr) {
