@@ -30,6 +30,10 @@ if [[ "${NOJ_BACKUP_TEST_FAIL:-}" == "redis" && " $* " == *" redis "* ]]; then
 fi
 if [[ "${1:-}" == "info" ]]; then
   exit 0
+elif [[ "${1:-}" == "buildx" && "${2:-}" == "version" ]]; then
+  exit 0
+elif [[ "${1:-}" == "buildx" && "${2:-}" == "imagetools" && "${3:-}" == "inspect" ]]; then
+  printf 'Digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n'
 elif [[ "${1:-}" == "compose" && " $* " == *" pg_dumpall "* ]]; then
   printf 'CREATE ROLE noj;\n'
 elif [[ "${1:-}" == "compose" && " $* " == *" pg_dump "* ]]; then
@@ -50,6 +54,7 @@ chmod +x "$FAKE_DOCKER"
 
 cat >"$ENV_FILE" <<'EOF'
 NOJ_VERSION=v0.1.0
+NOJ_ENFORCE_IMAGE_SIGNATURES=false
 APP_URL=https://noj.test
 CORS_ALLOWED_ORIGINS=https://noj.test
 TRUSTED_PROXIES=172.28.0.0/16
@@ -85,13 +90,20 @@ printf 'services:\n  fake:\n    image: alpine:3\n' >"$COMPOSE_FILE"
 printf 'test-passphrase\n' >"$PASSPHRASE_FILE"
 chmod 600 "$PASSPHRASE_FILE"
 
-run_deploy() {
+run_deploy_with() {
+  local env_file="$1"
+  shift
   NOJ_DEPLOY_DOCKER_BIN="$FAKE_DOCKER" \
   NOJ_DEPLOY_TEST_LOG="$FAKE_LOG" \
   NOJ_BACKUP_TEST_LOG="$FAKE_LOG" \
   NOJ_BACKUP_PASSPHRASE_FILE="$PASSPHRASE_FILE" \
   NOJ_BACKUP_TEST_FAIL="${NOJ_BACKUP_TEST_FAIL:-}" \
-    bash "$DEPLOY_SCRIPT" "$@" --env-file "$ENV_FILE" --compose-file "$COMPOSE_FILE"
+  PATH="$TEST_ROOT:$PATH" \
+    bash "$DEPLOY_SCRIPT" "$@" --env-file "$env_file" --compose-file "$COMPOSE_FILE"
+}
+
+run_deploy() {
+  run_deploy_with "$ENV_FILE" "$@"
 }
 
 [[ "$(bash "$DEPLOY_SCRIPT" --help)" == *"生产部署工具"* ]] || fail "帮助输出缺少工具标题"
@@ -188,6 +200,34 @@ if grep -q 'strong-' "$TEST_ROOT/invalid.err" "$TEST_ROOT/invalid.out"; then
   fail "配置检查输出泄露了 secret"
 fi
 pass "占位配置拒绝与 secret 不泄露"
+
+cp "$ENV_FILE" "$TEST_ROOT/mutable-version.env"
+sed -i.bak 's/NOJ_VERSION=v0.1.0/NOJ_VERSION=latest/' "$TEST_ROOT/mutable-version.env"
+chmod 600 "$TEST_ROOT/mutable-version.env"
+if NOJ_DEPLOY_DOCKER_BIN="$FAKE_DOCKER" NOJ_DEPLOY_TEST_LOG="$FAKE_LOG" \
+  bash "$DEPLOY_SCRIPT" start --env-file "$TEST_ROOT/mutable-version.env" --compose-file "$COMPOSE_FILE" \
+  >"$TEST_ROOT/mutable-version.out" 2>"$TEST_ROOT/mutable-version.err"; then
+  fail "latest 版本应该被拒绝"
+fi
+grep -q '不可变 Release 标签' "$TEST_ROOT/mutable-version.err" ||
+  fail "latest 版本错误提示缺失"
+pass "可变 Release 标签拒绝"
+
+cat >"$TEST_ROOT/cosign" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$TEST_ROOT/cosign"
+cp "$ENV_FILE" "$TEST_ROOT/signed.env"
+sed -i.bak 's/NOJ_ENFORCE_IMAGE_SIGNATURES=false/NOJ_ENFORCE_IMAGE_SIGNATURES=true/' "$TEST_ROOT/signed.env"
+chmod 600 "$TEST_ROOT/signed.env"
+run_deploy_with "$TEST_ROOT/signed.env" start --backup-dir "$TEST_ROOT/signed-backups" \
+  >/dev/null 2>"$TEST_ROOT/signed.err" || fail "合法签名配置的 start 不应失败"
+manifest="$TEST_ROOT/signed-backups/current-deployment.txt"
+[[ -f "$manifest" ]] || fail "成功部署未记录当前版本与镜像 digest"
+grep -q '^version=v0.1.0$' "$manifest" || fail "部署记录缺少版本"
+[[ "$(grep -c '^noj-' "$manifest")" -eq 6 ]] || fail "部署记录未包含六个镜像 digest"
+pass "签名校验与部署 digest 记录"
 
 if run_deploy backup --backup-dir "$TEST_ROOT/backups" >/dev/null 2>"$TEST_ROOT/backup.err"; then
   :

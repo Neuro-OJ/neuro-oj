@@ -6,6 +6,7 @@
 ## 1. 前置条件
 
 - 一台 Linux 服务器（amd64），已安装 Docker Engine 与 Docker Compose v2。
+- 已安装 Cosign（用于校验生产应用镜像的 keyless 签名）；Docker CLI 可用 Buildx。
 - Deno 2.x（仅用于部署前运行 `noj-core` 的配置检查命令）。
 - 一个已解析到服务器的域名。
 - 外部 TLS 终止（宿主机 Nginx / Caddy / 云负载均衡），负责 HTTPS → 容器 HTTP 端口。
@@ -43,7 +44,9 @@ bash scripts/deploy/deploy.sh install
 
 | 变量 | 说明 |
 |------|------|
-| `NOJ_VERSION` | 要部署的 Release 标签，如 `v0.1.0` |
+| `NOJ_VERSION` | 要部署的已签名 Release 标签，如 `v0.1.0`；禁止使用 `latest`/`beta` |
+| `NOJ_ENFORCE_IMAGE_SIGNATURES` | 生产必须保持 `true`，启动/升级前校验六个应用镜像的 Cosign 签名 |
+| `NOJ_COSIGN_CERT_IDENTITY_REGEX` | Cosign 证书身份正则，默认只信任本仓库的 Release workflow |
 | `DOMAIN` | 对外域名（不含协议），compose/Nginx 使用 |
 | `APP_URL` | `https://你的域名` |
 | `CORS_ALLOWED_ORIGINS` | `https://你的域名` |
@@ -93,6 +96,18 @@ curl https://你的域名/healthz
 ```bash
 bash scripts/deploy/deploy.sh install
 ```
+
+部署脚本在 `install`、`start` 和 `upgrade` 前会校验 `NOJ_VERSION` 对应的六个应用镜像
+digest 与 Cosign keyless 签名。默认信任当前仓库的 Release workflow；如需变更签名身份，
+必须通过受保护的生产配置显式设置 `NOJ_COSIGN_CERT_IDENTITY_REGEX`。可以单独执行：
+
+```bash
+bash scripts/deploy/deploy.sh verify
+```
+
+`NOJ_ENFORCE_IMAGE_SIGNATURES=false` 仅用于本地 fake-Docker 测试，不得用于生产环境。
+成功启动或升级后，脚本会在 `backups/current-deployment.txt` 记录当前 Release 版本和六个
+应用镜像 digest；升级失败时不会覆盖上一份成功部署记录。
 
 > 评测 Worker 不得挂载应用宿主机的 `/var/run/docker.sock`。生产 Compose 要求
 > `JUDGE_DOCKER_SOCKET` 指向只服务于 judge 的 rootless daemon socket，并以非 root
@@ -218,22 +233,28 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
 
 ## 6. 升级
 
-1. 在 GitHub 发布新 Release（如 `v0.1.1`），`release.yml` 会自动推送镜像。
-2. 在服务器修改 `.env.prod` 中的 `NOJ_VERSION=v0.1.1`。
-3. 拉取新镜像并重建：
+1. 在 GitHub 发布新 Release（如 `v0.1.1`）。Release workflow 会先构建候选镜像，
+   完成漏洞扫描、SBOM、签名和来源证明后，才创建正式版本标签。
+2. 确认 Release workflow 的六个镜像验证全部成功，并在服务器修改 `.env.prod` 中的
+   `NOJ_VERSION=v0.1.1`。
+3. 升级前创建备份并拉取新镜像：
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml pull
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+bash scripts/deploy/deploy.sh upgrade
 ```
 
-4. 数据库迁移由 `core` 启动时自动执行；也可先手动跑一次 `migrate` 服务。
+部署脚本会先校验镜像签名，再创建并校验生产备份，然后拉取镜像并等待 Compose 健康检查。
+数据库迁移由 `migrate` 一次性服务执行；升级前必须确认新版本迁移与旧版本应用兼容。
 
 ## 7. 回滚
 
-- 将 `.env.prod` 的 `NOJ_VERSION` 改回上一版本，重新 `pull` + `up -d`。
+- 确认上一版本 Release 仍可拉取且签名有效，将 `.env.prod` 的 `NOJ_VERSION` 改回上一版本，
+  执行 `bash scripts/deploy/deploy.sh verify` 后再执行 `bash scripts/deploy/deploy.sh start`。
 - 数据库 schema 采用只追加迁移，**不自动回滚**；如需回退 schema，请人工评估并备份后操作。
 - 评测镜像也按 Release tag 发布，回滚时需要把 `judge_images` 白名单指向旧 tag（若使用 `all_versions` 则无需改白名单，只需题目/系统设置中的镜像 tag 指向旧版本）。
+
+如果新版本已经执行了不兼容的数据库迁移，不能只切换应用镜像；必须停止服务、确认备份
+可恢复后，按备份恢复流程处理数据，再启动上一版本。
 
 ## 8. 备份提示
 

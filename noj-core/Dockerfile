@@ -8,7 +8,7 @@
 # 平台：linux/amd64（公测阶段只支持 amd64）。
 
 # ── Builder：安装依赖并编译两个二进制 ─────────────────────────────
-FROM denoland/deno:debian-2.9.5 AS builder
+FROM denoland/deno:debian-2.9.5@sha256:5d46f925d213e9adaf18a0664b291fe973c91ba7b929572877610dcaaf09ee2b AS builder
 
 WORKDIR /build
 
@@ -45,7 +45,7 @@ RUN mkdir -p /build/bin \
         --output /build/bin/noj scripts/noj.ts
 
 # ── Runtime：只保留二进制与必需文件 ────────────────────────────────
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:5ae3c39ebd15e229dcedd5cee596b2497182493d41ff162e824ba13fc1b2b867
 
 # ca-certificates：HTTPS 出站；zip：problems:build；wget：healthcheck
 RUN apt-get update \
