@@ -11,7 +11,6 @@
 
 set -Eeuo pipefail
 
-SCRIPT_NAME="${BASH_SOURCE[0]##*/}"
 DOCKER_BIN="${NOJ_JUDGE_DOCKER_BIN:-docker}"
 CURL_BIN="${NOJ_JUDGE_CURL_BIN:-curl}"
 PROJECT_NAME="noj-judge-standalone"
@@ -216,15 +215,16 @@ validate_existing_target() {
 }
 
 prompt_value() {
-  local key="$1" label="$2" default_value="${3:-}" secret="${4:-0}" value
+  local key="$1" label="$2" default_value="${3:-}" secret="${4:-0}" hint="${5:-}" value
   value="$(env_value "$key")"
   [[ -n "$value" ]] && { printf '%s\n' "$value"; return 0; }
   ((NON_INTERACTIVE)) && fail "非交互安装缺少必填配置：$key"
+  [[ -n "$hint" ]] && printf '  说明：%s\n' "$hint" >&2
   if [[ "$secret" == 1 ]]; then
-    read -r -s -p "$label${default_value:+ [$default_value]}：" value
+    read -r -s -p "  $label${default_value:+ [$default_value]}：" value
     printf '\n' >&2
   else
-    read -r -p "$label${default_value:+ [$default_value]}：" value
+    read -r -p "  $label${default_value:+ [$default_value]}：" value
   fi
   value="${value:-$default_value}"
   [[ -n "$value" ]] || fail "$key 不能为空"
@@ -234,6 +234,18 @@ prompt_value() {
 
 initialize_env() {
   section "配置独立 Judge"
+  cat <<'EOF'
+首次部署需要填写 Judge Worker 的连接信息。请按说明输入；带有默认值的项目直接回车即可。
+
+  NOJ_VERSION：要部署的已发布镜像版本，例如 0.8.0-rc.1；不能填写 main 或 latest。
+  REDIS_URL：noj-core 正在使用的 Redis 地址，Judge 必须连接同一个 Redis 和队列。
+    无密码示例：redis://127.0.0.1:6379/0
+    有密码示例：redis://:密码@127.0.0.1:6379/0
+    这一项输入时整行不会显示在屏幕上。
+  专用 Docker socket：必须是只供 Judge 使用的 rootless Docker socket，不能填写
+    /run/docker.sock 或 /var/run/docker.sock。没有专用 socket 时，请先执行 install-env。
+
+EOF
   ensure_target_dir
   validate_existing_target
   if [[ -f "$ENV_FILE" ]]; then
@@ -250,18 +262,18 @@ initialize_env() {
   umask 077
   local version redis_url socket socket_gid queue result work_dir concurrency prefix registry uid gid
   version="$VERSION_OVERRIDE"
-  [[ -n "$version" ]] || version="$(prompt_value NOJ_VERSION "NOJ_VERSION（Release 版本）")"
-  redis_url="$(prompt_value REDIS_URL "Redis URL（密码输入不回显）" "" 1)"
-  queue="$(prompt_value JUDGE_QUEUE "任务队列" "noj:judge:queue")"
-  result="$(prompt_value RESULT_QUEUE "结果队列" "noj:judge:results")"
-  work_dir="$(prompt_value WORK_DIR "Worker 容器工作目录" "/tmp/noj-judge")"
-  concurrency="$(prompt_value JUDGE_MAX_CONCURRENT_JUDGES "最大并发评测数" "2")"
-  prefix="$(prompt_value JUDGE_IMAGE_PREFIX "评测镜像前缀" "noj-")"
-  registry="$(prompt_value JUDGE_IMAGE_REGISTRY "Worker 镜像仓库" "ghcr.io/neuro-oj")"
-  socket="$(prompt_value JUDGE_DOCKER_SOCKET "专用 rootless Docker socket" "/run/noj-judge/docker.sock")"
-  socket_gid="$(prompt_value JUDGE_DOCKER_SOCKET_GID "Docker socket GID" "10001")"
-  uid="$(prompt_value JUDGE_UID "Worker UID" "10001")"
-  gid="$(prompt_value JUDGE_GID "Worker GID" "10001")"
+  [[ -n "$version" ]] || version="$(prompt_value NOJ_VERSION "Worker 版本（例如 0.8.0-rc.1）" "" 0 "填已发布的镜像版本，不要填写 main 或 latest。")"
+  redis_url="$(prompt_value REDIS_URL "Redis 连接地址" "" 1 "填 noj-core 使用的完整 Redis URL；无密码也要保留 redis:// 前缀。")"
+  queue="$(prompt_value JUDGE_QUEUE "任务队列名称" "noj:judge:queue" 0 "必须与 noj-core 的任务队列名称一致，通常直接回车。")"
+  result="$(prompt_value RESULT_QUEUE "结果队列名称" "noj:judge:results" 0 "必须与 noj-core 的结果队列名称一致，通常直接回车。")"
+  work_dir="$(prompt_value WORK_DIR "Worker 容器工作目录" "/tmp/noj-judge" 0 "容器内部目录，通常直接回车。")"
+  concurrency="$(prompt_value JUDGE_MAX_CONCURRENT_JUDGES "最大并发评测数" "2" 0 "同时运行的评测数量；机器资源较少时可填写 1。")"
+  prefix="$(prompt_value JUDGE_IMAGE_PREFIX "评测镜像前缀" "noj-" 0 "题目运行时镜像的前缀，通常直接回车。")"
+  registry="$(prompt_value JUDGE_IMAGE_REGISTRY "Worker 镜像仓库" "ghcr.io/neuro-oj" 0 "Worker 镜像所在仓库，不要填写末尾的 /noj-judge。")"
+  socket="$(prompt_value JUDGE_DOCKER_SOCKET "专用 Docker socket 路径" "/run/noj-judge/docker.sock" 0 "必须是 Judge 专用 rootless socket，不能使用宿主机共享 socket。")"
+  socket_gid="$(prompt_value JUDGE_DOCKER_SOCKET_GID "Docker socket 所属组 GID" "10001" 0 "可用 stat -c '%g' /run/noj-judge/docker.sock 查询；必须与 socket 实际 GID 一致。")"
+  uid="$(prompt_value JUDGE_UID "Worker 用户 UID" "10001" 0 "容器内非 root 用户，通常直接回车。")"
+  gid="$(prompt_value JUDGE_GID "Worker 用户 GID" "10001" 0 "容器内非 root 用户组，通常直接回车。")"
 
   cat >"$ENV_FILE" <<EOF
 NOJ_VERSION=$version

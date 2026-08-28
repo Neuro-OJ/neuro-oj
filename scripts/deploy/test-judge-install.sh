@@ -116,6 +116,53 @@ run_judge() {
   fail "帮助输出缺少工具标题"
 pass "帮助输出"
 
+NOJ_JUDGE_DOCKER_BIN="$FAKE_DOCKER" \
+NOJ_JUDGE_CURL_BIN="$FAKE_CURL" \
+NOJ_JUDGE_TEST_LOG="$DOCKER_LOG" \
+PATH="$TEST_ROOT:$PATH" \
+  bash -s -- install-env <"$DEPLOY_SCRIPT" >/dev/null ||
+  fail "从 curl 管道执行 install-env 不应失败"
+pass "curl 管道入口"
+
+PROMPT_DIR="$TEST_ROOT/prompt-target"
+PROMPT_SOCKET="$TEST_ROOT/prompt.sock"
+mkdir -p "$PROMPT_DIR"
+python3 - "$PROMPT_SOCKET" <<'PY'
+import socket
+import sys
+
+sock = socket.socket(socket.AF_UNIX)
+sock.bind(sys.argv[1])
+sock.listen(1)
+PY
+chmod 660 "$PROMPT_SOCKET"
+PROMPT_SOCKET_GID="$(stat -c '%g' "$PROMPT_SOCKET" 2>/dev/null || stat -f '%g' "$PROMPT_SOCKET")"
+PROMPT_OUTPUT="$TEST_ROOT/prompt.out"
+NOJ_JUDGE_DOCKER_BIN="$FAKE_DOCKER" \
+NOJ_JUDGE_CURL_BIN="$FAKE_CURL" \
+NOJ_JUDGE_TEST_LOG="$DOCKER_LOG" \
+PATH="$TEST_ROOT:$PATH" \
+  bash "$DEPLOY_SCRIPT" install --dir "$PROMPT_DIR" >"$PROMPT_OUTPUT" 2>&1 <<EOF
+v0.1.0
+redis://redis.test.local:6379/0
+
+
+
+
+
+
+$PROMPT_SOCKET
+$PROMPT_SOCKET_GID
+
+
+EOF
+grep -q 'Redis 地址.*同一个 Redis 和队列' "$PROMPT_OUTPUT" || fail "Redis 配置说明缺失"
+grep -q '无密码示例：redis://127.0.0.1:6379/0' "$PROMPT_OUTPUT" || fail "Redis 示例缺失"
+grep -q '专用 Docker socket.*rootless' "$PROMPT_OUTPUT" || fail "Docker socket 配置说明缺失"
+grep -q '^JUDGE_QUEUE=noj:judge:queue$' "$PROMPT_DIR/.env.judge" || fail "默认任务队列未生效"
+grep -q '^RESULT_QUEUE=noj:judge:results$' "$PROMPT_DIR/.env.judge" || fail "默认结果队列未生效"
+pass "交互式配置说明和默认值"
+
 DOWNLOAD_DIR="$TEST_ROOT/download"
 NOJ_JUDGE_DOCKER_BIN="$FAKE_DOCKER" \
 NOJ_JUDGE_CURL_BIN="$FAKE_CURL" \
