@@ -357,6 +357,38 @@ contestSse.get(
         },
       );
 
+      // 重放缺失事件（先订阅后重放，避免竞态）
+      const after = lastEventId(c);
+      const missed = await replaySseEvents(
+        [Channels.contestRanking(contestId), Channels.contestSubmission(contestId)],
+        after,
+        200,
+      );
+      for (const ev of missed) {
+        if (streamClosed) return;
+        const payload = ev.payload as { type?: string };
+        if (payload.type === "contest:submission:created") {
+          let data = JSON.stringify({ ...payload, seq: ev.id });
+          if (!isAdmin) {
+            try {
+              const parsed = JSON.parse(data) as Record<string, unknown>;
+              delete parsed.user_id;
+              data = JSON.stringify(parsed);
+            } catch {
+              // 保持原样
+            }
+          }
+          await stream.writeSSE({
+            event: "contest:submission:created",
+            id: String(ev.id),
+            data,
+          });
+        } else {
+          // ranking 变更事件：走 pushRanking 拉取最新榜单
+          void pushRanking("contest:ranking:updated");
+        }
+      }
+
       await new Promise<void>((resolve) => {
         resolveAbort = resolve;
         stream.onAbort(closeStream);
