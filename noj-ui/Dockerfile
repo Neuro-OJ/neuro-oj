@@ -8,7 +8,7 @@
 # 平台：linux/amd64（公测阶段只支持 amd64）。
 
 # ── Builder：安装依赖并编译单二进制 ────────────────────────────────
-FROM denoland/deno:debian-2.9.5 AS builder
+FROM denoland/deno:debian-2.9.5@sha256:5d46f925d213e9adaf18a0664b291fe973c91ba7b929572877610dcaaf09ee2b AS builder
 
 WORKDIR /build
 
@@ -33,7 +33,7 @@ RUN deno run -A scripts/patch-monaco-workers.mjs
 RUN deno task compile 2>&1 || { echo "ERROR: noj-ui compile failed" >&2; exit 1; }
 
 # ── Runtime：只保留二进制 ───────────────────────────────────────────
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:5ae3c39ebd15e229dcedd5cee596b2497182493d41ff162e824ba13fc1b2b867
 
 # ca-certificates：HTTPS 出站；wget：healthcheck
 RUN apt-get update \

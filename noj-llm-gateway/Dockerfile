@@ -1,4 +1,4 @@
-FROM denoland/deno:alpine-2.9.5
+FROM denoland/deno:alpine-2.9.5@sha256:7ef8943fede9b4ec021465dcadb98c9cefeef7121ae7eb2369fbd5bd354d27f8
 LABEL org.opencontainers.image.description="Neuro OJ LLM Gateway (Deno + Hono)"
 
 WORKDIR /app
