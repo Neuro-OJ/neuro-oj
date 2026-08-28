@@ -8,6 +8,8 @@ if (import.meta.main) {
   await run(["deno", "run", "-A", "scripts/verify-md-links.ts"]);
   await run(["deno", "run", "-A", "scripts/verify-export-jsdoc.ts"]);
   await run(["deno", "run", "-A", "scripts/verify-capability-seams.ts"]);
+  await run(["deno", "run", "-A", "scripts/gen-event-catalog.ts", "--check"]);
+  await run(["deno", "run", "-A", "scripts/gen-route-catalog.ts", "--check"]);
 
   console.log("== noj-core check ==");
   await run(["deno", "task", "check"], "noj-core");

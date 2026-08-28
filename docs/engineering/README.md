@@ -7,5 +7,7 @@
 - [防御模式](defensive-patterns.md)
 - [Capability Seam](capability-seams.md)
 - [事件域分离](event-domains.md)
+- [SSE 事件目录](event-catalog.md)
+- [API 路由目录](route-catalog.md)
 
 根 `AGENTS.md` 中的“规则 + 链接”指向这里的详细文档。
