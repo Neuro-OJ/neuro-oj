@@ -27,8 +27,6 @@ BACKUP_PASSPHRASE_FILE="${NOJ_BACKUP_PASSPHRASE_FILE:-}"
 DOCKER_BIN="${NOJ_DEPLOY_DOCKER_BIN:-docker}"
 DRY_RUN=0
 FOLLOW=0
-INTERACTIVE=1
-[[ "${NOJ_DEPLOY_NON_INTERACTIVE:-0}" == "1" ]] && INTERACTIVE=0
 declare -a VERIFIED_IMAGE_DIGESTS=()
 
 if [[ -t 1 ]]; then
@@ -67,7 +65,6 @@ Neuro OJ 生产部署工具
   --passphrase-file FILE
                         GPG 备份口令文件（默认读取 NOJ_BACKUP_PASSPHRASE_FILE）
   --dry-run             只检查并显示将执行的操作，不修改服务或文件
-  --non-interactive     首次初始化不询问，配置不完整时直接失败
   -h, --help            显示帮助
 
 环境变量：
@@ -113,7 +110,6 @@ parse_args() {
       --passphrase-file=*) BACKUP_PASSPHRASE_FILE="${1#*=}" ;;
       --follow|-f) FOLLOW=1 ;;
       --dry-run) DRY_RUN=1 ;;
-      --non-interactive) INTERACTIVE=0 ;;
       -h|--help) usage; exit 0 ;;
       --) shift; POSITIONAL+=("$@"); break ;;
       *) POSITIONAL+=("$1") ;;
@@ -161,152 +157,6 @@ generate_secret() {
   openssl rand -hex 32 | tr -d '\n'
 }
 
-prompt_text() {
-  local label="$1" default_value="${2:-}" value
-  while :; do
-    if [[ -n "$default_value" ]]; then
-      IFS= read -r -p "$label [$default_value]: " value || fail "读取配置输入失败：$label"
-      value="${value:-$default_value}"
-    else
-      IFS= read -r -p "$label: " value || fail "读取配置输入失败：$label"
-    fi
-    if [[ -n "$value" && "$value" != *$'\n'* && "$value" != *$'\r'* ]]; then
-      PROMPT_VALUE="$value"
-      return 0
-    fi
-    warn "该配置不能为空，请重新输入"
-  done
-}
-
-prompt_secret() {
-  local label="$1" value
-  while :; do
-    IFS= read -r -s -p "$label: " value || fail "读取配置输入失败：$label"
-    printf '\n'
-    if [[ -n "$value" ]]; then
-      PROMPT_VALUE="$value"
-      return 0
-    fi
-    warn "该配置不能为空，请重新输入"
-  done
-}
-
-prompt_password() {
-  local label="$1" value confirmation
-  while :; do
-    IFS= read -r -s -p "$label（至少 12 位）: " value || fail "读取配置输入失败：$label"
-    printf '\n'
-    IFS= read -r -s -p "再次输入以确认：" confirmation || fail "读取配置输入失败：$label"
-    printf '\n'
-    if [[ -z "$value" ]]; then
-      warn "管理员密码不能为空，请重新输入"
-    elif (( ${#value} < 12 )); then
-      warn "管理员密码至少需要 12 位，请重新输入"
-    elif [[ "$value" != "$confirmation" ]]; then
-      warn "两次输入的管理员密码不一致，请重新输入"
-    else
-      PROMPT_VALUE="$value"
-      return 0
-    fi
-  done
-}
-
-current_config_value() {
-  local key="$1" value
-  value="$(env_value "$key")"
-  if is_placeholder "$value"; then
-    value=""
-  fi
-  printf '%s\n' "$value"
-}
-
-configure_env_interactive() {
-  local version domain app_url admin_email email_provider socket_path socket_gid
-  local current_value default_url
-
-  section "填写生产配置"
-  cat <<'EOF'
-首次部署需要填写以下配置。输入过程中密码和云厂商密钥不会回显，脚本也不会打印这些敏感值。
-其中 NOJ_VERSION 必须是已经发布的不可变版本标签；Judge Docker socket 必须是独立的 rootless Docker socket，不能填写 /var/run/docker.sock。
-EOF
-
-  current_value="$(current_config_value NOJ_VERSION)"
-  prompt_text "NOJ_VERSION（例如 v0.1.0）" "$current_value"
-  version="$PROMPT_VALUE"
-  set_env_value NOJ_VERSION "$version"
-
-  current_value="$(current_config_value DOMAIN)"
-  prompt_text "DOMAIN（不含协议，例如 oj.example.com）" "$current_value"
-  domain="$PROMPT_VALUE"
-  [[ "$domain" != *[[:space:]]* && "$domain" != */* && "$domain" != *://* ]] ||
-    fail "DOMAIN 不能包含协议、斜杠或空格"
-  set_env_value DOMAIN "$domain"
-
-  current_value="$(current_config_value APP_URL)"
-  default_url="${current_value:-https://$domain}"
-  prompt_text "APP_URL（完整地址）" "$default_url"
-  app_url="$PROMPT_VALUE"
-  [[ "$app_url" =~ ^https?://[^[:space:]]+$ ]] ||
-    fail "APP_URL 必须是 http:// 或 https:// 开头的完整地址"
-  set_env_value APP_URL "$app_url"
-  set_env_value CORS_ALLOWED_ORIGINS "$app_url"
-
-  current_value="$(current_config_value ADMIN_EMAIL)"
-  prompt_text "管理员邮箱" "$current_value"
-  admin_email="$PROMPT_VALUE"
-  [[ "$admin_email" == *@*.* ]] || fail "管理员邮箱格式不正确"
-  set_env_value ADMIN_EMAIL "$admin_email"
-  prompt_password "管理员密码"
-  set_env_value ADMIN_PASS "$PROMPT_VALUE"
-
-  current_value="$(current_config_value EMAIL_PROVIDER)"
-  while :; do
-    prompt_text "邮件 Provider（aliyun 或 tencent）" "${current_value:-aliyun}"
-    email_provider="$PROMPT_VALUE"
-    case "$email_provider" in
-      aliyun|tencent) break ;;
-      *) warn "邮件 Provider 只能是 aliyun 或 tencent" ;;
-    esac
-  done
-  set_env_value EMAIL_PROVIDER "$email_provider"
-  if [[ "$email_provider" == aliyun ]]; then
-    prompt_secret "阿里云 Access Key ID"
-    set_env_value ALIBABA_ACCESS_KEY_ID "$PROMPT_VALUE"
-    prompt_secret "阿里云 Access Key Secret"
-    set_env_value ALIBABA_ACCESS_KEY_SECRET "$PROMPT_VALUE"
-    current_value="$(current_config_value ALIBABA_FROM_EMAIL)"
-    prompt_text "阿里云发件邮箱" "$current_value"
-    set_env_value ALIBABA_FROM_EMAIL "$PROMPT_VALUE"
-  else
-    prompt_secret "腾讯云 Secret ID"
-    set_env_value TENCENT_SECRET_ID "$PROMPT_VALUE"
-    prompt_secret "腾讯云 Secret Key"
-    set_env_value TENCENT_SECRET_KEY "$PROMPT_VALUE"
-    current_value="$(current_config_value TENCENT_FROM_EMAIL)"
-    prompt_text "腾讯云发件邮箱" "$current_value"
-    set_env_value TENCENT_FROM_EMAIL "$PROMPT_VALUE"
-    current_value="$(current_config_value TENCENT_REGION)"
-    prompt_text "腾讯云 Region" "${current_value:-ap-guangzhou}"
-    set_env_value TENCENT_REGION "$PROMPT_VALUE"
-  fi
-
-  current_value="$(current_config_value JUDGE_DOCKER_SOCKET)"
-  prompt_text "Judge Docker socket（不能是 /var/run/docker.sock）" \
-    "${current_value:-/run/noj-judge/docker.sock}"
-  socket_path="$PROMPT_VALUE"
-  set_env_value JUDGE_DOCKER_SOCKET "$socket_path"
-  if [[ -e "$socket_path" ]]; then
-    socket_gid="$(stat -c '%g' "$socket_path" 2>/dev/null || stat -f '%g' "$socket_path" 2>/dev/null || printf '10001')"
-  else
-    socket_gid="10001"
-  fi
-  current_value="$(current_config_value JUDGE_DOCKER_SOCKET_GID)"
-  prompt_text "Judge Docker socket GID" "${current_value:-$socket_gid}"
-  [[ "$PROMPT_VALUE" =~ ^[0-9]+$ ]] || fail "Judge Docker socket GID 必须是数字"
-  set_env_value JUDGE_DOCKER_SOCKET_GID "$PROMPT_VALUE"
-  ok "生产配置引导完成，正在继续校验和启动服务"
-}
-
 initialize_env() {
   section "初始化生产配置"
   [[ -f "$ENV_TEMPLATE" ]] || fail "找不到生产配置模板：$ENV_TEMPLATE"
@@ -343,20 +193,14 @@ initialize_env() {
   set_env_value S3_ACCESS_KEY "nojs3$(openssl rand -hex 6)"
 
   ok "已创建并保护 $ENV_FILE"
-  if ((INTERACTIVE)) && [[ -t 0 && -t 1 ]]; then
-    configure_env_interactive
-    return 0
-  fi
-  warn "当前没有可交互终端，无法引导填写生产配置"
-  warn "请编辑 $ENV_FILE，填写 NOJ_VERSION、DOMAIN、APP_URL、邮件 Provider、管理员账号和 Judge Docker socket"
-  warn "填写完成后重新执行：bash scripts/deploy/deploy.sh install"
-  warn "自动化场景可显式使用 --non-interactive，让未完成配置直接失败"
+  warn "请填写 NOJ_VERSION、DOMAIN、APP_URL、邮件 Provider、管理员账号和 Judge Docker socket"
+  warn "配置完成后重新执行：bash scripts/deploy/deploy.sh install"
   exit 2
 }
 
 check_file_permissions() {
   local mode
-  mode="$(stat -c '%a' "$ENV_FILE" 2>/dev/null || stat -f '%Lp' "$ENV_FILE" 2>/dev/null || true)"
+  mode="$(stat -f '%Lp' "$ENV_FILE" 2>/dev/null || stat -c '%a' "$ENV_FILE" 2>/dev/null || true)"
   [[ -n "$mode" ]] || fail "无法读取生产配置文件权限：$ENV_FILE"
   if [[ "$mode" != "600" && "$mode" != "400" ]]; then
     fail "生产配置文件权限必须为 600 或 400：$ENV_FILE"
