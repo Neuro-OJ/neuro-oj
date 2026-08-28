@@ -208,10 +208,10 @@ jobs:
         run: deno task check:jsdoc
 
   # ===========================================================================
-  # 文档链接检查（全仓库 Markdown）
+  # 仓库级门禁（Agent Note / Markdown 链接 / 导出 JSDoc）
   # ===========================================================================
-  md-links-check:
-    name: Markdown Links
+  root-gates:
+    name: Root Gates
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -224,8 +224,8 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: 文档链接检查
-        run: deno run -A scripts/verify-md-links.ts
+      - name: 仓库级门禁
+        run: deno run -A scripts/check-ci.ts
 
   # ===========================================================================
   # noj-core — 快速冒烟测试（不依赖外部服务，使用 PGlite 内存数据库）
