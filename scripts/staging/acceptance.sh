@@ -116,10 +116,11 @@ check_source() {
 }
 
 check_config() {
+  local env_mode
   require_file "$ENV_FILE"
   require_file "$COMPOSE_FILE"
-  [[ "$(stat -f '%Lp' "$ENV_FILE" 2>/dev/null || stat -c '%a' "$ENV_FILE")" == "600" || \
-    "$(stat -f '%Lp' "$ENV_FILE" 2>/dev/null || stat -c '%a' "$ENV_FILE")" == "400" ]] \
+  env_mode="$(stat -c '%a' "$ENV_FILE" 2>/dev/null || stat -f '%Lp' "$ENV_FILE" 2>/dev/null)"
+  [[ "$env_mode" == "600" || "$env_mode" == "400" ]] \
     || die "环境文件权限必须为 600 或 400：$ENV_FILE"
   [[ -n "$IMAGE_TAG" && "$IMAGE_TAG" != "latest" ]] \
     || die "必须使用明确的 STAGING_IMAGE_TAG，禁止使用 latest 作为验收版本"

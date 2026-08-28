@@ -356,7 +356,7 @@ initialize_env() {
 
 check_file_permissions() {
   local mode
-  mode="$(stat -f '%Lp' "$ENV_FILE" 2>/dev/null || stat -c '%a' "$ENV_FILE" 2>/dev/null || true)"
+  mode="$(stat -c '%a' "$ENV_FILE" 2>/dev/null || stat -f '%Lp' "$ENV_FILE" 2>/dev/null || true)"
   [[ -n "$mode" ]] || fail "无法读取生产配置文件权限：$ENV_FILE"
   if [[ "$mode" != "600" && "$mode" != "400" ]]; then
     fail "生产配置文件权限必须为 600 或 400：$ENV_FILE"

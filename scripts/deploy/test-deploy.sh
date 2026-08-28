@@ -17,6 +17,7 @@ trap cleanup EXIT
 
 pass() { printf '✓ %s\n' "$*"; }
 fail() { printf '✗ %s\n' "$*" >&2; exit 1; }
+file_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null; }
 
 cat >"$FAKE_DOCKER" <<'EOF'
 #!/usr/bin/env bash
@@ -116,7 +117,7 @@ if NOJ_DEPLOY_DOCKER_BIN="$FAKE_DOCKER" NOJ_DEPLOY_TEST_LOG="$FAKE_LOG" \
   fail "首次初始化应该提示补齐配置并返回非零"
 fi
 [[ -f "$new_env" ]] || fail "首次初始化未创建配置文件"
-[[ "$(stat -f '%Lp' "$new_env" 2>/dev/null || stat -c '%a' "$new_env")" == "600" ]] ||
+[[ "$(file_mode "$new_env")" == "600" ]] ||
   fail "新建配置文件权限不是 600"
 non_interactive_env="$TEST_ROOT/non-interactive.env"
 if NOJ_DEPLOY_DOCKER_BIN="$FAKE_DOCKER" NOJ_DEPLOY_TEST_LOG="$FAKE_LOG" \
@@ -126,7 +127,7 @@ if NOJ_DEPLOY_DOCKER_BIN="$FAKE_DOCKER" NOJ_DEPLOY_TEST_LOG="$FAKE_LOG" \
 fi
 grep -q '没有可交互终端' "$TEST_ROOT/non-interactive.err" ||
   fail "--non-interactive 未给出明确的配置提示"
-[[ "$(stat -f '%Lp' "$non_interactive_env" 2>/dev/null || stat -c '%a' "$non_interactive_env")" == "600" ]] ||
+[[ "$(file_mode "$non_interactive_env")" == "600" ]] ||
   fail "--non-interactive 配置文件权限不是 600"
 pass "非交互式首次配置提示"
 grep -q '^JWT_SECRET=' "$new_env" || fail "首次初始化未写入随机密钥"
@@ -249,7 +250,7 @@ snapshot="$(find "$TEST_ROOT/backups" -mindepth 1 -maxdepth 1 -type d -name 'sna
 [[ -n "$snapshot" ]] || fail "未生成完整生产快照"
 [[ -f "$snapshot/postgres.dump" && -f "$snapshot/redis.rdb" && -f "$snapshot/env.prod.gpg" ]] ||
   fail "完整快照缺少核心数据"
-[[ "$(stat -f '%Lp' "$snapshot" 2>/dev/null || stat -c '%a' "$snapshot")" == "700" ]] ||
+[[ "$(file_mode "$snapshot")" == "700" ]] ||
   fail "快照目录权限不是 700"
 pass "完整生产备份与文件权限"
 
