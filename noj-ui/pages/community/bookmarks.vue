@@ -5,7 +5,7 @@ import { extractApiError } from "~/utils/apiError"
 import { useToast } from "~/composables/useToast"
 import { publicUrl } from "~/utils/publicIdentifiers"
 
-definePageMeta({ middleware: "auth" })
+definePageMeta({ middleware: "auth", ssr: false })
 
 const typeLabel: Record<PostType, string> = {
   discussion: "讨论",
@@ -68,7 +68,9 @@ async function removeBookmark(item: BookmarkRow) {
   }
 }
 
-await loadBookmarks()
+onMounted(() => {
+  void loadBookmarks()
+})
 </script>
 
 <template>

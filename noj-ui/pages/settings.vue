@@ -3,6 +3,9 @@ import { extractApiError } from "~/utils/apiError"
 import { getAvatarUploadError } from "~/utils/avatarUpload"
 import { formatRecoveryCodesFile } from "~/utils/recoveryCodes"
 import { userUrl } from "~/utils/publicIdentifiers"
+
+definePageMeta({ ssr: false })
+
 const { user, isLoggedIn, loading, fetchUser } = useAuth()
 const router = useRouter()
 const { api } = useApi()

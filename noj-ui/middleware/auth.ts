@@ -33,8 +33,6 @@ const PASSWORD_CHANGE_WHITELIST = new Set<string>([
 import { useAuthReady } from '~/composables/useAuthReady';
 
 export default defineNuxtRouteMiddleware(async (to, _from) => {
-  if (import.meta.server) return;
-
   if (PUBLIC_AUTH_PATHS.has(to.path)) return;
 
   const { loading, isLoggedIn, user, fetchUser } = useAuth();

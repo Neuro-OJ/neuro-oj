@@ -62,6 +62,13 @@ const { data, pending, error, refresh } = useFetch<ProfileResponse>(
 
 const profile = computed(() => data.value?.data ?? null)
 
+useSeoMeta({
+  title: () => profile.value?.user?.username ? `${profile.value.user.username} - Neuro OJ` : '用户 - Neuro OJ',
+  description: () => profile.value?.user?.bio ? profile.value.user.bio.slice(0, 160) : 'Neuro OJ 用户主页',
+  ogTitle: () => profile.value?.user?.username ?? 'Neuro OJ',
+  ogDescription: () => profile.value?.user?.bio ? profile.value.user.bio.slice(0, 160) : 'Neuro OJ 用户主页',
+})
+
 interface CheckinStatsData {
   total_days: number
   current_streak: number
