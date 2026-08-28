@@ -360,7 +360,10 @@ contestSse.get(
       // 重放缺失事件（先订阅后重放，避免竞态）
       const after = lastEventId(c);
       const missed = await replaySseEvents(
-        [Channels.contestRanking(contestId), Channels.contestSubmission(contestId)],
+        [
+          Channels.contestRanking(contestId),
+          Channels.contestSubmission(contestId),
+        ],
         after,
         200,
       );

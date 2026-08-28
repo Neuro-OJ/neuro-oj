@@ -47,7 +47,7 @@ export function useMessages() {
    * 查找或创建会话。
    */
   function findOrCreateConversation(otherUserId: string) {
-    return api.post<{ data: Conversation }>("/api/v1/conversations", {
+    return api.post<{ data: Conversation }>('/api/v1/conversations', {
       other_user_id: otherUserId,
     });
   }
@@ -89,7 +89,7 @@ export function useMessages() {
    */
   async function fetchUnreadCount(): Promise<number> {
     const res = await api.get<{ unread_count: number }>(
-      "/api/v1/conversations/unread-count",
+      '/api/v1/conversations/unread-count',
       { silent: true },
     );
     return res.unread_count;

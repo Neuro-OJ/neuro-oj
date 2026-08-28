@@ -46,7 +46,13 @@ function generate(entries: RouteEntry[]): string {
     "| 方法 | 路径 | 文件 |",
     "| --- | --- | --- |",
   ];
-  for (const entry of entries.sort((a, b) => a.path.localeCompare(b.path))) {
+  for (
+    const entry of entries.sort((a, b) =>
+      a.method.localeCompare(b.method) ||
+      a.path.localeCompare(b.path) ||
+      a.file.localeCompare(b.file)
+    )
+  ) {
     lines.push(`| ${entry.method} | \`${entry.path}\` | ${entry.file} |`);
   }
   return lines.join("\n") + "\n";
