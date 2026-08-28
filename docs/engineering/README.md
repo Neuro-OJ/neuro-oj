@@ -1,0 +1,9 @@
+# NOJ 工程规范
+
+面向 NOJ 开发者的工程文档：
+
+- [开发指南](development.md)
+- [测试体系](testing.md)
+- [防御模式](defensive-patterns.md)
+
+根 `AGENTS.md` 中的“规则 + 链接”指向这里的详细文档。

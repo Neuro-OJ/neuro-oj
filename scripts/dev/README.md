@@ -86,7 +86,7 @@ bash scripts/dev/devtool.sh init-env --merge
 
 详细 FAQ 见：
 
-- 仓库根 [`AGENTS.md` §14 故障排查速查](../../AGENTS.md#14-故障排查速查)
+- 仓库根 [`AGENTS.md` §14 故障排查](../../AGENTS.md#14-故障排查)
 - 仓库根 [`README.md` §故障排查](../../README.md#故障排查)
 - 子模块 `noj-core/CLAUDE.md` / `noj-ui/CLAUDE.md` / `noj-judge/CLAUDE.md` 的"关键安全措施 / 池内部常量 / 容器安全"段落
 
