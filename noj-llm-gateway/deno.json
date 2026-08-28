@@ -6,6 +6,8 @@
     "dev": "deno run --watch --env-file=.env -A src/main.ts",
     "start": "deno run --env-file=.env -A src/main.ts",
     "test": "deno test -A --no-check",
+    "test:snapshot": "deno test -A --no-check tests/replay_test.ts",
+    "test:snapshot:record": "deno run -A scripts/record-replay.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
