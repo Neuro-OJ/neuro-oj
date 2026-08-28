@@ -7,5 +7,6 @@ if (import.meta.main) {
   await run(["deno", "run", "-A", "scripts/verify-agent-note-format.ts"]);
   await run(["deno", "run", "-A", "scripts/verify-md-links.ts"]);
   await run(["deno", "run", "-A", "scripts/verify-export-jsdoc.ts"]);
+  await run(["deno", "run", "-A", "scripts/verify-capability-seams.ts"]);
   console.log("CI 仓库级门禁通过");
 }
