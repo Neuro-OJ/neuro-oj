@@ -1,6 +1,6 @@
 {
-  "id": "57d766d9-9be8-4855-99ba-c29a6939b83f",
-  "prevId": "e9afcfcd-ecf4-4ab0-8f82-0407c8fc85ac",
+  "id": "72febd3e-30af-4404-a9bc-6a2b8f33e29f",
+  "prevId": "b161fdb9-ffcf-4915-85b0-9141c00d2d3d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2383,7 +2383,7 @@
           "name": "score",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         }
       },
       "indexes": {},
@@ -2623,7 +2623,7 @@
       "checkConstraints": {
         "contests_type_check": {
           "name": "contests_type_check",
-          "value": "\"contests\".\"type\" IN ('icpc', 'ioi', 'oi')"
+          "value": "\"contests\".\"type\" IN ('kaggle')"
         },
         "contests_time_check": {
           "name": "contests_time_check",
@@ -4295,6 +4295,19 @@
           "notNull": true,
           "default": false
         },
+        "submission_mode": {
+          "name": "submission_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'code'"
+        },
+        "artifact_max_size_mb": {
+          "name": "artifact_max_size_mb",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "llm_config": {
           "name": "llm_config",
           "type": "jsonb",
@@ -4354,6 +4367,10 @@
         "problems_type_check": {
           "name": "problems_type_check",
           "value": "\"problems\".\"type\" IN ('U', 'P')"
+        },
+        "problems_submission_mode_check": {
+          "name": "problems_submission_mode_check",
+          "value": "\"problems\".\"submission_mode\" IN ('code', 'artifact')"
         },
         "problems_runtime_config_check": {
           "name": "problems_runtime_config_check",
@@ -4757,6 +4774,65 @@
       },
       "isRLSEnabled": false
     },
+    "public.sse_events": {
+      "name": "sse_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "channel": {
+          "name": "channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_sse_events_channel_id": {
+          "name": "idx_sse_events_channel_id",
+          "columns": [
+            {
+              "expression": "channel",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.submissions": {
       "name": "submissions",
       "schema": "",
@@ -4806,6 +4882,18 @@
         },
         "file_name": {
           "name": "file_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "artifact_storage_url": {
+          "name": "artifact_storage_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "llm_provider_config_id": {
+          "name": "llm_provider_config_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -4919,6 +5007,21 @@
           "method": "btree",
           "with": {}
         },
+        "idx_submissions_llm_provider_config_id": {
+          "name": "idx_submissions_llm_provider_config_id",
+          "columns": [
+            {
+              "expression": "llm_provider_config_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_submissions_contest_problem_user": {
           "name": "idx_submissions_contest_problem_user",
           "columns": [
@@ -5007,6 +5110,19 @@
           "tableTo": "contests",
           "columnsFrom": [
             "contest_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "submissions_llm_provider_config_id_llm_providers_id_fk": {
+          "name": "submissions_llm_provider_config_id_llm_providers_id_fk",
+          "tableFrom": "submissions",
+          "tableTo": "llm_providers",
+          "columnsFrom": [
+            "llm_provider_config_id"
           ],
           "columnsTo": [
             "id"

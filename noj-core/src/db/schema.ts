@@ -8,6 +8,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  serial,
   text,
   unique,
   uniqueIndex,
@@ -1621,5 +1622,24 @@ export const communityNotifications = pgTable(
     commentIdx: index("idx_community_notifications_comment").on(
       table.comment_id,
     ),
+  }),
+);
+
+/**
+ * SSE 事件日志表。
+ *
+ * 全局单调 `id` 作为 SSE 的 Last-Event-ID；所有 SSE 频道共享此表，
+ * 通过 `channel` 区分。事件在状态变更处写入，随后发布 Redis 通知。
+ */
+export const sseEvents = pgTable(
+  "sse_events",
+  {
+    id: serial("id").primaryKey(),
+    channel: text("channel").notNull(),
+    payload: jsonb("payload").notNull(),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    channelIdx: index("idx_sse_events_channel_id").on(table.channel, table.id),
   }),
 );
