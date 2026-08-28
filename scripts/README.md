@@ -51,6 +51,8 @@ scripts/
 | **单脚本下载并部署**                     | `bash scripts/deploy/install.sh --ref v0.1.0 --dir /opt/neuro-oj` |
 | **检测 Linux 部署环境**                  | `bash scripts/deploy/install.sh check`                           |
 | **安装基础部署工具**                     | `sudo bash scripts/deploy/install.sh install-env`                |
+| **独立 Judge 一键部署**                   | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/judge-install.sh \| bash -s -- install --dir /srv/noj-judge` |
+| **检查独立 Judge 环境**                   | `bash /srv/noj-judge/judge-install.sh check`                      |
 | **启动/停止生产服务**                    | `bash scripts/deploy/deploy.sh start` / `stop`                   |
 | **升级生产版本**                         | `bash scripts/deploy/deploy.sh upgrade`                          |
 | **查看生产状态/日志**                    | `bash scripts/deploy/deploy.sh status` / `logs [service]`        |

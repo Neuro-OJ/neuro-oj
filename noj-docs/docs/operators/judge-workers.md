@@ -9,6 +9,49 @@ Evaluator + Solution 双容器（用后即毁），并把结果写回 Redis。
 
 支持多个 Judge Worker 实例水平扩展：所有实例消费同一个 Redis 队列，互不冲突。
 
+## 独立节点一键部署
+
+如果评测节点不运行 noj-core、noj-ui 或完整源码仓库，可以只下载部署脚本，然后由脚本
+生成独立 Compose 配置：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/judge-install.sh \
+  | bash -s -- install --dir /srv/noj-judge
+```
+
+首次执行会引导填写以下配置：
+
+- `NOJ_VERSION`：不可变 Release 版本，例如 `v0.1.0`；
+- `REDIS_URL`：与 noj-core 相同的 Redis 地址、数据库和认证信息；
+- `JUDGE_QUEUE` / `RESULT_QUEUE`：必须与 noj-core 使用的队列名称一致；
+- `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID`：只服务于 Judge 的 rootless
+  Docker daemon Unix socket 及其组 ID。
+
+部署前必须准备专用 rootless Docker daemon。脚本会检查 Linux、Docker、Compose、Redis、
+磁盘/内存、镜像架构和 socket 权限，但不会自动安装或替换 Docker daemon，也不会修改
+宿主机 systemd、subuid/subgid。`/var/run/docker.sock`、`/run/docker.sock`、TCP/HTTP
+Docker endpoint 都会被拒绝。
+
+管理独立 Worker：
+
+```bash
+bash /srv/noj-judge/judge-install.sh check
+bash /srv/noj-judge/judge-install.sh status
+bash /srv/noj-judge/judge-install.sh logs --follow
+bash /srv/noj-judge/judge-install.sh stop
+bash /srv/noj-judge/judge-install.sh upgrade --version v0.1.1
+```
+
+也可以在目标机只下载指定 ref 的脚本，审阅后再执行：
+
+```bash
+bash /srv/noj-judge/judge-install.sh download --ref v0.1.0 --dir /srv/noj-judge
+```
+
+当前生产 Release 镜像由发布流水线提供 `linux/amd64`。ARM64 主机必须先确认所选
+版本发布了对应 manifest；否则脚本会在启动前提示架构不匹配，不能通过回退到宿主机
+Docker socket 绕过该限制。
+
 ### 评测并发上限
 
 单个 Worker 同时执行的评测任务数由 `JUDGE_MAX_CONCURRENT_JUDGES` 控制，默认值为
