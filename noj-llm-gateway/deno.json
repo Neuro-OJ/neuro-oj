@@ -6,6 +6,7 @@
     "dev": "deno run --watch --env-file=.env -A src/main.ts",
     "start": "deno run --env-file=.env -A src/main.ts",
     "test": "deno test -A --no-check",
+    "test:coverage": "rm -rf coverage && DENO_DIR=.deno_cov_cache deno test -A --coverage=coverage && DENO_DIR=.deno_cov_cache deno coverage --threshold=54 coverage",
     "test:snapshot": "deno test -A --no-check tests/replay_test.ts",
     "test:snapshot:record": "deno run -A scripts/record-replay.ts",
     "fmt": "deno fmt",

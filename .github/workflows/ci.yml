@@ -248,6 +248,26 @@ jobs:
         run: deno run -A scripts/smoke-entrypoints.ts
 
   # ===========================================================================
+  # 覆盖率门禁（noj-llm-gateway / noj-ui）
+  # ===========================================================================
+  coverage-check:
+    name: Coverage Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 覆盖率检查
+        run: deno run -A scripts/coverage-report.ts
+
+  # ===========================================================================
   # noj-core — 快速冒烟测试（不依赖外部服务，使用 PGlite 内存数据库）
   # ===========================================================================
   core-smoke:
