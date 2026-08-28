@@ -112,6 +112,33 @@ export const SUBMISSION_STATUSES: readonly SubmissionStatus[] = [
 ];
 
 /**
+ * 穷尽检查辅助：用于 closed union 的 default 分支。
+ * 新增状态值时，编译期会因参数不是 never 而报错。
+ */
+export function assertNever(value: never): never {
+  throw new Error(`不可达的分支: ${String(value)}`);
+}
+
+/**
+ * 判断提交状态是否为终态。
+ * 使用 switch + assertNever，新增状态时编译期强制更新。
+ */
+export function isTerminalSubmissionStatus(
+  status: SubmissionStatus,
+): boolean {
+  switch (status) {
+    case "pending":
+    case "judging":
+      return false;
+    case "finished":
+    case "error":
+      return true;
+    default:
+      return assertNever(status);
+  }
+}
+
+/**
  * 分数精度常量。
  * score 以 ×100 的整数值存储，读取时除以 SCORE_SCALE 还原。
  */
