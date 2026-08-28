@@ -57,17 +57,27 @@
 - `delete(url)`: 从 S3 删除对象
 - `downloadUrl(url, expiresInSec?)`: 生成 presigned GET URL，percent 编码后返回 `noj-download://s3?url=[encoded-url]&checksum_sha256=<hex>`
 
-配置通过环境变量：`S3_ENDPOINT`、`S3_REGION`、`S3_ACCESS_KEY`、`S3_SECRET_KEY`、`S3_BUCKET`。
+生产配置通过 `S3_ENDPOINT`、`S3_REGION`、`S3_ACCESS_KEY`、`S3_SECRET_KEY`、`S3_BUCKET` 提供，且应用凭据 MUST 是目标 bucket 的最小权限凭据，不得使用对象存储 root 管理凭据。
 
 #### Scenario: S3 模式实现
 
 - **WHEN** `STORAGE_PROVIDER=s3` 且 S3 环境变量已配置
 - **THEN** `createStorageProvider()` 返回 `S3StorageProvider` 实例
 
+#### Scenario: 生产环境禁止 local 模式
+
+- **WHEN** `NOJ_ENV=production` 且 `STORAGE_PROVIDER` 不是 `s3`
+- **THEN** 启动时抛出致命错误，服务不启动
+
 #### Scenario: S3 配置缺失报错
 
-- **WHEN** `STORAGE_PROVIDER=s3` 但 `S3_ENDPOINT` 未设置
+- **WHEN** `STORAGE_PROVIDER=s3` 且 endpoint、访问密钥、秘密密钥或 bucket 任一未设置
 - **THEN** 启动时抛出致命错误，服务不启动
+
+#### Scenario: 应用凭据权限受限
+
+- **WHEN** 生产 core 使用 S3 应用凭据访问支持包 bucket
+- **THEN** 读写、删除和列举目标 bucket 成功，但不能执行 MinIO 管理操作或访问其他 bucket
 
 ### Requirement: 存储 key 根目录约束
 所有 storage provider 在读/写/删前 SHALL 解析并规范化 key，拒绝空 key、`..`、以 `/` 开头或解析后逃逸存储根目录的 key。
@@ -75,3 +85,17 @@
 #### Scenario: key 包含 ..
 - **WHEN** 存储操作收到含 `..` 的 key
 - **THEN** 操作被拒绝，不访问根目录外路径
+
+### Requirement: 生产 MinIO 初始化失败必须阻止依赖服务启动
+
+生产部署的对象存储初始化 MUST 在 bucket 创建、策略创建、应用用户创建或策略绑定任一操作失败时以非零状态退出。依赖该初始化成功的 core 服务 MUST NOT 被判定为可启动；初始化过程 MUST 不依赖目标镜像未提供的外部工具。
+
+#### Scenario: policy 创建失败
+
+- **WHEN** MinIO 初始化无法创建或更新 bucket-scoped 应用 policy
+- **THEN** 初始化任务返回非零状态，core 不因错误的成功状态而启动
+
+#### Scenario: 初始化成功
+
+- **WHEN** MinIO 初始化成功创建目标 bucket、应用用户和 bucket-scoped policy
+- **THEN** 初始化任务返回零状态，应用凭据能够读写目标 bucket 且不能访问其他 bucket 或 MinIO 管理接口

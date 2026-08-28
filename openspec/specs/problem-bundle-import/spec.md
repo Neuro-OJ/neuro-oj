@@ -100,6 +100,30 @@
 - **WHEN** `template` 字段含 `/`、`\` 或 `..`
 - **THEN** 题目包导入返回 HTTP 400，错误信息指明 `manifest.template` 非法
 
+### Requirement: manifest.llm 字段
+
+系统 SHALL 支持 `problem.json` 顶层可选字段 `llm`，用于声明题目可用的 LLM Provider 与模型。`llm` MUST 为对象，包含 `provider_id`（非空字符串）与 `model`（非空字符串）；该字段仅对受信题目（管理员 P 型/官方题或审核通过题目）合法，且必须与 `runtime_config.evaluator.network.enabled = true` 同时出现。
+
+#### Scenario: 合法 llm 字段
+
+- **WHEN** 导入包中的 `problem.json` 包含 `llm: {"provider_id": "uuid", "model": "qwen-plus"}`，且 `runtime_config.evaluator.network.enabled = true`
+- **THEN** 导入校验通过，`llm` 配置写入题目 `llm_config`
+
+#### Scenario: llm 字段缺少 model
+
+- **WHEN** `problem.json` 的 `llm` 缺少 `model` 或 `model` 为空
+- **THEN** 系统返回 HTTP 400，提示 `llm.model` 必填
+
+#### Scenario: llm 字段未开启网络
+
+- **WHEN** `problem.json` 包含 `llm` 但 `runtime_config.evaluator.network.enabled` 不是 true
+- **THEN** 系统返回 HTTP 400，提示必须启用 evaluator 网络
+
+#### Scenario: 非受信题目携带 llm
+
+- **WHEN** 导入 U 型题目或未审核题目且 `problem.json` 包含 `llm`
+- **THEN** 系统返回 HTTP 403，提示仅受信题目可启用 LLM
+
 ### Requirement: 严格校验与 ZIP 安全
 
 系统 SHALL 对导入包执行严格校验，根级缺失 `problem.json` 或 `evaluate.py` 的 zip MUST 被拒绝（HTTP 400）。ZIP 解析 MUST 复用既有安全约束：拒绝路径穿越条目（`..` 或 `/` 开头）、条目数 ≤ 1000、单文件 ≤ 64 MiB、总解压 ≤ 512 MiB。
@@ -250,3 +274,54 @@ CLI MUST 提供自动生成的 help（`-h/--help`）与错误退出码约定。`
 - **WHEN** 用户短时间内调用 import-bundle 次数超过阈值
 - **THEN** 系统返回 HTTP 429，且不解析上传包
 
+
+### Requirement: manifest 字段对齐
+
+系统 SHALL 在 `problem.json` 中使用 `tags`（字符串数组）作为标签字段，不再接受 `categories`。`tags` 按 name 匹配已有标签，缺省忽略 + warning。
+
+#### Scenario: manifest 使用 tags
+
+- **WHEN** `problem.json` 含 `"tags": ["入门", "LMCC 样例题"]`
+- **THEN** 系统按标签名解析并关联已有标签；不存在的标签名被忽略并记录 warning
+
+#### Scenario: manifest 使用已退役 categories
+
+- **WHEN** `problem.json` 含 `"categories": [...]`
+- **THEN** 系统返回 HTTP 400，提示使用 `tags` 字段
+
+### Requirement: 包结构与版本
+
+系统 SHALL 定义统一题目包结构：根级 MUST 包含 `problem.json` 与 `evaluate.py`，SHOULD 包含 `statement.md`，可包含 `visible.jsonl`/`hidden.jsonl`/`assets/` 等评测内容。`format_version` 当前 MUST 为 `1`，未知版本 MUST 返回 HTTP 400。
+
+#### Scenario: 合法包结构
+
+- **WHEN** zip 根级含 `problem.json`、`evaluate.py`、`statement.md`、`visible.jsonl`、`hidden.jsonl`、`assets/`
+- **THEN** 系统接受该包为合法导入载体
+
+#### Scenario: 未知 format_version
+
+- **WHEN** `problem.json` 的 `format_version` 不是 `1`
+- **THEN** 系统返回 HTTP 400，提示不支持的 manifest 格式版本
+
+### Requirement: 测试数据推荐约定
+
+系统 SHALL 在文档中推荐 JSONL 测试数据格式（`id`/`input`/`expected`/`score`/`tags`/`message`），并推荐目录约定 `visible.jsonl`/`hidden.jsonl` 或 `cases/visible/*.json`/`cases/hidden/*.json`。测试数据格式本身不强制，evaluator 自行读取。
+
+#### Scenario: 文档提供推荐约定
+
+- **WHEN** 出题人阅读统一题目包文档
+- **THEN** 文档给出 JSONL 字段说明与目录约定，并说明格式不强制
+
+### Requirement: 特殊题型边界
+
+系统 SHALL 在规范中明确：LLM 调用题通过 manifest `llm` 字段配置（`provider_id`/`model`），必须 P 型 + evaluator 联网；客观题套卷不通过统一题目包导入，走 Web 编辑器/API 管理。
+
+#### Scenario: LLM 字段校验
+
+- **WHEN** `problem.json` 含 `llm` 且 type 非 P 或未开启 evaluator 网络
+- **THEN** 系统返回 HTTP 400
+
+#### Scenario: 客观题不通过包导入
+
+- **WHEN** 用户尝试用统一题目包导入客观题套卷
+- **THEN** 文档明确该路径不支持，应使用 Web 编辑器/API
