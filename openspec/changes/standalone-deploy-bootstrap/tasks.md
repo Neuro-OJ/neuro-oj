@@ -12,7 +12,7 @@
 - [x] 2.1 新增 bootstrap shell smoke test，覆盖帮助、dry-run、下载失败、危险归档、空目录安装、非空目录保护和部署失败传播；通过项目约定命令运行。
 - [x] 2.2 更新 `scripts/README.md` 和生产部署文档，记录单脚本下载命令、固定 ref、目标目录、首次配置和后续升级边界；通过文档中的命令与脚本参数保持一致验证。
 - [x] 2.3 扩展 bootstrap smoke test，覆盖 `check`、`install-env`、不支持系统、Docker 缺失和资源摘要；通过离线测试运行。
-- [ ] 2.4 增加首次配置引导的交互式 smoke test，覆盖合法输入、密码不回显、Provider 分支、无 TTY 和 `--non-interactive`。
+- [x] 2.4 增加首次配置引导的非交互 smoke test，并在 Linux PTY 中实测合法输入、密码不回显、Provider 分支、Judge socket 和配置权限。
 
 ## 3. 验证
 
