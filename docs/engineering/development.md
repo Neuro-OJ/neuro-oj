@@ -12,6 +12,12 @@
 docker compose up -d
 ```
 
+本地 Git hooks（可选，推荐）：
+
+```bash
+node scripts/install-git-hooks.mjs
+```
+
 一键启动/停止：
 
 ```bash
