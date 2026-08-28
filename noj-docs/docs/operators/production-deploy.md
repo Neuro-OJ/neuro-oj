@@ -25,7 +25,8 @@ sudo bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj
 ```
 
 首次执行会将源码放入 `/opt/neuro-oj`，随后创建权限为 `600` 的 `.env.prod` 并生成
-部分随机密钥，然后停止并提示填写配置。编辑配置后重新执行：
+部分随机密钥，然后在终端逐项引导填写生产配置。管理员密码和邮件 Provider 密钥不会
+回显，完成后脚本会继续进行配置校验和服务启动。没有 TTY 时才会停止并提示手工编辑配置：
 
 ```bash
 sudo vim /opt/neuro-oj/.env.prod
@@ -60,6 +61,13 @@ Compose plugin、Docker daemon 权限和 Judge 使用的独立 rootless Docker d
 脚本自动修改。检测仍失败时，请按提示安装 Docker 后重新执行 `check`。`check` 会报告
 Linux/CPU 架构、基础工具、Docker/Compose、内存、目标目录磁盘空间和默认 8080 端口；可
 通过 `--port` 指定实际端口。
+
+如果需要无人值守执行，可显式使用 `--non-interactive`；此时首次配置不询问，必须提前
+准备完整的 `.env.prod`，否则脚本以非零状态退出：
+
+```bash
+bash noj-install.sh --non-interactive --ref v0.1.0 --dir /opt/neuro-oj
+```
 
 `.env.prod` 中必须填写：
 

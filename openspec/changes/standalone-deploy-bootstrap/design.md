@@ -43,12 +43,17 @@ Bootstrap 自己解析仓库、ref、目录、dry-run 和 download-only 参数�
 
 `check` 命令只读检测宿主机，不要求先下载仓库；它报告 Linux/架构、基础命令、Docker/Compose、内存、磁盘和默认端口。`install-env` 只安装 `ca-certificates`、`curl`、`wget`、`tar` 和 `openssl` 等基础工具，并按 `apt-get`、`dnf`、`yum`、`apk` 或 `pacman` 选择包管理器。Docker Engine、Compose 插件和 Judge rootless daemon 不由脚本自动安装，缺失时输出官方文档地址和可执行的下一步，避免不透明的高权限系统修改。
 
+### 7. 首次生产配置引导
+
+首次创建 `.env.prod` 后，生产部署入口在具备 TTY 且未指定 `--non-interactive` 时进入交互引导。引导复用现有安全写入函数逐项更新配置：版本、域名和应用地址、管理员账号、邮件 Provider 与凭据、Judge 隔离 Docker socket 及其 GID；`CORS_ALLOWED_ORIGINS` 根据 `APP_URL` 自动设置。管理员密码使用隐藏输入、二次确认并要求至少 12 位，Provider 密钥也使用隐藏输入。没有 TTY 的脚本调用保持可自动化：只生成 600 权限的模板并返回明确的手工编辑提示，不尝试从标准输入猜测配置。
+
 ## Risks / Trade-offs
 
 - [HTTPS 归档仍依赖远程仓库可用性] → 提供 `--repo`、`--ref` 和下载失败诊断；生产使用固定 Release tag。
 - [源码归档未提供额外签名校验] → 仅允许 HTTPS，并拒绝隐式更新；后续可增加发布签名或 SHA-256 参数，不在本变更中引入密钥分发体系。
 - [非空目录拒绝会使升级需要额外命令] → 明确提示进入现有目录执行 `deploy.sh upgrade`，避免 bootstrap 意外覆盖配置。
 - [归档格式依赖 GitHub 目录结构] → 校验单一顶层目录并在归档结构变化时快速失败，不静默复制不完整项目。
+- [交互引导不适合无人值守部署] → 提供 `--non-interactive` 和无 TTY 自动降级提示，保留手工配置与 CI 失败边界。
 
 ## Migration Plan
 

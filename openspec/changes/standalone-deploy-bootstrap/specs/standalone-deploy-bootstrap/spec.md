@@ -84,3 +84,27 @@ Bootstrap MUST 提供只读的 `check` 命令，检测 Linux 系统、支持的 
 
 - **WHEN** 用户执行 `install.sh install-env` 且无法识别受支持的包管理器或当前系统不是 Linux
 - **THEN** 脚本返回非零状态，输出手工安装基础工具和 Docker/Compose 的提示，不执行不确定的系统修改
+
+### Requirement: 首次生产配置交互引导
+
+生产部署入口 MUST 在首次创建 `.env.prod` 后、检测配置前提供交互式引导；引导 MUST 询问并写入
+`NOJ_VERSION`、`DOMAIN`、`APP_URL`、管理员邮箱与密码、邮件 Provider 及其必要凭据、
+`JUDGE_DOCKER_SOCKET` 和 `JUDGE_DOCKER_SOCKET_GID`，并可根据域名自动设置
+`CORS_ALLOWED_ORIGINS`。密码和云厂商密钥 MUST 使用隐藏输入，不得回显或写入日志；管理员密码 MUST
+要求至少 12 位并二次确认。已有 `.env.prod` MUST 保留，不得被引导覆盖；无 TTY 或显式
+`--non-interactive` 时 MUST 给出编辑配置文件和重新执行命令，并以非零状态退出。
+
+#### Scenario: 交互式首次配置
+
+- **WHEN** 用户在终端首次执行生产安装且 `.env.prod` 不存在
+- **THEN** 脚本逐项引导用户填写生产配置，隐藏敏感输入，完成后继续执行配置校验和服务部署
+
+#### Scenario: 非交互式首次配置
+
+- **WHEN** 用户在无 TTY 环境或使用 `--non-interactive` 首次执行生产安装
+- **THEN** 脚本创建权限为 600 的配置模板，列出需要填写的配置项和后续命令，并返回非零状态
+
+#### Scenario: 敏感输入保护
+
+- **WHEN** 用户输入管理员密码或邮件 Provider 密钥
+- **THEN** 终端不回显输入，脚本输出不包含输入值，配置文件权限保持为 600

@@ -118,6 +118,17 @@ fi
 [[ -f "$new_env" ]] || fail "首次初始化未创建配置文件"
 [[ "$(stat -f '%Lp' "$new_env" 2>/dev/null || stat -c '%a' "$new_env")" == "600" ]] ||
   fail "新建配置文件权限不是 600"
+non_interactive_env="$TEST_ROOT/non-interactive.env"
+if NOJ_DEPLOY_DOCKER_BIN="$FAKE_DOCKER" NOJ_DEPLOY_TEST_LOG="$FAKE_LOG" \
+  bash "$DEPLOY_SCRIPT" install --non-interactive --env-file "$non_interactive_env" --compose-file "$COMPOSE_FILE" \
+  >"$TEST_ROOT/non-interactive.out" 2>"$TEST_ROOT/non-interactive.err"; then
+  fail "--non-interactive 首次初始化应该返回非零"
+fi
+grep -q '没有可交互终端' "$TEST_ROOT/non-interactive.err" ||
+  fail "--non-interactive 未给出明确的配置提示"
+[[ "$(stat -f '%Lp' "$non_interactive_env" 2>/dev/null || stat -c '%a' "$non_interactive_env")" == "600" ]] ||
+  fail "--non-interactive 配置文件权限不是 600"
+pass "非交互式首次配置提示"
 grep -q '^JWT_SECRET=' "$new_env" || fail "首次初始化未写入随机密钥"
 if grep -q '^JWT_SECRET=change-' "$new_env"; then fail "首次初始化仍保留 JWT 占位值"; fi
 pass "首次配置初始化与权限保护"

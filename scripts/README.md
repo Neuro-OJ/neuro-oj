@@ -91,3 +91,7 @@ cd noj-judge && cargo run
 Compose、内存、磁盘和端口。`sudo bash noj-install.sh install-env` 只会通过系统包管理器
 安装 `ca-certificates`、`curl`、`tar` 和 `openssl`；Docker Engine、Compose plugin 和
 Judge rootless Docker daemon 不由脚本自动安装。
+
+首次执行安装时，终端会引导填写 `NOJ_VERSION`、`DOMAIN`、`APP_URL`、管理员账号、邮件
+Provider 及 Judge Docker socket；密码和邮件密钥不会回显。没有 TTY 的自动化场景会保留
+配置模板并返回非零状态，可使用 `--non-interactive` 明确选择该行为。

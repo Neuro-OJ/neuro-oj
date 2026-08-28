@@ -22,6 +22,7 @@ CHECK_PORT="${NOJ_BOOTSTRAP_PORT:-8080}"
 COMMAND=""
 DOWNLOAD_ONLY=0
 DRY_RUN=0
+NON_INTERACTIVE=0
 TEMP_ROOT=""
 ARCHIVE_URL=""
 ARCHIVE_ROOT=""
@@ -69,12 +70,16 @@ Neuro OJ Linux 独立下载部署工具
   --port PORT            检测宿主机端口（默认 8080）
   --download-only        只下载源码，不执行生产部署
   --dry-run              只显示下载计划，不下载、不写文件、不启动服务
+  --non-interactive      首次配置不询问，配置不完整时直接失败
   -h, --help             显示帮助
 
 环境变量：
   NOJ_BOOTSTRAP_REPOSITORY  默认仓库地址
   NOJ_BOOTSTRAP_REF         默认 ref
   NOJ_BOOTSTRAP_DIR         默认安装目录
+
+部署参数：
+  通过 -- 后传递给下载后的 deploy.sh install，例如 -- --non-interactive
 
 目标目录非空时脚本会拒绝覆盖；已有安装请进入目标目录执行 deploy.sh upgrade。
 生产环境建议使用不可变 Release tag，并让 --ref 与 .env.prod 中的 NOJ_VERSION 一致。
@@ -122,6 +127,7 @@ parse_args() {
       --port=*) CHECK_PORT="${1#*=}" ;;
       --download-only) DOWNLOAD_ONLY=1 ;;
       --dry-run) DRY_RUN=1 ;;
+      --non-interactive) NON_INTERACTIVE=1 ;;
       -h|--help) usage; exit 0 ;;
       --)
         shift
@@ -424,6 +430,7 @@ install_source() {
 
 run_deploy() {
   local status
+  ((NON_INTERACTIVE)) && DEPLOY_ARGS+=(--non-interactive)
   ((DOWNLOAD_ONLY)) && {
     ok "仅下载模式完成，未启动生产服务"
     return 0
