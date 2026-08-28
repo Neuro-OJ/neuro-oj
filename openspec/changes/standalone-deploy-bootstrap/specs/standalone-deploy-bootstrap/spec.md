@@ -60,3 +60,27 @@ Bootstrap MUST 提供帮助信息、dry-run 和下载完成后的部署入口调
 
 - **WHEN** 目标项目的生产部署入口失败
 - **THEN** bootstrap 返回相同的失败结果，并提示用户进入目标目录查看 `status` 或 `logs`
+
+### Requirement: Linux 环境检测与基础依赖安装
+
+Bootstrap MUST 提供只读的 `check` 命令，检测 Linux 系统、支持的 CPU 架构、Bash、curl/wget、tar、openssl、Docker Engine、Docker Compose v2、可用内存、目标目录所在磁盘和默认 Web 端口，并以非零状态报告阻断性缺失项；Bootstrap MUST 提供 `install-env` 命令，使用当前系统可识别的包管理器安装缺失的基础工具，但 MUST NOT 未经单独确认修改 Docker 软件源、安装 Docker daemon、创建 rootless daemon 或改变宿主机权限。
+
+#### Scenario: 环境检测通过
+
+- **WHEN** 用户执行 `install.sh check` 且 Linux 主机具备所需基础工具、Docker daemon 和 Compose v2
+- **THEN** 脚本输出系统与依赖版本、资源摘要和端口检查结果，并返回零状态
+
+#### Scenario: 环境检测失败
+
+- **WHEN** 用户执行 `install.sh check` 且系统不是 Linux、架构不受支持、基础工具缺失、Docker daemon 不可用或 Compose v2 缺失
+- **THEN** 脚本返回非零状态，列出缺失检查项和修复建议，不下载源码、不创建安装目录、不启动服务
+
+#### Scenario: 安装基础依赖
+
+- **WHEN** 用户执行 `install.sh install-env` 且当前发行版提供受支持的包管理器
+- **THEN** 脚本以 root 或明确的 sudo 权限安装基础工具，随后重新检测环境；Docker 缺失时只输出官方安装提示并保持非零状态
+
+#### Scenario: 不支持的发行版
+
+- **WHEN** 用户执行 `install.sh install-env` 且无法识别受支持的包管理器或当前系统不是 Linux
+- **THEN** 脚本返回非零状态，输出手工安装基础工具和 Docker/Compose 的提示，不执行不确定的系统修改

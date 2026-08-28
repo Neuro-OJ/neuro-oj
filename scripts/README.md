@@ -49,6 +49,8 @@ scripts/
 | **更新环境变量模板（保留自定义）**       | `bash scripts/dev/devtool.sh init-env --merge`                  |
 | **首次生产部署**                         | `bash scripts/deploy/deploy.sh install`                          |
 | **单脚本下载并部署**                     | `bash scripts/deploy/install.sh --ref v0.1.0 --dir /opt/neuro-oj` |
+| **检测 Linux 部署环境**                  | `bash scripts/deploy/install.sh check`                           |
+| **安装基础部署工具**                     | `sudo bash scripts/deploy/install.sh install-env`                |
 | **启动/停止生产服务**                    | `bash scripts/deploy/deploy.sh start` / `stop`                   |
 | **升级生产版本**                         | `bash scripts/deploy/deploy.sh upgrade`                          |
 | **查看生产状态/日志**                    | `bash scripts/deploy/deploy.sh status` / `logs [service]`        |
@@ -84,3 +86,8 @@ cd noj-judge && cargo run
 `deploy/install.sh` 可以从仓库中单独下载后执行。它只获取指定 ref 的源码并调用
 下载后的 `deploy.sh`，目标目录非空时会拒绝覆盖；已有安装请直接进入目标目录执行
 `deploy.sh upgrade`。
+
+在单脚本模式下可先执行 `bash noj-install.sh check` 检查 Linux、架构、基础工具、Docker
+Compose、内存、磁盘和端口。`sudo bash noj-install.sh install-env` 只会通过系统包管理器
+安装 `ca-certificates`、`curl`、`tar` 和 `openssl`；Docker Engine、Compose plugin 和
+Judge rootless Docker daemon 不由脚本自动安装。

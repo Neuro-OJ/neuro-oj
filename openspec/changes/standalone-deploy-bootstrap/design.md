@@ -39,6 +39,10 @@ Bootstrap 自己解析仓库、ref、目录、dry-run 和 download-only 参数�
 
 新增 shell smoke test，使用假的下载器和本地测试归档验证帮助、dry-run、参数传递、目标目录保护、危险归档拒绝、临时文件清理和失败状态传播；真实网络、Docker 和生产服务继续由现有部署测试覆盖。
 
+### 6. 环境检测与安装边界
+
+`check` 命令只读检测宿主机，不要求先下载仓库；它报告 Linux/架构、基础命令、Docker/Compose、内存、磁盘和默认端口。`install-env` 只安装 `ca-certificates`、`curl`、`wget`、`tar` 和 `openssl` 等基础工具，并按 `apt-get`、`dnf`、`yum`、`apk` 或 `pacman` 选择包管理器。Docker Engine、Compose 插件和 Judge rootless daemon 不由脚本自动安装，缺失时输出官方文档地址和可执行的下一步，避免不透明的高权限系统修改。
+
 ## Risks / Trade-offs
 
 - [HTTPS 归档仍依赖远程仓库可用性] → 提供 `--repo`、`--ref` 和下载失败诊断；生产使用固定 Release tag。

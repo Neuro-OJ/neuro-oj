@@ -43,6 +43,24 @@ bootstrap 默认使用 `v0.1.0`，可通过 `--ref` 指定其他分支或 Releas
 上面的 `sudo bash noj-install.sh ...`。bootstrap 只依赖 Linux 上常见的 Bash、`curl`
 或 `wget`、`tar`，实际服务部署仍需要 Docker Engine 与 Docker Compose v2。
 
+部署前可以先检测宿主机：
+
+```bash
+bash noj-install.sh check
+```
+
+如果缺少基础工具，可让脚本通过当前发行版的包管理器安装：
+
+```bash
+sudo bash noj-install.sh install-env
+```
+
+`install-env` 只安装 CA 证书、curl、tar 和 openssl 等基础工具；Docker Engine、Docker
+Compose plugin、Docker daemon 权限和 Judge 使用的独立 rootless Docker daemon 不会被
+脚本自动修改。检测仍失败时，请按提示安装 Docker 后重新执行 `check`。`check` 会报告
+Linux/CPU 架构、基础工具、Docker/Compose、内存、目标目录磁盘空间和默认 8080 端口；可
+通过 `--port` 指定实际端口。
+
 `.env.prod` 中必须填写：
 
 | 变量 | 说明 |

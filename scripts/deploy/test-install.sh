@@ -60,6 +60,43 @@ exec /usr/bin/tar "$@"
 EOF
 chmod +x "$FAKE_BIN/tar"
 
+cat >"$FAKE_BIN/uname" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+  -s) printf 'Linux\n' ;;
+  -m) printf 'x86_64\n' ;;
+  *) /usr/bin/uname "$@" ;;
+esac
+EOF
+chmod +x "$FAKE_BIN/uname"
+
+cat >"$FAKE_BIN/docker" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+if [[ "${NOJ_BOOTSTRAP_DOCKER_FAIL:-0}" == 1 && "${1:-}" == info ]]; then
+  exit 1
+fi
+case "${1:-}" in
+  --version) printf 'Docker version 28.0.0, build test\n' ;;
+  info) exit 0 ;;
+  compose) printf 'Docker Compose version v2.36.0\n' ;;
+  *) exit 0 ;;
+esac
+EOF
+chmod +x "$FAKE_BIN/docker"
+
+cat >"$FAKE_BIN/ss" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$FAKE_BIN/ss"
+
+cat >"$FAKE_BIN/apt-get" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$FAKE_BIN/apt-get"
+
 export PATH="$FAKE_BIN:$PATH"
 export NOJ_BOOTSTRAP_ARCHIVE="$ARCHIVE"
 export NOJ_BOOTSTRAP_DOWNLOAD_LOG="$DOWNLOAD_LOG"
@@ -67,6 +104,28 @@ export NOJ_BOOTSTRAP_DEPLOY_LOG="$DEPLOY_LOG"
 
 bash "$INSTALL_SCRIPT" --help >/dev/null
 pass "帮助输出"
+
+check_out="$TEST_ROOT/check.out"
+bash "$INSTALL_SCRIPT" check --port 18080 >"$check_out"
+grep -q '环境检测通过' "$check_out" || fail "环境检测通过提示缺失"
+grep -q 'Docker Compose：v2 可用' "$check_out" || fail "Compose 检测结果缺失"
+pass "环境检测与资源摘要"
+
+set +e
+NOJ_BOOTSTRAP_DOCKER_FAIL=1 bash "$INSTALL_SCRIPT" check >"$TEST_ROOT/check-fail.out" 2>"$TEST_ROOT/check-fail.err"
+check_status=$?
+set -e
+[[ "$check_status" != 0 ]] || fail "Docker daemon 缺失未被检测"
+grep -q 'Docker daemon' "$TEST_ROOT/check-fail.err" || fail "Docker 缺失错误提示缺失"
+[[ ! -s "$DOWNLOAD_LOG" ]] || fail "check 命令不应下载源码"
+pass "环境缺失状态与无副作用"
+
+install_env_out="$TEST_ROOT/install-env.out"
+bash "$INSTALL_SCRIPT" install-env --dry-run >"$install_env_out"
+grep -q '安装基础工具' "$install_env_out" || fail "install-env 未显示基础工具安装计划"
+grep -q 'Docker 请按发行版官方文档安装' <(bash "$INSTALL_SCRIPT" --help) ||
+  fail "Docker 安装边界说明缺失"
+pass "基础依赖安装计划"
 
 dry_run_dir="$TEST_ROOT/dry-run"
 bash "$INSTALL_SCRIPT" --dry-run --repo https://example.com/repo --ref v0.1.0 --dir "$dry_run_dir" >"$TEST_ROOT/dry-run.out"

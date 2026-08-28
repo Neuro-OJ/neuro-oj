@@ -18,6 +18,8 @@ readonly DEFAULT_REF="v0.1.0"
 REPOSITORY="${NOJ_BOOTSTRAP_REPOSITORY:-$DEFAULT_REPOSITORY}"
 REF="${NOJ_BOOTSTRAP_REF:-$DEFAULT_REF}"
 TARGET_DIR="${NOJ_BOOTSTRAP_DIR:-/opt/neuro-oj}"
+CHECK_PORT="${NOJ_BOOTSTRAP_PORT:-8080}"
+COMMAND=""
 DOWNLOAD_ONLY=0
 DRY_RUN=0
 TEMP_ROOT=""
@@ -34,6 +36,7 @@ fi
 
 ok() { printf "%b✓%b %s\n" "$GREEN" "$RESET" "$*"; }
 warn() { printf "%b!%b %s\n" "$YELLOW" "$RESET" "$*" >&2; }
+section() { printf '\n== %s ==\n' "$*"; }
 fail() {
   printf "%b✗%b %s\n" "$RED" "$RESET" "$*" >&2
   exit 1
@@ -44,18 +47,26 @@ usage() {
 Neuro OJ Linux 独立下载部署工具
 
 用法：
-  install.sh [选项] [-- <deploy.sh 参数>]
+  install.sh [check|install-env|install] [选项] [-- <deploy.sh 参数>]
 
 示例：
   curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/install.sh \
     -o noj-install.sh
   bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj
+  bash noj-install.sh check
+  sudo bash noj-install.sh install-env
   bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj -- --dry-run
+
+命令：
+  check                  检测 Linux、基础工具、Docker/Compose、资源和端口
+  install-env            安装基础工具并重新检测环境（不会安装 Docker）
+  install                下载源码并执行生产部署（默认命令）
 
 选项：
   --repo URL             GitHub 仓库地址（默认 Neuro-OJ/neuro-oj）
   --ref REF              固定分支或 Release tag（默认 v0.1.0）
   --dir DIRECTORY        安装目录（默认 /opt/neuro-oj）
+  --port PORT            检测宿主机端口（默认 8080）
   --download-only        只下载源码，不执行生产部署
   --dry-run              只显示下载计划，不下载、不写文件、不启动服务
   -h, --help             显示帮助
@@ -67,6 +78,7 @@ Neuro OJ Linux 独立下载部署工具
 
 目标目录非空时脚本会拒绝覆盖；已有安装请进入目标目录执行 deploy.sh upgrade。
 生产环境建议使用不可变 Release tag，并让 --ref 与 .env.prod 中的 NOJ_VERSION 一致。
+install-env 只安装 curl、tar、openssl 和 CA 证书等基础工具；Docker 请按发行版官方文档安装。
 EOF
 }
 
@@ -80,6 +92,10 @@ trap cleanup EXIT
 parse_args() {
   while (($# > 0)); do
     case "$1" in
+      check|install-env|install)
+        [[ -z "$COMMAND" ]] || fail "只能指定一个命令"
+        COMMAND="$1"
+        ;;
       --repo|--repository)
         (($# >= 2)) || fail "$1 需要一个仓库地址"
         REPOSITORY="$2"
@@ -98,6 +114,12 @@ parse_args() {
         shift
         ;;
       --dir=*|--target-dir=*) TARGET_DIR="${1#*=}" ;;
+      --port)
+        (($# >= 2)) || fail "--port 需要一个端口号"
+        CHECK_PORT="$2"
+        shift
+        ;;
+      --port=*) CHECK_PORT="${1#*=}" ;;
       --download-only) DOWNLOAD_ONLY=1 ;;
       --dry-run) DRY_RUN=1 ;;
       -h|--help) usage; exit 0 ;;
@@ -110,6 +132,7 @@ parse_args() {
     esac
     shift
   done
+  COMMAND="${COMMAND:-install}"
 }
 
 validate_inputs() {
@@ -141,6 +164,162 @@ check_dependencies() {
     return 0
   fi
   command -v wget >/dev/null 2>&1 || fail "需要 curl 或 wget，请先安装其中一个"
+}
+
+docker_install_hint() {
+  cat >&2 <<'EOF'
+Docker Engine 或 Docker Compose v2 不可用。
+请按照发行版官方文档安装 Docker Engine 和 Compose plugin：
+  https://docs.docker.com/engine/install/
+安装后重新执行：bash noj-install.sh check
+EOF
+}
+
+check_port() {
+  local occupied=0
+  [[ "$CHECK_PORT" =~ ^[0-9]+$ ]] && ((CHECK_PORT >= 1 && CHECK_PORT <= 65535)) || {
+    printf '  - 端口号无效：%s\n' "$CHECK_PORT" >&2
+    return 1
+  }
+  if command -v ss >/dev/null 2>&1; then
+    if ss -ltnH 2>/dev/null | awk -v port=":$CHECK_PORT" '$4 ~ (port "$") { found=1 } END { exit !found }'; then
+      occupied=1
+    fi
+  elif command -v lsof >/dev/null 2>&1; then
+    if lsof -nP -iTCP:"$CHECK_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+      occupied=1
+    fi
+  else
+    warn "未找到 ss/lsof，无法确认端口 $CHECK_PORT 是否被占用"
+    return 0
+  fi
+  if ((occupied)); then
+    printf '  - 端口 %s 已被监听，启动 Nginx 可能失败\n' "$CHECK_PORT" >&2
+    return 1
+  fi
+  ok "端口 $CHECK_PORT 可用"
+}
+
+check_host() {
+  local failed=0 system arch os_name mem_mb disk_path disk_kb
+  section "检查 Linux 部署环境"
+
+  system="$(uname -s 2>/dev/null || true)"
+  if [[ "$system" != Linux ]]; then
+    printf '  - 当前系统：%s；生产部署脚本仅支持 Linux\n' "${system:-unknown}" >&2
+    failed=1
+  else
+    ok "操作系统：Linux"
+  fi
+
+  arch="$(uname -m 2>/dev/null || true)"
+  case "$arch" in
+    x86_64|aarch64|arm64) ok "CPU 架构：$arch" ;;
+    *)
+      printf '  - 不支持的 CPU 架构：%s（支持 x86_64/aarch64）\n' "${arch:-unknown}" >&2
+      failed=1
+      ;;
+  esac
+  os_name="unknown"
+  [[ -r /etc/os-release ]] && os_name="$(awk -F= '$1 == "PRETTY_NAME" { gsub(/^"|"$/, "", $2); print $2; exit }' /etc/os-release)"
+  printf '系统版本：%s\n' "$os_name"
+
+  for command_name in bash tar openssl; do
+    if command -v "$command_name" >/dev/null 2>&1; then
+      ok "基础工具：$command_name"
+    else
+      printf '  - 缺少基础工具：%s\n' "$command_name" >&2
+      failed=1
+    fi
+  done
+  if command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1; then
+    ok "下载工具：curl 或 wget"
+  else
+    printf '  - 缺少下载工具：curl 或 wget\n' >&2
+    failed=1
+  fi
+
+  if command -v docker >/dev/null 2>&1; then
+    ok "Docker CLI：$(docker --version 2>/dev/null || printf '可执行')"
+    if docker info >/dev/null 2>&1; then
+      ok "Docker daemon：可用"
+    else
+      printf '  - Docker daemon 未运行或当前用户无权限\n' >&2
+      failed=1
+    fi
+    if docker compose version >/dev/null 2>&1; then
+      ok "Docker Compose：v2 可用"
+    else
+      printf '  - Docker Compose v2 plugin 不可用\n' >&2
+      failed=1
+    fi
+  else
+    printf '  - 未安装 Docker CLI\n' >&2
+    docker_install_hint
+    failed=1
+  fi
+
+  if [[ -r /proc/meminfo ]]; then
+    mem_mb="$(awk '/^MemTotal:/ { printf "%d", $2 / 1024; exit }' /proc/meminfo)"
+    printf '可用内存信息：物理内存约 %s MiB\n' "$mem_mb"
+  else
+    warn "无法读取 /proc/meminfo，跳过内存摘要"
+  fi
+  disk_path="$(dirname -- "$TARGET_DIR")"
+  [[ -d "$disk_path" ]] || disk_path="/"
+  disk_kb="$(df -Pk "$disk_path" 2>/dev/null | awk 'NR == 2 { print $4 }')"
+  if [[ "$disk_kb" =~ ^[0-9]+$ ]]; then
+    printf '目标目录所在磁盘可用空间：约 %s MiB\n' "$((disk_kb / 1024))"
+  else
+    warn "无法读取目标目录所在磁盘空间"
+  fi
+  check_port || failed=1
+
+  if ((failed)); then
+    printf '%s\n' '环境检测失败，请先修复阻断项后重试。' >&2
+    return 1
+  fi
+  ok "环境检测通过"
+}
+
+install_env() {
+  local package_manager package_command
+  [[ "$(uname -s 2>/dev/null || true)" == Linux ]] ||
+    fail "install-env 仅支持 Linux"
+
+  if command -v apt-get >/dev/null 2>&1; then
+    package_manager=apt-get
+    package_command="$package_manager update && $package_manager install -y ca-certificates curl tar openssl"
+  elif command -v dnf >/dev/null 2>&1; then
+    package_manager=dnf
+    package_command="$package_manager install -y ca-certificates curl tar openssl"
+  elif command -v yum >/dev/null 2>&1; then
+    package_manager=yum
+    package_command="$package_manager install -y ca-certificates curl tar openssl"
+  elif command -v apk >/dev/null 2>&1; then
+    package_manager=apk
+    package_command="$package_manager add --no-cache ca-certificates curl tar openssl"
+  elif command -v pacman >/dev/null 2>&1; then
+    package_manager=pacman
+    package_command="$package_manager -Sy --needed --noconfirm ca-certificates curl tar openssl"
+  else
+    fail "无法识别包管理器；请手动安装 ca-certificates、curl、tar 和 openssl"
+  fi
+  if ((DRY_RUN)); then
+    ok "[dry-run] 将使用 $package_manager 安装基础工具：ca-certificates curl tar openssl"
+    ok "[dry-run] 命令：$package_command"
+    return 0
+  fi
+  [[ "${EUID:-$(id -u)}" -eq 0 ]] ||
+    fail "install-env 需要 root 权限，请使用 sudo bash noj-install.sh install-env"
+  case "$package_manager" in
+    apt-get) apt-get update; apt-get install -y ca-certificates curl tar openssl ;;
+    dnf|yum) "$package_manager" install -y ca-certificates curl tar openssl ;;
+    apk) apk add --no-cache ca-certificates curl tar openssl ;;
+    pacman) pacman -Sy --needed --noconfirm ca-certificates curl tar openssl ;;
+  esac
+  ok "基础工具安装完成（包管理器：$package_manager）"
+  check_host
 }
 
 check_target() {
@@ -271,13 +450,26 @@ run_deploy() {
 
 main() {
   parse_args "$@"
-  validate_inputs
-  check_dependencies
-  check_target
-  printf '仓库：%s\nref：%s\n目标目录：%s\n' "$REPOSITORY" "$REF" "$TARGET_DIR"
-  printf '下载地址：%s\n' "$ARCHIVE_URL"
-  install_source
-  run_deploy
+  case "$COMMAND" in
+    check)
+      check_host
+      ;;
+    install-env)
+      install_env
+      ;;
+    install)
+      validate_inputs
+      check_dependencies
+      check_target
+      printf '仓库：%s\nref：%s\n目标目录：%s\n' "$REPOSITORY" "$REF" "$TARGET_DIR"
+      printf '下载地址：%s\n' "$ARCHIVE_URL"
+      install_source
+      run_deploy
+      ;;
+    *)
+      fail "未知命令：$COMMAND"
+      ;;
+  esac
 }
 
 main "$@"
