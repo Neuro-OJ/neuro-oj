@@ -2,7 +2,7 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { todayUtc } from "../lib/dates.ts";
 import { getDb } from "../db/connection.ts";
 import { evaluationResults, submissions } from "../db/schema.ts";
-import { Channels, publishEvent } from "../lib/event-bus.ts";
+import { Channels, publishSseEvent } from "../lib/event-bus.ts";
 import { FULL_SCORE } from "../lib/constants.ts";
 
 export interface StatsSnapshot {
@@ -112,8 +112,8 @@ export function applyNewResult(score: number | null, createdAt: string): void {
     todayTotal++;
     if (score !== null && score >= FULL_SCORE) todayFullScore!++;
   }
-  // 推送 SSE 事件（fire-and-forget）
-  publishEvent(Channels.stats, JSON.stringify({ type: "stats:updated" }));
+  // 写入 SSE 事件日志并发布 Redis 通知（fire-and-forget）
+  void publishSseEvent(Channels.stats, { type: "stats:updated" });
 }
 
 /**

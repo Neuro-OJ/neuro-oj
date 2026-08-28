@@ -1,0 +1,14 @@
+{
+  "model": "deepseek-chat",
+  "request": {
+    "messages": [{ "role": "user", "content": "ping" }],
+    "max_tokens": 5
+  },
+  "response": {
+    "choices": [
+      {
+        "message": { "role": "assistant", "content": "pong" }
+      }
+    ]
+  }
+}

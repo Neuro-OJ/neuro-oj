@@ -22,7 +22,7 @@ import { getUserLlmProvider } from "../llm.ts";
 import type { JudgeTask, JudgeTaskLlm } from "../../types/index.ts";
 import type { RuntimeConfig } from "../../types/problems.ts";
 import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
-import { Channels, publishEvent } from "../../lib/event-bus.ts";
+import { Channels, publishSseEvent } from "../../lib/event-bus.ts";
 import { updateSubmissionStatus } from "./submissions-result.ts";
 import { logger } from "../../lib/logging.ts";
 
@@ -188,7 +188,7 @@ export async function rejudgeSubmission(id: string): Promise<void> {
     );
   }
 
-  publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
+  await publishSseEvent(Channels.queue, { type: "queue:changed" });
 }
 
 /**
@@ -396,7 +396,7 @@ export async function rejudgeProblemSubmissions(
     }
   }
 
-  publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
+  await publishSseEvent(Channels.queue, { type: "queue:changed" });
 
   return {
     total,

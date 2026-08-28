@@ -59,7 +59,9 @@ export function useMessages() {
     return api.get<{
       data: ConversationMessage[];
       pagination: Pagination;
-    }>(`/api/v1/conversations/${conversationId}/messages?page=${page}&per_page=${perPage}`);
+    }>(
+      `/api/v1/conversations/${conversationId}/messages?page=${page}&per_page=${perPage}`,
+    );
   }
 
   /**
@@ -83,7 +85,7 @@ export function useMessages() {
 
   /**
    * 获取未读消息总数（用于导航栏徽标）。
-   * 静默模式：轮询失败不弹窗，返回 0。
+   * 静默模式：失败不弹 toast，但异常会向上抛出。
    */
   async function fetchUnreadCount(): Promise<number> {
     const res = await api.get<{ unread_count: number }>(
@@ -95,7 +97,7 @@ export function useMessages() {
 
   /**
    * 获取单会话未读数。
-   * 静默模式：轮询失败不弹窗，返回 0。
+   * 静默模式：失败不弹 toast，但异常会向上抛出。
    */
   async function fetchUnreadCountByConversation(
     conversationId: string,

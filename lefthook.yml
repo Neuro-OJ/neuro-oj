@@ -1,0 +1,18 @@
+# Lefthook 配置（本地快检；CI 负责全量）
+# 安装：node scripts/install-git-hooks.mjs
+
+pre-commit:
+  commands:
+    fmt:
+      glob: "*.{ts,tsx,vue}"
+      run: deno fmt --check {staged_files}
+    lint:
+      glob: "*.{ts,tsx,vue}"
+      run: deno lint {staged_files}
+    whitespace:
+      run: git diff --cached --check
+
+pre-push:
+  commands:
+    typecheck:
+      run: echo "本地 pre-push 不跑全量；CI 负责完整检查"

@@ -8,7 +8,7 @@ import {
   users,
 } from "../db/schema.ts";
 import { BadRequestError, NotFoundError } from "../lib/errors.ts";
-import { Channels, publishEvent } from "../lib/event-bus.ts";
+import { Channels, publishSseEvent } from "../lib/event-bus.ts";
 
 /** 消息内容最大长度 */
 const MAX_MESSAGE_LENGTH = 10_000;
@@ -177,14 +177,14 @@ export async function sendMessage(
       .set({ last_message_at: now })
       .where(eq(conversations.id, conversationId));
   });
-  // 通过 Redis Pub/Sub 通知接收方
-  publishEvent(
+  // 写入 SSE 事件日志并发布 Redis 通知
+  await publishSseEvent(
     Channels.user(otherUserId),
-    JSON.stringify({
+    {
       type: "message:new",
       conversation_id: conversationId,
       sender_id: userId,
-    }),
+    },
   );
 
   return message;

@@ -231,7 +231,7 @@ cd noj-core && deno task dev-setup
 ### 测试
 
 ```bash
-# noj-core 单元 + 集成测试（71 个测试文件）
+# noj-core 单元 + 集成测试
 cd noj-core && deno task test
 
 # noj-judge 单元测试
@@ -241,7 +241,7 @@ cd noj-judge && cargo test --lib
 cd noj-judge && NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
 # ...（其余：e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_problem_limits / e2e_dual_container / e2e_network_capability）
 
-# 跨模块全链路 E2E（23 个测试文件，需先启动完整环境）
+# 跨模块全链路 E2E（需先启动完整环境）
 cd noj-tests && deno task test
 ```
 

@@ -9,7 +9,7 @@
 import { getDb } from "../db/connection.ts";
 import { communityNotifications } from "../db/schema.ts";
 import { nowIso } from "../lib/dates.ts";
-import { Channels, publishEvent } from "../lib/event-bus.ts";
+import { Channels, publishSseEvent } from "../lib/event-bus.ts";
 
 /**
  * 通知类型：社区互动（reply/like/follow/moderation）与竞赛答疑（clarification）。
@@ -53,11 +53,11 @@ export async function createNotification(
   };
   const db = getDb();
   await db.insert(communityNotifications).values(notification);
-  publishEvent(
+  await publishSseEvent(
     Channels.user(recipientId),
-    JSON.stringify({
+    {
       type: "notification:new",
       notification_id: notification.id,
-    }),
+    },
   );
 }

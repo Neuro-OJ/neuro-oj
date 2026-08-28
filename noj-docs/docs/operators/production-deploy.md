@@ -310,4 +310,4 @@ Compose 服务必须已经停止。建议恢复到单独主机或单独数据卷
   磁盘空间不足、`verify` 失败和恢复演练失败发送告警。备份目录应同步到与生产主机
   不同故障域的加密存储。
 
-密钥轮换和失效步骤见[生产密钥轮换 Runbook](./production-secrets)。
+密钥轮换和失效步骤见[生产密钥轮换 Runbook](./production-secrets.md)。

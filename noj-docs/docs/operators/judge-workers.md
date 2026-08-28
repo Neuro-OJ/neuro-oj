@@ -92,7 +92,7 @@ cd noj-judge
 ```
 
 生产部署时，`init system` 会根据 `JUDGE_IMAGE_BASE`（默认 `ghcr.io/neuro-oj/`）写入
-ghcr 全限定镜像名；若需要手工确认，见[生产部署](production-deploy.md#评测镜像白名单)。
+ghcr 全限定镜像名；若需要手工确认，见[生产部署](production-deploy.md#3-评测镜像白名单)。
 
 镜像基于 `python:3.12-slim`，不预装额外 Python 包，题目依赖由出题人在 evaluator 中自行管理。
 

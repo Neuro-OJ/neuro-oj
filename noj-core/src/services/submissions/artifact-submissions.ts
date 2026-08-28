@@ -24,7 +24,7 @@ import { assertContestSubmissionLimit } from "../contest/contests.ts";
 import { buildJudgeTaskLlm } from "../../lib/llm-token.ts";
 import { buildJudgeTaskLlmForProvider } from "../../lib/llm-token.ts";
 import { getUserLlmProvider } from "../llm.ts";
-import { Channels, publishEvent } from "../../lib/event-bus.ts";
+import { Channels, publishSseEvent } from "../../lib/event-bus.ts";
 import { logger } from "../../lib/logging.ts";
 import type { JudgeTask, JudgeTaskLlm } from "../../types/index.ts";
 import type { LlmConfig, RuntimeConfig } from "../../types/problems.ts";
@@ -307,17 +307,17 @@ export async function createArtifactSubmission(
     await db.update(submissions).set({ status: "judging" }).where(
       and(eq(submissions.id, id), eq(submissions.status, "pending")),
     );
-    publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
+    await publishSseEvent(Channels.queue, { type: "queue:changed" });
     if (resolvedContestId) {
-      publishEvent(
+      await publishSseEvent(
         Channels.contestSubmission(resolvedContestId),
-        JSON.stringify({
+        {
           type: "contest:submission:created",
           contest_id: resolvedContestId,
           submission_id: id,
           user_id: userId,
           problem_id: input.problem_id,
-        }),
+        },
       );
     }
   } catch (mqErr) {

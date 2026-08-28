@@ -39,7 +39,7 @@ S3 交付示例：
 noj-download://s3?url=<encoded-presigned-url>&checksum_sha256=...
 ```
 
-生产环境必须使用独立的 S3 应用凭据。MinIO root 凭据仅供初始化和受限运维使用，不能注入 `noj-core`；生产配置和轮换步骤见[生产密钥轮换 Runbook](../operators/production-secrets)。
+生产环境必须使用独立的 S3 应用凭据。MinIO root 凭据仅供初始化和受限运维使用，不能注入 `noj-core`；生产配置和轮换步骤见[生产密钥轮换 Runbook](../operators/production-secrets.md)。
 
 ## 为什么要分两层
 

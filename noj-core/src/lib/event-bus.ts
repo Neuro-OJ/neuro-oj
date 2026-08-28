@@ -1,6 +1,7 @@
 import { createPubSubRedis, getRedis } from "../mq/connection.ts";
 import type { RedisClient } from "../mq/connection.ts";
 import { logger } from "./logging.ts";
+import { recordSseEvent } from "./sse-events.ts";
 
 /**
  * Redis Pub/Sub 频道前缀。
@@ -61,6 +62,26 @@ export function publishEvent(channel: string, message: string): void {
   } catch (err) {
     logger.error("publishEvent 异常", { channel, err });
   }
+}
+
+/**
+ * 写入 SSE 事件日志并发布 Redis 通知。
+ *
+ * 返回事件 id；调用方可在 payload 中附带 seq 供客户端去重。
+ * 写库失败不阻塞 Redis 通知（记录日志后继续发布）。
+ */
+export async function publishSseEvent(
+  channel: string,
+  payload: unknown,
+): Promise<number> {
+  let id = 0;
+  try {
+    id = await recordSseEvent(channel, payload);
+  } catch (err) {
+    logger.error("recordSseEvent 失败", { channel, err });
+  }
+  publishEvent(channel, JSON.stringify({ ...(payload as object), seq: id }));
+  return id;
 }
 
 /**

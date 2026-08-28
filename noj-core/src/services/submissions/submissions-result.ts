@@ -17,7 +17,7 @@ import type { JudgeResult, SubmissionStatus } from "../../types/index.ts";
 import { applyNewResult } from "../stats-cache.ts";
 import { refreshRankingsView } from "../rankings.ts";
 import { logger } from "../../lib/logging.ts";
-import { Channels, publishEvent } from "../../lib/event-bus.ts";
+import { Channels, publishSseEvent } from "../../lib/event-bus.ts";
 import { createActivity } from "../community/community.ts";
 
 // 允许的状态转换
@@ -201,13 +201,13 @@ export async function saveEvaluationResult(
   }
 
   if (outcome.contest_id) {
-    publishEvent(
+    await publishSseEvent(
       Channels.contestRanking(outcome.contest_id),
-      JSON.stringify({
+      {
         type: "contest:ranking:updated",
         contest_id: outcome.contest_id,
         submission_id: result.submission_id,
-      }),
+      },
     );
   }
 

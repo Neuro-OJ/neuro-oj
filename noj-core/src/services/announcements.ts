@@ -19,7 +19,7 @@ import { and, count, desc, eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { announcements } from "../db/schema.ts";
 import { NotFoundError, ValidationError } from "../lib/errors.ts";
-import { Channels, publishEvent } from "../lib/event-bus.ts";
+import { Channels, publishSseEvent } from "../lib/event-bus.ts";
 import { generatePublicId, isPublicId, isUuid } from "../lib/public-id.ts";
 import { getRequestContext } from "../lib/requestContext.ts";
 import { buildPaginationMeta, type PaginationMeta } from "../lib/pagination.ts";
@@ -97,11 +97,11 @@ export interface AdminAnnouncementListResponse {
   meta: PaginationMeta;
 }
 
-/** 广播公告变更（fire-and-forget，失败仅记日志，不阻塞写流程） */
-function broadcastAnnouncementUpdate(): void {
-  publishEvent(
+/** 广播公告变更（写 SSE 事件日志 + Redis 通知） */
+async function broadcastAnnouncementUpdate(): Promise<void> {
+  await publishSseEvent(
     Channels.announcements,
-    JSON.stringify({ type: "announcement:updated" }),
+    { type: "announcement:updated" },
   );
 }
 
@@ -274,7 +274,7 @@ export async function createAnnouncement(
     { action: "announcement.create", title: row!.title },
     { type: "announcement", id },
   );
-  broadcastAnnouncementUpdate();
+  await broadcastAnnouncementUpdate();
 
   return { ...row! };
 }
@@ -317,7 +317,7 @@ export async function updateAnnouncement(
     { action: "announcement.update", title: row!.title },
     { type: "announcement", id },
   );
-  broadcastAnnouncementUpdate();
+  await broadcastAnnouncementUpdate();
 
   return { ...row! };
 }
@@ -343,5 +343,5 @@ export async function deleteAnnouncement(id: string): Promise<void> {
     { action: "announcement.delete", title: existing[0].title },
     { type: "announcement", id },
   );
-  broadcastAnnouncementUpdate();
+  await broadcastAnnouncementUpdate();
 }

@@ -7,7 +7,7 @@
  * 后续所有"环境变量"读取走 snapshot，不直接调 Deno.env.get：
  * - 性能：O(1) 内存读 vs 系统调用
  * - 语义：env-only 设置项与 DB-backed 设置项同构（都是 Map 查找）
- * - 测试：NOJ_ENV=test 时跳过快照，返回空对象不阻断
+ * - 测试：通过 _resetEnvSnapshotForTest 重置快照状态
  *
  * 与 settings-registry 的区别：
  * - settings-registry 定义 DB-backed 设置项（admin 可改）
@@ -129,8 +129,7 @@ let _snapshotted = false;
 
 /**
  * 执行启动期快照。
- * - NOJ_ENV === 'test' 时跳过（测试环境 .env 可能不存在），返回空对象
- * - 正常情况下遍历 ENV_ONLY_DEFINITIONS 把 Deno.env.get 结果写入 envSnapshot
+ * 遍历 ENV_ONLY_DEFINITIONS 把 Deno.env.get 结果写入 envSnapshot。
  *
  * 应在 main.ts 启动顺序的"DB 迁移之后"调用一次。
  */
