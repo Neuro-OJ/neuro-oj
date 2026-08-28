@@ -614,6 +614,7 @@ OpenSpec 变更归档到 `openspec/changes/archive/` 时，目录名必须遵循
 - [ ] 中文提交描述符合 Conventional Commits
 - [ ] GPG 签名可用
 - [ ] 若是功能变更，OpenSpec 变更已 `/opsx:propose` 起草
+- [ ] 非平凡变更包含 Agent Note（`.agents/notes/implemented/`）
 - [ ] 优先使用 `scripts/` 下的开发工具脚本完成标准操作，而非手动拼接命令
 - [ ] 测试通过 `deno task` 运行（优先 `deno task test:parallel`），不直接手拼
       `deno test` 命令
@@ -674,6 +675,16 @@ jj config get signing.key 2>/dev/null
 ```
 
 未配置时，说明必要性并引导用户配置，**不得**在签名就绪前提交。
+
+### 9.3 Agent Notes（决策记录）
+
+非平凡变更必须新增或更新 `.agents/notes/implemented/` 下对应记录，记录“为什么”和“放弃了什么”。
+
+- 分类：`feature` / `bug-fix` / `simplification` / `architecture` / `process` / `testing`
+- 路径：`implemented/<分类>/yyyy-mm-dd-topic-title.md`
+- 格式：`# Agent Note: <标题>` + `Status: implemented` + `## Problem` / `## Decision` / `## Alternatives considered` / `## Consequences`
+- 校验：CI 运行 `deno run -A scripts/verify-agent-note-format.ts`
+- 详细约定见 `.agents/notes/README.md`
 
 ---
 

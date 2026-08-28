@@ -9,7 +9,8 @@
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
-    "check": "deno fmt --check && deno lint && deno check src/mod.ts"
+    "check": "deno fmt --check && deno lint && deno check src/mod.ts",
+    "check:jsdoc": "deno run -A ../scripts/verify-export-jsdoc.ts"
   },
   "imports": {
     "hono": "npm:hono@^4",

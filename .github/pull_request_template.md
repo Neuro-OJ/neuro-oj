@@ -58,6 +58,7 @@ Closes #
 - [ ] 数据库 schema 变更已通过 `deno task db:generate` 生成迁移
 - [ ] 提交信息符合 Conventional Commits（`<type>(<scope>): 中文描述`）
 - [ ] 若是功能变更，已 `/opsx:propose` 起草 OpenSpec 提案
+- [ ] 非平凡变更包含 Agent Note（`.agents/notes/implemented/`）
 - [ ] GPG 签名可用
 
 ## 截图 / 录屏（可选）
