@@ -228,6 +228,26 @@ jobs:
         run: deno run -A scripts/check-ci.ts
 
   # ===========================================================================
+  # 真实入口 Smoke（源码入口 + 已构建产物）
+  # ===========================================================================
+  entrypoint-smoke:
+    name: Entrypoint Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 入口 Smoke
+        run: deno run -A scripts/smoke-entrypoints.ts
+
+  # ===========================================================================
   # noj-core — 快速冒烟测试（不依赖外部服务，使用 PGlite 内存数据库）
   # ===========================================================================
   core-smoke:
