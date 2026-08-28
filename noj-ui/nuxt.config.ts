@@ -52,6 +52,12 @@ export default defineNuxtConfig({
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
         { name: 'description', content: 'Neuro OJ — 面向 AI 领域认证与竞赛（IOAI / NOAI / LMCC）的在线评测平台' },
+        { property: 'og:title', content: 'Neuro OJ' },
+        {
+          property: 'og:description',
+          content: 'Neuro OJ — 面向 AI 领域认证与竞赛（IOAI / NOAI / LMCC）的在线评测平台',
+        },
+        { property: 'og:type', content: 'website' },
       ],
     },
   },
@@ -66,6 +72,22 @@ export default defineNuxtConfig({
         process.exit(0);
       }
     },
+  },
+
+  // 公开 GET 接口缓存（SWR），降低 noj-core 压力；认证/个性化接口显式 no-store
+  routeRules: {
+    '/api/v1/problems': { swr: 60 },
+    '/api/v1/rankings': { swr: 60 },
+    '/api/v1/contests': { swr: 60 },
+    '/api/v1/trainings': { swr: 60 },
+    '/api/v1/announcements': { swr: 60 },
+    '/api/v1/tags': { swr: 60 },
+    '/api/v1/stats': { swr: 60 },
+    '/api/v1/auth/**': { headers: { 'cache-control': 'no-store' } },
+    '/api/v1/submissions/**': { headers: { 'cache-control': 'no-store' } },
+    '/api/v1/queue/**': { headers: { 'cache-control': 'no-store' } },
+    '/api/v1/community/**': { headers: { 'cache-control': 'no-store' } },
+    '/api/v1/users/me/**': { headers: { 'cache-control': 'no-store' } },
   },
 
   nitro: {

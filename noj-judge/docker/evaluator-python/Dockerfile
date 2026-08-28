@@ -9,7 +9,7 @@
 # （如 `python3 /workspace/evaluate.py`）。容器默认 cmd 设为 sleep infinity，
 # 因为容器是通过 exec 启动评测脚本而非 docker run。
 
-FROM python:3.12-slim@sha256:d764629ce0ddd8c71fd371e9901efb324a95789d2315a47db7e4d27e78f1b0e9
+FROM python:3.12-slim@sha256:a249c9f47e05708dd367f3fe8ada03cf347390fad66fb8b0518c0ef55ae3cb84
 LABEL org.opencontainers.image.description="Neuro OJ Dual-container Evaluator (Python 3.12, noj_evaluator_sdk)"
 LABEL com.noj.judge.kind="evaluator"
 

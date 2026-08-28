@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ middleware: "auth" })
+definePageMeta({ middleware: "auth", ssr: false })
 
 const route = useRoute()
 const { api } = useApi()
@@ -83,7 +83,9 @@ async function load() {
   }
 }
 
-await load()
+onMounted(() => {
+  void load()
+})
 </script>
 
 <template>

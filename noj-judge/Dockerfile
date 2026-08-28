@@ -11,7 +11,7 @@
 # Worker 使用非 root 用户运行；禁止挂载应用宿主机的 /var/run/docker.sock。
 
 # ── Builder：编译 release 二进制 ────────────────────────────────────
-FROM rust:1.86-slim-bookworm AS builder
+FROM rust:1.86-slim-bookworm@sha256:a044f7ab9a762f95be2ee7eb2c49e4d4a4ec60011210de9f7da01d552cae3a55 AS builder
 
 WORKDIR /build
 
@@ -28,7 +28,7 @@ RUN cargo build --release --bin noj-judge && \
     test -f /tmp/noj-judge || { echo "ERROR: binary not found after build" >&2; exit 1; }
 
 # ── Runtime：只保留二进制 ───────────────────────────────────────────
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:5ae3c39ebd15e229dcedd5cee596b2497182493d41ff162e824ba13fc1b2b867
 
 # ca-certificates：支持包/预签名 URL 的 HTTPS 下载
 RUN apt-get update \

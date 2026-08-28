@@ -43,7 +43,7 @@ x-core-env: &core-env
 services:
   # ── 一次性初始化：迁移 + 系统数据 + 管理员引导 ────────────────────
   migrate:
-    image: ${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-core:${NOJ_VERSION:-latest}
+    image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-core:${NOJ_VERSION:?NOJ_VERSION is required}"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -63,7 +63,7 @@ services:
 
   # ── 核心 API ──────────────────────────────────────────────────────
   core:
-    image: ${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-core:${NOJ_VERSION:-latest}
+    image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-core:${NOJ_VERSION:?NOJ_VERSION is required}"
     environment:
       <<: *core-env
     depends_on:
@@ -99,7 +99,7 @@ services:
 
   # ── 前端 SSR ──────────────────────────────────────────────────────
   ui:
-    image: ${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-ui:${NOJ_VERSION:-latest}
+    image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-ui:${NOJ_VERSION:?NOJ_VERSION is required}"
     environment:
       NUXT_API_BASE: http://core:8000
       NUXT_NOJ_ENV: ${NUXT_NOJ_ENV:-production}
@@ -129,7 +129,7 @@ services:
 
   # ── 评测 Worker ───────────────────────────────────────────────────
   judge:
-    image: ${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-judge:${NOJ_VERSION:-latest}
+    image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-judge:${NOJ_VERSION:?NOJ_VERSION is required}"
     environment:
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
       JUDGE_QUEUE: ${JUDGE_QUEUE:-noj:judge:queue}
@@ -175,11 +175,12 @@ services:
 
   # ── LLM Gateway ───────────────────────────────────────────────────
   llm-gateway:
-    image: ${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-llm-gateway:${NOJ_VERSION:-latest}
+    image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-llm-gateway:${NOJ_VERSION:?NOJ_VERSION is required}"
     environment:
       NOJ_LLM_PORT: "8001"
       NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:?NOJ_LLM_SERVICE_TOKEN is required}
       NOJ_LLM_STORE_KEY: ${NOJ_LLM_STORE_KEY:?NOJ_LLM_STORE_KEY is required}
+      NOJ_LLM_BYOK_ALLOWED_HOSTS: ${NOJ_LLM_BYOK_ALLOWED_HOSTS:-api.openai.com}
       NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE: ${NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE:-60}
       NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE: ${NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE:-60}
       DATABASE_URL: postgres://${POSTGRES_USER:-noj}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-noj}
@@ -212,7 +213,7 @@ services:
 
   # ── 反向代理 / TLS ────────────────────────────────────────────────
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.27-alpine@sha256:62223d644fa234c3a1cc785ee14242ec47a77364226f1c811d2f669f96dc2ac8
     ports:
       # 默认映射到宿主机 8080，避免与外部 TLS 终止层（如宿主机 Nginx）的 80 冲突；
       # 若直接由云 LB 转发 80，可设置 NGINX_PORT=80。
@@ -228,7 +229,7 @@ services:
 
   # ── PostgreSQL ────────────────────────────────────────────────────
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:075f7ba66bc9b3ce7d6b8b635208ff61cd7cf1a67d71ec530eec5d7ae0cbe571
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-noj}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
@@ -246,7 +247,7 @@ services:
 
   # ── Redis（带密码 + AOF）─────────────────────────────────────────
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:1db42ccef14898aa29bae778452d567534b59c107129cbc1163fb552de184d3c
     command:
       - redis-server
       - --requirepass
@@ -268,7 +269,7 @@ services:
 
   # ── MinIO（自建对象存储）─────────────────────────────────────────
   minio:
-    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z@sha256:d051d800a3025588f37f69f132bb5ef718547a9a4ee95ddee44e04ad952a0a96
     command: server /data --console-address :9001
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
@@ -281,7 +282,7 @@ services:
 
   # ── MinIO bucket 初始化（一次性，带重试等待 MinIO 就绪）──────────
   minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:eb4ea9884b77704230e2423e9004d2fa738dc272876b9cc41a297d29443b8780
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-

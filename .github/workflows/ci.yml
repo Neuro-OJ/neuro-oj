@@ -41,6 +41,21 @@ concurrency:
 jobs:
 
   # ===========================================================================
+  # 生产镜像供应链配置检查：在 PR 阶段提前阻止 latest 和未固定 digest 回归。
+  # ===========================================================================
+  supply-chain:
+    name: Production Supply Chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 检查供应链约束
+        run: bash scripts/release/test-supply-chain.sh
+
+  # ===========================================================================
   # 变更检测（dorny/paths-filter）
   #
   # PR 上按改动路径生成 core/ui/judge 三个模块 flag；各模块 job 据此

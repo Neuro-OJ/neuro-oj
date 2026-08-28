@@ -19,9 +19,16 @@ let timer: ReturnType<typeof setInterval> | undefined
 
 const { data, pending, error, refresh } = await useFetch<{ data: Contest }>(
   `/api/v1/contests/${contestId}`,
-  { server: false },
 )
 const contest = computed(() => data.value?.data ?? null)
+
+useSeoMeta({
+  title: () => contest.value?.title ? `${contest.value.title} - Neuro OJ` : '竞赛 - Neuro OJ',
+  description: () => contest.value?.description ? contest.value.description.slice(0, 160) : 'Neuro OJ 竞赛',
+  ogTitle: () => contest.value?.title ?? 'Neuro OJ',
+  ogDescription: () => contest.value?.description ? contest.value.description.slice(0, 160) : 'Neuro OJ 竞赛',
+})
+
 const problems = ref<ContestProblem[]>([])
 const problemsLoading = ref(false)
 const problemsError = ref('')

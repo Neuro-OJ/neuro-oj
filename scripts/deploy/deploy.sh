@@ -10,6 +10,7 @@
 #   bash scripts/deploy/deploy.sh status
 #   bash scripts/deploy/deploy.sh logs [service] [--follow]
 #   bash scripts/deploy/deploy.sh backup
+#   bash scripts/deploy/deploy.sh verify
 #
 # 脚本只封装 docker-compose.prod.yml，不执行 down -v、不删除数据卷，
 # 也不会 source 环境文件，避免环境变量中的特殊字符触发 shell 解析。
@@ -26,6 +27,7 @@ BACKUP_PASSPHRASE_FILE="${NOJ_BACKUP_PASSPHRASE_FILE:-}"
 DOCKER_BIN="${NOJ_DEPLOY_DOCKER_BIN:-docker}"
 DRY_RUN=0
 FOLLOW=0
+declare -a VERIFIED_IMAGE_DIGESTS=()
 
 if [[ -t 1 ]]; then
   GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; RESET='\033[0m'
@@ -54,6 +56,7 @@ Neuro OJ 生产部署工具
   deploy.sh logs [service]           查看最近日志
   deploy.sh logs [service] --follow  持续查看日志
   deploy.sh backup                   创建完整生产备份
+  deploy.sh verify                   校验生产镜像 digest 与 Cosign 签名
 
 选项：
   --env-file FILE       使用指定的生产环境文件
@@ -74,7 +77,7 @@ parse_args() {
   POSITIONAL=()
   while (($# > 0)); do
     case "$1" in
-      install|start|upgrade|stop|status|logs|backup)
+      install|start|upgrade|stop|status|logs|backup|verify)
         if [[ -n "$COMMAND" ]]; then
           POSITIONAL+=("$1")
         else
@@ -263,8 +266,9 @@ check_required_values() {
     printf "  - JUDGE_DOCKER_SOCKET_GID 必须是数字\n" >&2
     missing=1
   }
-  [[ "$(env_value NOJ_VERSION)" != "latest" ]] || {
-    printf "  - NOJ_VERSION 必须使用不可变 Release 标签，不得使用 latest\n" >&2
+  local version="$(env_value NOJ_VERSION)"
+  [[ "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || {
+    printf "  - NOJ_VERSION 必须是不可变 Release 标签（如 v0.1.0 或 0.1.1-rc.1）\n" >&2
     missing=1
   }
   ((missing == 0)) || fail "生产配置校验失败"
@@ -300,8 +304,65 @@ check_dependencies() {
   "$DOCKER_BIN" info >/dev/null 2>&1 || fail "Docker daemon 未运行或当前用户无权限"
   "$DOCKER_BIN" compose version >/dev/null 2>&1 ||
     fail "Docker Compose v2 不可用"
+  if [[ "$(env_value NOJ_ENFORCE_IMAGE_SIGNATURES)" != "false" ]]; then
+    "$DOCKER_BIN" buildx version >/dev/null 2>&1 ||
+      fail "镜像签名校验需要 Docker Buildx"
+  fi
   [[ -f "$COMPOSE_FILE" ]] || fail "找不到生产 Compose 文件：$COMPOSE_FILE"
   ok "Docker daemon 与 Compose 可用"
+}
+
+verify_image_signatures() {
+  [[ "$(env_value NOJ_ENFORCE_IMAGE_SIGNATURES)" != "false" ]] || {
+    warn "NOJ_ENFORCE_IMAGE_SIGNATURES=false，跳过生产镜像签名校验（仅适用于本地测试）"
+    return 0
+  }
+
+  command -v cosign >/dev/null 2>&1 ||
+    fail "生产镜像签名校验需要 cosign；请先安装 Cosign，或仅在本地测试中设置 NOJ_ENFORCE_IMAGE_SIGNATURES=false"
+
+  local version registry identity image digest
+  version="$(env_value NOJ_VERSION)"
+  registry="$(env_value NOJ_IMAGE_REGISTRY)"
+  registry="${registry:-ghcr.io/neuro-oj}"
+  identity="$(env_value NOJ_COSIGN_CERT_IDENTITY_REGEX)"
+  identity="${identity:-^https://github.com/Neuro-OJ/neuro-oj/.github/workflows/release.yml@.*$}"
+  section "校验生产镜像签名"
+
+  local images=(noj-core noj-ui noj-judge noj-llm-gateway noj-evaluator-python noj-solution-python)
+  for image in "${images[@]}"; do
+    local image_name="$image"
+    image="$registry/$image_name:$version"
+    digest="$("$DOCKER_BIN" buildx imagetools inspect "$image" 2>/dev/null |
+      awk '/^Digest:/ {print $2; exit}')"
+    [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] ||
+      fail "无法解析生产镜像 digest：$image"
+    cosign verify \
+      --certificate-identity-regexp "$identity" \
+      --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+      "$image@$digest" >/dev/null ||
+      fail "生产镜像 Cosign 签名校验失败：$image@$digest"
+    VERIFIED_IMAGE_DIGESTS+=("$image_name $digest")
+    ok "$image@$digest"
+  done
+}
+
+record_deployment_metadata() {
+  ((DRY_RUN)) && return 0
+  ((${#VERIFIED_IMAGE_DIGESTS[@]} > 0)) || return 0
+
+  mkdir -p "$BACKUP_DIR"
+  local tmp manifest
+  manifest="$BACKUP_DIR/current-deployment.txt"
+  tmp="$(mktemp "$BACKUP_DIR/.current-deployment.XXXXXX")"
+  {
+    printf 'version=%s\n' "$(env_value NOJ_VERSION)"
+    printf 'recorded_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf '%s\n' "${VERIFIED_IMAGE_DIGESTS[@]}" | sort
+  } >"$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$manifest"
+  ok "已记录当前部署版本与镜像 digest：$manifest"
 }
 
 check_configuration() {
@@ -317,6 +378,9 @@ check_configuration() {
     "$DOCKER_BIN" compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --quiet ||
       fail "Docker Compose 配置无效，请检查环境变量和生产 Compose 文件"
   fi
+  case "$COMMAND" in
+    install|start|upgrade|verify) verify_image_signatures ;;
+  esac
   ok "生产配置检查通过"
 }
 
@@ -352,12 +416,14 @@ install() {
   section "拉取生产镜像"
   run_compose pull
   wait_for_stack
+  record_deployment_metadata
   ok "生产部署完成"
 }
 
 start() {
   prepare_and_check
   wait_for_stack
+  record_deployment_metadata
   ok "生产服务已启动"
 }
 
@@ -367,6 +433,7 @@ upgrade() {
   section "拉取目标版本镜像"
   run_compose pull
   wait_for_stack
+  record_deployment_metadata
   ok "生产服务已升级"
 }
 
@@ -406,6 +473,11 @@ backup() {
   run_backup "手动备份"
 }
 
+verify() {
+  prepare_and_check
+  ok "生产镜像验证完成"
+}
+
 main() {
   parse_args "$@"
   case "$COMMAND" in
@@ -416,6 +488,7 @@ main() {
     status) status ;;
     logs) logs ;;
     backup) backup ;;
+    verify) verify ;;
     *) fail "未知命令：$COMMAND" ;;
   esac
 }

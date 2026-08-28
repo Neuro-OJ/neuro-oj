@@ -7,8 +7,10 @@ import type { GatewayConfig } from "../config.ts";
 import { requireServiceToken } from "../auth.ts";
 import {
   createProvider,
+  deleteProvider,
   listProviders,
   type ProviderInput,
+  testProviderConnection,
   updateProvider,
 } from "../providers.ts";
 
@@ -24,15 +26,23 @@ export function createInternalRouter(deps: InternalDeps): Hono {
 
   // Provider 列表（Key 脱敏）
   app.get("/internal/providers", async (c) => {
-    const providers = await listProviders(deps.db, deps.config.storeKey);
+    const providers = await listProviders(
+      deps.db,
+      deps.config.storeKey,
+      c.req.query("created_by"),
+    );
     return c.json({ data: providers });
   });
 
   // Provider 精简信息（不含加密 Key）
   app.get("/internal/providers/:id", async (c) => {
     const id = c.req.param("id");
-    const rows = await deps
-      .db`SELECT id, name, base_url, model, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id}`;
+    const createdBy = c.req.query("created_by");
+    const rows = createdBy
+      ? await deps
+        .db`SELECT id, name, base_url, model, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id} AND created_by = ${createdBy}`
+      : await deps
+        .db`SELECT id, name, base_url, model, cost_per_1k_tokens, enabled, created_at, updated_at FROM llm_providers WHERE id = ${id}`;
     if (rows.length === 0) {
       return c.json({ error: "provider_not_found" }, 404);
     }
@@ -45,8 +55,17 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     if (!body.name || !body.base_url || !body.model || !body.api_key) {
       return c.json({ error: "missing_required_fields" }, 400);
     }
-    const provider = await createProvider(deps.db, body, deps.config.storeKey);
-    return c.json({ data: provider }, 201);
+    try {
+      const provider = await createProvider(
+        deps.db,
+        body,
+        deps.config.storeKey,
+      );
+      return c.json({ data: provider }, 201);
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "provider_invalid";
+      return c.json({ error: code }, 400);
+    }
   });
 
   // 更新 Provider
@@ -54,6 +73,14 @@ export function createInternalRouter(deps: InternalDeps): Hono {
     const id = c.req.param("id");
     const body = await c.req.json<Partial<ProviderInput>>();
     try {
+      const createdBy = c.req.query("created_by");
+      if (createdBy) {
+        const existing = await deps
+          .db`SELECT id, created_by FROM llm_providers WHERE id = ${id}`;
+        if (!existing[0] || existing[0].created_by !== createdBy) {
+          return c.json({ error: "provider_not_found" }, 404);
+        }
+      }
       const provider = await updateProvider(
         deps.db,
         id,
@@ -67,6 +94,33 @@ export function createInternalRouter(deps: InternalDeps): Hono {
         { error: message },
         message === "provider_not_found" ? 404 : 400,
       );
+    }
+  });
+
+  app.delete("/internal/providers/:id", async (c) => {
+    const deleted = await deleteProvider(
+      deps.db,
+      c.req.param("id"),
+      c.req.query("created_by"),
+    );
+    return deleted
+      ? c.body(null, 204)
+      : c.json({ error: "provider_not_found" }, 404);
+  });
+
+  app.post("/internal/providers/:id/test", async (c) => {
+    try {
+      await testProviderConnection(
+        deps.db,
+        c.req.param("id"),
+        deps.config.storeKey,
+        c.req.query("created_by"),
+      );
+      return c.json({ data: { status: "ok" } });
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "provider_error";
+      const status = code === "provider_not_found" ? 404 : 502;
+      return c.json({ error: code }, status);
     }
   });
 

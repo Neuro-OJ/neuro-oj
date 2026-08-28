@@ -58,7 +58,14 @@ function resolvePageTitle(path: string): string {
   return byPrefix?.title ?? "Neuro OJ"
 }
 
-useHead({ title: computed(() => resolvePageTitle(route.path)) })
+useHead({
+  title: computed(() => resolvePageTitle(route.path)),
+  meta: [
+    { property: 'og:title', content: 'Neuro OJ' },
+    { property: 'og:description', content: 'Neuro OJ — 面向 AI 领域认证与竞赛（IOAI / NOAI / LMCC）的在线评测平台' },
+    { property: 'og:type', content: 'website' },
+  ],
+})
 </script>
 
 <style>

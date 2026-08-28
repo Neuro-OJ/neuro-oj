@@ -53,6 +53,13 @@ Redis/PostgreSQL 凭据轮换可能造成短暂不可用；应在维护窗口执
 - 轮换 `TFA_ENCRYPTION_KEY` 可能使已保存的 TOTP secret 无法解密；除非已完成 TFA 数据迁移方案，否则不得直接替换。
 - 轮换前必须完成数据库和配置备份，并记录影响范围；回滚时恢复旧 secret 后重启 `core`。
 
+## LLM Gateway 与 BYOK 密钥
+
+- `NOJ_LLM_STORE_KEY` 是 `noj-llm-gateway` 保存平台 Provider 和用户 BYOK API Key 的信封加密主密钥。生产环境必须通过 secrets manager 注入，不能写入镜像、日志或 Git。
+- `NOJ_LLM_SERVICE_TOKEN` 同时用于 Core/Judge 与 Gateway 的受信调用；轮换时先更新 Gateway 和 Core/Judge 的一致配置，再滚动重启并验证平台 LLM 与用户 BYOK 测试连接。
+- `NOJ_LLM_BYOK_ALLOWED_HOSTS` 是用户 Provider 的精确主机 allowlist。新增主机前应完成供应商归属和 HTTPS 验证；不要为了兼容本地服务而放开 localhost、私网或元数据地址。
+- Gateway 日志和用量记录只保留 Provider、模型、状态和摘要元数据，不应出现 API Key、Authorization、prompt 或完整 Provider 错误 body。
+
 ## 回滚与记录
 
 每次轮换记录时间、变更人、受影响服务、旧凭据撤销时间和 smoke test 结果。出现失败时先停止继续撤销旧凭据，恢复上一份受限配置并重启服务；不得通过把 MinIO root 凭据注入 core 来绕过故障。

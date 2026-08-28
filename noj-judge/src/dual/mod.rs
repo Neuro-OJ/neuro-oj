@@ -241,6 +241,7 @@ async fn inject_file_to_container(
 }
 
 /// 双容器评测入口，允许通过 Worker 配置传入每个容器的 CPU 上限。
+#[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
 pub async fn evaluate_dual_with_cpu_limit(
     docker: bollard::Docker,
@@ -251,6 +252,46 @@ pub async fn evaluate_dual_with_cpu_limit(
     artifact_zip_bytes: Option<&[u8]>,
     task_rejudge_seq: Option<i64>,
     task_llm: Option<&JudgeTaskLlm>,
+    cpu_limit_millicores: u64,
+    allow_evaluator_network: bool,
+    evaluator_network_mode: &str,
+    image_prefix: &str,
+    command_whitelist: &[String],
+    max_evaluator_time_ms: u64,
+    max_solution_call_timeout_ms: u64,
+) -> Result<JudgeResult> {
+    evaluate_dual_with_cpu_limit_and_user_llm(
+        docker,
+        task_submission_id,
+        runtime_config,
+        user_code,
+        support_pkg_bytes,
+        artifact_zip_bytes,
+        task_rejudge_seq,
+        task_llm,
+        None,
+        cpu_limit_millicores,
+        allow_evaluator_network,
+        evaluator_network_mode,
+        image_prefix,
+        command_whitelist,
+        max_evaluator_time_ms,
+        max_solution_call_timeout_ms,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn evaluate_dual_with_cpu_limit_and_user_llm(
+    docker: bollard::Docker,
+    task_submission_id: &str,
+    runtime_config: &RuntimeConfig,
+    user_code: &str,
+    support_pkg_bytes: Option<&[u8]>,
+    artifact_zip_bytes: Option<&[u8]>,
+    task_rejudge_seq: Option<i64>,
+    task_llm: Option<&JudgeTaskLlm>,
+    user_llm: Option<&JudgeTaskLlm>,
     cpu_limit_millicores: u64,
     allow_evaluator_network: bool,
     evaluator_network_mode: &str,
@@ -382,6 +423,7 @@ pub async fn evaluate_dual_with_cpu_limit(
         runtime_config.evaluator.time_limit_ms,
         runtime_config.solution.call_timeout_ms,
         task_rejudge_seq,
+        user_llm,
     )
     .await;
 
@@ -478,6 +520,7 @@ async fn run_dual_loop(
     evaluator_timeout_ms: u64,
     default_call_timeout_ms: u64,
     rejudge_seq: Option<i64>,
+    user_llm: Option<&JudgeTaskLlm>,
 ) -> Result<JudgeResult> {
     // 解构 exec 拿到 output/input
     let ExecSession {
@@ -648,9 +691,11 @@ async fn run_dual_loop(
                     handle_sol_chunk(
                         &mut sol_parser,
                         &mut eval_input,
+                        &mut sol_input,
                         chunk,
                         &mut solution_ready,
                         &mut tracker,
+                        user_llm,
                     )
                     .await?;
                 }
@@ -793,9 +838,11 @@ async fn handle_eval_chunk(
 async fn handle_sol_chunk(
     parser: &mut LineParser,
     eval_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
+    sol_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
     chunk: LogOutput,
     solution_ready: &mut bool,
     tracker: &mut InFlightTracker,
+    user_llm: Option<&JudgeTaskLlm>,
 ) -> Result<()> {
     let data = match chunk {
         LogOutput::StdOut { message } => message,
@@ -820,9 +867,14 @@ async fn handle_sol_chunk(
             }
             match frame_type(&v) {
                 Some(FRAME_CAPABILITY) => {
-                    // solution 请求 capability：查注册超时登记后转发 evaluator
-                    tracker.on_capability_frame(&v, Instant::now());
-                    forward_frame(eval_input, &v).await?;
+                    if v.get("name").and_then(Value::as_str) == Some("request_user_llm_completion")
+                    {
+                        handle_user_llm_capability(sol_input, &v, user_llm).await?;
+                    } else {
+                        // solution 请求普通 capability：查注册超时登记后转发 evaluator
+                        tracker.on_capability_frame(&v, Instant::now());
+                        forward_frame(eval_input, &v).await?;
+                    }
                 }
                 Some(FRAME_RESULT) | Some(FRAME_ERROR) => {
                     // call 响应帧（evaluator 等待）：命中则转发，迟到/未知丢弃
@@ -846,6 +898,134 @@ async fn handle_sol_chunk(
         }
     }
     Ok(())
+}
+
+/// 处理 solution 的用户 BYOK capability，不把请求转发给 evaluator。
+async fn handle_user_llm_capability(
+    sol_input: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
+    frame: &Value,
+    user_llm: Option<&JudgeTaskLlm>,
+) -> Result<()> {
+    let Some(id) = frame.get("id").and_then(Value::as_str) else {
+        return forward_frame(
+            sol_input,
+            &serde_json::json!({
+                "type": "error",
+                "id": "",
+                "code": "BYOK_REQUEST_INVALID",
+                "message": "用户模型请求缺少 id",
+            }),
+        )
+        .await;
+    };
+    let error_frame = |code: &str, message: &str| {
+        serde_json::json!({
+            "type": "error",
+            "id": id,
+            "code": code,
+            "message": message,
+        })
+    };
+    let Some(llm) = user_llm else {
+        return forward_frame(
+            sol_input,
+            &error_frame("BYOK_CONFIG_UNAVAILABLE", "未绑定用户模型配置"),
+        )
+        .await;
+    };
+    let prompt = frame
+        .get("args")
+        .and_then(Value::as_array)
+        .and_then(|args| args.first())
+        .and_then(Value::as_str);
+    let Some(prompt) = prompt else {
+        return forward_frame(
+            sol_input,
+            &error_frame("BYOK_PROMPT_INVALID", "用户模型请求参数无效"),
+        )
+        .await;
+    };
+    if prompt.len() > 32 * 1024 {
+        return forward_frame(
+            sol_input,
+            &error_frame("BYOK_PROMPT_TOO_LARGE", "用户模型请求内容过大"),
+        )
+        .await;
+    }
+    let Some(model) = llm.allowed_models.first() else {
+        return forward_frame(
+            sol_input,
+            &error_frame("BYOK_CONFIG_UNAVAILABLE", "用户模型配置不可用"),
+        )
+        .await;
+    };
+    let url = format!(
+        "{}/v1/chat/completions",
+        llm.gateway_url.trim_end_matches('/')
+    );
+    let response = reqwest::Client::new()
+        .post(url)
+        .bearer_auth(&llm.eval_token)
+        .header("content-type", "application/json")
+        .body(serde_json::to_vec(&serde_json::json!({
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 1024,
+        }))?)
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await;
+    let response = match response {
+        Ok(response) => response,
+        Err(_) => {
+            return forward_frame(
+                sol_input,
+                &error_frame("BYOK_GATEWAY_UNAVAILABLE", "用户模型服务暂时不可用"),
+            )
+            .await;
+        }
+    };
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .ok()
+        .and_then(|text| {
+            (text.len() <= 1024 * 1024)
+                .then(|| serde_json::from_str::<Value>(&text).ok())
+                .flatten()
+        })
+        .unwrap_or(Value::Null);
+    if !status.is_success() {
+        let gateway_code = body.get("error").and_then(Value::as_str).unwrap_or("");
+        let code = match gateway_code {
+            "limit_exceeded" | "rate_limit_exceeded" => "BYOK_QUOTA_EXCEEDED",
+            "provider_disabled" | "provider_not_found" => "BYOK_CONFIG_UNAVAILABLE",
+            "provider_target_rejected" => "BYOK_PROVIDER_TARGET_REJECTED",
+            _ if status.as_u16() == 401 || status.as_u16() == 403 => "BYOK_GATEWAY_UNAVAILABLE",
+            _ => "BYOK_PROVIDER_ERROR",
+        };
+        return forward_frame(sol_input, &error_frame(code, "用户模型请求失败")).await;
+    }
+    let Some(content) = body
+        .get("choices")
+        .and_then(Value::as_array)
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.get("message"))
+        .and_then(|message| message.get("content"))
+        .and_then(Value::as_str)
+    else {
+        return forward_frame(
+            sol_input,
+            &error_frame("BYOK_PROVIDER_ERROR", "用户模型返回格式无效"),
+        )
+        .await;
+    };
+    forward_frame(
+        sol_input,
+        &serde_json::json!({"type": "result", "id": id, "value": content}),
+    )
+    .await
 }
 
 /// 向等待方写调用级超时错误帧。
@@ -950,7 +1130,18 @@ pub mod mod_test_helpers {
         solution_ready: &mut bool,
         tracker: &mut InFlightTracker,
     ) {
-        let _ = super::handle_sol_chunk(parser, eval_input, chunk, solution_ready, tracker).await;
+        let mut sink: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(tokio::io::sink());
+        let _ = super::handle_sol_chunk(
+            parser,
+            eval_input,
+            &mut sink,
+            chunk,
+            solution_ready,
+            tracker,
+            None,
+        )
+        .await;
     }
 }
 
@@ -1349,6 +1540,8 @@ mod tests {
         let (sink, mut source) = tokio::io::duplex(8192);
         let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
             Box::pin(sink);
+        let mut sol_sink: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(tokio::io::sink());
 
         let mut parser = LineParser::new();
         let mut solution_ready = true;
@@ -1362,9 +1555,11 @@ mod tests {
         handle_sol_chunk(
             &mut parser,
             &mut writer,
+            &mut sol_sink,
             chunk,
             &mut solution_ready,
             &mut tracker,
+            None,
         )
         .await
         .unwrap();
@@ -1382,6 +1577,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_user_llm_capability_is_not_forwarded_without_binding() {
+        use bollard::container::LogOutput;
+        use tokio::io::AsyncReadExt;
+
+        let (eval_sink, mut eval_source) = tokio::io::duplex(8192);
+        let (sol_sink, mut sol_source) = tokio::io::duplex(8192);
+        let mut eval_writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(eval_sink);
+        let mut sol_writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(sol_sink);
+        let mut parser = LineParser::new();
+        let mut solution_ready = true;
+        let mut tracker = InFlightTracker::new(2000);
+        let chunk = LogOutput::StdOut {
+            message: bytes::Bytes::from_static(
+                b"{\"type\":\"capability\",\"id\":\"byok-1\",\"name\":\"request_user_llm_completion\",\"args\":[\"hello\"]}\n",
+            ),
+        };
+
+        handle_sol_chunk(
+            &mut parser,
+            &mut eval_writer,
+            &mut sol_writer,
+            chunk,
+            &mut solution_ready,
+            &mut tracker,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let mut response_buf = [0u8; 1024];
+        let response_len =
+            tokio::time::timeout(Duration::from_secs(1), sol_source.read(&mut response_buf))
+                .await
+                .expect("BYOK 错误帧读取超时")
+                .unwrap();
+        let response = String::from_utf8_lossy(&response_buf[..response_len]);
+        assert!(response.contains("BYOK_CONFIG_UNAVAILABLE"));
+        let mut forwarded = [0u8; 1024];
+        let eval_read =
+            tokio::time::timeout(Duration::from_millis(100), eval_source.read(&mut forwarded))
+                .await;
+        assert!(eval_read.is_err(), "BYOK capability 不应转发给 evaluator");
+    }
+
+    #[tokio::test]
     async fn test_sol_unknown_frame_dropped() {
         // spec：未知/非法 type 帧应记录 warn 并丢弃（不转发）
         use bollard::container::LogOutput;
@@ -1390,6 +1632,8 @@ mod tests {
         let (sink, mut source) = tokio::io::duplex(8192);
         let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
             Box::pin(sink);
+        let mut sol_sink: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
+            Box::pin(tokio::io::sink());
 
         let mut parser = LineParser::new();
         let mut solution_ready = true;
@@ -1401,9 +1645,11 @@ mod tests {
         handle_sol_chunk(
             &mut parser,
             &mut writer,
+            &mut sol_sink,
             chunk,
             &mut solution_ready,
             &mut tracker,
+            None,
         )
         .await
         .unwrap();

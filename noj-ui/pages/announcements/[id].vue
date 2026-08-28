@@ -41,6 +41,13 @@ onMounted(load)
 useHead(() => ({
   title: detail.value ? `${detail.value.title} - 公告` : "公告",
 }))
+
+useSeoMeta({
+  title: () => detail.value?.title ? `${detail.value.title} - 公告` : '公告 - Neuro OJ',
+  description: () => detail.value?.content ? detail.value.content.slice(0, 160) : 'Neuro OJ 公告',
+  ogTitle: () => detail.value?.title ?? 'Neuro OJ',
+  ogDescription: () => detail.value?.content ? detail.value.content.slice(0, 160) : 'Neuro OJ 公告',
+})
 </script>
 
 <template>

@@ -208,3 +208,58 @@
 - **WHEN** 用户请求 `GET /api/v1/problems/:id`
 - **THEN** 响应包含 `tags` 数组（每项含 id/name/kind）与 `has_hidden_algorithm_tags` 布尔字段，不含 `categories` 字段
 
+
+### Requirement: 题目 CRUD 的 LLM 配置校验
+
+系统 SHALL 在题目创建、更新接口中支持可选 `llm` 字段，并在服务端强制校验：仅管理员创建的 P 型/官方题或审核通过题目可携带 `llm`；携带 `llm` 时必须同时满足 `runtime_config.evaluator.network.enabled = true`。任一条件不满足时，创建/更新 MUST 返回 4xx 错误。
+
+#### Scenario: 管理员创建 P 型 LLM 题
+
+- **WHEN** 管理员调用创建题目 API，携带 `type='P'`、合法 `llm` 配置、`runtime_config.evaluator.network.enabled = true`
+- **THEN** 系统创建成功，`llm_config` 写入题目
+
+#### Scenario: 普通用户创建 U 型 LLM 题被拒
+
+- **WHEN** 普通用户调用创建题目 API，携带 `type='U'` 和 `llm` 配置
+- **THEN** 系统返回 403
+
+#### Scenario: 缺少网络开关被拒
+
+- **WHEN** 用户调用创建/更新题目 API，携带 `llm` 配置但 `runtime_config.evaluator.network.enabled` 不为 true
+- **THEN** 系统返回 400
+
+#### Scenario: 更新时移除网络开关被拒
+
+- **WHEN** 更新已启用 LLM 的题目，payload 将 `runtime_config.evaluator.network.enabled` 置为 false
+- **THEN** 系统返回 400
+
+#### Scenario: 清空 llm 配置
+
+- **WHEN** 更新题目时将 `llm` 置为 null 或省略
+- **THEN** 系统允许移除 LLM 配置，题目回退为普通评测题目
+
+### Requirement: 题目支持 submission_mode
+
+系统 SHALL 在 `problems` 表提供 `submission_mode` 字段，取值 `code`（默认）或 `artifact`。题目创建/更新接口 SHALL 接受该字段，并在响应中返回。
+
+`submission_mode=artifact` 的题目 SHALL 仍要求 `runtime_config`（双容器评测），且不要求 `code` 提交。
+
+#### Scenario: 创建 artifact 题目
+
+- **WHEN** 管理员创建题目时设置 `submission_mode: "artifact"` 且提供 `runtime_config`
+- **THEN** 系统创建成功，响应包含 `submission_mode: "artifact"`
+
+#### Scenario: 默认 submission_mode 为 code
+
+- **WHEN** 用户创建题目且未传 `submission_mode`
+- **THEN** 系统默认 `submission_mode: "code"`
+
+#### Scenario: 更新题目 submission_mode
+
+- **WHEN** 管理员更新题目时设置 `submission_mode: "artifact"`
+- **THEN** 系统更新成功，响应包含新的 `submission_mode`
+
+#### Scenario: 非法 submission_mode 被拒
+
+- **WHEN** 用户创建或更新题目时传入 `submission_mode: "prediction"`
+- **THEN** 系统返回 HTTP 400，提示仅允许 `code` / `artifact`
