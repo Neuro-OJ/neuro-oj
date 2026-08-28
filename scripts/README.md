@@ -95,3 +95,6 @@ Judge rootless Docker daemon 不由脚本自动安装。
 首次执行安装时，终端会引导填写 `NOJ_VERSION`、`DOMAIN`、`APP_URL`、管理员账号、邮件
 Provider 及 Judge Docker socket；密码和邮件密钥不会回显。没有 TTY 的自动化场景会保留
 配置模板并返回非零状态，可使用 `--non-interactive` 明确选择该行为。
+
+当前发布版本的生产镜像仅支持 `linux/amd64`。在 ARM64 主机上，`check` 和 `install` 会在
+下载源码前明确提示使用 x86_64 主机，避免在 Compose 拉取镜像阶段才失败。

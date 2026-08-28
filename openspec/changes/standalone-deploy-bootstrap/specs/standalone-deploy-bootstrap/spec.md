@@ -63,7 +63,7 @@ Bootstrap MUST 提供帮助信息、dry-run 和下载完成后的部署入口调
 
 ### Requirement: Linux 环境检测与基础依赖安装
 
-Bootstrap MUST 提供只读的 `check` 命令，检测 Linux 系统、支持的 CPU 架构、Bash、curl/wget、tar、openssl、Docker Engine、Docker Compose v2、可用内存、目标目录所在磁盘和默认 Web 端口，并以非零状态报告阻断性缺失项；Bootstrap MUST 提供 `install-env` 命令，使用当前系统可识别的包管理器安装缺失的基础工具，但 MUST NOT 未经单独确认修改 Docker 软件源、安装 Docker daemon、创建 rootless daemon 或改变宿主机权限。
+Bootstrap MUST 提供只读的 `check` 命令，检测 Linux 系统、支持的 CPU 架构、Bash、curl/wget、tar、openssl、Docker Engine、Docker Compose v2、可用内存、目标目录所在磁盘和默认 Web 端口，并以非零状态报告阻断性缺失项；在当前生产镜像尚未发布 ARM64 manifest 前，`aarch64`/`arm64` MUST 被视为阻断项并明确提示使用 x86_64 主机；Bootstrap MUST 提供 `install-env` 命令，使用当前系统可识别的包管理器安装缺失的基础工具，但 MUST NOT 未经单独确认修改 Docker 软件源、安装 Docker daemon、创建 rootless daemon 或改变宿主机权限。
 
 #### Scenario: 环境检测通过
 
@@ -74,6 +74,11 @@ Bootstrap MUST 提供只读的 `check` 命令，检测 Linux 系统、支持的 
 
 - **WHEN** 用户执行 `install.sh check` 且系统不是 Linux、架构不受支持、基础工具缺失、Docker daemon 不可用或 Compose v2 缺失
 - **THEN** 脚本返回非零状态，列出缺失检查项和修复建议，不下载源码、不创建安装目录、不启动服务
+
+#### Scenario: ARM64 当前版本提示
+
+- **WHEN** 用户在 `aarch64` 或 `arm64` 主机执行 `check` 或 `install`
+- **THEN** 脚本在下载源码或拉取镜像前返回非零状态，并明确提示当前生产镜像仅支持 `linux/amd64`
 
 #### Scenario: 安装基础依赖
 

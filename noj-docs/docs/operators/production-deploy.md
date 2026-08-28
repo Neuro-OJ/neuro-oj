@@ -62,6 +62,9 @@ Compose plugin、Docker daemon 权限和 Judge 使用的独立 rootless Docker d
 Linux/CPU 架构、基础工具、Docker/Compose、内存、目标目录磁盘空间和默认 8080 端口；可
 通过 `--port` 指定实际端口。
 
+当前 Release 镜像仅发布 `linux/amd64`。ARM64/aarch64 主机会在 `check` 或 `install` 阶段
+提前停止并提示使用 x86_64 主机；这不是 Docker 安装故障。
+
 如果需要无人值守执行，可显式使用 `--non-interactive`；此时首次配置不询问，必须提前
 准备完整的 `.env.prod`，否则脚本以非零状态退出：
 

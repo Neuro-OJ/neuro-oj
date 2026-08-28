@@ -220,9 +220,13 @@ check_host() {
 
   arch="$(uname -m 2>/dev/null || true)"
   case "$arch" in
-    x86_64|aarch64|arm64) ok "CPU 架构：$arch" ;;
+    x86_64) ok "CPU 架构：$arch" ;;
+    aarch64|arm64)
+      printf '  - 当前 CPU 架构：%s；当前生产镜像仅发布 linux/amd64，请使用 x86_64 主机\n' "$arch" >&2
+      failed=1
+      ;;
     *)
-      printf '  - 不支持的 CPU 架构：%s（支持 x86_64/aarch64）\n' "${arch:-unknown}" >&2
+      printf '  - 不支持的 CPU 架构：%s（当前生产镜像仅支持 x86_64）\n' "${arch:-unknown}" >&2
       failed=1
       ;;
   esac
@@ -466,6 +470,11 @@ main() {
       ;;
     install)
       validate_inputs
+      case "$(uname -m 2>/dev/null || true)" in
+        x86_64) ;;
+        aarch64|arm64) fail "当前生产镜像仅发布 linux/amd64，检测到 $(uname -m 2>/dev/null || true)；请使用 x86_64 主机" ;;
+        *) fail "不支持的 CPU 架构：$(uname -m 2>/dev/null || true)；当前生产镜像仅支持 x86_64" ;;
+      esac
       check_dependencies
       check_target
       printf '仓库：%s\nref：%s\n目标目录：%s\n' "$REPOSITORY" "$REF" "$TARGET_DIR"

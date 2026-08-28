@@ -47,6 +47,10 @@ Bootstrap 自己解析仓库、ref、目录、dry-run 和 download-only 参数�
 
 首次创建 `.env.prod` 后，生产部署入口在具备 TTY 且未指定 `--non-interactive` 时进入交互引导。引导复用现有安全写入函数逐项更新配置：版本、域名和应用地址、管理员账号、邮件 Provider 与凭据、Judge 隔离 Docker socket 及其 GID；`CORS_ALLOWED_ORIGINS` 根据 `APP_URL` 自动设置。管理员密码使用隐藏输入、二次确认并要求至少 12 位，Provider 密钥也使用隐藏输入。没有 TTY 的脚本调用保持可自动化：只生成 600 权限的模板并返回明确的手工编辑提示，不尝试从标准输入猜测配置。
 
+### 8. 当前架构兼容性提示
+
+发布流水线当前只生成 `linux/amd64` 镜像，因此 bootstrap 在 `check` 和 `install` 入口均提前阻断 `aarch64`/`arm64` 主机，并提示使用 x86_64。待未来发布多架构 manifest 后，再将架构检查改为镜像 manifest 预检，而不是继续维护固定架构白名单。
+
 ## Risks / Trade-offs
 
 - [HTTPS 归档仍依赖远程仓库可用性] → 提供 `--repo`、`--ref` 和下载失败诊断；生产使用固定 Release tag。

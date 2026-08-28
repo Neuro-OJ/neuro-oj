@@ -64,7 +64,7 @@ cat >"$FAKE_BIN/uname" <<'EOF'
 #!/usr/bin/env bash
 case "${1:-}" in
   -s) printf 'Linux\n' ;;
-  -m) printf 'x86_64\n' ;;
+  -m) printf '%s\n' "${NOJ_BOOTSTRAP_TEST_ARCH:-x86_64}" ;;
   *) /usr/bin/uname "$@" ;;
 esac
 EOF
@@ -110,6 +110,15 @@ bash "$INSTALL_SCRIPT" check --port 18080 >"$check_out"
 grep -q '环境检测通过' "$check_out" || fail "环境检测通过提示缺失"
 grep -q 'Docker Compose：v2 可用' "$check_out" || fail "Compose 检测结果缺失"
 pass "环境检测与资源摘要"
+
+set +e
+NOJ_BOOTSTRAP_TEST_ARCH=aarch64 bash "$INSTALL_SCRIPT" check \
+  >"$TEST_ROOT/arm64.out" 2>"$TEST_ROOT/arm64.err"
+arm64_status=$?
+set -e
+[[ "$arm64_status" != 0 ]] || fail "ARM64 架构未被当前版本阻断"
+grep -q '仅发布 linux/amd64' "$TEST_ROOT/arm64.err" || fail "ARM64 提示缺失"
+pass "ARM64 架构提示"
 
 set +e
 NOJ_BOOTSTRAP_DOCKER_FAIL=1 bash "$INSTALL_SCRIPT" check >"$TEST_ROOT/check-fail.out" 2>"$TEST_ROOT/check-fail.err"

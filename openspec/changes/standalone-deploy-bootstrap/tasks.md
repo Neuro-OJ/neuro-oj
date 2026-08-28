@@ -6,6 +6,7 @@
 - [x] 1.4 增加 `check` 命令，检测 Linux、架构、基础工具、Docker/Compose、内存、磁盘和默认端口，并对阻断性问题返回非零；通过 fake 命令和临时环境验证输出及退出码。
 - [x] 1.5 增加 `install-env` 命令，按受支持的 Linux 包管理器安装基础工具，Docker 缺失时仅输出安装提示且不修改 Docker 软件源或 daemon；通过 fake 包管理器验证命令选择与失败边界。
 - [x] 1.6 在首次创建 `.env.prod` 后增加交互式配置引导，隐藏密码/邮件密钥、确认管理员密码并自动设置域名相关配置；无 TTY 或 `--non-interactive` 时保留明确的非零失败提示。
+- [x] 1.7 在 `check` 和 `install` 前增加 ARM64 架构阻断提示，避免用户在当前仅有 amd64 manifest 的发布版本上下载源码后才遇到镜像拉取失败。
 
 ## 2. 文档与测试
 
@@ -13,6 +14,7 @@
 - [x] 2.2 更新 `scripts/README.md` 和生产部署文档，记录单脚本下载命令、固定 ref、目标目录、首次配置和后续升级边界；通过文档中的命令与脚本参数保持一致验证。
 - [x] 2.3 扩展 bootstrap smoke test，覆盖 `check`、`install-env`、不支持系统、Docker 缺失和资源摘要；通过离线测试运行。
 - [x] 2.4 增加首次配置引导的非交互 smoke test，并在 Linux PTY 中实测合法输入、密码不回显、Provider 分支、Judge socket 和配置权限。
+- [x] 2.5 扩展 bootstrap smoke test，验证 ARM64 架构返回非零并且不下载源码。
 
 ## 3. 验证
 
