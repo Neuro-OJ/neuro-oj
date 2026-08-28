@@ -17,6 +17,7 @@ scripts/
 │   └── locks/             #   devtool 同工具防双开锁
 │
 ├── deploy/                # 生产部署
+│   ├── install.sh          #   可独立下载的源码获取与部署 bootstrap
 │   ├── deploy.sh          #   生产安装、启动、升级、停止、备份入口
 │   ├── backup.sh          #   PostgreSQL/Redis/MinIO/S3 全量快照、校验、恢复与演练
 │   ├── test-deploy.sh     #   不依赖真实生产资源的部署脚本测试
@@ -47,6 +48,9 @@ scripts/
 | **单模块重启**                           | `bash scripts/dev/devtool.sh stop <core\|ui\|judge> && bash scripts/dev/devtool.sh start <core\|ui\|judge>` |
 | **更新环境变量模板（保留自定义）**       | `bash scripts/dev/devtool.sh init-env --merge`                  |
 | **首次生产部署**                         | `bash scripts/deploy/deploy.sh install`                          |
+| **单脚本下载并部署**                     | `bash scripts/deploy/install.sh --ref v0.1.0 --dir /opt/neuro-oj` |
+| **检测 Linux 部署环境**                  | `bash scripts/deploy/install.sh check`                           |
+| **安装基础部署工具**                     | `sudo bash scripts/deploy/install.sh install-env`                |
 | **启动/停止生产服务**                    | `bash scripts/deploy/deploy.sh start` / `stop`                   |
 | **升级生产版本**                         | `bash scripts/deploy/deploy.sh upgrade`                          |
 | **查看生产状态/日志**                    | `bash scripts/deploy/deploy.sh status` / `logs [service]`        |
@@ -78,3 +82,19 @@ cd noj-judge && cargo run
 [`生产部署文档`](../noj-docs/docs/operators/production-deploy.md)。发布前必须先通过
 `staging/acceptance.sh all`；失败时脚本会把 Compose、Docker 和服务日志保存到
 `artifacts/staging/<版本>/`。
+
+`deploy/install.sh` 可以从仓库中单独下载后执行。它只获取指定 ref 的源码并调用
+下载后的 `deploy.sh`，目标目录非空时会拒绝覆盖；已有安装请直接进入目标目录执行
+`deploy.sh upgrade`。
+
+在单脚本模式下可先执行 `bash noj-install.sh check` 检查 Linux、架构、基础工具、Docker
+Compose、内存、磁盘和端口。`sudo bash noj-install.sh install-env` 只会通过系统包管理器
+安装 `ca-certificates`、`curl`、`tar` 和 `openssl`；Docker Engine、Compose plugin 和
+Judge rootless Docker daemon 不由脚本自动安装。
+
+首次执行安装时，终端会引导填写 `NOJ_VERSION`、`DOMAIN`、`APP_URL`、管理员账号、邮件
+Provider 及 Judge Docker socket；密码和邮件密钥不会回显。没有 TTY 的自动化场景会保留
+配置模板并返回非零状态，可使用 `--non-interactive` 明确选择该行为。
+
+当前发布版本的生产镜像仅支持 `linux/amd64`。在 ARM64 主机上，`check` 和 `install` 会在
+下载源码前明确提示使用 x86_64 主机，避免在 Compose 拉取镜像阶段才失败。
