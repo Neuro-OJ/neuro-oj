@@ -67,6 +67,14 @@ check_release_workflow() {
   grep -q 'provenance: mode=max' "$file" || fail "Release workflow 未启用 provenance"
   grep -q 'sbom: true' "$file" || fail "Release workflow 未启用 BuildKit SBOM"
   grep -q 'trivy' "$file" || fail "Release workflow 未配置漏洞扫描"
+  local trivy_refs
+  trivy_refs="$(grep -E '^[[:space:]]*uses:[[:space:]]+aquasecurity/trivy-action@' "$file" || true)"
+  [[ "$(printf '%s\n' "$trivy_refs" | sed '/^$/d' | wc -l | tr -d ' ')" == "2" ]] \
+    || fail "Release workflow 必须配置两个 Trivy 步骤"
+  while IFS= read -r line; do
+    [[ "$line" == *'aquasecurity/trivy-action@v0.36.0'* ]] \
+      || fail "Release workflow 使用了未经验证的 Trivy Action 版本：$line"
+  done <<< "$trivy_refs"
   grep -q 'cosign' "$file" || fail "Release workflow 未配置镜像签名"
   if grep -Eq ':[[:space:]]*(latest|beta)(["'"'"'[:space:]]|$)' "$file"; then
     fail "Release workflow 仍发布 latest/beta 可变标签"

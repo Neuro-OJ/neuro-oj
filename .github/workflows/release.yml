@@ -119,7 +119,8 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
 
       - name: 扫描候选镜像漏洞
-        uses: aquasecurity/trivy-action@v0.28.0
+        # v0.28.0 会引用不存在的 setup-trivy@v0.2.1，导致任务在构建前直接失败。
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.meta.outputs.candidate }}
           format: table
@@ -129,7 +130,7 @@ jobs:
           exit-code: "1"
 
       - name: 生成候选镜像 SBOM
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.meta.outputs.candidate }}
           format: spdx-json
