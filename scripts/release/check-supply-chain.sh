@@ -92,6 +92,8 @@ check_release_workflow() {
       || fail "Release workflow 使用了未经验证的 Trivy Action 版本：$line"
   done <<< "$trivy_refs"
   grep -q 'cosign' "$file" || fail "Release workflow 未配置镜像签名"
+  grep -q 'GH_TOKEN: \${{ github.token }}' "$file" \
+    || fail "Release workflow 未向来源证明验证配置 GH_TOKEN"
   if grep -Eq ':[[:space:]]*(latest|beta)(["'"'"'[:space:]]|$)' "$file"; then
     fail "Release workflow 仍发布 latest/beta 可变标签"
   fi
