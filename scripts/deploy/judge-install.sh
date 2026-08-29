@@ -639,9 +639,9 @@ main() {
   case "$COMMAND" in
     install-env) install_env ;;
     install)
+      check_base_environment
       initialize_env
       write_compose
-      check_base_environment
       check_configuration
       run_compose pull
       run_compose up -d --remove-orphans

@@ -163,6 +163,18 @@ grep -q '^JUDGE_QUEUE=noj:judge:queue$' "$PROMPT_DIR/.env.judge" || fail "默认
 grep -q '^RESULT_QUEUE=noj:judge:results$' "$PROMPT_DIR/.env.judge" || fail "默认结果队列未生效"
 pass "交互式配置说明和默认值"
 
+if NOJ_JUDGE_DOCKER_BIN="$TEST_ROOT/missing-docker" \
+  PATH="$TEST_ROOT:$PATH" \
+  bash "$DEPLOY_SCRIPT" install --dir "$TEST_ROOT/no-docker" \
+  >"$TEST_ROOT/preflight.out" 2>&1; then
+  fail "Docker 缺失时安装应该在配置提示前失败"
+fi
+grep -q '缺少依赖：' "$TEST_ROOT/preflight.out" || fail "预检缺少 Docker 的错误提示"
+if grep -q '首次部署需要填写' "$TEST_ROOT/preflight.out"; then
+  fail "环境预检失败前不应显示配置向导"
+fi
+pass "环境预检先于配置向导"
+
 DOWNLOAD_DIR="$TEST_ROOT/download"
 NOJ_JUDGE_DOCKER_BIN="$FAKE_DOCKER" \
 NOJ_JUDGE_CURL_BIN="$FAKE_CURL" \
