@@ -44,7 +44,7 @@
 
 ### 评测镜像不存在？
 
-先执行 `noj-judge/scripts/build-sdk-images.sh` 构建 `noj-evaluator-python` 与 `noj-solution-python`，确认 noj-core 的评测镜像白名单已登记，再重启 Judge Worker。
+先执行 `noj-judge/scripts/build-sdk-images.sh` 构建 `noj-evaluator-python`、`noj-solution-python` 与 `noj-solution-ai`，确认 noj-core 的评测镜像白名单已登记，再重启 Judge Worker。
 
 ### 大量 SystemError？
 

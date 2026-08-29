@@ -28,10 +28,10 @@ rootless Docker socket，不能改用 `/run/docker.sock` 或 `/var/run/docker.so
 
 - 一台 Linux 服务器（amd64），已安装 Docker Engine 与 Docker Compose v2。
 - Docker CLI 可用 Buildx；Cosign 不是默认安装条件，只有开启严格镜像签名校验时才需要。
-- Deno 2.x（仅用于部署前运行 `noj-core` 的配置检查命令）。
+- Deno 2.x（可选，仅用于部署前运行 `noj-core` 的配置检查命令；一键生产部署不依赖 Deno）。
 - 一个已解析到服务器的域名。
 - 外部 TLS 终止（宿主机 Nginx / Caddy / 云负载均衡），负责 HTTPS → 容器 HTTP 端口。
-- GitHub 仓库已启用 GitHub Container Registry（ghcr.io）权限。
+- 能够访问 `ghcr.io/neuro-oj/` 镜像；私有镜像还需要配置相应凭据。
 
 ## 2. 初始化
 
@@ -140,7 +140,7 @@ bash noj-install.sh --non-interactive --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 | `NOJ_ENFORCE_IMAGE_SIGNATURES` | 默认 `false`；设为 `true` 后，启动/升级前校验已启用应用镜像的 Cosign 签名 |
 | `NOJ_COSIGN_CERT_IDENTITY_REGEX` | Cosign 证书身份正则，默认只信任本仓库的 Release workflow |
 | `DOMAIN` | 网站地址，可填域名或服务器 IP，不要写 `https://` |
-| `APP_URL` | 脚本根据网站地址和 HTTPS 选择自动生成的完整网址 |
+| `APP_URL` | 完整应用地址，例如 `https://你的域名` |
 | `NOJ_ALLOW_INSECURE_HTTP` | 临时 HTTP 开关，默认 `false`；正式环境请保持关闭 |
 | `CORS_ALLOWED_ORIGINS` | `https://你的域名` |
 | `TRUSTED_PROXIES` | 可信代理网段，必须与 compose 中 `noj-net` 子网一致（如 `172.28.0.0/16`）；生产必填 |
@@ -157,6 +157,10 @@ bash noj-install.sh --non-interactive --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 | `EMAIL_PROVIDER` 及对应凭据 | 可选阿里云、腾讯云或 `disabled`（暂不配置邮件） |
 | `JUDGE_IMAGE_BASE` | 默认 `ghcr.io/neuro-oj/` |
 | `NGINX_PORT` | 容器 Nginx 映射到宿主机的端口，默认 `8080` |
+| `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID` | 独立 rootless Docker daemon 的 socket 与组 ID；禁止使用 `/var/run/docker.sock` |
+| `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | 可选；同时填写后启用 GitHub 登录。回调地址为 `APP_URL/api/v1/auth/oauth/github/callback` |
+| `OAUTH_OIDC_ISSUER_URL` / `OAUTH_OIDC_CLIENT_ID` / `OAUTH_OIDC_CLIENT_SECRET` | 可选；同时填写后启用通用 OIDC 登录。回调地址为 `APP_URL/api/v1/auth/oauth/oidc/callback` |
+| `OAUTH_OIDC_NAME` | 可选；OIDC 登录按钮名称，默认 `OIDC` |
 | `JUDGE_ENABLED` | 是否安装和启动评测服务 Judge，默认 `true`；设为 `false` 可跳过 |
 | `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID` | `JUDGE_ENABLED=true` 时必填：独立 rootless Docker 服务的 socket 与组 ID；禁止使用 `/var/run/docker.sock` |
 | `NOJ_LLM_SERVICE_TOKEN` | LLM Gateway 服务间鉴权 + eval_token 签发/校验密钥（≥16 字符）；compose 默认始终启动 `llm-gateway`，因此生产**必须填写** |
@@ -226,7 +230,10 @@ SELECT image, mode, kind FROM judge_images ORDER BY kind;
 ```text
 ghcr.io/neuro-oj/noj-evaluator-python  all_versions  evaluator
 ghcr.io/neuro-oj/noj-solution-python   all_versions  solution
+ghcr.io/neuro-oj/noj-solution-ai       all_versions  solution
 ```
+
+产物提交题使用 `noj-solution-python` 或 `noj-solution-ai` 运行 zip 产物；发布前应确认相应镜像已推送并被加入白名单。
 
 ## 3.5 LLM Gateway 部署
 
@@ -255,7 +262,7 @@ ghcr.io/neuro-oj/noj-solution-python   all_versions  solution
 
 ## 4. staging 验收门禁
 
-生产候选版本必须先在 staging 使用与生产相同的 Compose 文件和六类镜像完成验收，
+生产候选版本必须先在 staging 使用与生产相同的 Compose 文件和七类镜像完成验收，
 再进入 Release。验收脚本要求工作树洁净，默认只接受 `main`、`release/*` 或版本
 标签；生产验收不得使用 `latest` 作为版本标识。
 
@@ -277,7 +284,7 @@ bash scripts/staging/acceptance.sh all \
 ```
 
 脚本会构建并启动 `noj-core`、`noj-ui`、`noj-judge`、`noj-llm-gateway`、
-`noj-evaluator-python`、`noj-solution-python` 六类生产镜像，然后依次验证：
+`noj-evaluator-python`、`noj-solution-python`、`noj-solution-ai` 七类生产镜像，然后依次验证：
 
 - Compose 健康检查、`/healthz`、HTTPS、CORS，以及 `HttpOnly`/`Secure`/`SameSite=Lax` Cookie；
 - 管理员登录与强制改密、普通用户登录、TFA 启用与登录；

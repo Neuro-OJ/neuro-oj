@@ -47,6 +47,13 @@ export async function changePassword(
 
   const user = existing[0];
 
+  if (!user.password_hash) {
+    throw new BadRequestError(
+      "当前账号尚未设置本地密码，请使用密码设定流程",
+      "PASSWORD_SETUP_REQUIRED",
+    );
+  }
+
   // 1. 先验证旧密码（bcrypt 始终耗时 ~250ms，挡住 oracle）
   //    评审修复 M2：必须先于"新=旧"检查，使两条路径响应时间一致
   const oldValid = await comparePassword(oldPassword, user.password_hash);
@@ -92,6 +99,7 @@ export async function changePassword(
     username: user.username,
     email: user.email,
     is_admin: isAdmin,
+    has_local_password: true,
     must_change_password: false,
     active_ban: null,
     avatar_url: user.avatar_url ?? null,

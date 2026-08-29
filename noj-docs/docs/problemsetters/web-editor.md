@@ -38,6 +38,12 @@
 - 包结构、`problem.json`、导入语义（按 `(type, number)` 匹配更新/新建、管理员可指定题号等）见[题目包格式规范](../standards/problem-bundle.md)；用例目录约定见[测试数据与样例规范](../standards/test-data.md)。
 - 上传后可通过编辑器内的状态确认包是否已生效；管理端也可以下载或删除当前支持包。
 
+### 产物提交题
+
+需要提交预测结果、模型或其他文件时，将提交模式设置为**产物提交（artifact）**，并配置可选的 zip 大小上限。做题人提交 zip 后，Judge Worker 会将其解压到 Solution 容器；需要 CPU PyTorch、CV/ML 依赖的题目应使用 `noj-solution-ai`，普通题目可使用 `noj-solution-python`。
+
+产物提交题的入口文件约定为 `submission.py`，不使用代码题的单文件 `main.py` 注入方式。产物提交不支持重测，题面应明确 zip 内目录结构、入口函数和依赖要求。
+
 ## 保存与发布
 
 保存题目后，建议按以下顺序自测：

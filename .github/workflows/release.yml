@@ -3,6 +3,7 @@
 #
 # 触发条件：GitHub Release published 或 workflow_dispatch。
 # 普通 push / pull_request 不发布生产镜像。
+# 每次 Release 构建并推送 7 个镜像，平台为 linux/amd64（公测阶段只支持 amd64）。
 # =============================================================================
 
 name: Release Images
@@ -62,6 +63,9 @@ jobs:
           - name: noj-solution-python
             context: noj-judge
             file: noj-judge/docker/solution-python/Dockerfile
+          - name: noj-solution-ai
+            context: noj-judge
+            file: noj-judge/docker/solution-ai/Dockerfile
 
     steps:
       - name: 检出代码
@@ -234,8 +238,8 @@ jobs:
           set -Eeuo pipefail
           shopt -s nullglob
           files=(release-metadata/release-*.txt)
-          [[ "${#files[@]}" -eq 6 ]] || {
-            echo "::error::发布元数据数量错误，期望 6，实际 ${#files[@]}"
+          [[ "${#files[@]}" -eq 7 ]] || {
+            echo "::error::发布元数据数量错误，期望 7，实际 ${#files[@]}"
             exit 1
           }
 
@@ -281,7 +285,7 @@ jobs:
                 docker run --rm --entrypoint /bin/sh "$image@$digest" -c \
                   'command -v deno >/dev/null && test "$(id -u)" != 0'
                 ;;
-              */noj-evaluator-python|*/noj-solution-python)
+              */noj-evaluator-python|*/noj-solution-python|*/noj-solution-ai)
                 docker run --rm --entrypoint python3 "$image@$digest" -c \
                   'import sys; assert sys.version_info >= (3, 12)'
                 ;;

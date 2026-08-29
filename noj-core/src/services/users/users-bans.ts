@@ -52,6 +52,7 @@ async function toUserResponse(
     username: user.username,
     email: user.email,
     is_admin: isAdmin,
+    has_local_password: user.password_hash !== null,
     must_change_password: user.must_change_password,
     active_ban: activeBan,
     avatar_url: user.avatar_url ?? null,

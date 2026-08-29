@@ -1,6 +1,6 @@
 # 评测镜像与运行时
 
-Neuro OJ 的评测通过 Docker 镜像承载：出题人代码（evaluator）与用户代码（solution）分别运行在独立镜像的容器中。本文说明镜像白名单机制、Python 双容器运行时与常见问题。
+Neuro OJ 的评测通过 Docker 镜像承载：出题人代码（evaluator）与用户代码（solution）分别运行在独立镜像的容器中。本文说明镜像白名单机制、Python 双容器运行时、产物提交运行时与常见问题。
 
 ::: warning 现状
 当前评测运行时**仅实现 Python**（双容器 Evaluator / Solution SDK 均为 Python 实现，支持包模板固定 `python3`）。多语言评测（C++/Java/JavaScript 等）是项目的**决策性不做**项——LMCC 仅要求 Python，项目不会提供其他语言的评测运行时。
@@ -31,6 +31,10 @@ Python 题目使用两个镜像：
 
 - `noj-evaluator-python`：运行出题人的 `evaluate.py`。
 - `noj-solution-python`：运行用户提交的代码（Judge Worker 以硬编码名 `main.py` 注入），由 Solution Host 加载模块，并向 evaluator 暴露函数调用接口。Solution stdout 是协议通道，用户代码的普通 `print()` 文本会被协议层丢弃。
+
+产物提交题使用 zip 文件作为提交物。需要 CPU PyTorch、CV/ML 依赖的题目可以选择
+`noj-solution-ai`；Judge Worker 会将产物解压到 Solution 容器的 `/workspace`，由约定的
+`submission.py` 入口加载。产物提交不支持重测，具体大小上限由题目配置和系统硬上限共同决定。
 
 镜像由 `noj-judge/scripts/build-sdk-images.sh` 构建（默认 tag `:latest`，与 noj-core 种子数据 `judge_images` 登记一致）。
 

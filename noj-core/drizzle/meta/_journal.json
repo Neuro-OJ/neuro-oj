@@ -407,6 +407,13 @@
       "when": 1787881391800,
       "tag": "0057_magenta_lenny_balinger",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1787994240249,
+      "tag": "0058_free_shooting_star",
+      "breakpoints": true
     }
   ]
 }

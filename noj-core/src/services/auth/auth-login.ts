@@ -61,7 +61,8 @@ export async function loginUser(
   const user = existing[0];
 
   // 验证密码
-  const valid = await comparePassword(input.password, user.password_hash);
+  const valid = user.password_hash !== null &&
+    await comparePassword(input.password, user.password_hash);
   if (!valid) {
     await logAuthEvent(
       user.id,

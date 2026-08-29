@@ -38,4 +38,3 @@
 - **WHEN** 用户执行安装、启动或升级且 Judge 处于关闭状态
 - **THEN** 系统 MUST 只操作启用的生产服务镜像
 - **AND** 系统 MUST 不把 Judge 服务作为 Compose 启用服务
-

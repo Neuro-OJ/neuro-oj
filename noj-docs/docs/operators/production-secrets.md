@@ -7,7 +7,7 @@
 ```bash
 chmod 600 .env.prod
 cd noj-core
-deno task check:prod
+    deno task check:prod  # 可选；生产一键部署不依赖 Deno
 cd ..
 docker compose --env-file .env.prod -f docker-compose.prod.yml config >/dev/null
 ```

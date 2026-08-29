@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { users } from "../db/schema.ts";
@@ -13,7 +14,21 @@ import {
   loginUser,
   MIN_PASSWORD_LENGTH,
   registerUser,
+  setPassword,
 } from "../services/auth.ts";
+import {
+  consumeOAuthState,
+  createOAuthAuthorization,
+  fetchOAuthIdentity,
+  linkPasswordMatches,
+  listLinkedOAuthAccounts,
+  listOAuthProviders,
+  oauthFrontendRedirect,
+  type OAuthProviderId,
+  oauthStateCookieName,
+  resolveOAuthIdentity,
+  unlinkOAuthAccount,
+} from "../services/oauth.ts";
 import {
   confirmTfa,
   disableTfa,
@@ -207,6 +222,166 @@ auth.post("/login", loginIpRateLimit(), async (c) => {
     }
     throw err;
   }
+});
+
+function oauthCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: "Lax" as const,
+    secure: Deno.env.get("NOJ_ENV") === "production",
+    path: "/",
+    maxAge: SECONDS_PER_DAY,
+  };
+}
+
+function setOAuthSession(c: Parameters<typeof setCookie>[0], user: {
+  id: string;
+  username: string;
+  email: string;
+  is_admin: boolean;
+  must_change_password: boolean;
+  tfa_enabled: boolean;
+  avatar_url: string | null;
+}, token: string) {
+  // Hono 的 cookie serializer 不允许 `:`，但现有 Nitro 契约使用 `noj:token`
+  // / `noj:session`。回调直接返回给浏览器时手动序列化，保持两层 Cookie 名称一致。
+  const options = oauthCookieOptions();
+  const suffix = `${
+    options.secure ? "; Secure" : ""
+  }; HttpOnly; Path=/; SameSite=Lax; Max-Age=${options.maxAge}`;
+  c.header(
+    "Set-Cookie",
+    `noj:token=${encodeURIComponent(token)}${suffix}`,
+    { append: true },
+  );
+  const session = JSON.stringify({
+    userId: user.id,
+    username: user.username,
+    role: user.is_admin ? "admin" : "user",
+    email: user.email,
+    is_admin: user.is_admin,
+    must_change_password: user.must_change_password,
+    tfa_enabled: user.tfa_enabled,
+    avatar_url: user.avatar_url,
+  });
+  c.header(
+    "Set-Cookie",
+    `noj:session=${encodeURIComponent(session)}${
+      suffix.replace("; HttpOnly", "")
+    }`,
+    { append: true },
+  );
+}
+
+/** 返回当前可用的第三方登录方式。 */
+auth.get("/oauth/providers", (c) => {
+  return c.json({ data: listOAuthProviders() }, 200);
+});
+
+/** 发起登录或绑定授权。绑定由 POST /oauth/:provider/link 创建 state。 */
+auth.get("/oauth/:provider", async (c) => {
+  const requestUrl = c.req.url;
+  const result = await createOAuthAuthorization(
+    c.req.param("provider") as string,
+    "login",
+    requestUrl,
+  );
+  setCookie(c, oauthStateCookieName(), result.cookieValue, {
+    ...oauthCookieOptions(),
+    httpOnly: true,
+    maxAge: 600,
+  });
+  return c.redirect(result.url, 302);
+});
+
+auth.get("/oauth/:provider/callback", async (c) => {
+  const provider = c.req.param("provider") as OAuthProviderId;
+  const requestUrl = c.req.url;
+  try {
+    const state = await consumeOAuthState(
+      provider,
+      c.req.query("state"),
+      getCookie(c, oauthStateCookieName()),
+    );
+    deleteCookie(c, oauthStateCookieName(), { path: "/" });
+    const code = c.req.query("code");
+    if (!code) {
+      throw new BadRequestError(
+        "OAuth 回调缺少 code",
+        "OAUTH_CALLBACK_INVALID",
+      );
+    }
+    const identity = await fetchOAuthIdentity(provider, code, requestUrl);
+    const result = await resolveOAuthIdentity(
+      provider,
+      identity,
+      state.intent,
+      state.userId,
+    );
+    setOAuthSession(c, result.user, result.token);
+    return c.redirect(
+      oauthFrontendRedirect(
+        requestUrl,
+        undefined,
+        state.intent === "link"
+          ? "/settings"
+          : result.user.has_local_password
+          ? "/"
+          : "/set-password",
+      ),
+      302,
+    );
+  } catch (error) {
+    deleteCookie(c, oauthStateCookieName(), { path: "/" });
+    const code =
+      error instanceof BadRequestError && error.code.startsWith("OAUTH_STATE")
+        ? "state_invalid"
+        : "provider_error";
+    return c.redirect(oauthFrontendRedirect(requestUrl, code), 302);
+  }
+});
+
+auth.post("/oauth/:provider/link", authMiddleware, async (c) => {
+  const body = await parseJsonBody<{ password?: string }>(c);
+  await linkPasswordMatches(c.get("userId") as string, body.password ?? "");
+  const result = await createOAuthAuthorization(
+    c.req.param("provider") as string,
+    "link",
+    c.req.url,
+    c.get("userId") as string,
+  );
+  setCookie(c, oauthStateCookieName(), result.cookieValue, {
+    ...oauthCookieOptions(),
+    maxAge: 600,
+  });
+  return c.json({ data: { authorization_url: result.url } }, 200);
+});
+
+auth.get("/oauth/accounts", authMiddleware, async (c) => {
+  return c.json({
+    data: await listLinkedOAuthAccounts(c.get("userId") as string),
+  }, 200);
+});
+
+auth.delete("/oauth/accounts/:id", authMiddleware, async (c) => {
+  const body = await parseJsonBody<{ password?: string }>(c);
+  const userId = c.get("userId") as string;
+  await linkPasswordMatches(userId, body.password ?? "");
+  await unlinkOAuthAccount(userId, c.req.param("id") as string);
+  return c.body(null, 204);
+});
+
+auth.post("/set-password", authMiddleware, async (c) => {
+  const body = await parseJsonBody<{ new_password?: string }>(c);
+  if (!body.new_password) {
+    throw new ValidationError("缺少必填字段：new_password");
+  }
+  const user = await setPassword(
+    c.get("userId") as string,
+    body.new_password,
+    getClientIp(c),
+  );
+  return c.json({ data: { user } }, 200);
 });
 
 /**

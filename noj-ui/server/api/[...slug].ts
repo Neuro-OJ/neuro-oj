@@ -252,6 +252,7 @@ export default defineEventHandler(async (event) => {
             email: user.email,
             avatar_url: user.avatar_url ?? null,
             must_change_password: user.must_change_password ?? false,
+            has_local_password: user.has_local_password ?? true,
             // is_admin 由核心 API 按 admin:full_access 权限计算，不再根据角色名猜测。
             is_admin: user.is_admin,
             tfa_enabled: user.tfa_enabled ?? false,

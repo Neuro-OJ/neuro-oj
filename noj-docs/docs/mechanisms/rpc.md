@@ -138,4 +138,4 @@ Neuro OJ RPC 使用 JSON 加一层 Neuro OJ codec。当前支持：
 
 ## 输出与截断
 
-Judge Worker 会限制收集到的输出大小，当前单侧输出缓冲上限约 4 MiB，超过后追加截断提示。调用失败时，错误帧只携带 `message` 和（部分场景）清洗后的 `trace`，不会自动附加完整 stderr。
+Judge Worker 会限制收集到的输出大小，当前单侧输出累计上限为 1 MiB，超过后追加截断提示。协议行解析缓冲区为 4 MiB，但不等同于最终收集的输出上限。调用失败时，错误帧只携带 `message` 和（部分场景）清洗后的 `trace`，不会自动附加完整 stderr。

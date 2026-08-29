@@ -9,7 +9,7 @@ export const SCHEMA_DDL: string[] = [
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
+    password_hash TEXT,
     role TEXT NOT NULL DEFAULT 'user',
     bio TEXT NOT NULL DEFAULT '',
     must_change_password BOOLEAN NOT NULL DEFAULT false,
@@ -24,6 +24,20 @@ export const SCHEMA_DDL: string[] = [
       setweight(to_tsvector('simple', coalesce(username, '')), 'A') ||
       setweight(to_tsvector('simple', coalesce(email, '')), 'B')
     ) STORED
+  )`,
+
+  // 1.1 oauth_accounts（第三方身份关联，不保存 provider token）
+  `CREATE TABLE IF NOT EXISTS oauth_accounts (
+    id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    provider_user_id TEXT NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider_username TEXT,
+    provider_email TEXT,
+    email_verified BOOLEAN NOT NULL DEFAULT false,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (provider, provider_user_id)
   )`,
 
   // 2. roles（依赖预置：community 表与 RBAC 表均引用，需先于二者建表）
@@ -584,6 +598,7 @@ export const SCHEMA_DDL: string[] = [
 ];
 
 export const SCHEMA_INDEXES: string[] = [
+  "CREATE INDEX IF NOT EXISTS idx_oauth_accounts_user_id ON oauth_accounts (user_id)",
   // issue #100：search_vector GIN 索引（schema-ddl 用于 PGlite 模式测试）
   "CREATE INDEX IF NOT EXISTS idx_users_search_vector ON users USING GIN (search_vector)",
   "CREATE INDEX IF NOT EXISTS idx_problems_search_vector ON problems USING GIN (search_vector)",
@@ -697,6 +712,7 @@ export const SCHEMA_INDEXES: string[] = [
 
 export const ALL_TABLES = [
   "users",
+  "oauth_accounts",
   "problems",
   "judge_images",
   "tags",
