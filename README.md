@@ -149,7 +149,7 @@ deno task dev                 # http://localhost:8001
 
 各模块相互独立，可只启动需要的部分（如只调试前端时无需启动 noj-judge；不做 LLM 题时无需启动 noj-llm-gateway）。
 
-### 首个管理员账号
+### 开发环境管理员账号
 
 `deno task dev-setup` 的行为依赖 `ADMIN_EMAIL` 是否设置：
 
@@ -164,6 +164,9 @@ echo 'ADMIN_EMAIL=admin@example.com' >> noj-core/.env
 echo 'ADMIN_PASS=YourSecurePass123!' >> noj-core/.env
 cd noj-core && deno task dev-setup
 ```
+
+生产环境不需要在安装前填写管理员邮箱或密码。生产初始化完成后，打开网站注册第一个真实用户，
+该用户会自动获得管理员权限；已有生产站点的后续注册用户不会自动提权。
 
 ---
 

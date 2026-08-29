@@ -43,7 +43,7 @@ Deno.test({
     });
     assertEquals(result.user.username, TEST_USER.username);
     assertEquals(result.user.email, TEST_USER.email);
-    assertEquals(result.user.is_admin, false);
+    assertEquals(result.user.is_admin, true);
     assertEquals(typeof result.user.id, "string");
     assertEquals("password_hash" in result.user, false);
   },
@@ -248,5 +248,54 @@ Deno.test({
       UnauthorizedError,
       "用户不存在",
     );
+  },
+});
+
+Deno.test({
+  name: "auth service: 首个真实用户成为管理员，后续用户保持普通权限",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const first = await registerUser({
+      username: `first-admin-${Date.now()}`,
+      email: `first-admin-${Date.now()}@example.com`,
+      password: "FirstAdmin-2026-Xy9",
+    });
+    const second = await registerUser({
+      username: `second-user-${Date.now()}`,
+      email: `second-user-${Date.now()}@example.com`,
+      password: "SecondUser-2026-Xy9",
+    });
+
+    assertEquals(first.is_admin, true);
+    assertEquals(second.is_admin, false);
+  },
+});
+
+Deno.test({
+  name: "auth service: 并发首次注册至多一个管理员",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const stamp = Date.now();
+    const results = await Promise.all([
+      registerUser({
+        username: `race-first-a-${stamp}`,
+        email: `race-first-a-${stamp}@example.com`,
+        password: "RaceFirstA-2026-Xy9",
+      }),
+      registerUser({
+        username: `race-first-b-${stamp}`,
+        email: `race-first-b-${stamp}@example.com`,
+        password: "RaceFirstB-2026-Xy9",
+      }),
+    ]);
+
+    assertEquals(results.filter((user) => user.is_admin).length, 1);
+    assertEquals(results.filter((user) => !user.is_admin).length, 1);
   },
 });

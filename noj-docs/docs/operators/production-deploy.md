@@ -46,8 +46,9 @@ sudo bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj
 ```
 
 首次执行会将源码放入 `/opt/neuro-oj`，随后创建权限为 `600` 的 `.env.prod` 并生成
-部分随机密钥，然后在终端逐项引导填写生产配置。管理员密码和邮件服务密钥不会
-回显，完成后脚本会继续进行配置校验和服务启动。没有 TTY 时才会停止并提示手工编辑配置：
+部分随机密钥，然后在终端逐项引导填写生产配置。邮件服务密钥不会回显，完成后脚本会
+继续进行配置校验和服务启动。安装完成后请立即打开网站注册第一个用户，该用户会自动成为
+管理员。没有 TTY 时才会停止并提示手工编辑配置：
 
 “网站地址”没有现有配置时会默认填入检测到的服务器 IPv4，直接回车即可使用，也可以改填
 正式域名。随后脚本会询问是否使用 HTTPS，默认使用 HTTPS；如果选择否，才会进入临时 HTTP
@@ -126,7 +127,7 @@ bash noj-install.sh --non-interactive --ref v0.1.0 --dir /opt/neuro-oj
 | `S3_REGION` | 可选，默认 `us-east-1` |
 | `S3_FORCE_PATH_STYLE` | 自建 MinIO 通常为 `true` |
 | `JWT_SECRET` / `TFA_ENCRYPTION_KEY` | ≥32 字符随机串 |
-| `ADMIN_EMAIL` / `ADMIN_PASS` | 公测管理员账号 |
+| 首个管理员 | 安装完成后注册的第一个真实用户自动获得管理员权限；已有站点不会因升级自动提权 |
 | `EMAIL_PROVIDER` 及对应凭据 | 可选阿里云、腾讯云或 `disabled`（暂不配置邮件） |
 | `JUDGE_IMAGE_BASE` | 默认 `ghcr.io/neuro-oj/` |
 | `NGINX_PORT` | 容器 Nginx 映射到宿主机的端口，默认 `8080` |
@@ -145,7 +146,7 @@ bash noj-install.sh --non-interactive --ref v0.1.0 --dir /opt/neuro-oj
 # 并将解密后的 HTTP 流量转发到本机 ${NGINX_PORT:-8080} 端口（默认 8080）。
 # 示例见 deploy/README.md。
 
-# 4) 手动方式：执行一次性初始化（迁移 + 系统数据 + 管理员）
+# 4) 手动方式：执行一次性初始化（迁移 + 系统数据）
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d migrate
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs migrate
 

@@ -168,10 +168,6 @@ export function findProductionConfigErrors(
   requireValue(findings, "TFA_ENCRYPTION_KEY", config.tfaEncryptionKey, {
     minLength: MIN_TFA_ENCRYPTION_KEY_LENGTH,
   });
-  requireValue(findings, "ADMIN_EMAIL", config.adminEmail);
-  requireValue(findings, "ADMIN_PASS", config.adminPassword, {
-    minLength: 12,
-  });
   validateHttpsUrl(
     findings,
     "APP_URL",

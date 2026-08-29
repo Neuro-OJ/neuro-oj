@@ -306,6 +306,16 @@ run_deploy_with "$disabled_env" start >/dev/null 2>"$TEST_ROOT/disabled-email.er
   fail "跳过邮件服务后合法配置的 start 不应失败"
 pass "跳过邮件服务配置"
 
+no_admin_env="$TEST_ROOT/no-admin.env"
+cp "$ENV_FILE" "$no_admin_env"
+sed -i.bak -e '/^ADMIN_EMAIL=/d' -e '/^ADMIN_PASS=/d' "$no_admin_env"
+run_deploy_with "$no_admin_env" start >/dev/null 2>"$TEST_ROOT/no-admin.err" ||
+  fail "没有管理员环境变量时合法配置不应失败"
+if grep -q '管理员邮箱' "$DEPLOY_SCRIPT"; then
+  fail "生产配置向导不应继续询问管理员邮箱"
+fi
+pass "无需预先配置管理员"
+
 if run_deploy start >/dev/null 2>"$TEST_ROOT/start.err"; then
   :
 else

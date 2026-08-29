@@ -243,26 +243,6 @@ prompt_secret() {
   done
 }
 
-prompt_password() {
-  local label="$1" value confirmation
-  while :; do
-    read_prompt "${label}（至少 12 位）: " 1
-    value="$PROMPT_VALUE"
-    read_prompt "再次输入以确认：" 1
-    confirmation="$PROMPT_VALUE"
-    if [[ -z "$value" ]]; then
-      warn "管理员密码不能为空，请重新输入"
-    elif (( ${#value} < 12 )); then
-      warn "管理员密码至少需要 12 位，请重新输入"
-    elif [[ "$value" != "$confirmation" ]]; then
-      warn "两次输入的管理员密码不一致，请重新输入"
-    else
-      PROMPT_VALUE="$value"
-      return 0
-    fi
-  done
-}
-
 prompt_yes_no() {
   local label="$1" default="${2:-y}" answer
   while :; do
@@ -397,7 +377,7 @@ detect_default_ipv4() {
 
 configuration_needs_interactive_input() {
   local key value
-  for key in NOJ_VERSION DOMAIN APP_URL ADMIN_EMAIL ADMIN_PASS EMAIL_PROVIDER JUDGE_DOCKER_SOCKET; do
+  for key in NOJ_VERSION DOMAIN APP_URL EMAIL_PROVIDER JUDGE_DOCKER_SOCKET; do
     value="$(current_config_value "$key")"
     is_placeholder "$value" && return 0
   done
@@ -429,7 +409,7 @@ confirm_reuse_config() {
 }
 
 configure_env_interactive() {
-  local version domain app_url admin_email email_provider socket_path socket_gid key
+  local version domain app_url email_provider socket_path socket_gid key
   local current_value current_app_url detected_ip default_domain ssl_default email_prompt_label
   local email_provider_reused=0
   local reset_existing="${1:-0}"
@@ -437,9 +417,10 @@ configure_env_interactive() {
   begin_config_staging
   section "填写生产配置"
   cat <<'EOF'
-请按提示填写网站和管理员信息。密码和邮件密钥不会显示在屏幕上，也不会被脚本打印。
+请按提示填写网站和服务配置。邮件密钥不会显示在屏幕上，也不会被脚本打印。
 “网站地址”是域名或服务器 IP；脚本会根据 HTTPS 选择自动生成浏览器访问地址。
 评测服务连接位置一般保持默认即可；邮件服务可以选择“暂不配置”，以后再补充。
+安装完成后请立即打开网站注册第一个用户；第一个注册用户会自动获得管理员权限。
 EOF
 
   current_value="$(config_prompt_value NOJ_VERSION "$reset_existing")"
@@ -475,14 +456,6 @@ EOF
   fi
   set_env_value APP_URL "$app_url"
   set_env_value CORS_ALLOWED_ORIGINS "$app_url"
-
-  current_value="$(config_prompt_value ADMIN_EMAIL "$reset_existing")"
-  prompt_text "管理员邮箱" "$current_value"
-  admin_email="$PROMPT_VALUE"
-  [[ "$admin_email" == *@*.* ]] || fail "管理员邮箱格式不正确"
-  set_env_value ADMIN_EMAIL "$admin_email"
-  prompt_password "管理员密码"
-  set_env_value ADMIN_PASS "$PROMPT_VALUE"
 
   current_value="$(config_prompt_value EMAIL_PROVIDER "$reset_existing")"
   while :; do
@@ -635,7 +608,7 @@ initialize_env() {
     return 0
   fi
   warn "当前没有可交互终端，无法引导填写生产配置"
-  warn "请编辑 ${ENV_FILE}，填写安装版本、网站地址、HTTPS 选项、邮件服务、管理员账号和评测服务连接位置"
+  warn "请编辑 ${ENV_FILE}，填写安装版本、网站地址、HTTPS 选项、邮件服务和评测服务连接位置"
   warn "填写完成后重新执行：bash scripts/deploy/deploy.sh install"
   warn "自动化场景可显式使用 --non-interactive，让未完成配置直接失败"
   exit 2
@@ -666,7 +639,7 @@ check_required_values() {
     POSTGRES_PASSWORD REDIS_PASSWORD MINIO_ROOT_USER MINIO_ROOT_PASSWORD
     S3_ACCESS_KEY S3_SECRET_KEY S3_BUCKET S3_ENDPOINT STORAGE_PROVIDER
     JWT_SECRET TFA_ENCRYPTION_KEY NOJ_LLM_SERVICE_TOKEN NOJ_LLM_STORE_KEY
-    ADMIN_EMAIL ADMIN_PASS EMAIL_PROVIDER JUDGE_DOCKER_SOCKET JUDGE_DOCKER_SOCKET_GID
+    EMAIL_PROVIDER JUDGE_DOCKER_SOCKET JUDGE_DOCKER_SOCKET_GID
   )
   local missing=0
   for key in "${required_keys[@]}"; do
@@ -909,6 +882,11 @@ install() {
   wait_for_stack
   record_deployment_metadata
   ok "生产部署完成"
+  cat <<'EOF'
+
+下一步：打开网站并注册第一个用户。新站点的第一个注册用户会自动获得管理员权限；
+请立即完成注册，避免其他人抢先注册。已有站点的用户权限不会因升级改变。
+EOF
 }
 
 start() {

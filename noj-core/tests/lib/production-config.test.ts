@@ -11,8 +11,6 @@ function validConfig(): ProductionConfig {
     redisUrl: "redis://:prod-redis-secret@redis:6379/0",
     jwtSecret: "j".repeat(32),
     tfaEncryptionKey: "t".repeat(32),
-    adminEmail: "admin@noj.org",
-    adminPassword: "prod-admin-password-2026",
     appUrl: "https://noj.org",
     corsAllowedOrigins: "https://noj.org",
     trustedProxies: "172.28.0.0/16",

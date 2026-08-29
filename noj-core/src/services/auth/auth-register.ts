@@ -1,10 +1,19 @@
-import { eq } from "drizzle-orm";
+import { eq, ne, sql } from "drizzle-orm";
 import { getDb } from "../../db/connection.ts";
 import { roles, userRoles, users } from "../../db/schema.ts";
 import { hashPassword } from "../../lib/password.ts";
 import { logAuthEvent } from "../audit-log.ts";
 import { BadRequestError, ConflictError } from "../../lib/errors.ts";
 import type { RegisterInput, UserResponse } from "../../types/auth.ts";
+import { ROOT_USER_ID } from "../../lib/constants.ts";
+
+/**
+ * 注册首个真实用户时使用的事务级锁键。
+ *
+ * 只有在当前数据库还没有真实用户时才会尝试获取该锁；拿到锁后会再次
+ * 检查用户数量，避免两个并发注册请求同时成为管理员。
+ */
+const FIRST_USER_ADMIN_LOCK_KEY = 20260829;
 
 /**
  * 密码强度校验最小长度。
@@ -128,37 +137,57 @@ export async function registerUser(
 
   const db = getDb();
 
-  // 检查用户名是否已存在
-  const existingUsername = await db
-    .select()
-    .from(users)
-    .where(eq(users.username, input.username))
-    .limit(1);
-
-  if (existingUsername.length > 0) {
-    throw new ConflictError("用户名已存在");
-  }
-
-  // 检查邮箱是否已注册
-  const existingEmail = await db
-    .select()
-    .from(users)
-    .where(eq(users.email, input.email))
-    .limit(1);
-
-  if (existingEmail.length > 0) {
-    throw new ConflictError("邮箱已被注册");
-  }
-
   // 哈希密码
   const passwordHash = await hashPassword(input.password);
 
-  // 创建用户
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+  let isFirstRealUser = false;
 
-  try {
-    await db.insert(users).values({
+  await db.transaction(async (tx) => {
+    // 检查用户名是否已存在
+    const existingUsername = await tx
+      .select()
+      .from(users)
+      .where(eq(users.username, input.username))
+      .limit(1);
+
+    if (existingUsername.length > 0) {
+      throw new ConflictError("用户名已存在");
+    }
+
+    // 检查邮箱是否已注册
+    const existingEmail = await tx
+      .select()
+      .from(users)
+      .where(eq(users.email, input.email))
+      .limit(1);
+
+    if (existingEmail.length > 0) {
+      throw new ConflictError("邮箱已被注册");
+    }
+
+    // 快速路径：已有真实用户时不必获取全局注册锁。
+    let realUsers = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(ne(users.id, ROOT_USER_ID))
+      .limit(1);
+
+    if (realUsers.length === 0) {
+      // 慢速路径：锁住“首个用户”判断，再次查询以处理并发注册。
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(${FIRST_USER_ADMIN_LOCK_KEY})`,
+      );
+      realUsers = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(ne(users.id, ROOT_USER_ID))
+        .limit(1);
+      isFirstRealUser = realUsers.length === 0;
+    }
+
+    await tx.insert(users).values({
       id,
       username: input.username,
       email: input.email,
@@ -166,25 +195,27 @@ export async function registerUser(
       created_at: now,
       updated_at: now,
     });
-  } catch (err) {
+
+    const roleName = isFirstRealUser ? "admin" : "user";
+    const [role] = await tx
+      .select({ id: roles.id })
+      .from(roles)
+      .where(eq(roles.name, roleName))
+      .limit(1);
+
+    if (!role) {
+      throw new Error(`注册所需角色不存在：${roleName}`);
+    }
+
+    await tx.insert(userRoles).values({
+      user_id: id,
+      role_id: role.id,
+    }).onConflictDoNothing();
+  }).catch((err) => {
     const conflict = conflictFromUniqueViolation(err);
     if (conflict) throw conflict;
     throw err;
-  }
-
-  // 分配默认角色（is_default=true 的角色）
-  const [defaultRole] = await db
-    .select({ id: roles.id })
-    .from(roles)
-    .where(eq(roles.is_default, true))
-    .limit(1);
-
-  if (defaultRole) {
-    await db.insert(userRoles).values({
-      user_id: id,
-      role_id: defaultRole.id,
-    }).onConflictDoNothing();
-  }
+  });
 
   // PR-2 审计：注册成功
   await logAuthEvent(
@@ -195,6 +226,7 @@ export async function registerUser(
       user_id: id,
       username: input.username,
       email: input.email,
+      is_admin: isFirstRealUser,
     },
   );
 
@@ -202,7 +234,7 @@ export async function registerUser(
     id,
     username: input.username,
     email: input.email,
-    is_admin: false,
+    is_admin: isFirstRealUser,
     must_change_password: false,
     active_ban: null,
     avatar_url: null,

@@ -33,8 +33,6 @@ x-core-env: &core-env
   S3_BUCKET: ${S3_BUCKET:?S3_BUCKET is required}
   S3_FORCE_PATH_STYLE: "true"
   EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER is required}
-  ADMIN_EMAIL: ${ADMIN_EMAIL:?ADMIN_EMAIL is required}
-  ADMIN_PASS: ${ADMIN_PASS:?ADMIN_PASS is required}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   LOG_FORMAT: ${LOG_FORMAT:-json}
   JUDGE_IMAGE_BASE: ${JUDGE_IMAGE_BASE-ghcr.io/neuro-oj/}
@@ -42,15 +40,14 @@ x-core-env: &core-env
   AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-90}
 
 services:
-  # ── 一次性初始化：迁移 + 系统数据 + 管理员引导 ────────────────────
+  # ── 一次性初始化：迁移 + 系统数据 ───────────────────────────────
   migrate:
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-core:${NOJ_VERSION:?NOJ_VERSION is required}"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
         /app/bin/noj db migrate &&
-        /app/bin/noj init system &&
-        /app/bin/noj bootstrap admin
+        /app/bin/noj init system
     environment:
       <<: *core-env
     depends_on:
