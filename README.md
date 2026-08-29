@@ -124,15 +124,13 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
   bash -s -- --ref <Release 标签> --dir /opt/neuro-oj
 ```
 
-如需先检查脚本，可先下载 `setup.sh` 再执行；已经有仓库源码时，直接执行下方的 `deploy.sh` 即可。
+如需先检查脚本，可先下载 `setup.sh` 再执行；安装完成后，服务启停、更新和管理统一使用
+安装目录中的 `noj` 命令。
 
 安装向导会创建并保护 `.env.prod`，生成随机密钥，检查生产配置，拉取镜像并等待服务通过健康检查。Judge 是否启动取决于安装时的选择；没有 Judge 时网站和题库仍可使用，但暂时不能进行代码评测。
 
-如果已经有仓库源码，不需要再次运行下载入口，可直接在仓库根目录执行：
-
-```bash
-bash scripts/deploy/deploy.sh install
-```
+首次生产安装统一使用 `setup.sh`；安装完成后，服务启停、更新和管理统一使用安装目录中的
+`noj` 命令，不再需要直接调用 bootstrap 或底层部署脚本。
 
 部署完成后，通过配置的域名访问：
 
@@ -144,11 +142,20 @@ bash scripts/deploy/deploy.sh install
 常用运维命令：
 
 ```bash
-bash scripts/deploy/deploy.sh status   # 查看服务状态
-bash scripts/deploy/deploy.sh logs core # 查看 core 日志
-bash scripts/deploy/deploy.sh upgrade  # 升级到 .env.prod 中的版本
-bash scripts/deploy/deploy.sh stop     # 停止服务但保留数据卷
+./noj status                    # 查看服务状态
+./noj logs core                 # 查看 core 日志
+./noj update                    # 升级到 .env.prod 中的 NOJ_VERSION
+./noj stop                      # 停止服务但保留数据卷
+./noj restart                   # 重启服务
+./noj backup                    # 创建完整生产备份
+./noj config check              # 只校验配置和镜像，不改变服务状态
 ```
+
+`./noj` 是生产运维的简化入口，内部支持 `install`，日常使用 `start`、`stop`、`restart`、`update`、
+`status`、`logs`、`backup`、`verify` 和 `config check`。`update` 使用 `.env.prod` 中已经
+配置的 `NOJ_VERSION`，不会自动切换到最新版本，也不会删除数据卷。需要传递高级参数时，
+仍可直接使用 `bash scripts/deploy/deploy.sh <命令> [选项]`。首次通过 `setup.sh` 安装成功后，
+命令会自动注册到 `/usr/local/bin/noj`；若无权限则回退到 `~/.local/bin/noj` 并更新登录 PATH。
 
 更多部署、TLS、备份和升级说明见 [`deploy/README.md`](./deploy/README.md) 和[生产部署文档](./noj-docs/docs/operators/production-deploy.md)。
 

@@ -3,6 +3,9 @@
 Neuro OJ 仓库根目录的脚本统一存放点。所有脚本以 `bash scripts/<dir>/<name>.sh`
 方式调用。
 
+生产环境的日常运维推荐从仓库根目录执行 `./noj`；它是 `scripts/deploy/deploy.sh` 的
+安全简化入口。
+
 ## 目录结构
 
 ```
@@ -20,6 +23,8 @@ scripts/
 │   ├── install.sh          #   可独立下载的源码获取与部署 bootstrap
 │   ├── deploy.sh          #   生产安装、启动、升级、停止、备份入口
 │   ├── backup.sh          #   PostgreSQL/Redis/MinIO/S3 全量快照、校验、恢复与演练
+│   ├── test-install.sh     #   不依赖网络和 Docker 的安装更新测试
+│   ├── test-noj.sh         #   noj 命令路由测试
 │   ├── test-deploy.sh     #   不依赖真实生产资源的部署脚本测试
 │   └── test-backup.sh     #   不依赖真实 Docker 的备份与恢复安全边界测试
 │
@@ -41,25 +46,26 @@ scripts/
 
 | 我想...                                  | 使用                                                            |
 | ---------------------------------------- | --------------------------------------------------------------- |
+| **生产运维统一入口**                     | `./noj <install\|start\|stop\|restart\|update\|status\|logs\|backup\|verify>` |
+| **只检查生产配置**                       | `./noj config check`                                            |
 | **首次启动整套开发环境**                 | `bash scripts/dev/devtool.sh install-deps && bash scripts/dev/devtool.sh init-env && bash scripts/dev/devtool.sh start` |
 | **查看当前运行状态**                     | `bash scripts/dev/devtool.sh status`（加 `--json` 结构化输出）  |
 | **停止所有模块**                         | `bash scripts/dev/devtool.sh stop`                              |
 | **单模块启动**                           | `bash scripts/dev/devtool.sh start <core\|ui\|judge\|infra>`    |
 | **单模块重启**                           | `bash scripts/dev/devtool.sh stop <core\|ui\|judge> && bash scripts/dev/devtool.sh start <core\|ui\|judge>` |
 | **更新环境变量模板（保留自定义）**       | `bash scripts/dev/devtool.sh init-env --merge`                  |
-| **首次生产部署**                         | `bash scripts/deploy/deploy.sh install`                          |
 | **一条命令安装整套 NOJ**                  | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh \| bash` |
 | **固定版本安装**                          | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh \| bash -s -- --ref 0.8.0-rc.1 --dir /opt/neuro-oj` |
-| **单脚本下载并部署**                     | `bash scripts/deploy/install.sh --dir /opt/neuro-oj`             |
+| **兼容旧版本的单脚本下载部署**            | `bash scripts/deploy/install.sh --dir /opt/neuro-oj`             |
 | **宝塔兼容部署**                         | `bash scripts/deploy/install.sh --panel baota --ref v0.1.0 --dir /opt/neuro-oj` |
 | **检测 Linux 部署环境**                  | `bash scripts/deploy/install.sh check`                           |
 | **安装基础部署工具**                     | `sudo bash scripts/deploy/install.sh install-env`                |
 | **独立 Judge 一键部署**                   | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/judge-install.sh \| bash -s -- install --dir /srv/noj-judge` |
 | **检查独立 Judge 环境**                   | `bash /srv/noj-judge/judge-install.sh check`                      |
-| **启动/停止生产服务**                    | `bash scripts/deploy/deploy.sh start` / `stop`                   |
-| **升级生产版本**                         | `bash scripts/deploy/deploy.sh upgrade`                          |
-| **查看生产状态/日志**                    | `bash scripts/deploy/deploy.sh status` / `logs [service]`        |
-| **创建完整生产备份**                     | `bash scripts/deploy/deploy.sh backup`                          |
+| **启动/停止生产服务**                    | `./noj start` / `./noj stop`                                     |
+| **升级生产版本**                         | `./noj update`                                                   |
+| **查看生产状态/日志**                    | `./noj status` / `./noj logs [service]`                          |
+| **创建完整生产备份**                     | `./noj backup`                                                   |
 | **校验/恢复演练快照**                    | `bash scripts/deploy/backup.sh verify <snapshot>` / `drill <snapshot>` |
 | **执行 staging 验收**                    | `bash scripts/staging/acceptance.sh all --env-file .env.staging` |
 | **仅检查 staging 配置**                  | `bash scripts/staging/acceptance.sh check --env-file .env.staging` |
@@ -92,12 +98,12 @@ cd noj-judge && cargo run
 然后进入环境检测、配置向导和生产部署。需要复现或固定版本时，在命令后增加
 `--ref 0.8.0-rc.1`。安装完成后打开网站注册第一个用户，该用户会自动获得管理员权限。
 
-`scripts/deploy/install.sh` 可以从仓库中单独下载后执行。它也会自动选择最新 Release，只获取源码并调用
-下载后的 `deploy.sh`，目标目录非空时会拒绝覆盖；已有安装请直接进入目标目录执行
-`deploy.sh upgrade`。
+`setup.sh` 是唯一推荐的首次安装入口，会获取内部 bootstrap、完成源码安装并调用目标目录中的
+`noj install`。`scripts/deploy/install.sh` 仅作为 setup.sh 的内部实现和旧版本兼容入口；已有安装
+的更新、启停和管理请统一使用 `./noj update`、`./noj start`、`./noj status` 等命令。
 
-在单脚本模式下可先执行 `bash noj-install.sh check` 检查 Linux、架构、基础工具、Docker
-Compose、内存、磁盘和端口。`sudo bash noj-install.sh install-env` 只会通过系统包管理器
+兼容入口模式下可执行 `bash scripts/deploy/install.sh check` 检查 Linux、架构、基础工具、Docker
+Compose、内存、磁盘和端口。`sudo bash scripts/deploy/install.sh install-env` 只会通过系统包管理器
 安装 `ca-certificates`、`curl`、`tar` 和 `openssl`；Docker Engine、Compose plugin、Cosign
 和 Judge rootless Docker daemon 不由脚本自动安装。Cosign 只在主动开启镜像签名校验时需要。
 
