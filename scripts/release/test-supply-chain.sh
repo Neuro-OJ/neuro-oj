@@ -40,6 +40,14 @@ if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
 fi
 pass "失效 Trivy Action 引用拒绝"
 
+sed -i.bak '/GH_TOKEN:.*github.token/d' \
+  "$TEST_ROOT/.github/workflows/release.yml"
+if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
+  >/dev/null 2>&1; then
+  fail "缺少来源证明验证令牌的工作流未被拒绝"
+fi
+pass "缺少来源证明验证令牌拒绝"
+
 sed -i.bak 's#FROM debian:bookworm-slim@sha256:[0-9a-f]*#FROM debian:bookworm-slim#' \
   "$TEST_ROOT/noj-core/Dockerfile"
 if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \

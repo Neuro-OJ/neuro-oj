@@ -227,6 +227,7 @@ jobs:
 
       - name: 验证 digest、签名、来源证明和 smoke test
         env:
+          GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
