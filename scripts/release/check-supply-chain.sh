@@ -60,6 +60,18 @@ check_base_image_security_updates() {
   ok "受影响生产 Dockerfile 均包含基础系统安全更新"
 }
 
+check_runtime_users() {
+  local file="noj-llm-gateway/Dockerfile"
+  require_file "$file"
+  grep -Eq 'adduser .*(-u 10001|--uid 10001)' "$ROOT_DIR/$file" \
+    || fail "$file 未创建固定 UID 的运行用户"
+  grep -q 'chown -R noj:noj /app' "$ROOT_DIR/$file" \
+    || fail "$file 未授予运行用户应用目录权限"
+  grep -q '^USER noj$' "$ROOT_DIR/$file" \
+    || fail "$file 未切换到非 root 运行用户"
+  ok "LLM Gateway 使用非 root 运行用户"
+}
+
 check_compose() {
   local file="$ROOT_DIR/docker-compose.prod.yml"
   require_file "docker-compose.prod.yml"
@@ -103,5 +115,6 @@ check_release_workflow() {
 check_release_workflow
 check_dockerfiles
 check_base_image_security_updates
+check_runtime_users
 check_compose
 ok "供应链配置检查通过"
