@@ -27,6 +27,42 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/depl
 - `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID`：只服务于 Judge 的 rootless
   Docker daemon Unix socket 及其组 ID。
 
+### 宝塔等服务器面板
+
+脚本默认会检测宝塔面板。检测到后会进入兼容提示模式：脚本继续使用标准
+`docker` / `docker compose` 命令，用户可以在宝塔的 Docker 页面确认 Docker 状态，
+并查看脚本创建的 Redis 与 Judge 容器。脚本不会调用宝塔 API，也不会修改已有站点、
+反向代理、容器或面板配置；Judge 本身不需要公开端口。
+
+```bash
+# 默认自动检测
+bash /srv/noj-judge/judge-install.sh install
+
+# 面板安装目录特殊时，强制显示宝塔提示
+bash /srv/noj-judge/judge-install.sh install --panel baota
+
+# 明确关闭面板检测提示
+bash /srv/noj-judge/judge-install.sh install --panel none
+```
+
+宝塔只能提供 Docker 的管理入口，不能替代 Judge 所需的隔离边界。仍必须准备只服务
+于 Judge 的 rootless Docker daemon 和专用 Unix socket，不能使用 `/run/docker.sock` 或
+`/var/run/docker.sock`。本机 Redis 模式创建的 Redis 会绑定到 `127.0.0.1`，因此也不会
+自动向公网开放 Redis 端口。
+
+Redis 配置会先让用户选择来源：
+
+1. **连接已有 Redis（推荐）**：填写 noj-core 正在使用的完整 Redis URL；
+2. **创建本机 Redis**：仅在明确要让 noj-core 也使用该实例时选择。脚本会创建带持久化卷、
+   随机密码且只绑定 `127.0.0.1` 的 Redis 容器，并将连接信息保存到
+   `/srv/noj-judge/redis-connection.txt`；
+3. **稍后配置**：不创建 Redis，也不会启动 Judge。
+
+Judge 和 noj-core 必须使用同一个 Redis、数据库、认证信息、任务队列和结果队列。创建本机
+Redis 后，先按连接信息文件中的地址配置 noj-core，再重新执行 Judge 安装或检查。连接信息
+文件、Redis 配置文件和 Judge 环境文件均为 `0600`，脚本不会在终端或 Docker 命令日志中显示
+Redis 密码。
+
 部署前必须准备专用 rootless Docker daemon。脚本会检查 Linux、Docker、Compose、Redis、
 磁盘/内存、镜像架构和 socket 权限，但不会自动安装或替换 Docker daemon，也不会修改
 宿主机 systemd、subuid/subgid。`/var/run/docker.sock`、`/run/docker.sock`、TCP/HTTP

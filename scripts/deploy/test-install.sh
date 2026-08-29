@@ -35,12 +35,24 @@ cat >"$FAKE_BIN/curl" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 output=''
+url=''
 while (($# > 0)); do
   case "$1" in
     --output|-o) output="$2"; shift ;;
+    --header) shift ;;
   esac
+  url="$1"
   shift
 done
+if [[ "$url" == *'/releases?per_page=1' ]]; then
+  [[ "${NOJ_BOOTSTRAP_API_FAIL:-0}" != 1 ]] || exit 22
+  printf '{"tag_name":"%s"}\n' "${NOJ_BOOTSTRAP_LATEST_REF:-v0.1.0}"
+  exit 0
+fi
+if [[ -n "${NOJ_SETUP_PAYLOAD:-}" ]]; then
+  cp "$NOJ_SETUP_PAYLOAD" "${output:?}"
+  exit 0
+fi
 printf '%s\n' "${output:?}" >>"${NOJ_BOOTSTRAP_DOWNLOAD_LOG:?}"
 if [[ "${NOJ_BOOTSTRAP_DOWNLOAD_FAIL:-0}" == 1 ]]; then
   exit 22
@@ -105,11 +117,35 @@ export NOJ_BOOTSTRAP_DEPLOY_LOG="$DEPLOY_LOG"
 bash "$INSTALL_SCRIPT" --help >/dev/null
 pass "帮助输出"
 
+NOJ_SETUP_BOOTSTRAP_URL="https://example.test/install.sh" \
+NOJ_SETUP_PAYLOAD="$INSTALL_SCRIPT" \
+  bash "$SCRIPT_DIR/../../setup.sh" --help >"$TEST_ROOT/setup.out"
+grep -q '默认自动选择最新 Release' "$TEST_ROOT/setup.out" || fail "根目录一键入口未转交 bootstrap"
+pass "根目录一键入口"
+
 check_out="$TEST_ROOT/check.out"
 bash "$INSTALL_SCRIPT" check --port 18080 >"$check_out"
 grep -q '环境检测通过' "$check_out" || fail "环境检测通过提示缺失"
 grep -q 'Docker Compose：v2 可用' "$check_out" || fail "Compose 检测结果缺失"
 pass "环境检测与资源摘要"
+
+panel_root="$TEST_ROOT/baota/www/server/panel"
+mkdir -p "$panel_root"
+NOJ_BOOTSTRAP_PANEL_ROOT="$panel_root" bash "$INSTALL_SCRIPT" check --port 18081 \
+  >"$TEST_ROOT/panel-check.out"
+grep -q '宝塔兼容模式' "$TEST_ROOT/panel-check.out" || fail "bootstrap 宝塔自动检测提示缺失"
+grep -q '反向代理' "$TEST_ROOT/panel-check.out" || fail "bootstrap 面板反向代理提示缺失"
+pass "bootstrap 宝塔自动检测"
+
+NOJ_BOOTSTRAP_PANEL_ROOT="$panel_root" bash "$INSTALL_SCRIPT" check --panel none --port 18082 \
+  >"$TEST_ROOT/panel-none.out"
+if grep -q '宝塔兼容模式' "$TEST_ROOT/panel-none.out"; then
+  fail "bootstrap --panel none 不应输出宝塔提示"
+fi
+NOJ_BOOTSTRAP_PANEL_ROOT="$TEST_ROOT/missing-panel" bash "$INSTALL_SCRIPT" check --panel baota --port 18083 \
+  >"$TEST_ROOT/panel-force.out"
+grep -q '宝塔兼容模式' "$TEST_ROOT/panel-force.out" || fail "bootstrap --panel baota 提示缺失"
+pass "bootstrap 面板模式覆盖"
 
 set +e
 NOJ_BOOTSTRAP_TEST_ARCH=aarch64 bash "$INSTALL_SCRIPT" check \
@@ -144,7 +180,20 @@ grep -q 'https://example.com/repo/archive/v0.1.0.tar.gz' "$TEST_ROOT/dry-run.out
   fail "dry-run 未显示下载地址"
 pass "dry-run 不产生副作用"
 
+set +e
+NOJ_BOOTSTRAP_API_FAIL=1 bash "$INSTALL_SCRIPT" --dir "$TEST_ROOT/api-fail" \
+  >/dev/null 2>"$TEST_ROOT/api-fail.err"
+api_status=$?
+set -e
+[[ "$api_status" != 0 ]] || fail "最新 Release 获取失败未返回非零"
+grep -q '使用 --ref' "$TEST_ROOT/api-fail.err" || fail "最新 Release 获取失败提示缺少显式版本建议"
+pass "最新 Release 获取失败"
+
+NOJ_BOOTSTRAP_API_FAIL=1 bash "$INSTALL_SCRIPT" --ref v0.1.0 --dir "$TEST_ROOT/explicit-ref" >/dev/null
+pass "显式版本跳过 Release 查询"
+
 download_only_dir="$TEST_ROOT/download-only"
+rm -f "$DEPLOY_LOG"
 bash "$INSTALL_SCRIPT" --download-only --repo https://example.com/repo --ref v0.1.0 \
   --dir "$download_only_dir" >/dev/null
 [[ -f "$download_only_dir/scripts/deploy/deploy.sh" ]] || fail "下载模式缺少部署脚本"
@@ -159,6 +208,26 @@ bash "$INSTALL_SCRIPT" --repo https://example.com/repo --ref v0.1.0 --dir "$depl
 [[ "$(cat "$DEPLOY_LOG")" == 'install --env-file /tmp/example.env --backup-dir /tmp/backups' ]] ||
   fail "部署参数未正确传递"
 pass "部署入口与参数传递"
+
+resume_dir="$TEST_ROOT/resume"
+mkdir -p "$resume_dir/scripts/deploy"
+cp "$TEST_ROOT/source/noj-neuro-oj-v0.1.0/scripts/deploy/deploy.sh" \
+  "$resume_dir/scripts/deploy/deploy.sh"
+chmod +x "$resume_dir/scripts/deploy/deploy.sh"
+printf 'services:\n  fake:\n    image: alpine:3\n' >"$resume_dir/docker-compose.prod.yml"
+printf 'NOJ_VERSION=v0.1.0\nADMIN_PASS=keep-this-secret\n' >"$resume_dir/.env.prod"
+mkdir -p "$resume_dir/backups"
+printf 'keep\n' >"$resume_dir/backups/marker.txt"
+bash "$INSTALL_SCRIPT" --panel baota --dir "$resume_dir" >/dev/null
+grep -q 'install --panel baota' "$DEPLOY_LOG" || fail "已有 NOJ 安装未继续执行 deploy.sh"
+grep -q '^ADMIN_PASS=keep-this-secret$' "$resume_dir/.env.prod" || fail "续装覆盖了生产配置"
+[[ "$(cat "$resume_dir/backups/marker.txt")" == keep ]] || fail "续装覆盖了备份目录"
+pass "已有 NOJ 安装保留配置并继续部署"
+
+panel_deploy_dir="$TEST_ROOT/panel-deploy"
+bash "$INSTALL_SCRIPT" --panel baota --dir "$panel_deploy_dir" >/dev/null
+grep -q 'install --panel baota' "$DEPLOY_LOG" || fail "bootstrap 未将面板模式传递给 deploy.sh"
+pass "bootstrap 面板参数传递"
 
 nonempty_dir="$TEST_ROOT/nonempty"
 mkdir -p "$nonempty_dir"

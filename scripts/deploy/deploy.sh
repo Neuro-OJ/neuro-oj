@@ -25,11 +25,18 @@ COMPOSE_FILE="$REPO_ROOT/docker-compose.prod.yml"
 BACKUP_DIR="$REPO_ROOT/backups"
 BACKUP_PASSPHRASE_FILE="${NOJ_BACKUP_PASSPHRASE_FILE:-}"
 DOCKER_BIN="${NOJ_DEPLOY_DOCKER_BIN:-docker}"
+PANEL_MODE="${NOJ_DEPLOY_PANEL:-auto}"
+PANEL_NAME="none"
+PANEL_ROOT="${NOJ_DEPLOY_PANEL_ROOT:-/www/server/panel}"
+PANEL_COMMAND="${NOJ_DEPLOY_PANEL_COMMAND:-/usr/bin/bt}"
+TTY_PATH="${NOJ_DEPLOY_TTY_PATH:-/dev/tty}"
 DRY_RUN=0
 FOLLOW=0
 INTERACTIVE=1
 [[ "${NOJ_DEPLOY_NON_INTERACTIVE:-0}" == "1" ]] && INTERACTIVE=0
 declare -a VERIFIED_IMAGE_DIGESTS=()
+CONFIG_STAGE_FILE=""
+CONFIG_TARGET_FILE=""
 
 if [[ -t 1 ]]; then
   GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; RESET='\033[0m'
@@ -44,6 +51,30 @@ fail() {
   exit 1
 }
 section() { printf "\n== %s ==\n" "$*"; }
+
+has_interactive_tty() {
+  [[ -r "$TTY_PATH" && -w "$TTY_PATH" ]] || return 1
+  (exec 3<>"$TTY_PATH") 2>/dev/null
+}
+
+read_prompt() {
+  local prompt="$1" secret="${2:-0}" value
+  if has_interactive_tty; then
+    printf '%s' "$prompt" >"$TTY_PATH"
+    if [[ "$secret" == 1 ]]; then
+      IFS= read -r -s value <"$TTY_PATH" || fail "读取配置输入失败"
+      printf '\n' >"$TTY_PATH"
+    else
+      IFS= read -r value <"$TTY_PATH" || fail "读取配置输入失败"
+    fi
+  elif [[ "$secret" == 1 ]]; then
+    IFS= read -r -s -p "$prompt" value || fail "读取配置输入失败"
+    printf '\n' >&2
+  else
+    IFS= read -r -p "$prompt" value || fail "读取配置输入失败"
+  fi
+  PROMPT_VALUE="$value"
+}
 
 usage() {
   cat <<'EOF'
@@ -66,12 +97,14 @@ Neuro OJ 生产部署工具
   --backup-dir DIR      指定备份目录（默认 ./backups）
   --passphrase-file FILE
                         GPG 备份口令文件（默认读取 NOJ_BACKUP_PASSPHRASE_FILE）
+  --panel MODE           面板模式：auto（默认）、baota 或 none
   --dry-run             只检查并显示将执行的操作，不修改服务或文件
   --non-interactive     首次初始化不询问，配置不完整时直接失败
   -h, --help            显示帮助
 
 环境变量：
   NOJ_DEPLOY_DOCKER_BIN  仅用于测试，指定 Docker CLI 路径
+  NOJ_DEPLOY_PANEL       面板模式（默认 auto）
 EOF
 }
 
@@ -111,6 +144,12 @@ parse_args() {
         shift
         ;;
       --passphrase-file=*) BACKUP_PASSPHRASE_FILE="${1#*=}" ;;
+      --panel)
+        (($# >= 2)) || fail "--panel 需要 auto、baota 或 none"
+        PANEL_MODE="$2"
+        shift
+        ;;
+      --panel=*) PANEL_MODE="${1#*=}" ;;
       --follow|-f) FOLLOW=1 ;;
       --dry-run) DRY_RUN=1 ;;
       --non-interactive) INTERACTIVE=0 ;;
@@ -121,6 +160,10 @@ parse_args() {
     shift
   done
   [[ -n "$COMMAND" ]] || { usage; exit 2; }
+  case "$PANEL_MODE" in
+    auto|baota|none) ;;
+    *) fail "--panel 只能是 auto、baota 或 none：$PANEL_MODE" ;;
+  esac
 }
 
 env_value() {
@@ -133,6 +176,13 @@ env_value() {
     "\""*"\""|"'"*"'") value="${value:1:${#value}-2}" ;;
   esac
   printf '%s\n' "$value"
+}
+
+is_exit_word() {
+  case "$1" in
+    exit|EXIT|quit|QUIT|cancel|CANCEL|q|Q|取消) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 set_env_value() {
@@ -165,10 +215,12 @@ prompt_text() {
   local label="$1" default_value="${2:-}" value
   while :; do
     if [[ -n "$default_value" ]]; then
-      IFS= read -r -p "$label [$default_value]: " value || fail "读取配置输入失败：$label"
+      read_prompt "$label [$default_value]: "
+      value="$PROMPT_VALUE"
       value="${value:-$default_value}"
     else
-      IFS= read -r -p "$label: " value || fail "读取配置输入失败：$label"
+      read_prompt "$label: "
+      value="$PROMPT_VALUE"
     fi
     if [[ -n "$value" && "$value" != *$'\n'* && "$value" != *$'\r'* ]]; then
       PROMPT_VALUE="$value"
@@ -181,8 +233,8 @@ prompt_text() {
 prompt_secret() {
   local label="$1" value
   while :; do
-    IFS= read -r -s -p "$label: " value || fail "读取配置输入失败：$label"
-    printf '\n'
+    read_prompt "$label: " 1
+    value="$PROMPT_VALUE"
     if [[ -n "$value" ]]; then
       PROMPT_VALUE="$value"
       return 0
@@ -191,23 +243,20 @@ prompt_secret() {
   done
 }
 
-prompt_password() {
-  local label="$1" value confirmation
+prompt_yes_no() {
+  local label="$1" default="${2:-y}" answer
   while :; do
-    IFS= read -r -s -p "$label（至少 12 位）: " value || fail "读取配置输入失败：$label"
-    printf '\n'
-    IFS= read -r -s -p "再次输入以确认：" confirmation || fail "读取配置输入失败：$label"
-    printf '\n'
-    if [[ -z "$value" ]]; then
-      warn "管理员密码不能为空，请重新输入"
-    elif (( ${#value} < 12 )); then
-      warn "管理员密码至少需要 12 位，请重新输入"
-    elif [[ "$value" != "$confirmation" ]]; then
-      warn "两次输入的管理员密码不一致，请重新输入"
+    if [[ "$default" == y ]]; then
+      read_prompt "$label [Y/n]: "
     else
-      PROMPT_VALUE="$value"
-      return 0
+      read_prompt "$label [y/N]: "
     fi
+    answer="${PROMPT_VALUE:-$default}"
+    case "$answer" in
+      y|Y|yes|YES) return 0 ;;
+      n|N|no|NO) return 1 ;;
+      *) warn "请输入 Y 或 N" ;;
+    esac
   done
 }
 
@@ -217,94 +266,320 @@ current_config_value() {
   if is_placeholder "$value"; then
     value=""
   fi
+  if [[ "$key" == DOMAIN ]] && is_exit_word "$value"; then
+    value=""
+  fi
   printf '%s\n' "$value"
 }
 
-configure_env_interactive() {
-  local version domain app_url admin_email email_provider socket_path socket_gid
-  local current_value default_url
+config_prompt_value() {
+  local key="$1" reset_existing="${2:-0}"
+  if ((reset_existing)); then
+    return 0
+  fi
+  current_config_value "$key"
+}
 
+cleanup_config_staging() {
+  if [[ -n "$CONFIG_STAGE_FILE" && -f "$CONFIG_STAGE_FILE" ]]; then
+    rm -f "$CONFIG_STAGE_FILE"
+  fi
+  if [[ -n "$CONFIG_TARGET_FILE" ]]; then
+    ENV_FILE="$CONFIG_TARGET_FILE"
+  fi
+  CONFIG_STAGE_FILE=""
+  CONFIG_TARGET_FILE=""
+}
+
+trap cleanup_config_staging EXIT
+
+begin_config_staging() {
+  [[ -f "$ENV_FILE" ]] || fail "找不到用于暂存的生产配置：$ENV_FILE"
+  CONFIG_TARGET_FILE="$ENV_FILE"
+  CONFIG_STAGE_FILE="$(mktemp "${ENV_FILE}.staging.XXXXXX")" ||
+    fail "无法创建临时配置文件"
+  if ! cp "$CONFIG_TARGET_FILE" "$CONFIG_STAGE_FILE"; then
+    cleanup_config_staging
+    fail "无法复制生产配置到临时文件"
+  fi
+  chmod 600 "$CONFIG_STAGE_FILE"
+  ENV_FILE="$CONFIG_STAGE_FILE"
+}
+
+commit_config_staging() {
+  local staged_file="$CONFIG_STAGE_FILE" target_file="$CONFIG_TARGET_FILE"
+  [[ -n "$staged_file" && -n "$target_file" && -f "$staged_file" ]] ||
+    fail "找不到待写入的临时配置"
+  chmod 600 "$staged_file"
+  mv "$staged_file" "$target_file" || fail "写入生产配置失败"
+  ENV_FILE="$target_file"
+  CONFIG_STAGE_FILE=""
+  CONFIG_TARGET_FILE=""
+}
+
+cancel_config_staging() {
+  cleanup_config_staging
+}
+
+email_provider_prompt_label() {
+  case "$1" in
+    aliyun) printf '邮件服务（当前已配置阿里云；回车继续使用，输入 skip 暂不配置）\n' ;;
+    tencent) printf '邮件服务（当前已配置腾讯云；回车继续使用，输入 skip 暂不配置）\n' ;;
+    *) printf '邮件服务（可选阿里云/腾讯云；直接回车暂不配置）\n' ;;
+  esac
+}
+
+is_ipv4_address() {
+  local address="$1" octet
+  local -a octets=()
+  [[ "$address" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || return 1
+  IFS=. read -r -a octets <<<"$address"
+  for octet in "${octets[@]}"; do
+    ((10#$octet <= 255)) || return 1
+  done
+}
+
+is_site_address() {
+  local address="$1"
+  if is_ipv4_address "$address"; then
+    return 0
+  fi
+  [[ "$address" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] &&
+    [[ "$address" == *.* ]]
+}
+
+detect_default_ipv4() {
+  local candidate route_info
+  candidate="${NOJ_DEPLOY_DEFAULT_IP:-}"
+  if is_ipv4_address "$candidate" && [[ "$candidate" != 127.* ]]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  if command -v ip >/dev/null 2>&1; then
+    route_info="$(ip -4 route get 1.1.1.1 2>/dev/null || true)"
+    candidate="$(awk '{ for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit } }' <<<"$route_info")"
+    if is_ipv4_address "$candidate" && [[ "$candidate" != 127.* ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  fi
+
+  if command -v hostname >/dev/null 2>&1; then
+    while IFS= read -r candidate; do
+      if is_ipv4_address "$candidate" && [[ "$candidate" != 127.* ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+    done < <(hostname -I 2>/dev/null | tr ' ' '\n')
+  fi
+}
+
+configuration_needs_interactive_input() {
+  local key value
+  for key in NOJ_VERSION DOMAIN APP_URL EMAIL_PROVIDER JUDGE_ENABLED; do
+    value="$(current_config_value "$key")"
+    is_placeholder "$value" && return 0
+  done
+  case "$(env_value EMAIL_PROVIDER)" in
+    aliyun)
+      for key in ALIBABA_ACCESS_KEY_ID ALIBABA_ACCESS_KEY_SECRET ALIBABA_FROM_EMAIL; do
+        value="$(current_config_value "$key")"
+        is_placeholder "$value" && return 0
+      done
+      ;;
+    tencent)
+      for key in TENCENT_SECRET_ID TENCENT_SECRET_KEY TENCENT_FROM_EMAIL TENCENT_REGION; do
+        value="$(current_config_value "$key")"
+        is_placeholder "$value" && return 0
+      done
+      ;;
+  esac
+  if judge_enabled; then
+    for key in JUDGE_DOCKER_SOCKET JUDGE_DOCKER_SOCKET_GID; do
+      value="$(current_config_value "$key")"
+      is_placeholder "$value" && return 0
+    done
+  fi
+  return 1
+}
+
+confirm_reuse_config() {
+  printf '检测到先前生产配置：%s\n' "$ENV_FILE"
+  if prompt_yes_no '是否使用先前配置？（Y=保留，N=重新填写）' y; then
+    ok "将使用先前配置"
+    return 0
+  fi
+  warn "将进入配置向导重新填写"
+  return 1
+}
+
+configure_env_interactive() {
+  local version domain app_url email_provider socket_path socket_gid key
+  local judge_default judge_install
+  local current_value current_app_url detected_ip default_domain ssl_default email_prompt_label
+  local email_provider_reused=0
+  local reset_existing="${1:-0}"
+
+  begin_config_staging
   section "填写生产配置"
   cat <<'EOF'
-首次部署需要填写以下配置。输入过程中密码和云厂商密钥不会回显，脚本也不会打印这些敏感值。
-其中 NOJ_VERSION 必须是已经发布的不可变版本标签；Judge Docker socket 必须是独立的 rootless Docker socket，不能填写 /var/run/docker.sock。
+请按提示填写网站和服务配置。邮件密钥不会显示在屏幕上，也不会被脚本打印。
+“网站地址”是域名或服务器 IP；脚本会根据 HTTPS 选择自动生成浏览器访问地址。
+评测服务连接位置一般保持默认即可；邮件服务可以选择“暂不配置”，以后再补充。
+如果暂时没有独立的评测 Docker 服务，可以选择跳过 Judge，网站和题库仍可先部署。
+安装完成后请立即打开网站注册第一个用户；第一个注册用户会自动获得管理员权限。
 EOF
 
-  current_value="$(current_config_value NOJ_VERSION)"
-  prompt_text "NOJ_VERSION（例如 v0.1.0）" "$current_value"
+  current_value="$(config_prompt_value NOJ_VERSION "$reset_existing")"
+  prompt_text "安装版本（例如 v0.8.0-rc.1）" "$current_value"
   version="$PROMPT_VALUE"
   set_env_value NOJ_VERSION "$version"
 
-  current_value="$(current_config_value DOMAIN)"
-  prompt_text "DOMAIN（不含协议，例如 oj.example.com）" "$current_value"
+  current_value="$(config_prompt_value DOMAIN "$reset_existing")"
+  detected_ip="$(detect_default_ipv4)"
+  default_domain="${current_value:-$detected_ip}"
+  prompt_text "网站地址（域名或服务器 IP，不要写 https://；可直接回车使用检测到的 IP）" "$default_domain"
   domain="$PROMPT_VALUE"
-  [[ "$domain" != *[[:space:]]* && "$domain" != */* && "$domain" != *://* ]] ||
-    fail "DOMAIN 不能包含协议、斜杠或空格"
+  is_site_address "$domain" ||
+    fail "网站地址必须是域名或服务器 IP，例如 oj.example.com 或 192.0.2.10"
   set_env_value DOMAIN "$domain"
+  if is_ipv4_address "$domain"; then
+    warn "当前使用服务器 IP；正式环境仍需 HTTPS，建议以后换成域名并配置证书"
+  fi
 
-  current_value="$(current_config_value APP_URL)"
-  default_url="${current_value:-https://$domain}"
-  prompt_text "APP_URL（完整地址）" "$default_url"
-  app_url="$PROMPT_VALUE"
-  [[ "$app_url" =~ ^https?://[^[:space:]]+$ ]] ||
-    fail "APP_URL 必须是 http:// 或 https:// 开头的完整地址"
+  current_app_url="$(config_prompt_value APP_URL "$reset_existing")"
+  if [[ "$current_app_url" == http://* ]]; then
+    ssl_default=n
+  else
+    ssl_default=y
+  fi
+  if prompt_yes_no '是否使用 HTTPS（证书需在宝塔或反向代理中配置）' "$ssl_default"; then
+    set_env_value NOJ_ALLOW_INSECURE_HTTP "false"
+    app_url="https://$domain"
+  else
+    set_env_value NOJ_ALLOW_INSECURE_HTTP "true"
+    app_url="http://$domain"
+    warn "已选择临时 HTTP；登录信息可能被窃取，正式使用前请配置 HTTPS"
+  fi
   set_env_value APP_URL "$app_url"
   set_env_value CORS_ALLOWED_ORIGINS "$app_url"
 
-  current_value="$(current_config_value ADMIN_EMAIL)"
-  prompt_text "管理员邮箱" "$current_value"
-  admin_email="$PROMPT_VALUE"
-  [[ "$admin_email" == *@*.* ]] || fail "管理员邮箱格式不正确"
-  set_env_value ADMIN_EMAIL "$admin_email"
-  prompt_password "管理员密码"
-  set_env_value ADMIN_PASS "$PROMPT_VALUE"
-
-  current_value="$(current_config_value EMAIL_PROVIDER)"
+  current_value="$(config_prompt_value EMAIL_PROVIDER "$reset_existing")"
   while :; do
-    prompt_text "邮件 Provider（aliyun 或 tencent）" "${current_value:-aliyun}"
+    email_prompt_label="$(email_provider_prompt_label "$current_value")"
+    prompt_text "$email_prompt_label" "${current_value:-disabled}"
     email_provider="$PROMPT_VALUE"
     case "$email_provider" in
       aliyun|tencent) break ;;
-      *) warn "邮件 Provider 只能是 aliyun 或 tencent" ;;
+      disabled|skip|none|跳过|暂不配置) email_provider=disabled; break ;;
+      *) warn "请输入 aliyun、tencent，或选择暂不配置" ;;
     esac
   done
+  if [[ "$reset_existing" != 1 && "$current_value" == "$email_provider" ]] &&
+    [[ "$email_provider" == aliyun || "$email_provider" == tencent ]]; then
+    email_provider_reused=1
+  fi
   set_env_value EMAIL_PROVIDER "$email_provider"
   if [[ "$email_provider" == aliyun ]]; then
-    prompt_secret "阿里云 Access Key ID"
-    set_env_value ALIBABA_ACCESS_KEY_ID "$PROMPT_VALUE"
-    prompt_secret "阿里云 Access Key Secret"
-    set_env_value ALIBABA_ACCESS_KEY_SECRET "$PROMPT_VALUE"
-    current_value="$(current_config_value ALIBABA_FROM_EMAIL)"
-    prompt_text "阿里云发件邮箱" "$current_value"
-    set_env_value ALIBABA_FROM_EMAIL "$PROMPT_VALUE"
+    if ((email_provider_reused)) && [[ -n "$(current_config_value ALIBABA_ACCESS_KEY_ID)" ]] &&
+      ! is_placeholder "$(current_config_value ALIBABA_ACCESS_KEY_ID)"; then
+      :
+    else
+      prompt_secret "阿里云 Access Key ID"
+      set_env_value ALIBABA_ACCESS_KEY_ID "$PROMPT_VALUE"
+    fi
+    if ((email_provider_reused)) && [[ -n "$(current_config_value ALIBABA_ACCESS_KEY_SECRET)" ]] &&
+      ! is_placeholder "$(current_config_value ALIBABA_ACCESS_KEY_SECRET)"; then
+      :
+    else
+      prompt_secret "阿里云 Access Key Secret"
+      set_env_value ALIBABA_ACCESS_KEY_SECRET "$PROMPT_VALUE"
+    fi
+    current_value="$(config_prompt_value ALIBABA_FROM_EMAIL "$reset_existing")"
+    if ((email_provider_reused)) && [[ -n "$current_value" ]] && ! is_placeholder "$current_value"; then
+      :
+    else
+      prompt_text "阿里云发件邮箱" "$current_value"
+      set_env_value ALIBABA_FROM_EMAIL "$PROMPT_VALUE"
+    fi
+  elif [[ "$email_provider" == tencent ]]; then
+    if ((email_provider_reused)) && [[ -n "$(current_config_value TENCENT_SECRET_ID)" ]] &&
+      ! is_placeholder "$(current_config_value TENCENT_SECRET_ID)"; then
+      :
+    else
+      prompt_secret "腾讯云 Secret ID"
+      set_env_value TENCENT_SECRET_ID "$PROMPT_VALUE"
+    fi
+    if ((email_provider_reused)) && [[ -n "$(current_config_value TENCENT_SECRET_KEY)" ]] &&
+      ! is_placeholder "$(current_config_value TENCENT_SECRET_KEY)"; then
+      :
+    else
+      prompt_secret "腾讯云 Secret Key"
+      set_env_value TENCENT_SECRET_KEY "$PROMPT_VALUE"
+    fi
+    current_value="$(config_prompt_value TENCENT_FROM_EMAIL "$reset_existing")"
+    if ((email_provider_reused)) && [[ -n "$current_value" ]] && ! is_placeholder "$current_value"; then
+      :
+    else
+      prompt_text "腾讯云发件邮箱" "$current_value"
+      set_env_value TENCENT_FROM_EMAIL "$PROMPT_VALUE"
+    fi
+    current_value="$(config_prompt_value TENCENT_REGION "$reset_existing")"
+    if ((email_provider_reused)) && [[ -n "$current_value" ]] && ! is_placeholder "$current_value"; then
+      :
+    else
+      prompt_text "腾讯云 Region" "${current_value:-ap-guangzhou}"
+      set_env_value TENCENT_REGION "$PROMPT_VALUE"
+    fi
   else
-    prompt_secret "腾讯云 Secret ID"
-    set_env_value TENCENT_SECRET_ID "$PROMPT_VALUE"
-    prompt_secret "腾讯云 Secret Key"
-    set_env_value TENCENT_SECRET_KEY "$PROMPT_VALUE"
-    current_value="$(current_config_value TENCENT_FROM_EMAIL)"
-    prompt_text "腾讯云发件邮箱" "$current_value"
-    set_env_value TENCENT_FROM_EMAIL "$PROMPT_VALUE"
-    current_value="$(current_config_value TENCENT_REGION)"
-    prompt_text "腾讯云 Region" "${current_value:-ap-guangzhou}"
-    set_env_value TENCENT_REGION "$PROMPT_VALUE"
+    for key in ALIBABA_ACCESS_KEY_ID ALIBABA_ACCESS_KEY_SECRET ALIBABA_FROM_EMAIL \
+      TENCENT_SECRET_ID TENCENT_SECRET_KEY TENCENT_FROM_EMAIL TENCENT_REGION; do
+      set_env_value "$key" ""
+    done
+    warn "已跳过邮件服务；密码找回邮件暂时不可用，可稍后在后台配置"
   fi
 
-  current_value="$(current_config_value JUDGE_DOCKER_SOCKET)"
-  prompt_text "Judge Docker socket（不能是 /var/run/docker.sock）" \
-    "${current_value:-/run/noj-judge/docker.sock}"
-  socket_path="$PROMPT_VALUE"
-  set_env_value JUDGE_DOCKER_SOCKET "$socket_path"
-  if [[ -e "$socket_path" ]]; then
-    socket_gid="$(stat -c '%g' "$socket_path" 2>/dev/null || stat -f '%g' "$socket_path" 2>/dev/null || printf '10001')"
+  current_value="$(config_prompt_value JUDGE_ENABLED "$reset_existing")"
+  case "$current_value" in
+    false|FALSE|no|NO|0|off|OFF) judge_default=n ;;
+    *) judge_default=y ;;
+  esac
+  if prompt_yes_no '是否安装评测服务 Judge（没有评测 Docker 服务也可以跳过）' "$judge_default"; then
+    judge_install=true
   else
-    socket_gid="10001"
+    judge_install=false
+    warn "已跳过 Judge；当前部署暂时不能进行代码评测，准备好后可再次启用"
   fi
-  current_value="$(current_config_value JUDGE_DOCKER_SOCKET_GID)"
-  prompt_text "Judge Docker socket GID" "${current_value:-$socket_gid}"
-  [[ "$PROMPT_VALUE" =~ ^[0-9]+$ ]] || fail "Judge Docker socket GID 必须是数字"
-  set_env_value JUDGE_DOCKER_SOCKET_GID "$PROMPT_VALUE"
-  ok "生产配置引导完成，正在继续校验和启动服务"
+  set_env_value JUDGE_ENABLED "$judge_install"
+
+  if [[ "$judge_install" == true ]]; then
+    current_value="$(config_prompt_value JUDGE_DOCKER_SOCKET "$reset_existing")"
+    prompt_text "评测服务连接位置（一般直接回车）" \
+      "${current_value:-/run/noj-judge/docker.sock}"
+    socket_path="$PROMPT_VALUE"
+    set_env_value JUDGE_DOCKER_SOCKET "$socket_path"
+    if [[ -e "$socket_path" ]]; then
+      socket_gid="$(stat -c '%g' "$socket_path" 2>/dev/null || stat -f '%g' "$socket_path" 2>/dev/null || printf '10001')"
+    else
+      socket_gid="10001"
+    fi
+    current_value="$(config_prompt_value JUDGE_DOCKER_SOCKET_GID "$reset_existing")"
+    prompt_text "评测服务连接编号（一般直接回车）" "${current_value:-$socket_gid}"
+    [[ "$PROMPT_VALUE" =~ ^[0-9]+$ ]] || fail "Judge Docker socket GID 必须是数字"
+    set_env_value JUDGE_DOCKER_SOCKET_GID "$PROMPT_VALUE"
+  else
+    ok "已跳过 Judge 配置"
+  fi
+  ok "配置已暂存，尚未写入正式配置"
+  if prompt_yes_no '是否写入配置？（Y=写入并继续部署，N=取消）' y; then
+    commit_config_staging
+    ok "配置已写入，正在继续校验和启动服务"
+  else
+    cancel_config_staging
+    warn "已取消本次部署，正式配置未修改"
+    return 1
+  fi
 }
 
 initialize_env() {
@@ -314,6 +589,16 @@ initialize_env() {
     [[ -f "$ENV_FILE" ]] || fail "生产配置路径不是普通文件：$ENV_FILE"
     chmod 600 "$ENV_FILE"
     ok "保留已有配置：$ENV_FILE"
+    if ((INTERACTIVE)) && has_interactive_tty; then
+      if confirm_reuse_config; then
+        if configuration_needs_interactive_input; then
+          warn "先前配置尚未填写完整，将进入补齐向导"
+          configure_env_interactive || return 1
+        fi
+      else
+        configure_env_interactive 1 || return 1
+      fi
+    fi
     return 0
   fi
 
@@ -339,16 +624,20 @@ initialize_env() {
     value="$(generate_secret)"
     set_env_value "$key" "$value"
   done
+  if [[ -n "${NOJ_DEPLOY_DEFAULT_VERSION:-}" ]]; then
+    set_env_value NOJ_VERSION "$NOJ_DEPLOY_DEFAULT_VERSION"
+  fi
   set_env_value MINIO_ROOT_USER "nojminio$(openssl rand -hex 6)"
   set_env_value S3_ACCESS_KEY "nojs3$(openssl rand -hex 6)"
 
   ok "已创建并保护 $ENV_FILE"
-  if ((INTERACTIVE)) && [[ -t 0 && -t 1 ]]; then
-    configure_env_interactive
+  if ((INTERACTIVE)) && has_interactive_tty; then
+        configure_env_interactive 1 || return 1
     return 0
   fi
   warn "当前没有可交互终端，无法引导填写生产配置"
-  warn "请编辑 $ENV_FILE，填写 NOJ_VERSION、DOMAIN、APP_URL、邮件 Provider、管理员账号和 Judge Docker socket"
+  warn "请编辑 ${ENV_FILE}，填写安装版本、网站地址、HTTPS 选项、邮件服务和是否安装 Judge"
+  warn "如果安装 Judge，还要填写评测服务连接位置"
   warn "填写完成后重新执行：bash scripts/deploy/deploy.sh install"
   warn "自动化场景可显式使用 --non-interactive，让未完成配置直接失败"
   exit 2
@@ -372,14 +661,22 @@ is_placeholder() {
   esac
 }
 
+judge_enabled() {
+  case "$(env_value JUDGE_ENABLED)" in
+    false|FALSE|no|NO|0|off|OFF) return 1 ;;
+    ""|true|TRUE|yes|YES|1|on|ON) return 0 ;;
+    *) fail "JUDGE_ENABLED 必须是 true 或 false" ;;
+  esac
+}
+
 check_required_values() {
   local key value
   local required_keys=(
-    NOJ_VERSION APP_URL CORS_ALLOWED_ORIGINS TRUSTED_PROXIES
+    NOJ_VERSION DOMAIN APP_URL CORS_ALLOWED_ORIGINS TRUSTED_PROXIES
     POSTGRES_PASSWORD REDIS_PASSWORD MINIO_ROOT_USER MINIO_ROOT_PASSWORD
     S3_ACCESS_KEY S3_SECRET_KEY S3_BUCKET S3_ENDPOINT STORAGE_PROVIDER
     JWT_SECRET TFA_ENCRYPTION_KEY NOJ_LLM_SERVICE_TOKEN NOJ_LLM_STORE_KEY
-    ADMIN_EMAIL ADMIN_PASS EMAIL_PROVIDER JUDGE_DOCKER_SOCKET JUDGE_DOCKER_SOCKET_GID
+    EMAIL_PROVIDER
   )
   local missing=0
   for key in "${required_keys[@]}"; do
@@ -389,7 +686,22 @@ check_required_values() {
       missing=1
     fi
   done
+  judge_enabled || true
+  if judge_enabled; then
+    for key in JUDGE_DOCKER_SOCKET JUDGE_DOCKER_SOCKET_GID; do
+      value="$(env_value "$key")"
+      if is_placeholder "$value"; then
+        printf "  - %s 未配置或仍是占位值\n" "$key" >&2
+        missing=1
+      fi
+    done
+  fi
   ((missing == 0)) || fail "生产配置未完成，请先修复上面的配置项"
+
+  is_site_address "$(env_value DOMAIN)" || {
+    printf "  - 网站地址必须是域名或服务器 IP\n" >&2
+    missing=1
+  }
 
   case "$(env_value EMAIL_PROVIDER)" in
     aliyun)
@@ -404,8 +716,10 @@ check_required_values() {
         is_placeholder "$value" && { printf "  - %s 未配置或仍是占位值\n" "$key" >&2; missing=1; }
       done
       ;;
+    disabled)
+      ;;
     *)
-      printf "  - EMAIL_PROVIDER 必须是 aliyun 或 tencent\n" >&2
+      printf "  - EMAIL_PROVIDER 必须是 aliyun、tencent 或 disabled\n" >&2
       missing=1
       ;;
   esac
@@ -418,10 +732,19 @@ check_required_values() {
     printf "  - JWT_SECRET 不得使用测试密钥\n" >&2
     missing=1
   }
-  [[ "$(env_value JUDGE_DOCKER_SOCKET_GID)" =~ ^[0-9]+$ ]] || {
+  if judge_enabled && ! [[ "$(env_value JUDGE_DOCKER_SOCKET_GID)" =~ ^[0-9]+$ ]]; then
     printf "  - JUDGE_DOCKER_SOCKET_GID 必须是数字\n" >&2
     missing=1
-  }
+  fi
+  local app_url="$(env_value APP_URL)"
+  if [[ "$app_url" == http://* && "$(env_value NOJ_ALLOW_INSECURE_HTTP)" != true ]]; then
+    printf "  - 网站完整网址使用 HTTP 时，必须明确选择临时 HTTP 模式\n" >&2
+    missing=1
+  fi
+  if [[ "$app_url" != http://* && "$app_url" != https://* ]]; then
+    printf "  - 网站完整网址必须以 http:// 或 https:// 开头\n" >&2
+    missing=1
+  fi
   local version="$(env_value NOJ_VERSION)"
   [[ "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || {
     printf "  - NOJ_VERSION 必须是不可变 Release 标签（如 v0.1.0 或 0.1.1-rc.1）\n" >&2
@@ -453,8 +776,39 @@ check_port_value() {
   fi
 }
 
+detect_panel() {
+  PANEL_NAME="none"
+  case "$PANEL_MODE" in
+    baota) PANEL_NAME="baota" ;;
+    none) return 0 ;;
+    auto)
+      if [[ -d "$PANEL_ROOT" || -x "$PANEL_COMMAND" ]]; then
+        PANEL_NAME="baota"
+      fi
+      ;;
+  esac
+}
+
+show_panel_guidance() {
+  [[ "$PANEL_NAME" == baota ]] || return 0
+  section "宝塔兼容模式"
+  cat <<'EOF'
+已检测到宝塔面板。脚本会直接使用宝塔管理的标准 Docker/Compose，不调用宝塔 API。
+
+前后端 Compose 自带 Nginx。请在宝塔的网站/反向代理中把域名转发到
+127.0.0.1:NGINX_PORT，默认端口为 8080；如果修改了 .env.prod 中的 NGINX_PORT，
+请使用修改后的端口。请先确认该端口没有被宝塔已有网站或其他服务占用。
+
+脚本不会修改已有站点、证书、反向代理、容器或面板配置。如果安装 Judge，仍必须使用
+只服务于 Judge 的 rootless Docker socket，不能填写 /run/docker.sock 或 /var/run/docker.sock。
+EOF
+  ok "宝塔兼容提示已启用"
+}
+
 check_dependencies() {
   section "检查部署环境"
+  detect_panel
+  show_panel_guidance
   command -v "$DOCKER_BIN" >/dev/null 2>&1 ||
     fail "找不到 Docker CLI：$DOCKER_BIN"
   "$DOCKER_BIN" info >/dev/null 2>&1 || fail "Docker daemon 未运行或当前用户无权限"
@@ -470,12 +824,12 @@ check_dependencies() {
 
 verify_image_signatures() {
   [[ "$(env_value NOJ_ENFORCE_IMAGE_SIGNATURES)" != "false" ]] || {
-    warn "NOJ_ENFORCE_IMAGE_SIGNATURES=false，跳过生产镜像签名校验（仅适用于本地测试）"
+    warn "NOJ_ENFORCE_IMAGE_SIGNATURES=false，已关闭镜像签名校验"
     return 0
   }
 
   command -v cosign >/dev/null 2>&1 ||
-    fail "生产镜像签名校验需要 cosign；请先安装 Cosign，或仅在本地测试中设置 NOJ_ENFORCE_IMAGE_SIGNATURES=false"
+    fail "已开启镜像签名校验，但找不到 Cosign；请先安装 Cosign，或将 NOJ_ENFORCE_IMAGE_SIGNATURES 设置为 false"
 
   local version registry identity image digest
   version="$(env_value NOJ_VERSION)"
@@ -485,7 +839,10 @@ verify_image_signatures() {
   identity="${identity:-^https://github.com/Neuro-OJ/neuro-oj/.github/workflows/release.yml@.*$}"
   section "校验生产镜像签名"
 
-  local images=(noj-core noj-ui noj-judge noj-llm-gateway noj-evaluator-python noj-solution-python)
+  local images=(noj-core noj-ui noj-llm-gateway)
+  if judge_enabled; then
+    images+=(noj-judge noj-evaluator-python noj-solution-python)
+  fi
   for image in "${images[@]}"; do
     local image_name="$image"
     image="$registry/$image_name:$version"
@@ -522,16 +879,20 @@ record_deployment_metadata() {
 }
 
 check_configuration() {
-  [[ -f "$ENV_FILE" ]] || fail "找不到生产配置：$ENV_FILE，请先执行 install"
+  [[ -f "$ENV_FILE" ]] || fail "找不到生产配置：${ENV_FILE}，请先执行 install"
   check_file_permissions
   check_required_values
-  check_judge_socket
+  if judge_enabled; then
+    check_judge_socket
+  else
+    ok "已跳过 Judge Docker socket 检查"
+  fi
   check_port_value
 
   if ((DRY_RUN)); then
     ok "[dry-run] 跳过会输出 Compose 解析结果的命令"
   else
-    "$DOCKER_BIN" compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --quiet ||
+    run_compose config --quiet ||
       fail "Docker Compose 配置无效，请检查环境变量和生产 Compose 文件"
   fi
   case "$COMMAND" in
@@ -541,13 +902,20 @@ check_configuration() {
 }
 
 run_compose() {
+  local -a compose_args=(--env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+  if judge_enabled; then
+    compose_args+=(--profile judge)
+  fi
   if ((DRY_RUN)); then
     printf "[dry-run] docker compose --env-file %s -f %s" "$ENV_FILE" "$COMPOSE_FILE"
+    if judge_enabled; then
+      printf " --profile judge"
+    fi
     printf " %s" "$@"
     printf "\n"
     return 0
   fi
-  "$DOCKER_BIN" compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+  "$DOCKER_BIN" compose "${compose_args[@]}" "$@"
 }
 
 wait_for_stack() {
@@ -567,13 +935,30 @@ prepare_and_check() {
 }
 
 install() {
+  check_dependencies
   initialize_env
-  prepare_and_check
+  check_configuration
   section "拉取生产镜像"
   run_compose pull
   wait_for_stack
   record_deployment_metadata
   ok "生产部署完成"
+  cat <<'EOF'
+
+下一步：打开网站并注册第一个用户。新站点的第一个注册用户会自动获得管理员权限；
+请立即完成注册，避免其他人抢先注册。已有站点的用户权限不会因升级改变。
+EOF
+  if judge_enabled; then
+    ok "评测服务 Judge 已安装并启动"
+  else
+    cat <<'EOF'
+
+当前跳过了评测服务 Judge，网站暂时不能进行代码评测。
+以后准备好独立的 Judge Docker 服务后，将 .env.prod 中的 JUDGE_ENABLED 改为 true，
+补充 JUDGE_DOCKER_SOCKET 和 JUDGE_DOCKER_SOCKET_GID，再执行：
+  bash scripts/deploy/deploy.sh start
+EOF
+  fi
 }
 
 start() {
@@ -649,4 +1034,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${NOJ_DEPLOY_SOURCE_ONLY:-0}" != "1" ]]; then
+  main "$@"
+fi

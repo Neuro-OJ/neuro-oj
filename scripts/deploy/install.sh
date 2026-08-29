@@ -5,7 +5,7 @@
 # 此文件可以单独下载后执行，不依赖当前工作目录或本地 Git 仓库：
 #   curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/install.sh \
 #     -o noj-install.sh
-#   bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj
+#   bash noj-install.sh --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 #
 # Bootstrap 只负责获取源码；生产 Compose、配置校验和服务生命周期仍由
 # 下载后的 scripts/deploy/deploy.sh 负责。
@@ -13,12 +13,17 @@
 set -Eeuo pipefail
 
 readonly DEFAULT_REPOSITORY="https://github.com/Neuro-OJ/neuro-oj"
-readonly DEFAULT_REF="v0.1.0"
 
 REPOSITORY="${NOJ_BOOTSTRAP_REPOSITORY:-$DEFAULT_REPOSITORY}"
-REF="${NOJ_BOOTSTRAP_REF:-$DEFAULT_REF}"
+REF="${NOJ_BOOTSTRAP_REF:-}"
 TARGET_DIR="${NOJ_BOOTSTRAP_DIR:-/opt/neuro-oj}"
 CHECK_PORT="${NOJ_BOOTSTRAP_PORT:-8080}"
+EXISTING_INSTALL=0
+PANEL_MODE="${NOJ_BOOTSTRAP_PANEL:-auto}"
+PANEL_MODE_SET=0
+PANEL_NAME="none"
+PANEL_ROOT="${NOJ_BOOTSTRAP_PANEL_ROOT:-/www/server/panel}"
+PANEL_COMMAND="${NOJ_BOOTSTRAP_PANEL_COMMAND:-/usr/bin/bt}"
 COMMAND=""
 DOWNLOAD_ONLY=0
 DRY_RUN=0
@@ -53,10 +58,11 @@ Neuro OJ Linux 独立下载部署工具
 示例：
   curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/install.sh \
     -o noj-install.sh
-  bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj
+  bash noj-install.sh --dir /opt/neuro-oj
+  bash noj-install.sh --ref 0.8.0-rc.1 --dir /opt/neuro-oj
   bash noj-install.sh check
   sudo bash noj-install.sh install-env
-  bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj -- --dry-run
+  bash noj-install.sh --ref 0.8.0-rc.1 --dir /opt/neuro-oj -- --dry-run
 
 命令：
   check                  检测 Linux、基础工具、Docker/Compose、资源和端口
@@ -65,9 +71,10 @@ Neuro OJ Linux 独立下载部署工具
 
 选项：
   --repo URL             GitHub 仓库地址（默认 Neuro-OJ/neuro-oj）
-  --ref REF              固定分支或 Release tag（默认 v0.1.0）
+  --ref REF              固定分支或 Release tag（默认自动选择最新 Release）
   --dir DIRECTORY        安装目录（默认 /opt/neuro-oj）
   --port PORT            检测宿主机端口（默认 8080）
+  --panel MODE           面板模式：auto（默认）、baota 或 none
   --download-only        只下载源码，不执行生产部署
   --dry-run              只显示下载计划，不下载、不写文件、不启动服务
   --non-interactive      首次配置不询问，配置不完整时直接失败
@@ -77,11 +84,14 @@ Neuro OJ Linux 独立下载部署工具
   NOJ_BOOTSTRAP_REPOSITORY  默认仓库地址
   NOJ_BOOTSTRAP_REF         默认 ref
   NOJ_BOOTSTRAP_DIR         默认安装目录
+  NOJ_BOOTSTRAP_PANEL       面板模式（默认 auto）
 
 部署参数：
   通过 -- 后传递给下载后的 deploy.sh install，例如 -- --non-interactive
 
+未指定 --ref 时脚本会自动使用仓库最新可用 Release；生产环境也可以显式指定 --ref 固定版本。
 目标目录非空时脚本会拒绝覆盖；已有安装请进入目标目录执行 deploy.sh upgrade。
+如果目标目录已经是本工具安装的 Neuro OJ，则会保留现有配置并继续部署；其他非空目录仍会拒绝覆盖。
 生产环境建议使用不可变 Release tag，并让 --ref 与 .env.prod 中的 NOJ_VERSION 一致。
 install-env 只安装 curl、tar、openssl 和 CA 证书等基础工具；Docker 请按发行版官方文档安装。
 EOF
@@ -125,6 +135,13 @@ parse_args() {
         shift
         ;;
       --port=*) CHECK_PORT="${1#*=}" ;;
+      --panel)
+        (($# >= 2)) || fail "--panel 需要 auto、baota 或 none"
+        PANEL_MODE="$2"
+        PANEL_MODE_SET=1
+        shift
+        ;;
+      --panel=*) PANEL_MODE="${1#*=}"; PANEL_MODE_SET=1 ;;
       --download-only) DOWNLOAD_ONLY=1 ;;
       --dry-run) DRY_RUN=1 ;;
       --non-interactive) NON_INTERACTIVE=1 ;;
@@ -139,6 +156,10 @@ parse_args() {
     shift
   done
   COMMAND="${COMMAND:-install}"
+  case "$PANEL_MODE" in
+    auto|baota|none) ;;
+    *) fail "--panel 只能是 auto、baota 或 none：$PANEL_MODE" ;;
+  esac
 }
 
 validate_inputs() {
@@ -150,18 +171,53 @@ validate_inputs() {
   REPOSITORY="${REPOSITORY%/}"
   REPOSITORY="${REPOSITORY%.git}"
 
-  [[ "$REF" =~ ^[A-Za-z0-9._/-]+$ && "$REF" != /* && "$REF" != */ &&
-    "$REF" != *'..'* && "$REF" != *//* ]] ||
-    fail "ref 只能包含安全的分支或 Release tag 字符"
-  [[ -n "$REF" ]] || fail "ref 不能为空"
-
   [[ -n "$TARGET_DIR" && "$TARGET_DIR" != "/" && "$TARGET_DIR" != "." &&
     "$TARGET_DIR" != ".." ]] ||
     fail "安装目录不安全或为空"
   [[ "$TARGET_DIR" != *$'\n'* && "$TARGET_DIR" != *$'\r'* ]] ||
     fail "安装目录不能包含换行符"
 
+}
+
+validate_ref() {
+  [[ "$REF" =~ ^[A-Za-z0-9._/-]+$ && "$REF" != /* && "$REF" != */ &&
+    "$REF" != *'..'* && "$REF" != *//* && -n "$REF" ]] ||
+    fail "没有找到有效的 Release。请使用 --ref 指定版本，例如 --ref 0.8.0-rc.1"
   ARCHIVE_URL="$REPOSITORY/archive/$REF.tar.gz"
+}
+
+resolve_latest_ref() {
+  local repository_slug metadata_url metadata tag
+  [[ -n "$REF" ]] && { validate_ref; return 0; }
+
+  [[ "$REPOSITORY" =~ ^https://github\.com/([^/]+/[^/]+)$ ]] ||
+    fail "无法自动获取最新版本；请对自定义仓库使用 --ref 指定 Release tag"
+  repository_slug="${BASH_REMATCH[1]}"
+  metadata_url="https://api.github.com/repos/$repository_slug/releases?per_page=1"
+  printf '正在获取最新 Release：%s\n' "$metadata_url" >&2
+  if command -v curl >/dev/null 2>&1; then
+    metadata="$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+      --retry 3 --connect-timeout 15 --header 'Accept: application/vnd.github+json' \
+      --header 'User-Agent: neuro-oj-installer' "$metadata_url")" ||
+      fail "无法获取最新 Release，请检查网络，或使用 --ref 显式指定版本"
+  else
+    metadata="$(wget --https-only --tries=3 --timeout=20 --quiet --header='Accept: application/vnd.github+json' \
+      --header='User-Agent: neuro-oj-installer' -O - "$metadata_url")" ||
+      fail "无法获取最新 Release，请检查网络，或使用 --ref 显式指定版本"
+  fi
+  tag="$(awk '
+    match($0, /"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"/) {
+      value = substr($0, RSTART, RLENGTH)
+      sub(/^.*:[[:space:]]*"/, "", value)
+      sub(/"$/, "", value)
+      print value
+      exit
+    }
+  ' <<<"$metadata")"
+  [[ -n "$tag" ]] || fail "仓库没有可用 Release，请使用 --ref 显式指定版本"
+  REF="$tag"
+  validate_ref
+  ok "将使用最新 Release：$REF"
 }
 
 check_dependencies() {
@@ -179,6 +235,35 @@ Docker Engine 或 Docker Compose v2 不可用。
   https://docs.docker.com/engine/install/
 安装后重新执行：bash noj-install.sh check
 EOF
+}
+
+detect_panel() {
+  PANEL_NAME="none"
+  case "$PANEL_MODE" in
+    baota) PANEL_NAME="baota" ;;
+    none) return 0 ;;
+    auto)
+      if [[ -d "$PANEL_ROOT" || -x "$PANEL_COMMAND" ]]; then
+        PANEL_NAME="baota"
+      fi
+      ;;
+  esac
+}
+
+show_panel_guidance() {
+  [[ "$PANEL_NAME" == baota ]] || return 0
+  section "宝塔兼容模式"
+  cat <<'EOF'
+已检测到宝塔面板。脚本会直接使用宝塔管理的标准 Docker/Compose，不调用宝塔 API。
+
+前后端 Compose 自带 Nginx。部署完成后，请在宝塔的网站/反向代理中把域名转发到
+127.0.0.1:8080（如修改 NGINX_PORT，请使用修改后的端口）。请先确认该端口没有被
+宝塔已有网站或其他服务占用。脚本不会修改已有站点、证书、反向代理、容器或面板配置。
+
+Judge 仍必须使用只服务于 Judge 的 rootless Docker socket，不能填写
+/run/docker.sock 或 /var/run/docker.sock。
+EOF
+  ok "宝塔兼容提示已启用"
 }
 
 check_port() {
@@ -209,6 +294,8 @@ check_port() {
 check_host() {
   local failed=0 system arch os_name mem_mb disk_path disk_kb
   section "检查 Linux 部署环境"
+  detect_panel
+  show_panel_guidance
 
   system="$(uname -s 2>/dev/null || true)"
   if [[ "$system" != Linux ]]; then
@@ -336,6 +423,12 @@ check_target() {
   [[ ! -L "$TARGET_DIR" ]] || fail "安装目录不能是符号链接：$TARGET_DIR"
   if [[ -e "$TARGET_DIR" ]]; then
     [[ -d "$TARGET_DIR" ]] || fail "安装路径已存在但不是目录：$TARGET_DIR"
+    if [[ -f "$TARGET_DIR/scripts/deploy/deploy.sh" &&
+      -f "$TARGET_DIR/docker-compose.prod.yml" ]]; then
+      EXISTING_INSTALL=1
+      ok "检测到已有 Neuro OJ 安装，将保留现有配置并继续部署：$TARGET_DIR"
+      return 0
+    fi
     local -a entries=()
     shopt -s nullglob dotglob
     entries=("$TARGET_DIR"/*)
@@ -403,7 +496,11 @@ validate_archive() {
 install_source() {
   local archive extract_dir source_dir
   if ((DRY_RUN)); then
-    ok "[dry-run] 将下载到临时目录并安装到：$TARGET_DIR"
+    if ((EXISTING_INSTALL)); then
+      ok "[dry-run] 将更新已有 Neuro OJ 的部署文件并保留配置、备份和数据"
+    else
+      ok "[dry-run] 将下载到临时目录并安装到：$TARGET_DIR"
+    fi
     ok "[dry-run] 源码 ref：$REF"
     return 0
   fi
@@ -424,7 +521,22 @@ install_source() {
   [[ -f "$source_dir/docker-compose.prod.yml" ]] ||
     fail "下载的 ref 不包含生产 Compose 文件"
 
-  mkdir -p -- "$(dirname -- "$TARGET_DIR")"
+  if ((EXISTING_INSTALL)); then
+    cp -a "$source_dir/docker-compose.prod.yml" "$TARGET_DIR/"
+    [[ -f "$source_dir/.env.prod.example" ]] &&
+      cp -a "$source_dir/.env.prod.example" "$TARGET_DIR/"
+    mkdir -p "$TARGET_DIR/scripts/deploy"
+    cp -a "$source_dir/scripts/deploy/." "$TARGET_DIR/scripts/deploy/"
+    if [[ -d "$source_dir/deploy" ]]; then
+      mkdir -p "$TARGET_DIR/deploy"
+      cp -a "$source_dir/deploy/." "$TARGET_DIR/deploy/"
+    fi
+    ok "已更新 Neuro OJ 部署文件；保留 .env.prod、备份和数据目录"
+    return 0
+  fi
+
+  mkdir -p -- "$(dirname -- "$TARGET_DIR")" ||
+    fail "无法创建安装目录的上级路径：$(dirname -- "$TARGET_DIR")；请使用有权限的用户，或通过 --dir 指定可写目录"
   if [[ -d "$TARGET_DIR" ]]; then
     rmdir -- "$TARGET_DIR" || fail "安装目录在下载过程中变为非空，已停止：$TARGET_DIR"
   fi
@@ -435,6 +547,7 @@ install_source() {
 run_deploy() {
   local status
   ((NON_INTERACTIVE)) && DEPLOY_ARGS+=(--non-interactive)
+  ((PANEL_MODE_SET)) && DEPLOY_ARGS+=(--panel "$PANEL_MODE")
   ((DOWNLOAD_ONLY)) && {
     ok "仅下载模式完成，未启动生产服务"
     return 0
@@ -446,9 +559,11 @@ run_deploy() {
 
   set +e
   if ((${#DEPLOY_ARGS[@]} > 0)); then
-    bash "$TARGET_DIR/scripts/deploy/deploy.sh" install "${DEPLOY_ARGS[@]}"
+    NOJ_DEPLOY_DEFAULT_VERSION="$REF" \
+      bash "$TARGET_DIR/scripts/deploy/deploy.sh" install "${DEPLOY_ARGS[@]}"
   else
-    bash "$TARGET_DIR/scripts/deploy/deploy.sh" install
+    NOJ_DEPLOY_DEFAULT_VERSION="$REF" \
+      bash "$TARGET_DIR/scripts/deploy/deploy.sh" install
   fi
   status=$?
   set -e
@@ -476,6 +591,7 @@ main() {
         *) fail "不支持的 CPU 架构：$(uname -m 2>/dev/null || true)；当前生产镜像仅支持 x86_64" ;;
       esac
       check_dependencies
+      resolve_latest_ref
       check_target
       printf '仓库：%s\nref：%s\n目标目录：%s\n' "$REPOSITORY" "$REF" "$TARGET_DIR"
       printf '下载地址：%s\n' "$ARCHIVE_URL"

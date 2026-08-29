@@ -98,7 +98,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     key: "email_provider",
     type: "string",
     default: "mock",
-    description: "邮件 Provider（mock / aliyun / tencent）",
+    description: "邮件服务（disabled / aliyun / tencent）",
     is_secret: false,
     envFallback: "EMAIL_PROVIDER",
     category: "email",

@@ -11,8 +11,6 @@ function validConfig(): ProductionConfig {
     redisUrl: "redis://:prod-redis-secret@redis:6379/0",
     jwtSecret: "j".repeat(32),
     tfaEncryptionKey: "t".repeat(32),
-    adminEmail: "admin@noj.org",
-    adminPassword: "prod-admin-password-2026",
     appUrl: "https://noj.org",
     corsAllowedOrigins: "https://noj.org",
     trustedProxies: "172.28.0.0/16",
@@ -32,6 +30,27 @@ function validConfig(): ProductionConfig {
 
 Deno.test("production-config: 合法生产配置通过校验", () => {
   assertEquals(findProductionConfigErrors(validConfig()), []);
+});
+
+Deno.test("production-config: 关闭邮件服务时不要求邮件密钥", () => {
+  const config = validConfig();
+  config.emailProvider = "disabled";
+  config.emailSettings = {};
+  assertEquals(findProductionConfigErrors(config), []);
+});
+
+Deno.test("production-config: 临时 HTTP 必须显式开启", () => {
+  const config = validConfig();
+  config.appUrl = "http://noj.org";
+  config.corsAllowedOrigins = "http://noj.org";
+  assert(
+    findProductionConfigErrors(config).some((error) =>
+      error.includes("APP_URL")
+    ),
+  );
+
+  config.allowInsecureHttp = true;
+  assertEquals(findProductionConfigErrors(config), []);
 });
 
 Deno.test("production-config: 开发和测试环境保留 mock/local 默认行为", () => {

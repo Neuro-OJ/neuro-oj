@@ -47,6 +47,7 @@ function buildProductionConfig(): ProductionConfig {
     adminPassword: Deno.env.get("ADMIN_PASS"),
     appUrl: Deno.env.get("APP_URL"),
     corsAllowedOrigins: Deno.env.get("CORS_ALLOWED_ORIGINS"),
+    allowInsecureHttp: Deno.env.get("NOJ_ALLOW_INSECURE_HTTP") === "true",
     trustedProxies: configuredSetting("trusted_proxies"),
     emailProvider: configuredSetting("email_provider"),
     emailSettings: {

@@ -154,8 +154,6 @@ function inspectProduction(
     "S3_ENDPOINT",
     "JWT_SECRET",
     "TFA_ENCRYPTION_KEY",
-    "ADMIN_EMAIL",
-    "ADMIN_PASS",
     "EMAIL_PROVIDER",
     "STORAGE_PROVIDER",
   ];
@@ -185,7 +183,7 @@ function inspectProduction(
     findings.push({
       key: "EMAIL_PROVIDER",
       display: "[已隐藏]",
-      reason: "生产环境只能使用 aliyun 或 tencent",
+      reason: "生产环境只能使用 aliyun、tencent 或 disabled",
     });
   }
   for (const key of emailKeys) {

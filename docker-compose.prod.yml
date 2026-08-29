@@ -23,6 +23,7 @@ x-core-env: &core-env
   JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
   APP_URL: ${APP_URL:?APP_URL is required}
   CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
+  NOJ_ALLOW_INSECURE_HTTP: ${NOJ_ALLOW_INSECURE_HTTP:-false}
   TRUSTED_PROXIES: ${TRUSTED_PROXIES:?TRUSTED_PROXIES is required}
   STORAGE_PROVIDER: ${STORAGE_PROVIDER:?STORAGE_PROVIDER is required}
   S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
@@ -32,8 +33,6 @@ x-core-env: &core-env
   S3_BUCKET: ${S3_BUCKET:?S3_BUCKET is required}
   S3_FORCE_PATH_STYLE: "true"
   EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER is required}
-  ADMIN_EMAIL: ${ADMIN_EMAIL:?ADMIN_EMAIL is required}
-  ADMIN_PASS: ${ADMIN_PASS:?ADMIN_PASS is required}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   LOG_FORMAT: ${LOG_FORMAT:-json}
   JUDGE_IMAGE_BASE: ${JUDGE_IMAGE_BASE-ghcr.io/neuro-oj/}
@@ -41,15 +40,14 @@ x-core-env: &core-env
   AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-90}
 
 services:
-  # ── 一次性初始化：迁移 + 系统数据 + 管理员引导 ────────────────────
+  # ── 一次性初始化：迁移 + 系统数据 ───────────────────────────────
   migrate:
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-core:${NOJ_VERSION:?NOJ_VERSION is required}"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
         /app/bin/noj db migrate &&
-        /app/bin/noj init system &&
-        /app/bin/noj bootstrap admin
+        /app/bin/noj init system
     environment:
       <<: *core-env
     depends_on:
@@ -103,6 +101,7 @@ services:
     environment:
       NUXT_API_BASE: http://core:8000
       NUXT_NOJ_ENV: ${NUXT_NOJ_ENV:-production}
+      NUXT_ALLOW_INSECURE_HTTP: ${NOJ_ALLOW_INSECURE_HTTP:-false}
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3000"
     depends_on:
@@ -129,6 +128,8 @@ services:
 
   # ── 评测 Worker ───────────────────────────────────────────────────
   judge:
+    profiles:
+      - judge
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-judge:${NOJ_VERSION:?NOJ_VERSION is required}"
     environment:
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
@@ -152,11 +153,11 @@ services:
       SUPPORT_CACHE_MAX_MB: ${SUPPORT_CACHE_MAX_MB:-2048}
     volumes:
       # 仅挂载独立 rootless Docker daemon 的 socket；禁止使用应用宿主机 socket。
-      - ${JUDGE_DOCKER_SOCKET:?JUDGE_DOCKER_SOCKET is required}:/run/noj-judge/docker.sock
+      - ${JUDGE_DOCKER_SOCKET:-/run/noj-judge/docker.sock}:/run/noj-judge/docker.sock
       - judge-cache:/tmp/noj-judge
     user: "${JUDGE_UID:-10001}:${JUDGE_GID:-10001}"
     group_add:
-      - "${JUDGE_DOCKER_SOCKET_GID:?JUDGE_DOCKER_SOCKET_GID is required}"
+      - "${JUDGE_DOCKER_SOCKET_GID:-10001}"
     depends_on:
       redis:
         condition: service_healthy

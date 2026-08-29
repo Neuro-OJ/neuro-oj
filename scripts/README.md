@@ -48,7 +48,10 @@ scripts/
 | **单模块重启**                           | `bash scripts/dev/devtool.sh stop <core\|ui\|judge> && bash scripts/dev/devtool.sh start <core\|ui\|judge>` |
 | **更新环境变量模板（保留自定义）**       | `bash scripts/dev/devtool.sh init-env --merge`                  |
 | **首次生产部署**                         | `bash scripts/deploy/deploy.sh install`                          |
-| **单脚本下载并部署**                     | `bash scripts/deploy/install.sh --ref v0.1.0 --dir /opt/neuro-oj` |
+| **一条命令安装整套 NOJ**                  | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh \| bash` |
+| **固定版本安装**                          | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh \| bash -s -- --ref 0.8.0-rc.1 --dir /opt/neuro-oj` |
+| **单脚本下载并部署**                     | `bash scripts/deploy/install.sh --dir /opt/neuro-oj`             |
+| **宝塔兼容部署**                         | `bash scripts/deploy/install.sh --panel baota --ref v0.1.0 --dir /opt/neuro-oj` |
 | **检测 Linux 部署环境**                  | `bash scripts/deploy/install.sh check`                           |
 | **安装基础部署工具**                     | `sudo bash scripts/deploy/install.sh install-env`                |
 | **独立 Judge 一键部署**                   | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/judge-install.sh \| bash -s -- install --dir /srv/noj-judge` |
@@ -85,18 +88,30 @@ cd noj-judge && cargo run
 `staging/acceptance.sh all`；失败时脚本会把 Compose、Docker 和服务日志保存到
 `artifacts/staging/<版本>/`。
 
-`deploy/install.sh` 可以从仓库中单独下载后执行。它只获取指定 ref 的源码并调用
+仓库根目录的 `setup.sh` 是面向新用户的一条命令入口，默认自动获取最新可用 Release，
+然后进入环境检测、配置向导和生产部署。需要复现或固定版本时，在命令后增加
+`--ref 0.8.0-rc.1`。安装完成后打开网站注册第一个用户，该用户会自动获得管理员权限。
+
+`scripts/deploy/install.sh` 可以从仓库中单独下载后执行。它也会自动选择最新 Release，只获取源码并调用
 下载后的 `deploy.sh`，目标目录非空时会拒绝覆盖；已有安装请直接进入目标目录执行
 `deploy.sh upgrade`。
 
 在单脚本模式下可先执行 `bash noj-install.sh check` 检查 Linux、架构、基础工具、Docker
 Compose、内存、磁盘和端口。`sudo bash noj-install.sh install-env` 只会通过系统包管理器
-安装 `ca-certificates`、`curl`、`tar` 和 `openssl`；Docker Engine、Compose plugin 和
-Judge rootless Docker daemon 不由脚本自动安装。
+安装 `ca-certificates`、`curl`、`tar` 和 `openssl`；Docker Engine、Compose plugin、Cosign
+和 Judge rootless Docker daemon 不由脚本自动安装。Cosign 只在主动开启镜像签名校验时需要。
 
-首次执行安装时，终端会引导填写 `NOJ_VERSION`、`DOMAIN`、`APP_URL`、管理员账号、邮件
-Provider 及 Judge Docker socket；密码和邮件密钥不会回显。没有 TTY 的自动化场景会保留
-配置模板并返回非零状态，可使用 `--non-interactive` 明确选择该行为。
+首次执行安装时，终端会引导填写安装版本、网站地址、HTTPS 选项和邮件服务，并询问是否
+安装评测服务 Judge。默认安装 Judge；如果暂时没有独立的 Judge Docker 服务，可以选择
+跳过，网站和题库仍可先部署。安装 Judge 时才需要填写评测服务连接位置；邮件密钥不会回显。
+填写过程先暂存在临时文件，最后
+会询问“是否写入配置”，确认后才会修改正式配置并部署，取消不会留下半成品。已有配置
+时会先询问是否继续使用，选择 `N` 会清空旧值后重新填写；已有阿里云或腾讯云邮件配置
+时直接回车会继续使用，输入 `skip` 才会停用；没有旧邮件配置时直接回车会跳过邮件。
+没有 TTY 的自动化场景会保留配置模板并返回非零状态，可使用 `--non-interactive` 明确选择该行为。
+如果跳过 Judge，之后在 `.env.prod` 中将 `JUDGE_ENABLED` 改为 `true`，补充独立 Judge
+Docker 服务的 socket 和组 ID，再执行 `bash scripts/deploy/deploy.sh start` 即可启用。
+生产部署完成后请立即打开网站注册第一个真实用户；该用户会自动获得管理员权限，已有站点的后续注册用户不会自动提权。
 
 当前发布版本的生产镜像仅支持 `linux/amd64`。在 ARM64 主机上，`check` 和 `install` 会在
 下载源码前明确提示使用 x86_64 主机，避免在 Compose 拉取镜像阶段才失败。

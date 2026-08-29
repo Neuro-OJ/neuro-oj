@@ -57,7 +57,9 @@ cat >"$ENV_FILE" <<'EOF'
 NOJ_VERSION=v0.1.0
 NOJ_ENFORCE_IMAGE_SIGNATURES=false
 APP_URL=https://noj.test
+DOMAIN=noj.test
 CORS_ALLOWED_ORIGINS=https://noj.test
+NOJ_ALLOW_INSECURE_HTTP=false
 TRUSTED_PROXIES=172.28.0.0/16
 POSTGRES_PASSWORD=strong-postgres-password
 POSTGRES_USER=noj
@@ -110,6 +112,201 @@ run_deploy() {
 [[ "$(bash "$DEPLOY_SCRIPT" --help)" == *"生产部署工具"* ]] || fail "帮助输出缺少工具标题"
 pass "帮助输出"
 
+default_ip="$(NOJ_DEPLOY_DEFAULT_IP=192.0.2.10 NOJ_DEPLOY_SOURCE_ONLY=1 bash -c 'source "$1"; detect_default_ipv4' bash "$DEPLOY_SCRIPT")"
+[[ "$default_ip" == 192.0.2.10 ]] || fail "服务器 IP 默认值检测失败"
+pass "服务器 IP 默认值检测"
+
+grep -q '可直接回车使用检测到的 IP' "$DEPLOY_SCRIPT" || fail "网站地址的服务器 IP 引导提示缺失"
+grep -q '正式环境仍需 HTTPS' "$DEPLOY_SCRIPT" || fail "IP 场景 HTTPS 提示缺失"
+pass "服务器 IP 默认值和 HTTPS 提示"
+
+bad_domain_env="$TEST_ROOT/bad-domain.env"
+cp "$ENV_FILE" "$bad_domain_env"
+sed -i.bak 's/^DOMAIN=.*/DOMAIN=exit/' "$bad_domain_env"
+stored_bad_domain="$(NOJ_DEPLOY_SOURCE_ONLY=1 bash -c 'source "$1"; ENV_FILE="$2"; current_config_value DOMAIN' bash "$DEPLOY_SCRIPT" "$bad_domain_env")"
+[[ -z "$stored_bad_domain" ]] || fail "旧的退出文字仍被当成网站地址默认值"
+if run_deploy_with "$bad_domain_env" start >"$TEST_ROOT/bad-domain.out" 2>&1; then
+  fail "无效网站地址不应通过配置校验"
+fi
+grep -q '网站地址必须是域名或服务器 IP' "$TEST_ROOT/bad-domain.out" ||
+  fail "无效网站地址未给出易懂错误提示"
+pass "清理旧的退出文字配置"
+
+reuse_yes="$(NOJ_DEPLOY_SOURCE_ONLY=1 NOJ_DEPLOY_TEST_CONFIRM=y bash -c 'source "$1"; read_prompt() { PROMPT_VALUE="$NOJ_DEPLOY_TEST_CONFIRM"; }; confirm_reuse_config' bash "$DEPLOY_SCRIPT")"
+[[ "$reuse_yes" == *"将使用先前配置"* ]] || fail "确认使用先前配置未生效"
+reuse_no="$(NOJ_DEPLOY_SOURCE_ONLY=1 NOJ_DEPLOY_TEST_CONFIRM=n bash -c 'source "$1"; read_prompt() { PROMPT_VALUE="$NOJ_DEPLOY_TEST_CONFIRM"; }; confirm_reuse_config' bash "$DEPLOY_SCRIPT" 2>&1 || true)"
+[[ "$reuse_no" == *"重新填写"* ]] || fail "拒绝使用先前配置未进入覆盖流程"
+pass "先前配置复用确认"
+
+grep -q '是否写入配置？（Y=写入并继续部署，N=取消）' "$DEPLOY_SCRIPT" || fail "最终写入确认提示缺失"
+grep -q '回车继续使用，输入 skip 暂不配置' "$DEPLOY_SCRIPT" || fail "已有邮件配置的复用提示缺失"
+grep -q '直接回车暂不配置' "$DEPLOY_SCRIPT" || fail "无邮件配置的跳过提示缺失"
+empty_email_label="$(NOJ_DEPLOY_SOURCE_ONLY=1 bash -c 'source "$1"; email_provider_prompt_label ""' bash "$DEPLOY_SCRIPT")"
+[[ "$empty_email_label" == *"直接回车暂不配置"* ]] || fail "无邮件配置时回车含义不清楚"
+aliyun_email_label="$(NOJ_DEPLOY_SOURCE_ONLY=1 bash -c 'source "$1"; email_provider_prompt_label aliyun' bash "$DEPLOY_SCRIPT")"
+[[ "$aliyun_email_label" == *"回车继续使用"* ]] || fail "阿里云配置复用提示缺失"
+pass "邮件服务回车与跳过提示"
+
+staging_env="$TEST_ROOT/staging.env"
+cp "$ENV_FILE" "$staging_env"
+staging_before="$(sha256sum "$staging_env" 2>/dev/null || shasum "$staging_env")"
+NOJ_DEPLOY_SOURCE_ONLY=1 NOJ_DEPLOY_TEST_SOCKET="$TEST_ROOT/isolated-docker.sock" bash -c '
+  source "$1"
+  ENV_FILE="$2"
+  begin_config_staging
+  set_env_value STAGING_TEST_KEY staged-value
+  [[ "$(env_value STAGING_TEST_KEY)" == staged-value ]]
+  [[ "$(grep -c "^STAGING_TEST_KEY=" "$2" || true)" == 0 ]]
+  cancel_config_staging
+  [[ ! -e "$CONFIG_STAGE_FILE" ]]
+  [[ "$(env_value STAGING_TEST_KEY)" == "" ]]
+' bash "$DEPLOY_SCRIPT" "$staging_env" || fail "配置暂存或取消流程失败"
+staging_after_cancel="$(sha256sum "$staging_env" 2>/dev/null || shasum "$staging_env")"
+[[ "$staging_before" == "$staging_after_cancel" ]] || fail "取消暂存后正式配置发生变化"
+NOJ_DEPLOY_SOURCE_ONLY=1 bash -c '
+  source "$1"
+  ENV_FILE="$2"
+  begin_config_staging
+  set_env_value STAGING_TEST_KEY committed-value
+  commit_config_staging
+  [[ "$(env_value STAGING_TEST_KEY)" == committed-value ]]
+' bash "$DEPLOY_SCRIPT" "$staging_env" || fail "配置确认写入流程失败"
+grep -q '^STAGING_TEST_KEY=committed-value$' "$staging_env" || fail "确认后未写入正式配置"
+pass "配置暂存、取消和最终写入"
+
+configure_commit_env="$TEST_ROOT/configure-commit.env"
+cp "$ENV_FILE" "$configure_commit_env"
+NOJ_DEPLOY_SOURCE_ONLY=1 NOJ_DEPLOY_TEST_SOCKET="$TEST_ROOT/isolated-docker.sock" bash -c '
+  source "$1"
+  ENV_FILE="$2"
+  prompt_text() {
+    case "$1" in
+      安装版本*) PROMPT_VALUE=v0.8.0-rc.1 ;;
+      网站地址*) PROMPT_VALUE=noj.example.com ;;
+      管理员邮箱*) PROMPT_VALUE=admin@noj.example.com ;;
+      邮件服务*) PROMPT_VALUE=disabled ;;
+      评测服务连接位置*) PROMPT_VALUE="$NOJ_DEPLOY_TEST_SOCKET" ;;
+      评测服务连接编号*) PROMPT_VALUE=10001 ;;
+      *) return 1 ;;
+    esac
+  }
+  prompt_password() { PROMPT_VALUE=strong-admin-password; }
+  prompt_yes_no() {
+    [[ "$1" == *"是否写入配置"* ]] || return 0
+    return 0
+  }
+  configure_env_interactive 1
+' bash "$DEPLOY_SCRIPT" "$configure_commit_env" "$TEST_ROOT/isolated-docker.sock" \
+  >/dev/null 2>"$TEST_ROOT/configure-commit.err" || fail "配置向导确认写入失败"
+grep -q '^NOJ_VERSION=v0.8.0-rc.1$' "$configure_commit_env" || fail "配置向导确认后未写入版本"
+grep -q '^EMAIL_PROVIDER=disabled$' "$configure_commit_env" || fail "配置向导确认后未写入邮件选项"
+pass "配置向导最终确认写入"
+
+configure_cancel_env="$TEST_ROOT/configure-cancel.env"
+cp "$ENV_FILE" "$configure_cancel_env"
+configure_cancel_before="$(sha256sum "$configure_cancel_env" 2>/dev/null || shasum "$configure_cancel_env")"
+if NOJ_DEPLOY_SOURCE_ONLY=1 NOJ_DEPLOY_TEST_SOCKET="$TEST_ROOT/isolated-docker.sock" bash -c '
+  source "$1"
+  ENV_FILE="$2"
+  prompt_text() {
+    case "$1" in
+      安装版本*) PROMPT_VALUE=v0.8.0-rc.1 ;;
+      网站地址*) PROMPT_VALUE=noj.example.com ;;
+      管理员邮箱*) PROMPT_VALUE=admin@noj.example.com ;;
+      邮件服务*) PROMPT_VALUE=disabled ;;
+      评测服务连接位置*) PROMPT_VALUE="$NOJ_DEPLOY_TEST_SOCKET" ;;
+      评测服务连接编号*) PROMPT_VALUE=10001 ;;
+      *) return 1 ;;
+    esac
+  }
+  prompt_password() { PROMPT_VALUE=strong-admin-password; }
+  prompt_yes_no() {
+    [[ "$1" == *"是否写入配置"* ]] && return 1
+    return 0
+  }
+  configure_env_interactive 1
+' bash "$DEPLOY_SCRIPT" "$configure_cancel_env" "$TEST_ROOT/isolated-docker.sock" \
+  >/dev/null 2>"$TEST_ROOT/configure-cancel.err"; then
+  fail "拒绝写入后配置向导不应继续部署"
+fi
+configure_cancel_after="$(sha256sum "$configure_cancel_env" 2>/dev/null || shasum "$configure_cancel_env")"
+[[ "$configure_cancel_before" == "$configure_cancel_after" ]] || fail "拒绝写入后正式配置发生变化"
+pass "配置向导取消不落盘"
+
+grep -q '是否使用先前配置？' "$DEPLOY_SCRIPT" || fail "先前配置确认提示缺失"
+reset_prompt="$(NOJ_DEPLOY_SOURCE_ONLY=1 bash -c 'source "$1"; config_prompt_value DOMAIN 1' bash "$DEPLOY_SCRIPT")"
+[[ -z "$reset_prompt" ]] || fail "选择重新填写时仍保留旧配置默认值"
+grep -q '网站地址（域名或服务器 IP' "$DEPLOY_SCRIPT" || fail "网站地址提示不够友好"
+grep -q '是否使用 HTTPS（证书需在宝塔或反向代理中配置）' "$DEPLOY_SCRIPT" || fail "HTTPS 选择提示缺失"
+grep -q '暂不配置' "$DEPLOY_SCRIPT" || fail "邮件服务跳过提示缺失"
+grep -q '是否安装评测服务 Judge' "$DEPLOY_SCRIPT" || fail "Judge 安装选择提示缺失"
+grep -q 'configure_env_interactive 1' "$DEPLOY_SCRIPT" || fail "重新填写未清空旧值默认值"
+pass "重新填写和易懂配置提示"
+
+skip_judge_config_env="$TEST_ROOT/skip-judge-config.env"
+cp "$ENV_FILE" "$skip_judge_config_env"
+if NOJ_DEPLOY_SOURCE_ONLY=1 bash -c '
+  source "$1"
+  ENV_FILE="$2"
+  prompt_text() {
+    case "$1" in
+      安装版本*) PROMPT_VALUE=v0.8.0-rc.1 ;;
+      网站地址*) PROMPT_VALUE=noj.example.com ;;
+      邮件服务*) PROMPT_VALUE=disabled ;;
+      评测服务连接位置*|评测服务连接编号*)
+        printf "不应在跳过 Judge 后询问连接配置\n" >&2
+        return 1
+        ;;
+      *) return 1 ;;
+    esac
+  }
+  prompt_yes_no() {
+    [[ "$1" == *"是否安装评测服务 Judge"* ]] && return 1
+    return 0
+  }
+  configure_env_interactive 1
+' bash "$DEPLOY_SCRIPT" "$skip_judge_config_env" \
+  >"$TEST_ROOT/skip-judge-config.out" 2>"$TEST_ROOT/skip-judge-config.err"; then
+  :
+else
+  fail "跳过 Judge 的配置向导失败"
+fi
+grep -q '^JUDGE_ENABLED=false$' "$skip_judge_config_env" || fail "跳过 Judge 后未写入关闭配置"
+pass "配置向导可跳过 Judge 连接配置"
+
+http_env="$TEST_ROOT/http.env"
+cp "$ENV_FILE" "$http_env"
+sed -i.bak \
+  -e 's#^APP_URL=.*#APP_URL=http://noj.test#' \
+  -e 's#^CORS_ALLOWED_ORIGINS=.*#CORS_ALLOWED_ORIGINS=http://noj.test#' \
+  -e 's#^NOJ_ALLOW_INSECURE_HTTP=.*#NOJ_ALLOW_INSECURE_HTTP=true#' \
+  "$http_env"
+run_deploy_with "$http_env" start >/dev/null 2>"$TEST_ROOT/http.err" ||
+  fail "明确开启临时 HTTP 后 start 不应失败"
+sed -i.bak 's#^NOJ_ALLOW_INSECURE_HTTP=.*#NOJ_ALLOW_INSECURE_HTTP=false#' "$http_env"
+if run_deploy_with "$http_env" start >"$TEST_ROOT/http-disabled.out" 2>&1; then
+  fail "未明确开启临时 HTTP 时不应通过配置校验"
+fi
+grep -q '必须明确选择临时 HTTP 模式' "$TEST_ROOT/http-disabled.out" ||
+  fail "HTTP 安全门禁提示缺失"
+pass "HTTPS 默认安全门禁和临时 HTTP"
+
+panel_root="$TEST_ROOT/baota/www/server/panel"
+mkdir -p "$panel_root"
+NOJ_DEPLOY_PANEL_ROOT="$panel_root" run_deploy start \
+  >"$TEST_ROOT/panel-auto.out" 2>&1 || fail "deploy.sh 宝塔自动检测不应失败"
+grep -q '宝塔兼容模式' "$TEST_ROOT/panel-auto.out" || fail "deploy.sh 宝塔自动检测提示缺失"
+grep -q '127.0.0.1:NGINX_PORT' "$TEST_ROOT/panel-auto.out" || fail "deploy.sh 面板端口提示缺失"
+NOJ_DEPLOY_PANEL_ROOT="$panel_root" run_deploy start --panel none \
+  >"$TEST_ROOT/panel-none.out" 2>&1 || fail "deploy.sh --panel none 不应失败"
+if grep -q '宝塔兼容模式' "$TEST_ROOT/panel-none.out"; then
+  fail "deploy.sh --panel none 不应输出宝塔提示"
+fi
+NOJ_DEPLOY_PANEL_ROOT="$TEST_ROOT/missing-panel" run_deploy start --panel baota \
+  >"$TEST_ROOT/panel-force.out" 2>&1 || fail "deploy.sh --panel baota 不应失败"
+grep -q '宝塔兼容模式' "$TEST_ROOT/panel-force.out" || fail "deploy.sh --panel baota 提示缺失"
+pass "deploy.sh 面板自动、强制和关闭模式"
+
 new_env="$TEST_ROOT/new.env"
 if NOJ_DEPLOY_DOCKER_BIN="$FAKE_DOCKER" NOJ_DEPLOY_TEST_LOG="$FAKE_LOG" \
   bash "$DEPLOY_SCRIPT" install --env-file "$new_env" --compose-file "$COMPOSE_FILE" \
@@ -134,14 +331,63 @@ grep -q '^JWT_SECRET=' "$new_env" || fail "首次初始化未写入随机密钥"
 if grep -q '^JWT_SECRET=change-' "$new_env"; then fail "首次初始化仍保留 JWT 占位值"; fi
 pass "首次配置初始化与权限保护"
 
+disabled_env="$TEST_ROOT/disabled-email.env"
+cp "$ENV_FILE" "$disabled_env"
+sed -i.bak 's/^EMAIL_PROVIDER=.*/EMAIL_PROVIDER=disabled/' "$disabled_env"
+run_deploy_with "$disabled_env" start >/dev/null 2>"$TEST_ROOT/disabled-email.err" ||
+  fail "跳过邮件服务后合法配置的 start 不应失败"
+pass "跳过邮件服务配置"
+
+no_admin_env="$TEST_ROOT/no-admin.env"
+cp "$ENV_FILE" "$no_admin_env"
+sed -i.bak -e '/^ADMIN_EMAIL=/d' -e '/^ADMIN_PASS=/d' "$no_admin_env"
+run_deploy_with "$no_admin_env" start >/dev/null 2>"$TEST_ROOT/no-admin.err" ||
+  fail "没有管理员环境变量时合法配置不应失败"
+if grep -q '管理员邮箱' "$DEPLOY_SCRIPT"; then
+  fail "生产配置向导不应继续询问管理员邮箱"
+fi
+pass "无需预先配置管理员"
+
+cat >"$TEST_ROOT/cosign" <<'EOF'
+#!/usr/bin/env bash
+exit 91
+EOF
+chmod +x "$TEST_ROOT/cosign"
+run_deploy start >"$TEST_ROOT/signature-disabled.out" 2>"$TEST_ROOT/signature-disabled.err" ||
+  fail "默认关闭镜像签名校验时不应要求 Cosign"
+grep -q '已关闭镜像签名校验' "$TEST_ROOT/signature-disabled.err" ||
+  fail "关闭镜像签名校验时未给出提示"
+pass "默认关闭镜像签名校验"
+
 if run_deploy start >/dev/null 2>"$TEST_ROOT/start.err"; then
   :
 else
   fail "合法配置的 start 不应失败"
 fi
 grep -q 'compose.*up -d --wait' "$FAKE_LOG" || fail "start 未调用 Compose 健康等待"
+grep -q 'compose.*--profile judge.*up -d --wait' "$FAKE_LOG" || fail "启用 Judge 时未启用 Compose profile"
 if grep -q 'down -v' "$FAKE_LOG"; then fail "部署脚本不得删除数据卷"; fi
 pass "启动参数与数据卷安全边界"
+
+skip_judge_env="$TEST_ROOT/skip-judge.env"
+cp "$ENV_FILE" "$skip_judge_env"
+printf 'JUDGE_ENABLED=false\n' >>"$skip_judge_env"
+skip_judge_log_lines="$(wc -l <"$FAKE_LOG")"
+run_deploy_with "$skip_judge_env" start >"$TEST_ROOT/skip-judge.out" 2>"$TEST_ROOT/skip-judge.err" ||
+  fail "跳过 Judge 后合法配置的 start 不应失败"
+grep -q '已跳过 Judge Docker socket 检查' "$TEST_ROOT/skip-judge.out" ||
+  fail "跳过 Judge 后未跳过 socket 检查"
+if tail -n +$((skip_judge_log_lines + 1)) "$FAKE_LOG" | grep -- '--profile judge' >/dev/null; then
+  fail "跳过 Judge 后不应启用 Compose judge profile"
+fi
+pass "跳过 Judge 时不检查、不启动 Judge"
+
+sed -i.bak 's/^JUDGE_ENABLED=false$/JUDGE_ENABLED=true/' "$skip_judge_env"
+run_deploy_with "$skip_judge_env" start >"$TEST_ROOT/re-enable-judge.out" 2>"$TEST_ROOT/re-enable-judge.err" ||
+  fail "重新启用 Judge 后合法配置的 start 不应失败"
+grep -q 'compose.*--profile judge.*up -d --wait' "$FAKE_LOG" ||
+  fail "重新启用 Judge 后未启用 Compose profile"
+pass "Judge 可通过配置重新启用"
 
 run_deploy stop >/dev/null 2>"$TEST_ROOT/stop.err" || fail "合法配置的 stop 不应失败"
 grep -q 'compose.*stop' "$FAKE_LOG" || fail "stop 未调用 Compose stop"
