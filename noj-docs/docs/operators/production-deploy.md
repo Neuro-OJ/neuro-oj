@@ -53,6 +53,10 @@ sudo bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj
 正式域名。IP 适合临时部署或已经有 HTTPS 反向代理的场景；生产环境的 `APP_URL` 仍必须
 使用 HTTPS。
 
+重复执行部署且检测到已有生产配置时，脚本会先询问是否使用先前配置。输入 `Y` 或直接
+回车会保留配置；输入 `N` 才会进入逐项配置向导。若旧配置尚未填写完整，选择 `Y` 后会
+继续进入补齐向导。
+
 ```bash
 sudo vim /opt/neuro-oj/.env.prod
 sudo chmod 600 /opt/neuro-oj/.env.prod

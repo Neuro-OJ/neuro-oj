@@ -118,6 +118,14 @@ grep -q '可直接回车使用服务器 IP' "$DEPLOY_SCRIPT" || fail "DOMAIN 的
 grep -q '正式环境仍需 HTTPS' "$DEPLOY_SCRIPT" || fail "IP 场景 HTTPS 提示缺失"
 pass "服务器 IP 默认值和 HTTPS 提示"
 
+reuse_yes="$(NOJ_DEPLOY_SOURCE_ONLY=1 NOJ_DEPLOY_TEST_CONFIRM=y bash -c 'source "$1"; read_prompt() { PROMPT_VALUE="$NOJ_DEPLOY_TEST_CONFIRM"; }; confirm_reuse_config' bash "$DEPLOY_SCRIPT")"
+[[ "$reuse_yes" == *"将使用先前配置"* ]] || fail "确认使用先前配置未生效"
+reuse_no="$(NOJ_DEPLOY_SOURCE_ONLY=1 NOJ_DEPLOY_TEST_CONFIRM=n bash -c 'source "$1"; read_prompt() { PROMPT_VALUE="$NOJ_DEPLOY_TEST_CONFIRM"; }; confirm_reuse_config' bash "$DEPLOY_SCRIPT" 2>&1 || true)"
+[[ "$reuse_no" == *"重新填写"* ]] || fail "拒绝使用先前配置未进入覆盖流程"
+pass "先前配置复用确认"
+
+grep -q '是否使用先前配置？' "$DEPLOY_SCRIPT" || fail "先前配置确认提示缺失"
+
 panel_root="$TEST_ROOT/baota/www/server/panel"
 mkdir -p "$panel_root"
 NOJ_DEPLOY_PANEL_ROOT="$panel_root" run_deploy start \

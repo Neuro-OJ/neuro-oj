@@ -323,6 +323,28 @@ configuration_needs_interactive_input() {
   return 1
 }
 
+confirm_reuse_config() {
+  local answer
+  printf '检测到先前生产配置：%s\n' "$ENV_FILE"
+  while :; do
+    read_prompt '是否使用先前配置？[Y/n]（Y=保留，N=重新填写）: '
+    answer="${PROMPT_VALUE:-Y}"
+    case "$answer" in
+      y|Y|yes|YES)
+        ok "将使用先前配置"
+        return 0
+        ;;
+      n|N|no|NO)
+        warn "将进入配置向导重新填写"
+        return 1
+        ;;
+      *)
+        warn "请输入 Y 使用先前配置，或 N 重新填写"
+        ;;
+    esac
+  done
+}
+
 configure_env_interactive() {
   local version domain app_url admin_email email_provider socket_path socket_gid
   local current_value default_url detected_ip default_domain
@@ -422,8 +444,15 @@ initialize_env() {
     [[ -f "$ENV_FILE" ]] || fail "生产配置路径不是普通文件：$ENV_FILE"
     chmod 600 "$ENV_FILE"
     ok "保留已有配置：$ENV_FILE"
-    if ((INTERACTIVE)) && has_interactive_tty && configuration_needs_interactive_input; then
-      configure_env_interactive
+    if ((INTERACTIVE)) && has_interactive_tty; then
+      if confirm_reuse_config; then
+        if configuration_needs_interactive_input; then
+          warn "先前配置尚未填写完整，将进入补齐向导"
+          configure_env_interactive
+        fi
+      else
+        configure_env_interactive
+      fi
     fi
     return 0
   fi
