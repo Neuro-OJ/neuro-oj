@@ -1,339 +1,217 @@
-# NOJ · Neuro OJ
+# Neuro OJ
 
-**面向 AI 领域认证与竞赛的在线评测平台**
+**面向 AI 领域认证与竞赛的开源在线评测平台。**
 
 [![Deno](https://img.shields.io/badge/Deno-2.x-000?logo=deno&logoColor=fff)](https://deno.com)
-[![Rust](https://img.shields.io/badge/Rust-2021-dea584?logo=rust&logoColor=000)](https://rust-lang.org)
-[![Nuxt 4](https://img.shields.io/badge/Nuxt_4-00DC82?logo=nuxt&logoColor=fff)](https://nuxt.com)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=fff)](https://postgresql.org)
-[![Redis](https://img.shields.io/badge/Redis-7-FF4438?logo=redis&logoColor=fff)](https://redis.io)
+[![Rust](https://img.shields.io/badge/Rust-2021-dea584?logo=rust&logoColor=000)](https://www.rust-lang.org/)
+[![Nuxt 4](https://img.shields.io/badge/Nuxt-4-00DC82?logo=nuxt&logoColor=fff)](https://nuxt.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=fff)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-7-FF4438?logo=redis&logoColor=fff)](https://redis.io/)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue)](./LICENSE)
 [![CI](https://github.com/Neuro-OJ/neuro-oj/actions/workflows/ci.yml/badge.svg)](https://github.com/Neuro-OJ/neuro-oj/actions/workflows/ci.yml)
 
-> Neuro OJ 为独立社区项目，与 CCF（中国计算机学会）、LMCC（大模型能力认证）、IOAI（国际人工智能奥林匹克）及 NOAI 无任何官方关系。
+> Neuro OJ（NOJ）是独立社区项目，与 CCF、LMCC、IOAI 及 NOAI 无任何官方关系。
 
-> 当前版本处于 Public Beta / Release Candidate 阶段。部署时请使用 GitHub Release 指定的版本 tag，避免使用 `latest`；API、题目包格式和运行时配置仍可能调整。
+## 这是什么？
 
----
+NOJ 提供从“注册 → 做题 → 提交 → 评测”的完整流程，可用于 **LMCC 备考与模拟训练**、AI 训练营、教学实训和模型评测竞赛。
 
-## 什么是 Neuro OJ？
+它与传统 OJ 的主要区别是：题目通过 evaluator 调用用户实现的函数并完成评分，而不是只比较标准输入输出。这种方式更适合评测大模型应用和 AI 工程能力。
 
-Neuro OJ（NOJ）是一个面向 **AI 领域认证与竞赛** 的在线评测平台，覆盖 **IOAI / NOAI / LMCC** 等场景。它同时支持：
+## 可以用来做什么？
 
-- **客观题** — 单选 / 多选 / 判断，服务端即时判分
-- **代码题** — 函数式 / 算法题，双容器沙箱评测
-- **LLM 工程题** — Prompt、RAG、工具调用，通过 LLM 网关评测
-- **产物提交题** — 类 Kaggle：选手自训自提，提交预测结果 / 模型 / 代码，云端统一判分
+- **备考 LMCC**：组织客观题练习、编程题训练和模拟测验，复现“知识理解 + 编程实践”的训练流程。
+- **AI 认证与选拔**：搭建面向 AI 基础知识、模型应用和工程能力的考试或选拔活动。
+- **课程与训练营**：发布作业、自动评测代码，并集中查看提交记录和成绩。
+- **AI 模型评测竞赛**：支持 LLM 工程题、模型调用题和类 Kaggle 的产物提交题。
+- **社区刷题**：通过题目、排行榜、竞赛和社区功能开展日常练习与交流。
 
-与传统算法竞赛 OJ 不同，NOJ 更关注大模型应用与工程能力，评测逻辑由题目支持包自定义，具备严格的资源隔离和可水平扩展的 Worker 架构。
+> NOJ 可以作为 LMCC 备考和模拟训练平台使用，但不是 LMCC 官方平台，也不代表任何官方认证结果。
 
-### 典型场景
+## 支持的题型
 
-- **AI 奥林匹克训练与选拔** — 支持 IOAI Individual Contest / Team Challenge、NOAI 部分题目的训练与模拟赛
-- **能力认证** — 复现类似 LMCC 第一轮客观题 + 第二轮编程题的机考环境
-- **教学实训** — 大模型课程中的编程作业自动评测
-- **模型评测竞赛** — 类 Kaggle 的产物提交：选手在自己的设备上完成训练 / 微调，提交预测结果或模型到云端判分
+| 题型 | 状态 | 适合场景 | 评测方式 |
+| --- | --- | --- | --- |
+| **客观题** | ✅ 已支持 | AI 基础知识、模型原理、伦理与安全等知识练习 | 单选、多选、判断和套卷，提交后即时判分 |
+| **代码题** | ✅ 已支持 | 编程基础、算法和 AI 工程编程训练 | 在 Docker 沙箱中调用用户实现的函数并评分 |
+| **LLM 工程题** | ✅ 已支持 | Prompt、RAG、工具调用和 Agent 能力评测 | 由 evaluator 调用模型或工具并按自定义规则评分 |
+| **产物提交题** | ✅ 已支持 | 模型评测、预测任务和类 Kaggle 竞赛 | 上传 ZIP 产物，由平台统一评测并参与竞赛排名 |
 
-> **边界说明**：NOJ 当前不提供 LLM 微调 / 训练执行环境。涉及训练 / 微调的题目，选手在自己的设备上完成，平台负责接收产物并统一评测。
+## 和传统 OJ 有什么不同？
 
----
+| 对比项 | 传统算法 OJ | Neuro OJ |
+| --- | --- | --- |
+| **主要目标** | 算法训练和程序设计竞赛 | AI 认证备考、AI 工程训练和模型评测 |
+| **评测对象** | 读取标准输入、输出结果的完整程序 | 用户实现的函数、模型调用或提交的产物 |
+| **判题方式** | 比较标准输出，或交给 SPJ 判断 | evaluator 主动调用并执行自定义评分逻辑 |
+| **题目类型** | 以算法和数据结构题为主 | 客观题、代码题、LLM 工程题和产物提交题 |
+| **运行隔离** | 通常运行一个用户程序 | 用户代码与评测代码在独立 Docker 容器中运行 |
+| **适合场景** | 算法竞赛、编程基础训练 | LMCC 备考、AI 认证、LLM 应用和模型评测 |
 
-## 系统架构
+NOJ 并不排斥传统编程题，而是在函数式代码评测的基础上，进一步覆盖客观题、LLM 工程题和 AI 模型评测场景。
 
-NOJ 由多个模块通过 RESTful API、Redis 消息队列和内部 HTTP 协作：
+> NOJ 当前不提供 LLM 训练或微调算力。相关训练或微调需要在选手自己的设备上完成；训练产物可以上传到 NOJ 并由平台统一评测。
 
-```
-+----------+   RESTful API   +----------+   Redis MQ    +--------------+
-|  noj-ui  | <-------------> | noj-core | --Producer--> |  noj-judge   |
-|  Nuxt 4  |                 | Deno+Hono| <--Consumer--|  Rust+Docker  |
-+----------+                 +----------+               +--------------+
-                                   |                          |
-                                   | 内部 HTTP                 | 注入 env
-                                   v                          v
-                              +----------------+    LLM 调用题通过
-                              | noj-llm-gateway |    gateway 转发
-                              |   Deno + Hono   |    到上游 LLM API
-                              +----------------+
-```
+## 核心能力
 
-- **noj-ui**（Nuxt 4 + Vue 3）— Web 前端，提供题目列表、代码编辑器、提交结果页、管理后台等。
-- **noj-core**（Deno + Hono）— RESTful API 服务，负责用户/题目/提交/榜单等业务，并作为 Redis MQ 的生产者与消费者。
-- **noj-judge**（Rust + Tokio）— 评测 Worker，从 MQ 拉取任务，在 Docker 沙箱中执行评测脚本并回传结果。
-- **noj-llm-gateway**（Deno + Hono）— LLM 调用网关，负责上游 API Key 加密托管、短期 eval_token、限流/额度、用量审计；evaluator 只通过它访问外部 LLM API。
-- **PostgreSQL 16** — 持久化存储；**Redis 7** — 消息队列、缓存与 LLM 限流计数。
-
-### 评测消息流
-
-1. 用户在 noj-ui 提交代码
-2. noj-core 接收请求，将评测任务发布到 Redis 队列（`noj:judge:queue`）
-3. noj-judge 从队列拉取任务
-4. Worker 在 Docker 容器中执行评测脚本（资源隔离、网络关闭）
-5. 结果回写 Redis（`noj:judge:results`）
-6. noj-core 消费结果并持久化到数据库
-
----
-
-## 环境要求
-
-| 组件 | 版本 / 说明 |
-|------|------------|
-| 操作系统 | Linux / macOS（推荐 Ubuntu 22.04+） |
-| [Deno](https://deno.com) | 2.x（运行 noj-core 与 noj-ui） |
-| [Rust](https://www.rust-lang.org/) | toolchain stable（编译 noj-judge） |
-| [Docker](https://www.docker.com/) | 20.10+，含 Docker Compose v2 |
-| zip / unzip | 系统命令行工具（构建支持包依赖，`devtool.sh install-deps` 会自动安装） |
-| Git | 2.x |
-| 内存 | ≥ 4 GB（运行全部模块 + Postgres + Redis） |
-| 端口 | 本地开发：3000（前端）/ 8000（后端）/ 8001（LLM Gateway）/ 5432（PG）/ 6379（Redis）；生产对外：`NGINX_PORT`，默认 8080 |
-
-> 一键检测脚本：`bash scripts/dev/devtool.sh install-deps`，会自动安装 zip/unzip，并对其他依赖给出安装指引。
-
----
+- **函数调用型评测**：由 evaluator 驱动测试并自定义评分逻辑。
+- **双容器安全沙箱**：用户代码与评测代码隔离运行；Solution 永远关闭网络，Evaluator 可按题目配置联网并受资源限制。
+- **完整竞赛体验**：支持题目筛选、提交记录、排行榜、竞赛和实时评测状态。
+- **社区与权限管理**：支持社区互动、站内私信和 RBAC 权限控制。
+- **LLM 调用网关**：统一管理 Provider、访问凭据、限流和用量审计。
 
 ## 快速开始
 
-### 方式 A：一键脚本（推荐）
+本节介绍生产环境部署。NOJ 当前采用单机 Docker Compose 方案，使用 GitHub Container Registry 发布的镜像运行。
 
-适合本地日常开发。`scripts/dev/devtool.sh` 单文件编排工具，统一管理后台进程、PID 与日志到 `scripts/dev/logs/`。
+### 环境要求
+
+#### 必须具备
+
+| 条件 | 用途 |
+| --- | --- |
+| Linux amd64 服务器 | 运行生产 Compose 和 Judge Worker |
+| [Docker Engine](https://docs.docker.com/engine/install/) 与 Docker Compose v2 | 启动 NOJ 的全部生产服务 |
+| OpenSSL | 首次运行安装脚本时生成随机密钥 |
+| 一个已经解析到服务器的域名（公网生产部署） | 对外访问 NOJ，并用于生成 HTTPS 应用地址和 CORS 配置 |
+| Nginx、Caddy 或云负载均衡（三选一） | 在容器外完成 HTTPS/TLS 终止；不要求必须安装宿主机 Nginx |
+| 可拉取 `ghcr.io/neuro-oj/` 生产镜像的网络或凭据 | 获取 `noj-core`、`noj-ui`、`noj-judge` 等镜像 |
+| 独立的 rootless Docker daemon socket（启用 Judge 时） | 供 Judge Worker 创建评测容器；禁止使用应用宿主机的 `/var/run/docker.sock` |
+
+如果只是查看源码或编辑配置，不需要安装上述全部运行环境。`git` 只有在从 GitHub 获取源码时才是必须的。
+
+> 内网或临时测试可以使用 IP 和 HTTP，不需要公网域名；正式对外提供服务时，建议使用域名和 HTTPS。
+
+### 资源要求
+
+以下要求以 SNG 实际部署数据为基准，适用于低并发公测和正式生产的容量规划：
+
+| 资源 | 最低要求（低并发可运行） | 推荐要求（正式生产） | SNG 实测 |
+| --- | --- | --- | --- |
+| CPU | ≥ 2 vCPU | ≥ 4 vCPU | 2 vCPU |
+| 内存 | ≥ 264 MiB（NOJ 低负载实测） | ≥ 8 GiB | 4 GiB，可用约 1.5 GiB |
+| Swap | ≥ 2 GiB | ≥ 4 GiB | 3 GiB，已使用约 1.7 GiB |
+| 磁盘 | 至少保持 5 GiB 可用 | 至少保持 40 GiB 可用 | 60 GiB，剩余约 20 GiB |
+| Docker 存储 | 至少预留 5 GiB | 至少预留 15 GiB | 镜像和缓存约 15 GiB |
+
+NOJ 当前持久化数据卷约 66 MiB，生产镜像（含 Evaluator、Solution 评测镜像）逻辑大小约 2.75 GiB。实际磁盘还会受到旧版本镜像、评测缓存、日志和同机其他服务影响。
+
+### Judge Worker 运行位置
+
+使用本页的一键部署脚本时，可以选择让 `judge` 随 Docker Compose 运行在当前部署主机上；只有启用 Judge 时，该主机才必须配置 Judge 专用的 rootless Docker daemon 和 `JUDGE_DOCKER_SOCKET`。
+
+但 Judge 不要求永远和 NOJ 主服务部署在同一台机器上。生产环境可以将一个或多个 Judge Worker 部署到独立主机，让它们共同消费 Redis 评测队列；每个 Worker 都需要自己的 Docker 隔离边界，并能访问 Redis 和题目支持包存储。主站一键安装脚本不负责独立 Worker 的安装，详见 [Judge Worker 运维文档](./noj-docs/docs/operators/judge-workers.md)。
+
+生产环境还应使用仓库外、权限为 `600` 或 `400` 的备份口令文件，并仅开放 HTTPS 和运维所需的 SSH 端口。
+
+#### 生产部署不需要
+
+一键生产部署使用预构建镜像，因此服务器上**不需要**安装以下开发工具：
+
+- [Deno](https://deno.com/)
+- [Rust](https://www.rust-lang.org/tools/install)
+- `zip` / `unzip`
+- Node.js、前端依赖或本地 PostgreSQL / Redis
+
+这些工具仅在源码开发、构建评测镜像或运行部分测试时需要，详见[项目开发约定](./AGENTS.md)。
+
+### 一键部署
+
+生产环境推荐直接下载独立安装入口。它会下载指定 Release 到目标目录，并调用生产部署向导：
 
 ```bash
-# 1. 检测环境（自动安装 zip/unzip，提示其他依赖）
-bash scripts/dev/devtool.sh install-deps
-
-# 2. 准备环境变量（必填 DATABASE_URL 与 JWT_SECRET，至少 32 字符；
-#    LLM 题目另需 NOJ_LLM_SERVICE_TOKEN / NOJ_LLM_STORE_KEY）
-bash scripts/dev/devtool.sh init-env          # 默认拒绝覆盖，--merge 仅追加模板缺失键
-$EDITOR noj-core/.env
-
-# 3. 一键启动整套环境（infra → core → ui → judge）
-bash scripts/dev/devtool.sh start             # 单模块：start ui / start core / start judge
-
-# 4. 查看状态
-bash scripts/dev/devtool.sh status            # 人类可读；--json 输出结构化
-
-# 5. 停止全部模块
-bash scripts/dev/devtool.sh stop              # 反向顺序：judge → ui → core → infra
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/install.sh \
+  -o noj-install.sh
+bash noj-install.sh --ref <Release 标签> --dir /opt/neuro-oj
 ```
 
-详细子命令用法：`bash scripts/dev/devtool.sh help` 或 `devtool.sh <子命令> --help`。
+安装向导会创建并保护 `.env.prod`，生成随机密钥，检查生产配置，拉取镜像并等待服务通过健康检查。Judge 是否启动取决于安装时的选择；没有 Judge 时网站和题库仍可使用，但暂时不能进行代码评测。
 
-启动完成后：
-
-- 前端：<http://localhost:3000>
-- 后端 API：<http://localhost:8000>
-- 健康检查：`curl http://localhost:8000/health`
-
-### 方式 B：手动分步启动
-
-需要单独调试某个模块时使用前台运行，实时查看日志。
+如果已经有仓库源码，不需要再次运行下载入口，可直接在仓库根目录执行：
 
 ```bash
-# 1. 基础设施
-docker compose up -d          # PostgreSQL + Redis
-
-# 2. 后端 noj-core
-cd noj-core
-deno task dev-setup          # 一键初始化（迁移 + 系统数据 + 题目导入）
-deno task dev                 # 热重载 http://localhost:8000
-
-# 3. 前端 noj-ui（新开终端）
-cd ../noj-ui
-deno task dev                 # http://localhost:3000（首次运行会自动拉取依赖）
-
-# 4. 评测 Worker noj-judge（新开终端）
-cd ../noj-judge
-cargo run                     # 需 Docker daemon 运行中
-
-# 5. LLM Gateway（新开终端，可选；仅 LLM 调用题需要）
-cd ../noj-llm-gateway
-deno task dev                 # http://localhost:8001
-```
-
-各模块相互独立，可只启动需要的部分（如只调试前端时无需启动 noj-judge；不做 LLM 题时无需启动 noj-llm-gateway）。
-
-### 开发环境管理员账号
-
-`deno task dev-setup` 的行为依赖 `ADMIN_EMAIL` 是否设置：
-
-- **未设置 `ADMIN_EMAIL`** — 自动创建引导管理员（密码 24 位随机写入终端输出，**首次登录后必须修改**）。
-- **设置了 `ADMIN_EMAIL` 但未设置 `ADMIN_PASS`** — 仅提升该邮箱用户为管理员，不创建新用户。
-- **同时设置 `ADMIN_EMAIL` 和 `ADMIN_PASS`** — 用户不存在时自动创建并设为 admin。
-
-推荐做法——使用编辑器把凭据写进 `noj-core/.env` 后再运行 seed，避免密码进入 shell history：
-
-```bash
-$EDITOR noj-core/.env
-# 在编辑器中填写 ADMIN_EMAIL 和 ADMIN_PASS 后保存
-cd noj-core && deno task dev-setup
-```
-
-生产环境不需要在安装前填写管理员邮箱或密码。生产初始化完成后，打开网站注册第一个真实用户，
-该用户会自动获得管理员权限；已有生产站点的后续注册用户不会自动提权。
-
----
-
-## 生产部署
-
-生产环境使用仓库根目录的 `.env.prod` 和 `docker-compose.prod.yml`。推荐使用部署脚本，脚本会自动带上生产环境文件：
-
-```bash
-# 首次安装
 bash scripts/deploy/deploy.sh install
-
-# 查看状态和日志
-bash scripts/deploy/deploy.sh status
-bash scripts/deploy/deploy.sh logs core
-
-# 升级版本
-bash scripts/deploy/deploy.sh upgrade
 ```
 
-手动使用 Compose 前，请确认已经准备好生产配置文件并限制文件权限：
+部署完成后，通过配置的域名访问：
+
+- 前端：`https://你的域名/`
+- 健康检查：`https://你的域名/healthz`
+
+生产配置至少需要填写 `NOJ_VERSION`、`DOMAIN`、`APP_URL`、`CORS_ALLOWED_ORIGINS`、数据库/Redis/MinIO 凭据、认证密钥和 `EMAIL_PROVIDER`（可以设为 `disabled`）。新站点安装完成后注册的第一个真实用户会自动成为管理员；启用 Judge 时才需要独立的 Judge Docker socket。完整配置说明见[生产部署文档](./noj-docs/docs/operators/production-deploy.md)。
+
+常用运维命令：
 
 ```bash
-cp .env.prod.example .env.prod
-chmod 600 .env.prod
+bash scripts/deploy/deploy.sh status   # 查看服务状态
+bash scripts/deploy/deploy.sh logs core # 查看 core 日志
+bash scripts/deploy/deploy.sh upgrade  # 升级到 .env.prod 中的版本
+bash scripts/deploy/deploy.sh stop     # 停止服务但保留数据卷
 ```
 
-如果需要直接使用 Docker Compose，必须显式指定 `.env.prod`：
+更多部署、TLS、备份和升级说明见 [`deploy/README.md`](./deploy/README.md) 和[生产部署文档](./noj-docs/docs/operators/production-deploy.md)。
 
-```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml ps
-docker compose --env-file .env.prod -f docker-compose.prod.yml config --quiet
+## 按角色开始
+
+| 你是谁 | 可以做什么 | 从这里开始 |
+| --- | --- | --- |
+| 做题人 | 刷题、提交代码、查看结果、参加竞赛 | [`做题人文档`](./noj-docs/docs/users/index.md) |
+| 出题人 | 创建代码题、LLM 题和评测支持包 | [`出题人文档`](./noj-docs/docs/problemsetters/index.md) |
+| 运营者 | 部署、初始化和维护 NOJ 实例 | [`运营者文档`](./noj-docs/docs/operators/index.md) |
+| 开发者 | 修改代码、运行测试、提交贡献 | [`项目开发约定`](./AGENTS.md) |
+
+### 常用文档
+
+- [什么是 Neuro OJ](./noj-docs/docs/intro/what-is-noj.md)：了解评测模型与传统 OJ 的区别
+- [快速开始](./noj-docs/docs/intro/getting-started.md)：完成第一次注册、做题和提交
+- [生产部署](./noj-docs/docs/operators/production-deploy.md)：部署一个可用的 NOJ 实例
+- [评测模型](./noj-docs/docs/mechanisms/judge-model.md)：了解 evaluator、solution 和双容器架构
+- [系统架构](./noj-docs/docs/system/architecture.md)：了解各服务之间如何协作
+- [常见问题](./noj-docs/docs/intro/faq.md)：排查常见使用和部署问题
+
+如果项目提供了在线文档站，建议从文档站首页开始阅读；仓库中的 [`noj-docs`](./noj-docs/) 是文档站源码。
+
+## 项目结构
+
+```text
+noj-ui            Nuxt 4 + Vue 3 前端
+noj-core          Deno + Hono API 与业务服务
+noj-judge         Rust + Docker 评测 Worker
+noj-llm-gateway   LLM 调用网关
+noj-tests         跨模块全链路测试
+noj-docs          用户、运营者和出题人文档
 ```
 
-不要直接执行 `docker compose -f docker-compose.prod.yml ...`。Compose 默认只自动加载名为 `.env` 的文件，
-不会自动加载 `.env.prod`，因此可能出现 `POSTGRES_PASSWORD is required` 等配置缺失错误。
+核心评测链路如下：
 
-生产 Compose 的 Core 和 LLM Gateway 健康检查分别在容器内部访问 `/health`。公网入口由 Nginx 将 `/healthz` 转发到 Core 的 `/health`，应使用以下地址检查：
-
-```bash
-curl https://你的域名/healthz
+```text
+浏览器 → noj-ui → noj-core → Redis 队列 → noj-judge → 评测结果
+                         ├→ PostgreSQL
+                         └→ noj-llm-gateway（可选）
 ```
-
-公网 `/health` 不作为应用健康检查地址。
-
----
-
-## 故障排查
-
-### 启动相关
-
-| 现象 | 可能原因 / 处理 |
-|------|----------------|
-| `JWT_SECRET 长度不足 32` | 在 `noj-core/.env` 设置 32+ 字符的随机字符串 |
-| `DATABASE_URL` 报错 / 连接拒绝 | 本地确认 `docker compose ps` 中 Postgres 已启动；生产环境使用 `bash scripts/deploy/deploy.sh status` 或带 `--env-file .env.prod` 的 Compose 命令 |
-| `deno task dev-setup` 卡在 `zip: command not found` | `sudo apt install -y zip unzip` 后重试（或先跑 `devtool.sh install-deps`） |
-| `cargo run` 报 `Cannot connect to Docker daemon` | 启动 Docker Desktop，或 `sudo systemctl start docker` |
-| 端口 3000 / 8000 冲突 | 修改对应模块配置，或先 `lsof -i :3000` 杀掉占用进程 |
-| 一键启动后某模块长时间未就绪 | 查看 `devtool.sh status` 输出与对应日志 |
-| 生产环境执行 `docker compose -f docker-compose.prod.yml ...` 报 `POSTGRES_PASSWORD is required` | 加上 `--env-file .env.prod`，或改用 `bash scripts/deploy/deploy.sh status` |
-
-### 评测相关
-
-| 现象 | 可能原因 / 处理 |
-|------|----------------|
-| 提交后状态长时间停留在 `Pending` | noj-judge 未启动或未连上 Redis；检查 `bash scripts/dev/devtool.sh status` 与 `scripts/dev/logs/judge.log` |
-| 结果丢失 / 队列堆积 | 查看 Redis 长度：`redis-cli LLEN noj:judge:queue`；必要时重启 `noj-judge` 触发自动重连 |
-| 评测结果报错 `noj-download://` 解码失败 | `deno task problems:build` 重新构建题目支持包 |
-| 容器启动失败 `image not found` | 默认评测镜像为 `noj-evaluator-python` / `noj-solution-python` / `noj-solution-ai`；从仓库根目录执行 `bash noj-judge/scripts/build-sdk-images.sh` 构建 |
-| LLM 题提交后报 `Missing NOJ_LLM_GATEWAY_URL` | `noj-llm-gateway` 未启动，或 `noj-core/.env` 未配置 `NOJ_LLM_SERVICE_TOKEN` / `NOJ_LLM_GATEWAY_URL` |
-| LLM 题评测返回 `invalid_token` | `NOJ_LLM_SERVICE_TOKEN` 在 core 与 gateway 不一致，或题目 `llm` 配置使用了不存在/停用的 Provider |
-| LLM 题容器无法连接 gateway | 生产环境需设置 `JUDGE_ALLOW_EVALUATOR_NETWORK=true` 且 `JUDGE_EVALUATOR_NETWORK` 指向 gateway 所在 Docker 网络（如 `noj-net`），`NOJ_LLM_GATEWAY_URL` 使用同一网络内可解析地址 |
-
-### 数据库相关
-
-| 现象 | 可能原因 / 处理 |
-|------|----------------|
-| 迁移失败 | 本地执行 `cd noj-core && deno task db:migrate` 查看脱敏日志；生产环境执行 `bash scripts/deploy/deploy.sh logs core`，常见原因是顺序错乱或与已应用迁移冲突 |
-| 种子数据缺失 / 管理员未创建 | 确认 `noj-core/.env` 已配置 `ADMIN_EMAIL`；必要时重新运行 `deno task dev-setup` |
-| 想清空重置（仅限本地开发） | `docker compose down -v` 会删除数据卷；生产环境禁止执行。清空后重新 `up -d` + `deno task dev-setup` |
-
-### 日志位置
-
-- 一键脚本：`scripts/dev/logs/{core,ui,judge}.log`（infra 由 docker compose 管理，无单独日志文件）
-- 手动运行：直接查看前台终端
-- 队列状态页：<http://localhost:3000/queue>（前端）
-- 结构化状态：`bash scripts/dev/devtool.sh status --json`
-
-更多 FAQ 见 [`scripts/dev/README.md`](./scripts/dev/README.md) 与 [`noj-docs/`](./noj-docs/) 文档站。
-
----
-
-## 开发流程
-
-本项目使用 OpenSpec 规范驱动开发：
-
-1. 在 `openspec/specs/` 定义行为规范
-2. 创建变更提案 `openspec/changes/<name>/`
-3. 实现 → 测试 → 归档变更
-
-### 版本控制
-
-- 本地使用 **Jujutsu (jj)** 管理仓库，推送使用 `jj git push`
-- 所有提交必须 **GPG 签名**，`Conventional Commits` 规范（中文描述）
-- 禁止直接推送到 `main`，所有变更通过 PR 合入
-
-完整的开发约定见 [`AGENTS.md`](./AGENTS.md) 以及各子模块的 `CLAUDE.md`：
-[`noj-core`](./noj-core/CLAUDE.md) · [`noj-ui`](./noj-ui/CLAUDE.md) · [`noj-judge`](./noj-judge/CLAUDE.md)。
-
-### 测试
-
-```bash
-# noj-core 单元 + 集成测试
-cd noj-core && deno task test
-
-# noj-judge 单元测试
-cd noj-judge && cargo test --lib
-
-# noj-judge Docker 沙箱 E2E（需要 Docker 与 NOJ_RUN_E2E=1，8 个独立 test binary）
-cd noj-judge && NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
-# ...（其余：e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_problem_limits / e2e_dual_container / e2e_network_capability / e2e_solution_ai）
-
-# 跨模块全链路 E2E（需先启动完整环境）
-cd noj-tests && deno task test
-```
-
-CI 通过 GitHub Actions 双重流水线保证质量：
-
-- **`ci.yml`** — PR/推送触发，并行检查三个模块（fmt + lint + test + build）
-- **`e2e.yml`** — 全链路管道测试（首次 ~15min，缓存命中后 ~5-8min）
-
----
 
 ## 项目状态
 
-已打通"注册 → 做题 → 提交 → 评测结果"闭环，并具备题目筛选、管理后台、用户榜单、每日签到、站内私信，以及**类 Kaggle 竞赛**（按题目最高分累计、提交次数限制与 SSE 实时排名）、**产物提交题**、**社区**与 **RBAC 权限**等能力。当前正在推进 **AI 认证 / 竞赛定位**：考试模式、更多竞赛赛制、隐藏测试集和排行榜隔离规则仍在完善。
+当前已打通注册、做题、提交、评测结果、题目筛选、排行榜、竞赛、社区、站内私信和 RBAC 等能力；客观题、代码题、LLM 工程题和产物提交题已经可以使用。
 
-| 阶段 | 交付标准 | 状态 |
-|------|---------|------|
-| **Phase 0** | 浏览器注册 → 做题 → 提交 → 看到评测结果 | ✅ 完成 |
-| **Phase 1** | 榜单可查，题目可筛选，管理后台可用（另已交付：比赛、社区、RBAC） | ✅ 完成 |
-| **Phase 2** | 可创建类 Kaggle 竞赛 → 用户参赛 → 实时榜单 + 产物提交 | 🚧 进行中（考试模式、更多赛制、隐藏测试集和赛后复盘待做） |
-| **Phase 3** | 多 Worker 并发评测，99.5% 可用性 + IOAI / NOAI 赛制模板 | ⏳ 规划 |
+正在持续完善 AI 认证和竞赛场景，包括考试模式、隐藏测试集、更多竞赛赛制和赛后复盘能力。
 
-> 注：多语言评测（C++/Java/Node.js）与 SPJ 为**决策性不做**（LMCC/IOAI 以 Python 为主，见 `openspec/comparison-hydrooj.md`）。
+## 故障排查
 
----
+- 提交长时间处于 `Pending`：确认 Judge Worker 已启动，并且连接了与 `noj-core` 相同的 Redis；队列和日志排查方法见[Judge Worker 运维文档](./noj-docs/docs/operators/judge-workers.md)。
+- 评测镜像不存在：确认评测镜像已发布、已加入 `judge_images` 白名单，并检查 Judge Worker 的镜像前缀配置。
+- 生产服务启动失败：执行 `bash scripts/deploy/deploy.sh status` 和 `bash scripts/deploy/deploy.sh logs <service>` 查看状态与日志。
+- 密码重置邮件不可用：检查 `EMAIL_PROVIDER` 及对应凭据；暂时不配置邮件时可以使用 `disabled`，但密码找回功能不可用。
 
-## 文档
+更多常见问题见[常见问题](./noj-docs/docs/intro/faq.md)。
 
-- 用户文档站（做题人 / 运营者 / 出题人）：[`noj-docs/`](./noj-docs/)
-- 开发者总览：[`AGENTS.md`](./AGENTS.md)
-- 各模块详细约定：[`noj-core/CLAUDE.md`](./noj-core/CLAUDE.md) · [`noj-ui/CLAUDE.md`](./noj-ui/CLAUDE.md) · [`noj-judge/CLAUDE.md`](./noj-judge/CLAUDE.md)
-- 跨模块 E2E 测试指南：[`noj-tests/E2E_TESTING.md`](./noj-tests/E2E_TESTING.md)
+## 参与贡献
 
----
+欢迎通过 Issue 和 Pull Request 参与项目。开始修改代码前，请先阅读 [`AGENTS.md`](./AGENTS.md)；其中包含开发流程、测试方式、OpenSpec 规范和提交要求。
 
-## 贡献
-
-欢迎以 PR 形式贡献代码。请先阅读 [`AGENTS.md`](./AGENTS.md) 中的贡献流程，重点关注：
-
-- 所有提交必须 GPG 签名
-- 通过 PR 合入，禁止直推 `main`
-- 遵循 OpenSpec 规范驱动流程
-
----
+- [提交 Issue](https://github.com/Neuro-OJ/neuro-oj/issues)
+- [查看 CI](https://github.com/Neuro-OJ/neuro-oj/actions)
+- [项目详细约定](./AGENTS.md)
 
 ## 许可证
 
