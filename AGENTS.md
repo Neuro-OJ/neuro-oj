@@ -73,15 +73,16 @@ NOJ 分为三个核心模块，通过 RESTful API 和 Redis 消息队列协作�
   "submission_id": "uuid",
   "problem_id": "uuid",
   "download_url": "noj-download://base64/?content=UEsDBBQAAAAIA...&checksum_sha256=abc123",
+  "artifact_download_url": "noj-download://s3?url=...&checksum_sha256=abc123",
   "runtime_config": {
     "evaluator": {
-      "image": "noj-judge-python",
+      "image": "noj-evaluator-python",
       "command": "python3 /workspace/evaluate.py",
       "time_limit_ms": 5000,
       "memory_limit_mb": 512
     },
     "solution": {
-      "image": "noj-judge-python",
+      "image": "noj-solution-python",
       "call_timeout_ms": 2000,
       "memory_limit_mb": 512
     }
@@ -177,7 +178,7 @@ neuro-oj/
 │   │   ├── main.ts            # 入口（启动校验 + 初始化顺序）
 │   │   ├── app.ts             # Hono 应用工厂（CORS + 路由 + 错误处理）
 │   │   ├── mod.ts             # 公共导出
-│   │   ├── routes/            # 路由：admin / auth / tags / checkin / community / contests / conversations / health / problems / queue / rankings / search / sse / stats / submissions / users
+│   │   ├── routes/            # 路由：admin / admin-announcements / announcements / auth / tags / checkin / community / contests / conversations / health / problems / queue / rankings / search / sse / stats / submissions / users
 │   │   ├── services/          # 业务逻辑层：auth / tags / checkin / community / contests / conversations / dashboard / messages / problems-* / queue / rankings / search / submissions-* / support-package / system-settings / users / admin-roles / audit-log / banlist / judge-images / passwordReset / stats-cache / seed-rbac / community-seed 等
 │   │   ├── db/
 │   │   │   ├── connection.ts  # 数据库连接管理（单例）
@@ -241,7 +242,9 @@ neuro-oj/
 │   ├── Cargo.lock             # 版本锁定（提交到 git）
 │   ├── .dockerignore          # 排除 target/ tests/ docker/
 │   ├── Dockerfile.e2e         # E2E 测试多阶段构建
-│   ├── docker/python/Dockerfile  # 评测运行时（python:3.12-slim）
+│   ├── docker/evaluator-python/Dockerfile  # Evaluator 运行时（python:3.12-slim）
+│   ├── docker/solution-python/Dockerfile   # Solution 运行时（python:3.12-slim）
+│   ├── docker/solution-ai/Dockerfile       # Solution AI 运行时（CPU torch/CV/ML）
 │   ├── src/
 │   │   ├── main.rs            # 入口（dual container 评测）
 │   │   ├── lib.rs             # 库入口（暴露给集成测试）
@@ -270,7 +273,7 @@ neuro-oj/
 │   ├── deno.json              # task: deno test -A --env-file=../env.e2e.template e2e/
 │   ├── E2E_TESTING.md         # 测试指南
 │   ├── run-e2e.sh             # 启动脚本
-│   └── e2e/                   # E2E 测试文件（含 helper.ts），覆盖评测 / 竞赛 / 社区 / RBAC / S3 / SSE / 私信 / 审计 / 重测 / 双容器等
+│   └── e2e/                   # E2E 测试文件（含 helper.ts），覆盖评测 / 竞赛 / 社区 / RBAC / S3 / SSE / 私信 / 审计 / 重测 / 双容器 / 网络能力等
 │
 ├── openspec/                  # OpenSpec 规范驱动开发
 │   ├── config.yaml            # schema: spec-driven
@@ -279,8 +282,8 @@ neuro-oj/
 │
 ├── scripts/                   # 构建与运维脚本
 │   ├── dev/                   # devtool.sh 单文件编排（install-deps / init-env / start / stop / status）+ env.example + logs/ + locks/
-│   ├── db/                    # 数据库迁移与种子
-│   ├── build/                 # 题目支持包构建
+│   ├── deploy/                # 生产部署与安装脚本
+│   ├── staging/               # 预发布验收门禁
 │   └── e2e/                   # E2E 编排（setup / teardown / core / judge / run-all）
 │
 ├── .github/workflows/
@@ -900,7 +903,7 @@ cd noj-tests && deno task test
 | 提交后长时间 `Pending`            | noj-judge 未启/未连 Redis；查 `scripts/dev/logs/judge.log`，或 `devtool.sh status judge` |
 | 队列堆积                          | `redis-cli LLEN noj:judge:queue`；重启 noj-judge 触发自动重连                            |
 | `noj-download://` 解码失败        | `deno task problems:build` 重建支持包                                                    |
-| `image not found`                 | 默认镜像 `noj-judge-python`；检查 `noj-judge/docker/` 构建脚本                           |
+| `image not found`                 | 默认镜像为 `noj-evaluator-python` / `noj-solution-python`；检查 `noj-judge/scripts/build-sdk-images.sh` |
 | 迁移失败                          | `cd noj-core && deno task db:migrate` 看脱敏日志                                         |
 | 种子数据缺失                      | 确认 `noj-core/.env` 已配 `ADMIN_EMAIL`；重新 `deno task dev-setup`                      |
 | 想清空重置                        | `docker compose down -v` 删卷后 `up -d` + `deno task dev-setup`                          |

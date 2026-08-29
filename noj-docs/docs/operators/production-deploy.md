@@ -6,10 +6,10 @@
 ## 1. 前置条件
 
 - 一台 Linux 服务器（amd64），已安装 Docker Engine 与 Docker Compose v2。
-- Deno 2.x（仅用于部署前运行 `noj-core` 的配置检查命令）。
+- Deno 2.x（可选，仅用于部署前运行 `noj-core` 的配置检查命令；一键生产部署不依赖 Deno）。
 - 一个已解析到服务器的域名。
 - 外部 TLS 终止（宿主机 Nginx / Caddy / 云负载均衡），负责 HTTPS → 容器 HTTP 端口。
-- GitHub 仓库已启用 GitHub Container Registry（ghcr.io）权限。
+- 能够访问 `ghcr.io/neuro-oj/` 镜像；私有镜像还需要配置相应凭据。
 
 ## 2. 初始化
 
@@ -43,7 +43,7 @@ bash scripts/deploy/deploy.sh install
 
 | 变量 | 说明 |
 |------|------|
-| `NOJ_VERSION` | 要部署的 Release 标签，如 `v0.1.0` |
+| `NOJ_VERSION` | 要部署的 GitHub Release 标签，例如 `0.1.1-rc.1`；预发布阶段不要使用 `latest` |
 | `DOMAIN` | 对外域名（不含协议），compose/Nginx 使用 |
 | `APP_URL` | `https://你的域名` |
 | `CORS_ALLOWED_ORIGINS` | `https://你的域名` |
@@ -62,6 +62,9 @@ bash scripts/deploy/deploy.sh install
 | `JUDGE_IMAGE_BASE` | 默认 `ghcr.io/neuro-oj/` |
 | `NGINX_PORT` | 容器 Nginx 映射到宿主机的端口，默认 `8080` |
 | `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID` | 独立 rootless Docker daemon 的 socket 与组 ID；禁止使用 `/var/run/docker.sock` |
+| `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | 可选；同时填写后启用 GitHub 登录。回调地址为 `APP_URL/api/v1/auth/oauth/github/callback` |
+| `OAUTH_OIDC_ISSUER_URL` / `OAUTH_OIDC_CLIENT_ID` / `OAUTH_OIDC_CLIENT_SECRET` | 可选；同时填写后启用通用 OIDC 登录。回调地址为 `APP_URL/api/v1/auth/oauth/oidc/callback` |
+| `OAUTH_OIDC_NAME` | 可选；OIDC 登录按钮名称，默认 `OIDC` |
 | `NOJ_LLM_SERVICE_TOKEN` | LLM Gateway 服务间鉴权 + eval_token 签发/校验密钥（≥16 字符）；compose 默认始终启动 `llm-gateway`，因此生产**必须填写** |
 | `NOJ_LLM_STORE_KEY` | LLM Gateway 加密 Provider API Key 的信封主密钥（≥16 字符）；compose 默认必填 |
 | `NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE` | 每个用户每 UTC 分钟的 LLM 调用上限；可选，默认 `60`，必须为正整数 |
@@ -115,7 +118,10 @@ SELECT image, mode, kind FROM judge_images ORDER BY kind;
 ```text
 ghcr.io/neuro-oj/noj-evaluator-python  all_versions  evaluator
 ghcr.io/neuro-oj/noj-solution-python   all_versions  solution
+ghcr.io/neuro-oj/noj-solution-ai       all_versions  solution
 ```
+
+产物提交题使用 `noj-solution-python` 或 `noj-solution-ai` 运行 zip 产物；发布前应确认相应镜像已推送并被加入白名单。
 
 ## 3.5 LLM Gateway 部署
 
@@ -144,7 +150,7 @@ ghcr.io/neuro-oj/noj-solution-python   all_versions  solution
 
 ## 4. staging 验收门禁
 
-生产候选版本必须先在 staging 使用与生产相同的 Compose 文件和六类镜像完成验收，
+生产候选版本必须先在 staging 使用与生产相同的 Compose 文件和七类镜像完成验收，
 再进入 Release。验收脚本要求工作树洁净，默认只接受 `main`、`release/*` 或版本
 标签；生产验收不得使用 `latest` 作为版本标识。
 
@@ -166,7 +172,7 @@ bash scripts/staging/acceptance.sh all \
 ```
 
 脚本会构建并启动 `noj-core`、`noj-ui`、`noj-judge`、`noj-llm-gateway`、
-`noj-evaluator-python`、`noj-solution-python` 六类生产镜像，然后依次验证：
+`noj-evaluator-python`、`noj-solution-python`、`noj-solution-ai` 七类生产镜像，然后依次验证：
 
 - Compose 健康检查、`/healthz`、HTTPS、CORS，以及 `HttpOnly`/`Secure`/`SameSite=Lax` Cookie；
 - 管理员登录与强制改密、普通用户登录、TFA 启用与登录；

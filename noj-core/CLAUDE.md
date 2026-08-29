@@ -104,7 +104,7 @@ noj-core/
 │   ├── main.ts            # 入口（启动校验 + 初始化顺序）
 │   ├── app.ts             # Hono 应用工厂（CORS + 路由 + 错误处理）
 │   ├── mod.ts             # 公共导出
-│   ├── routes/            # 路由层（参数校验 + 调用 service）：admin / auth / tags / checkin / community / contests / conversations / health / problems / queue / rankings / search / sse / stats / submissions / users
+│   ├── routes/            # 路由层（参数校验 + 调用 service）：admin / admin-announcements / announcements / auth / tags / checkin / community / contests / conversations / health / problems / queue / rankings / search / sse / stats / submissions / users
 │   ├── services/          # 业务逻辑层（数据库读写，34 个文件，含 problems-*/submissions-* 拆分与 community/contests/dashboard/stats-cache 等）
 │   ├── db/                # 数据库连接 & Drizzle schema
 │   │   ├── index.ts       # 数据库连接管理（单例模式）

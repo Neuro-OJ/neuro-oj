@@ -28,7 +28,9 @@ noj-judge/
 ├── Cargo.toml
 ├── Cargo.lock              # 版本锁定（提交到 git）
 ├── docker/                 # 评测镜像 Dockerfile
-│   └── python/Dockerfile   # Python 评测运行时（python:3.12-slim）
+│   ├── evaluator-python/Dockerfile  # Evaluator Python 运行时（python:3.12-slim）
+│   ├── solution-python/Dockerfile   # Solution Python 运行时（python:3.12-slim）
+│   └── solution-ai/Dockerfile       # Solution AI 运行时（CPU torch/CV/ML）
 ├── Dockerfile.e2e          # E2E 测试用 Dockerfile（多阶段构建）
 ├── .dockerignore           # 排除 target/ tests/ docker/ 等
 ├── src/
@@ -248,11 +250,11 @@ OOM 容器由 `docker rm -f` 回收，不映射 MemoryLimitExceeded。
 
 ## Docker 构建
 
-**评测镜像**（`docker/python/Dockerfile`）：
+**Evaluator 镜像**（`docker/evaluator-python/Dockerfile`）：
 
 - 基于 `python:3.12-slim`，无额外包
 - 依赖由 evaluate.py 自身管理
-- 本地构建：`docker build -t noj-judge-python docker/python/`
+- 本地构建：`docker build -t noj-evaluator-python -f docker/evaluator-python/Dockerfile .`
 
 **Solution AI 镜像**（`docker/solution-ai/Dockerfile`）：
 

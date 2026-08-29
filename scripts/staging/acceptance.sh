@@ -26,7 +26,7 @@ usage() {
 
 命令：
   check        检查候选版本、凭据、Docker 与 Compose 配置
-  build        构建六个生产候选镜像
+  build        构建七个生产候选镜像
   up           启动生产 Compose，并等待健康检查完成
   verify-edge  验证 HTTPS、healthz、Cookie 与 CORS
   smoke        执行认证、题包、对象存储、评测、SSE 与重测验收
@@ -199,7 +199,7 @@ build_images() {
       --tag "$IMAGE_REGISTRY/$image:$IMAGE_TAG" \
       --file "$ROOT_DIR/$file" \
       "$ROOT_DIR/$context"
-    if [[ "$image" == "noj-evaluator-python" || "$image" == "noj-solution-python" ]]; then
+    if [[ "$image" == "noj-evaluator-python" || "$image" == "noj-solution-python" || "$image" == "noj-solution-ai" ]]; then
       "$DOCKER_BIN" tag \
         "$IMAGE_REGISTRY/$image:$IMAGE_TAG" \
         "$IMAGE_REGISTRY/$image:latest"
@@ -211,8 +211,9 @@ noj-judge|noj-judge|noj-judge/Dockerfile
 noj-llm-gateway|noj-llm-gateway|noj-llm-gateway/Dockerfile
 noj-evaluator-python|noj-judge|noj-judge/docker/evaluator-python/Dockerfile
 noj-solution-python|noj-judge|noj-judge/docker/solution-python/Dockerfile
+noj-solution-ai|noj-judge|noj-judge/docker/solution-ai/Dockerfile
 EOF
-  log "六个生产候选镜像构建完成"
+  log "七个生产候选镜像构建完成"
 }
 
 start_stack() {

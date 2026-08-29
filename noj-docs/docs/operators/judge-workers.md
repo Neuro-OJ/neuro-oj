@@ -76,6 +76,7 @@ docker inspect "$(docker compose --env-file .env.prod -f docker-compose.prod.yml
 
 - `ghcr.io/neuro-oj/noj-evaluator-python`：运行出题人的 `evaluate.py`。
 - `ghcr.io/neuro-oj/noj-solution-python`：运行用户提交的代码（硬编码 `main.py`）和 Solution Host。
+- `ghcr.io/neuro-oj/noj-solution-ai`：运行需要 CPU PyTorch、CV/ML 依赖的产物提交题和 Solution Host。
 
 Evaluator 容器可以通过 Neuro OJ Evaluator SDK 调用 Solution 容器中的用户函数。
 
@@ -87,14 +88,14 @@ Evaluator 容器可以通过 Neuro OJ Evaluator SDK 调用 Solution 容器中的
 
 ```bash
 cd noj-judge
-./scripts/build-sdk-images.sh               # 构建两个镜像，默认 tag :latest
+./scripts/build-sdk-images.sh               # 构建三个镜像，默认 tag :latest
 ./scripts/build-sdk-images.sh --tag v0.1.0  # 自定义 tag
 ```
 
 生产部署时，`init system` 会根据 `JUDGE_IMAGE_BASE`（默认 `ghcr.io/neuro-oj/`）写入
-ghcr 全限定镜像名；若需要手工确认，见[生产部署](production-deploy.md#评测镜像白名单)。
+ghcr 全限定镜像名；若需要手工确认，见[生产部署](production-deploy.md#_3-评测镜像白名单)。
 
-镜像基于 `python:3.12-slim`，不预装额外 Python 包，题目依赖由出题人在 evaluator 中自行管理。
+`noj-evaluator-python` 与 `noj-solution-python` 基于 `python:3.12-slim`，不预装题目专用依赖，题目依赖由出题人在 evaluator 中自行管理；`noj-solution-ai` 额外内置 CPU 版 PyTorch、torchvision 与常用 CV/ML 依赖。
 
 ## 镜像白名单
 

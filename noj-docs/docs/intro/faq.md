@@ -6,7 +6,7 @@
 
 ### 登录提示「用户名或密码错误」，但我确定密码没错？
 
-系统不会区分「账号不存在」与「密码错误」，这是防枚举设计。请确认使用的是用户名还是邮箱；连续失败会触发限流与退避，等待一段时间再重试。忘记密码请走[密码重置](../users/account.md#forgot-password)流程。
+系统不会区分「账号不存在」与「密码错误」，这是防枚举设计。请确认使用的是用户名还是邮箱；连续失败会触发限流与退避，等待一段时间再重试。忘记密码请走[密码重置](../users/account.md#忘记密码)流程。
 
 ### 密码有什么要求？
 
@@ -44,7 +44,7 @@
 
 ### 评测镜像不存在？
 
-先执行 `noj-judge/scripts/build-sdk-images.sh` 构建 `noj-evaluator-python` 与 `noj-solution-python`，确认 noj-core 的评测镜像白名单已登记，再重启 Judge Worker。
+先执行 `noj-judge/scripts/build-sdk-images.sh` 构建 `noj-evaluator-python`、`noj-solution-python` 与 `noj-solution-ai`，确认 noj-core 的评测镜像白名单已登记，再重启 Judge Worker。
 
 ### 大量 SystemError？
 

@@ -6,7 +6,7 @@ import { withMermaid } from "vitepress-plugin-mermaid";
 export default withMermaid(defineConfig({
   lang: "zh-CN",
   title: "Neuro OJ 文档",
-  description: "Neuro OJ — 面向 LMCC 的在线评测系统文档",
+  description: "Neuro OJ — 面向 IOAI、NOAI、LMCC 等 AI 认证与竞赛场景的在线评测系统文档",
 
   lastUpdated: true,
   cleanUrls: false,
@@ -166,7 +166,7 @@ export default withMermaid(defineConfig({
     docFooter: { prev: "上一页", next: "下一页" },
     footer: {
       message:
-        "Neuro OJ 是一个独立社区项目，与 CCF 及 LMCC 无官方关系。",
+      "Neuro OJ 是一个独立社区项目，与 CCF、LMCC、IOAI 及 NOAI 无官方关系。",
     },
     editLink: {
       pattern:
