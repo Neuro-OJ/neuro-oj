@@ -117,13 +117,14 @@ NOJ 当前持久化数据卷约 66 MiB，生产镜像（含 Evaluator、Solution
 
 ### 一键部署
 
-生产环境推荐直接下载独立安装入口。它会下载指定 Release 到目标目录，并调用生产部署向导：
+生产环境推荐使用仓库根目录的一键安装入口 `setup.sh`。它会临时下载底层安装脚本，下载指定 Release 到目标目录，并调用生产部署向导：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/install.sh \
-  -o noj-install.sh
-bash noj-install.sh --ref <Release 标签> --dir /opt/neuro-oj
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
+  bash -s -- --ref <Release 标签> --dir /opt/neuro-oj
 ```
+
+如需先检查脚本，可先下载 `setup.sh` 再执行；已经有仓库源码时，直接执行下方的 `deploy.sh` 即可。
 
 安装向导会创建并保护 `.env.prod`，生成随机密钥，检查生产配置，拉取镜像并等待服务通过健康检查。Judge 是否启动取决于安装时的选择；没有 Judge 时网站和题库仍可使用，但暂时不能进行代码评测。
 
