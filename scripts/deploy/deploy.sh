@@ -35,6 +35,8 @@ FOLLOW=0
 INTERACTIVE=1
 [[ "${NOJ_DEPLOY_NON_INTERACTIVE:-0}" == "1" ]] && INTERACTIVE=0
 declare -a VERIFIED_IMAGE_DIGESTS=()
+CONFIG_STAGE_FILE=""
+CONFIG_TARGET_FILE=""
 
 if [[ -t 1 ]]; then
   GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; RESET='\033[0m'
@@ -244,7 +246,7 @@ prompt_secret() {
 prompt_password() {
   local label="$1" value confirmation
   while :; do
-    read_prompt "$label（至少 12 位）: " 1
+    read_prompt "${label}（至少 12 位）: " 1
     value="$PROMPT_VALUE"
     read_prompt "再次输入以确认：" 1
     confirmation="$PROMPT_VALUE"
@@ -296,6 +298,55 @@ config_prompt_value() {
     return 0
   fi
   current_config_value "$key"
+}
+
+cleanup_config_staging() {
+  if [[ -n "$CONFIG_STAGE_FILE" && -f "$CONFIG_STAGE_FILE" ]]; then
+    rm -f "$CONFIG_STAGE_FILE"
+  fi
+  if [[ -n "$CONFIG_TARGET_FILE" ]]; then
+    ENV_FILE="$CONFIG_TARGET_FILE"
+  fi
+  CONFIG_STAGE_FILE=""
+  CONFIG_TARGET_FILE=""
+}
+
+trap cleanup_config_staging EXIT
+
+begin_config_staging() {
+  [[ -f "$ENV_FILE" ]] || fail "找不到用于暂存的生产配置：$ENV_FILE"
+  CONFIG_TARGET_FILE="$ENV_FILE"
+  CONFIG_STAGE_FILE="$(mktemp "${ENV_FILE}.staging.XXXXXX")" ||
+    fail "无法创建临时配置文件"
+  if ! cp "$CONFIG_TARGET_FILE" "$CONFIG_STAGE_FILE"; then
+    cleanup_config_staging
+    fail "无法复制生产配置到临时文件"
+  fi
+  chmod 600 "$CONFIG_STAGE_FILE"
+  ENV_FILE="$CONFIG_STAGE_FILE"
+}
+
+commit_config_staging() {
+  local staged_file="$CONFIG_STAGE_FILE" target_file="$CONFIG_TARGET_FILE"
+  [[ -n "$staged_file" && -n "$target_file" && -f "$staged_file" ]] ||
+    fail "找不到待写入的临时配置"
+  chmod 600 "$staged_file"
+  mv "$staged_file" "$target_file" || fail "写入生产配置失败"
+  ENV_FILE="$target_file"
+  CONFIG_STAGE_FILE=""
+  CONFIG_TARGET_FILE=""
+}
+
+cancel_config_staging() {
+  cleanup_config_staging
+}
+
+email_provider_prompt_label() {
+  case "$1" in
+    aliyun) printf '邮件服务（当前已配置阿里云；回车继续使用，输入 skip 暂不配置）\n' ;;
+    tencent) printf '邮件服务（当前已配置腾讯云；回车继续使用，输入 skip 暂不配置）\n' ;;
+    *) printf '邮件服务（可选阿里云/腾讯云；直接回车暂不配置）\n' ;;
+  esac
 }
 
 is_ipv4_address() {
@@ -379,9 +430,11 @@ confirm_reuse_config() {
 
 configure_env_interactive() {
   local version domain app_url admin_email email_provider socket_path socket_gid key
-  local current_value current_app_url detected_ip default_domain ssl_default
+  local current_value current_app_url detected_ip default_domain ssl_default email_prompt_label
+  local email_provider_reused=0
   local reset_existing="${1:-0}"
 
+  begin_config_staging
   section "填写生产配置"
   cat <<'EOF'
 请按提示填写网站和管理员信息。密码和邮件密钥不会显示在屏幕上，也不会被脚本打印。
@@ -433,7 +486,8 @@ EOF
 
   current_value="$(config_prompt_value EMAIL_PROVIDER "$reset_existing")"
   while :; do
-    prompt_text "邮件服务（阿里云 / 腾讯云 / 暂不配置，直接回车也可跳过）" "${current_value:-disabled}"
+    email_prompt_label="$(email_provider_prompt_label "$current_value")"
+    prompt_text "$email_prompt_label" "${current_value:-disabled}"
     email_provider="$PROMPT_VALUE"
     case "$email_provider" in
       aliyun|tencent) break ;;
@@ -441,26 +495,62 @@ EOF
       *) warn "请输入 aliyun、tencent，或选择暂不配置" ;;
     esac
   done
+  if [[ "$reset_existing" != 1 && "$current_value" == "$email_provider" ]] &&
+    [[ "$email_provider" == aliyun || "$email_provider" == tencent ]]; then
+    email_provider_reused=1
+  fi
   set_env_value EMAIL_PROVIDER "$email_provider"
   if [[ "$email_provider" == aliyun ]]; then
-    prompt_secret "阿里云 Access Key ID"
-    set_env_value ALIBABA_ACCESS_KEY_ID "$PROMPT_VALUE"
-    prompt_secret "阿里云 Access Key Secret"
-    set_env_value ALIBABA_ACCESS_KEY_SECRET "$PROMPT_VALUE"
+    if ((email_provider_reused)) && [[ -n "$(current_config_value ALIBABA_ACCESS_KEY_ID)" ]] &&
+      ! is_placeholder "$(current_config_value ALIBABA_ACCESS_KEY_ID)"; then
+      :
+    else
+      prompt_secret "阿里云 Access Key ID"
+      set_env_value ALIBABA_ACCESS_KEY_ID "$PROMPT_VALUE"
+    fi
+    if ((email_provider_reused)) && [[ -n "$(current_config_value ALIBABA_ACCESS_KEY_SECRET)" ]] &&
+      ! is_placeholder "$(current_config_value ALIBABA_ACCESS_KEY_SECRET)"; then
+      :
+    else
+      prompt_secret "阿里云 Access Key Secret"
+      set_env_value ALIBABA_ACCESS_KEY_SECRET "$PROMPT_VALUE"
+    fi
     current_value="$(config_prompt_value ALIBABA_FROM_EMAIL "$reset_existing")"
-    prompt_text "阿里云发件邮箱" "$current_value"
-    set_env_value ALIBABA_FROM_EMAIL "$PROMPT_VALUE"
+    if ((email_provider_reused)) && [[ -n "$current_value" ]] && ! is_placeholder "$current_value"; then
+      :
+    else
+      prompt_text "阿里云发件邮箱" "$current_value"
+      set_env_value ALIBABA_FROM_EMAIL "$PROMPT_VALUE"
+    fi
   elif [[ "$email_provider" == tencent ]]; then
-    prompt_secret "腾讯云 Secret ID"
-    set_env_value TENCENT_SECRET_ID "$PROMPT_VALUE"
-    prompt_secret "腾讯云 Secret Key"
-    set_env_value TENCENT_SECRET_KEY "$PROMPT_VALUE"
+    if ((email_provider_reused)) && [[ -n "$(current_config_value TENCENT_SECRET_ID)" ]] &&
+      ! is_placeholder "$(current_config_value TENCENT_SECRET_ID)"; then
+      :
+    else
+      prompt_secret "腾讯云 Secret ID"
+      set_env_value TENCENT_SECRET_ID "$PROMPT_VALUE"
+    fi
+    if ((email_provider_reused)) && [[ -n "$(current_config_value TENCENT_SECRET_KEY)" ]] &&
+      ! is_placeholder "$(current_config_value TENCENT_SECRET_KEY)"; then
+      :
+    else
+      prompt_secret "腾讯云 Secret Key"
+      set_env_value TENCENT_SECRET_KEY "$PROMPT_VALUE"
+    fi
     current_value="$(config_prompt_value TENCENT_FROM_EMAIL "$reset_existing")"
-    prompt_text "腾讯云发件邮箱" "$current_value"
-    set_env_value TENCENT_FROM_EMAIL "$PROMPT_VALUE"
+    if ((email_provider_reused)) && [[ -n "$current_value" ]] && ! is_placeholder "$current_value"; then
+      :
+    else
+      prompt_text "腾讯云发件邮箱" "$current_value"
+      set_env_value TENCENT_FROM_EMAIL "$PROMPT_VALUE"
+    fi
     current_value="$(config_prompt_value TENCENT_REGION "$reset_existing")"
-    prompt_text "腾讯云 Region" "${current_value:-ap-guangzhou}"
-    set_env_value TENCENT_REGION "$PROMPT_VALUE"
+    if ((email_provider_reused)) && [[ -n "$current_value" ]] && ! is_placeholder "$current_value"; then
+      :
+    else
+      prompt_text "腾讯云 Region" "${current_value:-ap-guangzhou}"
+      set_env_value TENCENT_REGION "$PROMPT_VALUE"
+    fi
   else
     for key in ALIBABA_ACCESS_KEY_ID ALIBABA_ACCESS_KEY_SECRET ALIBABA_FROM_EMAIL \
       TENCENT_SECRET_ID TENCENT_SECRET_KEY TENCENT_FROM_EMAIL TENCENT_REGION; do
@@ -483,7 +573,15 @@ EOF
   prompt_text "评测服务连接编号（一般直接回车）" "${current_value:-$socket_gid}"
   [[ "$PROMPT_VALUE" =~ ^[0-9]+$ ]] || fail "Judge Docker socket GID 必须是数字"
   set_env_value JUDGE_DOCKER_SOCKET_GID "$PROMPT_VALUE"
-  ok "生产配置引导完成，正在继续校验和启动服务"
+  ok "配置已暂存，尚未写入正式配置"
+  if prompt_yes_no '是否写入配置？（Y=写入并继续部署，N=取消）' y; then
+    commit_config_staging
+    ok "配置已写入，正在继续校验和启动服务"
+  else
+    cancel_config_staging
+    warn "已取消本次部署，正式配置未修改"
+    return 1
+  fi
 }
 
 initialize_env() {
@@ -497,10 +595,10 @@ initialize_env() {
       if confirm_reuse_config; then
         if configuration_needs_interactive_input; then
           warn "先前配置尚未填写完整，将进入补齐向导"
-          configure_env_interactive
+          configure_env_interactive || return 1
         fi
       else
-        configure_env_interactive
+        configure_env_interactive || return 1
       fi
     fi
     return 0
@@ -533,11 +631,11 @@ initialize_env() {
 
   ok "已创建并保护 $ENV_FILE"
   if ((INTERACTIVE)) && has_interactive_tty; then
-        configure_env_interactive 1
+        configure_env_interactive 1 || return 1
     return 0
   fi
   warn "当前没有可交互终端，无法引导填写生产配置"
-  warn "请编辑 $ENV_FILE，填写安装版本、网站地址、网站完整网址、邮件服务、管理员账号和评测服务连接位置"
+  warn "请编辑 ${ENV_FILE}，填写安装版本、网站地址、HTTPS 选项、邮件服务、管理员账号和评测服务连接位置"
   warn "填写完成后重新执行：bash scripts/deploy/deploy.sh install"
   warn "自动化场景可显式使用 --non-interactive，让未完成配置直接失败"
   exit 2
@@ -758,7 +856,7 @@ record_deployment_metadata() {
 }
 
 check_configuration() {
-  [[ -f "$ENV_FILE" ]] || fail "找不到生产配置：$ENV_FILE，请先执行 install"
+  [[ -f "$ENV_FILE" ]] || fail "找不到生产配置：${ENV_FILE}，请先执行 install"
   check_file_permissions
   check_required_values
   check_judge_socket

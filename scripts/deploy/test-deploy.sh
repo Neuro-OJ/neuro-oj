@@ -138,6 +138,101 @@ reuse_no="$(NOJ_DEPLOY_SOURCE_ONLY=1 NOJ_DEPLOY_TEST_CONFIRM=n bash -c 'source "
 [[ "$reuse_no" == *"重新填写"* ]] || fail "拒绝使用先前配置未进入覆盖流程"
 pass "先前配置复用确认"
 
+grep -q '是否写入配置？（Y=写入并继续部署，N=取消）' "$DEPLOY_SCRIPT" || fail "最终写入确认提示缺失"
+grep -q '回车继续使用，输入 skip 暂不配置' "$DEPLOY_SCRIPT" || fail "已有邮件配置的复用提示缺失"
+grep -q '直接回车暂不配置' "$DEPLOY_SCRIPT" || fail "无邮件配置的跳过提示缺失"
+empty_email_label="$(NOJ_DEPLOY_SOURCE_ONLY=1 bash -c 'source "$1"; email_provider_prompt_label ""' bash "$DEPLOY_SCRIPT")"
+[[ "$empty_email_label" == *"直接回车暂不配置"* ]] || fail "无邮件配置时回车含义不清楚"
+aliyun_email_label="$(NOJ_DEPLOY_SOURCE_ONLY=1 bash -c 'source "$1"; email_provider_prompt_label aliyun' bash "$DEPLOY_SCRIPT")"
+[[ "$aliyun_email_label" == *"回车继续使用"* ]] || fail "阿里云配置复用提示缺失"
+pass "邮件服务回车与跳过提示"
+
+staging_env="$TEST_ROOT/staging.env"
+cp "$ENV_FILE" "$staging_env"
+staging_before="$(sha256sum "$staging_env" 2>/dev/null || shasum "$staging_env")"
+NOJ_DEPLOY_SOURCE_ONLY=1 NOJ_DEPLOY_TEST_SOCKET="$TEST_ROOT/isolated-docker.sock" bash -c '
+  source "$1"
+  ENV_FILE="$2"
+  begin_config_staging
+  set_env_value STAGING_TEST_KEY staged-value
+  [[ "$(env_value STAGING_TEST_KEY)" == staged-value ]]
+  [[ "$(grep -c "^STAGING_TEST_KEY=" "$2" || true)" == 0 ]]
+  cancel_config_staging
+  [[ ! -e "$CONFIG_STAGE_FILE" ]]
+  [[ "$(env_value STAGING_TEST_KEY)" == "" ]]
+' bash "$DEPLOY_SCRIPT" "$staging_env" || fail "配置暂存或取消流程失败"
+staging_after_cancel="$(sha256sum "$staging_env" 2>/dev/null || shasum "$staging_env")"
+[[ "$staging_before" == "$staging_after_cancel" ]] || fail "取消暂存后正式配置发生变化"
+NOJ_DEPLOY_SOURCE_ONLY=1 bash -c '
+  source "$1"
+  ENV_FILE="$2"
+  begin_config_staging
+  set_env_value STAGING_TEST_KEY committed-value
+  commit_config_staging
+  [[ "$(env_value STAGING_TEST_KEY)" == committed-value ]]
+' bash "$DEPLOY_SCRIPT" "$staging_env" || fail "配置确认写入流程失败"
+grep -q '^STAGING_TEST_KEY=committed-value$' "$staging_env" || fail "确认后未写入正式配置"
+pass "配置暂存、取消和最终写入"
+
+configure_commit_env="$TEST_ROOT/configure-commit.env"
+cp "$ENV_FILE" "$configure_commit_env"
+NOJ_DEPLOY_SOURCE_ONLY=1 NOJ_DEPLOY_TEST_SOCKET="$TEST_ROOT/isolated-docker.sock" bash -c '
+  source "$1"
+  ENV_FILE="$2"
+  prompt_text() {
+    case "$1" in
+      安装版本*) PROMPT_VALUE=v0.8.0-rc.1 ;;
+      网站地址*) PROMPT_VALUE=noj.example.com ;;
+      管理员邮箱*) PROMPT_VALUE=admin@noj.example.com ;;
+      邮件服务*) PROMPT_VALUE=disabled ;;
+      评测服务连接位置*) PROMPT_VALUE="$NOJ_DEPLOY_TEST_SOCKET" ;;
+      评测服务连接编号*) PROMPT_VALUE=10001 ;;
+      *) return 1 ;;
+    esac
+  }
+  prompt_password() { PROMPT_VALUE=strong-admin-password; }
+  prompt_yes_no() {
+    [[ "$1" == *"是否写入配置"* ]] || return 0
+    return 0
+  }
+  configure_env_interactive 1
+' bash "$DEPLOY_SCRIPT" "$configure_commit_env" "$TEST_ROOT/isolated-docker.sock" \
+  >/dev/null 2>"$TEST_ROOT/configure-commit.err" || fail "配置向导确认写入失败"
+grep -q '^NOJ_VERSION=v0.8.0-rc.1$' "$configure_commit_env" || fail "配置向导确认后未写入版本"
+grep -q '^EMAIL_PROVIDER=disabled$' "$configure_commit_env" || fail "配置向导确认后未写入邮件选项"
+pass "配置向导最终确认写入"
+
+configure_cancel_env="$TEST_ROOT/configure-cancel.env"
+cp "$ENV_FILE" "$configure_cancel_env"
+configure_cancel_before="$(sha256sum "$configure_cancel_env" 2>/dev/null || shasum "$configure_cancel_env")"
+if NOJ_DEPLOY_SOURCE_ONLY=1 NOJ_DEPLOY_TEST_SOCKET="$TEST_ROOT/isolated-docker.sock" bash -c '
+  source "$1"
+  ENV_FILE="$2"
+  prompt_text() {
+    case "$1" in
+      安装版本*) PROMPT_VALUE=v0.8.0-rc.1 ;;
+      网站地址*) PROMPT_VALUE=noj.example.com ;;
+      管理员邮箱*) PROMPT_VALUE=admin@noj.example.com ;;
+      邮件服务*) PROMPT_VALUE=disabled ;;
+      评测服务连接位置*) PROMPT_VALUE="$NOJ_DEPLOY_TEST_SOCKET" ;;
+      评测服务连接编号*) PROMPT_VALUE=10001 ;;
+      *) return 1 ;;
+    esac
+  }
+  prompt_password() { PROMPT_VALUE=strong-admin-password; }
+  prompt_yes_no() {
+    [[ "$1" == *"是否写入配置"* ]] && return 1
+    return 0
+  }
+  configure_env_interactive 1
+' bash "$DEPLOY_SCRIPT" "$configure_cancel_env" "$TEST_ROOT/isolated-docker.sock" \
+  >/dev/null 2>"$TEST_ROOT/configure-cancel.err"; then
+  fail "拒绝写入后配置向导不应继续部署"
+fi
+configure_cancel_after="$(sha256sum "$configure_cancel_env" 2>/dev/null || shasum "$configure_cancel_env")"
+[[ "$configure_cancel_before" == "$configure_cancel_after" ]] || fail "拒绝写入后正式配置发生变化"
+pass "配置向导取消不落盘"
+
 grep -q '是否使用先前配置？' "$DEPLOY_SCRIPT" || fail "先前配置确认提示缺失"
 reset_prompt="$(NOJ_DEPLOY_SOURCE_ONLY=1 bash -c 'source "$1"; config_prompt_value DOMAIN 1' bash "$DEPLOY_SCRIPT")"
 [[ -z "$reset_prompt" ]] || fail "选择重新填写时仍保留旧配置默认值"
