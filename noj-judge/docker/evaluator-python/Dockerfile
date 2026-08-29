@@ -18,6 +18,11 @@ LABEL com.noj.judge.kind="evaluator"
 # COPY 时跳过外层 noj_evaluator_sdk/，让其内容直接落在 site-packages/noj_evaluator_sdk/
 COPY sdk/evaluator/noj_evaluator_sdk/ /usr/local/lib/python3.12/site-packages/noj_evaluator_sdk/
 
+# 在固定 digest 的基础镜像上安装 Debian 安全更新。
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
+
 # 验证 SDK 可导入（构建期 sanity check）
 RUN python3 -c "import noj_evaluator_sdk; from noj_evaluator_sdk.runner import SolutionRunner; from noj_evaluator_sdk.result import Result; print('noj_evaluator_sdk OK')"
 

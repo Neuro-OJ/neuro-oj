@@ -44,6 +44,22 @@ check_dockerfiles() {
   ok "生产 Dockerfile 基础镜像均固定 digest"
 }
 
+check_base_image_security_updates() {
+  local file
+  for file in noj-judge/docker/evaluator-python/Dockerfile noj-judge/docker/solution-python/Dockerfile; do
+    require_file "$file"
+    grep -q 'apt-get update' "$ROOT_DIR/$file" \
+      || fail "$file 未更新 Debian 软件包索引"
+    grep -q 'apt-get upgrade' "$ROOT_DIR/$file" \
+      || fail "$file 未安装 Debian 安全更新"
+  done
+
+  require_file "noj-llm-gateway/Dockerfile"
+  grep -q 'apk upgrade --no-cache' "$ROOT_DIR/noj-llm-gateway/Dockerfile" \
+    || fail "noj-llm-gateway/Dockerfile 未安装 Alpine 安全更新"
+  ok "受影响生产 Dockerfile 均包含基础系统安全更新"
+}
+
 check_compose() {
   local file="$ROOT_DIR/docker-compose.prod.yml"
   require_file "docker-compose.prod.yml"
@@ -84,5 +100,6 @@ check_release_workflow() {
 
 check_release_workflow
 check_dockerfiles
+check_base_image_security_updates
 check_compose
 ok "供应链配置检查通过"
