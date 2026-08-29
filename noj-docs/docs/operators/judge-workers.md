@@ -27,6 +27,19 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/depl
 - `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID`：只服务于 Judge 的 rootless
   Docker daemon Unix socket 及其组 ID。
 
+Redis 配置会先让用户选择来源：
+
+1. **连接已有 Redis（推荐）**：填写 noj-core 正在使用的完整 Redis URL；
+2. **创建本机 Redis**：仅在明确要让 noj-core 也使用该实例时选择。脚本会创建带持久化卷、
+   随机密码且只绑定 `127.0.0.1` 的 Redis 容器，并将连接信息保存到
+   `/srv/noj-judge/redis-connection.txt`；
+3. **稍后配置**：不创建 Redis，也不会启动 Judge。
+
+Judge 和 noj-core 必须使用同一个 Redis、数据库、认证信息、任务队列和结果队列。创建本机
+Redis 后，先按连接信息文件中的地址配置 noj-core，再重新执行 Judge 安装或检查。连接信息
+文件、Redis 配置文件和 Judge 环境文件均为 `0600`，脚本不会在终端或 Docker 命令日志中显示
+Redis 密码。
+
 部署前必须准备专用 rootless Docker daemon。脚本会检查 Linux、Docker、Compose、Redis、
 磁盘/内存、镜像架构和 socket 权限，但不会自动安装或替换 Docker daemon，也不会修改
 宿主机 systemd、subuid/subgid。`/var/run/docker.sock`、`/run/docker.sock`、TCP/HTTP

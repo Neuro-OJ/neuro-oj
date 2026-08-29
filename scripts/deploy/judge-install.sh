@@ -18,14 +18,21 @@ DEFAULT_REPO="https://github.com/Neuro-OJ/neuro-oj"
 REPO_URL="${NOJ_JUDGE_REPO:-$DEFAULT_REPO}"
 REF="${NOJ_JUDGE_REF:-main}"
 TARGET_DIR="${NOJ_JUDGE_DIR:-/srv/noj-judge}"
+REDIS_CONTAINER_NAME="${NOJ_JUDGE_REDIS_CONTAINER:-noj-judge-redis}"
+REDIS_IMAGE="${NOJ_JUDGE_REDIS_IMAGE:-redis:7-alpine}"
+REDIS_DEFAULT_PORT="${NOJ_JUDGE_REDIS_PORT:-16379}"
 ENV_FILE=""
 COMPOSE_FILE=""
+REDIS_METADATA_FILE=""
 COMMAND=""
 NON_INTERACTIVE=0
 DOWNLOAD_ONLY=0
 DRY_RUN=0
 FOLLOW=0
 VERSION_OVERRIDE=""
+REDIS_RUNTIME_URL_VALUE=""
+REDIS_CHECK_URL_VALUE=""
+REDIS_SOURCE_VALUE=""
 POSITIONAL=()
 
 if [[ -t 1 ]]; then
@@ -65,6 +72,8 @@ Neuro OJ 独立 Judge Worker 部署工具
   --repo URL             GitHub 仓库地址（download 使用）
   --ref REF              仓库分支、标签或提交（download 使用，默认 main）
   --version VERSION      install/upgrade 使用的 Release 版本
+  --redis-container NAME 本机 Redis 容器名（默认 noj-judge-redis）
+  --redis-port PORT      本机 Redis 宿主机端口（默认 16379）
   --non-interactive      不读取终端输入，必填项从环境变量或配置文件读取
   --download-only        只下载部署脚本，不执行 Docker 操作
   --dry-run              只显示动作，不修改服务
@@ -79,6 +88,11 @@ Neuro OJ 独立 Judge Worker 部署工具
   - 必须使用专用 Unix rootless Docker socket；禁止 /var/run/docker.sock 和 /run/docker.sock
   - 不自动安装、替换或配置 Docker daemon
   - 配置文件权限必须为 600 或 400；密码不会在提示和状态摘要中回显
+
+Redis：
+  - 交互式安装默认连接已有 Redis，也可明确选择创建本机 Redis
+  - 非交互安装必须提供 REDIS_URL，不会自动创建 Redis
+  - 本机 Redis 使用命名容器、持久化卷和仅绑定回环地址的端口
 EOF
 }
 
@@ -119,6 +133,16 @@ parse_args() {
         VERSION_OVERRIDE="$2"; shift
         ;;
       --version=*) VERSION_OVERRIDE="${1#*=}" ;;
+      --redis-container)
+        (($# >= 2)) || fail "--redis-container 需要容器名"
+        REDIS_CONTAINER_NAME="$2"; shift
+        ;;
+      --redis-container=*) REDIS_CONTAINER_NAME="${1#*=}" ;;
+      --redis-port)
+        (($# >= 2)) || fail "--redis-port 需要端口号"
+        REDIS_DEFAULT_PORT="$2"; shift
+        ;;
+      --redis-port=*) REDIS_DEFAULT_PORT="${1#*=}" ;;
       --non-interactive) NON_INTERACTIVE=1 ;;
       --download-only) DOWNLOAD_ONLY=1 ;;
       --dry-run) DRY_RUN=1 ;;
@@ -232,6 +256,175 @@ prompt_value() {
   printf '%s\n' "$value"
 }
 
+metadata_value() {
+  local file="$1" key="$2"
+  [[ -f "$file" ]] || return 1
+  awk -v key="$key" 'index($0, key "=") == 1 { print substr($0, length(key) + 2); exit }' "$file"
+}
+
+generate_redis_password() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 24
+  else
+    od -An -N24 -tx1 /dev/urandom | tr -d ' ' | tr -d '\n'
+  fi
+}
+
+validate_redis_port() {
+  local port="$1"
+  [[ "$port" =~ ^[0-9]+$ ]] || fail "本机 Redis 端口必须是数字：$port"
+  ((port >= 1024 && port <= 65535)) ||
+    fail "本机 Redis 端口必须在 1024-65535 范围内：$port"
+}
+
+port_is_in_use() {
+  local port="$1" pattern
+  pattern=":$port$"
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltnH 2>/dev/null | awk -v pattern="$pattern" '$4 ~ pattern { found = 1 } END { exit !found }'
+    return $?
+  fi
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
+write_redis_connection_files() {
+  local core_url="$1" runtime_url="$2" check_url="$3" port="$4" guide_file
+  REDIS_METADATA_FILE="$TARGET_DIR/.redis-connection.env"
+  guide_file="$TARGET_DIR/redis-connection.txt"
+  umask 077
+  cat >"$REDIS_METADATA_FILE" <<EOF
+REDIS_CORE_URL=$core_url
+REDIS_RUNTIME_URL=$runtime_url
+REDIS_CHECK_URL=$check_url
+EOF
+  chmod 600 "$REDIS_METADATA_FILE"
+  cat >"$guide_file" <<EOF
+# Redis 连接信息（含密码，请勿提交到代码仓库或公开分享）
+# noj-core 使用：
+REDIS_URL=$core_url
+
+# Judge 容器使用：
+REDIS_URL=$runtime_url
+EOF
+  chmod 600 "$guide_file"
+  ok "Redis 连接信息已保存：${guide_file}（权限 600）"
+  printf '  请让 noj-core 和 Judge 使用同一个 Redis；不要把它们配置到不同实例。\n' >&2
+  printf '  noj-core 地址：127.0.0.1:%s；Judge 容器地址：host.docker.internal:%s\n' "$port" "$port" >&2
+}
+
+create_local_redis() {
+  local container_name port password config_file core_url runtime_url check_url
+  container_name="$(prompt_value REDIS_LOCAL_CONTAINER "本机 Redis 容器名" "$REDIS_CONTAINER_NAME" 0 \
+    "脚本只会管理带有 Neuro OJ 标签的同名容器。")"
+  [[ "$container_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] ||
+    fail "本机 Redis 容器名格式无效：$container_name"
+  port="$(prompt_value REDIS_LOCAL_PORT "本机 Redis 端口" "$REDIS_DEFAULT_PORT" 0 \
+    "仅绑定到 127.0.0.1，默认 16379；如果冲突可换一个端口。")"
+  validate_redis_port "$port"
+  REDIS_CONTAINER_NAME="$container_name"
+  REDIS_DEFAULT_PORT="$port"
+
+  if "$DOCKER_BIN" container inspect "$container_name" >/dev/null 2>&1; then
+    local label existing_runtime existing_check existing_core
+    label="$( "$DOCKER_BIN" container inspect --format '{{ index .Config.Labels "com.neuro-oj.component" }}' \
+      "$container_name" 2>/dev/null || true )"
+    [[ "$label" == "judge-standalone-redis" ]] ||
+      fail "Redis 容器名已被其他容器占用：${container_name}；不会删除或修改它，请换名或连接已有 Redis"
+    existing_runtime="$(metadata_value "$REDIS_METADATA_FILE" REDIS_RUNTIME_URL || true)"
+    existing_check="$(metadata_value "$REDIS_METADATA_FILE" REDIS_CHECK_URL || true)"
+    existing_core="$(metadata_value "$REDIS_METADATA_FILE" REDIS_CORE_URL || true)"
+    [[ -n "$existing_runtime" && -n "$existing_check" && -n "$existing_core" ]] ||
+      fail "检测到本工具创建的 Redis，但缺少连接信息：${REDIS_METADATA_FILE}；请手动恢复后再继续"
+    REDIS_RUNTIME_URL_VALUE="$existing_runtime"
+    REDIS_CHECK_URL_VALUE="$existing_check"
+    REDIS_SOURCE_VALUE="local"
+    ok "复用本工具已创建的 Redis：$container_name"
+    write_redis_connection_files "$existing_core" "$existing_runtime" "$existing_check" "$port"
+    return 0
+  fi
+
+  if port_is_in_use "$port"; then
+    fail "本机 Redis 端口已被占用：127.0.0.1:${port}；请换一个端口，或选择连接已有 Redis"
+  fi
+
+  password="$(generate_redis_password)"
+  [[ -n "$password" ]] || fail "无法生成本机 Redis 密码"
+  config_file="$TARGET_DIR/redis.conf"
+  umask 077
+  cat >"$config_file" <<EOF
+appendonly yes
+requirepass $password
+EOF
+  chmod 600 "$config_file"
+
+  if ! "$DOCKER_BIN" run -d --name "$container_name" \
+    --label com.neuro-oj.component=judge-standalone-redis \
+    --label com.neuro-oj.managed-by=judge-install \
+    --restart unless-stopped \
+    --publish "127.0.0.1:$port:6379" \
+    --volume "$container_name-data:/data" \
+    --volume "$config_file:/usr/local/etc/redis/redis.conf:ro" \
+    "$REDIS_IMAGE" redis-server /usr/local/etc/redis/redis.conf; then
+    fail "本机 Redis 创建失败；端口可能被占用或 Docker 权限不足。原有服务未被修改"
+  fi
+
+  core_url="redis://:$password@127.0.0.1:$port/0"
+  runtime_url="redis://:$password@host.docker.internal:$port/0"
+  check_url="$core_url"
+  REDIS_RUNTIME_URL_VALUE="$runtime_url"
+  REDIS_CHECK_URL_VALUE="$check_url"
+  REDIS_SOURCE_VALUE="local"
+  write_redis_connection_files "$core_url" "$runtime_url" "$check_url" "$port"
+  ok "本机 Redis 已创建：${container_name}（数据卷：${container_name}-data）"
+}
+
+configure_redis() {
+  local existing_url choice
+  existing_url="$(env_value REDIS_URL)"
+  if [[ -n "$existing_url" ]]; then
+    REDIS_RUNTIME_URL_VALUE="$existing_url"
+    REDIS_CHECK_URL_VALUE="$(env_value REDIS_CHECK_URL)"
+    [[ -n "$REDIS_CHECK_URL_VALUE" ]] || REDIS_CHECK_URL_VALUE="$existing_url"
+    REDIS_SOURCE_VALUE="existing"
+    return 0
+  fi
+  ((NON_INTERACTIVE)) && fail "非交互安装缺少必填配置：REDIS_URL；不会自动创建 Redis"
+
+  section "配置 Redis"
+  cat <<'EOF'
+Redis 是 noj-core 和 Judge 之间传递评测任务的中转站。
+Judge 必须连接 noj-core 正在使用的同一个 Redis、数据库和队列。
+
+  1. 连接已有 Redis（推荐，适合生产环境）
+  2. 创建本机 Redis（仅适合明确知道 core 也要使用它的场景）
+  3. 稍后配置（本次不会启动 Judge）
+
+EOF
+  read -r -p '请选择 Redis 来源 [1]：' choice
+  choice="${choice:-1}"
+  case "$choice" in
+    1)
+      REDIS_RUNTIME_URL_VALUE="$(prompt_value REDIS_URL "Redis 完整连接地址" "" 1 \
+        "无密码：redis://127.0.0.1:6379/0；有密码：redis://:密码@地址:6379/0。")"
+      REDIS_CHECK_URL_VALUE="$REDIS_RUNTIME_URL_VALUE"
+      REDIS_SOURCE_VALUE="existing"
+      ;;
+    2)
+      create_local_redis
+      ;;
+    3)
+      fail "已选择稍后配置；请配置与 noj-core 相同的 REDIS_URL 后重新执行 install"
+      ;;
+    *)
+      fail "无效的 Redis 选项：${choice}；请输入 1、2 或 3"
+      ;;
+  esac
+}
+
 initialize_env() {
   section "配置独立 Judge"
   cat <<'EOF'
@@ -260,10 +453,14 @@ EOF
   fi
 
   umask 077
-  local version redis_url socket socket_gid queue result work_dir concurrency prefix registry uid gid
+  local version redis_url redis_check_url redis_source socket socket_gid queue result work_dir concurrency prefix registry uid gid
   version="$VERSION_OVERRIDE"
   [[ -n "$version" ]] || version="$(prompt_value NOJ_VERSION "Worker 版本（例如 0.8.0-rc.1）" "" 0 "填已发布的镜像版本，不要填写 main 或 latest。")"
-  redis_url="$(prompt_value REDIS_URL "Redis 连接地址" "" 1 "填 noj-core 使用的完整 Redis URL；无密码也要保留 redis:// 前缀。")"
+  REDIS_METADATA_FILE="$TARGET_DIR/.redis-connection.env"
+  configure_redis
+  redis_url="$REDIS_RUNTIME_URL_VALUE"
+  redis_check_url="$REDIS_CHECK_URL_VALUE"
+  redis_source="$REDIS_SOURCE_VALUE"
   queue="$(prompt_value JUDGE_QUEUE "任务队列名称" "noj:judge:queue" 0 "必须与 noj-core 的任务队列名称一致，通常直接回车。")"
   result="$(prompt_value RESULT_QUEUE "结果队列名称" "noj:judge:results" 0 "必须与 noj-core 的结果队列名称一致，通常直接回车。")"
   work_dir="$(prompt_value WORK_DIR "Worker 容器工作目录" "/tmp/noj-judge" 0 "容器内部目录，通常直接回车。")"
@@ -278,6 +475,8 @@ EOF
   cat >"$ENV_FILE" <<EOF
 NOJ_VERSION=$version
 REDIS_URL=$redis_url
+REDIS_CHECK_URL=$redis_check_url
+REDIS_SOURCE=$redis_source
 JUDGE_QUEUE=$queue
 RESULT_QUEUE=$result
 WORK_DIR=$work_dir
@@ -342,6 +541,8 @@ services:
     user: "${JUDGE_UID:-10001}:${JUDGE_GID:-10001}"
     group_add:
       - "${JUDGE_DOCKER_SOCKET_GID:?JUDGE_DOCKER_SOCKET_GID is required}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     read_only: true
     tmpfs:
       - /tmp
@@ -438,7 +639,8 @@ check_socket() {
 }
 
 redis_host() {
-  local url="$(env_value REDIS_URL)"
+  local url="$(env_value REDIS_CHECK_URL)"
+  [[ -n "$url" ]] || url="$(env_value REDIS_URL)"
   url="${url#*://}"
   url="${url#*@}"
   url="${url%%/*}"
@@ -448,15 +650,25 @@ redis_host() {
 
 check_redis() {
   local url="$(env_value REDIS_URL)"
+  local check_url="$(env_value REDIS_CHECK_URL)"
+  local check_env=""
   [[ "$url" =~ ^rediss?:// ]] || fail "REDIS_URL 必须使用 redis:// 或 rediss://"
+  [[ -n "$check_url" ]] || check_url="$url"
+  [[ "$check_url" =~ ^rediss?:// ]] || fail "REDIS_CHECK_URL 必须使用 redis:// 或 rediss://"
   section "检查 Redis"
   if command -v redis-cli >/dev/null 2>&1; then
-    redis-cli -u "$url" ping >/dev/null 2>&1 ||
+    redis-cli -u "$check_url" ping >/dev/null 2>&1 ||
       fail "Redis 连接失败：$(redis_host)（密码不会显示）"
   else
-    REDIS_URL="$url" "$DOCKER_BIN" run --rm --network host -e REDIS_URL redis:7-alpine \
-      sh -c 'redis-cli -u "$REDIS_URL" ping' >/dev/null 2>&1 ||
+    check_env="$(mktemp "${TMPDIR:-/tmp}/noj-judge-redis-check.XXXXXX")"
+    umask 077
+    printf 'REDIS_URL=%s\n' "$check_url" >"$check_env"
+    chmod 600 "$check_env"
+    if ! "$DOCKER_BIN" run --rm --network host --env-file "$check_env" redis:7-alpine sh -c 'redis-cli -u "$REDIS_URL" ping' >/dev/null 2>&1; then
+      rm -f "$check_env"
       fail "Redis 连接失败：$(redis_host)；系统未安装 redis-cli，已尝试使用临时 Redis 客户端"
+    fi
+    rm -f "$check_env"
   fi
   ok "Redis 可连接：$(redis_host)"
 }
