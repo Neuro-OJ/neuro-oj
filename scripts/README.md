@@ -95,7 +95,7 @@ Compose、内存、磁盘和端口。`sudo bash noj-install.sh install-env` 只�
 安装 `ca-certificates`、`curl`、`tar` 和 `openssl`；Docker Engine、Compose plugin 和
 Judge rootless Docker daemon 不由脚本自动安装。
 
-首次执行安装时，终端会引导填写安装版本、网站地址、网站完整网址、管理员账号、邮件
+首次执行安装时，终端会引导填写安装版本、网站地址、HTTPS 选项、管理员账号、邮件
 服务及评测服务连接位置；密码和邮件密钥不会回显。已有配置时会先询问是否继续使用，
 选择 `N` 会清空旧值后重新填写；邮件服务可以选择暂不配置。没有 TTY 的自动化场景会保留
 配置模板并返回非零状态，可使用 `--non-interactive` 明确选择该行为。

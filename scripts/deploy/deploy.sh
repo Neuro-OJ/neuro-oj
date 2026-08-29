@@ -261,6 +261,23 @@ prompt_password() {
   done
 }
 
+prompt_yes_no() {
+  local label="$1" default="${2:-y}" answer
+  while :; do
+    if [[ "$default" == y ]]; then
+      read_prompt "$label [Y/n]: "
+    else
+      read_prompt "$label [y/N]: "
+    fi
+    answer="${PROMPT_VALUE:-$default}"
+    case "$answer" in
+      y|Y|yes|YES) return 0 ;;
+      n|N|no|NO) return 1 ;;
+      *) warn "请输入 Y 或 N" ;;
+    esac
+  done
+}
+
 current_config_value() {
   local key="$1" value
   value="$(env_value "$key")"
@@ -351,35 +368,24 @@ configuration_needs_interactive_input() {
 }
 
 confirm_reuse_config() {
-  local answer
   printf '检测到先前生产配置：%s\n' "$ENV_FILE"
-  while :; do
-    read_prompt '是否使用先前配置？[Y/n]（Y=保留，N=重新填写）: '
-    answer="${PROMPT_VALUE:-Y}"
-    case "$answer" in
-      y|Y|yes|YES)
-        ok "将使用先前配置"
-        return 0
-        ;;
-      n|N|no|NO)
-        warn "将进入配置向导重新填写"
-        return 1
-        ;;
-      *)
-        warn "请输入 Y 使用先前配置，或 N 重新填写"
-        ;;
-    esac
-  done
+  if prompt_yes_no '是否使用先前配置？（Y=保留，N=重新填写）' y; then
+    ok "将使用先前配置"
+    return 0
+  fi
+  warn "将进入配置向导重新填写"
+  return 1
 }
 
 configure_env_interactive() {
   local version domain app_url admin_email email_provider socket_path socket_gid key
-  local current_value default_url detected_ip default_domain reset_existing="${1:-0}"
+  local current_value current_app_url detected_ip default_domain ssl_default
+  local reset_existing="${1:-0}"
 
   section "填写生产配置"
   cat <<'EOF'
 请按提示填写网站和管理员信息。密码和邮件密钥不会显示在屏幕上，也不会被脚本打印。
-“网站地址”是域名或服务器 IP；“完整网址”是浏览器实际打开的地址，通常由网站地址自动生成。
+“网站地址”是域名或服务器 IP；脚本会根据 HTTPS 选择自动生成浏览器访问地址。
 评测服务连接位置一般保持默认即可；邮件服务可以选择“暂不配置”，以后再补充。
 EOF
 
@@ -400,12 +406,20 @@ EOF
     warn "当前使用服务器 IP；正式环境仍需 HTTPS，建议以后换成域名并配置证书"
   fi
 
-  current_value="$(config_prompt_value APP_URL "$reset_existing")"
-  default_url="${current_value:-https://$domain}"
-  prompt_text "网站完整网址（浏览器打开的地址，例如 https://example.com）" "$default_url"
-  app_url="$PROMPT_VALUE"
-  [[ "$app_url" =~ ^https?://[^[:space:]]+$ ]] ||
-    fail "网站完整网址必须以 http:// 或 https:// 开头"
+  current_app_url="$(config_prompt_value APP_URL "$reset_existing")"
+  if [[ "$current_app_url" == http://* ]]; then
+    ssl_default=n
+  else
+    ssl_default=y
+  fi
+  if prompt_yes_no '是否使用 HTTPS（证书需在宝塔或反向代理中配置）' "$ssl_default"; then
+    set_env_value NOJ_ALLOW_INSECURE_HTTP "false"
+    app_url="https://$domain"
+  else
+    set_env_value NOJ_ALLOW_INSECURE_HTTP "true"
+    app_url="http://$domain"
+    warn "已选择临时 HTTP；登录信息可能被窃取，正式使用前请配置 HTTPS"
+  fi
   set_env_value APP_URL "$app_url"
   set_env_value CORS_ALLOWED_ORIGINS "$app_url"
 
@@ -604,6 +618,15 @@ check_required_values() {
     printf "  - JUDGE_DOCKER_SOCKET_GID 必须是数字\n" >&2
     missing=1
   }
+  local app_url="$(env_value APP_URL)"
+  if [[ "$app_url" == http://* && "$(env_value NOJ_ALLOW_INSECURE_HTTP)" != true ]]; then
+    printf "  - 网站完整网址使用 HTTP 时，必须明确选择临时 HTTP 模式\n" >&2
+    missing=1
+  fi
+  if [[ "$app_url" != http://* && "$app_url" != https://* ]]; then
+    printf "  - 网站完整网址必须以 http:// 或 https:// 开头\n" >&2
+    missing=1
+  fi
   local version="$(env_value NOJ_VERSION)"
   [[ "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || {
     printf "  - NOJ_VERSION 必须是不可变 Release 标签（如 v0.1.0 或 0.1.1-rc.1）\n" >&2

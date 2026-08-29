@@ -50,8 +50,9 @@ sudo bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj
 回显，完成后脚本会继续进行配置校验和服务启动。没有 TTY 时才会停止并提示手工编辑配置：
 
 “网站地址”没有现有配置时会默认填入检测到的服务器 IPv4，直接回车即可使用，也可以改填
-正式域名。IP 适合临时部署或已经有 HTTPS 反向代理的场景；“网站完整网址”仍必须使用
-HTTPS，例如 `https://你的域名`。
+正式域名。随后脚本会询问是否使用 HTTPS，默认使用 HTTPS；如果选择否，才会进入临时 HTTP
+模式。HTTP 不安全，只适合临时测试，正式环境请使用域名并配置证书。证书不会由脚本自动安装，
+需要在宝塔或其他反向代理中配置。
 
 重复执行部署且检测到已有生产配置时，脚本会先询问是否使用先前配置。输入 `Y` 或直接
 回车会保留配置；输入 `N` 会清空旧值的输入默认值并重新填写。若旧配置尚未填写完整，
@@ -110,10 +111,11 @@ bash noj-install.sh --non-interactive --ref v0.1.0 --dir /opt/neuro-oj
 | `NOJ_ENFORCE_IMAGE_SIGNATURES` | 生产必须保持 `true`，启动/升级前校验六个应用镜像的 Cosign 签名 |
 | `NOJ_COSIGN_CERT_IDENTITY_REGEX` | Cosign 证书身份正则，默认只信任本仓库的 Release workflow |
 | `DOMAIN` | 网站地址，可填域名或服务器 IP，不要写 `https://` |
-| `APP_URL` | 用户在浏览器打开的完整网址，如 `https://你的域名` |
+| `APP_URL` | 脚本根据网站地址和 HTTPS 选择自动生成的完整网址 |
+| `NOJ_ALLOW_INSECURE_HTTP` | 临时 HTTP 开关，默认 `false`；正式环境请保持关闭 |
 | `CORS_ALLOWED_ORIGINS` | `https://你的域名` |
 | `TRUSTED_PROXIES` | 可信代理网段，必须与 compose 中 `noj-net` 子网一致（如 `172.28.0.0/16`）；生产必填 |
-| `NUXT_NOJ_ENV` | 前端环境标记，生产 HTTPS 环境保持 `production` |
+| `NUXT_NOJ_ENV` | 前端环境标记，生产环境保持 `production` |
 | `POSTGRES_PASSWORD` | PostgreSQL 强密码 |
 | `REDIS_PASSWORD` | Redis 强密码 |
 | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | MinIO 管理员凭据，仅供 `minio-init` 使用 |

@@ -59,6 +59,7 @@ NOJ_ENFORCE_IMAGE_SIGNATURES=false
 APP_URL=https://noj.test
 DOMAIN=noj.test
 CORS_ALLOWED_ORIGINS=https://noj.test
+NOJ_ALLOW_INSECURE_HTTP=false
 TRUSTED_PROXIES=172.28.0.0/16
 POSTGRES_PASSWORD=strong-postgres-password
 POSTGRES_USER=noj
@@ -141,10 +142,27 @@ grep -q '是否使用先前配置？' "$DEPLOY_SCRIPT" || fail "先前配置确�
 reset_prompt="$(NOJ_DEPLOY_SOURCE_ONLY=1 bash -c 'source "$1"; config_prompt_value DOMAIN 1' bash "$DEPLOY_SCRIPT")"
 [[ -z "$reset_prompt" ]] || fail "选择重新填写时仍保留旧配置默认值"
 grep -q '网站地址（域名或服务器 IP' "$DEPLOY_SCRIPT" || fail "网站地址提示不够友好"
-grep -q '网站完整网址（浏览器打开的地址' "$DEPLOY_SCRIPT" || fail "完整网址提示不够友好"
+grep -q '是否使用 HTTPS（证书需在宝塔或反向代理中配置）' "$DEPLOY_SCRIPT" || fail "HTTPS 选择提示缺失"
 grep -q '暂不配置' "$DEPLOY_SCRIPT" || fail "邮件服务跳过提示缺失"
 grep -q 'configure_env_interactive 1' "$DEPLOY_SCRIPT" || fail "重新填写未清空旧值默认值"
 pass "重新填写和易懂配置提示"
+
+http_env="$TEST_ROOT/http.env"
+cp "$ENV_FILE" "$http_env"
+sed -i.bak \
+  -e 's#^APP_URL=.*#APP_URL=http://noj.test#' \
+  -e 's#^CORS_ALLOWED_ORIGINS=.*#CORS_ALLOWED_ORIGINS=http://noj.test#' \
+  -e 's#^NOJ_ALLOW_INSECURE_HTTP=.*#NOJ_ALLOW_INSECURE_HTTP=true#' \
+  "$http_env"
+run_deploy_with "$http_env" start >/dev/null 2>"$TEST_ROOT/http.err" ||
+  fail "明确开启临时 HTTP 后 start 不应失败"
+sed -i.bak 's#^NOJ_ALLOW_INSECURE_HTTP=.*#NOJ_ALLOW_INSECURE_HTTP=false#' "$http_env"
+if run_deploy_with "$http_env" start >"$TEST_ROOT/http-disabled.out" 2>&1; then
+  fail "未明确开启临时 HTTP 时不应通过配置校验"
+fi
+grep -q '必须明确选择临时 HTTP 模式' "$TEST_ROOT/http-disabled.out" ||
+  fail "HTTP 安全门禁提示缺失"
+pass "HTTPS 默认安全门禁和临时 HTTP"
 
 panel_root="$TEST_ROOT/baota/www/server/panel"
 mkdir -p "$panel_root"

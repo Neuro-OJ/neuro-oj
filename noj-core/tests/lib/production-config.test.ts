@@ -41,6 +41,20 @@ Deno.test("production-config: 关闭邮件服务时不要求邮件密钥", () =>
   assertEquals(findProductionConfigErrors(config), []);
 });
 
+Deno.test("production-config: 临时 HTTP 必须显式开启", () => {
+  const config = validConfig();
+  config.appUrl = "http://noj.org";
+  config.corsAllowedOrigins = "http://noj.org";
+  assert(
+    findProductionConfigErrors(config).some((error) =>
+      error.includes("APP_URL")
+    ),
+  );
+
+  config.allowInsecureHttp = true;
+  assertEquals(findProductionConfigErrors(config), []);
+});
+
 Deno.test("production-config: 开发和测试环境保留 mock/local 默认行为", () => {
   const config = validConfig();
   config.environment = "development";
