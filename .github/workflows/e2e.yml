@@ -41,8 +41,6 @@ on:
       - 'noj-docs/**'
       - '**/*.md'
       - 'openspec/**'
-      - '.opencode/**'
-      - '.claude/**'
       - 'noj-ui/**'
       - 'docker-compose.yml'
       - 'LICENSE'
