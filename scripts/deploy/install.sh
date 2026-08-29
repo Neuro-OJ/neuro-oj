@@ -5,7 +5,7 @@
 # 此文件可以单独下载后执行，不依赖当前工作目录或本地 Git 仓库：
 #   curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/install.sh \
 #     -o noj-install.sh
-#   bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj
+#   bash noj-install.sh --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 #
 # Bootstrap 只负责获取源码；生产 Compose、配置校验和服务生命周期仍由
 # 下载后的 scripts/deploy/deploy.sh 负责。
@@ -13,10 +13,9 @@
 set -Eeuo pipefail
 
 readonly DEFAULT_REPOSITORY="https://github.com/Neuro-OJ/neuro-oj"
-readonly DEFAULT_REF="v0.1.0"
 
 REPOSITORY="${NOJ_BOOTSTRAP_REPOSITORY:-$DEFAULT_REPOSITORY}"
-REF="${NOJ_BOOTSTRAP_REF:-$DEFAULT_REF}"
+REF="${NOJ_BOOTSTRAP_REF:-}"
 TARGET_DIR="${NOJ_BOOTSTRAP_DIR:-/opt/neuro-oj}"
 CHECK_PORT="${NOJ_BOOTSTRAP_PORT:-8080}"
 EXISTING_INSTALL=0
@@ -59,10 +58,11 @@ Neuro OJ Linux 独立下载部署工具
 示例：
   curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/install.sh \
     -o noj-install.sh
-  bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj
+  bash noj-install.sh --dir /opt/neuro-oj
+  bash noj-install.sh --ref 0.8.0-rc.1 --dir /opt/neuro-oj
   bash noj-install.sh check
   sudo bash noj-install.sh install-env
-  bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj -- --dry-run
+  bash noj-install.sh --ref 0.8.0-rc.1 --dir /opt/neuro-oj -- --dry-run
 
 命令：
   check                  检测 Linux、基础工具、Docker/Compose、资源和端口
@@ -71,7 +71,7 @@ Neuro OJ Linux 独立下载部署工具
 
 选项：
   --repo URL             GitHub 仓库地址（默认 Neuro-OJ/neuro-oj）
-  --ref REF              固定分支或 Release tag（默认 v0.1.0）
+  --ref REF              固定分支或 Release tag（默认自动选择最新 Release）
   --dir DIRECTORY        安装目录（默认 /opt/neuro-oj）
   --port PORT            检测宿主机端口（默认 8080）
   --panel MODE           面板模式：auto（默认）、baota 或 none
@@ -89,6 +89,7 @@ Neuro OJ Linux 独立下载部署工具
 部署参数：
   通过 -- 后传递给下载后的 deploy.sh install，例如 -- --non-interactive
 
+未指定 --ref 时脚本会自动使用仓库最新可用 Release；生产环境也可以显式指定 --ref 固定版本。
 目标目录非空时脚本会拒绝覆盖；已有安装请进入目标目录执行 deploy.sh upgrade。
 如果目标目录已经是本工具安装的 Neuro OJ，则会保留现有配置并继续部署；其他非空目录仍会拒绝覆盖。
 生产环境建议使用不可变 Release tag，并让 --ref 与 .env.prod 中的 NOJ_VERSION 一致。
@@ -170,18 +171,53 @@ validate_inputs() {
   REPOSITORY="${REPOSITORY%/}"
   REPOSITORY="${REPOSITORY%.git}"
 
-  [[ "$REF" =~ ^[A-Za-z0-9._/-]+$ && "$REF" != /* && "$REF" != */ &&
-    "$REF" != *'..'* && "$REF" != *//* ]] ||
-    fail "ref 只能包含安全的分支或 Release tag 字符"
-  [[ -n "$REF" ]] || fail "ref 不能为空"
-
   [[ -n "$TARGET_DIR" && "$TARGET_DIR" != "/" && "$TARGET_DIR" != "." &&
     "$TARGET_DIR" != ".." ]] ||
     fail "安装目录不安全或为空"
   [[ "$TARGET_DIR" != *$'\n'* && "$TARGET_DIR" != *$'\r'* ]] ||
     fail "安装目录不能包含换行符"
 
+}
+
+validate_ref() {
+  [[ "$REF" =~ ^[A-Za-z0-9._/-]+$ && "$REF" != /* && "$REF" != */ &&
+    "$REF" != *'..'* && "$REF" != *//* && -n "$REF" ]] ||
+    fail "没有找到有效的 Release。请使用 --ref 指定版本，例如 --ref 0.8.0-rc.1"
   ARCHIVE_URL="$REPOSITORY/archive/$REF.tar.gz"
+}
+
+resolve_latest_ref() {
+  local repository_slug metadata_url metadata tag
+  [[ -n "$REF" ]] && { validate_ref; return 0; }
+
+  [[ "$REPOSITORY" =~ ^https://github\.com/([^/]+/[^/]+)$ ]] ||
+    fail "无法自动获取最新版本；请对自定义仓库使用 --ref 指定 Release tag"
+  repository_slug="${BASH_REMATCH[1]}"
+  metadata_url="https://api.github.com/repos/$repository_slug/releases?per_page=1"
+  printf '正在获取最新 Release：%s\n' "$metadata_url" >&2
+  if command -v curl >/dev/null 2>&1; then
+    metadata="$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+      --retry 3 --connect-timeout 15 --header 'Accept: application/vnd.github+json' \
+      --header 'User-Agent: neuro-oj-installer' "$metadata_url")" ||
+      fail "无法获取最新 Release，请检查网络，或使用 --ref 显式指定版本"
+  else
+    metadata="$(wget --https-only --tries=3 --timeout=20 --quiet --header='Accept: application/vnd.github+json' \
+      --header='User-Agent: neuro-oj-installer' -O - "$metadata_url")" ||
+      fail "无法获取最新 Release，请检查网络，或使用 --ref 显式指定版本"
+  fi
+  tag="$(awk '
+    match($0, /"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"/) {
+      value = substr($0, RSTART, RLENGTH)
+      sub(/^.*:[[:space:]]*"/, "", value)
+      sub(/"$/, "", value)
+      print value
+      exit
+    }
+  ' <<<"$metadata")"
+  [[ -n "$tag" ]] || fail "仓库没有可用 Release，请使用 --ref 显式指定版本"
+  REF="$tag"
+  validate_ref
+  ok "将使用最新 Release：$REF"
 }
 
 check_dependencies() {
@@ -499,7 +535,8 @@ install_source() {
     return 0
   fi
 
-  mkdir -p -- "$(dirname -- "$TARGET_DIR")"
+  mkdir -p -- "$(dirname -- "$TARGET_DIR")" ||
+    fail "无法创建安装目录的上级路径：$(dirname -- "$TARGET_DIR")；请使用有权限的用户，或通过 --dir 指定可写目录"
   if [[ -d "$TARGET_DIR" ]]; then
     rmdir -- "$TARGET_DIR" || fail "安装目录在下载过程中变为非空，已停止：$TARGET_DIR"
   fi
@@ -522,9 +559,11 @@ run_deploy() {
 
   set +e
   if ((${#DEPLOY_ARGS[@]} > 0)); then
-    bash "$TARGET_DIR/scripts/deploy/deploy.sh" install "${DEPLOY_ARGS[@]}"
+    NOJ_DEPLOY_DEFAULT_VERSION="$REF" \
+      bash "$TARGET_DIR/scripts/deploy/deploy.sh" install "${DEPLOY_ARGS[@]}"
   else
-    bash "$TARGET_DIR/scripts/deploy/deploy.sh" install
+    NOJ_DEPLOY_DEFAULT_VERSION="$REF" \
+      bash "$TARGET_DIR/scripts/deploy/deploy.sh" install
   fi
   status=$?
   set -e
@@ -552,6 +591,7 @@ main() {
         *) fail "不支持的 CPU 架构：$(uname -m 2>/dev/null || true)；当前生产镜像仅支持 x86_64" ;;
       esac
       check_dependencies
+      resolve_latest_ref
       check_target
       printf '仓库：%s\nref：%s\n目标目录：%s\n' "$REPOSITORY" "$REF" "$TARGET_DIR"
       printf '下载地址：%s\n' "$ARCHIVE_URL"

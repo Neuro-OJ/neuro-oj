@@ -599,6 +599,9 @@ initialize_env() {
     value="$(generate_secret)"
     set_env_value "$key" "$value"
   done
+  if [[ -n "${NOJ_DEPLOY_DEFAULT_VERSION:-}" ]]; then
+    set_env_value NOJ_VERSION "$NOJ_DEPLOY_DEFAULT_VERSION"
+  fi
   set_env_value MINIO_ROOT_USER "nojminio$(openssl rand -hex 6)"
   set_env_value S3_ACCESS_KEY "nojs3$(openssl rand -hex 6)"
 

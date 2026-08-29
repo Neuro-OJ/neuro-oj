@@ -35,12 +35,24 @@ cat >"$FAKE_BIN/curl" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 output=''
+url=''
 while (($# > 0)); do
   case "$1" in
     --output|-o) output="$2"; shift ;;
+    --header) shift ;;
   esac
+  url="$1"
   shift
 done
+if [[ "$url" == *'/releases?per_page=1' ]]; then
+  [[ "${NOJ_BOOTSTRAP_API_FAIL:-0}" != 1 ]] || exit 22
+  printf '{"tag_name":"%s"}\n' "${NOJ_BOOTSTRAP_LATEST_REF:-v0.1.0}"
+  exit 0
+fi
+if [[ -n "${NOJ_SETUP_PAYLOAD:-}" ]]; then
+  cp "$NOJ_SETUP_PAYLOAD" "${output:?}"
+  exit 0
+fi
 printf '%s\n' "${output:?}" >>"${NOJ_BOOTSTRAP_DOWNLOAD_LOG:?}"
 if [[ "${NOJ_BOOTSTRAP_DOWNLOAD_FAIL:-0}" == 1 ]]; then
   exit 22
@@ -105,6 +117,12 @@ export NOJ_BOOTSTRAP_DEPLOY_LOG="$DEPLOY_LOG"
 bash "$INSTALL_SCRIPT" --help >/dev/null
 pass "帮助输出"
 
+NOJ_SETUP_BOOTSTRAP_URL="https://example.test/install.sh" \
+NOJ_SETUP_PAYLOAD="$INSTALL_SCRIPT" \
+  bash "$SCRIPT_DIR/../../setup.sh" --help >"$TEST_ROOT/setup.out"
+grep -q '默认自动选择最新 Release' "$TEST_ROOT/setup.out" || fail "根目录一键入口未转交 bootstrap"
+pass "根目录一键入口"
+
 check_out="$TEST_ROOT/check.out"
 bash "$INSTALL_SCRIPT" check --port 18080 >"$check_out"
 grep -q '环境检测通过' "$check_out" || fail "环境检测通过提示缺失"
@@ -162,7 +180,20 @@ grep -q 'https://example.com/repo/archive/v0.1.0.tar.gz' "$TEST_ROOT/dry-run.out
   fail "dry-run 未显示下载地址"
 pass "dry-run 不产生副作用"
 
+set +e
+NOJ_BOOTSTRAP_API_FAIL=1 bash "$INSTALL_SCRIPT" --dir "$TEST_ROOT/api-fail" \
+  >/dev/null 2>"$TEST_ROOT/api-fail.err"
+api_status=$?
+set -e
+[[ "$api_status" != 0 ]] || fail "最新 Release 获取失败未返回非零"
+grep -q '使用 --ref' "$TEST_ROOT/api-fail.err" || fail "最新 Release 获取失败提示缺少显式版本建议"
+pass "最新 Release 获取失败"
+
+NOJ_BOOTSTRAP_API_FAIL=1 bash "$INSTALL_SCRIPT" --ref v0.1.0 --dir "$TEST_ROOT/explicit-ref" >/dev/null
+pass "显式版本跳过 Release 查询"
+
 download_only_dir="$TEST_ROOT/download-only"
+rm -f "$DEPLOY_LOG"
 bash "$INSTALL_SCRIPT" --download-only --repo https://example.com/repo --ref v0.1.0 \
   --dir "$download_only_dir" >/dev/null
 [[ -f "$download_only_dir/scripts/deploy/deploy.sh" ]] || fail "下载模式缺少部署脚本"

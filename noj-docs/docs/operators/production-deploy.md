@@ -35,6 +35,28 @@ rootless Docker socket，不能改用 `/run/docker.sock` 或 `/var/run/docker.so
 
 ## 2. 初始化
 
+### 推荐：一条命令开始安装
+
+和 HydroOJ 类似，NOJ 提供一个远程入口脚本。它会先检查 Linux、Docker 和 Compose，
+然后自动使用最新可用 Release 进入配置向导：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash
+```
+
+如果需要固定版本（例如部署候选版本），可以显式指定 `--ref`：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
+  bash -s -- --ref 0.8.0-rc.1 --dir /opt/neuro-oj
+```
+
+安装完成后打开网站注册第一个真实用户，该用户会自动获得管理员权限，不需要再执行额外
+的提权命令。已有站点的用户和管理员权限不会因为升级改变。
+
+如果服务器不能访问 GitHub API，自动获取最新版本会停止安装；请使用上面的 `--ref`
+显式指定版本，或先下载脚本检查后执行。
+
 ```bash
 # 只下载一个 bootstrap 脚本；生产环境建议固定到 Release tag
 curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/install.sh \
@@ -42,7 +64,7 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/depl
 chmod +x noj-install.sh
 
 # 下载指定版本源码并调用生产部署入口
-sudo bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj
+bash noj-install.sh --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 ```
 
 首次执行会将源码放入 `/opt/neuro-oj`，随后创建权限为 `600` 的 `.env.prod` 并生成
@@ -68,7 +90,7 @@ sudo chmod 600 /opt/neuro-oj/.env.prod
 sudo bash /opt/neuro-oj/scripts/deploy/deploy.sh install
 ```
 
-bootstrap 默认使用 `v0.1.0`，可通过 `--ref` 指定其他分支或 Release tag；生产环境应
+bootstrap 默认自动选择最新 Release，可通过 `--ref` 指定其他分支或 Release tag；生产环境应
 使用不可变 Release tag，并让 `--ref` 与 `.env.prod` 中的 `NOJ_VERSION` 保持一致。
 也可以使用 `--download-only` 只获取源码，或使用 `--dry-run` 查看下载计划。目标目录
 非空时 bootstrap 会拒绝覆盖已有 `.env.prod`、备份和部署文件；已有安装请直接执行
@@ -103,7 +125,7 @@ Linux/CPU 架构、基础工具、Docker/Compose、内存、目标目录磁盘�
 准备完整的 `.env.prod`，否则脚本以非零状态退出：
 
 ```bash
-bash noj-install.sh --non-interactive --ref v0.1.0 --dir /opt/neuro-oj
+bash noj-install.sh --non-interactive --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 ```
 
 `.env.prod` 中必须填写：
