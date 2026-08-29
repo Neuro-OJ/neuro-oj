@@ -27,12 +27,13 @@ export const sendPasswordResetEmail: SendPasswordResetEmail = (
   resetLink: string,
   expiresInMinutes = 15,
 ) => {
-  // NOJ-005：mock 仅用于开发/测试。生产环境必须使用真实 Provider，
+  // NOJ-005：mock 仅用于开发/测试。生产环境可使用 disabled 关闭邮件，
+  // 或配置真实 Provider；
   // 禁止把含明文重置令牌的链接写入日志。
   const nojEnv = Deno.env.get("NOJ_ENV");
   if (nojEnv === "production") {
     throw new Error(
-      "EMAIL_PROVIDER=mock 在生产环境不可用，请配置 aliyun/tencent 邮件 Provider",
+      "EMAIL_PROVIDER=mock 在生产环境不可用，请配置 aliyun、tencent 或 disabled 邮件服务",
     );
   }
   // 本地开发/测试需要从日志拿到完整链接才能完成重置；未知的非生产环境保守脱敏。

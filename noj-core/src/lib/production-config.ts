@@ -123,8 +123,9 @@ function validateEmail(
   provider: string | undefined,
   settings: Record<string, string | undefined>,
 ): void {
+  if (provider === "disabled") return;
   if (provider !== "aliyun" && provider !== "tencent") {
-    findings.push("EMAIL_PROVIDER 必须配置为 aliyun 或 tencent");
+    findings.push("EMAIL_PROVIDER 必须配置为 aliyun、tencent 或 disabled");
     return;
   }
 

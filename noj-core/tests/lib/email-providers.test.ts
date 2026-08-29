@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { sendPasswordResetEmail as mockSend } from "../../src/lib/email-providers/mock.ts";
+import { sendPasswordResetEmail as disabledSend } from "../../src/lib/email-providers/disabled.ts";
 import type { SendPasswordResetEmail } from "../../src/lib/email-providers/types.ts";
 import {
   type LogRecord,
@@ -52,6 +53,29 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "email-providers: disabled 不发送也不记录重置链接",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const records: LogRecord[] = [];
+    setLogSink((r) => records.push(r));
+
+    try {
+      await disabledSend(
+        "test@example.com",
+        "https://noj.test/reset?token=secret",
+      );
+      assertEquals(records.length, 1);
+      assertEquals(records[0].fields.module, "email-disabled");
+      assertEquals(records[0].fields.link, undefined);
+      assertEquals(records[0].fields.token, undefined);
+    } finally {
+      resetLogSink();
+    }
+  },
+});
+
 // ── Provider 接口类型校验（编译期检查，确保各 provider 签名一致） ──
 
 Deno.test({
@@ -61,6 +85,16 @@ Deno.test({
   fn: () => {
     // 类型检查（编译期）：赋值必须兼容
     const fn: SendPasswordResetEmail = mockSend;
+    assertEquals(typeof fn, "function");
+  },
+});
+
+Deno.test({
+  name: "email-providers: disabled 符合 SendPasswordResetEmail 类型签名",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: () => {
+    const fn: SendPasswordResetEmail = disabledSend;
     assertEquals(typeof fn, "function");
   },
 });

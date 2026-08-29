@@ -46,16 +46,17 @@ sudo bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj
 ```
 
 首次执行会将源码放入 `/opt/neuro-oj`，随后创建权限为 `600` 的 `.env.prod` 并生成
-部分随机密钥，然后在终端逐项引导填写生产配置。管理员密码和邮件 Provider 密钥不会
+部分随机密钥，然后在终端逐项引导填写生产配置。管理员密码和邮件服务密钥不会
 回显，完成后脚本会继续进行配置校验和服务启动。没有 TTY 时才会停止并提示手工编辑配置：
 
-`DOMAIN` 没有现有配置时会默认填入检测到的服务器 IPv4，直接回车即可使用，也可以改填
-正式域名。IP 适合临时部署或已经有 HTTPS 反向代理的场景；生产环境的 `APP_URL` 仍必须
-使用 HTTPS。
+“网站地址”没有现有配置时会默认填入检测到的服务器 IPv4，直接回车即可使用，也可以改填
+正式域名。IP 适合临时部署或已经有 HTTPS 反向代理的场景；“网站完整网址”仍必须使用
+HTTPS，例如 `https://你的域名`。
 
 重复执行部署且检测到已有生产配置时，脚本会先询问是否使用先前配置。输入 `Y` 或直接
-回车会保留配置；输入 `N` 才会进入逐项配置向导。若旧配置尚未填写完整，选择 `Y` 后会
-继续进入补齐向导。
+回车会保留配置；输入 `N` 会清空旧值的输入默认值并重新填写。若旧配置尚未填写完整，
+选择 `Y` 后会继续进入补齐向导。邮件服务可以选择“暂不配置”，但密码找回邮件在配置前
+不可用。
 
 ```bash
 sudo vim /opt/neuro-oj/.env.prod
@@ -108,8 +109,8 @@ bash noj-install.sh --non-interactive --ref v0.1.0 --dir /opt/neuro-oj
 | `NOJ_VERSION` | 要部署的已签名 Release 标签，如 `v0.1.0`；禁止使用 `latest`/`beta` |
 | `NOJ_ENFORCE_IMAGE_SIGNATURES` | 生产必须保持 `true`，启动/升级前校验六个应用镜像的 Cosign 签名 |
 | `NOJ_COSIGN_CERT_IDENTITY_REGEX` | Cosign 证书身份正则，默认只信任本仓库的 Release workflow |
-| `DOMAIN` | 对外域名（不含协议），compose/Nginx 使用 |
-| `APP_URL` | `https://你的域名` |
+| `DOMAIN` | 网站地址，可填域名或服务器 IP，不要写 `https://` |
+| `APP_URL` | 用户在浏览器打开的完整网址，如 `https://你的域名` |
 | `CORS_ALLOWED_ORIGINS` | `https://你的域名` |
 | `TRUSTED_PROXIES` | 可信代理网段，必须与 compose 中 `noj-net` 子网一致（如 `172.28.0.0/16`）；生产必填 |
 | `NUXT_NOJ_ENV` | 前端环境标记，生产 HTTPS 环境保持 `production` |
@@ -122,7 +123,7 @@ bash noj-install.sh --non-interactive --ref v0.1.0 --dir /opt/neuro-oj
 | `S3_FORCE_PATH_STYLE` | 自建 MinIO 通常为 `true` |
 | `JWT_SECRET` / `TFA_ENCRYPTION_KEY` | ≥32 字符随机串 |
 | `ADMIN_EMAIL` / `ADMIN_PASS` | 公测管理员账号 |
-| `EMAIL_PROVIDER` 及对应凭据 | 生产必须使用 aliyun 或 tencent，禁止 mock |
+| `EMAIL_PROVIDER` 及对应凭据 | 可选阿里云、腾讯云或 `disabled`（暂不配置邮件） |
 | `JUDGE_IMAGE_BASE` | 默认 `ghcr.io/neuro-oj/` |
 | `NGINX_PORT` | 容器 Nginx 映射到宿主机的端口，默认 `8080` |
 | `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID` | 独立 rootless Docker daemon 的 socket 与组 ID；禁止使用 `/var/run/docker.sock` |

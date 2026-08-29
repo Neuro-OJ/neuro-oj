@@ -34,6 +34,13 @@ Deno.test("production-config: 合法生产配置通过校验", () => {
   assertEquals(findProductionConfigErrors(validConfig()), []);
 });
 
+Deno.test("production-config: 关闭邮件服务时不要求邮件密钥", () => {
+  const config = validConfig();
+  config.emailProvider = "disabled";
+  config.emailSettings = {};
+  assertEquals(findProductionConfigErrors(config), []);
+});
+
 Deno.test("production-config: 开发和测试环境保留 mock/local 默认行为", () => {
   const config = validConfig();
   config.environment = "development";

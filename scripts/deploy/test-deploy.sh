@@ -114,7 +114,7 @@ default_ip="$(NOJ_DEPLOY_DEFAULT_IP=192.0.2.10 NOJ_DEPLOY_SOURCE_ONLY=1 bash -c 
 [[ "$default_ip" == 192.0.2.10 ]] || fail "服务器 IP 默认值检测失败"
 pass "服务器 IP 默认值检测"
 
-grep -q '可直接回车使用服务器 IP' "$DEPLOY_SCRIPT" || fail "DOMAIN 的服务器 IP 引导提示缺失"
+grep -q '可直接回车使用检测到的 IP' "$DEPLOY_SCRIPT" || fail "网站地址的服务器 IP 引导提示缺失"
 grep -q '正式环境仍需 HTTPS' "$DEPLOY_SCRIPT" || fail "IP 场景 HTTPS 提示缺失"
 pass "服务器 IP 默认值和 HTTPS 提示"
 
@@ -125,6 +125,13 @@ reuse_no="$(NOJ_DEPLOY_SOURCE_ONLY=1 NOJ_DEPLOY_TEST_CONFIRM=n bash -c 'source "
 pass "先前配置复用确认"
 
 grep -q '是否使用先前配置？' "$DEPLOY_SCRIPT" || fail "先前配置确认提示缺失"
+reset_prompt="$(NOJ_DEPLOY_SOURCE_ONLY=1 bash -c 'source "$1"; config_prompt_value DOMAIN 1' bash "$DEPLOY_SCRIPT")"
+[[ -z "$reset_prompt" ]] || fail "选择重新填写时仍保留旧配置默认值"
+grep -q '网站地址（域名或服务器 IP' "$DEPLOY_SCRIPT" || fail "网站地址提示不够友好"
+grep -q '网站完整网址（浏览器打开的地址' "$DEPLOY_SCRIPT" || fail "完整网址提示不够友好"
+grep -q '暂不配置' "$DEPLOY_SCRIPT" || fail "邮件服务跳过提示缺失"
+grep -q 'configure_env_interactive 1' "$DEPLOY_SCRIPT" || fail "重新填写未清空旧值默认值"
+pass "重新填写和易懂配置提示"
 
 panel_root="$TEST_ROOT/baota/www/server/panel"
 mkdir -p "$panel_root"
@@ -165,6 +172,13 @@ pass "非交互式首次配置提示"
 grep -q '^JWT_SECRET=' "$new_env" || fail "首次初始化未写入随机密钥"
 if grep -q '^JWT_SECRET=change-' "$new_env"; then fail "首次初始化仍保留 JWT 占位值"; fi
 pass "首次配置初始化与权限保护"
+
+disabled_env="$TEST_ROOT/disabled-email.env"
+cp "$ENV_FILE" "$disabled_env"
+sed -i.bak 's/^EMAIL_PROVIDER=.*/EMAIL_PROVIDER=disabled/' "$disabled_env"
+run_deploy_with "$disabled_env" start >/dev/null 2>"$TEST_ROOT/disabled-email.err" ||
+  fail "跳过邮件服务后合法配置的 start 不应失败"
+pass "跳过邮件服务配置"
 
 if run_deploy start >/dev/null 2>"$TEST_ROOT/start.err"; then
   :

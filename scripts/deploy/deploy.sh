@@ -263,6 +263,14 @@ current_config_value() {
   printf '%s\n' "$value"
 }
 
+config_prompt_value() {
+  local key="$1" reset_existing="${2:-0}"
+  if ((reset_existing)); then
+    return 0
+  fi
+  current_config_value "$key"
+}
+
 is_ipv4_address() {
   local address="$1" octet
   local -a octets=()
@@ -346,42 +354,43 @@ confirm_reuse_config() {
 }
 
 configure_env_interactive() {
-  local version domain app_url admin_email email_provider socket_path socket_gid
-  local current_value default_url detected_ip default_domain
+  local version domain app_url admin_email email_provider socket_path socket_gid key
+  local current_value default_url detected_ip default_domain reset_existing="${1:-0}"
 
   section "填写生产配置"
   cat <<'EOF'
-首次部署需要填写以下配置。输入过程中密码和云厂商密钥不会回显，脚本也不会打印这些敏感值。
-其中 NOJ_VERSION 必须是已经发布的不可变版本标签；Judge Docker socket 必须是独立的 rootless Docker socket，不能填写 /var/run/docker.sock。
+请按提示填写网站和管理员信息。密码和邮件密钥不会显示在屏幕上，也不会被脚本打印。
+“网站地址”是域名或服务器 IP；“完整网址”是浏览器实际打开的地址，通常由网站地址自动生成。
+评测服务连接位置一般保持默认即可；邮件服务可以选择“暂不配置”，以后再补充。
 EOF
 
-  current_value="$(current_config_value NOJ_VERSION)"
-  prompt_text "NOJ_VERSION（例如 v0.1.0）" "$current_value"
+  current_value="$(config_prompt_value NOJ_VERSION "$reset_existing")"
+  prompt_text "安装版本（例如 v0.8.0-rc.1）" "$current_value"
   version="$PROMPT_VALUE"
   set_env_value NOJ_VERSION "$version"
 
-  current_value="$(current_config_value DOMAIN)"
+  current_value="$(config_prompt_value DOMAIN "$reset_existing")"
   detected_ip="$(detect_default_ipv4)"
   default_domain="${current_value:-$detected_ip}"
-  prompt_text "DOMAIN（不含协议；可直接回车使用服务器 IP）" "$default_domain"
+  prompt_text "网站地址（域名或服务器 IP，不要写 https://；可直接回车使用检测到的 IP）" "$default_domain"
   domain="$PROMPT_VALUE"
   [[ "$domain" != *[[:space:]]* && "$domain" != */* && "$domain" != *://* ]] ||
-    fail "DOMAIN 不能包含协议、斜杠或空格"
+    fail "网站地址不能包含 https://、斜杠或空格"
   set_env_value DOMAIN "$domain"
   if is_ipv4_address "$domain"; then
-    warn "当前 DOMAIN 使用服务器 IP；正式环境仍需 HTTPS，建议配置域名和反向代理证书"
+    warn "当前使用服务器 IP；正式环境仍需 HTTPS，建议以后换成域名并配置证书"
   fi
 
-  current_value="$(current_config_value APP_URL)"
+  current_value="$(config_prompt_value APP_URL "$reset_existing")"
   default_url="${current_value:-https://$domain}"
-  prompt_text "APP_URL（完整 HTTPS 地址）" "$default_url"
+  prompt_text "网站完整网址（浏览器打开的地址，例如 https://example.com）" "$default_url"
   app_url="$PROMPT_VALUE"
   [[ "$app_url" =~ ^https?://[^[:space:]]+$ ]] ||
-    fail "APP_URL 必须是 http:// 或 https:// 开头的完整地址"
+    fail "网站完整网址必须以 http:// 或 https:// 开头"
   set_env_value APP_URL "$app_url"
   set_env_value CORS_ALLOWED_ORIGINS "$app_url"
 
-  current_value="$(current_config_value ADMIN_EMAIL)"
+  current_value="$(config_prompt_value ADMIN_EMAIL "$reset_existing")"
   prompt_text "管理员邮箱" "$current_value"
   admin_email="$PROMPT_VALUE"
   [[ "$admin_email" == *@*.* ]] || fail "管理员邮箱格式不正确"
@@ -389,13 +398,14 @@ EOF
   prompt_password "管理员密码"
   set_env_value ADMIN_PASS "$PROMPT_VALUE"
 
-  current_value="$(current_config_value EMAIL_PROVIDER)"
+  current_value="$(config_prompt_value EMAIL_PROVIDER "$reset_existing")"
   while :; do
-    prompt_text "邮件 Provider（aliyun 或 tencent）" "${current_value:-aliyun}"
+    prompt_text "邮件服务（阿里云 / 腾讯云 / 暂不配置，直接回车也可跳过）" "${current_value:-disabled}"
     email_provider="$PROMPT_VALUE"
     case "$email_provider" in
       aliyun|tencent) break ;;
-      *) warn "邮件 Provider 只能是 aliyun 或 tencent" ;;
+      disabled|skip|none|跳过|暂不配置) email_provider=disabled; break ;;
+      *) warn "请输入 aliyun、tencent，或选择暂不配置" ;;
     esac
   done
   set_env_value EMAIL_PROVIDER "$email_provider"
@@ -404,24 +414,30 @@ EOF
     set_env_value ALIBABA_ACCESS_KEY_ID "$PROMPT_VALUE"
     prompt_secret "阿里云 Access Key Secret"
     set_env_value ALIBABA_ACCESS_KEY_SECRET "$PROMPT_VALUE"
-    current_value="$(current_config_value ALIBABA_FROM_EMAIL)"
+    current_value="$(config_prompt_value ALIBABA_FROM_EMAIL "$reset_existing")"
     prompt_text "阿里云发件邮箱" "$current_value"
     set_env_value ALIBABA_FROM_EMAIL "$PROMPT_VALUE"
-  else
+  elif [[ "$email_provider" == tencent ]]; then
     prompt_secret "腾讯云 Secret ID"
     set_env_value TENCENT_SECRET_ID "$PROMPT_VALUE"
     prompt_secret "腾讯云 Secret Key"
     set_env_value TENCENT_SECRET_KEY "$PROMPT_VALUE"
-    current_value="$(current_config_value TENCENT_FROM_EMAIL)"
+    current_value="$(config_prompt_value TENCENT_FROM_EMAIL "$reset_existing")"
     prompt_text "腾讯云发件邮箱" "$current_value"
     set_env_value TENCENT_FROM_EMAIL "$PROMPT_VALUE"
-    current_value="$(current_config_value TENCENT_REGION)"
+    current_value="$(config_prompt_value TENCENT_REGION "$reset_existing")"
     prompt_text "腾讯云 Region" "${current_value:-ap-guangzhou}"
     set_env_value TENCENT_REGION "$PROMPT_VALUE"
+  else
+    for key in ALIBABA_ACCESS_KEY_ID ALIBABA_ACCESS_KEY_SECRET ALIBABA_FROM_EMAIL \
+      TENCENT_SECRET_ID TENCENT_SECRET_KEY TENCENT_FROM_EMAIL TENCENT_REGION; do
+      set_env_value "$key" ""
+    done
+    warn "已跳过邮件服务；密码找回邮件暂时不可用，可稍后在后台配置"
   fi
 
-  current_value="$(current_config_value JUDGE_DOCKER_SOCKET)"
-  prompt_text "Judge Docker socket（不能是 /var/run/docker.sock）" \
+  current_value="$(config_prompt_value JUDGE_DOCKER_SOCKET "$reset_existing")"
+  prompt_text "评测服务连接位置（一般直接回车）" \
     "${current_value:-/run/noj-judge/docker.sock}"
   socket_path="$PROMPT_VALUE"
   set_env_value JUDGE_DOCKER_SOCKET "$socket_path"
@@ -430,8 +446,8 @@ EOF
   else
     socket_gid="10001"
   fi
-  current_value="$(current_config_value JUDGE_DOCKER_SOCKET_GID)"
-  prompt_text "Judge Docker socket GID" "${current_value:-$socket_gid}"
+  current_value="$(config_prompt_value JUDGE_DOCKER_SOCKET_GID "$reset_existing")"
+  prompt_text "评测服务连接编号（一般直接回车）" "${current_value:-$socket_gid}"
   [[ "$PROMPT_VALUE" =~ ^[0-9]+$ ]] || fail "Judge Docker socket GID 必须是数字"
   set_env_value JUDGE_DOCKER_SOCKET_GID "$PROMPT_VALUE"
   ok "生产配置引导完成，正在继续校验和启动服务"
@@ -484,11 +500,11 @@ initialize_env() {
 
   ok "已创建并保护 $ENV_FILE"
   if ((INTERACTIVE)) && has_interactive_tty; then
-    configure_env_interactive
+        configure_env_interactive 1
     return 0
   fi
   warn "当前没有可交互终端，无法引导填写生产配置"
-  warn "请编辑 $ENV_FILE，填写 NOJ_VERSION、DOMAIN、APP_URL、邮件 Provider、管理员账号和 Judge Docker socket"
+  warn "请编辑 $ENV_FILE，填写安装版本、网站地址、网站完整网址、邮件服务、管理员账号和评测服务连接位置"
   warn "填写完成后重新执行：bash scripts/deploy/deploy.sh install"
   warn "自动化场景可显式使用 --non-interactive，让未完成配置直接失败"
   exit 2
@@ -544,8 +560,10 @@ check_required_values() {
         is_placeholder "$value" && { printf "  - %s 未配置或仍是占位值\n" "$key" >&2; missing=1; }
       done
       ;;
+    disabled)
+      ;;
     *)
-      printf "  - EMAIL_PROVIDER 必须是 aliyun 或 tencent\n" >&2
+      printf "  - EMAIL_PROVIDER 必须是 aliyun、tencent 或 disabled\n" >&2
       missing=1
       ;;
   esac
