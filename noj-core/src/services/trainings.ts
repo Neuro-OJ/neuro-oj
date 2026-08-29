@@ -364,7 +364,7 @@ async function getAcceptedProblemIds(
     .where(and(
       eq(submissions.user_id, userId),
       inArray(submissions.problem_id, problemIds),
-      eq(evaluationResults.status, "finished"),
+      eq(submissions.status, "finished"),
       sql`${evaluationResults.score} > 0`,
     ));
   const objectiveRows = await db

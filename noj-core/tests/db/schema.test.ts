@@ -1,6 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import {
   evaluationResults,
+  oauthAccounts,
   problems,
   submissions,
   users,
@@ -25,9 +26,19 @@ Deno.test("schema: users columns have correct constraints", () => {
   assertEquals(users.username.isUnique, true); // UNIQUE
   assertEquals(users.email.notNull, true);
   assertEquals(users.email.isUnique, true); // UNIQUE
-  assertEquals(users.password_hash.notNull, true);
+  assertEquals(users.password_hash.notNull, false);
   assertEquals(users.created_at.notNull, true);
   assertEquals(users.updated_at.notNull, true);
+});
+
+Deno.test("schema: oauth accounts have a unique provider identity", () => {
+  const columns = Object.keys(oauthAccounts);
+  assertEquals(columns.includes("provider"), true);
+  assertEquals(columns.includes("provider_user_id"), true);
+  assertEquals(columns.includes("user_id"), true);
+  assertEquals(oauthAccounts.provider.notNull, true);
+  assertEquals(oauthAccounts.provider_user_id.notNull, true);
+  assertEquals(oauthAccounts.user_id.notNull, true);
 });
 
 Deno.test("schema: problems table has LMCC-specific columns", () => {

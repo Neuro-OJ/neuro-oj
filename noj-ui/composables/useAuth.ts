@@ -7,6 +7,7 @@ interface UserResponse {
   role: string;
   is_admin: boolean;
   must_change_password: boolean;
+  has_local_password: boolean;
   tfa_enabled?: boolean;
   avatar_url?: string | null;
   permissions?: string[];
@@ -22,6 +23,7 @@ interface SessionData {
   avatar_url?: string | null;
   is_admin: boolean;
   must_change_password: boolean;
+  has_local_password?: boolean;
   tfa_enabled?: boolean;
 }
 
@@ -34,6 +36,7 @@ function sessionToUser(session: SessionData): UserResponse {
     ...(session.avatar_url === undefined ? {} : { avatar_url: session.avatar_url }),
     is_admin: session.is_admin ?? session.role === 'admin',
     must_change_password: session.must_change_password ?? false,
+    has_local_password: session.has_local_password ?? true,
     tfa_enabled: session.tfa_enabled ?? false,
     created_at: '',
     updated_at: '',
@@ -117,6 +120,53 @@ export function useAuth() {
     );
   }
 
+  async function getOAuthProviders() {
+    const res = await api.get<{ data: Array<{ id: string; name: string }> }>(
+      '/api/v1/auth/oauth/providers',
+      { silent: true },
+    );
+    return res.data;
+  }
+
+  async function setPassword(newPassword: string) {
+    const res = await api.post<{ data: { user: UserResponse } }>(
+      '/api/v1/auth/set-password',
+      { new_password: newPassword },
+      { silent: true },
+    );
+    user.value = res.data.user;
+    return res.data.user;
+  }
+
+  async function getLinkedOAuthAccounts() {
+    const res = await api.get<{
+      data: Array<{
+        id: string;
+        provider: string;
+        provider_user_id: string;
+        provider_username: string | null;
+        created_at: string;
+      }>;
+    }>('/api/v1/auth/oauth/accounts', { silent: true });
+    return res.data;
+  }
+
+  async function beginOAuthLink(provider: string, password?: string) {
+    const res = await api.post<{ data: { authorization_url: string } }>(
+      `/api/v1/auth/oauth/${encodeURIComponent(provider)}/link`,
+      { password: password ?? '' },
+      { silent: true },
+    );
+    return res.data.authorization_url;
+  }
+
+  async function unlinkOAuthAccount(accountId: string, password?: string) {
+    await api.delete(`/api/v1/auth/oauth/accounts/${encodeURIComponent(accountId)}`, {
+      body: { password: password ?? '' },
+      silent: true,
+    });
+  }
+
   async function fetchUser() {
     if (!isLoggedIn.value) return null;
     try {
@@ -175,5 +225,10 @@ export function useAuth() {
     logout,
     forgotPassword,
     resetPassword,
+    getOAuthProviders,
+    setPassword,
+    getLinkedOAuthAccounts,
+    beginOAuthLink,
+    unlinkOAuthAccount,
   };
 }

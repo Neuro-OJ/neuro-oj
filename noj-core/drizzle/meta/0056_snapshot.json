@@ -1,6 +1,6 @@
 {
-  "id": "57d766d9-9be8-4855-99ba-c29a6939b83f",
-  "prevId": "e9afcfcd-ecf4-4ab0-8f82-0407c8fc85ac",
+  "id": "b90c6a16-da3e-4a18-bcb5-ad08a94bc1e7",
+  "prevId": "57d766d9-9be8-4855-99ba-c29a6939b83f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2383,7 +2383,7 @@
           "name": "score",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         }
       },
       "indexes": {},
@@ -2623,7 +2623,7 @@
       "checkConstraints": {
         "contests_type_check": {
           "name": "contests_type_check",
-          "value": "\"contests\".\"type\" IN ('icpc', 'ioi', 'oi')"
+          "value": "\"contests\".\"type\" IN ('kaggle')"
         },
         "contests_time_check": {
           "name": "contests_time_check",
@@ -3694,6 +3694,113 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.oauth_accounts": {
+      "name": "oauth_accounts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_user_id": {
+          "name": "provider_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_username": {
+          "name": "provider_username",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_email": {
+          "name": "provider_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email_verified": {
+          "name": "email_verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_oauth_accounts_user_id": {
+          "name": "idx_oauth_accounts_user_id",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "oauth_accounts_user_id_users_id_fk": {
+          "name": "oauth_accounts_user_id_users_id_fk",
+          "tableFrom": "oauth_accounts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "oauth_accounts_provider_identity_unique": {
+          "name": "oauth_accounts_provider_identity_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "provider",
+            "provider_user_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.objective_questions": {
       "name": "objective_questions",
       "schema": "",
@@ -4295,6 +4402,19 @@
           "notNull": true,
           "default": false
         },
+        "submission_mode": {
+          "name": "submission_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'code'"
+        },
+        "artifact_max_size_mb": {
+          "name": "artifact_max_size_mb",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "llm_config": {
           "name": "llm_config",
           "type": "jsonb",
@@ -4354,6 +4474,10 @@
         "problems_type_check": {
           "name": "problems_type_check",
           "value": "\"problems\".\"type\" IN ('U', 'P')"
+        },
+        "problems_submission_mode_check": {
+          "name": "problems_submission_mode_check",
+          "value": "\"problems\".\"submission_mode\" IN ('code', 'artifact')"
         },
         "problems_runtime_config_check": {
           "name": "problems_runtime_config_check",
@@ -4806,6 +4930,12 @@
         },
         "file_name": {
           "name": "file_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "artifact_storage_url": {
+          "name": "artifact_storage_url",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -5710,7 +5840,7 @@
           "name": "password_hash",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "bio": {
           "name": "bio",

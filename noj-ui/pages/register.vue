@@ -71,6 +71,23 @@
                 </UButton>
             </form>
 
+            <div v-if="oauthProviders.length" class="mt-5 flex flex-col gap-2">
+                <div class="flex items-center gap-3 text-xs text-text-muted">
+                    <span class="h-px flex-1 bg-border" />
+                    <span>或使用第三方账号注册</span>
+                    <span class="h-px flex-1 bg-border" />
+                </div>
+                <UButton
+                    v-for="provider in oauthProviders"
+                    :key="provider.id"
+                    color="neutral"
+                    variant="outline"
+                    block
+                    :disabled="oauthLoading"
+                    @click="startOAuth(provider.id)"
+                >使用 {{ provider.name }} 注册</UButton>
+            </div>
+
             <p class="text-center mt-5 text-sm text-text-secondary animate-[fadeInUp_0.5s_ease_0.3s_both]">
                 已有账号？<NuxtLink to="/login" class="text-primary no-underline font-semibold hover:underline">立即登录</NuxtLink>
             </p>
@@ -86,6 +103,21 @@ definePageMeta({ layout: "auth" })
 
 const router = useRouter()
 const auth = useAuth()
+const oauthProviders = ref<Array<{ id: string; name: string }>>([])
+const oauthLoading = ref(false)
+
+onMounted(async () => {
+    try {
+        oauthProviders.value = await auth.getOAuthProviders()
+    } catch {
+        oauthProviders.value = []
+    }
+})
+
+function startOAuth(provider: string) {
+    oauthLoading.value = true
+    window.location.assign(`/api/v1/auth/oauth/${encodeURIComponent(provider)}`)
+}
 
 const form = reactive({
     username: "",

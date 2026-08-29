@@ -50,7 +50,14 @@ export function useApi() {
   const serverCookie = import.meta.server ? { cookie: useRequestHeaders(['cookie']).cookie } : undefined;
 
   // 认证相关页面：其自身的 401（如登录失败）不应触发跳转，避免死循环
-  const AUTH_PAGE_PREFIXES = ['/login', '/register', '/forgot-password', '/reset-password', '/change-password'];
+  const AUTH_PAGE_PREFIXES = [
+    '/login',
+    '/register',
+    '/forgot-password',
+    '/reset-password',
+    '/change-password',
+    '/set-password',
+  ];
 
   async function request<T = unknown>(
     method: ApiMethod,

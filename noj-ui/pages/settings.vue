@@ -3,7 +3,8 @@ import { extractApiError } from "~/utils/apiError"
 import { getAvatarUploadError } from "~/utils/avatarUpload"
 import { formatRecoveryCodesFile } from "~/utils/recoveryCodes"
 import { userUrl } from "~/utils/publicIdentifiers"
-const { user, isLoggedIn, loading, fetchUser } = useAuth()
+const auth = useAuth()
+const { user, isLoggedIn, loading, fetchUser } = auth
 const router = useRouter()
 const { api } = useApi()
 
@@ -50,6 +51,68 @@ const avatarPreviewKey = ref(Date.now()) // 上传/删除后破缓存
 const avatarError = ref("") // issue #314：超过 2MB 等校验错误内联展示，避免“没有反应”
 const { dialog } = useDialog()
 const { toast } = useToast()
+
+// ── 第三方账号绑定（issue #227） ──
+const oauthProviders = ref<Array<{ id: string; name: string }>>([])
+const linkedOAuthAccounts = ref<Array<{
+  id: string
+  provider: string
+  provider_user_id: string
+  provider_username: string | null
+  created_at: string
+}>>([])
+const oauthPassword = ref("")
+const oauthLoading = ref(false)
+const oauthError = ref("")
+
+async function loadOAuthSettings() {
+  try {
+    const [providers, accounts] = await Promise.all([
+      auth.getOAuthProviders(),
+      auth.getLinkedOAuthAccounts(),
+    ])
+    oauthProviders.value = providers
+    linkedOAuthAccounts.value = accounts
+  } catch {
+    oauthProviders.value = []
+    linkedOAuthAccounts.value = []
+  }
+}
+
+watch(
+  loading,
+  (value) => {
+    if (!value && isLoggedIn.value) void loadOAuthSettings()
+  },
+  { immediate: true },
+)
+
+async function beginOAuthLink(provider: string) {
+  oauthLoading.value = true
+  oauthError.value = ""
+  try {
+    const url = await auth.beginOAuthLink(provider, oauthPassword.value)
+    window.location.assign(url)
+  } catch (err: unknown) {
+    oauthError.value = extractApiError(err).message
+    oauthLoading.value = false
+  }
+}
+
+async function handleOAuthUnlink(accountId: string) {
+  oauthLoading.value = true
+  oauthError.value = ""
+  try {
+    await auth.unlinkOAuthAccount(accountId, oauthPassword.value)
+    linkedOAuthAccounts.value = linkedOAuthAccounts.value.filter((account) => account.id !== accountId)
+    oauthPassword.value = ""
+    toast.success("第三方账号已解绑")
+  } catch (err: unknown) {
+    oauthError.value = extractApiError(err).message
+  } finally {
+    oauthLoading.value = false
+  }
+}
 
 // 上传头像（前端预校验类型/大小，与后端阈值一致）
 async function handleAvatarUpload(e: Event) {
@@ -405,6 +468,64 @@ async function handleCopyRecoveryCodes() {
           <UIcon name="i-lucide-save" class="size-4" />
           <span>{{ saving ? "保存中..." : "保存" }}</span>
         </UButton>
+      </div>
+    </div>
+
+    <!-- 第三方账号（issue #227） -->
+    <div class="bg-white border border-border rounded-xl overflow-hidden">
+      <div class="px-6 py-5 border-b border-border">
+        <h1 class="text-xl font-bold flex items-center gap-2">
+          <UIcon name="i-lucide-link" class="size-5" />
+          第三方账号
+        </h1>
+      </div>
+      <div class="px-6 py-6 flex flex-col gap-4">
+        <p class="text-sm text-text-secondary">
+          绑定后可以使用第三方账号登录。绑定和解绑需要确认当前密码；没有本地密码的账号不能解绑唯一登录方式。
+        </p>
+        <UInput
+          v-if="user?.has_local_password"
+          v-model="oauthPassword"
+          type="password"
+          autocomplete="current-password"
+          placeholder="确认当前密码"
+          class="max-w-sm"
+        />
+        <div v-if="linkedOAuthAccounts.length" class="flex flex-col gap-2">
+          <div
+            v-for="account in linkedOAuthAccounts"
+            :key="account.id"
+            class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"
+          >
+            <div>
+              <p class="font-semibold">{{ account.provider }}</p>
+              <p class="text-xs text-text-muted">
+                {{ account.provider_username || account.provider_user_id }}
+              </p>
+            </div>
+            <UButton
+              size="sm"
+              color="error"
+              variant="outline"
+              :loading="oauthLoading"
+              @click="handleOAuthUnlink(account.id)"
+            >解绑</UButton>
+          </div>
+        </div>
+        <div v-if="oauthProviders.length" class="flex flex-wrap gap-2">
+          <UButton
+            v-for="provider in oauthProviders.filter((item) => !linkedOAuthAccounts.some((account) => account.provider === item.id))"
+            :key="provider.id"
+            color="primary"
+            variant="outline"
+            :loading="oauthLoading"
+            @click="beginOAuthLink(provider.id)"
+          >绑定 {{ provider.name }}</UButton>
+        </div>
+        <p v-if="oauthError" class="text-sm text-error-text">{{ oauthError }}</p>
+        <p v-if="!oauthProviders.length && !linkedOAuthAccounts.length" class="text-sm text-text-muted">
+          管理员尚未配置第三方登录。
+        </p>
       </div>
     </div>
 

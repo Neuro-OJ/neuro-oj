@@ -48,6 +48,8 @@ export interface UserResponse {
   /** 管理员列表使用的已分配角色 ID，避免编辑时误覆盖现有角色。 */
   role_ids?: string[];
   is_admin: boolean;
+  /** 是否已设置本地密码；OAuth 新用户初始为 false */
+  has_local_password: boolean;
   must_change_password: boolean;
   active_ban: {
     reason: string;

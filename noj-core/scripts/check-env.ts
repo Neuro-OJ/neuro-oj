@@ -131,6 +131,35 @@ function inspect(env: Map<string, string>): Finding[] {
     });
   }
 
+  const githubKeys = ["OAUTH_GITHUB_CLIENT_ID", "OAUTH_GITHUB_CLIENT_SECRET"];
+  if (githubKeys.some((key) => env.has(key) && env.get(key)?.trim())) {
+    for (const key of githubKeys) {
+      if (!env.get(key)?.trim()) {
+        findings.push({
+          key,
+          display: "(缺失)",
+          reason: "GitHub OAuth 配置必须同时提供 client id 和 secret",
+        });
+      }
+    }
+  }
+  const oidcKeys = [
+    "OAUTH_OIDC_ISSUER_URL",
+    "OAUTH_OIDC_CLIENT_ID",
+    "OAUTH_OIDC_CLIENT_SECRET",
+  ];
+  if (oidcKeys.some((key) => env.has(key) && env.get(key)?.trim())) {
+    for (const key of oidcKeys) {
+      if (!env.get(key)?.trim()) {
+        findings.push({
+          key,
+          display: "(缺失)",
+          reason: "OIDC 配置必须同时提供 issuer、client id 和 secret",
+        });
+      }
+    }
+  }
+
   return findings;
 }
 

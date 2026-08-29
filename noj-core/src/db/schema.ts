@@ -41,7 +41,8 @@ export const users = pgTable(
     id: text("id").primaryKey(),
     username: text("username").notNull().unique(),
     email: text("email").notNull().unique(),
-    password_hash: text("password_hash").notNull(),
+    /** 本地密码 bcrypt 哈希；OAuth 新用户在补设密码前为 NULL */
+    password_hash: text("password_hash"),
     /** 个人简介（Markdown 格式） */
     bio: text("bio").notNull().default(""),
     /**
@@ -76,6 +77,32 @@ export const users = pgTable(
       "users_community_activity_visibility_check",
       sql`${table.community_activity_visibility} IN ('hidden', 'following', 'everyone')`,
     ),
+  }),
+);
+
+/**
+ * 第三方登录账号关联。
+ * provider + provider_user_id 是外部身份的稳定唯一键，不保存 access/refresh token。
+ */
+export const oauthAccounts = pgTable(
+  "oauth_accounts",
+  {
+    id: text("id").primaryKey(),
+    provider: text("provider").notNull(),
+    provider_user_id: text("provider_user_id").notNull(),
+    user_id: text("user_id").notNull().references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    provider_username: text("provider_username"),
+    provider_email: text("provider_email"),
+    email_verified: boolean("email_verified").notNull().default(false),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    providerIdentityUnique: unique("oauth_accounts_provider_identity_unique")
+      .on(table.provider, table.provider_user_id),
+    userIdx: index("idx_oauth_accounts_user_id").on(table.user_id),
   }),
 );
 

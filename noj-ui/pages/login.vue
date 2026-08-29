@@ -71,8 +71,27 @@
     </template>
   </AuthFormCard>
 
+  <div v-if="!tfaRequired && oauthProviders.length" class="w-full max-w-[380px] mt-4 flex flex-col gap-2">
+    <div class="flex items-center gap-3 text-xs text-text-muted">
+      <span class="h-px flex-1 bg-border" />
+      <span>或使用第三方账号</span>
+      <span class="h-px flex-1 bg-border" />
+    </div>
+    <UButton
+      v-for="provider in oauthProviders"
+      :key="provider.id"
+      color="neutral"
+      variant="outline"
+      block
+      :disabled="oauthLoading"
+      @click="startOAuth(provider.id)"
+    >
+      使用 {{ provider.name }} 登录
+    </UButton>
+  </div>
+
   <AuthFormCard
-    v-else
+    v-if="tfaRequired"
     title="两步验证（2FA）"
     :subtitle="`账号：${form.login.trim()}`"
     :error="error"
@@ -228,6 +247,26 @@ const recoveryMode = ref(false)
 const recoveryCodeFileInput = ref<HTMLInputElement | null>(null)
 const recoveryFileCodes = ref<string[]>([])
 const recoveryFileError = ref("")
+const oauthProviders = ref<Array<{ id: string; name: string }>>([])
+const oauthLoading = ref(false)
+
+onMounted(async () => {
+  if (route.query.oauth_error) {
+    setError(route.query.oauth_error === "state_invalid"
+      ? "第三方登录请求已失效，请重新尝试"
+      : "第三方登录失败，请稍后重试")
+  }
+  try {
+    oauthProviders.value = await auth.getOAuthProviders()
+  } catch {
+    oauthProviders.value = []
+  }
+})
+
+function startOAuth(provider: string) {
+  oauthLoading.value = true
+  window.location.assign(`/api/v1/auth/oauth/${encodeURIComponent(provider)}`)
+}
 
 // 注册成功后的提示
 const registeredMsg = ref("")
