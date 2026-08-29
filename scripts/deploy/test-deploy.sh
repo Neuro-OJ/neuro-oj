@@ -57,6 +57,7 @@ cat >"$ENV_FILE" <<'EOF'
 NOJ_VERSION=v0.1.0
 NOJ_ENFORCE_IMAGE_SIGNATURES=false
 APP_URL=https://noj.test
+DOMAIN=noj.test
 CORS_ALLOWED_ORIGINS=https://noj.test
 TRUSTED_PROXIES=172.28.0.0/16
 POSTGRES_PASSWORD=strong-postgres-password
@@ -117,6 +118,18 @@ pass "服务器 IP 默认值检测"
 grep -q '可直接回车使用检测到的 IP' "$DEPLOY_SCRIPT" || fail "网站地址的服务器 IP 引导提示缺失"
 grep -q '正式环境仍需 HTTPS' "$DEPLOY_SCRIPT" || fail "IP 场景 HTTPS 提示缺失"
 pass "服务器 IP 默认值和 HTTPS 提示"
+
+bad_domain_env="$TEST_ROOT/bad-domain.env"
+cp "$ENV_FILE" "$bad_domain_env"
+sed -i.bak 's/^DOMAIN=.*/DOMAIN=exit/' "$bad_domain_env"
+stored_bad_domain="$(NOJ_DEPLOY_SOURCE_ONLY=1 bash -c 'source "$1"; ENV_FILE="$2"; current_config_value DOMAIN' bash "$DEPLOY_SCRIPT" "$bad_domain_env")"
+[[ -z "$stored_bad_domain" ]] || fail "旧的退出文字仍被当成网站地址默认值"
+if run_deploy_with "$bad_domain_env" start >"$TEST_ROOT/bad-domain.out" 2>&1; then
+  fail "无效网站地址不应通过配置校验"
+fi
+grep -q '网站地址必须是域名或服务器 IP' "$TEST_ROOT/bad-domain.out" ||
+  fail "无效网站地址未给出易懂错误提示"
+pass "清理旧的退出文字配置"
 
 reuse_yes="$(NOJ_DEPLOY_SOURCE_ONLY=1 NOJ_DEPLOY_TEST_CONFIRM=y bash -c 'source "$1"; read_prompt() { PROMPT_VALUE="$NOJ_DEPLOY_TEST_CONFIRM"; }; confirm_reuse_config' bash "$DEPLOY_SCRIPT")"
 [[ "$reuse_yes" == *"将使用先前配置"* ]] || fail "确认使用先前配置未生效"

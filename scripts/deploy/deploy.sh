@@ -176,6 +176,13 @@ env_value() {
   printf '%s\n' "$value"
 }
 
+is_exit_word() {
+  case "$1" in
+    exit|EXIT|quit|QUIT|cancel|CANCEL|q|Q|取消) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 set_env_value() {
   local key="$1" value="$2" tmp
   tmp="$(mktemp "${ENV_FILE}.tmp.XXXXXX")"
@@ -260,6 +267,9 @@ current_config_value() {
   if is_placeholder "$value"; then
     value=""
   fi
+  if [[ "$key" == DOMAIN ]] && is_exit_word "$value"; then
+    value=""
+  fi
   printf '%s\n' "$value"
 }
 
@@ -279,6 +289,15 @@ is_ipv4_address() {
   for octet in "${octets[@]}"; do
     ((10#$octet <= 255)) || return 1
   done
+}
+
+is_site_address() {
+  local address="$1"
+  if is_ipv4_address "$address"; then
+    return 0
+  fi
+  [[ "$address" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] &&
+    [[ "$address" == *.* ]]
 }
 
 detect_default_ipv4() {
@@ -374,8 +393,8 @@ EOF
   default_domain="${current_value:-$detected_ip}"
   prompt_text "网站地址（域名或服务器 IP，不要写 https://；可直接回车使用检测到的 IP）" "$default_domain"
   domain="$PROMPT_VALUE"
-  [[ "$domain" != *[[:space:]]* && "$domain" != */* && "$domain" != *://* ]] ||
-    fail "网站地址不能包含 https://、斜杠或空格"
+  is_site_address "$domain" ||
+    fail "网站地址必须是域名或服务器 IP，例如 oj.example.com 或 192.0.2.10"
   set_env_value DOMAIN "$domain"
   if is_ipv4_address "$domain"; then
     warn "当前使用服务器 IP；正式环境仍需 HTTPS，建议以后换成域名并配置证书"
@@ -531,7 +550,7 @@ is_placeholder() {
 check_required_values() {
   local key value
   local required_keys=(
-    NOJ_VERSION APP_URL CORS_ALLOWED_ORIGINS TRUSTED_PROXIES
+    NOJ_VERSION DOMAIN APP_URL CORS_ALLOWED_ORIGINS TRUSTED_PROXIES
     POSTGRES_PASSWORD REDIS_PASSWORD MINIO_ROOT_USER MINIO_ROOT_PASSWORD
     S3_ACCESS_KEY S3_SECRET_KEY S3_BUCKET S3_ENDPOINT STORAGE_PROVIDER
     JWT_SECRET TFA_ENCRYPTION_KEY NOJ_LLM_SERVICE_TOKEN NOJ_LLM_STORE_KEY
@@ -546,6 +565,11 @@ check_required_values() {
     fi
   done
   ((missing == 0)) || fail "生产配置未完成，请先修复上面的配置项"
+
+  is_site_address "$(env_value DOMAIN)" || {
+    printf "  - 网站地址必须是域名或服务器 IP\n" >&2
+    missing=1
+  }
 
   case "$(env_value EMAIL_PROVIDER)" in
     aliyun)
