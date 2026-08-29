@@ -1,7 +1,7 @@
 # Neuro OJ (NOJ) — AI 编码助手项目知识库
 
 > 本文档面向 AI 编码助手（Claude Code、OpenCode 等）撰写，记录项目架构、规范、AI
-> 必须遵守的要求与开发约定。**本文档只放“规则 + 链接”，详细内容见各模块 `CLAUDE.md` 与 `docs/engineering/`。**
+> 必须遵守的要求与开发约定。**本文档只放“规则 + 链接”，详细内容见各模块文档与 `docs/engineering/`。**
 
 Neuro OJ 是一个面向 **AI 领域认证与竞赛** 的在线评测（Online Judge）平台，覆盖 **IOAI / NOAI / LMCC** 等场景，支持客观题、代码题、LLM 工程题与产物提交（类 Kaggle）评测。
 
@@ -12,7 +12,7 @@ Neuro OJ 是一个面向 **AI 领域认证与竞赛** 的在线评测（Online J
 ## 目录
 
 1. [项目架构](#1-项目架构)
-2. [AI 工具集成](#2-ai-工具集成)
+2. [AI 辅助开发](#2-ai-辅助开发)
 3. [目录结构](#3-目录结构)
 4. [技术栈](#4-技术栈)
 5. [基础设施与启动](#5-基础设施与启动)
@@ -51,15 +51,15 @@ NOJ 分为多个模块，通过 RESTful API、Redis MQ 和内部 HTTP 服务协�
 | noj-judge | Rust + Tokio | Docker 沙箱评测、双容器 Evaluator + Solution |
 | noj-llm-gateway | Deno + Hono | LLM 调用可信代理、Provider Key 加密、eval_token、限流/额度/审计 |
 
-详细架构见 [noj-docs/docs/system/architecture.md](noj-docs/docs/system/architecture.md) 和各模块 `CLAUDE.md`。
+详细架构见 [noj-docs/docs/system/architecture.md](noj-docs/docs/system/architecture.md) 和各模块文档。
 
 ---
 
-## 2. AI 工具集成
+## 2. AI 辅助开发
 
 ### 2.1 AI 技能
 
-位于 `.claude/skills/` 与 `.opencode/skills/`，按需加载：
+AI 技能由开发环境按需提供，仓库不再提交 Claude Code、OpenCode、Codex 等工具的个人配置或重复技能副本。适用领域如下：
 
 | 技能 | 适用场景 |
 |---|---|
@@ -106,7 +106,7 @@ neuro-oj/
 ├── openspec/       # OpenSpec 行为规范与变更
 ├── docs/           # 设计文档、实施计划、工程规范、审计
 ├── scripts/        # 构建与运维脚本（dev/e2e 等）
-├── .agents/        # Agent Notes 与技能
+├── .agents/        # 工程决策记录（仅开发辅助）
 ├── .github/        # CI/CD 与 PR 模板
 ├── AGENTS.md       # 本文档
 └── README.md       # 用户面向 README
@@ -184,7 +184,14 @@ cd noj-llm-gateway && deno task dev   # 可选
 
 ## 7. 版本控制与提交规范
 
-### 7.1 Jujutsu (jj)
+### 7.1 分支与发布纪律
+
+- 日常开发、功能实现、缺陷修复和实验性变更请提交至 `dev` 分支，或从 `dev` 派生功能分支后通过 PR 合入 `dev`。
+- `main` 分支只接受经过评审、检查和验收的变更；禁止直接在 `main` 上进行日常开发或提交本地调试产物。
+- `main` 分支必须始终保持可部署状态；发布应从已验证的 `main` 提交或版本标签构建。
+- AI 工具配置、编辑器配置、临时日志、备份文件和其他本地开发产物不得提交到 `main`。
+
+### 7.2 Jujutsu (jj)
 
 - 本地使用 jj，推送使用 `jj git push`
 - `jj describe` 设提交信息，`jj new` 创建新提交，`jj undo` 回退
@@ -235,7 +242,7 @@ cd noj-llm-gateway && deno task dev   # 可选
 
 ### 8.3 修改前必读
 
-进入模块目录前先读对应 `CLAUDE.md`；涉及对应领域时加载对应技能。
+进入模块目录前先读对应的模块开发文档；涉及对应领域时加载对应技能。
 
 ### 8.4 改动检查清单
 
