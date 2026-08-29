@@ -4,6 +4,7 @@ import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
 import type { OptionalAuthEnv } from "../middleware/auth.ts";
 import { Channels, onEvent } from "../lib/event-bus.ts";
 import { createSseStream } from "../lib/sse-stream.ts";
+import { replaySseEvents } from "../lib/sse-events.ts";
 import { getSubmission } from "../services/submissions/submissions.ts";
 import { getQueueOverview } from "../services/queue.ts";
 import { checkPermission } from "../lib/permissions.ts";
@@ -28,6 +29,20 @@ import { NotFoundError } from "../lib/errors.ts";
  * c.set("userRole") 注入用户信息，此处通过 c.get("userId") / c.get("userRole") 读取。
  */
 const sse = new Hono<{ Variables: { userId: string; userRole: string } }>();
+
+/** 从 Last-Event-ID 头或 afterSeq 查询参数解析游标。 */
+function lastEventId(
+  c: {
+    req: {
+      header(key: string): string | undefined;
+      query(key: string): string | undefined;
+    };
+  },
+): number {
+  const raw = c.req.header("last-event-id") ?? c.req.query("afterSeq") ?? "0";
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
 
 // SSE 端点全部需要认证
 sse.use("*", authMiddleware);
@@ -86,6 +101,22 @@ sse.get("/submissions/:id/events", async (c) => {
           },
         ),
       );
+
+      // 重放缺失事件（先订阅后重放，避免竞态）
+      const after = lastEventId(c);
+      const missed = await replaySseEvents(
+        [Channels.submission(id)],
+        after,
+        200,
+      );
+      for (const ev of missed) {
+        if (closed) return;
+        await stream.writeSSE({
+          event: "submission:updated",
+          id: String(ev.id),
+          data: JSON.stringify({ ...(ev.payload as object), seq: ev.id }),
+        });
+      }
     },
   );
 });
@@ -129,6 +160,18 @@ sse.get("/queue/events", (c) => {
           },
         ),
       );
+
+      // 重放缺失事件
+      const after = lastEventId(c);
+      const missed = await replaySseEvents([Channels.queue], after, 200);
+      for (const ev of missed) {
+        if (closed) return;
+        await stream.writeSSE({
+          event: "queue:changed",
+          id: String(ev.id),
+          data: JSON.stringify({ ...(ev.payload as object), seq: ev.id }),
+        });
+      }
     },
   );
 });
@@ -188,6 +231,18 @@ statsSse.get("/submissions/stats/events", (c) => {
           },
         ),
       );
+
+      // 重放缺失事件
+      const after = lastEventId(c);
+      const missed = await replaySseEvents([Channels.stats], after, 200);
+      for (const ev of missed) {
+        if (closed) return;
+        await stream.writeSSE({
+          event: "stats:updated",
+          id: String(ev.id),
+          data: JSON.stringify({ ...(ev.payload as object), seq: ev.id }),
+        });
+      }
     },
   );
 });
@@ -302,6 +357,41 @@ contestSse.get(
         },
       );
 
+      // 重放缺失事件（先订阅后重放，避免竞态）
+      const after = lastEventId(c);
+      const missed = await replaySseEvents(
+        [
+          Channels.contestRanking(contestId),
+          Channels.contestSubmission(contestId),
+        ],
+        after,
+        200,
+      );
+      for (const ev of missed) {
+        if (streamClosed) return;
+        const payload = ev.payload as { type?: string };
+        if (payload.type === "contest:submission:created") {
+          let data = JSON.stringify({ ...payload, seq: ev.id });
+          if (!isAdmin) {
+            try {
+              const parsed = JSON.parse(data) as Record<string, unknown>;
+              delete parsed.user_id;
+              data = JSON.stringify(parsed);
+            } catch {
+              // 保持原样
+            }
+          }
+          await stream.writeSSE({
+            event: "contest:submission:created",
+            id: String(ev.id),
+            data,
+          });
+        } else {
+          // ranking 变更事件：走 pushRanking 拉取最新榜单
+          void pushRanking("contest:ranking:updated");
+        }
+      }
+
       await new Promise<void>((resolve) => {
         resolveAbort = resolve;
         stream.onAbort(closeStream);
@@ -344,6 +434,20 @@ sse.get("/community/notifications/events", (c) => {
           },
         ),
       );
+
+      // 重放缺失的通知事件
+      const after = lastEventId(c);
+      const missed = await replaySseEvents([Channels.user(userId)], after, 200);
+      for (const ev of missed) {
+        if (closed) return;
+        const payload = ev.payload as { type?: string };
+        if (payload.type !== "notification:new") continue;
+        await stream.writeSSE({
+          event: "notification:new",
+          id: String(ev.id),
+          data: JSON.stringify({ ...payload, seq: ev.id }),
+        });
+      }
 
       // 发送初始化事件，触发代理 flush 响应头
       await stream.writeSSE({ event: "connected", data: "" });

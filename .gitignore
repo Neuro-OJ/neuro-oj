@@ -20,6 +20,7 @@ Thumbs.db
 
 # --- Deno ---
 .deno_cache/
+.deno_cov_cache/
 deno.lock  # 不锁定依赖版本——社区库遵循 semver 即可
 
 # --- Node.js / npm ---

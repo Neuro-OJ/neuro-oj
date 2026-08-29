@@ -39,6 +39,14 @@ class FakeRedis implements RedisClient {
     return await Promise.resolve("OK");
   }
 
+  async sadd(_key: string, _member: string): Promise<number> {
+    return await Promise.resolve(0);
+  }
+
+  async scard(_key: string): Promise<number> {
+    return await Promise.resolve(0);
+  }
+
   async eval(
     _script: string,
     _keys: string[],

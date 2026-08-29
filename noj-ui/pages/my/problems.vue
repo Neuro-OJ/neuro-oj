@@ -5,6 +5,7 @@ import { difficultyBadgeColors, difficultyLabels } from "~/utils/submissionForma
 
 definePageMeta({
   middleware: "auth",
+  ssr: false,
 })
 
 const { isLoggedIn, loading, user } = useAuth()

@@ -1,9 +1,12 @@
 /**
- * 单个提交的实时状态轮询 composable
+ * 单个提交的实时状态 composable
  *
  * 用于编辑器提交后留在页面时，实时显示评测进度。
- * 提交状态变为 finished / error 时自动停止轮询。
+ * 优先使用 SSE，不可用时自动降级到轮询 fallback。
+ * 提交状态变为 finished / error 时自动停止。
  */
+import { computed, onUnmounted, type Ref, ref } from 'vue';
+import { useEventSource } from './useEventSource';
 import { extractApiError } from '~/utils/apiError';
 
 export type SubmissionStatus =
@@ -29,20 +32,15 @@ export interface PolledSubmission {
 }
 
 const TERMINAL_STATUSES: SubmissionStatus[] = ['finished', 'error'];
-const POLL_INTERVAL_MS = 1500;
+const FALLBACK_INTERVAL_MS = 1500;
 
 export function useSubmissionPolling(submissionIdRef: Ref<string | null>) {
+  const { api } = useApi();
   const submission = ref<PolledSubmission | null>(null);
   const isPolling = ref(false);
   const error = ref<string | null>(null);
 
-  let timer: ReturnType<typeof setInterval> | null = null;
-
   function stop() {
-    if (timer) {
-      clearInterval(timer);
-      timer = null;
-    }
     isPolling.value = false;
   }
 
@@ -51,7 +49,7 @@ export function useSubmissionPolling(submissionIdRef: Ref<string | null>) {
     if (!id) return;
     try {
       // 轮询为静默请求：失败写入 error ref 由页面展示，不弹 toast
-      const res = await useApi().api.get<{ data: PolledSubmission }>(
+      const res = await api.get<{ data: PolledSubmission }>(
         `/api/v1/submissions/${id}`,
         { silent: true },
       );
@@ -65,13 +63,25 @@ export function useSubmissionPolling(submissionIdRef: Ref<string | null>) {
     }
   }
 
+  const sseUrl = computed(() => submissionIdRef.value ? `/api/v1/submissions/${submissionIdRef.value}/events` : '');
+
+  // SSE 优先 + fallback 轮询
+  useEventSource({
+    url: sseUrl,
+    enabled: isPolling,
+    onEvent: {
+      'submission:updated': () => fetchOnce(),
+    },
+    fetchFn: fetchOnce,
+    fallbackIntervalMs: FALLBACK_INTERVAL_MS,
+  });
+
   function start(id: string) {
     stop();
     submission.value = null;
     isPolling.value = true;
     submissionIdRef.value = id;
     void fetchOnce();
-    timer = setInterval(fetchOnce, POLL_INTERVAL_MS);
   }
 
   onUnmounted(stop);

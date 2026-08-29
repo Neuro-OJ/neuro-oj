@@ -42,6 +42,7 @@ export interface AuditLogFilters {
 }
 
 export function useAuditLogs(initial: Partial<AuditLogFilters> = {}) {
+  const { api } = useApi();
   const filters = useState('audit-logs-filters', () => ({
     page: 1,
     per_page: 20,
@@ -69,7 +70,7 @@ export function useAuditLogs(initial: Partial<AuditLogFilters> = {}) {
       if (filters.value.from) params.set('from', filters.value.from);
       if (filters.value.to) params.set('to', filters.value.to);
 
-      const res = await useApi().api.get<AuditLogListResponse>(
+      const res = await api.get<AuditLogListResponse>(
         `/api/v1/admin/audit-logs?${params}`,
         { silent: true },
       );

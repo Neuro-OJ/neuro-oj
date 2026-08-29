@@ -133,6 +133,39 @@ PostgreSQL + Drizzle ORM 实现持久化和迁移。
 - **WHEN** 尝试插入 type='X' 的记录
 - **THEN** 数据库 CHECK 约束拒绝插入
 
+### Requirement: problems.llm_config 列
+
+系统 SHALL 在 `problems` 表新增可空 JSONB 列 `llm_config`，用于存储题目固定的 LLM 配置（`provider_id`、`model`）。非 LLM 题目该列为 NULL。
+
+#### Scenario: 创建 LLM 题目
+
+- **WHEN** 创建携带 `llm` 配置的题目
+- **THEN** `problems.llm_config` 存储 `{"provider_id": "...", "model": "..."}`
+
+#### Scenario: 非 LLM 题目
+
+- **WHEN** 创建不携带 `llm` 配置的题目
+- **THEN** `problems.llm_config` 为 NULL
+
+### Requirement: LLM 网关相关表
+
+系统 SHALL 提供 `llm_providers`、`llm_usage`、`llm_quotas` 表，用于存储 Provider 配置、调用审计与配额配置。
+
+#### Scenario: llm_providers 表
+
+- **WHEN** 检查 `llm_providers` 表结构
+- **THEN** 表包含 `id`、`name`、`base_url`、`model`、`encrypted_api_key`、`enabled`、`created_by`、`created_at`、`updated_at`
+
+#### Scenario: llm_usage 表
+
+- **WHEN** 检查 `llm_usage` 表结构
+- **THEN** 表包含 `id`、`submission_id`、`problem_id`、`user_id`、`provider_id`、`model`、`request_messages`（JSONB）、`request_params`（JSONB）、`prompt_tokens`、`completion_tokens`、`total_tokens`、`estimated_cost`、`latency_ms`、`status`、`error_code`、`prompt_hash`、`created_at`
+
+#### Scenario: llm_quotas 表
+
+- **WHEN** 检查 `llm_quotas` 表结构
+- **THEN** 表包含 `id`、`scope_type`（`user`/`problem`/`global`）、`scope_id`、`window_type`（`day`/`month`）、`max_calls`、`max_tokens`、`max_cost`、`created_at`、`updated_at`
+
 ### Requirement: 提交表（submissions）
 
 系统 SHALL 提供 `submissions` 表存储用户代码提交：
@@ -677,3 +710,81 @@ ORM 映射：Drizzle ORM 0.45.x 不导出原生 `tsvector` 列类型，使用
 - **WHEN** 自测记录写入或更新
 - **THEN** `submissions` 与 `evaluationResults` 表不发生任何变化
 
+
+### Requirement: contests.public_id 列
+
+系统 SHALL 在 `contests` 表新增 `public_id` 文本列，唯一且非空，用于存储竞赛公开标识（`ct-` 前缀短码）。
+
+#### Scenario: 创建竞赛生成 public_id
+
+- **WHEN** 创建竞赛
+- **THEN** 系统生成 `ct-` 前缀 8 位随机短码并写入 `contests.public_id`
+
+#### Scenario: public_id 唯一
+
+- **WHEN** 尝试插入重复 `contests.public_id`
+- **THEN** 数据库唯一索引拒绝该插入
+
+### Requirement: trainings.public_id 列
+
+系统 SHALL 在 `trainings` 表新增不可变 `public_id` 唯一非空列（`tr-` 前缀短码）。
+
+#### Scenario: 创建训练生成 public_id
+
+- **WHEN** 创建训练
+- **THEN** 系统生成 `tr-` 前缀 8 位短码并写入 `trainings.public_id`
+
+### Requirement: submissions.public_id 列
+
+系统 SHALL 在 `submissions` 表新增不可变 `public_id` 唯一非空列（`sub-` 前缀短码）。
+
+#### Scenario: 创建提交生成 public_id
+
+- **WHEN** 创建提交
+- **THEN** 系统生成 `sub-` 前缀 8 位短码并写入 `submissions.public_id`
+
+### Requirement: community_posts.public_id 列
+
+系统 SHALL 在 `community_posts` 表新增不可变 `public_id` 唯一非空列（`post-` 前缀短码）。
+
+#### Scenario: 创建帖子生成 public_id
+
+- **WHEN** 创建社区帖子
+- **THEN** 系统生成 `post-` 前缀 8 位短码并写入 `community_posts.public_id`
+
+### Requirement: announcements.public_id 列
+
+系统 SHALL 在 `announcements` 表新增不可变 `public_id` 唯一非空列（`ann-` 前缀短码）。
+
+#### Scenario: 创建公告生成 public_id
+
+- **WHEN** 创建公告
+- **THEN** 系统生成 `ann-` 前缀 8 位短码并写入 `announcements.public_id`
+
+### Requirement: problems.submission_mode 与 artifact_max_size_mb 列
+
+系统 SHALL 在 `problems` 表新增 `submission_mode` 文本列（默认 `'code'`，CHECK 仅允许 `code` / `artifact`）与可空 `artifact_max_size_mb` 整数列，用于支持类 Kaggle 产物提交。
+
+#### Scenario: 默认 submission_mode 为 code
+
+- **WHEN** 创建题目且未指定 `submission_mode`
+- **THEN** `problems.submission_mode` 默认为 `'code'`
+
+#### Scenario: artifact 题目设置大小上限
+
+- **WHEN** 管理员创建 artifact 题目并设置 `artifact_max_size_mb`
+- **THEN** 该值写入 `problems.artifact_max_size_mb`，上传 zip 超过该值时被拒绝
+
+### Requirement: submissions.artifact_storage_url 列
+
+系统 SHALL 在 `submissions` 表新增可空 `artifact_storage_url` 文本列，用于存储 artifact 提交的 `noj-storage://` 对象地址；code 提交该列为 NULL。
+
+#### Scenario: artifact 提交写入存储地址
+
+- **WHEN** 用户向 artifact 题目上传 zip 并创建提交
+- **THEN** `submissions.artifact_storage_url` 存储该 zip 的 `noj-storage://` URL
+
+#### Scenario: code 提交不写入存储地址
+
+- **WHEN** 用户创建普通 code 提交
+- **THEN** `submissions.artifact_storage_url` 为 NULL

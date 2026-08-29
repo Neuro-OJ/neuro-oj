@@ -3,6 +3,9 @@ import { extractApiError } from "~/utils/apiError"
 import { getAvatarUploadError } from "~/utils/avatarUpload"
 import { formatRecoveryCodesFile } from "~/utils/recoveryCodes"
 import { userUrl } from "~/utils/publicIdentifiers"
+
+definePageMeta({ ssr: false })
+
 const auth = useAuth()
 const { user, isLoggedIn, loading, fetchUser } = auth
 const router = useRouter()
@@ -360,6 +363,94 @@ async function handleCopyRecoveryCodes() {
     toast.error("复制失败，请手动复制恢复码")
   }
 }
+
+// ── 用户自带模型（BYOK） ──
+interface ByokProvider {
+  id: string
+  name: string
+  base_url: string
+  model: string
+  api_key_masked: string
+  enabled: boolean
+}
+const byokProviders = ref<ByokProvider[]>([])
+const byokLoading = ref(false)
+const byokError = ref("")
+const byokForm = reactive({ name: "", base_url: "https://api.openai.com/v1", model: "", api_key: "" })
+const rotatingKeys = reactive<Record<string, string>>({})
+
+async function loadByokProviders() {
+  if (!isLoggedIn.value) return
+  byokLoading.value = true
+  byokError.value = ""
+  try {
+    const res = await api.get<{ data: ByokProvider[] }>("/api/v1/users/me/llm-providers", { silent: true })
+    byokProviders.value = res.data
+  } catch (err: unknown) {
+    byokError.value = extractApiError(err).message
+  } finally {
+    byokLoading.value = false
+  }
+}
+
+async function createByokProvider() {
+  if (!byokForm.name.trim() || !byokForm.model.trim() || !byokForm.api_key.trim()) {
+    byokError.value = "请填写名称、模型和 API Key"
+    return
+  }
+  byokLoading.value = true
+  byokError.value = ""
+  try {
+    await api.post("/api/v1/users/me/llm-providers", { ...byokForm })
+    byokForm.name = ""
+    byokForm.model = ""
+    byokForm.api_key = ""
+    await loadByokProviders()
+    toast.success("模型配置已保存")
+  } catch (err: unknown) {
+    byokError.value = extractApiError(err).message
+  } finally {
+    byokLoading.value = false
+  }
+}
+
+async function rotateByokProvider(provider: ByokProvider) {
+  const apiKey = rotatingKeys[provider.id]?.trim()
+  if (!apiKey) {
+    byokError.value = "请输入新的 API Key"
+    return
+  }
+  try {
+    await api.put(`/api/v1/users/me/llm-providers/${provider.id}`, { api_key: apiKey })
+    rotatingKeys[provider.id] = ""
+    await loadByokProviders()
+    toast.success("API Key 已轮换")
+  } catch (err: unknown) {
+    byokError.value = extractApiError(err).message
+  }
+}
+
+async function testByokProvider(provider: ByokProvider) {
+  try {
+    await api.post(`/api/v1/users/me/llm-providers/${provider.id}/test`, undefined)
+    toast.success("连接测试成功")
+  } catch (err: unknown) {
+    byokError.value = extractApiError(err).message
+  }
+}
+
+async function deleteByokProvider(provider: ByokProvider) {
+  if (!await dialog.confirm(`确定删除模型配置“${provider.name}”吗？`)) return
+  try {
+    await api.delete(`/api/v1/users/me/llm-providers/${provider.id}`)
+    await loadByokProviders()
+    toast.success("模型配置已删除")
+  } catch (err: unknown) {
+    byokError.value = extractApiError(err).message
+  }
+}
+
+watch(isLoggedIn, loadByokProviders, { immediate: true })
 </script>
 
 <template>
@@ -526,6 +617,46 @@ async function handleCopyRecoveryCodes() {
         <p v-if="!oauthProviders.length && !linkedOAuthAccounts.length" class="text-sm text-text-muted">
           管理员尚未配置第三方登录。
         </p>
+      </div>
+    </div>
+
+    <!-- 用户自带模型（BYOK） -->
+    <div class="bg-white border border-border rounded-xl overflow-hidden">
+      <div class="px-6 py-5 border-b border-border">
+        <h1 class="text-xl font-bold flex items-center gap-2">
+          <UIcon name="i-lucide-key-round" class="size-5" />
+          用户自带模型（BYOK）
+        </h1>
+      </div>
+      <div class="px-6 py-6 flex flex-col gap-4">
+        <p class="text-sm text-text-secondary">API Key 仅由服务端加密托管，页面只显示脱敏信息，不会写入提交代码或评测容器。</p>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <UInput v-model="byokForm.name" placeholder="配置名称，如 OpenAI 个人账号" />
+          <UInput v-model="byokForm.model" placeholder="模型名称，如 gpt-4o-mini" />
+          <UInput v-model="byokForm.base_url" placeholder="OpenAI-compatible Base URL" />
+          <UInput v-model="byokForm.api_key" type="password" placeholder="API Key" autocomplete="new-password" />
+        </div>
+        <UButton color="primary" class="self-start" :loading="byokLoading" @click="createByokProvider">添加模型配置</UButton>
+        <p v-if="byokError" class="text-sm text-error-text">{{ byokError }}</p>
+        <div v-if="byokProviders.length" class="flex flex-col gap-3">
+          <div v-for="provider in byokProviders" :key="provider.id" class="rounded-lg border border-border p-4 flex flex-col gap-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p class="font-semibold">{{ provider.name }} <span class="text-text-muted font-normal">· {{ provider.model }}</span></p>
+                <p class="text-xs text-text-muted">{{ provider.base_url }} · {{ provider.api_key_masked }}</p>
+              </div>
+              <div class="flex gap-2">
+                <UButton size="sm" color="neutral" variant="outline" @click="testByokProvider(provider)">测试连接</UButton>
+                <UButton size="sm" color="error" variant="outline" @click="deleteByokProvider(provider)">删除</UButton>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <UInput v-model="rotatingKeys[provider.id]" type="password" placeholder="输入新 API Key 以轮换" autocomplete="new-password" class="flex-1" />
+              <UButton size="sm" color="primary" variant="outline" @click="rotateByokProvider(provider)">轮换 Key</UButton>
+            </div>
+          </div>
+        </div>
+        <p v-else-if="!byokLoading" class="text-sm text-text-muted">暂无模型配置。提交编程题时可选择已启用的配置。</p>
       </div>
     </div>
 

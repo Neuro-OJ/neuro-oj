@@ -4,7 +4,7 @@ import { extractApiError } from "~/utils/apiError"
 import { useToast } from "~/composables/useToast"
 import { publicUrl, userUrl } from "~/utils/publicIdentifiers"
 
-definePageMeta({ middleware: "auth" })
+definePageMeta({ middleware: "auth", ssr: false })
 
 const { toast } = useToast()
 const { api } = useApi()
@@ -96,7 +96,9 @@ async function handleClick(item: NotificationRow) {
   navigateTo(notificationHref(item))
 }
 
-await load()
+onMounted(() => {
+  void load()
+})
 </script>
 
 <template>

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { publicUrl } from "~/utils/publicIdentifiers";
+
+definePageMeta({ ssr: false })
+
 const route = useRoute()
 const contestId = route.params.contestId as string
 </script>

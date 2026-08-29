@@ -200,6 +200,7 @@ services:
       NOJ_LLM_PORT: "8001"
       NOJ_LLM_SERVICE_TOKEN: e2e-ci-llm-service-token-0123456789abcdef
       NOJ_LLM_STORE_KEY: e2e-ci-llm-store-key-0123456789abcdef
+      NOJ_LLM_BYOK_ALLOWED_HOSTS: api.openai.com
       DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e
       REDIS_URL: redis://redis:6379/1
     depends_on:

@@ -51,6 +51,8 @@ import { assertContestSubmissionLimit } from "../contest/contests.ts";
 import { getStorageProvider } from "../../lib/storage/mod.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
 import { buildJudgeTaskLlm } from "../../lib/llm-token.ts";
+import { buildJudgeTaskLlmForProvider } from "../../lib/llm-token.ts";
+import { getUserLlmProvider } from "../llm.ts";
 import type { LlmConfig, RuntimeConfig } from "../../types/problems.ts";
 import type {
   JudgeTask,
@@ -59,7 +61,7 @@ import type {
 } from "../../types/index.ts";
 import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
-import { Channels, publishEvent } from "../../lib/event-bus.ts";
+import { Channels, publishSseEvent } from "../../lib/event-bus.ts";
 import type {
   ListSubmissionsParams,
   ListSubmissionsResult,
@@ -410,6 +412,27 @@ export async function createSubmission(
       runtimeConfig,
     );
   }
+  let userLlmTask: JudgeTaskLlm | undefined;
+  if (input.llm_provider_config_id) {
+    const provider = await getUserLlmProvider(
+      userId,
+      input.llm_provider_config_id,
+    );
+    if (!provider.enabled) {
+      throw new BadRequestError(
+        "用户模型配置已停用",
+        "BYOK_CONFIG_UNAVAILABLE",
+      );
+    }
+    userLlmTask = await buildJudgeTaskLlmForProvider(
+      provider.id,
+      provider.model,
+      id,
+      input.problem_id,
+      userId,
+      runtimeConfig,
+    );
+  }
 
   const task: JudgeTask = {
     submission_id: id,
@@ -420,6 +443,7 @@ export async function createSubmission(
     code: input.code,
     file_name: fileName,
     ...(llmTask ? { llm: llmTask } : {}),
+    ...(userLlmTask ? { user_llm: userLlmTask } : {}),
   };
 
   try {
@@ -432,6 +456,7 @@ export async function createSubmission(
       language: input.language,
       code: input.code,
       file_name: fileName,
+      llm_provider_config_id: input.llm_provider_config_id,
       status: "pending",
       created_at: now,
     });
@@ -452,18 +477,18 @@ export async function createSubmission(
       and(eq(submissions.id, id), eq(submissions.status, "pending")),
     );
 
-    // 发布队列变更事件，通知 SSE 等订阅者
-    publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
+    // 写入 SSE 事件日志并发布队列变更事件
+    await publishSseEvent(Channels.queue, { type: "queue:changed" });
     if (resolvedContestId) {
-      publishEvent(
+      await publishSseEvent(
         Channels.contestSubmission(resolvedContestId),
-        JSON.stringify({
+        {
           type: "contest:submission:created",
           contest_id: resolvedContestId,
           submission_id: id,
           user_id: userId,
           problem_id: input.problem_id,
-        }),
+        },
       );
     }
   } catch (mqErr) {

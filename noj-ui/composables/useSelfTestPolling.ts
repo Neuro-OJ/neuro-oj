@@ -25,6 +25,7 @@ const TERMINAL_STATUSES: SelfTestStatus[] = ['finished', 'error'];
 const POLL_INTERVAL_MS = 1500;
 
 export function useSelfTestPolling(selfTestIdRef: Ref<string | null>) {
+  const { api } = useApi();
   const selfTest = ref<PolledSelfTest | null>(null);
   const isPolling = ref(false);
   const error = ref<string | null>(null);
@@ -43,7 +44,7 @@ export function useSelfTestPolling(selfTestIdRef: Ref<string | null>) {
     const id = selfTestIdRef.value;
     if (!id) return;
     try {
-      const res = await useApi().api.get<{ data: PolledSelfTest }>(
+      const res = await api.get<{ data: PolledSelfTest }>(
         `/api/v1/self-tests/${id}`,
         { silent: true },
       );

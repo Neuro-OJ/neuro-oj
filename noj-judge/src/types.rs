@@ -111,6 +111,9 @@ pub struct JudgeTask {
     /// LLM 评测字段（启用 LLM 的题目携带）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm: Option<JudgeTaskLlm>,
+    /// 用户 BYOK LLM 字段；仅由 judge 处理，不注入 Evaluator 环境。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_llm: Option<JudgeTaskLlm>,
 }
 
 /// 评测结果——从 noj-judge 返回到 noj-core 的消息。

@@ -41,6 +41,21 @@ concurrency:
 jobs:
 
   # ===========================================================================
+  # 生产镜像供应链配置检查：在 PR 阶段提前阻止 latest 和未固定 digest 回归。
+  # ===========================================================================
+  supply-chain:
+    name: Production Supply Chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 检查供应链约束
+        run: bash scripts/release/test-supply-chain.sh
+
+  # ===========================================================================
   # 变更检测（dorny/paths-filter）
   #
   # PR 上按改动路径生成 core/ui/judge 三个模块 flag；各模块 job 据此
@@ -70,6 +85,7 @@ jobs:
           filters: |
             core:
               - 'noj-core/**'
+              - 'scripts/**'
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
               - '.github/workflows/ci.yml'
@@ -83,6 +99,7 @@ jobs:
               - '.github/workflows/ci.yml'
             gateway:
               - 'noj-llm-gateway/**'
+              - 'scripts/**'
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
               - '.github/workflows/ci.yml'
@@ -135,6 +152,10 @@ jobs:
         # 用 find+xargs 是因为 87 个 .ts 文件 shell glob 展开会超 E2BIG (os error 7)。
         run: find src -name '*.ts' -print0 | xargs -0 deno check
 
+      - name: 导出 JSDoc 覆盖率检查
+        working-directory: noj-core
+        run: deno task check:jsdoc
+
       # 不在 CI 跑 check:env:strict：脚本是给本地开发者用的工具，
       # CI 环境使用 GitHub Secrets 而非 .env。
       # 强行 cp .env.example .env 会触发模板里"故意写的占位符"
@@ -181,6 +202,70 @@ jobs:
       - name: 单元测试 (deno test)
         working-directory: noj-llm-gateway
         run: deno test -A --no-check
+
+      - name: 导出 JSDoc 覆盖率检查
+        working-directory: noj-llm-gateway
+        run: deno task check:jsdoc
+
+  # ===========================================================================
+  # 仓库级门禁（Agent Note / Markdown 链接 / 导出 JSDoc）
+  # ===========================================================================
+  root-gates:
+    name: Root Gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 仓库级门禁
+        run: deno run -A scripts/check-ci.ts
+
+  # ===========================================================================
+  # 真实入口 Smoke（源码入口 + 已构建产物）
+  # ===========================================================================
+  entrypoint-smoke:
+    name: Entrypoint Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 入口 Smoke
+        run: deno run -A scripts/smoke-entrypoints.ts
+
+  # ===========================================================================
+  # 覆盖率门禁（noj-llm-gateway / noj-ui）
+  # ===========================================================================
+  coverage-check:
+    name: Coverage Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 覆盖率检查
+        run: deno run -A scripts/coverage-report.ts
 
   # ===========================================================================
   # noj-core — 快速冒烟测试（不依赖外部服务，使用 PGlite 内存数据库）

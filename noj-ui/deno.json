@@ -9,7 +9,8 @@
     "fmt": "deno fmt",
     "check": "deno fmt --check && deno lint && deno task check:types",
     "check:types": "deno check utils tests",
-    "test": "deno test -A tests/"
+    "test": "deno test -A tests/",
+    "test:coverage": "rm -rf coverage && DENO_DIR=.deno_cov_cache deno test -A tests/ --coverage=coverage && DENO_DIR=.deno_cov_cache deno coverage --threshold=60 coverage"
   },
   "lint": {
     "include": ["**/*.vue", "**/*.ts"],

@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /editor/
+Disallow: /settings
+Disallow: /messages
+Disallow: /my/
+Disallow: /community/bookmarks
+Disallow: /community/notifications
+Disallow: /community/reports/
+Disallow: /api/

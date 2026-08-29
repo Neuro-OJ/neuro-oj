@@ -2,11 +2,12 @@
  * 邮件发送入口。
  *
  * 根据环境变量 EMAIL_PROVIDER 动态选择 Provider：
+ * - disabled：关闭邮件发送
  * - mock（默认）：仅控制台日志输出
  * - aliyun：阿里云 DirectMail
  * - tencent：腾讯云 SES
  *
- * 启动时在 main.ts 中校验 Provider 环境变量完整性，缺失时降级到 mock。
+ * 启动时在 main.ts 中校验 Provider 环境变量完整性；生产环境可以显式关闭邮件。
  */
 
 import type { SendPasswordResetEmail } from "./email-providers/types.ts";
@@ -15,6 +16,7 @@ import { logger } from "./logging.ts";
 
 /** Provider 名称到模块路径的映射 */
 const PROVIDER_MODULES: Record<string, string> = {
+  disabled: "./email-providers/disabled.ts",
   mock: "./email-providers/mock.ts",
   aliyun: "./email-providers/aliyun.ts",
   tencent: "./email-providers/tencent.ts",
@@ -39,7 +41,7 @@ async function loadSendFn(): Promise<SendPasswordResetEmail> {
     (provider === "mock" || !PROVIDER_MODULES[provider])
   ) {
     throw new Error(
-      "生产环境禁止使用 mock 邮件 Provider；请配置 email_provider=aliyun 或 tencent",
+      "生产环境禁止使用 mock 邮件 Provider；请配置 email_provider=aliyun、tencent 或 disabled",
     );
   }
 

@@ -36,6 +36,13 @@ const typeLabel: Record<PostType, string> = {
 const postId = computed(() => String(route.params.postId))
 const post = ref<PostDetail | null>(null)
 const comments = ref<CommentRow[]>([])
+
+useSeoMeta({
+  title: () => post.value?.post?.title ? `${post.value.post.title} - Neuro OJ` : '社区帖子 - Neuro OJ',
+  description: () => post.value?.post?.content ? post.value.post.content.slice(0, 160) : 'Neuro OJ 社区内容',
+  ogTitle: () => post.value?.post?.title ?? 'Neuro OJ',
+  ogDescription: () => post.value?.post?.content ? post.value.post.content.slice(0, 160) : 'Neuro OJ 社区内容',
+})
 const comment = ref("")
 const interaction = ref<"like" | "bookmark" | null>(null)
 const submittingComment = ref(false)
@@ -223,8 +230,26 @@ async function reportComment(commentId: string) {
   }
 }
 
-await loadConfig()
-await load()
+// ── SSR 初始数据：通过 useAsyncData 获取，结果随 payload 序列化到客户端 ──
+const { data: initialData } = await useAsyncData(
+  'community-post-detail',
+  async () => {
+    await loadConfig()
+    const [postResult, commentResult] = await Promise.all([
+      api.get<{ data: PostDetail }>(`/api/v1/community/posts/${postId.value}`),
+      api.get<{ data: CommentRow[] }>(`/api/v1/community/posts/${postId.value}/comments`),
+    ])
+    return { post: postResult.data, comments: commentResult.data }
+  },
+)
+
+// 将序列化后的结果同步到本地 refs（服务端与水合后都会执行）
+watch(initialData, (value) => {
+  if (value) {
+    post.value = value.post
+    comments.value = value.comments
+  }
+}, { immediate: true })
 </script>
 
 <template>

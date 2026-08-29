@@ -18,6 +18,7 @@ trap cleanup EXIT
 
 pass() { printf '✓ %s\n' "$*"; }
 fail() { printf '✗ %s\n' "$*" >&2; exit 1; }
+file_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null; }
 
 cat >"$FAKE_DOCKER" <<'EOF'
 #!/usr/bin/env bash
@@ -84,7 +85,7 @@ snapshot="$(find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -name 'snapshot-*
 for required in postgres.dump postgres-globals.sql postgres.restore-list redis.rdb redis-persistence.txt minio env.prod.gpg manifest.json migration-status.txt sha256sums.txt SUCCESS; do
   [[ -e "$snapshot/$required" ]] || fail "快照缺少文件：$required"
 done
-[[ "$(stat -f '%Lp' "$snapshot" 2>/dev/null || stat -c '%a' "$snapshot")" == "700" ]] ||
+[[ "$(file_mode "$snapshot")" == "700" ]] ||
   fail "快照目录权限不是 700"
 if grep -R -q 'strong-postgres-password\|strong-redis-password\|strong-minio-password' "$snapshot"; then
   fail "快照明文泄露生产凭据"

@@ -22,21 +22,6 @@ const { open: reportModal } = useReportModal()
 const { api } = useApi()
 const { userBanned } = useBanStatus()
 
-// NOJ-317：SSR 阶段可能拿到游客权限（permissions 为空），登录用户水合后
-// 需要强制刷新一次社区配置，否则“发布内容”按钮会一直处于灰色。
-let configRefreshedForLogin = false
-watch(
-  [isLoggedIn, config],
-  async ([loggedIn, cfg]) => {
-    if (!loggedIn || !cfg || configRefreshedForLogin) return
-    if (!cfg.permissions || Object.keys(cfg.permissions).length === 0) {
-      configRefreshedForLogin = true
-      await loadConfig(true)
-    }
-  },
-  { immediate: true },
-)
-
 const ENABLED_TYPES: PostType[] = ["discussion", "solution", "moment"]
 const typeFlag: Record<PostType, keyof CommunityConfig> = {
   discussion: "discussions_enabled",
@@ -318,25 +303,68 @@ async function publish() {
   }
 }
 
-async function init() {
-  await loadConfig()
-  // 默认 Tab 兜底：请求的类型未启用时回退到第一个启用的类型
-  if (config.value?.enabled) {
+// ── SSR 初始数据：通过 useAsyncData 获取，结果随 payload 序列化到客户端 ──
+const { data: initialData } = await useAsyncData(
+  'community-index',
+  async () => {
+    const cfg = await loadConfig()
+    const enabled = cfg?.enabled
+      ? ENABLED_TYPES.filter((t) => cfg[typeFlag[t]] === true)
+      : []
     const requested = route.query.type as PostType | undefined
     const requestedEnabled = requested && ENABLED_TYPES.includes(requested)
-      ? config.value[typeFlag[requested]] === true
+      ? (cfg?.[typeFlag[requested]] ?? false) === true
       : false
-    if (requestedEnabled) {
-      activeType.value = requested as PostType
-    } else {
-      const fallback = ENABLED_TYPES.find((t) => config.value![typeFlag[t]] === true)
-      if (fallback) activeType.value = fallback
-    }
-  }
-  await Promise.all([loadPosts(), loadCounts()])
-}
+    const chosen = requestedEnabled
+      ? (requested as PostType)
+      : (enabled[0] ?? 'discussion')
+    activeType.value = chosen
 
-await init()
+    let posts: PostRow[] = []
+    let nextCursor: string | null = null
+    try {
+      const postsRes = await api.get<{ data: PostRow[]; next_cursor: string | null }>(
+        '/api/v1/community/posts',
+        {
+          query: {
+            type: chosen,
+            problem_id: searchProblemId.value.trim() || undefined,
+            q: searchKeyword.value.trim() || undefined,
+          },
+          silent: true,
+        },
+      )
+      posts = postsRes.data
+      nextCursor = postsRes.next_cursor ?? null
+    } catch {
+      // 列表失败按空态渲染，不阻断页面
+    }
+
+    let counts: CommunityCounts | null = null
+    try {
+      const countsRes = await api.get<{ data: CommunityCounts }>(
+        '/api/v1/community/posts/counts',
+        { silent: true },
+      )
+      counts = countsRes.data
+    } catch {
+      counts = null
+    }
+
+    return { activeType: chosen, posts, counts, nextCursor }
+  },
+)
+
+// 将序列化后的结果同步到本地 refs（服务端与水合后都会执行）
+watch(initialData, (value) => {
+  if (value) {
+    activeType.value = value.activeType
+    posts.value = value.posts
+    counts.value = value.counts
+    nextCursor.value = value.nextCursor
+    loading.value = false
+  }
+}, { immediate: true })
 </script>
 
 <template>

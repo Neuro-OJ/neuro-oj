@@ -17,7 +17,9 @@ const FORWARDABLE_HEADERS = new Set([
  *   必须替换 Cookie（旧 token 在后端同时被撤销）；旧实现是让前端调 logout 清 Cookie
  *   再走 /login 重登，对用户不友好。
  */
-function shouldInterceptAuth(event: { path: string; method?: string }): boolean {
+function shouldInterceptAuth(
+  event: { path: string; method?: string },
+): boolean {
   if (event.method !== 'POST') return false;
   return (
     event.path.endsWith('/api/v1/auth/login') ||
@@ -28,13 +30,17 @@ function shouldInterceptAuth(event: { path: string; method?: string }): boolean 
 /**
  * 生产环境下 Cookie 必须设置 secure 标志（HTTPS-only）。
  * 以 NUXT_NOJ_ENV / NOJ_ENV 为准；未设置时才回退 NODE_ENV。
- * 这样 HTTP 内网测试设置 NUXT_NOJ_ENV=development 时，即使 NODE_ENV=production
- * 也不会下发 Secure Cookie，避免浏览器不保存 Cookie 导致“未提供认证令牌”。
+ * 临时 HTTP 模式通过 NUXT_ALLOW_INSECURE_HTTP 显式关闭 Secure Cookie，避免浏览器
+ * 不保存 Cookie 导致“未提供认证令牌”；正式 HTTPS 模式始终保留 Secure Cookie。
  */
 function isProductionEnv(): boolean {
   const nojEnv = process.env.NUXT_NOJ_ENV ?? process.env.NOJ_ENV;
   if (nojEnv) return nojEnv === 'production';
   return process.env.NODE_ENV === 'production';
+}
+
+function allowsInsecureHttp(): boolean {
+  return process.env.NUXT_ALLOW_INSECURE_HTTP === 'true';
 }
 
 /**
@@ -97,7 +103,10 @@ async function proxySseRequest(
   const headers = new Headers();
   for (const [name, value] of event.headers.entries()) {
     const lower = name.toLowerCase();
-    if (HOP_BY_HOP_HEADERS.has(lower) || lower === 'host' || lower === 'accept-encoding') {
+    if (
+      HOP_BY_HOP_HEADERS.has(lower) || lower === 'host' ||
+      lower === 'accept-encoding'
+    ) {
       continue;
     }
     headers.set(name, value);
@@ -224,7 +233,7 @@ export default defineEventHandler(async (event) => {
           path: '/',
           maxAge: 60 * 60 * 24, // 24h，与 JWT_EXPIRES_IN 一致
           // 生产 HTTPS 场景下强制 secure：防止混合内容 / 重定向泄漏 JWT Cookie
-          secure: isProductionEnv(),
+          secure: isProductionEnv() && !allowsInsecureHttp(),
         };
 
         // HTTP-only cookie：令牌对 JS 不可见，防 XSS 窃取

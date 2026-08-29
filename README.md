@@ -151,7 +151,7 @@ deno task dev                 # http://localhost:8001
 
 各模块相互独立，可只启动需要的部分（如只调试前端时无需启动 noj-judge；不做 LLM 题时无需启动 noj-llm-gateway）。
 
-### 首个管理员账号
+### 开发环境管理员账号
 
 `deno task dev-setup` 的行为依赖 `ADMIN_EMAIL` 是否设置：
 
@@ -166,6 +166,9 @@ echo 'ADMIN_EMAIL=admin@example.com' >> noj-core/.env
 echo 'ADMIN_PASS=YourSecurePass123!' >> noj-core/.env
 cd noj-core && deno task dev-setup
 ```
+
+生产环境不需要在安装前填写管理员邮箱或密码。生产初始化完成后，打开网站注册第一个真实用户，
+该用户会自动获得管理员权限；已有生产站点的后续注册用户不会自动提权。
 
 ---
 
@@ -233,7 +236,7 @@ cd noj-core && deno task dev-setup
 ### 测试
 
 ```bash
-# noj-core 单元 + 集成测试（71 个测试文件）
+# noj-core 单元 + 集成测试
 cd noj-core && deno task test
 
 # noj-judge 单元测试
@@ -243,7 +246,7 @@ cd noj-judge && cargo test --lib
 cd noj-judge && NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
 # ...（其余：e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_problem_limits / e2e_dual_container / e2e_network_capability）
 
-# 跨模块全链路 E2E（23 个测试文件，需先启动完整环境）
+# 跨模块全链路 E2E（需先启动完整环境）
 cd noj-tests && deno task test
 ```
 

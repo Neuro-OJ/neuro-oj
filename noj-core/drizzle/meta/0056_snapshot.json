@@ -1,5 +1,5 @@
 {
-  "id": "b90c6a16-da3e-4a18-bcb5-ad08a94bc1e7",
+  "id": "b161fdb9-ffcf-4915-85b0-9141c00d2d3d",
   "prevId": "57d766d9-9be8-4855-99ba-c29a6939b83f",
   "version": "7",
   "dialect": "postgresql",
@@ -3694,113 +3694,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.oauth_accounts": {
-      "name": "oauth_accounts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider_user_id": {
-          "name": "provider_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider_username": {
-          "name": "provider_username",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "provider_email": {
-          "name": "provider_email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "email_verified": {
-          "name": "email_verified",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "idx_oauth_accounts_user_id": {
-          "name": "idx_oauth_accounts_user_id",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "oauth_accounts_user_id_users_id_fk": {
-          "name": "oauth_accounts_user_id_users_id_fk",
-          "tableFrom": "oauth_accounts",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "oauth_accounts_provider_identity_unique": {
-          "name": "oauth_accounts_provider_identity_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "provider",
-            "provider_user_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.objective_questions": {
       "name": "objective_questions",
       "schema": "",
@@ -4940,6 +4833,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "llm_provider_config_id": {
+          "name": "llm_provider_config_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -5049,6 +4948,21 @@
           "method": "btree",
           "with": {}
         },
+        "idx_submissions_llm_provider_config_id": {
+          "name": "idx_submissions_llm_provider_config_id",
+          "columns": [
+            {
+              "expression": "llm_provider_config_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_submissions_contest_problem_user": {
           "name": "idx_submissions_contest_problem_user",
           "columns": [
@@ -5137,6 +5051,19 @@
           "tableTo": "contests",
           "columnsFrom": [
             "contest_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "submissions_llm_provider_config_id_llm_providers_id_fk": {
+          "name": "submissions_llm_provider_config_id_llm_providers_id_fk",
+          "tableFrom": "submissions",
+          "tableTo": "llm_providers",
+          "columnsFrom": [
+            "llm_provider_config_id"
           ],
           "columnsTo": [
             "id"
@@ -5840,7 +5767,7 @@
           "name": "password_hash",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "bio": {
           "name": "bio",

@@ -159,6 +159,10 @@ export function useCommunity() {
       const response = await api.get<{ data: CommunityConfig }>('/api/v1/community/config');
       config.value = response.data;
       return response.data;
+    } catch {
+      // 非关键配置：失败时降级为“社区未启用/不可用”，不让整页 SSR 抛错
+      config.value = null;
+      return null;
     } finally {
       loading.value = false;
     }

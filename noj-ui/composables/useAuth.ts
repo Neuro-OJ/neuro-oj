@@ -60,12 +60,26 @@ export function useAuth() {
   // 保留 isLoggedIn 计算属性简化其他页面的访问
   const isLoggedIn = computed(() => !!user.value);
 
-  // ── SSR 初始化 ──
+  // 认证类调用统一 silent：错误由认证页面内联展示（banner/表单错误），
+  // 避免「页面提示 + toast」双重提示（ui-api-layer 设计 D6）
+  const { api } = useApi();
+
+  // ── SSR 初始化：有 session 时通过 /auth/me 获取完整用户与权限 ──
   if (import.meta.server) {
     if (session.value) {
-      user.value = sessionToUser(session.value);
+      const { data: meData } = useAsyncData('auth:me', () =>
+        api.get<{ data: UserResponse }>('/api/v1/auth/me', {
+          silent: true,
+          redirectOnUnauthorized: false,
+        }));
+      watch(meData, (val) => {
+        user.value = val?.data ?? null;
+        loading.value = false;
+      }, { immediate: true });
+    } else {
+      user.value = null;
+      loading.value = false;
     }
-    loading.value = false;
   }
 
   // ── 客户端初始化 ──
@@ -76,10 +90,6 @@ export function useAuth() {
     }
     loading.value = false;
   }
-
-  // 认证类调用统一 silent：错误由认证页面内联展示（banner/表单错误），
-  // 避免「页面提示 + toast」双重提示（ui-api-layer 设计 D6）
-  const { api } = useApi();
 
   async function login(login: string, password: string, code?: string) {
     // 5s 超时（评审修复 L2，与 fetchUser 一致），由 useApi timeout 选项实现

@@ -10,7 +10,7 @@ import {
 import { getRedis } from "../mq/connection.ts";
 import { logger } from "../lib/logging.ts";
 import { NotFoundError } from "../lib/errors.ts";
-import { Channels, publishEvent } from "../lib/event-bus.ts";
+import { Channels, publishSseEvent } from "../lib/event-bus.ts";
 import { logAudit } from "./audit-log.ts";
 import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";
 
@@ -149,7 +149,7 @@ export async function removePendingSubmission(id: string): Promise<void> {
     { action: "submissions.queue_removed", submission_id: id },
     { type: "submission", id },
   );
-  publishEvent(Channels.queue, JSON.stringify({ type: "queue:changed" }));
+  await publishSseEvent(Channels.queue, { type: "queue:changed" });
 }
 
 /**

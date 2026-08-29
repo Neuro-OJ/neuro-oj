@@ -20,6 +20,7 @@ export interface ProductionConfig {
   adminPassword?: string;
   appUrl?: string;
   corsAllowedOrigins?: string;
+  allowInsecureHttp?: boolean;
   trustedProxies?: string;
   emailProvider?: string;
   emailSettings: Record<string, string | undefined>;
@@ -68,14 +69,20 @@ function validateHttpsUrl(
   findings: string[],
   key: string,
   value: string | undefined,
+  allowInsecureHttp = false,
 ): void {
   requireValue(findings, key, value);
   if (!value || isPlaceholder(value)) return;
 
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:") {
-      findings.push(`${key} 必须使用 HTTPS`);
+    if (
+      url.protocol !== "https:" &&
+      !(allowInsecureHttp && url.protocol === "http:")
+    ) {
+      findings.push(
+        `${key} 必须使用 HTTPS；临时 HTTP 需要明确开启 NOJ_ALLOW_INSECURE_HTTP`,
+      );
     }
     if (url.username || url.password) {
       findings.push(`${key} 不得包含账号或密码`);
@@ -88,6 +95,7 @@ function validateHttpsUrl(
 function validateCorsOrigins(
   findings: string[],
   value: string | undefined,
+  allowInsecureHttp = false,
 ): void {
   requireValue(findings, "CORS_ALLOWED_ORIGINS", value);
   if (!value || isPlaceholder(value)) return;
@@ -102,12 +110,11 @@ function validateCorsOrigins(
   for (const origin of origins) {
     try {
       const url = new URL(origin);
-      if (
-        url.protocol !== "https:" || url.pathname !== "/" || url.search ||
-        url.hash
-      ) {
+      const protocolAllowed = url.protocol === "https:" ||
+        (allowInsecureHttp && url.protocol === "http:");
+      if (!protocolAllowed || url.pathname !== "/" || url.search || url.hash) {
         findings.push(
-          "CORS_ALLOWED_ORIGINS 中每个来源必须是无路径的 HTTPS origin",
+          "CORS_ALLOWED_ORIGINS 必须是无路径的 HTTPS 地址；临时 HTTP 需要明确开启 NOJ_ALLOW_INSECURE_HTTP",
         );
         return;
       }
@@ -123,8 +130,9 @@ function validateEmail(
   provider: string | undefined,
   settings: Record<string, string | undefined>,
 ): void {
+  if (provider === "disabled") return;
   if (provider !== "aliyun" && provider !== "tencent") {
-    findings.push("EMAIL_PROVIDER 必须配置为 aliyun 或 tencent");
+    findings.push("EMAIL_PROVIDER 必须配置为 aliyun、tencent 或 disabled");
     return;
   }
 
@@ -160,12 +168,17 @@ export function findProductionConfigErrors(
   requireValue(findings, "TFA_ENCRYPTION_KEY", config.tfaEncryptionKey, {
     minLength: MIN_TFA_ENCRYPTION_KEY_LENGTH,
   });
-  requireValue(findings, "ADMIN_EMAIL", config.adminEmail);
-  requireValue(findings, "ADMIN_PASS", config.adminPassword, {
-    minLength: 12,
-  });
-  validateHttpsUrl(findings, "APP_URL", config.appUrl);
-  validateCorsOrigins(findings, config.corsAllowedOrigins);
+  validateHttpsUrl(
+    findings,
+    "APP_URL",
+    config.appUrl,
+    config.allowInsecureHttp,
+  );
+  validateCorsOrigins(
+    findings,
+    config.corsAllowedOrigins,
+    config.allowInsecureHttp,
+  );
   requireValue(findings, "TRUSTED_PROXIES", config.trustedProxies);
 
   validateEmail(findings, config.emailProvider, config.emailSettings);

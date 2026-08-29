@@ -1,0 +1,13 @@
+# NOJ SSE 事件目录
+
+> 由 `scripts/gen-event-catalog.ts` 生成，请勿手改。
+
+| 频道 | 发布位置 |
+| --- | --- |
+| `submission` | noj-core/src/mq/consumer.ts<br>noj-core/src/routes/sse.ts |
+| `queue` | noj-core/src/mq/consumer.ts<br>noj-core/src/routes/sse.ts<br>noj-core/src/services/queue.ts<br>noj-core/src/services/self-tests.ts<br>noj-core/src/services/submissions/artifact-submissions.ts<br>noj-core/src/services/submissions/submissions-crud.ts<br>noj-core/src/services/submissions/submissions-rejudge.ts |
+| `user` | noj-core/src/routes/conversations.ts<br>noj-core/src/routes/sse.ts<br>noj-core/src/services/messages.ts<br>noj-core/src/services/notifications.ts |
+| `contestRanking` | noj-core/src/routes/sse.ts<br>noj-core/src/services/submissions/submissions-result.ts |
+| `contestSubmission` | noj-core/src/routes/sse.ts<br>noj-core/src/services/submissions/artifact-submissions.ts<br>noj-core/src/services/submissions/submissions-crud.ts |
+| `stats` | noj-core/src/routes/sse.ts<br>noj-core/src/services/stats-cache.ts |
+| `announcements` | noj-core/src/routes/announcements.ts<br>noj-core/src/services/announcements.ts |

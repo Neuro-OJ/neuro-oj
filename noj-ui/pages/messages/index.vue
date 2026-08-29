@@ -9,6 +9,7 @@ import ChatSidebar from "~/components/feature/ChatSidebar.vue"
 
 definePageMeta({
   middleware: "auth",
+  ssr: false,
 })
 
 const { user } = useAuth()

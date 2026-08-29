@@ -53,6 +53,7 @@ export interface UseEventSourceOptions {
  */
 export function useEventSource(options: UseEventSourceOptions) {
   const state = ref<EventSourceState>('disabled');
+  const lastEventId = ref<number>(0);
 
   let eventSource: EventSource | null = null;
   let fallbackTimer: ReturnType<typeof setInterval> | null = null;
@@ -148,6 +149,10 @@ export function useEventSource(options: UseEventSourceOptions) {
     const url = typeof urlRef.value === 'string' ? urlRef.value : '';
     if (!url) return;
 
+    // 携带 afterSeq 支持服务端重放
+    const sep = url.includes('?') ? '&' : '?';
+    const fullUrl = lastEventId.value > 0 ? `${url}${sep}afterSeq=${lastEventId.value}` : url;
+
     // 检查浏览器是否支持 EventSource
     if (typeof EventSource === 'undefined') {
       console.warn('useEventSource: 浏览器不支持 EventSource，降级到轮询');
@@ -158,7 +163,7 @@ export function useEventSource(options: UseEventSourceOptions) {
     state.value = 'connecting';
 
     try {
-      eventSource = new EventSource(url);
+      eventSource = new EventSource(fullUrl);
     } catch {
       console.warn('useEventSource: EventSource 创建失败，降级到轮询');
       startFallback();
@@ -199,6 +204,10 @@ export function useEventSource(options: UseEventSourceOptions) {
         ((e: MessageEvent) => {
           try {
             const data = JSON.parse(e.data);
+            const parsed = data as { seq?: unknown };
+            if (typeof parsed?.seq === 'number') {
+              lastEventId.value = Math.max(lastEventId.value, parsed.seq);
+            }
             callback(data);
           } catch {
             callback(e.data);
@@ -212,6 +221,10 @@ export function useEventSource(options: UseEventSourceOptions) {
       eventSource.onmessage = ((e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data);
+          const parsed = data as { seq?: unknown };
+          if (typeof parsed?.seq === 'number') {
+            lastEventId.value = Math.max(lastEventId.value, parsed.seq);
+          }
           onMessage('message', data);
         } catch {
           onMessage('message', e.data);
@@ -250,5 +263,7 @@ export function useEventSource(options: UseEventSourceOptions) {
   return {
     /** 当前连接状态 */
     state,
+    /** 最近收到的事件 seq，重连时通过 afterSeq 传给服务端 */
+    lastEventId,
   };
 }

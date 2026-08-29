@@ -18,6 +18,8 @@ import { logger } from "../lib/logging.ts";
 import type { JudgeTask } from "../types/index.ts";
 import type { RuntimeConfig } from "../types/problems.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
+import { buildJudgeTaskLlmForProvider } from "../lib/llm-token.ts";
+import { getUserLlmProvider } from "../services/llm.ts";
 
 const RESULT_QUEUE = "noj:judge:results";
 
@@ -129,6 +131,8 @@ interface PendingRecoveryRow {
   runtime_config: unknown;
   support_package_storage_url: string | null;
   judge_started_at?: string | null;
+  user_id?: string;
+  llm_provider_config_id?: string | null;
 }
 
 interface PendingRecoveryActions<T extends PendingRecoveryRow> {
@@ -188,6 +192,33 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
         : {}),
     };
 
+    if (row.user_id && row.llm_provider_config_id) {
+      try {
+        const provider = await getUserLlmProvider(
+          row.user_id,
+          row.llm_provider_config_id,
+        );
+        if (provider.enabled) {
+          task.user_llm = await buildJudgeTaskLlmForProvider(
+            provider.id,
+            provider.model,
+            row.id,
+            row.problem_id,
+            row.user_id,
+            runtimeConfig,
+          );
+        }
+      } catch (err) {
+        logger.warn(
+          "pending 提交的 BYOK 配置不可用，将继续以无 BYOK 任务恢复",
+          {
+            submission_id: row.id,
+            err,
+          },
+        );
+      }
+    }
+
     const { pushJudgeTask } = await import("./producer.ts");
     try {
       await pushJudgeTask(task);
@@ -228,6 +259,8 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
       code: submissions.code,
       file_name: submissions.file_name,
       rejudge_seq: submissions.rejudge_seq,
+      user_id: submissions.user_id,
+      llm_provider_config_id: submissions.llm_provider_config_id,
       problem_id: submissions.problem_id,
       runtime_config: problems.runtime_config,
       support_package_storage_url: problems.support_package_storage_url,

@@ -39,6 +39,13 @@ const { data, pending, error, refresh } = useFetch<{
 
 const problem = computed(() => data.value?.data ?? null)
 
+useSeoMeta({
+  title: () => problem.value?.title ? `${problem.value.title} - Neuro OJ` : '题目 - Neuro OJ',
+  description: () => problem.value?.description ? problem.value.description.slice(0, 160) : 'Neuro OJ 在线评测题目',
+  ogTitle: () => problem.value?.title ?? 'Neuro OJ',
+  ogDescription: () => problem.value?.description ? problem.value.description.slice(0, 160) : 'Neuro OJ 在线评测平台',
+})
+
 const tags = computed(() => problem.value?.tags ?? [])
 // 题目标签（kind='problem'）：点击可跳转到按该标签筛选的题库列表
 const problemTags = computed(() => tags.value.filter((t) => t.kind === 'problem'))
@@ -126,7 +133,7 @@ watch(
     loadingSolutions.value = true
     try {
       const [solRes, cfg] = await Promise.all([
-        $fetch<{ data: PostRow[] }>(
+        api.get<{ data: PostRow[] }>(
           `/api/v1/community/posts?type=solution&problem_id=${p.id}&limit=5`,
         ),
         loadConfig(),
@@ -134,7 +141,7 @@ watch(
       solutions.value = solRes.data
       if (isLoggedIn.value) {
         try {
-          const el = await $fetch<{ data: typeof eligibility.value }>(
+          const el = await api.get<{ data: typeof eligibility.value }>(
             `/api/v1/community/solutions/eligibility?problem_id=${p.id}`,
           )
           eligibility.value = el.data
