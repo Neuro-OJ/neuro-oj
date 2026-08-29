@@ -145,6 +145,7 @@ pass "帮助输出"
 NOJ_JUDGE_DOCKER_BIN="$FAKE_DOCKER" \
 NOJ_JUDGE_CURL_BIN="$FAKE_CURL" \
 NOJ_JUDGE_TEST_LOG="$DOCKER_LOG" \
+NOJ_JUDGE_TTY_PATH="$TEST_ROOT/missing-tty" \
 PATH="$TEST_ROOT:$PATH" \
   bash -s -- install-env <"$DEPLOY_SCRIPT" >/dev/null ||
   fail "从 curl 管道执行 install-env 不应失败"
@@ -164,9 +165,11 @@ PY
 chmod 660 "$PROMPT_SOCKET"
 PROMPT_SOCKET_GID="$(stat -c '%g' "$PROMPT_SOCKET" 2>/dev/null || stat -f '%g' "$PROMPT_SOCKET")"
 PROMPT_OUTPUT="$TEST_ROOT/prompt.out"
+set +e
 NOJ_JUDGE_DOCKER_BIN="$FAKE_DOCKER" \
 NOJ_JUDGE_CURL_BIN="$FAKE_CURL" \
 NOJ_JUDGE_TEST_LOG="$DOCKER_LOG" \
+NOJ_JUDGE_TTY_PATH="$TEST_ROOT/missing-tty" \
 PATH="$TEST_ROOT:$PATH" \
   bash "$DEPLOY_SCRIPT" install --dir "$PROMPT_DIR" >"$PROMPT_OUTPUT" 2>&1 <<EOF
 v0.1.0
@@ -183,6 +186,12 @@ $PROMPT_SOCKET_GID
 
 
 EOF
+PROMPT_STATUS=$?
+set -e
+if ((PROMPT_STATUS != 0)); then
+  cat "$PROMPT_OUTPUT" >&2
+  fail "交互式配置测试失败"
+fi
 grep -q 'Redis 地址.*同一个 Redis 和队列' "$PROMPT_OUTPUT" || fail "Redis 配置说明缺失"
 grep -q '无密码示例：redis://127.0.0.1:6379/0' "$PROMPT_OUTPUT" || fail "Redis 示例缺失"
 grep -q '专用 Docker socket.*rootless' "$PROMPT_OUTPUT" || fail "Docker socket 配置说明缺失"

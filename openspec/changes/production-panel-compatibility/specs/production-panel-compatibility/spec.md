@@ -53,3 +53,18 @@
 
 - **WHEN** `.env.prod` 已由此前一次安装创建但仍包含占位配置，且用户重新在终端执行安装
 - **THEN** 脚本 MUST 保留已生成的随机密钥并继续引导补齐配置
+
+### Requirement: 识别已有安装并安全续装
+
+bootstrap 脚本 MUST 在目标目录包含本工具的生产部署入口和生产 Compose 文件时识别为已有 NOJ 安装，保留该目录内容并继续调用现有 `deploy.sh`；对不具备 NOJ 安装标记的非空目录 MUST 继续拒绝覆盖。
+
+#### Scenario: 已有 NOJ 目录
+
+- **WHEN** 目标目录已包含 `scripts/deploy/deploy.sh` 和 `docker-compose.prod.yml`
+- **THEN** 脚本 MUST 不删除或覆盖目标目录
+- **AND** 脚本 MUST 继续执行现有生产部署入口
+
+#### Scenario: 无关非空目录
+
+- **WHEN** 目标目录非空但不包含 NOJ 安装标记
+- **THEN** 脚本 MUST 停止并提示用户更换目录

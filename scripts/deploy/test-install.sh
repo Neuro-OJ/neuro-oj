@@ -178,6 +178,21 @@ bash "$INSTALL_SCRIPT" --repo https://example.com/repo --ref v0.1.0 --dir "$depl
   fail "部署参数未正确传递"
 pass "部署入口与参数传递"
 
+resume_dir="$TEST_ROOT/resume"
+mkdir -p "$resume_dir/scripts/deploy"
+cp "$TEST_ROOT/source/noj-neuro-oj-v0.1.0/scripts/deploy/deploy.sh" \
+  "$resume_dir/scripts/deploy/deploy.sh"
+chmod +x "$resume_dir/scripts/deploy/deploy.sh"
+printf 'services:\n  fake:\n    image: alpine:3\n' >"$resume_dir/docker-compose.prod.yml"
+printf 'NOJ_VERSION=v0.1.0\nADMIN_PASS=keep-this-secret\n' >"$resume_dir/.env.prod"
+mkdir -p "$resume_dir/backups"
+printf 'keep\n' >"$resume_dir/backups/marker.txt"
+bash "$INSTALL_SCRIPT" --panel baota --dir "$resume_dir" >/dev/null
+grep -q 'install --panel baota' "$DEPLOY_LOG" || fail "已有 NOJ 安装未继续执行 deploy.sh"
+grep -q '^ADMIN_PASS=keep-this-secret$' "$resume_dir/.env.prod" || fail "续装覆盖了生产配置"
+[[ "$(cat "$resume_dir/backups/marker.txt")" == keep ]] || fail "续装覆盖了备份目录"
+pass "已有 NOJ 安装保留配置并继续部署"
+
 panel_deploy_dir="$TEST_ROOT/panel-deploy"
 bash "$INSTALL_SCRIPT" --panel baota --dir "$panel_deploy_dir" >/dev/null
 grep -q 'install --panel baota' "$DEPLOY_LOG" || fail "bootstrap 未将面板模式传递给 deploy.sh"

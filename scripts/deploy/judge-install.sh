@@ -37,6 +37,7 @@ PANEL_MODE="${NOJ_JUDGE_PANEL:-auto}"
 PANEL_NAME="none"
 PANEL_ROOT="${NOJ_JUDGE_PANEL_ROOT:-/www/server/panel}"
 PANEL_COMMAND="${NOJ_JUDGE_PANEL_COMMAND:-/usr/bin/bt}"
+TTY_PATH="${NOJ_JUDGE_TTY_PATH:-/dev/tty}"
 POSITIONAL=()
 
 if [[ -t 1 ]]; then
@@ -54,22 +55,23 @@ fail() {
 section() { printf "\n== %s ==\n" "$*"; }
 
 has_interactive_tty() {
-  [[ -r /dev/tty && -w /dev/tty ]]
+  [[ -r "$TTY_PATH" && -w "$TTY_PATH" ]] || return 1
+  (exec 3<>"$TTY_PATH") 2>/dev/null
 }
 
 read_prompt() {
   local prompt="$1" secret="${2:-0}" value
   if has_interactive_tty; then
-    printf '%s' "$prompt" >/dev/tty
+    printf '%s' "$prompt" >"$TTY_PATH"
     if [[ "$secret" == 1 ]]; then
-      IFS= read -r -s value </dev/tty || fail "读取配置输入失败"
-      printf '\n' >/dev/tty
+      IFS= read -r -s value <"$TTY_PATH" || fail "读取配置输入失败"
+      printf '\n' >"$TTY_PATH"
     else
-      IFS= read -r value </dev/tty || fail "读取配置输入失败"
+      IFS= read -r value <"$TTY_PATH" || fail "读取配置输入失败"
     fi
   elif [[ "$secret" == 1 ]]; then
     IFS= read -r -s -p "$prompt" value || fail "读取配置输入失败"
-    printf '\n'
+    printf '\n' >&2
   else
     IFS= read -r -p "$prompt" value || fail "读取配置输入失败"
   fi

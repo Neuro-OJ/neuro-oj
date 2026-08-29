@@ -19,6 +19,7 @@ REPOSITORY="${NOJ_BOOTSTRAP_REPOSITORY:-$DEFAULT_REPOSITORY}"
 REF="${NOJ_BOOTSTRAP_REF:-$DEFAULT_REF}"
 TARGET_DIR="${NOJ_BOOTSTRAP_DIR:-/opt/neuro-oj}"
 CHECK_PORT="${NOJ_BOOTSTRAP_PORT:-8080}"
+EXISTING_INSTALL=0
 PANEL_MODE="${NOJ_BOOTSTRAP_PANEL:-auto}"
 PANEL_MODE_SET=0
 PANEL_NAME="none"
@@ -89,6 +90,7 @@ Neuro OJ Linux 独立下载部署工具
   通过 -- 后传递给下载后的 deploy.sh install，例如 -- --non-interactive
 
 目标目录非空时脚本会拒绝覆盖；已有安装请进入目标目录执行 deploy.sh upgrade。
+如果目标目录已经是本工具安装的 Neuro OJ，则会保留现有配置并继续部署；其他非空目录仍会拒绝覆盖。
 生产环境建议使用不可变 Release tag，并让 --ref 与 .env.prod 中的 NOJ_VERSION 一致。
 install-env 只安装 curl、tar、openssl 和 CA 证书等基础工具；Docker 请按发行版官方文档安装。
 EOF
@@ -385,6 +387,12 @@ check_target() {
   [[ ! -L "$TARGET_DIR" ]] || fail "安装目录不能是符号链接：$TARGET_DIR"
   if [[ -e "$TARGET_DIR" ]]; then
     [[ -d "$TARGET_DIR" ]] || fail "安装路径已存在但不是目录：$TARGET_DIR"
+    if [[ -f "$TARGET_DIR/scripts/deploy/deploy.sh" &&
+      -f "$TARGET_DIR/docker-compose.prod.yml" ]]; then
+      EXISTING_INSTALL=1
+      ok "检测到已有 Neuro OJ 安装，将保留现有配置并继续部署：$TARGET_DIR"
+      return 0
+    fi
     local -a entries=()
     shopt -s nullglob dotglob
     entries=("$TARGET_DIR"/*)
@@ -452,7 +460,11 @@ validate_archive() {
 install_source() {
   local archive extract_dir source_dir
   if ((DRY_RUN)); then
-    ok "[dry-run] 将下载到临时目录并安装到：$TARGET_DIR"
+    if ((EXISTING_INSTALL)); then
+      ok "[dry-run] 将更新已有 Neuro OJ 的部署文件并保留配置、备份和数据"
+    else
+      ok "[dry-run] 将下载到临时目录并安装到：$TARGET_DIR"
+    fi
     ok "[dry-run] 源码 ref：$REF"
     return 0
   fi
@@ -472,6 +484,20 @@ install_source() {
     fail "下载的 ref 不包含 Neuro OJ 生产部署脚本"
   [[ -f "$source_dir/docker-compose.prod.yml" ]] ||
     fail "下载的 ref 不包含生产 Compose 文件"
+
+  if ((EXISTING_INSTALL)); then
+    cp -a "$source_dir/docker-compose.prod.yml" "$TARGET_DIR/"
+    [[ -f "$source_dir/.env.prod.example" ]] &&
+      cp -a "$source_dir/.env.prod.example" "$TARGET_DIR/"
+    mkdir -p "$TARGET_DIR/scripts/deploy"
+    cp -a "$source_dir/scripts/deploy/." "$TARGET_DIR/scripts/deploy/"
+    if [[ -d "$source_dir/deploy" ]]; then
+      mkdir -p "$TARGET_DIR/deploy"
+      cp -a "$source_dir/deploy/." "$TARGET_DIR/deploy/"
+    fi
+    ok "已更新 Neuro OJ 部署文件；保留 .env.prod、备份和数据目录"
+    return 0
+  fi
 
   mkdir -p -- "$(dirname -- "$TARGET_DIR")"
   if [[ -d "$TARGET_DIR" ]]; then
