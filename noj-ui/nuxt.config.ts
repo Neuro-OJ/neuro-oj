@@ -74,15 +74,11 @@ export default defineNuxtConfig({
     },
   },
 
-  // 公开 GET 接口缓存（SWR），降低 noj-core 压力；认证/个性化接口显式 no-store
+  // 通用 API 代理不在 Nitro 层启用 SWR：代理响应可能是上游 Node 响应对象，无法安全
+  // 序列化；同时同一路径下存在按用户鉴权/个性化的接口（例如 U 型题列表），缓存会
+  // 导致请求挂起、复用错误响应，甚至把一个用户的数据暴露给另一个用户。需要缓存时，
+  // 应在明确的、非个性化 server handler 中单独实现。
   routeRules: {
-    '/api/v1/problems': { swr: 60 },
-    '/api/v1/rankings': { swr: 60 },
-    '/api/v1/contests': { swr: 60 },
-    '/api/v1/trainings': { swr: 60 },
-    '/api/v1/announcements': { swr: 60 },
-    '/api/v1/tags': { swr: 60 },
-    '/api/v1/stats': { swr: 60 },
     '/api/v1/auth/**': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/submissions/**': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/queue/**': { headers: { 'cache-control': 'no-store' } },
