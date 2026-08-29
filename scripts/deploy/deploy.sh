@@ -49,6 +49,29 @@ fail() {
 }
 section() { printf "\n== %s ==\n" "$*"; }
 
+has_interactive_tty() {
+  [[ -r /dev/tty && -w /dev/tty ]]
+}
+
+read_prompt() {
+  local prompt="$1" secret="${2:-0}" value
+  if has_interactive_tty; then
+    printf '%s' "$prompt" >/dev/tty
+    if [[ "$secret" == 1 ]]; then
+      IFS= read -r -s value </dev/tty || fail "读取配置输入失败"
+      printf '\n' >/dev/tty
+    else
+      IFS= read -r value </dev/tty || fail "读取配置输入失败"
+    fi
+  elif [[ "$secret" == 1 ]]; then
+    IFS= read -r -s -p "$prompt" value || fail "读取配置输入失败"
+    printf '\n'
+  else
+    IFS= read -r -p "$prompt" value || fail "读取配置输入失败"
+  fi
+  PROMPT_VALUE="$value"
+}
+
 usage() {
   cat <<'EOF'
 Neuro OJ 生产部署工具
@@ -181,10 +204,12 @@ prompt_text() {
   local label="$1" default_value="${2:-}" value
   while :; do
     if [[ -n "$default_value" ]]; then
-      IFS= read -r -p "$label [$default_value]: " value || fail "读取配置输入失败：$label"
+      read_prompt "$label [$default_value]: "
+      value="$PROMPT_VALUE"
       value="${value:-$default_value}"
     else
-      IFS= read -r -p "$label: " value || fail "读取配置输入失败：$label"
+      read_prompt "$label: "
+      value="$PROMPT_VALUE"
     fi
     if [[ -n "$value" && "$value" != *$'\n'* && "$value" != *$'\r'* ]]; then
       PROMPT_VALUE="$value"
@@ -197,8 +222,8 @@ prompt_text() {
 prompt_secret() {
   local label="$1" value
   while :; do
-    IFS= read -r -s -p "$label: " value || fail "读取配置输入失败：$label"
-    printf '\n'
+    read_prompt "$label: " 1
+    value="$PROMPT_VALUE"
     if [[ -n "$value" ]]; then
       PROMPT_VALUE="$value"
       return 0
@@ -210,10 +235,10 @@ prompt_secret() {
 prompt_password() {
   local label="$1" value confirmation
   while :; do
-    IFS= read -r -s -p "$label（至少 12 位）: " value || fail "读取配置输入失败：$label"
-    printf '\n'
-    IFS= read -r -s -p "再次输入以确认：" confirmation || fail "读取配置输入失败：$label"
-    printf '\n'
+    read_prompt "$label（至少 12 位）: " 1
+    value="$PROMPT_VALUE"
+    read_prompt "再次输入以确认：" 1
+    confirmation="$PROMPT_VALUE"
     if [[ -z "$value" ]]; then
       warn "管理员密码不能为空，请重新输入"
     elif (( ${#value} < 12 )); then
@@ -234,6 +259,29 @@ current_config_value() {
     value=""
   fi
   printf '%s\n' "$value"
+}
+
+configuration_needs_interactive_input() {
+  local key value
+  for key in NOJ_VERSION DOMAIN APP_URL ADMIN_EMAIL ADMIN_PASS EMAIL_PROVIDER JUDGE_DOCKER_SOCKET; do
+    value="$(current_config_value "$key")"
+    is_placeholder "$value" && return 0
+  done
+  case "$(env_value EMAIL_PROVIDER)" in
+    aliyun)
+      for key in ALIBABA_ACCESS_KEY_ID ALIBABA_ACCESS_KEY_SECRET ALIBABA_FROM_EMAIL; do
+        value="$(current_config_value "$key")"
+        is_placeholder "$value" && return 0
+      done
+      ;;
+    tencent)
+      for key in TENCENT_SECRET_ID TENCENT_SECRET_KEY TENCENT_FROM_EMAIL TENCENT_REGION; do
+        value="$(current_config_value "$key")"
+        is_placeholder "$value" && return 0
+      done
+      ;;
+  esac
+  return 1
 }
 
 configure_env_interactive() {
@@ -330,6 +378,9 @@ initialize_env() {
     [[ -f "$ENV_FILE" ]] || fail "生产配置路径不是普通文件：$ENV_FILE"
     chmod 600 "$ENV_FILE"
     ok "保留已有配置：$ENV_FILE"
+    if ((INTERACTIVE)) && has_interactive_tty && configuration_needs_interactive_input; then
+      configure_env_interactive
+    fi
     return 0
   fi
 
@@ -359,7 +410,7 @@ initialize_env() {
   set_env_value S3_ACCESS_KEY "nojs3$(openssl rand -hex 6)"
 
   ok "已创建并保护 $ENV_FILE"
-  if ((INTERACTIVE)) && [[ -t 0 && -t 1 ]]; then
+  if ((INTERACTIVE)) && has_interactive_tty; then
     configure_env_interactive
     return 0
   fi

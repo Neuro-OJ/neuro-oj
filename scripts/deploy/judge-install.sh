@@ -53,6 +53,29 @@ fail() {
 }
 section() { printf "\n== %s ==\n" "$*"; }
 
+has_interactive_tty() {
+  [[ -r /dev/tty && -w /dev/tty ]]
+}
+
+read_prompt() {
+  local prompt="$1" secret="${2:-0}" value
+  if has_interactive_tty; then
+    printf '%s' "$prompt" >/dev/tty
+    if [[ "$secret" == 1 ]]; then
+      IFS= read -r -s value </dev/tty || fail "读取配置输入失败"
+      printf '\n' >/dev/tty
+    else
+      IFS= read -r value </dev/tty || fail "读取配置输入失败"
+    fi
+  elif [[ "$secret" == 1 ]]; then
+    IFS= read -r -s -p "$prompt" value || fail "读取配置输入失败"
+    printf '\n'
+  else
+    IFS= read -r -p "$prompt" value || fail "读取配置输入失败"
+  fi
+  PROMPT_VALUE="$value"
+}
+
 usage() {
   cat <<'EOF'
 Neuro OJ 独立 Judge Worker 部署工具
@@ -295,12 +318,8 @@ prompt_value() {
   [[ -n "$value" ]] && { printf '%s\n' "$value"; return 0; }
   ((NON_INTERACTIVE)) && fail "非交互安装缺少必填配置：$key"
   [[ -n "$hint" ]] && printf '  说明：%s\n' "$hint" >&2
-  if [[ "$secret" == 1 ]]; then
-    read -r -s -p "  $label${default_value:+ [$default_value]}：" value
-    printf '\n' >&2
-  else
-    read -r -p "  $label${default_value:+ [$default_value]}：" value
-  fi
+  read_prompt "  $label${default_value:+ [$default_value]}：" "$secret"
+  value="$PROMPT_VALUE"
   value="${value:-$default_value}"
   [[ -n "$value" ]] || fail "$key 不能为空"
   [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] || fail "$key 不能包含换行"
@@ -455,7 +474,8 @@ Judge 必须连接 noj-core 正在使用的同一个 Redis、数据库和队列�
   3. 稍后配置（本次不会启动 Judge）
 
 EOF
-  read -r -p '请选择 Redis 来源 [1]：' choice
+  read_prompt '请选择 Redis 来源 [1]：'
+  choice="$PROMPT_VALUE"
   choice="${choice:-1}"
   case "$choice" in
     1)

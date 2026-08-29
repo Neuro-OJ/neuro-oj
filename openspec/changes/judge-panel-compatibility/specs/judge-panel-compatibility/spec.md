@@ -34,3 +34,13 @@
 
 - **WHEN** 用户在面板模式下提供共享 Docker socket
 - **THEN** 脚本 MUST 在启动容器前失败，并给出专用 rootless socket 指引
+
+### Requirement: 管道安装交互兼容
+
+独立 Judge 部署脚本通过 `curl | bash -s` 执行时 MUST 在存在 `/dev/tty` 的 Linux 终端中从终端读取配置，而不是把脚本管道内容当作配置输入。
+
+#### Scenario: 一行命令进入配置向导
+
+- **WHEN** 用户通过管道执行 Judge `install`，且服务器存在可用终端
+- **THEN** 脚本 MUST 从 `/dev/tty` 读取 Redis、版本和 Docker socket 配置
+- **AND** 脚本 MUST 继续隐藏密码输入

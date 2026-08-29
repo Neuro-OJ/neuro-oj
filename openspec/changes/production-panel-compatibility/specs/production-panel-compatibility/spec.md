@@ -38,3 +38,18 @@
 - **WHEN** 用户在宝塔模式下提供 `/run/docker.sock` 或 `/var/run/docker.sock`
 - **THEN** 生产部署 MUST 在启动服务前失败
 - **AND** 错误信息 MUST 指向 Judge 专用 rootless Docker socket
+
+### Requirement: 管道一键安装支持交互配置
+
+前后端 bootstrap 通过 `curl | bash -s` 执行时 MUST 能在存在 `/dev/tty` 的 Linux 终端中继续交互式读取配置；如果没有可用终端，脚本 MUST 保留当前的非交互失败提示。
+
+#### Scenario: 从 curl 管道执行
+
+- **WHEN** 用户通过一行 `curl | bash -s` 命令启动安装，且服务器存在可读写的 `/dev/tty`
+- **THEN** 脚本 MUST 从终端读取 `NOJ_VERSION`、域名、邮件、管理员和 Judge socket 配置
+- **AND** 脚本 MUST 不把管道中的脚本内容当作配置输入
+
+#### Scenario: 上次安装中断后重试
+
+- **WHEN** `.env.prod` 已由此前一次安装创建但仍包含占位配置，且用户重新在终端执行安装
+- **THEN** 脚本 MUST 保留已生成的随机密钥并继续引导补齐配置
