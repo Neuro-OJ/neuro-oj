@@ -11,13 +11,16 @@
 
 ```bash
 # 自动检测（默认）
-bash noj-install.sh --panel auto --ref 0.8.0-rc.1 --dir /opt/neuro-oj
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
+  bash -s -- --panel auto --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 
 # 面板安装路径特殊时，强制显示宝塔兼容提示
-bash noj-install.sh --panel baota --ref 0.8.0-rc.1 --dir /opt/neuro-oj
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
+  bash -s -- --panel baota --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 
 # 关闭面板提示
-bash noj-install.sh --panel none --ref 0.8.0-rc.1 --dir /opt/neuro-oj
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
+  bash -s -- --panel none --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 ```
 
 宝塔兼容模式只复用面板安装的标准 Docker/Compose，不调用面板 API，也不会修改已有
@@ -57,15 +60,8 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 如果服务器不能访问 GitHub API，自动获取最新版本会停止安装；请使用上面的 `--ref`
 显式指定版本，或先下载脚本检查后执行。
 
-```bash
-# 只下载一个 bootstrap 脚本；生产环境建议固定到 Release tag
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/install.sh \
-  -o noj-install.sh
-chmod +x noj-install.sh
-
-# 下载指定版本源码并调用生产部署入口
-bash noj-install.sh --ref 0.8.0-rc.1 --dir /opt/neuro-oj
-```
+如需人工检查下载内容，可以先下载并检查 `setup.sh`，确认后再执行；
+`scripts/deploy/install.sh` 是 setup.sh 的内部 bootstrap 和旧版本兼容入口，不再作为新安装推荐命令。
 
 首次执行会将源码放入 `/opt/neuro-oj`，随后创建权限为 `600` 的 `.env.prod` 并生成
 部分随机密钥，然后在终端逐项引导填写生产配置。配置网站地址、HTTPS 和邮件服务后，
@@ -91,29 +87,30 @@ bash noj-install.sh --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 ```bash
 sudo vim /opt/neuro-oj/.env.prod
 sudo chmod 600 /opt/neuro-oj/.env.prod
-sudo bash /opt/neuro-oj/scripts/deploy/deploy.sh install
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
+  sudo bash -s -- --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 ```
 
 bootstrap 默认自动选择最新 Release，可通过 `--ref` 指定其他分支或 Release tag；生产环境应
 使用不可变 Release tag，并让 `--ref` 与 `.env.prod` 中的 `NOJ_VERSION` 保持一致。
 也可以使用 `--download-only` 只获取源码，或使用 `--dry-run` 查看下载计划。目标目录
-非空时 bootstrap 会拒绝覆盖已有 `.env.prod`、备份和部署文件；已有安装请直接执行
-`/opt/neuro-oj/scripts/deploy/deploy.sh upgrade`。
+非空时 bootstrap 会拒绝覆盖已有 `.env.prod`、备份和部署文件；已有安装请进入目录执行
+`/opt/neuro-oj/noj update`。
 
 如果不希望在 shell 中直接执行网络下载内容，可以先保存脚本并人工检查；确认后再运行
-上面的 `sudo bash noj-install.sh ...`。bootstrap 只依赖 Linux 上常见的 Bash、`curl`
+上面的 `setup.sh` 命令。bootstrap 只依赖 Linux 上常见的 Bash、`curl`
 或 `wget`、`tar`，实际服务部署仍需要 Docker Engine 与 Docker Compose v2。
 
 部署前可以先检测宿主机：
 
 ```bash
-bash noj-install.sh check
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash -s -- check
 ```
 
 如果缺少基础工具，可让脚本通过当前发行版的包管理器安装：
 
 ```bash
-sudo bash noj-install.sh install-env
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | sudo bash -s -- install-env
 ```
 
 `install-env` 只安装 CA 证书、curl、tar 和 openssl 等基础工具；Docker Engine、Docker
@@ -129,7 +126,8 @@ Linux/CPU 架构、基础工具、Docker/Compose、内存、目标目录磁盘�
 准备完整的 `.env.prod`，否则脚本以非零状态退出：
 
 ```bash
-bash noj-install.sh --non-interactive --ref 0.8.0-rc.1 --dir /opt/neuro-oj
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
+  bash -s -- --non-interactive --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 ```
 
 `.env.prod` 中必须填写：
@@ -189,10 +187,10 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 curl https://你的域名/healthz
 ```
 
-使用部署脚本时，上述初始化、启动和健康检查由以下命令统一完成：
+使用安装入口时，上述初始化、启动和健康检查由以下命令统一完成：
 
 ```bash
-bash scripts/deploy/deploy.sh install
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash
 ```
 
 部署脚本在 `install`、`start` 和 `upgrade` 前会校验 `NOJ_VERSION` 对应的应用镜像
@@ -304,13 +302,35 @@ bash scripts/staging/acceptance.sh all \
 
 ## 5. 日常运维
 
-推荐使用部署脚本：
+安装完成后，推荐使用安装目录根部的 `noj` 命令统一管理生产服务：
 
 ```bash
-bash scripts/deploy/deploy.sh status
-bash scripts/deploy/deploy.sh logs core
-bash scripts/deploy/deploy.sh logs judge --follow
-bash scripts/deploy/deploy.sh backup --passphrase-file /etc/noj/backup-passphrase
+cd /opt/neuro-oj
+./noj status
+./noj logs core
+./noj restart
+./noj backup
+./noj config check
+```
+
+更新版本前先修改 `.env.prod` 中的 `NOJ_VERSION`，然后执行：
+
+```bash
+./noj update
+```
+
+`update` 会先同步目标 Release 的部署文件和 `noj` 命令，再沿用生产部署脚本的备份、镜像校验和健康检查流程，不会自动选择最新版本，
+也不会删除 Docker 数据卷。`noj` 只是统一命令入口；需要高级选项时仍可使用
+`bash scripts/deploy/deploy.sh <命令> [选项]`。首次部署仅使用 `setup.sh`，成功后会自动
+将命令注册到 `/usr/local/bin/noj`；没有权限时回退到 `~/.local/bin/noj` 并更新登录 PATH。
+
+推荐使用 `noj` 入口：
+
+```bash
+./noj status
+./noj logs core
+./noj logs judge --follow
+./noj backup --passphrase-file /etc/noj/backup-passphrase
 ```
 
 `backup` 会创建包含 PostgreSQL、Redis RDB、MinIO/S3 对象镜像和 GPG 加密
@@ -343,7 +363,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
 3. 升级前创建备份并拉取新镜像：
 
 ```bash
-bash scripts/deploy/deploy.sh upgrade
+./noj update
 ```
 
 部署脚本会先校验镜像签名，再创建并校验生产备份，然后拉取镜像并等待 Compose 健康检查。

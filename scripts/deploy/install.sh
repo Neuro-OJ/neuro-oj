@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 #
-# Neuro OJ 独立下载与生产部署入口。
+# Neuro OJ 内部 bootstrap 与旧版本兼容入口。
 #
-# 此文件可以单独下载后执行，不依赖当前工作目录或本地 Git 仓库：
-#   curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/install.sh \
-#     -o noj-install.sh
-#   bash noj-install.sh --ref 0.8.0-rc.1 --dir /opt/neuro-oj
+# 新用户请使用 setup.sh；此文件保留用于旧版本兼容和 setup.sh 的内部引导，不依赖当前
+# 工作目录或本地 Git 仓库。
 #
 # Bootstrap 只负责获取源码；生产 Compose、配置校验和服务生命周期仍由
 # 下载后的 scripts/deploy/deploy.sh 负责。
@@ -26,6 +24,7 @@ PANEL_ROOT="${NOJ_BOOTSTRAP_PANEL_ROOT:-/www/server/panel}"
 PANEL_COMMAND="${NOJ_BOOTSTRAP_PANEL_COMMAND:-/usr/bin/bt}"
 COMMAND=""
 DOWNLOAD_ONLY=0
+FILES_ONLY=0
 DRY_RUN=0
 NON_INTERACTIVE=0
 TEMP_ROOT=""
@@ -52,17 +51,17 @@ usage() {
   cat <<'EOF'
 Neuro OJ Linux 独立下载部署工具
 
+新用户请使用仓库根目录的 setup.sh；本脚本作为 setup.sh 的内部 bootstrap，并保留旧版本兼容。
+
 用法：
   install.sh [check|install-env|install] [选项] [-- <deploy.sh 参数>]
 
 示例：
-  curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/install.sh \
-    -o noj-install.sh
-  bash noj-install.sh --dir /opt/neuro-oj
-  bash noj-install.sh --ref 0.8.0-rc.1 --dir /opt/neuro-oj
-  bash noj-install.sh check
-  sudo bash noj-install.sh install-env
-  bash noj-install.sh --ref 0.8.0-rc.1 --dir /opt/neuro-oj -- --dry-run
+  curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh \
+    -o noj-setup.sh
+  bash noj-setup.sh --dir /opt/neuro-oj
+  bash scripts/deploy/install.sh check       # 旧版本兼容检查
+  sudo bash scripts/deploy/install.sh install-env
 
 命令：
   check                  检测 Linux、基础工具、Docker/Compose、资源和端口
@@ -76,6 +75,7 @@ Neuro OJ Linux 独立下载部署工具
   --port PORT            检测宿主机端口（默认 8080）
   --panel MODE           面板模式：auto（默认）、baota 或 none
   --download-only        只下载源码，不执行生产部署
+  --files-only            只更新安装目录中的部署文件和 noj 命令（内部兼容选项）
   --dry-run              只显示下载计划，不下载、不写文件、不启动服务
   --non-interactive      首次配置不询问，配置不完整时直接失败
   -h, --help             显示帮助
@@ -143,6 +143,7 @@ parse_args() {
         ;;
       --panel=*) PANEL_MODE="${1#*=}"; PANEL_MODE_SET=1 ;;
       --download-only) DOWNLOAD_ONLY=1 ;;
+      --files-only) FILES_ONLY=1 ;;
       --dry-run) DRY_RUN=1 ;;
       --non-interactive) NON_INTERACTIVE=1 ;;
       -h|--help) usage; exit 0 ;;
@@ -233,7 +234,7 @@ docker_install_hint() {
 Docker Engine 或 Docker Compose v2 不可用。
 请按照发行版官方文档安装 Docker Engine 和 Compose plugin：
   https://docs.docker.com/engine/install/
-安装后重新执行：bash noj-install.sh check
+安装后重新执行：bash scripts/deploy/install.sh check
 EOF
 }
 
@@ -408,7 +409,7 @@ install_env() {
     return 0
   fi
   [[ "${EUID:-$(id -u)}" -eq 0 ]] ||
-    fail "install-env 需要 root 权限，请使用 sudo bash noj-install.sh install-env"
+    fail "install-env 需要 root 权限，请使用 sudo bash scripts/deploy/install.sh install-env"
   case "$package_manager" in
     apt-get) apt-get update; apt-get install -y ca-certificates curl tar openssl ;;
     dnf|yum) "$package_manager" install -y ca-certificates curl tar openssl ;;
@@ -527,6 +528,10 @@ install_source() {
       cp -a "$source_dir/.env.prod.example" "$TARGET_DIR/"
     mkdir -p "$TARGET_DIR/scripts/deploy"
     cp -a "$source_dir/scripts/deploy/." "$TARGET_DIR/scripts/deploy/"
+    if [[ -f "$source_dir/noj" ]]; then
+      cp -a "$source_dir/noj" "$TARGET_DIR/noj"
+      chmod 755 "$TARGET_DIR/noj"
+    fi
     if [[ -d "$source_dir/deploy" ]]; then
       mkdir -p "$TARGET_DIR/deploy"
       cp -a "$source_dir/deploy/." "$TARGET_DIR/deploy/"
@@ -545,11 +550,12 @@ install_source() {
 }
 
 run_deploy() {
-  local status
+  local status deploy_entry
   ((NON_INTERACTIVE)) && DEPLOY_ARGS+=(--non-interactive)
   ((PANEL_MODE_SET)) && DEPLOY_ARGS+=(--panel "$PANEL_MODE")
-  ((DOWNLOAD_ONLY)) && {
-    ok "仅下载模式完成，未启动生产服务"
+  ((DOWNLOAD_ONLY || FILES_ONLY)) && {
+    ((FILES_ONLY)) && ok "部署文件和 noj 命令已更新，未重启生产服务"
+    ((DOWNLOAD_ONLY)) && ok "仅下载模式完成，未启动生产服务"
     return 0
   }
   if ((DRY_RUN)); then
@@ -557,13 +563,19 @@ run_deploy() {
     return 0
   fi
 
+  deploy_entry="$TARGET_DIR/scripts/deploy/deploy.sh"
+  if [[ -f "$TARGET_DIR/noj" ]]; then
+    deploy_entry="$TARGET_DIR/noj"
+  fi
   set +e
   if ((${#DEPLOY_ARGS[@]} > 0)); then
+    NOJ_BIN_DIR="${NOJ_BOOTSTRAP_BIN_DIR:-/usr/local/bin}" \
     NOJ_DEPLOY_DEFAULT_VERSION="$REF" \
-      bash "$TARGET_DIR/scripts/deploy/deploy.sh" install "${DEPLOY_ARGS[@]}"
+      bash "$deploy_entry" install "${DEPLOY_ARGS[@]}"
   else
+    NOJ_BIN_DIR="${NOJ_BOOTSTRAP_BIN_DIR:-/usr/local/bin}" \
     NOJ_DEPLOY_DEFAULT_VERSION="$REF" \
-      bash "$TARGET_DIR/scripts/deploy/deploy.sh" install
+      bash "$deploy_entry" install
   fi
   status=$?
   set -e
@@ -572,6 +584,19 @@ run_deploy() {
     return "$status"
   fi
   ok "生产部署完成"
+}
+
+register_noj_command() {
+  ((DOWNLOAD_ONLY || DRY_RUN)) && return 0
+  [[ -f "$TARGET_DIR/noj" ]] || {
+    warn "当前源码未包含 noj 命令，跳过 PATH 注册"
+    return 0
+  }
+  chmod 755 "$TARGET_DIR/noj"
+  NOJ_INTERNAL_REGISTER=1 \
+  NOJ_BIN_DIR="${NOJ_BOOTSTRAP_BIN_DIR:-/usr/local/bin}" \
+    bash "$TARGET_DIR/noj" register-command ||
+    warn "无法自动注册 noj 到 PATH；部署已完成，请手动将 $TARGET_DIR/noj 加入 PATH"
 }
 
 main() {
@@ -597,6 +622,7 @@ main() {
       printf '下载地址：%s\n' "$ARCHIVE_URL"
       install_source
       run_deploy
+      register_noj_command
       ;;
     *)
       fail "未知命令：$COMMAND"
@@ -604,4 +630,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${NOJ_BOOTSTRAP_SOURCE_ONLY:-0}" != "1" ]]; then
+  main "$@"
+fi
