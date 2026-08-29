@@ -6,6 +6,9 @@ COPY deno.json .
 COPY deno.lock .
 COPY src/ ./src/
 
+# 在固定 digest 的基础镜像上安装 Alpine 安全更新。
+RUN apk upgrade --no-cache
+
 # 构建期缓存依赖，保证可复现；运行时仍以 lock 为准
 RUN deno cache --lock=deno.lock src/main.ts
 

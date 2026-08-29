@@ -24,6 +24,14 @@ NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" >/de
   fail "合法供应链配置检查失败"
 pass "合法供应链配置"
 
+sed -i.bak '/apt-get upgrade -y/d' \
+  "$TEST_ROOT/noj-judge/docker/evaluator-python/Dockerfile"
+if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
+  >/dev/null 2>&1; then
+  fail "缺少 Debian 安全更新的 Dockerfile 未被拒绝"
+fi
+pass "缺少基础系统安全更新拒绝"
+
 sed -i.bak 's#aquasecurity/trivy-action@v0.36.0#aquasecurity/trivy-action@v0.28.0#g' \
   "$TEST_ROOT/.github/workflows/release.yml"
 if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
