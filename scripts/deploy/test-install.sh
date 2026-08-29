@@ -5,6 +5,7 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_SCRIPT="$SCRIPT_DIR/install.sh"
+SOURCE_NOJ="$SCRIPT_DIR/../../noj"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/noj-bootstrap-test.XXXXXX")"
 FAKE_BIN="$TEST_ROOT/bin"
 ARCHIVE="$TEST_ROOT/source.tar.gz"
@@ -19,6 +20,8 @@ fail() { printf '✗ %s\n' "$*" >&2; exit 1; }
 
 mkdir -p "$FAKE_BIN" "$TEST_ROOT/source/noj-neuro-oj-v0.1.0/scripts/deploy"
 printf 'target\n' >"$TEST_ROOT/source/noj-neuro-oj-v0.1.0/AGENTS.md"
+cp "$SOURCE_NOJ" "$TEST_ROOT/source/noj-neuro-oj-v0.1.0/noj"
+chmod 755 "$TEST_ROOT/source/noj-neuro-oj-v0.1.0/noj"
 ln -s AGENTS.md "$TEST_ROOT/source/noj-neuro-oj-v0.1.0/CLAUDE.md"
 cat >"$TEST_ROOT/source/noj-neuro-oj-v0.1.0/scripts/deploy/deploy.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -113,6 +116,7 @@ export PATH="$FAKE_BIN:$PATH"
 export NOJ_BOOTSTRAP_ARCHIVE="$ARCHIVE"
 export NOJ_BOOTSTRAP_DOWNLOAD_LOG="$DOWNLOAD_LOG"
 export NOJ_BOOTSTRAP_DEPLOY_LOG="$DEPLOY_LOG"
+export NOJ_BOOTSTRAP_BIN_DIR="$TEST_ROOT/noj-bin"
 
 bash "$INSTALL_SCRIPT" --help >/dev/null
 pass "帮助输出"
@@ -189,7 +193,8 @@ set -e
 grep -q '使用 --ref' "$TEST_ROOT/api-fail.err" || fail "最新 Release 获取失败提示缺少显式版本建议"
 pass "最新 Release 获取失败"
 
-NOJ_BOOTSTRAP_API_FAIL=1 bash "$INSTALL_SCRIPT" --ref v0.1.0 --dir "$TEST_ROOT/explicit-ref" >/dev/null
+NOJ_BOOTSTRAP_API_FAIL=1 NOJ_BOOTSTRAP_BIN_DIR="$TEST_ROOT/explicit-bin" \
+  bash "$INSTALL_SCRIPT" --ref v0.1.0 --dir "$TEST_ROOT/explicit-ref" >/dev/null
 pass "显式版本跳过 Release 查询"
 
 download_only_dir="$TEST_ROOT/download-only"
@@ -197,6 +202,7 @@ rm -f "$DEPLOY_LOG"
 bash "$INSTALL_SCRIPT" --download-only --repo https://example.com/repo --ref v0.1.0 \
   --dir "$download_only_dir" >/dev/null
 [[ -f "$download_only_dir/scripts/deploy/deploy.sh" ]] || fail "下载模式缺少部署脚本"
+[[ -x "$download_only_dir/noj" ]] || fail "下载模式缺少可执行 noj 命令"
 [[ ! -e "$DEPLOY_LOG" ]] || fail "download-only 启动了部署"
 [[ -z "$(find "$TEST_ROOT" -maxdepth 1 -type d -name 'noj-bootstrap.*' -print -quit)" ]] ||
   fail "下载完成后未清理临时目录"
@@ -207,6 +213,8 @@ bash "$INSTALL_SCRIPT" --repo https://example.com/repo --ref v0.1.0 --dir "$depl
   --env-file /tmp/example.env --backup-dir /tmp/backups >/dev/null
 [[ "$(cat "$DEPLOY_LOG")" == 'install --env-file /tmp/example.env --backup-dir /tmp/backups' ]] ||
   fail "部署参数未正确传递"
+[[ -L "$NOJ_BOOTSTRAP_BIN_DIR/noj" ]] || fail "安装后未注册 PATH 命令"
+cmp -s "$NOJ_BOOTSTRAP_BIN_DIR/noj" "$deploy_dir/noj" || fail "PATH 命令未指向安装目录"
 pass "部署入口与参数传递"
 
 resume_dir="$TEST_ROOT/resume"
@@ -218,10 +226,14 @@ printf 'services:\n  fake:\n    image: alpine:3\n' >"$resume_dir/docker-compose.
 printf 'NOJ_VERSION=v0.1.0\nADMIN_PASS=keep-this-secret\n' >"$resume_dir/.env.prod"
 mkdir -p "$resume_dir/backups"
 printf 'keep\n' >"$resume_dir/backups/marker.txt"
+printf 'old-noj\n' >"$resume_dir/noj"
+chmod 600 "$resume_dir/noj"
 bash "$INSTALL_SCRIPT" --panel baota --dir "$resume_dir" >/dev/null
 grep -q 'install --panel baota' "$DEPLOY_LOG" || fail "已有 NOJ 安装未继续执行 deploy.sh"
 grep -q '^ADMIN_PASS=keep-this-secret$' "$resume_dir/.env.prod" || fail "续装覆盖了生产配置"
 [[ "$(cat "$resume_dir/backups/marker.txt")" == keep ]] || fail "续装覆盖了备份目录"
+cmp -s "$resume_dir/noj" "$TEST_ROOT/source/noj-neuro-oj-v0.1.0/noj" || fail "续装未更新 noj 命令"
+[[ -x "$resume_dir/noj" ]] || fail "续装后 noj 命令不可执行"
 pass "已有 NOJ 安装保留配置并继续部署"
 
 panel_deploy_dir="$TEST_ROOT/panel-deploy"

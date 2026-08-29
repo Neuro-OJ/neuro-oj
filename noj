@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+#
+# Neuro OJ 生产运维命令入口。
+#
+# 该入口只负责命令路由；配置校验、备份、健康检查和 Docker Compose
+# 生命周期逻辑统一由 scripts/deploy/deploy.sh 实现。
+
+set -Eeuo pipefail
+
+SOURCE_FILE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE_FILE" ]]; do
+  SOURCE_DIR="$(cd -P "$(dirname "$SOURCE_FILE")" && pwd)"
+  SOURCE_FILE="$(readlink "$SOURCE_FILE")"
+  [[ "$SOURCE_FILE" == /* ]] || SOURCE_FILE="$SOURCE_DIR/$SOURCE_FILE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE_FILE")" && pwd)"
+DEPLOY_SCRIPT="$SCRIPT_DIR/scripts/deploy/deploy.sh"
+
+usage() {
+  cat <<'EOF'
+Neuro OJ 生产运维命令
+
+用法：
+  noj <命令> [选项]
+
+常用命令：
+  install                 首次初始化配置并部署
+  start                   启动生产服务
+  stop                    停止服务（保留数据卷）
+  restart                 重启服务（先停止，再启动）
+  update                  按 .env.prod 中的 NOJ_VERSION 升级
+  status                  查看服务状态
+  logs [service]          查看服务日志（支持 --follow）
+  backup                  创建完整生产备份
+  verify                  校验生产镜像和配置
+  config check            只检查生产配置，不改变服务状态
+
+示例：
+  ./noj install
+  ./noj update
+  ./noj status
+  ./noj logs core --follow
+  ./noj backup --passphrase-file /etc/noj/backup-passphrase
+  ./noj config check
+
+说明：
+  update 会先同步对应版本的部署文件和 noj 命令，再执行带备份的服务升级；版本来自 .env.prod。
+  update 不会自动切换到最新版本。
+  install 成功后会自动注册 PATH 命令；优先使用 /usr/local/bin，权限不足时使用 ~/.local/bin。
+  deploy.sh 仍可用于高级选项；noj 会把支持的选项原样传递给它。
+  生产配置默认是 .env.prod，Compose 文件默认是 docker-compose.prod.yml。
+EOF
+}
+
+fail() {
+  printf '✗ %s\n' "$*" >&2
+  exit 2
+}
+
+ok() { printf '✓ %s\n' "$*"; }
+warn() { printf '! %s\n' "$*" >&2; }
+
+link_command() {
+  local bin_dir="$1" command_path="$1/noj" target="$SCRIPT_DIR/noj" existing
+  if [[ -L "$command_path" ]]; then
+    existing="$(readlink "$command_path" 2>/dev/null || true)"
+    [[ "$existing" == "$target" ]] && return 0
+    return 2
+  fi
+  [[ ! -e "$command_path" ]] || return 2
+  mkdir -p "$bin_dir" 2>/dev/null || return 1
+  ln -s "$target" "$command_path" 2>/dev/null || return 1
+}
+
+add_user_path() {
+  local user_home="${HOME:-}" profile path_line
+  [[ -n "$user_home" ]] || return 1
+  profile="$user_home/.profile"
+  path_line='export PATH="$HOME/.local/bin:$PATH"'
+  touch "$profile" 2>/dev/null || return 1
+  if ! grep -Fqx -- "$path_line" "$profile" 2>/dev/null; then
+    printf '\n# Neuro OJ command\n%s\n' "$path_line" >>"$profile" || return 1
+  fi
+}
+
+register_command() {
+  local global_bin="${NOJ_BIN_DIR:-/usr/local/bin}" user_bin user_home link_status
+  if link_command "$global_bin"; then
+    ok "已注册全局命令：$global_bin/noj"
+    return 0
+  else
+    link_status=$?
+    if ((link_status == 2)); then
+      warn "未覆盖已有命令：$global_bin/noj"
+      return 0
+    fi
+  fi
+
+  user_home="${HOME:-}"
+  user_bin="$user_home/.local/bin"
+  if [[ -n "$user_home" ]] && link_command "$user_bin"; then
+    if add_user_path; then
+      ok "已注册用户命令：$user_bin/noj；重新登录后可直接执行 noj"
+    else
+      warn "已创建用户命令：$user_bin/noj，但无法自动更新 PATH，请手动将其加入 PATH"
+    fi
+    return 0
+  else
+    link_status=$?
+    if ((link_status == 2)); then
+      warn "未覆盖已有命令：$user_bin/noj"
+      return 0
+    fi
+  fi
+  warn "无法注册 noj 到 PATH；部署已完成，请手动将 $SCRIPT_DIR/noj 加入 PATH"
+}
+
+require_deploy_script() {
+  [[ -f "$DEPLOY_SCRIPT" ]] ||
+    fail "未找到生产部署脚本：${DEPLOY_SCRIPT}；请在 NOJ 安装目录中执行 noj"
+  [[ -r "$DEPLOY_SCRIPT" ]] || fail "生产部署脚本不可读：$DEPLOY_SCRIPT"
+}
+
+run_deploy() {
+  require_deploy_script
+  bash "$DEPLOY_SCRIPT" "$@"
+}
+
+configured_version() {
+  local env_file="$SCRIPT_DIR/.env.prod" version
+  [[ -f "$env_file" ]] || fail "未找到生产配置：$env_file"
+  version="$(awk '
+    index($0, "NOJ_VERSION=") == 1 { print substr($0, 13); exit }
+  ' "$env_file")"
+  case "$version" in
+    "\""*"\""|"'"*"'") version="${version:1:${#version}-2}" ;;
+  esac
+  [[ -n "$version" ]] || fail "生产配置缺少 NOJ_VERSION：$env_file"
+  printf '%s\n' "$version"
+}
+
+update() {
+  local version sync_dry_run=0
+  local -a sync_args
+  require_deploy_script
+  version="$(configured_version)"
+  [[ -f "$SCRIPT_DIR/scripts/deploy/install.sh" ]] ||
+    fail "未找到部署文件更新脚本：$SCRIPT_DIR/scripts/deploy/install.sh"
+
+  printf '同步生产部署文件：%s\n' "$version"
+  for arg in "$@"; do
+    [[ "$arg" == "--dry-run" ]] && sync_dry_run=1
+  done
+  sync_args=(--ref "$version" --dir "$SCRIPT_DIR" --files-only)
+  ((sync_dry_run)) && sync_args+=(--dry-run)
+  NOJ_BOOTSTRAP_BIN_DIR="${NOJ_BIN_DIR:-/usr/local/bin}" \
+    bash "$SCRIPT_DIR/scripts/deploy/install.sh" "${sync_args[@]}"
+  run_deploy upgrade "$@"
+}
+
+restart() {
+  require_deploy_script
+  bash "$DEPLOY_SCRIPT" stop "$@"
+  bash "$DEPLOY_SCRIPT" start "$@"
+}
+
+main() {
+  local command="${1:-}"
+  if [[ -z "$command" || "$command" == "-h" || "$command" == "--help" || "$command" == "help" ]]; then
+    usage
+    [[ -n "$command" ]] || return 2
+    return 0
+  fi
+  shift
+
+  case "$command" in
+    install|start|stop|status|logs|backup|verify)
+      run_deploy "$command" "$@"
+      [[ "$command" != install ]] || register_command
+      ;;
+    update)
+      update "$@"
+      ;;
+    restart)
+      restart "$@"
+      ;;
+    config)
+      [[ "${1:-}" == "check" ]] || {
+        usage >&2
+        fail "config 目前只支持 check"
+      }
+      shift
+      run_deploy verify "$@"
+      ;;
+    register-command)
+      [[ "${NOJ_INTERNAL_REGISTER:-0}" == 1 ]] || fail "不支持直接调用内部命令"
+      register_command
+      ;;
+    *)
+      usage >&2
+      fail "未知命令：$command"
+      ;;
+  esac
+}
+
+main "$@"
