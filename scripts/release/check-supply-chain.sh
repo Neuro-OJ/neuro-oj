@@ -46,12 +46,25 @@ check_dockerfiles() {
 
 check_base_image_security_updates() {
   local file
-  for file in noj-judge/docker/evaluator-python/Dockerfile noj-judge/docker/solution-python/Dockerfile; do
+  local python_files=(
+    noj-judge/docker/evaluator-python/Dockerfile
+    noj-judge/docker/solution-python/Dockerfile
+    noj-judge/docker/solution-ai/Dockerfile
+  )
+  for file in "${python_files[@]}"; do
     require_file "$file"
     grep -q 'apt-get update' "$ROOT_DIR/$file" \
       || fail "$file 未更新 Debian 软件包索引"
     grep -q 'apt-get upgrade' "$ROOT_DIR/$file" \
       || fail "$file 未安装 Debian 安全更新"
+    grep -q 'python3 -m pip install --no-cache-dir --upgrade' "$ROOT_DIR/$file" \
+      || fail "$file 未升级 Python 打包工具"
+    grep -q 'setuptools>=78.1.1' "$ROOT_DIR/$file" \
+      || fail "$file 未约束 setuptools 安全版本"
+    grep -q 'wheel>=0.46.2' "$ROOT_DIR/$file" \
+      || fail "$file 未约束 wheel 安全版本"
+    grep -q 'jaraco.context>=6.1.0' "$ROOT_DIR/$file" \
+      || fail "$file 未约束 jaraco.context 安全版本"
   done
 
   require_file "noj-llm-gateway/Dockerfile"

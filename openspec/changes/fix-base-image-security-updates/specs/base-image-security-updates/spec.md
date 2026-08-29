@@ -10,8 +10,9 @@
 
 #### Scenario: Debian 评测镜像构建
 
-- **WHEN** 构建 evaluator 或 solution Python 生产镜像
+- **WHEN** 构建 evaluator、solution 或 solution-ai Python 生产镜像
 - **THEN** 镜像构建应用 Debian 基础系统的安全更新
+- **AND** 镜像中的 setuptools、wheel 和 jaraco.context 使用规范要求的安全版本或更高版本
 - **AND** 镜像继续使用固定 digest 的 Python 基础镜像
 - **AND** 镜像继续以非 root 用户运行
 
@@ -21,6 +22,13 @@
 - **THEN** 镜像构建应用 Alpine 基础系统的安全更新
 - **AND** 镜像继续使用固定 digest 的 Deno 基础镜像
 - **AND** 镜像继续使用现有 Deno 启动命令
+
+#### Scenario: Python 打包工具安全更新
+
+- **WHEN** 构建任一 Python 生产镜像
+- **THEN** setuptools 版本至少为 `78.1.1`
+- **AND** wheel 版本至少为 `0.46.2`
+- **AND** jaraco.context 版本至少为 `6.1.0`
 
 #### Scenario: 安全扫描验证
 
@@ -35,7 +43,8 @@
 #### Scenario: 安全更新步骤存在
 
 - **WHEN** 供应链静态检查运行在当前生产 Dockerfile 上
-- **THEN** 检查确认 Debian 和 Alpine 受影响镜像包含安全更新步骤并通过
+- **THEN** 检查确认三个 Python 镜像和 Alpine 网关包含基础系统安全更新步骤并通过
+- **AND** 检查确认三个 Python 镜像包含 Python 打包工具升级步骤并通过
 
 #### Scenario: 安全更新步骤缺失
 
