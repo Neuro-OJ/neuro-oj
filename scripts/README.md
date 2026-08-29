@@ -98,15 +98,19 @@ cd noj-judge && cargo run
 
 在单脚本模式下可先执行 `bash noj-install.sh check` 检查 Linux、架构、基础工具、Docker
 Compose、内存、磁盘和端口。`sudo bash noj-install.sh install-env` 只会通过系统包管理器
-安装 `ca-certificates`、`curl`、`tar` 和 `openssl`；Docker Engine、Compose plugin 和
-Judge rootless Docker daemon 不由脚本自动安装。
+安装 `ca-certificates`、`curl`、`tar` 和 `openssl`；Docker Engine、Compose plugin、Cosign
+和 Judge rootless Docker daemon 不由脚本自动安装。Cosign 只在主动开启镜像签名校验时需要。
 
-首次执行安装时，终端会引导填写安装版本、网站地址、HTTPS 选项、邮件服务及评测服务
-连接位置；邮件密钥不会回显。填写过程先暂存在临时文件，最后
+首次执行安装时，终端会引导填写安装版本、网站地址、HTTPS 选项和邮件服务，并询问是否
+安装评测服务 Judge。默认安装 Judge；如果暂时没有独立的 Judge Docker 服务，可以选择
+跳过，网站和题库仍可先部署。安装 Judge 时才需要填写评测服务连接位置；邮件密钥不会回显。
+填写过程先暂存在临时文件，最后
 会询问“是否写入配置”，确认后才会修改正式配置并部署，取消不会留下半成品。已有配置
 时会先询问是否继续使用，选择 `N` 会清空旧值后重新填写；已有阿里云或腾讯云邮件配置
 时直接回车会继续使用，输入 `skip` 才会停用；没有旧邮件配置时直接回车会跳过邮件。
 没有 TTY 的自动化场景会保留配置模板并返回非零状态，可使用 `--non-interactive` 明确选择该行为。
+如果跳过 Judge，之后在 `.env.prod` 中将 `JUDGE_ENABLED` 改为 `true`，补充独立 Judge
+Docker 服务的 socket 和组 ID，再执行 `bash scripts/deploy/deploy.sh start` 即可启用。
 生产部署完成后请立即打开网站注册第一个真实用户；该用户会自动获得管理员权限，已有站点的后续注册用户不会自动提权。
 
 当前发布版本的生产镜像仅支持 `linux/amd64`。在 ARM64 主机上，`check` 和 `install` 会在

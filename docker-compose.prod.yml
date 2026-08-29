@@ -128,6 +128,8 @@ services:
 
   # ── 评测 Worker ───────────────────────────────────────────────────
   judge:
+    profiles:
+      - judge
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-judge:${NOJ_VERSION:?NOJ_VERSION is required}"
     environment:
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
@@ -151,11 +153,11 @@ services:
       SUPPORT_CACHE_MAX_MB: ${SUPPORT_CACHE_MAX_MB:-2048}
     volumes:
       # 仅挂载独立 rootless Docker daemon 的 socket；禁止使用应用宿主机 socket。
-      - ${JUDGE_DOCKER_SOCKET:?JUDGE_DOCKER_SOCKET is required}:/run/noj-judge/docker.sock
+      - ${JUDGE_DOCKER_SOCKET:-/run/noj-judge/docker.sock}:/run/noj-judge/docker.sock
       - judge-cache:/tmp/noj-judge
     user: "${JUDGE_UID:-10001}:${JUDGE_GID:-10001}"
     group_add:
-      - "${JUDGE_DOCKER_SOCKET_GID:?JUDGE_DOCKER_SOCKET_GID is required}"
+      - "${JUDGE_DOCKER_SOCKET_GID:-10001}"
     depends_on:
       redis:
         condition: service_healthy

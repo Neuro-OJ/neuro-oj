@@ -239,8 +239,40 @@ reset_prompt="$(NOJ_DEPLOY_SOURCE_ONLY=1 bash -c 'source "$1"; config_prompt_val
 grep -q '网站地址（域名或服务器 IP' "$DEPLOY_SCRIPT" || fail "网站地址提示不够友好"
 grep -q '是否使用 HTTPS（证书需在宝塔或反向代理中配置）' "$DEPLOY_SCRIPT" || fail "HTTPS 选择提示缺失"
 grep -q '暂不配置' "$DEPLOY_SCRIPT" || fail "邮件服务跳过提示缺失"
+grep -q '是否安装评测服务 Judge' "$DEPLOY_SCRIPT" || fail "Judge 安装选择提示缺失"
 grep -q 'configure_env_interactive 1' "$DEPLOY_SCRIPT" || fail "重新填写未清空旧值默认值"
 pass "重新填写和易懂配置提示"
+
+skip_judge_config_env="$TEST_ROOT/skip-judge-config.env"
+cp "$ENV_FILE" "$skip_judge_config_env"
+if NOJ_DEPLOY_SOURCE_ONLY=1 bash -c '
+  source "$1"
+  ENV_FILE="$2"
+  prompt_text() {
+    case "$1" in
+      安装版本*) PROMPT_VALUE=v0.8.0-rc.1 ;;
+      网站地址*) PROMPT_VALUE=noj.example.com ;;
+      邮件服务*) PROMPT_VALUE=disabled ;;
+      评测服务连接位置*|评测服务连接编号*)
+        printf "不应在跳过 Judge 后询问连接配置\n" >&2
+        return 1
+        ;;
+      *) return 1 ;;
+    esac
+  }
+  prompt_yes_no() {
+    [[ "$1" == *"是否安装评测服务 Judge"* ]] && return 1
+    return 0
+  }
+  configure_env_interactive 1
+' bash "$DEPLOY_SCRIPT" "$skip_judge_config_env" \
+  >"$TEST_ROOT/skip-judge-config.out" 2>"$TEST_ROOT/skip-judge-config.err"; then
+  :
+else
+  fail "跳过 Judge 的配置向导失败"
+fi
+grep -q '^JUDGE_ENABLED=false$' "$skip_judge_config_env" || fail "跳过 Judge 后未写入关闭配置"
+pass "配置向导可跳过 Judge 连接配置"
 
 http_env="$TEST_ROOT/http.env"
 cp "$ENV_FILE" "$http_env"
@@ -316,14 +348,46 @@ if grep -q '管理员邮箱' "$DEPLOY_SCRIPT"; then
 fi
 pass "无需预先配置管理员"
 
+cat >"$TEST_ROOT/cosign" <<'EOF'
+#!/usr/bin/env bash
+exit 91
+EOF
+chmod +x "$TEST_ROOT/cosign"
+run_deploy start >"$TEST_ROOT/signature-disabled.out" 2>"$TEST_ROOT/signature-disabled.err" ||
+  fail "默认关闭镜像签名校验时不应要求 Cosign"
+grep -q '已关闭镜像签名校验' "$TEST_ROOT/signature-disabled.err" ||
+  fail "关闭镜像签名校验时未给出提示"
+pass "默认关闭镜像签名校验"
+
 if run_deploy start >/dev/null 2>"$TEST_ROOT/start.err"; then
   :
 else
   fail "合法配置的 start 不应失败"
 fi
 grep -q 'compose.*up -d --wait' "$FAKE_LOG" || fail "start 未调用 Compose 健康等待"
+grep -q 'compose.*--profile judge.*up -d --wait' "$FAKE_LOG" || fail "启用 Judge 时未启用 Compose profile"
 if grep -q 'down -v' "$FAKE_LOG"; then fail "部署脚本不得删除数据卷"; fi
 pass "启动参数与数据卷安全边界"
+
+skip_judge_env="$TEST_ROOT/skip-judge.env"
+cp "$ENV_FILE" "$skip_judge_env"
+printf 'JUDGE_ENABLED=false\n' >>"$skip_judge_env"
+skip_judge_log_lines="$(wc -l <"$FAKE_LOG")"
+run_deploy_with "$skip_judge_env" start >"$TEST_ROOT/skip-judge.out" 2>"$TEST_ROOT/skip-judge.err" ||
+  fail "跳过 Judge 后合法配置的 start 不应失败"
+grep -q '已跳过 Judge Docker socket 检查' "$TEST_ROOT/skip-judge.out" ||
+  fail "跳过 Judge 后未跳过 socket 检查"
+if tail -n +$((skip_judge_log_lines + 1)) "$FAKE_LOG" | grep -- '--profile judge' >/dev/null; then
+  fail "跳过 Judge 后不应启用 Compose judge profile"
+fi
+pass "跳过 Judge 时不检查、不启动 Judge"
+
+sed -i.bak 's/^JUDGE_ENABLED=false$/JUDGE_ENABLED=true/' "$skip_judge_env"
+run_deploy_with "$skip_judge_env" start >"$TEST_ROOT/re-enable-judge.out" 2>"$TEST_ROOT/re-enable-judge.err" ||
+  fail "重新启用 Judge 后合法配置的 start 不应失败"
+grep -q 'compose.*--profile judge.*up -d --wait' "$FAKE_LOG" ||
+  fail "重新启用 Judge 后未启用 Compose profile"
+pass "Judge 可通过配置重新启用"
 
 run_deploy stop >/dev/null 2>"$TEST_ROOT/stop.err" || fail "合法配置的 stop 不应失败"
 grep -q 'compose.*stop' "$FAKE_LOG" || fail "stop 未调用 Compose stop"

@@ -27,7 +27,7 @@ bash noj-install.sh --panel none --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 rootless Docker socket，不能改用 `/run/docker.sock` 或 `/var/run/docker.sock`。
 
 - 一台 Linux 服务器（amd64），已安装 Docker Engine 与 Docker Compose v2。
-- 已安装 Cosign（用于校验生产应用镜像的 keyless 签名）；Docker CLI 可用 Buildx。
+- Docker CLI 可用 Buildx；Cosign 不是默认安装条件，只有开启严格镜像签名校验时才需要。
 - Deno 2.x（仅用于部署前运行 `noj-core` 的配置检查命令）。
 - 一个已解析到服务器的域名。
 - 外部 TLS 终止（宿主机 Nginx / Caddy / 云负载均衡），负责 HTTPS → 容器 HTTP 端口。
@@ -68,9 +68,11 @@ bash noj-install.sh --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 ```
 
 首次执行会将源码放入 `/opt/neuro-oj`，随后创建权限为 `600` 的 `.env.prod` 并生成
-部分随机密钥，然后在终端逐项引导填写生产配置。邮件服务密钥不会回显，完成后脚本会
-继续进行配置校验和服务启动。安装完成后请立即打开网站注册第一个用户，该用户会自动成为
-管理员。没有 TTY 时才会停止并提示手工编辑配置：
+部分随机密钥，然后在终端逐项引导填写生产配置。配置网站地址、HTTPS 和邮件服务后，
+脚本会询问是否安装评测服务 Judge，默认安装；如果暂时没有独立的 Judge Docker 服务，
+可以选择跳过，网站和题库仍可先部署。只有选择安装 Judge 时才需要填写 Judge socket。
+邮件服务密钥不会回显，完成后脚本会继续进行配置校验和服务启动。安装完成后请立即打开
+网站注册第一个用户，该用户会自动成为管理员。没有 TTY 时才会停止并提示手工编辑配置：
 
 “网站地址”没有现有配置时会默认填入检测到的服务器 IPv4，直接回车即可使用，也可以改填
 正式域名。随后脚本会询问是否使用 HTTPS，默认使用 HTTPS；如果选择否，才会进入临时 HTTP
@@ -82,7 +84,9 @@ bash noj-install.sh --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 选择 `Y` 后会继续进入补齐向导。填写过程先暂存在临时文件，最后会询问“是否写入配置”；
 确认后才会改动正式配置，取消则保留原配置并停止部署。已有阿里云或腾讯云邮件配置时，
 邮件提示中的直接回车会继续使用当前配置，输入 `skip` 才会停用；没有旧邮件配置时直接
-回车会跳过邮件。停用邮件后密码找回邮件不可用。
+回车会跳过邮件。停用邮件后密码找回邮件不可用。如果跳过 Judge，之后在 `.env.prod` 中将
+`JUDGE_ENABLED` 改为 `true`，补充独立 Judge Docker 服务的 socket 和组 ID，再执行
+`bash scripts/deploy/deploy.sh start` 即可启用。
 
 ```bash
 sudo vim /opt/neuro-oj/.env.prod
@@ -113,8 +117,8 @@ sudo bash noj-install.sh install-env
 ```
 
 `install-env` 只安装 CA 证书、curl、tar 和 openssl 等基础工具；Docker Engine、Docker
-Compose plugin、Docker daemon 权限和 Judge 使用的独立 rootless Docker daemon 不会被
-脚本自动修改。检测仍失败时，请按提示安装 Docker 后重新执行 `check`。`check` 会报告
+Compose plugin、Cosign、Docker daemon 权限和 Judge 使用的独立 rootless Docker daemon
+不会被脚本自动修改。镜像签名校验默认关闭，只有显式开启时才需要安装 Cosign。检测仍失败时，请按提示安装 Docker 后重新执行 `check`。`check` 会报告
 Linux/CPU 架构、基础工具、Docker/Compose、内存、目标目录磁盘空间和默认 8080 端口；可
 通过 `--port` 指定实际端口。
 
@@ -133,7 +137,7 @@ bash noj-install.sh --non-interactive --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 | 变量 | 说明 |
 |------|------|
 | `NOJ_VERSION` | 要部署的已签名 Release 标签，如 `v0.1.0`；禁止使用 `latest`/`beta` |
-| `NOJ_ENFORCE_IMAGE_SIGNATURES` | 生产必须保持 `true`，启动/升级前校验六个应用镜像的 Cosign 签名 |
+| `NOJ_ENFORCE_IMAGE_SIGNATURES` | 默认 `false`；设为 `true` 后，启动/升级前校验已启用应用镜像的 Cosign 签名 |
 | `NOJ_COSIGN_CERT_IDENTITY_REGEX` | Cosign 证书身份正则，默认只信任本仓库的 Release workflow |
 | `DOMAIN` | 网站地址，可填域名或服务器 IP，不要写 `https://` |
 | `APP_URL` | 脚本根据网站地址和 HTTPS 选择自动生成的完整网址 |
@@ -153,7 +157,8 @@ bash noj-install.sh --non-interactive --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 | `EMAIL_PROVIDER` 及对应凭据 | 可选阿里云、腾讯云或 `disabled`（暂不配置邮件） |
 | `JUDGE_IMAGE_BASE` | 默认 `ghcr.io/neuro-oj/` |
 | `NGINX_PORT` | 容器 Nginx 映射到宿主机的端口，默认 `8080` |
-| `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID` | 独立 rootless Docker daemon 的 socket 与组 ID；禁止使用 `/var/run/docker.sock` |
+| `JUDGE_ENABLED` | 是否安装和启动评测服务 Judge，默认 `true`；设为 `false` 可跳过 |
+| `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID` | `JUDGE_ENABLED=true` 时必填：独立 rootless Docker 服务的 socket 与组 ID；禁止使用 `/var/run/docker.sock` |
 | `NOJ_LLM_SERVICE_TOKEN` | LLM Gateway 服务间鉴权 + eval_token 签发/校验密钥（≥16 字符）；compose 默认始终启动 `llm-gateway`，因此生产**必须填写** |
 | `NOJ_LLM_STORE_KEY` | LLM Gateway 加密 Provider API Key 的信封主密钥（≥16 字符）；compose 默认必填 |
 | `NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE` | 每个用户每 UTC 分钟的 LLM 调用上限；可选，默认 `60`，必须为正整数 |
@@ -172,8 +177,8 @@ bash noj-install.sh --non-interactive --ref 0.8.0-rc.1 --dir /opt/neuro-oj
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d migrate
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs migrate
 
-# 5) 手动方式：启动全部服务
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+# 5) 手动方式：启动全部服务（安装了 Judge 时加上 profile；跳过 Judge 时省略）
+docker compose --env-file .env.prod -f docker-compose.prod.yml --profile judge up -d
 
 # 6) 查看状态
 docker compose --env-file .env.prod -f docker-compose.prod.yml ps
@@ -186,22 +191,24 @@ curl https://你的域名/healthz
 bash scripts/deploy/deploy.sh install
 ```
 
-部署脚本在 `install`、`start` 和 `upgrade` 前会校验 `NOJ_VERSION` 对应的六个应用镜像
-digest 与 Cosign keyless 签名。默认信任当前仓库的 Release workflow；如需变更签名身份，
+部署脚本在 `install`、`start` 和 `upgrade` 前会校验 `NOJ_VERSION` 对应的应用镜像
+digest 与 Cosign keyless 签名；Judge 被跳过时只校验核心、前端和 LLM Gateway 镜像。
+默认信任当前仓库的 Release workflow；如需变更签名身份，
 必须通过受保护的生产配置显式设置 `NOJ_COSIGN_CERT_IDENTITY_REGEX`。可以单独执行：
 
 ```bash
 bash scripts/deploy/deploy.sh verify
 ```
 
-`NOJ_ENFORCE_IMAGE_SIGNATURES=false` 仅用于本地 fake-Docker 测试，不得用于生产环境。
-成功启动或升级后，脚本会在 `backups/current-deployment.txt` 记录当前 Release 版本和六个
-应用镜像 digest；升级失败时不会覆盖上一份成功部署记录。
+镜像签名校验默认关闭，以免阻断普通一键部署；如果需要严格校验，请安装 Cosign 并将
+`NOJ_ENFORCE_IMAGE_SIGNATURES=true`，然后执行 `bash scripts/deploy/deploy.sh verify`。
+成功启动或升级后，脚本会在 `backups/current-deployment.txt` 记录当前 Release 版本和已启用
+应用镜像的 digest；升级失败时不会覆盖上一份成功部署记录。
 
-> 评测 Worker 不得挂载应用宿主机的 `/var/run/docker.sock`。生产 Compose 要求
+> 如果启用评测 Worker，不得挂载应用宿主机的 `/var/run/docker.sock`。生产 Compose 要求
 > `JUDGE_DOCKER_SOCKET` 指向只服务于 judge 的 rootless daemon socket，并以非 root
 > 用户运行 Worker；`JUDGE_REQUIRE_ISOLATED_DOCKER=true` 会在错误配置时阻止 Worker
-> 消费评测任务。
+> 消费评测任务。跳过 Judge 时不需要这些配置。
 
 ## 3. 评测镜像白名单
 
