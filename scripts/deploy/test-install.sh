@@ -111,6 +111,24 @@ grep -q '环境检测通过' "$check_out" || fail "环境检测通过提示缺�
 grep -q 'Docker Compose：v2 可用' "$check_out" || fail "Compose 检测结果缺失"
 pass "环境检测与资源摘要"
 
+panel_root="$TEST_ROOT/baota/www/server/panel"
+mkdir -p "$panel_root"
+NOJ_BOOTSTRAP_PANEL_ROOT="$panel_root" bash "$INSTALL_SCRIPT" check --port 18081 \
+  >"$TEST_ROOT/panel-check.out"
+grep -q '宝塔兼容模式' "$TEST_ROOT/panel-check.out" || fail "bootstrap 宝塔自动检测提示缺失"
+grep -q '反向代理' "$TEST_ROOT/panel-check.out" || fail "bootstrap 面板反向代理提示缺失"
+pass "bootstrap 宝塔自动检测"
+
+NOJ_BOOTSTRAP_PANEL_ROOT="$panel_root" bash "$INSTALL_SCRIPT" check --panel none --port 18082 \
+  >"$TEST_ROOT/panel-none.out"
+if grep -q '宝塔兼容模式' "$TEST_ROOT/panel-none.out"; then
+  fail "bootstrap --panel none 不应输出宝塔提示"
+fi
+NOJ_BOOTSTRAP_PANEL_ROOT="$TEST_ROOT/missing-panel" bash "$INSTALL_SCRIPT" check --panel baota --port 18083 \
+  >"$TEST_ROOT/panel-force.out"
+grep -q '宝塔兼容模式' "$TEST_ROOT/panel-force.out" || fail "bootstrap --panel baota 提示缺失"
+pass "bootstrap 面板模式覆盖"
+
 set +e
 NOJ_BOOTSTRAP_TEST_ARCH=aarch64 bash "$INSTALL_SCRIPT" check \
   >"$TEST_ROOT/arm64.out" 2>"$TEST_ROOT/arm64.err"
@@ -159,6 +177,11 @@ bash "$INSTALL_SCRIPT" --repo https://example.com/repo --ref v0.1.0 --dir "$depl
 [[ "$(cat "$DEPLOY_LOG")" == 'install --env-file /tmp/example.env --backup-dir /tmp/backups' ]] ||
   fail "部署参数未正确传递"
 pass "部署入口与参数传递"
+
+panel_deploy_dir="$TEST_ROOT/panel-deploy"
+bash "$INSTALL_SCRIPT" --panel baota --dir "$panel_deploy_dir" >/dev/null
+grep -q 'install --panel baota' "$DEPLOY_LOG" || fail "bootstrap 未将面板模式传递给 deploy.sh"
+pass "bootstrap 面板参数传递"
 
 nonempty_dir="$TEST_ROOT/nonempty"
 mkdir -p "$nonempty_dir"

@@ -25,6 +25,10 @@ COMPOSE_FILE="$REPO_ROOT/docker-compose.prod.yml"
 BACKUP_DIR="$REPO_ROOT/backups"
 BACKUP_PASSPHRASE_FILE="${NOJ_BACKUP_PASSPHRASE_FILE:-}"
 DOCKER_BIN="${NOJ_DEPLOY_DOCKER_BIN:-docker}"
+PANEL_MODE="${NOJ_DEPLOY_PANEL:-auto}"
+PANEL_NAME="none"
+PANEL_ROOT="${NOJ_DEPLOY_PANEL_ROOT:-/www/server/panel}"
+PANEL_COMMAND="${NOJ_DEPLOY_PANEL_COMMAND:-/usr/bin/bt}"
 DRY_RUN=0
 FOLLOW=0
 INTERACTIVE=1
@@ -66,12 +70,14 @@ Neuro OJ 生产部署工具
   --backup-dir DIR      指定备份目录（默认 ./backups）
   --passphrase-file FILE
                         GPG 备份口令文件（默认读取 NOJ_BACKUP_PASSPHRASE_FILE）
+  --panel MODE           面板模式：auto（默认）、baota 或 none
   --dry-run             只检查并显示将执行的操作，不修改服务或文件
   --non-interactive     首次初始化不询问，配置不完整时直接失败
   -h, --help            显示帮助
 
 环境变量：
   NOJ_DEPLOY_DOCKER_BIN  仅用于测试，指定 Docker CLI 路径
+  NOJ_DEPLOY_PANEL       面板模式（默认 auto）
 EOF
 }
 
@@ -111,6 +117,12 @@ parse_args() {
         shift
         ;;
       --passphrase-file=*) BACKUP_PASSPHRASE_FILE="${1#*=}" ;;
+      --panel)
+        (($# >= 2)) || fail "--panel 需要 auto、baota 或 none"
+        PANEL_MODE="$2"
+        shift
+        ;;
+      --panel=*) PANEL_MODE="${1#*=}" ;;
       --follow|-f) FOLLOW=1 ;;
       --dry-run) DRY_RUN=1 ;;
       --non-interactive) INTERACTIVE=0 ;;
@@ -121,6 +133,10 @@ parse_args() {
     shift
   done
   [[ -n "$COMMAND" ]] || { usage; exit 2; }
+  case "$PANEL_MODE" in
+    auto|baota|none) ;;
+    *) fail "--panel 只能是 auto、baota 或 none：$PANEL_MODE" ;;
+  esac
 }
 
 env_value() {
@@ -453,8 +469,39 @@ check_port_value() {
   fi
 }
 
+detect_panel() {
+  PANEL_NAME="none"
+  case "$PANEL_MODE" in
+    baota) PANEL_NAME="baota" ;;
+    none) return 0 ;;
+    auto)
+      if [[ -d "$PANEL_ROOT" || -x "$PANEL_COMMAND" ]]; then
+        PANEL_NAME="baota"
+      fi
+      ;;
+  esac
+}
+
+show_panel_guidance() {
+  [[ "$PANEL_NAME" == baota ]] || return 0
+  section "宝塔兼容模式"
+  cat <<'EOF'
+已检测到宝塔面板。脚本会直接使用宝塔管理的标准 Docker/Compose，不调用宝塔 API。
+
+前后端 Compose 自带 Nginx。请在宝塔的网站/反向代理中把域名转发到
+127.0.0.1:NGINX_PORT，默认端口为 8080；如果修改了 .env.prod 中的 NGINX_PORT，
+请使用修改后的端口。请先确认该端口没有被宝塔已有网站或其他服务占用。
+
+脚本不会修改已有站点、证书、反向代理、容器或面板配置。Judge 仍必须使用只服务于
+Judge 的 rootless Docker socket，不能填写 /run/docker.sock 或 /var/run/docker.sock。
+EOF
+  ok "宝塔兼容提示已启用"
+}
+
 check_dependencies() {
   section "检查部署环境"
+  detect_panel
+  show_panel_guidance
   command -v "$DOCKER_BIN" >/dev/null 2>&1 ||
     fail "找不到 Docker CLI：$DOCKER_BIN"
   "$DOCKER_BIN" info >/dev/null 2>&1 || fail "Docker daemon 未运行或当前用户无权限"
@@ -567,8 +614,9 @@ prepare_and_check() {
 }
 
 install() {
+  check_dependencies
   initialize_env
-  prepare_and_check
+  check_configuration
   section "拉取生产镜像"
   run_compose pull
   wait_for_stack

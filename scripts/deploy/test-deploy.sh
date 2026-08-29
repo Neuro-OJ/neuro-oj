@@ -110,6 +110,22 @@ run_deploy() {
 [[ "$(bash "$DEPLOY_SCRIPT" --help)" == *"生产部署工具"* ]] || fail "帮助输出缺少工具标题"
 pass "帮助输出"
 
+panel_root="$TEST_ROOT/baota/www/server/panel"
+mkdir -p "$panel_root"
+NOJ_DEPLOY_PANEL_ROOT="$panel_root" run_deploy start \
+  >"$TEST_ROOT/panel-auto.out" 2>&1 || fail "deploy.sh 宝塔自动检测不应失败"
+grep -q '宝塔兼容模式' "$TEST_ROOT/panel-auto.out" || fail "deploy.sh 宝塔自动检测提示缺失"
+grep -q '127.0.0.1:NGINX_PORT' "$TEST_ROOT/panel-auto.out" || fail "deploy.sh 面板端口提示缺失"
+NOJ_DEPLOY_PANEL_ROOT="$panel_root" run_deploy start --panel none \
+  >"$TEST_ROOT/panel-none.out" 2>&1 || fail "deploy.sh --panel none 不应失败"
+if grep -q '宝塔兼容模式' "$TEST_ROOT/panel-none.out"; then
+  fail "deploy.sh --panel none 不应输出宝塔提示"
+fi
+NOJ_DEPLOY_PANEL_ROOT="$TEST_ROOT/missing-panel" run_deploy start --panel baota \
+  >"$TEST_ROOT/panel-force.out" 2>&1 || fail "deploy.sh --panel baota 不应失败"
+grep -q '宝塔兼容模式' "$TEST_ROOT/panel-force.out" || fail "deploy.sh --panel baota 提示缺失"
+pass "deploy.sh 面板自动、强制和关闭模式"
+
 new_env="$TEST_ROOT/new.env"
 if NOJ_DEPLOY_DOCKER_BIN="$FAKE_DOCKER" NOJ_DEPLOY_TEST_LOG="$FAKE_LOG" \
   bash "$DEPLOY_SCRIPT" install --env-file "$new_env" --compose-file "$COMPOSE_FILE" \

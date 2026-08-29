@@ -5,6 +5,27 @@
 
 ## 1. 前置条件
 
+### 宝塔等服务器面板
+
+生产安装脚本默认会自动检测宝塔面板，也可以手动指定模式：
+
+```bash
+# 自动检测（默认）
+bash noj-install.sh --panel auto --ref 0.8.0-rc.1 --dir /opt/neuro-oj
+
+# 面板安装路径特殊时，强制显示宝塔兼容提示
+bash noj-install.sh --panel baota --ref 0.8.0-rc.1 --dir /opt/neuro-oj
+
+# 关闭面板提示
+bash noj-install.sh --panel none --ref 0.8.0-rc.1 --dir /opt/neuro-oj
+```
+
+宝塔兼容模式只复用面板安装的标准 Docker/Compose，不调用面板 API，也不会修改已有
+站点、证书、反向代理、容器或面板配置。前后端 Compose 自带 Nginx，部署完成后请在
+宝塔中将域名反向代理到 `127.0.0.1:NGINX_PORT`，默认端口为 `8080`；如果修改
+`.env.prod` 中的 `NGINX_PORT`，反向代理目标也要同步修改。Judge 仍需使用独立的
+rootless Docker socket，不能改用 `/run/docker.sock` 或 `/var/run/docker.sock`。
+
 - 一台 Linux 服务器（amd64），已安装 Docker Engine 与 Docker Compose v2。
 - 已安装 Cosign（用于校验生产应用镜像的 keyless 签名）；Docker CLI 可用 Buildx。
 - Deno 2.x（仅用于部署前运行 `noj-core` 的配置检查命令）。

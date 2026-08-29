@@ -19,6 +19,11 @@ REPOSITORY="${NOJ_BOOTSTRAP_REPOSITORY:-$DEFAULT_REPOSITORY}"
 REF="${NOJ_BOOTSTRAP_REF:-$DEFAULT_REF}"
 TARGET_DIR="${NOJ_BOOTSTRAP_DIR:-/opt/neuro-oj}"
 CHECK_PORT="${NOJ_BOOTSTRAP_PORT:-8080}"
+PANEL_MODE="${NOJ_BOOTSTRAP_PANEL:-auto}"
+PANEL_MODE_SET=0
+PANEL_NAME="none"
+PANEL_ROOT="${NOJ_BOOTSTRAP_PANEL_ROOT:-/www/server/panel}"
+PANEL_COMMAND="${NOJ_BOOTSTRAP_PANEL_COMMAND:-/usr/bin/bt}"
 COMMAND=""
 DOWNLOAD_ONLY=0
 DRY_RUN=0
@@ -68,6 +73,7 @@ Neuro OJ Linux 独立下载部署工具
   --ref REF              固定分支或 Release tag（默认 v0.1.0）
   --dir DIRECTORY        安装目录（默认 /opt/neuro-oj）
   --port PORT            检测宿主机端口（默认 8080）
+  --panel MODE           面板模式：auto（默认）、baota 或 none
   --download-only        只下载源码，不执行生产部署
   --dry-run              只显示下载计划，不下载、不写文件、不启动服务
   --non-interactive      首次配置不询问，配置不完整时直接失败
@@ -77,6 +83,7 @@ Neuro OJ Linux 独立下载部署工具
   NOJ_BOOTSTRAP_REPOSITORY  默认仓库地址
   NOJ_BOOTSTRAP_REF         默认 ref
   NOJ_BOOTSTRAP_DIR         默认安装目录
+  NOJ_BOOTSTRAP_PANEL       面板模式（默认 auto）
 
 部署参数：
   通过 -- 后传递给下载后的 deploy.sh install，例如 -- --non-interactive
@@ -125,6 +132,13 @@ parse_args() {
         shift
         ;;
       --port=*) CHECK_PORT="${1#*=}" ;;
+      --panel)
+        (($# >= 2)) || fail "--panel 需要 auto、baota 或 none"
+        PANEL_MODE="$2"
+        PANEL_MODE_SET=1
+        shift
+        ;;
+      --panel=*) PANEL_MODE="${1#*=}"; PANEL_MODE_SET=1 ;;
       --download-only) DOWNLOAD_ONLY=1 ;;
       --dry-run) DRY_RUN=1 ;;
       --non-interactive) NON_INTERACTIVE=1 ;;
@@ -139,6 +153,10 @@ parse_args() {
     shift
   done
   COMMAND="${COMMAND:-install}"
+  case "$PANEL_MODE" in
+    auto|baota|none) ;;
+    *) fail "--panel 只能是 auto、baota 或 none：$PANEL_MODE" ;;
+  esac
 }
 
 validate_inputs() {
@@ -181,6 +199,35 @@ Docker Engine 或 Docker Compose v2 不可用。
 EOF
 }
 
+detect_panel() {
+  PANEL_NAME="none"
+  case "$PANEL_MODE" in
+    baota) PANEL_NAME="baota" ;;
+    none) return 0 ;;
+    auto)
+      if [[ -d "$PANEL_ROOT" || -x "$PANEL_COMMAND" ]]; then
+        PANEL_NAME="baota"
+      fi
+      ;;
+  esac
+}
+
+show_panel_guidance() {
+  [[ "$PANEL_NAME" == baota ]] || return 0
+  section "宝塔兼容模式"
+  cat <<'EOF'
+已检测到宝塔面板。脚本会直接使用宝塔管理的标准 Docker/Compose，不调用宝塔 API。
+
+前后端 Compose 自带 Nginx。部署完成后，请在宝塔的网站/反向代理中把域名转发到
+127.0.0.1:8080（如修改 NGINX_PORT，请使用修改后的端口）。请先确认该端口没有被
+宝塔已有网站或其他服务占用。脚本不会修改已有站点、证书、反向代理、容器或面板配置。
+
+Judge 仍必须使用只服务于 Judge 的 rootless Docker socket，不能填写
+/run/docker.sock 或 /var/run/docker.sock。
+EOF
+  ok "宝塔兼容提示已启用"
+}
+
 check_port() {
   local occupied=0
   [[ "$CHECK_PORT" =~ ^[0-9]+$ ]] && ((CHECK_PORT >= 1 && CHECK_PORT <= 65535)) || {
@@ -209,6 +256,8 @@ check_port() {
 check_host() {
   local failed=0 system arch os_name mem_mb disk_path disk_kb
   section "检查 Linux 部署环境"
+  detect_panel
+  show_panel_guidance
 
   system="$(uname -s 2>/dev/null || true)"
   if [[ "$system" != Linux ]]; then
@@ -435,6 +484,7 @@ install_source() {
 run_deploy() {
   local status
   ((NON_INTERACTIVE)) && DEPLOY_ARGS+=(--non-interactive)
+  ((PANEL_MODE_SET)) && DEPLOY_ARGS+=(--panel "$PANEL_MODE")
   ((DOWNLOAD_ONLY)) && {
     ok "仅下载模式完成，未启动生产服务"
     return 0

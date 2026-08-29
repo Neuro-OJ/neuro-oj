@@ -49,6 +49,7 @@ scripts/
 | **更新环境变量模板（保留自定义）**       | `bash scripts/dev/devtool.sh init-env --merge`                  |
 | **首次生产部署**                         | `bash scripts/deploy/deploy.sh install`                          |
 | **单脚本下载并部署**                     | `bash scripts/deploy/install.sh --ref v0.1.0 --dir /opt/neuro-oj` |
+| **宝塔兼容部署**                         | `bash scripts/deploy/install.sh --panel baota --ref v0.1.0 --dir /opt/neuro-oj` |
 | **检测 Linux 部署环境**                  | `bash scripts/deploy/install.sh check`                           |
 | **安装基础部署工具**                     | `sudo bash scripts/deploy/install.sh install-env`                |
 | **独立 Judge 一键部署**                   | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/judge-install.sh \| bash -s -- install --dir /srv/noj-judge` |
