@@ -263,6 +263,43 @@ current_config_value() {
   printf '%s\n' "$value"
 }
 
+is_ipv4_address() {
+  local address="$1" octet
+  local -a octets=()
+  [[ "$address" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || return 1
+  IFS=. read -r -a octets <<<"$address"
+  for octet in "${octets[@]}"; do
+    ((10#$octet <= 255)) || return 1
+  done
+}
+
+detect_default_ipv4() {
+  local candidate route_info
+  candidate="${NOJ_DEPLOY_DEFAULT_IP:-}"
+  if is_ipv4_address "$candidate" && [[ "$candidate" != 127.* ]]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  if command -v ip >/dev/null 2>&1; then
+    route_info="$(ip -4 route get 1.1.1.1 2>/dev/null || true)"
+    candidate="$(awk '{ for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit } }' <<<"$route_info")"
+    if is_ipv4_address "$candidate" && [[ "$candidate" != 127.* ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  fi
+
+  if command -v hostname >/dev/null 2>&1; then
+    while IFS= read -r candidate; do
+      if is_ipv4_address "$candidate" && [[ "$candidate" != 127.* ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+    done < <(hostname -I 2>/dev/null | tr ' ' '\n')
+  fi
+}
+
 configuration_needs_interactive_input() {
   local key value
   for key in NOJ_VERSION DOMAIN APP_URL ADMIN_EMAIL ADMIN_PASS EMAIL_PROVIDER JUDGE_DOCKER_SOCKET; do
@@ -288,7 +325,7 @@ configuration_needs_interactive_input() {
 
 configure_env_interactive() {
   local version domain app_url admin_email email_provider socket_path socket_gid
-  local current_value default_url
+  local current_value default_url detected_ip default_domain
 
   section "填写生产配置"
   cat <<'EOF'
@@ -302,15 +339,20 @@ EOF
   set_env_value NOJ_VERSION "$version"
 
   current_value="$(current_config_value DOMAIN)"
-  prompt_text "DOMAIN（不含协议，例如 oj.example.com）" "$current_value"
+  detected_ip="$(detect_default_ipv4)"
+  default_domain="${current_value:-$detected_ip}"
+  prompt_text "DOMAIN（不含协议；可直接回车使用服务器 IP）" "$default_domain"
   domain="$PROMPT_VALUE"
   [[ "$domain" != *[[:space:]]* && "$domain" != */* && "$domain" != *://* ]] ||
     fail "DOMAIN 不能包含协议、斜杠或空格"
   set_env_value DOMAIN "$domain"
+  if is_ipv4_address "$domain"; then
+    warn "当前 DOMAIN 使用服务器 IP；正式环境仍需 HTTPS，建议配置域名和反向代理证书"
+  fi
 
   current_value="$(current_config_value APP_URL)"
   default_url="${current_value:-https://$domain}"
-  prompt_text "APP_URL（完整地址）" "$default_url"
+  prompt_text "APP_URL（完整 HTTPS 地址）" "$default_url"
   app_url="$PROMPT_VALUE"
   [[ "$app_url" =~ ^https?://[^[:space:]]+$ ]] ||
     fail "APP_URL 必须是 http:// 或 https:// 开头的完整地址"
@@ -750,4 +792,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${NOJ_DEPLOY_SOURCE_ONLY:-0}" != "1" ]]; then
+  main "$@"
+fi

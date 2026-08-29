@@ -49,6 +49,10 @@ sudo bash noj-install.sh --ref v0.1.0 --dir /opt/neuro-oj
 部分随机密钥，然后在终端逐项引导填写生产配置。管理员密码和邮件 Provider 密钥不会
 回显，完成后脚本会继续进行配置校验和服务启动。没有 TTY 时才会停止并提示手工编辑配置：
 
+`DOMAIN` 没有现有配置时会默认填入检测到的服务器 IPv4，直接回车即可使用，也可以改填
+正式域名。IP 适合临时部署或已经有 HTTPS 反向代理的场景；生产环境的 `APP_URL` 仍必须
+使用 HTTPS。
+
 ```bash
 sudo vim /opt/neuro-oj/.env.prod
 sudo chmod 600 /opt/neuro-oj/.env.prod

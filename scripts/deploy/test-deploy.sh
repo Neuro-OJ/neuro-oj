@@ -110,6 +110,14 @@ run_deploy() {
 [[ "$(bash "$DEPLOY_SCRIPT" --help)" == *"生产部署工具"* ]] || fail "帮助输出缺少工具标题"
 pass "帮助输出"
 
+default_ip="$(NOJ_DEPLOY_DEFAULT_IP=192.0.2.10 NOJ_DEPLOY_SOURCE_ONLY=1 bash -c 'source "$1"; detect_default_ipv4' bash "$DEPLOY_SCRIPT")"
+[[ "$default_ip" == 192.0.2.10 ]] || fail "服务器 IP 默认值检测失败"
+pass "服务器 IP 默认值检测"
+
+grep -q '可直接回车使用服务器 IP' "$DEPLOY_SCRIPT" || fail "DOMAIN 的服务器 IP 引导提示缺失"
+grep -q '正式环境仍需 HTTPS' "$DEPLOY_SCRIPT" || fail "IP 场景 HTTPS 提示缺失"
+pass "服务器 IP 默认值和 HTTPS 提示"
+
 panel_root="$TEST_ROOT/baota/www/server/panel"
 mkdir -p "$panel_root"
 NOJ_DEPLOY_PANEL_ROOT="$panel_root" run_deploy start \
