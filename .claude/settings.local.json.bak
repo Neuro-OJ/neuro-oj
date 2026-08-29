@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(gh run *)",
-      "Bash(gh pr *)",
-      "Skill(tavily-extract)"
-    ]
-  }
-}

@@ -101,7 +101,7 @@ noj-core SHALL 提供 `deno task test:parallel`（`scripts/test-parallel.ts`）�
   （组内 `--test-threads=1` 串行，`serial_test` 保证 binary 内串行）。
 
 `e2e.yml` 的 `paths-ignore` SHALL 包含：`docs/**`、`noj-docs/**`、
-`**/*.md`、`openspec/**`、`.opencode/**`、`.claude/**`、`noj-ui/**`、
+`**/*.md`、`openspec/**`、`noj-ui/**`、
 `docker-compose.yml`、`LICENSE`、`scripts/dev/**`、`scripts/db/**`、
 `.github/dependabot.yml`、`.github/actionlint.yaml`、
 `.github/workflows/ci.yml`。
