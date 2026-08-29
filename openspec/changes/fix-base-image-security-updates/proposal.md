@@ -4,7 +4,8 @@
 
 ## What Changes
 
-- 在 Python 评测镜像构建过程中安装基础 Debian 系统的最新安全更新。
+- 在全部 Python 评测镜像（evaluator、solution、solution-ai）构建过程中安装基础 Debian 系统的最新安全更新。
+- 在全部 Python 评测镜像中升级存在已知高危漏洞的 setuptools、wheel 和 jaraco.context。
 - 在 LLM Gateway 镜像构建过程中安装基础 Alpine 系统的最新安全更新。
 - 保持基础镜像 digest 固定、非 root 运行和现有镜像构建流程不变。
 - 增加回归检查，确保受影响镜像包含基础系统安全更新步骤。
@@ -21,6 +22,6 @@
 
 ## Impact
 
-- 修改 `noj-judge/docker/evaluator-python/Dockerfile`、`noj-judge/docker/solution-python/Dockerfile` 和 `noj-llm-gateway/Dockerfile`。
+- 修改 `noj-judge/docker/evaluator-python/Dockerfile`、`noj-judge/docker/solution-python/Dockerfile`、`noj-judge/docker/solution-ai/Dockerfile` 和 `noj-llm-gateway/Dockerfile`。
 - 修改供应链检查脚本和测试。
 - 构建时间会略有增加；不改变应用运行时 API、部署配置或 Redis/PostgreSQL 数据。

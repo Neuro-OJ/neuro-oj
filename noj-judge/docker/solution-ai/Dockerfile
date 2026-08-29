@@ -12,6 +12,15 @@ FROM python:3.12-slim@sha256:a249c9f47e05708dd367f3fe8ada03cf347390fad66fb8b0518
 LABEL org.opencontainers.image.description="Neuro OJ Dual-container Solution AI (Python 3.12, CPU torch, noj_solution_sdk)"
 LABEL com.noj.judge.kind="solution"
 
+# 在固定 digest 的基础镜像上统一安装 Debian 和 Python 工具安全更新。
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && python3 -m pip install --no-cache-dir --upgrade \
+      "setuptools>=78.1.1" \
+      "wheel>=0.46.2" \
+      "jaraco.context>=6.1.0" \
+    && rm -rf /var/lib/apt/lists/*
+
 # 安装 CPU 版 PyTorch 与 CV/ML 常用库
 RUN pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cpu \
