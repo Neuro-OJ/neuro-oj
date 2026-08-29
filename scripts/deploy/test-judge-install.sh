@@ -202,6 +202,37 @@ if grep -q '首次部署需要填写' "$TEST_ROOT/preflight.out"; then
 fi
 pass "环境预检先于配置向导"
 
+PANEL_ROOT_DIR="$TEST_ROOT/baota/www/server/panel"
+mkdir -p "$PANEL_ROOT_DIR"
+PANEL_OUTPUT="$TEST_ROOT/panel.out"
+NOJ_JUDGE_DOCKER_BIN="$FAKE_DOCKER" \
+NOJ_JUDGE_CURL_BIN="$FAKE_CURL" \
+NOJ_JUDGE_PANEL_ROOT="$PANEL_ROOT_DIR" \
+PATH="$TEST_ROOT:$PATH" \
+  bash "$DEPLOY_SCRIPT" install-env >"$PANEL_OUTPUT" 2>&1 || fail "宝塔自动检测不应失败"
+grep -q '宝塔兼容模式' "$PANEL_OUTPUT" || fail "宝塔自动检测提示缺失"
+grep -q '不调用宝塔 API' "$PANEL_OUTPUT" || fail "宝塔 API 边界提示缺失"
+pass "宝塔自动检测和兼容提示"
+
+if NOJ_JUDGE_DOCKER_BIN="$FAKE_DOCKER" \
+  NOJ_JUDGE_PANEL_ROOT="$PANEL_ROOT_DIR" \
+  PATH="$TEST_ROOT:$PATH" \
+  bash "$DEPLOY_SCRIPT" install-env --panel none >"$TEST_ROOT/panel-none.out" 2>&1; then
+  :
+else
+  fail "--panel none 不应失败"
+fi
+if grep -q '宝塔兼容模式' "$TEST_ROOT/panel-none.out"; then
+  fail "--panel none 不应输出宝塔提示"
+fi
+NOJ_JUDGE_DOCKER_BIN="$FAKE_DOCKER" \
+NOJ_JUDGE_PANEL_ROOT="$TEST_ROOT/missing-panel" \
+PATH="$TEST_ROOT:$PATH" \
+  bash "$DEPLOY_SCRIPT" install-env --panel baota >"$TEST_ROOT/panel-force.out" 2>&1 ||
+  fail "--panel baota 强制模式不应失败"
+grep -q '宝塔兼容模式' "$TEST_ROOT/panel-force.out" || fail "--panel baota 强制提示缺失"
+pass "宝塔模式覆盖选项"
+
 LOCAL_DIR="$TEST_ROOT/local-redis"
 LOCAL_OUTPUT="$TEST_ROOT/local-redis.out"
 set +e
@@ -346,7 +377,7 @@ pass "升级保留配置"
 cp "$ENV_FILE" "$TEST_ROOT/unsafe.env"
 sed -i.bak 's#JUDGE_DOCKER_SOCKET=.*#JUDGE_DOCKER_SOCKET=/var/run/docker.sock#' "$TEST_ROOT/unsafe.env"
 chmod 600 "$TEST_ROOT/unsafe.env"
-if run_judge check --env-file "$TEST_ROOT/unsafe.env" >/dev/null 2>"$TEST_ROOT/unsafe.err"; then
+if run_judge check --panel baota --env-file "$TEST_ROOT/unsafe.env" >/dev/null 2>"$TEST_ROOT/unsafe.err"; then
   fail "共享 Docker socket 应该被拒绝"
 fi
 grep -q '禁止使用应用宿主机 Docker socket' "$TEST_ROOT/unsafe.err" ||

@@ -33,6 +33,10 @@ VERSION_OVERRIDE=""
 REDIS_RUNTIME_URL_VALUE=""
 REDIS_CHECK_URL_VALUE=""
 REDIS_SOURCE_VALUE=""
+PANEL_MODE="${NOJ_JUDGE_PANEL:-auto}"
+PANEL_NAME="none"
+PANEL_ROOT="${NOJ_JUDGE_PANEL_ROOT:-/www/server/panel}"
+PANEL_COMMAND="${NOJ_JUDGE_PANEL_COMMAND:-/usr/bin/bt}"
 POSITIONAL=()
 
 if [[ -t 1 ]]; then
@@ -74,6 +78,7 @@ Neuro OJ 独立 Judge Worker 部署工具
   --version VERSION      install/upgrade 使用的 Release 版本
   --redis-container NAME 本机 Redis 容器名（默认 noj-judge-redis）
   --redis-port PORT      本机 Redis 宿主机端口（默认 16379）
+  --panel MODE           面板模式：auto（默认）、baota 或 none
   --non-interactive      不读取终端输入，必填项从环境变量或配置文件读取
   --download-only        只下载部署脚本，不执行 Docker 操作
   --dry-run              只显示动作，不修改服务
@@ -93,6 +98,11 @@ Redis：
   - 交互式安装默认连接已有 Redis，也可明确选择创建本机 Redis
   - 非交互安装必须提供 REDIS_URL，不会自动创建 Redis
   - 本机 Redis 使用命名容器、持久化卷和仅绑定回环地址的端口
+
+服务器面板：
+  - 自动检测到宝塔时，脚本会复用标准 Docker/Compose 命令并给出面板操作提示
+  - 脚本不会调用宝塔 API，也不会修改已有站点、反向代理、容器或面板配置
+  - 可使用 --panel none 关闭提示，或使用 --panel baota 强制启用宝塔提示
 EOF
 }
 
@@ -143,6 +153,11 @@ parse_args() {
         REDIS_DEFAULT_PORT="$2"; shift
         ;;
       --redis-port=*) REDIS_DEFAULT_PORT="${1#*=}" ;;
+      --panel)
+        (($# >= 2)) || fail "--panel 需要 auto、baota 或 none"
+        PANEL_MODE="$2"; shift
+        ;;
+      --panel=*) PANEL_MODE="${1#*=}" ;;
       --non-interactive) NON_INTERACTIVE=1 ;;
       --download-only) DOWNLOAD_ONLY=1 ;;
       --dry-run) DRY_RUN=1 ;;
@@ -154,6 +169,10 @@ parse_args() {
     shift
   done
   [[ -n "$COMMAND" ]] || { usage; exit 2; }
+  case "$PANEL_MODE" in
+    auto|baota|none) ;;
+    *) fail "--panel 只能是 auto、baota 或 none：$PANEL_MODE" ;;
+  esac
   [[ -n "$ENV_FILE" ]] || ENV_FILE="$TARGET_DIR/.env.judge"
   [[ -n "$COMPOSE_FILE" ]] || COMPOSE_FILE="$TARGET_DIR/docker-compose.judge.yml"
 }
@@ -195,6 +214,38 @@ set_env_value() {
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "缺少依赖：$1"
+}
+
+detect_panel() {
+  PANEL_NAME="none"
+  case "$PANEL_MODE" in
+    baota)
+      PANEL_NAME="baota"
+      ;;
+    none)
+      return 0
+      ;;
+    auto)
+      if [[ -d "$PANEL_ROOT" || -x "$PANEL_COMMAND" ]]; then
+        PANEL_NAME="baota"
+      fi
+      ;;
+  esac
+}
+
+show_panel_guidance() {
+  [[ "$PANEL_NAME" == baota ]] || return 0
+  section "宝塔兼容模式"
+  cat <<'EOF'
+已检测到宝塔面板。脚本会直接使用宝塔管理的标准 Docker/Compose，不调用宝塔 API。
+
+请在宝塔的 Docker 页面确认 Docker 已安装并运行；部署完成后可以在那里查看本机 Redis
+和 Judge 容器。脚本不会修改已有站点、反向代理、容器或面板配置，Judge 也不需要公开端口。
+
+安全提醒：Judge 仍必须使用只服务于 Judge 的 rootless Docker socket，不能填写
+/run/docker.sock 或 /var/run/docker.sock。宝塔面板本身不能替代这个隔离 socket。
+EOF
+  ok "宝塔兼容提示已启用"
 }
 
 is_version() {
@@ -563,6 +614,8 @@ EOF
 check_base_environment() {
   section "检查主机环境"
   [[ "$(uname -s)" == "Linux" ]] || fail "独立 Judge 部署目前只支持 Linux"
+  detect_panel
+  show_panel_guidance
   local machine arch
   machine="$(uname -m)"
   case "$machine" in
@@ -770,6 +823,8 @@ download_script() {
 install_env() {
   section "检查 Judge 部署依赖"
   [[ "$(uname -s)" == Linux ]] || fail "独立 Judge 部署目前只支持 Linux"
+  detect_panel
+  show_panel_guidance
   require_command "$CURL_BIN"
   require_command "$DOCKER_BIN"
   "$DOCKER_BIN" info >/dev/null 2>&1 || fail "Docker daemon 未运行或当前用户无权限"
