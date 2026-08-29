@@ -24,6 +24,14 @@ NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" >/de
   fail "合法供应链配置检查失败"
 pass "合法供应链配置"
 
+sed -i.bak '/^USER noj$/d' \
+  "$TEST_ROOT/noj-llm-gateway/Dockerfile"
+if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
+  >/dev/null 2>&1; then
+  fail "缺少网关非 root 运行用户的 Dockerfile 未被拒绝"
+fi
+pass "缺少网关非 root 运行用户拒绝"
+
 sed -i.bak '/apt-get upgrade -y/d' \
   "$TEST_ROOT/noj-judge/docker/evaluator-python/Dockerfile"
 if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
