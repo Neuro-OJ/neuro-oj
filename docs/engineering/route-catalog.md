@@ -18,6 +18,7 @@
 | DELETE | `/comments/:commentId` | noj-core/src/routes/community.ts |
 | DELETE | `/me/avatar` | noj-core/src/routes/users.ts |
 | DELETE | `/me/llm-providers/:id` | noj-core/src/routes/users.ts |
+| DELETE | `/oauth/accounts/:id` | noj-core/src/routes/auth.ts |
 | DELETE | `/posts/:postId` | noj-core/src/routes/community.ts |
 | GET | `/` | noj-core/src/routes/admin-announcements.ts |
 | GET | `/` | noj-core/src/routes/admin-trainings.ts |
@@ -74,6 +75,10 @@
 | GET | `/mine` | noj-core/src/routes/trainings.ts |
 | GET | `/notifications` | noj-core/src/routes/community.ts |
 | GET | `/notifications/unread-count` | noj-core/src/routes/community.ts |
+| GET | `/oauth/:provider` | noj-core/src/routes/auth.ts |
+| GET | `/oauth/:provider/callback` | noj-core/src/routes/auth.ts |
+| GET | `/oauth/accounts` | noj-core/src/routes/auth.ts |
+| GET | `/oauth/providers` | noj-core/src/routes/auth.ts |
 | GET | `/posts` | noj-core/src/routes/community.ts |
 | GET | `/posts/:postId` | noj-core/src/routes/community.ts |
 | GET | `/posts/:postId/comments` | noj-core/src/routes/community.ts |
@@ -96,11 +101,17 @@
 | GET | `/unread-count` | noj-core/src/routes/conversations.ts |
 | GET | `jti` | noj-core/src/routes/auth.ts |
 | GET | `jti` | noj-core/src/routes/auth.ts |
+| GET | `NOJ_ENV` | noj-core/src/routes/auth.ts |
 | GET | `NOJ_ENV` | noj-core/src/routes/health.ts |
 | GET | `userId` | noj-core/src/routes/admin-announcements.ts |
 | GET | `userId` | noj-core/src/routes/admin-trainings.ts |
 | GET | `userId` | noj-core/src/routes/admin-trainings.ts |
 | GET | `userId` | noj-core/src/routes/admin-trainings.ts |
+| GET | `userId` | noj-core/src/routes/auth.ts |
+| GET | `userId` | noj-core/src/routes/auth.ts |
+| GET | `userId` | noj-core/src/routes/auth.ts |
+| GET | `userId` | noj-core/src/routes/auth.ts |
+| GET | `userId` | noj-core/src/routes/auth.ts |
 | GET | `userId` | noj-core/src/routes/auth.ts |
 | GET | `userId` | noj-core/src/routes/auth.ts |
 | GET | `userId` | noj-core/src/routes/auth.ts |
@@ -223,6 +234,7 @@
 | POST | `/me/llm-providers/:id/test` | noj-core/src/routes/users.ts |
 | POST | `/notifications/:id/read` | noj-core/src/routes/community.ts |
 | POST | `/notifications/read` | noj-core/src/routes/community.ts |
+| POST | `/oauth/:provider/link` | noj-core/src/routes/auth.ts |
 | POST | `/posts` | noj-core/src/routes/community.ts |
 | POST | `/posts/:postId/bookmark` | noj-core/src/routes/community.ts |
 | POST | `/posts/:postId/comments` | noj-core/src/routes/community.ts |
@@ -231,6 +243,7 @@
 | POST | `/register` | noj-core/src/routes/auth.ts |
 | POST | `/reports` | noj-core/src/routes/community.ts |
 | POST | `/reset-password` | noj-core/src/routes/auth.ts |
+| POST | `/set-password` | noj-core/src/routes/auth.ts |
 | POST | `/tfa/confirm` | noj-core/src/routes/auth.ts |
 | POST | `/tfa/disable` | noj-core/src/routes/auth.ts |
 | POST | `/tfa/recovery-codes/regenerate` | noj-core/src/routes/auth.ts |

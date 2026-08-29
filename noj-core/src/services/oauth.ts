@@ -17,14 +17,18 @@ import { logAuthEvent } from "./audit-log.ts";
 import { toUserResponse } from "./auth/auth-register.ts";
 import type { UserResponse } from "../types/auth.ts";
 
+/** 支持的 OAuth 身份提供商。 */
 export type OAuthProviderId = "github" | "oidc";
+/** OAuth 流程用途：登录或绑定到当前用户。 */
 export type OAuthIntent = "login" | "link";
 
+/** 前端展示用的 OAuth 提供商信息。 */
 export interface OAuthProviderInfo {
   id: OAuthProviderId;
   name: string;
 }
 
+/** 从 OAuth 提供商取得的、已完成基本校验的用户身份。 */
 export interface OAuthIdentity {
   providerUserId: string;
   username?: string;
@@ -119,6 +123,7 @@ function configuredProviders(): ProviderConfig[] {
   return result;
 }
 
+/** 返回当前环境中配置完整且已启用的 OAuth 提供商。 */
 export function listOAuthProviders(): OAuthProviderInfo[] {
   return configuredProviders().map(({ id, name }) => ({ id, name }));
 }
@@ -135,6 +140,7 @@ function appUrl(requestUrl: string): string {
   return new URL(requestUrl).origin;
 }
 
+/** 根据应用地址生成指定提供商的 OAuth 回调地址。 */
 export function callbackUrl(
   provider: OAuthProviderId,
   requestUrl: string,
@@ -142,6 +148,7 @@ export function callbackUrl(
   return `${appUrl(requestUrl)}/api/v1/auth/oauth/${provider}/callback`;
 }
 
+/** 生成 OAuth 完成后返回前端的地址，可附带错误信息。 */
 export function oauthFrontendRedirect(
   requestUrl: string,
   error?: string,
@@ -153,10 +160,12 @@ export function oauthFrontendRedirect(
   return url.toString();
 }
 
+/** 返回保存 OAuth state nonce 的 Cookie 名称。 */
 export function oauthStateCookieName(): string {
   return STATE_COOKIE;
 }
 
+/** 创建 OAuth 授权地址、签名 state 和配套 Cookie 值。 */
 export async function createOAuthAuthorization(
   providerId: string,
   intent: OAuthIntent,
@@ -202,6 +211,7 @@ export async function createOAuthAuthorization(
   return { url: url.toString(), state, cookieValue: nonce };
 }
 
+/** 校验并消费 OAuth state，拒绝伪造、过期和重放请求。 */
 export async function consumeOAuthState(
   providerId: string,
   state: string | undefined,
@@ -331,6 +341,7 @@ async function exchangeCode(
   };
 }
 
+/** 使用授权码向提供商换取并读取用户身份信息。 */
 export async function fetchOAuthIdentity(
   providerId: string,
   code: string,
@@ -496,6 +507,7 @@ async function issueOAuthSession(
   };
 }
 
+/** 将 OAuth 身份解析为现有用户、绑定关系或新用户会话。 */
 export async function resolveOAuthIdentity(
   provider: OAuthProviderId,
   identity: OAuthIdentity,
@@ -571,6 +583,7 @@ export async function resolveOAuthIdentity(
   return { ...(await issueOAuthSession(userId)), linked: false };
 }
 
+/** 返回给设置页的已绑定 OAuth 账号信息。 */
 export interface LinkedOAuthAccount {
   id: string;
   provider: OAuthProviderId;
@@ -583,6 +596,7 @@ function maskProviderUserId(value: string): string {
   return value.length <= 4 ? "****" : `****${value.slice(-4)}`;
 }
 
+/** 查询用户已绑定的 OAuth 账号，并脱敏外部用户 ID。 */
 export async function listLinkedOAuthAccounts(
   userId: string,
 ): Promise<LinkedOAuthAccount[]> {
@@ -601,6 +615,7 @@ export async function listLinkedOAuthAccounts(
   }));
 }
 
+/** 删除当前用户的一条 OAuth 绑定，并保护最后一个登录方式。 */
 export async function unlinkOAuthAccount(
   userId: string,
   accountId: string,
@@ -624,6 +639,7 @@ export async function unlinkOAuthAccount(
   });
 }
 
+/** 校验绑定操作提供的本地密码是否与当前用户匹配。 */
 export async function linkPasswordMatches(
   userId: string,
   password: string,
