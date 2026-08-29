@@ -84,7 +84,7 @@ NOJ 由多个模块通过 RESTful API、Redis 消息队列和内部 HTTP 协作�
 | zip / unzip | 系统命令行工具（构建支持包依赖，`devtool.sh install-deps` 会自动安装） |
 | Git | 2.x |
 | 内存 | ≥ 4 GB（运行全部模块 + Postgres + Redis） |
-| 端口 | 3000（前端）/ 8000（后端）/ 5432（PG）/ 6379（Redis） |
+| 端口 | 本地开发：3000（前端）/ 8000（后端）/ 8001（LLM Gateway）/ 5432（PG）/ 6379（Redis）；生产对外：`NGINX_PORT`，默认 8080 |
 
 > 一键检测脚本：`bash scripts/dev/devtool.sh install-deps`，会自动安装 zip/unzip，并对其他依赖给出安装指引。
 
@@ -159,16 +159,59 @@ deno task dev                 # http://localhost:8001
 - **设置了 `ADMIN_EMAIL` 但未设置 `ADMIN_PASS`** — 仅提升该邮箱用户为管理员，不创建新用户。
 - **同时设置 `ADMIN_EMAIL` 和 `ADMIN_PASS`** — 用户不存在时自动创建并设为 admin。
 
-推荐做法——把凭据写进 `noj-core/.env` 后再运行 seed：
+推荐做法——使用编辑器把凭据写进 `noj-core/.env` 后再运行 seed，避免密码进入 shell history：
 
 ```bash
-echo 'ADMIN_EMAIL=admin@example.com' >> noj-core/.env
-echo 'ADMIN_PASS=YourSecurePass123!' >> noj-core/.env
+$EDITOR noj-core/.env
+# 在编辑器中填写 ADMIN_EMAIL 和 ADMIN_PASS 后保存
 cd noj-core && deno task dev-setup
 ```
 
 生产环境不需要在安装前填写管理员邮箱或密码。生产初始化完成后，打开网站注册第一个真实用户，
 该用户会自动获得管理员权限；已有生产站点的后续注册用户不会自动提权。
+
+---
+
+## 生产部署
+
+生产环境使用仓库根目录的 `.env.prod` 和 `docker-compose.prod.yml`。推荐使用部署脚本，脚本会自动带上生产环境文件：
+
+```bash
+# 首次安装
+bash scripts/deploy/deploy.sh install
+
+# 查看状态和日志
+bash scripts/deploy/deploy.sh status
+bash scripts/deploy/deploy.sh logs core
+
+# 升级版本
+bash scripts/deploy/deploy.sh upgrade
+```
+
+手动使用 Compose 前，请确认已经准备好生产配置文件并限制文件权限：
+
+```bash
+cp .env.prod.example .env.prod
+chmod 600 .env.prod
+```
+
+如果需要直接使用 Docker Compose，必须显式指定 `.env.prod`：
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+docker compose --env-file .env.prod -f docker-compose.prod.yml config --quiet
+```
+
+不要直接执行 `docker compose -f docker-compose.prod.yml ...`。Compose 默认只自动加载名为 `.env` 的文件，
+不会自动加载 `.env.prod`，因此可能出现 `POSTGRES_PASSWORD is required` 等配置缺失错误。
+
+生产 Compose 的 Core 和 LLM Gateway 健康检查分别在容器内部访问 `/health`。公网入口由 Nginx 将 `/healthz` 转发到 Core 的 `/health`，应使用以下地址检查：
+
+```bash
+curl https://你的域名/healthz
+```
+
+公网 `/health` 不作为应用健康检查地址。
 
 ---
 
@@ -179,11 +222,12 @@ cd noj-core && deno task dev-setup
 | 现象 | 可能原因 / 处理 |
 |------|----------------|
 | `JWT_SECRET 长度不足 32` | 在 `noj-core/.env` 设置 32+ 字符的随机字符串 |
-| `DATABASE_URL` 报错 / 连接拒绝 | 确认 `docker compose ps` 中 Postgres 已启动；端口 5432 未被占用 |
+| `DATABASE_URL` 报错 / 连接拒绝 | 本地确认 `docker compose ps` 中 Postgres 已启动；生产环境使用 `bash scripts/deploy/deploy.sh status` 或带 `--env-file .env.prod` 的 Compose 命令 |
 | `deno task dev-setup` 卡在 `zip: command not found` | `sudo apt install -y zip unzip` 后重试（或先跑 `devtool.sh install-deps`） |
 | `cargo run` 报 `Cannot connect to Docker daemon` | 启动 Docker Desktop，或 `sudo systemctl start docker` |
 | 端口 3000 / 8000 冲突 | 修改对应模块配置，或先 `lsof -i :3000` 杀掉占用进程 |
 | 一键启动后某模块长时间未就绪 | 查看 `devtool.sh status` 输出与对应日志 |
+| 生产环境执行 `docker compose -f docker-compose.prod.yml ...` 报 `POSTGRES_PASSWORD is required` | 加上 `--env-file .env.prod`，或改用 `bash scripts/deploy/deploy.sh status` |
 
 ### 评测相关
 
@@ -192,7 +236,7 @@ cd noj-core && deno task dev-setup
 | 提交后状态长时间停留在 `Pending` | noj-judge 未启动或未连上 Redis；检查 `bash scripts/dev/devtool.sh status` 与 `scripts/dev/logs/judge.log` |
 | 结果丢失 / 队列堆积 | 查看 Redis 长度：`redis-cli LLEN noj:judge:queue`；必要时重启 `noj-judge` 触发自动重连 |
 | 评测结果报错 `noj-download://` 解码失败 | `deno task problems:build` 重新构建题目支持包 |
-| 容器启动失败 `image not found` | 默认评测镜像为 `noj-evaluator-python` / `noj-solution-python`；执行 `noj-judge/scripts/build-sdk-images.sh` 构建 |
+| 容器启动失败 `image not found` | 默认评测镜像为 `noj-evaluator-python` / `noj-solution-python` / `noj-solution-ai`；从仓库根目录执行 `bash noj-judge/scripts/build-sdk-images.sh` 构建 |
 | LLM 题提交后报 `Missing NOJ_LLM_GATEWAY_URL` | `noj-llm-gateway` 未启动，或 `noj-core/.env` 未配置 `NOJ_LLM_SERVICE_TOKEN` / `NOJ_LLM_GATEWAY_URL` |
 | LLM 题评测返回 `invalid_token` | `NOJ_LLM_SERVICE_TOKEN` 在 core 与 gateway 不一致，或题目 `llm` 配置使用了不存在/停用的 Provider |
 | LLM 题容器无法连接 gateway | 生产环境需设置 `JUDGE_ALLOW_EVALUATOR_NETWORK=true` 且 `JUDGE_EVALUATOR_NETWORK` 指向 gateway 所在 Docker 网络（如 `noj-net`），`NOJ_LLM_GATEWAY_URL` 使用同一网络内可解析地址 |
@@ -201,9 +245,9 @@ cd noj-core && deno task dev-setup
 
 | 现象 | 可能原因 / 处理 |
 |------|----------------|
-| 迁移失败 | `cd noj-core && deno task db:migrate` 查看脱敏日志；常见原因是顺序错乱或与已应用迁移冲突 |
+| 迁移失败 | 本地执行 `cd noj-core && deno task db:migrate` 查看脱敏日志；生产环境执行 `bash scripts/deploy/deploy.sh logs core`，常见原因是顺序错乱或与已应用迁移冲突 |
 | 种子数据缺失 / 管理员未创建 | 确认 `noj-core/.env` 已配置 `ADMIN_EMAIL`；必要时重新运行 `deno task dev-setup` |
-| 想清空重置 | `docker compose down -v` 删除数据卷后重新 `up -d` + `deno task dev-setup` |
+| 想清空重置（仅限本地开发） | `docker compose down -v` 会删除数据卷；生产环境禁止执行。清空后重新 `up -d` + `deno task dev-setup` |
 
 ### 日志位置
 
@@ -242,9 +286,9 @@ cd noj-core && deno task test
 # noj-judge 单元测试
 cd noj-judge && cargo test --lib
 
-# noj-judge Docker 沙箱 E2E（需要 Docker 与 NOJ_RUN_E2E=1，7 个独立 test binary）
+# noj-judge Docker 沙箱 E2E（需要 Docker 与 NOJ_RUN_E2E=1，8 个独立 test binary）
 cd noj-judge && NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
-# ...（其余：e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_problem_limits / e2e_dual_container / e2e_network_capability）
+# ...（其余：e2e_resource_limits / e2e_security_isolation / e2e_support_package / e2e_problem_limits / e2e_dual_container / e2e_network_capability / e2e_solution_ai）
 
 # 跨模块全链路 E2E（需先启动完整环境）
 cd noj-tests && deno task test
