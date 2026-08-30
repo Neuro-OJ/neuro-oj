@@ -62,9 +62,21 @@ cmp -s "$COMMAND_BIN/noj" "$TEST_ROOT/noj" || fail "PATH 命令未指向当前�
 pass "基础命令路由与参数透传"
 
 : >"$LOG_FILE"
+run_noj uninstall --yes
+assert_last_route "uninstall --yes"
+[[ ! -e "$COMMAND_BIN/noj" ]] || fail "uninstall 未移除当前安装的 PATH 命令"
+pass "uninstall 路由与当前 PATH 命令清理"
+
+: >"$LOG_FILE"
 run_noj install
 [[ -L "$COMMAND_BIN/noj" ]] || fail "重复注册破坏了 PATH 命令"
 pass "PATH 命令重复注册"
+
+: >"$LOG_FILE"
+run_noj uninstall --yes --dry-run >"$TEST_ROOT/uninstall-dry-run.out"
+assert_last_route "uninstall --yes --dry-run"
+[[ -L "$COMMAND_BIN/noj" ]] || fail "uninstall dry-run 不应移除 PATH 命令"
+pass "uninstall dry-run 无副作用"
 
 ln -s "$TEST_ROOT/noj" "$TEST_ROOT/linked-noj"
 : >"$LOG_FILE"
@@ -117,6 +129,27 @@ NOJ_BIN_DIR="$TEST_ROOT/conflict-bin" run_noj install >"$TEST_ROOT/conflict.out"
 grep -q '未覆盖已有命令' "$TEST_ROOT/conflict.out" || fail "PATH 冲突未给出保护提示"
 pass "已有同名命令保护"
 
+other_install="$TEST_ROOT/other-install"
+mkdir -p "$other_install"
+printf '#!/usr/bin/env bash\n' >"$other_install/noj"
+rm -f -- "$COMMAND_BIN/noj"
+ln -s "$other_install/noj" "$COMMAND_BIN/noj"
+: >"$LOG_FILE"
+run_noj uninstall --yes
+assert_last_route "uninstall --yes"
+[[ -L "$COMMAND_BIN/noj" ]] || fail "uninstall 错误删除了其他安装的 PATH 命令"
+pass "其他安装的 PATH 命令保护"
+
+rm -f -- "$COMMAND_BIN/noj"
+run_noj install >/dev/null
+before_uninstall_failure_link="$(readlink "$COMMAND_BIN/noj")"
+if NOJ_FAKE_EXIT=17 run_noj uninstall --yes >"$TEST_ROOT/uninstall-failure.out" 2>&1; then
+  fail "uninstall 底层失败时应返回非零退出码"
+fi
+[[ "$(readlink "$COMMAND_BIN/noj")" == "$before_uninstall_failure_link" ]] ||
+  fail "uninstall 失败时不应移除 PATH 命令"
+pass "uninstall 失败保护"
+
 printf 'not a directory\n' >"$TEST_ROOT/blocked-bin"
 HOME="$TEST_ROOT/fallback-home" \
 NOJ_BIN_DIR="$TEST_ROOT/blocked-bin/subdir" run_noj install >"$TEST_ROOT/fallback.out" 2>&1 ||
@@ -132,5 +165,22 @@ if run_noj status >"$TEST_ROOT/missing.out" 2>&1; then
 fi
 grep -q '未找到生产部署脚本' "$TEST_ROOT/missing.out" || fail "缺少部署脚本时错误提示不清晰"
 pass "部署脚本缺失提示"
+
+mv "$TEST_ROOT/scripts/deploy/deploy.sh.missing" "$TEST_ROOT/scripts/deploy/deploy.sh"
+printf 'services:\n  fake:\n    image: alpine:3\n' >"$TEST_ROOT/docker-compose.prod.yml"
+mkdir "$TEST_ROOT/.git"
+if run_noj uninstall --all --yes >"$TEST_ROOT/uninstall-all-git.out" 2>&1; then
+  fail "uninstall --all 不应删除 Git 工作区"
+fi
+[[ -d "$TEST_ROOT" ]] || fail "Git 工作区保护失败后安装目录不应被删除"
+grep -q '检测到 Git 工作区' "$TEST_ROOT/uninstall-all-git.out" || fail "Git 工作区保护提示缺失"
+rmdir "$TEST_ROOT/.git"
+pass "uninstall --all Git 工作区保护"
+
+run_noj install >/dev/null
+all_output="$(run_noj uninstall --all --yes 2>&1)" || fail "uninstall --all 应成功删除完整安装目录"
+[[ "$all_output" == *"已删除 NOJ 安装目录"* ]] || fail "uninstall --all 未报告安装目录已删除"
+[[ ! -d "$TEST_ROOT" ]] || fail "uninstall --all 未删除当前安装目录"
+printf '✓ uninstall --all 删除安装目录\n'
 
 printf 'noj CLI 路由测试通过\n'

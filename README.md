@@ -147,6 +147,8 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 ./noj update                    # 升级到 .env.prod 中的 NOJ_VERSION
 ./noj stop                      # 停止服务但保留数据卷
 ./noj restart                   # 重启服务
+./noj uninstall                 # 卸载容器、网络和本地镜像，但保留数据卷
+./noj uninstall --all           # 完全删除 NOJ 和全部数据（不可恢复）
 ./noj backup                    # 创建完整生产备份
 ./noj config check              # 只校验配置和镜像，不改变服务状态
 ```
@@ -156,6 +158,12 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 配置的 `NOJ_VERSION`，不会自动切换到最新版本，也不会删除数据卷。需要传递高级参数时，
 仍可直接使用 `bash scripts/deploy/deploy.sh <命令> [选项]`。首次通过 `setup.sh` 安装成功后，
 命令会自动注册到 `/usr/local/bin/noj`；若无权限则回退到 `~/.local/bin/noj` 并更新登录 PATH。
+
+`noj uninstall` 会先要求输入 `UNINSTALL` 确认；自动化环境请使用 `noj uninstall --yes`。
+它会删除当前 Compose 栈的容器、网络和本地镜像，但保留数据库、对象存储、题目包、Judge
+缓存数据卷、`.env.prod`、备份和部署目录，也不会修改宿主机的 Nginx/Caddy/宝塔配置。
+如需完全删除，使用 `noj uninstall --all`；该命令会额外删除全部数据卷、当前安装目录和配置，
+要求输入 `DELETE ALL`，自动化环境使用 `noj uninstall --all --yes`，执行前请确认备份已保存到其他位置。
 
 更多部署、TLS、备份和升级说明见 [`deploy/README.md`](./deploy/README.md) 和[生产部署文档](./noj-docs/docs/operators/production-deploy.md)。
 

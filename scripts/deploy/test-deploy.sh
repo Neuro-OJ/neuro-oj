@@ -112,6 +112,44 @@ run_deploy() {
 [[ "$(bash "$DEPLOY_SCRIPT" --help)" == *"生产部署工具"* ]] || fail "帮助输出缺少工具标题"
 pass "帮助输出"
 
+NOJ_DEPLOY_SOURCE_ONLY=1 bash -c '
+  source "$1"
+  has_interactive_tty() { return 0; }
+  read_prompt() { PROMPT_VALUE=UNINSTALL; }
+  confirm_uninstall
+' bash "$DEPLOY_SCRIPT" >/dev/null 2>"$TEST_ROOT/uninstall-confirm.err" ||
+  fail "输入 UNINSTALL 后应允许卸载"
+if NOJ_DEPLOY_SOURCE_ONLY=1 bash -c '
+  source "$1"
+  has_interactive_tty() { return 0; }
+  read_prompt() { PROMPT_VALUE=no; }
+  confirm_uninstall
+' bash "$DEPLOY_SCRIPT" >/dev/null 2>"$TEST_ROOT/uninstall-cancel.err"; then
+  fail "未输入 UNINSTALL 时不应允许卸载"
+fi
+grep -q '未确认卸载' "$TEST_ROOT/uninstall-cancel.err" || fail "卸载取消提示缺失"
+pass "uninstall 交互确认词"
+
+NOJ_DEPLOY_SOURCE_ONLY=1 bash -c '
+  source "$1"
+  UNINSTALL_ALL=1
+  has_interactive_tty() { return 0; }
+  read_prompt() { PROMPT_VALUE="DELETE ALL"; }
+  confirm_uninstall
+' bash "$DEPLOY_SCRIPT" >/dev/null 2>"$TEST_ROOT/uninstall-all-confirm.err" ||
+  fail "输入 DELETE ALL 后应允许完全删除"
+if NOJ_DEPLOY_SOURCE_ONLY=1 bash -c '
+  source "$1"
+  UNINSTALL_ALL=1
+  has_interactive_tty() { return 0; }
+  read_prompt() { PROMPT_VALUE=UNINSTALL; }
+  confirm_uninstall
+' bash "$DEPLOY_SCRIPT" >/dev/null 2>"$TEST_ROOT/uninstall-all-cancel.err"; then
+  fail "完全删除不应接受普通 UNINSTALL 确认词"
+fi
+grep -q '未确认完全删除' "$TEST_ROOT/uninstall-all-cancel.err" || fail "完全删除取消提示缺失"
+pass "uninstall --all 交互确认词"
+
 default_ip="$(NOJ_DEPLOY_DEFAULT_IP=192.0.2.10 NOJ_DEPLOY_SOURCE_ONLY=1 bash -c 'source "$1"; detect_default_ipv4' bash "$DEPLOY_SCRIPT")"
 [[ "$default_ip" == 192.0.2.10 ]] || fail "服务器 IP 默认值检测失败"
 pass "服务器 IP 默认值检测"
@@ -393,6 +431,34 @@ run_deploy stop >/dev/null 2>"$TEST_ROOT/stop.err" || fail "合法配置的 stop
 grep -q 'compose.*stop' "$FAKE_LOG" || fail "stop 未调用 Compose stop"
 run_deploy upgrade >/dev/null 2>"$TEST_ROOT/upgrade.err" || fail "合法配置的 upgrade 不应失败"
 grep -q 'compose.*pull' "$FAKE_LOG" || fail "upgrade 未拉取镜像"
+
+uninstall_log_lines="$(wc -l <"$FAKE_LOG")"
+run_deploy uninstall --yes >/dev/null 2>"$TEST_ROOT/uninstall.err" ||
+  fail "合法配置的 uninstall 不应失败"
+tail -n +$((uninstall_log_lines + 1)) "$FAKE_LOG" | grep -E -q 'compose.*--profile judge.*down.*--remove-orphans.*--rmi local' ||
+  fail "uninstall 未清理全部 Compose profile 的容器、网络和本地镜像"
+if tail -n +$((uninstall_log_lines + 1)) "$FAKE_LOG" | grep -E -q 'down.*(--volumes|-v)'; then
+  fail "uninstall 不得删除数据卷"
+fi
+pass "uninstall 清理范围与数据卷保护"
+
+uninstall_no_confirm_lines="$(wc -l <"$FAKE_LOG")"
+if NOJ_DEPLOY_TTY_PATH="$TEST_ROOT/no-tty" run_deploy uninstall >"$TEST_ROOT/uninstall-no-confirm.out" 2>&1; then
+  fail "非交互 uninstall 未确认时应返回非零退出码"
+fi
+[[ "$(wc -l <"$FAKE_LOG")" == "$uninstall_no_confirm_lines" ]] ||
+  fail "未确认 uninstall 时不应调用 Docker"
+grep -q '请显式使用 --yes' "$TEST_ROOT/uninstall-no-confirm.out" ||
+  fail "未确认 uninstall 的提示不清晰"
+pass "uninstall 未确认保护"
+
+uninstall_all_log_lines="$(wc -l <"$FAKE_LOG")"
+run_deploy uninstall --all --yes >/dev/null 2>"$TEST_ROOT/uninstall-all.err" ||
+  fail "合法配置的 uninstall --all 不应失败"
+tail -n +$((uninstall_all_log_lines + 1)) "$FAKE_LOG" | grep -E -q 'compose.*--profile judge.*down.*--remove-orphans.*--rmi all.*--volumes' ||
+  fail "uninstall --all 未清理全部 Compose 数据"
+pass "uninstall --all 数据清理参数"
+
 upgrade_failure_log_lines="$(wc -l <"$FAKE_LOG")"
 set +e
 NOJ_BACKUP_TEST_FAIL=redis run_deploy upgrade >/dev/null 2>"$TEST_ROOT/upgrade-backup-failure.err"

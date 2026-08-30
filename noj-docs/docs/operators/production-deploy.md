@@ -310,6 +310,8 @@ cd /opt/neuro-oj
 ./noj logs core
 ./noj restart
 ./noj backup
+./noj uninstall
+./noj uninstall --all
 ./noj config check
 ```
 
@@ -336,6 +338,27 @@ cd /opt/neuro-oj
 `backup` 会创建包含 PostgreSQL、Redis RDB、MinIO/S3 对象镜像和 GPG 加密
 `.env.prod` 的完整快照。快照目录位于 `backups/snapshot-*`，目录权限为 `700`，
 文件权限不对其他用户开放；组件失败时不会留下可被误用的半成品快照。
+
+卸载生产服务时执行：
+
+```bash
+./noj uninstall
+```
+
+命令会要求输入 `UNINSTALL` 确认；自动化环境必须显式使用 `./noj uninstall --yes`。卸载会停止并删除
+当前 Compose 栈的容器、网络和本地镜像，但不会执行 `down -v`，所以 PostgreSQL、Redis、MinIO、题目包
+和 Judge 缓存数据卷、`.env.prod`、备份及部署目录都会保留。命令不会修改宿主机 Nginx/Caddy/宝塔站点、
+证书或其他容器。卸载后如需恢复服务，在保留的安装目录执行 `./noj start` 即可重新拉取镜像并复用数据。
+
+如需完全删除 NOJ 及其数据，执行：
+
+```bash
+./noj uninstall --all
+```
+
+该命令会要求输入 `DELETE ALL`；自动化环境必须显式使用 `./noj uninstall --all --yes`。它会额外删除全部
+Compose 数据卷、当前安装目录、配置和备份，且不可恢复；执行前请确认备份已保存到其他位置。检测到 Git 工作区
+时会拒绝删除安装目录。宿主机 Nginx/Caddy/宝塔站点、证书和其他容器仍不会被修改。
 
 ```bash
 # 查看服务状态
