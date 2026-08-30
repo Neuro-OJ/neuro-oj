@@ -128,9 +128,13 @@ grep -q '默认自动选择最新 Release' "$TEST_ROOT/setup.out" || fail "根�
 pass "根目录一键入口"
 
 check_out="$TEST_ROOT/check.out"
-bash "$INSTALL_SCRIPT" check --port 18080 >"$check_out"
+bash "$INSTALL_SCRIPT" check --port 18080 >"$check_out" 2>&1
 grep -q '环境检测通过' "$check_out" || fail "环境检测通过提示缺失"
+grep -q '安装前环境预览' "$check_out" || fail "安装前环境预览标题缺失"
+grep -q '最低运行要求' "$check_out" || fail "最低运行要求清单缺失"
 grep -q 'Docker Compose：v2 可用' "$check_out" || fail "Compose 检测结果缺失"
+grep -q '已有环境 CPU' "$check_out" || fail "CPU 环境摘要缺失"
+grep -E -q '已有环境 Swap|跳过内存和 Swap 摘要' "$check_out" || fail "Swap 环境摘要缺失"
 pass "环境检测与资源摘要"
 
 panel_root="$TEST_ROOT/baota/www/server/panel"
@@ -180,6 +184,8 @@ dry_run_dir="$TEST_ROOT/dry-run"
 bash "$INSTALL_SCRIPT" --dry-run --repo https://example.com/repo --ref v0.1.0 --dir "$dry_run_dir" >"$TEST_ROOT/dry-run.out"
 [[ ! -e "$dry_run_dir" ]] || fail "dry-run 创建了目标目录"
 [[ ! -s "$DOWNLOAD_LOG" ]] || fail "dry-run 下载了源码"
+grep -q '安装前环境预览' "$TEST_ROOT/dry-run.out" || fail "install 未在下载前展示环境预览"
+grep -q '已有环境目标磁盘' "$TEST_ROOT/dry-run.out" || fail "install 未展示目标磁盘摘要"
 grep -q 'https://example.com/repo/archive/v0.1.0.tar.gz' "$TEST_ROOT/dry-run.out" ||
   fail "dry-run 未显示下载地址"
 pass "dry-run 不产生副作用"

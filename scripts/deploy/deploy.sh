@@ -7,6 +7,7 @@
 #   bash scripts/deploy/deploy.sh start
 #   bash scripts/deploy/deploy.sh upgrade
 #   bash scripts/deploy/deploy.sh stop
+#   bash scripts/deploy/deploy.sh uninstall --yes
 #   bash scripts/deploy/deploy.sh status
 #   bash scripts/deploy/deploy.sh logs [service] [--follow]
 #   bash scripts/deploy/deploy.sh backup
@@ -33,6 +34,9 @@ TTY_PATH="${NOJ_DEPLOY_TTY_PATH:-/dev/tty}"
 DRY_RUN=0
 FOLLOW=0
 INTERACTIVE=1
+UNINSTALL_CONFIRMED=0
+UNINSTALL_ALL=0
+INCLUDE_ALL_PROFILES=0
 [[ "${NOJ_DEPLOY_NON_INTERACTIVE:-0}" == "1" ]] && INTERACTIVE=0
 declare -a VERIFIED_IMAGE_DIGESTS=()
 CONFIG_STAGE_FILE=""
@@ -85,6 +89,8 @@ Neuro OJ 生产部署工具
   deploy.sh start                    启动生产服务
   deploy.sh upgrade                  拉取 NOJ_VERSION 并升级服务
   deploy.sh stop                     停止服务（保留数据卷）
+  deploy.sh uninstall [--yes]       删除容器、网络和本地镜像（保留数据卷）
+  deploy.sh uninstall --all --yes   删除 NOJ 栈及全部数据（不可恢复）
   deploy.sh status                   查看服务状态
   deploy.sh logs [service]           查看最近日志
   deploy.sh logs [service] --follow  持续查看日志
@@ -100,6 +106,7 @@ Neuro OJ 生产部署工具
   --panel MODE           面板模式：auto（默认）、baota 或 none
   --dry-run             只检查并显示将执行的操作，不修改服务或文件
   --non-interactive     首次初始化不询问，配置不完整时直接失败
+  --yes, -y             仅用于 uninstall，跳过明确确认提示
   -h, --help            显示帮助
 
 环境变量：
@@ -113,7 +120,7 @@ parse_args() {
   POSITIONAL=()
   while (($# > 0)); do
     case "$1" in
-      install|start|upgrade|stop|status|logs|backup|verify)
+      install|start|upgrade|stop|uninstall|status|logs|backup|verify)
         if [[ -n "$COMMAND" ]]; then
           POSITIONAL+=("$1")
         else
@@ -153,6 +160,8 @@ parse_args() {
       --follow|-f) FOLLOW=1 ;;
       --dry-run) DRY_RUN=1 ;;
       --non-interactive) INTERACTIVE=0 ;;
+      --yes|-y) UNINSTALL_CONFIRMED=1 ;;
+      --all) UNINSTALL_ALL=1 ;;
       -h|--help) usage; exit 0 ;;
       --) shift; POSITIONAL+=("$@"); break ;;
       *) POSITIONAL+=("$1") ;;
@@ -903,7 +912,7 @@ check_configuration() {
 
 run_compose() {
   local -a compose_args=(--env-file "$ENV_FILE" -f "$COMPOSE_FILE")
-  if judge_enabled; then
+  if ((INCLUDE_ALL_PROFILES)) || judge_enabled; then
     compose_args+=(--profile judge)
   fi
   if ((DRY_RUN)); then
@@ -985,6 +994,66 @@ stop() {
   ok "服务已停止，数据卷已保留"
 }
 
+confirm_uninstall() {
+  ((DRY_RUN)) && return 0
+  if ((UNINSTALL_CONFIRMED)); then
+    return 0
+  fi
+  has_interactive_tty ||
+    fail "卸载需要交互确认；自动化环境请显式使用 --yes"
+  if ((UNINSTALL_ALL)); then
+    cat >&2 <<'EOF'
+警告：即将完全删除 NOJ：
+  - 删除当前 Compose 栈的容器、网络、本地镜像和全部数据卷
+  - 删除当前安装目录中的配置、备份和部署文件
+  - 删除指向当前安装目录的 PATH 命令软链接
+  - 不修改宿主机 Nginx/Caddy/宝塔站点、证书或其他容器
+此操作不可恢复，请先确认备份已经下载到其他位置。
+EOF
+    read_prompt '请输入 DELETE ALL 确认完全删除（其他输入取消）：'
+    [[ "$PROMPT_VALUE" == 'DELETE ALL' ]] ||
+      fail "未确认完全删除，未修改任何服务或文件"
+  else
+    cat >&2 <<'EOF'
+即将卸载 NOJ 生产服务：
+  - 删除当前 Compose 栈的容器、网络和本地镜像
+  - 保留 PostgreSQL、Redis、MinIO、题目包和 Judge 缓存数据卷
+  - 保留 .env.prod、备份和部署目录
+  - 不修改宿主机 Nginx/Caddy/宝塔站点、证书或其他容器
+EOF
+    read_prompt '请输入 UNINSTALL 确认卸载（其他输入取消）：'
+    [[ "$PROMPT_VALUE" == UNINSTALL ]] ||
+      fail "未确认卸载，未修改任何服务或文件"
+  fi
+}
+
+check_uninstall_dependencies() {
+  section "检查卸载环境"
+  command -v "$DOCKER_BIN" >/dev/null 2>&1 ||
+    fail "找不到 Docker CLI：$DOCKER_BIN"
+  "$DOCKER_BIN" info >/dev/null 2>&1 || fail "Docker daemon 未运行或当前用户无权限"
+  "$DOCKER_BIN" compose version >/dev/null 2>&1 ||
+    fail "Docker Compose v2 不可用"
+  [[ -f "$ENV_FILE" ]] || fail "找不到生产配置：$ENV_FILE；无法安全定位生产 Compose 栈"
+  [[ -f "$COMPOSE_FILE" ]] || fail "找不到生产 Compose 文件：$COMPOSE_FILE"
+  ok "Docker daemon、Compose 和卸载配置可用"
+}
+
+uninstall() {
+  confirm_uninstall
+  check_uninstall_dependencies
+  section "卸载生产服务"
+  INCLUDE_ALL_PROFILES=1
+  if ((UNINSTALL_ALL)); then
+    run_compose down --remove-orphans --rmi all --volumes
+    ok "生产容器、网络、本地镜像和数据卷已清理"
+  else
+    run_compose down --remove-orphans --rmi local
+    ok "生产容器、网络和 Compose 管理的本地镜像已清理"
+    ok "数据卷、生产配置、备份和部署目录已保留"
+  fi
+}
+
 status() {
   prepare_and_check
   run_compose ps
@@ -1026,6 +1095,7 @@ main() {
     start) start ;;
     upgrade) upgrade ;;
     stop) stop ;;
+    uninstall) uninstall ;;
     status) status ;;
     logs) logs ;;
     backup) backup ;;
