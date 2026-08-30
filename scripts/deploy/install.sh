@@ -93,6 +93,7 @@ Neuro OJ Linux 独立下载部署工具
 目标目录非空时脚本会拒绝覆盖；已有安装请进入目标目录执行 deploy.sh upgrade。
 如果目标目录已经是本工具安装的 Neuro OJ，则会保留现有配置并继续部署；其他非空目录仍会拒绝覆盖。
 生产环境建议使用不可变 Release tag，并让 --ref 与 .env.prod 中的 NOJ_VERSION 一致。
+执行 install 时会在获取 Release、下载源码和写入目标目录前，先展示最低要求与当前主机环境；该步骤不会自动安装 Docker。
 install-env 只安装 curl、tar、openssl 和 CA 证书等基础工具；Docker 请按发行版官方文档安装。
 EOF
 }
@@ -292,8 +293,27 @@ check_port() {
   ok "端口 $CHECK_PORT 可用"
 }
 
+show_environment_requirements() {
+  section "安装前环境预览"
+  cat <<'EOF'
+最低运行要求：
+  - Linux x86_64
+  - CPU：至少 2 vCPU
+  - 内存：至少 264 MiB
+  - Swap：至少 2 GiB
+  - 目标目录所在磁盘：至少 5 GiB 可用空间
+  - Docker 数据目录所在磁盘：至少 5 GiB 可用空间
+  - Docker Engine、Docker Compose v2、Bash、tar、OpenSSL，以及 curl 或 wget
+  - 可访问 ghcr.io/neuro-oj/；启用 Judge 时还需要独立的 rootless Docker socket
+
+下面将列出当前主机已检测到的环境；资源项是摘要，最终部署仍会执行配置、镜像和健康检查。
+EOF
+}
+
 check_host() {
-  local failed=0 system arch os_name mem_mb disk_path disk_kb
+  local failed=0 system arch os_name mem_mb swap_mb cpu_count
+  local disk_path disk_kb docker_root_dir docker_disk_kb
+  show_environment_requirements
   section "检查 Linux 部署环境"
   detect_panel
   show_panel_guidance
@@ -357,19 +377,46 @@ check_host() {
     failed=1
   fi
 
+  cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || true)"
+  if [[ "$cpu_count" =~ ^[0-9]+$ ]]; then
+    printf '已有环境 CPU：%s vCPU\n' "$cpu_count"
+  else
+    warn "无法读取 CPU 数量"
+  fi
+
   if [[ -r /proc/meminfo ]]; then
     mem_mb="$(awk '/^MemTotal:/ { printf "%d", $2 / 1024; exit }' /proc/meminfo)"
-    printf '可用内存信息：物理内存约 %s MiB\n' "$mem_mb"
+    swap_mb="$(awk '/^SwapTotal:/ { printf "%d", $2 / 1024; exit }' /proc/meminfo)"
+    printf '已有环境内存：物理内存约 %s MiB\n' "$mem_mb"
+    if [[ "$swap_mb" =~ ^[0-9]+$ ]]; then
+      printf '已有环境 Swap：约 %s MiB\n' "$swap_mb"
+    else
+      warn "无法读取 Swap 大小"
+    fi
   else
-    warn "无法读取 /proc/meminfo，跳过内存摘要"
+    warn "无法读取 /proc/meminfo，跳过内存和 Swap 摘要"
   fi
   disk_path="$(dirname -- "$TARGET_DIR")"
   [[ -d "$disk_path" ]] || disk_path="/"
   disk_kb="$(df -Pk "$disk_path" 2>/dev/null | awk 'NR == 2 { print $4 }')"
   if [[ "$disk_kb" =~ ^[0-9]+$ ]]; then
-    printf '目标目录所在磁盘可用空间：约 %s MiB\n' "$((disk_kb / 1024))"
+    printf '已有环境目标磁盘：可用空间约 %s MiB（%s）\n' "$((disk_kb / 1024))" "$disk_path"
   else
     warn "无法读取目标目录所在磁盘空间"
+  fi
+  if command -v docker >/dev/null 2>&1; then
+    docker_root_dir="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)"
+    if [[ -n "$docker_root_dir" && -d "$docker_root_dir" ]]; then
+      docker_disk_kb="$(df -Pk "$docker_root_dir" 2>/dev/null | awk 'NR == 2 { print $4 }')"
+      if [[ "$docker_disk_kb" =~ ^[0-9]+$ ]]; then
+        printf '已有环境 Docker 存储：可用空间约 %s MiB（%s）\n' \
+          "$((docker_disk_kb / 1024))" "$docker_root_dir"
+      else
+        warn "无法读取 Docker 数据目录所在磁盘空间"
+      fi
+    else
+      warn "无法读取 Docker 数据目录，跳过 Docker 存储摘要"
+    fi
   fi
   check_port || failed=1
 
@@ -610,11 +657,7 @@ main() {
       ;;
     install)
       validate_inputs
-      case "$(uname -m 2>/dev/null || true)" in
-        x86_64) ;;
-        aarch64|arm64) fail "当前生产镜像仅发布 linux/amd64，检测到 $(uname -m 2>/dev/null || true)；请使用 x86_64 主机" ;;
-        *) fail "不支持的 CPU 架构：$(uname -m 2>/dev/null || true)；当前生产镜像仅支持 x86_64" ;;
-      esac
+      check_host
       check_dependencies
       resolve_latest_ref
       check_target

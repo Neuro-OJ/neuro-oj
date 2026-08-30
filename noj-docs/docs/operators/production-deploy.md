@@ -40,8 +40,9 @@ rootless Docker socket，不能改用 `/run/docker.sock` 或 `/var/run/docker.so
 
 ### 推荐：一条命令开始安装
 
-和 HydroOJ 类似，NOJ 提供一个远程入口脚本。它会先检查 Linux、Docker 和 Compose，
-然后自动使用最新可用 Release 进入配置向导：
+和 HydroOJ 类似，NOJ 提供一个远程入口脚本。它会先列出最低运行要求，并展示当前主机的
+Linux、CPU 架构与核数、内存、Swap、磁盘、Docker、Compose、基础工具和端口检测结果；
+检查通过后才会自动使用最新可用 Release 进入配置向导：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash
@@ -116,7 +117,8 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | s
 `install-env` 只安装 CA 证书、curl、tar 和 openssl 等基础工具；Docker Engine、Docker
 Compose plugin、Cosign、Docker daemon 权限和 Judge 使用的独立 rootless Docker daemon
 不会被脚本自动修改。镜像签名校验默认关闭，只有显式开启时才需要安装 Cosign。检测仍失败时，请按提示安装 Docker 后重新执行 `check`。`check` 会报告
-Linux/CPU 架构、基础工具、Docker/Compose、内存、目标目录磁盘空间和默认 8080 端口；可
+最低运行要求以及 Linux/CPU 架构与核数、基础工具、Docker/Compose、内存、Swap、目标目录和 Docker
+存储磁盘空间、默认 8080 端口；可
 通过 `--port` 指定实际端口。
 
 当前 Release 镜像仅发布 `linux/amd64`。ARM64/aarch64 主机会在 `check` 或 `install` 阶段
@@ -313,14 +315,22 @@ cd /opt/neuro-oj
 ./noj config check
 ```
 
-更新版本前先修改 `.env.prod` 中的 `NOJ_VERSION`，然后执行：
+固定版本更新前先修改 `.env.prod` 中的 `NOJ_VERSION`，然后执行：
 
 ```bash
 ./noj update
 ```
 
-`update` 会先同步目标 Release 的部署文件和 `noj` 命令，再沿用生产部署脚本的备份、镜像校验和健康检查流程，不会自动选择最新版本，
-也不会删除 Docker 数据卷。`noj` 只是统一命令入口；需要高级选项时仍可使用
+如需自动选择最新稳定 Release，可执行：
+
+```bash
+./noj update --latest
+```
+
+`update --latest` 通过 GitHub Releases API 选择最新的非草稿、非预发布版本，先展示目标版本，再同步
+部署文件和 `noj` 命令，并沿用生产部署脚本的备份、镜像校验和健康检查流程。当前已经是最新版本时不
+重启服务、不创建升级备份。网络查询失败、镜像未发布或健康检查失败时不会提交新的 `NOJ_VERSION`；
+此时可使用固定版本重试。两种 `update` 用法都不会删除 Docker 数据卷。`noj` 只是统一命令入口；需要高级选项时仍可使用
 `bash scripts/deploy/deploy.sh <命令> [选项]`。首次部署仅使用 `setup.sh`，成功后会自动
 将命令注册到 `/usr/local/bin/noj`；没有权限时回退到 `~/.local/bin/noj` 并更新登录 PATH。
 
@@ -358,8 +368,8 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
 
 1. 在 GitHub 发布新 Release（如 `v0.1.1`）。Release workflow 会先构建候选镜像，
    完成漏洞扫描、SBOM、签名和来源证明后，才创建正式版本标签。
-2. 确认 Release workflow 的六个镜像验证全部成功，并在服务器修改 `.env.prod` 中的
-   `NOJ_VERSION=v0.1.1`。
+2. 确认 Release workflow 的全部镜像验证成功；固定版本部署可在服务器修改 `.env.prod` 中的
+   `NOJ_VERSION=v0.1.1`，也可使用 `./noj update --latest` 选择最新稳定 Release。
 3. 升级前创建备份并拉取新镜像：
 
 ```bash

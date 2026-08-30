@@ -29,6 +29,7 @@ Neuro OJ 生产运维命令
   stop                    停止服务（保留数据卷）
   restart                 重启服务（先停止，再启动）
   update                  按 .env.prod 中的 NOJ_VERSION 升级
+  update --latest         升级到最新稳定 Release（不含 RC/预发布）
   status                  查看服务状态
   logs [service]          查看服务日志（支持 --follow）
   backup                  创建完整生产备份
@@ -38,14 +39,15 @@ Neuro OJ 生产运维命令
 示例：
   ./noj install
   ./noj update
+  ./noj update --latest
   ./noj status
   ./noj logs core --follow
   ./noj backup --passphrase-file /etc/noj/backup-passphrase
   ./noj config check
 
 说明：
-  update 会先同步对应版本的部署文件和 noj 命令，再执行带备份的服务升级；版本来自 .env.prod。
-  update 不会自动切换到最新版本。
+  update 会先同步对应版本的部署文件和 noj 命令，再执行带备份的服务升级；默认版本来自 .env.prod。
+  update --latest 会查询最新稳定 Release；当前已是最新版本时不重启服务、不创建升级备份。
   install 成功后会自动注册 PATH 命令；优先使用 /usr/local/bin，权限不足时使用 ~/.local/bin。
   deploy.sh 仍可用于高级选项；noj 会把支持的选项原样传递给它。
   生产配置默认是 .env.prod，Compose 文件默认是 docker-compose.prod.yml。
@@ -127,7 +129,7 @@ run_deploy() {
 }
 
 configured_version() {
-  local env_file="$SCRIPT_DIR/.env.prod" version
+  local env_file="${1:-$SCRIPT_DIR/.env.prod}" version
   [[ -f "$env_file" ]] || fail "未找到生产配置：$env_file"
   version="$(awk '
     index($0, "NOJ_VERSION=") == 1 { print substr($0, 13); exit }
@@ -139,23 +141,180 @@ configured_version() {
   printf '%s\n' "$version"
 }
 
+json_field() {
+  local key="$1"
+  awk -v key="$key" '
+    {
+      pattern = "\\\"" key "\\\"[[:space:]]*:[[:space:]]*"
+      if (match($0, pattern)) {
+        value = substr($0, RSTART + RLENGTH)
+        sub(/[,}].*$/, "", value)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+        gsub(/^\"|\"$/, "", value)
+        print value
+        exit
+      }
+    }
+  '
+}
+
+validate_release_tag() {
+  local version="$1"
+  [[ "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+    fail "GitHub Release 不是稳定版本标签：${version}；请使用固定版本升级 RC/预发布版本"
+}
+
+latest_release_version() {
+  local repository metadata_url metadata tag draft prerelease
+  repository="${NOJ_UPDATE_REPOSITORY:-https://github.com/Neuro-OJ/neuro-oj}"
+  repository="${repository%/}"
+  if [[ -n "${NOJ_UPDATE_API_URL:-}" ]]; then
+    metadata_url="$NOJ_UPDATE_API_URL"
+  else
+    [[ "$repository" =~ ^https://github\.com/([^/]+/[^/]+)$ ]] ||
+      fail "无法自动获取最新版本；请使用 NOJ_UPDATE_API_URL 或固定版本升级"
+    metadata_url="https://api.github.com/repos/${BASH_REMATCH[1]}/releases/latest"
+  fi
+  [[ "$metadata_url" == https://* ]] ||
+    fail "最新版本 API 地址必须使用 HTTPS"
+
+  printf '正在获取最新稳定 Release\n' >&2
+  if command -v curl >/dev/null 2>&1; then
+    metadata="$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+      --retry 3 --connect-timeout 15 --header 'Accept: application/vnd.github+json' \
+      --header 'User-Agent: neuro-oj-updater' "$metadata_url")" ||
+      fail "无法获取最新稳定 Release，请检查网络，或使用固定版本重试"
+  elif command -v wget >/dev/null 2>&1; then
+    metadata="$(wget --https-only --tries=3 --timeout=20 --quiet \
+      --header='Accept: application/vnd.github+json' --header='User-Agent: neuro-oj-updater' \
+      -O - "$metadata_url")" ||
+      fail "无法获取最新稳定 Release，请检查网络，或使用固定版本重试"
+  else
+    fail "需要 curl 或 wget 才能查询最新稳定 Release"
+  fi
+
+  tag="$(json_field tag_name <<<"$metadata")"
+  draft="$(json_field draft <<<"$metadata")"
+  prerelease="$(json_field prerelease <<<"$metadata")"
+  [[ -n "$tag" && "$draft" == false && "$prerelease" == false ]] ||
+    fail "GitHub 返回的最新 Release 无效或仍是预发布版本"
+  validate_release_tag "$tag"
+  printf '%s\n' "$tag"
+}
+
+write_config_version() {
+  local env_file="$1" version="$2" temp_file
+  temp_file="$(mktemp "${env_file}.version.XXXXXX")" ||
+    fail "无法创建版本配置暂存文件"
+  if ! awk -v version="$version" '
+    BEGIN { found = 0 }
+    index($0, "NOJ_VERSION=") == 1 {
+      print "NOJ_VERSION=" version
+      found = 1
+      next
+    }
+    { print }
+    END { if (!found) print "NOJ_VERSION=" version }
+  ' "$env_file" >"$temp_file"; then
+    rm -f -- "$temp_file"
+    fail "写入版本配置暂存文件失败"
+  fi
+  chmod 600 "$temp_file"
+  mv -- "$temp_file" "$env_file" || fail "写入版本配置暂存文件失败"
+}
+
 update() {
-  local version sync_dry_run=0
-  local -a sync_args
+  local latest=0 version current env_file="$SCRIPT_DIR/.env.prod"
+  local sync_dry_run=0 stage_file="" status
+  local -a original_args=("$@")
+  local -a sync_args=()
+  local -a deploy_args=()
   require_deploy_script
-  version="$(configured_version)"
+
+  while (($# > 0)); do
+    case "$1" in
+      --latest)
+        latest=1
+        ;;
+      --env-file)
+        (($# >= 2)) || fail "--env-file 需要一个文件路径"
+        env_file="$2"
+        shift
+        ;;
+      --env-file=*)
+        env_file="${1#*=}"
+        ;;
+      *)
+        deploy_args+=("$1")
+        ;;
+    esac
+    shift
+  done
+
+  if (( !latest )); then
+    version="$(configured_version "$env_file")"
+    sync_args=(--ref "$version" --dir "$SCRIPT_DIR" --files-only)
+    for arg in "${original_args[@]}"; do
+      [[ "$arg" == "--dry-run" ]] && sync_dry_run=1
+    done
+    ((sync_dry_run)) && sync_args+=(--dry-run)
+    printf '同步生产部署文件：%s\n' "$version"
+    NOJ_BOOTSTRAP_BIN_DIR="${NOJ_BIN_DIR:-/usr/local/bin}" \
+      bash "$SCRIPT_DIR/scripts/deploy/install.sh" "${sync_args[@]}"
+    run_deploy upgrade "${original_args[@]}"
+    return 0
+  fi
+
+  current="$(configured_version "$env_file")"
+  version="$(latest_release_version)"
+  printf '当前生产版本：%s\n' "$current"
+  printf '最新稳定版本：%s\n' "$version"
+  if [[ "$version" == "$current" ]]; then
+    ok "当前已经是最新稳定 Release，无需升级"
+    return 0
+  fi
+
   [[ -f "$SCRIPT_DIR/scripts/deploy/install.sh" ]] ||
     fail "未找到部署文件更新脚本：$SCRIPT_DIR/scripts/deploy/install.sh"
 
-  printf '同步生产部署文件：%s\n' "$version"
-  for arg in "$@"; do
+  stage_file="$(mktemp "${env_file}.latest.XXXXXX")" ||
+    fail "无法创建版本配置暂存文件"
+  if ! cp -- "$env_file" "$stage_file"; then
+    rm -f -- "$stage_file"
+    fail "无法复制生产配置到暂存文件"
+  fi
+  write_config_version "$stage_file" "$version"
+
+  for arg in "${original_args[@]}"; do
     [[ "$arg" == "--dry-run" ]] && sync_dry_run=1
   done
   sync_args=(--ref "$version" --dir "$SCRIPT_DIR" --files-only)
   ((sync_dry_run)) && sync_args+=(--dry-run)
-  NOJ_BOOTSTRAP_BIN_DIR="${NOJ_BIN_DIR:-/usr/local/bin}" \
-    bash "$SCRIPT_DIR/scripts/deploy/install.sh" "${sync_args[@]}"
-  run_deploy upgrade "$@"
+  printf '同步生产部署文件：%s\n' "$version"
+  if NOJ_BOOTSTRAP_BIN_DIR="${NOJ_BIN_DIR:-/usr/local/bin}" \
+    bash "$SCRIPT_DIR/scripts/deploy/install.sh" "${sync_args[@]}"; then
+    :
+  else
+    status=$?
+    rm -f -- "$stage_file"
+    return "$status"
+  fi
+
+  deploy_args+=(--env-file "$stage_file")
+  if run_deploy upgrade "${deploy_args[@]}"; then
+    if ((sync_dry_run)); then
+      rm -f -- "$stage_file"
+      ok "[dry-run] 将升级到最新稳定 Release：$version"
+      return 0
+    fi
+    chmod 600 "$stage_file"
+    mv -- "$stage_file" "$env_file" || fail "升级成功但无法提交生产版本配置"
+    ok "已升级到最新稳定 Release：$version"
+  else
+    status=$?
+    rm -f -- "$stage_file"
+    return "$status"
+  fi
 }
 
 restart() {
