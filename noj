@@ -28,6 +28,8 @@ Neuro OJ 生产运维命令
   start                   启动生产服务
   stop                    停止服务（保留数据卷）
   restart                 重启服务（先停止，再启动）
+  uninstall [--yes]      删除容器、网络和本地镜像（保留数据卷）
+  uninstall --all        完全删除 NOJ 及全部数据（不可恢复）
   update                  按 .env.prod 中的 NOJ_VERSION 升级
   update --latest         升级到最新稳定 Release（不含 RC/预发布）
   status                  查看服务状态
@@ -44,10 +46,14 @@ Neuro OJ 生产运维命令
   ./noj logs core --follow
   ./noj backup --passphrase-file /etc/noj/backup-passphrase
   ./noj config check
+  ./noj uninstall
+  ./noj uninstall --all
 
 说明：
   update 会先同步对应版本的部署文件和 noj 命令，再执行带备份的服务升级；默认版本来自 .env.prod。
   update --latest 会查询最新稳定 Release；当前已是最新版本时不重启服务、不创建升级备份。
+  uninstall 会要求输入 UNINSTALL 确认；自动化环境请使用 uninstall --yes。它不会删除数据卷、配置、备份或部署目录。
+  uninstall --all 会要求输入 DELETE ALL 确认；自动化环境请使用 uninstall --all --yes。它会删除当前安装目录和全部数据，且不可恢复。
   install 成功后会自动注册 PATH 命令；优先使用 /usr/local/bin，权限不足时使用 ~/.local/bin。
   deploy.sh 仍可用于高级选项；noj 会把支持的选项原样传递给它。
   生产配置默认是 .env.prod，Compose 文件默认是 docker-compose.prod.yml。
@@ -115,6 +121,50 @@ register_command() {
     fi
   fi
   warn "无法注册 noj 到 PATH；部署已完成，请手动将 $SCRIPT_DIR/noj 加入 PATH"
+}
+
+symlink_points_to_current_install() {
+  local command_path="$1" target target_dir target_name resolved
+  [[ -L "$command_path" ]] || return 1
+  target="$(readlink "$command_path" 2>/dev/null || true)"
+  [[ -n "$target" ]] || return 1
+  if [[ "$target" == /* ]]; then
+    resolved="$target"
+  else
+    target_dir="$(cd -P "$(dirname "$command_path")" && cd -P "$(dirname "$target")" && pwd)"
+    target_name="$(basename "$target")"
+    resolved="$target_dir/$target_name"
+  fi
+  [[ "$resolved" == "$SCRIPT_DIR/noj" ]]
+}
+
+unregister_command() {
+  local command_path removed=0
+  local -a command_paths=()
+  [[ -n "${NOJ_BIN_DIR:-}" ]] && command_paths+=("$NOJ_BIN_DIR/noj")
+  command_paths+=("/usr/local/bin/noj")
+  [[ -n "${HOME:-}" ]] && command_paths+=("$HOME/.local/bin/noj")
+  for command_path in "${command_paths[@]}"; do
+    [[ -L "$command_path" ]] || continue
+    symlink_points_to_current_install "$command_path" || continue
+    rm -f -- "$command_path" || fail "无法移除 PATH 命令软链接：$command_path"
+    ok "已移除 PATH 命令：$command_path"
+    removed=1
+  done
+  ((removed)) || warn "未找到指向当前安装目录的 PATH 命令软链接"
+}
+
+remove_install_directory() {
+  [[ -d "$SCRIPT_DIR" && ! -L "$SCRIPT_DIR" ]] ||
+    fail "当前安装目录不存在或不是普通目录：$SCRIPT_DIR"
+  [[ -f "$SCRIPT_DIR/noj" && -f "$DEPLOY_SCRIPT" && -f "$SCRIPT_DIR/docker-compose.prod.yml" ]] ||
+    fail "当前目录不是完整的 NOJ 安装目录，拒绝完全删除：$SCRIPT_DIR"
+  [[ ! -e "$SCRIPT_DIR/.git" ]] ||
+    fail "检测到 Git 工作区，拒绝删除源码目录；请在生产安装目录执行 uninstall --all"
+  [[ "$SCRIPT_DIR" != / && "$SCRIPT_DIR" != "." && "$SCRIPT_DIR" != ".." ]] ||
+    fail "拒绝删除危险安装路径：$SCRIPT_DIR"
+  rm -rf -- "$SCRIPT_DIR" || fail "无法删除 NOJ 安装目录：$SCRIPT_DIR"
+  ok "已删除 NOJ 安装目录：$SCRIPT_DIR"
 }
 
 require_deploy_script() {
@@ -336,6 +386,21 @@ main() {
     install|start|stop|status|logs|backup|verify)
       run_deploy "$command" "$@"
       [[ "$command" != install ]] || register_command
+      ;;
+    uninstall)
+      run_deploy uninstall "$@"
+      local arg dry_run=0
+      local remove_all=0
+      for arg in "$@"; do
+        [[ "$arg" == --dry-run ]] && dry_run=1
+        [[ "$arg" == --all ]] && remove_all=1
+      done
+      if (( !dry_run )); then
+        unregister_command
+        if ((remove_all)); then
+          remove_install_directory
+        fi
+      fi
       ;;
     update)
       update "$@"

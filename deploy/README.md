@@ -48,6 +48,8 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 ./noj update
 ./noj update --latest
 ./noj restart
+./noj uninstall
+./noj uninstall --all
 ./noj config check
 ```
 
@@ -58,6 +60,15 @@ RC/预发布）。两者都会先同步部署文件和 `noj` 命令，再创建�
 `bash scripts/deploy/deploy.sh <命令> [选项]`。首次安装成功后会优先创建
 `/usr/local/bin/noj` 软链接；没有权限时使用 `~/.local/bin/noj` 并更新登录 PATH，已有同名
 命令不会被覆盖。
+
+`noj uninstall` 会要求输入 `UNINSTALL` 确认；自动化环境请使用 `noj uninstall --yes`。该命令会
+删除当前 Compose 栈的容器、网络和本地镜像，但不会执行 `down -v`，因此 PostgreSQL、Redis、MinIO、
+题目包、Judge 缓存等数据卷、`.env.prod`、备份和部署目录都会保留。卸载后可在安装目录执行
+`./noj start` 重新拉取镜像并恢复服务；宿主机 Nginx/Caddy/宝塔站点和证书不会被修改。
+
+如果需要完全删除 NOJ 及其数据，使用 `./noj uninstall --all`。该命令会要求输入 `DELETE ALL`；自动化环境
+必须使用 `./noj uninstall --all --yes`。它会额外删除全部 Compose 数据卷、当前安装目录、配置和备份，执行前请
+确认备份已经保存到其他位置。检测到 Git 工作区时，命令会拒绝删除安装目录。
 
 镜像拉取由 Docker daemon 负责。若官方源访问不稳定，请在 Docker daemon 配置
 registry mirror 或 HTTP(S) proxy 后重试；评测镜像仍可通过 `JUDGE_IMAGE_BASE`
