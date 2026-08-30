@@ -33,8 +33,8 @@ server {
 
 ## 首次安装与生产运维
 
-推荐使用仓库根目录的 `noj` 入口，脚本会检查生产配置、保护环境文件、复用生产
-Compose、等待健康检查，并且不会删除数据卷：
+推荐使用仓库根目录的 `noj` 入口。首次安装会先展示最低要求和当前主机环境，随后检查生产配置、
+保护环境文件、复用生产 Compose、等待健康检查，并且不会删除数据卷：
 
 ```bash
 # 首次安装：仅使用仓库根目录的 setup.sh
@@ -46,14 +46,16 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 ./noj logs core
 ./noj backup
 ./noj update
+./noj update --latest
 ./noj restart
 ./noj uninstall
 ./noj uninstall --all
 ./noj config check
 ```
 
-`update` 会按 `.env.prod` 中的 `NOJ_VERSION` 先同步部署文件和 `noj` 命令，再创建并校验完整备份、
-拉取镜像并等待 Compose 健康检查。`stop`、`restart` 和 `update` 都不会删除数据卷。`noj` 支持的部署选项
+`update` 默认按 `.env.prod` 中的 `NOJ_VERSION` 升级；`update --latest` 会查询最新稳定 Release（不含
+RC/预发布）。两者都会先同步部署文件和 `noj` 命令，再创建并校验完整备份、拉取镜像并等待 Compose
+健康检查。`stop`、`restart` 和 `update` 都不会删除数据卷。`noj` 支持的部署选项
 会继续传递给底层脚本；需要高级命令或完整参数时仍可执行
 `bash scripts/deploy/deploy.sh <命令> [选项]`。首次安装成功后会优先创建
 `/usr/local/bin/noj` 软链接；没有权限时使用 `~/.local/bin/noj` 并更新登录 PATH，已有同名

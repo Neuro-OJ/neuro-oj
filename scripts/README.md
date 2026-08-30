@@ -64,6 +64,7 @@ scripts/
 | **检查独立 Judge 环境**                   | `bash /srv/noj-judge/judge-install.sh check`                      |
 | **启动/停止生产服务**                    | `./noj start` / `./noj stop`                                     |
 | **升级生产版本**                         | `./noj update`                                                   |
+| **升级到最新稳定版本**                   | `./noj update --latest`                                          |
 | **查看生产状态/日志**                    | `./noj status` / `./noj logs [service]`                          |
 | **创建完整生产备份**                     | `./noj backup`                                                   |
 | **校验/恢复演练快照**                    | `bash scripts/deploy/backup.sh verify <snapshot>` / `drill <snapshot>` |
@@ -100,14 +101,15 @@ cd noj-judge && cargo run
 
 `setup.sh` 是唯一推荐的首次安装入口，会获取内部 bootstrap、完成源码安装并调用目标目录中的
 `noj install`。`scripts/deploy/install.sh` 仅作为 setup.sh 的内部实现和旧版本兼容入口；已有安装
-的更新、启停和管理请统一使用 `./noj update`、`./noj start`、`./noj status` 等命令。
+的更新、启停和管理请统一使用 `./noj update`、`./noj update --latest`、`./noj start`、`./noj status`
+等命令。`update --latest` 只选择最新稳定 Release；RC/预发布版本仍需通过 `.env.prod` 固定版本升级。
 
 兼容入口模式下可执行 `bash scripts/deploy/install.sh check` 检查 Linux、架构、基础工具、Docker
 Compose、内存、磁盘和端口。`sudo bash scripts/deploy/install.sh install-env` 只会通过系统包管理器
 安装 `ca-certificates`、`curl`、`tar` 和 `openssl`；Docker Engine、Compose plugin、Cosign
 和 Judge rootless Docker daemon 不由脚本自动安装。Cosign 只在主动开启镜像签名校验时需要。
 
-首次执行安装时，终端会引导填写安装版本、网站地址、HTTPS 选项和邮件服务，并询问是否
+首次执行安装时，终端会先展示最低环境要求和当前主机检测结果；通过检查后再引导填写安装版本、网站地址、HTTPS 选项和邮件服务，并询问是否
 安装评测服务 Judge。默认安装 Judge；如果暂时没有独立的 Judge Docker 服务，可以选择
 跳过，网站和题库仍可先部署。安装 Judge 时才需要填写评测服务连接位置；邮件密钥不会回显。
 填写过程先暂存在临时文件，最后

@@ -10,6 +10,7 @@ NORMALIZED_TEST_ROOT="$(cd -P "$TEST_ROOT" && pwd)"
 LOG_FILE="$TEST_ROOT/route.log"
 COMMAND_BIN="$TEST_ROOT/commands"
 UPDATE_LOG="$TEST_ROOT/update.log"
+CUSTOM_ENV="$TEST_ROOT/custom.env"
 
 cleanup() { rm -rf "$TEST_ROOT"; }
 trap cleanup EXIT
@@ -28,15 +29,24 @@ printf '%s\n' '#!/usr/bin/env bash' \
   >"$TEST_ROOT/scripts/deploy/deploy.sh"
 chmod 755 "$TEST_ROOT/scripts/deploy/deploy.sh"
 printf '%s\n' 'NOJ_VERSION=v-test' >"$TEST_ROOT/.env.prod"
+printf '%s\n' 'NOJ_VERSION=v-custom' >"$CUSTOM_ENV"
 printf '%s\n' '#!/usr/bin/env bash' \
   'set -Eeuo pipefail' \
   'printf "%s\n" "$*" >>"${NOJ_UPDATE_LOG:?}"' \
   >"$TEST_ROOT/scripts/deploy/install.sh"
 chmod 755 "$TEST_ROOT/scripts/deploy/install.sh"
+printf '%s\n' '#!/usr/bin/env bash' \
+  'set -Eeuo pipefail' \
+  'if [[ "${NOJ_UPDATE_TEST_API_FAIL:-0}" == 1 ]]; then exit 22; fi' \
+  'printf '\''{"tag_name":"%s","draft":false,"prerelease":false}\n'\'' "${NOJ_UPDATE_TEST_LATEST_TAG:-v0.2.0}"' \
+  >"$TEST_ROOT/curl"
+chmod 755 "$TEST_ROOT/curl"
 
 run_noj() {
   NOJ_BIN_DIR="${NOJ_BIN_DIR:-$COMMAND_BIN}" \
   NOJ_FAKE_LOG="$LOG_FILE" NOJ_UPDATE_LOG="$UPDATE_LOG" NOJ_FAKE_EXIT="${NOJ_FAKE_EXIT:-0}" \
+  NOJ_UPDATE_API_URL="${NOJ_UPDATE_API_URL:-https://api.test/releases/latest}" \
+  PATH="$TEST_ROOT:$PATH" \
     "$TEST_ROOT/noj" "$@"
 }
 
@@ -94,19 +104,78 @@ grep -Fqx -- "--ref v-test --dir $NORMALIZED_TEST_ROOT --files-only --dry-run" "
 pass "update 同步部署文件并升级服务"
 
 : >"$LOG_FILE"
-run_noj update --env-file /tmp/noj-test.env --dry-run
-assert_last_route "upgrade --env-file /tmp/noj-test.env --dry-run"
+run_noj update --env-file "$CUSTOM_ENV" --dry-run
+assert_last_route "upgrade --env-file $CUSTOM_ENV --dry-run"
 pass "update 路由到 upgrade"
 
 : >"$LOG_FILE"
-run_noj restart --env-file /tmp/noj-test.env
-[[ "$(sed -n '1p' "$LOG_FILE")" == "stop --env-file /tmp/noj-test.env" ]] || fail "restart 未先停止服务"
-[[ "$(sed -n '2p' "$LOG_FILE")" == "start --env-file /tmp/noj-test.env" ]] || fail "restart 未再启动服务"
+: >"$UPDATE_LOG"
+run_noj update --latest --dry-run >"$TEST_ROOT/latest-dry-run.out"
+grep -E -q '^upgrade --dry-run --env-file .+/.env.prod\.latest\.[A-Za-z0-9]+$' "$LOG_FILE" ||
+  fail "update --latest --dry-run 未使用版本配置暂存文件"
+grep -Fqx -- "--ref v0.2.0 --dir $NORMALIZED_TEST_ROOT --files-only --dry-run" "$UPDATE_LOG" ||
+  fail "update --latest --dry-run 未同步目标版本部署文件"
+grep -Fqx 'NOJ_VERSION=v-test' "$TEST_ROOT/.env.prod" ||
+  fail "update --latest --dry-run 不应修改生产版本配置"
+grep -q '最新稳定版本：v0.2.0' "$TEST_ROOT/latest-dry-run.out" ||
+  fail "update --latest 未展示目标版本"
+pass "update --latest dry-run"
+
+: >"$LOG_FILE"
+: >"$UPDATE_LOG"
+run_noj update --latest >"$TEST_ROOT/latest.out"
+grep -Fqx -- "--ref v0.2.0 --dir $NORMALIZED_TEST_ROOT --files-only" "$UPDATE_LOG" ||
+  fail "update --latest 未同步目标版本部署文件"
+grep -q '^NOJ_VERSION=v0.2.0$' "$TEST_ROOT/.env.prod" ||
+  fail "update --latest 成功后未提交目标版本配置"
+pass "update --latest 成功升级"
+
+before_noop_log="$(wc -l <"$LOG_FILE")"
+run_noj update --latest >"$TEST_ROOT/latest-noop.out"
+after_noop_log="$(wc -l <"$LOG_FILE")"
+[[ "$before_noop_log" == "$after_noop_log" ]] || fail "已经是最新版本时不应重启或升级"
+grep -q '无需升级' "$TEST_ROOT/latest-noop.out" || fail "已经是最新版本时未给出无操作提示"
+pass "update --latest 已是最新版本"
+
+before_rc_log="$(wc -l <"$LOG_FILE")"
+if NOJ_UPDATE_TEST_LATEST_TAG=v0.3.0-rc.1 \
+  run_noj update --latest >"$TEST_ROOT/latest-rc.out" 2>&1; then
+  fail "稳定版本自动升级不应选择 RC 标签"
+fi
+after_rc_log="$(wc -l <"$LOG_FILE")"
+[[ "$before_rc_log" == "$after_rc_log" ]] || fail "RC 标签被拒绝前不应进入升级流程"
+grep -E -q '不是稳定版本标签|无效或仍是预发布版本' "$TEST_ROOT/latest-rc.out" || fail "RC 标签拒绝提示不清晰"
+pass "update --latest 拒绝 RC 标签"
+
+cp "$TEST_ROOT/.env.prod" "$TEST_ROOT/api-failure.env"
+before_api_failure="$(sha256sum "$TEST_ROOT/api-failure.env" 2>/dev/null || shasum "$TEST_ROOT/api-failure.env")"
+if NOJ_UPDATE_TEST_API_FAIL=1 NOJ_UPDATE_API_URL=https://api.test/releases/latest \
+  run_noj update --latest --env-file "$TEST_ROOT/api-failure.env" >"$TEST_ROOT/latest-api-failure.out" 2>&1; then
+  fail "最新版本 API 失败时应返回非零退出码"
+fi
+after_api_failure="$(sha256sum "$TEST_ROOT/api-failure.env" 2>/dev/null || shasum "$TEST_ROOT/api-failure.env")"
+[[ "$before_api_failure" == "$after_api_failure" ]] || fail "最新版本 API 失败时修改了生产配置"
+pass "update --latest API 失败保护"
+
+cp "$TEST_ROOT/.env.prod" "$TEST_ROOT/upgrade-failure.env"
+before_upgrade_failure="$(sha256sum "$TEST_ROOT/upgrade-failure.env" 2>/dev/null || shasum "$TEST_ROOT/upgrade-failure.env")"
+if NOJ_UPDATE_TEST_LATEST_TAG=v0.3.0 NOJ_FAKE_EXIT=17 \
+  run_noj update --latest --env-file "$TEST_ROOT/upgrade-failure.env" >"$TEST_ROOT/latest-upgrade-failure.out" 2>&1; then
+  fail "升级失败时应返回非零退出码"
+fi
+after_upgrade_failure="$(sha256sum "$TEST_ROOT/upgrade-failure.env" 2>/dev/null || shasum "$TEST_ROOT/upgrade-failure.env")"
+[[ "$before_upgrade_failure" == "$after_upgrade_failure" ]] || fail "升级失败时修改了生产配置"
+pass "update --latest 升级失败保护"
+
+: >"$LOG_FILE"
+run_noj restart --env-file "$CUSTOM_ENV"
+[[ "$(sed -n '1p' "$LOG_FILE")" == "stop --env-file $CUSTOM_ENV" ]] || fail "restart 未先停止服务"
+[[ "$(sed -n '2p' "$LOG_FILE")" == "start --env-file $CUSTOM_ENV" ]] || fail "restart 未再启动服务"
 pass "restart 顺序"
 
 : >"$LOG_FILE"
-run_noj config check --env-file /tmp/noj-test.env
-assert_last_route "verify --env-file /tmp/noj-test.env"
+run_noj config check --env-file "$CUSTOM_ENV"
+assert_last_route "verify --env-file $CUSTOM_ENV"
 pass "config check 路由"
 
 : >"$LOG_FILE"
