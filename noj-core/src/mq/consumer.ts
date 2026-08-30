@@ -9,6 +9,7 @@ import { logger, logJudgeResultReceived } from "../lib/logging.ts";
 import { Channels, publishSseEvent } from "../lib/event-bus.ts";
 import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";
 import type { JudgeResult } from "../types/index.ts";
+import { metrics } from "../lib/metrics.ts";
 
 /**
  * 评测结果队列名称。
@@ -93,6 +94,8 @@ export async function handleResultMessage(
     return;
   }
 
+  metrics.inc("noj_evaluation_results_total");
+
   logJudgeResultReceived(
     judgeResult.submission_id,
     judgeResult.status,
@@ -103,9 +106,15 @@ export async function handleResultMessage(
 
   // NOJ-074：写库失败必须向上抛出让消费者重投，
   // 不再吞掉错误导致提交永久停留在 judging。
-  const applied = isSelfTest
-    ? await saveSelfTestResult(judgeResult)
-    : await saveEvaluationResult(judgeResult);
+  let applied: boolean;
+  try {
+    applied = isSelfTest
+      ? await saveSelfTestResult(judgeResult)
+      : await saveEvaluationResult(judgeResult);
+  } catch (err) {
+    metrics.inc("noj_evaluation_consumer_errors_total");
+    throw err;
+  }
   if (!applied) {
     logger.info("评测结果为重复/过时消息，已幂等忽略", {
       submission_id: judgeResult.submission_id,

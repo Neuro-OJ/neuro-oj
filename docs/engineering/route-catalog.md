@@ -68,6 +68,8 @@
 | GET | `/events` | noj-core/src/routes/conversations.ts |
 | GET | `/feed` | noj-core/src/routes/community.ts |
 | GET | `/health` | noj-core/src/routes/health.ts |
+| GET | `/health/live` | noj-core/src/routes/health.ts |
+| GET | `/health/ready` | noj-core/src/routes/health.ts |
 | GET | `/history` | noj-core/src/routes/checkin.ts |
 | GET | `/me` | noj-core/src/routes/auth.ts |
 | GET | `/me` | noj-core/src/routes/rankings.ts |
@@ -102,6 +104,7 @@
 | GET | `jti` | noj-core/src/routes/auth.ts |
 | GET | `jti` | noj-core/src/routes/auth.ts |
 | GET | `NOJ_ENV` | noj-core/src/routes/auth.ts |
+| GET | `NOJ_ENV` | noj-core/src/routes/health.ts |
 | GET | `NOJ_ENV` | noj-core/src/routes/health.ts |
 | GET | `userId` | noj-core/src/routes/admin-announcements.ts |
 | GET | `userId` | noj-core/src/routes/admin-trainings.ts |

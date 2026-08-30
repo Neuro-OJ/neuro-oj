@@ -41,14 +41,22 @@ x-core-env: &core-env
   EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER is required}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   LOG_FORMAT: ${LOG_FORMAT:-json}
+  JUDGE_ENABLED: ${JUDGE_ENABLED:-true}
   JUDGE_IMAGE_BASE: ${JUDGE_IMAGE_BASE-ghcr.io/neuro-oj/}
   RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
   AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-90}
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
 
 services:
   # ── 一次性初始化：迁移 + 系统数据 ───────────────────────────────
   migrate:
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-core:${NOJ_VERSION:?NOJ_VERSION is required}"
+    logging: *default-logging
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -68,6 +76,7 @@ services:
   # ── 核心 API ──────────────────────────────────────────────────────
   core:
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-core:${NOJ_VERSION:?NOJ_VERSION is required}"
+    logging: *default-logging
     environment:
       <<: *core-env
     depends_on:
@@ -85,7 +94,7 @@ services:
     expose:
       - "8000"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/health/ready"]
       interval: 30s
       timeout: 5s
       start_period: 20s
@@ -104,6 +113,7 @@ services:
   # ── 前端 SSR ──────────────────────────────────────────────────────
   ui:
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-ui:${NOJ_VERSION:?NOJ_VERSION is required}"
+    logging: *default-logging
     environment:
       NUXT_API_BASE: http://core:8000
       NUXT_NOJ_ENV: ${NUXT_NOJ_ENV:-production}
@@ -137,6 +147,7 @@ services:
     profiles:
       - judge
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-judge:${NOJ_VERSION:?NOJ_VERSION is required}"
+    logging: *default-logging
     environment:
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
       JUDGE_QUEUE: ${JUDGE_QUEUE:-noj:judge:queue}
@@ -183,6 +194,7 @@ services:
   # ── LLM Gateway ───────────────────────────────────────────────────
   llm-gateway:
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-llm-gateway:${NOJ_VERSION:?NOJ_VERSION is required}"
+    logging: *default-logging
     environment:
       NOJ_LLM_PORT: "8001"
       NOJ_LLM_SERVICE_TOKEN: ${NOJ_LLM_SERVICE_TOKEN:?NOJ_LLM_SERVICE_TOKEN is required}
@@ -221,6 +233,7 @@ services:
   # ── 反向代理 / TLS ────────────────────────────────────────────────
   nginx:
     image: nginx:1.27-alpine@sha256:62223d644fa234c3a1cc785ee14242ec47a77364226f1c811d2f669f96dc2ac8
+    logging: *default-logging
     ports:
       # 默认映射到宿主机 8080，避免与外部 TLS 终止层（如宿主机 Nginx）的 80 冲突；
       # 若直接由云 LB 转发 80，可设置 NGINX_PORT=80。
@@ -237,6 +250,7 @@ services:
   # ── PostgreSQL ────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine@sha256:075f7ba66bc9b3ce7d6b8b635208ff61cd7cf1a67d71ec530eec5d7ae0cbe571
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-noj}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
@@ -255,6 +269,7 @@ services:
   # ── Redis（带密码 + AOF）─────────────────────────────────────────
   redis:
     image: redis:7-alpine@sha256:1db42ccef14898aa29bae778452d567534b59c107129cbc1163fb552de184d3c
+    logging: *default-logging
     command:
       - redis-server
       - --requirepass
@@ -277,6 +292,7 @@ services:
   # ── MinIO（自建对象存储）─────────────────────────────────────────
   minio:
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z@sha256:d051d800a3025588f37f69f132bb5ef718547a9a4ee95ddee44e04ad952a0a96
+    logging: *default-logging
     command: server /data --console-address :9001
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}

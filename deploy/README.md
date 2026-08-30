@@ -5,6 +5,7 @@
 ## 目录
 
 - `nginx/default.conf`：Nginx 反向代理配置（容器内只处理 HTTP，转发到 `ui:3000`）。
+- `monitoring/`：Prometheus 采集配置、告警规则和 Grafana 仪表盘模板。
 
 ## TLS 说明
 
@@ -83,3 +84,6 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 ```
 
 详细步骤见 `docs/operators/production-deploy.md`。
+
+生产观测接入见 `docs/operators/observability.md`。Prometheus 应加入 `noj-net` 后抓取
+`core:8000/metrics`；该端点只提供聚合指标，不应直接暴露到公网。

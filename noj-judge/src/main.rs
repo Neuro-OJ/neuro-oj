@@ -19,6 +19,7 @@ use tracing::{error, info};
 
 use crate::config::Config;
 use crate::mq::PulledTask;
+use noj_judge::metrics::{heartbeat_loop, JudgeMetrics};
 
 // merge_output 实现在 lib.rs；此处 use 使 bin 内的 `crate::merge_output` 路径可解析
 use noj_judge::merge_output;
@@ -112,6 +113,24 @@ fn main() -> Result<()> {
         let max_evaluator_time_ms = config.max_evaluator_time_ms;
         let max_solution_call_timeout_ms = config.max_solution_call_timeout_ms;
         let judge_semaphore = Arc::new(Semaphore::new(max_concurrent_judges));
+        let judge_metrics = Arc::new(JudgeMetrics::new(max_concurrent_judges));
+        let heartbeat_metrics = Arc::clone(&judge_metrics);
+        let heartbeat_redis = redis_client.clone();
+        let heartbeat_docker = docker.clone();
+        let heartbeat_instance_id = instance_id.clone();
+        let heartbeat_cache_dir = std::path::PathBuf::from(cache_dir.clone());
+        let heartbeat_work_dir = std::path::PathBuf::from(work_dir.clone());
+        tokio::spawn(async move {
+            heartbeat_loop(
+                heartbeat_redis,
+                heartbeat_docker,
+                heartbeat_instance_id,
+                heartbeat_metrics,
+                heartbeat_cache_dir,
+                heartbeat_work_dir,
+            )
+            .await;
+        });
         info!("评测并发上限: {}", max_concurrent_judges);
         info!("每个评测容器 CPU 上限: {}m", cpu_limit_millicores);
         info!("Evaluator 时间硬上限: {}ms", max_evaluator_time_ms);
@@ -181,6 +200,8 @@ fn main() -> Result<()> {
             let evaluator_network_mode = evaluator_network_mode.clone();
             let command_whitelist = command_whitelist.clone();
             let docker = docker.clone();
+            let task_metrics = Arc::clone(&judge_metrics);
+            task_metrics.task_started();
 
             let handle = tokio::spawn(async move {
                 let _permit = permit;
@@ -214,11 +235,19 @@ fn main() -> Result<()> {
                 };
 
                 // 使用带重试的推送；成功后确认任务，崩溃/失败则留给 sweeper。
-                if mq::push_result_with_retry(&redis_client, &result_queue, &result, &fallback_dir)
-                    .await
-                {
+                let push_succeeded = mq::push_result_with_retry(
+                    &redis_client,
+                    &result_queue,
+                    &result,
+                    &fallback_dir,
+                )
+                .await;
+                if push_succeeded {
                     mq::ack_task(&redis_client, &judge_queue, &raw).await;
+                } else {
+                    task_metrics.result_push_failed();
                 }
+                task_metrics.task_finished(result.status == "error");
             });
             tasks.push(handle);
 

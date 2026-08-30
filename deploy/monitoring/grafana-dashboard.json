@@ -1,0 +1,17 @@
+{
+  "title": "Neuro OJ Production",
+  "uid": "noj-production",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {"id": 1, "type": "stat", "title": "在线 Judge Worker", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}, "targets": [{"expr": "noj_judge_workers"}]},
+    {"id": 2, "type": "stat", "title": "Pending 队列", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}, "targets": [{"expr": "noj_queue_pending_jobs"}]},
+    {"id": 3, "type": "stat", "title": "API 错误率", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}, "targets": [{"expr": "noj_api_error_rate_percent"}], "fieldConfig": {"defaults": {"unit": "percent"}}},
+    {"id": 4, "type": "stat", "title": "Judge 工作目录", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}, "targets": [{"expr": "noj_judge_work_dir_bytes"}], "fieldConfig": {"defaults": {"unit": "bytes"}}},
+    {"id": 5, "type": "timeseries", "title": "队列趋势", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}, "targets": [{"expr": "noj_queue_pending_jobs", "legendFormat": "pending"}, {"expr": "noj_queue_processing_jobs", "legendFormat": "processing"}, {"expr": "noj_queue_result_processing_jobs", "legendFormat": "result processing"}]},
+    {"id": 6, "type": "timeseries", "title": "依赖与消费者状态", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}, "targets": [{"expr": "noj_database_up", "legendFormat": "database"}, {"expr": "noj_redis_up", "legendFormat": "redis"}, {"expr": "noj_result_consumer_up", "legendFormat": "result consumer"}, {"expr": "noj_judge_workers", "legendFormat": "judge workers"}]},
+    {"id": 7, "type": "timeseries", "title": "请求延迟与错误率", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12}, "targets": [{"expr": "noj_api_average_latency_ms", "legendFormat": "average latency ms"}, {"expr": "noj_api_error_rate_percent", "legendFormat": "error rate %"}]}
+  ]
+}

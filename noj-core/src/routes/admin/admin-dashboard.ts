@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../../middleware/auth.ts";
 import { getDashboardStats } from "../../services/dashboard.ts";
+import { getObservabilitySnapshot } from "../../services/observability.ts";
 
 /**
  * 管理端仪表盘路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。
@@ -17,6 +18,15 @@ const router = new Hono<AuthEnv>();
 router.get("/dashboard/stats", async (c) => {
   const stats = await getDashboardStats();
   return c.json({ data: stats });
+});
+
+/**
+ * 生产观测快照。
+ * GET /api/v1/admin/dashboard/observability
+ */
+router.get("/dashboard/observability", async (c) => {
+  const snapshot = await getObservabilitySnapshot();
+  return c.json({ data: snapshot });
 });
 
 export default router;

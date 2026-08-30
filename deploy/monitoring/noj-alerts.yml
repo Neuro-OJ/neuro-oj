@@ -1,0 +1,122 @@
+groups:
+  - name: noj-production
+    rules:
+      - alert: NojDatabaseUnavailable
+        expr: noj_database_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Neuro OJ PostgreSQL 不可用
+          description: core 连续 2 分钟无法完成 PostgreSQL 健康检查。
+          runbook: docs/operators/observability.md#postgresql-redis-异常
+
+      - alert: NojRedisUnavailable
+        expr: noj_redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Neuro OJ Redis 不可用
+          description: core 连续 2 分钟无法完成 Redis 健康检查。
+          runbook: docs/operators/observability.md#postgresql-redis-异常
+
+      - alert: NojResultConsumerDown
+        expr: noj_result_consumer_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 评测结果消费者停止运行
+          description: core 结果消费者连续 2 分钟未存活，评测结果可能无法回写。
+          runbook: docs/operators/observability.md#评测结果消费者异常
+
+      - alert: NojJudgeWorkersDown
+        expr: noj_judge_required == 1 and noj_judge_workers == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: 没有在线 Judge Worker
+          description: 生产环境要求 Judge，但连续 5 分钟没有有效 TTL 心跳。
+          runbook: docs/operators/observability.md#judge-worker-异常
+
+      - alert: NojQueueBacklogWarning
+        expr: noj_queue_pending_jobs >= 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 评测 pending 队列堆积
+          description: pending 队列连续 5 分钟不少于 100 个任务。
+          runbook: docs/operators/observability.md#评测队列堆积
+
+      - alert: NojQueueBacklogCritical
+        expr: noj_queue_pending_jobs >= 500
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: 评测 pending 队列严重堆积
+          description: pending 队列连续 5 分钟不少于 500 个任务。
+          runbook: docs/operators/observability.md#评测队列堆积
+
+      - alert: NojResultQueueBacklog
+        expr: noj_queue_result_processing_jobs >= 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 评测结果 processing 队列堆积
+          description: 结果消费者可能发生数据库写入失败或重试。
+          runbook: docs/operators/observability.md#评测结果消费者异常
+
+      - alert: NojStaleJudging
+        expr: noj_queue_oldest_judging_age_seconds >= 600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 存在长时间未完成的评测
+          description: 最早 judging 任务已超过 10 分钟。
+          runbook: docs/operators/observability.md#评测卡死
+
+      - alert: NojApiErrorRateHigh
+        expr: noj_api_error_rate_percent >= 5 and sum(noj_http_requests_total) >= 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: API 5xx 错误率升高
+          description: core 进程累计 API 5xx 比例达到 5%，请结合日志和请求延迟排查。
+          runbook: docs/operators/observability.md#api-错误率或延迟升高
+
+      - alert: NojApiLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(noj_http_request_duration_seconds_bucket[5m]))) >= 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: API P95 延迟超过 1 秒
+          description: core 连续 5 分钟 API 请求 P95 延迟达到 1 秒，请结合依赖延迟和结构化日志排查。
+          runbook: docs/operators/observability.md#api-错误率或延迟升高
+
+      - alert: NojJudgeWorkDirPressure
+        expr: noj_judge_work_dir_bytes >= 8589934592
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Judge 工作目录占用过高
+          description: Judge 工作目录占用超过 8 GiB。
+          runbook: docs/operators/observability.md#磁盘和缓存压力
+
+      - alert: NojHostDiskLow
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.1
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: 宿主机根分区可用空间低于 10%
+          description: node_exporter 报告根分区空间不足。
+          runbook: docs/operators/observability.md#磁盘和缓存压力
