@@ -117,7 +117,8 @@ NOJ 当前持久化数据卷约 66 MiB，生产镜像（含 Evaluator、Solution
 
 ### 一键部署
 
-生产环境推荐使用仓库根目录的一键安装入口 `setup.sh`。它会临时下载底层安装脚本，下载指定 Release 到目标目录，并调用生产部署向导：
+生产环境推荐使用仓库根目录的一键安装入口 `setup.sh`。它会先展示最低要求和当前主机环境，
+在检查通过后临时下载底层安装脚本，下载指定 Release 到目标目录，并调用生产部署向导：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
@@ -145,6 +146,7 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 ./noj status                    # 查看服务状态
 ./noj logs core                 # 查看 core 日志
 ./noj update                    # 升级到 .env.prod 中的 NOJ_VERSION
+./noj update --latest           # 升级到最新稳定 Release（不含 RC/预发布）
 ./noj stop                      # 停止服务但保留数据卷
 ./noj restart                   # 重启服务
 ./noj backup                    # 创建完整生产备份
@@ -152,8 +154,9 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 ```
 
 `./noj` 是生产运维的简化入口，内部支持 `install`，日常使用 `start`、`stop`、`restart`、`update`、
-`status`、`logs`、`backup`、`verify` 和 `config check`。`update` 使用 `.env.prod` 中已经
-配置的 `NOJ_VERSION`，不会自动切换到最新版本，也不会删除数据卷。需要传递高级参数时，
+`status`、`logs`、`backup`、`verify` 和 `config check`。`update` 默认使用 `.env.prod` 中已经
+配置的 `NOJ_VERSION`；需要自动选择最新稳定版本时显式使用 `update --latest`。该选项不会选择
+RC/预发布版本，并且不会删除数据卷。需要传递高级参数时，
 仍可直接使用 `bash scripts/deploy/deploy.sh <命令> [选项]`。首次通过 `setup.sh` 安装成功后，
 命令会自动注册到 `/usr/local/bin/noj`；若无权限则回退到 `~/.local/bin/noj` 并更新登录 PATH。
 
