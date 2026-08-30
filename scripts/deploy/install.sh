@@ -70,7 +70,7 @@ Neuro OJ Linux 独立下载部署工具
 
 选项：
   --repo URL             GitHub 仓库地址（默认 Neuro-OJ/neuro-oj）
-  --ref REF              固定分支或 Release tag（默认自动选择最新 Release）
+  --ref REF              固定分支或 Release tag（稳定版本通常使用 v 前缀；默认自动选择最新 Release）
   --dir DIRECTORY        安装目录（默认 /opt/neuro-oj）
   --port PORT            检测宿主机端口（默认 8080）
   --panel MODE           面板模式：auto（默认）、baota 或 none
@@ -274,6 +274,10 @@ check_port() {
     printf '  - 端口号无效：%s\n' "$CHECK_PORT" >&2
     return 1
   }
+  if ((FILES_ONLY)); then
+    ok "部署文件同步模式跳过宿主机端口占用检查"
+    return 0
+  fi
   if command -v ss >/dev/null 2>&1; then
     if ss -ltnH 2>/dev/null | awk -v port=":$CHECK_PORT" '$4 ~ (port "$") { found=1 } END { exit !found }'; then
       occupied=1
@@ -492,10 +496,18 @@ download_archive() {
   if command -v curl >/dev/null 2>&1; then
     curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
       --retry 3 --connect-timeout 15 --output "$ARCHIVE_PATH" "$ARCHIVE_URL" ||
-      fail "源码下载失败，请检查仓库、ref、网络或代理配置"
+      if [[ "$REF" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        fail "源码下载失败，请检查仓库、网络或代理配置；正式版本标签通常带 v 前缀，请尝试 --ref v$REF"
+      else
+        fail "源码下载失败，请检查仓库、ref、网络或代理配置"
+      fi
   else
     wget --https-only --tries=3 --timeout=20 --quiet --output-document="$ARCHIVE_PATH" "$ARCHIVE_URL" ||
-      fail "源码下载失败，请检查仓库、ref、网络或代理配置"
+      if [[ "$REF" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        fail "源码下载失败，请检查仓库、网络或代理配置；正式版本标签通常带 v 前缀，请尝试 --ref v$REF"
+      else
+        fail "源码下载失败，请检查仓库、ref、网络或代理配置"
+      fi
   fi
   [[ -s "$ARCHIVE_PATH" ]] || fail "下载的源码归档为空"
 }
@@ -634,7 +646,7 @@ run_deploy() {
 }
 
 register_noj_command() {
-  ((DOWNLOAD_ONLY || DRY_RUN)) && return 0
+  ((DOWNLOAD_ONLY || FILES_ONLY || DRY_RUN)) && return 0
   [[ -f "$TARGET_DIR/noj" ]] || {
     warn "当前源码未包含 noj 命令，跳过 PATH 注册"
     return 0

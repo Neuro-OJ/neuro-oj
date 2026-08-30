@@ -212,6 +212,22 @@ NOJ_DEPLOY_SOURCE_ONLY=1 bash -c '
 grep -q '^STAGING_TEST_KEY=committed-value$' "$staging_env" || fail "确认后未写入正式配置"
 pass "配置暂存、取消和最终写入"
 
+generated_passphrase="$TEST_ROOT/generated-passphrase"
+generated_env="$TEST_ROOT/generated-passphrase.env"
+cp "$ENV_FILE" "$generated_env"
+NOJ_DEPLOY_SOURCE_ONLY=1 bash -c '
+  source "$1"
+  ENV_FILE="$2"
+  DEFAULT_BACKUP_PASSPHRASE_FILE="$3"
+  BACKUP_PASSPHRASE_FILE=""
+  ensure_backup_passphrase
+  [[ -f "$3" ]]
+  [[ "$(passphrase_file_mode "$3")" == 600 ]]
+  grep -q "^NOJ_BACKUP_PASSPHRASE_FILE=$3$" "$2"
+' bash "$DEPLOY_SCRIPT" "$generated_env" "$generated_passphrase" ||
+  fail "首次部署未自动准备备份口令文件"
+pass "备份口令文件自动准备与路径持久化"
+
 configure_commit_env="$TEST_ROOT/configure-commit.env"
 cp "$ENV_FILE" "$configure_commit_env"
 NOJ_DEPLOY_SOURCE_ONLY=1 NOJ_DEPLOY_TEST_SOCKET="$TEST_ROOT/isolated-docker.sock" bash -c '
@@ -403,9 +419,18 @@ else
   fail "合法配置的 start 不应失败"
 fi
 grep -q 'compose.*up -d --wait' "$FAKE_LOG" || fail "start 未调用 Compose 健康等待"
+grep -q 'compose.*up -d --force-recreate --no-deps nginx' "$FAKE_LOG" ||
+  fail "启动或升级后未刷新 Nginx 上游容器"
 grep -q 'compose.*--profile judge.*up -d --wait' "$FAKE_LOG" || fail "启用 Judge 时未启用 Compose profile"
 if grep -q 'down -v' "$FAKE_LOG"; then fail "部署脚本不得删除数据卷"; fi
 pass "启动参数与数据卷安全边界"
+
+grep -q 'pg_restore --list < "\$temp/postgres.dump"' "$SCRIPT_DIR/backup.sh" ||
+  fail "PostgreSQL 备份未从标准输入校验 dump"
+if grep -q 'pg_restore --list - < "\$temp/postgres.dump"' "$SCRIPT_DIR/backup.sh"; then
+  fail "PostgreSQL 备份仍传递不兼容的 - 文件参数"
+fi
+pass "PostgreSQL 备份结构校验"
 
 skip_judge_env="$TEST_ROOT/skip-judge.env"
 cp "$ENV_FILE" "$skip_judge_env"

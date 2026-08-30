@@ -204,7 +204,7 @@ create_snapshot() {
   [[ -s "$temp/postgres.dump" ]] || die "PostgreSQL 备份为空"
   compose exec -T postgres pg_dumpall -U "$pg_user" --globals-only --no-role-passwords > "$temp/postgres-globals.sql" \
     || die "PostgreSQL 全局对象备份失败"
-  compose exec -T postgres pg_restore --list - < "$temp/postgres.dump" > "$temp/postgres.restore-list" \
+  compose exec -T postgres pg_restore --list < "$temp/postgres.dump" > "$temp/postgres.restore-list" \
     || die "PostgreSQL 备份结构校验失败"
 
   redis_file="$temp/redis.rdb"

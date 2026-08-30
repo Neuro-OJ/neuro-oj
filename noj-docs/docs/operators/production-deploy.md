@@ -323,6 +323,9 @@ cd /opt/neuro-oj
 ./noj update
 ```
 
+更新只同步部署文件时不会因当前 NOJ 自身占用 `NGINX_PORT` 而失败；应用容器重建后，脚本会主动刷新
+Nginx 反向代理，避免上游容器地址变化造成 `502`。
+
 如需自动选择最新稳定 Release，可执行：
 
 ```bash
@@ -416,7 +419,9 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
 
 ### 8.1 初始化口令与创建快照
 
-备份口令只保存在仓库外的受限文件中，不要写入 `.env.prod` 或提交到 Git：
+备份口令只保存在仓库外的受限文件中，不要把口令明文写入 `.env.prod` 或提交到 Git。
+一键安装和升级在没有指定口令文件时，默认会自动创建 `/etc/noj/backup-passphrase`；
+请务必将该文件安全复制到异地位置，否则无法恢复加密快照。也可以预先指定自己的路径：
 
 ```bash
 sudo install -d -m 700 /etc/noj
@@ -426,6 +431,9 @@ sudo chmod 600 /etc/noj/backup-passphrase
 export NOJ_BACKUP_PASSPHRASE_FILE=/etc/noj/backup-passphrase
 bash scripts/deploy/deploy.sh backup --backup-dir /srv/noj/backups
 ```
+
+安装时如果已存在权限为 `600` 或 `400` 的口令文件，脚本会复用且不会覆盖；也可以在升级或
+备份命令中显式使用 `--passphrase-file FILE`。备份路径本身可以写入 `.env.prod`，但口令内容不可以。
 
 每次快照都会生成 SHA-256 清单、PostgreSQL dump 结构清单、迁移状态和 `SUCCESS`
 标记；默认保留 30 天，默认要求备份目录至少有 1GiB 可用空间。可通过

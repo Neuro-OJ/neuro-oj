@@ -25,6 +25,7 @@ ENV_TEMPLATE="$REPO_ROOT/.env.prod.example"
 COMPOSE_FILE="$REPO_ROOT/docker-compose.prod.yml"
 BACKUP_DIR="$REPO_ROOT/backups"
 BACKUP_PASSPHRASE_FILE="${NOJ_BACKUP_PASSPHRASE_FILE:-}"
+DEFAULT_BACKUP_PASSPHRASE_FILE="/etc/noj/backup-passphrase"
 DOCKER_BIN="${NOJ_DEPLOY_DOCKER_BIN:-docker}"
 PANEL_MODE="${NOJ_DEPLOY_PANEL:-auto}"
 PANEL_NAME="none"
@@ -910,6 +911,45 @@ check_configuration() {
   ok "生产配置检查通过"
 }
 
+passphrase_file_mode() {
+  stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null
+}
+
+ensure_backup_passphrase() {
+  local configured_file target_file parent temp mode
+  ((DRY_RUN)) && return 0
+  configured_file="$(env_value NOJ_BACKUP_PASSPHRASE_FILE)"
+  target_file="${BACKUP_PASSPHRASE_FILE:-${configured_file:-$DEFAULT_BACKUP_PASSPHRASE_FILE}}"
+  BACKUP_PASSPHRASE_FILE="$target_file"
+
+  if [[ -e "$target_file" ]]; then
+    [[ -f "$target_file" ]] || fail "GPG 备份口令路径不是普通文件：$target_file"
+    mode="$(passphrase_file_mode "$target_file")"
+    [[ "$mode" == 600 || "$mode" == 400 ]] ||
+      fail "GPG 备份口令文件权限必须为 600 或 400：$target_file"
+    return 0
+  fi
+
+  command -v openssl >/dev/null 2>&1 ||
+    fail "无法自动创建 GPG 备份口令文件，请安装 openssl 或使用 --passphrase-file 指定已有文件"
+  parent="$(dirname -- "$target_file")"
+  mkdir -p -m 700 -- "$parent" ||
+    fail "无法创建 GPG 备份口令目录：$parent；请使用 --passphrase-file 指定可写路径"
+  temp="$(mktemp "$target_file.tmp.XXXXXX")" ||
+    fail "无法创建 GPG 备份口令文件：$target_file"
+  chmod 600 "$temp"
+  if ! openssl rand -hex 32 >"$temp" || ! mv -- "$temp" "$target_file"; then
+    rm -f -- "$temp"
+    fail "无法创建 GPG 备份口令文件：$target_file"
+  fi
+  chmod 600 "$target_file"
+  if [[ -z "$configured_file" && -z "${NOJ_BACKUP_PASSPHRASE_FILE:-}" ]]; then
+    set_env_value NOJ_BACKUP_PASSPHRASE_FILE "$target_file"
+  fi
+  ok "已准备 GPG 备份口令文件：$target_file"
+  warn "请将该口令文件安全复制到仓库外的异地位置，否则无法恢复加密快照"
+}
+
 run_compose() {
   local -a compose_args=(--env-file "$ENV_FILE" -f "$COMPOSE_FILE")
   if ((INCLUDE_ALL_PROFILES)) || judge_enabled; then
@@ -935,6 +975,8 @@ wait_for_stack() {
   fi
   run_compose up -d --wait --wait-timeout 180 --remove-orphans ||
     fail "服务启动或健康检查失败，请执行 status 和 logs 排查"
+  run_compose up -d --force-recreate --no-deps nginx ||
+    fail "反向代理刷新失败，请执行 status 和 logs 排查"
   ok "生产服务已通过 Compose 健康检查"
 }
 
@@ -946,6 +988,7 @@ prepare_and_check() {
 install() {
   check_dependencies
   initialize_env
+  ensure_backup_passphrase
   check_configuration
   section "拉取生产镜像"
   run_compose pull
@@ -979,6 +1022,7 @@ start() {
 
 upgrade() {
   prepare_and_check
+  ensure_backup_passphrase
   run_backup "upgrade"
   section "拉取目标版本镜像"
   run_compose pull
@@ -1080,6 +1124,7 @@ run_backup() {
 
 backup() {
   prepare_and_check
+  ensure_backup_passphrase
   run_backup "手动备份"
 }
 
