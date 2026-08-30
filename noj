@@ -52,6 +52,7 @@ Neuro OJ 生产运维命令
 说明：
   update 会先同步对应版本的部署文件和 noj 命令，再执行带备份的服务升级；默认版本来自 .env.prod。
   update --latest 会查询最新稳定 Release；当前已是最新版本时不重启服务、不创建升级备份。
+  首次 install 或 upgrade 会自动准备 /etc/noj/backup-passphrase；也可通过 --passphrase-file 指定已有口令文件。
   uninstall 会要求输入 UNINSTALL 确认；自动化环境请使用 uninstall --yes。它不会删除数据卷、配置、备份或部署目录。
   uninstall --all 会要求输入 DELETE ALL 确认；自动化环境请使用 uninstall --all --yes。它会删除当前安装目录和全部数据，且不可恢复。
   install 成功后会自动注册 PATH 命令；优先使用 /usr/local/bin，权限不足时使用 ~/.local/bin。
@@ -176,6 +177,24 @@ require_deploy_script() {
 run_deploy() {
   require_deploy_script
   bash "$DEPLOY_SCRIPT" "$@"
+}
+
+run_files_sync() {
+  local bootstrap status
+  bootstrap="$(mktemp "${TMPDIR:-/tmp}/noj-update-bootstrap.XXXXXX")" ||
+    fail "无法创建更新 bootstrap 临时文件"
+  if ! cp -- "$SCRIPT_DIR/scripts/deploy/install.sh" "$bootstrap"; then
+    rm -f -- "$bootstrap"
+    fail "无法准备更新 bootstrap 临时文件"
+  fi
+  chmod 700 "$bootstrap"
+  set +e
+  NOJ_BOOTSTRAP_BIN_DIR="${NOJ_BIN_DIR:-/usr/local/bin}" \
+    bash "$bootstrap" "$@"
+  status=$?
+  set -e
+  rm -f -- "$bootstrap"
+  return "$status"
 }
 
 configured_version() {
@@ -309,8 +328,7 @@ update() {
     done
     ((sync_dry_run)) && sync_args+=(--dry-run)
     printf '同步生产部署文件：%s\n' "$version"
-    NOJ_BOOTSTRAP_BIN_DIR="${NOJ_BIN_DIR:-/usr/local/bin}" \
-      bash "$SCRIPT_DIR/scripts/deploy/install.sh" "${sync_args[@]}"
+    run_files_sync "${sync_args[@]}"
     run_deploy upgrade "${original_args[@]}"
     return 0
   fi
@@ -341,8 +359,7 @@ update() {
   sync_args=(--ref "$version" --dir "$SCRIPT_DIR" --files-only)
   ((sync_dry_run)) && sync_args+=(--dry-run)
   printf '同步生产部署文件：%s\n' "$version"
-  if NOJ_BOOTSTRAP_BIN_DIR="${NOJ_BIN_DIR:-/usr/local/bin}" \
-    bash "$SCRIPT_DIR/scripts/deploy/install.sh" "${sync_args[@]}"; then
+  if run_files_sync "${sync_args[@]}"; then
     :
   else
     status=$?

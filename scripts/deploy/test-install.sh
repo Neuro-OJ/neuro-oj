@@ -102,6 +102,9 @@ chmod +x "$FAKE_BIN/docker"
 
 cat >"$FAKE_BIN/ss" <<'EOF'
 #!/usr/bin/env bash
+if [[ "${NOJ_BOOTSTRAP_PORT_OCCUPIED:-0}" == 1 ]]; then
+  printf 'LISTEN 0 128 0.0.0.0:18080 0.0.0.0:*\n'
+fi
 exit 0
 EOF
 chmod +x "$FAKE_BIN/ss"
@@ -214,6 +217,15 @@ bash "$INSTALL_SCRIPT" --download-only --repo https://example.com/repo --ref v0.
   fail "下载完成后未清理临时目录"
 pass "源码下载与临时文件清理"
 
+files_only_dir="$TEST_ROOT/files-only"
+cp -a "$download_only_dir" "$files_only_dir"
+NOJ_BOOTSTRAP_PORT_OCCUPIED=1 \
+  bash "$INSTALL_SCRIPT" --files-only --repo https://example.com/repo --ref v0.1.0 \
+  --dir "$files_only_dir" --port 18080 >"$TEST_ROOT/files-only.out" 2>&1
+grep -q '部署文件同步模式跳过宿主机端口占用检查' "$TEST_ROOT/files-only.out" ||
+  fail "files-only 仍被自身端口占用阻断"
+pass "已有安装同步跳过端口占用检查"
+
 deploy_dir="$TEST_ROOT/deploy"
 bash "$INSTALL_SCRIPT" --repo https://example.com/repo --ref v0.1.0 --dir "$deploy_dir" -- \
   --env-file /tmp/example.env --backup-dir /tmp/backups >/dev/null
@@ -267,6 +279,17 @@ set -e
 [[ -z "$(find "$TEST_ROOT/tmp-download-fail" -mindepth 1 -maxdepth 1 -type d -name 'noj-bootstrap.*' -print -quit 2>/dev/null)" ]] ||
   fail "下载失败后未清理临时目录"
 pass "下载失败传播与清理"
+
+set +e
+NOJ_BOOTSTRAP_DOWNLOAD_FAIL=1 \
+  bash "$INSTALL_SCRIPT" --ref 0.1.0 --dir "$TEST_ROOT/bare-stable-ref" \
+  >/dev/null 2>"$TEST_ROOT/bare-stable-ref.err"
+bare_stable_status=$?
+set -e
+[[ "$bare_stable_status" != 0 ]] || fail "裸稳定版本标签下载失败未返回非零"
+grep -q -- '--ref v0.1.0' "$TEST_ROOT/bare-stable-ref.err" ||
+  fail "裸稳定版本标签缺少 v 前缀修复提示"
+pass "稳定版本标签提示"
 
 set +e
 NOJ_BOOTSTRAP_DANGEROUS_TAR=1 \

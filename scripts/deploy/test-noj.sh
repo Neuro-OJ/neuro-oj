@@ -32,6 +32,7 @@ printf '%s\n' 'NOJ_VERSION=v-test' >"$TEST_ROOT/.env.prod"
 printf '%s\n' 'NOJ_VERSION=v-custom' >"$CUSTOM_ENV"
 printf '%s\n' '#!/usr/bin/env bash' \
   'set -Eeuo pipefail' \
+  'printf "bootstrap=%s\\n" "$0" >>"${NOJ_UPDATE_LOG:?}"' \
   'printf "%s\n" "$*" >>"${NOJ_UPDATE_LOG:?}"' \
   >"$TEST_ROOT/scripts/deploy/install.sh"
 chmod 755 "$TEST_ROOT/scripts/deploy/install.sh"
@@ -101,6 +102,9 @@ run_noj update --dry-run
 assert_last_route "upgrade --dry-run"
 grep -Fqx -- "--ref v-test --dir $NORMALIZED_TEST_ROOT --files-only --dry-run" "$UPDATE_LOG" ||
   fail "update 未先同步配置版本的部署文件"
+bootstrap_path="$(sed -n 's/^bootstrap=//p' "$UPDATE_LOG" | tail -n 1)"
+[[ "$bootstrap_path" != "$TEST_ROOT/scripts/deploy/install.sh" && ! -e "$bootstrap_path" ]] ||
+  fail "update 仍直接执行或遗留安装目录中的 bootstrap"
 pass "update 同步部署文件并升级服务"
 
 : >"$LOG_FILE"

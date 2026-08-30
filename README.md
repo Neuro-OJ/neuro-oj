@@ -102,7 +102,9 @@ NOJ 当前持久化数据卷约 66 MiB，生产镜像（含 Evaluator、Solution
 
 但 Judge 不要求永远和 NOJ 主服务部署在同一台机器上。生产环境可以将一个或多个 Judge Worker 部署到独立主机，让它们共同消费 Redis 评测队列；每个 Worker 都需要自己的 Docker 隔离边界，并能访问 Redis 和题目支持包存储。主站一键安装脚本不负责独立 Worker 的安装，详见 [Judge Worker 运维文档](./noj-docs/docs/operators/judge-workers.md)。
 
-生产环境还应使用仓库外、权限为 `600` 或 `400` 的备份口令文件，并仅开放 HTTPS 和运维所需的 SSH 端口。
+生产环境使用仓库外、权限为 `600` 或 `400` 的备份口令文件；首次一键安装会自动创建
+`/etc/noj/backup-passphrase`，并提示将其安全复制到异地位置。后续升级会自动复用该文件。
+同时仅开放 HTTPS 和运维所需的 SSH 端口。
 
 #### 生产部署不需要
 
