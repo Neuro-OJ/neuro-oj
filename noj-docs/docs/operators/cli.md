@@ -7,7 +7,7 @@
 生产环境不直接使用源码或 `deno task`，而是通过 Docker Compose 在 `noj-server` 镜像内执行 CLI：
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
+docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
   --entrypoint /app/bin/noj <子命令>
 ```
 
@@ -15,23 +15,23 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
 
 ```bash
 # 数据库迁移
-docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
+docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
   --entrypoint /app/bin/noj db migrate
 
 # 系统基础数据：root + RBAC + 评测镜像白名单 + 标签
-docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
+docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
   --entrypoint /app/bin/noj init system
 
-# 管理员引导（从 .env.prod 读取 ADMIN_EMAIL / ADMIN_PASS）
-docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
+# 管理员引导（从部署配置或环境变量读取 ADMIN_EMAIL / ADMIN_PASS）
+docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
   --entrypoint /app/bin/noj bootstrap admin
 
 # 构建统一题目包（需要在镜像内包含 data/problems-src）
-docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
+docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
   --entrypoint /app/bin/noj problems build
 
 # 导入统一题目包
-docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
+docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
   --entrypoint /app/bin/noj problems import
 ```
 

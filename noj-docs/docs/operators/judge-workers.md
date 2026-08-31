@@ -151,8 +151,8 @@ test "$JUDGE_REQUIRE_ISOLATED_DOCKER" = "true"
 
 # 只应看到独立 daemon socket 和评测缓存，不得出现应用宿主机 socket、
 # /var/lib/docker、/etc 或其他宿主路径。
-docker compose --env-file .env.prod -f docker-compose.prod.yml config
-docker inspect "$(docker compose --env-file .env.prod -f docker-compose.prod.yml ps -q judge)" \
+docker compose -f /opt/neuro-oj/docker-compose.noj.yml config
+docker inspect "$(docker compose -f /opt/neuro-oj/docker-compose.noj.yml ps -q judge)" \
   --format '{{json .Mounts}}'
 ```
 
@@ -217,20 +217,20 @@ noj-server 维护评测镜像白名单（`judgeImages`），并在题目 CRUD / 
 
 ## 健康检查与状态查看
 
-生产环境使用 Docker Compose 管理：
+生产环境使用 noj-cli 管理：
 
 ```bash
 # 查看所有服务状态（含 judge 是否在线）
-docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+noj-cli deploy status --dir /opt/neuro-oj
 
 # 查看 judge 日志
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 judge
+noj-cli maintain logs judge --follow --dir /opt/neuro-oj
 ```
 
 调高日志详细度排查问题（临时覆盖环境变量）：
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
+docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
   -e RUST_LOG=noj_judge=debug judge
 ```
 
@@ -239,9 +239,10 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
 评测任务在 Redis 队列 `noj:judge:queue` 中排队，结果写回 `noj:judge:results`：
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
-  redis-cli -a "$REDIS_PASSWORD" LLEN noj:judge:queue
+docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue
 ```
+
+密码从 `noj-secrets.json` 的 `secrets.REDIS_PASSWORD` 读取。
 
 如果队列持续堆积：
 
@@ -260,7 +261,9 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
 ## 升级与重启
 
 - 停止实例会进入优雅关闭流程：排空正在执行的 in-flight 任务后再退出，避免提交丢失。
-- 升级步骤：修改 `.env.prod` 中的 `NOJ_VERSION` → `docker compose pull` → `docker compose up -d`。
+- 升级步骤：修改 `noj-deploy.json` 中的 `version.noj_server`（或
+  `noj-cli maintain config set version.noj_server v0.1.1`）→
+  `noj-cli deploy up --dir /opt/neuro-oj`。
 - 升级评测镜像后应先在 noj-server 白名单登记，再启动 Worker。
 
 ## 常见排查方向
