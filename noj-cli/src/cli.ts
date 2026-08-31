@@ -1,5 +1,8 @@
 import { findDeployDir } from "./util/find_deploy_dir.ts";
 import { VERSION } from "./mod.ts";
+import { realProbe } from "./doctor/probe.ts";
+import { runDoctor } from "./doctor/doctor.ts";
+import { formatReport } from "./doctor/report.ts";
 
 /** CLI 执行上下文，供各子命令共享。 */
 export interface CommandContext {
@@ -34,8 +37,8 @@ export function printHelp(): string {
     "用法: noj-cli <命令> [子命令] [选项]",
     "",
     "命令:",
-    "  doctor        环境检测（stub）",
-    "  deploy        部署生命周期 init/up/down/restart/status（stub）",
+    "  doctor        环境检测",
+    "  deploy        部署生命周期 init/up/down/restart/status（init 已实现）",
     "  maintain      运维 logs/backup/restore/verify/reset/config（stub）",
     "  run-server    运行 noj-server（stub）",
     "  version       显示版本",
@@ -61,19 +64,35 @@ const KNOWN_TOP = new Set([
   "version",
 ]);
 
-/** 将命令分发到对应 stub 处理函数。供测试与 run 共用。 */
-export function dispatchCommand(
+/** 解析 --port <n>，缺省 8080；非法值抛错。 */
+export function parsePort(args: string[]): number {
+  const idx = args.indexOf("--port");
+  if (idx === -1) return 8080;
+  const raw = args[idx + 1];
+  const n = Number(raw);
+  if (raw === undefined || !Number.isInteger(n) || n < 1 || n > 65535) {
+    throw new Error(`非法端口: ${raw}`);
+  }
+  return n;
+}
+
+/** 将命令分发到对应处理函数。供测试与 run 共用。 */
+export async function dispatchCommand(
   command: string,
   args: string[],
   ctx: CommandContext,
-): number {
+): Promise<number> {
   switch (command) {
     case "version":
       console.log(`noj-cli ${VERSION}`);
       return 0;
-    case "doctor":
-      console.log("doctor: 环境检测（P0 占位，逻辑留待后续计划）");
-      return 0;
+    case "doctor": {
+      const port = parsePort(args);
+      const installDir = ctx.deployDir ?? ctx.cwd;
+      const report = await runDoctor(realProbe(), { port, installDir });
+      console.log(formatReport(report));
+      return report.failed ? 1 : 0;
+    }
     case "deploy": {
       const sub = args[0] ?? "";
       if (DEPLOY_SUBCOMMANDS.includes(sub)) {

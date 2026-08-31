@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { dispatchCommand, printHelp, run } from "./cli.ts";
+import { dispatchCommand, parsePort, printHelp, run } from "./cli.ts";
 import type { CommandContext } from "./cli.ts";
 
 const ctx: CommandContext = { cwd: "/tmp", deployDir: null };
@@ -15,8 +15,7 @@ Deno.test("version stub 返回 0", async () => {
   assertEquals(await dispatchCommand("version", [], ctx), 0);
 });
 
-Deno.test("doctor/deploy/maintain/run-server stub 返回 0", async () => {
-  assertEquals(await dispatchCommand("doctor", [], ctx), 0);
+Deno.test("deploy/maintain/run-server stub 返回 0", async () => {
   assertEquals(await dispatchCommand("deploy", [], ctx), 0);
   assertEquals(await dispatchCommand("maintain", [], ctx), 0);
   assertEquals(await dispatchCommand("run-server", [], ctx), 0);
@@ -54,4 +53,22 @@ Deno.test("run 识别 --help 返回 0", async () => {
 
 Deno.test("run 识别 version 返回 0", async () => {
   assertEquals(await run(["version"]), 0);
+});
+
+Deno.test("parsePort: 缺省 8080", () => {
+  assertEquals(parsePort([]), 8080);
+});
+
+Deno.test("parsePort: 解析 --port 8081", () => {
+  assertEquals(parsePort(["--port", "8081"]), 8081);
+});
+
+Deno.test("parsePort: 非法端口抛错", () => {
+  let threw = false;
+  try {
+    parsePort(["--port", "abc"]);
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true);
 });
