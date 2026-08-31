@@ -79,3 +79,21 @@ export type {
   DeployOptions,
   DeployStatusReport,
 } from "./deploy/deploy.ts";
+
+// util（P3）
+export { colorFor, prefixLine, RESET } from "./util/color.ts";
+
+// runtime（P3）
+export { followLogFile, logPath, readRecentLog } from "./runtime/logfile.ts";
+
+// maintain（P3）
+export { maintainLogs, parseModulesArg } from "./maintain/logs.ts";
+export type { LogsOptions, ModuleLogs } from "./maintain/logs.ts";
+export {
+  configCheck,
+  configSet,
+  configShow,
+  maskSecrets,
+  parseConfigValue,
+  setByPath,
+} from "./maintain/config.ts";
