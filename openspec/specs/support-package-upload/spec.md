@@ -90,8 +90,6 @@ zip 内 MUST 包含 `evaluate.py`（评测脚本），可包含 `visible.jsonl`�
 - **WHEN** 用户在题目编辑器中准备上传支持包
 - **THEN** UI 显示文件结构引导，说明必需文件和推荐的文件组织方式
 
-## ADDED Requirements
-
 ### Requirement: 支持包 S3 上传 E2E
 
 测试 SHALL 验证 `STORAGE_PROVIDER=s3` 模式下支持包上传、下载和删除功能。
@@ -139,6 +137,8 @@ zip 内 MUST 包含 `evaluate.py`（评测脚本），可包含 `visible.jsonl`�
 - **THEN** 返回 HTTP 404
 
 ### Requirement: 支持包 S3 删除 E2E
+
+测试 SHALL 验证 S3 模式下支持包删除功能。
 
 #### Scenario: 删除 S3 支持包
 

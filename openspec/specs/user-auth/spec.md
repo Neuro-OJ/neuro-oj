@@ -93,12 +93,12 @@ Hono + jose + bcryptjs 实现，API 路径前缀为 `/api/v1/auth`。
 
 ### Requirement: 用户登录
 
-系统 SHALL 提供 `POST /api/v1/auth/login` 端点，验证用户凭证并返回 JWT。
+系统 SHALL 提供 `POST /api/v1/auth/login` 端点，验证本地用户凭证并返回 JWT。除本地密码登录外，系统 SHALL 通过 OAuth/OIDC 回调为已链接或新建的用户签发同一 JWT 会话；OAuth 回调不得要求客户端接收 access token。
 
 请求体：
 
 - `login`（必填，string）：用户名或邮箱地址
-- `password`（必填，string）：密码
+- `password`（必填，string）：本地密码登录时必填
 - `code`（可选，string）：TFA 验证码或恢复码；用户已启用 TFA 时必填
 
 响应：
@@ -114,6 +114,8 @@ JWT 负载 MUST 包含 `sub`（用户 ID）、`role`（用户角色）和 `must_
 
 用户已启用 TFA 时，系统 MUST 在密码验证通过后继续校验 `code`；`code` 缺失时
 MUST 返回 400 且错误码为 `TFA_REQUIRED`，`code` 错误时 MUST 返回 401 且不签发 JWT。
+
+密码为空的 OAuth 用户 MUST 不能通过本地密码登录，且错误响应 MUST 与普通凭证错误保持一致。
 
 #### Scenario: 用用户名登录成功
 
@@ -170,16 +172,25 @@ MUST 返回 400 且错误码为 `TFA_REQUIRED`，`code` 错误时 MUST 返回 40
 - **WHEN** 已启用 TFA 的用户以正确密码但已使用过的恢复码调用 `POST /api/v1/auth/login`
 - **THEN** 系统返回 401，不签发 JWT、不设置 cookie
 
+#### Scenario: 密码为空的 OAuth 用户不能本地登录
+
+- **WHEN** 密码为空的 OAuth 用户调用本地登录端点
+- **THEN** 系统返回统一的 401 凭证错误，不签发 JWT
+
+#### Scenario: OAuth 回调登录成功
+
+- **WHEN** 客户端完成有效的 GitHub 或 OIDC 回调
+- **THEN** 系统签发与本地登录相同的 JWT 会话并重定向到前端
+
 ### Requirement: 获取当前用户信息
 
-系统 SHALL 提供 `GET /api/v1/auth/me` 端点，返回当前认证用户的完整信息。
+系统 SHALL 提供 `GET /api/v1/auth/me` 端点，返回当前认证用户的完整信息。响应 MUST 明确反映该用户是否已设置本地密码，并可供设置页展示其已绑定的第三方身份。
 
-此端点 MUST 受 JWT 中间件保护。请求 MUST 包含有效的 `Authorization: Bearer <token>` 头
-（从 noj-core 直接调用时）。通过 Nitro 代理调用时，token 由代理从 `noj:token` cookie 自动注入。
+此端点 MUST 受 JWT 中间件保护。请求 MUST 包含有效的 `Authorization: Bearer <token>` 头（从 noj-core 直接调用时）；通过 Nitro 代理调用时，token 由代理从 `noj:token` cookie 自动注入。
 
 响应：
 
-- 成功：200，`{ "data": { "id", "username", "email", "role", "must_change_password", "tfa_enabled", "created_at", "updated_at" } }`
+- 成功：200，`{ "data": { "id", "username", "email", "must_change_password", "has_local_password", "tfa_enabled", "created_at", "updated_at" } }`
 - 失败：401（未认证或令牌无效）
 
 #### Scenario: 获取当前用户信息
@@ -209,6 +220,16 @@ MUST 返回 400 且错误码为 `TFA_REQUIRED`，`code` 错误时 MUST 返回 40
 
 - **WHEN** 客户端 GET `/api/v1/auth/me` 提供的 JWT 签名无效或已过期
 - **THEN** 系统返回 401，错误消息 `"认证令牌无效或已过期"`
+
+#### Scenario: OAuth user profile reports password state
+
+- **WHEN** a passwordless OAuth-created user requests `/api/v1/auth/me` with a valid JWT
+- **THEN** the response contains `has_local_password: false` and excludes `password_hash`
+
+#### Scenario: Local user profile remains compatible
+
+- **WHEN** a local-password user requests `/api/v1/auth/me` with a valid JWT
+- **THEN** the response contains `has_local_password: true` and retains the existing public user fields
 
 ### Requirement: JWT 认证中间件
 
@@ -359,7 +380,7 @@ MUST 返回 400 且错误码为 `TFA_REQUIRED`，`code` 错误时 MUST 返回 40
 
 ### Requirement: 修改密码端点
 
-系统 SHALL 提供 `POST /api/v1/auth/change-password`，要求登录态。
+系统 SHALL 提供 `POST /api/v1/auth/change-password`，要求登录态。对于本地密码为空的 OAuth 用户，该端点 MUST 返回要求使用密码设定流程的业务错误，不得把空密码当作有效旧密码。
 
 请求体：
 
@@ -399,6 +420,16 @@ MUST 返回 400 且错误码为 `TFA_REQUIRED`，`code` 错误时 MUST 返回 40
 
 - **WHEN** 同一 IP 在 rate-limit 窗口内高频调用 `/api/v1/auth/change-password`
 - **THEN** 系统返回 429
+
+#### Scenario: Passwordless OAuth user is directed to setup
+
+- **WHEN** an OAuth-created user without a local password calls change-password
+- **THEN** the system rejects the request with a distinct password-setup-required error and does not change the account
+
+#### Scenario: Existing local password change is unchanged
+
+- **WHEN** a user with a local password submits the correct old password and a valid new password
+- **THEN** the system performs the existing password change behavior and returns updated user information
 
 ### Requirement: JWT 负载扩展
 
