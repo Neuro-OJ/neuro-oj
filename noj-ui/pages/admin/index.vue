@@ -25,6 +25,46 @@ const statsError = ref("")
 const { api } = useApi()
 const queueStats = ref<{ pending_count: number; judging_count: number; completed_today: number } | null>(null)
 const queueError = ref("")
+interface ObservabilitySnapshot {
+  generated_at: string
+  dependencies: {
+    database: { status: string; latency_ms: number | null }
+    redis: { status: string; latency_ms: number | null }
+    result_consumer: { status: string }
+  }
+  queue: {
+    pending: number | null
+    processing: number | null
+    result_pending: number | null
+    result_processing: number | null
+    judging: number | null
+    oldest_judging_age_seconds: number | null
+  }
+  api: {
+    requests_total: number
+    errors_total: number
+    rate_limited_total: number
+    error_rate_percent: number
+    average_latency_ms: number | null
+  }
+  judge: {
+    required: boolean
+    workers: number
+    active_tasks: number
+    max_concurrent_tasks: number
+    completed_tasks_total: number
+    failed_tasks_total: number
+    result_push_failures_total: number
+    orphan_containers: number
+    cache_items: number
+    cache_bytes: number
+    work_dir_bytes: number
+    last_seen_at: string | null
+  }
+  alerts: { key: string; severity: string; status: string; message: string }[]
+}
+const observability = ref<ObservabilitySnapshot | null>(null)
+const observabilityError = ref("")
 const lastSuccessfulRefresh = ref<Date | null>(null)
 let requestVersion = 0
 
@@ -48,6 +88,14 @@ function statCard(
   }
 }
 
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "--"
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MiB`
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GiB`
+}
+
 /** silent=true 用于轮询：不置 loading、不清错误，失败保留旧数据 */
 async function loadStats(silent = false) {
   const currentRequest = ++requestVersion
@@ -56,11 +104,12 @@ async function loadStats(silent = false) {
     statsError.value = ""
   }
 
-  const [userRes, problemRes, submissionRes, queueRes] = await Promise.allSettled([
+  const [userRes, problemRes, submissionRes, queueRes, observabilityRes] = await Promise.allSettled([
     api.get<{ pagination: { total: number } }>("/api/v1/admin/users", { silent: true }),
     api.get<{ total: number }>("/api/v1/problems", { silent: true }),
     api.get<{ pagination: { total: number } }>("/api/v1/admin/submissions", { silent: true }),
     api.get<{ stats: { pending_count: number; judging_count: number; completed_today: number } }>("/api/v1/queue", { silent: true }),
+    api.get<{ data: ObservabilitySnapshot }>("/api/v1/admin/dashboard/observability", { silent: true }),
   ])
   if (currentRequest !== requestVersion) return
 
@@ -70,6 +119,8 @@ async function loadStats(silent = false) {
     statCard("提交总数", 'i-lucide-files', "text-warning-600 bg-amber-50", submissionRes),
   ]
   queueStats.value = queueRes.status === "fulfilled" ? queueRes.value.stats : null
+  observability.value = observabilityRes.status === "fulfilled" ? observabilityRes.value.data : observability.value
+  if (!silent) observabilityError.value = observabilityRes.status === "rejected" ? "生产观测数据加载失败" : ""
   // 轮询静默失败不写入错误横幅（避免打断用户），仅首载/手动刷新失败时展示
   if (!silent) queueError.value = queueRes.status === "rejected" ? "队列状态加载失败" : ""
 
@@ -170,5 +221,71 @@ async function handleRefresh() {
         <UButton color="neutral" variant="link" size="sm" @click="loadStats">重试</UButton>
       </template>
     </UAlert>
+
+    <!-- 生产观测：数据由 admin RBAC 保护的快照 API 提供，页面仅展示聚合值 -->
+    <div v-if="observability" class="flex flex-col gap-5 bg-white border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <h2 class="flex items-center gap-2 text-base font-semibold text-text">
+          <UIcon name="i-lucide-monitor-check" class="size-4.5" />
+          生产观测
+        </h2>
+        <span class="text-xs text-text-muted">采集时间：{{ new Date(observability.generated_at).toLocaleTimeString("zh-CN") }}</span>
+      </div>
+
+      <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
+        <div v-for="item in [
+          { label: 'PostgreSQL', value: observability.dependencies.database.status, icon: 'i-lucide-database' },
+          { label: 'Redis', value: observability.dependencies.redis.status, icon: 'i-lucide-server' },
+          { label: '结果消费者', value: observability.dependencies.result_consumer.status, icon: 'i-lucide-inbox' },
+          { label: 'Judge Worker', value: `${observability.judge.workers} 在线`, icon: 'i-lucide-cpu' },
+        ]" :key="item.label" class="flex items-center gap-2.5 p-3 rounded-lg bg-bg-page">
+          <UIcon :name="item.icon" class="size-4.5 text-text-secondary" />
+          <div class="min-w-0">
+            <span class="block text-xs text-text-secondary">{{ item.label }}</span>
+            <span class="block text-sm font-semibold" :class="item.value === 'up' || item.value.includes('在线') && observability.judge.workers > 0 ? 'text-success-600' : 'text-error-text'">{{ item.value }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="p-3 rounded-lg border border-border">
+          <span class="block text-xs text-text-secondary">API 请求</span>
+          <span class="text-lg font-bold text-text">{{ observability.api.requests_total }}</span>
+          <span class="block text-xs text-text-muted">错误率 {{ observability.api.error_rate_percent }}%</span>
+        </div>
+        <div class="p-3 rounded-lg border border-border">
+          <span class="block text-xs text-text-secondary">评测队列</span>
+          <span class="text-lg font-bold text-warning-600">{{ observability.queue.pending ?? "--" }}</span>
+          <span class="block text-xs text-text-muted">pending / {{ observability.queue.processing ?? "--" }} processing</span>
+        </div>
+        <div class="p-3 rounded-lg border border-border">
+          <span class="block text-xs text-text-secondary">活跃评测</span>
+          <span class="text-lg font-bold text-info-600">{{ observability.judge.active_tasks }}</span>
+          <span class="block text-xs text-text-muted">失败 {{ observability.judge.failed_tasks_total }}</span>
+        </div>
+        <div class="p-3 rounded-lg border border-border">
+          <span class="block text-xs text-text-secondary">缓存占用</span>
+          <span class="text-lg font-bold text-text">{{ formatBytes(observability.judge.cache_bytes) }}</span>
+          <span class="block text-xs text-text-muted">{{ observability.judge.cache_items }} 个文件</span>
+        </div>
+      </div>
+
+      <div v-if="observability.alerts.some((alert) => alert.status === 'active')" class="flex flex-col gap-2">
+        <h3 class="text-sm font-semibold text-text">当前风险</h3>
+        <UAlert
+          v-for="alert in observability.alerts.filter((item) => item.status === 'active')"
+          :key="alert.key"
+          :color="alert.severity === 'critical' ? 'error' : 'warning'"
+          icon="i-lucide-triangle-alert"
+          :title="alert.message"
+          class="rounded-lg"
+        />
+      </div>
+      <p v-else class="flex items-center gap-2 text-sm text-success-600">
+        <UIcon name="i-lucide-check-circle-2" class="size-4" />
+        当前未发现活跃风险
+      </p>
+    </div>
+    <UAlert v-else-if="observabilityError" color="warning" icon="i-lucide-monitor-off" :title="observabilityError" class="rounded-xl" />
   </div>
 </template>

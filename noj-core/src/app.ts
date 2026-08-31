@@ -28,6 +28,9 @@ import { logger } from "./lib/logging.ts";
 import { listJudgeImages } from "./services/judge-images.ts";
 import { banlistMiddleware } from "./middleware/banlist.ts";
 import { requestContext } from "./middleware/request-context.ts";
+import { metricsMiddleware } from "./middleware/metrics.ts";
+import { metrics, normalizeMetricRoute } from "./lib/metrics.ts";
+import { renderPrometheusMetrics } from "./services/observability.ts";
 import { getSetting } from "./services/system-settings.ts";
 import { SECONDS_PER_DAY } from "./lib/constants.ts";
 
@@ -76,6 +79,7 @@ export function createApp(): Hono {
   // 请求上下文中间件（最外层）：为每个请求生成 request_id，
   // 写入 context 供 onError 复用，并包裹后续处理使日志自动带 request_id。
   app.use("*", requestContext);
+  app.use("*", metricsMiddleware);
 
   // CORS 中间件
   // - 开发环境：只允许本地 UI 开发端口，避免 credentials 与通配来源组合
@@ -118,6 +122,15 @@ export function createApp(): Hono {
       crypto.randomUUID();
     if (err instanceof AppError) {
       err.requestId = requestId;
+      if (err.code === "RATE_LIMITED") {
+        const routePath =
+          (c.req as unknown as { routePath?: string }).routePath;
+        const route = normalizeMetricRoute(c.req.path, routePath);
+        metrics.inc("noj_http_rate_limited_total", {
+          method: c.req.method,
+          route,
+        });
+      }
       // 限流错误携带 X-RateLimit-* 响应头（issue #73）
       const extraHeaders =
         (err as { headers?: Record<string, string> }).headers;
@@ -156,6 +169,10 @@ export function createApp(): Hono {
 
   // 注册路由
   app.route("/", health);
+  app.get("/metrics", async (c) => {
+    c.header("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+    return c.body(await renderPrometheusMetrics());
+  });
   app.route("/api/v1/auth", auth);
   app.route("/api/v1/admin", admin);
   // 公告管理：细粒度权限（admin:full_access 通配放行 或 announcement:manage），

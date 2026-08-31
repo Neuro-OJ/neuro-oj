@@ -1,5 +1,6 @@
 import IORedis from "ioredis";
 import { logger } from "../lib/logging.ts";
+import { metrics } from "../lib/metrics.ts";
 
 /**
  * Redis 客户端的最小接口定义。
@@ -25,6 +26,11 @@ export interface RedisClient {
   ): Promise<string | null>;
   lrange(...args: (string | number)[]): Promise<string[]>;
   llen(...args: (string | number)[]): Promise<number>;
+  get(key: string): Promise<string | null>;
+  scan(
+    cursor: string | number,
+    ...args: (string | number)[]
+  ): Promise<[string, string[]]>;
   eval(
     script: string,
     numKeys: number,
@@ -258,25 +264,30 @@ export async function connectRedis(): Promise<void> {
 export async function checkRedisHealth(): Promise<
   { ok: boolean; error?: string }
 > {
+  const result = (ok: boolean, error?: string) => {
+    metrics.inc("noj_redis_health_checks_total");
+    if (!ok) metrics.inc("noj_redis_health_check_errors_total");
+    return error ? { ok, error } : { ok };
+  };
   if (_error) {
-    return { ok: false, error: _error.message };
+    return result(false, _error.message);
   }
   if (!_redis || (_redis.status as string) !== "ready") {
-    return {
-      ok: false,
-      error: `连接状态: ${(_redis?.status as string) ?? "未初始化"}`,
-    };
+    return result(
+      false,
+      `连接状态: ${(_redis?.status as string) ?? "未初始化"}`,
+    );
   }
 
   try {
     const pong = await _redis.ping();
     if (pong !== "PONG") {
-      return { ok: false, error: `PING 返回异常: ${pong}` };
+      return result(false, `PING 返回异常: ${pong}`);
     }
-    return { ok: true };
+    return result(true);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: message };
+    return result(false, message);
   }
 }
 
