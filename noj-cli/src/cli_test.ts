@@ -3,6 +3,7 @@ import {
   dispatchCommand,
   parseDeployArgs,
   parseInitOptions,
+  parseMaintainArgs,
   parsePort,
   printHelp,
   run,
@@ -32,15 +33,21 @@ Deno.test("deploy 无配置目录时返回 1", async () => {
 });
 
 Deno.test("maintain 子命令返回 0", async () => {
-  for (
-    const sub of ["logs", "backup", "restore", "verify", "reset", "config"]
-  ) {
+  for (const sub of ["backup", "restore", "verify", "reset"]) {
     assertEquals(
       await dispatchCommand("maintain", [sub], ctx),
       0,
       `maintain ${sub}`,
     );
   }
+});
+
+Deno.test("maintain logs 无配置目录时返回 1", async () => {
+  assertEquals(await dispatchCommand("maintain", ["logs"], ctx), 1);
+});
+
+Deno.test("maintain config 无配置目录时返回 1", async () => {
+  assertEquals(await dispatchCommand("maintain", ["config"], ctx), 1);
 });
 
 Deno.test("未知命令返回 1", async () => {
@@ -106,4 +113,18 @@ Deno.test("parseDeployArgs: 无 --dir 时返回 undefined", () => {
 
 Deno.test("parseDeployArgs: 解析 --dir /opt", () => {
   assertEquals(parseDeployArgs(["--dir", "/opt"]).dir, "/opt");
+});
+
+Deno.test("parseMaintainArgs: 缺省 modules/follow/dir", () => {
+  const a = parseMaintainArgs([]);
+  assertEquals(a.modules, undefined);
+  assertEquals(a.follow, false);
+  assertEquals(a.dir, undefined);
+});
+
+Deno.test("parseMaintainArgs: 解析 modules 与 --follow --dir", () => {
+  const a = parseMaintainArgs(["server,ui", "--follow", "--dir", "/opt"]);
+  assertEquals(a.modules, "server,ui");
+  assertEquals(a.follow, true);
+  assertEquals(a.dir, "/opt");
 });

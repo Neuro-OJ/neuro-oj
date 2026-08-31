@@ -6,12 +6,15 @@ import { formatReport } from "./doctor/report.ts";
 import { realIO } from "./tui/io.ts";
 import { type InitOptions, runInitWizard } from "./init/wizard.ts";
 import { saveDeployment } from "./config/save.ts";
+import { loadDeployment } from "./config/load.ts";
 import {
   deployDown,
   deployRestart,
   deployStatus,
   deployUp,
 } from "./deploy/deploy.ts";
+import { maintainLogs, parseModulesArg } from "./maintain/logs.ts";
+import { configCheck, configSet, configShow } from "./maintain/config.ts";
 
 /** CLI 执行上下文，供各子命令共享。 */
 export interface CommandContext {
@@ -120,6 +123,29 @@ export function parseDeployArgs(args: string[]): { dir: string | undefined } {
   return { dir: idx !== -1 ? args[idx + 1] : undefined };
 }
 
+/** 解析 maintain 参数：--dir <path>、--follow、位置参数 modules。 */
+export function parseMaintainArgs(args: string[]): {
+  dir: string | undefined;
+  follow: boolean;
+  modules: string | undefined;
+} {
+  let dir: string | undefined;
+  let follow = false;
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a === "--dir") {
+      dir = args[i + 1];
+      i++;
+    } else if (a === "--follow") {
+      follow = true;
+    } else {
+      positional.push(a);
+    }
+  }
+  return { dir, follow, modules: positional[0] };
+}
+
 /** 将命令分发到对应处理函数。供测试与 run 共用。 */
 export async function dispatchCommand(
   command: string,
@@ -193,6 +219,71 @@ export async function dispatchCommand(
     }
     case "maintain": {
       const sub = args[0] ?? "";
+      if (sub === "logs") {
+        const { dir, follow, modules } = parseMaintainArgs(args.slice(1));
+        const deployDir = dir ?? ctx.deployDir ?? findDeployDir(ctx.cwd);
+        if (deployDir === null) {
+          console.error(
+            "maintain logs: 未找到 noj-deploy.json，请先运行 deploy init",
+          );
+          return 1;
+        }
+        try {
+          const { config } = await loadDeployment(deployDir);
+          const mods = parseModulesArg(modules, config);
+          await maintainLogs({ dir: deployDir, modules: mods, follow });
+          return 0;
+        } catch (e) {
+          console.error(`maintain logs: ${(e as Error).message}`);
+          return 1;
+        }
+      }
+      if (sub === "config") {
+        const action = args[1] ?? "";
+        const deployDir = ctx.deployDir ?? findDeployDir(ctx.cwd);
+        if (deployDir === null) {
+          console.error(
+            "maintain config: 未找到 noj-deploy.json，请先运行 deploy init",
+          );
+          return 1;
+        }
+        try {
+          switch (action) {
+            case "check": {
+              const issues = await configCheck(deployDir);
+              if (issues.length === 0) {
+                console.log("配置校验通过");
+                return 0;
+              }
+              for (const i of issues) {
+                console.error(`  ${i.path}: ${i.message}`);
+              }
+              return 1;
+            }
+            case "show": {
+              console.log(await configShow(deployDir));
+              return 0;
+            }
+            case "set": {
+              const key = args[2];
+              const value = args[3];
+              if (key === undefined || value === undefined) {
+                console.error("maintain config set: 需要 <key> <value>");
+                return 1;
+              }
+              await configSet(deployDir, key, value);
+              console.log(`已更新 ${key} = ${value}`);
+              return 0;
+            }
+            default:
+              console.log("maintain config: 需要子命令 check/show/set");
+              return 0;
+          }
+        } catch (e) {
+          console.error(`maintain config: ${(e as Error).message}`);
+          return 1;
+        }
+      }
       if (MAINTAIN_SUBCOMMANDS.includes(sub)) {
         console.log(`maintain ${sub}: 运维逻辑留待后续计划`);
       } else {
