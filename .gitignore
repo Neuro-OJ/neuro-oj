@@ -73,6 +73,9 @@ tmp/
 coverage/
 *.wasm
 
+# --- noj-server 构建产物 ---
+noj-core/bin/
+
 # --- Problem Data (noj-core) ---
 # Support packages are build artifacts, not versioned
 noj-core/data/packages/
