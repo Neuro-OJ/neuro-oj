@@ -277,7 +277,7 @@ function isSameDay(iso1: string, iso2: string): boolean {
                   <div
                     class="px-3 py-2 rounded-lg text-sm leading-relaxed break-words"
                     :class="msg.sender_id === user?.id
-                      ? 'bg-primary text-white rounded-br-sm'
+                      ? 'bg-signal text-on-signal rounded-br-sm'
                       : 'bg-white text-text border border-border rounded-bl-sm'"
                   >
                     {{ msg.content }}
@@ -301,7 +301,7 @@ function isSameDay(iso1: string, iso2: string): boolean {
               v-model="newMessage"
               type="text"
               placeholder="输入消息..."
-              class="flex-1 px-4 py-2 rounded-lg border border-border bg-page text-text text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+              class="flex-1 px-4 py-2 rounded-lg border border-border bg-page text-text text-sm outline-none transition-colors focus:border-signal focus:ring-1 focus:ring-signal"
               @keydown.enter="send"
             />
             <UButton color="primary" class="flex w-9 h-9 rounded-full transition-opacity disabled:opacity-40" :disabled="!newMessage.trim() || sending"

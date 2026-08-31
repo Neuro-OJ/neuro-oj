@@ -188,7 +188,7 @@
               color="neutral"
               variant="outline"
               size="sm"
-              :class="form.code === code ? 'ring-2 ring-primary' : ''"
+              :class="form.code === code ? 'ring-2 ring-signal' : ''"
               @click="selectRecoveryCode(code)"
             >
               {{ code }}

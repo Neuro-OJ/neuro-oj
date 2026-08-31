@@ -365,7 +365,7 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
           <div class="flex flex-col gap-1">
             <input
               v-model="tagSearch"
-              class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white"
+              class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)] bg-white"
               placeholder="搜索标签..."
               aria-label="搜索标签"
             />
@@ -418,7 +418,7 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
             <div class="flex flex-col gap-1">
               <input
                 v-model="tagSearch"
-                class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white"
+                class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)] bg-white"
                 placeholder="搜索标签..."
               />
               <div class="flex flex-wrap gap-2">
@@ -469,7 +469,7 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
       </section>
 
       <!-- 小题编辑器 -->
-      <section v-if="editing" class="rounded-xl border border-primary/30 bg-white p-5">
+      <section v-if="editing" class="rounded-xl border border-signal/30 bg-white p-5">
         <h2 class="mb-3 text-sm font-semibold text-text">
           {{ editing.id === null ? '添加小题' : '编辑小题' }}
         </h2>

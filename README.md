@@ -224,6 +224,10 @@ noj-docs          用户、运营者和出题人文档
 
 更多常见问题见[常见问题](./noj-docs/docs/intro/faq.md)。
 
+## 品牌与设计
+
+NOJ 使用统一的「暖纸评测风」品牌视觉：暖纸底、墨字、蓝黑墨品牌蓝 `#1B2B4A` 与评测信号绿 `#00d68a`。设计 token 与使用规范见 [`docs/design/noj-design-tokens.md`](./docs/design/noj-design-tokens.md)。
+
 ## 参与贡献
 
 欢迎通过 Issue 和 Pull Request 参与项目。开始修改代码前，请先阅读 [`AGENTS.md`](./AGENTS.md)；其中包含开发流程、测试方式、OpenSpec 规范和提交要求。

@@ -455,7 +455,7 @@ await load()
           <button
             type="button"
             class="relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors"
-            :class="switchValue(item.configKey) ? 'bg-primary' : 'bg-gray-300'"
+            :class="switchValue(item.configKey) ? 'bg-signal' : 'bg-gray-300'"
             :disabled="savingAll"
             :aria-label="item.label"
             @click="toggleSetting(item.settingKey, item.configKey)"

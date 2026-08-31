@@ -26,6 +26,7 @@ Neuro OJ 是一个面向 **AI 领域认证与竞赛** 的在线评测（Online J
 13. [CI/CD](#13-cicd)
 14. [故障排查](#14-故障排查)
 15. [参考文档](#15-参考文档)
+16. [品牌与设计系统](#16-品牌与设计系统)
 
 ---
 
@@ -375,6 +376,18 @@ jj config get signing.key
 | 安全模型 | [`noj-docs/docs/system/security.md`](./noj-docs/docs/system/security.md) |
 | Superpowers 设计稿 | [`docs/superpowers/specs/`](./docs/superpowers/specs/) |
 | Superpowers 实施计划 | [`docs/superpowers/plans/`](./docs/superpowers/plans/) |
+| 品牌设计 Token | [`docs/design/noj-design-tokens.md`](./docs/design/noj-design-tokens.md) |
+
+---
+
+## 16. 品牌与设计系统
+
+NOJ 使用统一的品牌视觉系统，所有前端与文档站颜色、圆角必须遵循 `docs/design/noj-design-tokens.md` 中的 token 规范。
+
+- 品牌蓝（蓝黑墨）：`#1B2B4A`（亮色）/ `#7C96D6`（暗色），用于 Logo、导航、品牌识别。
+- 评测信号绿：`#00d68a`（亮色）/ `#00e07a`（暗色），用于动作、选中、进行中、焦点。
+- 圆角：2–6px 近直角；数值文本使用 `tabular-nums`。
+- 修改品牌 token 时，必须同步更新 `noj-ui/app.vue`、`noj-ui/assets/css/main.css`、`noj-docs` 主题与本文档。
 
 ---
 

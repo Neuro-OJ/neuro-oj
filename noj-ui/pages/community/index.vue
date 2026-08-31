@@ -391,7 +391,7 @@ watch(initialData, (value) => {
           role="tab"
           :aria-selected="activeType === t"
           class="flex items-center whitespace-nowrap rounded-t-md px-4 py-3 text-sm transition-colors hover:bg-primary-bg"
-          :class="activeType === t ? 'border-b-2 border-primary font-semibold text-primary' : 'text-text-secondary'"
+          :class="activeType === t ? 'border-b-2 border-signal font-semibold text-primary' : 'text-text-secondary'"
           @click="changeType(t)"
         >
           <UIcon :name="t === 'discussion' ? 'i-lucide-message-square' : t === 'solution' ? 'i-lucide-lightbulb' : 'i-lucide-pen-line'" class="mr-1 inline-flex size-4" />

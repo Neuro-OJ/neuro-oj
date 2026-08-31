@@ -1,7 +1,7 @@
 <template>
     <NuxtLink
         :to="problemUrl(id, display_id)"
-        class="orbit-card relative block px-2.5 py-1.5 border-2 border-border rounded-md bg-white no-underline transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-primary hover:shadow-dropdown group"
+        class="orbit-card relative block px-2.5 py-1.5 border-2 border-border rounded-md bg-white no-underline transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-signal hover:shadow-dropdown group"
     >
         <div class="grid grid-cols-[auto_1fr] gap-x-2">
             <span

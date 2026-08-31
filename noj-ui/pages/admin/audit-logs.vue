@@ -121,7 +121,7 @@ onMounted(fetch)
           <input
             type="datetime-local"
             v-model="filters.from"
-            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
           />
         </div>
         <div class="flex flex-col gap-1 min-w-[200px]">
@@ -129,7 +129,7 @@ onMounted(fetch)
           <input
             type="datetime-local"
             v-model="filters.to"
-            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
           />
         </div>
       </div>

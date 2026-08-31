@@ -141,7 +141,7 @@ async function onSubmit() {
               v-for="opt in q.options"
               :key="opt.key"
               class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
-              :class="isSelected(q.id, opt.key === 'true') ? 'border-primary bg-primary/5' : 'border-border hover:bg-gray-50'"
+              :class="isSelected(q.id, opt.key === 'true') ? 'border-signal bg-signal/5' : 'border-border hover:bg-gray-50'"
             >
               <input
                 type="radio"
@@ -160,7 +160,7 @@ async function onSubmit() {
               v-for="opt in q.options"
               :key="opt.key"
               class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
-              :class="isSelected(q.id, opt.key) ? 'border-primary bg-primary/5' : 'border-border hover:bg-gray-50'"
+              :class="isSelected(q.id, opt.key) ? 'border-signal bg-signal/5' : 'border-border hover:bg-gray-50'"
             >
               <input
                 type="radio"
@@ -179,7 +179,7 @@ async function onSubmit() {
               v-for="opt in q.options"
               :key="opt.key"
               class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
-              :class="isSelected(q.id, opt.key) ? 'border-primary bg-primary/5' : 'border-border hover:bg-gray-50'"
+              :class="isSelected(q.id, opt.key) ? 'border-signal bg-signal/5' : 'border-border hover:bg-gray-50'"
             >
               <input
                 type="checkbox"

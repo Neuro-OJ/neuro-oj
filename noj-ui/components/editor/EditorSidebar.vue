@@ -160,7 +160,7 @@ function formatElapsed(iso: string) {
         <button
           v-for="sub in recentSubmissions"
           :key="sub.id"
-          class="w-full text-left p-3 rounded-md border-2 border-primary/40 bg-primary-bg/20 hover:border-primary hover:bg-primary-bg/40 transition-colors group relative"
+          class="w-full text-left p-3 rounded-md border-2 border-signal/40 bg-primary-bg/20 hover:border-signal hover:bg-primary-bg/40 transition-colors group relative"
           @click="emit('open-submission', sub.id)"
         >
           <!-- 行 1：状态徽章 + 得分 -->
@@ -196,7 +196,7 @@ function formatElapsed(iso: string) {
           </div>
 
           <!-- 行 4：底部 — 语言 + 已等待时长 -->
-          <div class="flex items-center justify-between text-xs text-text-muted border-t border-primary/20 pt-2">
+          <div class="flex items-center justify-between text-xs text-text-muted border-t border-signal/20 pt-2">
             <span class="font-mono">{{ sub.language }}</span>
             <span v-if="sub.status === 'pending' || sub.status === 'judging'">
               已等待 {{ formatElapsed(sub.created_at) }}
@@ -217,7 +217,7 @@ function formatElapsed(iso: string) {
         <button
           v-for="sub in submissions"
           :key="sub.id"
-          class="w-full text-left p-3 rounded-md border border-border hover:border-primary hover:bg-bg-page transition-colors group relative mb-2"
+          class="w-full text-left p-3 rounded-md border border-border hover:border-signal hover:bg-bg-page transition-colors group relative mb-2"
           @click="emit('open-submission', sub.id)"
         >
           <div class="flex items-center justify-between mb-1">
@@ -297,7 +297,7 @@ function formatElapsed(iso: string) {
         <div class="flex items-center gap-2">
           <button
             class="flex-1 inline-flex items-center justify-center gap-2 py-2 px-3 border rounded-md text-sm transition-colors"
-            :class="themeMode === 'light' ? 'border-primary bg-primary-bg text-primary' : 'border-border hover:bg-bg-page'"
+            :class="themeMode === 'light' ? 'border-signal bg-primary-bg text-primary' : 'border-border hover:bg-bg-page'"
             @click="emit('update:themeMode', 'light')"
           >
             <UIcon name="i-lucide-sun" class="size-4" />
@@ -305,7 +305,7 @@ function formatElapsed(iso: string) {
           </button>
           <button
             class="flex-1 inline-flex items-center justify-center gap-2 py-2 px-3 border rounded-md text-sm transition-colors"
-            :class="themeMode === 'dark' ? 'border-primary bg-primary-bg text-primary' : 'border-border hover:bg-bg-page'"
+            :class="themeMode === 'dark' ? 'border-signal bg-primary-bg text-primary' : 'border-border hover:bg-bg-page'"
             @click="emit('update:themeMode', 'dark')"
           >
             <UIcon name="i-lucide-moon" class="size-4" />
@@ -354,9 +354,9 @@ function formatElapsed(iso: string) {
 }
 
 :global(.editor-dark) .editor-sidebar-prose {
-  --tw-prose-body: #e2e8f0;
-  --tw-prose-headings: #e2e8f0;
-  --tw-prose-bold: #e2e8f0;
+  --tw-prose-body: #f2f3ef;
+  --tw-prose-headings: #f2f3ef;
+  --tw-prose-bold: #f2f3ef;
 }
 
 /* 亮色：加粗标签（如 **输入** / **输出**）与标题也强制纯黑 */
@@ -372,7 +372,7 @@ function formatElapsed(iso: string) {
 :global(.editor-dark) .editor-sidebar-prose :deep(h1),
 :global(.editor-dark) .editor-sidebar-prose :deep(h2),
 :global(.editor-dark) .editor-sidebar-prose :deep(h3) {
-  color: #e2e8f0;
+  color: #f2f3ef;
 }
 
 .fade-enter-active,

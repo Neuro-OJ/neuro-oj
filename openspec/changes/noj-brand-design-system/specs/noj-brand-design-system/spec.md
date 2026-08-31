@@ -1,6 +1,6 @@
 ## Purpose
 
-定义 Neuro OJ 的品牌视觉系统，包括设计 token、全局圆点背景、UI 风格约束和文档同步要求，为产品 icon、文档站、宣传素材与前端开发提供统一视觉语言。
+定义 Neuro OJ 的品牌视觉系统，包括设计 token、UI 风格约束和文档同步要求，为产品 icon、文档站、宣传素材与前端开发提供统一视觉语言。
 
 ## ADDED Requirements
 
@@ -22,30 +22,6 @@ NOJ 前端 SHALL 使用统一的品牌设计 token，包含暖纸底、暖墨文
 
 - **WHEN** 前端组件需要使用品牌颜色
 - **THEN** 组件 SHALL 引用 `--c-*` 或映射后的 Tailwind/Nuxt UI token，不得硬编码品牌色值
-
-### Requirement: 全局圆点背景
-
-NOJ 页面背景 SHALL 使用低对比圆点点阵，点阵随页面内容滚动，不得固定于视口；点阵 SHALL 位于正文之下且不干扰文字可读性。
-
-#### Scenario: 亮色模式圆点
-
-- **WHEN** 用户浏览亮色模式页面
-- **THEN** 背景显示低对比墨色圆点，间距、大小和透明度可由 token 控制
-
-#### Scenario: 暗色模式圆点
-
-- **WHEN** 用户浏览暗色模式页面
-- **THEN** 背景显示低对比浅色圆点，且不高于装饰性对比度阈值
-
-#### Scenario: 随内容滚动
-
-- **WHEN** 用户滚动页面
-- **THEN** 圆点作为背景的一部分随内容一起移动，不使用 `background-attachment: fixed`
-
-#### Scenario: 无动画
-
-- **WHEN** 页面加载或滚动
-- **THEN** 圆点背景不做动画、不引入 JS，并在 `prefers-reduced-motion` 下保持静态
 
 ### Requirement: UI 风格约束
 
@@ -73,7 +49,7 @@ NOJ 品牌视觉 SHALL 不直接复刻《明日方舟：终末地》或 `dsh-the
 #### Scenario: 背景元素选择
 
 - **WHEN** 设计或实现 NOJ 背景装饰
-- **THEN** 使用 NOJ 自有语义（如圆点、评测刻度、波形），不使用终末地等高线或水印
+- **THEN** 使用 NOJ 自有语义（如评测刻度、波形），不使用终末地等高线或水印
 
 #### Scenario: 颜色差异化
 

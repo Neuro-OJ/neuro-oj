@@ -7,19 +7,19 @@
 
 /* ---- Tailwind v4 主题：将现有 --c-* 设计 token 映射为 Tailwind 主题 ---- */
 @theme {
-  /* 主色（蓝）：基础 + 完整色阶（Nuxt UI color="primary" 需要 300/600 等档位） */
+  /* 主色（蓝黑墨）：基础 + 完整色阶（Nuxt UI color="primary" 需要 300/600 等档位） */
   --color-primary: var(--c-primary);
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
-  --color-primary-950: #172554;
+  --color-primary-50: #eef0f5;
+  --color-primary-100: #d6dbe6;
+  --color-primary-200: #aeb8cc;
+  --color-primary-300: #8492b3;
+  --color-primary-400: #5a6d99;
+  --color-primary-500: #3b4f7d;
+  --color-primary-600: #1B2B4A;
+  --color-primary-700: #16233E;
+  --color-primary-800: #101B30;
+  --color-primary-900: #0B1322;
+  --color-primary-950: #060B14;
 
   /* 语义主色变体（现有 bg-primary-dark 等工具类依赖） */
   --color-primary-dark: var(--c-primary-dark);
@@ -29,6 +29,15 @@
   --color-primary-active: var(--c-primary-active-bg);
   --color-primary-text: var(--c-primary-text);
 
+  /* 评测信号绿 */
+  --color-signal: var(--c-signal);
+  --color-signal-deep: var(--c-signal-deep);
+  --color-signal-rgb: var(--c-signal-rgb);
+  --color-signal-dark: var(--c-signal-dark);
+  --color-signal-deep-dark: var(--c-signal-deep-dark);
+  --color-signal-dark-rgb: var(--c-signal-dark-rgb);
+  --color-on-signal: var(--c-on-signal);
+
   /* 文本/边框/背景 */
   --color-text: var(--c-text);
   --color-text-secondary: var(--c-text-secondary);
@@ -37,6 +46,8 @@
   --color-white: var(--c-white);
   --color-text-on-color: var(--c-text-on-color);
   --color-bg-page: var(--c-bg-page);
+  --color-bg-panel: var(--c-bg-panel);
+  --color-bg-sunken: var(--c-bg-sunken);
   --color-bg-dark: var(--c-bg-dark);
   --color-bg-dark-2: var(--c-bg-dark-2);
   --color-bg-dark-3: var(--c-bg-dark-3);
@@ -51,23 +62,23 @@
   /* 状态基础色 + 300/600 档（Nuxt UI color="success/error" 等需要） */
   --color-success: var(--c-success-text);
   --color-success-300: #86efac;
-  --color-success-600: #16a34a;
+  --color-success-600: #00b377;
   --color-info: var(--c-info-text);
-  --color-info-300: #93c5fd;
-  --color-info-600: #2563eb;
+  --color-info-300: #aeb8cc;
+  --color-info-600: #1B2B4A;
   --color-warning: var(--c-warning-text);
   --color-warning-300: #fcd34d;
-  --color-warning-600: #d97706;
+  --color-warning-600: #b45309;
   --color-error: var(--c-error-text);
   --color-error-300: #fca5a5;
   --color-error-600: #dc2626;
 
-  /* 圆角：对齐旧 tailwind.config.ts（bare rounded = 6px） */
-  --radius: 6px;
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  /* 圆角：近直角 2–6px */
+  --radius: 4px;
+  --radius-sm: 2px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
 
   /* 阴影：card / dropdown / modal */
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -92,14 +103,25 @@
 
 /* ---- 无障碍：键盘焦点可见（WCAG 2.4.7）----
  * 自定义链接/按钮无 focus-visible 样式类时，由浏览器默认 outline 兜底；
- * 此处统一为品牌色焦点环；Nuxt UI 组件自带 focus-visible:outline-3 类（utility 层）优先。 */
+ * 此处统一为评测信号绿焦点环；Nuxt UI 组件自带 focus-visible:outline-3 类（utility 层）优先。 */
 @layer base {
   a:focus-visible,
   button:focus-visible,
   [role="button"]:focus-visible,
   [tabindex]:focus-visible {
-    outline: 2px solid var(--c-primary);
+    outline: 2px solid var(--c-signal);
     outline-offset: 2px;
+  }
+}
+
+/* ---- 全局暖纸背景 ---- */
+@layer base {
+  body {
+    background-color: var(--c-bg-page);
+  }
+
+  .dark body {
+    background-color: var(--c-bg-page);
   }
 }
 
@@ -117,26 +139,25 @@
 
 /* ---- 将现有 token 映射到 Nuxt UI 语义变量，保持组件默认观感 ---- */
 :root {
-  --ui-primary: var(--c-primary);
-  /* 显式覆盖 Nuxt UI 默认 primary 色阶（green）：与应用 blue 主色对齐，
-     避免 --ui-primary 系列变量与 Tailwind --color-primary-* 双定义分叉 */
-  --ui-color-primary-50: var(--color-primary-50);
-  --ui-color-primary-100: var(--color-primary-100);
-  --ui-color-primary-200: var(--color-primary-200);
-  --ui-color-primary-300: var(--color-primary-300);
-  --ui-color-primary-400: var(--color-primary-400);
-  --ui-color-primary-500: var(--color-primary-500);
-  --ui-color-primary-600: var(--color-primary-600);
-  --ui-color-primary-700: var(--color-primary-700);
-  --ui-color-primary-800: var(--color-primary-800);
-  --ui-color-primary-900: var(--color-primary-900);
-  --ui-color-primary-950: var(--color-primary-950);
-  --ui-radius: 6px;
+  /* Nuxt UI primary 使用评测信号绿：主按钮、选中 Tab、进行中状态 */
+  --ui-primary: var(--c-signal);
+  --ui-color-primary-50: #e6fbf3;
+  --ui-color-primary-100: #c2f5e2;
+  --ui-color-primary-200: #8aebc8;
+  --ui-color-primary-300: #4ddfab;
+  --ui-color-primary-400: #1fd694;
+  --ui-color-primary-500: #00d68a;
+  --ui-color-primary-600: #006b47;
+  --ui-color-primary-700: #005238;
+  --ui-color-primary-800: #00402c;
+  --ui-color-primary-900: #00301f;
+  --ui-color-primary-950: #002015;
+  --ui-radius: var(--radius);
   --ui-bg: var(--c-bg-page);
-  --ui-bg-muted: var(--c-primary-bg);
-  --ui-bg-elevated: var(--c-primary-hover-bg);
+  --ui-bg-muted: var(--c-bg-panel);
+  --ui-bg-elevated: var(--c-bg-sunken);
   --ui-border: var(--c-border);
-  --ui-border-accented: var(--c-primary-hover-bg);
+  --ui-border-accented: var(--c-border);
   --ui-text: var(--c-text);
   --ui-text-muted: var(--c-text-muted);
   --ui-text-dimmed: var(--c-text-muted);
@@ -224,7 +245,7 @@
 }
 
 .prose-neuro thead th {
-  background: #f8fafc;
+  background: var(--c-bg-panel);
   font-weight: 600;
   padding: 8px 12px;
   border: 1px solid var(--c-border);

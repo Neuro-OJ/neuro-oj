@@ -11,7 +11,7 @@
                         class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-[600ms] cursor-pointer animate-[fadeInItem_0.45s_cubic-bezier(0.16,1,0.3,1)_both] [animation-delay:0.45s]"
                         :class="checkedIn
                             ? (fadeWhite ? 'bg-white text-green-700 border border-white' : 'bg-green-50 text-green-700 border border-green-200')
-                            : 'bg-primary text-white border border-primary hover:bg-primary-dark hover:border-primary-dark'"
+                            : 'bg-signal text-on-signal border border-signal hover:bg-signal/80 hover:border-signal/80'"
                         :disabled="checkedIn"
                         @click="$emit('checkin')"
                     >
@@ -48,7 +48,7 @@
             </div>
             <NuxtLink
                 to="/login"
-                class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-white border border-primary no-underline transition-all duration-200 animate-[fadeInUp_0.5s_ease_0.2s_both] hover:bg-primary-dark hover:border-primary-dark"
+                class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-signal text-on-signal border border-signal no-underline transition-all duration-200 animate-[fadeInUp_0.5s_ease_0.2s_both] hover:bg-signal/80 hover:border-signal/80"
             >
                 <UIcon name="i-lucide-log-in" class="size-4" />
                 登录

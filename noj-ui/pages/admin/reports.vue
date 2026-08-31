@@ -199,7 +199,7 @@ await Promise.all([load("pending"), load("resolved"), load("dismissed")])
         :key="tab.key"
         type="button"
         class="px-4 py-3 text-sm transition-colors"
-        :class="activeTab === tab.key ? 'border-b-2 border-primary font-semibold text-primary' : 'text-text-secondary hover:text-text'"
+        :class="activeTab === tab.key ? 'border-b-2 border-signal font-semibold text-primary' : 'text-text-secondary hover:text-text'"
         @click="switchTab(tab.key)"
       >
         {{ tab.label }}（{{ lists[tab.key].length }}）
