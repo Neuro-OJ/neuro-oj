@@ -1,5 +1,17 @@
 import type { DeployConfig, SecretsConfig } from "./types.ts";
 
+/** 解析单个字符串中的 ${KEY} 占位符（KEY 优先全局 env，其次 secrets）。 */
+export function resolvePlaceholders(
+  value: string,
+  config: DeployConfig,
+  secrets: SecretsConfig,
+): string {
+  return value.replace(/\$\{([A-Z0-9_]+)\}/g, (_match, key: string) => {
+    const val = config.env[key] ?? secrets.secrets[key];
+    return val === undefined ? `\${${key}}` : val;
+  });
+}
+
 /**
  * 解析组件最终环境变量：
  * 最终 env = 全局 env + 组件 env（组件覆盖全局），

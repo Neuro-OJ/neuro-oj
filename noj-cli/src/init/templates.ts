@@ -43,14 +43,19 @@ export function devTemplate(installDir: string, port: number): DeployConfig {
         "postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
       internal_port: 5432,
       host_port: null,
-      env: { POSTGRES_USER: "noj", POSTGRES_DB: "noj" },
+      env: {
+        POSTGRES_USER: "noj",
+        POSTGRES_DB: "noj",
+        POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}",
+      },
     }),
     redis: dockerComponent({
       image:
         "redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf",
       internal_port: 6379,
       host_port: null,
-      env: {},
+      command: "redis-server --requirepass ${REDIS_PASSWORD}",
+      env: { REDIS_PASSWORD: "${REDIS_PASSWORD}" },
     }),
     minio: dockerComponent({
       image:
@@ -59,7 +64,11 @@ export function devTemplate(installDir: string, port: number): DeployConfig {
       console_port: 9001,
       host_api_port: null,
       host_console_port: null,
-      env: {},
+      command: "server /data",
+      env: {
+        MINIO_ROOT_USER: "${MINIO_ROOT_USER}",
+        MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}",
+      },
     }),
     server: {
       enabled: true,
@@ -164,14 +173,19 @@ export function prodTemplate(opts: ProdTemplateOptions): DeployConfig {
         "postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
       internal_port: 5432,
       host_port: null,
-      env: { POSTGRES_USER: "noj", POSTGRES_DB: "noj" },
+      env: {
+        POSTGRES_USER: "noj",
+        POSTGRES_DB: "noj",
+        POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}",
+      },
     }),
     redis: dockerComponent({
       image:
         "redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf",
       internal_port: 6379,
       host_port: null,
-      env: {},
+      command: "redis-server --requirepass ${REDIS_PASSWORD}",
+      env: { REDIS_PASSWORD: "${REDIS_PASSWORD}" },
     }),
     minio: dockerComponent({
       image:
@@ -180,7 +194,11 @@ export function prodTemplate(opts: ProdTemplateOptions): DeployConfig {
       console_port: 9001,
       host_api_port: null,
       host_console_port: null,
-      env: {},
+      command: "server /data",
+      env: {
+        MINIO_ROOT_USER: "${MINIO_ROOT_USER}",
+        MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}",
+      },
     }),
     server: dockerComponent({
       image: "ghcr.io/neuro-oj/noj-server:0.1.0",

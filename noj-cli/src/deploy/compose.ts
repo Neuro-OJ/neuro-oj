@@ -3,7 +3,7 @@ import type {
   DeployConfig,
   SecretsConfig,
 } from "../config/types.ts";
-import { resolveComponentEnv } from "../config/merge.ts";
+import { resolveComponentEnv, resolvePlaceholders } from "../config/merge.ts";
 import { fileExists } from "../util/fs.ts";
 
 /** Compose 文件名（安装目录下）。 */
@@ -58,6 +58,13 @@ export function renderCompose(
     lines.push(`  ${name}:`);
     lines.push(`    container_name: noj-${name}`);
     if (comp.image) lines.push(`    image: ${yamlStr(comp.image)}`);
+    if (comp.command) {
+      lines.push(
+        `    command: ${
+          yamlStr(resolvePlaceholders(comp.command, config, secrets))
+        }`,
+      );
+    }
 
     const env = resolveComponentEnv(config, secrets, name);
     if (Object.keys(env).length > 0) {

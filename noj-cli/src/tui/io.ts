@@ -10,16 +10,29 @@ export interface PromptIO {
 export function realIO(): PromptIO {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
+  let pending = "";
   return {
     write(text) {
       Deno.stdout.writeSync(encoder.encode(text));
     },
     async readLine(prompt) {
       this.write(prompt);
-      const buf = new Uint8Array(1024);
-      const n = await Deno.stdin.read(buf);
-      if (n === null) return "";
-      return decoder.decode(buf.subarray(0, n)).replace(/\r?\n$/, "");
+      for (;;) {
+        const idx = pending.indexOf("\n");
+        if (idx !== -1) {
+          const line = pending.slice(0, idx);
+          pending = pending.slice(idx + 1);
+          return line.replace(/\r$/, "");
+        }
+        const buf = new Uint8Array(1024);
+        const n = await Deno.stdin.read(buf);
+        if (n === null) {
+          const line = pending;
+          pending = "";
+          return line;
+        }
+        pending += decoder.decode(buf.subarray(0, n));
+      }
     },
     async readSecret(prompt) {
       this.write(prompt);

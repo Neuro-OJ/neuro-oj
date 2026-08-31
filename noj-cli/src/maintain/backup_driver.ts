@@ -199,8 +199,10 @@ export function realDriver(runner?: CommandRunner): BackupDriver {
       }
       // minio：用 minio/mc 容器把桶数据镜像到 staging/minio
       if (config.components["minio"]?.enabled) {
-        const access = minioEnv["S3_ACCESS_KEY"] ?? "minioadmin";
-        const secret = minioEnv["S3_SECRET_KEY"] ?? "minioadmin";
+        const access = minioEnv["MINIO_ROOT_USER"] ??
+          minioEnv["S3_ACCESS_KEY"] ?? "minioadmin";
+        const secret = minioEnv["MINIO_ROOT_PASSWORD"] ??
+          minioEnv["S3_SECRET_KEY"] ?? "minioadmin";
         const outDir = `${dumpDir}/minio`;
         await Deno.mkdir(outDir, { recursive: true });
         const res = await r.run("docker", [
@@ -319,8 +321,10 @@ export function realDriver(runner?: CommandRunner): BackupDriver {
           hasMinioData = false;
         }
         if (hasMinioData) {
-          const access = minioEnv["S3_ACCESS_KEY"] ?? "minioadmin";
-          const secret = minioEnv["S3_SECRET_KEY"] ?? "minioadmin";
+          const access = minioEnv["MINIO_ROOT_USER"] ??
+            minioEnv["S3_ACCESS_KEY"] ?? "minioadmin";
+          const secret = minioEnv["MINIO_ROOT_PASSWORD"] ??
+            minioEnv["S3_SECRET_KEY"] ?? "minioadmin";
           const res = await r.run("docker", [
             "run",
             "--rm",

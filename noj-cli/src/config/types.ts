@@ -23,6 +23,7 @@ export interface ComponentConfig {
   method: "docker" | "process";
   image?: string;
   binary?: string | null;
+  command?: string;
   internal_port?: number;
   host_port?: number | null;
   host_api_port?: number | null;
