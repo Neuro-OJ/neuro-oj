@@ -24,9 +24,9 @@ Deno.test("version stub 返回 0", async () => {
   assertEquals(await dispatchCommand("version", [], ctx), 0);
 });
 
-Deno.test("maintain/run-server stub 返回 0", async () => {
+Deno.test("maintain 无子命令返回 0；run-server 无配置目录返回 1", async () => {
   assertEquals(await dispatchCommand("maintain", [], ctx), 0);
-  assertEquals(await dispatchCommand("run-server", [], ctx), 0);
+  assertEquals(await dispatchCommand("run-server", [], ctx), 1);
 });
 
 Deno.test("deploy 无配置目录时返回 1", async () => {
@@ -47,6 +47,10 @@ Deno.test("maintain backup 无配置目录时返回 1", async () => {
 
 Deno.test("maintain reset 无配置目录时返回 1", async () => {
   assertEquals(await dispatchCommand("maintain", ["reset"], ctx), 1);
+});
+
+Deno.test("maintain verify 无配置目录时返回 1", async () => {
+  assertEquals(await dispatchCommand("maintain", ["verify"], ctx), 1);
 });
 
 Deno.test("未知命令返回 1", async () => {

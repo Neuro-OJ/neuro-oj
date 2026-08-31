@@ -2,6 +2,9 @@ import type { ComponentConfig } from "../config/types.ts";
 import type { CommandRunner, SpawnOpts } from "./command.ts";
 import { readPid, removePid, writePid } from "./pidfile.ts";
 import { logPath } from "./logfile.ts";
+import { loadDeployment } from "../config/load.ts";
+import { resolveComponentEnv } from "../config/merge.ts";
+import { realRunner } from "./command.ts";
 
 /** 由 ComponentConfig 生成进程启动参数。 */
 export function processLaunch(
@@ -46,4 +49,32 @@ export async function stopManagedProcess(
   if (pid === null) return;
   await runner.run("kill", ["-TERM", String(pid)]);
   await removePid(runDir, component);
+}
+
+/** run-server 选项。 */
+export interface RunServerOptions {
+  dir: string;
+  runner?: CommandRunner;
+}
+
+/** 前台运行 noj-server 二进制（不启动 Docker/UI），返回进程退出码。 */
+export async function runServerForeground(
+  opts: RunServerOptions,
+): Promise<number> {
+  const { config, secrets } = await loadDeployment(opts.dir);
+  const comp = config.components["server"];
+  if (comp === undefined || !comp.enabled) {
+    throw new Error("server 组件未启用");
+  }
+  if (comp.method !== "process") {
+    throw new Error("run-server 仅支持 method=process 的 server 组件");
+  }
+  const env = resolveComponentEnv(config, secrets, "server");
+  const launch = processLaunch(comp, env, config.install_dir);
+  const handle = (opts.runner ?? realRunner()).spawn({
+    ...launch,
+    cwd: config.install_dir,
+    env,
+  });
+  return await handle.wait();
 }

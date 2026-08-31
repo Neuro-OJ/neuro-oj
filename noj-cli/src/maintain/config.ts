@@ -2,6 +2,10 @@ import type { DeployConfig } from "../config/types.ts";
 import { loadDeployment } from "../config/load.ts";
 import { saveDeployment } from "../config/save.ts";
 import { validateConfig, type ValidationIssue } from "../config/validate.ts";
+import { COMPOSE_FILE } from "../deploy/compose.ts";
+import { fileExists } from "../util/fs.ts";
+import type { CommandRunner } from "../runtime/command.ts";
+import { realRunner } from "../runtime/command.ts";
 
 /** 判断 key 是否敏感（含 SECRET/PASSWORD/TOKEN/KEY，不区分大小写）。 */
 function isSensitiveKey(key: string): boolean {
@@ -57,6 +61,53 @@ export function parseConfigValue(raw: string): string | number | boolean {
 export async function configCheck(dir: string): Promise<ValidationIssue[]> {
   const { config, secrets } = await loadDeployment(dir);
   return validateConfig(config, secrets);
+}
+
+/** maintain verify 报告。 */
+export interface VerifyReport {
+  pass: boolean;
+  errors: string[];
+}
+
+/** maintain verify：校验配置、Compose 可解析、镜像存在。 */
+export async function maintainVerify(
+  dir: string,
+  runner?: CommandRunner,
+): Promise<VerifyReport> {
+  const { config, secrets } = await loadDeployment(dir);
+  const errors = validateConfig(config, secrets).map(
+    (i) => `${i.path}: ${i.message}`,
+  );
+  const r = runner ?? realRunner();
+  const composePath = `${dir}/${COMPOSE_FILE}`;
+  const hasDocker = Object.values(config.components).some(
+    (c) => c.enabled && c.method === "docker",
+  );
+  if (hasDocker) {
+    if (await fileExists(composePath)) {
+      const res = await r.run("docker", [
+        "compose",
+        "-f",
+        composePath,
+        "config",
+        "--quiet",
+      ]);
+      if (res.code !== 0) {
+        errors.push(`Compose 解析失败: ${res.stderr || res.stdout}`);
+      }
+    } else {
+      errors.push(`缺少 Compose 文件: ${composePath}`);
+    }
+  }
+  for (const [name, comp] of Object.entries(config.components)) {
+    if (comp.enabled && comp.method === "docker" && comp.image) {
+      const res = await r.run("docker", ["image", "inspect", comp.image]);
+      if (res.code !== 0) {
+        errors.push(`镜像不存在: ${name} ${comp.image}`);
+      }
+    }
+  }
+  return { pass: errors.length === 0, errors };
 }
 
 /** config show：输出脱敏后的 JSON 文本。 */

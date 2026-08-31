@@ -53,7 +53,10 @@ noj-cli
 ├── maintain
 │   ├── logs
 │   ├── backup
-│   ├── restore
+│   │   ├── create
+│   │   ├── verify
+│   │   ├── restore
+│   │   └── drill
 │   ├── verify
 │   ├── reset
 │   └── config

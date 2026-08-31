@@ -12,8 +12,12 @@ async function atomicWrite(
   mode: number,
 ): Promise<void> {
   const tmp = `${path}.tmp-${Deno.pid}-${crypto.randomUUID()}`;
-  await Deno.writeTextFile(tmp, data);
-  await Deno.chmod(tmp, mode);
+  const file = await Deno.open(tmp, { write: true, create: true, mode });
+  try {
+    await file.write(new TextEncoder().encode(data));
+  } finally {
+    file.close();
+  }
   await Deno.rename(tmp, path);
 }
 
@@ -27,6 +31,7 @@ export async function saveDeployment(
   config: DeployConfig,
   secrets: SecretsConfig,
 ): Promise<void> {
+  await Deno.mkdir(dir, { recursive: true });
   const cfg = structuredClone(config);
   cfg.updated_at = utcNow();
   const sec = structuredClone(secrets);

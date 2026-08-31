@@ -34,7 +34,7 @@ export interface CommandRunner {
   run(
     cmd: string,
     args: string[],
-    opts?: { cwd?: string; env?: Record<string, string> },
+    opts?: { cwd?: string; env?: Record<string, string>; stdin?: string },
   ): Promise<CmdResult>;
   spawn(opts: SpawnOpts): SpawnHandle;
   /** 逐行流式执行命令；onLine 每收到一行（不含换行）回调一次，返回退出码。可选：P2 既有 fake 可不实现。 */
@@ -51,18 +51,43 @@ export function realRunner(): CommandRunner {
   const decoder = new TextDecoder();
   return {
     async run(cmd, args, opts) {
+      const stdin = opts?.stdin;
+      if (stdin === undefined) {
+        const p = new Deno.Command(cmd, {
+          args,
+          cwd: opts?.cwd,
+          env: opts?.env ?? {},
+          stdout: "piped",
+          stderr: "piped",
+        });
+        const out = await p.output();
+        return {
+          code: out.code,
+          stdout: decoder.decode(out.stdout),
+          stderr: decoder.decode(out.stderr),
+        };
+      }
       const p = new Deno.Command(cmd, {
         args,
         cwd: opts?.cwd,
         env: opts?.env ?? {},
+        stdin: "piped",
         stdout: "piped",
         stderr: "piped",
       });
-      const out = await p.output();
+      const child = p.spawn();
+      const writer = child.stdin.getWriter();
+      await writer.write(new TextEncoder().encode(stdin));
+      await writer.close();
+      const [status, stdoutBuf, stderrBuf] = await Promise.all([
+        child.status,
+        new Response(child.stdout).arrayBuffer(),
+        new Response(child.stderr).arrayBuffer(),
+      ]);
       return {
-        code: out.code,
-        stdout: decoder.decode(out.stdout),
-        stderr: decoder.decode(out.stderr),
+        code: status.code,
+        stdout: decoder.decode(stdoutBuf),
+        stderr: decoder.decode(stderrBuf),
       };
     },
     spawn(opts) {

@@ -8,6 +8,13 @@ Deno.test("realRunner.run 执行命令并返回退出码与输出", async () => 
   assertEquals(out.stdout, "hello");
 });
 
+Deno.test("realRunner.run: stdin 传入子进程", async () => {
+  const r = realRunner();
+  const out = await r.run("cat", [], { stdin: "hello-stdin" });
+  assertEquals(out.code, 0);
+  assertEquals(out.stdout, "hello-stdin");
+});
+
 Deno.test("realRunner.spawn 产生可用 PID 并可 wait", async () => {
   const handle = realRunner().spawn({
     cmd: "sh",

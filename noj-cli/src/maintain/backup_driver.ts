@@ -124,62 +124,72 @@ export function realDriver(runner?: CommandRunner): BackupDriver {
       const redisEnv = resolveComponentEnv(config, _secrets, "redis");
       const minioEnv = resolveComponentEnv(config, _secrets, "minio");
       const entries: DumpEntry[] = [];
-      // postgres：容器内 pg_dump 输出到 stdout，重定向到本机文件
+      // postgres：容器内 pg_dump 输出经 base64 转文本，避免二进制经 stdout 字符串损坏
       if (config.components["postgres"]?.enabled) {
+        const pgUser = pgEnv["POSTGRES_USER"] ?? "noj";
+        const pgDb = pgEnv["POSTGRES_DB"] ?? "noj";
+        const pgPass = pgEnv["POSTGRES_PASSWORD"] ?? "";
         const dumpRes = await r.run("docker", [
           "exec",
+          "-e",
+          `PGPASSWORD=${pgPass}`,
+          "-e",
+          `POSTGRES_USER=${pgUser}`,
+          "-e",
+          `POSTGRES_DB=${pgDb}`,
           "noj-postgres",
-          "bash",
+          "sh",
           "-c",
-          `PGPASSWORD='${pgEnv["POSTGRES_PASSWORD"] ?? ""}' pg_dump -U '${
-            pgEnv["POSTGRES_USER"] ?? "noj"
-          }' -d '${pgEnv["POSTGRES_DB"] ?? "noj"}' -Fc`,
+          'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc | base64',
         ]);
+        if (dumpRes.code !== 0) {
+          throw new Error(`pg_dump 失败: ${dumpRes.stderr || dumpRes.stdout}`);
+        }
         const globalsRes = await r.run("docker", [
           "exec",
+          "-e",
+          `PGPASSWORD=${pgPass}`,
+          "-e",
+          `POSTGRES_USER=${pgUser}`,
           "noj-postgres",
-          "bash",
+          "sh",
           "-c",
-          `PGPASSWORD='${
-            pgEnv["POSTGRES_PASSWORD"] ?? ""
-          }' pg_dumpall --globals-only -U '${pgEnv["POSTGRES_USER"] ?? "noj"}'`,
+          'pg_dumpall --globals-only -U "$POSTGRES_USER"',
         ]);
-        const listRes = await r.run("docker", [
-          "exec",
-          "noj-postgres",
-          "bash",
-          "-c",
-          `PGPASSWORD='${pgEnv["POSTGRES_PASSWORD"] ?? ""}' pg_restore -l -d '${
-            pgEnv["POSTGRES_DB"] ?? "noj"
-          }'`,
-        ]);
+        if (globalsRes.code !== 0) {
+          throw new Error(
+            `pg_dumpall 失败: ${globalsRes.stderr || globalsRes.stdout}`,
+          );
+        }
         entries.push({ relPath: "postgres.dump", content: dumpRes.stdout });
         entries.push({
           relPath: "postgres-globals.sql",
           content: globalsRes.stdout,
         });
-        entries.push({
-          relPath: "postgres.restore-list",
-          content: listRes.stdout,
-        });
       }
-      // redis：SAVE 后拷 rdb；SAVEPERSISTENCE 输出
+      // redis：SAVE 后把 rdb 经 base64 转文本；SAVE 的 OK 输出重定向到 /dev/null
       if (config.components["redis"]?.enabled) {
+        const redisPass = redisEnv["REDIS_PASSWORD"] ?? "";
         const rdbRes = await r.run("docker", [
           "exec",
+          "-e",
+          `REDISCLI_AUTH=${redisPass}`,
           "noj-redis",
           "sh",
           "-c",
-          `redis-cli -a '${
-            redisEnv["REDIS_PASSWORD"] ?? ""
-          }' SAVE && cat /data/dump.rdb`,
+          "redis-cli SAVE >/dev/null && cat /data/dump.rdb | base64",
         ]);
+        if (rdbRes.code !== 0) {
+          throw new Error(`redis SAVE 失败: ${rdbRes.stderr || rdbRes.stdout}`);
+        }
         const persistRes = await r.run("docker", [
           "exec",
+          "-e",
+          `REDISCLI_AUTH=${redisPass}`,
           "noj-redis",
           "sh",
           "-c",
-          `redis-cli -a '${redisEnv["REDIS_PASSWORD"] ?? ""}' CONFIG GET save`,
+          "redis-cli CONFIG GET save",
         ]);
         entries.push({ relPath: "redis.rdb", content: rdbRes.stdout });
         entries.push({
@@ -203,45 +213,131 @@ export function realDriver(runner?: CommandRunner): BackupDriver {
       return entries;
     },
     async restoreDataDumps(config, _secrets, dumpDir) {
+      const pgEnv = resolveComponentEnv(config, _secrets, "postgres");
+      const redisEnv = resolveComponentEnv(config, _secrets, "redis");
       if (config.components["postgres"]?.enabled) {
-        const dump = await Deno.readTextFile(`${dumpDir}/postgres.dump`);
-        const res = await r.run("docker", [
-          "exec",
-          "-i",
-          "noj-postgres",
-          "bash",
-          "-c",
-          `pg_restore -U ${"${POSTGRES_USER}"} -d ${"${POSTGRES_DB}"} --clean --if-exists`,
-        ]);
-        // dump 经 stdin 传入（此处用 CommandRunner 无法直通 stdin，记录为失败需人工干预）
-        void dump;
-        void res;
-        throw new Error(
-          "restoreDataDumps: postgres 恢复需真实 stdin 通道，见 docker exec -i 说明",
+        const pgUser = pgEnv["POSTGRES_USER"] ?? "noj";
+        const pgDb = pgEnv["POSTGRES_DB"] ?? "noj";
+        const pgPass = pgEnv["POSTGRES_PASSWORD"] ?? "";
+        const globals = await Deno.readTextFile(
+          `${dumpDir}/postgres-globals.sql`,
+        ).catch(() => "");
+        if (globals.trim() !== "") {
+          const gRes = await r.run(
+            "docker",
+            [
+              "exec",
+              "-i",
+              "-e",
+              `PGPASSWORD=${pgPass}`,
+              "-e",
+              `POSTGRES_USER=${pgUser}`,
+              "noj-postgres",
+              "sh",
+              "-c",
+              'psql -U "$POSTGRES_USER" -d postgres',
+            ],
+            { stdin: globals },
+          );
+          if (gRes.code !== 0) {
+            throw new Error(
+              `postgres globals 恢复失败: ${gRes.stderr || gRes.stdout}`,
+            );
+          }
+        }
+        const dumpB64 = await Deno.readTextFile(`${dumpDir}/postgres.dump`);
+        const dRes = await r.run(
+          "docker",
+          [
+            "exec",
+            "-i",
+            "-e",
+            `PGPASSWORD=${pgPass}`,
+            "-e",
+            `POSTGRES_USER=${pgUser}`,
+            "-e",
+            `POSTGRES_DB=${pgDb}`,
+            "noj-postgres",
+            "sh",
+            "-c",
+            'base64 -d | pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists',
+          ],
+          { stdin: dumpB64 },
         );
-      }
-      await r.run("docker", [
-        "exec",
-        "noj-redis",
-        "sh",
-        "-c",
-        "redis-cli FLUSHALL",
-      ]);
-    },
-    async clearData(config, _secrets) {
-      if (config.components["postgres"]?.enabled) {
-        await r.run("docker", [
-          "exec",
-          "noj-postgres",
-          "bash",
-          "-c",
-          "psql -U ${POSTGRES_USER} -d postgres -c 'DROP DATABASE IF EXISTS \"${POSTGRES_DB}\" WITH (FORCE)' && " +
-          "psql -U ${POSTGRES_USER} -d postgres -c 'CREATE DATABASE \"${POSTGRES_DB}\"'",
-        ]);
+        if (dRes.code !== 0) {
+          throw new Error(
+            `postgres 数据恢复失败: ${dRes.stderr || dRes.stdout}`,
+          );
+        }
       }
       if (config.components["redis"]?.enabled) {
+        const redisPass = redisEnv["REDIS_PASSWORD"] ?? "";
+        const rdbB64 = await Deno.readTextFile(`${dumpDir}/redis.rdb`).catch(
+          () => "",
+        );
+        if (rdbB64.trim() !== "") {
+          const rRes = await r.run(
+            "docker",
+            [
+              "exec",
+              "-i",
+              "-e",
+              `REDISCLI_AUTH=${redisPass}`,
+              "noj-redis",
+              "sh",
+              "-c",
+              "base64 -d > /data/dump.rdb",
+            ],
+            { stdin: rdbB64 },
+          );
+          if (rRes.code !== 0) {
+            throw new Error(
+              `redis RDB 恢复失败: ${rRes.stderr || rRes.stdout}`,
+            );
+          }
+        }
         await r.run("docker", [
           "exec",
+          "-e",
+          `REDISCLI_AUTH=${redisPass}`,
+          "noj-redis",
+          "sh",
+          "-c",
+          "redis-cli FLUSHALL",
+        ]);
+      }
+    },
+    async clearData(config, _secrets) {
+      const pgEnv = resolveComponentEnv(config, _secrets, "postgres");
+      const redisEnv = resolveComponentEnv(config, _secrets, "redis");
+      if (config.components["postgres"]?.enabled) {
+        const pgUser = pgEnv["POSTGRES_USER"] ?? "noj";
+        const pgDb = pgEnv["POSTGRES_DB"] ?? "noj";
+        const pgPass = pgEnv["POSTGRES_PASSWORD"] ?? "";
+        const res = await r.run("docker", [
+          "exec",
+          "-e",
+          `PGPASSWORD=${pgPass}`,
+          "-e",
+          `POSTGRES_USER=${pgUser}`,
+          "-e",
+          `POSTGRES_DB=${pgDb}`,
+          "noj-postgres",
+          "bash",
+          "-c",
+          'psql -U "$POSTGRES_USER" -d postgres -c "DROP DATABASE IF EXISTS \\"$POSTGRES_DB\\" WITH (FORCE)" && ' +
+          'psql -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE \\"$POSTGRES_DB\\""',
+        ]);
+        if (res.code !== 0) {
+          throw new Error(`postgres 清空失败: ${res.stderr || res.stdout}`);
+        }
+      }
+      if (config.components["redis"]?.enabled) {
+        const redisPass = redisEnv["REDIS_PASSWORD"] ?? "";
+        await r.run("docker", [
+          "exec",
+          "-e",
+          `REDISCLI_AUTH=${redisPass}`,
           "noj-redis",
           "sh",
           "-c",

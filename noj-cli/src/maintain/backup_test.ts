@@ -1,6 +1,11 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import type { DeployConfig, SecretsConfig } from "../config/types.ts";
 import type { BackupDriver, DumpEntry } from "./backup_driver.ts";
+import type {
+  CommandRunner,
+  SpawnHandle,
+  SpawnOpts,
+} from "../runtime/command.ts";
 import {
   backupCreate,
   backupDrill,
@@ -112,6 +117,18 @@ function fakeDriver(): BackupDriver {
   };
 }
 
+/** 模拟 docker compose 成功执行的 fake runner。 */
+function fakeRunner(): CommandRunner {
+  return {
+    run(_cmd, _args) {
+      return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+    },
+    spawn(_opts: SpawnOpts): SpawnHandle {
+      throw new Error("fake runner 不 spawn");
+    },
+  };
+}
+
 Deno.test("snapshotFileName: 生成合法快照文件名", () => {
   const name = snapshotFileName(new Date("2026-08-31T12:34:56Z"));
   assertEquals(name, "snapshot-2026-08-31T12-34-56Z.nojbackup");
@@ -206,7 +223,7 @@ Deno.test("backupVerify: 合法快照 pass=true", async () => {
   assertEquals(report.errors.length, 0);
 });
 
-Deno.test("backupRestore: 要求 confirm 与 stopped 状态", async () => {
+Deno.test("backupRestore: 要求 confirm；running 时先 down 再恢复", async () => {
   const dir = await Deno.makeTempDir();
   await writeFixture(dir, prodConfig(), secrets());
   // 未 confirm
@@ -217,22 +234,32 @@ Deno.test("backupRestore: 要求 confirm 与 stopped 状态", async () => {
         snapshotPath: "/nonexistent",
         confirm: false,
         driver: fakeDriver(),
+        runner: fakeRunner(),
       }),
     Error,
     "confirm",
   );
-  // 目标未停止（running）
-  await assertRejects(
-    () =>
-      backupRestore({
-        dir,
-        snapshotPath: "/nonexistent",
-        confirm: true,
-        driver: fakeDriver(),
-      }),
-    Error,
-    "已停止",
-  );
+  // 先创建合法快照，再从 running 恢复
+  await backupCreate({
+    dir,
+    backupDir: `${dir}/backups`,
+    noEncrypt: true,
+    driver: fakeDriver(),
+  });
+  const entries = await Array.fromAsync(Deno.readDir(`${dir}/backups`));
+  const snap = `${dir}/backups/${entries[0]!.name}`;
+  const state = await backupRestore({
+    dir,
+    snapshotPath: snap,
+    confirm: true,
+    driver: fakeDriver(),
+    runner: fakeRunner(),
+  });
+  assertEquals(state, "stopped");
+  const saved = JSON.parse(
+    await Deno.readTextFile(`${dir}/noj-deploy.json`),
+  ) as DeployConfig;
+  assertEquals(saved.state, "stopped");
 });
 
 Deno.test("backupDrill: 写报告文件", async () => {

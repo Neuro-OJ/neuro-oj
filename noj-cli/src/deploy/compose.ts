@@ -104,8 +104,12 @@ export async function ensureComposeFile(
   const exists = await fileExists(path);
   if (exists) {
     const current = await Deno.readTextFile(path);
-    if (current === rendered) return path;
+    if (current === rendered) {
+      await Deno.chmod(path, 0o600).catch(() => {});
+      return path;
+    }
   }
   await Deno.writeTextFile(path, rendered);
+  await Deno.chmod(path, 0o600);
   return path;
 }

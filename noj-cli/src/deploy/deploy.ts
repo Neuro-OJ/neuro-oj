@@ -7,13 +7,14 @@ import type {
 import { loadDeployment } from "../config/load.ts";
 import { saveDeployment } from "../config/save.ts";
 import { resolveComponentEnv } from "../config/merge.ts";
+import { validateConfig } from "../config/validate.ts";
 import type { CommandRunner } from "../runtime/command.ts";
 import { realRunner } from "../runtime/command.ts";
 import { fileExists } from "../util/fs.ts";
 import { COMPOSE_FILE, ensureComposeFile } from "./compose.ts";
 import { dockerDown, dockerPs, dockerUp } from "./docker.ts";
 import { startManagedProcess, stopManagedProcess } from "../runtime/process.ts";
-import { readPid } from "../runtime/pidfile.ts";
+import { readPid, removePid } from "../runtime/pidfile.ts";
 import { downIsNoOp, upIsNoOp, writeState } from "./state.ts";
 
 /** deploy 命令运行选项。 */
@@ -95,6 +96,11 @@ async function startProcesses(
 export async function deployUp(opts: DeployOptions): Promise<DeployState> {
   const runner = opts.runner ?? realRunner();
   const { config, secrets } = await loadDeployment(opts.dir);
+  const issues = validateConfig(config, secrets);
+  if (issues.length > 0) {
+    const first = issues[0]!;
+    throw new Error(`deploy up 配置校验失败: ${first.path} ${first.message}`);
+  }
   if (upIsNoOp(config)) {
     console.log(`deploy up: ${config.state}`);
     return config.state;
@@ -123,7 +129,36 @@ async function stopProcesses(
 /** `deploy down`：stopped 时 no-op，否则停进程 + docker down，写 stopped。 */
 export async function deployDown(opts: DeployOptions): Promise<DeployState> {
   const runner = opts.runner ?? realRunner();
-  const { config, secrets } = await loadDeployment(opts.dir);
+  let config: DeployConfig;
+  let secrets: SecretsConfig;
+  try {
+    ({ config, secrets } = await loadDeployment(opts.dir));
+  } catch (e) {
+    // 配置损坏时仍尽力停止：docker compose down + 清理 PID 文件
+    console.error(
+      `deploy down: 配置读取失败，尝试尽力停止: ${(e as Error).message}`,
+    );
+    const composePath = `${opts.dir}/${COMPOSE_FILE}`;
+    if (await fileExists(composePath)) {
+      await dockerDown(runner, composePath);
+    }
+    const runDir = `${opts.dir}/run`;
+    try {
+      for await (const entry of Deno.readDir(runDir)) {
+        if (!entry.name.endsWith(".pid")) continue;
+        const name = entry.name.slice(0, -4);
+        const pid = await readPid(runDir, name);
+        if (pid !== null) {
+          await runner.run("kill", ["-TERM", String(pid)]);
+        }
+        await removePid(runDir, name);
+      }
+    } catch {
+      // run 目录不存在或不可读时忽略
+    }
+    console.log("deploy down: stopped（配置损坏，已尽力停止）");
+    return "stopped";
+  }
   if (downIsNoOp(config)) {
     console.log(`deploy down: ${config.state}`);
     return config.state;
@@ -160,7 +195,12 @@ async function componentRunning(
     const composePath = composePathOf(config);
     if (!(await fileExists(composePath))) return false;
     const r = await dockerPs(runner, composePath);
-    return r.code === 0 && r.stdout.includes(name);
+    if (r.code !== 0) return false;
+    return r.stdout.split("\n").some((line) =>
+      line.split(/\s+/).some((field) =>
+        field === name || field === `noj-${name}`
+      )
+    );
   }
   const pid = await readPid(runDirOf(config), name);
   return pid !== null;

@@ -15,6 +15,23 @@ export function dockerUp(
   ]);
 }
 
+/** `docker compose -f <path> up -d --wait <services...>`：只启动指定服务。 */
+export function dockerUpServices(
+  runner: CommandRunner,
+  composePath: string,
+  services: string[],
+): Promise<CmdResult> {
+  return runner.run("docker", [
+    "compose",
+    "-f",
+    composePath,
+    "up",
+    "-d",
+    "--wait",
+    ...services,
+  ]);
+}
+
 /** `docker compose -f <path> down`（不 `-v`，保留数据卷）。 */
 export function dockerDown(
   runner: CommandRunner,

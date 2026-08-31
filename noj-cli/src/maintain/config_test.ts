@@ -1,9 +1,15 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import type { DeployConfig, SecretsConfig } from "../config/types.ts";
+import type {
+  CommandRunner,
+  SpawnHandle,
+  SpawnOpts,
+} from "../runtime/command.ts";
 import {
   configCheck,
   configSet,
   configShow,
+  maintainVerify,
   maskSecrets,
   parseConfigValue,
   setByPath,
@@ -119,4 +125,32 @@ Deno.test("configSet: 校验失败时抛错且不落盘", async () => {
     m.loadDeployment(dir)
   );
   assertEquals(c.schema_version, 1);
+});
+
+function fakeRunner(): CommandRunner {
+  return {
+    run() {
+      return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+    },
+    spawn(_opts: SpawnOpts): SpawnHandle {
+      throw new Error("fake runner 不 spawn");
+    },
+  };
+}
+
+Deno.test("maintainVerify: 配置/Compose/镜像均通过时 pass=true", async () => {
+  const dir = await Deno.makeTempDir();
+  await writeFixture(dir);
+  await Deno.writeTextFile(`${dir}/docker-compose.noj.yml`, "services: {}\n");
+  const report = await maintainVerify(dir, fakeRunner());
+  assertEquals(report.pass, true);
+  assertEquals(report.errors.length, 0);
+});
+
+Deno.test("maintainVerify: 缺少 Compose 文件时报错", async () => {
+  const dir = await Deno.makeTempDir();
+  await writeFixture(dir);
+  const report = await maintainVerify(dir, fakeRunner());
+  assertEquals(report.pass, false);
+  assertEquals(report.errors.some((e) => e.includes("Compose")), true);
 });

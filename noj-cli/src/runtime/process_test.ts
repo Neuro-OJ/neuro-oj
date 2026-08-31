@@ -3,6 +3,7 @@ import type { ComponentConfig } from "../config/types.ts";
 import type { CommandRunner, SpawnHandle, SpawnOpts } from "./command.ts";
 import {
   processLaunch,
+  runServerForeground,
   startManagedProcess,
   stopManagedProcess,
 } from "./process.ts";
@@ -125,4 +126,50 @@ Deno.test("startManagedProcess: 输出写入 run/logs/<component>.log", async ()
   );
   assertEquals(spawned[0]!.stdoutFile, `${runDir}/logs/server.log`);
   assertEquals(spawned[0]!.stderrFile, `${runDir}/logs/server.log`);
+});
+
+Deno.test("runServerForeground: 前台 spawn server 并返回退出码", async () => {
+  const dir = await Deno.makeTempDir();
+  const cfg = {
+    schema_version: 1,
+    type: "dev",
+    state: "stopped",
+    created_at: "2026-08-31T00:00:00Z",
+    updated_at: "2026-08-31T00:00:00Z",
+    install_dir: dir,
+    version: { noj_cli: "0.1.0", noj_server: "0.1.0" },
+    env: {},
+    components: {
+      server: {
+        enabled: true,
+        method: "process",
+        binary: "noj-server",
+        port: 8000,
+        host_port: null,
+        env: { PORT: "8000" },
+      },
+    },
+    reverse_proxy: {
+      type: "nginx",
+      config_dir: "/etc/nginx/conf.d",
+      domain: "localhost",
+      upstream_port: 8080,
+    },
+  };
+  await Deno.writeTextFile(`${dir}/noj-deploy.json`, JSON.stringify(cfg));
+  await Deno.writeTextFile(
+    `${dir}/noj-secrets.json`,
+    JSON.stringify({
+      schema_version: 1,
+      created_at: "2026-08-31T00:00:00Z",
+      updated_at: "2026-08-31T00:00:00Z",
+      secrets: {},
+    }),
+  );
+  const spawned: SpawnOpts[] = [];
+  const runner = fakeRunner(spawned, []);
+  const code = await runServerForeground({ dir, runner });
+  assertEquals(code, 0);
+  assertEquals(spawned[0]!.cmd, "noj-server");
+  assertEquals(spawned[0]!.cwd, dir);
 });

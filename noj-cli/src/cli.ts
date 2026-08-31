@@ -14,7 +14,12 @@ import {
   deployUp,
 } from "./deploy/deploy.ts";
 import { maintainLogs, parseModulesArg } from "./maintain/logs.ts";
-import { configCheck, configSet, configShow } from "./maintain/config.ts";
+import {
+  configCheck,
+  configSet,
+  configShow,
+  maintainVerify,
+} from "./maintain/config.ts";
 import {
   backupCreate,
   backupDrill,
@@ -22,6 +27,8 @@ import {
   backupVerify,
 } from "./maintain/backup.ts";
 import { maintainReset } from "./maintain/reset.ts";
+import { realDriver } from "./maintain/backup_driver.ts";
+import { runServerForeground } from "./runtime/process.ts";
 
 /** CLI 执行上下文，供各子命令共享。 */
 export interface CommandContext {
@@ -57,9 +64,9 @@ export function printHelp(): string {
     "",
     "命令:",
     "  doctor        环境检测",
-    "  deploy        部署生命周期 init/up/down/restart/status（init 已实现）",
-    "  maintain      运维 logs/backup/restore/verify/reset/config（stub）",
-    "  run-server    运行 noj-server（stub）",
+    "  deploy        部署生命周期 init/up/down/restart/status",
+    "  maintain      运维 logs/config/verify/reset/backup(create/verify/restore/drill)",
+    "  run-server    前台运行 noj-server 二进制",
     "  version       显示版本",
     "",
   ].join("\n");
@@ -310,8 +317,19 @@ export async function dispatchCommand(
         }
       }
       if (sub === "config") {
-        const action = args[1] ?? "";
-        const deployDir = ctx.deployDir ?? findDeployDir(ctx.cwd);
+        const rest = args.slice(1);
+        let dirOverride: string | undefined;
+        const positional: string[] = [];
+        for (let i = 0; i < rest.length; i++) {
+          if (rest[i] === "--dir") {
+            dirOverride = rest[++i];
+          } else {
+            positional.push(rest[i]!);
+          }
+        }
+        const action = positional[0] ?? "";
+        const deployDir = dirOverride ?? ctx.deployDir ??
+          findDeployDir(ctx.cwd);
         if (deployDir === null) {
           console.error(
             "maintain config: 未找到 noj-deploy.json，请先运行 deploy init",
@@ -336,8 +354,8 @@ export async function dispatchCommand(
               return 0;
             }
             case "set": {
-              const key = args[2];
-              const value = args[3];
+              const key = positional[1];
+              const value = positional[2];
               if (key === undefined || value === undefined) {
                 console.error("maintain config set: 需要 <key> <value>");
                 return 1;
@@ -371,6 +389,7 @@ export async function dispatchCommand(
                 passphraseFile: a.passphraseFile,
                 zstdLevel: a.zstdLevel,
                 noEncrypt: a.noEncrypt,
+                driver: realDriver(),
               });
               console.log(`备份完成: ${r.path}`);
               console.log(`SHA-256: ${r.sha256}`);
@@ -384,6 +403,7 @@ export async function dispatchCommand(
               const report = await backupVerify({
                 snapshotPath: a.snapshot,
                 passphraseFile: a.passphraseFile,
+                driver: realDriver(),
               });
               if (report.pass) {
                 console.log("校验通过");
@@ -403,6 +423,7 @@ export async function dispatchCommand(
                 confirm: a.confirm,
                 passphraseFile: a.passphraseFile,
                 includeDeployConfigs: a.includeDeployConfigs,
+                driver: realDriver(),
               });
               console.log(`恢复完成，状态: ${state}`);
               return 0;
@@ -416,6 +437,7 @@ export async function dispatchCommand(
                 snapshotPath: a.snapshot,
                 passphraseFile: a.passphraseFile,
                 report: a.report,
+                driver: realDriver(),
               });
               console.log(
                 `演练完成（drill）：${report.pass ? "通过" : "失败"}`,
@@ -446,11 +468,32 @@ export async function dispatchCommand(
             dir: deployDir,
             confirm: a.confirm,
             includeDeployConfigs: a.includeDeployConfigs,
+            driver: realDriver(),
           });
           console.log(`重置完成，状态: ${state}`);
           return 0;
         } catch (e) {
           console.error(`maintain reset: ${(e as Error).message}`);
+          return 1;
+        }
+      }
+
+      if (sub === "verify") {
+        const deployDir = ctx.deployDir ?? findDeployDir(ctx.cwd);
+        if (deployDir === null) {
+          console.error("maintain verify: 未找到 noj-deploy.json");
+          return 1;
+        }
+        try {
+          const report = await maintainVerify(deployDir);
+          if (report.pass) {
+            console.log("校验通过");
+            return 0;
+          }
+          for (const e of report.errors) console.error(`  ${e}`);
+          return 1;
+        } catch (e) {
+          console.error(`maintain verify: ${(e as Error).message}`);
           return 1;
         }
       }
@@ -464,9 +507,23 @@ export async function dispatchCommand(
       }
       return 0;
     }
-    case "run-server":
-      console.log("run-server: 运行 noj-server 逻辑留待后续计划");
-      return 0;
+    case "run-server": {
+      let dirOverride: string | undefined;
+      for (let i = 0; i < args.length; i++) {
+        if (args[i] === "--dir") dirOverride = args[++i];
+      }
+      const deployDir = dirOverride ?? ctx.deployDir ?? findDeployDir(ctx.cwd);
+      if (deployDir === null) {
+        console.error("run-server: 未找到 noj-deploy.json");
+        return 1;
+      }
+      try {
+        return await runServerForeground({ dir: deployDir });
+      } catch (e) {
+        console.error(`run-server: ${(e as Error).message}`);
+        return 1;
+      }
+    }
     default:
       console.error(`未知命令: ${command}`);
       if (!KNOWN_TOP.has(command)) {

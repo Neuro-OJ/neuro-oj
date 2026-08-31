@@ -4,6 +4,9 @@ Neuro OJ 统一部署与运维 CLI（Deno + TypeScript，仅支持 linux/amd64�
 
 ## 状态
 
+P0-P5 已完成；代码评审后补齐 `maintain verify` 与 `run-server` 前台运行，
+并修复备份/恢复的真实 stdin/base64 通道、Compose 文件权限与凭据注入问题。
+
 P4：实现 `maintain backup create/verify/restore/drill` 与 `maintain reset`。
 备份仅面向 prod：zstd level 15 压缩（可用 `--zstd-level` 调整）、SHA-256 校验、
 GPG 对称 AES-256 加密（口令来自 `--passphrase-file` 或
@@ -14,6 +17,13 @@ SUCCESS/manifest/sha256sums；`restore` 默认只恢复数据、
 `drill` 执行 verify 并可选写 `--report` 文件。`reset` 默认只清数据并置
 `stopped`， `--include-deploy-configs` 连 `noj-deploy.json`/`noj-secrets.json`
 一起清并置 `uninitialized`，均需 `--confirm`。
+
+P5：新增 `noj-server`（linux/amd64）的 `deno compile` 构建脚本与
+`deno task
+build:server`；`docker-compose.prod.yml` 中镜像/服务改名为
+`noj-server`/`server`； `setup.sh` 改为仅下载/校验 `noj-cli-linux-amd64`
+的薄引导；README / deploy/README / noj-docs
+生产部署文档已迁移到新命名与薄引导流程。
 
 ## 用法
 
@@ -31,11 +41,13 @@ deno run -A src/cli.ts maintain logs server,ui --follow
 deno run -A src/cli.ts maintain config check
 deno run -A src/cli.ts maintain config show
 deno run -A src/cli.ts maintain config set env.DOMAIN example.com
+deno run -A src/cli.ts maintain verify
 deno run -A src/cli.ts maintain backup create [--backup-dir DIR] [--passphrase-file FILE] [--zstd-level N] [--no-encrypt]
 deno run -A src/cli.ts maintain backup verify <snapshot> [--passphrase-file FILE]
 deno run -A src/cli.ts maintain backup restore <snapshot> [--confirm] [--passphrase-file FILE] [--include-deploy-configs]
 deno run -A src/cli.ts maintain backup drill <snapshot> [--passphrase-file FILE] [--report FILE]
 deno run -A src/cli.ts maintain reset [--confirm] [--include-deploy-configs]
+deno run -A src/cli.ts run-server [--dir /opt/neuro-oj]
 ```
 
 ## 测试

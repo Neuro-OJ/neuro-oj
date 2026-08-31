@@ -2,6 +2,10 @@ import type { DeployConfig, DeployState } from "../config/types.ts";
 import { loadDeployment } from "../config/load.ts";
 import { DEPLOY_FILE, SECRETS_FILE } from "../config/io.ts";
 import { deployDown } from "../deploy/deploy.ts";
+import { COMPOSE_FILE, ensureComposeFile } from "../deploy/compose.ts";
+import { dockerDown, dockerUpServices } from "../deploy/docker.ts";
+import type { CommandRunner } from "../runtime/command.ts";
+import { realRunner } from "../runtime/command.ts";
 import {
   type BackupDriver,
   fileSha256Hex,
@@ -299,6 +303,7 @@ export interface BackupRestoreOptions {
   passphraseFile?: string;
   includeDeployConfigs?: boolean;
   driver?: BackupDriver;
+  runner?: CommandRunner;
 }
 
 /** backup restore：仅恢复数据；--include-deploy-configs 时连同配置一起恢复。 */
@@ -308,12 +313,12 @@ export async function backupRestore(
   if (!opts.confirm) {
     throw new Error("restore 需要 --confirm 确认");
   }
+  const runner = opts.runner ?? realRunner();
   const { config, secrets } = await loadDeployment(opts.dir);
-  const downState = await deployDown({ dir: opts.dir });
-  void downState; // 已 down
+  const downState = await deployDown({ dir: opts.dir, runner });
   // 目标必须已停止
-  if (config.state !== "stopped") {
-    throw new Error(`restore 要求目标已停止，当前状态: ${config.state}`);
+  if (downState !== "stopped") {
+    throw new Error(`restore 要求目标已停止，当前状态: ${downState}`);
   }
   const driver = opts.driver!;
   const snap = opts.snapshotPath;
@@ -322,7 +327,25 @@ export async function backupRestore(
     opts.passphraseFile,
     driver,
   );
+  const infraServices = Object.entries(config.components)
+    .filter(([name, c]) =>
+      c.enabled && c.method === "docker" &&
+      (name === "postgres" || name === "redis" || name === "minio")
+    )
+    .map(([name]) => name);
+  let infraStarted = false;
   try {
+    if (infraServices.length > 0) {
+      const composePath = `${opts.dir}/${COMPOSE_FILE}`;
+      await ensureComposeFile(opts.dir, config, secrets);
+      const upRes = await dockerUpServices(runner, composePath, infraServices);
+      if (upRes.code !== 0) {
+        throw new Error(
+          `restore 前启动基础设施失败: ${upRes.stderr || upRes.stdout}`,
+        );
+      }
+      infraStarted = true;
+    }
     await driver.restoreDataDumps(config, secrets, staging);
     if (opts.includeDeployConfigs) {
       if (manifest === null) {
@@ -355,6 +378,9 @@ export async function backupRestore(
     }
     return "stopped";
   } finally {
+    if (infraStarted) {
+      await dockerDown(runner, `${opts.dir}/${COMPOSE_FILE}`);
+    }
     await Deno.remove(staging, { recursive: true }).catch(() => {});
   }
 }

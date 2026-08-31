@@ -56,6 +56,7 @@ export { fileExists } from "./util/fs.ts";
 export { pidPath, readPid, removePid, writePid } from "./runtime/pidfile.ts";
 export {
   processLaunch,
+  runServerForeground,
   startManagedProcess,
   stopManagedProcess,
 } from "./runtime/process.ts";
@@ -66,7 +67,12 @@ export {
   ensureComposeFile,
   renderCompose,
 } from "./deploy/compose.ts";
-export { dockerDown, dockerPs, dockerUp } from "./deploy/docker.ts";
+export {
+  dockerDown,
+  dockerPs,
+  dockerUp,
+  dockerUpServices,
+} from "./deploy/docker.ts";
 export { downIsNoOp, nextState, upIsNoOp, writeState } from "./deploy/state.ts";
 export {
   deployDown,
@@ -93,10 +99,12 @@ export {
   configCheck,
   configSet,
   configShow,
+  maintainVerify,
   maskSecrets,
   parseConfigValue,
   setByPath,
 } from "./maintain/config.ts";
+export type { VerifyReport as MaintainVerifyReport } from "./maintain/config.ts";
 
 // maintain/backup（P4）
 export {
