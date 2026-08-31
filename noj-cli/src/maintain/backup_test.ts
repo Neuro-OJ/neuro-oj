@@ -3,6 +3,9 @@ import type { DeployConfig, SecretsConfig } from "../config/types.ts";
 import type { BackupDriver, DumpEntry } from "./backup_driver.ts";
 import {
   backupCreate,
+  backupDrill,
+  backupRestore,
+  backupVerify,
   resolvePassphraseFile,
   snapshotFileName,
   writeSha256Sums,
@@ -62,20 +65,34 @@ async function writeFixture(
 /** 记录调用、返回 fake dump 的 fake driver。 */
 function fakeDriver(): BackupDriver {
   return {
-    async archive(stagingDir, _dest, _level) {
-      // 真实实现会打包；fake 直接把 staging 内容复制到 dest 作为"压缩后"文件
-      const entries = await Array.fromAsync(Deno.readDir(stagingDir));
-      for (const e of entries) {
-        if (e.isFile) {
-          const content = await Deno.readTextFile(`${stagingDir}/${e.name}`);
-          await Deno.writeTextFile(`${_dest}.${e.name}`, content);
+    async archive(stagingDir, dest, _level) {
+      // fake 用 JSON 容器模拟 tar+zstd：{ files: { relPath: content } }
+      const files: Record<string, string> = {};
+      async function walk(dir: string, base: string): Promise<void> {
+        for await (const e of Deno.readDir(dir)) {
+          const full = `${dir}/${e.name}`;
+          const rel = `${base}${e.name}`;
+          if (e.isDirectory) {
+            await walk(full, `${rel}/`);
+          } else {
+            files[rel] = await Deno.readTextFile(full);
+          }
         }
       }
-      await Deno.writeTextFile(_dest, "fake-archive");
+      await walk(stagingDir, "");
+      await Deno.writeTextFile(dest, JSON.stringify({ files }));
     },
     async extract(archive, destDir) {
-      await Deno.writeTextFile(`${destDir}/SUCCESS`, "ok");
-      void archive;
+      await Deno.mkdir(destDir, { recursive: true });
+      const data = JSON.parse(await Deno.readTextFile(archive)) as {
+        files: Record<string, string>;
+      };
+      for (const [rel, content] of Object.entries(data.files)) {
+        const full = `${destDir}/${rel}`;
+        const idx = full.lastIndexOf("/");
+        if (idx > 0) await Deno.mkdir(full.slice(0, idx), { recursive: true });
+        await Deno.writeTextFile(full, content);
+      }
     },
     async gpgEncrypt(src, dest, _pf) {
       await Deno.copyFile(src, dest);
@@ -167,4 +184,74 @@ Deno.test("backupCreate: dev 类型拒绝", async () => {
     Error,
     "仅面向 prod",
   );
+});
+
+Deno.test("backupVerify: 合法快照 pass=true", async () => {
+  const dir = await Deno.makeTempDir();
+  await writeFixture(dir, prodConfig(), secrets());
+  await backupCreate({
+    dir,
+    backupDir: `${dir}/backups`,
+    noEncrypt: true,
+    driver: fakeDriver(),
+    zstdLevel: 15,
+  });
+  const entries = await Array.fromAsync(Deno.readDir(`${dir}/backups`));
+  const snap = `${dir}/backups/${entries[0]!.name}`;
+  const report = await backupVerify({
+    snapshotPath: snap,
+    driver: fakeDriver(),
+  });
+  assertEquals(report.pass, true);
+  assertEquals(report.errors.length, 0);
+});
+
+Deno.test("backupRestore: 要求 confirm 与 stopped 状态", async () => {
+  const dir = await Deno.makeTempDir();
+  await writeFixture(dir, prodConfig(), secrets());
+  // 未 confirm
+  await assertRejects(
+    () =>
+      backupRestore({
+        dir,
+        snapshotPath: "/nonexistent",
+        confirm: false,
+        driver: fakeDriver(),
+      }),
+    Error,
+    "confirm",
+  );
+  // 目标未停止（running）
+  await assertRejects(
+    () =>
+      backupRestore({
+        dir,
+        snapshotPath: "/nonexistent",
+        confirm: true,
+        driver: fakeDriver(),
+      }),
+    Error,
+    "已停止",
+  );
+});
+
+Deno.test("backupDrill: 写报告文件", async () => {
+  const dir = await Deno.makeTempDir();
+  await writeFixture(dir, prodConfig(), secrets());
+  await backupCreate({
+    dir,
+    backupDir: `${dir}/backups`,
+    noEncrypt: true,
+    driver: fakeDriver(),
+  });
+  const entries = await Array.fromAsync(Deno.readDir(`${dir}/backups`));
+  const snap = `${dir}/backups/${entries[0]!.name}`;
+  const reportPath = `${dir}/report.json`;
+  const report = await backupDrill({
+    snapshotPath: snap,
+    report: reportPath,
+    driver: fakeDriver(),
+  });
+  const text = await Deno.readTextFile(reportPath);
+  assertEquals(JSON.parse(text).pass, report.pass);
 });

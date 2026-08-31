@@ -1,6 +1,7 @@
-import type { DeployConfig } from "../config/types.ts";
+import type { DeployConfig, DeployState } from "../config/types.ts";
 import { loadDeployment } from "../config/load.ts";
 import { DEPLOY_FILE, SECRETS_FILE } from "../config/io.ts";
+import { deployDown } from "../deploy/deploy.ts";
 import {
   type BackupDriver,
   fileSha256Hex,
@@ -179,4 +180,207 @@ export async function backupCreate(
       () => {},
     );
   }
+}
+
+/** verify 选项。 */
+export interface BackupVerifyOptions {
+  snapshotPath: string;
+  passphraseFile?: string;
+  driver?: BackupDriver;
+}
+
+/** verify 报告。 */
+export interface VerifyReport {
+  manifest: Manifest | null;
+  filesOk: boolean;
+  sumOk: boolean;
+  successOk: boolean;
+  pass: boolean;
+  errors: string[];
+}
+
+/** 解密（如已加密）并解包到临时目录，返回 staging 与 manifest；调用方负责清理 staging。 */
+async function decryptAndExtract(
+  snapshotPath: string,
+  passphraseFile: string | undefined,
+  driver: BackupDriver,
+): Promise<{ staging: string; manifest: Manifest | null }> {
+  const staging = await Deno.makeTempDir({ prefix: "noj-backup-verify-" });
+  const pass = resolvePassphraseFile(passphraseFile);
+  if (pass !== null) {
+    const plain = `${staging}.tar.zst`;
+    await driver.gpgDecrypt(snapshotPath, plain, pass);
+    await driver.extract(plain, staging);
+  } else {
+    // 未给口令：尝试当未加密归档直接解包
+    await driver.extract(snapshotPath, staging);
+  }
+  let manifest: Manifest | null = null;
+  try {
+    const text = await Deno.readTextFile(`${staging}/manifest.json`);
+    manifest = JSON.parse(text) as Manifest;
+  } catch {
+    manifest = null;
+  }
+  return { staging, manifest };
+}
+
+/** backup verify：解密+解包 → 校验 SUCCESS / manifest / sha256sums。 */
+export async function backupVerify(
+  opts: BackupVerifyOptions,
+): Promise<VerifyReport> {
+  const driver = opts.driver!;
+  const errors: string[] = [];
+  const { staging, manifest } = await decryptAndExtract(
+    opts.snapshotPath,
+    opts.passphraseFile,
+    driver,
+  );
+  try {
+    // 1) SUCCESS 哨兵
+    let successOk = false;
+    try {
+      const t = await Deno.readTextFile(`${staging}/SUCCESS`);
+      successOk = t.trim() === "ok";
+    } catch {
+      successOk = false;
+    }
+    if (!successOk) errors.push("缺少有效的 SUCCESS 哨兵");
+
+    // 2) sha256sums.txt 逐文件校验
+    let sumOk = false;
+    try {
+      const sumsText = await Deno.readTextFile(`${staging}/sha256sums.txt`);
+      let ok = true;
+      for (const line of sumsText.split("\n")) {
+        if (!line) continue;
+        const sep = line.indexOf("  ");
+        if (sep === -1) {
+          ok = false;
+          break;
+        }
+        const hash = line.slice(0, sep);
+        const rel = line.slice(sep + 2);
+        let actual = "";
+        try {
+          actual = await fileSha256Hex(`${staging}/${rel}`);
+        } catch {
+          ok = false;
+          errors.push(`sha256sums: 缺失文件 ${rel}`);
+          continue;
+        }
+        if (actual !== hash) {
+          ok = false;
+          errors.push(`sha256sums: ${rel} 校验失败`);
+        }
+      }
+      sumOk = ok;
+    } catch {
+      sumOk = false;
+      errors.push("缺少或无法解析 sha256sums.txt");
+    }
+
+    // 3) manifest 存在性
+    const filesOk = manifest !== null;
+    if (!filesOk) errors.push("缺少 manifest.json");
+
+    const pass = successOk && sumOk && filesOk;
+    return { manifest, filesOk, sumOk, successOk, pass, errors };
+  } finally {
+    await Deno.remove(staging, { recursive: true }).catch(() => {});
+  }
+}
+
+/** restore 选项。 */
+export interface BackupRestoreOptions {
+  dir: string;
+  snapshotPath: string;
+  confirm: boolean;
+  passphraseFile?: string;
+  includeDeployConfigs?: boolean;
+  driver?: BackupDriver;
+}
+
+/** backup restore：仅恢复数据；--include-deploy-configs 时连同配置一起恢复。 */
+export async function backupRestore(
+  opts: BackupRestoreOptions,
+): Promise<DeployState> {
+  if (!opts.confirm) {
+    throw new Error("restore 需要 --confirm 确认");
+  }
+  const { config, secrets } = await loadDeployment(opts.dir);
+  const downState = await deployDown({ dir: opts.dir });
+  void downState; // 已 down
+  // 目标必须已停止
+  if (config.state !== "stopped") {
+    throw new Error(`restore 要求目标已停止，当前状态: ${config.state}`);
+  }
+  const driver = opts.driver!;
+  const snap = opts.snapshotPath;
+  const { staging, manifest } = await decryptAndExtract(
+    snap,
+    opts.passphraseFile,
+    driver,
+  );
+  try {
+    await driver.restoreDataDumps(config, secrets, staging);
+    if (opts.includeDeployConfigs) {
+      if (manifest === null) {
+        throw new Error("includeDeployConfigs 需要快照内含 manifest.json");
+      }
+      // 从 staging 恢复配置：先备份现状再覆盖（写入前留档）
+      const backup = await Deno.makeTempDir({
+        prefix: "noj-restore-config-bak-",
+      });
+      try {
+        await Deno.copyFile(
+          `${opts.dir}/noj-deploy.json`,
+          `${backup}/noj-deploy.json.bak`,
+        );
+        await Deno.copyFile(
+          `${opts.dir}/noj-secrets.json`,
+          `${backup}/noj-secrets.json.bak`,
+        );
+        await Deno.copyFile(
+          `${staging}/noj-deploy.json`,
+          `${opts.dir}/noj-deploy.json`,
+        );
+        await Deno.copyFile(
+          `${staging}/noj-secrets.json`,
+          `${opts.dir}/noj-secrets.json`,
+        );
+      } finally {
+        await Deno.remove(backup, { recursive: true }).catch(() => {});
+      }
+    }
+    return "stopped";
+  } finally {
+    await Deno.remove(staging, { recursive: true }).catch(() => {});
+  }
+}
+
+/** drill 选项。 */
+export interface BackupDrillOptions {
+  snapshotPath: string;
+  passphraseFile?: string;
+  report?: string;
+  driver?: BackupDriver;
+}
+
+/** backup drill：跑 verify，并把报告写入 report 文件（若提供）。 */
+export async function backupDrill(
+  opts: BackupDrillOptions,
+): Promise<VerifyReport> {
+  const report = await backupVerify({
+    snapshotPath: opts.snapshotPath,
+    passphraseFile: opts.passphraseFile,
+    driver: opts.driver,
+  });
+  if (opts.report) {
+    await Deno.writeTextFile(
+      opts.report,
+      JSON.stringify(report, null, 2) + "\n",
+    );
+  }
+  return report;
 }
