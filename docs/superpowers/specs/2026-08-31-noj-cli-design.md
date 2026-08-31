@@ -144,7 +144,7 @@ noj-cli
   - `sha256sums.txt`
   - `noj-deploy.json`
   - `noj-secrets.json`
-  - `postgres.dump`、`postgres-globals.sql`、`postgres.restore-list`
+  - `postgres.dump`、`postgres-globals.sql`
   - `redis.rdb`、`redis-persistence.txt`
   - `minio/`
   - `SUCCESS`
