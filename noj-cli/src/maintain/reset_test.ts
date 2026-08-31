@@ -92,6 +92,24 @@ function fakeRunner(): CommandRunner {
   };
 }
 
+/** up 失败但记录 down 调用的 runner，用于验证失败后仍清理。 */
+function failingUpRunner(downCalls: number[]): CommandRunner {
+  return {
+    run(cmd, args) {
+      if (cmd === "docker" && args.includes("up")) {
+        return Promise.resolve({ code: 1, stdout: "", stderr: "up failed" });
+      }
+      if (cmd === "docker" && args.includes("down")) {
+        downCalls.push(1);
+      }
+      return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+    },
+    spawn(_opts: SpawnOpts): SpawnHandle {
+      throw new Error("fake runner 不 spawn");
+    },
+  };
+}
+
 Deno.test("maintainReset: 需 --confirm", async () => {
   const dir = await Deno.makeTempDir();
   await writeFixture(dir, prodConfig(), secrets());
@@ -149,4 +167,22 @@ Deno.test("maintainReset: --include-deploy-configs 连配置一起清，置 unin
   // 配置文件被删除
   await assertRejects(() => Deno.stat(`${dir}/noj-deploy.json`), Error);
   await assertRejects(() => Deno.stat(`${dir}/noj-secrets.json`), Error);
+});
+
+Deno.test("maintainReset: 基础设施启动失败时仍执行 down 清理", async () => {
+  const dir = await Deno.makeTempDir();
+  await writeFixture(dir, prodConfig(), secrets());
+  const downCalls: number[] = [];
+  await assertRejects(
+    () =>
+      maintainReset({
+        dir,
+        confirm: true,
+        driver: fakeDriver([]),
+        runner: failingUpRunner(downCalls),
+      }),
+    Error,
+    "启动基础设施失败",
+  );
+  assertEquals(downCalls.length >= 1, true);
 });

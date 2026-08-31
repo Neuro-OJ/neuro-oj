@@ -128,6 +128,24 @@ function fakeRunner(): CommandRunner {
   };
 }
 
+/** up 失败但记录 down 调用的 runner，用于验证失败后仍清理。 */
+function failingUpRunner(downCalls: number[]): CommandRunner {
+  return {
+    run(cmd, args) {
+      if (cmd === "docker" && args.includes("up")) {
+        return Promise.resolve({ code: 1, stdout: "", stderr: "up failed" });
+      }
+      if (cmd === "docker" && args.includes("down")) {
+        downCalls.push(1);
+      }
+      return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+    },
+    spawn(_opts: SpawnOpts): SpawnHandle {
+      throw new Error("fake runner 不 spawn");
+    },
+  };
+}
+
 Deno.test("snapshotFileName: 生成合法快照文件名", () => {
   const name = snapshotFileName(new Date("2026-08-31T12:34:56Z"));
   assertEquals(name, "snapshot-2026-08-31T12-34-56Z.nojbackup");
@@ -306,4 +324,31 @@ Deno.test("backupRestore --include-deploy-configs: 恢复后强制 state=stopped
     await Deno.readTextFile(`${dir}/noj-deploy.json`),
   ) as DeployConfig;
   assertEquals(saved.state, "stopped");
+});
+
+Deno.test("backupRestore: 基础设施启动失败时仍执行 down 清理", async () => {
+  const dir = await Deno.makeTempDir();
+  await writeFixture(dir, prodConfig(), secrets());
+  await backupCreate({
+    dir,
+    backupDir: `${dir}/backups`,
+    noEncrypt: true,
+    driver: fakeDriver(),
+  });
+  const entries = await Array.fromAsync(Deno.readDir(`${dir}/backups`));
+  const snap = `${dir}/backups/${entries[0]!.name}`;
+  const downCalls: number[] = [];
+  await assertRejects(
+    () =>
+      backupRestore({
+        dir,
+        snapshotPath: snap,
+        confirm: true,
+        driver: fakeDriver(),
+        runner: failingUpRunner(downCalls),
+      }),
+    Error,
+    "启动基础设施失败",
+  );
+  assertEquals(downCalls.length >= 1, true);
 });
