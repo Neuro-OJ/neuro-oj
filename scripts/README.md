@@ -1,21 +1,30 @@
 # scripts/ — 脚本总览
 
 Neuro OJ 仓库根目录的脚本统一存放点。部署与运维入口已统一为 `noj-cli`，
-旧版 `scripts/deploy/*.sh`、`scripts/dev/devtool.sh` 与根目录 `noj` 命令已移除。
+旧版 `setup.sh`、`scripts/deploy/*.sh`、`scripts/dev/devtool.sh` 与根目录
+`noj` 命令已移除。
 
-## 唯一部署/运维入口
+## 唯一安装/部署/运维入口
 
-- 首次安装：`setup.sh`（薄引导，只下载/校验 `noj-cli-linux-amd64`）
-- 日常部署与运维：`noj-cli`（`doctor` / `deploy` / `maintain` / `run-server` / `version`）
+`noj-cli` 是唯一入口：直接下载二进制，然后由它完成 doctor、deploy、maintain 等。
 
 ```bash
-# 从源码运行 noj-cli（开发/测试）
+# 下载并运行 noj-cli（生产/安装）
+curl -fsSL -o noj-cli \
+  https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/noj-cli-linux-amd64
+chmod +x noj-cli
+./noj-cli doctor
+./noj-cli deploy init --mode prod --dir /opt/neuro-oj
+./noj-cli deploy up --dir /opt/neuro-oj
+./noj-cli maintain logs
+./noj-cli maintain backup create
+```
+
+从源码运行（开发/测试）：
+
+```bash
 cd noj-cli
 deno run -A src/cli.ts doctor
-deno run -A src/cli.ts deploy init --mode dev --dir /opt/neuro-oj
-deno run -A src/cli.ts deploy up --dir /opt/neuro-oj
-deno run -A src/cli.ts maintain logs
-deno run -A src/cli.ts maintain backup create
 ```
 
 ## 目录结构
@@ -27,8 +36,7 @@ scripts/
 ├── check-ci.ts            # CI 仓库级门禁入口
 ├── deploy/                # 仅保留 noj-cli 相关校验门禁（TypeScript）
 │   ├── verify-build-server.ts
-│   ├── verify-compose-server.ts
-│   └── verify-setup-thin.ts
+│   └── verify-compose-server.ts
 ├── staging/               # 生产候选版本验收门禁
 ├── e2e/                   # 跨模块 E2E 测试
 └── release/               # 发布供应链检查
@@ -38,7 +46,7 @@ scripts/
 
 | 我想...                                  | 使用                                                            |
 | ---------------------------------------- | --------------------------------------------------------------- |
-| **一条命令安装整套 NOJ**                  | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh \| bash` |
+| **下载 noj-cli（唯一安装入口）**          | `curl -fsSL -o noj-cli https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/noj-cli-linux-amd64 && chmod +x noj-cli` |
 | **环境检测**                             | `cd noj-cli && deno run -A src/cli.ts doctor`                   |
 | **初始化部署配置**                       | `cd noj-cli && deno run -A src/cli.ts deploy init --mode dev\|prod --dir /opt/neuro-oj` |
 | **启动/停止/重启/状态**                  | `noj-cli deploy up\|down\|restart\|status --dir /opt/neuro-oj`   |

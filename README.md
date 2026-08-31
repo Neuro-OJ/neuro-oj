@@ -117,17 +117,24 @@ NOJ 当前持久化数据卷约 66 MiB，生产镜像（含 Evaluator、Solution
 
 ### 一键部署
 
-生产环境推荐使用仓库根目录的一键安装入口 `setup.sh`。它是仅下载并校验 `noj-cli`
-二进制的薄引导：先检查当前主机（Linux / amd64 / 基础工具），从 GitHub Releases
-下载 `noj-cli-linux-amd64` 并做 SHA-256 校验，然后交由 `noj-cli` 完成环境
+生产环境推荐直接下载 `noj-cli` 二进制作为唯一安装入口，由 `noj-cli` 完成环境
 检测（doctor）与生产部署（deploy init / deploy up）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash
+# 下载最新版 noj-cli（GitHub Release 资产）
+curl -fsSL -o noj-cli \
+  https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/noj-cli-linux-amd64
+chmod +x noj-cli
+
+# 环境检测
+./noj-cli doctor
+
+# 初始化并部署（示例）
+./noj-cli deploy init --mode prod --dir /opt/neuro-oj
+./noj-cli deploy up --dir /opt/neuro-oj
 ```
 
-如需先检查脚本，可先下载 `setup.sh` 再执行。安装完成后，服务启停、更新和管理统一
-使用安装目录中的 `noj-cli` 命令。
+安装完成后，服务启停、更新和管理统一使用 `noj-cli` 命令。
 
 部署完成后，通过配置的域名访问：
 
@@ -151,8 +158,7 @@ noj-cli maintain config check       # 只校验配置，不改变服务状态
 
 `noj-cli` 是统一部署与运维入口，覆盖 `doctor`、`deploy`、`maintain`、`run-server`
 与 `version`。`noj-cli` 不提供升级/卸载子命令；配置变更与数据管理见
-`noj-cli maintain config` 与 `noj-cli maintain reset`。首次通过 `setup.sh` 安装成功后，
-`noj-cli` 会安装到 `NOJ_INSTALL_DIR`（默认 `/opt/neuro-oj`）并注册 `noj` 软链接。
+`noj-cli maintain config` 与 `noj-cli maintain reset`。
 
 更多部署、TLS、备份和升级说明见 [`deploy/README.md`](./deploy/README.md) 和[生产部署文档](./noj-docs/docs/operators/production-deploy.md)。
 

@@ -4,9 +4,10 @@ Status: implemented
 
 ## Problem
 
-`setup.sh` 与 `noj-cli` 的按需下载依赖 GitHub Release 附带
-`noj-cli-linux-amd64` / `noj-server-linux-amd64` 资产，但 Release CI 只构建
-Docker 镜像，从未上传二进制资产，导致下载功能实际不可用。
+`noj-cli` 作为唯一安装入口，直接依赖 GitHub Release 附带
+`noj-cli-linux-amd64` / `noj-server-linux-amd64` 资产；同时 `noj-cli` 的按需下载
+也依赖这些资产。但 Release CI 只构建 Docker 镜像，从未上传二进制资产，导致
+下载功能实际不可用。
 
 ## Decision
 
@@ -21,13 +22,12 @@ Docker 镜像，从未上传二进制资产，导致下载功能实际不可用�
 
 ## Alternatives considered
 
-- 在 `setup.sh` 中同时下载 noj-server：会让薄引导重新变厚，且无法覆盖
-  `deploy up` 时版本升级/缺失的场景。
+- 继续让用户分别下载 noj-cli / noj-server：入口分散，且无法保证与镜像版本一致。
 - 手动上传资产：容易遗漏，且无法与镜像发布保持同一版本节奏。
 
 ## Consequences
 
-- Release 发布后会自动附带 noj-cli / noj-server 二进制与校验文件，`setup.sh`
-  和 `noj-cli download` 可正常使用。
+- Release 发布后会自动附带 noj-cli / noj-server 二进制与校验文件，用户可直接
+  下载 `noj-cli` 使用，`noj-cli` 的 `deploy up` / `run-server` 按需下载也可正常使用。
 - `build-binaries` 与镜像构建并行执行，均依赖 `supply-chain-check` 通过。
 - 上传需要 `contents: write` 权限，仅在该 job 内授予，不影响其他 job 的最小权限。
