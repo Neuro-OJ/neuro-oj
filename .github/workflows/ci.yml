@@ -660,7 +660,7 @@ jobs:
           cache-name: judge-sccache
 
       - name: 安装 cargo-nextest（并行测试运行器）
-        uses: taiki-e/install-action@v2.86.5
+        uses: taiki-e/install-action@v2.87.0
         with:
           tool: cargo-nextest
 
