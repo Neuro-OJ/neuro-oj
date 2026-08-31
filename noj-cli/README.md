@@ -25,6 +25,11 @@ build:server`；`docker-compose.prod.yml` 中镜像/服务改名为
 的薄引导；README / deploy/README / noj-docs
 生产部署文档已迁移到新命名与薄引导流程。
 
+P5 补充：`deploy up` 与 `run-server` 在 process 模式且未配置 `dev_command`
+时，会自动从 GitHub Releases 下载并校验 `noj-server-linux-amd64`
+（SHA-256），缓存到 `<install_dir>/bin/`；`deploy init` 会尝试解析最新版本号，
+网络不可用时回退到内置默认版本。
+
 ## 用法
 
 ```bash
@@ -67,7 +72,7 @@ deno task check
 - `src/doctor/` 环境检测（probe/checks/doctor/report）
 - `src/tui/` 交互抽象与表单控件（io/widgets）
 - `src/init/` deploy init 引导（templates/secrets/wizard）
-- `src/runtime/` 命令/进程抽象（command/pidfile/process/logfile）
+- `src/runtime/` 命令/进程抽象（command/pidfile/process/logfile/download）
 - `src/deploy/` 部署编排（compose/docker/state/deploy）
 - `src/maintain/` 运维编排（logs/config/backup/reset）
 - `src/util/fs.ts` 文件工具

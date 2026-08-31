@@ -14,6 +14,7 @@ import { fileExists } from "../util/fs.ts";
 import { COMPOSE_FILE, ensureComposeFile } from "./compose.ts";
 import { dockerDown, dockerPs, dockerUp } from "./docker.ts";
 import { startManagedProcess, stopManagedProcess } from "../runtime/process.ts";
+import { ensureNojServerBinary } from "../runtime/download.ts";
 import { readPid, removePid } from "../runtime/pidfile.ts";
 import { downIsNoOp, upIsNoOp, writeState } from "./state.ts";
 
@@ -77,11 +78,23 @@ async function startProcesses(
     if (!comp.enabled || comp.method !== "process") continue;
     const env = resolveComponentEnv(config, secrets, name);
     try {
+      let resolvedComp = comp;
+      if (
+        !comp.dev_command &&
+        (comp.binary === "noj-server" ||
+          (comp.binary === undefined && name === "server"))
+      ) {
+        const bin = await ensureNojServerBinary({
+          installDir: config.install_dir,
+          version: config.version.noj_server,
+        });
+        resolvedComp = { ...comp, binary: bin };
+      }
       await startManagedProcess(
         runner,
         runDir,
         name,
-        comp,
+        resolvedComp,
         env,
         config.install_dir,
       );

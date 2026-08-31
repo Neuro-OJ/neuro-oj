@@ -166,10 +166,14 @@ Deno.test("runServerForeground: 前台 spawn server 并返回退出码", async (
       secrets: {},
     }),
   );
+  // 预置本地 noj-server 二进制，避免测试触发网络下载。
+  await Deno.mkdir(`${dir}/bin`, { recursive: true });
+  await Deno.writeTextFile(`${dir}/bin/noj-server`, "#!/bin/sh\n");
+  await Deno.writeTextFile(`${dir}/bin/noj-server.version`, "0.1.0\n");
   const spawned: SpawnOpts[] = [];
   const runner = fakeRunner(spawned, []);
   const code = await runServerForeground({ dir, runner });
   assertEquals(code, 0);
-  assertEquals(spawned[0]!.cmd, "noj-server");
+  assertEquals(spawned[0]!.cmd, `${dir}/bin/noj-server`);
   assertEquals(spawned[0]!.cwd, dir);
 });

@@ -1,7 +1,12 @@
 import type { ComponentConfig, DeployConfig } from "../config/types.ts";
 import { SCHEMA_VERSION } from "../config/types.ts";
+import { DEFAULT_NOJ_SERVER_VERSION } from "../runtime/download.ts";
 
-function baseConfig(type: "dev" | "prod", installDir: string): DeployConfig {
+function baseConfig(
+  type: "dev" | "prod",
+  installDir: string,
+  version: string = DEFAULT_NOJ_SERVER_VERSION,
+): DeployConfig {
   const now = new Date().toISOString();
   return {
     schema_version: SCHEMA_VERSION,
@@ -10,7 +15,7 @@ function baseConfig(type: "dev" | "prod", installDir: string): DeployConfig {
     created_at: now,
     updated_at: now,
     install_dir: installDir,
-    version: { noj_cli: "0.1.0", noj_server: "0.1.0" },
+    version: { noj_cli: version, noj_server: version },
     env: {
       LOG_LEVEL: "info",
       LOG_FORMAT: "json",
@@ -34,8 +39,12 @@ function dockerComponent(
 }
 
 /** dev 模式模板：基础设施走 docker，server/ui 走本地进程。 */
-export function devTemplate(installDir: string, port: number): DeployConfig {
-  const cfg = baseConfig("dev", installDir);
+export function devTemplate(
+  installDir: string,
+  port: number,
+  version: string = DEFAULT_NOJ_SERVER_VERSION,
+): DeployConfig {
+  const cfg = baseConfig("dev", installDir, version);
   cfg.env["PORT"] = String(port);
   cfg.components = {
     postgres: dockerComponent({
@@ -112,7 +121,7 @@ export function devTemplate(installDir: string, port: number): DeployConfig {
     judge: {
       enabled: false,
       method: "docker",
-      image: "ghcr.io/neuro-oj/noj-judge:0.1.0",
+      image: `ghcr.io/neuro-oj/noj-judge:${version}`,
       env: {},
     },
     nginx: {
@@ -136,11 +145,13 @@ export interface ProdTemplateOptions {
   port: number;
   judgeEnabled: boolean;
   emailProvider: "disabled" | "smtp";
+  version?: string;
 }
 
 /** prod 模式模板：全部走 docker，nginx 启用。 */
 export function prodTemplate(opts: ProdTemplateOptions): DeployConfig {
-  const cfg = baseConfig("prod", opts.installDir);
+  const version = opts.version ?? DEFAULT_NOJ_SERVER_VERSION;
+  const cfg = baseConfig("prod", opts.installDir, version);
   const scheme = opts.https ? "https" : "http";
   cfg.env = {
     ...cfg.env,
@@ -201,7 +212,7 @@ export function prodTemplate(opts: ProdTemplateOptions): DeployConfig {
       },
     }),
     server: dockerComponent({
-      image: "ghcr.io/neuro-oj/noj-server:0.1.0",
+      image: `ghcr.io/neuro-oj/noj-server:${version}`,
       port: 8000,
       host_port: null,
       env: {
@@ -217,7 +228,7 @@ export function prodTemplate(opts: ProdTemplateOptions): DeployConfig {
       },
     }),
     ui: dockerComponent({
-      image: "ghcr.io/neuro-oj/noj-ui:0.1.0",
+      image: `ghcr.io/neuro-oj/noj-ui:${version}`,
       port: 3000,
       host_port: null,
       env: {
@@ -228,7 +239,7 @@ export function prodTemplate(opts: ProdTemplateOptions): DeployConfig {
       },
     }),
     llm_gateway: dockerComponent({
-      image: "ghcr.io/neuro-oj/noj-llm-gateway:0.1.0",
+      image: `ghcr.io/neuro-oj/noj-llm-gateway:${version}`,
       port: 8001,
       host_port: null,
       env: {
@@ -238,7 +249,7 @@ export function prodTemplate(opts: ProdTemplateOptions): DeployConfig {
       },
     }),
     judge: dockerComponent({
-      image: "ghcr.io/neuro-oj/noj-judge:0.1.0",
+      image: `ghcr.io/neuro-oj/noj-judge:${version}`,
       enabled: opts.judgeEnabled,
       env: {
         REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0",

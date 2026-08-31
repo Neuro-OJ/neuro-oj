@@ -38,6 +38,7 @@ Deno.test("runInitWizard: dev 模式（显式 mode）生成 dev 配置", async (
   const { config, secrets } = await runInitWizard(io, okProbe(), {
     mode: "dev",
     installDir: "/opt/neuro-oj",
+    version: "0.1.0",
   });
   assertEquals(config.type, "dev");
   assertEquals(config.state, "stopped");
@@ -49,6 +50,7 @@ Deno.test("runInitWizard: 未指定 mode 时先选择模式（选 prod）", asyn
   const io = new FakeIO(["2", "oj.example.com", "y", "8080", "n", "1", "y"]);
   const { config } = await runInitWizard(io, okProbe(), {
     installDir: "/opt/neuro-oj",
+    version: "0.1.0",
   });
   assertEquals(config.type, "prod");
   assertEquals(config.env["DOMAIN"], "oj.example.com");
@@ -61,6 +63,7 @@ Deno.test("runInitWizard: 摘要确认 n 时抛错", async () => {
     await runInitWizard(io, okProbe(), {
       mode: "dev",
       installDir: "/opt/neuro-oj",
+      version: "0.1.0",
     });
   } catch {
     threw = true;

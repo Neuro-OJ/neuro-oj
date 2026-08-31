@@ -52,6 +52,11 @@ export type {
   SpawnOpts,
 } from "./runtime/command.ts";
 export { realRunner } from "./runtime/command.ts";
+export {
+  DEFAULT_NOJ_SERVER_VERSION,
+  ensureNojServerBinary,
+  resolveLatestVersion,
+} from "./runtime/download.ts";
 export { fileExists } from "./util/fs.ts";
 export { pidPath, readPid, removePid, writePid } from "./runtime/pidfile.ts";
 export {

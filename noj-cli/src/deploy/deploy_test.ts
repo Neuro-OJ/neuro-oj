@@ -66,6 +66,10 @@ async function writeFixture(
 ): Promise<void> {
   await Deno.mkdir(dir, { recursive: true });
   await Deno.mkdir(`${dir}/run`, { recursive: true });
+  // 预置本地 noj-server 二进制，避免测试触发网络下载。
+  await Deno.mkdir(`${dir}/bin`, { recursive: true });
+  await Deno.writeTextFile(`${dir}/bin/noj-server`, "#!/bin/sh\n");
+  await Deno.writeTextFile(`${dir}/bin/noj-server.version`, "0.1.0\n");
   await Deno.writeTextFile(
     `${dir}/noj-deploy.json`,
     JSON.stringify(config(state, dir)),

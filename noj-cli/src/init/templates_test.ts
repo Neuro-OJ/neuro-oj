@@ -59,3 +59,38 @@ Deno.test("prodTemplate: prod 模式，全部 docker，nginx 启用，judge 按�
   assertEquals(cfg.env["DOMAIN"], "oj.example.com");
   assertEquals(cfg.env["APP_URL"], "https://oj.example.com");
 });
+
+Deno.test("devTemplate: 自定义版本写入 version 与 judge 镜像", () => {
+  const cfg = devTemplate("/opt/neuro-oj", 8080, "0.2.0");
+  assertEquals(cfg.version.noj_server, "0.2.0");
+  assertEquals(
+    cfg.components["judge"]!.image,
+    "ghcr.io/neuro-oj/noj-judge:0.2.0",
+  );
+});
+
+Deno.test("prodTemplate: 自定义版本写入 version 与全部镜像", () => {
+  const cfg = prodTemplate({
+    installDir: "/opt/neuro-oj",
+    domain: "oj.example.com",
+    https: true,
+    port: 8080,
+    judgeEnabled: true,
+    emailProvider: "disabled",
+    version: "0.2.0",
+  });
+  assertEquals(cfg.version.noj_server, "0.2.0");
+  assertEquals(
+    cfg.components["server"]!.image,
+    "ghcr.io/neuro-oj/noj-server:0.2.0",
+  );
+  assertEquals(cfg.components["ui"]!.image, "ghcr.io/neuro-oj/noj-ui:0.2.0");
+  assertEquals(
+    cfg.components["llm_gateway"]!.image,
+    "ghcr.io/neuro-oj/noj-llm-gateway:0.2.0",
+  );
+  assertEquals(
+    cfg.components["judge"]!.image,
+    "ghcr.io/neuro-oj/noj-judge:0.2.0",
+  );
+});

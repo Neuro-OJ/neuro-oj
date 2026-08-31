@@ -5,6 +5,7 @@ import { logPath } from "./logfile.ts";
 import { loadDeployment } from "../config/load.ts";
 import { resolveComponentEnv } from "../config/merge.ts";
 import { realRunner } from "./command.ts";
+import { ensureNojServerBinary } from "./download.ts";
 
 /** 由 ComponentConfig 生成进程启动参数。 */
 export function processLaunch(
@@ -70,7 +71,18 @@ export async function runServerForeground(
     throw new Error("run-server 仅支持 method=process 的 server 组件");
   }
   const env = resolveComponentEnv(config, secrets, "server");
-  const launch = processLaunch(comp, env, config.install_dir);
+  let resolvedComp = comp;
+  if (
+    !comp.dev_command &&
+    (comp.binary === "noj-server" || comp.binary === undefined)
+  ) {
+    const bin = await ensureNojServerBinary({
+      installDir: config.install_dir,
+      version: config.version.noj_server,
+    });
+    resolvedComp = { ...comp, binary: bin };
+  }
+  const launch = processLaunch(resolvedComp, env, config.install_dir);
   const handle = (opts.runner ?? realRunner()).spawn({
     ...launch,
     cwd: config.install_dir,

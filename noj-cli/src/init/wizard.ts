@@ -10,22 +10,29 @@ import {
 } from "./templates.ts";
 import { generateSecrets } from "./secrets.ts";
 import type { DeployConfig, SecretsConfig } from "../config/types.ts";
+import {
+  DEFAULT_NOJ_SERVER_VERSION,
+  resolveLatestVersion,
+} from "../runtime/download.ts";
 
 /** init 引导选项。 */
 export interface InitOptions {
   mode?: "dev" | "prod";
   port?: number;
   installDir: string;
+  /** 精确版本号；缺省时尝试从 GitHub 解析最新版。 */
+  version?: string;
 }
 
 /** 引导 dev 模式：组件开关、端口、数据目录。 */
 async function guideDev(
   io: PromptIO,
   opts: InitOptions,
+  version: string,
 ): Promise<{ config: DeployConfig; secrets: SecretsConfig }> {
   const port = Number(await input(io, "对外端口", String(opts.port ?? 8080)));
   const dataDir = await input(io, "数据目录", `${opts.installDir}/data`);
-  const config = devTemplate(opts.installDir, port);
+  const config = devTemplate(opts.installDir, port, version);
   config.env["DATA_DIR"] = dataDir;
   const secrets = generateSecrets("dev");
   return { config, secrets };
@@ -35,6 +42,7 @@ async function guideDev(
 async function guideProd(
   io: PromptIO,
   opts: InitOptions,
+  version: string,
 ): Promise<{ config: DeployConfig; secrets: SecretsConfig }> {
   const domain = await input(io, "网站地址（域名）", "oj.example.com");
   const https = await confirm(io, "启用 HTTPS", true);
@@ -49,6 +57,7 @@ async function guideProd(
     port,
     judgeEnabled,
     emailProvider,
+    version,
   };
   const config = prodTemplate(tplOpts);
   const secrets = generateSecrets("prod");
@@ -72,6 +81,20 @@ export async function runInitWizard(
     mode = idx === 0 ? "dev" : "prod";
   }
 
+  // 解析最新精确版本号（网络失败时回退默认版本）。
+  let version = opts.version ?? DEFAULT_NOJ_SERVER_VERSION;
+  if (opts.version === undefined) {
+    try {
+      version = await resolveLatestVersion();
+    } catch (e) {
+      io.write(
+        `警告: 无法解析最新版本，使用默认 ${version}: ${
+          (e as Error).message
+        }\n`,
+      );
+    }
+  }
+
   // 自动运行 doctor 环境检测，彩色清单展示（不阻断）。
   const report = await runDoctor(probe, {
     port: opts.port ?? 8080,
@@ -80,8 +103,8 @@ export async function runInitWizard(
   io.write(formatReport(report) + "\n");
 
   const result = mode === "dev"
-    ? await guideDev(io, opts)
-    : await guideProd(io, opts);
+    ? await guideDev(io, opts, version)
+    : await guideProd(io, opts, version);
 
   io.write("=== 配置摘要 ===\n");
   io.write(`模式: ${result.config.type}\n`);
