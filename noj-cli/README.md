@@ -63,6 +63,13 @@ deno task test
 deno task check
 ```
 
+## 构建
+
+```bash
+cd noj-cli
+deno task build:cli   # 产出 bin/noj-cli-linux-amd64
+```
+
 ## 目录
 
 - `src/cli.ts` 命令分发入口
