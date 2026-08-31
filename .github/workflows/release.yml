@@ -45,7 +45,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: noj-core
+          - name: noj-server
             context: noj-core
             file: noj-core/Dockerfile
           - name: noj-ui
@@ -184,6 +184,25 @@ jobs:
             exit 1
           }
 
+      - name: 设置 GHCR 包可见性为 public
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.name }}
+        run: |
+          set -Eeuo pipefail
+          owner="${{ github.repository_owner }}"
+          pkg="${IMAGE#ghcr.io/}"
+          name="${pkg#*/}"
+          if gh api -X POST "/orgs/$owner/packages/container/$name/visibility" \
+            -f visibility=public >/dev/null 2>&1; then
+            echo "已设置 $IMAGE 为 public（org 包）"
+          elif gh api -X POST "/users/$owner/packages/container/$name/visibility" \
+            -f visibility=public >/dev/null 2>&1; then
+            echo "已设置 $IMAGE 为 public（user 包）"
+          else
+            echo "::warning::无法自动设置 $IMAGE 为 public，请手动在 GHCR 包设置中改为 public"
+          fi
+
       - name: 保存发布元数据
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.name }}
@@ -199,6 +218,77 @@ jobs:
           path: release-${{ matrix.name }}.txt
           if-no-files-found: error
           retention-days: 90
+
+  build-binaries:
+    name: 构建并发布 noj-server / noj-cli 二进制
+    needs: supply-chain-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.x
+
+      - name: 计算 Release 版本
+        id: meta
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          version="${{ github.event.release.tag_name || github.ref_name }}"
+          if [[ ! "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::版本必须是合法 Release tag（例如 v0.1.0 或 0.1.1-rc.1）：$version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: 编译 noj-cli
+        run: |
+          cd noj-cli
+          deno task build:cli
+          test -x bin/noj-cli-linux-amd64
+
+      - name: 编译 noj-server
+        run: |
+          cd noj-core
+          bash scripts/build-server.sh
+          test -x bin/noj-server
+
+      - name: 整理发布产物与 SHA-256
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p dist
+          cp noj-cli/bin/noj-cli-linux-amd64 dist/noj-cli-linux-amd64
+          cp noj-core/bin/noj-server dist/noj-server-linux-amd64
+          chmod +x dist/noj-cli-linux-amd64 dist/noj-server-linux-amd64
+          (cd dist && sha256sum noj-cli-linux-amd64 noj-server-linux-amd64 > SHA256SUMS.txt)
+          (cd dist && sha256sum noj-cli-linux-amd64 | awk '{print $1}' > noj-cli-linux-amd64.sha256)
+          (cd dist && sha256sum noj-server-linux-amd64 | awk '{print $1}' > noj-server-linux-amd64.sha256)
+          ls -lh dist
+
+      - name: 冒烟测试 noj-cli
+        run: ./dist/noj-cli-linux-amd64 version
+
+      - name: 上传二进制到 GitHub Release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          tag="${{ github.event.release.tag_name }}"
+          gh release upload "$tag" \
+            dist/noj-cli-linux-amd64 \
+            dist/noj-cli-linux-amd64.sha256 \
+            dist/noj-server-linux-amd64 \
+            dist/noj-server-linux-amd64.sha256 \
+            dist/SHA256SUMS.txt \
+            --clobber
 
   verify-release:
     name: 验证正式 Release 镜像
@@ -269,9 +359,9 @@ jobs:
 
             docker pull "$image@$digest" >/dev/null
             case "$image" in
-              */noj-core)
+              */noj-server)
                 docker run --rm --entrypoint /bin/sh "$image@$digest" -c \
-                  'test -x /app/bin/noj-core && test -x /app/bin/noj && test "$(id -u)" != 0'
+                  'test -x /app/bin/noj-server && test -x /app/bin/noj && test "$(id -u)" != 0'
                 ;;
               */noj-ui)
                 docker run --rm --entrypoint /bin/sh "$image@$digest" -c \

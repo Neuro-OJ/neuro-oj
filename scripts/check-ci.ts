@@ -8,6 +8,17 @@ if (import.meta.main) {
   await run(["deno", "run", "-A", "scripts/verify-md-links.ts"]);
   await run(["deno", "run", "-A", "scripts/verify-export-jsdoc.ts"]);
   await run(["deno", "run", "-A", "scripts/verify-capability-seams.ts"]);
+  await run(["deno", "run", "-A", "scripts/deploy/verify-build-server.ts"]);
+  await run(["deno", "run", "-A", "scripts/deploy/verify-compose-server.ts"]);
+  await run(["deno", "run", "-A", "scripts/deploy/verify-setup-thin.ts"]);
+  await run([
+    "deno",
+    "test",
+    "-A",
+    "scripts/deploy/verify-build-server_test.ts",
+    "scripts/deploy/verify-compose-server_test.ts",
+    "scripts/deploy/verify-setup-thin_test.ts",
+  ]);
   await run(["deno", "run", "-A", "scripts/gen-event-catalog.ts", "--check"]);
   await run(["deno", "run", "-A", "scripts/gen-route-catalog.ts", "--check"]);
   console.log("CI 仓库级门禁通过");

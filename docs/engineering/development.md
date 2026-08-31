@@ -18,12 +18,14 @@ docker compose up -d
 node scripts/install-git-hooks.mjs
 ```
 
-一键启动/停止：
+一键部署/运维（统一入口 `noj-cli`，旧 `devtool.sh` 已移除）：
 
 ```bash
-bash scripts/dev/devtool.sh start
-bash scripts/dev/devtool.sh status
-bash scripts/dev/devtool.sh stop
+cd noj-cli
+deno run -A src/cli.ts deploy init --mode dev --dir /opt/neuro-oj
+deno run -A src/cli.ts deploy up --dir /opt/neuro-oj
+deno run -A src/cli.ts deploy status --dir /opt/neuro-oj
+deno run -A src/cli.ts deploy down --dir /opt/neuro-oj
 ```
 
 手动启动：

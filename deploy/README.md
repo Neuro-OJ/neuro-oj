@@ -33,42 +33,29 @@ server {
 
 ## 首次安装与生产运维
 
-推荐使用仓库根目录的 `noj` 入口。首次安装会先展示最低要求和当前主机环境，随后检查生产配置、
-保护环境文件、复用生产 Compose、等待健康检查，并且不会删除数据卷：
+推荐使用仓库根目录的一键安装入口 `setup.sh`（仅下载/校验 `noj-cli`）与 `noj-cli`
+命令。首次安装会先检查当前主机（Linux / amd64 / 基础工具），下载并 SHA-256 校验
+`noj-cli-linux-amd64`，然后交由 `noj-cli` 完成环境检测与生产部署：
 
 ```bash
 # 首次安装：仅使用仓库根目录的 setup.sh
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --dir /opt/neuro-oj
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash
 
 # 日常运维
-./noj status
-./noj logs core
-./noj backup
-./noj update
-./noj update --latest
-./noj restart
-./noj uninstall
-./noj uninstall --all
-./noj config check
+noj-cli doctor
+noj-cli deploy status
+noj-cli maintain logs server
+noj-cli maintain backup create
+noj-cli deploy restart
+noj-cli deploy down
+noj-cli deploy up
+noj-cli maintain config check
 ```
 
-`update` 默认按 `.env.prod` 中的 `NOJ_VERSION` 升级；`update --latest` 会查询最新稳定 Release（不含
-RC/预发布）。两者都会先同步部署文件和 `noj` 命令，再创建并校验完整备份、拉取镜像并等待 Compose
-健康检查。`stop`、`restart` 和 `update` 都不会删除数据卷。`noj` 支持的部署选项
-会继续传递给底层脚本；需要高级命令或完整参数时仍可执行
-`bash scripts/deploy/deploy.sh <命令> [选项]`。首次安装成功后会优先创建
-`/usr/local/bin/noj` 软链接；没有权限时使用 `~/.local/bin/noj` 并更新登录 PATH，已有同名
-命令不会被覆盖。
-
-`noj uninstall` 会要求输入 `UNINSTALL` 确认；自动化环境请使用 `noj uninstall --yes`。该命令会
-删除当前 Compose 栈的容器、网络和本地镜像，但不会执行 `down -v`，因此 PostgreSQL、Redis、MinIO、
-题目包、Judge 缓存等数据卷、`.env.prod`、备份和部署目录都会保留。卸载后可在安装目录执行
-`./noj start` 重新拉取镜像并恢复服务；宿主机 Nginx/Caddy/宝塔站点和证书不会被修改。
-
-如果需要完全删除 NOJ 及其数据，使用 `./noj uninstall --all`。该命令会要求输入 `DELETE ALL`；自动化环境
-必须使用 `./noj uninstall --all --yes`。它会额外删除全部 Compose 数据卷、当前安装目录、配置和备份，执行前请
-确认备份已经保存到其他位置。检测到 Git 工作区时，命令会拒绝删除安装目录。
+`noj-cli` 不提供升级/卸载子命令；配置变更与数据管理见 `noj-cli maintain config`
+与 `noj-cli maintain reset`。`deploy down` 不会删除数据卷；`maintain reset` 默认
+只清数据，`--include-deploy-configs` 才连配置一起清。首次安装成功后 `noj-cli`
+会安装到 `NOJ_INSTALL_DIR`（默认 `/opt/neuro-oj`）并注册 `noj` 软链接。
 
 镜像拉取由 Docker daemon 负责。若官方源访问不稳定，请在 Docker daemon 配置
 registry mirror 或 HTTP(S) proxy 后重试；评测镜像仍可通过 `JUDGE_IMAGE_BASE`

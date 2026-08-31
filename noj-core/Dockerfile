@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# Neuro OJ noj-core 生产镜像（多阶段）
+# Neuro OJ noj-server 生产镜像（多阶段）
 #
 # 目标：最终镜像只包含 deno compile 出的独立二进制 + 运行必需文件
 # （drizzle 迁移、data 题目源等），不包含 Deno 工具链、源码与开发依赖。
@@ -40,7 +40,7 @@ RUN deno cache \
 # 编译 API server 与 CLI 两个独立二进制
 RUN mkdir -p /build/bin \
     && deno compile -A --no-check --unstable-byonm --unstable-node-globals \
-        --output /build/bin/noj-core src/main.ts \
+        --output /build/bin/noj-server src/main.ts \
     && deno compile -A --no-check --unstable-byonm --unstable-node-globals \
         --output /build/bin/noj scripts/noj.ts
 
@@ -80,4 +80,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD wget -qO- http://127.0.0.1:8000/health >/dev/null 2>&1 || exit 1
 
-CMD ["/app/bin/noj-core"]
+CMD ["/app/bin/noj-server"]

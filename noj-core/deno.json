@@ -5,6 +5,8 @@
   "tasks": {
     "dev": "deno run --watch --env-file=.env -A src/main.ts",
     "start": "deno run --env-file=.env -A src/main.ts",
+    "build:server": "bash scripts/build-server.sh",
+    "build:server:smoke": "bash scripts/build-server.sh && ./bin/noj-server --version",
     "db:migrate": "deno run --env-file=.env -A scripts/noj.ts db migrate",
     "init:system": "deno run --env-file=.env -A scripts/noj.ts init system",
     "bootstrap:admin": "deno run --env-file=.env -A scripts/noj.ts bootstrap admin",

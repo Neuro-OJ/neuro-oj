@@ -82,6 +82,8 @@
 
 ### Requirement: 非参与者权限验证 E2E
 
+测试 SHALL 验证非会话参与者无法发送或查看消息。
+
 #### Scenario: 非参与者发送消息被拒
 
 - **WHEN** 用户 C（非参与者）调用 `POST /api/v1/conversations/:id/messages`
@@ -93,6 +95,8 @@
 - **THEN** 返回 HTTP 404
 
 ### Requirement: 私信 SSE 实时推送 E2E
+
+测试 SHALL 验证私信 SSE 连接与实时消息推送。
 
 #### Scenario: 私信 SSE 连接与推送
 

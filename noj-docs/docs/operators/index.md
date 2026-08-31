@@ -16,7 +16,7 @@
 
 - PostgreSQL：持久化用户、题目、提交、结果和配置。
 - Redis：评测任务队列、结果队列和 core/judge RPC。
-- noj-core：Deno + Hono 后端。
+- noj-server：Deno + Hono 后端。
 - noj-ui：Nuxt 前端。
 - noj-judge：Rust + Docker Judge Worker。
 - noj-llm-gateway：LLM 调用网关（Provider Key 托管、eval_token、限流/额度与用量审计）。

@@ -73,17 +73,16 @@ tmp/
 coverage/
 *.wasm
 
+# --- noj-server / noj-cli 构建产物 ---
+noj-core/bin/
+noj-cli/bin/
+
 # --- Problem Data (noj-core) ---
 # Support packages are build artifacts, not versioned
 noj-core/data/packages/
 !noj-core/data/packages/.gitkeep
 # Local storage backend (problem-bundle-import: separated from build artifacts)
 noj-core/data/storage/
-
-# --- Dev tool locks (devtool.sh advisory locks for concurrent safety) ---
-scripts/dev/locks/
-# PID 文件由 `devtool.sh start` 启动模块时写入，用于模块存活追踪
-scripts/dev/logs/*.pid
 
 # --- IDE metadata (project-local, not shareable) ---
 *.iml
