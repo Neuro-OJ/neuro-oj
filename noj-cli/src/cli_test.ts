@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
   dispatchCommand,
+  parseDeployArgs,
   parseInitOptions,
   parsePort,
   printHelp,
@@ -21,20 +22,13 @@ Deno.test("version stub 返回 0", async () => {
   assertEquals(await dispatchCommand("version", [], ctx), 0);
 });
 
-Deno.test("deploy/maintain/run-server stub 返回 0", async () => {
-  assertEquals(await dispatchCommand("deploy", [], ctx), 0);
+Deno.test("maintain/run-server stub 返回 0", async () => {
   assertEquals(await dispatchCommand("maintain", [], ctx), 0);
   assertEquals(await dispatchCommand("run-server", [], ctx), 0);
 });
 
-Deno.test("deploy 子命令 up/down/restart/status 返回 0", async () => {
-  for (const sub of ["up", "down", "restart", "status"]) {
-    assertEquals(
-      await dispatchCommand("deploy", [sub], ctx),
-      0,
-      `deploy ${sub}`,
-    );
-  }
+Deno.test("deploy 无配置目录时返回 1", async () => {
+  assertEquals(await dispatchCommand("deploy", [], ctx), 1);
 });
 
 Deno.test("maintain 子命令返回 0", async () => {
@@ -104,4 +98,12 @@ Deno.test("parseInitOptions: 非法 mode 抛错", () => {
     threw = true;
   }
   assertEquals(threw, true);
+});
+
+Deno.test("parseDeployArgs: 无 --dir 时返回 undefined", () => {
+  assertEquals(parseDeployArgs([]).dir, undefined);
+});
+
+Deno.test("parseDeployArgs: 解析 --dir /opt", () => {
+  assertEquals(parseDeployArgs(["--dir", "/opt"]).dir, "/opt");
 });

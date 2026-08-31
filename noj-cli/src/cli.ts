@@ -6,6 +6,12 @@ import { formatReport } from "./doctor/report.ts";
 import { realIO } from "./tui/io.ts";
 import { type InitOptions, runInitWizard } from "./init/wizard.ts";
 import { saveDeployment } from "./config/save.ts";
+import {
+  deployDown,
+  deployRestart,
+  deployStatus,
+  deployUp,
+} from "./deploy/deploy.ts";
 
 /** CLI 执行上下文，供各子命令共享。 */
 export interface CommandContext {
@@ -49,7 +55,6 @@ export function printHelp(): string {
   ].join("\n");
 }
 
-const DEPLOY_SUBCOMMANDS = ["init", "up", "down", "restart", "status"];
 const MAINTAIN_SUBCOMMANDS = [
   "logs",
   "backup",
@@ -109,6 +114,12 @@ export function parseInitOptions(args: string[], cwd: string): InitOptions {
   return { mode, port, installDir: dir ?? cwd };
 }
 
+/** 解析 deploy 生命周期参数：目前仅 --dir <path>。 */
+export function parseDeployArgs(args: string[]): { dir: string | undefined } {
+  const idx = args.indexOf("--dir");
+  return { dir: idx !== -1 ? args[idx + 1] : undefined };
+}
+
 /** 将命令分发到对应处理函数。供测试与 run 共用。 */
 export async function dispatchCommand(
   command: string,
@@ -141,18 +152,44 @@ export async function dispatchCommand(
         );
         return 0;
       }
-      if (DEPLOY_SUBCOMMANDS.includes(sub)) {
-        console.log(
-          `deploy ${sub}: 生命周期逻辑留待后续计划（部署目录: ${
-            ctx.deployDir ?? "未找到"
-          }）`,
-        );
-      } else {
-        console.log(
-          "deploy: 需要子命令 init/up/down/restart/status（P0 占位）",
-        );
+      const { dir } = parseDeployArgs(args.slice(1));
+      const deployDir = dir ?? ctx.deployDir ?? findDeployDir(ctx.cwd);
+      if (deployDir === null) {
+        console.error("deploy: 未找到 noj-deploy.json，请先运行 deploy init");
+        return 1;
       }
-      return 0;
+      switch (sub) {
+        case "up": {
+          const state = await deployUp({ dir: deployDir });
+          console.log(`deploy up 完成，状态: ${state}`);
+          return 0;
+        }
+        case "down": {
+          const state = await deployDown({ dir: deployDir });
+          console.log(`deploy down 完成，状态: ${state}`);
+          return 0;
+        }
+        case "restart": {
+          const state = await deployRestart({ dir: deployDir });
+          console.log(`deploy restart 完成，状态: ${state}`);
+          return 0;
+        }
+        case "status": {
+          const report = await deployStatus({ dir: deployDir });
+          console.log(`状态: ${report.state}`);
+          for (const c of report.components) {
+            console.log(
+              `  ${c.component}: ${
+                c.enabled ? (c.running ? "运行中" : "未运行") : "禁用"
+              } (${c.method})`,
+            );
+          }
+          return 0;
+        }
+        default:
+          console.log("deploy: 需要子命令 init/up/down/restart/status");
+          return 0;
+      }
     }
     case "maintain": {
       const sub = args[0] ?? "";
