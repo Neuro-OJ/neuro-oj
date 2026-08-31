@@ -1,5 +1,6 @@
 import type { DeployConfig, DeployState } from "../config/types.ts";
 import { loadDeployment } from "../config/load.ts";
+import { saveDeployment } from "../config/save.ts";
 import { DEPLOY_FILE, SECRETS_FILE } from "../config/io.ts";
 import { deployDown } from "../deploy/deploy.ts";
 import { COMPOSE_FILE, ensureComposeFile } from "../deploy/compose.ts";
@@ -90,6 +91,11 @@ export async function backupCreate(
   const { config, secrets } = await loadDeployment(opts.dir);
   if (config.type !== "prod") {
     throw new Error("backup create 仅面向 prod 部署");
+  }
+  if (config.state !== "running") {
+    throw new Error(
+      `backup create 需要部署处于 running 状态，当前: ${config.state}`,
+    );
   }
   const driver = opts.driver!;
   const zstdLevel = opts.zstdLevel ?? 15;
@@ -375,6 +381,10 @@ export async function backupRestore(
       } finally {
         await Deno.remove(backup, { recursive: true }).catch(() => {});
       }
+      // 恢复出的配置可能带有备份时的 state（如 running），但当前部署实际已停止，强制校正。
+      const restored = await loadDeployment(opts.dir);
+      restored.config.state = "stopped";
+      await saveDeployment(opts.dir, restored.config, restored.secrets);
     }
     return "stopped";
   } finally {

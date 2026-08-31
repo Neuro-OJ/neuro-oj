@@ -479,7 +479,13 @@ export async function dispatchCommand(
       }
 
       if (sub === "verify") {
-        const deployDir = ctx.deployDir ?? findDeployDir(ctx.cwd);
+        const rest = args.slice(1);
+        let dirOverride: string | undefined;
+        for (let i = 0; i < rest.length; i++) {
+          if (rest[i] === "--dir") dirOverride = rest[++i];
+        }
+        const deployDir = dirOverride ?? ctx.deployDir ??
+          findDeployDir(ctx.cwd);
         if (deployDir === null) {
           console.error("maintain verify: 未找到 noj-deploy.json");
           return 1;

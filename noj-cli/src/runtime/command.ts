@@ -76,13 +76,16 @@ export function realRunner(): CommandRunner {
         stderr: "piped",
       });
       const child = p.spawn();
+      // 先开始读 stdout/stderr，避免大 stdin 时子进程写满管道导致双方阻塞。
+      const stdoutPromise = new Response(child.stdout).arrayBuffer();
+      const stderrPromise = new Response(child.stderr).arrayBuffer();
       const writer = child.stdin.getWriter();
       await writer.write(new TextEncoder().encode(stdin));
       await writer.close();
       const [status, stdoutBuf, stderrBuf] = await Promise.all([
         child.status,
-        new Response(child.stdout).arrayBuffer(),
-        new Response(child.stderr).arrayBuffer(),
+        stdoutPromise,
+        stderrPromise,
       ]);
       return {
         code: status.code,

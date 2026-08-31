@@ -109,7 +109,6 @@ function fakeDriver(): BackupDriver {
       return Promise.resolve([
         { relPath: "postgres.dump", content: "dump-bytes" },
         { relPath: "postgres-globals.sql", content: "-- globals" },
-        { relPath: "postgres.restore-list", content: "1;" },
       ]);
     },
     async restoreDataDumps() {},
@@ -281,4 +280,30 @@ Deno.test("backupDrill: 写报告文件", async () => {
   });
   const text = await Deno.readTextFile(reportPath);
   assertEquals(JSON.parse(text).pass, report.pass);
+});
+
+Deno.test("backupRestore --include-deploy-configs: 恢复后强制 state=stopped", async () => {
+  const dir = await Deno.makeTempDir();
+  await writeFixture(dir, prodConfig(), secrets());
+  await backupCreate({
+    dir,
+    backupDir: `${dir}/backups`,
+    noEncrypt: true,
+    driver: fakeDriver(),
+  });
+  const entries = await Array.fromAsync(Deno.readDir(`${dir}/backups`));
+  const snap = `${dir}/backups/${entries[0]!.name}`;
+  const state = await backupRestore({
+    dir,
+    snapshotPath: snap,
+    confirm: true,
+    includeDeployConfigs: true,
+    driver: fakeDriver(),
+    runner: fakeRunner(),
+  });
+  assertEquals(state, "stopped");
+  const saved = JSON.parse(
+    await Deno.readTextFile(`${dir}/noj-deploy.json`),
+  ) as DeployConfig;
+  assertEquals(saved.state, "stopped");
 });

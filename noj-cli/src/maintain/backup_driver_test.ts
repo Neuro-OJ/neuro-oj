@@ -206,6 +206,8 @@ Deno.test("realDriver.restoreDataDumps: 经 stdin 传 base64，且先起基础�
   await Deno.writeTextFile(`${dumpDir}/postgres.dump`, "cG9zdGdyZXM=");
   await Deno.writeTextFile(`${dumpDir}/postgres-globals.sql`, "-- globals");
   await Deno.writeTextFile(`${dumpDir}/redis.rdb`, "cmVkaXM=");
+  await Deno.mkdir(`${dumpDir}/minio`, { recursive: true });
+  await Deno.writeTextFile(`${dumpDir}/minio/object.bin`, "data");
   await d.restoreDataDumps(driverConfig(), driverSecrets(), dumpDir);
   // postgres 恢复使用 stdin 且命令串不含 secret
   const pgRestore = records.find((r) =>
@@ -215,12 +217,22 @@ Deno.test("realDriver.restoreDataDumps: 经 stdin 传 base64，且先起基础�
   assertEquals(pgRestore!.opts?.stdin, "cG9zdGdyZXM=");
   const pgCmd = pgRestore!.args.find((a) => a.includes("pg_restore"))!;
   assertEquals(pgCmd.includes("p'w"), false);
-  // redis RDB 恢复使用 stdin
+  // redis RDB 恢复使用 stdin，且不再执行 FLUSHALL 破坏已写入的 RDB
   const redisRestore = records.find((r) =>
     r.args.some((a) => a.includes("base64 -d > /data/dump.rdb"))
   );
   assertEquals(redisRestore !== undefined, true);
   assertEquals(redisRestore!.opts?.stdin, "cmVkaXM=");
+  assertEquals(
+    records.some((r) => r.args.some((a) => a.includes("FLUSHALL"))),
+    false,
+  );
+  // MinIO 数据经 mc mirror 恢复
+  const minioRestore = records.find((r) =>
+    r.args.some((a) => a.includes("minio/mc"))
+  );
+  assertEquals(minioRestore !== undefined, true);
+  assertEquals(minioRestore!.args.some((a) => a.includes("/in")), true);
 });
 
 Deno.test("realDriver.clearData: 使用 -e 传凭据，不拼 secret 进 shell", async () => {

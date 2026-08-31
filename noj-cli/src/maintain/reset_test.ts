@@ -2,6 +2,11 @@ import { assertEquals, assertRejects } from "@std/assert";
 import { loadDeployment } from "../config/load.ts";
 import type { DeployConfig, SecretsConfig } from "../config/types.ts";
 import type { BackupDriver, DumpEntry } from "./backup_driver.ts";
+import type {
+  CommandRunner,
+  SpawnHandle,
+  SpawnOpts,
+} from "../runtime/command.ts";
 import { maintainReset } from "./reset.ts";
 
 function prodConfig(state: DeployConfig["state"] = "running"): DeployConfig {
@@ -76,11 +81,28 @@ function fakeDriver(cleared: string[]): BackupDriver {
   };
 }
 
+function fakeRunner(): CommandRunner {
+  return {
+    run() {
+      return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+    },
+    spawn(_opts: SpawnOpts): SpawnHandle {
+      throw new Error("fake runner 不 spawn");
+    },
+  };
+}
+
 Deno.test("maintainReset: 需 --confirm", async () => {
   const dir = await Deno.makeTempDir();
   await writeFixture(dir, prodConfig(), secrets());
   await assertRejects(
-    () => maintainReset({ dir, confirm: false, driver: fakeDriver([]) }),
+    () =>
+      maintainReset({
+        dir,
+        confirm: false,
+        driver: fakeDriver([]),
+        runner: fakeRunner(),
+      }),
     Error,
     "confirm",
   );
@@ -94,6 +116,7 @@ Deno.test("maintainReset: 默认清数据并置 stopped，保留配置文件", a
     dir,
     confirm: true,
     driver: fakeDriver(cleared),
+    runner: fakeRunner(),
   });
   assertEquals(state, "stopped");
   assertEquals(cleared, ["data"]);
@@ -119,6 +142,7 @@ Deno.test("maintainReset: --include-deploy-configs 连配置一起清，置 unin
     confirm: true,
     includeDeployConfigs: true,
     driver: fakeDriver(cleared),
+    runner: fakeRunner(),
   });
   assertEquals(state, "uninitialized");
   assertEquals(cleared, ["data"]);

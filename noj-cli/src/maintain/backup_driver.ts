@@ -227,6 +227,7 @@ export function realDriver(runner?: CommandRunner): BackupDriver {
     async restoreDataDumps(config, _secrets, dumpDir) {
       const pgEnv = resolveComponentEnv(config, _secrets, "postgres");
       const redisEnv = resolveComponentEnv(config, _secrets, "redis");
+      const minioEnv = resolveComponentEnv(config, _secrets, "minio");
       if (config.components["postgres"]?.enabled) {
         const pgUser = pgEnv["POSTGRES_USER"] ?? "noj";
         const pgDb = pgEnv["POSTGRES_DB"] ?? "noj";
@@ -308,15 +309,37 @@ export function realDriver(runner?: CommandRunner): BackupDriver {
             );
           }
         }
-        await r.run("docker", [
-          "exec",
-          "-e",
-          `REDISCLI_AUTH=${redisPass}`,
-          "noj-redis",
-          "sh",
-          "-c",
-          "redis-cli FLUSHALL",
-        ]);
+      }
+      if (config.components["minio"]?.enabled) {
+        const minioDir = `${dumpDir}/minio`;
+        let hasMinioData = true;
+        try {
+          await Deno.stat(minioDir);
+        } catch {
+          hasMinioData = false;
+        }
+        if (hasMinioData) {
+          const access = minioEnv["S3_ACCESS_KEY"] ?? "minioadmin";
+          const secret = minioEnv["S3_SECRET_KEY"] ?? "minioadmin";
+          const res = await r.run("docker", [
+            "run",
+            "--rm",
+            "--network",
+            "container:noj-minio",
+            "-v",
+            `${minioDir}:/in`,
+            "-e",
+            `MC_HOST_minio=http://${access}:${secret}@localhost:9000`,
+            "minio/mc:latest@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727",
+            "mirror",
+            "--overwrite",
+            "/in",
+            "minio/",
+          ]);
+          if (res.code !== 0) {
+            throw new Error(`MinIO 恢复失败: ${res.stderr || res.stdout}`);
+          }
+        }
       }
     },
     async clearData(config, _secrets) {
