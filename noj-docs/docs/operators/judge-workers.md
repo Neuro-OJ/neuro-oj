@@ -68,6 +68,63 @@ Docker socket 绕过该限制。
 2. 在应用主机上运行只服务于 judge 的 rootless Docker daemon，并使用独立 Unix
    socket。
 
+### rootless Docker 安装
+
+以下步骤在宿主机上创建仅供 Judge 使用的 rootless Docker daemon。
+
+1. 安装依赖与 rootless 组件（需要已配置 Docker 官方 apt 源）：
+
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y uidmap docker-ce-rootless-extras
+   ```
+
+2. 以准备运行 rootless daemon 的普通用户执行安装：
+
+   ```bash
+   dockerd-rootless-setuptool.sh install
+   ```
+
+   执行成功后会在该用户下创建 `docker-rootless.service`，默认 socket 为：
+
+   ```text
+   /run/user/<uid>/docker.sock
+   ```
+
+   其中 `<uid>` 是当前用户 ID。
+
+3. 创建 NOJ 专用 socket 路径，并让指定组可以访问：
+
+   ```bash
+   sudo mkdir -p /run/noj-judge
+   sudo chown root:<judge-docker-group> /run/noj-judge
+   sudo chmod 0750 /run/noj-judge
+   sudo ln -sf /run/user/<uid>/docker.sock /run/noj-judge/docker.sock
+   ```
+
+   `<judge-docker-group>` 通常是运行 rootless Docker 的用户主组（例如 `1000`）；
+   记下它的 GID，稍后写入 `JUDGE_DOCKER_SOCKET_GID`。
+
+4. 验证能否通过该 socket 访问 rootless daemon：
+
+   ```bash
+   DOCKER_HOST=unix:///run/noj-judge/docker.sock docker info
+   ```
+
+   能看到 daemon 信息且输出中带有 rootless/userns 相关标记即为正常。
+
+5. 在 NOJ 部署配置中填写：
+
+   ```bash
+   JUDGE_DOCKER_SOCKET=/run/noj-judge/docker.sock
+   JUDGE_DOCKER_SOCKET_GID=<judge-docker-group>
+   JUDGE_DOCKER_HOST=unix:///run/noj-judge/docker.sock
+   JUDGE_REQUIRE_ISOLATED_DOCKER=true
+   ```
+
+> 不同发行版的 rootless Docker 安装方式略有差异。Fedora/RHEL 可参考
+> [Rootless mode 官方文档](https://docs.docker.com/engine/security/rootless/)。
+
 生产 Compose 使用以下配置连接该 socket：
 
 ```bash
