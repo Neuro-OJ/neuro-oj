@@ -457,7 +457,7 @@ export async function dispatchCommand(
       }
 
       if (sub === "reset") {
-        const a = parseBackupArgs(args.slice(1));
+        const a = parseBackupArgs(["reset", ...args.slice(1)]);
         const deployDir = a.dir ?? ctx.deployDir ?? findDeployDir(ctx.cwd);
         if (deployDir === null) {
           console.error("maintain reset: 未找到 noj-deploy.json");

@@ -49,6 +49,17 @@ Deno.test("maintain reset 无配置目录时返回 1", async () => {
   assertEquals(await dispatchCommand("maintain", ["reset"], ctx), 1);
 });
 
+Deno.test("maintain reset --dir 解析后找不到配置返回 1", async () => {
+  assertEquals(
+    await dispatchCommand(
+      "maintain",
+      ["reset", "--dir", "/nonexistent-noj", "--confirm"],
+      ctx,
+    ),
+    1,
+  );
+});
+
 Deno.test("maintain verify 无配置目录时返回 1", async () => {
   assertEquals(await dispatchCommand("maintain", ["verify"], ctx), 1);
 });

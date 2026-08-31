@@ -56,6 +56,14 @@ Deno.test("被引用 secret 缺失时报告", () => {
   assertEquals(issues.some((i) => i.path.includes("TFA_ENCRYPTION_KEY")), true);
 });
 
+Deno.test("占位符可由全局 env 满足时不报告", () => {
+  const cfg = baseConfig();
+  cfg.env["POSTGRES_USER"] = "noj";
+  cfg.components["server"]!.env["DATABASE_USER"] = "${POSTGRES_USER}";
+  const issues = validateConfig(cfg, baseSecrets());
+  assertEquals(issues.some((i) => i.path.includes("POSTGRES_USER")), false);
+});
+
 Deno.test("secret 长度不足 32 时报告", () => {
   const secrets = baseSecrets();
   secrets.secrets["JWT_SECRET"] = "short";

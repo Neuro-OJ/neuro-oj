@@ -14,6 +14,8 @@ function baseConfig(type: "dev" | "prod", installDir: string): DeployConfig {
     env: {
       LOG_LEVEL: "info",
       LOG_FORMAT: "json",
+      POSTGRES_USER: "noj",
+      POSTGRES_DB: "noj",
     },
     components: {},
     reverse_proxy: {

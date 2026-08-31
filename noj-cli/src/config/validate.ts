@@ -27,7 +27,7 @@ function validateSecrets(
   for (const [comp, compCfg] of Object.entries(cfg.components)) {
     if (!compCfg.enabled) continue;
     for (const key of referencedKeys(compCfg.env)) {
-      const value = secrets.secrets[key];
+      const value = cfg.env[key] ?? secrets.secrets[key];
       if (value === undefined) {
         issues.push({
           path: `components.${comp}.env.${key}`,
