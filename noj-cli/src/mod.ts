@@ -43,3 +43,39 @@ export type { ProdTemplateOptions } from "./init/templates.ts";
 export { generateSecrets, randomKey } from "./init/secrets.ts";
 export { runInitWizard } from "./init/wizard.ts";
 export type { InitOptions } from "./init/wizard.ts";
+
+// runtime（P2）
+export type {
+  CmdResult as RuntimeCmdResult,
+  CommandRunner,
+  SpawnHandle,
+  SpawnOpts,
+} from "./runtime/command.ts";
+export { realRunner } from "./runtime/command.ts";
+export { fileExists } from "./util/fs.ts";
+export { pidPath, readPid, removePid, writePid } from "./runtime/pidfile.ts";
+export {
+  processLaunch,
+  startManagedProcess,
+  stopManagedProcess,
+} from "./runtime/process.ts";
+
+// deploy（P2）
+export {
+  COMPOSE_FILE,
+  ensureComposeFile,
+  renderCompose,
+} from "./deploy/compose.ts";
+export { dockerDown, dockerPs, dockerUp } from "./deploy/docker.ts";
+export { downIsNoOp, nextState, upIsNoOp, writeState } from "./deploy/state.ts";
+export {
+  deployDown,
+  deployRestart,
+  deployStatus,
+  deployUp,
+} from "./deploy/deploy.ts";
+export type {
+  ComponentStatus,
+  DeployOptions,
+  DeployStatusReport,
+} from "./deploy/deploy.ts";
