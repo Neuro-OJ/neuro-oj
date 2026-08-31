@@ -26,7 +26,13 @@ function validateSecrets(
   const longKeys = new Set(["JWT_SECRET", "TFA_ENCRYPTION_KEY"]);
   for (const [comp, compCfg] of Object.entries(cfg.components)) {
     if (!compCfg.enabled) continue;
-    for (const key of referencedKeys(compCfg.env)) {
+    const keys = new Set(referencedKeys(compCfg.env));
+    if (compCfg.command) {
+      for (const m of compCfg.command.matchAll(/\$\{([A-Z0-9_]+)\}/g)) {
+        keys.add(m[1]!);
+      }
+    }
+    for (const key of keys) {
       const value = cfg.env[key] ?? secrets.secrets[key];
       if (value === undefined) {
         issues.push({

@@ -344,13 +344,13 @@ export async function backupRestore(
     if (infraServices.length > 0) {
       const composePath = `${opts.dir}/${COMPOSE_FILE}`;
       await ensureComposeFile(opts.dir, config, secrets);
+      infraStarted = true;
       const upRes = await dockerUpServices(runner, composePath, infraServices);
       if (upRes.code !== 0) {
         throw new Error(
           `restore 前启动基础设施失败: ${upRes.stderr || upRes.stdout}`,
         );
       }
-      infraStarted = true;
     }
     await driver.restoreDataDumps(config, secrets, staging);
     if (opts.includeDeployConfigs) {

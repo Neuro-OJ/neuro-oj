@@ -64,6 +64,14 @@ Deno.test("占位符可由全局 env 满足时不报告", () => {
   assertEquals(issues.some((i) => i.path.includes("POSTGRES_USER")), false);
 });
 
+Deno.test("command 中缺失 secret 时报告", () => {
+  const cfg = baseConfig();
+  cfg.components["server"]!.command =
+    "redis-server --requirepass ${REDIS_PASSWORD}";
+  const issues = validateConfig(cfg, baseSecrets());
+  assertEquals(issues.some((i) => i.path.includes("REDIS_PASSWORD")), true);
+});
+
 Deno.test("secret 长度不足 32 时报告", () => {
   const secrets = baseSecrets();
   secrets.secrets["JWT_SECRET"] = "short";
