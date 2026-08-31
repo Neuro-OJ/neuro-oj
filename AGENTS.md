@@ -143,12 +143,15 @@ neuro-oj/
 
 ### 5.2 一键脚本
 
+部署与运维统一使用 `noj-cli`（旧 `scripts/dev/devtool.sh` 已移除）：
+
 ```bash
-bash scripts/dev/devtool.sh install-deps --check-only
-bash scripts/dev/devtool.sh init-env
-bash scripts/dev/devtool.sh start          # infra → core → ui → judge
-bash scripts/dev/devtool.sh status
-bash scripts/dev/devtool.sh stop
+cd noj-cli
+deno run -A src/cli.ts doctor
+deno run -A src/cli.ts deploy init --mode dev --dir /opt/neuro-oj
+deno run -A src/cli.ts deploy up --dir /opt/neuro-oj
+deno run -A src/cli.ts deploy status --dir /opt/neuro-oj
+deno run -A src/cli.ts deploy down --dir /opt/neuro-oj
 ```
 
 ### 5.3 手动启动
@@ -251,7 +254,7 @@ cd noj-llm-gateway && deno task dev   # 可选
 - [ ] `deno lint` / `cargo clippy` 无警告
 - [ ] 新功能/修复有对应测试
 - [ ] 新表/字段已通过 `deno task db:generate` 生成迁移
-- [ ] 新环境变量已加入 `.env.example` + `scripts/dev/env.example`
+- [ ] 新环境变量已加入对应模块 `.env.example`
 - [ ] 中文提交描述符合 Conventional Commits
 - [ ] GPG 签名可用
 - [ ] 若是功能变更，OpenSpec 变更已 `/opsx:propose` 起草
@@ -355,7 +358,7 @@ jj config get signing.key
 
 ## 14. 故障排查
 
-常见问题与处理见 [README.md](README.md#故障排查) 和 `scripts/dev/devtool.sh status --json`。
+常见问题与处理见 [README.md](README.md#故障排查) 和 `noj-cli deploy status --dir <部署目录>`。
 
 ---
 
@@ -369,7 +372,7 @@ jj config get signing.key
 | noj-judge 详细文档 | [`noj-judge/CLAUDE.md`](./noj-judge/CLAUDE.md) |
 | noj-llm-gateway 详细文档 | [`noj-llm-gateway/CLAUDE.md`](./noj-llm-gateway/CLAUDE.md) |
 | E2E 测试指南 | [`noj-tests/E2E_TESTING.md`](./noj-tests/E2E_TESTING.md) |
-| 开发工具 devtool.sh | [`scripts/dev/devtool.sh`](./scripts/dev/devtool.sh) |
+| noj-cli 使用说明 | [`noj-cli/README.md`](./noj-cli/README.md) |
 | 工程规范 | [`docs/engineering/README.md`](./docs/engineering/README.md) |
 | OpenSpec 主规范 | [`openspec/specs/`](./openspec/specs/) |
 | 系统架构 | [`noj-docs/docs/system/architecture.md`](./noj-docs/docs/system/architecture.md) |

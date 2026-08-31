@@ -81,7 +81,7 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | b
 邮件提示中的直接回车会继续使用当前配置，输入 `skip` 才会停用；没有旧邮件配置时直接
 回车会跳过邮件。停用邮件后密码找回邮件不可用。如果跳过 Judge，之后在 `.env.prod` 中将
 `JUDGE_ENABLED` 改为 `true`，补充独立 Judge Docker 服务的 socket 和组 ID，再执行
-`bash scripts/deploy/deploy.sh start` 即可启用。
+`noj-cli deploy up --dir /opt/neuro-oj` 即可启用。
 
 ```bash
 sudo vim /opt/neuro-oj/.env.prod
@@ -93,8 +93,8 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 bootstrap 默认自动选择最新 Release，可通过 `--ref` 指定其他分支或 Release tag；生产环境应
 使用不可变 Release tag，并让 `--ref` 与 `.env.prod` 中的 `NOJ_VERSION` 保持一致。
 也可以使用 `--download-only` 只获取源码，或使用 `--dry-run` 查看下载计划。目标目录
-非空时 bootstrap 会拒绝覆盖已有 `.env.prod`、备份和部署文件；已有安装请进入目录执行
-`/opt/neuro-oj/noj update`。
+非空时 bootstrap 会拒绝覆盖已有 `.env.prod`、备份和部署文件；已有安装请使用
+`noj-cli deploy up --dir /opt/neuro-oj` 启动/升级（升级前请先备份）。
 
 如果不希望在 shell 中直接执行网络下载内容，可以先保存脚本并人工检查；确认后再运行
 上面的 `setup.sh` 命令。bootstrap 只依赖 Linux 上常见的 Bash、`curl`
@@ -199,11 +199,11 @@ digest 与 Cosign keyless 签名；Judge 被跳过时只校验核心、前端和
 必须通过受保护的生产配置显式设置 `NOJ_COSIGN_CERT_IDENTITY_REGEX`。可以单独执行：
 
 ```bash
-bash scripts/deploy/deploy.sh verify
+noj-cli maintain verify --dir /opt/neuro-oj
 ```
 
 镜像签名校验默认关闭，以免阻断普通一键部署；如果需要严格校验，请安装 Cosign 并将
-`NOJ_ENFORCE_IMAGE_SIGNATURES=true`，然后执行 `bash scripts/deploy/deploy.sh verify`。
+`NOJ_ENFORCE_IMAGE_SIGNATURES=true`，然后执行 `noj-cli maintain verify --dir /opt/neuro-oj`。
 成功启动或升级后，脚本会在 `backups/current-deployment.txt` 记录当前 Release 版本和已启用
 应用镜像的 digest；升级失败时不会覆盖上一份成功部署记录。
 
@@ -347,20 +347,21 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
 1. 在 GitHub 发布新 Release（如 `v0.1.1`）。Release workflow 会先构建候选镜像，
    完成漏洞扫描、SBOM、签名和来源证明后，才创建正式版本标签。
 2. 确认 Release workflow 的全部镜像验证成功；固定版本部署可在服务器修改 `.env.prod` 中的
-   `NOJ_VERSION=v0.1.1`，也可使用 `./noj update --latest` 选择最新稳定 Release。
-3. 升级前创建备份并拉取新镜像：
+   `NOJ_VERSION=v0.1.1`。
+3. 升级前创建备份，然后更新配置并重新部署：
 
 ```bash
-./noj update
+noj-cli maintain backup create --dir /opt/neuro-oj
+noj-cli deploy up --dir /opt/neuro-oj
 ```
 
-部署脚本会先校验镜像签名，再创建并校验生产备份，然后拉取镜像并等待 Compose 健康检查。
-数据库迁移由 `migrate` 一次性服务执行；升级前必须确认新版本迁移与旧版本应用兼容。
+`deploy up` 会按 Compose 拉取新镜像并等待健康检查；数据库迁移由 `migrate` 一次性服务执行。
+升级前必须确认新版本迁移与旧版本应用兼容，并先完成备份。
 
 ## 7. 回滚
 
 - 确认上一版本 Release 仍可拉取且签名有效，将 `.env.prod` 的 `NOJ_VERSION` 改回上一版本，
-  执行 `bash scripts/deploy/deploy.sh verify` 后再执行 `bash scripts/deploy/deploy.sh start`。
+  执行 `noj-cli maintain verify --dir /opt/neuro-oj` 后再执行 `noj-cli deploy up --dir /opt/neuro-oj`。
 - 数据库 schema 采用只追加迁移，**不自动回滚**；如需回退 schema，请人工评估并备份后操作。
 - 评测镜像也按 Release tag 发布，回滚时需要把 `judge_images` 白名单指向旧 tag（若使用 `all_versions` 则无需改白名单，只需题目/系统设置中的镜像 tag 指向旧版本）。
 
@@ -379,7 +380,7 @@ openssl rand -hex 32 | sudo tee /etc/noj/backup-passphrase >/dev/null
 sudo chmod 600 /etc/noj/backup-passphrase
 
 export NOJ_BACKUP_PASSPHRASE_FILE=/etc/noj/backup-passphrase
-bash scripts/deploy/deploy.sh backup --backup-dir /srv/noj/backups
+noj-cli maintain backup create --dir /opt/neuro-oj --backup-dir /srv/noj/backups
 ```
 
 每次快照都会生成 SHA-256 清单、PostgreSQL dump 结构清单、迁移状态和 `SUCCESS`
@@ -390,18 +391,15 @@ bash scripts/deploy/deploy.sh backup --backup-dir /srv/noj/backups
 
 ```bash
 snapshot=/srv/noj/backups/snapshot-YYYYMMDD-HHMMSS
-bash scripts/deploy/backup.sh verify "$snapshot"
-bash scripts/deploy/backup.sh drill "$snapshot" --report /srv/noj/restore-drill.txt
+noj-cli maintain backup verify "$snapshot" --dir /opt/neuro-oj
+noj-cli maintain backup drill "$snapshot" --dir /opt/neuro-oj --report /srv/noj/restore-drill.txt
 ```
 
 `drill` 不会触碰当前生产数据，只验证解密、校验和、PostgreSQL 结构、Redis RDB
-以及对象镜像。周期性演练应在隔离 Compose project 中执行实际恢复：
+以及对象镜像。周期性演练应在隔离部署目录中执行实际恢复：
 
 ```bash
-bash scripts/deploy/backup.sh restore "$snapshot" \
-  --project-name noj-restore-drill \
-  --restore-env /srv/noj/restore-drill.env \
-  --confirm
+noj-cli maintain backup restore "$snapshot" --dir /opt/neuro-oj --confirm
 ```
 
 恢复会覆盖目标数据库、Redis 数据和对象存储，因此必须显式 `--confirm`，且目标
