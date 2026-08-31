@@ -97,3 +97,33 @@ export {
   parseConfigValue,
   setByPath,
 } from "./maintain/config.ts";
+
+// maintain/backup（P4）
+export {
+  fileSha256Hex,
+  realDriver,
+  sha256Hex,
+} from "./maintain/backup_driver.ts";
+export type { BackupDriver, DumpEntry } from "./maintain/backup_driver.ts";
+export {
+  backupCreate,
+  backupDrill,
+  backupRestore,
+  backupVerify,
+  defaultBackupDir,
+  resolvePassphraseFile,
+  snapshotFileName,
+  writeSha256Sums,
+} from "./maintain/backup.ts";
+export type {
+  BackupCreateOptions,
+  BackupDrillOptions,
+  BackupRestoreOptions,
+  BackupVerifyOptions,
+  Manifest,
+  VerifyReport,
+} from "./maintain/backup.ts";
+
+// maintain/reset（P4）
+export { maintainReset } from "./maintain/reset.ts";
+export type { ResetOptions } from "./maintain/reset.ts";
