@@ -3,6 +3,9 @@ import { VERSION } from "./mod.ts";
 import { realProbe } from "./doctor/probe.ts";
 import { runDoctor } from "./doctor/doctor.ts";
 import { formatReport } from "./doctor/report.ts";
+import { realIO } from "./tui/io.ts";
+import { runInitWizard, type InitOptions } from "./init/wizard.ts";
+import { saveDeployment } from "./config/save.ts";
 
 /** CLI 执行上下文，供各子命令共享。 */
 export interface CommandContext {
@@ -76,6 +79,36 @@ export function parsePort(args: string[]): number {
   return n;
 }
 
+/** 解析 deploy init 选项：--mode dev|prod、--port <n>、--dir <path>。 */
+export function parseInitOptions(args: string[], cwd: string): InitOptions {
+  let mode: "dev" | "prod" | undefined;
+  let port: number | undefined;
+  let dir: string | undefined;
+
+  const modeIdx = args.indexOf("--mode");
+  if (modeIdx !== -1) {
+    const raw = args[modeIdx + 1];
+    if (raw !== "dev" && raw !== "prod") {
+      throw new Error(`非法模式: ${raw}，仅支持 dev/prod`);
+    }
+    mode = raw;
+  }
+  const portIdx = args.indexOf("--port");
+  if (portIdx !== -1) {
+    const n = Number(args[portIdx + 1]);
+    if (!Number.isInteger(n) || n < 1 || n > 65535) {
+      throw new Error(`非法端口: ${args[portIdx + 1]}`);
+    }
+    port = n;
+  }
+  const dirIdx = args.indexOf("--dir");
+  if (dirIdx !== -1) {
+    dir = args[dirIdx + 1];
+  }
+
+  return { mode, port, installDir: dir ?? cwd };
+}
+
 /** 将命令分发到对应处理函数。供测试与 run 共用。 */
 export async function dispatchCommand(
   command: string,
@@ -95,6 +128,19 @@ export async function dispatchCommand(
     }
     case "deploy": {
       const sub = args[0] ?? "";
+      if (sub === "init") {
+        const opts = parseInitOptions(args.slice(1), ctx.cwd);
+        const { config, secrets } = await runInitWizard(
+          realIO(),
+          realProbe(),
+          opts,
+        );
+        await saveDeployment(opts.installDir, config, secrets);
+        console.log(
+          `已写入 ${opts.installDir}/noj-deploy.json 与 noj-secrets.json`,
+        );
+        return 0;
+      }
       if (DEPLOY_SUBCOMMANDS.includes(sub)) {
         console.log(
           `deploy ${sub}: 生命周期逻辑留待后续计划（部署目录: ${

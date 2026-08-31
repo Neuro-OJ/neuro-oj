@@ -1,5 +1,11 @@
 import { assertEquals } from "@std/assert";
-import { dispatchCommand, parsePort, printHelp, run } from "./cli.ts";
+import {
+  dispatchCommand,
+  parseInitOptions,
+  parsePort,
+  printHelp,
+  run,
+} from "./cli.ts";
 import type { CommandContext } from "./cli.ts";
 
 const ctx: CommandContext = { cwd: "/tmp", deployDir: null };
@@ -21,8 +27,8 @@ Deno.test("deploy/maintain/run-server stub 返回 0", async () => {
   assertEquals(await dispatchCommand("run-server", [], ctx), 0);
 });
 
-Deno.test("deploy 子命令 init/up/down/restart/status 返回 0", async () => {
-  for (const sub of ["init", "up", "down", "restart", "status"]) {
+Deno.test("deploy 子命令 up/down/restart/status 返回 0", async () => {
+  for (const sub of ["up", "down", "restart", "status"]) {
     assertEquals(
       await dispatchCommand("deploy", [sub], ctx),
       0,
@@ -67,6 +73,33 @@ Deno.test("parsePort: 非法端口抛错", () => {
   let threw = false;
   try {
     parsePort(["--port", "abc"]);
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true);
+});
+
+Deno.test("parseInitOptions: 缺省 mode/port/installDir", () => {
+  const opts = parseInitOptions([], "/tmp");
+  assertEquals(opts.mode, undefined);
+  assertEquals(opts.port, undefined);
+  assertEquals(opts.installDir, "/tmp");
+});
+
+Deno.test("parseInitOptions: 解析 --mode prod --port 9000 --dir /opt", () => {
+  const opts = parseInitOptions(
+    ["--mode", "prod", "--port", "9000", "--dir", "/opt"],
+    "/tmp",
+  );
+  assertEquals(opts.mode, "prod");
+  assertEquals(opts.port, 9000);
+  assertEquals(opts.installDir, "/opt");
+});
+
+Deno.test("parseInitOptions: 非法 mode 抛错", () => {
+  let threw = false;
+  try {
+    parseInitOptions(["--mode", "staging"], "/tmp");
   } catch {
     threw = true;
   }
