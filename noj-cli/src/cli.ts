@@ -15,6 +15,13 @@ import {
 } from "./deploy/deploy.ts";
 import { maintainLogs, parseModulesArg } from "./maintain/logs.ts";
 import { configCheck, configSet, configShow } from "./maintain/config.ts";
+import {
+  backupCreate,
+  backupDrill,
+  backupRestore,
+  backupVerify,
+} from "./maintain/backup.ts";
+import { maintainReset } from "./maintain/reset.ts";
 
 /** CLI 执行上下文，供各子命令共享。 */
 export interface CommandContext {
@@ -144,6 +151,70 @@ export function parseMaintainArgs(args: string[]): {
     }
   }
   return { dir, follow, modules: positional[0] };
+}
+
+/** maintain backup 参数解析结果。 */
+export interface BackupArgs {
+  sub: string;
+  dir: string | undefined;
+  backupDir: string | undefined;
+  passphraseFile: string | undefined;
+  zstdLevel: number;
+  noEncrypt: boolean;
+  confirm: boolean;
+  includeDeployConfigs: boolean;
+  snapshot: string | undefined;
+  report: string | undefined;
+}
+
+/** 解析 maintain backup 参数：子命令 + 位置参数 snapshot + 各旗标。 */
+export function parseBackupArgs(args: string[]): BackupArgs {
+  const out: BackupArgs = {
+    sub: args[0] ?? "",
+    dir: undefined,
+    backupDir: undefined,
+    passphraseFile: undefined,
+    zstdLevel: 15,
+    noEncrypt: false,
+    confirm: false,
+    includeDeployConfigs: false,
+    snapshot: undefined,
+    report: undefined,
+  };
+  const positional: string[] = [];
+  for (let i = 1; i < args.length; i++) {
+    const a = args[i]!;
+    switch (a) {
+      case "--dir":
+        out.dir = args[++i];
+        break;
+      case "--backup-dir":
+        out.backupDir = args[++i];
+        break;
+      case "--passphrase-file":
+        out.passphraseFile = args[++i];
+        break;
+      case "--zstd-level":
+        out.zstdLevel = Number(args[++i]);
+        break;
+      case "--no-encrypt":
+        out.noEncrypt = true;
+        break;
+      case "--confirm":
+        out.confirm = true;
+        break;
+      case "--include-deploy-configs":
+        out.includeDeployConfigs = true;
+        break;
+      case "--report":
+        out.report = args[++i];
+        break;
+      default:
+        positional.push(args[i]!);
+    }
+  }
+  out.snapshot = positional[0];
+  return out;
 }
 
 /** 将命令分发到对应处理函数。供测试与 run 共用。 */
@@ -284,6 +355,106 @@ export async function dispatchCommand(
           return 1;
         }
       }
+      if (sub === "backup") {
+        const a = parseBackupArgs(args.slice(1));
+        const deployDir = a.dir ?? ctx.deployDir ?? findDeployDir(ctx.cwd);
+        if (deployDir === null) {
+          console.error("maintain backup: 未找到 noj-deploy.json");
+          return 1;
+        }
+        try {
+          switch (a.sub) {
+            case "create": {
+              const r = await backupCreate({
+                dir: deployDir,
+                backupDir: a.backupDir,
+                passphraseFile: a.passphraseFile,
+                zstdLevel: a.zstdLevel,
+                noEncrypt: a.noEncrypt,
+              });
+              console.log(`备份完成: ${r.path}`);
+              console.log(`SHA-256: ${r.sha256}`);
+              return 0;
+            }
+            case "verify": {
+              if (a.snapshot === undefined) {
+                console.error("maintain backup verify: 需要 <snapshot> 路径");
+                return 1;
+              }
+              const report = await backupVerify({
+                snapshotPath: a.snapshot,
+                passphraseFile: a.passphraseFile,
+              });
+              if (report.pass) {
+                console.log("校验通过");
+                return 0;
+              }
+              for (const e of report.errors) console.error(`  ${e}`);
+              return 1;
+            }
+            case "restore": {
+              if (a.snapshot === undefined) {
+                console.error("maintain backup restore: 需要 <snapshot> 路径");
+                return 1;
+              }
+              const state = await backupRestore({
+                dir: deployDir,
+                snapshotPath: a.snapshot,
+                confirm: a.confirm,
+                passphraseFile: a.passphraseFile,
+                includeDeployConfigs: a.includeDeployConfigs,
+              });
+              console.log(`恢复完成，状态: ${state}`);
+              return 0;
+            }
+            case "drill": {
+              if (a.snapshot === undefined) {
+                console.error("maintain backup drill: 需要 <snapshot> 路径");
+                return 1;
+              }
+              const report = await backupDrill({
+                snapshotPath: a.snapshot,
+                passphraseFile: a.passphraseFile,
+                report: a.report,
+              });
+              console.log(
+                `演练完成（drill）：${report.pass ? "通过" : "失败"}`,
+              );
+              return report.pass ? 0 : 1;
+            }
+            default:
+              console.log(
+                "maintain backup: 需要子命令 create/verify/restore/drill",
+              );
+              return 0;
+          }
+        } catch (e) {
+          console.error(`maintain backup: ${(e as Error).message}`);
+          return 1;
+        }
+      }
+
+      if (sub === "reset") {
+        const a = parseBackupArgs(args.slice(1));
+        const deployDir = a.dir ?? ctx.deployDir ?? findDeployDir(ctx.cwd);
+        if (deployDir === null) {
+          console.error("maintain reset: 未找到 noj-deploy.json");
+          return 1;
+        }
+        try {
+          const state = await maintainReset({
+            dir: deployDir,
+            confirm: a.confirm,
+            includeDeployConfigs: a.includeDeployConfigs,
+          });
+          console.log(`重置完成，状态: ${state}`);
+          return 0;
+        } catch (e) {
+          console.error(`maintain reset: ${(e as Error).message}`);
+          return 1;
+        }
+      }
+
       if (MAINTAIN_SUBCOMMANDS.includes(sub)) {
         console.log(`maintain ${sub}: 运维逻辑留待后续计划`);
       } else {

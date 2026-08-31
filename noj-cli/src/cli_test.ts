@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
   dispatchCommand,
+  parseBackupArgs,
   parseDeployArgs,
   parseInitOptions,
   parseMaintainArgs,
@@ -32,22 +33,20 @@ Deno.test("deploy 无配置目录时返回 1", async () => {
   assertEquals(await dispatchCommand("deploy", [], ctx), 1);
 });
 
-Deno.test("maintain 子命令返回 0", async () => {
-  for (const sub of ["backup", "restore", "verify", "reset"]) {
-    assertEquals(
-      await dispatchCommand("maintain", [sub], ctx),
-      0,
-      `maintain ${sub}`,
-    );
-  }
-});
-
 Deno.test("maintain logs 无配置目录时返回 1", async () => {
   assertEquals(await dispatchCommand("maintain", ["logs"], ctx), 1);
 });
 
 Deno.test("maintain config 无配置目录时返回 1", async () => {
   assertEquals(await dispatchCommand("maintain", ["config"], ctx), 1);
+});
+
+Deno.test("maintain backup 无配置目录时返回 1", async () => {
+  assertEquals(await dispatchCommand("maintain", ["backup"], ctx), 1);
+});
+
+Deno.test("maintain reset 无配置目录时返回 1", async () => {
+  assertEquals(await dispatchCommand("maintain", ["reset"], ctx), 1);
 });
 
 Deno.test("未知命令返回 1", async () => {
@@ -127,4 +126,57 @@ Deno.test("parseMaintainArgs: 解析 modules 与 --follow --dir", () => {
   assertEquals(a.modules, "server,ui");
   assertEquals(a.follow, true);
   assertEquals(a.dir, "/opt");
+});
+
+Deno.test("parseBackupArgs: create 旗标解析", () => {
+  const a = parseBackupArgs([
+    "create",
+    "--backup-dir",
+    "/bk",
+    "--passphrase-file",
+    "/pw",
+    "--zstd-level",
+    "19",
+    "--no-encrypt",
+    "--dir",
+    "/opt",
+  ]);
+  assertEquals(a.sub, "create");
+  assertEquals(a.backupDir, "/bk");
+  assertEquals(a.passphraseFile, "/pw");
+  assertEquals(a.zstdLevel, 19);
+  assertEquals(a.noEncrypt, true);
+  assertEquals(a.dir, "/opt");
+});
+
+Deno.test("parseBackupArgs: verify 位置参数 snapshot", () => {
+  const a = parseBackupArgs([
+    "verify",
+    "/bk/snapshot-2026.nojbackup",
+    "--dir",
+    "/opt",
+  ]);
+  assertEquals(a.sub, "verify");
+  assertEquals(a.snapshot, "/bk/snapshot-2026.nojbackup");
+});
+
+Deno.test("parseBackupArgs: restore 旗标", () => {
+  const a = parseBackupArgs([
+    "restore",
+    "x.nojbackup",
+    "--confirm",
+    "--include-deploy-configs",
+    "--passphrase-file",
+    "/pw",
+  ]);
+  assertEquals(a.sub, "restore");
+  assertEquals(a.confirm, true);
+  assertEquals(a.includeDeployConfigs, true);
+  assertEquals(a.passphraseFile, "/pw");
+});
+
+Deno.test("parseBackupArgs: drill report 旗标", () => {
+  const a = parseBackupArgs(["drill", "x.nojbackup", "--report", "/r.json"]);
+  assertEquals(a.sub, "drill");
+  assertEquals(a.report, "/r.json");
 });
