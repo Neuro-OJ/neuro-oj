@@ -4,16 +4,17 @@ Neuro OJ 统一部署与运维 CLI（Deno + TypeScript，仅支持 linux/amd64�
 
 ## 状态
 
-P0 骨架：命令分发（doctor/deploy/maintain/run-server/version stub）、配置模型
-（load/save/validate/merge）、状态机（transition）、部署目录查找（findDeployDir）。
-具体业务命令（doctor 检测、init/up/logs/backup 等）留待后续计划。
+P1：实现 `doctor`（只读环境检测）与 `deploy init`（dev/prod TUI 引导生成
+`noj-deploy.json` + `noj-secrets.json`）。doctor 不安装、不写文件；init 不提供
+`--non-interactive`。up/down/restart/status 与 maintain 系列留待后续计划。
 
-## 运行
+## 用法
 
 ```bash
 cd noj-cli
-deno run -A src/cli.ts --help
-deno run -A src/cli.ts version
+deno run -A src/cli.ts doctor --port 8080
+deno run -A src/cli.ts deploy init --mode dev --dir /opt/neuro-oj
+deno run -A src/cli.ts deploy init --mode prod --dir /opt/neuro-oj
 ```
 
 ## 测试
@@ -30,3 +31,6 @@ deno task check
 - `src/config/` 配置模型（types/load/save/validate/merge/io）
 - `src/state/machine.ts` 部署状态机
 - `src/util/find_deploy_dir.ts` 部署目录查找
+- `src/doctor/` 环境检测（probe/checks/doctor/report）
+- `src/tui/` 交互抽象与表单控件（io/widgets）
+- `src/init/` deploy init 引导（templates/secrets/wizard）

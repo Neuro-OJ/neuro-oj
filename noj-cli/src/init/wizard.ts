@@ -1,5 +1,5 @@
 import type { PromptIO } from "../tui/io.ts";
-import { confirm, input, secretInput, select } from "../tui/widgets.ts";
+import { confirm, input, select } from "../tui/widgets.ts";
 import type { SystemProbe } from "../doctor/probe.ts";
 import { runDoctor } from "../doctor/doctor.ts";
 import { formatReport } from "../doctor/report.ts";

@@ -1,7 +1,7 @@
 /** noj-cli 版本号，与 deno.json 的 version 保持一致。 */
 export const VERSION = "0.1.0";
 
-// 配置模型
+// 配置模型（P0）
 export * from "./config/types.ts";
 export { loadDeployment } from "./config/load.ts";
 export { saveDeployment } from "./config/save.ts";
@@ -14,7 +14,32 @@ export {
   SECRETS_FILE_MODE,
 } from "./config/io.ts";
 
-// 状态机与工具
+// 状态机与工具（P0）
 export { transition } from "./state/machine.ts";
 export type { DeployAction, TransitionResult } from "./state/machine.ts";
 export { findDeployDir } from "./util/find_deploy_dir.ts";
+
+// doctor（P1）
+export type {
+  CmdResult,
+  DiskInfo,
+  MemInfo,
+  SystemProbe,
+} from "./doctor/probe.ts";
+export { realProbe } from "./doctor/probe.ts";
+export type { CheckResult } from "./doctor/checks.ts";
+export { runDoctor } from "./doctor/doctor.ts";
+export type { DoctorOptions, DoctorReport } from "./doctor/doctor.ts";
+export { formatReport } from "./doctor/report.ts";
+
+// TUI（P1）
+export type { PromptIO } from "./tui/io.ts";
+export { realIO } from "./tui/io.ts";
+export { confirm, input, secretInput, select } from "./tui/widgets.ts";
+
+// init（P1）
+export { devTemplate, prodTemplate } from "./init/templates.ts";
+export type { ProdTemplateOptions } from "./init/templates.ts";
+export { generateSecrets, randomKey } from "./init/secrets.ts";
+export { runInitWizard } from "./init/wizard.ts";
+export type { InitOptions } from "./init/wizard.ts";

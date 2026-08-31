@@ -4,7 +4,7 @@ import { realProbe } from "./doctor/probe.ts";
 import { runDoctor } from "./doctor/doctor.ts";
 import { formatReport } from "./doctor/report.ts";
 import { realIO } from "./tui/io.ts";
-import { runInitWizard, type InitOptions } from "./init/wizard.ts";
+import { type InitOptions, runInitWizard } from "./init/wizard.ts";
 import { saveDeployment } from "./config/save.ts";
 
 /** CLI 执行上下文，供各子命令共享。 */
