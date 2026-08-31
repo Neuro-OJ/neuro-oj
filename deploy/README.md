@@ -33,29 +33,28 @@ server {
 
 ## 首次安装与生产运维
 
-推荐使用仓库根目录的一键安装入口 `setup.sh`（仅下载/校验 `noj-cli`）与 `noj-cli`
-命令。首次安装会先检查当前主机（Linux / amd64 / 基础工具），下载并 SHA-256 校验
-`noj-cli-linux-amd64`，然后交由 `noj-cli` 完成环境检测与生产部署：
+推荐直接下载 `noj-cli` 二进制作为唯一安装入口，由 `noj-cli` 完成环境检测与生产部署：
 
 ```bash
-# 首次安装：仅使用仓库根目录的 setup.sh
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash
+# 首次安装：下载 noj-cli（GitHub Release 资产）
+curl -fsSL -o noj-cli \
+  https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/noj-cli-linux-amd64
+chmod +x noj-cli
 
 # 日常运维
-noj-cli doctor
-noj-cli deploy status
-noj-cli maintain logs server
-noj-cli maintain backup create
-noj-cli deploy restart
-noj-cli deploy down
-noj-cli deploy up
-noj-cli maintain config check
+./noj-cli doctor
+./noj-cli deploy status --dir /opt/neuro-oj
+./noj-cli maintain logs --dir /opt/neuro-oj server
+./noj-cli maintain backup create --dir /opt/neuro-oj
+./noj-cli deploy restart --dir /opt/neuro-oj
+./noj-cli deploy down --dir /opt/neuro-oj
+./noj-cli deploy up --dir /opt/neuro-oj
+./noj-cli maintain config check --dir /opt/neuro-oj
 ```
 
 `noj-cli` 不提供升级/卸载子命令；配置变更与数据管理见 `noj-cli maintain config`
 与 `noj-cli maintain reset`。`deploy down` 不会删除数据卷；`maintain reset` 默认
-只清数据，`--include-deploy-configs` 才连配置一起清。首次安装成功后 `noj-cli`
-会安装到 `NOJ_INSTALL_DIR`（默认 `/opt/neuro-oj`）并注册 `noj` 软链接。
+只清数据，`--include-deploy-configs` 才连配置一起清。
 
 镜像拉取由 Docker daemon 负责。若官方源访问不稳定，请在 Docker daemon 配置
 registry mirror 或 HTTP(S) proxy 后重试；评测镜像仍可通过 `JUDGE_IMAGE_BASE`

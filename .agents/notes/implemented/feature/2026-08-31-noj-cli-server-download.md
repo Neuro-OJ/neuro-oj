@@ -28,10 +28,9 @@ Status: implemented
 ## Alternatives considered
 
 - 继续要求用户手动下载 `noj-server`：实现简单，但破坏一键部署体验。
-- 在 `setup.sh` 中同时下载 `noj-server`：会让薄引导重新变厚，且无法覆盖
+- 在安装入口中同时下载 `noj-server`：会让首次安装依赖更多资产，且无法覆盖
   `deploy up` 时版本升级/缺失的场景。
-- 不校验 SHA-256：下载更快，但供应链安全不可接受，与现有 `setup.sh` 的
-  校验约定不一致。
+- 不校验 SHA-256：下载更快，但供应链安全不可接受，与现有发布资产校验约定不一致。
 
 ## Consequences
 
@@ -41,4 +40,4 @@ Status: implemented
   本地二进制避免测试依赖网络。
 - `deploy init` 会发起一次 GitHub API 请求；网络不可用时仅告警并回退默认版本。
 - 当前发布流程要求 GitHub Release 附带 `noj-server-linux-amd64` 与
-  `.sha256` 资产，命名与 `setup.sh` 的 `noj-cli-linux-amd64` 约定一致。
+  `.sha256` 资产，命名与 `noj-cli-linux-amd64` 资产约定一致。

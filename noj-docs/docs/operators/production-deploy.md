@@ -7,20 +7,15 @@
 
 ### 宝塔等服务器面板
 
-生产安装脚本默认会自动检测宝塔面板，也可以手动指定模式：
+在宝塔等面板环境中，`noj-cli` 不调用面板 API，也不会修改已有站点、证书、反向代理、
+容器或面板配置；按下方“下载 noj-cli 后开始安装”的流程执行即可。
 
 ```bash
-# 自动检测（默认）
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --panel auto --ref 0.8.0-rc.1 --dir /opt/neuro-oj
-
-# 面板安装路径特殊时，强制显示宝塔兼容提示
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --panel baota --ref 0.8.0-rc.1 --dir /opt/neuro-oj
-
-# 关闭面板提示
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --panel none --ref 0.8.0-rc.1 --dir /opt/neuro-oj
+curl -fsSL -o noj-cli \
+  https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/noj-cli-linux-amd64
+chmod +x noj-cli
+./noj-cli deploy init --mode prod --dir /opt/neuro-oj
+./noj-cli deploy up --dir /opt/neuro-oj
 ```
 
 宝塔兼容模式只复用面板安装的标准 Docker/Compose，不调用面板 API，也不会修改已有
@@ -38,97 +33,39 @@ rootless Docker socket，不能改用 `/run/docker.sock` 或 `/var/run/docker.so
 
 ## 2. 初始化
 
-### 推荐：一条命令开始安装
+### 推荐：下载 noj-cli 后开始安装
 
-和 HydroOJ 类似，NOJ 提供一个远程入口脚本。`setup.sh` 是仅下载并校验 `noj-cli`
-二进制的薄引导：先检查当前主机（Linux / amd64 / 基础工具），从 GitHub Releases
-下载 `noj-cli-linux-amd64` 并做 SHA-256 校验，然后交由 `noj-cli` 完成环境
-检测（doctor）与生产部署（deploy init / deploy up）：
+NOJ 的唯一安装入口是 `noj-cli` 二进制。直接从 GitHub Releases 下载，然后交给
+`noj-cli` 完成环境检测（doctor）与生产部署（deploy init / deploy up）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash
+# 下载最新版 noj-cli
+curl -fsSL -o noj-cli \
+  https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/noj-cli-linux-amd64
+chmod +x noj-cli
+
+# 环境检测
+./noj-cli doctor
+
+# 初始化并部署（示例目录 /opt/neuro-oj）
+./noj-cli deploy init --mode prod --dir /opt/neuro-oj
+./noj-cli deploy up --dir /opt/neuro-oj
 ```
 
-如需固定版本，可通过 `NOJ_CLI_VERSION` 环境变量指定（例如 `0.1.0`）；`--ref` /
-`--panel` 参数不再传递。
+固定版本时把 `releases/latest` 换成 `releases/download/vX.Y.Z`，例如：
+
+```bash
+curl -fsSL -o noj-cli \
+  https://github.com/Neuro-OJ/neuro-oj/releases/download/v0.1.0/noj-cli-linux-amd64
+```
 
 安装完成后打开网站注册第一个真实用户，该用户会自动获得管理员权限，不需要再执行额外
 的提权命令。已有站点的用户和管理员权限不会因为升级改变。
 
-如果服务器不能访问 GitHub API，自动获取最新版本会停止安装；请使用上面的 `--ref`
-显式指定版本，或先下载脚本检查后执行。
+`setup.sh`、`scripts/deploy/*.sh` 与根目录 `noj` 旧命令均已移除，统一使用 `noj-cli`。
 
-如需人工检查下载内容，可以先下载并检查 `setup.sh`，确认后再执行。
-`setup.sh` 已不再下载 bootstrap 脚本；它只下载并校验 `noj-cli` 二进制，部署由
-`noj-cli` 完成。`scripts/deploy/*.sh` 与 `noj` 旧命令已废弃，不兼容。
-
-首次执行会将源码放入 `/opt/neuro-oj`，随后创建权限为 `600` 的 `.env.prod` 并生成
-部分随机密钥，然后在终端逐项引导填写生产配置。配置网站地址、HTTPS 和邮件服务后，
-脚本会询问是否安装评测服务 Judge，默认安装；如果暂时没有独立的 Judge Docker 服务，
-可以选择跳过，网站和题库仍可先部署。只有选择安装 Judge 时才需要填写 Judge socket。
-邮件服务密钥不会回显，完成后脚本会继续进行配置校验和服务启动。安装完成后请立即打开
-网站注册第一个用户，该用户会自动成为管理员。没有 TTY 时才会停止并提示手工编辑配置：
-
-“网站地址”没有现有配置时会默认填入检测到的服务器 IPv4，直接回车即可使用，也可以改填
-正式域名。随后脚本会询问是否使用 HTTPS，默认使用 HTTPS；如果选择否，才会进入临时 HTTP
-模式。HTTP 不安全，只适合临时测试，正式环境请使用域名并配置证书。证书不会由脚本自动安装，
-需要在宝塔或其他反向代理中配置。
-
-重复执行部署且检测到已有生产配置时，脚本会先询问是否使用先前配置。输入 `Y` 或直接
-回车会保留配置；输入 `N` 会清空旧值的输入默认值并重新填写。若旧配置尚未填写完整，
-选择 `Y` 后会继续进入补齐向导。填写过程先暂存在临时文件，最后会询问“是否写入配置”；
-确认后才会改动正式配置，取消则保留原配置并停止部署。已有阿里云或腾讯云邮件配置时，
-邮件提示中的直接回车会继续使用当前配置，输入 `skip` 才会停用；没有旧邮件配置时直接
-回车会跳过邮件。停用邮件后密码找回邮件不可用。如果跳过 Judge，之后在 `.env.prod` 中将
-`JUDGE_ENABLED` 改为 `true`，补充独立 Judge Docker 服务的 socket 和组 ID，再执行
-`noj-cli deploy up --dir /opt/neuro-oj` 即可启用。
-
-```bash
-sudo vim /opt/neuro-oj/.env.prod
-sudo chmod 600 /opt/neuro-oj/.env.prod
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  sudo bash -s -- --ref 0.8.0-rc.1 --dir /opt/neuro-oj
-```
-
-bootstrap 默认自动选择最新 Release，可通过 `--ref` 指定其他分支或 Release tag；生产环境应
-使用不可变 Release tag，并让 `--ref` 与 `.env.prod` 中的 `NOJ_VERSION` 保持一致。
-也可以使用 `--download-only` 只获取源码，或使用 `--dry-run` 查看下载计划。目标目录
-非空时 bootstrap 会拒绝覆盖已有 `.env.prod`、备份和部署文件；已有安装请使用
-`noj-cli deploy up --dir /opt/neuro-oj` 启动/升级（升级前请先备份）。
-
-如果不希望在 shell 中直接执行网络下载内容，可以先保存脚本并人工检查；确认后再运行
-上面的 `setup.sh` 命令。bootstrap 只依赖 Linux 上常见的 Bash、`curl`
-或 `wget`、`tar`，实际服务部署仍需要 Docker Engine 与 Docker Compose v2。
-
-部署前可以先检测宿主机：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash -s -- check
-```
-
-如果缺少基础工具，可让脚本通过当前发行版的包管理器安装：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | sudo bash -s -- install-env
-```
-
-`install-env` 只安装 CA 证书、curl、tar 和 openssl 等基础工具；Docker Engine、Docker
-Compose plugin、Cosign、Docker daemon 权限和 Judge 使用的独立 rootless Docker daemon
-不会被脚本自动修改。镜像签名校验默认关闭，只有显式开启时才需要安装 Cosign。检测仍失败时，请按提示安装 Docker 后重新执行 `check`。`check` 会报告
-最低运行要求以及 Linux/CPU 架构与核数、基础工具、Docker/Compose、内存、Swap、目标目录和 Docker
-存储磁盘空间、默认 8080 端口；可
-通过 `--port` 指定实际端口。
-
-当前 Release 镜像仅发布 `linux/amd64`。ARM64/aarch64 主机会在 `check` 或 `install` 阶段
-提前停止并提示使用 x86_64 主机；这不是 Docker 安装故障。
-
-如果需要无人值守执行，可显式使用 `--non-interactive`；此时首次配置不询问，必须提前
-准备完整的 `.env.prod`，否则脚本以非零状态退出：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --non-interactive --ref 0.8.0-rc.1 --dir /opt/neuro-oj
-```
+当前 Release 镜像仅发布 `linux/amd64`。ARM64/aarch64 主机请在下载前确认选择了
+对应架构的版本，或在 `noj-cli doctor` 阶段处理架构不匹配提示。
 
 `.env.prod` 中必须填写：
 
@@ -187,10 +124,12 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 curl https://你的域名/healthz
 ```
 
-使用安装入口时，上述初始化、启动和健康检查由以下命令统一完成：
+使用 noj-cli 时，上述初始化、启动和健康检查由以下命令统一完成：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash
+./noj-cli deploy init --mode prod --dir /opt/neuro-oj
+./noj-cli deploy up --dir /opt/neuro-oj
+./noj-cli deploy status --dir /opt/neuro-oj
 ```
 
 部署脚本在 `install`、`start` 和 `upgrade` 前会校验 `NOJ_VERSION` 对应的应用镜像
@@ -318,9 +257,8 @@ noj-cli maintain config check
 
 `noj-cli` 不提供升级/卸载子命令；配置变更与数据管理见 `noj-cli maintain config`
 与 `noj-cli maintain reset`。`deploy down` 不会删除数据卷；`maintain reset` 默认
-只清数据，`--include-deploy-configs` 才连配置一起清。首次部署仅使用 `setup.sh`，
-成功后 `noj-cli` 会安装到 `NOJ_INSTALL_DIR`（默认 `/opt/neuro-oj`）并注册 `noj`
-软链接。
+只清数据，`--include-deploy-configs` 才连配置一起清。首次安装直接下载
+`noj-cli` 二进制即可，没有 `setup.sh` 薄引导。
 
 `maintain backup create` 会创建包含 PostgreSQL、Redis RDB、MinIO/S3 对象镜像和
 GPG 加密配置的完整快照，产物为单个 `snapshot-<timestamp>.nojbackup`。

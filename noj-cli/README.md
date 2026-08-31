@@ -21,14 +21,26 @@ SUCCESS/manifest/sha256sums；`restore` 默认只恢复数据、
 P5：新增 `noj-server`（linux/amd64）的 `deno compile` 构建脚本与
 `deno task
 build:server`；`docker-compose.prod.yml` 中镜像/服务改名为
-`noj-server`/`server`； `setup.sh` 改为仅下载/校验 `noj-cli-linux-amd64`
-的薄引导；README / deploy/README / noj-docs
-生产部署文档已迁移到新命名与薄引导流程。
+`noj-server`/`server`；README / deploy/README / noj-docs
+生产部署文档已迁移到新命名。
 
 P5 补充：`deploy up` 与 `run-server` 在 process 模式且未配置 `dev_command`
 时，会自动从 GitHub Releases 下载并校验 `noj-server-linux-amd64`
 （SHA-256），缓存到 `<install_dir>/bin/`；`deploy init` 会尝试解析最新版本号，
 网络不可用时回退到内置默认版本。
+
+## 安装
+
+`noj-cli` 是唯一安装入口，直接下载 GitHub Release 二进制即可：
+
+```bash
+curl -fsSL -o noj-cli \
+  https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/noj-cli-linux-amd64
+chmod +x noj-cli
+./noj-cli doctor
+```
+
+固定版本时把 `releases/latest` 换成 `releases/download/vX.Y.Z`。
 
 ## 用法
 
