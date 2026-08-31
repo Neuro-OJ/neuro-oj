@@ -130,7 +130,7 @@ function hasResult(
             <label class="text-xs font-semibold text-text-secondary">题目</label>
             <input
               v-model="filters.problem_search"
-              class="rounded border border-border bg-white px-2.5 py-1.5 text-13px text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10"
+              class="rounded border border-border bg-white px-2.5 py-1.5 text-13px text-text outline-none transition-colors duration-150 focus:border-signal focus:ring-2 focus:ring-signal/10"
               placeholder="题目 ID 或名称"
               @keyup.enter="applyFilters"
             />
@@ -139,7 +139,7 @@ function hasResult(
             <label class="text-xs font-semibold text-text-secondary">提交 ID</label>
             <input
               v-model="filters.submission_id"
-              class="rounded border border-border bg-white px-2.5 py-1.5 text-13px text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/10"
+              class="rounded border border-border bg-white px-2.5 py-1.5 text-13px text-text outline-none transition-colors duration-150 focus:border-signal focus:ring-2 focus:ring-signal/10"
               placeholder="输入提交 ID 前缀"
               @keyup.enter="applyFilters"
             />
@@ -231,7 +231,7 @@ function hasResult(
               </td>
               <td class="px-3.5 py-3 text-13px text-text">{{ formatDateTime(sub.created_at) }}</td>
               <td class="px-3.5 py-3 text-center text-13px text-text">
-                <NuxtLink :to="publicUrl('submission', sub.public_id || sub.id)" class="inline-flex cursor-pointer items-center gap-1 rounded border border-primary bg-transparent px-2.5 py-1 text-xs font-semibold leading-none text-primary no-underline transition-all duration-150 hover:bg-primary hover:text-white">
+                <NuxtLink :to="publicUrl('submission', sub.public_id || sub.id)" class="inline-flex cursor-pointer items-center gap-1 rounded border border-signal bg-transparent px-2.5 py-1 text-xs font-semibold leading-none text-primary no-underline transition-all duration-150 hover:bg-signal hover:text-white">
                   查看
                 </NuxtLink>
               </td>

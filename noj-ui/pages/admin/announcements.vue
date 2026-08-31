@@ -198,7 +198,7 @@ async function handleDelete() {
       <div class="flex flex-col gap-3">
         <div class="flex flex-col gap-1">
           <label class="text-13px font-semibold text-text">标题 <span class="text-error-text">*</span></label>
-          <input v-model="formTitle" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="公告标题（1–100 字符）" maxlength="100" />
+          <input v-model="formTitle" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]" placeholder="公告标题（1–100 字符）" maxlength="100" />
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-13px font-semibold text-text">内容（Markdown） <span class="text-error-text">*</span></label>

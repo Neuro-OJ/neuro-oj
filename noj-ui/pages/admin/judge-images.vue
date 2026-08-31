@@ -206,7 +206,7 @@ async function handleDelete() {
       <div class="flex flex-col gap-3">
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">镜像名 <span class="text-error-text">*</span></label>
-        <input v-model="formImage" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="如：noj-judge-python" :disabled="!!editingItem" />
+        <input v-model="formImage" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]" placeholder="如：noj-judge-python" :disabled="!!editingItem" />
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">匹配模式</label>
@@ -222,7 +222,7 @@ async function handleDelete() {
 
       <div class="flex flex-col gap-1">
         <label class="text-13px font-semibold text-text">介绍</label>
-        <input v-model="formDescription" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="在题目编辑器中展示的说明文字" />
+        <input v-model="formDescription" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]" placeholder="在题目编辑器中展示的说明文字" />
       </div>
       <p v-if="formError" class="text-error-text text-13px">{{ formError }}</p>
       </div>

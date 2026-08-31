@@ -15,7 +15,7 @@ useHead({ title: '创建题目 - Neuro OJ' })
       <!-- 客观题套卷 -->
       <NuxtLink
         to="/problems/new/objective"
-        class="group flex flex-col gap-3 rounded-xl border border-border bg-white p-6 no-underline transition-all duration-150 hover:border-primary/50 hover:shadow-md"
+        class="group flex flex-col gap-3 rounded-xl border border-border bg-white p-6 no-underline transition-all duration-150 hover:border-signal/50 hover:shadow-md"
       >
         <span class="flex size-11 items-center justify-center rounded-lg bg-green-100 text-green-700">
           <UIcon name="i-lucide-clipboard-list" class="size-5" />
@@ -35,7 +35,7 @@ useHead({ title: '创建题目 - Neuro OJ' })
       <!-- Coding 编程题 -->
       <NuxtLink
         to="/problems/new/coding"
-        class="group flex flex-col gap-3 rounded-xl border border-border bg-white p-6 no-underline transition-all duration-150 hover:border-primary/50 hover:shadow-md"
+        class="group flex flex-col gap-3 rounded-xl border border-border bg-white p-6 no-underline transition-all duration-150 hover:border-signal/50 hover:shadow-md"
       >
         <span class="flex size-11 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
           <UIcon name="i-lucide-code-2" class="size-5" />

@@ -401,7 +401,7 @@ async function handleSubmit() {
 
         <div class="flex flex-col gap-1">
           <label class="text-xs font-semibold text-text">标题 <span class="text-red-600">*</span></label>
-          <input v-model="title" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white" placeholder="题目标题" />
+          <input v-model="title" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)] bg-white" placeholder="题目标题" />
           <p v-if="fieldErrors.title" class="text-xs text-red-600">{{ fieldErrors.title }}</p>
         </div>
 
@@ -424,7 +424,7 @@ async function handleSubmit() {
 
         <div v-if="submissionMode === 'artifact'" class="flex flex-col gap-1">
           <label class="text-xs font-semibold text-text">artifact 大小上限（MB）</label>
-          <input v-model.number="artifactMaxSizeMb" type="number" min="1" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white" placeholder="留空使用 NOJ 默认上限" />
+          <input v-model.number="artifactMaxSizeMb" type="number" min="1" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)] bg-white" placeholder="留空使用 NOJ 默认上限" />
         </div>
 
         <div class="flex flex-col gap-1 col-span-2">
@@ -437,7 +437,7 @@ async function handleSubmit() {
           </div>
           <input
             v-model="tagSearch"
-            class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] bg-white"
+            class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)] bg-white"
             placeholder="搜索标签..."
           />
           <div class="flex flex-wrap gap-2">
@@ -466,7 +466,7 @@ async function handleSubmit() {
       <textarea
         v-if="!previewMode"
         v-model="description"
-        class="w-full px-3 py-3 text-sm font-mono leading-relaxed border border-border rounded-md outline-none resize-y min-h-[200px] box-border transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+        class="w-full px-3 py-3 text-sm font-mono leading-relaxed border border-border rounded-md outline-none resize-y min-h-[200px] box-border transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
         placeholder="支持 Markdown 格式的题目描述..."
         rows="12"
       />
@@ -486,7 +486,7 @@ async function handleSubmit() {
         <!-- Evaluator 卡片 -->
         <div class="border border-border rounded-lg p-3.5 bg-gray-50">
           <h3 class="text-xs font-semibold text-text mb-2.5 flex items-center gap-1.5">
-            <span class="px-1.5 py-0.5 bg-primary text-white text-[10px] rounded">Evaluator</span>
+            <span class="px-1.5 py-0.5 bg-signal text-on-signal text-[10px] rounded">Evaluator</span>
             可信端（运行 evaluate.py + 支持包）
           </h3>
           <div class="flex flex-col gap-2.5">
@@ -504,7 +504,7 @@ async function handleSubmit() {
             </div>
             <div class="flex flex-col gap-1">
               <label class="text-xs font-semibold text-text">评测命令 <span class="text-red-600">*</span></label>
-              <input v-model="evaluatorCommand" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary bg-white" placeholder="如：python3 /workspace/evaluate.py" />
+              <input v-model="evaluatorCommand" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none transition-colors focus:border-signal bg-white" placeholder="如：python3 /workspace/evaluate.py" />
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div class="flex flex-col gap-1">
@@ -541,7 +541,7 @@ async function handleSubmit() {
                 </div>
                 <div class="flex flex-col gap-1">
                   <label class="text-xs font-semibold text-text">模型 <span class="text-red-600">*</span></label>
-                  <input v-model="llmModel" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none focus:border-primary bg-white" placeholder="如：qwen-plus" />
+                  <input v-model="llmModel" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none focus:border-signal bg-white" placeholder="如：qwen-plus" />
                   <p v-if="fieldErrors.llm_model" class="text-xs text-red-600">{{ fieldErrors.llm_model }}</p>
                 </div>
                 <div class="px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
@@ -595,7 +595,7 @@ async function handleSubmit() {
 
     <!-- 提交按钮 -->
     <div class="flex gap-2.5 justify-end px-6 py-4">
-      <UButton color="primary" class="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold rounded-lg border border-transparent bg-primary text-white cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary-dark hover:border-primary-dark" :disabled="saving" @click="handleSubmit">
+      <UButton color="primary" class="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold rounded-lg border border-transparent bg-signal text-on-signal cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:bg-signal/80 hover:border-signal/80" :disabled="saving" @click="handleSubmit">
         <UIcon name="i-lucide-save" class="size-4" />
         {{ saving ? (isEditMode ? "保存中..." : "创建中...") : (isEditMode ? "保存修改" : "创建题目") }}
       </UButton>
@@ -608,7 +608,7 @@ async function handleSubmit() {
       <div class="flex flex-col gap-3">
         <div class="flex flex-col gap-1">
           <label class="text-13px font-semibold text-text">名称 <span class="text-error-text">*</span></label>
-          <input v-model="newTagName" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="标签名称" />
+          <input v-model="newTagName" class="px-3 py-2 text-sm border border-border rounded-md outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]" placeholder="标签名称" />
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-13px font-semibold text-text">类型 <span class="text-error-text">*</span></label>

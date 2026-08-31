@@ -533,7 +533,7 @@ watch(isLoggedIn, loadByokProviders, { immediate: true })
           <textarea
             v-if="!previewMode"
             v-model="bio"
-            class="w-full min-h-[200px] px-4 py-3 border border-border rounded-lg text-sm font-mono leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+            class="w-full min-h-[200px] px-4 py-3 border border-border rounded-lg text-sm font-mono leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-signal focus:border-transparent"
             placeholder="用 Markdown 介绍自己..."
             maxlength="5000"
           />

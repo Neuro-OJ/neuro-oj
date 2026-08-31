@@ -229,7 +229,7 @@ const publishBlockReason = computed(() => {
               <NuxtLink
                 v-if="canEdit"
                 :to="`${problemUrl(problem.id, problem.display_id)}/edit`"
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg text-text-secondary hover:text-primary hover:border-primary/40 transition-colors"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg text-text-secondary hover:text-primary hover:border-signal/40 transition-colors"
               >
                 <UIcon name="i-lucide-pencil" class="size-3.5" />
                 编辑
@@ -322,7 +322,7 @@ const publishBlockReason = computed(() => {
             <input
               type="file"
               accept=".zip,application/zip,application/x-zip-compressed"
-              class="block w-full text-sm text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-primary-dark"
+              class="block w-full text-sm text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-signal file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-signal/80"
               @change="(e) => artifactFile = (e.target as HTMLInputElement).files?.[0] ?? null"
             />
             <div v-if="artifactError" class="text-sm text-red-600">{{ artifactError }}</div>

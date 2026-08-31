@@ -303,8 +303,8 @@ watch(initialData, (value) => {
         </template>
 
         <div class="mt-6 flex gap-3 border-t border-border pt-4">
-          <UButton color="primary" variant="outline" aria-label="点赞" :class="{ 'border-primary bg-primary-bg text-primary': post.liked }" :disabled="!canReact || interaction !== null" @click="toggle('like', `/api/v1/community/posts/${post.post.id}/like`)"><UIcon name="i-lucide-heart" class="size-4" />{{ interaction === 'like' ? '处理中…' : post.likes }}</UButton>
-          <UButton color="primary" variant="outline" aria-label="收藏" :class="{ 'border-primary bg-primary-bg text-primary': post.bookmarked }" :disabled="!canBookmark || interaction !== null" @click="toggle('bookmark', `/api/v1/community/posts/${post.post.id}/bookmark`)"><UIcon name="i-lucide-bookmark" class="size-4" />{{ interaction === 'bookmark' ? '处理中…' : post.bookmarked ? '已收藏' : '收藏' }}</UButton>
+          <UButton color="primary" variant="outline" aria-label="点赞" :class="{ 'border-signal bg-primary-bg text-primary': post.liked }" :disabled="!canReact || interaction !== null" @click="toggle('like', `/api/v1/community/posts/${post.post.id}/like`)"><UIcon name="i-lucide-heart" class="size-4" />{{ interaction === 'like' ? '处理中…' : post.likes }}</UButton>
+          <UButton color="primary" variant="outline" aria-label="收藏" :class="{ 'border-signal bg-primary-bg text-primary': post.bookmarked }" :disabled="!canBookmark || interaction !== null" @click="toggle('bookmark', `/api/v1/community/posts/${post.post.id}/bookmark`)"><UIcon name="i-lucide-bookmark" class="size-4" />{{ interaction === 'bookmark' ? '处理中…' : post.bookmarked ? '已收藏' : '收藏' }}</UButton>
         </div>
       </template>
     </article>

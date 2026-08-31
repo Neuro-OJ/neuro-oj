@@ -275,7 +275,7 @@ watch(
           <NuxtLink
             v-if="!isLoggedIn"
             to="/login"
-            class="inline-flex items-center px-4 py-1.5 rounded-md text-xs font-semibold bg-primary text-white border border-primary no-underline hover:bg-primary-dark hover:border-primary-dark"
+            class="inline-flex items-center px-4 py-1.5 rounded-md text-xs font-semibold bg-signal text-on-signal border border-signal no-underline hover:bg-signal/80 hover:border-signal/80"
           >
             登录
           </NuxtLink>
@@ -313,7 +313,7 @@ watch(
           <NuxtLink
             v-if="!isLoggedIn"
             to="/login"
-            class="inline-flex items-center px-4 py-1.5 rounded-md text-xs font-semibold bg-primary text-white border border-primary no-underline hover:bg-primary-dark hover:border-primary-dark"
+            class="inline-flex items-center px-4 py-1.5 rounded-md text-xs font-semibold bg-signal text-on-signal border border-signal no-underline hover:bg-signal/80 hover:border-signal/80"
           >
             登录
           </NuxtLink>

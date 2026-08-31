@@ -341,7 +341,7 @@ async function showBanHistory(user: User) {
         v-for="role in allRoles"
         :key="role.id"
         class="flex items-center gap-2 p-2.5 border border-border rounded-lg cursor-pointer hover:bg-primary-bg transition-colors"
-        :class="{ 'border-primary bg-primary-bg': selectedRoleIds.includes(role.id) }"
+        :class="{ 'border-signal bg-primary-bg': selectedRoleIds.includes(role.id) }"
       >
         <input
           type="checkbox"
@@ -390,7 +390,7 @@ async function showBanHistory(user: User) {
         <input
           v-model="banForm.reason"
           placeholder="例如：刷接口 / 提交作弊"
-          class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+          class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
         />
       </div>
       <div>
@@ -398,7 +398,7 @@ async function showBanHistory(user: User) {
         <input
           v-model="banForm.banned_until"
           type="datetime-local"
-          class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+          class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
         />
         <p class="mt-1 text-[12px] text-text-secondary">留空表示永久封禁</p>
       </div>

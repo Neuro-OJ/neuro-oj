@@ -190,7 +190,7 @@ onUnmounted(() => {
                   </div>
                   <aside class="space-y-3 rounded-xl border border-border bg-bg-page p-4">
                     <template v-if="!contest.is_registered && contest.status !== 'ended'">
-                      <input v-if="contest.has_password" v-model="password" type="password" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" placeholder="竞赛密码" @keyup.enter="register">
+                      <input v-if="contest.has_password" v-model="password" type="password" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-signal" placeholder="竞赛密码" @keyup.enter="register">
                       <UButton color="primary" class="w-full gap-2 py-2.5 text-sm disabled:opacity-50" :disabled="registering" @click="register"><UIcon name="i-lucide-key-round" class="size-4" />{{ registering ? '报名中...' : '报名参赛' }}</UButton>
                       <p v-if="registerError" class="text-xs text-error-text">{{ registerError }}</p>
                     </template>

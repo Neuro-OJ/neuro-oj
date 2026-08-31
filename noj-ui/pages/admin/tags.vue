@@ -222,7 +222,7 @@ async function confirmDelete(tag: Tag) {
       <div class="flex flex-col gap-3">
         <div class="flex flex-col gap-1">
           <label class="text-13px font-semibold text-text">名称 <span class="text-error-text">*</span></label>
-          <input v-model="formName" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]" placeholder="标签名称" />
+          <input v-model="formName" class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]" placeholder="标签名称" />
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-13px font-semibold text-text">类型 <span class="text-error-text">*</span></label>

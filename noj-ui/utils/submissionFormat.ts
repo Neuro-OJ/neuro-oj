@@ -44,8 +44,8 @@ export const languageLabels: Record<string, string> = {
  */
 export const statusColors: Record<string, string> = {
   pending: '#9ca3af',
-  judging: '#3b82f6',
-  finished: '#10b981',
+  judging: '#00d68a',
+  finished: '#00b377',
   error: '#ef4444',
 };
 

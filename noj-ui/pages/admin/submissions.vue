@@ -252,7 +252,7 @@ async function removeFromQueue(submissionId: string) {
           <label class="text-xs font-semibold text-text-secondary">题目</label>
           <input
             v-model="filters.problem_search"
-            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
             placeholder="题目 ID 或名称"
             @keyup.enter="applyFilters"
           />
@@ -261,7 +261,7 @@ async function removeFromQueue(submissionId: string) {
           <label class="text-xs font-semibold text-text-secondary">用户</label>
           <input
             v-model="filters.user_search"
-            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
             placeholder="用户名或用户 ID"
             @keyup.enter="applyFilters"
           />
@@ -270,7 +270,7 @@ async function removeFromQueue(submissionId: string) {
           <label class="text-xs font-semibold text-text-secondary">提交 ID</label>
           <input
             v-model="filters.submission_id"
-            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+            class="px-2.5 py-1.5 text-13px border border-border rounded outline-none bg-white transition-colors duration-150 focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
             placeholder="提交 ID 前缀"
             @keyup.enter="applyFilters"
           />
@@ -325,7 +325,7 @@ async function removeFromQueue(submissionId: string) {
             @click="removeFromQueue(rowSub(row.original).public_id || rowSub(row.original).id)"
           >{{ isRemovingQueue(rowSub(row.original).public_id || rowSub(row.original).id) ? '移除中...' : '移出队列' }}</button>
           <button class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-warning-text border-warning-text bg-transparent hover:bg-warning-text hover:text-white disabled:cursor-not-allowed disabled:opacity-50" :disabled="isRejudging(rowSub(row.original).public_id || rowSub(row.original).id)" @click="rejudge(rowSub(row.original).public_id || rowSub(row.original).id)">{{ isRejudging(rowSub(row.original).public_id || rowSub(row.original).id) ? '提交中...' : '重测' }}</button>
-          <NuxtLink :to="publicUrl('submission', rowSub(row.original).public_id || rowSub(row.original).id)" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-primary border-primary bg-transparent hover:bg-primary hover:text-white">查看</NuxtLink>
+          <NuxtLink :to="publicUrl('submission', rowSub(row.original).public_id || rowSub(row.original).id)" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] leading-none no-underline text-primary border-signal bg-transparent hover:bg-signal hover:text-white">查看</NuxtLink>
         </div>
       </template>
     </UTable>

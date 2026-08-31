@@ -73,7 +73,7 @@ function setPage(p: number) {
               :class="[
                 'transition-colors duration-150',
                 isLoggedIn && currentUser?.id === row.user_id
-                  ? 'bg-primary/5 hover:bg-primary/10'
+                  ? 'bg-signal/5 hover:bg-signal/10'
                   : 'hover:bg-gray-50',
               ]"
             >
