@@ -149,7 +149,9 @@ noj-cli maintain verify --dir /opt/neuro-oj
 > 如果启用评测 Worker，不得挂载应用宿主机的 `/var/run/docker.sock`。生产 Compose 要求
 > `JUDGE_DOCKER_SOCKET` 指向只服务于 judge 的 rootless daemon socket，并以非 root
 > 用户运行 Worker；`JUDGE_REQUIRE_ISOLATED_DOCKER=true` 会在错误配置时阻止 Worker
-> 消费评测任务。跳过 Judge 时不需要这些配置。
+> 消费评测任务。rootless Docker 的安装方式见
+> [Judge Worker 运维 - rootless Docker 安装](judge-workers.md#rootless-docker-安装)。
+> 跳过 Judge 时不需要这些配置。
 
 ## 3. 评测镜像白名单
 
