@@ -45,7 +45,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: noj-core
+          - name: noj-server
             context: noj-core
             file: noj-core/Dockerfile
           - name: noj-ui
@@ -184,6 +184,25 @@ jobs:
             exit 1
           }
 
+      - name: 设置 GHCR 包可见性为 public
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.name }}
+        run: |
+          set -Eeuo pipefail
+          owner="${{ github.repository_owner }}"
+          pkg="${IMAGE#ghcr.io/}"
+          name="${pkg#*/}"
+          if gh api -X POST "/orgs/$owner/packages/container/$name/visibility" \
+            -f visibility=public >/dev/null 2>&1; then
+            echo "已设置 $IMAGE 为 public（org 包）"
+          elif gh api -X POST "/users/$owner/packages/container/$name/visibility" \
+            -f visibility=public >/dev/null 2>&1; then
+            echo "已设置 $IMAGE 为 public（user 包）"
+          else
+            echo "::warning::无法自动设置 $IMAGE 为 public，请手动在 GHCR 包设置中改为 public"
+          fi
+
       - name: 保存发布元数据
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.name }}
@@ -269,9 +288,9 @@ jobs:
 
             docker pull "$image@$digest" >/dev/null
             case "$image" in
-              */noj-core)
+              */noj-server)
                 docker run --rm --entrypoint /bin/sh "$image@$digest" -c \
-                  'test -x /app/bin/noj-core && test -x /app/bin/noj && test "$(id -u)" != 0'
+                  'test -x /app/bin/noj-server && test -x /app/bin/noj && test "$(id -u)" != 0'
                 ;;
               */noj-ui)
                 docker run --rm --entrypoint /bin/sh "$image@$digest" -c \
