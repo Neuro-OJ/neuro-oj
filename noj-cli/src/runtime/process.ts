@@ -1,6 +1,7 @@
 import type { ComponentConfig } from "../config/types.ts";
 import type { CommandRunner, SpawnOpts } from "./command.ts";
 import { readPid, removePid, writePid } from "./pidfile.ts";
+import { logPath } from "./logfile.ts";
 
 /** 由 ComponentConfig 生成进程启动参数。 */
 export function processLaunch(
@@ -28,7 +29,9 @@ export async function startManagedProcess(
   cwd: string,
 ): Promise<{ pid: number }> {
   const launch = processLaunch(comp, env, cwd);
-  const handle = runner.spawn(launch);
+  const log = logPath(runDir, component);
+  await Deno.mkdir(`${runDir}/logs`, { recursive: true });
+  const handle = runner.spawn({ ...launch, stdoutFile: log, stderrFile: log });
   await writePid(runDir, component, handle.pid);
   return { pid: handle.pid };
 }

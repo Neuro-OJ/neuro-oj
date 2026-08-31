@@ -109,3 +109,20 @@ Deno.test("stopManagedProcess: 无 PID 文件时 no-op", async () => {
   }
   assertEquals(threw, false);
 });
+
+Deno.test("startManagedProcess: 输出写入 run/logs/<component>.log", async () => {
+  const dir = await Deno.makeTempDir();
+  const runDir = `${dir}/run`;
+  const spawned: SpawnOpts[] = [];
+  const runner = fakeRunner(spawned, []);
+  await startManagedProcess(
+    runner,
+    runDir,
+    "server",
+    server,
+    { PORT: "8000" },
+    dir,
+  );
+  assertEquals(spawned[0]!.stdoutFile, `${runDir}/logs/server.log`);
+  assertEquals(spawned[0]!.stderrFile, `${runDir}/logs/server.log`);
+});

@@ -11,6 +11,10 @@ export interface SpawnOpts {
   args: string[];
   cwd: string;
   env: Record<string, string>;
+  /** 存在时把子进程 stdout 追加写入该文件。 */
+  stdoutFile?: string;
+  /** 存在时把子进程 stderr 追加写入该文件。 */
+  stderrFile?: string;
 }
 
 /** 已启动进程的句柄：记录 PID，可等待退出或终止。 */
@@ -33,6 +37,13 @@ export interface CommandRunner {
     opts?: { cwd?: string; env?: Record<string, string> },
   ): Promise<CmdResult>;
   spawn(opts: SpawnOpts): SpawnHandle;
+  /** 逐行流式执行命令；onLine 每收到一行（不含换行）回调一次，返回退出码。可选：P2 既有 fake 可不实现。 */
+  stream?(
+    cmd: string,
+    args: string[],
+    onLine: (line: string) => void,
+    opts?: { cwd?: string; env?: Record<string, string> },
+  ): Promise<number>;
 }
 
 /** 真实实现：`Deno.Command` 的 run 与 spawn。 */
@@ -55,18 +66,37 @@ export function realRunner(): CommandRunner {
       };
     },
     spawn(opts) {
-      const child = new Deno.Command(opts.cmd, {
+      const cmd = new Deno.Command(opts.cmd, {
         args: opts.args,
         cwd: opts.cwd,
         env: opts.env,
-        stdout: "piped",
-        stderr: "piped",
-      }).spawn();
+        stdout: opts.stdoutFile ? "piped" : "inherit",
+        stderr: opts.stderrFile ? "piped" : "inherit",
+      });
+      const child = cmd.spawn();
+      const pipes: Promise<void>[] = [];
+      if (opts.stdoutFile) {
+        const f = Deno.open(opts.stdoutFile, {
+          write: true,
+          create: true,
+          append: true,
+        });
+        pipes.push(f.then((file) => child.stdout.pipeTo(file.writable)));
+      }
+      if (opts.stderrFile) {
+        const f = Deno.open(opts.stderrFile, {
+          write: true,
+          create: true,
+          append: true,
+        });
+        pipes.push(f.then((file) => child.stderr.pipeTo(file.writable)));
+      }
       return {
         pid: child.pid,
         async wait() {
-          const status = await child.status;
-          return status.code;
+          const code = (await child.status).code;
+          await Promise.allSettled(pipes);
+          return code;
         },
         kill() {
           try {
@@ -77,6 +107,32 @@ export function realRunner(): CommandRunner {
           return Promise.resolve();
         },
       };
+    },
+    async stream(cmd, args, onLine, opts) {
+      const p = new Deno.Command(cmd, {
+        args,
+        cwd: opts?.cwd,
+        env: opts?.env,
+        stdout: "piped",
+        stderr: "piped",
+      });
+      const child = p.spawn();
+      let buf = "";
+      const reader = child.stdout.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buf.indexOf("\n")) !== -1) {
+          const line = buf.slice(0, idx);
+          buf = buf.slice(idx + 1);
+          if (line.endsWith("\r")) onLine(line.slice(0, -1));
+          else onLine(line);
+        }
+      }
+      if (buf.length > 0) onLine(buf);
+      return (await child.status).code;
     },
   };
 }
