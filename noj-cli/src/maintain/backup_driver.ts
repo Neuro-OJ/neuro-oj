@@ -197,18 +197,30 @@ export function realDriver(runner?: CommandRunner): BackupDriver {
           content: persistRes.stdout,
         });
       }
-      // minio：遍历桶列表，逐个 mc mirror --remote-host 到本地（占位实现：记录桶列表）
+      // minio：用 minio/mc 容器把桶数据镜像到 staging/minio
       if (config.components["minio"]?.enabled) {
-        const { MC_MIRROR_OUTPUT } = minioEnv;
-        await Deno.mkdir(`${dumpDir}/minio`, { recursive: true });
-        await Deno.writeTextFile(
-          `${dumpDir}/minio/BUCKETS`,
-          MC_MIRROR_OUTPUT ?? "[]",
-        );
-        entries.push({
-          relPath: "minio/BUCKETS",
-          content: MC_MIRROR_OUTPUT ?? "[]",
-        });
+        const access = minioEnv["S3_ACCESS_KEY"] ?? "minioadmin";
+        const secret = minioEnv["S3_SECRET_KEY"] ?? "minioadmin";
+        const outDir = `${dumpDir}/minio`;
+        await Deno.mkdir(outDir, { recursive: true });
+        const res = await r.run("docker", [
+          "run",
+          "--rm",
+          "--network",
+          "container:noj-minio",
+          "-v",
+          `${outDir}:/out`,
+          "-e",
+          `MC_HOST_minio=http://${access}:${secret}@localhost:9000`,
+          "minio/mc:latest@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727",
+          "mirror",
+          "--overwrite",
+          "minio/",
+          "/out",
+        ]);
+        if (res.code !== 0) {
+          throw new Error(`MinIO 备份失败: ${res.stderr || res.stdout}`);
+        }
       }
       return entries;
     },

@@ -37,19 +37,22 @@ export function devTemplate(installDir: string, port: number): DeployConfig {
   cfg.env["PORT"] = String(port);
   cfg.components = {
     postgres: dockerComponent({
-      image: "postgres:16-alpine",
+      image:
+        "postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
       internal_port: 5432,
       host_port: null,
       env: { POSTGRES_USER: "noj", POSTGRES_DB: "noj" },
     }),
     redis: dockerComponent({
-      image: "redis:7-alpine",
+      image:
+        "redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf",
       internal_port: 6379,
       host_port: null,
       env: {},
     }),
     minio: dockerComponent({
-      image: "minio/minio:latest",
+      image:
+        "minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
       api_port: 9000,
       console_port: 9001,
       host_api_port: null,
@@ -104,7 +107,8 @@ export function devTemplate(installDir: string, port: number): DeployConfig {
     nginx: {
       enabled: false,
       method: "docker",
-      image: "nginx:1.27-alpine",
+      image:
+        "nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
       port: 8080,
       host_port: port,
       env: {},
@@ -154,19 +158,22 @@ export function prodTemplate(opts: ProdTemplateOptions): DeployConfig {
   };
   cfg.components = {
     postgres: dockerComponent({
-      image: "postgres:16-alpine",
+      image:
+        "postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
       internal_port: 5432,
       host_port: null,
       env: { POSTGRES_USER: "noj", POSTGRES_DB: "noj" },
     }),
     redis: dockerComponent({
-      image: "redis:7-alpine",
+      image:
+        "redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf",
       internal_port: 6379,
       host_port: null,
       env: {},
     }),
     minio: dockerComponent({
-      image: "minio/minio:latest",
+      image:
+        "minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
       api_port: 9000,
       console_port: 9001,
       host_api_port: null,
@@ -221,7 +228,8 @@ export function prodTemplate(opts: ProdTemplateOptions): DeployConfig {
       },
     }),
     nginx: dockerComponent({
-      image: "nginx:1.27-alpine",
+      image:
+        "nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
       port: 8080,
       host_port: opts.port,
       env: {},
