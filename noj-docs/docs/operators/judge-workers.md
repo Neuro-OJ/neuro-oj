@@ -11,7 +11,7 @@ Evaluator + Solution 双容器（用后即毁），并把结果写回 Redis。
 
 ## 独立节点一键部署
 
-如果评测节点不运行 noj-core、noj-ui 或完整源码仓库，可以只下载部署脚本，然后由脚本
+如果评测节点不运行 noj-server、noj-ui 或完整源码仓库，可以只下载部署脚本，然后由脚本
 生成独立 Compose 配置：
 
 ```bash
@@ -22,8 +22,8 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/depl
 首次执行会引导填写以下配置：
 
 - `NOJ_VERSION`：不可变 Release 版本，例如 `v0.1.0`；
-- `REDIS_URL`：与 noj-core 相同的 Redis 地址、数据库和认证信息；
-- `JUDGE_QUEUE` / `RESULT_QUEUE`：必须与 noj-core 使用的队列名称一致；
+- `REDIS_URL`：与 noj-server 相同的 Redis 地址、数据库和认证信息；
+- `JUDGE_QUEUE` / `RESULT_QUEUE`：必须与 noj-server 使用的队列名称一致；
 - `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID`：只服务于 Judge 的 rootless
   Docker daemon Unix socket 及其组 ID。
 
@@ -52,14 +52,14 @@ bash /srv/noj-judge/judge-install.sh install --panel none
 
 Redis 配置会先让用户选择来源：
 
-1. **连接已有 Redis（推荐）**：填写 noj-core 正在使用的完整 Redis URL；
-2. **创建本机 Redis**：仅在明确要让 noj-core 也使用该实例时选择。脚本会创建带持久化卷、
+1. **连接已有 Redis（推荐）**：填写 noj-server 正在使用的完整 Redis URL；
+2. **创建本机 Redis**：仅在明确要让 noj-server 也使用该实例时选择。脚本会创建带持久化卷、
    随机密码且只绑定 `127.0.0.1` 的 Redis 容器，并将连接信息保存到
    `/srv/noj-judge/redis-connection.txt`；
 3. **稍后配置**：不创建 Redis，也不会启动 Judge。
 
-Judge 和 noj-core 必须使用同一个 Redis、数据库、认证信息、任务队列和结果队列。创建本机
-Redis 后，先按连接信息文件中的地址配置 noj-core，再重新执行 Judge 安装或检查。连接信息
+Judge 和 noj-server 必须使用同一个 Redis、数据库、认证信息、任务队列和结果队列。创建本机
+Redis 后，先按连接信息文件中的地址配置 noj-server，再重新执行 Judge 安装或检查。连接信息
 文件、Redis 配置文件和 Judge 环境文件均为 `0600`，脚本不会在终端或 Docker 命令日志中显示
 Redis 密码。
 
@@ -178,7 +178,7 @@ ghcr 全限定镜像名；若需要手工确认，见[生产部署](production-d
 
 ## 镜像白名单
 
-noj-core 维护评测镜像白名单（`judgeImages`），并在题目 CRUD / 调度阶段完成校验。Judge Worker 侧还会按 `JUDGE_IMAGE_PREFIX` / `JUDGE_COMMAND_WHITELIST` 对 MQ 消息做一次纵深复验，不再通过 Redis RPC 拉取白名单。
+noj-server 维护评测镜像白名单（`judgeImages`），并在题目 CRUD / 调度阶段完成校验。Judge Worker 侧还会按 `JUDGE_IMAGE_PREFIX` / `JUDGE_COMMAND_WHITELIST` 对 MQ 消息做一次纵深复验，不再通过 Redis RPC 拉取白名单。
 
 镜像规则包含：
 
@@ -249,7 +249,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
 
 - 停止实例会进入优雅关闭流程：排空正在执行的 in-flight 任务后再退出，避免提交丢失。
 - 升级步骤：修改 `.env.prod` 中的 `NOJ_VERSION` → `docker compose pull` → `docker compose up -d`。
-- 升级评测镜像后应先在 noj-core 白名单登记，再启动 Worker。
+- 升级评测镜像后应先在 noj-server 白名单登记，再启动 Worker。
 
 ## 常见排查方向
 

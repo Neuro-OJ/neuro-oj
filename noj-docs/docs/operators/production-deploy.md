@@ -31,7 +31,7 @@ rootless Docker socket，不能改用 `/run/docker.sock` 或 `/var/run/docker.so
 
 - 一台 Linux 服务器（amd64），已安装 Docker Engine 与 Docker Compose v2。
 - Docker CLI 可用 Buildx；Cosign 不是默认安装条件，只有开启严格镜像签名校验时才需要。
-- Deno 2.x（可选，仅用于部署前运行 `noj-core` 的配置检查命令；一键生产部署不依赖 Deno）。
+- Deno 2.x（可选，仅用于部署前运行 `noj-server` 的配置检查命令；一键生产部署不依赖 Deno）。
 - 一个已解析到服务器的域名。
 - 外部 TLS 终止（宿主机 Nginx / Caddy / 云负载均衡），负责 HTTPS → 容器 HTTP 端口。
 - 能够访问 `ghcr.io/neuro-oj/` 镜像；私有镜像还需要配置相应凭据。
@@ -40,20 +40,17 @@ rootless Docker socket，不能改用 `/run/docker.sock` 或 `/var/run/docker.so
 
 ### 推荐：一条命令开始安装
 
-和 HydroOJ 类似，NOJ 提供一个远程入口脚本。它会先列出最低运行要求，并展示当前主机的
-Linux、CPU 架构与核数、内存、Swap、磁盘、Docker、Compose、基础工具和端口检测结果；
-检查通过后才会自动使用最新可用 Release 进入配置向导：
+和 HydroOJ 类似，NOJ 提供一个远程入口脚本。`setup.sh` 是仅下载并校验 `noj-cli`
+二进制的薄引导：先检查当前主机（Linux / amd64 / 基础工具），从 GitHub Releases
+下载 `noj-cli-linux-amd64` 并做 SHA-256 校验，然后交由 `noj-cli` 完成环境
+检测（doctor）与生产部署（deploy init / deploy up）：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash
 ```
 
-如果需要固定版本（例如部署候选版本），可以显式指定 `--ref`：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --ref 0.8.0-rc.1 --dir /opt/neuro-oj
-```
+如需固定版本，可通过 `NOJ_CLI_VERSION` 环境变量指定（例如 `0.1.0`）；`--ref` /
+`--panel` 参数不再传递。
 
 安装完成后打开网站注册第一个真实用户，该用户会自动获得管理员权限，不需要再执行额外
 的提权命令。已有站点的用户和管理员权限不会因为升级改变。
@@ -61,8 +58,9 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 如果服务器不能访问 GitHub API，自动获取最新版本会停止安装；请使用上面的 `--ref`
 显式指定版本，或先下载脚本检查后执行。
 
-如需人工检查下载内容，可以先下载并检查 `setup.sh`，确认后再执行；
-`scripts/deploy/install.sh` 是 setup.sh 的内部 bootstrap 和旧版本兼容入口，不再作为新安装推荐命令。
+如需人工检查下载内容，可以先下载并检查 `setup.sh`，确认后再执行。
+`setup.sh` 已不再下载 bootstrap 脚本；它只下载并校验 `noj-cli` 二进制，部署由
+`noj-cli` 完成。`scripts/deploy/*.sh` 与 `noj` 旧命令已废弃，不兼容。
 
 首次执行会将源码放入 `/opt/neuro-oj`，随后创建权限为 `600` 的 `.env.prod` 并生成
 部分随机密钥，然后在终端逐项引导填写生产配置。配置网站地址、HTTPS 和邮件服务后，
@@ -257,7 +255,7 @@ ghcr.io/neuro-oj/noj-solution-ai       all_versions  solution
 
 密钥轮换：
 
-- 轮换 `NOJ_LLM_SERVICE_TOKEN` 会让所有未过期 eval_token 失效，需同步更新 noj-core 与 gateway。
+- 轮换 `NOJ_LLM_SERVICE_TOKEN` 会让所有未过期 eval_token 失效，需同步更新 noj-server 与 gateway。
 - 轮换 `NOJ_LLM_STORE_KEY` 后，需要用新主密钥重新加密所有 Provider Key。
 
 ## 4. staging 验收门禁
@@ -283,7 +281,7 @@ bash scripts/staging/acceptance.sh all \
   --artifact-dir artifacts/staging/$(grep '^NOJ_VERSION=' .env.staging | cut -d= -f2)
 ```
 
-脚本会构建并启动 `noj-core`、`noj-ui`、`noj-judge`、`noj-llm-gateway`、
+脚本会构建并启动 `noj-server`、`noj-ui`、`noj-judge`、`noj-llm-gateway`、
 `noj-evaluator-python`、`noj-solution-python`、`noj-solution-ai` 七类生产镜像，然后依次验证：
 
 - Compose 健康检查、`/healthz`、HTTPS、CORS，以及 `HttpOnly`/`Secure`/`SameSite=Lax` Cookie；
@@ -304,78 +302,35 @@ bash scripts/staging/acceptance.sh all \
 
 ## 5. 日常运维
 
-安装完成后，推荐使用安装目录根部的 `noj` 命令统一管理生产服务：
+安装完成后，推荐使用 `noj-cli` 命令统一管理生产服务：
 
 ```bash
-cd /opt/neuro-oj
-./noj status
-./noj logs core
-./noj restart
-./noj backup
-./noj uninstall
-./noj uninstall --all
-./noj config check
+noj-cli doctor
+noj-cli deploy status
+noj-cli maintain logs server
+noj-cli maintain logs judge --follow
+noj-cli deploy restart
+noj-cli deploy down
+noj-cli deploy up
+noj-cli maintain backup create --passphrase-file /etc/noj/backup-passphrase
+noj-cli maintain config check
 ```
 
-固定版本更新前先修改 `.env.prod` 中的 `NOJ_VERSION`，然后执行：
+`noj-cli` 不提供升级/卸载子命令；配置变更与数据管理见 `noj-cli maintain config`
+与 `noj-cli maintain reset`。`deploy down` 不会删除数据卷；`maintain reset` 默认
+只清数据，`--include-deploy-configs` 才连配置一起清。首次部署仅使用 `setup.sh`，
+成功后 `noj-cli` 会安装到 `NOJ_INSTALL_DIR`（默认 `/opt/neuro-oj`）并注册 `noj`
+软链接。
 
-```bash
-./noj update
-```
-
-如需自动选择最新稳定 Release，可执行：
-
-```bash
-./noj update --latest
-```
-
-`update --latest` 通过 GitHub Releases API 选择最新的非草稿、非预发布版本，先展示目标版本，再同步
-部署文件和 `noj` 命令，并沿用生产部署脚本的备份、镜像校验和健康检查流程。当前已经是最新版本时不
-重启服务、不创建升级备份。网络查询失败、镜像未发布或健康检查失败时不会提交新的 `NOJ_VERSION`；
-此时可使用固定版本重试。两种 `update` 用法都不会删除 Docker 数据卷。`noj` 只是统一命令入口；需要高级选项时仍可使用
-`bash scripts/deploy/deploy.sh <命令> [选项]`。首次部署仅使用 `setup.sh`，成功后会自动
-将命令注册到 `/usr/local/bin/noj`；没有权限时回退到 `~/.local/bin/noj` 并更新登录 PATH。
-
-推荐使用 `noj` 入口：
-
-```bash
-./noj status
-./noj logs core
-./noj logs judge --follow
-./noj backup --passphrase-file /etc/noj/backup-passphrase
-```
-
-`backup` 会创建包含 PostgreSQL、Redis RDB、MinIO/S3 对象镜像和 GPG 加密
-`.env.prod` 的完整快照。快照目录位于 `backups/snapshot-*`，目录权限为 `700`，
-文件权限不对其他用户开放；组件失败时不会留下可被误用的半成品快照。
-
-卸载生产服务时执行：
-
-```bash
-./noj uninstall
-```
-
-命令会要求输入 `UNINSTALL` 确认；自动化环境必须显式使用 `./noj uninstall --yes`。卸载会停止并删除
-当前 Compose 栈的容器、网络和本地镜像，但不会执行 `down -v`，所以 PostgreSQL、Redis、MinIO、题目包
-和 Judge 缓存数据卷、`.env.prod`、备份及部署目录都会保留。命令不会修改宿主机 Nginx/Caddy/宝塔站点、
-证书或其他容器。卸载后如需恢复服务，在保留的安装目录执行 `./noj start` 即可重新拉取镜像并复用数据。
-
-如需完全删除 NOJ 及其数据，执行：
-
-```bash
-./noj uninstall --all
-```
-
-该命令会要求输入 `DELETE ALL`；自动化环境必须显式使用 `./noj uninstall --all --yes`。它会额外删除全部
-Compose 数据卷、当前安装目录、配置和备份，且不可恢复；执行前请确认备份已保存到其他位置。检测到 Git 工作区
-时会拒绝删除安装目录。宿主机 Nginx/Caddy/宝塔站点、证书和其他容器仍不会被修改。
+`maintain backup create` 会创建包含 PostgreSQL、Redis RDB、MinIO/S3 对象镜像和
+GPG 加密配置的完整快照，产物为单个 `snapshot-<timestamp>.nojbackup`。
 
 ```bash
 # 查看服务状态
 docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 
 # 查看日志
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 core
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 server
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 judge
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 llm-gateway
 

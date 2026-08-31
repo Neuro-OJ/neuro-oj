@@ -1,10 +1,10 @@
 # CLI 初始化
 
-`noj-core` 镜像内包含编译后的管理 CLI（`/app/bin/noj`），用于数据库迁移、系统初始化、管理员引导与题目包操作。
+`noj-server` 镜像内包含编译后的管理 CLI（`/app/bin/noj`），用于数据库迁移、系统初始化、管理员引导与题目包操作。
 
 ## 生产环境执行方式
 
-生产环境不直接使用源码或 `deno task`，而是通过 Docker Compose 在 `noj-core` 镜像内执行 CLI：
+生产环境不直接使用源码或 `deno task`，而是通过 Docker Compose 在 `noj-server` 镜像内执行 CLI：
 
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
