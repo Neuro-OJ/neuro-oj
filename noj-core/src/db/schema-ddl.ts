@@ -595,6 +595,14 @@ export const SCHEMA_DDL: string[] = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
+
+  // 19. sse_events（SSE 事件表，与 schema.ts 定义一致，PGlite 测试模式）
+  `CREATE TABLE IF NOT EXISTS sse_events (
+    id SERIAL PRIMARY KEY,
+    channel TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
 ];
 
 export const SCHEMA_INDEXES: string[] = [
@@ -627,6 +635,8 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_paper_id ON objective_submissions (paper_id)",
   // 公告公开列表查询索引（与 schema.ts 定义一致，PGlite 测试模式）
   "CREATE INDEX IF NOT EXISTS idx_announcements_active_pinned_created ON announcements (is_active, is_pinned, created_at)",
+  // SSE 事件索引（与 schema.ts 定义一致，PGlite 测试模式）
+  "CREATE INDEX IF NOT EXISTS idx_sse_events_channel_id ON sse_events (channel, id)",
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_user_id ON objective_submissions (user_id)",
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_user_paper_created ON objective_submissions (user_id, paper_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_objective_submissions_contest_id ON objective_submissions (contest_id)",

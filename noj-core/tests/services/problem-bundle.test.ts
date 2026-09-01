@@ -32,7 +32,7 @@ Deno.test("validateBundleManifest: 客观题 manifest 携带 runtime_config 被�
         },
       }),
     BadRequestError,
-    /runtime_config/,
+    "runtime_config",
   );
 });
 
@@ -66,7 +66,7 @@ Deno.test("validateBundleManifest: 非客观题仍要求 runtime_config", () => 
         title: "编程题",
       }),
     BadRequestError,
-    /runtime_config/,
+    "runtime_config",
   );
 });
 
@@ -94,7 +94,7 @@ Deno.test("validateObjectiveQuestions: 空数组被拒", () => {
   assertThrows(
     () => validateObjectiveQuestions([]),
     BadRequestError,
-    /非空数组/,
+    "非空数组",
   );
 });
 
@@ -110,7 +110,7 @@ Deno.test("validateObjectiveQuestions: 非法题型/答案/选项/重复 sort_or
         },
       ]),
     BadRequestError,
-    /answer/,
+    "answer",
   );
   assertThrows(
     () =>
@@ -123,7 +123,7 @@ Deno.test("validateObjectiveQuestions: 非法题型/答案/选项/重复 sort_or
         },
       ]),
     BadRequestError,
-    /不存在/,
+    "不存在",
   );
   assertThrows(
     () =>
@@ -143,6 +143,6 @@ Deno.test("validateObjectiveQuestions: 非法题型/答案/选项/重复 sort_or
         },
       ]),
     BadRequestError,
-    /sort_order/,
+    "sort_order",
   );
 });

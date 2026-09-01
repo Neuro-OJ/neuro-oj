@@ -295,11 +295,17 @@ Deno.test({
   fn: async () => {
     const userId = await createTestUser();
     try {
-      await insertCheckin(userId, daysAgoUtc(1), 5);
+      const yesterday = daysAgoUtc(1);
+      await insertCheckin(userId, yesterday, 5);
       const stats = await getCheckinStats(userId);
       assertEquals(stats.current_streak, 5);
       assertEquals(stats.total_days, 1);
-      assertEquals(stats.month_days, 1);
+      // month_days 只统计当前 UTC 月；若昨天跨月则为 0
+      const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+      assertEquals(
+        stats.month_days,
+        yesterday.startsWith(currentMonthPrefix) ? 1 : 0,
+      );
     } finally {
       await cleanup(userId);
     }
