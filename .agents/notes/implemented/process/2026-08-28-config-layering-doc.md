@@ -8,7 +8,7 @@ dev/e2e/prod 配置分散在多个模板文件，缺少统一说明，新环境�
 
 ## Decision
 
-新增 `docs/engineering/config-layering.md`，明确模板分层、规则与校验命令：
+新增 `dev-docs/engineering/config-layering.md`，明确模板分层、规则与校验命令：
 
 - 开发模板、模块模板、E2E 模板、生产模板、本地覆盖。
 - 新环境变量必须同步模板。

@@ -8,7 +8,7 @@ LLM 网关只记录用量，不保存完整请求/响应；出现问题时无法
 
 ## Decision
 
-新增 `docs/engineering/audit-log.md`，定义可重放审计日志的目标结构与规则：
+新增 `dev-docs/engineering/audit-log.md`，定义可重放审计日志的目标结构与规则：
 
 - 记录 `request_id`、`submission_id`、`provider_id`、`model`、请求、响应、时间。
 - 敏感字段不落明文。

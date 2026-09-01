@@ -67,7 +67,7 @@ cd noj-ui    && deno task dev
 cd noj-judge && cargo run
 ```
 
-详细开发指南见 [`docs/engineering/development.md`](../docs/engineering/development.md)。
+详细开发指南见 [`dev-docs/engineering/development.md`](../dev-docs/engineering/development.md)。
 
 生产部署与备份的详细说明见
 [`生产部署文档`](../noj-docs/docs/operators/production-deploy.md)。

@@ -470,7 +470,7 @@ Retry-After: 25
 
 `GET /api/v1/search` 是统一的全局搜索入口，覆盖题目搜索（公开）与用户搜索
 （admin only），分页返回。设计文档见
-`docs/superpowers/specs/2026-07-13-global-search-design.md`。
+`dev-docs/superpowers/specs/2026-07-13-global-search-design.md`。
 
 **数据库列**：
 

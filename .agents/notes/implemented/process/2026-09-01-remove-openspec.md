@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-OpenSpec 在本仓库形成大量文档负担（约 6.5 万行、145 个主 spec、161 个归档变更），与 `docs/superpowers/` 设计文档/实施计划、`.agents/notes/` 决策记录高度重叠，且未被 CI 强制，维护成本高。团队决定移除 OpenSpec 及相关流程。
+OpenSpec 在本仓库形成大量文档负担（约 6.5 万行、145 个主 spec、161 个归档变更），与 `dev-docs/superpowers/` 设计文档/实施计划、`.agents/notes/` 决策记录高度重叠，且未被 CI 强制，维护成本高。团队决定移除 OpenSpec 及相关流程。
 
 ## Decision
 
