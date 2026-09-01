@@ -7,6 +7,8 @@
 
 系统 SHALL 提供客观题卷（套卷）的创建、编辑、删除与列表查询。套卷 SHALL 复用 problems 表（is_objective=true），使用 `display_id`（如 `U1001`）对外展示；创建时 SHALL 不要求 `runtime_config`。
 
+客观题套卷 SHALL 支持通过统一题目包（`is_objective=true` + `questions.json`）批量导入/更新，导入语义遵循 `problem-bundle-import` 规范。
+
 套卷权限 SHALL 随题目 type：U 型 owner / admin 可 CRUD；P 型仅 admin；普通用户可查看题面。
 
 #### Scenario: 普通用户创建套卷

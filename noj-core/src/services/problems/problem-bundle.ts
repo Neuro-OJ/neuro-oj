@@ -18,7 +18,7 @@
 import type { Context } from "hono";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../../db/connection.ts";
-import { problems } from "../../db/schema.ts";
+import { objectiveQuestions, problems } from "../../db/schema.ts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -36,15 +36,18 @@ import {
   isValidProblemBundleName,
   type ProblemBundleManifest,
   validateBundleManifest,
+  validateObjectiveQuestions,
 } from "../../types/problem-bundle.ts";
 import type { ProblemResponseWithTags } from "../../types/problems.ts";
+import { type CreateQuestionInput } from "../../types/objective.ts";
 import { updateProblem } from "./problems-crud.ts";
 import { validateJudgeImageWithKind } from "../judge-images.ts";
 import {
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
 } from "./problem-field-guard.ts";
-import { syncProblemTags } from "./problems-tags.ts";
+import { syncProblemTags, validateProblemTagIds } from "./problems-tags.ts";
+import { judgeOptions } from "../objective/objective-questions.ts";
 import { getProblem } from "./problems-list.ts";
 import { getTagIdsByNames, listTags } from "../tags.ts";
 import { logAudit } from "../audit-log.ts";
@@ -155,6 +158,19 @@ export async function importProblemBundle(
   }
   const number = admin ? manifest.number : undefined;
 
+  // 4.5 客观题套卷：走独立导入路径（无评测包，事务性创建/更新 + 全量替换小题）
+  if (manifest.is_objective) {
+    const questions = validateObjectiveQuestions(parsed.questions);
+    return importObjectivePaper(
+      manifest,
+      description,
+      questions,
+      number,
+      actor,
+      c,
+    );
+  }
+
   // 5. 剥离元数据，重建纯净评测包
   const strippedZip = stripMetadataEntries(file.data);
   const storage = await getStorageProvider();
@@ -246,9 +262,9 @@ async function updateExisting(
     c,
     actor.userId,
     actor.userRole,
-    manifest.runtime_config,
+    manifest.runtime_config!,
   );
-  enforceResourceLimits(manifest.runtime_config);
+  enforceResourceLimits(manifest.runtime_config!);
 
   if (oldStorageUrl) {
     try {
@@ -268,7 +284,7 @@ async function updateExisting(
       title: manifest.title,
       description,
       difficulty: manifest.difficulty,
-      runtime_config: manifest.runtime_config,
+      runtime_config: manifest.runtime_config!,
       submission_mode: manifest.submission_mode,
       artifact_max_size_mb: manifest.artifact_max_size_mb,
       llm: manifest.llm,
@@ -280,6 +296,178 @@ async function updateExisting(
     c,
     true, // import-bundle 是服务端生成 storage URL 的受控流程
   );
+}
+
+/**
+ * 客观题套卷导入路径。
+ *
+ * 与编程题导入的差异：
+ * - 不剥离/上传评测包，support_package_storage_url 保持 NULL；
+ * - 套卷行 + 小题全量替换在同一 DB 事务内完成；
+ * - 不自动重测历史提交。
+ */
+async function importObjectivePaper(
+  manifest: ProblemBundleManifest,
+  description: string,
+  questions: CreateQuestionInput[],
+  number: number | undefined,
+  actor: BundleImportActor,
+  c?: Context,
+): Promise<ProblemResponseWithTags> {
+  const type = manifest.type ?? "U";
+
+  // number 权限（与编程题一致，防御性重复校验）
+  if (!(await isAdminActor(actor, c)) && number !== undefined) {
+    throw new BadRequestError(
+      "仅管理员可指定 number（按 (type, number) 幂等更新既有题目）；普通用户导入时题号由系统自动分配",
+    );
+  }
+
+  // 类型权限（与 createViaCrud 一致）
+  if (type === "P") {
+    if (!(await isAdminActor(actor, c))) {
+      throw new ForbiddenError("仅管理员可创建管理题");
+    }
+  } else if (c) {
+    const canCreate = await checkPermission(c, "problem:create");
+    if (!canCreate) {
+      throw new ForbiddenError("无权创建题目");
+    }
+  } else if (actor.userRole !== "admin" && actor.userRole !== "user") {
+    throw new ForbiddenError("无权创建题目");
+  }
+
+  const db = getDb();
+  const tagIds = await resolveTagIds(manifest.tags);
+  // 半写入防护：客观题禁止算法标签在写库前校验
+  if (tagIds.length > 0) {
+    await validateProblemTagIds(tagIds, true);
+  }
+
+  const now = new Date().toISOString();
+  let oldStorageUrl: string | null = null;
+
+  const outcome = await db.transaction(async (tx) => {
+    let existingId: string | null = null;
+    if (number !== undefined) {
+      const rows = await tx
+        .select({
+          id: problems.id,
+          storageUrl: problems.support_package_storage_url,
+        })
+        .from(problems)
+        .where(and(eq(problems.type, type), eq(problems.number, number)))
+        .limit(1);
+      if (rows.length > 0) {
+        existingId = rows[0].id;
+        oldStorageUrl = rows[0].storageUrl;
+      }
+    }
+
+    let problemId: string;
+    if (existingId) {
+      problemId = existingId;
+      await tx.update(problems).set({
+        title: manifest.title,
+        description,
+        difficulty: manifest.difficulty ?? "medium",
+        is_objective: true,
+        runtime_config: null,
+        support_package_storage_url: null,
+        submission_mode: "code",
+        artifact_max_size_mb: null,
+        llm_config: null,
+        updated_at: now,
+      }).where(eq(problems.id, problemId));
+    } else {
+      problemId = crypto.randomUUID();
+      let finalNumber = number;
+      const MAX_RETRIES = 3;
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        if (finalNumber === undefined) {
+          const [row] = await tx
+            .select({ max: sql<number>`COALESCE(MAX(${problems.number}), 0)` })
+            .from(problems)
+            .where(eq(problems.type, type));
+          finalNumber = Number(row?.max ?? 0) + 1;
+        }
+        try {
+          await tx.insert(problems).values({
+            id: problemId,
+            title: manifest.title,
+            description,
+            difficulty: manifest.difficulty ?? "medium",
+            runtime_config: null,
+            is_objective: true,
+            number: finalNumber,
+            owner_id: actor.userId ?? ROOT_USER_ID,
+            type,
+            created_at: now,
+            updated_at: now,
+          });
+          break;
+        } catch (err) {
+          if (attempt === MAX_RETRIES - 1) throw err;
+          const pgCode = err && typeof err === "object"
+            ? (err as Record<string, unknown>).code ||
+              ((err as Record<string, unknown>).cause as Record<
+                string,
+                unknown
+              >)
+                ?.code
+            : undefined;
+          if (pgCode === "23505") {
+            if (number !== undefined) throw err;
+            finalNumber = undefined;
+            continue;
+          }
+          throw err;
+        }
+      }
+    }
+
+    // 全量替换小题
+    await tx.delete(objectiveQuestions).where(
+      eq(objectiveQuestions.paper_id, problemId),
+    );
+    for (const q of questions) {
+      const options = q.type === "judge" ? judgeOptions() : (q.options ?? []);
+      await tx.insert(objectiveQuestions).values({
+        id: crypto.randomUUID(),
+        paper_id: problemId,
+        sort_order: q.sort_order ?? 0,
+        type: q.type,
+        prompt: q.prompt,
+        options,
+        answer: q.answer,
+        explanation: q.explanation ?? "",
+        created_at: now,
+        updated_at: now,
+      });
+    }
+
+    return { problemId };
+  });
+
+  // 标签同步（独立事务，与既有导入一致）
+  if (tagIds.length > 0) {
+    await syncProblemTags(outcome.problemId, tagIds, true);
+  }
+
+  // 若从编程题转换为客观题，尽力清理旧评测包（失败不阻塞）
+  if (oldStorageUrl) {
+    try {
+      const storage = await getStorageProvider();
+      await storage.delete(oldStorageUrl);
+    } catch (err) {
+      logger.warn("客观题导入：删除旧评测包失败", {
+        problem_id: outcome.problemId,
+        err,
+      });
+    }
+  }
+
+  return getProblem(outcome.problemId);
 }
 
 /**
@@ -316,11 +504,11 @@ async function createViaCrud(
 
   // 镜像白名单校验（与 createProblem 一致）
   await validateJudgeImageWithKind(
-    manifest.runtime_config.evaluator.image,
+    manifest.runtime_config!.evaluator.image,
     "evaluator",
   );
   await validateJudgeImageWithKind(
-    manifest.runtime_config.solution.image,
+    manifest.runtime_config!.solution.image,
     "solution",
   );
 
@@ -332,9 +520,9 @@ async function createViaCrud(
     c,
     actor.userId,
     actor.userRole,
-    manifest.runtime_config,
+    manifest.runtime_config!,
   );
-  enforceResourceLimits(manifest.runtime_config);
+  enforceResourceLimits(manifest.runtime_config!);
 
   const db = getDb();
   const tagIds = await resolveTagIds(manifest.tags);
@@ -361,7 +549,7 @@ async function createViaCrud(
         title: manifest.title,
         description,
         difficulty: manifest.difficulty ?? "medium",
-        runtime_config: manifest.runtime_config,
+        runtime_config: manifest.runtime_config!,
         submission_mode: manifest.submission_mode ?? "code",
         artifact_max_size_mb: manifest.artifact_max_size_mb ?? null,
         llm_config: manifest.llm ?? null,

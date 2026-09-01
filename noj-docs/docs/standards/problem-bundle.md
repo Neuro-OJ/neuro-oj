@@ -5,6 +5,7 @@
 ## 包结构
 
 ```text
+编程题包：
 <任意名>.zip
 ├── problem.json      # 必需：题目 manifest
 ├── evaluate.py       # 必需：评测脚本（必须位于 zip 根目录）
@@ -12,6 +13,12 @@
 ├── visible.jsonl     # 可选：可见测试数据（推荐约定）
 ├── hidden.jsonl      # 可选：不可见测试数据（推荐约定）
 └── assets/           # 可选：其他 evaluate.py 需要的文件
+
+客观题套卷包（is_objective=true）：
+<任意名>.zip
+├── problem.json      # 必需：manifest（is_objective: true）
+├── questions.json    # 必需：小题数组
+└── statement.md      # 可选：套卷说明
 ```
 
 - `evaluate.py` **必须位于 zip 根级**——Judge Worker 将包解压到容器 `/workspace` 后路径固定为 `/workspace/evaluate.py`。
@@ -48,16 +55,18 @@
 |------|:---:|------|
 | `format_version` | ✅ | 当前 `1` |
 | `title` | ✅ | 非空 |
-| `runtime_config` | ✅ | 双容器配置；`evaluator.command` 可缺省（默认 `python3 /workspace/evaluate.py`） |
+| `runtime_config` | ✅* | 双容器配置；`evaluator.command` 可缺省（默认 `python3 /workspace/evaluate.py`）；`is_objective=true` 时禁止提供 |
+| `is_objective` | ❌ | 布尔值，缺省 `false`；`true` 表示客观题套卷包，不要求 `runtime_config`/`evaluate.py`，必须含 `questions.json` |
 | `statement.md` 文件 | ❌ | 与 `manifest.description` 二选一（文件优先），二者皆缺 → 400 |
-| `evaluate.py` 文件 | ✅ | 根级缺失 → 400 |
+| `evaluate.py` 文件 | ✅* | 编程题根级缺失 → 400；客观题包不要求 |
+| `questions.json` 文件 | ✅* | 客观题包根级缺失 → 400；编程题包不要求 |
 | `number` | ❌ | 仅 admin 生效：幂等键——按 (type, number) 匹配既有题目则更新；缺省 type 内自动分配 |
 | `difficulty` | ❌ | `easy` / `medium` / `hard`，缺省 `medium` |
 | `type` | ❌ | `U` / `P`，缺省 `U`（P 型仅 admin） |
 | `tags` | ❌ | 标签名数组，按 name 匹配已有标签，缺省忽略 + warning |
 | `samples` | ❌ | 预留；缺省从题面自动提取 |
-| `template` | ❌ | 模板文件索引（纯文件名，禁止 `/`、`\`、`..`），缺省 `"template.py"` |
-| `llm` | ❌ | LLM 调用题配置 `{ provider_id, model }`；仅 P 型 + evaluator 联网可启用 |
+| `template` | ❌ | 模板文件索引（纯文件名，禁止 `/`、`\`、`..`），缺省 `"template.py"`；客观题包禁止提供 |
+| `llm` | ❌ | LLM 调用题配置 `{ provider_id, model }`；仅 P 型 + evaluator 联网可启用；客观题包禁止提供 |
 
 > `categories` 字段已退役，统一使用 `tags`。
 > `runtime_config.solution` 无需配置入口文件名：Solution 入口为评测内部约定，用户代码由 Judge Worker 以硬编码名 `main.py` 注入容器，出题人不可见、不可配置。
@@ -71,8 +80,8 @@
 
 ## 导入语义与存储
 
-- 上传的 zip 是**导入载体**；系统剥离 `problem.json` / `statement.md` 后重建**纯净评测包**存入存储（`noj-storage://`），题面/元数据的唯一事实来源是数据库。
-- 重复导入幂等：admin 提供 `number` 且 (type, number) 匹配既有题目 → 更新元数据并替换评测包；未命中 → 创建。
+- 上传的 zip 是**导入载体**；编程题系统剥离 `problem.json` / `statement.md` 后重建**纯净评测包**存入存储（`noj-storage://`），题面/元数据的唯一事实来源是数据库。客观题套卷不产生评测包存储，`support_package_storage_url` 为 NULL。
+- 重复导入幂等：admin 提供 `number` 且 (type, number) 匹配既有题目 → 更新元数据并替换评测包（客观题全量替换小题）；未命中 → 创建。
 - 非 admin 提供 `number` 会被 400 拒绝，普通用户导入仅创建新题（题号自动分配）。
 
 ## 特殊题型
@@ -103,4 +112,18 @@
 
 ### 客观题套卷
 
-客观题套卷（`is_objective=true`）**不通过统一题目包导入**：它没有 `evaluate.py` / `runtime_config`，走 Web 编辑器/API 管理。本规范只覆盖 U/P 评测题。
+客观题套卷（`is_objective=true`）支持通过统一题目包导入：`problem.json` 中声明 `"is_objective": true`，根级提供 `questions.json`（小题数组），不要求 `evaluate.py` / `runtime_config`。导入时系统创建/更新套卷并全量替换小题，不产生评测包存储，也不自动重测历史提交。
+
+`questions.json` 示例：
+
+```json
+[
+  {
+    "type": "single",
+    "prompt": "1+1=?",
+    "options": [{ "key": "A", "text": "2" }, { "key": "B", "text": "3" }],
+    "answer": ["A"],
+    "explanation": "因为 1+1=2"
+  }
+]
+```

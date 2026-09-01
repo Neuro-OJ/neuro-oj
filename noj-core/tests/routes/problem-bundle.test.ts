@@ -66,6 +66,41 @@ function makeZipBlob(overrides: Record<string, unknown> = {}): Blob {
   );
 }
 
+function makeObjectiveZipBlob(
+  manifestOverrides: Record<string, unknown> = {},
+  questions: unknown = [
+    {
+      type: "single",
+      prompt: "1+1=?",
+      options: [{ key: "A", text: "2" }, { key: "B", text: "3" }],
+      answer: ["A"],
+      explanation: "因为 1+1=2",
+    },
+  ],
+): Blob {
+  const manifest = {
+    format_version: 1,
+    title: `客观题导入测试 ${ts}`,
+    difficulty: "easy",
+    type: "U",
+    is_objective: true,
+    ...manifestOverrides,
+  };
+  const enc = new TextEncoder();
+  const zip = zipSync({
+    "problem.json": enc.encode(JSON.stringify(manifest)),
+    "questions.json": enc.encode(JSON.stringify(questions)),
+    "statement.md": enc.encode(`# ${manifest.title}\n`),
+  }, { level: 6 });
+  return new Blob(
+    [zip.buffer.slice(
+      zip.byteOffset,
+      zip.byteOffset + zip.byteLength,
+    ) as ArrayBuffer],
+    { type: "application/zip" },
+  );
+}
+
 async function ensureUser(id: string): Promise<void> {
   const db = getDb();
   if (id === "0") return;
@@ -501,6 +536,213 @@ Deno.test({
       body: formData,
     });
     assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name:
+    "import-bundle: admin 导入客观题套卷成功（无 evaluate.py/runtime_config，不产生评测包）",
+  ignore: skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+
+    const formData = new FormData();
+    formData.append("file", makeObjectiveZipBlob(), "obj1.zip");
+
+    const res = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.data.is_objective, true);
+    assertEquals(body.data.support_package_storage_url, null);
+
+    const db = getDb();
+    const [row] = await db.select().from(problems).where(
+      eq(problems.id, body.data.id),
+    ).limit(1);
+    assertEquals(row.is_objective, true);
+    assertEquals(row.runtime_config, null);
+    assertEquals(row.support_package_storage_url, null);
+
+    const { objectiveQuestions } = await import("../../src/db/schema.ts");
+    const qs = await db.select().from(objectiveQuestions).where(
+      eq(objectiveQuestions.paper_id, body.data.id),
+    );
+    assertEquals(qs.length, 1);
+    assertEquals(qs[0].prompt, "1+1=?");
+  },
+});
+
+Deno.test({
+  name:
+    "import-bundle: admin 按 (type, number) 幂等更新客观题套卷并全量替换小题",
+  ignore: skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const fixedNumber = 73000 + (ts & 0x7fff);
+
+    const formData = new FormData();
+    formData.append(
+      "file",
+      makeObjectiveZipBlob({ number: fixedNumber, title: "旧客观题" }),
+      "obj-update1.zip",
+    );
+    const res = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    const id = body.data.id;
+
+    // 第二次导入：改标题 + 换小题
+    const formData2 = new FormData();
+    formData2.append(
+      "file",
+      makeObjectiveZipBlob(
+        { number: fixedNumber, title: "新客观题" },
+        [
+          {
+            type: "judge",
+            prompt: "地球是圆的",
+            answer: [true],
+          },
+        ],
+      ),
+      "obj-update2.zip",
+    );
+    const res2 = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData2,
+    });
+    assertEquals(res2.status, 200);
+    const body2 = await res2.json();
+    assertEquals(body2.data.id, id);
+    assertEquals(body2.data.title, "新客观题");
+
+    const db = getDb();
+    const { objectiveQuestions } = await import("../../src/db/schema.ts");
+    const qs = await db.select().from(objectiveQuestions).where(
+      eq(objectiveQuestions.paper_id, id),
+    );
+    assertEquals(qs.length, 1);
+    assertEquals(qs[0].type, "judge");
+  },
+});
+
+Deno.test({
+  name:
+    "import-bundle: 客观题包缺 questions.json / 空数组 / 非法字段被拒（400）",
+  ignore: skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+
+    // 缺 questions.json
+    const enc = new TextEncoder();
+    const noQuestionsZip = zipSync({
+      "problem.json": enc.encode(JSON.stringify({
+        format_version: 1,
+        title: "缺小题",
+        is_objective: true,
+      })),
+      "statement.md": enc.encode("# 缺小题"),
+    });
+    let formData = new FormData();
+    formData.append(
+      "file",
+      new Blob([noQuestionsZip], { type: "application/zip" }),
+      "obj-missing.zip",
+    );
+    let res = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    assertEquals(res.status, 400);
+
+    // 空数组
+    formData = new FormData();
+    formData.append("file", makeObjectiveZipBlob({}, []), "obj-empty.zip");
+    res = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    assertEquals(res.status, 400);
+
+    // 携带 runtime_config
+    formData = new FormData();
+    formData.append(
+      "file",
+      makeObjectiveZipBlob({
+        runtime_config: {
+          evaluator: { image: "x" },
+          solution: { image: "y" },
+        },
+      }),
+      "obj-rc.zip",
+    );
+    res = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    assertEquals(res.status, 400);
+  },
+});
+
+Deno.test({
+  name:
+    "import-bundle: 普通用户可创建 U 型客观题套卷，但提供 number 被拒（400）",
+  ignore: skipEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await ensureUser(OWNER_ID);
+    const app = createApp();
+    const token = await signToken({ sub: OWNER_ID, role: "user" });
+
+    // 无 number：成功
+    const formData = new FormData();
+    formData.append("file", makeObjectiveZipBlob(), "obj-user1.zip");
+    const res = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    assertEquals(res.status, 200);
+
+    // 带 number：400
+    const formData2 = new FormData();
+    formData2.append(
+      "file",
+      makeObjectiveZipBlob({ number: 12345 }),
+      "obj-user2.zip",
+    );
+    const res2 = await app.request("/api/v1/problems/import-bundle", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData2,
+    });
+    assertEquals(res2.status, 400);
   },
 });
 
