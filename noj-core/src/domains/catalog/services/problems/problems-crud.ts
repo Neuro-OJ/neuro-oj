@@ -26,7 +26,7 @@ import {
 } from "../../../../lib/errors.ts";
 import { getStorageProvider } from "../../../../lib/storage/mod.ts";
 import { logger } from "../../../../lib/logging.ts";
-import { validateJudgeImageWithKind } from "../../../../services/judge-images.ts";
+import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import { logAudit } from "../../../system/index.ts";
 import { getLlmProviderById } from "../../../gateway/index.ts";
 import {

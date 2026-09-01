@@ -4,16 +4,11 @@
 
 | 方法 | 路径 | 文件 |
 | --- | --- | --- |
-| DELETE | `/:id` | noj-core/src/routes/admin-announcements.ts |
-| GET | `/` | noj-core/src/routes/admin-announcements.ts |
-| GET | `/` | noj-core/src/routes/announcements.ts |
 | GET | `/` | noj-core/src/routes/rankings.ts |
 | GET | `/` | noj-core/src/routes/search.ts |
-| GET | `/:id` | noj-core/src/routes/announcements.ts |
 | GET | `/checkin` | noj-core/src/routes/rankings.ts |
 | GET | `/community/notifications/events` | noj-core/src/routes/sse.ts |
 | GET | `/contests/:id/events` | noj-core/src/routes/sse.ts |
-| GET | `/events` | noj-core/src/routes/announcements.ts |
 | GET | `/health` | noj-core/src/routes/health.ts |
 | GET | `/me` | noj-core/src/routes/rankings.ts |
 | GET | `/queue/events` | noj-core/src/routes/sse.ts |
@@ -21,14 +16,10 @@
 | GET | `/submissions/:id/events` | noj-core/src/routes/sse.ts |
 | GET | `/submissions/stats/events` | noj-core/src/routes/sse.ts |
 | GET | `NOJ_ENV` | noj-core/src/routes/health.ts |
-| GET | `userId` | noj-core/src/routes/admin-announcements.ts |
 | GET | `userId` | noj-core/src/routes/search.ts |
 | GET | `userId` | noj-core/src/routes/sse.ts |
 | GET | `userId` | noj-core/src/routes/sse.ts |
 | GET | `userId` | noj-core/src/routes/sse.ts |
-| GET | `userRole` | noj-core/src/routes/admin-announcements.ts |
 | GET | `userRole` | noj-core/src/routes/search.ts |
 | GET | `userRole` | noj-core/src/routes/sse.ts |
 | GET | `userRole` | noj-core/src/routes/sse.ts |
-| POST | `/` | noj-core/src/routes/admin-announcements.ts |
-| PUT | `/:id` | noj-core/src/routes/admin-announcements.ts |

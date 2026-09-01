@@ -10,4 +10,4 @@
 | `contestRanking` | noj-core/src/domains/submission/services/submissions/submissions-result.ts<br>noj-core/src/routes/sse.ts |
 | `contestSubmission` | noj-core/src/domains/submission/services/submissions/artifact-submissions.ts<br>noj-core/src/domains/submission/services/submissions/submissions-crud.ts<br>noj-core/src/routes/sse.ts |
 | `stats` | noj-core/src/routes/sse.ts<br>noj-core/src/services/stats-cache.ts |
-| `announcements` | noj-core/src/routes/announcements.ts<br>noj-core/src/services/announcements.ts |
+| `announcements` | noj-core/src/domains/system/routes/announcements.ts<br>noj-core/src/domains/system/services/announcements.ts |

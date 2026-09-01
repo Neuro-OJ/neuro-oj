@@ -11,7 +11,7 @@ import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { problems, selfTests, submissions } from "../db/schema.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
-import { getSetting } from "../services/system-settings.ts";
+import { getSetting } from "../domains/system/index.ts";
 import { getRedis } from "./connection.ts";
 import { isRetryableJudgeQueueError, JUDGE_QUEUE } from "./producer.ts";
 import { logger } from "../lib/logging.ts";

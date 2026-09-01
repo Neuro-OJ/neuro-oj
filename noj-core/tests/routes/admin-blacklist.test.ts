@@ -25,7 +25,7 @@ async function freshSetup() {
   await db.delete(users).where(eq(users.id, ADMIN_ID));
   const now = new Date().toISOString();
   const { ensureRbacSeeds } = await import(
-    "../../src/services/seed/seed-rbac.ts"
+    "../../src/domains/system/index.ts"
   );
   await ensureRbacSeeds(); // 幂等重建系统角色（reset 可能清空 roles 表）
   await db.insert(users).values({

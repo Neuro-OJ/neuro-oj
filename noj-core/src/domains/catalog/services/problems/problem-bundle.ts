@@ -41,7 +41,7 @@ import {
 import type { ProblemResponseWithTags } from "../../../../types/problems.ts";
 import { type CreateQuestionInput } from "../../../../types/objective.ts";
 import { updateProblem } from "./problems-crud.ts";
-import { validateJudgeImageWithKind } from "../../../../services/judge-images.ts";
+import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import {
   assertSensitiveFieldPermissions,
   enforceResourceLimits,

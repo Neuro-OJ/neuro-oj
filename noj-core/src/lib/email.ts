@@ -11,7 +11,7 @@
  */
 
 import type { SendPasswordResetEmail } from "./email-providers/types.ts";
-import { getSetting } from "../services/system-settings.ts";
+import { getSetting } from "../domains/system/index.ts";
 import { logger } from "./logging.ts";
 
 /** Provider 名称到模块路径的映射 */

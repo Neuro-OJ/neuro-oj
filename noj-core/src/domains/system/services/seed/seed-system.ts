@@ -10,7 +10,7 @@
  */
 
 import { and, eq } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
+import { getDb } from "../../../../db/connection.ts";
 import {
   judgeImages,
   llmQuotas,
@@ -18,15 +18,15 @@ import {
   tags,
   userRoles,
   users,
-} from "../../db/schema.ts";
-import { hashPassword } from "../../lib/password.ts";
+} from "../../../../db/schema.ts";
+import { hashPassword } from "../../../../lib/password.ts";
 import { ensureSystemRoles } from "./seed-rbac.ts";
-import { ROOT_USER_ID } from "../../lib/constants.ts";
+import { ROOT_USER_ID } from "../../../../lib/constants.ts";
 import {
   ADMIN_FULL_ACCESS,
   getAdminUserIds,
   getUserPermissions,
-} from "../../lib/permissions.ts";
+} from "../../../../lib/permissions.ts";
 
 /**
  * 为管理员用户写入 RBAC 关联（issue #186）。

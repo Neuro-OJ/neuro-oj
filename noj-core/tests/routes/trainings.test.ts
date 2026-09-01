@@ -5,7 +5,7 @@ import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { problems, trainings, userRoles, users } from "../../src/db/schema.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { initRedisForTest, jsonRequest } from "../lib/helper.ts";
-import { ensureRbacSeeds } from "../../src/services/seed/seed-rbac.ts";
+import { ensureRbacSeeds } from "../../src/domains/system/index.ts";
 
 await resetDbForTest();
 await initRedisForTest();

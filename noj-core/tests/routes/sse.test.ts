@@ -20,7 +20,7 @@ import {
 } from "../../src/db/schema.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { initRedisForTest } from "../lib/helper.ts";
-import { ensureRbacSeeds } from "../../src/services/seed/seed-rbac.ts";
+import { ensureRbacSeeds } from "../../src/domains/system/index.ts";
 
 const app = createApp();
 const JWT_SECRET = Deno.env.get("JWT_SECRET");

@@ -23,7 +23,7 @@ import {
   isRetryableJudgeQueueError,
   pushJudgeTask,
 } from "../../../../mq/producer.ts";
-import { validateJudgeImageWithKind } from "../../../../services/judge-images.ts";
+import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import { assertContestSubmissionLimit } from "../../../contest/index.ts";
 import { buildJudgeTaskLlm } from "../../../../lib/llm-token.ts";
 import { buildJudgeTaskLlmForProvider } from "../../../../lib/llm-token.ts";

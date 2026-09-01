@@ -16,13 +16,20 @@
  */
 
 import { and, count, desc, eq } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
-import { announcements } from "../db/schema.ts";
-import { NotFoundError, ValidationError } from "../lib/errors.ts";
-import { Channels, publishSseEvent } from "../lib/event-bus.ts";
-import { generatePublicId, isPublicId, isUuid } from "../lib/public-id.ts";
-import { getRequestContext } from "../lib/requestContext.ts";
-import { buildPaginationMeta, type PaginationMeta } from "../lib/pagination.ts";
+import { getDb } from "../../../db/connection.ts";
+import { announcements } from "../../../db/schema.ts";
+import { NotFoundError, ValidationError } from "../../../lib/errors.ts";
+import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
+import {
+  generatePublicId,
+  isPublicId,
+  isUuid,
+} from "../../../lib/public-id.ts";
+import { getRequestContext } from "../../../lib/requestContext.ts";
+import {
+  buildPaginationMeta,
+  type PaginationMeta,
+} from "../../../lib/pagination.ts";
 import { logAudit } from "./audit-log.ts";
 
 /** 列表摘要截断长度（Markdown 源码字符数） */

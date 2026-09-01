@@ -11,7 +11,7 @@
  */
 
 import type { StorageProvider } from "./types.ts";
-import { getSetting } from "../../services/system-settings.ts";
+import { getSetting } from "../../domains/system/index.ts";
 
 let instance: StorageProvider | null = null;
 

@@ -5,7 +5,7 @@ import health from "./routes/health.ts";
 import stats from "./routes/stats.ts";
 import auth from "./domains/identity/routes/auth.ts";
 import admin from "./routes/admin/index.ts";
-import adminAnnouncements from "./routes/admin-announcements.ts";
+import adminAnnouncements from "./domains/system/routes/admin-announcements.ts";
 import adminTrainings from "./domains/catalog/routes/admin-trainings.ts";
 import tags from "./domains/catalog/routes/tags.ts";
 import problems from "./domains/catalog/routes/problems.ts";
@@ -21,14 +21,14 @@ import communityAdmin from "./domains/community/routes/community-admin.ts";
 import search from "./routes/search.ts";
 import contests from "./domains/contest/routes/contests.ts";
 import trainings from "./domains/catalog/routes/trainings.ts";
-import announcements from "./routes/announcements.ts";
+import announcements from "./domains/system/routes/announcements.ts";
 import sse, { contestSse, statsSse } from "./routes/sse.ts";
 import { AppError } from "./lib/errors.ts";
 import { logger } from "./lib/logging.ts";
-import { listJudgeImages } from "./services/judge-images.ts";
+import { listJudgeImages } from "./domains/system/index.ts";
 import { banlistMiddleware } from "./middleware/banlist.ts";
 import { requestContext } from "./middleware/request-context.ts";
-import { getSetting } from "./services/system-settings.ts";
+import { getSetting } from "./domains/system/index.ts";
 import { SECONDS_PER_DAY } from "./lib/constants.ts";
 
 /**

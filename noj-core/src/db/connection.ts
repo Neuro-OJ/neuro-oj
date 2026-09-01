@@ -75,7 +75,7 @@ export async function computePGliteTemplateHash(): Promise<string> {
   const here = dirname(new URL(import.meta.url).pathname);
   const sourceFiles = [
     resolve(here, "schema-ddl.ts"),
-    resolve(here, "../services/seed/seed-rbac.ts"),
+    resolve(here, "../domains/system/services/seed/seed-rbac.ts"),
     resolve(here, "../domains/community/services/community/community-seed.ts"),
   ];
   const parts = [String(PGLITE_TEMPLATE_FORMAT)];
@@ -504,7 +504,9 @@ export async function ensurePGliteSchemaForTest(): Promise<void> {
   }
   // 种子 RBAC 角色和权限
   try {
-    const { ensureRbacSeeds } = await import("../services/seed/seed-rbac.ts");
+    const { ensureRbacSeeds } = await import(
+      "../domains/system/services/seed/seed-rbac.ts"
+    );
     await ensureRbacSeeds();
   } catch {
     // 表可能还没建
@@ -575,7 +577,7 @@ export async function resetDbForTest(options: ResetDbForTestOptions = {}) {
     // TRUNCATE 清空了 RBAC 种子表，必须重新播种
     try {
       const { ensureRbacSeeds } = await import(
-        "../services/seed/seed-rbac.ts"
+        "../domains/system/services/seed/seed-rbac.ts"
       );
       await ensureRbacSeeds();
     } catch {
@@ -614,7 +616,7 @@ export async function resetDbForTest(options: ResetDbForTestOptions = {}) {
   // TRUNCATE 清空了 RBAC 种子表，必须重新播种
   try {
     const { ensureRbacSeeds } = await import(
-      "../services/seed/seed-rbac.ts"
+      "../domains/system/services/seed/seed-rbac.ts"
     );
     await ensureRbacSeeds();
   } catch { /* 忽略 */ }

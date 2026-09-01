@@ -16,11 +16,11 @@ import adminUsers from "../../domains/identity/routes/admin-users.ts";
 import adminProblems from "../../domains/catalog/routes/admin-problems.ts";
 import adminSubmissions from "../../domains/submission/routes/admin-submissions.ts";
 import adminContests from "../../domains/contest/routes/admin-contests.ts";
-import adminJudgeImages from "./admin-judge-images.ts";
-import adminSettings from "./admin-settings.ts";
+import adminJudgeImages from "../../domains/system/routes/admin-judge-images.ts";
+import adminSettings from "../../domains/system/routes/admin-settings.ts";
 import adminBlacklist from "../../domains/identity/routes/admin-blacklist.ts";
 import adminRoles from "../../domains/identity/routes/admin-roles.ts";
-import adminAudit from "./admin-audit.ts";
+import adminAudit from "../../domains/system/routes/admin-audit.ts";
 import adminDashboard from "./admin-dashboard.ts";
 import adminLlm from "./admin-llm.ts";
 

@@ -17,20 +17,20 @@
  */
 
 import { eq } from "drizzle-orm";
-import { getDb, registerDbResetCallback } from "../db/connection.ts";
-import { systemSettings } from "../db/schema.ts";
-import { ValidationError } from "../lib/errors.ts";
+import { getDb, registerDbResetCallback } from "../../../db/connection.ts";
+import { systemSettings } from "../../../db/schema.ts";
+import { ValidationError } from "../../../lib/errors.ts";
 import { logAudit } from "./audit-log.ts";
 import {
   ENV_ONLY_DEFINITIONS,
   getEnvSnapshotValue,
-} from "../lib/env-snapshot.ts";
+} from "../../../lib/env-snapshot.ts";
 import {
   findDefinition,
   SETTING_DEFINITIONS,
   type SettingCategory,
   type SettingType,
-} from "../lib/settings-registry.ts";
+} from "../../../lib/settings-registry.ts";
 
 /** 单条设置项的解析后值（含来源溯源） */
 export interface SettingValue {

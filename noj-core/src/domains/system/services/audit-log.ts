@@ -9,17 +9,17 @@
  */
 
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
-import { auditLogs } from "../db/schema.ts";
-import { getRequestContext } from "../lib/requestContext.ts";
+import { getDb } from "../../../db/connection.ts";
+import { auditLogs } from "../../../db/schema.ts";
+import { getRequestContext } from "../../../lib/requestContext.ts";
 import { getSetting } from "./system-settings.ts";
-import { logger } from "../lib/logging.ts";
+import { logger } from "../../../lib/logging.ts";
 import type {
   AuditAction,
   AuditDetail,
   AuditLogEntry,
   AuditLogListFilter,
-} from "../types/audit-log.ts";
+} from "../../../types/audit-log.ts";
 
 /**
  * 记录一条审计日志。必须在 admin 路由内调用（依赖 RequestContext）。

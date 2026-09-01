@@ -10,7 +10,7 @@
  */
 
 import type { SendPasswordResetEmail } from "./types.ts";
-import { getSetting } from "../../services/system-settings.ts";
+import { getSetting } from "../../domains/system/index.ts";
 
 function getSettingOrThrow(key: string, label: string): string {
   const val = getSetting(key);

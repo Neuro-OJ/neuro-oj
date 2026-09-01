@@ -19,7 +19,7 @@ import {
   isRetryableJudgeQueueError,
   pushJudgeTask,
 } from "../../../mq/producer.ts";
-import { validateJudgeImageWithKind } from "../../../services/judge-images.ts";
+import { validateJudgeImageWithKind } from "../../system/index.ts";
 import { logger } from "../../../lib/logging.ts";
 import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
 import type { Context } from "hono";

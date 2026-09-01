@@ -1,17 +1,17 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "../../middleware/auth.ts";
-import { parseJsonBody } from "../../lib/request.ts";
-import { BadRequestError } from "../../lib/errors.ts";
+import type { AuthEnv } from "../../../middleware/auth.ts";
+import { parseJsonBody } from "../../../lib/request.ts";
+import { BadRequestError } from "../../../lib/errors.ts";
 import {
   createJudgeImage,
   deleteJudgeImage,
   listJudgeImages,
   updateJudgeImage,
-} from "../../services/judge-images.ts";
+} from "../services/judge-images.ts";
 import type {
   CreateJudgeImageInput,
   UpdateJudgeImageInput,
-} from "../../types/problems.ts";
+} from "../../../types/problems.ts";
 
 /**
  * 管理端评测镜像白名单路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。

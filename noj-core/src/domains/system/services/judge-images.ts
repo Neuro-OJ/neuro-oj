@@ -1,17 +1,17 @@
 import { eq } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
-import { judgeImages } from "../db/schema.ts";
-import { NotFoundError, ValidationError } from "../lib/errors.ts";
+import { getDb } from "../../../db/connection.ts";
+import { judgeImages } from "../../../db/schema.ts";
+import { NotFoundError, ValidationError } from "../../../lib/errors.ts";
 import {
   isImageInWhitelist,
   isValidJudgeImageKind,
   type JudgeImageKind,
-} from "../types/problems.ts";
+} from "../../../types/problems.ts";
 import type {
   CreateJudgeImageInput,
   JudgeImageResponse,
   UpdateJudgeImageInput,
-} from "../types/problems.ts";
+} from "../../../types/problems.ts";
 
 const VALID_MODES = ["exact", "all_versions"];
 
