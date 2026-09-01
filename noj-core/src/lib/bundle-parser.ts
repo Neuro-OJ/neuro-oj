@@ -32,6 +32,8 @@ export interface ParsedProblemBundle {
   manifest: Record<string, unknown>;
   /** `statement.md` 内容（不存在时为 null）。 */
   statement: string | null;
+  /** `questions.json` 内容（客观题包；不存在为 null） */
+  questions: unknown | null;
   /** zip 全部条目（路径 → 数据，含元数据文件，供剥离与构建使用）。 */
   entries: Record<string, Uint8Array>;
 }
@@ -126,12 +128,6 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
       "zip 根级缺少 problem.json（必须使用统一题目包格式）",
     );
   }
-  if (!rootNames.has("evaluate.py")) {
-    throw new BadRequestError(
-      "zip 根级缺少 evaluate.py（评测脚本必须位于包根级）",
-    );
-  }
-
   const manifestFile = files["problem.json"];
   const statementFile = files["statement.md"];
 
@@ -149,9 +145,33 @@ export function parseBundleZip(data: Uint8Array): ParsedProblemBundle {
     throw new BadRequestError("problem.json 不是合法的 JSON 对象");
   }
 
+  const isObjective = manifest.is_objective === true;
+  if (isObjective) {
+    if (!rootNames.has("questions.json")) {
+      throw new BadRequestError(
+        "客观题套卷包必须包含 questions.json（小题数组）",
+      );
+    }
+  } else if (!rootNames.has("evaluate.py")) {
+    throw new BadRequestError(
+      "zip 根级缺少 evaluate.py（评测脚本必须位于包根级）",
+    );
+  }
+
+  const questionsFile = files["questions.json"];
+  let questions: unknown = null;
+  if (questionsFile) {
+    try {
+      questions = JSON.parse(new TextDecoder().decode(questionsFile));
+    } catch {
+      throw new BadRequestError("questions.json 不是合法的 JSON");
+    }
+  }
+
   return {
     manifest,
     statement: statementFile ? new TextDecoder().decode(statementFile) : null,
+    questions,
     entries: files,
   };
 }

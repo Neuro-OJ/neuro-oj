@@ -13,6 +13,14 @@
 import { BadRequestError } from "../lib/errors.ts";
 import { validateRuntimeConfig } from "../services/problems/problems-types.ts";
 import {
+  type CreateQuestionInput,
+  isValidQuestionType,
+  type ObjectiveAnswerValue,
+  type ObjectiveOption,
+  validateAnswerForType,
+  validateOptions,
+} from "./objective.ts";
+import {
   DIFFICULTIES,
   isValidDifficulty,
   isValidLlmConfig,
@@ -65,7 +73,10 @@ export interface ProblemBundleManifest {
   artifact_max_size_mb?: number | null;
   /** LLM 配置（可空）：仅 P 型/官方题可启用，且必须开启 evaluator 网络 */
   llm?: LlmConfig;
-  runtime_config: RuntimeConfig;
+  /** 客观题套卷标记：true 时使用 questions.json，不要求 runtime_config/evaluate.py */
+  is_objective?: boolean;
+  /** 编程题必填；客观题缺省 */
+  runtime_config?: RuntimeConfig;
 }
 
 /**
@@ -122,6 +133,13 @@ export function validateBundleManifest(
     throw new BadRequestError("problem.json 必须是 JSON 对象");
   }
   const m = raw as Record<string, unknown>;
+
+  if (
+    m.is_objective !== undefined && typeof m.is_objective !== "boolean"
+  ) {
+    throw new BadRequestError("manifest.is_objective 必须是布尔值");
+  }
+  const isObjective = m.is_objective === true;
 
   if (m.format_version !== BUNDLE_FORMAT_VERSION) {
     throw new BadRequestError(
@@ -230,18 +248,37 @@ export function validateBundleManifest(
     llm = m.llm as LlmConfig;
   }
 
-  if (typeof m.runtime_config !== "object" || m.runtime_config === null) {
-    throw new BadRequestError("manifest.runtime_config 是必填字段");
-  }
+  let runtimeConfig: RuntimeConfig | undefined;
+  if (isObjective) {
+    if (m.runtime_config !== undefined) {
+      throw new BadRequestError("客观题套卷不允许提供 runtime_config");
+    }
+    if (m.llm !== undefined) {
+      throw new BadRequestError("客观题套卷不允许提供 llm");
+    }
+    if (m.template !== undefined) {
+      throw new BadRequestError("客观题套卷不允许提供 template");
+    }
+    if (m.submission_mode !== undefined) {
+      throw new BadRequestError("客观题套卷不允许提供 submission_mode");
+    }
+    if (m.artifact_max_size_mb !== undefined) {
+      throw new BadRequestError("客观题套卷不允许提供 artifact_max_size_mb");
+    }
+  } else {
+    if (typeof m.runtime_config !== "object" || m.runtime_config === null) {
+      throw new BadRequestError("manifest.runtime_config 是必填字段");
+    }
 
-  // 注入 command 默认值后执行既有结构校验（含镜像白名单由调用方在落库前校验）
-  const runtimeConfig = resolveManifestCommand(
-    m.runtime_config as RuntimeConfig,
-  );
-  validateRuntimeConfig(runtimeConfig);
+    // 注入 command 默认值后执行既有结构校验（含镜像白名单由调用方在落库前校验）
+    runtimeConfig = resolveManifestCommand(
+      m.runtime_config as RuntimeConfig,
+    );
+    validateRuntimeConfig(runtimeConfig);
 
-  if (llm !== undefined && !runtimeConfig.evaluator.network?.enabled) {
-    throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
+    if (llm !== undefined && !runtimeConfig.evaluator.network?.enabled) {
+      throw new BadRequestError("启用 LLM 必须开启 evaluator 网络");
+    }
   }
 
   return {
@@ -257,6 +294,110 @@ export function validateBundleManifest(
     submission_mode: m.submission_mode as string | undefined,
     artifact_max_size_mb: m.artifact_max_size_mb as number | null | undefined,
     llm,
-    runtime_config: runtimeConfig,
+    is_objective: isObjective,
+    runtime_config: isObjective ? undefined : runtimeConfig,
   };
+}
+
+/**
+ * 校验客观题小题数组（questions.json）。
+ *
+ * 每项对应 CreateQuestionInput；sort_order 缺省按数组下标；至少 1 道。
+ *
+ * @throws {BadRequestError} 任一小题非法
+ */
+export function validateObjectiveQuestions(
+  raw: unknown,
+): CreateQuestionInput[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new BadRequestError("questions.json 必须是非空数组");
+  }
+  const seenSort = new Set<number>();
+  return raw.map((item, index) => {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      throw new BadRequestError(`questions.json[${index}] 必须是对象`);
+    }
+    const q = item as Record<string, unknown>;
+    const type = q.type;
+    if (typeof type !== "string" || !isValidQuestionType(type)) {
+      throw new BadRequestError(
+        `questions.json[${index}].type 非法，仅允许 single/multiple/judge`,
+      );
+    }
+    if (typeof q.prompt !== "string" || !q.prompt.trim()) {
+      throw new BadRequestError(
+        `questions.json[${index}].prompt 必须是非空字符串`,
+      );
+    }
+
+    let options: ObjectiveOption[] | undefined;
+    if (type === "judge") {
+      options = undefined;
+    } else {
+      if (q.options === undefined) {
+        throw new BadRequestError(`questions.json[${index}].options 必填`);
+      }
+      try {
+        validateOptions(q.options);
+      } catch (err) {
+        throw new BadRequestError(
+          `questions.json[${index}].options 非法：${(err as Error).message}`,
+        );
+      }
+      options = q.options as ObjectiveOption[];
+    }
+
+    let answer: ObjectiveAnswerValue[];
+    try {
+      validateAnswerForType(type, q.answer);
+      answer = q.answer as ObjectiveAnswerValue[];
+    } catch (err) {
+      throw new BadRequestError(
+        `questions.json[${index}].answer 非法：${(err as Error).message}`,
+      );
+    }
+
+    if (type !== "judge" && options) {
+      for (const key of answer as string[]) {
+        if (!options.some((o) => o.key === key)) {
+          throw new BadRequestError(
+            `questions.json[${index}].answer 选项 ${key} 不存在于选项中`,
+          );
+        }
+      }
+    }
+
+    let sortOrder: number;
+    if (q.sort_order === undefined) {
+      sortOrder = index;
+    } else {
+      const rawSort = q.sort_order;
+      if (
+        typeof rawSort !== "number" || !Number.isInteger(rawSort) ||
+        rawSort < 0
+      ) {
+        throw new BadRequestError(
+          `questions.json[${index}].sort_order 必须是非负整数`,
+        );
+      }
+      sortOrder = rawSort;
+    }
+    if (seenSort.has(sortOrder)) {
+      throw new BadRequestError(
+        `questions.json 中 sort_order ${sortOrder} 重复`,
+      );
+    }
+    seenSort.add(sortOrder);
+
+    return {
+      type,
+      prompt: q.prompt,
+      options: type === "judge" ? undefined : options,
+      answer,
+      explanation: typeof q.explanation === "string"
+        ? q.explanation
+        : undefined,
+      sort_order: sortOrder,
+    };
+  });
 }

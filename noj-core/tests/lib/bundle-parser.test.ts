@@ -152,3 +152,53 @@ Deno.test("stripMetadataEntries: 剥离元数据后不含 problem.json/statement
   assertEquals(names.includes("evaluate.py"), true);
   assertEquals(names.includes("visible.jsonl"), true);
 });
+
+const OBJECTIVE_MANIFEST = JSON.stringify({
+  format_version: 1,
+  title: "客观题套卷",
+  is_objective: true,
+  type: "U",
+});
+
+function objectiveBundle(): Uint8Array {
+  return makeZip({
+    "problem.json": OBJECTIVE_MANIFEST,
+    "questions.json": JSON.stringify([
+      {
+        type: "single",
+        prompt: "1+1=?",
+        options: [{ key: "A", text: "2" }, { key: "B", text: "3" }],
+        answer: ["A"],
+      },
+    ]),
+    "statement.md": "# 客观题套卷",
+  });
+}
+
+Deno.test("parseBundleZip: 客观题包不要求 evaluate.py 且解析 questions.json", () => {
+  const parsed = parseBundleZip(objectiveBundle());
+  assertEquals(parsed.manifest.is_objective, true);
+  assertEquals(Array.isArray(parsed.questions), true);
+  assertEquals(
+    (parsed.questions as Array<{ prompt: string }>)[0].prompt,
+    "1+1=?",
+  );
+});
+
+Deno.test("parseBundleZip: 客观题包缺 questions.json 被拒", () => {
+  const zip = makeZip({
+    "problem.json": OBJECTIVE_MANIFEST,
+    "statement.md": "# 客观题套卷",
+  });
+  const err = assertThrows(() => parseBundleZip(zip), BadRequestError);
+  assertMatch(err.message, /questions\.json/);
+});
+
+Deno.test("parseBundleZip: 客观题包 questions.json 非法 JSON 被拒", () => {
+  const zip = makeZip({
+    "problem.json": OBJECTIVE_MANIFEST,
+    "questions.json": "not-json{{{",
+  });
+  const err = assertThrows(() => parseBundleZip(zip), BadRequestError);
+  assertMatch(err.message, /questions\.json/);
+});
