@@ -60,6 +60,12 @@ import { resolveUserId } from "../../identity/index.ts";
  */
 const router = new Hono<OptionalAuthEnv>();
 
+/**
+ * 从请求上下文读取当前登录用户 UUID，未登录时抛出 ForbiddenError。
+ * @param c Hono 上下文（含 userId）。
+ * @returns 当前用户 UUID。
+ * @throws {ForbiddenError} 未登录时抛出。
+ */
 function userId(c: { get: (key: "userId") => string | undefined }): string {
   const id = c.get("userId");
   if (!id) throw new ForbiddenError("请先登录");
@@ -80,8 +86,16 @@ async function requireCommunityModeration(
   await next();
 }
 
+/**
+ * 管理路由组守卫：/admin/* 全部需登录且具备社区审核权限（requireCommunityModeration）。
+ */
 router.use("/admin/*", authMiddleware, requireCommunityModeration);
 
+/**
+ * POST /admin/preset/:preset — 应用社区预设（public / private / knowledge）。
+ * 权限：system:settings（仅管理员）。
+ * 响应：{ data: 应用后的社区配置 }。
+ */
 router.post("/admin/preset/:preset", async (c) => {
   // 预设属于系统配置，仅管理员可应用
   await assertPermission(c, "system:settings");
@@ -96,6 +110,11 @@ router.post("/admin/preset/:preset", async (c) => {
     ),
   });
 });
+/**
+ * POST /admin/boards — 创建社区板块。
+ * 权限：community_board:manage。body：{ slug, name, description?, sort_order? }。
+ * 响应：201 { data: 新建板块 }。
+ */
 router.post("/admin/boards", async (c) => {
   // 板块管理：community_board:manage（默认仅 admin 角色被授予）
   await assertPermission(c, "community_board:manage");
@@ -114,6 +133,11 @@ router.post("/admin/boards", async (c) => {
     }),
   }, 201);
 });
+/**
+ * PATCH /admin/boards/:boardId — 更新社区板块。
+ * 权限：community_board:manage。body：部分板块字段。
+ * 响应：{ data: 更新后的板块 }。
+ */
 router.patch(
   "/admin/boards/:boardId",
   async (c) => {
@@ -124,6 +148,11 @@ router.patch(
     });
   },
 );
+/**
+ * GET /admin/boards/:boardId/role-grants — 列出板块的角色授权。
+ * 权限：community_board:manage。
+ * 响应：{ data: 角色授权列表 }。
+ */
 router.get(
   "/admin/boards/:boardId/role-grants",
   async (c) => {
@@ -131,6 +160,11 @@ router.get(
     return c.json({ data: await listBoardRoleGrants(c.req.param("boardId")) });
   },
 );
+/**
+ * PUT /admin/boards/:boardId/role-grants/:roleId — 更新（或创建）板块角色授权。
+ * 权限：community_board:manage。body：{ can_read?, can_post?, can_moderate? }。
+ * 响应：{ data: 更新后的角色授权 }。
+ */
 router.put("/admin/boards/:boardId/role-grants/:roleId", async (c) => {
   await assertPermission(c, "community_board:manage");
   const body = await parseJsonBody<{
@@ -146,11 +180,20 @@ router.put("/admin/boards/:boardId/role-grants/:roleId", async (c) => {
     ),
   });
 });
+/**
+ * DELETE /admin/boards/:boardId/role-grants/:roleId — 删除板块角色授权。
+ * 权限：community_board:manage。响应：204。
+ */
 router.delete("/admin/boards/:boardId/role-grants/:roleId", async (c) => {
   await assertPermission(c, "community_board:manage");
   await deleteBoardRoleGrant(c.req.param("boardId"), c.req.param("roleId"));
   return c.body(null, 204);
 });
+/**
+ * GET /admin/reports — 列出举报工单。
+ * 权限：社区审核。query：status（pending/resolved/dismissed/all，默认 pending）。
+ * 响应：{ data: 举报列表 }。
+ */
 router.get(
   "/admin/reports",
   async (c) => {
@@ -167,6 +210,11 @@ router.get(
     return c.json({ data: await listReports(s) });
   },
 );
+/**
+ * GET /admin/comments/pending — 列出待审核评论。
+ * 权限：社区审核。query：limit。
+ * 响应：{ data: 待审核评论列表 }。
+ */
 router.get(
   "/admin/comments/pending",
   async (c) =>
@@ -174,6 +222,11 @@ router.get(
       data: await listPendingComments(Number(c.req.query("limit") ?? 50)),
     }),
 );
+/**
+ * POST /admin/reports/:reportId/reopen — 重新开启举报（撤销处理/驳回）。
+ * 权限：社区审核；涉及封禁/禁言撤销时需更高权限。
+ * 响应：{ data: 更新后的举报 }。
+ */
 router.post("/admin/reports/:reportId/reopen", async (c) => {
   const reportId = c.req.param("reportId");
   // 撤销处理若涉及解除封禁或社区禁言，需更高级的社区处罚权限（防止审核员越权解封）
@@ -192,6 +245,12 @@ router.post("/admin/reports/:reportId/reopen", async (c) => {
     data: await reopenReport(reportId),
   });
 });
+/**
+ * POST /admin/reports/:reportId/:status — 处理或驳回举报。
+ * 权限：社区审核；封禁需 community_moderation:sanction，平台级封禁需 admin:full_access。
+ * body：{ resolution?, action?, scope?, expires_at? }。
+ * 响应：{ data: 更新后的举报 }。
+ */
 router.post("/admin/reports/:reportId/:status", async (c) => {
   const status = c.req.param("status");
   if (status !== "resolved" && status !== "dismissed") {
@@ -281,6 +340,11 @@ router.post("/admin/reports/:reportId/:status", async (c) => {
     ),
   });
 });
+/**
+ * POST /admin/posts/:postId/:status — 变更帖子状态（published/hidden/deleted）。
+ * 权限：社区审核。body：{ reason? }。
+ * 响应：{ data: 更新后的帖子 }。
+ */
 router.post("/admin/posts/:postId/:status", async (c) => {
   const status = c.req.param("status");
   if (!(MODERATION_STATUSES as readonly string[]).includes(status)) {
@@ -297,6 +361,11 @@ router.post("/admin/posts/:postId/:status", async (c) => {
     ),
   });
 });
+/**
+ * POST /admin/comments/:commentId/:status — 变更评论状态（published/hidden/deleted）。
+ * 权限：社区审核。body：{ reason? }。
+ * 响应：{ data: 更新后的评论 }。
+ */
 router.post("/admin/comments/:commentId/:status", async (c) => {
   const status = c.req.param("status");
   if (!(MODERATION_STATUSES as readonly string[]).includes(status)) {
@@ -312,6 +381,11 @@ router.post("/admin/comments/:commentId/:status", async (c) => {
     ),
   });
 });
+/**
+ * POST /admin/posts/:postId/:flag — 锁定或置顶帖子。
+ * 权限：community_moderation:lock。body：{ value? }。
+ * 响应：{ data: 更新后的帖子 }。
+ */
 router.post("/admin/posts/:postId/:flag", async (c) => {
   // 锁定/置顶：community_moderation:lock
   await assertPermission(c, "community_moderation:lock");
@@ -330,10 +404,20 @@ router.post("/admin/posts/:postId/:flag", async (c) => {
     ),
   });
 });
+/**
+ * GET /admin/sanctions — 列出全部社区处罚。
+ * 权限：社区审核。
+ * 响应：{ data: 社区处罚列表 }。
+ */
 router.get(
   "/admin/sanctions",
   async (c) => c.json({ data: await listSanctions() }),
 );
+/**
+ * POST /admin/sanctions — 创建社区处罚（禁言）。
+ * 权限：community_moderation:sanction。body：{ user_id, reason, expires_at? }。
+ * 响应：201 { data: 新建处罚 }。
+ */
 router.post("/admin/sanctions", async (c) => {
   // 社区处罚：community_moderation:sanction
   await assertPermission(c, "community_moderation:sanction");
@@ -353,6 +437,11 @@ router.post("/admin/sanctions", async (c) => {
     ),
   }, 201);
 });
+/**
+ * DELETE /admin/sanctions/:sanctionId — 撤销社区处罚。
+ * 权限：community_moderation:sanction。
+ * 响应：{ data: 撤销后的处罚 }。
+ */
 router.delete(
   "/admin/sanctions/:sanctionId",
   async (c) => {
@@ -363,6 +452,11 @@ router.delete(
     });
   },
 );
+/**
+ * GET /admin/users/:userId/sanctions — 列出指定用户的社区处罚历史。
+ * 权限：社区审核。:userId 可为 username 或 UUID。
+ * 响应：{ data: 处罚历史列表 }。
+ */
 router.get(
   "/admin/users/:userId/sanctions",
   async (c) => {

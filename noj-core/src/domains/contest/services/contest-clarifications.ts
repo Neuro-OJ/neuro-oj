@@ -31,12 +31,14 @@ const MAX_CONTENT_LENGTH = 5000;
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
 
+/** 答疑发送者信息。 */
 export interface ClarificationSender {
   id: string;
   username: string;
   avatar_url: string | null;
 }
 
+/** 答疑回复响应结构。 */
 export interface ClarificationReplyResponse {
   id: string;
   content: string;
@@ -45,6 +47,7 @@ export interface ClarificationReplyResponse {
   sender: ClarificationSender;
 }
 
+/** 答疑响应结构（根提问 + 其下回复线程）。 */
 export interface ClarificationResponse {
   id: string;
   contest_id: string;
@@ -57,11 +60,13 @@ export interface ClarificationResponse {
   replies: ClarificationReplyResponse[];
 }
 
+/** 答疑列表查询参数（分页）。 */
 export interface ListClarificationsParams {
   page?: number;
   perPage?: number;
 }
 
+/** 答疑列表查询结果（分页数据与总数）。 */
 export interface ListClarificationsResult {
   data: ClarificationResponse[];
   total: number;
@@ -69,6 +74,13 @@ export interface ListClarificationsResult {
 
 type ClarificationRow = typeof contestClarifications.$inferSelect;
 
+/**
+ * 按竞赛 UUID 查询竞赛数据行，不存在时抛错。
+ *
+ * @param id 竞赛 UUID
+ * @returns 竞赛数据行
+ * @throws {NotFoundError} 竞赛不存在时
+ */
 async function findContestRow(id: string) {
   const db = getDb();
   const [row] = await db.select().from(contests).where(eq(contests.id, id))
@@ -81,6 +93,14 @@ async function findContestRow(id: string) {
   return row;
 }
 
+/**
+ * 校验并规范化内容：去首尾空白、非空且不超过长度上限。
+ *
+ * @param content 待校验的内容
+ * @param label 校验错误提示所用的字段名
+ * @returns 规范化后的内容
+ * @throws {BadRequestError} 内容为空或超过长度限制时
+ */
 function validateContent(content: string | undefined, label: string): string {
   const value = content?.trim() ?? "";
   if (!value) {
@@ -94,6 +114,13 @@ function validateContent(content: string | undefined, label: string): string {
   return value;
 }
 
+/**
+ * 断言题目属于指定竞赛。
+ *
+ * @param contestId 竞赛 UUID
+ * @param problemId 题目 ID
+ * @throws {BadRequestError} 题目不属于该竞赛时
+ */
 async function assertProblemBelongsToContest(
   contestId: string,
   problemId: string,

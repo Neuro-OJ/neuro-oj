@@ -25,6 +25,8 @@ import { logAudit } from "../../system/index.ts";
 
 /** 标签 kind 枚举。 */
 export const TAG_KINDS = ["problem", "algorithm"] as const;
+
+/** 标签 kind 类型：problem=题目标签，algorithm=算法标签。 */
 export type TagKind = typeof TAG_KINDS[number];
 
 /** 标签响应 DTO。 */
@@ -38,11 +40,13 @@ export interface TagResponse {
   updated_at: string;
 }
 
+/** 创建标签的输入。 */
 export interface CreateTagInput {
   name: string;
   kind: string;
 }
 
+/** 更新标签的输入（字段可选，仅更新提供的字段）。 */
 export interface UpdateTagInput {
   name?: string;
   kind?: string;

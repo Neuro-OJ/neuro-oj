@@ -10,6 +10,18 @@ import { BadRequestError, UnauthorizedError } from "../../../../lib/errors.ts";
 import type { UserResponse } from "../../../../types/auth.ts";
 import { toUserResponse, validatePasswordStrength } from "./auth-register.ts";
 
+/**
+ * 为尚未设置本地密码的 OAuth 用户补设密码。
+ *
+ * 校验用户存在且未设置本地密码，通过强度校验后哈希更新，并记录审计日志。
+ *
+ * @param userId 目标用户 ID
+ * @param newPassword 新密码（需通过强度校验）
+ * @param clientIp 客户端 IP，用于审计日志（可选）
+ * @returns 补设密码后的用户信息
+ * @throws {UnauthorizedError} 用户不存在
+ * @throws {BadRequestError} 账号已有本地密码或新密码强度不足
+ */
 export async function setPassword(
   userId: string,
   newPassword: string,

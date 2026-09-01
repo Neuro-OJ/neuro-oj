@@ -36,10 +36,18 @@ import type {
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
+/**
+ * 判断值是否为普通对象（非 null、非数组）。
+ */
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/**
+ * 断言请求体为 JSON 对象，否则抛 BadRequestError。
+ *
+ * @throws {BadRequestError} 请求体不是 JSON 对象
+ */
 function assertObjectBody(
   body: unknown,
 ): asserts body is Record<string, unknown> {
@@ -48,6 +56,11 @@ function assertObjectBody(
   }
 }
 
+/**
+ * 题单列表（公开或按创建者查询）。
+ * GET /api/v1/trainings?page=&per_page=&created_by=
+ * 可选认证；created_by 指定时非 owner/admin 仅返回 public 题单。
+ */
 router.get("/", optionalAuthMiddleware, async (c) => {
   const { page, perPage } = parsePagination(c);
   const createdBy = c.req.query("created_by");
@@ -76,6 +89,11 @@ router.get("/", optionalAuthMiddleware, async (c) => {
   });
 });
 
+/**
+ * 我的题单列表（含 private）。
+ * GET /api/v1/trainings/mine?page=&per_page=
+ * 需登录。
+ */
 router.get("/mine", authMiddleware, async (c) => {
   const { page, perPage } = parsePagination(c);
   const result = await listMyTrainings(c.get("userId"), { page, perPage });
@@ -103,6 +121,12 @@ router.get("/containing", authMiddleware, async (c) => {
   return c.json({ data: ids });
 });
 
+/**
+ * 创建题单。
+ * POST /api/v1/trainings
+ * 需登录 + training:create；body: { title, description?, visibility? }。
+ * 响应 201 返回新建题单。
+ */
 router.post("/", authMiddleware, async (c) => {
   await assertPermission(c, "training:create");
   const body = await parseJsonBody<CreateTrainingInput>(c);
@@ -111,6 +135,11 @@ router.post("/", authMiddleware, async (c) => {
   return c.json({ data: training }, 201);
 });
 
+/**
+ * 题单详情。
+ * GET /api/v1/trainings/:id
+ * 可选认证；private 题单仅 owner/admin 可见。
+ */
 router.get("/:id", optionalAuthMiddleware, async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
   const viewerId = c.get("userId") as string | undefined;
@@ -125,6 +154,13 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
   return c.json({ data: training });
 });
 
+/**
+ * 全量更新题单。
+ * PUT /api/v1/trainings/:id
+ * 需登录；owner 需 training:write_own，他人需 training:write_any；
+ * 设为 public 需 training:publish，置顶需 training:pin。
+ * body: { title?, description?, visibility?, is_pinned? }。
+ */
 router.put("/:id", authMiddleware, async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
   const actorId = c.get("userId");
@@ -154,6 +190,12 @@ router.put("/:id", authMiddleware, async (c) => {
   return c.json({ data: updated });
 });
 
+/**
+ * 删除题单。
+ * DELETE /api/v1/trainings/:id
+ * 需登录；owner 需 training:delete_own，他人需 training:delete_any。
+ * 响应 204。
+ */
 router.delete("/:id", authMiddleware, async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
   const actorId = c.get("userId");
@@ -168,6 +210,11 @@ router.delete("/:id", authMiddleware, async (c) => {
   return c.body(null, 204);
 });
 
+/**
+ * 题单内题目列表（含 AC 状态）。
+ * GET /api/v1/trainings/:id/problems
+ * 可选认证；private 题单仅 owner/admin 可见。
+ */
 router.get("/:id/problems", optionalAuthMiddleware, async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
   const viewerId = c.get("userId") as string | undefined;
@@ -182,6 +229,12 @@ router.get("/:id/problems", optionalAuthMiddleware, async (c) => {
   return c.json({ data });
 });
 
+/**
+ * 向题单添加题目。
+ * POST /api/v1/trainings/:id/problems
+ * 需登录；owner 需 training:write_own，他人需 training:write_any。
+ * body: { problem_id, position? }；响应 201 返回新增题目。
+ */
 router.post("/:id/problems", authMiddleware, async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
   const actorId = c.get("userId");
@@ -208,6 +261,12 @@ router.post("/:id/problems", authMiddleware, async (c) => {
   return c.json({ data }, 201);
 });
 
+/**
+ * 重排题单内题目顺序。
+ * PUT /api/v1/trainings/:id/problems
+ * 需登录；owner 需 training:write_own，他人需 training:write_any。
+ * body: { problems: [{ problem_id, position }] }。
+ */
 router.put("/:id/problems", authMiddleware, async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
   const actorId = c.get("userId");
@@ -235,6 +294,12 @@ router.put("/:id/problems", authMiddleware, async (c) => {
   return c.json({ data });
 });
 
+/**
+ * 从题单移除指定题目。
+ * DELETE /api/v1/trainings/:id/problems/:problemId
+ * 需登录；owner 需 training:write_own，他人需 training:write_any。
+ * 响应 204。
+ */
 router.delete("/:id/problems/:problemId", authMiddleware, async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
   const problemId = c.req.param("problemId") as string;

@@ -18,6 +18,9 @@ const DEFAULT_BOARDS = [
   },
 ] as const;
 
+/**
+ * 确保社区初始数据存在（默认板块），幂等：已存在的板块按 slug 冲突忽略。
+ */
 export async function ensureCommunitySeeds(): Promise<void> {
   const db = getDb();
   const now = new Date().toISOString();

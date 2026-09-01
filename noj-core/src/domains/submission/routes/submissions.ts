@@ -212,6 +212,10 @@ function parseArtifactMultipart(
     let fileStream: ReadableStream<Uint8Array> | null = null;
     let resolved = false;
 
+    /**
+     * 当 problem_id、file_name 与 file_stream 均已就绪时，立即 resolve 解析结果。
+     * 幂等：已 resolve 后再次调用直接返回，避免重复触发。
+     */
     function maybeResolve() {
       if (resolved) return;
       if (problemId && fileName && fileStream) {

@@ -24,8 +24,16 @@ const MAX_MESSAGE_LENGTH = 10_000;
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
-// 所有私信端点需要认证
+/**
+ * 全局认证中间件：所有私信端点都需要登录认证。
+ * 对所有路径生效，注入 userId / userRole 到上下文。
+ */
 router.use("*", authMiddleware);
+/**
+ * 全局私信功能开关中间件。
+ * 私信功能关闭时，除 SSE 端点（/events）外一律返回 403 FEATURE_DISABLED；
+ * SSE 端点例外：发送 feature:disabled 事件后关闭连接，而非直接 403。
+ */
 router.use("*", async (c, next) => {
   // SSE 端点例外：私信关闭时发送 feature:disabled 事件后关闭，而不是直接 403
   if (c.req.path.endsWith("/events")) return next();

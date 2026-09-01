@@ -24,10 +24,18 @@ import type { UpdateTrainingInput } from "../../../types/trainings.ts";
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 
+/**
+ * 判断值是否为普通对象（非 null、非数组）。
+ */
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/**
+ * 断言请求体为 JSON 对象，否则抛 BadRequestError。
+ *
+ * @throws {BadRequestError} 请求体不是 JSON 对象
+ */
 function assertObjectBody(
   body: unknown,
 ): asserts body is Record<string, unknown> {
@@ -36,7 +44,10 @@ function assertObjectBody(
   }
 }
 
-// 组级中间件：认证 + RequestContext 注入；具体权限在各 handler 内按需校验。
+/**
+ * 组级中间件：认证 + RequestContext 注入；具体权限在各 handler 内按需校验。
+ * 应用于本路由组全部路径。
+ */
 router.use("*", authMiddleware, (c, next) => {
   return runWithContext(
     {
@@ -48,6 +59,11 @@ router.use("*", authMiddleware, (c, next) => {
   );
 });
 
+/**
+ * 全部题单列表（含 private）。
+ * GET /api/v1/admin/trainings?page=&per_page=
+ * 需 training:read_any。
+ */
 router.get("/", async (c) => {
   await assertPermission(c, "training:read_any");
   const { page, perPage } = parsePagination(c);
@@ -60,6 +76,12 @@ router.get("/", async (c) => {
   });
 });
 
+/**
+ * 更新任意题单（含设为 public / 置顶）。
+ * PATCH /api/v1/admin/trainings/:id
+ * 需 training:write_any；设为 public 需 training:publish，置顶需 training:pin。
+ * body: { title?, description?, visibility?, is_pinned? }。
+ */
 router.patch("/:id", async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
   const body = await parseJsonBody<UpdateTrainingInput>(c);
@@ -89,6 +111,11 @@ router.patch("/:id", async (c) => {
   return c.json({ data: updated });
 });
 
+/**
+ * 删除任意题单。
+ * DELETE /api/v1/admin/trainings/:id
+ * 需 training:delete_any；响应 204。
+ */
 router.delete("/:id", async (c) => {
   await assertPermission(c, "training:delete_any");
   const id = await resolveTrainingId(c.req.param("id") as string);

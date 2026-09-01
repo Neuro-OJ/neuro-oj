@@ -14,6 +14,11 @@ import type {
 } from "../../../../types/community.ts";
 import { getCommunityConfig } from "./community-config.ts";
 
+/**
+ * 根据帖子类型返回对应的功能开关配置项。
+ * @param type 帖子类型：solution / discussion / moment。
+ * @returns 对应的 CommunityConfig 功能开关键。
+ */
 export function featureForType(type: CommunityPostType): keyof CommunityConfig {
   return type === "solution"
     ? "solutions_enabled"
@@ -22,6 +27,12 @@ export function featureForType(type: CommunityPostType): keyof CommunityConfig {
     : "moments_enabled";
 }
 
+/**
+ * 计算用户的发布状态：新用户审核期（new_user_review_hours）内返回 pending，否则 published。
+ * @param authorId 作者用户 UUID。
+ * @returns 发布状态：pending 或 published。
+ * @throws {NotFoundError} 用户不存在时抛出。
+ */
 export async function publicationStatus(
   authorId: string,
 ): Promise<CommunityPostStatus> {

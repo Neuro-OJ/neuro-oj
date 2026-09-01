@@ -27,6 +27,20 @@ import { BadRequestError, UnauthorizedError } from "../../../../lib/errors.ts";
 import type { UserResponse } from "../../../../types/auth.ts";
 import { validatePasswordStrength } from "./auth-register.ts";
 
+/**
+ * 修改当前用户密码。
+ *
+ * 流程：验证旧密码 → 新密码强度校验 → 拒绝新旧相同 → 哈希更新并清除
+ * must_change_password 标记 → 记录审计日志 → 返回最新 UserResponse。
+ *
+ * @param userId 目标用户 ID
+ * @param oldPassword 旧密码（用于验证）
+ * @param newPassword 新密码（需通过强度校验且与旧密码不同）
+ * @param clientIp 客户端 IP，用于审计日志（可选）
+ * @returns 修改后的用户信息
+ * @throws {UnauthorizedError} 用户不存在或旧密码错误
+ * @throws {BadRequestError} 新密码强度不足、与旧密码相同或账号未设置本地密码
+ */
 export async function changePassword(
   userId: string,
   oldPassword: string,

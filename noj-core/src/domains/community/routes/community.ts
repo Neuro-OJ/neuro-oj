@@ -52,12 +52,23 @@ import {
 
 const router = new Hono<OptionalAuthEnv>();
 
+/**
+ * 从请求上下文读取当前登录用户 UUID，未登录时抛出 ForbiddenError。
+ * @param c Hono 上下文（含 userId）。
+ * @returns 当前用户 UUID。
+ * @throws {ForbiddenError} 未登录时抛出。
+ */
 function userId(c: { get: (key: "userId") => string | undefined }): string {
   const id = c.get("userId");
   if (!id) throw new ForbiddenError("请先登录");
   return id;
 }
 
+/**
+ * 判断当前请求用户是否为社区审核员（具备 community_moderation:review 权限）。
+ * @param c Hono 上下文。
+ * @returns 是否为审核员。
+ */
 async function isModerator(
   c: Parameters<typeof checkPermission>[0],
 ): Promise<boolean> {
@@ -74,6 +85,12 @@ function requireGuestRead(
   }
 }
 
+/**
+ * 断言当前用户具备创建指定类型帖子的权限。
+ * @param c Hono 上下文。
+ * @param type 帖子类型（solution / discussion / moment）。
+ * @throws {ForbiddenError} 无对应创建权限时抛出。
+ */
 async function requirePostPermission(
   c: Parameters<typeof assertPermission>[0],
   type: CommunityPostType,
@@ -81,6 +98,11 @@ async function requirePostPermission(
   await assertPermission(c, `community:create_${type}`);
 }
 
+/**
+ * GET /config — 获取社区配置与当前用户权限。
+ * 认证：可选（optionalAuthMiddleware）。未登录时仅返回配置，不返回权限。
+ * 响应：{ data: { ...config, permissions } }。
+ */
 router.get("/config", optionalAuthMiddleware, async (c) => {
   const config = getCommunityConfig();
   const loggedIn = !!c.get("userId");
@@ -100,12 +122,22 @@ router.get("/config", optionalAuthMiddleware, async (c) => {
   return c.json({ data: { ...config, permissions } });
 });
 
+/**
+ * GET /boards — 获取社区板块列表。
+ * 认证：可选。需讨论模块开启且满足访客读守卫。
+ * 响应：{ data: 板块列表 }。
+ */
 router.get("/boards", optionalAuthMiddleware, async (c) => {
   assertCommunityEnabled("discussions_enabled");
   requireGuestRead(c);
   return c.json({ data: await listBoards() });
 });
 
+/**
+ * GET /posts — 获取社区帖子列表（支持筛选与分页）。
+ * 认证：可选。query：type、q、problem_id、board_id、author_id、cursor、limit。
+ * 响应：{ data, next_cursor }。
+ */
 router.get("/posts", optionalAuthMiddleware, async (c) => {
   const type = c.req.query("type") as CommunityPostType | undefined;
   const query = c.req.query("q")?.trim();
@@ -141,6 +173,11 @@ router.get("/posts", optionalAuthMiddleware, async (c) => {
   );
 });
 
+/**
+ * GET /bookmarks — 获取当前用户收藏的帖子列表。
+ * 认证：必填（authMiddleware）。query：cursor、limit。
+ * 响应：{ data, next_cursor }。
+ */
 router.get("/bookmarks", authMiddleware, async (c) => {
   return c.json(
     await listBookmarks(
@@ -151,6 +188,11 @@ router.get("/bookmarks", authMiddleware, async (c) => {
   );
 });
 
+/**
+ * GET /posts/counts — 获取各类型已发布帖子的数量统计。
+ * 认证：可选。需社区开启且满足访客读守卫。
+ * 响应：{ data: { solution, discussion, moment } }。
+ */
 router.get("/posts/counts", optionalAuthMiddleware, async (c) => {
   assertCommunityEnabled();
   requireGuestRead(c);
@@ -186,6 +228,11 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
   });
 });
 
+/**
+ * GET /posts/:postId — 获取帖子详情。
+ * 认证：可选。需社区开启且满足访客读守卫。
+ * 响应：{ data: 帖子详情 }。
+ */
 router.get("/posts/:postId", optionalAuthMiddleware, async (c) => {
   assertCommunityEnabled();
   requireGuestRead(c);
@@ -199,6 +246,11 @@ router.get("/posts/:postId", optionalAuthMiddleware, async (c) => {
   });
 });
 
+/**
+ * POST /posts — 创建社区帖子（题解 / 讨论 / 短动态）。
+ * 认证：必填。body：CommunityPostInput（type、title、content、problem_id、board_id 等）。
+ * 响应：201 { data: 新建帖子 }。
+ */
 router.post("/posts", authMiddleware, async (c) => {
   const actorId = userId(c);
   const input = await parseJsonBody<CommunityPostInput>(c);
@@ -211,6 +263,11 @@ router.post("/posts", authMiddleware, async (c) => {
   return c.json({ data: post }, 201);
 });
 
+/**
+ * PATCH /posts/:postId — 更新帖子标题/内容。
+ * 认证：必填。body：{ title?, content? }。
+ * 响应：{ data: 更新后的帖子 }。
+ */
 router.patch("/posts/:postId", authMiddleware, async (c) => {
   const actorId = userId(c);
   const postId = await resolvePostId(c.req.param("postId") as string);
@@ -228,6 +285,11 @@ router.patch("/posts/:postId", authMiddleware, async (c) => {
   });
 });
 
+/**
+ * DELETE /posts/:postId — 删除帖子（软删除，状态置为 deleted）。
+ * 认证：必填。仅作者或审核员可删除。
+ * 响应：{ data: 更新后的帖子 }。
+ */
 router.delete("/posts/:postId", authMiddleware, async (c) => {
   const actorId = userId(c);
   const postId = await resolvePostId(c.req.param("postId") as string);
@@ -251,6 +313,11 @@ router.delete("/posts/:postId", authMiddleware, async (c) => {
   });
 });
 
+/**
+ * GET /posts/:postId/comments — 获取帖子的评论列表。
+ * 认证：可选。需满足访客读守卫。
+ * 响应：{ data: 评论列表 }。
+ */
 router.get(
   "/posts/:postId/comments",
   optionalAuthMiddleware,
@@ -266,6 +333,11 @@ router.get(
     });
   },
 );
+/**
+ * POST /posts/:postId/comments — 创建评论（或回复一级评论）。
+ * 认证：必填。body：{ content, parent_id? }。
+ * 响应：201 { data: 新建评论 }。
+ */
 router.post("/posts/:postId/comments", authMiddleware, async (c) => {
   const actorId = userId(c);
   const postId = await resolvePostId(c.req.param("postId") as string);
@@ -283,6 +355,11 @@ router.post("/posts/:postId/comments", authMiddleware, async (c) => {
   }, 201);
 });
 
+/**
+ * PATCH /comments/:commentId — 编辑评论内容。
+ * 认证：必填。body：{ content }。仅作者或审核员可编辑。
+ * 响应：{ data: 更新后的评论 }。
+ */
 router.patch("/comments/:commentId", authMiddleware, async (c) => {
   const actorId = userId(c);
   await assertCommunityWritable(actorId, await isModerator(c));
@@ -297,6 +374,11 @@ router.patch("/comments/:commentId", authMiddleware, async (c) => {
     ),
   });
 });
+/**
+ * DELETE /comments/:commentId — 删除评论（软删除）。
+ * 认证：必填。仅作者或审核员可删除。
+ * 响应：{ data: 更新后的评论 }。
+ */
 router.delete("/comments/:commentId", authMiddleware, async (c) => {
   const actorId = userId(c);
   await assertCommunityWritable(actorId, await isModerator(c), {
@@ -311,6 +393,11 @@ router.delete("/comments/:commentId", authMiddleware, async (c) => {
   });
 });
 
+/**
+ * POST /posts/:postId/like — 切换帖子点赞状态。
+ * 认证：必填。需 community:react 权限。
+ * 响应：{ data: { liked } }。
+ */
 router.post("/posts/:postId/like", authMiddleware, async (c) => {
   const actorId = userId(c);
   const postId = await resolvePostId(c.req.param("postId") as string);
@@ -322,6 +409,11 @@ router.post("/posts/:postId/like", authMiddleware, async (c) => {
     },
   });
 });
+/**
+ * POST /posts/:postId/bookmark — 切换帖子收藏状态。
+ * 认证：必填。需 community:react 权限。
+ * 响应：{ data: { bookmarked } }。
+ */
 router.post("/posts/:postId/bookmark", authMiddleware, async (c) => {
   const actorId = userId(c);
   const postId = await resolvePostId(c.req.param("postId") as string);
@@ -336,6 +428,11 @@ router.post("/posts/:postId/bookmark", authMiddleware, async (c) => {
     },
   });
 });
+/**
+ * POST /comments/:commentId/like — 切换评论点赞状态。
+ * 认证：必填。需 community:react 权限。
+ * 响应：{ data: { liked } }。
+ */
 router.post("/comments/:commentId/like", authMiddleware, async (c) => {
   const actorId = userId(c);
   await assertPermission(c, "community:react");
@@ -350,6 +447,11 @@ router.post("/comments/:commentId/like", authMiddleware, async (c) => {
   });
 });
 
+/**
+ * POST /users/:userId/follow — 切换关注关系。
+ * 认证：必填。需 community:follow 权限。:userId 可为 username 或 UUID。
+ * 响应：{ data: { following } }。
+ */
 router.post("/users/:userId/follow", authMiddleware, async (c) => {
   const actorId = userId(c);
   await assertPermission(c, "community:follow");
@@ -362,6 +464,11 @@ router.post("/users/:userId/follow", authMiddleware, async (c) => {
     },
   });
 });
+/**
+ * PUT /me/activity-visibility — 更新当前用户的活动可见性。
+ * 认证：必填。body：{ visibility: "hidden" | "following" | "everyone" }。
+ * 响应：{ data: 更新后的可见性 }。
+ */
 router.put("/me/activity-visibility", authMiddleware, async (c) => {
   const body = await parseJsonBody<
     { visibility?: "hidden" | "following" | "everyone" }
@@ -375,6 +482,11 @@ router.put("/me/activity-visibility", authMiddleware, async (c) => {
   });
 });
 
+/**
+ * GET /feed — 获取社区动态流（最新 / 关注）。
+ * 认证：可选。query：view（latest/following）、cursor、limit。
+ * 响应：{ data, next_cursor }。
+ */
 router.get("/feed", optionalAuthMiddleware, async (c) => {
   requireGuestRead(c);
   const view = c.req.query("view") === "following" ? "following" : "latest";
@@ -387,6 +499,11 @@ router.get("/feed", optionalAuthMiddleware, async (c) => {
     ),
   );
 });
+/**
+ * GET /notifications — 获取当前用户的通知列表。
+ * 认证：必填。query：limit。
+ * 响应：{ data: 通知列表 }。
+ */
 router.get(
   "/notifications",
   authMiddleware,
@@ -398,6 +515,11 @@ router.get(
       ),
     }),
 );
+/**
+ * GET /notifications/unread-count — 获取当前用户未读通知数量。
+ * 认证：必填。
+ * 响应：{ data: { unread_count } }。
+ */
 router.get(
   "/notifications/unread-count",
   authMiddleware,
@@ -406,15 +528,28 @@ router.get(
       data: { unread_count: await getNotificationUnreadCount(userId(c)) },
     }),
 );
+/**
+ * POST /notifications/read — 将当前用户全部未读通知标记为已读。
+ * 认证：必填。响应：204。
+ */
 router.post("/notifications/read", authMiddleware, async (c) => {
   await markNotificationsRead(userId(c));
   return c.body(null, 204);
 });
+/**
+ * POST /notifications/:id/read — 将单条通知标记为已读。
+ * 认证：必填。仅本人通知。响应：204。
+ */
 router.post("/notifications/:id/read", authMiddleware, async (c) => {
   await markNotificationRead(userId(c), c.req.param("id") as string);
   return c.body(null, 204);
 });
 
+/**
+ * POST /reports — 提交举报工单。
+ * 认证：必填。需 community:report 权限。body：{ post_id?/comment_id?, reason, category? }。
+ * 响应：201 { data: 新建举报 }。
+ */
 router.post("/reports", authMiddleware, async (c) => {
   const actorId = userId(c);
   await assertPermission(c, "community:report");
@@ -433,7 +568,11 @@ router.post("/reports", authMiddleware, async (c) => {
     data: await createReport(actorId, { ...body, reason: body.reason }),
   }, 201);
 });
-// 举报工单详情（举报者本人可查，供用户可见的举报工单页）
+/**
+ * GET /reports/:reportId — 获取举报工单详情。
+ * 认证：必填。仅举报者本人或审核员可查看；非审核员不返回封禁元数据。
+ * 响应：{ data: 举报详情 }。
+ */
 router.get("/reports/:reportId", authMiddleware, async (c) => {
   const actorId = userId(c);
   const detail = await getReportDetail(

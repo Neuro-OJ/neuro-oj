@@ -21,6 +21,7 @@ import { isBannedIp, isValidIpOrCidr } from "../../../lib/cidr.ts";
 import { getCached, invalidateBanCache } from "../../../lib/banCache.ts";
 import { logAudit } from "../../system/index.ts";
 
+/** IP 黑名单条目。 */
 export interface IpBan {
   id: string;
   ip_or_cidr: string;
@@ -30,18 +31,21 @@ export interface IpBan {
   created_by: string | null;
 }
 
+/** 新增 IP 黑名单的输入参数。 */
 export interface AddIpBanInput {
   ip_or_cidr: string;
   reason?: string;
   expires_at?: string | null;
 }
 
+/** 分页查询 IP 黑名单的选项。 */
 export interface ListIpBansOpts {
   page: number;
   perPage: number;
   keyword?: string;
 }
 
+/** 通用分页信息。 */
 export interface Pagination {
   page: number;
   per_page: number;
@@ -224,8 +228,13 @@ export async function getBannedIpDetail(
   return null;
 }
 
-/** 启动期一次全量加载（与 system-settings initSystemSettings 同模式）。 */
+/** 模块级初始化标记，保证黑名单只全量加载一次。 */
 let _initialized = false;
+
+/**
+ * 启动期一次全量加载 IP 黑名单（与 system-settings initSystemSettings 同模式）。
+ * 幂等：仅首次调用会真正加载。
+ */
 export async function initBanlist(): Promise<void> {
   if (_initialized) return;
   await getBannedRanges();

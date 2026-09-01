@@ -151,6 +151,7 @@ function parseContestArtifactMultipart(
     let fileStream: ReadableStream<Uint8Array> | null = null;
     let resolved = false;
 
+    /** 当 problem_id、文件名与文件流均已就绪后一次性 resolve 解析结果。 */
     function maybeResolve() {
       if (resolved) return;
       if (problemId && fileName && fileStream) {
@@ -191,6 +192,16 @@ function parseContestArtifactMultipart(
   });
 }
 
+/**
+ * 校验当前用户对竞赛题目的访问权限：竞赛未结束且非管理员时要求为参赛者，
+ * 竞赛未开始（pending）一律禁止访问。
+ *
+ * @param contestId 竞赛 UUID
+ * @param userId 当前用户 ID
+ * @param isAdmin 是否管理员（管理员跳过参赛校验）
+ * @returns 竞赛响应
+ * @throws {ForbiddenError} 无访问权限或竞赛尚未开始时
+ */
 async function requireContestAccess(
   contestId: string,
   userId: string,
@@ -209,6 +220,10 @@ async function requireContestAccess(
   return contest;
 }
 
+/**
+ * GET / —— 竞赛公开列表（可选分页与类型筛选）。
+ * 权限：公开。query：page、perPage、type。响应：{ data, pagination }。
+ */
 contests.get("/", async (c) => {
   const { page, perPage } = parsePagination(c);
   const typeQuery = c.req.query("type");
@@ -225,6 +240,11 @@ contests.get("/", async (c) => {
   });
 });
 
+/**
+ * POST /:id/register —— 注册参赛（公开竞赛自助注册，可带密码）。
+ * 权限：登录。path：id（UUID/public_id）。body：{ password? }。
+ * 响应：201 { message }。
+ */
 contests.post("/:id/register", authMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const rawBody = await c.req.text();
@@ -251,6 +271,10 @@ contests.post("/:id/register", authMiddleware, async (c) => {
   return c.json({ message: "竞赛注册成功" }, 201);
 });
 
+/**
+ * GET /:id/problems —— 获取竞赛题目列表（含当前用户作答状态）。
+ * 权限：登录且为参赛者（管理员可豁免）。path：id。响应：{ data }。
+ */
 contests.get("/:id/problems", authMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId as string;
@@ -263,6 +287,10 @@ contests.get("/:id/problems", authMiddleware, async (c) => {
   return c.json({ data });
 });
 
+/**
+ * GET /:id/problems/:label —— 获取竞赛某道题目的详情（按题目标签）。
+ * 权限：登录且为参赛者（管理员可豁免）。path：id、label。响应：{ data }。
+ */
 contests.get("/:id/problems/:label", authMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId as string;
@@ -280,6 +308,11 @@ contests.get("/:id/problems/:label", authMiddleware, async (c) => {
   return c.json({ data: problem });
 });
 
+/**
+ * GET /:id/ranking —— 获取竞赛排名（类 Kaggle）。
+ * 权限：公开竞赛匿名可见；进行中非管理员仅返回自己的排名。path：id。query：type?。
+ * 响应：{ data }。
+ */
 contests.get("/:id/ranking", optionalAuthMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const contest = await getContest(contestId, c.var.userId);
@@ -303,6 +336,12 @@ contests.get("/:id/ranking", optionalAuthMiddleware, async (c) => {
   return c.json({ data });
 });
 
+/**
+ * POST /:id/submit —— 提交竞赛题目（支持代码 JSON 或 artifact multipart）。
+ * 权限：登录且为参赛者（管理员可豁免），仅竞赛进行期间。path：id。
+ * body（JSON）：{ problem_id, language, code, file_name? } 或 multipart 文件。
+ * 响应：201 { data }。
+ */
 contests.post("/:id/submit", authMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId as string;
@@ -373,6 +412,10 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
   return c.json({ data }, 201);
 });
 
+/**
+ * GET /:id/my-submissions —— 获取当前用户在竞赛中的提交列表。
+ * 权限：登录且为参赛者。path：id。query：page、perPage。响应：{ data, pagination }。
+ */
 contests.get("/:id/my-submissions", authMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId as string;
@@ -393,6 +436,11 @@ contests.get("/:id/my-submissions", authMiddleware, async (c) => {
   });
 });
 
+/**
+ * GET /:id/clarifications —— 获取竞赛答疑列表（按可见性过滤）。
+ * 权限：公开竞赛匿名可见；私有竞赛需 admin/参赛者。path：id。query：page、perPage。
+ * 响应：{ data, pagination }。
+ */
 contests.get("/:id/clarifications", optionalAuthMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId;
@@ -415,6 +463,10 @@ contests.get("/:id/clarifications", optionalAuthMiddleware, async (c) => {
   });
 });
 
+/**
+ * POST /:id/clarifications —— 参赛者提问（竞赛进行期间），可挂竞赛题目或全局。
+ * 权限：登录且为参赛者。path：id。body：{ content?, problem_id? }。响应：201 { data }。
+ */
 contests.post("/:id/clarifications", authMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const userId = c.var.userId as string;
@@ -426,6 +478,11 @@ contests.post("/:id/clarifications", authMiddleware, async (c) => {
   return c.json({ data }, 201);
 });
 
+/**
+ * POST /:id/clarifications/:clarId/reply —— 主办方回复提问（公开或私密）。
+ * 权限：登录且为 admin 或竞赛创建者。path：id、clarId。body：{ content?, is_public? }。
+ * 响应：201 { data }。
+ */
 contests.post(
   "/:id/clarifications/:clarId/reply",
   authMiddleware,
@@ -441,6 +498,10 @@ contests.post(
   },
 );
 
+/**
+ * GET /:id —— 获取竞赛详情（私有竞赛需 admin/注册参赛者可见）。
+ * 权限：公开竞猜匿名可见；私有竞赛需 admin 或参赛者。path：id。响应：{ data }。
+ */
 contests.get("/:id", optionalAuthMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const data = await getContest(contestId, c.var.userId);

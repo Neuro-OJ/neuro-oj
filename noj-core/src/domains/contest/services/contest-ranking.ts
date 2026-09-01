@@ -13,6 +13,12 @@ import type {
 } from "../../../types/contests.ts";
 import { getContest, isParticipant } from "./contests.ts";
 
+/**
+ * 将可能为数组或 JSON 字符串的值解析为数组（解析失败或类型不符时返回空数组）。
+ *
+ * @param value 待解析的值
+ * @returns 解析后的元素数组
+ */
 function parseJsonArray<T>(value: unknown): T[] {
   if (Array.isArray(value)) return value as T[];
   if (typeof value === "string") {

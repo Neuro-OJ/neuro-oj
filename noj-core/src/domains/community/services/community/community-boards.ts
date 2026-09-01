@@ -7,6 +7,11 @@ import {
 import { NotFoundError } from "../../../../lib/errors.ts";
 import { nowIso } from "../../../../lib/dates.ts";
 
+/**
+ * 列出社区板块。
+ * @param includeArchived 是否包含已归档板块，默认 false（仅返回未归档板块）。
+ * @returns 按 sort_order、created_at 排序的板块列表。
+ */
 export function listBoards(includeArchived = false) {
   const db = getDb();
   return db.select().from(communityBoards)
@@ -14,6 +19,11 @@ export function listBoards(includeArchived = false) {
     .orderBy(communityBoards.sort_order, communityBoards.created_at);
 }
 
+/**
+ * 创建社区板块。
+ * @param input 板块输入：slug（唯一标识）、name（名称）、description（描述）、sort_order（排序权重）。
+ * @returns 新建的板块记录。
+ */
 export async function createBoard(
   input: {
     slug: string;
@@ -38,6 +48,13 @@ export async function createBoard(
   return board;
 }
 
+/**
+ * 更新社区板块（名称、描述、排序、归档状态等）。
+ * @param id 板块 UUID。
+ * @param input 需要更新的字段（部分可选）。
+ * @returns 更新后的板块记录。
+ * @throws {NotFoundError} 板块不存在时抛出。
+ */
 export async function updateBoard(
   id: string,
   input: Partial<
@@ -58,6 +75,11 @@ export async function updateBoard(
   return rows[0];
 }
 
+/**
+ * 列出指定板块的角色授权记录。
+ * @param boardId 板块 UUID。
+ * @returns 该板块的角色授权列表。
+ */
 export function listBoardRoleGrants(boardId: string) {
   const db = getDb();
   return db.select().from(communityBoardRoleGrants).where(
@@ -65,6 +87,13 @@ export function listBoardRoleGrants(boardId: string) {
   );
 }
 
+/**
+ * 更新（或创建）板块的角色授权：已存在则按 (board_id, role_id) 更新，否则插入。
+ * @param boardId 板块 UUID。
+ * @param roleId 角色 UUID。
+ * @param input 授权字段：can_read（可读）、can_post（可发帖）、can_moderate（可管理）。
+ * @returns 更新后的角色授权记录。
+ */
 export async function updateBoardRoleGrant(
   boardId: string,
   roleId: string,
@@ -91,6 +120,11 @@ export async function updateBoardRoleGrant(
   return rows[0]!;
 }
 
+/**
+ * 删除板块的角色授权记录。
+ * @param boardId 板块 UUID。
+ * @param roleId 角色 UUID。
+ */
 export async function deleteBoardRoleGrant(boardId: string, roleId: string) {
   const db = getDb();
   await db.delete(communityBoardRoleGrants).where(and(

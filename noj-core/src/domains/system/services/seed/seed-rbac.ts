@@ -78,10 +78,24 @@ const ADMIN_DEFAULT_PERMISSIONS: Array<{ resource: string; action: string }> = [
 ];
 
 // ── 工具 ──────────────────────────────────────────────────
+/**
+ * 生成一个新的 UUID 字符串。
+ *
+ * 用于权限记录等需要唯一主键的插入场景。
+ *
+ * @returns 随机生成的 UUID 字符串
+ */
 function uuid(): string {
   return crypto.randomUUID() as string;
 }
 
+/**
+ * 生成当前时刻的 ISO 8601 时间戳字符串。
+ *
+ * 用于种子数据的 created_at / updated_at 字段。
+ *
+ * @returns 当前时间的 ISO 8601 字符串
+ */
 function now(): string {
   return new Date().toISOString();
 }
@@ -92,6 +106,13 @@ const ROLE_USER = "user";
 
 // ── 公开 API ─────────────────────────────────────────────
 
+/**
+ * 幂等创建系统预置角色（admin、user）。
+ *
+ * 不存在时按 name 冲突忽略插入（onConflictDoNothing），重复调用安全。
+ *
+ * @returns 无返回值
+ */
 export async function ensureSystemRoles(): Promise<void> {
   const db = getDb();
 
@@ -118,6 +139,13 @@ export async function ensureSystemRoles(): Promise<void> {
   }).onConflictDoNothing({ target: roles.name });
 }
 
+/**
+ * 幂等创建系统权限定义（来自 PERMISSION_DEFS）。
+ *
+ * 为每个权限项生成 UUID 主键，按 (resource, action) 冲突忽略插入。
+ *
+ * @returns 无返回值
+ */
 export async function ensurePermissions(): Promise<void> {
   const db = getDb();
 
@@ -133,6 +161,13 @@ export async function ensurePermissions(): Promise<void> {
   }
 }
 
+/**
+ * 幂等为 user 角色分配 USER_DEFAULT_PERMISSIONS 中定义的默认权限。
+ *
+ * 按 "resource:action" 匹配现有权限并写入 role_permissions，已存在则忽略。
+ *
+ * @returns 无返回值
+ */
 export async function ensureUserRolePermissions(): Promise<void> {
   const db = getDb();
 
@@ -165,6 +200,13 @@ export async function ensureUserRolePermissions(): Promise<void> {
   }
 }
 
+/**
+ * 幂等为 admin 角色分配 ADMIN_DEFAULT_PERMISSIONS 中定义的默认权限。
+ *
+ * 按 "resource:action" 匹配现有权限并写入 role_permissions，已存在则忽略。
+ *
+ * @returns 无返回值
+ */
 export async function ensureAdminRolePermissions(): Promise<void> {
   const db = getDb();
 

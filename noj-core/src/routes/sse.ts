@@ -279,6 +279,15 @@ contestSse.get(
       }, 30_000);
       const safetyTimer = setTimeout(closeStream, 300_000);
 
+      /**
+       * 关闭当前竞赛 SSE 流。
+       *
+       * 幂等：若流已关闭则直接返回。负责清理心跳定时器、安全兜底定时器、
+       * 待执行的榜单推送定时器，并取消榜单与提交事件的订阅，最后触发
+       * abort 解析以结束常驻连接。
+       *
+       * @returns 无返回值。
+       */
       function closeStream() {
         if (streamClosed) return;
         streamClosed = true;
@@ -290,6 +299,18 @@ contestSse.get(
         resolveAbort?.();
       }
 
+      /**
+       * 向当前竞赛 SSE 流推送最新榜单数据。
+       *
+       * 带节流与去重：若流已关闭或已有推送在进行中则直接返回；距上次推送
+       * 不足 5 秒时安排定时器延迟推送，否则立即拉取最新榜单并写入 SSE 事件。
+       * 拉取或写入失败时关闭流。
+       *
+       * @param event - 推送的 SSE 事件名（如 `contest:ranking:snapshot` /
+       *   `contest:ranking:updated`）。
+       * @returns 无返回值；推送完成后 Promise 解析。
+       * @throws 不向外抛出——内部捕获异常并调用 `closeStream()` 关闭流。
+       */
       async function pushRanking(event: string): Promise<void> {
         if (streamClosed || rankingInFlight) return;
         const waitMs = 5_000 - (Date.now() - lastRankingPushAt);

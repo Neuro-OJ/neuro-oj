@@ -92,6 +92,17 @@ export async function changeCommentStatus(
   return rows[0]!;
 }
 
+/**
+ * 创建评论（或回复一级评论）。
+ * 校验评论内容长度、帖子锁定状态、回复目标合法性，并按发布状态决定是否补发回复通知。
+ * @param authorId 评论作者用户 UUID。
+ * @param postId 所属帖子 UUID。
+ * @param contentInput 评论内容（会 trim 后校验长度）。
+ * @param parentId 可选，被回复的一级评论 UUID。
+ * @returns 新建的评论记录。
+ * @throws {ValidationError} 评论内容无效/过长、回复目标不存在或不可回复时抛出。
+ * @throws {ForbiddenError} 帖子已锁定时抛出。
+ */
 export async function createComment(
   authorId: string,
   postId: string,
@@ -151,6 +162,15 @@ export async function createComment(
   return comment;
 }
 
+/**
+ * 列出帖子的评论列表。
+ * 非审核员仅可见已发布评论（作者本人可见自己的非删除评论）；审核员可见全部。
+ * @param postId 帖子 UUID。
+ * @param viewerId 可选，当前查看者用户 UUID。
+ * @param moderator 是否为审核员，默认 false。
+ * @returns 评论列表，每条含评论、作者信息与点赞数。
+ * @throws {NotFoundError} 帖子不存在或不可见时抛出。
+ */
 export async function listComments(
   postId: string,
   viewerId?: string,

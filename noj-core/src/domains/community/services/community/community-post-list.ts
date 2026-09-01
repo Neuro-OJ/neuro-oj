@@ -12,6 +12,12 @@ import {
 } from "./community-config.ts";
 import { resolveProblemId } from "./community-post-common.ts";
 
+/**
+ * 列出社区帖子（支持按类型、题目、板块、作者、关键词筛选与游标分页）。
+ * 未指定类型时仅返回启用模块的内容；审核员可查看 pending/hidden（已删除除外）。
+ * @param options 查询选项：type、problemId、boardId、authorId、query、cursor、limit、viewerId、moderator。
+ * @returns 分页结果：data 为帖子列表，next_cursor 为下一页游标（无更多时为 null）。
+ */
 export async function listPosts(
   options: {
     type?: CommunityPostType;

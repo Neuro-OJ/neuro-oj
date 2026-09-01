@@ -5,9 +5,15 @@ import { evaluationResults, submissions } from "../../../db/schema.ts";
 import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
 import { FULL_SCORE } from "../../../lib/constants.ts";
 
+/**
+ * 统计快照：提交总数、满分数与未满分数的快照值。
+ */
 export interface StatsSnapshot {
+  /** 提交总数 */
   total: number;
+  /** 满分（score >= FULL_SCORE）提交数 */
   full_score: number;
+  /** 未满分提交数（total - full_score） */
   not_full_score: number;
 }
 
@@ -22,6 +28,14 @@ let todayDate: string | null = null;
 
 // ── 初始化（懒加载） ──
 
+/**
+ * 懒加载全站累计统计（内存缓存）。
+ *
+ * 若 total 已加载则直接返回；否则查询提交表聚合总数与满分数，
+ * 写入模块级内存计数器。
+ *
+ * @returns 无返回值
+ */
 async function ensureTotal(): Promise<void> {
   if (total !== null) return;
   const db = getDb();
@@ -41,6 +55,13 @@ async function ensureTotal(): Promise<void> {
   totalFullScore = Number(row?.full_score ?? 0);
 }
 
+/**
+ * 懒加载今日统计（内存缓存，按 UTC 日期区分）。
+ *
+ * 当天已加载且日期未改变时直接返回；否则查询今日提交的总数与满分数。
+ *
+ * @returns 无返回值
+ */
 async function ensureToday(): Promise<void> {
   const today = todayUtc();
   if (todayTotal !== null && todayDate === today) return;
@@ -129,6 +150,15 @@ export function _resetStatsCacheForTest(): void {
 
 // ── 内部 DB 查询（备选路径） ──
 
+/**
+ * 按用户精确查询今日统计（不经缓存，直接查库）。
+ *
+ * 与 ensureToday 不同，该路径针对指定用户的今日提交做 DB 查询，
+ * 用于用户级统计（此场景较少，不做内存缓存）。
+ *
+ * @param userId 用户 UUID
+ * @returns 该用户的今日统计快照
+ */
 async function getTodayStatsFromDb(userId: string): Promise<StatsSnapshot> {
   const db = getDb();
   const today = todayUtc();

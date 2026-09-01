@@ -198,6 +198,13 @@ async function executeTfaProtectedAction<T>(
   }
 }
 
+/**
+ * 用户登录端点。
+ * POST /api/v1/auth/login
+ *
+ * 需登录名与密码；执行账号维度限流（限流 + 退避 + 锁定），成功后返回
+ * `{ data: { user, token } }`，失败记录认证失败计数。
+ */
 auth.post("/login", loginIpRateLimit(), async (c) => {
   const body = await parseJsonBody<LoginInput>(c);
 
@@ -224,6 +231,7 @@ auth.post("/login", loginIpRateLimit(), async (c) => {
   }
 });
 
+/** 构造 OAuth 会话 Cookie 的公共选项（HttpOnly、SameSite=Lax、生产环境 Secure）。 */
 function oauthCookieOptions() {
   return {
     httpOnly: true,
@@ -234,6 +242,13 @@ function oauthCookieOptions() {
   };
 }
 
+/**
+ * 手动序列化并写入 OAuth 登录后的 noj:token / noj:session Cookie。
+ * 因 Hono serializer 不允许 `:`，此处手动拼接以保持与 Nitro 契约的 Cookie 名一致。
+ * @param c Hono 上下文
+ * @param user 当前用户信息
+ * @param token 签发的 JWT
+ */
 function setOAuthSession(c: Parameters<typeof setCookie>[0], user: {
   id: string;
   username: string;
@@ -294,6 +309,13 @@ auth.get("/oauth/:provider", async (c) => {
   return c.redirect(result.url, 302);
 });
 
+/**
+ * OAuth 回调端点。
+ * GET /api/v1/auth/oauth/:provider/callback
+ *
+ * 校验并消费 state，用 code 换取身份后解析为登录/绑定会话，写入 Cookie 并
+ * 重定向回前端；失败时携带 oauth_error 参数重定向。
+ */
 auth.get("/oauth/:provider/callback", async (c) => {
   const provider = c.req.param("provider") as OAuthProviderId;
   const requestUrl = c.req.url;
@@ -341,6 +363,11 @@ auth.get("/oauth/:provider/callback", async (c) => {
   }
 });
 
+/**
+ * 发起绑定第三方账号授权。
+ * POST /api/v1/auth/oauth/:provider/link
+ * 需登录；校验本地密码后创建绑定授权，返回 `{ data: { authorization_url } }`。
+ */
 auth.post("/oauth/:provider/link", authMiddleware, async (c) => {
   const body = await parseJsonBody<{ password?: string }>(c);
   await linkPasswordMatches(c.get("userId") as string, body.password ?? "");
@@ -357,12 +384,22 @@ auth.post("/oauth/:provider/link", authMiddleware, async (c) => {
   return c.json({ data: { authorization_url: result.url } }, 200);
 });
 
+/**
+ * 查询当前用户已绑定的 OAuth 账号。
+ * GET /api/v1/auth/oauth/accounts
+ * 需登录；返回 `{ data: LinkedOAuthAccount[] }`（外部用户 ID 已脱敏）。
+ */
 auth.get("/oauth/accounts", authMiddleware, async (c) => {
   return c.json({
     data: await listLinkedOAuthAccounts(c.get("userId") as string),
   }, 200);
 });
 
+/**
+ * 解绑当前用户的一条 OAuth 账号。
+ * DELETE /api/v1/auth/oauth/accounts/:id
+ * 需登录；body 需提供 password 确认，成功返回 204。
+ */
 auth.delete("/oauth/accounts/:id", authMiddleware, async (c) => {
   const body = await parseJsonBody<{ password?: string }>(c);
   const userId = c.get("userId") as string;
@@ -371,6 +408,11 @@ auth.delete("/oauth/accounts/:id", authMiddleware, async (c) => {
   return c.body(null, 204);
 });
 
+/**
+ * 为 OAuth 用户补设本地密码。
+ * POST /api/v1/auth/set-password
+ * 需登录；body 需提供 new_password，成功返回 `{ data: { user } }`。
+ */
 auth.post("/set-password", authMiddleware, async (c) => {
   const body = await parseJsonBody<{ new_password?: string }>(c);
   if (!body.new_password) {
@@ -485,6 +527,11 @@ auth.post("/tfa/setup", authMiddleware, async (c) => {
   );
 });
 
+/**
+ * 确认启用 TFA。
+ * POST /api/v1/auth/tfa/confirm
+ * 需登录；body 需提供 TOTP code，成功返回 `{ data: { recovery_codes } }`。
+ */
 auth.post(
   "/tfa/confirm",
   loginIpRateLimit(TFA_NAMESPACE),
@@ -508,6 +555,11 @@ auth.post(
   },
 );
 
+/**
+ * 禁用 TFA。
+ * POST /api/v1/auth/tfa/disable
+ * 需登录；body 需提供 TOTP code 或恢复码，成功返回 `{ data: { ok: true } }`。
+ */
 auth.post(
   "/tfa/disable",
   loginIpRateLimit(TFA_NAMESPACE),
@@ -526,6 +578,11 @@ auth.post(
   },
 );
 
+/**
+ * 重新生成 TFA 恢复码。
+ * POST /api/v1/auth/tfa/recovery-codes/regenerate
+ * 需登录；body 需提供 TOTP code 或恢复码，成功返回 `{ data: { recovery_codes } }`。
+ */
 auth.post(
   "/tfa/recovery-codes/regenerate",
   loginIpRateLimit(TFA_NAMESPACE),

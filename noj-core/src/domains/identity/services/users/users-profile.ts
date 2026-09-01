@@ -12,6 +12,7 @@ import {
   querySolvedProblems,
 } from "./users-profile-queries.ts";
 
+/** 用户主页聚合响应类型（用户信息、统计、已通过题目、最近提交、社区数据等）。 */
 export type { UserProfileResponse } from "./users-profile-types.ts";
 
 /**
