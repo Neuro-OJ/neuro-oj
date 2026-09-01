@@ -11,13 +11,9 @@
 | DELETE | `/posts/:postId` | noj-core/src/routes/community.ts |
 | GET | `/` | noj-core/src/routes/admin-announcements.ts |
 | GET | `/` | noj-core/src/routes/announcements.ts |
-| GET | `/` | noj-core/src/routes/queue.ts |
 | GET | `/` | noj-core/src/routes/rankings.ts |
 | GET | `/` | noj-core/src/routes/search.ts |
-| GET | `/` | noj-core/src/routes/submissions.ts |
 | GET | `/:id` | noj-core/src/routes/announcements.ts |
-| GET | `/:id` | noj-core/src/routes/submissions.ts |
-| GET | `/:id/status` | noj-core/src/routes/submissions.ts |
 | GET | `/admin/boards/:boardId/role-grants` | noj-core/src/routes/community-admin.ts |
 | GET | `/admin/comments/pending` | noj-core/src/routes/community-admin.ts |
 | GET | `/admin/reports` | noj-core/src/routes/community-admin.ts |
@@ -39,16 +35,12 @@
 | GET | `/posts/:postId` | noj-core/src/routes/community.ts |
 | GET | `/posts/:postId/comments` | noj-core/src/routes/community.ts |
 | GET | `/posts/counts` | noj-core/src/routes/community.ts |
-| GET | `/public/recent` | noj-core/src/routes/submissions.ts |
 | GET | `/queue/events` | noj-core/src/routes/sse.ts |
 | GET | `/reports/:reportId` | noj-core/src/routes/community.ts |
-| GET | `/self-tests/:id` | noj-core/src/routes/self-tests.ts |
 | GET | `/solutions/eligibility` | noj-core/src/routes/community.ts |
 | GET | `/stats` | noj-core/src/routes/stats.ts |
 | GET | `/submissions/:id/events` | noj-core/src/routes/sse.ts |
 | GET | `/submissions/stats/events` | noj-core/src/routes/sse.ts |
-| GET | `/today-stats` | noj-core/src/routes/submissions.ts |
-| GET | `/total-stats` | noj-core/src/routes/submissions.ts |
 | GET | `NOJ_ENV` | noj-core/src/routes/health.ts |
 | GET | `userId` | noj-core/src/routes/admin-announcements.ts |
 | GET | `userId` | noj-core/src/routes/community-admin.ts |
@@ -66,7 +58,6 @@
 | GET | `userId` | noj-core/src/routes/sse.ts |
 | GET | `userId` | noj-core/src/routes/sse.ts |
 | GET | `userId` | noj-core/src/routes/sse.ts |
-| GET | `userId` | noj-core/src/routes/submissions.ts |
 | GET | `userRole` | noj-core/src/routes/admin-announcements.ts |
 | GET | `userRole` | noj-core/src/routes/search.ts |
 | GET | `userRole` | noj-core/src/routes/sse.ts |
@@ -75,7 +66,6 @@
 | PATCH | `/comments/:commentId` | noj-core/src/routes/community.ts |
 | PATCH | `/posts/:postId` | noj-core/src/routes/community.ts |
 | POST | `/` | noj-core/src/routes/admin-announcements.ts |
-| POST | `/` | noj-core/src/routes/submissions.ts |
 | POST | `/admin/boards` | noj-core/src/routes/community-admin.ts |
 | POST | `/admin/comments/:commentId/:status` | noj-core/src/routes/community-admin.ts |
 | POST | `/admin/posts/:postId/:flag` | noj-core/src/routes/community-admin.ts |
@@ -91,7 +81,6 @@
 | POST | `/posts/:postId/bookmark` | noj-core/src/routes/community.ts |
 | POST | `/posts/:postId/comments` | noj-core/src/routes/community.ts |
 | POST | `/posts/:postId/like` | noj-core/src/routes/community.ts |
-| POST | `/problems/:id/self-test` | noj-core/src/routes/self-tests.ts |
 | POST | `/reports` | noj-core/src/routes/community.ts |
 | POST | `/users/:userId/follow` | noj-core/src/routes/community.ts |
 | PUT | `/:id` | noj-core/src/routes/admin-announcements.ts |

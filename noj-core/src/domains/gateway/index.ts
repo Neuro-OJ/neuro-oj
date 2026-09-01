@@ -2,6 +2,7 @@ export {
   createUserLlmProvider,
   deleteUserLlmProvider,
   getLlmProviderById,
+  getUserLlmProvider,
   listUserLlmProviders,
   LlmGatewayError,
   testUserLlmProvider,

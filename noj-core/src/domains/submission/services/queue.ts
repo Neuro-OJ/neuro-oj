@@ -1,18 +1,18 @@
 import { and, eq, inArray, not, sql } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
+import { getDb } from "../../../db/connection.ts";
 import {
   evaluationResults,
   problems,
   selfTests,
   submissions,
   users,
-} from "../db/schema.ts";
-import { getRedis } from "../mq/connection.ts";
-import { logger } from "../lib/logging.ts";
-import { NotFoundError } from "../lib/errors.ts";
-import { Channels, publishSseEvent } from "../lib/event-bus.ts";
-import { logAudit } from "./audit-log.ts";
-import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";
+} from "../../../db/schema.ts";
+import { getRedis } from "../../../mq/connection.ts";
+import { logger } from "../../../lib/logging.ts";
+import { NotFoundError } from "../../../lib/errors.ts";
+import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
+import { logAudit } from "../../system/index.ts";
+import { SELF_TEST_ID_PREFIX } from "../../../types/self-tests.ts";
 
 /** 评测任务队列名称（与 producer.ts 一致）。 */
 const JUDGE_QUEUE = "noj:judge:queue";

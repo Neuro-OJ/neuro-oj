@@ -5,9 +5,9 @@
 | 频道 | 发布位置 |
 | --- | --- |
 | `submission` | noj-core/src/mq/consumer.ts<br>noj-core/src/routes/sse.ts |
-| `queue` | noj-core/src/mq/consumer.ts<br>noj-core/src/routes/sse.ts<br>noj-core/src/services/queue.ts<br>noj-core/src/services/self-tests.ts<br>noj-core/src/services/submissions/artifact-submissions.ts<br>noj-core/src/services/submissions/submissions-crud.ts<br>noj-core/src/services/submissions/submissions-rejudge.ts |
+| `queue` | noj-core/src/domains/submission/services/queue.ts<br>noj-core/src/domains/submission/services/self-tests.ts<br>noj-core/src/domains/submission/services/submissions/artifact-submissions.ts<br>noj-core/src/domains/submission/services/submissions/submissions-crud.ts<br>noj-core/src/domains/submission/services/submissions/submissions-rejudge.ts<br>noj-core/src/mq/consumer.ts<br>noj-core/src/routes/sse.ts |
 | `user` | noj-core/src/domains/messaging/routes/conversations.ts<br>noj-core/src/domains/messaging/services/messages.ts<br>noj-core/src/routes/sse.ts<br>noj-core/src/services/notifications.ts |
-| `contestRanking` | noj-core/src/routes/sse.ts<br>noj-core/src/services/submissions/submissions-result.ts |
-| `contestSubmission` | noj-core/src/routes/sse.ts<br>noj-core/src/services/submissions/artifact-submissions.ts<br>noj-core/src/services/submissions/submissions-crud.ts |
+| `contestRanking` | noj-core/src/domains/submission/services/submissions/submissions-result.ts<br>noj-core/src/routes/sse.ts |
+| `contestSubmission` | noj-core/src/domains/submission/services/submissions/artifact-submissions.ts<br>noj-core/src/domains/submission/services/submissions/submissions-crud.ts<br>noj-core/src/routes/sse.ts |
 | `stats` | noj-core/src/routes/sse.ts<br>noj-core/src/services/stats-cache.ts |
 | `announcements` | noj-core/src/routes/announcements.ts<br>noj-core/src/services/announcements.ts |

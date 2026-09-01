@@ -188,7 +188,7 @@ Deno.test({
   fn: async () => {
     await setupTestData();
     const { saveEvaluationResult } = await import(
-      "../../src/services/submissions/submissions.ts"
+      "../../src/domains/submission/index.ts"
     );
     await saveEvaluationResult({
       submission_id: SUBMISSION_ID,

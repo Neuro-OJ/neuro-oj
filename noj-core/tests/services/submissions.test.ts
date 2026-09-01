@@ -7,7 +7,7 @@ import {
   rejudgeSubmission,
   saveEvaluationResult,
   updateSubmissionStatus,
-} from "../../src/services/submissions/submissions.ts";
+} from "../../src/domains/submission/index.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 
 import {

@@ -10,24 +10,28 @@
  */
 
 import { and, eq } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
-import { problems, submissions } from "../../db/schema.ts";
-import { AppError, BadRequestError, NotFoundError } from "../../lib/errors.ts";
-import { getStorageProvider } from "../../lib/storage/mod.ts";
-import { generatePublicId } from "../../lib/public-id.ts";
+import { getDb } from "../../../../db/connection.ts";
+import { problems, submissions } from "../../../../db/schema.ts";
+import {
+  AppError,
+  BadRequestError,
+  NotFoundError,
+} from "../../../../lib/errors.ts";
+import { getStorageProvider } from "../../../../lib/storage/mod.ts";
+import { generatePublicId } from "../../../../lib/public-id.ts";
 import {
   isRetryableJudgeQueueError,
   pushJudgeTask,
-} from "../../mq/producer.ts";
-import { validateJudgeImageWithKind } from "../judge-images.ts";
-import { assertContestSubmissionLimit } from "../../domains/contest/index.ts";
-import { buildJudgeTaskLlm } from "../../lib/llm-token.ts";
-import { buildJudgeTaskLlmForProvider } from "../../lib/llm-token.ts";
-import { getUserLlmProvider } from "../llm.ts";
-import { Channels, publishSseEvent } from "../../lib/event-bus.ts";
-import { logger } from "../../lib/logging.ts";
-import type { JudgeTask, JudgeTaskLlm } from "../../types/index.ts";
-import type { LlmConfig, RuntimeConfig } from "../../types/problems.ts";
+} from "../../../../mq/producer.ts";
+import { validateJudgeImageWithKind } from "../../../../services/judge-images.ts";
+import { assertContestSubmissionLimit } from "../../../contest/index.ts";
+import { buildJudgeTaskLlm } from "../../../../lib/llm-token.ts";
+import { buildJudgeTaskLlmForProvider } from "../../../../lib/llm-token.ts";
+import { getUserLlmProvider } from "../../../gateway/index.ts";
+import { Channels, publishSseEvent } from "../../../../lib/event-bus.ts";
+import { logger } from "../../../../lib/logging.ts";
+import type { JudgeTask, JudgeTaskLlm } from "../../../../types/index.ts";
+import type { LlmConfig, RuntimeConfig } from "../../../../types/problems.ts";
 import type { SubmissionResponse } from "./submissions-types.ts";
 
 /** NOJ artifact 硬上限默认值：2GB。 */

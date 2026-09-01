@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "../../middleware/auth.ts";
-import { BadRequestError } from "../../lib/errors.ts";
+import type { AuthEnv } from "../../../middleware/auth.ts";
+import { BadRequestError } from "../../../lib/errors.ts";
 import {
   deleteSubmission,
   getSubmission,
@@ -8,10 +8,10 @@ import {
   rejudgeProblemSubmissions,
   rejudgeSubmission,
   resolveSubmissionId,
-} from "../../services/submissions/submissions.ts";
-import { removePendingSubmission } from "../../services/queue.ts";
-import { resolveProblem } from "../../lib/problem-resolve.ts";
-import { SUBMISSION_STATUSES } from "../../types/index.ts";
+} from "../services/submissions/submissions.ts";
+import { removePendingSubmission } from "../services/queue.ts";
+import { resolveProblem } from "../../../lib/problem-resolve.ts";
+import { SUBMISSION_STATUSES } from "../../../types/index.ts";
 
 /**
  * 管理端提交管理路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。

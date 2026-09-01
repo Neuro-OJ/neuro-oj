@@ -13,7 +13,7 @@ import {
   createSelfTest,
   getSelfTest,
   saveSelfTestResult,
-} from "../../src/services/self-tests.ts";
+} from "../../src/domains/submission/index.ts";
 import { SELF_TEST_ID_PREFIX } from "../../src/types/self-tests.ts";
 import type { JudgeResult } from "../../src/types/index.ts";
 import type { Context } from "hono";

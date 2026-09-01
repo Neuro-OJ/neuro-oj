@@ -4,7 +4,7 @@ import {
   getQueueOverview,
   getSubmissionQueueStatus,
   removePendingSubmission,
-} from "../../src/services/queue.ts";
+} from "../../src/domains/submission/index.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import {
   connectRedis,

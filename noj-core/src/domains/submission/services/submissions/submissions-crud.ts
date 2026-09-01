@@ -37,31 +37,39 @@ import {
   problems,
   submissions,
   users,
-} from "../../db/schema.ts";
-import { AppError, BadRequestError, NotFoundError } from "../../lib/errors.ts";
-import { getDb } from "../../db/connection.ts";
-import { checkPermission } from "../../lib/permissions.ts";
-import { generatePublicId, isPublicId, isUuid } from "../../lib/public-id.ts";
+} from "../../../../db/schema.ts";
+import {
+  AppError,
+  BadRequestError,
+  NotFoundError,
+} from "../../../../lib/errors.ts";
+import { getDb } from "../../../../db/connection.ts";
+import { checkPermission } from "../../../../lib/permissions.ts";
+import {
+  generatePublicId,
+  isPublicId,
+  isUuid,
+} from "../../../../lib/public-id.ts";
 import {
   isRetryableJudgeQueueError,
   pushJudgeTask,
-} from "../../mq/producer.ts";
-import { validateJudgeImageWithKind } from "../judge-images.ts";
-import { assertContestSubmissionLimit } from "../../domains/contest/index.ts";
-import { getStorageProvider } from "../../lib/storage/mod.ts";
+} from "../../../../mq/producer.ts";
+import { validateJudgeImageWithKind } from "../../../../services/judge-images.ts";
+import { assertContestSubmissionLimit } from "../../../contest/index.ts";
+import { getStorageProvider } from "../../../../lib/storage/mod.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
-import { buildJudgeTaskLlm } from "../../lib/llm-token.ts";
-import { buildJudgeTaskLlmForProvider } from "../../lib/llm-token.ts";
-import { getUserLlmProvider } from "../llm.ts";
-import type { LlmConfig, RuntimeConfig } from "../../types/problems.ts";
+import { buildJudgeTaskLlm } from "../../../../lib/llm-token.ts";
+import { buildJudgeTaskLlmForProvider } from "../../../../lib/llm-token.ts";
+import { getUserLlmProvider } from "../../../gateway/index.ts";
+import type { LlmConfig, RuntimeConfig } from "../../../../types/problems.ts";
 import type {
   JudgeTask,
   JudgeTaskLlm,
   SubmissionStatus,
-} from "../../types/index.ts";
+} from "../../../../types/index.ts";
 import type { Context } from "hono";
-import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
-import { Channels, publishSseEvent } from "../../lib/event-bus.ts";
+import { LANGUAGE_EXT_MAP } from "../../../../types/index.ts";
+import { Channels, publishSseEvent } from "../../../../lib/event-bus.ts";
 import type {
   ListSubmissionsParams,
   ListSubmissionsResult,
@@ -71,7 +79,7 @@ import type {
   SubmissionListItem,
   SubmissionResponse,
 } from "./submissions-types.ts";
-import { logger } from "../../lib/logging.ts";
+import { logger } from "../../../../lib/logging.ts";
 
 /**
  * 详情接口返回的 result.output 最大长度（字节近似）。

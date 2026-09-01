@@ -4,7 +4,7 @@
  * 集中管理 SubmissionInput / SubmissionResponse / SubmissionDetail /
  * SubmissionListItem 等公开 DTO，避免拆分后多文件互相 import 形成循环依赖。
  */
-import type { SubmissionStatus } from "../../types/index.ts";
+import type { SubmissionStatus } from "../../../../types/index.ts";
 
 /** 创建提交的请求体 */
 export interface SubmissionInput {
