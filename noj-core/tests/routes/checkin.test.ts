@@ -2,7 +2,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../lib/helper.ts";
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import checkin from "../../src/routes/checkin.ts";
+import checkin from "../../src/domains/identity/routes/checkin.ts";
 import { AppError } from "../../src/lib/errors.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";

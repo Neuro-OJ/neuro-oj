@@ -174,7 +174,9 @@ Deno.test({
     _resetRateLimitForTest();
     await resetDbForTest();
     await initRedisForTest();
-    const { default: router } = await import("../../src/routes/submissions.ts");
+    const { default: router } = await import(
+      "../../src/domains/submission/routes/submissions.ts"
+    );
     const app = new Hono<Env>();
     app.onError(handleError);
     app.route("/api/v1/submissions", router);
@@ -198,7 +200,9 @@ Deno.test({
   fn: async () => {
     _resetRateLimitForTest();
     await resetDbForTest();
-    const { default: router } = await import("../../src/routes/submissions.ts");
+    const { default: router } = await import(
+      "../../src/domains/submission/routes/submissions.ts"
+    );
     const app = new Hono<Env>();
     app.onError(handleError);
     app.route("/api/v1/submissions", router);
@@ -223,7 +227,9 @@ Deno.test({
   fn: async () => {
     _resetRateLimitForTest();
     await resetDbForTest();
-    const { default: router } = await import("../../src/routes/submissions.ts");
+    const { default: router } = await import(
+      "../../src/domains/submission/routes/submissions.ts"
+    );
     const app = new Hono<Env>();
     app.onError(handleError);
     app.route("/api/v1/submissions", router);
@@ -247,7 +253,9 @@ Deno.test({
   fn: async () => {
     _resetRateLimitForTest();
     await resetDbForTest();
-    const { default: router } = await import("../../src/routes/submissions.ts");
+    const { default: router } = await import(
+      "../../src/domains/submission/routes/submissions.ts"
+    );
     const app = new Hono<Env>();
     app.onError(handleError);
     app.route("/api/v1/submissions", router);

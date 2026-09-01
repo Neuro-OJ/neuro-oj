@@ -22,7 +22,7 @@ import {
   removeTrainingProblem,
   reorderTrainingProblems,
   updateTraining,
-} from "../../src/services/trainings.ts";
+} from "../../src/domains/catalog/index.ts";
 import {
   ConflictError,
   ForbiddenError,

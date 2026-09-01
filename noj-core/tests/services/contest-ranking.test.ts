@@ -11,7 +11,7 @@ import {
   submissions,
   users,
 } from "../../src/db/schema.ts";
-import { getContestRanking } from "../../src/services/contest/contest-ranking.ts";
+import { getContestRanking } from "../../src/domains/contest/index.ts";
 import { ForbiddenError, UnauthorizedError } from "../../src/lib/errors.ts";
 
 await resetDbForTest({ refreshRankings: true });

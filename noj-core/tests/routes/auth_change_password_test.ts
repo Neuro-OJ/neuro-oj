@@ -16,7 +16,7 @@ import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { users } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
-import { registerUser } from "../../src/services/auth.ts";
+import { registerUser } from "../../src/domains/identity/index.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { jsonRequest } from "../lib/helper.ts";
 

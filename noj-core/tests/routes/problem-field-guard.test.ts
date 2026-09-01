@@ -23,11 +23,8 @@ import {
   users,
 } from "../../src/db/schema.ts";
 import { signToken } from "../../src/lib/jwt.ts";
-import { ensureRbacSeeds } from "../../src/services/seed/seed-rbac.ts";
-import {
-  resetSetting,
-  updateSetting,
-} from "../../src/services/system-settings.ts";
+import { ensureRbacSeeds } from "../../src/domains/system/index.ts";
+import { resetSetting, updateSetting } from "../../src/domains/system/index.ts";
 
 const dbAvailable = true;
 const hasJwt = !!Deno.env.get("JWT_SECRET");

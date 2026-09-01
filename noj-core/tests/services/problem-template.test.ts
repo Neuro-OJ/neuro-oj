@@ -6,7 +6,7 @@
  * 通过注入 srcRoot 指向临时目录，不触碰真实 data/problems-src。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { getProblemTemplate } from "../../src/services/support-package.ts";
+import { getProblemTemplate } from "../../src/domains/catalog/index.ts";
 
 /**
  * 在临时目录中构造 problems-src 结构并执行断言，结束后清理。

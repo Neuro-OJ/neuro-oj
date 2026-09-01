@@ -9,7 +9,7 @@ import {
   cleanupOldAuditLogs,
   listAuditLogs,
   logAudit,
-} from "../../src/services/audit-log.ts";
+} from "../../src/domains/system/index.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const hasEnv = !!Deno.env.get("JWT_SECRET");

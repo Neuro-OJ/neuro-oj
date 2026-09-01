@@ -4,7 +4,7 @@
  * 纯函数测试，不依赖数据库（validateRuntimeConfig 为同步纯函数）。
  */
 import { assertThrows } from "jsr:@std/assert@^1";
-import { validateRuntimeConfig } from "../../src/services/problems/problems-types.ts";
+import { validateRuntimeConfig } from "../../src/domains/catalog/index.ts";
 import type { RuntimeConfig } from "../../src/types/problems.ts";
 
 function validRuntimeConfig(): RuntimeConfig {

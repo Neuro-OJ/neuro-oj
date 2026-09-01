@@ -40,7 +40,7 @@ import {
   updateActivityVisibility,
   updateBoardRoleGrant,
   updatePost,
-} from "../../src/services/community/community.ts";
+} from "../../src/domains/community/index.ts";
 import {
   ConflictError,
   ForbiddenError,
@@ -51,8 +51,8 @@ import {
   _resetSystemSettingsForTest,
   initSystemSettings,
   updateSetting,
-} from "../../src/services/system-settings.ts";
-import { ensureRbacSeeds } from "../../src/services/seed/seed-rbac.ts";
+} from "../../src/domains/system/index.ts";
+import { ensureRbacSeeds } from "../../src/domains/system/index.ts";
 
 const actorId = "community-test-user";
 const observerId = "community-test-observer";

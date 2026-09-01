@@ -68,4 +68,4 @@ vim .env.prod
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 ```
 
-详细步骤见 `docs/operators/production-deploy.md`。
+详细步骤见 `noj-docs/docs/operators/production-deploy.md`。

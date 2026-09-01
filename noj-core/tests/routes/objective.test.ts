@@ -11,7 +11,7 @@ import {
   jsonRequest,
 } from "../lib/helper.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { createProblem } from "../../src/services/problems/problems.ts";
+import { createProblem } from "../../src/domains/catalog/index.ts";
 import { problems } from "../../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 

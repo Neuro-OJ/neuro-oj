@@ -6,7 +6,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import {
   DEFAULT_ARTIFACT_MAX_SIZE_BYTES,
   getArtifactHardLimit,
-} from "../../src/services/submissions/artifact-submissions.ts";
+} from "../../src/domains/submission/index.ts";
 
 Deno.test("artifact-submissions: 默认硬上限为 2GB", () => {
   const old = Deno.env.get("NOJ_ARTIFACT_MAX_SIZE_MB");

@@ -12,7 +12,7 @@ import {
   regenerateRecoveryCodes,
   setupTfa,
   verifyTfaCodeForUser,
-} from "../../src/services/tfa.ts";
+} from "../../src/domains/identity/index.ts";
 
 Deno.env.set("TFA_ENCRYPTION_KEY", "test-tfa-encryption-key-with-32-chars-min");
 

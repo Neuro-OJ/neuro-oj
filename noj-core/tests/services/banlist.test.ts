@@ -11,7 +11,7 @@ import {
   getBannedRanges,
   listIpBans,
   removeIpBan,
-} from "../../src/services/banlist.ts";
+} from "../../src/domains/identity/index.ts";
 import { _resetBanCacheForTest } from "../../src/lib/banCache.ts";
 import {
   ConflictError,
@@ -215,7 +215,9 @@ Deno.test({
   fn: async () => {
     await freshSetup();
     await addIpBan({ ip_or_cidr: "192.168.1.1", reason: "bot" }, ADMIN_ID);
-    const { getBannedIpDetail } = await import("../../src/services/banlist.ts");
+    const { getBannedIpDetail } = await import(
+      "../../src/domains/identity/index.ts"
+    );
 
     const detail = await getBannedIpDetail("192.168.1.1");
     assertEquals(detail?.matched_cidr, "192.168.1.1");
@@ -229,7 +231,9 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
-    const { getBannedIpDetail } = await import("../../src/services/banlist.ts");
+    const { getBannedIpDetail } = await import(
+      "../../src/domains/identity/index.ts"
+    );
     const detail = await getBannedIpDetail("9.9.9.9");
     assertEquals(detail, null);
   },

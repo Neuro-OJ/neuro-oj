@@ -16,7 +16,7 @@ import {
   removeParticipant,
   resolveContestId,
   updateContest,
-} from "../../src/services/contest/contests.ts";
+} from "../../src/domains/contest/index.ts";
 import {
   ConflictError,
   ForbiddenError,

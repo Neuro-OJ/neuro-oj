@@ -17,7 +17,7 @@ import {
   _resetSystemSettingsForTest,
   initSystemSettings,
   updateSetting,
-} from "../../src/services/system-settings.ts";
+} from "../../src/domains/system/index.ts";
 import {
   _resetEnvSnapshotForTest,
   snapshotEnv,

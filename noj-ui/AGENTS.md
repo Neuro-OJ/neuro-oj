@@ -252,7 +252,7 @@ cd dist
 
 - 品牌蓝（蓝黑墨）：`#1B2B4A`（亮色）/ `#7C96D6`（暗色），用于 Logo、导航、品牌识别。
 - 评测信号绿：`#00d68a`（亮色）/ `#00e07a`（暗色），用于动作、选中、进行中、焦点。
-- 完整 token 见 [`docs/design/noj-design-tokens.md`](../docs/design/noj-design-tokens.md)。
+- 完整 token 见 [`dev-docs/design/noj-design-tokens.md`](../dev-docs/design/noj-design-tokens.md)。
 
 ## 组件结构
 

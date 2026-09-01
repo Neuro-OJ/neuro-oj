@@ -11,7 +11,7 @@ import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { problems, selfTests, submissions } from "../db/schema.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
-import { getSetting } from "../services/system-settings.ts";
+import { getSetting } from "../domains/system/index.ts";
 import { getRedis } from "./connection.ts";
 import { isRetryableJudgeQueueError, JUDGE_QUEUE } from "./producer.ts";
 import { logger } from "../lib/logging.ts";
@@ -19,7 +19,7 @@ import type { JudgeTask } from "../types/index.ts";
 import type { RuntimeConfig } from "../types/problems.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import { buildJudgeTaskLlmForProvider } from "../lib/llm-token.ts";
-import { getUserLlmProvider } from "../services/llm.ts";
+import { getUserLlmProvider } from "../domains/gateway/index.ts";
 
 const RESULT_QUEUE = "noj:judge:results";
 

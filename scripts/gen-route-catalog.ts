@@ -1,11 +1,11 @@
-// 生成 API 路由目录（docs/engineering/route-catalog.md）。
+// 生成 API 路由目录（dev-docs/engineering/route-catalog.md）。
 // 从 noj-core/src/routes/*.ts 提取 Hono 路由定义。
 // 用法：deno run -A scripts/gen-route-catalog.ts [--check]
 import { relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname ?? ".", "..");
 const ROUTES_DIR = resolve(ROOT, "noj-core/src/routes");
-const OUTPUT_PATH = resolve(ROOT, "docs/engineering/route-catalog.md");
+const OUTPUT_PATH = resolve(ROOT, "dev-docs/engineering/route-catalog.md");
 
 interface RouteEntry {
   method: string;

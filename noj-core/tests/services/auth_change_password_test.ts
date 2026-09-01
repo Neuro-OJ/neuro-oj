@@ -9,7 +9,7 @@ import {
   changePassword,
   loginUser,
   registerUser,
-} from "../../src/services/auth.ts";
+} from "../../src/domains/identity/index.ts";
 import {
   disableTestTransactionForFile,
   getDb,

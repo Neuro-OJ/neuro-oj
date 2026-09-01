@@ -3,8 +3,8 @@ import {
   createConsumer,
   requestConsumerShutdown,
 } from "./base-consumer.ts";
-import { saveEvaluationResult } from "../services/submissions/submissions.ts";
-import { saveSelfTestResult } from "../services/self-tests.ts";
+import { saveEvaluationResult } from "../domains/submission/index.ts";
+import { saveSelfTestResult } from "../domains/submission/index.ts";
 import { logger, logJudgeResultReceived } from "../lib/logging.ts";
 import { Channels, publishSseEvent } from "../lib/event-bus.ts";
 import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";

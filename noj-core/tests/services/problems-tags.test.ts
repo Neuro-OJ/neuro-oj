@@ -22,12 +22,12 @@ import {
   users,
 } from "../../src/db/schema.ts";
 import { BadRequestError } from "../../src/lib/errors.ts";
-import { syncProblemTags } from "../../src/services/problems/problems-tags.ts";
+import { syncProblemTags } from "../../src/domains/catalog/index.ts";
 import {
   applyAlgorithmTagVisibility,
   getProblem,
-} from "../../src/services/problems/problems-list.ts";
-import { createTag } from "../../src/services/tags.ts";
+} from "../../src/domains/catalog/index.ts";
+import { createTag } from "../../src/domains/catalog/index.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasEnv;

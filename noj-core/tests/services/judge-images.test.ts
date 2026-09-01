@@ -14,7 +14,7 @@ import {
   listJudgeImages,
   updateJudgeImage,
   validateJudgeImage,
-} from "../../src/services/judge-images.ts";
+} from "../../src/domains/system/index.ts";
 import { NotFoundError, ValidationError } from "../../src/lib/errors.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用

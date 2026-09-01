@@ -23,7 +23,7 @@ import {
   listAdminAnnouncements,
   listPublicAnnouncements,
   updateAnnouncement,
-} from "../../src/services/announcements.ts";
+} from "../../src/domains/system/index.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const skip = !hasDb;

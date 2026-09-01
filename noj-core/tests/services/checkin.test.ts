@@ -7,7 +7,7 @@ import {
   getCheckinHistory,
   getCheckinStats,
   getTodayCheckIn,
-} from "../../src/services/checkin.ts";
+} from "../../src/domains/identity/index.ts";
 import { BadRequestError, ConflictError } from "../../src/lib/errors.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 

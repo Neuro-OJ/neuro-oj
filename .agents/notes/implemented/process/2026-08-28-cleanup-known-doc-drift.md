@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-8 月审计报告 `docs/audit/2026-08-15-noj-audit/docs.md` 记录了 28 条文档真阳性，另有 `env-snapshot.ts`、`useMessages.ts` 注释与实现不一致。文档和注释漂移会误导开发者和 AI。
+8 月审计报告 `dev-docs/audit/2026-08-15-noj-audit/docs.md` 记录了 28 条文档真阳性，另有 `env-snapshot.ts`、`useMessages.ts` 注释与实现不一致。文档和注释漂移会误导开发者和 AI。
 
 ## Decision
 

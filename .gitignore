@@ -98,7 +98,7 @@ aa.txt
 .buildx/
 
 .reasonix/docs/review-snapshots/
-docs/review-snapshots/
+dev-docs/review-snapshots/
 .reasonix/
 
 # --- LMCC raw problem archive (downloaded from official site; not committed) ---

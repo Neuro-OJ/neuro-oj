@@ -1,7 +1,7 @@
 # Neuro OJ (NOJ) — AI 编码助手项目知识库
 
 > 本文档面向 AI 编码助手（Claude Code、OpenCode 等）撰写，记录项目架构、规范、AI
-> 必须遵守的要求与开发约定。**本文档只放“规则 + 链接”，详细内容见各模块文档与 `docs/engineering/`。**
+> 必须遵守的要求与开发约定。**本文档只放“规则 + 链接”，详细内容见各模块文档与 `dev-docs/engineering/`。**
 
 Neuro OJ 是一个面向 **AI 领域认证与竞赛** 的在线评测（Online Judge）平台，覆盖 **IOAI / NOAI / LMCC** 等场景，支持客观题、代码题、LLM 工程题与产物提交（类 Kaggle）评测。
 
@@ -92,7 +92,7 @@ neuro-oj/
 ├── noj-llm-gateway/# LLM 网关（CLAUDE.md 有完整目录）
 ├── noj-tests/      # 跨模块 E2E 测试
 ├── noj-docs/       # 用户/出题人/运营者文档站（VitePress）
-├── docs/           # 设计文档、实施计划、工程规范、审计
+├── dev-docs/           # 设计文档、实施计划、工程规范、审计
 ├── scripts/        # 构建与运维脚本（dev/e2e 等）
 ├── .agents/        # 工程决策记录（仅开发辅助）
 ├── .github/        # CI/CD 与 PR 模板
@@ -248,6 +248,11 @@ cd noj-llm-gateway && deno task dev   # 可选
 - 快速反馈用 `deno task test:smoke`
 - 不要直接手拼 `deno test`（会丢失必要环境配置）
 
+### 8.6 搜索工具要求
+
+- 搜索代码/文件内容必须使用 `rg`（ripgrep），不要使用 `grep`
+- 仅当环境中不存在 `rg` 时，才允许回退到 `grep`
+
 ---
 
 ## 9. 贡献流程
@@ -288,7 +293,7 @@ jj config get signing.key
 
 ## 10. 安全模型
 
-详细安全模型见 [noj-docs/docs/system/security.md](noj-docs/docs/system/security.md) 与 [docs/engineering/defensive-patterns.md](docs/engineering/defensive-patterns.md)。
+详细安全模型见 [noj-docs/docs/system/security.md](noj-docs/docs/system/security.md) 与 [dev-docs/engineering/defensive-patterns.md](dev-docs/engineering/defensive-patterns.md)。
 
 关键规则：
 
@@ -303,7 +308,7 @@ jj config get signing.key
 
 ## 11. 测试体系
 
-详细命令与分层见 [docs/engineering/testing.md](docs/engineering/testing.md)。
+详细命令与分层见 [dev-docs/engineering/testing.md](dev-docs/engineering/testing.md)。
 
 - noj-core：`deno task test` / `test:parallel` / `test:smoke`
 - noj-ui：`deno task test`
@@ -338,18 +343,18 @@ jj config get signing.key
 | noj-llm-gateway 详细文档 | [`noj-llm-gateway/CLAUDE.md`](./noj-llm-gateway/CLAUDE.md) |
 | E2E 测试指南 | [`noj-tests/E2E_TESTING.md`](./noj-tests/E2E_TESTING.md) |
 | noj-cli 使用说明 | [`noj-cli/README.md`](./noj-cli/README.md) |
-| 工程规范 | [`docs/engineering/README.md`](./docs/engineering/README.md) |
+| 工程规范 | [`dev-docs/engineering/README.md`](./dev-docs/engineering/README.md) |
 | 系统架构 | [`noj-docs/docs/system/architecture.md`](./noj-docs/docs/system/architecture.md) |
 | 安全模型 | [`noj-docs/docs/system/security.md`](./noj-docs/docs/system/security.md) |
-| Superpowers 设计稿 | [`docs/superpowers/specs/`](./docs/superpowers/specs/) |
-| Superpowers 实施计划 | [`docs/superpowers/plans/`](./docs/superpowers/plans/) |
-| 品牌设计 Token | [`docs/design/noj-design-tokens.md`](./docs/design/noj-design-tokens.md) |
+| Superpowers 设计稿 | [`dev-docs/superpowers/specs/`](./dev-docs/superpowers/specs/) |
+| Superpowers 实施计划 | [`dev-docs/superpowers/plans/`](./dev-docs/superpowers/plans/) |
+| 品牌设计 Token | [`dev-docs/design/noj-design-tokens.md`](./dev-docs/design/noj-design-tokens.md) |
 
 ---
 
 ## 15. 品牌与设计系统
 
-NOJ 使用统一的品牌视觉系统，所有前端与文档站颜色、圆角必须遵循 `docs/design/noj-design-tokens.md` 中的 token 规范。
+NOJ 使用统一的品牌视觉系统，所有前端与文档站颜色、圆角必须遵循 `dev-docs/design/noj-design-tokens.md` 中的 token 规范。
 
 - 品牌蓝（蓝黑墨）：`#1B2B4A`（亮色）/ `#7C96D6`（暗色），用于 Logo、导航、品牌识别。
 - 评测信号绿：`#00d68a`（亮色）/ `#00e07a`（暗色），用于动作、选中、进行中、焦点。

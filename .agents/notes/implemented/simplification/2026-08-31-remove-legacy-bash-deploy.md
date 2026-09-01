@@ -19,7 +19,7 @@ Status: implemented
   - 根目录 `noj` 旧命令脚本
 - 保留 `scripts/deploy/verify-build-server.ts` / `verify-compose-server.ts` 作为
   构建与 Compose 改名门禁；`verify-setup-thin.ts` 随 `setup.sh` 一并移除。
-- 同步更新 AGENTS.md、scripts/README.md、docs/engineering、noj-docs 运营文档，
+- 同步更新 AGENTS.md、scripts/README.md、dev-docs/engineering、noj-docs 运营文档，
   将命令示例改为 `noj-cli`。
 
 ## Alternatives considered

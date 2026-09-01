@@ -8,7 +8,7 @@ SSE / Redis Pub/Sub 与 DB 状态之间的边界没有明确文档，容易在�
 
 ## Decision
 
-新增 `docs/engineering/event-domains.md`，明确：
+新增 `dev-docs/engineering/event-domains.md`，明确：
 
 - DB / 事件日志是事实源。
 - Redis Pub/Sub / SSE 是实时投影。

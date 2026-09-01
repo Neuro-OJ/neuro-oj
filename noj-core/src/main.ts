@@ -10,11 +10,11 @@ import {
 import { initEventSubscriber } from "./lib/event-bus.ts";
 import { snapshotEnv } from "./lib/env-snapshot.ts";
 import { validateRegistry } from "./lib/settings-registry.ts";
-import { ensureRootUser } from "./services/auth.ts";
-import { ensureRbacSeeds } from "./services/seed/seed-rbac.ts";
+import { ensureRootUser } from "./domains/identity/index.ts";
+import { ensureRbacSeeds } from "./domains/system/index.ts";
 import { getStorageProvider } from "./lib/storage/mod.ts";
-import { getSetting, initSystemSettings } from "./services/system-settings.ts";
-import { startAuditLogRetentionTask } from "./services/audit-log.ts";
+import { getSetting, initSystemSettings } from "./domains/system/index.ts";
+import { startAuditLogRetentionTask } from "./domains/system/index.ts";
 import { logger } from "./lib/logging.ts";
 import {
   assertProductionConfig,

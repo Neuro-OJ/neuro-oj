@@ -60,7 +60,7 @@ for (
 
 // 确保 RBAC 种子数据已加载（幂等）
 const { ensureRbacSeeds } = await import(
-  "../../src/services/seed/seed-rbac.ts"
+  "../../src/domains/system/index.ts"
 );
 await ensureRbacSeeds();
 

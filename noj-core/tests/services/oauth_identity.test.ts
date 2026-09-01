@@ -2,13 +2,13 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { oauthAccounts, users } from "../../src/db/schema.ts";
-import { loginUser } from "../../src/services/auth/auth-login.ts";
-import { setPassword } from "../../src/services/auth/auth-set-password.ts";
+import { loginUser } from "../../src/domains/identity/index.ts";
+import { setPassword } from "../../src/domains/identity/index.ts";
 import {
   linkPasswordMatches,
   resolveOAuthIdentity,
   unlinkOAuthAccount,
-} from "../../src/services/oauth.ts";
+} from "../../src/domains/identity/index.ts";
 
 const originalEnv = new Map<string, string | undefined>();
 function setEnv(key: string, value: string) {

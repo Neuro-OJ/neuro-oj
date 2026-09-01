@@ -15,7 +15,7 @@ import { resetDbForTest } from "../../src/db/connection.ts";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,
-} from "../../src/services/system-settings.ts";
+} from "../../src/domains/system/index.ts";
 import {
   _resetEnvSnapshotForTest,
   snapshotEnv,

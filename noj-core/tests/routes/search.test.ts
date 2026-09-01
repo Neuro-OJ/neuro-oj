@@ -20,11 +20,8 @@ import { connectRedis, getRedis } from "../../src/mq/connection.ts";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,
-} from "../../src/services/system-settings.ts";
-import {
-  createBoard,
-  createPost,
-} from "../../src/services/community/community.ts";
+} from "../../src/domains/system/index.ts";
+import { createBoard, createPost } from "../../src/domains/community/index.ts";
 
 // 模块加载时建立一次 Redis 连接（限流中间件依赖 Redis，必须先 connect）
 try {

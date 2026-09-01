@@ -201,7 +201,7 @@ export async function createUserToken(
   const { users, userRoles } = await import("../../src/db/schema.ts");
   const { signToken } = await import("../../src/lib/jwt.ts");
   const { ensureRbacSeeds } = await import(
-    "../../src/services/seed/seed-rbac.ts"
+    "../../src/domains/system/index.ts"
   );
   // deno test 每个文件独立模块图：PGlite 模式下必须先引导 Schema，
   // 否则 users/roles 等表不存在（PG 模式无操作）。

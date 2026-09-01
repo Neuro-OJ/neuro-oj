@@ -12,7 +12,7 @@ import {
   listMessages,
   markConversationRead,
   sendMessage,
-} from "../../src/services/messages.ts";
+} from "../../src/domains/messaging/index.ts";
 import { BadRequestError, NotFoundError } from "../../src/lib/errors.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建

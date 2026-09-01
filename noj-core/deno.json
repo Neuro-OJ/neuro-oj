@@ -28,6 +28,7 @@
     "check": "deno fmt --check && deno lint && deno task check:types",
     "check:types": "find src -name '*.ts' -print0 | xargs -0 deno check",
     "check:jsdoc": "deno run -A ../scripts/verify-export-jsdoc.ts",
+    "check:domains": "deno run -A ../scripts/check-domains.ts",
     "test:pg": "BCRYPT_SALT_ROUNDS=4 deno test -A --no-check --preload=tests/preload.ts"
   },
   "imports": {

@@ -37,7 +37,7 @@ on:
     # （E2E 只跑 noj-core API + judge 沙箱，不构建前端）；ci.yml 自身
     # 改动不触发 e2e（ci.yml 不涉及评测栈镜像/编排）。
     paths-ignore:
-      - 'docs/**'
+      - 'dev-docs/**'
       - 'noj-docs/**'
       - '**/*.md'
       - 'noj-ui/**'

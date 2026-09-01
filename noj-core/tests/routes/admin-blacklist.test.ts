@@ -8,7 +8,7 @@ import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { ipBans, userRoles, users } from "../../src/db/schema.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { jsonRequest } from "../lib/helper.ts";
-import { _resetBanlistForTest } from "../../src/services/banlist.ts";
+import { _resetBanlistForTest } from "../../src/domains/identity/index.ts";
 import { _resetBanCacheForTest } from "../../src/lib/banCache.ts";
 
 const ADMIN_ID = crypto.randomUUID();
@@ -25,7 +25,7 @@ async function freshSetup() {
   await db.delete(users).where(eq(users.id, ADMIN_ID));
   const now = new Date().toISOString();
   const { ensureRbacSeeds } = await import(
-    "../../src/services/seed/seed-rbac.ts"
+    "../../src/domains/system/index.ts"
   );
   await ensureRbacSeeds(); // 幂等重建系统角色（reset 可能清空 roles 表）
   await db.insert(users).values({
@@ -143,7 +143,7 @@ Deno.test({
       );
     }
     const { createApp } = await import("../../src/app.ts");
-    const { addIpBan } = await import("../../src/services/banlist.ts");
+    const { addIpBan } = await import("../../src/domains/identity/index.ts");
     const ban = await addIpBan({ ip_or_cidr: "1.2.3.4" }, ADMIN_ID);
     const app = createApp();
     const token = await signToken({ sub: ADMIN_ID, role: "admin" });
