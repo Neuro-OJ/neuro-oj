@@ -12,8 +12,7 @@ import {
   getCachedTodayStats,
   getCachedTotalStats,
 } from "../services/stats-cache.ts";
-import { getContestRanking } from "../services/contest/contest-ranking.ts";
-import { getContest } from "../services/contest/contests.ts";
+import { getContest, getContestRanking } from "../domains/contest/index.ts";
 import { NotFoundError } from "../lib/errors.ts";
 
 /**

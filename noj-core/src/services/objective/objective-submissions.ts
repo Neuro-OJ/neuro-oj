@@ -24,7 +24,7 @@ import {
   getPaperOrThrow,
   resolvePaperId,
 } from "./objective-questions.ts";
-import { getContest, getContestProblems } from "../contest/contests.ts";
+import { getContest, getContestProblems } from "../../domains/contest/index.ts";
 import type {
   ObjectiveSubmissionResponse,
   QuestionJudgement,

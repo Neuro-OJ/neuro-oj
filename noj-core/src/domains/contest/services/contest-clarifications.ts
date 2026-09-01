@@ -10,22 +10,22 @@
  */
 
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
+import { getDb } from "../../../db/connection.ts";
 import {
   contestClarifications,
   contestProblems,
   contests,
   users,
-} from "../../db/schema.ts";
-import { nowIso } from "../../lib/dates.ts";
+} from "../../../db/schema.ts";
+import { nowIso } from "../../../lib/dates.ts";
 import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "../../lib/errors.ts";
-import { isUserAdmin } from "../../lib/permissions.ts";
+} from "../../../lib/errors.ts";
+import { isUserAdmin } from "../../../lib/permissions.ts";
 import { computeContestStatus, isParticipant } from "./contests.ts";
-import { createNotification } from "../notifications.ts";
+import { createNotification } from "../../community/index.ts";
 
 const MAX_CONTENT_LENGTH = 5000;
 const DEFAULT_PAGE_SIZE = 20;

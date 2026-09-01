@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
+import { getDb } from "../../../db/connection.ts";
 import {
   contestParticipants,
   contestProblems,
@@ -7,16 +7,20 @@ import {
   problems,
   submissions,
   users,
-} from "../../db/schema.ts";
+} from "../../../db/schema.ts";
 import {
   BadRequestError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
-} from "../../lib/errors.ts";
-import { comparePassword, hashPassword } from "../../lib/password.ts";
-import { generatePublicId, isPublicId, isUuid } from "../../lib/public-id.ts";
-import { unwrapRows } from "../../lib/sql-rows.ts";
+} from "../../../lib/errors.ts";
+import { comparePassword, hashPassword } from "../../../lib/password.ts";
+import {
+  generatePublicId,
+  isPublicId,
+  isUuid,
+} from "../../../lib/public-id.ts";
+import { unwrapRows } from "../../../lib/sql-rows.ts";
 import {
   type ContestConfig,
   type ContestProblemInput,
@@ -28,7 +32,7 @@ import {
   isValidContestConfig,
   isValidContestType,
   type UpdateContestInput,
-} from "../../types/contests.ts";
+} from "../../../types/contests.ts";
 
 export interface ListContestsParams {
   page?: number;

@@ -1,8 +1,11 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "../../middleware/auth.ts";
-import { parseJsonBody } from "../../lib/request.ts";
-import { BadRequestError } from "../../lib/errors.ts";
-import { buildPaginationMeta, parsePagination } from "../../lib/pagination.ts";
+import type { AuthEnv } from "../../../middleware/auth.ts";
+import { parseJsonBody } from "../../../lib/request.ts";
+import { BadRequestError } from "../../../lib/errors.ts";
+import {
+  buildPaginationMeta,
+  parsePagination,
+} from "../../../lib/pagination.ts";
 import {
   addParticipants,
   createContest,
@@ -14,14 +17,14 @@ import {
   removeParticipant,
   resolveContestId,
   updateContest,
-} from "../../services/contest/contests.ts";
+} from "../services/contests.ts";
 import type {
   CreateContestInput,
   UpdateContestInput,
-} from "../../types/contests.ts";
-import { isValidContestType } from "../../types/contests.ts";
-import { listSubmissions } from "../../services/submissions/submissions.ts";
-import { resolveUserId } from "../../services/users.ts";
+} from "../../../types/contests.ts";
+import { isValidContestType } from "../../../types/contests.ts";
+import { listSubmissions } from "../../submission/index.ts";
+import { resolveUserId } from "../../identity/index.ts";
 
 /**
  * 管理端竞赛管理路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。

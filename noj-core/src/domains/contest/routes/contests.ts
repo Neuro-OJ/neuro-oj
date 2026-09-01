@@ -1,22 +1,28 @@
 import { type Context, Hono } from "hono";
 import busboy from "busboy";
 import { Readable } from "node:stream";
-import type { OptionalAuthEnv } from "../middleware/auth.ts";
-import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
+import type { OptionalAuthEnv } from "../../../middleware/auth.ts";
+import {
+  authMiddleware,
+  optionalAuthMiddleware,
+} from "../../../middleware/auth.ts";
 import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "../lib/errors.ts";
-import { buildPaginationMeta, parsePagination } from "../lib/pagination.ts";
-import { parseJsonBody } from "../lib/request.ts";
-import { checkPermission } from "../lib/permissions.ts";
-import { getContestRanking } from "../services/contest/contest-ranking.ts";
+} from "../../../lib/errors.ts";
+import {
+  buildPaginationMeta,
+  parsePagination,
+} from "../../../lib/pagination.ts";
+import { parseJsonBody } from "../../../lib/request.ts";
+import { checkPermission } from "../../../lib/permissions.ts";
+import { getContestRanking } from "../services/contest-ranking.ts";
 import {
   createClarification,
   listClarifications,
   replyToClarification,
-} from "../services/contest/contest-clarifications.ts";
+} from "../services/contest-clarifications.ts";
 import {
   computeContestStatus,
   getContest,
@@ -25,15 +31,15 @@ import {
   listContests,
   registerForContest,
   resolveContestId,
-} from "../services/contest/contests.ts";
+} from "../services/contests.ts";
 import {
   createArtifactSubmission,
   createSubmission,
   listSubmissions,
-} from "../services/submissions/submissions.ts";
-import { isValidContestType } from "../types/contests.ts";
-import { createActivity } from "../services/community/community.ts";
-import { enforceContestSubmissionRateLimit } from "../lib/hardening-rate-limit.ts";
+} from "../../submission/index.ts";
+import { isValidContestType } from "../../../types/contests.ts";
+import { createActivity } from "../../community/index.ts";
+import { enforceContestSubmissionRateLimit } from "../../../lib/hardening-rate-limit.ts";
 
 const contests = new Hono<OptionalAuthEnv>();
 const MAX_CODE_LENGTH = 100 * 1024;

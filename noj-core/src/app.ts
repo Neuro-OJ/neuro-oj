@@ -19,7 +19,7 @@ import conversations from "./routes/conversations.ts";
 import community from "./routes/community.ts";
 import communityAdmin from "./routes/community-admin.ts";
 import search from "./routes/search.ts";
-import contests from "./routes/contests.ts";
+import contests from "./domains/contest/routes/contests.ts";
 import trainings from "./routes/trainings.ts";
 import announcements from "./routes/announcements.ts";
 import sse, { contestSse, statsSse } from "./routes/sse.ts";

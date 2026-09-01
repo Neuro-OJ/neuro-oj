@@ -20,7 +20,7 @@ import {
   pushJudgeTask,
 } from "../../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../judge-images.ts";
-import { assertContestSubmissionLimit } from "../contest/contests.ts";
+import { assertContestSubmissionLimit } from "../../domains/contest/index.ts";
 import { buildJudgeTaskLlm } from "../../lib/llm-token.ts";
 import { buildJudgeTaskLlmForProvider } from "../../lib/llm-token.ts";
 import { getUserLlmProvider } from "../llm.ts";

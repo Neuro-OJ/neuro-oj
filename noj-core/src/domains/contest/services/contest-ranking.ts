@@ -1,16 +1,16 @@
 import { sql } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
+import { getDb } from "../../../db/connection.ts";
 import {
   BadRequestError,
   ForbiddenError,
   UnauthorizedError,
-} from "../../lib/errors.ts";
-import { unwrapRows } from "../../lib/sql-rows.ts";
+} from "../../../lib/errors.ts";
+import { unwrapRows } from "../../../lib/sql-rows.ts";
 import type {
   ContestType,
   KaggleProblemScore,
   KaggleRankingRow,
-} from "../../types/contests.ts";
+} from "../../../types/contests.ts";
 import { getContest, isParticipant } from "./contests.ts";
 
 function parseJsonArray<T>(value: unknown): T[] {

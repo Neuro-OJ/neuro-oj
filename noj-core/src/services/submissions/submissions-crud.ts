@@ -47,7 +47,7 @@ import {
   pushJudgeTask,
 } from "../../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../judge-images.ts";
-import { assertContestSubmissionLimit } from "../contest/contests.ts";
+import { assertContestSubmissionLimit } from "../../domains/contest/index.ts";
 import { getStorageProvider } from "../../lib/storage/mod.ts";
 import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
 import { buildJudgeTaskLlm } from "../../lib/llm-token.ts";

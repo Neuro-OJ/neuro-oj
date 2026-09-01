@@ -15,7 +15,7 @@ import { adminMiddleware, authMiddleware } from "../../middleware/auth.ts";
 import adminUsers from "./admin-users.ts";
 import adminProblems from "./admin-problems.ts";
 import adminSubmissions from "./admin-submissions.ts";
-import adminContests from "./admin-contests.ts";
+import adminContests from "../../domains/contest/routes/admin-contests.ts";
 import adminJudgeImages from "./admin-judge-images.ts";
 import adminSettings from "./admin-settings.ts";
 import adminBlacklist from "./admin-blacklist.ts";
