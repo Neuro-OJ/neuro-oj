@@ -6,7 +6,10 @@ import { initRedisForTest } from "../lib/helper.ts";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
 import { _resetBanCacheForTest } from "../../src/lib/banCache.ts";
-import { _resetBanlistForTest, addIpBan } from "../../src/services/banlist.ts";
+import {
+  _resetBanlistForTest,
+  addIpBan,
+} from "../../src/domains/identity/index.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { ipBans, userBans, users } from "../../src/db/schema.ts";

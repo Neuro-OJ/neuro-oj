@@ -7,7 +7,7 @@
  * - DATABASE_URL 未设置 → 使用 PGlite 内存数据库，执行 DDL SQL 建表
  */
 import { runMigrations } from "../src/db/migrate.ts";
-import { ensureRootUser } from "../src/services/auth.ts";
+import { ensureRootUser } from "../src/domains/identity/index.ts";
 import { ensureRbacSeeds } from "../src/services/seed/seed-rbac.ts";
 import { getDb } from "../src/db/connection.ts";
 import { setupSchemaForTest } from "./_setup.ts";

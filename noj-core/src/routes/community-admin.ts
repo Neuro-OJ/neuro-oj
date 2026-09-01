@@ -34,7 +34,7 @@ import {
   updateBoard,
   updateBoardRoleGrant,
 } from "../services/community/community.ts";
-import { resolveUserId } from "../services/users.ts";
+import { resolveUserId } from "../domains/identity/index.ts";
 
 /**
  * 社区管理路由（挂载前缀 /api/v1/community，见 app.ts）。

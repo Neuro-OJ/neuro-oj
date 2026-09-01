@@ -4,10 +4,10 @@
  * 管理 TOTP 二次验证的启用/禁用/恢复码，并提供登录时的 TFA 校验入口。
  */
 import { and, eq, isNull } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
-import { tfaRecoveryCodes, users } from "../db/schema.ts";
-import { BadRequestError, UnauthorizedError } from "../lib/errors.ts";
-import { logAuthEvent } from "./audit-log.ts";
+import { getDb } from "../../../db/connection.ts";
+import { tfaRecoveryCodes, users } from "../../../db/schema.ts";
+import { BadRequestError, UnauthorizedError } from "../../../lib/errors.ts";
+import { logAuthEvent } from "../../system/index.ts";
 import {
   decryptTfaSecret,
   encryptTfaSecret,
@@ -15,7 +15,7 @@ import {
   generateTfaSecret,
   hashRecoveryCode,
   verifyTfaCode,
-} from "../lib/tfa.ts";
+} from "../../../lib/tfa.ts";
 
 type Db = ReturnType<typeof getDb>;
 

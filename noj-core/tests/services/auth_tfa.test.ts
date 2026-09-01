@@ -5,12 +5,12 @@ import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { users } from "../../src/db/schema.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 import { BadRequestError, UnauthorizedError } from "../../src/lib/errors.ts";
-import { loginUser } from "../../src/services/auth.ts";
+import { loginUser } from "../../src/domains/identity/index.ts";
 import {
   confirmTfa,
   setupTfa,
   verifyTfaCodeForUser,
-} from "../../src/services/tfa.ts";
+} from "../../src/domains/identity/index.ts";
 
 Deno.env.set("TFA_ENCRYPTION_KEY", "test-tfa-encryption-key-with-32-chars-min");
 Deno.env.set("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters");

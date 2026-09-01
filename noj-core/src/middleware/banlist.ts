@@ -23,7 +23,7 @@ import type { Context, Next } from "hono";
 import { ForbiddenError } from "../lib/errors.ts";
 import { getClientIp, hasDirectPeer } from "../lib/rate-limit-env.ts";
 import { isBannedIp } from "../lib/cidr.ts";
-import { getBannedRanges } from "../services/banlist.ts";
+import { getBannedRanges } from "../domains/identity/index.ts";
 
 /** IP 黑名单中间件白名单——写操作中需要豁免的路径。 */
 const WHITELIST: readonly string[] = [

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import {
   requestReset,
   resetPassword,
-} from "../../src/services/passwordReset.ts";
+} from "../../src/domains/identity/index.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { passwordResetTokens, users } from "../../src/db/schema.ts";
 import {

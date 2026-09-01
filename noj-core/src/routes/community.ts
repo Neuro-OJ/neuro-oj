@@ -7,7 +7,7 @@ import {
   UnauthorizedError,
 } from "../lib/errors.ts";
 import { assertPermission, checkPermission } from "../lib/permissions.ts";
-import { resolveUserId } from "../services/users/users-id.ts";
+import { resolveUserId } from "../domains/identity/index.ts";
 import {
   authMiddleware,
   type OptionalAuthEnv,

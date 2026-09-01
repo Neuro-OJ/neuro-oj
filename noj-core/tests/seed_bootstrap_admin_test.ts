@@ -24,7 +24,7 @@ import {
   userRoles,
   users,
 } from "../src/db/schema.ts";
-import { registerUser } from "../src/services/auth.ts";
+import { registerUser } from "../src/domains/identity/index.ts";
 import { hashPassword } from "../src/lib/password.ts";
 import { getAdminUserIds } from "../src/lib/permissions.ts";
 import {

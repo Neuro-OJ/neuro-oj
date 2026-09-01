@@ -18,7 +18,7 @@ import { Command } from "@cliffy/command";
 import { HelpCommand } from "@cliffy/command/help";
 import { CompletionsCommand } from "@cliffy/command/completions";
 import { runMigrations } from "../src/db/migrate.ts";
-import { ensureRootUser } from "../src/services/auth.ts";
+import { ensureRootUser } from "../src/domains/identity/index.ts";
 import { ensureRbacSeeds } from "../src/services/seed/seed-rbac.ts";
 import {
   ensureAdminFromEnv,

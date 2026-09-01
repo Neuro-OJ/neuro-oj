@@ -2,7 +2,7 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import {
   getUserProfileAggregate,
   updateUserProfile,
-} from "../../src/services/users.ts";
+} from "../../src/domains/identity/index.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { users } from "../../src/db/schema.ts";
 import { NotFoundError, ValidationError } from "../../src/lib/errors.ts";

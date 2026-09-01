@@ -1,16 +1,16 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "../../middleware/auth.ts";
-import { parseJsonBody } from "../../lib/request.ts";
-import { BadRequestError, ValidationError } from "../../lib/errors.ts";
-import { listUsers } from "../../services/auth.ts";
+import type { AuthEnv } from "../../../middleware/auth.ts";
+import { parseJsonBody } from "../../../lib/request.ts";
+import { BadRequestError, ValidationError } from "../../../lib/errors.ts";
+import { listUsers } from "../services/auth.ts";
 import {
   adminUpdateUserProfile,
   banUser,
   getUserBanHistory,
   resolveUserId,
   unbanUser,
-} from "../../services/users.ts";
-import { updateUserRoles } from "../../services/admin-roles.ts";
+} from "../services/users.ts";
+import { updateUserRoles } from "../../../services/admin-roles.ts";
 
 /**
  * 管理端用户管理路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。

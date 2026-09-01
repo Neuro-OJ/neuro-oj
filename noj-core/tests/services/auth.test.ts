@@ -3,7 +3,7 @@ import {
   getUserProfile,
   loginUser,
   registerUser,
-} from "../../src/services/auth.ts";
+} from "../../src/domains/identity/index.ts";
 import {
   disableTestTransactionForFile,
   resetDbForTest,

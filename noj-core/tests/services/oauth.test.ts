@@ -4,7 +4,7 @@ import {
   createOAuthAuthorization,
   fetchOAuthIdentity,
   listOAuthProviders,
-} from "../../src/services/oauth.ts";
+} from "../../src/domains/identity/index.ts";
 
 const original = new Map<string, string | undefined>();
 function setOAuthEnv(values: Record<string, string | undefined>) {

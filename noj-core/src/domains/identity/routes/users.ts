@@ -1,11 +1,11 @@
 import { Hono } from "hono";
-import { authMiddleware } from "../middleware/auth.ts";
-import { parseJsonBody } from "../lib/request.ts";
+import { authMiddleware } from "../../../middleware/auth.ts";
+import { parseJsonBody } from "../../../lib/request.ts";
 import {
   BadRequestError,
   NotFoundError,
   ValidationError,
-} from "../lib/errors.ts";
+} from "../../../lib/errors.ts";
 import {
   createUserLlmProvider,
   deleteUserLlmProvider,
@@ -13,7 +13,7 @@ import {
   LlmGatewayError,
   testUserLlmProvider,
   updateUserLlmProvider,
-} from "../services/llm.ts";
+} from "../../gateway/index.ts";
 import {
   clearUserAvatar,
   getUserAvatarBytes,
@@ -23,7 +23,7 @@ import {
   updateUserAvatar,
   updateUserProfile,
 } from "../services/users.ts";
-import { getMyRanking } from "../services/rankings.ts";
+import { getMyRanking } from "../../query/index.ts";
 
 const users = new Hono<{ Variables: { userId: string; userRole: string } }>();
 

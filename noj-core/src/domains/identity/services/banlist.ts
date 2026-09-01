@@ -10,16 +10,16 @@
  */
 
 import { and, eq, isNull, like, or, sql } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
-import { ipBans } from "../db/schema.ts";
+import { getDb } from "../../../db/connection.ts";
+import { ipBans } from "../../../db/schema.ts";
 import {
   ConflictError,
   NotFoundError,
   ValidationError,
-} from "../lib/errors.ts";
-import { isBannedIp, isValidIpOrCidr } from "../lib/cidr.ts";
-import { getCached, invalidateBanCache } from "../lib/banCache.ts";
-import { logAudit } from "./audit-log.ts";
+} from "../../../lib/errors.ts";
+import { isBannedIp, isValidIpOrCidr } from "../../../lib/cidr.ts";
+import { getCached, invalidateBanCache } from "../../../lib/banCache.ts";
+import { logAudit } from "../../system/index.ts";
 
 export interface IpBan {
   id: string;

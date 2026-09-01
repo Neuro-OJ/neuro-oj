@@ -1,18 +1,18 @@
 import { and, desc, eq, isNull, or } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
-import { roles, userBans, userRoles, users } from "../../db/schema.ts";
-import { comparePassword } from "../../lib/password.ts";
-import { isUserAdmin } from "../../lib/permissions.ts";
-import { signToken } from "../../lib/jwt.ts";
-import { logAuthEvent } from "../audit-log.ts";
+import { getDb } from "../../../../db/connection.ts";
+import { roles, userBans, userRoles, users } from "../../../../db/schema.ts";
+import { comparePassword } from "../../../../lib/password.ts";
+import { isUserAdmin } from "../../../../lib/permissions.ts";
+import { signToken } from "../../../../lib/jwt.ts";
+import { logAuthEvent } from "../../../system/index.ts";
 import { verifyTfaCodeForUser } from "../tfa.ts";
 import {
   BadRequestError,
   ForbiddenError,
   UnauthorizedError,
-} from "../../lib/errors.ts";
-import type { LoginInput, UserResponse } from "../../types/auth.ts";
-import { isBannedIp } from "../../lib/cidr.ts";
+} from "../../../../lib/errors.ts";
+import type { LoginInput, UserResponse } from "../../../../types/auth.ts";
+import { isBannedIp } from "../../../../lib/cidr.ts";
 import { getBannedRanges } from "../banlist.ts";
 import { toUserResponse } from "./auth-register.ts";
 

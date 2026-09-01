@@ -12,19 +12,19 @@
  */
 
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
-import { userBans, users } from "../../db/schema.ts";
-import { invalidateBanCache } from "../../lib/banCache.ts";
-import { logAudit } from "../audit-log.ts";
-import type { UserResponse } from "../../types/auth.ts";
-import { ROOT_USER_ID } from "../../lib/constants.ts";
-import { getAdminUserIds, isUserAdmin } from "../../lib/permissions.ts";
-import { createNotification } from "../notifications.ts";
+import { getDb } from "../../../../db/connection.ts";
+import { userBans, users } from "../../../../db/schema.ts";
+import { invalidateBanCache } from "../../../../lib/banCache.ts";
+import { logAudit } from "../../../system/index.ts";
+import type { UserResponse } from "../../../../types/auth.ts";
+import { ROOT_USER_ID } from "../../../../lib/constants.ts";
+import { getAdminUserIds, isUserAdmin } from "../../../../lib/permissions.ts";
+import { createNotification } from "../../../community/index.ts";
 import {
   BadRequestError,
   NotFoundError,
   ValidationError,
-} from "../../lib/errors.ts";
+} from "../../../../lib/errors.ts";
 
 /** users 表行类型 */
 type UserRow = typeof users.$inferSelect;

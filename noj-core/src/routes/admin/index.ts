@@ -12,14 +12,14 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../../middleware/auth.ts";
 import { adminMiddleware, authMiddleware } from "../../middleware/auth.ts";
-import adminUsers from "./admin-users.ts";
+import adminUsers from "../../domains/identity/routes/admin-users.ts";
 import adminProblems from "./admin-problems.ts";
 import adminSubmissions from "./admin-submissions.ts";
 import adminContests from "../../domains/contest/routes/admin-contests.ts";
 import adminJudgeImages from "./admin-judge-images.ts";
 import adminSettings from "./admin-settings.ts";
-import adminBlacklist from "./admin-blacklist.ts";
-import adminRoles from "./admin-roles.ts";
+import adminBlacklist from "../../domains/identity/routes/admin-blacklist.ts";
+import adminRoles from "../../domains/identity/routes/admin-roles.ts";
 import adminAudit from "./admin-audit.ts";
 import adminDashboard from "./admin-dashboard.ts";
 import adminLlm from "./admin-llm.ts";

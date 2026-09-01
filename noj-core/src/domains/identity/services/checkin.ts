@@ -1,13 +1,13 @@
 import { eq, sql } from "drizzle-orm";
-import { todayUtc } from "../lib/dates.ts";
-import { getDb } from "../db/connection.ts";
-import { checkIns, users } from "../db/schema.ts";
+import { todayUtc } from "../../../lib/dates.ts";
+import { getDb } from "../../../db/connection.ts";
+import { checkIns, users } from "../../../db/schema.ts";
 import {
   BadRequestError,
   ConflictError,
   NotFoundError,
-} from "../lib/errors.ts";
-import { unwrapRows } from "../lib/sql-rows.ts";
+} from "../../../lib/errors.ts";
+import { unwrapRows } from "../../../lib/sql-rows.ts";
 
 export interface CheckInResponse {
   checked_in: boolean;

@@ -18,13 +18,13 @@
  */
 
 import { eq } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
-import { users } from "../../db/schema.ts";
-import { comparePassword, hashPassword } from "../../lib/password.ts";
-import { isUserAdmin } from "../../lib/permissions.ts";
-import { logAuthEvent } from "../audit-log.ts";
-import { BadRequestError, UnauthorizedError } from "../../lib/errors.ts";
-import type { UserResponse } from "../../types/auth.ts";
+import { getDb } from "../../../../db/connection.ts";
+import { users } from "../../../../db/schema.ts";
+import { comparePassword, hashPassword } from "../../../../lib/password.ts";
+import { isUserAdmin } from "../../../../lib/permissions.ts";
+import { logAuthEvent } from "../../../system/index.ts";
+import { BadRequestError, UnauthorizedError } from "../../../../lib/errors.ts";
+import type { UserResponse } from "../../../../types/auth.ts";
 import { validatePasswordStrength } from "./auth-register.ts";
 
 export async function changePassword(

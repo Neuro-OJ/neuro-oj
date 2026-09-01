@@ -1,12 +1,12 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
-import { passwordResetTokens, users } from "../db/schema.ts";
-import { hashPassword } from "../lib/password.ts";
-import { generateResetToken, hashResetToken } from "../lib/resetToken.ts";
-import { sendPasswordResetEmail } from "../lib/email.ts";
-import { BadRequestError } from "../lib/errors.ts";
-import { logger } from "../lib/logging.ts";
-import { logAuthEvent } from "./audit-log.ts";
+import { getDb } from "../../../db/connection.ts";
+import { passwordResetTokens, users } from "../../../db/schema.ts";
+import { hashPassword } from "../../../lib/password.ts";
+import { generateResetToken, hashResetToken } from "../../../lib/resetToken.ts";
+import { sendPasswordResetEmail } from "../../../lib/email.ts";
+import { BadRequestError } from "../../../lib/errors.ts";
+import { logger } from "../../../lib/logging.ts";
+import { logAuthEvent } from "../../system/index.ts";
 import { validatePasswordStrength } from "./auth.ts";
 
 /** 密码重置令牌有效期（分钟）。OWASP 2025+ 建议 ≤ 15 分钟。 */

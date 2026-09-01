@@ -27,7 +27,7 @@ import { nowIso } from "../../lib/dates.ts";
 import { createNotification } from "../notifications.ts";
 import { invalidateBanCache } from "../../lib/banCache.ts";
 
-export { banUser, getLatestActiveBanId } from "../users/users-bans.ts";
+export { banUser, getLatestActiveBanId } from "../../domains/identity/index.ts";
 
 export async function createReport(
   reporterId: string,
