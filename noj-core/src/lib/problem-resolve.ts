@@ -9,6 +9,8 @@ import {
   getProblem,
   getProblemByTypeAndNumber,
 } from "../domains/catalog/index.ts";
+import { NotFoundError } from "./errors.ts";
+import { isUuid } from "./public-id.ts";
 
 /**
  * 双索引查找题目。
@@ -17,12 +19,7 @@ import {
  */
 export function resolveProblem(id: string) {
   // UUID / 纯数字（兼容旧 seed 数据 1001/1002/1003 等）：直接按 id 精确查找
-  if (
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      id,
-    ) ||
-    /^\d+$/.test(id)
-  ) {
+  if (isUuid(id) || /^\d+$/.test(id)) {
     return getProblem(id);
   }
 
@@ -36,4 +33,29 @@ export function resolveProblem(id: string) {
 
   // fallback：尝试直接按 id 查找（兼容非标准 ID 格式）
   return getProblem(id);
+}
+
+/**
+ * 将题目标识解析为内部题目 UUID；题目不存在时返回 null。
+ */
+export async function resolveProblemIdOrNull(
+  reference: string,
+): Promise<string | null> {
+  try {
+    const problem = await resolveProblem(reference);
+    return problem.id;
+  } catch (e) {
+    if (e instanceof NotFoundError) return null;
+    throw e;
+  }
+}
+
+/**
+ * 将题目标识解析为内部题目 UUID；题目不存在时抛 NotFoundError。
+ */
+export async function resolveProblemIdOrThrow(
+  reference: string,
+): Promise<string> {
+  const problem = await resolveProblem(reference);
+  return problem.id;
 }

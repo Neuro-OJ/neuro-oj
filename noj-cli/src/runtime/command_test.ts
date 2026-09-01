@@ -1,3 +1,4 @@
+import { makeTempDir } from "../testing/helpers.ts";
 import { assertEquals } from "@std/assert";
 import { realRunner } from "./command.ts";
 
@@ -28,7 +29,7 @@ Deno.test("realRunner.spawn 产生可用 PID 并可 wait", async () => {
 });
 
 Deno.test("realRunner.spawn: stdoutFile 捕获子进程输出", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   const log = `${dir}/out.log`;
   const handle = realRunner().spawn({
     cmd: "sh",

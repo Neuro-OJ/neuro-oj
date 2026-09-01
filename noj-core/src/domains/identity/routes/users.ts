@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { authMiddleware } from "../../../middleware/auth.ts";
+import { type AuthEnv, authMiddleware } from "../../../middleware/auth.ts";
 import { parseJsonBody } from "../../../lib/request.ts";
 import {
   BadRequestError,
@@ -25,7 +25,7 @@ import {
 } from "../services/users.ts";
 import { getMyRanking } from "../../query/index.ts";
 
-const users = new Hono<{ Variables: { userId: string; userRole: string } }>();
+const users = new Hono<AuthEnv>();
 
 /**
  * 将 LLM 网关错误映射为对应的 HTTP 错误。

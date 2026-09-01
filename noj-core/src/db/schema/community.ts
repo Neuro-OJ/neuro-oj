@@ -5,12 +5,12 @@ import {
   integer,
   jsonb,
   pgTable,
-  primaryKey,
   text,
   unique,
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { manyToManyPk, publicIdColumn } from "./common.ts";
 import { roles, userBans, users } from "./identity.ts";
 import { problems } from "./catalog.ts";
 
@@ -50,7 +50,7 @@ export const communityBoardRoleGrants = pgTable(
     can_moderate: boolean("can_moderate").notNull().default(false),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.board_id, table.role_id] }),
+    ...manyToManyPk([table.board_id, table.role_id]),
     roleIdx: index("idx_community_board_role_grants_role").on(table.role_id),
   }),
 );
@@ -60,9 +60,7 @@ export const communityPosts = pgTable(
   "community_posts",
   {
     id: text("id").primaryKey(),
-    public_id: text("public_id").notNull().default(
-      sql`'post-' || substr(md5(random()::text), 1, 8)`,
-    ),
+    public_id: publicIdColumn("post"),
     type: text("type").notNull(),
     author_id: text("author_id").notNull().references(() => users.id, {
       onDelete: "cascade",
@@ -174,7 +172,7 @@ export const communityPostLikes = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.post_id, table.user_id] }),
+    ...manyToManyPk([table.post_id, table.user_id]),
     userIdx: index("idx_community_post_likes_user").on(table.user_id),
   }),
 );
@@ -193,7 +191,7 @@ export const communityCommentLikes = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.comment_id, table.user_id] }),
+    ...manyToManyPk([table.comment_id, table.user_id]),
     userIdx: index("idx_community_comment_likes_user").on(table.user_id),
   }),
 );
@@ -211,7 +209,7 @@ export const communityBookmarks = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.post_id, table.user_id] }),
+    ...manyToManyPk([table.post_id, table.user_id]),
     userIdx: index("idx_community_bookmarks_user").on(
       table.user_id,
       table.created_at,
@@ -232,7 +230,7 @@ export const communityFollows = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.follower_id, table.followee_id] }),
+    ...manyToManyPk([table.follower_id, table.followee_id]),
     notSelfCheck: check(
       "community_follows_not_self_check",
       sql`${table.follower_id} <> ${table.followee_id}`,

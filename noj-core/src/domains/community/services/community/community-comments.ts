@@ -19,6 +19,7 @@ import {
 } from "./community-config.ts";
 import { getPost } from "./community-post-crud.ts";
 import { publicationStatus } from "./community-post-common.ts";
+import { authorProjection } from "./community-post-select.ts";
 import { nowIso } from "../../../../lib/dates.ts";
 
 /** 审核/处置评论状态：批准待审评论时补发回复通知（原 pending 创建时不发）。 */
@@ -195,11 +196,7 @@ export async function listComments(
   }
   return db.select({
     comment: communityComments,
-    author: {
-      id: users.id,
-      username: users.username,
-      avatar_url: users.avatar_url,
-    },
+    author: authorProjection,
     likes: sql<
       number
     >`(select count(*) from community_comment_likes where comment_id = ${communityComments.id})`,
@@ -214,11 +211,7 @@ export async function listPendingComments(limit = 50) {
   const db = getDb();
   const rows = await db.select({
     comment: communityComments,
-    author: {
-      id: users.id,
-      username: users.username,
-      avatar_url: users.avatar_url,
-    },
+    author: authorProjection,
     post_title: communityPosts.title,
   }).from(communityComments).innerJoin(
     users,

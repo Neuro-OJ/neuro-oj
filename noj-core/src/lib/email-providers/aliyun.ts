@@ -9,18 +9,7 @@
  */
 
 import type { SendPasswordResetEmail } from "./types.ts";
-import { getSetting } from "../../domains/system/index.ts";
-
-function getSettingOrThrow(key: string, label: string): string {
-  const val = getSetting(key);
-  const str = typeof val?.value === "string" ? val.value : "";
-  if (!str) {
-    throw new Error(
-      `[email/aliyun] ${label} 未配置，请通过系统设置或环境变量配置`,
-    );
-  }
-  return str;
-}
+import { buildResetPasswordHtml, getSettingOrThrow } from "./common.ts";
 
 /**
  * 发送密码重置邮件（阿里云 DirectMail）。
@@ -66,11 +55,7 @@ export const sendPasswordResetEmail: SendPasswordResetEmail = async (
     AccountName: fromEmail,
     ToAddress: email,
     Subject: "重置您的 Neuro OJ 密码",
-    HtmlBody: [
-      `<p>您请求了密码重置。</p>`,
-      `<p><a href="${resetLink}">点击此处重置密码</a></p>`,
-      `<p>此链接 ${_expiresInMinutes} 分钟内有效。如非您本人操作，请忽略此邮件。</p>`,
-    ].join("\n"),
+    HtmlBody: buildResetPasswordHtml(resetLink, _expiresInMinutes),
     AddressType: 1, // 触发邮件
   });
 

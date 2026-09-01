@@ -5,12 +5,11 @@ import {
   integer,
   jsonb,
   pgTable,
-  primaryKey,
   text,
   unique,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { tsvector } from "./common.ts";
+import { manyToManyPk, publicIdColumn, tsvector } from "./common.ts";
 import { ROOT_USER_ID } from "../../lib/constants.ts";
 import { users } from "./identity.ts";
 
@@ -113,7 +112,7 @@ export const problemTags = pgTable(
       .references(() => tags.id, { onDelete: "cascade" }),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.problem_id, table.tag_id] }),
+    ...manyToManyPk([table.problem_id, table.tag_id]),
   }),
 );
 
@@ -125,9 +124,7 @@ export const trainings = pgTable(
   "trainings",
   {
     id: text("id").primaryKey(),
-    public_id: text("public_id").notNull().default(
-      sql`'tr-' || substr(md5(random()::text), 1, 8)`,
-    ),
+    public_id: publicIdColumn("tr"),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     visibility: text("visibility").notNull().default("private"),
@@ -167,7 +164,7 @@ export const trainingProblems = pgTable(
     position: integer("position").notNull().default(0),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.training_id, table.problem_id] }),
+    ...manyToManyPk([table.training_id, table.problem_id]),
     positionUnique: unique(
       "training_problems_training_position_unique",
     ).on(table.training_id, table.position),

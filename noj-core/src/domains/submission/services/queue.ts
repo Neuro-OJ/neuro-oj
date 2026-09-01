@@ -1,4 +1,5 @@
-import { and, eq, inArray, not, sql } from "drizzle-orm";
+import { and, eq, inArray, not, type SQL, sql } from "drizzle-orm";
+import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { getDb } from "../../../db/connection.ts";
 import {
   evaluationResults,
@@ -55,6 +56,93 @@ export interface QueueResponse {
   judging: QueueItem[];
   recently_completed: QueueItem[];
   stats: QueueStats;
+}
+
+/** 队列查询所需的表列集合。 */
+interface QueueTableColumns {
+  id: AnyPgColumn;
+  problemId: AnyPgColumn;
+  language: AnyPgColumn;
+  createdAt: AnyPgColumn;
+  userId: AnyPgColumn;
+  judgeStartedAt?: AnyPgColumn;
+  judgeFinishedAt?: AnyPgColumn;
+  status?: AnyPgColumn;
+  score?: AnyPgColumn;
+}
+
+/**
+ * 查询正式提交或自测的队列行，统一 JOIN problems/users（及可选的 evaluation_results）。
+ */
+async function queryQueueRows(
+  table: AnyPgTable,
+  cols: QueueTableColumns,
+  kind: QueueItem["kind"],
+  where: SQL | undefined,
+  orderBy?: SQL,
+  limit?: number,
+  scoreFromEval = false,
+): Promise<QueueItem[]> {
+  const db = getDb();
+  const selectFields: Record<string, unknown> = {
+    id: cols.id,
+    problem_id: cols.problemId,
+    problem_title: problems.title,
+    language: cols.language,
+    submitted_at: cols.createdAt,
+    submitted_by: users.username,
+  };
+  if (cols.judgeStartedAt) selectFields.judge_started_at = cols.judgeStartedAt;
+  if (cols.judgeFinishedAt) {
+    selectFields.judge_finished_at = cols.judgeFinishedAt;
+  }
+  if (cols.status) selectFields.status = cols.status;
+  if (scoreFromEval) {
+    selectFields.score = evaluationResults.score;
+  } else if (cols.score) {
+    selectFields.score = cols.score;
+  }
+
+  // 动态列集合无法保留 Drizzle 的精确查询类型，这里使用 any 收窄到内部契约。
+  // deno-lint-ignore no-explicit-any
+  let query: any = db
+    // deno-lint-ignore no-explicit-any
+    .select(selectFields as any)
+    .from(table)
+    .innerJoin(problems, eq(cols.problemId, problems.id))
+    .innerJoin(users, eq(cols.userId, users.id));
+  if (scoreFromEval) {
+    query = query.leftJoin(
+      evaluationResults,
+      eq(evaluationResults.submission_id, cols.id),
+    );
+  }
+  if (where) query = query.where(where);
+  if (orderBy) query = query.orderBy(orderBy);
+  if (limit !== undefined) query = query.limit(limit);
+
+  // deno-lint-ignore no-explicit-any
+  const rows: any[] = await query;
+  return rows.map((r) => {
+    const item: QueueItem = {
+      id: r.id as string,
+      problem_id: r.problem_id as string,
+      problem_title: r.problem_title as string,
+      language: r.language as string,
+      submitted_at: r.submitted_at as string,
+      submitted_by: r.submitted_by as string,
+      kind,
+    };
+    if (r.judge_started_at !== undefined) {
+      item.judge_started_at = r.judge_started_at as string | null;
+    }
+    if (r.judge_finished_at !== undefined) {
+      item.judge_finished_at = r.judge_finished_at as string | null;
+    }
+    if (r.status !== undefined) item.status = r.status as string;
+    if (r.score !== undefined) item.score = r.score as number | null;
+    return item;
+  });
 }
 
 /** `GET /api/v1/submissions/:id/status` 响应体。 */
@@ -200,57 +288,35 @@ export async function getQueueOverview(): Promise<QueueResponse> {
   const pendingMap = new Map<string, QueueItem>();
 
   if (pendingFormalIds.length > 0) {
-    const pendingRows = await db
-      .select({
+    const pendingRows = await queryQueueRows(
+      submissions,
+      {
         id: submissions.id,
-        problem_id: submissions.problem_id,
-        problem_title: problems.title,
+        problemId: submissions.problem_id,
         language: submissions.language,
-        submitted_at: submissions.created_at,
-        submitted_by: users.username,
-      })
-      .from(submissions)
-      .innerJoin(problems, eq(submissions.problem_id, problems.id))
-      .innerJoin(users, eq(submissions.user_id, users.id))
-      .where(inArray(submissions.id, pendingFormalIds));
-    for (const r of pendingRows) {
-      pendingMap.set(r.id, {
-        id: r.id,
-        problem_id: r.problem_id,
-        problem_title: r.problem_title,
-        language: r.language,
-        submitted_at: r.submitted_at,
-        submitted_by: r.submitted_by,
-        kind: "submission",
-      });
-    }
+        createdAt: submissions.created_at,
+        userId: submissions.user_id,
+      },
+      "submission",
+      inArray(submissions.id, pendingFormalIds),
+    );
+    for (const r of pendingRows) pendingMap.set(r.id, r);
   }
 
   if (pendingSelfIds.length > 0) {
-    const pendingSelfRows = await db
-      .select({
+    const pendingSelfRows = await queryQueueRows(
+      selfTests,
+      {
         id: selfTests.id,
-        problem_id: selfTests.problem_id,
-        problem_title: problems.title,
+        problemId: selfTests.problem_id,
         language: selfTests.language,
-        submitted_at: selfTests.created_at,
-        submitted_by: users.username,
-      })
-      .from(selfTests)
-      .innerJoin(problems, eq(selfTests.problem_id, problems.id))
-      .innerJoin(users, eq(selfTests.user_id, users.id))
-      .where(inArray(selfTests.id, pendingSelfIds));
-    for (const r of pendingSelfRows) {
-      pendingMap.set(r.id, {
-        id: r.id,
-        problem_id: r.problem_id,
-        problem_title: r.problem_title,
-        language: r.language,
-        submitted_at: r.submitted_at,
-        submitted_by: r.submitted_by,
-        kind: "self_test",
-      });
-    }
+        createdAt: selfTests.created_at,
+        userId: selfTests.user_id,
+      },
+      "self_test",
+      inArray(selfTests.id, pendingSelfIds),
+    );
+    for (const r of pendingSelfRows) pendingMap.set(r.id, r);
   }
 
   const pendingItems: QueueItem[] = pendingIds
@@ -271,32 +337,20 @@ export async function getQueueOverview(): Promise<QueueResponse> {
     )
     : eq(submissions.status, "judging");
 
-  const judgingRows = await db
-    .select({
+  const submissionJudgingItems = await queryQueueRows(
+    submissions,
+    {
       id: submissions.id,
-      problem_id: submissions.problem_id,
-      problem_title: problems.title,
+      problemId: submissions.problem_id,
       language: submissions.language,
-      submitted_at: submissions.created_at,
-      submitted_by: users.username,
-      judge_started_at: submissions.judge_started_at,
-    })
-    .from(submissions)
-    .innerJoin(problems, eq(submissions.problem_id, problems.id))
-    .innerJoin(users, eq(submissions.user_id, users.id))
-    .where(judgingWhere)
-    .orderBy(sql`${submissions.judge_started_at} ASC`);
-
-  const judgingItems: QueueItem[] = judgingRows.map((r) => ({
-    id: r.id,
-    problem_id: r.problem_id,
-    problem_title: r.problem_title,
-    language: r.language,
-    submitted_at: r.submitted_at,
-    submitted_by: r.submitted_by,
-    judge_started_at: r.judge_started_at,
-    kind: "submission",
-  }));
+      createdAt: submissions.created_at,
+      userId: submissions.user_id,
+      judgeStartedAt: submissions.judge_started_at,
+    },
+    "submission",
+    judgingWhere,
+    sql`${submissions.judge_started_at} ASC`,
+  );
 
   const selfJudgingWhere = pendingSelfIds.length > 0
     ? and(
@@ -305,110 +359,66 @@ export async function getQueueOverview(): Promise<QueueResponse> {
     )
     : eq(selfTests.status, "judging");
 
-  const selfJudgingRows = await db
-    .select({
+  const selfJudgingItems = await queryQueueRows(
+    selfTests,
+    {
       id: selfTests.id,
-      problem_id: selfTests.problem_id,
-      problem_title: problems.title,
+      problemId: selfTests.problem_id,
       language: selfTests.language,
-      submitted_at: selfTests.created_at,
-      submitted_by: users.username,
-      judge_started_at: selfTests.judge_started_at,
-    })
-    .from(selfTests)
-    .innerJoin(problems, eq(selfTests.problem_id, problems.id))
-    .innerJoin(users, eq(selfTests.user_id, users.id))
-    .where(selfJudgingWhere)
-    .orderBy(sql`${selfTests.judge_started_at} ASC`);
+      createdAt: selfTests.created_at,
+      userId: selfTests.user_id,
+      judgeStartedAt: selfTests.judge_started_at,
+    },
+    "self_test",
+    selfJudgingWhere,
+    sql`${selfTests.judge_started_at} ASC`,
+  );
 
-  for (const r of selfJudgingRows) {
-    judgingItems.push({
-      id: r.id,
-      problem_id: r.problem_id,
-      problem_title: r.problem_title,
-      language: r.language,
-      submitted_at: r.submitted_at,
-      submitted_by: r.submitted_by,
-      judge_started_at: r.judge_started_at,
-      kind: "self_test",
-    });
-  }
-  judgingItems.sort((a, b) =>
+  const judgingItems: QueueItem[] = [
+    ...submissionJudgingItems,
+    ...selfJudgingItems,
+  ].sort((a, b) =>
     (a.judge_started_at ?? "").localeCompare(b.judge_started_at ?? "")
   );
 
   // 5. 查询 recently_completed：最近 10 条（正式 + 自测合并）
-  const completedRows = await db
-    .select({
-      id: submissions.id,
-      problem_id: submissions.problem_id,
-      problem_title: problems.title,
-      language: submissions.language,
-      submitted_at: submissions.created_at,
-      submitted_by: users.username,
-      judge_started_at: submissions.judge_started_at,
-      judge_finished_at: submissions.judge_finished_at,
-      status: submissions.status,
-      score: evaluationResults.score,
-    })
-    .from(submissions)
-    .innerJoin(problems, eq(submissions.problem_id, problems.id))
-    .innerJoin(users, eq(submissions.user_id, users.id))
-    .leftJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
-    )
-    .where(sql`${submissions.status} IN ('finished', 'error')`)
-    .orderBy(sql`${submissions.judge_finished_at} DESC`)
-    .limit(10);
-
-  const selfCompletedRows = await db
-    .select({
-      id: selfTests.id,
-      problem_id: selfTests.problem_id,
-      problem_title: problems.title,
-      language: selfTests.language,
-      submitted_at: selfTests.created_at,
-      submitted_by: users.username,
-      judge_started_at: selfTests.judge_started_at,
-      judge_finished_at: selfTests.judge_finished_at,
-      status: selfTests.status,
-      score: selfTests.score,
-    })
-    .from(selfTests)
-    .innerJoin(problems, eq(selfTests.problem_id, problems.id))
-    .innerJoin(users, eq(selfTests.user_id, users.id))
-    .where(sql`${selfTests.status} IN ('finished', 'error')`)
-    .orderBy(sql`${selfTests.judge_finished_at} DESC`)
-    .limit(10);
-
   const completedItems: QueueItem[] = [
-    ...completedRows.map((r) => ({
-      id: r.id,
-      problem_id: r.problem_id,
-      problem_title: r.problem_title,
-      language: r.language,
-      submitted_at: r.submitted_at,
-      submitted_by: r.submitted_by,
-      judge_started_at: r.judge_started_at,
-      judge_finished_at: r.judge_finished_at,
-      status: r.status,
-      score: r.score,
-      kind: "submission" as const,
-    })),
-    ...selfCompletedRows.map((r) => ({
-      id: r.id,
-      problem_id: r.problem_id,
-      problem_title: r.problem_title,
-      language: r.language,
-      submitted_at: r.submitted_at,
-      submitted_by: r.submitted_by,
-      judge_started_at: r.judge_started_at,
-      judge_finished_at: r.judge_finished_at,
-      status: r.status,
-      score: r.score,
-      kind: "self_test" as const,
-    })),
+    ...await queryQueueRows(
+      submissions,
+      {
+        id: submissions.id,
+        problemId: submissions.problem_id,
+        language: submissions.language,
+        createdAt: submissions.created_at,
+        userId: submissions.user_id,
+        judgeStartedAt: submissions.judge_started_at,
+        judgeFinishedAt: submissions.judge_finished_at,
+        status: submissions.status,
+      },
+      "submission",
+      sql`${submissions.status} IN ('finished', 'error')`,
+      sql`${submissions.judge_finished_at} DESC`,
+      10,
+      true,
+    ),
+    ...await queryQueueRows(
+      selfTests,
+      {
+        id: selfTests.id,
+        problemId: selfTests.problem_id,
+        language: selfTests.language,
+        createdAt: selfTests.created_at,
+        userId: selfTests.user_id,
+        judgeStartedAt: selfTests.judge_started_at,
+        judgeFinishedAt: selfTests.judge_finished_at,
+        status: selfTests.status,
+        score: selfTests.score,
+      },
+      "self_test",
+      sql`${selfTests.status} IN ('finished', 'error')`,
+      sql`${selfTests.judge_finished_at} DESC`,
+      10,
+    ),
   ].sort((a, b) =>
     (b.judge_finished_at ?? "").localeCompare(a.judge_finished_at ?? "")
   ).slice(0, 10);

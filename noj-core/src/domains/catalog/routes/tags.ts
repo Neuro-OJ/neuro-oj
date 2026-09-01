@@ -1,10 +1,9 @@
-import { type Context, Hono } from "hono";
-import { authMiddleware } from "../../../middleware/auth.ts";
+import { Hono } from "hono";
+import { type AuthEnv, authMiddleware } from "../../../middleware/auth.ts";
 import { parseJsonBody } from "../../../lib/request.ts";
 import { ValidationError } from "../../../lib/errors.ts";
 import { requirePermission } from "../../../lib/permissions.ts";
-import { getClientIp } from "../../../lib/rate-limit-env.ts";
-import { runWithContext } from "../../../lib/requestContext.ts";
+import { withActorContext } from "../../../lib/requestContext.ts";
 import {
   createTag,
   type CreateTagInput,
@@ -15,7 +14,7 @@ import {
   type UpdateTagInput,
 } from "../services/tags.ts";
 
-const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
+const router = new Hono<AuthEnv>();
 
 /**
  * 获取全部标签（公开，含算法标签名——洛谷式发现路径）。
@@ -25,25 +24,6 @@ router.get("/", async (c) => {
   const data = await listTags();
   return c.json({ data });
 });
-
-/**
- * 注入 ALS 上下文使 service 层 logAudit 可获取 actor 信息（issue #101）。
- * 标签写接口不经过 adminMiddleware（tag:manage 为 RBAC 判定，默认仅 admin），
- * 因此必须像 routes/problems.ts 一样在 handler 内显式包裹。
- */
-function withActorContext(
-  c: Context<{ Variables: { userId: string; userRole: string } }>,
-  fn: () => Promise<Response>,
-): Promise<Response> {
-  return runWithContext(
-    {
-      actorId: c.get("userId"),
-      actorIp: getClientIp(c),
-      actorRole: c.get("userRole"),
-    },
-    fn,
-  );
-}
 
 /**
  * 创建标签（tag:manage 权限：默认仅 admin，可经角色授权配置）。

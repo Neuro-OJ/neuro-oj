@@ -14,10 +14,10 @@ import { getDb } from "../../../db/connection.ts";
 import {
   contestClarifications,
   contestProblems,
-  contests,
   users,
 } from "../../../db/schema.ts";
 import { nowIso } from "../../../lib/dates.ts";
+import { findContestRow } from "./contest-row.ts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -73,25 +73,6 @@ export interface ListClarificationsResult {
 }
 
 type ClarificationRow = typeof contestClarifications.$inferSelect;
-
-/**
- * 按竞赛 UUID 查询竞赛数据行，不存在时抛错。
- *
- * @param id 竞赛 UUID
- * @returns 竞赛数据行
- * @throws {NotFoundError} 竞赛不存在时
- */
-async function findContestRow(id: string) {
-  const db = getDb();
-  const [row] = await db.select().from(contests).where(eq(contests.id, id))
-    .limit(
-      1,
-    );
-  if (!row) {
-    throw new NotFoundError("竞赛不存在");
-  }
-  return row;
-}
 
 /**
  * 校验并规范化内容：去首尾空白、非空且不超过长度上限。

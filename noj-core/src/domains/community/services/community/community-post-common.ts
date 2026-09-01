@@ -2,11 +2,11 @@ import { and, eq, gt } from "drizzle-orm";
 import { getDb } from "../../../../db/connection.ts";
 import {
   evaluationResults,
-  problems,
   submissions,
   users,
 } from "../../../../db/schema.ts";
 import { NotFoundError } from "../../../../lib/errors.ts";
+import { resolveProblemIdOrNull } from "../../../../lib/problem-resolve.ts";
 import type {
   CommunityConfig,
   CommunityPostStatus,
@@ -52,42 +52,10 @@ export async function publicationStatus(
  * 支持 UUID、display_id（P1001 / U42）、纯数字（兼容旧 seed 数据 1001/1002/1003）。
  * 题目不存在时返回 null。
  */
-export async function resolveProblemId(
+export function resolveProblemId(
   reference: string,
 ): Promise<string | null> {
-  const db = getDb();
-  // 按 problems.id 主键查找（UUID 或旧 seed 的数字 id）
-  const findByPk = async (id: string): Promise<string | null> => {
-    const row = await db.select({ id: problems.id }).from(problems)
-      .where(eq(problems.id, id)).limit(1);
-    return row[0]?.id ?? null;
-  };
-  const uuidPattern =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (uuidPattern.test(reference)) {
-    return findByPk(reference);
-  }
-  const match = reference.match(/^([UuPp])(\d+)$/);
-  if (match) {
-    const row = await db.select({ id: problems.id }).from(problems).where(and(
-      eq(problems.type, match[1].toUpperCase()),
-      eq(problems.number, parseInt(match[2], 10)),
-    )).limit(1);
-    return row[0]?.id ?? null;
-  }
-  // 纯数字：先按 PK 查找（旧 seed 数据 1001/1002/1003 以数字为 id），再按 type=P+number 兜底
-  if (/^\d+$/.test(reference)) {
-    const byPk = await findByPk(reference);
-    if (byPk) return byPk;
-    const fallback = await db.select({ id: problems.id }).from(problems)
-      .where(and(
-        eq(problems.type, "P"),
-        eq(problems.number, parseInt(reference, 10)),
-      )).limit(1);
-    return fallback[0]?.id ?? null;
-  }
-  // 兜底：其余格式按 PK 尝试
-  return findByPk(reference);
+  return resolveProblemIdOrNull(reference);
 }
 
 /** 查询用户是否已通过指定题目（finished 且 score>0，供门槛判定与题解发布入口使用）。 */

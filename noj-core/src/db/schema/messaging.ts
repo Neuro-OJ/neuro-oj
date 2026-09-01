@@ -1,12 +1,6 @@
-import {
-  check,
-  index,
-  pgTable,
-  primaryKey,
-  text,
-  unique,
-} from "drizzle-orm/pg-core";
+import { check, index, pgTable, text, unique } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { manyToManyPk } from "./common.ts";
 import { users } from "./identity.ts";
 
 /**
@@ -90,7 +84,7 @@ export const conversationReads = pgTable(
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.user_id, table.conversation_id] }),
+    ...manyToManyPk([table.user_id, table.conversation_id]),
   }),
 );
 
@@ -111,7 +105,7 @@ export const messageDeletions = pgTable(
     deleted_at: text("deleted_at").notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.user_id, table.message_id] }),
+    ...manyToManyPk([table.user_id, table.message_id]),
     msg_idx: index("idx_message_deletions_message_id").on(table.message_id),
   }),
 );

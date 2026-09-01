@@ -1,4 +1,4 @@
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte, type SQL, sql } from "drizzle-orm";
 import { todayUtc } from "../../../lib/dates.ts";
 import { getDb } from "../../../db/connection.ts";
 import { evaluationResults, submissions } from "../../../db/schema.ts";
@@ -15,6 +15,35 @@ export interface StatsSnapshot {
   full_score: number;
   /** 未满分提交数（total - full_score） */
   not_full_score: number;
+}
+
+/**
+ * 查询提交统计聚合行（总数 + 满分数）。
+ */
+async function selectStatsRow(
+  where?: SQL | undefined,
+): Promise<{ total: number; full_score: number }> {
+  const db = getDb();
+  // deno-lint-ignore no-explicit-any
+  let query: any = db
+    .select({
+      total: sql<number>`count(*)::int`,
+      full_score: sql<
+        number
+      >`count(*) filter (where ${evaluationResults.score} >= ${FULL_SCORE})::int`,
+    })
+    .from(submissions)
+    .leftJoin(
+      evaluationResults,
+      eq(evaluationResults.submission_id, submissions.id),
+    );
+  if (where) query = query.where(where);
+  // deno-lint-ignore no-explicit-any
+  const [row]: any[] = await query;
+  return {
+    total: Number(row?.total ?? 0),
+    full_score: Number(row?.full_score ?? 0),
+  };
 }
 
 // ── 内存原子计数器 ──
@@ -38,21 +67,9 @@ let todayDate: string | null = null;
  */
 async function ensureTotal(): Promise<void> {
   if (total !== null) return;
-  const db = getDb();
-  const [row] = await db
-    .select({
-      total: sql<number>`count(*)::int`,
-      full_score: sql<
-        number
-      >`count(*) filter (where ${evaluationResults.score} >= ${FULL_SCORE})::int`,
-    })
-    .from(submissions)
-    .leftJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
-    );
-  total = Number(row?.total ?? 0);
-  totalFullScore = Number(row?.full_score ?? 0);
+  const { total: t, full_score: f } = await selectStatsRow();
+  total = t;
+  totalFullScore = f;
 }
 
 /**
@@ -65,22 +82,11 @@ async function ensureTotal(): Promise<void> {
 async function ensureToday(): Promise<void> {
   const today = todayUtc();
   if (todayTotal !== null && todayDate === today) return;
-  const db = getDb();
-  const [row] = await db
-    .select({
-      total: sql<number>`count(*)::int`,
-      full_score: sql<
-        number
-      >`count(*) filter (where ${evaluationResults.score} >= ${FULL_SCORE})::int`,
-    })
-    .from(submissions)
-    .leftJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
-    )
-    .where(gte(submissions.created_at, today));
-  todayTotal = Number(row?.total ?? 0);
-  todayFullScore = Number(row?.full_score ?? 0);
+  const { total: t, full_score: f } = await selectStatsRow(
+    gte(submissions.created_at, today),
+  );
+  todayTotal = t;
+  todayFullScore = f;
   todayDate = today;
 }
 
@@ -160,24 +166,9 @@ export function _resetStatsCacheForTest(): void {
  * @returns 该用户的今日统计快照
  */
 async function getTodayStatsFromDb(userId: string): Promise<StatsSnapshot> {
-  const db = getDb();
   const today = todayUtc();
-  const [row] = await db
-    .select({
-      total: sql<number>`count(*)::int`,
-      full_score: sql<
-        number
-      >`count(*) filter (where ${evaluationResults.score} >= ${FULL_SCORE})::int`,
-    })
-    .from(submissions)
-    .leftJoin(
-      evaluationResults,
-      eq(evaluationResults.submission_id, submissions.id),
-    )
-    .where(
-      and(gte(submissions.created_at, today), eq(submissions.user_id, userId)),
-    );
-  const total = Number(row?.total ?? 0);
-  const fullScore = Number(row?.full_score ?? 0);
-  return { total, full_score: fullScore, not_full_score: total - fullScore };
+  const { total, full_score } = await selectStatsRow(
+    and(gte(submissions.created_at, today), eq(submissions.user_id, userId)),
+  );
+  return { total, full_score, not_full_score: total - full_score };
 }

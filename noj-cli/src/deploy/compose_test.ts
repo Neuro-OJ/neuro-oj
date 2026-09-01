@@ -1,3 +1,4 @@
+import { makeTempDir } from "../testing/helpers.ts";
 import { assertEquals } from "@std/assert";
 import type { DeployConfig, SecretsConfig } from "../config/types.ts";
 import { COMPOSE_FILE, ensureComposeFile, renderCompose } from "./compose.ts";
@@ -97,7 +98,7 @@ Deno.test("renderCompose: 顶层 volumes 声明", () => {
 });
 
 Deno.test("ensureComposeFile: 生成 compose 文件并复用现文件", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   const config = baseConfig();
   const secrets = baseSecrets();
   const p1 = await ensureComposeFile(dir, config, secrets);

@@ -6,6 +6,8 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import type { Context } from "hono";
+import { getClientIp } from "./rate-limit-env.ts";
 
 export interface RequestContext {
   /** 当前用户 ID */
@@ -21,6 +23,23 @@ const storage = new AsyncLocalStorage<RequestContext>();
 /** 在指定 context 内运行 fn（adminMiddleware 内使用） */
 export function runWithContext<T>(ctx: RequestContext, fn: () => T): T {
   return storage.run(ctx, fn);
+}
+
+/**
+ * 从 Hono Context 提取 actor 信息并注入 RequestContext 后运行 fn。
+ */
+export function withActorContext<T>(
+  c: Context,
+  fn: () => T,
+): T {
+  return runWithContext(
+    {
+      actorId: c.get("userId") ?? "",
+      actorIp: getClientIp(c),
+      actorRole: c.get("userRole") ?? "",
+    },
+    fn,
+  );
 }
 
 /** 取当前请求的 context；缺失抛错（程序 bug 保护） */

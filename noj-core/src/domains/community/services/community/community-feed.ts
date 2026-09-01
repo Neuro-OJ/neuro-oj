@@ -10,6 +10,7 @@ import {
 import { ForbiddenError, NotFoundError } from "../../../../lib/errors.ts";
 import { getCommunityConfig } from "./community-config.ts";
 import { nowIso } from "../../../../lib/dates.ts";
+import { authorProjection } from "./community-post-select.ts";
 
 /**
  * 创建一条社区动态事件（活动流）。
@@ -87,11 +88,7 @@ export async function listFeed(
   const momentRows = config.moments_enabled
     ? await db.select({
       post: communityPosts,
-      author: {
-        id: users.id,
-        username: users.username,
-        avatar_url: users.avatar_url,
-      },
+      author: authorProjection,
     }).from(communityPosts).innerJoin(
       users,
       eq(users.id, communityPosts.author_id),
@@ -142,11 +139,7 @@ export async function listFeed(
   }
   const activityRows = await db.select({
     activity: communityActivityEvents,
-    author: {
-      id: users.id,
-      username: users.username,
-      avatar_url: users.avatar_url,
-    },
+    author: authorProjection,
   }).from(communityActivityEvents).innerJoin(
     users,
     eq(users.id, communityActivityEvents.actor_id),

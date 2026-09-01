@@ -28,12 +28,8 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../lib/errors.ts";
-import {
-  generatePublicId,
-  isPublicId,
-  isUuid,
-} from "../../../lib/public-id.ts";
-import { getProblem, getProblemByTypeAndNumber } from "./problems/problems.ts";
+import { generatePublicId, resolvePublicId } from "../../../lib/public-id.ts";
+import { resolveProblemIdOrThrow } from "../../../lib/problem-resolve.ts";
 import {
   type CreateTrainingInput,
   isValidTrainingVisibility,
@@ -324,20 +320,15 @@ export async function createTraining(
 }
 
 /** 将 UUID 或 public_id 解析为内部题单 UUID；其它格式按主键兜底。 */
-export async function resolveTrainingId(value: string): Promise<string> {
-  const db = getDb();
-  if (isUuid(value)) return value;
-  if (isPublicId(value, "tr")) {
-    const rows = await db.select({ id: trainings.id }).from(trainings)
-      .where(eq(trainings.public_id, value)).limit(1);
-    const row = rows[0];
-    if (!row) throw new NotFoundError("题单不存在");
-    return row.id;
-  }
-  const byId = await db.select({ id: trainings.id }).from(trainings)
-    .where(eq(trainings.id, value)).limit(1);
-  if (!byId[0]) throw new NotFoundError("题单不存在");
-  return byId[0].id;
+export function resolveTrainingId(value: string): Promise<string> {
+  return resolvePublicId(
+    trainings,
+    trainings.id,
+    trainings.public_id,
+    "tr",
+    value,
+    "题单不存在",
+  );
 }
 
 /**
@@ -536,18 +527,8 @@ export async function listTrainingProblems(
  * @returns 内部题目 UUID
  * @throws {NotFoundError} 题目不存在
  */
-async function resolveProblemId(input: string): Promise<string> {
-  const value = input.trim();
-  const match = value.match(/^([UuPp])(\d+)$/);
-  if (match) {
-    const problem = await getProblemByTypeAndNumber(
-      match[1].toUpperCase(),
-      parseInt(match[2], 10),
-    );
-    return problem.id;
-  }
-  const problem = await getProblem(value);
-  return problem.id;
+function resolveProblemId(input: string): Promise<string> {
+  return resolveProblemIdOrThrow(input.trim());
 }
 
 /**

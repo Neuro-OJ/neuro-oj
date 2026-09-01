@@ -7,13 +7,11 @@
  */
 
 import { Hono } from "hono";
-import { authMiddleware } from "../../../middleware/auth.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
+import { type AuthEnv, authMiddleware } from "../../../middleware/auth.ts";
+import { assertObjectBody, parseJsonBody } from "../../../lib/request.ts";
 import { parsePagination } from "../../../lib/pagination.ts";
 import { assertPermission, checkPermission } from "../../../lib/permissions.ts";
-import { BadRequestError } from "../../../lib/errors.ts";
-import { runWithContext } from "../../../lib/requestContext.ts";
-import { getClientIp } from "../../../lib/rate-limit-env.ts";
+import { withActorContext } from "../../../lib/requestContext.ts";
 import {
   deleteTraining,
   listAllTrainings,
@@ -22,41 +20,14 @@ import {
 } from "../services/trainings.ts";
 import type { UpdateTrainingInput } from "../../../types/trainings.ts";
 
-const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
-
-/**
- * 判断值是否为普通对象（非 null、非数组）。
- */
-function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-/**
- * 断言请求体为 JSON 对象，否则抛 BadRequestError。
- *
- * @throws {BadRequestError} 请求体不是 JSON 对象
- */
-function assertObjectBody(
-  body: unknown,
-): asserts body is Record<string, unknown> {
-  if (!isObject(body)) {
-    throw new BadRequestError("请求体必须为 JSON 对象");
-  }
-}
+const router = new Hono<AuthEnv>();
 
 /**
  * 组级中间件：认证 + RequestContext 注入；具体权限在各 handler 内按需校验。
  * 应用于本路由组全部路径。
  */
 router.use("*", authMiddleware, (c, next) => {
-  return runWithContext(
-    {
-      actorId: c.get("userId"),
-      actorIp: getClientIp(c),
-      actorRole: c.get("userRole"),
-    },
-    () => next(),
-  );
+  return withActorContext(c, () => next());
 });
 
 /**

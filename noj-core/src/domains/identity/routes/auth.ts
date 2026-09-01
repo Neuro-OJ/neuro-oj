@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../db/connection.ts";
@@ -196,6 +196,22 @@ async function executeTfaProtectedAction<T>(
     }
     throw err;
   }
+}
+
+/** 解析 TFA 管理请求体并执行需验证码的操作。 */
+async function tfaAction<T>(
+  c: Context,
+  action: (userId: string, code: string, ip: string) => Promise<T>,
+): Promise<T> {
+  const body = await parseJsonBody<{ code?: string }>(c);
+  if (!body.code) {
+    throw new ValidationError("缺少字段 code");
+  }
+  const userId = c.get("userId") as string;
+  return executeTfaProtectedAction(
+    userId,
+    () => action(userId, body.code!, getClientIp(c)),
+  );
 }
 
 /**
@@ -537,19 +553,9 @@ auth.post(
   loginIpRateLimit(TFA_NAMESPACE),
   authMiddleware,
   async (c) => {
-    const body = await parseJsonBody<{ code?: string }>(c);
-    if (!body.code) {
-      throw new ValidationError("缺少字段 code");
-    }
-    const userId = c.get("userId") as string;
-    const recoveryCodes = await executeTfaProtectedAction(
-      userId,
-      () =>
-        confirmTfa(
-          userId,
-          body.code!,
-          getClientIp(c),
-        ),
+    const recoveryCodes = await tfaAction(
+      c,
+      (userId, code, ip) => confirmTfa(userId, code, ip),
     );
     return c.json({ data: { recovery_codes: recoveryCodes } }, 200);
   },
@@ -565,15 +571,7 @@ auth.post(
   loginIpRateLimit(TFA_NAMESPACE),
   authMiddleware,
   async (c) => {
-    const body = await parseJsonBody<{ code?: string }>(c);
-    if (!body.code) {
-      throw new ValidationError("缺少字段 code");
-    }
-    const userId = c.get("userId") as string;
-    await executeTfaProtectedAction(
-      userId,
-      () => disableTfa(userId, body.code!, getClientIp(c)),
-    );
+    await tfaAction(c, (userId, code, ip) => disableTfa(userId, code, ip));
     return c.json({ data: { ok: true } }, 200);
   },
 );
@@ -588,14 +586,9 @@ auth.post(
   loginIpRateLimit(TFA_NAMESPACE),
   authMiddleware,
   async (c) => {
-    const body = await parseJsonBody<{ code?: string }>(c);
-    if (!body.code) {
-      throw new ValidationError("缺少字段 code");
-    }
-    const userId = c.get("userId") as string;
-    const recoveryCodes = await executeTfaProtectedAction(
-      userId,
-      () => regenerateRecoveryCodes(userId, body.code!, getClientIp(c)),
+    const recoveryCodes = await tfaAction(
+      c,
+      (userId, code, ip) => regenerateRecoveryCodes(userId, code, ip),
     );
     return c.json({ data: { recovery_codes: recoveryCodes } }, 200);
   },

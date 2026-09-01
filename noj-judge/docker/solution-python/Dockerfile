@@ -24,6 +24,7 @@ RUN apt-get update \
 
 # 安装 SDK 源码
 # 跳过外层 noj_solution_sdk/，让其内容直接落在 site-packages/noj_solution_sdk/
+COPY sdk/common/noj_sdk_common/ /usr/local/lib/python3.12/site-packages/noj_sdk_common/
 COPY sdk/solution/noj_solution_sdk/ /usr/local/lib/python3.12/site-packages/noj_solution_sdk/
 
 # 验证 SDK 可导入（构建期 sanity check）

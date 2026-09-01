@@ -1,4 +1,6 @@
+import { makeTempDir } from "../testing/helpers.ts";
 import { assertEquals, assertRejects } from "@std/assert";
+import { sha256Hex } from "../util/hash.ts";
 import {
   DEFAULT_NOJ_SERVER_VERSION,
   ensureNojServerBinary,
@@ -23,14 +25,6 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
-}
-
-async function sha256Hex(input: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", input as BufferSource);
-  const bytes = new Uint8Array(digest);
-  let hex = "";
-  for (const b of bytes) hex += b.toString(16).padStart(2, "0");
-  return hex;
 }
 
 Deno.test("resolveLatestVersion: 去掉前导 v 并返回 tag", async () => {
@@ -79,7 +73,7 @@ Deno.test("resolveLatestVersion: 缺少 tag_name 抛错", async () => {
 });
 
 Deno.test("ensureNojServerBinary: 版本一致时复用已有二进制", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   try {
     await Deno.mkdir(`${dir}/bin`, { recursive: true });
     await Deno.writeTextFile(`${dir}/bin/noj-server`, "#!/bin/sh\n");
@@ -101,7 +95,7 @@ Deno.test("ensureNojServerBinary: 版本一致时复用已有二进制", async (
 });
 
 Deno.test("ensureNojServerBinary: 已有二进制但无版本文件时不覆盖", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   try {
     await Deno.mkdir(`${dir}/bin`, { recursive: true });
     await Deno.writeTextFile(`${dir}/bin/noj-server`, "user-built\n");
@@ -126,7 +120,7 @@ Deno.test("ensureNojServerBinary: 已有二进制但无版本文件时不覆盖"
 });
 
 Deno.test("ensureNojServerBinary: 缺失时下载、校验并落盘", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   try {
     const bytes = new TextEncoder().encode("fake-noj-server-binary");
     const expected = await sha256Hex(bytes);
@@ -172,7 +166,7 @@ Deno.test("ensureNojServerBinary: 缺失时下载、校验并落盘", async () =
 });
 
 Deno.test("ensureNojServerBinary: SHA-256 不匹配时抛错且不落盘", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   try {
     const bytes = new TextEncoder().encode("bad-binary");
     const expected = await sha256Hex(new TextEncoder().encode("good-binary"));
@@ -212,7 +206,7 @@ Deno.test("ensureNojServerBinary: SHA-256 不匹配时抛错且不落盘", async
 });
 
 Deno.test("ensureNojServerBinary: 校验文件格式非法时抛错", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   try {
     mockFetch((url) => {
       const u = String(url);
@@ -237,7 +231,7 @@ Deno.test("ensureNojServerBinary: 校验文件格式非法时抛错", async () =
 });
 
 Deno.test("ensureNojServerBinary: 下载 HTTP 失败时抛错", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   try {
     mockFetch(() => new Response("not found", { status: 404 }));
     await assertRejects(

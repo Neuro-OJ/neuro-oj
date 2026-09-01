@@ -25,6 +25,7 @@ RUN apt-get update \
 # 安装 SDK 源码
 # 注：noj-judge/sdk/evaluator/noj_evaluator_sdk/ 是包目录
 # COPY 时跳过外层 noj_evaluator_sdk/，让其内容直接落在 site-packages/noj_evaluator_sdk/
+COPY sdk/common/noj_sdk_common/ /usr/local/lib/python3.12/site-packages/noj_sdk_common/
 COPY sdk/evaluator/noj_evaluator_sdk/ /usr/local/lib/python3.12/site-packages/noj_evaluator_sdk/
 
 # 验证 SDK 可导入（构建期 sanity check）

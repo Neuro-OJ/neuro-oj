@@ -1,6 +1,6 @@
 import type { DeployConfig } from "../config/types.ts";
 import { loadDeployment } from "../config/load.ts";
-import { COMPOSE_FILE } from "../deploy/compose.ts";
+import { composePathOf, runDirOf } from "../deploy/paths.ts";
 import type { CommandRunner } from "../runtime/command.ts";
 import { realRunner } from "../runtime/command.ts";
 import { followLogFile, logPath, readRecentLog } from "../runtime/logfile.ts";
@@ -33,16 +33,6 @@ export function parseModulesArg(
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0 && enabled.includes(s));
-}
-
-/** 返回 compose 文件绝对路径。 */
-function composePathOf(config: DeployConfig): string {
-  return `${config.install_dir}/${COMPOSE_FILE}`;
-}
-
-/** 返回 run 目录。 */
-function runDirOf(config: DeployConfig): string {
-  return `${config.install_dir}/run`;
 }
 
 /** 收集各模块最近日志（非 follow）。 */

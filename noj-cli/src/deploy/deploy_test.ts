@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import type { DeployConfig, SecretsConfig } from "../config/types.ts";
+import type { DeployConfig } from "../config/types.ts";
 import type {
   CommandRunner,
   SpawnHandle,
@@ -8,21 +8,24 @@ import type {
 import { deployDown, deployRestart, deployStatus, deployUp } from "./deploy.ts";
 import { COMPOSE_FILE } from "./compose.ts";
 import { writePid } from "../runtime/pidfile.ts";
-
-const NOW = "2026-08-31T00:00:00Z";
+import {
+  baseConfig,
+  makeTempDir,
+  NOW,
+  secrets,
+  writeFixture as writeFixtureFiles,
+} from "../testing/helpers.ts";
 
 function config(
   state: DeployConfig["state"],
   installDir = "/opt/neuro-oj",
 ): DeployConfig {
-  return {
-    schema_version: 1,
+  return baseConfig({
     type: "dev",
     state,
     created_at: NOW,
     updated_at: NOW,
     install_dir: installDir,
-    version: { noj_cli: "0.1.0", noj_server: "0.1.0" },
     env: { LOG_LEVEL: "info" },
     components: {
       postgres: {
@@ -48,36 +51,25 @@ function config(
       domain: "localhost",
       upstream_port: 8080,
     },
-  };
-}
-
-function secrets(): SecretsConfig {
-  return {
-    schema_version: 1,
-    created_at: NOW,
-    updated_at: NOW,
-    secrets: { POSTGRES_PASSWORD: "pg" },
-  };
+  });
 }
 
 async function writeFixture(
   dir: string,
   state: DeployConfig["state"],
 ): Promise<void> {
-  await Deno.mkdir(dir, { recursive: true });
+  await writeFixtureFiles(
+    dir,
+    config(state, dir),
+    secrets({
+      secrets: { POSTGRES_PASSWORD: "pg" },
+    }),
+  );
   await Deno.mkdir(`${dir}/run`, { recursive: true });
   // 预置本地 noj-server 二进制，避免测试触发网络下载。
   await Deno.mkdir(`${dir}/bin`, { recursive: true });
   await Deno.writeTextFile(`${dir}/bin/noj-server`, "#!/bin/sh\n");
   await Deno.writeTextFile(`${dir}/bin/noj-server.version`, "0.1.0\n");
-  await Deno.writeTextFile(
-    `${dir}/noj-deploy.json`,
-    JSON.stringify(config(state, dir)),
-  );
-  await Deno.writeTextFile(
-    `${dir}/noj-secrets.json`,
-    JSON.stringify(secrets()),
-  );
 }
 
 /**
@@ -129,7 +121,7 @@ function fakeRunner(
 }
 
 Deno.test("deployUp: 从 stopped 启动 docker 与 process，写入 running", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   await writeFixture(dir, "stopped");
   const runner = fakeRunner();
   const state = await deployUp({ dir, runner });
@@ -145,7 +137,7 @@ Deno.test("deployUp: 从 stopped 启动 docker 与 process，写入 running", as
 });
 
 Deno.test("deployUp: 已 running 时 no-op", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   await writeFixture(dir, "running");
   const state = await deployUp({ dir, runner: fakeRunner() });
   assertEquals(state, "running");
@@ -165,7 +157,7 @@ Deno.test("deployUp: 已 running 时 no-op", async () => {
 });
 
 Deno.test("deployUp: docker 失败时写入 partial", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   await writeFixture(dir, "stopped");
   const state = await deployUp({ dir, runner: fakeRunner(false) });
   assertEquals(state, "partial");
@@ -176,7 +168,7 @@ Deno.test("deployUp: docker 失败时写入 partial", async () => {
 });
 
 Deno.test("deployDown: 从 running 停止并写 stopped，保留 compose 文件", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   await writeFixture(dir, "running");
   await Deno.writeTextFile(`${dir}/${COMPOSE_FILE}`, "services: {}\n");
   await writePid(`${dir}/run`, "server", 2222);
@@ -197,21 +189,21 @@ Deno.test("deployDown: 从 running 停止并写 stopped，保留 compose 文件"
 });
 
 Deno.test("deployDown: 已 stopped 时 no-op", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   await writeFixture(dir, "stopped");
   const state = await deployDown({ dir, runner: fakeRunner() });
   assertEquals(state, "stopped");
 });
 
 Deno.test("deployRestart: 从 stopped 直接 up 到 running", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   await writeFixture(dir, "stopped");
   const state = await deployRestart({ dir, runner: fakeRunner() });
   assertEquals(state, "running");
 });
 
 Deno.test("deployRestart: 从 running 先 down 再 up", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   await writeFixture(dir, "running");
   await Deno.writeTextFile(`${dir}/${COMPOSE_FILE}`, "services: {}\n");
   const state = await deployRestart({ dir, runner: fakeRunner() });
@@ -219,7 +211,7 @@ Deno.test("deployRestart: 从 running 先 down 再 up", async () => {
 });
 
 Deno.test("deployStatus: 报告状态与各组件 running 情况", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   await writeFixture(dir, "running");
   await Deno.writeTextFile(`${dir}/${COMPOSE_FILE}`, "services: {}\n");
   await writePid(`${dir}/run`, "server", 2222);
@@ -236,7 +228,7 @@ Deno.test("deployStatus: 报告状态与各组件 running 情况", async () => {
 });
 
 Deno.test("deployStatus: 配置缺失时返回 uninitialized", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   const report = await deployStatus({ dir, runner: fakeRunner() });
   assertEquals(report.state, "uninitialized");
   assertEquals(report.components.length, 0);

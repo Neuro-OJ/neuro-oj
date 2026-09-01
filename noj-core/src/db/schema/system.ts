@@ -8,6 +8,7 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { publicIdColumn } from "./common.ts";
 import { users } from "./identity.ts";
 
 /**
@@ -101,9 +102,7 @@ export const announcements = pgTable(
   "announcements",
   {
     id: text("id").primaryKey(),
-    public_id: text("public_id").notNull().default(
-      sql`'ann-' || substr(md5(random()::text), 1, 8)`,
-    ),
+    public_id: publicIdColumn("ann"),
     /** 标题，1–100 字符 */
     title: text("title").notNull(),
     /** Markdown 正文，1–50000 字符 */

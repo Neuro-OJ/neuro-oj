@@ -15,8 +15,7 @@ import {
 import { nowIso } from "../../../../lib/dates.ts";
 import {
   generatePublicId,
-  isPublicId,
-  isUuid,
+  resolvePublicId,
 } from "../../../../lib/public-id.ts";
 import type {
   CommunityPostInput,
@@ -34,6 +33,10 @@ import {
   publicationStatus,
   resolveProblemId,
 } from "./community-post-common.ts";
+import {
+  authorProjection,
+  postStatsProjection,
+} from "./community-post-select.ts";
 
 /**
  * 校验题解发布门槛：若配置要求通过题目，则作者必须已通过对应题目。
@@ -179,20 +182,15 @@ export async function createPost(
 }
 
 /** 将 UUID 或 public_id 解析为内部帖子 UUID；其它格式按主键兜底。 */
-export async function resolvePostId(value: string): Promise<string> {
-  const db = getDb();
-  if (isUuid(value)) return value;
-  if (isPublicId(value, "post")) {
-    const rows = await db.select({ id: communityPosts.id }).from(communityPosts)
-      .where(eq(communityPosts.public_id, value)).limit(1);
-    const row = rows[0];
-    if (!row) throw new NotFoundError("社区内容不存在");
-    return row.id;
-  }
-  const byId = await db.select({ id: communityPosts.id }).from(communityPosts)
-    .where(eq(communityPosts.id, value)).limit(1);
-  if (!byId[0]) throw new NotFoundError("社区内容不存在");
-  return byId[0].id;
+export function resolvePostId(value: string): Promise<string> {
+  return resolvePublicId(
+    communityPosts,
+    communityPosts.id,
+    communityPosts.public_id,
+    "post",
+    value,
+    "社区内容不存在",
+  );
 }
 
 /**
@@ -212,18 +210,9 @@ export async function getPost(
   const db = getDb();
   const rows = await db.select({
     post: communityPosts,
-    author: {
-      id: users.id,
-      username: users.username,
-      avatar_url: users.avatar_url,
-    },
+    author: authorProjection,
     problem_title: problems.title,
-    likes: sql<
-      number
-    >`(select count(*) from community_post_likes where post_id = ${communityPosts.id})`,
-    comments: sql<
-      number
-    >`(select count(*) from community_comments where post_id = ${communityPosts.id} and status = 'published')`,
+    ...postStatsProjection,
     bookmarked: viewerId
       ? sql<
         boolean

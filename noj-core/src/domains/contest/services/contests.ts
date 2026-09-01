@@ -15,12 +15,9 @@ import {
   NotFoundError,
 } from "../../../lib/errors.ts";
 import { comparePassword, hashPassword } from "../../../lib/password.ts";
-import {
-  generatePublicId,
-  isPublicId,
-  isUuid,
-} from "../../../lib/public-id.ts";
+import { generatePublicId, resolvePublicId } from "../../../lib/public-id.ts";
 import { unwrapRows } from "../../../lib/sql-rows.ts";
+import { findContestRow } from "./contest-row.ts";
 import {
   type ContestConfig,
   type ContestProblemInput,
@@ -225,40 +222,16 @@ function toContestResponse(
   };
 }
 
-/**
- * 按内部竞赛 UUID 查询竞赛数据行，不存在时抛错。
- *
- * @param id 竞赛 UUID
- * @returns 竞赛数据行
- * @throws {NotFoundError} 竞赛不存在时
- */
-async function findContestRow(id: string) {
-  const db = getDb();
-  const [row] = await db.select().from(contests).where(eq(contests.id, id))
-    .limit(
-      1,
-    );
-  if (!row) {
-    throw new NotFoundError("竞赛不存在");
-  }
-  return row;
-}
-
 /** 将 UUID 或 public_id 解析为内部竞赛 UUID；其它格式按主键兜底（兼容旧数据）。 */
-export async function resolveContestId(value: string): Promise<string> {
-  const db = getDb();
-  if (isUuid(value)) return value;
-  if (isPublicId(value, "ct")) {
-    const rows = await db.select({ id: contests.id }).from(contests)
-      .where(eq(contests.public_id, value)).limit(1);
-    const row = rows[0];
-    if (!row) throw new NotFoundError("竞赛不存在");
-    return row.id;
-  }
-  const byId = await db.select({ id: contests.id }).from(contests)
-    .where(eq(contests.id, value)).limit(1);
-  if (!byId[0]) throw new NotFoundError("竞赛不存在");
-  return byId[0].id;
+export function resolveContestId(value: string): Promise<string> {
+  return resolvePublicId(
+    contests,
+    contests.id,
+    contests.public_id,
+    "ct",
+    value,
+    "竞赛不存在",
+  );
 }
 
 /**
