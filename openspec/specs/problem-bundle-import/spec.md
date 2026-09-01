@@ -1,10 +1,10 @@
 ## Purpose
 
-定义统一题目包（Problem Bundle）导入规范。统一题目包是题目导入的唯一载体格式：单个 zip 文件（根级 `problem.json` manifest + `evaluate.py` 评测脚本 + 可选 `statement.md` 题面），经 `POST /api/v1/problems/import-bundle` 端点完成解析 → 校验 → 剥离 → 存储 → 元数据 upsert 全流程，替代旧式松散 zip 上传路径。评测内容统一走 CLI（`scripts/noj.ts`）构建与导入。
+定义统一题目包（Problem Bundle）导入规范。统一题目包是题目导入的唯一载体格式：单个 zip 文件（根级 `problem.json` manifest + 编程题 `evaluate.py` 评测脚本 / 客观题 `questions.json` 小题数组 + 可选 `statement.md` 题面），经 `POST /api/v1/problems/import-bundle` 端点完成解析 → 校验 → 剥离 → 存储 → 元数据 upsert 全流程，替代旧式松散 zip 上传路径。评测内容统一走 CLI（`scripts/noj.ts`）构建与导入。
 ## Requirements
 ### Requirement: 统一题目包格式（导入载体）
 
-系统 SHALL 定义统一题目包（Problem Bundle）作为题目导入的唯一载体格式：单个 zip 文件，根级 MUST 包含 `problem.json`（manifest）与 `evaluate.py`（评测脚本入口），SHOULD 包含 `statement.md`（题面 Markdown），可包含任意其他评测内容文件（testcase 不标准化，格式由题目自定，`evaluate.py` 自行读取）。
+系统 SHALL 定义统一题目包（Problem Bundle）作为题目导入的唯一载体格式：单个 zip 文件，根级 MUST 包含 `problem.json`（manifest）。编程题包（`is_objective` 缺省或 false）根级 MUST 包含 `evaluate.py`（评测脚本入口）；客观题套卷包（`is_objective=true`）根级 MUST 包含 `questions.json`（小题数组），SHOULD 包含 `statement.md`（题面 Markdown），可包含任意其他内容文件。
 
 `evaluate.py` MUST 位于 zip 根级——judge 将包解压到容器 `/workspace` 后路径固定为 `/workspace/evaluate.py`。
 
@@ -18,6 +18,22 @@
 - **WHEN** zip 内 `evaluate.py` 位于子目录（如 `evaluator/evaluate.py`）而非根级
 - **THEN** 系统返回 HTTP 400，提示评测脚本必须位于包根级
 
+#### Scenario: 客观题套卷包导入
+
+- **WHEN** `problem.json` 含 `"is_objective": true`，zip 根级含 `questions.json` 且不含 `evaluate.py`
+- **THEN** 系统校验通过，创建/更新客观题套卷并全量替换小题
+- **THEN** 系统不存储评测包，`support_package_storage_url` 为 NULL
+
+#### Scenario: 客观题包携带编程题专属字段
+
+- **WHEN** `is_objective=true` 的 manifest 携带 `runtime_config` / `llm` / `template` / `submission_mode` / `artifact_max_size_mb`
+- **THEN** 系统返回 HTTP 400
+
+#### Scenario: 客观题包缺 questions.json
+
+- **WHEN** `is_objective=true` 的 zip 根级缺少 `questions.json`
+- **THEN** 系统返回 HTTP 400
+
 ### Requirement: manifest 结构
 
 系统 SHALL 要求 `problem.json` 为合法 JSON 对象，字段定义如下：
@@ -26,7 +42,8 @@
 |------|:---:|------|
 | `format_version` | ✅ | 当前为 `1` |
 | `title` | ✅ | 非空字符串 |
-| `runtime_config` | ✅ | 遵循 `problem-runtime-config` 规范，`evaluator.command` 可缺省（缺省注入 `python3 /workspace/evaluate.py`） |
+| `runtime_config` | ✅* | 遵循 `problem-runtime-config` 规范，`evaluator.command` 可缺省（缺省注入 `python3 /workspace/evaluate.py`）；`is_objective=true` 时禁止提供 |
+| `is_objective` | ❌ | 布尔值，缺省 `false`；`true` 表示客观题套卷包，不要求 `runtime_config`/`evaluate.py`，必须含 `questions.json` |
 | `number` | ❌ | 仅 admin 生效：幂等键——按 (type, number) 匹配既有题目则更新；缺省 type 内 MAX+1。非 admin 提供 number MUST 返回 HTTP 400 |
 | `difficulty` | ❌ | `easy`/`medium`/`hard`，缺省 `medium` |
 | `type` | ❌ | `U`/`P`，缺省 `U`（P 型仅 admin） |
@@ -124,9 +141,23 @@
 - **WHEN** 导入 U 型题目或未审核题目且 `problem.json` 包含 `llm`
 - **THEN** 系统返回 HTTP 403，提示仅受信题目可启用 LLM
 
+### Requirement: 客观题套卷包（questions.json）
+
+系统 SHALL 支持 `is_objective=true` 的题目包通过根级 `questions.json` 导入客观题小题。`questions.json` MUST 为非空数组，每项包含 `type`（`single`/`multiple`/`judge`）、`prompt`、`options`（judge 可省略）、`answer`、可选 `explanation` 与 `sort_order`。导入更新 SHALL 全量替换既有小题，且 SHALL NOT 自动重测历史提交。
+
+#### Scenario: 客观题小题导入
+
+- **WHEN** `questions.json` 为合法小题数组
+- **THEN** 系统创建/更新套卷并写入全部小题
+
+#### Scenario: 客观题小题非法
+
+- **WHEN** `questions.json` 为空数组、字段非法或 `sort_order` 重复
+- **THEN** 系统返回 HTTP 400
+
 ### Requirement: 严格校验与 ZIP 安全
 
-系统 SHALL 对导入包执行严格校验，根级缺失 `problem.json` 或 `evaluate.py` 的 zip MUST 被拒绝（HTTP 400）。ZIP 解析 MUST 复用既有安全约束：拒绝路径穿越条目（`..` 或 `/` 开头）、条目数 ≤ 1000、单文件 ≤ 64 MiB、总解压 ≤ 512 MiB。
+系统 SHALL 对导入包执行严格校验，根级缺失 `problem.json` 的 zip MUST 被拒绝（HTTP 400）；编程题包根级缺失 `evaluate.py`、客观题包根级缺失 `questions.json` 也 MUST 被拒绝。ZIP 解析 MUST 复用既有安全约束：拒绝路径穿越条目（`..` 或 `/` 开头）、条目数 ≤ 1000、单文件 ≤ 64 MiB、总解压 ≤ 512 MiB。
 
 #### Scenario: 无 manifest 的旧式 zip 被拒
 
@@ -145,7 +176,7 @@
 
 ### Requirement: 剥离后存储
 
-系统 SHALL 在导入时将 `problem.json` 与 `statement.md` 两个元数据文件从 zip 中剥离，重建"纯净评测包"（仅含评测内容，`evaluate.py` 仍在根级）后通过 StorageProvider 存储，`support_package_storage_url` 指向剥离后的评测包。题面/元数据唯一事实来源为数据库。
+系统 SHALL 在导入时将 `problem.json` 与 `statement.md` 两个元数据文件从编程题 zip 中剥离，重建"纯净评测包"（仅含评测内容，`evaluate.py` 仍在根级）后通过 StorageProvider 存储，`support_package_storage_url` 指向剥离后的评测包。客观题套卷包 SHALL NOT 存储评测包，`support_package_storage_url` 保持 NULL。题面/元数据唯一事实来源为数据库。
 
 #### Scenario: 剥离元数据后存储
 
@@ -314,14 +345,14 @@ CLI MUST 提供自动生成的 help（`-h/--help`）与错误退出码约定。`
 
 ### Requirement: 特殊题型边界
 
-系统 SHALL 在规范中明确：LLM 调用题通过 manifest `llm` 字段配置（`provider_id`/`model`），必须 P 型 + evaluator 联网；客观题套卷不通过统一题目包导入，走 Web 编辑器/API 管理。
+系统 SHALL 在规范中明确：LLM 调用题通过 manifest `llm` 字段配置（`provider_id`/`model`），必须 P 型 + evaluator 联网；客观题套卷通过 `is_objective=true` + `questions.json` 导入，不要求 `evaluate.py`/`runtime_config`。
 
 #### Scenario: LLM 字段校验
 
 - **WHEN** `problem.json` 含 `llm` 且 type 非 P 或未开启 evaluator 网络
 - **THEN** 系统返回 HTTP 400
 
-#### Scenario: 客观题不通过包导入
+#### Scenario: 客观题通过包导入
 
-- **WHEN** 用户尝试用统一题目包导入客观题套卷
-- **THEN** 文档明确该路径不支持，应使用 Web 编辑器/API
+- **WHEN** 用户用统一题目包导入客观题套卷（`is_objective=true` + `questions.json`）
+- **THEN** 系统创建/更新套卷并全量替换小题
