@@ -248,6 +248,11 @@ cd noj-llm-gateway && deno task dev   # 可选
 - 快速反馈用 `deno task test:smoke`
 - 不要直接手拼 `deno test`（会丢失必要环境配置）
 
+### 8.6 搜索工具要求
+
+- 搜索代码/文件内容必须使用 `rg`（ripgrep），不要使用 `grep`
+- 仅当环境中不存在 `rg` 时，才允许回退到 `grep`
+
 ---
 
 ## 9. 贡献流程
