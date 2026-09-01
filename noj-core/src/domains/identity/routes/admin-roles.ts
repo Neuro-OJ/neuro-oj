@@ -7,7 +7,7 @@ import {
   listPermissions,
   listRoles,
   updateRole,
-} from "../../../services/admin-roles.ts";
+} from "../services/admin-roles.ts";
 
 /**
  * 管理端 RBAC 路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。

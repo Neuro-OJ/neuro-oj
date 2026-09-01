@@ -5,22 +5,22 @@
  */
 
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
+import { getDb } from "../../../db/connection.ts";
 import {
   permissions,
   rolePermissions,
   roles,
   userRoles,
   users,
-} from "../db/schema.ts";
-import { ROOT_USER_ID } from "../lib/constants.ts";
-import { getAdminUserIds, isUserAdmin } from "../lib/permissions.ts";
+} from "../../../db/schema.ts";
+import { ROOT_USER_ID } from "../../../lib/constants.ts";
+import { getAdminUserIds, isUserAdmin } from "../../../lib/permissions.ts";
 import {
   BadRequestError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
-} from "../lib/errors.ts";
+} from "../../../lib/errors.ts";
 
 function uuid(): string {
   return crypto.randomUUID() as string;
