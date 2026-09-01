@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "../../middleware/auth.ts";
-import { BadRequestError } from "../../lib/errors.ts";
-import { listAllProblems } from "../../services/problems/problems.ts";
+import type { AuthEnv } from "../../../middleware/auth.ts";
+import { BadRequestError } from "../../../lib/errors.ts";
+import { listAllProblems } from "../services/problems/problems.ts";
 
 /**
  * 管理端题目管理路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。

@@ -13,18 +13,22 @@
  *   —— getProblem 是函数级引用，运行时才解析，无循环问题
  */
 import { eq, inArray, sql } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
-import { evaluationResults, problems, submissions } from "../../db/schema.ts";
+import { getDb } from "../../../../db/connection.ts";
+import {
+  evaluationResults,
+  problems,
+  submissions,
+} from "../../../../db/schema.ts";
 import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "../../lib/errors.ts";
-import { getStorageProvider } from "../../lib/storage/mod.ts";
-import { logger } from "../../lib/logging.ts";
-import { validateJudgeImageWithKind } from "../judge-images.ts";
-import { logAudit } from "../audit-log.ts";
-import { getLlmProviderById } from "../llm.ts";
+} from "../../../../lib/errors.ts";
+import { getStorageProvider } from "../../../../lib/storage/mod.ts";
+import { logger } from "../../../../lib/logging.ts";
+import { validateJudgeImageWithKind } from "../../../../services/judge-images.ts";
+import { logAudit } from "../../../system/index.ts";
+import { getLlmProviderById } from "../../../gateway/index.ts";
 import {
   type CreateProblemInput,
   DIFFICULTIES,
@@ -36,17 +40,17 @@ import {
   type ProblemResponseWithTags,
   type RuntimeConfig,
   type UpdateProblemInput,
-} from "../../types/problems.ts";
+} from "../../../../types/problems.ts";
 import { validateRuntimeConfig } from "./problems-types.ts";
 import { syncProblemTags, validateProblemTagIds } from "./problems-tags.ts";
 import { getProblem } from "./problems-list.ts";
-import { assertPermission } from "../../lib/permissions.ts";
+import { assertPermission } from "../../../../lib/permissions.ts";
 import {
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
 } from "./problem-field-guard.ts";
 import type { Context } from "hono";
-import { ROOT_USER_ID } from "../../lib/constants.ts";
+import { ROOT_USER_ID } from "../../../../lib/constants.ts";
 
 /**
  * 创建题目。

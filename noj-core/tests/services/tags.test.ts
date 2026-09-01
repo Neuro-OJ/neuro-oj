@@ -8,7 +8,7 @@ import {
   listTags,
   mergeTags,
   updateTag,
-} from "../../src/services/tags.ts";
+} from "../../src/domains/catalog/index.ts";
 import { ConflictError, NotFoundError } from "../../src/lib/errors.ts";
 import { getDb } from "../../src/db/connection.ts";
 import {

@@ -13,7 +13,7 @@ import { Hono } from "hono";
 import type { AuthEnv } from "../../middleware/auth.ts";
 import { adminMiddleware, authMiddleware } from "../../middleware/auth.ts";
 import adminUsers from "../../domains/identity/routes/admin-users.ts";
-import adminProblems from "./admin-problems.ts";
+import adminProblems from "../../domains/catalog/routes/admin-problems.ts";
 import adminSubmissions from "./admin-submissions.ts";
 import adminContests from "../../domains/contest/routes/admin-contests.ts";
 import adminJudgeImages from "./admin-judge-images.ts";

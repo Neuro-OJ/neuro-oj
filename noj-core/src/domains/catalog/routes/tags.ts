@@ -1,10 +1,10 @@
 import { type Context, Hono } from "hono";
-import { authMiddleware } from "../middleware/auth.ts";
-import { parseJsonBody } from "../lib/request.ts";
-import { ValidationError } from "../lib/errors.ts";
-import { requirePermission } from "../lib/permissions.ts";
-import { getClientIp } from "../lib/rate-limit-env.ts";
-import { runWithContext } from "../lib/requestContext.ts";
+import { authMiddleware } from "../../../middleware/auth.ts";
+import { parseJsonBody } from "../../../lib/request.ts";
+import { ValidationError } from "../../../lib/errors.ts";
+import { requirePermission } from "../../../lib/permissions.ts";
+import { getClientIp } from "../../../lib/rate-limit-env.ts";
+import { runWithContext } from "../../../lib/requestContext.ts";
 import {
   createTag,
   type CreateTagInput,

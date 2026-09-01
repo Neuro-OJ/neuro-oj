@@ -6,11 +6,14 @@
  */
 
 import { Hono } from "hono";
-import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
-import { parseJsonBody } from "../lib/request.ts";
-import { parsePagination } from "../lib/pagination.ts";
-import { assertPermission, checkPermission } from "../lib/permissions.ts";
-import { BadRequestError } from "../lib/errors.ts";
+import {
+  authMiddleware,
+  optionalAuthMiddleware,
+} from "../../../middleware/auth.ts";
+import { parseJsonBody } from "../../../lib/request.ts";
+import { parsePagination } from "../../../lib/pagination.ts";
+import { assertPermission, checkPermission } from "../../../lib/permissions.ts";
+import { BadRequestError } from "../../../lib/errors.ts";
 import {
   addTrainingProblem,
   createTraining,
@@ -29,7 +32,7 @@ import {
 import type {
   CreateTrainingInput,
   UpdateTrainingInput,
-} from "../types/trainings.ts";
+} from "../../../types/trainings.ts";
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 

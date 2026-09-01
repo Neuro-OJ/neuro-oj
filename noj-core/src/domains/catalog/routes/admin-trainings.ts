@@ -7,20 +7,20 @@
  */
 
 import { Hono } from "hono";
-import { authMiddleware } from "../middleware/auth.ts";
-import { parseJsonBody } from "../lib/request.ts";
-import { parsePagination } from "../lib/pagination.ts";
-import { assertPermission, checkPermission } from "../lib/permissions.ts";
-import { BadRequestError } from "../lib/errors.ts";
-import { runWithContext } from "../lib/requestContext.ts";
-import { getClientIp } from "../lib/rate-limit-env.ts";
+import { authMiddleware } from "../../../middleware/auth.ts";
+import { parseJsonBody } from "../../../lib/request.ts";
+import { parsePagination } from "../../../lib/pagination.ts";
+import { assertPermission, checkPermission } from "../../../lib/permissions.ts";
+import { BadRequestError } from "../../../lib/errors.ts";
+import { runWithContext } from "../../../lib/requestContext.ts";
+import { getClientIp } from "../../../lib/rate-limit-env.ts";
 import {
   deleteTraining,
   listAllTrainings,
   resolveTrainingId,
   updateTraining,
 } from "../services/trainings.ts";
-import type { UpdateTrainingInput } from "../types/trainings.ts";
+import type { UpdateTrainingInput } from "../../../types/trainings.ts";
 
 const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
 

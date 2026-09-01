@@ -1,12 +1,12 @@
 import { resolve } from "jsr:@std/path@^1";
 import { eq } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
-import { problems } from "../db/schema.ts";
-import { ForbiddenError, NotFoundError } from "../lib/errors.ts";
-import { getStorageProvider } from "../lib/storage/mod.ts";
-import { logger } from "../lib/logging.ts";
-import { assertPermission } from "../lib/permissions.ts";
-import { isValidTemplateFileName } from "../types/problem-bundle.ts";
+import { getDb } from "../../../db/connection.ts";
+import { problems } from "../../../db/schema.ts";
+import { ForbiddenError, NotFoundError } from "../../../lib/errors.ts";
+import { getStorageProvider } from "../../../lib/storage/mod.ts";
+import { logger } from "../../../lib/logging.ts";
+import { assertPermission } from "../../../lib/permissions.ts";
+import { isValidTemplateFileName } from "../../../types/problem-bundle.ts";
 import type { Context } from "hono";
 
 /**

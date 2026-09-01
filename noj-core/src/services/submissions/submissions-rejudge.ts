@@ -13,7 +13,7 @@ import { evaluationResults, submissions } from "../../db/schema.ts";
 import { AppError, BadRequestError, NotFoundError } from "../../lib/errors.ts";
 import { getDb } from "../../db/connection.ts";
 import { pushJudgeTask } from "../../mq/producer.ts";
-import { getProblem } from "../problems/problems-list.ts";
+import { getProblem } from "../../domains/catalog/index.ts";
 import { getStorageProvider } from "../../lib/storage/mod.ts";
 import { logAudit } from "../audit-log.ts";
 import { buildJudgeTaskLlm } from "../../lib/llm-token.ts";

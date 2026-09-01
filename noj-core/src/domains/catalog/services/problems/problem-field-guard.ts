@@ -23,12 +23,12 @@
  */
 
 import type { Context } from "hono";
-import { AppError, ForbiddenError } from "../../lib/errors.ts";
-import { checkPermission } from "../../lib/permissions.ts";
-import { getSetting } from "../system-settings.ts";
-import { logger } from "../../lib/logging.ts";
-import { ROOT_USER_ID } from "../../lib/constants.ts";
-import type { RuntimeConfig } from "../../types/index.ts";
+import { AppError, ForbiddenError } from "../../../../lib/errors.ts";
+import { checkPermission } from "../../../../lib/permissions.ts";
+import { getSetting } from "../../../system/index.ts";
+import { logger } from "../../../../lib/logging.ts";
+import { ROOT_USER_ID } from "../../../../lib/constants.ts";
+import type { RuntimeConfig } from "../../../../types/index.ts";
 
 /** 敏感字段路径 → RBAC 权限项（`<section>.<field>` 结构） */
 export const SENSITIVE_FIELD_PERMISSIONS: Record<string, string> = {

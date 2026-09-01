@@ -11,7 +11,7 @@ import { eq } from "drizzle-orm";
 import {
   deleteSupportPackage,
   getSupportPackageBytes,
-} from "../../src/services/support-package.ts";
+} from "../../src/domains/catalog/index.ts";
 import { ForbiddenError, NotFoundError } from "../../src/lib/errors.ts";
 import {
   getStorageProvider,

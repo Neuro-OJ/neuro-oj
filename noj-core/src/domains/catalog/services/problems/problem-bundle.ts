@@ -17,42 +17,42 @@
 
 import type { Context } from "hono";
 import { and, eq, sql } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
-import { objectiveQuestions, problems } from "../../db/schema.ts";
+import { getDb } from "../../../../db/connection.ts";
+import { objectiveQuestions, problems } from "../../../../db/schema.ts";
 import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
   ValidationError,
-} from "../../lib/errors.ts";
-import { logger } from "../../lib/logging.ts";
-import { checkPermission } from "../../lib/permissions.ts";
-import { getStorageProvider } from "../../lib/storage/mod.ts";
+} from "../../../../lib/errors.ts";
+import { logger } from "../../../../lib/logging.ts";
+import { checkPermission } from "../../../../lib/permissions.ts";
+import { getStorageProvider } from "../../../../lib/storage/mod.ts";
 import {
   parseBundleZip,
   stripMetadataEntries,
-} from "../../lib/bundle-parser.ts";
+} from "../../../../lib/bundle-parser.ts";
 import {
   isValidProblemBundleName,
   type ProblemBundleManifest,
   validateBundleManifest,
   validateObjectiveQuestions,
-} from "../../types/problem-bundle.ts";
-import type { ProblemResponseWithTags } from "../../types/problems.ts";
-import { type CreateQuestionInput } from "../../types/objective.ts";
+} from "../../../../types/problem-bundle.ts";
+import type { ProblemResponseWithTags } from "../../../../types/problems.ts";
+import { type CreateQuestionInput } from "../../../../types/objective.ts";
 import { updateProblem } from "./problems-crud.ts";
-import { validateJudgeImageWithKind } from "../judge-images.ts";
+import { validateJudgeImageWithKind } from "../../../../services/judge-images.ts";
 import {
   assertSensitiveFieldPermissions,
   enforceResourceLimits,
 } from "./problem-field-guard.ts";
 import { syncProblemTags, validateProblemTagIds } from "./problems-tags.ts";
-import { judgeOptions } from "../../domains/objective/index.ts";
+import { judgeOptions } from "../../../objective/index.ts";
 import { getProblem } from "./problems-list.ts";
 import { getTagIdsByNames, listTags } from "../tags.ts";
-import { logAudit } from "../audit-log.ts";
+import { logAudit } from "../../../system/index.ts";
 import { MAX_SUPPORT_PACKAGE_SIZE } from "../support-package.ts";
-import { ROOT_USER_ID } from "../../lib/constants.ts";
+import { ROOT_USER_ID } from "../../../../lib/constants.ts";
 
 /** 导入执行者（CLI 场景无 Hono Context）。 */
 export interface BundleImportActor {

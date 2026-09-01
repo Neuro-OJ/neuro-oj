@@ -8,7 +8,7 @@
 import {
   getProblem,
   getProblemByTypeAndNumber,
-} from "../services/problems/problems-list.ts";
+} from "../domains/catalog/index.ts";
 
 /**
  * 双索引查找题目。

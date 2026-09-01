@@ -6,7 +6,7 @@ import {
   getProblem,
   listProblems,
   updateProblem,
-} from "../../src/services/problems/problems.ts";
+} from "../../src/domains/catalog/index.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { auditLogs, tags, users } from "../../src/db/schema.ts";
 import { BadRequestError, NotFoundError } from "../../src/lib/errors.ts";

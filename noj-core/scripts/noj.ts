@@ -28,7 +28,7 @@ import {
   seedLlmQuotas,
   seedTags,
 } from "../src/services/seed/seed-system.ts";
-import { importProblemBundle } from "../src/services/problems/problem-bundle.ts";
+import { importProblemBundle } from "../src/domains/catalog/index.ts";
 import { isValidTemplateFileName } from "../src/types/problem-bundle.ts";
 import { ROOT_USER_ID } from "../src/lib/constants.ts";
 

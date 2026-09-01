@@ -14,14 +14,14 @@
  * - 全部写操作写入审计（tags.create/update/delete/merge）
  */
 import { and, asc, count, eq, inArray } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
-import { problemTags, tags } from "../db/schema.ts";
+import { getDb } from "../../../db/connection.ts";
+import { problemTags, tags } from "../../../db/schema.ts";
 import {
   BadRequestError,
   ConflictError,
   NotFoundError,
-} from "../lib/errors.ts";
-import { logAudit } from "./audit-log.ts";
+} from "../../../lib/errors.ts";
+import { logAudit } from "../../system/index.ts";
 
 /** 标签 kind 枚举。 */
 export const TAG_KINDS = ["problem", "algorithm"] as const;

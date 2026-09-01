@@ -26,8 +26,8 @@ import { ensureRbacSeeds } from "../../src/services/seed/seed-rbac.ts";
 import {
   createProblem,
   updateProblem,
-} from "../../src/services/problems/problems.ts";
-import { importProblemBundle } from "../../src/services/problems/problem-bundle.ts";
+} from "../../src/domains/catalog/index.ts";
+import { importProblemBundle } from "../../src/domains/catalog/index.ts";
 import {
   resetSetting,
   updateSetting,

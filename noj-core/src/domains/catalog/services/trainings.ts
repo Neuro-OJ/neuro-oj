@@ -13,7 +13,7 @@
  */
 
 import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
+import { getDb } from "../../../db/connection.ts";
 import {
   evaluationResults,
   objectiveSubmissions,
@@ -21,14 +21,18 @@ import {
   submissions,
   trainingProblems,
   trainings,
-} from "../db/schema.ts";
+} from "../../../db/schema.ts";
 import {
   BadRequestError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
-} from "../lib/errors.ts";
-import { generatePublicId, isPublicId, isUuid } from "../lib/public-id.ts";
+} from "../../../lib/errors.ts";
+import {
+  generatePublicId,
+  isPublicId,
+  isUuid,
+} from "../../../lib/public-id.ts";
 import { getProblem, getProblemByTypeAndNumber } from "./problems/problems.ts";
 import {
   type CreateTrainingInput,
@@ -37,7 +41,7 @@ import {
   type TrainingResponse,
   type TrainingVisibility,
   type UpdateTrainingInput,
-} from "../types/trainings.ts";
+} from "../../../types/trainings.ts";
 
 export interface ListTrainingsParams {
   page?: number;

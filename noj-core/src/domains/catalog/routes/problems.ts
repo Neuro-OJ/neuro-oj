@@ -1,20 +1,23 @@
 import { Hono } from "hono";
-import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
-import { parseJsonBody } from "../lib/request.ts";
+import {
+  authMiddleware,
+  optionalAuthMiddleware,
+} from "../../../middleware/auth.ts";
+import { parseJsonBody } from "../../../lib/request.ts";
 import {
   BadRequestError,
   ForbiddenError,
   UnauthorizedError,
-} from "../lib/errors.ts";
-import { parsePagination } from "../lib/pagination.ts";
-import { getClientIp } from "../lib/rate-limit-env.ts";
-import { checkPermission } from "../lib/permissions.ts";
+} from "../../../lib/errors.ts";
+import { parsePagination } from "../../../lib/pagination.ts";
+import { getClientIp } from "../../../lib/rate-limit-env.ts";
+import { checkPermission } from "../../../lib/permissions.ts";
 import {
   enforceObjectiveSubmitRateLimit,
   enforceProblemCreateRateLimit,
   enforceProblemImportRateLimit,
-} from "../lib/hardening-rate-limit.ts";
-import { runWithContext } from "../lib/requestContext.ts";
+} from "../../../lib/hardening-rate-limit.ts";
+import { runWithContext } from "../../../lib/requestContext.ts";
 import {
   createProblem,
   deleteProblem,
@@ -22,13 +25,16 @@ import {
   updateProblem,
 } from "../services/problems/problems.ts";
 import { applyAlgorithmTagVisibility } from "../services/problems/problems-list.ts";
-import { resolveProblem } from "../lib/problem-resolve.ts";
-import { ADMIN_FULL_ACCESS, resolvePermissions } from "../lib/permissions.ts";
+import { resolveProblem } from "../../../lib/problem-resolve.ts";
+import {
+  ADMIN_FULL_ACCESS,
+  resolvePermissions,
+} from "../../../lib/permissions.ts";
 import type {
   CreateProblemInput,
   ProblemListQuery,
   UpdateProblemInput,
-} from "../types/problems.ts";
+} from "../../../types/problems.ts";
 import {
   deleteSupportPackage,
   getProblemTemplate,
@@ -47,12 +53,12 @@ import {
   listPaperQuestions,
   submitObjectivePaper,
   updateQuestion,
-} from "../domains/objective/index.ts";
+} from "../../objective/index.ts";
 import type {
   CreateQuestionInput,
   SubmitObjectiveInput,
   UpdateQuestionInput,
-} from "../types/objective.ts";
+} from "../../../types/objective.ts";
 
 const router = new Hono<
   { Variables: { userId: string; userRole: string } }
