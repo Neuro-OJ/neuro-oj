@@ -8,7 +8,7 @@
 ### 宝塔等服务器面板
 
 宝塔等服务器面板与普通部署复用同一套 `noj-cli` 流程，不提供面板专用脚本或参数。
-部署完成后只需在面板中将域名反向代理到 `127.0.0.1:NGINX_PORT`（默认 `8080`）；
+部署完成后只需在面板中将域名反向代理到 `127.0.0.1:<env.NGINX_PORT>`（默认 `8080`）；
 Judge 仍需使用独立的 rootless Docker socket，不能改用 `/run/docker.sock` 或
 `/var/run/docker.sock`。
 
@@ -261,12 +261,12 @@ docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue
    完成漏洞扫描、SBOM、签名和来源证明后，才创建正式版本标签。
 2. 确认 Release workflow 的全部镜像验证成功；固定版本部署可在服务器修改
    `noj-deploy.json` 中的 `version.noj_server=v0.1.1`（或执行
-   `noj-cli maintain config set version.noj_server v0.1.1`）。
+   `noj-cli maintain config set version.noj_server v0.1.1 --dir /opt/neuro-oj`）。
 3. 升级前创建备份，然后更新配置并重新部署：
 
 ```bash
 noj-cli maintain backup create --dir /opt/neuro-oj
-noj-cli maintain config set version.noj_server v0.1.1
+noj-cli maintain config set version.noj_server v0.1.1 --dir /opt/neuro-oj
 noj-cli deploy up --dir /opt/neuro-oj
 ```
 

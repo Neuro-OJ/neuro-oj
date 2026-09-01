@@ -246,7 +246,7 @@ docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue
 
 如果队列持续堆积：
 
-1. 确认 Judge Worker 在线且连接了同一个 Redis（`docker compose ps`）。
+1. 确认 Judge Worker 在线且连接了同一个 Redis（`noj-cli deploy status --dir /opt/neuro-oj`）。
 2. 查看 judge 日志是否有拉取/容器错误。
 3. 检查 Docker daemon 是否可用、评测镜像是否已从 ghcr.io 拉取。
 4. 如负载确实超过单实例能力，按下一节水平扩展。
@@ -262,7 +262,7 @@ docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue
 
 - 停止实例会进入优雅关闭流程：排空正在执行的 in-flight 任务后再退出，避免提交丢失。
 - 升级步骤：修改 `noj-deploy.json` 中的 `version.noj_server`（或
-  `noj-cli maintain config set version.noj_server v0.1.1`）→
+  `noj-cli maintain config set version.noj_server v0.1.1 --dir /opt/neuro-oj`）→
   `noj-cli deploy up --dir /opt/neuro-oj`。
 - 升级评测镜像后应先在 noj-server 白名单登记，再启动 Worker。
 
