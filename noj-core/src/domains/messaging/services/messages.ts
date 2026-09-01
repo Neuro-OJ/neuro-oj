@@ -1137,6 +1137,19 @@ export async function addReaction(
       ],
       set: { emoji, created_at: now },
     });
+
+  // 通知对方刷新 reaction
+  const { otherUserId } = await assertParticipant(userId, msg.conversation_id);
+  await publishSseEvent(
+    Channels.user(otherUserId),
+    {
+      type: "message:reaction",
+      conversation_id: msg.conversation_id,
+      message_id: messageId,
+      user_id: userId,
+      emoji,
+    },
+  );
 }
 
 /**
@@ -1172,6 +1185,19 @@ export async function removeReaction(
         eq(messageReactions.emoji, emoji),
       ),
     );
+
+  // 通知对方刷新 reaction
+  const { otherUserId } = await assertParticipant(userId, msg.conversation_id);
+  await publishSseEvent(
+    Channels.user(otherUserId),
+    {
+      type: "message:reaction",
+      conversation_id: msg.conversation_id,
+      message_id: messageId,
+      user_id: userId,
+      emoji,
+    },
+  );
 }
 
 /** 编辑时间窗口（毫秒）：发送后 5 分钟内可编辑 */

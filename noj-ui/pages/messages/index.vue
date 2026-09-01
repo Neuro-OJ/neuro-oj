@@ -378,6 +378,13 @@ useEventSource({
         await loadMessages()
       }
     },
+    "message:reaction": async (data: unknown) => {
+      const evt = data as { conversation_id: string }
+      // 对方添加/移除 reaction：当前会话打开时重新拉取，即时更新 reaction 头像与计数
+      if (evt.conversation_id === selectedConversationId.value) {
+        await loadMessages()
+      }
+    },
     "feature:disabled": () => {
       messagingEnabled.value = false
     },
