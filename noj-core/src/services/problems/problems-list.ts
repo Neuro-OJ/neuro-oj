@@ -432,7 +432,7 @@ export interface ProblemViewer {
  *
  * 规则：
  * - kind='problem' 标签始终返回
- * - kind='algorithm' 标签仅 admin / 题目 owner / 有 Accepted 提交的 viewer 可见
+ * - kind='algorithm' 标签仅 admin / 题目 owner / 有通过提交（finished 且 score>0）的 viewer 可见
  * - 其余 viewer 收不到算法标签名称与数量，仅置 has_hidden_algorithm_tags=true
  * - 无算法标签 → has_hidden_algorithm_tags=false
  * 按请求时最新提交状态实时计算（无缓存；rejudge 后 AC 消失则标签随之隐藏）。
@@ -461,7 +461,7 @@ export async function applyAlgorithmTagVisibility(
     };
   }
 
-  // 登录用户：有 Accepted 提交才可见
+  // 登录用户：有通过提交（finished 且 score>0）才可见
   const accepted = await hasAcceptedSubmission(problem.id, viewer.userId);
   if (accepted) {
     return { ...problem, has_hidden_algorithm_tags: false };
@@ -475,7 +475,7 @@ export async function applyAlgorithmTagVisibility(
 }
 
 /**
- * 查询 viewer 是否在指定题目存在 Accepted 提交。
+ * 查询 viewer 是否在指定题目存在通过提交（finished 且 score>0）。
  */
 async function hasAcceptedSubmission(
   problemId: string,

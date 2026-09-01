@@ -37,7 +37,7 @@ export function queryProfileUser(
     .then((rows) => rows[0]);
 }
 
-/** 2. 统计查询：总提交数、Accepted 数、解题数。 */
+/** 2. 统计查询：总提交数、通过数、解题数。 */
 export function queryProfileStats(
   db: Db,
   userId: string,

@@ -196,9 +196,9 @@ OOM 容器由 `docker rm -f` 回收，不映射 MemoryLimitExceeded。
 ```json
 {
   "submission_id": "uuid",
-  "status": "Accepted",
+  "status": "finished",
   "score": 1000,
-  "output": "---RESULT---\n{\"status\":\"Accepted\",\"score\":1000,\"details\":{}}",
+  "output": "---RESULT---\n{\"score\":1000,\"details\":{}}",
   "details": { "cases": [...] },
   "time_ms": 42,
   "memory_kb": null

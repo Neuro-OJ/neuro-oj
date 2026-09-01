@@ -1,3 +1,5 @@
+-- 移除 Accepted 状态残留：重建 user_rankings 物化视图，
+-- 将 er.status = 'Accepted' 改为 er.status = 'finished' AND er.score > 0。
 DROP MATERIALIZED VIEW IF EXISTS user_rankings;
 
 CREATE MATERIALIZED VIEW user_rankings AS

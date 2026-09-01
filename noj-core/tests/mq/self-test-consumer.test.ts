@@ -150,7 +150,7 @@ Deno.test({
   fn: async () => {
     await handleResultMessage({
       submission_id: SELF_TEST_ID,
-      status: "Accepted",
+      status: "finished",
       score: 10000,
       output: "---RESULT---\n{}",
       details: { cases: [] },
@@ -165,7 +165,7 @@ Deno.test({
       .where(eq(selfTests.id, SELF_TEST_ID))
       .limit(1);
     assertEquals(st.status, "finished");
-    assertEquals(st.result_status, "Accepted");
+    assertEquals(st.result_status, "finished");
     assertEquals(st.score, 10000);
 
     const [er] = await db
@@ -185,7 +185,7 @@ Deno.test({
   fn: async () => {
     await handleResultMessage({
       submission_id: SUBMISSION_ID,
-      status: "Accepted",
+      status: "finished",
       score: 1000,
       output: "---RESULT---\n{}",
       details: {},
@@ -197,7 +197,7 @@ Deno.test({
       .from(evaluationResults)
       .where(eq(evaluationResults.submission_id, SUBMISSION_ID))
       .limit(1);
-    assertEquals(er.status, "Accepted");
+    assertEquals(er.status, "finished");
   },
 });
 
@@ -207,10 +207,10 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    // 先产生一个终态 Accepted（本用例独立完成，不依赖上一个用例）
+    // 先产生一个终态 finished（本用例独立完成，不依赖上一个用例）
     await handleResultMessage({
       submission_id: SELF_TEST_ID,
-      status: "Accepted",
+      status: "finished",
       score: 10000,
       output: "---RESULT---\n{}",
       details: { cases: [] },
@@ -220,7 +220,7 @@ Deno.test({
     // 再发送重复终态，应被幂等忽略
     await handleResultMessage({
       submission_id: SELF_TEST_ID,
-      status: "WrongAnswer",
+      status: "finished",
       score: 0,
       output: "---RESULT---\n{}",
       details: {},
@@ -232,7 +232,7 @@ Deno.test({
       .from(selfTests)
       .where(eq(selfTests.id, SELF_TEST_ID))
       .limit(1);
-    assertEquals(st.result_status, "Accepted");
+    assertEquals(st.result_status, "finished");
     assertEquals(st.score, 10000);
   },
 });

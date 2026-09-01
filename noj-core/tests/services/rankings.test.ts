@@ -49,12 +49,14 @@ async function createTestUser(
 async function createSubmission(
   userId: string,
   problemId: string,
-  resultStatus: "Accepted" | "WrongAnswer" | "TimeLimitExceeded",
+  kind: "pass" | "fail" | "error",
   contestId?: string,
 ): Promise<void> {
   const db = getDb();
   const submissionId = crypto.randomUUID();
   const now = new Date().toISOString();
+  const resultStatus = kind === "error" ? "error" : "finished";
+  const score = kind === "pass" ? 10000 : 0;
   await db.insert(submissions).values({
     id: submissionId,
     user_id: userId,
@@ -63,14 +65,14 @@ async function createSubmission(
     language: "python3",
     code: "print(1)",
     file_name: "main.py",
-    status: "finished",
+    status: resultStatus,
     created_at: now,
   });
   await db.insert(evaluationResults).values({
     id: crypto.randomUUID(),
     submission_id: submissionId,
     status: resultStatus,
-    score: resultStatus === "Accepted" ? 10000 : 0,
+    score,
     output: "",
     details: "{}",
     created_at: now,
@@ -165,14 +167,14 @@ Deno.test({
 
     try {
       // A: 2 solved, 3 total
-      await createSubmission(userA, problem1, "Accepted");
-      await createSubmission(userA, problem2, "Accepted");
-      await createSubmission(userA, problem3, "WrongAnswer");
+      await createSubmission(userA, problem1, "pass");
+      await createSubmission(userA, problem2, "pass");
+      await createSubmission(userA, problem3, "fail");
       // B: 1 solved, 1 total
-      await createSubmission(userB, problem1, "Accepted");
+      await createSubmission(userB, problem1, "pass");
       // C: 0 solved (全部 WA)，不应上榜
-      await createSubmission(userC, problem1, "WrongAnswer");
-      await createSubmission(userC, problem2, "TimeLimitExceeded");
+      await createSubmission(userC, problem1, "fail");
+      await createSubmission(userC, problem2, "error");
 
       await refreshRankingsView();
       const result = await getGlobalRankings({ page: 1, limit: 100 });
@@ -216,13 +218,13 @@ Deno.test({
 
     try {
       // D: solved=1, total=2, rate=0.5（高效率）
-      await createSubmission(userD, problem1, "Accepted");
-      await createSubmission(userD, problem2, "WrongAnswer");
+      await createSubmission(userD, problem1, "pass");
+      await createSubmission(userD, problem2, "fail");
       // E: solved=1, total=4, rate=0.25（低效率）
-      await createSubmission(userE, problem1, "Accepted");
-      await createSubmission(userE, problem1, "WrongAnswer");
-      await createSubmission(userE, problem2, "WrongAnswer");
-      await createSubmission(userE, problem2, "TimeLimitExceeded");
+      await createSubmission(userE, problem1, "pass");
+      await createSubmission(userE, problem1, "fail");
+      await createSubmission(userE, problem2, "fail");
+      await createSubmission(userE, problem2, "fail");
 
       await refreshRankingsView();
       const result = await getGlobalRankings({ page: 1, limit: 100 });
@@ -268,7 +270,7 @@ Deno.test({
     const problem1 = await createTestProblem(900020);
 
     try {
-      await createSubmission(userF, problem1, "Accepted");
+      await createSubmission(userF, problem1, "pass");
       await refreshRankingsView();
       const result = await getMyRanking(userF);
       assertExists(result);
@@ -294,8 +296,8 @@ Deno.test({
     const problem1 = await createTestProblem(900030);
 
     try {
-      // 仅 WA，无 Accepted
-      await createSubmission(userG, problem1, "WrongAnswer");
+      // 仅 fail/error，无通过
+      await createSubmission(userG, problem1, "fail");
       await refreshRankingsView();
       const result = await getMyRanking(userG);
       assertEquals(result, null);
@@ -316,7 +318,7 @@ Deno.test({
     const problem1 = await createTestProblem(900040);
 
     try {
-      await createSubmission(userH, problem1, "Accepted");
+      await createSubmission(userH, problem1, "pass");
       await refreshRankingsView();
       const page1 = await getGlobalRankings({ page: 1, limit: 50 });
       const page2 = await getGlobalRankings({ page: 2, limit: 50 });
@@ -353,7 +355,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "rankings: 排除 affect_global_ranking=false 的竞赛 AC",
+  name: "rankings: 排除 affect_global_ranking=false 的竞赛通过",
   ignore: !hasEnv,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -394,17 +396,17 @@ Deno.test({
     ]);
 
     try {
-      await createSubmission(userId, problem1, "Accepted");
+      await createSubmission(userId, problem1, "pass");
       await createSubmission(
         userId,
         problem2,
-        "Accepted",
+        "pass",
         excludedContestId,
       );
       await createSubmission(
         userId,
         problem3,
-        "Accepted",
+        "pass",
         includedContestId,
       );
       await refreshRankingsView();

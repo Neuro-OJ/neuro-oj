@@ -25,12 +25,11 @@ class Result:
     def __init__(self) -> None:
         self._written = False
 
-    def _write(self, status: str, score: float, **kwargs: Any) -> None:
+    def _write(self, score: float, **kwargs: Any) -> None:
         if self._written:
             raise RuntimeError("result 已被写入一次，禁止重复")
         self._written = True
         payload = {
-            "status": status,
             "score": int(round(score * 100)),  # ×100 整数值，与 core 对齐
             "details": kwargs.get("details", {}),
         }
@@ -41,8 +40,8 @@ class Result:
         sys.stdout.flush()
 
     def accept(self, score: float = 100.0, **kwargs: Any) -> None:
-        """评测通过。默认 score=100。"""
-        self._write("Accepted", score, **kwargs)
+        """写入评测分数。默认 score=100。"""
+        self._write(score, **kwargs)
 
     def wrong_answer(
         self,
@@ -50,17 +49,15 @@ class Result:
         message: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
-        """答案错误。message 进入 details.message。"""
+        """写入未达标的分数。message 进入 details.message。"""
         if message is not None:
             kwargs["message"] = message
-        self._write("WrongAnswer", score, **kwargs)
-
-    def runtime_error(self, message: str, **kwargs: Any) -> None:
-        """评测脚本自身出错（非用户代码问题）。"""
-        kwargs["message"] = message
-        self._write("RuntimeError", 0.0, **kwargs)
+        self._write(score, **kwargs)
 
     def system_error(self, message: str, **kwargs: Any) -> None:
-        """系统错误（支持包解压失败、RPC 通道异常等）。"""
-        kwargs["message"] = message
-        self._write("SystemError", 0.0, **kwargs)
+        """系统错误（支持包解压失败、RPC 通道异常等）。
+
+        新协议不再通过结果 JSON 的 status 表达错误；应直接抛出异常或
+        以非零退出码结束，由 judge 统一映射为 error。
+        """
+        raise RuntimeError(message)

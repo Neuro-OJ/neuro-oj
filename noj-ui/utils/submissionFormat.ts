@@ -65,14 +65,6 @@ export const statusLabels: Record<string, string> = {
 export const resultLabels: Record<string, string> = {
   finished: '已评测',
   error: '出错',
-  Accepted: '答案正确',
-  WrongAnswer: '答案错误',
-  TimeLimitExceeded: '超出时间限制',
-  MemoryLimitExceeded: '超出内存限制',
-  RuntimeError: '运行时错误',
-  SystemError: '系统错误',
-  CompileError: '编译错误',
-  OutputLimitExceeded: '输出超出限制',
 };
 
 /**
@@ -81,14 +73,6 @@ export const resultLabels: Record<string, string> = {
 export const resultColors: Record<string, string> = {
   finished: '#10b981',
   error: '#ef4444',
-  Accepted: '#10b981',
-  WrongAnswer: '#ef4444',
-  TimeLimitExceeded: '#f59e0b',
-  MemoryLimitExceeded: '#f59e0b',
-  RuntimeError: '#ef4444',
-  SystemError: '#ef4444',
-  CompileError: '#a855f7',
-  OutputLimitExceeded: '#f97316',
 };
 
 /**
@@ -186,14 +170,6 @@ export interface ResultDef {
 export const resultDefMap: Record<string, ResultDef> = {
   finished: { label: '已评测', icon: 'check', class: 'accepted' },
   error: { label: '出错', icon: 'x', class: 'se' },
-  Accepted: { label: '答案正确', icon: 'check', class: 'accepted' },
-  WrongAnswer: { label: '答案错误', icon: 'x', class: 'wrong' },
-  TimeLimitExceeded: { label: '超出时间限制', icon: 'alert', class: 'tle' },
-  MemoryLimitExceeded: { label: '超出内存限制', icon: 'alert', class: 'mle' },
-  RuntimeError: { label: '运行时错误', icon: 'x', class: 're' },
-  SystemError: { label: '系统错误', icon: 'x', class: 'se' },
-  CompileError: { label: '编译错误', icon: 'x', class: 're' },
-  OutputLimitExceeded: { label: '输出超出限制', icon: 'alert', class: 'tle' },
 };
 
 /**
@@ -209,10 +185,6 @@ export function getResultDef(status: string | undefined): ResultDef {
  */
 export const verdictClasses: Record<string, string> = {
   accepted: 'bg-green-50 border border-green-200 text-green-700',
-  wrong: 'bg-red-50 border border-red-200 text-red-800',
-  tle: 'bg-orange-50 border border-orange-200 text-orange-800',
-  mle: 'bg-orange-50 border border-orange-200 text-orange-800',
-  re: 'bg-red-50 border border-red-200 text-red-800',
   se: 'bg-red-50 border border-red-200 text-red-800',
 };
 

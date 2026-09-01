@@ -128,7 +128,7 @@ const BOOLEAN_SETTINGS: Array<{ configKey: string; settingKey: string; label: st
   { configKey: "follows_enabled", settingKey: "community_follows_enabled", label: "关注" },
   { configKey: "private_messaging_enabled", settingKey: "private_messaging_enabled", label: "站内私信" },
   { configKey: "external_images_enabled", settingKey: "community_external_images_enabled", label: "外链图片" },
-  { configKey: "solution_requires_accepted", settingKey: "community_solution_requires_accepted", label: "题解通过门槛", hint: "题解发布前必须已 Accepted" },
+  { configKey: "solution_requires_accepted", settingKey: "community_solution_requires_accepted", label: "题解通过门槛", hint: "题解发布前必须已通过（finished 且 score>0）" },
 ]
 
 const NUMBER_SETTINGS: Array<{ configKey: string; settingKey: string; label: string; suffix: string }> = [

@@ -206,7 +206,7 @@ e2eTest("[e2e/llm-gateway] 7.1 导入 P 型 LLM 题并提交评测", async () =>
   const number = 93000 + (Date.now() % 1000);
   const imported = await importBundle(
     llmManifest("P", number, true, true),
-    `# E2E LLM P 型题\n\nMock LLM 应答 ok=true 时应 Accepted`,
+    `# E2E LLM P 型题\n\nMock LLM 应答 ok=true 时应 finished 且得分>0`,
   );
   if (imported.status !== 201 && imported.status !== 200) {
     throw new Error(

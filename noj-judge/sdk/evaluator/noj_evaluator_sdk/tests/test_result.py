@@ -36,14 +36,14 @@ class TestResultWrite(unittest.TestCase):
         r = Result()
         r.accept()
         data = self._read_written()
-        self.assertEqual(data["status"], "Accepted")
+        self.assertNotIn("status", data)
         self.assertEqual(data["score"], 10000)  # 100 × 100
 
     def test_wrong_answer_with_message(self):
         r = Result()
         r.wrong_answer(message="expected 3 got 4")
         data = self._read_written()
-        self.assertEqual(data["status"], "WrongAnswer")
+        self.assertNotIn("status", data)
         self.assertEqual(data["score"], 0)
         self.assertEqual(data["details"]["message"], "expected 3 got 4")
 

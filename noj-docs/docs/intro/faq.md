@@ -46,7 +46,7 @@
 
 先执行 `noj-judge/scripts/build-sdk-images.sh` 构建 `noj-evaluator-python`、`noj-solution-python` 与 `noj-solution-ai`，确认 noj-core 的评测镜像白名单已登记，再重启 Judge Worker。
 
-### 大量 SystemError？
+### 大量 error？
 
 通常是纯净评测包、运行时配置、镜像、协议或 evaluator 异常，需要查看 Judge Worker 日志：`RUST_LOG=noj_judge=debug`。也检查题目支持包是否完整（`deno task problems:build` 重建）。
 

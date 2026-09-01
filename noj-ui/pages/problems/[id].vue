@@ -49,7 +49,7 @@ useSeoMeta({
 const tags = computed(() => problem.value?.tags ?? [])
 // 题目标签（kind='problem'）：点击可跳转到按该标签筛选的题库列表
 const problemTags = computed(() => tags.value.filter((t) => t.kind === 'problem'))
-// 算法标签（kind='algorithm'，仅 admin/题主/有 Accepted 提交的 viewer 可见，后端已裁剪）
+// 算法标签（kind='algorithm'，仅 admin/题主/有通过提交的 viewer 可见，后端已裁剪）
 const algorithmTags = computed(() => tags.value.filter((t) => t.kind === 'algorithm'))
 // 存在不可见的算法标签时的占位提示（通过后可显示）
 const hasHiddenAlgorithmTags = computed(() => problem.value?.has_hidden_algorithm_tags === true)

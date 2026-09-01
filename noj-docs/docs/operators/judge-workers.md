@@ -272,5 +272,5 @@ docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue
 - Docker 连接失败：确认 Docker daemon 可用，当前用户有权限访问。
 - 镜像不存在：确认 ghcr.io 镜像已发布，且 `judge_images` 白名单中的镜像名与发布的 ghcr 全限定名一致。
 - 白名单为空：确认 noj-core 已启动、`init system` 已执行；白名单校验在 noj-core 侧完成，judge 侧使用镜像前缀白名单复验。
-- `SystemError`：通常是纯净评测包、运行时配置、镜像、协议或 evaluator 本身异常，需要查看 Judge Worker 日志。
+- `error`：通常是纯净评测包、运行时配置、镜像、协议或 evaluator 本身异常，需要查看 Judge Worker 日志。
 - 提交长时间 `Pending`：见上文「队列监控」。

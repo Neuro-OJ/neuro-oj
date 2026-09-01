@@ -1165,7 +1165,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_judge_result_accepted() {
+    fn test_build_judge_result_legacy_accepted_maps_to_finished() {
         let parsed = serde_json::json!({
             "status": "Accepted",
             "score": 10000,
@@ -1178,7 +1178,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_judge_result_wrong_answer() {
+    fn test_build_judge_result_legacy_wrong_answer_maps_to_finished() {
         let parsed = serde_json::json!({
             "status": "WrongAnswer",
             "score": 0,
@@ -1360,9 +1360,7 @@ mod tests {
         let mut tracker = InFlightTracker::new(2000);
 
         let chunk = LogOutput::StdOut {
-            message: bytes::Bytes::from_static(
-                b"---RESULT---\n{\"status\":\"Accepted\",\"score\":100}\n",
-            ),
+            message: bytes::Bytes::from_static(b"---RESULT---\n{\"score\":100}\n"),
         };
 
         handle_eval_chunk(
@@ -1377,10 +1375,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(
-            result_payload.as_deref(),
-            Some("{\"status\":\"Accepted\",\"score\":100}")
-        );
+        assert_eq!(result_payload.as_deref(), Some("{\"score\":100}"));
         assert!(stdout_full.contains("---RESULT---"));
     }
 
@@ -1422,15 +1417,12 @@ mod tests {
             &mut result_payload,
             &mut tracker,
             LogOutput::StdOut {
-                message: bytes::Bytes::from_static(b"{\"status\":\"Accepted\",\"score\":100}\n"),
+                message: bytes::Bytes::from_static(b"{\"score\":100}\n"),
             },
         )
         .await
         .unwrap();
-        assert_eq!(
-            result_payload.as_deref(),
-            Some("{\"status\":\"Accepted\",\"score\":100}")
-        );
+        assert_eq!(result_payload.as_deref(), Some("{\"score\":100}"));
     }
 
     #[tokio::test]

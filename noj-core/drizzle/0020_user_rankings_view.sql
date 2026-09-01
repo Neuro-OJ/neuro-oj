@@ -6,19 +6,19 @@ CREATE MATERIALIZED VIEW IF NOT EXISTS user_rankings AS
     u.id AS user_id,
     u.username,
     COUNT(*)::int AS total_submissions,
-    COUNT(DISTINCT s.problem_id) FILTER (WHERE er.status = 'Accepted')::int AS solved_count,
-    COUNT(*) FILTER (WHERE er.status = 'Accepted')::int AS accepted,
+    COUNT(DISTINCT s.problem_id) FILTER (WHERE er.status = 'finished' AND er.score > 0)::int AS solved_count,
+    COUNT(*) FILTER (WHERE er.status = 'finished' AND er.score > 0)::int AS accepted,
     CASE WHEN COUNT(*) = 0 THEN 0
          ELSE ROUND(
-           (COUNT(*) FILTER (WHERE er.status = 'Accepted')::float / COUNT(*))::numeric,
+           (COUNT(*) FILTER (WHERE er.status = 'finished' AND er.score > 0)::float / COUNT(*))::numeric,
            3
          )::float
     END AS acceptance_rate,
     ROW_NUMBER() OVER (
       ORDER BY
-        COUNT(DISTINCT s.problem_id) FILTER (WHERE er.status = 'Accepted') DESC,
+        COUNT(DISTINCT s.problem_id) FILTER (WHERE er.status = 'finished' AND er.score > 0) DESC,
         CASE WHEN COUNT(*) = 0 THEN 0
-             ELSE COUNT(*) FILTER (WHERE er.status = 'Accepted')::float / COUNT(*)
+             ELSE COUNT(*) FILTER (WHERE er.status = 'finished' AND er.score > 0)::float / COUNT(*)
         END DESC,
         COUNT(*) ASC,
         u.created_at ASC
@@ -28,7 +28,7 @@ CREATE MATERIALIZED VIEW IF NOT EXISTS user_rankings AS
   LEFT JOIN evaluation_results er ON er.submission_id = s.id
   WHERE u.id <> '0' AND s.status = 'finished'
   GROUP BY u.id, u.username, u.created_at
-  HAVING COUNT(*) FILTER (WHERE er.status = 'Accepted') > 0;
+  HAVING COUNT(*) FILTER (WHERE er.status = 'finished' AND er.score > 0) > 0;
 
 -- 物化视图唯一索引（CONCURRENTLY REFRESH 前提）
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_rankings_user_id ON user_rankings (user_id);

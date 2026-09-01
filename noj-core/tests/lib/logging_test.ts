@@ -107,13 +107,13 @@ Deno.test({
         submission_id: "550e8400-e29b-41d4-a716-446655440000",
         score: 9500,
         code: "print(1)",
-        status: "Accepted",
+        status: "finished",
       });
       const f = records[0].fields;
       assertEquals(f.submission_id, "550e8400...");
       assertEquals("score" in f, false); // score 生产环境隐藏
       assertEquals(f.code, "[redacted]");
-      assertEquals(f.status, "Accepted"); // 非敏感字段保留
+      assertEquals(f.status, "finished"); // 非敏感字段保留
     } finally {
       restore();
     }

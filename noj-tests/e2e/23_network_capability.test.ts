@@ -5,7 +5,7 @@
  * - 普通用户创建带 network.enabled=true 的 U 型题目（权限放行，无需 admin）
  * - 普通用户通过 import-bundle 导入带联网配置的统一题目包（导入路径同权限）
  * - 提交 solution（call_capability）→ 评测完成且 evaluator 联网真实生效：
- *   capability handler 内真实 TCP 出网探测（example.com:443）成功才 Accepted，
+ *   capability handler 内真实 TCP 出网探测（example.com:443）成功才 finished 且得分>0，
  *   evaluator 无网则返回 no-net → WrongAnswer（测试失败即暴露网络回归）
  *
  * 要求：
@@ -89,7 +89,7 @@ runner = SolutionRunner()
 try:
     answer = runner.call("solve", "hello")
 except Exception as e:
-    result.runtime_error("call failed: " + repr(e))
+    raise RuntimeError("call failed: " + repr(e))
 else:
     if answer == "pong:hello":
         result.accept(score=100)
@@ -306,7 +306,7 @@ e2eTest(
 );
 
 e2eTest(
-  "[e2e/network-capability] 提交 solution（call_capability）→ 评测 Accepted",
+  "[e2e/network-capability] 提交 solution（call_capability）→ 评测 finished",
   async () => {
     if (!isE2E || !judgeOk) {
       console.log("  ⚠ judge 不可用，跳过评测断言");

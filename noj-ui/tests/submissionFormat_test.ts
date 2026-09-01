@@ -37,13 +37,15 @@ Deno.test('formatMemory: KB/MB/GB', () => {
 });
 
 Deno.test('getStatusColor: result 优先，state 回退，未知兜底', () => {
-  assertEquals(getStatusColor('finished', 'Accepted'), '#10b981');
+  assertEquals(getStatusColor('finished', 'finished'), '#10b981');
+  assertEquals(getStatusColor('finished', 'error'), '#ef4444');
   assertEquals(getStatusColor('pending', null), '#9ca3af');
   assertEquals(getStatusColor('unknown', null), '#6b7280');
 });
 
 Deno.test('getStatusLabel: result 优先，state 回退，未知原样返回', () => {
-  assertEquals(getStatusLabel('finished', 'Accepted'), '答案正确');
+  assertEquals(getStatusLabel('finished', 'finished'), '已评测');
+  assertEquals(getStatusLabel('finished', 'error'), '出错');
   assertEquals(getStatusLabel('pending', null), '等待评测');
   assertEquals(getStatusLabel('unknown', null), 'unknown');
 });
@@ -68,8 +70,9 @@ Deno.test('formatDateTime: 空值占位，合法时间非占位', () => {
 });
 
 Deno.test('getResultDef: 已知/未知状态返回定义', () => {
-  assertEquals(getResultDef('Accepted').label, '答案正确');
-  assertEquals(getResultDef('Accepted').class, 'accepted');
+  assertEquals(getResultDef('finished').label, '已评测');
+  assertEquals(getResultDef('finished').class, 'accepted');
+  assertEquals(getResultDef('error').label, '出错');
   assertEquals(getResultDef('Nope').label, 'Nope');
   assertEquals(getResultDef(undefined).label, '未知');
 });

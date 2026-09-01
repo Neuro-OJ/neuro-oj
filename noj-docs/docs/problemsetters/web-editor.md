@@ -27,7 +27,7 @@
 
 配置保存在题目上，Judge Worker 评测时读取。`call_timeout_ms` 作为单次 SDK 调用的**默认**超时；出题人可在 `evaluate.py` 中用 `runner.call(..., timeout_ms=...)` 按调用覆盖（缺省时回退该默认值）。合理设置 Solution 的调用超时可以防止用户代码死循环拖垮整场评测（见[评测模型](judge-model.md)）。
 
-两层超时的状态语义：`time_limit_ms` 超时表示评测流程未正常完成，最终状态为 `SystemError`；`call_timeout_ms` 超时若未被 evaluator 捕获，最终状态为 `TimeLimitExceeded`，捕获后由 evaluator 自行决定（详见[评测模型](judge-model.md)）。
+两层超时的状态语义：`time_limit_ms` 超时表示评测流程未正常完成，最终状态为 `error`；`call_timeout_ms` 超时若未被 evaluator 捕获，最终状态为 `error`，捕获后由 evaluator 自行决定（详见[评测模型](judge-model.md)）。
 
 ### 统一题目包
 
