@@ -47,7 +47,7 @@
 | `community_boards`、`community_board_role_grants`、`community_posts`、`community_comments`、`community_post_likes`、`community_comment_likes`、`community_bookmarks`、`community_follows`、`community_activity_events`、`community_reports`、`community_moderation_actions`、`community_sanctions`、`community_notifications` | community |
 | `conversations`、`messages`、`conversation_reads`、`message_deletions` | messaging |
 | `system_settings`、`announcements`、`audit_logs`、`ip_bans`、`judge_images` | system |
-| `llm_providers`、`llm_usage`、`llm_quotas` | gateway |
+| `llm_providers`、`llm_usage`、`llm_quotas` | noj-llm-gateway（同库 public schema，core 不直接读写） |
 
 > 注：`check_ins` 由 identity 域拥有（用户签到）；`sse_events` 由 submission 域拥有（评测/状态事件），未来若作为通用 outbox 再调整为 shared。
 
