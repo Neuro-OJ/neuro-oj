@@ -157,7 +157,7 @@ Deno.test({
   fn: async () => {
     const result: JudgeResult = {
       submission_id: "st_unknown",
-      status: "Accepted",
+      status: "finished",
       score: 10000,
       output: "ok",
       details: {},
@@ -186,7 +186,7 @@ Deno.test({
 
     const result: JudgeResult = {
       submission_id: SELF_TEST_ID,
-      status: "Accepted",
+      status: "finished",
       score: 10000,
       output: "---RESULT---\n{}",
       details: { cases: [] },
@@ -202,7 +202,7 @@ Deno.test({
       .where(eq(selfTests.id, SELF_TEST_ID))
       .limit(1);
     assertEquals(row.status, "finished");
-    assertEquals(row.result_status, "Accepted");
+    assertEquals(row.result_status, "finished");
     assertEquals(row.score, 10000);
 
     const [sub] = await db

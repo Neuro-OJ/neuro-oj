@@ -105,7 +105,7 @@ async function setup() {
   await db.insert(evaluationResults).values({
     id: `tst-er-${ts}`,
     submission_id: SUBMISSION_FINISHED_ID,
-    status: "Accepted",
+    status: "finished",
     score: 1000,
     output: "---RESULT---\n{}",
     created_at: now,
@@ -117,7 +117,7 @@ async function setup() {
     language: "python3",
     code: "print('self')",
     status: "finished",
-    result_status: "Accepted",
+    result_status: "finished",
     score: 10000,
     output: "---RESULT---\n{}",
     details: "{}",

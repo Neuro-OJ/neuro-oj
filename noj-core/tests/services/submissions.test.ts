@@ -459,7 +459,7 @@ Deno.test({
     // 保存评测结果
     await saveEvaluationResult({
       submission_id: submissionId,
-      status: "Accepted",
+      status: "finished",
       score: 1000,
       output: "---RESULT---\n{}",
       details: { score_content: 10.0 },
@@ -482,7 +482,7 @@ Deno.test({
       .where(eq(evaluationResults.submission_id, submissionId))
       .limit(1);
     assertEquals(result.length, 1);
-    assertEquals(result[0].status, "Accepted");
+    assertEquals(result[0].status, "finished");
     assertEquals(result[0].score, 1000);
     assertEquals(result[0].time_ms, 2340);
     assertEquals(result[0].memory_kb, 18432);
@@ -514,7 +514,7 @@ Deno.test({
     // 第一次保存
     await saveEvaluationResult({
       submission_id: submissionId,
-      status: "Accepted",
+      status: "finished",
       score: 1000,
       output: "",
       details: {},
@@ -523,7 +523,7 @@ Deno.test({
     // 第二次保存（模拟重复消费）
     await saveEvaluationResult({
       submission_id: submissionId,
-      status: "Accepted",
+      status: "finished",
       score: 1000,
       output: "",
       details: {},
@@ -544,10 +544,10 @@ Deno.test({
   name: "consumer: 有效 JudgeResult JSON 解析",
   fn: () => {
     const rawJson =
-      `{"submission_id":"sid-1","status":"Accepted","score":1000,"output":"ok","details":{}}`;
+      `{"submission_id":"sid-1","status":"finished","score":1000,"output":"ok","details":{}}`;
     const parsed = JSON.parse(rawJson);
     assertEquals(parsed.submission_id, "sid-1");
-    assertEquals(parsed.status, "Accepted");
+    assertEquals(parsed.status, "finished");
     assertEquals(parsed.score, 1000);
   },
 });
@@ -569,14 +569,14 @@ Deno.test({
 Deno.test({
   name: "consumer: 缺少 submission_id 的 JSON 应被检测",
   fn: () => {
-    const rawJson = `{"status":"Accepted","score":1000}`;
+    const rawJson = `{"status":"finished","score":1000}`;
     const parsed = JSON.parse(rawJson);
     assertEquals(
       parsed.submission_id,
       undefined,
       "缺少 submission_id 应为 undefined",
     );
-    assertEquals(parsed.status, "Accepted");
+    assertEquals(parsed.status, "finished");
     assertEquals(parsed.score, 1000);
   },
 });
@@ -618,7 +618,7 @@ Deno.test({
       // 第一次写入：WrongAnswer
       await saveEvaluationResult({
         submission_id: subId,
-        status: "WrongAnswer",
+        status: "finished",
         score: 500,
         output: '---RESULT---\n{"first":true}',
         details: {},
@@ -627,7 +627,7 @@ Deno.test({
       // NOJ-068/182：同 rejudge_seq 的重复结果必须幂等忽略。
       const appliedAgain = await saveEvaluationResult({
         submission_id: subId,
-        status: "Accepted",
+        status: "finished",
         score: 1000,
         output: '---RESULT---\n{"new":true}',
         details: { rejudge: true },
@@ -640,7 +640,7 @@ Deno.test({
       const rows = await db.select().from(evaluationResults)
         .where(eq(evaluationResults.submission_id, subId));
       assertEquals(rows.length, 1);
-      assertEquals(rows[0].status, "WrongAnswer");
+      assertEquals(rows[0].status, "finished");
       assertEquals(rows[0].score, 500);
       assertEquals(rows[0].output, '---RESULT---\n{"first":true}');
       assertEquals(JSON.parse(rows[0].details), {});
@@ -693,7 +693,7 @@ Deno.test({
       // 写入 seq=2 的新结果（应成功）
       await saveEvaluationResult({
         submission_id: subId,
-        status: "Accepted",
+        status: "finished",
         score: 1000,
         output: "---NEW---",
         details: { seq: 2 },
@@ -706,7 +706,7 @@ Deno.test({
       try {
         await saveEvaluationResult({
           submission_id: subId,
-          status: "WrongAnswer",
+          status: "finished",
           score: 500,
           output: "---OLD---",
           details: { seq: 1 },
@@ -720,7 +720,7 @@ Deno.test({
       const rows = await db.select().from(evaluationResults)
         .where(eq(evaluationResults.submission_id, subId));
       assertEquals(rows.length, 1);
-      assertEquals(rows[0].status, "Accepted");
+      assertEquals(rows[0].status, "finished");
       assertEquals(rows[0].output, "---NEW---");
 
       // 断言：丢弃日志被记录
@@ -838,7 +838,7 @@ Deno.test({
       await db.insert(evaluationResults).values({
         id: crypto.randomUUID(),
         submission_id: subId,
-        status: "Accepted",
+        status: "finished",
         score: 1000,
         output: "---RESULT---",
         details: "{}",
@@ -989,7 +989,7 @@ Deno.test({
         await db.insert(evaluationResults).values({
           id: crypto.randomUUID(),
           submission_id: sid,
-          status: "Accepted",
+          status: "finished",
           score: 1000,
           output: "---RESULT---",
           details: "{}",

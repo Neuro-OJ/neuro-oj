@@ -37,7 +37,7 @@ e2eTest("[e2e/pipeline] Setup", async () => {
   if (!judgeOk) console.log("  ⚠ judge worker 不可用，管道测试将跳过");
 });
 
-e2eTest("[e2e/pipeline] 1/8 Accepted", async () => {
+e2eTest("[e2e/pipeline] 1/8 已评测", async () => {
   if (!isE2E || !judgeOk) return;
   const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
   console.log("  → 提交 ID: " + id.slice(0, 8));

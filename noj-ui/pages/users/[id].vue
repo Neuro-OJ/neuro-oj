@@ -173,12 +173,6 @@ const isOwnProfile = computed(
 const resultBadgeColors: Record<string, string> = {
   finished: "bg-green-100 text-green-700",
   error: "bg-red-100 text-red-800",
-  Accepted: "bg-green-100 text-green-700",
-  WrongAnswer: "bg-red-100 text-red-800",
-  TimeLimitExceeded: "bg-orange-100 text-orange-800",
-  MemoryLimitExceeded: "bg-orange-100 text-orange-800",
-  RuntimeError: "bg-red-100 text-red-800",
-  SystemError: "bg-red-100 text-red-800",
 }
 
 function formatDate(iso: string): string {

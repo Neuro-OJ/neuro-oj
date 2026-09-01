@@ -99,7 +99,7 @@ function parseDetails(raw: string | null): SubmissionEvaluationDetails | null {
 
 /**
  * 将评测结果状态归一化为提交状态：只保留 finished / error。
- * 旧数据中的 Accepted / WrongAnswer 等按分数制语义映射。
+ * 旧数据中的 Accepted / WrongAnswer 等按分数制语义映射（兼容历史数据）。
  */
 function normalizeResultStatus(status: string | null): string | null {
   if (!status) return null;

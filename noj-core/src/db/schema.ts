@@ -740,7 +740,7 @@ export const selfTests = pgTable(
     status: text("status").$type<SelfTestStatus>().notNull().default(
       "pending",
     ),
-    /** 评测结果状态（如 Accepted / WrongAnswer），终态时由 JudgeResult 写入。 */
+    /** 评测结果状态（新协议下为 finished / error），终态时由 JudgeResult 写入。 */
     result_status: text("result_status"),
     score: integer("score").notNull().default(0),
     output: text("output").notNull().default(""),

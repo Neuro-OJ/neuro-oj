@@ -49,7 +49,7 @@ export interface SelfTestDetail {
   code: string | null;
   file_name: string | null;
   status: SelfTestStatus;
-  /** 评测结果状态（如 Accepted / WrongAnswer），未完成时为 null。 */
+  /** 评测结果状态（新协议下为 finished / error），未完成时为 null。 */
   result_status: string | null;
   score: number;
   output: string | null;

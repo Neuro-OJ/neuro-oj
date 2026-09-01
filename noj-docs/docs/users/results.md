@@ -14,17 +14,16 @@ flowchart LR
 
 - **排队中**：任务在 Redis 队列中等待 Judge Worker 领取，页面显示排队位置。
 - **评测中**：Judge Worker 下载纯净评测包、校验 checksum、注入你的代码，在 Docker 容器中执行评测。
-- **完成**：得到最终判定；评测异常时落为 `Error`。
+- **完成**：得到最终判定；评测异常时落为 `error`。
 
 ## 常见判定
 
 | 状态 | 含义 |
 |------|------|
-| `Accepted` | evaluator 判定通过 |
-| `WrongAnswer` | 未满足评分条件（返回值错误、异常、被记为失败的用例都可能落此状态） |
-| `RuntimeError` | 失败被明确归类为运行时错误 |
-| `TimeLimitExceeded` | 评测流程被判定超时 |
-| `SystemError` | 评测环境或题目配置异常（镜像缺失、评测包损坏、模块无法导入等），通常需联系运营者 |
+| `finished` | 评测完成，展示 evaluator 给出的分数（可为满分、部分分或 0 分） |
+| `error` | 评测未正常完成（环境异常、超时、脚本错误等），不展示有效分数 |
+
+`Accepted` / `WrongAnswer` 等不再作为最终判定，仅可能出现在用例级详情（`details.cases`）中作为参考信息。
 
 完整定义见[结果状态参考](../reference/result-status.md)。
 

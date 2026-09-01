@@ -164,11 +164,6 @@ def main() -> None:
         print("说明: 当前分数仅基于公开数据")
 
     result = {
-        "status": (
-            "RuntimeError" if runtime_error
-            else "Accepted" if total_score == FULL_SCORE
-            else "WrongAnswer"
-        ),
         "score": int(total_score * 100),
         "details": {
             "score_content": round(score_content, 2),

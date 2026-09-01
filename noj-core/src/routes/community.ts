@@ -159,7 +159,7 @@ router.get("/posts/counts", optionalAuthMiddleware, async (c) => {
 
 /**
  * 题解发布资格：题目页发布入口据此展示启用/禁用态与原因。
- * 返回题解模块开关、门槛是否开启、当前用户是否已 Accepted 以及能否发布。
+ * 返回题解模块开关、门槛是否开启、当前用户是否已通过（finished 且 score>0）以及能否发布。
  */
 router.get("/solutions/eligibility", authMiddleware, async (c) => {
   const problemRef = c.req.query("problem_id");

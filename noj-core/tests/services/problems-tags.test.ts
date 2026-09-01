@@ -3,10 +3,10 @@
  *
  * 覆盖：
  * - syncProblemTags：不存在标签 400 / 客观题+算法 400 / 全量替换 / 重复 id 去重
- * - applyAlgorithmTagVisibility 门控四态：匿名 / 未通过 / AC / admin / 题主 /
+ * - applyAlgorithmTagVisibility 门控四态：匿名 / 未通过 / 已通过 / admin / 题主 /
  *   无算法标签
  *
- * 注：applyAlgorithmTagVisibility 内部经 hasAcceptedSubmission 读
+ * 注：applyAlgorithmTagVisibility 内部经 hasPassedSubmission 读
  * evaluation_results，直接以真实 DB 行驱动（非 mock）。
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
@@ -189,7 +189,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "problems-tags: 门控——无 Accepted 的登录用户不可见",
+  name: "problems-tags: 门控——无通过提交的登录用户不可见",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -217,7 +217,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "problems-tags: 门控——有 Accepted 提交的用户可见",
+  name: "problems-tags: 门控——有通过提交的用户可见",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -230,7 +230,7 @@ Deno.test({
     const userId = await createTestUser();
     await syncProblemTags(problemId, [algoTag.id]);
 
-    // 造一条 Accepted 提交
+    // 造一条通过提交（finished 且 score>0）
     const db = getDb();
     const submissionId = crypto.randomUUID();
     const now = new Date().toISOString();

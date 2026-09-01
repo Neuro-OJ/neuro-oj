@@ -48,12 +48,11 @@
 
 提交后经历 排队 → 评测中 → 完成 三个阶段，可在编辑器侧栏或提交记录页实时查看排队位置与状态。常见结果：
 
-- `Accepted`：通过
-- `WrongAnswer`：未满足评分条件
-- `TimeLimitExceeded` / `RuntimeError` / `SystemError`：超时、运行时或系统错误
+- `finished`：评测完成，展示 evaluator 给出的分数
+- `error`：评测未正常完成（环境异常、超时、脚本错误等）
 
 完整状态说明见[理解结果](../users/results.md)与[结果状态](../reference/result-status.md)。
 
 ::: tip 建议
-从一道简单题开始，先跑通「注册 → 找题 → 提交 → Accepted」闭环，再逐步深入。
+从一道简单题开始，先跑通「注册 → 找题 → 提交 → 已评测」闭环，再逐步深入。
 :::

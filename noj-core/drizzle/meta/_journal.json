@@ -414,6 +414,13 @@
       "when": 1787994240249,
       "tag": "0058_free_shooting_star",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1788239063918,
+      "tag": "0059_remove_accepted_status",
+      "breakpoints": true
     }
   ]
 }

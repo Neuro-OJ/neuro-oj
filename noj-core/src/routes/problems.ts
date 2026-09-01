@@ -169,7 +169,7 @@ router.get("/submissions/:id", authMiddleware, async (c) => {
 /**
  * 获取题目详情（双索引：UUID 或 display_id + 算法标签可视性门控，issue #223）。
  *
- * 算法标签仅 admin / 题主 / 有 Accepted 提交的 viewer 可见；
+ * 算法标签仅 admin / 题主 / 有通过提交（finished 且 score>0）的 viewer 可见；
  * 其余 viewer 收不到算法标签名，仅收到 has_hidden_algorithm_tags 占位标志。
  */
 router.get("/:id", optionalAuthMiddleware, async (c) => {

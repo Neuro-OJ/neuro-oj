@@ -192,9 +192,9 @@ Deno.test({
     );
     await saveEvaluationResult({
       submission_id: SUBMISSION_ID,
-      status: "Accepted",
+      status: "finished",
       score: 1000,
-      output: '---RESULT---\n{"status":"Accepted"}',
+      output: '---RESULT---\n{"status":"finished"}',
       details: { cases: [{ status: "Accepted", score: 1000 }] },
       time_ms: 42,
       memory_kb: 8192,

@@ -772,7 +772,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "community route: 题解发布资格端点返回模块开关、门槛与 Accepted 状态",
+  name: "community route: 题解发布资格端点返回模块开关、门槛与通过状态",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

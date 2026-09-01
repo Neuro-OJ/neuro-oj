@@ -79,7 +79,7 @@ export async function resolveProblemId(
   return findByPk(reference);
 }
 
-/** 查询用户是否已 Accepted 指定题目（供门槛判定与题解发布入口使用）。 */
+/** 查询用户是否已通过指定题目（finished 且 score>0，供门槛判定与题解发布入口使用）。 */
 export async function hasAcceptedSolution(
   authorId: string,
   problemId: string,

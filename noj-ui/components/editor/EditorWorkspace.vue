@@ -161,7 +161,7 @@ const {
   start: startSelfTestPolling,
 } = useSelfTestPolling(activeSelfTestId)
 
-// 提交终态为 Accepted 时通知调用方刷新题目详情（AC 后算法标签立即可见）
+// 提交终态为 finished 且得分>0 时通知调用方刷新题目详情（通过后算法标签立即可见）
 watch(activeSubmission, (submission) => {
   if (submission?.status === 'finished' && submission.result?.status === 'finished' && (submission.result?.score ?? 0) > 0) {
     emit('accepted')

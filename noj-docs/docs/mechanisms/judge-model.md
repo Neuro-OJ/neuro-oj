@@ -39,12 +39,12 @@ Solution 容器运行用户提交的代码（Judge Worker 以硬编码名 `main.
 
 如果用户函数不存在，Solution Host 会返回 `code="NotFound"` 的错误帧，Evaluator SDK 将其转换为 `NotFoundError`。如果用户函数抛异常，会返回异常类型、消息和截断后的 traceback。
 
-注意这里的“返回”指的是发回给 Evaluator 的调用错误对象，不等于最终提交的结果状态（verdict）。最终显示给做题人的 `Accepted`、`WrongAnswer`、`RuntimeError` 等状态，仍然由 `evaluate.py` 决定。也就是说：
+注意这里的“返回”指的是发回给 Evaluator 的调用错误对象，不等于最终提交的结果状态（verdict）。新协议下最终状态只保留 `finished` / `error`，分数是唯一结果；`Accepted` / `WrongAnswer` 等只作为 `details.cases` 用例级参考信息。也就是说：
 
-- 用户函数抛异常后，Evaluator 可以把它记成 `WrongAnswer`。
-- 调用超时或调用阶段资源异常后，Evaluator 也可以把它当作普通失败用例处理，最终给出 `WrongAnswer`。
-- 只有当 Evaluator 自己显式返回 `runtime_error()`，或 Judge Worker / Solution Host 在调用前就无法正常工作时，才更可能看到 `RuntimeError` / `SystemError`。
-- 用户代码语法错误、模块导入失败、Solution Host 启动失败，通常会在调用前被判为 `SystemError`，因为这时 Evaluator 还没有拿到可继续评分的函数实例。
+- 用户函数抛异常后，Evaluator 可以把它记为失败用例，最终通常为 `finished` + 0 分。
+- 调用超时或调用阶段资源异常后，Evaluator 也可以把它当作普通失败用例处理，最终为 `finished` + 0 分。
+- 只有当 Evaluator 自身异常退出、整体超时，或 Judge Worker / Solution Host 在调用前就无法正常工作时，最终状态才会是 `error`。
+- 用户代码语法错误、模块导入失败、Solution Host 启动失败，通常会在调用前被判为 `error`，因为这时 Evaluator 还没有拿到可继续评分的函数实例。
 
 ### 超时与状态映射
 
@@ -52,12 +52,12 @@ Solution 容器运行用户提交的代码（Judge Worker 以硬编码名 `main.
 
 | 超时来源 | 触发 | 最终状态 |
 | --- | --- | --- |
-| evaluator 整体执行超时 | 评测总时长超过 `time_limit_ms` | `SystemError`（Judge Worker 强制终止，做题人不可通过改代码解决） |
-| 单次调用超时且 evaluator 未捕获 | 调用超过 `call_timeout_ms`，evaluate.py 异常退出、无 `---RESULT---` | `TimeLimitExceeded` |
-| 单次调用超时且 evaluator 捕获 | 同上，但 evaluator 记为失败用例 | 由 evaluator 决定（如 `WrongAnswer`） |
-| evaluator 异常退出且从未发生调用超时 | evaluate.py 自身 bug、环境问题、无 `---RESULT---` | `SystemError` |
+| evaluator 整体执行超时 | 评测总时长超过 `time_limit_ms` | `error`（Judge Worker 强制终止，做题人不可通过改代码解决） |
+| 单次调用超时且 evaluator 未捕获 | 调用超过 `call_timeout_ms`，evaluate.py 异常退出、无 `---RESULT---` | `error` |
+| 单次调用超时且 evaluator 捕获 | 同上，但 evaluator 记为失败用例 | 由 evaluator 决定（通常为 `finished` + 0 分） |
+| evaluator 异常退出且从未发生调用超时 | evaluate.py 自身 bug、环境问题、无 `---RESULT---` | `error` |
 
-evaluator 启动超时（评测环境未就绪）同样归 `SystemError`。
+evaluator 启动超时（评测环境未就绪）同样归 `error`。
 
 Solution Host 在同一次评测中是 persistent 的：多次 `runner.call()` 默认会调用同一个 Python 模块实例，因此用户模块的全局状态会在调用之间保留。当前 SDK **不提供** `runner.restart()`。
 

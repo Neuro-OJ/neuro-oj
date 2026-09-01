@@ -134,7 +134,7 @@ Neuro OJ RPC 使用 JSON 加一层 Neuro OJ codec。当前支持：
 - **Evaluator 传参**：`runner.call()` 在发出帧前递归校验参数类型，遇到不允许的类型立即抛 `RejectedError`；RPC 帧不会发出。
 - **Solution 返回值**：Solution Host 序列化失败时返回 `code="Rejected"` 的错误帧，Evaluator 侧收到 `RejectedError`。
 - **单帧大小**：超过 1 MiB 软上限会被拒绝。
-- 出题人可用 `try/except RejectedError` 把这类调用按失败用例处理；不捕获则 `evaluate.py` 异常退出，该次评测落为 `SystemError`。
+- 出题人可用 `try/except RejectedError` 把这类调用按失败用例处理；不捕获则 `evaluate.py` 异常退出，该次评测落为 `error`。
 
 ## 输出与截断
 

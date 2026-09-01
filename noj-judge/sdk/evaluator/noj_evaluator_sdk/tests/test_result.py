@@ -36,14 +36,14 @@ class TestResultWrite(unittest.TestCase):
         r = Result()
         r.accept()
         data = self._read_written()
-        self.assertEqual(data["status"], "Accepted")
+        self.assertNotIn("status", data)
         self.assertEqual(data["score"], 10000)  # 100 × 100
 
     def test_wrong_answer_with_message(self):
         r = Result()
         r.wrong_answer(message="expected 3 got 4")
         data = self._read_written()
-        self.assertEqual(data["status"], "WrongAnswer")
+        self.assertNotIn("status", data)
         self.assertEqual(data["score"], 0)
         self.assertEqual(data["details"]["message"], "expected 3 got 4")
 
@@ -58,6 +58,11 @@ class TestResultWrite(unittest.TestCase):
         r.accept(score=87.5)  # 应存为 8750
         data = self._read_written()
         self.assertEqual(data["score"], 8750)
+
+    def test_runtime_error_raises(self):
+        r = Result()
+        with self.assertRaises(RuntimeError):
+            r.runtime_error("boom")
 
 
 if __name__ == "__main__":

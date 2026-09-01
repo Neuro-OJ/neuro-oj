@@ -82,7 +82,7 @@ export interface JudgeTask {
 export interface JudgeResult {
   /** 提交 UUID */
   submission_id: string;
-  /** 评测状态（由 judge 命令输出决定，如 Accepted、WrongAnswer、Error） */
+  /** 评测状态（由 judge 命令输出决定，新协议下为 finished / error） */
   status: string;
   /** 得分 ×100（如 100 分 = 10000） */
   score: number;

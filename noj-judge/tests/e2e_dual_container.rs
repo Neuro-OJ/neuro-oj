@@ -1,7 +1,7 @@
 //! 双容器 Evaluator/Solution 编排集成测试。
 //!
 //! 测试矩阵（design §9）：
-//! - dual_basic: A+B Problem Accepted
+//! - dual_basic: A+B Problem finished
 //! - dual_persistent: 多次 call 复用 host 状态
 //! - dual_timeout: call_timeout_ms 单次超时
 //! - dual_call_timeout_fallback: 调用级超时缺省回退题目级默认
@@ -629,7 +629,7 @@ async fn evaluate_dual_end_to_end() {
     let runtime_config = RuntimeConfig {
         evaluator: EvaluatorRuntime {
             image: "noj-judge-test-runner:latest".to_string(),
-            command: r#"python3 -c "import sys,json; sys.stdout.write('---RESULT---\n'); sys.stdout.write(json.dumps({'status':'Accepted','score':10000,'details':{}})); sys.stdout.flush()""#.to_string(),
+            command: r#"python3 -c "import sys,json; sys.stdout.write('---RESULT---\n'); sys.stdout.write(json.dumps({'score':10000,'details':{}})); sys.stdout.flush()""#.to_string(),
             time_limit_ms: 15000,
             memory_limit_mb: 256,
             network: None,

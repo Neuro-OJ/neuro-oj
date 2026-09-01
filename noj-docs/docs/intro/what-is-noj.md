@@ -79,7 +79,7 @@ Neuro OJ 通过双容器提供**有限的互联网能力**：
 传统 OJ 的"时间限制"限制整个用户程序从头到尾的运行时间，超时即 TLE。Neuro OJ 的限制分两层：
 
 - **Evaluator 整体限制**：`time_limit_ms` / `memory_limit_mb` 作用在 evaluator 容器上，覆盖整个评测流程（含用户函数调用）。
-- **单次调用超时**：`call_timeout_ms` 限制**一次** `runner.call()` 的时长。单次调用超时**不一定**是最终 TLE——evaluator 可以把它当作一个失败用例继续评测，也可以直接判定 TLE。这给了出题人更大的评分控制力（例如部分用例超时仍可给分）。若 evaluator 未捕获单次调用超时（evaluate.py 异常退出），最终状态为 `TimeLimitExceeded`；而 evaluator 整体执行超过 `time_limit_ms` 时，Judge Worker 强制终止评测，最终状态为 `SystemError`。
+- **单次调用超时**：`call_timeout_ms` 限制**一次** `runner.call()` 的时长。单次调用超时**不一定**是最终 `error`——evaluator 可以把它当作一个失败用例继续评测，也可以直接让评测失败。这给了出题人更大的评分控制力（例如部分用例超时仍可给分）。若 evaluator 未捕获单次调用超时（evaluate.py 异常退出），最终状态为 `error`；而 evaluator 整体执行超过 `time_limit_ms` 时，Judge Worker 强制终止评测，最终状态为 `error`。
 
 内存限制同样按容器分别设置：solution 容器（用户代码）与 evaluator 容器（评测代码）各自独立，互不挤占。
 
