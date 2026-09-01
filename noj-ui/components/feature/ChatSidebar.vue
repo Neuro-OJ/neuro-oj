@@ -196,15 +196,20 @@ function formatTime(iso: string): string {
         />
         <div class="flex-1 min-w-0">
           <div class="flex items-center justify-between">
-            <span class="text-sm font-medium text-text truncate">{{ conv.other_user_name }}</span>
+            <span class="text-sm font-medium text-text truncate flex items-center gap-1">
+              {{ conv.remark_name || conv.other_user_name }}
+              <UIcon v-if="conv.is_muted" name="i-lucide-bell-off" class="size-3 text-text-secondary flex-shrink-0" />
+            </span>
             <span class="text-11px text-text-secondary flex-shrink-0 ml-2">{{ formatTime(conv.last_message_at) }}</span>
           </div>
           <div class="flex items-center justify-between mt-0.5">
             <span class="text-xs text-text-secondary truncate">{{ conv.last_message_preview || "暂无消息" }}</span>
+            <!-- 免打扰：仅显示小圆点（无数字）；正常：数字徽标 -->
             <span
               v-if="conv.unread_count > 0"
-              class="flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold text-white bg-error-text rounded-full flex-shrink-0 ml-2"
-            >{{ conv.unread_count > 99 ? "99+" : conv.unread_count }}</span>
+              class="flex-shrink-0 ml-2 rounded-full bg-error-text"
+              :class="conv.is_muted ? 'w-2 h-2' : 'flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold text-white'"
+            >{{ conv.is_muted ? "" : (conv.unread_count > 99 ? "99+" : conv.unread_count) }}</span>
           </div>
         </div>
       </button>

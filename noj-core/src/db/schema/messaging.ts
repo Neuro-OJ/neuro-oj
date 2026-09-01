@@ -1,6 +1,14 @@
-import { check, index, pgTable, text, unique } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  primaryKey,
+  text,
+  unique,
+} from "drizzle-orm/pg-core";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { manyToManyPk } from "./common.ts";
 import { users } from "./identity.ts";
 
 /**
@@ -41,7 +49,9 @@ export const conversations = pgTable(
 
 /**
  * 私信消息表。
- * 1-10000 字符文本消息。支持软删除（见 message_deletions 表）。
+ * 支持文本与图片消息（type: text | image）。
+ * 引用回复（reply_to_message_id）、转发（forwarded_from_user_id）。
+ * 支持软删除（见 message_deletions 表）。
  * 物理删除使用 ON DELETE CASCADE 从会话级联清理。
  */
 export const messages = pgTable(
@@ -54,8 +64,28 @@ export const messages = pgTable(
     sender_id: text("sender_id")
       .notNull()
       .references(() => users.id),
+    /** 消息类型：text（默认）| image */
+    type: text("type").notNull().default("text"),
+    /** 图片消息的存储 URL（noj-storage://），type=image 时必填 */
+    image_url: text("image_url"),
+    /** 引用回复：被引用的消息 ID（同会话内） */
+    reply_to_message_id: text("reply_to_message_id").references(
+      (): AnyPgColumn => messages.id,
+      { onDelete: "set null" },
+    ),
+    /** 转发来源用户 ID（快照复制时记录来源） */
+    forwarded_from_user_id: text("forwarded_from_user_id").references(
+      () => users.id,
+      { onDelete: "set null" },
+    ),
     content: text("content").notNull(),
     created_at: text("created_at").notNull(),
+    /** 编辑时间（null 表示未编辑；编辑后前端显示"已编辑"小字） */
+    edited_at: text("edited_at"),
+    /** 撤回时间（null 表示未撤回；撤回后前端显示系统提示） */
+    recalled_at: text("recalled_at"),
+    /** 编辑历史（JSON 数组，仅后台保存，不对外展示） */
+    edit_history: text("edit_history"),
   },
   (table) => ({
     conv_created_idx: index("idx_messages_conversation_created").on(
@@ -63,6 +93,35 @@ export const messages = pgTable(
       table.created_at,
     ),
     sender_idx: index("idx_messages_sender_id").on(table.sender_id),
+    typeCheck: check(
+      "messages_type_check",
+      sql`${table.type} IN ('text', 'image')`,
+    ),
+  }),
+);
+
+/**
+ * 消息表情反应表。
+ * 同一用户对同一消息仅保留一个 reaction（复合主键保证），重复提交替换。
+ * 消息或用户物理删除时通过 CASCADE 自动清理。
+ */
+export const messageReactions = pgTable(
+  "message_reactions",
+  {
+    message_id: text("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** 表情符号（取自固定常用集合，见 messages service 的 REACTION_EMOJIS） */
+    emoji: text("emoji").notNull(),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    // 主键含 emoji：同一用户对同一消息可添加多个不同 reaction
+    pk: primaryKey({ columns: [table.message_id, table.user_id, table.emoji] }),
+    msg_idx: index("idx_message_reactions_message_id").on(table.message_id),
   }),
 );
 
@@ -84,7 +143,7 @@ export const conversationReads = pgTable(
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
-    ...manyToManyPk([table.user_id, table.conversation_id]),
+    pk: primaryKey({ columns: [table.user_id, table.conversation_id] }),
   }),
 );
 
@@ -105,7 +164,33 @@ export const messageDeletions = pgTable(
     deleted_at: text("deleted_at").notNull(),
   },
   (table) => ({
-    ...manyToManyPk([table.user_id, table.message_id]),
+    pk: primaryKey({ columns: [table.user_id, table.message_id] }),
     msg_idx: index("idx_message_deletions_message_id").on(table.message_id),
+  }),
+);
+
+/**
+ * 会话偏好表（每用户每会话视角配置）。
+ * - remark_name：备注名（非空时列表/顶部栏显示备注名）
+ * - is_muted：消息免打扰（开启后仅显示红点不显示数量）
+ */
+export const conversationPreferences = pgTable(
+  "conversation_preferences",
+  {
+    user_id: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    conversation_id: text("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    /** 备注名（NULL/空 = 使用对方真实用户名） */
+    remark_name: text("remark_name"),
+    /** 消息免打扰：true = 新消息仅显示红点不显示数量 */
+    is_muted: boolean("is_muted").notNull().default(false),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.user_id, table.conversation_id] }),
+    convIdx: index("idx_conversation_preferences_conv").on(table.conversation_id),
   }),
 );

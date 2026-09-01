@@ -10,6 +10,7 @@ interface ReportDetail {
     reporter_id: string
     post_id: string | null
     comment_id: string | null
+    message_id: string | null
     content_type: string
     category: string
     reason: string
@@ -34,6 +35,33 @@ interface ReportDetail {
     post_id: string
     author_id: string
   } | null
+  message: {
+    id: string
+    content: string
+    type: string
+    conversation_id: string
+    sender_id: string
+    recalled_at: string | null
+  } | null
+  /** 举报私信消息时附带的会话完整聊天记录 */
+  message_history?: {
+    id: string
+    sender_id: string
+    type: string
+    content: string
+    created_at: string
+    recalled_at: string | null
+    image_url: string | null
+    conversation_id: string
+    reply_to_message_id: string | null
+    reply_to: {
+      sender_name: string
+      content: string
+      type: string
+    } | null
+    forwarded_from_user_id: string | null
+    forwarded_from_user: { id: string; username: string } | null
+  }[]
   ban: {
     id: string
     scope: "platform" | "social"
@@ -151,6 +179,54 @@ onMounted(() => {
             </div>
           </template>
         </dl>
+      </div>
+
+      <!-- 举报私信消息：附带完整聊天记录预览 -->
+      <div v-if="report.report.content_type === 'message' && report.message_history && report.message_history.length > 0" class="mt-4 rounded-lg border border-border bg-white p-6 shadow-card">
+        <h2 class="mb-3 text-base font-semibold">完整聊天记录</h2>
+        <p class="mb-3 text-xs text-text-secondary">以下为举报所附会话的完整聊天记录（已撤回消息对举报者隐藏原文）。</p>
+        <div class="max-h-[420px] overflow-y-auto space-y-2 rounded-md bg-bg-page p-3">
+          <div
+            v-for="m in report.message_history"
+            :key="m.id"
+            class="flex gap-2 text-sm"
+            :class="m.sender_id === report.reporter.id ? 'justify-end' : ''"
+          >
+            <div
+              class="max-w-[80%] rounded-lg px-2.5 py-1.5 text-text-secondary"
+              :class="m.sender_id === report.reporter.id ? 'bg-primary/10' : 'bg-default border border-border'"
+            >
+              <div class="mb-0.5 flex items-center gap-1.5 text-xs text-text-muted">
+                <span>{{ m.sender_id === report.reporter.id ? "我" : "对方" }}</span>
+                <span v-if="m.forwarded_from_user" class="inline-flex items-center gap-0.5 text-primary">
+                  <UIcon name="i-lucide-forward" class="size-3" />转自 @{{ m.forwarded_from_user.username }}
+                </span>
+              </div>
+              <!-- 回复引用框 -->
+              <div
+                v-if="m.reply_to"
+                class="mb-1 rounded-md border-l-[3px] border-primary bg-primary/5 px-2 py-1 text-xs leading-snug"
+              >
+                <span class="font-semibold text-primary">{{ m.reply_to.sender_name }}</span>
+                <span class="ml-1 text-text-secondary">{{ m.reply_to.content }}</span>
+              </div>
+              <!-- 撤回消息 -->
+              <span v-if="m.recalled_at" class="italic opacity-60">该消息已撤回</span>
+              <!-- 图片消息（举报者是参与者，走 conversations 图片端点） -->
+              <span v-else-if="m.type === 'image' && m.image_url">
+                <img
+                  :src="`/api/v1/conversations/${m.conversation_id}/messages/${m.id}/image`"
+                  alt="举报图片"
+                  class="max-h-40 rounded-md object-contain"
+                  loading="lazy"
+                />
+              </span>
+              <span v-else-if="m.type === 'image'">[图片]</span>
+              <!-- 文本 -->
+              <span v-else>{{ m.content }}</span>
+            </div>
+          </div>
+        </div>
       </div>
     </template>
   </main>

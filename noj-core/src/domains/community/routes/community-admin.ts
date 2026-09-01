@@ -23,6 +23,7 @@ import {
   deleteBoardRoleGrant,
   getLatestActiveBanId,
   getReportBanScope,
+  getReportImageBytes,
   getReportTarget,
   listBoardRoleGrants,
   listPendingComments,
@@ -279,7 +280,8 @@ router.post("/admin/reports/:reportId/:status", async (c) => {
 
   // 处理（resolved）：被处罚用户必须从举报目标派生，不允许客户端指定任意用户（越权封禁）
   const target = await getReportTarget(reportId);
-  const targetUserId = target.post?.author_id ?? target.comment?.author_id;
+  const targetUserId = target.post?.author_id ?? target.comment?.author_id ??
+    target.message?.sender_id;
   if (!targetUserId) throw new BadRequestError("举报目标用户不存在");
 
   // 审核员不能借举报流程对管理员/其他审核员施加社交封禁（需 admin:full_access）
@@ -322,7 +324,7 @@ router.post("/admin/reports/:reportId/:status", async (c) => {
       ? await getLatestActiveBanId(targetUserId)
       : undefined;
   } else {
-    // 默认移除内容：隐藏帖子或评论
+    // 默认移除内容：隐藏帖子或评论；私信消息无公开内容可隐藏，仅记录处理
     const reason = body.resolution || "被举报隐藏";
     if (target.post) {
       await changePostStatus(target.post.id, actorId, "hidden", reason);
@@ -462,6 +464,26 @@ router.get(
   async (c) => {
     const targetUserId = await resolveUserId(c.req.param("userId") as string);
     return c.json({ data: await listUserSanctions(targetUserId) });
+  },
+);
+
+// 审核员读取举报附带的私信图片（审核员非会话参与者，不能走 conversations 图片端点）
+router.get(
+  "/admin/reports/images/:conversationId/:messageId",
+  async (c) => {
+    const { conversationId, messageId } = c.req.param();
+    const { bytes, contentType, etag } = await getReportImageBytes(
+      conversationId,
+      messageId,
+    );
+    return new Response(bytes as BodyInit, {
+      status: 200,
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "private, max-age=86400",
+        "ETag": etag,
+      },
+    });
   },
 );
 

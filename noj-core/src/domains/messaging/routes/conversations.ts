@@ -7,14 +7,23 @@ import { parsePagination } from "../../../lib/pagination.ts";
 import { Channels, onEvent } from "../../../lib/event-bus.ts";
 import { createSseStream } from "../../../lib/sse-stream.ts";
 import {
+  addReaction,
+  clearConversationMessages,
   deleteMessage,
+  editMessage,
   findOrCreateConversation,
+  getMessageImageBytes,
   getUnreadCount,
   getUnreadCountByConversation,
   listConversations,
   listMessages,
   markConversationRead,
+  recallMessage,
+  removeReaction,
   sendMessage,
+  setConversationMuted,
+  updateConversationRemark,
+  uploadMessageImage,
 } from "../services/messages.ts";
 import { getCommunityConfig } from "../../community/index.ts";
 import { enforceMessageSendRateLimit } from "../../../lib/hardening-rate-limit.ts";
@@ -103,25 +112,133 @@ router.get("/:id/messages", async (c) => {
 /**
  * POST /api/v1/conversations/:id/messages
  * 发送消息。
- * Body: { content: string }
+ * Body: { content: string, type?: "text"|"image", image_url?: string,
+ *         reply_to_message_id?: string, forwarded_from_message_id?: string }
  */
 router.post("/:id/messages", async (c) => {
   const userId = c.get("userId");
   const conversationId = c.req.param("id");
-  const body = await parseJsonBody<{ content?: string }>(c);
+  const body = await parseJsonBody<{
+    content?: string;
+    type?: "text" | "image";
+    image_url?: string;
+    reply_to_message_id?: string;
+    forwarded_from_message_id?: string;
+  }>(c);
 
-  if (!body.content || body.content.trim().length === 0) {
-    throw new BadRequestError("消息内容不能为空");
-  }
-  if (body.content.length > MAX_MESSAGE_LENGTH) {
-    throw new BadRequestError(`消息内容不能超过 ${MAX_MESSAGE_LENGTH} 字符`);
+  const type = body.type ?? "text";
+  // 转发消息时内容/图片由 service 从原消息快照复制，跳过请求体校验
+  if (!body.forwarded_from_message_id) {
+    if (type === "text") {
+      if (!body.content || body.content.trim().length === 0) {
+        throw new BadRequestError("消息内容不能为空");
+      }
+      if (body.content.length > MAX_MESSAGE_LENGTH) {
+        throw new BadRequestError(
+          `消息内容不能超过 ${MAX_MESSAGE_LENGTH} 字符`,
+        );
+      }
+    } else if (type === "image") {
+      if (!body.image_url) {
+        throw new BadRequestError("图片消息缺少 image_url");
+      }
+    } else {
+      throw new BadRequestError("不支持的消息类型");
+    }
   }
 
   // NOJ-096：私信发送按用户维度限流。
   await enforceMessageSendRateLimit(userId);
 
-  const message = await sendMessage(userId, conversationId, body.content);
+  const message = await sendMessage(
+    userId,
+    conversationId,
+    body.content ?? "",
+    {
+      type,
+      image_url: body.image_url,
+      reply_to_message_id: body.reply_to_message_id,
+      forwarded_from_message_id: body.forwarded_from_message_id,
+    },
+  );
   return c.json({ data: message }, 201);
+});
+
+/**
+ * POST /api/v1/conversations/:id/messages/images
+ * 上传私信图片（multipart `file` 字段），返回存储 URL。
+ * 校验 png/jpeg/webp、≤5MB、magic bytes。
+ */
+router.post("/:id/messages/images", async (c) => {
+  const userId = c.get("userId");
+  const conversationId = c.req.param("id");
+  // NOJ-096：图片上传同样按用户维度限流，防止无限上传耗尽存储
+  await enforceMessageSendRateLimit(userId);
+  const body = await c.req.parseBody();
+  const file = body["file"];
+  if (!file || !(file instanceof File)) {
+    throw new BadRequestError("请上传有效的图片文件");
+  }
+  const result = await uploadMessageImage(userId, conversationId, file);
+  return c.json({ data: result }, 201);
+});
+
+/**
+ * GET /api/v1/conversations/:id/messages/:messageId/image
+ * 读取私信图片字节流（仅会话参与者可访问）。
+ * 供前端 `<img>` 展示（noj-storage:// 无法直接作为 src）。
+ */
+router.get("/:id/messages/:messageId/image", async (c) => {
+  const userId = c.get("userId");
+  const conversationId = c.req.param("id");
+  const messageId = c.req.param("messageId");
+  const { bytes, contentType, etag } = await getMessageImageBytes(
+    userId,
+    conversationId,
+    messageId,
+  );
+  return new Response(bytes as BodyInit, {
+    status: 200,
+    headers: {
+      "Content-Type": contentType,
+      "Cache-Control": "private, max-age=86400",
+      "ETag": etag,
+    },
+  });
+});
+
+/**
+ * POST /api/v1/conversations/:id/messages/:messageId/reactions
+ * 添加/替换消息 Reaction。
+ * Body: { emoji: string }（取自固定常用集合）
+ */
+router.post("/:id/messages/:messageId/reactions", async (c) => {
+  const userId = c.get("userId");
+  const conversationId = c.req.param("id");
+  const messageId = c.req.param("messageId");
+  const body = await parseJsonBody<{ emoji?: string }>(c);
+  if (!body.emoji) {
+    throw new BadRequestError("缺少 emoji");
+  }
+  await addReaction(userId, conversationId, messageId, body.emoji);
+  return c.body(null, 204);
+});
+
+/**
+ * DELETE /api/v1/conversations/:id/messages/:messageId/reactions
+ * 取消当前用户对消息指定 emoji 的 Reaction（幂等）。
+ * Body: { emoji: string }
+ */
+router.delete("/:id/messages/:messageId/reactions", async (c) => {
+  const userId = c.get("userId");
+  const conversationId = c.req.param("id");
+  const messageId = c.req.param("messageId");
+  const body = await parseJsonBody<{ emoji?: string }>(c);
+  if (!body.emoji) {
+    throw new BadRequestError("缺少 emoji");
+  }
+  await removeReaction(userId, conversationId, messageId, body.emoji);
+  return c.body(null, 204);
 });
 
 /**
@@ -165,6 +282,82 @@ router.delete("/:id/messages/:messageId", async (c) => {
 });
 
 /**
+ * PATCH /api/v1/conversations/:id/messages/:messageId
+ * 编辑消息（仅发送者本人，发送后 5 分钟内，仅文本消息）。
+ */
+router.patch("/:id/messages/:messageId", async (c) => {
+  const userId = c.get("userId");
+  const conversationId = c.req.param("id");
+  const messageId = c.req.param("messageId");
+  const body = await parseJsonBody<{ content?: string }>(c);
+  if (!body.content || body.content.trim().length === 0) {
+    throw new BadRequestError("消息内容不能为空");
+  }
+  if (body.content.length > MAX_MESSAGE_LENGTH) {
+    throw new BadRequestError(`消息内容不能超过 ${MAX_MESSAGE_LENGTH} 字符`);
+  }
+  await editMessage(userId, conversationId, messageId, body.content);
+  return c.json({ data: { id: messageId, content: body.content } });
+});
+
+/**
+ * POST /api/v1/conversations/:id/messages/:messageId/recall
+ * 撤回消息（仅发送者本人，发送后 2 分钟内）。
+ */
+router.post("/:id/messages/:messageId/recall", async (c) => {
+  const userId = c.get("userId");
+  const conversationId = c.req.param("id");
+  const messageId = c.req.param("messageId");
+  await recallMessage(userId, conversationId, messageId);
+  return c.json({ data: { id: messageId } });
+});
+
+/**
+ * PUT /api/v1/conversations/:id/remark
+ * 设置会话备注名（仅当前用户视角）。
+ * Body: { remark_name: string }（空字符串清除备注）
+ */
+router.put("/:id/remark", async (c) => {
+  const userId = c.get("userId");
+  const conversationId = c.req.param("id");
+  const body = await parseJsonBody<{ remark_name?: string }>(c);
+  const data = await updateConversationRemark(
+    userId,
+    conversationId,
+    body.remark_name ?? "",
+  );
+  return c.json({ data });
+});
+
+/**
+ * PUT /api/v1/conversations/:id/mute
+ * 设置会话消息免打扰（仅当前用户视角）。
+ * Body: { is_muted: boolean }
+ */
+router.put("/:id/mute", async (c) => {
+  const userId = c.get("userId");
+  const conversationId = c.req.param("id");
+  const body = await parseJsonBody<{ is_muted?: boolean }>(c);
+  const data = await setConversationMuted(
+    userId,
+    conversationId,
+    body.is_muted ?? false,
+  );
+  return c.json({ data });
+});
+
+/**
+ * POST /api/v1/conversations/:id/clear
+ * 清空聊天记录（仅对当前用户隐藏，不实际删除消息）。
+ */
+router.post("/:id/clear", async (c) => {
+  const userId = c.get("userId");
+  const conversationId = c.req.param("id");
+  const data = await clearConversationMessages(userId, conversationId);
+  return c.json({ data });
+});
+
+/**
  * GET /api/v1/conversations/events
  * 私信通知 SSE 端点。
  *
@@ -196,8 +389,16 @@ router.get("/events", (c) => {
           Channels.user(userId),
           (_channel, message) => {
             if (closed) return;
+            // 透传 payload 的 type 作为 SSE event 名（message:new / message:edited / message:recalled）
+            let eventName = "message:new";
+            try {
+              const parsed = JSON.parse(message);
+              if (typeof parsed?.type === "string") eventName = parsed.type;
+            } catch {
+              // 非 JSON 仍按默认事件名
+            }
             stream.writeSSE({
-              event: "message:new",
+              event: eventName,
               data: message,
             }).catch(() => {
               close();

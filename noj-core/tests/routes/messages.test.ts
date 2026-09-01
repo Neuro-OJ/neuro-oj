@@ -885,7 +885,456 @@ Deno.test({
       assertExists(text);
       assertEquals(text.includes("feature:disabled"), true);
     } finally {
+      // 恢复私信功能开启，避免影响后续测试
+      enterTestContext({
+        actorId: "0",
+        actorIp: "127.0.0.1",
+        actorRole: "admin",
+      });
+      try {
+        await updateSetting("private_messaging_enabled", true, "0");
+      } finally {
+        leaveTestContext();
+      }
       await cleanup(user);
+    }
+  },
+});
+
+// ── issue #360：图片消息 / 引用回复 / 转发 / Reaction 路由 ──────
+
+Deno.test({
+  name: "messages route: 发送图片消息成功",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const userA = await createTestUser();
+    const userB = await createTestUser();
+    try {
+      const tokenA = await getToken(userA);
+      const convRes = await app.request(BASE, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenA}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ other_user_id: userB }),
+      });
+      assertEquals(convRes.status, 201);
+      const conv = (await convRes.json()).data;
+      const res = await app.request(`${BASE}/${conv.id}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenA}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "image",
+          image_url: "noj-storage://local/route-img.png",
+        }),
+      });
+      assertEquals(res.status, 201);
+      const msg = (await res.json()).data;
+      assertEquals(msg.type, "image");
+      assertEquals(msg.image_url, "noj-storage://local/route-img.png");
+    } finally {
+      await cleanup(userA, userB);
+    }
+  },
+});
+
+Deno.test({
+  name: "messages route: 图片消息缺少 image_url 返回 400",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const userA = await createTestUser();
+    const userB = await createTestUser();
+    try {
+      const tokenA = await getToken(userA);
+      const convRes = await app.request(BASE, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenA}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ other_user_id: userB }),
+      });
+      const conv = (await convRes.json()).data;
+      const res = await app.request(`${BASE}/${conv.id}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenA}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ type: "image" }),
+      });
+      assertEquals(res.status, 400);
+    } finally {
+      await cleanup(userA, userB);
+    }
+  },
+});
+
+Deno.test({
+  name: "messages route: 引用回复成功",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const userA = await createTestUser();
+    const userB = await createTestUser();
+    try {
+      const tokenA = await getToken(userA);
+      const tokenB = await getToken(userB);
+      const convRes = await app.request(BASE, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenA}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ other_user_id: userB }),
+      });
+      const conv = (await convRes.json()).data;
+      const send = (token: string, body: Record<string, unknown>) =>
+        app.request(`${BASE}/${conv.id}/messages`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
+      const origRes = await send(tokenA, { content: "原始" });
+      const orig = (await origRes.json()).data;
+      const replyRes = await send(tokenB, {
+        content: "回复",
+        reply_to_message_id: orig.id,
+      });
+      assertEquals(replyRes.status, 201);
+      const listRes = await app.request(
+        `${BASE}/${conv.id}/messages?page=1&per_page=50`,
+        { headers: { Authorization: `Bearer ${tokenA}` } },
+      );
+      const list = (await listRes.json()).data;
+      const replyData = (await replyRes.json()).data;
+      const replyMsg = list.find((m: { id: string }) => m.id === replyData.id);
+      assertEquals(replyMsg.reply_to.message_id, orig.id);
+      assertEquals(replyMsg.reply_to.content, "原始");
+    } finally {
+      await cleanup(userA, userB);
+    }
+  },
+});
+
+Deno.test({
+  name: "messages route: 转发消息成功并标记来源",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const userA = await createTestUser();
+    const userB = await createTestUser();
+    const userC = await createTestUser();
+    try {
+      const tokenA = await getToken(userA);
+      const tokenB = await getToken(userB);
+      const mkConv = async (token: string, other: string) => {
+        const res = await app.request(BASE, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ other_user_id: other }),
+        });
+        return (await res.json()).data;
+      };
+      const convAB = await mkConv(tokenA, userB);
+      const convAC = await mkConv(tokenA, userC);
+      const origRes = await app.request(`${BASE}/${convAB.id}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenB}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ content: "B 的消息" }),
+      });
+      const orig = (await origRes.json()).data;
+      const fwdRes = await app.request(`${BASE}/${convAC.id}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenA}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          content: "占位",
+          forwarded_from_message_id: orig.id,
+        }),
+      });
+      assertEquals(fwdRes.status, 201);
+      const fwd = (await fwdRes.json()).data;
+      assertEquals(fwd.forwarded_from_user_id, userB);
+      assertEquals(fwd.content, "B 的消息");
+    } finally {
+      await cleanup(userA, userB, userC);
+    }
+  },
+});
+
+Deno.test({
+  name: "messages route: 转发不可信消息返回 404",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const userA = await createTestUser();
+    const userB = await createTestUser();
+    const userC = await createTestUser();
+    try {
+      const tokenA = await getToken(userA);
+      const tokenC = await getToken(userC);
+      const mkConv = async (token: string, other: string) => {
+        const res = await app.request(BASE, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ other_user_id: other }),
+        });
+        return (await res.json()).data;
+      };
+      const convAB = await mkConv(tokenA, userB);
+      const convAC = await mkConv(tokenA, userC);
+      const origRes = await app.request(`${BASE}/${convAB.id}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenA}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ content: "AB 消息" }),
+      });
+      const orig = (await origRes.json()).data;
+      // C 不在 AB 会话中，转发应 404
+      const fwdRes = await app.request(`${BASE}/${convAC.id}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenC}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          content: "转发",
+          forwarded_from_message_id: orig.id,
+        }),
+      });
+      assertEquals(fwdRes.status, 404);
+    } finally {
+      await cleanup(userA, userB, userC);
+    }
+  },
+});
+
+Deno.test({
+  name: "messages route: 添加/替换/取消 Reaction",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const userA = await createTestUser();
+    const userB = await createTestUser();
+    try {
+      const tokenA = await getToken(userA);
+      const tokenB = await getToken(userB);
+      const convRes = await app.request(BASE, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenA}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ other_user_id: userB }),
+      });
+      const conv = (await convRes.json()).data;
+      const msgRes = await app.request(`${BASE}/${conv.id}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenA}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ content: "reaction 消息" }),
+      });
+      const msg = (await msgRes.json()).data;
+      // 添加 👍
+      const addRes = await app.request(
+        `${BASE}/${conv.id}/messages/${msg.id}/reactions`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${tokenB}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ emoji: "👍" }),
+        },
+      );
+      assertEquals(addRes.status, 204);
+      // 同一用户再点 ❤️：多个不同 emoji 共存
+      await app.request(
+        `${BASE}/${conv.id}/messages/${msg.id}/reactions`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${tokenB}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ emoji: "❤️" }),
+        },
+      );
+      // 列表验证
+      const listRes = await app.request(
+        `${BASE}/${conv.id}/messages?page=1&per_page=50`,
+        { headers: { Authorization: `Bearer ${tokenA}` } },
+      );
+      const list = (await listRes.json()).data;
+      const reactions = list.find((m: { id: string }) =>
+        m.id === msg.id
+      ).reactions;
+      assertEquals(reactions.length, 2);
+      assertEquals(reactions.map((r) => r.emoji).sort(), ["❤️", "👍"]);
+      // 取消指定 emoji
+      const delRes = await app.request(
+        `${BASE}/${conv.id}/messages/${msg.id}/reactions`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${tokenB}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ emoji: "👍" }),
+        },
+      );
+      assertEquals(delRes.status, 204);
+    } finally {
+      await cleanup(userA, userB);
+    }
+  },
+});
+
+Deno.test({
+  name: "messages route: 非法 emoji 返回 400",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const userA = await createTestUser();
+    const userB = await createTestUser();
+    try {
+      const tokenA = await getToken(userA);
+      const tokenB = await getToken(userB);
+      const convRes = await app.request(BASE, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenA}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ other_user_id: userB }),
+      });
+      const conv = (await convRes.json()).data;
+      const msgRes = await app.request(`${BASE}/${conv.id}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenA}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ content: "消息" }),
+      });
+      const msg = (await msgRes.json()).data;
+      const res = await app.request(
+        `${BASE}/${conv.id}/messages/${msg.id}/reactions`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${tokenB}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ emoji: "🚫" }),
+        },
+      );
+      assertEquals(res.status, 400);
+    } finally {
+      await cleanup(userA, userB);
+    }
+  },
+});
+
+// ── 审查回归：路由层转发图片消息（type 同步）──────────────────
+
+Deno.test({
+  name: "messages route: 转发图片消息成功（路由层不拦截）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const userA = await createTestUser();
+    const userB = await createTestUser();
+    const userC = await createTestUser();
+    try {
+      const tokenA = await getToken(userA);
+      const mkConv = async (token: string, other: string) => {
+        const res = await app.request(BASE, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ other_user_id: other }),
+        });
+        return (await res.json()).data;
+      };
+      const convAB = await mkConv(tokenA, userB);
+      const convAC = await mkConv(tokenA, userC);
+      // 创建图片消息
+      const imgRes = await app.request(`${BASE}/${convAB.id}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenA}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "image",
+          image_url: "noj-storage://local/route-fwd-img.png",
+        }),
+      });
+      const img = (await imgRes.json()).data;
+      // A 是 AB 与 AC 两个会话的参与者，可转发图片消息：
+      // content 为空、不传 type，路由层不应 400，service 同步 type=image
+      const fwdRes = await app.request(`${BASE}/${convAC.id}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenA}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          content: "",
+          forwarded_from_message_id: img.id,
+        }),
+      });
+      assertEquals(fwdRes.status, 201);
+      const fwd = (await fwdRes.json()).data;
+      assertEquals(fwd.type, "image");
+      assertEquals(fwd.image_url, "noj-storage://local/route-fwd-img.png");
+      assertEquals(fwd.forwarded_from_user_id, userA);
+    } finally {
+      await cleanup(userA, userB, userC);
     }
   },
 });

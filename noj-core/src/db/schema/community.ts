@@ -13,6 +13,7 @@ import { sql } from "drizzle-orm";
 import { manyToManyPk, publicIdColumn } from "./common.ts";
 import { roles, userBans, users } from "./identity.ts";
 import { problems } from "./catalog.ts";
+import { messages } from "./messaging.ts";
 
 /** 社区讨论板块。 */
 export const communityBoards = pgTable(
@@ -288,6 +289,10 @@ export const communityReports = pgTable(
     comment_id: text("comment_id").references(() => communityComments.id, {
       onDelete: "set null",
     }),
+    /** 私信消息举报目标（复用社区举报处理流程） */
+    message_id: text("message_id").references(() => messages.id, {
+      onDelete: "set null",
+    }),
     content_type: text("content_type").notNull().default("post"),
     sanction_id: text("sanction_id").references(() => communitySanctions.id, {
       onDelete: "set null",
@@ -311,7 +316,7 @@ export const communityReports = pgTable(
   (table) => ({
     targetCheck: check(
       "community_reports_target_check",
-      sql`num_nonnulls(${table.post_id}, ${table.comment_id}) = 1`,
+      sql`num_nonnulls(${table.post_id}, ${table.comment_id}, ${table.message_id}) = 1`,
     ),
     statusCheck: check(
       "community_reports_status_check",
@@ -326,6 +331,7 @@ export const communityReports = pgTable(
     reporterIdx: index("idx_community_reports_reporter").on(table.reporter_id),
     postIdx: index("idx_community_reports_post").on(table.post_id),
     commentIdx: index("idx_community_reports_comment").on(table.comment_id),
+    messageIdx: index("idx_community_reports_message").on(table.message_id),
   }),
 );
 

@@ -30,6 +30,7 @@ import {
   getNotificationUnreadCount,
   getPost,
   getReportDetail,
+  getReportMessageHistory,
   hasAcceptedSolution,
   listBoards,
   listBookmarks,
@@ -559,6 +560,7 @@ router.post("/reports", authMiddleware, async (c) => {
     {
       post_id?: string;
       comment_id?: string;
+      message_id?: string;
       reason?: string;
       category?: string;
     }
@@ -583,8 +585,30 @@ router.get("/reports/:reportId", authMiddleware, async (c) => {
     throw new ForbiddenError("无权查看该举报");
   }
   // 非审核员不返回被举报者的封禁元数据（避免泄露 scope/期限），仅保留处理结果摘要
-  if (detail.report.reporter_id === actorId && !(await isModerator(c))) {
+  const isMod = await isModerator(c);
+  if (detail.report.reporter_id === actorId && !isMod) {
     detail.ban = null;
+  }
+  // 查看者是举报者本人时：已撤回消息对其隐藏原文（无论是否同时是管理员）；管理员查看他人举报仍可见原文
+  if (detail.report.reporter_id === actorId && detail.message?.recalled_at) {
+    detail.report.content_snapshot = "该消息已撤回";
+    if (detail.message) detail.message.content = "该消息已撤回";
+  }
+  // 举报私信消息时附带会话完整聊天记录（管理员可见全部；举报者隐藏已撤回内容）
+  if (
+    detail.report.content_type === "message" && detail.message?.conversation_id
+  ) {
+    const history = await getReportMessageHistory(
+      detail.message.conversation_id,
+      actorId,
+    );
+    // 附加到响应：查看者是举报者本人时隐藏已撤回消息原文；管理员查看他人举报可见全部
+    (detail as Record<string, unknown>).message_history = detail.report
+        .reporter_id === actorId
+      ? history.map((m) =>
+        m.recalled_at ? { ...m, content: "该消息已撤回" } : m
+      )
+      : history;
   }
   return c.json({ data: detail });
 });
