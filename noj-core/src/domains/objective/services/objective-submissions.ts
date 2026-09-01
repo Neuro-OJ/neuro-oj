@@ -10,29 +10,32 @@
  */
 import { and, count, desc, eq, max } from "drizzle-orm";
 import type { Context } from "hono";
-import { getDb } from "../../db/connection.ts";
-import { objectiveQuestions, objectiveSubmissions } from "../../db/schema.ts";
+import { getDb } from "../../../db/connection.ts";
+import {
+  objectiveQuestions,
+  objectiveSubmissions,
+} from "../../../db/schema.ts";
 import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "../../lib/errors.ts";
-import { checkPermission } from "../../lib/permissions.ts";
+} from "../../../lib/errors.ts";
+import { checkPermission } from "../../../lib/permissions.ts";
 import { judgePaper } from "./objective-judge.ts";
 import {
   assertObjectivePaper,
   getPaperOrThrow,
   resolvePaperId,
 } from "./objective-questions.ts";
-import { getContest, getContestProblems } from "../../domains/contest/index.ts";
+import { getContest, getContestProblems } from "../../contest/index.ts";
 import type {
   ObjectiveSubmissionResponse,
   QuestionJudgement,
   SubmitObjectiveInput,
   SubmitObjectiveResult,
-} from "../../types/objective.ts";
-import { validateAnswersPayload } from "../../types/objective.ts";
-import type { ObjectiveAnswerValue } from "../../types/objective.ts";
+} from "../../../types/objective.ts";
+import { validateAnswersPayload } from "../../../types/objective.ts";
+import type { ObjectiveAnswerValue } from "../../../types/objective.ts";
 
 /** ×100 分换算回百分制。 */
 const SCORE_SCALE_FACTOR = 100;

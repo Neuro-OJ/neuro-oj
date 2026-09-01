@@ -8,14 +8,14 @@
  */
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { Context } from "hono";
-import { getDb } from "../../db/connection.ts";
-import { objectiveQuestions, problems } from "../../db/schema.ts";
+import { getDb } from "../../../db/connection.ts";
+import { objectiveQuestions, problems } from "../../../db/schema.ts";
 import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "../../lib/errors.ts";
-import { assertPermission } from "../../lib/permissions.ts";
+} from "../../../lib/errors.ts";
+import { assertPermission } from "../../../lib/permissions.ts";
 import {
   type CreateQuestionInput,
   JUDGE_OPTIONS,
@@ -25,7 +25,7 @@ import {
   type UpdateQuestionInput,
   validateAnswerForType,
   validateOptions,
-} from "../../types/objective.ts";
+} from "../../../types/objective.ts";
 
 /** 套卷行类型（problems 表 type='O' 行）。 */
 export type PaperRow = typeof problems.$inferSelect;

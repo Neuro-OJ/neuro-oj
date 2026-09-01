@@ -10,8 +10,8 @@
 import type {
   ObjectiveAnswerValue,
   QuestionJudgement,
-} from "../../types/objective.ts";
-import { SCORE_SCALE } from "../../types/index.ts";
+} from "../../../types/objective.ts";
+import { SCORE_SCALE } from "../../../types/index.ts";
 
 /** 判分输入：单道小题的判定上下文。 */
 export interface QuestionToJudge {

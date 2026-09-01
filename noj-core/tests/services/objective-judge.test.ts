@@ -7,7 +7,7 @@ import {
   judgePaper,
   judgeQuestion,
   type QuestionToJudge,
-} from "../../src/services/objective/objective-judge.ts";
+} from "../../src/domains/objective/index.ts";
 import type { ObjectiveAnswerValue } from "../../src/types/objective.ts";
 
 function q(

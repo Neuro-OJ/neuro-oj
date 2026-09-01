@@ -40,16 +40,14 @@ import {
   assertObjectivePaper,
   createQuestion,
   deleteQuestion,
+  getObjectiveSubmission,
   getPaperOrThrow,
   isPaperOwnerOrAdmin,
-  listPaperQuestions,
-  updateQuestion,
-} from "../services/objective/objective-questions.ts";
-import {
-  getObjectiveSubmission,
   listObjectiveSubmissions,
+  listPaperQuestions,
   submitObjectivePaper,
-} from "../services/objective/objective-submissions.ts";
+  updateQuestion,
+} from "../domains/objective/index.ts";
 import type {
   CreateQuestionInput,
   SubmitObjectiveInput,

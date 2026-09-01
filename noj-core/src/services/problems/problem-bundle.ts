@@ -47,7 +47,7 @@ import {
   enforceResourceLimits,
 } from "./problem-field-guard.ts";
 import { syncProblemTags, validateProblemTagIds } from "./problems-tags.ts";
-import { judgeOptions } from "../objective/objective-questions.ts";
+import { judgeOptions } from "../../domains/objective/index.ts";
 import { getProblem } from "./problems-list.ts";
 import { getTagIdsByNames, listTags } from "../tags.ts";
 import { logAudit } from "../audit-log.ts";
