@@ -25,7 +25,6 @@ import {
   ensureBootstrapAdmin,
   ensureE2EPwChangeUser,
   seedJudgeImages,
-  seedLlmQuotas,
   seedTags,
 } from "../src/domains/system/index.ts";
 import { importProblemBundle } from "../src/domains/catalog/index.ts";
@@ -159,8 +158,7 @@ async function runInitSystem(): Promise<void> {
   await seedJudgeImages();
   console.log("初始化种子标签...");
   await seedTags();
-  console.log("初始化 LLM 默认配额...");
-  await seedLlmQuotas();
+  // 注：LLM 默认配额由 noj-llm-gateway 启动时幂等 seed
   // 注：题目-标签关联由 problems import 按 manifest.tags 完成
   console.log("系统基础数据初始化完成");
 }

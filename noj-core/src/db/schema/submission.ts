@@ -14,7 +14,6 @@ import {
 import { sql } from "drizzle-orm";
 import type { SubmissionStatus } from "../../types/index.ts";
 import type { SelfTestStatus } from "../../types/self-tests.ts";
-import { llmProviders } from "./gateway.ts";
 import { users } from "./identity.ts";
 import { problems } from "./catalog.ts";
 import { contests } from "./contest.ts";
@@ -37,10 +36,7 @@ export const submissions = pgTable(
     /** artifact 提交的存储 URL（`noj-storage://`），code 模式为 NULL */
     artifact_storage_url: text("artifact_storage_url"),
     /** 可选的用户 BYOK Provider；密钥由 noj-llm-gateway 托管 */
-    llm_provider_config_id: text("llm_provider_config_id").references(
-      () => llmProviders.id,
-      { onDelete: "set null" },
-    ),
+    llm_provider_config_id: text("llm_provider_config_id"),
     status: text("status").$type<SubmissionStatus>().notNull().default(
       "pending",
     ),

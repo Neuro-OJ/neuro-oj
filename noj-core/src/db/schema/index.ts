@@ -1,7 +1,6 @@
 export * from "./identity.ts";
 export * from "./catalog.ts";
 export * from "./objective.ts";
-export * from "./gateway.ts";
 export * from "./system.ts";
 export * from "./contest.ts";
 export * from "./submission.ts";
