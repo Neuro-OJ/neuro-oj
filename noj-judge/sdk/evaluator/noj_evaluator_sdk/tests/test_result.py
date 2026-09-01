@@ -59,11 +59,6 @@ class TestResultWrite(unittest.TestCase):
         data = self._read_written()
         self.assertEqual(data["score"], 8750)
 
-    def test_runtime_error_raises(self):
-        r = Result()
-        with self.assertRaises(RuntimeError):
-            r.runtime_error("boom")
-
 
 if __name__ == "__main__":
     unittest.main()

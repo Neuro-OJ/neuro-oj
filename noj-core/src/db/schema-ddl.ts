@@ -10,7 +10,6 @@ export const SCHEMA_DDL: string[] = [
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT,
-    role TEXT NOT NULL DEFAULT 'user',
     bio TEXT NOT NULL DEFAULT '',
     must_change_password BOOLEAN NOT NULL DEFAULT false,
     community_activity_visibility TEXT NOT NULL DEFAULT 'following'

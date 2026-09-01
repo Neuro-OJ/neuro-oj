@@ -258,9 +258,10 @@ export async function saveSelfTestResult(
   const db = getDb();
 
   const now = new Date().toISOString();
-  const status: SelfTestStatus = result.status === "error" || result.status === "SystemError"
-    ? "error"
-    : "finished";
+  const status: SelfTestStatus =
+    result.status === "error" || result.status === "SystemError"
+      ? "error"
+      : "finished";
 
   const outcome = await db.transaction(async (tx) => {
     const [existing] = await tx

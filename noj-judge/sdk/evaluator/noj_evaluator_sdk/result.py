@@ -54,14 +54,6 @@ class Result:
             kwargs["message"] = message
         self._write(score, **kwargs)
 
-    def runtime_error(self, message: str, **kwargs: Any) -> None:
-        """评测脚本自身出错（非用户代码问题）。
-
-        新协议不再通过结果 JSON 的 status 表达错误；应直接抛出异常或
-        以非零退出码结束，由 judge 统一映射为 error。
-        """
-        raise RuntimeError(message)
-
     def system_error(self, message: str, **kwargs: Any) -> None:
         """系统错误（支持包解压失败、RPC 通道异常等）。
 
