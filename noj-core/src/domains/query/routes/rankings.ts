@@ -1,9 +1,15 @@
 import { Hono } from "hono";
-import type { OptionalAuthEnv } from "../middleware/auth.ts";
-import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
-import { getCheckinLeaderboard } from "../domains/identity/index.ts";
+import type { OptionalAuthEnv } from "../../../middleware/auth.ts";
+import {
+  authMiddleware,
+  optionalAuthMiddleware,
+} from "../../../middleware/auth.ts";
+import { getCheckinLeaderboard } from "../../identity/index.ts";
 import { getGlobalRankings, getMyRanking } from "../services/rankings.ts";
-import { buildPaginationMeta, parsePagination } from "../lib/pagination.ts";
+import {
+  buildPaginationMeta,
+  parsePagination,
+} from "../../../lib/pagination.ts";
 
 const router = new Hono<OptionalAuthEnv>();
 

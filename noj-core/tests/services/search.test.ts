@@ -12,7 +12,7 @@
  * 8. searchUsers admin 守卫：isAdmin=false 抛 ForbiddenError
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { searchProblems, searchUsers } from "../../src/services/search.ts";
+import { searchProblems, searchUsers } from "../../src/domains/query/index.ts";
 import { resetDbForTest } from "../../src/db/connection.ts";
 import { problems, users } from "../../src/db/schema.ts";
 import { getDb } from "../../src/db/connection.ts";

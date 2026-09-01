@@ -19,7 +19,7 @@ import type { JudgeTask } from "../types/index.ts";
 import type { RuntimeConfig } from "../types/problems.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import { buildJudgeTaskLlmForProvider } from "../lib/llm-token.ts";
-import { getUserLlmProvider } from "../services/llm.ts";
+import { getUserLlmProvider } from "../domains/gateway/index.ts";
 
 const RESULT_QUEUE = "noj:judge:results";
 

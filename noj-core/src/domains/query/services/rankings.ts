@@ -1,14 +1,14 @@
 import { sql } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
+import { getDb } from "../../../db/connection.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
-import { evaluationResults } from "../db/schema.ts";
+import { evaluationResults } from "../../../db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
-import { submissions } from "../db/schema.ts";
+import { submissions } from "../../../db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
-import { users } from "../db/schema.ts";
-import { BadRequestError } from "../lib/errors.ts";
-import { unwrapRows } from "../lib/sql-rows.ts";
-import { logger } from "../lib/logging.ts";
+import { users } from "../../../db/schema.ts";
+import { BadRequestError } from "../../../lib/errors.ts";
+import { unwrapRows } from "../../../lib/sql-rows.ts";
+import { logger } from "../../../lib/logging.ts";
 
 /**
  * 用户榜单条目。

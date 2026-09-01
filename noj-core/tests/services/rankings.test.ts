@@ -12,7 +12,7 @@ import {
   getGlobalRankings,
   getMyRanking,
   refreshRankingsView,
-} from "../../src/services/rankings.ts";
+} from "../../src/domains/query/index.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建

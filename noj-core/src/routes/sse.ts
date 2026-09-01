@@ -11,7 +11,7 @@ import { checkPermission } from "../lib/permissions.ts";
 import {
   getCachedTodayStats,
   getCachedTotalStats,
-} from "../services/stats-cache.ts";
+} from "../domains/query/index.ts";
 import { getContest, getContestRanking } from "../domains/contest/index.ts";
 import { NotFoundError } from "../lib/errors.ts";
 

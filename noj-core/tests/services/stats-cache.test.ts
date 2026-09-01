@@ -14,7 +14,7 @@ import {
   applyNewResult,
   getCachedTodayStats,
   getCachedTotalStats,
-} from "../../src/services/stats-cache.ts";
+} from "../../src/domains/query/index.ts";
 import { resetDbForTest } from "../../src/db/connection.ts";
 
 // PGlite 内存数据库始终可用

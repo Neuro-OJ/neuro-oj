@@ -21,8 +21,8 @@ import adminSettings from "../../domains/system/routes/admin-settings.ts";
 import adminBlacklist from "../../domains/identity/routes/admin-blacklist.ts";
 import adminRoles from "../../domains/identity/routes/admin-roles.ts";
 import adminAudit from "../../domains/system/routes/admin-audit.ts";
-import adminDashboard from "./admin-dashboard.ts";
-import adminLlm from "./admin-llm.ts";
+import adminDashboard from "../../domains/query/routes/admin-dashboard.ts";
+import adminLlm from "../../domains/gateway/routes/admin-llm.ts";
 
 const router = new Hono<AuthEnv>();
 

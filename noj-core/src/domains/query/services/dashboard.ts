@@ -1,16 +1,16 @@
 import { sql } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
+import { getDb } from "../../../db/connection.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
-import { evaluationResults } from "../db/schema.ts";
+import { evaluationResults } from "../../../db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
-import { problems } from "../db/schema.ts";
+import { problems } from "../../../db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
-import { submissions } from "../db/schema.ts";
+import { submissions } from "../../../db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
-import { tags } from "../db/schema.ts";
+import { tags } from "../../../db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
-import { users } from "../db/schema.ts";
-import { AppError } from "../lib/errors.ts";
+import { users } from "../../../db/schema.ts";
+import { AppError } from "../../../lib/errors.ts";
 
 /**
  * 仪表盘统计数据响应。

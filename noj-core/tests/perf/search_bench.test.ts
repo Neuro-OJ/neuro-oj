@@ -1,5 +1,5 @@
 import { assert } from "jsr:@std/assert@^1";
-import { searchProblems, searchUsers } from "../../src/services/search.ts";
+import { searchProblems, searchUsers } from "../../src/domains/query/index.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { problems, users } from "../../src/db/schema.ts";
 import { sql } from "drizzle-orm";
