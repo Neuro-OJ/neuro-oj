@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { roles, userBans, users } from "./identity.ts";
 import { problems } from "./catalog.ts";
 
+/** 社区讨论板块。 */
 export const communityBoards = pgTable(
   "community_boards",
   {
@@ -34,6 +35,7 @@ export const communityBoards = pgTable(
   }),
 );
 
+/** 板块级角色授权；没有授权记录时沿用全局社区 RBAC。 */
 export const communityBoardRoleGrants = pgTable(
   "community_board_role_grants",
   {
@@ -53,6 +55,7 @@ export const communityBoardRoleGrants = pgTable(
   }),
 );
 
+/** 题解、讨论和短动态统一内容表。 */
 export const communityPosts = pgTable(
   "community_posts",
   {
@@ -123,6 +126,7 @@ export const communityPosts = pgTable(
   }),
 );
 
+/** 社区评论，仅允许一级回复。 */
 export const communityComments = pgTable(
   "community_comments",
   {
@@ -157,6 +161,7 @@ export const communityComments = pgTable(
   }),
 );
 
+/** 帖子点赞。 */
 export const communityPostLikes = pgTable(
   "community_post_likes",
   {
@@ -174,6 +179,7 @@ export const communityPostLikes = pgTable(
   }),
 );
 
+/** 评论点赞。 */
 export const communityCommentLikes = pgTable(
   "community_comment_likes",
   {
@@ -192,6 +198,7 @@ export const communityCommentLikes = pgTable(
   }),
 );
 
+/** 帖子收藏。 */
 export const communityBookmarks = pgTable(
   "community_bookmarks",
   {
@@ -212,6 +219,7 @@ export const communityBookmarks = pgTable(
   }),
 );
 
+/** 用户关注关系。 */
 export const communityFollows = pgTable(
   "community_follows",
   {
@@ -236,6 +244,7 @@ export const communityFollows = pgTable(
   }),
 );
 
+/** 可展示在动态流中的系统活动。 */
 export const communityActivityEvents = pgTable(
   "community_activity_events",
   {
@@ -267,6 +276,7 @@ export const communityActivityEvents = pgTable(
   }),
 );
 
+/** 帖子或评论举报。 */
 export const communityReports = pgTable(
   "community_reports",
   {
@@ -321,6 +331,7 @@ export const communityReports = pgTable(
   }),
 );
 
+/** 审核动作历史。 */
 export const communityModerationActions = pgTable(
   "community_moderation_actions",
   {
@@ -347,6 +358,7 @@ export const communityModerationActions = pgTable(
   }),
 );
 
+/** 社区写操作处罚，不影响评测与账号登录。 */
 export const communitySanctions = pgTable(
   "community_sanctions",
   {
@@ -373,6 +385,7 @@ export const communitySanctions = pgTable(
   }),
 );
 
+/** 社区通知。 */
 export const communityNotifications = pgTable(
   "community_notifications",
   {

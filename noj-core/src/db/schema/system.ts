@@ -10,6 +10,12 @@ import {
 import { sql } from "drizzle-orm";
 import { users } from "./identity.ts";
 
+/**
+ * 评测镜像白名单表。
+ * 管理员通过此表配置允许使用的 Docker 评测镜像。
+ * mode='exact' 时仅精确匹配指定镜像名；
+ * mode='all_versions' 时匹配该镜像名（不含标签部分）的所有版本。
+ */
 export const judgeImages = pgTable(
   "judge_images",
   {
@@ -41,6 +47,22 @@ export const judgeImages = pgTable(
   }),
 );
 
+/**
+ * 系统设置 KV 表（issue #99）。
+ * 管理员运行时可变配置持久化层。
+ *
+ * - 运行时读取优先级：DB value > envFallback > SETTING_DEFINITIONS.default
+ * - 写入由 services/system-settings.ts 做严格 type 校验 + 敏感字段掩码
+ * - 审计日志走 console.log("[admin] ...")，issue #101 落库后迁移
+ */
+/**
+ * 系统设置 KV 表（issue #99）。
+ * 管理员运行时可变配置持久化层。
+ *
+ * - 运行时读取优先级：DB value > envFallback > SETTING_DEFINITIONS.default
+ * - 写入由 services/system-settings.ts 做严格 type 校验 + 敏感字段掩码
+ * - 审计日志走 console.log("[admin] ...")，issue #101 落库后迁移
+ */
 export const systemSettings = pgTable(
   "system_settings",
   {
@@ -61,6 +83,20 @@ export const systemSettings = pgTable(
   }),
 );
 
+/**
+ * 公告表（issue #231）。
+ * 站内广播（维护通知、活动预告等），由运营者（admin）管理。
+ * - 公开列表仅返回 is_active=true，排序 is_pinned DESC, created_at DESC
+ * - 下架 = is_active 置 false（不物理删除，保留历史）
+ * - content 为 Markdown 文本
+ */
+/**
+ * 公告表（issue #231）。
+ * 站内广播（维护通知、活动预告等），由运营者（admin）管理。
+ * - 公开列表仅返回 is_active=true，排序 is_pinned DESC, created_at DESC
+ * - 下架 = is_active 置 false（不物理删除，保留历史）
+ * - content 为 Markdown 文本
+ */
 export const announcements = pgTable(
   "announcements",
   {
@@ -96,6 +132,11 @@ export const announcements = pgTable(
   }),
 );
 
+/**
+ * 审计日志表（issue #101）。
+ * 记录所有管理员操作的详细信息：admin_id、action、target、detail、ip、time。
+ * service 层通过 logAudit() 同步写入；后台任务定期清理过期记录。
+ */
 export const auditLogs = pgTable(
   "audit_logs",
   {
@@ -155,6 +196,12 @@ export const auditLogs = pgTable(
   }),
 );
 
+/**
+ * IP 黑名单表（issue #102）。
+ * 存储被封禁的 IPv4 裸 IP（如 1.2.3.4）或 CIDR 范围（如 10.0.0.0/8）。
+ * 命中后中间件返 403 IP_BLACKLISTED。
+ * expires_at 为 ISO 8601 字符串；NULL = 永久。
+ */
 export const ipBans = pgTable(
   "ip_bans",
   {

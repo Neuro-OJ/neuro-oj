@@ -14,6 +14,10 @@ import { sql } from "drizzle-orm";
 import { users } from "./identity.ts";
 import { problems } from "./catalog.ts";
 
+/**
+ * 竞赛主表。
+ * 竞赛状态由 start_time/end_time 动态计算，不持久化状态字段。
+ */
 export const contests = pgTable(
   "contests",
   {
@@ -59,6 +63,10 @@ export const contests = pgTable(
   }),
 );
 
+/**
+ * 竞赛题目关联表。
+ * label 和 sort_order 在单个竞赛内保持唯一。
+ */
 export const contestProblems = pgTable(
   "contest_problems",
   {
@@ -85,6 +93,9 @@ export const contestProblems = pgTable(
   }),
 );
 
+/**
+ * 竞赛参与者表。
+ */
 export const contestParticipants = pgTable(
   "contest_participants",
   {
@@ -102,6 +113,10 @@ export const contestParticipants = pgTable(
   }),
 );
 
+/**
+ * 竞赛答疑表。
+ * API 将在后续阶段实现，当前先建立数据模型。
+ */
 export const contestClarifications = pgTable(
   "contest_clarifications",
   {

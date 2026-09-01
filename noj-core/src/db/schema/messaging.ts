@@ -9,6 +9,11 @@ import {
 import { sql } from "drizzle-orm";
 import { users } from "./identity.ts";
 
+/**
+ * 私信会话表。
+ * 每对用户只有一个会话，通过 user1_id < user2_id 约束确保去重。
+ * last_message_at 为反范式缓存，用于会话列表排序。
+ */
 export const conversations = pgTable(
   "conversations",
   {
@@ -40,6 +45,11 @@ export const conversations = pgTable(
   }),
 );
 
+/**
+ * 私信消息表。
+ * 1-10000 字符文本消息。支持软删除（见 message_deletions 表）。
+ * 物理删除使用 ON DELETE CASCADE 从会话级联清理。
+ */
 export const messages = pgTable(
   "messages",
   {
@@ -62,6 +72,11 @@ export const messages = pgTable(
   }),
 );
 
+/**
+ * 会话已读状态表。
+ * 记录每个用户在每个会话中的最后阅读位置。
+ * last_read_message_id 为 NULL 表示从未阅读。
+ */
 export const conversationReads = pgTable(
   "conversation_reads",
   {
@@ -79,6 +94,11 @@ export const conversationReads = pgTable(
   }),
 );
 
+/**
+ * 消息单用户删除记录表。
+ * 用户删除消息仅删除自己视角，原始消息仍保留（对方可见）。
+ * 用户或消息物理删除时通过 CASCADE 自动清理。
+ */
 export const messageDeletions = pgTable(
   "message_deletions",
   {

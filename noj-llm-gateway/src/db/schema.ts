@@ -8,6 +8,10 @@ import {
   text,
 } from "drizzle-orm/pg-core";
 
+/**
+ * LLM Provider 表。
+ * 存储上游 OpenAI 兼容服务的配置；API Key 使用 NOJ_LLM_STORE_KEY 信封加密后存储。
+ */
 export const llmProviders = pgTable(
   "llm_providers",
   {
@@ -34,6 +38,10 @@ export const llmProviders = pgTable(
   }),
 );
 
+/**
+ * LLM 调用审计表。
+ * 记录每次经 gateway 转发的请求，完整保留 request_messages，不自动清理。
+ */
 export const llmUsage = pgTable(
   "llm_usage",
   {
@@ -67,6 +75,10 @@ export const llmUsage = pgTable(
   }),
 );
 
+/**
+ * LLM 配额配置表。
+ * 支持按用户 / 题目 / 全局维度配置日/月限额。
+ */
 export const llmQuotas = pgTable(
   "llm_quotas",
   {

@@ -12,6 +12,11 @@ import { users } from "./identity.ts";
 import { problems } from "./catalog.ts";
 import { contests } from "./contest.ts";
 
+/**
+ * 客观题小题表。
+ * 每道小题必须通过 paper_id 绑定所属套卷（problems 表 is_objective=true 行），
+ * 不可孤立存在；删除套卷时级联删除全部小题。
+ */
 export const objectiveQuestions = pgTable(
   "objective_questions",
   {
@@ -48,6 +53,11 @@ export const objectiveQuestions = pgTable(
   }),
 );
 
+/**
+ * 客观题提交表。
+ * 服务端即时判定（不走评测队列），status 直接为 finished。
+ * score 为 ×100 整数（0-10000），与 evaluationResults.score 约定一致。
+ */
 export const objectiveSubmissions = pgTable(
   "objective_submissions",
   {

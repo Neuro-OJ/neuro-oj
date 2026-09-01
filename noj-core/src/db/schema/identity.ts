@@ -11,6 +11,10 @@ import {
 import { sql } from "drizzle-orm";
 import { tsvector } from "./common.ts";
 
+/**
+ * 用户表。
+ * 存储注册用户的基本信息和角色权限。
+ */
 export const users = pgTable(
   "users",
   {
@@ -56,6 +60,10 @@ export const users = pgTable(
   }),
 );
 
+/**
+ * 第三方登录账号关联。
+ * provider + provider_user_id 是外部身份的稳定唯一键，不保存 access/refresh token。
+ */
 export const oauthAccounts = pgTable(
   "oauth_accounts",
   {
@@ -78,6 +86,20 @@ export const oauthAccounts = pgTable(
   }),
 );
 
+/**
+ * 签到记录表。
+ * 每日每用户一条记录，streak 记录连续签到天数。
+ *
+ * user_id FK 使用 ON DELETE CASCADE（评审 M2）：用户被删除时
+ * 关联签到记录一并删除，避免未来用户删除功能被 FK 阻止。
+ */
+/**
+ * 签到记录表。
+ * 每日每用户一条记录，streak 记录连续签到天数。
+ *
+ * user_id FK 使用 ON DELETE CASCADE（评审 M2）：用户被删除时
+ * 关联签到记录一并删除，避免未来用户删除功能被 FK 阻止。
+ */
 export const checkIns = pgTable(
   "check_ins",
   {
@@ -97,6 +119,12 @@ export const checkIns = pgTable(
   }),
 );
 
+/**
+ * 密码重置令牌表（issue #49）。
+ * 存储密码重置流程的短期令牌：DB 存 SHA-256 哈希（不存明文），URL 传明文。
+ * expires_at = created_at + 15 分钟（OWASP 2025+ 建议）。
+ * used_at NULL = 未使用，原子消耗用单 SQL UPDATE 实现。
+ */
 export const passwordResetTokens = pgTable(
   "password_reset_tokens",
   {
@@ -120,6 +148,11 @@ export const passwordResetTokens = pgTable(
   }),
 );
 
+/**
+ * TFA 恢复码表（issue #228）。
+ * 存储一次性恢复码的 SHA-256 哈希（不存明文），用于 TOTP 丢失时登录/禁用 TFA。
+ * used_at NULL = 未使用，原子消费用单 SQL UPDATE 实现。
+ */
 export const tfaRecoveryCodes = pgTable(
   "tfa_recovery_codes",
   {
@@ -138,6 +171,20 @@ export const tfaRecoveryCodes = pgTable(
   }),
 );
 
+/**
+ * 用户封禁表（user-ban-table）。
+ *
+ * 每条记录代表一次封禁操作。unbanned_at IS NULL = 当前活跃封禁。
+ * 至多一条活跃封禁记录（banUser 先关闭旧活跃再插入新记录）。
+ * 支持审计追溯：banned_by/unbanned_by 记录操作人。
+ */
+/**
+ * 用户封禁表（user-ban-table）。
+ *
+ * 每条记录代表一次封禁操作。unbanned_at IS NULL = 当前活跃封禁。
+ * 至多一条活跃封禁记录（banUser 先关闭旧活跃再插入新记录）。
+ * 支持审计追溯：banned_by/unbanned_by 记录操作人。
+ */
 export const userBans = pgTable(
   "user_bans",
   {
@@ -172,6 +219,11 @@ export const userBans = pgTable(
   }),
 );
 
+/**
+ * RBAC 角色表。
+ * 支持角色继承（parent_id 自引用）、is_admin 标记（隐式全权限）、
+ * is_default 标记（注册自动分配）、is_system 标记（系统保护角色）。
+ */
 export const roles = pgTable(
   "roles",
   {
@@ -192,6 +244,11 @@ export const roles = pgTable(
   }),
 );
 
+/**
+ * RBAC 权限定义表。
+ * 每个权限由 resource + action 唯一标识，格式 resource:action。
+ * 系统预置约 22 个权限，覆盖 problem/submission/user/tag/system 五个资源域。
+ */
 export const permissions = pgTable(
   "permissions",
   {
@@ -208,6 +265,10 @@ export const permissions = pgTable(
   }),
 );
 
+/**
+ * 角色-权限关联表。
+ * 多对多，级联删除。
+ */
 export const rolePermissions = pgTable(
   "role_permissions",
   {
@@ -223,6 +284,10 @@ export const rolePermissions = pgTable(
   }),
 );
 
+/**
+ * 用户-角色关联表。
+ * 一个用户可拥有多个角色，多对多，级联删除。
+ */
 export const userRoles = pgTable(
   "user_roles",
   {

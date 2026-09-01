@@ -1,11 +1,9 @@
 import {
-  boolean,
   check,
   index,
   integer,
   jsonb,
   pgTable,
-  primaryKey,
   serial,
   text,
   unique,
@@ -18,6 +16,11 @@ import { users } from "./identity.ts";
 import { problems } from "./catalog.ts";
 import { contests } from "./contest.ts";
 
+/**
+ * 提交记录表。
+ * 用户提交代码后生成一条记录，评测状态流转：
+ * pending → judging → finished
+ */
 export const submissions = pgTable(
   "submissions",
   {
@@ -75,6 +78,11 @@ export const submissions = pgTable(
   }),
 );
 
+/**
+ * 评测结果表。
+ * 与提交记录 1:1 关联。score 存储 ×100 后的整数值（避免浮点误差）。
+ * details 为 JSON 结构，格式由题目自定义评测命令决定。
+ */
 export const evaluationResults = pgTable(
   "evaluation_results",
   {
@@ -99,6 +107,10 @@ export const evaluationResults = pgTable(
   }),
 );
 
+/**
+ * 自测记录表（issue #221）。
+ * 与正式提交完全隔离，不参与统计/榜单/AC 活动。
+ */
 export const selfTests = pgTable(
   "self_tests",
   {
@@ -145,6 +157,12 @@ export const selfTests = pgTable(
   }),
 );
 
+/**
+ * SSE 事件日志表。
+ *
+ * 全局单调 `id` 作为 SSE 的 Last-Event-ID；所有 SSE 频道共享此表，
+ * 通过 `channel` 区分。事件在状态变更处写入，随后发布 Redis 通知。
+ */
 export const sseEvents = pgTable(
   "sse_events",
   {

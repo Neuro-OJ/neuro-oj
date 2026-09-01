@@ -13,7 +13,8 @@ LLM 调用网关，作为 evaluator 与外部 OpenAI 兼容 LLM API 之间的可
 - 基于 Redis Lua 原子脚本执行限流/额度检查：单次提交、用户/全局/题目日/月维度
   calls/tokens/cost，以及用户/IP 分钟速率窗口。
 - 将调用审计写入 `llm_usage` 表，供管理后台查询。
-- 负责 `llm_providers` / `llm_usage` / `llm_quotas` 三张表的迁移与默认配额 seed。
+- 负责 `llm_providers` / `llm_usage` / `llm_quotas` 三张表的迁移与默认配额
+  seed。
 
 ## 环境变量
 

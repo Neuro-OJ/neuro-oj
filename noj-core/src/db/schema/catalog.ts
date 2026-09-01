@@ -14,6 +14,11 @@ import { tsvector } from "./common.ts";
 import { ROOT_USER_ID } from "../../lib/constants.ts";
 import { users } from "./identity.ts";
 
+/**
+ * 题目表。
+ * 每道题定义独立的评测环境（Docker 镜像 + 支持包 + 评测命令）。
+ * 不包含 test_cases——测试用例由支持包 zip 内的评测脚本自行管理。
+ */
 export const problems = pgTable(
   "problems",
   {
@@ -71,6 +76,11 @@ export const problems = pgTable(
   }),
 );
 
+/**
+ * 标签表（issue #223：category 系统退役，双类标签取代）。
+ * 扁平结构（无树）：name 全局唯一（跨 kind）。
+ * kind：problem=题目标签（人人可见）｜algorithm=算法标签（通过题目后可见）。
+ */
 export const tags = pgTable(
   "tags",
   {
@@ -88,6 +98,10 @@ export const tags = pgTable(
   }),
 );
 
+/**
+ * 题目-标签关联表。
+ * 多对多关系，双级联删除。
+ */
 export const problemTags = pgTable(
   "problem_tags",
   {
@@ -103,6 +117,10 @@ export const problemTags = pgTable(
   }),
 );
 
+/**
+ * 题单主表（issue #224）。
+ * visibility: private=仅创建者 / unlisted=URL 可访问 / public=出现在题单列表页。
+ */
 export const trainings = pgTable(
   "trainings",
   {
@@ -133,6 +151,10 @@ export const trainings = pgTable(
   }),
 );
 
+/**
+ * 题单题目关联表。
+ * position 在单个题单内保持唯一；题目删除时级联清理。
+ */
 export const trainingProblems = pgTable(
   "training_problems",
   {
