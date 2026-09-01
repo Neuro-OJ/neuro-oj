@@ -1203,7 +1203,7 @@ Deno.test({
         { headers: { Authorization: `Bearer ${tokenA}` } },
       );
       const list = (await listRes.json()).data;
-      const reactions = list.find((m: { id: string }) =>
+      const reactions: { emoji: string }[] = list.find((m: { id: string }) =>
         m.id === msg.id
       ).reactions;
       assertEquals(reactions.length, 2);

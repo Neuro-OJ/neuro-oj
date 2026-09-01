@@ -191,6 +191,8 @@ export const conversationPreferences = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.user_id, table.conversation_id] }),
-    convIdx: index("idx_conversation_preferences_conv").on(table.conversation_id),
+    convIdx: index("idx_conversation_preferences_conv").on(
+      table.conversation_id,
+    ),
   }),
 );
