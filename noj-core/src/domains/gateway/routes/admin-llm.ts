@@ -1,9 +1,11 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../../../middleware/auth.ts";
 import { parseJsonBody } from "../../../lib/request.ts";
+import { BadRequestError, NotFoundError } from "../../../lib/errors.ts";
 import {
   createLlmProvider,
   listLlmProviders,
+  LlmGatewayError,
   type LlmProviderInput,
   type LlmQuotaInput,
   type LlmUsageQuery,
@@ -33,15 +35,23 @@ router.post("/llm/providers", async (c) => {
   if (!body.name || !body.base_url || !body.model || !body.api_key) {
     return c.json({ error: "缺少必填字段" }, 400);
   }
-  const data = await createLlmProvider(body);
-  return c.json({ data }, 201);
+  try {
+    const data = await createLlmProvider(body);
+    return c.json({ data }, 201);
+  } catch (error) {
+    return mapLlmError(error);
+  }
 });
 
 router.put("/llm/providers/:id", async (c) => {
   const id = c.req.param("id") as string;
   const body = await parseJsonBody<Partial<LlmProviderInput>>(c);
-  const data = await updateLlmProvider(id, body);
-  return c.json({ data });
+  try {
+    const data = await updateLlmProvider(id, body);
+    return c.json({ data });
+  } catch (error) {
+    return mapLlmError(error);
+  }
 });
 
 router.get("/llm/usage", async (c) => {
@@ -88,6 +98,21 @@ async function fetchLlmQuotas(): Promise<unknown[]> {
     | { data?: unknown[] }
     | null;
   return body?.data ?? [];
+}
+
+/**
+ * 将 LLM Gateway 转发错误映射为可读的 4xx 而非 500。
+ *
+ * core 的 request() 对 gateway 任何非 2xx 都抛 LlmGatewayError（非 AppError），
+ * 若不在路由层捕获会落入全局 onError 变成 500 INTERNAL_ERROR。
+ */
+function mapLlmError(error: unknown): never {
+  if (error instanceof LlmGatewayError) {
+    if (error.status === 404) throw new NotFoundError("模型配置不存在");
+    if (error.status === 400) throw new BadRequestError(error.code, error.code);
+    throw new BadRequestError("模型服务暂时不可用", "LLM_GATEWAY_UNAVAILABLE");
+  }
+  throw error;
 }
 
 export default router;

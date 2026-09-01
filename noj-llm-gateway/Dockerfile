@@ -5,6 +5,7 @@ WORKDIR /app
 COPY deno.json .
 COPY deno.lock .
 COPY src/ ./src/
+COPY drizzle/ ./drizzle/
 
 # 使用固定 UID 的非 root 用户运行服务。
 RUN addgroup -S -g 10001 noj \
