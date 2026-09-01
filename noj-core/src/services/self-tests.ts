@@ -258,7 +258,7 @@ export async function saveSelfTestResult(
   const db = getDb();
 
   const now = new Date().toISOString();
-  const status: SelfTestStatus = result.status === "SystemError"
+  const status: SelfTestStatus = result.status === "error" || result.status === "SystemError"
     ? "error"
     : "finished";
 
