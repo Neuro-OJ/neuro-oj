@@ -6,10 +6,10 @@
  * 通知读取/已读等用户侧操作仍留在 community.ts（仅社区路由使用）。
  */
 
-import { getDb } from "../db/connection.ts";
-import { communityNotifications } from "../db/schema.ts";
-import { nowIso } from "../lib/dates.ts";
-import { Channels, publishSseEvent } from "../lib/event-bus.ts";
+import { getDb } from "../../../db/connection.ts";
+import { communityNotifications } from "../../../db/schema.ts";
+import { nowIso } from "../../../lib/dates.ts";
+import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
 
 /**
  * 通知类型：社区互动（reply/like/follow/moderation）与竞赛答疑（clarification）。

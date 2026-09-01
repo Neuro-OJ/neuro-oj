@@ -1,11 +1,14 @@
 import { eq } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
-import { communityModerationActions, communityPosts } from "../../db/schema.ts";
-import { NotFoundError } from "../../lib/errors.ts";
-import { nowIso } from "../../lib/dates.ts";
-import type { CommunityPostStatus } from "../../types/community.ts";
+import { getDb } from "../../../../db/connection.ts";
+import {
+  communityModerationActions,
+  communityPosts,
+} from "../../../../db/schema.ts";
+import { NotFoundError } from "../../../../lib/errors.ts";
+import { nowIso } from "../../../../lib/dates.ts";
+import type { CommunityPostStatus } from "../../../../types/community.ts";
 import { createNotification } from "../notifications.ts";
-import { logAudit } from "../audit-log.ts";
+import { logAudit } from "../../../system/index.ts";
 
 export async function changePostStatus(
   postId: string,

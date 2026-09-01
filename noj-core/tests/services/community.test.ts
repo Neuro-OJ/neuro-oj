@@ -40,7 +40,7 @@ import {
   updateActivityVisibility,
   updateBoardRoleGrant,
   updatePost,
-} from "../../src/services/community/community.ts";
+} from "../../src/domains/community/index.ts";
 import {
   ConflictError,
   ForbiddenError,

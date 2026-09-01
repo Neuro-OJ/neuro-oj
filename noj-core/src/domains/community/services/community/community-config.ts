@@ -1,10 +1,10 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
-import { communitySanctions, userBans } from "../../db/schema.ts";
-import { ForbiddenError } from "../../lib/errors.ts";
-import { nowIso } from "../../lib/dates.ts";
-import { getSetting } from "../system-settings.ts";
-import type { CommunityConfig } from "../../types/community.ts";
+import { getDb } from "../../../../db/connection.ts";
+import { communitySanctions, userBans } from "../../../../db/schema.ts";
+import { ForbiddenError } from "../../../../lib/errors.ts";
+import { nowIso } from "../../../../lib/dates.ts";
+import { getSetting } from "../../../system/index.ts";
+import type { CommunityConfig } from "../../../../types/community.ts";
 
 function settingBoolean(key: string): boolean {
   return getSetting(key)?.value === true;

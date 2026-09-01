@@ -1,7 +1,7 @@
 /** 社区初始数据，保持幂等，供启动期和测试环境复用。 */
 
-import { getDb } from "../../db/connection.ts";
-import { communityBoards } from "../../db/schema.ts";
+import { getDb } from "../../../../db/connection.ts";
+import { communityBoards } from "../../../../db/schema.ts";
 
 const DEFAULT_BOARDS = [
   {

@@ -1,15 +1,18 @@
 import { Hono } from "hono";
 import type { Next } from "hono";
-import { parseJsonBody } from "../lib/request.ts";
-import { BadRequestError, ForbiddenError } from "../lib/errors.ts";
+import { parseJsonBody } from "../../../lib/request.ts";
+import { BadRequestError, ForbiddenError } from "../../../lib/errors.ts";
 import {
   assertPermission,
   checkPermission,
   getUserPermissions,
-} from "../lib/permissions.ts";
-import { COMMUNITY_PRESETS, MODERATION_STATUSES } from "../types/community.ts";
-import { authMiddleware, getUserBanState } from "../middleware/auth.ts";
-import type { OptionalAuthEnv } from "../middleware/auth.ts";
+} from "../../../lib/permissions.ts";
+import {
+  COMMUNITY_PRESETS,
+  MODERATION_STATUSES,
+} from "../../../types/community.ts";
+import { authMiddleware, getUserBanState } from "../../../middleware/auth.ts";
+import type { OptionalAuthEnv } from "../../../middleware/auth.ts";
 import {
   applyCommunityPreset,
   banUser,
@@ -34,7 +37,7 @@ import {
   updateBoard,
   updateBoardRoleGrant,
 } from "../services/community/community.ts";
-import { resolveUserId } from "../domains/identity/index.ts";
+import { resolveUserId } from "../../identity/index.ts";
 
 /**
  * 社区管理路由（挂载前缀 /api/v1/community，见 app.ts）。

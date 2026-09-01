@@ -1,15 +1,15 @@
 import { and, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
+import { getDb } from "../../../../db/connection.ts";
 import {
   communityActivityEvents,
   communityFollows,
   communityNotifications,
   communityPosts,
   users,
-} from "../../db/schema.ts";
-import { ForbiddenError, NotFoundError } from "../../lib/errors.ts";
+} from "../../../../db/schema.ts";
+import { ForbiddenError, NotFoundError } from "../../../../lib/errors.ts";
 import { getCommunityConfig } from "./community-config.ts";
-import { nowIso } from "../../lib/dates.ts";
+import { nowIso } from "../../../../lib/dates.ts";
 
 export async function createActivity(
   actorId: string,

@@ -76,7 +76,7 @@ export async function computePGliteTemplateHash(): Promise<string> {
   const sourceFiles = [
     resolve(here, "schema-ddl.ts"),
     resolve(here, "../services/seed/seed-rbac.ts"),
-    resolve(here, "../services/community/community-seed.ts"),
+    resolve(here, "../domains/community/services/community/community-seed.ts"),
   ];
   const parts = [String(PGLITE_TEMPLATE_FORMAT)];
   for (const file of sourceFiles) {

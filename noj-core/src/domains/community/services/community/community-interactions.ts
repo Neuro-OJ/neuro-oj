@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
+import { getDb } from "../../../../db/connection.ts";
 import {
   communityBookmarks,
   communityCommentLikes,
@@ -7,14 +7,14 @@ import {
   communityFollows,
   communityPostLikes,
   users,
-} from "../../db/schema.ts";
-import { NotFoundError, ValidationError } from "../../lib/errors.ts";
+} from "../../../../db/schema.ts";
+import { NotFoundError, ValidationError } from "../../../../lib/errors.ts";
 import { createNotification } from "../notifications.ts";
 import { assertCommunityEnabled } from "./community-config.ts";
 import { getPost } from "./community-post-crud.ts";
-import type { CommunityConfig } from "../../types/community.ts";
-import { ROOT_USER_ID } from "../../lib/constants.ts";
-import { nowIso } from "../../lib/dates.ts";
+import type { CommunityConfig } from "../../../../types/community.ts";
+import { ROOT_USER_ID } from "../../../../lib/constants.ts";
+import { nowIso } from "../../../../lib/dates.ts";
 
 async function toggleRelation(
   table: typeof communityPostLikes | typeof communityBookmarks,

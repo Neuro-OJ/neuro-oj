@@ -1,17 +1,17 @@
 import { and, eq, gt } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
+import { getDb } from "../../../../db/connection.ts";
 import {
   evaluationResults,
   problems,
   submissions,
   users,
-} from "../../db/schema.ts";
-import { NotFoundError } from "../../lib/errors.ts";
+} from "../../../../db/schema.ts";
+import { NotFoundError } from "../../../../lib/errors.ts";
 import type {
   CommunityConfig,
   CommunityPostStatus,
   CommunityPostType,
-} from "../../types/community.ts";
+} from "../../../../types/community.ts";
 import { getCommunityConfig } from "./community-config.ts";
 
 export function featureForType(type: CommunityPostType): keyof CommunityConfig {

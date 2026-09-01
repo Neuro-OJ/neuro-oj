@@ -1,5 +1,5 @@
 import { aliasedTable, and, desc, eq, isNull, sql } from "drizzle-orm";
-import { getDb } from "../../db/connection.ts";
+import { getDb } from "../../../../db/connection.ts";
 import {
   communityComments,
   communityPosts,
@@ -7,13 +7,13 @@ import {
   communitySanctions,
   userBans,
   users,
-} from "../../db/schema.ts";
+} from "../../../../db/schema.ts";
 import {
   ConflictError,
   NotFoundError,
   ValidationError,
-} from "../../lib/errors.ts";
-import { logAudit } from "../audit-log.ts";
+} from "../../../../lib/errors.ts";
+import { logAudit } from "../../../system/index.ts";
 import {
   assertCommunityEnabled,
   getCommunityConfig,
@@ -21,13 +21,13 @@ import {
 import {
   REPORT_CATEGORIES,
   type ReportCategory,
-} from "../../types/community.ts";
-import { reloadSingleKey, updateSetting } from "../system-settings.ts";
-import { nowIso } from "../../lib/dates.ts";
+} from "../../../../types/community.ts";
+import { reloadSingleKey, updateSetting } from "../../../system/index.ts";
+import { nowIso } from "../../../../lib/dates.ts";
 import { createNotification } from "../notifications.ts";
-import { invalidateBanCache } from "../../lib/banCache.ts";
+import { invalidateBanCache } from "../../../../lib/banCache.ts";
 
-export { banUser, getLatestActiveBanId } from "../../domains/identity/index.ts";
+export { banUser, getLatestActiveBanId } from "../../../identity/index.ts";
 
 export async function createReport(
   reporterId: string,

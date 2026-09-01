@@ -1,22 +1,22 @@
 import { Hono } from "hono";
-import { parseJsonBody } from "../lib/request.ts";
+import { parseJsonBody } from "../../../lib/request.ts";
 import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
   UnauthorizedError,
-} from "../lib/errors.ts";
-import { assertPermission, checkPermission } from "../lib/permissions.ts";
-import { resolveUserId } from "../domains/identity/index.ts";
+} from "../../../lib/errors.ts";
+import { assertPermission, checkPermission } from "../../../lib/permissions.ts";
+import { resolveUserId } from "../../identity/index.ts";
 import {
   authMiddleware,
   type OptionalAuthEnv,
   optionalAuthMiddleware,
-} from "../middleware/auth.ts";
+} from "../../../middleware/auth.ts";
 import type {
   CommunityPostInput,
   CommunityPostType,
-} from "../types/community.ts";
+} from "../../../types/community.ts";
 import {
   assertCommunityEnabled,
   assertCommunityWritable,

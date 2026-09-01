@@ -18,7 +18,7 @@ import {
   searchProblems,
   searchUsers,
 } from "../services/search.ts";
-import { getCommunityConfig } from "../services/community/community.ts";
+import { getCommunityConfig } from "../domains/community/index.ts";
 import { parsePagination } from "../lib/pagination.ts";
 import { checkPermission } from "../lib/permissions.ts";
 import {

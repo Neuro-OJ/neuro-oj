@@ -1,5 +1,3 @@
-export {
-  createActivity,
-  getCommunityConfig,
-} from "../../services/community/community.ts";
-export { createNotification } from "../../services/notifications.ts";
+export * from "./services/community/community.ts";
+export * from "./services/community/community-seed.ts";
+export * from "./services/notifications.ts";

@@ -1,2 +1,2 @@
-export { logAudit, logAuthEvent } from "../../services/audit-log.ts";
-export { getSetting } from "../../services/system-settings.ts";
+export * from "../../services/audit-log.ts";
+export * from "../../services/system-settings.ts";
