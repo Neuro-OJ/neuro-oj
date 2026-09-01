@@ -1,11 +1,11 @@
 import { Hono } from "hono";
-import { authMiddleware } from "../middleware/auth.ts";
-import { parseJsonBody } from "../lib/request.ts";
-import { BadRequestError, ForbiddenError } from "../lib/errors.ts";
-import { resolveUserId } from "../services/users/users-id.ts";
-import { parsePagination } from "../lib/pagination.ts";
-import { Channels, onEvent } from "../lib/event-bus.ts";
-import { createSseStream } from "../lib/sse-stream.ts";
+import { authMiddleware } from "../../../middleware/auth.ts";
+import { parseJsonBody } from "../../../lib/request.ts";
+import { BadRequestError, ForbiddenError } from "../../../lib/errors.ts";
+import { resolveUserId } from "../../identity/index.ts";
+import { parsePagination } from "../../../lib/pagination.ts";
+import { Channels, onEvent } from "../../../lib/event-bus.ts";
+import { createSseStream } from "../../../lib/sse-stream.ts";
 import {
   deleteMessage,
   findOrCreateConversation,
@@ -16,8 +16,8 @@ import {
   markConversationRead,
   sendMessage,
 } from "../services/messages.ts";
-import { getCommunityConfig } from "../services/community/community.ts";
-import { enforceMessageSendRateLimit } from "../lib/hardening-rate-limit.ts";
+import { getCommunityConfig } from "../../community/index.ts";
+import { enforceMessageSendRateLimit } from "../../../lib/hardening-rate-limit.ts";
 
 /** 消息内容最大长度 */
 const MAX_MESSAGE_LENGTH = 10_000;

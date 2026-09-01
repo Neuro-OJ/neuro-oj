@@ -15,7 +15,7 @@ import submissions from "./routes/submissions.ts";
 import selfTests from "./routes/self-tests.ts";
 import users from "./routes/users.ts";
 import rankings from "./routes/rankings.ts";
-import conversations from "./routes/conversations.ts";
+import conversations from "./domains/messaging/routes/conversations.ts";
 import community from "./routes/community.ts";
 import communityAdmin from "./routes/community-admin.ts";
 import search from "./routes/search.ts";

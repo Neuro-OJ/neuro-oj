@@ -1,14 +1,14 @@
 import { and, desc, eq, gt, or, sql } from "drizzle-orm";
-import { getDb } from "../db/connection.ts";
+import { getDb } from "../../../db/connection.ts";
 import {
   conversationReads,
   conversations,
   messageDeletions,
   messages,
   users,
-} from "../db/schema.ts";
-import { BadRequestError, NotFoundError } from "../lib/errors.ts";
-import { Channels, publishSseEvent } from "../lib/event-bus.ts";
+} from "../../../db/schema.ts";
+import { BadRequestError, NotFoundError } from "../../../lib/errors.ts";
+import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
 
 /** 消息内容最大长度 */
 const MAX_MESSAGE_LENGTH = 10_000;
