@@ -7,22 +7,10 @@
 
 ### 宝塔等服务器面板
 
-在宝塔等面板环境中，`noj-cli` 不调用面板 API，也不会修改已有站点、证书、反向代理、
-容器或面板配置；按下方“下载 noj-cli 后开始安装”的流程执行即可。
-
-```bash
-curl -fsSL -o noj-cli \
-  https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/noj-cli-linux-amd64
-chmod +x noj-cli
-./noj-cli deploy init --mode prod --dir /opt/neuro-oj
-./noj-cli deploy up --dir /opt/neuro-oj
-```
-
-宝塔兼容模式只复用面板安装的标准 Docker/Compose，不调用面板 API，也不会修改已有
-站点、证书、反向代理、容器或面板配置。前后端 Compose 自带 Nginx，部署完成后请在
-宝塔中将域名反向代理到 `127.0.0.1:NGINX_PORT`，默认端口为 `8080`；如果修改
-`.env.prod` 中的 `NGINX_PORT`，反向代理目标也要同步修改。Judge 仍需使用独立的
-rootless Docker socket，不能改用 `/run/docker.sock` 或 `/var/run/docker.sock`。
+宝塔等服务器面板与普通部署复用同一套 `noj-cli` 流程，不提供面板专用脚本或参数。
+部署完成后只需在面板中将域名反向代理到 `127.0.0.1:<env.NGINX_PORT>`（默认 `8080`）；
+Judge 仍需使用独立的 rootless Docker socket，不能改用 `/run/docker.sock` 或
+`/var/run/docker.sock`。
 
 - 一台 Linux 服务器（amd64），已安装 Docker Engine 与 Docker Compose v2。
 - Docker CLI 可用 Buildx；Cosign 不是默认安装条件，只有开启严格镜像签名校验时才需要。
@@ -67,84 +55,71 @@ curl -fsSL -o noj-cli \
 当前 Release 镜像仅发布 `linux/amd64`。ARM64/aarch64 主机请在下载前确认选择了
 对应架构的版本，或在 `noj-cli doctor` 阶段处理架构不匹配提示。
 
-`.env.prod` 中必须填写：
+### 配置模型
 
-| 变量 | 说明 |
-|------|------|
-| `NOJ_VERSION` | 要部署的已签名 Release 标签，如 `v0.1.0`；禁止使用 `latest`/`beta` |
-| `NOJ_ENFORCE_IMAGE_SIGNATURES` | 默认 `false`；设为 `true` 后，启动/升级前校验已启用应用镜像的 Cosign 签名 |
-| `NOJ_COSIGN_CERT_IDENTITY_REGEX` | Cosign 证书身份正则，默认只信任本仓库的 Release workflow |
-| `DOMAIN` | 网站地址，可填域名或服务器 IP，不要写 `https://` |
-| `APP_URL` | 完整应用地址，例如 `https://你的域名` |
-| `NOJ_ALLOW_INSECURE_HTTP` | 临时 HTTP 开关，默认 `false`；正式环境请保持关闭 |
-| `CORS_ALLOWED_ORIGINS` | `https://你的域名` |
-| `TRUSTED_PROXIES` | 可信代理网段，必须与 compose 中 `noj-net` 子网一致（如 `172.28.0.0/16`）；生产必填 |
-| `NUXT_NOJ_ENV` | 前端环境标记，生产环境保持 `production` |
-| `POSTGRES_PASSWORD` | PostgreSQL 强密码 |
-| `REDIS_PASSWORD` | Redis 强密码 |
-| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | MinIO 管理员凭据，仅供 `minio-init` 使用 |
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | 支持包 bucket 的最小权限应用凭据 |
-| `STORAGE_PROVIDER` / `S3_ENDPOINT` / `S3_BUCKET` | 生产必须使用 S3/MinIO |
-| `S3_REGION` | 可选，默认 `us-east-1` |
-| `S3_FORCE_PATH_STYLE` | 自建 MinIO 通常为 `true` |
-| `JWT_SECRET` / `TFA_ENCRYPTION_KEY` | ≥32 字符随机串 |
-| 首个管理员 | 安装完成后注册的第一个真实用户自动获得管理员权限；已有站点不会因升级自动提权 |
-| `EMAIL_PROVIDER` 及对应凭据 | 可选阿里云、腾讯云或 `disabled`（暂不配置邮件） |
-| `JUDGE_IMAGE_BASE` | 默认 `ghcr.io/neuro-oj/` |
-| `NGINX_PORT` | 容器 Nginx 映射到宿主机的端口，默认 `8080` |
-| `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID` | 独立 rootless Docker daemon 的 socket 与组 ID；禁止使用 `/var/run/docker.sock` |
-| `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | 可选；同时填写后启用 GitHub 登录。回调地址为 `APP_URL/api/v1/auth/oauth/github/callback` |
-| `OAUTH_OIDC_ISSUER_URL` / `OAUTH_OIDC_CLIENT_ID` / `OAUTH_OIDC_CLIENT_SECRET` | 可选；同时填写后启用通用 OIDC 登录。回调地址为 `APP_URL/api/v1/auth/oauth/oidc/callback` |
-| `OAUTH_OIDC_NAME` | 可选；OIDC 登录按钮名称，默认 `OIDC` |
-| `JUDGE_ENABLED` | 是否安装和启动评测服务 Judge，默认 `true`；设为 `false` 可跳过 |
-| `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID` | `JUDGE_ENABLED=true` 时必填：独立 rootless Docker 服务的 socket 与组 ID；禁止使用 `/var/run/docker.sock` |
-| `NOJ_LLM_SERVICE_TOKEN` | LLM Gateway 服务间鉴权 + eval_token 签发/校验密钥（≥16 字符）；compose 默认始终启动 `llm-gateway`，因此生产**必须填写** |
-| `NOJ_LLM_STORE_KEY` | LLM Gateway 加密 Provider API Key 的信封主密钥（≥16 字符）；compose 默认必填 |
-| `NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE` | 每个用户每 UTC 分钟的 LLM 调用上限；可选，默认 `60`，必须为正整数 |
-| `NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE` | 每个 IP 每 UTC 分钟的 LLM 调用上限；可选，默认 `60`，必须为正整数 |
-| `JUDGE_ALLOW_EVALUATOR_NETWORK` | 是否允许 evaluator 联网；使用 LLM 调用题时必须设为 `true` |
-| `JUDGE_EVALUATOR_NETWORK` | evaluator 联网时加入的 Docker 网络；生产必须指向 `llm-gateway` 所在网络，默认 `noj-net` |
-| `JUDGE_ALLOW_HTTP_S3` | 自建 MinIO 走内网 HTTP 时设为 `true`，允许 judge 通过 HTTP 下载支持包 |
+部署配置统一由 `noj-cli` 管理，**不再使用 `.env.prod`**：
 
-```bash
-# 3) 配置外部 TLS 终止
-# 容器内的 Nginx 不处理 TLS；请在宿主机/云 LB 上配置 HTTPS，
-# 并将解密后的 HTTP 流量转发到本机 ${NGINX_PORT:-8080} 端口（默认 8080）。
-# 示例见 deploy/README.md。
+| 文件 | 权限 | 内容 |
+|---|---|---|
+| `noj-deploy.json` | 644 | 部署类型、版本、组件、全局 env、反向代理 |
+| `noj-secrets.json` | 600 | 数据库/Redis/JWT/OAuth/LLM 等全部密钥 |
 
-# 4) 手动方式：执行一次性初始化（迁移 + 系统数据）
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d migrate
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs migrate
+`deploy init` 会生成这两个文件并随机填充密钥。之后可用
+`noj-cli maintain config check/show/set` 查看和修改，也可以直接编辑 JSON。
+配置中的环境变量名沿用原 `.env.prod` 的约定，但**不再以 env 文件形式存在**。
 
-# 5) 手动方式：启动全部服务（安装了 Judge 时加上 profile；跳过 Judge 时省略）
-docker compose --env-file .env.prod -f docker-compose.prod.yml --profile judge up -d
-
-# 6) 查看状态
-docker compose --env-file .env.prod -f docker-compose.prod.yml ps
-curl https://你的域名/healthz
-```
-
-使用 noj-cli 时，上述初始化、启动和健康检查由以下命令统一完成：
+### 初始化、启动与健康检查
 
 ```bash
 ./noj-cli deploy init --mode prod --dir /opt/neuro-oj
 ./noj-cli deploy up --dir /opt/neuro-oj
 ./noj-cli deploy status --dir /opt/neuro-oj
+curl https://你的域名/healthz
 ```
 
-部署脚本在 `install`、`start` 和 `upgrade` 前会校验 `NOJ_VERSION` 对应的应用镜像
-digest 与 Cosign keyless 签名；Judge 被跳过时只校验核心、前端和 LLM Gateway 镜像。
-默认信任当前仓库的 Release workflow；如需变更签名身份，
-必须通过受保护的生产配置显式设置 `NOJ_COSIGN_CERT_IDENTITY_REGEX`。可以单独执行：
+### 常用配置项
 
-```bash
-noj-cli maintain verify --dir /opt/neuro-oj
-```
+| 配置项 | 说明 |
+|---|---|
+| `version.noj_server`（对应原 `NOJ_VERSION`） | 要部署的已签名 Release 标签，如 `v0.1.0`；禁止使用 `latest`/`beta` |
+| `env.NOJ_ENFORCE_IMAGE_SIGNATURES` | 默认 `false`；设为 `true` 后，启动/升级前校验已启用应用镜像的 Cosign 签名 |
+| `env.NOJ_COSIGN_CERT_IDENTITY_REGEX` | Cosign 证书身份正则，默认只信任本仓库的 Release workflow |
+| `env.DOMAIN` | 网站地址，可填域名或服务器 IP，不要写 `https://` |
+| `env.APP_URL` | 完整应用地址，例如 `https://你的域名` |
+| `env.NOJ_ALLOW_INSECURE_HTTP` | 临时 HTTP 开关，默认 `false`；正式环境请保持关闭 |
+| `env.CORS_ALLOWED_ORIGINS` | `https://你的域名` |
+| `env.TRUSTED_PROXIES` | 可信代理网段，必须与 compose 中 `noj-net` 子网一致（如 `172.28.0.0/16`）；生产必填 |
+| `env.NUXT_NOJ_ENV` | 前端环境标记，生产环境保持 `production` |
+| `secrets.POSTGRES_PASSWORD` | PostgreSQL 强密码 |
+| `secrets.REDIS_PASSWORD` | Redis 强密码 |
+| `secrets.MINIO_ROOT_USER` / `secrets.MINIO_ROOT_PASSWORD` | MinIO 管理员凭据 |
+| `secrets.S3_ACCESS_KEY` / `secrets.S3_SECRET_KEY` | 支持包 bucket 的最小权限应用凭据 |
+| `env.STORAGE_PROVIDER` / `env.S3_ENDPOINT` / `env.S3_BUCKET` | 生产必须使用 S3/MinIO |
+| `env.S3_REGION` | 可选，默认 `us-east-1` |
+| `env.S3_FORCE_PATH_STYLE` | 自建 MinIO 通常为 `true` |
+| `secrets.JWT_SECRET` / `secrets.TFA_ENCRYPTION_KEY` | ≥32 字符随机串 |
+| 首个管理员 | 安装完成后注册的第一个真实用户自动获得管理员权限；已有站点不会因升级自动提权 |
+| `env.EMAIL_PROVIDER` 及对应凭据 | 可选阿里云、腾讯云或 `disabled`（暂不配置邮件） |
+| `env.JUDGE_IMAGE_BASE` | 默认 `ghcr.io/neuro-oj/` |
+| `env.NGINX_PORT` | 容器 Nginx 映射到宿主机的端口，默认 `8080` |
+| `env.JUDGE_DOCKER_SOCKET` / `env.JUDGE_DOCKER_SOCKET_GID` | 独立 rootless Docker daemon 的 socket 与组 ID；禁止使用 `/var/run/docker.sock` |
+| `secrets.OAUTH_GITHUB_CLIENT_ID` / `secrets.OAUTH_GITHUB_CLIENT_SECRET` | 可选；同时填写后启用 GitHub 登录。回调地址为 `APP_URL/api/v1/auth/oauth/github/callback` |
+| `secrets.OAUTH_OIDC_ISSUER_URL` / `secrets.OAUTH_OIDC_CLIENT_ID` / `secrets.OAUTH_OIDC_CLIENT_SECRET` | 可选；同时填写后启用通用 OIDC 登录。回调地址为 `APP_URL/api/v1/auth/oauth/oidc/callback` |
+| `env.OAUTH_OIDC_NAME` | 可选；OIDC 登录按钮名称，默认 `OIDC` |
+| `components.judge.enabled`（对应原 `JUDGE_ENABLED`） | 是否安装和启动评测服务 Judge，默认 `true`；设为 `false` 可跳过 |
+| `env.JUDGE_DOCKER_SOCKET` / `env.JUDGE_DOCKER_SOCKET_GID` | `components.judge.enabled=true` 时必填：独立 rootless Docker 服务的 socket 与组 ID；禁止使用 `/var/run/docker.sock` |
+| `secrets.NOJ_LLM_SERVICE_TOKEN` | LLM Gateway 服务间鉴权 + eval_token 签发/校验密钥（≥16 字符） |
+| `secrets.NOJ_LLM_STORE_KEY` | LLM Gateway 加密 Provider API Key 的信封主密钥（≥16 字符） |
+| `env.NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE` | 每个用户每 UTC 分钟的 LLM 调用上限；可选，默认 `60`，必须为正整数 |
+| `env.NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE` | 每个 IP 每 UTC 分钟的 LLM 调用上限；可选，默认 `60`，必须为正整数 |
+| `env.JUDGE_ALLOW_EVALUATOR_NETWORK` | 是否允许 evaluator 联网；使用 LLM 调用题时必须设为 `true` |
+| `env.JUDGE_EVALUATOR_NETWORK` | evaluator 联网时加入的 Docker 网络；生产必须指向 `llm-gateway` 所在网络，默认 `noj-net` |
+| `env.JUDGE_ALLOW_HTTP_S3` | 自建 MinIO 走内网 HTTP 时设为 `true`，允许 judge 通过 HTTP 下载支持包 |
 
 镜像签名校验默认关闭，以免阻断普通一键部署；如果需要严格校验，请安装 Cosign 并将
-`NOJ_ENFORCE_IMAGE_SIGNATURES=true`，然后执行 `noj-cli maintain verify --dir /opt/neuro-oj`。
-成功启动或升级后，脚本会在 `backups/current-deployment.txt` 记录当前 Release 版本和已启用
-应用镜像的 digest；升级失败时不会覆盖上一份成功部署记录。
+`env.NOJ_ENFORCE_IMAGE_SIGNATURES=true`，然后执行 `noj-cli maintain verify --dir /opt/neuro-oj`。
+`noj-cli deploy up` 会按 Compose 拉取新镜像并等待健康检查；当前版本与镜像 digest
+由 noj-cli 记录在部署目录中。
 
 > 如果启用评测 Worker，不得挂载应用宿主机的 `/var/run/docker.sock`。生产 Compose 要求
 > `JUDGE_DOCKER_SOCKET` 指向只服务于 judge 的 rootless daemon socket，并以非 root
@@ -176,10 +151,9 @@ ghcr.io/neuro-oj/noj-solution-ai       all_versions  solution
 
 ## 3.5 LLM Gateway 部署
 
-`docker-compose.prod.yml` 默认启动 `llm-gateway` 容器，并让 core 通过
-`http://llm-gateway:8001` 访问。由于 compose 对 `NOJ_LLM_SERVICE_TOKEN` 和
-`NOJ_LLM_STORE_KEY` 使用 `${...:?}` 必填校验，即使不使用 LLM 调用题也必须
-在 `.env.prod` 中填写这两个密钥。
+noj-cli 生成的部署默认启动 `llm-gateway` 容器，并让 core 通过
+`http://llm-gateway:8001` 访问。即使不使用 LLM 调用题，也必须在
+`noj-secrets.json` 中填写 `NOJ_LLM_SERVICE_TOKEN` 和 `NOJ_LLM_STORE_KEY`。
 
 使用 LLM 调用题时：
 
@@ -267,31 +241,32 @@ GPG 加密配置的完整快照，产物为单个 `snapshot-<timestamp>.nojbacku
 
 ```bash
 # 查看服务状态
-docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+noj-cli deploy status --dir /opt/neuro-oj
 
 # 查看日志
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 server
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 judge
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 llm-gateway
+noj-cli maintain logs server --dir /opt/neuro-oj
+noj-cli maintain logs judge --follow --dir /opt/neuro-oj
+noj-cli maintain logs llm_gateway --dir /opt/neuro-oj
 
 # 健康检查（通过外部 TLS 终止后的地址）
 curl https://你的域名/healthz
 
-# 队列积压（需要进入 redis 容器或使用 redis-cli）
-docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
-  redis-cli -a "$REDIS_PASSWORD" LLEN noj:judge:queue
+# 队列积压（密码从 noj-secrets.json 读取）
+docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue
 ```
 
 ## 6. 升级
 
 1. 在 GitHub 发布新 Release（如 `v0.1.1`）。Release workflow 会先构建候选镜像，
    完成漏洞扫描、SBOM、签名和来源证明后，才创建正式版本标签。
-2. 确认 Release workflow 的全部镜像验证成功；固定版本部署可在服务器修改 `.env.prod` 中的
-   `NOJ_VERSION=v0.1.1`。
+2. 确认 Release workflow 的全部镜像验证成功；固定版本部署可在服务器修改
+   `noj-deploy.json` 中的 `version.noj_server=v0.1.1`（或执行
+   `noj-cli maintain config set version.noj_server v0.1.1 --dir /opt/neuro-oj`）。
 3. 升级前创建备份，然后更新配置并重新部署：
 
 ```bash
 noj-cli maintain backup create --dir /opt/neuro-oj
+noj-cli maintain config set version.noj_server v0.1.1 --dir /opt/neuro-oj
 noj-cli deploy up --dir /opt/neuro-oj
 ```
 
@@ -300,8 +275,11 @@ noj-cli deploy up --dir /opt/neuro-oj
 
 ## 7. 回滚
 
-- 确认上一版本 Release 仍可拉取且签名有效，将 `.env.prod` 的 `NOJ_VERSION` 改回上一版本，
-  执行 `noj-cli maintain verify --dir /opt/neuro-oj` 后再执行 `noj-cli deploy up --dir /opt/neuro-oj`。
+- 确认上一版本 Release 仍可拉取且签名有效，将 `noj-deploy.json` 的
+  `version.noj_server` 改回上一版本（或执行
+  `noj-cli maintain config set version.noj_server <上一版本>`），
+  再执行 `noj-cli maintain verify --dir /opt/neuro-oj` 和
+  `noj-cli deploy up --dir /opt/neuro-oj`。
 - 数据库 schema 采用只追加迁移，**不自动回滚**；如需回退 schema，请人工评估并备份后操作。
 - 评测镜像也按 Release tag 发布，回滚时需要把 `judge_images` 白名单指向旧 tag（若使用 `all_versions` 则无需改白名单，只需题目/系统设置中的镜像 tag 指向旧版本）。
 
@@ -312,7 +290,8 @@ noj-cli deploy up --dir /opt/neuro-oj
 
 ### 8.1 初始化口令与创建快照
 
-备份口令只保存在仓库外的受限文件中，不要写入 `.env.prod` 或提交到 Git：
+备份口令只保存在仓库外的受限文件中，不要写入 `noj-deploy.json` / `noj-secrets.json`
+或提交到 Git：
 
 ```bash
 sudo install -d -m 700 /etc/noj
@@ -355,8 +334,8 @@ Compose 服务必须已经停止。建议恢复到单独主机或单独数据卷
   和异地对象存储，不能只依赖本脚本。
 - RTO 由 PostgreSQL 数据量、对象数量和网络决定。每月至少在隔离环境跑一次实际
   `restore --confirm`，记录从快照开始到健康检查通过的耗时，作为真实 RTO 基线。
-- 建议由 systemd timer、cron 或外部调度平台执行 `backup.sh create`，并对非零退出码、
-  磁盘空间不足、`verify` 失败和恢复演练失败发送告警。备份目录应同步到与生产主机
-  不同故障域的加密存储。
+- 建议由 systemd timer、cron 或外部调度平台执行
+  `noj-cli maintain backup create`，并对非零退出码、磁盘空间不足、`verify`
+  失败和恢复演练失败发送告警。备份目录应同步到与生产主机不同故障域的加密存储。
 
 密钥轮换和失效步骤见[生产密钥轮换 Runbook](./production-secrets.md)。

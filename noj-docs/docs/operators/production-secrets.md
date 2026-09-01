@@ -1,15 +1,15 @@
 # 生产密钥轮换 Runbook
 
-本文档适用于 Docker Compose 生产部署。推荐使用 secrets manager 将值注入容器环境；若暂时使用 `.env.prod`，文件必须由部署用户持有并设置为 `chmod 600`，不得提交 Git、打入镜像或写入日志。
+本文档适用于 Docker Compose 生产部署。推荐使用 secrets manager 将值注入容器环境；未接入 secrets manager 时，可将密钥写入 `noj-secrets.json`（权限 600），不得提交 Git、打入镜像或写入日志。
 
 ## 部署前检查
 
 ```bash
-chmod 600 .env.prod
+chmod 600 /opt/neuro-oj/noj-secrets.json
 cd noj-core
     deno task check:prod  # 可选；生产一键部署不依赖 Deno
 cd ..
-docker compose --env-file .env.prod -f docker-compose.prod.yml config >/dev/null
+docker compose -f /opt/neuro-oj/docker-compose.noj.yml config >/dev/null
 ```
 
 检查命令只输出配置键名和错误原因，不输出 secret 值。生产环境禁止已知占位符、mock 邮件 Provider 和 local 存储。
@@ -17,11 +17,11 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml config >/dev/null
 ## S3/MinIO 应用凭据轮换
 
 1. 生成新的 `S3_ACCESS_KEY` 和 `S3_SECRET_KEY`，确保它们与 `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` 不同。
-2. 在维护窗口更新 `.env.prod`，运行 `docker compose config` 和 `deno task check:prod`。
+2. 在维护窗口更新 `noj-secrets.json`，运行 `docker compose -f /opt/neuro-oj/docker-compose.noj.yml config` 和 `deno task check:prod`。
 3. 执行 `minio-init`，让目标 bucket 的应用策略和新用户生效：
 
    ```bash
-   docker compose --env-file .env.prod -f docker-compose.prod.yml up --no-deps minio-init
+   docker compose -f /opt/neuro-oj/docker-compose.noj.yml up --no-deps minio-init
    ```
 
 4. 重启 `server` 和 `judge`，提交一个小型支持包题目验证读写和评测交付。
