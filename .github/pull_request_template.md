@@ -43,7 +43,6 @@ Closes #
 - [ ] 数据库迁移（新建或修改 `drizzle/` 文件）
 - [ ] 公共 API（端点 / 请求 / 响应结构变化）
 - [ ] 配置 / 环境变量（`.env.example` 已更新）
-- [ ] OpenSpec 规范（specs/ 或 changes/ 改动）
 - [ ] 文档（README / noj-docs）
 
 ## 验证清单
@@ -57,7 +56,6 @@ Closes #
 - [ ] 新功能 / 修复有对应测试
 - [ ] 数据库 schema 变更已通过 `deno task db:generate` 生成迁移
 - [ ] 提交信息符合 Conventional Commits（`<type>(<scope>): 中文描述`）
-- [ ] 若是功能变更，已 `/opsx:propose` 起草 OpenSpec 提案
 - [ ] 非平凡变更包含 Agent Note（`.agents/notes/implemented/`）
 - [ ] 相关文档已同步（AGENTS / CLAUDE / docs / noj-docs）
 - [ ] 注释/导出 JSDoc 与实现一致（`deno task check:jsdoc` 通过）

@@ -40,7 +40,6 @@ on:
       - 'docs/**'
       - 'noj-docs/**'
       - '**/*.md'
-      - 'openspec/**'
       - 'noj-ui/**'
       - 'docker-compose.yml'
       - 'LICENSE'

@@ -20,13 +20,12 @@ Neuro OJ 是一个面向 **AI 领域认证与竞赛** 的在线评测（Online J
 7. [版本控制与提交规范](#7-版本控制与提交规范)
 8. [AI 必须遵守的要求](#8-ai-必须遵守的要求)
 9. [贡献流程](#9-贡献流程)
-10. [OpenSpec 开发工作流](#10-openspec-开发工作流)
-11. [安全模型](#11-安全模型)
-12. [测试体系](#12-测试体系)
-13. [CI/CD](#13-cicd)
-14. [故障排查](#14-故障排查)
-15. [参考文档](#15-参考文档)
-16. [品牌与设计系统](#16-品牌与设计系统)
+10. [安全模型](#10-安全模型)
+11. [测试体系](#11-测试体系)
+12. [CI/CD](#12-cicd)
+13. [故障排查](#13-故障排查)
+14. [参考文档](#14-参考文档)
+15. [品牌与设计系统](#15-品牌与设计系统)
 
 ---
 
@@ -70,19 +69,8 @@ AI 技能由开发环境按需提供，仓库不再提交 Claude Code、OpenCode
 | `docker-expert` | judge 沙箱、docker-compose |
 | `supabase-postgres-best-practices` | PostgreSQL + Drizzle |
 | `review` | 代码评审 |
-| `openspec-*` | OpenSpec 规范驱动开发 |
 
-### 2.2 AI 命令
-
-| 命令 | 作用 |
-|---|---|
-| `/opsx:explore` | 探索现有规范 |
-| `/opsx:propose` | 起草变更提案 |
-| `/opsx:apply` | 实施已批准变更 |
-| `/opsx:archive` | 归档已完成变更 |
-| `/opsx:sync` | 同步 spec 增量 |
-
-### 2.3 子模块文档优先加载
+### 2.2 子模块文档优先加载
 
 | 当前路径 | 优先加载 |
 |---|---|
@@ -104,7 +92,6 @@ neuro-oj/
 ├── noj-llm-gateway/# LLM 网关（CLAUDE.md 有完整目录）
 ├── noj-tests/      # 跨模块 E2E 测试
 ├── noj-docs/       # 用户/出题人/运营者文档站（VitePress）
-├── openspec/       # OpenSpec 行为规范与变更
 ├── docs/           # 设计文档、实施计划、工程规范、审计
 ├── scripts/        # 构建与运维脚本（dev/e2e 等）
 ├── .agents/        # 工程决策记录（仅开发辅助）
@@ -214,12 +201,6 @@ cd noj-llm-gateway && deno task dev   # 可选
 
 所有提交必须 GPG 签名。AI 修改代码前必须确认签名可用。
 
-### 7.5 OpenSpec 归档目录命名
-
-- 格式：`YYYY-MM-DD-<kebab-case-name>`
-- 日期为归档当日（UTC+8）
-- name 与原变更名完全一致
-
 ---
 
 ## 8. AI 必须遵守的要求
@@ -228,12 +209,11 @@ cd noj-llm-gateway && deno task dev   # 可选
 
 1. 禁止直接推送到 `main`
 2. 禁止未签名提交
-3. 禁止跳过 OpenSpec（功能性变更必须先提案）
-4. 禁止修改 `_journal.json`
-5. 禁止手动修改 `deno.lock` / `Cargo.lock`
-6. 禁止在 `.env` 中硬编码真实凭据
-7. 禁止直连生产库改 schema
-8. 优先使用 `scripts/` 下的开发脚本
+3. 禁止修改 `_journal.json`
+4. 禁止手动修改 `deno.lock` / `Cargo.lock`
+5. 禁止在 `.env` 中硬编码真实凭据
+6. 禁止直连生产库改 schema
+7. 优先使用 `scripts/` 下的开发脚本
 
 ### 8.2 编码规范
 
@@ -257,7 +237,6 @@ cd noj-llm-gateway && deno task dev   # 可选
 - [ ] 新环境变量已加入对应模块 `.env.example`
 - [ ] 中文提交描述符合 Conventional Commits
 - [ ] GPG 签名可用
-- [ ] 若是功能变更，OpenSpec 变更已 `/opsx:propose` 起草
 - [ ] 非平凡变更包含 Agent Note（`.agents/notes/implemented/`）
 - [ ] 优先使用 `scripts/` 下的开发工具脚本
 - [ ] 测试通过 `deno task` 运行
@@ -307,21 +286,7 @@ jj config get signing.key
 
 ---
 
-## 10. OpenSpec 开发工作流
-
-任何功能性变更必须按顺序：
-
-1. `/opsx:explore` — 探索现有规范
-2. `/opsx:propose` — 起草变更提案
-3. 评审 → 实现
-4. `/opsx:apply` — 实施
-5. 测试通过后 `/opsx:archive` — 归档
-
-目录：`openspec/specs/`（主规范）、`openspec/changes/`（活跃/归档变更）。
-
----
-
-## 11. 安全模型
+## 10. 安全模型
 
 详细安全模型见 [noj-docs/docs/system/security.md](noj-docs/docs/system/security.md) 与 [docs/engineering/defensive-patterns.md](docs/engineering/defensive-patterns.md)。
 
@@ -336,7 +301,7 @@ jj config get signing.key
 
 ---
 
-## 12. 测试体系
+## 11. 测试体系
 
 详细命令与分层见 [docs/engineering/testing.md](docs/engineering/testing.md)。
 
@@ -348,7 +313,7 @@ jj config get signing.key
 
 ---
 
-## 13. CI/CD
+## 12. CI/CD
 
 - `.github/workflows/ci.yml`：PR/推送静态检查、测试、构建；按模块路径过滤
 - `.github/workflows/e2e.yml`：跨模块全链路 E2E + judge 沙箱
@@ -356,13 +321,13 @@ jj config get signing.key
 
 ---
 
-## 14. 故障排查
+## 13. 故障排查
 
 常见问题与处理见 [README.md](README.md#故障排查) 和 `noj-cli deploy status --dir <部署目录>`。
 
 ---
 
-## 15. 参考文档
+## 14. 参考文档
 
 | 文档 | 路径 |
 |---|---|
@@ -374,7 +339,6 @@ jj config get signing.key
 | E2E 测试指南 | [`noj-tests/E2E_TESTING.md`](./noj-tests/E2E_TESTING.md) |
 | noj-cli 使用说明 | [`noj-cli/README.md`](./noj-cli/README.md) |
 | 工程规范 | [`docs/engineering/README.md`](./docs/engineering/README.md) |
-| OpenSpec 主规范 | [`openspec/specs/`](./openspec/specs/) |
 | 系统架构 | [`noj-docs/docs/system/architecture.md`](./noj-docs/docs/system/architecture.md) |
 | 安全模型 | [`noj-docs/docs/system/security.md`](./noj-docs/docs/system/security.md) |
 | Superpowers 设计稿 | [`docs/superpowers/specs/`](./docs/superpowers/specs/) |
@@ -383,7 +347,7 @@ jj config get signing.key
 
 ---
 
-## 16. 品牌与设计系统
+## 15. 品牌与设计系统
 
 NOJ 使用统一的品牌视觉系统，所有前端与文档站颜色、圆角必须遵循 `docs/design/noj-design-tokens.md` 中的 token 规范。
 

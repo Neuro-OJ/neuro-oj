@@ -1074,75 +1074,9 @@ jj describe -m "feat(core): 统一题目包导入服务支持客观题套卷（�
 
 ---
 
-### Task 4: 更新 OpenSpec 规范
+### Task 4: 更新 OpenSpec 规范（已废弃）
 
-**Files:**
-- Modify: `openspec/specs/problem-bundle-import/spec.md`
-- Modify: `openspec/specs/objective-questions/spec.md`（如需要）
-
-**Interfaces:**
-- 无代码接口；文档同步。
-
-- [ ] **Step 1: 修改 `openspec/specs/problem-bundle-import/spec.md`**
-
-在 `### Requirement: 统一题目包格式（导入载体）` 中，将“根级 MUST 包含 `problem.json`（manifest）与 `evaluate.py`（评测脚本入口）”改为条件表述：
-
-```text
-系统 SHALL 定义统一题目包（Problem Bundle）作为题目导入的唯一载体格式：单个 zip 文件，根级 MUST 包含 `problem.json`（manifest）。编程题包（`is_objective` 缺省或 false）根级 MUST 包含 `evaluate.py`（评测脚本入口）；客观题套卷包（`is_objective=true`）根级 MUST 包含 `questions.json`（小题数组），SHOULD 包含 `statement.md`（题面 Markdown），可包含任意其他内容文件。
-```
-
-在 `### Requirement: manifest 结构` 的字段表中增加：
-
-```text
-| `is_objective` | ❌ | 布尔值，缺省 `false`；`true` 表示客观题套卷包，不要求 `runtime_config`/`evaluate.py`，必须含 `questions.json` |
-```
-
-并在该 Requirement 中补充客观题分支场景：
-
-```text
-#### Scenario: 客观题套卷包导入
-
-- **WHEN** `problem.json` 含 `"is_objective": true`，zip 根级含 `questions.json` 且不含 `evaluate.py`
-- **THEN** 系统校验通过，创建/更新客观题套卷并全量替换小题
-- **THEN** 系统不存储评测包，`support_package_storage_url` 为 NULL
-
-#### Scenario: 客观题包携带编程题专属字段
-
-- **WHEN** `is_objective=true` 的 manifest 携带 `runtime_config` / `llm` / `template` / `submission_mode` / `artifact_max_size_mb`
-- **THEN** 系统返回 HTTP 400
-
-#### Scenario: 客观题包缺 questions.json
-
-- **WHEN** `is_objective=true` 的 zip 根级缺少 `questions.json`
-- **THEN** 系统返回 HTTP 400
-```
-
-在 `### Requirement: manifest.llm 字段` 之后（或合适位置）新增：
-
-```text
-### Requirement: 客观题套卷包（questions.json）
-
-系统 SHALL 支持 `is_objective=true` 的题目包通过根级 `questions.json` 导入客观题小题。`questions.json` MUST 为非空数组，每项包含 `type`（`single`/`multiple`/`judge`）、`prompt`、`options`（judge 可省略）、`answer`、可选 `explanation` 与 `sort_order`。导入更新 SHALL 全量替换既有小题，且 SHALL NOT 自动重测历史提交。
-```
-
-- [ ] **Step 2: 修改 `openspec/specs/objective-questions/spec.md`**
-
-在 `### Requirement: 客观题卷管理` 中补充一句：
-
-```text
-客观题套卷 SHALL 支持通过统一题目包（`is_objective=true` + `questions.json`）批量导入/更新，导入语义遵循 `problem-bundle-import` 规范。
-```
-
-- [ ] **Step 3: 自检**
-
-Run: `grep -n "客观题套卷不通过统一题目包导入" openspec/specs/problem-bundle-import/spec.md openspec/specs/objective-questions/spec.md`
-Expected: 无匹配（旧表述已移除）。
-
-- [ ] **Step 4: Commit**
-
-```bash
-jj describe -m "docs(openspec): 统一题目包规范支持客观题套卷导入"
-```
+> OpenSpec 已从仓库移除，本任务不再执行；客观题套卷导入行为由实现代码、测试与 noj-docs 文档覆盖。
 
 ---
 
@@ -1238,9 +1172,9 @@ Expected: 无错误。
 Run: `cd noj-docs && npm run docs:build`
 Expected: 构建成功。
 
-- [ ] **Step 4: 检查 OpenSpec 无旧表述残留**
+- [ ] **Step 4: 检查文档无旧表述残留**
 
-Run: `grep -R "客观题套卷不通过统一题目包导入" -n openspec noj-docs docs || true`
+Run: `grep -R "客观题套卷不通过统一题目包导入" -n noj-docs docs || true`
 Expected: 无匹配。
 
 - [ ] **Step 5: Commit（如有未提交改动）**

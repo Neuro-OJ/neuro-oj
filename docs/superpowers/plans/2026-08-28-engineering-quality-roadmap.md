@@ -14,7 +14,7 @@
 
 - 所有提交必须 GPG 签名，使用 jj/git 配置的签名密钥。
 - 提交信息遵循 Conventional Commits，description 使用中文。
-- 功能性变更必须先走 OpenSpec（`/opsx:propose`）。
+- 功能性变更须先写设计文档（`docs/superpowers/specs/`）并包含 Agent Note。
 - 禁止直接推送 `main`，所有变更通过 PR 合入。
 - 代码注释使用中文，标识符使用英文。
 - noj-core/llm-gateway 测试使用 `deno task` 封装命令，不手拼 `deno test`。

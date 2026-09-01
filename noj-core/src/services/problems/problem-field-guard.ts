@@ -19,8 +19,7 @@
  * 缺省默认）与显式 userRole="admin" 放行，其余拒绝——与既有权限检查模式
  * （如 createProblem 的 `c ? assertPermission : userRole` 拒绝语义）一致。
  *
- * 未来新增敏感字段：在此文件扩展映射 + 在
- * openspec/specs/sensitive-field-permissions/ 补 spec 场景 + 补测试。
+ * 未来新增敏感字段：在此文件扩展映射 + 在对应文档/测试中补充场景。
  */
 
 import type { Context } from "hono";

@@ -222,7 +222,7 @@ NOJ 使用统一的「暖纸评测风」品牌视觉：暖纸底、墨字、蓝�
 
 ## 参与贡献
 
-欢迎通过 Issue 和 Pull Request 参与项目。开始修改代码前，请先阅读 [`AGENTS.md`](./AGENTS.md)；其中包含开发流程、测试方式、OpenSpec 规范和提交要求。
+欢迎通过 Issue 和 Pull Request 参与项目。开始修改代码前，请先阅读 [`AGENTS.md`](./AGENTS.md)；其中包含开发流程、测试方式和提交要求。
 
 - [提交 Issue](https://github.com/Neuro-OJ/neuro-oj/issues)
 - [查看 CI](https://github.com/Neuro-OJ/neuro-oj/actions)

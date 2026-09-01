@@ -1,7 +1,7 @@
 /**
  * 评测网络能力（evaluator 联网 + capability）跨模块 E2E。
  *
- * 覆盖（issue #197 / openspec network-capability）：
+ * 覆盖（issue #197）：
  * - 普通用户创建带 network.enabled=true 的 U 型题目（权限放行，无需 admin）
  * - 普通用户通过 import-bundle 导入带联网配置的统一题目包（导入路径同权限）
  * - 提交 solution（call_capability）→ 评测完成且 evaluator 联网真实生效：
