@@ -63,6 +63,7 @@ const STATE_COOKIE = "noj_oauth_state";
 const STATE_TTL_SECONDS = 10 * 60;
 const consumedStates = new Map<string, number>();
 
+/** 读取 JWT_SECRET 环境变量并编码为 Uint8Array，用于 OAuth state 签名/校验。 */
 function secret(): Uint8Array {
   const value = Deno.env.get("JWT_SECRET");
   if (!value) {
@@ -71,12 +72,20 @@ function secret(): Uint8Array {
   return new TextEncoder().encode(value);
 }
 
+/** 将未知值安全转换为对象；非对象（含 null/undefined）时返回空对象。 */
 function jsonObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object"
     ? value as Record<string, unknown>
     : {};
 }
 
+/**
+ * 校验值为非空字符串，否则抛出 OAuth provider 错误。
+ * @param value 待校验值
+ * @param name 字段名（用于错误信息）
+ * @returns 校验通过的非空字符串
+ * @throws {BadRequestError} 值缺失或非字符串
+ */
 function requiredString(value: unknown, name: string): string {
   if (typeof value !== "string" || value.length === 0) {
     throw new BadRequestError(
@@ -87,10 +96,12 @@ function requiredString(value: unknown, name: string): string {
   return value;
 }
 
+/** 将 OIDC 返回的 email_verified 值（true / "true"）解析为布尔值。 */
 function parseVerified(value: unknown): boolean {
   return value === true || value === "true";
 }
 
+/** 从环境变量读取配置完整且已启用的 OAuth 提供商列表（GitHub / OIDC）。 */
 function configuredProviders(): ProviderConfig[] {
   const result: ProviderConfig[] = [];
   const githubId = Deno.env.get("OAUTH_GITHUB_CLIENT_ID")?.trim();
@@ -128,12 +139,19 @@ export function listOAuthProviders(): OAuthProviderInfo[] {
   return configuredProviders().map(({ id, name }) => ({ id, name }));
 }
 
+/**
+ * 按提供商 ID 查找配置，未启用时抛 NotFoundError。
+ * @param provider 提供商 ID（github / oidc）
+ * @returns 对应的提供商配置
+ * @throws {NotFoundError} 该第三方登录方式未启用
+ */
 function providerOrThrow(provider: string): ProviderConfig {
   const config = configuredProviders().find((item) => item.id === provider);
   if (!config) throw new NotFoundError("该第三方登录方式未启用");
   return config;
 }
 
+/** 解析应用基础地址：优先使用 APP_URL 环境变量，否则取请求 URL 的 origin。 */
 function appUrl(requestUrl: string): string {
   const configured = Deno.env.get("APP_URL")?.trim().replace(/\/+$/, "");
   if (configured) return configured;
@@ -262,6 +280,12 @@ export async function consumeOAuthState(
   };
 }
 
+/**
+ * 读取第三方响应 JSON；响应非 OK 时抛 OAuth provider 错误。
+ * @param response 第三方 HTTP 响应
+ * @returns 解析后的 JSON 对象
+ * @throws {BadRequestError} 响应非 2xx 或 JSON 解析失败
+ */
 async function readJson(response: Response): Promise<Record<string, unknown>> {
   if (!response.ok) {
     throw new BadRequestError(
@@ -272,6 +296,12 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
   return jsonObject(await response.json());
 }
 
+/**
+ * 获取 OIDC provider 的 OpenID 配置元数据，并校验 issuer 一致性。
+ * @param provider OIDC 提供商配置
+ * @returns OIDC 元数据（授权/令牌/userinfo 端点等）
+ * @throws {BadRequestError} 元数据缺失或 issuer 校验失败
+ */
 async function oidcMetadata(provider: ProviderConfig): Promise<OidcMetadata> {
   const response = await fetch(
     `${provider.issuer}/.well-known/openid-configuration`,
@@ -304,6 +334,14 @@ async function oidcMetadata(provider: ProviderConfig): Promise<OidcMetadata> {
   };
 }
 
+/**
+ * 使用授权码向提供商换取 access token。
+ * @param provider 提供商配置
+ * @param code 授权码
+ * @param requestUrl 当前请求 URL（用于构造回调地址）
+ * @returns access token 及（OIDC 时）元数据
+ * @throws {BadRequestError} 换取失败或缺少 access_token
+ */
 async function exchangeCode(
   provider: ProviderConfig,
   code: string,
@@ -420,6 +458,10 @@ export async function fetchOAuthIdentity(
   };
 }
 
+/**
+ * 由 OAuth 身份生成用户名基础串：优先用身份用户名，否则用 provider + 用户 ID 尾号。
+ * 仅保留字母数字下划线并截断，长度不足时回退为 `${provider}_user`。
+ */
 function usernameBase(
   provider: OAuthProviderId,
   identity: OAuthIdentity,
@@ -430,6 +472,12 @@ function usernameBase(
   return value.length >= 3 ? value : `${provider}_user`;
 }
 
+/**
+ * 生成唯一用户名：优先使用 base，冲突时追加 `_1`、`_2`… 后缀。
+ * @param base 用户名基础串
+ * @returns 数据库中不存在的唯一用户名
+ * @throws {ConflictError} 尝试 1000 次仍无法生成唯一用户名
+ */
 async function uniqueUsername(base: string): Promise<string> {
   const db = getDb();
   const normalized = base.slice(0, 30);
@@ -450,6 +498,12 @@ async function uniqueUsername(base: string): Promise<string> {
   throw new ConflictError("无法生成唯一用户名");
 }
 
+/**
+ * 为 OAuth 身份创建新用户并分配默认角色。
+ * @param provider 提供商 ID
+ * @param identity 已校验的 OAuth 身份
+ * @returns 新创建的用户 ID
+ */
 async function createOAuthUser(
   provider: OAuthProviderId,
   identity: OAuthIdentity,
@@ -480,6 +534,12 @@ async function createOAuthUser(
   return userId;
 }
 
+/**
+ * 为用户签发 OAuth 登录会话：查询用户、签发 JWT 并记录登录审计。
+ * @param userId 目标用户 ID
+ * @returns 用户信息与 JWT token
+ * @throws {NotFoundError} 用户不存在
+ */
 async function issueOAuthSession(
   userId: string,
 ): Promise<{ user: UserResponse; token: string }> {
@@ -592,6 +652,7 @@ export interface LinkedOAuthAccount {
   created_at: string;
 }
 
+/** 脱敏外部用户 ID：仅保留末 4 位，其余以 `****` 代替。 */
 function maskProviderUserId(value: string): string {
   return value.length <= 4 ? "****" : `****${value.slice(-4)}`;
 }

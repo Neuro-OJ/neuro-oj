@@ -31,7 +31,18 @@ const FINE_GRAINED_ADMIN_PREFIXES = [
   "/api/v1/admin/trainings",
 ] as const;
 
-// 路由组级中间件：所有 admin 端点均需认证 + 管理员权限。
+/**
+ * 管理端路由组级守卫中间件。
+ *
+ * 对所有 admin 端点（`*` 通配）统一执行认证 + 管理员权限校验：
+ * - 先经 `authMiddleware` 完成 JWT 认证；
+ * - 对公告（announcements）与题单（trainings）等细粒度权限路径直接放行，
+ *   交由各自独立 router 处理；
+ * - 其余路径经 `adminMiddleware` 校验管理员权限。
+ *
+ * 权限：需登录且具备管理员权限（细粒度前缀路径除外）。
+ * 响应：无权限时由中间件抛出对应错误（401/403）。
+ */
 router.use("*", authMiddleware, async (c, next) => {
   if (
     FINE_GRAINED_ADMIN_PREFIXES.some((prefix) => c.req.path.startsWith(prefix))

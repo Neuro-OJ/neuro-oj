@@ -12,6 +12,7 @@ import type { CommandRunner } from "../runtime/command.ts";
 import { realRunner } from "../runtime/command.ts";
 import { fileExists } from "../util/fs.ts";
 import { COMPOSE_FILE, ensureComposeFile } from "./compose.ts";
+import { composePathOf, runDirOf } from "./paths.ts";
 import { dockerDown, dockerPs, dockerUp } from "./docker.ts";
 import { startManagedProcess, stopManagedProcess } from "../runtime/process.ts";
 import { ensureNojServerBinary } from "../runtime/download.ts";
@@ -36,16 +37,6 @@ export interface ComponentStatus {
 export interface DeployStatusReport {
   state: DeployState;
   components: ComponentStatus[];
-}
-
-/** 返回安装目录下 run 目录。 */
-function runDirOf(config: DeployConfig): string {
-  return `${config.install_dir}/run`;
-}
-
-/** 返回 compose 文件绝对路径。 */
-function composePathOf(config: DeployConfig): string {
-  return `${config.install_dir}/${COMPOSE_FILE}`;
 }
 
 /**

@@ -48,6 +48,10 @@ import {
   ValidationError,
 } from "../../src/lib/errors.ts";
 import {
+  findOrCreateConversation,
+  sendMessage,
+} from "../../src/domains/messaging/index.ts";
+import {
   _resetSystemSettingsForTest,
   initSystemSettings,
   updateSetting,
@@ -754,6 +758,39 @@ Deno.test({
     await assertRejects(
       () => toggleCommentLike(observerId, comment.id),
       NotFoundError,
+    );
+  },
+});
+
+Deno.test({
+  name: "community service: 举报私信消息（校验参与者）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+    // actorId(community-test-user) 与 observerId 建立会话，由 actorId 发消息
+    const { conversation } = await findOrCreateConversation(
+      actorId,
+      observerId,
+    );
+    const msg = await sendMessage(actorId, conversation.id, "举报这条私信");
+    const report = await createReport(observerId, {
+      message_id: msg.id,
+      reason: "私信内容违规",
+      category: "垃圾信息",
+    });
+    assertEquals(report.content_type, "message");
+    assertEquals(report.message_id, msg.id);
+    // 重复举报拒绝
+    await assertRejects(
+      () =>
+        createReport(observerId, {
+          message_id: msg.id,
+          reason: "重复",
+          category: "垃圾信息",
+        }),
+      ConflictError,
+      "已举报该内容",
     );
   },
 });

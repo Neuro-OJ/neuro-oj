@@ -15,8 +15,7 @@ import {
 import { nowIso } from "../../../../lib/dates.ts";
 import {
   generatePublicId,
-  isPublicId,
-  isUuid,
+  resolvePublicId,
 } from "../../../../lib/public-id.ts";
 import type {
   CommunityPostInput,
@@ -34,7 +33,17 @@ import {
   publicationStatus,
   resolveProblemId,
 } from "./community-post-common.ts";
+import {
+  authorProjection,
+  postStatsProjection,
+} from "./community-post-select.ts";
 
+/**
+ * 校验题解发布门槛：若配置要求通过题目，则作者必须已通过对应题目。
+ * @param authorId 作者用户 UUID。
+ * @param problemId 题目 UUID。
+ * @throws {ForbiddenError} 未通过题目时抛出（SOLUTION_NOT_ACCEPTED）。
+ */
 async function ensureSolutionAccepted(
   authorId: string,
   problemId: string,
@@ -48,6 +57,12 @@ async function ensureSolutionAccepted(
   }
 }
 
+/**
+ * 判断用户是否可在指定板块发帖：无角色授权时默认允许，否则需拥有可发帖的角色授权。
+ * @param userId 用户 UUID。
+ * @param boardId 板块 UUID。
+ * @returns 是否允许发帖。
+ */
 async function canPostToBoard(
   userId: string,
   boardId: string,
@@ -63,6 +78,16 @@ async function canPostToBoard(
   return grants.some((grant) => grant.can_post && roleIds.has(grant.role_id));
 }
 
+/**
+ * 创建社区帖子（题解 / 讨论 / 短动态）。
+ * 校验内容长度、标题规则、题解门槛、板块权限与发布频率限制，并按发布状态生成动态事件。
+ * @param authorId 作者用户 UUID。
+ * @param input 帖子输入：type、title、content、problem_id、board_id 等。
+ * @param moderator 是否为审核员，默认 false（审核员不受题解门槛与板块权限限制）。
+ * @returns 新建的帖子记录。
+ * @throws {ValidationError} 内容/标题无效、题解未关联题目、板块不存在或已归档时抛出。
+ * @throws {ForbiddenError} 未通过题解门槛、无板块发帖权限或发布过于频繁时抛出。
+ */
 export async function createPost(
   authorId: string,
   input: CommunityPostInput,
@@ -157,22 +182,26 @@ export async function createPost(
 }
 
 /** 将 UUID 或 public_id 解析为内部帖子 UUID；其它格式按主键兜底。 */
-export async function resolvePostId(value: string): Promise<string> {
-  const db = getDb();
-  if (isUuid(value)) return value;
-  if (isPublicId(value, "post")) {
-    const rows = await db.select({ id: communityPosts.id }).from(communityPosts)
-      .where(eq(communityPosts.public_id, value)).limit(1);
-    const row = rows[0];
-    if (!row) throw new NotFoundError("社区内容不存在");
-    return row.id;
-  }
-  const byId = await db.select({ id: communityPosts.id }).from(communityPosts)
-    .where(eq(communityPosts.id, value)).limit(1);
-  if (!byId[0]) throw new NotFoundError("社区内容不存在");
-  return byId[0].id;
+export function resolvePostId(value: string): Promise<string> {
+  return resolvePublicId(
+    communityPosts,
+    communityPosts.id,
+    communityPosts.public_id,
+    "post",
+    value,
+    "社区内容不存在",
+  );
 }
 
+/**
+ * 获取帖子详情（含作者、题目标题、点赞/评论数及当前查看者的收藏/点赞状态）。
+ * 非审核员仅可见已发布帖子（作者本人可见自己的非发布帖子）。
+ * @param postId 帖子 UUID。
+ * @param viewerId 可选，当前查看者用户 UUID。
+ * @param moderator 是否为审核员，默认 false。
+ * @returns 帖子详情对象。
+ * @throws {NotFoundError} 帖子不存在或不可见时抛出。
+ */
 export async function getPost(
   postId: string,
   viewerId?: string,
@@ -181,18 +210,9 @@ export async function getPost(
   const db = getDb();
   const rows = await db.select({
     post: communityPosts,
-    author: {
-      id: users.id,
-      username: users.username,
-      avatar_url: users.avatar_url,
-    },
+    author: authorProjection,
     problem_title: problems.title,
-    likes: sql<
-      number
-    >`(select count(*) from community_post_likes where post_id = ${communityPosts.id})`,
-    comments: sql<
-      number
-    >`(select count(*) from community_comments where post_id = ${communityPosts.id} and status = 'published')`,
+    ...postStatsProjection,
     bookmarked: viewerId
       ? sql<
         boolean
@@ -220,6 +240,16 @@ export async function getPost(
   return row;
 }
 
+/**
+ * 更新帖子标题/内容：仅作者或审核员，已删除帖子不可编辑，编辑同样受长度限制约束。
+ * @param postId 帖子 UUID。
+ * @param actorId 操作用户 UUID。
+ * @param moderator 是否为审核员。
+ * @param input 需要更新的字段：title / content（部分可选）。
+ * @returns 更新后的帖子记录。
+ * @throws {ForbiddenError} 非作者且非审核员时抛出。
+ * @throws {ValidationError} 已删除帖子或内容/标题超限时抛出。
+ */
 export async function updatePost(
   postId: string,
   actorId: string,

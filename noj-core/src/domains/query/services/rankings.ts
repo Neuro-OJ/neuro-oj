@@ -27,6 +27,9 @@ export interface RankingRow {
   acceptance_rate: number;
 }
 
+/**
+ * 榜单分页响应。
+ */
 export interface RankingsPage {
   data: RankingRow[];
   total: number;
@@ -44,6 +47,14 @@ const RANKING_MAX_LIMIT = 100;
 let _hasViewCache: { value: boolean; at: number } | null = null;
 const HAS_VIEW_CACHE_TTL_MS = 60_000;
 
+/**
+ * 检查 user_rankings 物化视图是否存在。
+ *
+ * 查询 pg_class 判断视图存在性，结果按模块级 60 秒 TTL 缓存。
+ * PGlite 不支持物化视图，异常/不存在时返回 false。
+ *
+ * @returns 物化视图是否可用
+ */
 async function hasMaterializedView(): Promise<boolean> {
   if (_hasViewCache && Date.now() - _hasViewCache.at < HAS_VIEW_CACHE_TTL_MS) {
     return _hasViewCache.value;
@@ -81,6 +92,15 @@ const RANKING_REFRESH_INTERVAL_MS = 5000;
 let _lastRankingRefreshAt = 0;
 let _pendingRankingRefresh: Promise<void> | null = null;
 
+/**
+ * 触发 user_rankings 物化视图刷新（含节流）。
+ *
+ * 评测结果写回后的热路径调用。NOJ-085 节流：5 秒内最多刷新一次，
+ * 节流窗口内若再次请求则挂起一次 trailing refresh，保证窗口结束后至少再刷新一次。
+ * 内部经 hasMaterializedView 判断，PGlite 下自动跳过。
+ *
+ * @returns 刷新完成（失败不抛出，仅记录日志的 Promise）
+ */
 export function refreshRankingsView(): Promise<void> {
   const now = Date.now();
   if (now - _lastRankingRefreshAt < RANKING_REFRESH_INTERVAL_MS) {
@@ -98,6 +118,14 @@ export function refreshRankingsView(): Promise<void> {
   return doRefreshRankingsView();
 }
 
+/**
+ * 实际执行物化视图刷新。
+ *
+ * 视图不存在时直接返回；使用 CONCURRENTLY 避免锁表。
+ * 刷新失败仅记录日志，不抛出，避免影响主业务。
+ *
+ * @returns 无返回值
+ */
 async function doRefreshRankingsView(): Promise<void> {
   if (!(await hasMaterializedView())) return;
   try {

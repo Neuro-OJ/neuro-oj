@@ -1,10 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import type { DeployConfig, SecretsConfig } from "../config/types.ts";
-import type {
-  CommandRunner,
-  SpawnHandle,
-  SpawnOpts,
-} from "../runtime/command.ts";
+import type { DeployConfig } from "../config/types.ts";
 import {
   configCheck,
   configSet,
@@ -14,16 +9,17 @@ import {
   parseConfigValue,
   setByPath,
 } from "./config.ts";
+import {
+  baseConfig,
+  fakeRunner,
+  makeTempDir,
+  secrets,
+  writeFixture,
+} from "../testing/helpers.ts";
 
 function config(): DeployConfig {
-  return {
-    schema_version: 1,
-    type: "prod",
+  return baseConfig({
     state: "stopped",
-    created_at: "2026-08-31T00:00:00Z",
-    updated_at: "2026-08-31T00:00:00Z",
-    install_dir: "/opt/neuro-oj",
-    version: { noj_cli: "0.1.0", noj_server: "0.1.0" },
     env: { DOMAIN: "oj.example.com", JWT_SECRET: "super-secret" },
     components: {
       server: {
@@ -33,32 +29,10 @@ function config(): DeployConfig {
         env: { PORT: "8000", DB_PASSWORD: "pw" },
       },
     },
-    reverse_proxy: {
-      type: "nginx",
-      config_dir: "/etc/nginx/conf.d",
-      domain: "oj.example.com",
-      upstream_port: 8080,
-    },
-  };
+  });
 }
 
-function secrets(): SecretsConfig {
-  return {
-    schema_version: 1,
-    created_at: "2026-08-31T00:00:00Z",
-    updated_at: "2026-08-31T00:00:00Z",
-    secrets: { JWT_SECRET: "x".repeat(32) },
-  };
-}
-
-async function writeFixture(dir: string): Promise<void> {
-  await Deno.mkdir(dir, { recursive: true });
-  await Deno.writeTextFile(`${dir}/noj-deploy.json`, JSON.stringify(config()));
-  await Deno.writeTextFile(
-    `${dir}/noj-secrets.json`,
-    JSON.stringify(secrets()),
-  );
-}
+const testSecrets = () => secrets({ secrets: { JWT_SECRET: "x".repeat(32) } });
 
 Deno.test("maskSecrets: 敏感 key 值被替换为 ***，其余保留", () => {
   const m = maskSecrets(config());
@@ -86,14 +60,14 @@ Deno.test("parseConfigValue: 布尔/数字/字符串", () => {
 });
 
 Deno.test("configCheck: 合法配置返回空数组", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir);
+  const dir = await makeTempDir();
+  await writeFixture(dir, config(), testSecrets());
   assertEquals(await configCheck(dir), []);
 });
 
 Deno.test("configShow: 输出脱敏后的 JSON", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir);
+  const dir = await makeTempDir();
+  await writeFixture(dir, config(), testSecrets());
   const text = await configShow(dir);
   const parsed = JSON.parse(text) as DeployConfig;
   assertEquals(parsed.env["JWT_SECRET"], "***");
@@ -101,8 +75,8 @@ Deno.test("configShow: 输出脱敏后的 JSON", async () => {
 });
 
 Deno.test("configSet: 修改配置并落盘，权限保持", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir);
+  const dir = await makeTempDir();
+  await writeFixture(dir, config(), testSecrets());
   await configSet(dir, "env.DOMAIN", "new.example.com");
   const { config: c } = await import("../config/load.ts").then((m) =>
     m.loadDeployment(dir)
@@ -113,8 +87,8 @@ Deno.test("configSet: 修改配置并落盘，权限保持", async () => {
 });
 
 Deno.test("configSet: 校验失败时抛错且不落盘", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir);
+  const dir = await makeTempDir();
+  await writeFixture(dir, config(), testSecrets());
   // 把 schema_version 改坏
   await assertRejects(
     () => configSet(dir, "schema_version", "2"),
@@ -127,20 +101,9 @@ Deno.test("configSet: 校验失败时抛错且不落盘", async () => {
   assertEquals(c.schema_version, 1);
 });
 
-function fakeRunner(): CommandRunner {
-  return {
-    run() {
-      return Promise.resolve({ code: 0, stdout: "", stderr: "" });
-    },
-    spawn(_opts: SpawnOpts): SpawnHandle {
-      throw new Error("fake runner 不 spawn");
-    },
-  };
-}
-
 Deno.test("maintainVerify: 配置/Compose/镜像均通过时 pass=true", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir);
+  const dir = await makeTempDir();
+  await writeFixture(dir, config(), testSecrets());
   await Deno.writeTextFile(`${dir}/docker-compose.noj.yml`, "services: {}\n");
   const report = await maintainVerify(dir, fakeRunner());
   assertEquals(report.pass, true);
@@ -148,8 +111,8 @@ Deno.test("maintainVerify: 配置/Compose/镜像均通过时 pass=true", async (
 });
 
 Deno.test("maintainVerify: 缺少 Compose 文件时报错", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir);
+  const dir = await makeTempDir();
+  await writeFixture(dir, config(), testSecrets());
   const report = await maintainVerify(dir, fakeRunner());
   assertEquals(report.pass, false);
   assertEquals(report.errors.some((e) => e.includes("Compose")), true);

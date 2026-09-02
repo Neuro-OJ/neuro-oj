@@ -130,8 +130,16 @@ e2eTest("[e2e/pipeline] 7/8 Runtime Error", async () => {
     CODE_SAMPLES.runtimeError,
   );
   const result = await pollSubmission(token, id, 45, 2000, true);
-  if (result.status !== "error") {
-    throw new Error("期望 error（RuntimeError）, 实际 " + result.status);
+  // 双容器 evaluate.py 会捕获用户函数异常并输出 0 分 RESULT，因此既可能
+  // 是 error（评测机侧失败）也可能是 finished + 0 分（用户代码异常被评分脚本消化）。
+  if (
+    !(result.status === "error" ||
+      (result.status === "finished" && result.score === 0))
+  ) {
+    throw new Error(
+      "期望 error 或 finished+0 分（RuntimeError）, 实际 " + result.status +
+        " " + result.score,
+    );
   }
 });
 
@@ -143,9 +151,15 @@ e2eTest("[e2e/pipeline] 8/8 Syntax Error", async () => {
     CODE_SAMPLES.syntaxError,
   );
   const result = await pollSubmission(token, id, 45, 2000, true);
-  if (result.status !== "error") {
+  // 同 Runtime Error：语法错误可能被评分脚本消化为 finished+0 分，
+  // 也可能由评测机标记为 error。
+  if (
+    !(result.status === "error" ||
+      (result.status === "finished" && result.score === 0))
+  ) {
     throw new Error(
-      "期望 error（CompileError/RuntimeError）, 实际 " + result.status,
+      "期望 error 或 finished+0 分（CompileError/RuntimeError）, 实际 " +
+        result.status + " " + result.score,
     );
   }
 });

@@ -9,11 +9,13 @@ import {
 } from "../../../lib/errors.ts";
 import { unwrapRows } from "../../../lib/sql-rows.ts";
 
+/** 签到操作/今日状态的响应。 */
 export interface CheckInResponse {
   checked_in: boolean;
   streak: number;
 }
 
+/** 签到统计结果。 */
 export interface CheckinStats {
   /** 累计签到天数 */
   total_days: number;
@@ -27,12 +29,14 @@ export interface CheckinStats {
   last_checkin_date: string | null;
 }
 
+/** 签到历史结果。 */
 export interface CheckinHistory {
   /** 最近 N 天内已签到的日期（升序，含今日） */
   days: string[];
   total_days: number;
 }
 
+/** 签到活跃榜单行数据。 */
 export interface CheckinLeaderboardRow {
   rank: number;
   user_id: string;
@@ -41,6 +45,7 @@ export interface CheckinLeaderboardRow {
   days: number;
 }
 
+/** 签到活跃榜响应。 */
 export interface CheckinLeaderboard {
   data: CheckinLeaderboardRow[];
   total: number;

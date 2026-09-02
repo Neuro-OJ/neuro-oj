@@ -7,13 +7,11 @@
  */
 
 import { Hono } from "hono";
-import { authMiddleware } from "../../../middleware/auth.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
+import { type AuthEnv, authMiddleware } from "../../../middleware/auth.ts";
+import { assertObjectBody, parseJsonBody } from "../../../lib/request.ts";
 import { parsePagination } from "../../../lib/pagination.ts";
 import { assertPermission, checkPermission } from "../../../lib/permissions.ts";
-import { BadRequestError } from "../../../lib/errors.ts";
-import { runWithContext } from "../../../lib/requestContext.ts";
-import { getClientIp } from "../../../lib/rate-limit-env.ts";
+import { withActorContext } from "../../../lib/requestContext.ts";
 import {
   deleteTraining,
   listAllTrainings,
@@ -22,32 +20,21 @@ import {
 } from "../services/trainings.ts";
 import type { UpdateTrainingInput } from "../../../types/trainings.ts";
 
-const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
+const router = new Hono<AuthEnv>();
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function assertObjectBody(
-  body: unknown,
-): asserts body is Record<string, unknown> {
-  if (!isObject(body)) {
-    throw new BadRequestError("请求体必须为 JSON 对象");
-  }
-}
-
-// 组级中间件：认证 + RequestContext 注入；具体权限在各 handler 内按需校验。
+/**
+ * 组级中间件：认证 + RequestContext 注入；具体权限在各 handler 内按需校验。
+ * 应用于本路由组全部路径。
+ */
 router.use("*", authMiddleware, (c, next) => {
-  return runWithContext(
-    {
-      actorId: c.get("userId"),
-      actorIp: getClientIp(c),
-      actorRole: c.get("userRole"),
-    },
-    () => next(),
-  );
+  return withActorContext(c, () => next());
 });
 
+/**
+ * 全部题单列表（含 private）。
+ * GET /api/v1/admin/trainings?page=&per_page=
+ * 需 training:read_any。
+ */
 router.get("/", async (c) => {
   await assertPermission(c, "training:read_any");
   const { page, perPage } = parsePagination(c);
@@ -60,6 +47,12 @@ router.get("/", async (c) => {
   });
 });
 
+/**
+ * 更新任意题单（含设为 public / 置顶）。
+ * PATCH /api/v1/admin/trainings/:id
+ * 需 training:write_any；设为 public 需 training:publish，置顶需 training:pin。
+ * body: { title?, description?, visibility?, is_pinned? }。
+ */
 router.patch("/:id", async (c) => {
   const id = await resolveTrainingId(c.req.param("id") as string);
   const body = await parseJsonBody<UpdateTrainingInput>(c);
@@ -89,6 +82,11 @@ router.patch("/:id", async (c) => {
   return c.json({ data: updated });
 });
 
+/**
+ * 删除任意题单。
+ * DELETE /api/v1/admin/trainings/:id
+ * 需 training:delete_any；响应 204。
+ */
 router.delete("/:id", async (c) => {
   await assertPermission(c, "training:delete_any");
   const id = await resolveTrainingId(c.req.param("id") as string);

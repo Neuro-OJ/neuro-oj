@@ -11,17 +11,7 @@
 
 import type { SendPasswordResetEmail } from "./types.ts";
 import { getSetting } from "../../domains/system/index.ts";
-
-function getSettingOrThrow(key: string, label: string): string {
-  const val = getSetting(key);
-  const str = typeof val?.value === "string" ? val.value : "";
-  if (!str) {
-    throw new Error(
-      `[email/tencent] ${label} 未配置，请通过系统设置或环境变量配置`,
-    );
-  }
-  return str;
-}
+import { buildResetPasswordHtml, getSettingOrThrow } from "./common.ts";
 
 /**
  * 发送密码重置邮件（腾讯云 SES）。
@@ -58,11 +48,7 @@ export const sendPasswordResetEmail: SendPasswordResetEmail = async (
   });
 
   // 邮件正文 HTML
-  const html = [
-    `<p>您请求了密码重置。</p>`,
-    `<p><a href="${resetLink}">点击此处重置密码</a></p>`,
-    `<p>此链接 ${_expiresInMinutes} 分钟内有效。如非您本人操作，请忽略此邮件。</p>`,
-  ].join("\n");
+  const html = buildResetPasswordHtml(resetLink, _expiresInMinutes);
 
   await client.SendEmail({
     FromEmailAddress: fromEmail,

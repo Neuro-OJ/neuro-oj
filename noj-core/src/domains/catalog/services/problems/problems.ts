@@ -33,6 +33,10 @@ export { syncProblemTags } from "./problems-tags.ts";
 
 export { validateRuntimeConfig } from "./problems-types.ts";
 
+/**
+ * 题目相关响应 DTO 类型（re-export，保持向后兼容）。
+ * 具体定义见 problems-types.ts。
+ */
 export type {
   AdminProblemListItem,
   AdminProblemListResponse,

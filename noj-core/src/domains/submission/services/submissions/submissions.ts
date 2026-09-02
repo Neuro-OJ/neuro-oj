@@ -34,6 +34,12 @@ export {
   rejudgeSubmission,
 } from "./submissions-rejudge.ts";
 
+/**
+ * 提交域共享 DTO 类型（re-export）。
+ *
+ * 从 submissions-types.ts 统一导出提交相关的输入/输出类型，供 routes、admin、
+ * sse、mq 等模块复用，保持向后兼容。
+ */
 export type {
   ListSubmissionsParams,
   ListSubmissionsResult,

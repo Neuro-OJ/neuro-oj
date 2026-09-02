@@ -23,12 +23,20 @@ export interface QuestionToJudge {
   explanation: string;
 }
 
+/**
+ * 判分整张套卷的输入。
+ * 包含待判定的题目列表与用户提交的答案映射。
+ */
 export interface JudgePaperInput {
   questions: QuestionToJudge[];
   /** 用户答案 {question_id: [选项...]} */
   answers: Record<string, ObjectiveAnswerValue[]>;
 }
 
+/**
+ * 判分整张套卷的输出。
+ * 包含卷面分、正确/总题数以及逐题判定详情。
+ */
 export interface JudgePaperOutput {
   /** ×100 整数卷面分（0-10000） */
   score: number;

@@ -1149,6 +1149,44 @@ pub mod mod_test_helpers {
 mod tests {
     use super::*;
 
+    /// handle_eval_chunk 测试公共状态。
+    struct EvalHarness {
+        parser: LineParser,
+        stderr_buf: String,
+        stdout_full: String,
+        result_payload: Option<String>,
+        tracker: InFlightTracker,
+    }
+
+    impl EvalHarness {
+        fn new() -> Self {
+            Self {
+                parser: LineParser::new(),
+                stderr_buf: String::new(),
+                stdout_full: String::new(),
+                result_payload: None,
+                tracker: InFlightTracker::new(2000),
+            }
+        }
+    }
+
+    /// handle_sol_chunk 测试公共状态。
+    struct SolHarness {
+        parser: LineParser,
+        solution_ready: bool,
+        tracker: InFlightTracker,
+    }
+
+    impl SolHarness {
+        fn new() -> Self {
+            Self {
+                parser: LineParser::new(),
+                solution_ready: true,
+                tracker: InFlightTracker::new(2000),
+            }
+        }
+    }
+
     #[test]
     fn test_build_llm_env() {
         let llm = JudgeTaskLlm {
@@ -1245,11 +1283,13 @@ mod tests {
         let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
             Box::pin(sink);
 
-        let mut parser = LineParser::new();
-        let mut stderr_buf = String::new();
-        let mut stdout_full = String::new();
-        let mut result_payload: Option<String> = None;
-        let mut tracker = InFlightTracker::new(2000);
+        let EvalHarness {
+            mut parser,
+            mut stderr_buf,
+            mut stdout_full,
+            mut result_payload,
+            mut tracker,
+        } = EvalHarness::new();
         // 预登记 capability 调用（solution 已发过 capability 帧，等待响应）
         tracker.on_capability_frame(
             &serde_json::json!({"type":"capability","id":"abc","name":"x","args":[]}),
@@ -1307,11 +1347,13 @@ mod tests {
         let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
             Box::pin(sink);
 
-        let mut parser = LineParser::new();
-        let mut stderr_buf = String::new();
-        let mut stdout_full = String::new();
-        let mut result_payload: Option<String> = None;
-        let mut tracker = InFlightTracker::new(2000);
+        let EvalHarness {
+            mut parser,
+            mut stderr_buf,
+            mut stdout_full,
+            mut result_payload,
+            mut tracker,
+        } = EvalHarness::new();
 
         let chunk = LogOutput::StdOut {
             message: bytes::Bytes::from_static(
@@ -1353,11 +1395,13 @@ mod tests {
         let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
             Box::pin(sink);
 
-        let mut parser = LineParser::new();
-        let mut stderr_buf = String::new();
-        let mut stdout_full = String::new();
-        let mut result_payload: Option<String> = None;
-        let mut tracker = InFlightTracker::new(2000);
+        let EvalHarness {
+            mut parser,
+            mut stderr_buf,
+            mut stdout_full,
+            mut result_payload,
+            mut tracker,
+        } = EvalHarness::new();
 
         let chunk = LogOutput::StdOut {
             message: bytes::Bytes::from_static(b"---RESULT---\n{\"score\":100}\n"),
@@ -1387,11 +1431,13 @@ mod tests {
         let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
             Box::pin(sink);
 
-        let mut parser = LineParser::new();
-        let mut stderr_buf = String::new();
-        let mut stdout_full = String::new();
-        let mut result_payload: Option<String> = None;
-        let mut tracker = InFlightTracker::new(2000);
+        let EvalHarness {
+            mut parser,
+            mut stderr_buf,
+            mut stdout_full,
+            mut result_payload,
+            mut tracker,
+        } = EvalHarness::new();
 
         handle_eval_chunk(
             &mut parser,
@@ -1435,11 +1481,13 @@ mod tests {
         let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
             Box::pin(sink);
 
-        let mut parser = LineParser::new();
-        let mut stderr_buf = String::new();
-        let mut stdout_full = String::new();
-        let mut result_payload: Option<String> = None;
-        let mut tracker = InFlightTracker::new(2000);
+        let EvalHarness {
+            mut parser,
+            mut stderr_buf,
+            mut stdout_full,
+            mut result_payload,
+            mut tracker,
+        } = EvalHarness::new();
 
         let chunk = LogOutput::StdOut {
             message: bytes::Bytes::from_static(
@@ -1482,11 +1530,13 @@ mod tests {
         let mut writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
             Box::pin(sink);
 
-        let mut parser = LineParser::new();
-        let mut stderr_buf = String::new();
-        let mut stdout_full = String::new();
-        let mut result_payload: Option<String> = None;
-        let mut tracker = InFlightTracker::new(2000);
+        let EvalHarness {
+            mut parser,
+            mut stderr_buf,
+            mut stdout_full,
+            mut result_payload,
+            mut tracker,
+        } = EvalHarness::new();
 
         let chunk = LogOutput::StdOut {
             message: bytes::Bytes::from_static(
@@ -1535,9 +1585,11 @@ mod tests {
         let mut sol_sink: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
             Box::pin(tokio::io::sink());
 
-        let mut parser = LineParser::new();
-        let mut solution_ready = true;
-        let mut tracker = InFlightTracker::new(2000);
+        let SolHarness {
+            mut parser,
+            mut solution_ready,
+            mut tracker,
+        } = SolHarness::new();
 
         let chunk = LogOutput::StdOut {
             message: bytes::Bytes::from_static(
@@ -1579,9 +1631,11 @@ mod tests {
             Box::pin(eval_sink);
         let mut sol_writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
             Box::pin(sol_sink);
-        let mut parser = LineParser::new();
-        let mut solution_ready = true;
-        let mut tracker = InFlightTracker::new(2000);
+        let SolHarness {
+            mut parser,
+            mut solution_ready,
+            mut tracker,
+        } = SolHarness::new();
         let chunk = LogOutput::StdOut {
             message: bytes::Bytes::from_static(
                 b"{\"type\":\"capability\",\"id\":\"byok-1\",\"name\":\"request_user_llm_completion\",\"args\":[\"hello\"]}\n",
@@ -1627,9 +1681,11 @@ mod tests {
         let mut sol_sink: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>> =
             Box::pin(tokio::io::sink());
 
-        let mut parser = LineParser::new();
-        let mut solution_ready = true;
-        let mut tracker = InFlightTracker::new(2000);
+        let SolHarness {
+            mut parser,
+            mut solution_ready,
+            mut tracker,
+        } = SolHarness::new();
 
         let chunk = LogOutput::StdOut {
             message: bytes::Bytes::from_static(b"{\"type\":\"bogus\",\"id\":\"x\"}\n"),

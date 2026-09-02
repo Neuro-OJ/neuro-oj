@@ -6,15 +6,29 @@ import { nowIso } from "../../../../lib/dates.ts";
 import { getSetting } from "../../../system/index.ts";
 import type { CommunityConfig } from "../../../../types/community.ts";
 
+/**
+ * 读取布尔型系统设置。
+ * @param key 设置键名。
+ * @returns 设置值是否为 true。
+ */
 function settingBoolean(key: string): boolean {
   return getSetting(key)?.value === true;
 }
 
+/**
+ * 读取数值型系统设置。
+ * @param key 设置键名。
+ * @returns 数值设置；非有限数值时返回 0。
+ */
 function settingNumber(key: string): number {
   const value = Number(getSetting(key)?.value);
   return Number.isFinite(value) ? value : 0;
 }
 
+/**
+ * 汇总读取社区全部配置项，返回 CommunityConfig。
+ * @returns 社区配置对象（各功能开关与长度/间隔等数值限制）。
+ */
 export function getCommunityConfig(): CommunityConfig {
   return {
     enabled: settingBoolean("community_enabled"),
@@ -43,6 +57,11 @@ export function getCommunityConfig(): CommunityConfig {
   };
 }
 
+/**
+ * 断言社区（或指定功能）已启用，未启用时抛出 ForbiddenError。
+ * @param feature 可选，需要检查的具体功能开关（如 discussions_enabled）。
+ * @throws {ForbiddenError} 社区或指定功能关闭时抛出（FEATURE_DISABLED）。
+ */
 export function assertCommunityEnabled(feature?: keyof CommunityConfig): void {
   const config = getCommunityConfig();
   if (!config.enabled || (feature && config[feature] === false)) {
@@ -50,6 +69,13 @@ export function assertCommunityEnabled(feature?: keyof CommunityConfig): void {
   }
 }
 
+/**
+ * 断言当前用户可进行社区写操作：只读模式、平台/社交封禁、社区禁言均会拦截。
+ * @param userId 用户 UUID。
+ * @param isModerator 是否为审核员（审核员不受只读与封禁限制）。
+ * @param opts 可选配置：allowSocialBan 为 true 时放行社交封禁（允许删除/管理自己的内容）。
+ * @throws {ForbiddenError} 只读模式、被封禁或被社区禁言时抛出。
+ */
 export async function assertCommunityWritable(
   userId: string,
   isModerator: boolean,

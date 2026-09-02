@@ -25,11 +25,26 @@ import {
  */
 const router = new Hono<AuthEnv>();
 
+/**
+ * 获取 LLM Provider 列表。
+ * GET /api/v1/admin/llm/providers
+ *
+ * 权限/认证：管理员（adminMiddleware 组级保护）。
+ * 响应：`{ data: LlmProviderView[] }`，Key 已由 gateway 脱敏。
+ */
 router.get("/llm/providers", async (c) => {
   const data = await listLlmProviders();
   return c.json({ data });
 });
 
+/**
+ * 新增 LLM Provider。
+ * POST /api/v1/admin/llm/providers
+ *
+ * 权限/认证：管理员（adminMiddleware 组级保护）。
+ * body: { name, base_url, model, api_key, cost_per_1k_tokens?, enabled? }
+ * 响应：201 `{ data: LlmProviderView }`；缺少必填字段返回 400 `{ error }`。
+ */
 router.post("/llm/providers", async (c) => {
   const body = await parseJsonBody<LlmProviderInput>(c);
   if (!body.name || !body.base_url || !body.model || !body.api_key) {
@@ -43,6 +58,15 @@ router.post("/llm/providers", async (c) => {
   }
 });
 
+/**
+ * 更新 LLM Provider 的指定字段。
+ * PUT /api/v1/admin/llm/providers/:id
+ *
+ * 权限/认证：管理员（adminMiddleware 组级保护）。
+ * path: :id = Provider ID
+ * body: Partial<LlmProviderInput>（部分更新）
+ * 响应：`{ data: LlmProviderView }`。
+ */
 router.put("/llm/providers/:id", async (c) => {
   const id = c.req.param("id") as string;
   const body = await parseJsonBody<Partial<LlmProviderInput>>(c);
@@ -54,6 +78,15 @@ router.put("/llm/providers/:id", async (c) => {
   }
 });
 
+/**
+ * 查询 LLM 用量记录。
+ * GET /api/v1/admin/llm/usage
+ *
+ * 权限/认证：管理员（adminMiddleware 组级保护）。
+ * query 可选：submission_id / user_id / problem_id / provider_id / status /
+ * start_time / end_time / limit / page（透传 gateway）。
+ * 响应：`{ data: unknown[] }`（用量记录列表）。
+ */
 router.get("/llm/usage", async (c) => {
   const query: LlmUsageQuery = {
     submission_id: c.req.query("submission_id") || undefined,
@@ -70,6 +103,15 @@ router.get("/llm/usage", async (c) => {
   return c.json({ data });
 });
 
+/**
+ * 查询 LLM 配额列表。
+ * GET /api/v1/admin/llm/quotas
+ *
+ * 权限/认证：管理员（adminMiddleware 组级保护）。
+ * 说明：配额查询由 gateway 内部 API 提供；当前为占位路由，返回空列表，
+ * 后续可在 gateway 增加 /internal/quotas GET 后直接透传，避免前端 404。
+ * 响应：`{ data: unknown[] }`。
+ */
 router.get("/llm/quotas", async (c) => {
   // 配额查询由 gateway 内部 API 提供；当前通过 usage 服务简化返回空列表，
   // 后续可在 gateway 增加 /internal/quotas GET 后直接透传。
@@ -78,12 +120,29 @@ router.get("/llm/quotas", async (c) => {
   return c.json({ data });
 });
 
+/**
+ * 新增或更新 LLM 配额。
+ * POST /api/v1/admin/llm/quotas
+ *
+ * 权限/认证：管理员（adminMiddleware 组级保护）。
+ * body: LlmQuotaInput（按 id upsert：含 id 则更新，否则新增）。
+ * 响应：201 `{ data: { id: string } }`。
+ */
 router.post("/llm/quotas", async (c) => {
   const body = await parseJsonBody<LlmQuotaInput>(c);
   const data = await upsertLlmQuota(body);
   return c.json({ data }, 201);
 });
 
+/**
+ * 向 LLM Gateway 内部管理 API 请求配额列表。
+ *
+ * 读取 NOJ_LLM_SERVICE_TOKEN 与 NOJ_LLM_GATEWAY_URL 环境变量，
+ * 携带承载 Token 调用 gateway 的 /internal/quotas 端点；失败时抛出异常。
+ *
+ * @returns 配额列表（无数据时返回空数组）
+ * @throws {Error} gateway 返回非 2xx 时抛出，携带状态码
+ */
 async function fetchLlmQuotas(): Promise<unknown[]> {
   const token = Deno.env.get("NOJ_LLM_SERVICE_TOKEN") ?? "";
   const gatewayUrl = Deno.env.get("NOJ_LLM_GATEWAY_URL") ??

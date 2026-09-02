@@ -5,14 +5,15 @@ import {
   integer,
   jsonb,
   pgTable,
-  primaryKey,
   text,
   unique,
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { manyToManyPk, publicIdColumn } from "./common.ts";
 import { roles, userBans, users } from "./identity.ts";
 import { problems } from "./catalog.ts";
+import { messages } from "./messaging.ts";
 
 /** 社区讨论板块。 */
 export const communityBoards = pgTable(
@@ -50,7 +51,7 @@ export const communityBoardRoleGrants = pgTable(
     can_moderate: boolean("can_moderate").notNull().default(false),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.board_id, table.role_id] }),
+    ...manyToManyPk([table.board_id, table.role_id]),
     roleIdx: index("idx_community_board_role_grants_role").on(table.role_id),
   }),
 );
@@ -60,9 +61,7 @@ export const communityPosts = pgTable(
   "community_posts",
   {
     id: text("id").primaryKey(),
-    public_id: text("public_id").notNull().default(
-      sql`'post-' || substr(md5(random()::text), 1, 8)`,
-    ),
+    public_id: publicIdColumn("post"),
     type: text("type").notNull(),
     author_id: text("author_id").notNull().references(() => users.id, {
       onDelete: "cascade",
@@ -174,7 +173,7 @@ export const communityPostLikes = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.post_id, table.user_id] }),
+    ...manyToManyPk([table.post_id, table.user_id]),
     userIdx: index("idx_community_post_likes_user").on(table.user_id),
   }),
 );
@@ -193,7 +192,7 @@ export const communityCommentLikes = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.comment_id, table.user_id] }),
+    ...manyToManyPk([table.comment_id, table.user_id]),
     userIdx: index("idx_community_comment_likes_user").on(table.user_id),
   }),
 );
@@ -211,7 +210,7 @@ export const communityBookmarks = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.post_id, table.user_id] }),
+    ...manyToManyPk([table.post_id, table.user_id]),
     userIdx: index("idx_community_bookmarks_user").on(
       table.user_id,
       table.created_at,
@@ -232,7 +231,7 @@ export const communityFollows = pgTable(
     created_at: text("created_at").notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.follower_id, table.followee_id] }),
+    ...manyToManyPk([table.follower_id, table.followee_id]),
     notSelfCheck: check(
       "community_follows_not_self_check",
       sql`${table.follower_id} <> ${table.followee_id}`,
@@ -290,6 +289,10 @@ export const communityReports = pgTable(
     comment_id: text("comment_id").references(() => communityComments.id, {
       onDelete: "set null",
     }),
+    /** 私信消息举报目标（复用社区举报处理流程） */
+    message_id: text("message_id").references(() => messages.id, {
+      onDelete: "set null",
+    }),
     content_type: text("content_type").notNull().default("post"),
     sanction_id: text("sanction_id").references(() => communitySanctions.id, {
       onDelete: "set null",
@@ -313,7 +316,7 @@ export const communityReports = pgTable(
   (table) => ({
     targetCheck: check(
       "community_reports_target_check",
-      sql`num_nonnulls(${table.post_id}, ${table.comment_id}) = 1`,
+      sql`num_nonnulls(${table.post_id}, ${table.comment_id}, ${table.message_id}) = 1`,
     ),
     statusCheck: check(
       "community_reports_status_check",
@@ -328,6 +331,7 @@ export const communityReports = pgTable(
     reporterIdx: index("idx_community_reports_reporter").on(table.reporter_id),
     postIdx: index("idx_community_reports_post").on(table.post_id),
     commentIdx: index("idx_community_reports_comment").on(table.comment_id),
+    messageIdx: index("idx_community_reports_message").on(table.message_id),
   }),
 );
 

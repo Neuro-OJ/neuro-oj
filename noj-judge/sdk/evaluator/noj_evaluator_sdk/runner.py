@@ -15,14 +15,13 @@ noj_evaluator_sdk SolutionRunner。
 from __future__ import annotations
 
 import json
-import os
-import re
 import sys
 import threading
-import traceback
 import uuid
-from queue import Empty, Queue
 from typing import Any, Optional
+
+from noj_sdk_common.rpc import RpcClient
+from noj_sdk_common.sanitize import sanitize_message, sanitize_traceback
 
 from .capability import _get_capability
 from .errors import (
@@ -41,44 +40,6 @@ from .serialization import (
     validate_type,
 )
 
-_TB_FILE_RE = re.compile(r'File "([^"]+)"')
-
-# 裸绝对路径（如 /workspace/secret/credentials.py）：message 中不总是带 File "..." 包装
-_ABS_PATH_RE = re.compile(r"/(?:[\w.\-]+/)+[\w.\-]+")
-
-# 透传给 solution 的异常 message 截断上限（防止超长消息 / 内嵌堆栈泄露）
-_MAX_MESSAGE_LEN = 1024
-
-
-def _sanitize_traceback(exc: BaseException) -> str:
-    """清洗 traceback：文件路径只保留 basename（与 solution 侧 sanitize_trace 对齐）。
-
-    error 帧会返回给 solution（做题人），不得泄露 evaluator 容器内部绝对路径。
-    """
-    lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
-    cleaned = [
-        _TB_FILE_RE.sub(lambda m: f'File "{os.path.basename(m.group(1))}"', line)
-        for line in lines
-    ]
-    return "".join(cleaned)
-
-
-def _sanitize_message(msg: str) -> str:
-    """净化透传给 solution 的异常 `message`：路径只保留 basename + 截断长度。
-
-    `str(e)` 可能内嵌绝对路径（`File "..."` 或裸路径）/ 长堆栈 / 敏感值，与
-    `_sanitize_traceback` 做一致的路径清洗，并截断到上限，防止信息泄露与超大帧。
-    """
-    cleaned = _TB_FILE_RE.sub(
-        lambda m: f'File "{os.path.basename(m.group(1))}"', msg
-    )
-    cleaned = _ABS_PATH_RE.sub(
-        lambda m: f"/{os.path.basename(m.group(0))}", cleaned
-    )
-    if len(cleaned) > _MAX_MESSAGE_LEN:
-        cleaned = cleaned[:_MAX_MESSAGE_LEN] + f"...（截断，原长度 {len(msg)}）"
-    return cleaned
-
 
 class SolutionRunner:
     """阻塞式 Solution host 调用器。
@@ -87,11 +48,8 @@ class SolutionRunner:
     """
 
     def __init__(self) -> None:
-        self._pending: dict[str, Queue] = {}
-        self._lock = threading.Lock()
+        self._rpc = RpcClient()
         self._closed = False
-        # stdout 写入锁：call 帧（主线程）与 capability 响应（reader 线程）并发写
-        self._out_lock = threading.Lock()
         self._reader_thread = threading.Thread(
             target=self._reader_loop, name="noj-evaluator-stdin-reader", daemon=True
         )
@@ -140,16 +98,13 @@ class SolutionRunner:
             frame["timeout_ms"] = timeout_ms
 
         # 3. 注册 pending
-        q: Queue = Queue(maxsize=1)
-        with self._lock:
-            self._pending[call_id] = q
+        q = self._rpc.register_pending(call_id)
 
         # 4. 写帧到 stdout
         try:
             self._write_out(frame)
         except RejectedError:
-            with self._lock:
-                self._pending.pop(call_id, None)
+            self._rpc.pop_pending(call_id)
             raise
 
         # 5. 阻塞等响应（超时由 judge 端 call_timeout_ms 控制，
@@ -157,18 +112,17 @@ class SolutionRunner:
         try:
             response = q.get()
         except Exception as e:
-            with self._lock:
-                self._pending.pop(call_id, None)
+            self._rpc.pop_pending(call_id)
             raise ConnectionError(f"等待响应异常: {e}")
 
         # 6. 处理响应
-        with self._lock:
-            self._pending.pop(call_id, None)
+        self._rpc.pop_pending(call_id)
         return self._handle_response(response)
 
     def close(self) -> None:
         """主动关闭 runner（通常不需要，进程结束自动清理）。"""
         self._closed = True
+        self._rpc.close()
 
     # ── 内部 ────────────────────────────────────────────
 
@@ -190,22 +144,16 @@ class SolutionRunner:
                     continue
 
                 frame_type = frame.get("type")
-                frame_id = frame.get("id")
 
                 if frame_type == "capability":
                     # solution 请求调用 capability：查注册表并同步执行（写响应帧）
                     self._handle_capability(frame)
                 elif frame_type in ("result", "error"):
-                    with self._lock:
-                        q = self._pending.pop(frame_id, None)
-                    if q is not None:
-                        q.put(frame)
-                    # else: 响应已超时丢弃，忽略
+                    self._rpc.deliver_response(frame)
                 elif frame_type == "log":
                     # log 帧直接打到 stderr（judge 也会收集并截断）
                     stream = frame.get("stream", "stdout")
                     data = frame.get("data", "")
-                    target = sys.stderr if stream == "stderr" else sys.stdout
                     # 注意：log 流到 stdout 会污染协议帧，故日志统一走 stderr
                     sys.stderr.write(data)
                     if not data.endswith("\n"):
@@ -213,25 +161,12 @@ class SolutionRunner:
                     sys.stderr.flush()
                 elif frame_type == "shutdown":
                     self._closed = True
-                    # 唤醒所有 pending（会抛 ConnectionError）
-                    with self._lock:
-                        for q in self._pending.values():
-                            try:
-                                q.put_nowait({"type": "_shutdown"})
-                            except Exception:
-                                pass
-                        self._pending.clear()
+                    self._rpc.shutdown_pending()
                 # 其它 type 忽略
         except (EOFError, BrokenPipeError):
             # stdin 关闭 → 整体失败
             self._closed = True
-            with self._lock:
-                for q in self._pending.values():
-                    try:
-                        q.put_nowait({"type": "_shutdown"})
-                    except Exception:
-                        pass
-                self._pending.clear()
+            self._rpc.shutdown_pending()
         except Exception as e:
             sys.stderr.write(f"[noj_evaluator_sdk] reader_loop 异常: {e}\n")
             sys.stderr.flush()
@@ -241,9 +176,7 @@ class SolutionRunner:
         """线程安全写 NDJSON 帧到 stdout（受单帧 1 MiB 软上限约束）。"""
         line = json.dumps(frame, ensure_ascii=False, separators=(",", ":"))
         check_frame_size(line)
-        with self._out_lock:
-            sys.stdout.write(line + "\n")
-            sys.stdout.flush()
+        self._rpc.write_frame(frame)
 
     def _handle_capability(self, frame: dict) -> None:
         """处理 solution 的 capability 调用（在 reader 线程同步执行）。
@@ -300,8 +233,8 @@ class SolutionRunner:
                     "type": "error",
                     "id": cap_id,
                     "code": "Exception",
-                    "message": _sanitize_message(str(e)),
-                    "trace": _sanitize_traceback(e),
+                    "message": sanitize_message(str(e)),
+                    "trace": sanitize_traceback(e),
                 }
             )
             return

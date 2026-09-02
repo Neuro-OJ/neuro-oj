@@ -428,6 +428,20 @@
       "when": 1788267394965,
       "tag": "0060_wild_mister_fear",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1788285276819,
+      "tag": "0061_funny_rage",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1788288115329,
+      "tag": "0062_legal_hex",
+      "breakpoints": true
     }
   ]
 }

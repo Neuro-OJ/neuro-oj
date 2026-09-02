@@ -1,5 +1,7 @@
 /** noj-server 二进制按需下载与版本解析。 */
 
+import { sha256Hex } from "../util/hash.ts";
+
 const REPO = "Neuro-OJ/neuro-oj";
 const DEFAULT_BASE_URL = `https://github.com/${REPO}/releases/download`;
 const API_BASE = `https://api.github.com/repos/${REPO}`;
@@ -21,15 +23,6 @@ export async function resolveLatestVersion(): Promise<string> {
     throw new Error("解析最新版本失败: 响应缺少 tag_name");
   }
   return tag.replace(/^v/, "");
-}
-
-/** 计算 Uint8Array 的 SHA-256 十六进制摘要。 */
-async function sha256Hex(input: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", input as BufferSource);
-  const bytes = new Uint8Array(digest);
-  let hex = "";
-  for (const b of bytes) hex += b.toString(16).padStart(2, "0");
-  return hex;
 }
 
 /** 确保 install_dir/bin/noj-server 存在且版本匹配；缺失时自动下载并校验。 */

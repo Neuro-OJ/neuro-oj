@@ -54,6 +54,9 @@ export type ProblemListItem = Omit<
   "has_hidden_algorithm_tags"
 >;
 
+/**
+ * 公开题目列表响应（分页）。
+ */
 export interface ProblemListResponse {
   items: ProblemListItem[];
   total: number;
@@ -83,6 +86,9 @@ export interface AdminProblemListItem {
   display_id: string;
 }
 
+/**
+ * 管理员题目列表响应（分页）。
+ */
 export interface AdminProblemListResponse {
   items: AdminProblemListItem[];
   total: number;

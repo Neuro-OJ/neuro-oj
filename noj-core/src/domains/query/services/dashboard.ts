@@ -56,12 +56,29 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 let _dashboardCache: { at: number; data: DashboardStats } | null = null;
 const DASHBOARD_CACHE_TTL_MS = 5000;
 
+/**
+ * 统一取查询结果的首行。
+ *
+ * postgres.js 返回 array-like、PGlite 返回 { rows }，统一取第一条记录。
+ *
+ * @param result 查询结果（数组或 { rows } 结构）
+ * @returns 首行数据；结果为空时返回 undefined
+ */
 function executeRow<T>(
   result: T[] | { rows: T[] },
 ): T | undefined {
   return Array.isArray(result) ? result[0] : result.rows[0];
 }
 
+/**
+ * 实际执行仪表盘统计查询（内部函数）。
+ *
+ * 带 5 秒基础缓存（NOJ-084），避免管理首页反复全表 COUNT。
+ * 单条聚合 SQL 汇总各表计数，计算通过率，返回 DashboardStats。
+ *
+ * @returns 仪表盘统计数据
+ * @throws {Error} 数据库查询失败时抛出（由 getDashboardStats 统一转换）
+ */
 async function queryDashboardStats(): Promise<DashboardStats> {
   const now = Date.now();
   if (_dashboardCache && now - _dashboardCache.at < DASHBOARD_CACHE_TTL_MS) {

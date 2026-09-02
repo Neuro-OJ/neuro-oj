@@ -1,7 +1,11 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth.ts";
-import type { OptionalAuthEnv } from "../middleware/auth.ts";
+import {
+  type AuthEnv,
+  authMiddleware,
+  type OptionalAuthEnv,
+  optionalAuthMiddleware,
+} from "../middleware/auth.ts";
 import { Channels, onEvent } from "../lib/event-bus.ts";
 import { createSseStream } from "../lib/sse-stream.ts";
 import { replaySseEvents } from "../lib/sse-events.ts";
@@ -27,7 +31,7 @@ import { NotFoundError } from "../lib/errors.ts";
  * 认证复用现有 authMiddleware。authMiddleware 通过 c.set("userId") /
  * c.set("userRole") 注入用户信息，此处通过 c.get("userId") / c.get("userRole") 读取。
  */
-const sse = new Hono<{ Variables: { userId: string; userRole: string } }>();
+const sse = new Hono<AuthEnv>();
 
 /** 从 Last-Event-ID 头或 afterSeq 查询参数解析游标。 */
 function lastEventId(
@@ -41,6 +45,75 @@ function lastEventId(
   const raw = c.req.header("last-event-id") ?? c.req.query("afterSeq") ?? "0";
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+/**
+ * 订阅事件通道并转发到 SSE 流。
+ *
+ * @param onUnsubscribe createSseStream 提供的取消订阅注册函数
+ * @param channel 事件通道
+ * @param event SSE 事件名
+ * @param stream SSE 写入器
+ * @param closed 是否已关闭（返回 true 时停止转发）
+ * @param close 关闭流函数
+ * @param onMessage 可选的消息转换；返回 null 表示丢弃该消息
+ */
+function subscribeToChannel(
+  onUnsubscribe: (fn: () => void) => void,
+  channel: string,
+  event: string,
+  // deno-lint-ignore no-explicit-any
+  stream: any,
+  closed: () => boolean,
+  close: () => void,
+  onMessage?: (message: string) => string | null | Promise<string | null>,
+): void {
+  onUnsubscribe(
+    onEvent(channel, (_channel, message) => {
+      if (closed()) return;
+      const data = onMessage ? onMessage(message) : message;
+      if (data === null) return;
+      Promise.resolve(data).then((d) => {
+        if (d === null || closed()) return;
+        stream.writeSSE({ event, data: d }).catch(() => close());
+      });
+    }),
+  );
+}
+
+/**
+ * 重放缺失事件到 SSE 流。
+ *
+ * @param c Hono 上下文（用于 Last-Event-ID）
+ * @param stream SSE 写入器
+ * @param closed 是否已关闭
+ * @param channels 事件通道列表
+ * @param event SSE 事件名
+ * @param transform 可选的重放转换；返回 null 表示跳过该事件
+ */
+async function replayToStream(
+  c: Parameters<typeof lastEventId>[0],
+  // deno-lint-ignore no-explicit-any
+  stream: any,
+  closed: () => boolean,
+  channels: string[],
+  event: string,
+  transform?: (payload: object, seq: number) => object | string | null,
+): Promise<void> {
+  const after = lastEventId(c);
+  const missed = await replaySseEvents(channels, after, 200);
+  for (const ev of missed) {
+    if (closed()) return;
+    const data = transform
+      ? transform(ev.payload as object, ev.id)
+      : { ...(ev.payload as object), seq: ev.id };
+    if (data === null) continue;
+    await stream.writeSSE({
+      event,
+      id: String(ev.id),
+      data: typeof data === "string" ? data : JSON.stringify(data),
+    });
+  }
 }
 
 // SSE 端点全部需要认证
@@ -86,36 +159,23 @@ sse.get("/submissions/:id/events", async (c) => {
         return;
       }
 
-      onUnsubscribe(
-        onEvent(
-          Channels.submission(id),
-          (_channel, message) => {
-            if (closed) return;
-            stream.writeSSE({
-              event: "submission:updated",
-              data: message,
-            }).catch(() => {
-              close();
-            });
-          },
-        ),
+      subscribeToChannel(
+        onUnsubscribe,
+        Channels.submission(id),
+        "submission:updated",
+        stream,
+        () => closed,
+        close,
       );
 
       // 重放缺失事件（先订阅后重放，避免竞态）
-      const after = lastEventId(c);
-      const missed = await replaySseEvents(
+      await replayToStream(
+        c,
+        stream,
+        () => closed,
         [Channels.submission(id)],
-        after,
-        200,
+        "submission:updated",
       );
-      for (const ev of missed) {
-        if (closed) return;
-        await stream.writeSSE({
-          event: "submission:updated",
-          id: String(ev.id),
-          data: JSON.stringify({ ...(ev.payload as object), seq: ev.id }),
-        });
-      }
     },
   );
 });
@@ -145,32 +205,23 @@ sse.get("/queue/events", (c) => {
         // 获取当前队列失败不影响后续订阅
       }
 
-      onUnsubscribe(
-        onEvent(
-          Channels.queue,
-          (_channel, message) => {
-            if (closed) return;
-            stream.writeSSE({
-              event: "queue:changed",
-              data: message,
-            }).catch(() => {
-              close();
-            });
-          },
-        ),
+      subscribeToChannel(
+        onUnsubscribe,
+        Channels.queue,
+        "queue:changed",
+        stream,
+        () => closed,
+        close,
       );
 
       // 重放缺失事件
-      const after = lastEventId(c);
-      const missed = await replaySseEvents([Channels.queue], after, 200);
-      for (const ev of missed) {
-        if (closed) return;
-        await stream.writeSSE({
-          event: "queue:changed",
-          id: String(ev.id),
-          data: JSON.stringify({ ...(ev.payload as object), seq: ev.id }),
-        });
-      }
+      await replayToStream(
+        c,
+        stream,
+        () => closed,
+        [Channels.queue],
+        "queue:changed",
+      );
     },
   );
 });
@@ -205,43 +256,40 @@ statsSse.get("/submissions/stats/events", (c) => {
         // 初始化失败不影响后续订阅
       }
 
-      onUnsubscribe(
-        onEvent(
-          Channels.stats,
-          async (_channel, message) => {
-            if (closed) return;
-            try {
-              const [total, today] = await Promise.all([
-                getCachedTotalStats(),
-                getCachedTodayStats(),
-              ]);
-              await stream.writeSSE({
-                event: "stats:updated",
-                data: JSON.stringify({
-                  type: "stats:updated",
-                  total,
-                  today,
-                  ...JSON.parse(message),
-                }),
-              });
-            } catch {
-              // 静默失败
-            }
-          },
-        ),
+      subscribeToChannel(
+        onUnsubscribe,
+        Channels.stats,
+        "stats:updated",
+        stream,
+        () => closed,
+        () => {},
+        async (message) => {
+          try {
+            const [total, today] = await Promise.all([
+              getCachedTotalStats(),
+              getCachedTodayStats(),
+            ]);
+            return JSON.stringify({
+              type: "stats:updated",
+              total,
+              today,
+              ...JSON.parse(message),
+            });
+          } catch {
+            // 静默失败
+            return null;
+          }
+        },
       );
 
       // 重放缺失事件
-      const after = lastEventId(c);
-      const missed = await replaySseEvents([Channels.stats], after, 200);
-      for (const ev of missed) {
-        if (closed) return;
-        await stream.writeSSE({
-          event: "stats:updated",
-          id: String(ev.id),
-          data: JSON.stringify({ ...(ev.payload as object), seq: ev.id }),
-        });
-      }
+      await replayToStream(
+        c,
+        stream,
+        () => closed,
+        [Channels.stats],
+        "stats:updated",
+      );
     },
   );
 });
@@ -279,6 +327,15 @@ contestSse.get(
       }, 30_000);
       const safetyTimer = setTimeout(closeStream, 300_000);
 
+      /**
+       * 关闭当前竞赛 SSE 流。
+       *
+       * 幂等：若流已关闭则直接返回。负责清理心跳定时器、安全兜底定时器、
+       * 待执行的榜单推送定时器，并取消榜单与提交事件的订阅，最后触发
+       * abort 解析以结束常驻连接。
+       *
+       * @returns 无返回值。
+       */
       function closeStream() {
         if (streamClosed) return;
         streamClosed = true;
@@ -290,6 +347,18 @@ contestSse.get(
         resolveAbort?.();
       }
 
+      /**
+       * 向当前竞赛 SSE 流推送最新榜单数据。
+       *
+       * 带节流与去重：若流已关闭或已有推送在进行中则直接返回；距上次推送
+       * 不足 5 秒时安排定时器延迟推送，否则立即拉取最新榜单并写入 SSE 事件。
+       * 拉取或写入失败时关闭流。
+       *
+       * @param event - 推送的 SSE 事件名（如 `contest:ranking:snapshot` /
+       *   `contest:ranking:updated`）。
+       * @returns 无返回值；推送完成后 Promise 解析。
+       * @throws 不向外抛出——内部捕获异常并调用 `closeStream()` 关闭流。
+       */
       async function pushRanking(event: string): Promise<void> {
         if (streamClosed || rankingInFlight) return;
         const waitMs = 5_000 - (Date.now() - lastRankingPushAt);
@@ -412,41 +481,36 @@ sse.get("/community/notifications/events", (c) => {
   return createSseStream(
     c,
     async ({ stream, closed, close, onUnsubscribe }) => {
-      onUnsubscribe(
-        onEvent(
-          Channels.user(userId),
-          (_channel, message) => {
-            if (closed) return;
-            // 仅透传社区通知事件，避免与私信等同一用户通道事件交叉
-            try {
-              const payload = JSON.parse(message) as { type?: string };
-              if (payload.type !== "notification:new") return;
-            } catch {
-              return;
-            }
-            stream.writeSSE({
-              event: "notification:new",
-              data: message,
-            }).catch(() => {
-              close();
-            });
-          },
-        ),
+      subscribeToChannel(
+        onUnsubscribe,
+        Channels.user(userId),
+        "notification:new",
+        stream,
+        () => closed,
+        close,
+        (message) => {
+          // 仅透传社区通知事件，避免与私信等同一用户通道事件交叉
+          try {
+            const payload = JSON.parse(message) as { type?: string };
+            return payload.type === "notification:new" ? message : null;
+          } catch {
+            return null;
+          }
+        },
       );
 
       // 重放缺失的通知事件
-      const after = lastEventId(c);
-      const missed = await replaySseEvents([Channels.user(userId)], after, 200);
-      for (const ev of missed) {
-        if (closed) return;
-        const payload = ev.payload as { type?: string };
-        if (payload.type !== "notification:new") continue;
-        await stream.writeSSE({
-          event: "notification:new",
-          id: String(ev.id),
-          data: JSON.stringify({ ...payload, seq: ev.id }),
-        });
-      }
+      await replayToStream(
+        c,
+        stream,
+        () => closed,
+        [Channels.user(userId)],
+        "notification:new",
+        (payload, seq) => {
+          const p = payload as { type?: string };
+          return p.type === "notification:new" ? { ...p, seq } : null;
+        },
+      );
 
       // 发送初始化事件，触发代理 flush 响应头
       await stream.writeSSE({ event: "connected", data: "" });

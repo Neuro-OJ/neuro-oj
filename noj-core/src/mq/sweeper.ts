@@ -7,7 +7,8 @@
  *    提交，超过 2 分钟后自动重新构建 JudgeTask 入队。
  */
 
-import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lte, type SQL, sql } from "drizzle-orm";
+import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { getDb } from "../db/connection.ts";
 import { problems, selfTests, submissions } from "../db/schema.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
@@ -148,6 +149,60 @@ interface PendingRecoveryActions<T extends PendingRecoveryRow> {
   onPermanentError(row: T, err: unknown): void | Promise<void>;
 }
 
+/** pending 恢复查询所需的表列集合。 */
+interface PendingRecoveryTableColumns {
+  id: AnyPgColumn;
+  language: AnyPgColumn;
+  code: AnyPgColumn;
+  file_name: AnyPgColumn;
+  problemId: AnyPgColumn;
+  createdAt: AnyPgColumn;
+  runtimeConfig: AnyPgColumn;
+  supportPackageStorageUrl: AnyPgColumn;
+  rejudgeSeq?: AnyPgColumn;
+  userId?: AnyPgColumn;
+  llmProviderConfigId?: AnyPgColumn;
+  judgeStartedAt?: AnyPgColumn;
+}
+
+/**
+ * 查询 pending 恢复行（正式提交或自测），统一 JOIN problems。
+ */
+async function selectPendingRecoveryRows(
+  table: AnyPgTable,
+  cols: PendingRecoveryTableColumns,
+  where: SQL | undefined,
+): Promise<PendingRecoveryRow[]> {
+  const db = getDb();
+  const selectFields: Record<string, unknown> = {
+    id: cols.id,
+    language: cols.language,
+    code: cols.code,
+    file_name: cols.file_name,
+    problem_id: cols.problemId,
+    runtime_config: cols.runtimeConfig,
+    support_package_storage_url: cols.supportPackageStorageUrl,
+  };
+  if (cols.rejudgeSeq) selectFields.rejudge_seq = cols.rejudgeSeq;
+  if (cols.userId) selectFields.user_id = cols.userId;
+  if (cols.llmProviderConfigId) {
+    selectFields.llm_provider_config_id = cols.llmProviderConfigId;
+  }
+  if (cols.judgeStartedAt) selectFields.judge_started_at = cols.judgeStartedAt;
+
+  // 动态列集合无法保留 Drizzle 的精确查询类型，这里使用 any 收窄到内部契约。
+  // deno-lint-ignore no-explicit-any
+  const rows: any[] = await (db
+    // deno-lint-ignore no-explicit-any
+    .select(selectFields as any)
+    .from(table)
+    .innerJoin(problems, eq(cols.problemId, problems.id))
+    .where(where)
+    .orderBy(asc(cols.createdAt))
+    .limit(200));
+  return rows as PendingRecoveryRow[];
+}
+
 /**
  * 恢复 pending 记录通用流程：构建 JudgeTask → 入队 → 更新状态。
  * 正式提交与自测共用同一套恢复逻辑，仅保留各自的表更新/日志差异。
@@ -252,30 +307,27 @@ export async function recoverPendingSubmissions(now: number): Promise<void> {
   const cutoff = new Date(now - PENDING_RECOVERY_MS).toISOString();
   const db = getDb();
 
-  const rows = await db
-    .select({
+  const rows = await selectPendingRecoveryRows(
+    submissions,
+    {
       id: submissions.id,
       language: submissions.language,
       code: submissions.code,
       file_name: submissions.file_name,
-      rejudge_seq: submissions.rejudge_seq,
-      user_id: submissions.user_id,
-      llm_provider_config_id: submissions.llm_provider_config_id,
-      problem_id: submissions.problem_id,
-      runtime_config: problems.runtime_config,
-      support_package_storage_url: problems.support_package_storage_url,
-    })
-    .from(submissions)
-    .innerJoin(problems, eq(submissions.problem_id, problems.id))
-    .where(
-      and(
-        eq(submissions.status, "pending"),
-        isNull(submissions.artifact_storage_url),
-        lte(submissions.created_at, cutoff),
-      ),
-    )
-    .orderBy(asc(submissions.created_at))
-    .limit(200);
+      problemId: submissions.problem_id,
+      createdAt: submissions.created_at,
+      runtimeConfig: problems.runtime_config,
+      supportPackageStorageUrl: problems.support_package_storage_url,
+      rejudgeSeq: submissions.rejudge_seq,
+      userId: submissions.user_id,
+      llmProviderConfigId: submissions.llm_provider_config_id,
+    },
+    and(
+      eq(submissions.status, "pending"),
+      isNull(submissions.artifact_storage_url),
+      lte(submissions.created_at, cutoff),
+    ),
+  );
 
   await recoverPendingRows(rows, {
     idKey: "submission_id",
@@ -320,27 +372,24 @@ export async function recoverPendingSelfTests(now: number): Promise<void> {
   const cutoff = new Date(now - PENDING_RECOVERY_MS).toISOString();
   const db = getDb();
 
-  const rows = await db
-    .select({
+  const rows = await selectPendingRecoveryRows(
+    selfTests,
+    {
       id: selfTests.id,
       language: selfTests.language,
       code: selfTests.code,
       file_name: selfTests.file_name,
-      problem_id: selfTests.problem_id,
-      runtime_config: problems.runtime_config,
-      support_package_storage_url: problems.support_package_storage_url,
-      judge_started_at: selfTests.judge_started_at,
-    })
-    .from(selfTests)
-    .innerJoin(problems, eq(selfTests.problem_id, problems.id))
-    .where(
-      and(
-        eq(selfTests.status, "pending"),
-        lte(selfTests.created_at, cutoff),
-      ),
-    )
-    .orderBy(asc(selfTests.created_at))
-    .limit(200);
+      problemId: selfTests.problem_id,
+      createdAt: selfTests.created_at,
+      runtimeConfig: problems.runtime_config,
+      supportPackageStorageUrl: problems.support_package_storage_url,
+      judgeStartedAt: selfTests.judge_started_at,
+    },
+    and(
+      eq(selfTests.status, "pending"),
+      lte(selfTests.created_at, cutoff),
+    ),
+  );
 
   await recoverPendingRows(rows, {
     idKey: "self_test_id",

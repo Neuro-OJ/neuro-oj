@@ -1,3 +1,4 @@
+import { makeTempDir } from "../testing/helpers.ts";
 import { assertRejects } from "@std/assert";
 import { assertEquals } from "@std/assert";
 import type { DeployConfig, SecretsConfig } from "./types.ts";
@@ -34,12 +35,12 @@ function sampleSecrets(): SecretsConfig {
 }
 
 Deno.test("loadDeployment 在文件缺失时抛错", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   await assertRejects(() => loadDeployment(dir), Error, "noj-deploy.json");
 });
 
 Deno.test("loadDeployment 读取两个 JSON 并解析类型", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   await Deno.writeTextFile(
     `${dir}/noj-deploy.json`,
     JSON.stringify(sampleConfig(), null, 2),

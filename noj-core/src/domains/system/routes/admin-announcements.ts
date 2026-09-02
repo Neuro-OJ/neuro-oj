@@ -19,11 +19,10 @@
  */
 
 import { Hono } from "hono";
-import { authMiddleware } from "../../../middleware/auth.ts";
+import { type AuthEnv, authMiddleware } from "../../../middleware/auth.ts";
 import { parseJsonBody } from "../../../lib/request.ts";
-import { getClientIp } from "../../../lib/rate-limit-env.ts";
 import { assertPermission } from "../../../lib/permissions.ts";
-import { runWithContext } from "../../../lib/requestContext.ts";
+import { withActorContext } from "../../../lib/requestContext.ts";
 import { parsePagination } from "../../../lib/pagination.ts";
 import {
   createAnnouncement,
@@ -37,20 +36,25 @@ import type {
   UpdateAnnouncementInput,
 } from "../services/announcements.ts";
 
-const router = new Hono<{ Variables: { userId: string; userRole: string } }>();
+const router = new Hono<AuthEnv>();
 
 // 组级中间件：认证 + 细粒度权限（admin:full_access 通配放行 或
 // announcement:manage）+ RequestContext 注入（审计日志埋点）。
+/**
+ * 公告管理路由组级中间件。
+ * USE *（所有子路径）。
+ *
+ * 流程：先经 authMiddleware 完成认证，再校验细粒度权限
+ * （admin:full_access 通配放行或显式持有 announcement:manage），
+ * 最后以 withActorContext 注入 actorId/actorIp/actorRole 的 RequestContext，
+ * 供 service 层审计日志与 created_by 使用。
+ *
+ * 认证/权限：必须登录（authMiddleware）；权限不足返回 403。
+ * 响应：通过后调用 next() 继续处理；失败以 Hono 默认错误响应返回。
+ */
 router.use("*", authMiddleware, async (c, next) => {
   await assertPermission(c, "announcement:manage");
-  return runWithContext(
-    {
-      actorId: c.get("userId"),
-      actorIp: getClientIp(c),
-      actorRole: c.get("userRole"),
-    },
-    () => next(),
-  );
+  return withActorContext(c, () => next());
 });
 
 /**

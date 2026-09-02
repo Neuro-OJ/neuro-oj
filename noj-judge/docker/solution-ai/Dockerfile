@@ -32,6 +32,7 @@ RUN pip install --no-cache-dir \
     safetensors
 
 # 安装 SDK 源码
+COPY sdk/common/noj_sdk_common/ /usr/local/lib/python3.12/site-packages/noj_sdk_common/
 COPY sdk/solution/noj_solution_sdk/ /usr/local/lib/python3.12/site-packages/noj_solution_sdk/
 
 # 验证 SDK 可导入（构建期 sanity check）

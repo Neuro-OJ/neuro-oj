@@ -7,21 +7,7 @@ import type {
 } from "../runtime/command.ts";
 import type { DeployConfig, SecretsConfig } from "../config/types.ts";
 import { fileSha256Hex, realDriver, sha256Hex } from "./backup_driver.ts";
-
-/** 记录 run 调用的 fake runner。 */
-function recordingRunner(records: string[][]): CommandRunner {
-  return {
-    run(cmd, args) {
-      records.push([cmd, ...args]);
-      return Promise.resolve(
-        { code: 0, stdout: "", stderr: "" } satisfies CmdResult,
-      );
-    },
-    spawn(_opts: SpawnOpts): SpawnHandle {
-      throw new Error("fake runner 不 spawn");
-    },
-  };
-}
+import { makeTempDir, recordingRunner } from "../testing/helpers.ts";
 
 Deno.test("sha256Hex: SHA-256 已知摘要", async () => {
   const h = await sha256Hex(new TextEncoder().encode("abc"));
@@ -32,7 +18,7 @@ Deno.test("sha256Hex: SHA-256 已知摘要", async () => {
 });
 
 Deno.test("fileSha256Hex: 读文件算摘要", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   const p = `${dir}/a.txt`;
   await Deno.writeTextFile(p, "hello");
   const h = await fileSha256Hex(p);
@@ -61,7 +47,7 @@ Deno.test("realDriver.archive: tar -I zstd -<level> -cf", async () => {
 Deno.test("realDriver.extract: tar -I zstd -xf", async () => {
   const records: string[][] = [];
   const d = realDriver(recordingRunner(records));
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   const dest = `${dir}/d`;
   await d.extract("/a.tar.zst", dest);
   assertEquals(records[0], [
@@ -175,7 +161,7 @@ function driverSecrets(): SecretsConfig {
 Deno.test("realDriver.produceDataDumps: 凭据经 -e 传入，不拼进 shell 字符串", async () => {
   const records: RunRecord[] = [];
   const d = realDriver(recordingRunnerWithOpts(records));
-  const dumpDir = await Deno.makeTempDir();
+  const dumpDir = await makeTempDir();
   const entries = await d.produceDataDumps(
     driverConfig(),
     driverSecrets(),
@@ -202,7 +188,7 @@ Deno.test("realDriver.produceDataDumps: 凭据经 -e 传入，不拼进 shell �
 Deno.test("realDriver.restoreDataDumps: 经 stdin 传 base64，且先起基础设施由编排负责", async () => {
   const records: RunRecord[] = [];
   const d = realDriver(recordingRunnerWithOpts(records));
-  const dumpDir = await Deno.makeTempDir();
+  const dumpDir = await makeTempDir();
   await Deno.writeTextFile(`${dumpDir}/postgres.dump`, "cG9zdGdyZXM=");
   await Deno.writeTextFile(`${dumpDir}/postgres-globals.sql`, "-- globals");
   await Deno.writeTextFile(`${dumpDir}/redis.rdb`, "cmVkaXM=");

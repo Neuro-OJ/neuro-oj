@@ -1,10 +1,21 @@
-import { aliasedTable, and, desc, eq, isNull, sql } from "drizzle-orm";
+import {
+  aliasedTable,
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  sql,
+} from "drizzle-orm";
 import { getDb } from "../../../../db/connection.ts";
 import {
   communityComments,
   communityPosts,
   communityReports,
   communitySanctions,
+  conversations,
+  messages,
   userBans,
   users,
 } from "../../../../db/schema.ts";
@@ -26,20 +37,34 @@ import { reloadSingleKey, updateSetting } from "../../../system/index.ts";
 import { nowIso } from "../../../../lib/dates.ts";
 import { createNotification } from "../notifications.ts";
 import { invalidateBanCache } from "../../../../lib/banCache.ts";
+import { getStorageProvider } from "../../../../lib/storage/factory.ts";
+import { parseStorageUrl } from "../../../../lib/storage/types.ts";
 
 export { banUser, getLatestActiveBanId } from "../../../identity/index.ts";
 
+/**
+ * 创建举报工单：校验举报目标、分类与原因，并通知举报者已提交。
+ * @param reporterId 举报者用户 UUID。
+ * @param input 举报输入：post_id/comment_id（二选一）、reason（原因）、category（分类）。
+ * @returns 新建的举报记录。
+ * @throws {ValidationError} 未指定目标、分类无效、原因为空或超长时抛出。
+ * @throws {NotFoundError} 举报目标不存在或已删除时抛出。
+ * @throws {ConflictError} 同一举报者对同一内容已有待处理举报时抛出。
+ */
 export async function createReport(
   reporterId: string,
   input: {
     post_id?: string;
     comment_id?: string;
+    message_id?: string;
     reason: string;
     category?: string;
   },
 ) {
   assertCommunityEnabled();
-  if (!!input.post_id === !!input.comment_id) {
+  const targetCount = [input.post_id, input.comment_id, input.message_id]
+    .filter((x) => !!x).length;
+  if (targetCount !== 1) {
     throw new ValidationError("必须指定一个举报目标");
   }
   // 举报分类必选
@@ -48,30 +73,68 @@ export async function createReport(
     throw new ValidationError("请选择举报分类");
   }
   const db = getDb();
-  const target = input.post_id
-    ? await db.select({
+  let contentSnapshot = "";
+  let contentType = "post";
+  let targetFilter;
+  if (input.post_id) {
+    const target = await db.select({
       id: communityPosts.id,
       content: communityPosts.content,
       status: communityPosts.status,
-    }).from(communityPosts).where(eq(communityPosts.id, input.post_id)).limit(1)
-    : await db.select({
+    }).from(communityPosts).where(eq(communityPosts.id, input.post_id)).limit(
+      1,
+    );
+    if (!target[0] || target[0].status === "deleted") {
+      throw new NotFoundError("举报目标不存在");
+    }
+    contentSnapshot = target[0].content;
+    targetFilter = eq(communityReports.post_id, input.post_id);
+  } else if (input.comment_id) {
+    const target = await db.select({
       id: communityComments.id,
       content: communityComments.content,
       status: communityComments.status,
     }).from(communityComments).where(
-      eq(communityComments.id, input.comment_id!),
+      eq(communityComments.id, input.comment_id),
     ).limit(1);
-  if (!target[0] || target[0].status === "deleted") {
-    throw new NotFoundError("举报目标不存在");
+    if (!target[0] || target[0].status === "deleted") {
+      throw new NotFoundError("举报目标不存在");
+    }
+    contentSnapshot = target[0].content;
+    contentType = "comment";
+    targetFilter = eq(communityReports.comment_id, input.comment_id);
+  } else {
+    // 私信消息举报：校验消息存在且举报者是该会话参与者
+    const target = await db.select({
+      id: messages.id,
+      conversation_id: messages.conversation_id,
+      content: messages.content,
+      type: messages.type,
+    }).from(messages).where(eq(messages.id, input.message_id!)).limit(1);
+    if (!target[0]) {
+      throw new NotFoundError("举报目标不存在");
+    }
+    // 举报者必须是消息所在会话的参与者
+    const [conv] = await db.select()
+      .from(conversations)
+      .where(eq(conversations.id, target[0].conversation_id))
+      .limit(1);
+    if (
+      !conv ||
+      (conv.user1_id !== reporterId && conv.user2_id !== reporterId)
+    ) {
+      throw new NotFoundError("举报目标不存在");
+    }
+    contentSnapshot = target[0].type === "image" ? "[图片]" : target[0].content;
+    contentType = "message";
+    targetFilter = eq(communityReports.message_id, input.message_id!);
   }
   const existing = await db.select({ id: communityReports.id }).from(
     communityReports,
   ).where(
     and(
       eq(communityReports.reporter_id, reporterId),
-      input.post_id
-        ? eq(communityReports.post_id, input.post_id)
-        : eq(communityReports.comment_id, input.comment_id!),
+      targetFilter,
       eq(communityReports.status, "pending"),
     ),
   ).limit(1);
@@ -84,10 +147,11 @@ export async function createReport(
     reporter_id: reporterId,
     post_id: input.post_id ?? null,
     comment_id: input.comment_id ?? null,
-    content_type: input.post_id ? "post" : "comment",
+    message_id: input.message_id ?? null,
+    content_type: contentType,
     category,
     reason,
-    content_snapshot: target[0].content,
+    content_snapshot: contentSnapshot,
     status: "pending",
     resolution: null,
     resolved_by: null,
@@ -111,6 +175,11 @@ export async function createReport(
   return report;
 }
 
+/**
+ * 列出举报工单（含举报者、被举报内容、被举报者、处理者与关联封禁/处罚信息）。
+ * @param status 过滤状态：pending / resolved / dismissed / all，默认 pending。
+ * @returns 举报列表，按创建时间倒序。
+ */
 export function listReports(
   status: "pending" | "resolved" | "dismissed" | "all" = "pending",
 ) {
@@ -140,7 +209,14 @@ export function listReports(
       post_id: communityComments.post_id,
       author_id: communityComments.author_id,
     },
-    // 被举报者：帖子取 posts.author_id，评论取 comments.author_id
+    message: {
+      id: messages.id,
+      content: messages.content,
+      type: messages.type,
+      sender_id: messages.sender_id,
+      conversation_id: messages.conversation_id,
+    },
+    // 被举报者：帖子取 posts.author_id，评论取 comments.author_id，消息取 messages.sender_id
     reported_author: {
       id: targetAuthor.id,
       username: targetAuthor.username,
@@ -169,11 +245,12 @@ export function listReports(
       communityComments,
       eq(communityComments.id, communityReports.comment_id),
     )
+    .leftJoin(messages, eq(messages.id, communityReports.message_id))
     .leftJoin(
       targetAuthor,
       eq(
         targetAuthor.id,
-        sql`COALESCE(${communityPosts.author_id}, ${communityComments.author_id})`,
+        sql`COALESCE(${communityPosts.author_id}, ${communityComments.author_id}, ${messages.sender_id})`,
       ),
     )
     .leftJoin(
@@ -185,6 +262,17 @@ export function listReports(
     .orderBy(desc(communityReports.created_at));
 }
 
+/**
+ * 处理或驳回举报：更新状态、处理者与处理结果，并通知举报者。
+ * @param reportId 举报 UUID。
+ * @param actorId 处理者用户 UUID。
+ * @param status 处理结果：resolved（已处理）或 dismissed（已驳回）。
+ * @param resolution 可选，处理说明。
+ * @param banId 可选，关联的封禁 UUID。
+ * @param sanctionId 可选，关联的社区处罚 UUID。
+ * @returns 更新后的举报记录。
+ * @throws {NotFoundError} 举报不存在时抛出。
+ */
 export async function resolveReport(
   reportId: string,
   actorId: string,
@@ -337,12 +425,18 @@ export async function getReportTarget(reportId: string) {
       post_id: communityComments.post_id,
       author_id: communityComments.author_id,
     },
+    message: {
+      id: messages.id,
+      conversation_id: messages.conversation_id,
+      sender_id: messages.sender_id,
+    },
   }).from(communityReports)
     .leftJoin(communityPosts, eq(communityPosts.id, communityReports.post_id))
     .leftJoin(
       communityComments,
       eq(communityComments.id, communityReports.comment_id),
     )
+    .leftJoin(messages, eq(messages.id, communityReports.message_id))
     .where(eq(communityReports.id, reportId)).limit(1);
   if (!rows[0]) throw new NotFoundError("举报不存在");
   return rows[0];
@@ -386,6 +480,14 @@ export async function getReportDetail(reportId: string, _viewerId: string) {
       post_id: communityComments.post_id,
       author_id: communityComments.author_id,
     },
+    message: {
+      id: messages.id,
+      content: messages.content,
+      type: messages.type,
+      conversation_id: messages.conversation_id,
+      sender_id: messages.sender_id,
+      recalled_at: messages.recalled_at,
+    },
     // 关联封禁信息（处理方式为封禁时展示 scope/期限）
     ban: {
       id: userBans.id,
@@ -400,12 +502,21 @@ export async function getReportDetail(reportId: string, _viewerId: string) {
       communityComments,
       eq(communityComments.id, communityReports.comment_id),
     )
+    .leftJoin(messages, eq(messages.id, communityReports.message_id))
     .leftJoin(userBans, eq(userBans.id, communityReports.ban_id))
     .where(eq(communityReports.id, reportId)).limit(1);
   if (!rows[0]) throw new NotFoundError("举报不存在");
   return rows[0];
 }
 
+/**
+ * 创建社区处罚（禁言）：限制用户社区互动，可指定过期时间。
+ * @param actorId 执行者用户 UUID。
+ * @param userId 被处罚用户 UUID。
+ * @param reason 处罚原因。
+ * @param expiresAt 可选，处罚过期时间（ISO 字符串），缺省为永久。
+ * @returns 新建的社区处罚记录。
+ */
 export async function createSanction(
   actorId: string,
   userId: string,
@@ -436,6 +547,13 @@ export async function createSanction(
   return sanction;
 }
 
+/**
+ * 撤销社区处罚（解除禁言）。
+ * @param actorId 执行者用户 UUID。
+ * @param sanctionId 社区处罚 UUID。
+ * @returns 撤销后的社区处罚记录。
+ * @throws {NotFoundError} 社区处罚不存在时抛出。
+ */
 export async function revokeSanction(actorId: string, sanctionId: string) {
   const db = getDb();
   const rows = await db.update(communitySanctions).set({
@@ -451,6 +569,10 @@ export async function revokeSanction(actorId: string, sanctionId: string) {
   return rows[0];
 }
 
+/**
+ * 列出全部社区处罚记录，按创建时间倒序。
+ * @returns 社区处罚列表。
+ */
 export function listSanctions() {
   const db = getDb();
   return db.select().from(communitySanctions).orderBy(
@@ -517,6 +639,12 @@ const PRESETS: Record<
   },
 };
 
+/**
+ * 应用社区预设（public / private / knowledge）：事务化写入全部配置项并刷新缓存。
+ * @param actorId 执行者用户 UUID。
+ * @param preset 预设名称：public / private / knowledge。
+ * @returns 应用后的社区配置。
+ */
 export async function applyCommunityPreset(
   actorId: string,
   preset: keyof typeof PRESETS,
@@ -539,4 +667,186 @@ export async function applyCommunityPreset(
     await reloadSingleKey(key);
   }
   return getCommunityConfig();
+}
+
+/**
+ * 查询举报目标会话的完整聊天记录（供举报工单附带展示/审核）。
+ *
+ * 按 created_at ASC 排序，时间上限取举报时间附近（最多 200 条）。
+ * 撤回消息内容保留在 response（由 route 层按查看者角色决定是否隐藏）。
+ *
+ * @param conversationId 会话 ID
+ * @param reporterId 举报者 ID（用于校验举报者参与了该会话）
+ */
+export async function getReportMessageHistory(
+  conversationId: string,
+  reporterId: string,
+): Promise<
+  {
+    id: string;
+    sender_id: string;
+    type: string;
+    content: string;
+    created_at: string;
+    recalled_at: string | null;
+    image_url: string | null;
+    conversation_id: string;
+    reply_to_message_id: string | null;
+    reply_to: {
+      sender_name: string;
+      content: string;
+      type: string;
+    } | null;
+    forwarded_from_user_id: string | null;
+    forwarded_from_user: { id: string; username: string } | null;
+  }[]
+> {
+  const db = getDb();
+  // 校验举报者是会话参与者（防越权读取他人私聊记录）
+  const [conv] = await db.select()
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  if (
+    !conv ||
+    (conv.user1_id !== reporterId && conv.user2_id !== reporterId)
+  ) {
+    throw new NotFoundError("会话不存在");
+  }
+  const rows = await db
+    .select({
+      id: messages.id,
+      sender_id: messages.sender_id,
+      type: messages.type,
+      content: messages.content,
+      created_at: messages.created_at,
+      recalled_at: messages.recalled_at,
+      image_url: messages.image_url,
+      conversation_id: messages.conversation_id,
+      reply_to_message_id: messages.reply_to_message_id,
+      forwarded_from_user_id: messages.forwarded_from_user_id,
+    })
+    .from(messages)
+    .where(eq(messages.conversation_id, conversationId))
+    .orderBy(asc(messages.created_at))
+    .limit(200);
+
+  // 批量查询被引用消息摘要（reply_to）
+  const replyIds = rows
+    .map((r) => r.reply_to_message_id)
+    .filter((id): id is string => !!id);
+  const replyMap = new Map<
+    string,
+    { sender_name: string; content: string; type: string }
+  >();
+  if (replyIds.length > 0) {
+    const replyRows = await db
+      .select({
+        id: messages.id,
+        sender_id: messages.sender_id,
+        content: messages.content,
+        type: messages.type,
+      })
+      .from(messages)
+      .where(inArray(messages.id, [...new Set(replyIds)]));
+    const replySenderIds = [...new Set(replyRows.map((r) => r.sender_id))];
+    const replySenders = replySenderIds.length > 0
+      ? await db
+        .select({ id: users.id, username: users.username })
+        .from(users)
+        .where(inArray(users.id, replySenderIds))
+      : [];
+    const senderMap = new Map(replySenders.map((u) => [u.id, u.username]));
+    for (const r of replyRows) {
+      replyMap.set(r.id, {
+        sender_name: senderMap.get(r.sender_id) ?? "已注销用户",
+        content: r.type === "image" ? "[图片]" : r.content,
+        type: r.type,
+      });
+    }
+  }
+
+  // 批量查询转发来源用户名
+  const fwdUserIds = rows
+    .map((r) => r.forwarded_from_user_id)
+    .filter((id): id is string => !!id);
+  const fwdMap = new Map<string, { id: string; username: string }>();
+  if (fwdUserIds.length > 0) {
+    const fwdUsers = await db
+      .select({ id: users.id, username: users.username })
+      .from(users)
+      .where(inArray(users.id, [...new Set(fwdUserIds)]));
+    for (const u of fwdUsers) fwdMap.set(u.id, u);
+  }
+
+  return rows.map((r) => ({
+    id: r.id,
+    sender_id: r.sender_id,
+    type: r.type,
+    content: r.content,
+    created_at: r.created_at,
+    recalled_at: r.recalled_at,
+    image_url: r.image_url,
+    conversation_id: r.conversation_id,
+    reply_to_message_id: r.reply_to_message_id,
+    reply_to: r.reply_to_message_id
+      ? replyMap.get(r.reply_to_message_id) ?? null
+      : null,
+    forwarded_from_user_id: r.forwarded_from_user_id,
+    forwarded_from_user: r.forwarded_from_user_id
+      ? fwdMap.get(r.forwarded_from_user_id) ?? null
+      : null,
+  }));
+}
+
+/**
+ * 审核员读取举报附带私信图片字节（复用消息图片存储读取）。
+ *
+ * 与 conversations 的图片端点不同：不要求请求者是会话参与者，
+ * 仅要求具备社区审核权限（由路由守卫保证）。
+ *
+ * @param conversationId 会话 ID（须与消息所在会话一致）
+ * @param messageId 图片消息 ID
+ */
+export async function getReportImageBytes(
+  conversationId: string,
+  messageId: string,
+): Promise<{ bytes: Uint8Array; contentType: string; etag: string }> {
+  const db = getDb();
+  const [msg] = await db
+    .select({
+      conversation_id: messages.conversation_id,
+      type: messages.type,
+      image_url: messages.image_url,
+    })
+    .from(messages)
+    .where(eq(messages.id, messageId))
+    .limit(1);
+  if (!msg || msg.type !== "image" || !msg.image_url) {
+    throw new NotFoundError("图片消息不存在");
+  }
+  if (msg.conversation_id !== conversationId) {
+    throw new NotFoundError("图片消息不存在");
+  }
+  // 仅允许读取确实存在于举报工单中的私信图片，防止审核员越权访问任意会话图片
+  const [report] = await db
+    .select({ id: communityReports.id })
+    .from(communityReports)
+    .where(eq(communityReports.message_id, messageId))
+    .limit(1);
+  if (!report) {
+    throw new NotFoundError("图片消息不存在");
+  }
+  const provider = await getStorageProvider();
+  const bytes = await provider.get(msg.image_url);
+  const parsed = parseStorageUrl(msg.image_url);
+  const contentType = /\.png$/i.test(parsed.key)
+    ? "image/png"
+    : /\.webp$/i.test(parsed.key)
+    ? "image/webp"
+    : "image/jpeg";
+  const etag = parsed.checksumSha256
+    ? `"${parsed.checksumSha256}"`
+    : `"${parsed.key}"`;
+  return { bytes, contentType, etag };
 }

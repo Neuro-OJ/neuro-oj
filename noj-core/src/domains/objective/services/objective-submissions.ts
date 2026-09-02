@@ -198,6 +198,12 @@ export async function submitObjectivePaper(
   };
 }
 
+/**
+ * 将数据库行转换为对外返回的提交响应对象。
+ *
+ * @param row 客观题提交记录（数据库行）
+ * @returns 面向 API 的提交响应（ObjectiveSubmissionResponse）
+ */
 function toSubmissionResponse(
   row: typeof objectiveSubmissions.$inferSelect,
 ): ObjectiveSubmissionResponse {
