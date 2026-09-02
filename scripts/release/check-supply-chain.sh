@@ -105,6 +105,11 @@ check_compose() {
 check_release_workflow() {
   local file="$ROOT_DIR/.github/workflows/release.yml"
   require_file ".github/workflows/release.yml"
+  grep -Fq -- '- name: noj-server' "$file" \
+    || fail "Release workflow 未发布 noj-server 镜像"
+  if grep -Eq 'build-binaries|gh release upload|noj-cli-linux-(amd64|arm64)' "$file"; then
+    fail "Release workflow 不得构建或上传 noj-cli 二进制；CLI 应与生产镜像发布解耦"
+  fi
   grep -q 'provenance: mode=max' "$file" || fail "Release workflow 未启用 provenance"
   grep -q 'sbom: true' "$file" || fail "Release workflow 未启用 BuildKit SBOM"
   grep -q 'trivy' "$file" || fail "Release workflow 未配置漏洞扫描"
