@@ -268,10 +268,12 @@ async function searchUsers() {
   if (userQuery.value.trim().length < 2) return
   searchingUsers.value = true
   try {
-    const response = await api.get<{ data: UserSearchResult[] }>(`/api/v1/users/search?q=${encodeURIComponent(userQuery.value.trim())}`)
+    const response = await api.get<{ data: { items: UserSearchResult[] } }>(
+      `/api/v1/search?q=${encodeURIComponent(userQuery.value.trim())}&type=user`,
+    )
     // 排除已是参赛者的用户
     const participantIds = new Set(participants.value.map((p) => p.user_id))
-    userResults.value = response.data.filter((user) => !participantIds.has(user.id))
+    userResults.value = response.data.items.filter((user) => !participantIds.has(user.id))
   } finally {
     searchingUsers.value = false
   }

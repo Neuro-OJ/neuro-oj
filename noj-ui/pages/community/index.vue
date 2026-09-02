@@ -5,9 +5,12 @@ import {
   type PostRow,
   type PostType,
 } from "~/composables/useCommunity"
+import {
+  addPostPreviews,
+  type PostRowWithPreview,
+} from "~/utils/communityPostPreview"
 import { useToast } from "~/composables/useToast"
 import { useBanStatus } from "~/composables/useBanStatus"
-import { stripMarkdown } from "~/utils/markdown"
 import { extractApiError } from "~/utils/apiError"
 import { publicUrl } from "~/utils/publicIdentifiers"
 import { isCommunityEdited } from "~/utils/communityEdited"
@@ -36,7 +39,7 @@ const typeLabel: Record<PostType, string> = {
 
 const activeType = ref<PostType>("discussion")
 
-const posts = ref<PostRow[]>([])
+const posts = ref<PostRowWithPreview<PostRow>[]>([])
 const loading = ref(true)
 const loadingMore = ref(false)
 const error = ref("")
@@ -122,7 +125,8 @@ async function loadPosts(reset = true, cursor?: string | null) {
         silent: true,
       },
     )
-    posts.value = reset ? result.data : [...posts.value, ...result.data]
+    const incomingPosts = addPostPreviews(result.data)
+    posts.value = reset ? incomingPosts : [...posts.value, ...incomingPosts]
     nextCursor.value = result.next_cursor ?? null
   } catch (err: unknown) {
     error.value = extractApiError(err).message
@@ -320,7 +324,7 @@ const { data: initialData } = await useAsyncData(
       : (enabled[0] ?? 'discussion')
     activeType.value = chosen
 
-    let posts: PostRow[] = []
+    let posts: PostRowWithPreview<PostRow>[] = []
     let nextCursor: string | null = null
     try {
       const postsRes = await api.get<{ data: PostRow[]; next_cursor: string | null }>(
@@ -334,7 +338,7 @@ const { data: initialData } = await useAsyncData(
           silent: true,
         },
       )
-      posts = postsRes.data
+      posts = addPostPreviews(postsRes.data)
       nextCursor = postsRes.next_cursor ?? null
     } catch {
       // 列表失败按空态渲染，不阻断页面
@@ -459,7 +463,7 @@ watch(initialData, (value) => {
           </div>
           <NuxtLink :to="publicUrl('post', item.post.public_id || item.post.id)" class="block no-underline">
             <h2 v-if="item.post.title" class="text-lg font-semibold text-text hover:text-primary">{{ item.post.title }}</h2>
-            <p class="mt-2 line-clamp-3 text-sm leading-6 text-text-secondary">{{ stripMarkdown(item.post.content) }}</p>
+            <p class="mt-2 line-clamp-3 text-sm leading-6 text-text-secondary">{{ item.preview }}</p>
           </NuxtLink>
           <div class="mt-4 flex items-center gap-4 text-xs text-text-secondary">
             <UserIdentity :user="item.author" size="sm" />
@@ -477,4 +481,3 @@ watch(initialData, (value) => {
     </template>
   </main>
 </template>
-
