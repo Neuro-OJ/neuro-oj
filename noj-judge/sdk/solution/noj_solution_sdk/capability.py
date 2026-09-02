@@ -12,11 +12,10 @@ noj_solution_sdk capability 调用层。
 from __future__ import annotations
 
 import json
-import sys
-import threading
 import uuid
-from queue import Empty, Queue
 from typing import Any
+
+from noj_sdk_common.rpc import RpcClient
 
 from .serialization import (
     MAX_FRAME_BYTES,
@@ -49,42 +48,23 @@ class CapabilityError(Exception):
         self.trace = trace
 
 
-# pending 调用：call_id → Queue（线程安全）
-_PENDING: dict[str, Queue] = {}
-_PENDING_LOCK = threading.Lock()
-# stdout 写入锁（多线程下保证 NDJSON 帧原子写入）
-_STDOUT_LOCK = threading.Lock()
+# 共享 RPC 状态：pending 注册、写帧、响应分发、关闭唤醒
+_rpc = RpcClient()
 
 
 def _write_frame(frame: dict) -> None:
     """写 NDJSON 帧到 stdout（一行 + 换行），线程安全。"""
-    line = json.dumps(frame, ensure_ascii=False, separators=(",", ":"))
-    with _STDOUT_LOCK:
-        sys.stdout.write(line + "\n")
-        sys.stdout.flush()
+    _rpc.write_frame(frame)
 
 
 def _deliver_response(frame: dict) -> None:
     """按 id 分发 result/error 帧到对应 pending 队列（由 host reader 线程调用）。"""
-    frame_id = frame.get("id")
-    if frame_id is None:
-        return
-    with _PENDING_LOCK:
-        q = _PENDING.pop(frame_id, None)
-    if q is not None:
-        q.put(frame)
+    _rpc.deliver_response(frame)
 
 
 def _shutdown_pending() -> None:
     """唤醒所有 pending 调用（连接断开/关闭时）。"""
-    with _PENDING_LOCK:
-        pending = list(_PENDING.values())
-        _PENDING.clear()
-    for q in pending:
-        try:
-            q.put_nowait({"type": "_shutdown"})
-        except Exception:
-            pass
+    _rpc.shutdown_pending()
 
 
 def call_capability(name: str, *args: Any) -> Any:
@@ -127,9 +107,7 @@ def call_capability(name: str, *args: Any) -> Any:
         raise CapabilityRejectedError(str(e)) from e
 
     # 4. 注册 pending
-    q: Queue = Queue(maxsize=1)
-    with _PENDING_LOCK:
-        _PENDING[call_id] = q
+    q = _rpc.register_pending(call_id)
 
     # 5. 写帧到 stdout
     _write_frame(frame)
@@ -138,13 +116,11 @@ def call_capability(name: str, *args: Any) -> Any:
     try:
         response = q.get()
     except Exception as e:
-        with _PENDING_LOCK:
-            _PENDING.pop(call_id, None)
+        _rpc.pop_pending(call_id)
         raise CapabilityConnectionError(f"等待响应异常: {e}") from e
 
     # 7. 处理响应
-    with _PENDING_LOCK:
-        _PENDING.pop(call_id, None)
+    _rpc.pop_pending(call_id)
     return _handle_response(response)
 
 
@@ -174,5 +150,4 @@ def _handle_response(frame: dict) -> Any:
 
 def _reset_pending_for_tests() -> None:
     """清空 pending（仅测试用）。"""
-    with _PENDING_LOCK:
-        _PENDING.clear()
+    _rpc.clear_pending()

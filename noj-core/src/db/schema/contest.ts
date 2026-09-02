@@ -5,12 +5,12 @@ import {
   integer,
   jsonb,
   pgTable,
-  primaryKey,
   text,
   unique,
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { manyToManyPk, publicIdColumn } from "./common.ts";
 import { users } from "./identity.ts";
 import { problems } from "./catalog.ts";
 
@@ -22,9 +22,7 @@ export const contests = pgTable(
   "contests",
   {
     id: text("id").primaryKey(),
-    public_id: text("public_id").notNull().default(
-      sql`'ct-' || substr(md5(random()::text), 1, 8)`,
-    ),
+    public_id: publicIdColumn("ct"),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     start_time: text("start_time").notNull(),
@@ -81,7 +79,7 @@ export const contestProblems = pgTable(
     score: integer("score").notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.contest_id, table.problem_id] }),
+    ...manyToManyPk([table.contest_id, table.problem_id]),
     labelUnique: unique("contest_problems_contest_label_unique").on(
       table.contest_id,
       table.label,
@@ -108,7 +106,7 @@ export const contestParticipants = pgTable(
     registered_at: text("registered_at").notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.contest_id, table.user_id] }),
+    ...manyToManyPk([table.contest_id, table.user_id]),
     userIdx: index("idx_contest_participants_user").on(table.user_id),
   }),
 );

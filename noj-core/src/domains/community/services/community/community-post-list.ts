@@ -11,7 +11,17 @@ import {
   getCommunityConfig,
 } from "./community-config.ts";
 import { resolveProblemId } from "./community-post-common.ts";
+import {
+  authorProjection,
+  postStatsProjection,
+} from "./community-post-select.ts";
 
+/**
+ * 列出社区帖子（支持按类型、题目、板块、作者、关键词筛选与游标分页）。
+ * 未指定类型时仅返回启用模块的内容；审核员可查看 pending/hidden（已删除除外）。
+ * @param options 查询选项：type、problemId、boardId、authorId、query、cursor、limit、viewerId、moderator。
+ * @returns 分页结果：data 为帖子列表，next_cursor 为下一页游标（无更多时为 null）。
+ */
 export async function listPosts(
   options: {
     type?: CommunityPostType;
@@ -78,17 +88,8 @@ export async function listPosts(
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
   const rows = await db.select({
     post: communityPosts,
-    author: {
-      id: users.id,
-      username: users.username,
-      avatar_url: users.avatar_url,
-    },
-    likes: sql<
-      number
-    >`(select count(*) from community_post_likes where post_id = ${communityPosts.id})`,
-    comments: sql<
-      number
-    >`(select count(*) from community_comments where post_id = ${communityPosts.id} and status = 'published')`,
+    author: authorProjection,
+    ...postStatsProjection,
   }).from(communityPosts).innerJoin(
     users,
     eq(users.id, communityPosts.author_id),
@@ -150,18 +151,9 @@ export async function listBookmarks(
   const limit = Math.min(Math.max(requestedLimit ?? 20, 1), 100);
   const rows = await getDb().select({
     post: communityPosts,
-    author: {
-      id: users.id,
-      username: users.username,
-      avatar_url: users.avatar_url,
-    },
+    author: authorProjection,
     bookmarked_at: communityBookmarks.created_at,
-    likes: sql<
-      number
-    >`(select count(*) from community_post_likes where post_id = ${communityPosts.id})`,
-    comments: sql<
-      number
-    >`(select count(*) from community_comments where post_id = ${communityPosts.id} and status = 'published')`,
+    ...postStatsProjection,
   }).from(communityBookmarks).innerJoin(
     communityPosts,
     eq(communityPosts.id, communityBookmarks.post_id),

@@ -16,6 +16,7 @@ import {
   NotFoundError,
 } from "../../../lib/errors.ts";
 import { assertPermission } from "../../../lib/permissions.ts";
+import { isUuid } from "../../../lib/public-id.ts";
 import {
   type CreateQuestionInput,
   JUDGE_OPTIONS,
@@ -54,12 +55,7 @@ export async function resolvePaperId(
   paperId: string,
 ): Promise<PaperRow | null> {
   const db = getDb();
-  if (
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      paperId,
-    ) ||
-    /^\d+$/.test(paperId)
-  ) {
+  if (isUuid(paperId) || /^\d+$/.test(paperId)) {
     const rows = await db.select().from(problems).where(
       eq(problems.id, paperId),
     )

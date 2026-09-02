@@ -29,6 +29,15 @@ import { invalidateBanCache } from "../../../../lib/banCache.ts";
 
 export { banUser, getLatestActiveBanId } from "../../../identity/index.ts";
 
+/**
+ * 创建举报工单：校验举报目标、分类与原因，并通知举报者已提交。
+ * @param reporterId 举报者用户 UUID。
+ * @param input 举报输入：post_id/comment_id（二选一）、reason（原因）、category（分类）。
+ * @returns 新建的举报记录。
+ * @throws {ValidationError} 未指定目标、分类无效、原因为空或超长时抛出。
+ * @throws {NotFoundError} 举报目标不存在或已删除时抛出。
+ * @throws {ConflictError} 同一举报者对同一内容已有待处理举报时抛出。
+ */
 export async function createReport(
   reporterId: string,
   input: {
@@ -111,6 +120,11 @@ export async function createReport(
   return report;
 }
 
+/**
+ * 列出举报工单（含举报者、被举报内容、被举报者、处理者与关联封禁/处罚信息）。
+ * @param status 过滤状态：pending / resolved / dismissed / all，默认 pending。
+ * @returns 举报列表，按创建时间倒序。
+ */
 export function listReports(
   status: "pending" | "resolved" | "dismissed" | "all" = "pending",
 ) {
@@ -185,6 +199,17 @@ export function listReports(
     .orderBy(desc(communityReports.created_at));
 }
 
+/**
+ * 处理或驳回举报：更新状态、处理者与处理结果，并通知举报者。
+ * @param reportId 举报 UUID。
+ * @param actorId 处理者用户 UUID。
+ * @param status 处理结果：resolved（已处理）或 dismissed（已驳回）。
+ * @param resolution 可选，处理说明。
+ * @param banId 可选，关联的封禁 UUID。
+ * @param sanctionId 可选，关联的社区处罚 UUID。
+ * @returns 更新后的举报记录。
+ * @throws {NotFoundError} 举报不存在时抛出。
+ */
 export async function resolveReport(
   reportId: string,
   actorId: string,
@@ -406,6 +431,14 @@ export async function getReportDetail(reportId: string, _viewerId: string) {
   return rows[0];
 }
 
+/**
+ * 创建社区处罚（禁言）：限制用户社区互动，可指定过期时间。
+ * @param actorId 执行者用户 UUID。
+ * @param userId 被处罚用户 UUID。
+ * @param reason 处罚原因。
+ * @param expiresAt 可选，处罚过期时间（ISO 字符串），缺省为永久。
+ * @returns 新建的社区处罚记录。
+ */
 export async function createSanction(
   actorId: string,
   userId: string,
@@ -436,6 +469,13 @@ export async function createSanction(
   return sanction;
 }
 
+/**
+ * 撤销社区处罚（解除禁言）。
+ * @param actorId 执行者用户 UUID。
+ * @param sanctionId 社区处罚 UUID。
+ * @returns 撤销后的社区处罚记录。
+ * @throws {NotFoundError} 社区处罚不存在时抛出。
+ */
 export async function revokeSanction(actorId: string, sanctionId: string) {
   const db = getDb();
   const rows = await db.update(communitySanctions).set({
@@ -451,6 +491,10 @@ export async function revokeSanction(actorId: string, sanctionId: string) {
   return rows[0];
 }
 
+/**
+ * 列出全部社区处罚记录，按创建时间倒序。
+ * @returns 社区处罚列表。
+ */
 export function listSanctions() {
   const db = getDb();
   return db.select().from(communitySanctions).orderBy(
@@ -517,6 +561,12 @@ const PRESETS: Record<
   },
 };
 
+/**
+ * 应用社区预设（public / private / knowledge）：事务化写入全部配置项并刷新缓存。
+ * @param actorId 执行者用户 UUID。
+ * @param preset 预设名称：public / private / knowledge。
+ * @returns 应用后的社区配置。
+ */
 export async function applyCommunityPreset(
   actorId: string,
   preset: keyof typeof PRESETS,

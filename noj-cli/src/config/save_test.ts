@@ -1,3 +1,4 @@
+import { makeTempDir } from "../testing/helpers.ts";
 import { assertEquals } from "@std/assert";
 import type { DeployConfig, SecretsConfig } from "./types.ts";
 import { saveDeployment } from "./save.ts";
@@ -29,7 +30,7 @@ const secrets: SecretsConfig = {
 };
 
 Deno.test("saveDeployment 写出两个文件并设置权限", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   await saveDeployment(dir, config, secrets);
 
   const deployStat = await Deno.stat(`${dir}/noj-deploy.json`);
@@ -48,7 +49,7 @@ Deno.test("saveDeployment 写出两个文件并设置权限", async () => {
 });
 
 Deno.test("saveDeployment 更新 updated_at 为 UTC ISO", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   const cfg = structuredClone(config);
   cfg.updated_at = "1970-01-01T00:00:00Z";
   await saveDeployment(dir, cfg, secrets);

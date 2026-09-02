@@ -10,6 +10,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { publicIdColumn } from "./common.ts";
 import type { SubmissionStatus } from "../../types/index.ts";
 import type { SelfTestStatus } from "../../types/self-tests.ts";
 import { users } from "./identity.ts";
@@ -25,9 +26,7 @@ export const submissions = pgTable(
   "submissions",
   {
     id: text("id").primaryKey(),
-    public_id: text("public_id").notNull().default(
-      sql`'sub-' || substr(md5(random()::text), 1, 8)`,
-    ),
+    public_id: publicIdColumn("sub"),
     user_id: text("user_id").notNull().references(() => users.id),
     problem_id: text("problem_id").notNull().references(() => problems.id),
     contest_id: text("contest_id").references(() => contests.id, {

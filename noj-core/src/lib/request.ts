@@ -1,4 +1,24 @@
-import { ValidationError } from "./errors.ts";
+import { BadRequestError, ValidationError } from "./errors.ts";
+
+/**
+ * 判断值是否为普通对象（非 null、非数组）。
+ */
+export function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * 断言请求体为 JSON 对象，否则抛 BadRequestError。
+ *
+ * @throws {BadRequestError} 请求体不是 JSON 对象
+ */
+export function assertObjectBody(
+  body: unknown,
+): asserts body is Record<string, unknown> {
+  if (!isObject(body)) {
+    throw new BadRequestError("请求体必须为 JSON 对象");
+  }
+}
 
 /**
  * 安全地解析请求体 JSON。

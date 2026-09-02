@@ -10,7 +10,17 @@ import {
 import { ForbiddenError, NotFoundError } from "../../../../lib/errors.ts";
 import { getCommunityConfig } from "./community-config.ts";
 import { nowIso } from "../../../../lib/dates.ts";
+import { authorProjection } from "./community-post-select.ts";
 
+/**
+ * 创建一条社区动态事件（活动流）。
+ * 活动功能关闭时静默跳过；重复事件按唯一约束忽略。
+ * @param actorId 触发动态的用户 UUID。
+ * @param type 动态类型：首次通过 / 发布题解 / 加入竞赛。
+ * @param subjectType 动态主体类型（如 post）。
+ * @param subjectId 动态主体 UUID。
+ * @param metadata 附加元数据。
+ */
 export async function createActivity(
   actorId: string,
   type: "first_accepted" | "solution_published" | "contest_joined",
@@ -31,6 +41,15 @@ export async function createActivity(
   }).onConflictDoNothing();
 }
 
+/**
+ * 列出社区动态流（最新 / 关注），合并短动态（moment）与活动事件并按时间倒序。
+ * @param view 视图：latest（最新）或 following（仅关注用户）。
+ * @param viewerId 可选，当前查看者用户 UUID（following 视图必填）。
+ * @param cursor 可选，复合游标 `createdAt|id`，用于分页。
+ * @param limit 每页条数，默认 20，限制在 1-100。
+ * @returns 分页结果：data 为动态列表，next_cursor 为下一页游标（无更多时为 null）。
+ * @throws {ForbiddenError} 功能关闭或 following 视图未登录时抛出。
+ */
 export async function listFeed(
   view: "latest" | "following",
   viewerId?: string,
@@ -69,11 +88,7 @@ export async function listFeed(
   const momentRows = config.moments_enabled
     ? await db.select({
       post: communityPosts,
-      author: {
-        id: users.id,
-        username: users.username,
-        avatar_url: users.avatar_url,
-      },
+      author: authorProjection,
     }).from(communityPosts).innerJoin(
       users,
       eq(users.id, communityPosts.author_id),
@@ -124,11 +139,7 @@ export async function listFeed(
   }
   const activityRows = await db.select({
     activity: communityActivityEvents,
-    author: {
-      id: users.id,
-      username: users.username,
-      avatar_url: users.avatar_url,
-    },
+    author: authorProjection,
   }).from(communityActivityEvents).innerJoin(
     users,
     eq(users.id, communityActivityEvents.actor_id),
@@ -173,6 +184,12 @@ function parseFeedCursor(cursor: string): { at: string; id?: string } {
   return { at: cursor.slice(0, sep), id: cursor.slice(sep + 1) };
 }
 
+/**
+ * 列出用户的通知列表（含触发者信息），按创建时间倒序。
+ * @param userId 接收者用户 UUID。
+ * @param limit 每页条数，默认 30，上限 100。
+ * @returns 通知列表，每条含通知记录与触发者信息。
+ */
 export function listNotifications(userId: string, limit = 30) {
   const db = getDb();
   return db.select({
@@ -190,6 +207,11 @@ export function listNotifications(userId: string, limit = 30) {
   ).limit(Math.min(limit, 100));
 }
 
+/**
+ * 获取用户未读通知数量。
+ * @param userId 接收者用户 UUID。
+ * @returns 未读通知数量。
+ */
 export async function getNotificationUnreadCount(userId: string) {
   const db = getDb();
   const rows = await db.select({ count: sql<number>`count(*)` }).from(
@@ -203,6 +225,10 @@ export async function getNotificationUnreadCount(userId: string) {
   return Number(rows[0]?.count ?? 0);
 }
 
+/**
+ * 将用户全部未读通知标记为已读。
+ * @param userId 接收者用户 UUID。
+ */
 export async function markNotificationsRead(userId: string) {
   const db = getDb();
   await db.update(communityNotifications).set({ read_at: nowIso() }).where(

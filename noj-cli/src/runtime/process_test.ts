@@ -1,3 +1,4 @@
+import { makeTempDir } from "../testing/helpers.ts";
 import { assertEquals } from "@std/assert";
 import type { ComponentConfig } from "../config/types.ts";
 import type { CommandRunner, SpawnHandle, SpawnOpts } from "./command.ts";
@@ -69,7 +70,7 @@ Deno.test("processLaunch: dev_command 组件按空白切分", () => {
 });
 
 Deno.test("startManagedProcess: spawn 并写 PID 文件", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   const runDir = `${dir}/run`;
   const spawned: SpawnOpts[] = [];
   const runner = fakeRunner(spawned, []);
@@ -88,7 +89,7 @@ Deno.test("startManagedProcess: spawn 并写 PID 文件", async () => {
 });
 
 Deno.test("stopManagedProcess: 读 PID 后 kill 并清文件", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   const runDir = `${dir}/run`;
   const killed: number[] = [];
   const spawned: SpawnOpts[] = [];
@@ -100,7 +101,7 @@ Deno.test("stopManagedProcess: 读 PID 后 kill 并清文件", async () => {
 });
 
 Deno.test("stopManagedProcess: 无 PID 文件时 no-op", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   const runner = fakeRunner([], []);
   let threw = false;
   try {
@@ -112,7 +113,7 @@ Deno.test("stopManagedProcess: 无 PID 文件时 no-op", async () => {
 });
 
 Deno.test("startManagedProcess: 输出写入 run/logs/<component>.log", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   const runDir = `${dir}/run`;
   const spawned: SpawnOpts[] = [];
   const runner = fakeRunner(spawned, []);
@@ -129,7 +130,7 @@ Deno.test("startManagedProcess: 输出写入 run/logs/<component>.log", async ()
 });
 
 Deno.test("runServerForeground: 前台 spawn server 并返回退出码", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   const cfg = {
     schema_version: 1,
     type: "dev",

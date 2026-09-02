@@ -20,11 +20,7 @@ import { getDb } from "../../../db/connection.ts";
 import { announcements } from "../../../db/schema.ts";
 import { NotFoundError, ValidationError } from "../../../lib/errors.ts";
 import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
-import {
-  generatePublicId,
-  isPublicId,
-  isUuid,
-} from "../../../lib/public-id.ts";
+import { generatePublicId, resolvePublicId } from "../../../lib/public-id.ts";
 import { getRequestContext } from "../../../lib/requestContext.ts";
 import {
   buildPaginationMeta,
@@ -220,20 +216,15 @@ export async function listAdminAnnouncements(
 /**
  * 将 UUID 或 public_id 解析为内部公告 UUID。
  */
-export async function resolveAnnouncementId(value: string): Promise<string> {
-  const db = getDb();
-  if (isUuid(value)) return value;
-  if (isPublicId(value, "ann")) {
-    const rows = await db.select({ id: announcements.id }).from(announcements)
-      .where(eq(announcements.public_id, value)).limit(1);
-    const row = rows[0];
-    if (!row) throw new NotFoundError("公告不存在");
-    return row.id;
-  }
-  const byId = await db.select({ id: announcements.id }).from(announcements)
-    .where(eq(announcements.id, value)).limit(1);
-  if (!byId[0]) throw new NotFoundError("公告不存在");
-  return byId[0].id;
+export function resolveAnnouncementId(value: string): Promise<string> {
+  return resolvePublicId(
+    announcements,
+    announcements.id,
+    announcements.public_id,
+    "ann",
+    value,
+    "公告不存在",
+  );
 }
 
 /**

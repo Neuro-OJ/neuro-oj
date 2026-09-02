@@ -139,20 +139,20 @@ e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
 
 e2eTest("[e2e/contest] 3. 排名包含提交分数", async () => {
   if (!isE2E || !judgeAvailable) return;
-  const [publicResult, adminResult] = await Promise.all([
-    apiGet(`/api/v1/contests/${contestId}/ranking`),
-    apiGet(`/api/v1/contests/${contestId}/ranking`, adminToken),
-  ]);
-  if (publicResult.status !== 200 || adminResult.status !== 200) {
+  // 进行中公开竞赛的排名仅对登录参赛者/管理员可见，匿名访问会 401；
+  // 这里用管理员视角验证“排名包含提交分数”，公开最终排名在下一用例覆盖。
+  const adminResult = await apiGet(
+    `/api/v1/contests/${contestId}/ranking`,
+    adminToken,
+  );
+  if (adminResult.status !== 200) {
     throw new Error(
-      `读取排名失败: ${publicResult.status}/${adminResult.status}`,
+      `读取管理员排名失败: ${adminResult.status} ${
+        JSON.stringify(adminResult.body)
+      }`,
     );
   }
-  const publicRows = (publicResult.body as { data: KaggleRankingRow[] }).data;
   const adminRows = (adminResult.body as { data: KaggleRankingRow[] }).data;
-  if (publicRows[0]?.total_score <= 0) {
-    throw new Error("公开排名应包含提交分数");
-  }
   if (adminRows[0]?.total_score <= 0) {
     throw new Error("管理员排名应包含提交分数");
   }

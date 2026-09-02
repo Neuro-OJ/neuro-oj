@@ -62,6 +62,22 @@ async function toUserResponse(
   };
 }
 
+/**
+ * 管理员封禁用户。
+ *
+ * 关闭已有活跃封禁后插入新封禁记录，并失效缓存、写审计日志、通知被封禁用户。
+ * 禁止封禁 root、自己或最后一个可登录管理员。
+ *
+ * @param targetUserId 被封禁用户 ID
+ * @param reason 封禁理由（可选）
+ * @param bannedUntil 封禁截止时间（ISO 8601，可选；须晚于当前时间）
+ * @param currentUserId 执行封禁的管理员用户 ID
+ * @param scope 封禁范围：platform（平台）或 social（社区），默认 platform
+ * @returns 封禁后的用户信息（含 active_ban）
+ * @throws {BadRequestError} 封禁 root/自己/最后一个管理员，或参数非法
+ * @throws {ValidationError} banned_until 或 scope 格式非法
+ * @throws {NotFoundError} 目标用户不存在
+ */
 export async function banUser(
   targetUserId: string,
   reason: string | undefined,
@@ -204,6 +220,15 @@ export interface BanRecord {
   unbanned_by: { id: string; username: string } | null;
 }
 
+/**
+ * 获取用户封禁历史。
+ *
+ * 返回该用户全部封禁记录，按 banned_at 倒序排列，并 JOIN users 表补充
+ * banned_by / unbanned_by 的用户名信息。
+ *
+ * @param userId 目标用户 ID
+ * @returns 封禁记录数组（按封禁时间倒序）
+ */
 export async function getUserBanHistory(
   userId: string,
 ): Promise<BanRecord[]> {

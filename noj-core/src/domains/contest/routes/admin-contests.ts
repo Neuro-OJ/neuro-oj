@@ -38,6 +38,10 @@ import { resolveUserId } from "../../identity/index.ts";
  */
 const router = new Hono<AuthEnv>();
 
+/**
+ * GET /contests —— 竞赛列表（管理端，含非公开竞赛）。
+ * 权限：管理员。query：page、perPage、type。响应：{ data, pagination }。
+ */
 router.get("/contests", async (c) => {
   const { page, perPage } = parsePagination(c);
   const typeQuery = c.req.query("type");
@@ -54,6 +58,10 @@ router.get("/contests", async (c) => {
   });
 });
 
+/**
+ * GET /contests/:id —— 竞赛详情（含题目列表）。
+ * 权限：管理员。path：id。响应：{ data: { ...contest, problems } }。
+ */
 router.get("/contests/:id", async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const [contest, problems] = await Promise.all([
@@ -63,12 +71,20 @@ router.get("/contests/:id", async (c) => {
   return c.json({ data: { ...contest, problems } });
 });
 
+/**
+ * POST /contests —— 创建竞赛。
+ * 权限：管理员。body：CreateContestInput。响应：201 { data }。
+ */
 router.post("/contests", async (c) => {
   const body = await parseJsonBody<CreateContestInput>(c);
   const data = await createContest(body, c.get("userId"));
   return c.json({ data }, 201);
 });
 
+/**
+ * PUT /contests/:id —— 更新竞赛。
+ * 权限：管理员。path：id。body：UpdateContestInput。响应：{ data }。
+ */
 router.put("/contests/:id", async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const body = await parseJsonBody<UpdateContestInput>(c);
@@ -79,18 +95,30 @@ router.put("/contests/:id", async (c) => {
   return c.json({ data });
 });
 
+/**
+ * DELETE /contests/:id —— 删除竞赛。
+ * 权限：管理员。path：id。响应：204 无内容。
+ */
 router.delete("/contests/:id", async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   await deleteContest(contestId);
   return c.body(null, 204);
 });
 
+/**
+ * GET /contests/:id/participants —— 竞赛参与者列表。
+ * 权限：管理员。path：id。响应：{ data }。
+ */
 router.get("/contests/:id/participants", async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const data = await listParticipants(contestId);
   return c.json({ data });
 });
 
+/**
+ * POST /contests/:id/participants —— 批量添加参与者。
+ * 权限：管理员。path：id。body：用户 ID 数组。响应：201 { data: { added } }。
+ */
 router.post("/contests/:id/participants", async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const userIds = await parseJsonBody<string[]>(c);
@@ -102,6 +130,10 @@ router.post("/contests/:id/participants", async (c) => {
   return c.json({ data: { added } }, 201);
 });
 
+/**
+ * DELETE /contests/:id/participants/:userId —— 移除某位参与者。
+ * 权限：管理员。path：id、userId。响应：204 无内容。
+ */
 router.delete("/contests/:id/participants/:userId", async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const targetUserId = await resolveUserId(c.req.param("userId") as string);
@@ -112,6 +144,10 @@ router.delete("/contests/:id/participants/:userId", async (c) => {
   return c.body(null, 204);
 });
 
+/**
+ * GET /contests/:id/submissions —— 竞赛提交列表。
+ * 权限：管理员。path：id。query：page、perPage。响应：{ data, pagination }。
+ */
 router.get("/contests/:id/submissions", async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   await getContest(contestId);

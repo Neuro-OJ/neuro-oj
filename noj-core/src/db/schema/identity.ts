@@ -4,12 +4,11 @@ import {
   index,
   integer,
   pgTable,
-  primaryKey,
   text,
   unique,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { tsvector } from "./common.ts";
+import { manyToManyPk, tsvector } from "./common.ts";
 
 /**
  * 用户表。
@@ -280,7 +279,7 @@ export const rolePermissions = pgTable(
       .references(() => permissions.id, { onDelete: "cascade" }),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.role_id, table.permission_id] }),
+    ...manyToManyPk([table.role_id, table.permission_id]),
   }),
 );
 
@@ -299,6 +298,6 @@ export const userRoles = pgTable(
       .references(() => roles.id, { onDelete: "cascade" }),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.user_id, table.role_id] }),
+    ...manyToManyPk([table.user_id, table.role_id]),
   }),
 );

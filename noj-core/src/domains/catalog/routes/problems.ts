@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import {
+  type AuthEnv,
   authMiddleware,
   optionalAuthMiddleware,
 } from "../../../middleware/auth.ts";
@@ -10,14 +11,13 @@ import {
   UnauthorizedError,
 } from "../../../lib/errors.ts";
 import { parsePagination } from "../../../lib/pagination.ts";
-import { getClientIp } from "../../../lib/rate-limit-env.ts";
 import { checkPermission } from "../../../lib/permissions.ts";
 import {
   enforceObjectiveSubmitRateLimit,
   enforceProblemCreateRateLimit,
   enforceProblemImportRateLimit,
 } from "../../../lib/hardening-rate-limit.ts";
-import { runWithContext } from "../../../lib/requestContext.ts";
+import { withActorContext } from "../../../lib/requestContext.ts";
 import {
   createProblem,
   deleteProblem,
@@ -60,9 +60,7 @@ import type {
   UpdateQuestionInput,
 } from "../../../types/objective.ts";
 
-const router = new Hono<
-  { Variables: { userId: string; userRole: string } }
->();
+const router = new Hono<AuthEnv>();
 
 /**
  * 获取题目列表。
@@ -235,7 +233,6 @@ router.put("/:id", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const body = await parseJsonBody<UpdateProblemInput>(c);
   const userId = c.get("userId");
-  const userRole = c.get("userRole");
 
   // 双索引解析获取实际题目 ID
   const problem = await resolveProblem(id);
@@ -252,23 +249,16 @@ router.put("/:id", authMiddleware, async (c) => {
 
   // 注入 ALS 上下文使 logAudit 可获取 actor 信息（issue #101）
   // （updateProblem 内部会记录 problems.runtime_config_changed 审计）
-  return runWithContext(
-    {
-      actorId: userId,
-      actorIp: getClientIp(c),
-      actorRole: userRole,
-    },
-    async () => {
-      const updated = await updateProblem(
-        problem.id,
-        body,
-        userId,
-        undefined,
-        c,
-      );
-      return c.json({ data: updated });
-    },
-  );
+  return withActorContext(c, async () => {
+    const updated = await updateProblem(
+      problem.id,
+      body,
+      userId,
+      undefined,
+      c,
+    );
+    return c.json({ data: updated });
+  });
 });
 
 /**
@@ -278,23 +268,15 @@ router.put("/:id", authMiddleware, async (c) => {
 router.delete("/:id", authMiddleware, async (c) => {
   const id = c.req.param("id") as string;
   const userId = c.get("userId");
-  const userRole = c.get("userRole");
 
   // 双索引解析获取实际题目 ID
   const problem = await resolveProblem(id);
 
   // 注入 ALS 上下文使 logAudit 可获取 actor 信息（issue #101）
-  return runWithContext(
-    {
-      actorId: userId,
-      actorIp: getClientIp(c),
-      actorRole: userRole,
-    },
-    async () => {
-      await deleteProblem(problem.id, userId, undefined, c);
-      return c.body(null, 204);
-    },
-  );
+  return withActorContext(c, async () => {
+    await deleteProblem(problem.id, userId, undefined, c);
+    return c.body(null, 204);
+  });
 });
 
 /**
@@ -345,19 +327,12 @@ router.post("/import-bundle", authMiddleware, async (c) => {
     throw new BadRequestError("文件不是有效的 zip 格式");
   }
 
-  const result = await runWithContext(
-    {
-      actorId: userId,
-      actorIp: getClientIp(c),
-      actorRole: userRole,
-    },
-    () =>
-      importProblemBundle(
-        { name: file.name, data: fileBytes },
-        { userId, userRole },
-        c,
-      ),
-  );
+  const result = await withActorContext(c, () =>
+    importProblemBundle(
+      { name: file.name, data: fileBytes },
+      { userId, userRole },
+      c,
+    ));
 
   return c.json({ data: result });
 });

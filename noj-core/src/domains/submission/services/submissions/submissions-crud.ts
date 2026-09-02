@@ -47,8 +47,7 @@ import { getDb } from "../../../../db/connection.ts";
 import { checkPermission } from "../../../../lib/permissions.ts";
 import {
   generatePublicId,
-  isPublicId,
-  isUuid,
+  resolvePublicId,
 } from "../../../../lib/public-id.ts";
 import {
   isRetryableJudgeQueueError,
@@ -644,20 +643,15 @@ export async function getSubmission(
 /**
  * 将 UUID 或 public_id 解析为内部提交 UUID；其它格式按主键兜底。
  */
-export async function resolveSubmissionId(value: string): Promise<string> {
-  const db = getDb();
-  if (isUuid(value)) return value;
-  if (isPublicId(value, "sub")) {
-    const rows = await db.select({ id: submissions.id }).from(submissions)
-      .where(eq(submissions.public_id, value)).limit(1);
-    const row = rows[0];
-    if (!row) throw new NotFoundError("提交不存在");
-    return row.id;
-  }
-  const byId = await db.select({ id: submissions.id }).from(submissions)
-    .where(eq(submissions.id, value)).limit(1);
-  if (!byId[0]) throw new NotFoundError("提交不存在");
-  return byId[0].id;
+export function resolveSubmissionId(value: string): Promise<string> {
+  return resolvePublicId(
+    submissions,
+    submissions.id,
+    submissions.public_id,
+    "sub",
+    value,
+    "提交不存在",
+  );
 }
 
 /**

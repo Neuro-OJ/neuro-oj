@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, or, type SQL, sql } from "drizzle-orm";
 import { getDb } from "../../../db/connection.ts";
 import {
   conversationReads,
@@ -18,6 +18,32 @@ const PREVIEW_LENGTH = 50;
 /** 统一 postgres.js（array-like）与 PGlite（{rows}）的 execute 返回形态。 */
 function executeRows<T>(result: T[] | { rows: T[] }): T[] {
   return Array.isArray(result) ? result : result.rows;
+}
+
+/**
+ * 统计当前用户可见的消息数（排除已删除）。
+ */
+async function countVisibleMessages(
+  userId: string,
+  conditions: SQL | undefined,
+): Promise<number> {
+  const [countRow] = await getDb()
+    .select({ total: sql<number>`count(*)` })
+    .from(messages)
+    .leftJoin(
+      messageDeletions,
+      and(
+        eq(messageDeletions.message_id, messages.id),
+        eq(messageDeletions.user_id, userId),
+      ),
+    )
+    .where(
+      and(
+        conditions,
+        sql`${messageDeletions.user_id} IS NULL`,
+      ),
+    );
+  return Number(countRow?.total ?? 0);
 }
 
 /**
@@ -368,24 +394,10 @@ export async function listMessages(
   const offset = (page - 1) * perPage;
 
   // 查询总数（排除已删除）
-  const [countRow] = await getDb()
-    .select({ total: sql<number>`count(*)` })
-    .from(messages)
-    .leftJoin(
-      messageDeletions,
-      and(
-        eq(messageDeletions.message_id, messages.id),
-        eq(messageDeletions.user_id, userId),
-      ),
-    )
-    .where(
-      and(
-        eq(messages.conversation_id, conversationId),
-        // 排除当前用户已删除的消息
-        sql`${messageDeletions.user_id} IS NULL`,
-      ),
-    );
-  const total = Number(countRow?.total ?? 0);
+  const total = await countVisibleMessages(
+    userId,
+    eq(messages.conversation_id, conversationId),
+  );
 
   if (total === 0) {
     return {
@@ -534,24 +546,7 @@ export async function getUnreadCountByConversation(
   }
 
   // 排除已删除消息
-  const [countRow] = await getDb()
-    .select({ total: sql<number>`count(*)` })
-    .from(messages)
-    .leftJoin(
-      messageDeletions,
-      and(
-        eq(messageDeletions.message_id, messages.id),
-        eq(messageDeletions.user_id, userId),
-      ),
-    )
-    .where(
-      and(
-        conditions,
-        sql`${messageDeletions.user_id} IS NULL`,
-      ),
-    );
-
-  return Number(countRow?.total ?? 0);
+  return countVisibleMessages(userId, conditions);
 }
 
 /**

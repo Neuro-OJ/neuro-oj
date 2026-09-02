@@ -1,11 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import type { DeployConfig, SecretsConfig } from "../config/types.ts";
+import type { DeployConfig } from "../config/types.ts";
 import type { BackupDriver, DumpEntry } from "./backup_driver.ts";
-import type {
-  CommandRunner,
-  SpawnHandle,
-  SpawnOpts,
-} from "../runtime/command.ts";
 import {
   backupCreate,
   backupDrill,
@@ -15,57 +10,14 @@ import {
   snapshotFileName,
   writeSha256Sums,
 } from "./backup.ts";
-
-function prodConfig(): DeployConfig {
-  return {
-    schema_version: 1,
-    type: "prod",
-    state: "running",
-    created_at: "2026-08-31T00:00:00Z",
-    updated_at: "2026-08-31T00:00:00Z",
-    install_dir: "/opt/neuro-oj",
-    version: { noj_cli: "0.1.0", noj_server: "0.1.0" },
-    env: {},
-    components: {
-      postgres: {
-        enabled: true,
-        method: "docker",
-        image: "postgres:16-alpine",
-        internal_port: 5432,
-        env: {},
-      },
-    },
-    reverse_proxy: {
-      type: "nginx",
-      config_dir: "/etc/nginx/conf.d",
-      domain: "oj.example.com",
-      upstream_port: 8080,
-    },
-  };
-}
-
-function devConfig(): DeployConfig {
-  return { ...prodConfig(), type: "dev" };
-}
-
-function secrets(): SecretsConfig {
-  return {
-    schema_version: 1,
-    created_at: "2026-08-31T00:00:00Z",
-    updated_at: "2026-08-31T00:00:00Z",
-    secrets: {},
-  };
-}
-
-async function writeFixture(
-  dir: string,
-  cfg: DeployConfig,
-  sec: SecretsConfig,
-): Promise<void> {
-  await Deno.mkdir(dir, { recursive: true });
-  await Deno.writeTextFile(`${dir}/noj-deploy.json`, JSON.stringify(cfg));
-  await Deno.writeTextFile(`${dir}/noj-secrets.json`, JSON.stringify(sec));
-}
+import {
+  baseConfig,
+  failingUpRunner,
+  fakeRunner,
+  makeTempDir,
+  secrets,
+  writeFixture,
+} from "../testing/helpers.ts";
 
 /** 记录调用、返回 fake dump 的 fake driver。 */
 function fakeDriver(): BackupDriver {
@@ -116,36 +68,6 @@ function fakeDriver(): BackupDriver {
   };
 }
 
-/** 模拟 docker compose 成功执行的 fake runner。 */
-function fakeRunner(): CommandRunner {
-  return {
-    run(_cmd, _args) {
-      return Promise.resolve({ code: 0, stdout: "", stderr: "" });
-    },
-    spawn(_opts: SpawnOpts): SpawnHandle {
-      throw new Error("fake runner 不 spawn");
-    },
-  };
-}
-
-/** up 失败但记录 down 调用的 runner，用于验证失败后仍清理。 */
-function failingUpRunner(downCalls: number[]): CommandRunner {
-  return {
-    run(cmd, args) {
-      if (cmd === "docker" && args.includes("up")) {
-        return Promise.resolve({ code: 1, stdout: "", stderr: "up failed" });
-      }
-      if (cmd === "docker" && args.includes("down")) {
-        downCalls.push(1);
-      }
-      return Promise.resolve({ code: 0, stdout: "", stderr: "" });
-    },
-    spawn(_opts: SpawnOpts): SpawnHandle {
-      throw new Error("fake runner 不 spawn");
-    },
-  };
-}
-
 Deno.test("snapshotFileName: 生成合法快照文件名", () => {
   const name = snapshotFileName(new Date("2026-08-31T12:34:56Z"));
   assertEquals(name, "snapshot-2026-08-31T12-34-56Z.nojbackup");
@@ -166,7 +88,7 @@ Deno.test("resolvePassphraseFile: 旗标优先，回退环境变量，最后 nul
 });
 
 Deno.test("writeSha256Sums: 写出两空格分隔的 sha256sums.txt", async () => {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDir();
   await writeSha256Sums(dir, [
     { relPath: "postgres.dump", sha256: "a".repeat(64) },
     { relPath: "SUCCESS", sha256: "b".repeat(64) },
@@ -179,8 +101,22 @@ Deno.test("writeSha256Sums: 写出两空格分隔的 sha256sums.txt", async () =
 });
 
 Deno.test("backupCreate: 加密模式生成 .nojbackup 并返回 sha256", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir, prodConfig(), secrets());
+  const dir = await makeTempDir();
+  await writeFixture(
+    dir,
+    baseConfig({
+      components: {
+        postgres: {
+          enabled: true,
+          method: "docker",
+          image: "postgres:16-alpine",
+          internal_port: 5432,
+          env: {},
+        },
+      },
+    }),
+    secrets(),
+  );
   const out = await backupCreate({
     dir,
     backupDir: `${dir}/backups`,
@@ -197,8 +133,22 @@ Deno.test("backupCreate: 加密模式生成 .nojbackup 并返回 sha256", async 
 });
 
 Deno.test("backupCreate: --no-encrypt 也可生成产物", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir, prodConfig(), secrets());
+  const dir = await makeTempDir();
+  await writeFixture(
+    dir,
+    baseConfig({
+      components: {
+        postgres: {
+          enabled: true,
+          method: "docker",
+          image: "postgres:16-alpine",
+          internal_port: 5432,
+          env: {},
+        },
+      },
+    }),
+    secrets(),
+  );
   const out = await backupCreate({
     dir,
     backupDir: `${dir}/backups`,
@@ -211,8 +161,23 @@ Deno.test("backupCreate: --no-encrypt 也可生成产物", async () => {
 });
 
 Deno.test("backupCreate: dev 类型拒绝", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir, devConfig(), secrets());
+  const dir = await makeTempDir();
+  await writeFixture(
+    dir,
+    baseConfig({
+      type: "dev",
+      components: {
+        postgres: {
+          enabled: true,
+          method: "docker",
+          image: "postgres:16-alpine",
+          internal_port: 5432,
+          env: {},
+        },
+      },
+    }),
+    secrets(),
+  );
   await assertRejects(
     () => backupCreate({ dir, noEncrypt: true, driver: fakeDriver() }),
     Error,
@@ -221,8 +186,22 @@ Deno.test("backupCreate: dev 类型拒绝", async () => {
 });
 
 Deno.test("backupVerify: 合法快照 pass=true", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir, prodConfig(), secrets());
+  const dir = await makeTempDir();
+  await writeFixture(
+    dir,
+    baseConfig({
+      components: {
+        postgres: {
+          enabled: true,
+          method: "docker",
+          image: "postgres:16-alpine",
+          internal_port: 5432,
+          env: {},
+        },
+      },
+    }),
+    secrets(),
+  );
   await backupCreate({
     dir,
     backupDir: `${dir}/backups`,
@@ -241,8 +220,22 @@ Deno.test("backupVerify: 合法快照 pass=true", async () => {
 });
 
 Deno.test("backupRestore: 要求 confirm；running 时先 down 再恢复", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir, prodConfig(), secrets());
+  const dir = await makeTempDir();
+  await writeFixture(
+    dir,
+    baseConfig({
+      components: {
+        postgres: {
+          enabled: true,
+          method: "docker",
+          image: "postgres:16-alpine",
+          internal_port: 5432,
+          env: {},
+        },
+      },
+    }),
+    secrets(),
+  );
   // 未 confirm
   await assertRejects(
     () =>
@@ -280,8 +273,22 @@ Deno.test("backupRestore: 要求 confirm；running 时先 down 再恢复", async
 });
 
 Deno.test("backupDrill: 写报告文件", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir, prodConfig(), secrets());
+  const dir = await makeTempDir();
+  await writeFixture(
+    dir,
+    baseConfig({
+      components: {
+        postgres: {
+          enabled: true,
+          method: "docker",
+          image: "postgres:16-alpine",
+          internal_port: 5432,
+          env: {},
+        },
+      },
+    }),
+    secrets(),
+  );
   await backupCreate({
     dir,
     backupDir: `${dir}/backups`,
@@ -301,8 +308,22 @@ Deno.test("backupDrill: 写报告文件", async () => {
 });
 
 Deno.test("backupRestore --include-deploy-configs: 恢复后强制 state=stopped", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir, prodConfig(), secrets());
+  const dir = await makeTempDir();
+  await writeFixture(
+    dir,
+    baseConfig({
+      components: {
+        postgres: {
+          enabled: true,
+          method: "docker",
+          image: "postgres:16-alpine",
+          internal_port: 5432,
+          env: {},
+        },
+      },
+    }),
+    secrets(),
+  );
   await backupCreate({
     dir,
     backupDir: `${dir}/backups`,
@@ -327,8 +348,22 @@ Deno.test("backupRestore --include-deploy-configs: 恢复后强制 state=stopped
 });
 
 Deno.test("backupRestore: 基础设施启动失败时仍执行 down 清理", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir, prodConfig(), secrets());
+  const dir = await makeTempDir();
+  await writeFixture(
+    dir,
+    baseConfig({
+      components: {
+        postgres: {
+          enabled: true,
+          method: "docker",
+          image: "postgres:16-alpine",
+          internal_port: 5432,
+          env: {},
+        },
+      },
+    }),
+    secrets(),
+  );
   await backupCreate({
     dir,
     backupDir: `${dir}/backups`,

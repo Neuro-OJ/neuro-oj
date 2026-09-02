@@ -22,10 +22,12 @@ import {
   NotFoundError,
 } from "../../../lib/errors.ts";
 
+/** 生成一个随机 UUID 字符串。 */
 function uuid(): string {
   return crypto.randomUUID() as string;
 }
 
+/** 返回当前时间的 ISO 8601 字符串。 */
 function now(): string {
   return new Date().toISOString();
 }
@@ -54,6 +56,10 @@ interface PermissionResponse {
 
 // ── 角色列表 ─────────────────────────────────────────────
 
+/**
+ * 列出全部角色及其权限、父角色信息。
+ * @returns 角色列表（按名称排序）
+ */
 export async function listRoles(): Promise<RoleResponse[]> {
   const db = getDb();
 
@@ -105,6 +111,13 @@ export async function listRoles(): Promise<RoleResponse[]> {
 
 // ── 创建角色 ─────────────────────────────────────────────
 
+/**
+ * 创建角色并分配权限。
+ * @param data 角色数据：name（必填）、description、parent_id、permission_ids
+ * @returns 创建后的角色信息
+ * @throws {BadRequestError} 名称为空、父角色不存在或存在循环继承
+ * @throws {ConflictError} 角色名已存在
+ */
 export async function createRole(data: {
   name: string;
   description?: string;
@@ -183,6 +196,16 @@ export async function createRole(data: {
 
 // ── 编辑角色 ─────────────────────────────────────────────
 
+/**
+ * 更新角色信息与权限。
+ * @param id 角色 ID
+ * @param data 可更新字段：name、description、parent_id、permission_ids
+ * @returns 更新后的角色信息
+ * @throws {NotFoundError} 角色不存在
+ * @throws {ForbiddenError} 修改系统角色名称
+ * @throws {BadRequestError} 名称重复、继承自身或存在循环引用
+ * @throws {ConflictError} 角色名已存在
+ */
 export async function updateRole(
   id: string,
   data: {
@@ -280,6 +303,13 @@ export async function updateRole(
 
 // ── 删除角色 ─────────────────────────────────────────────
 
+/**
+ * 删除角色（级联清理角色-权限、用户-角色关联）。
+ * @param id 角色 ID
+ * @throws {NotFoundError} 角色不存在
+ * @throws {ForbiddenError} 系统角色不可删除
+ * @throws {BadRequestError} 角色被其他角色继承
+ */
 export async function deleteRole(id: string): Promise<void> {
   const db = getDb();
 
@@ -318,6 +348,10 @@ export async function deleteRole(id: string): Promise<void> {
 
 // ── 权限列表 ─────────────────────────────────────────────
 
+/**
+ * 列出全部权限，按 resource 分组。
+ * @returns 以 resource 为键、权限数组为值的映射
+ */
 export async function listPermissions(): Promise<
   Record<string, PermissionResponse[]>
 > {
@@ -344,6 +378,14 @@ export async function listPermissions(): Promise<
 
 // ── 用户角色分配 ─────────────────────────────────────────
 
+/**
+ * 替换目标用户的角色集合。
+ * @param targetUserId 目标用户 ID
+ * @param roleIds 新角色 ID 列表（至少一个）
+ * @param currentUserId 当前操作者用户 ID
+ * @throws {BadRequestError} 修改自己/root、角色列表为空或含无效 ID、移除最后一个管理员
+ * @throws {NotFoundError} 目标用户不存在
+ */
 export async function updateUserRoles(
   targetUserId: string,
   roleIds: string[],
@@ -427,6 +469,11 @@ export async function updateUserRoles(
 
 // ── 辅助函数 ─────────────────────────────────────────────
 
+/**
+ * 按 ID 查询角色详情（含父角色名与权限），不存在时返回 null。
+ * @param id 角色 ID
+ * @returns 角色信息或 null
+ */
 async function getRoleById(id: string): Promise<RoleResponse | null> {
   const db = getDb();
 

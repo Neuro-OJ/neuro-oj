@@ -31,30 +31,57 @@ function escapeLikePattern(s: string): string {
   );
 }
 
+/**
+ * 题目搜索的查询参数。
+ */
 export interface SearchProblemsParams {
+  /** 搜索关键词 */
   q: string;
+  /** 当前请求是否为管理员（决定是否可返回 U 型题目） */
   isAdmin: boolean;
+  /** 管理员是否包含 U 型题目（仅 isAdmin=true 时生效） */
   includeU?: boolean;
+  /** 是否额外返回总命中数 total */
   includeTotal?: boolean;
+  /** 页码（从 1 开始） */
   page: number;
+  /** 每页条数 */
   limit: number;
 }
 
+/**
+ * 题目搜索结果单条条目。
+ */
 export interface ProblemSearchItem {
+  /** 题目 UUID */
   id: string;
+  /** 题目类型（P=公开 / U=未公开） */
   type: string;
+  /** 题目编号 */
   number: number;
+  /** 展示用 ID（如 P1001） */
   display_id: string;
+  /** 题目标题 */
   title: string;
+  /** 难度 */
   difficulty: string;
+  /** 相关性分值 */
   rank: number;
+  /** 高亮片段（[[HIGHLIGHT]] 标记，非 HTML 防 XSS） */
   highlight: string;
 }
 
+/**
+ * 题目搜索结果（列表 + 分页信息）。
+ */
 export interface SearchProblemsResult {
+  /** 结果条目列表 */
   items: ProblemSearchItem[];
+  /** 是否还有更多（下一页） */
   has_more: boolean;
+  /** 总命中数（仅 includeTotal=true 时返回） */
   total?: number;
+  /** 查询耗时（毫秒） */
   took_ms: number;
 }
 
@@ -178,44 +205,91 @@ export async function searchProblems(
   return { items, has_more, total, took_ms };
 }
 
+/**
+ * 用户搜索的查询参数。
+ */
 export interface SearchUsersParams {
+  /** 搜索关键词 */
   q: string;
+  /** 是否管理员（admin only，非管理员在 service 层抛 ForbiddenError） */
   isAdmin: boolean;
+  /** 是否额外返回总命中数 total */
   includeTotal?: boolean;
+  /** 页码（从 1 开始） */
   page: number;
+  /** 每页条数 */
   limit: number;
 }
 
+/**
+ * 用户搜索结果单条条目。
+ */
 export interface UserSearchItem {
+  /** 用户 UUID */
   id: string;
+  /** 用户名 */
   username: string;
+  /** 邮箱 */
   email: string;
+  /** 相关性分值 */
   rank: number;
+  /** 头像 URL（可为空） */
   avatar_url: string | null;
+  /** 高亮片段（[[HIGHLIGHT]] 标记） */
   highlight: string;
 }
 
+/**
+ * 用户搜索结果（列表 + 分页信息）。
+ */
 export interface SearchUsersResult {
+  /** 结果条目列表 */
   items: UserSearchItem[];
+  /** 是否还有更多（下一页） */
   has_more: boolean;
+  /** 总命中数（仅 includeTotal=true 时返回） */
   total?: number;
+  /** 查询耗时（毫秒） */
   took_ms: number;
 }
 
+/**
+ * 社区搜索结果单条条目。
+ */
 export interface CommunitySearchItem {
+  /** 社区帖子 UUID */
   id: string;
+  /** 公开 ID */
   public_id: string;
+  /** 帖子类型：solution（题解）或 discussion（讨论） */
   type: "solution" | "discussion";
+  /** 帖子标题 */
   title: string;
+  /** 作者用户 UUID */
   author_id: string;
+  /** 作者用户名 */
   author_username: string;
+  /** 作者头像 URL（可为空） */
   author_avatar_url: string | null;
+  /** 关联题目 UUID（可为空） */
   problem_id: string | null;
+  /** 创建时间 */
   created_at: string;
+  /** 相关性分值 */
   rank: number;
+  /** 高亮片段（[[HIGHLIGHT]] 标记） */
   highlight: string;
 }
 
+/**
+ * 搜索已发布的社区帖子（题解/讨论）。
+ *
+ * 仅返回 status='published' 且 type 为 solution/discussion 的帖子，
+ * 对标题/内容/问题编号做 ILIKE 模糊匹配与 tsvector 全文检索，返回高亮片段。
+ *
+ * @param params 搜索参数（q、includeTotal、page、limit）
+ * @returns 社区搜索结果（列表 + 分页信息 + 可选 total）
+ */
 export async function searchCommunity(
   params: { q: string; includeTotal?: boolean; page: number; limit: number },
 ): Promise<{

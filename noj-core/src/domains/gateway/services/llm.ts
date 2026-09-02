@@ -9,15 +9,27 @@ const GATEWAY_URL = Deno.env.get("NOJ_LLM_GATEWAY_URL") ??
   "http://localhost:8001";
 const SERVICE_TOKEN = Deno.env.get("NOJ_LLM_SERVICE_TOKEN") ?? "";
 
+/**
+ * 创建或更新 LLM Provider 的输入参数。
+ */
 export interface LlmProviderInput {
+  /** Provider 名称 */
   name: string;
+  /** Provider Base URL */
   base_url: string;
+  /** 模型名 */
   model: string;
+  /** API Key（仅发送给 gateway 加密存储，不会返回明文） */
   api_key: string;
+  /** 每 1000 token 的成本（可选） */
   cost_per_1k_tokens?: number;
+  /** 是否启用（可选） */
   enabled?: boolean;
 }
 
+/**
+ * LLM Gateway 调用失败时的错误类型。
+ */
 export class LlmGatewayError extends Error {
   constructor(
     public readonly status: number,
@@ -28,40 +40,86 @@ export class LlmGatewayError extends Error {
   }
 }
 
+/**
+ * LLM Provider 的展示视图（Key 已由 gateway 脱敏）。
+ */
 export interface LlmProviderView {
+  /** Provider ID */
   id: string;
+  /** Provider 名称 */
   name: string;
+  /** Provider Base URL */
   base_url: string;
+  /** 模型名 */
   model: string;
+  /** 每 1000 token 的成本 */
   cost_per_1k_tokens: number;
+  /** 脱敏后的 API Key（如 `sk-****`） */
   api_key_masked: string;
+  /** 是否启用 */
   enabled: boolean;
+  /** 创建时间 */
   created_at: string;
+  /** 更新时间 */
   updated_at: string;
 }
 
+/**
+ * LLM 用量查询的筛选参数。
+ */
 export interface LlmUsageQuery {
+  /** 关联的提交 ID */
   submission_id?: string;
+  /** 关联的用户 ID */
   user_id?: string;
+  /** 关联的题目 ID */
   problem_id?: string;
+  /** Provider ID */
   provider_id?: string;
+  /** 用量状态 */
   status?: string;
+  /** 起始时间 */
   start_time?: string;
+  /** 结束时间 */
   end_time?: string;
+  /** 返回条数（透传 gateway） */
   limit?: number;
+  /** 页码（透传 gateway） */
   page?: number;
 }
 
+/**
+ * LLM 配额的新增或更新输入（按 id upsert）。
+ */
 export interface LlmQuotaInput {
+  /** 配额 ID（更新时提供；缺省为新增） */
   id?: string;
+  /** 配额作用域类型 */
   scope_type: "user" | "problem" | "global";
+  /** 作用域对象 ID（user/problem 时必填） */
   scope_id?: string;
+  /** 配额窗口类型 */
   window_type?: "day" | "month";
+  /** 最大调用次数 */
   max_calls?: number;
+  /** 最大 token 数 */
   max_tokens?: number;
+  /** 最大成本 */
   max_cost?: number;
 }
 
+/**
+ * 向 LLM Gateway 内部管理 API 发起请求的通用封装。
+ *
+ * 自动拼接 GATEWAY_URL、注入 SERVICE_TOKEN 承载 Token 与 JSON 头，
+ * 并将响应体解包返回。Token 未配置或 HTTP 非 2xx 时抛错。
+ *
+ * @param path 相对路径（如 `/internal/providers`），不含 GATEWAY_URL 前缀
+ * @param init 可选的 fetch 请求配置（method/body/headers 等）
+ * @returns 响应体 JSON 按类型 T 返回
+ * @throws {Error} NOJ_LLM_SERVICE_TOKEN 未配置时抛出
+ * @throws {LlmGatewayError} gateway 返回非 2xx 时抛出，携带状态码与错误码
+ */
 async function request<T>(
   path: string,
   init?: RequestInit,

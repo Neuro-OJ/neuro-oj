@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import type { DeployConfig, SecretsConfig } from "../config/types.ts";
+import type { DeployConfig } from "../config/types.ts";
 import type {
   CmdResult,
   CommandRunner,
@@ -7,17 +7,17 @@ import type {
   SpawnOpts,
 } from "../runtime/command.ts";
 import { collectLogs, followLogs, parseModulesArg } from "./logs.ts";
+import {
+  baseConfig,
+  makeTempDir,
+  secrets,
+  writeFixture,
+} from "../testing/helpers.ts";
 
 function config(): DeployConfig {
-  return {
-    schema_version: 1,
+  return baseConfig({
     type: "dev",
     state: "running",
-    created_at: "2026-08-31T00:00:00Z",
-    updated_at: "2026-08-31T00:00:00Z",
-    install_dir: "/opt/neuro-oj",
-    version: { noj_cli: "0.1.0", noj_server: "0.1.0" },
-    env: {},
     components: {
       server: { enabled: true, method: "docker", image: "x", env: {} },
       ui: { enabled: true, method: "process", binary: "deno", env: {} },
@@ -29,27 +29,7 @@ function config(): DeployConfig {
       domain: "localhost",
       upstream_port: 8080,
     },
-  };
-}
-
-function secrets(): SecretsConfig {
-  return {
-    schema_version: 1,
-    created_at: "2026-08-31T00:00:00Z",
-    updated_at: "2026-08-31T00:00:00Z",
-    secrets: {},
-  };
-}
-
-async function writeFixture(dir: string): Promise<void> {
-  const cfg = config();
-  cfg.install_dir = dir;
-  await Deno.mkdir(dir, { recursive: true });
-  await Deno.writeTextFile(`${dir}/noj-deploy.json`, JSON.stringify(cfg));
-  await Deno.writeTextFile(
-    `${dir}/noj-secrets.json`,
-    JSON.stringify(secrets()),
-  );
+  });
 }
 
 /** 可编程 fake runner：记录 run 调用，stream 逐行回调。 */
@@ -85,8 +65,8 @@ Deno.test("parseModulesArg: 逗号分隔并过滤未启用/不存在", () => {
 });
 
 Deno.test("collectLogs: docker 走 compose logs，process 读日志文件", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir);
+  const dir = await makeTempDir();
+  await writeFixture(dir, { ...config(), install_dir: dir }, secrets());
   await Deno.mkdir(`${dir}/run/logs`, { recursive: true });
   await Deno.writeTextFile(`${dir}/run/logs/ui.log`, "ui-line-1\nui-line-2\n");
   const records: string[][] = [];
@@ -113,8 +93,8 @@ Deno.test("collectLogs: docker 走 compose logs，process 读日志文件", asyn
 });
 
 Deno.test("followLogs: docker 用 stream，process 用 followLogFile", async () => {
-  const dir = await Deno.makeTempDir();
-  await writeFixture(dir);
+  const dir = await makeTempDir();
+  await writeFixture(dir, { ...config(), install_dir: dir }, secrets());
   await Deno.mkdir(`${dir}/run/logs`, { recursive: true });
   await Deno.writeTextFile(`${dir}/run/logs/ui.log`, "ui-old\n");
   const records: string[][] = [];

@@ -28,12 +28,8 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../lib/errors.ts";
-import {
-  generatePublicId,
-  isPublicId,
-  isUuid,
-} from "../../../lib/public-id.ts";
-import { getProblem, getProblemByTypeAndNumber } from "./problems/problems.ts";
+import { generatePublicId, resolvePublicId } from "../../../lib/public-id.ts";
+import { resolveProblemIdOrThrow } from "../../../lib/problem-resolve.ts";
 import {
   type CreateTrainingInput,
   isValidTrainingVisibility,
@@ -43,16 +39,19 @@ import {
   type UpdateTrainingInput,
 } from "../../../types/trainings.ts";
 
+/** 题单列表分页参数。 */
 export interface ListTrainingsParams {
   page?: number;
   perPage?: number;
 }
 
+/** 题单列表分页结果。 */
 export interface ListTrainingsResult {
   data: TrainingResponse[];
   total: number;
 }
 
+/** 更新题单时的权限选项。 */
 export interface UpdateTrainingOptions {
   /** 是否可编辑任意题单（admin / training:write_any） */
   isAdmin?: boolean;
@@ -65,6 +64,12 @@ export interface UpdateTrainingOptions {
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
 
+/**
+ * 规范化分页参数：page 至少为 1，perPage 限制在 [1, MAX_PAGE_SIZE]。
+ *
+ * @param params 原始分页参数
+ * @returns 规范化后的 page、perPage 与 offset
+ */
 function normalizePage(params: ListTrainingsParams): {
   page: number;
   perPage: number;
@@ -78,6 +83,12 @@ function normalizePage(params: ListTrainingsParams): {
   return { page, perPage, offset: (page - 1) * perPage };
 }
 
+/**
+ * 批量统计各题单的题目数量。
+ *
+ * @param trainingIds 题单 id 列表
+ * @returns 题单 id → 题目数的映射
+ */
 async function countProblems(
   trainingIds: string[],
 ): Promise<Map<string, number>> {
@@ -94,6 +105,13 @@ async function countProblems(
   return new Map(rows.map((r) => [r.training_id, r.count]));
 }
 
+/**
+ * 将题单数据库行转换为响应 DTO。
+ *
+ * @param row 题单数据库行
+ * @param problemCount 该题单的题目数
+ * @returns 题单响应 DTO
+ */
 function toResponse(
   row: typeof trainings.$inferSelect,
   problemCount: number,
@@ -112,6 +130,12 @@ function toResponse(
   };
 }
 
+/**
+ * 列出公开（visibility=public）题单，置顶优先、按更新时间倒序。
+ *
+ * @param params 分页参数
+ * @returns 公开题单分页结果
+ */
 export async function listPublicTrainings(
   params: ListTrainingsParams,
 ): Promise<ListTrainingsResult> {
@@ -129,6 +153,13 @@ export async function listPublicTrainings(
   return { data, total: totalRows[0]?.total ?? 0 };
 }
 
+/**
+ * 列出当前用户创建的题单（含 private），按更新时间倒序。
+ *
+ * @param userId 当前用户 id
+ * @param params 分页参数
+ * @returns 我的题单分页结果
+ */
 export async function listMyTrainings(
   userId: string,
   params: ListTrainingsParams,
@@ -171,6 +202,12 @@ export async function listTrainingsContainingProblem(
   return rows.map((r) => r.id);
 }
 
+/**
+ * 列出全部题单（管理端，含 private），按更新时间倒序。
+ *
+ * @param params 分页参数
+ * @returns 全部题单分页结果
+ */
 export async function listAllTrainings(
   params: ListTrainingsParams,
 ): Promise<ListTrainingsResult> {
@@ -187,6 +224,15 @@ export async function listAllTrainings(
   return { data, total: totalRows[0]?.total ?? 0 };
 }
 
+/**
+ * 列出指定用户创建的题单；非 owner/admin 仅可见 public。
+ *
+ * @param ownerId 题单所属用户 id
+ * @param viewerId 查看者 id（可选）
+ * @param isAdmin 查看者是否为管理员
+ * @param params 分页参数
+ * @returns 该用户的题单分页结果
+ */
 export async function listUserTrainings(
   ownerId: string,
   viewerId?: string,
@@ -210,6 +256,15 @@ export async function listUserTrainings(
   return { data, total: totalRows[0]?.total ?? 0 };
 }
 
+/**
+ * 获取单个题单详情；private 题单仅 owner/admin 可见（对外表现为不存在）。
+ *
+ * @param id 题单内部 UUID
+ * @param viewerId 查看者 id（可选）
+ * @param isAdmin 查看者是否为管理员
+ * @returns 题单响应 DTO
+ * @throws {NotFoundError} 题单不存在或无权查看
+ */
 export async function getTraining(
   id: string,
   viewerId?: string,
@@ -226,6 +281,14 @@ export async function getTraining(
   return toResponse(row, counts.get(row.id) ?? 0);
 }
 
+/**
+ * 创建题单（可见性仅允许 private 或 unlisted，public 需管理员）。
+ *
+ * @param input 创建题单输入
+ * @param userId 创建者用户 id
+ * @returns 新建的题单响应 DTO
+ * @throws {BadRequestError} 标题为空/超长，或可见性非法
+ */
 export async function createTraining(
   input: CreateTrainingInput,
   userId: string,
@@ -257,22 +320,29 @@ export async function createTraining(
 }
 
 /** 将 UUID 或 public_id 解析为内部题单 UUID；其它格式按主键兜底。 */
-export async function resolveTrainingId(value: string): Promise<string> {
-  const db = getDb();
-  if (isUuid(value)) return value;
-  if (isPublicId(value, "tr")) {
-    const rows = await db.select({ id: trainings.id }).from(trainings)
-      .where(eq(trainings.public_id, value)).limit(1);
-    const row = rows[0];
-    if (!row) throw new NotFoundError("题单不存在");
-    return row.id;
-  }
-  const byId = await db.select({ id: trainings.id }).from(trainings)
-    .where(eq(trainings.id, value)).limit(1);
-  if (!byId[0]) throw new NotFoundError("题单不存在");
-  return byId[0].id;
+export function resolveTrainingId(value: string): Promise<string> {
+  return resolvePublicId(
+    trainings,
+    trainings.id,
+    trainings.public_id,
+    "tr",
+    value,
+    "题单不存在",
+  );
 }
 
+/**
+ * 更新题单（标题/描述/可见性/置顶）。
+ *
+ * @param id 题单内部 UUID
+ * @param input 更新输入（仅更新提供的字段）
+ * @param actorId 操作者用户 id
+ * @param options 权限选项（isAdmin / canPublish / canPin）
+ * @returns 更新后的题单响应 DTO
+ * @throws {NotFoundError} 题单不存在
+ * @throws {ForbiddenError} 无权编辑、置顶或设为公开
+ * @throws {BadRequestError} 可见性非法或标题为空/超长
+ */
 export async function updateTraining(
   id: string,
   input: UpdateTrainingInput,
@@ -318,6 +388,15 @@ export async function updateTraining(
   return getTraining(id, actorId, isAdmin);
 }
 
+/**
+ * 删除题单。
+ *
+ * @param id 题单内部 UUID
+ * @param actorId 操作者用户 id
+ * @param isAdmin 操作者是否为管理员
+ * @throws {NotFoundError} 题单不存在
+ * @throws {ForbiddenError} 无权删除该题单
+ */
 export async function deleteTraining(
   id: string,
   actorId: string,
@@ -335,6 +414,16 @@ export async function deleteTraining(
 
 // ── 题单题目管理与进度聚合 ──────────────────────────────
 
+/**
+ * 断言操作者有权编辑指定题单（owner 或 admin），并返回题单行。
+ *
+ * @param trainingId 题单内部 UUID
+ * @param actorId 操作者用户 id
+ * @param isAdmin 操作者是否为管理员
+ * @returns 题单数据库行
+ * @throws {NotFoundError} 题单不存在
+ * @throws {ForbiddenError} 无权编辑该题单
+ */
 async function assertWritable(
   trainingId: string,
   actorId: string,
@@ -352,6 +441,14 @@ async function assertWritable(
   return row;
 }
 
+/**
+ * 计算用户对给定题目集合的 AC 集合。
+ * 编程题：finished 且 score>0；客观题：满分（score=10000）。
+ *
+ * @param userId 用户 id
+ * @param problemIds 题目 id 列表
+ * @returns 已 AC 的题目 id 集合
+ */
 async function getAcceptedProblemIds(
   userId: string,
   problemIds: string[],
@@ -385,6 +482,15 @@ async function getAcceptedProblemIds(
   ]);
 }
 
+/**
+ * 列出题单内题目（按 position 升序），并标注查看者的 AC 状态。
+ *
+ * @param trainingId 题单内部 UUID
+ * @param viewerId 查看者 id（可选，未登录不标注 AC）
+ * @param isAdmin 查看者是否为管理员
+ * @returns 题单题目列表
+ * @throws {NotFoundError} 题单不存在或无权查看
+ */
 export async function listTrainingProblems(
   trainingId: string,
   viewerId?: string,
@@ -414,20 +520,31 @@ export async function listTrainingProblems(
   return rows.map((r) => ({ ...r, accepted: accepted.has(r.problem_id) }));
 }
 
-async function resolveProblemId(input: string): Promise<string> {
-  const value = input.trim();
-  const match = value.match(/^([UuPp])(\d+)$/);
-  if (match) {
-    const problem = await getProblemByTypeAndNumber(
-      match[1].toUpperCase(),
-      parseInt(match[2], 10),
-    );
-    return problem.id;
-  }
-  const problem = await getProblem(value);
-  return problem.id;
+/**
+ * 将题目标识（display_id 如 P1001/U42，或 UUID）解析为内部题目 UUID。
+ *
+ * @param input 题目标识
+ * @returns 内部题目 UUID
+ * @throws {NotFoundError} 题目不存在
+ */
+function resolveProblemId(input: string): Promise<string> {
+  return resolveProblemIdOrThrow(input.trim());
 }
 
+/**
+ * 向题单添加题目；未指定 position 时追加到末尾，否则插入并后移后续题目。
+ *
+ * @param trainingId 题单内部 UUID
+ * @param problemId 题目标识（display_id 或 UUID）
+ * @param position 目标位置（可选，非负整数）
+ * @param actorId 操作者用户 id
+ * @param isAdmin 操作者是否为管理员
+ * @returns 新增的题单题目
+ * @throws {NotFoundError} 题单/题目不存在
+ * @throws {ForbiddenError} 无权编辑该题单
+ * @throws {ConflictError} 该题目已在题单中
+ * @throws {BadRequestError} position 非法
+ */
 export async function addTrainingProblem(
   trainingId: string,
   problemId: string,
@@ -497,6 +614,18 @@ export async function addTrainingProblem(
   };
 }
 
+/**
+ * 重排题单内题目顺序（须包含题单当前全部题目，position 唯一且非负）。
+ *
+ * @param trainingId 题单内部 UUID
+ * @param problemsInput 题目 id 与目标 position 的数组
+ * @param actorId 操作者用户 id
+ * @param isAdmin 操作者是否为管理员
+ * @returns 重排后的题单题目列表
+ * @throws {NotFoundError} 题单不存在
+ * @throws {ForbiddenError} 无权编辑该题单
+ * @throws {BadRequestError} 输入非法（重复/缺题/position 非法）
+ */
 export async function reorderTrainingProblems(
   trainingId: string,
   problemsInput: { problem_id: string; position: number }[],
@@ -553,6 +682,16 @@ export async function reorderTrainingProblems(
   return listTrainingProblems(trainingId, actorId, isAdmin);
 }
 
+/**
+ * 从题单移除指定题目。
+ *
+ * @param trainingId 题单内部 UUID
+ * @param problemId 题目内部 UUID
+ * @param actorId 操作者用户 id
+ * @param isAdmin 操作者是否为管理员
+ * @throws {NotFoundError} 题单不存在
+ * @throws {ForbiddenError} 无权编辑该题单
+ */
 export async function removeTrainingProblem(
   trainingId: string,
   problemId: string,
