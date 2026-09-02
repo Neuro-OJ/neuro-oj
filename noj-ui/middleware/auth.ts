@@ -33,6 +33,10 @@ const PASSWORD_CHANGE_WHITELIST = new Set<string>([
 import { useAuthReady } from '~/composables/useAuthReady';
 
 export default defineNuxtRouteMiddleware(async (to, _from) => {
+  // SSR 阶段仅对 messages 页跳过守卫（该页 ssr:false，水合后重新执行），
+  // 避免全局跳过导致其他 SSR 页面失去服务端登录保护
+  if (import.meta.server && to.path.startsWith('/messages')) return;
+
   if (PUBLIC_AUTH_PATHS.has(to.path)) return;
 
   const { loading, isLoggedIn, user, fetchUser } = useAuth();

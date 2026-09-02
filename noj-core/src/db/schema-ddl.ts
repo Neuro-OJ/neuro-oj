@@ -303,8 +303,24 @@ export const SCHEMA_DDL: string[] = [
     id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     sender_id TEXT NOT NULL REFERENCES users(id),
+    type TEXT NOT NULL DEFAULT 'text' CHECK (type IN ('text', 'image')),
+    image_url TEXT,
+    reply_to_message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+    forwarded_from_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
     content TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    edited_at TEXT,
+    recalled_at TEXT,
+    edit_history TEXT
+  )`,
+
+  // 11.1 message_reactions
+  `CREATE TABLE IF NOT EXISTS message_reactions (
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    emoji TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (message_id, user_id, emoji)
   )`,
 
   // 12. conversation_reads
@@ -322,6 +338,16 @@ export const SCHEMA_DDL: string[] = [
     message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
     deleted_at TEXT NOT NULL,
     PRIMARY KEY (user_id, message_id)
+  )`,
+
+  // 13.1 conversation_preferences（备注名/消息免打扰，每用户每会话视角）
+  `CREATE TABLE IF NOT EXISTS conversation_preferences (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    remark_name TEXT,
+    is_muted BOOLEAN NOT NULL DEFAULT false,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, conversation_id)
   )`,
 
   // 14. system_settings (issue #99)
@@ -511,6 +537,7 @@ export const SCHEMA_DDL: string[] = [
     reporter_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     post_id TEXT REFERENCES community_posts(id) ON DELETE SET NULL,
     comment_id TEXT REFERENCES community_comments(id) ON DELETE SET NULL,
+    message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
     content_type TEXT NOT NULL DEFAULT 'post',
     sanction_id TEXT REFERENCES community_sanctions(id) ON DELETE SET NULL,
     ban_id TEXT REFERENCES user_bans(id) ON DELETE SET NULL,
@@ -522,7 +549,7 @@ export const SCHEMA_DDL: string[] = [
     resolved_by TEXT REFERENCES users(id) ON DELETE SET NULL,
     resolved_at TEXT,
     created_at TEXT NOT NULL,
-    CHECK (num_nonnulls(post_id, comment_id) = 1)
+    CHECK (num_nonnulls(post_id, comment_id, message_id) = 1)
   )`,
 
   `CREATE TABLE IF NOT EXISTS community_notifications (
@@ -609,6 +636,7 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_conversations_last_message_at ON conversations (last_message_at)",
   "CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON messages (conversation_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages (sender_id)",
+  "CREATE INDEX IF NOT EXISTS idx_message_reactions_message_id ON message_reactions (message_id)",
   "CREATE INDEX IF NOT EXISTS idx_message_deletions_message_id ON message_deletions (message_id)",
   "CREATE INDEX IF NOT EXISTS idx_system_settings_updated_at ON system_settings (updated_at DESC)",
   "CREATE INDEX IF NOT EXISTS audit_logs_admin_id_idx ON audit_logs (admin_id)",
@@ -637,6 +665,7 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_community_reports_reporter ON community_reports (reporter_id)",
   "CREATE INDEX IF NOT EXISTS idx_community_reports_post ON community_reports (post_id)",
   "CREATE INDEX IF NOT EXISTS idx_community_reports_comment ON community_reports (comment_id)",
+  "CREATE INDEX IF NOT EXISTS idx_community_reports_message ON community_reports (message_id)",
   "CREATE INDEX IF NOT EXISTS idx_community_moderation_actions_target ON community_moderation_actions (target_type, target_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_community_moderation_actions_moderator ON community_moderation_actions (moderator_id)",
   "CREATE INDEX IF NOT EXISTS idx_community_sanctions_active ON community_sanctions (user_id) WHERE revoked_at IS NULL",
@@ -687,8 +716,10 @@ export const ALL_TABLES = [
   "tfa_recovery_codes",
   "conversations",
   "messages",
+  "message_reactions",
   "conversation_reads",
   "message_deletions",
+  "conversation_preferences",
   "system_settings",
   "audit_logs",
   "ip_bans",
