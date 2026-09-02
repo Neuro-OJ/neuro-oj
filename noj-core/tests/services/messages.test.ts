@@ -872,6 +872,8 @@ Deno.test({
       const list = await listMessages(userB, conv.id, 1, 50);
       const recalled = list.data.find((m) => m.id === msg.id);
       assertEquals(recalled?.recalled_at != null, true);
+      // 撤回后普通参与者不应再拿到原文
+      assertEquals(recalled?.content, "该消息已撤回");
       // 非发送者撤回 → 拒绝
       await assertRejects(
         () => recallMessage(userB, conv.id, msg.id),
@@ -879,6 +881,53 @@ Deno.test({
       );
     } finally {
       await cleanup(userA, userB);
+    }
+  },
+});
+
+Deno.test({
+  name: "messages: 已撤回消息不可转发/引用/Reaction",
+  ignore: !hasEnv,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const userA = await createTestUser();
+    const userB = await createTestUser();
+    const userC = await createTestUser();
+    try {
+      const { conversation: convAB } = await findOrCreateConversation(
+        userA,
+        userB,
+      );
+      const { conversation: convAC } = await findOrCreateConversation(
+        userA,
+        userC,
+      );
+      const msg = await sendMessage(userB, convAB.id, "待撤回");
+      await recallMessage(userB, convAB.id, msg.id);
+      // 转发已撤回消息被拒
+      await assertRejects(
+        () =>
+          sendMessage(userA, convAC.id, "转发", {
+            forwarded_from_message_id: msg.id,
+          }),
+        BadRequestError,
+      );
+      // 引用已撤回消息被拒
+      await assertRejects(
+        () =>
+          sendMessage(userA, convAB.id, "引用", {
+            reply_to_message_id: msg.id,
+          }),
+        BadRequestError,
+      );
+      // 对已撤回消息添加 Reaction 被拒
+      await assertRejects(
+        () => addReaction(userA, convAB.id, msg.id, "👍"),
+        BadRequestError,
+      );
+    } finally {
+      await cleanup(userA, userB, userC);
     }
   },
 });

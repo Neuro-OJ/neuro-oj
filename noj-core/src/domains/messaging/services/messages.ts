@@ -247,12 +247,18 @@ export async function sendMessage(
   // 引用回复：被引用消息必须存在于同一会话
   if (replyToMessageId) {
     const [replyMsg] = await getDb()
-      .select({ conversation_id: messages.conversation_id })
+      .select({
+        conversation_id: messages.conversation_id,
+        recalled_at: messages.recalled_at,
+      })
       .from(messages)
       .where(eq(messages.id, replyToMessageId))
       .limit(1);
     if (!replyMsg || replyMsg.conversation_id !== conversationId) {
       throw new BadRequestError("引用的消息不存在或不属于该会话");
+    }
+    if (replyMsg.recalled_at) {
+      throw new BadRequestError("已撤回的消息不可引用");
     }
   }
 
@@ -269,12 +275,16 @@ export async function sendMessage(
         type: messages.type,
         image_url: messages.image_url,
         forwarded_from_user_id: messages.forwarded_from_user_id,
+        recalled_at: messages.recalled_at,
       })
       .from(messages)
       .where(eq(messages.id, forwardedFromMessageId))
       .limit(1);
     if (!srcMsg) {
       throw new BadRequestError("转发的消息不存在");
+    }
+    if (srcMsg.recalled_at) {
+      throw new BadRequestError("已撤回的消息不可转发");
     }
     // 转发者必须是原消息所在会话的参与者
     await assertParticipant(userId, srcMsg.conversation_id);
@@ -363,6 +373,8 @@ export async function uploadMessageImage(
   conversationId: string,
   file: File,
 ): Promise<{ image_url: string }> {
+  // 社交封禁用户不可上传私信图片（与发送消息一致）
+  await assertNotSocialBanned(userId);
   await assertParticipant(userId, conversationId);
   const { bytes, type } = await validateImageFile(
     file,
@@ -456,16 +468,20 @@ export async function listConversations(
     type: string;
     recalled_at: string | null;
   }>(sql`
-    SELECT DISTINCT ON (conversation_id)
-      conversation_id,
-      content,
-      type,
-      recalled_at
-    FROM messages
-    WHERE conversation_id IN (${
+    SELECT DISTINCT ON (m.conversation_id)
+      m.conversation_id,
+      m.content,
+      m.type,
+      m.recalled_at
+    FROM messages m
+    LEFT JOIN message_deletions md
+      ON md.message_id = m.id
+     AND md.user_id = ${userId}
+    WHERE m.conversation_id IN (${
     sql.join(convIds.map((id) => sql`${id}`), sql`, `)
   })
-    ORDER BY conversation_id, created_at DESC
+      AND md.user_id IS NULL
+    ORDER BY m.conversation_id, m.created_at DESC
   `);
   const lastMsgMap = new Map<string, string>();
   for (const msg of executeRows(lastMessageResult)) {
@@ -682,6 +698,7 @@ export async function listMessages(
         sender_id: messages.sender_id,
         content: messages.content,
         type: messages.type,
+        recalled_at: messages.recalled_at,
       })
       .from(messages)
       .where(inArray(messages.id, replyIds));
@@ -699,7 +716,7 @@ export async function listMessages(
       replyMap.set(r.id, {
         sender_id: r.sender_id,
         sender_name: replySenderMap.get(r.sender_id) ?? "已注销用户",
-        content: r.content,
+        content: r.recalled_at ? "该消息已撤回" : r.content,
         type: r.type,
       });
     }
@@ -814,8 +831,8 @@ export async function listMessages(
       id: r.id,
       sender_id: r.sender_id,
       type: r.type,
-      image_url: r.image_url,
-      content: r.content,
+      image_url: r.recalled_at ? null : r.image_url,
+      content: r.recalled_at ? "该消息已撤回" : r.content,
       created_at: r.created_at,
       edited_at: r.edited_at,
       recalled_at: r.recalled_at,
@@ -928,6 +945,7 @@ export async function getMessageImageBytes(
       conversation_id: messages.conversation_id,
       type: messages.type,
       image_url: messages.image_url,
+      recalled_at: messages.recalled_at,
     })
     .from(messages)
     .leftJoin(
@@ -946,6 +964,9 @@ export async function getMessageImageBytes(
     )
     .limit(1);
   if (!msg || msg.type !== "image" || !msg.image_url) {
+    throw new NotFoundError("图片消息不存在");
+  }
+  if (msg.recalled_at) {
     throw new NotFoundError("图片消息不存在");
   }
   // 消息必须属于 URL 中的会话，且请求者是参与者
@@ -1110,12 +1131,18 @@ export async function addReaction(
   }
   // 校验消息存在、属于该会话且用户是会话参与者
   const [msg] = await getDb()
-    .select({ conversation_id: messages.conversation_id })
+    .select({
+      conversation_id: messages.conversation_id,
+      recalled_at: messages.recalled_at,
+    })
     .from(messages)
     .where(eq(messages.id, messageId))
     .limit(1);
   if (!msg || msg.conversation_id !== conversationId) {
     throw new NotFoundError("消息不存在");
+  }
+  if (msg.recalled_at) {
+    throw new BadRequestError("已撤回的消息不可操作");
   }
   await assertParticipant(userId, msg.conversation_id);
 
@@ -1167,12 +1194,18 @@ export async function removeReaction(
 ) {
   // 校验消息存在、属于该会话且用户是会话参与者
   const [msg] = await getDb()
-    .select({ conversation_id: messages.conversation_id })
+    .select({
+      conversation_id: messages.conversation_id,
+      recalled_at: messages.recalled_at,
+    })
     .from(messages)
     .where(eq(messages.id, messageId))
     .limit(1);
   if (!msg || msg.conversation_id !== conversationId) {
     throw new NotFoundError("消息不存在");
+  }
+  if (msg.recalled_at) {
+    throw new BadRequestError("已撤回的消息不可操作");
   }
   await assertParticipant(userId, msg.conversation_id);
 

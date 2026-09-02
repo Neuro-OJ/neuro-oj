@@ -600,7 +600,7 @@ router.get("/reports/:reportId", authMiddleware, async (c) => {
   ) {
     const history = await getReportMessageHistory(
       detail.message.conversation_id,
-      actorId,
+      detail.report.reporter_id,
     );
     // 附加到响应：查看者是举报者本人时隐藏已撤回消息原文；管理员查看他人举报可见全部
     (detail as Record<string, unknown>).message_history = detail.report

@@ -828,6 +828,15 @@ export async function getReportImageBytes(
   if (msg.conversation_id !== conversationId) {
     throw new NotFoundError("图片消息不存在");
   }
+  // 仅允许读取确实存在于举报工单中的私信图片，防止审核员越权访问任意会话图片
+  const [report] = await db
+    .select({ id: communityReports.id })
+    .from(communityReports)
+    .where(eq(communityReports.message_id, messageId))
+    .limit(1);
+  if (!report) {
+    throw new NotFoundError("图片消息不存在");
+  }
   const provider = await getStorageProvider();
   const bytes = await provider.get(msg.image_url);
   const parsed = parseStorageUrl(msg.image_url);
