@@ -1,7 +1,11 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../../../middleware/auth.ts";
 import { parseJsonBody } from "../../../lib/request.ts";
-import { BadRequestError, NotFoundError } from "../../../lib/errors.ts";
+import {
+  BadRequestError,
+  NotFoundError,
+  ServiceUnavailableError,
+} from "../../../lib/errors.ts";
 import {
   createLlmProvider,
   listLlmProviders,
@@ -24,6 +28,14 @@ import {
  * - GET/POST /llm/quotas            配额查询 / 新增或更新
  */
 const router = new Hono<AuthEnv>();
+
+/**
+ * 将 LLM Gateway 错误统一转换为管理端 API 的业务错误。
+ *
+ * 该错误处理器覆盖本 router 的所有入口，避免 Provider 读写、用量和配额
+ * 路由各自遗漏错误处理。通过抛出 AppError 交由父级全局处理器统一输出。
+ */
+router.onError((error) => mapLlmError(error));
 
 /**
  * 获取 LLM Provider 列表。
@@ -50,12 +62,8 @@ router.post("/llm/providers", async (c) => {
   if (!body.name || !body.base_url || !body.model || !body.api_key) {
     return c.json({ error: "缺少必填字段" }, 400);
   }
-  try {
-    const data = await createLlmProvider(body);
-    return c.json({ data }, 201);
-  } catch (error) {
-    return mapLlmError(error);
-  }
+  const data = await createLlmProvider(body);
+  return c.json({ data }, 201);
 });
 
 /**
@@ -70,12 +78,8 @@ router.post("/llm/providers", async (c) => {
 router.put("/llm/providers/:id", async (c) => {
   const id = c.req.param("id") as string;
   const body = await parseJsonBody<Partial<LlmProviderInput>>(c);
-  try {
-    const data = await updateLlmProvider(id, body);
-    return c.json({ data });
-  } catch (error) {
-    return mapLlmError(error);
-  }
+  const data = await updateLlmProvider(id, body);
+  return c.json({ data });
 });
 
 /**
@@ -147,11 +151,22 @@ async function fetchLlmQuotas(): Promise<unknown[]> {
   const token = Deno.env.get("NOJ_LLM_SERVICE_TOKEN") ?? "";
   const gatewayUrl = Deno.env.get("NOJ_LLM_GATEWAY_URL") ??
     "http://localhost:8001";
-  const res = await fetch(`${gatewayUrl}/internal/quotas`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${gatewayUrl}/internal/quotas`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    throw new LlmGatewayError(503, "gateway_unavailable");
+  }
   if (!res.ok) {
-    throw new Error(`LLM Gateway 配额查询失败: ${res.status}`);
+    const errorBody = await res.json().catch(() => null) as
+      | { error?: unknown }
+      | null;
+    throw new LlmGatewayError(
+      res.status,
+      typeof errorBody?.error === "string" ? errorBody.error : "gateway_error",
+    );
   }
   const body = await res.json().catch(() => null) as
     | { data?: unknown[] }
@@ -165,9 +180,12 @@ async function fetchLlmQuotas(): Promise<unknown[]> {
  * core 的 request() 对 gateway 任何非 2xx 都抛 LlmGatewayError（非 AppError），
  * 若不在路由层捕获会落入全局 onError 变成 500 INTERNAL_ERROR。
  */
-function mapLlmError(error: unknown): never {
+export function mapLlmError(error: unknown): never {
   if (error instanceof LlmGatewayError) {
     if (error.status === 404) throw new NotFoundError("模型配置不存在");
+    if (error.status >= 500) {
+      throw new ServiceUnavailableError("模型服务暂时不可用");
+    }
     if (error.status === 400) throw new BadRequestError(error.code, error.code);
     throw new BadRequestError("模型服务暂时不可用", "LLM_GATEWAY_UNAVAILABLE");
   }

@@ -155,10 +155,10 @@ e2eTest("[e2e/contest] 3. 排名包含提交分数", async () => {
   const participantRows =
     (participantResult.body as { data: KaggleRankingRow[] }).data;
   const adminRows = (adminResult.body as { data: KaggleRankingRow[] }).data;
-  if (participantRows[0]?.total_score <= 0) {
+  if (!participantRows[0] || participantRows[0].total_score <= 0) {
     throw new Error("参赛者排名应包含提交分数");
   }
-  if (adminRows[0]?.total_score <= 0) {
+  if (!adminRows[0] || adminRows[0].total_score <= 0) {
     throw new Error("管理员排名应包含提交分数");
   }
 });
