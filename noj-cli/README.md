@@ -29,18 +29,17 @@ P5 补充：`deploy up` 与 `run-server` 在 process 模式且未配置 `dev_com
 （SHA-256），缓存到 `<install_dir>/bin/`；`deploy init` 会尝试解析最新版本号，
 网络不可用时回退到内置默认版本。
 
-## 安装
+## 使用边界
 
-`noj-cli` 是唯一安装入口，直接下载 GitHub Release 二进制即可：
+生产服务器请使用仓库根目录的 `setup.sh` 和 `noj`，不要依赖 `noj-cli` Release
+二进制。`noj-cli` 保留在仓库中，作为独立的 Deno/TypeScript 源码工具开发和测试：
 
 ```bash
-curl -fsSL -o noj-cli \
-  https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/noj-cli-linux-amd64
-chmod +x noj-cli
-./noj-cli doctor
+cd noj-cli
+deno run -A src/cli.ts doctor
 ```
 
-固定版本时把 `releases/latest` 换成 `releases/download/vX.Y.Z`。
+它不会作为 GitHub Release 二进制资产发布，也不承担旧版 `noj` 的兼容入口。
 
 ## 用法
 

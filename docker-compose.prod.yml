@@ -5,11 +5,11 @@
 #   vim .env.prod
 #   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 #
-# 仅 Nginx 容器对外暴露 HTTP 端口（TLS 由外部边缘终止）；server/judge/db/redis/minio 不暴露到宿主机。
+# 仅 Nginx 容器对外暴露 HTTP 端口（TLS 由外部边缘终止）；core/judge/db/redis/minio 不暴露到宿主机。
 # 镜像从 NOJ_IMAGE_REGISTRY 拉取，版本由 NOJ_VERSION 控制。
 name: noj-prod
 
-x-server-env: &server-env
+x-core-env: &core-env
   NOJ_ENV: production
   NOJ_PROJECT_ROOT: /app
   NOJ_MIGRATIONS_DIR: /app/drizzle
@@ -55,7 +55,7 @@ services:
         /app/bin/noj db migrate &&
         /app/bin/noj init system
     environment:
-      <<: *server-env
+      <<: *core-env
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,11 +65,11 @@ services:
       - noj-net
     restart: "no"
 
-  # ── 服务端 API（noj-server） ─────────────────────────────────────
-  server:
+  # ── 核心 API ──────────────────────────────────────────────────────
+  core:
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-server:${NOJ_VERSION:?NOJ_VERSION is required}"
     environment:
-      <<: *server-env
+      <<: *core-env
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -105,13 +105,13 @@ services:
   ui:
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-ui:${NOJ_VERSION:?NOJ_VERSION is required}"
     environment:
-      NUXT_API_BASE: http://server:8000
+      NUXT_API_BASE: http://core:8000
       NUXT_NOJ_ENV: ${NUXT_NOJ_ENV:-production}
       NUXT_ALLOW_INSECURE_HTTP: ${NOJ_ALLOW_INSECURE_HTTP:-false}
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3000"
     depends_on:
-      server:
+      core:
         condition: service_healthy
     expose:
       - "3000"

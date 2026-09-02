@@ -1,4 +1,4 @@
-/** 校验 docker-compose.prod.yml 已从 noj-core/core 改名为 noj-server/server。 */
+/** 校验生产 Compose 的兼容命名：core 服务使用当前已发布的 noj-server 镜像。 */
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,31 +13,25 @@ export function verifyComposeServer(): string[] {
   const problems: string[] = [];
   const text = Deno.readTextFileSync(COMPOSE);
 
-  if (text.includes("noj-core")) {
-    problems.push("compose 仍出现 noj-core（应全部改名 noj-server）");
-  }
-  if (/^\s{2}core:\s*$/m.test(text)) {
-    problems.push("compose 仍存在服务 core（应为 server）");
-  }
-  if (!text.includes("x-server-env: &server-env")) {
+  if (!text.includes("x-core-env: &core-env")) {
     problems.push(
-      "compose 缺少锚点 x-server-env: &server-env（应替换 x-core-env）",
+      "compose 缺少兼容锚点 x-core-env: &core-env",
     );
   }
   if (!text.includes("/noj-server:${NOJ_VERSION")) {
     problems.push(
-      "compose server/migrate 镜像未使用 ghcr.io/neuro-oj/noj-server",
+      "compose core/migrate 镜像未使用当前已发布的 ghcr.io/neuro-oj/noj-server",
     );
   }
-  if (!/^\s{2}server:\s*$/m.test(text)) {
-    problems.push("compose 缺少服务 server");
+  if (!/^\s{2}core:\s*$/m.test(text)) {
+    problems.push("compose 缺少兼容服务 core");
   }
-  if (!text.includes("NUXT_API_BASE: http://server:8000")) {
-    problems.push("ui 的 NUXT_API_BASE 未指向 http://server:8000");
+  if (!text.includes("NUXT_API_BASE: http://core:8000")) {
+    problems.push("ui 的 NUXT_API_BASE 未指向 http://core:8000");
   }
-  // ui 的 depends_on 下必须有 server；该行缩进 6 空格，形如 `      server:`
-  if (!/^\s{6}server:\s*$/m.test(text)) {
-    problems.push("depends_on 中缺少 server 依赖项");
+  // ui 的 depends_on 下必须有 core；该行缩进 6 空格，形如 `      core:`
+  if (!/^\s{6}core:\s*$/m.test(text)) {
+    problems.push("depends_on 中缺少 core 依赖项");
   }
   return problems;
 }
