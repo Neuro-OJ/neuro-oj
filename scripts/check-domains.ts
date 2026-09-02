@@ -26,6 +26,7 @@ const DOMAINS = new Set([
   "system",
   "gateway",
   "query",
+  "content-review",
 ]);
 
 const LEGACY_ALIASES: Record<string, string> = {

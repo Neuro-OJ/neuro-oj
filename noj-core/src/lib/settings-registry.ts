@@ -14,6 +14,7 @@
  * - redis: Redis
  * - cors: 跨域
  * - judge: 评测资源限制
+ * - review: 内容合规审核（issue #413）
  * - other: 其他
  */
 
@@ -30,6 +31,7 @@ export type SettingCategory =
   | "cors"
   | "community"
   | "judge"
+  | "review"
   | "other";
 
 /** 注册表条目（DB-backed 设置项的元数据） */
@@ -620,6 +622,87 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     envFallback: "JUDGE_MAX_SOLUTION_MEMORY_LIMIT_MB",
     category: "judge",
     min: 0,
+  },
+
+  // ── review（内容合规审核，issue #413）───────────────────────
+  {
+    key: "content_review_enabled",
+    type: "boolean",
+    default: false,
+    description: "内容合规审核总开关（启用后 UGC 同步审核 + 私信异步送审）",
+    is_secret: false,
+    envFallback: "CONTENT_REVIEW_ENABLED",
+    category: "review",
+  },
+  {
+    key: "content_review_provider",
+    type: "string",
+    default: "mock",
+    description: "审核 Provider（mock / aliyun / tencent / none）",
+    is_secret: false,
+    envFallback: "CONTENT_REVIEW_PROVIDER",
+    category: "review",
+  },
+  {
+    key: "content_review_provider_key",
+    type: "string",
+    default: "",
+    description:
+      "审核 Provider AccessKey/SecretId（已脱敏：仅保留前 3 后 3 字符）",
+    is_secret: true,
+    envFallback: "CONTENT_REVIEW_PROVIDER_KEY",
+    category: "review",
+  },
+  {
+    key: "content_review_provider_secret",
+    type: "string",
+    default: "",
+    description: "审核 Provider SecretKey（已脱敏：仅保留前 3 后 3 字符）",
+    is_secret: true,
+    envFallback: "CONTENT_REVIEW_PROVIDER_SECRET",
+    category: "review",
+  },
+  {
+    key: "content_review_risk_threshold",
+    type: "integer",
+    default: 80,
+    description: "高置信违规拦截阈值（0-100，≥ 此值拒绝发布）",
+    is_secret: false,
+    envFallback: "CONTENT_REVIEW_RISK_THRESHOLD",
+    category: "review",
+    min: 0,
+    max: 100,
+  },
+  {
+    key: "content_review_review_threshold",
+    type: "integer",
+    default: 50,
+    description: "低置信疑似阈值（0-100，≥ 此值转人工审查队列）",
+    is_secret: false,
+    envFallback: "CONTENT_REVIEW_REVIEW_THRESHOLD",
+    category: "review",
+    min: 0,
+    max: 100,
+  },
+  {
+    key: "content_review_async_enabled",
+    type: "boolean",
+    default: true,
+    description: "私信异步审核队列开关（关闭后私信不再送审）",
+    is_secret: false,
+    envFallback: "CONTENT_REVIEW_ASYNC_ENABLED",
+    category: "review",
+  },
+  {
+    key: "content_review_timeout_ms",
+    type: "integer",
+    default: 3000,
+    description: "审核调用超时（毫秒，超时按 fail-open 转人工）",
+    is_secret: false,
+    envFallback: "CONTENT_REVIEW_TIMEOUT_MS",
+    category: "review",
+    min: 100,
+    max: 30000,
   },
 
   // ── other ─────────────────────────────────────────────────

@@ -40,7 +40,10 @@ export type AuditAction =
   | "community.preset_applied"
   | "announcement.create"
   | "announcement.update"
-  | "announcement.delete";
+  | "announcement.delete"
+  | "review.queued"
+  | "review.rejected"
+  | "review.resolved";
 
 /** 按 action 强类型的 detail（discriminated union） */
 export type AuditDetail =
@@ -168,7 +171,32 @@ export type AuditDetail =
   }
   | { action: "announcement.create"; title: string }
   | { action: "announcement.update"; title: string }
-  | { action: "announcement.delete"; title: string };
+  | { action: "announcement.delete"; title: string }
+  // ── issue #413 内容合规审核 ──
+  | {
+    action: "review.queued";
+    content_type: "post" | "comment" | "message";
+    target_id: string;
+    channel: "ugc" | "dm";
+    status: string;
+    verdict: string;
+    review_provider: string;
+  }
+  | {
+    action: "review.rejected";
+    content_type: "post" | "comment";
+    target_id: string;
+    label?: string;
+    risk_level?: string;
+  }
+  | {
+    action: "review.resolved";
+    content_type: "post" | "comment" | "message";
+    target_id: string;
+    status: "reviewed" | "dismissed";
+    action_taken: string;
+    resolution: string;
+  };
 
 /** audit_logs 表的响应类型 */
 export interface AuditLogEntry {

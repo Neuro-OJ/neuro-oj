@@ -15,6 +15,8 @@ import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
 import { getStorageProvider } from "../../../lib/storage/factory.ts";
 import { isStorageUrl, parseStorageUrl } from "../../../lib/storage/types.ts";
 import { validateImageFile } from "../../../lib/image-validation.ts";
+import { logger } from "../../../lib/logging.ts";
+import { enqueueDmMessageReview } from "../../content-review/index.ts";
 
 /** 消息内容最大长度 */
 const MAX_MESSAGE_LENGTH = 10_000;
@@ -353,6 +355,20 @@ export async function sendMessage(
       sender_id: userId,
     },
   );
+
+  // 异步内容合规送审（issue #413）：仅文本消息送审；不阻塞发送路径
+  if (type === "text") {
+    await enqueueDmMessageReview({
+      message_id: message.id,
+      conversation_id: conversationId,
+      sender_id: userId,
+      content: forwardedContent,
+      created_at: now,
+    }).catch((err) => {
+      // 入队内部已捕获异常；此处兜底避免任何意外阻断消息发送
+      logger.warn("[content-review] 私信送审入队兜底失败", { err });
+    });
+  }
 
   return message;
 }
