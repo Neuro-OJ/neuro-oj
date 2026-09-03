@@ -21,7 +21,7 @@
 
 import type { Context, Next } from "hono";
 import { ForbiddenError } from "./../shared/base/errors.ts";
-import { getClientIp, hasDirectPeer } from "../lib/rate-limit-env.ts";
+import { getClientIp, hasDirectPeer } from "../domains/system/index.ts";
 import { isBannedIp } from "../lib/cidr.ts";
 import { getBannedRanges } from "../domains/identity/index.ts";
 

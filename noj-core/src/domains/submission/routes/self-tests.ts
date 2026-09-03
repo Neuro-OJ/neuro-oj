@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { authMiddleware } from "../../../middleware/auth.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { BadRequestError } from "./../../../shared/base/errors.ts";
-import { enforceSelfTestRateLimit } from "../../../lib/hardening-rate-limit.ts";
+import { enforceSelfTestRateLimit } from "../../system/index.ts";
 import { resolveProblem } from "../../../lib/problem-resolve.ts";
 import { createSelfTest, getSelfTest } from "../services/self-tests.ts";
 import type { SelfTestInput } from "../../../types/self-tests.ts";

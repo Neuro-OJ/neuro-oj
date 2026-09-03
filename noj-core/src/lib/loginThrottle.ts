@@ -24,7 +24,7 @@
 
 import { getRedis } from "./../shared/mq/connection.ts";
 import { ServiceUnavailableError } from "./../shared/base/errors.ts";
-import { isRateLimitEnabled, settingInt } from "./rate-limit-env.ts";
+import { isRateLimitEnabled, settingInt } from "../domains/system/index.ts";
 
 const FAIL_TTL_SEC = 3600; // 失败计数 TTL：1 小时
 

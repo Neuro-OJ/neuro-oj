@@ -13,8 +13,8 @@
  * 避免 Redis 抖动时被绕过限流。
  */
 
-import { getRedis } from "./../shared/mq/connection.ts";
-import { ServiceUnavailableError } from "./../shared/base/errors.ts";
+import { getRedis } from "../mq/connection.ts";
+import { ServiceUnavailableError } from "../base/errors.ts";
 
 /** 时间窗口（秒） */
 export interface RateLimitConfig {

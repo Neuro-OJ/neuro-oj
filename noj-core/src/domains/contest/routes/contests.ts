@@ -40,7 +40,7 @@ import {
 } from "../../submission/index.ts";
 import { isValidContestType } from "../../../types/contests.ts";
 import { createActivity } from "../../community/index.ts";
-import { enforceContestSubmissionRateLimit } from "../../../lib/hardening-rate-limit.ts";
+import { enforceContestSubmissionRateLimit } from "../../system/index.ts";
 
 const contests = new Hono<OptionalAuthEnv>();
 const MAX_CODE_LENGTH = 100 * 1024;

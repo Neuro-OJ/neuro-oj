@@ -21,12 +21,12 @@ import {
   type RateLimitConfig,
   rateLimitHeaders,
   type RateLimitResult,
-} from "../lib/rate-limit.ts";
+} from "./../shared/rate-limit/rate-limit.ts";
 import {
   getClientIp,
   isRateLimitEnabled,
   settingInt,
-} from "../lib/rate-limit-env.ts";
+} from "../domains/system/index.ts";
 
 // ── 默认限流配置（可被环境变量覆盖） ────────────────────
 

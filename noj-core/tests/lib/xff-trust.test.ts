@@ -11,7 +11,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
 import { resetDbForTest } from "./../../src/shared/db/connection.ts";
-import { getClientIp } from "../../src/lib/rate-limit-env.ts";
+import { getClientIp } from "./../../src/domains/system/index.ts";
 
 import { updateSetting } from "../../src/domains/system/index.ts";
 import {
@@ -93,7 +93,7 @@ Deno.test({
     await initSystemSettings();
     await updateSetting("trusted_proxies", "10.0.0.1", "0");
     const { _resetTrustedProxyCacheForTest } = await import(
-      "../../src/lib/rate-limit-env.ts"
+      "./../../src/domains/system/index.ts"
     );
     _resetTrustedProxyCacheForTest();
 
@@ -119,7 +119,7 @@ Deno.test({
     await updateSetting("trusted_proxies", "10.0.0.0/8", "0");
     // 必须清缓存，因为 getTrustedProxyEntries 内部缓存
     const { _resetTrustedProxyCacheForTest } = await import(
-      "../../src/lib/rate-limit-env.ts"
+      "./../../src/domains/system/index.ts"
     );
     _resetTrustedProxyCacheForTest();
 

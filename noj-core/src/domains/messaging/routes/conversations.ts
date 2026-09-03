@@ -29,7 +29,7 @@ import {
   uploadMessageImage,
 } from "../services/messages.ts";
 import { getCommunityConfig } from "../../community/index.ts";
-import { enforceMessageSendRateLimit } from "../../../lib/hardening-rate-limit.ts";
+import { enforceMessageSendRateLimit } from "../../system/index.ts";
 
 /** 消息内容最大长度 */
 const MAX_MESSAGE_LENGTH = 10_000;

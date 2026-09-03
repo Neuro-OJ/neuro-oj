@@ -47,7 +47,7 @@ import { getUserPermissions } from "../../../lib/permissions.ts";
 import { signToken, verifyToken } from "../../../lib/jwt.ts";
 import { revokeJti } from "../../../lib/revokedTokens.ts";
 import { getSetting } from "../../system/index.ts";
-import { getClientIp } from "../../../lib/rate-limit-env.ts";
+import { getClientIp } from "../../system/index.ts";
 import { getBannedIpDetail } from "../services/banlist.ts";
 import {
   applyLoginBackoff,
@@ -75,7 +75,7 @@ import {
   enforcePasswordResetEmailRateLimit,
   enforcePasswordResetIpRateLimit,
   enforceRegisterRateLimit,
-} from "../../../lib/hardening-rate-limit.ts";
+} from "../../system/index.ts";
 
 // change-password 端点的限流命名空间（独立于登录端点）
 // 失败计数 / 锁定 / 退避均使用此前缀，避免改密失败反锁 /login（issue #75 评审 H4）

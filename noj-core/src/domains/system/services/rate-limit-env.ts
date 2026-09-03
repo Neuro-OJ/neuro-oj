@@ -12,10 +12,10 @@
  */
 
 import type { Context } from "hono";
-import { getSetting } from "../domains/system/index.ts";
-import { findDefinition } from "./../shared/config/settings-registry.ts";
-import { type CidrRange, ipInRange, parseCidr } from "./cidr.ts";
-import { logger } from "./../shared/base/logging.ts";
+import { getSetting } from "./system-settings.ts";
+import { findDefinition } from "../../../shared/config/settings-registry.ts";
+import { type CidrRange, ipInRange, parseCidr } from "../../../lib/cidr.ts";
+import { logger } from "../../../shared/base/logging.ts";
 
 /** 读取整数环境变量（非正数或 NaN 时回退默认值） */
 export function envInt(name: string, def: number): number {

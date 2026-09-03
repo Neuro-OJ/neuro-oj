@@ -16,7 +16,7 @@ import {
   enforceObjectiveSubmitRateLimit,
   enforceProblemCreateRateLimit,
   enforceProblemImportRateLimit,
-} from "../../../lib/hardening-rate-limit.ts";
+} from "../../system/index.ts";
 import { withActorContext } from "../../../lib/requestContext.ts";
 import {
   createProblem,

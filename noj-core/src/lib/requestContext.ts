@@ -7,7 +7,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Context } from "hono";
-import { getClientIp } from "./rate-limit-env.ts";
+import { getClientIp } from "../domains/system/index.ts";
 
 export interface RequestContext {
   /** 当前用户 ID */
