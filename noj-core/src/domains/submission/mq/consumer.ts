@@ -2,13 +2,16 @@ import {
   type ConsumerOptions,
   createConsumer,
   requestConsumerShutdown,
-} from "./../shared/mq/base-consumer.ts";
-import { saveEvaluationResult } from "../domains/submission/index.ts";
-import { saveSelfTestResult } from "../domains/submission/index.ts";
-import { logger, logJudgeResultReceived } from "./../shared/base/logging.ts";
-import { Channels, publishSseEvent } from "./../shared/sse/event-bus.ts";
-import { SELF_TEST_ID_PREFIX } from "./../domains/submission/index.ts";
-import type { JudgeResult } from "./../domains/submission/index.ts";
+} from "../../../shared/mq/base-consumer.ts";
+import { saveEvaluationResult } from "../services/submissions/submissions-result.ts";
+import { saveSelfTestResult } from "../services/self-tests.ts";
+import {
+  logger,
+  logJudgeResultReceived,
+} from "../../../shared/base/logging.ts";
+import { Channels, publishSseEvent } from "../../../shared/sse/event-bus.ts";
+import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";
+import type { JudgeResult } from "../types/index.ts";
 
 /**
  * 评测结果队列名称。

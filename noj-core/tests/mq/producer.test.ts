@@ -15,7 +15,7 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import {
   MAX_JUDGE_QUEUE_LENGTH,
   pushJudgeTask,
-} from "../../src/mq/producer.ts";
+} from "../../src/domains/submission/mq/producer.ts";
 import {
   getRedis,
   resetRedisForTest,

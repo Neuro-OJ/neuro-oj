@@ -9,18 +9,18 @@
 
 import { and, asc, eq, isNull, lte, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
-import { getDb } from "./../shared/db/connection.ts";
-import { problems, selfTests, submissions } from "./../shared/db/schema.ts";
-import { getStorageProvider } from "./../domains/system/index.ts";
-import { getSetting } from "../domains/system/index.ts";
-import { getRedis } from "./../shared/mq/connection.ts";
+import { getDb } from "../../../shared/db/connection.ts";
+import { problems, selfTests, submissions } from "../../../shared/db/schema.ts";
+import { getStorageProvider } from "../../system/index.ts";
+import { getSetting } from "../../system/index.ts";
+import { getRedis } from "../../../shared/mq/connection.ts";
 import { isRetryableJudgeQueueError, JUDGE_QUEUE } from "./producer.ts";
-import { logger } from "./../shared/base/logging.ts";
-import type { JudgeTask } from "./../domains/submission/index.ts";
-import type { RuntimeConfig } from "./../domains/catalog/index.ts";
-import { LANGUAGE_EXT_MAP } from "./../domains/submission/index.ts";
-import { buildJudgeTaskLlmForProvider } from "./../domains/gateway/index.ts";
-import { getUserLlmProvider } from "../domains/gateway/index.ts";
+import { logger } from "../../../shared/base/logging.ts";
+import type { JudgeTask } from "../types/index.ts";
+import type { RuntimeConfig } from "../../catalog/index.ts";
+import { LANGUAGE_EXT_MAP } from "../types/index.ts";
+import { buildJudgeTaskLlmForProvider } from "../../gateway/index.ts";
+import { getUserLlmProvider } from "../../gateway/index.ts";
 
 const RESULT_QUEUE = "noj:judge:results";
 

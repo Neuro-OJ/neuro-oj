@@ -9,11 +9,11 @@ import {
   submissions,
   users,
 } from "./../../src/shared/db/schema.ts";
-import { handleResultMessage } from "../../src/mq/consumer.ts";
+import { handleResultMessage } from "../../src/domains/submission/mq/consumer.ts";
 import {
   recoverPendingSelfTests,
   recoverPendingSubmissions,
-} from "../../src/mq/sweeper.ts";
+} from "../../src/domains/submission/mq/sweeper.ts";
 import {
   getRedis,
   resetRedisForTest,

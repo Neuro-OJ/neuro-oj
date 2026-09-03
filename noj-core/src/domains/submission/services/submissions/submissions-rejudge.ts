@@ -19,7 +19,7 @@ import {
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
 import { getDb } from "./../../../../shared/db/connection.ts";
-import { pushJudgeTask } from "../../../../mq/producer.ts";
+import { pushJudgeTask } from "../../mq/producer.ts";
 import { getProblem } from "../../../catalog/index.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
 import { logAudit } from "../../../system/index.ts";

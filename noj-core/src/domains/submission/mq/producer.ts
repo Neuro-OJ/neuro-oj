@@ -1,6 +1,6 @@
-import type { JudgeTask } from "./../domains/submission/index.ts";
-import { getRedis } from "./../shared/mq/connection.ts";
-import { logJudgeTaskEnqueued } from "./../shared/base/logging.ts";
+import type { JudgeTask } from "../types/index.ts";
+import { getRedis } from "../../../shared/mq/connection.ts";
+import { logJudgeTaskEnqueued } from "../../../shared/base/logging.ts";
 
 /**
  * 评测任务队列名称。

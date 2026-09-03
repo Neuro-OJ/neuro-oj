@@ -1,12 +1,12 @@
 import { createApp } from "./app.ts";
 import { closeDbForShutdown } from "./shared/db/connection.ts";
 import { runMigrations } from "./shared/db/migrate.ts";
-import { startQueueSweeper } from "./mq/sweeper.ts";
+import { startQueueSweeper } from "./domains/submission/index.ts";
 import { closeRedisForShutdown, connectRedis } from "./shared/mq/connection.ts";
 import {
   requestResultConsumerShutdown,
   startResultConsumerWithRetry,
-} from "./mq/consumer.ts";
+} from "./domains/submission/index.ts";
 import { initEventSubscriber } from "./shared/sse/event-bus.ts";
 import { snapshotEnv } from "./domains/system/index.ts";
 import { validateRegistry } from "./shared/config/settings-registry.ts";

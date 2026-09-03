@@ -15,10 +15,7 @@ import {
 } from "./../../../shared/base/errors.ts";
 import { checkPermission } from "./../../identity/index.ts";
 import { getStorageProvider } from "./../../system/index.ts";
-import {
-  isRetryableJudgeQueueError,
-  pushJudgeTask,
-} from "../../../mq/producer.ts";
+import { isRetryableJudgeQueueError, pushJudgeTask } from "../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
 import { logger } from "./../../../shared/base/logging.ts";
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";

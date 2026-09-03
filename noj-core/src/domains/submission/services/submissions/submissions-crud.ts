@@ -52,7 +52,7 @@ import {
 import {
   isRetryableJudgeQueueError,
   pushJudgeTask,
-} from "../../../../mq/producer.ts";
+} from "../../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import { assertContestSubmissionLimit } from "../../../contest/index.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
