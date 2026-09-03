@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import {
   evaluationResults,
   objectiveSubmissions,
@@ -8,7 +8,7 @@ import {
   submissions,
   trainings,
   users,
-} from "../../src/db/schema.ts";
+} from "./../../src/shared/db/schema.ts";
 import {
   addTrainingProblem,
   createTraining,

@@ -15,7 +15,7 @@ import {
   getCachedTodayStats,
   getCachedTotalStats,
 } from "../../src/domains/query/index.ts";
-import { resetDbForTest } from "../../src/db/connection.ts";
+import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 
 // PGlite 内存数据库始终可用
 const dbAvailable = true;

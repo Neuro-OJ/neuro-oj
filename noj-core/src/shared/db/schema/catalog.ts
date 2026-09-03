@@ -10,7 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { manyToManyPk, publicIdColumn, tsvector } from "./common.ts";
-import { ROOT_USER_ID } from "./../../shared/base/constants.ts";
+import { ROOT_USER_ID } from "../../base/constants.ts";
 import { users } from "./identity.ts";
 
 /**

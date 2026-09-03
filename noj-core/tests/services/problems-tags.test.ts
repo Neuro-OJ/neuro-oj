@@ -12,7 +12,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import { initRedisForTest } from "../lib/helper.ts";
-import { getDb } from "../../src/db/connection.ts";
+import { getDb } from "./../../src/shared/db/connection.ts";
 import {
   evaluationResults,
   problems,
@@ -20,7 +20,7 @@ import {
   submissions,
   tags,
   users,
-} from "../../src/db/schema.ts";
+} from "./../../src/shared/db/schema.ts";
 import { BadRequestError } from "./../../src/shared/base/errors.ts";
 import { syncProblemTags } from "../../src/domains/catalog/index.ts";
 import {
@@ -32,7 +32,7 @@ import { createTag } from "../../src/domains/catalog/index.ts";
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasEnv;
 
-import { resetDbForTest } from "../../src/db/connection.ts";
+import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 await resetDbForTest();
 await initRedisForTest();
 

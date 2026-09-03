@@ -1,12 +1,12 @@
 import { and, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityActivityEvents,
   communityFollows,
   communityNotifications,
   communityPosts,
   users,
-} from "../../../../db/schema.ts";
+} from "./../../../../shared/db/schema.ts";
 import {
   ForbiddenError,
   NotFoundError,

@@ -1,4 +1,4 @@
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import { NotFoundError } from "./../../../../shared/base/errors.ts";
 import { scoreFromDb } from "../../../../types/index.ts";
 import type { UserProfileResponse } from "./users-profile-types.ts";

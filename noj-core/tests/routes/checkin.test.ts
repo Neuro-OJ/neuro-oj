@@ -5,8 +5,8 @@ import { eq } from "drizzle-orm";
 import checkin from "../../src/domains/identity/routes/checkin.ts";
 import { AppError } from "./../../src/shared/base/errors.ts";
 import { signToken } from "../../src/lib/jwt.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { checkIns, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { checkIns, users } from "./../../src/shared/db/schema.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 import { jsonRequest } from "../lib/helper.ts";
 

@@ -11,7 +11,7 @@
  */
 
 import { and, eq, sql } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   permissions,
   rolePermissions,
@@ -19,7 +19,7 @@ import {
   systemSettings,
   userRoles,
   users,
-} from "../../../../db/schema.ts";
+} from "./../../../../shared/db/schema.ts";
 import { PERMISSION_DEFS } from "../../../../types/index.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import { ensureCommunitySeeds } from "../../../community/index.ts";

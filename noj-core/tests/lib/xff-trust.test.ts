@@ -10,7 +10,7 @@
 
 import { assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
-import { resetDbForTest } from "../../src/db/connection.ts";
+import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { getClientIp } from "../../src/lib/rate-limit-env.ts";
 
 import { updateSetting } from "../../src/domains/system/index.ts";

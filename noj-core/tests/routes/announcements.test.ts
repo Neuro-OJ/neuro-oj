@@ -11,14 +11,14 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { createUserToken, initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import {
   permissions,
   rolePermissions,
   roles,
   userRoles,
   users,
-} from "../../src/db/schema.ts";
+} from "./../../src/shared/db/schema.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const hasEnv = !!Deno.env.get("JWT_SECRET");

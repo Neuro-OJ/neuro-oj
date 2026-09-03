@@ -9,8 +9,12 @@
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { desc, eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { announcements, auditLogs, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import {
+  announcements,
+  auditLogs,
+  users,
+} from "./../../src/shared/db/schema.ts";
 import {
   NotFoundError,
   ValidationError,

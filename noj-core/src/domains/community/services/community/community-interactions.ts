@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityBookmarks,
   communityCommentLikes,
@@ -7,7 +7,7 @@ import {
   communityFollows,
   communityPostLikes,
   users,
-} from "../../../../db/schema.ts";
+} from "./../../../../shared/db/schema.ts";
 import {
   NotFoundError,
   ValidationError,

@@ -1,7 +1,11 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { permissions, rolePermissions, roles } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import {
+  permissions,
+  rolePermissions,
+  roles,
+} from "./../../src/shared/db/schema.ts";
 import { ensureRbacSeeds } from "../../src/domains/system/index.ts";
 
 await resetDbForTest();

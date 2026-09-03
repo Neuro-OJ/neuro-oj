@@ -17,8 +17,11 @@
  */
 
 import { eq } from "drizzle-orm";
-import { getDb, registerDbResetCallback } from "../../../db/connection.ts";
-import { systemSettings } from "../../../db/schema.ts";
+import {
+  getDb,
+  registerDbResetCallback,
+} from "./../../../shared/db/connection.ts";
+import { systemSettings } from "./../../../shared/db/schema.ts";
 import { ValidationError } from "./../../../shared/base/errors.ts";
 import { logAudit } from "./audit-log.ts";
 import {

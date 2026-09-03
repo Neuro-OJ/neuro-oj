@@ -10,9 +10,9 @@ import {
   initRedisForTest,
   jsonRequest,
 } from "../lib/helper.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { createProblem } from "../../src/domains/catalog/index.ts";
-import { problems } from "../../src/db/schema.ts";
+import { problems } from "./../../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 
 await resetDbForTest();

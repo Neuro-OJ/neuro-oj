@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
-import { evaluationResults } from "../../../db/schema.ts";
+import { evaluationResults } from "./../../../shared/db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
-import { submissions } from "../../../db/schema.ts";
+import { submissions } from "./../../../shared/db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL templates
-import { users } from "../../../db/schema.ts";
+import { users } from "./../../../shared/db/schema.ts";
 import { BadRequestError } from "./../../../shared/base/errors.ts";
 import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
 import { logger } from "./../../../shared/base/logging.ts";

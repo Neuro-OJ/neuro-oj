@@ -1,7 +1,7 @@
 import { and, eq, gte, type SQL, sql } from "drizzle-orm";
 import { todayUtc } from "./../../../shared/base/dates.ts";
-import { getDb } from "../../../db/connection.ts";
-import { evaluationResults, submissions } from "../../../db/schema.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { evaluationResults, submissions } from "./../../../shared/db/schema.ts";
 import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
 import { FULL_SCORE } from "./../../../shared/base/constants.ts";
 

@@ -17,8 +17,11 @@
 
 import type { Context } from "hono";
 import { and, eq, sql } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
-import { objectiveQuestions, problems } from "../../../../db/schema.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import {
+  objectiveQuestions,
+  problems,
+} from "./../../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ForbiddenError,

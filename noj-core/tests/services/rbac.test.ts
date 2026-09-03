@@ -9,8 +9,13 @@
  */
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { eq, sql } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { permissions, roles, userRoles, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import {
+  permissions,
+  roles,
+  userRoles,
+  users,
+} from "./../../src/shared/db/schema.ts";
 import { getUserPermissions } from "../../src/lib/permissions.ts";
 import { jsonRequest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";

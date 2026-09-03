@@ -14,12 +14,12 @@ import {
   disableTestTransactionForFile,
   getDb,
   resetDbForTest,
-} from "../../src/db/connection.ts";
+} from "./../../src/shared/db/connection.ts";
 
 // 本文件用例依赖“改密结果在后续用例中持续生效”，关闭事务回滚隔离
 disableTestTransactionForFile();
 
-import { users } from "../../src/db/schema.ts";
+import { users } from "./../../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import {
   BadRequestError,

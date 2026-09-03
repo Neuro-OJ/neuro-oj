@@ -1,6 +1,6 @@
 import { eq, ne, sql } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
-import { roles, userRoles, users } from "../../../../db/schema.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import { roles, userRoles, users } from "./../../../../shared/db/schema.ts";
 import { hashPassword } from "../../../../lib/password.ts";
 import { logAuthEvent } from "../../../system/index.ts";
 import {

@@ -3,8 +3,8 @@
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { auditLogs, ipBans, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { auditLogs, ipBans, users } from "./../../src/shared/db/schema.ts";
 import {
   _resetBanlistForTest,
   addIpBan,

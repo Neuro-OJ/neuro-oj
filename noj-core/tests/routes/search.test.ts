@@ -13,8 +13,8 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { sql } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { problems, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { problems, users } from "./../../src/shared/db/schema.ts";
 import { createUserToken, jsonRequest } from "../lib/helper.ts";
 import { connectRedis, getRedis } from "../../src/mq/connection.ts";
 import {

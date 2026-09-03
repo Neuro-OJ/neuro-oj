@@ -6,7 +6,7 @@ import {
   getRedis,
   resetRedisForTest,
 } from "../../src/mq/connection.ts";
-import { resetDbForTest } from "../../src/db/connection.ts";
+import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { AppError } from "./../../src/shared/base/errors.ts";
 
 await resetDbForTest();

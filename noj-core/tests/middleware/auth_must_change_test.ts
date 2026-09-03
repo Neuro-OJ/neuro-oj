@@ -18,7 +18,7 @@ import {
 import { AppError } from "./../../src/shared/base/errors.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { jsonRequest } from "../lib/helper.ts";
-import { resetDbForTest } from "../../src/db/connection.ts";
+import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 

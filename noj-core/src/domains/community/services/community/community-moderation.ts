@@ -8,7 +8,7 @@ import {
   isNull,
   sql,
 } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityComments,
   communityPosts,
@@ -18,7 +18,7 @@ import {
   messages,
   userBans,
   users,
-} from "../../../../db/schema.ts";
+} from "./../../../../shared/db/schema.ts";
 import {
   ConflictError,
   NotFoundError,

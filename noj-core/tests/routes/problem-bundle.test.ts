@@ -7,8 +7,8 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { zipSync } from "fflate";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { problems, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { problems, users } from "./../../src/shared/db/schema.ts";
 import { eq, sql } from "drizzle-orm";
 import { createUserToken } from "../lib/helper.ts";
 
@@ -124,7 +124,7 @@ async function ensureUser(id: string): Promise<void> {
     "../../src/domains/system/index.ts"
   );
   await ensureRbacSeeds();
-  const { roles, userRoles } = await import("../../src/db/schema.ts");
+  const { roles, userRoles } = await import("./../../src/shared/db/schema.ts");
   const [userRole] = await db.select({ id: roles.id }).from(roles).where(
     eq(roles.name, "user"),
   ).limit(1);
@@ -571,7 +571,9 @@ Deno.test({
     assertEquals(row.runtime_config, null);
     assertEquals(row.support_package_storage_url, null);
 
-    const { objectiveQuestions } = await import("../../src/db/schema.ts");
+    const { objectiveQuestions } = await import(
+      "./../../src/shared/db/schema.ts"
+    );
     const qs = await db.select().from(objectiveQuestions).where(
       eq(objectiveQuestions.paper_id, body.data.id),
     );
@@ -634,7 +636,9 @@ Deno.test({
     assertEquals(body2.data.title, "新客观题");
 
     const db = getDb();
-    const { objectiveQuestions } = await import("../../src/db/schema.ts");
+    const { objectiveQuestions } = await import(
+      "./../../src/shared/db/schema.ts"
+    );
     const qs = await db.select().from(objectiveQuestions).where(
       eq(objectiveQuestions.paper_id, id),
     );

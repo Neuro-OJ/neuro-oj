@@ -13,20 +13,20 @@ import {
   ConflictError,
   NotFoundError,
 } from "./../../src/shared/base/errors.ts";
-import { getDb } from "../../src/db/connection.ts";
+import { getDb } from "./../../src/shared/db/connection.ts";
 import {
   auditLogs,
   problems,
   problemTags,
   tags,
   users,
-} from "../../src/db/schema.ts";
+} from "./../../src/shared/db/schema.ts";
 import { enterTestContext } from "../../src/lib/requestContext.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasEnv;
 
-import { resetDbForTest } from "../../src/db/connection.ts";
+import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 await resetDbForTest();
 await initRedisForTest();
 

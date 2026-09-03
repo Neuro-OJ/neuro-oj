@@ -22,7 +22,7 @@ import {
   type SQL,
   sql,
 } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   evaluationResults,
   problems,
@@ -30,7 +30,7 @@ import {
   submissions,
   tags,
   users,
-} from "../../../../db/schema.ts";
+} from "./../../../../shared/db/schema.ts";
 import {
   BadRequestError,
   NotFoundError,

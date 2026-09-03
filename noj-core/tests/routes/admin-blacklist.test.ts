@@ -4,8 +4,8 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../lib/helper.ts";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { ipBans, userRoles, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { ipBans, userRoles, users } from "./../../src/shared/db/schema.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { jsonRequest } from "../lib/helper.ts";
 import { _resetBanlistForTest } from "../../src/domains/identity/index.ts";

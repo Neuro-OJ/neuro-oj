@@ -11,8 +11,8 @@ import {
   addIpBan,
 } from "../../src/domains/identity/index.ts";
 import { signToken } from "../../src/lib/jwt.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { ipBans, userBans, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { ipBans, userBans, users } from "./../../src/shared/db/schema.ts";
 import { jsonRequest } from "../lib/helper.ts";
 
 const HAS_SECRET = !!Deno.env.get("JWT_SECRET");

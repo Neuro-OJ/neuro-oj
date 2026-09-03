@@ -10,11 +10,11 @@
  */
 import { and, count, desc, eq, max } from "drizzle-orm";
 import type { Context } from "hono";
-import { getDb } from "../../../db/connection.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
 import {
   objectiveQuestions,
   objectiveSubmissions,
-} from "../../../db/schema.ts";
+} from "./../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ForbiddenError,

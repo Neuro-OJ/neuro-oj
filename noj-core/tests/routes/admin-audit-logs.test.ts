@@ -1,8 +1,8 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { auditLogs, userRoles, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { auditLogs, userRoles, users } from "./../../src/shared/db/schema.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用

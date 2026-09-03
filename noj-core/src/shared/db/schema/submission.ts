@@ -11,8 +11,8 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { publicIdColumn } from "./common.ts";
-import type { SubmissionStatus } from "../../types/index.ts";
-import type { SelfTestStatus } from "../../types/self-tests.ts";
+import type { SubmissionStatus } from "../../../types/index.ts";
+import type { SelfTestStatus } from "../../../types/self-tests.ts";
 import { users } from "./identity.ts";
 import { problems } from "./catalog.ts";
 import { contests } from "./contest.ts";

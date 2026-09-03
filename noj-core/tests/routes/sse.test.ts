@@ -11,13 +11,13 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import {
   problems,
   submissions,
   userRoles,
   users,
-} from "../../src/db/schema.ts";
+} from "./../../src/shared/db/schema.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { initRedisForTest } from "../lib/helper.ts";
 import { ensureRbacSeeds } from "../../src/domains/system/index.ts";

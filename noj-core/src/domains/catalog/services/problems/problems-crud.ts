@@ -13,12 +13,12 @@
  *   —— getProblem 是函数级引用，运行时才解析，无循环问题
  */
 import { eq, inArray, sql } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   evaluationResults,
   problems,
   submissions,
-} from "../../../../db/schema.ts";
+} from "./../../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ForbiddenError,

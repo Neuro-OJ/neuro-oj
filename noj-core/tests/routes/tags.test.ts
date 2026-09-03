@@ -3,8 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
 import { createUserToken, jsonRequest } from "../lib/helper.ts";
-import { getDb } from "../../src/db/connection.ts";
-import { auditLogs } from "../../src/db/schema.ts";
+import { getDb } from "./../../src/shared/db/connection.ts";
+import { auditLogs } from "./../../src/shared/db/schema.ts";
 import {
   permissions,
   problems,
@@ -14,7 +14,7 @@ import {
   tags,
   userRoles,
   users,
-} from "../../src/db/schema.ts";
+} from "./../../src/shared/db/schema.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { ensureRbacSeeds } from "../../src/domains/system/index.ts";
 
@@ -22,7 +22,7 @@ const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasEnv;
 
 // 模块级 bootstrap：确保表已创建（PGlite 模式）
-import { resetDbForTest } from "../../src/db/connection.ts";
+import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 await resetDbForTest();
 await initRedisForTest();
 

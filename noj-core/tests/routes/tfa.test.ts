@@ -12,7 +12,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { TOTP } from "otpauth";
 import { createApp } from "../../src/app.ts";
-import { resetDbForTest } from "../../src/db/connection.ts";
+import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { registerUser } from "../../src/domains/identity/index.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { jsonRequest } from "../lib/helper.ts";

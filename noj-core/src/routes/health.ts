@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { checkDbHealth } from "../db/connection.ts";
+import { checkDbHealth } from "./../shared/db/connection.ts";
 import { checkRedisHealth } from "../mq/connection.ts";
 import { consumerAlive } from "../mq/consumer.ts";
 

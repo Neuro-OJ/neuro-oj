@@ -7,8 +7,8 @@ import {
   listProblems,
   updateProblem,
 } from "../../src/domains/catalog/index.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { auditLogs, tags, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { auditLogs, tags, users } from "./../../src/shared/db/schema.ts";
 import {
   BadRequestError,
   NotFoundError,

@@ -10,14 +10,14 @@
  */
 
 import { eq } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   judgeImages,
   roles,
   tags,
   userRoles,
   users,
-} from "../../../../db/schema.ts";
+} from "./../../../../shared/db/schema.ts";
 import { hashPassword } from "../../../../lib/password.ts";
 import { ensureSystemRoles } from "./seed-rbac.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";

@@ -6,10 +6,10 @@
  */
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
-import { resetDbForTest } from "../../src/db/connection.ts";
-import { problems } from "../../src/db/schema.ts";
+import { resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { problems } from "./../../src/shared/db/schema.ts";
 import { count } from "drizzle-orm";
-import { getDb } from "../../src/db/connection.ts";
+import { getDb } from "./../../src/shared/db/connection.ts";
 
 const skipDb = false; // PGlite 内存数据库始终可用
 

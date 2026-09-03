@@ -8,14 +8,14 @@
  */
 
 import { eq } from "drizzle-orm";
-import { closeDbForShutdown, getDb } from "../src/db/connection.ts";
+import { closeDbForShutdown, getDb } from "./../src/shared/db/connection.ts";
 import {
   announcements,
   communityPosts,
   contests,
   submissions,
   trainings,
-} from "../src/db/schema.ts";
+} from "./../src/shared/db/schema.ts";
 import { generatePublicId } from "../src/lib/public-id.ts";
 
 async function backfillOne(

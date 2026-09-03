@@ -3,8 +3,8 @@ import {
   getUserProfileAggregate,
   updateUserProfile,
 } from "../../src/domains/identity/index.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { users } from "./../../src/shared/db/schema.ts";
 import {
   NotFoundError,
   ValidationError,

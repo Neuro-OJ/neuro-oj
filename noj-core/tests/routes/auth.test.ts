@@ -1,7 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { passwordResetTokens, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { passwordResetTokens, users } from "./../../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
 import { _resetLoginBackoffForTest } from "../../src/lib/loginThrottle.ts";

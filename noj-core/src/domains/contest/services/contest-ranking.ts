@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
 import {
   BadRequestError,
   ForbiddenError,

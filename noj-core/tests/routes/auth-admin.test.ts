@@ -1,8 +1,13 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createUserToken, initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { problems, roles, submissions, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import {
+  problems,
+  roles,
+  submissions,
+  users,
+} from "./../../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { jsonRequest } from "../lib/helper.ts";
 
@@ -577,7 +582,7 @@ Deno.test({
     const db = getDb();
 
     // 需要测试用户（FK）和测试题目（FK）—— 通过 createSubmission 复用
-    const { problems } = await import("../../src/db/schema.ts");
+    const { problems } = await import("./../../src/shared/db/schema.ts");
     const userId = `adm-del-user-${ts}`;
     const problemId = `adm-del-prob-${ts}`;
     const submissionId = `adm-del-sub-${ts}`;

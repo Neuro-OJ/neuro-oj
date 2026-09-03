@@ -13,8 +13,8 @@
  * 使校验失败（400）不产生孤儿题目或已提交字段（syncProblemTags 内部仍重复校验兜底）。
  */
 import { eq, inArray } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
-import { problemTags, tags } from "../../../../db/schema.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import { problemTags, tags } from "./../../../../shared/db/schema.ts";
 import { BadRequestError } from "./../../../../shared/base/errors.ts";
 
 /**

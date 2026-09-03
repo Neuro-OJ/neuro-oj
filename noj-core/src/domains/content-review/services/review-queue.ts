@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
-import { contentReviewQueue } from "../../../db/schema.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { contentReviewQueue } from "./../../../shared/db/schema.ts";
 import {
   NotFoundError,
   ValidationError,

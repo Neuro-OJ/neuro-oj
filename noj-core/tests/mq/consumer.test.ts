@@ -9,13 +9,13 @@
 
 import { assertEquals } from "jsr:@std/assert@^1";
 import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import {
   evaluationResults,
   problems,
   submissions,
   users,
-} from "../../src/db/schema.ts";
+} from "./../../src/shared/db/schema.ts";
 import { eq, sql } from "drizzle-orm";
 import { startFakeRedis } from "./_setup.ts";
 

@@ -1,13 +1,13 @@
 import { and, eq, inArray, not, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
-import { getDb } from "../../../db/connection.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
 import {
   evaluationResults,
   problems,
   selfTests,
   submissions,
   users,
-} from "../../../db/schema.ts";
+} from "./../../../shared/db/schema.ts";
 import { getRedis } from "../../../mq/connection.ts";
 import { logger } from "./../../../shared/base/logging.ts";
 import { NotFoundError } from "./../../../shared/base/errors.ts";

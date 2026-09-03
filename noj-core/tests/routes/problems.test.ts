@@ -2,7 +2,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
 import { createProblem } from "../../src/domains/catalog/index.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { createUserToken, jsonRequest } from "../lib/helper.ts";
 
 // PGlite 内存数据库始终可用
@@ -113,7 +113,7 @@ Deno.test({
     const app = createApp();
     const catId = `route-test-tag-${Date.now()}`;
     const db = getDb();
-    const { tags } = await import("../../src/db/schema.ts");
+    const { tags } = await import("./../../src/shared/db/schema.ts");
     const now = new Date().toISOString();
     await db.insert(tags).values({
       id: catId,

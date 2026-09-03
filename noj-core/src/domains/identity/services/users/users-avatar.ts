@@ -1,7 +1,7 @@
 // ── 头像（issue #229）────────────────────────────────────────
 import { and, eq, ne } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
-import { users } from "../../../../db/schema.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import { users } from "./../../../../shared/db/schema.ts";
 import { NotFoundError } from "./../../../../shared/base/errors.ts";
 import { getStorageProvider } from "../../../../lib/storage/factory.ts";
 import {

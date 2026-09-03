@@ -1,6 +1,6 @@
 import { and, sql } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
-import { users } from "../../../../db/schema.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import { users } from "./../../../../shared/db/schema.ts";
 
 /**
  * 根据用户名前缀搜索用户。

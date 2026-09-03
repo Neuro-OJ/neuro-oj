@@ -1,6 +1,6 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { auditLogs, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { auditLogs, users } from "./../../src/shared/db/schema.ts";
 import {
   enterTestContext,
   leaveTestContext,

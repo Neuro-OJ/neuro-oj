@@ -10,8 +10,8 @@
  */
 
 import { and, eq, isNull, like, or, sql } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
-import { ipBans } from "../../../db/schema.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { ipBans } from "./../../../shared/db/schema.ts";
 import {
   ConflictError,
   NotFoundError,

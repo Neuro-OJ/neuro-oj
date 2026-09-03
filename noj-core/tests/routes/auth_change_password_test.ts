@@ -13,8 +13,8 @@
 
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { users } from "./../../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { registerUser } from "../../src/domains/identity/index.ts";
 import { signToken } from "../../src/lib/jwt.ts";

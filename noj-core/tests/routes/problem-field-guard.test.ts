@@ -13,7 +13,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { zipSync } from "fflate";
 import { createApp } from "../../src/app.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 
 import {
   permissions,
@@ -21,7 +21,7 @@ import {
   rolePermissions,
   roles,
   users,
-} from "../../src/db/schema.ts";
+} from "./../../src/shared/db/schema.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { ensureRbacSeeds } from "../../src/domains/system/index.ts";
 import { resetSetting, updateSetting } from "../../src/domains/system/index.ts";
@@ -188,7 +188,7 @@ if (cmdPerm) {
 }
 
 // user_roles 直接插入（role_permissions 需要 permission_id，这里只关联角色）
-const { userRoles } = await import("../../src/db/schema.ts");
+const { userRoles } = await import("./../../src/shared/db/schema.ts");
 await ensureUser(NET_TIGHTENED_ID, `field-net-tight-${ts}`);
 for (
   const [userId, roleId] of [

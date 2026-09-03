@@ -13,9 +13,9 @@
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { searchProblems, searchUsers } from "../../src/domains/query/index.ts";
-import { resetDbForTest } from "../../src/db/connection.ts";
-import { problems, users } from "../../src/db/schema.ts";
-import { getDb } from "../../src/db/connection.ts";
+import { resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { problems, users } from "./../../src/shared/db/schema.ts";
+import { getDb } from "./../../src/shared/db/connection.ts";
 import { ForbiddenError } from "./../../src/shared/base/errors.ts";
 
 await resetDbForTest();

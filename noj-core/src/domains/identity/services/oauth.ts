@@ -4,8 +4,13 @@
  */
 import { and, eq } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
-import { getDb } from "../../../db/connection.ts";
-import { oauthAccounts, roles, userRoles, users } from "../../../db/schema.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import {
+  oauthAccounts,
+  roles,
+  userRoles,
+  users,
+} from "./../../../shared/db/schema.ts";
 import { signToken } from "../../../lib/jwt.ts";
 import {
   BadRequestError,

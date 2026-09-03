@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
-import { contests } from "../../../db/schema.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { contests } from "./../../../shared/db/schema.ts";
 import { NotFoundError } from "./../../../shared/base/errors.ts";
 
 /**

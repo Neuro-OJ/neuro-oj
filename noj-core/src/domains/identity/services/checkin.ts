@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { todayUtc } from "./../../../shared/base/dates.ts";
-import { getDb } from "../../../db/connection.ts";
-import { checkIns, users } from "../../../db/schema.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { checkIns, users } from "./../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ConflictError,

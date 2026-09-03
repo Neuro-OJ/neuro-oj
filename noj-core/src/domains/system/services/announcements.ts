@@ -16,8 +16,8 @@
  */
 
 import { and, count, desc, eq } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
-import { announcements } from "../../../db/schema.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { announcements } from "./../../../shared/db/schema.ts";
 import {
   NotFoundError,
   ValidationError,

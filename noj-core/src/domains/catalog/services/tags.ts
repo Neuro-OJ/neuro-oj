@@ -14,8 +14,8 @@
  * - 全部写操作写入审计（tags.create/update/delete/merge）
  */
 import { and, asc, count, eq, inArray } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
-import { problemTags, tags } from "../../../db/schema.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { problemTags, tags } from "./../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ConflictError,

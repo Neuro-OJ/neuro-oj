@@ -9,13 +9,16 @@
  */
 
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { evaluationResults, submissions } from "../../../../db/schema.ts";
+import {
+  evaluationResults,
+  submissions,
+} from "./../../../../shared/db/schema.ts";
 import {
   AppError,
   BadRequestError,
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import { pushJudgeTask } from "../../../../mq/producer.ts";
 import { getProblem } from "../../../catalog/index.ts";
 import { getStorageProvider } from "../../../../lib/storage/mod.ts";

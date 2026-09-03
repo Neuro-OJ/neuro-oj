@@ -8,7 +8,7 @@ import {
   saveEvaluationResult,
   updateSubmissionStatus,
 } from "../../src/domains/submission/index.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 
 import {
   auditLogs,
@@ -17,7 +17,7 @@ import {
   problems,
   submissions,
   users,
-} from "../../src/db/schema.ts";
+} from "./../../src/shared/db/schema.ts";
 import {
   BadRequestError,
   NotFoundError,

@@ -1,12 +1,12 @@
 import { desc, eq, sql } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityBoards,
   communityPosts,
   problems,
   userRoles,
   users,
-} from "../../../../db/schema.ts";
+} from "./../../../../shared/db/schema.ts";
 import {
   ForbiddenError,
   NotFoundError,

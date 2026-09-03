@@ -10,8 +10,8 @@
  */
 
 import { and, eq } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
-import { problems, submissions } from "../../../../db/schema.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import { problems, submissions } from "./../../../../shared/db/schema.ts";
 import {
   AppError,
   BadRequestError,

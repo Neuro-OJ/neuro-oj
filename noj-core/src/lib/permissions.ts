@@ -15,7 +15,7 @@
 
 import { sql } from "drizzle-orm";
 import { Context, MiddlewareHandler, Next } from "hono";
-import { getDb } from "../db/connection.ts";
+import { getDb } from "./../shared/db/connection.ts";
 import { ForbiddenError } from "./../shared/base/errors.ts";
 import { unwrapRows } from "./../shared/base/sql-rows.ts";
 

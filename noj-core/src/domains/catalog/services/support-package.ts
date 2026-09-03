@@ -1,7 +1,7 @@
 import { resolve } from "jsr:@std/path@^1";
 import { eq } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
-import { problems } from "../../../db/schema.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { problems } from "./../../../shared/db/schema.ts";
 import {
   ForbiddenError,
   NotFoundError,

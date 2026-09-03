@@ -12,14 +12,14 @@
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { zipSync } from "fflate";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import {
   permissions,
   problems,
   rolePermissions,
   roles,
   users,
-} from "../../src/db/schema.ts";
+} from "./../../src/shared/db/schema.ts";
 import { AppError, ForbiddenError } from "./../../src/shared/base/errors.ts";
 import { ROOT_USER_ID } from "./../../src/shared/base/constants.ts";
 import { ensureRbacSeeds } from "../../src/domains/system/index.ts";

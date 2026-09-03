@@ -37,13 +37,13 @@ import {
   problems,
   submissions,
   users,
-} from "../../../../db/schema.ts";
+} from "./../../../../shared/db/schema.ts";
 import {
   AppError,
   BadRequestError,
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import { checkPermission } from "../../../../lib/permissions.ts";
 import {
   generatePublicId,

@@ -1,6 +1,9 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
-import { communitySanctions, userBans } from "../../../../db/schema.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import {
+  communitySanctions,
+  userBans,
+} from "./../../../../shared/db/schema.ts";
 import { ForbiddenError } from "./../../../../shared/base/errors.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
 import { getSetting } from "../../../system/index.ts";

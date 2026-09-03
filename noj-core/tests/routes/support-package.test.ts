@@ -6,8 +6,13 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { problems, roles, userRoles, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import {
+  problems,
+  roles,
+  userRoles,
+  users,
+} from "./../../src/shared/db/schema.ts";
 import { ensureRbacSeeds } from "../../src/domains/system/index.ts";
 import { eq, sql } from "drizzle-orm";
 import { createUserToken } from "../lib/helper.ts";

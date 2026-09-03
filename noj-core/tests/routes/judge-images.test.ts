@@ -7,8 +7,8 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createUserToken, initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { judgeImages } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { judgeImages } from "./../../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 
 const hasDb = true; // PGlite 内存数据库始终可用

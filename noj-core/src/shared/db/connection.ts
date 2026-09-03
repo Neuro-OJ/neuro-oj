@@ -6,7 +6,7 @@ import { PGlite } from "@electric-sql/pglite";
 import * as schema from "./schema.ts";
 import { ALL_TABLES, SCHEMA_DDL, SCHEMA_INDEXES } from "./schema-ddl.ts";
 import { dirname, resolve } from "jsr:@std/path@^1";
-import { logger } from "./../shared/base/logging.ts";
+import { logger } from "../base/logging.ts";
 
 let _db: ReturnType<typeof drizzlePg> | null = null;
 let _client: ReturnType<typeof postgres> | null = null;
@@ -75,8 +75,11 @@ export async function computePGliteTemplateHash(): Promise<string> {
   const here = dirname(new URL(import.meta.url).pathname);
   const sourceFiles = [
     resolve(here, "schema-ddl.ts"),
-    resolve(here, "../domains/system/services/seed/seed-rbac.ts"),
-    resolve(here, "../domains/community/services/community/community-seed.ts"),
+    resolve(here, "../../domains/system/services/seed/seed-rbac.ts"),
+    resolve(
+      here,
+      "../../domains/community/services/community/community-seed.ts",
+    ),
   ];
   const parts = [String(PGLITE_TEMPLATE_FORMAT)];
   for (const file of sourceFiles) {
@@ -505,7 +508,7 @@ export async function ensurePGliteSchemaForTest(): Promise<void> {
   // 种子 RBAC 角色和权限
   try {
     const { ensureRbacSeeds } = await import(
-      "../domains/system/services/seed/seed-rbac.ts"
+      "../../domains/system/services/seed/seed-rbac.ts"
     );
     await ensureRbacSeeds();
   } catch {
@@ -577,7 +580,7 @@ export async function resetDbForTest(options: ResetDbForTestOptions = {}) {
     // TRUNCATE 清空了 RBAC 种子表，必须重新播种
     try {
       const { ensureRbacSeeds } = await import(
-        "../domains/system/services/seed/seed-rbac.ts"
+        "../../domains/system/services/seed/seed-rbac.ts"
       );
       await ensureRbacSeeds();
     } catch {
@@ -616,7 +619,7 @@ export async function resetDbForTest(options: ResetDbForTestOptions = {}) {
   // TRUNCATE 清空了 RBAC 种子表，必须重新播种
   try {
     const { ensureRbacSeeds } = await import(
-      "../domains/system/services/seed/seed-rbac.ts"
+      "../../domains/system/services/seed/seed-rbac.ts"
     );
     await ensureRbacSeeds();
   } catch { /* 忽略 */ }

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
-import { judgeImages } from "../../../db/schema.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { judgeImages } from "./../../../shared/db/schema.ts";
 import {
   NotFoundError,
   ValidationError,

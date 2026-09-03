@@ -196,9 +196,9 @@ export async function createUserToken(
   role: "admin" | "user" = "user",
 ): Promise<string> {
   const { getDb, ensurePGliteSchemaForTest } = await import(
-    "../../src/db/connection.ts"
+    "./../../src/shared/db/connection.ts"
   );
-  const { users, userRoles } = await import("../../src/db/schema.ts");
+  const { users, userRoles } = await import("./../../src/shared/db/schema.ts");
   const { signToken } = await import("../../src/lib/jwt.ts");
   const { ensureRbacSeeds } = await import(
     "../../src/domains/system/index.ts"

@@ -7,7 +7,7 @@ import {
 import {
   disableTestTransactionForFile,
   resetDbForTest,
-} from "../../src/db/connection.ts";
+} from "./../../src/shared/db/connection.ts";
 import {
   ConflictError,
   UnauthorizedError,

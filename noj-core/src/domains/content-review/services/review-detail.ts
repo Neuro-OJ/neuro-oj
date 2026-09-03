@@ -1,12 +1,12 @@
 import { asc, eq, inArray } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
 import {
   communityComments,
   communityPosts,
   conversations,
   messages,
   users,
-} from "../../../db/schema.ts";
+} from "./../../../shared/db/schema.ts";
 import { getReviewQueueItem } from "./review-queue.ts";
 
 /**
@@ -27,7 +27,8 @@ import { getReviewQueueItem } from "./review-queue.ts";
 export async function getReviewQueueDetail(
   id: string,
 ): Promise<{
-  queue: typeof import("../../../db/schema.ts").contentReviewQueue.$inferSelect;
+  queue:
+    typeof import("./../../../shared/db/schema.ts").contentReviewQueue.$inferSelect;
   context: Record<string, unknown>;
 }> {
   const row = await getReviewQueueItem(id);

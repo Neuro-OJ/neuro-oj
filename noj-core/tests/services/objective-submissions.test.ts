@@ -5,7 +5,7 @@
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 
 import {
   contestParticipants,
@@ -15,7 +15,7 @@ import {
   objectiveSubmissions,
   problems,
   users,
-} from "../../src/db/schema.ts";
+} from "./../../src/shared/db/schema.ts";
 import {
   getObjectiveSubmission,
   listObjectiveSubmissions,

@@ -1,6 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 
 import {
   evaluationResults,
@@ -8,7 +8,7 @@ import {
   selfTests,
   submissions,
   users,
-} from "../../src/db/schema.ts";
+} from "./../../src/shared/db/schema.ts";
 import { handleResultMessage } from "../../src/mq/consumer.ts";
 import {
   recoverPendingSelfTests,

@@ -1,6 +1,6 @@
 import { createApp } from "./app.ts";
-import { closeDbForShutdown } from "./db/connection.ts";
-import { runMigrations } from "./db/migrate.ts";
+import { closeDbForShutdown } from "./shared/db/connection.ts";
+import { runMigrations } from "./shared/db/migrate.ts";
 import { startQueueSweeper } from "./mq/sweeper.ts";
 import { closeRedisForShutdown, connectRedis } from "./mq/connection.ts";
 import {

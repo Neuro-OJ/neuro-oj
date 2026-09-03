@@ -1,6 +1,11 @@
 import { and, desc, eq, isNull, or } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
-import { roles, userBans, userRoles, users } from "../../../../db/schema.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import {
+  roles,
+  userBans,
+  userRoles,
+  users,
+} from "./../../../../shared/db/schema.ts";
 import { comparePassword } from "../../../../lib/password.ts";
 import { isUserAdmin } from "../../../../lib/permissions.ts";
 import { signToken } from "../../../../lib/jwt.ts";

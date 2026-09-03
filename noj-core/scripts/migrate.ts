@@ -5,7 +5,7 @@
  *
  * 用法：deno run -A scripts/migrate.ts
  */
-import { runMigrations } from "../src/db/migrate.ts";
+import { runMigrations } from "./../src/shared/db/migrate.ts";
 
 const databaseUrl = Deno.env.get("DATABASE_URL");
 const hasDb = !!databaseUrl;

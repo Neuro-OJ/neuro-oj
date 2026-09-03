@@ -1,8 +1,8 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { TOTP } from "otpauth";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { tfaRecoveryCodes, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { tfaRecoveryCodes, users } from "./../../src/shared/db/schema.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 import { UnauthorizedError } from "./../../src/shared/base/errors.ts";
 import {

@@ -5,8 +5,8 @@
  * 测试前自动运行迁移并 seed 默认白名单条目（见 00_migrate_test.ts）。
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { judgeImages } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { judgeImages } from "./../../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import {
   createJudgeImage,

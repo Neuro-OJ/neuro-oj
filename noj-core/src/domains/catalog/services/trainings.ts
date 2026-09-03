@@ -13,7 +13,7 @@
  */
 
 import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
 import {
   evaluationResults,
   objectiveSubmissions,
@@ -21,7 +21,7 @@ import {
   submissions,
   trainingProblems,
   trainings,
-} from "../../../db/schema.ts";
+} from "./../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ConflictError,

@@ -5,7 +5,7 @@ import {
   getSubmissionQueueStatus,
   removePendingSubmission,
 } from "../../src/domains/submission/index.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import {
   connectRedis,
   getRedis,
@@ -18,7 +18,7 @@ import {
   selfTests,
   submissions,
   users,
-} from "../../src/db/schema.ts";
+} from "./../../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { SELF_TEST_ID_PREFIX } from "../../src/types/self-tests.ts";
 import { enterTestContext } from "../../src/lib/requestContext.ts";

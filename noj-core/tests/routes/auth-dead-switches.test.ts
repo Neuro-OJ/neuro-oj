@@ -10,8 +10,8 @@
 
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { auditLogs, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { auditLogs, users } from "./../../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import {
   _resetSystemSettingsForTest,
@@ -402,7 +402,7 @@ Deno.test({
       "../../src/lib/resetToken.ts"
     );
     const { passwordResetTokens } = await import(
-      "../../src/db/schema.ts"
+      "./../../src/shared/db/schema.ts"
     );
     const plainToken = generateResetToken();
     const tokenHash = await hashResetToken(plainToken);

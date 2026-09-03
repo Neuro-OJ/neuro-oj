@@ -1,8 +1,8 @@
 import { type Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { eq } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
-import { users } from "../../../db/schema.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { users } from "./../../../shared/db/schema.ts";
 import {
   type AuthEnv,
   authMiddleware,

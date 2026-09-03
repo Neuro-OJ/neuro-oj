@@ -1,6 +1,6 @@
 import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import {
   contestParticipants,
   contestProblems,
@@ -10,7 +10,7 @@ import {
   problems,
   submissions,
   users,
-} from "../../src/db/schema.ts";
+} from "./../../src/shared/db/schema.ts";
 import { getContestRanking } from "../../src/domains/contest/index.ts";
 import {
   ForbiddenError,

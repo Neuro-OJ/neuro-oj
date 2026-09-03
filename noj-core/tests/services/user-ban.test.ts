@@ -5,8 +5,8 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { auditLogs, userBans, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { auditLogs, userBans, users } from "./../../src/shared/db/schema.ts";
 import { banUser, unbanUser } from "../../src/domains/identity/index.ts";
 import {
   enterTestContext,

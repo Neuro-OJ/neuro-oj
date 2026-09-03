@@ -1,5 +1,5 @@
 import { backfillAll } from "../../scripts/backfill-public-ids.ts";
-import { closeDbForShutdown } from "../../src/db/connection.ts";
+import { closeDbForShutdown } from "./../../src/shared/db/connection.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 

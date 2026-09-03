@@ -5,7 +5,7 @@ import {
   problems,
   submissions,
   users,
-} from "../../src/db/schema.ts";
+} from "./../../src/shared/db/schema.ts";
 import type { SubmissionStatus } from "../../src/types/index.ts";
 
 Deno.test("schema: users table has correct columns", () => {

@@ -9,7 +9,7 @@ import { Hono } from "hono";
 import { signToken } from "../../src/lib/jwt.ts";
 import { AppError } from "./../../src/shared/base/errors.ts";
 import type { Context } from "hono";
-import { resetDbForTest } from "../../src/db/connection.ts";
+import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 
 // 显式启用限流中间件（NOJ_ENV=test 时默认关闭）
 Deno.env.set("RATE_LIMIT_ENABLED", "true");

@@ -2,7 +2,7 @@ import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "../../src/lib/jwt.ts";
-import { resetDbForTest } from "../../src/db/connection.ts";
+import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { createUserToken, jsonRequest } from "../lib/helper.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建

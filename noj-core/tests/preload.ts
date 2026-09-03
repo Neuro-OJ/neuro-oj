@@ -10,7 +10,7 @@ import {
   beginTestTransaction,
   isTestTransactionDisabled,
   rollbackTestTransaction,
-} from "../src/db/connection.ts";
+} from "./../src/shared/db/connection.ts";
 
 type TestFn = (t: Deno.TestContext) => void | Promise<void>;
 

@@ -1,11 +1,11 @@
 import { and, eq, ne, or, sql } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityComments,
   communityModerationActions,
   communityPosts,
   users,
-} from "../../../../db/schema.ts";
+} from "./../../../../shared/db/schema.ts";
 import {
   ForbiddenError,
   NotFoundError,
