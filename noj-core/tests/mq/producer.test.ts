@@ -16,7 +16,10 @@ import {
   MAX_JUDGE_QUEUE_LENGTH,
   pushJudgeTask,
 } from "../../src/mq/producer.ts";
-import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
+import {
+  getRedis,
+  resetRedisForTest,
+} from "./../../src/shared/mq/connection.ts";
 import { startFakeRedis } from "./_setup.ts";
 import type { JudgeTask } from "../../src/types/index.ts";
 

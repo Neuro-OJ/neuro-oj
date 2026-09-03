@@ -1,5 +1,5 @@
 import type { JudgeTask } from "../types/index.ts";
-import { getRedis } from "./connection.ts";
+import { getRedis } from "./../shared/mq/connection.ts";
 import { logJudgeTaskEnqueued } from "./../shared/base/logging.ts";
 
 /**

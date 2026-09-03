@@ -16,7 +16,7 @@ import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { problems, users } from "./../../src/shared/db/schema.ts";
 import { createUserToken, jsonRequest } from "../lib/helper.ts";
-import { connectRedis, getRedis } from "../../src/mq/connection.ts";
+import { connectRedis, getRedis } from "./../../src/shared/mq/connection.ts";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,

@@ -37,7 +37,7 @@ const skip = !(hasDb && hasJwt);
 // 确保 Redis 在路由测试前连接，避免 rate limiter 抛 503
 if (hasRedis) {
   try {
-    const redisModule = await import("../../src/mq/connection.ts");
+    const redisModule = await import("./../../src/shared/mq/connection.ts");
     redisModule.resetRedisForTest();
     await redisModule.connectRedis();
   } catch (e) {

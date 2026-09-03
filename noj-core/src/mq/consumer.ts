@@ -2,7 +2,7 @@ import {
   type ConsumerOptions,
   createConsumer,
   requestConsumerShutdown,
-} from "./base-consumer.ts";
+} from "./../shared/mq/base-consumer.ts";
 import { saveEvaluationResult } from "../domains/submission/index.ts";
 import { saveSelfTestResult } from "../domains/submission/index.ts";
 import { logger, logJudgeResultReceived } from "./../shared/base/logging.ts";

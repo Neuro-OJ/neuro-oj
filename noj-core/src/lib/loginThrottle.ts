@@ -22,7 +22,7 @@
  * - change-password 端点使用 namespace `pwchange`，避免改密失败反锁 /login
  */
 
-import { getRedis } from "../mq/connection.ts";
+import { getRedis } from "./../shared/mq/connection.ts";
 import { ServiceUnavailableError } from "./../shared/base/errors.ts";
 import { isRateLimitEnabled, settingInt } from "./rate-limit-env.ts";
 

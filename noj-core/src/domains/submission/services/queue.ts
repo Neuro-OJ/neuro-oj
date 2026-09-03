@@ -8,7 +8,7 @@ import {
   submissions,
   users,
 } from "./../../../shared/db/schema.ts";
-import { getRedis } from "../../../mq/connection.ts";
+import { getRedis } from "./../../../shared/mq/connection.ts";
 import { logger } from "./../../../shared/base/logging.ts";
 import { NotFoundError } from "./../../../shared/base/errors.ts";
 import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";

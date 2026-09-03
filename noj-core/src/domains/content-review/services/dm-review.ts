@@ -1,4 +1,4 @@
-import { getRedis } from "../../../mq/connection.ts";
+import { getRedis } from "./../../../shared/mq/connection.ts";
 import { getReviewConfig } from "./review-common.ts";
 import { logger } from "./../../../shared/base/logging.ts";
 

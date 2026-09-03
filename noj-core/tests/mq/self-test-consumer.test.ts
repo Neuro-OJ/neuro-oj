@@ -14,7 +14,10 @@ import {
   recoverPendingSelfTests,
   recoverPendingSubmissions,
 } from "../../src/mq/sweeper.ts";
-import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
+import {
+  getRedis,
+  resetRedisForTest,
+} from "./../../src/shared/mq/connection.ts";
 import { startFakeRedis } from "./_setup.ts";
 import { SELF_TEST_ID_PREFIX } from "../../src/types/self-tests.ts";
 

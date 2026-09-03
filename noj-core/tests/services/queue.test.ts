@@ -10,7 +10,7 @@ import {
   connectRedis,
   getRedis,
   resetRedisForTest,
-} from "../../src/mq/connection.ts";
+} from "./../../src/shared/mq/connection.ts";
 import {
   auditLogs,
   evaluationResults,

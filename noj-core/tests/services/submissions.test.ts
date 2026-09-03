@@ -29,7 +29,10 @@ import {
   resetLogSink,
   setLogSink,
 } from "./../../src/shared/base/logging.ts";
-import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
+import {
+  getRedis,
+  resetRedisForTest,
+} from "./../../src/shared/mq/connection.ts";
 
 /**
  * 启动一个极简的 Redis RESP 协议 mock 服务器，响应 EVAL/LPUSH/LLEN/PING，

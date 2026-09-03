@@ -4,7 +4,10 @@ import {
   remainingTtlFromExp,
   revokeJti,
 } from "../../src/lib/revokedTokens.ts";
-import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
+import {
+  getRedis,
+  resetRedisForTest,
+} from "./../../src/shared/mq/connection.ts";
 
 const hasRedis = !!Deno.env.get("REDIS_URL");
 
@@ -39,7 +42,9 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     resetRedisForTest();
-    const { connectRedis } = await import("../../src/mq/connection.ts");
+    const { connectRedis } = await import(
+      "./../../src/shared/mq/connection.ts"
+    );
     try {
       await connectRedis();
     } catch (e) {
@@ -96,7 +101,9 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     resetRedisForTest();
-    const { connectRedis } = await import("../../src/mq/connection.ts");
+    const { connectRedis } = await import(
+      "./../../src/shared/mq/connection.ts"
+    );
     try {
       await connectRedis();
     } catch (e) {
@@ -157,7 +164,7 @@ Deno.test({
       if (hasRedis) {
         try {
           const { connectRedis } = await import(
-            "../../src/mq/connection.ts"
+            "./../../src/shared/mq/connection.ts"
           );
           await connectRedis();
         } catch {

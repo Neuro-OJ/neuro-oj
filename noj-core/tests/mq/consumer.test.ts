@@ -8,7 +8,10 @@
  */
 
 import { assertEquals } from "jsr:@std/assert@^1";
-import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
+import {
+  getRedis,
+  resetRedisForTest,
+} from "./../../src/shared/mq/connection.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import {
   evaluationResults,

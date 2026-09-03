@@ -7,7 +7,7 @@
 
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
-import { connectRedis } from "../../src/mq/connection.ts";
+import { connectRedis } from "./../../src/shared/mq/connection.ts";
 import { runMigrations } from "./../../src/shared/db/migrate.ts";
 import { createUserToken, jsonRequest } from "../lib/helper.ts";
 

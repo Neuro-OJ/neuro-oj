@@ -13,7 +13,7 @@ import { getDb } from "./../shared/db/connection.ts";
 import { problems, selfTests, submissions } from "./../shared/db/schema.ts";
 import { getStorageProvider } from "../lib/storage/mod.ts";
 import { getSetting } from "../domains/system/index.ts";
-import { getRedis } from "./connection.ts";
+import { getRedis } from "./../shared/mq/connection.ts";
 import { isRetryableJudgeQueueError, JUDGE_QUEUE } from "./producer.ts";
 import { logger } from "./../shared/base/logging.ts";
 import type { JudgeTask } from "../types/index.ts";

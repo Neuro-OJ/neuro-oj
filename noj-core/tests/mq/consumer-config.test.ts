@@ -6,7 +6,7 @@ import {
   MAX_RESULT_CONSUMER_CONCURRENCY,
   parseResultConsumerConcurrency,
 } from "../../src/mq/consumer.ts";
-import type { ConsumerOptions } from "../../src/mq/base-consumer.ts";
+import type { ConsumerOptions } from "./../../src/shared/mq/base-consumer.ts";
 
 Deno.test("结果消费者并发配置：缺省使用安全默认值", () => {
   assertEquals(

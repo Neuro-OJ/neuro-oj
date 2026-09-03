@@ -36,7 +36,7 @@ import {
 if (Deno.env.get("REDIS_URL")) {
   Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
   try {
-    const redisModule = await import("../src/mq/connection.ts");
+    const redisModule = await import("./../src/shared/mq/connection.ts");
     redisModule.resetRedisForTest();
     await redisModule.connectRedis();
   } catch (e) {

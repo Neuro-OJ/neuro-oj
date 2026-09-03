@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { checkDbHealth } from "./../shared/db/connection.ts";
-import { checkRedisHealth } from "../mq/connection.ts";
+import { checkRedisHealth } from "./../shared/mq/connection.ts";
 import { consumerAlive } from "../mq/consumer.ts";
 
 const health = new Hono();

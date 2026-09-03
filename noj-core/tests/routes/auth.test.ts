@@ -3,7 +3,10 @@ import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { passwordResetTokens, users } from "./../../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
-import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
+import {
+  getRedis,
+  resetRedisForTest,
+} from "./../../src/shared/mq/connection.ts";
 import { _resetLoginBackoffForTest } from "../../src/lib/loginThrottle.ts";
 import {
   type LogRecord,
@@ -25,7 +28,7 @@ const skip = !hasJwt;
 // 路由层的登录限流依赖 Redis，必须在第一个测试运行前完成
 if (hasRedis) {
   try {
-    const redisModule = await import("../../src/mq/connection.ts");
+    const redisModule = await import("./../../src/shared/mq/connection.ts");
     redisModule.resetRedisForTest();
     await redisModule.connectRedis();
   } catch (e) {
@@ -51,7 +54,7 @@ function preserveEnv(...keys: string[]): () => void {
 /** 确保 Redis 已连接（幂等） */
 async function ensureRedisConnected() {
   resetRedisForTest();
-  const { connectRedis } = await import("../../src/mq/connection.ts");
+  const { connectRedis } = await import("./../../src/shared/mq/connection.ts");
   try {
     await connectRedis();
   } catch (e) {

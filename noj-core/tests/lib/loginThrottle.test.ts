@@ -17,7 +17,10 @@ import {
   isLoginLocked,
   recordLoginFailure,
 } from "../../src/lib/loginThrottle.ts";
-import { connectRedis, resetRedisForTest } from "../../src/mq/connection.ts";
+import {
+  connectRedis,
+  resetRedisForTest,
+} from "./../../src/shared/mq/connection.ts";
 
 const hasRedis = !!Deno.env.get("REDIS_URL");
 const skip = !hasRedis;
