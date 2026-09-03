@@ -13,17 +13,13 @@
  */
 
 import type { Context, MiddlewareHandler } from "hono";
-import {
-  getClientIp,
-  settingBool,
-  settingInt,
-} from "../domains/system/index.ts";
-import { RateLimitedError } from "./../shared/base/errors.ts";
+import { getClientIp, settingBool, settingInt } from "../../system/index.ts";
+import { RateLimitedError } from "../../../shared/base/errors.ts";
 import {
   checkRateLimit,
   rateLimitHeaders,
-} from "./../shared/rate-limit/rate-limit.ts";
-import { checkPermission } from "./../domains/identity/index.ts";
+} from "../../../shared/rate-limit/rate-limit.ts";
+import { checkPermission } from "../../identity/index.ts";
 
 export type SearchRateLimitDimension = "anon" | "authed";
 

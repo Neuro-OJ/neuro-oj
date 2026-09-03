@@ -1,6 +1,6 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { type Context, Hono } from "hono";
-import { searchRateLimit } from "../../src/middleware/search-rate-limit.ts";
+import { searchRateLimit } from "./../../src/domains/query/middleware/search-rate-limit.ts";
 import {
   connectRedis,
   getRedis,

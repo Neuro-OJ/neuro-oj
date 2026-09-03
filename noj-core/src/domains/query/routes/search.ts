@@ -12,7 +12,7 @@
 
 import { Hono } from "hono";
 import { optionalAuthMiddleware } from "./../../identity/index.ts";
-import { searchRateLimit } from "../../../middleware/search-rate-limit.ts";
+import { searchRateLimit } from "./../middleware/search-rate-limit.ts";
 import {
   searchCommunity,
   searchProblems,
