@@ -22,7 +22,7 @@ import {
   type SQL,
   sql,
 } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   evaluationResults,
   problems,
@@ -30,8 +30,11 @@ import {
   submissions,
   tags,
   users,
-} from "../../../../db/schema.ts";
-import { BadRequestError, NotFoundError } from "../../../../lib/errors.ts";
+} from "./../../../../shared/db/schema.ts";
+import {
+  BadRequestError,
+  NotFoundError,
+} from "./../../../../shared/base/errors.ts";
 import type { TagKind } from "../tags.ts";
 import {
   DIFFICULTIES,
@@ -40,7 +43,7 @@ import {
   type ProblemResponseWithTags,
   type ProblemTagRef,
   type RuntimeConfig,
-} from "../../../../types/problems.ts";
+} from "./../../types/problems.ts";
 import type {
   AdminProblemListResponse,
   ProblemListResponse,

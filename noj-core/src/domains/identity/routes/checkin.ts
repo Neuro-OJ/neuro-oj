@@ -1,10 +1,10 @@
 import { Hono } from "hono";
-import type { OptionalAuthEnv } from "../../../middleware/auth.ts";
+import type { OptionalAuthEnv } from "./../middleware/auth.ts";
 import {
   authMiddleware,
   optionalAuthMiddleware,
-} from "../../../middleware/auth.ts";
-import { UnauthorizedError } from "../../../lib/errors.ts";
+} from "./../middleware/auth.ts";
+import { UnauthorizedError } from "./../../../shared/base/errors.ts";
 import { resolveUserId } from "../services/users/users-id.ts";
 import {
   checkIn,

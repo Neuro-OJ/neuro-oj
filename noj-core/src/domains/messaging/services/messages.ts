@@ -1,5 +1,5 @@
 import { and, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
 import {
   conversationPreferences,
   conversationReads,
@@ -9,13 +9,16 @@ import {
   messages,
   userBans,
   users,
-} from "../../../db/schema.ts";
-import { BadRequestError, NotFoundError } from "../../../lib/errors.ts";
-import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
-import { getStorageProvider } from "../../../lib/storage/factory.ts";
-import { isStorageUrl, parseStorageUrl } from "../../../lib/storage/types.ts";
-import { validateImageFile } from "../../../lib/image-validation.ts";
-import { logger } from "../../../lib/logging.ts";
+} from "./../../../shared/db/schema.ts";
+import {
+  BadRequestError,
+  NotFoundError,
+} from "./../../../shared/base/errors.ts";
+import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
+import { getStorageProvider } from "./../../system/index.ts";
+import { isStorageUrl, parseStorageUrl } from "./../../system/index.ts";
+import { validateImageFile } from "./../../../shared/security/image-validation.ts";
+import { logger } from "./../../../shared/base/logging.ts";
 import { enqueueDmMessageReview } from "../../content-review/index.ts";
 
 /** 消息内容最大长度 */

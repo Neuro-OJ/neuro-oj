@@ -5,8 +5,8 @@ import {
   problems,
   submissions,
   users,
-} from "../../src/db/schema.ts";
-import type { SubmissionStatus } from "../../src/types/index.ts";
+} from "./../../src/shared/db/schema.ts";
+import type { SubmissionStatus } from "../../src/domains/submission/index.ts";
 
 Deno.test("schema: users table has correct columns", () => {
   const columns = Object.keys(users);

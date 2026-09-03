@@ -27,8 +27,8 @@
  * 后续可在 PR #69 合并后把本脚本接入 seed.ts 早期校验。
  */
 
-import { MIN_JWT_SECRET_LENGTH } from "../src/lib/constants.ts";
-import { MIN_TFA_ENCRYPTION_KEY_LENGTH } from "../src/lib/constants.ts";
+import { MIN_JWT_SECRET_LENGTH } from "./../src/shared/base/constants.ts";
+import { MIN_TFA_ENCRYPTION_KEY_LENGTH } from "./../src/shared/base/constants.ts";
 
 // 已知占位值黑名单（不区分大小写）。命中即视为未配置。
 const PLACEHOLDER_PATTERNS: readonly RegExp[] = [

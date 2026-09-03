@@ -1,13 +1,13 @@
 import { type Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { eq } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
-import { users } from "../../../db/schema.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { users } from "./../../../shared/db/schema.ts";
 import {
   type AuthEnv,
   authMiddleware,
   getUserBanState,
-} from "../../../middleware/auth.ts";
+} from "./../middleware/auth.ts";
 import {
   changePassword,
   getUserProfile,
@@ -41,13 +41,13 @@ import {
   ForbiddenError,
   UnauthorizedError,
   ValidationError,
-} from "../../../lib/errors.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
-import { getUserPermissions } from "../../../lib/permissions.ts";
-import { signToken, verifyToken } from "../../../lib/jwt.ts";
-import { revokeJti } from "../../../lib/revokedTokens.ts";
+} from "./../../../shared/base/errors.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
+import { getUserPermissions } from "./../services/security/permissions.ts";
+import { signToken, verifyToken } from "./../services/security/jwt.ts";
+import { revokeJti } from "./../services/security/revokedTokens.ts";
 import { getSetting } from "../../system/index.ts";
-import { getClientIp } from "../../../lib/rate-limit-env.ts";
+import { getClientIp } from "../../system/index.ts";
 import { getBannedIpDetail } from "../services/banlist.ts";
 import {
   applyLoginBackoff,
@@ -55,27 +55,27 @@ import {
   isLoginLocked,
   recordLoginBackoff,
   recordLoginFailure,
-} from "../../../lib/loginThrottle.ts";
+} from "./../services/security/loginThrottle.ts";
 import {
   checkLoginAccountRateLimit,
   LOGIN_LIMITS,
   loginIpRateLimit,
   resolveLoginAccountKey,
   throwRateLimited,
-} from "../../../middleware/login-rate-limit.ts";
+} from "./../middleware/login-rate-limit.ts";
 import type {
   ChangePasswordInput,
   ForgotPasswordInput,
   LoginInput,
   RegisterInput,
   ResetPasswordInput,
-} from "../../../types/auth.ts";
-import { SECONDS_PER_DAY } from "../../../lib/constants.ts";
+} from "./../types/auth.ts";
+import { SECONDS_PER_DAY } from "./../../../shared/base/constants.ts";
 import {
   enforcePasswordResetEmailRateLimit,
   enforcePasswordResetIpRateLimit,
   enforceRegisterRateLimit,
-} from "../../../lib/hardening-rate-limit.ts";
+} from "../../system/index.ts";
 
 // change-password 端点的限流命名空间（独立于登录端点）
 // 失败计数 / 锁定 / 退避均使用此前缀，避免改密失败反锁 /login（issue #75 评审 H4）

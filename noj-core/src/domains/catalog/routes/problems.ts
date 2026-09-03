@@ -3,21 +3,21 @@ import {
   type AuthEnv,
   authMiddleware,
   optionalAuthMiddleware,
-} from "../../../middleware/auth.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
+} from "./../../identity/index.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
 import {
   BadRequestError,
   ForbiddenError,
   UnauthorizedError,
-} from "../../../lib/errors.ts";
-import { parsePagination } from "../../../lib/pagination.ts";
-import { checkPermission } from "../../../lib/permissions.ts";
+} from "./../../../shared/base/errors.ts";
+import { parsePagination } from "./../../../shared/http/pagination.ts";
+import { checkPermission } from "./../../identity/index.ts";
 import {
   enforceObjectiveSubmitRateLimit,
   enforceProblemCreateRateLimit,
   enforceProblemImportRateLimit,
-} from "../../../lib/hardening-rate-limit.ts";
-import { withActorContext } from "../../../lib/requestContext.ts";
+} from "../../system/index.ts";
+import { withActorContext } from "../../system/index.ts";
 import {
   createProblem,
   deleteProblem,
@@ -25,16 +25,16 @@ import {
   updateProblem,
 } from "../services/problems/problems.ts";
 import { applyAlgorithmTagVisibility } from "../services/problems/problems-list.ts";
-import { resolveProblem } from "../../../lib/problem-resolve.ts";
+import { resolveProblem } from "./../services/problem-resolve.ts";
 import {
   ADMIN_FULL_ACCESS,
   resolvePermissions,
-} from "../../../lib/permissions.ts";
+} from "./../../identity/index.ts";
 import type {
   CreateProblemInput,
   ProblemListQuery,
   UpdateProblemInput,
-} from "../../../types/problems.ts";
+} from "./../types/problems.ts";
 import {
   deleteSupportPackage,
   getProblemTemplate,
@@ -58,7 +58,7 @@ import type {
   CreateQuestionInput,
   SubmitObjectiveInput,
   UpdateQuestionInput,
-} from "../../../types/objective.ts";
+} from "../../objective/index.ts";
 
 const router = new Hono<AuthEnv>();
 

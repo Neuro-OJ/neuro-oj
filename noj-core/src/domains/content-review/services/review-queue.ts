@@ -1,8 +1,11 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
-import { contentReviewQueue } from "../../../db/schema.ts";
-import { NotFoundError, ValidationError } from "../../../lib/errors.ts";
-import { nowIso } from "../../../lib/dates.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { contentReviewQueue } from "./../../../shared/db/schema.ts";
+import {
+  NotFoundError,
+  ValidationError,
+} from "./../../../shared/base/errors.ts";
+import { nowIso } from "./../../../shared/base/dates.ts";
 import { logAudit } from "../../system/index.ts";
 
 /**

@@ -15,9 +15,24 @@ interface RouteEntry {
 
 function collectRouteFiles(): string[] {
   const files: string[] = [];
-  for (const entry of Deno.readDirSync(ROUTES_DIR)) {
-    if (entry.isFile && entry.name.endsWith(".ts")) {
-      files.push(`${ROUTES_DIR}/${entry.name}`);
+  const roots = [ROUTES_DIR, resolve(ROOT, "noj-core/src/domains")];
+  for (const root of roots) {
+    if (!Deno.statSync(root).isDirectory) continue;
+    const queue = [root];
+    while (queue.length > 0) {
+      const dir = queue.shift()!;
+      for (const entry of Deno.readDirSync(dir)) {
+        const full = `${dir}/${entry.name}`;
+        if (entry.isDirectory) {
+          queue.push(full);
+        } else if (
+          entry.isFile && entry.name.endsWith(".ts") &&
+          full.includes("/routes/") && !full.includes("/tests/") &&
+          !full.endsWith("/index.ts")
+        ) {
+          files.push(full);
+        }
+      }
     }
   }
   return files;
@@ -42,6 +57,7 @@ function generate(entries: RouteEntry[]): string {
     "# NOJ API 路由目录",
     "",
     "> 由 `scripts/gen-route-catalog.ts` 生成，请勿手改。",
+    "> 扫描范围：`src/routes/*.ts` 与 `src/domains/*/routes/*.ts`（不含 `routes/index.ts` 组合文件）。",
     "",
     "| 方法 | 路径 | 文件 |",
     "| --- | --- | --- |",

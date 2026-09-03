@@ -2,7 +2,7 @@ import {
   getReviewConfig,
   runContentReview,
 } from "../../../content-review/index.ts";
-import { ForbiddenError } from "../../../../lib/errors.ts";
+import { ForbiddenError } from "./../../../../shared/base/errors.ts";
 
 /**
  * UGC（帖子/评论）同步内容合规审核钩子（issue #413）。

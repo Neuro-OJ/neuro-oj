@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
-import { users } from "../../../../db/schema.ts";
-import { NotFoundError } from "../../../../lib/errors.ts";
-import { isUuid } from "../../../../lib/public-id.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import { users } from "./../../../../shared/db/schema.ts";
+import { NotFoundError } from "./../../../../shared/base/errors.ts";
+import { isUuid } from "./../../../../shared/security/public-id.ts";
 
 /** 将 UUID、username 或旧主键解析为内部用户 UUID。 */
 export async function resolveUserId(value: string): Promise<string> {

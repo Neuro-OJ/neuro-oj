@@ -1,11 +1,11 @@
 import { and, eq } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityBoardRoleGrants,
   communityBoards,
-} from "../../../../db/schema.ts";
-import { NotFoundError } from "../../../../lib/errors.ts";
-import { nowIso } from "../../../../lib/dates.ts";
+} from "./../../../../shared/db/schema.ts";
+import { NotFoundError } from "./../../../../shared/base/errors.ts";
+import { nowIso } from "./../../../../shared/base/dates.ts";
 
 /**
  * 列出社区板块。

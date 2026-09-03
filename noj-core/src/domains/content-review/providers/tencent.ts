@@ -3,7 +3,7 @@ import type {
   ReviewContext,
   ReviewResult,
 } from "./types.ts";
-import { logger } from "../../../lib/logging.ts";
+import { logger } from "./../../../shared/base/logging.ts";
 
 /**
  * 腾讯云内容安全（CMS）文本审核 Provider（issue #413）。

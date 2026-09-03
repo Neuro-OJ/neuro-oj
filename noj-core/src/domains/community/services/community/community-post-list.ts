@@ -1,11 +1,11 @@
 import { and, desc, eq, ilike, inArray, lt, ne, or, sql } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityBookmarks,
   communityPosts,
   users,
-} from "../../../../db/schema.ts";
-import type { CommunityPostType } from "../../../../types/community.ts";
+} from "./../../../../shared/db/schema.ts";
+import type { CommunityPostType } from "./../../types/community.ts";
 import {
   assertCommunityEnabled,
   getCommunityConfig,

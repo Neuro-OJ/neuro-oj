@@ -1,0 +1,300 @@
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { getUserProfile, loginUser, registerUser } from "../../index.ts";
+import {
+  disableTestTransactionForFile,
+  resetDbForTest,
+} from "../../../../shared/db/connection.ts";
+import {
+  ConflictError,
+  UnauthorizedError,
+} from "../../../../shared/base/errors.ts";
+
+// 并发注册用例依赖真实并发与唯一约束竞争，事务回滚隔离会改变语义，故关闭
+disableTestTransactionForFile();
+
+// PGlite 内存数据库始终可用
+const dbAvailable = true;
+const hasJwt = !!Deno.env.get("JWT_SECRET");
+const skip = !(dbAvailable && hasJwt);
+
+const ts = Date.now();
+const TEST_USER = {
+  username: `test-svc-${ts}`,
+  email: `test-svc-${ts}@example.com`,
+  password: "TestPwd-2024-Xy9",
+};
+
+// 模块级 setup：创建跨测试共享的 TEST_USER
+// 在 PGlite 模式下每次 resetDbForTest() 会 TRUNCATE，因此放在模块级执行一次
+await resetDbForTest();
+await registerUser(TEST_USER);
+
+Deno.test({
+  name: "auth service: registerUser 创建用户并返回 UserResponse",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // 验证模块级创建的 TEST_USER 存在
+    const result = await loginUser({
+      login: TEST_USER.username,
+      password: TEST_USER.password,
+    });
+    assertEquals(result.user.username, TEST_USER.username);
+    assertEquals(result.user.email, TEST_USER.email);
+    assertEquals(result.user.is_admin, true);
+    assertEquals(typeof result.user.id, "string");
+    assertEquals("password_hash" in result.user, false);
+  },
+});
+
+Deno.test({
+  name: "auth service: 重复用户名注册抛出 ConflictError",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // TEST_USER 来自模块级 setup
+    await assertRejects(
+      () =>
+        registerUser({
+          username: TEST_USER.username,
+          email: `diff-${ts}@example.com`,
+          password: "AnothPass-2024-Ab1",
+        }),
+      ConflictError,
+      "用户名已存在",
+    );
+  },
+});
+
+Deno.test({
+  name: "auth service: 重复邮箱注册抛出 ConflictError",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await assertRejects(
+      () =>
+        registerUser({
+          username: `diff-user-${ts}`,
+          email: TEST_USER.email,
+          password: "AnothPass-2024-Ab1",
+        }),
+      ConflictError,
+      "邮箱已被注册",
+    );
+  },
+});
+
+Deno.test({
+  name: "auth service: 并发注册同一用户名仅一个成功，其余返回 ConflictError",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const username = `race-user-${Date.now()}-${Math.random()}`;
+    const email = `race-user-${Date.now()}@example.com`;
+    const input = {
+      username,
+      email,
+      password: "RacePwd-2024-Ab1",
+    };
+
+    const results = await Promise.allSettled([
+      registerUser(input),
+      registerUser({ ...input, email: `other-${email}` }),
+    ]);
+    const succeeded = results.filter((result) => result.status === "fulfilled");
+    const failed = results.filter((result) => result.status === "rejected");
+
+    assertEquals(succeeded.length, 1);
+    assertEquals(failed.length, 1);
+    const reason = failed[0].status === "rejected" ? failed[0].reason : null;
+    assertEquals(reason instanceof ConflictError, true);
+    assertEquals((reason as ConflictError).message, "用户名已存在");
+  },
+});
+
+Deno.test({
+  name: "auth service: 并发注册同一邮箱仅一个成功，其余返回 ConflictError",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const email = `race-email-${Date.now()}-${Math.random()}@example.com`;
+    const input = {
+      username: `race-email-a-${Date.now()}-${Math.random()}`,
+      email,
+      password: "RacePwd-2024-Ab1",
+    };
+
+    const results = await Promise.allSettled([
+      registerUser(input),
+      registerUser({ ...input, username: `${input.username}-other` }),
+    ]);
+    const succeeded = results.filter((result) => result.status === "fulfilled");
+    const failed = results.filter((result) => result.status === "rejected");
+
+    assertEquals(succeeded.length, 1);
+    assertEquals(failed.length, 1);
+    const reason = failed[0].status === "rejected" ? failed[0].reason : null;
+    assertEquals(reason instanceof ConflictError, true);
+    assertEquals((reason as ConflictError).message, "邮箱已被注册");
+  },
+});
+
+Deno.test({
+  name: "auth service: loginUser 用用户名登录成功返回 token",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const result = await loginUser({
+      login: TEST_USER.username,
+      password: TEST_USER.password,
+    });
+
+    assertEquals(result.user.username, TEST_USER.username);
+    assertEquals(result.user.email, TEST_USER.email);
+    assertEquals(typeof result.token, "string");
+    assertEquals(result.token.split(".").length, 3);
+  },
+});
+
+Deno.test({
+  name: "auth service: loginUser 用邮箱登录成功返回 token",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const result = await loginUser({
+      login: TEST_USER.email,
+      password: TEST_USER.password,
+    });
+
+    assertEquals(result.user.email, TEST_USER.email);
+    assertEquals(typeof result.token, "string");
+  },
+});
+
+Deno.test({
+  name: "auth service: 错误密码抛出 UnauthorizedError",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await assertRejects(
+      () =>
+        loginUser({
+          login: TEST_USER.username,
+          password: "WrongPwd-2024-Cd2",
+        }),
+      UnauthorizedError,
+      "用户名或密码错误",
+    );
+  },
+});
+
+Deno.test({
+  name: "auth service: 不存在的用户抛出 UnauthorizedError（统一消息防枚举）",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await assertRejects(
+      () =>
+        loginUser({
+          login: "nonexistent-user-99999",
+          password: "AnyPwd-2024-Ef3",
+        }),
+      UnauthorizedError,
+      "用户名或密码错误",
+    );
+  },
+});
+
+Deno.test({
+  name: "auth service: getUserProfile 返回用户信息",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const profileUser = {
+      username: `test-profile-${Date.now()}`,
+      email: `test-profile-${Date.now()}@example.com`,
+      password: "ProfilePwd-2024-Xx9",
+    };
+    const registered = await registerUser(profileUser);
+
+    const profile = await getUserProfile(registered.id);
+    assertEquals(profile.id, registered.id);
+    assertEquals(profile.username, registered.username);
+    assertEquals(profile.email, registered.email);
+  },
+});
+
+Deno.test({
+  name: "auth service: 不存在的用户 ID 抛出 UnauthorizedError",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await assertRejects(
+      () => getUserProfile("00000000-0000-0000-0000-000000000000"),
+      UnauthorizedError,
+      "用户不存在",
+    );
+  },
+});
+
+Deno.test({
+  name: "auth service: 首个真实用户成为管理员，后续用户保持普通权限",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const first = await registerUser({
+      username: `first-admin-${Date.now()}`,
+      email: `first-admin-${Date.now()}@example.com`,
+      password: "FirstAdmin-2026-Xy9",
+    });
+    const second = await registerUser({
+      username: `second-user-${Date.now()}`,
+      email: `second-user-${Date.now()}@example.com`,
+      password: "SecondUser-2026-Xy9",
+    });
+
+    assertEquals(first.is_admin, true);
+    assertEquals(second.is_admin, false);
+  },
+});
+
+Deno.test({
+  name: "auth service: 并发首次注册至多一个管理员",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const stamp = Date.now();
+    const results = await Promise.all([
+      registerUser({
+        username: `race-first-a-${stamp}`,
+        email: `race-first-a-${stamp}@example.com`,
+        password: "RaceFirstA-2026-Xy9",
+      }),
+      registerUser({
+        username: `race-first-b-${stamp}`,
+        email: `race-first-b-${stamp}@example.com`,
+        password: "RaceFirstB-2026-Xy9",
+      }),
+    ]);
+
+    assertEquals(results.filter((user) => user.is_admin).length, 1);
+    assertEquals(results.filter((user) => !user.is_admin).length, 1);
+  },
+});

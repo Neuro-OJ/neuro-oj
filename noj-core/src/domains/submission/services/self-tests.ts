@@ -6,33 +6,30 @@
  */
 
 import { and, eq } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
-import { problems, selfTests } from "../../../db/schema.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { problems, selfTests } from "./../../../shared/db/schema.ts";
 import {
   AppError,
   BadRequestError,
   NotFoundError,
-} from "../../../lib/errors.ts";
-import { checkPermission } from "../../../lib/permissions.ts";
-import { getStorageProvider } from "../../../lib/storage/mod.ts";
-import {
-  isRetryableJudgeQueueError,
-  pushJudgeTask,
-} from "../../../mq/producer.ts";
+} from "./../../../shared/base/errors.ts";
+import { checkPermission } from "./../../identity/index.ts";
+import { getStorageProvider } from "./../../system/index.ts";
+import { isRetryableJudgeQueueError, pushJudgeTask } from "../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
-import { logger } from "../../../lib/logging.ts";
-import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
+import { logger } from "./../../../shared/base/logging.ts";
+import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import type { Context } from "hono";
-import { LANGUAGE_EXT_MAP } from "../../../types/index.ts";
-import type { JudgeResult, JudgeTask } from "../../../types/index.ts";
-import type { RuntimeConfig } from "../../../types/problems.ts";
+import { LANGUAGE_EXT_MAP } from "../types/index.ts";
+import type { JudgeResult, JudgeTask } from "../types/index.ts";
+import type { RuntimeConfig } from "./../../catalog/index.ts";
 import {
   SELF_TEST_ID_PREFIX,
   type SelfTestDetail,
   type SelfTestInput,
   type SelfTestResponse,
   type SelfTestStatus,
-} from "../../../types/self-tests.ts";
+} from "./../types/self-tests.ts";
 
 /** 详情接口返回的 output 最大长度（字节近似），与正式提交一致。 */
 const MAX_OUTPUT_LENGTH = 8 * 1024;

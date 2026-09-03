@@ -8,7 +8,7 @@ import {
   isNull,
   sql,
 } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityComments,
   communityPosts,
@@ -18,12 +18,12 @@ import {
   messages,
   userBans,
   users,
-} from "../../../../db/schema.ts";
+} from "./../../../../shared/db/schema.ts";
 import {
   ConflictError,
   NotFoundError,
   ValidationError,
-} from "../../../../lib/errors.ts";
+} from "./../../../../shared/base/errors.ts";
 import { logAudit } from "../../../system/index.ts";
 import {
   assertCommunityEnabled,
@@ -32,13 +32,13 @@ import {
 import {
   REPORT_CATEGORIES,
   type ReportCategory,
-} from "../../../../types/community.ts";
+} from "./../../types/community.ts";
 import { reloadSingleKey, updateSetting } from "../../../system/index.ts";
-import { nowIso } from "../../../../lib/dates.ts";
+import { nowIso } from "./../../../../shared/base/dates.ts";
 import { createNotification } from "../notifications.ts";
-import { invalidateBanCache } from "../../../../lib/banCache.ts";
-import { getStorageProvider } from "../../../../lib/storage/factory.ts";
-import { parseStorageUrl } from "../../../../lib/storage/types.ts";
+import { invalidateBanCache } from "./../../../identity/index.ts";
+import { getStorageProvider } from "./../../../system/index.ts";
+import { parseStorageUrl } from "./../../../system/index.ts";
 
 export { banUser, getLatestActiveBanId } from "../../../identity/index.ts";
 

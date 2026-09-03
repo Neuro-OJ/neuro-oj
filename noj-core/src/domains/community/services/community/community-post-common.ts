@@ -1,17 +1,17 @@
 import { and, eq, gt } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   evaluationResults,
   submissions,
   users,
-} from "../../../../db/schema.ts";
-import { NotFoundError } from "../../../../lib/errors.ts";
-import { resolveProblemIdOrNull } from "../../../../lib/problem-resolve.ts";
+} from "./../../../../shared/db/schema.ts";
+import { NotFoundError } from "./../../../../shared/base/errors.ts";
+import { resolveProblemIdOrNull } from "./../../../catalog/index.ts";
 import type {
   CommunityConfig,
   CommunityPostStatus,
   CommunityPostType,
-} from "../../../../types/community.ts";
+} from "./../../types/community.ts";
 import { getCommunityConfig } from "./community-config.ts";
 
 /**

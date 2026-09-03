@@ -1,19 +1,19 @@
 import { and, eq, inArray, not, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
-import { getDb } from "../../../db/connection.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
 import {
   evaluationResults,
   problems,
   selfTests,
   submissions,
   users,
-} from "../../../db/schema.ts";
-import { getRedis } from "../../../mq/connection.ts";
-import { logger } from "../../../lib/logging.ts";
-import { NotFoundError } from "../../../lib/errors.ts";
-import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
+} from "./../../../shared/db/schema.ts";
+import { getRedis } from "./../../../shared/mq/connection.ts";
+import { logger } from "./../../../shared/base/logging.ts";
+import { NotFoundError } from "./../../../shared/base/errors.ts";
+import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import { logAudit } from "../../system/index.ts";
-import { SELF_TEST_ID_PREFIX } from "../../../types/self-tests.ts";
+import { SELF_TEST_ID_PREFIX } from "./../types/self-tests.ts";
 
 /** 评测任务队列名称（与 producer.ts 一致）。 */
 const JUDGE_QUEUE = "noj:judge:queue";

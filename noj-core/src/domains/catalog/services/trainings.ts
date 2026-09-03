@@ -13,7 +13,7 @@
  */
 
 import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
 import {
   evaluationResults,
   objectiveSubmissions,
@@ -21,15 +21,18 @@ import {
   submissions,
   trainingProblems,
   trainings,
-} from "../../../db/schema.ts";
+} from "./../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
-} from "../../../lib/errors.ts";
-import { generatePublicId, resolvePublicId } from "../../../lib/public-id.ts";
-import { resolveProblemIdOrThrow } from "../../../lib/problem-resolve.ts";
+} from "./../../../shared/base/errors.ts";
+import {
+  generatePublicId,
+  resolvePublicId,
+} from "./../../../shared/security/public-id.ts";
+import { resolveProblemIdOrThrow } from "./problem-resolve.ts";
 import {
   type CreateTrainingInput,
   isValidTrainingVisibility,
@@ -37,7 +40,7 @@ import {
   type TrainingResponse,
   type TrainingVisibility,
   type UpdateTrainingInput,
-} from "../../../types/trainings.ts";
+} from "./../types/trainings.ts";
 
 /** 题单列表分页参数。 */
 export interface ListTrainingsParams {

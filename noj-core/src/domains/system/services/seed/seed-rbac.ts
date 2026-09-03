@@ -11,7 +11,10 @@
  */
 
 import { and, eq, sql } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import {
+  getDb,
+  registerDbResetSeeder,
+} from "./../../../../shared/db/connection.ts";
 import {
   permissions,
   rolePermissions,
@@ -19,9 +22,9 @@ import {
   systemSettings,
   userRoles,
   users,
-} from "../../../../db/schema.ts";
-import { PERMISSION_DEFS } from "../../../../types/index.ts";
-import { ROOT_USER_ID } from "../../../../lib/constants.ts";
+} from "./../../../../shared/db/schema.ts";
+import { PERMISSION_DEFS } from "../../../identity/index.ts";
+import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import { ensureCommunitySeeds } from "../../../community/index.ts";
 
 // user 角色的默认权限（action 列表）
@@ -343,3 +346,8 @@ export async function ensureRbacSeeds(): Promise<void> {
   await migrateExistingUsers();
   await ensureCommunitySeeds();
 }
+
+// 注册测试重置后的重新播种回调，使 shared/db 不反向依赖 domains。
+registerDbResetSeeder(async () => {
+  await ensureRbacSeeds();
+});

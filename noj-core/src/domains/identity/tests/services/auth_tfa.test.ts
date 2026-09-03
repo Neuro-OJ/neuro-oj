@@ -1,0 +1,159 @@
+import { assertEquals } from "jsr:@std/assert@^1";
+import { eq } from "drizzle-orm";
+import { TOTP } from "otpauth";
+import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { users } from "../../../../shared/db/schema.ts";
+import { hashPassword } from "../../services/security/password.ts";
+import {
+  BadRequestError,
+  UnauthorizedError,
+} from "../../../../shared/base/errors.ts";
+import { loginUser } from "../../index.ts";
+import { confirmTfa, setupTfa, verifyTfaCodeForUser } from "../../index.ts";
+
+Deno.env.set("TFA_ENCRYPTION_KEY", "test-tfa-encryption-key-with-32-chars-min");
+Deno.env.set("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters");
+
+const skip = false;
+const ts = Date.now();
+
+async function seedUser() {
+  const db = getDb();
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db.insert(users).values({
+    id,
+    username: `auth-tfa-${ts}-${id.slice(0, 6)}`,
+    email: `auth-tfa-${ts}-${id.slice(0, 6)}@example.com`,
+    password_hash: await hashPassword("TestPwd-2024-Xy9"),
+    created_at: now,
+    updated_at: now,
+  });
+  return id;
+}
+
+function currentCode(secret: string): string {
+  return new TOTP({ secret, issuer: "NeuroOJ" }).generate();
+}
+
+Deno.test({
+  name: "auth tfa: 已启用 TFA 用户缺少 code 抛出 TFA_REQUIRED",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const userId = await seedUser();
+    const { secret } = await setupTfa(userId, "auth-tfa");
+    await confirmTfa(userId, currentCode(secret));
+    const userRows = await getDb().select().from(users).where(
+      eq(users.id, userId),
+    );
+    try {
+      await loginUser({
+        login: userRows[0].username,
+        password: "TestPwd-2024-Xy9",
+      });
+      throw new Error("应当抛出 BadRequestError");
+    } catch (err) {
+      const e = err as { code?: string };
+      assertEquals(e instanceof BadRequestError, true);
+      assertEquals(e.code, "TFA_REQUIRED");
+    }
+  },
+});
+
+Deno.test({
+  name: "auth tfa: 已启用 TFA 用户错误验证码抛出 UnauthorizedError",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const userId = await seedUser();
+    const { secret } = await setupTfa(userId, "auth-tfa");
+    await confirmTfa(userId, currentCode(secret));
+    const userRows = await getDb().select().from(users).where(
+      eq(users.id, userId),
+    );
+    let caught: { code?: string } | null = null;
+    try {
+      await loginUser({
+        login: userRows[0].username,
+        password: "TestPwd-2024-Xy9",
+        code: "000000",
+      });
+    } catch (err) {
+      caught = err as { code?: string };
+    }
+    assertEquals(caught instanceof UnauthorizedError, true);
+    // issue #316：错误验证码应返回可区分的 TFA_INVALID，而不是“用户名或密码错误”
+    assertEquals(caught?.code, "TFA_INVALID");
+  },
+});
+
+Deno.test({
+  name: "auth tfa: 已启用 TFA 用户正确 TOTP 登录成功且返回 tfa_enabled",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const userId = await seedUser();
+    const { secret } = await setupTfa(userId, "auth-tfa");
+    await confirmTfa(userId, currentCode(secret));
+    const userRows = await getDb().select().from(users).where(
+      eq(users.id, userId),
+    );
+    const result = await loginUser({
+      login: userRows[0].username,
+      password: "TestPwd-2024-Xy9",
+      code: currentCode(secret),
+    });
+    assertEquals(result.user.tfa_enabled, true);
+    assertEquals(typeof result.token, "string");
+  },
+});
+
+Deno.test({
+  name: "auth tfa: 恢复码登录成功且一次性消费",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const userId = await seedUser();
+    const { secret } = await setupTfa(userId, "auth-tfa");
+    const codes = await confirmTfa(userId, currentCode(secret));
+    const userRows = await getDb().select().from(users).where(
+      eq(users.id, userId),
+    );
+    const result = await loginUser({
+      login: userRows[0].username,
+      password: "TestPwd-2024-Xy9",
+      code: codes[0],
+    });
+    assertEquals(result.user.tfa_enabled, true);
+    assertEquals(await verifyTfaCodeForUser(userId, codes[0]), false);
+  },
+});
+
+Deno.test({
+  name: "auth tfa: 未启用 TFA 用户不带 code 登录行为不变",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const userId = await seedUser();
+    const userRows = await getDb().select().from(users).where(
+      eq(users.id, userId),
+    );
+    const result = await loginUser({
+      login: userRows[0].username,
+      password: "TestPwd-2024-Xy9",
+    });
+    assertEquals(result.user.tfa_enabled, false);
+    assertEquals(typeof result.token, "string");
+  },
+});

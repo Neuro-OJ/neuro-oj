@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
 import {
   contestParticipants,
   contestProblems,
@@ -7,16 +7,19 @@ import {
   problems,
   submissions,
   users,
-} from "../../../db/schema.ts";
+} from "./../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
-} from "../../../lib/errors.ts";
-import { comparePassword, hashPassword } from "../../../lib/password.ts";
-import { generatePublicId, resolvePublicId } from "../../../lib/public-id.ts";
-import { unwrapRows } from "../../../lib/sql-rows.ts";
+} from "./../../../shared/base/errors.ts";
+import { comparePassword, hashPassword } from "./../../identity/index.ts";
+import {
+  generatePublicId,
+  resolvePublicId,
+} from "./../../../shared/security/public-id.ts";
+import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
 import { findContestRow } from "./contest-row.ts";
 import {
   type ContestConfig,
@@ -29,7 +32,7 @@ import {
   isValidContestConfig,
   isValidContestType,
   type UpdateContestInput,
-} from "../../../types/contests.ts";
+} from "./../types/contests.ts";
 
 /** 竞赛列表查询参数（分页、按类型筛选、是否包含非公开竞赛）。 */
 export interface ListContestsParams {

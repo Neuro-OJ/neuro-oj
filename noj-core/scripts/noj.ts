@@ -17,7 +17,7 @@ import { join } from "jsr:@std/path@^1";
 import { Command } from "@cliffy/command";
 import { HelpCommand } from "@cliffy/command/help";
 import { CompletionsCommand } from "@cliffy/command/completions";
-import { runMigrations } from "../src/db/migrate.ts";
+import { runMigrations } from "./../src/shared/db/migrate.ts";
 import { ensureRootUser } from "../src/domains/identity/index.ts";
 import { ensureRbacSeeds } from "../src/domains/system/index.ts";
 import {
@@ -28,8 +28,8 @@ import {
   seedTags,
 } from "../src/domains/system/index.ts";
 import { importProblemBundle } from "../src/domains/catalog/index.ts";
-import { isValidTemplateFileName } from "../src/types/problem-bundle.ts";
-import { ROOT_USER_ID } from "../src/lib/constants.ts";
+import { isValidTemplateFileName } from "./../src/domains/catalog/types/problem-bundle.ts";
+import { ROOT_USER_ID } from "./../src/shared/base/constants.ts";
 
 const PROJECT_ROOT = Deno.env.get("NOJ_PROJECT_ROOT") ??
   join(import.meta.dirname ?? ".", "..");

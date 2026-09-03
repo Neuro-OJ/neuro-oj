@@ -10,15 +10,18 @@
  */
 
 import { and, eq, isNull, like, or, sql } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
-import { ipBans } from "../../../db/schema.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { ipBans } from "./../../../shared/db/schema.ts";
 import {
   ConflictError,
   NotFoundError,
   ValidationError,
-} from "../../../lib/errors.ts";
-import { isBannedIp, isValidIpOrCidr } from "../../../lib/cidr.ts";
-import { getCached, invalidateBanCache } from "../../../lib/banCache.ts";
+} from "./../../../shared/base/errors.ts";
+import {
+  isBannedIp,
+  isValidIpOrCidr,
+} from "./../../../shared/security/cidr.ts";
+import { getCached, invalidateBanCache } from "./security/banCache.ts";
 import { logAudit } from "../../system/index.ts";
 
 /** IP 黑名单条目。 */

@@ -1,26 +1,26 @@
 import { desc, eq, sql } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityBoards,
   communityPosts,
   problems,
   userRoles,
   users,
-} from "../../../../db/schema.ts";
+} from "./../../../../shared/db/schema.ts";
 import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
-} from "../../../../lib/errors.ts";
-import { nowIso } from "../../../../lib/dates.ts";
+} from "./../../../../shared/base/errors.ts";
+import { nowIso } from "./../../../../shared/base/dates.ts";
 import {
   generatePublicId,
   resolvePublicId,
-} from "../../../../lib/public-id.ts";
+} from "./../../../../shared/security/public-id.ts";
 import type {
   CommunityPostInput,
   CommunityPostType,
-} from "../../../../types/community.ts";
+} from "./../../types/community.ts";
 import {
   assertCommunityEnabled,
   getCommunityConfig,

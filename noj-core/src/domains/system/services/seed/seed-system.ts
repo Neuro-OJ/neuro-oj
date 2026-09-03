@@ -10,22 +10,22 @@
  */
 
 import { eq } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   judgeImages,
   roles,
   tags,
   userRoles,
   users,
-} from "../../../../db/schema.ts";
-import { hashPassword } from "../../../../lib/password.ts";
+} from "./../../../../shared/db/schema.ts";
+import { hashPassword } from "./../../../identity/index.ts";
 import { ensureSystemRoles } from "./seed-rbac.ts";
-import { ROOT_USER_ID } from "../../../../lib/constants.ts";
+import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import {
   ADMIN_FULL_ACCESS,
   getAdminUserIds,
   getUserPermissions,
-} from "../../../../lib/permissions.ts";
+} from "./../../../identity/index.ts";
 
 /**
  * 为管理员用户写入 RBAC 关联（issue #186）。

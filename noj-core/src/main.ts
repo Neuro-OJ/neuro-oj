@@ -1,30 +1,30 @@
 import { createApp } from "./app.ts";
-import { closeDbForShutdown } from "./db/connection.ts";
-import { runMigrations } from "./db/migrate.ts";
-import { startQueueSweeper } from "./mq/sweeper.ts";
-import { closeRedisForShutdown, connectRedis } from "./mq/connection.ts";
+import { closeDbForShutdown } from "./shared/db/connection.ts";
+import { runMigrations } from "./shared/db/migrate.ts";
+import { startQueueSweeper } from "./domains/submission/index.ts";
+import { closeRedisForShutdown, connectRedis } from "./shared/mq/connection.ts";
 import {
   requestResultConsumerShutdown,
   startResultConsumerWithRetry,
-} from "./mq/consumer.ts";
-import { initEventSubscriber } from "./lib/event-bus.ts";
-import { snapshotEnv } from "./lib/env-snapshot.ts";
-import { validateRegistry } from "./lib/settings-registry.ts";
-import { createReviewConsumer } from "./mq/review-consumer.ts";
+} from "./domains/submission/index.ts";
+import { initEventSubscriber } from "./shared/sse/event-bus.ts";
+import { snapshotEnv } from "./domains/system/index.ts";
+import { validateRegistry } from "./shared/config/settings-registry.ts";
+import { createReviewConsumer } from "./domains/content-review/index.ts";
 import { ensureRootUser } from "./domains/identity/index.ts";
 import { ensureRbacSeeds } from "./domains/system/index.ts";
-import { getStorageProvider } from "./lib/storage/mod.ts";
+import { getStorageProvider } from "./domains/system/index.ts";
 import { getSetting, initSystemSettings } from "./domains/system/index.ts";
 import { startAuditLogRetentionTask } from "./domains/system/index.ts";
-import { logger } from "./lib/logging.ts";
+import { logger } from "./shared/base/logging.ts";
 import {
   assertProductionConfig,
   type ProductionConfig,
-} from "./lib/production-config.ts";
+} from "./shared/config/production-config.ts";
 import {
   MIN_JWT_SECRET_LENGTH,
   MIN_TFA_ENCRYPTION_KEY_LENGTH,
-} from "./lib/constants.ts";
+} from "./shared/base/constants.ts";
 
 const app = createApp();
 

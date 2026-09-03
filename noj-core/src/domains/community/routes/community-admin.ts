@@ -1,18 +1,21 @@
 import { Hono } from "hono";
 import type { Next } from "hono";
-import { parseJsonBody } from "../../../lib/request.ts";
-import { BadRequestError, ForbiddenError } from "../../../lib/errors.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
+import {
+  BadRequestError,
+  ForbiddenError,
+} from "./../../../shared/base/errors.ts";
 import {
   assertPermission,
   checkPermission,
   getUserPermissions,
-} from "../../../lib/permissions.ts";
+} from "./../../identity/index.ts";
 import {
   COMMUNITY_PRESETS,
   MODERATION_STATUSES,
-} from "../../../types/community.ts";
-import { authMiddleware, getUserBanState } from "../../../middleware/auth.ts";
-import type { OptionalAuthEnv } from "../../../middleware/auth.ts";
+} from "./../types/community.ts";
+import { authMiddleware, getUserBanState } from "./../../identity/index.ts";
+import type { OptionalAuthEnv } from "./../../identity/index.ts";
 import {
   applyCommunityPreset,
   banUser,

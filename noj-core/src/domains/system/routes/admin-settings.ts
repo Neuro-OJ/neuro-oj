@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "../../../middleware/auth.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
-import { BadRequestError } from "../../../lib/errors.ts";
+import type { AuthEnv } from "./../../identity/index.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
+import { BadRequestError } from "./../../../shared/base/errors.ts";
 import {
   listSettings,
   resetSetting,

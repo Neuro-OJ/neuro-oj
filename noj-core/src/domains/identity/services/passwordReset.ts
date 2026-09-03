@@ -1,11 +1,11 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
-import { passwordResetTokens, users } from "../../../db/schema.ts";
-import { hashPassword } from "../../../lib/password.ts";
-import { generateResetToken, hashResetToken } from "../../../lib/resetToken.ts";
-import { sendPasswordResetEmail } from "../../../lib/email.ts";
-import { BadRequestError } from "../../../lib/errors.ts";
-import { logger } from "../../../lib/logging.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { passwordResetTokens, users } from "./../../../shared/db/schema.ts";
+import { hashPassword } from "./security/password.ts";
+import { generateResetToken, hashResetToken } from "./security/resetToken.ts";
+import { sendPasswordResetEmail } from "./../../system/index.ts";
+import { BadRequestError } from "./../../../shared/base/errors.ts";
+import { logger } from "./../../../shared/base/logging.ts";
 import { logAuthEvent } from "../../system/index.ts";
 import { validatePasswordStrength } from "./auth.ts";
 

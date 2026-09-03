@@ -11,21 +11,21 @@
  */
 
 import { Hono } from "hono";
-import { optionalAuthMiddleware } from "../../../middleware/auth.ts";
-import { searchRateLimit } from "../../../middleware/search-rate-limit.ts";
+import { optionalAuthMiddleware } from "./../../identity/index.ts";
+import { searchRateLimit } from "./../middleware/search-rate-limit.ts";
 import {
   searchCommunity,
   searchProblems,
   searchUsers,
 } from "../services/search.ts";
 import { getCommunityConfig } from "../../community/index.ts";
-import { parsePagination } from "../../../lib/pagination.ts";
-import { checkPermission } from "../../../lib/permissions.ts";
+import { parsePagination } from "./../../../shared/http/pagination.ts";
+import { checkPermission } from "./../../identity/index.ts";
 import {
   ForbiddenError,
   UnauthorizedError,
   ValidationError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 
 // 扩展 Hono 类型，使 c.get("userId") / c.get("userRole") 返回 string | undefined
 // （optionalAuthMiddleware 注入时可能为 undefined；与 submissions.ts 一致）

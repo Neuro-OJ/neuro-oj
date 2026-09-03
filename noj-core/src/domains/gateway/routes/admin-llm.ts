@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "../../../middleware/auth.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
+import type { AuthEnv } from "./../../identity/index.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
 import {
   createLlmProvider,
   listLlmProviders,
