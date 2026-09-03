@@ -11,7 +11,10 @@
  */
 
 import { and, eq, sql } from "drizzle-orm";
-import { getDb } from "./../../../../shared/db/connection.ts";
+import {
+  getDb,
+  registerDbResetSeeder,
+} from "./../../../../shared/db/connection.ts";
 import {
   permissions,
   rolePermissions,
@@ -343,3 +346,8 @@ export async function ensureRbacSeeds(): Promise<void> {
   await migrateExistingUsers();
   await ensureCommunitySeeds();
 }
+
+// 注册测试重置后的重新播种回调，使 shared/db 不反向依赖 domains。
+registerDbResetSeeder(async () => {
+  await ensureRbacSeeds();
+});

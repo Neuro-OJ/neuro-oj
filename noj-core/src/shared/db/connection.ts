@@ -57,10 +57,23 @@ let _testTransactionProxy: DbClient | null = null;
  * 解决 system_settings 等模块的内存缓存与 DB TRUNCATE 不同步导致的测试污染。
  */
 const _onDbResetCallbacks: Array<() => void> = [];
+const _onDbResetSeeders: Array<() => Promise<void>> = [];
 
 /** 注册测试重置回调（供 system-settings 等模块注册缓存清理函数） */
 export function registerDbResetCallback(fn: () => void): void {
   _onDbResetCallbacks.push(fn);
+}
+
+/** 注册测试重置后的异步 seed 回调（供 system RBAC 等注册重新播种函数） */
+export function registerDbResetSeeder(fn: () => Promise<void>): void {
+  _onDbResetSeeders.push(fn);
+}
+
+/** 执行所有已注册的 seed 回调 */
+export async function runDbResetSeeders(): Promise<void> {
+  for (const fn of _onDbResetSeeders) {
+    await fn();
+  }
 }
 
 // ── PGlite 模板缓存 ──────────────────────────────────────────
@@ -507,10 +520,7 @@ export async function ensurePGliteSchemaForTest(): Promise<void> {
   }
   // 种子 RBAC 角色和权限
   try {
-    const { ensureRbacSeeds } = await import(
-      "../../domains/system/services/seed/seed-rbac.ts"
-    );
-    await ensureRbacSeeds();
+    await runDbResetSeeders();
   } catch {
     // 表可能还没建
   }
@@ -579,10 +589,7 @@ export async function resetDbForTest(options: ResetDbForTestOptions = {}) {
     }
     // TRUNCATE 清空了 RBAC 种子表，必须重新播种
     try {
-      const { ensureRbacSeeds } = await import(
-        "../../domains/system/services/seed/seed-rbac.ts"
-      );
-      await ensureRbacSeeds();
+      await runDbResetSeeders();
     } catch {
       // 表可能还没建
     }
@@ -618,10 +625,7 @@ export async function resetDbForTest(options: ResetDbForTestOptions = {}) {
   } catch { /* 忽略 */ }
   // TRUNCATE 清空了 RBAC 种子表，必须重新播种
   try {
-    const { ensureRbacSeeds } = await import(
-      "../../domains/system/services/seed/seed-rbac.ts"
-    );
-    await ensureRbacSeeds();
+    await runDbResetSeeders();
   } catch { /* 忽略 */ }
   try {
     await db.execute(

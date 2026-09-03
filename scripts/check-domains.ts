@@ -185,19 +185,60 @@ export async function checkDomains(root = "."): Promise<DomainViolation[]> {
   return violations;
 }
 
+/**
+ * 检查 `src/shared/**` 不得反向依赖 `src/domains/**`。
+ */
+export async function checkSharedImports(root = "."): Promise<DomainViolation[]> {
+  const violations: DomainViolation[] = [];
+  const sharedDir = resolve(root, "noj-core/src/shared");
+  try {
+    const stat = await Deno.stat(sharedDir);
+    if (!stat.isDirectory) return [];
+  } catch {
+    return [];
+  }
+  const files = await collectTsFiles(sharedDir);
+  for (const file of files) {
+    const rel = toPosix(relative(resolve(root), file));
+    const content = await Deno.readTextFile(file);
+    const specs = new Set<string>();
+    for (const m of content.matchAll(IMPORT_RE)) {
+      if (m[1]) specs.add(m[1]);
+    }
+    for (const m of content.matchAll(DYNAMIC_IMPORT_RE)) {
+      if (m[1]) specs.add(m[1]);
+    }
+    for (const spec of specs) {
+      const target = resolveRelativeImport(file, spec, root);
+      if (!target) continue;
+      if (target.startsWith("noj-core/src/domains/")) {
+        violations.push({
+          file: rel,
+          importSpec: spec,
+          target,
+          message: `shared 不得反向依赖 domains: ${spec}`,
+        });
+      }
+    }
+  }
+  return violations;
+}
+
 if (import.meta.main) {
   const args = Deno.args;
   const baselineIndex = args.indexOf("--baseline");
   const baselinePath = baselineIndex >= 0 ? args[baselineIndex + 1] : undefined;
 
   const violations = await checkDomains(".");
+  const sharedViolations = await checkSharedImports(".");
+  const all = [...violations, ...sharedViolations];
 
   if (baselinePath) {
     const baselineText = await Deno.readTextFile(baselinePath).catch(() => "");
     const baseline = new Set(
       baselineText.split("\n").map((s) => s.trim()).filter(Boolean),
     );
-    const newViolations = violations.filter(
+    const newViolations = all.filter(
       (v) => !baseline.has(`- ${v.file}: ${v.message}`),
     );
     if (newViolations.length > 0) {
@@ -211,9 +252,9 @@ if (import.meta.main) {
     Deno.exit(0);
   }
 
-  if (violations.length > 0) {
-    console.error(`发现 ${violations.length} 条域边界违规:`);
-    for (const v of violations) {
+  if (all.length > 0) {
+    console.error(`发现 ${all.length} 条域边界违规:`);
+    for (const v of all) {
       console.error(`- ${v.file}: ${v.message}`);
     }
     Deno.exit(1);
