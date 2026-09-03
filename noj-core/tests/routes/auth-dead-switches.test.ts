@@ -21,7 +21,7 @@ import {
 import {
   _resetEnvSnapshotForTest,
   snapshotEnv,
-} from "../../src/lib/env-snapshot.ts";
+} from "./../../src/domains/system/services/env-snapshot.ts";
 import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import { initRedisForTest, jsonRequest } from "../lib/helper.ts";
 

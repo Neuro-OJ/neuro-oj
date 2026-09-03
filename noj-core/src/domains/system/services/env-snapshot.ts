@@ -14,7 +14,7 @@
  * - env-snapshot 定义 env-only 设置项（只读，admin 不可改）
  */
 
-import type { SettingCategory } from "./../shared/config/settings-registry.ts";
+import type { SettingCategory } from "../../../shared/config/settings-registry.ts";
 
 /** env-only 设置项的元数据（只读展示用，admin 不可改） */
 export interface EnvOnlyDefinition {

@@ -26,7 +26,7 @@ import {
 import {
   _resetEnvSnapshotForTest,
   snapshotEnv,
-} from "../../src/lib/env-snapshot.ts";
+} from "./../../src/domains/system/services/env-snapshot.ts";
 import { ValidationError } from "./../../src/shared/base/errors.ts";
 import { validateRegistry } from "./../../src/shared/config/settings-registry.ts";
 

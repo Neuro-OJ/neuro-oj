@@ -19,7 +19,7 @@ import {
 import {
   _resetEnvSnapshotForTest,
   snapshotEnv,
-} from "../../src/lib/env-snapshot.ts";
+} from "./../../src/domains/system/services/env-snapshot.ts";
 import { createUserToken, jsonRequest } from "../lib/helper.ts";
 
 // 测试需要 JWT_SECRET 签发 token

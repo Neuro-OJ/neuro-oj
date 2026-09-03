@@ -24,10 +24,7 @@ import {
 import { systemSettings } from "./../../../shared/db/schema.ts";
 import { ValidationError } from "./../../../shared/base/errors.ts";
 import { logAudit } from "./audit-log.ts";
-import {
-  ENV_ONLY_DEFINITIONS,
-  getEnvSnapshotValue,
-} from "../../../lib/env-snapshot.ts";
+import { ENV_ONLY_DEFINITIONS, getEnvSnapshotValue } from "./env-snapshot.ts";
 import {
   findDefinition,
   SETTING_DEFINITIONS,

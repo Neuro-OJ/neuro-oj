@@ -8,7 +8,7 @@ import {
   startResultConsumerWithRetry,
 } from "./mq/consumer.ts";
 import { initEventSubscriber } from "./shared/sse/event-bus.ts";
-import { snapshotEnv } from "./lib/env-snapshot.ts";
+import { snapshotEnv } from "./domains/system/index.ts";
 import { validateRegistry } from "./shared/config/settings-registry.ts";
 import { createReviewConsumer } from "./mq/review-consumer.ts";
 import { ensureRootUser } from "./domains/identity/index.ts";

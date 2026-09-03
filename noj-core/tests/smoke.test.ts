@@ -26,7 +26,7 @@ import {
 import {
   _resetEnvSnapshotForTest,
   snapshotEnv,
-} from "../src/lib/env-snapshot.ts";
+} from "./../src/domains/system/services/env-snapshot.ts";
 
 // 模块级：连接 Redis（PR-1 后 authMiddleware 需要 Redis 校验 JWT 撤销状态）
 // 未配置 REDIS_URL 时跳过此步（依赖测试自身的 Redis fixture）

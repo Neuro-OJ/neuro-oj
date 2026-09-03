@@ -21,7 +21,7 @@ import {
 import {
   _resetEnvSnapshotForTest,
   snapshotEnv,
-} from "../../src/lib/env-snapshot.ts";
+} from "./../../src/domains/system/services/env-snapshot.ts";
 
 // 模块级 bootstrap：创建 PGlite schema（含 system_settings）
 await resetDbForTest();
