@@ -1,24 +1,34 @@
 /**
- * 系统设置注册表（issue #99）。
+ * 统一配置注册表（issue #99 演进：配置分层语义治理）。
  *
- * 定义 54 个 DB-backed 设置项的元数据（含 boolean/string/text/integer 四种类型）。
- * 启动期 validateRegistry() 校验注册表合法性；
- * service 层 updateSetting/getSetting 依赖本表做严格 type 校验。
+ * 定义全部配置项的元数据，按 scope 分为两类生命周期：
+ * - runtime（DB-owned）：运行时可热改，读取链 DB > env 兜底 > default；
+ * - bootstrap（env-owned）：启动期定型，变更需重启，读取链 env > default（不读 DB）。
+ *
+ * 覆盖三类来源：
+ * - 原 DB-backed 设置项（admin 可改）；
+ * - 原 env-only 展示项（启动期快照、后台只读）；
+ * - 纯 infra/ops env（TFA/OAuth/LLM/日志等，后台只读，无配置盲区）。
+ *
+ * 启动期 validateRegistry() 校验注册表合法性（scope 声明完整、env 键唯一）。
  *
  * 分类（category）用于管理后台 UI 分组：
  * - auth: 认证 / 用户管理
  * - maintenance: 维护 / 公告
- * - email: 邮件发送
+ * - email: 邮件发送（bootstrap 启动期配置）
  * - rate_limit: 速率限制
  * - database: 数据库
  * - redis: Redis
  * - cors: 跨域
+ * - storage: 对象存储（bootstrap 启动期配置）
  * - judge: 评测资源限制
  * - review: 内容合规审核（issue #413）
  * - other: 其他
  */
 
 export type SettingType = "boolean" | "string" | "text" | "integer";
+
+export type ConfigScope = "runtime" | "bootstrap";
 
 export type SettingCategory =
   | "auth"
@@ -34,16 +44,20 @@ export type SettingCategory =
   | "review"
   | "other";
 
-/** 注册表条目（DB-backed 设置项的元数据） */
+/** 配置项元数据（统一注册表条目） */
 export interface SettingDefinition {
   key: string;
   type: SettingType;
-  /** 默认值（DB 与 env 均未配置时回退至此） */
-  default: boolean | string | number;
+  /** 默认值（DB 与 env 均未配置时回退至此；bootstrap env-only 项可无默认值） */
+  default?: boolean | string | number;
   description: string;
   is_secret: boolean;
-  /** env 兜底键名（仅展示用，实际读取走 env-snapshot） */
-  envFallback: string;
+  /** 生命周期归属：runtime=DB 可热改；bootstrap=env 启动期定型只读 */
+  scope: ConfigScope;
+  /** runtime 专属：env 兜底键名（仅首次启动/开发环境兜底用） */
+  envFallback?: string;
+  /** bootstrap 专属：env 事实源键名（唯一） */
+  envKey?: string;
   category: SettingCategory;
   /** integer 类型专用：最小值（含） */
   min?: number;
@@ -51,10 +65,12 @@ export interface SettingDefinition {
   max?: number;
   /** 修改后需重启 noj-core 才能生效（如启动时单例读取的配置） */
   needsRestart?: boolean;
+  /** 是否在管理后台展示（false=仅参与校验/登记，如开发测试专用键） */
+  visible?: boolean;
 }
 
-/** 54 个 DB-backed 设置项的元数据定义 */
-export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
+/** 统一配置注册表：全部配置项（runtime + bootstrap）的元数据定义 */
+export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
   // ── auth ──────────────────────────────────────────────────
   {
     key: "allow_register",
@@ -64,6 +80,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "ALLOW_REGISTER",
     category: "auth",
+    scope: "runtime",
   },
   {
     key: "jwt_expires_in",
@@ -73,6 +90,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "JWT_EXPIRES_IN",
     category: "auth",
+    scope: "runtime",
   },
 
   // ── maintenance ───────────────────────────────────────────
@@ -84,6 +102,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "MAINTENANCE_MODE",
     category: "maintenance",
+    scope: "runtime",
   },
   {
     key: "homepage_banner",
@@ -93,6 +112,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "HOMEPAGE_BANNER",
     category: "maintenance",
+    scope: "runtime",
   },
 
   // ── email ─────────────────────────────────────────────────
@@ -102,8 +122,9 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: "mock",
     description: "邮件服务（disabled / aliyun / tencent）",
     is_secret: false,
-    envFallback: "EMAIL_PROVIDER",
+    envKey: "EMAIL_PROVIDER",
     category: "email",
+    scope: "bootstrap",
   },
   {
     key: "smtp_from",
@@ -111,8 +132,9 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: "",
     description: "系统发件人地址（邮件 Provider 通用）",
     is_secret: false,
-    envFallback: "SMTP_FROM",
+    envKey: "SMTP_FROM",
     category: "email",
+    scope: "bootstrap",
   },
   {
     key: "alibaba_access_key_id",
@@ -120,8 +142,9 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: "",
     description: "阿里云 DirectMail AccessKey ID",
     is_secret: false,
-    envFallback: "ALIBABA_ACCESS_KEY_ID",
+    envKey: "ALIBABA_ACCESS_KEY_ID",
     category: "email",
+    scope: "bootstrap",
   },
   {
     key: "alibaba_access_key_secret",
@@ -130,8 +153,9 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     description:
       "阿里云 DirectMail AccessKey Secret（已脱敏：仅保留前 3 后 3 字符）",
     is_secret: true,
-    envFallback: "ALIBABA_ACCESS_KEY_SECRET",
+    envKey: "ALIBABA_ACCESS_KEY_SECRET",
     category: "email",
+    scope: "bootstrap",
   },
   {
     key: "alibaba_from_email",
@@ -139,8 +163,9 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: "",
     description: "阿里云发信地址（需控制台验证域名）",
     is_secret: false,
-    envFallback: "ALIBABA_FROM_EMAIL",
+    envKey: "ALIBABA_FROM_EMAIL",
     category: "email",
+    scope: "bootstrap",
   },
   {
     key: "tencent_secret_id",
@@ -148,8 +173,9 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: "",
     description: "腾讯云 SES SecretId",
     is_secret: false,
-    envFallback: "TENCENT_SECRET_ID",
+    envKey: "TENCENT_SECRET_ID",
     category: "email",
+    scope: "bootstrap",
   },
   {
     key: "tencent_secret_key",
@@ -157,8 +183,9 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: "",
     description: "腾讯云 SES SecretKey（已脱敏：仅保留前 3 后 3 字符）",
     is_secret: true,
-    envFallback: "TENCENT_SECRET_KEY",
+    envKey: "TENCENT_SECRET_KEY",
     category: "email",
+    scope: "bootstrap",
   },
   {
     key: "tencent_from_email",
@@ -166,8 +193,9 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: "",
     description: "腾讯云发信地址（需控制台验证域名）",
     is_secret: false,
-    envFallback: "TENCENT_FROM_EMAIL",
+    envKey: "TENCENT_FROM_EMAIL",
     category: "email",
+    scope: "bootstrap",
   },
   {
     key: "tencent_region",
@@ -175,8 +203,9 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: "ap-guangzhou",
     description: "腾讯云地域",
     is_secret: false,
-    envFallback: "TENCENT_REGION",
+    envKey: "TENCENT_REGION",
     category: "email",
+    scope: "bootstrap",
   },
 
   // ── rate_limit ────────────────────────────────────────────
@@ -188,6 +217,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "RATE_LIMIT_LOGIN_ENABLED",
     category: "rate_limit",
+    scope: "runtime",
   },
   {
     key: "rate_limit_enabled",
@@ -197,6 +227,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "RATE_LIMIT_ENABLED",
     category: "rate_limit",
+    scope: "runtime",
   },
   {
     key: "rate_limit_login_ip_window",
@@ -208,6 +239,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "rate_limit",
     min: 1,
     max: 3600,
+    scope: "runtime",
   },
   {
     key: "rate_limit_login_ip_max",
@@ -219,6 +251,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "rate_limit",
     min: 1,
     max: 1000,
+    scope: "runtime",
   },
   {
     key: "rate_limit_login_acc_window",
@@ -230,6 +263,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "rate_limit",
     min: 1,
     max: 3600,
+    scope: "runtime",
   },
   {
     key: "rate_limit_login_acc_max",
@@ -241,6 +275,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "rate_limit",
     min: 1,
     max: 100,
+    scope: "runtime",
   },
   {
     key: "rate_limit_login_backoff_sec",
@@ -252,6 +287,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "rate_limit",
     min: 0,
     max: 300,
+    scope: "runtime",
   },
   {
     key: "rate_limit_login_lock_threshold",
@@ -263,6 +299,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "rate_limit",
     min: 1,
     max: 100,
+    scope: "runtime",
   },
   {
     key: "rate_limit_login_lock_seconds",
@@ -274,6 +311,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "rate_limit",
     min: 60,
     max: 86400,
+    scope: "runtime",
   },
   {
     key: "rate_limit_search_enabled",
@@ -283,6 +321,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "RATE_LIMIT_SEARCH_ENABLED",
     category: "rate_limit",
+    scope: "runtime",
   },
   {
     key: "rate_limit_search_window",
@@ -294,6 +333,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "rate_limit",
     min: 1,
     max: 3600,
+    scope: "runtime",
   },
   {
     key: "rate_limit_search_max_anon",
@@ -305,6 +345,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "rate_limit",
     min: 1,
     max: 10000,
+    scope: "runtime",
   },
   {
     key: "rate_limit_search_max_authed",
@@ -316,6 +357,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "rate_limit",
     min: 1,
     max: 10000,
+    scope: "runtime",
   },
   {
     key: "trusted_proxies",
@@ -325,6 +367,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "TRUSTED_PROXIES",
     category: "rate_limit",
+    scope: "runtime",
   },
 
   // ── storage（修改需重启 noj-core：Provider 为启动时初始化的单例）───────
@@ -334,9 +377,10 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: "local",
     description: "存储 Provider（local / s3）",
     is_secret: false,
-    envFallback: "STORAGE_PROVIDER",
+    envKey: "STORAGE_PROVIDER",
     category: "storage",
     needsRestart: true,
+    scope: "bootstrap",
   },
   {
     key: "s3_endpoint",
@@ -344,9 +388,10 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: "",
     description: "S3 兼容对象存储端点",
     is_secret: false,
-    envFallback: "S3_ENDPOINT",
+    envKey: "S3_ENDPOINT",
     category: "storage",
     needsRestart: true,
+    scope: "bootstrap",
   },
   {
     key: "s3_region",
@@ -354,9 +399,10 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: "us-east-1",
     description: "S3 区域",
     is_secret: false,
-    envFallback: "S3_REGION",
+    envKey: "S3_REGION",
     category: "storage",
     needsRestart: true,
+    scope: "bootstrap",
   },
   {
     key: "s3_access_key",
@@ -364,9 +410,10 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: "",
     description: "S3 访问密钥",
     is_secret: false,
-    envFallback: "S3_ACCESS_KEY",
+    envKey: "S3_ACCESS_KEY",
     category: "storage",
     needsRestart: true,
+    scope: "bootstrap",
   },
   {
     key: "s3_secret_key",
@@ -374,9 +421,10 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: "",
     description: "S3 秘密密钥（已脱敏：仅保留前 3 后 3 字符）",
     is_secret: true,
-    envFallback: "S3_SECRET_KEY",
+    envKey: "S3_SECRET_KEY",
     category: "storage",
     needsRestart: true,
+    scope: "bootstrap",
   },
   {
     key: "s3_bucket",
@@ -384,9 +432,10 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: "noj-support-packages",
     description: "S3 存储桶名",
     is_secret: false,
-    envFallback: "S3_BUCKET",
+    envKey: "S3_BUCKET",
     category: "storage",
     needsRestart: true,
+    scope: "bootstrap",
   },
   {
     key: "s3_force_path_style",
@@ -394,9 +443,10 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: false,
     description: "启用路径风格 URL（MinIO 等 S3 兼容存储需要设为 true）",
     is_secret: false,
-    envFallback: "S3_FORCE_PATH_STYLE",
+    envKey: "S3_FORCE_PATH_STYLE",
     category: "storage",
     needsRestart: true,
+    scope: "bootstrap",
   },
 
   // ── community ───────────────────────────────────────────
@@ -408,6 +458,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "COMMUNITY_ENABLED",
     category: "community",
+    scope: "runtime",
   },
   {
     key: "community_guest_read_enabled",
@@ -417,6 +468,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "COMMUNITY_GUEST_READ_ENABLED",
     category: "community",
+    scope: "runtime",
   },
   {
     key: "community_read_only",
@@ -426,6 +478,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "COMMUNITY_READ_ONLY",
     category: "community",
+    scope: "runtime",
   },
   {
     key: "community_solutions_enabled",
@@ -435,6 +488,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "COMMUNITY_SOLUTIONS_ENABLED",
     category: "community",
+    scope: "runtime",
   },
   {
     key: "community_discussions_enabled",
@@ -444,6 +498,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "COMMUNITY_DISCUSSIONS_ENABLED",
     category: "community",
+    scope: "runtime",
   },
   {
     key: "community_moments_enabled",
@@ -453,6 +508,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "COMMUNITY_MOMENTS_ENABLED",
     category: "community",
+    scope: "runtime",
   },
   {
     key: "community_activities_enabled",
@@ -462,6 +518,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "COMMUNITY_ACTIVITIES_ENABLED",
     category: "community",
+    scope: "runtime",
   },
   {
     key: "community_comments_enabled",
@@ -471,6 +528,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "COMMUNITY_COMMENTS_ENABLED",
     category: "community",
+    scope: "runtime",
   },
   {
     key: "community_reactions_enabled",
@@ -480,6 +538,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "COMMUNITY_REACTIONS_ENABLED",
     category: "community",
+    scope: "runtime",
   },
   {
     key: "community_bookmarks_enabled",
@@ -489,6 +548,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "COMMUNITY_BOOKMARKS_ENABLED",
     category: "community",
+    scope: "runtime",
   },
   {
     key: "community_follows_enabled",
@@ -498,6 +558,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "COMMUNITY_FOLLOWS_ENABLED",
     category: "community",
+    scope: "runtime",
   },
   {
     key: "private_messaging_enabled",
@@ -507,6 +568,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "PRIVATE_MESSAGING_ENABLED",
     category: "community",
+    scope: "runtime",
   },
   {
     key: "community_external_images_enabled",
@@ -516,6 +578,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "COMMUNITY_EXTERNAL_IMAGES_ENABLED",
     category: "community",
+    scope: "runtime",
   },
   {
     key: "community_solution_requires_accepted",
@@ -525,6 +588,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "COMMUNITY_SOLUTION_REQUIRES_ACCEPTED",
     category: "community",
+    scope: "runtime",
   },
   {
     key: "community_new_user_review_hours",
@@ -536,6 +600,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "community",
     min: 0,
     max: 8760,
+    scope: "runtime",
   },
   {
     key: "community_post_max_length",
@@ -547,6 +612,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "community",
     min: 100,
     max: 100000,
+    scope: "runtime",
   },
   {
     key: "community_moment_max_length",
@@ -558,6 +624,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "community",
     min: 20,
     max: 10000,
+    scope: "runtime",
   },
   {
     key: "community_comment_max_length",
@@ -569,6 +636,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "community",
     min: 20,
     max: 50000,
+    scope: "runtime",
   },
   {
     key: "community_post_interval_seconds",
@@ -580,6 +648,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "community",
     min: 0,
     max: 86400,
+    scope: "runtime",
   },
 
   // ── judge ───────────────────────────────────────────────
@@ -592,6 +661,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     envFallback: "JUDGE_MAX_EVALUATOR_TIME_LIMIT_MS",
     category: "judge",
     min: 0,
+    scope: "runtime",
   },
   {
     key: "judge_max_evaluator_memory_limit_mb",
@@ -602,6 +672,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     envFallback: "JUDGE_MAX_EVALUATOR_MEMORY_LIMIT_MB",
     category: "judge",
     min: 0,
+    scope: "runtime",
   },
   {
     key: "judge_max_solution_call_timeout_ms",
@@ -612,6 +683,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     envFallback: "JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS",
     category: "judge",
     min: 0,
+    scope: "runtime",
   },
   {
     key: "judge_max_solution_memory_limit_mb",
@@ -622,6 +694,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     envFallback: "JUDGE_MAX_SOLUTION_MEMORY_LIMIT_MB",
     category: "judge",
     min: 0,
+    scope: "runtime",
   },
 
   // ── review（内容合规审核，issue #413）───────────────────────
@@ -633,6 +706,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "CONTENT_REVIEW_ENABLED",
     category: "review",
+    scope: "runtime",
   },
   {
     key: "content_review_provider",
@@ -642,6 +716,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "CONTENT_REVIEW_PROVIDER",
     category: "review",
+    scope: "runtime",
   },
   {
     key: "content_review_provider_key",
@@ -652,6 +727,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: true,
     envFallback: "CONTENT_REVIEW_PROVIDER_KEY",
     category: "review",
+    scope: "runtime",
   },
   {
     key: "content_review_provider_secret",
@@ -661,6 +737,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: true,
     envFallback: "CONTENT_REVIEW_PROVIDER_SECRET",
     category: "review",
+    scope: "runtime",
   },
   {
     key: "content_review_risk_threshold",
@@ -672,6 +749,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "review",
     min: 0,
     max: 100,
+    scope: "runtime",
   },
   {
     key: "content_review_review_threshold",
@@ -683,6 +761,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "review",
     min: 0,
     max: 100,
+    scope: "runtime",
   },
   {
     key: "content_review_async_enabled",
@@ -692,6 +771,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     envFallback: "CONTENT_REVIEW_ASYNC_ENABLED",
     category: "review",
+    scope: "runtime",
   },
   {
     key: "content_review_timeout_ms",
@@ -703,6 +783,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     category: "review",
     min: 100,
     max: 30000,
+    scope: "runtime",
   },
 
   // ── other ─────────────────────────────────────────────────
@@ -712,10 +793,449 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     default: 90,
     description: "审计日志保留天数（0 = 禁用自动清理）",
     is_secret: false,
-    envFallback: "AUDIT_LOG_RETENTION_DAYS",
+    envKey: "AUDIT_LOG_RETENTION_DAYS",
     category: "other",
     min: 0,
     max: 365,
+    scope: "bootstrap",
+  },
+
+  // ══ bootstrap env-only 基础设施项（原 env-snapshot 白名单）══════
+  // scope: bootstrap，envKey 即 env 事实源；后台只读展示（已设置才展示）。
+  // ── database ───────────────────────────────────────────────
+  {
+    key: "DATABASE_URL",
+    type: "string",
+    description: "PostgreSQL 连接串",
+    is_secret: true,
+    scope: "bootstrap",
+    envKey: "DATABASE_URL",
+    category: "database",
+  },
+  {
+    key: "DATABASE_POOL_MAX",
+    type: "integer",
+    description: "连接池大小",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "DATABASE_POOL_MAX",
+    category: "database",
+  },
+  {
+    key: "DATABASE_CONNECT_TIMEOUT",
+    type: "integer",
+    description: "连接超时（秒）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "DATABASE_CONNECT_TIMEOUT",
+    category: "database",
+  },
+  {
+    key: "DATABASE_IDLE_TIMEOUT",
+    type: "integer",
+    description: "空闲连接超时（秒）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "DATABASE_IDLE_TIMEOUT",
+    category: "database",
+  },
+  {
+    key: "DATABASE_MAX_LIFETIME",
+    type: "integer",
+    description: "连接最大生命周期（秒）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "DATABASE_MAX_LIFETIME",
+    category: "database",
+  },
+  // ── Redis ──────────────────────────────────────────────────
+  {
+    key: "REDIS_URL",
+    type: "string",
+    description: "Redis 连接串",
+    is_secret: true,
+    scope: "bootstrap",
+    envKey: "REDIS_URL",
+    category: "redis",
+  },
+  // ── auth ───────────────────────────────────────────────────
+  {
+    key: "JWT_SECRET",
+    type: "string",
+    description: "JWT 签名密钥（≥32 字符）",
+    is_secret: true,
+    scope: "bootstrap",
+    envKey: "JWT_SECRET",
+    category: "auth",
+  },
+  {
+    key: "ADMIN_EMAIL",
+    type: "string",
+    description: "Seed 管理员邮箱",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "ADMIN_EMAIL",
+    category: "auth",
+  },
+  {
+    key: "ADMIN_PASS",
+    type: "string",
+    description: "Seed 管理员密码",
+    is_secret: true,
+    scope: "bootstrap",
+    envKey: "ADMIN_PASS",
+    category: "auth",
+  },
+  {
+    key: "BCRYPT_SALT_ROUNDS",
+    type: "integer",
+    description: "bcrypt 哈希轮数（修改影响已有密码一致性）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "BCRYPT_SALT_ROUNDS",
+    category: "auth",
+  },
+  // ── CORS ───────────────────────────────────────────────────
+  {
+    key: "CORS_ALLOWED_ORIGINS",
+    type: "string",
+    description: "生产 CORS 白名单（逗号分隔）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "CORS_ALLOWED_ORIGINS",
+    category: "cors",
+  },
+  // ── other（端口 / 环境）────────────────────────────────────
+  {
+    key: "PORT",
+    type: "integer",
+    description: "HTTP 监听端口",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "PORT",
+    category: "other",
+  },
+  {
+    key: "NOJ_ENV",
+    type: "string",
+    description: "运行环境（空=development，production=生产）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_ENV",
+    category: "other",
+  },
+
+  // ══ bootstrap 纯 infra/ops env（仅登记与展示，不改读取路径）══════
+  // ── 密钥类 ─────────────────────────────────────────────────
+  {
+    key: "TFA_ENCRYPTION_KEY",
+    type: "string",
+    description:
+      "TOTP secret 的 AES-256-GCM 加密密钥（≥32 字符，与 JWT_SECRET 隔离）",
+    is_secret: true,
+    scope: "bootstrap",
+    envKey: "TFA_ENCRYPTION_KEY",
+    category: "auth",
+  },
+  {
+    key: "NOJ_LLM_SERVICE_TOKEN",
+    type: "string",
+    description: "noj-llm-gateway 服务间鉴权 + AEAD eval_token 签发/校验密钥",
+    is_secret: true,
+    scope: "bootstrap",
+    envKey: "NOJ_LLM_SERVICE_TOKEN",
+    category: "other",
+  },
+  // ── 应用 URL / 网络 ────────────────────────────────────────
+  {
+    key: "APP_URL",
+    type: "string",
+    description:
+      "外部可信应用地址（密码重置邮件链接 / OAuth 回调，生产必须 HTTPS）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "APP_URL",
+    category: "auth",
+  },
+  {
+    key: "NOJ_ALLOW_INSECURE_HTTP",
+    type: "boolean",
+    description: "允许 HTTP 明文回调（仅开发；生产必须为 false）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_ALLOW_INSECURE_HTTP",
+    category: "other",
+  },
+  {
+    key: "NOJ_LLM_GATEWAY_URL",
+    type: "string",
+    description: "noj-llm-gateway 内部服务地址",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_LLM_GATEWAY_URL",
+    category: "other",
+  },
+  // ── 日志 ───────────────────────────────────────────────────
+  {
+    key: "LOG_LEVEL",
+    type: "string",
+    description: "日志级别（debug/info/warn/error；未设置按 NOJ_ENV 回退）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "LOG_LEVEL",
+    category: "other",
+  },
+  {
+    key: "LOG_FORMAT",
+    type: "string",
+    description: "日志格式（json/pretty；未设置按 NOJ_ENV 回退）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "LOG_FORMAT",
+    category: "other",
+  },
+  // ── 评测 / 存储 / 运行参数 ─────────────────────────────────
+  {
+    key: "RESULT_CONSUMER_CONCURRENCY",
+    type: "integer",
+    description: "评测结果消费者并发数（1-16）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "RESULT_CONSUMER_CONCURRENCY",
+    category: "judge",
+  },
+  {
+    key: "SUPPORT_PACKAGE_DIR",
+    type: "string",
+    description: "本地存储目录（local Provider）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "SUPPORT_PACKAGE_DIR",
+    category: "storage",
+  },
+  {
+    key: "JUDGE_IMAGE_BASE",
+    type: "string",
+    description: "Judge 镜像仓库前缀",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "JUDGE_IMAGE_BASE",
+    category: "judge",
+  },
+  {
+    key: "NOJ_ARTIFACT_MAX_SIZE_MB",
+    type: "integer",
+    description: "artifact 提交硬上限（MB），默认 2048",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_ARTIFACT_MAX_SIZE_MB",
+    category: "judge",
+  },
+  // ── LLM 网关配额（core 侧读的 env 常量）────────────────────
+  {
+    key: "NOJ_LLM_MAX_CALLS",
+    type: "integer",
+    description: "单次评测 eval_token 调用上限（默认 100）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_LLM_MAX_CALLS",
+    category: "other",
+  },
+  {
+    key: "NOJ_LLM_MAX_TOKENS",
+    type: "integer",
+    description: "单次评测 eval_token token 上限（默认 50000）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_LLM_MAX_TOKENS",
+    category: "other",
+  },
+  // ── 种子 / 引导行为 ────────────────────────────────────────
+  {
+    key: "NOJ_FORCE_PASSWORD_CHANGE",
+    type: "boolean",
+    description: "引导管理员是否强制首次改密（默认 true；开发自动 false）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_FORCE_PASSWORD_CHANGE",
+    category: "auth",
+  },
+  {
+    key: "NOJ_LLM_DEFAULT_GLOBAL_DAY_CALLS",
+    type: "integer",
+    description: "LLM 配额缺失 fallback：全局日调用上限",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_LLM_DEFAULT_GLOBAL_DAY_CALLS",
+    category: "other",
+  },
+  {
+    key: "NOJ_LLM_DEFAULT_GLOBAL_DAY_TOKENS",
+    type: "integer",
+    description: "LLM 配额缺失 fallback：全局日 token 上限",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_LLM_DEFAULT_GLOBAL_DAY_TOKENS",
+    category: "other",
+  },
+  {
+    key: "NOJ_LLM_DEFAULT_GLOBAL_DAY_COST",
+    type: "integer",
+    description: "LLM 配额缺失 fallback：全局日成本上限",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_LLM_DEFAULT_GLOBAL_DAY_COST",
+    category: "other",
+  },
+  {
+    key: "NOJ_LLM_DEFAULT_USER_DAY_CALLS",
+    type: "integer",
+    description: "LLM 配额缺失 fallback：单用户日调用上限",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_LLM_DEFAULT_USER_DAY_CALLS",
+    category: "other",
+  },
+  {
+    key: "NOJ_LLM_DEFAULT_USER_DAY_TOKENS",
+    type: "integer",
+    description: "LLM 配额缺失 fallback：单用户日 token 上限",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_LLM_DEFAULT_USER_DAY_TOKENS",
+    category: "other",
+  },
+  {
+    key: "NOJ_LLM_DEFAULT_USER_DAY_COST",
+    type: "integer",
+    description: "LLM 配额缺失 fallback：单用户日成本上限",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_LLM_DEFAULT_USER_DAY_COST",
+    category: "other",
+  },
+  {
+    key: "NOJ_LLM_DEFAULT_PROBLEM_DAY_CALLS",
+    type: "integer",
+    description: "LLM 配额缺失 fallback：单题日调用上限",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_LLM_DEFAULT_PROBLEM_DAY_CALLS",
+    category: "other",
+  },
+  {
+    key: "NOJ_LLM_DEFAULT_PROBLEM_DAY_TOKENS",
+    type: "integer",
+    description: "LLM 配额缺失 fallback：单题日 token 上限",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_LLM_DEFAULT_PROBLEM_DAY_TOKENS",
+    category: "other",
+  },
+  {
+    key: "NOJ_LLM_DEFAULT_PROBLEM_DAY_COST",
+    type: "integer",
+    description: "LLM 配额缺失 fallback：单题日成本上限",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_LLM_DEFAULT_PROBLEM_DAY_COST",
+    category: "other",
+  },
+  // ── OAuth（第三方登录）─────────────────────────────────────
+  {
+    key: "OAUTH_GITHUB_CLIENT_ID",
+    type: "string",
+    description: "GitHub OAuth Client ID",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "OAUTH_GITHUB_CLIENT_ID",
+    category: "auth",
+  },
+  {
+    key: "OAUTH_GITHUB_CLIENT_SECRET",
+    type: "string",
+    description: "GitHub OAuth Client Secret",
+    is_secret: true,
+    scope: "bootstrap",
+    envKey: "OAUTH_GITHUB_CLIENT_SECRET",
+    category: "auth",
+  },
+  {
+    key: "OAUTH_OIDC_ISSUER_URL",
+    type: "string",
+    description: "OIDC Issuer URL",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "OAUTH_OIDC_ISSUER_URL",
+    category: "auth",
+  },
+  {
+    key: "OAUTH_OIDC_CLIENT_ID",
+    type: "string",
+    description: "OIDC Client ID",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "OAUTH_OIDC_CLIENT_ID",
+    category: "auth",
+  },
+  {
+    key: "OAUTH_OIDC_CLIENT_SECRET",
+    type: "string",
+    description: "OIDC Client Secret",
+    is_secret: true,
+    scope: "bootstrap",
+    envKey: "OAUTH_OIDC_CLIENT_SECRET",
+    category: "auth",
+  },
+  {
+    key: "OAUTH_OIDC_NAME",
+    type: "string",
+    description: "OIDC 展示名称（默认 OIDC）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "OAUTH_OIDC_NAME",
+    category: "auth",
+  },
+  // ── 开发/测试专用（visible:false，仅参与校验不展示）────────
+  {
+    key: "NOJ_RUN_E2E",
+    type: "boolean",
+    description: "E2E 模式开关（NOJ_RUN_E2E=1 时跳过引导管理员种子）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_RUN_E2E",
+    category: "other",
+    visible: false,
+  },
+  {
+    key: "TEST_SCHEMA",
+    type: "string",
+    description: "测试隔离 schema（search_path 分片）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "TEST_SCHEMA",
+    category: "other",
+    visible: false,
+  },
+  {
+    key: "NOJ_MIGRATIONS_DIR",
+    type: "string",
+    description: "迁移文件目录覆盖",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_MIGRATIONS_DIR",
+    category: "other",
+    visible: false,
+  },
+  {
+    key: "NOJ_BYPASS_JWT_REVOKE",
+    type: "boolean",
+    description: "跳过 JWT 吊销检查（仅开发调试）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "NOJ_BYPASS_JWT_REVOKE",
+    category: "other",
+    visible: false,
   },
 ] as const;
 
@@ -726,16 +1246,22 @@ const VALID_TYPES: readonly SettingType[] = [
   "integer",
 ] as const;
 
-/** 启动期注册表校验：key 唯一、type 合法 */
+/**
+ * 启动期注册表校验：
+ * - key 唯一、type 合法；
+ * - scope 声明完整：bootstrap 必须有 envKey，runtime 必须有 envFallback（或无兜底）；
+ * - env 键唯一：任一 env 键至多被一项声明（bootstrap envKey 或 runtime envFallback）。
+ */
 export function validateRegistry(): void {
-  const seen = new Set<string>();
-  for (const def of SETTING_DEFINITIONS) {
-    if (seen.has(def.key)) {
+  const seenKeys = new Set<string>();
+  const seenEnvKeys = new Set<string>();
+  for (const def of CONFIG_DEFINITIONS) {
+    if (seenKeys.has(def.key)) {
       throw new Error(
         `[settings-registry] 重复的 key: ${def.key}（每个设置项 key 必须唯一）`,
       );
     }
-    seen.add(def.key);
+    seenKeys.add(def.key);
 
     if (!VALID_TYPES.includes(def.type)) {
       throw new Error(
@@ -743,6 +1269,35 @@ export function validateRegistry(): void {
           VALID_TYPES.join(", ")
         }）`,
       );
+    }
+
+    if (def.scope !== "runtime" && def.scope !== "bootstrap") {
+      throw new Error(
+        `[settings-registry] 非法 scope: ${def.key} -> ${def.scope}（合法值: runtime/bootstrap）`,
+      );
+    }
+
+    // scope 完整性
+    if (def.scope === "bootstrap" && !def.envKey) {
+      throw new Error(
+        `[settings-registry] bootstrap 项必须声明 envKey: ${def.key}`,
+      );
+    }
+    if (def.scope === "runtime" && def.envKey) {
+      throw new Error(
+        `[settings-registry] runtime 项不应声明 envKey: ${def.key}（runtime 使用 envFallback）`,
+      );
+    }
+
+    // env 键唯一性
+    const envKey = def.envKey ?? def.envFallback;
+    if (envKey) {
+      if (seenEnvKeys.has(envKey)) {
+        throw new Error(
+          `[settings-registry] env 键重复声明: ${envKey}（两个设置项不能共用一个 env 变量）`,
+        );
+      }
+      seenEnvKeys.add(envKey);
     }
 
     // integer 类型需校验 min ≤ max
@@ -760,5 +1315,20 @@ export function validateRegistry(): void {
 
 /** 按 key 快速查找注册表条目（O(1) 命中，miss 返回 undefined） */
 export function findDefinition(key: string): SettingDefinition | undefined {
-  return SETTING_DEFINITIONS.find((d) => d.key === key);
+  return CONFIG_DEFINITIONS.find((d) => d.key === key);
+}
+
+/** 是否为 bootstrap（env-owned，启动期定型只读） */
+export function isBootstrap(key: string): boolean {
+  return findDefinition(key)?.scope === "bootstrap";
+}
+
+/** 是否为 runtime（DB-owned，运行时可热改） */
+export function isRuntime(key: string): boolean {
+  return findDefinition(key)?.scope === "runtime";
+}
+
+/** 是否在管理后台可见（visible !== false） */
+export function isVisible(key: string): boolean {
+  return findDefinition(key)?.visible !== false;
 }

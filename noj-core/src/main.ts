@@ -14,7 +14,12 @@ import { createReviewConsumer } from "./domains/content-review/index.ts";
 import { ensureRootUser } from "./domains/identity/index.ts";
 import { ensureRbacSeeds } from "./domains/system/index.ts";
 import { getStorageProvider } from "./domains/system/index.ts";
-import { getSetting, initSystemSettings } from "./domains/system/index.ts";
+import {
+  getSetting,
+  initSystemSettings,
+  listOrphanedBootstrapRows,
+  listRuntimeEnvConflicts,
+} from "./domains/system/index.ts";
 import { startAuditLogRetentionTask } from "./domains/system/index.ts";
 import { logger } from "./shared/base/logging.ts";
 import {
@@ -144,6 +149,46 @@ async function main() {
   // 启动期 env 快照（issue #99）
   // 一次性读取 env-only 设置项到内存 Map，admin 面板只读展示。
   snapshotEnv();
+
+  // 提示 runtime（DB-owned）项同时存在 DB 值与 env 兜底：
+  // 当前 DB 值优先，env 被遮蔽；建议移除 .env 对应变量以避免歧义。
+  try {
+    const conflicts = listRuntimeEnvConflicts();
+    if (conflicts.length > 0) {
+      logger.warn(
+        `以下 ${conflicts.length} 项 runtime 配置同时存在 DB 值与 env 兜底，` +
+          "当前 DB 值优先；建议移除 .env 中对应变量以避免歧义：",
+        {
+          keys: conflicts.map((c) => `${c.key} (${c.envKey})`),
+        },
+      );
+    }
+  } catch (err) {
+    // 检测失败不阻断启动（仅提示）
+    logger.warn("runtime env/DB 共存冲突检测失败", { err });
+  }
+
+  // 提示 bootstrap（env-owned）项在 DB 中的残留旧值：
+  // 这些行已不参与取值（读取走 env），仅在管理后台可一键清理。
+  try {
+    const orphans = await listOrphanedBootstrapRows();
+    if (orphans.length > 0) {
+      logger.warn(
+        `以下 ${orphans.length} 项已由环境变量接管，DB 旧值不再生效，` +
+          "可到管理后台「环境配置」一键清理：",
+        {
+          keys: orphans.map((r) =>
+            `${r.key}（更新于 ${r.updated_at ?? "?"}，更新人 ${
+              r.updated_by ?? "?"
+            }）`
+          ),
+        },
+      );
+    }
+  } catch (err) {
+    // 残留检测失败不阻断启动（仅提示）
+    logger.warn("bootstrap 残留 DB 行检测失败", { err });
+  }
 
   // Issue #330：生产配置必须在 HTTP 监听前完成 fail-fast 校验。
   await fatalStep("生产配置校验", () => {

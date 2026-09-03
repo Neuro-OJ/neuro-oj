@@ -27,8 +27,9 @@
  * 后续可在 PR #69 合并后把本脚本接入 seed.ts 早期校验。
  */
 
-import { MIN_JWT_SECRET_LENGTH } from "./../src/shared/base/constants.ts";
-import { MIN_TFA_ENCRYPTION_KEY_LENGTH } from "./../src/shared/base/constants.ts";
+import { MIN_JWT_SECRET_LENGTH } from "../src/shared/base/constants.ts";
+import { MIN_TFA_ENCRYPTION_KEY_LENGTH } from "../src/shared/base/constants.ts";
+import { CONFIG_DEFINITIONS } from "../src/shared/config/settings-registry.ts";
 
 // 已知占位值黑名单（不区分大小写）。命中即视为未配置。
 const PLACEHOLDER_PATTERNS: readonly RegExp[] = [
@@ -86,6 +87,98 @@ interface Finding {
   key: string;
   display: string;
   reason: string;
+}
+
+/**
+ * 解析 .env.example 中"已声明"的键：活动键（KEY=value）与注释示例键
+ * （# KEY=value）都算已文档化。
+ */
+function parseExampleKeys(path: string): Set<string> {
+  const keys = new Set<string>();
+  let text: string;
+  try {
+    text = Deno.readTextFileSync(path);
+  } catch {
+    return keys;
+  }
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    // 去掉行首 #（注释示例也算声明），取 KEY= 部分
+    const noComment = line.startsWith("#") ? line.slice(1).trim() : line;
+    const eq = noComment.indexOf("=");
+    if (eq <= 0) continue;
+    const key = noComment.slice(0, eq).trim();
+    if (/^[A-Z][A-Z0-9_]*$/.test(key)) keys.add(key);
+  }
+  return keys;
+}
+
+/** 部署编排级键白名单：属于 compose/脚本而非 noj-core 直接读取，豁免孤儿检查 */
+const EXAMPLE_ORCHESTRATION_KEYS = new Set([
+  "NOJ_VERSION",
+  "POSTGRES_PASSWORD",
+  "POSTGRES_DB",
+  "POSTGRES_USER",
+  "REDIS_PASSWORD",
+  "MINIO_ROOT_USER",
+  "MINIO_ROOT_PASSWORD",
+  "NOJ_LLM_STORE_KEY",
+  "NOJ_LLM_PORT",
+  "NOJ_LLM_DATABASE_URL",
+  "NOJ_LLM_REDIS_URL",
+  "NOJ_LLM_LOG_LEVEL",
+  "NOJ_LLM_MAX_CALLS_PER_MINUTE",
+  "NOJ_LLM_MAX_TOKENS_PER_MINUTE",
+  "NUXT_API_BASE",
+  "NUXT_NOJ_ENV",
+  "NUXT_ALLOW_INSECURE_HTTP",
+  "NODE_ENV",
+]);
+
+/**
+ * 校验注册表（config-registry）与 .env.example 的键覆盖一致性。
+ * - 每个可见 bootstrap 项的 envKey 必须出现在 .env.example；
+ * - runtime envFallback 缺失仅警告（多为可选兜底）；
+ * - .env.example 中注册表未声明的键给出孤儿警告（编排级白名单豁免）。
+ */
+export function inspectConsistency(
+  registryKeys: readonly string[],
+  exampleKeys: Set<string>,
+): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const def of CONFIG_DEFINITIONS) {
+    if (def.scope === "bootstrap" && def.visible !== false) {
+      if (!exampleKeys.has(def.envKey!)) {
+        findings.push({
+          key: def.envKey!,
+          display: "(缺失)",
+          reason: "注册表 bootstrap 项未在 .env.example 中声明",
+        });
+      }
+    }
+  }
+
+  for (const key of exampleKeys) {
+    const registered = registryKeys.includes(key);
+    if (!registered && !EXAMPLE_ORCHESTRATION_KEYS.has(key)) {
+      findings.push({
+        key,
+        display: "[孤儿]",
+        reason: ".env.example 中声明但注册表未登记（疑似废弃键）",
+      });
+    }
+  }
+
+  return findings;
+}
+
+/** 注册表声明的全部 env 键（bootstrap envKey + runtime envFallback） */
+function registryEnvKeys(): string[] {
+  return CONFIG_DEFINITIONS
+    .map((d) => (d.scope === "bootstrap" ? d.envKey : d.envFallback))
+    .filter((k): k is string => Boolean(k));
 }
 
 function inspect(env: Map<string, string>): Finding[] {
@@ -275,6 +368,18 @@ function main(): void {
     ...(production ? inspectProduction(env, envPath) : []),
   ];
 
+  // 注册表 ↔ .env.example 一致性（仅检查 .env 时附带校验模板覆盖）
+  if (envPath.endsWith(".env") && !envPath.endsWith(".env.example")) {
+    const examplePath = envPath + ".example";
+    const exampleKeys = parseExampleKeys(examplePath);
+    if (exampleKeys.size > 0) {
+      const consistency = inspectConsistency(registryEnvKeys(), exampleKeys);
+      for (const f of consistency) {
+        findings.push({ ...f, display: `${f.display}（.env.example）` });
+      }
+    }
+  }
+
   if (findings.length === 0) {
     console.log(
       `[check-env] ✅ ${envPath} 通过检查（${env.size} 个键，0 个占位值）`,
@@ -299,4 +404,6 @@ function main(): void {
   }
 }
 
-main();
+if (import.meta.main) {
+  main();
+}
