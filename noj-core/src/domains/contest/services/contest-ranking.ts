@@ -4,8 +4,8 @@ import {
   BadRequestError,
   ForbiddenError,
   UnauthorizedError,
-} from "../../../lib/errors.ts";
-import { unwrapRows } from "../../../lib/sql-rows.ts";
+} from "./../../../shared/base/errors.ts";
+import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
 import type {
   ContestType,
   KaggleProblemScore,

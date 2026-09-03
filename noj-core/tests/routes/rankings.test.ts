@@ -1,7 +1,7 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
 import rankings from "../../src/domains/query/routes/rankings.ts";
-import { AppError } from "../../src/lib/errors.ts";
+import { AppError } from "./../../src/shared/base/errors.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { checkIns, users } from "../../src/db/schema.ts";
 import { hashPassword } from "../../src/lib/password.ts";

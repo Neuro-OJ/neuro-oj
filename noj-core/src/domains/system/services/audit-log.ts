@@ -13,7 +13,7 @@ import { getDb } from "../../../db/connection.ts";
 import { auditLogs } from "../../../db/schema.ts";
 import { getRequestContext } from "../../../lib/requestContext.ts";
 import { getSetting } from "./system-settings.ts";
-import { logger } from "../../../lib/logging.ts";
+import { logger } from "./../../../shared/base/logging.ts";
 import type {
   AuditAction,
   AuditDetail,

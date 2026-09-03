@@ -23,13 +23,13 @@ import contests from "./domains/contest/routes/contests.ts";
 import trainings from "./domains/catalog/routes/trainings.ts";
 import announcements from "./domains/system/routes/announcements.ts";
 import sse, { contestSse, statsSse } from "./routes/sse.ts";
-import { AppError } from "./lib/errors.ts";
-import { logger } from "./lib/logging.ts";
+import { AppError } from "./shared/base/errors.ts";
+import { logger } from "./shared/base/logging.ts";
 import { listJudgeImages } from "./domains/system/index.ts";
 import { banlistMiddleware } from "./middleware/banlist.ts";
 import { requestContext } from "./middleware/request-context.ts";
 import { getSetting } from "./domains/system/index.ts";
-import { SECONDS_PER_DAY } from "./lib/constants.ts";
+import { SECONDS_PER_DAY } from "./shared/base/constants.ts";
 
 /**
  * 维护模式中间件（PR-2 死开关）。

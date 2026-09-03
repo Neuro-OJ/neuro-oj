@@ -16,7 +16,7 @@ import {
   AppError,
   BadRequestError,
   NotFoundError,
-} from "../../../../lib/errors.ts";
+} from "./../../../../shared/base/errors.ts";
 import { getStorageProvider } from "../../../../lib/storage/mod.ts";
 import { generatePublicId } from "../../../../lib/public-id.ts";
 import {
@@ -29,7 +29,7 @@ import { buildJudgeTaskLlm } from "../../../../lib/llm-token.ts";
 import { buildJudgeTaskLlmForProvider } from "../../../../lib/llm-token.ts";
 import { getUserLlmProvider } from "../../../gateway/index.ts";
 import { Channels, publishSseEvent } from "../../../../lib/event-bus.ts";
-import { logger } from "../../../../lib/logging.ts";
+import { logger } from "./../../../../shared/base/logging.ts";
 import type { JudgeTask, JudgeTaskLlm } from "../../../../types/index.ts";
 import type { LlmConfig, RuntimeConfig } from "../../../../types/problems.ts";
 import type { SubmissionResponse } from "./submissions-types.ts";

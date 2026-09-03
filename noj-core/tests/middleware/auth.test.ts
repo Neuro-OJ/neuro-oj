@@ -8,7 +8,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../lib/helper.ts";
 import { Hono } from "hono";
 import { adminMiddleware, authMiddleware } from "../../src/middleware/auth.ts";
-import { AppError } from "../../src/lib/errors.ts";
+import { AppError } from "./../../src/shared/base/errors.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { createUserToken, jsonRequest } from "../lib/helper.ts";
 import { resetDbForTest } from "../../src/db/connection.ts";

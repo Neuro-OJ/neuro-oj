@@ -42,7 +42,7 @@ import {
   AppError,
   BadRequestError,
   NotFoundError,
-} from "../../../../lib/errors.ts";
+} from "./../../../../shared/base/errors.ts";
 import { getDb } from "../../../../db/connection.ts";
 import { checkPermission } from "../../../../lib/permissions.ts";
 import {
@@ -78,7 +78,7 @@ import type {
   SubmissionListItem,
   SubmissionResponse,
 } from "./submissions-types.ts";
-import { logger } from "../../../../lib/logging.ts";
+import { logger } from "./../../../../shared/base/logging.ts";
 
 /**
  * 详情接口返回的 result.output 最大长度（字节近似）。

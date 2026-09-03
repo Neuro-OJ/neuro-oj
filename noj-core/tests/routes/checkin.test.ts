@@ -3,7 +3,7 @@ import { initRedisForTest } from "../lib/helper.ts";
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import checkin from "../../src/domains/identity/routes/checkin.ts";
-import { AppError } from "../../src/lib/errors.ts";
+import { AppError } from "./../../src/shared/base/errors.ts";
 import { signToken } from "../../src/lib/jwt.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { checkIns, users } from "../../src/db/schema.ts";

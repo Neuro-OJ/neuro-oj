@@ -15,7 +15,7 @@ import { getStorageProvider } from "../lib/storage/mod.ts";
 import { getSetting } from "../domains/system/index.ts";
 import { getRedis } from "./connection.ts";
 import { isRetryableJudgeQueueError, JUDGE_QUEUE } from "./producer.ts";
-import { logger } from "../lib/logging.ts";
+import { logger } from "./../shared/base/logging.ts";
 import type { JudgeTask } from "../types/index.ts";
 import type { RuntimeConfig } from "../types/problems.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";

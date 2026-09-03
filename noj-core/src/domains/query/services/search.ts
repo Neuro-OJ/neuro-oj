@@ -13,7 +13,7 @@
 
 import { sql } from "drizzle-orm";
 import { getDb } from "../../../db/connection.ts";
-import { ForbiddenError } from "../../../lib/errors.ts";
+import { ForbiddenError } from "./../../../shared/base/errors.ts";
 
 /**
  * 转义 LIKE 模式中的元字符（reviewer issue 2）。

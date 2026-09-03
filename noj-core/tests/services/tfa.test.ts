@@ -4,7 +4,7 @@ import { TOTP } from "otpauth";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { tfaRecoveryCodes, users } from "../../src/db/schema.ts";
 import { hashPassword } from "../../src/lib/password.ts";
-import { UnauthorizedError } from "../../src/lib/errors.ts";
+import { UnauthorizedError } from "./../../src/shared/base/errors.ts";
 import {
   confirmTfa,
   disableTfa,

@@ -16,7 +16,7 @@
  * (503)，避免绕过撤销检查。与 loginIpRateLimit 的 fail-closed 一致。
  */
 import { getRedis } from "../mq/connection.ts";
-import { ServiceUnavailableError } from "./errors.ts";
+import { ServiceUnavailableError } from "./../shared/base/errors.ts";
 
 /** Redis Key 前缀。命名空间 `jwt:revoked:*` 与其他用途隔离。 */
 const KEY_PREFIX = "jwt:revoked:";

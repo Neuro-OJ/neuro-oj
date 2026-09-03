@@ -13,10 +13,10 @@ import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 import { comparePassword, hashPassword } from "../../../lib/password.ts";
 import { generatePublicId, resolvePublicId } from "../../../lib/public-id.ts";
-import { unwrapRows } from "../../../lib/sql-rows.ts";
+import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
 import { findContestRow } from "./contest-row.ts";
 import {
   type ContestConfig,

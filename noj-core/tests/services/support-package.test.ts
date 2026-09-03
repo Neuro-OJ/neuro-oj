@@ -12,7 +12,10 @@ import {
   deleteSupportPackage,
   getSupportPackageBytes,
 } from "../../src/domains/catalog/index.ts";
-import { ForbiddenError, NotFoundError } from "../../src/lib/errors.ts";
+import {
+  ForbiddenError,
+  NotFoundError,
+} from "./../../src/shared/base/errors.ts";
 import {
   getStorageProvider,
   resetStorageProvider,

@@ -6,7 +6,7 @@ import {
   NotFoundError,
   UnauthorizedError,
   ValidationError,
-} from "../../src/lib/errors.ts";
+} from "./../../src/shared/base/errors.ts";
 
 Deno.test("errors: AppError 基类携带 statusCode 和 message", () => {
   const err = new AppError("测试错误", 400);

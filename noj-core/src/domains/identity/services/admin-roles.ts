@@ -13,14 +13,14 @@ import {
   userRoles,
   users,
 } from "../../../db/schema.ts";
-import { ROOT_USER_ID } from "../../../lib/constants.ts";
+import { ROOT_USER_ID } from "./../../../shared/base/constants.ts";
 import { getAdminUserIds, isUserAdmin } from "../../../lib/permissions.ts";
 import {
   BadRequestError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 
 /** 生成一个随机 UUID 字符串。 */
 function uuid(): string {

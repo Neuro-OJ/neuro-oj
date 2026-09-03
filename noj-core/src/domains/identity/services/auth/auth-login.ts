@@ -10,7 +10,7 @@ import {
   BadRequestError,
   ForbiddenError,
   UnauthorizedError,
-} from "../../../../lib/errors.ts";
+} from "./../../../../shared/base/errors.ts";
 import type { LoginInput, UserResponse } from "../../../../types/auth.ts";
 import { isBannedIp } from "../../../../lib/cidr.ts";
 import { getBannedRanges } from "../banlist.ts";

@@ -18,7 +18,10 @@
 import { and, count, desc, eq } from "drizzle-orm";
 import { getDb } from "../../../db/connection.ts";
 import { announcements } from "../../../db/schema.ts";
-import { NotFoundError, ValidationError } from "../../../lib/errors.ts";
+import {
+  NotFoundError,
+  ValidationError,
+} from "./../../../shared/base/errors.ts";
 import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
 import { generatePublicId, resolvePublicId } from "../../../lib/public-id.ts";
 import { getRequestContext } from "../../../lib/requestContext.ts";

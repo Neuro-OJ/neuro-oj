@@ -23,9 +23,9 @@ import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "../../../../lib/errors.ts";
+} from "./../../../../shared/base/errors.ts";
 import { getStorageProvider } from "../../../../lib/storage/mod.ts";
-import { logger } from "../../../../lib/logging.ts";
+import { logger } from "./../../../../shared/base/logging.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import { logAudit } from "../../../system/index.ts";
 import { getLlmProviderById } from "../../../gateway/index.ts";
@@ -50,7 +50,7 @@ import {
   enforceResourceLimits,
 } from "./problem-field-guard.ts";
 import type { Context } from "hono";
-import { ROOT_USER_ID } from "../../../../lib/constants.ts";
+import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 
 /**
  * 创建题目。

@@ -6,7 +6,7 @@ import { PGlite } from "@electric-sql/pglite";
 import * as schema from "./schema.ts";
 import { ALL_TABLES, SCHEMA_DDL, SCHEMA_INDEXES } from "./schema-ddl.ts";
 import { dirname, resolve } from "jsr:@std/path@^1";
-import { logger } from "../lib/logging.ts";
+import { logger } from "./../shared/base/logging.ts";
 
 let _db: ReturnType<typeof drizzlePg> | null = null;
 let _client: ReturnType<typeof postgres> | null = null;

@@ -1,5 +1,5 @@
 import type { Context, Next } from "hono";
-import { RateLimitedError } from "../lib/errors.ts";
+import { RateLimitedError } from "./../shared/base/errors.ts";
 import { getClientIp, isRateLimitEnabled } from "../lib/rate-limit-env.ts";
 
 /**

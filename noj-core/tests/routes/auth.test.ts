@@ -9,7 +9,7 @@ import {
   type LogRecord,
   resetLogSink,
   setLogSink,
-} from "../../src/lib/logging.ts";
+} from "./../../src/shared/base/logging.ts";
 import {
   generateResetToken,
   hashResetToken,

@@ -11,7 +11,7 @@ import {
   BadRequestError,
   ConflictError,
   NotFoundError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 import { isUserAdmin } from "../../../lib/permissions.ts";
 import { logAuthEvent } from "../../system/index.ts";
 import { toUserResponse } from "./auth/auth-register.ts";

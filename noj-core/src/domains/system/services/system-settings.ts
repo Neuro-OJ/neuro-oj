@@ -19,7 +19,7 @@
 import { eq } from "drizzle-orm";
 import { getDb, registerDbResetCallback } from "../../../db/connection.ts";
 import { systemSettings } from "../../../db/schema.ts";
-import { ValidationError } from "../../../lib/errors.ts";
+import { ValidationError } from "./../../../shared/base/errors.ts";
 import { logAudit } from "./audit-log.ts";
 import {
   ENV_ONLY_DEFINITIONS,

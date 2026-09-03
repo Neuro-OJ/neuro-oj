@@ -17,7 +17,7 @@ import {
   getCachedTotalStats,
 } from "../domains/query/index.ts";
 import { getContest, getContestRanking } from "../domains/contest/index.ts";
-import { NotFoundError } from "../lib/errors.ts";
+import { NotFoundError } from "./../shared/base/errors.ts";
 
 /**
  * SSE（Server-Sent Events）路由。

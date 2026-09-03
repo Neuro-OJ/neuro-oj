@@ -3,7 +3,7 @@ import {
   countToNumber,
   unwrapFirstRow,
   unwrapRows,
-} from "../../src/lib/sql-rows.ts";
+} from "./../../src/shared/base/sql-rows.ts";
 
 Deno.test({
   name: "sql-rows: unwrapRows 处理 postgres.js array-like 形态",

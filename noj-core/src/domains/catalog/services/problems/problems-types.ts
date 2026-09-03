@@ -10,7 +10,7 @@
  * - DB 行转换（见 problems-list.ts 内部 toProblemResponse）
  * - 输入类型（CreateProblemInput / UpdateProblemInput 等）—— 已迁至 types/problems.ts
  */
-import { BadRequestError } from "../../../../lib/errors.ts";
+import { BadRequestError } from "./../../../../shared/base/errors.ts";
 import type {
   LlmConfig,
   ProblemResponseWithTags,

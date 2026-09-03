@@ -14,7 +14,7 @@ import {
   AppError,
   BadRequestError,
   NotFoundError,
-} from "../../../../lib/errors.ts";
+} from "./../../../../shared/base/errors.ts";
 import { getDb } from "../../../../db/connection.ts";
 import { pushJudgeTask } from "../../../../mq/producer.ts";
 import { getProblem } from "../../../catalog/index.ts";
@@ -28,7 +28,7 @@ import type { RuntimeConfig } from "../../../../types/problems.ts";
 import { LANGUAGE_EXT_MAP } from "../../../../types/index.ts";
 import { Channels, publishSseEvent } from "../../../../lib/event-bus.ts";
 import { updateSubmissionStatus } from "./submissions-result.ts";
-import { logger } from "../../../../lib/logging.ts";
+import { logger } from "./../../../../shared/base/logging.ts";
 
 const MAX_BATCH_REJUDGE = 500;
 

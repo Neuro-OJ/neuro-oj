@@ -7,7 +7,7 @@ import {
 import { optionalAuthMiddleware } from "../../src/middleware/auth.ts";
 import { Hono } from "hono";
 import { signToken } from "../../src/lib/jwt.ts";
-import { AppError } from "../../src/lib/errors.ts";
+import { AppError } from "./../../src/shared/base/errors.ts";
 import type { Context } from "hono";
 import { resetDbForTest } from "../../src/db/connection.ts";
 

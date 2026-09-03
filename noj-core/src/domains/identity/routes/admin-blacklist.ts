@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../../../middleware/auth.ts";
 import { parseJsonBody } from "../../../lib/request.ts";
-import { ValidationError } from "../../../lib/errors.ts";
+import { ValidationError } from "./../../../shared/base/errors.ts";
 import { addIpBan, listIpBans, removeIpBan } from "../services/banlist.ts";
 
 /**

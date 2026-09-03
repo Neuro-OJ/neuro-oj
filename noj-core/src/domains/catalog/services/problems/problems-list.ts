@@ -31,7 +31,10 @@ import {
   tags,
   users,
 } from "../../../../db/schema.ts";
-import { BadRequestError, NotFoundError } from "../../../../lib/errors.ts";
+import {
+  BadRequestError,
+  NotFoundError,
+} from "./../../../../shared/base/errors.ts";
 import type { TagKind } from "../tags.ts";
 import {
   DIFFICULTIES,

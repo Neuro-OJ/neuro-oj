@@ -14,7 +14,7 @@
  */
 
 import { getRedis } from "../mq/connection.ts";
-import { ServiceUnavailableError } from "./errors.ts";
+import { ServiceUnavailableError } from "./../shared/base/errors.ts";
 
 /** 时间窗口（秒） */
 export interface RateLimitConfig {

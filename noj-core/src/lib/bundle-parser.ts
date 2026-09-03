@@ -14,7 +14,7 @@
  */
 
 import { unzipSync, zipSync } from "fflate";
-import { BadRequestError } from "./errors.ts";
+import { BadRequestError } from "./../shared/base/errors.ts";
 import { BUNDLE_METADATA_ENTRIES } from "../types/problem-bundle.ts";
 
 /** 对齐 judge 端 `MAX_ZIP_ENTRIES`。 */

@@ -27,7 +27,7 @@ import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 import { generatePublicId, resolvePublicId } from "../../../lib/public-id.ts";
 import { resolveProblemIdOrThrow } from "../../../lib/problem-resolve.ts";
 import {

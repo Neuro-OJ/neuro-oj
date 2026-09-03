@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { parseJsonBody } from "../../src/lib/request.ts";
-import { ValidationError } from "../../src/lib/errors.ts";
+import { ValidationError } from "./../../src/shared/base/errors.ts";
 
 function mockCtx(body: unknown) {
   return {

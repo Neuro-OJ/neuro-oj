@@ -4,7 +4,7 @@ import {
   authMiddleware,
   optionalAuthMiddleware,
 } from "../../../middleware/auth.ts";
-import { UnauthorizedError } from "../../../lib/errors.ts";
+import { UnauthorizedError } from "./../../../shared/base/errors.ts";
 import { resolveUserId } from "../services/users/users-id.ts";
 import {
   checkIn,

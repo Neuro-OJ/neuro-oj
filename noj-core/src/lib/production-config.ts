@@ -8,7 +8,7 @@
 import {
   MIN_JWT_SECRET_LENGTH,
   MIN_TFA_ENCRYPTION_KEY_LENGTH,
-} from "./constants.ts";
+} from "./../shared/base/constants.ts";
 
 export interface ProductionConfig {
   environment?: string;

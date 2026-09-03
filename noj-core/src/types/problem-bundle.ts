@@ -10,7 +10,7 @@
  * - 校验失败抛 `BadRequestError`（HTTP 400）
  */
 
-import { BadRequestError } from "../lib/errors.ts";
+import { BadRequestError } from "./../shared/base/errors.ts";
 import { validateRuntimeConfig } from "../domains/catalog/index.ts";
 import {
   type CreateQuestionInput,

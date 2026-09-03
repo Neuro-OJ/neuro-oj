@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../db/connection.ts";
 import { users } from "../../../../db/schema.ts";
-import { logger } from "../../../../lib/logging.ts";
-import { ROOT_USER_ID } from "../../../../lib/constants.ts";
+import { logger } from "./../../../../shared/base/logging.ts";
+import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 
 /**
  * 确保 root 系统用户存在。

@@ -27,7 +27,7 @@ import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
-} from "../../src/lib/errors.ts";
+} from "./../../src/shared/base/errors.ts";
 
 await resetDbForTest();
 

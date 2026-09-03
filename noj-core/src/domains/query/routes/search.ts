@@ -25,7 +25,7 @@ import {
   ForbiddenError,
   UnauthorizedError,
   ValidationError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 
 // 扩展 Hono 类型，使 c.get("userId") / c.get("userRole") 返回 string | undefined
 // （optionalAuthMiddleware 注入时可能为 undefined；与 submissions.ts 一致）

@@ -21,7 +21,7 @@ import {
   tags,
   users,
 } from "../../src/db/schema.ts";
-import { BadRequestError } from "../../src/lib/errors.ts";
+import { BadRequestError } from "./../../src/shared/base/errors.ts";
 import { syncProblemTags } from "../../src/domains/catalog/index.ts";
 import {
   applyAlgorithmTagVisibility,

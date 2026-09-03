@@ -8,7 +8,10 @@ import {
   getCheckinStats,
   getTodayCheckIn,
 } from "../../src/domains/identity/index.ts";
-import { BadRequestError, ConflictError } from "../../src/lib/errors.ts";
+import {
+  BadRequestError,
+  ConflictError,
+} from "./../../src/shared/base/errors.ts";
 import { hashPassword } from "../../src/lib/password.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建

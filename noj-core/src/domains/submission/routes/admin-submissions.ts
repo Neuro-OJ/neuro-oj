@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../../../middleware/auth.ts";
-import { BadRequestError } from "../../../lib/errors.ts";
+import { BadRequestError } from "./../../../shared/base/errors.ts";
 import {
   deleteSubmission,
   getSubmission,

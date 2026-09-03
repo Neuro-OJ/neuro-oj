@@ -41,7 +41,7 @@ import {
   ForbiddenError,
   UnauthorizedError,
   ValidationError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 import { parseJsonBody } from "../../../lib/request.ts";
 import { getUserPermissions } from "../../../lib/permissions.ts";
 import { signToken, verifyToken } from "../../../lib/jwt.ts";
@@ -70,7 +70,7 @@ import type {
   RegisterInput,
   ResetPasswordInput,
 } from "../../../types/auth.ts";
-import { SECONDS_PER_DAY } from "../../../lib/constants.ts";
+import { SECONDS_PER_DAY } from "./../../../shared/base/constants.ts";
 import {
   enforcePasswordResetEmailRateLimit,
   enforcePasswordResetIpRateLimit,

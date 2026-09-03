@@ -14,7 +14,7 @@ import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 import { assertPermission } from "../../../lib/permissions.ts";
 import { isUuid } from "../../../lib/public-id.ts";
 import {

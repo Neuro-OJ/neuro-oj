@@ -8,13 +8,16 @@ import {
   communityPostLikes,
   users,
 } from "../../../../db/schema.ts";
-import { NotFoundError, ValidationError } from "../../../../lib/errors.ts";
+import {
+  NotFoundError,
+  ValidationError,
+} from "./../../../../shared/base/errors.ts";
 import { createNotification } from "../notifications.ts";
 import { assertCommunityEnabled } from "./community-config.ts";
 import { getPost } from "./community-post-crud.ts";
 import type { CommunityConfig } from "../../../../types/community.ts";
-import { ROOT_USER_ID } from "../../../../lib/constants.ts";
-import { nowIso } from "../../../../lib/dates.ts";
+import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
+import { nowIso } from "./../../../../shared/base/dates.ts";
 
 /**
  * 切换帖子点赞/收藏关系：已存在则删除（返回 false），否则插入（返回 true）。

@@ -20,8 +20,8 @@ import {
   roles,
   users,
 } from "../../src/db/schema.ts";
-import { AppError, ForbiddenError } from "../../src/lib/errors.ts";
-import { ROOT_USER_ID } from "../../src/lib/constants.ts";
+import { AppError, ForbiddenError } from "./../../src/shared/base/errors.ts";
+import { ROOT_USER_ID } from "./../../src/shared/base/constants.ts";
 import { ensureRbacSeeds } from "../../src/domains/system/index.ts";
 import {
   createProblem,

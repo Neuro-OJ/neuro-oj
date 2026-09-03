@@ -29,7 +29,7 @@ import {
 } from "../src/domains/system/index.ts";
 import { importProblemBundle } from "../src/domains/catalog/index.ts";
 import { isValidTemplateFileName } from "../src/types/problem-bundle.ts";
-import { ROOT_USER_ID } from "../src/lib/constants.ts";
+import { ROOT_USER_ID } from "./../src/shared/base/constants.ts";
 
 const PROJECT_ROOT = Deno.env.get("NOJ_PROJECT_ROOT") ??
   join(import.meta.dirname ?? ".", "..");

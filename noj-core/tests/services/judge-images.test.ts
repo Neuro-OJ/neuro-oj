@@ -15,7 +15,10 @@ import {
   updateJudgeImage,
   validateJudgeImage,
 } from "../../src/domains/system/index.ts";
-import { NotFoundError, ValidationError } from "../../src/lib/errors.ts";
+import {
+  NotFoundError,
+  ValidationError,
+} from "./../../src/shared/base/errors.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const skip = !hasDb;

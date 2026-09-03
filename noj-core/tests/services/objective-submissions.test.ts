@@ -21,7 +21,10 @@ import {
   listObjectiveSubmissions,
   submitObjectivePaper,
 } from "../../src/domains/objective/index.ts";
-import { BadRequestError, ForbiddenError } from "../../src/lib/errors.ts";
+import {
+  BadRequestError,
+  ForbiddenError,
+} from "./../../src/shared/base/errors.ts";
 
 await resetDbForTest();
 const db = getDb();

@@ -2,7 +2,7 @@
  * problem-bundle 类型/校验单元测试。
  */
 import { assertEquals, assertThrows } from "jsr:@std/assert@^1";
-import { BadRequestError } from "../../src/lib/errors.ts";
+import { BadRequestError } from "./../../src/shared/base/errors.ts";
 import {
   validateBundleManifest,
   validateObjectiveQuestions,

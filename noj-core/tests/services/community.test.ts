@@ -46,7 +46,7 @@ import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
-} from "../../src/lib/errors.ts";
+} from "./../../src/shared/base/errors.ts";
 import {
   findOrCreateConversation,
   sendMessage,

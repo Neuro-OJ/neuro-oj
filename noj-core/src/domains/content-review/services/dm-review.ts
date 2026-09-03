@@ -1,6 +1,6 @@
 import { getRedis } from "../../../mq/connection.ts";
 import { getReviewConfig } from "./review-common.ts";
-import { logger } from "../../../lib/logging.ts";
+import { logger } from "./../../../shared/base/logging.ts";
 
 /**
  * 私信异步审核队列（issue #413）。

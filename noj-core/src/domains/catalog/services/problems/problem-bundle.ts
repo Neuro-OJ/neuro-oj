@@ -24,8 +24,8 @@ import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
-} from "../../../../lib/errors.ts";
-import { logger } from "../../../../lib/logging.ts";
+} from "./../../../../shared/base/errors.ts";
+import { logger } from "./../../../../shared/base/logging.ts";
 import { checkPermission } from "../../../../lib/permissions.ts";
 import { getStorageProvider } from "../../../../lib/storage/mod.ts";
 import {
@@ -52,7 +52,7 @@ import { getProblem } from "./problems-list.ts";
 import { getTagIdsByNames, listTags } from "../tags.ts";
 import { logAudit } from "../../../system/index.ts";
 import { MAX_SUPPORT_PACKAGE_SIZE } from "../support-package.ts";
-import { ROOT_USER_ID } from "../../../../lib/constants.ts";
+import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 
 /** 导入执行者（CLI 场景无 Hono Context）。 */
 export interface BundleImportActor {

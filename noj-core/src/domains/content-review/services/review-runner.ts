@@ -3,7 +3,7 @@ import { createReviewProvider } from "../providers/index.ts";
 import { decideReview } from "./review-decision.ts";
 import { getReviewConfig, withReviewTimeout } from "./review-common.ts";
 import { enqueueReview, type ReviewContentType } from "./review-queue.ts";
-import { logger } from "../../../lib/logging.ts";
+import { logger } from "./../../../shared/base/logging.ts";
 
 /**
  * 审核执行器：UGC 同步钩子与私信异步消费者共用的统一入口。

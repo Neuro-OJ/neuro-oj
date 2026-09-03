@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../db/connection.ts";
 import { contests } from "../../../db/schema.ts";
-import { NotFoundError } from "../../../lib/errors.ts";
+import { NotFoundError } from "./../../../shared/base/errors.ts";
 
 /**
  * 按内部竞赛 UUID 查询竞赛数据行，不存在时抛错。

@@ -19,7 +19,7 @@ import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 import { checkPermission } from "../../../lib/permissions.ts";
 import { judgePaper } from "./objective-judge.ts";
 import {

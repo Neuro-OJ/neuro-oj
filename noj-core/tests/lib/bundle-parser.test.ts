@@ -6,7 +6,7 @@
 
 import { assertEquals, assertMatch, assertThrows } from "jsr:@std/assert@^1";
 import { unzipSync, zipSync } from "fflate";
-import { BadRequestError } from "../../src/lib/errors.ts";
+import { BadRequestError } from "./../../src/shared/base/errors.ts";
 import {
   MAX_ZIP_ENTRIES,
   parseBundleZip,

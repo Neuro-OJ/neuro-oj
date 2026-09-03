@@ -10,7 +10,7 @@ import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 import {
   buildPaginationMeta,
   parsePagination,

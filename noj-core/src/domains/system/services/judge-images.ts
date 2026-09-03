@@ -1,7 +1,10 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../db/connection.ts";
 import { judgeImages } from "../../../db/schema.ts";
-import { NotFoundError, ValidationError } from "../../../lib/errors.ts";
+import {
+  NotFoundError,
+  ValidationError,
+} from "./../../../shared/base/errors.ts";
 import {
   isImageInWhitelist,
   isValidJudgeImageKind,

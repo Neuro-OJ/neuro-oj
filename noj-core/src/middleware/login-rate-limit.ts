@@ -15,7 +15,7 @@ import type { Context, Next } from "hono";
 import { eq, or } from "drizzle-orm";
 import { getDb } from "../db/connection.ts";
 import { users } from "../db/schema.ts";
-import { RateLimitedError } from "../lib/errors.ts";
+import { RateLimitedError } from "./../shared/base/errors.ts";
 import {
   checkRateLimit,
   type RateLimitConfig,

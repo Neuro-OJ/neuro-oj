@@ -9,7 +9,10 @@ import {
 } from "../../src/domains/catalog/index.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { auditLogs, tags, users } from "../../src/db/schema.ts";
-import { BadRequestError, NotFoundError } from "../../src/lib/errors.ts";
+import {
+  BadRequestError,
+  NotFoundError,
+} from "./../../src/shared/base/errors.ts";
 import { enterTestContext } from "../../src/lib/requestContext.ts";
 
 // PGlite 内存数据库始终可用

@@ -9,7 +9,7 @@ import {
   BadRequestError,
   ForbiddenError,
   UnauthorizedError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 import { parsePagination } from "../../../lib/pagination.ts";
 import { checkPermission } from "../../../lib/permissions.ts";
 import {

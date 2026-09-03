@@ -5,7 +5,7 @@ import {
   BadRequestError,
   NotFoundError,
   ValidationError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 import {
   createUserLlmProvider,
   deleteUserLlmProvider,

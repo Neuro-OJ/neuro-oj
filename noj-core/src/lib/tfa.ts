@@ -16,7 +16,7 @@ import {
 } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Secret, TOTP } from "otpauth";
-import { MIN_TFA_ENCRYPTION_KEY_LENGTH } from "./constants.ts";
+import { MIN_TFA_ENCRYPTION_KEY_LENGTH } from "./../shared/base/constants.ts";
 
 /** 恢复码字符集：去除 0/O/1/I，避免手输混淆。 */
 const RECOVERY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

@@ -27,7 +27,7 @@ import {
   _resetEnvSnapshotForTest,
   snapshotEnv,
 } from "../../src/lib/env-snapshot.ts";
-import { ValidationError } from "../../src/lib/errors.ts";
+import { ValidationError } from "./../../src/shared/base/errors.ts";
 import { validateRegistry } from "../../src/lib/settings-registry.ts";
 
 const ts = Date.now();

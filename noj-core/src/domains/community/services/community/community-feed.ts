@@ -7,9 +7,12 @@ import {
   communityPosts,
   users,
 } from "../../../../db/schema.ts";
-import { ForbiddenError, NotFoundError } from "../../../../lib/errors.ts";
+import {
+  ForbiddenError,
+  NotFoundError,
+} from "./../../../../shared/base/errors.ts";
 import { getCommunityConfig } from "./community-config.ts";
-import { nowIso } from "../../../../lib/dates.ts";
+import { nowIso } from "./../../../../shared/base/dates.ts";
 import { authorProjection } from "./community-post-select.ts";
 
 /**

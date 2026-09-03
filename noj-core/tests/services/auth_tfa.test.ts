@@ -4,7 +4,10 @@ import { TOTP } from "otpauth";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { users } from "../../src/db/schema.ts";
 import { hashPassword } from "../../src/lib/password.ts";
-import { BadRequestError, UnauthorizedError } from "../../src/lib/errors.ts";
+import {
+  BadRequestError,
+  UnauthorizedError,
+} from "./../../src/shared/base/errors.ts";
 import { loginUser } from "../../src/domains/identity/index.ts";
 import {
   confirmTfa,

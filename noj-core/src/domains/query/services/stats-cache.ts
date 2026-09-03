@@ -1,9 +1,9 @@
 import { and, eq, gte, type SQL, sql } from "drizzle-orm";
-import { todayUtc } from "../../../lib/dates.ts";
+import { todayUtc } from "./../../../shared/base/dates.ts";
 import { getDb } from "../../../db/connection.ts";
 import { evaluationResults, submissions } from "../../../db/schema.ts";
 import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
-import { FULL_SCORE } from "../../../lib/constants.ts";
+import { FULL_SCORE } from "./../../../shared/base/constants.ts";
 
 /**
  * 统计快照：提交总数、满分数与未满分数的快照值。

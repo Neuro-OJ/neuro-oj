@@ -18,14 +18,17 @@ import {
   submissions,
   users,
 } from "../../src/db/schema.ts";
-import { BadRequestError, NotFoundError } from "../../src/lib/errors.ts";
+import {
+  BadRequestError,
+  NotFoundError,
+} from "./../../src/shared/base/errors.ts";
 import { eq } from "drizzle-orm";
 import { enterTestContext } from "../../src/lib/requestContext.ts";
 import {
   type LogRecord,
   resetLogSink,
   setLogSink,
-} from "../../src/lib/logging.ts";
+} from "./../../src/shared/base/logging.ts";
 import { getRedis, resetRedisForTest } from "../../src/mq/connection.ts";
 
 /**

@@ -8,7 +8,10 @@ import {
   disableTestTransactionForFile,
   resetDbForTest,
 } from "../../src/db/connection.ts";
-import { ConflictError, UnauthorizedError } from "../../src/lib/errors.ts";
+import {
+  ConflictError,
+  UnauthorizedError,
+} from "./../../src/shared/base/errors.ts";
 
 // 并发注册用例依赖真实并发与唯一约束竞争，事务回滚隔离会改变语义，故关闭
 disableTestTransactionForFile();

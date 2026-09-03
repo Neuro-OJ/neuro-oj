@@ -5,7 +5,10 @@ import {
 } from "../../src/domains/identity/index.ts";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { users } from "../../src/db/schema.ts";
-import { NotFoundError, ValidationError } from "../../src/lib/errors.ts";
+import {
+  NotFoundError,
+  ValidationError,
+} from "./../../src/shared/base/errors.ts";
 import { eq } from "drizzle-orm";
 
 const hasRealPg = !!Deno.env.get("DATABASE_URL");

@@ -11,12 +11,12 @@ import {
   hashResetToken,
 } from "../../src/lib/resetToken.ts";
 import { hashPassword } from "../../src/lib/password.ts";
-import { BadRequestError } from "../../src/lib/errors.ts";
+import { BadRequestError } from "./../../src/shared/base/errors.ts";
 import {
   type LogRecord,
   resetLogSink,
   setLogSink,
-} from "../../src/lib/logging.ts";
+} from "./../../src/shared/base/logging.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const skip = !hasDb;

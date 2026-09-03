@@ -6,7 +6,7 @@
  */
 
 import type { SendPasswordResetEmail } from "./types.ts";
-import { logger } from "../logging.ts";
+import { logger } from "./../../shared/base/logging.ts";
 
 /**
  * 发送密码重置邮件（mock 模式）。

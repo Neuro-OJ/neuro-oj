@@ -1,7 +1,7 @@
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { getDb } from "./connection.ts";
 import { dirname, resolve } from "jsr:@std/path@^1";
-import { logger } from "../lib/logging.ts";
+import { logger } from "./../shared/base/logging.ts";
 
 const __dirname = dirname(new URL(import.meta.url).pathname);
 

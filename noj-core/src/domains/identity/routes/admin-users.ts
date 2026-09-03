@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../../../middleware/auth.ts";
 import { parseJsonBody } from "../../../lib/request.ts";
-import { BadRequestError, ValidationError } from "../../../lib/errors.ts";
+import {
+  BadRequestError,
+  ValidationError,
+} from "./../../../shared/base/errors.ts";
 import { listUsers } from "../services/auth.ts";
 import {
   adminUpdateUserProfile,

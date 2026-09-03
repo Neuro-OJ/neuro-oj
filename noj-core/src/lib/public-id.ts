@@ -8,7 +8,7 @@
 import { eq } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { getDb } from "../db/connection.ts";
-import { NotFoundError } from "./errors.ts";
+import { NotFoundError } from "./../shared/base/errors.ts";
 
 export const PUBLIC_ID_ALPHABET = "123456789abcdefghjkmnpqrstuvwxyz";
 

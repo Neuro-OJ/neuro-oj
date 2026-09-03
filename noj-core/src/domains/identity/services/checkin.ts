@@ -1,13 +1,13 @@
 import { eq, sql } from "drizzle-orm";
-import { todayUtc } from "../../../lib/dates.ts";
+import { todayUtc } from "./../../../shared/base/dates.ts";
 import { getDb } from "../../../db/connection.ts";
 import { checkIns, users } from "../../../db/schema.ts";
 import {
   BadRequestError,
   ConflictError,
   NotFoundError,
-} from "../../../lib/errors.ts";
-import { unwrapRows } from "../../../lib/sql-rows.ts";
+} from "./../../../shared/base/errors.ts";
+import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
 
 /** 签到操作/今日状态的响应。 */
 export interface CheckInResponse {

@@ -43,7 +43,9 @@ const DYNAMIC_IMPORT_RE = /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
 async function rewriteImport(oldAbs: string, newAbs: string): Promise<number> {
   const oldTarget = toPosix(resolve(oldAbs));
   const newTarget = toPosix(resolve(newAbs));
-  const roots = ["noj-core/src", "noj-core/tests", "noj-core/scripts"];
+  const roots = ["noj-core/src", "noj-core/tests", "noj-core/scripts"].map(
+    (root) => resolve(root),
+  );
   let changedFiles = 0;
 
   for (const root of roots) {
@@ -63,6 +65,7 @@ async function rewriteImport(oldAbs: string, newAbs: string): Promise<number> {
         const target = toPosix(resolve(dirname(file), spec));
         if (target === oldTarget) {
           const newSpec = "./" + toPosix(relative(dirname(file), newTarget));
+          updated = updated.split(`"${spec}"`).join(`"${newSpec}"`);
           updated = updated.split(`'${spec}'`).join(`'${newSpec}'`);
         }
       }

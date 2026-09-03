@@ -16,7 +16,7 @@ import {
   ConflictError,
   NotFoundError,
   ValidationError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 import { isBannedIp, isValidIpOrCidr } from "../../../lib/cidr.ts";
 import { getCached, invalidateBanCache } from "../../../lib/banCache.ts";
 import { logAudit } from "../../system/index.ts";

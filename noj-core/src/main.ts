@@ -16,7 +16,7 @@ import { ensureRbacSeeds } from "./domains/system/index.ts";
 import { getStorageProvider } from "./lib/storage/mod.ts";
 import { getSetting, initSystemSettings } from "./domains/system/index.ts";
 import { startAuditLogRetentionTask } from "./domains/system/index.ts";
-import { logger } from "./lib/logging.ts";
+import { logger } from "./shared/base/logging.ts";
 import {
   assertProductionConfig,
   type ProductionConfig,
@@ -24,7 +24,7 @@ import {
 import {
   MIN_JWT_SECRET_LENGTH,
   MIN_TFA_ENCRYPTION_KEY_LENGTH,
-} from "./lib/constants.ts";
+} from "./shared/base/constants.ts";
 
 const app = createApp();
 

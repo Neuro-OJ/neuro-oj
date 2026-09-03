@@ -14,7 +14,7 @@ import {
 import { getDb } from "../../../../db/connection.ts";
 import { userBans, userRoles, users } from "../../../../db/schema.ts";
 import { getAdminUserIds, isUserAdmin } from "../../../../lib/permissions.ts";
-import { UnauthorizedError } from "../../../../lib/errors.ts";
+import { UnauthorizedError } from "./../../../../shared/base/errors.ts";
 import type { UserResponse } from "../../../../types/auth.ts";
 import { toUserResponse } from "./auth-register.ts";
 

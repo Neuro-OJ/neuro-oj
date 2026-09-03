@@ -11,8 +11,8 @@ import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
-} from "../../../../lib/errors.ts";
-import { nowIso } from "../../../../lib/dates.ts";
+} from "./../../../../shared/base/errors.ts";
+import { nowIso } from "./../../../../shared/base/dates.ts";
 import {
   generatePublicId,
   resolvePublicId,

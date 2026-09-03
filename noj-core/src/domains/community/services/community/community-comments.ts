@@ -10,7 +10,7 @@ import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
-} from "../../../../lib/errors.ts";
+} from "./../../../../shared/base/errors.ts";
 import { logAudit } from "../../../system/index.ts";
 import { createNotification } from "../notifications.ts";
 import {
@@ -21,7 +21,7 @@ import { getPost } from "./community-post-crud.ts";
 import { publicationStatus } from "./community-post-common.ts";
 import { authorProjection } from "./community-post-select.ts";
 import { reviewUgcContent } from "./community-review.ts";
-import { nowIso } from "../../../../lib/dates.ts";
+import { nowIso } from "./../../../../shared/base/dates.ts";
 
 /** 审核/处置评论状态：批准待审评论时补发回复通知（原 pending 创建时不发）。 */
 export async function changeCommentStatus(

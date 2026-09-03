@@ -20,7 +20,7 @@ import {
 } from "../../../../db/schema.ts";
 import { hashPassword } from "../../../../lib/password.ts";
 import { ensureSystemRoles } from "./seed-rbac.ts";
-import { ROOT_USER_ID } from "../../../../lib/constants.ts";
+import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import {
   ADMIN_FULL_ACCESS,
   getAdminUserIds,

@@ -1,5 +1,5 @@
 import { createConsumerRedis } from "./connection.ts";
-import { logger } from "../lib/logging.ts";
+import { logger } from "./../shared/base/logging.ts";
 
 export interface ConsumerOptions {
   queueName: string;

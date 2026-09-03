@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { authMiddleware } from "../../../middleware/auth.ts";
 import { parseJsonBody } from "../../../lib/request.ts";
-import { BadRequestError } from "../../../lib/errors.ts";
+import { BadRequestError } from "./../../../shared/base/errors.ts";
 import { enforceSelfTestRateLimit } from "../../../lib/hardening-rate-limit.ts";
 import { resolveProblem } from "../../../lib/problem-resolve.ts";
 import { createSelfTest, getSelfTest } from "../services/self-tests.ts";

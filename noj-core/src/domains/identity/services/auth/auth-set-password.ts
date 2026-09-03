@@ -6,7 +6,10 @@ import { users } from "../../../../db/schema.ts";
 import { hashPassword } from "../../../../lib/password.ts";
 import { isUserAdmin } from "../../../../lib/permissions.ts";
 import { logAuthEvent } from "../../../system/index.ts";
-import { BadRequestError, UnauthorizedError } from "../../../../lib/errors.ts";
+import {
+  BadRequestError,
+  UnauthorizedError,
+} from "./../../../../shared/base/errors.ts";
 import type { UserResponse } from "../../../../types/auth.ts";
 import { toUserResponse, validatePasswordStrength } from "./auth-register.ts";
 

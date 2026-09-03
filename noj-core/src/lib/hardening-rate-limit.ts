@@ -5,7 +5,7 @@
  * 阈值故意保持宽松以兼容现有 API 客户端，同时阻止无差别批量刷接口。
  */
 
-import { RateLimitedError } from "./errors.ts";
+import { RateLimitedError } from "./../shared/base/errors.ts";
 import {
   checkRateLimit,
   type RateLimitConfig,

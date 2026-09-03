@@ -9,7 +9,7 @@ import {
   getProblem,
   getProblemByTypeAndNumber,
 } from "../domains/catalog/index.ts";
-import { NotFoundError } from "./errors.ts";
+import { NotFoundError } from "./../shared/base/errors.ts";
 import { isUuid } from "./public-id.ts";
 
 /**

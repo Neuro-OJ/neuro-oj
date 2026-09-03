@@ -5,7 +5,7 @@ import {
   ForbiddenError,
   NotFoundError,
   UnauthorizedError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 import { assertPermission, checkPermission } from "../../../lib/permissions.ts";
 import { resolveUserId } from "../../identity/index.ts";
 import {

@@ -15,7 +15,7 @@
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../../db/connection.ts";
 import { problemTags, tags } from "../../../../db/schema.ts";
-import { BadRequestError } from "../../../../lib/errors.ts";
+import { BadRequestError } from "./../../../../shared/base/errors.ts";
 
 /**
  * 写库前校验标签集合（去重后）：

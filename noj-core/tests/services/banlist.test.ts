@@ -17,7 +17,7 @@ import {
   ConflictError,
   NotFoundError,
   ValidationError,
-} from "../../src/lib/errors.ts";
+} from "./../../src/shared/base/errors.ts";
 import {
   enterTestContext,
   leaveTestContext,

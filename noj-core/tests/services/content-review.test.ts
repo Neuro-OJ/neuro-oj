@@ -30,7 +30,7 @@ import {
   withReviewTimeout,
 } from "../../src/domains/content-review/index.ts";
 import { MockReviewProvider } from "../../src/domains/content-review/providers/mock.ts";
-import { ForbiddenError } from "../../src/lib/errors.ts";
+import { ForbiddenError } from "./../../src/shared/base/errors.ts";
 import { reviewUgcContent } from "../../src/domains/community/services/community/community-review.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建

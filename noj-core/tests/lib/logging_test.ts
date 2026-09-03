@@ -6,7 +6,7 @@ import {
   resetLogSink,
   runWithRequestContext,
   setLogSink,
-} from "../../src/lib/logging.ts";
+} from "./../../src/shared/base/logging.ts";
 
 /**
  * 捕获日志记录的辅助：替换 sink，返回收集数组 + 还原函数。

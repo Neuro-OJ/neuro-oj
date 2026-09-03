@@ -16,7 +16,10 @@ import {
 } from "../../../middleware/auth.ts";
 import { checkPermission } from "../../../lib/permissions.ts";
 import { rateLimit } from "../../../middleware/rate-limit.ts";
-import { BadRequestError, NotFoundError } from "../../../lib/errors.ts";
+import {
+  BadRequestError,
+  NotFoundError,
+} from "./../../../shared/base/errors.ts";
 import { parseJsonBody } from "../../../lib/request.ts";
 import { createFileStream } from "../../../lib/file-stream.ts";
 import {

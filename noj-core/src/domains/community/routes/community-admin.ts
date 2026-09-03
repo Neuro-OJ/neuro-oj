@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import type { Next } from "hono";
 import { parseJsonBody } from "../../../lib/request.ts";
-import { BadRequestError, ForbiddenError } from "../../../lib/errors.ts";
+import {
+  BadRequestError,
+  ForbiddenError,
+} from "./../../../shared/base/errors.ts";
 import {
   assertPermission,
   checkPermission,

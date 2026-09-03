@@ -10,7 +10,7 @@ import { submissions } from "../../../db/schema.ts";
 import { tags } from "../../../db/schema.ts";
 // deno-lint-ignore no-unused-vars -- referenced inside raw SQL template
 import { users } from "../../../db/schema.ts";
-import { AppError } from "../../../lib/errors.ts";
+import { AppError } from "./../../../shared/base/errors.ts";
 
 /**
  * 仪表盘统计数据响应。

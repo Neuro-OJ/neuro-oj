@@ -9,7 +9,10 @@ import {
   mergeTags,
   updateTag,
 } from "../../src/domains/catalog/index.ts";
-import { ConflictError, NotFoundError } from "../../src/lib/errors.ts";
+import {
+  ConflictError,
+  NotFoundError,
+} from "./../../src/shared/base/errors.ts";
 import { getDb } from "../../src/db/connection.ts";
 import {
   auditLogs,
@@ -69,7 +72,9 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const { BadRequestError } = await import("../../src/lib/errors.ts");
+    const { BadRequestError } = await import(
+      "./../../src/shared/base/errors.ts"
+    );
     await assertRejects(
       () => createTag({ name: `非法-${ts}`, kind: "unknown" }),
       BadRequestError,
@@ -280,7 +285,9 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
-    const { BadRequestError } = await import("../../src/lib/errors.ts");
+    const { BadRequestError } = await import(
+      "./../../src/shared/base/errors.ts"
+    );
     await assertRejects(
       () => mergeTags("same-id", "same-id"),
       BadRequestError,

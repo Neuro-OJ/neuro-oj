@@ -5,7 +5,7 @@ import {
   submissions,
   users,
 } from "../../../../db/schema.ts";
-import { NotFoundError } from "../../../../lib/errors.ts";
+import { NotFoundError } from "./../../../../shared/base/errors.ts";
 import { resolveProblemIdOrNull } from "../../../../lib/problem-resolve.ts";
 import type {
   CommunityConfig,

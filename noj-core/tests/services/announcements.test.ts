@@ -11,7 +11,10 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { desc, eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../src/db/connection.ts";
 import { announcements, auditLogs, users } from "../../src/db/schema.ts";
-import { NotFoundError, ValidationError } from "../../src/lib/errors.ts";
+import {
+  NotFoundError,
+  ValidationError,
+} from "./../../src/shared/base/errors.ts";
 import {
   enterTestContext,
   leaveTestContext,

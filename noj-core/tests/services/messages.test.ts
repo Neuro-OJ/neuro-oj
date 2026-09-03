@@ -17,7 +17,10 @@ import {
   removeReaction,
   sendMessage,
 } from "../../src/domains/messaging/index.ts";
-import { BadRequestError, NotFoundError } from "../../src/lib/errors.ts";
+import {
+  BadRequestError,
+  NotFoundError,
+} from "./../../src/shared/base/errors.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建
 await resetDbForTest();

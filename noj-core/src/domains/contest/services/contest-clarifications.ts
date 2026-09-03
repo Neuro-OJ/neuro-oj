@@ -16,13 +16,13 @@ import {
   contestProblems,
   users,
 } from "../../../db/schema.ts";
-import { nowIso } from "../../../lib/dates.ts";
+import { nowIso } from "./../../../shared/base/dates.ts";
 import { findContestRow } from "./contest-row.ts";
 import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 import { isUserAdmin } from "../../../lib/permissions.ts";
 import { computeContestStatus, isParticipant } from "./contests.ts";
 import { createNotification } from "../../community/index.ts";

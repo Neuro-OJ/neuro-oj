@@ -5,7 +5,7 @@ import {
 } from "./base-consumer.ts";
 import { saveEvaluationResult } from "../domains/submission/index.ts";
 import { saveSelfTestResult } from "../domains/submission/index.ts";
-import { logger, logJudgeResultReceived } from "../lib/logging.ts";
+import { logger, logJudgeResultReceived } from "./../shared/base/logging.ts";
 import { Channels, publishSseEvent } from "../lib/event-bus.ts";
 import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";
 import type { JudgeResult } from "../types/index.ts";

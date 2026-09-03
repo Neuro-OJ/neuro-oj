@@ -12,7 +12,10 @@ import {
   users,
 } from "../../src/db/schema.ts";
 import { getContestRanking } from "../../src/domains/contest/index.ts";
-import { ForbiddenError, UnauthorizedError } from "../../src/lib/errors.ts";
+import {
+  ForbiddenError,
+  UnauthorizedError,
+} from "./../../src/shared/base/errors.ts";
 
 await resetDbForTest({ refreshRankings: true });
 

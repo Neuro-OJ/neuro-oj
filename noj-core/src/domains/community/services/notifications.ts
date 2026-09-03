@@ -8,7 +8,7 @@
 
 import { getDb } from "../../../db/connection.ts";
 import { communityNotifications } from "../../../db/schema.ts";
-import { nowIso } from "../../../lib/dates.ts";
+import { nowIso } from "./../../../shared/base/dates.ts";
 import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
 
 /**

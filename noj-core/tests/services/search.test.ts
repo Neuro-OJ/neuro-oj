@@ -16,7 +16,7 @@ import { searchProblems, searchUsers } from "../../src/domains/query/index.ts";
 import { resetDbForTest } from "../../src/db/connection.ts";
 import { problems, users } from "../../src/db/schema.ts";
 import { getDb } from "../../src/db/connection.ts";
-import { ForbiddenError } from "../../src/lib/errors.ts";
+import { ForbiddenError } from "./../../src/shared/base/errors.ts";
 
 await resetDbForTest();
 

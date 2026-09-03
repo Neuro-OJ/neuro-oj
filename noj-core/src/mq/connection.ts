@@ -1,5 +1,5 @@
 import IORedis from "ioredis";
-import { logger } from "../lib/logging.ts";
+import { logger } from "./../shared/base/logging.ts";
 
 /**
  * Redis 客户端的最小接口定义。

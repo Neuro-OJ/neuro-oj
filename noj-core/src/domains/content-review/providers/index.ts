@@ -3,7 +3,7 @@ import { MockReviewProvider } from "./mock.ts";
 import { AliyunReviewProvider } from "./aliyun.ts";
 import { TencentReviewProvider } from "./tencent.ts";
 import { getSetting } from "../../system/index.ts";
-import { logger } from "../../../lib/logging.ts";
+import { logger } from "./../../../shared/base/logging.ts";
 
 /**
  * 从系统设置读取审核 Provider 配置并实例化。

@@ -12,7 +12,7 @@ import {
   AppError,
   BadRequestError,
   NotFoundError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 import { checkPermission } from "../../../lib/permissions.ts";
 import { getStorageProvider } from "../../../lib/storage/mod.ts";
 import {
@@ -20,7 +20,7 @@ import {
   pushJudgeTask,
 } from "../../../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../system/index.ts";
-import { logger } from "../../../lib/logging.ts";
+import { logger } from "./../../../shared/base/logging.ts";
 import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
 import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../../../types/index.ts";

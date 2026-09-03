@@ -8,7 +8,10 @@ import {
   submissions,
   users,
 } from "../../src/db/schema.ts";
-import { BadRequestError, NotFoundError } from "../../src/lib/errors.ts";
+import {
+  BadRequestError,
+  NotFoundError,
+} from "./../../src/shared/base/errors.ts";
 import {
   createSelfTest,
   getSelfTest,

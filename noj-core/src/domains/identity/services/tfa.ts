@@ -6,7 +6,10 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "../../../db/connection.ts";
 import { tfaRecoveryCodes, users } from "../../../db/schema.ts";
-import { BadRequestError, UnauthorizedError } from "../../../lib/errors.ts";
+import {
+  BadRequestError,
+  UnauthorizedError,
+} from "./../../../shared/base/errors.ts";
 import { logAuthEvent } from "../../system/index.ts";
 import {
   decryptTfaSecret,

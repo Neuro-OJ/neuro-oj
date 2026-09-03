@@ -3,9 +3,12 @@ import { getDb } from "../../../../db/connection.ts";
 import { roles, userRoles, users } from "../../../../db/schema.ts";
 import { hashPassword } from "../../../../lib/password.ts";
 import { logAuthEvent } from "../../../system/index.ts";
-import { BadRequestError, ConflictError } from "../../../../lib/errors.ts";
+import {
+  BadRequestError,
+  ConflictError,
+} from "./../../../../shared/base/errors.ts";
 import type { RegisterInput, UserResponse } from "../../../../types/auth.ts";
-import { ROOT_USER_ID } from "../../../../lib/constants.ts";
+import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 
 /**
  * 注册首个真实用户时使用的事务级锁键。

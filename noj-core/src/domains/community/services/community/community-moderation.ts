@@ -23,7 +23,7 @@ import {
   ConflictError,
   NotFoundError,
   ValidationError,
-} from "../../../../lib/errors.ts";
+} from "./../../../../shared/base/errors.ts";
 import { logAudit } from "../../../system/index.ts";
 import {
   assertCommunityEnabled,
@@ -34,7 +34,7 @@ import {
   type ReportCategory,
 } from "../../../../types/community.ts";
 import { reloadSingleKey, updateSetting } from "../../../system/index.ts";
-import { nowIso } from "../../../../lib/dates.ts";
+import { nowIso } from "./../../../../shared/base/dates.ts";
 import { createNotification } from "../notifications.ts";
 import { invalidateBanCache } from "../../../../lib/banCache.ts";
 import { getStorageProvider } from "../../../../lib/storage/factory.ts";

@@ -1,6 +1,6 @@
 import type { Context, Next } from "hono";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { ForbiddenError, UnauthorizedError } from "../lib/errors.ts";
+import { ForbiddenError, UnauthorizedError } from "./../shared/base/errors.ts";
 import { verifyToken } from "../lib/jwt.ts";
 import { isJtiRevoked } from "../lib/revokedTokens.ts";
 import { getDb } from "../db/connection.ts";

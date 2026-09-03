@@ -20,7 +20,7 @@ import {
   BadRequestError,
   ConflictError,
   NotFoundError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 import { logAudit } from "../../system/index.ts";
 
 /** 标签 kind 枚举。 */
