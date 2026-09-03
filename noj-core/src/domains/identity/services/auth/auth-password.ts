@@ -27,7 +27,7 @@ import {
   BadRequestError,
   UnauthorizedError,
 } from "./../../../../shared/base/errors.ts";
-import type { UserResponse } from "../../../../types/auth.ts";
+import type { UserResponse } from "./../../types/auth.ts";
 import { validatePasswordStrength } from "./auth-register.ts";
 
 /**

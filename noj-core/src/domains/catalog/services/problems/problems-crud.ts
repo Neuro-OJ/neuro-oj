@@ -40,7 +40,7 @@ import {
   type ProblemResponseWithTags,
   type RuntimeConfig,
   type UpdateProblemInput,
-} from "../../../../types/problems.ts";
+} from "./../../types/problems.ts";
 import { validateRuntimeConfig } from "./problems-types.ts";
 import { syncProblemTags, validateProblemTagIds } from "./problems-tags.ts";
 import { getProblem } from "./problems-list.ts";

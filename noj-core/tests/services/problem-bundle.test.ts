@@ -6,7 +6,7 @@ import { BadRequestError } from "./../../src/shared/base/errors.ts";
 import {
   validateBundleManifest,
   validateObjectiveQuestions,
-} from "../../src/types/problem-bundle.ts";
+} from "./../../src/domains/catalog/types/problem-bundle.ts";
 
 Deno.test("validateBundleManifest: 客观题 manifest 不要求 runtime_config", () => {
   const manifest = validateBundleManifest({

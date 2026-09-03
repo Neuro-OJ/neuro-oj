@@ -60,7 +60,7 @@ import { getPendingQueueSnapshot, getSubmissionQueueStatus } from "../queue.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
 import { buildJudgeTaskLlmForProvider } from "./../../../gateway/index.ts";
 import { getUserLlmProvider } from "../../../gateway/index.ts";
-import type { LlmConfig, RuntimeConfig } from "../../../../types/problems.ts";
+import type { LlmConfig, RuntimeConfig } from "./../../../catalog/index.ts";
 import type {
   JudgeTask,
   JudgeTaskLlm,

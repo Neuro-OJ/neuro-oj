@@ -34,7 +34,7 @@ import {
 } from "./../../../../shared/sse/event-bus.ts";
 import { logger } from "./../../../../shared/base/logging.ts";
 import type { JudgeTask, JudgeTaskLlm } from "../../../../types/index.ts";
-import type { LlmConfig, RuntimeConfig } from "../../../../types/problems.ts";
+import type { LlmConfig, RuntimeConfig } from "./../../../catalog/index.ts";
 import type { SubmissionResponse } from "./submissions-types.ts";
 
 /** NOJ artifact 硬上限默认值：2GB。 */

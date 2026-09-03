@@ -11,3 +11,7 @@ export * from "./services/trainings.ts";
 export * from "./services/support-package.ts";
 export * from "./services/problem-resolve.ts";
 export * from "./services/bundle-parser.ts";
+export * from "./types/problems.ts";
+export * from "./types/problem-bundle.ts";
+export * from "./types/trainings.ts";
+export * from "./types/runtime-config.ts";

@@ -9,12 +9,12 @@ import {
   isImageInWhitelist,
   isValidJudgeImageKind,
   type JudgeImageKind,
-} from "../../../types/problems.ts";
+} from "./../../catalog/index.ts";
 import type {
   CreateJudgeImageInput,
   JudgeImageResponse,
   UpdateJudgeImageInput,
-} from "../../../types/problems.ts";
+} from "./../../catalog/index.ts";
 
 const VALID_MODES = ["exact", "all_versions"];
 

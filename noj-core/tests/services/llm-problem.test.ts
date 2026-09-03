@@ -2,10 +2,10 @@
  * LLM 题目配置与 token 签发测试（纯函数，无需 DB）。
  */
 import { assert, assertEquals, assertThrows } from "jsr:@std/assert@^1";
-import { validateBundleManifest } from "../../src/types/problem-bundle.ts";
-import { isValidLlmConfig } from "../../src/types/problems.ts";
+import { validateBundleManifest } from "./../../src/domains/catalog/types/problem-bundle.ts";
+import { isValidLlmConfig } from "./../../src/domains/catalog/types/problems.ts";
 import { buildJudgeTaskLlm } from "./../../src/domains/gateway/services/llm-token.ts";
-import type { RuntimeConfig } from "../../src/types/index.ts";
+import type { RuntimeConfig } from "../../src/domains/catalog/index.ts";
 
 Deno.test("llm-config: isValidLlmConfig", () => {
   assert(isValidLlmConfig({ provider_id: "p1", model: "qwen-plus" }));

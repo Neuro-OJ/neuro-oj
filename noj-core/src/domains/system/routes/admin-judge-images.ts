@@ -11,7 +11,7 @@ import {
 import type {
   CreateJudgeImageInput,
   UpdateJudgeImageInput,
-} from "../../../types/problems.ts";
+} from "./../../catalog/index.ts";
 
 /**
  * 管理端评测镜像白名单路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。

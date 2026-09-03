@@ -43,7 +43,7 @@ import {
   type ProblemResponseWithTags,
   type ProblemTagRef,
   type RuntimeConfig,
-} from "../../../../types/problems.ts";
+} from "./../../types/problems.ts";
 import type {
   AdminProblemListResponse,
   ProblemListResponse,

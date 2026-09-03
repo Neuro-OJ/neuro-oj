@@ -69,7 +69,7 @@ import type {
   LoginInput,
   RegisterInput,
   ResetPasswordInput,
-} from "../../../types/auth.ts";
+} from "./../types/auth.ts";
 import { SECONDS_PER_DAY } from "./../../../shared/base/constants.ts";
 import {
   enforcePasswordResetEmailRateLimit,

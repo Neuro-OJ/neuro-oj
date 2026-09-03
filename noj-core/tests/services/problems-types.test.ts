@@ -5,7 +5,7 @@
  */
 import { assertThrows } from "jsr:@std/assert@^1";
 import { validateRuntimeConfig } from "../../src/domains/catalog/index.ts";
-import type { RuntimeConfig } from "../../src/types/problems.ts";
+import type { RuntimeConfig } from "./../../src/domains/catalog/index.ts";
 
 function validRuntimeConfig(): RuntimeConfig {
   return {

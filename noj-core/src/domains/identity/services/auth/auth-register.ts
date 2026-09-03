@@ -7,7 +7,7 @@ import {
   BadRequestError,
   ConflictError,
 } from "./../../../../shared/base/errors.ts";
-import type { RegisterInput, UserResponse } from "../../../../types/auth.ts";
+import type { RegisterInput, UserResponse } from "./../../types/auth.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 
 /**

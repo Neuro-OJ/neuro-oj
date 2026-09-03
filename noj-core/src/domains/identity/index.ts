@@ -16,3 +16,5 @@ export * from "./services/security/banCache.ts";
 export * from "./middleware/auth.ts";
 export * from "./middleware/login-rate-limit.ts";
 export * from "./middleware/banlist.ts";
+export * from "./types/auth.ts";
+export * from "./types/permissions.ts";

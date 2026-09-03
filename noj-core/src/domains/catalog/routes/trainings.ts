@@ -36,7 +36,7 @@ import {
 import type {
   CreateTrainingInput,
   UpdateTrainingInput,
-} from "../../../types/trainings.ts";
+} from "./../types/trainings.ts";
 
 const router = new Hono<AuthEnv>();
 

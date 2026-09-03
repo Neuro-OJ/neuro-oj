@@ -20,7 +20,7 @@ import {
 import { isUserAdmin } from "./security/permissions.ts";
 import { logAuthEvent } from "../../system/index.ts";
 import { toUserResponse } from "./auth/auth-register.ts";
-import type { UserResponse } from "../../../types/auth.ts";
+import type { UserResponse } from "./../types/auth.ts";
 
 /** 支持的 OAuth 身份提供商。 */
 export type OAuthProviderId = "github" | "oidc";

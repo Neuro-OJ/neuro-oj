@@ -10,8 +10,8 @@
  * - 校验失败抛 `BadRequestError`（HTTP 400）
  */
 
-import { BadRequestError } from "./../shared/base/errors.ts";
-import { validateRuntimeConfig } from "../domains/catalog/index.ts";
+import { BadRequestError } from "../../../shared/base/errors.ts";
+import { validateRuntimeConfig } from "../index.ts";
 import {
   type CreateQuestionInput,
   isValidQuestionType,
@@ -19,7 +19,7 @@ import {
   type ObjectiveOption,
   validateAnswerForType,
   validateOptions,
-} from "./objective.ts";
+} from "../../../types/objective.ts";
 import {
   DIFFICULTIES,
   isValidDifficulty,

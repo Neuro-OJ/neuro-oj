@@ -16,7 +16,7 @@ import type {
   ProblemResponseWithTags,
   ProblemTagRef,
   RuntimeConfig,
-} from "../../../../types/problems.ts";
+} from "./../../types/problems.ts";
 
 /**
  * 公开题目响应（不含关联标签）。

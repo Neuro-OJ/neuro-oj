@@ -34,7 +34,7 @@ import type {
   CreateProblemInput,
   ProblemListQuery,
   UpdateProblemInput,
-} from "../../../types/problems.ts";
+} from "./../types/problems.ts";
 import {
   deleteSupportPackage,
   getProblemTemplate,

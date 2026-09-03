@@ -21,7 +21,7 @@ import {
   resolveTrainingId,
   updateTraining,
 } from "../services/trainings.ts";
-import type { UpdateTrainingInput } from "../../../types/trainings.ts";
+import type { UpdateTrainingInput } from "./../types/trainings.ts";
 
 const router = new Hono<AuthEnv>();
 

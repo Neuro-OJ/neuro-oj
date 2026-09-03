@@ -16,7 +16,7 @@ import { getDb } from "./../../../../shared/db/connection.ts";
 import { userBans, users } from "./../../../../shared/db/schema.ts";
 import { invalidateBanCache } from "./../security/banCache.ts";
 import { logAudit } from "../../../system/index.ts";
-import type { UserResponse } from "../../../../types/auth.ts";
+import type { UserResponse } from "./../../types/auth.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import { getAdminUserIds, isUserAdmin } from "./../security/permissions.ts";
 import { createNotification } from "../../../community/index.ts";

@@ -37,8 +37,8 @@ import {
   type ProblemBundleManifest,
   validateBundleManifest,
   validateObjectiveQuestions,
-} from "../../../../types/problem-bundle.ts";
-import type { ProblemResponseWithTags } from "../../../../types/problems.ts";
+} from "./../../types/problem-bundle.ts";
+import type { ProblemResponseWithTags } from "./../../types/problems.ts";
 import { type CreateQuestionInput } from "../../../../types/objective.ts";
 import { updateProblem } from "./problems-crud.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";

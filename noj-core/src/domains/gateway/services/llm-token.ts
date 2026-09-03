@@ -1,8 +1,9 @@
 /**
  * LLM eval_token 签发工具（与 noj-llm-gateway 共享 NOJ_LLM_SERVICE_TOKEN）。
  */
-import type { LlmConfig } from "../../../types/problems.ts";
-import type { JudgeTaskLlm, RuntimeConfig } from "../../../types/index.ts";
+import type { LlmConfig } from "./../../catalog/index.ts";
+import type { JudgeTaskLlm } from "../../../types/index.ts";
+import type { RuntimeConfig } from "../../catalog/index.ts";
 import { encodeBase64 } from "@std/encoding/base64";
 
 const IV_LENGTH = 12;

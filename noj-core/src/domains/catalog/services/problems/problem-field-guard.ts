@@ -28,7 +28,7 @@ import { checkPermission } from "./../../../identity/index.ts";
 import { getSetting } from "../../../system/index.ts";
 import { logger } from "./../../../../shared/base/logging.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
-import type { RuntimeConfig } from "../../../../types/index.ts";
+import type { RuntimeConfig } from "../../index.ts";
 
 /** 敏感字段路径 → RBAC 权限项（`<section>.<field>` 结构） */
 export const SENSITIVE_FIELD_PERMISSIONS: Record<string, string> = {

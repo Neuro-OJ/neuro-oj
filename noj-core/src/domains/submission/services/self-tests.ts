@@ -25,7 +25,7 @@ import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../../../types/index.ts";
 import type { JudgeResult, JudgeTask } from "../../../types/index.ts";
-import type { RuntimeConfig } from "../../../types/problems.ts";
+import type { RuntimeConfig } from "./../../catalog/index.ts";
 import {
   SELF_TEST_ID_PREFIX,
   type SelfTestDetail,

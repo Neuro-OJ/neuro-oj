@@ -17,7 +17,7 @@ import { getRedis } from "./../shared/mq/connection.ts";
 import { isRetryableJudgeQueueError, JUDGE_QUEUE } from "./producer.ts";
 import { logger } from "./../shared/base/logging.ts";
 import type { JudgeTask } from "../types/index.ts";
-import type { RuntimeConfig } from "../types/problems.ts";
+import type { RuntimeConfig } from "./../domains/catalog/index.ts";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import { buildJudgeTaskLlmForProvider } from "./../domains/gateway/index.ts";
 import { getUserLlmProvider } from "../domains/gateway/index.ts";

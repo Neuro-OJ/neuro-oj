@@ -27,7 +27,7 @@ import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
 import { buildJudgeTaskLlmForProvider } from "./../../../gateway/index.ts";
 import { getUserLlmProvider } from "../../../gateway/index.ts";
 import type { JudgeTask, JudgeTaskLlm } from "../../../../types/index.ts";
-import type { RuntimeConfig } from "../../../../types/problems.ts";
+import type { RuntimeConfig } from "./../../../catalog/index.ts";
 import { LANGUAGE_EXT_MAP } from "../../../../types/index.ts";
 import {
   Channels,

@@ -81,7 +81,7 @@ import {
   type EvaluatorRuntime,
   type RuntimeConfig,
   type SolutionRuntime,
-} from "./index.ts";
+} from "./runtime-config.ts";
 export { type EvaluatorRuntime, type RuntimeConfig, type SolutionRuntime };
 
 /**

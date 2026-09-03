@@ -1,6 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { scoreFromDb, scoreToDb } from "../../src/types/index.ts";
-import { isImageInWhitelist } from "../../src/types/problems.ts";
+import { isImageInWhitelist } from "./../../src/domains/catalog/types/problems.ts";
 
 Deno.test("scoreToDb/scoreFromDb 整分", () => {
   assertEquals(scoreToDb(100), 10000);

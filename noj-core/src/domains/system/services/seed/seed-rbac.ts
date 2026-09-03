@@ -23,7 +23,7 @@ import {
   userRoles,
   users,
 } from "./../../../../shared/db/schema.ts";
-import { PERMISSION_DEFS } from "../../../../types/index.ts";
+import { PERMISSION_DEFS } from "../../../identity/index.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import { ensureCommunitySeeds } from "../../../community/index.ts";
 

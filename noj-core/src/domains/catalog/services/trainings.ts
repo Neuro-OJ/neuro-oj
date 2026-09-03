@@ -40,7 +40,7 @@ import {
   type TrainingResponse,
   type TrainingVisibility,
   type UpdateTrainingInput,
-} from "../../../types/trainings.ts";
+} from "./../types/trainings.ts";
 
 /** 题单列表分页参数。 */
 export interface ListTrainingsParams {

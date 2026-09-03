@@ -4,7 +4,7 @@ import {
   isValidDifficulty,
   isValidProblemType,
   PROBLEM_TYPES,
-} from "../../src/types/problems.ts";
+} from "./../../src/domains/catalog/types/problems.ts";
 
 Deno.test({
   name: "DIFFICULTIES 常量包含预期值",
