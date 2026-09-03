@@ -27,7 +27,7 @@ import { AppError } from "./shared/base/errors.ts";
 import { logger } from "./shared/base/logging.ts";
 import { listJudgeImages } from "./domains/system/index.ts";
 import { banlistMiddleware } from "./middleware/banlist.ts";
-import { requestContext } from "./middleware/request-context.ts";
+import { requestContext } from "./shared/middleware/request-context.ts";
 import { getSetting } from "./domains/system/index.ts";
 import { SECONDS_PER_DAY } from "./shared/base/constants.ts";
 

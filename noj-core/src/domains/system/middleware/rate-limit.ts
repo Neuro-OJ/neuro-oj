@@ -1,6 +1,6 @@
 import type { Context, Next } from "hono";
-import { RateLimitedError } from "./../shared/base/errors.ts";
-import { getClientIp, isRateLimitEnabled } from "../domains/system/index.ts";
+import { RateLimitedError } from "../../../shared/base/errors.ts";
+import { getClientIp, isRateLimitEnabled } from "../index.ts";
 
 /**
  * 滑动窗口限流中间件（内存版）。

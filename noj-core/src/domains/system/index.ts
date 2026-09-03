@@ -10,3 +10,4 @@ export * from "./services/storage/mod.ts";
 export * from "./services/email.ts";
 export * from "./services/email-providers/types.ts";
 export * from "./services/env-snapshot.ts";
+export * from "./middleware/rate-limit.ts";

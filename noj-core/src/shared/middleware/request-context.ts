@@ -12,7 +12,7 @@
  */
 
 import type { Context, Next } from "hono";
-import { runWithRequestContext } from "./../shared/base/logging.ts";
+import { runWithRequestContext } from "../base/logging.ts";
 
 // 全局声明 requestId 上下文变量，使任意 Hono 实例都能 c.get/c.set("requestId")
 declare module "hono" {

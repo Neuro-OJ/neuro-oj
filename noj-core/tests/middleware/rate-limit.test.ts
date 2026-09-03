@@ -3,7 +3,7 @@ import { createUserToken, initRedisForTest } from "../lib/helper.ts";
 import {
   _resetRateLimitForTest,
   rateLimit,
-} from "../../src/middleware/rate-limit.ts";
+} from "./../../src/domains/system/middleware/rate-limit.ts";
 import { optionalAuthMiddleware } from "../../src/middleware/auth.ts";
 import { Hono } from "hono";
 import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
