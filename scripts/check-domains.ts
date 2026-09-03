@@ -113,6 +113,9 @@ export function checkFile(
 ): DomainViolation[] {
   const sourceDomain = domainOf(file);
   if (!sourceDomain) return [];
+  // 域内测试允许跨域深路径导入（集成场景常需构造其他域路由/数据），
+  // 域边界规则仅约束生产代码。
+  if (toPosix(file).includes("/tests/")) return [];
 
   const violations: DomainViolation[] = [];
   const specs = new Set<string>();
@@ -188,7 +191,9 @@ export async function checkDomains(root = "."): Promise<DomainViolation[]> {
 /**
  * 检查 `src/shared/**` 不得反向依赖 `src/domains/**`。
  */
-export async function checkSharedImports(root = "."): Promise<DomainViolation[]> {
+export async function checkSharedImports(
+  root = ".",
+): Promise<DomainViolation[]> {
   const violations: DomainViolation[] = [];
   const sharedDir = resolve(root, "noj-core/src/shared");
   try {

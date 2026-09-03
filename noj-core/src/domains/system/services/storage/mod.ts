@@ -13,7 +13,11 @@
  * @module
  */
 
-export { getStorageProvider, resetStorageProvider } from "./factory.ts";
+export {
+  getStorageProvider,
+  resetStorageProvider,
+  setStorageProviderForTest,
+} from "./factory.ts";
 export { LocalStorageProvider } from "./local.ts";
 export { S3StorageProvider } from "./s3.ts";
 export {
