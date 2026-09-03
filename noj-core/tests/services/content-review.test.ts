@@ -534,7 +534,7 @@ Deno.test({
 
         // 直接调消费者 handler（模拟队列消费）
         const { handleDmReviewMessage } = await import(
-          "../../src/mq/review-consumer.ts"
+          "../../src/domains/content-review/mq/review-consumer.ts"
         );
         await handleDmReviewMessage({
           message_id: msgId,

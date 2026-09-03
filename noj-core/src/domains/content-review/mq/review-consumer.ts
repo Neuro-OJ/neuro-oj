@@ -1,14 +1,11 @@
 import { eq } from "drizzle-orm";
-import { createConsumer } from "./../shared/mq/base-consumer.ts";
-import { getDb } from "./../shared/db/connection.ts";
-import { messages } from "./../shared/db/schema.ts";
-import { logger } from "./../shared/base/logging.ts";
-import {
-  type DmReviewTask,
-  getReviewConfig,
-  REVIEW_DM_QUEUE,
-  runContentReview,
-} from "../domains/content-review/index.ts";
+import { createConsumer } from "../../../shared/mq/base-consumer.ts";
+import { getDb } from "../../../shared/db/connection.ts";
+import { messages } from "../../../shared/db/schema.ts";
+import { logger } from "../../../shared/base/logging.ts";
+import { type DmReviewTask, REVIEW_DM_QUEUE } from "../services/dm-review.ts";
+import { getReviewConfig } from "../services/review-common.ts";
+import { runContentReview } from "../services/review-runner.ts";
 
 /**
  * 私信异步审核消费者（issue #413）。
