@@ -7,7 +7,7 @@ import {
   generateTfaSecret,
   hashRecoveryCode,
   verifyTfaCode,
-} from "../../src/lib/tfa.ts";
+} from "./../../src/domains/identity/services/security/tfa.ts";
 
 const TEST_TFA_KEY = "test-tfa-encryption-key-with-32-chars-min";
 

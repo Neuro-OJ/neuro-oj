@@ -6,9 +6,9 @@ import {
   userRoles,
   users,
 } from "./../../../../shared/db/schema.ts";
-import { comparePassword } from "../../../../lib/password.ts";
-import { isUserAdmin } from "../../../../lib/permissions.ts";
-import { signToken } from "../../../../lib/jwt.ts";
+import { comparePassword } from "./../security/password.ts";
+import { isUserAdmin } from "./../security/permissions.ts";
+import { signToken } from "./../security/jwt.ts";
 import { logAuthEvent } from "../../../system/index.ts";
 import { verifyTfaCodeForUser } from "../tfa.ts";
 import {

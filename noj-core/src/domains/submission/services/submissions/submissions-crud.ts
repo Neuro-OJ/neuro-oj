@@ -44,7 +44,7 @@ import {
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
 import { getDb } from "./../../../../shared/db/connection.ts";
-import { checkPermission } from "../../../../lib/permissions.ts";
+import { checkPermission } from "./../../../identity/index.ts";
 import {
   generatePublicId,
   resolvePublicId,

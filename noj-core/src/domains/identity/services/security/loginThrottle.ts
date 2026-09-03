@@ -22,9 +22,9 @@
  * - change-password 端点使用 namespace `pwchange`，避免改密失败反锁 /login
  */
 
-import { getRedis } from "./../shared/mq/connection.ts";
-import { ServiceUnavailableError } from "./../shared/base/errors.ts";
-import { isRateLimitEnabled, settingInt } from "../domains/system/index.ts";
+import { getRedis } from "../../../../shared/mq/connection.ts";
+import { ServiceUnavailableError } from "../../../../shared/base/errors.ts";
+import { isRateLimitEnabled, settingInt } from "../../../system/index.ts";
 
 const FAIL_TTL_SEC = 3600; // 失败计数 TTL：1 小时
 

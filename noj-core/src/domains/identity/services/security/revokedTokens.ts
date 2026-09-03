@@ -15,8 +15,8 @@
  * Redis 不可用时**关闭 fail-closed**：authMiddleware 抛 ServiceUnavailableError
  * (503)，避免绕过撤销检查。与 loginIpRateLimit 的 fail-closed 一致。
  */
-import { getRedis } from "./../shared/mq/connection.ts";
-import { ServiceUnavailableError } from "./../shared/base/errors.ts";
+import { getRedis } from "../../../../shared/mq/connection.ts";
+import { ServiceUnavailableError } from "../../../../shared/base/errors.ts";
 
 /** Redis Key 前缀。命名空间 `jwt:revoked:*` 与其他用途隔离。 */
 const KEY_PREFIX = "jwt:revoked:";

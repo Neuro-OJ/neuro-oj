@@ -14,8 +14,8 @@ import { eq, or } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { conversations, users } from "./../../src/shared/db/schema.ts";
-import { hashPassword } from "../../src/lib/password.ts";
-import { signToken } from "../../src/lib/jwt.ts";
+import { hashPassword } from "./../../src/domains/identity/services/security/password.ts";
+import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,

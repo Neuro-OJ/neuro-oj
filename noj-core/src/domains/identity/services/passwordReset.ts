@@ -1,8 +1,8 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { passwordResetTokens, users } from "./../../../shared/db/schema.ts";
-import { hashPassword } from "../../../lib/password.ts";
-import { generateResetToken, hashResetToken } from "../../../lib/resetToken.ts";
+import { hashPassword } from "./security/password.ts";
+import { generateResetToken, hashResetToken } from "./security/resetToken.ts";
 import { sendPasswordResetEmail } from "./../../system/index.ts";
 import { BadRequestError } from "./../../../shared/base/errors.ts";
 import { logger } from "./../../../shared/base/logging.ts";

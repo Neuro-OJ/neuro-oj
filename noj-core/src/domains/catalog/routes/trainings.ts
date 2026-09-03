@@ -16,7 +16,7 @@ import {
   parseJsonBody,
 } from "./../../../shared/http/request.ts";
 import { parsePagination } from "./../../../shared/http/pagination.ts";
-import { assertPermission, checkPermission } from "../../../lib/permissions.ts";
+import { assertPermission, checkPermission } from "./../../identity/index.ts";
 import { BadRequestError } from "./../../../shared/base/errors.ts";
 import {
   addTrainingProblem,

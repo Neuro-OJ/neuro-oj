@@ -16,7 +16,7 @@ import {
 } from "./../shared/sse/server-helpers.ts";
 import { getSubmission } from "../domains/submission/index.ts";
 import { getQueueOverview } from "../domains/submission/index.ts";
-import { checkPermission } from "../lib/permissions.ts";
+import { checkPermission } from "./../domains/identity/index.ts";
 import {
   getCachedTodayStats,
   getCachedTotalStats,

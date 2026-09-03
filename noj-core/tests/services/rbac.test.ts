@@ -16,10 +16,10 @@ import {
   userRoles,
   users,
 } from "./../../src/shared/db/schema.ts";
-import { getUserPermissions } from "../../src/lib/permissions.ts";
+import { getUserPermissions } from "./../../src/domains/identity/services/security/permissions.ts";
 import { jsonRequest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
-import { signToken } from "../../src/lib/jwt.ts";
+import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 
 // ── 测试辅助 ─────────────────────────────────────
 

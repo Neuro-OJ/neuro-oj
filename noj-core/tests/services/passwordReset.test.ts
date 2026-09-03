@@ -9,8 +9,8 @@ import { passwordResetTokens, users } from "./../../src/shared/db/schema.ts";
 import {
   generateResetToken,
   hashResetToken,
-} from "../../src/lib/resetToken.ts";
-import { hashPassword } from "../../src/lib/password.ts";
+} from "./../../src/domains/identity/services/security/resetToken.ts";
+import { hashPassword } from "./../../src/domains/identity/services/security/password.ts";
 import { BadRequestError } from "./../../src/shared/base/errors.ts";
 import {
   type LogRecord,

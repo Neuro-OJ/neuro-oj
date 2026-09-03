@@ -29,7 +29,7 @@ import {
   ValidationError,
 } from "./../../../../shared/base/errors.ts";
 import { logger } from "./../../../../shared/base/logging.ts";
-import { checkPermission } from "../../../../lib/permissions.ts";
+import { checkPermission } from "./../../../identity/index.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
 import {
   parseBundleZip,

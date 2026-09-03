@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { TOTP } from "otpauth";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { tfaRecoveryCodes, users } from "./../../src/shared/db/schema.ts";
-import { hashPassword } from "../../src/lib/password.ts";
+import { hashPassword } from "./../../src/domains/identity/services/security/password.ts";
 import { UnauthorizedError } from "./../../src/shared/base/errors.ts";
 import {
   confirmTfa,

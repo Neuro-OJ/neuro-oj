@@ -7,7 +7,7 @@ import {
   getRedis,
   resetRedisForTest,
 } from "./../../src/shared/mq/connection.ts";
-import { _resetLoginBackoffForTest } from "../../src/lib/loginThrottle.ts";
+import { _resetLoginBackoffForTest } from "./../../src/domains/identity/services/security/loginThrottle.ts";
 import {
   type LogRecord,
   resetLogSink,
@@ -16,7 +16,7 @@ import {
 import {
   generateResetToken,
   hashResetToken,
-} from "../../src/lib/resetToken.ts";
+} from "./../../src/domains/identity/services/security/resetToken.ts";
 import { jsonRequest } from "../lib/helper.ts";
 
 // PGlite 内存数据库始终可用，无需检测

@@ -13,7 +13,7 @@ import {
   getMyRanking,
   refreshRankingsView,
 } from "../../src/domains/query/index.ts";
-import { hashPassword } from "../../src/lib/password.ts";
+import { hashPassword } from "./../../src/domains/identity/services/security/password.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建
 await resetDbForTest({ refreshRankings: true });

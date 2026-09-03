@@ -22,7 +22,7 @@ import {
   _resetEnvSnapshotForTest,
   snapshotEnv,
 } from "../../src/lib/env-snapshot.ts";
-import { signToken } from "../../src/lib/jwt.ts";
+import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import { initRedisForTest, jsonRequest } from "../lib/helper.ts";
 
 // PR-1：banlistMiddleware 走 Redis，避免 Redis 不可用时返 503
@@ -399,7 +399,7 @@ Deno.test({
 
     // 直接走 service 层（模拟邮件链接）—— 路由层仅做调用
     const { generateResetToken, hashResetToken } = await import(
-      "../../src/lib/resetToken.ts"
+      "./../../src/domains/identity/services/security/resetToken.ts"
     );
     const { passwordResetTokens } = await import(
       "./../../src/shared/db/schema.ts"

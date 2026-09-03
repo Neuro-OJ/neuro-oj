@@ -5,12 +5,12 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../lib/helper.ts";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
-import { _resetBanCacheForTest } from "../../src/lib/banCache.ts";
+import { _resetBanCacheForTest } from "./../../src/domains/identity/services/security/banCache.ts";
 import {
   _resetBanlistForTest,
   addIpBan,
 } from "../../src/domains/identity/index.ts";
-import { signToken } from "../../src/lib/jwt.ts";
+import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { ipBans, userBans, users } from "./../../src/shared/db/schema.ts";
 import { jsonRequest } from "../lib/helper.ts";

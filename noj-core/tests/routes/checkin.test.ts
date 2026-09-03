@@ -4,10 +4,10 @@ import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import checkin from "../../src/domains/identity/routes/checkin.ts";
 import { AppError } from "./../../src/shared/base/errors.ts";
-import { signToken } from "../../src/lib/jwt.ts";
+import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { checkIns, users } from "./../../src/shared/db/schema.ts";
-import { hashPassword } from "../../src/lib/password.ts";
+import { hashPassword } from "./../../src/domains/identity/services/security/password.ts";
 import { jsonRequest } from "../lib/helper.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建

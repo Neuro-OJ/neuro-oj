@@ -18,7 +18,7 @@ import {
   generateTfaSecret,
   hashRecoveryCode,
   verifyTfaCode,
-} from "../../../lib/tfa.ts";
+} from "./security/tfa.ts";
 
 type Db = ReturnType<typeof getDb>;
 

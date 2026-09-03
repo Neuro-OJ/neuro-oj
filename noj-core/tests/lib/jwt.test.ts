@@ -4,7 +4,10 @@ import {
   assertRejects,
 } from "jsr:@std/assert@^1";
 import { SignJWT } from "jose";
-import { signToken, verifyToken } from "../../src/lib/jwt.ts";
+import {
+  signToken,
+  verifyToken,
+} from "./../../src/domains/identity/services/security/jwt.ts";
 
 const hasJwtSecret = !!Deno.env.get("JWT_SECRET");
 

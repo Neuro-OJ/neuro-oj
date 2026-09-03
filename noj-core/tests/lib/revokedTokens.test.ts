@@ -3,7 +3,7 @@ import {
   isJtiRevoked,
   remainingTtlFromExp,
   revokeJti,
-} from "../../src/lib/revokedTokens.ts";
+} from "./../../src/domains/identity/services/security/revokedTokens.ts";
 import {
   getRedis,
   resetRedisForTest,

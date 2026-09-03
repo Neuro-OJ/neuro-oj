@@ -1,14 +1,17 @@
 import type { Context, Next } from "hono";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { ForbiddenError, UnauthorizedError } from "./../shared/base/errors.ts";
-import { verifyToken } from "../lib/jwt.ts";
-import { isJtiRevoked } from "../lib/revokedTokens.ts";
+import { verifyToken } from "./../domains/identity/index.ts";
+import { isJtiRevoked } from "./../domains/identity/index.ts";
 import { getDb } from "./../shared/db/connection.ts";
 import { userBans } from "./../shared/db/schema.ts";
-import { getCached } from "../lib/banCache.ts";
+import { getCached } from "./../domains/identity/index.ts";
 import { getClientIp } from "../domains/system/index.ts";
 import { runWithContext } from "../lib/requestContext.ts";
-import { ADMIN_FULL_ACCESS, resolvePermissions } from "../lib/permissions.ts";
+import {
+  ADMIN_FULL_ACCESS,
+  resolvePermissions,
+} from "./../domains/identity/index.ts";
 
 /**
  * 认证相关 Hono Env 类型（PR-6 抽取）。

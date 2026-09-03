@@ -25,8 +25,8 @@ import {
   users,
 } from "./../src/shared/db/schema.ts";
 import { registerUser } from "../src/domains/identity/index.ts";
-import { hashPassword } from "../src/lib/password.ts";
-import { getAdminUserIds } from "../src/lib/permissions.ts";
+import { hashPassword } from "./../src/domains/identity/services/security/password.ts";
+import { getAdminUserIds } from "./../src/domains/identity/services/security/permissions.ts";
 import {
   ensureAdminFromEnv,
   ensureBootstrapAdmin,

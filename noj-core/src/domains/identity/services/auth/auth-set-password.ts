@@ -3,8 +3,8 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { users } from "./../../../../shared/db/schema.ts";
-import { hashPassword } from "../../../../lib/password.ts";
-import { isUserAdmin } from "../../../../lib/permissions.ts";
+import { hashPassword } from "./../security/password.ts";
+import { isUserAdmin } from "./../security/permissions.ts";
 import { logAuthEvent } from "../../../system/index.ts";
 import {
   BadRequestError,

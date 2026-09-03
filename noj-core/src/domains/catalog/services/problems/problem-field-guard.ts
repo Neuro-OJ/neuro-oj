@@ -24,7 +24,7 @@
 
 import type { Context } from "hono";
 import { AppError, ForbiddenError } from "./../../../../shared/base/errors.ts";
-import { checkPermission } from "../../../../lib/permissions.ts";
+import { checkPermission } from "./../../../identity/index.ts";
 import { getSetting } from "../../../system/index.ts";
 import { logger } from "./../../../../shared/base/logging.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";

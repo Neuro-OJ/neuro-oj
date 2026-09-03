@@ -324,7 +324,9 @@ Deno.test({
     });
     await db.insert(userRoles).values({ user_id: userId, role_id: roleId });
 
-    const { signToken } = await import("../../src/lib/jwt.ts");
+    const { signToken } = await import(
+      "./../../src/domains/identity/services/security/jwt.ts"
+    );
     const token = await signToken({ sub: userId, role: "user" });
 
     const app = createApp();

@@ -16,7 +16,7 @@ import {
   _resetBanCacheForTest,
   getCached,
   invalidateBanCache,
-} from "../../src/lib/banCache.ts";
+} from "./../../src/domains/identity/services/security/banCache.ts";
 
 const TARGET_ID = crypto.randomUUID();
 /** 时间戳使测试数据在 PG 模式下唯一，避免 static username/email 与旧数据冲突（onConflictDoNothing 静默跳过） */

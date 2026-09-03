@@ -199,7 +199,9 @@ export async function createUserToken(
     "./../../src/shared/db/connection.ts"
   );
   const { users, userRoles } = await import("./../../src/shared/db/schema.ts");
-  const { signToken } = await import("../../src/lib/jwt.ts");
+  const { signToken } = await import(
+    "./../../src/domains/identity/services/security/jwt.ts"
+  );
   const { ensureRbacSeeds } = await import(
     "../../src/domains/system/index.ts"
   );

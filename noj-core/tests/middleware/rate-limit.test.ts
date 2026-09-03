@@ -6,7 +6,7 @@ import {
 } from "../../src/middleware/rate-limit.ts";
 import { optionalAuthMiddleware } from "../../src/middleware/auth.ts";
 import { Hono } from "hono";
-import { signToken } from "../../src/lib/jwt.ts";
+import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import { AppError } from "./../../src/shared/base/errors.ts";
 import type { Context } from "hono";
 import { resetDbForTest } from "./../../src/shared/db/connection.ts";

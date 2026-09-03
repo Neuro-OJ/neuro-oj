@@ -15,7 +15,7 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
-import { assertPermission } from "../../../lib/permissions.ts";
+import { assertPermission } from "./../../identity/index.ts";
 import { isUuid } from "./../../../shared/security/public-id.ts";
 import {
   type CreateQuestionInput,

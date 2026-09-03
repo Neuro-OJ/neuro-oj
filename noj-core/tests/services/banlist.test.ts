@@ -12,7 +12,7 @@ import {
   listIpBans,
   removeIpBan,
 } from "../../src/domains/identity/index.ts";
-import { _resetBanCacheForTest } from "../../src/lib/banCache.ts";
+import { _resetBanCacheForTest } from "./../../src/domains/identity/services/security/banCache.ts";
 import {
   ConflictError,
   NotFoundError,

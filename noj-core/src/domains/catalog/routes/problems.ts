@@ -11,7 +11,7 @@ import {
   UnauthorizedError,
 } from "./../../../shared/base/errors.ts";
 import { parsePagination } from "./../../../shared/http/pagination.ts";
-import { checkPermission } from "../../../lib/permissions.ts";
+import { checkPermission } from "./../../identity/index.ts";
 import {
   enforceObjectiveSubmitRateLimit,
   enforceProblemCreateRateLimit,
@@ -29,7 +29,7 @@ import { resolveProblem } from "../../../lib/problem-resolve.ts";
 import {
   ADMIN_FULL_ACCESS,
   resolvePermissions,
-} from "../../../lib/permissions.ts";
+} from "./../../identity/index.ts";
 import type {
   CreateProblemInput,
   ProblemListQuery,

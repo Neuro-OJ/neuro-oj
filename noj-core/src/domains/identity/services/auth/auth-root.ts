@@ -21,7 +21,7 @@ export async function ensureRootUser(): Promise<void> {
   if (existing.length > 0) return;
 
   const randomPassword = crypto.randomUUID();
-  const { hashPassword } = await import("../../../../lib/password.ts");
+  const { hashPassword } = await import("./../security/password.ts");
   const now = new Date().toISOString();
 
   await db.insert(users)

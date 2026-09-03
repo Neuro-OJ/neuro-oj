@@ -21,7 +21,7 @@ import {
   isBannedIp,
   isValidIpOrCidr,
 } from "./../../../shared/security/cidr.ts";
-import { getCached, invalidateBanCache } from "../../../lib/banCache.ts";
+import { getCached, invalidateBanCache } from "./security/banCache.ts";
 import { logAudit } from "../../system/index.ts";
 
 /** IP 黑名单条目。 */

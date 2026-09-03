@@ -18,14 +18,14 @@ import {
   userRoles,
   users,
 } from "./../../../../shared/db/schema.ts";
-import { hashPassword } from "../../../../lib/password.ts";
+import { hashPassword } from "./../../../identity/index.ts";
 import { ensureSystemRoles } from "./seed-rbac.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import {
   ADMIN_FULL_ACCESS,
   getAdminUserIds,
   getUserPermissions,
-} from "../../../../lib/permissions.ts";
+} from "./../../../identity/index.ts";
 
 /**
  * 为管理员用户写入 RBAC 关联（issue #186）。

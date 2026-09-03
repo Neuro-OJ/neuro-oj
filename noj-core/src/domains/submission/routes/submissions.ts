@@ -14,7 +14,7 @@ import {
   authMiddleware,
   optionalAuthMiddleware,
 } from "../../../middleware/auth.ts";
-import { checkPermission } from "../../../lib/permissions.ts";
+import { checkPermission } from "./../../identity/index.ts";
 import { rateLimit } from "../../../middleware/rate-limit.ts";
 import {
   BadRequestError,

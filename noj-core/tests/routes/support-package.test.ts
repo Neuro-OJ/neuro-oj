@@ -5,7 +5,7 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
-import { signToken } from "../../src/lib/jwt.ts";
+import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import {
   problems,

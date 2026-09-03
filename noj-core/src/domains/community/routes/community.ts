@@ -6,7 +6,7 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from "./../../../shared/base/errors.ts";
-import { assertPermission, checkPermission } from "../../../lib/permissions.ts";
+import { assertPermission, checkPermission } from "./../../identity/index.ts";
 import { resolveUserId } from "../../identity/index.ts";
 import {
   authMiddleware,

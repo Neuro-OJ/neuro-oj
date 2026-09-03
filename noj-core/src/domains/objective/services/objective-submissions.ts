@@ -20,7 +20,7 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
-import { checkPermission } from "../../../lib/permissions.ts";
+import { checkPermission } from "./../../identity/index.ts";
 import { judgePaper } from "./objective-judge.ts";
 import {
   assertObjectivePaper,

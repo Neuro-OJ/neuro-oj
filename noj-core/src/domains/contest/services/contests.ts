@@ -14,7 +14,7 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
-import { comparePassword, hashPassword } from "../../../lib/password.ts";
+import { comparePassword, hashPassword } from "./../../identity/index.ts";
 import {
   generatePublicId,
   resolvePublicId,

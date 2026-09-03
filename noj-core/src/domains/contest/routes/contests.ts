@@ -17,7 +17,7 @@ import {
 } from "./../../../shared/http/pagination.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { createFileStream } from "./../../../shared/http/file-stream.ts";
-import { checkPermission } from "../../../lib/permissions.ts";
+import { checkPermission } from "./../../identity/index.ts";
 import { getContestRanking } from "../services/contest-ranking.ts";
 import {
   createClarification,

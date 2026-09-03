@@ -17,7 +17,7 @@ import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { users } from "./../../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { registerUser } from "../../src/domains/identity/index.ts";
-import { signToken } from "../../src/lib/jwt.ts";
+import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import { jsonRequest } from "../lib/helper.ts";
 
 // 模块级 bootstrap：确保 PGlite schema 已创建

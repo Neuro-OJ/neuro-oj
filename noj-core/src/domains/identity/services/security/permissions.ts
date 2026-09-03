@@ -15,9 +15,9 @@
 
 import { sql } from "drizzle-orm";
 import { Context, MiddlewareHandler, Next } from "hono";
-import { getDb } from "./../shared/db/connection.ts";
-import { ForbiddenError } from "./../shared/base/errors.ts";
-import { unwrapRows } from "./../shared/base/sql-rows.ts";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { ForbiddenError } from "../../../../shared/base/errors.ts";
+import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 
 /** 全权限通行证权限（resource:action） */
 export const ADMIN_FULL_ACCESS = "admin:full_access";

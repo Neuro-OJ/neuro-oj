@@ -23,7 +23,7 @@ import {
   checkRateLimit,
   rateLimitHeaders,
 } from "./../shared/rate-limit/rate-limit.ts";
-import { checkPermission } from "../lib/permissions.ts";
+import { checkPermission } from "./../domains/identity/index.ts";
 
 export type SearchRateLimitDimension = "anon" | "authed";
 

@@ -1,7 +1,7 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../lib/helper.ts";
 import { createApp } from "../../src/app.ts";
-import { signToken } from "../../src/lib/jwt.ts";
+import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { createUserToken, jsonRequest } from "../lib/helper.ts";
 

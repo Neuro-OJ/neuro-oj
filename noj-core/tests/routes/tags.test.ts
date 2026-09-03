@@ -15,7 +15,7 @@ import {
   userRoles,
   users,
 } from "./../../src/shared/db/schema.ts";
-import { signToken } from "../../src/lib/jwt.ts";
+import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import { ensureRbacSeeds } from "../../src/domains/system/index.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");

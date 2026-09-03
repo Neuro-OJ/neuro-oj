@@ -21,7 +21,7 @@
 import { Hono } from "hono";
 import { type AuthEnv, authMiddleware } from "../../../middleware/auth.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
-import { assertPermission } from "../../../lib/permissions.ts";
+import { assertPermission } from "./../../identity/index.ts";
 import { withActorContext } from "../../../lib/requestContext.ts";
 import { parsePagination } from "./../../../shared/http/pagination.ts";
 import {

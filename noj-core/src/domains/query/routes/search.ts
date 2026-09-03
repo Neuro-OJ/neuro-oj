@@ -20,7 +20,7 @@ import {
 } from "../services/search.ts";
 import { getCommunityConfig } from "../../community/index.ts";
 import { parsePagination } from "./../../../shared/http/pagination.ts";
-import { checkPermission } from "../../../lib/permissions.ts";
+import { checkPermission } from "./../../identity/index.ts";
 import {
   ForbiddenError,
   UnauthorizedError,

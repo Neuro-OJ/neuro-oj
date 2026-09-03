@@ -23,7 +23,7 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
-import { isUserAdmin } from "../../../lib/permissions.ts";
+import { isUserAdmin } from "./../../identity/index.ts";
 import { computeContestStatus, isParticipant } from "./contests.ts";
 import { createNotification } from "../../community/index.ts";
 

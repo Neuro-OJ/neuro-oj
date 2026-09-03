@@ -44,7 +44,7 @@ import {
 import { validateRuntimeConfig } from "./problems-types.ts";
 import { syncProblemTags, validateProblemTagIds } from "./problems-tags.ts";
 import { getProblem } from "./problems-list.ts";
-import { assertPermission } from "../../../../lib/permissions.ts";
+import { assertPermission } from "./../../../identity/index.ts";
 import {
   assertSensitiveFieldPermissions,
   enforceResourceLimits,

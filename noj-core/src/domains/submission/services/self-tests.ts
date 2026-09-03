@@ -13,7 +13,7 @@ import {
   BadRequestError,
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
-import { checkPermission } from "../../../lib/permissions.ts";
+import { checkPermission } from "./../../identity/index.ts";
 import { getStorageProvider } from "./../../system/index.ts";
 import {
   isRetryableJudgeQueueError,

@@ -16,7 +16,7 @@ import {
   PASSWORD_CHANGE_WHITELIST,
 } from "../../src/middleware/auth.ts";
 import { AppError } from "./../../src/shared/base/errors.ts";
-import { signToken } from "../../src/lib/jwt.ts";
+import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import { jsonRequest } from "../lib/helper.ts";
 import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 

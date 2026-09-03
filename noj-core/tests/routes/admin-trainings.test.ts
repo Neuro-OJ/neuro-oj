@@ -10,7 +10,7 @@ import {
   userRoles,
   users,
 } from "./../../src/shared/db/schema.ts";
-import { signToken } from "../../src/lib/jwt.ts";
+import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import { initRedisForTest, jsonRequest } from "../lib/helper.ts";
 import { ensureRbacSeeds } from "../../src/domains/system/index.ts";
 

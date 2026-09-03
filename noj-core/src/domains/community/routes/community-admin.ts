@@ -9,7 +9,7 @@ import {
   assertPermission,
   checkPermission,
   getUserPermissions,
-} from "../../../lib/permissions.ts";
+} from "./../../identity/index.ts";
 import {
   COMMUNITY_PRESETS,
   MODERATION_STATUSES,

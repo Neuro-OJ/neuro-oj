@@ -36,7 +36,7 @@ import {
 import { reloadSingleKey, updateSetting } from "../../../system/index.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
 import { createNotification } from "../notifications.ts";
-import { invalidateBanCache } from "../../../../lib/banCache.ts";
+import { invalidateBanCache } from "./../../../identity/index.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
 import { parseStorageUrl } from "./../../../system/index.ts";
 

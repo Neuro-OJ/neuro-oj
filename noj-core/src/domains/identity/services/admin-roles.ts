@@ -14,7 +14,7 @@ import {
   users,
 } from "./../../../shared/db/schema.ts";
 import { ROOT_USER_ID } from "./../../../shared/base/constants.ts";
-import { getAdminUserIds, isUserAdmin } from "../../../lib/permissions.ts";
+import { getAdminUserIds, isUserAdmin } from "./security/permissions.ts";
 import {
   BadRequestError,
   ConflictError,

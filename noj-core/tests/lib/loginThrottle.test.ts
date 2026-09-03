@@ -16,7 +16,7 @@ import {
   clearLoginFailure,
   isLoginLocked,
   recordLoginFailure,
-} from "../../src/lib/loginThrottle.ts";
+} from "./../../src/domains/identity/services/security/loginThrottle.ts";
 import {
   connectRedis,
   resetRedisForTest,

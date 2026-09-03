@@ -43,9 +43,9 @@ import {
   ValidationError,
 } from "./../../../shared/base/errors.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
-import { getUserPermissions } from "../../../lib/permissions.ts";
-import { signToken, verifyToken } from "../../../lib/jwt.ts";
-import { revokeJti } from "../../../lib/revokedTokens.ts";
+import { getUserPermissions } from "./../services/security/permissions.ts";
+import { signToken, verifyToken } from "./../services/security/jwt.ts";
+import { revokeJti } from "./../services/security/revokedTokens.ts";
 import { getSetting } from "../../system/index.ts";
 import { getClientIp } from "../../system/index.ts";
 import { getBannedIpDetail } from "../services/banlist.ts";
@@ -55,7 +55,7 @@ import {
   isLoginLocked,
   recordLoginBackoff,
   recordLoginFailure,
-} from "../../../lib/loginThrottle.ts";
+} from "./../services/security/loginThrottle.ts";
 import {
   checkLoginAccountRateLimit,
   LOGIN_LIMITS,

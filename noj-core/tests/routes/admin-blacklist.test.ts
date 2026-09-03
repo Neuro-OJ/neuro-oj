@@ -6,10 +6,10 @@ import { initRedisForTest } from "../lib/helper.ts";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { ipBans, userRoles, users } from "./../../src/shared/db/schema.ts";
-import { signToken } from "../../src/lib/jwt.ts";
+import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import { jsonRequest } from "../lib/helper.ts";
 import { _resetBanlistForTest } from "../../src/domains/identity/index.ts";
-import { _resetBanCacheForTest } from "../../src/lib/banCache.ts";
+import { _resetBanCacheForTest } from "./../../src/domains/identity/services/security/banCache.ts";
 
 const ADMIN_ID = crypto.randomUUID();
 /** 时间戳使测试数据在 PG 模式下唯一，避免 static username/email 与旧数据冲突 */
