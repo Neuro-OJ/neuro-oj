@@ -22,7 +22,10 @@ import search from "./domains/query/routes/search.ts";
 import contests from "./domains/contest/routes/contests.ts";
 import trainings from "./domains/catalog/routes/trainings.ts";
 import announcements from "./domains/system/routes/announcements.ts";
-import sse, { contestSse, statsSse } from "./routes/sse.ts";
+import submissionSse from "./domains/submission/routes/sse.ts";
+import statsSse from "./domains/query/routes/sse.ts";
+import contestSse from "./domains/contest/routes/sse.ts";
+import communitySse from "./domains/community/routes/sse.ts";
 import { AppError } from "./shared/base/errors.ts";
 import { logger } from "./shared/base/logging.ts";
 import { listJudgeImages } from "./domains/system/index.ts";
@@ -194,7 +197,8 @@ export function createApp(): Hono {
   // 统计数据 SSE 端点（公开，无需 authMiddleware，必须在 sse 之前注册）
   app.route("/api/v1", statsSse);
   app.route("/api/v1", contestSse);
-  app.route("/api/v1", sse);
+  app.route("/api/v1", communitySse);
+  app.route("/api/v1", submissionSse);
 
   return app;
 }
