@@ -25,8 +25,8 @@ import {
 } from "../../../../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import { assertContestSubmissionLimit } from "../../../contest/index.ts";
-import { buildJudgeTaskLlm } from "../../../../lib/llm-token.ts";
-import { buildJudgeTaskLlmForProvider } from "../../../../lib/llm-token.ts";
+import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
+import { buildJudgeTaskLlmForProvider } from "./../../../gateway/index.ts";
 import { getUserLlmProvider } from "../../../gateway/index.ts";
 import {
   Channels,

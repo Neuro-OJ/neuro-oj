@@ -4,7 +4,7 @@
 import { assert, assertEquals, assertThrows } from "jsr:@std/assert@^1";
 import { validateBundleManifest } from "../../src/types/problem-bundle.ts";
 import { isValidLlmConfig } from "../../src/types/problems.ts";
-import { buildJudgeTaskLlm } from "../../src/lib/llm-token.ts";
+import { buildJudgeTaskLlm } from "./../../src/domains/gateway/services/llm-token.ts";
 import type { RuntimeConfig } from "../../src/types/index.ts";
 
 Deno.test("llm-config: isValidLlmConfig", () => {
