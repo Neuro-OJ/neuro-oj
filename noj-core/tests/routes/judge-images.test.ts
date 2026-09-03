@@ -5,7 +5,7 @@
  * 测试前自动运行迁移并 seed 默认白名单条目（见 00_migrate_test.ts）。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { createUserToken, initRedisForTest } from "../lib/helper.ts";
+import { createUserToken, initRedisForTest } from "../helper.ts";
 import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { judgeImages } from "./../../src/shared/db/schema.ts";

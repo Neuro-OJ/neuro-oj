@@ -2,12 +2,12 @@
  * Admin IP 黑名单路由测试（issue #102）。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
+import { initRedisForTest } from "../helper.ts";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { ipBans, userRoles, users } from "./../../src/shared/db/schema.ts";
 import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
-import { jsonRequest } from "../lib/helper.ts";
+import { jsonRequest } from "../helper.ts";
 import { _resetBanlistForTest } from "../../src/domains/identity/index.ts";
 import { _resetBanCacheForTest } from "./../../src/domains/identity/services/security/banCache.ts";
 

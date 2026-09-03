@@ -149,7 +149,7 @@ export async function jsonRequest<
  * ## 用法
  *
  * ```ts
- * import { initRedisForTest } from "../lib/helper.ts";
+ * import { initRedisForTest } from "../helper.ts";
  *
  * await initRedisForTest(); // 模块顶层调用一次即可
  * ```

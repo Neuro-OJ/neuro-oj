@@ -21,7 +21,7 @@ import {
   enterTestContext,
   leaveTestContext,
 } from "../../src/domains/system/index.ts";
-import { createUserToken, jsonRequest } from "../lib/helper.ts";
+import { createUserToken, jsonRequest } from "../helper.ts";
 
 if (!Deno.env.get("JWT_SECRET")) {
   Deno.env.set(

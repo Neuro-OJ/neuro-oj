@@ -9,7 +9,7 @@
  * - DELETE 重置设置
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
+import { initRedisForTest } from "../helper.ts";
 import { createApp } from "../../src/app.ts";
 import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 import {
@@ -20,7 +20,7 @@ import {
   _resetEnvSnapshotForTest,
   snapshotEnv,
 } from "./../../src/domains/system/services/env-snapshot.ts";
-import { createUserToken, jsonRequest } from "../lib/helper.ts";
+import { createUserToken, jsonRequest } from "../helper.ts";
 
 // 测试需要 JWT_SECRET 签发 token
 if (!Deno.env.get("JWT_SECRET")) {

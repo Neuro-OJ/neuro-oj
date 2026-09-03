@@ -9,7 +9,7 @@
  */
 
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
+import { initRedisForTest } from "../helper.ts";
 import { eq, or } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";

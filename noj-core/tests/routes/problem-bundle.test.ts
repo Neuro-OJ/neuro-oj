@@ -10,7 +10,7 @@ import { signToken } from "./../../src/domains/identity/services/security/jwt.ts
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { problems, users } from "./../../src/shared/db/schema.ts";
 import { eq, sql } from "drizzle-orm";
-import { createUserToken } from "../lib/helper.ts";
+import { createUserToken } from "../helper.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skipEnv = !hasEnv;

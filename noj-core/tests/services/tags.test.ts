@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
-import { initRedisForTest } from "../lib/helper.ts";
+import { initRedisForTest } from "../helper.ts";
 import {
   createTag,
   deleteTag,

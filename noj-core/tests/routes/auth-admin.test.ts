@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { createUserToken, initRedisForTest } from "../lib/helper.ts";
+import { createUserToken, initRedisForTest } from "../helper.ts";
 import { createApp } from "../../src/app.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import {
@@ -9,7 +9,7 @@ import {
   users,
 } from "./../../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
-import { jsonRequest } from "../lib/helper.ts";
+import { jsonRequest } from "../helper.ts";
 
 const ts = Date.now();
 

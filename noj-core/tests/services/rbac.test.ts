@@ -17,7 +17,7 @@ import {
   users,
 } from "./../../src/shared/db/schema.ts";
 import { getUserPermissions } from "./../../src/domains/identity/services/security/permissions.ts";
-import { jsonRequest } from "../lib/helper.ts";
+import { jsonRequest } from "../helper.ts";
 import { createApp } from "../../src/app.ts";
 import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 

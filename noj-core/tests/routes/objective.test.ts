@@ -5,11 +5,7 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../src/app.ts";
-import {
-  createUserToken,
-  initRedisForTest,
-  jsonRequest,
-} from "../lib/helper.ts";
+import { createUserToken, initRedisForTest, jsonRequest } from "../helper.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { createProblem } from "../../src/domains/catalog/index.ts";
 import { problems } from "./../../src/shared/db/schema.ts";

@@ -1,8 +1,8 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
-import { initRedisForTest } from "../lib/helper.ts";
+import { initRedisForTest } from "../helper.ts";
 import { createApp } from "../../src/app.ts";
-import { createUserToken, jsonRequest } from "../lib/helper.ts";
+import { createUserToken, jsonRequest } from "../helper.ts";
 import { getDb } from "./../../src/shared/db/connection.ts";
 import { auditLogs } from "./../../src/shared/db/schema.ts";
 import {

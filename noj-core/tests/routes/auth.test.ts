@@ -17,7 +17,7 @@ import {
   generateResetToken,
   hashResetToken,
 } from "./../../src/domains/identity/services/security/resetToken.ts";
-import { jsonRequest } from "../lib/helper.ts";
+import { jsonRequest } from "../helper.ts";
 
 // PGlite 内存数据库始终可用，无需检测
 const hasJwt = !!Deno.env.get("JWT_SECRET");

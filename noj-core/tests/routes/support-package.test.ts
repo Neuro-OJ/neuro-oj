@@ -15,7 +15,7 @@ import {
 } from "./../../src/shared/db/schema.ts";
 import { ensureRbacSeeds } from "../../src/domains/system/index.ts";
 import { eq, sql } from "drizzle-orm";
-import { createUserToken } from "../lib/helper.ts";
+import { createUserToken } from "../helper.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skipEnv = !hasEnv;

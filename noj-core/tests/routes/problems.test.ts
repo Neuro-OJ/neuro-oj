@@ -1,9 +1,9 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
+import { initRedisForTest } from "../helper.ts";
 import { createApp } from "../../src/app.ts";
 import { createProblem } from "../../src/domains/catalog/index.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
-import { createUserToken, jsonRequest } from "../lib/helper.ts";
+import { createUserToken, jsonRequest } from "../helper.ts";
 
 // PGlite 内存数据库始终可用
 const dbAvailable = true;

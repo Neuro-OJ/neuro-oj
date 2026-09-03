@@ -5,7 +5,7 @@
  * 不依赖 createApp() 中注册的路由。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
+import { initRedisForTest } from "../helper.ts";
 import { Hono } from "hono";
 import {
   adminMiddleware,
@@ -13,7 +13,7 @@ import {
 } from "./../../src/domains/identity/middleware/auth.ts";
 import { AppError } from "./../../src/shared/base/errors.ts";
 import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
-import { createUserToken, jsonRequest } from "../lib/helper.ts";
+import { createUserToken, jsonRequest } from "../helper.ts";
 import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 
 // PR-1：authMiddleware 校验 JWT 撤销需 Redis

@@ -16,7 +16,7 @@ import {
 import type { S3Client } from "npm:@aws-sdk/client-s3@^3";
 import { createApp } from "../../src/app.ts";
 import { resetDbForTest } from "./../../src/shared/db/connection.ts";
-import { createUserToken, jsonRequest } from "../lib/helper.ts";
+import { createUserToken, jsonRequest } from "../helper.ts";
 import { sameStorageObject } from "../../src/domains/identity/index.ts";
 import { S3StorageProvider } from "./../../src/domains/system/services/storage/s3.ts";
 import {

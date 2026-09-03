@@ -5,7 +5,7 @@ import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 
 import { problems, selfTests, users } from "./../../src/shared/db/schema.ts";
 import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
-import { initRedisForTest, jsonRequest } from "../lib/helper.ts";
+import { initRedisForTest, jsonRequest } from "../helper.ts";
 
 // 显式启用限流（NOJ_ENV=test 时默认关闭）
 Deno.env.set("RATE_LIMIT_ENABLED", "true");

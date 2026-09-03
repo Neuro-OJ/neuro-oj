@@ -14,7 +14,7 @@ import {
   users,
 } from "./../../src/shared/db/schema.ts";
 import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
-import { initRedisForTest, jsonRequest } from "../lib/helper.ts";
+import { initRedisForTest, jsonRequest } from "../helper.ts";
 
 await resetDbForTest();
 await initRedisForTest();

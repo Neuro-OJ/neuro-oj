@@ -23,7 +23,7 @@ import {
   snapshotEnv,
 } from "./../../src/domains/system/services/env-snapshot.ts";
 import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
-import { initRedisForTest, jsonRequest } from "../lib/helper.ts";
+import { initRedisForTest, jsonRequest } from "../helper.ts";
 
 // PR-1：banlistMiddleware 走 Redis，避免 Redis 不可用时返 503
 await initRedisForTest();

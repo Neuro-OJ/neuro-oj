@@ -15,7 +15,7 @@ import { createApp } from "../../src/app.ts";
 import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { registerUser } from "../../src/domains/identity/index.ts";
 import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
-import { jsonRequest } from "../lib/helper.ts";
+import { jsonRequest } from "../helper.ts";
 
 Deno.env.set("TFA_ENCRYPTION_KEY", "test-tfa-encryption-key-with-32-chars-min");
 Deno.env.set("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters");

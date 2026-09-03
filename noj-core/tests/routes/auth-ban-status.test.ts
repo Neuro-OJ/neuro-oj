@@ -2,7 +2,7 @@
  * ban-status 端点测试（ban-status-endpoint）。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
-import { initRedisForTest } from "../lib/helper.ts";
+import { initRedisForTest } from "../helper.ts";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
 import { _resetBanCacheForTest } from "./../../src/domains/identity/services/security/banCache.ts";
@@ -13,7 +13,7 @@ import {
 import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { ipBans, userBans, users } from "./../../src/shared/db/schema.ts";
-import { jsonRequest } from "../lib/helper.ts";
+import { jsonRequest } from "../helper.ts";
 
 const HAS_SECRET = !!Deno.env.get("JWT_SECRET");
 const ADMIN_ID = crypto.randomUUID();

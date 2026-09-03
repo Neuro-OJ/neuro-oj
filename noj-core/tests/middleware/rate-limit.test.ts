@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { createUserToken, initRedisForTest } from "../lib/helper.ts";
+import { createUserToken, initRedisForTest } from "../helper.ts";
 import {
   _resetRateLimitForTest,
   rateLimit,
