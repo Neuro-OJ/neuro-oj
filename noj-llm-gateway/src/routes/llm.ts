@@ -9,6 +9,7 @@ import { verifyEvalToken } from "../crypto.ts";
 import { getProviderSecret, validateByokBaseUrl } from "../providers.ts";
 import { enforceAndCount, settleUsage } from "../limits.ts";
 import { recordUsage } from "../usage.ts";
+import { calcBilledUsage } from "../billing.ts";
 
 export interface LlmDeps {
   config: GatewayConfig;
@@ -43,6 +44,23 @@ async function sha256Hex(input: string): Promise<string> {
   );
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+/** 构造 OpenAI 兼容的超限错误响应，供客户端按 code=out_of_usage 识别。 */
+function openAiLimitError(_message: string): Response {
+  return new Response(
+    JSON.stringify({
+      error: {
+        message: "Out of usage for this evaluation",
+        type: "invalid_request_error",
+        code: "out_of_usage",
+      },
+    }),
+    {
+      status: 429,
+      headers: { "content-type": "application/json" },
+    },
+  );
 }
 
 /** 创建 OpenAI 兼容代理路由：校验 eval_token → 限流 → 转发 → 真实用量结算/审计。 */
@@ -155,7 +173,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         prompt_hash: await sha256Hex(JSON.stringify(body.messages)),
         created_at: new Date().toISOString(),
       });
-      return c.json({ error: message }, 429);
+      return openAiLimitError(message);
     }
 
     const upstreamUrl = buildChatUrl(providerSecret.provider.base_url);
@@ -203,17 +221,18 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         prompt_tokens?: number;
         completion_tokens?: number;
         total_tokens?: number;
+        prompt_tokens_details?: {
+          cached_tokens?: number;
+        };
       }
       | undefined;
-    const actualPromptTokens = Math.floor(usage?.prompt_tokens ?? promptTokens);
-    const actualCompletionTokens = Math.floor(
-      usage?.completion_tokens ?? 0,
-    );
-    const actualTotalTokens = Math.floor(
-      usage?.total_tokens ?? (actualPromptTokens + actualCompletionTokens),
-    );
+    const billedUsage = calcBilledUsage(usage, promptTokens, 0);
+    const actualPromptTokens = billedUsage.promptTokens;
+    const actualCompletionTokens = billedUsage.completionTokens;
+    const actualTotalTokens = billedUsage.totalTokens;
+    const actualBilledTotalTokens = billedUsage.billedTotalTokens;
     const actualCost = estimateCost(
-      actualTotalTokens,
+      actualBilledTotalTokens,
       providerSecret.provider.cost_per_1k_tokens,
     );
 
@@ -224,6 +243,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         estimatedCost,
         actualPromptTokens,
         actualCompletionTokens,
+        actualBilledTotalTokens,
         actualCost,
         ip: c.req.header("x-forwarded-for") ?? "unknown",
         ttlSeconds,
@@ -242,6 +262,9 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         prompt_tokens: actualPromptTokens,
         completion_tokens: actualCompletionTokens,
         total_tokens: actualTotalTokens,
+        cached_prompt_tokens: billedUsage.cachedPromptTokens,
+        billed_prompt_tokens: billedUsage.billedPromptTokens,
+        billed_total_tokens: billedUsage.billedTotalTokens,
         estimated_cost: actualCost,
         latency_ms: latency,
         status: "rejected",
@@ -249,7 +272,7 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         prompt_hash: await sha256Hex(JSON.stringify(body.messages)),
         created_at: new Date().toISOString(),
       });
-      return c.json({ error: message }, 429);
+      return openAiLimitError(message);
     }
 
     await recordUsage(deps.db, {
@@ -264,6 +287,9 @@ export function createLlmRouter(deps: LlmDeps): Hono {
       prompt_tokens: actualPromptTokens,
       completion_tokens: actualCompletionTokens,
       total_tokens: actualTotalTokens,
+      cached_prompt_tokens: billedUsage.cachedPromptTokens,
+      billed_prompt_tokens: billedUsage.billedPromptTokens,
+      billed_total_tokens: billedUsage.billedTotalTokens,
       estimated_cost: actualCost,
       latency_ms: latency,
       status: upstreamRes.ok ? "ok" : "error",

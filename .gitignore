@@ -106,3 +106,8 @@ dev-docs/review-snapshots/
 
 # --- LMCC raw problem archive (downloaded from official site; not committed) ---
 /lmcc-problems/
+
+# --- Problem source (moved to separate private noj-problems repo) ---
+/problems/
+/noj-problems/
+

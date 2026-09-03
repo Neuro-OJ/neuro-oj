@@ -412,13 +412,14 @@ export async function settleUsage(
     estimatedCost: number;
     actualPromptTokens: number;
     actualCompletionTokens: number;
+    actualBilledTotalTokens: number;
     actualCost: number;
     ip: string;
     ttlSeconds: number;
   },
 ): Promise<void> {
   const now = Date.now();
-  const deltaTokens = (opts.actualPromptTokens + opts.actualCompletionTokens) -
+  const deltaTokens = opts.actualBilledTotalTokens -
     (opts.promptTokens + opts.completionTokens);
   const deltaCost = opts.actualCost - opts.estimatedCost;
 
