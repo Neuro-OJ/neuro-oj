@@ -15,9 +15,23 @@ interface RouteEntry {
 
 function collectRouteFiles(): string[] {
   const files: string[] = [];
-  for (const entry of Deno.readDirSync(ROUTES_DIR)) {
-    if (entry.isFile && entry.name.endsWith(".ts")) {
-      files.push(`${ROUTES_DIR}/${entry.name}`);
+  const roots = [ROUTES_DIR, resolve(ROOT, "noj-core/src/domains")];
+  for (const root of roots) {
+    if (!Deno.statSync(root).isDirectory) continue;
+    const queue = [root];
+    while (queue.length > 0) {
+      const dir = queue.shift()!;
+      for (const entry of Deno.readDirSync(dir)) {
+        const full = `${dir}/${entry.name}`;
+        if (entry.isDirectory) {
+          queue.push(full);
+        } else if (
+          entry.isFile && entry.name.endsWith(".ts") &&
+          full.includes("/routes/") && !full.endsWith("/index.ts")
+        ) {
+          files.push(full);
+        }
+      }
     }
   }
   return files;

@@ -3,7 +3,8 @@
  *
  * 提供（挂载前缀 /api/v1/admin，见 app.ts）：
  * - /users、/problems、/submissions、/contests、/judge-images、
- *   /dashboard/stats、/settings、/blacklist、/audit-logs、/roles、/permissions
+ *   /dashboard/stats、/settings、/blacklist、/audit-logs、/roles、/permissions、
+ *   /announcements、/trainings、/llm/...
  *
  * 组级守卫：所有 admin 端点均需认证 + 管理员权限，在此统一挂载。
  * 例外：公告与题单管理端点已抽至独立 router，使用各自的细粒度权限。
@@ -15,17 +16,13 @@ import {
   adminMiddleware,
   authMiddleware,
 } from "./../../domains/identity/index.ts";
-import adminUsers from "../../domains/identity/routes/admin-users.ts";
-import adminProblems from "../../domains/catalog/routes/admin-problems.ts";
-import adminSubmissions from "../../domains/submission/routes/admin-submissions.ts";
-import adminContests from "../../domains/contest/routes/admin-contests.ts";
-import adminJudgeImages from "../../domains/system/routes/admin-judge-images.ts";
-import adminSettings from "../../domains/system/routes/admin-settings.ts";
-import adminBlacklist from "../../domains/identity/routes/admin-blacklist.ts";
-import adminRoles from "../../domains/identity/routes/admin-roles.ts";
-import adminAudit from "../../domains/system/routes/admin-audit.ts";
-import adminDashboard from "../../domains/query/routes/admin-dashboard.ts";
-import adminLlm from "../../domains/gateway/routes/admin-llm.ts";
+import { identityAdminRouter } from "../../domains/identity/routes/index.ts";
+import { catalogAdminRouter } from "../../domains/catalog/routes/index.ts";
+import { submissionAdminRouter } from "../../domains/submission/routes/index.ts";
+import { queryAdminRouter } from "../../domains/query/routes/index.ts";
+import { contestAdminRouter } from "../../domains/contest/routes/index.ts";
+import { systemAdminRouter } from "../../domains/system/routes/index.ts";
+import { gatewayAdminRouter } from "../../domains/gateway/routes/index.ts";
 
 const router = new Hono<AuthEnv>();
 
@@ -55,17 +52,13 @@ router.use("*", authMiddleware, async (c, next) => {
   return await adminMiddleware(c, next);
 });
 
-// 按资源域挂载子路由（各子路由路径保持与旧 routes/admin.ts 完全一致）
-router.route("/", adminUsers);
-router.route("/", adminProblems);
-router.route("/", adminSubmissions);
-router.route("/", adminContests);
-router.route("/", adminJudgeImages);
-router.route("/", adminSettings);
-router.route("/", adminBlacklist);
-router.route("/", adminRoles);
-router.route("/", adminAudit);
-router.route("/", adminDashboard);
-router.route("/", adminLlm);
+// 按域挂载管理子路由（各域 router 内部路径保持与旧 routes/admin.ts 完全一致）
+router.route("/", identityAdminRouter);
+router.route("/", catalogAdminRouter);
+router.route("/", submissionAdminRouter);
+router.route("/", queryAdminRouter);
+router.route("/", contestAdminRouter);
+router.route("/", systemAdminRouter);
+router.route("/", gatewayAdminRouter);
 
 export default router;
