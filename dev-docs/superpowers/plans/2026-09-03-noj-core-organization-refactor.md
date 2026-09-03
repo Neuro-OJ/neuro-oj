@@ -121,13 +121,13 @@ if (import.meta.main) {
 }
 ```
 
-- [ ] **Step 2: 用一个已有文件自测**
+- [ ] **Step 2: 用一个不存在的路径自测**
 
 ```bash
-deno run -A scripts/rewrite-imports.ts noj-core/src/lib/errors.ts noj-core/src/shared/base/errors.ts
+deno run -A scripts/rewrite-imports.ts noj-core/src/does-not-exist.ts noj-core/src/shared/does-not-exist.ts
 ```
 
-此时目标文件尚未移动，扫描应无匹配（或仅匹配已存在的旧路径），输出 `重写完成，修改 0 个文件` 即正常。
+Expected: 输出 `重写完成，修改 0 个文件`（脚本不应改动任何文件）。
 
 - [ ] **Step 3: 提交**
 
