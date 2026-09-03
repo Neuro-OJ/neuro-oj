@@ -61,15 +61,15 @@ authMiddleware → 注入 isAdmin
 
 ### 关键函数
 
-| 函数                         | 位置                        | 用途                                          |
-| ---------------------------- | --------------------------- | --------------------------------------------- |
-| `getUserPermissions(userId)` | `src/lib/permissions.ts`    | 递归 CTE 查询用户所有权限，返回 `Set<string>` |
-| `resolvePermissions(c)`      | 同上                        | 请求级缓存封装                                |
-| `checkPermission(c, perm)`   | 同上                        | 返回 boolean，service 层条件判断              |
-| `assertPermission(c, perm)`  | 同上                        | 无权限时抛 ForbiddenError                     |
-| `requireAdmin()`             | 同上                        | 中间件，纯 JWT fast path                      |
-| `requirePermission(perm)`    | 同上                        | 中间件工厂函数                                |
-| `ensureRbacSeeds()`          | `src/services/seed-rbac.ts` | 全量幂等初始化                                |
+| 函数                         | 位置                                                    | 用途                                          |
+| ---------------------------- | ------------------------------------------------------- | --------------------------------------------- |
+| `getUserPermissions(userId)` | `src/domains/identity/services/security/permissions.ts` | 递归 CTE 查询用户所有权限，返回 `Set<string>` |
+| `resolvePermissions(c)`      | 同上                                                    | 请求级缓存封装                                |
+| `checkPermission(c, perm)`   | 同上                                                    | 返回 boolean，service 层条件判断              |
+| `assertPermission(c, perm)`  | 同上                                                    | 无权限时抛 ForbiddenError                     |
+| `requireAdmin()`             | 同上                                                    | 中间件，纯 JWT fast path                      |
+| `requirePermission(perm)`    | 同上                                                    | 中间件工厂函数                                |
+| `ensureRbacSeeds()`          | `src/domains/system/services/seed/seed-rbac.ts`         | 全量幂等初始化                                |
 
 ### Permissions
 
@@ -102,53 +102,39 @@ noj-core/
 ├── .env                   # 环境变量（不提交）
 ├── src/
 │   ├── main.ts            # 入口（启动校验 + 初始化顺序）
-│   ├── app.ts             # Hono 应用工厂（CORS + 路由 + 错误处理）
+│   ├── app.ts             # Hono 应用工厂（CORS + 全局中间件 + 按域挂载路由）
 │   ├── mod.ts             # 公共导出
-│   ├── routes/            # 路由层（参数校验 + 调用 service）：admin / admin-announcements / announcements / auth / tags / checkin / community / contests / conversations / health / problems / queue / rankings / search / sse / stats / submissions / users
-│   ├── services/          # 业务逻辑层（数据库读写，34 个文件，含 problems-*/submissions-* 拆分与 community/contests/dashboard/stats-cache 等）
-│   ├── db/                # 数据库连接 & Drizzle schema
-│   │   ├── index.ts       # 数据库连接管理（单例模式）
-│   │   ├── migrate.ts     # 迁移执行器（绝对路径解析，不依赖 CWD）
-│   │   └── schema.ts      # Drizzle 表定义（38 张表）
-│   ├── middleware/         # 认证中间件（auth / banlist / rateLimit / searchRateLimit / request-context）
-│   ├── mq/                # Redis 消息队列（Producer + Consumer）
-│   │   ├── connection.ts   #   连接管理（共享 + 消费者 + Pub/Sub）
-│   │   ├── base-consumer.ts#   BRPOP 消费基类
-│   │   ├── consumer.ts     #   评测结果消费者（BRPOP 阻塞）
-│   │   └── producer.ts     #   评测任务生产者（LPUSH）
-│   ├── lib/               # 工具函数（JWT、密码、错误类、请求解析、日志、存储、限流、RBAC 等）
-│   │   ├── email.ts            # 邮件发送抽象入口（动态选择 Provider）
-│   │   ├── email-providers/    # 邮件 Provider 实现（types / mock / aliyun / tencent）
-│   │   ├── storage/            # 抽象存储层（StorageProvider）
-│   │   │   ├── types.ts        #   StorageProvider 接口 + URL 工具
-│   │   │   ├── local.ts        #   LocalStorageProvider（dev 专用）
-│   │   │   ├── s3.ts           #   S3StorageProvider（生产环境）
-│   │   │   ├── factory.ts      #   工厂函数（环境变量选择实现）
-│   │   │   └── mod.ts          #   公共导出
-│   │   ├── errors.ts           # AppError 继承体系（6 个子类）
-│   │   ├── jwt.ts              # JWT 签发/验证（HS256, iss/aud 校验）
-│   │   ├── password.ts         # bcrypt 哈希/比对（cost 12）
-│   │   ├── request.ts          # parseJsonBody<T>() 安全 JSON 解析
-│   │   ├── permissions.ts      # RBAC 权限工具（getUserPermissions / requireAdmin / requirePermission 等）
-│   │   ├── logging.ts          # 生产安全日志（UUID 截断、分值隐藏）
-│   │   ├── event-bus.ts        # 进程内事件总线（SSE 推送）
-│   │   ├── env-snapshot.ts     # 环境变量快照（启动期记录）
-│   │   ├── settings-registry.ts# 系统设置注册表
-│   │   ├── rateLimit.ts / loginThrottle.ts / rateLimitEnv.ts / cidr.ts  # 速率限制
-│   │   ├── pagination.ts / samples.ts / sql-rows.ts / resetToken.ts / revokedTokens.ts / banCache.ts / requestContext.ts  # 其他工具
-│   │   └── ...
-│   └── types/             # 类型定义
-│       ├── index.ts        # JudgeTask, JudgeResult, SubmissionStatus, LANGUAGE_EXT_MAP
-│       ├── auth.ts         # RegisterInput, LoginInput, UserResponse
-│       └── problems.ts     # DIFFICULTIES, PROBLEM_TYPES, 校验函数
+│   ├── routes/            # 仅保留顶层路由组合与 health：admin/index.ts、health.ts
+│   ├── shared/            # 跨域共享基础设施（不反向依赖 domains）
+│   │   ├── base/          # errors / logging / constants / dates / sql-rows
+│   │   ├── config/        # settings-registry / production-config
+│   │   ├── db/            # connection / migrate / schema / schema-ddl
+│   │   ├── http/          # request / pagination / file-stream / hono-env
+│   │   ├── mq/            # Redis connection / base-consumer
+│   │   ├── sse/           # event-bus / sse-stream / sse-events / server-helpers
+│   │   ├── rate-limit/    # 通用限流原语（业务环境相关限流在 system 域）
+│   │   ├── security/      # cidr / public-id / image-validation
+│   │   └── middleware/    # request-context
+│   ├── domains/           # 业务域自包含：routes / services / middleware / mq / types / tests
+│   │   ├── identity/      # 注册登录、JWT/RBAC、用户、OAuth、TFA、封禁
+│   │   ├── catalog/       # 题目、标签、题包、题单
+│   │   ├── objective/     # 客观题
+│   │   ├── submission/    # 提交、评测协议、MQ、自测、SSE
+│   │   ├── contest/       # 竞赛
+│   │   ├── community/     # 社区
+│   │   ├── messaging/     # 私信
+│   │   ├── system/        # 设置、公告、审计、存储/邮件、Actor RequestContext、限流中间件
+│   │   ├── gateway/       # LLM Provider / 配额
+│   │   ├── query/         # 搜索、统计、排行
+│   │   └── content-review/# 内容审核与 DM 审核消费者
 ├── scripts/               # CLI 工具（noj.ts 单入口 + migrate.ts + check-env.ts）
 ├── data/
 │   ├── problems-src/<id>/ # 题目源文件（版本控制，仅样例题）
 │   └── packages/<id>.zip  # 构建产物（gitignored，local 模式使用）
-└── tests/                 # 测试文件（与 src 镜像结构）
+└── tests/                 # 顶层共享测试与跨模块测试
     ├── 00_migrate_test.ts # 最先执行：迁移 + seed root 用户
-    ├── services/          # 服务层测试
-    └── routes/            # 路由层测试（使用 jsonRequest() 辅助函数）
+    ├── shared/            # shared 层测试（含 config / security / storage）
+    └── routes/health.ts   # 顶层 health 路由测试（其余测试随域进入 domains/*/tests）
 ```
 
 ## 环境变量
@@ -238,15 +224,15 @@ deno task test:smoke        # 快速冒烟（Hono server + /health，需 Redis�
 ### 测试并行分片（TEST_SCHEMA）
 
 `deno task test:parallel`（`scripts/test-parallel.ts`）把测试按目录分为
-`unit`（lib/middleware/types/data/app）与
-`db`（services/routes/mq/db/迁移/种子） 两组，每组独占一个 PG
+`unit`（tests/shared、域内 lib/middleware/types 测试、data/app）与 `db`（域内
+services/routes/mq 测试、db/迁移/种子） 两组，每组独占一个 PG
 schema（`test_unit` / `test_db`），进程级并行互不干扰：
 
-- `src/db/connection.ts` 支持 `TEST_SCHEMA` 环境变量：通过 libpq startup 参数
-  `-csearch_path=<schema>,public` 让连接池内所有连接落在目标 schema （TRUNCATE /
-  SELECT / INSERT 均自动隔离）
-- `src/db/migrate.ts` 在 TEST_SCHEMA 下把 `migrationsSchema` 指向同 schema，
-  避免各分片共享 `drizzle` 迁移记录导致"已迁移"误判跳过
+- `src/shared/db/connection.ts` 支持 `TEST_SCHEMA` 环境变量：通过 libpq startup
+  参数 `-csearch_path=<schema>,public` 让连接池内所有连接落在目标 schema
+  （TRUNCATE / SELECT / INSERT 均自动隔离）
+- `src/shared/db/migrate.ts` 在 TEST_SCHEMA 下把 `migrationsSchema` 指向同
+  schema， 避免各分片共享 `drizzle` 迁移记录导致"已迁移"误判跳过
 - 约束：分片目录集合与 CI 的 `core-test-db` 一致；CI 的 `core-test-unit` 是
   PGlite 模式（无需迁移），本地 unit 分片走真实 PG（需 00_migrate_test）
 
@@ -375,7 +361,7 @@ docker compose down     # 停止
 | `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                            | PK, FK→conversations, FK→users, UK(conversation_id,user_id) |
 | `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                   | PK, FK→messages, FK→users                                   |
 
-> 上表为核心表速查。完整 Schema 共 38 张表（`src/db/schema.ts`），另有：
+> 上表为核心表速查。完整 Schema 共 38 张表（`src/shared/db/schema.ts`），另有：
 >
 > - **竞赛**：`contests` / `contest_problems` / `contest_participants` /
 >   `contest_clarifications`
@@ -531,9 +517,9 @@ Retry-After: 25
 | 登录用户 | `ratelimit:search:user:<user_id>` | 30s/120 次 |
 | admin    | 不限流                            | —          |
 
-通过 `lib/settings-registry.ts` 注册 4 个配置项（`rate_limit_search_*`），由
-`searchRateLimit("anon")` 中间件在 `/api/v1/search` 路径级统一处理，admin 经
-`c.get("userRole")` 跳过。
+通过 `src/shared/config/settings-registry.ts` 注册 4
+个配置项（`rate_limit_search_*`），由 `searchRateLimit("anon")` 中间件在
+`/api/v1/search` 路径级统一处理，admin 经 `c.get("userRole")` 跳过。
 
 **Service 层防御性鉴权**（`dcabe8d`，reviewer issue 3）：
 
@@ -545,12 +531,12 @@ Retry-After: 25
 
 **实现文件**：
 
-- 路由：`src/routes/search.ts`（`optionalAuthMiddleware` + 权限校验 + service
-  调用）
-- 服务：`src/services/search.ts`（`searchProblems` / `searchUsers`， tsvector +
-  ILIKE 联合查询）
-- 中间件：`src/middleware/searchRateLimit.ts`（Redis 固定窗口）
-- Schema：`src/db/schema.ts`（`tsvector` customType + GIN 索引定义）
+- 路由：`src/domains/query/routes/search.ts`（`optionalAuthMiddleware` +
+  权限校验 + service 调用）
+- 服务：`src/domains/query/services/search.ts`（`searchProblems` /
+  `searchUsers`， tsvector + ILIKE 联合查询）
+- 中间件：`src/domains/query/middleware/search-rate-limit.ts`（Redis 固定窗口）
+- Schema：`src/shared/db/schema.ts`（`tsvector` customType + GIN 索引定义）
 
 ## CORS 配置
 
