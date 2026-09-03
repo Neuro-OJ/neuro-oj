@@ -27,7 +27,8 @@ function collectRouteFiles(): string[] {
           queue.push(full);
         } else if (
           entry.isFile && entry.name.endsWith(".ts") &&
-          full.includes("/routes/") && !full.endsWith("/index.ts")
+          full.includes("/routes/") && !full.includes("/tests/") &&
+          !full.endsWith("/index.ts")
         ) {
           files.push(full);
         }
@@ -56,6 +57,7 @@ function generate(entries: RouteEntry[]): string {
     "# NOJ API 路由目录",
     "",
     "> 由 `scripts/gen-route-catalog.ts` 生成，请勿手改。",
+    "> 扫描范围：`src/routes/*.ts` 与 `src/domains/*/routes/*.ts`（不含 `routes/index.ts` 组合文件）。",
     "",
     "| 方法 | 路径 | 文件 |",
     "| --- | --- | --- |",
