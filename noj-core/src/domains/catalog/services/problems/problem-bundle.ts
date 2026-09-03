@@ -31,10 +31,7 @@ import {
 import { logger } from "./../../../../shared/base/logging.ts";
 import { checkPermission } from "./../../../identity/index.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
-import {
-  parseBundleZip,
-  stripMetadataEntries,
-} from "../../../../lib/bundle-parser.ts";
+import { parseBundleZip, stripMetadataEntries } from "./../bundle-parser.ts";
 import {
   isValidProblemBundleName,
   type ProblemBundleManifest,

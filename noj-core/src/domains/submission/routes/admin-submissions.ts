@@ -10,7 +10,7 @@ import {
   resolveSubmissionId,
 } from "../services/submissions/submissions.ts";
 import { removePendingSubmission } from "../services/queue.ts";
-import { resolveProblem } from "../../../lib/problem-resolve.ts";
+import { resolveProblem } from "./../../catalog/index.ts";
 import { SUBMISSION_STATUSES } from "../../../types/index.ts";
 
 /**

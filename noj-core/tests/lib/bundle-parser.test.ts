@@ -11,7 +11,7 @@ import {
   MAX_ZIP_ENTRIES,
   parseBundleZip,
   stripMetadataEntries,
-} from "../../src/lib/bundle-parser.ts";
+} from "./../../src/domains/catalog/services/bundle-parser.ts";
 
 function makeZip(files: Record<string, Uint8Array | string>): Uint8Array {
   const record: Record<string, Uint8Array> = {};

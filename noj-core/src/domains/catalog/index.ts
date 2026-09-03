@@ -9,3 +9,5 @@ export * from "./services/problems/problem-field-guard.ts";
 export * from "./services/tags.ts";
 export * from "./services/trainings.ts";
 export * from "./services/support-package.ts";
+export * from "./services/problem-resolve.ts";
+export * from "./services/bundle-parser.ts";

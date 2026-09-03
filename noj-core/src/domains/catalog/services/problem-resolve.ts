@@ -5,12 +5,9 @@
  * 任意非标准 ID 格式。供 problems 路由与自测路由共用。
  */
 
-import {
-  getProblem,
-  getProblemByTypeAndNumber,
-} from "../domains/catalog/index.ts";
-import { NotFoundError } from "./../shared/base/errors.ts";
-import { isUuid } from "./../shared/security/public-id.ts";
+import { getProblem, getProblemByTypeAndNumber } from "../index.ts";
+import { NotFoundError } from "../../../shared/base/errors.ts";
+import { isUuid } from "../../../shared/security/public-id.ts";
 
 /**
  * 双索引查找题目。

@@ -6,7 +6,7 @@ import {
   users,
 } from "./../../../../shared/db/schema.ts";
 import { NotFoundError } from "./../../../../shared/base/errors.ts";
-import { resolveProblemIdOrNull } from "../../../../lib/problem-resolve.ts";
+import { resolveProblemIdOrNull } from "./../../../catalog/index.ts";
 import type {
   CommunityConfig,
   CommunityPostStatus,

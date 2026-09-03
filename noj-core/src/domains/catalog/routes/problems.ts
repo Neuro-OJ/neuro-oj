@@ -25,7 +25,7 @@ import {
   updateProblem,
 } from "../services/problems/problems.ts";
 import { applyAlgorithmTagVisibility } from "../services/problems/problems-list.ts";
-import { resolveProblem } from "../../../lib/problem-resolve.ts";
+import { resolveProblem } from "./../services/problem-resolve.ts";
 import {
   ADMIN_FULL_ACCESS,
   resolvePermissions,
