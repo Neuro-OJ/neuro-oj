@@ -11,7 +11,7 @@ import { banUser, unbanUser } from "../../src/domains/identity/index.ts";
 import {
   enterTestContext,
   leaveTestContext,
-} from "../../src/lib/requestContext.ts";
+} from "../../src/domains/system/index.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const hasEnv = !!Deno.env.get("JWT_SECRET");

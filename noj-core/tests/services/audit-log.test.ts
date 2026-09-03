@@ -4,7 +4,7 @@ import { auditLogs, users } from "./../../src/shared/db/schema.ts";
 import {
   enterTestContext,
   leaveTestContext,
-} from "../../src/lib/requestContext.ts";
+} from "../../src/domains/system/index.ts";
 import {
   cleanupOldAuditLogs,
   listAuditLogs,

@@ -14,7 +14,7 @@ import {
 import {
   enterTestContext,
   leaveTestContext,
-} from "../../src/lib/requestContext.ts";
+} from "../../src/domains/system/index.ts";
 import {
   applyCommunityPreset,
   assertCommunityWritable,

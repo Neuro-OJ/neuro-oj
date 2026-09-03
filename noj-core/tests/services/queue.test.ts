@@ -21,7 +21,7 @@ import {
 } from "./../../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import { SELF_TEST_ID_PREFIX } from "./../../src/domains/submission/types/self-tests.ts";
-import { enterTestContext } from "../../src/lib/requestContext.ts";
+import { enterTestContext } from "../../src/domains/system/index.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");
 const skip = !hasDb;

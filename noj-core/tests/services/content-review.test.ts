@@ -11,7 +11,7 @@ import { hashPassword } from "./../../src/domains/identity/services/security/pas
 import {
   enterTestContext,
   leaveTestContext,
-} from "../../src/lib/requestContext.ts";
+} from "../../src/domains/system/index.ts";
 import {
   _resetSystemSettingsForTest,
   ensureRbacSeeds,

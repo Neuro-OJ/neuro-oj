@@ -3,7 +3,7 @@ import { type AuthEnv, authMiddleware } from "./../../identity/index.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { ValidationError } from "./../../../shared/base/errors.ts";
 import { requirePermission } from "./../../identity/index.ts";
-import { withActorContext } from "../../../lib/requestContext.ts";
+import { withActorContext } from "../../system/index.ts";
 import {
   createTag,
   type CreateTagInput,

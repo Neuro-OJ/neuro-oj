@@ -21,7 +21,7 @@ import {
   tags,
   users,
 } from "./../../src/shared/db/schema.ts";
-import { enterTestContext } from "../../src/lib/requestContext.ts";
+import { enterTestContext } from "../../src/domains/system/index.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 const skip = !hasEnv;

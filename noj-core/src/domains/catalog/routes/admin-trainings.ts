@@ -14,7 +14,7 @@ import {
 } from "./../../../shared/http/request.ts";
 import { parsePagination } from "./../../../shared/http/pagination.ts";
 import { assertPermission, checkPermission } from "./../../identity/index.ts";
-import { withActorContext } from "../../../lib/requestContext.ts";
+import { withActorContext } from "../../system/index.ts";
 import {
   deleteTraining,
   listAllTrainings,

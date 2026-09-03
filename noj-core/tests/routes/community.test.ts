@@ -20,7 +20,7 @@ import { ensureRbacSeeds } from "../../src/domains/system/index.ts";
 import {
   enterTestContext,
   leaveTestContext,
-} from "../../src/lib/requestContext.ts";
+} from "../../src/domains/system/index.ts";
 import { createUserToken, jsonRequest } from "../lib/helper.ts";
 
 if (!Deno.env.get("JWT_SECRET")) {

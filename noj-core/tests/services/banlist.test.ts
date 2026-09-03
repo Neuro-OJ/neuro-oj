@@ -21,7 +21,7 @@ import {
 import {
   enterTestContext,
   leaveTestContext,
-} from "../../src/lib/requestContext.ts";
+} from "../../src/domains/system/index.ts";
 
 const ADMIN_ID = crypto.randomUUID();
 const TEST_TS = Date.now();

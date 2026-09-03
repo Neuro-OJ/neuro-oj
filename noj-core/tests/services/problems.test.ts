@@ -13,7 +13,7 @@ import {
   BadRequestError,
   NotFoundError,
 } from "./../../src/shared/base/errors.ts";
-import { enterTestContext } from "../../src/lib/requestContext.ts";
+import { enterTestContext } from "../../src/domains/system/index.ts";
 
 // PGlite 内存数据库始终可用
 const dbAvailable = true;

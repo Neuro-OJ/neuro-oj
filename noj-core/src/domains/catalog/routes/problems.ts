@@ -17,7 +17,7 @@ import {
   enforceProblemCreateRateLimit,
   enforceProblemImportRateLimit,
 } from "../../system/index.ts";
-import { withActorContext } from "../../../lib/requestContext.ts";
+import { withActorContext } from "../../system/index.ts";
 import {
   createProblem,
   deleteProblem,

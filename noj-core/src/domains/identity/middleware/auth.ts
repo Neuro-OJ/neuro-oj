@@ -10,7 +10,7 @@ import { getDb } from "../../../shared/db/connection.ts";
 import { userBans } from "../../../shared/db/schema.ts";
 import { getCached } from "../services/security/banCache.ts";
 import { getClientIp } from "../../system/index.ts";
-import { runWithContext } from "../../../lib/requestContext.ts";
+import { runWithContext } from "../../system/index.ts";
 import {
   ADMIN_FULL_ACCESS,
   resolvePermissions,

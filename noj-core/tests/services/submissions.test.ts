@@ -23,7 +23,7 @@ import {
   NotFoundError,
 } from "./../../src/shared/base/errors.ts";
 import { eq } from "drizzle-orm";
-import { enterTestContext } from "../../src/lib/requestContext.ts";
+import { enterTestContext } from "../../src/domains/system/index.ts";
 import {
   type LogRecord,
   resetLogSink,

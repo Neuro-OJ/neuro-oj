@@ -27,7 +27,7 @@ import {
   generatePublicId,
   resolvePublicId,
 } from "./../../../shared/security/public-id.ts";
-import { getRequestContext } from "../../../lib/requestContext.ts";
+import { getRequestContext } from "./request-context.ts";
 import {
   buildPaginationMeta,
   type PaginationMeta,
