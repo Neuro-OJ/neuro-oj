@@ -28,7 +28,10 @@ import { assertContestSubmissionLimit } from "../../../contest/index.ts";
 import { buildJudgeTaskLlm } from "../../../../lib/llm-token.ts";
 import { buildJudgeTaskLlmForProvider } from "../../../../lib/llm-token.ts";
 import { getUserLlmProvider } from "../../../gateway/index.ts";
-import { Channels, publishSseEvent } from "../../../../lib/event-bus.ts";
+import {
+  Channels,
+  publishSseEvent,
+} from "./../../../../shared/sse/event-bus.ts";
 import { logger } from "./../../../../shared/base/logging.ts";
 import type { JudgeTask, JudgeTaskLlm } from "../../../../types/index.ts";
 import type { LlmConfig, RuntimeConfig } from "../../../../types/problems.ts";

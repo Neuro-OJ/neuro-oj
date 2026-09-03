@@ -29,7 +29,10 @@ import { getUserLlmProvider } from "../../../gateway/index.ts";
 import type { JudgeTask, JudgeTaskLlm } from "../../../../types/index.ts";
 import type { RuntimeConfig } from "../../../../types/problems.ts";
 import { LANGUAGE_EXT_MAP } from "../../../../types/index.ts";
-import { Channels, publishSseEvent } from "../../../../lib/event-bus.ts";
+import {
+  Channels,
+  publishSseEvent,
+} from "./../../../../shared/sse/event-bus.ts";
 import { updateSubmissionStatus } from "./submissions-result.ts";
 import { logger } from "./../../../../shared/base/logging.ts";
 

@@ -11,7 +11,7 @@ import {
 import { getRedis } from "./../../../shared/mq/connection.ts";
 import { logger } from "./../../../shared/base/logging.ts";
 import { NotFoundError } from "./../../../shared/base/errors.ts";
-import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
+import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import { logAudit } from "../../system/index.ts";
 import { SELF_TEST_ID_PREFIX } from "../../../types/self-tests.ts";
 

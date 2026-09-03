@@ -9,7 +9,7 @@
 import { getDb } from "./../../../shared/db/connection.ts";
 import { communityNotifications } from "./../../../shared/db/schema.ts";
 import { nowIso } from "./../../../shared/base/dates.ts";
-import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
+import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 
 /**
  * 通知类型：社区互动（reply/like/follow/moderation）与竞赛答疑（clarification）。

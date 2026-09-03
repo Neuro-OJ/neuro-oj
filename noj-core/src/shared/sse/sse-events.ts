@@ -5,8 +5,8 @@
  * 事件在状态变更处写入，随后发布 Redis Pub/Sub 通知。
  */
 import { and, asc, gt, inArray } from "drizzle-orm";
-import { getDb } from "./../shared/db/connection.ts";
-import { sseEvents } from "./../shared/db/schema.ts";
+import { getDb } from "../db/connection.ts";
+import { sseEvents } from "../db/schema.ts";
 
 /** SSE 事件行。 */
 export interface SseEventRow {

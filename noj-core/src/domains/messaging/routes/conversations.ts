@@ -7,8 +7,8 @@ import {
 } from "./../../../shared/base/errors.ts";
 import { resolveUserId } from "../../identity/index.ts";
 import { parsePagination } from "./../../../shared/http/pagination.ts";
-import { Channels, onEvent } from "../../../lib/event-bus.ts";
-import { createSseStream } from "../../../lib/sse-stream.ts";
+import { Channels, onEvent } from "./../../../shared/sse/event-bus.ts";
+import { createSseStream } from "./../../../shared/sse/sse-stream.ts";
 import {
   addReaction,
   clearConversationMessages,

@@ -23,7 +23,10 @@ import type { JudgeResult, SubmissionStatus } from "../../../../types/index.ts";
 import { applyNewResult } from "../../../query/index.ts";
 import { refreshRankingsView } from "../../../query/index.ts";
 import { logger } from "./../../../../shared/base/logging.ts";
-import { Channels, publishSseEvent } from "../../../../lib/event-bus.ts";
+import {
+  Channels,
+  publishSseEvent,
+} from "./../../../../shared/sse/event-bus.ts";
 import { createActivity } from "../../../community/index.ts";
 
 // 允许的状态转换

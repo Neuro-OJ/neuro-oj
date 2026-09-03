@@ -22,7 +22,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "./../../../shared/base/errors.ts";
-import { Channels, publishSseEvent } from "../../../lib/event-bus.ts";
+import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import { generatePublicId, resolvePublicId } from "../../../lib/public-id.ts";
 import { getRequestContext } from "../../../lib/requestContext.ts";
 import {

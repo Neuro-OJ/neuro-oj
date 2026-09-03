@@ -68,7 +68,10 @@ import type {
 } from "../../../../types/index.ts";
 import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../../../../types/index.ts";
-import { Channels, publishSseEvent } from "../../../../lib/event-bus.ts";
+import {
+  Channels,
+  publishSseEvent,
+} from "./../../../../shared/sse/event-bus.ts";
 import type {
   ListSubmissionsParams,
   ListSubmissionsResult,

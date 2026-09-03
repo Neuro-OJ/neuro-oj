@@ -13,8 +13,8 @@
 
 import { Hono } from "hono";
 import { authMiddleware } from "../../../middleware/auth.ts";
-import { Channels, onEvent } from "../../../lib/event-bus.ts";
-import { createSseStream } from "../../../lib/sse-stream.ts";
+import { Channels, onEvent } from "./../../../shared/sse/event-bus.ts";
+import { createSseStream } from "./../../../shared/sse/sse-stream.ts";
 import { parsePagination } from "./../../../shared/http/pagination.ts";
 import {
   getPublicAnnouncement,
