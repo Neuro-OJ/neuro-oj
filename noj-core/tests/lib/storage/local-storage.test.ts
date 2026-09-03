@@ -8,7 +8,7 @@
 
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { dirname, join } from "jsr:@std/path@^1";
-import { LocalStorageProvider } from "../../../src/lib/storage/local.ts";
+import { LocalStorageProvider } from "./../../../src/domains/system/services/storage/local.ts";
 
 // 项目根目录 = noj-core（本文件位于 tests/lib/storage/，向上 3 层：
 // storage → lib → tests → noj-core）。

@@ -3,7 +3,7 @@ import { getDb } from "./../../../shared/db/connection.ts";
 import { passwordResetTokens, users } from "./../../../shared/db/schema.ts";
 import { hashPassword } from "../../../lib/password.ts";
 import { generateResetToken, hashResetToken } from "../../../lib/resetToken.ts";
-import { sendPasswordResetEmail } from "../../../lib/email.ts";
+import { sendPasswordResetEmail } from "./../../system/index.ts";
 import { BadRequestError } from "./../../../shared/base/errors.ts";
 import { logger } from "./../../../shared/base/logging.ts";
 import { logAuthEvent } from "../../system/index.ts";

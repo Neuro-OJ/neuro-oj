@@ -24,7 +24,7 @@ import {
   type StorageProvider,
   validateStorageKey,
 } from "./types.ts";
-import { logger } from "./../../shared/base/logging.ts";
+import { logger } from "../../../../shared/base/logging.ts";
 
 /**
  * 本地存储根目录（实例级，构造时解析，测试可用 SUPPORT_PACKAGE_DIR 覆盖）。

@@ -6,7 +6,7 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
-import { getStorageProvider } from "../../../lib/storage/mod.ts";
+import { getStorageProvider } from "./../../system/index.ts";
 import { logger } from "./../../../shared/base/logging.ts";
 import { assertPermission } from "../../../lib/permissions.ts";
 import { isValidTemplateFileName } from "../../../types/problem-bundle.ts";

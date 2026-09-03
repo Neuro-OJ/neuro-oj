@@ -17,7 +17,7 @@ import {
   BadRequestError,
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
-import { getStorageProvider } from "../../../../lib/storage/mod.ts";
+import { getStorageProvider } from "./../../../system/index.ts";
 import { generatePublicId } from "./../../../../shared/security/public-id.ts";
 import {
   isRetryableJudgeQueueError,

@@ -1,4 +1,4 @@
-import { getSetting } from "../../domains/system/index.ts";
+import { getSetting } from "../system-settings.ts";
 
 /**
  * 读取系统设置中的字符串值，未配置时抛错。

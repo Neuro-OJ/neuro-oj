@@ -11,7 +11,7 @@ import { and, asc, eq, isNull, lte, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { getDb } from "./../shared/db/connection.ts";
 import { problems, selfTests, submissions } from "./../shared/db/schema.ts";
-import { getStorageProvider } from "../lib/storage/mod.ts";
+import { getStorageProvider } from "./../domains/system/index.ts";
 import { getSetting } from "../domains/system/index.ts";
 import { getRedis } from "./../shared/mq/connection.ts";
 import { isRetryableJudgeQueueError, JUDGE_QUEUE } from "./producer.ts";

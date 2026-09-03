@@ -30,7 +30,7 @@ import {
 } from "./../../../../shared/base/errors.ts";
 import { logger } from "./../../../../shared/base/logging.ts";
 import { checkPermission } from "../../../../lib/permissions.ts";
-import { getStorageProvider } from "../../../../lib/storage/mod.ts";
+import { getStorageProvider } from "./../../../system/index.ts";
 import {
   parseBundleZip,
   stripMetadataEntries,

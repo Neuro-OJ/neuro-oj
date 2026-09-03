@@ -19,7 +19,7 @@ import {
 import {
   getStorageProvider,
   resetStorageProvider,
-} from "../../src/lib/storage/mod.ts";
+} from "./../../src/domains/system/services/storage/mod.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const skip = !hasDb;

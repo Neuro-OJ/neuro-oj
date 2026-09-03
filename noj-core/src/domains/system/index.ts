@@ -6,3 +6,6 @@ export * from "./services/seed/seed-rbac.ts";
 export * from "./services/seed/seed-system.ts";
 export * from "./services/rate-limit-env.ts";
 export * from "./services/hardening-rate-limit.ts";
+export * from "./services/storage/mod.ts";
+export * from "./services/email.ts";
+export * from "./services/email-providers/types.ts";

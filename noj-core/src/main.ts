@@ -13,7 +13,7 @@ import { validateRegistry } from "./shared/config/settings-registry.ts";
 import { createReviewConsumer } from "./mq/review-consumer.ts";
 import { ensureRootUser } from "./domains/identity/index.ts";
 import { ensureRbacSeeds } from "./domains/system/index.ts";
-import { getStorageProvider } from "./lib/storage/mod.ts";
+import { getStorageProvider } from "./domains/system/index.ts";
 import { getSetting, initSystemSettings } from "./domains/system/index.ts";
 import { startAuditLogRetentionTask } from "./domains/system/index.ts";
 import { logger } from "./shared/base/logging.ts";

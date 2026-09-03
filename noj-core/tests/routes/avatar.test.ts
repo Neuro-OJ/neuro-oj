@@ -18,12 +18,12 @@ import { createApp } from "../../src/app.ts";
 import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { createUserToken, jsonRequest } from "../lib/helper.ts";
 import { sameStorageObject } from "../../src/domains/identity/index.ts";
-import { S3StorageProvider } from "../../src/lib/storage/s3.ts";
+import { S3StorageProvider } from "./../../src/domains/system/services/storage/s3.ts";
 import {
   getStorageProvider,
   resetStorageProvider,
   setStorageProviderForTest,
-} from "../../src/lib/storage/factory.ts";
+} from "./../../src/domains/system/services/storage/factory.ts";
 
 if (!Deno.env.get("JWT_SECRET")) {
   Deno.env.set(

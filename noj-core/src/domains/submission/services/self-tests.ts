@@ -14,7 +14,7 @@ import {
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { checkPermission } from "../../../lib/permissions.ts";
-import { getStorageProvider } from "../../../lib/storage/mod.ts";
+import { getStorageProvider } from "./../../system/index.ts";
 import {
   isRetryableJudgeQueueError,
   pushJudgeTask,

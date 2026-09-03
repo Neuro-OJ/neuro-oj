@@ -37,8 +37,8 @@ import { reloadSingleKey, updateSetting } from "../../../system/index.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
 import { createNotification } from "../notifications.ts";
 import { invalidateBanCache } from "../../../../lib/banCache.ts";
-import { getStorageProvider } from "../../../../lib/storage/factory.ts";
-import { parseStorageUrl } from "../../../../lib/storage/types.ts";
+import { getStorageProvider } from "./../../../system/index.ts";
+import { parseStorageUrl } from "./../../../system/index.ts";
 
 export { banUser, getLatestActiveBanId } from "../../../identity/index.ts";
 

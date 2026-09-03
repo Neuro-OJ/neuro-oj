@@ -1,7 +1,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { sendPasswordResetEmail as mockSend } from "../../src/lib/email-providers/mock.ts";
-import { sendPasswordResetEmail as disabledSend } from "../../src/lib/email-providers/disabled.ts";
-import type { SendPasswordResetEmail } from "../../src/lib/email-providers/types.ts";
+import { sendPasswordResetEmail as mockSend } from "./../../src/domains/system/services/email-providers/mock.ts";
+import { sendPasswordResetEmail as disabledSend } from "./../../src/domains/system/services/email-providers/disabled.ts";
+import type { SendPasswordResetEmail } from "./../../src/domains/system/services/email-providers/types.ts";
 import {
   type LogRecord,
   resetLogSink,
@@ -118,7 +118,7 @@ Deno.test({
       Deno.env.delete("ALIBABA_FROM_EMAIL");
 
       const { sendPasswordResetEmail: aliyunSend } = await import(
-        "../../src/lib/email-providers/aliyun.ts"
+        "./../../src/domains/system/services/email-providers/aliyun.ts"
       );
 
       await assertRejects(
@@ -156,7 +156,7 @@ Deno.test({
       Deno.env.delete("TENCENT_REGION");
 
       const { sendPasswordResetEmail: tencentSend } = await import(
-        "../../src/lib/email-providers/tencent.ts"
+        "./../../src/domains/system/services/email-providers/tencent.ts"
       );
 
       await assertRejects(
