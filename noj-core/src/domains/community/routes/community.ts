@@ -352,6 +352,7 @@ router.post("/posts/:postId/comments", authMiddleware, async (c) => {
       postId,
       body.content,
       body.parent_id,
+      await isModerator(c),
     ),
   }, 201);
 });

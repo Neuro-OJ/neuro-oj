@@ -39,6 +39,11 @@ import {
   updateBoardRoleGrant,
 } from "../services/community/community.ts";
 import { resolveUserId } from "../../identity/index.ts";
+import {
+  getReviewQueueDetail,
+  listReviewQueue,
+  resolveReviewQueue,
+} from "../../content-review/index.ts";
 
 /**
  * 社区管理路由（挂载前缀 /api/v1/community，见 app.ts）。
@@ -486,5 +491,97 @@ router.get(
     });
   },
 );
+
+/**
+ * GET /admin/content-review — 统一人工审查队列（issue #413）。
+ * 权限：社区审核。
+ * query：status / content_type / channel / from / to / page / per_page。
+ * 响应：{ data, pagination }。
+ */
+router.get(
+  "/admin/content-review",
+  async (c) => {
+    const parsePage = (raw: string | undefined, fallback: number) => {
+      const n = Number(raw ?? fallback);
+      return Number.isInteger(n) && n >= 1 ? n : fallback;
+    };
+    const status = c.req.query("status");
+    const content_type = c.req.query("content_type");
+    const channel = c.req.query("channel");
+    const validStatus = [
+      "pending_review",
+      "approved",
+      "rejected",
+      "reviewed",
+      "dismissed",
+    ];
+    if (status && !validStatus.includes(status)) {
+      throw new BadRequestError("无效审查状态");
+    }
+    if (
+      content_type && !["post", "comment", "message"].includes(content_type)
+    ) {
+      throw new BadRequestError("无效内容类型");
+    }
+    if (channel && !["ugc", "dm"].includes(channel)) {
+      throw new BadRequestError("无效来源渠道");
+    }
+    const result = await listReviewQueue({
+      status: status as never || undefined,
+      content_type: content_type as never || undefined,
+      channel: channel as never || undefined,
+      from: c.req.query("from") ?? undefined,
+      to: c.req.query("to") ?? undefined,
+      page: parsePage(c.req.query("page"), 1),
+      perPage: parsePage(c.req.query("per_page"), 20),
+    });
+    return c.json({
+      data: result.data,
+      pagination: {
+        page: result.page,
+        per_page: result.per_page,
+        total: result.total,
+        total_pages: result.total_pages,
+      },
+    });
+  },
+);
+/**
+ * GET /admin/content-review/:id — 审查队列详情（附目标内容上下文）。
+ * 权限：社区审核。
+ */
+router.get("/admin/content-review/:id", async (c) => {
+  const detail = await getReviewQueueDetail(c.req.param("id"));
+  return c.json({
+    data: {
+      ...detail.queue,
+      context: detail.context,
+    },
+  });
+});
+/**
+ * POST /admin/content-review/:id/:status — 处置/驳回统一审查队列。
+ * 权限：社区审核；隐藏内容或封禁操作走既有内容/处罚端点（本端点仅记录处置留痕）。
+ * body：{ resolution, action? }（action：record_only / hide_post / hide_comment / dismiss）。
+ * 响应：{ data: 更新后的记录 }。
+ */
+router.post("/admin/content-review/:id/:status", async (c) => {
+  const status = c.req.param("status");
+  if (status !== "reviewed" && status !== "dismissed") {
+    throw new BadRequestError("无效审查状态");
+  }
+  const body = await parseJsonBody<{ resolution?: string; action?: string }>(c);
+  const action = status === "dismissed"
+    ? "dismiss"
+    : body.action ?? "record_only";
+  const record = await resolveReviewQueue(
+    c.req.param("id"),
+    userId(c),
+    status,
+    action,
+    body.resolution ?? (status === "dismissed" ? "无需处置" : "已人工复核"),
+  );
+  return c.json({ data: record });
+});
 
 export default router;

@@ -384,7 +384,9 @@ export const SCHEMA_DDL: string[] = [
       'auth.tfa_recovery_regenerated','auth.tfa_recovery_used',
       'community.post_moderated','community.report_resolved',
       'community.sanction_created','community.sanction_revoked','community.preset_applied',
-      'announcement.create','announcement.update','announcement.delete')
+      'announcement.create','announcement.update','announcement.delete',
+      -- issue #413 内容合规审核动作
+      'review.queued','review.rejected','review.resolved')
     ))
   `,
 
@@ -584,6 +586,28 @@ export const SCHEMA_DDL: string[] = [
     payload JSONB NOT NULL,
     created_at TEXT NOT NULL
   )`,
+
+  // 20. content_review_queue（内容合规统一审查队列，issue #413）
+  `CREATE TABLE IF NOT EXISTS content_review_queue (
+    id TEXT PRIMARY KEY,
+    content_type TEXT NOT NULL CHECK (content_type IN ('post', 'comment', 'message')),
+    target_id TEXT NOT NULL,
+    channel TEXT NOT NULL CHECK (channel IN ('ugc', 'dm')),
+    status TEXT NOT NULL CHECK (status IN ('pending_review', 'approved', 'rejected', 'reviewed', 'dismissed')),
+    review_provider TEXT NOT NULL,
+    verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'review', 'block', 'error')),
+    label TEXT,
+    hit_words TEXT,
+    risk_level TEXT,
+    content_snapshot TEXT NOT NULL DEFAULT '',
+    meta TEXT NOT NULL DEFAULT '{}',
+    reviewed_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    reviewed_at TEXT,
+    resolution TEXT,
+    action_taken TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
 ];
 
 export const SCHEMA_INDEXES: string[] = [
@@ -675,6 +699,10 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_community_notifications_actor ON community_notifications (actor_id)",
   "CREATE INDEX IF NOT EXISTS idx_community_notifications_post ON community_notifications (post_id)",
   "CREATE INDEX IF NOT EXISTS idx_community_notifications_comment ON community_notifications (comment_id)",
+  // content_review_queue 索引（issue #413，与 schema.ts 定义一致）
+  "CREATE INDEX IF NOT EXISTS idx_content_review_queue_pending_status ON content_review_queue (status, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_content_review_queue_type_status ON content_review_queue (content_type, status)",
+  "CREATE INDEX IF NOT EXISTS idx_content_review_queue_target ON content_review_queue (target_id)",
   // RBAC 权限系统（roles 表已在顶部预置，见 SCHEMA_DDL 第 2 项）
   `CREATE TABLE IF NOT EXISTS permissions (
     id TEXT PRIMARY KEY,
@@ -742,4 +770,5 @@ export const ALL_TABLES = [
   "community_sanctions",
   "community_notifications",
   "announcements",
+  "content_review_queue",
 ] as const;

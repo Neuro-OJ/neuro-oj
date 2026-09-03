@@ -18,6 +18,8 @@
     "jsr:@std/text@^1.0.19": "1.0.19",
     "npm:@alicloud/dm20151123@*": "1.10.2",
     "npm:@alicloud/dm20151123@^1.10.2": "1.10.2",
+    "npm:@alicloud/green20180509@1": "1.0.1",
+    "npm:@alicloud/green20180509@^1.0.1": "1.0.1",
     "npm:@alicloud/openapi-core@*": "1.0.7",
     "npm:@alicloud/openapi-core@^1.0.7": "1.0.7",
     "npm:@aws-sdk/client-s3@3": "3.1078.0",
@@ -43,6 +45,7 @@
     "npm:otpauth@9": "9.5.1",
     "npm:postgres@*": "3.4.5",
     "npm:postgres@3.4.5": "3.4.5",
+    "npm:tencentcloud-sdk-nodejs-cms@^4.1.71": "4.1.71",
     "npm:tencentcloud-sdk-nodejs-ses@^4.1.247": "4.1.247"
   },
   "jsr": {
@@ -192,6 +195,27 @@
         "@alicloud/tea-typescript"
       ]
     },
+    "@alicloud/green20180509@1.0.1": {
+      "integrity": "sha512-93lE/GkJ3xtKP06m0lS91lbrducqkXnig147tJzL6d9WMwfSumVrFHNKchdmit2jMTfuTQmNu8xFck22ijbFRQ==",
+      "dependencies": [
+        "@alicloud/endpoint-util",
+        "@alicloud/openapi-client",
+        "@alicloud/openapi-util",
+        "@alicloud/tea-typescript",
+        "@alicloud/tea-util"
+      ]
+    },
+    "@alicloud/openapi-client@0.4.15": {
+      "integrity": "sha512-4VE0/k5ZdQbAhOSTqniVhuX1k5DUeUMZv74degn3wIWjLY6Bq+hxjaGsaHYlLZ2gA5wUrs8NcI5TE+lIQS3iiA==",
+      "dependencies": [
+        "@alicloud/credentials",
+        "@alicloud/gateway-spi",
+        "@alicloud/openapi-util",
+        "@alicloud/tea-typescript",
+        "@alicloud/tea-util",
+        "@alicloud/tea-xml"
+      ]
+    },
     "@alicloud/openapi-core@1.0.7": {
       "integrity": "sha512-I80PQVfmlzRiXGHwutMp2zTpiqUVv8ts30nWAfksfHUSTIapk3nj9IXaPbULMPGNV6xqEyshO2bj2a+pmwc2tQ==",
       "dependencies": [
@@ -218,12 +242,19 @@
         "httpx"
       ]
     },
-    "@alicloud/tea-util@1.4.11": {
-      "integrity": "sha512-HyPEEQ8F0WoZegiCp7sVdrdm6eBOB+GCvGl4182u69LDFktxfirGLcAx3WExUr1zFWkq2OSmBroTwKQ4w/+Yww==",
+    "@alicloud/tea-util@1.4.9": {
+      "integrity": "sha512-S0wz76rGtoPKskQtRTGqeuqBHFj8BqUn0Vh+glXKun2/9UpaaaWmuJwcmtImk6bJZfLYEShDF/kxDmDJoNYiTw==",
       "dependencies": [
         "@alicloud/tea-typescript",
-        "@darabonba/typescript",
         "kitx"
+      ]
+    },
+    "@alicloud/tea-xml@0.0.3": {
+      "integrity": "sha512-+/9GliugjrLglsXVrd1D80EqqKgGpyA0eQ6+1ZdUOYCaRguaSwz44trX3PaxPu/HhIPJg9PsGQQ3cSLXWZjbAA==",
+      "dependencies": [
+        "@alicloud/tea-typescript",
+        "@types/xml2js",
+        "xml2js"
       ]
     },
     "@aws-sdk/checksums@3.1000.11": {
@@ -923,6 +954,12 @@
         "pg-types"
       ]
     },
+    "@types/xml2js@0.4.14": {
+      "integrity": "sha512-4YnrRemBShWRO2QjvUin8ESA41rH+9nQGLUGZV/1IDhi3SL9OhdpNC/MrulTWuptXKwhx/aDxE7toV0f/ypIXQ==",
+      "dependencies": [
+        "@types/node@26.0.0"
+      ]
+    },
     "agent-base@6.0.2": {
       "integrity": "sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==",
       "dependencies": [
@@ -1382,6 +1419,13 @@
     },
     "streamsearch@1.1.0": {
       "integrity": "sha512-Mcc5wHehp9aXz1ax6bZUyY5afg9u2rv5cqQI3mRrYkGC8rW2hM02jWuwjtL++LS5qinSyhj2QfLyNsuc+VsExg=="
+    },
+    "tencentcloud-sdk-nodejs-cms@4.1.71": {
+      "integrity": "sha512-KqWFkd2gfySL0VXp2p/4HRFr4nL02fptV1/5NEBj2wqEjbfCyKRpk1REgIo1lWXTbXke36dmAcNeUploUxLHIQ==",
+      "dependencies": [
+        "tencentcloud-sdk-nodejs-common",
+        "tslib@1.13.0"
+      ]
     },
     "tencentcloud-sdk-nodejs-common@4.1.220": {
       "integrity": "sha512-FlRJzgFYqSz1blKyN39Jhy/WdK3VuyFkn2+naKJfpwWcSpLF0F9AqSzPAtgorb5/Ezs8sLmFSCuaqFcCw+uIWw==",

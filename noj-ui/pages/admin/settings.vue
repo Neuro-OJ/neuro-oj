@@ -26,6 +26,7 @@ type SettingCategory =
   | "redis"
   | "cors"
   | "judge"
+  | "review"
   | "other"
 
 interface SystemSetting {
@@ -54,6 +55,7 @@ const CATEGORY_LABEL: Record<SettingCategory, string> = {
   redis: "Redis",
   cors: "CORS",
   judge: "评测资源限制",
+  review: "内容合规审核",
   other: "其他",
 }
 
