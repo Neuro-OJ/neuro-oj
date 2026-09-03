@@ -3,7 +3,7 @@ import {
   generatePublicId,
   isPublicId,
   isUuid,
-} from "../../src/lib/public-id.ts";
+} from "./../../src/shared/security/public-id.ts";
 
 Deno.test("public-id: isUuid 识别标准 UUID", () => {
   assert(

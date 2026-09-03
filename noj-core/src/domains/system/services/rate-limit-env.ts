@@ -14,7 +14,11 @@
 import type { Context } from "hono";
 import { getSetting } from "./system-settings.ts";
 import { findDefinition } from "../../../shared/config/settings-registry.ts";
-import { type CidrRange, ipInRange, parseCidr } from "../../../lib/cidr.ts";
+import {
+  type CidrRange,
+  ipInRange,
+  parseCidr,
+} from "./../../../shared/security/cidr.ts";
 import { logger } from "../../../shared/base/logging.ts";
 
 /** 读取整数环境变量（非正数或 NaN 时回退默认值） */

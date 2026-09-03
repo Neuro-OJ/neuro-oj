@@ -17,7 +17,7 @@ import {
   UnauthorizedError,
 } from "./../../../../shared/base/errors.ts";
 import type { LoginInput, UserResponse } from "../../../../types/auth.ts";
-import { isBannedIp } from "../../../../lib/cidr.ts";
+import { isBannedIp } from "./../../../../shared/security/cidr.ts";
 import { getBannedRanges } from "../banlist.ts";
 import { toUserResponse } from "./auth-register.ts";
 

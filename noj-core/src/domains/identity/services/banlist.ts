@@ -17,7 +17,10 @@ import {
   NotFoundError,
   ValidationError,
 } from "./../../../shared/base/errors.ts";
-import { isBannedIp, isValidIpOrCidr } from "../../../lib/cidr.ts";
+import {
+  isBannedIp,
+  isValidIpOrCidr,
+} from "./../../../shared/security/cidr.ts";
 import { getCached, invalidateBanCache } from "../../../lib/banCache.ts";
 import { logAudit } from "../../system/index.ts";
 

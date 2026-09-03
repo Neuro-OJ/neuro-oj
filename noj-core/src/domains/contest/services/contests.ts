@@ -15,7 +15,10 @@ import {
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { comparePassword, hashPassword } from "../../../lib/password.ts";
-import { generatePublicId, resolvePublicId } from "../../../lib/public-id.ts";
+import {
+  generatePublicId,
+  resolvePublicId,
+} from "./../../../shared/security/public-id.ts";
 import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
 import { findContestRow } from "./contest-row.ts";
 import {

@@ -7,7 +7,7 @@ import {
   isBannedIp,
   isValidIpOrCidr,
   parseCidr,
-} from "../../src/lib/cidr.ts";
+} from "./../../src/shared/security/cidr.ts";
 
 Deno.test("cidr: ipv4ToInt 正常 IP", () => {
   assertEquals(ipv4ToInt("1.2.3.4"), 0x01020304);

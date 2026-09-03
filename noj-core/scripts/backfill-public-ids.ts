@@ -16,7 +16,7 @@ import {
   submissions,
   trainings,
 } from "./../src/shared/db/schema.ts";
-import { generatePublicId } from "../src/lib/public-id.ts";
+import { generatePublicId } from "./../src/shared/security/public-id.ts";
 
 async function backfillOne(
   // deno-lint-ignore no-explicit-any

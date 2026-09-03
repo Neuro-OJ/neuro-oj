@@ -48,7 +48,7 @@ import { checkPermission } from "../../../../lib/permissions.ts";
 import {
   generatePublicId,
   resolvePublicId,
-} from "../../../../lib/public-id.ts";
+} from "./../../../../shared/security/public-id.ts";
 import {
   isRetryableJudgeQueueError,
   pushJudgeTask,

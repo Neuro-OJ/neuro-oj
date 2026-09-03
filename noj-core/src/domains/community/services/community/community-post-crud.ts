@@ -16,7 +16,7 @@ import { nowIso } from "./../../../../shared/base/dates.ts";
 import {
   generatePublicId,
   resolvePublicId,
-} from "../../../../lib/public-id.ts";
+} from "./../../../../shared/security/public-id.ts";
 import type {
   CommunityPostInput,
   CommunityPostType,

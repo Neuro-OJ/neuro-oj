@@ -17,7 +17,7 @@ import {
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import { getStorageProvider } from "../../../lib/storage/factory.ts";
 import { isStorageUrl, parseStorageUrl } from "../../../lib/storage/types.ts";
-import { validateImageFile } from "../../../lib/image-validation.ts";
+import { validateImageFile } from "./../../../shared/security/image-validation.ts";
 import { logger } from "./../../../shared/base/logging.ts";
 import { enqueueDmMessageReview } from "../../content-review/index.ts";
 

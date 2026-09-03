@@ -10,7 +10,7 @@ import {
   getProblemByTypeAndNumber,
 } from "../domains/catalog/index.ts";
 import { NotFoundError } from "./../shared/base/errors.ts";
-import { isUuid } from "./public-id.ts";
+import { isUuid } from "./../shared/security/public-id.ts";
 
 /**
  * 双索引查找题目。

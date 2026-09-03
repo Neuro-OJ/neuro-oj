@@ -28,7 +28,10 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
-import { generatePublicId, resolvePublicId } from "../../../lib/public-id.ts";
+import {
+  generatePublicId,
+  resolvePublicId,
+} from "./../../../shared/security/public-id.ts";
 import { resolveProblemIdOrThrow } from "../../../lib/problem-resolve.ts";
 import {
   type CreateTrainingInput,

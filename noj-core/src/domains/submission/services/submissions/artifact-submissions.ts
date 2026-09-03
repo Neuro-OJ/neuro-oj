@@ -18,7 +18,7 @@ import {
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
 import { getStorageProvider } from "../../../../lib/storage/mod.ts";
-import { generatePublicId } from "../../../../lib/public-id.ts";
+import { generatePublicId } from "./../../../../shared/security/public-id.ts";
 import {
   isRetryableJudgeQueueError,
   pushJudgeTask,

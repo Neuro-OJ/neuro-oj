@@ -12,7 +12,7 @@ import {
   IMAGE_MAGIC_MIME,
   type ImageFile,
   validateImageFile,
-} from "../../../../lib/image-validation.ts";
+} from "./../../../../shared/security/image-validation.ts";
 
 /** 头像大小上限（2MB） */
 export const MAX_AVATAR_SIZE = 2 * 1024 * 1024;

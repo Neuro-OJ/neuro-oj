@@ -8,7 +8,7 @@
  * @module
  */
 
-import { BadRequestError } from "./../shared/base/errors.ts";
+import { BadRequestError } from "../base/errors.ts";
 
 /** 允许的图片 MIME 类型 */
 export const IMAGE_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
