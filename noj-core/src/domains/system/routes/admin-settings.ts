@@ -1,8 +1,10 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "./../../identity/index.ts";
-import { parseJsonBody } from "./../../../shared/http/request.ts";
-import { BadRequestError } from "./../../../shared/base/errors.ts";
+import type { AuthEnv } from "../../identity/index.ts";
+import { parseJsonBody } from "../../../shared/http/request.ts";
+import { BadRequestError } from "../../../shared/base/errors.ts";
+import { isBootstrap } from "../../../shared/config/settings-registry.ts";
 import {
+  cleanupBootstrapRow,
   listSettings,
   resetSetting,
   updateSetting,
@@ -12,14 +14,15 @@ import {
  * 管理端系统设置路由（issue #99，挂载前缀 /api/v1/admin，见 admin/index.ts）。
  *
  * 提供：
- * - GET    /settings          列出所有设置项（DB-backed 5 项 + env-only N 项）
- * - PUT    /settings/:key     更新单个设置项（UPSERT）
- * - DELETE /settings/:key     重置单个设置项（回退到 env/default）
+ * - GET    /settings          列出全部配置项（runtime + bootstrap，含元数据）
+ * - PUT    /settings/:key     更新 runtime 项（UPSERT）；bootstrap 项返回 400
+ * - DELETE /settings/:key     runtime 项重置（回退 env/default）；
+ *                             bootstrap 项清理残留 DB 行（幂等）
  */
 const router = new Hono<AuthEnv>();
 
 /**
- * 列出所有系统设置项（DB-backed 5 项 + env-only N 项）。
+ * 列出全部配置项（runtime + bootstrap）。
  * GET /api/v1/admin/settings
  *
  * 注意：必须先注册静态路径 `/settings`，再注册参数化路径 `/settings/:key`，
@@ -31,7 +34,7 @@ router.get("/settings", async (c) => {
 });
 
 /**
- * 更新单个设置项（UPSERT）。
+ * 更新 runtime 项（UPSERT）。bootstrap 项由 service 层拒绝（400）。
  * PUT /api/v1/admin/settings/:key
  * body: { value: boolean | string }
  */
@@ -46,13 +49,20 @@ router.put("/settings/:key", async (c) => {
 });
 
 /**
- * 重置单个设置项（DELETE FROM system_settings，回退到 env/default）。
+ * 删除设置：
+ * - runtime 项：DELETE system_settings 行，回退到 env/default；
+ * - bootstrap 项：清理被忽略的残留 DB 行（值仍由 env 决定）。
  * DELETE /api/v1/admin/settings/:key
  * 幂等：DB 不存在也正常返回 204。
  */
 router.delete("/settings/:key", async (c) => {
   const key = c.req.param("key") as string;
-  await resetSetting(key, c.get("userId"));
+  const userId = c.get("userId");
+  if (isBootstrap(key)) {
+    await cleanupBootstrapRow(key, userId);
+  } else {
+    await resetSetting(key, userId);
+  }
   return c.body(null, 204);
 });
 

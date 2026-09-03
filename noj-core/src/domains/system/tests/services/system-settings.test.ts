@@ -16,8 +16,11 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { systemSettings } from "../../../../shared/db/schema.ts";
 import {
   _resetSystemSettingsForTest,
+  cleanupBootstrapRow,
   getSetting,
   initSystemSettings,
+  listOrphanedBootstrapRows,
+  listRuntimeEnvConflicts,
   listSettings,
   maskSecret,
   resetSetting,
@@ -28,7 +31,10 @@ import {
   snapshotEnv,
 } from "../../services/env-snapshot.ts";
 import { ValidationError } from "../../../../shared/base/errors.ts";
-import { validateRegistry } from "../../../../shared/config/settings-registry.ts";
+import {
+  findDefinition,
+  validateRegistry,
+} from "../../../../shared/config/settings-registry.ts";
 
 const ts = Date.now();
 
@@ -105,41 +111,27 @@ Deno.test({
 });
 
 Deno.test({
-  name: "system-settings service: updateSetting smtp_from 格式错拒绝",
+  name: "system-settings service: updateSetting bootstrap 键拒绝写入",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
+    // email/storage/audit 划归 bootstrap 后不可经后台写
     await assertRejects(
-      () => updateSetting("smtp_from", "not-an-email", "0"),
+      () => updateSetting("smtp_from", "noreply@noj.local", "0"),
       ValidationError,
-      "email 格式",
+      "环境变量管理",
     );
-  },
-});
-
-Deno.test({
-  name: "system-settings service: updateSetting smtp_from 空字符串允许",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await freshSetup();
-    await updateSetting("smtp_from", "", "0");
-    const got = getSetting("smtp_from");
-    assertEquals(got?.source, "db");
-    assertEquals(got?.value, "");
-  },
-});
-
-Deno.test({
-  name: "system-settings service: updateSetting smtp_from 合法 email 接受",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await freshSetup();
-    await updateSetting("smtp_from", "noreply@noj.local", "0");
-    const got = getSetting("smtp_from");
-    assertEquals(got?.value, "noreply@noj.local");
+    await assertRejects(
+      () => updateSetting("storage_provider", "s3", "0"),
+      ValidationError,
+      "环境变量管理",
+    );
+    await assertRejects(
+      () => updateSetting("audit_log_retention_days", 30, "0"),
+      ValidationError,
+      "环境变量管理",
+    );
   },
 });
 
@@ -210,11 +202,11 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
-    // audit_log_retention_days 定义 max:365
+    // content_review_risk_threshold 定义 max:100（runtime 项）
     await assertRejects(
-      () => updateSetting("audit_log_retention_days", 999, "0"),
+      () => updateSetting("content_review_risk_threshold", 999, "0"),
       ValidationError,
-      "不能大于 365",
+      "不能大于 100",
     );
   },
 });
@@ -240,6 +232,41 @@ Deno.test({
   fn: () => {
     // 当前注册表包含 22+ 个合法定义，不应抛错
     validateRegistry();
+  },
+});
+
+Deno.test({
+  name:
+    "system-settings service: 注册表 scope 声明完整（runtime/bootstrap 不重叠）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    validateRegistry(); // 不应抛错
+    // 划归项 scope=bootstrap
+    for (
+      const k of [
+        "storage_provider",
+        "s3_endpoint",
+        "s3_secret_key",
+        "email_provider",
+        "alibaba_access_key_secret",
+        "audit_log_retention_days",
+      ]
+    ) {
+      assertEquals(findDefinition(k)?.scope, "bootstrap");
+    }
+    // 保留 runtime 项 scope=runtime
+    for (
+      const k of [
+        "allow_register",
+        "rate_limit_login_ip_max",
+        "maintenance_mode",
+        "homepage_banner",
+      ]
+    ) {
+      assertEquals(findDefinition(k)?.scope, "runtime");
+    }
   },
 });
 
@@ -405,6 +432,166 @@ Deno.test({
     assertEquals(JSON.parse(redis!.raw_value), "redis://127.0.0.1:6379/");
 
     Deno.env.delete("REDIS_URL");
+  },
+});
+
+// ─── runtime env/DB 共存冲突 ────────────────────────────────
+
+Deno.test({
+  name: "system-settings service: listRuntimeEnvConflicts 检测 DB+env 共存",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    Deno.env.set("ALLOW_REGISTER", "false");
+    await freshSetup();
+    await updateSetting("allow_register", false, "0");
+
+    const conflicts = listRuntimeEnvConflicts();
+    assertEquals(
+      conflicts.some((c) =>
+        c.key === "allow_register" && c.envKey === "ALLOW_REGISTER"
+      ),
+      true,
+    );
+
+    const items = await listSettings();
+    const item = items.find((i) => i.key === "allow_register");
+    assertEquals(item?.db_present, true);
+    assertEquals(item?.env_present, true);
+    assertEquals(item?.conflict, true);
+    assertEquals(item?.env_key, "ALLOW_REGISTER");
+
+    Deno.env.delete("ALLOW_REGISTER");
+  },
+});
+
+Deno.test({
+  name: "system-settings service: 仅 DB 无 env 不标记冲突",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    Deno.env.delete("ALLOW_REGISTER");
+    await freshSetup();
+    await updateSetting("allow_register", false, "0");
+
+    assertEquals(
+      listRuntimeEnvConflicts().some((c) => c.key === "allow_register"),
+      false,
+    );
+
+    const item = (await listSettings()).find((i) => i.key === "allow_register");
+    assertEquals(item?.db_present, true);
+    assertEquals(item?.env_present, false);
+    assertEquals(item?.conflict, false);
+  },
+});
+
+Deno.test({
+  name: "system-settings service: 仅 env 无 DB 不标记冲突",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    Deno.env.set("ALLOW_REGISTER", "false");
+    await freshSetup();
+
+    assertEquals(
+      listRuntimeEnvConflicts().some((c) => c.key === "allow_register"),
+      false,
+    );
+
+    const item = (await listSettings()).find((i) => i.key === "allow_register");
+    assertEquals(item?.source, "env");
+    assertEquals(item?.db_present, false);
+    assertEquals(item?.env_present, true);
+    assertEquals(item?.conflict, false);
+
+    Deno.env.delete("ALLOW_REGISTER");
+  },
+});
+
+// ─── bootstrap 残留行 ───────────────────────────────────────
+
+Deno.test({
+  name: "system-settings service: listOrphanedBootstrapRows 检测残留",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    const db = getDb();
+    await db.insert(systemSettings).values({
+      key: "storage_provider",
+      value: JSON.stringify("local"),
+      description: "测试残留",
+      is_secret: false,
+      updated_at: new Date().toISOString(),
+      updated_by: "0",
+    });
+    const orphans = await listOrphanedBootstrapRows();
+    assertEquals(
+      orphans.some((r) => r.key === "storage_provider"),
+      true,
+    );
+    // runtime 键不应被列为孤儿
+    assertEquals(orphans.some((r) => r.key === "allow_register"), false);
+  },
+});
+
+Deno.test({
+  name: "system-settings service: listSettings bootstrap 残留标记 db_orphaned",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    const db = getDb();
+    await db.insert(systemSettings).values({
+      key: "email_provider",
+      value: JSON.stringify("mock"),
+      description: "测试残留",
+      is_secret: false,
+      updated_at: new Date().toISOString(),
+      updated_by: "0",
+    });
+    const items = await listSettings();
+    const emailProvider = items.find((i) => i.key === "email_provider");
+    assertEquals(emailProvider?.db_orphaned, true);
+    const allowRegister = items.find((i) => i.key === "allow_register");
+    assertEquals(allowRegister?.db_orphaned, undefined);
+  },
+});
+
+Deno.test({
+  name: "system-settings service: cleanupBootstrapRow 清理残留行",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    const db = getDb();
+    await db.insert(systemSettings).values({
+      key: "s3_bucket",
+      value: JSON.stringify("old-bucket"),
+      description: "测试残留",
+      is_secret: false,
+      updated_at: new Date().toISOString(),
+      updated_by: "0",
+    });
+    await cleanupBootstrapRow("s3_bucket", "0");
+    const rows = await db.select().from(systemSettings).where(
+      eq(systemSettings.key, "s3_bucket"),
+    );
+    assertEquals(rows.length, 0);
+  },
+});
+
+Deno.test({
+  name: "system-settings service: cleanupBootstrapRow 拒绝 runtime 键",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    await assertRejects(
+      () => cleanupBootstrapRow("allow_register", "0"),
+      ValidationError,
+    );
   },
 });
 

@@ -139,7 +139,27 @@ noj-core/
 
 ## 环境变量
 
-从 `.env` 文件或 `Deno.env` 读取。**必须配置**：
+从 `.env` 文件或 `Deno.env` 读取。**配置分层语义（scope）**：
+
+- **runtime（DB-owned，运行时可热改）**：`管理后台 > 系统设置 > 运行时配置` 写入
+  DB 即时生效；env 值仅作启动期/开发环境兜底（DB 未写入时），读取链
+  `DB → env → 默认值`。下表标注"可热改"的项属此类。
+- **bootstrap（env-owned，启动期定型只读）**：由 env 唯一决定，读取链
+  `env → 默认值`（**不读 DB**，DB
+  残留旧值被忽略）。`管理后台 > 系统设置 >
+  环境配置` 只读展示全部 bootstrap
+  项（含未配置）；改 .env 后需重启 noj-core。 标注"后台只读"的项属此类。
+
+> 注册表单一事实源：`src/shared/config/settings-registry.ts` 的
+> `CONFIG_DEFINITIONS`（scope + envKey/envFallback）。新 env
+> 变量必须登记入注册表，并同步 `.env.example`； `deno task check:env`
+> 会校验注册表与 `.env.example` 键覆盖一致性。
+
+> **runtime 共存提示**：当 runtime 项同时存在 DB 值与 env 兜底时，当前 DB
+> 值优先， env 被遮蔽；启动日志会 warning，后台设置页进入时弹窗并显示“env
+> 兜底存在”徽标， 建议移除 `.env` 对应变量以避免歧义。
+
+**必须配置**（bootstrap，后台只读）：
 
 | 变量                              | 默认值                    | 说明                                                          |
 | --------------------------------- | ------------------------- | ------------------------------------------------------------- |

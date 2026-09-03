@@ -9,9 +9,11 @@
  * - DELETE 重置设置
  */
 import { assertEquals } from "jsr:@std/assert@^1";
+import { eq } from "drizzle-orm";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { systemSettings } from "../../../../shared/db/schema.ts";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,
@@ -89,6 +91,16 @@ Deno.test({
         ].includes(k)
       );
     assertEquals(dbKeys.length, 5);
+
+    // 每条含 scope 元数据；runtime 与 bootstrap 两类都存在
+    const allowRegister = body.data.find(
+      (d: { key: string }) => d.key === "allow_register",
+    );
+    assertEquals(allowRegister?.scope, "runtime");
+    const storageProvider = body.data.find(
+      (d: { key: string }) => d.key === "storage_provider",
+    );
+    assertEquals(storageProvider?.scope, "bootstrap");
   },
 });
 
@@ -170,19 +182,20 @@ Deno.test({
 });
 
 Deno.test({
-  name: "admin-settings route: PUT smtp_from email 格式错返回 400",
+  name: "admin-settings route: PUT bootstrap 键返回 400",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await freshSetup();
     const app = createApp();
     const token = await createUserToken("admin");
+    // email/storage 等划归 bootstrap 后不可经后台写
     const res = await jsonRequest(
       app,
-      "/api/v1/admin/settings/smtp_from",
+      "/api/v1/admin/settings/storage_provider",
       {
         method: "PUT",
-        body: { value: "not-an-email" },
+        body: { value: "s3" },
         token,
       },
     );
@@ -243,6 +256,37 @@ Deno.test({
       { method: "DELETE", token },
     );
     assertEquals(res.status, 204);
+  },
+});
+
+Deno.test({
+  name: "admin-settings route: DELETE bootstrap 键清理残留 DB 行 204",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    const db = getDb();
+    await db.insert(systemSettings).values({
+      key: "email_provider",
+      value: JSON.stringify("mock"),
+      description: "测试残留",
+      is_secret: false,
+      updated_at: new Date().toISOString(),
+      updated_by: "0",
+    });
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(
+      app,
+      "/api/v1/admin/settings/email_provider",
+      { method: "DELETE", token },
+    );
+    assertEquals(res.status, 204);
+    // DB 行已清理
+    const rows = await db.select().from(systemSettings).where(
+      eq(systemSettings.key, "email_provider"),
+    );
+    assertEquals(rows.length, 0);
   },
 });
 
