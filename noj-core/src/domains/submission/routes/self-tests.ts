@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { authMiddleware } from "../../../middleware/auth.ts";
+import { authMiddleware } from "./../../identity/index.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { BadRequestError } from "./../../../shared/base/errors.ts";
 import { enforceSelfTestRateLimit } from "../../system/index.ts";

@@ -12,7 +12,7 @@ import {
   authMiddleware,
   type OptionalAuthEnv,
   optionalAuthMiddleware,
-} from "../../../middleware/auth.ts";
+} from "./../../identity/index.ts";
 import type {
   CommunityPostInput,
   CommunityPostType,

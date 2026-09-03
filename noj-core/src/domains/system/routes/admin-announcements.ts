@@ -19,7 +19,7 @@
  */
 
 import { Hono } from "hono";
-import { type AuthEnv, authMiddleware } from "../../../middleware/auth.ts";
+import { type AuthEnv, authMiddleware } from "./../../identity/index.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { assertPermission } from "./../../identity/index.ts";
 import { withActorContext } from "../../../lib/requestContext.ts";

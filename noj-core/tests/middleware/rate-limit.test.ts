@@ -4,7 +4,7 @@ import {
   _resetRateLimitForTest,
   rateLimit,
 } from "./../../src/domains/system/middleware/rate-limit.ts";
-import { optionalAuthMiddleware } from "../../src/middleware/auth.ts";
+import { optionalAuthMiddleware } from "./../../src/domains/identity/middleware/auth.ts";
 import { Hono } from "hono";
 import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import { AppError } from "./../../src/shared/base/errors.ts";

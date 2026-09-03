@@ -13,3 +13,6 @@ export * from "./services/security/resetToken.ts";
 export * from "./services/security/revokedTokens.ts";
 export * from "./services/security/loginThrottle.ts";
 export * from "./services/security/banCache.ts";
+export * from "./middleware/auth.ts";
+export * from "./middleware/login-rate-limit.ts";
+export * from "./middleware/banlist.ts";

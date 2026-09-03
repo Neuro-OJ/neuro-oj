@@ -11,7 +11,7 @@ import { eq } from "drizzle-orm";
 import { resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { userBans, users } from "./../../src/shared/db/schema.ts";
 import { getDb } from "./../../src/shared/db/connection.ts";
-import { getUserBanState } from "../../src/middleware/auth.ts";
+import { getUserBanState } from "./../../src/domains/identity/middleware/auth.ts";
 import {
   _resetBanCacheForTest,
   getCached,

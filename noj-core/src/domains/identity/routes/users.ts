@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { type AuthEnv, authMiddleware } from "../../../middleware/auth.ts";
+import { type AuthEnv, authMiddleware } from "./../middleware/auth.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import {
   BadRequestError,

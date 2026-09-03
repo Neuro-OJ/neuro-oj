@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "../../../middleware/auth.ts";
+import type { AuthEnv } from "./../middleware/auth.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import {
   createRole,

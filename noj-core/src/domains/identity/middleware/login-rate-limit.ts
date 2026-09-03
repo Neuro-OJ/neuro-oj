@@ -13,20 +13,20 @@
 
 import type { Context, Next } from "hono";
 import { eq, or } from "drizzle-orm";
-import { getDb } from "./../shared/db/connection.ts";
-import { users } from "./../shared/db/schema.ts";
-import { RateLimitedError } from "./../shared/base/errors.ts";
+import { getDb } from "../../../shared/db/connection.ts";
+import { users } from "../../../shared/db/schema.ts";
+import { RateLimitedError } from "../../../shared/base/errors.ts";
 import {
   checkRateLimit,
   type RateLimitConfig,
   rateLimitHeaders,
   type RateLimitResult,
-} from "./../shared/rate-limit/rate-limit.ts";
+} from "../../../shared/rate-limit/rate-limit.ts";
 import {
   getClientIp,
   isRateLimitEnabled,
   settingInt,
-} from "../domains/system/index.ts";
+} from "../../system/index.ts";
 
 // ── 默认限流配置（可被环境变量覆盖） ────────────────────
 

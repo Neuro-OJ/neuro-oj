@@ -10,8 +10,11 @@
  * 此处必须跳过对应路径，否则组级通配 use 会先于独立 router 拦截请求。
  */
 import { Hono } from "hono";
-import type { AuthEnv } from "../../middleware/auth.ts";
-import { adminMiddleware, authMiddleware } from "../../middleware/auth.ts";
+import type { AuthEnv } from "./../../domains/identity/index.ts";
+import {
+  adminMiddleware,
+  authMiddleware,
+} from "./../../domains/identity/index.ts";
 import adminUsers from "../../domains/identity/routes/admin-users.ts";
 import adminProblems from "../../domains/catalog/routes/admin-problems.ts";
 import adminSubmissions from "../../domains/submission/routes/admin-submissions.ts";

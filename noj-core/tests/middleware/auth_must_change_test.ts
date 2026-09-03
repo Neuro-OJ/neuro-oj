@@ -14,7 +14,7 @@ import { Hono } from "hono";
 import {
   authMiddleware,
   PASSWORD_CHANGE_WHITELIST,
-} from "../../src/middleware/auth.ts";
+} from "./../../src/domains/identity/middleware/auth.ts";
 import { AppError } from "./../../src/shared/base/errors.ts";
 import { signToken } from "./../../src/domains/identity/services/security/jwt.ts";
 import { jsonRequest } from "../lib/helper.ts";

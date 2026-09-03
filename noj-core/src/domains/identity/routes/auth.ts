@@ -7,7 +7,7 @@ import {
   type AuthEnv,
   authMiddleware,
   getUserBanState,
-} from "../../../middleware/auth.ts";
+} from "./../middleware/auth.ts";
 import {
   changePassword,
   getUserProfile,
@@ -62,7 +62,7 @@ import {
   loginIpRateLimit,
   resolveLoginAccountKey,
   throwRateLimited,
-} from "../../../middleware/login-rate-limit.ts";
+} from "./../middleware/login-rate-limit.ts";
 import type {
   ChangePasswordInput,
   ForgotPasswordInput,

@@ -5,7 +5,7 @@ import {
   authMiddleware,
   type OptionalAuthEnv,
   optionalAuthMiddleware,
-} from "../middleware/auth.ts";
+} from "./../domains/identity/index.ts";
 import { Channels, onEvent } from "./../shared/sse/event-bus.ts";
 import { createSseStream } from "./../shared/sse/sse-stream.ts";
 import { replaySseEvents } from "./../shared/sse/sse-events.ts";

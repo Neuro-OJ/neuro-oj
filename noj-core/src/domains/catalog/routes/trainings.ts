@@ -10,7 +10,7 @@ import {
   type AuthEnv,
   authMiddleware,
   optionalAuthMiddleware,
-} from "../../../middleware/auth.ts";
+} from "./../../identity/index.ts";
 import {
   assertObjectBody,
   parseJsonBody,

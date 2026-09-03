@@ -13,7 +13,7 @@ import { getSubmissionQueueStatus } from "../services/queue.ts";
 import {
   authMiddleware,
   optionalAuthMiddleware,
-} from "../../../middleware/auth.ts";
+} from "./../../identity/index.ts";
 import { checkPermission } from "./../../identity/index.ts";
 import { rateLimit } from "../../system/index.ts";
 import {

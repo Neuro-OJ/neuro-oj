@@ -1,11 +1,11 @@
 import { type Context, Hono } from "hono";
 import busboy from "busboy";
 import { Readable } from "node:stream";
-import type { OptionalAuthEnv } from "../../../middleware/auth.ts";
+import type { OptionalAuthEnv } from "./../../identity/index.ts";
 import {
   authMiddleware,
   optionalAuthMiddleware,
-} from "../../../middleware/auth.ts";
+} from "./../../identity/index.ts";
 import {
   BadRequestError,
   ForbiddenError,

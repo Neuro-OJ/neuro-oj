@@ -20,10 +20,10 @@
  */
 
 import type { Context, Next } from "hono";
-import { ForbiddenError } from "./../shared/base/errors.ts";
-import { getClientIp, hasDirectPeer } from "../domains/system/index.ts";
-import { isBannedIp } from "./../shared/security/cidr.ts";
-import { getBannedRanges } from "../domains/identity/index.ts";
+import { ForbiddenError } from "../../../shared/base/errors.ts";
+import { getClientIp, hasDirectPeer } from "../../system/index.ts";
+import { isBannedIp } from "../../../shared/security/cidr.ts";
+import { getBannedRanges } from "../services/banlist.ts";
 
 /** IP 黑名单中间件白名单——写操作中需要豁免的路径。 */
 const WHITELIST: readonly string[] = [
