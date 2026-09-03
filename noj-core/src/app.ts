@@ -11,6 +11,8 @@ import { contestRouter } from "./domains/contest/routes/index.ts";
 import { communityRouter } from "./domains/community/routes/index.ts";
 import { messagingRouter } from "./domains/messaging/routes/index.ts";
 import { systemRouter } from "./domains/system/routes/index.ts";
+import submissionSse from "./domains/submission/routes/sse.ts";
+import communitySse from "./domains/community/routes/sse.ts";
 import { AppError } from "./shared/base/errors.ts";
 import { logger } from "./shared/base/logging.ts";
 import { listJudgeImages } from "./domains/system/index.ts";
@@ -158,6 +160,11 @@ export function createApp(): Hono {
     const items = await listJudgeImages();
     return c.json({ data: items });
   });
+
+  // 带 authMiddleware 通配的 SSE 路由必须放在所有公开路由之后，
+  // 否则其 use("*") 会拦截后续 /api/v1/* 公开端点。
+  app.route("/api/v1", submissionSse);
+  app.route("/api/v1", communitySse);
 
   return app;
 }

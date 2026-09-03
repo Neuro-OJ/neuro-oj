@@ -23,7 +23,7 @@ export async function runMigrations(): Promise<void> {
     // deno compile 后 import.meta.url 指向二进制路径，生产镜像通过
     // NOJ_MIGRATIONS_DIR 显式指定迁移目录。
     const migrationsFolder = Deno.env.get("NOJ_MIGRATIONS_DIR") ??
-      resolve(__dirname, "../../drizzle");
+      resolve(__dirname, "../../../drizzle");
     const migrationsSchema = Deno.env.get("TEST_SCHEMA") || undefined;
     logger.info("开始数据库迁移", {
       migrations_folder: migrationsFolder,

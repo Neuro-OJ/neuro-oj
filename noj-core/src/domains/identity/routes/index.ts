@@ -12,8 +12,8 @@ identityRouter.route("/auth", auth);
 identityRouter.route("/users", users);
 identityRouter.route("/checkin", checkin);
 
-/** identity 域管理路由，挂载到 `/api/v1/admin`。 */
+/** identity 域管理路由，挂载到 `/api/v1/admin`。子路由内部已含 `/users`、`/roles` 等前缀。 */
 export const identityAdminRouter = new Hono();
-identityAdminRouter.route("/users", adminUsers);
-identityAdminRouter.route("/roles", adminRoles);
-identityAdminRouter.route("/blacklist", adminBlacklist);
+identityAdminRouter.route("/", adminUsers);
+identityAdminRouter.route("/", adminRoles);
+identityAdminRouter.route("/", adminBlacklist);

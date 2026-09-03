@@ -165,7 +165,7 @@ export async function initRedisForTest(): Promise<void> {
   // 让 isJtiRevoked 在 NOJ_BYPASS_JWT_REVOKE=1 时直接返回 false，避免 Redis
   // 跨测试状态污染导致 authMiddleware 抛 503。
   Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
-  const mq = await import("./../../src/shared/mq/connection.ts");
+  const mq = await import("../src/shared/mq/connection.ts");
   // 仅当连接尚未就绪时才 reset + connect，避免并发测试反复 disconnect
   // 已建立的连接（导致后续请求拿到未连接的 client 抛 503）
   try {
@@ -196,14 +196,14 @@ export async function createUserToken(
   role: "admin" | "user" = "user",
 ): Promise<string> {
   const { getDb, ensurePGliteSchemaForTest } = await import(
-    "./../../src/shared/db/connection.ts"
+    "../src/shared/db/connection.ts"
   );
-  const { users, userRoles } = await import("./../../src/shared/db/schema.ts");
+  const { users, userRoles } = await import("../src/shared/db/schema.ts");
   const { signToken } = await import(
-    "./../../src/domains/identity/services/security/jwt.ts"
+    "../src/domains/identity/services/security/jwt.ts"
   );
   const { ensureRbacSeeds } = await import(
-    "../../src/domains/system/index.ts"
+    "../src/domains/system/index.ts"
   );
   // deno test 每个文件独立模块图：PGlite 模式下必须先引导 Schema，
   // 否则 users/roles 等表不存在（PG 模式无操作）。

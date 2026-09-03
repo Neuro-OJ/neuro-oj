@@ -341,6 +341,7 @@ jobs:
     env:
       REDIS_URL: redis://localhost:6379/
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      NOJ_ENV: test
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
 
     steps:
@@ -366,7 +367,7 @@ jobs:
           BCRYPT_SALT_ROUNDS: 4
         # 不设 DATABASE_URL → PGlite 内存模式，零外部 DB 依赖；
         # 单元测试暂不并行：Redis fail-closed 测试在并行下会互相干扰（已实测 flaky）。
-        run: deno test -A --no-check --preload=tests/preload.ts tests/lib tests/middleware tests/types tests/shared tests/data tests/app.test.ts src/domains/identity/tests/lib src/domains/catalog/tests/lib src/domains/identity/tests/middleware src/domains/query/tests/middleware src/domains/system/tests/middleware src/domains/catalog/tests/types src/domains/contest/tests/types src/domains/submission/tests/types
+        run: deno test -A --no-check --preload=tests/preload.ts tests/shared tests/data tests/app.test.ts src/domains/identity/tests/lib src/domains/catalog/tests/lib src/domains/identity/tests/middleware src/domains/query/tests/middleware src/domains/system/tests/middleware src/domains/catalog/tests/types src/domains/contest/tests/types src/domains/submission/tests/types
 
       - name: 上传失败日志
         if: failure() || cancelled()
@@ -421,6 +422,7 @@ jobs:
       # 导致 pg_trgm / tsvector / GIN 等 PG 专属路径在 PR 上从未被 CI 覆盖。
       DATABASE_URL: postgres://noj:noj@localhost:5432/noj
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      NOJ_ENV: test
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
 
     steps:
@@ -477,7 +479,7 @@ jobs:
         # （CI 日志可见 Process 494 vs 495 互锁）。串行执行匹配现有
         # resetDbForTest() 的顺序假设。此 job 只包含 DB 依赖子集，
         # 与 core-test-unit 并行互补。
-        run: deno test -A tests/services tests/routes tests/mq tests/db tests/00_migrate_test.ts tests/seed_bootstrap_admin_test.ts src/domains/identity/tests/routes src/domains/identity/tests/services src/domains/catalog/tests/routes src/domains/catalog/tests/services src/domains/submission/tests/routes src/domains/submission/tests/services src/domains/submission/tests/mq src/domains/query/tests/routes src/domains/query/tests/services src/domains/contest/tests/routes src/domains/contest/tests/services src/domains/community/tests/routes src/domains/community/tests/services src/domains/messaging/tests/routes src/domains/messaging/tests/services src/domains/objective/tests/routes src/domains/objective/tests/services src/domains/system/tests/routes src/domains/system/tests/services src/domains/gateway/tests/services src/domains/content-review/tests/services
+        run: deno test -A tests/routes tests/db tests/00_migrate_test.ts tests/seed_bootstrap_admin_test.ts src/domains/identity/tests/routes src/domains/identity/tests/services src/domains/catalog/tests/routes src/domains/catalog/tests/services src/domains/submission/tests/routes src/domains/submission/tests/services src/domains/submission/tests/mq src/domains/query/tests/routes src/domains/query/tests/services src/domains/contest/tests/routes src/domains/contest/tests/services src/domains/community/tests/routes src/domains/community/tests/services src/domains/messaging/tests/routes src/domains/messaging/tests/services src/domains/objective/tests/routes src/domains/objective/tests/services src/domains/system/tests/routes src/domains/system/tests/services src/domains/gateway/tests/services src/domains/content-review/tests/services
 
       # 失败时上传日志（修复 finding M7）。CI 默认只在 UI 里保留日志，
       # 开发者必须本地复现才能排查；改为 actions/upload-artifact 上传到

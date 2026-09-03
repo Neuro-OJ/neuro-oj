@@ -13,5 +13,5 @@ catalogRouter.route("/trainings", trainings);
 
 /** catalog 域管理路由，挂载到 `/api/v1/admin`。 */
 export const catalogAdminRouter = new Hono();
-catalogAdminRouter.route("/problems", adminProblems);
+catalogAdminRouter.route("/", adminProblems);
 catalogAdminRouter.route("/trainings", adminTrainings);

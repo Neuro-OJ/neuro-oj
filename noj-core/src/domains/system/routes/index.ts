@@ -12,6 +12,6 @@ systemRouter.route("/announcements", announcements);
 /** system 域管理路由，挂载到 `/api/v1/admin`。 */
 export const systemAdminRouter = new Hono();
 systemAdminRouter.route("/announcements", adminAnnouncements);
-systemAdminRouter.route("/audit-logs", adminAudit);
-systemAdminRouter.route("/judge-images", adminJudgeImages);
-systemAdminRouter.route("/settings", adminSettings);
+systemAdminRouter.route("/", adminAudit);
+systemAdminRouter.route("/", adminJudgeImages);
+systemAdminRouter.route("/", adminSettings);

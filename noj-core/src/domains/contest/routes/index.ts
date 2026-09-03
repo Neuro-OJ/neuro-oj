@@ -10,4 +10,4 @@ contestRouter.route("/", contestSse);
 
 /** contest 域管理路由，挂载到 `/api/v1/admin`。 */
 export const contestAdminRouter = new Hono();
-contestAdminRouter.route("/contests", adminContests);
+contestAdminRouter.route("/", adminContests);

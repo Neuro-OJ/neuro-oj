@@ -71,6 +71,11 @@ async function cleanupUser(username: string) {
   }
 }
 
+// 撤销敏感测试需要真实 Redis 检查；清除同一测试进程中其他文件
+// 可能泄漏的 NOJ_BYPASS_JWT_REVOKE=1（否则 /logout、/change-password
+// 的旧 token 撤销断言会被短路跳过）。
+Deno.env.delete("NOJ_BYPASS_JWT_REVOKE");
+
 // 模块级 bootstrap：确保 PGlite schema 已创建
 await resetDbForTest();
 
@@ -582,7 +587,7 @@ Deno.test({
       }`;
 
       // 注册
-      await jsonRequest(app, `${BASE}/register`, {
+      const registerRes = await jsonRequest(app, `${BASE}/register`, {
         method: "POST",
         body: {
           username: user,
@@ -590,12 +595,16 @@ Deno.test({
           password: "CorrectPwd-Ab1",
         },
       });
+      assertEquals(registerRes.status, 201);
+      const registerBody = await registerRes.json();
+      // NOJ-092：账号维度限流/失败计数/锁定 key 统一规范化为 users.id
+      const userId = registerBody.data.id as string;
 
       // 10 次错密码（每次清掉 IP 限流计数 + 账号退避，避免 IP 限流先于锁定触发）
       for (let i = 0; i < 10; i++) {
         const redis = getRedis();
         // 清掉账号维度的限流计数（业务上限 5 会先触发，否则无法连续 10 次失败）
-        await redis.del(`ratelimit:login:acc:${user}`);
+        await redis.del(`ratelimit:login:acc:${userId}`);
         _resetLoginBackoffForTest();
         const res = await jsonRequest(app, `${BASE}/login`, {
           method: "POST",
@@ -614,7 +623,7 @@ Deno.test({
         const redis = getRedis();
         await redis.del(
           `ratelimit:login:ip:${ip}`,
-          `ratelimit:login:acc:${user}`,
+          `ratelimit:login:acc:${userId}`,
         );
       }
 
@@ -635,10 +644,10 @@ Deno.test({
       try {
         const redis = getRedis();
         await redis.del(
-          `loginfail:${user}`,
-          `loginlock:${user}`,
+          `loginfail:${userId}`,
+          `loginlock:${userId}`,
           `ratelimit:login:ip:${ip}`,
-          `ratelimit:login:acc:${user}`,
+          `ratelimit:login:acc:${userId}`,
         );
       } catch {
         // ignore

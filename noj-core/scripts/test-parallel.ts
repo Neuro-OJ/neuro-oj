@@ -44,9 +44,6 @@ const SHARDS = [
     s3Bucket: "noj-test-unit",
     dirs: [
       "tests/00_migrate_test.ts",
-      "tests/lib",
-      "tests/middleware",
-      "tests/types",
       "tests/shared",
       "src/domains/identity/tests/lib",
       "src/domains/catalog/tests/lib",
@@ -68,9 +65,7 @@ const SHARDS = [
     s3Bucket: "noj-test-db",
     dirs: [
       "tests/00_migrate_test.ts",
-      "tests/services",
       "tests/routes",
-      "tests/mq",
       "tests/db",
       "tests/seed_bootstrap_admin_test.ts",
       "src/domains/identity/tests/routes",

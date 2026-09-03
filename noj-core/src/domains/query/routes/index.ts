@@ -9,9 +9,9 @@ import adminDashboard from "./admin-dashboard.ts";
 export const queryRouter = new Hono();
 queryRouter.route("/rankings", rankings);
 queryRouter.route("/search", search);
-queryRouter.route("/stats", stats);
+queryRouter.route("/", stats);
 queryRouter.route("/", statsSse);
 
 /** query 域管理路由，挂载到 `/api/v1/admin`。 */
 export const queryAdminRouter = new Hono();
-queryAdminRouter.route("/dashboard", adminDashboard);
+queryAdminRouter.route("/", adminDashboard);
