@@ -9,7 +9,7 @@ import {
 } from "./mq/consumer.ts";
 import { initEventSubscriber } from "./lib/event-bus.ts";
 import { snapshotEnv } from "./lib/env-snapshot.ts";
-import { validateRegistry } from "./lib/settings-registry.ts";
+import { validateRegistry } from "./shared/config/settings-registry.ts";
 import { createReviewConsumer } from "./mq/review-consumer.ts";
 import { ensureRootUser } from "./domains/identity/index.ts";
 import { ensureRbacSeeds } from "./domains/system/index.ts";
@@ -20,7 +20,7 @@ import { logger } from "./shared/base/logging.ts";
 import {
   assertProductionConfig,
   type ProductionConfig,
-} from "./lib/production-config.ts";
+} from "./shared/config/production-config.ts";
 import {
   MIN_JWT_SECRET_LENGTH,
   MIN_TFA_ENCRYPTION_KEY_LENGTH,

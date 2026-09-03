@@ -30,7 +30,7 @@ import {
   SETTING_DEFINITIONS,
   type SettingCategory,
   type SettingType,
-} from "../../../lib/settings-registry.ts";
+} from "./../../../shared/config/settings-registry.ts";
 
 /** 单条设置项的解析后值（含来源溯源） */
 export interface SettingValue {

@@ -2,7 +2,7 @@ import { assert, assertEquals } from "jsr:@std/assert@^1";
 import {
   findProductionConfigErrors,
   type ProductionConfig,
-} from "../../src/lib/production-config.ts";
+} from "./../../src/shared/config/production-config.ts";
 
 function validConfig(): ProductionConfig {
   return {

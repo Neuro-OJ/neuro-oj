@@ -28,7 +28,7 @@ import {
   snapshotEnv,
 } from "../../src/lib/env-snapshot.ts";
 import { ValidationError } from "./../../src/shared/base/errors.ts";
-import { validateRegistry } from "../../src/lib/settings-registry.ts";
+import { validateRegistry } from "./../../src/shared/config/settings-registry.ts";
 
 const ts = Date.now();
 
