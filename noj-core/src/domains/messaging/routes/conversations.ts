@@ -1,12 +1,12 @@
 import { Hono } from "hono";
 import { authMiddleware } from "../../../middleware/auth.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
 import {
   BadRequestError,
   ForbiddenError,
 } from "./../../../shared/base/errors.ts";
 import { resolveUserId } from "../../identity/index.ts";
-import { parsePagination } from "../../../lib/pagination.ts";
+import { parsePagination } from "./../../../shared/http/pagination.ts";
 import { Channels, onEvent } from "../../../lib/event-bus.ts";
 import { createSseStream } from "../../../lib/sse-stream.ts";
 import {

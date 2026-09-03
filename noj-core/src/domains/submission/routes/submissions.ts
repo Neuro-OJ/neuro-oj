@@ -20,12 +20,12 @@ import {
   BadRequestError,
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
-import { createFileStream } from "../../../lib/file-stream.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
+import { createFileStream } from "./../../../shared/http/file-stream.ts";
 import {
   buildPaginationMeta,
   parsePagination,
-} from "../../../lib/pagination.ts";
+} from "./../../../shared/http/pagination.ts";
 import { SUBMISSION_STATUSES } from "../../../types/index.ts";
 import { enforceSubmissionRateLimit } from "../../../lib/hardening-rate-limit.ts";
 

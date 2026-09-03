@@ -1,4 +1,4 @@
-import { BadRequestError, ValidationError } from "./../shared/base/errors.ts";
+import { BadRequestError, ValidationError } from "../base/errors.ts";
 
 /**
  * 判断值是否为普通对象（非 null、非数组）。

@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../../../middleware/auth.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { BadRequestError } from "./../../../shared/base/errors.ts";
 import {
   buildPaginationMeta,
   parsePagination,
-} from "../../../lib/pagination.ts";
+} from "./../../../shared/http/pagination.ts";
 import {
   addParticipants,
   createContest,

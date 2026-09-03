@@ -9,7 +9,7 @@ import { getGlobalRankings, getMyRanking } from "../services/rankings.ts";
 import {
   buildPaginationMeta,
   parsePagination,
-} from "../../../lib/pagination.ts";
+} from "./../../../shared/http/pagination.ts";
 
 const router = new Hono<OptionalAuthEnv>();
 

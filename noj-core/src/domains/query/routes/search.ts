@@ -19,7 +19,7 @@ import {
   searchUsers,
 } from "../services/search.ts";
 import { getCommunityConfig } from "../../community/index.ts";
-import { parsePagination } from "../../../lib/pagination.ts";
+import { parsePagination } from "./../../../shared/http/pagination.ts";
 import { checkPermission } from "../../../lib/permissions.ts";
 import {
   ForbiddenError,

@@ -28,7 +28,7 @@ import { getRequestContext } from "../../../lib/requestContext.ts";
 import {
   buildPaginationMeta,
   type PaginationMeta,
-} from "../../../lib/pagination.ts";
+} from "./../../../shared/http/pagination.ts";
 import { logAudit } from "./audit-log.ts";
 
 /** 列表摘要截断长度（Markdown 源码字符数） */

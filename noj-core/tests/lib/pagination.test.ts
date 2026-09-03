@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import {
   buildPaginationMeta,
   parsePagination,
-} from "../../src/lib/pagination.ts";
+} from "./../../src/shared/http/pagination.ts";
 
 /** 构造带 query 的 Hono Context（仅用于 parsePagination 测试） */
 function makeCtx(_query: Record<string, string>): Hono {

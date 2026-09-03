@@ -8,8 +8,11 @@
 
 import { Hono } from "hono";
 import { type AuthEnv, authMiddleware } from "../../../middleware/auth.ts";
-import { assertObjectBody, parseJsonBody } from "../../../lib/request.ts";
-import { parsePagination } from "../../../lib/pagination.ts";
+import {
+  assertObjectBody,
+  parseJsonBody,
+} from "./../../../shared/http/request.ts";
+import { parsePagination } from "./../../../shared/http/pagination.ts";
 import { assertPermission, checkPermission } from "../../../lib/permissions.ts";
 import { withActorContext } from "../../../lib/requestContext.ts";
 import {

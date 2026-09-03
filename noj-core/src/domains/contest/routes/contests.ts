@@ -14,9 +14,9 @@ import {
 import {
   buildPaginationMeta,
   parsePagination,
-} from "../../../lib/pagination.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
-import { createFileStream } from "../../../lib/file-stream.ts";
+} from "./../../../shared/http/pagination.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
+import { createFileStream } from "./../../../shared/http/file-stream.ts";
 import { checkPermission } from "../../../lib/permissions.ts";
 import { getContestRanking } from "../services/contest-ranking.ts";
 import {

@@ -4,13 +4,13 @@ import {
   authMiddleware,
   optionalAuthMiddleware,
 } from "../../../middleware/auth.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
 import {
   BadRequestError,
   ForbiddenError,
   UnauthorizedError,
 } from "./../../../shared/base/errors.ts";
-import { parsePagination } from "../../../lib/pagination.ts";
+import { parsePagination } from "./../../../shared/http/pagination.ts";
 import { checkPermission } from "../../../lib/permissions.ts";
 import {
   enforceObjectiveSubmitRateLimit,

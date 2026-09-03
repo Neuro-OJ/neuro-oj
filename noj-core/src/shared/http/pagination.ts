@@ -27,7 +27,7 @@
  */
 
 import type { Context } from "hono";
-import { ValidationError } from "./../shared/base/errors.ts";
+import { ValidationError } from "../base/errors.ts";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_PER_PAGE = 20;

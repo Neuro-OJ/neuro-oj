@@ -42,7 +42,7 @@ import {
   UnauthorizedError,
   ValidationError,
 } from "./../../../shared/base/errors.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { getUserPermissions } from "../../../lib/permissions.ts";
 import { signToken, verifyToken } from "../../../lib/jwt.ts";
 import { revokeJti } from "../../../lib/revokedTokens.ts";

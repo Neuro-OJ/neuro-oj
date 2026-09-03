@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Next } from "hono";
-import { parseJsonBody } from "../../../lib/request.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
 import {
   BadRequestError,
   ForbiddenError,

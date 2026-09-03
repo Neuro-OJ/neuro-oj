@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { type AuthEnv, authMiddleware } from "../../../middleware/auth.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { ValidationError } from "./../../../shared/base/errors.ts";
 import { requirePermission } from "../../../lib/permissions.ts";
 import { withActorContext } from "../../../lib/requestContext.ts";
