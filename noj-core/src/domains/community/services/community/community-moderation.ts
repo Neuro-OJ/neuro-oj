@@ -32,7 +32,7 @@ import {
 import {
   REPORT_CATEGORIES,
   type ReportCategory,
-} from "../../../../types/community.ts";
+} from "./../../types/community.ts";
 import { reloadSingleKey, updateSetting } from "../../../system/index.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
 import { createNotification } from "../notifications.ts";

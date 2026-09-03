@@ -33,9 +33,9 @@ import type {
   QuestionJudgement,
   SubmitObjectiveInput,
   SubmitObjectiveResult,
-} from "../../../types/objective.ts";
-import { validateAnswersPayload } from "../../../types/objective.ts";
-import type { ObjectiveAnswerValue } from "../../../types/objective.ts";
+} from "./../types/objective.ts";
+import { validateAnswersPayload } from "./../types/objective.ts";
+import type { ObjectiveAnswerValue } from "./../types/objective.ts";
 
 /** ×100 分换算回百分制。 */
 const SCORE_SCALE_FACTOR = 100;

@@ -16,7 +16,7 @@ import {
 import type {
   CommunityPostInput,
   CommunityPostType,
-} from "../../../types/community.ts";
+} from "./../types/community.ts";
 import {
   assertCommunityEnabled,
   assertCommunityWritable,

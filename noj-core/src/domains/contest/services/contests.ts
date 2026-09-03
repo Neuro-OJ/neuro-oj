@@ -32,7 +32,7 @@ import {
   isValidContestConfig,
   isValidContestType,
   type UpdateContestInput,
-} from "../../../types/contests.ts";
+} from "./../types/contests.ts";
 
 /** 竞赛列表查询参数（分页、按类型筛选、是否包含非公开竞赛）。 */
 export interface ListContestsParams {

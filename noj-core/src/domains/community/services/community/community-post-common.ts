@@ -11,7 +11,7 @@ import type {
   CommunityConfig,
   CommunityPostStatus,
   CommunityPostType,
-} from "../../../../types/community.ts";
+} from "./../../types/community.ts";
 import { getCommunityConfig } from "./community-config.ts";
 
 /**

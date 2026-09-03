@@ -19,7 +19,7 @@ import {
   type ObjectiveOption,
   validateAnswerForType,
   validateOptions,
-} from "../../../types/objective.ts";
+} from "../../objective/index.ts";
 import {
   DIFFICULTIES,
   isValidDifficulty,

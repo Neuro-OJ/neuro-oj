@@ -58,7 +58,7 @@ import type {
   CreateQuestionInput,
   SubmitObjectiveInput,
   UpdateQuestionInput,
-} from "../../../types/objective.ts";
+} from "../../objective/index.ts";
 
 const router = new Hono<AuthEnv>();
 

@@ -21,8 +21,8 @@ import {
 import type {
   CreateContestInput,
   UpdateContestInput,
-} from "../../../types/contests.ts";
-import { isValidContestType } from "../../../types/contests.ts";
+} from "./../types/contests.ts";
+import { isValidContestType } from "./../types/contests.ts";
 import { listSubmissions } from "../../submission/index.ts";
 import { resolveUserId } from "../../identity/index.ts";
 

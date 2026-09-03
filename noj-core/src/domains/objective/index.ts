@@ -25,3 +25,4 @@ export {
   judgeQuestion,
   type QuestionToJudge,
 } from "./services/objective-judge.ts";
+export * from "./types/objective.ts";

@@ -15,7 +15,7 @@ import {
 import { createNotification } from "../notifications.ts";
 import { assertCommunityEnabled } from "./community-config.ts";
 import { getPost } from "./community-post-crud.ts";
-import type { CommunityConfig } from "../../../../types/community.ts";
+import type { CommunityConfig } from "./../../types/community.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
 

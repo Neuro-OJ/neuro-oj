@@ -5,7 +5,7 @@ import {
   communityPosts,
   users,
 } from "./../../../../shared/db/schema.ts";
-import type { CommunityPostType } from "../../../../types/community.ts";
+import type { CommunityPostType } from "./../../types/community.ts";
 import {
   assertCommunityEnabled,
   getCommunityConfig,

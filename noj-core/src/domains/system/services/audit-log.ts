@@ -19,7 +19,7 @@ import type {
   AuditDetail,
   AuditLogEntry,
   AuditLogListFilter,
-} from "../../../types/audit-log.ts";
+} from "./../types/audit-log.ts";
 
 /**
  * 记录一条审计日志。必须在 admin 路由内调用（依赖 RequestContext）。

@@ -26,7 +26,7 @@ import {
   type UpdateQuestionInput,
   validateAnswerForType,
   validateOptions,
-} from "../../../types/objective.ts";
+} from "./../types/objective.ts";
 
 /** 套卷行类型（problems 表 type='O' 行）。 */
 export type PaperRow = typeof problems.$inferSelect;

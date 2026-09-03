@@ -7,7 +7,7 @@ import {
 import { ForbiddenError } from "./../../../../shared/base/errors.ts";
 import { nowIso } from "./../../../../shared/base/dates.ts";
 import { getSetting } from "../../../system/index.ts";
-import type { CommunityConfig } from "../../../../types/community.ts";
+import type { CommunityConfig } from "./../../types/community.ts";
 
 /**
  * 读取布尔型系统设置。

@@ -38,7 +38,7 @@ import {
   createSubmission,
   listSubmissions,
 } from "../../submission/index.ts";
-import { isValidContestType } from "../../../types/contests.ts";
+import { isValidContestType } from "./../types/contests.ts";
 import { createActivity } from "../../community/index.ts";
 import { enforceContestSubmissionRateLimit } from "../../system/index.ts";
 

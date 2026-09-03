@@ -13,7 +13,7 @@ import {
 import {
   COMMUNITY_PRESETS,
   MODERATION_STATUSES,
-} from "../../../types/community.ts";
+} from "./../types/community.ts";
 import { authMiddleware, getUserBanState } from "./../../identity/index.ts";
 import type { OptionalAuthEnv } from "./../../identity/index.ts";
 import {

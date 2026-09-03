@@ -6,7 +6,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import {
   isValidContestConfig,
   isValidContestType,
-} from "../../src/types/contests.ts";
+} from "./../../src/domains/contest/types/contests.ts";
 
 Deno.test("contests: 仅允许 kaggle 赛制", () => {
   assertEquals(isValidContestType("kaggle"), true);

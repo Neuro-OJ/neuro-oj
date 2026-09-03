@@ -39,7 +39,7 @@ import {
   validateObjectiveQuestions,
 } from "./../../types/problem-bundle.ts";
 import type { ProblemResponseWithTags } from "./../../types/problems.ts";
-import { type CreateQuestionInput } from "../../../../types/objective.ts";
+import { type CreateQuestionInput } from "../../../objective/index.ts";
 import { updateProblem } from "./problems-crud.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import {

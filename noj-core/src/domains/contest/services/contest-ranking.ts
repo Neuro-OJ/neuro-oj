@@ -10,7 +10,7 @@ import type {
   ContestType,
   KaggleProblemScore,
   KaggleRankingRow,
-} from "../../../types/contests.ts";
+} from "./../types/contests.ts";
 import { getContest, isParticipant } from "./contests.ts";
 
 /**
