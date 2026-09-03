@@ -1,7 +1,6 @@
-import type { RuntimeConfig } from "../domains/catalog/index.ts";
-/**
- * LLM 评测任务字段：携带 gateway 地址与短期 eval_token。
- */
+import type { RuntimeConfig } from "../../catalog/index.ts";
+
+/** LLM 评测任务字段：携带 gateway 地址与短期 eval_token。 */
 export interface JudgeTaskLlm {
   gateway_url: string;
   eval_token: string;
@@ -61,9 +60,7 @@ export interface JudgeResult {
   rejudge_seq?: number;
 }
 
-/**
- * 提交的状态枚举。
- */
+/** 提交的状态枚举。 */
 export type SubmissionStatus = "pending" | "judging" | "finished" | "error";
 
 /** 全部提交状态（与 SubmissionStatus 类型一一对应）。 */
@@ -86,9 +83,7 @@ export function assertNever(value: never): never {
  * 判断提交状态是否为终态。
  * 使用 switch + assertNever，新增状态时编译期强制更新。
  */
-export function isTerminalSubmissionStatus(
-  status: SubmissionStatus,
-): boolean {
+export function isTerminalSubmissionStatus(status: SubmissionStatus): boolean {
   switch (status) {
     case "pending":
     case "judging":

@@ -21,7 +21,7 @@ import {
   resetRedisForTest,
 } from "./../../src/shared/mq/connection.ts";
 import { startFakeRedis } from "./_setup.ts";
-import type { JudgeTask } from "../../src/types/index.ts";
+import type { JudgeTask } from "../../src/domains/submission/index.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 

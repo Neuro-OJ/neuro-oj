@@ -11,11 +11,18 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { publicIdColumn } from "./common.ts";
-import type { SubmissionStatus } from "../../../types/index.ts";
-import type { SelfTestStatus } from "../../../types/self-tests.ts";
 import { users } from "./identity.ts";
 import { problems } from "./catalog.ts";
 import { contests } from "./contest.ts";
+
+/**
+ * 数据库行状态字面量类型。
+ *
+ * 与 submission 域类型保持同一字面量集合；shared 层不反向依赖 domains，
+ * 因此 schema 内保留本地类型别名用于 Drizzle $type<>。
+ */
+type SubmissionStatus = "pending" | "judging" | "finished" | "error";
+type SelfTestStatus = "pending" | "judging" | "finished" | "error";
 
 /**
  * 提交记录表。

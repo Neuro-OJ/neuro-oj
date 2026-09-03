@@ -13,7 +13,7 @@ import { logger } from "./../../../shared/base/logging.ts";
 import { NotFoundError } from "./../../../shared/base/errors.ts";
 import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import { logAudit } from "../../system/index.ts";
-import { SELF_TEST_ID_PREFIX } from "../../../types/self-tests.ts";
+import { SELF_TEST_ID_PREFIX } from "./../types/self-tests.ts";
 
 /** 评测任务队列名称（与 producer.ts 一致）。 */
 const JUDGE_QUEUE = "noj:judge:queue";

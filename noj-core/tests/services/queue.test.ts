@@ -20,7 +20,7 @@ import {
   users,
 } from "./../../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
-import { SELF_TEST_ID_PREFIX } from "../../src/types/self-tests.ts";
+import { SELF_TEST_ID_PREFIX } from "./../../src/domains/submission/types/self-tests.ts";
 import { enterTestContext } from "../../src/lib/requestContext.ts";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");

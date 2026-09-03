@@ -19,7 +19,7 @@ import {
   resetRedisForTest,
 } from "./../../src/shared/mq/connection.ts";
 import { startFakeRedis } from "./_setup.ts";
-import { SELF_TEST_ID_PREFIX } from "../../src/types/self-tests.ts";
+import { SELF_TEST_ID_PREFIX } from "./../../src/domains/submission/types/self-tests.ts";
 
 const skip = false;
 

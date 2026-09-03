@@ -17,8 +17,8 @@ import {
   getSelfTest,
   saveSelfTestResult,
 } from "../../src/domains/submission/index.ts";
-import { SELF_TEST_ID_PREFIX } from "../../src/types/self-tests.ts";
-import type { JudgeResult } from "../../src/types/index.ts";
+import { SELF_TEST_ID_PREFIX } from "./../../src/domains/submission/types/self-tests.ts";
+import type { JudgeResult } from "../../src/domains/submission/index.ts";
 import type { Context } from "hono";
 
 const skip = false; // PGlite 内存数据库始终可用

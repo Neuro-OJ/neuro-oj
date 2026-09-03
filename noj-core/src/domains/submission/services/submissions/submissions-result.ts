@@ -19,7 +19,7 @@ import {
 } from "./../../../../shared/base/errors.ts";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
-import type { JudgeResult, SubmissionStatus } from "../../../../types/index.ts";
+import type { JudgeResult, SubmissionStatus } from "../../types/index.ts";
 import { applyNewResult } from "../../../query/index.ts";
 import { refreshRankingsView } from "../../../query/index.ts";
 import { logger } from "./../../../../shared/base/logging.ts";

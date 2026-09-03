@@ -26,7 +26,7 @@ import {
   buildPaginationMeta,
   parsePagination,
 } from "./../../../shared/http/pagination.ts";
-import { SUBMISSION_STATUSES } from "../../../types/index.ts";
+import { SUBMISSION_STATUSES } from "../types/index.ts";
 import { enforceSubmissionRateLimit } from "../../system/index.ts";
 
 // 扩展 Hono 类型，使 c.get("userId") 返回 string | undefined

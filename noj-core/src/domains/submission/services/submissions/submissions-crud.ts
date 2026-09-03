@@ -65,9 +65,9 @@ import type {
   JudgeTask,
   JudgeTaskLlm,
   SubmissionStatus,
-} from "../../../../types/index.ts";
+} from "../../types/index.ts";
 import type { Context } from "hono";
-import { LANGUAGE_EXT_MAP } from "../../../../types/index.ts";
+import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
 import {
   Channels,
   publishSseEvent,
