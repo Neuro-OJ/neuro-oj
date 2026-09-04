@@ -117,24 +117,25 @@ NOJ 当前持久化数据卷约 66 MiB，生产镜像（含 Evaluator、Solution
 
 ### 一键部署
 
-生产环境推荐直接下载 `noj-cli` 二进制作为唯一安装入口，由 `noj-cli` 完成环境
-检测（doctor）与生产部署（deploy init / deploy up）：
+生产环境推荐使用仓库根目录的一键安装入口 `setup.sh`。它会下载部署脚本，
+自动检查环境、引导填写配置并启动生产服务：
 
 ```bash
-# 下载最新版 noj-cli（GitHub Release 资产）
-curl -fsSL -o noj-cli \
-  https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/noj-cli-linux-amd64
-chmod +x noj-cli
+# 一键安装（默认自动选择最新 Release）
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
+  bash -s -- --dir /opt/neuro-oj
 
-# 环境检测
-./noj-cli doctor
-
-# 初始化并部署（示例）
-./noj-cli deploy init --mode prod --dir /opt/neuro-oj
-./noj-cli deploy up --dir /opt/neuro-oj
+# 固定版本：将 vX.Y.Z 替换为包含 CLI 资产的 Release 标签
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
+  bash -s -- --ref vX.Y.Z --dir /opt/neuro-oj
 ```
 
-安装完成后，服务启停、更新和管理统一使用 `noj-cli` 命令。
+安装脚本会在前面先检查 Linux、Docker、Compose、磁盘、端口等环境；首次安装会创建
+`.env.prod` 并用简单中文提示填写网站地址、HTTP/HTTPS、邮件服务和 Judge。邮件可以跳过，
+首个注册用户自动成为管理员。已存在的安装目录会保留配置并继续更新，不会因为目录非空而停止。
+
+安装器下载并校验同版本的 `noj-cli` 二进制，调用 CLI 完成生产安装并注册 PATH；生产机无需安装 Deno。
+安装完成后，服务启停、升级、备份和日志统一使用 `noj-cli`。所选 Release 必须包含 CLI 二进制及 SHA-256 校验文件。
 
 部署完成后，通过配置的域名访问：
 
@@ -146,19 +147,20 @@ chmod +x noj-cli
 常用运维命令：
 
 ```bash
-noj-cli doctor                      # 环境检测
-noj-cli deploy status               # 查看服务状态
-noj-cli maintain logs server        # 查看 server 日志
-noj-cli deploy restart              # 重启服务
-noj-cli deploy down                 # 停止服务但保留数据卷
-noj-cli deploy up                   # 再次启动
-noj-cli maintain backup create      # 创建生产备份
-noj-cli maintain config check       # 只校验配置，不改变服务状态
+noj-cli check                            # 检查部署环境
+noj-cli status                           # 查看服务状态
+noj-cli logs core                        # 查看 core 日志
+noj-cli restart                          # 重启服务
+noj-cli stop                             # 停止服务但保留数据卷
+noj-cli update --latest                  # 升级到最新稳定 Release
+noj-cli backup                           # 创建生产备份
+noj-cli config check                     # 只校验配置，不改变服务状态
 ```
 
-`noj-cli` 是统一部署与运维入口，覆盖 `doctor`、`deploy`、`maintain`、`run-server`
-与 `version`。`noj-cli` 不提供升级/卸载子命令；配置变更与数据管理见
-`noj-cli maintain config` 与 `noj-cli maintain reset`。
+`noj-cli` 同时保留 `install`、`start`、`stop`、`upgrade`、`update`、`status`、`logs`、`backup`、
+`verify`、`config check` 和 `uninstall`。需要高级参数时可直接运行
+`bash scripts/deploy/deploy.sh <命令>`。未加入 PATH 时可运行 `/opt/neuro-oj/bin/noj-cli status`，
+或用 `noj-cli status --dir /opt/neuro-oj` 显式指定安装目录。开发者也可从 `noj-cli/` 目录通过 Deno 运行相同入口。
 
 更多部署、TLS、备份和升级说明见 [`deploy/README.md`](./deploy/README.md) 和[生产部署文档](./noj-docs/docs/operators/production-deploy.md)。
 
@@ -211,7 +213,7 @@ noj-docs          用户、运营者和出题人文档
 
 - 提交长时间处于 `Pending`：确认 Judge Worker 已启动，并且连接了与 `noj-core` 相同的 Redis；队列和日志排查方法见[Judge Worker 运维文档](./noj-docs/docs/operators/judge-workers.md)。
 - 评测镜像不存在：确认评测镜像已发布、已加入 `judge_images` 白名单，并检查 Judge Worker 的镜像前缀配置。
-- 生产服务启动失败：执行 `noj-cli doctor`、`noj-cli deploy status` 和 `noj-cli maintain logs <service>` 查看状态与日志。
+- 生产服务启动失败：执行 `noj-cli check`、`noj-cli status` 和 `noj-cli logs <service>` 查看状态与日志。
 - 密码重置邮件不可用：检查 `EMAIL_PROVIDER` 及对应凭据；暂时不配置邮件时可以使用 `disabled`，但密码找回功能不可用。
 
 更多常见问题见[常见问题](./noj-docs/docs/intro/faq.md)。

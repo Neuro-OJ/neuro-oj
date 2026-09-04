@@ -4,7 +4,7 @@
 import { relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname ?? ".", "..");
-const EVENT_BUS_PATH = resolve(ROOT, "noj-core/src/lib/event-bus.ts");
+const EVENT_BUS_PATH = resolve(ROOT, "noj-core/src/shared/sse/event-bus.ts");
 const OUTPUT_PATH = resolve(ROOT, "dev-docs/engineering/event-catalog.md");
 const CORE_SRC = resolve(ROOT, "noj-core/src");
 

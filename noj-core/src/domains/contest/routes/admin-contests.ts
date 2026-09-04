@@ -1,11 +1,11 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "../../../middleware/auth.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
-import { BadRequestError } from "../../../lib/errors.ts";
+import type { AuthEnv } from "./../../identity/index.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
+import { BadRequestError } from "./../../../shared/base/errors.ts";
 import {
   buildPaginationMeta,
   parsePagination,
-} from "../../../lib/pagination.ts";
+} from "./../../../shared/http/pagination.ts";
 import {
   addParticipants,
   createContest,
@@ -21,8 +21,8 @@ import {
 import type {
   CreateContestInput,
   UpdateContestInput,
-} from "../../../types/contests.ts";
-import { isValidContestType } from "../../../types/contests.ts";
+} from "./../types/contests.ts";
+import { isValidContestType } from "./../types/contests.ts";
 import { listSubmissions } from "../../submission/index.ts";
 import { resolveUserId } from "../../identity/index.ts";
 

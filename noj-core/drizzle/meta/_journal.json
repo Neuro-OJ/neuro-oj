@@ -442,6 +442,13 @@
       "when": 1788288115329,
       "tag": "0062_legal_hex",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1788355474657,
+      "tag": "0063_wet_wasp",
+      "breakpoints": true
     }
   ]
 }

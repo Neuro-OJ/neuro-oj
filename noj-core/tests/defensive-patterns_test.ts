@@ -1,5 +1,5 @@
 // 防御模式回归测试（noj-core）。
-import { validateStorageKey } from "../src/lib/storage/types.ts";
+import { validateStorageKey } from "./../src/domains/system/services/storage/types.ts";
 
 function assert(cond: unknown, msg: string): void {
   if (!cond) throw new Error(msg);

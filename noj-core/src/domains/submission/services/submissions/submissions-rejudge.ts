@@ -9,26 +9,32 @@
  */
 
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { evaluationResults, submissions } from "../../../../db/schema.ts";
+import {
+  evaluationResults,
+  submissions,
+} from "./../../../../shared/db/schema.ts";
 import {
   AppError,
   BadRequestError,
   NotFoundError,
-} from "../../../../lib/errors.ts";
-import { getDb } from "../../../../db/connection.ts";
-import { pushJudgeTask } from "../../../../mq/producer.ts";
+} from "./../../../../shared/base/errors.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import { pushJudgeTask } from "../../mq/producer.ts";
 import { getProblem } from "../../../catalog/index.ts";
-import { getStorageProvider } from "../../../../lib/storage/mod.ts";
+import { getStorageProvider } from "./../../../system/index.ts";
 import { logAudit } from "../../../system/index.ts";
-import { buildJudgeTaskLlm } from "../../../../lib/llm-token.ts";
-import { buildJudgeTaskLlmForProvider } from "../../../../lib/llm-token.ts";
+import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
+import { buildJudgeTaskLlmForProvider } from "./../../../gateway/index.ts";
 import { getUserLlmProvider } from "../../../gateway/index.ts";
-import type { JudgeTask, JudgeTaskLlm } from "../../../../types/index.ts";
-import type { RuntimeConfig } from "../../../../types/problems.ts";
-import { LANGUAGE_EXT_MAP } from "../../../../types/index.ts";
-import { Channels, publishSseEvent } from "../../../../lib/event-bus.ts";
+import type { JudgeTask, JudgeTaskLlm } from "../../types/index.ts";
+import type { RuntimeConfig } from "./../../../catalog/index.ts";
+import { LANGUAGE_EXT_MAP } from "../../types/index.ts";
+import {
+  Channels,
+  publishSseEvent,
+} from "./../../../../shared/sse/event-bus.ts";
 import { updateSubmissionStatus } from "./submissions-result.ts";
-import { logger } from "../../../../lib/logging.ts";
+import { logger } from "./../../../../shared/base/logging.ts";
 
 const MAX_BATCH_REJUDGE = 500;
 

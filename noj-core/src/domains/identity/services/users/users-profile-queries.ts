@@ -1,12 +1,12 @@
 import { and, eq, gt, sql } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityPosts,
   evaluationResults,
   problems,
   submissions,
   users,
-} from "../../../../db/schema.ts";
+} from "./../../../../shared/db/schema.ts";
 import type {
   ProfileCommunityStatsRow,
   ProfileMomentRow,

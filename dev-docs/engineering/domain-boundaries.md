@@ -3,6 +3,22 @@
 > 本文档是 noj-core 代码级域隔离的事实来源。
 > 每个域拥有自己的 routes / services / types；跨域只允许通过域门面（`index.ts`）或事件协作。
 
+## 共享层 `src/shared/`
+
+共享层只放“真正跨域复用且无业务归属”的基础设施，**不得反向依赖 `src/domains/**`**。
+
+| 子目录 | 职责 |
+|---|---|
+| `shared/base/` | 错误体系、日志、常量、日期、SQL 行工具 |
+| `shared/config/` | 系统设置注册表、生产配置校验 |
+| `shared/db/` | 数据库连接、迁移、Drizzle schema |
+| `shared/http/` | 请求体解析、分页、文件流、Hono Env 类型 |
+| `shared/mq/` | Redis 连接管理、通用消费者基类 |
+| `shared/sse/` | 事件总线、SSE 流、订阅/重放辅助 |
+| `shared/rate-limit/` | 通用限流原语（依赖系统设置的限流在 system 域） |
+| `shared/security/` | CIDR、公共 ID、图片校验 |
+| `shared/middleware/` | 全局 request-context 中间件 |
+
 ## 域目录
 
 | 域 | 目录（目标） | 主要职责 |
@@ -17,23 +33,7 @@
 | system | `src/domains/system/` | 系统设置、公告、审计日志、IP 封禁、Judge 镜像 |
 | gateway | `src/domains/gateway/` | LLM Provider、用量、配额；远期迁入 noj-llm-gateway |
 | query | `src/domains/query/` | 搜索、统计、排行榜、Dashboard 等读模型 |
-
-## 遗留服务目录 → 域映射
-
-下列 `src/services/*` 目录/文件在迁移完成前视为对应域的一部分：
-
-| 遗留路径 | 域 |
-|---|---|
-| `src/services/auth`、`src/services/users`、`src/services/oauth.ts`、`src/services/tfa.ts`、`src/services/passwordReset.ts`、`src/services/banlist.ts`、`src/services/checkin.ts` | identity |
-| `src/services/problems`、`src/services/tags.ts`、`src/services/trainings.ts`、`src/services/support-package.ts` | catalog |
-| `src/services/submissions`、`src/services/queue.ts`、`src/services/self-tests.ts` | submission |
-| `src/services/contest/` | contest |
-| `src/services/community/`、`src/services/notifications.ts` | community |
-| `src/services/objective/` | objective |
-| `src/services/messages.ts` | messaging |
-| `src/services/system-settings.ts`、`src/services/announcements.ts`、`src/services/audit-log.ts`、`src/services/seed/` | system |
-| `src/services/llm.ts` | gateway |
-| `src/services/search.ts`、`src/services/rankings.ts`、`src/services/stats-cache.ts`、`src/services/dashboard.ts` | query |
+| content-review | `src/domains/content-review/` | 内容审核、DM 私信审核消费者 |
 
 ## 表所有权
 
@@ -56,4 +56,4 @@
 1. 域 A 不得 import 域 B 的 `services/` 或 `routes/` 深路径。
 2. 跨域只能 import `src/domains/<B>/index.ts`（门面）。
 3. 共享内核 `src/shared/` 不得反向依赖 `src/domains/**`。
-4. 遗留迁移期间，旧 `src/services/<域>` 也按上述规则检查，直到迁移完成。
+4. `src/domains/<domain>/tests/**` 可跨域深路径导入以构造集成场景；域边界规则只约束生产代码。

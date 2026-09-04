@@ -27,11 +27,28 @@ Deno.test("followLogFile: 从末尾开始轮询新内容并按行回调", async 
   await Deno.writeTextFile(p, "old-line\n");
   const seen: string[] = [];
   const signal = { aborted: false };
-  const done = followLogFile(p, (l) => seen.push(l), signal);
-  // 追加两行后等待回调
-  await Deno.writeTextFile(p, "new-1\nnew-2\n", { append: true });
-  await new Promise((r) => setTimeout(r, 50));
-  signal.aborted = true;
-  await done;
+  const ready = Promise.withResolvers<void>();
+  const done = followLogFile(
+    p,
+    (l) => {
+      seen.push(l);
+      if (seen.length === 2) signal.aborted = true;
+    },
+    signal,
+    () => ready.resolve(),
+  );
+  const timeout = setTimeout(() => {
+    signal.aborted = true;
+  }, 2000);
+  try {
+    // 等待读取初始末尾位置；不以短于轮询周期的固定延时判定成功。
+    await ready.promise;
+    await Deno.writeTextFile(p, "new-1\nnew-2\n", { append: true });
+    await done;
+  } finally {
+    signal.aborted = true;
+    clearTimeout(timeout);
+    await done;
+  }
   assertEquals(seen, ["new-1", "new-2"]);
 });

@@ -11,33 +11,32 @@ Evaluator + Solution 双容器（用后即毁），并把结果写回 Redis。
 
 ## 独立节点部署
 
-如果评测节点不运行 noj-server、noj-ui 或完整源码仓库，可以使用 `noj-cli` 在独立目录
-初始化一份只启用 judge 组件的部署配置：
+如果评测节点不运行 noj-core、noj-ui 或完整源码仓库，可以使用仓库提供的 Judge 安装脚本
+在独立目录初始化 Worker：
 
 ```bash
-cd noj-cli
-deno run -A src/cli.ts deploy init --mode prod --dir /srv/noj-judge
-# 编辑 /srv/noj-judge/noj-deploy.json，只保留 judge 组件并填写 Redis / Docker socket 配置
-deno run -A src/cli.ts deploy up --dir /srv/noj-judge
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/judge-install.sh \
+  -o judge-install.sh
+bash judge-install.sh install --dir /srv/noj-judge
 ```
 
 首次配置需要填写：
 
-- `NOJ_VERSION` / `version.noj_server`：不可变 Release 版本，例如 `v0.1.0`；
-- `REDIS_URL`：与 noj-server 相同的 Redis 地址、数据库和认证信息；
-- `JUDGE_QUEUE` / `RESULT_QUEUE`：必须与 noj-server 使用的队列名称一致；
+- `NOJ_VERSION`：不可变 Release 版本，例如 `v0.1.0`；
+- `REDIS_URL`：与 noj-core 相同的 Redis 地址、数据库和认证信息；
+- `JUDGE_QUEUE` / `RESULT_QUEUE`：必须与 noj-core 使用的队列名称一致；
 - `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID`：只服务于 Judge 的 rootless
   Docker daemon Unix socket 及其组 ID。
 
 管理独立 Worker：
 
 ```bash
-noj-cli deploy status --dir /srv/noj-judge
-noj-cli maintain logs --dir /srv/noj-judge
-noj-cli deploy down --dir /srv/noj-judge
+bash /srv/noj-judge/judge-install.sh status
+bash /srv/noj-judge/judge-install.sh logs
+bash /srv/noj-judge/judge-install.sh stop
 ```
 
-> 旧版 `scripts/deploy/judge-install.sh` 已移除，统一使用 `noj-cli`。
+Judge 安装脚本与主站部署脚本相互独立；它不会安装或替换主站的 `noj` 命令。
 
 当前生产 Release 镜像由发布流水线提供 `linux/amd64`。ARM64 主机必须先确认所选
 版本发布了对应 manifest；否则部署会在启动前提示架构不匹配，不能通过回退到宿主机
@@ -151,8 +150,8 @@ test "$JUDGE_REQUIRE_ISOLATED_DOCKER" = "true"
 
 # 只应看到独立 daemon socket 和评测缓存，不得出现应用宿主机 socket、
 # /var/lib/docker、/etc 或其他宿主路径。
-docker compose -f /opt/neuro-oj/docker-compose.noj.yml config
-docker inspect "$(docker compose -f /opt/neuro-oj/docker-compose.noj.yml ps -q judge)" \
+docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml config
+docker inspect "$(docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml ps -q judge)" \
   --format '{{json .Mounts}}'
 ```
 
@@ -184,13 +183,13 @@ cd noj-judge
 ```
 
 生产部署时，`init system` 会根据 `JUDGE_IMAGE_BASE`（默认 `ghcr.io/neuro-oj/`）写入
-ghcr 全限定镜像名；若需要手工确认，见[生产部署](production-deploy.md#3-评测镜像白名单)。
+ghcr 全限定镜像名；若需要手工确认，见[生产部署](production-deploy.md#3-配置说明)。
 
 `noj-evaluator-python` 与 `noj-solution-python` 基于 `python:3.12-slim`，不预装题目专用依赖，题目依赖由出题人在 evaluator 中自行管理；`noj-solution-ai` 额外内置 CPU 版 PyTorch、torchvision 与常用 CV/ML 依赖。
 
 ## 镜像白名单
 
-noj-server 维护评测镜像白名单（`judgeImages`），并在题目 CRUD / 调度阶段完成校验。Judge Worker 侧还会按 `JUDGE_IMAGE_PREFIX` / `JUDGE_COMMAND_WHITELIST` 对 MQ 消息做一次纵深复验，不再通过 Redis RPC 拉取白名单。
+noj-core 维护评测镜像白名单（`judgeImages`），并在题目 CRUD / 调度阶段完成校验。Judge Worker 侧还会按 `JUDGE_IMAGE_PREFIX` / `JUDGE_COMMAND_WHITELIST` 对 MQ 消息做一次纵深复验，不再通过 Redis RPC 拉取白名单。
 
 镜像规则包含：
 
@@ -217,20 +216,20 @@ noj-server 维护评测镜像白名单（`judgeImages`），并在题目 CRUD / 
 
 ## 健康检查与状态查看
 
-生产环境使用 noj-cli 管理：
+生产环境使用 `noj` 或 Judge 脚本管理：
 
 ```bash
 # 查看所有服务状态（含 judge 是否在线）
-noj-cli deploy status --dir /opt/neuro-oj
+bash /opt/neuro-oj/noj status
 
 # 查看 judge 日志
-noj-cli maintain logs judge --follow --dir /opt/neuro-oj
+bash /opt/neuro-oj/noj logs judge --follow
 ```
 
 调高日志详细度排查问题（临时覆盖环境变量）：
 
 ```bash
-docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
+docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
   -e RUST_LOG=noj_judge=debug judge
 ```
 
@@ -242,11 +241,11 @@ docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
 docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue
 ```
 
-密码从 `noj-secrets.json` 的 `secrets.REDIS_PASSWORD` 读取。
+密码从 `/opt/neuro-oj/.env.prod` 的 `REDIS_PASSWORD` 读取。
 
 如果队列持续堆积：
 
-1. 确认 Judge Worker 在线且连接了同一个 Redis（`noj-cli deploy status --dir /opt/neuro-oj`）。
+1. 确认 Judge Worker 在线且连接了同一个 Redis（`noj status`）。
 2. 查看 judge 日志是否有拉取/容器错误。
 3. 检查 Docker daemon 是否可用、评测镜像是否已从 ghcr.io 拉取。
 4. 如负载确实超过单实例能力，按下一节水平扩展。
@@ -261,10 +260,8 @@ docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue
 ## 升级与重启
 
 - 停止实例会进入优雅关闭流程：排空正在执行的 in-flight 任务后再退出，避免提交丢失。
-- 升级步骤：修改 `noj-deploy.json` 中的 `version.noj_server`（或
-  `noj-cli maintain config set version.noj_server v0.1.1 --dir /opt/neuro-oj`）→
-  `noj-cli deploy up --dir /opt/neuro-oj`。
-- 升级评测镜像后应先在 noj-server 白名单登记，再启动 Worker。
+- 升级步骤：修改 `.env.prod` 中的 `NOJ_VERSION` → `noj update`。
+- 升级评测镜像后应先在 noj-core 白名单登记，再启动 Worker。
 
 ## 常见排查方向
 

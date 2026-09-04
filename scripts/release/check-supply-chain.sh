@@ -105,6 +105,11 @@ check_compose() {
 check_release_workflow() {
   local file="$ROOT_DIR/.github/workflows/release.yml"
   require_file ".github/workflows/release.yml"
+  grep -Fq -- '- name: noj-server' "$file" \
+    || fail "Release workflow 未发布 noj-server 镜像"
+  grep -q 'needs: verify-release' "$file" || fail "CLI 发布必须等待生产镜像验证"
+  grep -q 'deno task test:production' "$file" || fail "CLI 发布缺少生产安装测试"
+  grep -q 'sha256sum noj-cli-linux-amd64' "$file" || fail "CLI 发布缺少 SHA-256 校验文件"
   grep -q 'provenance: mode=max' "$file" || fail "Release workflow 未启用 provenance"
   grep -q 'sbom: true' "$file" || fail "Release workflow 未启用 BuildKit SBOM"
   grep -q 'trivy' "$file" || fail "Release workflow 未配置漏洞扫描"

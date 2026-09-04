@@ -2,34 +2,24 @@ import { Hono } from "hono";
 import type { Context, Next } from "hono";
 import { cors } from "hono/cors";
 import health from "./routes/health.ts";
-import stats from "./domains/query/routes/stats.ts";
-import auth from "./domains/identity/routes/auth.ts";
 import admin from "./routes/admin/index.ts";
-import adminAnnouncements from "./domains/system/routes/admin-announcements.ts";
-import adminTrainings from "./domains/catalog/routes/admin-trainings.ts";
-import tags from "./domains/catalog/routes/tags.ts";
-import problems from "./domains/catalog/routes/problems.ts";
-import checkin from "./domains/identity/routes/checkin.ts";
-import queue from "./domains/submission/routes/queue.ts";
-import submissions from "./domains/submission/routes/submissions.ts";
-import selfTests from "./domains/submission/routes/self-tests.ts";
-import users from "./domains/identity/routes/users.ts";
-import rankings from "./domains/query/routes/rankings.ts";
-import conversations from "./domains/messaging/routes/conversations.ts";
-import community from "./domains/community/routes/community.ts";
-import communityAdmin from "./domains/community/routes/community-admin.ts";
-import search from "./domains/query/routes/search.ts";
-import contests from "./domains/contest/routes/contests.ts";
-import trainings from "./domains/catalog/routes/trainings.ts";
-import announcements from "./domains/system/routes/announcements.ts";
-import sse, { contestSse, statsSse } from "./routes/sse.ts";
-import { AppError } from "./lib/errors.ts";
-import { logger } from "./lib/logging.ts";
+import { identityRouter } from "./domains/identity/routes/index.ts";
+import { catalogRouter } from "./domains/catalog/routes/index.ts";
+import { submissionRouter } from "./domains/submission/routes/index.ts";
+import { queryRouter } from "./domains/query/routes/index.ts";
+import { contestRouter } from "./domains/contest/routes/index.ts";
+import { communityRouter } from "./domains/community/routes/index.ts";
+import { messagingRouter } from "./domains/messaging/routes/index.ts";
+import { systemRouter } from "./domains/system/routes/index.ts";
+import submissionSse from "./domains/submission/routes/sse.ts";
+import communitySse from "./domains/community/routes/sse.ts";
+import { AppError } from "./shared/base/errors.ts";
+import { logger } from "./shared/base/logging.ts";
 import { listJudgeImages } from "./domains/system/index.ts";
-import { banlistMiddleware } from "./middleware/banlist.ts";
-import { requestContext } from "./middleware/request-context.ts";
+import { banlistMiddleware } from "./domains/identity/index.ts";
+import { requestContext } from "./shared/middleware/request-context.ts";
 import { getSetting } from "./domains/system/index.ts";
-import { SECONDS_PER_DAY } from "./lib/constants.ts";
+import { SECONDS_PER_DAY } from "./shared/base/constants.ts";
 
 /**
  * 维护模式中间件（PR-2 死开关）。
@@ -154,47 +144,27 @@ export function createApp(): Hono {
   app.use("/api/v1/*", banlistMiddleware);
   app.use("/api/v1/*", maintenanceMode);
 
-  // 注册路由
+  // 注册路由（按域自装配；各域 routes/index.ts 内部保持顺序敏感注释）
   app.route("/", health);
-  app.route("/api/v1/auth", auth);
+  app.route("/api/v1", identityRouter);
+  app.route("/api/v1", catalogRouter);
+  app.route("/api/v1", submissionRouter);
+  app.route("/api/v1", queryRouter);
+  app.route("/api/v1", contestRouter);
+  app.route("/api/v1", communityRouter);
+  app.route("/api/v1", messagingRouter);
+  app.route("/api/v1", systemRouter);
   app.route("/api/v1/admin", admin);
-  // 公告管理：细粒度权限（admin:full_access 通配放行 或 announcement:manage），
-  // 独立于 admin 实例（admin 实例组级 adminMiddleware 仅放行 full_access）
-  app.route("/api/v1/admin/announcements", adminAnnouncements);
-  app.route("/api/v1/admin/trainings", adminTrainings);
-  app.route("/api/v1/tags", tags);
-  app.route("/api/v1/problems", problems);
-  app.route("/api/v1/checkin", checkin);
-  app.route("/api/v1/queue", queue);
-  app.route("/api/v1/submissions", submissions);
-  app.route("/api/v1", selfTests);
-  app.route("/api/v1/users", users);
-  app.route("/api/v1/rankings", rankings);
-  app.route("/api/v1/conversations", conversations);
-  app.route("/api/v1/community", community);
-  // 社区管理路由（/api/v1/community/admin/*）：独立 router，组级
-  // requireCommunityModeration 守卫集中在 community-admin.ts 顶部
-  app.route("/api/v1/community", communityAdmin);
-  app.route("/api/v1/contests", contests);
-  app.route("/api/v1/trainings", trainings);
-  app.route("/api/v1/search", search);
-  // 公告公开路由：必须在 sse 之前注册——sse 实例的全局 authMiddleware
-  // 会拦截所有挂载在其后的路由；公告 SSE 端点 /announcements/events
-  // 注册在本实例内（announcements.ts），位于 /:id 参数路由之前
-  app.route("/api/v1/announcements", announcements);
-  // 评测镜像公开列表（必须在 sse 路由之前注册，避免被 SSE 的 authMiddleware 拦截）
+  // 评测镜像公开列表
   app.get("/api/v1/judge-images", async (c) => {
     const items = await listJudgeImages();
     return c.json({ data: items });
   });
 
-  // 公开站点统计（关于页数据面板，无鉴权，同样必须在 sse 之前注册）
-  app.route("/api/v1", stats);
-
-  // 统计数据 SSE 端点（公开，无需 authMiddleware，必须在 sse 之前注册）
-  app.route("/api/v1", statsSse);
-  app.route("/api/v1", contestSse);
-  app.route("/api/v1", sse);
+  // 带 authMiddleware 通配的 SSE 路由必须放在所有公开路由之后，
+  // 否则其 use("*") 会拦截后续 /api/v1/* 公开端点。
+  app.route("/api/v1", submissionSse);
+  app.route("/api/v1", communitySse);
 
   return app;
 }

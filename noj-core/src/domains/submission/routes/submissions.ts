@@ -13,18 +13,21 @@ import { getSubmissionQueueStatus } from "../services/queue.ts";
 import {
   authMiddleware,
   optionalAuthMiddleware,
-} from "../../../middleware/auth.ts";
-import { checkPermission } from "../../../lib/permissions.ts";
-import { rateLimit } from "../../../middleware/rate-limit.ts";
-import { BadRequestError, NotFoundError } from "../../../lib/errors.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
-import { createFileStream } from "../../../lib/file-stream.ts";
+} from "./../../identity/index.ts";
+import { checkPermission } from "./../../identity/index.ts";
+import { rateLimit } from "../../system/index.ts";
+import {
+  BadRequestError,
+  NotFoundError,
+} from "./../../../shared/base/errors.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
+import { createFileStream } from "./../../../shared/http/file-stream.ts";
 import {
   buildPaginationMeta,
   parsePagination,
-} from "../../../lib/pagination.ts";
-import { SUBMISSION_STATUSES } from "../../../types/index.ts";
-import { enforceSubmissionRateLimit } from "../../../lib/hardening-rate-limit.ts";
+} from "./../../../shared/http/pagination.ts";
+import { SUBMISSION_STATUSES } from "../types/index.ts";
+import { enforceSubmissionRateLimit } from "../../system/index.ts";
 
 // 扩展 Hono 类型，使 c.get("userId") 返回 string | undefined
 // （optionalAuthMiddleware 注入时可能为 undefined；authMiddleware 注入时一定有值）

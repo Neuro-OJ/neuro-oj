@@ -1,12 +1,12 @@
 import { Hono } from "hono";
 import { and, count, eq, sql } from "drizzle-orm";
-import { getDb } from "../../../db/connection.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
 import {
   evaluationResults,
   problems,
   submissions,
   users,
-} from "../../../db/schema.ts";
+} from "./../../../shared/db/schema.ts";
 
 const stats = new Hono();
 

@@ -4,18 +4,23 @@
  */
 import { and, eq } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
-import { getDb } from "../../../db/connection.ts";
-import { oauthAccounts, roles, userRoles, users } from "../../../db/schema.ts";
-import { signToken } from "../../../lib/jwt.ts";
+import { getDb } from "./../../../shared/db/connection.ts";
+import {
+  oauthAccounts,
+  roles,
+  userRoles,
+  users,
+} from "./../../../shared/db/schema.ts";
+import { signToken } from "./security/jwt.ts";
 import {
   BadRequestError,
   ConflictError,
   NotFoundError,
-} from "../../../lib/errors.ts";
-import { isUserAdmin } from "../../../lib/permissions.ts";
+} from "./../../../shared/base/errors.ts";
+import { isUserAdmin } from "./security/permissions.ts";
 import { logAuthEvent } from "../../system/index.ts";
 import { toUserResponse } from "./auth/auth-register.ts";
-import type { UserResponse } from "../../../types/auth.ts";
+import type { UserResponse } from "./../types/auth.ts";
 
 /** 支持的 OAuth 身份提供商。 */
 export type OAuthProviderId = "github" | "oidc";
@@ -710,7 +715,7 @@ export async function linkPasswordMatches(
     users,
   ).where(eq(users.id, userId)).limit(1);
   if (!user?.password_hash) return;
-  const { comparePassword } = await import("../../../lib/password.ts");
+  const { comparePassword } = await import("./security/password.ts");
   if (!(await comparePassword(password, user.password_hash))) {
     throw new BadRequestError("密码确认失败", "PASSWORD_CONFIRMATION_FAILED");
   }

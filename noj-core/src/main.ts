@@ -1,29 +1,35 @@
 import { createApp } from "./app.ts";
-import { closeDbForShutdown } from "./db/connection.ts";
-import { runMigrations } from "./db/migrate.ts";
-import { startQueueSweeper } from "./mq/sweeper.ts";
-import { closeRedisForShutdown, connectRedis } from "./mq/connection.ts";
+import { closeDbForShutdown } from "./shared/db/connection.ts";
+import { runMigrations } from "./shared/db/migrate.ts";
+import { startQueueSweeper } from "./domains/submission/index.ts";
+import { closeRedisForShutdown, connectRedis } from "./shared/mq/connection.ts";
 import {
   requestResultConsumerShutdown,
   startResultConsumerWithRetry,
-} from "./mq/consumer.ts";
-import { initEventSubscriber } from "./lib/event-bus.ts";
-import { snapshotEnv } from "./lib/env-snapshot.ts";
-import { validateRegistry } from "./lib/settings-registry.ts";
+} from "./domains/submission/index.ts";
+import { initEventSubscriber } from "./shared/sse/event-bus.ts";
+import { snapshotEnv } from "./domains/system/index.ts";
+import { validateRegistry } from "./shared/config/settings-registry.ts";
+import { createReviewConsumer } from "./domains/content-review/index.ts";
 import { ensureRootUser } from "./domains/identity/index.ts";
 import { ensureRbacSeeds } from "./domains/system/index.ts";
-import { getStorageProvider } from "./lib/storage/mod.ts";
-import { getSetting, initSystemSettings } from "./domains/system/index.ts";
+import { getStorageProvider } from "./domains/system/index.ts";
+import {
+  getSetting,
+  initSystemSettings,
+  listOrphanedBootstrapRows,
+  listRuntimeEnvConflicts,
+} from "./domains/system/index.ts";
 import { startAuditLogRetentionTask } from "./domains/system/index.ts";
-import { logger } from "./lib/logging.ts";
+import { logger } from "./shared/base/logging.ts";
 import {
   assertProductionConfig,
   type ProductionConfig,
-} from "./lib/production-config.ts";
+} from "./shared/config/production-config.ts";
 import {
   MIN_JWT_SECRET_LENGTH,
   MIN_TFA_ENCRYPTION_KEY_LENGTH,
-} from "./lib/constants.ts";
+} from "./shared/base/constants.ts";
 
 const app = createApp();
 
@@ -144,6 +150,46 @@ async function main() {
   // 一次性读取 env-only 设置项到内存 Map，admin 面板只读展示。
   snapshotEnv();
 
+  // 提示 runtime（DB-owned）项同时存在 DB 值与 env 兜底：
+  // 当前 DB 值优先，env 被遮蔽；建议移除 .env 对应变量以避免歧义。
+  try {
+    const conflicts = listRuntimeEnvConflicts();
+    if (conflicts.length > 0) {
+      logger.warn(
+        `以下 ${conflicts.length} 项 runtime 配置同时存在 DB 值与 env 兜底，` +
+          "当前 DB 值优先；建议移除 .env 中对应变量以避免歧义：",
+        {
+          keys: conflicts.map((c) => `${c.key} (${c.envKey})`),
+        },
+      );
+    }
+  } catch (err) {
+    // 检测失败不阻断启动（仅提示）
+    logger.warn("runtime env/DB 共存冲突检测失败", { err });
+  }
+
+  // 提示 bootstrap（env-owned）项在 DB 中的残留旧值：
+  // 这些行已不参与取值（读取走 env），仅在管理后台可一键清理。
+  try {
+    const orphans = await listOrphanedBootstrapRows();
+    if (orphans.length > 0) {
+      logger.warn(
+        `以下 ${orphans.length} 项已由环境变量接管，DB 旧值不再生效，` +
+          "可到管理后台「环境配置」一键清理：",
+        {
+          keys: orphans.map((r) =>
+            `${r.key}（更新于 ${r.updated_at ?? "?"}，更新人 ${
+              r.updated_by ?? "?"
+            }）`
+          ),
+        },
+      );
+    }
+  } catch (err) {
+    // 残留检测失败不阻断启动（仅提示）
+    logger.warn("bootstrap 残留 DB 行检测失败", { err });
+  }
+
   // Issue #330：生产配置必须在 HTTP 监听前完成 fail-fast 校验。
   await fatalStep("生产配置校验", () => {
     assertProductionConfig(buildProductionConfig());
@@ -170,6 +216,9 @@ async function main() {
 
   // 启动评测结果消费者（后台运行，带自动重连，不阻塞 HTTP）
   void startResultConsumerWithRetry();
+
+  // 启动私信异步内容审核消费者（issue #413；Redis 不可用时自动重试，不阻断启动）
+  void createReviewConsumer()();
 
   // 启动 processing 超时重投 + pending 提交恢复 sweeper
   startQueueSweeper();

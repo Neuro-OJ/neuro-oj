@@ -1,16 +1,16 @@
 import { and, eq, ne, or, sql } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityComments,
   communityModerationActions,
   communityPosts,
   users,
-} from "../../../../db/schema.ts";
+} from "./../../../../shared/db/schema.ts";
 import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
-} from "../../../../lib/errors.ts";
+} from "./../../../../shared/base/errors.ts";
 import { logAudit } from "../../../system/index.ts";
 import { createNotification } from "../notifications.ts";
 import {
@@ -20,7 +20,8 @@ import {
 import { getPost } from "./community-post-crud.ts";
 import { publicationStatus } from "./community-post-common.ts";
 import { authorProjection } from "./community-post-select.ts";
-import { nowIso } from "../../../../lib/dates.ts";
+import { reviewUgcContent } from "./community-review.ts";
+import { nowIso } from "./../../../../shared/base/dates.ts";
 
 /** 审核/处置评论状态：批准待审评论时补发回复通知（原 pending 创建时不发）。 */
 export async function changeCommentStatus(
@@ -109,6 +110,7 @@ export async function createComment(
   postId: string,
   contentInput: string,
   parentId?: string,
+  moderator = false,
 ) {
   assertCommunityEnabled("comments_enabled");
   const content = contentInput.trim();
@@ -144,6 +146,15 @@ export async function createComment(
     created_at: createdAt,
     updated_at: createdAt,
   };
+  // 内容合规同步审核（issue #413）：高置信违规直接拒绝发布
+  await reviewUgcContent({
+    content_type: "comment",
+    target_id: comment.id,
+    content,
+    author_id: authorId,
+    moderator,
+    finalStatus: status === "pending" ? "pending" : "published",
+  });
   await db.insert(communityComments).values(comment);
   const recipient = parentId
     ? (await db.select({ author_id: communityComments.author_id }).from(
@@ -248,6 +259,15 @@ export async function updateComment(
   if (!content || content.length > getCommunityConfig().comment_max_length) {
     throw new ValidationError("评论内容无效或过长");
   }
+  // 内容合规同步审核（issue #413）：编辑后仍公开的评论高置信违规时拒绝保存
+  await reviewUgcContent({
+    content_type: "comment",
+    target_id: commentId,
+    content,
+    author_id: actorId,
+    moderator,
+    finalStatus: current.status === "pending" ? "pending" : "published",
+  });
   const rows = await db.update(communityComments).set({
     content,
     updated_at: nowIso(),

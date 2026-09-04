@@ -1,13 +1,16 @@
 /** 为尚未设置本地密码的 OAuth 用户补设密码。 */
 
 import { eq } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
-import { users } from "../../../../db/schema.ts";
-import { hashPassword } from "../../../../lib/password.ts";
-import { isUserAdmin } from "../../../../lib/permissions.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import { users } from "./../../../../shared/db/schema.ts";
+import { hashPassword } from "./../security/password.ts";
+import { isUserAdmin } from "./../security/permissions.ts";
 import { logAuthEvent } from "../../../system/index.ts";
-import { BadRequestError, UnauthorizedError } from "../../../../lib/errors.ts";
-import type { UserResponse } from "../../../../types/auth.ts";
+import {
+  BadRequestError,
+  UnauthorizedError,
+} from "./../../../../shared/base/errors.ts";
+import type { UserResponse } from "./../../types/auth.ts";
 import { toUserResponse, validatePasswordStrength } from "./auth-register.ts";
 
 /**

@@ -1,18 +1,15 @@
 // ── 头像（issue #229）────────────────────────────────────────
 import { and, eq, ne } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
-import { users } from "../../../../db/schema.ts";
-import { NotFoundError } from "../../../../lib/errors.ts";
-import { getStorageProvider } from "../../../../lib/storage/factory.ts";
-import {
-  isStorageUrl,
-  parseStorageUrl,
-} from "../../../../lib/storage/types.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import { users } from "./../../../../shared/db/schema.ts";
+import { NotFoundError } from "./../../../../shared/base/errors.ts";
+import { getStorageProvider } from "./../../../system/index.ts";
+import { isStorageUrl, parseStorageUrl } from "./../../../system/index.ts";
 import {
   IMAGE_MAGIC_MIME,
   type ImageFile,
   validateImageFile,
-} from "../../../../lib/image-validation.ts";
+} from "./../../../../shared/security/image-validation.ts";
 
 /** 头像大小上限（2MB） */
 export const MAX_AVATAR_SIZE = 2 * 1024 * 1024;

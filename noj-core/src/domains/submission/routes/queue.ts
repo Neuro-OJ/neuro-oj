@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { authMiddleware } from "../../../middleware/auth.ts";
+import { authMiddleware } from "./../../identity/index.ts";
 import { getQueueOverview } from "../services/queue.ts";
 
 const router = new Hono();

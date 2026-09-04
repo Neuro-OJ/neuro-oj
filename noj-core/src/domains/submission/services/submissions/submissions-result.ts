@@ -9,15 +9,24 @@
  */
 
 import { and, eq, ne, sql } from "drizzle-orm";
-import { evaluationResults, submissions } from "../../../../db/schema.ts";
-import { BadRequestError, NotFoundError } from "../../../../lib/errors.ts";
-import { getDb } from "../../../../db/connection.ts";
-import { getStorageProvider } from "../../../../lib/storage/mod.ts";
-import type { JudgeResult, SubmissionStatus } from "../../../../types/index.ts";
+import {
+  evaluationResults,
+  submissions,
+} from "./../../../../shared/db/schema.ts";
+import {
+  BadRequestError,
+  NotFoundError,
+} from "./../../../../shared/base/errors.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import { getStorageProvider } from "./../../../system/index.ts";
+import type { JudgeResult, SubmissionStatus } from "../../types/index.ts";
 import { applyNewResult } from "../../../query/index.ts";
 import { refreshRankingsView } from "../../../query/index.ts";
-import { logger } from "../../../../lib/logging.ts";
-import { Channels, publishSseEvent } from "../../../../lib/event-bus.ts";
+import { logger } from "./../../../../shared/base/logging.ts";
+import {
+  Channels,
+  publishSseEvent,
+} from "./../../../../shared/sse/event-bus.ts";
 import { createActivity } from "../../../community/index.ts";
 
 // 允许的状态转换

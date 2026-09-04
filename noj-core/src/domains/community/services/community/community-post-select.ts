@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { communityPosts, users } from "../../../../db/schema.ts";
+import { communityPosts, users } from "./../../../../shared/db/schema.ts";
 
 /**
  * 社区内容作者投影（id / username / avatar_url）。

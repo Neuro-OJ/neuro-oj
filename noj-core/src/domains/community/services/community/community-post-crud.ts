@@ -1,26 +1,26 @@
 import { desc, eq, sql } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
 import {
   communityBoards,
   communityPosts,
   problems,
   userRoles,
   users,
-} from "../../../../db/schema.ts";
+} from "./../../../../shared/db/schema.ts";
 import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
-} from "../../../../lib/errors.ts";
-import { nowIso } from "../../../../lib/dates.ts";
+} from "./../../../../shared/base/errors.ts";
+import { nowIso } from "./../../../../shared/base/dates.ts";
 import {
   generatePublicId,
   resolvePublicId,
-} from "../../../../lib/public-id.ts";
+} from "./../../../../shared/security/public-id.ts";
 import type {
   CommunityPostInput,
   CommunityPostType,
-} from "../../../../types/community.ts";
+} from "./../../types/community.ts";
 import {
   assertCommunityEnabled,
   getCommunityConfig,
@@ -37,6 +37,7 @@ import {
   authorProjection,
   postStatsProjection,
 } from "./community-post-select.ts";
+import { reviewUgcContent } from "./community-review.ts";
 
 /**
  * 校验题解发布门槛：若配置要求通过题目，则作者必须已通过对应题目。
@@ -171,6 +172,16 @@ export async function createPost(
     created_at: createdAt,
     updated_at: createdAt,
   };
+  // 内容合规同步审核（issue #413）：高置信违规直接拒绝发布
+  await reviewUgcContent({
+    content_type: "post",
+    target_id: post.id,
+    title: title ?? undefined,
+    content,
+    author_id: authorId,
+    moderator,
+    finalStatus: status === "pending" ? "pending" : "published",
+  });
   const db = getDb();
   await db.insert(communityPosts).values(post);
   if (status === "published" && input.type === "solution") {
@@ -277,6 +288,16 @@ export async function updatePost(
     : config.post_max_length;
   if (content.length > maxLength) throw new ValidationError("内容超过长度限制");
   if (title && title.length > 200) throw new ValidationError("标题过长");
+  // 内容合规同步审核（issue #413）：编辑后仍公开的内容高置信违规时拒绝保存
+  await reviewUgcContent({
+    content_type: "post",
+    target_id: postId,
+    title: title ?? undefined,
+    content,
+    author_id: actorId,
+    moderator,
+    finalStatus: current.post.status === "pending" ? "pending" : "published",
+  });
   const db = getDb();
   const rows = await db.update(communityPosts).set({
     content,

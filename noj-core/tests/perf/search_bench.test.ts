@@ -1,7 +1,7 @@
 import { assert } from "jsr:@std/assert@^1";
 import { searchProblems, searchUsers } from "../../src/domains/query/index.ts";
-import { getDb, resetDbForTest } from "../../src/db/connection.ts";
-import { problems, users } from "../../src/db/schema.ts";
+import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import { problems, users } from "./../../src/shared/db/schema.ts";
 import { sql } from "drizzle-orm";
 
 // 性能基准默认不跑：seed 100k problems + 10k users 在每次 PR 上都执行

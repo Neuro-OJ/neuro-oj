@@ -20,3 +20,4 @@ export {
   replyToClarification,
 } from "./services/contest-clarifications.ts";
 export { getContestRanking } from "./services/contest-ranking.ts";
+export * from "./types/contests.ts";

@@ -8,7 +8,7 @@
  * 此文件为显式引导入口（用于 00_migrate_test.ts 等需要明确可见 bootstrap 的场景）。
  */
 
-import { ensurePGliteSchemaForTest } from "../src/db/connection.ts";
+import { ensurePGliteSchemaForTest } from "./../src/shared/db/connection.ts";
 
 /**
  * 判断当前是否为 PGlite 模式（DATABASE_URL 未设置）。

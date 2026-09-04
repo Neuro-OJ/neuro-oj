@@ -1,23 +1,23 @@
 import { type Context, Hono } from "hono";
 import busboy from "busboy";
 import { Readable } from "node:stream";
-import type { OptionalAuthEnv } from "../../../middleware/auth.ts";
+import type { OptionalAuthEnv } from "./../../identity/index.ts";
 import {
   authMiddleware,
   optionalAuthMiddleware,
-} from "../../../middleware/auth.ts";
+} from "./../../identity/index.ts";
 import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from "../../../lib/errors.ts";
+} from "./../../../shared/base/errors.ts";
 import {
   buildPaginationMeta,
   parsePagination,
-} from "../../../lib/pagination.ts";
-import { parseJsonBody } from "../../../lib/request.ts";
-import { createFileStream } from "../../../lib/file-stream.ts";
-import { checkPermission } from "../../../lib/permissions.ts";
+} from "./../../../shared/http/pagination.ts";
+import { parseJsonBody } from "./../../../shared/http/request.ts";
+import { createFileStream } from "./../../../shared/http/file-stream.ts";
+import { checkPermission } from "./../../identity/index.ts";
 import { getContestRanking } from "../services/contest-ranking.ts";
 import {
   createClarification,
@@ -38,9 +38,9 @@ import {
   createSubmission,
   listSubmissions,
 } from "../../submission/index.ts";
-import { isValidContestType } from "../../../types/contests.ts";
+import { isValidContestType } from "./../types/contests.ts";
 import { createActivity } from "../../community/index.ts";
-import { enforceContestSubmissionRateLimit } from "../../../lib/hardening-rate-limit.ts";
+import { enforceContestSubmissionRateLimit } from "../../system/index.ts";
 
 const contests = new Hono<OptionalAuthEnv>();
 const MAX_CODE_LENGTH = 100 * 1024;

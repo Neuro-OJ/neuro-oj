@@ -132,6 +132,9 @@ neuro-oj/
 
 部署与运维统一使用 `noj-cli`（旧 `scripts/dev/devtool.sh` 已移除）：
 
+生产环境使用 `setup.sh` 安装 CLI，再执行 `noj-cli status/update/logs/...`，配置仍为 `.env.prod`。
+下面的 `deploy/maintain` 命令使用独立 JSON 配置，供源码开发和实验性编排使用。
+
 ```bash
 cd noj-cli
 deno run -A src/cli.ts doctor

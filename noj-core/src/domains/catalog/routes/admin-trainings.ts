@@ -7,18 +7,21 @@
  */
 
 import { Hono } from "hono";
-import { type AuthEnv, authMiddleware } from "../../../middleware/auth.ts";
-import { assertObjectBody, parseJsonBody } from "../../../lib/request.ts";
-import { parsePagination } from "../../../lib/pagination.ts";
-import { assertPermission, checkPermission } from "../../../lib/permissions.ts";
-import { withActorContext } from "../../../lib/requestContext.ts";
+import { type AuthEnv, authMiddleware } from "./../../identity/index.ts";
+import {
+  assertObjectBody,
+  parseJsonBody,
+} from "./../../../shared/http/request.ts";
+import { parsePagination } from "./../../../shared/http/pagination.ts";
+import { assertPermission, checkPermission } from "./../../identity/index.ts";
+import { withActorContext } from "../../system/index.ts";
 import {
   deleteTraining,
   listAllTrainings,
   resolveTrainingId,
   updateTraining,
 } from "../services/trainings.ts";
-import type { UpdateTrainingInput } from "../../../types/trainings.ts";
+import type { UpdateTrainingInput } from "./../types/trainings.ts";
 
 const router = new Hono<AuthEnv>();
 

@@ -1,13 +1,14 @@
-# CLI 初始化
+# 服务端 CLI 初始化
 
-`noj-server` 镜像内包含编译后的管理 CLI（`/app/bin/noj`），用于数据库迁移、系统初始化、管理员引导与题目包操作。
+这里的 CLI 是 `noj-server` 镜像内置的服务端管理命令（`/app/bin/noj`），用于数据库迁移、系统初始化、管理员引导与题目包操作。
+它与宿主机的 `noj-cli` 相互独立；后者由一键安装器从 Release 下载，负责生产部署和运维。
 
 ## 生产环境执行方式
 
-生产环境不直接使用源码或 `deno task`，而是通过 Docker Compose 在 `noj-server` 镜像内执行 CLI：
+生产环境不直接使用源码或 `deno task`，而是通过部署目录中的 Docker Compose，在 `noj-server` 镜像内执行 CLI：
 
 ```bash
-docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
+docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
   --entrypoint /app/bin/noj <子命令>
 ```
 
@@ -15,23 +16,23 @@ docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
 
 ```bash
 # 数据库迁移
-docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
+docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
   --entrypoint /app/bin/noj db migrate
 
 # 系统基础数据：root + RBAC + 评测镜像白名单 + 标签
-docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
+docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
   --entrypoint /app/bin/noj init system
 
 # 管理员引导（从部署配置或环境变量读取 ADMIN_EMAIL / ADMIN_PASS）
-docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
+docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
   --entrypoint /app/bin/noj bootstrap admin
 
 # 构建统一题目包（需要在镜像内包含 data/problems-src）
-docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
+docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
   --entrypoint /app/bin/noj problems build
 
 # 导入统一题目包
-docker compose -f /opt/neuro-oj/docker-compose.noj.yml run --rm \
+docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
   --entrypoint /app/bin/noj problems import
 ```
 

@@ -1,14 +1,14 @@
 import { and, eq, sql } from "drizzle-orm";
-import { getDb } from "../../../../db/connection.ts";
-import { users } from "../../../../db/schema.ts";
+import { getDb } from "./../../../../shared/db/connection.ts";
+import { users } from "./../../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
   ValidationError,
-} from "../../../../lib/errors.ts";
-import { ROOT_USER_ID } from "../../../../lib/constants.ts";
+} from "./../../../../shared/base/errors.ts";
+import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 
 const BIO_MAX_LENGTH = 5000;
 

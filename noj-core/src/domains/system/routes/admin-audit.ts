@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import type { AuthEnv } from "../../../middleware/auth.ts";
+import type { AuthEnv } from "./../../identity/index.ts";
 import { listAuditLogs } from "../services/audit-log.ts";
-import type { AuditAction } from "../../../types/audit-log.ts";
+import type { AuditAction } from "./../types/audit-log.ts";
 
 /**
  * 管理端审计日志路由（issue #101，挂载前缀 /api/v1/admin，见 admin/index.ts）。

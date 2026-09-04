@@ -10,11 +10,14 @@ import {
   type AuthEnv,
   authMiddleware,
   optionalAuthMiddleware,
-} from "../../../middleware/auth.ts";
-import { assertObjectBody, parseJsonBody } from "../../../lib/request.ts";
-import { parsePagination } from "../../../lib/pagination.ts";
-import { assertPermission, checkPermission } from "../../../lib/permissions.ts";
-import { BadRequestError } from "../../../lib/errors.ts";
+} from "./../../identity/index.ts";
+import {
+  assertObjectBody,
+  parseJsonBody,
+} from "./../../../shared/http/request.ts";
+import { parsePagination } from "./../../../shared/http/pagination.ts";
+import { assertPermission, checkPermission } from "./../../identity/index.ts";
+import { BadRequestError } from "./../../../shared/base/errors.ts";
 import {
   addTrainingProblem,
   createTraining,
@@ -33,7 +36,7 @@ import {
 import type {
   CreateTrainingInput,
   UpdateTrainingInput,
-} from "../../../types/trainings.ts";
+} from "./../types/trainings.ts";
 
 const router = new Hono<AuthEnv>();
 

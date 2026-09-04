@@ -8,7 +8,8 @@
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
     "check": "deno fmt --check && deno lint && deno check src/mod.ts",
-    "build:cli": "deno compile -A --no-check --output bin/noj-cli-linux-amd64 src/cli.ts"
+    "build:cli": "deno compile -A --frozen --target x86_64-unknown-linux-gnu --output bin/noj-cli-linux-amd64 src/cli.ts",
+    "test:production": "bash ../scripts/deploy/test-noj.sh && bash ../scripts/deploy/test-install.sh && bash ../scripts/deploy/test-deploy.sh && bash ../scripts/deploy/test-backup.sh"
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@^1",

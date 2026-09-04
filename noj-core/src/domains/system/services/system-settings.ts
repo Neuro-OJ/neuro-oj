@@ -16,21 +16,24 @@
  * 审计日志：已迁移至 logAudit()（issue #101）。
  */
 
-import { eq } from "drizzle-orm";
-import { getDb, registerDbResetCallback } from "../../../db/connection.ts";
-import { systemSettings } from "../../../db/schema.ts";
-import { ValidationError } from "../../../lib/errors.ts";
+import { eq, inArray } from "drizzle-orm";
+import {
+  getDb,
+  registerDbResetCallback,
+} from "../../../shared/db/connection.ts";
+import { systemSettings } from "../../../shared/db/schema.ts";
+import { ValidationError } from "../../../shared/base/errors.ts";
 import { logAudit } from "./audit-log.ts";
+import { getEnvSnapshotValue } from "./env-snapshot.ts";
 import {
-  ENV_ONLY_DEFINITIONS,
-  getEnvSnapshotValue,
-} from "../../../lib/env-snapshot.ts";
-import {
+  CONFIG_DEFINITIONS,
+  type ConfigScope,
   findDefinition,
-  SETTING_DEFINITIONS,
+  isBootstrap,
   type SettingCategory,
+  type SettingDefinition,
   type SettingType,
-} from "../../../lib/settings-registry.ts";
+} from "../../../shared/config/settings-registry.ts";
 
 /** 单条设置项的解析后值（含来源溯源） */
 export interface SettingValue {
@@ -55,6 +58,8 @@ export interface SystemSettingListItem {
   /** 原始 JSON 编码字符串（调试用，前端不展示明文） */
   raw_value: string;
   source: "db" | "env" | "default";
+  /** 生命周期归属：runtime=DB 可热改；bootstrap=env 启动期定型只读 */
+  scope: ConfigScope;
   is_secret: boolean;
   description: string;
   updated_at: string | null;
@@ -66,6 +71,16 @@ export interface SystemSettingListItem {
   max?: number;
   /** 修改后需重启 noj-core 才能生效 */
   needsRestart?: boolean;
+  /** bootstrap 项在 DB 中是否存在残留旧值（被忽略，可一键清理） */
+  db_orphaned?: boolean;
+  /** runtime 项：对应的 env 兜底键名（envFallback） */
+  env_key?: string;
+  /** runtime 项：env 兜底当前是否非空存在 */
+  env_present?: boolean;
+  /** runtime 项：DB 是否已写入该键 */
+  db_present?: boolean;
+  /** runtime 项：DB 与 env 同时存在（当前 DB 值优先） */
+  conflict?: boolean;
 }
 
 /** module-level 缓存：key -> 解析后的值 */
@@ -219,6 +234,9 @@ export async function initSystemSettings(): Promise<void> {
 
   const newCache = new Map<string, SettingValue>();
   for (const row of rows) {
+    // bootstrap（env-owned）项忽略 DB 旧值：不缓存，读取走 env 快照
+    if (isBootstrap(row.key)) continue;
+
     let decoded: unknown;
     try {
       decoded = JSON.parse(row.value);
@@ -242,13 +260,24 @@ export async function initSystemSettings(): Promise<void> {
 // ─── 读路径 ─────────────────────────────────────────────────
 
 /**
- * 读单条：DB → env → registry.default 兜底链。
- * - DB 命中：source='db'，返回 DB 值
- * - DB miss + env 命中：source='env'，返回 env 值
- * - DB miss + env miss + default 存在：source='default'，返回 default
- * - 都不存在：返回 null
+ * 读单条：按 scope 分支。
+ * - runtime：DB → env 兜底 → registry.default 兜底链；
+ *   - DB 命中：source='db'，返回 DB 值
+ *   - DB miss + env 命中：source='env'，返回 env 值
+ *   - DB miss + env miss + default 存在：source='default'，返回 default
+ * - bootstrap：env 快照 → default（不读 DB，DB 残留旧值忽略）；
+ *   - env 命中：source='env'，返回 env 值（按 type 解析）
+ *   - env miss + default 存在：source='default'
+ *   - 都不存在：返回 null
  */
 export function getSetting(key: string): SettingValue | null {
+  const def = findDefinition(key);
+
+  // bootstrap（env-owned）：跳过 DB 缓存，直接读 env 快照
+  if (def?.scope === "bootstrap") {
+    return getSettingFromEnv(def);
+  }
+
   // 1. DB 缓存
   const cached = cache.get(key);
   if (cached) {
@@ -257,38 +286,8 @@ export function getSetting(key: string): SettingValue | null {
 
   // 2. env 兜底
   // envFallback 是注册表里声明的键名（与 key 可能不同）
-  const def = findDefinition(key);
   if (def) {
-    const envKey = def.envFallback;
-    // 优先走启动期快照（性能最优），快照中不存在时回退到实时 Deno.env.get
-    // （兼容测试/运维中环境变量在快照后设置或未进入 ENV_ONLY_DEFINITIONS 的场景）
-    const envValue = getEnvSnapshotValue(envKey) ?? Deno.env.get(envKey);
-    if (envValue !== undefined && envValue !== "") {
-      // 尝试按 type 解析
-      let decoded: unknown = envValue;
-      if (def.type === "boolean") {
-        decoded = envValue === "true" || envValue === "1";
-      } else if (def.type === "integer") {
-        const n = parseInt(envValue, 10);
-        decoded = Number.isFinite(n) ? n : envValue;
-      }
-      return {
-        value: decoded,
-        raw: JSON.stringify(decoded),
-        source: "env",
-        updatedAt: null,
-        updatedBy: null,
-      };
-    }
-
-    // 3. registry default
-    return {
-      value: def.default,
-      raw: JSON.stringify(def.default),
-      source: "default",
-      updatedAt: null,
-      updatedBy: null,
-    };
+    return getSettingFromEnv(def) ?? fallbackToDefault(def);
   }
 
   // 非注册表 key：env 直接读
@@ -306,48 +305,109 @@ export function getSetting(key: string): SettingValue | null {
   return null;
 }
 
+/** 从 env 快照读取（按注册表 type 解析），env 未设置时返回 null */
+function getSettingFromEnv(
+  def: SettingDefinition,
+): SettingValue | null {
+  const envKey = def.scope === "bootstrap" ? def.envKey! : def.envFallback!;
+  // 优先走启动期快照（性能最优），快照中不存在时回退到实时 Deno.env.get
+  // （兼容测试/运维中环境变量在快照后设置或未进入快照白名单的场景）
+  const envValue = getEnvSnapshotValue(envKey) ?? Deno.env.get(envKey);
+  if (envValue !== undefined && envValue !== "") {
+    // 尝试按 type 解析
+    let decoded: unknown = envValue;
+    if (def.type === "boolean") {
+      decoded = envValue === "true" || envValue === "1";
+    } else if (def.type === "integer") {
+      const n = parseInt(envValue, 10);
+      decoded = Number.isFinite(n) ? n : envValue;
+    }
+    return {
+      value: decoded,
+      raw: JSON.stringify(decoded),
+      source: "env",
+      updatedAt: null,
+      updatedBy: null,
+    };
+  }
+  return null;
+}
+
+/** 回退到注册表 default（无 default 时返回 null） */
+function fallbackToDefault(def: SettingDefinition): SettingValue | null {
+  if (def.default === undefined) return null;
+  return {
+    value: def.default,
+    raw: JSON.stringify(def.default),
+    source: "default",
+    updatedAt: null,
+    updatedBy: null,
+  };
+}
+
 /**
- * 列出所有设置项（DB-backed 5 项 + env-only N 项）。
+ * 列出所有可见配置项（runtime + bootstrap）。
  * 敏感字段在 effective_value 位置返回掩码后的字符串。
+ *
+ * - runtime：getSetting()（DB → env 兜底 → default），必返回；
+ * - bootstrap：env 快照（未设置时返回 null 值、source=default，后台显示"未配置"）。
  */
 export async function listSettings(): Promise<SystemSettingListItem[]> {
   const items: SystemSettingListItem[] = [];
 
-  // 1. DB-backed 设置项
-  for (const def of SETTING_DEFINITIONS) {
-    const val = getSetting(def.key);
-    if (!val) continue; // 不应发生（registry default 兜底）
+  // 预取 bootstrap 残留行（key 集合），用于标记 db_orphaned
+  const orphans = await listOrphanedBootstrapRows();
+  const orphanedKeys = new Set(orphans.map((r) => r.key));
 
-    // 后端脱敏：敏感字段在 API 响应中不暴露完整内容
-    const sanitized = def.is_secret ? maskSecret(val.value) : val.value;
-    const rawSanitized = def.is_secret ? JSON.stringify(sanitized) : val.raw;
+  for (const def of CONFIG_DEFINITIONS) {
+    if (def.visible === false) continue; // 开发/测试专用键不展示
 
-    items.push({
-      key: def.key,
-      type: def.type,
-      effective_value: sanitized,
-      raw_value: rawSanitized,
-      source: val.source,
-      is_secret: def.is_secret,
-      description: def.description,
-      updated_at: val.updatedAt,
-      updated_by: val.updatedBy,
-      category: def.category,
-      min: def.min,
-      max: def.max,
-      needsRestart: def.needsRestart,
-    });
-  }
+    if (def.scope === "runtime") {
+      const val = getSetting(def.key);
+      if (!val) continue; // 不应发生（registry default 兜底）
 
-  // 2. env-only 设置项
-  for (const def of ENV_ONLY_DEFINITIONS) {
-    const envVal = getEnvSnapshotValue(def.key);
-    if (envVal === undefined) continue; // 未设置不展示
+      // 后端脱敏：敏感字段在 API 响应中不暴露完整内容
+      const sanitized = def.is_secret ? maskSecret(val.value) : val.value;
+      const rawSanitized = def.is_secret ? JSON.stringify(sanitized) : val.raw;
+
+      const envPresent = def.envFallback
+        ? getSettingFromEnv(def) !== null
+        : false;
+      const dbPresent = val.source === "db";
+
+      items.push({
+        key: def.key,
+        type: def.type,
+        effective_value: sanitized,
+        raw_value: rawSanitized,
+        source: val.source,
+        is_secret: def.is_secret,
+        description: def.description,
+        updated_at: val.updatedAt,
+        updated_by: val.updatedBy,
+        category: def.category,
+        scope: def.scope,
+        min: def.min,
+        max: def.max,
+        needsRestart: def.needsRestart,
+        env_key: def.envFallback,
+        env_present: envPresent,
+        db_present: dbPresent,
+        conflict: dbPresent && envPresent,
+      });
+      continue;
+    }
+
+    // bootstrap：读 env 快照（envKey），未设置也返回（显示"未配置"）
+    const envVal = getEnvSnapshotValue(def.envKey!);
 
     // 后端脱敏：敏感值不在 API 响应中暴露完整内容
-    let sanitized: string;
+    let sanitized: unknown;
     let rawSanitized: string;
-    if (URL_CREDENTIAL_KEYS.has(def.key)) {
+    if (envVal === undefined) {
+      sanitized = null;
+      rawSanitized = "null";
+    } else if (URL_CREDENTIAL_KEYS.has(def.key)) {
       // URL 凭据：仅移除 user:password@，保留协议+主机+路径
       sanitized = stripUrlCredentials(envVal);
       rawSanitized = JSON.stringify(sanitized);
@@ -366,19 +426,49 @@ export async function listSettings(): Promise<SystemSettingListItem[]> {
 
     items.push({
       key: def.key,
-      type: "string",
+      type: def.type,
       effective_value: sanitized,
       raw_value: rawSanitized,
-      source: "env",
+      source: envVal === undefined ? "default" : "env",
       is_secret: def.is_secret,
       description: def.description,
       updated_at: null,
       updated_by: null,
       category: def.category,
+      scope: def.scope,
+      db_orphaned: orphanedKeys.has(def.key),
     });
   }
 
   return items;
+}
+
+// ─── runtime env/DB 共存检测 ────────────────────────────────
+
+/** 单条 runtime 共存冲突信息（不包含值，避免敏感信息泄露） */
+export interface RuntimeEnvConflict {
+  key: string;
+  envKey: string;
+}
+
+/**
+ * 检测 runtime 项 DB 与 env 兜底同时存在的情况。
+ *
+ * 语义：DB 有写入值且 envFallback 非空时，当前实际生效的是 DB 值，
+ * env 被完全遮蔽，容易造成“改了 .env 不生效”的歧义。
+ * 仅用于启动日志与后台提示，不改变任何读取/写入行为。
+ */
+export function listRuntimeEnvConflicts(): RuntimeEnvConflict[] {
+  const conflicts: RuntimeEnvConflict[] = [];
+  for (const def of CONFIG_DEFINITIONS) {
+    if (def.scope !== "runtime" || def.visible === false) continue;
+    if (!def.envFallback) continue;
+    if (!cache.has(def.key)) continue;
+    if (getSettingFromEnv(def) !== null) {
+      conflicts.push({ key: def.key, envKey: def.envFallback });
+    }
+  }
+  return conflicts;
 }
 
 // ─── 写路径 ─────────────────────────────────────────────────
@@ -400,6 +490,13 @@ export async function updateSetting(
   // deno-lint-ignore no-explicit-any
   tx?: any,
 ): Promise<SystemSettingListItem> {
+  // bootstrap（env-owned）项不可经后台写入：配置归 .env 管理，改后需重启
+  if (isBootstrap(key)) {
+    throw new ValidationError(
+      `${key} 由环境变量管理（bootstrap），请修改 .env 后重启 noj-core`,
+    );
+  }
+
   const validation = validateValueType(key, value);
   if (!validation.ok) {
     throw new ValidationError(validation.message);
@@ -449,6 +546,7 @@ export async function updateSetting(
       updated_at: now,
       updated_by: actorId,
       category: def.category,
+      scope: def.scope,
     };
   }
 
@@ -486,6 +584,7 @@ export async function updateSetting(
     updated_at: now,
     updated_by: actorId,
     category: def.category,
+    scope: def.scope,
   };
 }
 
@@ -571,4 +670,72 @@ export async function reloadSingleKey(key: string): Promise<void> {
 export function _resetSystemSettingsForTest(): void {
   cache = new Map();
   _initialized = false;
+}
+
+// ─── bootstrap 残留 DB 行处理 ───────────────────────────────
+
+/**
+ * 列出 bootstrap（env-owned）项在 DB 中的残留行。
+ * 这些行已不参与取值（读取走 env），仅用于启动日志提示与后台"清理残留"。
+ */
+export async function listOrphanedBootstrapRows(): Promise<
+  { key: string; updated_at: string | null; updated_by: string | null }[]
+> {
+  const db = getDb();
+  const bootstrapKeys = CONFIG_DEFINITIONS
+    .filter((d) => d.scope === "bootstrap")
+    .map((d) => d.key);
+  if (bootstrapKeys.length === 0) return [];
+
+  return await db
+    .select({
+      key: systemSettings.key,
+      updated_at: systemSettings.updated_at,
+      updated_by: systemSettings.updated_by,
+    })
+    .from(systemSettings)
+    .where(inArray(systemSettings.key, bootstrapKeys));
+}
+
+/**
+ * 清理单条 bootstrap 残留 DB 行（DELETE system_settings）。
+ * 幂等：DB 无该行也正常返回。审计记录 settings.reset。
+ */
+export async function cleanupBootstrapRow(
+  key: string,
+  _actorId: string,
+): Promise<void> {
+  const def = findDefinition(key);
+  if (!def || def.scope !== "bootstrap") {
+    throw new ValidationError(
+      `仅可清理 bootstrap（环境变量管理）配置项: ${key}`,
+    );
+  }
+
+  const db = getDb();
+  // 取 DB 残留旧值用于审计
+  const rows = await db
+    .select()
+    .from(systemSettings)
+    .where(eq(systemSettings.key, key))
+    .limit(1);
+  const oldRaw = rows.length > 0 ? rows[0].value : undefined;
+
+  await db.delete(systemSettings).where(eq(systemSettings.key, key));
+  cache.delete(key);
+
+  if (rows.length > 0) {
+    const fromValue = def.is_secret ? maskSecret(oldRaw) : oldRaw;
+    await logAudit(
+      "settings.update",
+      {
+        action: "settings.update",
+        operation: "DELETE",
+        key,
+        from: fromValue,
+        to: null,
+      },
+      { type: "system_setting", id: key },
+    );
+  }
 }
