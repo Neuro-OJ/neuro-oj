@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { checkDbHealth } from "./../shared/db/connection.ts";
 import { checkRedisHealth } from "./../shared/mq/connection.ts";
-import { consumerAlive } from "../domains/submission/index.ts";
+import { consumerAlive, getQueueHealth } from "../domains/submission/index.ts";
 
 const health = new Hono();
 
@@ -9,14 +9,43 @@ interface DependencyHealth {
   database: { ok: boolean; error?: string };
   redis: { ok: boolean; error?: string };
   consumer: { ok: boolean };
+  queue: {
+    ok: boolean;
+    redis_ok: boolean;
+    judge: {
+      queue_length: number;
+      processing_length: number;
+      dead_length: number;
+    };
+    result: {
+      queue_length: number;
+      processing_length: number;
+      dead_length: number;
+    };
+  };
 }
 
 async function dependencyHealth(): Promise<DependencyHealth> {
-  const [database, redis] = await Promise.all([
+  const [database, redis, queue] = await Promise.all([
     checkDbHealth(),
     checkRedisHealth(),
+    getQueueHealth(),
   ]);
-  return { database, redis, consumer: { ok: consumerAlive.value } };
+  // 队列状态只作为可观测字段，不参与 ready/healthy 判定。
+  const queueOk = queue.redis_ok &&
+    queue.judge.queue_length >= 0 &&
+    queue.result.queue_length >= 0;
+  return {
+    database,
+    redis,
+    consumer: { ok: consumerAlive.value },
+    queue: {
+      ok: queueOk,
+      redis_ok: queue.redis_ok,
+      judge: queue.judge,
+      result: queue.result,
+    },
+  };
 }
 
 function publicDependencyHealth(
@@ -27,12 +56,21 @@ function publicDependencyHealth(
     database: dependencies.database.ok ? "ok" : "error",
     redis: dependencies.redis.ok ? "ok" : "error",
     consumer: dependencies.consumer.ok ? "ok" : "error",
+    queue: dependencies.queue.ok ? "ok" : "error",
     checks: {
       database: showDetails
         ? dependencies.database
         : { ok: dependencies.database.ok },
       redis: showDetails ? dependencies.redis : { ok: dependencies.redis.ok },
       consumer: dependencies.consumer,
+      queue: showDetails
+        ? {
+          ok: dependencies.queue.ok,
+          redis_ok: dependencies.queue.redis_ok,
+          judge: dependencies.queue.judge,
+          result: dependencies.queue.result,
+        }
+        : { ok: dependencies.queue.ok },
     },
   };
 }

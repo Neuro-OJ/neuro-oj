@@ -18,6 +18,9 @@ import { SELF_TEST_ID_PREFIX } from "./../types/self-tests.ts";
 /** 评测任务队列名称（与 producer.ts 一致）。 */
 const JUDGE_QUEUE = "noj:judge:queue";
 
+/** 评测结果队列名称（与 consumer.ts 一致）。 */
+const RESULT_QUEUE = "noj:judge:results";
+
 /** 监控/列表路径默认只读取的 pending 条目数；超过时为保证正确性回退全量 LRANGE。 */
 const PENDING_LIST_LIMIT = 1000;
 
@@ -56,6 +59,26 @@ export interface QueueResponse {
   judging: QueueItem[];
   recently_completed: QueueItem[];
   stats: QueueStats;
+}
+
+/** 单条评测队列的健康快照。 */
+export interface QueueHealthEntry {
+  /** 主队列当前长度（待 worker 领取）。 */
+  queue_length: number;
+  /** processing 列表当前长度（已领取但未确认）。 */
+  processing_length: number;
+  /** dead 死信队列当前长度。 */
+  dead_length: number;
+}
+
+/** `GET /api/v1/admin/queue/health` 响应体。 */
+export interface QueueHealthResponse {
+  /** 评测任务队列（noj-core → noj-judge）。 */
+  judge: QueueHealthEntry;
+  /** 评测结果队列（noj-judge → noj-core）。 */
+  result: QueueHealthEntry;
+  /** Redis 是否可用；不可用时各队列长度降级为 -1。 */
+  redis_ok: boolean;
 }
 
 /** 队列查询所需的表列集合。 */
@@ -547,5 +570,79 @@ export async function getSubmissionQueueStatus(
     queue_length: queueLength,
     judge_started_at: row.judge_started_at ?? null,
     judge_finished_at: row.judge_finished_at ?? null,
+  };
+}
+
+/**
+ * 从 Redis 读取单个队列（主队列/processing/dead）的健康快照。
+ *
+ * 用于管理端队列状态页与健康检查。Redis 不可用或任一读取失败时：
+ * - 长度字段返回 -1（调用方可据此判定 degraded）；
+ * - 不抛出异常，避免健康检查本身把服务打挂。
+ *
+ * 注意：当前不暴露 processing 中最老消息的“真实年龄”，因为现有消息
+ * 负载没有内建时间戳，无法在不扫描/反序列化每条消息的情况下可靠计算。
+ * 这里只暴露 O(1) 的长度指标，避免提供误导性数据。
+ */
+async function readQueueHealth(mainQueue: string): Promise<QueueHealthEntry> {
+  const redis = getRedis();
+  if (redis.status !== "ready") {
+    try {
+      await redis.connect();
+    } catch {
+      return {
+        queue_length: -1,
+        processing_length: -1,
+        dead_length: -1,
+      };
+    }
+  }
+
+  try {
+    const [queueLength, processingLength, deadLength] = await Promise.all([
+      redis.llen(mainQueue),
+      redis.llen(`${mainQueue}:processing`),
+      redis.llen(`${mainQueue}:dead`),
+    ]);
+
+    return {
+      queue_length: Number(queueLength ?? 0),
+      processing_length: Number(processingLength ?? 0),
+      dead_length: Number(deadLength ?? 0),
+    };
+  } catch (err) {
+    logger.warn("读取队列健康状态失败", { mainQueue, err });
+    return {
+      queue_length: -1,
+      processing_length: -1,
+      dead_length: -1,
+    };
+  }
+}
+
+/**
+ * 获取评测任务/结果队列的健康状态（管理端/运维用）。
+ *
+ * Redis 不可用时返回 `redis_ok: false`，各队列长度均为 -1。
+ */
+export async function getQueueHealth(): Promise<QueueHealthResponse> {
+  const redis = getRedis();
+  let redisOk = false;
+  try {
+    if (redis.status !== "ready") {
+      await redis.connect();
+    }
+    await redis.ping();
+    redisOk = true;
+  } catch {
+    redisOk = false;
+  }
+
+  const judge = await readQueueHealth(JUDGE_QUEUE);
+  const result = await readQueueHealth(RESULT_QUEUE);
+  return {
+    judge,
+    result,
+    redis_ok: redisOk,
   };
 }

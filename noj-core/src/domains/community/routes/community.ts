@@ -1,6 +1,13 @@
 import { Hono } from "hono";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import {
+  enforceBookmarkRateLimit,
+  enforceCommentLikeRateLimit,
+  enforceFollowRateLimit,
+  enforcePostLikeRateLimit,
+  enforceReportRateLimit,
+} from "./../../system/index.ts";
+import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
@@ -402,6 +409,7 @@ router.delete("/comments/:commentId", authMiddleware, async (c) => {
  */
 router.post("/posts/:postId/like", authMiddleware, async (c) => {
   const actorId = userId(c);
+  await enforcePostLikeRateLimit(c, actorId);
   const postId = await resolvePostId(c.req.param("postId") as string);
   await assertPermission(c, "community:react");
   await assertCommunityWritable(actorId, await isModerator(c));
@@ -418,6 +426,7 @@ router.post("/posts/:postId/like", authMiddleware, async (c) => {
  */
 router.post("/posts/:postId/bookmark", authMiddleware, async (c) => {
   const actorId = userId(c);
+  await enforceBookmarkRateLimit(c, actorId);
   const postId = await resolvePostId(c.req.param("postId") as string);
   await assertPermission(c, "community:react");
   await assertCommunityWritable(actorId, await isModerator(c));
@@ -437,6 +446,7 @@ router.post("/posts/:postId/bookmark", authMiddleware, async (c) => {
  */
 router.post("/comments/:commentId/like", authMiddleware, async (c) => {
   const actorId = userId(c);
+  await enforceCommentLikeRateLimit(c, actorId);
   await assertPermission(c, "community:react");
   await assertCommunityWritable(actorId, await isModerator(c));
   return c.json({
@@ -456,6 +466,7 @@ router.post("/comments/:commentId/like", authMiddleware, async (c) => {
  */
 router.post("/users/:userId/follow", authMiddleware, async (c) => {
   const actorId = userId(c);
+  await enforceFollowRateLimit(c, actorId);
   await assertPermission(c, "community:follow");
   await assertCommunityWritable(actorId, await isModerator(c));
   // followeeId 可能是 username，解析为 UUID（与 profile 路由一致）
@@ -554,6 +565,7 @@ router.post("/notifications/:id/read", authMiddleware, async (c) => {
  */
 router.post("/reports", authMiddleware, async (c) => {
   const actorId = userId(c);
+  await enforceReportRateLimit(c, actorId);
   await assertPermission(c, "community:report");
   // social 封禁用户不可提交举报（防止作为骚扰/滥用通道）
   await assertCommunityWritable(actorId, await isModerator(c));

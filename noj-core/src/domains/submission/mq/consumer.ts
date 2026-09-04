@@ -9,7 +9,11 @@ import {
   logger,
   logJudgeResultReceived,
 } from "../../../shared/base/logging.ts";
-import { Channels, publishSseEvent } from "../../../shared/sse/event-bus.ts";
+import {
+  Channels,
+  publishSseEvent,
+  publishSseEventAfterTx,
+} from "../../../shared/sse/event-bus.ts";
 import { SELF_TEST_ID_PREFIX } from "../types/self-tests.ts";
 import type { JudgeResult } from "../types/index.ts";
 import { metrics } from "../../../shared/base/metrics.ts";
@@ -109,42 +113,56 @@ export async function handleResultMessage(
 
   // NOJ-074：写库失败必须向上抛出让消费者重投，
   // 不再吞掉错误导致提交永久停留在 judging。
-  let applied: boolean;
   try {
-    applied = isSelfTest
-      ? await saveSelfTestResult(judgeResult)
-      : await saveEvaluationResult(judgeResult);
+    if (isSelfTest) {
+      const applied = await saveSelfTestResult(judgeResult);
+      if (!applied) {
+        logger.info("重复/过时自测结果，已幂等忽略", {
+          self_test_id: judgeResult.submission_id,
+          rejudge_seq: judgeResult.rejudge_seq ?? 0,
+        });
+        return;
+      }
+      logger.info("自测结果已持久化", {
+        self_test_id: judgeResult.submission_id,
+      });
+      // 自测：保持原有轻量事件（自测不参与榜单/竞赛，队列事件允许轮询兜底）。
+      await publishSseEvent(
+        Channels.queue,
+        { type: "queue:changed" },
+      );
+      return;
+    }
+
+    const applied = await saveEvaluationResult(judgeResult);
+    if (!applied.applied) {
+      logger.info("评测结果为重复/过时消息，已幂等忽略", {
+        submission_id: judgeResult.submission_id,
+        rejudge_seq: judgeResult.rejudge_seq ?? 0,
+      });
+      return;
+    }
+
+    logger.info("评测结果已持久化", {
+      submission_id: judgeResult.submission_id,
+      kind: "submission",
+    });
+
+    // 正式提交：评测结果相关事件已在业务事务内写入 sse_events（事务性 Outbox），
+    // 这里只发布 Redis 实时通知，不再重复写库。
+    for (const event of applied.outbox_events) {
+      publishSseEventAfterTx(event.channel, event.payload, event.event_id);
+    }
+
+    // 队列变化通知（全局刷新类，允许轮询兜底；不要求与业务同事务）
+    await publishSseEvent(
+      Channels.queue,
+      { type: "queue:changed" },
+    );
   } catch (err) {
     metrics.inc("noj_evaluation_consumer_errors_total");
     throw err;
   }
-  if (!applied) {
-    logger.info("评测结果为重复/过时消息，已幂等忽略", {
-      submission_id: judgeResult.submission_id,
-      rejudge_seq: judgeResult.rejudge_seq ?? 0,
-    });
-    return;
-  }
-
-  logger.info("评测结果已持久化", {
-    submission_id: judgeResult.submission_id,
-    kind: isSelfTest ? "self_test" : "submission",
-  });
-
-  // 写入 SSE 事件日志并发布 Redis 通知（事件带 seq，供重放/去重）
-  if (!isSelfTest) {
-    await publishSseEvent(
-      Channels.submission(judgeResult.submission_id),
-      {
-        type: "submission:updated",
-        id: judgeResult.submission_id,
-      },
-    );
-  }
-  await publishSseEvent(
-    Channels.queue,
-    { type: "queue:changed" },
-  );
 }
 
 /**

@@ -85,6 +85,23 @@ export async function publishSseEvent(
 }
 
 /**
+ * 事务提交成功后发送 Redis 通知，事件 id 来自事务内 `recordSseEventTx`。
+ *
+ * 与 `sse-events.recordSseEventTx` 配对使用；payload 会附带 `seq` 供客户端去重。
+ * 仅负责实时扇出，不重复写库。
+ */
+export function publishSseEventAfterTx(
+  channel: string,
+  payload: unknown,
+  eventId: number,
+): void {
+  publishEvent(
+    channel,
+    JSON.stringify({ ...(payload as object), seq: eventId }),
+  );
+}
+
+/**
  * 本地 EventEmitter 回调类型。
  */
 type EventCallback = (channel: string, message: string) => void;

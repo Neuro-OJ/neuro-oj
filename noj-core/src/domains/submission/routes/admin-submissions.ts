@@ -9,7 +9,7 @@ import {
   rejudgeSubmission,
   resolveSubmissionId,
 } from "../services/submissions/submissions.ts";
-import { removePendingSubmission } from "../services/queue.ts";
+import { getQueueHealth, removePendingSubmission } from "../services/queue.ts";
 import { resolveProblem } from "./../../catalog/index.ts";
 import { SUBMISSION_STATUSES } from "../types/index.ts";
 
@@ -100,6 +100,15 @@ router.delete("/submissions/:id", async (c) => {
   const id = await resolveSubmissionId(c.req.param("id") as string);
   await deleteSubmission(id);
   return c.body(null, 204);
+});
+
+/**
+ * 管理员查看评测队列健康状态。
+ * GET /api/v1/admin/queue/health
+ */
+router.get("/queue/health", async (c) => {
+  const health = await getQueueHealth();
+  return c.json(health);
 });
 
 /** 管理员移除尚未领取的评测任务。 */

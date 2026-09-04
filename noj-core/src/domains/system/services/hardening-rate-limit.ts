@@ -94,6 +94,56 @@ export const PROBLEM_IMPORT_USER_LIMIT: RateLimitConfig = {
   max: 10,
 };
 
+export const POST_LIKE_IP_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 120,
+};
+
+export const POST_LIKE_USER_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 120,
+};
+
+export const COMMENT_LIKE_IP_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 120,
+};
+
+export const COMMENT_LIKE_USER_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 120,
+};
+
+export const BOOKMARK_IP_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 120,
+};
+
+export const BOOKMARK_USER_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 120,
+};
+
+export const FOLLOW_IP_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 120,
+};
+
+export const FOLLOW_USER_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 120,
+};
+
+export const REPORT_IP_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 30,
+};
+
+export const REPORT_USER_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 30,
+};
+
 function normalizeLimitKey(value: string): string {
   return value.trim().toLowerCase().slice(0, 128);
 }
@@ -239,5 +289,80 @@ export async function enforceProblemImportRateLimit(
   await enforceRateLimit(
     `problem-import:user:${userId}`,
     PROBLEM_IMPORT_USER_LIMIT,
+  );
+}
+
+/** 帖子点赞/取消点赞：IP + 用户双维度。 */
+export async function enforcePostLikeRateLimit(
+  c: Context,
+  userId: string,
+): Promise<void> {
+  await enforceRateLimit(
+    `post-like:ip:${getClientIp(c)}`,
+    POST_LIKE_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `post-like:user:${userId}`,
+    POST_LIKE_USER_LIMIT,
+  );
+}
+
+/** 评论点赞/取消点赞：IP + 用户双维度。 */
+export async function enforceCommentLikeRateLimit(
+  c: Context,
+  userId: string,
+): Promise<void> {
+  await enforceRateLimit(
+    `comment-like:ip:${getClientIp(c)}`,
+    COMMENT_LIKE_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `comment-like:user:${userId}`,
+    COMMENT_LIKE_USER_LIMIT,
+  );
+}
+
+/** 收藏/取消收藏帖子：IP + 用户双维度。 */
+export async function enforceBookmarkRateLimit(
+  c: Context,
+  userId: string,
+): Promise<void> {
+  await enforceRateLimit(
+    `bookmark:ip:${getClientIp(c)}`,
+    BOOKMARK_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `bookmark:user:${userId}`,
+    BOOKMARK_USER_LIMIT,
+  );
+}
+
+/** 关注/取关用户：IP + 用户双维度。 */
+export async function enforceFollowRateLimit(
+  c: Context,
+  userId: string,
+): Promise<void> {
+  await enforceRateLimit(
+    `follow:ip:${getClientIp(c)}`,
+    FOLLOW_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `follow:user:${userId}`,
+    FOLLOW_USER_LIMIT,
+  );
+}
+
+/** 举报：IP + 用户双维度，阈值更严格（防止举报轰炸）。 */
+export async function enforceReportRateLimit(
+  c: Context,
+  userId: string,
+): Promise<void> {
+  await enforceRateLimit(
+    `report:ip:${getClientIp(c)}`,
+    REPORT_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `report:user:${userId}`,
+    REPORT_USER_LIMIT,
   );
 }

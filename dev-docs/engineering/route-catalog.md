@@ -115,6 +115,7 @@
 | GET | `/problems` | noj-core/src/domains/catalog/routes/admin-problems.ts |
 | GET | `/public/recent` | noj-core/src/domains/submission/routes/submissions.ts |
 | GET | `/queue/events` | noj-core/src/domains/submission/routes/sse.ts |
+| GET | `/queue/health` | noj-core/src/domains/submission/routes/admin-submissions.ts |
 | GET | `/reports/:reportId` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/roles` | noj-core/src/domains/identity/routes/admin-roles.ts |
 | GET | `/search` | noj-core/src/domains/identity/routes/users.ts |
