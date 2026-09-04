@@ -11,6 +11,7 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 import {
   evaluationResults,
+  sseEvents,
   submissions,
 } from "./../../../../shared/db/schema.ts";
 import {
@@ -23,10 +24,7 @@ import type { JudgeResult, SubmissionStatus } from "../../types/index.ts";
 import { applyNewResult } from "../../../query/index.ts";
 import { refreshRankingsView } from "../../../query/index.ts";
 import { logger } from "./../../../../shared/base/logging.ts";
-import {
-  Channels,
-  publishSseEvent,
-} from "./../../../../shared/sse/event-bus.ts";
+import { Channels } from "./../../../../shared/sse/event-bus.ts";
 import { createActivity } from "../../../community/index.ts";
 
 // 允许的状态转换
@@ -37,16 +35,33 @@ const VALID_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
   error: [],
 };
 
+/** 评测结果应用后需要实时通知的持久化 SSE 事件。 */
+export interface SseEventOutboxItem {
+  channel: string;
+  payload: Record<string, unknown>;
+  /** 事务内写入 `sse_events` 后返回的全局事件 id。 */
+  event_id: number;
+}
+
+/** `saveEvaluationResult` 返回值。 */
+export interface SaveEvaluationResultOutcome {
+  applied: boolean;
+  /** 已随业务事务持久化、待事务提交后发布 Redis 的事件。 */
+  outbox_events: SseEventOutboxItem[];
+}
+
 /**
  * 保存评测结果（幂等 + rejudge_seq 事务内校验）。
  *
- * 返回 true 表示本次结果已应用；false 表示过时/重复消息已忽略。
+ * 返回 `{ applied, outbox_events }`：`applied=false` 表示过时/重复消息已忽略；
+ * `outbox_events` 是已随业务事务写入 `sse_events` 表、等待事务提交后
+ * 发布 Redis 的事件列表（事务性 Outbox）。
  * 事务内对 submissions 行加锁，避免 NOJ-065 的 TOCTOU 与 NOJ-068/182
  * 的重复统计。
  */
 export async function saveEvaluationResult(
   result: JudgeResult,
-): Promise<boolean> {
+): Promise<SaveEvaluationResultOutcome> {
   const db = getDb();
 
   const incomingSeq = result.rejudge_seq ?? 0;
@@ -145,6 +160,40 @@ export async function saveEvaluationResult(
         created_at: now,
       });
 
+    // 事务性 Outbox：在同一事务内写入 SSE 事件，提交后由调用方发布 Redis。
+    const outboxEvents: SseEventOutboxItem[] = [];
+    const [submissionEventRow] = await tx.insert(sseEvents).values({
+      channel: Channels.submission(result.submission_id),
+      payload: { type: "submission:updated", id: result.submission_id },
+      created_at: now,
+    }).returning({ id: sseEvents.id });
+    outboxEvents.push({
+      channel: Channels.submission(result.submission_id),
+      payload: { type: "submission:updated", id: result.submission_id },
+      event_id: submissionEventRow.id,
+    });
+
+    if (sub.contest_id) {
+      const [contestEventRow] = await tx.insert(sseEvents).values({
+        channel: Channels.contestRanking(sub.contest_id),
+        payload: {
+          type: "contest:ranking:updated",
+          contest_id: sub.contest_id,
+          submission_id: result.submission_id,
+        },
+        created_at: now,
+      }).returning({ id: sseEvents.id });
+      outboxEvents.push({
+        channel: Channels.contestRanking(sub.contest_id),
+        payload: {
+          type: "contest:ranking:updated",
+          contest_id: sub.contest_id,
+          submission_id: result.submission_id,
+        },
+        event_id: contestEventRow.id,
+      });
+    }
+
     return {
       applied: true,
       created_at: sub.created_at,
@@ -153,10 +202,11 @@ export async function saveEvaluationResult(
       problem_id: sub.problem_id,
       is_rejudge: sub.rejudge_seq > 0,
       artifact_storage_url: sub.artifact_storage_url,
+      outbox_events: outboxEvents,
     };
   });
 
-  if (!outcome) return false;
+  if (!outcome) return { applied: false, outbox_events: [] };
 
   // artifact 评测完成（finished/error）后立即删除存储对象
   if (outcome.artifact_storage_url) {
@@ -209,18 +259,10 @@ export async function saveEvaluationResult(
     }
   }
 
-  if (outcome.contest_id) {
-    await publishSseEvent(
-      Channels.contestRanking(outcome.contest_id),
-      {
-        type: "contest:ranking:updated",
-        contest_id: outcome.contest_id,
-        submission_id: result.submission_id,
-      },
-    );
-  }
-
-  return true;
+  return {
+    applied: true,
+    outbox_events: outcome.outbox_events,
+  };
 }
 
 /**

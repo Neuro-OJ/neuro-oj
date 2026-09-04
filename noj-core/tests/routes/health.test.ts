@@ -19,6 +19,11 @@ Deno.test({
     assertExists(body.database);
     assertExists(body.redis);
     assertExists(body.consumer);
+    assertExists(body.queue);
+    assertExists(body.checks.queue);
+    assertEquals(typeof body.checks.queue.redis_ok, "boolean");
+    assertEquals(typeof body.checks.queue.judge.queue_length, "number");
+    assertEquals(typeof body.checks.queue.result.queue_length, "number");
   },
 });
 

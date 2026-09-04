@@ -15,6 +15,7 @@ import {
   contests,
   evaluationResults,
   problems,
+  sseEvents,
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
@@ -22,7 +23,7 @@ import {
   BadRequestError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { enterTestContext } from "../../../system/index.ts";
 import {
   type LogRecord,
@@ -492,6 +493,15 @@ Deno.test({
     assertEquals(result[0].score, 1000);
     assertEquals(result[0].time_ms, 2340);
     assertEquals(result[0].memory_kb, 18432);
+
+    // A4：事务性 Outbox——应同时写入一条 submission:updated SSE 事件
+    const events = await db
+      .select()
+      .from(sseEvents)
+      .where(
+        sql`${sseEvents.channel} = ${`noj:events:submission:${submissionId}`}`,
+      );
+    assertEquals(events.length >= 1, true, "评测结果事务内应写入 SSE 事件");
   },
 });
 
@@ -640,7 +650,7 @@ Deno.test({
         time_ms: 200,
         memory_kb: 2048,
       });
-      assertEquals(appliedAgain, false);
+      assertEquals(appliedAgain.applied, false);
 
       // 断言：只有 1 行，内容保持第一次结果。
       const rows = await db.select().from(evaluationResults)

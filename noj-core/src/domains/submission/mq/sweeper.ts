@@ -14,7 +14,11 @@ import { problems, selfTests, submissions } from "../../../shared/db/schema.ts";
 import { getStorageProvider } from "../../system/index.ts";
 import { getSetting } from "../../system/index.ts";
 import { getRedis } from "../../../shared/mq/connection.ts";
-import { isRetryableJudgeQueueError, JUDGE_QUEUE } from "./producer.ts";
+import {
+  isRetryableJudgeQueueError,
+  JUDGE_QUEUE,
+  MAX_JUDGE_QUEUE_LENGTH,
+} from "./producer.ts";
 import { logger } from "../../../shared/base/logging.ts";
 import type { JudgeTask } from "../types/index.ts";
 import type { RuntimeConfig } from "../../catalog/index.ts";
@@ -479,6 +483,74 @@ export async function cleanupOrphanArtifacts(now: number): Promise<void> {
   }
 }
 
+/**
+ * 队列告警去抖状态：同一异常只在上“升沿”记录一次，恢复后复位。
+ */
+const _alertStates = new Map<string, boolean>();
+
+/** 主队列积压告警阈值：达到最大队列容量的一半时告警。 */
+const MAIN_QUEUE_ALERT_THRESHOLD = MAX_JUDGE_QUEUE_LENGTH / 2;
+
+/**
+ * 检查评测队列是否存在需要运维关注的异常，并在状态变化时输出告警日志。
+ *
+ * 当前只对“死信队列非空”和“主队列积压过半”告警；processing 由 sweeper
+ * 自己重投，不单独告警，避免误报。Redis 不可用/长度为 -1 时跳过。
+ */
+async function logQueueAlertsIfNeeded(): Promise<void> {
+  const redis = getRedis();
+  if (redis.status !== "ready") {
+    try {
+      await redis.connect();
+    } catch {
+      return;
+    }
+  }
+
+  const queues = [
+    { key: "judge", main: JUDGE_QUEUE },
+    { key: "result", main: RESULT_QUEUE },
+  ] as const;
+
+  for (const { key, main } of queues) {
+    try {
+      const [queueLength, deadLength] = await Promise.all([
+        redis.llen(main),
+        redis.llen(`${main}:dead`),
+      ]);
+
+      const queueAlert = Number(queueLength ?? 0) >= MAIN_QUEUE_ALERT_THRESHOLD;
+      const deadAlert = Number(deadLength ?? 0) > 0;
+
+      const alertKeyQueue = `${key}:queue`;
+      const alertKeyDead = `${key}:dead`;
+
+      if (queueAlert && !_alertStates.get(alertKeyQueue)) {
+        logger.warn("评测队列积压超过阈值", {
+          queue: main,
+          queue_length: Number(queueLength ?? 0),
+          threshold: MAIN_QUEUE_ALERT_THRESHOLD,
+        });
+        _alertStates.set(alertKeyQueue, true);
+      } else if (!queueAlert && _alertStates.get(alertKeyQueue)) {
+        _alertStates.set(alertKeyQueue, false);
+      }
+
+      if (deadAlert && !_alertStates.get(alertKeyDead)) {
+        logger.error("评测队列出现死信消息，请及时处理", {
+          queue: main,
+          dead_length: Number(deadLength ?? 0),
+        });
+        _alertStates.set(alertKeyDead, true);
+      } else if (!deadAlert && _alertStates.get(alertKeyDead)) {
+        _alertStates.set(alertKeyDead, false);
+      }
+    } catch (err) {
+      logger.warn("评测队列告警检查失败", { queue: main, err });
+    }
+  }
+}
+
 export async function runQueueSweeperOnce(): Promise<void> {
   const now = Date.now();
   const results = await Promise.allSettled([
@@ -495,6 +567,7 @@ export async function runQueueSweeperOnce(): Promise<void> {
     recoverPendingSubmissions(now),
     recoverPendingSelfTests(now),
     cleanupOrphanArtifacts(now),
+    logQueueAlertsIfNeeded(),
   ]);
   for (const result of results) {
     if (result.status === "rejected") {

@@ -18,6 +18,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use bollard::container::LogOutput;
+use bollard::query_parameters::StatsOptionsBuilder;
 use futures_util::StreamExt;
 use serde_json::Value;
 use tokio::io::AsyncWriteExt;
@@ -281,6 +282,32 @@ pub async fn evaluate_dual_with_cpu_limit(
     .await
 }
 
+/// 从容器读取一次内存峰值（KB）。
+///
+/// Docker `stats` 的 `memory_stats.max_usage` 仅 cgroups v1 可用；
+/// cgroups v2 下该字段缺失，回退到 `usage` 近似值。读取失败或容器已销毁时
+/// 返回 `None`（不阻断评测主流程）。
+async fn read_container_memory_peak_kb(
+    docker: &bollard::Docker,
+    container_id: &str,
+) -> Option<u64> {
+    let options = StatsOptionsBuilder::default()
+        .stream(false)
+        .one_shot(true)
+        .build();
+    let mut stream = docker.stats(container_id, Some(options));
+
+    let stat = match tokio::time::timeout(Duration::from_secs(3), stream.next()).await {
+        Ok(Some(Ok(stat))) => stat,
+        _ => return None,
+    };
+
+    let memory = stat.memory_stats?;
+    // max_usage 单位字节；cgroups v2 无 max_usage 时退回 usage。
+    let peak_bytes = memory.max_usage.or(memory.usage)?;
+    Some(peak_bytes / 1024)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn evaluate_dual_with_cpu_limit_and_user_llm(
     docker: bollard::Docker,
@@ -427,16 +454,28 @@ pub async fn evaluate_dual_with_cpu_limit_and_user_llm(
     )
     .await;
 
+    // NOJ-162：销毁前读取 Solution 容器内存峰值（仅尽力而为，失败不影响结果）
+    let memory_peak_kb = read_container_memory_peak_kb(&docker, &solution_id).await;
+    if let Some(kb) = memory_peak_kb {
+        info!(
+            submission_id = task_submission_id,
+            memory_kb = kb,
+            "Solution 容器内存峰值已读取"
+        );
+    }
+
     // 8. 显式销毁（不论成功失败）
     if let Err(e) = dual.destroy().await {
         warn!("DualContainer 销毁警告: {}", e);
     }
 
-    // NOJ-162（部分）：回填真实总耗时；memory_kb 当前 Docker API 未暴露峰值，
-    // 保持 None 并在文档中明确。
+    // NOJ-162：回填真实总耗时与内存峰值
     let mut result = result?;
     if result.time_ms.is_none() {
         result.time_ms = Some(started.elapsed().as_millis() as u64);
+    }
+    if result.memory_kb.is_none() {
+        result.memory_kb = memory_peak_kb;
     }
     Ok(result)
 }

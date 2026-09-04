@@ -8,6 +8,7 @@ import {
   startResultConsumerWithRetry,
 } from "./domains/submission/index.ts";
 import { initEventSubscriber } from "./shared/sse/event-bus.ts";
+import { startSseEventRetentionTask } from "./shared/sse/sse-events.ts";
 import { snapshotEnv } from "./domains/system/index.ts";
 import { validateRegistry } from "./shared/config/settings-registry.ts";
 import { createReviewConsumer } from "./domains/content-review/index.ts";
@@ -233,6 +234,9 @@ async function main() {
 
   // 启动后台审计日志保留任务
   startAuditLogRetentionTask();
+
+  // 启动 SSE 事件保留任务（A4：事件表保留策略，默认 7 天）
+  startSseEventRetentionTask();
 
   // NOJ-030：监听 SIGTERM/SIGINT，先停止接收新请求并排空，再关闭 Redis/DB。
   let shuttingDown = false;

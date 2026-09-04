@@ -147,8 +147,13 @@ cargo fmt
 ```
 
 当前实现回填 `time_ms`（从评测开始到结果生成的墙上时钟耗时）；
-`memory_kb` 暂不读取（Docker API 未暴露 cgroup memory.peak，保持 `null`）。
-OOM 容器由 `docker rm -f` 回收，不映射 MemoryLimitExceeded。
+`memory_kb` 通过销毁前读取一次 Docker stats 尽力回填：
+- cgroups v1 使用 `memory_stats.max_usage`（真实峰值）；
+- cgroups v2 无 `max_usage` 时回退到 `usage`（近似值）；
+- 读取失败或容器不可用时保持 `null`（不阻断评测）。
+
+OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExceeded`
+（Solution OOM 由 evaluator/超时路径归因）。
 
 ### 超时处理细节
 

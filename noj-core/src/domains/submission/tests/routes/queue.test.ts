@@ -42,6 +42,60 @@ Deno.test({
 });
 
 Deno.test({
+  name: "queue route: GET /api/v1/admin/queue/health 无 token 返回 401",
+  ignore: skip,
+  fn: async () => {
+    const app = createApp();
+    const res = await jsonRequest(app, "/api/v1/admin/queue/health");
+    assertEquals(res.status, 401);
+  },
+});
+
+Deno.test({
+  name: "queue route: GET /api/v1/admin/queue/health 非管理员返回 403",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const app = createApp();
+    const token = await createUserToken();
+    const res = await jsonRequest(app, "/api/v1/admin/queue/health", {
+      token,
+    });
+    assertEquals(res.status, 403);
+  },
+});
+
+Deno.test({
+  name: "queue route: GET /api/v1/admin/queue/health 管理员返回 200 且结构完整",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await ensureReady();
+    if (!ready) return;
+
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await jsonRequest(app, "/api/v1/admin/queue/health", {
+      token,
+    });
+    assertEquals(res.status, 200);
+
+    const body = await res.json();
+    assertExists(body.judge);
+    assertExists(body.result);
+    assertEquals(typeof body.redis_ok, "boolean");
+    assertEquals(typeof body.judge.queue_length, "number");
+    assertEquals(typeof body.judge.processing_length, "number");
+    assertEquals(typeof body.judge.dead_length, "number");
+    assertEquals(typeof body.result.queue_length, "number");
+    assertEquals(typeof body.result.processing_length, "number");
+    assertEquals(typeof body.result.dead_length, "number");
+  },
+});
+
+Deno.test({
   name: "queue route: GET /api/v1/queue 非管理员返回 200",
   ignore: skip,
   sanitizeResources: false,
