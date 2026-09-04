@@ -1,7 +1,7 @@
 /**
  * 搜索 service 测试（issue #100 Task 5 + reviewer 修复）。
  *
- * 覆盖 8 个场景：
+ * 覆盖 9 个场景：
  * 1. 搜 'P1001' 命中 P 型题（display_id 走 search_vector）
  * 2. 中文 '动态规划' 命中（trigram ILIKE 兜底）
  * 3. 公开搜索不返回 U 型题
@@ -9,7 +9,8 @@
  * 5. 搜英文 'Hello' 命中 tsvector
  * 6. 用户搜索仅 admin（root 排除由测试 7 单独验证）
  * 7. 用户搜索排除 root（seed 含 root，断言 result 中无 id='0'）
- * 8. searchUsers admin 守卫：isAdmin=false 抛 ForbiddenError
+ * 8. 用户搜索支持邮箱片段
+ * 9. searchUsers admin 守卫：isAdmin=false 抛 ForbiddenError
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { searchProblems, searchUsers } from "../../src/services/search.ts";
@@ -262,6 +263,24 @@ Deno.test({
     });
     assertEquals(result.items.length, 1);
     assertEquals(result.items[0]?.username, "alice_test");
+    assertEquals(result.items[0]?.email, "alice@example.com");
+  },
+});
+
+Deno.test({
+  name: "search service: 用户搜索支持邮箱片段",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await seedUsers();
+    const result = await searchUsers({
+      q: "alice@",
+      isAdmin: true,
+      page: 1,
+      limit: 20,
+    });
+    assertEquals(result.items.map((item) => item.username), ["alice_test"]);
     assertEquals(result.items[0]?.email, "alice@example.com");
   },
 });
