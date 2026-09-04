@@ -2,8 +2,14 @@ import { Hono } from "hono";
 import type { AuthEnv } from "./../../identity/index.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import {
+  BadRequestError,
+  NotFoundError,
+  ServiceUnavailableError,
+} from "../../../shared/base/errors.ts";
+import {
   createLlmProvider,
   listLlmProviders,
+  LlmGatewayError,
   type LlmProviderInput,
   type LlmQuotaInput,
   type LlmUsageQuery,
@@ -22,6 +28,14 @@ import {
  * - GET/POST /llm/quotas            配额查询 / 新增或更新
  */
 const router = new Hono<AuthEnv>();
+
+/**
+ * 将 LLM Gateway 错误统一转换为管理端 API 的业务错误。
+ *
+ * 该错误处理器覆盖本 router 的所有入口，避免 Provider 读写、用量和配额
+ * 路由各自遗漏错误处理。通过抛出 AppError 交由父级全局处理器统一输出。
+ */
+router.onError((error) => mapLlmError(error));
 
 /**
  * 获取 LLM Provider 列表。
@@ -137,16 +151,45 @@ async function fetchLlmQuotas(): Promise<unknown[]> {
   const token = Deno.env.get("NOJ_LLM_SERVICE_TOKEN") ?? "";
   const gatewayUrl = Deno.env.get("NOJ_LLM_GATEWAY_URL") ??
     "http://localhost:8001";
-  const res = await fetch(`${gatewayUrl}/internal/quotas`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${gatewayUrl}/internal/quotas`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    throw new LlmGatewayError(503, "gateway_unavailable");
+  }
   if (!res.ok) {
-    throw new Error(`LLM Gateway 配额查询失败: ${res.status}`);
+    const errorBody = await res.json().catch(() => null) as
+      | { error?: unknown }
+      | null;
+    throw new LlmGatewayError(
+      res.status,
+      typeof errorBody?.error === "string" ? errorBody.error : "gateway_error",
+    );
   }
   const body = await res.json().catch(() => null) as
     | { data?: unknown[] }
     | null;
   return body?.data ?? [];
+}
+
+/**
+ * 将 LLM Gateway 转发错误映射为可读的 4xx 而非 500。
+ *
+ * core 的 request() 对 gateway 任何非 2xx 都抛 LlmGatewayError（非 AppError），
+ * 若不在路由层捕获会落入全局 onError 变成 500 INTERNAL_ERROR。
+ */
+export function mapLlmError(error: unknown): never {
+  if (error instanceof LlmGatewayError) {
+    if (error.status === 404) throw new NotFoundError("模型配置不存在");
+    if (error.status >= 500) {
+      throw new ServiceUnavailableError("模型服务暂时不可用");
+    }
+    if (error.status === 400) throw new BadRequestError(error.code, error.code);
+    throw new BadRequestError("模型服务暂时不可用", "LLM_GATEWAY_UNAVAILABLE");
+  }
+  throw error;
 }
 
 export default router;

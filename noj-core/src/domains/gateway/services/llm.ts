@@ -127,14 +127,19 @@ async function request<T>(
   if (!SERVICE_TOKEN) {
     throw new Error("NOJ_LLM_SERVICE_TOKEN 未配置，无法访问 LLM Gateway");
   }
-  const res = await fetch(`${GATEWAY_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${SERVICE_TOKEN}`,
-      ...(init?.headers ?? {}),
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${GATEWAY_URL}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SERVICE_TOKEN}`,
+        ...(init?.headers ?? {}),
+      },
+    });
+  } catch {
+    throw new LlmGatewayError(503, "gateway_unavailable");
+  }
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     throw new LlmGatewayError(

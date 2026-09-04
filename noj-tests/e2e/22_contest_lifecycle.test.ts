@@ -139,21 +139,26 @@ e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
 
 e2eTest("[e2e/contest] 3. 排名包含提交分数", async () => {
   if (!isE2E || !judgeAvailable) return;
-  // 进行中公开竞赛的排名仅对登录参赛者/管理员可见，匿名访问会 401；
-  // 这里用管理员视角验证“排名包含提交分数”，公开最终排名在下一用例覆盖。
-  const adminResult = await apiGet(
-    `/api/v1/contests/${contestId}/ranking`,
-    adminToken,
-  );
-  if (adminResult.status !== 200) {
+  // 进行中（running）竞赛：非管理员仅能查看自己的排名（服务端设计，见
+  // contest-ranking.ts getContestRanking：running 且非 admin 时 viewerId
+  // 缺失返回 401、非参赛者返回 403，参赛者只见自身行）。因此这里用
+  // 参赛者 token 验证其排名包含刚才提交的分数，管理员可看完整榜单。
+  const [participantResult, adminResult] = await Promise.all([
+    apiGet(`/api/v1/contests/${contestId}/ranking`, participantToken),
+    apiGet(`/api/v1/contests/${contestId}/ranking`, adminToken),
+  ]);
+  if (participantResult.status !== 200 || adminResult.status !== 200) {
     throw new Error(
-      `读取管理员排名失败: ${adminResult.status} ${
-        JSON.stringify(adminResult.body)
-      }`,
+      `读取排名失败: ${participantResult.status}/${adminResult.status}`,
     );
   }
+  const participantRows =
+    (participantResult.body as { data: KaggleRankingRow[] }).data;
   const adminRows = (adminResult.body as { data: KaggleRankingRow[] }).data;
-  if (adminRows[0]?.total_score <= 0) {
+  if (!participantRows[0] || participantRows[0].total_score <= 0) {
+    throw new Error("参赛者排名应包含提交分数");
+  }
+  if (!adminRows[0] || adminRows[0].total_score <= 0) {
     throw new Error("管理员排名应包含提交分数");
   }
 });

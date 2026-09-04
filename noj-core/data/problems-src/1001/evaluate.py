@@ -67,10 +67,11 @@ def eval_split(
             # 交由评测机识别为单次调用超时，不能继续消耗其余测试点的总时限。
             raise
         except Exception as e:
-            output_line = ""
-            runtime_error = True
-            case_status = "RuntimeError"
+            # 新协议（#406）：运行期错误由 judge 统一映射为 error。
+            # 不再捕获后输出无 status 的 RESULT（会被映射为 finished），
+            # 而是直接抛出，令 evaluator 不输出 ---RESULT---，judge 收尾为 error。
             print(f"  [!] Solution 调用异常: {e}")
+            raise
 
         actual = output_line.strip().splitlines()[-1] if output_line.strip() else ""
         expected = str(item["expected"]).strip()
