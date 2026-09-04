@@ -29,6 +29,7 @@ import {
 import { maintainReset } from "./maintain/reset.ts";
 import { realDriver } from "./maintain/backup_driver.ts";
 import { runServerForeground } from "./runtime/process.ts";
+import { PRODUCTION_COMMANDS, runProduction } from "./production.ts";
 
 /** CLI 执行上下文，供各子命令共享。 */
 export interface CommandContext {
@@ -63,6 +64,17 @@ export function printHelp(): string {
     "用法: noj-cli <命令> [子命令] [选项]",
     "",
     "命令:",
+    "  install       生产安装（.env.prod + Docker Compose；以下命令支持 --dir）",
+    "  check         生产环境检测",
+    "  start/stop/restart/status  生产服务生命周期",
+    "  update [--latest]  同步部署文件、备份并升级生产服务（upgrade 为别名）",
+    "  logs          生产服务日志（支持 --follow）",
+    "  backup        生产备份；支持 create/verify/restore/drill",
+    "  verify        生产配置及镜像签名校验",
+    "  config check  生产配置校验",
+    "  uninstall     卸载生产服务；--all 删除全部数据，需确认",
+    "",
+    "JSON 配置部署工具（noj-deploy.json / noj-secrets.json）：",
     "  doctor        环境检测",
     "  deploy        部署生命周期 init/up/down/restart/status",
     "  maintain      运维 logs/config/verify/reset/backup(create/verify/restore/drill)",
@@ -71,15 +83,6 @@ export function printHelp(): string {
     "",
   ].join("\n");
 }
-
-const MAINTAIN_SUBCOMMANDS = [
-  "logs",
-  "backup",
-  "restore",
-  "verify",
-  "reset",
-  "config",
-];
 
 const KNOWN_TOP = new Set([
   "doctor",
@@ -230,6 +233,9 @@ export async function dispatchCommand(
   args: string[],
   ctx: CommandContext,
 ): Promise<number> {
+  if (PRODUCTION_COMMANDS.has(command)) {
+    return await runProduction(command, args);
+  }
   switch (command) {
     case "version":
       console.log(`noj-cli ${VERSION}`);
@@ -297,6 +303,13 @@ export async function dispatchCommand(
     }
     case "maintain": {
       const sub = args[0] ?? "";
+      if (sub === "restore") {
+        return await dispatchCommand("maintain", [
+          "backup",
+          "restore",
+          ...args.slice(1),
+        ], ctx);
+      }
       if (sub === "logs") {
         const { dir, follow, modules } = parseMaintainArgs(args.slice(1));
         const deployDir = dir ?? ctx.deployDir ?? findDeployDir(ctx.cwd);
@@ -504,14 +517,10 @@ export async function dispatchCommand(
         }
       }
 
-      if (MAINTAIN_SUBCOMMANDS.includes(sub)) {
-        console.log(`maintain ${sub}: 运维逻辑留待后续计划`);
-      } else {
-        console.log(
-          "maintain: 需要子命令 logs/backup/restore/verify/reset/config（P0 占位）",
-        );
-      }
-      return 0;
+      console.error(
+        "maintain: 需要子命令 logs/backup/restore/verify/reset/config",
+      );
+      return 1;
     }
     case "run-server": {
       let dirOverride: string | undefined;

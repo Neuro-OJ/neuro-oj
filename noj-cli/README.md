@@ -1,97 +1,96 @@
 # noj-cli
 
-Neuro OJ 统一部署与运维 CLI（Deno + TypeScript，仅支持 linux/amd64）。
+Neuro OJ 部署与运维 CLI（Deno + TypeScript；生产二进制支持 Linux amd64）。
 
-## 状态
+## 一键安装与生产运维
 
-P0-P5 已完成；代码评审后补齐 `maintain verify` 与 `run-server` 前台运行，
-并修复备份/恢复的真实 stdin/base64 通道、Compose 文件权限与凭据注入问题。
+`setup.sh → install.sh → noj-cli install`。安装器下载同版本源码和
+`noj-cli-linux-amd64`，SHA-256 校验通过后安装到 `<安装目录>/bin/noj-cli`。
+生产主机无需 Deno。Release 必须包含 CLI
+二进制及校验文件；旧版本缺少资产时明确报错， 不会混用不同版本的程序。
 
-P4：实现 `maintain backup create/verify/restore/drill` 与 `maintain reset`。
-备份仅面向 prod：zstd level 15 压缩（可用 `--zstd-level` 调整）、SHA-256 校验、
-GPG 对称 AES-256 加密（口令来自 `--passphrase-file` 或
-`NOJ_BACKUP_PASSPHRASE_FILE`， `--no-encrypt` 可跳过加密），产物为单个
-`snapshot-<timestamp>.nojbackup`。 `verify` 解密解包后校验
-SUCCESS/manifest/sha256sums；`restore` 默认只恢复数据、
-`--include-deploy-configs` 连同配置恢复（要求目标已停止且 `--confirm`）；
-`drill` 执行 verify 并可选写 `--report` 文件。`reset` 默认只清数据并置
-`stopped`， `--include-deploy-configs` 连 `noj-deploy.json`/`noj-secrets.json`
-一起清并置 `uninitialized`，均需 `--confirm`。
+```bash
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
+  bash -s -- --dir /opt/neuro-oj
 
-P5：新增 `noj-server`（linux/amd64）的 `deno compile` 构建脚本与
-`deno task
-build:server`；`docker-compose.prod.yml` 中镜像/服务改名为
-`noj-server`/`server`；README / deploy/README / noj-docs
-生产部署文档已迁移到新命名。
+noj-cli check
+noj-cli status
+noj-cli logs core --follow
+noj-cli restart
+noj-cli stop
+noj-cli start
+noj-cli config check
+noj-cli verify
+noj-cli update
+noj-cli update --latest
+noj-cli backup
+noj-cli backup verify <快照目录>
+noj-cli backup restore <快照目录> --confirm
+noj-cli backup drill <快照目录> --report /tmp/drill.json
+noj-cli uninstall
+noj-cli uninstall --all --yes
+```
 
-P5 补充：`deploy up` 与 `run-server` 在 process 模式且未配置 `dev_command`
-时，会自动从 GitHub Releases 下载并校验 `noj-server-linux-amd64`
-（SHA-256），缓存到 `<install_dir>/bin/`；`deploy init` 会尝试解析最新版本号，
-网络不可用时回退到内置默认版本。
+以上生产命令复用 `scripts/deploy/production.sh`、`deploy.sh`、`backup.sh`，
+继续使用 `.env.prod`、`docker-compose.prod.yml` 及现有服务名和数据卷。
+初始化仍提供网站地址、HTTP/HTTPS、邮件和 Judge 引导。 `upgrade` 是 `update`
+的别名；升级前同步部署文件、创建并校验备份，再拉取镜像并等待健康检查。
+`config check` 只读校验本地配置，`verify` 还按配置执行镜像签名验证。
 
-## 使用边界
+CLI 查找目录的顺序是 `--dir`、当前目录及祖先、安装后二进制所在目录。 未加入 PATH
+时可直接运行 `/opt/neuro-oj/bin/noj-cli status`。 管理多个安装时显式指定目录：
 
-生产服务器请使用仓库根目录的 `setup.sh` 和 `noj`，不要依赖 `noj-cli` Release
-二进制。`noj-cli` 保留在仓库中，作为独立的 Deno/TypeScript 源码工具开发和测试：
+```bash
+noj-cli status --dir /opt/neuro-oj
+noj-cli logs core --dir /opt/neuro-oj --follow
+```
+
+普通卸载保留配置、备份和数据卷；`--all` 同时删除数据和安装目录，需明确确认。
+完全卸载在删除容器/数据前拒绝 Git/jj 工作区。 生产备份恢复要求目标 Compose
+服务已停止，并提供 `--confirm`。
+
+## JSON 配置部署
+
+`deploy/maintain/run-server` 使用 `noj-deploy.json` 和
+`noj-secrets.json`，保留作为独立源码编排工具。 这些命令不直接管理 `.env.prod`
+生产安装，不会自动转换其数据。
 
 ```bash
 cd noj-cli
 deno run -A src/cli.ts doctor
+deno run -A src/cli.ts deploy init --mode dev --dir /opt/noj-dev
+deno run -A src/cli.ts deploy up --dir /opt/noj-dev
+deno run -A src/cli.ts deploy status --dir /opt/noj-dev
+deno run -A src/cli.ts deploy down --dir /opt/noj-dev
+deno run -A src/cli.ts maintain config check --dir /opt/noj-dev
+deno run -A src/cli.ts maintain logs --dir /opt/noj-dev
 ```
 
-它不会作为 GitHub Release 二进制资产发布，也不承担旧版 `noj` 的兼容入口。
+JSON 模式支持配置 check/show/set、备份 create/verify/restore/drill、reset 和
+run-server。备份使用单文件 `.nojbackup`（zstd + SHA-256，可选 GPG AES-256），
+与生产 Compose 的快照目录格式不同，不能交叉恢复。 `maintain restore` 是
+`maintain backup restore` 的别名。
 
-## 用法
+## 开发与验证
 
 ```bash
 cd noj-cli
-deno run -A src/cli.ts doctor --port 8080
-deno run -A src/cli.ts deploy init --mode dev --dir /opt/neuro-oj
-deno run -A src/cli.ts deploy init --mode prod --dir /opt/neuro-oj
-deno run -A src/cli.ts deploy up --dir /opt/neuro-oj
-deno run -A src/cli.ts deploy restart --dir /opt/neuro-oj
-deno run -A src/cli.ts deploy status --dir /opt/neuro-oj
-deno run -A src/cli.ts deploy down --dir /opt/neuro-oj
-deno run -A src/cli.ts maintain logs
-deno run -A src/cli.ts maintain logs server,ui --follow
-deno run -A src/cli.ts maintain config check
-deno run -A src/cli.ts maintain config show
-deno run -A src/cli.ts maintain config set env.DOMAIN example.com
-deno run -A src/cli.ts maintain verify
-deno run -A src/cli.ts maintain backup create [--backup-dir DIR] [--passphrase-file FILE] [--zstd-level N] [--no-encrypt]
-deno run -A src/cli.ts maintain backup verify <snapshot> [--passphrase-file FILE]
-deno run -A src/cli.ts maintain backup restore <snapshot> [--confirm] [--passphrase-file FILE] [--include-deploy-configs]
-deno run -A src/cli.ts maintain backup drill <snapshot> [--passphrase-file FILE] [--report FILE]
-deno run -A src/cli.ts maintain reset [--confirm] [--include-deploy-configs]
-deno run -A src/cli.ts run-server [--dir /opt/neuro-oj]
-```
-
-## 测试
-
-```bash
-cd noj-cli
-deno task test
+deno run -A src/cli.ts status --dir /opt/neuro-oj
 deno task check
+deno task test
+deno task test:production
+deno task build:cli
 ```
 
-## 构建
-
-```bash
-cd noj-cli
-deno task build:cli   # 产出 bin/noj-cli-linux-amd64
-```
+`build:cli` 显式交叉编译 Linux amd64，产出 `bin/noj-cli-linux-amd64`。 Release
+workflow 在生产镜像验证通过后发布二进制和 `.sha256` 文件。
+生产命令需要完整安装目录中的脚本，不能仅复制二进制。
 
 ## 目录
 
-- `src/cli.ts` 命令分发入口
-- `src/config/` 配置模型（types/load/save/validate/merge/io）
-- `src/state/machine.ts` 部署状态机
-- `src/util/find_deploy_dir.ts` 部署目录查找
-- `src/doctor/` 环境检测（probe/checks/doctor/report）
-- `src/tui/` 交互抽象与表单控件（io/widgets）
-- `src/init/` deploy init 引导（templates/secrets/wizard）
-- `src/runtime/` 命令/进程抽象（command/pidfile/process/logfile/download）
-- `src/deploy/` 部署编排（compose/docker/state/deploy）
-- `src/maintain/` 运维编排（logs/config/backup/reset）
-- `src/util/fs.ts` 文件工具
-- `src/util/color.ts` 彩色日志前缀工具
+- `src/cli.ts`：命令分发
+- `src/production.ts`：生产目录定位和内部驱动调用
+- `src/config/`、`src/state/`：JSON 配置与状态机
+- `src/init/`、`src/doctor/`、`src/tui/`：JSON 初始化与环境检测
+- `src/deploy/`、`src/runtime/`：JSON 部署与进程管理
+- `src/maintain/`：JSON 配置、日志和备份恢复

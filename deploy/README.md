@@ -41,18 +41,20 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
   bash -s -- --dir /opt/neuro-oj
 
 # 日常运维
-noj status
-noj logs core
-noj backup
-noj restart
-noj stop
-noj start
-noj config check
+noj-cli status
+noj-cli logs core
+noj-cli backup
+noj-cli restart
+noj-cli stop
+noj-cli start
+noj-cli config check
 ```
 
-`noj update` 按 `.env.prod` 中的版本升级，`noj update --latest` 获取最新稳定版本。
-`noj uninstall` 默认保留数据卷，`noj uninstall --all --yes` 才会执行完全删除。
-`noj-cli` 与 `noj` 分开维护，仅作为源码工具使用，不从 GitHub Release 下载。
+`noj-cli update` 按 `.env.prod` 中的版本升级，`noj-cli update --latest` 获取最新稳定版本。
+`noj-cli uninstall` 默认保留数据卷，`noj-cli uninstall --all --yes` 才会执行完全删除。
+安装器从同版本 Release 下载并校验 `noj-cli`，生产机无需安装 Deno。已有 `.env.prod`、备份和数据卷继续使用。
+`noj-cli backup verify/restore/drill` 提供快照校验、恢复和演练；恢复需要显式 `--confirm`。
+所选 Release 必须已发布 CLI 资产，旧 Release 不会被安装器静默切换成其他版本。
 
 镜像拉取由 Docker daemon 负责。若官方源访问不稳定，请在 Docker daemon 配置
 registry mirror 或 HTTP(S) proxy 后重试；评测镜像仍可通过 `JUDGE_IMAGE_BASE`

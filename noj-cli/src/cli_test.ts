@@ -24,8 +24,10 @@ Deno.test("version stub 返回 0", async () => {
   assertEquals(await dispatchCommand("version", [], ctx), 0);
 });
 
-Deno.test("maintain 无子命令返回 0；run-server 无配置目录返回 1", async () => {
-  assertEquals(await dispatchCommand("maintain", [], ctx), 0);
+Deno.test("maintain 无子命令或错误子命令返回失败；run-server 无配置目录返回 1", async () => {
+  assertEquals(await dispatchCommand("maintain", [], ctx), 1);
+  assertEquals(await dispatchCommand("maintain", ["unknown"], ctx), 1);
+  assertEquals(await dispatchCommand("maintain", ["restore"], ctx), 1);
   assertEquals(await dispatchCommand("run-server", [], ctx), 1);
 });
 

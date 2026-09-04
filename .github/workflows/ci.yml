@@ -39,6 +39,22 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  production-cli:
+    name: Production CLI
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.5
+      - name: 检查 CLI 与离线生产安装流程
+        working-directory: noj-cli
+        run: |
+          deno task check
+          deno task test
+          deno task test:production
+
 
   # ===========================================================================
   # 生产镜像供应链配置检查：在 PR 阶段提前阻止 latest 和未固定 digest 回归。

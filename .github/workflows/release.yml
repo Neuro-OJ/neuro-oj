@@ -4,7 +4,7 @@
 # 触发条件：GitHub Release published 或 workflow_dispatch。
 # 普通 push / pull_request 不发布生产镜像。
 # 每次 Release 构建并推送 7 个镜像，平台为 linux/amd64（公测阶段只支持 amd64）。
-# noj-cli 仅作为源码项目维护，不作为 GitHub Release 二进制资产发布。
+# 镜像验证通过后发布同版本 noj-cli 二进制，供一键安装器下载。
 # =============================================================================
 
 name: Release Images
@@ -26,6 +26,40 @@ env:
   IMAGE_NAMESPACE: neuro-oj
 
 jobs:
+  publish-cli:
+    name: 发布生产运维 CLI
+    needs: verify-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.5
+      - name: 验证 CLI 与生产安装链路
+        working-directory: noj-cli
+        run: |
+          deno task check
+          deno task test
+          deno task test:production
+      - name: 编译、冒烟验证并生成校验文件
+        working-directory: noj-cli
+        run: |
+          deno task build:cli
+          ./bin/noj-cli-linux-amd64 --help
+          cd bin
+          sha256sum noj-cli-linux-amd64 > noj-cli-linux-amd64.sha256
+      - name: 发布同版本二进制资产
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          gh release upload "$VERSION" \
+            noj-cli/bin/noj-cli-linux-amd64 \
+            noj-cli/bin/noj-cli-linux-amd64.sha256
+
   supply-chain-check:
     name: 检查供应链配置
     runs-on: ubuntu-latest

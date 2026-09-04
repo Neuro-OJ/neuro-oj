@@ -5,7 +5,7 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_SCRIPT="$SCRIPT_DIR/install.sh"
-SOURCE_NOJ="$SCRIPT_DIR/../../noj"
+SOURCE_NOJ="$SCRIPT_DIR/production.sh"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/noj-bootstrap-test.XXXXXX")"
 FAKE_BIN="$TEST_ROOT/bin"
 ARCHIVE="$TEST_ROOT/source.tar.gz"
@@ -20,8 +20,22 @@ fail() { printf '✗ %s\n' "$*" >&2; exit 1; }
 
 mkdir -p "$FAKE_BIN" "$TEST_ROOT/source/noj-neuro-oj-v0.1.0/scripts/deploy"
 printf 'target\n' >"$TEST_ROOT/source/noj-neuro-oj-v0.1.0/AGENTS.md"
-cp "$SOURCE_NOJ" "$TEST_ROOT/source/noj-neuro-oj-v0.1.0/noj"
-chmod 755 "$TEST_ROOT/source/noj-neuro-oj-v0.1.0/noj"
+cp "$SOURCE_NOJ" "$TEST_ROOT/source/noj-neuro-oj-v0.1.0/scripts/deploy/production.sh"
+cat >"$TEST_ROOT/cli-fixture" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+command="$1"
+shift
+[[ "${1:-}" == --dir ]] || exit 90
+root="$2"
+shift 2
+printf '%s\n' "$command --dir $root $*" >>"${NOJ_BOOTSTRAP_CLI_LOG:?}"
+exec bash "$root/scripts/deploy/production.sh" "$command" "$@"
+EOF
+chmod 755 "$TEST_ROOT/cli-fixture"
+openssl dgst -sha256 "$TEST_ROOT/cli-fixture" | awk '{print $NF "  noj-cli-linux-amd64"}' >"$TEST_ROOT/cli-fixture.sha256"
+export NOJ_BOOTSTRAP_CLI_FIXTURE="$TEST_ROOT/cli-fixture"
+export NOJ_BOOTSTRAP_CLI_LOG="$TEST_ROOT/cli.log"
 ln -s AGENTS.md "$TEST_ROOT/source/noj-neuro-oj-v0.1.0/CLAUDE.md"
 cat >"$TEST_ROOT/source/noj-neuro-oj-v0.1.0/scripts/deploy/deploy.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -60,7 +74,19 @@ printf '%s\n' "${output:?}" >>"${NOJ_BOOTSTRAP_DOWNLOAD_LOG:?}"
 if [[ "${NOJ_BOOTSTRAP_DOWNLOAD_FAIL:-0}" == 1 ]]; then
   exit 22
 fi
-cp "${NOJ_BOOTSTRAP_ARCHIVE:?}" "$output"
+case "$url" in
+  */noj-cli-linux-amd64.sha256)
+    if [[ "${NOJ_BOOTSTRAP_BAD_CHECKSUM:-0}" == 1 ]]; then
+      printf '%064d  noj-cli-linux-amd64\n' 0 >"$output"
+    else
+      cp "$NOJ_BOOTSTRAP_CLI_FIXTURE.sha256" "$output"
+    fi
+    ;;
+  */noj-cli-linux-amd64)
+    [[ "${NOJ_BOOTSTRAP_CLI_MISSING:-0}" != 1 ]] || exit 22
+    cp "$NOJ_BOOTSTRAP_CLI_FIXTURE" "$output" ;;
+  *) cp "${NOJ_BOOTSTRAP_ARCHIVE:?}" "$output" ;;
+esac
 EOF
 chmod +x "$FAKE_BIN/curl"
 
@@ -211,7 +237,7 @@ rm -f "$DEPLOY_LOG"
 bash "$INSTALL_SCRIPT" --download-only --repo https://example.com/repo --ref v0.1.0 \
   --dir "$download_only_dir" >/dev/null
 [[ -f "$download_only_dir/scripts/deploy/deploy.sh" ]] || fail "下载模式缺少部署脚本"
-[[ -x "$download_only_dir/noj" ]] || fail "下载模式缺少可执行 noj 命令"
+[[ -x "$download_only_dir/bin/noj-cli" ]] || fail "下载模式缺少可执行 noj 命令"
 [[ ! -e "$DEPLOY_LOG" ]] || fail "download-only 启动了部署"
 [[ -z "$(find "$TEST_ROOT" -maxdepth 1 -type d -name 'noj-bootstrap.*' -print -quit)" ]] ||
   fail "下载完成后未清理临时目录"
@@ -231,8 +257,8 @@ bash "$INSTALL_SCRIPT" --repo https://example.com/repo --ref v0.1.0 --dir "$depl
   --env-file /tmp/example.env --backup-dir /tmp/backups >/dev/null
 [[ "$(cat "$DEPLOY_LOG")" == 'install --env-file /tmp/example.env --backup-dir /tmp/backups' ]] ||
   fail "部署参数未正确传递"
-[[ -L "$NOJ_BOOTSTRAP_BIN_DIR/noj" ]] || fail "安装后未注册 PATH 命令"
-cmp -s "$NOJ_BOOTSTRAP_BIN_DIR/noj" "$deploy_dir/noj" || fail "PATH 命令未指向安装目录"
+[[ -L "$NOJ_BOOTSTRAP_BIN_DIR/noj-cli" ]] || fail "安装后未注册 PATH 命令"
+cmp -s "$NOJ_BOOTSTRAP_BIN_DIR/noj-cli" "$deploy_dir/bin/noj-cli" || fail "PATH 命令未指向安装目录"
 pass "部署入口与参数传递"
 
 resume_dir="$TEST_ROOT/resume"
@@ -242,17 +268,38 @@ cp "$TEST_ROOT/source/noj-neuro-oj-v0.1.0/scripts/deploy/deploy.sh" \
 chmod +x "$resume_dir/scripts/deploy/deploy.sh"
 printf 'services:\n  fake:\n    image: alpine:3\n' >"$resume_dir/docker-compose.prod.yml"
 printf 'NOJ_VERSION=v0.1.0\nADMIN_PASS=keep-this-secret\n' >"$resume_dir/.env.prod"
-mkdir -p "$resume_dir/backups"
+mkdir -p "$resume_dir/backups" "$resume_dir/bin"
 printf 'keep\n' >"$resume_dir/backups/marker.txt"
-printf 'old-noj\n' >"$resume_dir/noj"
-chmod 600 "$resume_dir/noj"
+printf 'old-noj\n' >"$resume_dir/bin/noj-cli"
+chmod 600 "$resume_dir/bin/noj-cli"
 bash "$INSTALL_SCRIPT" --panel baota --dir "$resume_dir" >/dev/null
 grep -q 'install --panel baota' "$DEPLOY_LOG" || fail "已有 NOJ 安装未继续执行 deploy.sh"
 grep -q '^ADMIN_PASS=keep-this-secret$' "$resume_dir/.env.prod" || fail "续装覆盖了生产配置"
 [[ "$(cat "$resume_dir/backups/marker.txt")" == keep ]] || fail "续装覆盖了备份目录"
-cmp -s "$resume_dir/noj" "$TEST_ROOT/source/noj-neuro-oj-v0.1.0/noj" || fail "续装未更新 noj 命令"
-[[ -x "$resume_dir/noj" ]] || fail "续装后 noj 命令不可执行"
+cmp -s "$resume_dir/bin/noj-cli" "$NOJ_BOOTSTRAP_CLI_FIXTURE" || fail "续装未更新 noj 命令"
+[[ -x "$resume_dir/bin/noj-cli" ]] || fail "续装后 noj 命令不可执行"
 pass "已有 NOJ 安装保留配置并继续部署"
+
+cli_before="$(openssl dgst -sha256 "$resume_dir/bin/noj-cli")"
+env_before="$(openssl dgst -sha256 "$resume_dir/.env.prod")"
+calls_before="$(wc -l <"$NOJ_BOOTSTRAP_CLI_LOG")"
+if NOJ_BOOTSTRAP_BAD_CHECKSUM=1 bash "$INSTALL_SCRIPT" --ref v0.1.0 --dir "$resume_dir" >"$TEST_ROOT/bad-sha.out" 2>&1; then
+  fail "错误校验和未阻止续装"
+fi
+[[ "$(openssl dgst -sha256 "$resume_dir/bin/noj-cli")" == "$cli_before" ]] || fail "校验失败覆盖了现有 CLI"
+[[ "$(openssl dgst -sha256 "$resume_dir/.env.prod")" == "$env_before" ]] || fail "校验失败修改了现有配置"
+[[ "$(wc -l <"$NOJ_BOOTSTRAP_CLI_LOG")" == "$calls_before" ]] || fail "校验失败执行了 CLI"
+pass "校验失败保留旧 CLI、配置和服务"
+
+if NOJ_BOOTSTRAP_CLI_MISSING=1 bash "$INSTALL_SCRIPT" --ref v0.1.0 --dir "$TEST_ROOT/missing-cli" >"$TEST_ROOT/missing-cli.out" 2>&1; then
+  fail "缺失 CLI 资产仍报告安装成功"
+fi
+[[ ! -e "$TEST_ROOT/missing-cli" ]] || fail "CLI 缺失仍修改了安装目录"
+pass "缺少 Release CLI 资产时不修改目标目录"
+
+NOJ_BOOTSTRAP_PORT_OCCUPIED=1 bash "$INSTALL_SCRIPT" --ref v0.1.0 --dir "$resume_dir" --port 18080 >"$TEST_ROOT/resume-port.out" 2>&1
+grep -q '已有部署由 Compose' "$TEST_ROOT/resume-port.out" || fail "已有服务端口阻止续装"
+pass "已有服务监听端口时可继续安装"
 
 panel_deploy_dir="$TEST_ROOT/panel-deploy"
 bash "$INSTALL_SCRIPT" --panel baota --dir "$panel_deploy_dir" >/dev/null

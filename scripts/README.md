@@ -1,21 +1,21 @@
 # scripts/ — 脚本总览
 
-Neuro OJ 仓库根目录的脚本统一存放点。部署与运维入口恢复为 `setup.sh` 与 `noj`；
-`noj-cli` 保留为独立源码工具，不参与 GitHub Release 二进制发布。
+Neuro OJ 仓库根目录的脚本统一存放点。`setup.sh` 调用 `install.sh`，下载并校验同版本 `noj-cli`，
+由 CLI 调用内部 `production.sh` 和 `deploy.sh` 完成生产安装及运维。
 
 ## 安装、部署与运维入口
 
-首次部署使用 `setup.sh`，日常运维使用安装目录中的 `noj`：
+首次部署使用 `setup.sh`，日常运维使用安装目录中的 `bin/noj-cli`：
 
 ```bash
 # 一键安装
 curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash
 
 # 日常运维
-noj status
-noj logs core
-noj update --latest
-noj backup
+noj-cli status
+noj-cli logs core
+noj-cli update --latest
+noj-cli backup
 ```
 
 从源码运行（开发/测试）：
@@ -45,11 +45,11 @@ scripts/
 | 我想...                                  | 使用                                                            |
 | ---------------------------------------- | --------------------------------------------------------------- |
 | **一键安装**                            | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh \| bash` |
-| **环境检测**                            | `noj check`                                                      |
-| **启动/停止/重启/状态**                  | `noj start\|stop\|restart\|status`                              |
-| **查看日志**                            | `noj logs [core,ui,...] [--follow]`                              |
-| **升级**                                | `noj update [--latest]`                                         |
-| **创建/校验备份**                        | `noj backup` / `noj verify`                                     |
+| **环境检测**                            | `noj-cli check`                                                      |
+| **启动/停止/重启/状态**                  | `noj-cli start\|stop\|restart\|status`                              |
+| **查看日志**                            | `noj-cli logs [core,ui,...] [--follow]`                              |
+| **升级**                                | `noj-cli update [--latest]`                                         |
+| **创建/校验备份**                        | `noj-cli backup` / `noj-cli backup verify <快照>`                                     |
 | **源码运行 noj-cli**                    | `cd noj-cli && deno run -A src/cli.ts --help`                    |
 | **执行 staging 验收**                    | `bash scripts/staging/acceptance.sh all --env-file .env.staging` |
 | **跑跨模块 E2E 测试**                    | `bash scripts/e2e/run-all.sh`                                   |

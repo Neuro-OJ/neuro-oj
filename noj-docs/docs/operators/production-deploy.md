@@ -1,7 +1,8 @@
 # 生产部署（公测）
 
 本文档介绍 Linux 服务器上的一键部署方式。生产服务使用 Docker Compose 和
-`ghcr.io/neuro-oj/` 镜像；`noj` 负责部署运维，`noj-cli` 是独立的源码工具，不参与生产安装。
+`ghcr.io/neuro-oj/` 镜像；`noj-cli` 负责生产安装与运维，复用 `.env.prod` 和现有生产 Compose。
+JSON 配置下的 `deploy/maintain` 命令独立保留，不会自动转换现有生产数据。
 
 ## 1. 前置条件
 
@@ -30,16 +31,17 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 脚本会按以下顺序执行：
 
 1. 检查 Linux、CPU 架构、Docker、Compose、磁盘和端口。
-2. 下载指定版本的部署文件；未指定版本时自动选择最新 Release。
+2. 下载指定版本的部署文件和 `noj-cli-linux-amd64`，SHA-256 校验通过后安装到 `bin/noj-cli`；未指定版本时自动选择最新 Release。
+   所选 Release 必须包含 CLI 资产，下载或校验失败不会覆盖已有安装。生产机无需 Deno。
 3. 首次创建 `.env.prod`，用简单提示询问网站地址、HTTP/HTTPS、邮件服务和是否安装 Judge。
-4. 用户确认写入配置后，拉取镜像、执行数据库迁移并等待健康检查。
+4. `noj-cli install` 引导用户确认配置后，拉取镜像、执行数据库迁移并等待健康检查，完成后注册 PATH 命令。
 
 可选参数：
 
 ```bash
-# 固定版本，便于回滚
+# 固定版本：将 vX.Y.Z 替换为包含 CLI 资产的 Release 标签
 curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --ref v0.8.1 --dir /opt/neuro-oj
+  bash -s -- --ref vX.Y.Z --dir /opt/neuro-oj
 
 # 只检查环境，不下载源码
 curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
@@ -51,7 +53,7 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 ```
 
 重复执行时，如果目标目录已经是 NOJ 安装目录，脚本会保留 `.env.prod`、备份和数据卷并继续执行；
-不会因为目录非空而停止。其他非空目录会拒绝覆盖。若之前配置过，脚本开头会询问是否继续使用；
+不会因为目录非空而停止。其他非空目录只更新 NOJ 部署文件，保留其余内容。若之前配置过，脚本开头会询问是否继续使用；
 选择重新填写时只在最后确认后写入正式配置。
 
 安装完成后打开网站注册第一个用户，该用户自动成为管理员，不需要填写管理员邮箱或密码。
@@ -84,19 +86,19 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 安装目录默认为 `/opt/neuro-oj`，可以直接执行：
 
 ```bash
-noj check                 # 检查部署环境
-noj status                # 查看服务状态
-noj logs core             # 查看 core 日志
-noj logs judge --follow   # 持续查看 Judge 日志
-noj start                 # 启动服务
-noj stop                  # 停止服务但保留数据
-noj restart               # 重启服务
-noj backup                # 创建备份
-noj verify                # 校验配置和镜像
-noj config check          # 只检查配置，不改变服务
+noj-cli check                 # 检查部署环境
+noj-cli status                # 查看服务状态
+noj-cli logs core             # 查看 core 日志
+noj-cli logs judge --follow   # 持续查看 Judge 日志
+noj-cli start                 # 启动服务
+noj-cli stop                  # 停止服务但保留数据
+noj-cli restart               # 重启服务
+noj-cli backup                # 创建备份
+noj-cli verify                # 校验配置和镜像
+noj-cli config check          # 只检查配置，不改变服务
 ```
 
-如果 `noj` 尚未加入 PATH，也可以在安装目录执行 `./noj`，或直接调用：
+如果 `noj-cli` 尚未加入 PATH，也可以在安装目录执行 `./bin/noj-cli`，或直接调用：
 
 ```bash
 cd /opt/neuro-oj
@@ -109,41 +111,51 @@ bash scripts/deploy/deploy.sh status
 
 ```bash
 cd /opt/neuro-oj
-sed -i 's/^NOJ_VERSION=.*/NOJ_VERSION=v0.8.1/' .env.prod
-noj update
+# 将 vX.Y.Z 替换为包含 CLI 资产的目标版本
+sed -i 's/^NOJ_VERSION=.*/NOJ_VERSION=vX.Y.Z/' .env.prod
+noj-cli update
 ```
 
 自动升级到最新稳定 Release：
 
 ```bash
-noj update --latest
+noj-cli update --latest
 ```
 
 升级前会创建并校验备份，拉取镜像，执行数据库迁移并等待健康检查；不会删除数据卷。若失败，
-先查看 `noj status` 和 `noj logs`，再把 `NOJ_VERSION` 改回上一个已验证版本并执行 `noj update`。
+先查看 `noj-cli status` 和 `noj-cli logs`，再把 `NOJ_VERSION` 改回上一个已验证版本并执行 `noj-cli update`。
 数据库迁移只追加，不会自动回滚，因此跨大版本升级前必须确认迁移兼容性。
 
 ## 6. 卸载
 
 ```bash
 # 删除容器、网络和本地镜像，保留配置和数据卷
-noj uninstall
+noj-cli uninstall
 
 # 明确删除全部数据和安装目录（不可恢复）
-noj uninstall --all --yes
+noj-cli uninstall --all --yes
 ```
 
 普通卸载要求输入 `UNINSTALL`，不会删除 PostgreSQL、Redis、MinIO、Judge 缓存、备份或配置。
 完全删除要求输入 `DELETE ALL` 或使用 `--yes`，执行前请确认备份已保存到其他位置。
 
-## 7. noj-cli 的边界
+## 7. CLI 配置模式与源码运行
 
-`noj-cli` 位于仓库的 `noj-cli/` 目录，使用 Deno 从源码运行，供实验性部署编排和运维功能开发：
+`noj-cli install/start/stop/status/update/uninstall/logs/backup/verify/config check` 管理 `.env.prod` 生产部署；
+内部复用 `scripts/deploy/production.sh`、`deploy.sh` 和 `backup.sh`，因此旧配置、服务名和数据卷不变。
+`noj-cli backup restore <快照> --confirm` 要求目标 Compose 服务已停止；`backup verify` 与 `backup drill` 用于校验和演练。
+
+`deploy/maintain/run-server` 使用另一套 `noj-deploy.json` / `noj-secrets.json`，不能直接管理 `.env.prod` 安装。
+若同时管理多个安装，请显式使用 `--dir` 选择目标。
+
+开发者可从源码运行相同入口：
 
 ```bash
 cd noj-cli
-deno run -A src/cli.ts --help
+deno run -A src/cli.ts status --dir /opt/neuro-oj
+deno task test
+deno task test:production
 ```
 
-它与生产 `noj` 脚本分开维护，Release workflow 只发布生产 Docker 镜像，不构建或上传
-`noj-cli` 二进制资产。因此生产安装不会依赖 GitHub Release 中的 CLI 文件。
+Release workflow 在生产镜像验证通过后，编译并发布 Linux amd64 CLI 及 SHA-256 校验文件。
+旧 Release 没有这些资产时不能使用新安装器安装；需要使用包含 CLI 的新 Release 或该旧版本自身的安装器。

@@ -35,6 +35,7 @@ export async function followLogFile(
   path: string,
   onLine: (line: string) => void,
   signal: { aborted: boolean },
+  onReady?: () => void,
 ): Promise<void> {
   let offset = 0;
   try {
@@ -44,6 +45,7 @@ export async function followLogFile(
     // 文件尚不存在：从 0 开始，等待创建
   }
   let buf = "";
+  onReady?.();
   while (!signal.aborted) {
     try {
       const info = await Deno.stat(path);
