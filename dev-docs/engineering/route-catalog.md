@@ -84,11 +84,14 @@
 | GET | `/contests/:id/events` | noj-core/src/domains/contest/routes/sse.ts |
 | GET | `/contests/:id/participants` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | GET | `/contests/:id/submissions` | noj-core/src/domains/contest/routes/admin-contests.ts |
+| GET | `/dashboard/observability` | noj-core/src/domains/query/routes/admin-dashboard.ts |
 | GET | `/dashboard/stats` | noj-core/src/domains/query/routes/admin-dashboard.ts |
 | GET | `/events` | noj-core/src/domains/messaging/routes/conversations.ts |
 | GET | `/events` | noj-core/src/domains/system/routes/announcements.ts |
 | GET | `/feed` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/health` | noj-core/src/routes/health.ts |
+| GET | `/health/live` | noj-core/src/routes/health.ts |
+| GET | `/health/ready` | noj-core/src/routes/health.ts |
 | GET | `/history` | noj-core/src/domains/identity/routes/checkin.ts |
 | GET | `/judge-images` | noj-core/src/domains/system/routes/admin-judge-images.ts |
 | GET | `/llm/providers` | noj-core/src/domains/gateway/routes/admin-llm.ts |
@@ -135,6 +138,7 @@
 | GET | `jti` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `jti` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `NOJ_ENV` | noj-core/src/domains/identity/routes/auth.ts |
+| GET | `NOJ_ENV` | noj-core/src/routes/health.ts |
 | GET | `NOJ_ENV` | noj-core/src/routes/health.ts |
 | GET | `NOJ_LLM_GATEWAY_URL` | noj-core/src/domains/gateway/routes/admin-llm.ts |
 | GET | `NOJ_LLM_SERVICE_TOKEN` | noj-core/src/domains/gateway/routes/admin-llm.ts |
