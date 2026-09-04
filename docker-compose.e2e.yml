@@ -204,10 +204,10 @@ services:
       DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e
       REDIS_URL: redis://redis:6379/1
     depends_on:
-      # 必须等 noj-migrate（core 迁移）成功后再启动：core 迁移 0048 裸
-      # CREATE TABLE llm_providers（无 IF NOT EXISTS），若 gateway 的
-      # runMigrations（IF NOT EXISTS）先建表，core 迁移会报
-      # relation "llm_providers" already exists 导致 noj-migrate exit 1。
+      # 必须等 noj-migrate（core 迁移）成功后再启动，避免 core 与 gateway
+      # 的迁移在同一批 LLM 表上并发执行 DDL。两侧迁移均为幂等，但串行化
+      # 能避免冷启动时的建表/建索引竞争，并确保 gateway 启动前基础 schema
+      # 已完成。
       noj-migrate:
         condition: service_completed_successfully
       postgres:
