@@ -6,6 +6,7 @@ pub mod config;
 pub mod docker;
 pub mod dual;
 pub mod judge;
+pub mod metrics;
 pub mod sandbox;
 pub mod types;
 

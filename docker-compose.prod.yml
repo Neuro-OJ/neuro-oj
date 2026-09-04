@@ -45,10 +45,17 @@ x-core-env: &core-env
   RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
   AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-90}
 
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 50m
+    max-file: "5"
+
 services:
   # ── 一次性初始化：迁移 + 系统数据 ───────────────────────────────
   migrate:
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-server:${NOJ_VERSION:?NOJ_VERSION is required}"
+    logging: *default-logging
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -68,6 +75,7 @@ services:
   # ── 核心 API ──────────────────────────────────────────────────────
   core:
     image: "${NOJ_IMAGE_REGISTRY:-ghcr.io/neuro-oj}/noj-server:${NOJ_VERSION:?NOJ_VERSION is required}"
+    logging: *default-logging
     environment:
       <<: *core-env
     depends_on:

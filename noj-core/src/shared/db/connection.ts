@@ -7,6 +7,7 @@ import * as schema from "./schema.ts";
 import { ALL_TABLES, SCHEMA_DDL, SCHEMA_INDEXES } from "./schema-ddl.ts";
 import { dirname, resolve } from "jsr:@std/path@^1";
 import { logger } from "../base/logging.ts";
+import { metrics } from "../base/metrics.ts";
 
 let _db: ReturnType<typeof drizzlePg> | null = null;
 let _client: ReturnType<typeof postgres> | null = null;
@@ -422,32 +423,37 @@ export function getDb() {
 export async function checkDbHealth(): Promise<
   { ok: boolean; error?: string }
 > {
+  const result = (ok: boolean, error?: string) => {
+    metrics.inc("noj_database_health_checks_total");
+    if (!ok) metrics.inc("noj_database_health_check_errors_total");
+    return error ? { ok, error } : { ok };
+  };
   if (isPGliteMode()) {
     if (!_db) {
-      return { ok: false, error: "未初始化" };
+      return result(false, "未初始化");
     }
     try {
       await _db.execute(sql`SELECT 1`);
-      return { ok: true };
+      return result(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return { ok: false, error: message };
+      return result(false, message);
     }
   }
 
   if (!_client) {
-    return { ok: false, error: "未初始化" };
+    return result(false, "未初始化");
   }
   if (!_db) {
-    return { ok: false, error: "未初始化" };
+    return result(false, "未初始化");
   }
 
   try {
     await _db.execute(sql`SELECT 1`);
-    return { ok: true };
+    return result(true);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: message };
+    return result(false, message);
   }
 }
 

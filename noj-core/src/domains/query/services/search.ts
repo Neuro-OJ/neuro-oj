@@ -6,8 +6,8 @@
  *
  * SQL 策略：
  * - tsvector @@ websearch_to_tsquery 精确匹配（英文/数字分词）
- * - title ILIKE '%q%' 模糊兜底（中文 trigram）
- * - 两者 OR，由 PG planner 选最优索引
+ * - title/username/email ILIKE '%q%' 模糊兜底（中文及邮箱片段）
+ * - 这些条件 OR，由 PG planner 选最优索引
  * - ts_headline 生成高亮 marker（[[HIGHLIGHT]]...[[/HIGHLIGHT]]），非 HTML 防 XSS
  */
 
@@ -394,6 +394,7 @@ export async function searchUsers(
     WHERE (
       u.search_vector @@ websearch_to_tsquery('simple', ${q})
       OR u.username ILIKE ${likeQ} ESCAPE '\\'
+      OR u.email ILIKE ${likeQ} ESCAPE '\\'
     )
     AND u.id <> '0'
     ORDER BY rank DESC NULLS LAST, u.username ASC
@@ -428,6 +429,7 @@ export async function searchUsers(
       WHERE (
         u.search_vector @@ websearch_to_tsquery('simple', ${q})
         OR u.username ILIKE ${likeQ} ESCAPE '\\'
+        OR u.email ILIKE ${likeQ} ESCAPE '\\'
       )
       AND u.id <> '0'
     `);

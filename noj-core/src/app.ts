@@ -18,6 +18,9 @@ import { logger } from "./shared/base/logging.ts";
 import { listJudgeImages } from "./domains/system/index.ts";
 import { banlistMiddleware } from "./domains/identity/index.ts";
 import { requestContext } from "./shared/middleware/request-context.ts";
+import { metricsMiddleware } from "./shared/middleware/metrics.ts";
+import { metrics, normalizeMetricRoute } from "./shared/base/metrics.ts";
+import { renderPrometheusMetrics } from "./domains/system/services/observability.ts";
 import { getSetting } from "./domains/system/index.ts";
 import { SECONDS_PER_DAY } from "./shared/base/constants.ts";
 
@@ -66,6 +69,7 @@ export function createApp(): Hono {
   // 请求上下文中间件（最外层）：为每个请求生成 request_id，
   // 写入 context 供 onError 复用，并包裹后续处理使日志自动带 request_id。
   app.use("*", requestContext);
+  app.use("*", metricsMiddleware);
 
   // CORS 中间件
   // - 开发环境：只允许本地 UI 开发端口，避免 credentials 与通配来源组合
@@ -108,6 +112,15 @@ export function createApp(): Hono {
       crypto.randomUUID();
     if (err instanceof AppError) {
       err.requestId = requestId;
+      if (err.code === "RATE_LIMITED") {
+        const routePath =
+          (c.req as unknown as { routePath?: string }).routePath;
+        const route = normalizeMetricRoute(c.req.path, routePath);
+        metrics.inc("noj_http_rate_limited_total", {
+          method: c.req.method,
+          route,
+        });
+      }
       // 限流错误携带 X-RateLimit-* 响应头（issue #73）
       const extraHeaders =
         (err as { headers?: Record<string, string> }).headers;
@@ -146,6 +159,10 @@ export function createApp(): Hono {
 
   // 注册路由（按域自装配；各域 routes/index.ts 内部保持顺序敏感注释）
   app.route("/", health);
+  app.get("/metrics", async (c) => {
+    c.header("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+    return c.body(await renderPrometheusMetrics());
+  });
   app.route("/api/v1", identityRouter);
   app.route("/api/v1", catalogRouter);
   app.route("/api/v1", submissionRouter);

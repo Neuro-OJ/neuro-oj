@@ -4,6 +4,8 @@
 `ghcr.io/neuro-oj/` 镜像；`noj-cli` 负责生产安装与运维，复用 `.env.prod` 和现有生产 Compose。
 JSON 配置下的 `deploy/maintain` 命令独立保留，不会自动转换现有生产数据。
 
+生产环境默认将容器日志限制为每个文件 50 MiB、保留 5 个文件；如需集中检索，应在宿主机或日志平台配置采集器，并避免写入凭据、代码、prompt 或完整提交内容。
+
 ## 1. 前置条件
 
 - Linux amd64 服务器，至少 2 vCPU、2 GiB Swap 和 5 GiB 可用磁盘空间。
