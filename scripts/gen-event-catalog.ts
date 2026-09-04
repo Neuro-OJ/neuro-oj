@@ -1,11 +1,11 @@
-// 生成 SSE 事件目录（docs/engineering/event-catalog.md）。
+// 生成 SSE 事件目录（dev-docs/engineering/event-catalog.md）。
 // 从 event-bus.ts 的 Channels 与 publishEvent 调用点生成。
 // 用法：deno run -A scripts/gen-event-catalog.ts [--check]
 import { relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname ?? ".", "..");
-const EVENT_BUS_PATH = resolve(ROOT, "noj-core/src/lib/event-bus.ts");
-const OUTPUT_PATH = resolve(ROOT, "docs/engineering/event-catalog.md");
+const EVENT_BUS_PATH = resolve(ROOT, "noj-core/src/shared/sse/event-bus.ts");
+const OUTPUT_PATH = resolve(ROOT, "dev-docs/engineering/event-catalog.md");
 const CORE_SRC = resolve(ROOT, "noj-core/src");
 
 function collectTsFiles(dir: string): string[] {

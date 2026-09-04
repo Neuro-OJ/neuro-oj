@@ -39,7 +39,7 @@ const items = computed<Item[]>(() => [
     >
       <span
         v-if="active === item.key"
-        class="absolute left-0 top-2 bottom-2 w-0.5 bg-primary rounded-r"
+        class="absolute left-0 top-2 bottom-2 w-0.5 bg-signal rounded-r"
       />
       <UIcon :name="item.icon" class="size-5" />
     </button>

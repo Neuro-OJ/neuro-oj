@@ -6,24 +6,24 @@ CREATE MATERIALIZED VIEW user_rankings AS
     u.username,
     COUNT(*)::int AS total_submissions,
     COUNT(DISTINCT s.problem_id) FILTER (
-      WHERE er.status = 'Accepted'
+      WHERE er.status = 'finished' AND er.score > 0
         AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
     )::int AS solved_count,
-    COUNT(*) FILTER (WHERE er.status = 'Accepted')::int AS accepted,
+    COUNT(*) FILTER (WHERE er.status = 'finished' AND er.score > 0)::int AS accepted,
     CASE WHEN COUNT(*) = 0 THEN 0
          ELSE ROUND(
-           (COUNT(*) FILTER (WHERE er.status = 'Accepted')::float / COUNT(*))::numeric,
+           (COUNT(*) FILTER (WHERE er.status = 'finished' AND er.score > 0)::float / COUNT(*))::numeric,
            3
          )::float
     END AS acceptance_rate,
     ROW_NUMBER() OVER (
       ORDER BY
         COUNT(DISTINCT s.problem_id) FILTER (
-          WHERE er.status = 'Accepted'
+          WHERE er.status = 'finished' AND er.score > 0
             AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
         ) DESC,
         CASE WHEN COUNT(*) = 0 THEN 0
-             ELSE COUNT(*) FILTER (WHERE er.status = 'Accepted')::float / COUNT(*)
+             ELSE COUNT(*) FILTER (WHERE er.status = 'finished' AND er.score > 0)::float / COUNT(*)
         END DESC,
         COUNT(*) ASC,
         u.created_at ASC
@@ -35,7 +35,7 @@ CREATE MATERIALIZED VIEW user_rankings AS
   WHERE u.id <> '0' AND s.status = 'finished'
   GROUP BY u.id, u.username, u.created_at
   HAVING COUNT(*) FILTER (
-    WHERE er.status = 'Accepted'
+    WHERE er.status = 'finished' AND er.score > 0
       AND (s.contest_id IS NULL OR c.affect_global_ranking = TRUE)
   ) > 0;
 

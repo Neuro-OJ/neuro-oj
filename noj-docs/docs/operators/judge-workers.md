@@ -9,17 +9,18 @@ Evaluator + Solution 双容器（用后即毁），并把结果写回 Redis。
 
 支持多个 Judge Worker 实例水平扩展：所有实例消费同一个 Redis 队列，互不冲突。
 
-## 独立节点一键部署
+## 独立节点部署
 
-如果评测节点不运行 noj-core、noj-ui 或完整源码仓库，可以只下载部署脚本，然后由脚本
-生成独立 Compose 配置：
+如果评测节点不运行 noj-core、noj-ui 或完整源码仓库，可以使用仓库提供的 Judge 安装脚本
+在独立目录初始化 Worker：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/judge-install.sh \
-  | bash -s -- install --dir /srv/noj-judge
+  -o judge-install.sh
+bash judge-install.sh install --dir /srv/noj-judge
 ```
 
-首次执行会引导填写以下配置：
+首次配置需要填写：
 
 - `NOJ_VERSION`：不可变 Release 版本，例如 `v0.1.0`；
 - `REDIS_URL`：与 noj-core 相同的 Redis 地址、数据库和认证信息；
@@ -27,65 +28,18 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/depl
 - `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID`：只服务于 Judge 的 rootless
   Docker daemon Unix socket 及其组 ID。
 
-### 宝塔等服务器面板
-
-脚本默认会检测宝塔面板。检测到后会进入兼容提示模式：脚本继续使用标准
-`docker` / `docker compose` 命令，用户可以在宝塔的 Docker 页面确认 Docker 状态，
-并查看脚本创建的 Redis 与 Judge 容器。脚本不会调用宝塔 API，也不会修改已有站点、
-反向代理、容器或面板配置；Judge 本身不需要公开端口。
-
-```bash
-# 默认自动检测
-bash /srv/noj-judge/judge-install.sh install
-
-# 面板安装目录特殊时，强制显示宝塔提示
-bash /srv/noj-judge/judge-install.sh install --panel baota
-
-# 明确关闭面板检测提示
-bash /srv/noj-judge/judge-install.sh install --panel none
-```
-
-宝塔只能提供 Docker 的管理入口，不能替代 Judge 所需的隔离边界。仍必须准备只服务
-于 Judge 的 rootless Docker daemon 和专用 Unix socket，不能使用 `/run/docker.sock` 或
-`/var/run/docker.sock`。本机 Redis 模式创建的 Redis 会绑定到 `127.0.0.1`，因此也不会
-自动向公网开放 Redis 端口。
-
-Redis 配置会先让用户选择来源：
-
-1. **连接已有 Redis（推荐）**：填写 noj-core 正在使用的完整 Redis URL；
-2. **创建本机 Redis**：仅在明确要让 noj-core 也使用该实例时选择。脚本会创建带持久化卷、
-   随机密码且只绑定 `127.0.0.1` 的 Redis 容器，并将连接信息保存到
-   `/srv/noj-judge/redis-connection.txt`；
-3. **稍后配置**：不创建 Redis，也不会启动 Judge。
-
-Judge 和 noj-core 必须使用同一个 Redis、数据库、认证信息、任务队列和结果队列。创建本机
-Redis 后，先按连接信息文件中的地址配置 noj-core，再重新执行 Judge 安装或检查。连接信息
-文件、Redis 配置文件和 Judge 环境文件均为 `0600`，脚本不会在终端或 Docker 命令日志中显示
-Redis 密码。
-
-部署前必须准备专用 rootless Docker daemon。脚本会检查 Linux、Docker、Compose、Redis、
-磁盘/内存、镜像架构和 socket 权限，但不会自动安装或替换 Docker daemon，也不会修改
-宿主机 systemd、subuid/subgid。`/var/run/docker.sock`、`/run/docker.sock`、TCP/HTTP
-Docker endpoint 都会被拒绝。
-
 管理独立 Worker：
 
 ```bash
-bash /srv/noj-judge/judge-install.sh check
 bash /srv/noj-judge/judge-install.sh status
-bash /srv/noj-judge/judge-install.sh logs --follow
+bash /srv/noj-judge/judge-install.sh logs
 bash /srv/noj-judge/judge-install.sh stop
-bash /srv/noj-judge/judge-install.sh upgrade --version v0.1.1
 ```
 
-也可以在目标机只下载指定 ref 的脚本，审阅后再执行：
-
-```bash
-bash /srv/noj-judge/judge-install.sh download --ref v0.1.0 --dir /srv/noj-judge
-```
+Judge 安装脚本与主站部署脚本相互独立；它不会安装或替换主站的 `noj` 命令。
 
 当前生产 Release 镜像由发布流水线提供 `linux/amd64`。ARM64 主机必须先确认所选
-版本发布了对应 manifest；否则脚本会在启动前提示架构不匹配，不能通过回退到宿主机
+版本发布了对应 manifest；否则部署会在启动前提示架构不匹配，不能通过回退到宿主机
 Docker socket 绕过该限制。
 
 ### 评测并发上限
@@ -113,6 +67,63 @@ Docker socket 绕过该限制。
 2. 在应用主机上运行只服务于 judge 的 rootless Docker daemon，并使用独立 Unix
    socket。
 
+### rootless Docker 安装
+
+以下步骤在宿主机上创建仅供 Judge 使用的 rootless Docker daemon。
+
+1. 安装依赖与 rootless 组件（需要已配置 Docker 官方 apt 源）：
+
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y uidmap docker-ce-rootless-extras
+   ```
+
+2. 以准备运行 rootless daemon 的普通用户执行安装：
+
+   ```bash
+   dockerd-rootless-setuptool.sh install
+   ```
+
+   执行成功后会在该用户下创建 `docker-rootless.service`，默认 socket 为：
+
+   ```text
+   /run/user/<uid>/docker.sock
+   ```
+
+   其中 `<uid>` 是当前用户 ID。
+
+3. 创建 NOJ 专用 socket 路径，并让指定组可以访问：
+
+   ```bash
+   sudo mkdir -p /run/noj-judge
+   sudo chown root:<judge-docker-group> /run/noj-judge
+   sudo chmod 0750 /run/noj-judge
+   sudo ln -sf /run/user/<uid>/docker.sock /run/noj-judge/docker.sock
+   ```
+
+   `<judge-docker-group>` 通常是运行 rootless Docker 的用户主组（例如 `1000`）；
+   记下它的 GID，稍后写入 `JUDGE_DOCKER_SOCKET_GID`。
+
+4. 验证能否通过该 socket 访问 rootless daemon：
+
+   ```bash
+   DOCKER_HOST=unix:///run/noj-judge/docker.sock docker info
+   ```
+
+   能看到 daemon 信息且输出中带有 rootless/userns 相关标记即为正常。
+
+5. 在 NOJ 部署配置中填写：
+
+   ```bash
+   JUDGE_DOCKER_SOCKET=/run/noj-judge/docker.sock
+   JUDGE_DOCKER_SOCKET_GID=<judge-docker-group>
+   JUDGE_DOCKER_HOST=unix:///run/noj-judge/docker.sock
+   JUDGE_REQUIRE_ISOLATED_DOCKER=true
+   ```
+
+> 不同发行版的 rootless Docker 安装方式略有差异。Fedora/RHEL 可参考
+> [Rootless mode 官方文档](https://docs.docker.com/engine/security/rootless/)。
+
 生产 Compose 使用以下配置连接该 socket：
 
 ```bash
@@ -139,8 +150,8 @@ test "$JUDGE_REQUIRE_ISOLATED_DOCKER" = "true"
 
 # 只应看到独立 daemon socket 和评测缓存，不得出现应用宿主机 socket、
 # /var/lib/docker、/etc 或其他宿主路径。
-docker compose --env-file .env.prod -f docker-compose.prod.yml config
-docker inspect "$(docker compose --env-file .env.prod -f docker-compose.prod.yml ps -q judge)" \
+docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml config
+docker inspect "$(docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml ps -q judge)" \
   --format '{{json .Mounts}}'
 ```
 
@@ -172,7 +183,7 @@ cd noj-judge
 ```
 
 生产部署时，`init system` 会根据 `JUDGE_IMAGE_BASE`（默认 `ghcr.io/neuro-oj/`）写入
-ghcr 全限定镜像名；若需要手工确认，见[生产部署](production-deploy.md#3-评测镜像白名单)。
+ghcr 全限定镜像名；若需要手工确认，见[生产部署](production-deploy.md#3-配置说明)。
 
 `noj-evaluator-python` 与 `noj-solution-python` 基于 `python:3.12-slim`，不预装题目专用依赖，题目依赖由出题人在 evaluator 中自行管理；`noj-solution-ai` 额外内置 CPU 版 PyTorch、torchvision 与常用 CV/ML 依赖。
 
@@ -205,20 +216,20 @@ noj-core 维护评测镜像白名单（`judgeImages`），并在题目 CRUD / �
 
 ## 健康检查与状态查看
 
-生产环境使用 Docker Compose 管理：
+生产环境使用 `noj` 或 Judge 脚本管理：
 
 ```bash
 # 查看所有服务状态（含 judge 是否在线）
-docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+bash /opt/neuro-oj/noj status
 
 # 查看 judge 日志
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 judge
+bash /opt/neuro-oj/noj logs judge --follow
 ```
 
 调高日志详细度排查问题（临时覆盖环境变量）：
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
+docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
   -e RUST_LOG=noj_judge=debug judge
 ```
 
@@ -227,13 +238,14 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
 评测任务在 Redis 队列 `noj:judge:queue` 中排队，结果写回 `noj:judge:results`：
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
-  redis-cli -a "$REDIS_PASSWORD" LLEN noj:judge:queue
+docker exec noj-redis redis-cli -a '<REDIS_PASSWORD>' LLEN noj:judge:queue
 ```
+
+密码从 `/opt/neuro-oj/.env.prod` 的 `REDIS_PASSWORD` 读取。
 
 如果队列持续堆积：
 
-1. 确认 Judge Worker 在线且连接了同一个 Redis（`docker compose ps`）。
+1. 确认 Judge Worker 在线且连接了同一个 Redis（`noj status`）。
 2. 查看 judge 日志是否有拉取/容器错误。
 3. 检查 Docker daemon 是否可用、评测镜像是否已从 ghcr.io 拉取。
 4. 如负载确实超过单实例能力，按下一节水平扩展。
@@ -248,7 +260,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
 ## 升级与重启
 
 - 停止实例会进入优雅关闭流程：排空正在执行的 in-flight 任务后再退出，避免提交丢失。
-- 升级步骤：修改 `.env.prod` 中的 `NOJ_VERSION` → `docker compose pull` → `docker compose up -d`。
+- 升级步骤：修改 `.env.prod` 中的 `NOJ_VERSION` → `noj update`。
 - 升级评测镜像后应先在 noj-core 白名单登记，再启动 Worker。
 
 ## 常见排查方向
@@ -257,5 +269,5 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
 - Docker 连接失败：确认 Docker daemon 可用，当前用户有权限访问。
 - 镜像不存在：确认 ghcr.io 镜像已发布，且 `judge_images` 白名单中的镜像名与发布的 ghcr 全限定名一致。
 - 白名单为空：确认 noj-core 已启动、`init system` 已执行；白名单校验在 noj-core 侧完成，judge 侧使用镜像前缀白名单复验。
-- `SystemError`：通常是纯净评测包、运行时配置、镜像、协议或 evaluator 本身异常，需要查看 Judge Worker 日志。
+- `error`：通常是纯净评测包、运行时配置、镜像、协议或 evaluator 本身异常，需要查看 Judge Worker 日志。
 - 提交长时间 `Pending`：见上文「队列监控」。

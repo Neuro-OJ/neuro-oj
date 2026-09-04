@@ -121,7 +121,7 @@ parse_args() {
   POSITIONAL=()
   while (($# > 0)); do
     case "$1" in
-      install|start|upgrade|stop|uninstall|status|logs|backup|verify)
+      install|start|upgrade|stop|uninstall|status|logs|backup|verify|config-check)
         if [[ -n "$COMMAND" ]]; then
           POSITIONAL+=("$1")
         else
@@ -849,7 +849,7 @@ verify_image_signatures() {
   identity="${identity:-^https://github.com/Neuro-OJ/neuro-oj/.github/workflows/release.yml@.*$}"
   section "校验生产镜像签名"
 
-  local images=(noj-core noj-ui noj-llm-gateway)
+  local images=(noj-server noj-ui noj-llm-gateway)
   if judge_enabled; then
     images+=(noj-judge noj-evaluator-python noj-solution-python)
   fi
@@ -1145,6 +1145,11 @@ main() {
     logs) logs ;;
     backup) backup ;;
     verify) verify ;;
+    config-check)
+      command -v "$DOCKER_BIN" >/dev/null 2>&1 || fail "找不到 Docker CLI：$DOCKER_BIN"
+      [[ -f "$COMPOSE_FILE" ]] || fail "找不到生产 Compose 文件：$COMPOSE_FILE"
+      check_configuration
+      ;;
     *) fail "未知命令：$COMMAND" ;;
   esac
 }

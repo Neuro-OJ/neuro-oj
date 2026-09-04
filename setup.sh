@@ -6,7 +6,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash
 #
 # setup.sh 只负责获取内部 bootstrap 并完成首次安装；安装完成后的服务启停、更新
-# 和管理统一使用安装目录中的 noj 命令。
+# 和管理统一使用安装目录 bin/noj-cli 命令。
 
 set -Eeuo pipefail
 

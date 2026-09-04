@@ -149,7 +149,7 @@ onMounted(() => void load())
     <!-- 提问表单：仅竞赛进行期间且已参赛用户可见 -->
     <form v-if="canAsk" class="rounded-xl border border-border bg-bg-page p-4" @submit.prevent="submitQuestion">
       <div class="mb-3 grid gap-3 sm:grid-cols-[220px_1fr]">
-        <select v-model="questionProblemId" class="rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary">
+        <select v-model="questionProblemId" class="rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-signal">
           <option value="">全局提问</option>
           <option v-for="problem in problems" :key="problem.problem_id" :value="problem.problem_id">{{ problem.label }}. {{ problem.title }}</option>
         </select>
@@ -157,7 +157,7 @@ onMounted(() => void load())
           v-model="questionContent"
           rows="3"
           maxlength="5000"
-          class="w-full resize-y rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+          class="w-full resize-y rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-signal"
           placeholder="描述你的疑问（可挂到具体题目，或选择全局提问）"
         />
       </div>
@@ -211,7 +211,7 @@ onMounted(() => void load())
               v-model="draftFor(clarification.id).content"
               rows="3"
               maxlength="5000"
-              class="mb-2 w-full resize-y rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+              class="mb-2 w-full resize-y rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-signal"
               placeholder="输入回复内容"
             />
             <div class="flex flex-wrap items-center gap-3">

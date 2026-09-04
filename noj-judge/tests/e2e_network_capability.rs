@@ -183,7 +183,7 @@ name = frame["name"]
 value = f"pong:{name}"
 sys.stdout.write(json.dumps({"type":"result","id":frame["id"],"value":value}) + "\n")
 sys.stdout.write("---RESULT---\n")
-sys.stdout.write('{"status":"Accepted","score":10000,"details":{}}\n')
+sys.stdout.write('{"score":10000,"details":{}}\n')
 sys.stdout.flush()
 "#;
 
@@ -350,7 +350,7 @@ sys.stderr.flush()
     // evaluator 的 RESULT payload
     assert_eq!(
         result_payload.as_deref(),
-        Some("{\"status\":\"Accepted\",\"score\":10000,\"details\":{}}")
+        Some("{\"score\":10000,\"details\":{}}")
     );
     assert!(
         sol_stderr.contains("SOLUTION_GOT_RESULT"),
@@ -388,7 +388,7 @@ frame = json.loads(line)
 assert frame["type"] == "capability", frame
 sys.stdout.write(json.dumps({"type":"error","id":frame["id"],"code":"NotFound","message":"capability 'nope' not registered"}) + "\n")
 sys.stdout.write("---RESULT---\n")
-sys.stdout.write('{"status":"WrongAnswer","score":0,"details":{}}\n')
+sys.stdout.write('{"score":0,"details":{}}\n')
 sys.stdout.flush()
 "#;
 
@@ -576,7 +576,7 @@ sys.stdout.write(json.dumps({
     "trace": 'Traceback (most recent call last):\n  File "evaluate.py", line 10, in handler\nValueError: cap boom',
 }) + "\n")
 sys.stdout.write("---RESULT---\n")
-sys.stdout.write('{"status":"WrongAnswer","score":0,"details":{}}\n')
+sys.stdout.write('{"score":0,"details":{}}\n')
 sys.stdout.flush()
 "#;
 
@@ -853,10 +853,10 @@ async fn bridge_dns_tcp_real_connectivity() {
 }
 
 /// SDK 全链路（真实 SDK，非协议模拟）：evaluate.py `register_capability` →
-/// solution `call_capability` → judge 双向转发 → 评测 Accepted。
+/// solution `call_capability` → judge 双向转发 → 评测 finished。
 ///
 /// evaluator 以 bridge 联网（network.enabled=true）：capability handler 内
-/// TCP 探测 docker DNS（127.0.0.11:53），成功才返回 pong → Accepted；
+/// TCP 探测 docker DNS（127.0.0.11:53），成功才返回 pong → finished；
 /// 若 evaluator 无网则返回 no-net → WrongAnswer（测试失败即暴露网络回归）。
 #[ignore]
 #[serial_test::serial]
@@ -888,7 +888,7 @@ runner = SolutionRunner()
 try:
     answer = runner.call("solve", "hello")
 except Exception as e:
-    result.runtime_error("call failed: " + repr(e))
+    raise RuntimeError("call failed: " + repr(e))
 else:
     if answer == "pong:hello":
         result.accept(score=100)
@@ -942,7 +942,7 @@ def solve(msg: str) -> str:
 
     assert_eq!(
         result.status, "finished",
-        "SDK 全链路应 Accepted（evaluator 联网 + capability 转发），实际 {:?} score={}",
+        "SDK 全链路应 finished（evaluator 联网 + capability 转发），实际 {:?} score={}",
         result.status, result.score
     );
 }

@@ -8,8 +8,6 @@ const EXCLUDED_DIRS = new Set([
   ".output",
   "dist",
   ".git",
-  ".claude",
-  ".opencode",
   ".worktrees",
   "vendor",
   "coverage",

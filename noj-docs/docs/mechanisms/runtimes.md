@@ -42,5 +42,5 @@ Evaluator 通过 [Evaluator SDK](evaluator-sdk.md) 调用用户函数，双方�
 
 ## 常见问题
 
-- **提交显示 `SystemError`**：优先检查镜像是否已构建（`build-sdk-images.sh`）、是否在白名单中、题目 `runtime_config` 的镜像名是否与白名单一致。
+- **提交显示 `error`**：优先检查镜像是否已构建（`build-sdk-images.sh`）、是否在白名单中、题目 `runtime_config` 的镜像名是否与白名单一致。
 - **语言选项不出现**：该题未在运行时配置中启用该语言——但请注意当前仅 Python 可用，其他标识无法评测。

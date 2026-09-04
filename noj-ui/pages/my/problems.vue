@@ -172,7 +172,7 @@ const columns = [
         <h1 class="text-2xl font-bold text-text">我的题目</h1>
         <span class="text-sm text-text-muted">{{ problems.length }} 道用户题</span>
       </div>
-      <NuxtLink to="/problems/new" class="inline-flex items-center gap-1.5 text-sm px-4 py-2 bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark">
+      <NuxtLink to="/problems/new" class="inline-flex items-center gap-1.5 text-sm px-4 py-2 bg-signal text-on-signal border-[1.5px] border-signal rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-signal/80 hover:border-signal/80">
         创建题目
       </NuxtLink>
     </div>
@@ -185,7 +185,7 @@ const columns = [
           type="text"
           placeholder="搜索题目..."
           aria-label="按标题或题号搜索"
-          class="w-full px-3 py-2 pr-8 text-sm border border-border rounded-lg bg-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors duration-150"
+          class="w-full px-3 py-2 pr-8 text-sm border border-border rounded-lg bg-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-signal/30 focus:border-signal transition-colors duration-150"
         />
         <button
           v-if="searchInput"
@@ -206,7 +206,7 @@ const columns = [
           role="radio"
           :aria-checked="difficulty === d.value"
           class="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors duration-150"
-          :class="difficulty === d.value ? 'bg-primary text-white border-primary' : 'bg-white text-text-secondary border-border hover:border-primary/40'"
+          :class="difficulty === d.value ? 'bg-signal text-on-signal border-signal' : 'bg-white text-text-secondary border-border hover:border-signal/40'"
           @click="selectDifficulty(d.value)"
         >
           {{ d.label }}
@@ -245,7 +245,7 @@ const columns = [
 
       <template #empty>
         <p>你还没有创建任何题目</p>
-        <NuxtLink to="/problems/new" class="inline-flex items-center gap-1.5 text-sm px-4 py-2 bg-primary text-white border-[1.5px] border-primary rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-primary-dark hover:border-primary-dark">
+        <NuxtLink to="/problems/new" class="inline-flex items-center gap-1.5 text-sm px-4 py-2 bg-signal text-on-signal border-[1.5px] border-signal rounded-md cursor-pointer no-underline transition-all duration-150 hover:bg-signal/80 hover:border-signal/80">
           创建第一道题
         </NuxtLink>
       </template>
@@ -295,7 +295,7 @@ const columns = [
             <div class="inline-flex items-center gap-1.5">
               <NuxtLink
                 :to="`/problems/${row.original.display_id}/edit`"
-                class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium border border-border rounded-md text-text-secondary hover:text-primary hover:border-primary/40 transition-colors"
+                class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium border border-border rounded-md text-text-secondary hover:text-primary hover:border-signal/40 transition-colors"
               >
                 编辑
               </NuxtLink>

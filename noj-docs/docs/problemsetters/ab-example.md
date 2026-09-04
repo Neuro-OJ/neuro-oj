@@ -87,9 +87,9 @@ except Exception as e:
 
 ```python
 if total_score == FULL_SCORE:                          # 全部用例通过且格式检查无误
-    result.accept(score=score, details=details)        # 判定 Accepted：写入总分与用例详情
+    result.accept(score=score, details=details)        # 写入总分与用例详情
 else:
-result.wrong_answer(score=score, details=details)  # 未达满分：判定 WrongAnswer（可带部分分）
+    result.wrong_answer(score=score, details=details)  # 未达满分：写入部分分
 ```
 
 标准测试点字段至少包含 `case_id`、`status` 和 `time_ms`。可见测试点可以额外包含

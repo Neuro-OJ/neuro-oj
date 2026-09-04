@@ -1,7 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { Hono } from "hono";
 import { createApp } from "../src/app.ts";
-import { AppError } from "../src/lib/errors.ts";
+import { AppError } from "./../src/shared/base/errors.ts";
 
 /**
  * 辅助函数：创建带全局错误处理的测试用 Hono 应用。

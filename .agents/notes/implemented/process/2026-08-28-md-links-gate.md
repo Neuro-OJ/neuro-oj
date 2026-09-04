@@ -19,7 +19,7 @@ Status: implemented
 
 - 使用 VitePress 内置 dead-link 检查：只覆盖 noj-docs，不覆盖根目录和 scripts 文档。
 - 直接允许所有死链并靠人工维护：无法阻止漂移。
-- 不排除 `docs/superpowers`：历史计划文档大量引用“未来文件”，会持续误报。
+- 不排除 `dev-docs/superpowers`：历史计划文档大量引用“未来文件”，会持续误报。
 
 ## Consequences
 

@@ -7,7 +7,7 @@
  * 用法：
  *   deno run -A scripts/prepare-pglite-template.ts
  */
-import { ensurePGliteTemplateCached } from "../src/db/connection.ts";
+import { ensurePGliteTemplateCached } from "./../src/shared/db/connection.ts";
 
 const templatePath = await ensurePGliteTemplateCached();
 console.log(`PGlite 模板就绪: ${templatePath}`);

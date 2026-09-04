@@ -186,7 +186,7 @@ const templateUrl = getProblemTemplateUrl
     class="h-screen flex items-center justify-center bg-bg-page"
   >
     <div class="flex flex-col items-center gap-3 rounded-xl border border-border bg-white px-8 py-10 text-center">
-      <span class="flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary text-xl font-bold">
+      <span class="flex size-11 items-center justify-center rounded-full bg-signal/10 text-primary text-xl font-bold">
         <UIcon name="i-lucide-package" class="size-5" />
       </span>
       <p class="text-sm font-medium text-text">该题为产物提交题，请返回题目详情上传 zip 文件。</p>

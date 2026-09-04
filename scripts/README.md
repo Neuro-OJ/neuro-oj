@@ -1,85 +1,62 @@
 # scripts/ — 脚本总览
 
-Neuro OJ 仓库根目录的脚本统一存放点。所有脚本以 `bash scripts/<dir>/<name>.sh`
-方式调用。
+Neuro OJ 仓库根目录的脚本统一存放点。`setup.sh` 调用 `install.sh`，下载并校验同版本 `noj-cli`，
+由 CLI 调用内部 `production.sh` 和 `deploy.sh` 完成生产安装及运维。
 
-生产环境的日常运维推荐从仓库根目录执行 `./noj`；它是 `scripts/deploy/deploy.sh` 的
-安全简化入口。
+## 安装、部署与运维入口
+
+首次部署使用 `setup.sh`，日常运维使用安装目录中的 `bin/noj-cli`：
+
+```bash
+# 一键安装
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash
+
+# 日常运维
+noj-cli status
+noj-cli logs core
+noj-cli update --latest
+noj-cli backup
+```
+
+从源码运行（开发/测试）：
+
+```bash
+cd noj-cli
+deno run -A src/cli.ts doctor
+```
 
 ## 目录结构
 
 ```
 scripts/
 ├── README.md              # 本文件(索引)
-│
-├── dev/                   # 本地开发编排
-│   ├── README.md          #   详细开发指南 + FAQ
-│   ├── devtool.sh         #   单文件编排入口（install-deps / init-env / start / stop / status）
-│   ├── env.example        #   noj-core 环境变量模板
-│   ├── logs/              #   日志 + PID 文件目录
-│   └── locks/             #   devtool 同工具防双开锁
-│
-├── deploy/                # 生产部署
-│   ├── install.sh          #   可独立下载的源码获取与部署 bootstrap
-│   ├── deploy.sh          #   生产安装、启动、升级、停止、备份入口
-│   ├── backup.sh          #   PostgreSQL/Redis/MinIO/S3 全量快照、校验、恢复与演练
-│   ├── test-install.sh     #   不依赖网络和 Docker 的安装更新测试
-│   ├── test-noj.sh         #   noj 命令路由测试
-│   ├── test-deploy.sh     #   不依赖真实生产资源的部署脚本测试
-│   └── test-backup.sh     #   不依赖真实 Docker 的备份与恢复安全边界测试
-│
+├── check-all.ts           # 本地全量检查入口
+├── check-ci.ts            # CI 仓库级门禁入口
+├── deploy/                # 生产部署、备份、Judge 与回归测试脚本
+│   ├── verify-build-server.ts
+│   └── verify-compose-server.ts
 ├── staging/               # 生产候选版本验收门禁
-│   ├── acceptance.sh      #   构建、启动、边缘检查与业务 smoke test
-│   ├── env.example        #   staging 验收环境变量模板
-│   └── test-acceptance.sh #   不依赖真实 Docker 的脚本测试
-│
-└── e2e/                   # 跨模块 E2E 测试
-    ├── setup.sh           #   启动 E2E 环境
-    ├── check-setup.sh     #   检查 E2E SDK 镜像刷新与失败传播
-    ├── teardown.sh        #   停止 E2E 环境
-    ├── core.sh            #   运行 noj-core E2E
-    ├── judge.sh           #   运行 noj-judge E2E
-    └── run-all.sh         #   E2E 一键运行
+├── e2e/                   # 跨模块 E2E 测试
+└── release/               # 发布供应链检查
 ```
 
 ## 按使用场景速查
 
 | 我想...                                  | 使用                                                            |
 | ---------------------------------------- | --------------------------------------------------------------- |
-| **生产运维统一入口**                     | `./noj <install\|start\|stop\|restart\|update\|status\|logs\|backup\|verify>` |
-| **只检查生产配置**                       | `./noj config check`                                            |
-| **首次启动整套开发环境**                 | `bash scripts/dev/devtool.sh install-deps && bash scripts/dev/devtool.sh init-env && bash scripts/dev/devtool.sh start` |
-| **查看当前运行状态**                     | `bash scripts/dev/devtool.sh status`（加 `--json` 结构化输出）  |
-| **停止所有模块**                         | `bash scripts/dev/devtool.sh stop`                              |
-| **单模块启动**                           | `bash scripts/dev/devtool.sh start <core\|ui\|judge\|infra>`    |
-| **单模块重启**                           | `bash scripts/dev/devtool.sh stop <core\|ui\|judge> && bash scripts/dev/devtool.sh start <core\|ui\|judge>` |
-| **更新环境变量模板（保留自定义）**       | `bash scripts/dev/devtool.sh init-env --merge`                  |
-| **一条命令安装整套 NOJ**                  | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh \| bash` |
-| **固定版本安装**                          | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh \| bash -s -- --ref 0.8.0-rc.1 --dir /opt/neuro-oj` |
-| **兼容旧版本的单脚本下载部署**            | `bash scripts/deploy/install.sh --dir /opt/neuro-oj`             |
-| **宝塔兼容部署**                         | `bash scripts/deploy/install.sh --panel baota --ref v0.1.0 --dir /opt/neuro-oj` |
-| **检测 Linux 部署环境**                  | `bash scripts/deploy/install.sh check`                           |
-| **安装基础部署工具**                     | `sudo bash scripts/deploy/install.sh install-env`                |
-| **独立 Judge 一键部署**                   | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/scripts/deploy/judge-install.sh \| bash -s -- install --dir /srv/noj-judge` |
-| **检查独立 Judge 环境**                   | `bash /srv/noj-judge/judge-install.sh check`                      |
-| **启动/停止生产服务**                    | `./noj start` / `./noj stop`                                     |
-| **升级生产版本**                         | `./noj update`                                                   |
-| **升级到最新稳定版本**                   | `./noj update --latest`                                          |
-| **查看生产状态/日志**                    | `./noj status` / `./noj logs [service]`                          |
-| **创建完整生产备份**                     | `./noj backup`                                                   |
-| **校验/恢复演练快照**                    | `bash scripts/deploy/backup.sh verify <snapshot>` / `drill <snapshot>` |
+| **一键安装**                            | `curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh \| bash` |
+| **环境检测**                            | `noj-cli check`                                                      |
+| **启动/停止/重启/状态**                  | `noj-cli start\|stop\|restart\|status`                              |
+| **查看日志**                            | `noj-cli logs [core,ui,...] [--follow]`                              |
+| **升级**                                | `noj-cli update [--latest]`                                         |
+| **创建/校验备份**                        | `noj-cli backup` / `noj-cli backup verify <快照>`                                     |
+| **源码运行 noj-cli**                    | `cd noj-cli && deno run -A src/cli.ts --help`                    |
 | **执行 staging 验收**                    | `bash scripts/staging/acceptance.sh all --env-file .env.staging` |
-| **仅检查 staging 配置**                  | `bash scripts/staging/acceptance.sh check --env-file .env.staging` |
-| **手动初始化数据库**                     | `cd noj-core && deno task db:migrate`（初始化见 `deno task dev-setup`） |
-| **手动构建题目包**                       | `cd noj-core && deno task problems:build`                              |
 | **跑跨模块 E2E 测试**                    | `bash scripts/e2e/run-all.sh`                                   |
-
-devtool.sh 子命令完整列表：`bash scripts/dev/devtool.sh help` 或 `devtool.sh <子命令> --help`。
 
 ## 与原 `deno task` / `cargo run` 的关系
 
-`scripts/dev/devtool.sh` **不替代**原生命令,只是封装了"后台守护 + PID 管理 + 日志
-归集"的运维能力。需要前台运行/调试时仍推荐直接使用:
+需要前台运行/调试单个模块时仍推荐直接使用：
 
 ```bash
 cd noj-core  && deno task dev
@@ -87,39 +64,7 @@ cd noj-ui    && deno task dev
 cd noj-judge && cargo run
 ```
 
-详细开发指南见 [`dev/README.md`](dev/README.md)。
+详细开发指南见 [`dev-docs/engineering/development.md`](../dev-docs/engineering/development.md)。
 
-生产部署脚本使用 `.env.prod` 和 `docker-compose.prod.yml`，备份工具使用 GPG 对称加密保存
-环境文件，详细说明见
-[`生产部署文档`](../noj-docs/docs/operators/production-deploy.md)。发布前必须先通过
-`staging/acceptance.sh all`；失败时脚本会把 Compose、Docker 和服务日志保存到
-`artifacts/staging/<版本>/`。
-
-仓库根目录的 `setup.sh` 是面向新用户的一条命令入口，默认自动获取最新可用 Release，
-然后进入环境检测、配置向导和生产部署。需要复现或固定版本时，在命令后增加
-`--ref 0.8.0-rc.1`。安装完成后打开网站注册第一个用户，该用户会自动获得管理员权限。
-
-`setup.sh` 是唯一推荐的首次安装入口，会获取内部 bootstrap、完成源码安装并调用目标目录中的
-`noj install`。`scripts/deploy/install.sh` 仅作为 setup.sh 的内部实现和旧版本兼容入口；已有安装
-的更新、启停和管理请统一使用 `./noj update`、`./noj update --latest`、`./noj start`、`./noj status`
-等命令。`update --latest` 只选择最新稳定 Release；RC/预发布版本仍需通过 `.env.prod` 固定版本升级。
-
-兼容入口模式下可执行 `bash scripts/deploy/install.sh check` 检查 Linux、架构、基础工具、Docker
-Compose、内存、磁盘和端口。`sudo bash scripts/deploy/install.sh install-env` 只会通过系统包管理器
-安装 `ca-certificates`、`curl`、`tar` 和 `openssl`；Docker Engine、Compose plugin、Cosign
-和 Judge rootless Docker daemon 不由脚本自动安装。Cosign 只在主动开启镜像签名校验时需要。
-
-首次执行安装时，终端会先展示最低环境要求和当前主机检测结果；通过检查后再引导填写安装版本、网站地址、HTTPS 选项和邮件服务，并询问是否
-安装评测服务 Judge。默认安装 Judge；如果暂时没有独立的 Judge Docker 服务，可以选择
-跳过，网站和题库仍可先部署。安装 Judge 时才需要填写评测服务连接位置；邮件密钥不会回显。
-填写过程先暂存在临时文件，最后
-会询问“是否写入配置”，确认后才会修改正式配置并部署，取消不会留下半成品。已有配置
-时会先询问是否继续使用，选择 `N` 会清空旧值后重新填写；已有阿里云或腾讯云邮件配置
-时直接回车会继续使用，输入 `skip` 才会停用；没有旧邮件配置时直接回车会跳过邮件。
-没有 TTY 的自动化场景会保留配置模板并返回非零状态，可使用 `--non-interactive` 明确选择该行为。
-如果跳过 Judge，之后在 `.env.prod` 中将 `JUDGE_ENABLED` 改为 `true`，补充独立 Judge
-Docker 服务的 socket 和组 ID，再执行 `bash scripts/deploy/deploy.sh start` 即可启用。
-生产部署完成后请立即打开网站注册第一个真实用户；该用户会自动获得管理员权限，已有站点的后续注册用户不会自动提权。
-
-当前发布版本的生产镜像仅支持 `linux/amd64`。在 ARM64 主机上，`check` 和 `install` 会在
-下载源码前明确提示使用 x86_64 主机，避免在 Compose 拉取镜像阶段才失败。
+生产部署与备份的详细说明见
+[`生产部署文档`](../noj-docs/docs/operators/production-deploy.md)。

@@ -14,6 +14,7 @@ deno task dev        # --watch --env-file=.env -A src/main.ts
 deno task start      # 启动
 deno task test       # deno test -A --no-check
 deno task check      # fmt --check + lint + typecheck
+deno task db:migrate # 执行 LLM 表迁移（幂等）
 ```
 
 ## 关键约定

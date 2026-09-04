@@ -1,37 +1,24 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-/// 评测状态枚举。
+/// 评测系统级状态枚举。
 ///
-/// 注意：evaluate.py 输出的 status 是自由字符串，
-/// `JudgeStatus` 仅覆盖 judge 侧可自行判定的系统级状态。
-/// 其他状态（如 Accepted / WrongAnswer）由 evaluate.py 输出透传。
+/// 新协议下 evaluate.py 结果 JSON 不再输出 status，judge 统一映射为
+/// `finished` / `error`；`JudgeStatus` 仅覆盖 judge 侧自行判定的系统级状态。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum JudgeStatus {
-    /// 评测通过
-    Accepted,
-    /// 结果错误
-    WrongAnswer,
     /// 超出时间限制
     TimeLimitExceeded,
-    /// 超出内存限制
-    MemoryLimitExceeded,
-    /// 运行时错误（非零退出码）
-    RuntimeError,
     /// 系统错误（评测环境异常）
     SystemError,
 }
 
 impl JudgeStatus {
-    /// 返回状态的字符串表示，用于序列化和日志记录。
-    #[allow(dead_code)]
+    /// 返回状态的字符串表示，用于测试和日志记录。
+    #[cfg(test)]
     pub fn as_str(&self) -> &'static str {
         match self {
-            JudgeStatus::Accepted => "Accepted",
-            JudgeStatus::WrongAnswer => "WrongAnswer",
             JudgeStatus::TimeLimitExceeded => "TimeLimitExceeded",
-            JudgeStatus::MemoryLimitExceeded => "MemoryLimitExceeded",
-            JudgeStatus::RuntimeError => "RuntimeError",
             JudgeStatus::SystemError => "SystemError",
         }
     }
@@ -228,14 +215,7 @@ mod tests {
 
     #[test]
     fn test_judge_status_as_str() {
-        assert_eq!(JudgeStatus::Accepted.as_str(), "Accepted");
-        assert_eq!(JudgeStatus::WrongAnswer.as_str(), "WrongAnswer");
         assert_eq!(JudgeStatus::TimeLimitExceeded.as_str(), "TimeLimitExceeded");
-        assert_eq!(
-            JudgeStatus::MemoryLimitExceeded.as_str(),
-            "MemoryLimitExceeded"
-        );
-        assert_eq!(JudgeStatus::RuntimeError.as_str(), "RuntimeError");
         assert_eq!(JudgeStatus::SystemError.as_str(), "SystemError");
     }
 
@@ -308,7 +288,7 @@ mod tests {
     fn test_judge_result_serialize_full() {
         let result = JudgeResult {
             submission_id: "sid-123".to_string(),
-            status: "Accepted".to_string(),
+            status: "finished".to_string(),
             score: 1000,
             output: "---RESULT---\n{}".to_string(),
             details: json!({"score_content": 8.0}),
@@ -318,7 +298,7 @@ mod tests {
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["submission_id"], "sid-123");
-        assert_eq!(json["status"], "Accepted");
+        assert_eq!(json["status"], "finished");
         assert_eq!(json["score"], 1000);
         assert_eq!(json["time_ms"], 2340);
         assert_eq!(json["memory_kb"], 18432);
@@ -330,7 +310,7 @@ mod tests {
     fn test_judge_result_serialize_skip_optionals() {
         let result = JudgeResult {
             submission_id: "sid-456".to_string(),
-            status: "WrongAnswer".to_string(),
+            status: "finished".to_string(),
             score: 500,
             output: "".to_string(),
             details: json!({}),

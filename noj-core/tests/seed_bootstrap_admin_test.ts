@@ -10,7 +10,7 @@
  */
 
 import { assert, assertEquals } from "jsr:@std/assert@^1";
-import { getDb, resetDbForTest } from "../src/db/connection.ts";
+import { getDb, resetDbForTest } from "./../src/shared/db/connection.ts";
 import { and, eq, not } from "drizzle-orm";
 import {
   auditLogs,
@@ -23,14 +23,14 @@ import {
   submissions,
   userRoles,
   users,
-} from "../src/db/schema.ts";
-import { registerUser } from "../src/services/auth.ts";
-import { hashPassword } from "../src/lib/password.ts";
-import { getAdminUserIds } from "../src/lib/permissions.ts";
+} from "./../src/shared/db/schema.ts";
+import { registerUser } from "../src/domains/identity/index.ts";
+import { hashPassword } from "./../src/domains/identity/services/security/password.ts";
+import { getAdminUserIds } from "./../src/domains/identity/services/security/permissions.ts";
 import {
   ensureAdminFromEnv,
   ensureBootstrapAdmin,
-} from "../src/services/seed/seed-system.ts";
+} from "../src/domains/system/index.ts";
 
 const hasDb = true; // PGlite 内存数据库始终可用
 const skip = !hasDb;

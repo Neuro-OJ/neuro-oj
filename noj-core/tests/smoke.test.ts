@@ -18,15 +18,15 @@
 
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../src/app.ts";
-import { resetDbForTest } from "../src/db/connection.ts";
+import { resetDbForTest } from "./../src/shared/db/connection.ts";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,
-} from "../src/services/system-settings.ts";
+} from "../src/domains/system/index.ts";
 import {
   _resetEnvSnapshotForTest,
   snapshotEnv,
-} from "../src/lib/env-snapshot.ts";
+} from "./../src/domains/system/services/env-snapshot.ts";
 
 // 模块级：连接 Redis（PR-1 后 authMiddleware 需要 Redis 校验 JWT 撤销状态）
 // 未配置 REDIS_URL 时跳过此步（依赖测试自身的 Redis fixture）
@@ -36,7 +36,7 @@ import {
 if (Deno.env.get("REDIS_URL")) {
   Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
   try {
-    const redisModule = await import("../src/mq/connection.ts");
+    const redisModule = await import("./../src/shared/mq/connection.ts");
     redisModule.resetRedisForTest();
     await redisModule.connectRedis();
   } catch (e) {

@@ -16,17 +16,7 @@ useRequireLogin()
 
 type SettingType = "boolean" | "string" | "text" | "integer"
 type SettingSource = "db" | "env" | "default"
-type SettingCategory =
-  | "auth"
-  | "maintenance"
-  | "email"
-  | "rate_limit"
-  | "storage"
-  | "database"
-  | "redis"
-  | "cors"
-  | "judge"
-  | "other"
+type SettingScope = "runtime" | "bootstrap"
 
 interface SystemSetting {
   key: string
@@ -34,17 +24,30 @@ interface SystemSetting {
   effective_value: unknown
   raw_value: string
   source: SettingSource
+  /** 生命周期归属：runtime=DB 可热改；bootstrap=env 启动期定型只读 */
+  scope: SettingScope
   is_secret: boolean
   description: string
   updated_at: string | null
   updated_by: string | null
-  category: SettingCategory
+  category: string
   min?: number
   max?: number
   needsRestart?: boolean
+  /** bootstrap 项在 DB 中是否有被忽略的残留旧值 */
+  db_orphaned?: boolean
+  /** runtime 项：对应的 env 兜底键名（envFallback） */
+  env_key?: string
+  /** runtime 项：env 兜底当前是否非空存在 */
+  env_present?: boolean
+  /** runtime 项：DB 是否已写入该键 */
+  db_present?: boolean
+  /** runtime 项：DB 与 env 同时存在（当前 DB 值优先） */
+  conflict?: boolean
 }
 
-const CATEGORY_LABEL: Record<SettingCategory, string> = {
+/** 分类展示文案（键集合来自 API 元数据，此处仅纯展示映射） */
+const CATEGORY_LABEL: Record<string, string> = {
   auth: "认证",
   maintenance: "维护与公告",
   email: "邮件",
@@ -53,11 +56,14 @@ const CATEGORY_LABEL: Record<SettingCategory, string> = {
   database: "数据库",
   redis: "Redis",
   cors: "CORS",
+  community: "社区",
   judge: "评测资源限制",
+  review: "内容合规审核",
   other: "其他",
 }
 
 const { api } = useApi()
+const { dialog } = useDialog()
 
 // ─── 数据加载 ────────────────────────────────────────────
 
@@ -65,6 +71,8 @@ const settings = ref<SystemSetting[]>([])
 const tableLoading = ref(true)
 const tableError = ref("")
 let requestVersion = 0
+/** 是否已展示进入页面时的配置冲突弹窗（每次进入页面只弹一次） */
+let conflictDialogShown = false
 
 async function loadSettings() {
   if (!isLoggedIn.value) return
@@ -83,6 +91,21 @@ async function loadSettings() {
     for (const s of res.data) {
       drafts.value[s.key] = s.is_secret ? null : s.effective_value
     }
+    // 进入页面时提示 runtime 配置的 DB/env 共存冲突
+    if (!conflictDialogShown) {
+      conflictDialogShown = true
+      const conflicts = res.data.filter((s) => s.conflict)
+      if (conflicts.length > 0) {
+        // 先结束加载态，避免弹窗期间表格一直显示 loading
+        if (currentRequest === requestVersion) tableLoading.value = false
+        await dialog.alert(
+          `检测到 ${conflicts.length} 项运行时配置同时存在 DB 值与 env 兜底：\n\n` +
+            conflicts.map((s) => `- ${s.key}（${s.env_key ?? "?"}）`).join("\n") +
+            "\n\n当前 DB 值优先。如希望 DB 值持续生效，请从 .env 移除对应变量后重启 noj-core。",
+          { title: "检测到配置来源冲突" },
+        )
+      }
+    }
   } catch (err: unknown) {
     if (currentRequest !== requestVersion) return
     tableError.value = extractApiError(err).message
@@ -99,55 +122,42 @@ watch(isLoggedIn, (val) => {
 
 const drafts = ref<Record<string, unknown>>({})
 
-/** infrastructure env-only 键名白名单（与 noj-core settings-registry 的 env-only 定义同步） */
-const ENV_ONLY_KEYS = new Set([
-  "DATABASE_URL", "DATABASE_POOL_MAX", "DATABASE_CONNECT_TIMEOUT",
-  "DATABASE_IDLE_TIMEOUT", "DATABASE_MAX_LIFETIME",
-  "REDIS_URL",
-  "JWT_SECRET", "ADMIN_EMAIL", "ADMIN_PASS", "BCRYPT_SALT_ROUNDS",
-  "CORS_ALLOWED_ORIGINS",
-  "PORT", "NOJ_ENV",
-])
-
+/** runtime（DB-owned）项：运行时可改 */
 const dbSettings = computed(() =>
-  settings.value.filter((s) => !ENV_ONLY_KEYS.has(s.key))
+  settings.value.filter((s) => s.scope === "runtime")
 )
 
+/** bootstrap（env-owned）项：只读，改 env 重启生效 */
 const envOnlySettings = computed(() =>
-  settings.value.filter((s) => ENV_ONLY_KEYS.has(s.key))
+  settings.value.filter((s) => s.scope === "bootstrap")
 )
 
-// 按 category 分组（spec 要求），未声明分类的归到 other
+// 按 category 分组（用于 env-only 只读面板）
 const envOnlyGrouped = computed(() => {
-  const groups = new Map<SettingCategory, SystemSetting[]>()
+  const groups = new Map<string, SystemSetting[]>()
   for (const s of envOnlySettings.value) {
-    const cat = (s.category ?? "other") as SettingCategory
+    const cat = s.category || "other"
     if (!groups.has(cat)) groups.set(cat, [])
     groups.get(cat)!.push(s)
   }
-  // 固定分组顺序
-  const order: SettingCategory[] = [
+  // 固定分组顺序（仅排序不在展示列表中的分类，缺省归末尾）
+  const order = [
     "auth",
-    "maintenance",
     "email",
-    "rate_limit",
     "storage",
     "database",
     "redis",
     "cors",
+    "judge",
     "other",
   ]
-  return order
-    .filter((c) => groups.has(c))
-    .map((c) => ({ category: c, items: groups.get(c)! }))
+  const sorted = [...groups.entries()].sort((a, b) => {
+    const ia = order.indexOf(a[0])
+    const ib = order.indexOf(b[0])
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+  })
+  return sorted.map(([category, items]) => ({ category, items }))
 })
-
-/** UTable 列定义（env-only 只读面板） */
-const envOnlyColumns = [
-  { accessorKey: "key", header: "键名" },
-  { accessorKey: "effective_value", header: "当前值" },
-  { accessorKey: "description", header: "描述" },
-]
 
 /** 获取敏感字段的脱敏方式说明（显示在 tooltip 中） */
 function getSecretTooltip(key: string): string {
@@ -224,7 +234,6 @@ async function saveSetting(key: string) {
 // ─── 重置单个设置 ─────────────────────────────────────────
 
 const resettingKeys = ref(new Set<string>())
-const { dialog } = useDialog()
 
 async function confirmReset(s: SystemSetting) {
   // spec 要求 SweetAlert2 弹窗，文案：
@@ -260,12 +269,33 @@ async function confirmReset(s: SystemSetting) {
   }
 }
 
+// ─── 清理 bootstrap 残留 DB 行 ────────────────────────────
+
+async function cleanupBootstrapRow(s: SystemSetting) {
+  if (resettingKeys.value.has(s.key)) return
+  resettingKeys.value = new Set(resettingKeys.value).add(s.key)
+  try {
+    // 幂等：删除被忽略的 DB 残留行，值仍由 .env 决定
+    await api.delete(`/api/v1/admin/settings/${s.key}`, { silent: true })
+    // 刷新整表以更新 db_orphaned 标记
+    const res = await api.get<{ data: SystemSetting[] }>("/api/v1/admin/settings", { silent: true })
+    settings.value = res.data
+    toast.success(`已清理 ${s.key} 的残留 DB 值（当前值由 .env 决定）`)
+  } catch (err: unknown) {
+    toast.error(extractApiError(err).message)
+  } finally {
+    const next = new Set(resettingKeys.value)
+    next.delete(s.key)
+    resettingKeys.value = next
+  }
+}
+
 // ─── 编辑控件辅助 ─────────────────────────────────────────
 </script>
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="系统设置" description="运行时可改的配置项，修改即时生效；只读配置需重启服务" />
+    <PageHeader title="系统设置" description="运行时配置写入数据库即时生效；环境配置由 .env 管理，修改需重启服务" />
 
     <!-- 未保存更改标识 -->
     <div
@@ -281,10 +311,9 @@ async function confirmReset(s: SystemSetting) {
     <div class="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-13px text-info-text">
       <UIcon name="i-lucide-info" class="size-4 shrink-0 mt-0.5" />
       <div>
-        <strong>运行时可改：</strong>第一组设置项写入数据库，下次请求立即生效，可随时重置。
-        <strong>只读配置：</strong>第二组（折叠面板）展示当前
-        <code class="px-1 py-0.5 bg-blue-100 rounded font-mono text-[12px]">.env</code>
-        中存在的环境变量，修改需更新 .env 并重启 noj-core 服务。
+        <strong>运行时配置：</strong>写入数据库，下次请求立即生效，可随时重置。
+        <strong>环境配置：</strong>由 .env 环境变量管理（启动期定型），后台只读，
+        修改需更新 .env 并重启 noj-core 服务。
       </div>
     </div>
 
@@ -371,7 +400,7 @@ async function confirmReset(s: SystemSetting) {
                     v-model="drafts[s.key]"
                     :disabled="drafts[s.key] === null"
                     :placeholder="drafts[s.key] === null ? '•••••••• 点击「编辑」以修改' : ''"
-                    class="w-full px-2.5 py-1.5 text-13px font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="w-full px-2.5 py-1.5 text-13px font-mono border border-border rounded outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)] disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                   <UButton v-if="drafts[s.key] === null" size="xs" color="primary" variant="outline" @click="drafts[s.key] = ''">编辑</UButton>
                 </template>
@@ -379,7 +408,7 @@ async function confirmReset(s: SystemSetting) {
                 <input
                   v-else
                   v-model="drafts[s.key]"
-                  class="w-full px-2.5 py-1.5 text-13px font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+                  class="w-full px-2.5 py-1.5 text-13px font-mono border border-border rounded outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
                 />
               </div>
 
@@ -389,7 +418,7 @@ async function confirmReset(s: SystemSetting) {
                 v-model="drafts[s.key]"
                 rows="2"
                 maxlength="1000"
-                class="w-full px-2.5 py-1.5 text-13px border border-border rounded outline-none transition-colors resize-y focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+                class="w-full px-2.5 py-1.5 text-13px border border-border rounded outline-none transition-colors resize-y focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
               />
 
               <!-- integer：number input -->
@@ -400,7 +429,7 @@ async function confirmReset(s: SystemSetting) {
                 step="1"
                 :min="s.min"
                 :max="s.max"
-                class="w-full px-2.5 py-1.5 text-13px font-mono border border-border rounded outline-none transition-colors focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+                class="w-full px-2.5 py-1.5 text-13px font-mono border border-border rounded outline-none transition-colors focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
               />
             </td>
 
@@ -424,6 +453,15 @@ async function confirmReset(s: SystemSetting) {
                 <span v-if="s.needsRestart" class="inline-flex items-center gap-0.5 text-11px font-semibold text-warning-text">
                   <UIcon name="i-lucide-refresh-cw" class="size-3" /> 需重启生效
                 </span>
+                <UTooltip
+                  v-if="s.conflict"
+                  text="该配置同时在 .env 中设置；当前 DB 值优先。如需 DB 生效，请移除 .env 对应变量后重启 noj-core。"
+                >
+                  <span class="inline-flex items-center gap-0.5 text-11px font-semibold text-warning-text">
+                    <UIcon name="i-lucide-alert-triangle" class="size-3" />
+                    env 兜底存在（当前 DB 值优先）
+                  </span>
+                </UTooltip>
               </div>
             </td>
 
@@ -479,46 +517,90 @@ async function confirmReset(s: SystemSetting) {
         <div class="flex items-start gap-2 px-5 py-3 bg-blue-50 border-b border-blue-100 text-13px text-info-text">
           <UIcon name="i-lucide-info" class="size-3.5 shrink-0 mt-0.5" />
           <div>
-            修改这些项需要更新 .env 并重启 noj-core 服务。当前展示的是已
+            这些配置项由 .env 环境变量管理（启动期定型），修改需更新 .env 并重启
+            noj-core 服务。当前展示的是
             <code class="px-1 py-0.5 bg-blue-100 rounded font-mono text-[12px]">snapshotEnv()</code>
-            启动时快照的值。
+            启动时快照的值；未设置的项显示「未配置」。若某项标注
+            <span class="font-semibold text-warning-text">忽略 DB 旧值</span>，
+            说明数据库中仍有切换前写入的旧值（已不生效），可一键清理。
           </div>
         </div>
 
         <div v-if="envOnlySettings.length === 0" class="p-6 text-center text-sm text-text-secondary">
-          当前 .env 中没有白名单内的环境变量
+          暂无环境配置项
         </div>
-        <UTable
-          v-else
-          :columns="envOnlyColumns"
-          :data="envOnlySettings"
-          :loading="false"
-        >
-          <template #key-cell="{ row }">
-            <code class="font-mono text-13px text-text">{{ row.original.key }}</code>
-          </template>
-          <template #effective_value-cell="{ row }">
-            <UTooltip v-if="row.original.is_secret" :text="getSecretTooltip(row.original.key)" class="cursor-help">
-              <span class="inline-flex items-center gap-1">
-                <UIcon name="i-lucide-lock" class="size-3 shrink-0 text-amber-700" />
-                <code
-                  class="font-mono text-13px px-2 py-0.5 rounded underline decoration-dotted underline-offset-2 bg-amber-50 text-amber-800"
+
+        <!-- 按分类分组的只读配置 -->
+        <div v-else class="divide-y divide-border">
+          <div
+            v-for="group in envOnlyGrouped"
+            :key="group.category"
+            class="px-5 py-4"
+          >
+            <h3 class="text-13px font-semibold text-text mb-2">
+              {{ CATEGORY_LABEL[group.category] ?? group.category }}
+              <span class="ml-1 text-xs font-normal text-text-secondary">{{ group.items.length }} 项</span>
+            </h3>
+            <table class="w-full text-sm">
+              <tbody>
+                <tr
+                  v-for="s in group.items"
+                  :key="s.key"
+                  class="border-t border-border first:border-t-0 hover:bg-primary-bg transition-colors"
                 >
-                  {{ String(row.original.effective_value) }}
-                </code>
-              </span>
-            </UTooltip>
-            <code
-              v-else
-              class="font-mono text-13px px-2 py-0.5 rounded bg-bg-page text-text"
-            >
-              {{ String(row.original.effective_value) }}
-            </code>
-          </template>
-          <template #description-cell="{ row }">
-            <span class="text-13px text-text-secondary">{{ row.original.description }}</span>
-          </template>
-        </UTable>
+                  <!-- 键名 + 类型 -->
+                  <td class="px-2 py-2.5 align-top w-[200px]">
+                    <div class="flex flex-col gap-0.5">
+                      <code class="font-mono text-13px font-semibold text-text">{{ s.key }}</code>
+                      <span class="text-11px text-text-secondary">{{ s.type }}</span>
+                    </div>
+                  </td>
+                  <!-- 当前值（只读） -->
+                  <td class="px-2 py-2.5 align-top w-[220px]">
+                    <UTooltip v-if="s.is_secret && s.effective_value !== null" :text="getSecretTooltip(s.key)" class="cursor-help">
+                      <span class="inline-flex items-center gap-1">
+                        <UIcon name="i-lucide-lock" class="size-3 shrink-0 text-amber-700" />
+                        <code class="font-mono text-13px px-2 py-0.5 rounded underline decoration-dotted underline-offset-2 bg-amber-50 text-amber-800">
+                          {{ String(s.effective_value) }}
+                        </code>
+                      </span>
+                    </UTooltip>
+                    <code
+                      v-else-if="s.effective_value !== null"
+                      class="font-mono text-13px px-2 py-0.5 rounded bg-bg-page text-text"
+                    >
+                      {{ String(s.effective_value) }}
+                    </code>
+                    <span v-else class="text-13px text-text-muted italic">未配置</span>
+                  </td>
+                  <!-- 描述 + 状态徽标 -->
+                  <td class="px-2 py-2.5 align-top text-13px text-text-secondary">
+                    <div class="flex flex-col gap-1">
+                      <span>{{ s.description }}</span>
+                      <div v-if="s.db_orphaned" class="flex items-center gap-2">
+                        <span class="inline-flex items-center gap-0.5 text-11px font-semibold text-warning-text">
+                          <UIcon name="i-lucide-alert-triangle" class="size-3" />
+                          忽略 DB 旧值
+                        </span>
+                        <UButton
+                          size="xs"
+                          color="warning"
+                          variant="outline"
+                          :loading="resettingKeys.has(s.key)"
+                          :disabled="resettingKeys.has(s.key)"
+                          icon="i-lucide-trash-2"
+                          @click="cleanupBootstrapRow(s)"
+                        >
+                          清理残留值
+                        </UButton>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </details>
     </section>
   </div>

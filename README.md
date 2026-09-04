@@ -75,7 +75,7 @@ NOJ 并不排斥传统编程题，而是在函数式代码评测的基础上，�
 | OpenSSL | 首次运行安装脚本时生成随机密钥 |
 | 一个已经解析到服务器的域名（公网生产部署） | 对外访问 NOJ，并用于生成 HTTPS 应用地址和 CORS 配置 |
 | Nginx、Caddy 或云负载均衡（三选一） | 在容器外完成 HTTPS/TLS 终止；不要求必须安装宿主机 Nginx |
-| 可拉取 `ghcr.io/neuro-oj/` 生产镜像的网络或凭据 | 获取 `noj-core`、`noj-ui`、`noj-judge` 等镜像 |
+| 可拉取 `ghcr.io/neuro-oj/` 生产镜像的网络或凭据 | 获取 `noj-server`、`noj-ui`、`noj-judge` 等镜像 |
 | 独立的 rootless Docker daemon socket（启用 Judge 时） | 供 Judge Worker 创建评测容器；禁止使用应用宿主机的 `/var/run/docker.sock` |
 
 如果只是查看源码或编辑配置，不需要安装上述全部运行环境。`git` 只有在从 GitHub 获取源码时才是必须的。
@@ -102,9 +102,7 @@ NOJ 当前持久化数据卷约 66 MiB，生产镜像（含 Evaluator、Solution
 
 但 Judge 不要求永远和 NOJ 主服务部署在同一台机器上。生产环境可以将一个或多个 Judge Worker 部署到独立主机，让它们共同消费 Redis 评测队列；每个 Worker 都需要自己的 Docker 隔离边界，并能访问 Redis 和题目支持包存储。主站一键安装脚本不负责独立 Worker 的安装，详见 [Judge Worker 运维文档](./noj-docs/docs/operators/judge-workers.md)。
 
-生产环境使用仓库外、权限为 `600` 或 `400` 的备份口令文件；首次一键安装会自动创建
-`/etc/noj/backup-passphrase`，并提示将其安全复制到异地位置。后续升级会自动复用该文件。
-同时仅开放 HTTPS 和运维所需的 SSH 端口。
+生产环境还应使用仓库外、权限为 `600` 或 `400` 的备份口令文件，并仅开放 HTTPS 和运维所需的 SSH 端口。
 
 #### 生产部署不需要
 
@@ -119,21 +117,25 @@ NOJ 当前持久化数据卷约 66 MiB，生产镜像（含 Evaluator、Solution
 
 ### 一键部署
 
-生产环境推荐使用仓库根目录的一键安装入口 `setup.sh`。它会先展示最低要求和当前主机环境，
-在检查通过后临时下载底层安装脚本，下载指定 Release 到目标目录，并调用生产部署向导：
+生产环境推荐使用仓库根目录的一键安装入口 `setup.sh`。它会下载部署脚本，
+自动检查环境、引导填写配置并启动生产服务：
 
 ```bash
+# 一键安装（默认自动选择最新 Release）
 curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --ref <Release 标签> --dir /opt/neuro-oj
+  bash -s -- --dir /opt/neuro-oj
+
+# 固定版本：将 vX.Y.Z 替换为包含 CLI 资产的 Release 标签
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
+  bash -s -- --ref vX.Y.Z --dir /opt/neuro-oj
 ```
 
-如需先检查脚本，可先下载 `setup.sh` 再执行；安装完成后，服务启停、更新和管理统一使用
-安装目录中的 `noj` 命令。
+安装脚本会在前面先检查 Linux、Docker、Compose、磁盘、端口等环境；首次安装会创建
+`.env.prod` 并用简单中文提示填写网站地址、HTTP/HTTPS、邮件服务和 Judge。邮件可以跳过，
+首个注册用户自动成为管理员。已存在的安装目录会保留配置并继续更新，不会因为目录非空而停止。
 
-安装向导会创建并保护 `.env.prod`，生成随机密钥，检查生产配置，拉取镜像并等待服务通过健康检查。Judge 是否启动取决于安装时的选择；没有 Judge 时网站和题库仍可使用，但暂时不能进行代码评测。
-
-首次生产安装统一使用 `setup.sh`；安装完成后，服务启停、更新和管理统一使用安装目录中的
-`noj` 命令，不再需要直接调用 bootstrap 或底层部署脚本。
+安装器下载并校验同版本的 `noj-cli` 二进制，调用 CLI 完成生产安装并注册 PATH；生产机无需安装 Deno。
+安装完成后，服务启停、升级、备份和日志统一使用 `noj-cli`。所选 Release 必须包含 CLI 二进制及 SHA-256 校验文件。
 
 部署完成后，通过配置的域名访问：
 
@@ -145,30 +147,20 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 常用运维命令：
 
 ```bash
-./noj status                    # 查看服务状态
-./noj logs core                 # 查看 core 日志
-./noj update                    # 升级到 .env.prod 中的 NOJ_VERSION
-./noj update --latest           # 升级到最新稳定 Release（不含 RC/预发布）
-./noj stop                      # 停止服务但保留数据卷
-./noj restart                   # 重启服务
-./noj uninstall                 # 卸载容器、网络和本地镜像，但保留数据卷
-./noj uninstall --all           # 完全删除 NOJ 和全部数据（不可恢复）
-./noj backup                    # 创建完整生产备份
-./noj config check              # 只校验配置和镜像，不改变服务状态
+noj-cli check                            # 检查部署环境
+noj-cli status                           # 查看服务状态
+noj-cli logs core                        # 查看 core 日志
+noj-cli restart                          # 重启服务
+noj-cli stop                             # 停止服务但保留数据卷
+noj-cli update --latest                  # 升级到最新稳定 Release
+noj-cli backup                           # 创建生产备份
+noj-cli config check                     # 只校验配置，不改变服务状态
 ```
 
-`./noj` 是生产运维的简化入口，内部支持 `install`，日常使用 `start`、`stop`、`restart`、`update`、
-`status`、`logs`、`backup`、`verify` 和 `config check`。`update` 默认使用 `.env.prod` 中已经
-配置的 `NOJ_VERSION`；需要自动选择最新稳定版本时显式使用 `update --latest`。该选项不会选择
-RC/预发布版本，并且不会删除数据卷。需要传递高级参数时，
-仍可直接使用 `bash scripts/deploy/deploy.sh <命令> [选项]`。首次通过 `setup.sh` 安装成功后，
-命令会自动注册到 `/usr/local/bin/noj`；若无权限则回退到 `~/.local/bin/noj` 并更新登录 PATH。
-
-`noj uninstall` 会先要求输入 `UNINSTALL` 确认；自动化环境请使用 `noj uninstall --yes`。
-它会删除当前 Compose 栈的容器、网络和本地镜像，但保留数据库、对象存储、题目包、Judge
-缓存数据卷、`.env.prod`、备份和部署目录，也不会修改宿主机的 Nginx/Caddy/宝塔配置。
-如需完全删除，使用 `noj uninstall --all`；该命令会额外删除全部数据卷、当前安装目录和配置，
-要求输入 `DELETE ALL`，自动化环境使用 `noj uninstall --all --yes`，执行前请确认备份已保存到其他位置。
+`noj-cli` 同时保留 `install`、`start`、`stop`、`upgrade`、`update`、`status`、`logs`、`backup`、
+`verify`、`config check` 和 `uninstall`。需要高级参数时可直接运行
+`bash scripts/deploy/deploy.sh <命令>`。未加入 PATH 时可运行 `/opt/neuro-oj/bin/noj-cli status`，
+或用 `noj-cli status --dir /opt/neuro-oj` 显式指定安装目录。开发者也可从 `noj-cli/` 目录通过 Deno 运行相同入口。
 
 更多部署、TLS、备份和升级说明见 [`deploy/README.md`](./deploy/README.md) 和[生产部署文档](./noj-docs/docs/operators/production-deploy.md)。
 
@@ -221,14 +213,18 @@ noj-docs          用户、运营者和出题人文档
 
 - 提交长时间处于 `Pending`：确认 Judge Worker 已启动，并且连接了与 `noj-core` 相同的 Redis；队列和日志排查方法见[Judge Worker 运维文档](./noj-docs/docs/operators/judge-workers.md)。
 - 评测镜像不存在：确认评测镜像已发布、已加入 `judge_images` 白名单，并检查 Judge Worker 的镜像前缀配置。
-- 生产服务启动失败：执行 `bash scripts/deploy/deploy.sh status` 和 `bash scripts/deploy/deploy.sh logs <service>` 查看状态与日志。
+- 生产服务启动失败：执行 `noj-cli check`、`noj-cli status` 和 `noj-cli logs <service>` 查看状态与日志。
 - 密码重置邮件不可用：检查 `EMAIL_PROVIDER` 及对应凭据；暂时不配置邮件时可以使用 `disabled`，但密码找回功能不可用。
 
 更多常见问题见[常见问题](./noj-docs/docs/intro/faq.md)。
 
+## 品牌与设计
+
+NOJ 使用统一的「暖纸评测风」品牌视觉：暖纸底、墨字、蓝黑墨品牌蓝 `#1B2B4A` 与评测信号绿 `#00d68a`。设计 token 与使用规范见 [`dev-docs/design/noj-design-tokens.md`](./dev-docs/design/noj-design-tokens.md)。
+
 ## 参与贡献
 
-欢迎通过 Issue 和 Pull Request 参与项目。开始修改代码前，请先阅读 [`AGENTS.md`](./AGENTS.md)；其中包含开发流程、测试方式、OpenSpec 规范和提交要求。
+欢迎通过 Issue 和 Pull Request 参与项目。开始修改代码前，请先阅读 [`AGENTS.md`](./AGENTS.md)；其中包含开发流程、测试方式和提交要求。
 
 - [提交 Issue](https://github.com/Neuro-OJ/neuro-oj/issues)
 - [查看 CI](https://github.com/Neuro-OJ/neuro-oj/actions)

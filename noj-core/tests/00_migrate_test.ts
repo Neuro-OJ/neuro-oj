@@ -6,12 +6,12 @@
  * - DATABASE_URL 已设置 → 使用 drizzle-orm/postgres-js/migrator 执行文件迁移
  * - DATABASE_URL 未设置 → 使用 PGlite 内存数据库，执行 DDL SQL 建表
  */
-import { runMigrations } from "../src/db/migrate.ts";
-import { ensureRootUser } from "../src/services/auth.ts";
-import { ensureRbacSeeds } from "../src/services/seed/seed-rbac.ts";
-import { getDb } from "../src/db/connection.ts";
+import { runMigrations } from "./../src/shared/db/migrate.ts";
+import { ensureRootUser } from "../src/domains/identity/index.ts";
+import { ensureRbacSeeds } from "../src/domains/system/index.ts";
+import { getDb } from "./../src/shared/db/connection.ts";
 import { setupSchemaForTest } from "./_setup.ts";
-import { judgeImages } from "../src/db/schema.ts";
+import { judgeImages } from "./../src/shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 
 const hasDb = !!Deno.env.get("DATABASE_URL");

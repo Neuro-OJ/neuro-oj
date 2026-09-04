@@ -40,7 +40,7 @@ watch([selectedType, selectedStatus], () => {
   <div class="min-h-full bg-bg-page py-10">
     <div class="mx-auto max-w-[960px] space-y-7 px-4 sm:px-7">
       <section class="relative overflow-hidden rounded-2xl bg-bg-dark px-8 py-9 text-white shadow-card">
-        <div class="absolute -right-20 -top-20 size-64 rounded-full bg-primary/30 blur-3xl" />
+        <div class="absolute -right-20 -top-20 size-64 rounded-full bg-signal/30 blur-3xl" />
         <div class="relative max-w-2xl">
           <div class="mb-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs">
             <UIcon name="i-lucide-trophy" class="size-3.5" />
@@ -68,7 +68,7 @@ watch([selectedType, selectedStatus], () => {
             v-for="contest in pagedContests"
             :key="contest.id"
             :to="publicUrl('contest', contest.public_id || contest.id)"
-            class="group flex min-h-64 flex-col rounded-xl border border-border bg-white p-5 text-text no-underline shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-card"
+            class="group flex min-h-64 flex-col rounded-xl border border-border bg-white p-5 text-text no-underline shadow-sm transition-all hover:-translate-y-1 hover:border-signal/40 hover:shadow-card"
           >
             <div class="flex items-start justify-between gap-3">
               <span class="rounded-md bg-primary-bg px-2.5 py-1 text-xs font-semibold text-primary-text">{{ typeLabels[contest.type] }}</span>

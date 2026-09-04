@@ -1,6 +1,6 @@
 # 术语表
 
-本文档定义 Neuro OJ 文档与代码中的规范术语。每个词条给出定义、对应的代码字段名（如存在）以及"易混淆"提示。结果状态（`Accepted` / `WrongAnswer` 等）见[结果状态](result-status.md)。
+本文档定义 Neuro OJ 文档与代码中的规范术语。每个词条给出定义、对应的代码字段名（如存在）以及"易混淆"提示。结果状态（`finished` / `error` + 分数）见[结果状态](result-status.md)。
 
 ## 项目名称
 
@@ -34,7 +34,7 @@ Neuro OJ 是本项目的全称（英文 "Neuro" + "Online Judge"）。文档正�
 
 （verdict，`submissions.status`）
 
-一次提交的最终判定，如 `Accepted`、`WrongAnswer`、`TimeLimitExceeded`、`MemoryLimitExceeded`、`RuntimeError`、`SystemError`。各状态语义见[结果状态](result-status.md)。
+一次提交的最终判定。新协议下只保留 `finished`（已评测）与 `error`（出错），分数是唯一结果；`Accepted` / `WrongAnswer` 等仅作为 `details.cases` 用例级参考信息。各状态语义见[结果状态](result-status.md)。
 
 ### 调用
 

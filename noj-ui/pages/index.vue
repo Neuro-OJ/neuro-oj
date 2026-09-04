@@ -18,18 +18,18 @@
                             <div
                                 v-if="announcements.length > 0"
                                 :key="currentSlide"
-                                class="absolute inset-0 bg-gradient-to-br p-8 lg:p-12 flex flex-col justify-center text-white"
+                                class="absolute inset-0 bg-gradient-to-br p-8 lg:p-12 flex flex-col justify-center text-text"
                                 :class="gradientFor(currentSlide)"
                             >
                                 <h2 class="text-2xl lg:text-3xl font-bold mb-3 animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_both]">{{ announcements[currentSlide].title }}</h2>
-                                <p class="text-sm lg:text-base text-white/85 max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">{{ announcements[currentSlide].excerpt }}</p>
+                                <p class="text-sm lg:text-base text-text-secondary max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">{{ announcements[currentSlide].excerpt }}</p>
                                 <!-- 点击跳转公告详情（整卡可点，按钮层 z-10 在其上不受影响） -->
                                 <NuxtLink
                                     :to="publicUrl('announcement', announcements[currentSlide].public_id || announcements[currentSlide].id)"
                                     class="absolute inset-0 z-[5]"
                                     :aria-label="`查看公告：${announcements[currentSlide].title}`"
                                 />
-                                <span class="relative z-[6] mt-4 inline-flex items-center gap-1 text-sm font-medium text-white/90 pointer-events-none animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_300ms_both]">
+                                <span class="relative z-[6] mt-4 inline-flex items-center gap-1 text-sm font-medium text-signal-deep pointer-events-none animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_300ms_both]">
                                     查看详情
                                     <UIcon name="i-lucide-arrow-right" class="size-4" />
                                 </span>
@@ -37,17 +37,17 @@
                             <!-- 空态：无 active 公告时显示默认欢迎占位 -->
                             <div
                                 v-else
-                                class="absolute inset-0 bg-gradient-to-br from-blue-600 via-sky-500 to-cyan-400 p-8 lg:p-12 flex flex-col justify-center text-white"
+                                class="absolute inset-0 bg-gradient-to-br from-[#f2f2ec] via-[#e8e8e2] to-[#dfe0d9] p-8 lg:p-12 flex flex-col justify-center text-text"
                             >
                                 <h2 class="text-2xl lg:text-3xl font-bold mb-3 animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_both]">Neuro OJ 正式上线</h2>
-                                <p class="text-sm lg:text-base text-white/85 max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">面向 AI 领域认证与竞赛的在线评测平台现已开放注册，提供代码评测、LLM 工程题与类 Kaggle 产物提交评测。</p>
+                                <p class="text-sm lg:text-base text-text-secondary max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">面向 AI 领域认证与竞赛的在线评测平台现已开放注册，提供代码评测、LLM 工程题与类 Kaggle 产物提交评测。</p>
                             </div>
                         </Transition>
                         <!-- 暂停/继续（WCAG 2.2.2 自动更新内容可暂停） -->
                         <button
                             v-if="!paused"
                             type="button"
-                            class="absolute bottom-4 right-4 z-10 p-2 flex items-center justify-center rounded-full bg-black/30 text-white hover:bg-black/50 transition-colors"
+                            class="absolute bottom-4 right-4 z-10 p-2 flex items-center justify-center rounded-full bg-black/10 text-text hover:bg-black/20 transition-colors"
                             aria-label="暂停轮播"
                             @click="togglePause"
                         >
@@ -56,7 +56,7 @@
                         <button
                             v-else
                             type="button"
-                            class="absolute bottom-4 right-4 z-10 p-2 flex items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors"
+                            class="absolute bottom-4 right-4 z-10 p-2 flex items-center justify-center rounded-full bg-black/20 text-text hover:bg-black/30 transition-colors"
                             aria-label="继续轮播"
                             @click="togglePause"
                         >
@@ -72,15 +72,15 @@
                                 @click="goToSlide(i)"
                             >
                                 <span
-                                    class="block size-2 rounded-full transition-all duration-300 bg-white"
-                                    :class="i === currentSlide ? 'opacity-100 scale-125' : 'opacity-50 group-hover:opacity-100'"
+                                    class="block size-2 rounded-full transition-all duration-300 bg-text"
+                                    :class="i === currentSlide ? 'opacity-100 scale-125' : 'opacity-40 group-hover:opacity-80'"
                                 />
                             </button>
                         </div>
                     </div>
 
                     <!-- Check-in -->
-                    <div class="w-full lg:w-[300px] lg:aspect-square lg:self-start shrink-0 flex flex-col bg-gradient-to-br from-white to-gray-50/50">
+                    <div class="w-full lg:w-[300px] lg:aspect-square lg:self-start shrink-0 flex flex-col bg-gradient-to-br from-white to-bg-page/50">
                         <div class="flex flex-col items-center pt-5 text-xs text-text-muted leading-tight">
                             <span>{{ todayDateStr }}</span>
                             <ClientOnly>
@@ -129,9 +129,9 @@ interface CarouselAnnouncement {
 
 /** 轮播背景渐变预设色板（按下标循环，不依赖公告数据） */
 const GRADIENTS = [
-    "from-blue-600 via-sky-500 to-cyan-400",
-    "from-purple-600 via-fuchsia-500 to-pink-400",
-    "from-emerald-600 via-teal-500 to-cyan-400",
+    "from-[#f2f2ec] via-[#e8e8e2] to-[#dfe0d9]",
+    "from-[#e6fbf3] via-[#f2f2ec] to-[#e8e8e2]",
+    "from-[#eef0f5] via-[#f2f2ec] to-[#e8e8e2]",
 ]
 
 function gradientFor(i: number): string {

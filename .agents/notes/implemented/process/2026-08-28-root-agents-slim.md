@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-根 `AGENTS.md` 从 934 行膨胀到约 50KB，包含大量本应属于模块 `CLAUDE.md`、`noj-docs` 和 `docs/engineering/` 的详细内容。AI 每次加载根文档都消耗大量上下文，且详细内容容易与模块文档漂移。
+根 `AGENTS.md` 从 934 行膨胀到约 50KB，包含大量本应属于模块 `CLAUDE.md`、`noj-docs` 和 `dev-docs/engineering/` 的详细内容。AI 每次加载根文档都消耗大量上下文，且详细内容容易与模块文档漂移。
 
 ## Decision
 
@@ -14,9 +14,9 @@ Status: implemented
   - 各模块 `CLAUDE.md`
   - `noj-docs/docs/system/architecture.md`
   - `noj-docs/docs/system/security.md`
-  - `docs/engineering/development.md`
-  - `docs/engineering/testing.md`
-  - `docs/engineering/defensive-patterns.md`
+  - `dev-docs/engineering/development.md`
+  - `dev-docs/engineering/testing.md`
+  - `dev-docs/engineering/defensive-patterns.md`
 - 保留红线、编码规范、检查清单、贡献流程、OpenSpec、Agent Notes 等必须常驻上下文的规则。
 
 ## Alternatives considered

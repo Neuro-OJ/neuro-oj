@@ -17,7 +17,7 @@
                             placeholder="至少 8 位，需包含大小写字母和数字"
                             autocomplete="new-password"
                             :disabled="loading"
-                            class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
+                            class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-signal disabled:opacity-60 disabled:cursor-not-allowed"
                             @focus="fieldErrors.password = ''"
                         />
                         <button type="button" class="absolute right-3 bg-transparent border-0 text-text-muted cursor-pointer p-0 flex items-center hover:text-text-secondary" @click="showPassword = !showPassword" tabindex="-1">
@@ -45,7 +45,7 @@
                             placeholder="再次输入新密码"
                             autocomplete="new-password"
                             :disabled="loading"
-                            class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
+                            class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-signal disabled:opacity-60 disabled:cursor-not-allowed"
                             @focus="fieldErrors.confirmPassword = ''"
                         />
                         <button type="button" class="absolute right-3 bg-transparent border-0 text-text-muted cursor-pointer p-0 flex items-center hover:text-text-secondary" @click="showConfirmPassword = !showConfirmPassword" tabindex="-1">

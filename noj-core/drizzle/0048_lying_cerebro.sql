@@ -1,4 +1,4 @@
-CREATE TABLE "llm_providers" (
+CREATE TABLE IF NOT EXISTS "llm_providers" (
 	"id" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"base_url" text NOT NULL,
@@ -10,7 +10,7 @@ CREATE TABLE "llm_providers" (
 	"updated_at" text NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "llm_quotas" (
+CREATE TABLE IF NOT EXISTS "llm_quotas" (
 	"id" text PRIMARY KEY NOT NULL,
 	"scope_type" text NOT NULL,
 	"scope_id" text DEFAULT '' NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE "llm_quotas" (
 	"updated_at" text NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "llm_usage" (
+CREATE TABLE IF NOT EXISTS "llm_usage" (
 	"id" text PRIMARY KEY NOT NULL,
 	"submission_id" text NOT NULL,
 	"problem_id" text NOT NULL,
@@ -42,11 +42,11 @@ CREATE TABLE "llm_usage" (
 	"created_at" text NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "problems" ADD COLUMN "llm_config" jsonb;--> statement-breakpoint
-CREATE INDEX "idx_llm_providers_name" ON "llm_providers" USING btree ("name");--> statement-breakpoint
-CREATE INDEX "idx_llm_quotas_scope" ON "llm_quotas" USING btree ("scope_type","scope_id","window_type");--> statement-breakpoint
-CREATE INDEX "idx_llm_usage_submission_id" ON "llm_usage" USING btree ("submission_id");--> statement-breakpoint
-CREATE INDEX "idx_llm_usage_problem_id" ON "llm_usage" USING btree ("problem_id");--> statement-breakpoint
-CREATE INDEX "idx_llm_usage_user_id" ON "llm_usage" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "idx_llm_usage_provider_id" ON "llm_usage" USING btree ("provider_id");--> statement-breakpoint
-CREATE INDEX "idx_llm_usage_created_at" ON "llm_usage" USING btree ("created_at");
+ALTER TABLE "problems" ADD COLUMN IF NOT EXISTS "llm_config" jsonb;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_llm_providers_name" ON "llm_providers" USING btree ("name");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_llm_quotas_scope" ON "llm_quotas" USING btree ("scope_type","scope_id","window_type");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_llm_usage_submission_id" ON "llm_usage" USING btree ("submission_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_llm_usage_problem_id" ON "llm_usage" USING btree ("problem_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_llm_usage_user_id" ON "llm_usage" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_llm_usage_provider_id" ON "llm_usage" USING btree ("provider_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_llm_usage_created_at" ON "llm_usage" USING btree ("created_at");

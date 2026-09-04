@@ -162,7 +162,7 @@ async function handleDelete() {
       <UIcon name="i-lucide-file-archive" class="text-text-secondary shrink-0 size-4" />
       <span class="text-xs text-text flex-1">支持包已上传</span>
       <label
-        class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-primary bg-transparent border border-primary rounded cursor-pointer transition-colors hover:bg-primary-bg"
+        class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-primary bg-transparent border border-signal rounded cursor-pointer transition-colors hover:bg-primary-bg"
         :class="{ 'opacity-50 pointer-events-none': disabled || uploading }"
       >
         <UIcon name="i-lucide-upload" class="size-3" />
@@ -186,10 +186,10 @@ async function handleDelete() {
         class="relative flex flex-col items-center justify-center gap-2 px-4 py-6 border-2 border-dashed rounded-lg transition-colors cursor-pointer"
         :class="[
           isDragOver
-            ? 'border-primary bg-primary-bg'
+            ? 'border-signal bg-primary-bg'
             : disabled || uploading
               ? 'border-border bg-gray-50 cursor-not-allowed'
-              : 'border-border hover:border-primary hover:bg-primary-bg',
+              : 'border-border hover:border-signal hover:bg-primary-bg',
         ]"
         @dragover="onDragOver"
         @dragleave="onDragLeave"

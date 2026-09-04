@@ -1,477 +1,163 @@
 # 生产部署（公测）
 
-> 本文档面向公测（Public Beta）部署。当前方案为单机 Docker Compose + ghcr.io 镜像，
-> 数据库高可用、监控告警、日志聚合等可靠性/可观测性能力后续版本补充。
+本文档介绍 Linux 服务器上的一键部署方式。生产服务使用 Docker Compose 和
+`ghcr.io/neuro-oj/` 镜像；`noj-cli` 负责生产安装与运维，复用 `.env.prod` 和现有生产 Compose。
+JSON 配置下的 `deploy/maintain` 命令独立保留，不会自动转换现有生产数据。
+
+生产环境默认将容器日志限制为每个文件 50 MiB、保留 5 个文件；如需集中检索，应在宿主机或日志平台配置采集器，并避免写入凭据、代码、prompt 或完整提交内容。
 
 ## 1. 前置条件
 
+- Linux amd64 服务器，至少 2 vCPU、2 GiB Swap 和 5 GiB 可用磁盘空间。
+- Docker Engine 和 Docker Compose v2，当前用户可以运行 Docker。
+- `curl` 或 `wget`、`tar`、`openssl`、CA 证书。
+- 能够访问 GitHub 源码地址和 `ghcr.io/neuro-oj/` 镜像；网络受限时请先配置 Docker 镜像源或代理。
+- 正式网站建议准备域名和 HTTPS 证书；临时测试可使用服务器 IP 和 HTTP。
+
 ### 宝塔等服务器面板
 
-生产安装脚本默认会自动检测宝塔面板，也可以手动指定模式：
+安装脚本会自动识别宝塔面板，只给出反向代理提示，不调用面板 API，也不会修改已有站点、证书
+或其他容器。部署完成后，在面板中把域名反向代理到 `127.0.0.1:8080`；如修改了
+`NGINX_PORT`，请使用修改后的端口。启用 Judge 时仍必须使用独立的 rootless Docker socket，
+不能填写 `/run/docker.sock` 或 `/var/run/docker.sock`。
 
-```bash
-# 自动检测（默认）
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --panel auto --ref 0.8.0-rc.1 --dir /opt/neuro-oj
+## 2. 一键安装
 
-# 面板安装路径特殊时，强制显示宝塔兼容提示
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --panel baota --ref 0.8.0-rc.1 --dir /opt/neuro-oj
-
-# 关闭面板提示
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --panel none --ref 0.8.0-rc.1 --dir /opt/neuro-oj
-```
-
-宝塔兼容模式只复用面板安装的标准 Docker/Compose，不调用面板 API，也不会修改已有
-站点、证书、反向代理、容器或面板配置。前后端 Compose 自带 Nginx，部署完成后请在
-宝塔中将域名反向代理到 `127.0.0.1:NGINX_PORT`，默认端口为 `8080`；如果修改
-`.env.prod` 中的 `NGINX_PORT`，反向代理目标也要同步修改。Judge 仍需使用独立的
-rootless Docker socket，不能改用 `/run/docker.sock` 或 `/var/run/docker.sock`。
-
-- 一台 Linux 服务器（amd64），已安装 Docker Engine 与 Docker Compose v2。
-- Docker CLI 可用 Buildx；Cosign 不是默认安装条件，只有开启严格镜像签名校验时才需要。
-- Deno 2.x（可选，仅用于部署前运行 `noj-core` 的配置检查命令；一键生产部署不依赖 Deno）。
-- 一个已解析到服务器的域名。
-- 外部 TLS 终止（宿主机 Nginx / Caddy / 云负载均衡），负责 HTTPS → 容器 HTTP 端口。
-- 能够访问 `ghcr.io/neuro-oj/` 镜像；私有镜像还需要配置相应凭据。
-
-## 2. 初始化
-
-### 推荐：一条命令开始安装
-
-和 HydroOJ 类似，NOJ 提供一个远程入口脚本。它会先列出最低运行要求，并展示当前主机的
-Linux、CPU 架构与核数、内存、Swap、磁盘、Docker、Compose、基础工具和端口检测结果；
-检查通过后才会自动使用最新可用 Release 进入配置向导：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash
-```
-
-如果需要固定版本（例如部署候选版本），可以显式指定 `--ref`：
+直接复制以下命令到服务器控制台：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --ref 0.8.0-rc.1 --dir /opt/neuro-oj
+  bash -s -- --dir /opt/neuro-oj
 ```
 
-安装完成后打开网站注册第一个真实用户，该用户会自动获得管理员权限，不需要再执行额外
-的提权命令。已有站点的用户和管理员权限不会因为升级改变。
+脚本会按以下顺序执行：
 
-如果服务器不能访问 GitHub API，自动获取最新版本会停止安装；请使用上面的 `--ref`
-显式指定版本，或先下载脚本检查后执行。
+1. 检查 Linux、CPU 架构、Docker、Compose、磁盘和端口。
+2. 下载指定版本的部署文件和 `noj-cli-linux-amd64`，SHA-256 校验通过后安装到 `bin/noj-cli`；未指定版本时自动选择最新 Release。
+   所选 Release 必须包含 CLI 资产，下载或校验失败不会覆盖已有安装。生产机无需 Deno。
+3. 首次创建 `.env.prod`，用简单提示询问网站地址、HTTP/HTTPS、邮件服务和是否安装 Judge。
+4. `noj-cli install` 引导用户确认配置后，拉取镜像、执行数据库迁移并等待健康检查，完成后注册 PATH 命令。
 
-如需人工检查下载内容，可以先下载并检查 `setup.sh`，确认后再执行；
-`scripts/deploy/install.sh` 是 setup.sh 的内部 bootstrap 和旧版本兼容入口，不再作为新安装推荐命令。
-
-首次执行会将源码放入 `/opt/neuro-oj`，随后创建权限为 `600` 的 `.env.prod` 并生成
-部分随机密钥，然后在终端逐项引导填写生产配置。配置网站地址、HTTPS 和邮件服务后，
-脚本会询问是否安装评测服务 Judge，默认安装；如果暂时没有独立的 Judge Docker 服务，
-可以选择跳过，网站和题库仍可先部署。只有选择安装 Judge 时才需要填写 Judge socket。
-邮件服务密钥不会回显，完成后脚本会继续进行配置校验和服务启动。安装完成后请立即打开
-网站注册第一个用户，该用户会自动成为管理员。没有 TTY 时才会停止并提示手工编辑配置：
-
-“网站地址”没有现有配置时会默认填入检测到的服务器 IPv4，直接回车即可使用，也可以改填
-正式域名。随后脚本会询问是否使用 HTTPS，默认使用 HTTPS；如果选择否，才会进入临时 HTTP
-模式。HTTP 不安全，只适合临时测试，正式环境请使用域名并配置证书。证书不会由脚本自动安装，
-需要在宝塔或其他反向代理中配置。
-
-重复执行部署且检测到已有生产配置时，脚本会先询问是否使用先前配置。输入 `Y` 或直接
-回车会保留配置；输入 `N` 会清空旧值的输入默认值并重新填写。若旧配置尚未填写完整，
-选择 `Y` 后会继续进入补齐向导。填写过程先暂存在临时文件，最后会询问“是否写入配置”；
-确认后才会改动正式配置，取消则保留原配置并停止部署。已有阿里云或腾讯云邮件配置时，
-邮件提示中的直接回车会继续使用当前配置，输入 `skip` 才会停用；没有旧邮件配置时直接
-回车会跳过邮件。停用邮件后密码找回邮件不可用。如果跳过 Judge，之后在 `.env.prod` 中将
-`JUDGE_ENABLED` 改为 `true`，补充独立 Judge Docker 服务的 socket 和组 ID，再执行
-`bash scripts/deploy/deploy.sh start` 即可启用。
+可选参数：
 
 ```bash
-sudo vim /opt/neuro-oj/.env.prod
-sudo chmod 600 /opt/neuro-oj/.env.prod
+# 固定版本：将 vX.Y.Z 替换为包含 CLI 资产的 Release 标签
 curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  sudo bash -s -- --ref 0.8.0-rc.1 --dir /opt/neuro-oj
-```
+  bash -s -- --ref vX.Y.Z --dir /opt/neuro-oj
 
-bootstrap 默认自动选择最新 Release，可通过 `--ref` 指定其他分支或 Release tag；生产环境应
-使用不可变 Release tag，并让 `--ref` 与 `.env.prod` 中的 `NOJ_VERSION` 保持一致。
-也可以使用 `--download-only` 只获取源码，或使用 `--dry-run` 查看下载计划。目标目录
-非空时 bootstrap 会拒绝覆盖已有 `.env.prod`、备份和部署文件；已有安装请进入目录执行
-`/opt/neuro-oj/noj update`。
-
-如果不希望在 shell 中直接执行网络下载内容，可以先保存脚本并人工检查；确认后再运行
-上面的 `setup.sh` 命令。bootstrap 只依赖 Linux 上常见的 Bash、`curl`
-或 `wget`、`tar`，实际服务部署仍需要 Docker Engine 与 Docker Compose v2。
-
-部署前可以先检测宿主机：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash -s -- check
-```
-
-如果缺少基础工具，可让脚本通过当前发行版的包管理器安装：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | sudo bash -s -- install-env
-```
-
-`install-env` 只安装 CA 证书、curl、tar 和 openssl 等基础工具；Docker Engine、Docker
-Compose plugin、Cosign、Docker daemon 权限和 Judge 使用的独立 rootless Docker daemon
-不会被脚本自动修改。镜像签名校验默认关闭，只有显式开启时才需要安装 Cosign。检测仍失败时，请按提示安装 Docker 后重新执行 `check`。`check` 会报告
-最低运行要求以及 Linux/CPU 架构与核数、基础工具、Docker/Compose、内存、Swap、目标目录和 Docker
-存储磁盘空间、默认 8080 端口；可
-通过 `--port` 指定实际端口。
-
-当前 Release 镜像仅发布 `linux/amd64`。ARM64/aarch64 主机会在 `check` 或 `install` 阶段
-提前停止并提示使用 x86_64 主机；这不是 Docker 安装故障。
-
-如果需要无人值守执行，可显式使用 `--non-interactive`；此时首次配置不询问，必须提前
-准备完整的 `.env.prod`，否则脚本以非零状态退出：
-
-```bash
+# 只检查环境，不下载源码
 curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
-  bash -s -- --non-interactive --ref 0.8.0-rc.1 --dir /opt/neuro-oj
+  bash -s -- check
+
+# 只安装基础工具；Docker Engine 仍需按发行版方式安装
+curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
+  bash -s -- install-env
 ```
 
-`.env.prod` 中必须填写：
+重复执行时，如果目标目录已经是 NOJ 安装目录，脚本会保留 `.env.prod`、备份和数据卷并继续执行；
+不会因为目录非空而停止。其他非空目录只更新 NOJ 部署文件，保留其余内容。若之前配置过，脚本开头会询问是否继续使用；
+选择重新填写时只在最后确认后写入正式配置。
 
-| 变量 | 说明 |
-|------|------|
-| `NOJ_VERSION` | 要部署的已签名 Release 标签，如 `v0.1.0`；禁止使用 `latest`/`beta` |
-| `NOJ_ENFORCE_IMAGE_SIGNATURES` | 默认 `false`；设为 `true` 后，启动/升级前校验已启用应用镜像的 Cosign 签名 |
-| `NOJ_COSIGN_CERT_IDENTITY_REGEX` | Cosign 证书身份正则，默认只信任本仓库的 Release workflow |
-| `DOMAIN` | 网站地址，可填域名或服务器 IP，不要写 `https://` |
-| `APP_URL` | 完整应用地址，例如 `https://你的域名` |
-| `NOJ_ALLOW_INSECURE_HTTP` | 临时 HTTP 开关，默认 `false`；正式环境请保持关闭 |
-| `CORS_ALLOWED_ORIGINS` | `https://你的域名` |
-| `TRUSTED_PROXIES` | 可信代理网段，必须与 compose 中 `noj-net` 子网一致（如 `172.28.0.0/16`）；生产必填 |
-| `NUXT_NOJ_ENV` | 前端环境标记，生产环境保持 `production` |
-| `POSTGRES_PASSWORD` | PostgreSQL 强密码 |
-| `REDIS_PASSWORD` | Redis 强密码 |
-| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | MinIO 管理员凭据，仅供 `minio-init` 使用 |
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | 支持包 bucket 的最小权限应用凭据 |
-| `STORAGE_PROVIDER` / `S3_ENDPOINT` / `S3_BUCKET` | 生产必须使用 S3/MinIO |
-| `S3_REGION` | 可选，默认 `us-east-1` |
-| `S3_FORCE_PATH_STYLE` | 自建 MinIO 通常为 `true` |
-| `JWT_SECRET` / `TFA_ENCRYPTION_KEY` | ≥32 字符随机串 |
-| 首个管理员 | 安装完成后注册的第一个真实用户自动获得管理员权限；已有站点不会因升级自动提权 |
-| `EMAIL_PROVIDER` 及对应凭据 | 可选阿里云、腾讯云或 `disabled`（暂不配置邮件） |
-| `JUDGE_IMAGE_BASE` | 默认 `ghcr.io/neuro-oj/` |
-| `NGINX_PORT` | 容器 Nginx 映射到宿主机的端口，默认 `8080` |
-| `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID` | 独立 rootless Docker daemon 的 socket 与组 ID；禁止使用 `/var/run/docker.sock` |
-| `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | 可选；同时填写后启用 GitHub 登录。回调地址为 `APP_URL/api/v1/auth/oauth/github/callback` |
-| `OAUTH_OIDC_ISSUER_URL` / `OAUTH_OIDC_CLIENT_ID` / `OAUTH_OIDC_CLIENT_SECRET` | 可选；同时填写后启用通用 OIDC 登录。回调地址为 `APP_URL/api/v1/auth/oauth/oidc/callback` |
-| `OAUTH_OIDC_NAME` | 可选；OIDC 登录按钮名称，默认 `OIDC` |
-| `JUDGE_ENABLED` | 是否安装和启动评测服务 Judge，默认 `true`；设为 `false` 可跳过 |
-| `JUDGE_DOCKER_SOCKET` / `JUDGE_DOCKER_SOCKET_GID` | `JUDGE_ENABLED=true` 时必填：独立 rootless Docker 服务的 socket 与组 ID；禁止使用 `/var/run/docker.sock` |
-| `NOJ_LLM_SERVICE_TOKEN` | LLM Gateway 服务间鉴权 + eval_token 签发/校验密钥（≥16 字符）；compose 默认始终启动 `llm-gateway`，因此生产**必须填写** |
-| `NOJ_LLM_STORE_KEY` | LLM Gateway 加密 Provider API Key 的信封主密钥（≥16 字符）；compose 默认必填 |
-| `NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE` | 每个用户每 UTC 分钟的 LLM 调用上限；可选，默认 `60`，必须为正整数 |
-| `NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE` | 每个 IP 每 UTC 分钟的 LLM 调用上限；可选，默认 `60`，必须为正整数 |
-| `JUDGE_ALLOW_EVALUATOR_NETWORK` | 是否允许 evaluator 联网；使用 LLM 调用题时必须设为 `true` |
-| `JUDGE_EVALUATOR_NETWORK` | evaluator 联网时加入的 Docker 网络；生产必须指向 `llm-gateway` 所在网络，默认 `noj-net` |
-| `JUDGE_ALLOW_HTTP_S3` | 自建 MinIO 走内网 HTTP 时设为 `true`，允许 judge 通过 HTTP 下载支持包 |
+安装完成后打开网站注册第一个用户，该用户自动成为管理员，不需要填写管理员邮箱或密码。
+邮件服务可以选择“暂不配置”，不影响网站启动，但密码找回邮件不可用。Judge 可以在安装时跳过，
+之后补充独立 Docker socket 后再启用。
+
+## 3. 配置说明
+
+配置文件位于 `/opt/neuro-oj/.env.prod`，权限应为 `600`。常用配置如下：
+
+| 配置项 | 说明 |
+|---|---|
+| `NOJ_VERSION` | 要使用的 Release 标签，例如 `v0.8.1`；不要填写 `latest` |
+| `DOMAIN` | 网站地址，只填写域名或服务器 IP，不要写 `http://`/`https://` |
+| `APP_URL` | 网站完整地址，例如 `http://1.2.3.4` 或 `https://oj.example.com` |
+| `CORS_ALLOWED_ORIGINS` | 通常与 `APP_URL` 相同 |
+| `POSTGRES_PASSWORD` / `REDIS_PASSWORD` | 数据库和 Redis 强密码 |
+| `JWT_SECRET` / `TFA_ENCRYPTION_KEY` | 至少 32 个字符的随机密钥 |
+| `EMAIL_PROVIDER` | `aliyun`、`tencent` 或 `disabled`；可直接跳过 |
+| `JUDGE_ENABLED` | 是否启动 Judge，默认 `true` |
+| `JUDGE_DOCKER_SOCKET` | Judge 专用 rootless Docker socket；禁止使用宿主机默认 socket |
+| `NGINX_PORT` | 对外端口，默认 `8080` |
+| `NOJ_ENFORCE_IMAGE_SIGNATURES` | 默认 `false`；只有主动开启时才需要 Cosign |
+
+容器内 Nginx 只处理 HTTP。使用 HTTPS 时，应在宝塔、宿主机 Nginx、Caddy 或云负载均衡中终止 TLS，
+再转发到 `127.0.0.1:8080`。脚本不会自动申请或安装证书。
+
+## 4. 日常运维
+
+安装目录默认为 `/opt/neuro-oj`，可以直接执行：
 
 ```bash
-# 3) 配置外部 TLS 终止
-# 容器内的 Nginx 不处理 TLS；请在宿主机/云 LB 上配置 HTTPS，
-# 并将解密后的 HTTP 流量转发到本机 ${NGINX_PORT:-8080} 端口（默认 8080）。
-# 示例见 deploy/README.md。
-
-# 4) 手动方式：执行一次性初始化（迁移 + 系统数据）
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d migrate
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs migrate
-
-# 5) 手动方式：启动全部服务（安装了 Judge 时加上 profile；跳过 Judge 时省略）
-docker compose --env-file .env.prod -f docker-compose.prod.yml --profile judge up -d
-
-# 6) 查看状态
-docker compose --env-file .env.prod -f docker-compose.prod.yml ps
-curl https://你的域名/healthz
+noj-cli check                 # 检查部署环境
+noj-cli status                # 查看服务状态
+noj-cli logs core             # 查看 core 日志
+noj-cli logs judge --follow   # 持续查看 Judge 日志
+noj-cli start                 # 启动服务
+noj-cli stop                  # 停止服务但保留数据
+noj-cli restart               # 重启服务
+noj-cli backup                # 创建备份
+noj-cli verify                # 校验配置和镜像
+noj-cli config check          # 只检查配置，不改变服务
 ```
 
-使用安装入口时，上述初始化、启动和健康检查由以下命令统一完成：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | bash
-```
-
-部署脚本在 `install`、`start` 和 `upgrade` 前会校验 `NOJ_VERSION` 对应的应用镜像
-digest 与 Cosign keyless 签名；Judge 被跳过时只校验核心、前端和 LLM Gateway 镜像。
-默认信任当前仓库的 Release workflow；如需变更签名身份，
-必须通过受保护的生产配置显式设置 `NOJ_COSIGN_CERT_IDENTITY_REGEX`。可以单独执行：
-
-```bash
-bash scripts/deploy/deploy.sh verify
-```
-
-镜像签名校验默认关闭，以免阻断普通一键部署；如果需要严格校验，请安装 Cosign 并将
-`NOJ_ENFORCE_IMAGE_SIGNATURES=true`，然后执行 `bash scripts/deploy/deploy.sh verify`。
-成功启动或升级后，脚本会在 `backups/current-deployment.txt` 记录当前 Release 版本和已启用
-应用镜像的 digest；升级失败时不会覆盖上一份成功部署记录。
-
-> 如果启用评测 Worker，不得挂载应用宿主机的 `/var/run/docker.sock`。生产 Compose 要求
-> `JUDGE_DOCKER_SOCKET` 指向只服务于 judge 的 rootless daemon socket，并以非 root
-> 用户运行 Worker；`JUDGE_REQUIRE_ISOLATED_DOCKER=true` 会在错误配置时阻止 Worker
-> 消费评测任务。跳过 Judge 时不需要这些配置。
-
-## 3. 评测镜像白名单
-
-生产初始化时 `init system` 会根据 `JUDGE_IMAGE_BASE` 写入 ghcr 全限定镜像名
-（例如 `ghcr.io/neuro-oj/noj-evaluator-python`）。
-
-如果是从旧数据库升级，或需要手工确认，请通过管理后台或 SQL 检查 `judge_images`：
-
-```sql
-SELECT image, mode, kind FROM judge_images ORDER BY kind;
-```
-
-应包含：
-
-```text
-ghcr.io/neuro-oj/noj-evaluator-python  all_versions  evaluator
-ghcr.io/neuro-oj/noj-solution-python   all_versions  solution
-ghcr.io/neuro-oj/noj-solution-ai       all_versions  solution
-```
-
-产物提交题使用 `noj-solution-python` 或 `noj-solution-ai` 运行 zip 产物；发布前应确认相应镜像已推送并被加入白名单。
-
-## 3.5 LLM Gateway 部署
-
-`docker-compose.prod.yml` 默认启动 `llm-gateway` 容器，并让 core 通过
-`http://llm-gateway:8001` 访问。由于 compose 对 `NOJ_LLM_SERVICE_TOKEN` 和
-`NOJ_LLM_STORE_KEY` 使用 `${...:?}` 必填校验，即使不使用 LLM 调用题也必须
-在 `.env.prod` 中填写这两个密钥。
-
-使用 LLM 调用题时：
-
-- 必须设置 `NOJ_LLM_SERVICE_TOKEN` 与 `NOJ_LLM_STORE_KEY`，且 `NOJ_LLM_SERVICE_TOKEN`
-  与 noj-core 保持一致。
-- 必须开启 evaluator 联网：`JUDGE_ALLOW_EVALUATOR_NETWORK=true`。
-- `JUDGE_EVALUATOR_NETWORK` 必须指向 `llm-gateway` 所在网络（compose 中为 `noj-net`），
-  否则 evaluator 容器无法解析 `http://llm-gateway:8001`。
-- 在管理后台「LLM Providers」配置上游 OpenAI 兼容服务；Provider Key 仅加密存储在数据库。
-
-用户和 IP 分钟限流分别由 `NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE` 与
-`NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE` 配置，缺失时均为每 UTC 分钟 60 次。
-配置必须是正整数，并在 `llm-gateway` 重启后生效；其它日/月调用量、Token 和费用配额不受影响。
-
-密钥轮换：
-
-- 轮换 `NOJ_LLM_SERVICE_TOKEN` 会让所有未过期 eval_token 失效，需同步更新 noj-core 与 gateway。
-- 轮换 `NOJ_LLM_STORE_KEY` 后，需要用新主密钥重新加密所有 Provider Key。
-
-## 4. staging 验收门禁
-
-生产候选版本必须先在 staging 使用与生产相同的 Compose 文件和七类镜像完成验收，
-再进入 Release。验收脚本要求工作树洁净，默认只接受 `main`、`release/*` 或版本
-标签；生产验收不得使用 `latest` 作为版本标识。
-
-准备验收环境文件：
-
-```bash
-cp scripts/staging/env.example .env.staging
-chmod 600 .env.staging
-vim .env.staging
-```
-
-其中 `STAGING_BASE_URL` 必须是已经配置好外部 TLS 终止和反向代理的 HTTPS 地址，
-`STAGING_CORS_ORIGIN` 必须与浏览器实际来源一致。执行完整验收：
-
-```bash
-bash scripts/staging/acceptance.sh all \
-  --env-file .env.staging \
-  --artifact-dir artifacts/staging/$(grep '^NOJ_VERSION=' .env.staging | cut -d= -f2)
-```
-
-脚本会构建并启动 `noj-core`、`noj-ui`、`noj-judge`、`noj-llm-gateway`、
-`noj-evaluator-python`、`noj-solution-python`、`noj-solution-ai` 七类生产镜像，然后依次验证：
-
-- Compose 健康检查、`/healthz`、HTTPS、CORS，以及 `HttpOnly`/`Secure`/`SameSite=Lax` Cookie；
-- 管理员登录与强制改密、普通用户登录、TFA 启用与登录；
-- 题包导入、S3/MinIO 支持包下载、真实代码提交与完整评测；
-- 提交 SSE 推送和管理员重测。
-
-失败时不会自动清理 staging 服务，并将 `compose ps`、最近 500 行服务日志、Docker
-信息和版本元数据写入报告目录；修复后应重新执行完整验收。成功时默认停止服务但保留
-数据卷，调试时可加 `--keep-stack` 保留服务。仅本地调试允许使用 `--allow-http`。
-
-发布前人工确认清单：
-
-1. staging 验收报告为成功，且包含候选提交、镜像仓库/版本和数据库迁移结果。
-2. 失败日志与已知限制已归档，未遗留未处理的队列、容器或数据问题。
-3. 已创建并验证 GPG 签名的提交或版本标签。
-4. 发布负责人完成手工批准后，才执行 GitHub Release 和生产升级。
-
-## 5. 日常运维
-
-安装完成后，推荐使用安装目录根部的 `noj` 命令统一管理生产服务：
+如果 `noj-cli` 尚未加入 PATH，也可以在安装目录执行 `./bin/noj-cli`，或直接调用：
 
 ```bash
 cd /opt/neuro-oj
-./noj status
-./noj logs core
-./noj restart
-./noj backup
-./noj uninstall
-./noj uninstall --all
-./noj config check
+bash scripts/deploy/deploy.sh status
 ```
 
-固定版本更新前先修改 `.env.prod` 中的 `NOJ_VERSION`，然后执行：
+## 5. 升级与回滚
+
+固定版本升级：
 
 ```bash
-./noj update
+cd /opt/neuro-oj
+# 将 vX.Y.Z 替换为包含 CLI 资产的目标版本
+sed -i 's/^NOJ_VERSION=.*/NOJ_VERSION=vX.Y.Z/' .env.prod
+noj-cli update
 ```
 
-更新只同步部署文件时不会因当前 NOJ 自身占用 `NGINX_PORT` 而失败；应用容器重建后，脚本会主动刷新
-Nginx 反向代理，避免上游容器地址变化造成 `502`。
-
-如需自动选择最新稳定 Release，可执行：
+自动升级到最新稳定 Release：
 
 ```bash
-./noj update --latest
+noj-cli update --latest
 ```
 
-`update --latest` 通过 GitHub Releases API 选择最新的非草稿、非预发布版本，先展示目标版本，再同步
-部署文件和 `noj` 命令，并沿用生产部署脚本的备份、镜像校验和健康检查流程。当前已经是最新版本时不
-重启服务、不创建升级备份。网络查询失败、镜像未发布或健康检查失败时不会提交新的 `NOJ_VERSION`；
-此时可使用固定版本重试。两种 `update` 用法都不会删除 Docker 数据卷。`noj` 只是统一命令入口；需要高级选项时仍可使用
-`bash scripts/deploy/deploy.sh <命令> [选项]`。首次部署仅使用 `setup.sh`，成功后会自动
-将命令注册到 `/usr/local/bin/noj`；没有权限时回退到 `~/.local/bin/noj` 并更新登录 PATH。
+升级前会创建并校验备份，拉取镜像，执行数据库迁移并等待健康检查；不会删除数据卷。若失败，
+先查看 `noj-cli status` 和 `noj-cli logs`，再把 `NOJ_VERSION` 改回上一个已验证版本并执行 `noj-cli update`。
+数据库迁移只追加，不会自动回滚，因此跨大版本升级前必须确认迁移兼容性。
 
-推荐使用 `noj` 入口：
+## 6. 卸载
 
 ```bash
-./noj status
-./noj logs core
-./noj logs judge --follow
-./noj backup --passphrase-file /etc/noj/backup-passphrase
+# 删除容器、网络和本地镜像，保留配置和数据卷
+noj-cli uninstall
+
+# 明确删除全部数据和安装目录（不可恢复）
+noj-cli uninstall --all --yes
 ```
 
-`backup` 会创建包含 PostgreSQL、Redis RDB、MinIO/S3 对象镜像和 GPG 加密
-`.env.prod` 的完整快照。快照目录位于 `backups/snapshot-*`，目录权限为 `700`，
-文件权限不对其他用户开放；组件失败时不会留下可被误用的半成品快照。
+普通卸载要求输入 `UNINSTALL`，不会删除 PostgreSQL、Redis、MinIO、Judge 缓存、备份或配置。
+完全删除要求输入 `DELETE ALL` 或使用 `--yes`，执行前请确认备份已保存到其他位置。
 
-卸载生产服务时执行：
+## 7. CLI 配置模式与源码运行
+
+`noj-cli install/start/stop/status/update/uninstall/logs/backup/verify/config check` 管理 `.env.prod` 生产部署；
+内部复用 `scripts/deploy/production.sh`、`deploy.sh` 和 `backup.sh`，因此旧配置、服务名和数据卷不变。
+`noj-cli backup restore <快照> --confirm` 要求目标 Compose 服务已停止；`backup verify` 与 `backup drill` 用于校验和演练。
+
+`deploy/maintain/run-server` 使用另一套 `noj-deploy.json` / `noj-secrets.json`，不能直接管理 `.env.prod` 安装。
+若同时管理多个安装，请显式使用 `--dir` 选择目标。
+
+开发者可从源码运行相同入口：
 
 ```bash
-./noj uninstall
+cd noj-cli
+deno run -A src/cli.ts status --dir /opt/neuro-oj
+deno task test
+deno task test:production
 ```
 
-命令会要求输入 `UNINSTALL` 确认；自动化环境必须显式使用 `./noj uninstall --yes`。卸载会停止并删除
-当前 Compose 栈的容器、网络和本地镜像，但不会执行 `down -v`，所以 PostgreSQL、Redis、MinIO、题目包
-和 Judge 缓存数据卷、`.env.prod`、备份及部署目录都会保留。命令不会修改宿主机 Nginx/Caddy/宝塔站点、
-证书或其他容器。卸载后如需恢复服务，在保留的安装目录执行 `./noj start` 即可重新拉取镜像并复用数据。
-
-如需完全删除 NOJ 及其数据，执行：
-
-```bash
-./noj uninstall --all
-```
-
-该命令会要求输入 `DELETE ALL`；自动化环境必须显式使用 `./noj uninstall --all --yes`。它会额外删除全部
-Compose 数据卷、当前安装目录、配置和备份，且不可恢复；执行前请确认备份已保存到其他位置。检测到 Git 工作区
-时会拒绝删除安装目录。宿主机 Nginx/Caddy/宝塔站点、证书和其他容器仍不会被修改。
-
-```bash
-# 查看服务状态
-docker compose --env-file .env.prod -f docker-compose.prod.yml ps
-
-# 查看日志
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 core
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 judge
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f --tail=200 llm-gateway
-
-# 健康检查（通过外部 TLS 终止后的地址）
-curl https://你的域名/healthz
-
-# 队列积压（需要进入 redis 容器或使用 redis-cli）
-docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
-  redis-cli -a "$REDIS_PASSWORD" LLEN noj:judge:queue
-```
-
-## 6. 升级
-
-1. 在 GitHub 发布新 Release（如 `v0.1.1`）。Release workflow 会先构建候选镜像，
-   完成漏洞扫描、SBOM、签名和来源证明后，才创建正式版本标签。
-2. 确认 Release workflow 的全部镜像验证成功；固定版本部署可在服务器修改 `.env.prod` 中的
-   `NOJ_VERSION=v0.1.1`，也可使用 `./noj update --latest` 选择最新稳定 Release。
-3. 升级前创建备份并拉取新镜像：
-
-```bash
-./noj update
-```
-
-部署脚本会先校验镜像签名，再创建并校验生产备份，然后拉取镜像并等待 Compose 健康检查。
-数据库迁移由 `migrate` 一次性服务执行；升级前必须确认新版本迁移与旧版本应用兼容。
-
-## 7. 回滚
-
-- 确认上一版本 Release 仍可拉取且签名有效，将 `.env.prod` 的 `NOJ_VERSION` 改回上一版本，
-  执行 `bash scripts/deploy/deploy.sh verify` 后再执行 `bash scripts/deploy/deploy.sh start`。
-- 数据库 schema 采用只追加迁移，**不自动回滚**；如需回退 schema，请人工评估并备份后操作。
-- 评测镜像也按 Release tag 发布，回滚时需要把 `judge_images` 白名单指向旧 tag（若使用 `all_versions` 则无需改白名单，只需题目/系统设置中的镜像 tag 指向旧版本）。
-
-如果新版本已经执行了不兼容的数据库迁移，不能只切换应用镜像；必须停止服务、确认备份
-可恢复后，按备份恢复流程处理数据，再启动上一版本。
-
-## 8. 备份提示
-
-### 8.1 初始化口令与创建快照
-
-备份口令只保存在仓库外的受限文件中，不要把口令明文写入 `.env.prod` 或提交到 Git。
-一键安装和升级在没有指定口令文件时，默认会自动创建 `/etc/noj/backup-passphrase`；
-请务必将该文件安全复制到异地位置，否则无法恢复加密快照。也可以预先指定自己的路径：
-
-```bash
-sudo install -d -m 700 /etc/noj
-openssl rand -hex 32 | sudo tee /etc/noj/backup-passphrase >/dev/null
-sudo chmod 600 /etc/noj/backup-passphrase
-
-export NOJ_BACKUP_PASSPHRASE_FILE=/etc/noj/backup-passphrase
-bash scripts/deploy/deploy.sh backup --backup-dir /srv/noj/backups
-```
-
-安装时如果已存在权限为 `600` 或 `400` 的口令文件，脚本会复用且不会覆盖；也可以在升级或
-备份命令中显式使用 `--passphrase-file FILE`。备份路径本身可以写入 `.env.prod`，但口令内容不可以。
-
-每次快照都会生成 SHA-256 清单、PostgreSQL dump 结构清单、迁移状态和 `SUCCESS`
-标记；默认保留 30 天，默认要求备份目录至少有 1GiB 可用空间。可通过
-`NOJ_BACKUP_RETENTION_DAYS` 和 `NOJ_BACKUP_MIN_FREE_MB` 调整。
-
-### 8.2 校验、恢复与恢复演练
-
-```bash
-snapshot=/srv/noj/backups/snapshot-YYYYMMDD-HHMMSS
-bash scripts/deploy/backup.sh verify "$snapshot"
-bash scripts/deploy/backup.sh drill "$snapshot" --report /srv/noj/restore-drill.txt
-```
-
-`drill` 不会触碰当前生产数据，只验证解密、校验和、PostgreSQL 结构、Redis RDB
-以及对象镜像。周期性演练应在隔离 Compose project 中执行实际恢复：
-
-```bash
-bash scripts/deploy/backup.sh restore "$snapshot" \
-  --project-name noj-restore-drill \
-  --restore-env /srv/noj/restore-drill.env \
-  --confirm
-```
-
-恢复会覆盖目标数据库、Redis 数据和对象存储，因此必须显式 `--confirm`，且目标
-Compose 服务必须已经停止。建议恢复到单独主机或单独数据卷，人工检查后再启动业务
-服务；脚本不会执行 `down -v`，也不会删除生产数据卷。
-
-### 8.3 RPO/RTO 与自动化
-
-- 默认快照是 PostgreSQL 完整逻辑备份；Redis 使用 RDB，评测队列属于可恢复的瞬态
-  数据，故障后允许重新提交或重新入队。
-- 可按 6 小时执行一次 `backup`，将业务 RPO 目标设为不超过 6 小时；实际 RPO 取决于
-  调度器是否成功完成并收到告警。需要分钟级 RPO 时，应额外配置 PostgreSQL WAL/PITR
-  和异地对象存储，不能只依赖本脚本。
-- RTO 由 PostgreSQL 数据量、对象数量和网络决定。每月至少在隔离环境跑一次实际
-  `restore --confirm`，记录从快照开始到健康检查通过的耗时，作为真实 RTO 基线。
-- 建议由 systemd timer、cron 或外部调度平台执行 `backup.sh create`，并对非零退出码、
-  磁盘空间不足、`verify` 失败和恢复演练失败发送告警。备份目录应同步到与生产主机
-  不同故障域的加密存储。
-
-密钥轮换和失效步骤见[生产密钥轮换 Runbook](./production-secrets.md)。
+Release workflow 在生产镜像验证通过后，编译并发布 Linux amd64 CLI 及 SHA-256 校验文件。
+旧 Release 没有这些资产时不能使用新安装器安装；需要使用包含 CLI 的新 Release 或该旧版本自身的安装器。

@@ -578,6 +578,15 @@ grep -q '^version=v0.1.0$' "$manifest" || fail "部署记录缺少版本"
 [[ "$(grep -c '^noj-' "$manifest")" -eq 6 ]] || fail "部署记录未包含六个镜像 digest"
 pass "签名校验与部署 digest 记录"
 
+: >"$FAKE_LOG"
+config_before="$(openssl dgst -sha256 "$TEST_ROOT/signed.env")"
+run_deploy_with "$TEST_ROOT/signed.env" config-check >"$TEST_ROOT/config-check.out" 2>&1 || fail "只读配置校验失败"
+if grep -Eq 'buildx|imagetools| up | pull| down | exec ' "$FAKE_LOG"; then
+  fail "配置校验不应检查远端镜像或修改服务"
+fi
+[[ "$(openssl dgst -sha256 "$TEST_ROOT/signed.env")" == "$config_before" ]] || fail "配置校验修改了生产配置"
+pass "配置校验不检查远端镜像、不修改服务和配置"
+
 if run_deploy backup --backup-dir "$TEST_ROOT/backups" >/dev/null 2>"$TEST_ROOT/backup.err"; then
   :
 else

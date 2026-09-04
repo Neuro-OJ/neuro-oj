@@ -51,7 +51,7 @@ answer = runner.call("solve", 1, 2, timeout_ms=5000)   # 本次调用 5s 超时
 | --- | --- |
 | `NotFoundError` | 目标函数不存在 |
 | `RejectedError` | 参数/返回值类型不允许，或帧超过 1 MiB 软上限 |
-| `SolutionTimeoutError` | 单次调用超过 `call_timeout_ms`。若 evaluator 未捕获（evaluate.py 异常退出、无 `---RESULT---`），最终状态为 `TimeLimitExceeded` |
+| `SolutionTimeoutError` | 单次调用超过 `call_timeout_ms`。若 evaluator 未捕获（evaluate.py 异常退出、无 `---RESULT---`），最终状态为 `error` |
 | `SystemError` | host 内部错误、异常执行、IPC 通道异常等不可恢复错误 |
 | `ConnectionError` | Solution Host 已关闭 / IPC 通道断开 |
 
@@ -81,7 +81,7 @@ arg[0]: 不支持的类型 MyClass（仅 None/bool/int/float/str/bytes/list/dict
 
 返回值路径对称：Solution 返回不支持类型时，Judge Worker 以 `code="Rejected"` 的错误帧返回，Evaluator 侧同样收到 `RejectedError`。
 
-出题人可以用 `try/except RejectedError` 把这类调用按失败用例处理；不捕获则 `evaluate.py` 异常退出，该次评测落为 `SystemError`。
+出题人可以用 `try/except RejectedError` 把这类调用按失败用例处理；不捕获则 `evaluate.py` 异常退出，该次评测落为 `error`。
 
 ## 注册 capability（供 Solution 调用）
 
@@ -117,9 +117,9 @@ Evaluator 使用 `result` 模块输出最终结果。
 ```python
 result.accept(score=1000, details={"passed": 10})
 result.wrong_answer(score=500, details={"passed": 5})
-result.runtime_error(message="用户代码运行错误")
-result.system_error(message="评测脚本配置错误")
 ```
+
+新协议下结果 JSON 不再输出 `status`，只输出 `score` 与 `details`；`accept` / `wrong_answer` 只是写入分数的便捷方法。评测脚本自身出错时应直接抛出异常或非零退出，由 judge 统一映射为 `error`；SDK 已移除 `runtime_error()` / `system_error()` 结果写入方法。
 
 分数是整数，当前样例题使用“实际分数乘以 100”的方式。例如满分 10 分时，`1000` 表示 10.00 分。
 

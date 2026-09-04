@@ -13,6 +13,8 @@ LLM 调用网关，作为 evaluator 与外部 OpenAI 兼容 LLM API 之间的可
 - 基于 Redis Lua 原子脚本执行限流/额度检查：单次提交、用户/全局/题目日/月维度
   calls/tokens/cost，以及用户/IP 分钟速率窗口。
 - 将调用审计写入 `llm_usage` 表，供管理后台查询。
+- 负责 `llm_providers` / `llm_usage` / `llm_quotas` 三张表的迁移与默认配额
+  seed。
 
 ## 环境变量
 
@@ -40,6 +42,7 @@ deno task dev        # 热重载开发
 deno task start      # 启动
 deno task test       # 运行测试
 deno task check      # fmt + lint + typecheck
+deno task db:migrate # 执行 LLM 表迁移（幂等）
 ```
 
 分钟限流配置在网关启动时读取和校验；缺失时继续使用每个用户和 IP 每分钟 60 次。

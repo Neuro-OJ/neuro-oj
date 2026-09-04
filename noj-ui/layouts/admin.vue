@@ -40,6 +40,7 @@ const navGroups: NavGroup[] = [
       { label: "LLM Provider", to: "/admin/llm/providers", icon: 'i-lucide-server' },
       { label: "LLM 用量", to: "/admin/llm/usage", icon: 'i-lucide-bar-chart-3' },
       { label: "社区管理", to: "/admin/community", icon: 'i-lucide-messages-square' },
+      { label: "内容审查", to: "/admin/content-review", icon: 'i-lucide-shield-alert' },
       { label: "举报管理", to: "/admin/reports", icon: 'i-lucide-flag' },
       { label: "公告管理", to: "/admin/announcements", icon: 'i-lucide-megaphone' },
     ],
@@ -63,7 +64,7 @@ function isActive(path: string) {
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-bg-page">
+  <div class="flex min-h-screen">
     <a href="#admin-main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-white focus:text-text focus:px-4 focus:py-2 focus:rounded-md focus:shadow-modal">
       跳转到主要内容
     </a>

@@ -20,7 +20,7 @@
 #   - docker CLI 可用
 #   - 在 noj-judge/ 仓库根目录下执行（或使用绝对路径）
 #
-# 设计稿：openspec/changes/dual-container-judge/design.md §5
+# 设计：双容器 Evaluator/Solution 评测架构（见 noj-judge/CLAUDE.md）
 
 set -euo pipefail
 

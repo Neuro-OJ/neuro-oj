@@ -1,0 +1,32 @@
+{
+  "name": "@noj/cli",
+  "version": "0.1.0",
+  "exports": "./src/mod.ts",
+  "tasks": {
+    "test": "deno test -A",
+    "fmt": "deno fmt",
+    "fmt:check": "deno fmt --check",
+    "lint": "deno lint",
+    "check": "deno fmt --check && deno lint && deno check src/mod.ts",
+    "build:cli": "deno compile -A --frozen --target x86_64-unknown-linux-gnu --output bin/noj-cli-linux-amd64 src/cli.ts",
+    "test:production": "bash ../scripts/deploy/test-noj.sh && bash ../scripts/deploy/test-install.sh && bash ../scripts/deploy/test-deploy.sh && bash ../scripts/deploy/test-backup.sh"
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@^1",
+    "@std/path": "jsr:@std/path@^1"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true
+  },
+  "fmt": {
+    "semiColons": true,
+    "singleQuote": false,
+    "indentWidth": 2
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  }
+}

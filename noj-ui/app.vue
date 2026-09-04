@@ -70,36 +70,50 @@ useHead({
 
 <style>
 :root {
-    --c-primary: #2563eb; --c-primary-dark: #1d4ed8; --c-primary-light: #3b82f6;
-    --c-primary-bg: #eff6ff; --c-primary-hover-bg: #dbeafe; --c-primary-active-bg: #bfdbfe; --c-primary-text: #1e40af;
-    --c-bg-dark: #0f172a; --c-bg-dark-2: #1e293b; --c-bg-dark-3: #334155;
-    --c-success-text: #137333; --c-info-text: #1967d2; --c-warning-text: #92400e; --c-error-text: #b91c1c;
-    --c-text: #1e293b; --c-text-secondary: #64748b; --c-text-muted: #64748b;
+    --c-primary: #1B2B4A; --c-primary-dark: #16233E; --c-primary-light: #2C4B9B;
+    --c-primary-bg: #e6fbf3; --c-primary-hover-bg: #c2f5e2; --c-primary-active-bg: #8aebc8; --c-primary-text: #007146;
+    --c-bg-dark: #121310; --c-bg-dark-2: #191b17; --c-bg-dark-3: #0d0e0c;
+    --c-success-text: #007146; --c-info-text: #1B2B4A; --c-warning-text: #b45309; --c-error-text: #dc2626;
+    --c-text: #1c1e1b; --c-text-secondary: #4c4e4a; --c-text-muted: #6b6e68;
     --header-h: 64px;
-    --c-border: #e2e8f0; --c-bg-page: #f8fafc; --c-white: #ffffff; --c-text-on-color: #ffffff;
-    /* 深色背景上的正文色（footer 等）：#64748b on #0f172a 仅 3.75:1，不达 WCAG AA 4.5:1 */
-    --c-text-on-dark: #94a3b8;
+    --c-border: #d5d6cf; --c-bg-page: #e8e8e2; --c-bg-panel: #f2f2ec; --c-bg-sunken: #dfe0d9; --c-white: #f2f2ec; --c-text-on-color: #ffffff;
+    --c-text-on-dark: #f2f3ef;
+    --c-signal: #00d68a; --c-signal-deep: #007146; --c-signal-rgb: 0,214,138;
+    --c-signal-dark: #00e07a; --c-signal-deep-dark: #00d68a; --c-signal-dark-rgb: 0,224,122;
+    --c-on-signal: #1c1e1b;
 }
 
 .editor-dark {
-  --c-bg-page: #0f172a;
-  --c-white: #1e293b;
-  --c-border: #334155;
-  --c-text: #e2e8f0;
-  --c-text-secondary: #94a3b8;
-  /* #94a3b8 on #1e293b = 6.96:1，替代原 #64748b（3.07:1 不达 AA） */
-  --c-text-muted: #94a3b8;
-  /* #60a5fa on #1e293b = 5.2:1，替代原 #3b82f6（3.98:1 仅大字达标） */
-  --c-primary: #60a5fa;
-  --c-primary-hover-bg: #1e3a8a;
-  --c-primary-bg: #1e293b;
+  --c-bg-page: #121310;
+  --c-bg-panel: #191b17;
+  --c-bg-sunken: #0d0e0c;
+  --c-white: #191b17;
+  --c-border: #333631;
+  --c-text: #f2f3ef;
+  --c-text-secondary: #90938d;
+  --c-text-muted: #6f736d;
+  --c-primary: #7C96D6;
+  --c-primary-dark: #6C86C8;
+  --c-primary-light: #8BA3DB;
+  --c-primary-hover-bg: #1a3d30;
+  --c-primary-bg: #12352a;
+  --c-primary-text: #00d68a;
+  --c-signal: #00e07a;
+  --c-signal-deep: #00d68a;
+  --c-signal-rgb: 0,224,122;
+  --c-on-signal: #1c1e1b;
+  --c-success-text: #00b377;
+  --c-info-text: #7C96D6;
+  --c-warning-text: #fbbf24;
+  --c-error-text: #ff6b61;
+  --c-text-on-dark: #f2f3ef;
 }
 
 .editor-dark .prose-neuro {
-  --tw-prose-body: #e2e8f0;
-  --tw-prose-headings: #e2e8f0;
-  --tw-prose-links: #60a5fa;
-  --tw-prose-code: #f472b6;
+  --tw-prose-body: #f2f3ef;
+  --tw-prose-headings: #f2f3ef;
+  --tw-prose-links: #7C96D6;
+  --tw-prose-code: #00d68a;
 }
 
 /* CSS 变量（设计 Token）统一在 :root 中定义，main.css 的 @theme 通过 var() 引用。

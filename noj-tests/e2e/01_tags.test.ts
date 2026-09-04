@@ -296,13 +296,14 @@ e2eTest("[e2e/tags] 4.2 算法标签门控：AC 后可见", async () => {
   );
   if (!token) throw new Error("获取用户失败");
 
-  // 提交 A+B 解答并等待 AC（算法标签已在 4.1 打上）
+  // 提交 A+B 解答并等待 AC（算法标签已在 4.1 打上）。
+  // P1001 为双容器函数调用型评测，需实现 solve(input_str) -> str。
   const submissionId = await submitCode(
     token,
     judgeProblemId,
-    "a, b = map(int, input().split())\nprint(a + b)\n",
+    "def solve(input_str: str) -> str:\n    a, b = map(int, input_str.split())\n    return str(a + b)",
   );
-  const result = await pollSubmission(token, submissionId);
+  const result = await pollSubmission(token, submissionId, 45, 2000, true);
   if (result.status !== "finished" || result.score <= 0) {
     console.log(`  ⚠ 评测结果 ${result.status}，跳过 AC 可见性断言`);
     return;

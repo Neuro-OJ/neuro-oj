@@ -288,7 +288,7 @@ async function confirmDelete(role: Role) {
         <input
           v-model="editorName"
           placeholder="例如：moderator"
-          class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+          class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
           :disabled="editingRole?.is_system"
         />
       </div>
@@ -299,7 +299,7 @@ async function confirmDelete(role: Role) {
         <input
           v-model="editorDesc"
           placeholder="角色用途说明"
-          class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary focus:shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+          class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
         />
       </div>
 

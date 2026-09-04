@@ -62,12 +62,11 @@ try:
     actual = str(runner.call("solve", "1 2")).strip()
     accepted = actual == "3"
     result = {
-        "status": "Accepted" if accepted else "WrongAnswer",
         "score": 100 if accepted else 0,
         "details": {"actual": actual, "expected": "3"},
     }
 except Exception as error:
-    result = {"status": "RuntimeError", "score": 0, "details": {"error": str(error)}}
+    result = {"score": 0, "details": {"error": str(error)}}
 finally:
     runner.close()
 
@@ -229,7 +228,7 @@ e2eTest("[e2e/staging] 真实提交完成评测", async () => {
     return str(a + b)`,
   );
   const result = await pollSubmission(adminToken, submissionId);
-  if (result.verdict !== "Accepted") {
+  if (result.verdict !== "finished" || result.score <= 0) {
     throw new Error(`真实评测未通过: ${JSON.stringify(result)}`);
   }
 });
@@ -254,7 +253,7 @@ e2eTest("[e2e/staging] 管理员重测并再次完成评测", async () => {
     throw new Error(`重测发起失败: ${response.status}`);
   }
   const result = await pollSubmission(adminToken, submissionId);
-  if (result.verdict !== "Accepted") {
+  if (result.verdict !== "finished" || result.score <= 0) {
     throw new Error(`重测结果未通过: ${JSON.stringify(result)}`);
   }
 });

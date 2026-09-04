@@ -8,7 +8,7 @@ defineProps<{ training: Training }>()
 <template>
   <NuxtLink
     :to="publicUrl('training', training.public_id || training.id)"
-    class="group flex min-h-44 flex-col rounded-xl border border-border bg-white p-5 text-text no-underline shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-card"
+    class="group flex min-h-44 flex-col rounded-xl border border-border bg-white p-5 text-text no-underline shadow-sm transition-all hover:-translate-y-1 hover:border-signal/40 hover:shadow-card"
   >
     <div class="flex items-start justify-between gap-3">
       <h2 class="line-clamp-2 text-lg font-bold transition-colors group-hover:text-primary">

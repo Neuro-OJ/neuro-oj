@@ -58,6 +58,9 @@ docker-data/
 # --- Staging 验收产物 ---
 /artifacts/staging/
 
+# --- AI 工具本地配置（AGENTS.md §7.1：不提交 AI 工具配置） ---
+.commandcode/
+
 # --- Jujutsu (jj) ---
 .jj/repo/op_heads/
 .jj/repo/store/
@@ -73,17 +76,16 @@ tmp/
 coverage/
 *.wasm
 
+# --- noj-server / noj-cli 构建产物 ---
+noj-core/bin/
+noj-cli/bin/
+
 # --- Problem Data (noj-core) ---
 # Support packages are build artifacts, not versioned
 noj-core/data/packages/
 !noj-core/data/packages/.gitkeep
 # Local storage backend (problem-bundle-import: separated from build artifacts)
 noj-core/data/storage/
-
-# --- Dev tool locks (devtool.sh advisory locks for concurrent safety) ---
-scripts/dev/locks/
-# PID 文件由 `devtool.sh start` 启动模块时写入，用于模块存活追踪
-scripts/dev/logs/*.pid
 
 # --- IDE metadata (project-local, not shareable) ---
 *.iml
@@ -99,7 +101,7 @@ aa.txt
 .buildx/
 
 .reasonix/docs/review-snapshots/
-docs/review-snapshots/
+dev-docs/review-snapshots/
 .reasonix/
 
 # --- LMCC raw problem archive (downloaded from official site; not committed) ---

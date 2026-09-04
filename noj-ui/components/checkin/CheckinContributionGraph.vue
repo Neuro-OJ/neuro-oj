@@ -77,11 +77,11 @@ function onLeave() {
           <template v-for="(cell, ci) in week.cells" :key="ci">
             <div
               v-if="cell"
-              class="m-[1px] h-3.5 w-3.5 rounded-[3px] outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              class="m-[1px] h-3.5 w-3.5 rounded-[3px] outline-none focus-visible:ring-2 focus-visible:ring-signal"
               :class="cell.checked
-                ? 'bg-primary'
+                ? 'bg-signal'
                 : cell.isToday
-                  ? 'border border-primary'
+                  ? 'border border-signal'
                   : 'bg-gray-200'"
               :tabindex="0"
               :aria-label="`${cell.checked ? '已签到' : '未签到'} ${formatDateFull(cell.date)}`"

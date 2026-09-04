@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-新增 `docs/engineering/capability-seams.md` 说明三段式 seam 模式，并新增 `scripts/verify-capability-seams.ts`：
+新增 `dev-docs/engineering/capability-seams.md` 说明三段式 seam 模式，并新增 `scripts/verify-capability-seams.ts`：
 
 - 禁止 `noj-core/src` 业务代码直接 import `storage/local.ts`、`storage/s3.ts`、`email-providers/*` 等具体 Provider。
 - 只允许 factory/mod/index/email.ts 等装配点引用。

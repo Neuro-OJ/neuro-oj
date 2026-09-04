@@ -24,6 +24,34 @@ export default withMermaid(defineConfig({
         href: "https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap",
       },
     ],
+    [
+      "style",
+      {},
+      `:root {
+        --vp-c-brand-1: #1B2B4A;
+        --vp-c-brand-2: #00d68a;
+        --vp-c-brand-3: #007146;
+        --vp-c-bg: #e8e8e2;
+        --vp-c-bg-alt: #f2f2ec;
+        --vp-c-bg-elv: #f2f2ec;
+        --vp-c-text-1: #1c1e1b;
+        --vp-c-text-2: #4c4e4a;
+        --vp-c-border: #d5d6cf;
+        --vp-c-divider: #d5d6cf;
+      }
+      .dark {
+        --vp-c-brand-1: #7C96D6;
+        --vp-c-brand-2: #00e07a;
+        --vp-c-brand-3: #00d68a;
+        --vp-c-bg: #121310;
+        --vp-c-bg-alt: #191b17;
+        --vp-c-bg-elv: #191b17;
+        --vp-c-text-1: #f2f3ef;
+        --vp-c-text-2: #90938d;
+        --vp-c-border: #333631;
+        --vp-c-divider: #333631;
+      }`,
+    ],
   ],
 
   themeConfig: {
@@ -94,6 +122,7 @@ export default withMermaid(defineConfig({
               items: [
                 { text: "运营者文档", link: "/operators/" },
                 { text: "生产部署", link: "/operators/production-deploy" },
+                { text: "可观测性与故障处理", link: "/operators/observability" },
                 { text: "如何提供 LLM 调用能力", link: "/operators/llm-call-capability" },
                 { text: "CLI 初始化", link: "/operators/cli" },
                 { text: "Judge Worker 运维", link: "/operators/judge-workers" },

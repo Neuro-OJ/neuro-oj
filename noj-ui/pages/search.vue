@@ -28,7 +28,7 @@
         type="button"
         class="px-4 py-2 text-sm transition-colors"
         :class="type === t.value
-          ? 'text-primary border-b-2 border-primary font-medium'
+          ? 'text-primary border-b-2 border-signal font-medium'
           : 'text-text-secondary hover:text-text'"
         @click="setType(t.value)"
       >

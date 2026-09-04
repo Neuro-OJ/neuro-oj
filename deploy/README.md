@@ -5,7 +5,6 @@
 ## 目录
 
 - `nginx/default.conf`：Nginx 反向代理配置（容器内只处理 HTTP，转发到 `ui:3000`）。
-- `monitoring/`：Prometheus 采集配置、告警规则和 Grafana 仪表盘模板。
 
 ## TLS 说明
 
@@ -34,42 +33,28 @@ server {
 
 ## 首次安装与生产运维
 
-推荐使用仓库根目录的 `noj` 入口。首次安装会先展示最低要求和当前主机环境，随后检查生产配置、
-保护环境文件、复用生产 Compose、等待健康检查，并且不会删除数据卷：
+推荐使用仓库根目录的 `setup.sh` 一键安装入口。脚本会先检查环境，再下载部署文件并引导完成生产配置：
 
 ```bash
-# 首次安装：仅使用仓库根目录的 setup.sh
+# 首次安装
 curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
   bash -s -- --dir /opt/neuro-oj
 
 # 日常运维
-./noj status
-./noj logs core
-./noj backup
-./noj update
-./noj update --latest
-./noj restart
-./noj uninstall
-./noj uninstall --all
-./noj config check
+noj-cli status
+noj-cli logs core
+noj-cli backup
+noj-cli restart
+noj-cli stop
+noj-cli start
+noj-cli config check
 ```
 
-`update` 默认按 `.env.prod` 中的 `NOJ_VERSION` 升级；`update --latest` 会查询最新稳定 Release（不含
-RC/预发布）。两者都会先同步部署文件和 `noj` 命令，再创建并校验完整备份、拉取镜像并等待 Compose
-健康检查。`stop`、`restart` 和 `update` 都不会删除数据卷。`noj` 支持的部署选项
-会继续传递给底层脚本；需要高级命令或完整参数时仍可执行
-`bash scripts/deploy/deploy.sh <命令> [选项]`。首次安装成功后会优先创建
-`/usr/local/bin/noj` 软链接；没有权限时使用 `~/.local/bin/noj` 并更新登录 PATH，已有同名
-命令不会被覆盖。
-
-`noj uninstall` 会要求输入 `UNINSTALL` 确认；自动化环境请使用 `noj uninstall --yes`。该命令会
-删除当前 Compose 栈的容器、网络和本地镜像，但不会执行 `down -v`，因此 PostgreSQL、Redis、MinIO、
-题目包、Judge 缓存等数据卷、`.env.prod`、备份和部署目录都会保留。卸载后可在安装目录执行
-`./noj start` 重新拉取镜像并恢复服务；宿主机 Nginx/Caddy/宝塔站点和证书不会被修改。
-
-如果需要完全删除 NOJ 及其数据，使用 `./noj uninstall --all`。该命令会要求输入 `DELETE ALL`；自动化环境
-必须使用 `./noj uninstall --all --yes`。它会额外删除全部 Compose 数据卷、当前安装目录、配置和备份，执行前请
-确认备份已经保存到其他位置。检测到 Git 工作区时，命令会拒绝删除安装目录。
+`noj-cli update` 按 `.env.prod` 中的版本升级，`noj-cli update --latest` 获取最新稳定版本。
+`noj-cli uninstall` 默认保留数据卷，`noj-cli uninstall --all --yes` 才会执行完全删除。
+安装器从同版本 Release 下载并校验 `noj-cli`，生产机无需安装 Deno。已有 `.env.prod`、备份和数据卷继续使用。
+`noj-cli backup verify/restore/drill` 提供快照校验、恢复和演练；恢复需要显式 `--confirm`。
+所选 Release 必须已发布 CLI 资产，旧 Release 不会被安装器静默切换成其他版本。
 
 镜像拉取由 Docker daemon 负责。若官方源访问不稳定，请在 Docker daemon 配置
 registry mirror 或 HTTP(S) proxy 后重试；评测镜像仍可通过 `JUDGE_IMAGE_BASE`
@@ -83,7 +68,4 @@ vim .env.prod
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 ```
 
-详细步骤见 `docs/operators/production-deploy.md`。
-
-生产观测接入见 `docs/operators/observability.md`。Prometheus 应加入 `noj-net` 后抓取
-`core:8000/metrics`；该端点只提供聚合指标，不应直接暴露到公网。
+详细步骤见 `noj-docs/docs/operators/production-deploy.md`。

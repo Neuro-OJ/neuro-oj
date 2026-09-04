@@ -1,5 +1,5 @@
 /**
- * 双容器 Evaluator/Solution 评测全链路 E2E（issue #118 / openspec/changes/dual-container-judge）。
+ * 双容器 Evaluator/Solution 评测全链路 E2E（issue #118）。
  *
  * 覆盖：
  * - admin 通过 API 配置双容器题目 + 提交 → 期望进入评测队列

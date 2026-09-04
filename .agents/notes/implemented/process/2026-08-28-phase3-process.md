@@ -12,7 +12,7 @@ Status: implemented
 
 - PR 模板新增“文档同步、注释契约、测试覆盖、JSDoc”检查项。
 - 新增 `scripts/run-quality-audit.ts` 作为月度质量审计入口。
-- 新增 `docs/postmortem/README.md` 与 postmortem 模板。
+- 新增 `dev-docs/postmortem/README.md` 与 postmortem 模板。
 
 ## Alternatives considered
 

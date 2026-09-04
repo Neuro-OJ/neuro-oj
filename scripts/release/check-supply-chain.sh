@@ -46,12 +46,25 @@ check_dockerfiles() {
 
 check_base_image_security_updates() {
   local file
-  for file in noj-judge/docker/evaluator-python/Dockerfile noj-judge/docker/solution-python/Dockerfile; do
+  local python_files=(
+    noj-judge/docker/evaluator-python/Dockerfile
+    noj-judge/docker/solution-python/Dockerfile
+    noj-judge/docker/solution-ai/Dockerfile
+  )
+  for file in "${python_files[@]}"; do
     require_file "$file"
     grep -q 'apt-get update' "$ROOT_DIR/$file" \
       || fail "$file 未更新 Debian 软件包索引"
     grep -q 'apt-get upgrade' "$ROOT_DIR/$file" \
       || fail "$file 未安装 Debian 安全更新"
+    grep -q 'python3 -m pip install --no-cache-dir --upgrade' "$ROOT_DIR/$file" \
+      || fail "$file 未升级 Python 打包工具"
+    grep -q 'setuptools>=78.1.1' "$ROOT_DIR/$file" \
+      || fail "$file 未约束 setuptools 安全版本"
+    grep -q 'wheel>=0.46.2' "$ROOT_DIR/$file" \
+      || fail "$file 未约束 wheel 安全版本"
+    grep -q 'jaraco.context>=6.1.0' "$ROOT_DIR/$file" \
+      || fail "$file 未约束 jaraco.context 安全版本"
   done
 
   require_file "noj-llm-gateway/Dockerfile"
@@ -92,6 +105,11 @@ check_compose() {
 check_release_workflow() {
   local file="$ROOT_DIR/.github/workflows/release.yml"
   require_file ".github/workflows/release.yml"
+  grep -Fq -- '- name: noj-server' "$file" \
+    || fail "Release workflow 未发布 noj-server 镜像"
+  grep -q 'needs: verify-release' "$file" || fail "CLI 发布必须等待生产镜像验证"
+  grep -q 'deno task test:production' "$file" || fail "CLI 发布缺少生产安装测试"
+  grep -q 'sha256sum noj-cli-linux-amd64' "$file" || fail "CLI 发布缺少 SHA-256 校验文件"
   grep -q 'provenance: mode=max' "$file" || fail "Release workflow 未启用 provenance"
   grep -q 'sbom: true' "$file" || fail "Release workflow 未启用 BuildKit SBOM"
   grep -q 'trivy' "$file" || fail "Release workflow 未配置漏洞扫描"

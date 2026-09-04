@@ -229,8 +229,9 @@ cd dist
 |----------|---------------|
 | `primary` / `primary-dark` / `primary-light` | `--c-primary*` |
 | `primary-bg` / `primary-hover-bg` / `primary-active-bg` / `primary-text` | `--c-primary-*` |
+| `signal` / `signal-deep` / `signal-dark` / `on-signal` | `--c-signal*` / `--c-on-signal` |
 | `text` / `text-secondary` / `text-muted` | `--c-text-*` |
-| `border` / `bg-page` / `white` | `--c-border` / `--c-bg-page` / `--c-white` |
+| `border` / `bg-page` / `bg-panel` / `bg-sunken` / `white` | `--c-border` / `--c-bg-page` / `--c-bg-panel` / `--c-bg-sunken` / `--c-white` |
 | `bg-dark` / `bg-dark-2` / `bg-dark-3` | `--c-bg-dark*` |
 | `success-text` / `info-text` / `warning-text` / `error-text` | `--c-*-text` |
 | `font-mono` | SF Mono / Fira Code / Consolas |
@@ -241,10 +242,17 @@ cd dist
 
 | 配置项 | 值 |
 |--------|-----|
-| 圆角 | `sm: 4px` / `DEFAULT: 6px` / `md: 8px` / `lg: 12px` / `xl: 16px` |
+| 圆角 | `sm: 2px` / `DEFAULT: 4px` / `md: 6px` / `lg: 10px` / `xl: 14px` |
 | 过渡时长 | `fast: 150ms` / `DEFAULT: 200ms` / `slow: 300ms` |
 | 排版插件 | `prose-neuro` 类（自定义代码块/表格/引用样式） |
 | 字体栈 | `SF Mono → Fira Code → Consolas → monospace`（无中文字体指定） |
+| 数值排版 | 分数/耗时/排名等使用 `tabular-nums` |
+
+### 品牌设计系统
+
+- 品牌蓝（蓝黑墨）：`#1B2B4A`（亮色）/ `#7C96D6`（暗色），用于 Logo、导航、品牌识别。
+- 评测信号绿：`#00d68a`（亮色）/ `#00e07a`（暗色），用于动作、选中、进行中、焦点。
+- 完整 token 见 [`dev-docs/design/noj-design-tokens.md`](../dev-docs/design/noj-design-tokens.md)。
 
 ## 组件结构
 
