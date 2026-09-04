@@ -18,5 +18,5 @@
 ## 4. Verification
 
 - [x] 4.1 运行受影响模块格式化、lint、类型检查和相关测试
-- [x] 4.2 运行 `openspec validate fix-issue-226-230 --strict`
+- [x] 4.2 运行 `openspec validate fix-admin-user-search-community-preview --strict`
 - [x] 4.3 新增中文 Agent Note，记录隐私边界和列表预计算决策
