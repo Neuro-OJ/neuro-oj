@@ -5,7 +5,7 @@ import {
   BadRequestError,
   NotFoundError,
   ServiceUnavailableError,
-} from "../../../lib/errors.ts";
+} from "../../../shared/base/errors.ts";
 import {
   createLlmProvider,
   listLlmProviders,

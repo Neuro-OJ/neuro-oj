@@ -7,7 +7,7 @@ import {
   BadRequestError,
   NotFoundError,
   ServiceUnavailableError,
-} from "../../src/lib/errors.ts";
+} from "../../src/shared/base/errors.ts";
 import { LlmGatewayError } from "../../src/domains/gateway/services/llm.ts";
 import { mapLlmError } from "../../src/domains/gateway/routes/admin-llm.ts";
 
