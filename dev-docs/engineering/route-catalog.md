@@ -117,11 +117,13 @@
 | GET | `/public/recent` | noj-core/src/domains/submission/routes/submissions.ts |
 | GET | `/queue/events` | noj-core/src/domains/submission/routes/sse.ts |
 | GET | `/queue/health` | noj-core/src/domains/submission/routes/admin-submissions.ts |
+| GET | `/register-status` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `/reports/:reportId` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/roles` | noj-core/src/domains/identity/routes/admin-roles.ts |
 | GET | `/search` | noj-core/src/domains/identity/routes/users.ts |
 | GET | `/self-tests/:id` | noj-core/src/domains/submission/routes/self-tests.ts |
 | GET | `/settings` | noj-core/src/domains/system/routes/admin-settings.ts |
+| GET | `/settings/email/status` | noj-core/src/domains/system/routes/admin-settings.ts |
 | GET | `/solutions/eligibility` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/stats` | noj-core/src/domains/identity/routes/checkin.ts |
 | GET | `/stats` | noj-core/src/domains/query/routes/stats.ts |
@@ -317,6 +319,7 @@
 | POST | `/reset-password` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/roles` | noj-core/src/domains/identity/routes/admin-roles.ts |
 | POST | `/set-password` | noj-core/src/domains/identity/routes/auth.ts |
+| POST | `/settings/email/test-send` | noj-core/src/domains/system/routes/admin-settings.ts |
 | POST | `/submissions/:id/rejudge` | noj-core/src/domains/submission/routes/admin-submissions.ts |
 | POST | `/tfa/confirm` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/tfa/disable` | noj-core/src/domains/identity/routes/auth.ts |
