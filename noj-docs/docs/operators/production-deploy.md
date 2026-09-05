@@ -62,6 +62,22 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 邮件服务可以选择“暂不配置”，不影响网站启动，但密码找回邮件不可用。Judge 可以在安装时跳过，
 之后补充独立 Docker socket 后再启用。
 
+## 2.1 版本发布流程（维护者）
+
+为避免"Release 已可见但镜像 / CLI 资产尚未就绪"的窗口（issue #431），发布采用
+预发布转正流程：
+
+1. 创建 GitHub Release 并勾选 **pre-release**（tag 形如 `vX.Y.Z` 或 `X.Y.Z-rc.N`）。
+2. `release.yml` 由 `prereleased` 事件触发：构建 7 个候选镜像 → 漏洞扫描 → 签名 / SBOM /
+   来源证明 → 验证 digest 与 smoke test → 上传同版本 `noj-cli` 二进制与校验文件。
+3. 全部通过后，工作流最后的 `publish-release` 任务把预发布转正为正式 Release（`--latest`）。
+
+由此保证：`/releases/latest` 指向的版本一定具备同版本镜像、CLI 资产与校验文件。
+安装器（`scripts/deploy/install.sh`）自动选择版本时同样只接受非 draft、非 prerelease
+且资产中包含 `noj-cli-linux-amd64` 与 `.sha256` 的 Release，双重过滤未就绪版本。
+直接发布正式 Release（published）不会触发镜像构建；重试时正式镜像 tag 指向不同构建
+会被拒绝覆盖，避免版本混用。
+
 ## 3. 配置说明
 
 配置文件位于 `/opt/neuro-oj/.env.prod`，权限应为 `600`。常用配置如下：
@@ -127,6 +143,39 @@ noj-cli update --latest
 升级前会创建并校验备份，拉取镜像，执行数据库迁移并等待健康检查；不会删除数据卷。若失败，
 先查看 `noj-cli status` 和 `noj-cli logs`，再把 `NOJ_VERSION` 改回上一个已验证版本并执行 `noj-cli update`。
 数据库迁移只追加，不会自动回滚，因此跨大版本升级前必须确认迁移兼容性。
+注意：切回镜像标签不是数据库回滚；迁移只增不减，回退版本前需按迁移清单人工评估。
+
+## 5.1 备份、文件校验与隔离恢复演练
+
+备份体系分三层，必须区分能力边界：
+
+| 层级 | 命令 | 证明的内容 |
+|---|---|---|
+| 备份 | `noj-cli backup`（`backup.sh create`） | PostgreSQL/Redis/MinIO/加密环境文件已写入快照 |
+| 文件校验 | `noj-cli backup verify` / `backup drill` | 快照完整、口令可用、dump 结构可解析 |
+| 隔离恢复演练 | `scripts/deploy/restore-drill.sh <快照>` | 业务真的可以从快照恢复并运行 |
+
+`backup drill` 只做文件级校验，**不能**证明业务可恢复。真实的恢复验收演练：
+
+```bash
+cd /opt/neuro-oj
+bash scripts/deploy/restore-drill.sh backups/snapshot-YYYYMMDD-HHMMSS \
+  --passphrase-file /secure/noj-backup-passphrase
+```
+
+演练会把快照恢复到独立 Compose 项目（独立数据卷、独立子网、不映射宿主机端口、不接触生产卷），
+随后通过真实 API 验收：管理员登录、题目读取、附件（支持包）下载与一次真实双容器评测
+（需要 judge 沙箱 Docker socket 与 `noj-evaluator-python` / `noj-solution-python` 镜像，
+与生产 judge 使用同一个独立 rootless daemon）。可用 `--skip-judge` 跳过评测环节。
+
+演练报告（默认写入 `backups/snapshot-*/restore-drill-report.txt`）记录：快照时间、恢复耗时、
+数据核对结果（迁移版本/用户数/Redis 键数/对象数）、业务验收明细，以及 RPO/RTO 目标与是否达标
+（默认 RPO ≤ 24 小时、RTO ≤ 60 分钟，可用 `--rpo-max-hours` / `--rto-max-minutes` 调整）。
+损坏快照、解密失败、数据库恢复失败或业务验收失败都会以非零退出并保留失败现场报告。
+演练结束后自动 `down -v` 回收资源；`--keep` 可保留现场供人工检查。
+
+建议每季度以及在重要迁移前各执行一次隔离恢复演练。备份快照与 GPG 解密口令文件必须异地独立保存；
+口令丢失时快照无法恢复，任何演练都无法弥补。
 
 ## 6. 卸载
 

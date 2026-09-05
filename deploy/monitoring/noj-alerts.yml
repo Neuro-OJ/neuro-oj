@@ -1,6 +1,38 @@
 groups:
   - name: noj-production
     rules:
+      # ---- 服务失联检测（不依赖 core 自身指标）----
+      - alert: NojCoreScrapeDown
+        expr: up{job="noj-core"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Prometheus 无法抓取 noj-core
+          description: core 连续 2 分钟抓取失败，进程可能已退出或网络不通。该告警不依赖 core 自身返回的指标。
+          runbook: docs/operators/observability.md#core-失联
+
+      - alert: NojCoreMetricsMissing
+        expr: absent(up{job="noj-core"})
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: noj-core 指标序列缺失
+          description: 连续 5 分钟抓取不到任何 core 样本（target 被删除或 Prometheus 配置异常）。
+          runbook: docs/operators/observability.md#core-失联
+
+      - alert: NojJudgeHeartbeatMissing
+        expr: absent(noj_judge_workers)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Judge 心跳指标缺失
+          description: 连续 10 分钟没有 noj_judge_workers 序列；通常伴随 core 失联，请与 NojCoreScrapeDown 一起判断。
+          runbook: docs/operators/observability.md#judge-worker-异常
+
+      # ---- 依赖与队列（core 上报指标）----
       - alert: NojDatabaseUnavailable
         expr: noj_database_up == 0
         for: 2m
@@ -81,14 +113,29 @@ groups:
           description: 最早 judging 任务已超过 10 分钟。
           runbook: docs/operators/observability.md#评测卡死
 
-      - alert: NojApiErrorRateHigh
-        expr: noj_api_error_rate_percent >= 5 and sum(noj_http_requests_total) >= 20
+      # ---- 近期错误率（滑动窗口，替代进程累计比例）----
+      - alert: NojApiErrorRateRecentWarning
+        expr: |
+          sum(rate(noj_http_request_errors_total[5m]))
+            / clamp_min(sum(rate(noj_http_requests_total[5m])), 0.001) >= 0.05
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: API 5xx 错误率升高
-          description: core 进程累计 API 5xx 比例达到 5%，请结合日志和请求延迟排查。
+          summary: API 近期 5xx 错误率升高
+          description: 按 5 分钟滑动窗口计算，API 5xx 比例达到 5%；比进程累计比例更能反映近期故障。
+          runbook: docs/operators/observability.md#api-错误率或延迟升高
+
+      - alert: NojApiErrorRateRecentCritical
+        expr: |
+          sum(rate(noj_http_request_errors_total[5m]))
+            / clamp_min(sum(rate(noj_http_requests_total[5m])), 0.001) >= 0.2
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: API 近期 5xx 错误率严重升高
+          description: 按 5 分钟滑动窗口计算，API 5xx 比例达到 20%。
           runbook: docs/operators/observability.md#api-错误率或延迟升高
 
       - alert: NojApiLatencyHigh
@@ -101,6 +148,7 @@ groups:
           description: core 连续 5 分钟 API 请求 P95 延迟达到 1 秒，请结合依赖延迟和结构化日志排查。
           runbook: docs/operators/observability.md#api-错误率或延迟升高
 
+      # ---- 磁盘 ----
       - alert: NojJudgeWorkDirPressure
         expr: noj_judge_work_dir_bytes >= 8589934592
         for: 10m
@@ -120,3 +168,45 @@ groups:
           summary: 宿主机根分区可用空间低于 10%
           description: node_exporter 报告根分区空间不足。
           runbook: docs/operators/observability.md#磁盘和缓存压力
+
+      # ---- 备份与恢复演练新鲜度（指标由 backup.sh / restore-drill.sh 写入
+      #      textfile 目录，经 node_exporter textfile collector 采集）----
+      - alert: NojBackupStale
+        expr: time() - noj_backup_last_success_unix_time > 90000
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: 最近一次成功备份已超过 25 小时
+          description: 备份调度可能已停止。请检查备份 cron 与 backup.sh 输出。
+          runbook: docs/operators/observability.md#备份过期
+
+      - alert: NojBackupVeryStale
+        expr: time() - noj_backup_last_success_unix_time > 176400
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: 最近一次成功备份已超过 49 小时
+          description: 生产数据已连续两天没有成功备份，RPO 目标无法满足。
+          runbook: docs/operators/observability.md#备份过期
+
+      - alert: NojBackupMetricMissing
+        expr: absent(noj_backup_last_success_unix_time)
+        for: 48h
+        labels:
+          severity: warning
+        annotations:
+          summary: 备份新鲜度指标缺失
+          description: textfile 目录中没有备份指标：从未成功备份，或 node_exporter textfile collector 未配置。
+          runbook: docs/operators/observability.md#备份过期
+
+      - alert: NojRestoreDrillStale
+        expr: time() - noj_restore_drill_last_success_unix_time > 7776000
+        for: 24h
+        labels:
+          severity: warning
+        annotations:
+          summary: 隔离恢复演练已超过 90 天未执行
+          description: 文件校验不能证明业务可恢复；请执行 scripts/deploy/restore-drill.sh。
+          runbook: docs/operators/observability.md#恢复演练过期

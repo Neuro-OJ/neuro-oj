@@ -1,17 +1,22 @@
 # =============================================================================
-# Neuro OJ 生产镜像发布：候选构建 → 安全门禁 → 正式 Release tag → 发布验证
+# Neuro OJ 生产镜像发布：预发布候选 → 安全门禁 → 镜像/CLI 资产就绪 → 自动转正
 #
-# 触发条件：GitHub Release published 或 workflow_dispatch。
-# 普通 push / pull_request 不发布生产镜像。
+# 触发条件：GitHub Release prereleased（预发布）或 workflow_dispatch。
+# 普通 push / pull_request / 直接 published 不发布生产镜像。
+#
+# 就绪窗口控制（issue #431）：预发布 Release 先触发本工作流完成镜像构建、扫描、
+# 签名、验证与 noj-cli 资产上传，最后的 publish-release 任务把预发布转正为正式
+# Release。用户可见的正式版本因此总是具备同版本镜像与 CLI 资产；
+# 安装器（scripts/deploy/install.sh）同时只选择非 draft、非 prerelease 且
+# 已包含 CLI 资产的 Release，双重避免"版本可见但资产未就绪"。
 # 每次 Release 构建并推送 7 个镜像，平台为 linux/amd64（公测阶段只支持 amd64）。
-# 镜像验证通过后发布同版本 noj-cli 二进制，供一键安装器下载。
 # =============================================================================
 
 name: Release Images
 
 on:
   release:
-    types: [published]
+    types: [prereleased]
   workflow_dispatch:
 
 permissions:
@@ -103,6 +108,17 @@ jobs:
             file: noj-judge/docker/solution-ai/Dockerfile
 
     steps:
+      - name: 检查触发来源必须是预发布
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$EVENT_NAME" == "release" && "$PRERELEASE" != "true" ]]; then
+            echo "::error::生产镜像只允许从 prerelease 触发；请先创建预发布版本，资产就绪后由工作流自动转正。"
+            exit 1
+          fi
+
       - name: 检出代码
         uses: actions/checkout@v4
 
@@ -212,6 +228,16 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           set -Eeuo pipefail
+          # 正式标签不可变：已存在且指向不同构建时拒绝覆盖，防止重试混用版本。
+          existing="$(docker buildx imagetools inspect "$TARGET" 2>/dev/null | awk '/^Digest:/ {print $2; exit}' || true)"
+          if [[ -n "$existing" ]]; then
+            [[ "$existing" == "$DIGEST" ]] || {
+              echo "::error::正式标签 $TARGET 已存在且指向不同构建（$existing != $DIGEST），禁止覆盖；请使用新版本号。"
+              exit 1
+            }
+            echo "正式标签已存在且 digest 一致（幂等重试），跳过重新打标"
+            exit 0
+          fi
           docker buildx imagetools create --tag "$TARGET" "$SOURCE@$DIGEST"
           actual="$(docker buildx imagetools inspect "$TARGET" | awk '/^Digest:/ {print $2; exit}')"
           [[ "$actual" == "$DIGEST" ]] || {
@@ -350,3 +376,22 @@ jobs:
             esac
             echo "已验证 $release@$digest"
           done
+
+  publish-release:
+    name: 资产就绪后转正 Release
+    needs: [verify-release, publish-cli]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: 将预发布转正为正式 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          set -Eeuo pipefail
+          # 此时镜像标签、签名、SBOM/来源证明与 noj-cli 资产均已就绪，
+          # 转正后 /releases/latest 才会指向该版本，安装器即可选择它。
+          gh release edit "$VERSION" --draft=false --prerelease=false --latest
+          echo "Release $VERSION 已转正为最新正式版本"
