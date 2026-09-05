@@ -1,0 +1,55 @@
+# Alertmanager 配置模板。
+#
+# 本文件是示例模板，含 ${...} 占位符，凭据不得直接写入或提交仓库。
+# 渲染方式（凭据只存在于部署环境）：
+#
+#   export ALERTMANAGER_SMTP_FROM="noj-alert@example.com"
+#   export ALERTMANAGER_SMTP_HOST="smtp.example.com:587"
+#   export ALERTMANAGER_SMTP_USER="noj-alert@example.com"
+#   export ALERTMANAGER_SMTP_PASS="..."            # 只在 shell 会话中存在
+#   export ALERTMANAGER_WEBHOOK_URL="https://hooks.example.com/xxx"
+#   envsubst < deploy/monitoring/alertmanager.yml.example > /etc/alertmanager/alertmanager.yml
+#   chmod 600 /etc/alertmanager/alertmanager.yml
+#
+# 生成的 alertmanager.yml 属于部署环境产物，不要提交回仓库。
+# 生效方式：挂载进 Alertmanager 容器或使用 `amtool check-config` 校验后重载。
+
+global:
+  # 邮件接收示例；不用邮件时可整段删除。
+  smtp_smarthost: "${ALERTMANAGER_SMTP_HOST}"
+  smtp_from: "${ALERTMANAGER_SMTP_FROM}"
+  smtp_auth_username: "${ALERTMANAGER_SMTP_USER}"
+  smtp_auth_password: "${ALERTMANAGER_SMTP_PASS}"
+
+route:
+  receiver: noj-default
+  group_by: [alertname, severity]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    # critical 告警走独立接收器，可配置更强打扰方式（电话/短信 webhook 等）。
+    - matchers:
+        - severity = "critical"
+      receiver: noj-critical
+      repeat_interval: 1h
+
+receivers:
+  - name: noj-default
+    email_configs:
+      - to: "${ALERTMANAGER_EMAIL_TO}"
+        send_resolved: true
+    webhook_configs:
+      - url: "${ALERTMANAGER_WEBHOOK_URL}"
+        send_resolved: true
+
+  - name: noj-critical
+    email_configs:
+      - to: "${ALERTMANAGER_EMAIL_TO}"
+        send_resolved: true
+    webhook_configs:
+      - url: "${ALERTMANAGER_WEBHOOK_URL}"
+        send_resolved: true
+
+# 演练与恢复通知：send_resolved: true 保证告警恢复时接收方同样收到通知。
+# 投递演练方法见 deploy/monitoring/README.md 与 Runbook「告警投递演练」一节。

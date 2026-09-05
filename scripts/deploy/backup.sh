@@ -57,6 +57,7 @@ Neuro OJ 生产备份工具
   NOJ_BACKUP_PASSPHRASE_FILE  默认 GPG 口令文件
   NOJ_BACKUP_RETENTION_DAYS   默认快照保留天数
   NOJ_BACKUP_MIN_FREE_MB      默认最低可用空间
+  NOJ_BACKUP_METRICS_DIR      Prometheus textfile 指标目录（默认 <backup-dir>/metrics）
 EOF
 }
 
@@ -144,6 +145,30 @@ gpg_decrypt() {
     --decrypt --output "$2" "$1" >/dev/null 2>&1 || die "生产环境文件解密失败"
 }
 
+# pg_dumpall --globals-only 会包含 CREATE ROLE，而目标 PostgreSQL 已经通过
+# POSTGRES_USER 创建默认角色；恢复前将角色创建语句改为幂等形式。
+prepare_idempotent_globals() {
+  local source="$1" target="$2"
+  awk '
+    function sql_escape(value) {
+      gsub(/\047/, "\047\047", value)
+      return value
+    }
+    /^CREATE ROLE / {
+      identifier = substr($0, 13)
+      sub(/;[[:space:]]*$/, "", identifier)
+      name = identifier
+      if (name ~ /^".*"$/) {
+        name = substr(name, 2, length(name) - 2)
+        gsub(/""/, "\"", name)
+      }
+      printf "DO $role$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = \047%s\047) THEN CREATE ROLE %s; END IF; END $role$;\n", sql_escape(name), identifier
+      next
+    }
+    { print }
+  ' "$source" > "$target" || die "生成幂等 PostgreSQL 全局对象脚本失败"
+}
+
 record_migration_status() {
   local user db schema
   user="$(env_value POSTGRES_USER)"; user="${user:-noj}"
@@ -175,6 +200,25 @@ prune_old_snapshots() {
     ok "已清理过期快照：$old"
   done < <(find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d \
     -name 'snapshot-*' -mtime "+$RETENTION_DAYS" -print0)
+}
+
+# 输出 Prometheus textfile 指标（配合 node_exporter textfile collector），
+# 供 noj-alerts.yml 的备份新鲜度告警使用。
+write_backup_metrics() {
+  local snapshot="$1" metrics_dir metrics_file
+  metrics_dir="${NOJ_BACKUP_METRICS_DIR:-$BACKUP_DIR/metrics}"
+  mkdir -m 755 -p "$metrics_dir"
+  metrics_file="$metrics_dir/noj_backup.prom"
+  {
+    printf '# HELP noj_backup_last_success_unix_time 最近一次成功备份的 Unix 时间戳。\n'
+    printf '# TYPE noj_backup_last_success_unix_time gauge\n'
+    printf 'noj_backup_last_success_unix_time %s\n' "$(date '+%s')"
+    printf '# HELP noj_backup_snapshot_bytes 最近一次成功备份的快照字节数。\n'
+    printf '# TYPE noj_backup_snapshot_bytes gauge\n'
+    printf 'noj_backup_snapshot_bytes %s\n' "$(du -sk "$snapshot" | awk '{print $1 * 1024}')"
+  } > "$metrics_file"
+  chmod 644 "$metrics_file"
+  ok "备份新鲜度指标已写入：${metrics_file}（配置 node_exporter textfile collector 采集）"
 }
 
 create_snapshot() {
@@ -243,6 +287,7 @@ EOF
   mv "$temp" "$final"
   CREATE_TEMP=""
   verify_snapshot "$final"
+  write_backup_metrics "$final"
   prune_old_snapshots
   ok "完整生产快照已创建：$final"
   ok "PostgreSQL、Redis、MinIO/S3 和加密环境文件均已写入"
@@ -315,8 +360,12 @@ restore_snapshot() {
   pg_db="$(env_value POSTGRES_DB)"; pg_db="${pg_db:-noj}"
   compose up -d --wait --wait-timeout 180 postgres redis minio || die "恢复前数据服务启动失败"
 
-  compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$pg_user" -d "$pg_db" < "$SNAPSHOT/postgres-globals.sql" \
+  VERIFY_TEMP="$(mktemp)"
+  prepare_idempotent_globals "$SNAPSHOT/postgres-globals.sql" "$VERIFY_TEMP"
+  compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$pg_user" -d "$pg_db" < "$VERIFY_TEMP" \
     || die "PostgreSQL 全局对象恢复失败"
+  rm -f "$VERIFY_TEMP"
+  VERIFY_TEMP=""
   compose exec -T postgres pg_restore --clean --if-exists --no-owner --exit-on-error \
     -U "$pg_user" -d "$pg_db" - < "$SNAPSHOT/postgres.dump" \
     || die "PostgreSQL 数据恢复失败"
@@ -340,16 +389,19 @@ drill_snapshot() {
   local report="${DRILL_REPORT:-$SNAPSHOT/restore-drill.txt}"
   {
     printf 'result=verified\n'
+    printf 'drill_type=file-verification-only\n'
     printf 'snapshot=%s\n' "$SNAPSHOT"
-    printf 'next_step=restore --confirm in an isolated Compose project\n'
+    printf 'next_step=run scripts/deploy/restore-drill.sh for an isolated real restore with business verification\n'
     printf 'postgres=logical dump structure verified\n'
     printf 'redis=RDB payload and persistence metadata verified\n'
     printf 'minio=object mirror directory verified\n'
     printf 'env=GPG decryption verified\n'
+    printf 'note=file verification proves payload integrity, not recoverability; real recovery acceptance requires restore-drill.sh\n'
     printf 'warning=PostgreSQL incremental/PITR requires external WAL archive infrastructure\n'
   } > "$report"
   chmod 600 "$report"
-  ok "恢复演练校验通过，报告已写入：$report"
+  ok "快照文件校验通过（不含真实恢复），报告已写入：$report"
+  ok "如需验证业务可恢复性，请执行：scripts/deploy/restore-drill.sh $SNAPSHOT"
 }
 
 parse_args() {
