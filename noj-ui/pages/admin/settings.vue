@@ -64,6 +64,62 @@ const CATEGORY_LABEL: Record<string, string> = {
 
 const { api } = useApi()
 const { dialog } = useDialog()
+const { toast } = useToast()
+
+// ─── 邮件服务就绪状态（issue #426）────────────────────────
+
+interface EmailConfigStatus {
+  provider: string
+  configured: boolean
+  missing: string[]
+}
+
+const emailStatus = ref<EmailConfigStatus | null>(null)
+const testEmailTo = ref('')
+const sendingTestEmail = ref(false)
+
+async function loadEmailStatus() {
+  if (!isLoggedIn.value) return
+  try {
+    const res = await api.get<{ data: EmailConfigStatus }>(
+      '/api/v1/admin/settings/email/status',
+      { silent: true },
+    )
+    emailStatus.value = res.data
+  } catch {
+    emailStatus.value = null
+  }
+}
+
+watch(isLoggedIn, (val) => {
+  if (val) loadEmailStatus()
+}, { immediate: true })
+
+async function sendTestEmail() {
+  if (sendingTestEmail.value) return
+  const to = testEmailTo.value.trim()
+  if (!to) {
+    toast.error('请先填写测试收件邮箱')
+    return
+  }
+  sendingTestEmail.value = true
+  try {
+    const res = await api.post<{ data: { sent: boolean } }>(
+      '/api/v1/admin/settings/email/test-send',
+      { to },
+      { silent: true },
+    )
+    if (res.data.sent) {
+      toast.success(`测试邮件已发送到 ${to}，请查收确认`)
+    } else {
+      toast.error('邮件服务未实际发送（当前 Provider 返回未发送），请检查配置')
+    }
+  } catch (err: unknown) {
+    toast.error(extractApiError(err).message)
+  } finally {
+    sendingTestEmail.value = false
+  }
+}
 
 // ─── 数据加载 ────────────────────────────────────────────
 
@@ -191,7 +247,6 @@ function deepEqual(a: unknown, b: unknown): boolean {
 
 const savingKeys = ref(new Set<string>())
 const saveErrors = ref<Record<string, string>>({})
-const { toast } = useToast()
 
 function applySetting(item: SystemSetting) {
   const index = settings.value.findIndex((setting) => setting.key === item.key)
@@ -314,6 +369,51 @@ async function cleanupBootstrapRow(s: SystemSetting) {
         <strong>运行时配置：</strong>写入数据库，下次请求立即生效，可随时重置。
         <strong>环境配置：</strong>由 .env 环境变量管理（启动期定型），后台只读，
         修改需更新 .env 并重启 noj-core 服务。
+      </div>
+    </div>
+
+    <!-- 邮件服务就绪状态（issue #426） -->
+    <div
+      v-if="emailStatus"
+      class="flex flex-col gap-2 p-3 rounded-md text-13px"
+      :class="emailStatus.configured
+        ? 'bg-green-50 border border-green-200 text-green-800'
+        : 'bg-amber-50 border border-amber-200 text-amber-800'"
+    >
+      <div class="flex items-start gap-2">
+        <UIcon
+          :name="emailStatus.configured ? 'i-lucide-mail-check' : 'i-lucide-mail-warning'"
+          class="size-4 shrink-0 mt-0.5"
+          :class="emailStatus.configured ? 'text-green-600' : 'text-amber-600'"
+        />
+        <div class="flex flex-col gap-1">
+          <span>
+            <template v-if="emailStatus.configured">
+              邮件服务已就绪（provider=<code class="font-mono">{{ emailStatus.provider }}</code>），邮箱验证与密码找回可用。
+            </template>
+            <template v-else>
+              邮件服务未就绪（provider=<code class="font-mono">{{ emailStatus.provider }}</code>）：
+              邮箱验证与密码找回不可用，<strong>公开注册已被禁止</strong>（仅允许站点引导阶段的首次注册）。
+              <span v-if="emailStatus.missing.length">缺失配置：{{ emailStatus.missing.join('、') }}。</span>
+              开放注册前请补全 .env 配置并重启 noj-core，然后发送测试邮件确认可用。
+            </template>
+          </span>
+          <div class="flex items-center gap-2">
+            <input
+              v-model="testEmailTo"
+              type="email"
+              placeholder="测试收件邮箱"
+              class="px-2.5 py-1.5 w-64 text-13px font-mono border border-border rounded bg-white outline-none transition-colors focus:border-signal"
+            />
+            <UButton
+              size="xs"
+              color="primary"
+              variant="outline"
+              :loading="sendingTestEmail"
+              @click="sendTestEmail"
+            >发送测试邮件</UButton>
+          </div>
+        </div>
       </div>
     </div>
 

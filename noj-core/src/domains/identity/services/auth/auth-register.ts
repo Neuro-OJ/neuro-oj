@@ -2,10 +2,11 @@ import { eq, ne, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { roles, userRoles, users } from "./../../../../shared/db/schema.ts";
 import { hashPassword } from "./../security/password.ts";
-import { logAuthEvent } from "../../../system/index.ts";
+import { getEmailConfigStatus, logAuthEvent } from "../../../system/index.ts";
 import {
   BadRequestError,
   ConflictError,
+  ForbiddenError,
 } from "./../../../../shared/base/errors.ts";
 import type { RegisterInput, UserResponse } from "./../../types/auth.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
@@ -127,6 +128,21 @@ function conflictFromUniqueViolation(err: unknown): ConflictError | null {
 }
 
 /**
+ * 是否已存在真实用户（root 系统用户除外）。
+ *
+ * issue #426：邮件未配置时公开注册被禁止，但站点引导阶段仍需允许
+ * 注册第一个用户（自动成为管理员），否则全新安装无法完成初始化。
+ */
+export async function hasRealUser(): Promise<boolean> {
+  const rows = await getDb()
+    .select({ id: users.id })
+    .from(users)
+    .where(ne(users.id, ROOT_USER_ID))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
  * 注册新用户。
  * 检查用户名和邮箱的唯一性，密码使用 bcrypt 哈希后存储。
  *
@@ -190,6 +206,15 @@ export async function registerUser(
         .where(ne(users.id, ROOT_USER_ID))
         .limit(1);
       isFirstRealUser = realUsers.length === 0;
+    }
+
+    // 路由预检可能被并发请求同时通过；必须以事务内重新确认的首个用户
+    // 身份决定引导例外，避免第二个请求创建无法验证邮箱的普通账号。
+    if (!isFirstRealUser && !getEmailConfigStatus().configured) {
+      throw new ForbiddenError(
+        "邮件服务未配置，暂不接受注册；请稍后再试或联系管理员",
+        "REGISTER_EMAIL_UNCONFIGURED",
+      );
     }
 
     await tx.insert(users).values({

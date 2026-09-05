@@ -121,3 +121,19 @@ export async function sendEmailVerificationEmail(
     buildEmailVerificationHtml(verifyLink, expiresInMinutes),
   );
 }
+
+/**
+ * 发送管理后台测试邮件（issue #426）。
+ *
+ * 供管理员在开放公开注册前验证邮件配置是否真实可用；
+ * disabled Provider 会返回 false，临时故障由调用方捕获并反馈。
+ */
+export async function sendTestEmail(to: string): Promise<boolean> {
+  const fn = await loadGenericSendFn();
+  return await fn(
+    to,
+    "Neuro OJ 测试邮件",
+    "<p>这是一封来自 Neuro OJ 管理后台的测试邮件。</p>" +
+      "<p>收到此邮件说明当前邮件服务配置可用，可以开放公开注册。</p>",
+  );
+}
