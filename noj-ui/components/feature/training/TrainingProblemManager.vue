@@ -42,6 +42,7 @@ async function move(problemId: string, direction: -1 | 1) {
   if (index < 0 || target < 0 || target >= props.problems.length) return
   const next = [...props.problems]
   const [item] = next.splice(index, 1)
+  if (!item) return
   next.splice(target, 0, item)
   busy.value = true
   try {
@@ -93,7 +94,7 @@ async function move(problemId: string, direction: -1 | 1) {
         <UButton
           icon="i-lucide-trash"
           size="xs"
-          color="red"
+          color="error"
           variant="ghost"
           :disabled="busy"
           @click="remove(problem.problem_id)"

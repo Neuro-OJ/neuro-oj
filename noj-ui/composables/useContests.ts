@@ -39,6 +39,11 @@ export interface ContestProblem {
   submission_mode: 'code' | 'artifact';
   artifact_max_size_mb: number | null;
   user_status: 'solved' | 'attempted' | 'untouched';
+  /**
+   * 是否客观题。注意：后端 ContestProblemResponse 暂未返回该字段
+   * （运行时恒为 undefined），保留以便后续后端支持时无需改动调用方。
+   */
+  is_objective?: boolean;
 }
 
 export interface ContestProblemInput {

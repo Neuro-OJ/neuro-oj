@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+
 import type { SubmissionListItem } from "~/utils/submissionFormat"
 import {
   getStatusColor,
@@ -43,8 +45,8 @@ const filters = reactive({
   problem_search: "",
   submission_id: "",
   user_search: "",
-  language: null as string | null,
-  status: null as string | null,
+  language: undefined as string | undefined,
+  status: undefined as string | undefined,
 })
 
 // 语言选项
@@ -65,7 +67,7 @@ const statusOptions = [
 ]
 
 // UTable 列 formatter 通过 row 取原始数据行
-const columns = [
+const columns: TableColumn<SubmissionListItem>[] = [
   { accessorKey: "id", header: "编号", cell: (info) => (info.row.original as SubmissionListItem).public_id || (info.getValue() as string).slice(0, 8) + "..." },
   { accessorKey: "user_id", header: "用户" },
   {
@@ -165,14 +167,14 @@ function clearFilters() {
   filters.user_search = ""
   filters.problem_search = ""
   filters.submission_id = ""
-  filters.language = null
-  filters.status = null
+  filters.language = undefined
+  filters.status = undefined
   loadSubmissions(1)
 }
 
 // UTable cell slot 中 row 为原始数据行，辅助函数用于安全取值
-function rowSub(row: Record<string, unknown>): SubmissionListItem {
-  return row as unknown as SubmissionListItem
+function rowSub(row: SubmissionListItem): SubmissionListItem {
+  return row
 }
 
 const toast = useToast()

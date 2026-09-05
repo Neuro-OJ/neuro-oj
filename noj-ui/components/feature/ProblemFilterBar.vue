@@ -87,13 +87,13 @@ function onGroupKeydown(e: KeyboardEvent, values: { value: string }[], current: 
   else if (e.key === "ArrowLeft" || e.key === "ArrowUp") idx = Math.max(idx - 1, 0)
   else return
   e.preventDefault()
-  onSelect(values[idx].value)
+  onSelect(values[idx]!.value)
   ;(e.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('[role="radio"]')[idx]?.focus()
 }
 
 // roving tabindex：当前值不在选项内时默认聚焦第一项（如"全部"）
-const activeType = computed(() => types.some((t) => t.value === props.problemType) ? props.problemType : types[0].value)
-const activeDifficulty = computed(() => difficulties.some((d) => d.value === props.difficulty) ? props.difficulty : difficulties[0].value)
+const activeType = computed(() => types.some((t) => t.value === props.problemType) ? props.problemType : types[0]!.value)
+const activeDifficulty = computed(() => difficulties.some((d) => d.value === props.difficulty) ? props.difficulty : difficulties[0]!.value)
 </script>
 
 <template>
@@ -162,7 +162,7 @@ const activeDifficulty = computed(() => difficulties.some((d) => d.value === pro
     <div v-if="tags.length > 0" class="flex items-center gap-1.5">
       <span class="text-xs text-text-muted mr-1" id="tag-label">标签:</span>
       <USelect
-        :model-value="tagId"
+        :model-value="tagId ?? undefined"
         :items="tagItems"
         size="xs"
         class="min-w-[150px]"

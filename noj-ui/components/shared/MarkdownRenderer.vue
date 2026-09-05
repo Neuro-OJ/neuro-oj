@@ -51,7 +51,7 @@ function renderMarkdown(src: string): string {
   })
 
   // 4. 恢复代码块
-  text = text.replace(/\x00CODEBLOCK(\d+)\x00/g, (_match, idx: string) => codeBlocks[Number(idx)])
+  text = text.replace(/\x00CODEBLOCK(\d+)\x00/g, (_match, idx: string) => codeBlocks[Number(idx)] ?? '')
 
   // 5. 渲染 Markdown
   return md.render(text)

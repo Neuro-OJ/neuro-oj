@@ -109,14 +109,18 @@ async function onCreate() {
 
 // ── 编辑模式数据加载（activePaperId 为 null 时跳过请求） ──
 
-const { data: paperData, error: paperError } = await useFetch<{ data: ObjectivePaper }>(
-  computed(() =>
+// Nuxt UseFetch 的 url getter 类型不接受 null，但运行时支持返回 null 跳过请求；
+  // 断言仅为通过类型检查，行为不变。
+  // eslint/deno lint: Ref 类型仅用于类型断言
+  const paperUrl = computed(() =>
     activePaperId.value
       ? `/api/v1/problems/${activePaperId.value}`
       : null
-  ),
-  { server: false },
-)
+  )
+  const { data: paperData, error: paperError } = await useFetch<{ data: ObjectivePaper }>(
+    paperUrl as unknown as Ref<`/api/v1/problems/${string}`>,
+    { server: false },
+  )
 
 // 小题列表用手动 API 拉取（不用 useFetch），确保保存/删除后刷新绝对生效。
 const questions = ref<ObjectiveQuestion[]>([])
@@ -432,7 +436,7 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
           </UFormField>
           <div class="flex gap-2">
             <UButton color="primary" :loading="savingMeta" @click="onSaveMeta">保存信息</UButton>
-            <UButton color="red" variant="outline" @click="onDeletePaper">删除套卷</UButton>
+            <UButton color="error" variant="outline" @click="onDeletePaper">删除套卷</UButton>
           </div>
         </div>
       </section>
@@ -462,7 +466,7 @@ async function onDeleteQuestion(q: ObjectiveQuestion) {
               </span>
               <p class="min-w-0 flex-1 truncate text-sm text-text">{{ q.prompt }}</p>
               <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-pencil" @click="openEdit(q)" />
-              <UButton color="red" variant="ghost" size="sm" icon="i-lucide-trash-2" @click="onDeleteQuestion(q)" />
+              <UButton color="error" variant="ghost" size="sm" icon="i-lucide-trash-2" @click="onDeleteQuestion(q)" />
             </div>
           </div>
         </AsyncContent>

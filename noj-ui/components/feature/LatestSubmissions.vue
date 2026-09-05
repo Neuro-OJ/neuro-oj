@@ -157,9 +157,8 @@ onMounted(() => {
                 fetchSubmissions()
             },
         },
-        fetchFn: () => {
-            fetchSubmissions()
-            fetchStatsFallback()
+        fetchFn: async () => {
+            await Promise.all([fetchSubmissions(), fetchStatsFallback()])
         },
         fallbackIntervalMs: 10000,
     })

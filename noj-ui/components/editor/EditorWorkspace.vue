@@ -226,7 +226,7 @@ async function handleSubmit() {
 const selfTesting = ref(false)
 const selfTestError = ref('')
 const selfTestDisplayError = computed(
-  () => selfTestError.value || selfTestPollError.value,
+  () => selfTestError.value || selfTestPollError.value || '',
 )
 const hasSelfTest = computed(() => !!props.selfTest)
 const canSelfTest = computed(

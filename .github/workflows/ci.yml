@@ -437,7 +437,8 @@ jobs:
       # 真实接入 PostgreSQL 服务容器；若缺失则 00_migrate_test.ts 会静默退到 PGlite，
       # 导致 pg_trgm / tsvector / GIN 等 PG 专属路径在 PR 上从未被 CI 覆盖。
       DATABASE_URL: postgres://noj:noj@localhost:5432/noj
-      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      # JWT_SECRET 不再直接依赖仓库 Secret：由下方 validate-secrets step 统一
+      # 注入（Fork / Dependabot PR 缺 Secret 时生成一次性随机密钥，issue #430）。
       NOJ_ENV: test
       DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
 
@@ -450,28 +451,37 @@ jobs:
         with:
           deno-version: v2.x
 
-      # 校验 JWT_SECRET 长度 ≥32（修复 finding S7）。
+      # 注入 / 校验 JWT_SECRET（修复 finding S7 + issue #430）。
       # noj-core main.ts 启动时硬校验，但 CI 在测试环节会先 launch main.ts；
       # 把校验提前到 step 层，错误信息更精准。
       #
-      # Fork / Dependabot PR 拿不到仓库 secrets，JWT_SECRET 为空——这是
-      # GitHub 保护机制（不能给 untrusted code 跑涉及真 DB 的测试），
-      # 视为预期情况优雅跳过（warning）而非 fail（error）。
-      - name: Validate secrets
-        id: validate-secrets
+      # Fork / Dependabot PR 拿不到仓库 secrets——这是 GitHub 的安全边界。
+      # 但本 job 只依赖服务容器内的 PostgreSQL / Redis（凭据固定为 noj/noj），
+      # 不触及任何真实外部服务，因此为隔离测试生成仅本次运行有效的随机
+      # JWT_SECRET 即可让测试正常执行，而不是跳过（SKIPPED_NO_SECRETS），
+      # 使开源 PR 获得同等的数据库回归保障。随机密钥仅存在于本 job 环境，
+      # 与生产凭据无关，也不向不可信代码暴露任何 Secret。
+      #
+      # 真正需要外部服务真实凭据的专用测试（如 S3 / SMTP）不包含在本 job
+      # 的测试清单中，单独按各自的环境变量 guard 跳过。
+      - name: Inject or validate JWT_SECRET
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: |
-          if [ -z "$JWT_SECRET" ]; then
-            echo "::warning::JWT_SECRET 为空（fork / 第三方 PR），跳过 core-test-db"
-            echo "::notice::本 job 需仓库 secrets，仅 trusted PR 跑全量 DB 测试"
-            echo "SKIPPED_NO_SECRETS=true" >> "$GITHUB_ENV"
-            exit 0
+          if [ -n "$JWT_SECRET" ]; then
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+              echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
+              exit 1
+            fi
+            echo "JWT_SECRET 来源：仓库 Secret（trusted 环境配置）"
+            echo "JWT_SECRET_SOURCE=repo-secret" >> "$GITHUB_ENV"
+          else
+            JWT_SECRET="$(openssl rand -hex 32)"
+            echo "JWT_SECRET 来源：本次运行生成的一次性随机密钥（Fork / Dependabot PR 隔离测试，issue #430）"
+            echo "JWT_SECRET_SOURCE=random-per-run" >> "$GITHUB_ENV"
           fi
-          if [ "${#JWT_SECRET}" -lt 32 ]; then
-            echo "::error::JWT_SECRET must be ≥32 chars (got ${#JWT_SECRET})"
-            exit 1
-          fi
+          # GITHUB_ENV 注入后，后续 step 以 step 级变量生效（优先级高于 job env）
+          echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
 
       - name: 缓存 Deno 依赖
         uses: actions/cache@v4
@@ -485,9 +495,9 @@ jobs:
             deno-
 
       - name: 运行测试 (deno test)
-        # JWT_SECRET 缺失时由 validate-secrets step 设置 SKIPPED_NO_SECRETS=true，
-        # 此处跳过整个测试步骤（已在 validate-secrets 阶段 warning 提示）。
-        if: env.SKIPPED_NO_SECRETS != 'true'
+        # JWT_SECRET 已由 Inject or validate JWT_SECRET step 注入
+        #（仓库 Secret 或一次性随机值），测试不再因缺 Secret 跳过（issue #430）。
+        # 失败即本 job 失败；执行来源可通过 JWT_SECRET_SOURCE 环境变量区分。
         working-directory: noj-core
         env:
           BCRYPT_SALT_ROUNDS: 4
@@ -496,6 +506,22 @@ jobs:
         # resetDbForTest() 的顺序假设。此 job 只包含 DB 依赖子集，
         # 与 core-test-unit 并行互补。
         run: deno test -A tests/routes tests/db tests/00_migrate_test.ts tests/seed_bootstrap_admin_test.ts src/domains/identity/tests/routes src/domains/identity/tests/services src/domains/catalog/tests/routes src/domains/catalog/tests/services src/domains/submission/tests/routes src/domains/submission/tests/services src/domains/submission/tests/mq src/domains/query/tests/routes src/domains/query/tests/services src/domains/contest/tests/routes src/domains/contest/tests/services src/domains/community/tests/routes src/domains/community/tests/services src/domains/messaging/tests/routes src/domains/messaging/tests/services src/domains/objective/tests/routes src/domains/objective/tests/services src/domains/system/tests/routes src/domains/system/tests/services src/domains/gateway/tests/services src/domains/content-review/tests/services
+
+      # 执行摘要写入 job summary：区分密钥来源，并明确记录
+      # 数据库集成测试是"实际执行"而非跳过（issue #430 验收项）。
+      - name: 记录执行摘要
+        if: always()
+        run: |
+          {
+            echo "### core-test-db 执行摘要"
+            echo ""
+            if [ "${JWT_SECRET_SOURCE:-}" = "random-per-run" ]; then
+              echo "- JWT_SECRET 来源：本次运行生成的一次性随机密钥（仅隔离测试使用）"
+            else
+              echo "- JWT_SECRET 来源：仓库 Secret"
+            fi
+            echo "- 数据库集成测试：已实际执行（PostgreSQL / Redis 服务容器），无跳过"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # 失败时上传日志（修复 finding M7）。CI 默认只在 UI 里保留日志，
       # 开发者必须本地复现才能排查；改为 actions/upload-artifact 上传到
@@ -619,6 +645,17 @@ jobs:
       - name: 安装依赖 (Deno BYONM)
         working-directory: noj-ui
         run: deno install
+
+      # 全页面类型检查（issue #427）：`nuxt typecheck` 生成 .nuxt 类型上下文后
+      # 运行显式 vue-tsc，覆盖 pages / components / composables / middleware /
+      # server 的适用类型上下文。能拒绝 deno check 覆盖不到的 SFC 内错误
+      #（如注册页曾出现过的未定义变量 sent）。
+      # 注意：不能换成 `nuxt prepare`（Deno 下其类型生成静默缺失，.nuxt/tsconfig.json
+      # 不会生成）；也不能只用 `nuxt typecheck`（其内部启动的 vue-tsc 在 Deno 下
+      # 会静默跳过），故拆为「生成类型 + 显式 vue-tsc」两步。
+      - name: 全页面类型检查 (nuxt typecheck 生成 + vue-tsc)
+        working-directory: noj-ui
+        run: deno task check:types:nuxt
 
       - name: 构建检查 (deno task build)
         working-directory: noj-ui

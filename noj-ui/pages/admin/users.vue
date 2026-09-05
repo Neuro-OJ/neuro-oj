@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+
 import { useAdminList } from "~/composables/useAdminList"
 import { extractApiError } from '~/utils/apiError'
 import { useToast } from "~/composables/useToast"
@@ -47,7 +49,7 @@ async function reloadAfterMutation() {
   }
 }
 
-const columns = [
+const columns: TableColumn<User>[] = [
   { accessorKey: "username", header: "用户名" },
   { accessorKey: "email", header: "邮箱" },
   {

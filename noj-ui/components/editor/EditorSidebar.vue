@@ -68,7 +68,9 @@ const recentSubmissions = computed(() => {
   }
   // 否则从历史里取最近的一条（API 已按 created_at DESC 排序）
   if (props.submissions.length > 0) {
-    return [props.submissions[0]]
+    const latest = props.submissions[0]
+    // noUncheckedIndexedAccess：下标访问可能为 undefined，收窄后再入列表
+    if (latest) return [latest]
   }
   return []
 })

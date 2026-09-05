@@ -32,7 +32,7 @@ onMounted(() => void loadRanking())
 
 const { state: eventState } = useEventSource({
   url: `/api/v1/contests/${props.contestId}/events`,
-  enabled: true,
+  enabled: ref(true),
   onEvent: {
     'contest:ranking:snapshot': (payload) => {
       const event = payload as { data?: KaggleRankingRow[] }

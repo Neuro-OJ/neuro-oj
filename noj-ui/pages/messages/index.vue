@@ -138,6 +138,7 @@ async function loadMessages(page = 1, append = false) {
 async function markAsRead() {
   if (!selectedConversationId.value || messages.value.length === 0) return
   const lastMsg = messages.value[messages.value.length - 1]
+  if (!lastMsg) return
   try {
     await apiMarkRead(selectedConversationId.value, lastMsg.id)
   } catch {
@@ -873,6 +874,7 @@ const messagePositions = computed<Record<string, MessagePosition>>(() => {
     const cur = list[i]
     const prev = list[i - 1]
     const next = list[i + 1]
+    if (!cur) continue
     const curGroupable = isGroupableText(cur)
     const sameAsPrev = prev !== undefined
       && curGroupable
@@ -897,6 +899,7 @@ const dateGroups = computed<{ date: string; items: { msg: ConversationMessage; i
   const groups: { date: string; items: { msg: ConversationMessage; idx: number }[] }[] = []
   for (let i = 0; i < messages.value.length; i++) {
     const msg = messages.value[i]
+    if (!msg) continue
     const date = formatDate(msg.created_at)
     const last = groups[groups.length - 1]
     if (last && last.date === date) {
@@ -956,6 +959,7 @@ function updateAvatarAlignment() {
   }
   for (let i = 0; i < infos.length; i++) {
     const info = infos[i]
+    if (!info) continue
     if (info.anchor.classList.contains("invisible")) continue
     if (info.position !== "alone" && info.position !== "groupTop") continue
     // 组顶 = 当前行气泡顶；组底 = 组尾（groupBottom）气泡底，alone 即自身
@@ -963,8 +967,10 @@ function updateAvatarAlignment() {
     let groupBottom = info.bubbleRect.bottom
     if (info.position === "groupTop") {
       for (let j = i + 1; j < infos.length; j++) {
-        if (infos[j].position === "groupMiddle") continue
-        if (infos[j].position === "groupBottom") groupBottom = infos[j].bubbleRect.bottom
+        const tail = infos[j]
+        if (!tail) break
+        if (tail.position === "groupMiddle") continue
+        if (tail.position === "groupBottom") groupBottom = tail.bubbleRect.bottom
         break
       }
     }
@@ -1120,7 +1126,7 @@ onUnmounted(() => {
         <div class="flex items-center gap-3 px-5 py-3 border-b border-border bg-white">
           <UButton
             icon="i-lucide-arrow-left"
-            color="gray"
+            color="neutral"
             variant="ghost"
             class="flex-shrink-0"
             title="返回"
@@ -1151,7 +1157,7 @@ onUnmounted(() => {
           >
             <UButton
               icon="i-lucide-more-horizontal"
-              color="gray"
+              color="neutral"
               variant="ghost"
               class="flex-shrink-0"
               title="更多"
@@ -1252,7 +1258,7 @@ onUnmounted(() => {
                                               <span class="absolute inset-0 flex items-center justify-center">
                                                 {{ u.username.charAt(0).toUpperCase() }}</span>
                                                 <!-- 有头像用户：加载成功覆盖首字母；失败（404/错误）时隐藏露出首字母 -->
-                                                <img                                      v-if="u.avatar_url"                                      :src="`/api/v1/users/${u.username}/avatar`"                                      :alt="u.username"                                      class="relative w-full h-full object-cover"                                      loading="lazy"                                      @error="(e) =>
+                                                <img                                      v-if="u.avatar_url"                                      :src="`/api/v1/users/${u.username}/avatar`"                                      :alt="u.username"                                      class="relative w-full h-full object-cover"                                      loading="lazy"                                      @error="(e: Event) =>
                                                 { (e.target as HTMLImageElement).style.display = 'none' }"                                    />
                                               </span>
                                             </span>
@@ -1317,7 +1323,7 @@ onUnmounted(() => {
                                                       <span class="absolute inset-0 flex items-center justify-center">
                                                         {{ u.username.charAt(0).toUpperCase() }}</span>
                                                         <!-- 有头像用户：加载成功覆盖首字母；失败（404/错误）时隐藏露出首字母 -->
-                                                        <img                                    v-if="u.avatar_url"                                    :src="`/api/v1/users/${u.username}/avatar`"                                    :alt="u.username"                                    class="relative w-full h-full object-cover"                                    loading="lazy"                                    @error="(e) =>
+                                                        <img                                    v-if="u.avatar_url"                                    :src="`/api/v1/users/${u.username}/avatar`"                                    :alt="u.username"                                    class="relative w-full h-full object-cover"                                    loading="lazy"                                    @error="(e: Event) =>
                                                         { (e.target as HTMLImageElement).style.display = 'none' }"                                  />
                                                       </span>
                                                     </span>
@@ -1363,7 +1369,7 @@ onUnmounted(() => {
             <!-- 本地发送中的消息（列表正序，显示在最新消息之后） -->
             <template v-for="(pmsg, pidx) in pendingMessages" :key="pmsg.tempId">
               <div
-                v-if="pidx === 0 || !isSameDay(pmsg.created_at, (messages.length > 0 ? messages[messages.length - 1].created_at : pmsg.created_at))"
+                v-if="pidx === 0 || !isSameDay(pmsg.created_at, (messages.length > 0 ? messages[messages.length - 1]?.created_at ?? pmsg.created_at : pmsg.created_at))"
                 class="sticky top-0 z-10 flex justify-center mb-3 mt-2"
               >
                 <span class="px-3 py-1 rounded-full bg-black/30 text-white text-11px">{{ formatDate(pmsg.created_at) }}</span>
@@ -1390,7 +1396,7 @@ onUnmounted(() => {
                     <!-- 图片消息：无底色；正常比例按比例完整显示，超长/超宽/超小裁剪放大铺满；右下角半透明圆形长条显示时间/发送中 -->
                     <div v-if="pmsg.type === 'image'" class="relative overflow-hidden">
                       <img
-                        :src="displayImageUrl(pmsg)"
+                        :src="displayImageUrl({ id: pmsg.tempId, image_url: pmsg.image_url })"
                         alt="图片消息"
                         class="object-cover"
                         :style="imageStyle(pmsg.tempId).style"
@@ -1459,7 +1465,7 @@ onUnmounted(() => {
             />
             <!-- 图片按钮：圆形 -->
             <UButton
-              color="gray"
+              color="neutral"
               variant="ghost"
               class="flex w-9 h-9 rounded-full flex-shrink-0"
               :disabled="imageUploading"
@@ -1500,7 +1506,7 @@ onUnmounted(() => {
   </div>
 
   <!-- 转发会话选择器 -->
-  <UModal v-if="showForwardPicker" v-model:open="showForwardPicker" title="转发消息" :ui="{ width: 'max-w-sm' }" :unmount-on-hide="true">
+  <UModal v-if="showForwardPicker" v-model:open="showForwardPicker" title="转发消息" :ui="{ content: 'max-w-sm' }" :unmount-on-hide="true">
     <template #body>
       <div class="space-y-4">
         <!-- 消息预览：与回复引用样式一致的框 -->
@@ -1529,14 +1535,14 @@ onUnmounted(() => {
           </button>
         </div>
         <div class="flex justify-end">
-          <UButton color="gray" variant="ghost" @click="showForwardPicker = false">取消</UButton>
+          <UButton color="neutral" variant="ghost" @click="showForwardPicker = false">取消</UButton>
         </div>
       </div>
     </template>
   </UModal>
 
   <!-- 转发二次确认 -->
-  <UModal v-if="showForwardConfirm" v-model:open="showForwardConfirm" title="确认转发" :ui="{ width: 'max-w-sm' }" :unmount-on-hide="true">
+  <UModal v-if="showForwardConfirm" v-model:open="showForwardConfirm" title="确认转发" :ui="{ content: 'max-w-sm' }" :unmount-on-hide="true">
     <template #body>
       <div class="space-y-4">
         <p class="text-xs text-text-secondary flex items-center gap-2">
@@ -1561,7 +1567,7 @@ onUnmounted(() => {
           {{ forwardTarget?.content }}
         </div>
         <div class="flex justify-end gap-2">
-          <UButton color="gray" variant="ghost" @click="showForwardConfirm = false">取消</UButton>
+          <UButton color="neutral" variant="ghost" @click="showForwardConfirm = false">取消</UButton>
           <UButton color="primary" :disabled="forwarding" @click="confirmTarget && doForward(confirmTarget.id)">
             {{ forwarding ? "转发中…" : "确认转发" }}
           </UButton>
@@ -1571,7 +1577,7 @@ onUnmounted(() => {
   </UModal>
 
   <!-- 编辑消息弹窗 -->
-  <UModal v-if="showEditModal" v-model:open="showEditModal" title="编辑消息" :ui="{ width: 'max-w-sm' }" :unmount-on-hide="true">
+  <UModal v-if="showEditModal" v-model:open="showEditModal" title="编辑消息" :ui="{ content: 'max-w-sm' }" :unmount-on-hide="true">
     <template #body>
       <div class="space-y-4">
         <textarea
@@ -1581,7 +1587,7 @@ onUnmounted(() => {
           placeholder="输入新内容..."
         />
         <div class="flex justify-end gap-2">
-          <UButton color="gray" variant="ghost" @click="showEditModal = false">取消</UButton>
+          <UButton color="neutral" variant="ghost" @click="showEditModal = false">取消</UButton>
           <UButton color="primary" :disabled="!editingContent.trim() || editingSaving" @click="submitEdit">
             {{ editingSaving ? "保存中…" : "保存" }}
           </UButton>
@@ -1591,7 +1597,7 @@ onUnmounted(() => {
   </UModal>
 
   <!-- 编辑备注弹窗 -->
-  <UModal v-if="showRemarkModal" v-model:open="showRemarkModal" title="编辑备注" :ui="{ width: 'max-w-sm' }" :unmount-on-hide="true">
+  <UModal v-if="showRemarkModal" v-model:open="showRemarkModal" title="编辑备注" :ui="{ content: 'max-w-sm' }" :unmount-on-hide="true">
     <template #body>
       <div class="space-y-4">
         <p class="text-xs text-text-secondary">为 {{ otherDisplayName }} 设置备注名（聊天页与会话列表显示备注名）。</p>
@@ -1604,7 +1610,7 @@ onUnmounted(() => {
           @keydown.enter="saveRemark"
         />
         <div class="flex justify-end gap-2">
-          <UButton color="gray" variant="ghost" @click="showRemarkModal = false">取消</UButton>
+          <UButton color="neutral" variant="ghost" @click="showRemarkModal = false">取消</UButton>
           <UButton color="primary" @click="saveRemark">保存</UButton>
         </div>
       </div>

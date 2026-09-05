@@ -1,13 +1,14 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
 import type { Training, TrainingVisibility } from '~/composables/useTrainings'
 
 const { adminUpdateTraining, adminDeleteTraining } = useTrainings()
 const { data, pending, error, refresh } = await useFetch<{ data: Training[]; total: number }>(
   '/api/v1/admin/trainings',
-  { query: { page: 1, per_page: 100 }, silent: true },
+  { query: { page: 1, per_page: 100 } },
 )
 
-const columns = [
+const columns: TableColumn<Training>[] = [
   { accessorKey: 'title', header: '标题' },
   { accessorKey: 'visibility', header: '可见性' },
   { accessorKey: 'is_pinned', header: '置顶' },
@@ -46,29 +47,29 @@ async function remove(id: string) {
     >
       <template #visibility-cell="{ row }">
         <USelect
-          :model-value="(row as Training).visibility"
+          :model-value="row.original.visibility"
           :items="[
             { label: '私有', value: 'private' },
             { label: '链接可见', value: 'unlisted' },
             { label: '公开', value: 'public' },
           ]"
           class="min-w-[120px]"
-          @update:model-value="setVisibility(row as Training, $event as TrainingVisibility)"
+          @update:model-value="setVisibility(row.original, $event as TrainingVisibility)"
         />
       </template>
       <template #is_pinned-cell="{ row }">
         <UCheckbox
-          :model-value="(row as Training).is_pinned"
-          @update:model-value="togglePinned(row as Training)"
+          :model-value="row.original.is_pinned"
+          @update:model-value="togglePinned(row.original)"
         />
       </template>
       <template #actions-cell="{ row }">
         <UButton
           icon="i-lucide-trash"
           size="xs"
-          color="red"
+          color="error"
           variant="ghost"
-          @click="remove((row as Training).id)"
+          @click="remove(row.original.id)"
         />
       </template>
     </UTable>

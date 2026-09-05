@@ -31,6 +31,7 @@
                     :type="p.type"
                     :title="p.title"
                     :difficulty="p.difficulty"
+                    :is_objective="p.is_objective"
                     :runtime_config="p.runtime_config"
                     :tags="p.tags"
                 />
@@ -55,6 +56,7 @@ interface ProblemItem {
     display_id: string
     type: string
     difficulty: string
+    is_objective: boolean
     runtime_config: { evaluator: { time_limit_ms: number; memory_limit_mb: number } }
     tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
 }

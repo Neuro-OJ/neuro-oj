@@ -136,7 +136,7 @@ async function createAndAdd() {
         </UButton>
 
         <div class="flex justify-end gap-3 pt-2">
-          <UButton color="gray" @click="closeModal">取消</UButton>
+          <UButton color="neutral" @click="closeModal">取消</UButton>
           <UButton color="primary" :loading="saving" :disabled="!hasChanges" @click="save">
             保存修改
           </UButton>

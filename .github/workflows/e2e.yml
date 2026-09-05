@@ -33,14 +33,13 @@ on:
     # 纯文档 / 规范 / lint 配置类改动无需跑完整评测栈（节省 10-15 min / PR）。
     # push to main 仍全量跑；workflow_dispatch 仍可手动强跑。
     # 修复点：之前的 cache-to mode=min 拆分到独立的 workflow 安全与配置一致性 PR。
-    # 性能优化（2026-07）：扩充忽略清单——noj-ui 改动不涉及评测栈
-    # （E2E 只跑 noj-core API + judge 沙箱，不构建前端）；ci.yml 自身
-    # 改动不触发 e2e（ci.yml 不涉及评测栈镜像/编排）。
+    # issue #427：noj-ui 改动现在会触发本 workflow —— UI 浏览器关键流程门禁
+    # （注册验证 / 登录退出 / 代码提交到结果 / 核心失败反馈）依赖完整评测栈；
+    # ci.yml 自身改动仍不触发（ci.yml 不涉及评测栈镜像/编排）。
     paths-ignore:
       - 'dev-docs/**'
       - 'noj-docs/**'
       - '**/*.md'
-      - 'noj-ui/**'
       - 'docker-compose.yml'
       - 'LICENSE'
       - 'scripts/db/**'
@@ -329,6 +328,67 @@ jobs:
           wait "$p2" || fail=1
           wait "$p3" || fail=1
           exit "$fail"
+
+      # ════════════════════════════════════════════
+      # 4. UI 浏览器关键流程门禁（issue #427）
+      #
+      # 复用同一评测栈：构建 noj-ui（Nitro 代理指向容器内 noj-core），
+      # 以 Playwright 真实浏览器执行 注册验证 / 登录退出 / 代码提交到结果 /
+      # 核心失败反馈 四条关键路径。Fork PR 无需任何生产凭据——所需密钥
+      # 全部来自 workflow env 中的 e2e 固定测试值。失败时上传 trace + 截图。
+      # ════════════════════════════════════════════
+
+      - name: 安装 noj-ui 依赖
+        working-directory: noj-ui
+        run: deno install
+
+      - name: 构建 noj-ui
+        working-directory: noj-ui
+        run: deno task build
+
+      - name: 启动 noj-ui
+        run: |
+          NUXT_API_BASE=http://localhost:8099 PORT=3000 \
+            node noj-ui/.output/server/index.mjs > /tmp/noj-ui.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000/ > /dev/null; then
+              echo "✅ noj-ui 就绪 (:3000)"
+              break
+            fi
+            sleep 1
+          done
+          if ! curl -sf http://localhost:3000/ > /dev/null; then
+            echo "::error::noj-ui 启动超时"
+            tail -50 /tmp/noj-ui.log
+            exit 1
+          fi
+
+      - name: 缓存 Playwright 浏览器
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('noj-tests/deno.lock') }}
+          restore-keys: |
+            playwright-
+
+      - name: 安装 Playwright Chromium
+        run: deno run -A npm:playwright@1.62.1 install chromium
+
+      - name: UI 浏览器关键流程测试 (noj-tests test:browser)
+        working-directory: noj-tests
+        env:
+          NOJ_RUN_BROWSER_E2E: "1"
+          E2E_UI_URL: http://localhost:3000
+        run: deno task test:browser
+
+      - name: 上传 UI 浏览器诊断产物
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-browser-artifacts
+          path: noj-tests/test-results/ui-browser/
+          retention-days: 7
+          if-no-files-found: ignore
 
       # ════════════════════════════════════════════
       # 6. 诊断日志（即使前面失败也执行）

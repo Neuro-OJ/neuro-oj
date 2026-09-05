@@ -1,4 +1,8 @@
 <script setup lang="ts">
+
+// 显式导入项目 useToast：避免与 @nuxt/ui 自动导入的同名 useToast 混淆
+import { useToast } from '~/composables/useToast'
+
 import { extractApiError } from '~/utils/apiError'
 
 definePageMeta({
@@ -242,7 +246,6 @@ async function confirmReset(s: SystemSetting) {
   const ok = await dialog({
     title: `确认将 ${s.key} 重置为默认值？`,
     text: "此操作不可撤销。数据库中保存的值将被删除，回退到 .env 环境变量或系统默认值。",
-    icon: "warning",
     danger: true,
     confirmText: "确认重置",
   })

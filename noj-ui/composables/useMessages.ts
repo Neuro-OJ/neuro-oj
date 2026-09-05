@@ -2,6 +2,8 @@ export interface Conversation {
   id: string;
   other_user_id: string;
   other_user_name: string;
+  /** 对方头像 URL（后端 messaging services 返回，null = 未设置） */
+  other_user_avatar_url: string | null;
   last_message_preview: string;
   last_message_at: string;
   unread_count: number;
