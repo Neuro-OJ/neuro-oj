@@ -127,6 +127,21 @@ function conflictFromUniqueViolation(err: unknown): ConflictError | null {
 }
 
 /**
+ * 是否已存在真实用户（root 系统用户除外）。
+ *
+ * issue #426：邮件未配置时公开注册被禁止，但站点引导阶段仍需允许
+ * 注册第一个用户（自动成为管理员），否则全新安装无法完成初始化。
+ */
+export async function hasRealUser(): Promise<boolean> {
+  const rows = await getDb()
+    .select({ id: users.id })
+    .from(users)
+    .where(ne(users.id, ROOT_USER_ID))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
  * 注册新用户。
  * 检查用户名和邮箱的唯一性，密码使用 bcrypt 哈希后存储。
  *

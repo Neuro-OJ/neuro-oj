@@ -4,6 +4,17 @@
         <div class="bg-white border border-border rounded-lg p-8">
             <h1 class="text-22px font-bold text-center mb-6 text-text animate-[fadeInUp_0.5s_ease_both]">注册</h1>
 
+            <!-- issue #426：注册受限提示（注册关闭 / 邮件未配置） -->
+            <div
+                v-if="registerRestricted"
+                class="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-md text-13px text-amber-800"
+            >
+                <div class="flex items-start gap-2">
+                    <UIcon name="i-lucide-triangle-alert" class="size-4 shrink-0 mt-0.5 text-amber-600" />
+                    <span>{{ registerRestricted }}</span>
+                </div>
+            </div>
+
             <form @submit.prevent="handleRegister">
                 <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.05s_both]">
                     <TextInput
@@ -65,7 +76,7 @@
                     />
                 </div>
 
-                <UButton color="primary" size="md" block class="animate-[fadeInUp_0.5s_ease_0.25s_both]" type="submit"  :disabled="loading">
+                <UButton color="primary" size="md" block class="animate-[fadeInUp_0.5s_ease_0.25s_both]" type="submit"  :disabled="loading || !!registerRestricted">
                     <UIcon name="i-lucide-loader-2" class="animate-spin-slow mr-1.5 size-4.5" v-if="loading"/>
                     {{ loading ? '注册中...' : '注册' }}
                 </UButton>
@@ -98,6 +109,7 @@
 <script setup lang="ts">
 import { validatePassword, validatePasswordMatch, validateEmail } from "~/utils/validatePassword"
 import { extractApiError } from "~/utils/apiError"
+import { submitRegistration } from "~/utils/registerFlow"
 
 definePageMeta({ layout: "auth" })
 
@@ -106,9 +118,21 @@ const auth = useAuth()
 const oauthProviders = ref<Array<{ id: string; name: string }>>([])
 const oauthLoading = ref(false)
 
+// issue #426：注册受限原因（空串表示可正常注册）
+const registerRestricted = ref("")
+
 onMounted(async () => {
     try {
-        oauthProviders.value = await auth.getOAuthProviders()
+        const [providers, status] = await Promise.all([
+            auth.getOAuthProviders(),
+            auth.getRegisterStatus(),
+        ])
+        oauthProviders.value = providers
+        registerRestricted.value = status.reason === "register_disabled"
+            ? "注册已关闭，请稍后再试或联系管理员。"
+            : status.reason === "email_unconfigured"
+            ? "邮件服务未配置，暂不接受注册；已完成验证的用户不受影响。"
+            : ""
     } catch {
         oauthProviders.value = []
     }
@@ -191,21 +215,20 @@ async function handleRegister() {
 
     loading.value = true
     try {
-        // 先注册
-        const sent = await auth.register(form.username.trim(), form.email.trim(), form.password)
+        // 注册 → 自动登录 → 按邮件发送结果跳转（流程逻辑见 utils/registerFlow.ts）
+        const result = await submitRegistration(
+            {
+                register: (username, email, password) =>
+                    auth.register(username, email, password),
+                login: (username, password) => auth.login(username, password),
+            },
+            form.username.trim(),
+            form.email.trim(),
+            form.password,
+        )
+        if (result) router.replace(result.destination)
     } catch (e: unknown) {
         setError(extractApiError(e).message)
-        loading.value = false
-        return
-    }
-
-    // 注册成功后自动登录
-    try {
-        await auth.login(form.username.trim(), form.password)
-        router.replace(`/verify-email?registered=1&sent=${sent ? "1" : "0"}`)
-    } catch {
-        // 注册成功但登录失败 → 引导用户手动登录
-        router.replace("/login?registered=1")
     } finally {
         loading.value = false
     }

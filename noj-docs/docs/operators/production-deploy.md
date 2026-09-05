@@ -59,7 +59,9 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 选择重新填写时只在最后确认后写入正式配置。
 
 安装完成后打开网站注册第一个用户，该用户自动成为管理员，不需要填写管理员邮箱或密码。
-邮件服务可以选择“暂不配置”，不影响网站启动，但密码找回邮件不可用。Judge 可以在安装时跳过，
+邮件服务可以选择“暂不配置”，不影响网站启动，但会进入受限状态：新用户需要完成邮箱验证才能提交、
+发帖和私信，未配置邮件时公开注册会被禁止（仅允许注册第一个管理员账号），密码找回邮件同样不可用。
+开放公开注册前，请在管理后台「系统设置」确认邮件服务已就绪并发送测试邮件验证。Judge 可以在安装时跳过，
 之后补充独立 Docker socket 后再启用。
 
 ## 3. 配置说明
@@ -74,7 +76,7 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 | `CORS_ALLOWED_ORIGINS` | 通常与 `APP_URL` 相同 |
 | `POSTGRES_PASSWORD` / `REDIS_PASSWORD` | 数据库和 Redis 强密码 |
 | `JWT_SECRET` / `TFA_ENCRYPTION_KEY` | 至少 32 个字符的随机密钥 |
-| `EMAIL_PROVIDER` | `aliyun`、`tencent` 或 `disabled`；可直接跳过 |
+| `EMAIL_PROVIDER` | `aliyun`、`tencent` 或 `disabled`；可直接跳过，但 `disabled` 时公开注册受限（见上文） |
 | `JUDGE_ENABLED` | 是否启动 Judge，默认 `true` |
 | `JUDGE_DOCKER_SOCKET` | Judge 专用 rootless Docker socket；禁止使用宿主机默认 socket |
 | `NGINX_PORT` | 对外端口，默认 `8080` |
