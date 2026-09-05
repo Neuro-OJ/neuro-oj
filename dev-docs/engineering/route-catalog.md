@@ -140,10 +140,12 @@
 | GET | `jti` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `jti` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `NOJ_ENV` | noj-core/src/domains/identity/routes/auth.ts |
+| GET | `NOJ_ENV` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `NOJ_ENV` | noj-core/src/routes/health.ts |
 | GET | `NOJ_ENV` | noj-core/src/routes/health.ts |
 | GET | `NOJ_LLM_GATEWAY_URL` | noj-core/src/domains/gateway/routes/admin-llm.ts |
 | GET | `NOJ_LLM_SERVICE_TOKEN` | noj-core/src/domains/gateway/routes/admin-llm.ts |
+| GET | `NOJ_RUN_E2E` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `userId` | noj-core/src/domains/catalog/routes/admin-trainings.ts |
 | GET | `userId` | noj-core/src/domains/catalog/routes/admin-trainings.ts |
 | GET | `userId` | noj-core/src/domains/catalog/routes/problems.ts |

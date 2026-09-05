@@ -14,6 +14,12 @@ import {
 
 export const EMAIL_VERIFICATION_TTL_MINUTES = 30;
 
+/** 邮箱验证邮件的发送结果；原始令牌仅供调用方完成隔离的 E2E 流程。 */
+export interface EmailVerificationDispatch {
+  sent: boolean;
+  token: string | null;
+}
+
 function resolveAppUrl(requestFallbackBaseUrl: string): string | null {
   const configured = Deno.env.get("APP_URL")?.trim();
   if (configured) return configured.replace(/\/+$/, "");
@@ -31,9 +37,9 @@ export async function sendEmailVerification(
   userId: string,
   requestFallbackBaseUrl: string,
   enforceCooldown = false,
-): Promise<boolean> {
+): Promise<EmailVerificationDispatch> {
   const baseUrl = resolveAppUrl(requestFallbackBaseUrl);
-  if (!baseUrl) return false;
+  if (!baseUrl) return { sent: false, token: null };
   const db = getDb();
   const [user] = await db.select({
     email: users.email,
@@ -41,7 +47,7 @@ export async function sendEmailVerification(
     expiresAt: users.email_verify_expires_at,
   }).from(users).where(and(eq(users.id, userId), isNull(users.deleted_at)))
     .limit(1);
-  if (!user || user.verified) return false;
+  if (!user || user.verified) return { sent: false, token: null };
   if (
     enforceCooldown && user.expiresAt &&
     Date.parse(user.expiresAt) >
@@ -75,7 +81,7 @@ export async function sendEmailVerification(
         and(eq(users.id, userId), eq(users.email_verify_token, tokenHash)),
       );
     }
-    return sent;
+    return { sent, token: sent ? token : null };
   } catch (error) {
     await db.update(users).set({
       email_verify_token: null,
@@ -87,7 +93,7 @@ export async function sendEmailVerification(
       module: "email-verification",
       error,
     });
-    return false;
+    return { sent: false, token: null };
   }
 }
 

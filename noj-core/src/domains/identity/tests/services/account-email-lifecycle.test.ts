@@ -43,29 +43,35 @@ async function seedUser(verified = false) {
 Deno.test("邮箱验证：注册路由发送 mock 邮件并由验证路由完成闭环", async () => {
   await resetDbForTest();
   Deno.env.set("NOJ_ENV", "test");
+  Deno.env.set("NOJ_RUN_E2E", "1");
   resetEmailProvider();
   takeMockEmailsForTest();
-  const { createApp } = await import("../../../../app.ts");
-  const app = createApp();
-  const suffix = crypto.randomUUID().slice(0, 8);
-  const registered = await jsonRequest(app, "/api/v1/auth/register", {
-    method: "POST",
-    body: {
-      username: `route_${suffix}`,
-      email: `route_${suffix}@example.com`,
-      password: "RouteVerify-2026-Ab1",
-    },
-  });
-  assertEquals(registered.status, 201);
-  const [mail] = takeMockEmailsForTest();
-  assertExists(mail);
-  const match = mail.html.match(/token=([^"&<]+)/);
-  assertExists(match);
-  const verified = await jsonRequest(app, "/api/v1/auth/email/verify", {
-    method: "POST",
-    body: { token: decodeURIComponent(match[1]) },
-  });
-  assertEquals(verified.status, 200);
+  try {
+    const { createApp } = await import("../../../../app.ts");
+    const app = createApp();
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const registered = await jsonRequest(app, "/api/v1/auth/register", {
+      method: "POST",
+      body: {
+        username: `route_${suffix}`,
+        email: `route_${suffix}@example.com`,
+        password: "RouteVerify-2026-Ab1",
+      },
+    });
+    assertEquals(registered.status, 201);
+    const body = await registered.json();
+    const token = body.data?.email_verification_token;
+    assertEquals(typeof token, "string");
+    const [mail] = takeMockEmailsForTest();
+    assertExists(mail);
+    const verified = await jsonRequest(app, "/api/v1/auth/email/verify", {
+      method: "POST",
+      body: { token },
+    });
+    assertEquals(verified.status, 200);
+  } finally {
+    Deno.env.delete("NOJ_RUN_E2E");
+  }
 });
 
 Deno.test("邮箱验证：mock 邮件令牌可验证且只能使用一次", async () => {
@@ -75,7 +81,7 @@ Deno.test("邮箱验证：mock 邮件令牌可验证且只能使用一次", asyn
   takeMockEmailsForTest();
   const userId = await seedUser(false);
   assertEquals(
-    await sendEmailVerification(userId, "http://localhost:3000"),
+    (await sendEmailVerification(userId, "http://localhost:3000")).sent,
     true,
   );
   const [mail] = takeMockEmailsForTest();

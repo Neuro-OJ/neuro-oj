@@ -225,7 +225,10 @@ export async function isJudgeAvailable(): Promise<boolean> {
 }
 
 /**
- * 注册用户并返回 token。如果已存在则登录。
+ * 注册用户、完成邮箱验证并返回 token。如果已存在则登录。
+ *
+ * E2E 栈会在注册响应中返回仅供隔离测试环境使用的一次性验证令牌；辅助函数
+ * 随即调用公开验证端点，确保后续写操作与真实已验证账号走相同代码路径。
  */
 export async function registerUser(
   username: string,
@@ -249,6 +252,24 @@ export async function registerUser(
     }
     throw new Error(
       `注册失败: ${res.status} ${JSON.stringify(res.body)}`,
+    );
+  }
+
+  const registration = res.body as {
+    data?: { email_verification_token?: string };
+  };
+  const verificationToken = registration.data?.email_verification_token;
+  if (!verificationToken) {
+    throw new Error("注册成功但 E2E 响应未返回邮箱验证令牌");
+  }
+  const verifyRes = await apiPost("/api/v1/auth/email/verify", {
+    token: verificationToken,
+  });
+  if (verifyRes.status !== 200) {
+    throw new Error(
+      `注册成功但邮箱验证失败: ${verifyRes.status} ${
+        JSON.stringify(verifyRes.body)
+      }`,
     );
   }
 
