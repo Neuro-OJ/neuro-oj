@@ -20,11 +20,16 @@ import {
 } from "../services/contests.ts";
 import type {
   CreateContestInput,
+  KaggleRankingRow,
   UpdateContestInput,
 } from "./../types/contests.ts";
 import { isValidContestType } from "./../types/contests.ts";
 import { listSubmissions } from "../../submission/index.ts";
 import { resolveUserId } from "../../identity/index.ts";
+import {
+  getLatestContestRankingSnapshot,
+  publishContestRankingSnapshot,
+} from "../services/contest-ranking.ts";
 
 /**
  * 管理端竞赛管理路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。
@@ -158,5 +163,56 @@ router.get("/contests/:id/submissions", async (c) => {
     pagination: buildPaginationMeta(page, perPage, result.total),
   });
 });
+
+/** 发布不可变的正式成绩快照；重复请求会生成同分的新版本并保留审计说明。 */
+router.post("/contests/:id/ranking-snapshots", async (c) => {
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const body = await parseJsonBody<{ note?: string }>(c);
+  const data = await publishContestRankingSnapshot(
+    contestId,
+    c.get("userId"),
+    body.note ?? "",
+  );
+  return c.json({ data }, 201);
+});
+
+/** 获取当前正式成绩快照；实时排名接口仍用于临时成绩。 */
+router.get("/contests/:id/ranking-snapshots/latest", async (c) => {
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const data = await getLatestContestRankingSnapshot(contestId);
+  return c.json({ data });
+});
+
+/** 导出正式成绩，避免直接导出可被重测改变的实时排名。 */
+router.get("/contests/:id/ranking-snapshots/latest.csv", async (c) => {
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const snapshot = await getLatestContestRankingSnapshot(contestId);
+  if (!snapshot) return c.json({ error: "尚未发布正式成绩" }, 404);
+  const rows = snapshot.rows as KaggleRankingRow[];
+  const csv = [
+    "版本,排名,用户,总分,最后提交时间",
+    ...rows.map((row) =>
+      [
+        snapshot.version,
+        row.rank,
+        row.username,
+        row.total_score,
+        row.last_submission_at ?? "",
+      ].map(csvCell).join(",")
+    ),
+  ].join("\n");
+  return new Response("\uFEFF" + csv, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition":
+        `attachment; filename="contest-${contestId}-ranking.csv"`,
+    },
+  });
+});
+
+function csvCell(value: unknown): string {
+  const text = String(value ?? "");
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
 
 export default router;

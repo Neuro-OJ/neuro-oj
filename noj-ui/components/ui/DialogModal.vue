@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 
 const props = withDefaults(
   defineProps<{
+    dataPolicyLink?: boolean
     title?: string
     message: string
     mode?: 'confirm' | 'alert' | 'prompt'
@@ -59,8 +60,9 @@ function onCancel() {
     :ui="{ content: 'bg-default flex flex-col divide-y-0 focus:outline-none', footer: 'flex justify-end gap-3 border-t border-default' }"
     @after:leave="$emit('after:leave')"
   >
-    <template v-if="mode === 'prompt'" #body>
-      <UInput v-model="input" :placeholder="placeholder" class="mt-1" @keyup.enter="onConfirm" />
+    <template v-if="mode === 'prompt' || dataPolicyLink" #body>
+      <NuxtLink v-if="dataPolicyLink" to="/data-policy" target="_blank" class="text-primary underline">数据使用、注销保留与反馈说明（新窗口）</NuxtLink>
+      <UInput v-if="mode === 'prompt'" v-model="input" :placeholder="placeholder" class="mt-1" @keyup.enter="onConfirm" />
     </template>
 
     <template #footer>

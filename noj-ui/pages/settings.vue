@@ -464,7 +464,7 @@ async function handleDeleteAccount() {
   }
   const confirmed = await dialog.confirm(
     "注销后将无法恢复登录；公开内容会保留并显示为“已注销用户”。确定继续吗？",
-    { title: "永久注销账户", confirmText: "确认注销", danger: true },
+    { title: "永久注销账户", confirmText: "确认注销", danger: true, dataPolicyLink: true },
   )
   if (!confirmed) return
   deletingAccount.value = true
@@ -804,6 +804,7 @@ async function handleDeleteAccount() {
       <div class="flex flex-col gap-3 px-6 py-6">
         <p class="text-sm text-text-secondary">注销后无法恢复登录。帖子、评论和题解会保留，但作者统一显示为“已注销用户”。</p>
         <UInput v-model="deletePassword" type="password" autocomplete="current-password" placeholder="输入当前密码确认" class="max-w-sm" />
+        <NuxtLink to="/data-policy" target="_blank" class="text-sm text-primary underline">阅读完整的数据使用、注销保留与反馈说明</NuxtLink>
         <p v-if="deleteAccountError" class="text-sm text-error-text">{{ deleteAccountError }}</p>
         <UButton color="error" class="self-start" :loading="deletingAccount" @click="handleDeleteAccount">注销账户</UButton>
       </div>

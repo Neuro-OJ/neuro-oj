@@ -12,6 +12,46 @@ import type {
   KaggleRankingRow,
 } from "./../types/contests.ts";
 import { getContest, isParticipant } from "./contests.ts";
+import { contestRankingSnapshots } from "../../../shared/db/schema.ts";
+import { desc, eq } from "drizzle-orm";
+
+export async function publishContestRankingSnapshot(
+  contestId: string,
+  actorId: string,
+  note = "",
+): Promise<
+  { id: string; version: number; rows: KaggleRankingRow[]; created_at: string }
+> {
+  const contest = await getContest(contestId);
+  const db = getDb();
+  const rows = await getKaggleRanking(contestId);
+  const [latest] = await db.select({ version: contestRankingSnapshots.version })
+    .from(contestRankingSnapshots).where(
+      eq(contestRankingSnapshots.contest_id, contestId),
+    )
+    .orderBy(desc(contestRankingSnapshots.version)).limit(1);
+  const version = (latest?.version ?? 0) + 1;
+  const created_at = new Date().toISOString();
+  const id = crypto.randomUUID();
+  await db.insert(contestRankingSnapshots).values({
+    id,
+    contest_id: contest.id,
+    version,
+    status: "published",
+    note,
+    rows,
+    created_by: actorId,
+    created_at,
+  });
+  return { id, version, rows, created_at };
+}
+
+export async function getLatestContestRankingSnapshot(contestId: string) {
+  const [snapshot] = await getDb().select().from(contestRankingSnapshots)
+    .where(eq(contestRankingSnapshots.contest_id, contestId))
+    .orderBy(desc(contestRankingSnapshots.version)).limit(1);
+  return snapshot ?? null;
+}
 
 /**
  * 将可能为数组或 JSON 字符串的值解析为数组（解析失败或类型不符时返回空数组）。

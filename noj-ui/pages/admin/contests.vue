@@ -226,6 +226,21 @@ async function removeContest(contest: Contest) {
   }
 }
 
+async function publishSnapshot(contest: Contest) {
+  const confirmed = await dialog.confirm(`确认发布“${contest.title}”当前成绩为正式成绩吗？后续重测将生成新版本，不会覆盖当前快照。`, { title: '确认发布成绩', confirmText: '发布' })
+  if (!confirmed) return
+  try {
+    const result = await api.post<{ data: { version: number } }>(`/api/v1/admin/contests/${contest.public_id || contest.id}/ranking-snapshots`, { note: '管理员确认发布' }, { silent: true })
+    toast.success(`正式成绩已发布（版本 ${result.data.version}）`)
+  } catch (err: unknown) {
+    toast.error(extractApiError(err).message)
+  }
+}
+
+function exportSnapshot(contest: Contest) {
+  window.location.assign(`/api/v1/admin/contests/${contest.public_id || contest.id}/ranking-snapshots/latest.csv`)
+}
+
 interface Participant {
   user_id: string
   username: string
@@ -328,7 +343,7 @@ async function removeParticipant(participant: Participant) {
       <template #status-cell="{ row }"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold" :class="statusClass(row.original.status)">{{ statusLabels[row.original.status] }}</span></template>
       <template #participant_count-cell="{ row }"><span>{{ row.original.participant_count }} 人</span></template>
       <template #problem_count-cell="{ row }"><span>{{ row.original.problem_count }} 题</span></template>
-      <template #actions-cell="{ row }"><div class="flex justify-center gap-1.5"><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-blue-50 hover:text-primary" title="参与者" aria-label="参与者" @click="openParticipants(row.original)"><UIcon name="i-lucide-users" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" :loading="editingId === row.original.id" :disabled="editingId !== null" @click="openEdit(row.original)"><UIcon name="i-lucide-pencil" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:border-error-text/30 hover:bg-red-50 hover:text-error-text" title="删除" aria-label="删除" @click="removeContest(row.original)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></UButton></div></template>
+      <template #actions-cell="{ row }"><div class="flex justify-center gap-1.5"><UButton color="neutral" variant="outline" class="flex size-9" title="发布正式成绩" aria-label="发布正式成绩" @click="publishSnapshot(row.original)"><UIcon name="i-lucide-lock-keyhole" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9" title="导出正式成绩" aria-label="导出正式成绩" @click="exportSnapshot(row.original)"><UIcon name="i-lucide-download" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-blue-50 hover:text-primary" title="参与者" aria-label="参与者" @click="openParticipants(row.original)"><UIcon name="i-lucide-users" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" :loading="editingId === row.original.id" :disabled="editingId !== null" @click="openEdit(row.original)"><UIcon name="i-lucide-pencil" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:border-error-text/30 hover:bg-red-50 hover:text-error-text" title="删除" aria-label="删除" @click="removeContest(row.original)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></UButton></div></template>
     </UTable>
 
     <PaginationNav :current-page="currentPage" :total-pages="totalPages" @page-change="loadContests" />

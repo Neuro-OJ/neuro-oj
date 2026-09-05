@@ -190,6 +190,18 @@ export const SCHEMA_DDL: string[] = [
     created_at TEXT NOT NULL
   )`,
 
+  `CREATE TABLE IF NOT EXISTS contest_ranking_snapshots (
+    id TEXT PRIMARY KEY,
+    contest_id TEXT NOT NULL REFERENCES contests(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'published',
+    note TEXT NOT NULL DEFAULT '',
+    rows JSONB NOT NULL,
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (contest_id, version)
+  )`,
+
   // 3.4 trainings（题单，issue #224）
   `CREATE TABLE IF NOT EXISTS trainings (
     id TEXT PRIMARY KEY,
@@ -636,6 +648,7 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_contests_start_time ON contests (start_time)",
   "CREATE INDEX IF NOT EXISTS idx_contests_end_time ON contests (end_time)",
   "CREATE INDEX IF NOT EXISTS idx_contest_clarifications_contest ON contest_clarifications (contest_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_contest_ranking_snapshots_contest_created ON contest_ranking_snapshots (contest_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_contest_participants_user ON contest_participants (user_id)",
   // 题单索引（issue #224）
   "CREATE INDEX IF NOT EXISTS idx_trainings_visibility_pinned_created ON trainings (visibility, is_pinned, created_at)",
@@ -741,6 +754,7 @@ export const ALL_TABLES = [
   "contest_problems",
   "contest_participants",
   "contest_clarifications",
+  "contest_ranking_snapshots",
   "trainings",
   "training_problems",
   "submissions",

@@ -137,6 +137,18 @@ async function handleDelete() {
 const toast = useToast()
 const { dialog } = useDialog()
 const rejudgingProblemIds = ref(new Set<string>())
+const preflight = ref<{ problem_id: string; fingerprint: string; can_publish: boolean; checks: { name: string; status: string; message: string }[] } | null>(null)
+const preflightOpen = ref(false)
+
+async function runPreflight(problem: Problem) {
+  try {
+    const result = await api.get<{ data: NonNullable<typeof preflight.value> }>(`/api/v1/admin/problems/${problem.display_id}/preflight`, { silent: true })
+    preflight.value = result.data
+    preflightOpen.value = true
+  } catch (err: unknown) {
+    toast.error(extractApiError(err).message)
+  }
+}
 
 async function batchRejudge(problemId: string) {
   if (rejudgingProblemIds.value.has(problemId)) return
@@ -203,6 +215,7 @@ async function batchRejudge(problemId: string) {
           <UButton color="neutral" variant="outline" class="w-9 h-9 border-border text-text-secondary hover:bg-amber-50 hover:text-warning-600 hover:border-warning-600/30" :disabled="rejudgingProblemIds.has(row.original.id)" :title="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" :aria-label="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" @click="batchRejudge(row.original.display_id)">
             <UIcon name="i-lucide-refresh-cw" class="size-3.5" />
           </UButton>
+          <UButton color="neutral" variant="outline" class="w-9 h-9" title="发布前预检" aria-label="发布前预检" @click="runPreflight(row.original)"><UIcon name="i-lucide-clipboard-check" class="size-3.5" /></UButton>
           <UButton color="neutral" variant="outline" class="w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row.original)">
             <UIcon name="i-lucide-trash-2" class="size-3.5" />
           </UButton>
@@ -227,6 +240,19 @@ async function batchRejudge(problemId: string) {
     <template #footer>
       <UButton color="neutral" variant="ghost" :disabled="deleting" @click="showDeleteConfirm = false">取消</UButton>
       <UButton color="error" :loading="deleting" @click="handleDelete">确认删除</UButton>
+    </template>
+  </UModal>
+
+  <UModal v-model:open="preflightOpen" title="发布前质量预检">
+    <template #body>
+      <p class="mb-3 text-sm text-text-secondary">结果指纹：<code>{{ preflight?.fingerprint }}</code></p>
+      <div class="space-y-2">
+        <div v-for="check in preflight?.checks" :key="check.name" class="flex gap-2 text-sm">
+          <UIcon :name="check.status === 'pass' ? 'i-lucide-check-circle' : check.status === 'error' ? 'i-lucide-x-circle' : 'i-lucide-alert-triangle'" :class="check.status === 'pass' ? 'text-success-text' : check.status === 'error' ? 'text-error-text' : 'text-warning-text'" class="size-4 shrink-0" />
+          <span>{{ check.message }}</span>
+        </div>
+      </div>
+      <p class="mt-4 font-semibold" :class="preflight?.can_publish ? 'text-success-text' : 'text-error-text'">{{ preflight?.can_publish ? '可进入发布流程' : '存在阻断错误，暂不可发布' }}</p>
     </template>
   </UModal>
 </template>
