@@ -8,8 +8,6 @@
 
 **Tech Stack:** Deno 2 + Hono + postgres.js + ioredis；测试用 Deno 标准断言。
 
-**Spec:** `dev-docs/superpowers/specs/2026-09-03-snowy-manor-trial-agent-design.md`（§6、§8.1）
-
 ## 全局约束
 
 - Deno 代码：`deno fmt` + `deno lint`（CI 强制）；中文注释 + 英文标识符；
