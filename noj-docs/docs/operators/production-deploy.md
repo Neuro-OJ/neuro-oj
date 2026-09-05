@@ -68,14 +68,14 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 预发布转正流程：
 
 1. 创建 GitHub Release 并勾选 **pre-release**（tag 形如 `vX.Y.Z` 或 `X.Y.Z-rc.N`）。
-2. `release.yml` 由 `prereleased` 事件触发：构建 7 个候选镜像 → 漏洞扫描 → 签名 / SBOM /
+2. `release.yml` 监听 `published` / `prereleased` 事件（只处理预发布 Release）：构建 7 个候选镜像 → 漏洞扫描 → 签名 / SBOM /
    来源证明 → 验证 digest 与 smoke test → 上传同版本 `noj-cli` 二进制与校验文件。
 3. 全部通过后，工作流最后的 `publish-release` 任务把预发布转正为正式 Release（`--latest`）。
 
 由此保证：`/releases/latest` 指向的版本一定具备同版本镜像、CLI 资产与校验文件。
 安装器（`scripts/deploy/install.sh`）自动选择版本时同样只接受非 draft、非 prerelease
 且资产中包含 `noj-cli-linux-amd64` 与 `.sha256` 的 Release，双重过滤未就绪版本。
-直接发布正式 Release（published）不会触发镜像构建；重试时正式镜像 tag 指向不同构建
+直接发布正式 Release（published）会被工作流识别并跳过构建；重试时正式镜像 tag 指向不同构建
 会被拒绝覆盖，避免版本混用。
 
 ## 3. 配置说明

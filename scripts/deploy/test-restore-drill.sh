@@ -225,6 +225,10 @@ grep -q 'JUDGE_EVALUATOR_NETWORK=noj-drill_noj-net' \
   fail "演练环境应隔离评测网络名"
 grep -q 'subnet: 172.29.0.0/16' "$TEST_ROOT/backups"/drill-*/.work/compose.drill-override.yml ||
   fail "演练覆盖 Compose 应使用独立子网"
+rg -Fq 'image: denoland/deno:debian-2.9.5@sha256:' "$TEST_ROOT/backups"/drill-*/.work/compose.drill-override.yml ||
+  fail "演练覆盖 Compose 应包含固定版本的 Deno 验收容器"
+rg -Fq 'DO $role$ BEGIN IF NOT EXISTS' "$TEST_ROOT/backups"/drill-*/.work/postgres-globals.sql ||
+  fail "PostgreSQL 全局对象恢复应幂等处理已有角色"
 pass "演练环境与覆盖 Compose 隔离配置正确"
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 # =============================================================================
 # Neuro OJ 生产镜像发布：预发布候选 → 安全门禁 → 镜像/CLI 资产就绪 → 自动转正
 #
-# 触发条件：GitHub Release prereleased（预发布）或 workflow_dispatch。
+# 触发条件：GitHub Release published/prereleased（仅预发布）或 workflow_dispatch。
 # 普通 push / pull_request / 直接 published 不发布生产镜像。
 #
 # 就绪窗口控制（issue #431）：预发布 Release 先触发本工作流完成镜像构建、扫描、
@@ -16,7 +16,7 @@ name: Release Images
 
 on:
   release:
-    types: [prereleased]
+    types: [published, prereleased]
   workflow_dispatch:
 
 permissions:
@@ -33,6 +33,7 @@ env:
 jobs:
   publish-cli:
     name: 发布生产运维 CLI
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == true
     needs: verify-release
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -63,10 +64,12 @@ jobs:
         run: |
           gh release upload "$VERSION" \
             noj-cli/bin/noj-cli-linux-amd64 \
-            noj-cli/bin/noj-cli-linux-amd64.sha256
+            noj-cli/bin/noj-cli-linux-amd64.sha256 \
+            --clobber
 
   supply-chain-check:
     name: 检查供应链配置
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == true
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -78,6 +81,7 @@ jobs:
 
   build-and-gate:
     name: Build and gate ${{ matrix.name }}
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == true
     needs: supply-chain-check
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -282,6 +286,7 @@ jobs:
 
   verify-release:
     name: 验证正式 Release 镜像
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == true
     needs: build-and-gate
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -379,6 +384,7 @@ jobs:
 
   publish-release:
     name: 资产就绪后转正 Release
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == true
     needs: [verify-release, publish-cli]
     runs-on: ubuntu-latest
     timeout-minutes: 5

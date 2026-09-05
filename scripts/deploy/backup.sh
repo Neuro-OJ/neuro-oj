@@ -145,6 +145,30 @@ gpg_decrypt() {
     --decrypt --output "$2" "$1" >/dev/null 2>&1 || die "生产环境文件解密失败"
 }
 
+# pg_dumpall --globals-only 会包含 CREATE ROLE，而目标 PostgreSQL 已经通过
+# POSTGRES_USER 创建默认角色；恢复前将角色创建语句改为幂等形式。
+prepare_idempotent_globals() {
+  local source="$1" target="$2"
+  awk '
+    function sql_escape(value) {
+      gsub(/\047/, "\047\047", value)
+      return value
+    }
+    /^CREATE ROLE / {
+      identifier = substr($0, 13)
+      sub(/;[[:space:]]*$/, "", identifier)
+      name = identifier
+      if (name ~ /^".*"$/) {
+        name = substr(name, 2, length(name) - 2)
+        gsub(/""/, "\"", name)
+      }
+      printf "DO $role$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = \047%s\047) THEN CREATE ROLE %s; END IF; END $role$;\n", sql_escape(name), identifier
+      next
+    }
+    { print }
+  ' "$source" > "$target" || die "生成幂等 PostgreSQL 全局对象脚本失败"
+}
+
 record_migration_status() {
   local user db schema
   user="$(env_value POSTGRES_USER)"; user="${user:-noj}"
@@ -336,8 +360,12 @@ restore_snapshot() {
   pg_db="$(env_value POSTGRES_DB)"; pg_db="${pg_db:-noj}"
   compose up -d --wait --wait-timeout 180 postgres redis minio || die "恢复前数据服务启动失败"
 
-  compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$pg_user" -d "$pg_db" < "$SNAPSHOT/postgres-globals.sql" \
+  VERIFY_TEMP="$(mktemp)"
+  prepare_idempotent_globals "$SNAPSHOT/postgres-globals.sql" "$VERIFY_TEMP"
+  compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$pg_user" -d "$pg_db" < "$VERIFY_TEMP" \
     || die "PostgreSQL 全局对象恢复失败"
+  rm -f "$VERIFY_TEMP"
+  VERIFY_TEMP=""
   compose exec -T postgres pg_restore --clean --if-exists --no-owner --exit-on-error \
     -U "$pg_user" -d "$pg_db" - < "$SNAPSHOT/postgres.dump" \
     || die "PostgreSQL 数据恢复失败"

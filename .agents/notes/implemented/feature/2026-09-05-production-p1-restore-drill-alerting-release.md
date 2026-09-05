@@ -10,8 +10,8 @@ Status: implemented
    next_step，文件校验成功不能证明业务可恢复。
 2. 监控配置缺少 Alertmanager 投递配置、core 抓取失联检测、备份新鲜度检测，API 错误率
    规则使用进程累计比例会稀释近期故障；Runbook 链接指向的锚点并不存在。
-3. release.yml 由 `release.published` 触发，CLI 又要求 Release 已含资产；发布可见但
-   构建/上传未完成时，安装器会选中不可安装的版本。
+3. release.yml 仅由 `release.prereleased` 触发，GitHub 草稿预发布转为可见时不会触发；
+   CLI 又要求 Release 已含资产；发布可见但构建/上传未完成时，安装器会选中不可安装的版本。
 
 ## Decision
 
@@ -31,9 +31,10 @@ Status: implemented
   `deploy/monitoring/README.md`、`scripts/deploy/test-alert.sh`（投递演练 +
   恢复通知）。Runbook（observability.md）改为带显式 `{#anchor}` 的小节，每个告警
   注解都能定位到处理步骤。
-- release.yml 改为 `prereleased` 触发并拒绝非预发布事件；正式镜像 tag 重试时若指向
-  不同构建则拒绝覆盖；新增 `publish-release` 任务在镜像/CLI/校验资产就绪后将预发布
-  转正。`install.sh resolve_latest_ref` 只选择非 draft、非 prerelease 且资产包含
+- release.yml 监听 `published` / `prereleased`，但仅让预发布 Release（或手动触发）进入
+  构建门禁；正式镜像 tag 重试时若指向不同构建则拒绝覆盖，CLI 资产上传使用
+  `--clobber`；新增 `publish-release` 任务在镜像/CLI/校验资产就绪后将预发布转正。
+  `install.sh resolve_latest_ref` 只选择非 draft、非 prerelease 且资产包含
   noj-cli 二进制与 .sha256 的 Release；无可选版本时给出明确提示。
 
 ## Alternatives considered
@@ -52,4 +53,4 @@ Status: implemented
 - 备份/演练新鲜度告警依赖 node_exporter textfile collector；未启用时不触发，
   `deploy/monitoring/README.md` 已记录该限制与启用方法。
 - 告警投递是否被真实接收仍需人工执行 `test-alert.sh` 并记录演练结果，脚本不能替代确认。
-- 发布流程多一步预发布操作；直接 published 不再触发构建（工作流内显式拒绝）。
+- 发布流程多一步预发布操作；直接 published 会被工作流接收但跳过构建（工作流内显式拒绝）。

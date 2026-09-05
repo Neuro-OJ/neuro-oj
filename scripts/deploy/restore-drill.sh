@@ -126,6 +126,30 @@ gpg_decrypt() {
     --decrypt --output "$2" "$1" >/dev/null 2>&1 || die "生产环境文件解密失败"
 }
 
+# pg_dumpall --globals-only 会包含 CREATE ROLE，而 Compose 启动的 PostgreSQL
+# 已经通过 POSTGRES_USER 创建了默认角色；恢复前将角色创建语句改为幂等形式。
+prepare_idempotent_globals() {
+  local source="$1" target="$2"
+  awk '
+    function sql_escape(value) {
+      gsub(/\047/, "\047\047", value)
+      return value
+    }
+    /^CREATE ROLE / {
+      identifier = substr($0, 13)
+      sub(/;[[:space:]]*$/, "", identifier)
+      name = identifier
+      if (name ~ /^".*"$/) {
+        name = substr(name, 2, length(name) - 2)
+        gsub(/""/, "\"", name)
+      }
+      printf "DO $role$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = \047%s\047) THEN CREATE ROLE %s; END IF; END $role$;\n", sql_escape(name), identifier
+      next
+    }
+    { print }
+  ' "$source" > "$target" || die "生成幂等 PostgreSQL 全局对象脚本失败"
+}
+
 compose() {
   local -a args=(compose --project-name "$PROJECT_NAME"
     --env-file "$COMPOSE_ENV_FILE"
@@ -287,7 +311,11 @@ prepare_compose_override() {
   STAGE="prepare-compose"
   cat > "$TEMP_DIR/compose.drill-override.yml" <<EOF
 # restore-drill 自动生成的隔离覆盖：独立子网，避免与生产 noj-net 冲突。
-services: {}
+services:
+  verifier:
+    image: denoland/deno:debian-2.9.5@sha256:5d46f925d213e9adaf18a0664b291fe973c91ba7b929572877610dcaaf09ee2b
+    networks:
+      - noj-net
 networks:
   noj-net:
     ipam:
@@ -310,8 +338,10 @@ restore_data_services() {
   compose run --rm minio-init >/dev/null 2>&1 || die "MinIO bucket 初始化失败"
 
   ok "恢复 PostgreSQL"
+  local globals_file="$TEMP_DIR/postgres-globals.sql"
+  prepare_idempotent_globals "$SNAPSHOT/postgres-globals.sql" "$globals_file"
   compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$pg_user" -d "$pg_db" \
-    < "$SNAPSHOT/postgres-globals.sql" || die "PostgreSQL 全局对象恢复失败"
+    < "$globals_file" || die "PostgreSQL 全局对象恢复失败"
   compose exec -T postgres pg_restore --clean --if-exists --no-owner --exit-on-error \
     -U "$pg_user" -d "$pg_db" - < "$SNAPSHOT/postgres.dump" ||
     die "PostgreSQL 数据恢复失败"
@@ -425,9 +455,9 @@ ensure_judge_images() {
   pg_db="$(env_value POSTGRES_DB)"; pg_db="${pg_db:-noj}"
 
   DRILL_EVALUATOR_IMAGE="$(compose exec -T postgres psql -U "$pg_user" -d "$pg_db" -Atqc \
-    "SELECT image FROM judge_images WHERE kind = 'evaluator' ORDER BY created_at LIMIT 1" 2>/dev/null | head -n 1 | tr -d '[:space:]')"
+    "SELECT image FROM judge_images WHERE kind = 'evaluator' ORDER BY CASE WHEN image LIKE '%noj-evaluator-python%' THEN 0 ELSE 1 END, created_at DESC LIMIT 1" 2>/dev/null | head -n 1 | tr -d '[:space:]')"
   DRILL_SOLUTION_IMAGE="$(compose exec -T postgres psql -U "$pg_user" -d "$pg_db" -Atqc \
-    "SELECT image FROM judge_images WHERE kind = 'solution' ORDER BY created_at LIMIT 1" 2>/dev/null | head -n 1 | tr -d '[:space:]')"
+    "SELECT image FROM judge_images WHERE kind = 'solution' ORDER BY CASE WHEN image LIKE '%noj-solution-python%' THEN 0 ELSE 1 END, created_at DESC LIMIT 1" 2>/dev/null | head -n 1 | tr -d '[:space:]')"
   [[ -n "$DRILL_EVALUATOR_IMAGE" ]] || die "judge_images 白名单缺少 evaluator 镜像"
   [[ -n "$DRILL_SOLUTION_IMAGE" ]] || die "judge_images 白名单缺少 solution 镜像"
   ok "评测镜像：evaluator=${DRILL_EVALUATOR_IMAGE} solution=${DRILL_SOLUTION_IMAGE}"
@@ -446,7 +476,7 @@ run_business_verification() {
   local status=0
   compose "${compose_args[@]}" \
     -v "$VERIFY_SCRIPT:/opt/verify.ts:ro" \
-    core deno run -A /opt/verify.ts 2>&1 | tee "$TEMP_DIR/verify-output.log" || status=$?
+    verifier deno run -A /opt/verify.ts 2>&1 | tee "$TEMP_DIR/verify-output.log" || status=$?
   ((status == 0)) || die "业务验收未通过"
 }
 
