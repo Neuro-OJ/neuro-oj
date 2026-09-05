@@ -103,6 +103,8 @@ const solutionMemoryLimitMb = ref(256)
 const llmEnabled = ref(false)
 const llmProviderId = ref("")
 const llmModel = ref("")
+const llmMaxCalls = ref("")
+const llmMaxTokens = ref("")
 const llmProviders = ref<{ id: string; name: string; base_url: string; model: string }[]>([])
 
 async function loadLlmProviders() {
@@ -239,11 +241,20 @@ async function loadProblem() {
       solutionMemoryLimitMb.value = rc.solution.memory_limit_mb
     }
     // 加载 LLM 配置
-    const llmConfig = (p as { llm_config?: { provider_id: string; model: string } | null }).llm_config
+    const llmConfig = (p as {
+      llm_config?: {
+        provider_id: string
+        model: string
+        max_calls?: number | null
+        max_tokens?: number | null
+      } | null
+    }).llm_config
     if (llmConfig) {
       llmEnabled.value = true
       llmProviderId.value = llmConfig.provider_id
       llmModel.value = llmConfig.model
+      llmMaxCalls.value = llmConfig.max_calls != null ? String(llmConfig.max_calls) : ""
+      llmMaxTokens.value = llmConfig.max_tokens != null ? String(llmConfig.max_tokens) : ""
     }
   } catch (err: unknown) {
     if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) {
@@ -286,6 +297,14 @@ function validate(): boolean {
     if (!llmProviderId.value.trim()) errors.llm_provider = "请选择 LLM Provider"
     if (!llmModel.value.trim()) errors.llm_model = "请输入模型名"
     if (!evaluatorNetworkEnabled.value) errors.evaluator_network = "启用 LLM 必须开启 Evaluator 联网"
+    const maxCalls = llmMaxCalls.value === "" ? null : Number(llmMaxCalls.value)
+    const maxTokens = llmMaxTokens.value === "" ? null : Number(llmMaxTokens.value)
+    if (maxCalls !== null && (!Number.isInteger(maxCalls) || maxCalls <= 0)) {
+      errors.llm_max_calls = "调用上限必须是正整数"
+    }
+    if (maxTokens !== null && (!Number.isInteger(maxTokens) || maxTokens <= 0)) {
+      errors.llm_max_tokens = "token 上限必须是正整数"
+    }
   }
   fieldErrors.value = errors
   return Object.keys(errors).length === 0
@@ -310,8 +329,15 @@ async function handleSubmit() {
         memory_limit_mb: solutionMemoryLimitMb.value,
       },
     }
+    const llmMaxCallsNum = llmMaxCalls.value === "" ? null : Number(llmMaxCalls.value)
+    const llmMaxTokensNum = llmMaxTokens.value === "" ? null : Number(llmMaxTokens.value)
     const llmPayload = llmEnabled.value
-      ? { provider_id: llmProviderId.value.trim(), model: llmModel.value.trim() }
+      ? {
+          provider_id: llmProviderId.value.trim(),
+          model: llmModel.value.trim(),
+          ...(llmMaxCallsNum !== null ? { max_calls: llmMaxCallsNum } : {}),
+          ...(llmMaxTokensNum !== null ? { max_tokens: llmMaxTokensNum } : {}),
+        }
       : null
     const submissionModePayload = submissionMode.value
     const artifactMaxSizePayload = artifactMaxSizeMb.value
@@ -543,6 +569,30 @@ async function handleSubmit() {
                   <label class="text-xs font-semibold text-text">模型 <span class="text-red-600">*</span></label>
                   <input v-model="llmModel" class="px-2.5 py-1.5 text-sm border border-border rounded-md outline-none focus:border-signal bg-white" placeholder="如：qwen-plus" />
                   <p v-if="fieldErrors.llm_model" class="text-xs text-red-600">{{ fieldErrors.llm_model }}</p>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div class="flex flex-col gap-1">
+                    <label class="text-xs font-semibold text-text">调用上限</label>
+                    <input
+                      v-model="llmMaxCalls"
+                      type="number"
+                      min="1"
+                      class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white"
+                      placeholder="留空使用平台默认"
+                    />
+                    <p v-if="fieldErrors.llm_max_calls" class="text-xs text-red-600">{{ fieldErrors.llm_max_calls }}</p>
+                  </div>
+                  <div class="flex flex-col gap-1">
+                    <label class="text-xs font-semibold text-text">Token 上限</label>
+                    <input
+                      v-model="llmMaxTokens"
+                      type="number"
+                      min="1"
+                      class="px-2.5 py-1.5 text-sm border border-border rounded-md bg-white"
+                      placeholder="留空使用平台默认"
+                    />
+                    <p v-if="fieldErrors.llm_max_tokens" class="text-xs text-red-600">{{ fieldErrors.llm_max_tokens }}</p>
+                  </div>
                 </div>
                 <div class="px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
                   <p class="font-semibold mb-1 flex items-center gap-1.5"><UIcon name="i-lucide-triangle-alert" class="size-3.5" />启用 LLM 调用必须开启 Evaluator 联网</p>
