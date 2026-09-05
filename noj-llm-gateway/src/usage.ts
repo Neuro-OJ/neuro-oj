@@ -15,6 +15,9 @@ export interface UsageEntry {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  cached_prompt_tokens?: number;
+  billed_prompt_tokens?: number;
+  billed_total_tokens?: number;
   estimated_cost: number;
   latency_ms: number;
   status: string;
@@ -29,7 +32,8 @@ export async function recordUsage(db: Db, entry: UsageEntry): Promise<void> {
     INSERT INTO llm_usage (
       id, submission_id, problem_id, user_id, provider_id, model,
       request_messages, request_params, prompt_tokens, completion_tokens,
-      total_tokens, estimated_cost, latency_ms, status, error_code,
+      total_tokens, cached_prompt_tokens, billed_prompt_tokens,
+      billed_total_tokens, estimated_cost, latency_ms, status, error_code,
       prompt_hash, created_at
     ) VALUES (
       ${entry.id}, ${entry.submission_id}, ${entry.problem_id}, ${entry.user_id},
@@ -37,7 +41,9 @@ export async function recordUsage(db: Db, entry: UsageEntry): Promise<void> {
     JSON.stringify(entry.request_messages)
   },
       ${JSON.stringify(entry.request_params)}, ${entry.prompt_tokens},
-      ${entry.completion_tokens}, ${entry.total_tokens}, ${entry.estimated_cost},
+      ${entry.completion_tokens}, ${entry.total_tokens},
+      ${entry.cached_prompt_tokens ?? 0}, ${entry.billed_prompt_tokens ?? 0},
+      ${entry.billed_total_tokens ?? 0}, ${entry.estimated_cost},
       ${entry.latency_ms}, ${entry.status}, ${entry.error_code ?? null},
       ${entry.prompt_hash}, ${entry.created_at}
     )
