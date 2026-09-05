@@ -19,9 +19,14 @@ Status: implemented
 **#427**
 
 1. 修复 `register.vue` 的 `sent` 作用域 bug（提升到 `handleRegister` 顶层声明）。
-2. 新增 `noj-ui` task `check:types:nuxt`：`nuxt prepare` + 显式
-   `vue-tsc --noEmit`。不用 `nuxt typecheck` —— 实测其在 Deno（nodeModulesDir
-   auto）下会静默跳过 vue-tsc（故意还原 bug 仍退出 0），门禁形同虚设。
+2. 新增 `noj-ui` task `check:types:nuxt`：`nuxt typecheck`（负责生成 .nuxt
+   类型上下文）+ 显式 `vue-tsc --noEmit`（负责检查）。两个 Nuxt CLI 命令在
+   Deno（nodeModulesDir auto）下各有缺陷，实测：
+   - `nuxt prepare` 的类型生成静默缺失（`.nuxt/tsconfig.json` 等不会生成，
+     vue-tsc 退回默认编译选项，CI 上报出数千个假错误）；
+   - `nuxt typecheck` 内部启动的 vue-tsc 会静默跳过（故意还原 bug 仍退出 0），
+     但类型生成正常。
+   因此拆为「typecheck 生成 + 显式 vue-tsc 检查」两步，缺一不可。
 3. `noj-ui/tsconfig.json` 排除 `tests/`：Deno 测试由既有 `deno check` 负责，
    不属于 Nuxt 类型上下文。
 4. 清零存量 244 个类型错误（56 文件），全部为最小类型修复，不改运行行为：
