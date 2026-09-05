@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
   BadRequestError,
@@ -13,7 +13,7 @@ import type {
 } from "./../types/contests.ts";
 import { getContest, isParticipant } from "./contests.ts";
 import { contestRankingSnapshots } from "../../../shared/db/schema.ts";
-import { desc, eq } from "drizzle-orm";
+import { logAudit } from "../../system/index.ts";
 
 export async function publishContestRankingSnapshot(
   contestId: string,
@@ -25,24 +25,38 @@ export async function publishContestRankingSnapshot(
   const contest = await getContest(contestId);
   const db = getDb();
   const rows = await getKaggleRanking(contestId);
-  const [latest] = await db.select({ version: contestRankingSnapshots.version })
-    .from(contestRankingSnapshots).where(
-      eq(contestRankingSnapshots.contest_id, contestId),
-    )
-    .orderBy(desc(contestRankingSnapshots.version)).limit(1);
-  const version = (latest?.version ?? 0) + 1;
   const created_at = new Date().toISOString();
   const id = crypto.randomUUID();
-  await db.insert(contestRankingSnapshots).values({
-    id,
-    contest_id: contest.id,
-    version,
-    status: "published",
-    note,
-    rows,
-    created_by: actorId,
-    created_at,
+  const version = await db.transaction(async (tx) => {
+    // 锁定竞赛行，串行化同一竞赛的版本分配，避免 max(version)+1 竞态。
+    await tx.execute(
+      sql`SELECT id FROM contests WHERE id = ${contestId} FOR UPDATE`,
+    );
+    const [latest] = await tx.select({
+      version: contestRankingSnapshots.version,
+    })
+      .from(contestRankingSnapshots)
+      .where(eq(contestRankingSnapshots.contest_id, contestId))
+      .orderBy(desc(contestRankingSnapshots.version)).limit(1);
+    const nextVersion = (latest?.version ?? 0) + 1;
+    await tx.insert(contestRankingSnapshots).values({
+      id,
+      contest_id: contest.id,
+      version: nextVersion,
+      status: "published",
+      note,
+      rows,
+      created_by: actorId,
+      created_at,
+    });
+    return nextVersion;
   });
+  await logAudit("contest.ranking_snapshot", {
+    action: "contest.ranking_snapshot",
+    contest_id: contestId,
+    version,
+    note,
+  }, { type: "contest", id: contestId });
   return { id, version, rows, created_at };
 }
 

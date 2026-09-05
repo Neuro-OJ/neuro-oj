@@ -74,10 +74,18 @@ router.get("/problems/:id/preflight", async (c) => {
     packageBytes ? "支持包可读取" : "缺少支持包",
   );
 
+  const packageDigest = packageBytes
+    ? await crypto.subtle.digest("SHA-256", packageBytes.slice().buffer)
+    : null;
+  const packageFingerprint = packageDigest
+    ? Array.from(new Uint8Array(packageDigest)).map((byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join("")
+    : null;
   const fingerprintInput = JSON.stringify({
     problem,
     template,
-    package: packageBytes ? Array.from(packageBytes) : null,
+    package: packageFingerprint,
   });
   const digest = await crypto.subtle.digest(
     "SHA-256",

@@ -237,8 +237,13 @@ async function publishSnapshot(contest: Contest) {
   }
 }
 
-function exportSnapshot(contest: Contest) {
-  window.location.assign(`/api/v1/admin/contests/${contest.public_id || contest.id}/ranking-snapshots/latest.csv`)
+async function exportSnapshot(contest: Contest) {
+  try {
+    await api.get(`/api/v1/admin/contests/${contest.public_id || contest.id}/ranking-snapshots/latest`, { silent: true })
+    window.location.assign(`/api/v1/admin/contests/${contest.public_id || contest.id}/ranking-snapshots/latest.csv`)
+  } catch (err: unknown) {
+    toast.error(extractApiError(err).message)
+  }
 }
 
 interface Participant {

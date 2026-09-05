@@ -470,6 +470,13 @@
       "when": 1788609216144,
       "tag": "0066_blue_betty_brant",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1788618762551,
+      "tag": "0067_right_colonel_america",
+      "breakpoints": true
     }
   ]
 }

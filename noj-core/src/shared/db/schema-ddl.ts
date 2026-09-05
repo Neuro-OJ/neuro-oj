@@ -404,7 +404,8 @@ export const SCHEMA_DDL: string[] = [
       'community.sanction_created','community.sanction_revoked','community.preset_applied',
       'announcement.create','announcement.update','announcement.delete',
       -- issue #413 内容合规审核动作
-      'review.queued','review.rejected','review.resolved')
+      'review.queued','review.rejected','review.resolved',
+      'contest.ranking_snapshot')
     ))
   `,
 

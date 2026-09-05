@@ -167,7 +167,15 @@ router.get("/contests/:id/submissions", async (c) => {
 /** 发布不可变的正式成绩快照；重复请求会生成同分的新版本并保留审计说明。 */
 router.post("/contests/:id/ranking-snapshots", async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
-  const body = await parseJsonBody<{ note?: string }>(c);
+  const rawBody = await c.req.text();
+  let body: { note?: string } = {};
+  if (rawBody.trim()) {
+    try {
+      body = JSON.parse(rawBody) as { note?: string };
+    } catch {
+      throw new BadRequestError("请求体格式错误：需要有效的 JSON");
+    }
+  }
   const data = await publishContestRankingSnapshot(
     contestId,
     c.get("userId"),
@@ -211,7 +219,8 @@ router.get("/contests/:id/ranking-snapshots/latest.csv", async (c) => {
 });
 
 function csvCell(value: unknown): string {
-  const text = String(value ?? "");
+  let text = String(value ?? "");
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
