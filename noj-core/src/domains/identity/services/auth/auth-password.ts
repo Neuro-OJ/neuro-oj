@@ -118,6 +118,7 @@ export async function changePassword(
     is_admin: isAdmin,
     has_local_password: true,
     must_change_password: false,
+    email_verified: user.email_verified,
     active_ban: null,
     avatar_url: user.avatar_url ?? null,
     tfa_enabled: user.tfa_enabled,

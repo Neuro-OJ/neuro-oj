@@ -120,6 +120,15 @@ Deno.test({
     }
     const { createApp } = await import("../../../../app.ts");
     const app = createApp();
+    const now = new Date().toISOString();
+    await getDb().insert(users).values({
+      id: "u1",
+      username: `blacklist-user-${TEST_TS}`,
+      email: `blacklist-user-${TEST_TS}@noj.local`,
+      password_hash: "x",
+      created_at: now,
+      updated_at: now,
+    });
     const token = await signToken({ sub: "u1", role: "user" });
     const res = await jsonRequest(app, "/api/v1/admin/blacklist", {
       method: "POST",

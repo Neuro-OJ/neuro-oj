@@ -11,6 +11,7 @@ export interface AuthEnv {
     userId: string;
     userRole: string;
     mustChangePassword: boolean;
+    emailVerified: boolean;
     jti?: string;
   };
 }
@@ -21,6 +22,7 @@ export interface OptionalAuthEnv {
     userId?: string;
     userRole?: string;
     mustChangePassword?: boolean;
+    emailVerified?: boolean;
     jti?: string;
   };
 }

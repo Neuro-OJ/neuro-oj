@@ -13,6 +13,10 @@ Deno.test("schema: users table has correct columns", () => {
   assertEquals(columns.includes("id"), true);
   assertEquals(columns.includes("username"), true);
   assertEquals(columns.includes("email"), true);
+  assertEquals(columns.includes("email_verified"), true);
+  assertEquals(columns.includes("email_verify_token"), true);
+  assertEquals(columns.includes("email_verify_expires_at"), true);
+  assertEquals(columns.includes("deleted_at"), true);
   assertEquals(columns.includes("password_hash"), true);
   assertEquals(columns.includes("password_hash"), true);
   assertEquals(columns.includes("created_at"), true);
@@ -23,9 +27,13 @@ Deno.test("schema: users columns have correct constraints", () => {
   assertEquals(users.id.primary, true); // PRIMARY KEY
   assertEquals(users.id.notNull, true);
   assertEquals(users.username.notNull, true);
-  assertEquals(users.username.isUnique, true); // UNIQUE
+  // 注销用户统一匿名为“已注销用户”，因此唯一性由仅覆盖活跃账号的部分索引保证。
+  assertEquals(users.username.isUnique, false);
   assertEquals(users.email.notNull, true);
   assertEquals(users.email.isUnique, true); // UNIQUE
+  assertEquals(users.email_verified.notNull, true);
+  assertEquals(users.email_verified.hasDefault, true);
+  assertEquals(users.email_verified.default, true);
   assertEquals(users.password_hash.notNull, false);
   assertEquals(users.created_at.notNull, true);
   assertEquals(users.updated_at.notNull, true);

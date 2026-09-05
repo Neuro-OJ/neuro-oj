@@ -6,6 +6,7 @@ import {
   pgTable,
   text,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { manyToManyPk, tsvector } from "./common.ts";
@@ -18,8 +19,14 @@ export const users = pgTable(
   "users",
   {
     id: text("id").primaryKey(),
-    username: text("username").notNull().unique(),
+    username: text("username").notNull(),
     email: text("email").notNull().unique(),
+    /** 本地注册邮箱是否已完成验证；历史账户迁移时默认为 true。 */
+    email_verified: boolean("email_verified").notNull().default(true),
+    /** 当前验证链接的 SHA-256 哈希；不保存明文令牌。 */
+    email_verify_token: text("email_verify_token"),
+    /** 当前验证链接的过期时间（ISO 8601）。 */
+    email_verify_expires_at: text("email_verify_expires_at"),
     /** 本地密码 bcrypt 哈希；OAuth 新用户在补设密码前为 NULL */
     password_hash: text("password_hash"),
     /** 个人简介（Markdown 格式） */
@@ -42,12 +49,17 @@ export const users = pgTable(
     tfa_secret_encrypted: text("tfa_secret_encrypted"),
     /** 是否已启用 TFA 二次验证 */
     tfa_enabled: boolean("tfa_enabled").notNull().default(false),
+    /** 软删除时间；非 NULL 用户不得再登录，公开内容显示为已注销用户。 */
+    deleted_at: text("deleted_at"),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at").notNull(),
     /** tsvector 列，GENERATED 自动维护 */
     searchVector: tsvector("search_vector"),
   },
   (table) => ({
+    activeUsernameUnique: uniqueIndex("users_active_username_unique")
+      .on(table.username)
+      .where(sql`${table.deleted_at} IS NULL`),
     searchVectorIdx: index("idx_users_search_vector").using(
       "gin",
       table.searchVector,

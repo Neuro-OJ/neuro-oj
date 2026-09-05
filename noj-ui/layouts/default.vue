@@ -32,6 +32,7 @@ onUnmounted(() => {
         <Navbar />
         <BanBanner v-if="ipBanned" type="ip" :ip-info="ipBanInfo" />
         <BanBanner v-if="userBanned" type="user" :user-info="userBanInfo" />
+        <EmailVerificationBanner />
         <div class="flex flex-1 min-h-[calc(100vh-var(--header-h))] w-full pt-(--header-h)">
             <main id="main" class="flex-1 min-w-0 w-full">
                 <slot />

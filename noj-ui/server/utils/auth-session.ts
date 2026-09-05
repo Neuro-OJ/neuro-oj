@@ -13,6 +13,7 @@ export interface AuthSessionUser {
   /** 用户头像存储地址；null 表示用户明确没有自定义头像。 */
   avatar_url?: string | null;
   must_change_password?: boolean;
+  email_verified?: boolean;
   has_local_password?: boolean;
   tfa_enabled?: boolean;
   /** 核心 API 按 admin:full_access 权限实时计算的管理员标记。 */
@@ -55,6 +56,7 @@ export function parseAuthSession(data: unknown): AuthSession | null {
     typeof rawUser.is_admin !== 'boolean' ||
     !isOptionalStringOrNull(rawUser.avatar_url) ||
     !isOptionalBoolean(rawUser.must_change_password) ||
+    !isOptionalBoolean(rawUser.email_verified) ||
     !isOptionalBoolean(rawUser.has_local_password) ||
     !isOptionalBoolean(rawUser.tfa_enabled)
   ) {
@@ -74,6 +76,7 @@ export function parseAuthSession(data: unknown): AuthSession | null {
       email: rawUser.email,
       ...(rawUser.avatar_url === undefined ? {} : { avatar_url: rawUser.avatar_url }),
       must_change_password: rawUser.must_change_password,
+      ...(rawUser.email_verified === undefined ? {} : { email_verified: rawUser.email_verified }),
       ...(rawUser.has_local_password === undefined ? {} : { has_local_password: rawUser.has_local_password }),
       tfa_enabled: rawUser.tfa_enabled,
       is_admin: rawUser.is_admin,

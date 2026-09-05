@@ -9,7 +9,7 @@
  *   TENCENT_REGION（默认 ap-guangzhou）
  */
 
-import type { SendPasswordResetEmail } from "./types.ts";
+import type { SendEmail, SendPasswordResetEmail } from "./types.ts";
 import { getSetting } from "../system-settings.ts";
 import { buildResetPasswordHtml, getSettingOrThrow } from "./common.ts";
 
@@ -20,11 +20,7 @@ import { buildResetPasswordHtml, getSettingOrThrow } from "./common.ts";
  * @param resetLink - 完整的密码重置链接（含 token）
  * @param expiresInMinutes - 过期时间（分钟），用于邮件正文展示
  */
-export const sendPasswordResetEmail: SendPasswordResetEmail = async (
-  email: string,
-  resetLink: string,
-  _expiresInMinutes = 15,
-) => {
+export const sendEmail: SendEmail = async (email, subject, html) => {
   const secretId = getSettingOrThrow("tencent_secret_id", "腾讯云 SecretId");
   const secretKey = getSettingOrThrow("tencent_secret_key", "腾讯云 SecretKey");
   const fromEmail = getSettingOrThrow("tencent_from_email", "腾讯云发信地址");
@@ -47,15 +43,25 @@ export const sendPasswordResetEmail: SendPasswordResetEmail = async (
     },
   });
 
-  // 邮件正文 HTML
-  const html = buildResetPasswordHtml(resetLink, _expiresInMinutes);
-
   await client.SendEmail({
     FromEmailAddress: fromEmail,
     Destination: [email],
-    Subject: "重置您的 Neuro OJ 密码",
+    Subject: subject,
     Simple: {
       Html: btoa(html),
     },
   });
+  return true;
+};
+
+export const sendPasswordResetEmail: SendPasswordResetEmail = async (
+  email,
+  resetLink,
+  expiresInMinutes = 15,
+) => {
+  await sendEmail(
+    email,
+    "重置您的 Neuro OJ 密码",
+    buildResetPasswordHtml(resetLink, expiresInMinutes),
+  );
 };

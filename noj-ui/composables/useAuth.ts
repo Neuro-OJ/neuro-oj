@@ -7,6 +7,7 @@ interface UserResponse {
   role: string;
   is_admin: boolean;
   must_change_password: boolean;
+  email_verified: boolean;
   has_local_password: boolean;
   tfa_enabled?: boolean;
   avatar_url?: string | null;
@@ -23,6 +24,7 @@ interface SessionData {
   avatar_url?: string | null;
   is_admin: boolean;
   must_change_password: boolean;
+  email_verified?: boolean;
   has_local_password?: boolean;
   tfa_enabled?: boolean;
 }
@@ -36,6 +38,7 @@ function sessionToUser(session: SessionData): UserResponse {
     ...(session.avatar_url === undefined ? {} : { avatar_url: session.avatar_url }),
     is_admin: session.is_admin ?? session.role === 'admin',
     must_change_password: session.must_change_password ?? false,
+    email_verified: session.email_verified ?? true,
     has_local_password: session.has_local_password ?? true,
     tfa_enabled: session.tfa_enabled ?? false,
     created_at: '',
@@ -105,9 +108,14 @@ export function useAuth() {
   }
 
   async function register(username: string, email: string, password: string) {
-    await api.post('/api/v1/auth/register', { username, email, password }, {
+    const res = await api.post<{ data: { email_verification_sent: boolean } }>('/api/v1/auth/register', {
+      username,
+      email,
+      password,
+    }, {
       silent: true,
     });
+    return res.data.email_verification_sent;
   }
 
   /**
@@ -128,6 +136,20 @@ export function useAuth() {
       { token, new_password: newPassword },
       { silent: true },
     );
+  }
+
+  async function verifyEmail(token: string) {
+    await api.post('/api/v1/auth/email/verify', { token }, { silent: true });
+    await fetchUser();
+  }
+
+  async function resendEmailVerification() {
+    await api.post('/api/v1/auth/email/resend', undefined, { silent: true });
+  }
+
+  async function deleteAccount(password: string) {
+    await api.post('/api/v1/users/me/delete-account', { password }, { silent: true });
+    await logout();
   }
 
   async function getOAuthProviders() {
@@ -235,6 +257,9 @@ export function useAuth() {
     logout,
     forgotPassword,
     resetPassword,
+    verifyEmail,
+    resendEmailVerification,
+    deleteAccount,
     getOAuthProviders,
     setPassword,
     getLinkedOAuthAccounts,

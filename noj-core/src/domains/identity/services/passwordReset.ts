@@ -64,7 +64,7 @@ export async function requestReset(
   const userRows = await db
     .select({ id: users.id, username: users.username })
     .from(users)
-    .where(eq(users.email, email))
+    .where(and(eq(users.email, email), isNull(users.deleted_at)))
     .limit(1);
 
   if (userRows.length === 0) {

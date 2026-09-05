@@ -89,6 +89,17 @@ Deno.test('parseAuthSession: 兼容缺少头像字段的旧响应', () => {
   assertEquals(parseAuthSession(validResponse)?.user.avatar_url, undefined);
 });
 
+Deno.test('parseAuthSession: 保留邮箱验证状态并兼容旧响应', () => {
+  const response = {
+    data: {
+      ...validResponse.data,
+      user: { ...validResponse.data.user, email_verified: false },
+    },
+  };
+  assertEquals(parseAuthSession(response)?.user.email_verified, false);
+  assertEquals(parseAuthSession(validResponse)?.user.email_verified, undefined);
+});
+
 Deno.test('parseAuthSession: 头像字段类型错误时返回 null', () => {
   const response = {
     data: {

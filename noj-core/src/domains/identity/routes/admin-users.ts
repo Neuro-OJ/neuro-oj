@@ -14,6 +14,7 @@ import {
   unbanUser,
 } from "../services/users.ts";
 import { updateUserRoles } from "../services/admin-roles.ts";
+import { adminDeleteAccount } from "../services/account-deletion.ts";
 
 /**
  * 管理端用户管理路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。
@@ -140,6 +141,17 @@ router.get("/users/:id/bans", async (c) => {
   const targetUserId = await resolveUserId(c.req.param("id") as string);
   const records = await getUserBanHistory(targetUserId);
   return c.json({ data: records }, 200);
+});
+
+/** 管理员注销用户；固定确认词降低误操作风险。 */
+router.delete("/users/:id", async (c) => {
+  const body = await parseJsonBody<{ confirmation?: string }>(c);
+  if (body.confirmation !== "DELETE") {
+    throw new ValidationError("请输入确认词 DELETE");
+  }
+  const targetUserId = await resolveUserId(c.req.param("id") as string);
+  await adminDeleteAccount(targetUserId, c.get("userId"));
+  return c.body(null, 204);
 });
 
 export default router;

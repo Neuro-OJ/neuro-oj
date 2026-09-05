@@ -29,6 +29,11 @@ export const PASSWORD_RESET_EMAIL_LIMIT: RateLimitConfig = {
   max: 10,
 };
 
+export const EMAIL_VERIFICATION_RESEND_LIMIT: RateLimitConfig = {
+  windowSec: 60,
+  max: 1,
+};
+
 export const MESSAGE_SEND_LIMIT: RateLimitConfig = {
   windowSec: 60,
   max: 60,
@@ -189,6 +194,21 @@ export async function enforcePasswordResetEmailRateLimit(
   await enforceRateLimit(
     `password-reset:email:${email}`,
     PASSWORD_RESET_EMAIL_LIMIT,
+  );
+}
+
+/** 验证邮件重发：IP 与用户双维度，且无论账号状态都先计数以防枚举。 */
+export async function enforceEmailVerificationResendRateLimit(
+  c: Context,
+  userId: string,
+): Promise<void> {
+  await enforceRateLimit(
+    `email-verification:ip:${getClientIp(c)}`,
+    EMAIL_VERIFICATION_RESEND_LIMIT,
+  );
+  await enforceRateLimit(
+    `email-verification:user:${userId}`,
+    EMAIL_VERIFICATION_RESEND_LIMIT,
   );
 }
 

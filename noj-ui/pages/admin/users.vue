@@ -26,6 +26,7 @@ interface User {
   active_ban: { reason: string; banned_until: string | null; scope?: "platform" | "social" | null } | null
   created_at: string
   updated_at: string
+  deleted_at?: string | null
 }
 
 // 自动轮询间隔（默认 30s，可由刷新控制条切换/关闭；封禁到期 badge 随刷新自动消失）
@@ -243,6 +244,24 @@ async function showBanHistory(user: User) {
   }
 }
 
+async function confirmDeleteUser(user: User) {
+  const confirmed = await dialog.confirm(
+    `注销 ${user.username} 后，该用户将无法登录，公开内容会匿名保留。此操作不可恢复。`,
+    { title: "二次确认注销用户", confirmText: "确认注销", danger: true },
+  )
+  if (!confirmed) return
+  try {
+    await api.delete(`/api/v1/admin/users/${user.id}`, {
+      body: { confirmation: "DELETE" },
+      silent: true,
+    })
+    toast.success(`已注销 ${user.username}`)
+    await reloadAfterMutation()
+  } catch (error: unknown) {
+    toast.error(extractApiError(error).message)
+  }
+}
+
 </script>
 
 <template>
@@ -284,6 +303,10 @@ async function showBanHistory(user: User) {
           </span>
           <!-- user-ban-table：封禁 badge -->
           <span
+            v-if="row.original.deleted_at"
+            class="inline-flex items-center px-2 py-[3px] rounded text-xs font-semibold bg-gray-100 text-text-muted"
+          >已注销</span>
+          <span
             v-if="row.original.active_ban"
             class="inline-flex items-center px-2 py-[3px] rounded text-xs font-semibold bg-red-50 text-error-text"
             :title="row.original.active_ban.banned_until ? `至 ${row.original.active_ban.banned_until} 解封` : '永久封禁'"
@@ -296,6 +319,7 @@ async function showBanHistory(user: User) {
       <template #actions-cell="{ row }">
         <div class="flex items-center gap-1.5">
           <button
+            v-if="!row.original.deleted_at"
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-info-text text-info-text bg-transparent hover:bg-info-text hover:text-white"
             @click="confirmRoleSwitch(row.original)"
           >
@@ -303,7 +327,7 @@ async function showBanHistory(user: User) {
           </button>
           <!-- user-ban-table：封禁 / 解封 / 历史按钮 -->
           <button
-            v-if="!row.original.active_ban"
+            v-if="!row.original.deleted_at && !row.original.active_ban"
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-error-text text-error-text bg-transparent hover:bg-error-text hover:text-white"
             :disabled="banning"
             @click="confirmBan(row.original)"
@@ -311,7 +335,7 @@ async function showBanHistory(user: User) {
             封禁
           </button>
           <button
-            v-else
+            v-else-if="!row.original.deleted_at"
             class="px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all duration-150 border-[1.5px] border-info-text text-info-text bg-transparent hover:bg-info-text hover:text-white"
             :disabled="banning"
             @click="confirmUnban(row.original)"
@@ -320,6 +344,9 @@ async function showBanHistory(user: User) {
           </button>
           <UButton color="neutral" variant="outline" size="sm" class="py-1 border-border text-text-secondary hover:bg-page hover:text-text" @click="showBanHistory(row.original)">
             历史
+          </UButton>
+          <UButton v-if="!row.original.deleted_at" color="error" variant="outline" size="sm" @click="confirmDeleteUser(row.original)">
+            注销
           </UButton>
         </div>
       </template>

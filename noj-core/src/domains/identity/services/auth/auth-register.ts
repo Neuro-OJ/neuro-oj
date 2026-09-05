@@ -86,6 +86,7 @@ export function toUserResponse(
     is_admin: options?.isAdmin ?? false,
     has_local_password: row.password_hash !== null,
     must_change_password: row.must_change_password,
+    email_verified: row.email_verified,
     active_ban: options?.activeBan ?? null,
     avatar_url: row.avatar_url ?? null,
     tfa_enabled: row.tfa_enabled,
@@ -196,6 +197,7 @@ export async function registerUser(
       username: input.username,
       email: input.email,
       password_hash: passwordHash,
+      email_verified: false,
       created_at: now,
       updated_at: now,
     });
@@ -241,6 +243,7 @@ export async function registerUser(
     is_admin: isFirstRealUser,
     has_local_password: true,
     must_change_password: false,
+    email_verified: false,
     active_ban: null,
     avatar_url: null,
     tfa_enabled: false,

@@ -36,3 +36,15 @@ export function buildResetPasswordHtml(
     `<p>此链接 ${expiresInMinutes} 分钟内有效。如非您本人操作，请忽略此邮件。</p>`,
   ].join("\n");
 }
+
+/** 构建邮箱验证邮件 HTML 正文。 */
+export function buildEmailVerificationHtml(
+  verifyLink: string,
+  expiresInMinutes: number,
+): string {
+  return [
+    `<p>欢迎注册 Neuro OJ。</p>`,
+    `<p><a href="${verifyLink}">点击此处验证邮箱</a></p>`,
+    `<p>此链接 ${expiresInMinutes} 分钟内有效。如非您本人操作，请忽略此邮件。</p>`,
+  ].join("\n");
+}

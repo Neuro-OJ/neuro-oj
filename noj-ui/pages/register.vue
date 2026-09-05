@@ -192,7 +192,7 @@ async function handleRegister() {
     loading.value = true
     try {
         // 先注册
-        await auth.register(form.username.trim(), form.email.trim(), form.password)
+        const sent = await auth.register(form.username.trim(), form.email.trim(), form.password)
     } catch (e: unknown) {
         setError(extractApiError(e).message)
         loading.value = false
@@ -202,7 +202,7 @@ async function handleRegister() {
     // 注册成功后自动登录
     try {
         await auth.login(form.username.trim(), form.password)
-        router.replace("/")
+        router.replace(`/verify-email?registered=1&sent=${sent ? "1" : "0"}`)
     } catch {
         // 注册成功但登录失败 → 引导用户手动登录
         router.replace("/login?registered=1")

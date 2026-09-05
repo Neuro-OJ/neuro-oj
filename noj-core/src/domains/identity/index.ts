@@ -3,6 +3,8 @@ export * from "./services/users.ts";
 export * from "./services/oauth.ts";
 export * from "./services/tfa.ts";
 export * from "./services/passwordReset.ts";
+export * from "./services/email-verification.ts";
+export * from "./services/account-deletion.ts";
 export * from "./services/banlist.ts";
 export * from "./services/checkin.ts";
 export * from "./services/security/permissions.ts";

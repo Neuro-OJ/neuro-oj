@@ -39,6 +39,7 @@ export async function searchUsers(
       and(
         sql`${users.username} ILIKE ${`%${query}%`}`,
         sql`${users.id} <> '0'`, // 排除 root
+        sql`${users.deleted_at} IS NULL`,
       ),
     )
     .limit(limit);
