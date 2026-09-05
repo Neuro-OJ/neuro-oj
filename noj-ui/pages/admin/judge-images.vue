@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+
 import { useToast } from "~/composables/useToast"
 import { extractApiError } from '~/utils/apiError'
 
@@ -29,7 +31,7 @@ const tableError = ref("")
 const { toast } = useToast()
 let requestVersion = 0
 
-const columns = [
+const columns: TableColumn<JudgeImage>[] = [
   { accessorKey: "image", header: "镜像名" },
   {
     accessorKey: "mode",

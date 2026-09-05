@@ -139,7 +139,7 @@ function measureAndFit() {
   let best = 0
   let sum = 0
   for (let i = 0; i < widths.length; i++) {
-    sum += widths[i]
+    sum += widths[i] ?? 0
     if (i === widths.length - 1) {
       if (sum <= containerWidth) best = i + 1
     } else if (sum + moreWidth <= containerWidth) {

@@ -32,10 +32,10 @@ export function useToast(): UseToastResult {
   };
 
   const toast: ToastMethods = {
-    success: (msg) => push({ title: msg, color: 'success', icon: ICONS.success, timeout: 3000 }),
-    error: (msg) => push({ title: msg, color: 'error', icon: ICONS.error, timeout: 5000 }),
-    warn: (msg) => push({ title: msg, color: 'warning', icon: ICONS.warn, timeout: 3000 }),
-    info: (msg) => push({ title: msg, color: 'info', icon: ICONS.info, timeout: 2000 }),
+    success: (msg) => push({ title: msg, color: 'success', icon: ICONS.success, duration: 3000 }),
+    error: (msg) => push({ title: msg, color: 'error', icon: ICONS.error, duration: 5000 }),
+    warn: (msg) => push({ title: msg, color: 'warning', icon: ICONS.warn, duration: 3000 }),
+    info: (msg) => push({ title: msg, color: 'info', icon: ICONS.info, duration: 2000 }),
   };
 
   function showToast(type: ToastType, message: string) {

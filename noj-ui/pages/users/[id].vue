@@ -155,7 +155,7 @@ interface TrainingProfile {
 
 const { data: trainingsData } = useFetch<{ data: TrainingProfile[]; total: number }>(
   `/api/v1/trainings?created_by=${userId}`,
-  { query: { page: 1, per_page: 100 }, silent: true },
+  { query: { page: 1, per_page: 100 } },
 )
 const profileTrainings = computed(() => trainingsData.value?.data ?? [])
 

@@ -189,7 +189,8 @@ const publishBlockReason = computed(() => {
         <UButton color="primary" variant="outline" to="/problems">返回题目列表</UButton>
       </template>
 
-      <div class="max-w-4xl mx-auto p-6 space-y-6">
+      <!-- v-if="problem"：与 AsyncContent 的 'data' 状态等价，同时让模板对 problem 做类型收窄 -->
+      <div v-if="problem" class="max-w-4xl mx-auto p-6 space-y-6">
       <!-- 题目信息卡片 -->
       <div class="bg-white border border-border rounded-xl overflow-hidden">
         <div class="px-7 py-6 pb-5 border-b border-border">
@@ -323,7 +324,7 @@ const publishBlockReason = computed(() => {
               type="file"
               accept=".zip,application/zip,application/x-zip-compressed"
               class="block w-full text-sm text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-signal file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-signal/80"
-              @change="(e) => artifactFile = (e.target as HTMLInputElement).files?.[0] ?? null"
+              @change="(e: Event) => artifactFile = (e.target as HTMLInputElement).files?.[0] ?? null"
             />
             <div v-if="artifactError" class="text-sm text-red-600">{{ artifactError }}</div>
             <div v-if="artifactSuccessId" class="text-sm text-green-600">

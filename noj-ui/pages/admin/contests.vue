@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+
 import { extractApiError, isNetworkError } from '~/utils/apiError'
 import type {
   AdminContestDetail,
@@ -33,7 +35,7 @@ let contestRequestVersion = 0
 const pollInterval = ref<number | null>(30000)
 const lastRefresh = ref<Date | null>(null)
 
-const columns = [
+const columns: TableColumn<Contest>[] = [
   { accessorKey: 'title', header: '竞赛' },
   { accessorKey: 'type', header: '赛制', cell: (info) => typeLabels[info.getValue() as Contest['type']] },
   { accessorKey: 'status', header: '状态' },
@@ -98,7 +100,7 @@ onMounted(() => {
 // 竞赛状态/人数自动轮询（页面隐藏自动暂停，卸载自动清理）
 usePolling({
   intervalMs: pollInterval,
-  fetcher: () => loadContests(currentPage.value, true),
+  fetcher: () => { void loadContests(currentPage.value, true) },
   immediate: false,
 })
 
@@ -229,6 +231,7 @@ async function removeContest(contest: Contest) {
 interface Participant {
   user_id: string
   username: string
+  avatar_url: string | null
   registered_at: string
 }
 

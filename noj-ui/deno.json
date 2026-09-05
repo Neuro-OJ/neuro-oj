@@ -7,8 +7,9 @@
     "preview": "deno run -A npm:nuxt preview",
     "lint": "deno lint",
     "fmt": "deno fmt",
-    "check": "deno fmt --check && deno lint && deno task check:types",
+    "check": "deno fmt --check && deno lint && deno task check:types && deno task check:types:nuxt",
     "check:types": "deno check utils tests",
+    "check:types:nuxt": "deno run -A npm:nuxt prepare && node node_modules/vue-tsc/bin/vue-tsc.js --noEmit",
     "test": "deno test -A tests/",
     "test:coverage": "rm -rf coverage && DENO_DIR=.deno_cov_cache deno test -A tests/ --coverage=coverage && DENO_DIR=.deno_cov_cache deno coverage --threshold=60 coverage"
   },

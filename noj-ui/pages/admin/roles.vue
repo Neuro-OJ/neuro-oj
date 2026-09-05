@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+
 import { extractApiError } from '~/utils/apiError'
 
 definePageMeta({
@@ -53,7 +55,7 @@ const permissionGroups = computed<PermissionGroup[]>(() => {
 const tableLoading = ref(true)
 const tableError = ref("")
 
-const columns = [
+const columns: TableColumn<Role>[] = [
   { accessorKey: "name", header: "角色名" },
   {
     accessorKey: "parent_name",

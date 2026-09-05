@@ -19,7 +19,7 @@ export type AuditAction =
 export interface AuditLogEntry {
   id: string;
   admin_id: string;
-  action: AuditAction | null;
+  action: AuditAction;
   target_type: string | null;
   target_id: string | null;
   detail: Record<string, unknown>;
@@ -36,7 +36,7 @@ export interface AuditLogFilters {
   page: number;
   per_page: number;
   admin_id?: string;
-  action?: AuditAction | '';
+  action?: AuditAction;
   from?: string;
   to?: string;
 }
@@ -47,7 +47,7 @@ export function useAuditLogs(initial: Partial<AuditLogFilters> = {}) {
     page: 1,
     per_page: 20,
     admin_id: undefined,
-    action: null as AuditAction | null,
+    action: undefined as AuditAction | undefined,
     from: undefined,
     to: undefined,
     ...initial,
@@ -84,7 +84,7 @@ export function useAuditLogs(initial: Partial<AuditLogFilters> = {}) {
   }
 
   function reset() {
-    filters.value = { page: 1, per_page: 20, admin_id: undefined, action: null, from: undefined, to: undefined };
+    filters.value = { page: 1, per_page: 20, admin_id: undefined, action: undefined, from: undefined, to: undefined };
   }
 
   return { filters, data, pagination, loading, error, fetch, reset };

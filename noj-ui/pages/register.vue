@@ -190,9 +190,10 @@ async function handleRegister() {
     if (!validate()) return
 
     loading.value = true
+    let sent: boolean
     try {
         // 先注册
-        const sent = await auth.register(form.username.trim(), form.email.trim(), form.password)
+        sent = await auth.register(form.username.trim(), form.email.trim(), form.password)
     } catch (e: unknown) {
         setError(extractApiError(e).message)
         loading.value = false

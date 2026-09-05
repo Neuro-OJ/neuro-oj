@@ -8,12 +8,12 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
 
   // @nuxt/icon：lucide 集合本地打包，SSR/单二进制离线渲染图标
+  // （scan 扫描源码中实际用到的图标打包进客户端；@nuxt/icon 2.x 无
+  //   collections / includeAllCollections 选项，配置会被忽略，已移除）
   icon: {
     serverBundle: 'local',
     clientBundle: {
       scan: true,
-      collections: ['lucide'],
-      includeAllCollections: true,
     },
   },
 

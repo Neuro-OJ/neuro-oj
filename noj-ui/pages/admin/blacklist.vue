@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useToast } from '~/composables/useToast'
+
 import { extractApiError } from '~/utils/apiError'
 
 definePageMeta({
@@ -73,12 +75,12 @@ async function handleSave() {
 const deleteTarget = ref<IpBan | null>(null)
 const deleting = ref(false)
 const { dialog } = useDialog()
+const { toast } = useToast()
 
 async function confirmDelete(item: IpBan) {
   const ok = await dialog({
     title: "确认删除黑名单条目？",
     text: `将删除 ${item.ip_or_cidr}。此操作不可撤销。`,
-    icon: "warning",
     danger: true,
     confirmText: "确认删除",
   })

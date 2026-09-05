@@ -5,6 +5,28 @@
 本目录包含 neuro-oj 的全链路端到端（E2E）集成测试，验证从提交代码 → MQ 分发 →
 Judge 评测 → 结果回写 → 数据库持久化的完整流程。
 
+此外，`e2e/browser/` 提供 **UI 浏览器关键流程门禁**（issue #427）：通过
+Playwright 真实操作浏览器，覆盖 API E2E 无法触达的页面交互：
+
+1. 注册 → 跳转邮箱验证页（`registered=1&sent=1`）
+2. 登录 → 退出（UserMenu → 确认弹窗）
+3. 代码提交 → 评测结果（编辑器提交 → 侧栏满分卡片）
+4. 核心失败反馈（错误答案 → 已完成且非满分）
+
+运行方式：
+
+```bash
+# 前置：完整评测栈已启动（scripts/e2e/setup.sh），noj-ui 已构建并监听 :3000
+cd noj-ui && NUXT_API_BASE=http://localhost:8099 PORT=3000 deno task preview  # 或 node .output/server/index.mjs
+cd noj-tests
+deno run -A npm:playwright install chromium   # 首次安装浏览器
+NOJ_RUN_BROWSER_E2E=1 deno task test:browser
+```
+
+失败时自动在 `noj-tests/test-results/ui-browser/` 保存 trace + 截图诊断产物。 CI
+中由 `.github/workflows/e2e.yml` 的「UI 浏览器关键流程门禁」步骤执行， Fork PR
+无需任何生产凭据（issue #427 验收项）。
+
 ### 测试架构
 
 ```
@@ -125,12 +147,14 @@ docker compose -f ../docker-compose.e2e.yml down -v
 
 ## 环境变量
 
-| 变量             | 默认值                  | 说明                    |
-| ---------------- | ----------------------- | ----------------------- |
-| `NOJ_RUN_E2E`    | —                       | 设为 `1` 启用 E2E 测试  |
-| `E2E_BASE_URL`   | `http://localhost:8099` | noj-core 地址           |
-| `E2E_NO_CLEANUP` | —                       | 设为 `1` 不自动清理容器 |
-| `E2E_JWT_SECRET` | `e2e-test-secret`       | JWT 签名密钥            |
+| 变量                  | 默认值                  | 说明                        |
+| --------------------- | ----------------------- | --------------------------- |
+| `NOJ_RUN_E2E`         | —                       | 设为 `1` 启用 E2E 测试      |
+| `E2E_BASE_URL`        | `http://localhost:8099` | noj-core 地址               |
+| `E2E_NO_CLEANUP`      | —                       | 设为 `1` 不自动清理容器     |
+| `E2E_JWT_SECRET`      | `e2e-test-secret`       | JWT 签名密钥                |
+| `NOJ_RUN_BROWSER_E2E` | —                       | 设为 `1` 启用 UI 浏览器门禁 |
+| `E2E_UI_URL`          | `http://localhost:3000` | noj-ui 地址（浏览器门禁用） |
 
 ## CI 集成
 

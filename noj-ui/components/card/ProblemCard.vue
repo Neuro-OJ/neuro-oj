@@ -32,7 +32,7 @@
                 <!-- 右下：时间·内存限制（客观题套卷无评测容器） -->
                 <div class="flex items-center justify-end h-[18px]">
                     <span v-if="is_objective" class="text-[10px] text-text-muted leading-none">即时判定</span>
-                    <span v-else class="text-[10px] text-text-muted tabular-nums leading-none">{{ (runtime_config.evaluator.time_limit_ms / 1000).toFixed(0) }}s · {{ runtime_config.evaluator.memory_limit_mb }}MB</span>
+                    <span v-else class="text-[10px] text-text-muted tabular-nums leading-none">{{ ((runtime_config?.evaluator?.time_limit_ms ?? 0) / 1000).toFixed(0) }}s · {{ runtime_config?.evaluator?.memory_limit_mb ?? 0 }}MB</span>
                 </div>
             </div>
         </div>

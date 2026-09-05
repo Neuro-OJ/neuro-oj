@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+
 import { extractApiError } from '~/utils/apiError'
 import { useToast } from '~/composables/useToast'
 import { useDialog } from '~/composables/useDialog'
@@ -34,7 +36,7 @@ const kindLabels: Record<Tag['kind'], string> = {
   algorithm: '算法标签',
 }
 
-const columns = [
+const columns: TableColumn<Tag>[] = [
   { accessorKey: "name", header: "名称" },
   { accessorKey: "kind", header: "类型" },
   { accessorKey: "problem_count", header: "关联题目数" },
@@ -162,7 +164,6 @@ async function confirmDelete(tag: Tag) {
   const ok = await dialog({
     title: "确认删除标签？",
     text: `将删除「${tag.name}」（${kindLabels[tag.kind]}）。此操作不可撤销，关联题目将失去该标签。`,
-    icon: "warning",
     danger: true,
     confirmText: "确认删除",
   })

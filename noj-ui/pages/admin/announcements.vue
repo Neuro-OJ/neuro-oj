@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+
 import { extractApiError } from '~/utils/apiError'
 
 definePageMeta({
@@ -34,11 +36,11 @@ watch(isLoggedIn, (val) => {
   if (val) load()
 }, { immediate: true })
 
-const columns = [
+const columns: TableColumn<AdminAnnouncement>[] = [
   {
     accessorKey: "title",
     header: "标题",
-    cell: (info: { getValue: () => string }) => {
+    cell: (info) => {
       const v = info.getValue() as string
       return v.length > 30 ? `${v.slice(0, 30)}…` : v
     },
@@ -46,17 +48,17 @@ const columns = [
   {
     accessorKey: "is_pinned",
     header: "置顶",
-    cell: (info: { getValue: () => boolean }) => info.getValue() ? "是" : "否",
+    cell: (info) => info.getValue() ? "是" : "否",
   },
   {
     accessorKey: "is_active",
     header: "状态",
-    cell: (info: { getValue: () => boolean }) => info.getValue() ? "已发布" : "已下架",
+    cell: (info) => info.getValue() ? "已发布" : "已下架",
   },
   {
     accessorKey: "updated_at",
     header: "更新时间",
-    cell: (info: { getValue: () => string }) => {
+    cell: (info) => {
       const d = new Date(info.getValue() as string)
       return isNaN(d.getTime()) ? "-" : d.toLocaleString("zh-CN")
     },
@@ -64,7 +66,7 @@ const columns = [
   {
     accessorKey: "created_at",
     header: "创建时间",
-    cell: (info: { getValue: () => string }) => {
+    cell: (info) => {
       const d = new Date(info.getValue() as string)
       return isNaN(d.getTime()) ? "-" : d.toLocaleString("zh-CN")
     },

@@ -5,8 +5,8 @@ import { publicUrl } from '~/utils/publicIdentifiers'
 useHead({ title: '竞赛大厅 - Neuro OJ' })
 
 const { typeLabels, statusLabels, formatDateTime, formatDuration, statusClass } = useContests()
-const selectedType = ref<ContestType | null>(null)
-const selectedStatus = ref<ContestStatus | null>(null)
+const selectedType = ref<ContestType | undefined>(undefined)
+const selectedStatus = ref<ContestStatus | undefined>(undefined)
 const currentPage = ref(1)
 const perPage = 12
 

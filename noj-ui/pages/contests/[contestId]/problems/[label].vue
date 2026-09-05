@@ -108,25 +108,28 @@ const accessHint = computed(() => {
 // paperId 未加载（problem 请求未返回）时 URL 返回 null，useFetch 跳过请求，
 // 避免对空 paperId 发出无效请求（404 / 误判已提交闪烁）
 const paperId = computed(() => problem.value?.display_id ?? problem.value?.problem_id ?? '')
+const qUrl = computed(() =>
+  paperId.value
+    ? `/api/v1/problems/${paperId.value}/questions`
+    : null
+)
+// Nuxt UseFetch 的 url getter 类型不接受 null，运行时支持返回 null 跳过请求；断言仅类型层面。
 const { data: qData, error: qError } = await useFetch<{ data: ObjectiveQuestion[] }>(
-  computed(() =>
-    paperId.value
-      ? `/api/v1/problems/${paperId.value}/questions`
-      : null
-  ),
+  qUrl as unknown as Ref<`/api/v1/problems/${string}`>,
   { server: false },
 )
 const questions = computed(() => qData.value?.data ?? [])
 
 // 竞赛已提交状态（一次性）；仅当 paperId 已加载时判定
+const subUrl = computed(() =>
+  paperId.value
+    ? `/api/v1/problems/submissions?paper_id=${paperId.value}&contest_id=${contestId}&per_page=1`
+    : null
+)
 const { data: subData, refresh: refreshSubs } = await useFetch<{
   data: { total: number; best_score: number | null }
 }>(
-  computed(() =>
-    paperId.value
-      ? `/api/v1/problems/submissions?paper_id=${paperId.value}&contest_id=${contestId}&per_page=1`
-      : null
-  ),
+  subUrl as unknown as Ref<`/api/v1/problems/submissions${string}`>,
   { server: false },
 )
 const alreadySubmitted = computed(() =>
@@ -339,7 +342,7 @@ async function onSubmit() {
                 type="file"
                 accept=".zip,application/zip,application/x-zip-compressed"
                 class="block w-full text-sm text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-signal file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-signal/80"
-                @change="(e) => artifactFile = (e.target as HTMLInputElement).files?.[0] ?? null"
+                @change="(e: Event) => artifactFile = (e.target as HTMLInputElement).files?.[0] ?? null"
               />
               <div v-if="artifactError" class="text-sm text-red-600">{{ artifactError }}</div>
               <div v-if="artifactSuccessId" class="text-sm text-green-600">

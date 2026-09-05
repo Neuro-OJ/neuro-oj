@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+
 import { useToast } from "~/composables/useToast"
 import { useDialog } from "~/composables/useDialog"
 import { extractApiError } from '~/utils/apiError'
@@ -52,7 +54,7 @@ const difficultyLabels: Record<string, string> = {
   hard: "困难",
 }
 
-const columns = [
+const columns: TableColumn<Problem>[] = [
   { accessorKey: "display_id", header: "题号" },
   { accessorKey: "type", header: "类型", cell: (info) => (info.getValue() as string) === "U" ? "用户题库" : "主题库" },
   { accessorKey: "title", header: "标题" },

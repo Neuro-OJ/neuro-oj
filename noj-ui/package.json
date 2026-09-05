@@ -30,7 +30,9 @@
     "typescript": "^5.0.0",
     "@nuxt/devtools": "^3.4.1",
     "@types/qrcode": "^1.5.5",
-    "rolldown": "1.2.6"
+    "rolldown": "1.2.6",
+    "vue-tsc": "^3.1.0",
+    "@types/markdown-it": "^14.1.2"
   },
   "overrides": {
     "rolldown": "1.2.6"

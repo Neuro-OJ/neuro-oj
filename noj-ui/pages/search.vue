@@ -50,7 +50,7 @@
       <div class="bg-white border border-border rounded-md overflow-hidden divide-y divide-border">
         <SearchResultItem
           v-for="item in items"
-          :key="item.id || item.username"
+          :key="item.id"
           :item="item"
           :kind="type === 'user' ? 'user' : type === 'community' ? 'community' : 'problem'"
         />

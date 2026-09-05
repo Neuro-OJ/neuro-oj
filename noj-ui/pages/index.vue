@@ -16,18 +16,18 @@
                     >
                         <Transition name="carousel-fade">
                             <div
-                                v-if="announcements.length > 0"
+                                v-if="currentAnnouncement"
                                 :key="currentSlide"
                                 class="absolute inset-0 bg-gradient-to-br p-8 lg:p-12 flex flex-col justify-center text-text"
                                 :class="gradientFor(currentSlide)"
                             >
-                                <h2 class="text-2xl lg:text-3xl font-bold mb-3 animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_both]">{{ announcements[currentSlide].title }}</h2>
-                                <p class="text-sm lg:text-base text-text-secondary max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">{{ announcements[currentSlide].excerpt }}</p>
+                                <h2 class="text-2xl lg:text-3xl font-bold mb-3 animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_both]">{{ currentAnnouncement.title }}</h2>
+                                <p class="text-sm lg:text-base text-text-secondary max-w-[480px] leading-relaxed animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_150ms_both]">{{ currentAnnouncement.excerpt }}</p>
                                 <!-- 点击跳转公告详情（整卡可点，按钮层 z-10 在其上不受影响） -->
                                 <NuxtLink
-                                    :to="publicUrl('announcement', announcements[currentSlide].public_id || announcements[currentSlide].id)"
+                                    :to="publicUrl('announcement', currentAnnouncement.public_id || currentAnnouncement.id)"
                                     class="absolute inset-0 z-[5]"
-                                    :aria-label="`查看公告：${announcements[currentSlide].title}`"
+                                    :aria-label="`查看公告：${currentAnnouncement.title}`"
                                 />
                                 <span class="relative z-[6] mt-4 inline-flex items-center gap-1 text-sm font-medium text-signal-deep pointer-events-none animate-[slideInUp_0.6s_cubic-bezier(0.16,1,0.3,1)_300ms_both]">
                                     查看详情
@@ -135,7 +135,8 @@ const GRADIENTS = [
 ]
 
 function gradientFor(i: number): string {
-    return GRADIENTS[i % GRADIENTS.length]
+    // 下标对 length 取模后必然命中预设色板；?? 兜底满足 noUncheckedIndexedAccess
+    return GRADIENTS[i % GRADIENTS.length] ?? ""
 }
 
 const announcements = ref<CarouselAnnouncement[]>([])
@@ -172,6 +173,8 @@ useEventSource({
 })
 
 const currentSlide = ref(0)
+// 当前公告（下标安全收窄：currentSlide 始终对 length 取模，供模板 v-if 收窄类型）
+const currentAnnouncement = computed(() => announcements.value[currentSlide.value])
 const paused = ref(false)
 let autoTimer: ReturnType<typeof setInterval> | null = null
 let idleTimer: ReturnType<typeof setTimeout> | null = null

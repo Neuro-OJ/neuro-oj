@@ -75,7 +75,7 @@ async function submit() {
           />
         </UFormField>
         <div class="flex justify-end gap-3">
-          <UButton color="gray" @click="emit('update:modelValue', false)">取消</UButton>
+          <UButton color="neutral" @click="emit('update:modelValue', false)">取消</UButton>
           <UButton type="submit" :loading="saving">{{ isEdit ? '保存' : '创建' }}</UButton>
         </div>
       </UForm>

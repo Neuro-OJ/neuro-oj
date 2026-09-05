@@ -26,7 +26,7 @@ export function useProblemFilters() {
    * - 若 value 为空则删除该参数
    * - 若非 page 参数变更，自动重置到第 1 页
    */
-  function setFilter(key: string, value: string) {
+  function setFilter(key: string, value: string | null | undefined) {
     const query = { ...route.query };
     if (value) {
       query[key] = value;
