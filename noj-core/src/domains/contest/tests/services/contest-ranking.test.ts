@@ -4,6 +4,7 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
   contestParticipants,
   contestProblems,
+  contestRankingSnapshots,
   contests,
   evaluationResults,
   objectiveSubmissions,
@@ -11,7 +12,11 @@ import {
   submissions,
   users,
 } from "../../../../shared/db/schema.ts";
-import { getContestRanking } from "../../index.ts";
+import {
+  getContestRanking,
+  getLatestContestRankingSnapshot,
+  publishContestRankingSnapshot,
+} from "../../index.ts";
 import {
   ForbiddenError,
   UnauthorizedError,
@@ -87,6 +92,47 @@ async function insertProblem(
     updated_at: now,
   });
 }
+
+Deno.test({
+  name: "contest ranking snapshot: 重复发布按序生成唯一版本",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userId = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await insertUser(userId, "snapshot-concurrent");
+    await db.insert(contests).values({
+      id: contestId,
+      title: "并发快照测试",
+      start_time: atMinutes(-120),
+      end_time: atMinutes(60),
+      type: "kaggle",
+      config: {},
+      created_by: userId,
+      created_at: now,
+      updated_at: now,
+    });
+
+    try {
+      const results = [
+        await publishContestRankingSnapshot(contestId, userId, "重复发布 A"),
+        await publishContestRankingSnapshot(contestId, userId, "重复发布 B"),
+      ];
+      assertEquals(results.map((result) => result.version).sort(), [1, 2]);
+      const latest = await getLatestContestRankingSnapshot(contestId);
+      assertExists(latest);
+      assertEquals(latest.version, 2);
+    } finally {
+      await db.delete(contestRankingSnapshots).where(
+        eq(contestRankingSnapshots.contest_id, contestId),
+      );
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await db.delete(users).where(eq(users.id, userId));
+    }
+  },
+});
 
 Deno.test({
   name: "contest ranking: Kaggle 每题取最高分、总分求和、严格刷新时间排序",

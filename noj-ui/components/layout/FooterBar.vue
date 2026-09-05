@@ -17,6 +17,7 @@
                     <NuxtLink to="/problems" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">题库</NuxtLink>
                     <NuxtLink to="/contests" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">竞赛</NuxtLink>
                     <NuxtLink to="/community" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">社区</NuxtLink>
+                    <NuxtLink to="/data-policy" class="block text-text-secondary text-sm mb-2 hover:text-primary">数据使用与注销说明</NuxtLink>
                     <NuxtLink to="/about" class="block text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">关于</NuxtLink>
                 </div>
 

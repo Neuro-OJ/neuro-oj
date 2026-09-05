@@ -9,12 +9,17 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import {
+  disableTestTransactionForFile,
+  resetDbForTest,
+} from "../../../../shared/db/connection.ts";
 import { users } from "../../../../shared/db/schema.ts";
+import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 import { ne } from "drizzle-orm";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,
+  resetEmailProvider,
 } from "../../../system/index.ts";
 import {
   _resetEnvSnapshotForTest,
@@ -23,6 +28,8 @@ import {
 import { getDb } from "../../../../shared/db/connection.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 
+// 并发请求必须使用独立事务，不能由 preload 包在同一外层事务中。
+disableTestTransactionForFile();
 await initRedisForTest();
 
 const BASE = "/api/v1/auth";
@@ -35,6 +42,7 @@ async function setupWithProvider(provider: "disabled" | "mock") {
   snapshotEnv();
   _resetSystemSettingsForTest();
   await initSystemSettings();
+  resetEmailProvider();
 }
 
 async function registerPayload(username: string) {
@@ -113,3 +121,37 @@ Deno.test({
     });
   },
 });
+
+for (const provider of ["disabled", "mock"] as const) {
+  Deno.test({
+    name: `register-status: ${provider} 并发首次注册遵守邮件门槛`,
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+      await resetDbForTest();
+      await setupWithProvider(provider);
+      const responses = await Promise.all([
+        registerPayload(`race_a_${Date.now()}`),
+        registerPayload(`race_b_${Date.now()}`),
+      ]);
+      assertEquals(
+        responses.map((response) => response.status).sort(),
+        provider === "disabled" ? [201, 403] : [201, 201],
+      );
+      const bodies = await Promise.all(
+        responses.map((response) => response.json()),
+      );
+      const registered = bodies.filter((body) => body.data);
+      assertEquals(registered.filter((body) => body.data.is_admin).length, 1);
+      if (provider === "disabled") {
+        assertEquals(
+          bodies.find((body) => body.code)?.code,
+          "REGISTER_EMAIL_UNCONFIGURED",
+        );
+      }
+      const realUsers = await getDb().select({ id: users.id }).from(users)
+        .where(ne(users.id, ROOT_USER_ID));
+      assertEquals(realUsers.length, provider === "disabled" ? 1 : 2);
+    },
+  });
+}

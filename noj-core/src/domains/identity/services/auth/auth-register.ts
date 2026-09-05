@@ -2,10 +2,11 @@ import { eq, ne, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { roles, userRoles, users } from "./../../../../shared/db/schema.ts";
 import { hashPassword } from "./../security/password.ts";
-import { logAuthEvent } from "../../../system/index.ts";
+import { getEmailConfigStatus, logAuthEvent } from "../../../system/index.ts";
 import {
   BadRequestError,
   ConflictError,
+  ForbiddenError,
 } from "./../../../../shared/base/errors.ts";
 import type { RegisterInput, UserResponse } from "./../../types/auth.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
@@ -205,6 +206,15 @@ export async function registerUser(
         .where(ne(users.id, ROOT_USER_ID))
         .limit(1);
       isFirstRealUser = realUsers.length === 0;
+    }
+
+    // 路由预检可能被并发请求同时通过；必须以事务内重新确认的首个用户
+    // 身份决定引导例外，避免第二个请求创建无法验证邮箱的普通账号。
+    if (!isFirstRealUser && !getEmailConfigStatus().configured) {
+      throw new ForbiddenError(
+        "邮件服务未配置，暂不接受注册；请稍后再试或联系管理员",
+        "REGISTER_EMAIL_UNCONFIGURED",
+      );
     }
 
     await tx.insert(users).values({

@@ -19,5 +19,9 @@ export {
   listClarifications,
   replyToClarification,
 } from "./services/contest-clarifications.ts";
-export { getContestRanking } from "./services/contest-ranking.ts";
+export {
+  getContestRanking,
+  getLatestContestRankingSnapshot,
+  publishContestRankingSnapshot,
+} from "./services/contest-ranking.ts";
 export * from "./types/contests.ts";

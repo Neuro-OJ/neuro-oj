@@ -140,3 +140,29 @@ export const contestClarifications = pgTable(
     ),
   }),
 );
+
+/** 正式竞赛成绩快照；每次发布修订都新增版本，历史版本不可变。 */
+export const contestRankingSnapshots = pgTable(
+  "contest_ranking_snapshots",
+  {
+    id: text("id").primaryKey(),
+    contest_id: text("contest_id").notNull().references(() => contests.id, {
+      onDelete: "cascade",
+    }),
+    version: integer("version").notNull(),
+    status: text("status").notNull().default("published"),
+    note: text("note").notNull().default(""),
+    rows: jsonb("rows").notNull(),
+    created_by: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    contestVersionUnique: unique(
+      "contest_ranking_snapshots_contest_version_unique",
+    ).on(table.contest_id, table.version),
+    contestCreatedIdx: index("idx_contest_ranking_snapshots_contest_created")
+      .on(table.contest_id, table.created_at),
+  }),
+);

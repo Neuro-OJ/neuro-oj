@@ -2,6 +2,7 @@ import { useOverlay } from '@nuxt/ui/composables';
 import DialogModal from '~/components/ui/DialogModal.vue';
 
 interface DialogOptions {
+  dataPolicyLink?: boolean;
   title?: string;
   danger?: boolean;
   confirmText?: string;

@@ -15,6 +15,7 @@
                 </div>
             </div>
 
+            <p class="mb-4 text-sm text-text-secondary">注册前请阅读<NuxtLink to="/data-policy" target="_blank" class="text-primary underline">数据使用、注销保留与反馈说明</NuxtLink>。</p>
             <form @submit.prevent="handleRegister">
                 <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.05s_both]">
                     <TextInput
