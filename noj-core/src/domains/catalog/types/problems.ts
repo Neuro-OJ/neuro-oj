@@ -60,6 +60,10 @@ export function isValidProblemType(value: string): value is ProblemType {
 export interface LlmConfig {
   provider_id: string;
   model: string;
+  /** 单次评测 LLM 调用上限；缺省 = 平台默认 */
+  max_calls?: number;
+  /** 单次评测 LLM billed token 上限；缺省 = 平台默认 */
+  max_tokens?: number;
 }
 
 /**
@@ -68,8 +72,12 @@ export interface LlmConfig {
 export function isValidLlmConfig(value: unknown): value is LlmConfig {
   if (typeof value !== "object" || value === null) return false;
   const obj = value as Record<string, unknown>;
+  const isValidPositiveInt = (v: unknown): boolean =>
+    v === undefined ||
+    (typeof v === "number" && Number.isInteger(v) && v > 0);
   return typeof obj.provider_id === "string" && obj.provider_id.length > 0 &&
-    typeof obj.model === "string" && obj.model.length > 0;
+    typeof obj.model === "string" && obj.model.length > 0 &&
+    isValidPositiveInt(obj.max_calls) && isValidPositiveInt(obj.max_tokens);
 }
 
 /**

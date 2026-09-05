@@ -122,3 +122,69 @@ Deno.test("llm-token: buildJudgeTaskLlm 生成可校验字段", async () => {
     else Deno.env.set("NOJ_LLM_GATEWAY_URL", oldUrl);
   }
 });
+
+Deno.test("llm-config: isValidLlmConfig 接受可选 max 字段", () => {
+  assert(isValidLlmConfig({
+    provider_id: "p1",
+    model: "qwen-plus",
+    max_calls: 10,
+    max_tokens: 1000,
+  }));
+  assert(isValidLlmConfig({ provider_id: "p1", model: "qwen-plus" }));
+});
+
+Deno.test("llm-config: isValidLlmConfig 拒绝 0/负数/非整数/字符串/null max", () => {
+  assert(!isValidLlmConfig({ provider_id: "p1", model: "m", max_calls: 0 }));
+  assert(!isValidLlmConfig({ provider_id: "p1", model: "m", max_calls: -1 }));
+  assert(!isValidLlmConfig({ provider_id: "p1", model: "m", max_calls: 1.5 }));
+  assert(!isValidLlmConfig({ provider_id: "p1", model: "m", max_tokens: "100" }));
+  assert(!isValidLlmConfig({ provider_id: "p1", model: "m", max_tokens: null }));
+});
+
+Deno.test("llm-bundle: P 型携带合法 max 字段通过", () => {
+  const manifest = validateBundleManifest({
+    format_version: 1,
+    title: "LLM 题",
+    type: "P",
+    runtime_config: {
+      evaluator: {
+        image: "noj-evaluator-python",
+        time_limit_ms: 60000,
+        memory_limit_mb: 512,
+        network: { enabled: true },
+      },
+      solution: {
+        image: "noj-solution-python",
+        call_timeout_ms: 5000,
+        memory_limit_mb: 512,
+      },
+    },
+    llm: { provider_id: "p1", model: "qwen-plus", max_calls: 10, max_tokens: 1000 },
+  });
+  assertEquals(manifest.llm?.max_calls, 10);
+  assertEquals(manifest.llm?.max_tokens, 1000);
+});
+
+Deno.test("llm-bundle: 非法 max 字段被拒", () => {
+  assertThrows(() =>
+    validateBundleManifest({
+      format_version: 1,
+      title: "LLM 题",
+      type: "P",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          time_limit_ms: 60000,
+          memory_limit_mb: 512,
+          network: { enabled: true },
+        },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 5000,
+          memory_limit_mb: 512,
+        },
+      },
+      llm: { provider_id: "p1", model: "m", max_calls: 0 },
+    })
+  );
+});
