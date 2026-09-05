@@ -24,6 +24,16 @@ from typing import Any, Optional
 class LLMError(Exception):
     """LLM 调用失败（配置缺失、token 失效、上游错误等）。"""
 
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        error_code: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.error_code = error_code
+
 
 def _required_env(name: str) -> str:
     value = os.environ.get(name, "").strip()
@@ -77,7 +87,17 @@ def complete(
             payload = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", errors="replace")
-        raise LLMError(f"LLM gateway 返回 {e.code}: {detail}") from e
+        error_code = None
+        try:
+            body = json.loads(detail)
+            error_code = body.get("error", {}).get("code")
+        except Exception:
+            error_code = None
+        raise LLMError(
+            f"LLM gateway 返回 {e.code}: {detail}",
+            status_code=e.code,
+            error_code=error_code,
+        ) from e
     except urllib.error.URLError as e:
         raise LLMError(f"LLM gateway 连接失败: {e.reason}") from e
 
