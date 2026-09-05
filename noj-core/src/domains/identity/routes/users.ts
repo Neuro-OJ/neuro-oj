@@ -24,6 +24,8 @@ import {
   updateUserProfile,
 } from "../services/users.ts";
 import { getMyRanking } from "../../query/index.ts";
+import { deleteOwnAccount } from "../services/account-deletion.ts";
+import { getClientIp } from "../../system/index.ts";
 
 const users = new Hono<AuthEnv>();
 
@@ -189,6 +191,13 @@ users.post("/me/avatar", authMiddleware, async (c) => {
 users.delete("/me/avatar", authMiddleware, async (c) => {
   const userId = c.get("userId") as string;
   await clearUserAvatar(userId);
+  return c.body(null, 204);
+});
+
+/** 注销当前账户。需要再次确认当前密码。 */
+users.post("/me/delete-account", authMiddleware, async (c) => {
+  const body = await parseJsonBody<{ password?: string }>(c);
+  await deleteOwnAccount(c.get("userId"), body.password ?? "", getClientIp(c));
   return c.body(null, 204);
 });
 

@@ -11,7 +11,8 @@ import { adminMiddleware, authMiddleware } from "../../middleware/auth.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { signToken } from "../../services/security/jwt.ts";
 import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { users } from "../../../../shared/db/schema.ts";
 
 // PR-1：authMiddleware 校验 JWT 撤销需 Redis
 await initRedisForTest();
@@ -19,6 +20,20 @@ await initRedisForTest();
 await resetDbForTest();
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
+
+async function createActiveUser(role: "user" | "admin" = "user") {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await getDb().insert(users).values({
+    id,
+    username: `auth_middleware_${id.slice(0, 8)}`,
+    email: `auth_middleware_${id.slice(0, 8)}@example.com`,
+    password_hash: "test-only",
+    created_at: now,
+    updated_at: now,
+  });
+  return { id, token: await signToken({ sub: id, role }) };
+}
 
 /**
  * 注册与 src/app.ts 等价的最小 onError（评审修复 H2 衍生：middleware 抛
@@ -126,13 +141,13 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
-    const token = await signToken({ sub: "test-user-id", role: "admin" });
+    const { id, token } = await createActiveUser("admin");
 
     const res = await jsonRequest(app, "/protected", { token });
     assertEquals(res.status, 200);
 
     const body = await res.json();
-    assertEquals(body.userId, "test-user-id");
+    assertEquals(body.userId, id);
     assertEquals(body.userRole, "admin");
   },
 });

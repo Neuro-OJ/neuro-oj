@@ -449,6 +449,20 @@
       "when": 1788355474657,
       "tag": "0063_wet_wasp",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1788523045790,
+      "tag": "0064_friendly_eternals",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1788566270472,
+      "tag": "0065_swift_betty_ross",
+      "breakpoints": true
     }
   ]
 }

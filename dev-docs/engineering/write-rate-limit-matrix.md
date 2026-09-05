@@ -15,6 +15,7 @@
 | 操作 | 路由 | 限流方式 | 阈值 |
 | --- | --- | --- | --- |
 | 注册 | `POST /auth/register` | hardening IP | 1h/100 |
+| 重发验证邮件 | `POST /auth/email/resend` | hardening IP + user；服务层冷却兜底 | 60s/1 |
 | 忘记密码 | `POST /auth/forgot-password` | hardening IP + email | IP 1h/30；email 1h/10 |
 | 重置密码 | `POST /auth/reset-password` | hardening IP + email | 同上 |
 | 修改密码 | `POST /auth/change-password` | 账号限流（loginThrottle） | 独立命名空间 |

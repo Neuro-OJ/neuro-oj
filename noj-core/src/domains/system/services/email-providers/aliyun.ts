@@ -8,7 +8,7 @@
  *   ALIBABA_FROM_EMAIL
  */
 
-import type { SendPasswordResetEmail } from "./types.ts";
+import type { SendEmail, SendPasswordResetEmail } from "./types.ts";
 import { buildResetPasswordHtml, getSettingOrThrow } from "./common.ts";
 
 /**
@@ -18,11 +18,7 @@ import { buildResetPasswordHtml, getSettingOrThrow } from "./common.ts";
  * @param resetLink - 完整的密码重置链接（含 token）
  * @param expiresInMinutes - 过期时间（分钟），用于邮件正文展示
  */
-export const sendPasswordResetEmail: SendPasswordResetEmail = async (
-  email: string,
-  resetLink: string,
-  _expiresInMinutes = 15,
-) => {
+export const sendEmail: SendEmail = async (email, subject, html) => {
   const akId = getSettingOrThrow(
     "alibaba_access_key_id",
     "阿里云 AccessKey ID",
@@ -54,10 +50,23 @@ export const sendPasswordResetEmail: SendPasswordResetEmail = async (
   const req = new SendMailRequest({
     AccountName: fromEmail,
     ToAddress: email,
-    Subject: "重置您的 Neuro OJ 密码",
-    HtmlBody: buildResetPasswordHtml(resetLink, _expiresInMinutes),
+    Subject: subject,
+    HtmlBody: html,
     AddressType: 1, // 触发邮件
   });
 
   await client.singleSendMail(req);
+  return true;
+};
+
+export const sendPasswordResetEmail: SendPasswordResetEmail = async (
+  email,
+  resetLink,
+  expiresInMinutes = 15,
+) => {
+  await sendEmail(
+    email,
+    "重置您的 Neuro OJ 密码",
+    buildResetPasswordHtml(resetLink, expiresInMinutes),
+  );
 };

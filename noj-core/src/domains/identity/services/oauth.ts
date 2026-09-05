@@ -2,7 +2,7 @@
  * GitHub + 通用 OIDC OAuth 服务。
  * provider access/refresh token 只在一次回调请求内存中使用，绝不落库。
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
@@ -551,7 +551,7 @@ async function issueOAuthSession(
   const db = getDb();
   const [user] = await db.select().from(users).where(eq(users.id, userId))
     .limit(1);
-  if (!user) throw new NotFoundError("用户不存在");
+  if (!user || user.deleted_at) throw new NotFoundError("用户不存在");
   const roleRows = await db.select({ name: roles.name }).from(userRoles)
     .innerJoin(roles, eq(roles.id, userRoles.role_id)).where(
       eq(userRoles.user_id, userId),
@@ -614,7 +614,7 @@ export async function resolveOAuthIdentity(
   let userId = linked?.user_id;
   if (!userId && identity.emailVerified && identity.email) {
     const [emailUser] = await db.select({ id: users.id }).from(users).where(
-      eq(users.email, identity.email),
+      and(eq(users.email, identity.email), isNull(users.deleted_at)),
     ).limit(1);
     userId = emailUser?.id;
     if (userId) {

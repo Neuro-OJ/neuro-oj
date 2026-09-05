@@ -31,7 +31,7 @@ export async function getUserProfile(
   const existing = await db
     .select()
     .from(users)
-    .where(eq(users.id, userId))
+    .where(and(eq(users.id, userId), isNull(users.deleted_at)))
     .limit(1);
 
   if (existing.length === 0) {
@@ -116,11 +116,13 @@ export async function listUsers(
         username: users.username,
         email: users.email,
         must_change_password: users.must_change_password,
+        email_verified: users.email_verified,
         password_hash: users.password_hash,
         avatar_url: users.avatar_url,
         tfa_enabled: users.tfa_enabled,
         created_at: users.created_at,
         updated_at: users.updated_at,
+        deleted_at: users.deleted_at,
         // 活跃封禁信息（LEFT JOIN user_bans）
         ban_reason: userBans.reason,
         ban_until: userBans.banned_until,
@@ -167,10 +169,12 @@ export async function listUsers(
     is_admin: allAdminIds.has(row.id),
     has_local_password: row.password_hash !== null,
     must_change_password: row.must_change_password,
+    email_verified: row.email_verified,
     avatar_url: row.avatar_url ?? null,
     tfa_enabled: row.tfa_enabled,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    deleted_at: row.deleted_at,
     active_ban: row.ban_reason !== null
       ? {
         reason: row.ban_reason!,

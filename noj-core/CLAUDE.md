@@ -273,6 +273,8 @@ docker compose down     # 停止
 | 方法   | 路径                                         | 权限        | 说明                                          |
 | ------ | -------------------------------------------- | ----------- | --------------------------------------------- |
 | POST   | `/api/v1/auth/register`                      | 公开        | 用户注册                                      |
+| POST   | `/api/v1/auth/email/verify`                  | 公开        | 消费一次性邮箱验证令牌                        |
+| POST   | `/api/v1/auth/email/resend`                  | 登录        | 重新发送验证邮件（防枚举、1 分钟限流）        |
 | POST   | `/api/v1/auth/login`                         | 公开        | 用户登录（返回 JWT）                          |
 | GET    | `/api/v1/auth/me`                            | 登录        | 当前用户信息                                  |
 | GET    | `/api/v1/tags`                               | 公开        | 标签列表（含算法标签名，发现路径）            |
@@ -294,6 +296,8 @@ docker compose down     # 停止
 | PATCH  | `/api/v1/admin/users/:id/role`               | 管理员      | 角色变更                                      |
 | GET    | `/api/v1/users/:id/profile`                  | 公开        | 用户主页                                      |
 | PUT    | `/api/v1/users/me`                           | 登录        | 更新个人简介                                  |
+| POST   | `/api/v1/users/me/delete-account`            | 登录        | 密码确认后软删除并匿名化账户                  |
+| DELETE | `/api/v1/admin/users/:id`                    | 管理员      | 注销用户并写入审计日志                        |
 | POST   | `/api/v1/auth/change-password`               | 登录        | 修改密码（issue #75 强制改密）                |
 | POST   | `/api/v1/auth/tfa/setup`                     | 登录        | 生成 TOTP secret 与 otpauth URL（issue #228） |
 | POST   | `/api/v1/auth/tfa/confirm`                   | 登录        | 确认启用 TFA，返回一次性恢复码（issue #228）  |
@@ -365,21 +369,21 @@ docker compose down     # 停止
 
 ## 数据库 Schema 设计
 
-| 表                      | 关键列                                                                                                                    | 约束 / 索引                                                 |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `users`                 | `id`(UUID), `username`(unique), `email`(unique), `password_hash`, `role`(user/admin), `bio`, `must_change_password`(bool) | PK, UK(username), UK(email)                                 |
-| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`                           | PK, UK(display_id), UK(type,number), FK→users               |
-| `tags`                  | `id`(UUID), `name`(unique), `kind`(problem/algorithm), `created_at`, `updated_at`                                         | PK, UK(name), CHECK(kind)                                   |
-| `problem_tags`          | `problem_id`, `tag_id`                                                                                                    | FK→problems ON DELETE CASCADE, FK→tags ON DELETE CASCADE    |
-| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                         | PK, FK→users, FK→problems, idx(user_id,created_at)          |
-| `evaluation_results`    | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                     | PK, UK(submission_id), FK→submissions                       |
-| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                           | PK, FK→users, UK(user_id,checkin_date)                      |
-| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                | PK, UK(image)                                               |
-| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                               | PK, FK→users, UK(token_hash)                                |
-| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                               | PK, FK→users, UK(participant_a,participant_b)               |
-| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                           | PK, FK→conversations, idx(conversation_id,created_at)       |
-| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                            | PK, FK→conversations, FK→users, UK(conversation_id,user_id) |
-| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                   | PK, FK→messages, FK→users                                   |
+| 表                      | 关键列                                                                                                                                    | 约束 / 索引                                                 |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `users`                 | `id`(UUID), `username`, `email`(unique), `password_hash`, `email_verified`, `email_verify_token`, `email_verify_expires_at`, `deleted_at` | PK, active username partial UK, UK(email)                   |
+| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`                                           | PK, UK(display_id), UK(type,number), FK→users               |
+| `tags`                  | `id`(UUID), `name`(unique), `kind`(problem/algorithm), `created_at`, `updated_at`                                                         | PK, UK(name), CHECK(kind)                                   |
+| `problem_tags`          | `problem_id`, `tag_id`                                                                                                                    | FK→problems ON DELETE CASCADE, FK→tags ON DELETE CASCADE    |
+| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                                         | PK, FK→users, FK→problems, idx(user_id,created_at)          |
+| `evaluation_results`    | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                                     | PK, UK(submission_id), FK→submissions                       |
+| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                                           | PK, FK→users, UK(user_id,checkin_date)                      |
+| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                                | PK, UK(image)                                               |
+| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                                               | PK, FK→users, UK(token_hash)                                |
+| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                                               | PK, FK→users, UK(participant_a,participant_b)               |
+| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                                           | PK, FK→conversations, idx(conversation_id,created_at)       |
+| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                                            | PK, FK→conversations, FK→users, UK(conversation_id,user_id) |
+| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                                   | PK, FK→messages, FK→users                                   |
 
 > 上表为核心表速查。完整 Schema 共 38 张表（`src/shared/db/schema.ts`），另有：
 >

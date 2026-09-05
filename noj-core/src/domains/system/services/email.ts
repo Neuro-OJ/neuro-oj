@@ -10,7 +10,11 @@
  * 启动时在 main.ts 中校验 Provider 环境变量完整性；生产环境可以显式关闭邮件。
  */
 
-import type { SendPasswordResetEmail } from "./email-providers/types.ts";
+import type {
+  SendEmail,
+  SendPasswordResetEmail,
+} from "./email-providers/types.ts";
+import { buildEmailVerificationHtml } from "./email-providers/common.ts";
 import { getSetting } from "./system-settings.ts";
 import { logger } from "../../../shared/base/logging.ts";
 
@@ -24,6 +28,7 @@ const PROVIDER_MODULES: Record<string, string> = {
 
 /** 已缓存的 send 函数引用 */
 let sendFn: SendPasswordResetEmail | null = null;
+let sendEmailFn: SendEmail | null = null;
 
 /**
  * 加载当前 EMAIL_PROVIDER 对应的发送函数。
@@ -67,6 +72,22 @@ async function loadSendFn(): Promise<SendPasswordResetEmail> {
  */
 export function resetEmailProvider(): void {
   sendFn = null;
+  sendEmailFn = null;
+}
+
+async function loadGenericSendFn(): Promise<SendEmail> {
+  if (sendEmailFn) return sendEmailFn;
+  const provider = String(getSetting("email_provider")?.value ?? "mock");
+  const modulePath = PROVIDER_MODULES[provider];
+  if (!modulePath) {
+    throw new Error(`未知的 EMAIL_PROVIDER：${provider}`);
+  }
+  if (Deno.env.get("NOJ_ENV") === "production" && provider === "mock") {
+    throw new Error("生产环境禁止使用 mock 邮件 Provider");
+  }
+  const mod = await import(modulePath);
+  sendEmailFn = mod.sendEmail;
+  return sendEmailFn!;
 }
 
 /**
@@ -85,4 +106,18 @@ export async function sendPasswordResetEmail(
 ): Promise<void> {
   const fn = await loadSendFn();
   await fn(email, resetLink, expiresInMinutes);
+}
+
+/** 发送邮箱验证邮件。 */
+export async function sendEmailVerificationEmail(
+  email: string,
+  verifyLink: string,
+  expiresInMinutes = 30,
+): Promise<boolean> {
+  const fn = await loadGenericSendFn();
+  return await fn(
+    email,
+    "验证您的 Neuro OJ 邮箱",
+    buildEmailVerificationHtml(verifyLink, expiresInMinutes),
+  );
 }

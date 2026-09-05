@@ -65,6 +65,14 @@ export async function loginUser(
 
   const user = existing[0];
 
+  if (user.deleted_at) {
+    await logAuthEvent(user.id, clientIp ?? "unknown", "auth.login_failure", {
+      reason: "account_deleted",
+      login: input.login,
+    });
+    throw new UnauthorizedError("用户名或密码错误");
+  }
+
   // 验证密码
   const valid = user.password_hash !== null &&
     await comparePassword(input.password, user.password_hash);

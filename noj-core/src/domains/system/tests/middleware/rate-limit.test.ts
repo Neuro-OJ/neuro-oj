@@ -9,7 +9,6 @@ import {
 } from "../../middleware/rate-limit.ts";
 import { optionalAuthMiddleware } from "../../../identity/index.ts";
 import { Hono } from "hono";
-import { signToken } from "../../../identity/index.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
 import type { Context } from "hono";
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
@@ -143,7 +142,7 @@ Deno.test({
     _resetRateLimitForTest();
     const app = createTestApp(1000, 5000);
     const tokenA = await createUserToken();
-    const tokenB = await signToken({ sub: "user-b", role: "user" });
+    const tokenB = await createUserToken();
 
     const r1 = await app.request("/limited", {
       headers: { Authorization: `Bearer ${tokenA}` },
@@ -210,7 +209,7 @@ Deno.test({
     app.onError(handleError);
     app.route("/api/v1/submissions", router);
 
-    const token = await signToken({ sub: "user-perpage", role: "user" });
+    const token = await createUserToken();
     const res = await app.request(
       "/api/v1/submissions/public/recent?per_page=200",
       { headers: { Authorization: `Bearer ${token}` } },
@@ -263,7 +262,7 @@ Deno.test({
     app.onError(handleError);
     app.route("/api/v1/submissions", router);
 
-    const token = await signToken({ sub: "user-rate-test", role: "user" });
+    const token = await createUserToken();
 
     const r1 = await app.request("/api/v1/submissions/public/recent", {
       headers: { Authorization: `Bearer ${token}` },

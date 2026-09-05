@@ -51,6 +51,8 @@ export interface UserResponse {
   /** 是否已设置本地密码；OAuth 新用户初始为 false */
   has_local_password: boolean;
   must_change_password: boolean;
+  /** 是否已完成邮箱验证。 */
+  email_verified: boolean;
   active_ban: {
     reason: string;
     banned_until: string | null;
@@ -62,6 +64,8 @@ export interface UserResponse {
   tfa_enabled: boolean;
   created_at: string;
   updated_at: string;
+  /** 仅管理端列表使用；非空表示账户已注销。 */
+  deleted_at?: string | null;
 }
 
 /**

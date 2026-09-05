@@ -10,6 +10,7 @@ export type AuditAction =
   | "users.role_change"
   | "users.ban"
   | "users.unban"
+  | "users.delete"
   | "problems.delete"
   | "problems.runtime_config_changed"
   | "problems.imported"
@@ -25,6 +26,8 @@ export type AuditAction =
   | "auth.login_success"
   | "auth.login_failure"
   | "auth.register"
+  | "auth.email_verified"
+  | "auth.delete_account"
   | "auth.change_password"
   | "auth.forgot_password_request"
   | "auth.password_reset"
@@ -55,6 +58,7 @@ export type AuditDetail =
     scope?: "platform" | "social";
   }
   | { action: "users.unban" }
+  | { action: "users.delete"; username: string }
   | { action: "problems.delete"; title: string; display_id: string }
   | {
     action: "problems.runtime_config_changed";
@@ -125,7 +129,8 @@ export type AuditDetail =
       | "user_not_found"
       | "user_banned"
       | "ip_banned"
-      | "wrong_tfa_code";
+      | "wrong_tfa_code"
+      | "account_deleted";
     /** 攻击者输入的登录标识（**不区分大小写**），用于撞库追溯 */
     login: string;
   }
@@ -135,6 +140,8 @@ export type AuditDetail =
     username: string;
     email: string;
   }
+  | { action: "auth.email_verified"; user_id: string }
+  | { action: "auth.delete_account"; user_id: string }
   | { action: "auth.change_password"; user_id: string }
   | {
     action: "auth.forgot_password_request";

@@ -30,6 +30,7 @@
 | DELETE | `/roles/:id` | noj-core/src/domains/identity/routes/admin-roles.ts |
 | DELETE | `/settings/:key` | noj-core/src/domains/system/routes/admin-settings.ts |
 | DELETE | `/submissions/:id` | noj-core/src/domains/submission/routes/admin-submissions.ts |
+| DELETE | `/users/:id` | noj-core/src/domains/identity/routes/admin-users.ts |
 | GET | `/` | noj-core/src/domains/catalog/routes/admin-trainings.ts |
 | GET | `/` | noj-core/src/domains/catalog/routes/problems.ts |
 | GET | `/` | noj-core/src/domains/catalog/routes/tags.ts |
@@ -139,10 +140,12 @@
 | GET | `jti` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `jti` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `NOJ_ENV` | noj-core/src/domains/identity/routes/auth.ts |
+| GET | `NOJ_ENV` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `NOJ_ENV` | noj-core/src/routes/health.ts |
 | GET | `NOJ_ENV` | noj-core/src/routes/health.ts |
 | GET | `NOJ_LLM_GATEWAY_URL` | noj-core/src/domains/gateway/routes/admin-llm.ts |
 | GET | `NOJ_LLM_SERVICE_TOKEN` | noj-core/src/domains/gateway/routes/admin-llm.ts |
+| GET | `NOJ_RUN_E2E` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `userId` | noj-core/src/domains/catalog/routes/admin-trainings.ts |
 | GET | `userId` | noj-core/src/domains/catalog/routes/admin-trainings.ts |
 | GET | `userId` | noj-core/src/domains/catalog/routes/problems.ts |
@@ -189,6 +192,7 @@
 | GET | `userId` | noj-core/src/domains/identity/routes/admin-users.ts |
 | GET | `userId` | noj-core/src/domains/identity/routes/admin-users.ts |
 | GET | `userId` | noj-core/src/domains/identity/routes/admin-users.ts |
+| GET | `userId` | noj-core/src/domains/identity/routes/admin-users.ts |
 | GET | `userId` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `userId` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `userId` | noj-core/src/domains/identity/routes/auth.ts |
@@ -198,6 +202,9 @@
 | GET | `userId` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `userId` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `userId` | noj-core/src/domains/identity/routes/auth.ts |
+| GET | `userId` | noj-core/src/domains/identity/routes/auth.ts |
+| GET | `userId` | noj-core/src/domains/identity/routes/auth.ts |
+| GET | `userId` | noj-core/src/domains/identity/routes/users.ts |
 | GET | `userId` | noj-core/src/domains/identity/routes/users.ts |
 | GET | `userId` | noj-core/src/domains/identity/routes/users.ts |
 | GET | `userId` | noj-core/src/domains/identity/routes/users.ts |
@@ -283,6 +290,8 @@
 | POST | `/comments/:commentId/like` | noj-core/src/domains/community/routes/community.ts |
 | POST | `/contests` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | POST | `/contests/:id/participants` | noj-core/src/domains/contest/routes/admin-contests.ts |
+| POST | `/email/resend` | noj-core/src/domains/identity/routes/auth.ts |
+| POST | `/email/verify` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/forgot-password` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/import-bundle` | noj-core/src/domains/catalog/routes/problems.ts |
 | POST | `/judge-images` | noj-core/src/domains/system/routes/admin-judge-images.ts |
@@ -291,6 +300,7 @@
 | POST | `/login` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/logout` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/me/avatar` | noj-core/src/domains/identity/routes/users.ts |
+| POST | `/me/delete-account` | noj-core/src/domains/identity/routes/users.ts |
 | POST | `/me/llm-providers` | noj-core/src/domains/identity/routes/users.ts |
 | POST | `/me/llm-providers/:id/test` | noj-core/src/domains/identity/routes/users.ts |
 | POST | `/notifications/:id/read` | noj-core/src/domains/community/routes/community.ts |

@@ -1,7 +1,6 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { initRedisForTest } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
-import { signToken } from "../../../identity/index.ts";
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
 import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
 
@@ -131,7 +130,8 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     const app = createApp();
-    const token = await signToken({ sub: "test-list-empty", role: "user" });
+    // 认证中间件会实时校验账号状态，测试令牌必须对应真实活跃用户。
+    const token = await createUserToken();
     const res = await jsonRequest(app, "/api/v1/submissions", { token });
     assertEquals(res.status, 200);
     const body = await res.json();

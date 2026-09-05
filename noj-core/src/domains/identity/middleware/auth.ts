@@ -7,7 +7,7 @@ import {
 import { verifyToken } from "../services/security/jwt.ts";
 import { isJtiRevoked } from "../services/security/revokedTokens.ts";
 import { getDb } from "../../../shared/db/connection.ts";
-import { userBans } from "../../../shared/db/schema.ts";
+import { userBans, users } from "../../../shared/db/schema.ts";
 import { getCached } from "../services/security/banCache.ts";
 import { getClientIp } from "../../system/index.ts";
 import { runWithContext } from "../../system/index.ts";
@@ -49,6 +49,26 @@ export const PASSWORD_CHANGE_WHITELIST: readonly string[] = [
 export const BAN_WHITELIST: readonly string[] = [
   "/api/v1/auth/logout",
 ] as const;
+
+/** 未验证邮箱仅限制会产生公开或私密用户内容的写操作。 */
+function requiresVerifiedEmail(c: Context): boolean {
+  if (["GET", "HEAD", "OPTIONS"].includes(c.req.method)) return false;
+  const path = c.req.path;
+  if (path.startsWith("/api/v1/admin/")) return false;
+  return path === "/api/v1/submissions" ||
+    /^\/api\/v1\/(?:problems|contests)\/[^/]+\/submit$/.test(path) ||
+    path.startsWith("/api/v1/self-tests") ||
+    path.startsWith("/api/v1/community") ||
+    path.startsWith("/api/v1/conversations");
+}
+
+async function getActiveAccount(userId: string) {
+  const [account] = await getDb().select({
+    emailVerified: users.email_verified,
+  }).from(users).where(and(eq(users.id, userId), isNull(users.deleted_at)))
+    .limit(1);
+  return account;
+}
 
 /**
  * 用户 ban 状态（从 users 表读，60s LRU 缓存）。
@@ -139,9 +159,15 @@ export async function optionalAuthMiddleware(
   const payload = await resolveToken(c);
 
   if (payload) {
+    const account = await getActiveAccount(payload.sub);
+    if (!account) {
+      await next();
+      return;
+    }
     c.set("userId", payload.sub);
     c.set("userRole", payload.role);
     c.set("mustChangePassword", payload.must_change_password ?? false);
+    c.set("emailVerified", account.emailVerified);
     if (payload.jti) c.set("jti", payload.jti);
 
     await checkBanStatus(c, payload.sub);
@@ -179,6 +205,9 @@ export async function authMiddleware(c: Context, next: Next): Promise<void> {
     throw new UnauthorizedError("认证令牌无效或已过期");
   }
 
+  const account = await getActiveAccount(payload.sub);
+  if (!account) throw new UnauthorizedError("账号不存在或已注销");
+
   // 强制改密拦截
   if (
     payload.must_change_password === true &&
@@ -190,9 +219,14 @@ export async function authMiddleware(c: Context, next: Next): Promise<void> {
   // 封禁校验
   await checkBanStatus(c, payload.sub);
 
+  if (!account.emailVerified && requiresVerifiedEmail(c)) {
+    throw new ForbiddenError("请先验证邮箱", "EMAIL_VERIFICATION_REQUIRED");
+  }
+
   c.set("userId", payload.sub);
   c.set("userRole", payload.role);
   c.set("mustChangePassword", payload.must_change_password ?? false);
+  c.set("emailVerified", account.emailVerified);
   if (payload.jti) c.set("jti", payload.jti);
   await next();
 }

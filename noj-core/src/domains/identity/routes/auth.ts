@@ -37,6 +37,10 @@ import {
 } from "../services/tfa.ts";
 import { requestReset, resetPassword } from "../services/passwordReset.ts";
 import {
+  sendEmailVerification,
+  verifyEmailToken,
+} from "../services/email-verification.ts";
+import {
   BadRequestError,
   ForbiddenError,
   UnauthorizedError,
@@ -72,6 +76,7 @@ import type {
 } from "./../types/auth.ts";
 import { SECONDS_PER_DAY } from "./../../../shared/base/constants.ts";
 import {
+  enforceEmailVerificationResendRateLimit,
   enforcePasswordResetEmailRateLimit,
   enforcePasswordResetIpRateLimit,
   enforceRegisterRateLimit,
@@ -133,7 +138,41 @@ auth.post("/register", async (c) => {
 
   const clientIp = getClientIp(c);
   const user = await registerUser(body, clientIp);
-  return c.json({ data: user }, 201);
+  const emailVerification = await sendEmailVerification(
+    user.id,
+    new URL(c.req.url).origin,
+  );
+  // 全链路测试必须走真实验证端点，但无法读取容器内 mock 邮箱。
+  // 仅在显式 E2E 且非生产环境时返回一次性令牌，生产环境永不暴露。
+  const exposeVerificationToken = Deno.env.get("NOJ_RUN_E2E") === "1" &&
+    Deno.env.get("NOJ_ENV") !== "production";
+  return c.json({
+    data: {
+      ...user,
+      email_verification_sent: emailVerification.sent,
+      ...(exposeVerificationToken && emailVerification.token
+        ? { email_verification_token: emailVerification.token }
+        : {}),
+    },
+  }, 201);
+});
+
+/** 验证一次性邮箱令牌。 */
+auth.post("/email/verify", async (c) => {
+  const body = await parseJsonBody<{ token?: string }>(c);
+  await verifyEmailToken(body.token ?? "", getClientIp(c));
+  return c.json({ data: { verified: true } });
+});
+
+/** 重新发送验证邮件；响应不区分已验证与发送状态，避免泄露账号状态。 */
+auth.post("/email/resend", authMiddleware, async (c) => {
+  await enforceEmailVerificationResendRateLimit(c, c.get("userId"));
+  await sendEmailVerification(
+    c.get("userId"),
+    new URL(c.req.url).origin,
+    true,
+  );
+  return c.json({ data: { message: "如需验证，邮件已发送" } });
 });
 
 /**

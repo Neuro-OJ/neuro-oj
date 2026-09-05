@@ -1,0 +1,44 @@
+ALTER TABLE "audit_logs" DROP CONSTRAINT "audit_logs_action_check";--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN "email_verified" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN "email_verify_token" text;--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN "email_verify_expires_at" text;--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN "deleted_at" text;--> statement-breakpoint
+ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_action_check" CHECK ("audit_logs"."action" IN (
+        'users.role_change',
+        'users.ban',
+        'users.unban',
+        'problems.delete',
+        'problems.runtime_config_changed',
+        'problems.imported',
+        'tags.create',
+        'tags.update',
+        'tags.delete',
+        'tags.merge',
+        'submissions.rejudge',
+        'submissions.queue_removed',
+        'settings.update',
+        'ip_ban.create',
+        'ip_ban.delete',
+        'auth.login_success',
+        'auth.login_failure',
+        'auth.register',
+        'auth.change_password',
+        'auth.forgot_password_request',
+        'auth.password_reset',
+        'auth.tfa_setup',
+        'auth.tfa_enabled',
+        'auth.tfa_disabled',
+        'auth.tfa_recovery_regenerated',
+        'auth.tfa_recovery_used',
+        'community.post_moderated',
+        'community.report_resolved',
+        'community.sanction_created',
+        'community.sanction_revoked',
+        'community.preset_applied',
+        'announcement.create',
+        'announcement.update',
+        'announcement.delete',
+        'review.queued',
+        'review.rejected',
+        'review.resolved'
+      ));

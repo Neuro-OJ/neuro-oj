@@ -18,13 +18,37 @@ import {
 import { AppError } from "../../../../shared/base/errors.ts";
 import { signToken } from "../../services/security/jwt.ts";
 import { jsonRequest } from "../../../../../tests/helper.ts";
-import { resetDbForTest } from "../../../../shared/db/connection.ts";
+import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
+import { users } from "../../../../shared/db/schema.ts";
 
 const hasEnv = !!Deno.env.get("JWT_SECRET");
 
 // 初始化 PGlite schema（含 user_bans 表），供 authMiddleware 封禁检查使用
 await resetDbForTest();
 await initRedisForTest();
+
+async function createToken(mustChangePassword?: boolean) {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await getDb().insert(users).values({
+    id,
+    username: `must_change_${id.slice(0, 8)}`,
+    email: `must_change_${id.slice(0, 8)}@example.com`,
+    password_hash: "test-only",
+    created_at: now,
+    updated_at: now,
+  });
+  return {
+    id,
+    token: await signToken({
+      sub: id,
+      role: "user",
+      ...(mustChangePassword === undefined
+        ? {}
+        : { must_change_password: mustChangePassword }),
+    }),
+  };
+}
 
 // deno-lint-ignore no-explicit-any
 function registerAppErrorHandler(app: Hono<any, any, "/">) {
@@ -87,11 +111,7 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
-    const token = await signToken({
-      sub: "test-user-id",
-      role: "user",
-      must_change_password: true,
-    });
+    const { token } = await createToken(true);
 
     const res = await jsonRequest(app, "/protected", { token });
     assertEquals(res.status, 403);
@@ -107,11 +127,7 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
-    const token = await signToken({
-      sub: "test-user-id",
-      role: "user",
-      must_change_password: true,
-    });
+    const { token } = await createToken(true);
 
     const res = await jsonRequest(app, "/api/v1/auth/change-password", {
       method: "POST",
@@ -126,11 +142,7 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
-    const token = await signToken({
-      sub: "test-user-id",
-      role: "user",
-      must_change_password: true,
-    });
+    const { token } = await createToken(true);
 
     const res = await jsonRequest(app, "/api/v1/auth/me", { token });
     assertEquals(res.status, 200);
@@ -145,16 +157,13 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
-    const token = await signToken({
-      sub: "test-user-id",
-      role: "user",
-    });
+    const { id, token } = await createToken();
 
     const res = await jsonRequest(app, "/protected", { token });
     assertEquals(res.status, 200);
 
     const body = await res.json();
-    assertEquals(body.userId, "test-user-id");
+    assertEquals(body.userId, id);
     assertEquals(body.mustChangePassword, false);
   },
 });
@@ -164,11 +173,7 @@ Deno.test({
   ignore: !hasEnv,
   fn: async () => {
     const app = createTestApp();
-    const token = await signToken({
-      sub: "test-user-id",
-      role: "user",
-      must_change_password: false,
-    });
+    const { token } = await createToken(false);
 
     const res = await jsonRequest(app, "/protected", { token });
     assertEquals(res.status, 200);

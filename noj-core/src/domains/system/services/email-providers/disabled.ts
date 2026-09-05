@@ -5,7 +5,7 @@
  * 用户误以为已经发送邮件，也避免把重置令牌写入日志。
  */
 
-import type { SendPasswordResetEmail } from "./types.ts";
+import type { SendEmail, SendPasswordResetEmail } from "./types.ts";
 import { logger } from "../../../../shared/base/logging.ts";
 
 export const sendPasswordResetEmail: SendPasswordResetEmail = () => {
@@ -14,4 +14,12 @@ export const sendPasswordResetEmail: SendPasswordResetEmail = () => {
     event: "password_reset_skipped",
   });
   return Promise.resolve();
+};
+
+export const sendEmail: SendEmail = () => {
+  logger.warn("邮件服务未配置，跳过发送邮件", {
+    module: "email-disabled",
+    event: "email_skipped",
+  });
+  return Promise.resolve(false);
 };

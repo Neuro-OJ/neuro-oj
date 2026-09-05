@@ -7,8 +7,11 @@ export const SCHEMA_DDL: string[] = [
   // 1. users（issue #100：含 search_vector 列供 PGlite 模式测试）
   `CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
-    username TEXT NOT NULL UNIQUE,
+    username TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
+    email_verified BOOLEAN NOT NULL DEFAULT true,
+    email_verify_token TEXT,
+    email_verify_expires_at TEXT,
     password_hash TEXT,
     bio TEXT NOT NULL DEFAULT '',
     must_change_password BOOLEAN NOT NULL DEFAULT false,
@@ -17,6 +20,7 @@ export const SCHEMA_DDL: string[] = [
     avatar_url TEXT,
     tfa_secret_encrypted TEXT,
     tfa_enabled BOOLEAN NOT NULL DEFAULT false,
+    deleted_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     search_vector tsvector GENERATED ALWAYS AS (
@@ -24,6 +28,8 @@ export const SCHEMA_DDL: string[] = [
       setweight(to_tsvector('simple', coalesce(email, '')), 'B')
     ) STORED
   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS users_active_username_unique
+    ON users (username) WHERE deleted_at IS NULL`,
 
   // 1.1 oauth_accounts（第三方身份关联，不保存 provider token）
   `CREATE TABLE IF NOT EXISTS oauth_accounts (
@@ -372,13 +378,13 @@ export const SCHEMA_DDL: string[] = [
     ip_address TEXT NOT NULL,
     created_at TEXT NOT NULL,
     CONSTRAINT audit_logs_action_check CHECK (action IN (
-      'users.role_change','users.ban','users.unban',
+      'users.role_change','users.ban','users.unban','users.delete',
       'problems.delete','problems.runtime_config_changed','problems.imported',
       'tags.create','tags.update','tags.delete','tags.merge',
       'submissions.rejudge','settings.update',
       'ip_ban.create','ip_ban.delete',
       -- PR-2 新增 auth.* 动作
-      'auth.login_success','auth.login_failure','auth.register',
+      'auth.login_success','auth.login_failure','auth.register','auth.email_verified','auth.delete_account',
       'auth.change_password','auth.forgot_password_request','auth.password_reset',
       'auth.tfa_setup','auth.tfa_enabled','auth.tfa_disabled',
       'auth.tfa_recovery_regenerated','auth.tfa_recovery_used',

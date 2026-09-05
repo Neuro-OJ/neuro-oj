@@ -5,8 +5,21 @@
  * 用于本地开发与 E2E 测试。
  */
 
-import type { SendPasswordResetEmail } from "./types.ts";
+import type { SendEmail, SendPasswordResetEmail } from "./types.ts";
 import { logger } from "../../../../shared/base/logging.ts";
+
+export interface MockEmail {
+  to: string;
+  subject: string;
+  html: string;
+}
+
+const mockMailbox: MockEmail[] = [];
+
+/** 仅供测试读取并清空 mock 邮箱。 */
+export function takeMockEmailsForTest(): MockEmail[] {
+  return mockMailbox.splice(0);
+}
 
 /**
  * 发送密码重置邮件（mock 模式）。
@@ -47,4 +60,19 @@ export const sendPasswordResetEmail: SendPasswordResetEmail = (
     expiresIn: `${expiresInMinutes} minutes`,
   });
   return Promise.resolve();
+};
+
+export const sendEmail: SendEmail = (email, subject, html) => {
+  if (Deno.env.get("NOJ_ENV") === "production") {
+    throw new Error("EMAIL_PROVIDER=mock 在生产环境不可用");
+  }
+  mockMailbox.push({ to: email, subject, html });
+  logger.info("邮件（mock）", {
+    module: "email-mock",
+    event: "email",
+    to: email,
+    subject,
+    html,
+  });
+  return Promise.resolve(true);
 };
