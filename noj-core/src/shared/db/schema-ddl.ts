@@ -70,6 +70,8 @@ export const SCHEMA_DDL: string[] = [
     owner_id TEXT NOT NULL DEFAULT '0',
     type TEXT NOT NULL DEFAULT 'U' CHECK (type IN ('U', 'P')),
     is_objective BOOLEAN NOT NULL DEFAULT false,
+    visibility TEXT NOT NULL DEFAULT 'public'
+      CHECK (visibility IN ('public', 'private')),
     submission_mode TEXT NOT NULL DEFAULT 'code'
       CHECK (submission_mode IN ('code', 'artifact')),
     artifact_max_size_mb INTEGER,
@@ -140,6 +142,7 @@ export const SCHEMA_DDL: string[] = [
     freeze_duration_seconds INTEGER NOT NULL DEFAULT 0
       CHECK (freeze_duration_seconds >= 0),
     type TEXT NOT NULL CHECK (type IN ('kaggle')),
+    kind TEXT NOT NULL DEFAULT 'public' CHECK (kind IN ('public', 'invite')),
     config JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(config) = 'object'),
     is_public BOOLEAN NOT NULL DEFAULT true,
     password TEXT,

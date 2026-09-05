@@ -505,6 +505,13 @@
       "when": 1788709815628,
       "tag": "0071_shiny_annihilus",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1788769055984,
+      "tag": "0072_sweet_colleen_wing",
+      "breakpoints": true
     }
   ]
 }

@@ -35,6 +35,7 @@ export const contests = pgTable(
     freeze_duration_seconds: integer("freeze_duration_seconds").notNull()
       .default(0),
     type: text("type").notNull(),
+    kind: text("kind").notNull().default("public"),
     config: jsonb("config").notNull().default({}),
     is_public: boolean("is_public").notNull().default(true),
     password: text("password"),
@@ -53,6 +54,10 @@ export const contests = pgTable(
     typeCheck: check(
       "contests_type_check",
       sql`${table.type} IN ('kaggle')`,
+    ),
+    kindCheck: check(
+      "contests_kind_check",
+      sql`${table.kind} IN ('public', 'invite')`,
     ),
     timeCheck: check(
       "contests_time_check",
