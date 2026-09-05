@@ -51,6 +51,7 @@ import { judgeOptions } from "../../../objective/index.ts";
 import { getProblem } from "./problems-list.ts";
 import { getTagIdsByNames, listTags } from "../tags.ts";
 import { logAudit } from "../../../system/index.ts";
+import { assertLlmLimitsWithinDefault } from "../../../gateway/index.ts";
 import { MAX_SUPPORT_PACKAGE_SIZE } from "../support-package.ts";
 import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
 
@@ -265,6 +266,9 @@ async function updateExisting(
     manifest.runtime_config!,
   );
   enforceResourceLimits(manifest.runtime_config!);
+  if (manifest.llm) {
+    assertLlmLimitsWithinDefault(manifest.llm);
+  }
 
   if (oldStorageUrl) {
     try {
@@ -523,6 +527,9 @@ async function createViaCrud(
     manifest.runtime_config!,
   );
   enforceResourceLimits(manifest.runtime_config!);
+  if (manifest.llm) {
+    assertLlmLimitsWithinDefault(manifest.llm);
+  }
 
   const db = getDb();
   const tagIds = await resolveTagIds(manifest.tags);
