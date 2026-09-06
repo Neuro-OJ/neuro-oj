@@ -6,6 +6,7 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import {
   isValidContestConfig,
   isValidContestType,
+  isValidRankingVisibility,
 } from "../../types/contests.ts";
 
 Deno.test("contests: 仅允许 kaggle 赛制", () => {
@@ -29,4 +30,11 @@ Deno.test("contests: submission_limits 配置合法", () => {
     isValidContestConfig("kaggle", { submission_limits: "bad" }),
     false,
   );
+});
+
+Deno.test("contests: 榜单可见性只允许公开、参赛者和隐藏", () => {
+  assertEquals(isValidRankingVisibility("public"), true);
+  assertEquals(isValidRankingVisibility("participants"), true);
+  assertEquals(isValidRankingVisibility("hidden"), true);
+  assertEquals(isValidRankingVisibility("admin"), false);
 });

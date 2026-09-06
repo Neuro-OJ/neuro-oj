@@ -2,6 +2,7 @@ import { formatDateTime } from '~/utils/submissionFormat';
 
 export type ContestType = 'kaggle';
 export type ContestStatus = 'pending' | 'running' | 'ended';
+export type RankingVisibility = 'public' | 'participants' | 'hidden';
 
 export interface ContestConfig {
   submission_limits?: Record<string, number>;
@@ -14,6 +15,9 @@ export interface Contest {
   description: string;
   start_time: string;
   end_time: string;
+  ranking_visibility: RankingVisibility;
+  freeze_start_time: string | null;
+  freeze_duration_seconds: number;
   type: ContestType;
   config: ContestConfig;
   is_public: boolean;
@@ -58,6 +62,8 @@ export interface ContestPayload {
   description?: string;
   start_time: string;
   end_time: string;
+  ranking_visibility?: RankingVisibility;
+  freeze_duration_seconds?: number;
   type: ContestType;
   config: ContestConfig;
   is_public: boolean;
@@ -175,9 +181,12 @@ export function useContests() {
     );
     const hours = Math.floor(milliseconds / 3_600_000);
     const minutes = Math.floor((milliseconds % 3_600_000) / 60_000);
-    if (hours === 0 && minutes === 0) return t('contest.durationLessThanMinute');
+    if (hours === 0 && minutes === 0) {
+      return t('contest.durationLessThanMinute');
+    }
     if (locale.value === 'en-US') {
-      return [hours > 0 ? `${hours}h` : '', minutes > 0 ? `${minutes}m` : ''].filter(Boolean).join(' ');
+      return [hours > 0 ? `${hours}h` : '', minutes > 0 ? `${minutes}m` : '']
+        .filter(Boolean).join(' ');
     }
     return `${hours > 0 ? `${hours} 小时` : ''}${minutes > 0 ? ` ${minutes} 分钟` : ''}`.trim();
   }

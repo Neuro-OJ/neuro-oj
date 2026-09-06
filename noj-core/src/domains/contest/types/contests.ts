@@ -4,6 +4,13 @@ export type ContestType = typeof CONTEST_TYPES[number];
 export const CONTEST_STATUSES = ["pending", "running", "ended"] as const;
 export type ContestStatus = typeof CONTEST_STATUSES[number];
 
+export const RANKING_VISIBILITIES = [
+  "public",
+  "participants",
+  "hidden",
+] as const;
+export type RankingVisibility = typeof RANKING_VISIBILITIES[number];
+
 /**
  * 类 Kaggle 赛制配置。
  * `submission_limits` 为可选字段：`{ "<problem_id>": <number> }`，
@@ -17,6 +24,12 @@ export type ContestConfig = KaggleContestConfig;
 
 export function isValidContestType(value: string): value is ContestType {
   return CONTEST_TYPES.includes(value as ContestType);
+}
+
+export function isValidRankingVisibility(
+  value: string,
+): value is RankingVisibility {
+  return RANKING_VISIBILITIES.includes(value as RankingVisibility);
 }
 
 export function isValidContestConfig(
@@ -62,6 +75,9 @@ export interface CreateContestInput {
   description?: string;
   start_time: string;
   end_time: string;
+  ranking_visibility?: RankingVisibility;
+  freeze_start_time?: string | null;
+  freeze_duration_seconds?: number;
   type: ContestType;
   config?: ContestConfig;
   is_public?: boolean;
@@ -76,6 +92,9 @@ export interface UpdateContestInput {
   description?: string;
   start_time?: string;
   end_time?: string;
+  ranking_visibility?: RankingVisibility;
+  freeze_start_time?: string | null;
+  freeze_duration_seconds?: number;
   type?: ContestType;
   config?: ContestConfig;
   is_public?: boolean;
@@ -92,6 +111,9 @@ export interface ContestResponse {
   description: string;
   start_time: string;
   end_time: string;
+  ranking_visibility: RankingVisibility;
+  freeze_start_time: string | null;
+  freeze_duration_seconds: number;
   type: ContestType;
   config: ContestConfig;
   is_public: boolean;

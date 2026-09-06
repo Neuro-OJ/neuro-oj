@@ -10,7 +10,7 @@ import { lastEventId } from "../../../shared/sse/server-helpers.ts";
 import { replaySseEvents } from "../../../shared/sse/sse-events.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
 import { getContest } from "../services/contests.ts";
-import { getContestRanking } from "../services/contest-ranking.ts";
+import { getContestRankingView } from "../services/contest-ranking.ts";
 
 /**
  * contest 域竞赛 SSE 路由。
@@ -43,6 +43,8 @@ contestSse.get(
       let lastRankingPushAt = 0;
       let unsubscribeRanking = () => {};
       let unsubscribeSubmission = () => {};
+      let currentView: "live" | "frozen" | "official" = "live";
+      const isFrozenView = () => currentView === "frozen";
 
       const keepAlive = setInterval(() => {
         if (streamClosed) return;
@@ -97,18 +99,25 @@ contestSse.get(
 
         rankingInFlight = true;
         try {
-          const data = await getContestRanking(
+          const result = await getContestRankingView(
             contestId,
             contest.type,
             isAdmin,
             viewerId,
           );
+          currentView = result.view;
           await stream.writeSSE({
             event,
             data: JSON.stringify({
               type: event,
               contest_id: contestId,
-              data,
+              data: result.rows,
+              view: result.view,
+              ranking_visibility: result.ranking_visibility,
+              freeze_start_time: result.freeze_start_time,
+              freeze_end_time: result.freeze_end_time,
+              settlement_pending: result.settlement_pending,
+              admin_live: isAdmin && result.view === "live",
             }),
           });
           lastRankingPushAt = Date.now();
@@ -129,7 +138,8 @@ contestSse.get(
       unsubscribeSubmission = onEvent(
         Channels.contestSubmission(contestId),
         (_channel, message) => {
-          if (streamClosed) return;
+          // 封榜/待结算期间普通用户不接收提交事件，避免从旁路推导实时变化。
+          if (streamClosed || (!isAdmin && isFrozenView())) return;
           // 非 admin 订阅者隐藏 user_id，避免泄露“谁在提交哪题”。
           let payload = message;
           if (!isAdmin) {
@@ -162,6 +172,7 @@ contestSse.get(
         if (streamClosed) return;
         const payload = ev.payload as { type?: string };
         if (payload.type === "contest:submission:created") {
+          if (!isAdmin && isFrozenView()) continue;
           let data = JSON.stringify({ ...payload, seq: ev.id });
           if (!isAdmin) {
             try {
