@@ -11,6 +11,7 @@ import {
   logAuthEvent,
   sendEmailVerificationEmail,
 } from "../../system/index.ts";
+import { isEmailSuppressed } from "../../system/services/email-delivery/service.ts";
 
 export const EMAIL_VERIFICATION_TTL_MINUTES = 30;
 
@@ -48,6 +49,13 @@ export async function sendEmailVerification(
   }).from(users).where(and(eq(users.id, userId), isNull(users.deleted_at)))
     .limit(1);
   if (!user || user.verified) return { sent: false, token: null };
+  if (await isEmailSuppressed(user.email)) {
+    logger.warn("邮箱已被送达质量策略抑制，跳过验证邮件", {
+      module: "email-verification",
+      event: "suppressed",
+    });
+    return { sent: false, token: null };
+  }
   if (
     enforceCooldown && user.expiresAt &&
     Date.parse(user.expiresAt) >

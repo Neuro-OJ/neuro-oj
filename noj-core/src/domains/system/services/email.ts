@@ -17,6 +17,7 @@ import type {
 import { buildEmailVerificationHtml } from "./email-providers/common.ts";
 import { getSetting } from "./system-settings.ts";
 import { logger } from "../../../shared/base/logging.ts";
+import { metrics } from "../../../shared/base/metrics.ts";
 
 /** Provider 名称到模块路径的映射 */
 const PROVIDER_MODULES: Record<string, string> = {
@@ -104,6 +105,10 @@ export async function sendPasswordResetEmail(
   resetLink: string,
   expiresInMinutes = 15,
 ): Promise<void> {
+  metrics.inc("noj_email_send_attempts_total", {
+    provider: String(getSetting("email_provider")?.value ?? "mock"),
+    message_type: "password_reset",
+  });
   const fn = await loadSendFn();
   await fn(email, resetLink, expiresInMinutes);
 }
@@ -114,6 +119,10 @@ export async function sendEmailVerificationEmail(
   verifyLink: string,
   expiresInMinutes = 30,
 ): Promise<boolean> {
+  metrics.inc("noj_email_send_attempts_total", {
+    provider: String(getSetting("email_provider")?.value ?? "mock"),
+    message_type: "verification",
+  });
   const fn = await loadGenericSendFn();
   return await fn(
     email,
@@ -129,6 +138,10 @@ export async function sendEmailVerificationEmail(
  * disabled Provider 会返回 false，临时故障由调用方捕获并反馈。
  */
 export async function sendTestEmail(to: string): Promise<boolean> {
+  metrics.inc("noj_email_send_attempts_total", {
+    provider: String(getSetting("email_provider")?.value ?? "mock"),
+    message_type: "test",
+  });
   const fn = await loadGenericSendFn();
   return await fn(
     to,
