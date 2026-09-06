@@ -17,7 +17,12 @@
  * Fork PR 无需任何生产凭据（issue #427 验收项）。
  */
 
-import { CODE_SAMPLES, isJudgeAvailable, TEST_PASSWORD } from "../helper.ts";
+import {
+  CODE_SAMPLES,
+  isJudgeAvailable,
+  registerUser,
+  TEST_PASSWORD,
+} from "../helper.ts";
 
 const BROWSER_E2E = Deno.env.get("NOJ_RUN_BROWSER_E2E") === "1";
 const UI_URL = Deno.env.get("E2E_UI_URL") || "http://localhost:3000";
@@ -27,6 +32,8 @@ const ARTIFACT_DIR = "test-results/ui-browser";
 const ts = Date.now().toString(36);
 const USERNAME = `ui_browser_${ts}`;
 const EMAIL = `${USERNAME}@test.com`;
+// 提交流程专用：#441 邮件就绪门槛要求已验证邮箱，经 API 注册并完成验证
+const SUBMIT_USER = `ui_submit_${ts}`;
 
 // ── 共享浏览器会话 ────────────────────────────────
 let browser: import("npm:playwright@1.62.1").Browser | null = null;
@@ -240,7 +247,8 @@ Deno.test("[ui/browser] 3/4 代码提交 → 评测结果（满分）", async ()
       failed = false;
       return;
     }
-    await loginViaUI(USERNAME, TEST_PASSWORD);
+    await registerUser(SUBMIT_USER, `${SUBMIT_USER}@test.com`, TEST_PASSWORD);
+    await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
     await submitCodeViaUI(CODE_SAMPLES.accepted);
     const score = await waitForNewVerdict(null);
     if (!score.includes("100")) {
@@ -262,7 +270,8 @@ Deno.test("[ui/browser] 4/4 核心失败反馈（错误答案非满分）", asyn
       failed = false;
       return;
     }
-    await loginViaUI(USERNAME, TEST_PASSWORD);
+    await registerUser(SUBMIT_USER, `${SUBMIT_USER}@test.com`, TEST_PASSWORD);
+    await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
     // 先读取上一条（3/4 满分卡片的分数），等待新结论覆盖
     await goto("/editor/P1001");
     const prev = await currentScoreText();
