@@ -112,6 +112,7 @@ export async function createArtifactSubmission(
     llm_provider_config_id?: string;
   },
   contestId?: string,
+  clientIp?: string,
 ): Promise<SubmissionResponse> {
   const db = getDb();
   if (contestId && input.contest_id && contestId !== input.contest_id) {
@@ -291,6 +292,7 @@ export async function createArtifactSubmission(
       user_id: userId,
       problem_id: input.problem_id,
       contest_id: resolvedContestId,
+      client_ip: clientIp && clientIp !== "unknown" ? clientIp : null,
       language,
       code: "",
       file_name: input.file_name,

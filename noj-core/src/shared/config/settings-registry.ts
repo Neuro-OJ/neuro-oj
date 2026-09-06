@@ -821,6 +821,18 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     max: 365,
     scope: "bootstrap",
   },
+  {
+    key: "anti_cheat_ip_retention_days",
+    type: "integer",
+    default: 180,
+    description: "竞赛提交来源 IP 保留天数（0 = 禁用自动清理）",
+    is_secret: false,
+    envKey: "ANTI_CHEAT_IP_RETENTION_DAYS",
+    category: "other",
+    min: 0,
+    max: 3650,
+    scope: "bootstrap",
+  },
 
   // ══ bootstrap env-only 基础设施项（原 env-snapshot 白名单）══════
   // scope: bootstrap，envKey 即 env 事实源；后台只读展示（已设置才展示）。

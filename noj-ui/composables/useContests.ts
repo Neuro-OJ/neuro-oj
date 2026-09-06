@@ -128,6 +128,34 @@ export interface Pagination {
   total_pages: number;
 }
 
+export interface ContestAntiCheatAccount {
+  user_id: string;
+  username: string;
+  submission_count: number;
+  first_submission_at: string;
+  last_submission_at: string;
+}
+
+export interface ContestAntiCheatGroup {
+  ip: string;
+  account_count: number;
+  submission_count: number;
+  first_submission_at: string;
+  last_submission_at: string;
+  accounts: ContestAntiCheatAccount[];
+}
+
+export interface ContestAntiCheatTimelineItem {
+  submission_id: string;
+  user_id: string;
+  username: string;
+  problem_id: string;
+  problem_title: string;
+  language: string;
+  status: string;
+  created_at: string;
+}
+
 export function useContests() {
   const { api } = useApi();
   const typeLabels: Record<ContestType, string> = {
@@ -140,31 +168,78 @@ export function useContests() {
   };
 
   function formatDuration(startTime: string, endTime: string) {
-    const milliseconds = Math.max(0, Date.parse(endTime) - Date.parse(startTime));
+    const milliseconds = Math.max(
+      0,
+      Date.parse(endTime) - Date.parse(startTime),
+    );
     const hours = Math.floor(milliseconds / 3_600_000);
     const minutes = Math.floor((milliseconds % 3_600_000) / 60_000);
     return `${hours > 0 ? `${hours} 小时` : ''}${minutes > 0 ? ` ${minutes} 分钟` : ''}`.trim() || '不足 1 分钟';
   }
 
   function statusClass(status: ContestStatus) {
-    if (status === 'running') return 'bg-green-50 text-success-text border-green-200';
-    if (status === 'pending') return 'bg-blue-50 text-info-text border-blue-200';
+    if (status === 'running') {
+      return 'bg-green-50 text-success-text border-green-200';
+    }
+    if (status === 'pending') {
+      return 'bg-blue-50 text-info-text border-blue-200';
+    }
     return 'bg-gray-100 text-text-secondary border-border';
   }
 
   // ── 竞赛答疑 API ─────────────────────────────────────────────
-  function listClarifications(contestId: string, query?: { page?: number; per_page?: number }) {
+  function listClarifications(
+    contestId: string,
+    query?: { page?: number; per_page?: number },
+  ) {
     return api.get<{ data: Clarification[]; pagination: Pagination }>(
       `/api/v1/contests/${contestId}/clarifications`,
       { query, silent: true },
     );
   }
 
-  function askClarification(contestId: string, body: { content: string; problem_id?: string }) {
-    return api.post<{ data: Clarification }>(`/api/v1/contests/${contestId}/clarifications`, body);
+  function listAntiCheatGroups(
+    contestId: string,
+    query?: { page?: number; per_page?: number; min_accounts?: number },
+  ) {
+    return api.get<
+      {
+        data: ContestAntiCheatGroup[];
+        pagination: Pagination;
+        data_policy: {
+          purpose: string;
+          retention_days: number;
+          automated_penalty: boolean;
+        };
+      }
+    >(
+      `/api/v1/admin/contests/${contestId}/anti-cheat/ip-groups`,
+      { query, silent: true },
+    );
   }
 
-  function replyClarification(contestId: string, clarId: string, body: { content: string; is_public: boolean }) {
+  function listAntiCheatTimeline(contestId: string, ip: string) {
+    return api.get<{ data: ContestAntiCheatTimelineItem[] }>(
+      `/api/v1/admin/contests/${contestId}/anti-cheat/timeline`,
+      { query: { ip }, silent: true },
+    );
+  }
+
+  function askClarification(
+    contestId: string,
+    body: { content: string; problem_id?: string },
+  ) {
+    return api.post<{ data: Clarification }>(
+      `/api/v1/contests/${contestId}/clarifications`,
+      body,
+    );
+  }
+
+  function replyClarification(
+    contestId: string,
+    clarId: string,
+    body: { content: string; is_public: boolean },
+  ) {
     return api.post<{ data: ClarificationReply }>(
       `/api/v1/contests/${contestId}/clarifications/${clarId}/reply`,
       body,
@@ -180,5 +255,7 @@ export function useContests() {
     listClarifications,
     askClarification,
     replyClarification,
+    listAntiCheatGroups,
+    listAntiCheatTimeline,
   };
 }
