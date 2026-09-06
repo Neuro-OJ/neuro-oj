@@ -7,6 +7,8 @@
  */
 
 /** 提取结果：可直接用于 toast/表单错误展示 */
+import { DEFAULT_LOCALE, type Locale, translate, translateErrorCode } from './i18n.ts';
+
 export interface ApiErrorInfo {
   /** 展示给用户的具体错误原因（优先为后端 `error` 字段，否则为兜底文案） */
   message: string;
@@ -17,11 +19,6 @@ export interface ApiErrorInfo {
   /** 后端 request_id（用于与服务端日志关联），无则 undefined */
   requestId?: string;
 }
-
-// 兜底文案集中管理：网络/超时/未知错误不允许展示原始英文堆栈
-const FALLBACK_NETWORK = '网络连接失败，请检查网络';
-const FALLBACK_TIMEOUT = '请求超时，请稍后重试';
-const FALLBACK_UNKNOWN = '操作失败，请稍后重试';
 
 /** 判断是否为超时/中止错误（ofetch `timeout` 选项或 AbortController.abort 触发） */
 export function isTimeoutError(err: unknown): boolean {
@@ -52,7 +49,7 @@ export function isNetworkError(err: unknown): boolean {
  * 4. 有 HTTP 状态码但无 error 字段 → 「请求失败（HTTP <status>）」
  * 5. 未知错误 → 「操作失败，请稍后重试」
  */
-export function extractApiError(err: unknown): ApiErrorInfo {
+export function extractApiError(err: unknown, locale: Locale = DEFAULT_LOCALE): ApiErrorInfo {
   const e = err as {
     data?: unknown;
     status?: number;
@@ -62,26 +59,41 @@ export function extractApiError(err: unknown): ApiErrorInfo {
 
   const status = e?.status ?? e?.statusCode ?? e?.response?.status;
 
-  // 1. 后端错误响应：响应体 `{ error: string, code, request_id }`
+  // 1. 后端错误响应：机器 code 优先映射为本地文案，避免把后端中文直接拼到英文界面。
   const data = e?.data;
   if (data !== null && typeof data === 'object') {
     const d = data as Record<string, unknown>;
-    if (typeof d.error === 'string' && d.error.length > 0) {
+    const code = typeof d.code === 'string' ? d.code : undefined;
+    const localized = translateErrorCode(code, locale);
+    // 中文界面保留后端提供的具体业务原因（例如“用户名已存在”）；英文界面
+    // 必须使用 code 映射，避免把中文自然语言直接带到英文 UI。
+    if (localized && locale === 'en-US') {
       return {
-        message: d.error,
-        code: typeof d.code === 'string' ? d.code : undefined,
+        message: localized,
+        code,
         status,
         requestId: typeof d.request_id === 'string' ? d.request_id : undefined,
       };
     }
+    if (typeof d.error === 'string' && d.error.length > 0) {
+      return {
+        message: d.error,
+        code,
+        status,
+        requestId: typeof d.request_id === 'string' ? d.request_id : undefined,
+      };
+    }
+    if (localized) {
+      return { message: localized, code, status };
+    }
   }
 
   // 2. 超时
-  if (isTimeoutError(err)) return { message: FALLBACK_TIMEOUT, status };
+  if (isTimeoutError(err)) return { message: translate(locale, 'error.timeout'), status };
   // 3. 网络错误
-  if (isNetworkError(err)) return { message: FALLBACK_NETWORK, status };
+  if (isNetworkError(err)) return { message: translate(locale, 'error.network'), status };
   // 4. 有状态码但响应体无 error 字段：给出结构化兜底而非裸状态码
-  if (typeof status === 'number') return { message: `请求失败（HTTP ${status}）`, status };
+  if (typeof status === 'number') return { message: translate(locale, 'error.http', { status }), status };
   // 5. 未知错误
-  return { message: FALLBACK_UNKNOWN };
+  return { message: translate(locale, 'error.unknown') };
 }

@@ -11,6 +11,7 @@ import { useBanStatus } from "~/composables/useBanStatus"
 
 const { fetch } = useBanStatus()
 const { isLoggedIn } = useAuth()
+const { locale, t } = useI18n()
 
 // 首次加载时获取封禁状态
 if (import.meta.client) {
@@ -27,39 +28,29 @@ watch(isLoggedIn, () => {
 // ─── 页面级标题（WCAG 2.4.2）：按路由路径生成描述性 <title>，替代全站统一标题 ───
 const route = useRoute()
 
-const TITLE_RULES: { match: string; title: string }[] = [
-  { match: "/login", title: "登录 - Neuro OJ" },
-  { match: "/register", title: "注册 - Neuro OJ" },
-  { match: "/forgot-password", title: "忘记密码 - Neuro OJ" },
-  { match: "/reset-password", title: "重置密码 - Neuro OJ" },
-  { match: "/change-password", title: "修改密码 - Neuro OJ" },
-  { match: "/admin", title: "管理后台 - Neuro OJ" },
-  { match: "/editor", title: "做题 - Neuro OJ" },
-  { match: "/problems", title: "题库 - Neuro OJ" },
-  { match: "/my", title: "我的 - Neuro OJ" },
-  { match: "/submissions", title: "提交历史 - Neuro OJ" },
-  { match: "/ranking", title: "榜单 - Neuro OJ" },
-  { match: "/queue", title: "评测队列 - Neuro OJ" },
-  { match: "/contests", title: "竞赛 - Neuro OJ" },
-  { match: "/community", title: "社区 - Neuro OJ" },
-  { match: "/messages", title: "私信 - Neuro OJ" },
-  { match: "/search", title: "搜索 - Neuro OJ" },
-  { match: "/settings", title: "设置 - Neuro OJ" },
-  { match: "/users", title: "用户 - Neuro OJ" },
-  { match: "/about", title: "关于 - Neuro OJ" },
-  { match: "/", title: "Neuro OJ" },
+const TITLE_RULES: { match: string; key: string }[] = [
+  { match: "/login", key: "auth.login" },
+  { match: "/register", key: "auth.register" },
+  { match: "/problems", key: "problem.title" },
+  { match: "/submissions", key: "submission.title" },
+  { match: "/contests", key: "contest.title" },
+  { match: "/community", key: "nav.community" },
+  { match: "/ranking", key: "nav.ranking" },
+  { match: "/about", key: "nav.about" },
+  { match: "/", key: "nav.home" },
 ]
 
 function resolvePageTitle(path: string): string {
   // 精确匹配优先，其次前缀匹配（动态路由如 /problems/1001、/submissions/{id}）
   const exact = TITLE_RULES.find((r) => r.match === path)
-  if (exact) return exact.title
-  const byPrefix = TITLE_RULES.find((r) => path.startsWith(r.match))
-  return byPrefix?.title ?? "Neuro OJ"
+  if (exact) return `${t(exact.key)} - Neuro OJ`
+  const byPrefix = TITLE_RULES.find((r) => r.match !== "/" && path.startsWith(r.match))
+  return byPrefix ? `${t(byPrefix.key)} - Neuro OJ` : "Neuro OJ"
 }
 
 useHead({
   title: computed(() => resolvePageTitle(route.path)),
+  htmlAttrs: { lang: computed(() => locale.value) },
   meta: [
     { property: 'og:title', content: 'Neuro OJ' },
     { property: 'og:description', content: 'Neuro OJ — 面向 AI 领域认证与竞赛（IOAI / NOAI / LMCC）的在线评测平台' },

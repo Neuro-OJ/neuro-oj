@@ -8,16 +8,20 @@ interface Props {
 }
 
 defineProps<Props>()
+const { isEnglish } = useI18n()
 
 const config: Record<string, { label: string; color: 'success' | 'warning' | 'error' }> = {
   easy: { label: '简单', color: 'success' },
   medium: { label: '中等', color: 'warning' },
   hard: { label: '困难', color: 'error' },
 }
+const labels = computed<Record<string, string>>(() => isEnglish.value
+  ? { easy: 'Easy', medium: 'Medium', hard: 'Hard' }
+  : { easy: '简单', medium: '中等', hard: '困难' })
 </script>
 
 <template>
   <UBadge size="sm" variant="subtle" :color="config[difficulty]?.color ?? 'neutral'" class="shrink-0 justify-self-end">
-    {{ config[difficulty]?.label ?? difficulty }}
+    {{ labels[difficulty] ?? config[difficulty]?.label ?? difficulty }}
   </UBadge>
 </template>
