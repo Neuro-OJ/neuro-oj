@@ -8,7 +8,7 @@
             <!-- 移动端菜单抽屉：默认插槽=汉堡触发按钮（<md 显示），#body=面板导航 -->
             <UDrawer
                 v-model:open="mobileOpen"
-                title="菜单"
+                :title="t('nav.openMenu')"
                 side="left"
                 :handle="false"
                 :close="true"
@@ -50,25 +50,34 @@
                   class="whitespace-nowrap"
                 >
                   <UIcon name="i-lucide-more-horizontal" class="size-4" />
-                  更多
+                  {{ t('nav.more') }}
                 </UButton>
               </UDropdownMenu>
             </nav>
             <button
                 type="button"
                 class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:bg-primary-hover rounded-md transition-colors"
-                aria-label="搜索"
+                :aria-label="t('nav.search')"
                 @click="openSearch"
             >
                 <UIcon name="i-lucide-search" class="w-4 h-4 size-4" />
-                <span class="hidden sm:inline">搜索</span>
+                <span class="hidden sm:inline">{{ t('nav.search') }}</span>
                 <kbd class="hidden md:inline-block px-1.5 py-0.5 text-xs bg-gray-100 border border-border rounded">Ctrl K</kbd>
             </button>
             <div class="flex items-center gap-3 ml-auto">
-                <NuxtLink v-if="user && communityConfig?.enabled" to="/community/notifications" class="relative flex items-center justify-center rounded-md p-2 text-text-secondary no-underline transition-colors hover:bg-primary-hover hover:text-text" aria-label="社区通知">
+                <NuxtLink v-if="user && communityConfig?.enabled" to="/community/notifications" class="relative flex items-center justify-center rounded-md p-2 text-text-secondary no-underline transition-colors hover:bg-primary-hover hover:text-text" :aria-label="t('nav.notifications')">
                     <UIcon name="i-lucide-bell" class="size-4.5" />
                     <span v-if="unreadCount > 0" class="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">{{ unreadCount > 9 ? '9+' : unreadCount }}</span>
                 </NuxtLink>
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  :aria-label="t('common.language')"
+                  @click="setLocale(isEnglish ? 'zh-CN' : 'en-US')"
+                >
+                  {{ isEnglish ? '中文' : 'EN' }}
+                </UButton>
                 <UserMenu />
             </div>
         </div>
@@ -79,6 +88,7 @@
 import { shouldLoadCommunityUnreadCount } from '~/utils/communityNotifications';
 
 const { user } = useAuth();
+const { t, setLocale, isEnglish } = useI18n();
 const { open: openSearch } = useSearch();
 const { config: communityConfig, loadConfig } = useCommunity();
 const { unreadCount, loadUnreadCount } = useCommunityNotifications();
@@ -94,19 +104,19 @@ interface NavItem {
   needsCommunity?: boolean
 }
 
-const baseNavItems: NavItem[] = [
-  { label: '首页', to: '/', icon: 'i-lucide-home' },
-  { label: '题库', to: '/problems', icon: 'i-lucide-book-open' },
-  { label: '竞赛', to: '/contests', icon: 'i-lucide-trophy' },
-  { label: '榜单', to: '/ranking', icon: 'i-lucide-medal' },
-  { label: '题单', to: '/trainings', icon: 'i-lucide-list-todo' },
-  { label: '社区', to: '/community', icon: 'i-lucide-messages-square', needsCommunity: true },
-  { label: '提交记录', to: '/submissions', icon: 'i-lucide-file-text' },
-  { label: '队列', to: '/queue', icon: 'i-lucide-list-ordered' },
-  { label: '关于', to: '/about', icon: 'i-lucide-info' },
-]
+const baseNavItems = computed<NavItem[]>(() => [
+  { label: t('nav.home'), to: '/', icon: 'i-lucide-home' },
+  { label: t('nav.problems'), to: '/problems', icon: 'i-lucide-book-open' },
+  { label: t('nav.contests'), to: '/contests', icon: 'i-lucide-trophy' },
+  { label: t('nav.ranking'), to: '/ranking', icon: 'i-lucide-medal' },
+  { label: t('nav.trainings'), to: '/trainings', icon: 'i-lucide-list-todo' },
+  { label: t('nav.community'), to: '/community', icon: 'i-lucide-messages-square', needsCommunity: true },
+  { label: t('nav.submissions'), to: '/submissions', icon: 'i-lucide-file-text' },
+  { label: t('nav.queue'), to: '/queue', icon: 'i-lucide-list-ordered' },
+  { label: t('nav.about'), to: '/about', icon: 'i-lucide-info' },
+])
 
-const navItems = computed(() => baseNavItems.filter((i) => !i.needsCommunity || communityConfig.value?.enabled))
+const navItems = computed(() => baseNavItems.value.filter((i) => !i.needsCommunity || communityConfig.value?.enabled))
 
 // ── 桌面导航响应式折叠：ResizeObserver 动态计算可见项，放不下的进“更多” ──
 const navRef = ref<HTMLElement | null>(null)

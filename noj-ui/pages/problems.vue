@@ -6,6 +6,7 @@ const { api } = useApi()
 
 const router = useRouter()
 const route = useRoute()
+const { t } = useI18n()
 
 interface ProblemItem {
   id: string
@@ -176,18 +177,18 @@ onUnmounted(() => window.removeEventListener("resize", updateIsDesktop))
 const columns = computed(() => {
   const base: { accessorKey: string; header: string }[] = [
     { accessorKey: "display_id", header: "#" },
-    { accessorKey: "title", header: "题目" },
-    { accessorKey: "difficulty", header: "难度" },
-    { accessorKey: "tags", header: "标签" },
-    { accessorKey: "time", header: "时间" },
-    { accessorKey: "memory", header: "内存" },
-    { accessorKey: "rate", header: "通过率" },
+    { accessorKey: "title", header: t('problem.tableTitle') },
+    { accessorKey: "difficulty", header: t('problem.difficulty') },
+    { accessorKey: "tags", header: t('problem.tags') },
+    { accessorKey: "time", header: t('problem.time') },
+    { accessorKey: "memory", header: t('problem.memory') },
+    { accessorKey: "rate", header: t('problem.rate') },
   ]
   // 用户题库（U 型）展示创建者；主题库（P 型）为平台官方题，不展示
   if (problemType.value === 'U') {
-    base.splice(2, 0, { accessorKey: "owner", header: "创建者" })
+    base.splice(2, 0, { accessorKey: "owner", header: t('problem.creator') })
   }
-  if (isLoggedIn.value) base.push({ accessorKey: "status", header: "状态" })
+  if (isLoggedIn.value) base.push({ accessorKey: "status", header: t('problem.status') })
   if (!isDesktop.value) {
     return base.filter((c) => !["tags", "time", "memory", "rate", "status"].includes(c.accessorKey))
   }
@@ -200,8 +201,8 @@ const columns = computed(() => {
   <NuxtPage v-if="route.path !== '/problems'" />
   <div v-else class="px-4 py-5 sm:px-7 sm:py-8 max-w-[960px] mx-auto">
     <div class="flex items-baseline gap-3 mb-6">
-      <h1 class="text-2xl font-bold text-text">题库</h1>
-      <span class="text-sm text-text-muted">{{ total }} 道题目</span>
+      <h1 class="text-2xl font-bold text-text">{{ t('problem.title') }}</h1>
+      <span class="text-sm text-text-muted">{{ t('problem.count', { count: total }) }}</span>
     </div>
 
     <!-- 筛选栏 -->
@@ -220,8 +221,8 @@ const columns = computed(() => {
     <!-- 异步内容 -->
     <AsyncContent
       :status="pending ? 'loading' : error ? 'error' : problems.length === 0 ? 'empty' : 'data'"
-      error="题目加载失败"
-      :empty-text="hasActiveFilters ? '没有找到符合条件的题目，试试其他筛选条件' : '暂无题目'"
+      :error="t('problem.loadFailed')"
+      :empty-text="hasActiveFilters ? t('problem.filteredEmpty') : t('problem.empty')"
       @retry="refresh"
     >
       <template #loading>
@@ -229,13 +230,13 @@ const columns = computed(() => {
       </template>
       <template #empty-action v-if="hasActiveFilters">
         <UButton color="primary" variant="outline" class="px-4 py-1.5 text-xs" @click="router.push({ query: {} })">
-          清除筛选
+          {{ t('problem.clearFilters') }}
         </UButton>
       </template>
 
       <!-- 题目表格 -->
       <div class="bg-white border border-border rounded-xl overflow-x-auto">
-        <UTable :columns="columns" :data="problems" :empty="'暂无题目'">
+        <UTable :columns="columns" :data="problems" :empty="t('problem.empty')">
           <template #display_id-cell="{ row }">
             <ProblemId :display-id="row.original.display_id" :type="row.original.type" />
           </template>
@@ -259,7 +260,7 @@ const columns = computed(() => {
               v-if="row.original.is_objective"
               class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700"
             >
-              客观题
+              {{ t('problem.objective') }}
             </span>
             <span
               v-else
@@ -279,7 +280,7 @@ const columns = computed(() => {
           </template>
           <template #time-cell="{ row }">
             <!-- 客观题套卷无评测容器（runtime_config 为 NULL） -->
-            <span v-if="row.original.is_objective" class="text-xs text-text-secondary">即时判定</span>
+            <span v-if="row.original.is_objective" class="text-xs text-text-secondary">{{ t('problem.instant') }}</span>
             <span v-else class="text-xs text-text-secondary">{{ row.original.runtime_config?.evaluator?.time_limit_ms ?? '--' }}ms</span>
           </template>
           <template #memory-cell="{ row }">

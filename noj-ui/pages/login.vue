@@ -1,11 +1,11 @@
 <template>
   <AuthFormCard
     v-if="!tfaRequired"
-    title="登录"
+    :title="t('auth.login')"
     :error="error"
     :loading="loading"
-    submit-label="登录"
-    loading-label="登录"
+    :submit-label="t('auth.login')"
+    :loading-label="t('auth.loggingIn')"
     @submit="handleLogin"
     @clear-error="clearError"
   >
@@ -22,8 +22,8 @@
     <TextInput
       id="login"
       v-model="form.login"
-      label="用户名 / 邮箱"
-      placeholder="请输入用户名或邮箱"
+      :label="t('auth.usernameOrEmail')"
+      :placeholder="t('auth.usernameOrEmailPlaceholder')"
       autocomplete="username"
       :disabled="loading"
       :error="fieldErrors.login"
@@ -37,8 +37,8 @@
     <PasswordField
       id="password"
       v-model="form.password"
-      label="密码"
-      placeholder="至少 8 位，需包含大小写字母和数字"
+      :label="t('auth.password')"
+      :placeholder="t('auth.passwordPlaceholder')"
       autocomplete="current-password"
       :disabled="loading"
       :error="fieldErrors.password"
@@ -49,8 +49,8 @@
       v-if="tfaRequired"
       id="code"
       v-model="form.code"
-      label="两步验证码"
-      placeholder="6 位验证码或恢复码"
+      :label="t('auth.twoFactorCode')"
+      :placeholder="t('auth.codePlaceholder')"
       autocomplete="one-time-code"
       :disabled="loading"
       :error="fieldErrors.code"
@@ -63,10 +63,10 @@
 
     <template #footer>
       <p class="mb-2">
-        还没有账号？<NuxtLink to="/register" class="text-primary no-underline font-semibold hover:underline">立即注册</NuxtLink>
+        {{ t('auth.noAccount') }} <NuxtLink to="/register" class="text-primary no-underline font-semibold hover:underline">{{ t('auth.registerNow') }}</NuxtLink>
       </p>
       <p>
-        <NuxtLink to="/forgot-password" class="text-primary no-underline font-semibold hover:underline">忘记密码？</NuxtLink>
+        <NuxtLink to="/forgot-password" class="text-primary no-underline font-semibold hover:underline">{{ t('auth.forgotPassword') }}</NuxtLink>
       </p>
     </template>
   </AuthFormCard>
@@ -74,7 +74,7 @@
   <div v-if="!tfaRequired && oauthProviders.length" class="w-full max-w-[380px] mt-4 flex flex-col gap-2">
     <div class="flex items-center gap-3 text-xs text-text-muted">
       <span class="h-px flex-1 bg-border" />
-      <span>或使用第三方账号</span>
+      <span>{{ t('auth.thirdPartyLogin') }}</span>
       <span class="h-px flex-1 bg-border" />
     </div>
     <UButton
@@ -86,18 +86,18 @@
       :disabled="oauthLoading"
       @click="startOAuth(provider.id)"
     >
-      使用 {{ provider.name }} 登录
+      {{ t('auth.loginWith', { name: provider.name }) }}
     </UButton>
   </div>
 
   <AuthFormCard
     v-if="tfaRequired"
-    title="两步验证（2FA）"
-    :subtitle="`账号：${form.login.trim()}`"
+    :title="t('auth.twoFactor')"
+    :subtitle="t('auth.account', { account: form.login.trim() })"
     :error="error"
     :loading="loading"
-    submit-label="验证并登录"
-    loading-label="验证中"
+    :submit-label="t('auth.verifyAndLogin')"
+    :loading-label="t('auth.verifying')"
     @submit="handleLogin"
     @clear-error="clearError"
   >
@@ -107,16 +107,16 @@
     </template>
 
     <div class="rounded-md bg-page border border-border px-4 py-3">
-      <p v-if="!recoveryMode" class="text-sm text-text-secondary">账号已启用两步验证，请输入6位动态验证码验证身份</p>
-      <p v-else class="text-sm text-text-secondary">账号已启用两步验证，请输入恢复码或上传恢复码文件验证身份</p>
+      <p v-if="!recoveryMode" class="text-sm text-text-secondary">{{ t('auth.twoFactorHint') }}</p>
+      <p v-else class="text-sm text-text-secondary">{{ t('auth.twoFactorRecoveryHint') }}</p>
     </div>
 
     <TextInput
       v-if="!recoveryMode"
       id="code"
       v-model="form.code"
-      label="动态验证码"
-      placeholder="请输入6位验证码"
+      :label="t('auth.dynamicCode')"
+      :placeholder="t('auth.dynamicCodePlaceholder')"
       autocomplete="one-time-code"
       :disabled="loading"
       :error="fieldErrors.code"
@@ -135,7 +135,7 @@
         :disabled="loading"
         @click="enterRecoveryMode"
       >
-        使用恢复码登录
+        {{ t('auth.useRecoveryCode') }}
       </UButton>
     </div>
 
@@ -143,8 +143,8 @@
       <TextInput
         id="code"
         v-model="form.code"
-        label="恢复码"
-        placeholder="请输入恢复码"
+        :label="t('auth.recoveryCode')"
+        :placeholder="t('auth.recoveryCodePlaceholder')"
         autocomplete="off"
         :disabled="loading"
         :error="fieldErrors.code"
@@ -206,7 +206,7 @@
           :disabled="loading"
           @click="useTotpMode"
         >
-          使用动态验证码登录
+            {{ t('auth.useDynamicCode') }}
         </UButton>
       </div>
     </template>
@@ -238,6 +238,7 @@ definePageMeta({ layout: "auth" })
 const router = useRouter()
 const auth = useAuth()
 const route = useRoute()
+const { t, locale } = useI18n()
 const { error, setError, clearError } = useFormError()
 
 const form = reactive({ login: "", password: "", code: "" })
@@ -412,7 +413,7 @@ async function handleLogin() {
       clearError()
       return;
     }
-    setError(extractApiError(e).message)
+    setError(extractApiError(e, locale.value).message)
   } finally {
     loading.value = false
   }
