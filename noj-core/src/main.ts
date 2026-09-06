@@ -16,6 +16,7 @@ import { ensureRootUser } from "./domains/identity/index.ts";
 import { ensureRbacSeeds } from "./domains/system/index.ts";
 import { getStorageProvider } from "./domains/system/index.ts";
 import {
+  getEmailConfigStatus,
   getSetting,
   initSystemSettings,
   listOrphanedBootstrapRows,
@@ -150,6 +151,23 @@ async function main() {
   // 启动期 env 快照（issue #99）
   // 一次性读取 env-only 设置项到内存 Map，admin 面板只读展示。
   snapshotEnv();
+
+  // issue #426：启动摘要中明确邮件服务就绪状态。
+  // disabled 允许启动，但邮箱验证/密码找回不可用，公开注册会被禁止
+  // （仅保留首个引导用户），必须在开放注册前完成邮件配置。
+  const emailStatus = getEmailConfigStatus();
+  if (emailStatus.configured) {
+    logger.info("邮件服务已就绪", { provider: emailStatus.provider });
+  } else {
+    logger.warn(
+      "邮件服务未就绪：邮箱验证与密码找回不可用，公开注册已被禁止" +
+        "（仅允许站点引导阶段的首次注册）。开放公开注册前请在管理后台完成邮件配置并发送测试邮件。",
+      {
+        provider: emailStatus.provider,
+        missing: emailStatus.missing,
+      },
+    );
+  }
 
   // 提示 runtime（DB-owned）项同时存在 DB 值与 env 兜底：
   // 当前 DB 值优先，env 被遮蔽；建议移除 .env 对应变量以避免歧义。

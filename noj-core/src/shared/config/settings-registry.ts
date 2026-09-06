@@ -71,6 +71,28 @@ export interface SettingDefinition {
 
 /** 统一配置注册表：全部配置项（runtime + bootstrap）的元数据定义 */
 export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
+  // 数据说明只公开以下专用字段，运营者补充真实部署信息。
+  {
+    key: "data_policy_contact",
+    type: "string",
+    default: "",
+    description: "数据使用与注销反馈渠道（公开展示，请填写实际邮箱或联系说明）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "DATA_POLICY_CONTACT",
+    category: "other",
+  },
+  {
+    key: "data_policy_deployment",
+    type: "text",
+    default: "",
+    description:
+      "数据说明的部署补充：运营主体、存储区域、保留期限、备份、第三方服务及额外用途（公开纯文本）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "DATA_POLICY_DEPLOYMENT",
+    category: "other",
+  },
   // ── auth ──────────────────────────────────────────────────
   {
     key: "allow_register",

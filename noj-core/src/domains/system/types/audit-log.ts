@@ -46,7 +46,8 @@ export type AuditAction =
   | "announcement.delete"
   | "review.queued"
   | "review.rejected"
-  | "review.resolved";
+  | "review.resolved"
+  | "contest.ranking_snapshot";
 
 /** 按 action 强类型的 detail（discriminated union） */
 export type AuditDetail =
@@ -179,6 +180,12 @@ export type AuditDetail =
   | { action: "announcement.create"; title: string }
   | { action: "announcement.update"; title: string }
   | { action: "announcement.delete"; title: string }
+  | {
+    action: "contest.ranking_snapshot";
+    contest_id: string;
+    version: number;
+    note: string;
+  }
   // ── issue #413 内容合规审核 ──
   | {
     action: "review.queued";

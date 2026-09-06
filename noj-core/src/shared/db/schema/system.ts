@@ -192,7 +192,8 @@ export const auditLogs = pgTable(
         'announcement.delete',
         'review.queued',
         'review.rejected',
-        'review.resolved'
+        'review.resolved',
+        'contest.ranking_snapshot'
       )`,
     ),
     adminIdx: index("audit_logs_admin_id_idx").on(table.admin_id),

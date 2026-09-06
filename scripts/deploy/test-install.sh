@@ -61,9 +61,14 @@ while (($# > 0)); do
   url="$1"
   shift
 done
-if [[ "$url" == *'/releases?per_page=1' ]]; then
+if [[ "$url" == *'/releases?per_page=100' ]]; then
   [[ "${NOJ_BOOTSTRAP_API_FAIL:-0}" != 1 ]] || exit 22
-  printf '{"tag_name":"%s"}\n' "${NOJ_BOOTSTRAP_LATEST_REF:-v0.1.0}"
+  # 默认 fixture：仅一个资产就绪的稳定版；过滤行为用 NOJ_BOOTSTRAP_RELEASES_FIXTURE 覆盖。
+  if [[ -n "${NOJ_BOOTSTRAP_RELEASES_FIXTURE:-}" ]]; then
+    cat "$NOJ_BOOTSTRAP_RELEASES_FIXTURE"
+  else
+    printf '[{"tag_name":"v0.1.0","prerelease":false,"draft":false,"assets":[{"name":"noj-cli-linux-amd64"},{"name":"noj-cli-linux-amd64.sha256"}]}]\n'
+  fi
   exit 0
 fi
 if [[ -n "${NOJ_SETUP_PAYLOAD:-}" ]]; then
@@ -227,6 +232,37 @@ set -e
 [[ "$api_status" != 0 ]] || fail "最新 Release 获取失败未返回非零"
 grep -q '使用 --ref' "$TEST_ROOT/api-fail.err" || fail "最新 Release 获取失败提示缺少显式版本建议"
 pass "最新 Release 获取失败"
+
+# Release 过滤：prerelease / draft / 缺 CLI 资产的版本不作为默认安装目标（issue #431）。
+cat >"$TEST_ROOT/releases-filtered.json" <<'EOF'
+[
+  {"tag_name":"v0.3.0-rc.1","prerelease":true,"draft":false,"assets":[{"name":"noj-cli-linux-amd64"},{"name":"noj-cli-linux-amd64.sha256"}]},
+  {"tag_name":"v0.2.0","prerelease":false,"draft":true,"assets":[{"name":"noj-cli-linux-amd64"},{"name":"noj-cli-linux-amd64.sha256"}]},
+  {"tag_name":"v0.1.9","prerelease":false,"draft":false,"assets":[{"name":"noj-server-linux-amd64"}]},
+  {"tag_name":"v0.1.0","prerelease":false,"draft":false,"assets":[{"name":"noj-cli-linux-amd64"},{"name":"noj-cli-linux-amd64.sha256"}]}
+]
+EOF
+NOJ_BOOTSTRAP_RELEASES_FIXTURE="$TEST_ROOT/releases-filtered.json" \
+  bash "$INSTALL_SCRIPT" --download-only \
+  --dir "$TEST_ROOT/filter-install" >"$TEST_ROOT/filter.out" 2>&1 ||
+  { cat "$TEST_ROOT/filter.out" >&2; fail "过滤场景安装命令失败"; }
+grep -q '将使用资产就绪的最新 Release：v0.1.0' "$TEST_ROOT/filter.out" ||
+  { cat "$TEST_ROOT/filter.out" >&2; fail "应跳过 prerelease/draft/无资产版本并选择 v0.1.0"; }
+pass "Release 过滤：仅选择资产就绪的正式版本"
+
+cat >"$TEST_ROOT/releases-none.json" <<'EOF'
+[{"tag_name":"v0.2.0-rc.1","prerelease":true,"draft":false,"assets":[]}]
+EOF
+set +e
+NOJ_BOOTSTRAP_RELEASES_FIXTURE="$TEST_ROOT/releases-none.json" \
+  bash "$INSTALL_SCRIPT" --download-only \
+  --dir "$TEST_ROOT/none" >/dev/null 2>"$TEST_ROOT/none.err"
+none_status=$?
+set -e
+[[ "$none_status" != 0 ]] || fail "无资产就绪 Release 时应失败"
+grep -q '没有发现资产就绪的正式 Release' "$TEST_ROOT/none.err" ||
+  fail "无资产就绪 Release 时应给出明确提示"
+pass "无资产就绪 Release 时拒绝安装"
 
 NOJ_BOOTSTRAP_API_FAIL=1 NOJ_BOOTSTRAP_BIN_DIR="$TEST_ROOT/explicit-bin" \
   bash "$INSTALL_SCRIPT" --ref v0.1.0 --dir "$TEST_ROOT/explicit-ref" >/dev/null

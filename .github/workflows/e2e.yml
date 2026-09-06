@@ -347,9 +347,12 @@ jobs:
         run: deno task build
 
       - name: 启动 noj-ui
+        # 用 Deno 运行产物：deno task build 在 Deno 下执行，产出的 nitro chunk
+        # 含 Deno 分支（如 Deno.env.get("DEBUG")），用 node 启动会
+        # ReferenceError: Deno is not defined。
         run: |
           NUXT_API_BASE=http://localhost:8099 PORT=3000 \
-            node noj-ui/.output/server/index.mjs > /tmp/noj-ui.log 2>&1 &
+            deno run -A noj-ui/.output/server/index.mjs > /tmp/noj-ui.log 2>&1 &
           for i in $(seq 1 60); do
             if curl -sf http://localhost:3000/ > /dev/null; then
               echo "✅ noj-ui 就绪 (:3000)"

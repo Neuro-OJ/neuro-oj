@@ -2,6 +2,13 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# 告警投递：Alertmanager 需加入 noj-net；配置模板与凭据注入见
+# deploy/monitoring/README.md 与 deploy/monitoring/alertmanager.yml.example。
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 rule_files:
   - /etc/prometheus/rules/noj-alerts.yml
 
@@ -12,7 +19,8 @@ scrape_configs:
     static_configs:
       - targets: ["core:8000"]
 
-  # 可选：宿主机安装 node_exporter 后填写实际地址，用于宿主机磁盘告警。
+  # 可选：宿主机 node_exporter（含 textfile collector，用于备份新鲜度指标）。
+  # 启用方法见 deploy/monitoring/README.md；启用后取消以下注释。
   # - job_name: node
   #   static_configs:
   #     - targets: ["node-exporter:9100"]

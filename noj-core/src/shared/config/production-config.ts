@@ -125,6 +125,28 @@ function validateCorsOrigins(
   }
 }
 
+/**
+ * 真实邮件 Provider 的必需配置清单（issue #426）。
+ *
+ * key 为 .env 环境变量名，value 为对应系统设置键；由生产配置校验与
+ * 运行时邮件就绪检查（email-status）共享，避免两处清单漂移。
+ */
+export const EMAIL_PROVIDER_REQUIRED_SETTINGS: Readonly<
+  Record<"aliyun" | "tencent", readonly (readonly [string, string])[]>
+> = {
+  aliyun: [
+    ["ALIBABA_ACCESS_KEY_ID", "alibaba_access_key_id"],
+    ["ALIBABA_ACCESS_KEY_SECRET", "alibaba_access_key_secret"],
+    ["ALIBABA_FROM_EMAIL", "alibaba_from_email"],
+  ],
+  tencent: [
+    ["TENCENT_SECRET_ID", "tencent_secret_id"],
+    ["TENCENT_SECRET_KEY", "tencent_secret_key"],
+    ["TENCENT_FROM_EMAIL", "tencent_from_email"],
+    ["TENCENT_REGION", "tencent_region"],
+  ],
+};
+
 function validateEmail(
   findings: string[],
   provider: string | undefined,
@@ -136,20 +158,11 @@ function validateEmail(
     return;
   }
 
-  const required = provider === "aliyun"
-    ? [
-      ["ALIBABA_ACCESS_KEY_ID", "alibaba_access_key_id"],
-      ["ALIBABA_ACCESS_KEY_SECRET", "alibaba_access_key_secret"],
-      ["ALIBABA_FROM_EMAIL", "alibaba_from_email"],
-    ] as const
-    : [
-      ["TENCENT_SECRET_ID", "tencent_secret_id"],
-      ["TENCENT_SECRET_KEY", "tencent_secret_key"],
-      ["TENCENT_FROM_EMAIL", "tencent_from_email"],
-      ["TENCENT_REGION", "tencent_region"],
-    ] as const;
-
-  for (const [envKey, settingKey] of required) {
+  for (
+    const [envKey, settingKey] of EMAIL_PROVIDER_REQUIRED_SETTINGS[
+      provider
+    ]
+  ) {
     requireValue(findings, envKey, settings[settingKey]);
   }
 }

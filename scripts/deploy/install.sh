@@ -89,7 +89,8 @@ Neuro OJ Linux 独立下载部署工具
 部署参数：
   通过 -- 后传递给 noj-cli install，例如 -- --non-interactive
 
-未指定 --ref 时脚本会自动使用仓库最新可用 Release；生产环境也可以显式指定 --ref 固定版本。
+未指定 --ref 时脚本自动选择资产就绪的最新正式 Release（排除 draft / prerelease /
+缺少 noj-cli 资产的版本）；生产环境也可以显式指定 --ref 固定版本。
 目标目录非空时脚本会继续执行：只更新 NOJ 的部署文件和 noj-cli，保留现有配置、备份、数据卷及其他文件。
 如果目标目录已经是本工具安装的 Neuro OJ，会直接继续部署；其他非空目录也不会被清空。
 生产环境建议使用不可变 Release tag，并让 --ref 与 .env.prod 中的 NOJ_VERSION 一致。
@@ -188,6 +189,10 @@ validate_ref() {
   ARCHIVE_URL="$REPOSITORY/archive/$REF.tar.gz"
 }
 
+# 解析默认安装版本：只选择对安装器真正可用的 Release——
+# 非 draft、非 prerelease，且资产中已包含 noj-cli 二进制与校验文件。
+# 直接使用 /releases/latest 会把"已转正但资产尚未就绪"的版本暴露给用户，
+# 因此这里显式按资产就绪状态过滤（issue #431）。
 resolve_latest_ref() {
   local repository_slug metadata_url metadata tag
   [[ -n "$REF" ]] && { validate_ref; return 0; }
@@ -195,31 +200,45 @@ resolve_latest_ref() {
   [[ "$REPOSITORY" =~ ^https://github\.com/([^/]+/[^/]+)$ ]] ||
     fail "无法自动获取最新版本；请对自定义仓库使用 --ref 指定 Release tag"
   repository_slug="${BASH_REMATCH[1]}"
-  metadata_url="https://api.github.com/repos/$repository_slug/releases?per_page=1"
-  printf '正在获取最新 Release：%s\n' "$metadata_url" >&2
+  metadata_url="https://api.github.com/repos/$repository_slug/releases?per_page=100"
+  printf '正在获取可用 Release：%s\n' "$metadata_url" >&2
   if command -v curl >/dev/null 2>&1; then
     metadata="$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
       --retry 3 --connect-timeout 15 --header 'Accept: application/vnd.github+json' \
       --header 'User-Agent: neuro-oj-installer' "$metadata_url")" ||
-      fail "无法获取最新 Release，请检查网络，或使用 --ref 显式指定版本"
+      fail "无法获取 Release 列表，请检查网络，或使用 --ref 显式指定版本"
   else
     metadata="$(wget --https-only --tries=3 --timeout=20 --quiet --header='Accept: application/vnd.github+json' \
       --header='User-Agent: neuro-oj-installer' -O - "$metadata_url")" ||
-      fail "无法获取最新 Release，请检查网络，或使用 --ref 显式指定版本"
+      fail "无法获取 Release 列表，请检查网络，或使用 --ref 显式指定版本"
   fi
+  # 按 "tag_name" 切分 Release 对象：每个对象内依次判断 draft / prerelease /
+  # CLI 资产（GitHub API 中资产数组位于 tag_name 之后）。
   tag="$(awk '
-    match($0, /"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"/) {
-      value = substr($0, RSTART, RLENGTH)
-      sub(/^.*:[[:space:]]*"/, "", value)
-      sub(/"$/, "", value)
-      print value
-      exit
+    {
+      text = text $0 "\n"
+    }
+    END {
+      n = split(text, chunks, /"tag_name"[[:space:]]*:[[:space:]]*"/)
+      for (i = 2; i <= n; i++) {
+        chunk = chunks[i]
+        tag = chunk
+        sub(/".*/, "", tag)
+        if (tag !~ /^v?[0-9]+\.[0-9]+\.[0-9]+/) continue
+        if (chunk ~ /"draft"[[:space:]]*:[[:space:]]*true/) continue
+        if (chunk ~ /"prerelease"[[:space:]]*:[[:space:]]*true/) continue
+        if (chunk !~ /"name"[[:space:]]*:[[:space:]]*"noj-cli-linux-amd64"/) continue
+        if (chunk !~ /"name"[[:space:]]*:[[:space:]]*"noj-cli-linux-amd64\.sha256"/) continue
+        print tag
+        exit
+      }
     }
   ' <<<"$metadata")"
-  [[ -n "$tag" ]] || fail "仓库没有可用 Release，请使用 --ref 显式指定版本"
+  [[ -n "$tag" ]] ||
+    fail "没有发现资产就绪的正式 Release（需要包含 noj-cli 二进制与校验文件），请使用 --ref 显式指定版本"
   REF="$tag"
   validate_ref
-  ok "将使用最新 Release：$REF"
+  ok "将使用资产就绪的最新 Release：$REF"
 }
 
 check_dependencies() {

@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
   BadRequestError,
@@ -12,6 +12,60 @@ import type {
   KaggleRankingRow,
 } from "./../types/contests.ts";
 import { getContest, isParticipant } from "./contests.ts";
+import { contestRankingSnapshots } from "../../../shared/db/schema.ts";
+import { logAudit } from "../../system/index.ts";
+
+export async function publishContestRankingSnapshot(
+  contestId: string,
+  actorId: string,
+  note = "",
+): Promise<
+  { id: string; version: number; rows: KaggleRankingRow[]; created_at: string }
+> {
+  const contest = await getContest(contestId);
+  const db = getDb();
+  const rows = await getKaggleRanking(contestId);
+  const created_at = new Date().toISOString();
+  const id = crypto.randomUUID();
+  const version = await db.transaction(async (tx) => {
+    // 锁定竞赛行，串行化同一竞赛的版本分配，避免 max(version)+1 竞态。
+    await tx.execute(
+      sql`SELECT id FROM contests WHERE id = ${contestId} FOR UPDATE`,
+    );
+    const [latest] = await tx.select({
+      version: contestRankingSnapshots.version,
+    })
+      .from(contestRankingSnapshots)
+      .where(eq(contestRankingSnapshots.contest_id, contestId))
+      .orderBy(desc(contestRankingSnapshots.version)).limit(1);
+    const nextVersion = (latest?.version ?? 0) + 1;
+    await tx.insert(contestRankingSnapshots).values({
+      id,
+      contest_id: contest.id,
+      version: nextVersion,
+      status: "published",
+      note,
+      rows,
+      created_by: actorId,
+      created_at,
+    });
+    return nextVersion;
+  });
+  await logAudit("contest.ranking_snapshot", {
+    action: "contest.ranking_snapshot",
+    contest_id: contestId,
+    version,
+    note,
+  }, { type: "contest", id: contestId });
+  return { id, version, rows, created_at };
+}
+
+export async function getLatestContestRankingSnapshot(contestId: string) {
+  const [snapshot] = await getDb().select().from(contestRankingSnapshots)
+    .where(eq(contestRankingSnapshots.contest_id, contestId))
+    .orderBy(desc(contestRankingSnapshots.version)).limit(1);
+  return snapshot ?? null;
+}
 
 /**
  * 将可能为数组或 JSON 字符串的值解析为数组（解析失败或类型不符时返回空数组）。

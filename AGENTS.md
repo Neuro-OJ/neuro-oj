@@ -180,8 +180,8 @@ cd noj-llm-gateway && deno task dev   # 可选
 
 ### 7.1 分支与发布纪律
 
-- 日常开发、功能实现、缺陷修复和实验性变更请提交至 `dev` 分支，或从 `dev` 派生功能分支后通过 PR 合入 `dev`。
-- `main` 分支只接受经过评审、检查和验收的变更；禁止直接在 `main` 上进行日常开发或提交本地调试产物。
+- 日常开发、功能实现、缺陷修复和实验性变更统一提交至 `main` 分支；需要 PR 评审时，从 `main` 派生功能分支并合入 `main`。
+- 允许直接在 `main` 上开发、提交和推送；提交前必须完成相关检查和验收，需要 PR 评审的变更须在合入前完成评审。
 - `main` 分支必须始终保持可部署状态；发布应从已验证的 `main` 提交或版本标签构建。
 - AI 工具配置、编辑器配置、临时日志、备份文件和其他本地开发产物不得提交到 `main`。
 
@@ -210,7 +210,7 @@ cd noj-llm-gateway && deno task dev   # 可选
 
 ### 8.1 不可逾越的红线
 
-1. 禁止直接推送到 `main`
+1. 提交和推送到 `main` 前必须完成相关检查和验收，确保其保持可部署状态
 2. 禁止未签名提交
 3. 禁止修改 `_journal.json`
 4. 禁止手动修改 `deno.lock` / `Cargo.lock`
@@ -260,13 +260,13 @@ cd noj-llm-gateway && deno task dev   # 可选
 
 ## 9. 贡献流程
 
-### 9.1 PR 工作流
+### 9.1 PR 工作流（需要评审时）
 
 ```bash
 jj new main
 jj describe
 jj git push -b <branch-name>
-gh pr create --draft
+gh pr create --draft --base main
 # 迭代
 jj new
 jj squash

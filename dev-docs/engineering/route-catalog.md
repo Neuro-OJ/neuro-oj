@@ -84,6 +84,8 @@
 | GET | `/contests/:id` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | GET | `/contests/:id/events` | noj-core/src/domains/contest/routes/sse.ts |
 | GET | `/contests/:id/participants` | noj-core/src/domains/contest/routes/admin-contests.ts |
+| GET | `/contests/:id/ranking-snapshots/latest` | noj-core/src/domains/contest/routes/admin-contests.ts |
+| GET | `/contests/:id/ranking-snapshots/latest.csv` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | GET | `/contests/:id/submissions` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | GET | `/dashboard/observability` | noj-core/src/domains/query/routes/admin-dashboard.ts |
 | GET | `/dashboard/stats` | noj-core/src/domains/query/routes/admin-dashboard.ts |
@@ -114,14 +116,17 @@
 | GET | `/posts/:postId/comments` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/posts/counts` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/problems` | noj-core/src/domains/catalog/routes/admin-problems.ts |
+| GET | `/problems/:id/preflight` | noj-core/src/domains/catalog/routes/admin-problems.ts |
 | GET | `/public/recent` | noj-core/src/domains/submission/routes/submissions.ts |
 | GET | `/queue/events` | noj-core/src/domains/submission/routes/sse.ts |
 | GET | `/queue/health` | noj-core/src/domains/submission/routes/admin-submissions.ts |
+| GET | `/register-status` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `/reports/:reportId` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/roles` | noj-core/src/domains/identity/routes/admin-roles.ts |
 | GET | `/search` | noj-core/src/domains/identity/routes/users.ts |
 | GET | `/self-tests/:id` | noj-core/src/domains/submission/routes/self-tests.ts |
 | GET | `/settings` | noj-core/src/domains/system/routes/admin-settings.ts |
+| GET | `/settings/email/status` | noj-core/src/domains/system/routes/admin-settings.ts |
 | GET | `/solutions/eligibility` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/stats` | noj-core/src/domains/identity/routes/checkin.ts |
 | GET | `/stats` | noj-core/src/domains/query/routes/stats.ts |
@@ -186,6 +191,7 @@
 | GET | `userId` | noj-core/src/domains/community/routes/community.ts |
 | GET | `userId` | noj-core/src/domains/community/routes/community.ts |
 | GET | `userId` | noj-core/src/domains/community/routes/sse.ts |
+| GET | `userId` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | GET | `userId` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | GET | `userId` | noj-core/src/domains/identity/routes/admin-blacklist.ts |
 | GET | `userId` | noj-core/src/domains/identity/routes/admin-blacklist.ts |
@@ -290,6 +296,7 @@
 | POST | `/comments/:commentId/like` | noj-core/src/domains/community/routes/community.ts |
 | POST | `/contests` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | POST | `/contests/:id/participants` | noj-core/src/domains/contest/routes/admin-contests.ts |
+| POST | `/contests/:id/ranking-snapshots` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | POST | `/email/resend` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/email/verify` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/forgot-password` | noj-core/src/domains/identity/routes/auth.ts |
@@ -317,6 +324,7 @@
 | POST | `/reset-password` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/roles` | noj-core/src/domains/identity/routes/admin-roles.ts |
 | POST | `/set-password` | noj-core/src/domains/identity/routes/auth.ts |
+| POST | `/settings/email/test-send` | noj-core/src/domains/system/routes/admin-settings.ts |
 | POST | `/submissions/:id/rejudge` | noj-core/src/domains/submission/routes/admin-submissions.ts |
 | POST | `/tfa/confirm` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/tfa/disable` | noj-core/src/domains/identity/routes/auth.ts |

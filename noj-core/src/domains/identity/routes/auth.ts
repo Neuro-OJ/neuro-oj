@@ -11,6 +11,7 @@ import {
 import {
   changePassword,
   getUserProfile,
+  hasRealUser,
   loginUser,
   MIN_PASSWORD_LENGTH,
   registerUser,
@@ -50,7 +51,7 @@ import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { getUserPermissions } from "./../services/security/permissions.ts";
 import { signToken, verifyToken } from "./../services/security/jwt.ts";
 import { revokeJti } from "./../services/security/revokedTokens.ts";
-import { getSetting } from "../../system/index.ts";
+import { getEmailConfigStatus, getSetting } from "../../system/index.ts";
 import { getClientIp } from "../../system/index.ts";
 import { getBannedIpDetail } from "../services/banlist.ts";
 import {
@@ -97,12 +98,25 @@ const auth = new Hono<AuthEnv>();
  *
  * PR-2：allow_register 设置生效（管理后台可关闭注册入口）。
  * 关闭时直接 403，不暴露"用户已存在"等详细信息（防枚举）。
+ *
+ * issue #426：邮件未配置（EMAIL_PROVIDER=disabled 或必需配置缺失）时，
+ * 未验证邮箱的用户无法完成验证也就无法使用提交/社区等主要功能。
+ * 此时禁止公开注册，仅保留站点引导阶段的首次注册（成为管理员）。
  */
 auth.post("/register", async (c) => {
   // PR-2 死开关：allow_register
   const allowRegisterSetting = getSetting("allow_register");
   if (allowRegisterSetting?.value === false) {
     throw new ForbiddenError("注册已关闭", "REGISTER_DISABLED");
+  }
+
+  // issue #426 死开关：邮件未就绪时不接受公开注册（首个引导用户除外）
+  const emailStatus = getEmailConfigStatus();
+  if (!emailStatus.configured && (await hasRealUser())) {
+    throw new ForbiddenError(
+      "邮件服务未配置，暂不接受注册；请稍后再试或联系管理员",
+      "REGISTER_EMAIL_UNCONFIGURED",
+    );
   }
 
   // NOJ-093：注册端点 IP 限流。
@@ -157,6 +171,24 @@ auth.post("/register", async (c) => {
   }, 201);
 });
 
+/**
+ * 公开注册可用状态（issue #426）。
+ * GET /api/v1/auth/register-status
+ *
+ * 供注册页在渲染前感知受限状态，避免用户填完表单才被 403：
+ * - register_disabled：管理后台关闭了 allow_register；
+ * - email_unconfigured：邮件服务未就绪且站点已完成引导（非首次注册）。
+ */
+auth.get("/register-status", async (c) => {
+  const allowRegister = getSetting("allow_register")?.value !== false;
+  const reason = !allowRegister
+    ? "register_disabled"
+    : !getEmailConfigStatus().configured && (await hasRealUser())
+    ? "email_unconfigured"
+    : null;
+  return c.json({ data: { allowed: reason === null, reason } });
+});
+
 /** 验证一次性邮箱令牌。 */
 auth.post("/email/verify", async (c) => {
   const body = await parseJsonBody<{ token?: string }>(c);
@@ -164,15 +196,23 @@ auth.post("/email/verify", async (c) => {
   return c.json({ data: { verified: true } });
 });
 
-/** 重新发送验证邮件；响应不区分已验证与发送状态，避免泄露账号状态。 */
+/**
+ * 重新发送验证邮件。
+ *
+ * 响应不区分"已验证"与"发送失败"以外的账号状态，但通过 `sent` 如实
+ * 反馈本次是否真的发出（issue #426）：邮件服务临时故障时前端能给出
+ * 准确提示并保留重发入口，而不是让用户误以为邮件已送达。
+ */
 auth.post("/email/resend", authMiddleware, async (c) => {
   await enforceEmailVerificationResendRateLimit(c, c.get("userId"));
-  await sendEmailVerification(
+  const dispatch = await sendEmailVerification(
     c.get("userId"),
     new URL(c.req.url).origin,
     true,
   );
-  return c.json({ data: { message: "如需验证，邮件已发送" } });
+  return c.json({
+    data: { message: "如需验证，邮件已发送", sent: dispatch.sent },
+  });
 });
 
 /**
