@@ -165,8 +165,7 @@ async function batchRejudge(problemId: string) {
     const res = await api.post<{ message: string; total: number; queued: number; skipped: number }>(
       `/api/v1/admin/problems/${problemId}/rejudge`,
     )
-    toast.showToast(
-      "success",
+    toast.success(
       `批量重测共 ${res.total} 条，已入队 ${res.queued} 条${res.skipped > 0 ? `，未入队 ${res.skipped} 条` : ""}`,
     )
     loadProblems(currentPage.value)
