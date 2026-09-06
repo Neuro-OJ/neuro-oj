@@ -41,10 +41,13 @@ import {
 import {
   AppError,
   BadRequestError,
+  ForbiddenError,
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import { checkPermission } from "./../../../identity/index.ts";
+import { resolveProblemAccess } from "../../../catalog/index.ts";
+import { verifyContestAccess } from "../../../contest/index.ts";
 import {
   generatePublicId,
   resolvePublicId,
@@ -322,6 +325,7 @@ export async function createSubmission(
   input: SubmissionInput,
   contestId?: string,
   clientIp?: string,
+  isAdmin = false,
 ): Promise<SubmissionResponse> {
   const db = getDb();
   if (contestId && input.contest_id && contestId !== input.contest_id) {
@@ -349,6 +353,20 @@ export async function createSubmission(
     throw new NotFoundError("题目不存在");
   }
   const problem = lockedRows[0];
+
+  // 统一访问解析：普通入口 private 题非 owner/admin 拒绝；
+  // 竞赛入口先经 verifyContestAccess 校验成员+窗口。
+  const contestAccess = resolvedContestId
+    ? await verifyContestAccess(userId, resolvedContestId, problem.id)
+    : null;
+  const access = resolveProblemAccess(problem, {
+    viewerId: userId,
+    isAdmin,
+    contestAccess,
+  });
+  if (!access.allowed) {
+    throw new ForbiddenError("无权对该题目提交");
+  }
 
   // artifact 题目必须走 multipart zip 上传，拒绝 JSON 代码提交
   if (problem.submission_mode === "artifact") {

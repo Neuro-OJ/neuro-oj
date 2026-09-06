@@ -326,9 +326,9 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
   ) {
     throw new ForbiddenError("仅可在竞赛进行期间提交");
   }
+  const isAdmin = await checkPermission(c, "submission:read_all");
   if (
-    !await isParticipant(contestId, userId) &&
-    !await checkPermission(c, "submission:read_all")
+    !await isParticipant(contestId, userId) && !isAdmin
   ) {
     throw new ForbiddenError("仅参赛者可提交");
   }
@@ -346,6 +346,8 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
       userId,
       { ...parsed, contest_id: contestId },
       contestId,
+      undefined,
+      isAdmin,
     );
     return c.json({ data }, 201);
   }
@@ -382,6 +384,8 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
       contest_id: contestId,
     },
     contestId,
+    undefined,
+    isAdmin,
   );
   return c.json({ data }, 201);
 });

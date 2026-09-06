@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { authMiddleware } from "./../../identity/index.ts";
+import { authMiddleware, checkPermission } from "./../../identity/index.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { BadRequestError } from "./../../../shared/base/errors.ts";
 import { enforceSelfTestRateLimit } from "../../system/index.ts";
@@ -58,7 +58,8 @@ router.post("/problems/:id/self-test", authMiddleware, async (c) => {
     file_name: body.file_name as string | undefined,
   };
 
-  const result = await createSelfTest(userId, problem.id, input);
+  const isAdmin = await checkPermission(c, "submission:read_all");
+  const result = await createSelfTest(userId, problem.id, input, isAdmin);
   return c.json({ data: result }, 201);
 });
 

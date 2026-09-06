@@ -11,6 +11,7 @@ import { problems, selfTests } from "./../../../shared/db/schema.ts";
 import {
   AppError,
   BadRequestError,
+  ForbiddenError,
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { checkPermission } from "./../../identity/index.ts";
@@ -22,6 +23,7 @@ import { Channels, publishSseEvent } from "./../../../shared/sse/event-bus.ts";
 import type { Context } from "hono";
 import { LANGUAGE_EXT_MAP } from "../types/index.ts";
 import type { JudgeResult, JudgeTask } from "../types/index.ts";
+import { resolveProblemAccess } from "./../../catalog/index.ts";
 import type { RuntimeConfig } from "./../../catalog/index.ts";
 import {
   SELF_TEST_ID_PREFIX,
@@ -54,6 +56,7 @@ export async function createSelfTest(
   userId: string,
   problemId: string,
   input: SelfTestInput,
+  isAdmin = false,
 ): Promise<SelfTestResponse> {
   const db = getDb();
 
@@ -67,6 +70,15 @@ export async function createSelfTest(
     throw new NotFoundError("题目不存在");
   }
   const problem = rows[0];
+
+  // 统一访问解析：自测不允许携带竞赛上下文，private 题仅 owner/admin。
+  const access = resolveProblemAccess(problem, {
+    viewerId: userId,
+    isAdmin,
+  });
+  if (!access.allowed) {
+    throw new ForbiddenError("无权对该题目自测");
+  }
 
   if (problem.is_objective) {
     throw new BadRequestError("客观题不支持代码自测");

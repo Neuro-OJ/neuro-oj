@@ -12,6 +12,8 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 
 import {
   auditLogs,
+  contestParticipants,
+  contestProblems,
   contests,
   evaluationResults,
   problems,
@@ -21,6 +23,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import {
   BadRequestError,
+  ForbiddenError,
   NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import { eq, sql } from "drizzle-orm";
@@ -291,6 +294,69 @@ Deno.test({
 });
 
 Deno.test({
+  name: "submissions service: 普通入口提交他人 private 题 → Forbidden",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const privateOwnerId = `tst-private-owner-${Date.now()}-${
+      Math.random().toString(36).slice(2, 8)
+    }`;
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+      id: privateOwnerId,
+      username: `tstpo-${Date.now()}`,
+      email: `${privateOwnerId}@test.noj`,
+      password_hash: "hash",
+      created_at: now,
+      updated_at: now,
+    });
+    const privateProblemId = `tst-private-problem-${Date.now()}`;
+    await db.insert(problems).values({
+      id: privateProblemId,
+      title: `私有题 ${Date.now()}`,
+      description: "私有题面",
+      difficulty: "easy",
+      visibility: "private",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
+      number: 60000 + (Date.now() & 0x7fff),
+      owner_id: privateOwnerId,
+      type: "U",
+      created_at: now,
+      updated_at: now,
+    });
+    try {
+      await assertRejects(
+        () =>
+          createSubmission(TEST_USER_ID, {
+            problem_id: privateProblemId,
+            language: "python3",
+            code: "print(1)",
+          }),
+        ForbiddenError,
+        "无权对该题目提交",
+      );
+    } finally {
+      await db.delete(problems).where(eq(problems.id, privateProblemId));
+      await db.delete(users).where(eq(users.id, privateOwnerId));
+    }
+  },
+});
+
+Deno.test({
   name: "submissions service: getSubmission 不存在的提交抛出 NotFoundError",
   ignore: skip,
   sanitizeResources: false,
@@ -323,6 +389,18 @@ Deno.test({
       created_by: TEST_USER_ID,
       created_at: now,
       updated_at: now,
+    });
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: TEST_PROBLEM_ID,
+      sort_order: 0,
+      label: "A",
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: TEST_USER_ID,
+      registered_at: now,
     });
 
     resetRedisForTest();
@@ -390,6 +468,18 @@ Deno.test({
       created_by: TEST_USER_ID,
       created_at: now,
       updated_at: now,
+    });
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: TEST_PROBLEM_ID,
+      sort_order: 0,
+      label: "A",
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: TEST_USER_ID,
+      registered_at: now,
     });
 
     resetRedisForTest();

@@ -424,7 +424,7 @@ jj new
 - Consumes: `resolveProblemAccess`（Task 3）、`verifyContestAccess`（Task 5）。
 - Produces: `createSubmission(userId, input, contestId?)` 语义升级——无 contestId 时对 private 题抛 `ForbiddenError`；有 contestId 时先 `verifyContestAccess` 再放行。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 Deno.test("submissions: 普通入口提交他人 private 题 → Forbidden", async () => {
@@ -441,8 +441,8 @@ Deno.test("submissions: 参赛者经普通入口提交竞赛私有题 → Forbid
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
-- [ ] **Step 3: 实现**
+- [x] **Step 2: 跑测试确认失败**
+- [x] **Step 3: 实现**
 
 在 `createSubmission` 的 `lockedRows` 读取到 problem 之后、语言校验之前插入：
 
@@ -471,9 +471,9 @@ if (!access.allowed) {
 
 （admin 调用链经内部服务时用既有 isAdmin 参数/上下文传入；contest 路由已有的参赛者+窗口校验保留为快速失败，真正的强制点在本服务层。）
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 Run: `cd noj-core && deno task test -- submissions.test.ts`
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 jj describe -m "fix(core): 提交/自测服务层强制题目可见性与竞赛上下文（F-05）"

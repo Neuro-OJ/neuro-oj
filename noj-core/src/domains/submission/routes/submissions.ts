@@ -186,6 +186,7 @@ router.post("/", authMiddleware, async (c) => {
 
   // NOJ-069：提交创建 IP + 用户双维度限流。
   await enforceSubmissionRateLimit(c, userId);
+  const isAdmin = await checkPermission(c, "submission:read_all");
 
   const contentType = c.req.header("content-type") ?? "";
   if (contentType.startsWith("multipart/form-data")) {
@@ -195,6 +196,7 @@ router.post("/", authMiddleware, async (c) => {
       parsed,
       undefined,
       clientIp,
+      isAdmin,
     );
     return c.json({ data: result }, 201);
   }
@@ -232,6 +234,7 @@ router.post("/", authMiddleware, async (c) => {
     },
     undefined,
     clientIp,
+    isAdmin,
   );
 
   return c.json({ data: result }, 201);
