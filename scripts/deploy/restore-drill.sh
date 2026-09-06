@@ -3,8 +3,8 @@
 #
 # 与 backup.sh drill（纯文件校验）不同，本脚本把快照真实恢复到一个独立的
 # Compose 项目（独立数据卷、独立网络子网、不映射宿主机端口），随后验收业务：
-# 登录、题目读取、附件下载和至少一次真实评测。任何环节失败都以非零退出并
-# 保留诊断报告。
+# 登录、题目读取；启用 Judge 时还会验收附件下载与真实评测。任何环节失败都以
+# 非零退出并保留诊断报告。
 #
 # 用法：restore-drill.sh SNAPSHOT [选项]
 # 详见 usage()。
@@ -63,7 +63,7 @@ Neuro OJ 备份隔离恢复演练
 
 与 backup.sh drill（快照文件校验）不同，本命令把快照真实恢复到独立 Compose
 项目（独立数据卷、独立子网、不占用宿主机端口），恢复后通过真实 API 验收：
-登录、题目读取、附件（支持包）下载与一次真实评测。
+登录与题目读取；未使用 --skip-judge 时还会验证附件（支持包）下载与一次真实评测。
 
 选项：
   --env-file FILE          生产环境文件（默认 .env.prod）
@@ -76,7 +76,7 @@ Neuro OJ 备份隔离恢复演练
   --rpo-max-hours N        RPO 目标：快照允许的最大时长（默认 24 小时）
   --rto-max-minutes N      RTO 目标：恢复+验收允许的最大时长（默认 60 分钟）
   --wait-timeout N         Compose 服务等待超时秒数（默认 300）
-  --skip-judge             跳过真实评测（仍执行登录/题目/附件验收）
+  --skip-judge             轻量验收：跳过 Judge、题目导入和附件/评测验收，仅验证登录与题目读取
   --keep                   保留演练临时目录与 Compose 资源供人工检查
   -h, --help               显示帮助
 
@@ -242,6 +242,9 @@ parse_args() {
 preflight() {
   STAGE="preflight"
   validate_snapshot_path "$SNAPSHOT"
+  # Compose 的 bind mount 只能可靠接收绝对宿主机路径；相对路径会被解释为
+  # 具名 volume，导致 MinIO 快照目录无法挂载。
+  SNAPSHOT="$(cd -- "$SNAPSHOT" && pwd -P)"
   [[ -f "$SNAPSHOT/SUCCESS" ]] || die "快照缺少成功标记：$SNAPSHOT/SUCCESS"
   [[ -f "$SNAPSHOT/manifest.json" ]] || die "快照缺少 manifest.json"
   [[ -f "$SNAPSHOT/env.prod.gpg" ]] || die "快照缺少加密环境文件 env.prod.gpg"
@@ -342,8 +345,10 @@ restore_data_services() {
   prepare_idempotent_globals "$SNAPSHOT/postgres-globals.sql" "$globals_file"
   compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$pg_user" -d "$pg_db" \
     < "$globals_file" || die "PostgreSQL 全局对象恢复失败"
+  # pg_restore 不接受 "-" 作为 stdin 的显式文件名；省略文件参数时才会从
+  # docker compose exec 透传的标准输入读取宿主机快照。
   compose exec -T postgres pg_restore --clean --if-exists --no-owner --exit-on-error \
-    -U "$pg_user" -d "$pg_db" - < "$SNAPSHOT/postgres.dump" ||
+    -U "$pg_user" -d "$pg_db" < "$SNAPSHOT/postgres.dump" ||
     die "PostgreSQL 数据恢复失败"
 
   ok "恢复 Redis"
@@ -417,10 +422,12 @@ seed_drill_admin() {
   local now
   now="$(date -u '+%Y-%m-%dT%H:%M:%S.000Z')"
 
+  # email_verified 是后续迁移新增的字段，且新 schema 的默认值已是 true。
+  # 不显式写入该字段，才能同时恢复并验收迁移前的历史快照。
   compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$pg_user" -d "$pg_db" <<SQL ||
-INSERT INTO users (id, username, email, email_verified, password_hash, created_at, updated_at)
+INSERT INTO users (id, username, email, password_hash, created_at, updated_at)
 VALUES ('drill-admin-user', '${DRILL_ADMIN_USER}', 'drill-admin@${DRILL_ADMIN_EMAIL_DOMAIN}',
-        true, '${DRILL_BCRYPT_HASH}', '${now}', '${now}')
+        '${DRILL_BCRYPT_HASH}', '${now}', '${now}')
 ON CONFLICT (id) DO NOTHING;
 INSERT INTO user_roles (user_id, role_id)
 SELECT 'drill-admin-user', id FROM roles WHERE name = 'admin'
@@ -465,7 +472,11 @@ ensure_judge_images() {
 
 run_business_verification() {
   STAGE="business-verify"
-  ok "运行业务验收（登录/题目/附件/评测）"
+  if ((SKIP_JUDGE)); then
+    ok "运行轻量业务验收（登录/题目读取）"
+  else
+    ok "运行业务验收（登录/题目/附件/评测）"
+  fi
   local -a compose_args=(run --rm --no-deps
     -e "DRILL_BASE_URL=http://core:8000/api/v1"
     -e "DRILL_ADMIN_USER=${DRILL_ADMIN_USER}"

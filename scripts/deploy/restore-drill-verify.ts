@@ -3,7 +3,8 @@
  *
  * 由 scripts/deploy/restore-drill.sh 在隔离恢复出的 core 容器内执行
  * （`docker compose run core deno run -A /opt/verify.ts ...`），面向真实
- * HTTP API 验证恢复后的业务链路：登录、题目读取、附件下载与真实评测。
+ * HTTP API 验证恢复后的业务链路：登录、题目读取；未跳过 Judge 时还会验证附件
+ * 下载与真实评测。
  *
  * 输出：每个步骤一行 JSON（{"step","status","detail"}），最后一行输出
  * {"step":"summary","status":...,"passed":bool,"steps":[...]}，由外层脚本
@@ -52,8 +53,9 @@ const EVALUATOR_IMAGE = optEnv("DRILL_EVALUATOR_IMAGE");
 const SOLUTION_IMAGE = optEnv("DRILL_SOLUTION_IMAGE");
 const SKIP_EVALUATION = Deno.env.get("DRILL_SKIP_EVALUATION") === "1";
 
-/** 与生产一致的 cookie 名；HttpOnly JWT 由登录响应下发。 */
+/** 与生产一致的认证凭据；历史 core 直接在 JSON 响应返回 token。 */
 let authCookie = "";
+let authToken = "";
 
 async function api(
   method: string,
@@ -62,14 +64,23 @@ async function api(
 ): Promise<Response> {
   const headers = new Headers(init.headers);
   if (authCookie) headers.set("Cookie", authCookie);
+  if (authToken) headers.set("Authorization", `Bearer ${authToken}`);
   return await fetch(`${BASE_URL}${path}`, { method, ...init, headers });
 }
 
-/** 解析响应中的 Set-Cookie，保存 noj:token 供后续请求鉴权。 */
-function captureAuthCookie(res: Response): void {
+/** 兼容 Cookie 与 JSON token 两种登录响应，供后续直连 core 的验收请求鉴权。 */
+function captureAuth(res: Response, payload: unknown): void {
   const setCookie = res.headers.get("set-cookie") ?? "";
   const match = setCookie.match(/(?:^|[,\s])noj:token=([^;,\s]+)/);
-  if (match) authCookie = `noj:token=${match[1]}`;
+  if (match) {
+    authToken = match[1];
+    authCookie = `noj:token=${authToken}`;
+    return;
+  }
+  const candidate =
+    (payload as { data?: { token?: unknown }; token?: unknown })?.data
+      ?.token ?? (payload as { token?: unknown })?.token;
+  if (typeof candidate === "string" && candidate) authToken = candidate;
 }
 
 // ---------------------------------------------------------------------------
@@ -242,7 +253,6 @@ async function stepLogin(): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ login: ADMIN_USER, password: ADMIN_PASSWORD }),
   });
-  captureAuthCookie(res);
   if (res.status !== 200) {
     required(
       "login",
@@ -252,11 +262,12 @@ async function stepLogin(): Promise<void> {
     return;
   }
   const payload = await res.json();
+  captureAuth(res, payload);
   const username = payload?.data?.username ?? ADMIN_USER;
   required(
     "login",
-    Boolean(authCookie),
-    `管理员 ${username} 登录成功并下发会话 Cookie`,
+    Boolean(authToken),
+    `管理员 ${username} 登录成功并取得认证令牌`,
   );
 }
 
@@ -411,6 +422,15 @@ async function stepRegisterProbe(): Promise<void> {
 async function main(): Promise<void> {
   await stepLogin();
   if (requiredFailure) {
+    finish();
+    return;
+  }
+
+  // 轻量验收不依赖 Judge 镜像白名单：验证恢复后的认证与题目查询即可。
+  // 附件下载和真实评测属于启用 Judge 后的扩展验收。
+  if (SKIP_EVALUATION) {
+    await stepProblemRead(null);
+    await stepRegisterProbe();
     finish();
     return;
   }
