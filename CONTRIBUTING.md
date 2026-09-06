@@ -77,6 +77,8 @@ git pull --ff-only
 git switch -c docs/contributing-guide
 ```
 
+完成修改后请创建 Pull Request，并将目标分支设置为 `main`；不要直接向 `main` 推送贡献提交。
+
 提交 Pull Request 前请确认：
 
 - 改动范围与 Issue 描述一致，并在 PR 中关联 Issue，例如 `Closes #433`；
