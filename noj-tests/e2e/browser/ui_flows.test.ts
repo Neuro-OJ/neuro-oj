@@ -17,12 +17,7 @@
  * Fork PR 无需任何生产凭据（issue #427 验收项）。
  */
 
-import {
-  CODE_SAMPLES,
-  isJudgeAvailable,
-  registerUser,
-  TEST_PASSWORD,
-} from "../helper.ts";
+import { CODE_SAMPLES, registerUser, TEST_PASSWORD } from "../helper.ts";
 
 const BROWSER_E2E = Deno.env.get("NOJ_RUN_BROWSER_E2E") === "1";
 const UI_URL = Deno.env.get("E2E_UI_URL") || "http://localhost:3000";
@@ -242,11 +237,7 @@ Deno.test("[ui/browser] 3/4 代码提交 → 评测结果（满分 10 分）", a
   let failed = true;
   try {
     await launch();
-    if (!(await isJudgeAvailable())) {
-      console.log("  ⏭ skip：judge worker 不可用");
-      failed = false;
-      return;
-    }
+    // 门禁直接验证真实提交；judge 故障必须超时失败并保存诊断产物，不能跳过。
     await registerUser(SUBMIT_USER, `${SUBMIT_USER}@test.com`, TEST_PASSWORD);
     await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
     await submitCodeViaUI(CODE_SAMPLES.accepted);
@@ -266,11 +257,6 @@ Deno.test("[ui/browser] 4/4 核心失败反馈（错误答案非满分 10 分）
   let failed = true;
   try {
     await launch();
-    if (!(await isJudgeAvailable())) {
-      console.log("  ⏭ skip：judge worker 不可用");
-      failed = false;
-      return;
-    }
     await registerUser(SUBMIT_USER, `${SUBMIT_USER}@test.com`, TEST_PASSWORD);
     await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
     // 先读取上一条（3/4 满分卡片的分数），等待新结论覆盖

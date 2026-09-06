@@ -56,7 +56,9 @@ Status: implemented
      未验证用户 POST /submissions 返回 403）；UI 注册跳转仍由测试 1 覆盖。
    - P1001 满分为 10 分（evaluate.py：内容 8 + 格式 2），断言按此编写。
    - helper 的 isJudgeAvailable 从单次 2s 探测改为 30s 轮询（评测积压时
-     单次探测会误报不可用）；judge 不可用时提交类用例优雅跳过。
+     单次探测会误报不可用），供既有 API 测试使用。浏览器门禁直接运行真实
+     提交，不使用该探测跳过用例；judge 故障触发结果等待超时，测试失败并
+     保存 trace 与截图。
 6. CI：`ci.yml` ui-check 增加「全页面类型检查」步骤；`e2e.yml` 移除
    `noj-ui/**` 忽略并在 API E2E 之后增加「UI 浏览器关键流程门禁」步骤
    （构建 noj-ui → 启动 Nitro server → 缓存并安装 Playwright Chromium →

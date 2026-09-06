@@ -100,7 +100,7 @@ onMounted(() => {
 // 竞赛状态/人数自动轮询（页面隐藏自动暂停，卸载自动清理）
 usePolling({
   intervalMs: pollInterval,
-  fetcher: () => { void loadContests(currentPage.value, true) },
+  fetcher: async () => { await loadContests(currentPage.value, true) },
   immediate: false,
 })
 
