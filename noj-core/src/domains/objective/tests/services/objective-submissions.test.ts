@@ -328,11 +328,11 @@ Deno.test({
       answers: { [q1]: ["A"] },
     }, user);
 
-    // 提交者本人可读（练习模式含解析与期望答案）
+    // 提交者本人可读（练习模式含解析；expected 写入时已剥离，F-14）
     const mine = await getObjectiveSubmission(result.submission_id, user);
     assertEquals(mine.score, 10000);
     assertEquals(mine.details[q1].explanation, "解析");
-    assertEquals(mine.details[q1].expected, ["A"]);
+    assertEquals(mine.details[q1].expected, undefined);
 
     // 他人读取被拒
     await assertRejects(
@@ -482,5 +482,36 @@ Deno.test({
       ),
     );
     assertEquals(rows.length, 1);
+  },
+});
+
+Deno.test({
+  name: "objective submissions: private 套卷练习提交与详情不返回解析",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const owner = await makeUser("private-owner");
+    const user = await makeUser("private-user");
+    const paper = await makePaper(owner);
+    const q1 = await makeQuestion(paper, 1, "single", ["A"], "私有解析");
+    await db.update(problems).set({ visibility: "private" }).where(
+      eq(problems.id, paper),
+    );
+
+    const result = await submitObjectivePaper(paper, {
+      answers: { [q1]: ["A"] },
+    }, user);
+    assertEquals(result.details[q1].explanation, undefined);
+
+    const mine = await getObjectiveSubmission(result.submission_id, user);
+    assertEquals(mine.details[q1].explanation, undefined);
+
+    // admin 仍可看到解析（owner/admin 解析门）
+    const adminView = await getObjectiveSubmission(
+      result.submission_id,
+      "0",
+      "admin",
+    );
+    assertEquals(adminView.details[q1].explanation, "私有解析");
   },
 });

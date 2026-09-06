@@ -158,6 +158,8 @@ export async function submitObjectivePaper(
 
   const now = new Date().toISOString();
   const submissionId = crypto.randomUUID();
+  // F-14：入库前剥离 expected，任何后续读路径都不可能泄露标准答案。
+  const storedDetails = stripExpected(judgement.details);
   const row = {
     id: submissionId,
     paper_id: paperUuid,
@@ -167,7 +169,7 @@ export async function submitObjectivePaper(
     answers: input.answers,
     status: "finished",
     score: judgement.score,
-    details: judgement.details,
+    details: storedDetails,
     created_at: now,
   };
 
@@ -193,7 +195,9 @@ export async function submitObjectivePaper(
     total_count: judgement.total_count,
     details: contestMode
       ? stripExpected(judgement.details)
-      : withExplanation(judgement.details, questions),
+      : (paper.visibility === "public" || paper.owner_id === userId)
+      ? withExplanation(judgement.details, questions)
+      : stripExpected(judgement.details),
     contest_mode: contestMode,
   };
 }
@@ -258,7 +262,16 @@ export async function getObjectiveSubmission(
       details: stripExpected(response.details),
     };
   }
-  // 练习模式：合并解析到逐题判定
+  // 练习模式：仅公开套卷或 owner/admin 可看到解析（F-01 解析门）
+  const paper = await getPaperOrThrow(row.paper_id);
+  const canExplain = paper.visibility === "public" ||
+    paper.owner_id === viewerId || isAdmin;
+  if (!canExplain) {
+    return {
+      ...response,
+      details: stripExpected(response.details),
+    };
+  }
   const questions = await db
     .select()
     .from(objectiveQuestions)

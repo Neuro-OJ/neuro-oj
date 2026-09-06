@@ -728,7 +728,7 @@ jj new
 - Consumes: `resolveProblemAccess`（Task 3）。
 - Produces: 入库 `details` 不再含 expected；`toSubmissionResponse`/练习列表 withExplanation 仅 public paper/owner/admin 返回。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 Deno.test("objective: 练习提交响应不含 expected（private paper）", async () => {
@@ -738,15 +738,15 @@ Deno.test("objective: 练习提交响应不含 expected（private paper）", asy
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
-- [ ] **Step 3: 实现**
+- [x] **Step 2: 跑测试确认失败**
+- [x] **Step 3: 实现**
 
 - 写入（F-14）：`objective-submissions.ts` 插入前对 `judgement.details` 执行 `stripExpected`（复用既有函数，现仅用于响应裁剪，提前到写入），入库不含 expected；
 - 读取（F-01）：练习提交响应 `withExplanation` 前判 `paper.visibility === 'public' || viewer 为 owner/admin`，否则走 `stripExpected`；
 - 竞赛客观题提交走 Task 10 投影（running 参赛者仅 score+对错状态）。
 
-- [ ] **Step 4: 跑测试确认通过**
-- [ ] **Step 5: 提交**
+- [x] **Step 4: 跑测试确认通过**
+- [x] **Step 5: 提交**
 
 ```bash
 jj describe -m "fix(core): 客观题写入剥离 expected 并收紧练习解析（F-01/F-14）"
