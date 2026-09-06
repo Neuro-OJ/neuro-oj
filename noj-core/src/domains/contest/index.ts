@@ -14,6 +14,7 @@ export {
   resolveContestId,
   updateContest,
 } from "./services/contests.ts";
+export { verifyContestAccess } from "./services/contest-access.ts";
 export {
   createClarification,
   listClarifications,

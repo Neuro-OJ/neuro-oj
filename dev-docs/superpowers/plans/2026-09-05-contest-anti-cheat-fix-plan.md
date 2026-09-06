@@ -370,7 +370,7 @@ export async function verifyContestAccess(
 // allowed = 题目在该竞赛 ∧ 用户是参赛者 ∧ (窗口内 OR 已结束)；赛前 → allowed=false
 ```
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 构造 running/ended/未开始 三态竞赛 + 参赛/非参赛用户：
 
@@ -395,15 +395,15 @@ Deno.test("contest-access: 非参赛者 → 拒绝", async () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
-- [ ] **Step 3: 实现**
+- [x] **Step 2: 跑测试确认失败**
+- [x] **Step 3: 实现**
 
 内部复用 `getContest`/`isParticipant`/`getContestProblems`/`computeContestStatus`；状态 ∈ running/ended 才 allowed。
 
 同时核对 `GET /contests/:id/problems` 与 `GET /contests/:id/problems/:label`（contest/routes/contests.ts）：若现门禁仅放行 running，改为 running 或 ended（参赛者赛后复盘可见），赛前仍拒绝。
 
-- [ ] **Step 4: 跑测试确认通过**
-- [ ] **Step 5: 提交**
+- [x] **Step 4: 跑测试确认通过**
+- [x] **Step 5: 提交**
 
 ```bash
 jj describe -m "feat(core): contest 域 verifyContestAccess（成员+窗口+赛后放行）"
