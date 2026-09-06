@@ -8,10 +8,10 @@ import { parseJsonBody } from "./../../../shared/http/request.ts";
 import {
   BadRequestError,
   ForbiddenError,
+  NotFoundError,
   UnauthorizedError,
 } from "./../../../shared/base/errors.ts";
 import { parsePagination } from "./../../../shared/http/pagination.ts";
-import { checkPermission } from "./../../identity/index.ts";
 import {
   enforceObjectiveSubmitRateLimit,
   enforceProblemCreateRateLimit,
@@ -26,6 +26,7 @@ import {
 } from "../services/problems/problems.ts";
 import { applyAlgorithmTagVisibility } from "../services/problems/problems-list.ts";
 import { resolveProblem } from "./../services/problem-resolve.ts";
+import { resolveProblemAccess } from "./../services/problem-access.ts";
 import {
   ADMIN_FULL_ACCESS,
   resolvePermissions,
@@ -101,25 +102,31 @@ router.get("/", optionalAuthMiddleware, async (c) => {
   const ownerId = c.req.query("owner_id");
   if (ownerId) query.owner_id = ownerId;
 
+  const viewerId = c.get("userId") as string | undefined;
+  const isAdmin = viewerId
+    ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
+    : false;
+
   // NOJ-103：禁止匿名/普通用户批量枚举他人 U 型题。
   // U 型列表只能查本人（或由 problem:read_all/admin 查全部）。
   const requestedType = (query.type || "P").toUpperCase();
   if (requestedType === "U") {
-    const userId = c.get("userId") as string | undefined;
-    if (!userId) {
+    if (!viewerId) {
       throw new UnauthorizedError("请先登录");
     }
-    const isAdmin = await checkPermission(c, "problem:read_all");
-    if (ownerId && ownerId !== userId && !isAdmin) {
+    if (ownerId && ownerId !== viewerId && !isAdmin) {
       throw new ForbiddenError("无权查看其他用户的 U 型题列表");
     }
     if (!ownerId && !isAdmin) {
       // 非管理员未指定 owner 时收窄为本人，避免匿名枚举全量 U 型题。
-      query.owner_id = userId;
+      query.owner_id = viewerId;
     }
   }
 
-  const result = await listProblems(query);
+  const result = await listProblems(query, {
+    userId: viewerId,
+    isAdmin,
+  });
   return c.json({
     data: result.items,
     total: result.total,
@@ -176,12 +183,21 @@ router.get("/submissions/:id", authMiddleware, async (c) => {
  */
 router.get("/:id", optionalAuthMiddleware, async (c) => {
   const id = c.req.param("id") as string;
-  const problem = await resolveProblem(id);
-
-  const userId = c.get("userId");
+  const userId = c.get("userId") as string | undefined;
   const isAdmin = userId
     ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
     : false;
+
+  // 统一题目访问解析：无权限一律 404，防存在性探测。
+  const problem = await resolveProblem(id, { userId, isAdmin });
+  const access = resolveProblemAccess(problem, {
+    viewerId: userId ?? null,
+    isAdmin,
+  });
+  if (!access.allowed) {
+    throw new NotFoundError("题目不存在");
+  }
+
   const data = await applyAlgorithmTagVisibility(problem, { userId, isAdmin });
 
   return c.json({ data });
@@ -431,6 +447,17 @@ router.get("/:id/questions", optionalAuthMiddleware, async (c) => {
 
   const paper = await getPaperOrThrow(paperId);
   assertObjectivePaper(paper);
+
+  // 套卷也走统一题目访问解析：private 套卷非 owner/admin 一律 404。
+  const viewerId = userId ?? null;
+  const isAdmin = userId
+    ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
+    : false;
+  const access = resolveProblemAccess(paper, { viewerId, isAdmin });
+  if (!access.allowed) {
+    throw new NotFoundError("题目不存在");
+  }
+
   const includeAnswer = await isPaperOwnerOrAdmin(
     paper,
     userId,

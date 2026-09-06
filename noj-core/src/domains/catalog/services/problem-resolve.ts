@@ -6,6 +6,7 @@
  */
 
 import { getProblem, getProblemByTypeAndNumber } from "../index.ts";
+import type { ProblemViewer } from "../index.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
 import { isUuid } from "../../../shared/security/public-id.ts";
 
@@ -13,11 +14,13 @@ import { isUuid } from "../../../shared/security/public-id.ts";
  * 双索引查找题目。
  * 先通过正则判断 id 格式，避免每次 display_id 请求都先多一次 UUID 查询。
  * 对于不匹配任何已知格式的 ID，fallback 到 `getProblem(id)` 直接查找。
+ *
+ * viewer 可选：传入后 getProblem 会对非 owner/admin 裁剪敏感字段。
  */
-export function resolveProblem(id: string) {
+export function resolveProblem(id: string, viewer?: ProblemViewer) {
   // UUID / 纯数字（兼容旧 seed 数据 1001/1002/1003 等）：直接按 id 精确查找
   if (isUuid(id) || /^\d+$/.test(id)) {
-    return getProblem(id);
+    return getProblem(id, viewer);
   }
 
   // display_id 格式：解析 "P1001" / "U42" → (type, number)
@@ -25,11 +28,11 @@ export function resolveProblem(id: string) {
   if (match) {
     const type = match[1].toUpperCase();
     const number = parseInt(match[2], 10);
-    return getProblemByTypeAndNumber(type, number);
+    return getProblemByTypeAndNumber(type, number, viewer);
   }
 
   // fallback：尝试直接按 id 查找（兼容非标准 ID 格式）
-  return getProblem(id);
+  return getProblem(id, viewer);
 }
 
 /**

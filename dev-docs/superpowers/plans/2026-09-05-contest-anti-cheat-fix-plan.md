@@ -67,7 +67,7 @@ Task 16 (F-12) 独立；Task 17 (后台 UI) 依赖 Task 4/7/9；Task 18 (e2e) �
 **Interfaces:**
 - Produces: `problems.visibility`（public|private，notNull default public）；`contests.kind`（public|invite，notNull default public）
 
-- [ ] **Step 1: 修改 catalog.ts schema**
+- [x] **Step 1: 修改 catalog.ts schema**
 
 在 problems 表 `is_objective` 之后加列，并在 constraints 数组追加 CHECK：
 
@@ -82,7 +82,7 @@ visibilityCheck: check(
 ),
 ```
 
-- [ ] **Step 2: 修改 contest.ts schema**
+- [x] **Step 2: 修改 contest.ts schema**
 
 在 contests 表 `type` 之后加列，constraints 追加：
 
@@ -97,12 +97,12 @@ kindCheck: check(
 ),
 ```
 
-- [ ] **Step 3: 生成迁移并检查**
+- [x] **Step 3: 生成迁移并检查**
 
 Run: `cd noj-core && deno task db:generate`
 Expected: 生成新 SQL；检查 SQL 内无 `public.` schema 前缀；`_journal.json` 自动更新（勿手改）。
 
-- [ ] **Step 4: 数据回填（迁移 SQL 末尾追加）**
+- [x] **Step 4: 数据回填（迁移 SQL 末尾追加）**
 
 ```sql
 UPDATE "contests" SET "kind" = CASE WHEN "is_public" THEN 'public' ELSE 'invite' END;
@@ -112,12 +112,12 @@ UPDATE "contests" SET "password" = encode(gen_random_bytes(12), 'hex')
 
 若历史迁移中无 `CREATE EXTENSION IF NOT EXISTS pgcrypto`（gen_random_bytes 所属），在本迁移头部补一行。
 
-- [ ] **Step 5: 运行迁移测试**
+- [x] **Step 5: 运行迁移测试**
 
 Run: `cd noj-core && deno task test:parallel`
 Expected: 全绿；00_migrate_test 通过即迁移可执行。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 jj describe -m "feat(core): problems.visibility 与 contests.kind 迁移"
@@ -136,7 +136,7 @@ jj new
 **Interfaces:**
 - Produces: 权限字符串 `contest:create`，默认角色（root/admin/default user）自动授予。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `rbac.test.ts` 追加（按现有测试文件的 fixture 命名调整 defaultUserId / hasDbEnv）：
 
@@ -155,12 +155,12 @@ Deno.test({
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd noj-core && deno task test -- rbac.test.ts`
 Expected: FAIL（权限定义不存在）。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `PERMISSION_DEFS` 追加：
 
@@ -170,8 +170,8 @@ Expected: FAIL（权限定义不存在）。
 
 `seed-rbac.ts`：把 `contest:create` 加入 default 角色（root/admin 按现有全量授予方式自动获得）。
 
-- [ ] **Step 4: 跑测试确认通过**
-- [ ] **Step 5: 提交**
+- [x] **Step 4: 跑测试确认通过**
+- [x] **Step 5: 提交**
 
 ```bash
 jj describe -m "feat(core): RBAC 新增 contest:create 权限"
@@ -213,7 +213,7 @@ export function resolveProblemAccess(
 ): ProblemAccessResult;
 ```
 
-- [ ] **Step 1: 写失败测试（判定矩阵）**
+- [x] **Step 1: 写失败测试（判定矩阵）**
 
 `problem-access.test.ts` 覆盖矩阵（纯函数，无 DB）：
 
@@ -232,12 +232,12 @@ Deno.test("problem-access: 判定矩阵", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd noj-core && deno task test -- problem-access.test.ts`
 Expected: FAIL（模块不存在）。
 
-- [ ] **Step 3: 实现 resolver**
+- [x] **Step 3: 实现 resolver**
 
 ```ts
 import type { ContestAccessInfo } from "./contest-access-info.ts";
@@ -268,8 +268,8 @@ export function resolveProblemAccess(
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
-- [ ] **Step 5: 门面导出并提交**
+- [x] **Step 4: 跑测试确认通过**
+- [x] **Step 5: 门面导出并提交**
 
 `catalog/index.ts` 追加 `export * from "./services/problem-access.ts";` 与 `contest-access-info.ts`。
 
@@ -293,7 +293,7 @@ jj new
 - Consumes: `resolveProblemAccess`（Task 3）；contest 读题路径的上下文接入由 Task 11 回填（本任务先覆盖无上下文路径）。
 - Produces: `toProblemResponse` 新参数 `viewer: { isOwnerOrAdmin: boolean }`，非 owner/admin 剥离 `support_package_storage_url` / `runtime_config` / `llm_config`。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 Deno.test("problems: 匿名读取 private U 题返回 404", async () => {
@@ -310,12 +310,12 @@ Deno.test("problems: 非 owner 读取 public 题不含 storage_url", async () =>
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd noj-core && deno task test -- problems.test.ts`
 Expected: FAIL（现状匿名可读 U 题、字段全下发）。
 
-- [ ] **Step 3: 实现详情路由 resolver 前置**
+- [x] **Step 3: 实现详情路由 resolver 前置**
 
 `routes/problems.ts` GET /:id handler 内、`getProblem` 之后（GET /:id/questions 同样在读取套卷前做 resolver 判定，无权限 404；该路由现为 optionalAuthMiddleware，套卷私有后竞赛客观题入口由 Task 11 接 contest 上下文）：
 
@@ -329,17 +329,17 @@ if (!access.allowed) {
 }
 ```
 
-- [ ] **Step 4: toProblemResponse 字段分级**
+- [x] **Step 4: toProblemResponse 字段分级**
 
 `problems-list.ts` 的 `toProblemResponse(row, viewer)` 追加参数；`!viewer.isOwnerOrAdmin` 时不返回 `support_package_storage_url`、`runtime_config`、`llm_config`。列表查询 WHERE 改为 `visibility='public' AND type='P'`（公开 U 仍不进主列表）。
 
-- [ ] **Step 5: 搜索与题单**
+- [x] **Step 5: 搜索与题单**
 
 - `query/services/search.ts`：`searchProblems` 的 WHERE 追加 `AND p.visibility = 'public'`。
 - `catalog/services/trainings.ts`：`listTrainingProblems` 对非 owner/admin 查看者逐题过滤 `visibility='public'`（保留题单自身 private 门）。
 - 删除保护（spec §2「被竞赛引用禁删」）：`catalog/services/problems/problems-crud.ts` 的 deleteProblem 在删除前直接查 `contest_problems` 表（shared/db schema 表，不 import contest 域），存在 `problem_id` 引用则抛 `ConflictError("题目已被竞赛引用，无法删除")`。
 
-- [ ] **Step 6: 跑相关测试并提交**
+- [x] **Step 6: 跑相关测试并提交**
 
 Run: `cd noj-core && deno task test:parallel`
 Expected: 全绿（既有测试若断言 U 题匿名可读则按新语义更新断言）。

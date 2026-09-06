@@ -39,6 +39,7 @@ import type { TagKind } from "../tags.ts";
 import {
   DIFFICULTIES,
   isValidDifficulty,
+  type LlmConfig,
   type ProblemListQuery,
   type ProblemResponseWithTags,
   type ProblemTagRef,
@@ -52,28 +53,39 @@ import type {
 
 /**
  * 将数据库行转换为题目响应。
+ *
+ * 非 owner/admin 不返回 support_package_storage_url / runtime_config /
+ * llm_config（JSON 序列化时省略字段，避免泄露评测与存储细节）。
  */
 function toProblemResponse(
   row: typeof problems.$inferSelect,
+  viewer: { isOwnerOrAdmin: boolean } = { isOwnerOrAdmin: true },
 ): ProblemResponse {
-  return {
+  const base = {
     id: row.id,
     title: row.title,
     description: row.description,
     difficulty: row.difficulty,
-    support_package_storage_url: row.support_package_storage_url,
     has_support_package: row.support_package_storage_url !== null,
-    runtime_config: row.runtime_config as RuntimeConfig,
-    llm_config: row.llm_config as ProblemResponse["llm_config"],
     number: row.number,
     owner_id: row.owner_id,
     type: row.type,
+    visibility: row.visibility as "public" | "private",
     is_objective: row.is_objective,
     submission_mode: row.submission_mode as ProblemResponse["submission_mode"],
     artifact_max_size_mb: row.artifact_max_size_mb,
     display_id: `${row.type}${row.number}`,
     created_at: row.created_at,
     updated_at: row.updated_at,
+  };
+  if (!viewer.isOwnerOrAdmin) {
+    return base;
+  }
+  return {
+    ...base,
+    support_package_storage_url: row.support_package_storage_url,
+    runtime_config: row.runtime_config as RuntimeConfig,
+    llm_config: row.llm_config as ProblemResponse["llm_config"],
   };
 }
 
@@ -127,6 +139,7 @@ export async function attachTags(
  */
 export async function listProblems(
   query: ProblemListQuery = {},
+  viewer: ProblemViewer = {},
 ): Promise<ProblemListResponse> {
   const db = getDb();
   const page = Math.max(1, query.page ?? 1);
@@ -167,6 +180,13 @@ export async function listProblems(
 
   if (query.owner_id) {
     conditions.push(eq(problems.owner_id, query.owner_id));
+  }
+
+  // 可见性：普通列表只允许 public；owner/admin 查看自己的 U 型列表时可包含 private。
+  const canSeeOwnPrivate = query.owner_id !== undefined &&
+    (viewer.isAdmin === true || viewer.userId === query.owner_id);
+  if (!canSeeOwnPrivate) {
+    conditions.push(eq(problems.visibility, "public"));
   }
 
   // 按标签筛选——先查关联表拿到题目 ID，再通过 inArray 下推到 SQL WHERE 层
@@ -214,7 +234,10 @@ export async function listProblems(
 
   return {
     items: rows.map((r) => ({
-      ...toProblemResponse(r.problem),
+      ...toProblemResponse(r.problem, {
+        isOwnerOrAdmin: viewer.isAdmin === true ||
+          (viewer.userId !== undefined && viewer.userId === r.problem.owner_id),
+      }),
       owner_username: r.owner_username ?? "未知",
       tags: tagMap.get(r.problem.id) ?? [],
     })),
@@ -298,6 +321,7 @@ export async function listAllProblems(
       owner_id: problems.owner_id,
       owner_username: users.username,
       type: problems.type,
+      visibility: problems.visibility,
       is_objective: problems.is_objective,
       submission_mode: problems.submission_mode,
       artifact_max_size_mb: problems.artifact_max_size_mb,
@@ -326,7 +350,7 @@ export async function listAllProblems(
       difficulty: r.difficulty,
       support_package_storage_url: r.support_package_storage_url,
       runtime_config: r.runtime_config as RuntimeConfig,
-      llm_config: r.llm_config as ProblemResponse["llm_config"],
+      llm_config: r.llm_config as LlmConfig | null,
       tags: tagMap.get(r.id) ?? [],
       created_at: r.created_at,
       updated_at: r.updated_at,
@@ -334,6 +358,7 @@ export async function listAllProblems(
       owner_id: r.owner_id,
       owner_username: r.owner_username ?? "未知",
       type: r.type,
+      visibility: r.visibility as "public" | "private",
       is_objective: r.is_objective,
       submission_mode: r.submission_mode as ProblemResponse["submission_mode"],
       artifact_max_size_mb: r.artifact_max_size_mb,
@@ -354,6 +379,7 @@ export async function listAllProblems(
  */
 export async function getProblem(
   id: string,
+  viewer?: ProblemViewer,
 ): Promise<ProblemResponseWithTags> {
   const db = getDb();
 
@@ -374,7 +400,10 @@ export async function getProblem(
   const row = existing[0];
   const tagMap = await attachTags([id]);
   return {
-    ...toProblemResponse(row.problem),
+    ...toProblemResponse(row.problem, {
+      isOwnerOrAdmin: viewer === undefined ? true : viewer.isAdmin === true ||
+        (viewer.userId !== undefined && viewer.userId === row.problem.owner_id),
+    }),
     owner_username: row.owner_username ?? "未知",
     tags: tagMap.get(id) ?? [],
     has_hidden_algorithm_tags: false,
@@ -390,6 +419,7 @@ export async function getProblem(
 export async function getProblemByTypeAndNumber(
   type: string,
   number: number,
+  viewer?: ProblemViewer,
 ): Promise<ProblemResponseWithTags> {
   const db = getDb();
 
@@ -415,7 +445,10 @@ export async function getProblemByTypeAndNumber(
   const row = existing[0];
   const tagMap = await attachTags([row.problem.id]);
   return {
-    ...toProblemResponse(row.problem),
+    ...toProblemResponse(row.problem, {
+      isOwnerOrAdmin: viewer === undefined ? true : viewer.isAdmin === true ||
+        (viewer.userId !== undefined && viewer.userId === row.problem.owner_id),
+    }),
     owner_username: row.owner_username ?? "未知",
     tags: tagMap.get(row.problem.id) ?? [],
     has_hidden_algorithm_tags: false,

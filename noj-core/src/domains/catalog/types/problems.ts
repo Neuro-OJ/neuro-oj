@@ -180,13 +180,15 @@ export interface ProblemResponseWithTags {
   title: string;
   description: string;
   difficulty: string;
-  support_package_storage_url: string | null;
+  /** 仅 owner/admin 返回；非 owner/admin 不返回该字段 */
+  support_package_storage_url?: string | null;
   /** 是否有已上传的支持包文件 */
   has_support_package: boolean;
   /**
    * 双容器 Runtime 配置（所有题目统一使用双容器模式）。
+   * 仅 owner/admin 返回；非 owner/admin 不返回该字段。
    */
-  runtime_config: RuntimeConfig;
+  runtime_config?: RuntimeConfig | null;
   tags: ProblemTagRef[];
   /**
    * 存在被隐藏的算法标签时为 true（spoiler 门控：匿名/未 AC viewer
@@ -203,14 +205,16 @@ export interface ProblemResponseWithTags {
   owner_username?: string;
   /** 题目类型：U / P */
   type: string;
+  /** 题目可见性：public / private */
+  visibility: "public" | "private";
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective: boolean;
   /** 提交模式：code / artifact */
   submission_mode: SubmissionMode;
   /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
   artifact_max_size_mb: number | null;
-  /** LLM 配置（可空） */
-  llm_config: LlmConfig | null;
+  /** LLM 配置（可空，仅 owner/admin 返回） */
+  llm_config?: LlmConfig | null;
   /** 展示标识，格式：{type}{number}（如 P1001、U42） */
   display_id: string;
 }

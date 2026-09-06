@@ -369,7 +369,10 @@ Deno.test({
         runtime_config: NETWORKED_RUNTIME_CONFIG,
       },
     );
-    assertEquals(created.runtime_config.evaluator.network?.enabled, true);
+    assertEquals(
+      created.runtime_config!.evaluator.network?.enabled,
+      true,
+    );
   },
 });
 
@@ -401,6 +404,9 @@ Deno.test({
       "admin-1",
       "admin",
     );
-    assertEquals(created.runtime_config.evaluator.network?.enabled, true);
+    assertEquals(
+      created.runtime_config!.evaluator.network?.enabled,
+      true,
+    );
   },
 });

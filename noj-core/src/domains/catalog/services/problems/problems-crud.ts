@@ -15,12 +15,14 @@
 import { eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
 import {
+  contestProblems,
   evaluationResults,
   problems,
   submissions,
 } from "./../../../../shared/db/schema.ts";
 import {
   BadRequestError,
+  ConflictError,
   ForbiddenError,
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
@@ -594,6 +596,16 @@ export async function deleteProblem(
     } else if (userRole !== "admin") {
       throw new ForbiddenError("无权删除此题目");
     }
+  }
+
+  // 被竞赛引用禁删（应用层保护，竞赛题关联 future-proof）
+  const [contestRef] = await db
+    .select({ problem_id: contestProblems.problem_id })
+    .from(contestProblems)
+    .where(eq(contestProblems.problem_id, id))
+    .limit(1);
+  if (contestRef) {
+    throw new ConflictError("题目已被竞赛引用，无法删除");
   }
 
   // 清理支持包（通过 StorageProvider，幂等）
