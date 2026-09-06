@@ -1,4 +1,8 @@
 <script setup lang="ts">
+
+// 显式导入项目 useToast：避免与 @nuxt/ui 自动导入的同名 useToast 混淆
+import { useToast } from '~/composables/useToast'
+
 import type { Clarification, Contest, ContestProblem } from '~/composables/useContests'
 import { extractApiError } from '~/utils/apiError'
 
@@ -74,9 +78,9 @@ useEventSource({
   url: '/api/v1/community/notifications/events',
   enabled: computed(() => !!user.value),
   onEvent: {
-    'notification:new': () => void load(true, true),
+    'notification:new': () => load(true, true),
   },
-  fetchFn: () => void load(true, true),
+  fetchFn: () => load(true, true),
   fallbackIntervalMs: 30000,
 })
 

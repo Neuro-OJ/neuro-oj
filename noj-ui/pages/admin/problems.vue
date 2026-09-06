@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+
 import { useToast } from "~/composables/useToast"
 import { useDialog } from "~/composables/useDialog"
 import { extractApiError } from '~/utils/apiError'
@@ -52,7 +54,7 @@ const difficultyLabels: Record<string, string> = {
   hard: "困难",
 }
 
-const columns = [
+const columns: TableColumn<Problem>[] = [
   { accessorKey: "display_id", header: "题号" },
   { accessorKey: "type", header: "类型", cell: (info) => (info.getValue() as string) === "U" ? "用户题库" : "主题库" },
   { accessorKey: "title", header: "标题" },
@@ -134,7 +136,7 @@ async function handleDelete() {
   }
 }
 
-const toast = useToast()
+const { toast } = useToast()
 const { dialog } = useDialog()
 const rejudgingProblemIds = ref(new Set<string>())
 const preflight = ref<{ problem_id: string; fingerprint: string; can_publish: boolean; checks: { name: string; status: string; message: string }[] } | null>(null)
@@ -163,8 +165,7 @@ async function batchRejudge(problemId: string) {
     const res = await api.post<{ message: string; total: number; queued: number; skipped: number }>(
       `/api/v1/admin/problems/${problemId}/rejudge`,
     )
-    toast.showToast(
-      "success",
+    toast.success(
       `批量重测共 ${res.total} 条，已入队 ${res.queued} 条${res.skipped > 0 ? `，未入队 ${res.skipped} 条` : ""}`,
     )
     loadProblems(currentPage.value)

@@ -1,3 +1,8 @@
 {
-  "extends": "./.nuxt/tsconfig.json"
+  "extends": "./.nuxt/tsconfig.json",
+  // vue-tsc（check:types:nuxt）的作用域限定为 Nuxt 应用类型上下文
+  // （pages / components / composables / middleware / server 等）。
+  // tests/ 是 Deno 测试（jsr:@std 依赖、Deno 全局命名空间），由
+  // `deno task check:types`（deno check）负责检查，不纳入 vue-tsc。
+  "exclude": ["node_modules", "dist", ".output", ".data", ".deno_cov_cache", "tests"]
 }

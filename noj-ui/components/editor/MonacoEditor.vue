@@ -162,7 +162,7 @@ watch(
 watch(
   () => props.theme,
   (t) => {
-    if (editor && t) {
+    if (editor && monacoModule && t) {
       monacoModule.editor.setTheme(t)
     }
   },

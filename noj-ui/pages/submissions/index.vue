@@ -35,8 +35,8 @@ const perPage = 20
 const filters = reactive({
   problem_search: "",
   submission_id: "",
-  language: null as string | null,
-  status: null as string | null,
+  language: undefined as string | undefined,
+  status: undefined as string | undefined,
 })
 
 // 语言选项
@@ -101,8 +101,8 @@ function applyFilters() {
 function clearFilters() {
   filters.problem_search = ""
   filters.submission_id = ""
-  filters.language = null
-  filters.status = null
+  filters.language = undefined
+  filters.status = undefined
   loadSubmissions(1)
 }
 

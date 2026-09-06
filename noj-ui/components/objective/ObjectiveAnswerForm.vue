@@ -127,10 +127,10 @@ async function onSubmit() {
             <span
               v-if="lastResult?.details[q.id]"
               class="inline-flex items-center gap-1 text-xs font-medium"
-              :class="lastResult.details[q.id].correct ? 'text-green-600' : 'text-red-600'"
+              :class="lastResult.details[q.id]?.correct ? 'text-green-600' : 'text-red-600'"
             >
-              <UIcon :name="lastResult.details[q.id].correct ? 'i-lucide-check-circle' : 'i-lucide-x-circle'" />
-              {{ lastResult.details[q.id].correct ? '回答正确' : '回答错误' }}
+              <UIcon :name="lastResult.details[q.id]?.correct ? 'i-lucide-check-circle' : 'i-lucide-x-circle'" />
+              {{ lastResult.details[q.id]?.correct ? '回答正确' : '回答错误' }}
             </span>
           </div>
           <p class="mb-3 whitespace-pre-wrap text-sm text-text">{{ q.prompt }}</p>
@@ -193,10 +193,10 @@ async function onSubmit() {
 
           <!-- 判定后解析（练习模式） -->
           <p
-            v-if="lastResult?.details[q.id] && lastResult.details[q.id].explanation"
+            v-if="lastResult?.details[q.id]?.explanation"
             class="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-text-secondary"
           >
-            解析：{{ lastResult.details[q.id].explanation }}
+            解析：{{ lastResult.details[q.id]?.explanation }}
           </p>
         </section>
 

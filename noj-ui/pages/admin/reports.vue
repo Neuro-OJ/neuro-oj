@@ -32,6 +32,7 @@ interface ReportMessage {
 }
 interface MessageHistoryItem {
   id: string
+  conversation_id: string
   sender_id: string
   type: string
   content: string
@@ -393,7 +394,7 @@ await Promise.all([load("pending"), load("resolved"), load("dismissed")])
     </UModal>
 
     <!-- 举报附带的完整聊天记录预览 -->
-    <UModal v-model:open="showHistory" title="完整聊天记录" :ui="{ width: 'max-w-lg' }" :unmount-on-hide="true">
+    <UModal v-model:open="showHistory" title="完整聊天记录" :ui="{ content: 'max-w-lg' }" :unmount-on-hide="true">
       <template #body>
         <div class="space-y-3">
           <p class="text-xs text-text-secondary">被举报内容：{{ historyConversation }}</p>

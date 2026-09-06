@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { Training, TrainingProblem } from '~/composables/useTrainings'
 import { useTrainings } from '~/composables/useTrainings'
+// 显式导入项目 useToast：避免与 @nuxt/ui 自动导入的同名 useToast 混淆
+import { useToast } from '~/composables/useToast'
 
 const route = useRoute()
 const router = useRouter()
@@ -12,11 +14,9 @@ const { toast } = useToast()
 
 const { data: trainingData, pending, error, refresh } = await useFetch<{ data: Training }>(
   `/api/v1/trainings/${trainingId}`,
-  { silent: true },
 )
 const { data: problemsData, refresh: refreshProblems } = await useFetch<{ data: TrainingProblem[] }>(
   `/api/v1/trainings/${trainingId}/problems`,
-  { silent: true },
 )
 const training = computed(() => trainingData.value?.data)
 const problems = computed(() => problemsData.value?.data ?? [])
@@ -70,7 +70,7 @@ async function handleDeleteTraining() {
               v-if="isOwner"
               icon="i-lucide-pencil"
               size="xs"
-              color="white"
+              color="neutral"
               variant="ghost"
               class="ml-auto text-white/80 hover:text-white"
               @click="showEdit = true"
@@ -81,7 +81,7 @@ async function handleDeleteTraining() {
               v-if="isOwner"
               icon="i-lucide-trash-2"
               size="xs"
-              color="red"
+              color="error"
               variant="ghost"
               class="text-white/80 hover:text-white"
               @click="handleDeleteTraining"

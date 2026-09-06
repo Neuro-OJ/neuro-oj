@@ -44,7 +44,9 @@ export function useApi() {
   // SSR 端 $fetch 不会自动携带浏览器 Cookie（server→server 直连）。
   // 使用 useRequestFetch 统一转发原始请求的 Cookie 与请求头，与 useFetch 行为对齐。
   // 客户端浏览器会自动带上 Cookie，无需注入。
-  const serverFetch = import.meta.server ? useRequestFetch() : undefined;
+  // 断言为 typeof $fetch：useRequestFetch 的原始返回类型携带全量路由表，
+  // vue-tsc 推导时超过 TS 递归上限（TS2321 Excessive stack depth）。
+  const serverFetch = import.meta.server ? (useRequestFetch as unknown as () => typeof $fetch)() : undefined;
 
   // 认证相关页面：其自身的 401（如登录失败）不应触发跳转，避免死循环
   const AUTH_PAGE_PREFIXES = [
@@ -115,11 +117,11 @@ export function useApi() {
     api: {
       get: <T = unknown>(url: string, options?: ApiCallOptions) => request<T>('get', url, options),
       post: <T = unknown>(url: string, body?: unknown, options?: ApiCallOptions) =>
-        request<T>('post', url, { body, ...options }),
+        request<T>('post', url, { body: body as FetchOptions['body'], ...options }),
       put: <T = unknown>(url: string, body?: unknown, options?: ApiCallOptions) =>
-        request<T>('put', url, { body, ...options }),
+        request<T>('put', url, { body: body as FetchOptions['body'], ...options }),
       patch: <T = unknown>(url: string, body?: unknown, options?: ApiCallOptions) =>
-        request<T>('patch', url, { body, ...options }),
+        request<T>('patch', url, { body: body as FetchOptions['body'], ...options }),
       delete: <T = unknown>(url: string, options?: ApiCallOptions) => request<T>('delete', url, options),
     },
   };

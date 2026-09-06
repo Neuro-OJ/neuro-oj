@@ -1,4 +1,8 @@
 <script setup lang="ts">
+
+// 显式导入项目 useToast：避免与 @nuxt/ui 自动导入的同名 useToast 混淆
+import { useToast } from '~/composables/useToast'
+
 /**
  * 社区管理：讨论板块 section（板块列表 + 新建 + 归档）。
  * 从 admin/community.vue 拆出，状态自持，独立加载。

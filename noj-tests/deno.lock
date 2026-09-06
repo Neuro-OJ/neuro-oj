@@ -2,20 +2,47 @@
   "version": "5",
   "specifiers": {
     "npm:fflate@0.8.2": "0.8.2",
-    "npm:otpauth@9": "9.5.1"
+    "npm:otpauth@9": "9.5.1",
+    "npm:playwright@*": "1.62.1",
+    "npm:playwright@1.62.1": "1.62.1"
   },
   "npm": {
     "@noble/hashes@2.2.0": {
-      "integrity": "sha512-IYqDGiTXab6FniAgnSdZwgWbomxpy9FtYvLKs7wCUs2a8RkITG+DFGO1DM9cr+E3/RgADRpFjrKVaJ1z6sjtEg=="
+      "integrity": "sha512-IYqDGiTXab6FniAgnSdZwgWbomxpy9FtYvLKs7wCUs2a8RkITG+DFGO1DM9cr+E3/RgADRpFjrKVaJ1z6sjtEg==",
+      "tarball": "https://registry.npmmirror.com/@noble/hashes/-/hashes-2.2.0.tgz"
     },
     "fflate@0.8.2": {
-      "integrity": "sha512-cPJU47OaAoCbg0pBvzsgpTPhmhqI5eJjh/JIu8tPj5q+T7iLvW/JAYUqmE7KOB4R1ZyEhzBaIQpQpardBF5z8A=="
+      "integrity": "sha512-cPJU47OaAoCbg0pBvzsgpTPhmhqI5eJjh/JIu8tPj5q+T7iLvW/JAYUqmE7KOB4R1ZyEhzBaIQpQpardBF5z8A==",
+      "tarball": "https://registry.npmmirror.com/fflate/-/fflate-0.8.2.tgz"
+    },
+    "fsevents@2.3.2": {
+      "integrity": "sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==",
+      "os": ["darwin"],
+      "scripts": true,
+      "tarball": "https://registry.npmmirror.com/fsevents/-/fsevents-2.3.2.tgz"
     },
     "otpauth@9.5.1": {
       "integrity": "sha512-fJmDAHc8wImfqqqOXIlBvT1dEKrZK0Cmb2VEgScpNTolCz0PHh6ExUZGv4sLtOsWNaHCQlD+rRqaPgnoxFoZjQ==",
       "dependencies": [
         "@noble/hashes"
-      ]
+      ],
+      "tarball": "https://registry.npmmirror.com/otpauth/-/otpauth-9.5.1.tgz"
+    },
+    "playwright-core@1.62.1": {
+      "integrity": "sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==",
+      "bin": true,
+      "tarball": "https://registry.npmmirror.com/playwright-core/-/playwright-core-1.62.1.tgz"
+    },
+    "playwright@1.62.1": {
+      "integrity": "sha512-0M+L3LAD8/nm554LOla9Ayx0j0tmFZ0FBcoQ7F1VuVHpM/XpiC8RcDzBQB8W5+hA8L22THxELzeF+2WcUzvcLg==",
+      "dependencies": [
+        "playwright-core"
+      ],
+      "optionalDependencies": [
+        "fsevents"
+      ],
+      "bin": true,
+      "tarball": "https://registry.npmmirror.com/playwright/-/playwright-1.62.1.tgz"
     }
   }
 }
