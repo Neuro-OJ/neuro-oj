@@ -764,11 +764,11 @@ jj new
 **Interfaces:**
 - Produces: `sanitizeJudgeDetails(details: Record<string, unknown>): Record<string, unknown>` — key 白名单（`cases`/`score` 等安全键，按现有 evaluate.py 契约定义）+ 单值大小上限（64KB），超限丢弃。
 
-- [ ] **Step 1: 写失败测试**：details 含未知 key/超大字符串 → 落库后不存在。
-- [ ] **Step 2: 跑测试确认失败**
-- [ ] **Step 3: 实现**（consumer 在 `saveEvaluationResult` 前调用 sanitize）
-- [ ] **Step 4: 跑测试确认通过**
-- [ ] **Step 5: 提交**
+- [x] **Step 1: 写失败测试**：details 含未知 key/超大字符串 → 落库后不存在。
+- [x] **Step 2: 跑测试确认失败**
+- [x] **Step 3: 实现**（consumer 在 `saveEvaluationResult` 前调用 sanitize）
+- [x] **Step 4: 跑测试确认通过**
+- [x] **Step 5: 提交**
 
 ```bash
 jj describe -m "fix(core): judge 结果 details 白名单化与大小上限（F-11）"
