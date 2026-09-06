@@ -15,11 +15,17 @@
 
 export {
   getStorageProvider,
+  getStorageProviderKind,
   resetStorageProvider,
   setStorageProviderForTest,
 } from "./factory.ts";
 export { LocalStorageProvider } from "./local.ts";
 export { S3StorageProvider } from "./s3.ts";
+export {
+  buildStorageAuditReport,
+  classifyStorageObjectKey,
+  renderStorageAuditPrometheus,
+} from "./audit.ts";
 export {
   buildBase64DownloadUrl,
   buildLocalDownloadUrl,
@@ -34,5 +40,12 @@ export {
 export type {
   ParsedDownloadUrl,
   ParsedStorageUrl,
+  StorageObjectInfo,
   StorageProvider,
 } from "./types.ts";
+export type {
+  StorageAuditObject,
+  StorageAuditReport,
+  StorageReference,
+  StorageReferenceKind,
+} from "./audit.ts";

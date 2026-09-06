@@ -234,6 +234,9 @@ deno task problems:build
 # 一键初始化
 deno task dev-setup          # 开发环境一键初始化（迁移 + 系统数据 + 题目导入）
 
+# 对象存储只读盘点（仅 SELECT + LIST，不删除对象）
+deno task storage:audit -- --pretty --output /tmp/storage-audit.json
+
 # 测试
 deno task test              # 串行全量（无 DATABASE_URL 时走 PGlite 内存库）
 deno task test:parallel     # 并行分片（需本地 PG：TEST_SCHEMA=test_unit/test_db

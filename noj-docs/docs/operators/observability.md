@@ -10,6 +10,12 @@
 
 ## Prometheus 与告警
 
+对象存储盘点不是 core 请求路径的一部分。按日运行 `cd noj-core && deno task
+storage:audit -- --prometheus-output <textfile-dir>/noj_storage.prom`，通过 textfile
+collector 观察 `noj_storage_objects_total`、`noj_storage_bytes`、`noj_storage_orphan_*`
+和 `noj_storage_missing_references` 的趋势。该命令只读，不会删除对象；治理边界与复核
+步骤见[对象存储生命周期治理](../system/object-storage-governance.md)。
+
 将 Prometheus 加入 `noj-net`，使用 `deploy/monitoring/prometheus.yml` 抓取 `core:8000`（含
 `up{job="noj-core"}` 失联检测），并加载 `deploy/monitoring/noj-alerts.yml`。Alertmanager 配置模板、
 凭据注入与投递演练见 `deploy/monitoring/README.md`。Grafana 可导入
