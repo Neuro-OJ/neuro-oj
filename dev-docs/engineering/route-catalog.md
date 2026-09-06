@@ -82,6 +82,8 @@
 | GET | `/containing` | noj-core/src/domains/catalog/routes/trainings.ts |
 | GET | `/contests` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | GET | `/contests/:id` | noj-core/src/domains/contest/routes/admin-contests.ts |
+| GET | `/contests/:id/anti-cheat/ip-groups` | noj-core/src/domains/contest/routes/admin-contests.ts |
+| GET | `/contests/:id/anti-cheat/timeline` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | GET | `/contests/:id/events` | noj-core/src/domains/contest/routes/sse.ts |
 | GET | `/contests/:id/participants` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | GET | `/contests/:id/ranking-snapshots/latest` | noj-core/src/domains/contest/routes/admin-contests.ts |
