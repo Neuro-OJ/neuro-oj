@@ -116,7 +116,7 @@ Deno.test({
       await assertRejects(
         () => registerForContest(contest.id, participantId, "wrong"),
         ForbiddenError,
-        "竞赛密码错误",
+        "邀请码错误",
       );
       await registerForContest(contest.id, participantId, "ContestPass123");
       assertEquals(await isParticipant(contest.id, participantId), true);
@@ -272,6 +272,82 @@ Deno.test({
       );
     } finally {
       await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, creator));
+    }
+  },
+});
+
+Deno.test({
+  name: "contests service: public 赛无邀请码自助注册成功",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const admin = await createUser("public-admin");
+    const participant = await createUser("public-participant");
+    const problemId = await createProblem(950004);
+    const db = getDb();
+    const contest = await createContest(
+      {
+        title: "公开自助赛",
+        start_time: new Date(Date.now() - 60_000).toISOString(),
+        end_time: new Date(Date.now() + 3_600_000).toISOString(),
+        type: "kaggle",
+        kind: "public",
+        problems: [{
+          problem_id: problemId,
+          label: "A",
+          sort_order: 0,
+          score: 10000,
+        }],
+      },
+      admin,
+      true,
+    );
+    try {
+      await registerForContest(contest.id, participant);
+      assertEquals(await isParticipant(contest.id, participant), true);
+    } finally {
+      await deleteContest(contest.id).catch(() => {});
+      await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, participant));
+      await db.delete(users).where(eq(users.id, admin));
+    }
+  },
+});
+
+Deno.test({
+  name: "contests service: invite 赛无邀请码注册 → Forbidden",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const creator = await createUser("invite-strict");
+    const participant = await createUser("invite-user");
+    const problemId = await createProblem(950005);
+    const db = getDb();
+    const contest = await createContest({
+      title: "严格邀请赛",
+      start_time: new Date(Date.now() - 60_000).toISOString(),
+      end_time: new Date(Date.now() + 3_600_000).toISOString(),
+      type: "kaggle",
+      kind: "invite",
+      password: "SecretCode123",
+      problems: [{
+        problem_id: problemId,
+        label: "A",
+        sort_order: 0,
+        score: 10000,
+      }],
+    }, creator);
+    try {
+      await assertRejects(
+        () => registerForContest(contest.id, participant),
+        ForbiddenError,
+        "邀请码错误",
+      );
+    } finally {
+      await deleteContest(contest.id).catch(() => {});
+      await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, participant));
       await db.delete(users).where(eq(users.id, creator));
     }
   },

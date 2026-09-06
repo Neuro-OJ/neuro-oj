@@ -177,6 +177,18 @@ export async function enforceRegisterRateLimit(c: Context): Promise<void> {
   );
 }
 
+/** 竞赛注册：IP+竞赛维度限流（F-13）。 */
+export async function enforceContestRegisterRateLimit(
+  c: Context,
+  contestId: string,
+): Promise<void> {
+  await enforceRateLimit(
+    `contest-register:ip:${getClientIp(c)}:c:${contestId}`,
+    { windowSec: 30, max: 5 },
+    "注册过于频繁，请稍后重试",
+  );
+}
+
 /** 忘记/重置密码：IP 维度。 */
 export async function enforcePasswordResetIpRateLimit(
   c: Context,

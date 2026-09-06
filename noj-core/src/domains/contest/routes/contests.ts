@@ -45,7 +45,10 @@ import {
 import type { CreateContestInput } from "./../types/contests.ts";
 import { isValidContestType } from "./../types/contests.ts";
 import { createActivity } from "../../community/index.ts";
-import { enforceContestSubmissionRateLimit } from "../../system/index.ts";
+import {
+  enforceContestRegisterRateLimit,
+  enforceContestSubmissionRateLimit,
+} from "../../system/index.ts";
 
 const contests = new Hono<OptionalAuthEnv>();
 const MAX_CODE_LENGTH = 100 * 1024;
@@ -192,6 +195,7 @@ contests.post("/:id/register", authMiddleware, async (c) => {
       throw new BadRequestError("请求体格式错误：需要有效的 JSON");
     }
   }
+  await enforceContestRegisterRateLimit(c, contestId);
   await registerForContest(
     contestId,
     c.var.userId as string,

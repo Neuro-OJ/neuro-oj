@@ -596,9 +596,9 @@ jj new
 **Interfaces:**
 - Produces: `enforceContestRegisterRateLimit(c, contestId)`；`registerForContest` 新语义：invite 必须校验 password 匹配，public 无码自助。
 
-- [ ] **Step 1: 写失败测试**：invite 赛无邀请码注册 → 400；错误邀请码 → 403；public 无码 → 成功。
-- [ ] **Step 2: 跑测试确认失败**
-- [ ] **Step 3: 实现**
+- [x] **Step 1: 写失败测试**：invite 赛无邀请码注册 → 400；错误邀请码 → 403；public 无码 → 成功。
+- [x] **Step 2: 跑测试确认失败**
+- [x] **Step 3: 实现**
 
 `registerForContest`：按 `contest.kind` 分支——invite 必须传 password 且常量时间比较匹配（沿用现有密码比较方式）；public 有 password 时校验、无 password 直接注册。
 
@@ -619,8 +619,8 @@ export async function enforceContestRegisterRateLimit(
 
 路由 handler 在 registerForContest 前调用。
 
-- [ ] **Step 4: 跑测试确认通过**
-- [ ] **Step 5: 提交**
+- [x] **Step 4: 跑测试确认通过**
+- [x] **Step 5: 提交**
 
 ```bash
 jj describe -m "fix(core): 竞赛注册按 kind 语义校验邀请码并加限流（F-13）"

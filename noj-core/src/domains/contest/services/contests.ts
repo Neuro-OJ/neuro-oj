@@ -618,12 +618,14 @@ export async function listContests(
 }
 
 /**
- * 用户注册参赛（公开竞赛可自助注册，带密码竞赛需提供正确密码）。
+ * 用户注册参赛：
+ * - invite 赛必须提供邀请码且匹配；
+ * - public 赛可无码自助注册，设置了密码时需匹配。
  *
  * @param contestId 竞赛 UUID
  * @param userId 用户 ID
- * @param password 竞赛密码（可选）
- * @throws {ForbiddenError} 非公开竞赛、竞赛已结束或密码错误时
+ * @param password 邀请码/密码（可选）
+ * @throws {ForbiddenError} 竞赛已结束或邀请码/密码错误时
  * @throws {ConflictError} 已注册该竞赛时
  */
 export async function registerForContest(
@@ -632,13 +634,15 @@ export async function registerForContest(
   password?: string,
 ): Promise<void> {
   const contest = await findContestRow(contestId);
-  if (!contest.is_public) {
-    throw new ForbiddenError("非公开竞赛仅支持管理员邀请");
-  }
   if (computeContestStatus(contest.start_time, contest.end_time) === "ended") {
     throw new ForbiddenError("竞赛已结束，无法注册");
   }
-  if (
+
+  if (contest.kind === "invite") {
+    if (!password || !await comparePassword(password, contest.password ?? "")) {
+      throw new ForbiddenError("邀请码错误");
+    }
+  } else if (
     contest.password &&
     (!password || !await comparePassword(password, contest.password))
   ) {
