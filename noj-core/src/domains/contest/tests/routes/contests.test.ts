@@ -7,7 +7,9 @@ import { eq, inArray } from "drizzle-orm";
 import { createApp } from "../../../../app.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import {
+  auditLogs,
   contests,
+  evaluationResults,
   problems,
   submissions,
   userRoles,
@@ -328,8 +330,48 @@ Deno.test({
       );
       assertEquals(update.status, 200);
       assertEquals((await update.json()).data.announcement, "测试公告");
+
+      await db.insert(evaluationResults).values({
+        id: crypto.randomUUID(),
+        submission_id: submissionId,
+        status: "finished",
+        score: 10000,
+        output: "",
+        details: "{}",
+        created_at: now,
+      });
+      const readiness = await jsonRequest(
+        app,
+        `/api/v1/admin/contests/${contestId}/ranking-snapshots/readiness`,
+        { token: adminToken },
+      );
+      assertEquals(readiness.status, 200);
+      assertEquals((await readiness.json()).data.pending_count, 0);
+      const publish = await jsonRequest(
+        app,
+        `/api/v1/admin/contests/${contestId}/ranking-snapshots`,
+        {
+          method: "POST",
+          token: adminToken,
+          body: { note: "路由测试发布" },
+        },
+      );
+      assertEquals(publish.status, 201);
+      assertEquals((await publish.json()).data.version, 1);
+      const finalRanking = await jsonRequest(
+        app,
+        `/api/v1/contests/${contestId}/final-ranking`,
+        { token: userToken },
+      );
+      assertEquals(finalRanking.status, 200);
+      const finalBody = await finalRanking.json();
+      assertEquals(finalBody.result_type, "official");
+      assertEquals(finalBody.snapshot.version, 1);
     } finally {
       if (submissionId) {
+        await db.delete(evaluationResults).where(
+          eq(evaluationResults.submission_id, submissionId),
+        );
         await db.delete(submissions).where(eq(submissions.id, submissionId));
       }
       const ids = [contestId, privateContestId].filter(
@@ -338,6 +380,7 @@ Deno.test({
       if (ids.length > 0) {
         await db.delete(contests).where(inArray(contests.id, ids));
       }
+      await db.delete(auditLogs).where(eq(auditLogs.admin_id, adminId));
       await db.delete(problems).where(inArray(
         problems.id,
         [problemId, otherProblemId],

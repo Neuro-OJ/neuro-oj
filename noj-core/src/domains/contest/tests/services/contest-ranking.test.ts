@@ -14,10 +14,12 @@ import {
 } from "../../../../shared/db/schema.ts";
 import {
   getContestRanking,
+  getContestSettlementStatus,
   getLatestContestRankingSnapshot,
   publishContestRankingSnapshot,
 } from "../../index.ts";
 import {
+  ConflictError,
   ForbiddenError,
   UnauthorizedError,
 } from "../../../../shared/base/errors.ts";
@@ -92,6 +94,138 @@ async function insertProblem(
     updated_at: now,
   });
 }
+
+Deno.test({
+  name: "contest settlement: 未结束禁止发布，结束后允许无待处理任务发布",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userId = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await insertUser(userId, "settlement-gate");
+    await db.insert(contests).values({
+      id: contestId,
+      title: "结算门禁测试",
+      start_time: atMinutes(-120),
+      end_time: new Date(Date.now() + 3_600_000).toISOString(),
+      type: "kaggle",
+      config: {},
+      created_by: userId,
+      created_at: now,
+      updated_at: now,
+    });
+    try {
+      await assertRejects(
+        () => publishContestRankingSnapshot(contestId, userId),
+        ConflictError,
+        "竞赛尚未结束",
+      );
+      await db.update(contests).set({
+        end_time: atMinutes(-1),
+      }).where(eq(contests.id, contestId));
+      const readiness = await getContestSettlementStatus(contestId);
+      assertEquals(readiness.ready, true);
+      const result = await publishContestRankingSnapshot(
+        contestId,
+        userId,
+        "正常结算",
+      );
+      assertEquals(result.version, 1);
+    } finally {
+      await db.delete(contestRankingSnapshots).where(
+        eq(contestRankingSnapshots.contest_id, contestId),
+      );
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await db.delete(users).where(eq(users.id, userId));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest settlement: 失败评测需说明并显式允许后才能发布",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userId = crypto.randomUUID();
+    const problemId = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const submissionId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await insertUser(userId, "settlement-failed");
+    await insertProblem(problemId, 920099, "结算失败题");
+    await db.insert(contests).values({
+      id: contestId,
+      title: "失败评测结算测试",
+      start_time: atMinutes(-120),
+      end_time: atMinutes(-1),
+      type: "kaggle",
+      config: {},
+      created_by: userId,
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: problemId,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: userId,
+      registered_at: atMinutes(-100),
+    });
+    await db.insert(submissions).values({
+      id: submissionId,
+      user_id: userId,
+      problem_id: problemId,
+      contest_id: contestId,
+      language: "python3",
+      code: "print(1)",
+      status: "error",
+      created_at: atMinutes(-50),
+    });
+    await db.insert(evaluationResults).values({
+      id: crypto.randomUUID(),
+      submission_id: submissionId,
+      status: "error",
+      score: 0,
+      output: "judge error",
+      details: "{}",
+      created_at: atMinutes(-49),
+    });
+    try {
+      const readiness = await getContestSettlementStatus(contestId);
+      assertEquals(readiness.pending_count, 0);
+      assertEquals(readiness.failed_count, 1);
+      assertEquals(readiness.items[0].submission_id, submissionId);
+      await assertRejects(
+        () => publishContestRankingSnapshot(contestId, userId, ""),
+        ConflictError,
+        "失败评测",
+      );
+      const result = await publishContestRankingSnapshot(
+        contestId,
+        userId,
+        "已确认失败任务不影响其余成绩",
+        { allowFailed: true },
+      );
+      assertEquals(result.version, 1);
+    } finally {
+      await db.delete(evaluationResults).where(
+        eq(evaluationResults.submission_id, submissionId),
+      );
+      await db.delete(submissions).where(eq(submissions.id, submissionId));
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, userId));
+    }
+  },
+});
 
 Deno.test({
   name: "contest ranking snapshot: 重复发布按序生成唯一版本",

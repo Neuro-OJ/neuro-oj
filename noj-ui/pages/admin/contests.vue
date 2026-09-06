@@ -38,6 +38,30 @@ const antiCheatTimeline = ref<ContestAntiCheatTimelineItem[]>([])
 const antiCheatIp = ref('')
 const antiCheatLoading = ref(false)
 const antiCheatError = ref('')
+interface SettlementItem {
+  submission_id: string
+  user_id: string
+  username: string
+  problem_id: string
+  problem_title: string
+  status: string
+  result_status: string | null
+  created_at: string
+  kind: 'submission' | 'objective'
+}
+interface SettlementStatus {
+  contest_status: Contest['status']
+  pending_count: number
+  failed_count: number
+  ready: boolean
+  items: SettlementItem[]
+  truncated: boolean
+}
+const settlementContest = ref<Contest | null>(null)
+const settlement = ref<SettlementStatus | null>(null)
+const settlementLoading = ref(false)
+const settlementNote = ref('')
+const settlementAllowFailed = ref(false)
 
 // 自动轮询间隔（默认 30s，可由刷新控制条切换/关闭；竞赛状态/人数随刷新更新）
 const pollInterval = ref<number | null>(30000)
@@ -265,12 +289,42 @@ async function removeContest(contest: Contest) {
   }
 }
 
-async function publishSnapshot(contest: Contest) {
+async function openSettlement(contest: Contest) {
+  settlementContest.value = contest
+  settlement.value = null
+  settlementNote.value = ''
+  settlementAllowFailed.value = false
+  settlementLoading.value = true
+  try {
+    const result = await api.get<{ data: SettlementStatus }>(`/api/v1/admin/contests/${contest.public_id || contest.id}/ranking-snapshots/readiness`, { silent: true })
+    settlement.value = result.data
+  } catch (err: unknown) {
+    toast.error(extractApiError(err).message)
+    settlementContest.value = null
+  } finally {
+    settlementLoading.value = false
+  }
+}
+
+async function publishSnapshot() {
+  if (!settlementContest.value || !settlement.value) return
+  const contest = settlementContest.value
+  if (settlement.value.pending_count > 0) {
+    toast.error('仍有待处理评测，完成评测后才能发布正式成绩')
+    return
+  }
+  if (settlement.value.failed_count > 0 && (!settlementAllowFailed.value || !settlementNote.value.trim())) {
+    toast.error('失败评测需要填写说明，并勾选允许带失败评测发布')
+    return
+  }
   const confirmed = await dialog.confirm(`确认发布“${contest.title}”当前成绩为正式成绩吗？后续重测将生成新版本，不会覆盖当前快照。`, { title: '确认发布成绩', confirmText: '发布' })
   if (!confirmed) return
   try {
-    const result = await api.post<{ data: { version: number } }>(`/api/v1/admin/contests/${contest.public_id || contest.id}/ranking-snapshots`, { note: '管理员确认发布' }, { silent: true })
+    const result = await api.post<{ data: { version: number } }>(`/api/v1/admin/contests/${contest.public_id || contest.id}/ranking-snapshots`, { note: settlementNote.value.trim() || '管理员确认发布', allow_failed: settlementAllowFailed.value }, { silent: true })
     toast.success(`正式成绩已发布（版本 ${result.data.version}）`)
+    settlementContest.value = null
+    settlement.value = null
+    await loadContests(currentPage.value)
   } catch (err: unknown) {
     toast.error(extractApiError(err).message)
   }
@@ -388,10 +442,22 @@ async function removeParticipant(participant: Participant) {
       <template #status-cell="{ row }"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold" :class="statusClass(row.original.status)">{{ statusLabels[row.original.status] }}</span></template>
       <template #participant_count-cell="{ row }"><span>{{ row.original.participant_count }} 人</span></template>
       <template #problem_count-cell="{ row }"><span>{{ row.original.problem_count }} 题</span></template>
-      <template #actions-cell="{ row }"><div class="flex justify-center gap-1.5"><UButton color="neutral" variant="outline" class="flex size-9" title="发布正式成绩" aria-label="发布正式成绩" @click="publishSnapshot(row.original)"><UIcon name="i-lucide-lock-keyhole" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9" title="导出正式成绩" aria-label="导出正式成绩" @click="exportSnapshot(row.original)"><UIcon name="i-lucide-download" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-amber-50 hover:text-amber-700" title="风控线索" aria-label="风控线索" @click="openAntiCheat(row.original)"><UIcon name="i-lucide-shield-alert" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-blue-50 hover:text-primary" title="参与者" aria-label="参与者" @click="openParticipants(row.original)"><UIcon name="i-lucide-users" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" :loading="editingId === row.original.id" :disabled="editingId !== null" @click="openEdit(row.original)"><UIcon name="i-lucide-pencil" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:border-error-text/30 hover:bg-red-50 hover:text-error-text" title="删除" aria-label="删除" @click="removeContest(row.original)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></UButton></div></template>
+      <template #actions-cell="{ row }"><div class="flex justify-center gap-1.5"><UButton color="neutral" variant="outline" class="flex size-9" title="检查结算并发布正式成绩" aria-label="检查结算并发布正式成绩" @click="openSettlement(row.original)"><UIcon name="i-lucide-lock-keyhole" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9" title="导出正式成绩" aria-label="导出正式成绩" @click="exportSnapshot(row.original)"><UIcon name="i-lucide-download" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-amber-50 hover:text-amber-700" title="风控线索" aria-label="风控线索" @click="openAntiCheat(row.original)"><UIcon name="i-lucide-shield-alert" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-blue-50 hover:text-primary" title="参与者" aria-label="参与者" @click="openParticipants(row.original)"><UIcon name="i-lucide-users" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" :loading="editingId === row.original.id" :disabled="editingId !== null" @click="openEdit(row.original)"><UIcon name="i-lucide-pencil" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:border-error-text/30 hover:bg-red-50 hover:text-error-text" title="删除" aria-label="删除" @click="removeContest(row.original)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></UButton></div></template>
     </UTable>
 
     <PaginationNav :current-page="currentPage" :total-pages="totalPages" @page-change="loadContests" />
+  </div>
+
+  <div v-if="settlementContest" class="fixed inset-0 z-300 flex items-center justify-center bg-black/45 p-4" @click.self="settlementContest = null">
+    <div class="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-modal">
+      <header class="flex items-center justify-between border-b border-border px-6 py-4"><div><h2 class="text-lg font-bold text-text">结算检查与正式成绩</h2><p class="mt-1 text-xs text-text-muted">{{ settlementContest.title }} · 竞赛结束前禁止发布</p></div><button class="rounded-lg p-2 text-text-secondary hover:bg-primary-hover" @click="settlementContest = null"><UIcon name="i-lucide-x" class="size-4.5" /></button></header>
+      <div v-if="settlementLoading" class="py-14 text-center text-sm text-text-muted">正在检查评测状态...</div>
+      <template v-else-if="settlement">
+        <div class="grid gap-3 border-b border-border bg-bg-page p-5 sm:grid-cols-3"><div class="rounded-xl border border-border bg-white p-3"><div class="text-xs text-text-muted">竞赛状态</div><div class="mt-1 font-semibold text-text">{{ settlement.contest_status === 'ended' ? '已结束' : settlement.contest_status === 'running' ? '进行中' : '未开始' }}</div></div><div class="rounded-xl border border-border bg-white p-3"><div class="text-xs text-text-muted">待处理评测</div><div class="mt-1 font-semibold" :class="settlement.pending_count ? 'text-error-text' : 'text-success-text'">{{ settlement.pending_count }}</div></div><div class="rounded-xl border border-border bg-white p-3"><div class="text-xs text-text-muted">失败评测</div><div class="mt-1 font-semibold" :class="settlement.failed_count ? 'text-amber-700' : 'text-success-text'">{{ settlement.failed_count }}</div></div></div>
+        <div class="min-h-0 flex-1 overflow-y-auto p-5"><p v-if="settlement.pending_count" class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-error-text">待处理评测必须全部完成后才能发布。以下列表展示最多 500 条待处理或失败任务。</p><p v-else-if="settlement.failed_count" class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">失败评测需要人工处理，或由管理员填写说明并明确允许带失败评测发布。</p><p v-else-if="settlement.contest_status !== 'ended'" class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">竞赛尚未结束，当前只能查看结算状态，不能发布正式成绩。</p><div v-if="settlement.items.length" class="overflow-x-auto rounded-xl border border-border"><table class="w-full min-w-[680px] text-left text-xs"><thead class="border-b border-border bg-bg-page text-text-muted"><tr><th class="px-3 py-2">用户</th><th class="px-3 py-2">题目</th><th class="px-3 py-2">提交状态</th><th class="px-3 py-2">评测状态</th><th class="px-3 py-2">提交时间</th></tr></thead><tbody><tr v-for="item in settlement.items" :key="`${item.kind}-${item.submission_id}`" class="border-b border-border last:border-0"><td class="px-3 py-2 font-semibold text-text">{{ item.username }}</td><td class="px-3 py-2 text-text-secondary">{{ item.problem_title }}</td><td class="px-3 py-2"><UBadge :color="item.status === 'error' ? 'error' : 'warning'" variant="subtle">{{ item.status }}</UBadge></td><td class="px-3 py-2 text-text-secondary">{{ item.result_status || '缺少结果' }}</td><td class="px-3 py-2 text-text-muted">{{ formatDateTime(item.created_at) }}</td></tr></tbody></table></div><p v-else class="py-8 text-center text-sm text-success-text">所有竞赛评测均已完成，可在竞赛结束后发布。</p><p v-if="settlement.truncated" class="mt-2 text-xs text-text-muted">列表已截断，仅展示前 500 条；计数仍为完整数量。</p></div>
+        <div class="border-t border-border p-5"><label class="mb-2 block text-xs font-semibold text-text">修订/发布说明（可选；失败评测时必填）</label><textarea v-model="settlementNote" rows="2" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-signal" placeholder="例如：已确认失败任务不影响参赛者成绩，按当前结果结算"></textarea><label v-if="settlement.failed_count" class="mt-3 flex items-center gap-2 text-sm text-text-secondary"><input v-model="settlementAllowFailed" type="checkbox" class="size-4 rounded border-border text-primary" />我确认已处理失败评测，并允许带失败评测发布</label><div class="mt-4 flex justify-end gap-2"><UButton color="neutral" variant="outline" @click="settlementContest = null">关闭</UButton><UButton color="primary" :disabled="!settlement.ready || (settlement.failed_count > 0 && (!settlementAllowFailed || !settlementNote.trim()))" @click="publishSnapshot">发布正式成绩</UButton></div></div>
+      </template>
+    </div>
   </div>
 
   <div v-if="antiCheatContest" class="fixed inset-0 z-300 flex items-center justify-center bg-black/45 p-4" @click.self="antiCheatContest = null">

@@ -14,6 +14,10 @@ const { data: contestData, pending: contestPending } = await useFetch<{ data: Co
 const contest = computed(() => contestData.value?.data ?? null)
 const rankingError = ref('')
 const rankingLoading = ref(true)
+const officialSnapshot = ref<{ version: number; note: string; created_at: string } | null>(null)
+const resultLabel = computed(() => officialSnapshot.value
+  ? `正式成绩 · 版本 ${officialSnapshot.value.version}`
+  : contest.value?.status === 'ended' ? '实时成绩 · 正式成绩尚未发布' : '实时成绩')
 
 async function loadRanking() {
   rankingLoading.value = true
@@ -21,6 +25,20 @@ async function loadRanking() {
   try {
     const response = await api.get<{ data: KaggleRankingRow[] }>(`/api/v1/contests/${props.contestId}/ranking`, { silent: true })
     rows.value = response.data
+    if (contest.value?.status === 'ended') {
+      try {
+        const official = await api.get<{
+          data: KaggleRankingRow[]
+          snapshot: { version: number; note: string; created_at: string }
+        }>(`/api/v1/contests/${props.contestId}/final-ranking`, { silent: true })
+        rows.value = official.data
+        officialSnapshot.value = official.snapshot
+      } catch {
+        officialSnapshot.value = null
+      }
+    } else {
+      officialSnapshot.value = null
+    }
   } catch (fetchError: unknown) {
     rankingError.value = extractApiError(fetchError).message
   } finally {
@@ -35,10 +53,12 @@ const { state: eventState } = useEventSource({
   enabled: ref(true),
   onEvent: {
     'contest:ranking:snapshot': (payload) => {
+      if (officialSnapshot.value) return
       const event = payload as { data?: KaggleRankingRow[] }
       if (event.data) rows.value = event.data
     },
     'contest:ranking:updated': (payload) => {
+      if (officialSnapshot.value) return
       const event = payload as { data?: KaggleRankingRow[] }
       if (event.data) rows.value = event.data
     },
@@ -62,10 +82,15 @@ function score(value: number) {
   <div class="space-y-5">
     <header class="flex flex-wrap items-center gap-4 rounded-2xl bg-bg-dark px-6 py-6 text-white shadow-card">
       <UIcon name="i-lucide-trophy" class="text-amber-300 size-6" />
-      <div class="min-w-0 flex-1"><h1 class="truncate text-xl font-bold">{{ contest?.title || '竞赛排名' }}</h1><p class="mt-1 text-xs text-slate-400">总分优先，同分按最后一次刷新最高分的时间排序</p></div>
+      <div class="min-w-0 flex-1"><h1 class="truncate text-xl font-bold">{{ contest?.title || '竞赛排名' }}</h1><p class="mt-1 text-xs text-slate-400">{{ resultLabel }} · 总分优先，同分按最后一次刷新最高分的时间排序</p></div>
       <div class="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs text-slate-300"><UIcon name="i-lucide-radio" :class="eventState === 'connected' ? 'text-green-400' : 'text-amber-300'" class="size-3" />{{ eventState === 'connected' ? '实时更新' : eventState === 'fallback' ? '轮询更新' : '正在连接' }}</div>
       <button class="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs hover:bg-white/10" @click="loadRanking"><UIcon name="i-lucide-refresh-cw" class="size-3.5" />刷新</button>
     </header>
+
+    <div v-if="officialSnapshot" class="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+      <UIcon name="i-lucide-lock-keyhole" class="size-4" />
+      <span>这是已冻结的正式成绩（版本 {{ officialSnapshot.version }}，发布于 {{ formatDateTime(officialSnapshot.created_at) }}）。后续重测不会覆盖此版本。</span>
+    </div>
 
     <div v-if="rankingError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-error-text">{{ rankingError }}</div>
 
