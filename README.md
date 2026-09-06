@@ -171,7 +171,7 @@ noj-cli config check                     # 只校验配置，不改变服务状�
 | 做题人 | 刷题、提交代码、查看结果、参加竞赛 | [`做题人文档`](./noj-docs/docs/users/index.md) |
 | 出题人 | 创建代码题、LLM 题和评测支持包 | [`出题人文档`](./noj-docs/docs/problemsetters/index.md) |
 | 运营者 | 部署、初始化和维护 NOJ 实例 | [`运营者文档`](./noj-docs/docs/operators/index.md) |
-| 开发者 | 修改代码、运行测试、提交贡献 | [`项目开发约定`](./AGENTS.md) |
+| 开发者 | 修改代码、运行测试、提交贡献 | [`贡献指南`](./CONTRIBUTING.md) |
 
 ### 常用文档
 
@@ -224,10 +224,14 @@ NOJ 使用统一的「暖纸评测风」品牌视觉：暖纸底、墨字、蓝�
 
 ## 参与贡献
 
-欢迎通过 Issue 和 Pull Request 参与项目。开始修改代码前，请先阅读 [`AGENTS.md`](./AGENTS.md)；其中包含开发流程、测试方式和提交要求。
+欢迎通过 Issue 和 Pull Request 参与项目。开始修改代码前，请先阅读[`贡献指南`](./CONTRIBUTING.md)和[`AGENTS.md`](./AGENTS.md)；其中包含本地启动、模块测试、分支流程、签名要求和提交规范。
 
 - [提交 Issue](https://github.com/Neuro-OJ/neuro-oj/issues)
+- [提交缺陷](./.github/ISSUE_TEMPLATE/bug_report.md)
+- [提出功能建议](./.github/ISSUE_TEMPLATE/feature_request.md)
+- [报告安全漏洞（私下）](./SECURITY.md)
 - [查看 CI](https://github.com/Neuro-OJ/neuro-oj/actions)
+- [贡献指南](./CONTRIBUTING.md)
 - [项目详细约定](./AGENTS.md)
 
 ## 许可证
