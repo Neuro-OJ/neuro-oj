@@ -1,4 +1,4 @@
-import { and, eq, inArray, not, type SQL, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, not, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { getDb } from "./../../../shared/db/connection.ts";
 import {
@@ -284,8 +284,12 @@ export async function getPendingQueueSnapshot(): Promise<{
 
 /**
  * 获取完整的队列概览。
+ *
+ * @param isAdmin 管理员可看到竞赛提交；普通用户只能看到非竞赛提交。
  */
-export async function getQueueOverview(): Promise<QueueResponse> {
+export async function getQueueOverview(
+  isAdmin = false,
+): Promise<QueueResponse> {
   const db = getDb();
 
   // 1. 从 Redis 获取 pending submission_id 列表。
@@ -321,7 +325,10 @@ export async function getQueueOverview(): Promise<QueueResponse> {
         userId: submissions.user_id,
       },
       "submission",
-      inArray(submissions.id, pendingFormalIds),
+      isAdmin ? inArray(submissions.id, pendingFormalIds) : and(
+        inArray(submissions.id, pendingFormalIds),
+        isNull(submissions.contest_id),
+      ),
     );
     for (const r of pendingRows) pendingMap.set(r.id, r);
   }
@@ -353,12 +360,14 @@ export async function getQueueOverview(): Promise<QueueResponse> {
   const pendingCount = pendingQueueLength;
 
   // 4. 查询 judging 列表：DB status="judging" 且不在 pending 中
-  const judgingWhere = pendingFormalIds.length > 0
-    ? and(
-      eq(submissions.status, "judging"),
-      not(inArray(submissions.id, pendingFormalIds)),
-    )
-    : eq(submissions.status, "judging");
+  const judgingConditions: SQL[] = [eq(submissions.status, "judging")];
+  if (pendingFormalIds.length > 0) {
+    judgingConditions.push(not(inArray(submissions.id, pendingFormalIds)));
+  }
+  if (!isAdmin) {
+    judgingConditions.push(isNull(submissions.contest_id));
+  }
+  const judgingWhere = and(...judgingConditions);
 
   const submissionJudgingItems = await queryQueueRows(
     submissions,
@@ -419,7 +428,10 @@ export async function getQueueOverview(): Promise<QueueResponse> {
         status: submissions.status,
       },
       "submission",
-      sql`${submissions.status} IN ('finished', 'error')`,
+      isAdmin ? sql`${submissions.status} IN ('finished', 'error')` : and(
+        sql`${submissions.status} IN ('finished', 'error')`,
+        isNull(submissions.contest_id),
+      ),
       sql`${submissions.judge_finished_at} DESC`,
       10,
       true,
@@ -447,12 +459,14 @@ export async function getQueueOverview(): Promise<QueueResponse> {
   ).slice(0, 10);
 
   // 6. 统计（正式 + 自测）
-  const judgingWhereStats = pendingFormalIds.length > 0
-    ? and(
-      eq(submissions.status, "judging"),
-      not(inArray(submissions.id, pendingFormalIds)),
-    )
-    : eq(submissions.status, "judging");
+  const judgingWhereConditions: SQL[] = [eq(submissions.status, "judging")];
+  if (pendingFormalIds.length > 0) {
+    judgingWhereConditions.push(not(inArray(submissions.id, pendingFormalIds)));
+  }
+  if (!isAdmin) {
+    judgingWhereConditions.push(isNull(submissions.contest_id));
+  }
+  const judgingWhereStats = and(...judgingWhereConditions);
 
   const selfJudgingWhereStats = pendingSelfIds.length > 0
     ? and(
@@ -476,7 +490,12 @@ export async function getQueueOverview(): Promise<QueueResponse> {
     .select({ count: sql<number>`count(*)` })
     .from(submissions)
     .where(
-      sql`${submissions.status} IN ('finished', 'error') AND ${submissions.judge_finished_at} >= ${today}`,
+      isAdmin
+        ? sql`${submissions.status} IN ('finished', 'error') AND ${submissions.judge_finished_at} >= ${today}`
+        : and(
+          sql`${submissions.status} IN ('finished', 'error') AND ${submissions.judge_finished_at} >= ${today}`,
+          isNull(submissions.contest_id),
+        ),
     );
 
   const judgingCount = Number(judgingCountRow?.count ?? 0) +

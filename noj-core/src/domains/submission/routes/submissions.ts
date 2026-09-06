@@ -8,6 +8,8 @@ import {
   listSubmissions,
   resolveSubmissionId,
 } from "../services/submissions/submissions.ts";
+import { applySubmissionProjection } from "../services/submissions/submission-projection.ts";
+import { verifyContestAccess } from "../../contest/index.ts";
 import { getCachedTodayStats, getCachedTotalStats } from "../../query/index.ts";
 import { getSubmissionQueueStatus } from "../services/queue.ts";
 import {
@@ -312,14 +314,39 @@ router.get(
  */
 router.get("/:id", optionalAuthMiddleware, async (c) => {
   const id = await resolveSubmissionId(c.req.param("id") as string);
+  const viewerId = c.var.userId ?? null;
 
   const result = await getSubmission(
     id,
-    c.var.userId,
+    viewerId,
     undefined,
     c,
   );
-  return c.json({ data: result });
+
+  let data = result;
+  if (result.contest_id) {
+    const isAdmin = viewerId
+      ? await checkPermission(c, "submission:read_all")
+      : false;
+    const contestAccess = await verifyContestAccess(
+      viewerId,
+      result.contest_id,
+      result.problem_id,
+    );
+    data = applySubmissionProjection(
+      result as unknown as Record<string, unknown>,
+      {
+        viewerId,
+        isAdmin,
+        isOwner: viewerId !== null && result.user_id === viewerId,
+        contest: {
+          running: contestAccess.running,
+          participant: contestAccess.allowed,
+        },
+      },
+    ) as unknown as typeof result;
+  }
+  return c.json({ data });
 });
 
 /**

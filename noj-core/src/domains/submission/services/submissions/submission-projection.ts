@@ -81,6 +81,23 @@ export function applySubmissionProjection<
     }
   }
 
+  // SubmissionDetail 形态：result 内嵌 details/output 同样需要裁剪。
+  if (record.result && typeof record.result === "object") {
+    const nested = record.result as Record<string, unknown>;
+    delete nested.subtasks;
+    delete nested.testCases;
+    delete nested.output;
+    delete nested.output_truncated;
+    if (nested.details !== undefined) {
+      const sanitized = sanitizeContestDetails(nested.details);
+      if (sanitized === undefined) {
+        delete nested.details;
+      } else {
+        nested.details = sanitized;
+      }
+    }
+  }
+
   // running/ended 均保留 status/score；赛后不再额外恢复已删除字段。
   void running;
   return result;

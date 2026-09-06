@@ -27,6 +27,7 @@ import {
 import { applyAlgorithmTagVisibility } from "../services/problems/problems-list.ts";
 import { resolveProblem } from "./../services/problem-resolve.ts";
 import { resolveProblemAccess } from "./../services/problem-access.ts";
+import { verifyContestAccess } from "./../../contest/index.ts";
 import {
   ADMIN_FULL_ACCESS,
   resolvePermissions,
@@ -448,12 +449,21 @@ router.get("/:id/questions", optionalAuthMiddleware, async (c) => {
   const paper = await getPaperOrThrow(paperId);
   assertObjectivePaper(paper);
 
-  // 套卷也走统一题目访问解析：private 套卷非 owner/admin 一律 404。
+  // 套卷也走统一题目访问解析：private 套卷非 owner/admin 一律 404；
+  // 竞赛页可携带 contest_id 传入竞赛上下文放行。
   const viewerId = userId ?? null;
   const isAdmin = userId
     ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
     : false;
-  const access = resolveProblemAccess(paper, { viewerId, isAdmin });
+  const contestId = c.req.query("contest_id");
+  const contestAccess = contestId
+    ? await verifyContestAccess(viewerId, contestId, paper.id)
+    : null;
+  const access = resolveProblemAccess(paper, {
+    viewerId,
+    isAdmin,
+    contestAccess,
+  });
   if (!access.allowed) {
     throw new NotFoundError("题目不存在");
   }

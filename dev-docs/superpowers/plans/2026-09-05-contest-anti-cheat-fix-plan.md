@@ -683,7 +683,7 @@ jj new
 **Interfaces:**
 - Consumes: `applySubmissionProjection`（Task 10）、`verifyContestAccess`（Task 5）。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 Deno.test("submissions: 赛中他人查看竞赛提交仅存在级信息", async () => {
@@ -699,16 +699,16 @@ Deno.test("queue: 全局队列不显示竞赛提交给普通用户", async () =>
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
-- [ ] **Step 3: 实现**
+- [x] **Step 2: 跑测试确认失败**
+- [x] **Step 3: 实现**
 
 - GET /:id：optionalAuth 取 viewerId；若该提交属于竞赛（contest_id 非空），`verifyContestAccess` 判定 viewer 身份后过 `applySubmissionProjection`。
 - `getQueueOverview`：`queryQueueRows` 增加 `contest_id IS NULL` 过滤（普通用户视角）；管理员视角（isAdmin 参数）不过滤。
 - sse.ts：`contestSubmission(id)` 频道订阅时校验 `isParticipant`（复用现有门禁同款逻辑，改为 kind/成员判定）；发布内容过投影。
 - 客观题竞赛取题：`GET /problems/:id/questions` 支持 `?contest_id=` 参数（optionalAuth 下解析 contest 上下文 → `verifyContestAccess` → resolver 放行）；同步修改 `noj-ui/pages/contests/[contestId]/problems/[label].vue:114` 取题调用带上 `contest_id`（避免 private 套卷在竞赛页 404）。
 
-- [ ] **Step 4: 跑测试确认通过**
-- [ ] **Step 5: 提交**
+- [x] **Step 4: 跑测试确认通过**
+- [x] **Step 5: 提交**
 
 ```bash
 jj describe -m "fix(core): 提交详情/全局队列/SSE 接入投影，运行中竞赛信息隐藏（F-02/F-15）"
