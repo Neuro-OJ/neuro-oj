@@ -40,6 +40,7 @@ fn dual_task() -> JudgeTask {
     JudgeTask {
         submission_id: format!("sub-{}", uuid::Uuid::new_v4()),
         problem_id: "1001".to_string(),
+        user_id: "user-1".to_string(),
         download_url: None,
         artifact_download_url: None,
         runtime_config: RuntimeConfig {

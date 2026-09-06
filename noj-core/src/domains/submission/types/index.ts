@@ -18,6 +18,8 @@ export interface JudgeTask {
   submission_id: string;
   /** 题目 UUID */
   problem_id: string;
+  /** 提交用户 UUID（judge 公平调度：同一用户同时最多 1 个评测在跑） */
+  user_id: string;
   /** 双容器 Runtime 配置（必填） */
   runtime_config: RuntimeConfig;
   /** 支持包下载 URL（`noj-download://` 格式） */

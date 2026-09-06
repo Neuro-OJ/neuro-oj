@@ -293,6 +293,7 @@ export async function createArtifactSubmission(
   const task: JudgeTask = {
     submission_id: id,
     problem_id: input.problem_id,
+    user_id: userId,
     runtime_config: runtimeConfig,
     download_url,
     artifact_download_url: artifactDownloadUrl,

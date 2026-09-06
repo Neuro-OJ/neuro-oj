@@ -466,6 +466,7 @@ export async function createSubmission(
   const task: JudgeTask = {
     submission_id: id,
     problem_id: input.problem_id,
+    user_id: userId,
     runtime_config: runtimeConfig,
     download_url,
     language: input.language,

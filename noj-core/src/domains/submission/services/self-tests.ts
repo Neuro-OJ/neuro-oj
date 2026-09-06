@@ -139,6 +139,7 @@ export async function createSelfTest(
   const task: JudgeTask = {
     submission_id: id,
     problem_id: problemId,
+    user_id: userId,
     runtime_config: runtimeConfig,
     download_url,
     language: input.language,

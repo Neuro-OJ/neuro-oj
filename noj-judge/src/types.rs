@@ -79,6 +79,8 @@ pub struct JudgeTask {
     /// 题目 UUID（消息协议字段，与 noj-core 的 JudgeTask 对齐；judge 当前不消费）
     #[allow(dead_code)]
     pub problem_id: String,
+    /// 提交用户 UUID（公平调度：同一用户同时最多 1 个评测在跑）
+    pub user_id: String,
     /// 支持包下载 URL（`noj-download://` 格式）
     pub download_url: Option<String>,
     /// artifact 提交的下载 URL（`noj-download://` 格式），仅 artifact 模式携带
@@ -226,6 +228,7 @@ mod tests {
         let json = json!({
             "submission_id": "sid-123",
             "problem_id": "1001",
+            "user_id": "u-1",
             "runtime_config": {
                 "evaluator": {"image": "noj-evaluator-python", "command": "python3 /workspace/evaluate.py", "time_limit_ms": 5000, "memory_limit_mb": 512},
                 "solution": {"image": "noj-solution-python", "call_timeout_ms": 2000, "memory_limit_mb": 512}
@@ -247,6 +250,7 @@ mod tests {
         let json = json!({
             "submission_id": "sid-456",
             "problem_id": "2001",
+            "user_id": "u-1",
             "runtime_config": {
                 "evaluator": {"image": "noj-evaluator-python", "command": "python3 /workspace/evaluate.py", "time_limit_ms": 5000, "memory_limit_mb": 512},
                 "solution": {"image": "noj-solution-python", "call_timeout_ms": 2000, "memory_limit_mb": 512}
@@ -270,6 +274,7 @@ mod tests {
         let json = json!({
             "submission_id": "sid-789",
             "problem_id": "1001",
+            "user_id": "u-1",
             "runtime_config": {
                 "evaluator": {"image": "noj-evaluator-python", "command": "python3 /workspace/evaluate.py", "time_limit_ms": 5000, "memory_limit_mb": 512},
                 "solution": {"image": "noj-solution-python", "call_timeout_ms": 2000, "memory_limit_mb": 512}
