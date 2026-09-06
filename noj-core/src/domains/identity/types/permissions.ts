@@ -81,6 +81,11 @@ export const PERMISSION_DEFS: Array<{
     action: "manage",
     description: "管理任意竞赛（编辑、删除、参与者管理）",
   },
+  {
+    resource: "contest",
+    action: "anti_cheat_read",
+    description: "查看竞赛风控关联线索（IP 与提交时间线）",
+  },
   { resource: "contest", action: "participate", description: "参加竞赛" },
   // 社区内容与互动
   { resource: "community", action: "read", description: "查看社区内容" },

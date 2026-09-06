@@ -44,6 +44,8 @@ export const submissions = pgTable(
     file_name: text("file_name"),
     /** artifact 提交的存储 URL（`noj-storage://`），code 模式为 NULL */
     artifact_storage_url: text("artifact_storage_url"),
+    /** 可信代理解析后的提交来源 IP；无法安全解析时为 NULL。仅供竞赛风控查询。 */
+    client_ip: text("client_ip"),
     /** 可选的用户 BYOK Provider；密钥由 noj-llm-gateway 托管 */
     llm_provider_config_id: text("llm_provider_config_id"),
     status: text("status").$type<SubmissionStatus>().notNull().default(
@@ -64,6 +66,11 @@ export const submissions = pgTable(
     status_idx: index("idx_submissions_status").on(table.status),
     created_at_idx: index("idx_submissions_created_at").on(table.created_at),
     contest_idx: index("idx_submissions_contest_id").on(table.contest_id),
+    contest_client_ip_idx: index("idx_submissions_contest_client_ip").on(
+      table.contest_id,
+      table.client_ip,
+      table.created_at,
+    ),
     llm_provider_config_idx: index("idx_submissions_llm_provider_config_id").on(
       table.llm_provider_config_id,
     ),

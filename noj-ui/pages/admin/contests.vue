@@ -8,13 +8,15 @@ import type {
   Contest,
   ContestPayload,
   Pagination,
+  ContestAntiCheatGroup,
+  ContestAntiCheatTimelineItem,
 } from '~/composables/useContests'
 import { useToast } from '~/composables/useToast'
 import { runContestMutation } from '~/utils/contestMutation'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', ssr: false })
 
-const { typeLabels, statusLabels, formatDateTime, statusClass } = useContests()
+const { typeLabels, statusLabels, formatDateTime, statusClass, listAntiCheatGroups, listAntiCheatTimeline } = useContests()
 const { toast } = useToast()
 const { dialog } = useDialog()
 const { api } = useApi()
@@ -30,6 +32,12 @@ const saving = ref(false)
 const formError = ref('')
 const editingId = ref<string | null>(null)
 let contestRequestVersion = 0
+const antiCheatContest = ref<Contest | null>(null)
+const antiCheatGroups = ref<ContestAntiCheatGroup[]>([])
+const antiCheatTimeline = ref<ContestAntiCheatTimelineItem[]>([])
+const antiCheatIp = ref('')
+const antiCheatLoading = ref(false)
+const antiCheatError = ref('')
 
 // 自动轮询间隔（默认 30s，可由刷新控制条切换/关闭；竞赛状态/人数随刷新更新）
 const pollInterval = ref<number | null>(30000)
@@ -90,6 +98,35 @@ async function loadProblems(keyword = '') {
     problems.value = response.data
   } catch {
     if (currentRequest === problemRequestVersion) problems.value = []
+  }
+}
+
+async function openAntiCheat(contest: Contest) {
+  antiCheatContest.value = contest
+  antiCheatGroups.value = []
+  antiCheatTimeline.value = []
+  antiCheatIp.value = ''
+  antiCheatError.value = ''
+  antiCheatLoading.value = true
+  try {
+    const response = await listAntiCheatGroups(contest.public_id || contest.id, { min_accounts: 2, per_page: 100 })
+    antiCheatGroups.value = response.data
+  } catch (error: unknown) {
+    antiCheatError.value = extractApiError(error).message
+  } finally {
+    antiCheatLoading.value = false
+  }
+}
+
+async function openAntiCheatTimeline(ip: string) {
+  if (!antiCheatContest.value) return
+  antiCheatIp.value = ip
+  antiCheatError.value = ''
+  try {
+    const response = await listAntiCheatTimeline(antiCheatContest.value.public_id || antiCheatContest.value.id, ip)
+    antiCheatTimeline.value = response.data
+  } catch (error: unknown) {
+    antiCheatError.value = extractApiError(error).message
   }
 }
 
@@ -351,10 +388,18 @@ async function removeParticipant(participant: Participant) {
       <template #status-cell="{ row }"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold" :class="statusClass(row.original.status)">{{ statusLabels[row.original.status] }}</span></template>
       <template #participant_count-cell="{ row }"><span>{{ row.original.participant_count }} 人</span></template>
       <template #problem_count-cell="{ row }"><span>{{ row.original.problem_count }} 题</span></template>
-      <template #actions-cell="{ row }"><div class="flex justify-center gap-1.5"><UButton color="neutral" variant="outline" class="flex size-9" title="发布正式成绩" aria-label="发布正式成绩" @click="publishSnapshot(row.original)"><UIcon name="i-lucide-lock-keyhole" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9" title="导出正式成绩" aria-label="导出正式成绩" @click="exportSnapshot(row.original)"><UIcon name="i-lucide-download" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-blue-50 hover:text-primary" title="参与者" aria-label="参与者" @click="openParticipants(row.original)"><UIcon name="i-lucide-users" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" :loading="editingId === row.original.id" :disabled="editingId !== null" @click="openEdit(row.original)"><UIcon name="i-lucide-pencil" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:border-error-text/30 hover:bg-red-50 hover:text-error-text" title="删除" aria-label="删除" @click="removeContest(row.original)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></UButton></div></template>
+      <template #actions-cell="{ row }"><div class="flex justify-center gap-1.5"><UButton color="neutral" variant="outline" class="flex size-9" title="发布正式成绩" aria-label="发布正式成绩" @click="publishSnapshot(row.original)"><UIcon name="i-lucide-lock-keyhole" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9" title="导出正式成绩" aria-label="导出正式成绩" @click="exportSnapshot(row.original)"><UIcon name="i-lucide-download" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-amber-50 hover:text-amber-700" title="风控线索" aria-label="风控线索" @click="openAntiCheat(row.original)"><UIcon name="i-lucide-shield-alert" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-blue-50 hover:text-primary" title="参与者" aria-label="参与者" @click="openParticipants(row.original)"><UIcon name="i-lucide-users" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" :loading="editingId === row.original.id" :disabled="editingId !== null" @click="openEdit(row.original)"><UIcon name="i-lucide-pencil" class="size-3.5" /></UButton><UButton color="neutral" variant="outline" class="flex size-9 border-border text-text-secondary hover:border-error-text/30 hover:bg-red-50 hover:text-error-text" title="删除" aria-label="删除" @click="removeContest(row.original)"><UIcon name="i-lucide-trash-2" class="size-3.5" /></UButton></div></template>
     </UTable>
 
     <PaginationNav :current-page="currentPage" :total-pages="totalPages" @page-change="loadContests" />
+  </div>
+
+  <div v-if="antiCheatContest" class="fixed inset-0 z-300 flex items-center justify-center bg-black/45 p-4" @click.self="antiCheatContest = null">
+    <div class="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-modal">
+      <header class="flex items-center justify-between border-b border-border px-6 py-4"><div><h2 class="text-lg font-bold text-text">竞赛风控线索</h2><p class="mt-1 text-xs text-text-muted">{{ antiCheatContest.title }} · 仅供人工复核，不自动封禁或取消成绩</p></div><button class="rounded-lg p-2 text-text-secondary hover:bg-primary-hover" @click="antiCheatContest = null"><UIcon name="i-lucide-x" class="size-4.5" /></button></header>
+      <div class="border-b border-border bg-amber-50 px-6 py-3 text-xs text-amber-800">提交来源 IP 用于竞赛账号关联，默认保留 180 天；仅管理员可见。共享网络、代理和 NAT 可能导致误报，请结合其他证据复核。</div>
+      <div class="flex-1 overflow-y-auto p-5"><p v-if="antiCheatError" class="mb-3 text-sm text-error-text">{{ antiCheatError }}</p><p v-if="antiCheatLoading" class="py-12 text-center text-sm text-text-muted">加载中...</p><div v-else-if="antiCheatGroups.length" class="grid gap-4 lg:grid-cols-2"><button v-for="group in antiCheatGroups" :key="group.ip" class="rounded-xl border border-border p-4 text-left transition hover:border-signal" :class="antiCheatIp === group.ip ? 'border-signal bg-signal/5' : ''" @click="openAntiCheatTimeline(group.ip)"><div class="flex items-center justify-between"><code class="font-mono text-sm font-semibold text-text">{{ group.ip }}</code><UBadge color="warning" variant="subtle">{{ group.account_count }} 个账号</UBadge></div><p class="mt-2 text-xs text-text-secondary">{{ group.submission_count }} 次提交 · {{ formatDateTime(group.first_submission_at) }} 至 {{ formatDateTime(group.last_submission_at) }}</p><div class="mt-3 flex flex-wrap gap-1.5"><UBadge v-for="account in group.accounts" :key="account.user_id" color="neutral" variant="subtle">{{ account.username }}（{{ account.submission_count }}）</UBadge></div></button></div><p v-else-if="!antiCheatLoading" class="py-12 text-center text-sm text-text-muted">暂无同 IP 多账号候选组</p><div v-if="antiCheatTimeline.length" class="mt-5 rounded-xl border border-border"><div class="border-b border-border px-4 py-3 text-sm font-semibold text-text">提交时间线：{{ antiCheatIp }}</div><div class="divide-y divide-border"><div v-for="item in antiCheatTimeline" :key="item.submission_id" class="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-3 text-xs"><span><strong class="text-text">{{ item.username }}</strong><span class="ml-2 text-text-secondary">{{ item.problem_title }} · {{ item.language }}</span></span><span class="text-text-muted">{{ formatDateTime(item.created_at) }}</span><code class="font-mono text-text-muted">{{ item.submission_id.slice(0, 12) }}</code></div></div></div></div>
+    </div>
   </div>
 
   <ContestFormModal v-if="formOpen" :contest="editingContest" :problems="problems" :saving="saving" :error="formError" @save="saveContest" @search-problems="loadProblems" @cancel="formOpen = false" />

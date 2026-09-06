@@ -4,4 +4,5 @@
 
 - [系统架构](architecture.md)
 - [安全模型](security.md)
+- [竞赛风控数据说明](anti-cheat.md)
 - [存储与评测包交付](storage.md)

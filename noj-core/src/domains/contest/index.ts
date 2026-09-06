@@ -25,3 +25,4 @@ export {
   publishContestRankingSnapshot,
 } from "./services/contest-ranking.ts";
 export * from "./types/contests.ts";
+export * from "./services/contest-anti-cheat.ts";

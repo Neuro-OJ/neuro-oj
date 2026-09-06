@@ -234,6 +234,7 @@ export const SCHEMA_DDL: string[] = [
     code TEXT NOT NULL,
     file_name TEXT,
     artifact_storage_url TEXT,
+    client_ip TEXT,
     llm_provider_config_id TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     rejudge_seq INTEGER NOT NULL DEFAULT 0,

@@ -30,6 +30,11 @@ import {
   getLatestContestRankingSnapshot,
   publishContestRankingSnapshot,
 } from "../services/contest-ranking.ts";
+import {
+  listContestIpGroups,
+  listContestIpTimeline,
+} from "../services/contest-anti-cheat.ts";
+import { assertPermission } from "../../identity/index.ts";
 
 /**
  * 管理端竞赛管理路由（挂载前缀 /api/v1/admin，见 admin/index.ts）。
@@ -161,6 +166,54 @@ router.get("/contests/:id/submissions", async (c) => {
   return c.json({
     data: result.data,
     pagination: buildPaginationMeta(page, perPage, result.total),
+  });
+});
+
+/**
+ * GET /contests/:id/anti-cheat/ip-groups —— 竞赛内同 IP 多账号候选组。
+ * 仅展示可信代理解析后的 IP；此结果是人工复核线索，不代表作弊结论。
+ */
+router.get("/contests/:id/anti-cheat/ip-groups", async (c) => {
+  await assertPermission(c, "contest:anti_cheat_read");
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const minAccounts = Number(c.req.query("min_accounts") ?? "2");
+  const page = Number(c.req.query("page") ?? "1");
+  const perPage = Number(c.req.query("per_page") ?? "20");
+  const result = await listContestIpGroups(contestId, {
+    minAccounts: Number.isFinite(minAccounts) ? minAccounts : 2,
+    page: Number.isFinite(page) ? page : 1,
+    perPage: Number.isFinite(perPage) ? perPage : 20,
+  });
+  return c.json({
+    data: result.data,
+    pagination: {
+      page: result.page,
+      per_page: result.perPage,
+      total: result.total,
+      total_pages: Math.ceil(result.total / result.perPage),
+    },
+    data_policy: {
+      purpose: "竞赛期间账号关联与提交时间线人工复核",
+      retention_days: 180,
+      automated_penalty: false,
+    },
+  });
+});
+
+/** GET /contests/:id/anti-cheat/timeline?ip=... —— 同 IP 提交时间线。 */
+router.get("/contests/:id/anti-cheat/timeline", async (c) => {
+  await assertPermission(c, "contest:anti_cheat_read");
+  const ip = c.req.query("ip")?.trim();
+  if (!ip) throw new BadRequestError("缺少 ip 查询参数");
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const data = await listContestIpTimeline(contestId, ip);
+  return c.json({
+    data,
+    data_policy: {
+      purpose: "竞赛期间账号关联与提交时间线人工复核",
+      retention_days: 180,
+      automated_penalty: false,
+    },
   });
 });
 
