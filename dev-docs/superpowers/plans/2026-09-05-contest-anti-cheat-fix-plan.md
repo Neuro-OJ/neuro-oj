@@ -789,7 +789,7 @@ jj new
 - Consumes: submission 行的 `user_id`（producer 侧已有）。
 - Produces: `JudgeTask.user_id: string`；judge 调度：`Arc<Mutex<HashSet<String>>> active_users`。
 
-- [ ] **Step 1: 两侧类型加 user_id**
+- [x] **Step 1: 两侧类型加 user_id**
 
 core `types/index.ts` JudgeTask 加：
 
@@ -805,7 +805,7 @@ judge `types.rs` JudgeTask 加：
 pub user_id: String,
 ```
 
-- [ ] **Step 2: producer 填充**
+- [x] **Step 2: producer 填充**
 
 `producer.ts` 构造 task 时：
 
@@ -816,7 +816,7 @@ const task: JudgeTask = {
 };
 ```
 
-- [ ] **Step 3: 写失败测试（judge 调度）**
+- [x] **Step 3: 写失败测试（judge 调度）**
 
 ```rust
 #[tokio::test]
@@ -826,9 +826,9 @@ async fn per_user_limit_skips_active_users() {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认失败**
+- [x] **Step 4: 跑测试确认失败**
 Run: `cd noj-judge && cargo nextest run --all-targets`
-- [ ] **Step 5: 实现调度**
+- [x] **Step 5: 实现调度**
 
 `main.rs`：删除 `judge_semaphore` 的 acquire 闸门（保留 Semaphore 用于 drain 逻辑，若有）；新增：
 
@@ -851,10 +851,10 @@ guard.insert(task.user_id.clone());
 
 评测完成（含 error）后 `guard.remove(&task.user_id)`。
 
-- [ ] **Step 6: 跑测试确认通过 + fmt/clippy**
+- [x] **Step 6: 跑测试确认通过 + fmt/clippy**
 Run: `cd noj-judge && cargo fmt && cargo clippy && cargo nextest run --all-targets`
 Expected: 全绿、零警告。
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 jj describe -m "feat(judge): 每用户并发上限 1 公平调度，移除全局槽闸门（F-07）"

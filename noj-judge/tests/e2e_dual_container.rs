@@ -580,6 +580,7 @@ fn dual_task_runtime_config_serialization() {
     let json = serde_json::json!({
         "submission_id": "sid-dual",
         "problem_id": "1001",
+        "user_id": "u-dual",
         "language": "python3",
         "code": "def solve(a,b): return a+b",
         "file_name": "solution.py",

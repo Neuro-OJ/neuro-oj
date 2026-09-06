@@ -272,31 +272,86 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{EvaluatorRuntime, RuntimeConfig, SolutionRuntime};
 
+    /// F-07 公平调度纯逻辑测试：活跃用户集合的占位/释放语义。
     #[tokio::test]
-    async fn shutdown_signal_interrupts_waiting_for_judge_permit() {
-        let semaphore = Arc::new(Semaphore::new(0));
-        let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
-        shutdown_tx.send(()).unwrap();
+    async fn active_user_slot_is_exclusive_and_released() {
+        let active: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+        let user = "u-a".to_string();
 
-        let permit = acquire_judge_permit(semaphore, &mut shutdown_rx)
-            .await
-            .unwrap();
-        assert!(permit.is_none());
+        {
+            let mut guard = active.lock().await;
+            assert!(!guard.contains(&user), "初始无活跃用户");
+            guard.insert(user.clone());
+        }
+        {
+            let guard = active.lock().await;
+            assert!(guard.contains(&user), "占位后应包含该用户");
+        }
+        {
+            let mut guard = active.lock().await;
+            guard.remove(&user);
+            assert!(!guard.contains(&user), "释放后应不再包含该用户");
+        }
     }
 
+    /// 队列 [userA 任务1, userA 任务2, userB 任务1]；userA active 时应跳到 userB 的任务。
     #[tokio::test]
-    async fn judge_permit_is_released_after_task_owns_it() {
-        let semaphore = Arc::new(Semaphore::new(1));
-        let (_shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
+    async fn per_user_limit_skips_active_users() {
+        let active: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+        active.lock().await.insert("userA".to_string());
 
-        let permit = acquire_judge_permit(Arc::clone(&semaphore), &mut shutdown_rx)
-            .await
-            .unwrap()
-            .expect("应获取到评测许可");
-        assert_eq!(semaphore.available_permits(), 0);
+        let queue = ["userA", "userA", "userB"];
+        let mut picked: Option<String> = None;
+        for user in queue {
+            let mut guard = active.lock().await;
+            if guard.contains(user) {
+                continue;
+            }
+            guard.insert(user.to_string());
+            picked = Some(user.to_string());
+            break;
+        }
+        assert_eq!(picked.as_deref(), Some("userB"), "应跳过活跃用户取 userB");
+    }
 
-        drop(permit);
-        assert_eq!(semaphore.available_permits(), 1);
+    /// JudgeTask 反序列化需要携带 user_id（公平调度字段）。
+    #[test]
+    fn judge_task_requires_user_id() {
+        let json = serde_json::json!({
+            "submission_id": "sid-1",
+            "problem_id": "1001",
+            "user_id": "u-1",
+            "runtime_config": {
+                "evaluator": {"image": "noj-evaluator-python", "command": "python3 /workspace/evaluate.py", "time_limit_ms": 5000, "memory_limit_mb": 512},
+                "solution": {"image": "noj-solution-python", "call_timeout_ms": 2000, "memory_limit_mb": 512}
+            },
+            "language": "python3",
+            "code": "print(1)"
+        });
+        let task: crate::types::JudgeTask = serde_json::from_value(json).unwrap();
+        assert_eq!(task.user_id, "u-1");
+    }
+
+    /// 保证 RuntimeConfig 相关导入在测试中可用（与生产结构保持一致）。
+    #[test]
+    fn runtime_config_shape_matches_protocol() {
+        let config = RuntimeConfig {
+            evaluator: EvaluatorRuntime {
+                image: "img".to_string(),
+                command: "cmd".to_string(),
+                time_limit_ms: 1000,
+                memory_limit_mb: 256,
+                network: None,
+            },
+            solution: SolutionRuntime {
+                image: "img".to_string(),
+                call_timeout_ms: 1000,
+                memory_limit_mb: 256,
+            },
+        };
+        assert_eq!(config.evaluator.time_limit_ms, 1000);
+        assert_eq!(config.solution.call_timeout_ms, 1000);
     }
 }

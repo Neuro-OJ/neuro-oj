@@ -240,7 +240,7 @@ async function recoverPendingRows<T extends PendingRecoveryRow>(
     const task: JudgeTask = {
       submission_id: row.id,
       problem_id: row.problem_id,
-      user_id: row.user_id,
+      user_id: row.user_id ?? "",
       runtime_config: runtimeConfig,
       download_url,
       language: row.language,

@@ -28,6 +28,7 @@ function makeTask(overrides?: Partial<JudgeTask>): JudgeTask {
   return {
     submission_id: "test-sub-001",
     problem_id: "1001",
+    user_id: "test-user-001",
     runtime_config: {
       evaluator: {
         image: "noj-evaluator-python",
