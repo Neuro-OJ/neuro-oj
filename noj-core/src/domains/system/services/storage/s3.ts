@@ -19,6 +19,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
   UploadPartCommand,
@@ -31,6 +32,7 @@ import {
   buildStorageUrl,
   parseStorageUrl,
   sha256Hex,
+  type StorageObjectInfo,
   type StorageProvider,
   validateStorageKey,
 } from "./types.ts";
@@ -266,6 +268,37 @@ export class S3StorageProvider implements StorageProvider {
       }
       throw err;
     }
+  }
+
+  /**
+   * 只读列举 bucket 中的对象，用于生命周期盘点和容量观测。
+   *
+   * 使用 continuation token 遍历全部分页；此方法只发起 ListObjectsV2，
+   * 不会删除、覆盖对象或修改对象元数据。
+   */
+  async listObjects(): Promise<StorageObjectInfo[]> {
+    const objects: StorageObjectInfo[] = [];
+    let continuationToken: string | undefined;
+    do {
+      const page = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      for (const item of page.Contents ?? []) {
+        if (!item.Key) continue;
+        objects.push({
+          key: item.Key,
+          sizeBytes: typeof item.Size === "number" ? item.Size : null,
+          lastModified: item.LastModified?.toISOString() ?? null,
+        });
+      }
+      continuationToken = page.IsTruncated
+        ? page.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
+    return objects.sort((a, b) => a.key.localeCompare(b.key));
   }
 
   /**

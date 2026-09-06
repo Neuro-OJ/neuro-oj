@@ -34,6 +34,20 @@ export interface ParsedDownloadUrl {
   checksumSha256?: string;
 }
 
+/**
+ * 存储后端中的对象清单项。
+ *
+ * 该类型只用于只读 inventory/audit；列举对象不会改变存储状态。
+ */
+export interface StorageObjectInfo {
+  /** provider 内的对象 key（local 模式为 URL 中的逻辑 key） */
+  key: string;
+  /** 对象字节数；后端无法提供时为 null */
+  sizeBytes: number | null;
+  /** 后端提供的最后修改时间；无法提供时为 null */
+  lastModified: string | null;
+}
+
 // ── URL 常量 ─────────────────────────────────────────────────
 
 export const STORAGE_URL_PREFIX = "noj-storage://";
@@ -106,6 +120,13 @@ export interface StorageProvider {
    * 非致命——失败仅 warn，不阻止启动
    */
   ensureBucket?(): Promise<void>;
+
+  /**
+   * 只读列举对象，用于生命周期盘点和容量观测。
+   *
+   * 实现不得在此方法中执行删除、覆盖或改变对象元数据。
+   */
+  listObjects?(): Promise<StorageObjectInfo[]>;
 }
 
 // ── `noj-storage://` URL 工具 ────────────────────────────────

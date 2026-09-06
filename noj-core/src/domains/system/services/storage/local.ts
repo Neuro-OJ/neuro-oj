@@ -21,6 +21,7 @@ import {
   buildStorageUrl,
   parseStorageUrl,
   sha256Hex,
+  type StorageObjectInfo,
   type StorageProvider,
   validateStorageKey,
 } from "./types.ts";
@@ -238,6 +239,40 @@ export class LocalStorageProvider implements StorageProvider {
       }
       throw err;
     }
+  }
+
+  /**
+   * 只读列举存储根目录中的对象。
+   *
+   * local provider 的 zip 文件名比 DB 中的逻辑 key 多一个 `.zip` 后缀，
+   * 因此盘点结果会去掉该后缀；图片对象保留 `.png/.jpg/.webp` 后缀。
+   * 临时文件也会列出，供报告识别上传中断留下的对象，但绝不在此删除。
+   */
+  async listObjects(): Promise<StorageObjectInfo[]> {
+    const objects: StorageObjectInfo[] = [];
+    try {
+      for await (const entry of Deno.readDir(this.storageDir)) {
+        if (!entry.isFile) continue;
+        const filePath = `${this.storageDir}/${entry.name}`;
+        let sizeBytes: number | null = null;
+        let lastModified: string | null = null;
+        try {
+          const stat = await Deno.stat(filePath);
+          sizeBytes = stat.size;
+          lastModified = stat.mtime?.toISOString() ?? null;
+        } catch {
+          // 文件在列举与 stat 之间消失：保留 key，容量记为未知。
+        }
+        const key = entry.name.endsWith(".zip")
+          ? entry.name.slice(0, -4)
+          : entry.name;
+        objects.push({ key, sizeBytes, lastModified });
+      }
+    } catch (err) {
+      if (err instanceof Deno.errors.NotFound) return [];
+      throw err;
+    }
+    return objects.sort((a, b) => a.key.localeCompare(b.key));
   }
 
   /**
