@@ -125,7 +125,7 @@ async function logoutViaUI(): Promise<void> {
   await p.locator('a[href="/login"]').first().waitFor({ timeout: 15_000 });
 }
 
-/** 在编辑器中输入代码并提交评测（全选后剪贴板粘贴，替换 starter 模板） */
+/** 在编辑器中输入代码并提交评测（合成 paste 事件写入，替换 starter 模板） */
 async function submitCodeViaUI(code: string): Promise<void> {
   const p = await goto("/editor/P1001");
   // 编辑器页需要登录态；未登录会被 auth 中间件重定向
@@ -133,18 +133,24 @@ async function submitCodeViaUI(code: string): Promise<void> {
   await p.locator(".monaco-editor").first().click();
   // 不能用 keyboard.insertText：模拟逐键输入会触发 Monaco auto-indent，
   // 破坏代码缩进（IndentationError → solution host 注册不到 solve 函数）。
-  // 剪贴板粘贴按原文插入；Ctrl/Cmd+A 全选替换掉 starter 模板。
-  // Deno DOM 类型无 navigator.clipboard，运行时（Chromium + 授权）存在
-  await p.evaluate(
-    (c) =>
-      (navigator as unknown as {
-        clipboard: { writeText: (t: string) => Promise<void> };
-      })
-        .clipboard.writeText(c),
-    code,
-  );
+  // 也不能依赖 navigator.clipboard：headless 下 Write permission denied。
+  // 改为合成 paste 事件（DataTransfer 携带原文，Monaco 对 paste 按原文
+  // 插入且不重排缩进）；Ctrl/Cmd+A 全选先替换掉 starter 模板。
   await p.keyboard.press("ControlOrMeta+A");
-  await p.keyboard.press("ControlOrMeta+V");
+  await p.evaluate((c) => {
+    const dt = new DataTransfer();
+    dt.setData("text/plain", c);
+    const target =
+      document.querySelector<HTMLElement>(".monaco-editor textarea") ??
+        document.querySelector<HTMLElement>(".monaco-editor");
+    target?.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData: dt,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  }, code);
   // 等待 Monaco → Vue 的 code 同步防抖
   await p.waitForTimeout(500);
   await p.getByRole("button", { name: "提交评测", exact: true }).click();
