@@ -1,7 +1,7 @@
 //! 支持包 zip 安全解压与评测命令分词工具。
 //! 容器生命周期管理由 `dual/` 模块（双容器 RAII）负责。
 
-use std::io::Read;
+use std::io::{Read, Seek};
 
 use anyhow::{Context, Result};
 
@@ -19,15 +19,18 @@ pub struct ZipEntry {
     pub is_dir: bool,
 }
 
-/// 安全解压 ZIP 到内存，返回条目列表。
+/// 从本地文件流式解压 ZIP 到内存条目列表。
 ///
-/// 安全校验（硬编码不可配置）：
-/// - 路径穿越防护：拒绝含 `..` 或 `/` 开头的条目
-/// - 炸弹防护：1000 条目 / 64MB 单文件 / 512MB 总解压
-/// - Overlapping entries 防护：重复文件名报错
-pub fn extract_zip_entries(data: &[u8]) -> Result<Vec<ZipEntry>> {
-    let cursor = std::io::Cursor::new(data);
-    let mut archive = zip::ZipArchive::new(cursor).context("打开 zip 文件失败")?;
+/// 直接以文件作为 zip 读取源，避免先把整个 zip 读进 `Vec<u8>`。
+pub fn extract_zip_entries_from_file(path: &std::path::Path) -> Result<Vec<ZipEntry>> {
+    let file = std::fs::File::open(path)
+        .with_context(|| format!("打开支持包文件失败: {}", path.display()))?;
+    extract_zip_entries_reader(file)
+}
+
+/// 通用 zip 读取实现：`Read + Seek` 来源均可（内存 slice / 磁盘文件）。
+fn extract_zip_entries_reader<R: Read + Seek>(reader: R) -> Result<Vec<ZipEntry>> {
+    let mut archive = zip::ZipArchive::new(reader).context("打开 zip 文件失败")?;
 
     if archive.len() > MAX_ZIP_ENTRIES {
         anyhow::bail!(

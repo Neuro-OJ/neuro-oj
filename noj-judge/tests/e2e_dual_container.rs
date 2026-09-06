@@ -1167,6 +1167,9 @@ except Exception as e:
         },
     };
     let artifact_zip = build_artifact_zip();
+    let temp_dir = tempfile::tempdir().unwrap();
+    let artifact_zip_path = temp_dir.path().join("artifact.zip");
+    std::fs::write(&artifact_zip_path, &artifact_zip).unwrap();
 
     let result = tokio::time::timeout(
         Duration::from_secs(30),
@@ -1176,7 +1179,7 @@ except Exception as e:
             &runtime_config,
             "",
             None,
-            Some(&artifact_zip),
+            Some(&artifact_zip_path),
             None,
             None,
             1000,

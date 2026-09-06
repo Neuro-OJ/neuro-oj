@@ -67,7 +67,7 @@ runner = SolutionRunner()                  # 创建调用器：负责向 Solutio
 output_line = runner.call("solve", item["input"])   # 传入原始 input 字符串
 actual = output_line.strip().splitlines()[-1] if output_line.strip() else ""
 expected = str(item["expected"]).strip()
-# 记录本次调用耗时，并输出 case_id/status/time_ms/expected_output/actual_output
+# 记录本次调用耗时，并输出 case_id/status/hidden/time_ms/expected_output/actual_output
 ```
 
 调用失败时捕获 SDK 异常：
@@ -92,9 +92,11 @@ else:
     result.wrong_answer(score=score, details=details)  # 未达满分：写入部分分
 ```
 
-标准测试点字段至少包含 `case_id`、`status` 和 `time_ms`。可见测试点可以额外包含
-`input`、`expected_output` 和 `actual_output`；隐藏测试点只返回用例 ID、状态与资源
-耗时，不得把隐藏输入或标准答案写入 `details`。
+标准测试点字段至少包含 `case_id`、`status`、`hidden`（布尔值，`true` 为隐藏用例、
+`false` 为可见用例）和 `time_ms`。可见测试点可以额外包含
+`input`、`expected_output` 和 `actual_output`；隐藏测试点只返回用例 ID、状态、
+`hidden` 与资源耗时，不得把隐藏输入或标准答案写入 `details`。仓库内 `1001`
+的 `evaluate.py` 已按该契约输出 `hidden` 标记。
 
 ## 打包
 

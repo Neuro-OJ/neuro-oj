@@ -14,6 +14,7 @@ pub mod container;
 pub mod protocol;
 pub mod tracker;
 
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
@@ -30,7 +31,7 @@ use crate::dual::protocol::{
     FRAME_ERROR, FRAME_LOG, FRAME_READY, FRAME_RESULT, FRAME_SHUTDOWN, RESULT_MARKER,
 };
 use crate::dual::tracker::{InFlightTracker, WaitingSide};
-use crate::sandbox::container::{extract_zip_entries, parse_command};
+use crate::sandbox::container::{extract_zip_entries_from_file, parse_command};
 use crate::types::{JudgeResult, JudgeStatus, JudgeTaskLlm, RuntimeConfig};
 
 /// 评测输出全文/错误累积上限（1 MiB）。恶意提交可无限打印，
@@ -155,12 +156,13 @@ fn append_capped(buf: &mut String, s: &str) {
 async fn inject_support_package_to_evaluator(
     docker: &bollard::Docker,
     container_id: &str,
-    zip_bytes: &[u8],
+    zip_path: &Path,
 ) -> Result<()> {
-    // 同步提取 zip 内容到内存（ZipFile 不是 Send，不能在 tokio::spawn 中跨 await 持有）
+    // 直接以磁盘文件作为 zip 读取源，避免先把整个 zip 读进内存再 to_vec 拷贝。
+    // ZipFile 不是 Send，因此仍在 spawn_blocking 中做同步解压，但输入是文件流。
     let entries = tokio::task::spawn_blocking({
-        let data = zip_bytes.to_vec();
-        move || extract_zip_entries(&data)
+        let path = zip_path.to_path_buf();
+        move || extract_zip_entries_from_file(&path)
     })
     .await
     .context("spawn_blocking 提取 zip 失败")??;
@@ -249,8 +251,8 @@ pub async fn evaluate_dual_with_cpu_limit(
     task_submission_id: &str,
     runtime_config: &RuntimeConfig,
     user_code: &str,
-    support_pkg_bytes: Option<&[u8]>,
-    artifact_zip_bytes: Option<&[u8]>,
+    support_pkg_path: Option<&Path>,
+    artifact_zip_path: Option<&Path>,
     task_rejudge_seq: Option<i64>,
     task_llm: Option<&JudgeTaskLlm>,
     cpu_limit_millicores: u64,
@@ -266,8 +268,8 @@ pub async fn evaluate_dual_with_cpu_limit(
         task_submission_id,
         runtime_config,
         user_code,
-        support_pkg_bytes,
-        artifact_zip_bytes,
+        support_pkg_path,
+        artifact_zip_path,
         task_rejudge_seq,
         task_llm,
         None,
@@ -314,8 +316,8 @@ pub async fn evaluate_dual_with_cpu_limit_and_user_llm(
     task_submission_id: &str,
     runtime_config: &RuntimeConfig,
     user_code: &str,
-    support_pkg_bytes: Option<&[u8]>,
-    artifact_zip_bytes: Option<&[u8]>,
+    support_pkg_path: Option<&Path>,
+    artifact_zip_path: Option<&Path>,
     task_rejudge_seq: Option<i64>,
     task_llm: Option<&JudgeTaskLlm>,
     user_llm: Option<&JudgeTaskLlm>,
@@ -385,9 +387,9 @@ pub async fn evaluate_dual_with_cpu_limit_and_user_llm(
         .ok_or_else(|| anyhow::anyhow!("Solution 容器 ID 缺失"))?;
 
     // 3. 注入支持包到 Evaluator 容器（evaluate.py 等评测脚本）
-    if let Some(pkg_bytes) = support_pkg_bytes {
-        info!("注入支持包到 Evaluator 容器 ({} bytes)", pkg_bytes.len());
-        inject_support_package_to_evaluator(&docker, &evaluator_id, pkg_bytes)
+    if let Some(pkg_path) = support_pkg_path {
+        info!("注入支持包到 Evaluator 容器: {:?}", pkg_path);
+        inject_support_package_to_evaluator(&docker, &evaluator_id, pkg_path)
             .await
             .context("注入支持包到 Evaluator 容器失败")?;
     } else {
@@ -395,17 +397,14 @@ pub async fn evaluate_dual_with_cpu_limit_and_user_llm(
     }
 
     // 4. 注入用户代码/artifact 到 Solution 容器
-    let solution_entry_file = if artifact_zip_bytes.is_some() {
+    let solution_entry_file = if artifact_zip_path.is_some() {
         "submission.py"
     } else {
         SOLUTION_ENTRY_FILE
     };
-    if let Some(artifact_bytes) = artifact_zip_bytes {
-        info!(
-            "注入 artifact zip 到 Solution 容器 ({} bytes)",
-            artifact_bytes.len()
-        );
-        inject_support_package_to_evaluator(&docker, &solution_id, artifact_bytes)
+    if let Some(artifact_path) = artifact_zip_path {
+        info!("注入 artifact zip 到 Solution 容器: {:?}", artifact_path);
+        inject_support_package_to_evaluator(&docker, &solution_id, artifact_path)
             .await
             .context("注入 artifact zip 到 Solution 容器失败")?;
     } else {

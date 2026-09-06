@@ -873,9 +873,9 @@ jj new
 **Interfaces:**
 - Produces: 下载直接写 `WorkDir` 文件（`tokio::io::copy` 到 File），不再 `Vec<u8>` 整体驻留；`deadline = Instant::now() + 30s` 在注入阶段开始前创建。
 
-- [ ] **Step 1: 写失败测试**：构造大支持包（测试环境可经 `#[cfg(test)]` 注入阈值），断言下载后内存峰值（metrics.rs 既有）低于阈值。
-- [ ] **Step 2: 跑测试确认失败**
-- [ ] **Step 3: 实现**
+- [x] **Step 1: 写失败测试**：构造大支持包（测试环境可经 `#[cfg(test)]` 注入阈值），断言下载后内存峰值（metrics.rs 既有）低于阈值。
+- [x] **Step 2: 跑测试确认失败**
+- [x] **Step 3: 实现**
 
 `download.rs` 把 `let bytes = reqwest::...bytes().await?` 改为：
 
@@ -889,8 +889,8 @@ while let Some(chunk) = stream.next().await {
 
 `dual/mod.rs`：注入 zip 步骤前 `let deadline = Instant::now() + Duration::from_secs(30);`，其后所有超时检查统一用该 deadline（不再从评测启动重新计时）。
 
-- [ ] **Step 4: 跑测试确认通过 + fmt/clippy**
-- [ ] **Step 5: 提交**
+- [x] **Step 4: 跑测试确认通过 + fmt/clippy**
+- [x] **Step 5: 提交**
 
 ```bash
 jj describe -m "fix(judge): 支持包流式落盘与注入计入总时限（F-08）"
@@ -934,17 +934,17 @@ jj new
 - Consumes: `problem:create_p`（U→P）、`problem:write_own`（owner 转 public）、`contest:create`。
 - Produces: `POST /api/v1/admin/problems/review`（批量转公开/转 P）、`PATCH /api/v1/admin/contests/:id/kind`、`POST /api/v1/admin/contests/:id/reset-code`、`PUT /api/v1/problems/:id/visibility`。
 
-- [ ] **Step 1: 写失败测试**：非 admin 调评定队列 → 403；owner 转 public 成功；U→P 需 create_p。
-- [ ] **Step 2: 跑测试确认失败**
-- [ ] **Step 3: 实现 admin 路由**（三个端点 + 权限中间件，按现有 admin-* 路由模式）
-- [ ] **Step 4: UI**
+- [x] **Step 1: 写失败测试**：非 admin 调评定队列 → 403；owner 转 public 成功；U→P 需 create_p。
+- [x] **Step 2: 跑测试确认失败**
+- [x] **Step 3: 实现 admin 路由**（三个端点 + 权限中间件，按现有 admin-* 路由模式）
+- [x] **Step 4: UI**
 
 - admin/problems.vue：新增"题目评定"tab（待转公开/待转 P 列表，批量勾选+按钮调对应端点）；
 - admin/contests.vue：竞赛行加"转公开赛"与"重置邀请码"操作；
 - 建赛向导：kind 默认 invite、密码必填；public 选项对无权限用户禁用并提示联系管理员。
 
-- [ ] **Step 5: 跑测试确认通过**
-- [ ] **Step 6: 提交**
+- [x] **Step 5: 跑测试确认通过**
+- [x] **Step 6: 提交**
 
 ```bash
 jj describe -m "feat(core,ui): 运营后台题目评定队列与竞赛 kind 管理"
@@ -961,7 +961,7 @@ jj new
 **Interfaces:**
 - Consumes: 全部已实现端点；参考 `noj-tests/e2e/22_contest_lifecycle.test.ts` 的建赛/注册辅助。
 
-- [ ] **Step 1: 编写剧本**（7 个场景，对应 spec §12）：
+- [x] **Step 1: 编写剧本**（7 个场景，对应 spec §12）：
 
 ```ts
 // 场景 1: 无上下文直取私有题 → 404
@@ -973,10 +973,10 @@ jj new
 // 场景 7: 客观题练习提交不泄 expected（private paper）
 ```
 
-- [ ] **Step 2: 跑 e2e**
+- [x] **Step 2: 跑 e2e**
 Run: `cd noj-tests && deno task test -- e2e/30_contest_anti_cheat.test.ts`（或按 E2E_TESTING.md 指南）
 Expected: 全绿。
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 jj describe -m "test(e2e): 竞赛防作弊攻击剧本 30_contest_anti_cheat"
@@ -994,10 +994,10 @@ jj new
 - Modify: `noj-core/CLAUDE.md`（visibility/kind 列速查提及）
 - Create: `.agents/notes/implemented/architecture/2026-09-05-contest-anti-cheat-fix.md`
 
-- [ ] **Step 1: 更新文档**（按上文清单；中文）
-- [ ] **Step 2: 校验 Agent Note 格式**
+- [x] **Step 1: 更新文档**（按上文清单；中文）
+- [x] **Step 2: 校验 Agent Note 格式**
 Run: `deno run -A scripts/verify-agent-note-format.ts`
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 jj describe -m "docs(root): 竞赛防作弊修复文档同步与 Agent Note"

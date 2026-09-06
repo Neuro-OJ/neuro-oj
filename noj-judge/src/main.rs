@@ -195,6 +195,7 @@ fn main() -> Result<()> {
                     let judge_queue = judge_queue.clone();
                     let cache_dir = cache_dir.clone();
                     let fallback_dir = fallback_dir.clone();
+                    let task_work_dir = work_dir.clone();
                     let image_prefix = image_prefix.clone();
                     let evaluator_network_mode = evaluator_network_mode.clone();
                     let command_whitelist = command_whitelist.clone();
@@ -216,6 +217,7 @@ fn main() -> Result<()> {
                             cache_dir.clone(),
                             cache_max_items,
                             cache_max_mb,
+                            task_work_dir,
                             cpu_limit_millicores,
                             allow_evaluator_network,
                             &evaluator_network_mode,

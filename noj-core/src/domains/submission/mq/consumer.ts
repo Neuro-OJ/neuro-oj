@@ -44,6 +44,7 @@ const JUDGE_CASE_ALLOWED_KEYS = new Set([
   "case_id",
   "status",
   "visibility",
+  "hidden",
   "time_ms",
   "input",
   "expected_output",

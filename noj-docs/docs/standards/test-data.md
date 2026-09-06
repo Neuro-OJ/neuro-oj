@@ -67,13 +67,14 @@ LMCC 官方标准区分可见与不可见测试数据。Neuro OJ 采用更严格
 
 ## 测试点结果详情（details.cases）
 
-最终结果 JSON 只输出 `score` 与 `details`，不再输出顶层 `status`。为了让提交详情页统一展示测试点明细，新评测器建议在 `details` 中输出扁平的 `cases` 数组。每个测试点至少包含 `case_id` 和 `status`（**用例级状态**，不是提交最终判定），推荐字段如下：
+最终结果 JSON 只输出 `score` 与 `details`，不再输出顶层 `status`。为了让提交详情页统一展示测试点明细，新评测器建议在 `details` 中输出扁平的 `cases` 数组。每个测试点必须包含 `case_id`、`status`（**用例级状态**，不是提交最终判定）和布尔标记 `hidden`；`hidden` 是提交结果投影判断可见/隐藏用例的**唯一判定依据**，推荐字段如下：
 
 | 字段 | 说明 |
 |------|------|
 | `case_id` | 稳定用例 ID，与测试数据中的 `id` 对应 |
 | `status` | 该用例状态，如 `Accepted` / `WrongAnswer` / `RuntimeError` / `TimeLimitExceeded` |
-| `visibility` | `visible` 或 `hidden`；省略时按 `visible` 处理 |
+| `hidden` | 必填布尔：`true` 为隐藏用例，`false` 为可见用例；缺失时旧脚本按 fail-safe 处理 |
+| `visibility` | 可选兼容字段：`visible` / `hidden`，仅供人读与旧前端兼容；新评测器以 `hidden` 为准 |
 | `time_ms` | 可选，该用例耗时（毫秒） |
 | `memory_kb` | 可选，该用例内存（KB） |
 | `input` | 仅可见用例可包含 |
@@ -88,6 +89,7 @@ LMCC 官方标准区分可见与不可见测试数据。Neuro OJ 采用更严格
     {
       "case_id": "v001",
       "status": "Accepted",
+      "hidden": false,
       "visibility": "visible",
       "time_ms": 12,
       "expected_output": "3",
@@ -96,6 +98,7 @@ LMCC 官方标准区分可见与不可见测试数据。Neuro OJ 采用更严格
     {
       "case_id": "h001",
       "status": "WrongAnswer",
+      "hidden": true,
       "visibility": "hidden",
       "time_ms": 15
     }
@@ -105,7 +108,8 @@ LMCC 官方标准区分可见与不可见测试数据。Neuro OJ 采用更严格
 
 约定：
 
-- **隐藏用例**可以展示 `case_id`、`status`、`visibility`、`time_ms`、`memory_kb`，但 MUST NOT 写入 `input`、`expected_output`、`actual_output`。
+- **隐藏用例**可以展示 `case_id`、`status`、`hidden`、`visibility`、`time_ms`、`memory_kb`，但 MUST NOT 写入 `input`、`expected_output`、`actual_output`。
 - **可见用例**可以展示输入、期望输出和实际输出，用于做题人调试。
-- 历史格式 `visible.cases` / `hidden.cases` 以及旧字段 `id` / `expected` / `actual` 仍会被提交结果页兼容，但新评测器应使用上述标准字段。
+- 提交结果投影（`applySubmissionProjection`）会按 `hidden` 标记在竞赛场景剥离隐藏用例；如果 `cases` 中任意用例缺少 `hidden`，视为旧脚本，fail-safe 整份用例详情不返回。
+- 历史格式 `visible.cases` / `hidden.cases` 以及旧字段 `id` / `expected` / `actual` 仍会被提交结果页兼容，但新评测器应使用上述标准字段，并确保每个用例都带 `hidden`。
 - 更完整的协议说明见 [Evaluator SDK](../mechanisms/evaluator-sdk.md)。

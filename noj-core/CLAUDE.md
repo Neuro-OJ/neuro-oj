@@ -85,8 +85,7 @@ authMiddleware → 注入 isAdmin
 
 - `users.role` 列保留（标记为 deprecated），用于向前兼容和 JWT `role` claim
 - 旧服务函数保留 `userRole` 参数作为 fallback，新增 `c?: Context` 参数启用 RBAC
-- `createProblem`/`updateProblem`/`deleteProblem` 等已迁移到
-  `assertPermission()`
+- `createProblem`/`updateProblem`/`deleteProblem` 等已迁移到 `assertPermission()`
 - `getSubmission` 使用 `c.var.isAdmin` 替代 `viewerRole === "admin"`
 - 路由层通过 `c.var.isAdmin ?? c.var.userRole === "admin"` 双兼容
 
@@ -141,23 +140,18 @@ noj-core/
 
 从 `.env` 文件或 `Deno.env` 读取。**配置分层语义（scope）**：
 
-- **runtime（DB-owned，运行时可热改）**：`管理后台 > 系统设置 > 运行时配置` 写入
-  DB 即时生效；env 值仅作启动期/开发环境兜底（DB 未写入时），读取链
-  `DB → env → 默认值`。下表标注"可热改"的项属此类。
-- **bootstrap（env-owned，启动期定型只读）**：由 env 唯一决定，读取链
-  `env → 默认值`（**不读 DB**，DB
+- **runtime（DB-owned，运行时可热改）**：`管理后台 > 系统设置 > 运行时配置` 写入 DB 即时生效；env
+  值仅作启动期/开发环境兜底（DB 未写入时），读取链 `DB → env → 默认值`。下表标注"可热改"的项属此类。
+- **bootstrap（env-owned，启动期定型只读）**：由 env 唯一决定，读取链 `env → 默认值`（**不读 DB**，DB
   残留旧值被忽略）。`管理后台 > 系统设置 >
-  环境配置` 只读展示全部 bootstrap
-  项（含未配置）；改 .env 后需重启 noj-core。 标注"后台只读"的项属此类。
+  环境配置` 只读展示全部 bootstrap 项（含未配置）；改 .env 后需重启
+  noj-core。 标注"后台只读"的项属此类。
 
-> 注册表单一事实源：`src/shared/config/settings-registry.ts` 的
-> `CONFIG_DEFINITIONS`（scope + envKey/envFallback）。新 env
-> 变量必须登记入注册表，并同步 `.env.example`； `deno task check:env`
-> 会校验注册表与 `.env.example` 键覆盖一致性。
+> 注册表单一事实源：`src/shared/config/settings-registry.ts` 的 `CONFIG_DEFINITIONS`（scope + envKey/envFallback）。新
+> env 变量必须登记入注册表，并同步 `.env.example`； `deno task check:env` 会校验注册表与 `.env.example` 键覆盖一致性。
 
-> **runtime 共存提示**：当 runtime 项同时存在 DB 值与 env 兜底时，当前 DB
-> 值优先， env 被遮蔽；启动日志会 warning，后台设置页进入时弹窗并显示“env
-> 兜底存在”徽标， 建议移除 `.env` 对应变量以避免歧义。
+> **runtime 共存提示**：当 runtime 项同时存在 DB 值与 env 兜底时，当前 DB 值优先， env 被遮蔽；启动日志会
+> warning，后台设置页进入时弹窗并显示“env 兜底存在”徽标， 建议移除 `.env` 对应变量以避免歧义。
 
 **必须配置**（bootstrap，后台只读）：
 
@@ -246,22 +240,19 @@ deno task test:smoke        # 快速冒烟（Hono server + /health，需 Redis�
 
 ### 测试并行分片（TEST_SCHEMA）
 
-`deno task test:parallel`（`scripts/test-parallel.ts`）把测试按目录分为
-`unit`（tests/shared、域内 lib/middleware/types 测试、data/app）与 `db`（域内
-services/routes/mq 测试、db/迁移/种子） 两组，每组独占一个 PG
-schema（`test_unit` / `test_db`），进程级并行互不干扰：
+`deno task test:parallel`（`scripts/test-parallel.ts`）把测试按目录分为 `unit`（tests/shared、域内 lib/middleware/types
+测试、data/app）与 `db`（域内 services/routes/mq 测试、db/迁移/种子） 两组，每组独占一个 PG schema（`test_unit` /
+`test_db`），进程级并行互不干扰：
 
-- `src/shared/db/connection.ts` 支持 `TEST_SCHEMA` 环境变量：通过 libpq startup
-  参数 `-csearch_path=<schema>,public` 让连接池内所有连接落在目标 schema
-  （TRUNCATE / SELECT / INSERT 均自动隔离）
-- `src/shared/db/migrate.ts` 在 TEST_SCHEMA 下把 `migrationsSchema` 指向同
-  schema， 避免各分片共享 `drizzle` 迁移记录导致"已迁移"误判跳过
-- 约束：分片目录集合与 CI 的 `core-test-db` 一致；CI 的 `core-test-unit` 是
-  PGlite 模式（无需迁移），本地 unit 分片走真实 PG（需 00_migrate_test）
+- `src/shared/db/connection.ts` 支持 `TEST_SCHEMA` 环境变量：通过 libpq startup 参数 `-csearch_path=<schema>,public`
+  让连接池内所有连接落在目标 schema （TRUNCATE / SELECT / INSERT 均自动隔离）
+- `src/shared/db/migrate.ts` 在 TEST_SCHEMA 下把 `migrationsSchema` 指向同 schema， 避免各分片共享 `drizzle`
+  迁移记录导致"已迁移"误判跳过
+- 约束：分片目录集合与 CI 的 `core-test-db` 一致；CI 的 `core-test-unit` 是 PGlite 模式（无需迁移），本地 unit
+  分片走真实 PG（需 00_migrate_test）
 
-注意：迁移 SQL 中历史文件（0010/0027/0029）曾带 drizzle-kit 生成的
-`REFERENCES "public"."xxx"` 硬编码前缀，分片下 FK 会错指 public schema （已在
-2026-07 修复为不带前缀，按 search_path 解析）。新增迁移请保持 不带 schema
+注意：迁移 SQL 中历史文件（0010/0027/0029）曾带 drizzle-kit 生成的 `REFERENCES "public"."xxx"` 硬编码前缀，分片下 FK
+会错指 public schema （已在 2026-07 修复为不带前缀，按 search_path 解析）。新增迁移请保持 不带 schema
 前缀，否则分片测试会静默失败。
 
 ## 基础设施
@@ -318,8 +309,7 @@ docker compose down     # 停止
 **Problem ID 四步解析**（`routes/problems.ts`）：
 
 1. UUID 格式 → 按 PK 查询
-2. `display_id` 格式（`P1001`/`U42`）→ 解析 type+number →
-   `getProblemByTypeAndNumber()`
+2. `display_id` 格式（`P1001`/`U42`）→ 解析 type+number → `getProblemByTypeAndNumber()`
 3. 纯数字（遗留种子数据如 `1001`）→ 按 PK 查询
 4. 兜底 → 按 PK 查询
 
@@ -341,10 +331,8 @@ docker compose down     # 停止
 
 **Redis 连接设计**：
 
-- `getRedis()` — 共享连接，用于 LPUSH
-  评测任务（`enableOfflineQueue: false`，重试 5 次后停止）
-- `createConsumerRedis()` — 独立连接，用于 BRPOP
-  阻塞等待结果（`lazyConnect: true`，指数退避永不停止）
+- `getRedis()` — 共享连接，用于 LPUSH 评测任务（`enableOfflineQueue: false`，重试 5 次后停止）
+- `createConsumerRedis()` — 独立连接，用于 BRPOP 阻塞等待结果（`lazyConnect: true`，指数退避永不停止）
 - `getRedis()` 在 `connect` 事件中清除错误状态，使健康检查可恢复
 
 **Producer 行为**：
@@ -372,51 +360,50 @@ docker compose down     # 停止
 
 ## 数据库 Schema 设计
 
-| 表                      | 关键列                                                                                                                                    | 约束 / 索引                                                 |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `users`                 | `id`(UUID), `username`, `email`(unique), `password_hash`, `email_verified`, `email_verify_token`, `email_verify_expires_at`, `deleted_at` | PK, active username partial UK, UK(email)                   |
-| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`                                           | PK, UK(display_id), UK(type,number), FK→users               |
-| `tags`                  | `id`(UUID), `name`(unique), `kind`(problem/algorithm), `created_at`, `updated_at`                                                         | PK, UK(name), CHECK(kind)                                   |
-| `problem_tags`          | `problem_id`, `tag_id`                                                                                                                    | FK→problems ON DELETE CASCADE, FK→tags ON DELETE CASCADE    |
-| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                                         | PK, FK→users, FK→problems, idx(user_id,created_at)          |
-| `evaluation_results`    | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                                     | PK, UK(submission_id), FK→submissions                       |
-| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                                           | PK, FK→users, UK(user_id,checkin_date)                      |
-| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                                | PK, UK(image)                                               |
-| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                                               | PK, FK→users, UK(token_hash)                                |
-| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                                               | PK, FK→users, UK(participant_a,participant_b)               |
-| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                                           | PK, FK→conversations, idx(conversation_id,created_at)       |
-| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                                            | PK, FK→conversations, FK→users, UK(conversation_id,user_id) |
-| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                                   | PK, FK→messages, FK→users                                   |
+| 表                      | 关键列                                                                                                                                                                                       | 约束 / 索引                                                      |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `users`                 | `id`(UUID), `username`, `email`(unique), `password_hash`, `role`(user/admin), `bio`, `must_change_password`, `email_verified`, `email_verify_token`, `email_verify_expires_at`, `deleted_at` | PK, active username partial UK, UK(email)                        |
+| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`, `visibility`(public/private)                                                                | PK, UK(display_id), UK(type,number), FK→users, CHECK(visibility) |
+| `contests`              | `id`(UUID), `public_id`, `title`, `start_time`, `end_time`, `type`, `kind`(public/invite), `is_public`, `password`                                                                           | PK, UK(public_id), CHECK(kind), CHECK(type)                      |
+| `tags`                  | `id`(UUID), `name`(unique), `kind`(problem/algorithm), `created_at`, `updated_at`                                                                                                            | PK, UK(name), CHECK(kind)                                        |
+| `problem_tags`          | `problem_id`, `tag_id`                                                                                                                                                                       | FK→problems ON DELETE CASCADE, FK→tags ON DELETE CASCADE         |
+| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                                                                                            | PK, FK→users, FK→problems, idx(user_id,created_at)               |
+| `evaluation_results`    | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                                                                                        | PK, UK(submission_id), FK→submissions                            |
+| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                                                                                              | PK, FK→users, UK(user_id,checkin_date)                           |
+| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                                                                                   | PK, UK(image)                                                    |
+| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                                                                                                  | PK, FK→users, UK(token_hash)                                     |
+| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                                                                                                  | PK, FK→users, UK(participant_a,participant_b)                    |
+| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                                                                                              | PK, FK→conversations, idx(conversation_id,created_at)            |
+| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                                                                                               | PK, FK→conversations, FK→users, UK(conversation_id,user_id)      |
+| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                                                                                      | PK, FK→messages, FK→users                                        |
 
 > 上表为核心表速查。完整 Schema 共 38 张表（`src/shared/db/schema.ts`），另有：
 >
-> - **竞赛**：`contests` / `contest_problems` / `contest_participants` /
->   `contest_clarifications`
+> - **竞赛**：`contests` / `contest_problems` / `contest_participants` / `contest_clarifications`
 > - **RBAC**：`roles` / `permissions` / `role_permissions` / `user_roles`
-> - **社区**：`community_boards` / `community_posts` / `community_comments` /
->   `community_follows` / `community_activity_events` / `community_reports` /
->   `community_moderation_actions` / `community_sanctions` /
+> - **社区**：`community_boards` / `community_posts` / `community_comments` / `community_follows` /
+>   `community_activity_events` / `community_reports` / `community_moderation_actions` / `community_sanctions` /
 >   `community_notifications` 等 17 张
 > - **其他**：`system_settings` / `audit_logs` / `ip_bans` / `user_bans`
 
 **设计要点**：
 
 - 所有时间戳使用 ISO 8601 **文本**格式存储（非原生 `timestamptz`）
-- `evaluation_results.score` 为 `INTEGER`（×100），`scoreToDb`/`scoreFromDb`
-  在应用层转换
+- `evaluation_results.score` 为 `INTEGER`（×100），`scoreToDb`/`scoreFromDb` 在应用层转换
 - `problems.number` 按 `type` 分别自增（`(type, number)` UNIQUE）
-- `tags.kind`
-  区分题目标签（problem，人人可见）与算法标签（algorithm，通过题目后可见，spoiler
-  门控后端强制）
+- `problems.visibility` 取值 `public`/`private`，由 `resolveProblemAccess` 统一判定读取/提交/竞赛上下文访问
+- `contests.kind` 取值 `public`/`invite`：public 仅管理员可创建、可自助报名；invite 必须设置邀请码并校验；`is_public`
+  仍负责列表/详情展示
+- `tags.kind` 区分题目标签（problem，人人可见）与算法标签（algorithm，通过题目后可见，spoiler 门控后端强制）
 - `submissions` 有复合索引 `(user_id, created_at)` 优化"我的提交历史"查询
+- 评测脚本 `details.cases[].hidden`（布尔）是提交结果投影判断隐藏用例的依据；旧脚本缺少该标记时 fail-safe 剥离详情
 
 ## 代码规范
 
 - TypeScript 严格模式
 - 路由文件默认导出 Hono 实例，由 `app.ts` 组合
 - API 路径：`/api/v1/{resource}`
-- 错误处理：统一 `AppError` 继承体系（6 个子类），全局 `onError` 捕获，带
-  `request_id`
+- 错误处理：统一 `AppError` 继承体系（6 个子类），全局 `onError` 捕获，带 `request_id`
 - 密码强度：≥8 位、含大小写字母和数字
 - JWT：HS256、iss/aud 校验、24h 有效期（无刷新机制）、`jti` 已生成但未持久化校验
 - 分值：×100 整数值存储（`scoreToDb`/`scoreFromDb`），避免浮点误差
@@ -476,34 +463,27 @@ Retry-After: 25
 - IP 维度用中间件（`loginIpRateLimit()`），账号/锁定/退避在路由 handler 内
 - 失败时"立即返 401 + 下次 sleep"，避免暴露失败响应时间差
 - 总开关 `RATE_LIMIT_ENABLED` + `NOJ_ENV=test` 强制关闭（测试环境）
-- 生产部署需要**配置可信代理白名单**才能正确解析
-  `X-Forwarded-For`（默认信任首项）
+- 生产部署需要**配置可信代理白名单**才能正确解析 `X-Forwarded-For`（默认信任首项）
 
 ## 全局搜索（issue #100）
 
-`GET /api/v1/search` 是统一的全局搜索入口，覆盖题目搜索（公开）与用户搜索
-（admin only），分页返回。设计文档见
+`GET /api/v1/search` 是统一的全局搜索入口，覆盖题目搜索（公开）与用户搜索 （admin only），分页返回。设计文档见
 `dev-docs/superpowers/specs/2026-07-13-global-search-design.md`。
 
 **数据库列**：
 
-- `problems.search_vector` — `tsvector` GENERATED 列：
-  `setweight(to_tsvector('simple', coalesce(title,'')), 'A')` + `||`
-  `setweight(to_tsvector('simple', coalesce(type,'')||' '||coalesce(number::text,'')), 'B')`
-- `users.search_vector` — `tsvector` GENERATED 列：`username` 权重 A + `email`
-  权重 B
+- `problems.search_vector` — `tsvector` GENERATED 列： `setweight(to_tsvector('simple', coalesce(title,'')), 'A')` +
+  `||` `setweight(to_tsvector('simple', coalesce(type,'')||' '||coalesce(number::text,'')), 'B')`
+- `users.search_vector` — `tsvector` GENERATED 列：`username` 权重 A + `email` 权重 B
 - 由 PostgreSQL `GENERATED ALWAYS AS ... STORED` 自动维护，应用层只读
 
 **索引策略**（双 GIN 索引，中英文友好）：
 
 - `idx_*_search_vector` — GIN(tsvector)，英文/数字分词精确匹配
-- `idx_*_title_trgm` / `idx_users_username_trgm` — GIN(pg_trgm)，中文 trigram
-  模糊匹配
-- 查询走 `tsvector @@ websearch_to_tsquery(...) OR ILIKE '%q%'` 联合，PG planner
-  自动选最优索引
+- `idx_*_title_trgm` / `idx_users_username_trgm` — GIN(pg_trgm)，中文 trigram 模糊匹配
+- 查询走 `tsvector @@ websearch_to_tsquery(...) OR ILIKE '%q%'` 联合，PG planner 自动选最优索引
 
-**权重设计**：`title`/`username` = A (1.0)，`display_id`/`email` = B (0.4)，
-`ts_rank` 自动按权重排序。
+**权重设计**：`title`/`username` = A (1.0)，`display_id`/`email` = B (0.4)， `ts_rank` 自动按权重排序。
 
 **权限矩阵**：
 
@@ -524,17 +504,14 @@ Retry-After: 25
 
 - 用户输入通过 Drizzle `sql\`...${input}...\`` 占位符参数化
 - `q` 字符串经 `websearch_to_tsquery` 处理，避免 tsquery 注入
-- `ILIKE` 子串经 `escapeLikePattern()` 转义 `%`/`_`/`\`，配合 `ESCAPE '\'` 子句
-  （`dcabe8d`，reviewer issue 2）
+- `ILIKE` 子串经 `escapeLikePattern()` 转义 `%`/`_`/`\`，配合 `ESCAPE '\'` 子句 （`dcabe8d`，reviewer issue 2）
 
 **响应字段**：
 
 - 题目：`{id, type, number, display_id, title, difficulty, rank, highlight}`
 - 用户：`{id, username, email, role, rank, highlight}`
-- 高亮：用 `[[HIGHLIGHT]]...[[/HIGHLIGHT]]` marker 包裹（非 HTML），前端
-  `SearchResultItem` 替换为 `<mark>`
-- 响应头：`X-Search-Took-Ms`、`X-Search-Query`、触发限流时附 `X-RateLimit-*` +
-  `Retry-After`
+- 高亮：用 `[[HIGHLIGHT]]...[[/HIGHLIGHT]]` marker 包裹（非 HTML），前端 `SearchResultItem` 替换为 `<mark>`
+- 响应头：`X-Search-Took-Ms`、`X-Search-Query`、触发限流时附 `X-RateLimit-*` + `Retry-After`
 
 **搜索限流**（与登录限流**独立桶**，避免互相污染）：
 
@@ -544,24 +521,19 @@ Retry-After: 25
 | 登录用户 | `ratelimit:search:user:<user_id>` | 30s/120 次 |
 | admin    | 不限流                            | —          |
 
-通过 `src/shared/config/settings-registry.ts` 注册 4
-个配置项（`rate_limit_search_*`），由 `searchRateLimit("anon")` 中间件在
-`/api/v1/search` 路径级统一处理，admin 经 `c.get("userRole")` 跳过。
+通过 `src/shared/config/settings-registry.ts` 注册 4 个配置项（`rate_limit_search_*`），由 `searchRateLimit("anon")`
+中间件在 `/api/v1/search` 路径级统一处理，admin 经 `c.get("userRole")` 跳过。
 
 **Service 层防御性鉴权**（`dcabe8d`，reviewer issue 3）：
 
-- `searchUsers()` 入口检查 `params.isAdmin === true`，否则
-  `throw new
+- `searchUsers()` 入口检查 `params.isAdmin === true`，否则 `throw new
   ForbiddenError`，路由守卫缺失时也 fail-closed
-- `searchProblems()` 默认仅返回 `type='P'`，admin 显式传 `includeU=true` 才返回
-  U+P
+- `searchProblems()` 默认仅返回 `type='P'`，admin 显式传 `includeU=true` 才返回 U+P
 
 **实现文件**：
 
-- 路由：`src/domains/query/routes/search.ts`（`optionalAuthMiddleware` +
-  权限校验 + service 调用）
-- 服务：`src/domains/query/services/search.ts`（`searchProblems` /
-  `searchUsers`， tsvector + ILIKE 联合查询）
+- 路由：`src/domains/query/routes/search.ts`（`optionalAuthMiddleware` + 权限校验 + service 调用）
+- 服务：`src/domains/query/services/search.ts`（`searchProblems` / `searchUsers`， tsvector + ILIKE 联合查询）
 - 中间件：`src/domains/query/middleware/search-rate-limit.ts`（Redis 固定窗口）
 - Schema：`src/shared/db/schema.ts`（`tsvector` customType + GIN 索引定义）
 
@@ -573,29 +545,24 @@ Retry-After: 25
 | 生产（`CORS_ALLOWED_ORIGINS` 设置） | 仅允许白名单域名，空列表拒绝所有跨域请求                  |
 
 - `credentials: true`（为 Cookie 认证预留）
-- 暴露 `Retry-After`、`X-RateLimit-*`、`X-Request-Id`
-  响应头，供前端读取限流和请求追踪信息
+- 暴露 `Retry-After`、`X-RateLimit-*`、`X-Request-Id` 响应头，供前端读取限流和请求追踪信息
 - `maxAge: 86400`（预请求缓存 24h）
 - 允许方法：`GET, POST, PUT, PATCH, DELETE, OPTIONS`
 - 允许头：`Content-Type, Authorization`
 
 ## 测试约定
 
-- Agent 必须通过 `deno task` 运行测试，**优先 `deno task test:parallel`**；
-  零外部 PostgreSQL 时用 `deno task test`，快速反馈用 `deno task test:smoke`。
-  不要直接手拼 `deno test`（会丢失 BCRYPT_SALT_ROUNDS、PGlite 模板、preload
-  事务隔离等配置）。
-- DB 依赖测试检查 `!!Deno.env.get("DATABASE_URL")` 和
-  `!!Deno.env.get("JWT_SECRET")`，缺失时设置 `ignore: true` 静默跳过
-- 使用 `sanitizeResources: false, sanitizeOps: false`（postgres.js 连接池触发
-  Deno 资源泄漏检测）
+- Agent 必须通过 `deno task` 运行测试，**优先 `deno task test:parallel`**； 零外部 PostgreSQL 时用
+  `deno task test`，快速反馈用 `deno task test:smoke`。 不要直接手拼 `deno test`（会丢失 BCRYPT_SALT_ROUNDS、PGlite
+  模板、preload 事务隔离等配置）。
+- DB 依赖测试检查 `!!Deno.env.get("DATABASE_URL")` 和 `!!Deno.env.get("JWT_SECRET")`，缺失时设置 `ignore: true` 静默跳过
+- 使用 `sanitizeResources: false, sanitizeOps: false`（postgres.js 连接池触发 Deno 资源泄漏检测）
 - `resetDbForTest()` 在每个测试前重置单例状态
 - 测试命名格式：`"module: description"`（`Deno.test({ name, ignore, sanitizeResources, sanitizeOps, fn })`）
 - 清理测试在文件末尾执行，通过 `db.delete()` 直接删除测试数据
 - 测试数据使用 `Date.now()` 生成唯一用户名/邮箱避免冲突
 - `00_migrate_test.ts` 按字母序最先执行，负责迁移和 seed root 用户
-- 路由测试使用 `jsonRequest()` 辅助函数创建原始 `Request` 对象（确保 Hono
-  路由兼容性）
+- 路由测试使用 `jsonRequest()` 辅助函数创建原始 `Request` 对象（确保 Hono 路由兼容性）
 
 ## CLI 说明
 
@@ -607,25 +574,21 @@ Retry-After: 25
 
 ## 评测脚本协议（Judge 集成）
 
-noj-core 不直接执行评测，但 `data/problems-src/` 中的 evaluate.py 遵循以下约定
-（双容器架构）：
+noj-core 不直接执行评测，但 `data/problems-src/` 中的 evaluate.py 遵循以下约定 （双容器架构）：
 
-- 可见测试用例：`visible.jsonl`，隐藏测试用例：`hidden.jsonl`（位于支持包 zip
-  中）
-- evaluate.py 运行在 **Evaluator 容器**，通过
-  `noj_evaluator_sdk.runner.SolutionRunner` 与 **Solution
-  容器**（承载用户代码）交互（NDJSON 帧协议，见
-  `noj-judge/src/dual/protocol.rs`）
-- 输出格式：`---RESULT---` 标记行 + JSON `{score, details}`（不再输出
-  `status`，judge 统一映射 `finished`/`error`）
+- 可见测试用例：`visible.jsonl`，隐藏测试用例：`hidden.jsonl`（位于支持包 zip 中）
+- evaluate.py 运行在 **Evaluator 容器**，通过 `noj_evaluator_sdk.runner.SolutionRunner` 与 **Solution
+  容器**（承载用户代码）交互（NDJSON 帧协议，见 `noj-judge/src/dual/protocol.rs`）
+- 输出格式：`---RESULT---` 标记行 + JSON `{score, details}`（不再输出 `status`，judge 统一映射 `finished`/`error`）
+- `details.cases` 每个用例必须带布尔 `hidden` 标记（`true`=隐藏、`false`=可见）；
+  隐藏用例只输出非敏感元数据，不得输出输入/期望/实际输出
 - 评分公式：每题独立定义在 evaluate.py 中（非通用可配置系统）
 - 镜像白名单：`judgeImages` 按 `evaluator` / `solution` 两类 kind 管理
 
 ## 题目数据约束
 
-**`data/problems-src/` 仅用于样例题和开发测试。**
-正式比赛题目（含隐藏测试数据和评测脚本）**不得提交到此 git 仓库**。 应通过管理
-API 或独立的安全通道部署，`support_package_path` 指向受控存储。
+**`data/problems-src/` 仅用于样例题和开发测试。** 正式比赛题目（含隐藏测试数据和评测脚本）**不得提交到此 git 仓库**。
+应通过管理 API 或独立的安全通道部署，`support_package_path` 指向受控存储。
 
 ## 贡献要求
 

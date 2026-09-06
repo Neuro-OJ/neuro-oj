@@ -23,6 +23,7 @@ import type {
   KaggleRankingRow,
   UpdateContestInput,
 } from "./../types/contests.ts";
+import { isValidContestKind } from "./../types/contests.ts";
 import { isValidContestType } from "./../types/contests.ts";
 import { listSubmissions } from "../../submission/index.ts";
 import { resolveUserId } from "../../identity/index.ts";
@@ -155,6 +156,37 @@ router.delete("/contests/:id/participants/:userId", async (c) => {
     targetUserId,
   );
   return c.body(null, 204);
+});
+
+/**
+ * PATCH /contests/:id/kind —— 邀请赛转公开赛。
+ * 权限：管理员。path：id。body：{ kind: "public" }。响应：{ data }。
+ */
+router.patch("/contests/:id/kind", async (c) => {
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const body = await parseJsonBody<{ kind?: unknown }>(c);
+  if (body.kind !== "public" || !isValidContestKind(body.kind)) {
+    throw new BadRequestError("仅支持将邀请赛转为公开赛（kind=public）");
+  }
+  const data = await updateContest(
+    contestId,
+    { kind: "public", is_public: true },
+    true,
+  );
+  return c.json({ data });
+});
+
+/**
+ * POST /contests/:id/reset-code —— 重置邀请赛邀请码。
+ * 权限：管理员。path：id。响应：{ data: { code, contest } }。
+ */
+router.post("/contests/:id/reset-code", async (c) => {
+  const contestId = await resolveContestId(c.req.param("id") as string);
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(10));
+  const code = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+  const data = await updateContest(contestId, { password: code }, true);
+  return c.json({ data: { code, contest: data } });
 });
 
 /**

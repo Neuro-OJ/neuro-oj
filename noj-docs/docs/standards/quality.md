@@ -65,7 +65,7 @@ Neuro OJ 有双类标签：
 
 - 健壮性：处理异常、超时、非法输入，不崩溃。
 - 不泄露隐藏数据：不可见用例的输入/期望/细节不写入面向用户的 `details`。
-- 标准测试点明细：新评测器建议在 `details.cases` 中输出 `case_id`、`status`、`visibility`、`time_ms` 等字段；可见用例可附输入/期望/实际输出，隐藏用例不得包含敏感输出。
+- 标准测试点明细：新评测器应在 `details.cases` 中输出 `case_id`、`status`、`hidden`、`time_ms` 等字段；`hidden` 必须为布尔值（`true` 隐藏 / `false` 可见），可见用例可附输入/期望/实际输出，隐藏用例不得包含敏感输出。
 - 可重复性：无随机/时间依赖（或固定种子），结果确定。
 - 资源使用：合理设置 time/memory，避免死循环/无限等待。
 - 安全：不注册通用转发 capability；密钥不入包/题面；LLM 题走 `noj-llm-gateway`。

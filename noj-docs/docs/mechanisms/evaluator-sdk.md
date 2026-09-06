@@ -126,9 +126,11 @@ result.wrong_answer(score=500, details={"passed": 5})
 ## details
 
 `details` 会作为结构化结果透传给前端。若需要展示测试点明细，推荐使用扁平的
-`cases` 数组。每个测试点至少包含 `case_id` 和 `status`，还可以提供
-`visibility`（`visible`/`hidden`）、`time_ms`、`memory_kb`、
-`input`、`expected_output` 和 `actual_output`。
+`cases` 数组。每个测试点必须包含 `case_id`、`status` 和布尔标记 `hidden`
+（`true` 为隐藏用例，`false` 为可见用例）；请为每个用例都设置该字段，
+避免旧脚本被误判为“全部可见”。`visibility`（`visible`/`hidden`）是可选的
+兼容/人读字段，`time_ms`、`memory_kb`、`input`、`expected_output` 和
+`actual_output` 按可见性选用。
 
 常见结构：
 
@@ -138,6 +140,7 @@ details = {
         {
             "case_id": "v001",
             "status": "Accepted",
+            "hidden": False,
             "visibility": "visible",
             "time_ms": 12,
             "expected_output": "3",
@@ -146,6 +149,7 @@ details = {
         {
             "case_id": "h001",
             "status": "WrongAnswer",
+            "hidden": True,
             "visibility": "hidden",
             "time_ms": 15,
         },
@@ -154,8 +158,10 @@ details = {
 ```
 
 隐藏测试点可以展示状态、耗时和内存，但 MUST NOT 在 `details` 中写入输入、期望
-输出或实际输出。历史的 `visible.cases`/`hidden.cases` 以及 `id`/`expected`/`actual`
-字段仍可被提交结果页兼容，但新评测器应使用上述标准字段。
+输出或实际输出。提交结果投影会按 `hidden` 标记在竞赛场景剥离隐藏用例；若
+`cases` 中任意用例缺少 `hidden`，视为旧脚本，整份用例详情 fail-safe 不返回。
+历史的 `visible.cases`/`hidden.cases` 以及 `id`/`expected`/`actual`
+字段仍可被提交结果页兼容，但新评测器应使用上述标准字段并带 `hidden`。
 
 ## 关闭 runner
 

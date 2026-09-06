@@ -39,6 +39,7 @@ import type { TagKind } from "../tags.ts";
 import {
   DIFFICULTIES,
   isValidDifficulty,
+  isValidProblemType,
   type LlmConfig,
   type ProblemListQuery,
   type ProblemResponseWithTags,
@@ -264,6 +265,8 @@ export async function listAllProblems(
     difficulty?: string;
     tag?: string;
     keyword?: string;
+    type?: string;
+    visibility?: "public" | "private";
   } = {},
 ): Promise<AdminProblemListResponse> {
   const db = getDb();
@@ -288,6 +291,23 @@ export async function listAllProblems(
     conditions.push(
       sql`(${ilike(problems.title, kw)} OR ${ilike(problems.description, kw)})`,
     );
+  }
+
+  if (query.type !== undefined) {
+    const type = query.type.toUpperCase();
+    if (!isValidProblemType(type)) {
+      throw new BadRequestError(`非法题目类型：${query.type}，仅允许 U/P`);
+    }
+    conditions.push(eq(problems.type, type));
+  }
+
+  if (query.visibility !== undefined) {
+    if (query.visibility !== "public" && query.visibility !== "private") {
+      throw new BadRequestError(
+        `非法可见性：${query.visibility}，仅允许 public/private`,
+      );
+    }
+    conditions.push(eq(problems.visibility, query.visibility));
   }
 
   // 按标签筛选

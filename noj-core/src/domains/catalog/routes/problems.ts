@@ -5,6 +5,9 @@ import {
   optionalAuthMiddleware,
 } from "./../../identity/index.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
+import { eq } from "drizzle-orm";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { problems } from "./../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -21,6 +24,7 @@ import { withActorContext } from "../../system/index.ts";
 import {
   createProblem,
   deleteProblem,
+  getProblem,
   listProblems,
   updateProblem,
 } from "../services/problems/problems.ts";
@@ -30,6 +34,8 @@ import { resolveProblemAccess } from "./../services/problem-access.ts";
 import { verifyContestAccess } from "./../../contest/index.ts";
 import {
   ADMIN_FULL_ACCESS,
+  assertPermission,
+  checkPermission,
   resolvePermissions,
 } from "./../../identity/index.ts";
 import type {
@@ -276,6 +282,47 @@ router.put("/:id", authMiddleware, async (c) => {
     );
     return c.json({ data: updated });
   });
+});
+
+/**
+ * 修改题目可见性。
+ * PUT /api/v1/problems/:id/visibility
+ * owner 只能将题目转 public（需 problem:write_own）；admin/write_any 可任意设置。
+ */
+router.put("/:id/visibility", authMiddleware, async (c) => {
+  const id = c.req.param("id") as string;
+  const body = await parseJsonBody<{ visibility?: string }>(c);
+  const visibility = body.visibility;
+  if (visibility !== "public" && visibility !== "private") {
+    throw new BadRequestError("visibility 必须为 public 或 private");
+  }
+
+  const problem = await resolveProblem(id);
+  const userId = c.get("userId");
+  const isAdmin = await checkPermission(c, "problem:write_any");
+  const isOwner = problem.owner_id === userId;
+
+  if (!isOwner && !isAdmin) {
+    throw new ForbiddenError("无权修改题目可见性");
+  }
+  // owner 仅可转公开；改私有属于管理员操作
+  if (visibility !== "public" && !isAdmin) {
+    throw new ForbiddenError("仅管理员可将题目设为私有");
+  }
+
+  await assertPermission(
+    c,
+    isOwner ? "problem:write_own" : "problem:write_any",
+  );
+
+  const db = getDb();
+  await db.update(problems).set({
+    visibility,
+    updated_at: new Date().toISOString(),
+  }).where(eq(problems.id, problem.id));
+
+  const updated = await getProblem(problem.id);
+  return c.json({ data: updated });
 });
 
 /**
