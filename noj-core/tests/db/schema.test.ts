@@ -7,6 +7,7 @@ import {
   users,
 } from "./../../src/shared/db/schema.ts";
 import type { SubmissionStatus } from "../../src/domains/submission/index.ts";
+import { OPTIONAL_EXTENSION_INDEXES } from "../../src/shared/db/schema-ddl.ts";
 
 Deno.test("schema: users table has correct columns", () => {
   const columns = Object.keys(users);
@@ -142,4 +143,37 @@ Deno.test("schema: exports are defined", () => {
     evaluationResults !== null && evaluationResults !== undefined,
     true,
   );
+});
+
+Deno.test("schema: 社区搜索 pg_trgm 索引与迁移 DDL 保持同步", async () => {
+  assertEquals(
+    OPTIONAL_EXTENSION_INDEXES.some((sql) =>
+      sql.includes("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+    ),
+    true,
+  );
+  assertEquals(
+    OPTIONAL_EXTENSION_INDEXES.some((sql) =>
+      sql.includes("idx_community_posts_title_trgm") &&
+      sql.includes("gin_trgm_ops")
+    ),
+    true,
+  );
+  assertEquals(
+    OPTIONAL_EXTENSION_INDEXES.some((sql) =>
+      sql.includes("idx_community_posts_content_trgm") &&
+      sql.includes("gin_trgm_ops")
+    ),
+    true,
+  );
+
+  const migration = await Deno.readTextFile(
+    new URL("../../drizzle/0070_unusual_starfox.sql", import.meta.url),
+  );
+  assertEquals(
+    migration.includes("CREATE EXTENSION IF NOT EXISTS pg_trgm"),
+    true,
+  );
+  assertEquals(migration.includes('"idx_community_posts_title_trgm"'), true);
+  assertEquals(migration.includes('"idx_community_posts_content_trgm"'), true);
 });
