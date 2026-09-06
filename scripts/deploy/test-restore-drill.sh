@@ -36,6 +36,13 @@ fi
 if [[ "${NOJ_DRILL_TEST_FAIL:-}" == "verify" && "$*" == *"deno run -A /opt/verify.ts"* ]]; then
   exit 42
 fi
+if [[ "$*" == *"psql -v ON_ERROR_STOP=1"* ]]; then
+  sql_input="$(cat)"
+  if [[ "$sql_input" == *"INSERT INTO users"* && "$sql_input" == *"email_verified"* ]]; then
+    echo "演练管理员写入不得依赖 email_verified 字段" >&2
+    exit 43
+  fi
+fi
 if [[ "$*" == *" pg_dump "* ]]; then
   printf 'fake postgres dump\n'
 elif [[ "$*" == *"pg_restore --list"* ]]; then
@@ -190,7 +197,28 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 2. 完整演练（--skip-judge + --keep）：隔离配置、报告与业务验收
+# 2. 相对快照路径：规范化为绝对路径后再用于 Compose bind mount
+# ---------------------------------------------------------------------------
+: >"$FAKE_LOG"
+relative_snapshot="backups/$(basename "$local_snapshot")"
+canonical_snapshot="$(cd "$local_snapshot" && pwd -P)"
+(
+  cd "$TEST_ROOT"
+  NOJ_DRILL_TEST_LOG="$FAKE_LOG" \
+  NOJ_DRILL_TEST_VERIFY_OUTPUT="$TEST_ROOT/verify-output.txt" \
+  NOJ_BACKUP_DOCKER_BIN="$FAKE_DOCKER" \
+    bash "$DRILL_SCRIPT" "$relative_snapshot" \
+      --env-file "$ENV_FILE" --compose-file "$COMPOSE_FILE" \
+      --passphrase-file "$PASSPHRASE_FILE" \
+      --skip-judge --keep --project-name noj-relative >/dev/null 2>&1
+) || fail "相对快照路径的隔离恢复演练应成功"
+if ! rg -Fq -- "-v $canonical_snapshot/minio:/restore:ro" "$FAKE_LOG"; then
+  fail "MinIO 恢复应使用绝对快照 bind mount"
+fi
+pass "相对快照路径会规范化为绝对 bind mount"
+
+# ---------------------------------------------------------------------------
+# 3. 完整演练（--skip-judge + --keep）：隔离配置、报告与业务验收
 # ---------------------------------------------------------------------------
 : >"$FAKE_LOG"
 report="$TEST_ROOT/drill-report.txt"
@@ -198,6 +226,13 @@ run_drill "$local_snapshot" --skip-judge --keep --project-name noj-drill \
   --report "$report" --rpo-max-hours 24 --rto-max-minutes 60 >/dev/null 2>"$TEST_ROOT/drill.err" ||
   { cat "$TEST_ROOT/drill.err" >&2; fail "隔离恢复演练应成功"; }
 pass "隔离恢复演练（--skip-judge）成功"
+
+rg -q 'pg_restore --clean --if-exists --no-owner --exit-on-error -U noj -d noj$' "$FAKE_LOG" ||
+  fail "PostgreSQL 恢复应从标准输入读取快照"
+if rg -q 'pg_restore --clean --if-exists --no-owner --exit-on-error -U noj -d noj -$' "$FAKE_LOG"; then
+  fail "PostgreSQL 恢复不得把 - 当作容器内输入文件"
+fi
+pass "PostgreSQL 恢复从标准输入读取快照"
 
 [[ -f "$report" ]] || fail "报告未生成"
 grep -q '^result=passed$' "$report" || fail "报告应标记 result=passed"
@@ -232,7 +267,7 @@ rg -Fq 'DO $role$ BEGIN IF NOT EXISTS' "$TEST_ROOT/backups"/drill-*/.work/postgr
 pass "演练环境与覆盖 Compose 隔离配置正确"
 
 # ---------------------------------------------------------------------------
-# 3. judge 链路：白名单镜像读取 + 评测验收执行
+# 4. judge 链路：白名单镜像读取 + 评测验收执行
 # ---------------------------------------------------------------------------
 : >"$FAKE_LOG"
 run_drill "$local_snapshot" --keep --project-name noj-drill >/dev/null 2>&1 ||
@@ -243,7 +278,7 @@ grep -q '"step":"evaluation","status":"passed"' \
 pass "完整演练包含真实评测验收"
 
 # ---------------------------------------------------------------------------
-# 4. 失败路径：数据库恢复失败 → 非零退出 + 失败报告 + 资源回收
+# 5. 失败路径：数据库恢复失败 → 非零退出 + 失败报告 + 资源回收
 # ---------------------------------------------------------------------------
 : >"$FAKE_LOG"
 fail_report="$TEST_ROOT/fail-report.txt"
@@ -265,7 +300,7 @@ grep -q 'down -v --remove-orphans' "$FAKE_LOG" ||
 pass "数据库恢复失败：非零退出 + 失败报告 + 资源回收"
 
 # ---------------------------------------------------------------------------
-# 5. 失败路径：业务验收失败
+# 6. 失败路径：业务验收失败
 # ---------------------------------------------------------------------------
 : >"$FAKE_LOG"
 biz_fail_report="$TEST_ROOT/biz-fail-report.txt"
@@ -287,7 +322,7 @@ grep -q '"step":"evaluation","status":"failed"' "$biz_fail_report" ||
 pass "业务验收失败：非零退出 + 保留失败现场"
 
 # ---------------------------------------------------------------------------
-# 6. 默认报告位置：写入快照目录且演练临时目录被清理
+# 7. 默认报告位置：写入快照目录且演练临时目录被清理
 # ---------------------------------------------------------------------------
 # 清理前序 --keep 用例保留的演练目录，验证默认路径下的资源回收。
 rm -rf "$BACKUP_DIR"/drill-*
