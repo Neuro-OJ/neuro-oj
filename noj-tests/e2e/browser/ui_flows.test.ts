@@ -134,7 +134,15 @@ async function submitCodeViaUI(code: string): Promise<void> {
   // 不能用 keyboard.insertText：模拟逐键输入会触发 Monaco auto-indent，
   // 破坏代码缩进（IndentationError → solution host 注册不到 solve 函数）。
   // 剪贴板粘贴按原文插入；Ctrl/Cmd+A 全选替换掉 starter 模板。
-  await p.evaluate((c) => navigator.clipboard.writeText(c), code);
+  // Deno DOM 类型无 navigator.clipboard，运行时（Chromium + 授权）存在
+  await p.evaluate(
+    (c) =>
+      (navigator as unknown as {
+        clipboard: { writeText: (t: string) => Promise<void> };
+      })
+        .clipboard.writeText(c),
+    code,
+  );
   await p.keyboard.press("ControlOrMeta+A");
   await p.keyboard.press("ControlOrMeta+V");
   // 等待 Monaco → Vue 的 code 同步防抖
