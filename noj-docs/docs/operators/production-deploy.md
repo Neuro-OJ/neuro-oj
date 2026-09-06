@@ -143,6 +143,10 @@ noj-cli update
 noj-cli update --latest
 ```
 
+`update --latest` 与安装器使用同一过滤规则（issue #431）：只选择非 draft、
+非 prerelease 且资产中包含 `noj-cli-linux-amd64` 与 `.sha256` 的 Release，
+保证安装与升级使用同一版本集合，不会选中资产未就绪的版本。
+
 升级前会创建并校验备份，拉取镜像，执行数据库迁移并等待健康检查；不会删除数据卷。若失败，
 先查看 `noj-cli status` 和 `noj-cli logs`，再把 `NOJ_VERSION` 改回上一个已验证版本并执行 `noj-cli update`。
 数据库迁移只追加，不会自动回滚，因此跨大版本升级前必须确认迁移兼容性。

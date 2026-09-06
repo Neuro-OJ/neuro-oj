@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "phase": "inventory-only",
+  "automatic_delete_policy": "no-new-policy",
+  "providers": ["local", "s3"],
+  "object_types": [
+    {
+      "id": "support_package",
+      "description": "题目导入后剥离元数据的纯净评测包",
+      "reference": "problems.support_package_storage_url",
+      "key_prefix": "packages/<problem_id>.zip",
+      "producer": "problem-bundle import",
+      "delete_paths": ["题目支持包替换", "题目删除", "显式删除支持包"],
+      "automatic_cleanup": false,
+      "review_required": true
+    },
+    {
+      "id": "artifact_submission",
+      "description": "类 Kaggle 产物提交的 zip",
+      "reference": "submissions.artifact_storage_url",
+      "key_prefix": "artifacts/<uuid>.zip",
+      "producer": "artifact submission upload",
+      "delete_paths": ["评测结果写回", "入队失败", "pending 超时孤儿清理"],
+      "automatic_cleanup": true,
+      "automatic_cleanup_scope": "仅限已有 artifact 业务流程；本阶段不新增规则",
+      "review_required": true
+    },
+    {
+      "id": "avatar",
+      "description": "用户头像图片",
+      "reference": "users.avatar_url",
+      "key_prefix": "avatar/<user_id>.<ext>（S3）或内容寻址 key（local）",
+      "producer": "avatar upload",
+      "delete_paths": ["头像替换", "清除头像"],
+      "automatic_cleanup": true,
+      "automatic_cleanup_scope": "仅当确认无其他用户引用时",
+      "review_required": true
+    },
+    {
+      "id": "message_image",
+      "description": "私信图片",
+      "reference": "messages.image_url",
+      "key_prefix": "message-images/<conversation_id>/<uuid>.<ext>",
+      "producer": "message image upload",
+      "delete_paths": [],
+      "automatic_cleanup": false,
+      "review_required": true
+    },
+    {
+      "id": "backup_snapshot",
+      "description": "部署备份快照及其校验文件",
+      "reference": "external backup manifest; not a database URL",
+      "key_prefix": "backups/（部署目录或备份目的地）",
+      "producer": "scripts/deploy/backup.sh / noj-cli maintain backup",
+      "delete_paths": ["按备份保留策略人工/运维确认后清理"],
+      "automatic_cleanup": false,
+      "review_required": true
+    }
+  ],
+  "references_scanned_by": [
+    "problems.support_package_storage_url",
+    "submissions.artifact_storage_url",
+    "users.avatar_url",
+    "messages.image_url"
+  ],
+  "scan_command": "cd noj-core && deno task storage:audit -- --pretty --output /path/storage-audit.json --prometheus-output /path/noj_storage.prom",
+  "safe_defaults": [
+    "盘点只执行数据库 SELECT 与对象 LIST",
+    "孤儿、缺失引用和非法 URL 只报告，不删除",
+    "运行报告前确认 provider/bucket/目录与生产目标一致",
+    "任何回收动作都必须先人工复核报告并单独制定变更"
+  ]
+}

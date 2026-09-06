@@ -1,5 +1,7 @@
 # 存储与评测包交付
 
+对象类型、引用和只读生命周期盘点见[对象存储生命周期治理](./object-storage-governance.md)。
+
 Neuro OJ 使用两层 URL 区分持久存储和评测交付。
 
 ## 存储层 URL

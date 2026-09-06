@@ -12,6 +12,7 @@
     "bootstrap:admin": "deno run --env-file=.env -A scripts/noj.ts bootstrap admin",
     "problems:build": "deno run -A scripts/noj.ts problems build",
     "problems:import": "deno run --env-file=.env -A scripts/noj.ts problems import",
+    "storage:audit": "deno run --env-file=.env -A scripts/storage-audit.ts",
     "dev-setup": "deno run --env-file=.env -A scripts/noj.ts dev-setup",
     "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts",
     "check:env": "deno run -A scripts/check-env.ts",

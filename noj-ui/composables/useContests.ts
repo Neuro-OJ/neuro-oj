@@ -158,14 +158,15 @@ export interface ContestAntiCheatTimelineItem {
 
 export function useContests() {
   const { api } = useApi();
-  const typeLabels: Record<ContestType, string> = {
-    kaggle: '类 Kaggle 分数赛',
-  };
-  const statusLabels: Record<ContestStatus, string> = {
-    pending: '未开始',
-    running: '进行中',
-    ended: '已结束',
-  };
+  const { t, locale } = useI18n();
+  const typeLabels = computed<Record<ContestType, string>>(() => ({
+    kaggle: t('contest.kaggle'),
+  }));
+  const statusLabels = computed<Record<ContestStatus, string>>(() => ({
+    pending: t('contest.pending'),
+    running: t('contest.running'),
+    ended: t('contest.ended'),
+  }));
 
   function formatDuration(startTime: string, endTime: string) {
     const milliseconds = Math.max(
@@ -174,7 +175,11 @@ export function useContests() {
     );
     const hours = Math.floor(milliseconds / 3_600_000);
     const minutes = Math.floor((milliseconds % 3_600_000) / 60_000);
-    return `${hours > 0 ? `${hours} 小时` : ''}${minutes > 0 ? ` ${minutes} 分钟` : ''}`.trim() || '不足 1 分钟';
+    if (hours === 0 && minutes === 0) return t('contest.durationLessThanMinute');
+    if (locale.value === 'en-US') {
+      return [hours > 0 ? `${hours}h` : '', minutes > 0 ? `${minutes}m` : ''].filter(Boolean).join(' ');
+    }
+    return `${hours > 0 ? `${hours} 小时` : ''}${minutes > 0 ? ` ${minutes} 分钟` : ''}`.trim();
   }
 
   function statusClass(status: ContestStatus) {

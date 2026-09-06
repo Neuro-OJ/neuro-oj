@@ -23,6 +23,7 @@ interface AnnouncementListData {
 }
 
 const { api } = useApi()
+const { t } = useI18n()
 
 const data = ref<AnnouncementListData | null>(null)
 const currentPage = ref(1)
@@ -47,17 +48,17 @@ onMounted(() => load(1))
 <template>
   <div class="max-w-[900px] mx-auto px-4 py-6 pb-16">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold">公告</h1>
+      <h1 class="text-2xl font-bold">{{ t('announcement.title') }}</h1>
     </div>
 
     <div v-if="!data" class="flex items-center justify-center gap-2 py-16 text-text-muted">
       <UIcon name="i-lucide-loader-2" class="size-6" />
-      <span>加载中...</span>
+      <span>{{ t('common.loading') }}</span>
     </div>
 
     <template v-else>
       <div v-if="data.data.length === 0" class="bg-white border border-border rounded-xl p-8 text-center text-text-muted">
-        暂无公告
+        {{ t('announcement.empty') }}
       </div>
 
       <div v-else class="bg-white border border-border rounded-xl divide-y divide-border overflow-hidden">
@@ -73,7 +74,7 @@ onMounted(() => load(1))
               class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700"
             >
               <UIcon name="i-lucide-pin" class="size-3" />
-              置顶
+              {{ t('announcement.pinned') }}
             </span>
             <span class="font-medium text-15px truncate">{{ item.title }}</span>
           </div>

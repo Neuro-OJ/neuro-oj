@@ -2,7 +2,7 @@
     <div class="w-full max-w-[380px] relative">
         <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error" @close="clearError" />
         <div class="bg-white border border-border rounded-lg p-8">
-            <h1 class="text-22px font-bold text-center mb-6 text-text animate-[fadeInUp_0.5s_ease_both]">注册</h1>
+            <h1 class="text-22px font-bold text-center mb-6 text-text animate-[fadeInUp_0.5s_ease_both]">{{ t('auth.register') }}</h1>
 
             <!-- issue #426：注册受限提示（注册关闭 / 邮件未配置） -->
             <div
@@ -15,14 +15,14 @@
                 </div>
             </div>
 
-            <p class="mb-4 text-sm text-text-secondary">注册前请阅读<NuxtLink to="/data-policy" target="_blank" class="text-primary underline">数据使用、注销保留与反馈说明</NuxtLink>。</p>
+            <p class="mb-4 text-sm text-text-secondary">{{ t('auth.registerPolicyPrefix') }}<NuxtLink to="/data-policy" target="_blank" class="text-primary underline">{{ t('auth.registerPolicy') }}</NuxtLink>。</p>
             <form @submit.prevent="handleRegister">
                 <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.05s_both]">
                     <TextInput
                         id="username"
                         v-model="form.username"
-                        label="用户名"
-                        placeholder="3-30 位字母、数字或下划线"
+                        :label="t('auth.username')"
+                        :placeholder="t('auth.usernamePlaceholder')"
                         autocomplete="username"
                         :disabled="loading"
                         :error="fieldErrors.username"
@@ -37,8 +37,8 @@
                         id="email"
                         v-model="form.email"
                         type="email"
-                        label="邮箱"
-                        placeholder="请输入邮箱地址"
+                        :label="t('auth.email')"
+                        :placeholder="t('auth.emailPlaceholder')"
                         autocomplete="email"
                         :disabled="loading"
                         :error="fieldErrors.email"
@@ -54,8 +54,8 @@
                     <PasswordField
                         id="password"
                         v-model="form.password"
-                        label="密码"
-                        placeholder="至少 8 位，需包含大小写字母和数字"
+                        :label="t('auth.password')"
+                        :placeholder="t('auth.passwordPlaceholder')"
                         autocomplete="new-password"
                         :disabled="loading"
                         :error="fieldErrors.password"
@@ -68,8 +68,8 @@
                     <PasswordField
                         id="confirmPassword"
                         v-model="form.confirmPassword"
-                        label="确认密码"
-                        placeholder="再次输入密码"
+                        :label="t('auth.confirmPassword')"
+                        :placeholder="t('auth.confirmPasswordPlaceholder')"
                         autocomplete="new-password"
                         :disabled="loading"
                         :error="fieldErrors.confirmPassword"
@@ -79,14 +79,14 @@
 
                 <UButton color="primary" size="md" block class="animate-[fadeInUp_0.5s_ease_0.25s_both]" type="submit"  :disabled="loading || !!registerRestricted">
                     <UIcon name="i-lucide-loader-2" class="animate-spin-slow mr-1.5 size-4.5" v-if="loading"/>
-                    {{ loading ? '注册中...' : '注册' }}
+                    {{ loading ? t('auth.registering') : t('auth.register') }}
                 </UButton>
             </form>
 
             <div v-if="oauthProviders.length" class="mt-5 flex flex-col gap-2">
                 <div class="flex items-center gap-3 text-xs text-text-muted">
                     <span class="h-px flex-1 bg-border" />
-                    <span>或使用第三方账号注册</span>
+                    <span>{{ t('auth.thirdPartyRegister') }}</span>
                     <span class="h-px flex-1 bg-border" />
                 </div>
                 <UButton
@@ -97,11 +97,11 @@
                     block
                     :disabled="oauthLoading"
                     @click="startOAuth(provider.id)"
-                >使用 {{ provider.name }} 注册</UButton>
+                >{{ t('auth.registerWith', { name: provider.name }) }}</UButton>
             </div>
 
             <p class="text-center mt-5 text-sm text-text-secondary animate-[fadeInUp_0.5s_ease_0.3s_both]">
-                已有账号？<NuxtLink to="/login" class="text-primary no-underline font-semibold hover:underline">立即登录</NuxtLink>
+                {{ t('auth.haveAccount') }} <NuxtLink to="/login" class="text-primary no-underline font-semibold hover:underline">{{ t('auth.loginNow') }}</NuxtLink>
             </p>
         </div>
     </div>
@@ -116,6 +116,7 @@ definePageMeta({ layout: "auth" })
 
 const router = useRouter()
 const auth = useAuth()
+const { t, locale } = useI18n()
 const oauthProviders = ref<Array<{ id: string; name: string }>>([])
 const oauthLoading = ref(false)
 
@@ -130,9 +131,9 @@ onMounted(async () => {
         ])
         oauthProviders.value = providers
         registerRestricted.value = status.reason === "register_disabled"
-            ? "注册已关闭，请稍后再试或联系管理员。"
+            ? t('auth.registerDisabled')
             : status.reason === "email_unconfigured"
-            ? "邮件服务未配置，暂不接受注册；已完成验证的用户不受影响。"
+            ? t('auth.emailUnconfigured')
             : ""
     } catch {
         oauthProviders.value = []
@@ -229,7 +230,7 @@ async function handleRegister() {
         )
         if (result) router.replace(result.destination)
     } catch (e: unknown) {
-        setError(extractApiError(e).message)
+        setError(extractApiError(e, locale.value).message)
     } finally {
         loading.value = false
     }

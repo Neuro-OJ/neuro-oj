@@ -433,6 +433,32 @@ export const SCHEMA_DDL: string[] = [
     unbanned_by TEXT REFERENCES users(id) ON DELETE SET NULL
   )`,
 
+  // 17.1 邮件送达事件和坏地址抑制（issue #449）；只保存哈希与脱敏地址
+  `CREATE TABLE IF NOT EXISTS email_delivery_events (
+    id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    provider_event_id TEXT NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN ('delivery', 'temporary_failure', 'permanent_bounce', 'complaint')),
+    recipient_hash TEXT NOT NULL,
+    recipient_masked TEXT NOT NULL,
+    reason_code TEXT,
+    reason TEXT,
+    occurred_at TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    UNIQUE (provider, provider_event_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS email_suppressions (
+    id TEXT PRIMARY KEY,
+    recipient_hash TEXT NOT NULL,
+    recipient_masked TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    source_event_id TEXT NOT NULL,
+    suppressed_at TEXT NOT NULL,
+    cleared_at TEXT,
+    cleared_by TEXT
+  )`,
+
   // 社区表依赖 RBAC 角色（roles 已在顶部预置，见 SCHEMA_DDL 第 2 项）
 
   `CREATE TABLE IF NOT EXISTS community_boards (
@@ -691,6 +717,11 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_ip_bans_expires_at ON ip_bans (expires_at)",
   "CREATE INDEX IF NOT EXISTS idx_user_bans_user ON user_bans (user_id)",
   "CREATE INDEX IF NOT EXISTS idx_user_bans_active ON user_bans (user_id) WHERE unbanned_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS idx_email_delivery_events_recipient_hash ON email_delivery_events (recipient_hash)",
+  "CREATE INDEX IF NOT EXISTS idx_email_delivery_events_occurred_at ON email_delivery_events (occurred_at)",
+  "CREATE INDEX IF NOT EXISTS idx_email_suppressions_recipient_hash ON email_suppressions (recipient_hash)",
+  "CREATE UNIQUE INDEX IF NOT EXISTS email_suppressions_active_recipient_unique ON email_suppressions (recipient_hash) WHERE cleared_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS idx_email_suppressions_suppressed_at ON email_suppressions (suppressed_at)",
   "CREATE INDEX IF NOT EXISTS idx_community_boards_sort ON community_boards (is_archived, sort_order)",
   "CREATE INDEX IF NOT EXISTS idx_community_board_role_grants_role ON community_board_role_grants (role_id)",
   "CREATE INDEX IF NOT EXISTS idx_community_posts_author ON community_posts (author_id, created_at)",
@@ -793,4 +824,6 @@ export const ALL_TABLES = [
   "community_notifications",
   "announcements",
   "content_review_queue",
+  "email_delivery_events",
+  "email_suppressions",
 ] as const;

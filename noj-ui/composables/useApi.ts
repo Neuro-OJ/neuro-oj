@@ -38,6 +38,7 @@ type ApiMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 export function useApi() {
   const { toast } = useToast();
+  const { locale } = useI18n();
   // 当前路由：401 时跳转登录页需要保留回跳目标（SSR 阶段不可跳转，仅客户端）
   const route = useRoute();
 
@@ -67,9 +68,9 @@ export function useApi() {
     try {
       // SSR 使用 useRequestFetch 转发 Cookie/Headers；客户端使用普通 $fetch
       const fetcher = import.meta.server && serverFetch ? serverFetch : $fetch;
-      return await fetcher<T>(url, { method, ...fetchOptions });
+      return await fetcher<T>(url, { method, ...fetchOptions }) as T;
     } catch (err) {
-      const info = extractApiError(err);
+      const info = extractApiError(err, locale.value);
       if (import.meta.client && import.meta.dev) {
         console.error('[useApi] 请求失败', {
           method: method.toUpperCase(),

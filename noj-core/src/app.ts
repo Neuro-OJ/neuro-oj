@@ -23,6 +23,7 @@ import { metrics, normalizeMetricRoute } from "./shared/base/metrics.ts";
 import { renderPrometheusMetrics } from "./domains/system/services/observability.ts";
 import { getSetting } from "./domains/system/index.ts";
 import { SECONDS_PER_DAY } from "./shared/base/constants.ts";
+import { securityHeaders } from "./shared/http/security-headers.ts";
 
 /**
  * 维护模式中间件（PR-2 死开关）。
@@ -65,6 +66,9 @@ function maintenanceMode(
  */
 export function createApp(): Hono {
   const app = new Hono();
+
+  // 直连 core 时仍输出基础安全头。HSTS 由 TLS 终止边缘负责，CSP 由页面层负责。
+  app.use("*", securityHeaders);
 
   // 请求上下文中间件（最外层）：为每个请求生成 request_id，
   // 写入 context 供 onError 复用，并包裹后续处理使日志自动带 request_id。

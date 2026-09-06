@@ -3,6 +3,7 @@ import { extractApiError } from "~/utils/apiError"
 
 definePageMeta({ layout: "auth" })
 const route = useRoute()
+const { t, locale } = useI18n()
 const auth = useAuth()
 const token = computed(() => typeof route.query.token === "string" ? route.query.token : "")
 const deliveryFailed = computed(() => route.query.sent === "0")
@@ -19,7 +20,7 @@ onMounted(async () => {
     await auth.verifyEmail(token.value)
     state.value = "success"
   } catch (cause: unknown) {
-    error.value = extractApiError(cause).message
+    error.value = extractApiError(cause, locale.value).message
     state.value = "error"
   }
 })
@@ -33,7 +34,7 @@ async function resendEmail() {
     resendResult.value = result.sent === false ? "failed" : "sent"
   } catch (cause: unknown) {
     resendResult.value = "failed"
-    error.value = extractApiError(cause).message
+    error.value = extractApiError(cause, locale.value).message
   } finally {
     resending.value = false
   }
@@ -43,15 +44,15 @@ async function resendEmail() {
 <template>
   <div class="w-full max-w-md rounded-lg border border-border bg-white p-8 text-center">
     <UIcon name="i-lucide-mail-check" class="mx-auto mb-4 size-12 text-primary" />
-    <h1 class="text-xl font-bold">邮箱验证</h1>
-    <p v-if="state === 'waiting' && deliveryFailed" class="mt-3 text-warning-text">注册成功，但验证邮件未能发出。请点击下方按钮重新发送。</p>
-    <p v-else-if="state === 'waiting'" class="mt-3 text-text-secondary">注册成功。验证邮件已发送，请打开邮件中的链接完成验证。</p>
-    <p v-else-if="state === 'pending'" class="mt-3 text-text-secondary">正在验证，请稍候…</p>
-    <p v-else-if="state === 'success'" class="mt-3 text-success-text">邮箱验证成功，现在可以使用全部功能。</p>
-    <p v-else class="mt-3 text-error-text">{{ error || "验证链接无效或已过期" }}</p>
+    <h1 class="text-xl font-bold">{{ t('verify.title') }}</h1>
+    <p v-if="state === 'waiting' && deliveryFailed" class="mt-3 text-warning-text">{{ t('verify.deliveryFailed') }}</p>
+    <p v-else-if="state === 'waiting'" class="mt-3 text-text-secondary">{{ t('verify.sent') }}</p>
+    <p v-else-if="state === 'pending'" class="mt-3 text-text-secondary">{{ t('verify.pending') }}</p>
+    <p v-else-if="state === 'success'" class="mt-3 text-success-text">{{ t('verify.success') }}</p>
+    <p v-else class="mt-3 text-error-text">{{ error || t('verify.invalid') }}</p>
 
-    <p v-if="resendResult === 'sent'" class="mt-3 text-13px text-success-text">验证邮件已重新发送，请查收。</p>
-    <p v-else-if="resendResult === 'failed'" class="mt-3 text-13px text-error-text">验证邮件发送失败，邮件服务可能暂时不可用，请稍后重试。</p>
+    <p v-if="resendResult === 'sent'" class="mt-3 text-13px text-success-text">{{ t('verify.resent') }}</p>
+    <p v-else-if="resendResult === 'failed'" class="mt-3 text-13px text-error-text">{{ t('verify.resendFailed') }}</p>
 
     <div class="mt-6 flex items-center justify-center gap-3">
       <UButton
@@ -59,8 +60,8 @@ async function resendEmail() {
         color="primary"
         :loading="resending"
         @click="resendEmail"
-      >重新发送验证邮件</UButton>
-      <UButton to="/" color="primary" :variant="state === 'waiting' && deliveryFailed ? 'outline' : 'solid'">返回首页</UButton>
+      >{{ t('verify.resend') }}</UButton>
+      <UButton to="/" color="primary" :variant="state === 'waiting' && deliveryFailed ? 'outline' : 'solid'">{{ t('common.backHome') }}</UButton>
     </div>
   </div>
 </template>

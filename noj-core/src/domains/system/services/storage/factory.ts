@@ -15,6 +15,13 @@ import { getSetting } from "../system-settings.ts";
 
 let instance: StorageProvider | null = null;
 
+/** 解析与工厂一致的 provider 类型（DB runtime 设置优先于 env 兜底）。 */
+export function getStorageProviderKind(): "local" | "s3" {
+  return String(getSetting("storage_provider")?.value ?? "local") === "s3"
+    ? "s3"
+    : "local";
+}
+
 /**
  * 获取 StorageProvider 单例
  *
@@ -24,7 +31,7 @@ let instance: StorageProvider | null = null;
 export async function getStorageProvider(): Promise<StorageProvider> {
   if (instance) return instance;
 
-  const provider = String(getSetting("storage_provider")?.value ?? "local");
+  const provider = getStorageProviderKind();
 
   switch (provider) {
     case "s3": {

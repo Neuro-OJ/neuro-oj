@@ -4,6 +4,7 @@ interface Props {
 }
 
 defineProps<Props>()
+const { isEnglish } = useI18n()
 
 const config: Record<string, { icon: string; label: string; class: string }> = {
   solved: {
@@ -22,6 +23,9 @@ const config: Record<string, { icon: string; label: string; class: string }> = {
     class: 'text-text-muted',
   },
 }
+const labels = computed(() => isEnglish.value
+  ? { solved: 'Solved', attempted: 'Attempted', not_started: 'Not started' }
+  : { solved: '已解决', attempted: '尝试过', not_started: '未开始' })
 </script>
 
 <template>
@@ -30,7 +34,7 @@ const config: Record<string, { icon: string; label: string; class: string }> = {
     :class="config[status]?.class"
   >
     <UIcon :name="config[status]?.icon" class="size-3.5" aria-hidden="true" />
-    <span v-if="status !== 'not_started'">{{ config[status]?.label }}</span>
-    <span v-else class="sr-only">{{ config[status]?.label }}</span>
+    <span v-if="status !== 'not_started'">{{ labels[status] ?? config[status]?.label }}</span>
+    <span v-else class="sr-only">{{ labels[status] ?? config[status]?.label }}</span>
   </span>
 </template>

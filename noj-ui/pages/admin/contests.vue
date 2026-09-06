@@ -45,7 +45,7 @@ const lastRefresh = ref<Date | null>(null)
 
 const columns: TableColumn<Contest>[] = [
   { accessorKey: 'title', header: '竞赛' },
-  { accessorKey: 'type', header: '赛制', cell: (info) => typeLabels[info.getValue() as Contest['type']] },
+  { accessorKey: 'type', header: '赛制', cell: (info) => typeLabels.value[info.getValue() as Contest['type']] },
   { accessorKey: 'status', header: '状态' },
   { accessorKey: 'start_time', header: '开始时间', cell: (info) => formatDateTime(info.getValue() as string) },
   { accessorKey: 'participant_count', header: '参赛者' },

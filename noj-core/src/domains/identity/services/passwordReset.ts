@@ -8,6 +8,7 @@ import { BadRequestError } from "./../../../shared/base/errors.ts";
 import { logger } from "./../../../shared/base/logging.ts";
 import { logAuthEvent } from "../../system/index.ts";
 import { validatePasswordStrength } from "./auth.ts";
+import { isEmailSuppressed } from "../../system/services/email-delivery/service.ts";
 
 /** 密码重置令牌有效期（分钟）。OWASP 2025+ 建议 ≤ 15 分钟。 */
 const TOKEN_TTL_MINUTES = 15;
@@ -79,6 +80,15 @@ export async function requestReset(
   }
 
   const userId = userRows[0].id;
+  if (await isEmailSuppressed(email)) {
+    await logAuthEvent(
+      userId,
+      clientIp ?? "unknown",
+      "auth.forgot_password_request",
+      { email_exists: true },
+    );
+    return;
+  }
 
   // 生成 token + hash
   const plainToken = generateResetToken();

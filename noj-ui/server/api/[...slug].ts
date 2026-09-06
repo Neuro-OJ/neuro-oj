@@ -1,4 +1,5 @@
 import { parseAuthSession } from '../utils/auth-session.ts';
+import { withSecurityHeaders } from '../utils/security-headers.ts';
 
 const FORWARDABLE_HEADERS = new Set([
   'retry-after',
@@ -306,11 +307,18 @@ export default defineEventHandler(async (event) => {
   // SSE 长连接在 Deno 运行时下不能走 h3 proxyRequest（Node res 兼容层不会及时
   // flush 响应头），这里单独用 Web Stream Response 透传。
   if (isSseRequest(event)) {
-    return proxySseRequest(event, target, token, clientNetworkHeaders);
+    const response = await proxySseRequest(
+      event,
+      target,
+      token,
+      clientNetworkHeaders,
+    );
+    return withSecurityHeaders(response);
   }
 
   try {
-    return await proxyRequest(event, target);
+    const response = await proxyRequest(event, target);
+    return withSecurityHeaders(response);
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));
     if (import.meta.dev) {
