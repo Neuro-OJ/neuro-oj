@@ -229,6 +229,17 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     category: "email",
     scope: "bootstrap",
   },
+  {
+    key: "email_webhook_secret",
+    type: "string",
+    default: "",
+    description:
+      "内部 fixture 邮件回调签名密钥；真实 Provider 需按官方协议单独适配",
+    is_secret: true,
+    envKey: "EMAIL_WEBHOOK_SECRET",
+    category: "email",
+    scope: "bootstrap",
+  },
 
   // ── rate_limit ────────────────────────────────────────────
   {

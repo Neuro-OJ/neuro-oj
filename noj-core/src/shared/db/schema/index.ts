@@ -7,3 +7,4 @@ export * from "./submission.ts";
 export * from "./messaging.ts";
 export * from "./community.ts";
 export * from "./content-review.ts";
+export * from "./email.ts";

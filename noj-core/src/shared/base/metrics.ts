@@ -280,6 +280,31 @@ metrics.define(
   "Redis 健康检查失败总数",
   "counter",
 );
+metrics.define(
+  "noj_email_delivery_events_total",
+  "邮件送达事件总数",
+  "counter",
+);
+metrics.define(
+  "noj_email_send_attempts_total",
+  "邮件发送尝试总数",
+  "counter",
+);
+metrics.define(
+  "noj_email_delivery_events_duplicate_total",
+  "重复邮件送达事件总数",
+  "counter",
+);
+metrics.define(
+  "noj_email_temporary_failures_total",
+  "邮件临时失败总数",
+  "counter",
+);
+metrics.define(
+  "noj_email_suppressions_total",
+  "邮件永久抑制总数",
+  "counter",
+);
 
 /**
  * 将请求路径归一化为低基数路由。
