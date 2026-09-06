@@ -46,7 +46,17 @@ Status: implemented
      超出 TS 递归上限 TS2321）。
 5. 新增 `noj-tests/e2e/browser/ui_flows.test.ts`（task `test:browser`，
    guard `NOJ_RUN_BROWSER_E2E=1`）：Playwright 驱动 4 条关键路径，失败自动
-   落盘 trace + 截图到 `test-results/ui-browser/`。
+   落盘 trace + 截图到 `test-results/ui-browser/`。CI 实测确立的关键决策：
+   - 代码注入不用键盘/剪贴板：Monaco auto-indent 会破坏 insertText 的缩进
+     （IndentationError → solution host 注册不到 solve），headless 下
+     navigator.clipboard 被权限拒绝，合成 paste 事件在 Chromium 中无法携带
+     clipboardData；改用编辑器 localStorage 草稿（noj:draft:<problemId>）
+     在 addInitScript 预置代码，恢复路径与真实用户一致。
+   - 提交流程的用户须经 API 注册并完成邮箱验证（#441 邮件就绪门槛会对
+     未验证用户 POST /submissions 返回 403）；UI 注册跳转仍由测试 1 覆盖。
+   - P1001 满分为 10 分（evaluate.py：内容 8 + 格式 2），断言按此编写。
+   - helper 的 isJudgeAvailable 从单次 2s 探测改为 30s 轮询（评测积压时
+     单次探测会误报不可用）；judge 不可用时提交类用例优雅跳过。
 6. CI：`ci.yml` ui-check 增加「全页面类型检查」步骤；`e2e.yml` 移除
    `noj-ui/**` 忽略并在 API E2E 之后增加「UI 浏览器关键流程门禁」步骤
    （构建 noj-ui → 启动 Nitro server → 缓存并安装 Playwright Chromium →
