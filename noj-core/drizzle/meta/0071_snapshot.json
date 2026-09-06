@@ -1,6 +1,6 @@
 {
-  "id": "90d6ab21-c95e-46ae-b037-07a16477005e",
-  "prevId": "09455d53-f93d-45c0-88ac-b28246c2a9ba",
+  "id": "2242a0e4-64f7-4b05-9f79-85edea5d68e1",
+  "prevId": "90d6ab21-c95e-46ae-b037-07a16477005e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2887,6 +2887,26 @@
           "primaryKey": false,
           "notNull": true
         },
+        "ranking_visibility": {
+          "name": "ranking_visibility",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'public'"
+        },
+        "freeze_start_time": {
+          "name": "freeze_start_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "freeze_duration_seconds": {
+          "name": "freeze_duration_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "type": {
           "name": "type",
           "type": "text",
@@ -3027,6 +3047,14 @@
         "contests_time_check": {
           "name": "contests_time_check",
           "value": "\"contests\".\"end_time\" > \"contests\".\"start_time\""
+        },
+        "contests_ranking_visibility_check": {
+          "name": "contests_ranking_visibility_check",
+          "value": "\"contests\".\"ranking_visibility\" IN ('public', 'participants', 'hidden')"
+        },
+        "contests_freeze_duration_check": {
+          "name": "contests_freeze_duration_check",
+          "value": "\"contests\".\"freeze_duration_seconds\" >= 0"
         },
         "contests_config_check": {
           "name": "contests_config_check",
