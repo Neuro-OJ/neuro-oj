@@ -656,14 +656,14 @@ export function applySubmissionProjection<T extends Record<string, unknown>>(
 // - 无 contest → 原样（public 题提交公开，现状）
 ```
 
-- [ ] **Step 1: 写失败测试**：六档位矩阵（含 hidden/visible 用例剥离、赛后恢复、他人仅存在级）。
-- [ ] **Step 2: 跑测试确认失败**
-- [ ] **Step 3: 实现**
+- [x] **Step 1: 写失败测试**：六档位矩阵（含 hidden/visible 用例剥离、赛后恢复、他人仅存在级）。
+- [x] **Step 2: 跑测试确认失败**
+- [x] **Step 3: 实现**
 
 纯函数：结构化深拷贝后按档位删除字段。visible/hidden 依据 `details.cases[].hidden` 标记；无标记一律按 hidden 剥除（fail-safe）。
 
-- [ ] **Step 4: 跑测试确认通过**
-- [ ] **Step 5: 提交**
+- [x] **Step 4: 跑测试确认通过**
+- [x] **Step 5: 提交**
 
 ```bash
 jj describe -m "feat(core): 统一提交结果投影函数（F-02/F-15 基础）"
