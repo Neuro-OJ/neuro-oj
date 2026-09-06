@@ -125,13 +125,18 @@ async function logoutViaUI(): Promise<void> {
   await p.locator('a[href="/login"]').first().waitFor({ timeout: 15_000 });
 }
 
-/** 在编辑器中输入代码并提交评测（Monaco：点击聚焦后整段插入文本） */
+/** 在编辑器中输入代码并提交评测（全选后剪贴板粘贴，替换 starter 模板） */
 async function submitCodeViaUI(code: string): Promise<void> {
   const p = await goto("/editor/P1001");
   // 编辑器页需要登录态；未登录会被 auth 中间件重定向
   await p.locator(".monaco-editor").first().waitFor({ timeout: 30_000 });
   await p.locator(".monaco-editor").first().click();
-  await p.keyboard.insertText(code);
+  // 不能用 keyboard.insertText：模拟逐键输入会触发 Monaco auto-indent，
+  // 破坏代码缩进（IndentationError → solution host 注册不到 solve 函数）。
+  // 剪贴板粘贴按原文插入；Ctrl/Cmd+A 全选替换掉 starter 模板。
+  await p.evaluate((c) => navigator.clipboard.writeText(c), code);
+  await p.keyboard.press("ControlOrMeta+A");
+  await p.keyboard.press("ControlOrMeta+V");
   // 等待 Monaco → Vue 的 code 同步防抖
   await p.waitForTimeout(500);
   await p.getByRole("button", { name: "提交评测", exact: true }).click();
