@@ -27,19 +27,73 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+/** 构造一个资产就绪的稳定 Release 条目。 */
+function readyRelease(tag: string): Record<string, unknown> {
+  return {
+    tag_name: tag,
+    draft: false,
+    prerelease: false,
+    assets: [
+      { name: "noj-cli-linux-amd64" },
+      { name: "noj-cli-linux-amd64.sha256" },
+    ],
+  };
+}
+
 Deno.test("resolveLatestVersion: 去掉前导 v 并返回 tag", async () => {
   try {
     const calls: string[] = [];
     mockFetch((url) => {
       calls.push(String(url));
-      return jsonResponse({ tag_name: "v0.2.0" });
+      return jsonResponse([readyRelease("v0.2.0")]);
     });
     const version = await resolveLatestVersion();
     assertEquals(version, "0.2.0");
     assertEquals(calls.length, 1);
     assertEquals(
       calls[0],
-      "https://api.github.com/repos/Neuro-OJ/neuro-oj/releases/latest",
+      "https://api.github.com/repos/Neuro-OJ/neuro-oj/releases?per_page=100",
+    );
+  } finally {
+    restoreFetch();
+  }
+});
+
+Deno.test("resolveLatestVersion: 跳过预发布、草稿和缺少 CLI 资产的版本", async () => {
+  try {
+    mockFetch(() =>
+      jsonResponse([
+        { tag_name: "v0.3.0-rc.1", draft: false, prerelease: true, assets: [] },
+        { tag_name: "v0.3.0", draft: true, prerelease: false, assets: [] },
+        { tag_name: "v0.2.5", draft: false, prerelease: false, assets: [] },
+        {
+          tag_name: "v0.2.4",
+          draft: false,
+          prerelease: false,
+          assets: [{ name: "noj-cli-linux-amd64" }],
+        },
+        readyRelease("v0.2.3"),
+      ])
+    );
+    const version = await resolveLatestVersion();
+    assertEquals(version, "0.2.3");
+  } finally {
+    restoreFetch();
+  }
+});
+
+Deno.test("resolveLatestVersion: 没有资产就绪的正式 Release 时抛错", async () => {
+  try {
+    mockFetch(() =>
+      jsonResponse([
+        { tag_name: "v0.2.0", draft: false, prerelease: false, assets: [] },
+        { tag_name: "v0.3.0-rc.1", draft: false, prerelease: true, assets: [] },
+      ])
+    );
+    await assertRejects(
+      () => resolveLatestVersion(),
+      Error,
+      "没有发现资产就绪的正式 Release",
     );
   } finally {
     restoreFetch();
@@ -59,13 +113,13 @@ Deno.test("resolveLatestVersion: HTTP 非 2xx 抛错", async () => {
   }
 });
 
-Deno.test("resolveLatestVersion: 缺少 tag_name 抛错", async () => {
+Deno.test("resolveLatestVersion: 响应不是 Release 列表时抛错", async () => {
   try {
-    mockFetch(() => jsonResponse({}));
+    mockFetch(() => jsonResponse({ tag_name: "v0.2.0" }));
     await assertRejects(
       () => resolveLatestVersion(),
       Error,
-      "缺少 tag_name",
+      "响应不是 Release 列表",
     );
   } finally {
     restoreFetch();

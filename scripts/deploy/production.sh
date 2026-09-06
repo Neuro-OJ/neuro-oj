@@ -260,31 +260,62 @@ latest_release_version() {
   else
     [[ "$repository" =~ ^https://github\.com/([^/]+/[^/]+)$ ]] ||
       fail "无法自动获取最新版本；请使用 NOJ_UPDATE_API_URL 或固定版本升级"
-    metadata_url="https://api.github.com/repos/${BASH_REMATCH[1]}/releases/latest"
+    # 与 install.sh 保持一致：按 Release 列表过滤，而不是 /releases/latest，
+    # 避免升级选中"已发布但镜像 / CLI 资产尚未就绪"的版本（issue #431），
+    # 保证安装与升级使用同一版本集合。
+    metadata_url="https://api.github.com/repos/${BASH_REMATCH[1]}/releases?per_page=100"
   fi
   [[ "$metadata_url" == https://* ]] ||
     fail "最新版本 API 地址必须使用 HTTPS"
 
-  printf '正在获取最新稳定 Release\n' >&2
+  printf '正在获取可用 Release\n' >&2
   if command -v curl >/dev/null 2>&1; then
     metadata="$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
       --retry 3 --connect-timeout 15 --header 'Accept: application/vnd.github+json' \
       --header 'User-Agent: neuro-oj-updater' "$metadata_url")" ||
-      fail "无法获取最新稳定 Release，请检查网络，或使用固定版本重试"
+      fail "无法获取 Release 列表，请检查网络，或使用固定版本升级"
   elif command -v wget >/dev/null 2>&1; then
     metadata="$(wget --https-only --tries=3 --timeout=20 --quiet \
       --header='Accept: application/vnd.github+json' --header='User-Agent: neuro-oj-updater' \
       -O - "$metadata_url")" ||
-      fail "无法获取最新稳定 Release，请检查网络，或使用固定版本重试"
+      fail "无法获取 Release 列表，请检查网络，或使用固定版本升级"
   else
     fail "需要 curl 或 wget 才能查询最新稳定 Release"
   fi
 
-  tag="$(json_field tag_name <<<"$metadata")"
-  draft="$(json_field draft <<<"$metadata")"
-  prerelease="$(json_field prerelease <<<"$metadata")"
-  [[ -n "$tag" && "$draft" == false && "$prerelease" == false ]] ||
-    fail "GitHub 返回的最新 Release 无效或仍是预发布版本"
+  if [[ "$metadata" == \[* ]]; then
+    # Release 列表：只选择非 draft、非 prerelease 且 CLI 资产（二进制与校验
+    # 文件）就绪的版本，过滤规则与 install.sh 的 resolve_latest_ref 一致。
+    tag="$(awk '
+      {
+        text = text $0 "\n"
+      }
+      END {
+        n = split(text, chunks, /"tag_name"[[:space:]]*:[[:space:]]*"/)
+        for (i = 2; i <= n; i++) {
+          chunk = chunks[i]
+          tag = chunk
+          sub(/".*/, "", tag)
+          if (tag !~ /^v?[0-9]+\.[0-9]+\.[0-9]+/) continue
+          if (chunk ~ /"draft"[[:space:]]*:[[:space:]]*true/) continue
+          if (chunk ~ /"prerelease"[[:space:]]*:[[:space:]]*true/) continue
+          if (chunk !~ /"name"[[:space:]]*:[[:space:]]*"noj-cli-linux-amd64"/) continue
+          if (chunk !~ /"name"[[:space:]]*:[[:space:]]*"noj-cli-linux-amd64\.sha256"/) continue
+          print tag
+          exit
+        }
+      }
+    ' <<<"$metadata")"
+    [[ -n "$tag" ]] ||
+      fail "没有发现资产就绪的正式 Release（需要包含 noj-cli 二进制与校验文件），请使用固定版本升级"
+  else
+    # 单个 Release 对象（自定义 API 地址）：仅校验稳定版本标记。
+    tag="$(json_field tag_name <<<"$metadata")"
+    draft="$(json_field draft <<<"$metadata")"
+    prerelease="$(json_field prerelease <<<"$metadata")"
+    [[ -n "$tag" && "$draft" == false && "$prerelease" == false ]] ||
+      fail "GitHub 返回的最新 Release 无效或仍是预发布版本"
+  fi
   validate_release_tag "$tag"
   printf '%s\n' "$tag"
 }

@@ -9,20 +9,44 @@ const API_BASE = `https://api.github.com/repos/${REPO}`;
 /** 当前内置默认版本（网络不可用时的回退值）。 */
 export const DEFAULT_NOJ_SERVER_VERSION = "0.1.0";
 
-/** 解析 GitHub 最新 Release 的精确版本号（去掉前导 v）。 */
+/** GitHub Release 列表条目中本模块需要的字段。 */
+interface ReleaseSummary {
+  tag_name?: string;
+  draft?: boolean;
+  prerelease?: boolean;
+  assets?: { name?: string }[];
+}
+
+/**
+ * 解析 GitHub 最新稳定 Release 的精确版本号（去掉前导 v）。
+ *
+ * 与 scripts/deploy/install.sh 的过滤规则一致：只选择非 draft、非 prerelease
+ * 且资产中已包含 noj-cli 二进制与校验文件的 Release（issue #431），
+ * 避免选中"已发布但镜像 / CLI 资产尚未就绪"的版本。
+ */
 export async function resolveLatestVersion(): Promise<string> {
-  const res = await fetch(`${API_BASE}/releases/latest`, {
+  const res = await fetch(`${API_BASE}/releases?per_page=100`, {
     headers: { Accept: "application/vnd.github+json" },
   });
   if (!res.ok) {
     throw new Error(`解析最新版本失败: GitHub API ${res.status}`);
   }
-  const data = await res.json() as { tag_name?: string };
-  const tag = data.tag_name;
-  if (!tag) {
-    throw new Error("解析最新版本失败: 响应缺少 tag_name");
+  const releases = await res.json() as ReleaseSummary[];
+  if (!Array.isArray(releases)) {
+    throw new Error("解析最新版本失败: 响应不是 Release 列表");
   }
-  return tag.replace(/^v/, "");
+  for (const release of releases) {
+    const tag = release.tag_name ?? "";
+    if (!/^v?[0-9]+\.[0-9]+\.[0-9]+$/.test(tag)) continue;
+    if (release.draft || release.prerelease) continue;
+    const names = new Set((release.assets ?? []).map((asset) => asset.name));
+    if (!names.has("noj-cli-linux-amd64")) continue;
+    if (!names.has("noj-cli-linux-amd64.sha256")) continue;
+    return tag.replace(/^v/, "");
+  }
+  throw new Error(
+    "没有发现资产就绪的正式 Release（需要包含 noj-cli 二进制与校验文件），请显式指定版本",
+  );
 }
 
 /** 确保 install_dir/bin/noj-server 存在且版本匹配；缺失时自动下载并校验。 */
