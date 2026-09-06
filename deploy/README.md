@@ -10,6 +10,27 @@
 
 容器内的 Nginx **不处理 TLS**。TLS 终止由宿主机 Nginx / Caddy / 云负载均衡等外部边缘完成，再将 HTTP 流量转发到本容器的 80 端口。
 
+## 安全响应头职责
+
+| 响应头 | core 直连 | Nitro 直连 | 容器 Nginx | TLS 终止边缘 |
+| --- | --- | --- | --- | --- |
+| `X-Content-Type-Options` | 基础头 | 基础头 | 统一输出 | 可复用 |
+| `X-Frame-Options` | 基础头 | 基础头 | 统一输出 | 可复用 |
+| `Referrer-Policy` / `Permissions-Policy` | 基础头 | 基础头 | 统一输出 | 可复用 |
+| 强制 `Content-Security-Policy` | — | 页面直连输出 | 统一输出 | 可复用 |
+| `Content-Security-Policy-Report-Only` | — | 页面直连输出 | 统一输出 | 可复用 |
+| `Strict-Transport-Security` | 不设置 | 不设置 | 不设置 | **仅此处设置** |
+
+应用会在直连部署中提供基础头和页面 CSP；经本配置的容器 Nginx 转发时会隐藏上游同名头，再由 Nginx 输出一份，避免重复 CSP 被浏览器合并。强制 CSP 保留现有兼容策略，Report-Only 使用更窄策略并上报到同源 `/api/csp-report`。报告端点仅接受小体积 JSON，不存储报告内容。
+
+HSTS 必须由真正终止 TLS 的外部边缘设置，且仅对 HTTPS 响应发送。例如宿主机 Nginx 的 HTTPS `server` 块可使用：
+
+```nginx
+add_header Strict-Transport-Security "max-age=31536000" always;
+```
+
+不要在容器 HTTP Nginx、noj-core 或 Nitro 中添加 HSTS；否则直连 HTTP 或错误转发场景会把不安全来源错误标记为仅 HTTPS。
+
 例如使用宿主机 Nginx 时：
 
 ```nginx

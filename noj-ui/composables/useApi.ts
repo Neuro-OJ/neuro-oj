@@ -67,7 +67,7 @@ export function useApi() {
     try {
       // SSR 使用 useRequestFetch 转发 Cookie/Headers；客户端使用普通 $fetch
       const fetcher = import.meta.server && serverFetch ? serverFetch : $fetch;
-      return await fetcher<T>(url, { method, ...fetchOptions });
+      return await fetcher<T>(url, { method, ...fetchOptions }) as T;
     } catch (err) {
       const info = extractApiError(err);
       if (import.meta.client && import.meta.dev) {
