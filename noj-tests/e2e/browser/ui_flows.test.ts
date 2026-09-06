@@ -237,7 +237,7 @@ Deno.test("[ui/browser] 2/4 登录 → 退出", async () => {
   }
 });
 
-Deno.test("[ui/browser] 3/4 代码提交 → 评测结果（满分）", async () => {
+Deno.test("[ui/browser] 3/4 代码提交 → 评测结果（满分 10 分）", async () => {
   if (!BROWSER_E2E) return;
   let failed = true;
   try {
@@ -251,8 +251,9 @@ Deno.test("[ui/browser] 3/4 代码提交 → 评测结果（满分）", async ()
     await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
     await submitCodeViaUI(CODE_SAMPLES.accepted);
     const score = await waitForNewVerdict(null);
-    if (!score.includes("100")) {
-      throw new Error(`期望满分（100 分），实际「${score}」`);
+    // P1001 满分 10 分（evaluate.py：内容 8 + 格式 2），UI formatScore 显示「10 分」
+    if (score !== "10 分") {
+      throw new Error(`期望满分「10 分」，实际「${score}」`);
     }
     failed = false;
   } finally {
@@ -260,7 +261,7 @@ Deno.test("[ui/browser] 3/4 代码提交 → 评测结果（满分）", async ()
   }
 });
 
-Deno.test("[ui/browser] 4/4 核心失败反馈（错误答案非满分）", async () => {
+Deno.test("[ui/browser] 4/4 核心失败反馈（错误答案非满分 10 分）", async () => {
   if (!BROWSER_E2E) return;
   let failed = true;
   try {
@@ -277,7 +278,7 @@ Deno.test("[ui/browser] 4/4 核心失败反馈（错误答案非满分）", asyn
     const prev = await currentScoreText();
     await submitCodeViaUI(CODE_SAMPLES.wrongAnswer);
     const score = await waitForNewVerdict(prev);
-    if (score.includes("100")) {
+    if (score === "10 分") {
       throw new Error(`错误答案不应满分，实际「${score}」`);
     }
     failed = false;
