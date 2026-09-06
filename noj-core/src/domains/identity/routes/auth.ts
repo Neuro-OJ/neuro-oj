@@ -11,7 +11,6 @@ import {
 import {
   changePassword,
   getUserProfile,
-  hasRealUser,
   loginUser,
   MIN_PASSWORD_LENGTH,
   registerUser,
@@ -101,7 +100,7 @@ const auth = new Hono<AuthEnv>();
  *
  * issue #426：邮件未配置（EMAIL_PROVIDER=disabled 或必需配置缺失）时，
  * 未验证邮箱的用户无法完成验证也就无法使用提交/社区等主要功能。
- * 此时禁止公开注册，仅保留站点引导阶段的首次注册（成为管理员）。
+ * 此时禁止全部公开注册，首个管理员由部署者通过本机 CLI 初始化。
  */
 auth.post("/register", async (c) => {
   // PR-2 死开关：allow_register
@@ -110,9 +109,9 @@ auth.post("/register", async (c) => {
     throw new ForbiddenError("注册已关闭", "REGISTER_DISABLED");
   }
 
-  // issue #426 死开关：邮件未就绪时不接受公开注册（首个引导用户除外）
+  // issue #426 死开关：邮件未就绪时不接受公开注册
   const emailStatus = getEmailConfigStatus();
-  if (!emailStatus.configured && (await hasRealUser())) {
+  if (!emailStatus.configured) {
     throw new ForbiddenError(
       "邮件服务未配置，暂不接受注册；请稍后再试或联系管理员",
       "REGISTER_EMAIL_UNCONFIGURED",
@@ -177,13 +176,13 @@ auth.post("/register", async (c) => {
  *
  * 供注册页在渲染前感知受限状态，避免用户填完表单才被 403：
  * - register_disabled：管理后台关闭了 allow_register；
- * - email_unconfigured：邮件服务未就绪且站点已完成引导（非首次注册）。
+ * - email_unconfigured：邮件服务未就绪。
  */
-auth.get("/register-status", async (c) => {
+auth.get("/register-status", (c) => {
   const allowRegister = getSetting("allow_register")?.value !== false;
   const reason = !allowRegister
     ? "register_disabled"
-    : !getEmailConfigStatus().configured && (await hasRealUser())
+    : !getEmailConfigStatus().configured
     ? "email_unconfigured"
     : null;
   return c.json({ data: { allowed: reason === null, reason } });

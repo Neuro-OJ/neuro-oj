@@ -12,7 +12,10 @@ import { startSseEventRetentionTask } from "./shared/sse/sse-events.ts";
 import { snapshotEnv } from "./domains/system/index.ts";
 import { validateRegistry } from "./shared/config/settings-registry.ts";
 import { createReviewConsumer } from "./domains/content-review/index.ts";
-import { ensureRootUser } from "./domains/identity/index.ts";
+import {
+  ensureRootUser,
+  sealExistingSiteAdminInitialization,
+} from "./domains/identity/index.ts";
 import { ensureRbacSeeds } from "./domains/system/index.ts";
 import { getStorageProvider } from "./domains/system/index.ts";
 import {
@@ -139,6 +142,8 @@ async function main() {
 
   // 初始化 RBAC 种子数据（幂等）
   await fatalStep("RBAC 种子数据初始化", () => ensureRbacSeeds());
+
+  await fatalStep("管理员初始化状态检查", sealExistingSiteAdminInitialization);
 
   // 校验系统设置注册表（issue #99）
   // 启动期检查：key 唯一、type 合法。开发期就发现问题。

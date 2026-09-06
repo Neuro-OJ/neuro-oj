@@ -438,7 +438,7 @@ configure_env_interactive() {
 “网站地址”是域名或服务器 IP；脚本会根据 HTTPS 选择自动生成浏览器访问地址。
 评测服务连接位置一般保持默认即可；邮件服务可以选择“暂不配置”，以后再补充。
 如果暂时没有独立的评测 Docker 服务，可以选择跳过 Judge，网站和题库仍可先部署。
-安装完成后请立即打开网站注册第一个用户；第一个注册用户会自动获得管理员权限。
+新站点请在开放注册前通过服务器本机 CLI 执行 bootstrap first-admin 初始化管理员。
 EOF
 
   current_value="$(config_prompt_value NOJ_VERSION "$reset_existing")"
@@ -997,8 +997,8 @@ install() {
   ok "生产部署完成"
   cat <<'EOF'
 
-下一步：打开网站并注册第一个用户。新站点的第一个注册用户会自动获得管理员权限；
-请立即完成注册，避免其他人抢先注册。已有站点的用户权限不会因升级改变。
+下一步：新站点请在服务器交互终端执行 bootstrap first-admin 初始化管理员，
+具体命令见部署文档的“服务端 CLI 初始化”。公开注册仅获得普通权限；已有站点无需初始化。
 EOF
   if judge_enabled; then
     ok "评测服务 Judge 已安装并启动"

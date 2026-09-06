@@ -42,7 +42,7 @@ Deno.test({
     });
     assertEquals(result.user.username, TEST_USER.username);
     assertEquals(result.user.email, TEST_USER.email);
-    assertEquals(result.user.is_admin, true);
+    assertEquals(result.user.is_admin, false);
     assertEquals(typeof result.user.id, "string");
     assertEquals("password_hash" in result.user, false);
   },
@@ -251,7 +251,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "auth service: 首个真实用户成为管理员，后续用户保持普通权限",
+  name: "auth service: 首个和后续公开注册用户均保持普通权限",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -268,13 +268,13 @@ Deno.test({
       password: "SecondUser-2026-Xy9",
     });
 
-    assertEquals(first.is_admin, true);
+    assertEquals(first.is_admin, false);
     assertEquals(second.is_admin, false);
   },
 });
 
 Deno.test({
-  name: "auth service: 并发首次注册至多一个管理员",
+  name: "auth service: 并发首次公开注册不产生管理员",
   ignore: skip,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -294,7 +294,7 @@ Deno.test({
       }),
     ]);
 
-    assertEquals(results.filter((user) => user.is_admin).length, 1);
-    assertEquals(results.filter((user) => !user.is_admin).length, 1);
+    assertEquals(results.filter((user) => user.is_admin).length, 0);
+    assertEquals(results.filter((user) => !user.is_admin).length, 2);
   },
 });

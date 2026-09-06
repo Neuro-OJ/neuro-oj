@@ -2,6 +2,8 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { oauthAccounts, users } from "../../../../shared/db/schema.ts";
+import { ADMIN_INITIALIZATION_KEY } from "../../../../shared/security/admin-initialization.ts";
+import { systemSettings } from "../../../../shared/db/schema.ts";
 import { loginUser } from "../../index.ts";
 import { setPassword } from "../../index.ts";
 import {
@@ -40,6 +42,11 @@ Deno.test({
       }, "login");
 
       assertEquals(result.user.has_local_password, false);
+      assertEquals(result.user.is_admin, false);
+      const closed = await getDb().select().from(systemSettings).where(
+        eq(systemSettings.key, ADMIN_INITIALIZATION_KEY),
+      );
+      assertEquals(closed.length, 1);
       const [row] = await getDb().select().from(users).where(
         eq(users.id, result.user.id),
       );

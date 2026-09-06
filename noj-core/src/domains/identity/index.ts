@@ -20,3 +20,8 @@ export * from "./middleware/login-rate-limit.ts";
 export * from "./middleware/banlist.ts";
 export * from "./types/auth.ts";
 export * from "./types/permissions.ts";
+
+export {
+  initializeFirstAdmin,
+  sealExistingSiteAdminInitialization,
+} from "./services/auth/admin-initialization.ts";

@@ -18,7 +18,12 @@ import { Command } from "@cliffy/command";
 import { HelpCommand } from "@cliffy/command/help";
 import { CompletionsCommand } from "@cliffy/command/completions";
 import { runMigrations } from "./../src/shared/db/migrate.ts";
-import { ensureRootUser } from "../src/domains/identity/index.ts";
+import { Secret } from "jsr:@cliffy/prompt@^1.2.1";
+import {
+  ensureRootUser,
+  initializeFirstAdmin,
+  sealExistingSiteAdminInitialization,
+} from "../src/domains/identity/index.ts";
 import { ensureRbacSeeds } from "../src/domains/system/index.ts";
 import {
   ensureAdminFromEnv,
@@ -154,6 +159,7 @@ async function runInitSystem(): Promise<void> {
   console.log("初始化系统基础数据...");
   await ensureRootUser();
   await ensureRbacSeeds();
+  await sealExistingSiteAdminInitialization();
   console.log("初始化评测镜像白名单...");
   await seedJudgeImages();
   console.log("初始化种子标签...");
@@ -217,7 +223,22 @@ const initCmd = new Command()
 
 const bootstrapCmd = new Command()
   .description("管理员引导")
-  .command("admin", "创建/引导管理员（env 或 CLI 参数）")
+  .command("first-admin", "仅空站可执行的一次性管理员初始化（服务器本机授权）")
+  .option("--username <username:string>", "管理员用户名", { required: true })
+  .option("--email <email:string>", "管理员邮箱", { required: true })
+  .action(async (opts: { username: string; email: string }) => {
+    if (!Deno.stdin.isTerminal()) {
+      throw new Error("请在交互终端执行首次初始化，以隐藏输入管理员密码");
+    }
+    const password = await Secret.prompt(
+      "管理员密码（至少 8 位，含大小写字母和数字）",
+    );
+    const confirmation = await Secret.prompt("再次输入密码");
+    if (password !== confirmation) throw new Error("两次密码不一致");
+    await initializeFirstAdmin({ ...opts, password });
+    console.log("首个管理员已创建，初始化入口已永久关闭；首次登录须修改密码。");
+  })
+  .command("admin", "维护/开发用管理员引导（可提升已有用户，不用于首次初始化）")
   .option("--email <email:string>", "管理员邮箱")
   .option("--password <password:string>", "管理员密码")
   .action((opts: { email?: string; password?: string }) => {

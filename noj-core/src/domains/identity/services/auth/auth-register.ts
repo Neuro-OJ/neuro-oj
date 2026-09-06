@@ -1,6 +1,11 @@
-import { eq, ne, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
-import { roles, userRoles, users } from "./../../../../shared/db/schema.ts";
+import {
+  roles,
+  systemSettings,
+  userRoles,
+  users,
+} from "./../../../../shared/db/schema.ts";
 import { hashPassword } from "./../security/password.ts";
 import { getEmailConfigStatus, logAuthEvent } from "../../../system/index.ts";
 import {
@@ -9,15 +14,7 @@ import {
   ForbiddenError,
 } from "./../../../../shared/base/errors.ts";
 import type { RegisterInput, UserResponse } from "./../../types/auth.ts";
-import { ROOT_USER_ID } from "./../../../../shared/base/constants.ts";
-
-/**
- * 注册首个真实用户时使用的事务级锁键。
- *
- * 只有在当前数据库还没有真实用户时才会尝试获取该锁；拿到锁后会再次
- * 检查用户数量，避免两个并发注册请求同时成为管理员。
- */
-const FIRST_USER_ADMIN_LOCK_KEY = 20260829;
+import { ADMIN_INITIALIZATION_KEY } from "../../../../shared/security/admin-initialization.ts";
 
 /**
  * 密码强度校验最小长度。
@@ -128,21 +125,6 @@ function conflictFromUniqueViolation(err: unknown): ConflictError | null {
 }
 
 /**
- * 是否已存在真实用户（root 系统用户除外）。
- *
- * issue #426：邮件未配置时公开注册被禁止，但站点引导阶段仍需允许
- * 注册第一个用户（自动成为管理员），否则全新安装无法完成初始化。
- */
-export async function hasRealUser(): Promise<boolean> {
-  const rows = await getDb()
-    .select({ id: users.id })
-    .from(users)
-    .where(ne(users.id, ROOT_USER_ID))
-    .limit(1);
-  return rows.length > 0;
-}
-
-/**
  * 注册新用户。
  * 检查用户名和邮箱的唯一性，密码使用 bcrypt 哈希后存储。
  *
@@ -163,7 +145,6 @@ export async function registerUser(
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  let isFirstRealUser = false;
 
   await db.transaction(async (tx) => {
     // 检查用户名是否已存在
@@ -188,29 +169,15 @@ export async function registerUser(
       throw new ConflictError("邮箱已被注册");
     }
 
-    // 快速路径：已有真实用户时不必获取全局注册锁。
-    let realUsers = await tx
-      .select({ id: users.id })
-      .from(users)
-      .where(ne(users.id, ROOT_USER_ID))
-      .limit(1);
+    // 与本机初始化争用同一持久标记，公开注册先完成时永久关闭初始化。
+    await tx.insert(systemSettings).values({
+      key: ADMIN_INITIALIZATION_KEY,
+      value: "true",
+      updated_at: now,
+    }).onConflictDoNothing();
 
-    if (realUsers.length === 0) {
-      // 慢速路径：锁住“首个用户”判断，再次查询以处理并发注册。
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(${FIRST_USER_ADMIN_LOCK_KEY})`,
-      );
-      realUsers = await tx
-        .select({ id: users.id })
-        .from(users)
-        .where(ne(users.id, ROOT_USER_ID))
-        .limit(1);
-      isFirstRealUser = realUsers.length === 0;
-    }
-
-    // 路由预检可能被并发请求同时通过；必须以事务内重新确认的首个用户
-    // 身份决定引导例外，避免第二个请求创建无法验证邮箱的普通账号。
-    if (!isFirstRealUser && !getEmailConfigStatus().configured) {
+    // 公开注册没有管理员引导例外，邮件必须就绪。
+    if (!getEmailConfigStatus().configured) {
       throw new ForbiddenError(
         "邮件服务未配置，暂不接受注册；请稍后再试或联系管理员",
         "REGISTER_EMAIL_UNCONFIGURED",
@@ -227,7 +194,7 @@ export async function registerUser(
       updated_at: now,
     });
 
-    const roleName = isFirstRealUser ? "admin" : "user";
+    const roleName = "user";
     const [role] = await tx
       .select({ id: roles.id })
       .from(roles)
@@ -257,7 +224,7 @@ export async function registerUser(
       user_id: id,
       username: input.username,
       email: input.email,
-      is_admin: isFirstRealUser,
+      is_admin: false,
     },
   );
 
@@ -265,7 +232,7 @@ export async function registerUser(
     id,
     username: input.username,
     email: input.email,
-    is_admin: isFirstRealUser,
+    is_admin: false,
     has_local_password: true,
     must_change_password: false,
     email_verified: false,

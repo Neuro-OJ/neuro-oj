@@ -105,7 +105,7 @@ Deno.test({
     assertEquals(res.status, 201);
     const body = await res.json();
     assertEquals(body.data.username, `route_user_${ts}`);
-    assertEquals(body.data.is_admin, true);
+    assertEquals(body.data.is_admin, false);
     assertEquals("password_hash" in body.data, false);
   },
 });
