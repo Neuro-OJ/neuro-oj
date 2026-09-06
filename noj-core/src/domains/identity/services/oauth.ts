@@ -522,28 +522,31 @@ async function createOAuthUser(
     ? identity.email
     : `${provider}-${identity.providerUserId}@oauth.invalid`;
   const now = new Date().toISOString();
-  // OAuth 也是公开注册入口；先关闭首次初始化，避免并发创建管理员。
-  await db.insert(systemSettings).values({
-    key: ADMIN_INITIALIZATION_KEY,
-    value: "true",
-    updated_at: now,
-  }).onConflictDoNothing();
-  await db.insert(users).values({
-    id: userId,
-    username,
-    email,
-    password_hash: null,
-    created_at: now,
-    updated_at: now,
-  });
-  const [defaultRole] = await db.select({ id: roles.id }).from(roles)
-    .where(eq(roles.is_default, true)).limit(1);
-  if (defaultRole) {
-    await db.insert(userRoles).values({
-      user_id: userId,
-      role_id: defaultRole.id,
+  await db.transaction(async (tx) => {
+    // OAuth 也是公开注册入口；先关闭首次初始化，避免并发创建管理员。
+    // 封印标记与用户创建同事务提交，建户失败时不会留下被误封印的空站。
+    await tx.insert(systemSettings).values({
+      key: ADMIN_INITIALIZATION_KEY,
+      value: "true",
+      updated_at: now,
     }).onConflictDoNothing();
-  }
+    await tx.insert(users).values({
+      id: userId,
+      username,
+      email,
+      password_hash: null,
+      created_at: now,
+      updated_at: now,
+    });
+    const [defaultRole] = await tx.select({ id: roles.id }).from(roles)
+      .where(eq(roles.is_default, true)).limit(1);
+    if (defaultRole) {
+      await tx.insert(userRoles).values({
+        user_id: userId,
+        role_id: defaultRole.id,
+      }).onConflictDoNothing();
+    }
+  });
   return userId;
 }
 
