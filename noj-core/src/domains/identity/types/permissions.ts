@@ -75,7 +75,7 @@ export const PERMISSION_DEFS: Array<{
     description: "管理标签（创建/修改/删除/合并）",
   },
   // 竞赛
-  { resource: "contest", action: "create", description: "创建竞赛" },
+  { resource: "contest", action: "create", description: "创建邀请赛" },
   {
     resource: "contest",
     action: "manage",

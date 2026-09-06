@@ -741,3 +741,18 @@ Deno.test({
     );
   },
 });
+
+// ── 默认角色 contest:create ───────────────────────
+
+Deno.test({
+  name: "rbac: 默认角色具备 contest:create 权限",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await ensureRbacSeeds();
+    const perms = await getUserPermissions(REGULAR_USER_ID);
+    assert(perms.has("contest:create"), "默认角色应有 contest:create");
+  },
+});
