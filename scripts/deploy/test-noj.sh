@@ -45,6 +45,7 @@ chmod 755 "$TEST_ROOT/scripts/deploy/install.sh"
 printf '%s\n' '#!/usr/bin/env bash' \
   'set -Eeuo pipefail' \
   'if [[ "${NOJ_UPDATE_TEST_API_FAIL:-0}" == 1 ]]; then exit 22; fi' \
+  'if [[ "${NOJ_UPDATE_TEST_LIST:-0}" == 1 ]]; then printf "%s\n" "${NOJ_UPDATE_TEST_LIST_JSON:-[]}"; exit 0; fi' \
   'printf '\''{"tag_name":"%s","draft":false,"prerelease":false}\n'\'' "${NOJ_UPDATE_TEST_LATEST_TAG:-v0.2.0}"' \
   >"$TEST_ROOT/curl"
 chmod 755 "$TEST_ROOT/curl"
@@ -182,6 +183,23 @@ after_rc_log="$(wc -l <"$LOG_FILE")"
 [[ "$before_rc_log" == "$after_rc_log" ]] || fail "RC 标签被拒绝前不应进入升级流程"
 grep -E -q '不是稳定版本标签|无效或仍是预发布版本' "$TEST_ROOT/latest-rc.out" || fail "RC 标签拒绝提示不清晰"
 pass "update --latest 拒绝 RC 标签"
+
+# 升级与安装使用同一版本集合：/releases 列表中缺少 CLI 资产的版本不可被选中（issue #431）
+cp "$TEST_ROOT/.env.prod" "$TEST_ROOT/asset-filter.env"
+before_asset_filter="$(sha256sum "$TEST_ROOT/asset-filter.env" 2>/dev/null || shasum "$TEST_ROOT/asset-filter.env")"
+if NOJ_UPDATE_TEST_LIST=1 NOJ_UPDATE_TEST_LIST_JSON='[{"tag_name":"v0.3.0","draft":false,"prerelease":false,"assets":[]},{"tag_name":"v0.2.0-rc.1","draft":false,"prerelease":true,"assets":[]}]' \
+  run_noj update --latest --env-file "$TEST_ROOT/asset-filter.env" >"$TEST_ROOT/latest-asset-filter.out" 2>&1; then
+  fail "升级不应选择缺少 CLI 资产的 Release"
+fi
+after_asset_filter="$(sha256sum "$TEST_ROOT/asset-filter.env" 2>/dev/null || shasum "$TEST_ROOT/asset-filter.env")"
+[[ "$before_asset_filter" == "$after_asset_filter" ]] || fail "缺少资产 Release 被拒绝时修改了生产配置"
+grep -q '没有发现资产就绪的正式 Release' "$TEST_ROOT/latest-asset-filter.out" || fail "缺少资产 Release 的拒绝提示不清晰"
+pass "update --latest 拒绝缺少 CLI 资产的 Release"
+
+NOJ_UPDATE_TEST_LIST=1 NOJ_UPDATE_TEST_LIST_JSON='[{"tag_name":"v0.3.0","draft":false,"prerelease":false,"assets":[]},{"tag_name":"v0.2.0","draft":false,"prerelease":false,"assets":[{"name":"noj-cli-linux-amd64"},{"name":"noj-cli-linux-amd64.sha256"}]}]' \
+  run_noj update --latest >"$TEST_ROOT/latest-asset-ready.out"
+grep -q '最新稳定版本：v0.2.0' "$TEST_ROOT/latest-asset-ready.out" || fail "升级未选择资产就绪的旧版本"
+pass "update --latest 选择资产就绪的版本"
 
 cp "$TEST_ROOT/.env.prod" "$TEST_ROOT/api-failure.env"
 before_api_failure="$(sha256sum "$TEST_ROOT/api-failure.env" 2>/dev/null || shasum "$TEST_ROOT/api-failure.env")"
