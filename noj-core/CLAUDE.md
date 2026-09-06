@@ -441,7 +441,7 @@ docker compose down     # 停止
 | 密码重置令牌         | DB 存 SHA-256 hex 哈希（**不存明文**），URL 传明文 base64url；32 字节随机数                                                              |
 | 密码重置 TTL         | 15 分钟（OWASP 2025+ 建议 ≤ 15 分钟），单 SQL 原子消耗防并发                                                                             |
 | 密码重置邮件         | 策略模式：`EMAIL_PROVIDER` 选择 mock（默认）/ aliyun / tencent；mock 为控制台输出；真实 Provider 在发送前校验环境变量完整性              |
-| 首个生产管理员       | 部署者在服务器交互终端执行 `bootstrap first-admin` 一次性创建；公开注册仅获普通角色，已有站点永久关闭初始化且不自动提权                                            |
+| 首个生产管理员       | 部署者在服务器交互终端执行 `bootstrap first-admin` 一次性创建；公开注册仅获普通角色，已有站点永久关闭初始化且不自动提权                  |
 | 开发引导管理员       | 无可登录 admin 且未设 ADMIN_EMAIL 时，开发环境 `bootstrap admin` 自动创建 username=admin 临时账号，must_change_password=true             |
 | 强制改密守卫         | authMiddleware 检测 token.must_change_password=true，白名单（/change-password, /me）外全部 403 PASSWORD_CHANGE_REQUIRED                  |
 | change-password限流  | 独立 pwchange 命名空间，不污染 /login 限流桶（issue #75 评审 H4）                                                                        |
