@@ -583,6 +583,15 @@ export async function addTrainingProblem(
   )
     .limit(1);
   if (!problem) throw new NotFoundError("题目不存在");
+
+  // 与建赛加题同规则：普通用户只能加入公开题或自己拥有的题。
+  if (
+    !isAdmin && problem.visibility !== "public" &&
+    problem.owner_id !== actorId
+  ) {
+    throw new ForbiddenError("仅可加入公开题或自己拥有的题目");
+  }
+
   const [existing] = await db
     .select()
     .from(trainingProblems)

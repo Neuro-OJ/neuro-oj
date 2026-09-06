@@ -493,7 +493,7 @@ jj new
 **Interfaces:**
 - Produces: `assertContestProblemAddable(problemIds, creatorId, isAdmin)`：admin 不限；普通用户仅 public 或 owner_id=creator 的题。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 Deno.test("contests: 普通用户把他人 private 题加入竞赛 → Forbidden", async () => {
@@ -510,8 +510,8 @@ Deno.test("contests: 普通用户创建 invite 未带密码 → BadRequest", asy
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
-- [ ] **Step 3: 实现**
+- [x] **Step 2: 跑测试确认失败**
+- [x] **Step 3: 实现**
 
 `assertContestProblemAddable`：
 
@@ -534,8 +534,8 @@ createContest/updateContest 调用点替换 `assertProblemsExist`；`trainings.t
 
 建赛路由：普通用户（有 `contest:create` 权限）仅允许 `kind='invite'` 且 `password` 非空；`kind='public'` 需 admin。
 
-- [ ] **Step 4: 跑测试确认通过**
-- [ ] **Step 5: 提交**
+- [x] **Step 4: 跑测试确认通过**
+- [x] **Step 5: 提交**
 
 ```bash
 jj describe -m "fix(core): 建赛/加题校验封堵套题洞，普通用户仅可建 invite 赛"

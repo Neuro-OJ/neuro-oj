@@ -23,6 +23,7 @@ import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
 import { findContestRow } from "./contest-row.ts";
 import {
   type ContestConfig,
+  type ContestKind,
   type ContestProblemInput,
   type ContestProblemResponse,
   type ContestResponse,
@@ -30,6 +31,7 @@ import {
   type ContestType,
   type CreateContestInput,
   isValidContestConfig,
+  isValidContestKind,
   isValidContestType,
   isValidRankingVisibility,
   type UpdateContestInput,
@@ -216,23 +218,37 @@ function normalizeProblems(
 }
 
 /**
- * 断言所有指定的题目 ID 均真实存在于题库中。
+ * 断言竞赛题目均可加入：题目必须真实存在；
+ * 普通用户只能加入 public 题或自己拥有的题（堵“造竞赛上下文套他人私有题”洞）。
  *
  * @param problemInputs 竞赛题目输入列表
+ * @param creatorId 竞赛创建者/更新者用户 ID
+ * @param isAdmin 是否为管理员
  * @param db 数据库连接或事务对象
  * @throws {BadRequestError} 存在不存在的题目时
+ * @throws {ForbiddenError} 普通用户加入他人私有题时
  */
-async function assertProblemsExist(
+async function assertContestProblemAddable(
   problemInputs: ContestProblemInput[],
+  creatorId: string,
+  isAdmin: boolean,
   // deno-lint-ignore no-explicit-any -- postgres.js 与 PGlite 事务共享接口
   db: any,
 ): Promise<void> {
   const ids = problemInputs.map((value) => value.problem_id);
-  const rows = await db.select({ id: problems.id }).from(problems).where(
-    inArray(problems.id, ids),
-  );
+  const rows = await db.select({
+    id: problems.id,
+    owner_id: problems.owner_id,
+    visibility: problems.visibility,
+  }).from(problems).where(inArray(problems.id, ids));
   if (rows.length !== ids.length) {
     throw new BadRequestError("竞赛包含不存在的题目");
+  }
+  if (isAdmin) return;
+  for (const row of rows) {
+    if (row.visibility !== "public" && row.owner_id !== creatorId) {
+      throw new ForbiddenError("仅可加入公开题或自己拥有的题目");
+    }
   }
 }
 
@@ -262,6 +278,7 @@ function toContestResponse(
       .ranking_visibility as ContestResponse["ranking_visibility"],
     freeze_start_time: row.freeze_start_time,
     freeze_duration_seconds: row.freeze_duration_seconds,
+    kind: row.kind as ContestKind,
     config: row.config as ContestConfig,
     is_public: row.is_public,
     has_password: row.password !== null,
@@ -317,12 +334,23 @@ export function computeContestStatus(
 export async function createContest(
   input: CreateContestInput,
   userId: string,
+  isAdmin = false,
 ): Promise<ContestResponse> {
   if (!input.title.trim()) {
     throw new BadRequestError("竞赛标题不能为空");
   }
   if (!isValidContestType(input.type)) {
     throw new BadRequestError("竞赛类型不合法");
+  }
+  const kind = input.kind ?? (isAdmin ? "public" : "invite");
+  if (!isValidContestKind(kind)) {
+    throw new BadRequestError("竞赛分类不合法");
+  }
+  if (kind === "public" && !isAdmin) {
+    throw new ForbiddenError("仅管理员可创建公开赛");
+  }
+  if (kind === "invite" && !input.password) {
+    throw new BadRequestError("邀请赛必须设置邀请码");
   }
   validateTimes(input.start_time, input.end_time);
   const rankingPolicy = normalizeRankingPolicy(input);
@@ -337,7 +365,7 @@ export async function createContest(
   const db = getDb();
 
   await db.transaction(async (tx) => {
-    await assertProblemsExist(problemInputs, tx);
+    await assertContestProblemAddable(problemInputs, userId, isAdmin, tx);
     await tx.insert(contests).values({
       id,
       public_id: publicId,
@@ -347,6 +375,7 @@ export async function createContest(
       end_time: input.end_time,
       ...rankingPolicy,
       type: input.type,
+      kind,
       config,
       is_public: input.is_public ?? true,
       password: passwordHash,
@@ -376,11 +405,24 @@ export async function createContest(
 export async function updateContest(
   id: string,
   input: UpdateContestInput,
+  isAdmin = false,
 ): Promise<ContestResponse> {
   const existing = await findContestRow(id);
   const type = input.type ?? existing.type as ContestType;
   if (!isValidContestType(type)) {
     throw new BadRequestError("竞赛类型不合法");
+  }
+  const kind = input.kind ?? existing.kind as ContestKind;
+  if (!isValidContestKind(kind)) {
+    throw new BadRequestError("竞赛分类不合法");
+  }
+  if (kind === "public" && input.kind !== undefined && !isAdmin) {
+    throw new ForbiddenError("仅管理员可创建/转公开赛");
+  }
+  if (
+    kind === "invite" && input.kind !== undefined && input.password === null
+  ) {
+    throw new BadRequestError("邀请赛必须设置邀请码");
   }
   const startTime = input.start_time ?? existing.start_time;
   const endTime = input.end_time ?? existing.end_time;
@@ -414,7 +456,12 @@ export async function updateContest(
 
   await db.transaction(async (tx) => {
     if (problemInputs) {
-      await assertProblemsExist(problemInputs, tx);
+      await assertContestProblemAddable(
+        problemInputs,
+        existing.created_by ?? "",
+        isAdmin,
+        tx,
+      );
     }
 
     const updates: Partial<typeof contests.$inferInsert> = {
@@ -436,6 +483,7 @@ export async function updateContest(
       updates.freeze_duration_seconds = rankingPolicy.freeze_duration_seconds;
     }
     if (input.type !== undefined) updates.type = input.type;
+    if (input.kind !== undefined) updates.kind = input.kind;
     if (input.config !== undefined || input.type !== undefined) {
       updates.config = config;
     }

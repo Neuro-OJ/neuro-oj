@@ -306,3 +306,46 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "trainings service: 普通用户不能把他人 private 题加入题单",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const owner = await createUser("train-priv-owner");
+    const other = await createUser("train-priv-other");
+    const db = getDb();
+    const now = new Date().toISOString();
+    const privateProblemId = crypto.randomUUID();
+    await db.insert(problems).values({
+      id: privateProblemId,
+      title: "他人私有题",
+      description: "私有题面",
+      difficulty: "easy",
+      visibility: "private",
+      runtime_config: {},
+      number: 940010,
+      owner_id: other,
+      type: "P",
+      created_at: now,
+      updated_at: now,
+    });
+    const training = await createTraining(
+      { title: "私有题测试题单", visibility: "unlisted" },
+      owner,
+    );
+    try {
+      await assertRejects(
+        () =>
+          addTrainingProblem(training.id, privateProblemId, undefined, owner),
+        ForbiddenError,
+        "仅可加入公开题或自己拥有的题目",
+      );
+    } finally {
+      await db.delete(trainings).where(eq(trainings.id, training.id));
+      await db.delete(problems).where(eq(problems.id, privateProblemId));
+      await db.delete(users).where(eq(users.id, owner));
+      await db.delete(users).where(eq(users.id, other));
+    }
+  },
+});

@@ -18,6 +18,7 @@ import {
   updateContest,
 } from "../../index.ts";
 import {
+  BadRequestError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
@@ -163,6 +164,115 @@ Deno.test({
       await db.delete(users).where(eq(users.id, participantId));
       await db.delete(users).where(eq(users.id, invitedId));
       await db.delete(users).where(eq(users.id, creatorId));
+    }
+  },
+});
+
+Deno.test({
+  name: "contests service: 普通用户把他人 private 题加入竞赛 → Forbidden",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const owner = await createUser("add-private-owner");
+    const normal = await createUser("add-private-normal");
+    const problemId = await createProblem(950001);
+    const db = getDb();
+    await db.update(problems).set({ visibility: "private" }).where(
+      eq(problems.id, problemId),
+    );
+    try {
+      await assertRejects(
+        () =>
+          createContest({
+            title: "套题测试",
+            start_time: new Date(Date.now() - 60_000).toISOString(),
+            end_time: new Date(Date.now() + 3_600_000).toISOString(),
+            type: "kaggle",
+            kind: "invite",
+            password: "InvitePass123",
+            problems: [{
+              problem_id: problemId,
+              label: "A",
+              sort_order: 0,
+              score: 10000,
+            }],
+          }, normal),
+        ForbiddenError,
+        "仅可加入公开题或自己拥有的题目",
+      );
+    } finally {
+      await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, normal));
+      await db.delete(users).where(eq(users.id, owner));
+    }
+  },
+});
+
+Deno.test({
+  name: "contests service: 普通用户创建 invite 未带密码 → BadRequest",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const creator = await createUser("invite-no-pass");
+    const problemId = await createProblem(950002);
+    const db = getDb();
+    try {
+      await assertRejects(
+        () =>
+          createContest({
+            title: "无邀请码竞赛",
+            start_time: new Date(Date.now() - 60_000).toISOString(),
+            end_time: new Date(Date.now() + 3_600_000).toISOString(),
+            type: "kaggle",
+            kind: "invite",
+            problems: [{
+              problem_id: problemId,
+              label: "A",
+              sort_order: 0,
+              score: 10000,
+            }],
+          }, creator),
+        BadRequestError,
+        "邀请赛必须设置邀请码",
+      );
+    } finally {
+      await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, creator));
+    }
+  },
+});
+
+Deno.test({
+  name: "contests service: 普通用户创建 public 赛 → Forbidden",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const creator = await createUser("public-no-admin");
+    const problemId = await createProblem(950003);
+    const db = getDb();
+    try {
+      await assertRejects(
+        () =>
+          createContest({
+            title: "普通用户建公开赛",
+            start_time: new Date(Date.now() - 60_000).toISOString(),
+            end_time: new Date(Date.now() + 3_600_000).toISOString(),
+            type: "kaggle",
+            kind: "public",
+            password: "PublicPass123",
+            problems: [{
+              problem_id: problemId,
+              label: "A",
+              sort_order: 0,
+              score: 10000,
+            }],
+          }, creator),
+        ForbiddenError,
+        "仅管理员可创建公开赛",
+      );
+    } finally {
+      await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, creator));
     }
   },
 });

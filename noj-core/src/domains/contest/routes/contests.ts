@@ -17,7 +17,7 @@ import {
 } from "./../../../shared/http/pagination.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { createFileStream } from "./../../../shared/http/file-stream.ts";
-import { checkPermission } from "./../../identity/index.ts";
+import { assertPermission, checkPermission } from "./../../identity/index.ts";
 import {
   getContestRankingView,
   getLatestContestRankingSnapshot,
@@ -29,6 +29,7 @@ import {
 } from "../services/contest-clarifications.ts";
 import {
   computeContestStatus,
+  createContest,
   getContest,
   getContestProblems,
   isParticipant,
@@ -41,6 +42,7 @@ import {
   createSubmission,
   listSubmissions,
 } from "../../submission/index.ts";
+import type { CreateContestInput } from "./../types/contests.ts";
 import { isValidContestType } from "./../types/contests.ts";
 import { createActivity } from "../../community/index.ts";
 import { enforceContestSubmissionRateLimit } from "../../system/index.ts";
@@ -159,6 +161,19 @@ contests.get("/", async (c) => {
     data: result.data,
     pagination: buildPaginationMeta(page, perPage, result.total),
   });
+});
+
+/**
+ * POST / —— 创建邀请赛（普通用户）或公开赛（管理员）。
+ * 权限：登录且具备 contest:create。body：CreateContestInput。
+ * 响应：201 { data }。
+ */
+contests.post("/", authMiddleware, async (c) => {
+  await assertPermission(c, "contest:create");
+  const body = await parseJsonBody<CreateContestInput>(c);
+  const isAdmin = await checkPermission(c, "submission:read_all");
+  const data = await createContest(body, c.var.userId as string, isAdmin);
+  return c.json({ data }, 201);
 });
 
 /**

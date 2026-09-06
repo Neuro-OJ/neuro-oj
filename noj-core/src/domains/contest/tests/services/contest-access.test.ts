@@ -69,6 +69,7 @@ async function createContestWithStatus(
     start_time: new Date(Date.now() + startOffsetMs).toISOString(),
     end_time: new Date(Date.now() + endOffsetMs).toISOString(),
     type: "kaggle",
+    password: "InvitePass123",
     problems: [{
       problem_id: problemId,
       label: "A",

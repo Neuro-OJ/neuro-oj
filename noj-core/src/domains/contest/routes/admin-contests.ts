@@ -89,7 +89,7 @@ router.get("/contests/:id", async (c) => {
  */
 router.post("/contests", async (c) => {
   const body = await parseJsonBody<CreateContestInput>(c);
-  const data = await createContest(body, c.get("userId"));
+  const data = await createContest(body, c.get("userId"), true);
   return c.json({ data }, 201);
 });
 
@@ -103,6 +103,7 @@ router.put("/contests/:id", async (c) => {
   const data = await updateContest(
     contestId,
     body,
+    true,
   );
   return c.json({ data });
 });
