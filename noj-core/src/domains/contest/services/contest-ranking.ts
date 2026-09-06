@@ -566,6 +566,16 @@ export async function getContestRanking(
   isAdmin = false,
   viewerId?: string,
 ): Promise<KaggleRankingRow[]> {
+  // 兼容仅供内部计算/历史调用方使用的数组接口：正式榜单的 REST/SSE
+  // 路由统一走 getContestRankingView，不能借此绕过结束后的结算门禁。
+  const contest = await getContest(contestId, viewerId);
+  if (contest.type !== type) {
+    throw new BadRequestError("排名类型与竞赛赛制不一致");
+  }
+  if (contest.status === "ended" && !isAdmin) {
+    const snapshot = await getLatestContestRankingSnapshot(contestId);
+    if (!snapshot) return getKaggleRanking(contestId);
+  }
   const result = await getContestRankingView(
     contestId,
     type,
