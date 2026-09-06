@@ -132,7 +132,7 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 
 安装脚本会在前面先检查 Linux、Docker、Compose、磁盘、端口等环境；首次安装会创建
 `.env.prod` 并用简单中文提示填写网站地址、HTTP/HTTPS、邮件服务和 Judge。邮件可以跳过，
-首个注册用户自动成为管理员。已存在的安装目录会保留配置并继续更新，不会因为目录非空而停止。
+公开注册仅创建普通用户；新站管理员须由部署者在服务器上执行一次性初始化，见[服务端 CLI 初始化](./noj-docs/docs/operators/cli.md#管理员初始化)。已存在的安装目录会保留配置并继续更新，不会因为目录非空而停止。
 
 安装器下载并校验同版本的 `noj-cli` 二进制，调用 CLI 完成生产安装并注册 PATH；生产机无需安装 Deno。
 安装完成后，服务启停、升级、备份和日志统一使用 `noj-cli`。所选 Release 必须包含 CLI 二进制及 SHA-256 校验文件。
@@ -142,7 +142,7 @@ curl -fsSL https://raw.githubusercontent.com/Neuro-OJ/neuro-oj/main/setup.sh | \
 - 前端：`https://你的域名/`
 - 健康检查：`https://你的域名/healthz`
 
-生产配置至少需要填写 `NOJ_VERSION`、`DOMAIN`、`APP_URL`、`CORS_ALLOWED_ORIGINS`、数据库/Redis/MinIO 凭据、认证密钥和 `EMAIL_PROVIDER`（可以设为 `disabled`）。新站点安装完成后注册的第一个真实用户会自动成为管理员；启用 Judge 时才需要独立的 Judge Docker socket。完整配置说明见[生产部署文档](./noj-docs/docs/operators/production-deploy.md)。
+生产配置至少需要填写 `NOJ_VERSION`、`DOMAIN`、`APP_URL`、`CORS_ALLOWED_ORIGINS`、数据库/Redis/MinIO 凭据、认证密钥和 `EMAIL_PROVIDER`（可以设为 `disabled`）。新站点须通过服务器本机 CLI 初始化管理员；启用 Judge 时才需要独立的 Judge Docker socket。完整配置说明见[生产部署文档](./noj-docs/docs/operators/production-deploy.md)。
 
 常用运维命令：
 

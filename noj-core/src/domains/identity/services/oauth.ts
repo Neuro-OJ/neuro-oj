@@ -8,9 +8,11 @@ import { getDb } from "./../../../shared/db/connection.ts";
 import {
   oauthAccounts,
   roles,
+  systemSettings,
   userRoles,
   users,
 } from "./../../../shared/db/schema.ts";
+import { ADMIN_INITIALIZATION_KEY } from "../../../shared/security/admin-initialization.ts";
 import { signToken } from "./security/jwt.ts";
 import {
   BadRequestError,
@@ -520,6 +522,12 @@ async function createOAuthUser(
     ? identity.email
     : `${provider}-${identity.providerUserId}@oauth.invalid`;
   const now = new Date().toISOString();
+  // OAuth 也是公开注册入口；先关闭首次初始化，避免并发创建管理员。
+  await db.insert(systemSettings).values({
+    key: ADMIN_INITIALIZATION_KEY,
+    value: "true",
+    updated_at: now,
+  }).onConflictDoNothing();
   await db.insert(users).values({
     id: userId,
     username,

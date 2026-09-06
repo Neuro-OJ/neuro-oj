@@ -2,11 +2,12 @@
  * 注册门槛与注册可用状态路由层测试（issue #426）。
  *
  * 覆盖场景（EMAIL_PROVIDER=disabled 时）：
- * - 引导阶段（无真实用户）仍允许注册首个用户（成为管理员）
- * - 首个用户注册后，register-status 返回 allowed=false / email_unconfigured
+ * - 空站和已有用户站点均禁止公开注册，本机管理员初始化不受影响
+ * - register-status 返回 allowed=false / email_unconfigured
  * - 后续公开注册被 403 REGISTER_EMAIL_UNCONFIGURED 拦截
  * - 邮件就绪（mock 开发环境）时 register-status 返回 allowed=true
  */
+import { initializeFirstAdmin } from "../../services/auth/admin-initialization.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../app.ts";
 import {
@@ -63,23 +64,28 @@ async function getRegisterStatus() {
 }
 
 Deno.test({
-  name: "register-status: 未配置邮件时引导阶段仍可注册，之后公开注册被拦截",
+  name: "register-status: 未配置邮件时仅允许本机初始化，公开注册均被拦截",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
     await setupWithProvider("disabled");
 
-    // 引导阶段：无真实用户，注册可用
+    // 空站也不允许公开注册
     const before = await getRegisterStatus();
     assertEquals(before.status, 200);
     assertEquals(await before.json(), {
-      data: { allowed: true, reason: null },
+      data: { allowed: false, reason: "email_unconfigured" },
     });
 
-    // 首个用户注册成功（成为管理员）
+    // 首个公开请求也被拒绝，部署者通过本机初始化
     const first = await registerPayload(`reg_gate_${ts}`);
-    assertEquals(first.status, 201);
+    assertEquals(first.status, 403);
+    await initializeFirstAdmin({
+      username: "site_admin",
+      email: "admin@example.com",
+      password: "InitialAdmin-2026-Xy9",
+    });
 
     // 首个用户之后：邮件未配置 → 公开注册不可用
     const after = await getRegisterStatus();
@@ -136,13 +142,13 @@ for (const provider of ["disabled", "mock"] as const) {
       ]);
       assertEquals(
         responses.map((response) => response.status).sort(),
-        provider === "disabled" ? [201, 403] : [201, 201],
+        provider === "disabled" ? [403, 403] : [201, 201],
       );
       const bodies = await Promise.all(
         responses.map((response) => response.json()),
       );
       const registered = bodies.filter((body) => body.data);
-      assertEquals(registered.filter((body) => body.data.is_admin).length, 1);
+      assertEquals(registered.filter((body) => body.data.is_admin).length, 0);
       if (provider === "disabled") {
         assertEquals(
           bodies.find((body) => body.code)?.code,
@@ -151,7 +157,7 @@ for (const provider of ["disabled", "mock"] as const) {
       }
       const realUsers = await getDb().select({ id: users.id }).from(users)
         .where(ne(users.id, ROOT_USER_ID));
-      assertEquals(realUsers.length, provider === "disabled" ? 1 : 2);
+      assertEquals(realUsers.length, provider === "disabled" ? 0 : 2);
     },
   });
 }

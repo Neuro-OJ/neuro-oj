@@ -1,18 +1,24 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@cliffy/ansi@1.2.1": "1.2.1",
     "jsr:@cliffy/command@^1.2.1": "1.2.1",
     "jsr:@cliffy/flags@1.2.1": "1.2.1",
     "jsr:@cliffy/internal@1.2.1": "1.2.1",
+    "jsr:@cliffy/keycode@1.2.1": "1.2.1",
+    "jsr:@cliffy/prompt@^1.2.1": "1.2.1",
     "jsr:@cliffy/table@1.2.1": "1.2.1",
     "jsr:@std/assert@*": "1.0.19",
     "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/assert@^1.0.19": "1.0.19",
     "jsr:@std/encoding@1": "1.0.10",
+    "jsr:@std/encoding@^1.0.10": "1.0.10",
     "jsr:@std/fmt@^1.0.10": "1.0.10",
     "jsr:@std/internal@^1.0.12": "1.0.14",
     "jsr:@std/internal@^1.0.14": "1.0.14",
+    "jsr:@std/io@~0.225.3": "0.225.3",
     "jsr:@std/path@1": "1.1.5",
+    "jsr:@std/path@^1.1.5": "1.1.5",
     "jsr:@std/semver@^1.0.8": "1.0.8",
     "jsr:@std/testing@1": "1.0.19",
     "jsr:@std/text@^1.0.19": "1.0.19",
@@ -49,6 +55,14 @@
     "npm:tencentcloud-sdk-nodejs-ses@^4.1.247": "4.1.247"
   },
   "jsr": {
+    "@cliffy/ansi@1.2.1": {
+      "integrity": "b8702def9c0110b6eeb2b3b71e0b26cbe0a427facbb4f9c0189da0ba19feb549",
+      "dependencies": [
+        "jsr:@cliffy/internal",
+        "jsr:@std/encoding@^1.0.10",
+        "jsr:@std/io"
+      ]
+    },
     "@cliffy/command@1.2.1": {
       "integrity": "b7b017c81560d96580ea810c8564566884d8194416f6fc06bfdc8846e8fd590f",
       "dependencies": [
@@ -70,6 +84,22 @@
     "@cliffy/internal@1.2.1": {
       "integrity": "e398f41c6839d3d4d249c963bfcb1058013091425926d53a3cb482b1ca70684b"
     },
+    "@cliffy/keycode@1.2.1": {
+      "integrity": "ce0a1e00986054da31bc767274acefdc923338a47e75ad1fc2046a11c87ace16"
+    },
+    "@cliffy/prompt@1.2.1": {
+      "integrity": "e468fae0f52093ff2099f5be0bbc7632348ab82a3b7337b12ddd888aeb5d6eed",
+      "dependencies": [
+        "jsr:@cliffy/ansi",
+        "jsr:@cliffy/internal",
+        "jsr:@cliffy/keycode",
+        "jsr:@std/assert@^1.0.19",
+        "jsr:@std/fmt",
+        "jsr:@std/io",
+        "jsr:@std/path@^1.1.5",
+        "jsr:@std/text"
+      ]
+    },
     "@cliffy/table@1.2.1": {
       "integrity": "be333e62f2c754f8bf75a38c8177515b152040572c9f75298e9bcef1314b82ff",
       "dependencies": [
@@ -90,6 +120,9 @@
     },
     "@std/internal@1.0.14": {
       "integrity": "291516b3d4c35024d6ffbc0a9df5bf4c64116e05b50012cf846710152d2ffdf7"
+    },
+    "@std/io@0.225.3": {
+      "integrity": "27b07b591384d12d7b568f39e61dff966b8230559122df1e9fd11cc068f7ddd1"
     },
     "@std/path@1.1.5": {
       "integrity": "ccea00982ea28c36becaf6e62f855406c76a8c32d462f66f415bbb7d83a271bc",
