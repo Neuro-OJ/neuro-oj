@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 /**
  * UI 浏览器关键流程 E2E（issue #427）。
  *
