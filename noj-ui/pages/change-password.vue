@@ -104,6 +104,10 @@
 </template>
 
 <script setup lang="ts">
+
+// 显式导入项目 useToast：避免与 @nuxt/ui 自动导入的同名 useToast 混淆
+import { useToast } from '~/composables/useToast'
+
 import { validatePassword, validatePasswordMatch } from "~/utils/validatePassword"
 import { extractApiError } from "~/utils/apiError"
 

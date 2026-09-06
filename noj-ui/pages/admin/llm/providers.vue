@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+
 import { useToast } from "~/composables/useToast"
 import { extractApiError } from '~/utils/apiError'
 
@@ -30,7 +32,7 @@ const tableError = ref("")
 const { toast } = useToast()
 let requestVersion = 0
 
-const columns = [
+const columns: TableColumn<LlmProvider>[] = [
   { accessorKey: "name", header: "名称" },
   { accessorKey: "base_url", header: "Base URL" },
   { accessorKey: "model", header: "默认模型" },

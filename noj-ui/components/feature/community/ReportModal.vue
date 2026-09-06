@@ -43,7 +43,7 @@ watch(open, (v) => {
           <span class="mb-1 block text-xs text-text-secondary">举报分类 <span class="text-error-text">*</span></span>
           <USelect
             v-model="category"
-            :items="REPORT_CATEGORIES"
+            :items="[...REPORT_CATEGORIES]"
             class="w-full"
           />
         </label>

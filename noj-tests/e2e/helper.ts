@@ -212,13 +212,19 @@ export async function isJudgeAvailable(): Promise<boolean> {
     // 题目 id 为 UUID（统一题目包导入），须动态获取
     const problemId = await getProblemIdByNumber(1001);
     const id = await submitCode(t, problemId, "print(1)");
-    await new Promise((r) => setTimeout(r, 2000));
-    const res = await fetch(`${BASE_URL}/api/v1/submissions/${id}`, {
-      headers: { Authorization: "Bearer " + t },
-    });
-    const data = await res.json();
-    const status = (data as { data?: { status?: string } })?.data?.status || "";
-    return status === "judging" || status === "finished";
+    // judge 忙时（评测积压）领取任务可能超过 2s，单次探测会误报不可用；
+    // 改为轮询最多 30s，等待状态离开 pending。
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const res = await fetch(`${BASE_URL}/api/v1/submissions/${id}`, {
+        headers: { Authorization: "Bearer " + t },
+      });
+      const data = await res.json();
+      const status = (data as { data?: { status?: string } })?.data?.status ||
+        "";
+      if (status === "judging" || status === "finished") return true;
+    }
+    return false;
   } catch {
     return false;
   }

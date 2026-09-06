@@ -381,7 +381,7 @@ watch(activeTab, () => switchTab(activeTab.value), { immediate: true })
     </div>
 
     <!-- 详情弹窗（含私信聊天上下文） -->
-    <UModal v-model:open="showDetail" title="审查详情" :ui="{ width: 'max-w-xl' }" :unmount-on-hide="true">
+    <UModal v-model:open="showDetail" title="审查详情" :ui="{ content: 'max-w-xl' }" :unmount-on-hide="true">
       <template #body>
         <div v-if="detailLoading" class="py-10 text-center text-sm text-text-secondary">加载中…</div>
         <div v-else-if="detailItem" class="space-y-4 py-2 text-sm">

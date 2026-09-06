@@ -20,6 +20,13 @@ interface ProblemItem {
   owner_username?: string
   number: number
   is_objective: boolean
+  /** 代码题的评测配置；客观题套卷为 NULL（模板已按 is_objective 分支） */
+  runtime_config?: {
+    evaluator?: {
+      time_limit_ms?: number
+      memory_limit_mb?: number
+    }
+  }
   created_at: string
   updated_at: string
 }
@@ -273,11 +280,11 @@ const columns = computed(() => {
           <template #time-cell="{ row }">
             <!-- 客观题套卷无评测容器（runtime_config 为 NULL） -->
             <span v-if="row.original.is_objective" class="text-xs text-text-secondary">即时判定</span>
-            <span v-else class="text-xs text-text-secondary">{{ row.original.runtime_config.evaluator.time_limit_ms }}ms</span>
+            <span v-else class="text-xs text-text-secondary">{{ row.original.runtime_config?.evaluator?.time_limit_ms ?? '--' }}ms</span>
           </template>
           <template #memory-cell="{ row }">
             <span v-if="row.original.is_objective" class="text-xs text-text-muted">--</span>
-            <span v-else class="text-xs text-text-secondary">{{ row.original.runtime_config.evaluator.memory_limit_mb }}MB</span>
+            <span v-else class="text-xs text-text-secondary">{{ row.original.runtime_config?.evaluator?.memory_limit_mb ?? '--' }}MB</span>
           </template>
           <template #rate-cell="{ row }">
             <span class="text-xs text-text-secondary">{{ formatAcceptanceRate(row.original.acceptance_rate) }}</span>
@@ -288,7 +295,7 @@ const columns = computed(() => {
               v-else-if="objectiveBestScores[row.original.id] !== undefined"
               class="inline-flex items-center gap-1 text-xs font-medium text-text-secondary"
             >
-              {{ (objectiveBestScores[row.original.id] / 100).toFixed(0) }} 分
+              {{ ((objectiveBestScores[row.original.id] ?? 0) / 100).toFixed(0) }} 分
             </span>
             <StatusBadge v-else status="not_started" />
           </template>

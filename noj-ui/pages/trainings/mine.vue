@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { Training } from '~/composables/useTrainings'
+// 显式导入项目 useToast：避免与 @nuxt/ui 自动导入的同名 useToast 混淆
+import { useToast } from '~/composables/useToast'
 
 useHead({ title: '我的题单 - Neuro OJ' })
 
@@ -10,7 +12,7 @@ const { dialog } = useDialog()
 const { toast } = useToast()
 const { data, pending, error, refresh } = await useFetch<{ data: Training[]; total: number }>(
   '/api/v1/trainings/mine',
-  { query: { page: 1, per_page: 100 }, silent: true },
+  { query: { page: 1, per_page: 100 } },
 )
 const showCreate = ref(false)
 const showEdit = ref(false)
@@ -75,7 +77,7 @@ async function onDelete(id: string) {
               <UButton
                 icon="i-lucide-trash"
                 size="xs"
-                color="red"
+                color="error"
                 variant="ghost"
                 @click="onDelete(training.id)"
               />

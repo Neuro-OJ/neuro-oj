@@ -218,7 +218,7 @@ async function loadProblem() {
     } }>(`/api/v1/problems/${props.problemId}`, { silent: true })
     const p = res.data
     displayId.value = p.display_id
-    problemType.value = p.type
+    problemType.value = p.type === 'U' ? 'U' : 'P'
     title.value = p.title; description.value = p.description
     difficulty.value = p.difficulty
     tagIds.value = p.tags.map((c) => c.id)

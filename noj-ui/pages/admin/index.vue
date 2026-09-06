@@ -174,7 +174,7 @@ async function handleRefresh() {
     <div v-else-if="statsError && stats.length === 0" class="flex flex-col items-center justify-center gap-2.5 px-6 py-12 text-red-600 text-sm bg-white border border-border rounded-xl">
       <UIcon name="i-lucide-alert-circle" class="size-5" />
       <span>{{ statsError }}</span>
-      <UButton color="neutral" variant="outline" size="sm" class="text-text-secondary bg-white border-border hover:border-text-secondary mt-4" @click="loadStats">重试</UButton>
+      <UButton color="neutral" variant="outline" size="sm" class="text-text-secondary bg-white border-border hover:border-text-secondary mt-4" @click="loadStats()">重试</UButton>
     </div>
 
     <!-- 统计卡片（首卡主视觉：跨两列 + 更大数字/图标，打破三卡等权） -->
@@ -218,7 +218,7 @@ async function handleRefresh() {
     </div>
     <UAlert v-else-if="queueError" color="error" icon="i-lucide-alert-circle" :title="queueError" class="rounded-xl">
       <template #actions>
-        <UButton color="neutral" variant="link" size="sm" @click="loadStats">重试</UButton>
+        <UButton color="neutral" variant="link" size="sm" @click="loadStats()">重试</UButton>
       </template>
     </UAlert>
 

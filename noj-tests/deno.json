@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "exports": {},
   "tasks": {
-    "test": "deno test -A --env-file=../env.e2e.template e2e/"
+    "test": "deno test -A --env-file=../env.e2e.template e2e/",
+    "test:browser": "deno test -A --env-file=../env.e2e.template e2e/browser/"
   },
   "imports": {},
   "nodeModulesDir": "auto",

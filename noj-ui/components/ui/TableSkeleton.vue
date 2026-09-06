@@ -6,7 +6,7 @@ withDefaults(
   }>(),
   {
     rows: 6,
-    columns: ["w-16", "flex-1", "w-20", "w-24"],
+    columns: () => ["w-16", "flex-1", "w-20", "w-24"],
   },
 )
 </script>

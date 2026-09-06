@@ -1,4 +1,8 @@
 <script setup lang="ts">
+
+// 显式导入项目 useToast：避免与 @nuxt/ui 自动导入的同名 useToast 混淆
+import { useToast } from '~/composables/useToast'
+
 import type { Contest, ContestProblem } from '~/composables/useContests'
 import { extractApiError } from '~/utils/apiError'
 import { runContestRegistration } from '~/utils/contestRegistration'
@@ -41,7 +45,7 @@ const queryTab = route.query.tab
 const queryTabIndex = typeof queryTab === 'string'
   ? TAB_NAMES.indexOf(queryTab as (typeof TAB_NAMES)[number])
   : -1
-if (queryTabIndex >= 0) activeTab.value = TAB_NAMES[queryTabIndex]
+if (queryTabIndex >= 0) activeTab.value = TAB_NAMES[queryTabIndex] ?? 'detail'
 
 // tab → URL：切换时写入 ?tab=（replace，不产生历史记录）
 watch(activeTab, (value) => {
