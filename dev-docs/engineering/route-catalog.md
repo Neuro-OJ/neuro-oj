@@ -89,6 +89,7 @@
 | GET | `/contests/:id/submissions` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | GET | `/dashboard/observability` | noj-core/src/domains/query/routes/admin-dashboard.ts |
 | GET | `/dashboard/stats` | noj-core/src/domains/query/routes/admin-dashboard.ts |
+| GET | `/email-delivery/suppressions` | noj-core/src/domains/system/routes/admin-email-delivery.ts |
 | GET | `/events` | noj-core/src/domains/messaging/routes/conversations.ts |
 | GET | `/events` | noj-core/src/domains/system/routes/announcements.ts |
 | GET | `/feed` | noj-core/src/domains/community/routes/community.ts |
@@ -146,6 +147,7 @@
 | GET | `jti` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `NOJ_ENV` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `NOJ_ENV` | noj-core/src/domains/identity/routes/auth.ts |
+| GET | `NOJ_ENV` | noj-core/src/domains/system/routes/email-delivery.ts |
 | GET | `NOJ_ENV` | noj-core/src/routes/health.ts |
 | GET | `NOJ_ENV` | noj-core/src/routes/health.ts |
 | GET | `NOJ_LLM_GATEWAY_URL` | noj-core/src/domains/gateway/routes/admin-llm.ts |
@@ -241,6 +243,7 @@
 | GET | `userId` | noj-core/src/domains/submission/routes/admin-submissions.ts |
 | GET | `userId` | noj-core/src/domains/submission/routes/sse.ts |
 | GET | `userId` | noj-core/src/domains/submission/routes/submissions.ts |
+| GET | `userId` | noj-core/src/domains/system/routes/admin-email-delivery.ts |
 | GET | `userId` | noj-core/src/domains/system/routes/admin-settings.ts |
 | GET | `userId` | noj-core/src/domains/system/routes/admin-settings.ts |
 | GET | `userRole` | noj-core/src/domains/catalog/routes/problems.ts |
@@ -297,6 +300,8 @@
 | POST | `/contests` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | POST | `/contests/:id/participants` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | POST | `/contests/:id/ranking-snapshots` | noj-core/src/domains/contest/routes/admin-contests.ts |
+| POST | `/email-delivery/suppressions/:id/clear` | noj-core/src/domains/system/routes/admin-email-delivery.ts |
+| POST | `/email-events/:provider` | noj-core/src/domains/system/routes/email-delivery.ts |
 | POST | `/email/resend` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/email/verify` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/forgot-password` | noj-core/src/domains/identity/routes/auth.ts |
