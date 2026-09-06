@@ -554,9 +554,9 @@ jj new
 - Consumes: `getRedis()`（shared/mq）、contest.config 中 submission_limits（既有读取逻辑）。
 - Produces: `assertContestSubmissionLimit` 改为 Redis INCR 原子扣减 + EXPIRE 至 end_time；超限抛 `RateLimitedError`。
 
-- [ ] **Step 1: 写失败测试**：同一用户按 limit 提交 N 次后第 N+1 次抛 `RateLimitedError`。
-- [ ] **Step 2: 跑测试确认失败**
-- [ ] **Step 3: 实现**
+- [x] **Step 1: 写失败测试**：同一用户按 limit 提交 N 次后第 N+1 次抛 `RateLimitedError`。
+- [x] **Step 2: 跑测试确认失败**
+- [x] **Step 3: 实现**
 
 替换现 count-then-insert 逻辑为：
 
@@ -575,8 +575,8 @@ if (used > limit) {
 
 DB 计数保留展示（对账），不在插入路径做 count 判定。
 
-- [ ] **Step 4: 跑测试确认通过**
-- [ ] **Step 5: 提交**
+- [x] **Step 4: 跑测试确认通过**
+- [x] **Step 5: 提交**
 
 ```bash
 jj describe -m "fix(core): 竞赛提交限额改 Redis 原子预算（F-04）"

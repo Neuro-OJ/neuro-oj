@@ -5,7 +5,6 @@ import {
   contestProblems,
   contests,
   problems,
-  submissions,
   users,
 } from "./../../../shared/db/schema.ts";
 import {
@@ -13,7 +12,9 @@ import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
+  RateLimitedError,
 } from "./../../../shared/base/errors.ts";
+import { getRedis } from "./../../../shared/mq/connection.ts";
 import { comparePassword, hashPassword } from "./../../identity/index.ts";
 import {
   generatePublicId,
@@ -744,10 +745,11 @@ export async function listParticipants(
 }
 
 /**
- * 校验比赛内每道题提交次数上限。
+ * 校验比赛内每道题提交次数上限（Redis 原子预算）。
  * 未配置 `submission_limits` 的题目不限制；所有提交（含 error）都计入。
+ * 键 TTL 指到竞赛截止时间，超限抛 429 RateLimitedError。
  *
- * @throws {BadRequestError} 达到上限时
+ * @throws {RateLimitedError} 达到上限时
  */
 export async function assertContestSubmissionLimit(
   contestId: string,
@@ -759,20 +761,18 @@ export async function assertContestSubmissionLimit(
   const limit = config.submission_limits?.[problemId];
   if (!limit) return;
 
-  const db = getDb();
-  const [row] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(submissions)
-    .where(
-      and(
-        eq(submissions.contest_id, contestId),
-        eq(submissions.user_id, userId),
-        eq(submissions.problem_id, problemId),
-      ),
+  const redis = getRedis();
+  const key = `contest:lim:${contestId}:u:${userId}:p:${problemId}`;
+  const used = await redis.incr(key);
+  if (used === 1) {
+    const ttl = Math.max(
+      1,
+      Math.floor((Date.parse(contest.end_time) - Date.now()) / 1000),
     );
-  const count = Number(row?.count ?? 0);
-  if (count >= limit) {
-    throw new BadRequestError(`该题提交次数已达上限（${limit} 次）`);
+    await redis.expire(key, ttl);
+  }
+  if (used > limit) {
+    throw new RateLimitedError("提交次数已达上限");
   }
 }
 
