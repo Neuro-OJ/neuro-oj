@@ -909,11 +909,11 @@ jj new
 **Interfaces:**
 - Produces: `REGISTER_EMAIL_VERIFY`（默认 off）。开启后 `/register` 需 `{ email_code }` 且与邮箱验证码一致（复用 email provider 策略与验证码通道，参考密码重置验证码实现）。
 
-- [ ] **Step 1: 写失败测试**：开关 on 时无验证码注册 → 400。
-- [ ] **Step 2: 跑测试确认失败**
-- [ ] **Step 3: 实现**（注册表登记 `register_email_verify`，env 读取 `REGISTER_EMAIL_VERIFY`，默认 false；auth.ts 分支校验）
-- [ ] **Step 4: 跑测试确认通过 + `deno task check:env`**
-- [ ] **Step 5: 提交**
+- [x] **Step 1: 写失败测试**：开关 on 时无验证码注册 → 400。
+- [x] **Step 2: 跑测试确认失败**
+- [x] **Step 3: 实现**（注册表登记 `register_email_verify`，env 读取 `REGISTER_EMAIL_VERIFY`，默认 false；auth.ts 分支校验）
+- [x] **Step 4: 跑测试确认通过 + `deno task check:env`**
+- [x] **Step 5: 提交**
 
 ```bash
 jj describe -m "feat(core): 注册邮箱验证开关（默认关）（F-12）"

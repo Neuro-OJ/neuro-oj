@@ -149,6 +149,14 @@ auth.post("/register", async (c) => {
     throw new ValidationError(`密码长度不能少于 ${MIN_PASSWORD_LENGTH} 位`);
   }
 
+  // F-12：注册邮箱验证开关。开启时要求携带 email_code（默认关闭）。
+  const emailVerifySetting = getSetting("register_email_verify");
+  if (emailVerifySetting?.value === true) {
+    if (!body.email_code) {
+      throw new ValidationError("需要邮箱验证码");
+    }
+  }
+
   const clientIp = getClientIp(c);
   const user = await registerUser(body, clientIp);
   const emailVerification = await sendEmailVerification(

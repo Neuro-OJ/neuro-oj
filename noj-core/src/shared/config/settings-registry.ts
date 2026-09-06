@@ -105,6 +105,17 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     scope: "runtime",
   },
   {
+    key: "register_email_verify",
+    type: "boolean",
+    default: false,
+    description:
+      "注册邮箱验证开关（开启后 /api/v1/auth/register 必须携带 email_code）",
+    is_secret: false,
+    envFallback: "REGISTER_EMAIL_VERIFY",
+    category: "auth",
+    scope: "runtime",
+  },
+  {
     key: "jwt_expires_in",
     type: "string",
     default: "24h",
