@@ -70,11 +70,14 @@ export function useAuth() {
   // ── SSR 初始化：有 session 时通过 /auth/me 获取完整用户与权限 ──
   if (import.meta.server) {
     if (session.value) {
-      const { data: meData } = useAsyncData('auth:me', () =>
-        api.get<{ data: UserResponse }>('/api/v1/auth/me', {
-          silent: true,
-          redirectOnUnauthorized: false,
-        }));
+      const { data: meData } = useAsyncData(
+        'auth:me',
+        () =>
+          api.get<{ data: UserResponse }>('/api/v1/auth/me', {
+            silent: true,
+            redirectOnUnauthorized: false,
+          }),
+      );
       watch(meData, (val) => {
         user.value = val?.data ?? null;
         loading.value = false;
@@ -108,13 +111,17 @@ export function useAuth() {
   }
 
   async function register(username: string, email: string, password: string) {
-    const res = await api.post<{ data: { email_verification_sent: boolean } }>('/api/v1/auth/register', {
-      username,
-      email,
-      password,
-    }, {
-      silent: true,
-    });
+    const res = await api.post<{ data: { email_verification_sent: boolean } }>(
+      '/api/v1/auth/register',
+      {
+        username,
+        email,
+        password,
+      },
+      {
+        silent: true,
+      },
+    );
     return res.data.email_verification_sent;
   }
 
@@ -144,11 +151,32 @@ export function useAuth() {
   }
 
   async function resendEmailVerification() {
-    await api.post('/api/v1/auth/email/resend', undefined, { silent: true });
+    const res = await api.post<{ data: { message: string; sent?: boolean } }>(
+      '/api/v1/auth/email/resend',
+      undefined,
+      { silent: true },
+    );
+    return res.data;
+  }
+
+  /**
+   * 公开注册可用状态（issue #426）。
+   * reason: null=可注册；register_disabled=注册已关闭；email_unconfigured=邮件未配置。
+   */
+  async function getRegisterStatus() {
+    const res = await api.get<{
+      data: {
+        allowed: boolean;
+        reason: 'register_disabled' | 'email_unconfigured' | null;
+      };
+    }>('/api/v1/auth/register-status', { silent: true });
+    return res.data;
   }
 
   async function deleteAccount(password: string) {
-    await api.post('/api/v1/users/me/delete-account', { password }, { silent: true });
+    await api.post('/api/v1/users/me/delete-account', { password }, {
+      silent: true,
+    });
     await logout();
   }
 
@@ -193,10 +221,13 @@ export function useAuth() {
   }
 
   async function unlinkOAuthAccount(accountId: string, password?: string) {
-    await api.delete(`/api/v1/auth/oauth/accounts/${encodeURIComponent(accountId)}`, {
-      body: { password: password ?? '' },
-      silent: true,
-    });
+    await api.delete(
+      `/api/v1/auth/oauth/accounts/${encodeURIComponent(accountId)}`,
+      {
+        body: { password: password ?? '' },
+        silent: true,
+      },
+    );
   }
 
   async function fetchUser() {
@@ -259,6 +290,7 @@ export function useAuth() {
     resetPassword,
     verifyEmail,
     resendEmailVerification,
+    getRegisterStatus,
     deleteAccount,
     getOAuthProviders,
     setPassword,
