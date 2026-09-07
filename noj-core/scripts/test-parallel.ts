@@ -77,6 +77,8 @@ const SHARDS = [
       "src/domains/submission/tests/mq",
       "src/domains/query/tests/routes",
       "src/domains/query/tests/services",
+      "src/domains/search/tests/routes",
+      "src/domains/search/tests/services",
       "src/domains/contest/tests/routes",
       "src/domains/contest/tests/services",
       "src/domains/community/tests/routes",

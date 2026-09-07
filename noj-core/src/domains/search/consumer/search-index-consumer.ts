@@ -2,6 +2,7 @@ import {
   createConsumer,
   requestConsumerShutdown,
 } from "../../../shared/mq/base-consumer.ts";
+import { logger } from "../../../shared/base/logging.ts";
 import {
   SEARCH_INDEX_QUEUE,
   type SearchIndexEvent,
@@ -16,10 +17,27 @@ export function startSearchIndexConsumer(): () => Promise<void> {
     logLabel: "搜索索引",
     aliveRef,
     handleMessage: async (data) => {
-      const event = data as unknown as SearchIndexEvent;
-      if (!event.entityType || !event.entityId || !event.action) {
-        throw new Error("搜索索引事件缺少必要字段");
+      if (typeof data !== "object" || data === null || Array.isArray(data)) {
+        logger.warn("搜索索引事件格式非法，已跳过", { data });
+        return;
       }
+
+      const event = data as unknown as SearchIndexEvent;
+      if (
+        typeof event.entityType !== "string" ||
+        event.entityType.length === 0 ||
+        typeof event.entityId !== "string" ||
+        event.entityId.length === 0 ||
+        (event.action !== "upsert" && event.action !== "delete")
+      ) {
+        logger.warn("搜索索引事件缺少必要字段或 action 非法，已跳过", {
+          entityType: event.entityType,
+          entityId: event.entityId,
+          action: event.action,
+        });
+        return;
+      }
+
       await processSearchIndexEvent(
         event.entityType,
         event.entityId,

@@ -4,10 +4,13 @@ import { problems } from "../../../../shared/db/schema.ts";
 import { reindexAll } from "../../services/index-writer.ts";
 import { searchFlat } from "../../services/search.ts";
 
-await resetDbForTest();
+// 性能基准默认不跑：seed 100k 行在每次 PR 上都执行是 CI 的沉重负担。
+// 仅当 NOJ_RUN_PERF=1 时启用，与 noj-core/tests/perf/* 的守卫方式一致。
+const runPerf = Deno.env.get("NOJ_RUN_PERF") === "1";
 
 Deno.test({
   name: "search perf: 10 万题重建后搜索 < 500ms",
+  ignore: !runPerf,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

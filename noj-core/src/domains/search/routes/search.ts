@@ -32,6 +32,8 @@ const ALL_TYPES = [
   "announcement",
 ];
 
+const COMMUNITY_TYPES = ["community_post", "community_comment"];
+
 router.get(
   "/",
   optionalAuthMiddleware,
@@ -39,7 +41,7 @@ router.get(
   async (c) => {
     const q = (c.req.query("q") ?? "").trim();
     const typesParam = c.req.query("types");
-    const typeParam = c.req.query("type");
+    let typeParam = c.req.query("type");
     const perTypeRaw = c.req.query("per_type");
     const perType = Math.min(
       Math.max(parseInt(perTypeRaw ?? "5", 10) || 5, 1),
@@ -47,10 +49,13 @@ router.get(
     );
     const isAdmin = await checkPermission(c, "admin:full_access");
     const config = getCommunityConfig();
+    const communityEnabled = config.enabled &&
+      (config.solutions_enabled || config.discussions_enabled);
     const ctx = {
       userId: c.var.userId,
       isAdmin,
       guestReadEnabled: config.guest_read_enabled,
+      communityEnabled,
     };
 
     if (q.length < 2) {
@@ -67,7 +72,15 @@ router.get(
           throw new ValidationError(`types 包含非法类型: ${t}`);
         }
       }
-      const result = await searchGrouped({ q, types, perType, ctx });
+      const filteredTypes = communityEnabled
+        ? types
+        : types.filter((t) => !COMMUNITY_TYPES.includes(t));
+      const result = await searchGrouped({
+        q,
+        types: filteredTypes,
+        perType,
+        ctx,
+      });
       c.header("X-Search-Took-Ms", String(result.took_ms));
       return c.json({
         data: {
@@ -79,8 +92,28 @@ router.get(
       });
     }
 
-    if (typeParam && !ALL_TYPES.includes(typeParam)) {
+    if (
+      typeParam && !ALL_TYPES.includes(typeParam) &&
+      typeParam !== "community"
+    ) {
       throw new ValidationError("type 参数非法");
+    }
+    if (
+      typeParam === "community" ||
+      typeParam === "community_post" ||
+      typeParam === "community_comment"
+    ) {
+      if (!communityEnabled) {
+        throw new ForbiddenError("该社区功能已关闭", "FEATURE_DISABLED");
+      }
+      if (!config.guest_read_enabled && !c.var.userId) {
+        throw new UnauthorizedError("登录后可搜索社区内容");
+      }
+      // 兼容旧版 flat type=community：新索引将社区帖子与评论分开，
+      // 旧接口语义仍保持“搜索社区帖子”。
+      if (typeParam === "community") {
+        typeParam = "community_post";
+      }
     }
     if (typeParam === "user" && !isAdmin) {
       if (!c.var.userId) throw new UnauthorizedError("请先登录");
