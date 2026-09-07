@@ -42,3 +42,19 @@ Deno.test("billing: cached 超过 prompt 时按 0 处理", () => {
   assertEquals(r.billedPromptTokens, 0);
   assertEquals(r.billedTotalTokens, 5);
 });
+
+Deno.test("billing: 上游负数 token 按 0 处理", () => {
+  const r = calcBilledUsage(
+    {
+      prompt_tokens: -10,
+      completion_tokens: -5,
+      total_tokens: -15,
+    },
+    100,
+    50,
+  );
+  assertEquals(r.promptTokens, 0);
+  assertEquals(r.completionTokens, 0);
+  assertEquals(r.billedPromptTokens, 0);
+  assertEquals(r.billedTotalTokens, 0);
+});

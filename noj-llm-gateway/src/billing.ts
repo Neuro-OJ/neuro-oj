@@ -28,9 +28,13 @@ export function calcBilledUsage(
   fallbackPromptTokens: number,
   fallbackCompletionTokens: number,
 ): BilledUsage {
-  const promptTokens = Math.floor(usage?.prompt_tokens ?? fallbackPromptTokens);
-  const completionTokens = Math.floor(
-    usage?.completion_tokens ?? fallbackCompletionTokens,
+  const promptTokens = Math.max(
+    0,
+    Math.floor(usage?.prompt_tokens ?? fallbackPromptTokens),
+  );
+  const completionTokens = Math.max(
+    0,
+    Math.floor(usage?.completion_tokens ?? fallbackCompletionTokens),
   );
   const cachedPromptTokens = Math.max(
     0,
