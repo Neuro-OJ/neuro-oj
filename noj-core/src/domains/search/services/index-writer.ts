@@ -244,12 +244,15 @@ export async function buildCommunityCommentEntry(
     created_at: string;
     updated_at: string;
     author_username: string;
+    post_id: string;
     post_title: string | null;
     post_status: string;
+    post_public_id: string;
   }>(sql`
     SELECT c.id, c.content, c.author_id, c.status, c.created_at, c.updated_at,
            u.username AS author_username,
-           p.title AS post_title, p.status AS post_status
+           p.id AS post_id, p.title AS post_title, p.status AS post_status,
+           p.public_id AS post_public_id
     FROM community_comments c
     JOIN users u ON u.id = c.author_id
     JOIN community_posts p ON p.id = c.post_id
@@ -263,8 +266,10 @@ export async function buildCommunityCommentEntry(
     created_at: string;
     updated_at: string;
     author_username: string;
+    post_id: string;
     post_title: string | null;
     post_status: string;
+    post_public_id: string;
   }>(rows as never);
   if (!row) return null;
   if (row.status !== "published" || row.post_status !== "published") {
@@ -279,7 +284,9 @@ export async function buildCommunityCommentEntry(
     metadata: {
       author_id: row.author_id,
       author_username: row.author_username,
+      post_id: row.post_id,
       post_title: row.post_title,
+      post_public_id: row.post_public_id,
     },
     ownerId: row.author_id,
     isPublic: true,

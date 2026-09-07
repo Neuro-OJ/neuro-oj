@@ -39,28 +39,26 @@
       </div>
 
       <template v-if="type === 'all'">
-        <div
-          v-for="(group, entityType) in groups"
-          :key="entityType"
-          class="mb-6"
-        >
-          <div v-if="group.items.length > 0" class="flex items-center justify-between mb-2">
-            <span class="text-sm font-medium text-text">{{ typeLabel(entityType) }}</span>
-            <button
-              class="text-xs text-primary hover:underline"
-              @click="setType(entityType as SearchType)"
-            >
-              更多 →
-            </button>
+        <template v-for="(group, entityType) in groups" :key="entityType">
+          <div v-if="group.items.length > 0" class="mb-6">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm font-medium text-text">{{ typeLabel(entityType) }}</span>
+              <button
+                class="text-xs text-primary hover:underline"
+                @click="setType(entityType as SearchType)"
+              >
+                更多 →
+              </button>
+            </div>
+            <div class="bg-white border border-border rounded-md overflow-hidden divide-y divide-border">
+              <SearchResultItem
+                v-for="item in group.items"
+                :key="`${entityType}-${item.entity_id}`"
+                :item="item"
+              />
+            </div>
           </div>
-          <div class="bg-white border border-border rounded-md overflow-hidden divide-y divide-border">
-            <SearchResultItem
-              v-for="item in group.items"
-              :key="`${entityType}-${item.entity_id}`"
-              :item="item"
-            />
-          </div>
-        </div>
+        </template>
       </template>
 
       <template v-else>
@@ -118,7 +116,11 @@ let searchRequestVersion = 0;
 const asyncStatus = computed<"loading" | "error" | "empty" | "data">(() => {
   if (loading.value) return "loading";
   if (error.value) return "error";
-  if (query.value.trim().length >= 2 && items.value.length === 0 && Object.keys(groups.value).length === 0) {
+  if (
+    query.value.trim().length >= 2 &&
+    items.value.length === 0 &&
+    !Object.values(groups.value).some((g) => g.items.length > 0)
+  ) {
     return "empty";
   }
   return "data";

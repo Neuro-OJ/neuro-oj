@@ -172,8 +172,12 @@ function itemHref(item: SearchItem): string {
     case "user":
       return userUrl(String(item.metadata.username ?? ""));
     case "community_post":
-    case "community_comment":
       return publicUrl("post", String(item.metadata.public_id ?? item.entity_id));
+    case "community_comment":
+      return publicUrl(
+        "post",
+        String(item.metadata.post_public_id ?? item.metadata.post_id ?? item.entity_id),
+      );
     case "contest":
       return `/contests/${item.entity_id}`;
     case "submission":

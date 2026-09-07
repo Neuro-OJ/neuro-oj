@@ -99,6 +99,7 @@ export function useSearch() {
     if (opts?.type) state.value.type = opts.type;
 
     if (trimmed.length < 2) {
+      requestSeq++;
       state.value.groups = {};
       state.value.flatItems = [];
       state.value.hasMore = false;
@@ -146,7 +147,8 @@ export function useSearch() {
               resolve();
               return;
             }
-            const data = (res as { data: { items: SearchItem[]; has_more: boolean } }).data;
+            const data = (res as { data: { items: SearchItem[]; has_more: boolean } })
+              .data;
             state.value.flatItems = data.items;
             state.value.hasMore = data.has_more;
             state.value.page = page;
@@ -160,7 +162,8 @@ export function useSearch() {
               resolve();
               return;
             }
-            const data = (res as { data: { items: SearchItem[]; has_more: boolean } }).data;
+            const data = (res as { data: { items: SearchItem[]; has_more: boolean } })
+              .data;
             state.value.flatItems = data.items;
             state.value.hasMore = data.has_more;
             state.value.page = page;
