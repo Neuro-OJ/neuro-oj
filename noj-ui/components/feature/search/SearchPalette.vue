@@ -14,15 +14,13 @@
           class="w-full max-w-2xl bg-white rounded-lg shadow-modal overflow-hidden"
           @keydown="onKeydown"
         >
-          <!-- 搜索输入 -->
           <div class="flex items-center gap-3 px-4 h-14 border-b border-border">
             <UIcon name="i-lucide-search" class="w-5 h-5 text-text-muted size-4" />
             <input
               ref="inputRef"
               v-model="query"
               type="text"
-              :placeholder="placeholder"
-              :aria-label="placeholder"
+              placeholder="搜索题目、用户、帖子、竞赛、提交、消息、公告..."
               class="flex-1 h-full bg-transparent outline-none text-base text-text placeholder:text-text-muted"
               autocomplete="off"
               spellcheck="false"
@@ -30,13 +28,12 @@
             <kbd class="hidden sm:inline-block px-2 py-1 text-xs bg-gray-100 border border-border rounded">ESC</kbd>
           </div>
 
-          <!-- 结果列表 -->
           <div v-if="state.loading" class="px-4 py-8 text-center text-text-muted text-sm">
             搜索中...
           </div>
 
           <div
-            v-else-if="query.length >= 2 && state.results.problems.length === 0 && state.results.users.length === 0 && state.results.community.length === 0 && !state.loading"
+            v-else-if="query.length >= 2 && flatItems.length === 0 && !state.loading"
             class="px-4 py-8 text-center text-text-muted text-sm"
           >
             没有匹配结果
@@ -47,44 +44,20 @@
           </div>
 
           <div v-else class="max-h-[50vh] overflow-y-auto" role="listbox" aria-label="搜索结果">
-            <div v-if="state.results.problems.length > 0" class="px-4 pt-3 pb-1 text-xs text-text-muted font-medium">
-              题目
-            </div>
-            <SearchResultItem
-              v-for="(p, i) in state.results.problems"
-              :key="`p-${p.id}`"
-              :item="p"
-              kind="problem"
-              :selected="selectedIndex === i"
-              @click="close"
-            />
-
-            <div v-if="state.results.users.length > 0" class="px-4 pt-3 pb-1 text-xs text-text-muted font-medium">
-              用户
-            </div>
-            <SearchResultItem
-              v-for="(u, j) in state.results.users"
-              :key="`u-${u.id}`"
-              :item="u"
-              kind="user"
-              :selected="selectedIndex === state.results.problems.length + j"
-              @click="close"
-            />
-
-            <div v-if="state.results.community.length > 0" class="px-4 pt-3 pb-1 text-xs text-text-muted font-medium">
-              帖子
-            </div>
-            <SearchResultItem
-              v-for="(post, k) in state.results.community"
-              :key="`c-${post.id}`"
-              :item="post"
-              kind="community"
-              :selected="selectedIndex === state.results.problems.length + state.results.users.length + k"
-              @click="close"
-            />
+            <template v-for="(group, type) in state.groups" :key="type">
+              <div v-if="group.items.length > 0" class="px-4 pt-3 pb-1 text-xs text-text-muted font-medium">
+                {{ typeLabel(type) }}
+              </div>
+              <SearchResultItem
+                v-for="(item, i) in group.items"
+                :key="`${type}-${item.entity_id}`"
+                :item="item"
+                :selected="selectedIndex === flatIndex(type, i)"
+                @click="close"
+              />
+            </template>
           </div>
 
-          <!-- 底部提示 -->
           <div class="flex items-center justify-between px-4 h-10 border-t border-border bg-gray-50 text-xs text-text-muted">
             <div class="flex items-center gap-3">
               <span><kbd class="px-1.5 py-0.5 bg-white border border-border rounded">↑↓</kbd> 导航</span>
@@ -106,13 +79,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from "vue";
-
-import {
-  useSearch,
-  type CommunitySearchResult,
-  type ProblemSearchResult,
-  type UserSearchResult,
-} from "~/composables/useSearch";
+import { useSearch, type SearchItem } from "~/composables/useSearch";
 import { problemUrl, publicUrl, userUrl } from "~/utils/publicIdentifiers";
 
 const { state, close, search } = useSearch();
@@ -122,32 +89,40 @@ const inputRef = ref<HTMLInputElement | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
 let lastFocused: HTMLElement | null = null;
 
-// 焦点陷阱：Tab/Shift+Tab 在对话框内循环（WCAG 2.1.2）
-function getFocusable(): HTMLElement[] {
-  if (!panelRef.value) return [];
-  return Array.from(
-    panelRef.value.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ),
-  ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+const flatItems = computed<SearchItem[]>(() => {
+  const items: SearchItem[] = [];
+  for (const group of Object.values(state.value.groups)) {
+    items.push(...group.items);
+  }
+  return items;
+});
+
+function flatIndex(type: string, index: number): number {
+  let offset = 0;
+  for (const [t, group] of Object.entries(state.value.groups)) {
+    if (t === type) return offset + index;
+    offset += group.items.length;
+  }
+  return 0;
 }
 
-const placeholder = computed(() => "搜索题目、用户、帖子...");
-
-type PaletteItem =
-  | { kind: "problem"; item: ProblemSearchResult }
-  | { kind: "user"; item: UserSearchResult }
-  | { kind: "community"; item: CommunitySearchResult };
-
-const flatItems = computed<PaletteItem[]>(() => [
-  ...state.value.results.problems.map((item) => ({ kind: "problem" as const, item })),
-  ...state.value.results.users.map((item) => ({ kind: "user" as const, item })),
-  ...state.value.results.community.map((item) => ({ kind: "community" as const, item })),
-]);
+function typeLabel(type: string): string {
+  const map: Record<string, string> = {
+    problem: "题目",
+    user: "用户",
+    community_post: "帖子",
+    community_comment: "评论",
+    contest: "竞赛",
+    submission: "提交",
+    message: "消息",
+    announcement: "公告",
+  };
+  return map[type] ?? type;
+}
 
 watch(query, async (q) => {
   selectedIndex.value = 0;
-  await search(q);
+  await search(q, { mode: "palette" });
 });
 
 watch(
@@ -170,27 +145,9 @@ function onKeydown(e: KeyboardEvent) {
   if (e.key === "Escape") {
     e.preventDefault();
     close();
-  } else if (e.key === "Tab") {
-    // 焦点陷阱：首尾循环
-    const items = getFocusable();
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (!first || !last) return;
-    const active = document.activeElement as HTMLElement;
-    if (e.shiftKey && active === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && active === last) {
-      e.preventDefault();
-      first.focus();
-    }
   } else if (e.key === "ArrowDown") {
     e.preventDefault();
-    selectedIndex.value = Math.min(
-      selectedIndex.value + 1,
-      flatItems.value.length - 1,
-    );
+    selectedIndex.value = Math.min(selectedIndex.value + 1, flatItems.value.length - 1);
   } else if (e.key === "ArrowUp") {
     e.preventDefault();
     selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
@@ -198,18 +155,35 @@ function onKeydown(e: KeyboardEvent) {
     e.preventDefault();
     const selected = flatItems.value[selectedIndex.value];
     if (selected) {
-      const href = selected.kind === "problem"
-        ? problemUrl(selected.item.id, selected.item.display_id)
-        : selected.kind === "community"
-        ? publicUrl("post", selected.item.public_id || selected.item.id)
-        : userUrl(selected.item.username);
+      const href = itemHref(selected);
       close();
       navigateTo(href);
     } else if (query.value.trim().length >= 2) {
-      // 没选中：跳完整结果页
       close();
       navigateTo(`/search?q=${encodeURIComponent(query.value)}&type=all`);
     }
+  }
+}
+
+function itemHref(item: SearchItem): string {
+  switch (item.entity_type) {
+    case "problem":
+      return problemUrl(item.entity_id, String(item.metadata.display_id ?? ""));
+    case "user":
+      return userUrl(String(item.metadata.username ?? ""));
+    case "community_post":
+    case "community_comment":
+      return publicUrl("post", String(item.metadata.public_id ?? item.entity_id));
+    case "contest":
+      return `/contests/${item.entity_id}`;
+    case "submission":
+      return `/submissions/${item.entity_id}`;
+    case "message":
+      return `/messages?conversation=${String(item.metadata.conversation_id ?? "")}`;
+    case "announcement":
+      return `/announcements/${item.entity_id}`;
+    default:
+      return "/search";
   }
 }
 </script>
