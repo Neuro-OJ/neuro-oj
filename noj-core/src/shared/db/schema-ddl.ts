@@ -678,6 +678,7 @@ export const SCHEMA_DDL: string[] = [
     metadata JSONB NOT NULL DEFAULT '{}',
     owner_id TEXT,
     participant_ids TEXT[] NOT NULL DEFAULT '{}',
+    deleted_by_user_ids TEXT[] NOT NULL DEFAULT '{}',
     is_public BOOLEAN NOT NULL DEFAULT false,
     admin_only BOOLEAN NOT NULL DEFAULT false,
     is_active BOOLEAN NOT NULL DEFAULT true,

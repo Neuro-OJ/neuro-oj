@@ -42,7 +42,15 @@ export async function publishSearchIndexEvent(
   };
   try {
     const redis = getRedis();
-    await redis.lpush(SEARCH_INDEX_QUEUE, JSON.stringify(event));
+    // 非阻塞发布：不等待 Redis LPUSH 完成，失败由 catch 记录日志。
+    void redis.lpush(SEARCH_INDEX_QUEUE, JSON.stringify(event)).catch((err) => {
+      logger.error("发布搜索索引事件失败", {
+        entityType,
+        entityId,
+        action,
+        err,
+      });
+    });
   } catch (err) {
     logger.error("发布搜索索引事件失败", {
       entityType,
@@ -51,4 +59,6 @@ export async function publishSearchIndexEvent(
       err,
     });
   }
+  // 保持 async 签名以兼容现有 await 调用点，但只让出一个微任务，不等待 Redis。
+  await Promise.resolve();
 }

@@ -81,3 +81,50 @@ Deno.test({
     assertEquals(result.items[0]?.entity_type, "user");
   },
 });
+
+Deno.test({
+  name: "search service: message 对已删除该消息的用户不可见",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const now = new Date().toISOString();
+    await upsertSearchEntry({
+      entityType: "message",
+      entityId: "msg-perm-1",
+      title: "私信秘密",
+      body: "只有另一方能搜到",
+      metadata: { conversation_id: "conv-perm-1" },
+      participantIds: ["u-del-a", "u-del-b"],
+      deletedByUserIds: ["u-del-a"],
+      isPublic: false,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const visibleForB = await searchFlat({
+      q: "秘密",
+      type: "message",
+      page: 1,
+      perPage: 20,
+      ctx: { userId: "u-del-b", isAdmin: false, guestReadEnabled: true },
+    });
+    const hiddenForA = await searchFlat({
+      q: "秘密",
+      type: "message",
+      page: 1,
+      perPage: 20,
+      ctx: { userId: "u-del-a", isAdmin: false, guestReadEnabled: true },
+    });
+    const hiddenForAnonymous = await searchFlat({
+      q: "秘密",
+      type: "message",
+      page: 1,
+      perPage: 20,
+      ctx: { userId: undefined, isAdmin: false, guestReadEnabled: true },
+    });
+    assertEquals(visibleForB.items.length, 1);
+    assertEquals(hiddenForA.items.length, 0);
+    assertEquals(hiddenForAnonymous.items.length, 0);
+  },
+});

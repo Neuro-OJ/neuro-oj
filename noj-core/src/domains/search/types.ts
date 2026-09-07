@@ -8,6 +8,7 @@ export interface SearchEntryInput {
   metadata: Record<string, unknown>;
   ownerId?: string | null;
   participantIds?: string[];
+  deletedByUserIds?: string[];
   isPublic: boolean;
   adminOnly?: boolean;
   isActive?: boolean;

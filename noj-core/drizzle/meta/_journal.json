@@ -526,6 +526,13 @@
       "when": 1788782356843,
       "tag": "0074_rare_molecule_man",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1788824421998,
+      "tag": "0075_parched_old_lace",
+      "breakpoints": true
     }
   ]
 }

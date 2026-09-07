@@ -16,7 +16,12 @@ export function permissionWhere(ctx: SearchPermissionContext) {
     OR ${searchEntries.owner_id} = ${userId}
     OR ${userId} = ANY(${searchEntries.participant_ids})
     OR ${ctx.isAdmin} = true
-  ) AND (${searchEntries.admin_only} = false OR ${ctx.isAdmin} = true)`;
+  ) AND (${searchEntries.admin_only} = false OR ${ctx.isAdmin} = true)
+  AND (
+    ${searchEntries.entity_type} <> 'message'
+    OR ${userId} = ''
+    OR NOT (${userId} = ANY(${searchEntries.deleted_by_user_ids}))
+  )`;
 }
 
 export function communityVisibilityWhere(ctx: SearchPermissionContext) {

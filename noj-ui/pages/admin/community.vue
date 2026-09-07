@@ -327,12 +327,26 @@ async function searchSanctionUser() {
     const currentRequest = ++sanctionSearchVersion
     searchingSanctionUser.value = true
     try {
-      const result = await api.get<{ data: { items: { id: string; username: string }[] } }>(
+      const result = await api.get<{
+        data: {
+          items: Array<{
+            entity_id: string
+            entity_type: string
+            title: string
+            metadata: Record<string, unknown>
+          }>
+        }
+      }>(
         "/api/v1/search",
         { query: { q, type: "user" }, silent: true },
       )
       if (currentRequest !== sanctionSearchVersion) return
-      sanctionUserResults.value = result.data.items
+      sanctionUserResults.value = result.data.items.map((item) => ({
+        id: item.entity_id,
+        username: typeof item.metadata.username === "string"
+          ? item.metadata.username
+          : "",
+      }))
     } catch {
       if (currentRequest !== sanctionSearchVersion) return
       sanctionUserResults.value = []

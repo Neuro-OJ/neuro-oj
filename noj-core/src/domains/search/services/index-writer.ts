@@ -18,6 +18,7 @@ export async function upsertSearchEntry(
       metadata: input.metadata,
       owner_id: input.ownerId ?? null,
       participant_ids: input.participantIds ?? [],
+      deleted_by_user_ids: input.deletedByUserIds ?? [],
       is_public: input.isPublic,
       admin_only: input.adminOnly ?? false,
       is_active: input.isActive ?? true,
@@ -32,6 +33,7 @@ export async function upsertSearchEntry(
         metadata: input.metadata,
         owner_id: input.ownerId ?? null,
         participant_ids: input.participantIds ?? [],
+        deleted_by_user_ids: input.deletedByUserIds ?? [],
         is_public: input.isPublic,
         admin_only: input.adminOnly ?? false,
         is_active: input.isActive ?? true,
@@ -311,6 +313,8 @@ export async function buildContestEntry(
     created_at: string;
     updated_at: string;
     participant_ids: string[];
+    problem_titles: string[];
+    problem_display_ids: string[];
   }>(sql`
     SELECT c.id, c.public_id, c.title, c.description, c.kind, c.is_public,
            c.created_at, c.updated_at,
@@ -318,7 +322,19 @@ export async function buildContestEntry(
              SELECT array_agg(user_id)
              FROM contest_participants cp
              WHERE cp.contest_id = c.id
-           ), '{}') AS participant_ids
+           ), '{}') AS participant_ids,
+           COALESCE((
+             SELECT array_agg(p.title ORDER BY cp.sort_order)
+             FROM contest_problems cp
+             JOIN problems p ON p.id = cp.problem_id
+             WHERE cp.contest_id = c.id
+           ), '{}') AS problem_titles,
+           COALESCE((
+             SELECT array_agg(p.type || p.number ORDER BY cp.sort_order)
+             FROM contest_problems cp
+             JOIN problems p ON p.id = cp.problem_id
+             WHERE cp.contest_id = c.id
+           ), '{}') AS problem_display_ids
     FROM contests c
     WHERE c.id = ${id}
   `);
@@ -332,17 +348,22 @@ export async function buildContestEntry(
     created_at: string;
     updated_at: string;
     participant_ids: string[];
+    problem_titles: string[];
+    problem_display_ids: string[];
   }>(rows as never);
   if (!row) return null;
+  const problemText = row.problem_titles.join(" ");
   return {
     entityType: "contest",
     entityId: row.id,
     title: row.title,
-    body: row.description,
+    body: `${row.description} ${problemText}`.trim(),
     metadata: {
       public_id: row.public_id,
       kind: row.kind,
       is_public: row.is_public,
+      problem_titles: row.problem_titles,
+      problem_display_ids: row.problem_display_ids,
     },
     ownerId: null,
     participantIds: row.participant_ids,
@@ -432,11 +453,17 @@ export async function buildMessageEntry(
     user2_id: string;
     user1_username: string;
     user2_username: string;
+    deleted_by_user_ids: string[];
   }>(sql`
     SELECT m.id, m.conversation_id, m.sender_id, m.content, m.recalled_at,
            m.created_at,
            c.user1_id, c.user2_id,
-           u1.username AS user1_username, u2.username AS user2_username
+           u1.username AS user1_username, u2.username AS user2_username,
+           COALESCE((
+             SELECT array_agg(md.user_id)
+             FROM message_deletions md
+             WHERE md.message_id = m.id
+           ), '{}') AS deleted_by_user_ids
     FROM messages m
     JOIN conversations c ON c.id = m.conversation_id
     JOIN users u1 ON u1.id = c.user1_id
@@ -454,6 +481,7 @@ export async function buildMessageEntry(
     user2_id: string;
     user1_username: string;
     user2_username: string;
+    deleted_by_user_ids: string[];
   }>(rows as never);
   if (!row) return null;
   return {
@@ -468,6 +496,7 @@ export async function buildMessageEntry(
     },
     ownerId: null,
     participantIds: [row.user1_id, row.user2_id],
+    deletedByUserIds: row.deleted_by_user_ids,
     isPublic: false,
     adminOnly: false,
     isActive: row.recalled_at === null,
@@ -560,7 +589,6 @@ export async function processSearchIndexEvent(
 
 export async function reindexAll(): Promise<Record<string, number>> {
   const db = getDb();
-  await db.delete(searchEntries);
   const counts: Record<string, number> = {};
   for (const [entityType, builder] of Object.entries(BUILDERS)) {
     const table = entityTypeToTable(entityType);
@@ -568,12 +596,25 @@ export async function reindexAll(): Promise<Record<string, number>> {
     const ids = "rows" in rows
       ? (rows as { rows: { id: string }[] }).rows
       : (rows as unknown as { id: string }[]);
+    const existingRows = await db
+      .select({ entityId: searchEntries.entity_id })
+      .from(searchEntries)
+      .where(sql`${searchEntries.entity_type} = ${entityType}`);
+    const existingIds = new Set(existingRows.map((r) => r.entityId));
+    const keptIds = new Set<string>();
     let count = 0;
     for (const row of ids) {
       const entry = await builder(row.id);
       if (entry) {
         await upsertSearchEntry(entry);
+        keptIds.add(row.id);
         count++;
+      }
+    }
+    // 只清理本次未被重建的旧索引，避免 reindex 中断后整个索引为空。
+    for (const existingId of existingIds) {
+      if (!keptIds.has(existingId)) {
+        await deleteSearchEntry(entityType, existingId);
       }
     }
     counts[entityType] = count;

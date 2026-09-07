@@ -8,21 +8,27 @@ export async function assertSearchEventPublished(
   action: "upsert" | "delete",
 ): Promise<void> {
   const redis = getRedis();
-  const raw = await redis.lrange(SEARCH_INDEX_QUEUE, 0, -1);
-  const found = raw.some((item) => {
-    try {
-      const parsed = JSON.parse(item) as {
-        entityType?: string;
-        entityId?: string;
-        action?: string;
-      };
-      return parsed.entityType === entityType &&
-        parsed.entityId === entityId &&
-        parsed.action === action;
-    } catch {
-      return false;
-    }
-  });
+  const deadline = Date.now() + 2000;
+  let found = false;
+  while (Date.now() < deadline) {
+    const raw = await redis.lrange(SEARCH_INDEX_QUEUE, 0, -1);
+    found = raw.some((item) => {
+      try {
+        const parsed = JSON.parse(item) as {
+          entityType?: string;
+          entityId?: string;
+          action?: string;
+        };
+        return parsed.entityType === entityType &&
+          parsed.entityId === entityId &&
+          parsed.action === action;
+      } catch {
+        return false;
+      }
+    });
+    if (found) break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
   assertEquals(
     found,
     true,

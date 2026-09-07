@@ -28,6 +28,10 @@ export const searchEntries = pgTable(
     participant_ids: text("participant_ids").array().notNull().default(
       sql`'{}'`,
     ),
+    /** 已删除该消息的用户 id 列表；这些用户在该消息的搜索结果中不可见。 */
+    deleted_by_user_ids: text("deleted_by_user_ids").array().notNull().default(
+      sql`'{}'`,
+    ),
     is_public: boolean("is_public").notNull().default(false),
     admin_only: boolean("admin_only").notNull().default(false),
     is_active: boolean("is_active").notNull().default(true),
