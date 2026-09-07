@@ -140,3 +140,11 @@ export type {
 // maintain/reset（P4）
 export { maintainReset } from "./maintain/reset.ts";
 export type { ResetOptions } from "./maintain/reset.ts";
+
+// context（Phase 1）
+export type { CliContext, ContextKind } from "./context/context.ts";
+export {
+  detectKind,
+  findContextDir,
+  resolveContext,
+} from "./context/context.ts";
