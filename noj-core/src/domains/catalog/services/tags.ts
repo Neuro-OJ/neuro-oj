@@ -16,6 +16,7 @@
 import { and, asc, count, eq, inArray } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { problemTags, tags } from "./../../../shared/db/schema.ts";
+import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -67,6 +68,18 @@ function isUniqueViolation(err: unknown): boolean {
   const pgCode = rec.code ??
     ((rec.cause as Record<string, unknown> | undefined)?.code);
   return pgCode === "23505";
+}
+
+/** 标签增删改后，对关联题目发布搜索索引事件。 */
+async function publishTagProblemEvents(tagId: string): Promise<void> {
+  const db = getDb();
+  const rows = await db
+    .select({ problem_id: problemTags.problem_id })
+    .from(problemTags)
+    .where(eq(problemTags.tag_id, tagId));
+  for (const row of rows) {
+    await publishSearchIndexEvent("problem", row.problem_id, "upsert");
+  }
 }
 
 /**
@@ -187,6 +200,8 @@ export async function createTag(input: CreateTagInput): Promise<TagResponse> {
     { type: "tag", id },
   );
 
+  await publishTagProblemEvents(id);
+
   return {
     id,
     name,
@@ -275,6 +290,8 @@ export async function updateTag(
     { type: "tag", id },
   );
 
+  await publishTagProblemEvents(id);
+
   return getTag(id);
 }
 
@@ -295,6 +312,12 @@ export async function deleteTag(id: string): Promise<void> {
     throw new NotFoundError("标签不存在");
   }
 
+  // 删除会级联清理 problem_tags，必须先取关联题目用于发布事件
+  const relatedProblemIds = await db
+    .select({ problem_id: problemTags.problem_id })
+    .from(problemTags)
+    .where(eq(problemTags.tag_id, id));
+
   await db.delete(tags).where(eq(tags.id, id));
 
   await logAudit(
@@ -306,6 +329,10 @@ export async function deleteTag(id: string): Promise<void> {
     },
     { type: "tag", id },
   );
+
+  for (const row of relatedProblemIds) {
+    await publishSearchIndexEvent("problem", row.problem_id, "upsert");
+  }
 }
 
 /**
