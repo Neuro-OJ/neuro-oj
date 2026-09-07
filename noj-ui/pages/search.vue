@@ -242,6 +242,7 @@ watch(query, () => {
     groups.value = {};
     hasMore.value = false;
     tookMs.value = null;
+    loading.value = false;
   }
 });
 
