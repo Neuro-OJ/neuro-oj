@@ -518,7 +518,7 @@ async function cleanupBootstrapRow(s: SystemSetting) {
               <!-- text：textarea -->
               <textarea
                 v-else-if="s.type === 'text'"
-                v-model="drafts[s.key]"
+                v-model="(drafts[s.key] as string)"
                 rows="2"
                 maxlength="1000"
                 class="w-full px-2.5 py-1.5 text-13px border border-border rounded outline-none transition-colors resize-y focus:border-signal focus:shadow-[0_0_0_2px_rgba(0,214,138,0.1)]"
