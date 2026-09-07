@@ -17,6 +17,7 @@
 
 import { and, count, desc, eq } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
 import { announcements } from "./../../../shared/db/schema.ts";
 import {
   NotFoundError,
@@ -279,6 +280,7 @@ export async function createAnnouncement(
     { type: "announcement", id },
   );
   await broadcastAnnouncementUpdate();
+  await publishSearchIndexEvent("announcement", id, "upsert");
 
   return { ...row! };
 }
@@ -322,6 +324,7 @@ export async function updateAnnouncement(
     { type: "announcement", id },
   );
   await broadcastAnnouncementUpdate();
+  await publishSearchIndexEvent("announcement", id, "upsert");
 
   return { ...row! };
 }
@@ -348,4 +351,5 @@ export async function deleteAnnouncement(id: string): Promise<void> {
     { type: "announcement", id },
   );
   await broadcastAnnouncementUpdate();
+  await publishSearchIndexEvent("announcement", id, "delete");
 }
