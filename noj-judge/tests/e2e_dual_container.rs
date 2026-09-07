@@ -40,6 +40,7 @@ fn dual_task() -> JudgeTask {
     JudgeTask {
         submission_id: format!("sub-{}", uuid::Uuid::new_v4()),
         problem_id: "1001".to_string(),
+        user_id: "user-1".to_string(),
         download_url: None,
         artifact_download_url: None,
         runtime_config: RuntimeConfig {
@@ -579,6 +580,7 @@ fn dual_task_runtime_config_serialization() {
     let json = serde_json::json!({
         "submission_id": "sid-dual",
         "problem_id": "1001",
+        "user_id": "u-dual",
         "language": "python3",
         "code": "def solve(a,b): return a+b",
         "file_name": "solution.py",
@@ -1165,6 +1167,9 @@ except Exception as e:
         },
     };
     let artifact_zip = build_artifact_zip();
+    let temp_dir = tempfile::tempdir().unwrap();
+    let artifact_zip_path = temp_dir.path().join("artifact.zip");
+    std::fs::write(&artifact_zip_path, &artifact_zip).unwrap();
 
     let result = tokio::time::timeout(
         Duration::from_secs(30),
@@ -1174,7 +1179,7 @@ except Exception as e:
             &runtime_config,
             "",
             None,
-            Some(&artifact_zip),
+            Some(&artifact_zip_path),
             None,
             None,
             1000,

@@ -372,21 +372,22 @@ docker compose down     # 停止
 
 ## 数据库 Schema 设计
 
-| 表                      | 关键列                                                                                                                                    | 约束 / 索引                                                 |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `users`                 | `id`(UUID), `username`, `email`(unique), `password_hash`, `email_verified`, `email_verify_token`, `email_verify_expires_at`, `deleted_at` | PK, active username partial UK, UK(email)                   |
-| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`                                           | PK, UK(display_id), UK(type,number), FK→users               |
-| `tags`                  | `id`(UUID), `name`(unique), `kind`(problem/algorithm), `created_at`, `updated_at`                                                         | PK, UK(name), CHECK(kind)                                   |
-| `problem_tags`          | `problem_id`, `tag_id`                                                                                                                    | FK→problems ON DELETE CASCADE, FK→tags ON DELETE CASCADE    |
-| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                                         | PK, FK→users, FK→problems, idx(user_id,created_at)          |
-| `evaluation_results`    | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                                     | PK, UK(submission_id), FK→submissions                       |
-| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                                           | PK, FK→users, UK(user_id,checkin_date)                      |
-| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                                | PK, UK(image)                                               |
-| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                                               | PK, FK→users, UK(token_hash)                                |
-| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                                               | PK, FK→users, UK(participant_a,participant_b)               |
-| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                                           | PK, FK→conversations, idx(conversation_id,created_at)       |
-| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                                            | PK, FK→conversations, FK→users, UK(conversation_id,user_id) |
-| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                                   | PK, FK→messages, FK→users                                   |
+| 表                      | 关键列                                                                                                                                                                                       | 约束 / 索引                                                      |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `users`                 | `id`(UUID), `username`, `email`(unique), `password_hash`, `role`(user/admin), `bio`, `must_change_password`, `email_verified`, `email_verify_token`, `email_verify_expires_at`, `deleted_at` | PK, active username partial UK, UK(email)                        |
+| `problems`              | `id`(UUID), `type`(U/P), `number`(int), `display_id`(unique), `title`, `difficulty`, `owner_id`, `visibility`(public/private)                                                                | PK, UK(display_id), UK(type,number), FK→users, CHECK(visibility) |
+| `contests`              | `id`(UUID), `public_id`, `title`, `start_time`, `end_time`, `type`, `kind`(public/invite), `is_public`, `password`                                                                           | PK, UK(public_id), CHECK(kind), CHECK(type)                      |
+| `tags`                  | `id`(UUID), `name`(unique), `kind`(problem/algorithm), `created_at`, `updated_at`                                                                                                            | PK, UK(name), CHECK(kind)                                        |
+| `problem_tags`          | `problem_id`, `tag_id`                                                                                                                                                                       | FK→problems ON DELETE CASCADE, FK→tags ON DELETE CASCADE         |
+| `submissions`           | `id`(UUID), `user_id`, `problem_id`, `status`, `language`, `code`                                                                                                                            | PK, FK→users, FK→problems, idx(user_id,created_at)               |
+| `evaluation_results`    | `id`(UUID), `submission_id`(unique), `status`, `score`(INTEGER×100), `output`, `time_ms`, `memory_kb`                                                                                        | PK, UK(submission_id), FK→submissions                            |
+| `check_ins`             | `id`(UUID), `user_id`, `checkin_date`(YYYY-MM-DD UTC), `streak`                                                                                                                              | PK, FK→users, UK(user_id,checkin_date)                           |
+| `judge_images`          | `id`(UUID), `image`(text), `enabled`(bool)                                                                                                                                                   | PK, UK(image)                                                    |
+| `password_reset_tokens` | `id`(UUID), `user_id`, `token_hash`(text), `expires_at`(text), `used`(bool)                                                                                                                  | PK, FK→users, UK(token_hash)                                     |
+| `conversations`         | `id`(UUID), `participant_a_id`, `participant_b_id`, `last_message_at`(text)                                                                                                                  | PK, FK→users, UK(participant_a,participant_b)                    |
+| `messages`              | `id`(UUID), `conversation_id`, `sender_id`, `content`(text), `created_at`(text)                                                                                                              | PK, FK→conversations, idx(conversation_id,created_at)            |
+| `conversation_reads`    | `id`(UUID), `conversation_id`, `user_id`, `last_read_at`(text)                                                                                                                               | PK, FK→conversations, FK→users, UK(conversation_id,user_id)      |
+| `message_deletions`     | `id`(UUID), `message_id`, `user_id`, `deleted_at`(text)                                                                                                                                      | PK, FK→messages, FK→users                                        |
 
 > 上表为核心表速查。完整 Schema 共 38 张表（`src/shared/db/schema.ts`），另有：
 >
@@ -405,10 +406,18 @@ docker compose down     # 停止
 - `evaluation_results.score` 为 `INTEGER`（×100），`scoreToDb`/`scoreFromDb`
   在应用层转换
 - `problems.number` 按 `type` 分别自增（`(type, number)` UNIQUE）
+- `problems.visibility` 取值 `public`/`private`，由 `resolveProblemAccess`
+  统一判定读取/提交/竞赛上下文访问；新建 U 型默认 `private`，P 型恒 `public`
+- `contests.kind` 取值 `public`/`invite`：public
+  仅管理员可创建、可自助报名；invite 必须设置邀请码并校验；`is_public` 与 kind
+  绑定：public 公开可见，invite 不进入公开列表
 - `tags.kind`
   区分题目标签（problem，人人可见）与算法标签（algorithm，通过题目后可见，spoiler
   门控后端强制）
 - `submissions` 有复合索引 `(user_id, created_at)` 优化"我的提交历史"查询
+- 评测脚本
+  `details.cases[].hidden`（布尔）是提交结果投影判断隐藏用例的依据；旧脚本缺少该标记时
+  fail-safe 剥离详情
 
 ## 代码规范
 
@@ -618,6 +627,9 @@ noj-core 不直接执行评测，但 `data/problems-src/` 中的 evaluate.py 遵
   `noj-judge/src/dual/protocol.rs`）
 - 输出格式：`---RESULT---` 标记行 + JSON `{score, details}`（不再输出
   `status`，judge 统一映射 `finished`/`error`）
+- `details.cases` 每个用例必须带布尔 `hidden`
+  标记（`true`=隐藏、`false`=可见）；
+  隐藏用例只输出非敏感元数据，不得输出输入/期望/实际输出
 - 评分公式：每题独立定义在 evaluate.py 中（非通用可配置系统）
 - 镜像白名单：`judgeImages` 按 `evaluator` / `solution` 两类 kind 管理
 

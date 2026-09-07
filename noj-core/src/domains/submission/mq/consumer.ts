@@ -29,6 +29,71 @@ export const DEFAULT_RESULT_CONSUMER_CONCURRENCY = 4;
 /** 结果消费者并发连接数上限，避免误配置耗尽 Redis/数据库连接。 */
 export const MAX_RESULT_CONSUMER_CONCURRENCY = 16;
 
+/** judge details 允许的顶层键（按当前 evaluate.py 契约白名单化）。 */
+const JUDGE_DETAIL_ALLOWED_KEYS = new Set([
+  "cases",
+  "score",
+  "score_content",
+  "score_format",
+  "hidden_provided",
+  "summary",
+]);
+
+/** 单个用例对象允许的键。 */
+const JUDGE_CASE_ALLOWED_KEYS = new Set([
+  "case_id",
+  "status",
+  "visibility",
+  "hidden",
+  "time_ms",
+  "input",
+  "expected_output",
+  "actual_output",
+]);
+
+/** 单个值序列化后的最大字节数，超出即丢弃（防超大恶意字段）。 */
+const MAX_DETAIL_VALUE_BYTES = 64 * 1024;
+
+/**
+ * judge 结果 details 白名单化（F-11）。
+ *
+ * 仅保留安全键；每条用例只保留白名单字段；任一值超过 64KB 丢弃。
+ */
+export function sanitizeJudgeDetails(
+  details: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!details || typeof details !== "object" || Array.isArray(details)) {
+    return {};
+  }
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(details)) {
+    if (!JUDGE_DETAIL_ALLOWED_KEYS.has(key)) continue;
+    const normalized = key === "cases" && Array.isArray(value)
+      ? value.map(sanitizeCase)
+      : value;
+    const serialized = JSON.stringify(normalized);
+    if (
+      serialized !== undefined && serialized.length > MAX_DETAIL_VALUE_BYTES
+    ) {
+      continue;
+    }
+    result[key] = normalized;
+  }
+  return result;
+}
+
+function sanitizeCase(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return value;
+  }
+  const caseObj = value as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(caseObj)) {
+    if (JUDGE_CASE_ALLOWED_KEYS.has(key)) result[key] = field;
+  }
+  return result;
+}
+
 /**
  * 解析结果消费者并发配置。
  * 非正整数、超出上限或无法解析时回退到安全默认值。
@@ -100,6 +165,9 @@ export async function handleResultMessage(
     logger.error("评测结果缺少 submission_id，跳过");
     return;
   }
+
+  // F-11：落库前白名单化 details（未知 key / 超大值一律丢弃）。
+  judgeResult.details = sanitizeJudgeDetails(judgeResult.details ?? {});
 
   metrics.inc("noj_evaluation_results_total");
 

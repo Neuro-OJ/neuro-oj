@@ -18,7 +18,6 @@ import {
   apiPut,
   e2eTest,
   getAdminToken,
-  isE2E,
   registerUser,
 } from "./helper.ts";
 
@@ -116,8 +115,8 @@ e2eTest(
       `[${TEST_TAG}] 双容器评测测试题`,
     );
 
-    // 验证题目详情包含 runtime_config
-    const detail = await apiGet(`/api/v1/problems/${problemId}`);
+    // 验证题目详情包含 runtime_config（敏感字段仅 owner/admin 可见）
+    const detail = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
     const problem = (detail.body as { data: { runtime_config: unknown } })
       .data;
     if (!problem.runtime_config) {
@@ -223,8 +222,8 @@ e2eTest(
       `[${TEST_TAG}] 清空 runtime 测试`,
     );
 
-    // 验证双容器已设置
-    const before = await apiGet(`/api/v1/problems/${problemId}`);
+    // 验证双容器已设置（敏感字段仅 owner/admin 可见）
+    const before = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
     if (
       !(before.body as { data: { runtime_config: unknown } }).data
         .runtime_config
@@ -286,7 +285,7 @@ e2eTest(
     }
 
     const problemId = (res.body as { data: { id: string } }).data.id;
-    const detail = await apiGet(`/api/v1/problems/${problemId}`);
+    const detail = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
     const rc = (detail.body as { data: { runtime_config: unknown } }).data
       .runtime_config;
     if (!rc) {

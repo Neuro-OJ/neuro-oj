@@ -8,6 +8,7 @@
  */
 
 import { assertEquals } from "jsr:@std/assert@^1";
+import { sanitizeJudgeDetails } from "../../mq/consumer.ts";
 import {
   getRedis,
   resetRedisForTest,
@@ -236,5 +237,43 @@ Deno.test({
     } finally {
       await fake.stop();
     }
+  },
+});
+
+Deno.test({
+  name: "mq/consumer: sanitizeJudgeDetails 白名单键并保留安全字段",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: () => {
+    const result = sanitizeJudgeDetails({
+      cases: [{
+        case_id: "c1",
+        status: "Accepted",
+        visibility: "visible",
+        secret: "x",
+      }],
+      score_content: 90,
+      hidden: { cases: [] },
+      summary: "ok",
+      evil_key: "drop",
+    });
+    assertEquals(result.summary, "ok");
+    assertEquals(result.evil_key, undefined);
+    assertEquals(result.hidden, undefined);
+    assertEquals(
+      (result.cases as Array<Record<string, unknown>>)[0],
+      { case_id: "c1", status: "Accepted", visibility: "visible" },
+    );
+  },
+});
+
+Deno.test({
+  name: "mq/consumer: sanitizeJudgeDetails 超大单值被丢弃",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: () => {
+    const big = "x".repeat(70 * 1024);
+    const result = sanitizeJudgeDetails({ summary: big });
+    assertEquals(result.summary, undefined);
   },
 });

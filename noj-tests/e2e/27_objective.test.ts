@@ -79,6 +79,18 @@ e2eTest("[e2e/objective] 1. 建套卷 → 建三题型小题 → 即时判定落
   if (!paper.is_objective) throw new Error("套卷 is_objective 应为 true");
   paperId = paper.id;
 
+  // U 型新建默认 private；练习提交需要公开可见
+  const pubRes = await apiPut(
+    `/api/v1/problems/${paperId}/visibility`,
+    { visibility: "public" },
+    ownerToken,
+  );
+  if (pubRes.status !== 200) {
+    throw new Error(
+      `设置套卷公开失败: ${pubRes.status} ${JSON.stringify(pubRes.body)}`,
+    );
+  }
+
   // 1.2 单选小题
   const single = await apiPost(
     `/api/v1/problems/${paperId}/questions`,

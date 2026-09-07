@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { authMiddleware } from "./../../identity/index.ts";
+import { authMiddleware, checkPermission } from "./../../identity/index.ts";
 import { getQueueOverview } from "../services/queue.ts";
 
 const router = new Hono();
@@ -15,7 +15,8 @@ const router = new Hono();
  *   若 LMCC 比赛要求更严格的队列可见性，可在此路由中增加脱敏逻辑。
  */
 router.get("/", authMiddleware, async (c) => {
-  const overview = await getQueueOverview();
+  const isAdmin = await checkPermission(c, "submission:read_all");
+  const overview = await getQueueOverview(isAdmin);
   return c.json(overview);
 });
 

@@ -896,6 +896,9 @@ else:
         result.wrong_answer(score=0, message="unexpected: " + repr(answer))
 "#;
     let support_zip = build_support_zip(evaluate_py);
+    let temp_dir = tempfile::tempdir().unwrap();
+    let support_zip_path = temp_dir.path().join("support.zip");
+    std::fs::write(&support_zip_path, &support_zip).unwrap();
 
     let submission_id = format!("e2e-net-sdk-{}", uuid::Uuid::new_v4());
     let runtime_config = RuntimeConfig {
@@ -925,7 +928,7 @@ def solve(msg: str) -> str:
         &submission_id,
         &runtime_config,
         user_code,
-        Some(&support_zip),
+        Some(&support_zip_path),
         None,
         None,
         None,

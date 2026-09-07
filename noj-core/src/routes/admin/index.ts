@@ -29,6 +29,7 @@ const router = new Hono<AuthEnv>();
 const FINE_GRAINED_ADMIN_PREFIXES = [
   "/api/v1/admin/announcements",
   "/api/v1/admin/trainings",
+  "/api/v1/admin/problems/review",
 ] as const;
 
 /**

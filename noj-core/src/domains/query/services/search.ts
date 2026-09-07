@@ -131,6 +131,7 @@ export async function searchProblems(
         WHERE pt.problem_id = p.id AND t.name ILIKE ${likeQ} ESCAPE '\\'
       )
     )
+    AND p.visibility = 'public'
     AND (
       ${includeUType} = TRUE
       OR p.type = 'P'
@@ -178,6 +179,7 @@ export async function searchProblems(
           WHERE pt.problem_id = p.id AND t.name ILIKE ${likeQ} ESCAPE '\\'
         )
       )
+      AND p.visibility = 'public'
       AND (
         ${includeUType} = TRUE
         OR p.type = 'P'

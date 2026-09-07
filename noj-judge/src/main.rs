@@ -13,8 +13,8 @@ mod types;
 
 use anyhow::{Context, Result};
 use futures_util::{stream::FuturesUnordered, FutureExt, StreamExt};
-use std::sync::Arc;
-use tokio::sync::Semaphore;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 use tracing::{error, info};
 
 use crate::config::Config;
@@ -30,19 +30,28 @@ const PULL_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 /// 评测结果 fallback 文件目录名（相对 work_dir）。
 const FALLBACK_RESULTS_DIR: &str = "fallback-results";
 
-/// 在拉取任务前获取评测许可；收到关闭信号时返回 `None`。
+/// 每用户活跃评测槽位的 RAII guard。
 ///
-/// 将这段选择逻辑独立出来，确保主循环在等待并发额度时可立即进入 drain，
-/// 而拿到许可后不会再用可取消的 select 包住 BRPOPLPUSH。
-async fn acquire_judge_permit(
-    semaphore: Arc<Semaphore>,
-    shutdown_rx: &mut tokio::sync::oneshot::Receiver<()>,
-) -> Result<Option<tokio::sync::OwnedSemaphorePermit>> {
-    tokio::select! {
-        biased;
-        _ = shutdown_rx => Ok(None),
-        permit = semaphore.acquire_owned() => {
-            Ok(Some(permit.context("获取评测并发许可失败")?))
+/// 评测任务开始前插入 `active_users`，guard 析构时自动移除，
+/// 避免任务 panic/异常路径导致用户槽位泄漏。
+struct ActiveUserGuard {
+    active_users: Arc<Mutex<HashSet<String>>>,
+    user_id: String,
+}
+
+impl ActiveUserGuard {
+    fn new(active_users: Arc<Mutex<HashSet<String>>>, user_id: String) -> Self {
+        Self {
+            active_users,
+            user_id,
+        }
+    }
+}
+
+impl Drop for ActiveUserGuard {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.active_users.lock() {
+            guard.remove(&self.user_id);
         }
     }
 }
@@ -112,7 +121,8 @@ fn main() -> Result<()> {
         let cpu_limit_millicores = config.cpu_limit_millicores;
         let max_evaluator_time_ms = config.max_evaluator_time_ms;
         let max_solution_call_timeout_ms = config.max_solution_call_timeout_ms;
-        let judge_semaphore = Arc::new(Semaphore::new(max_concurrent_judges));
+        // F-07：移除全局并发闸门，改为每用户 active 集合（同一用户同时最多 1 个评测）。
+        let active_users: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
         let judge_metrics = Arc::new(JudgeMetrics::new(max_concurrent_judges));
         let heartbeat_metrics = Arc::clone(&judge_metrics);
         let heartbeat_redis = redis_client.clone();
@@ -159,97 +169,123 @@ fn main() -> Result<()> {
         let mut tasks = FuturesUnordered::new();
 
         loop {
-            // 只允许在等待并发许可时响应关闭信号。拿到许可后必须完整执行
+            // 只允许在等待关闭信号时响应关闭。拿到任务后必须完整执行
             // BRPOPLPUSH：Redis 可能已经把消息移入 processing，若此时取消
             // future，消息会留在 processing 却永远不会进入评测任务。
-            let permit =
-                match acquire_judge_permit(Arc::clone(&judge_semaphore), &mut shutdown_rx).await? {
-                    Some(permit) => permit,
-                    None => {
-                        drain::drain_tasks(&mut tasks, drain_timeout).await;
-                        break;
+            let shutdown = &mut shutdown_rx;
+            tokio::select! {
+                biased;
+                _ = shutdown => {
+                    drain::drain_tasks(&mut tasks, drain_timeout).await;
+                    break;
+                }
+                task_result = mq::pull_task(&mut redis_conn, &judge_queue) => {
+                    let pulled: PulledTask = match task_result {
+                        Ok(Some(pulled)) => pulled,
+                        Ok(None) => continue,
+                        Err(e) => {
+                            error!("拉取任务失败: {}", e);
+                            tokio::time::sleep(PULL_RETRY_DELAY).await;
+                            continue;
+                        }
+                    };
+
+                    // F-07 公平调度：同一用户已有评测在跑时，把任务放回队尾轮给他人。
+                    let is_active_user = {
+                        let mut guard = active_users.lock().unwrap();
+                        if guard.contains(&pulled.task.user_id) {
+                            true
+                        } else {
+                            guard.insert(pulled.task.user_id.clone());
+                            false
+                        }
+                    };
+                    if is_active_user {
+                        if let Err(e) =
+                            mq::requeue_task(&redis_client, &judge_queue, &pulled.raw).await
+                        {
+                            error!(
+                                submission_id = %pulled.task.submission_id,
+                                error = %e,
+                                "活跃用户任务重投失败"
+                            );
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        continue;
                     }
-                };
 
-            let task_result = mq::pull_task(&mut redis_conn, &judge_queue).await;
-            let pulled: PulledTask = match task_result {
-                Ok(Some(pulled)) => pulled,
-                Ok(None) => {
-                    drop(permit);
-                    continue;
+                    info!(
+                        "收到评测任务: submission_id={}, language={}",
+                        pulled.task.submission_id, pulled.task.language
+                    );
+
+                    let redis_client = redis_client.clone();
+                    let result_queue = result_queue.clone();
+                    let judge_queue = judge_queue.clone();
+                    let cache_dir = cache_dir.clone();
+                    let fallback_dir = fallback_dir.clone();
+                    let task_work_dir = work_dir.clone();
+                    let image_prefix = image_prefix.clone();
+                    let evaluator_network_mode = evaluator_network_mode.clone();
+                    let command_whitelist = command_whitelist.clone();
+                    let docker = docker.clone();
+                    let active_users = Arc::clone(&active_users);
+                    let task_user_id = pulled.task.user_id.clone();
+                    let task_metrics = Arc::clone(&judge_metrics);
+                    task_metrics.task_started();
+
+                    let handle = tokio::spawn(async move {
+                        let raw = pulled.raw;
+                        let task = pulled.task;
+                        // RAII guard：任务结束（含 panic/异常路径）时自动释放用户槽位。
+                        let _active_guard = ActiveUserGuard::new(active_users, task_user_id);
+
+                        // 统一使用双容器模式（Evaluator + Solution）
+                        let result = match judge::runner::evaluate_with_cpu_limit(
+                            docker,
+                            &task,
+                            download_timeout,
+                            cache_dir.clone(),
+                            cache_max_items,
+                            cache_max_mb,
+                            task_work_dir,
+                            cpu_limit_millicores,
+                            allow_evaluator_network,
+                            &evaluator_network_mode,
+                            allow_http_s3,
+                            &image_prefix,
+                            &command_whitelist,
+                            max_evaluator_time_ms,
+                            max_solution_call_timeout_ms,
+                        )
+                        .await
+                        {
+                            Ok(r) => r,
+                            Err(e) => {
+                                error!(submission_id = %task.submission_id, error = %e, "双容器评测失败");
+                                types::JudgeResult::error(&task.submission_id, task.rejudge_seq)
+                            }
+                        };
+
+                        // 使用带重试的推送；成功后确认任务，崩溃/失败则留给 sweeper。
+                        let push_succeeded = mq::push_result_with_retry(
+                            &redis_client,
+                            &result_queue,
+                            &result,
+                            &fallback_dir,
+                        )
+                        .await;
+                        if push_succeeded {
+                            mq::ack_task(&redis_client, &judge_queue, &raw).await;
+                        } else {
+                            task_metrics.result_push_failed();
+                        }
+                        task_metrics.task_finished(result.status == "error");
+                        // 用户槽位由 _active_guard 在任务退出时自动释放。
+                    });
+                    tasks.push(handle);
                 }
-                Err(e) => {
-                    drop(permit);
-                    error!("拉取任务失败: {}", e);
-                    tokio::time::sleep(PULL_RETRY_DELAY).await;
-                    continue;
-                }
-            };
-
-            info!(
-                "收到评测任务: submission_id={}, language={}",
-                pulled.task.submission_id, pulled.task.language
-            );
-
-            let redis_client = redis_client.clone();
-            let result_queue = result_queue.clone();
-            let judge_queue = judge_queue.clone();
-            let cache_dir = cache_dir.clone();
-            let fallback_dir = fallback_dir.clone();
-            let image_prefix = image_prefix.clone();
-            let evaluator_network_mode = evaluator_network_mode.clone();
-            let command_whitelist = command_whitelist.clone();
-            let docker = docker.clone();
-            let task_metrics = Arc::clone(&judge_metrics);
-            task_metrics.task_started();
-
-            let handle = tokio::spawn(async move {
-                let _permit = permit;
-                let raw = pulled.raw;
-                let task = pulled.task;
-
-                // 统一使用双容器模式（Evaluator + Solution）
-                let result = match judge::runner::evaluate_with_cpu_limit(
-                    docker,
-                    &task,
-                    download_timeout,
-                    cache_dir.clone(),
-                    cache_max_items,
-                    cache_max_mb,
-                    cpu_limit_millicores,
-                    allow_evaluator_network,
-                    &evaluator_network_mode,
-                    allow_http_s3,
-                    &image_prefix,
-                    &command_whitelist,
-                    max_evaluator_time_ms,
-                    max_solution_call_timeout_ms,
-                )
-                .await
-                {
-                    Ok(r) => r,
-                    Err(e) => {
-                        error!(submission_id = %task.submission_id, error = %e, "双容器评测失败");
-                        types::JudgeResult::error(&task.submission_id, task.rejudge_seq)
-                    }
-                };
-
-                // 使用带重试的推送；成功后确认任务，崩溃/失败则留给 sweeper。
-                let push_succeeded = mq::push_result_with_retry(
-                    &redis_client,
-                    &result_queue,
-                    &result,
-                    &fallback_dir,
-                )
-                .await;
-                if push_succeeded {
-                    mq::ack_task(&redis_client, &judge_queue, &raw).await;
-                } else {
-                    task_metrics.result_push_failed();
-                }
-                task_metrics.task_finished(result.status == "error");
-            });
-            tasks.push(handle);
+            }
 
             // 不等待任务完成，只回收已经完成的 JoinHandle，避免长期运行时
             // FuturesUnordered 无限增长；BRPOPLPUSH 本身不会在此处被取消。
@@ -267,31 +303,99 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{EvaluatorRuntime, RuntimeConfig, SolutionRuntime};
 
-    #[tokio::test]
-    async fn shutdown_signal_interrupts_waiting_for_judge_permit() {
-        let semaphore = Arc::new(Semaphore::new(0));
-        let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
-        shutdown_tx.send(()).unwrap();
+    /// F-07 公平调度纯逻辑测试：活跃用户集合的占位/释放语义。
+    #[test]
+    fn active_user_slot_is_exclusive_and_released() {
+        let active: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+        let user = "u-a".to_string();
 
-        let permit = acquire_judge_permit(semaphore, &mut shutdown_rx)
-            .await
-            .unwrap();
-        assert!(permit.is_none());
+        {
+            let mut guard = active.lock().unwrap();
+            assert!(!guard.contains(&user), "初始无活跃用户");
+            guard.insert(user.clone());
+        }
+        {
+            let guard = active.lock().unwrap();
+            assert!(guard.contains(&user), "占位后应包含该用户");
+        }
+        {
+            let mut guard = active.lock().unwrap();
+            guard.remove(&user);
+            assert!(!guard.contains(&user), "释放后应不再包含该用户");
+        }
     }
 
-    #[tokio::test]
-    async fn judge_permit_is_released_after_task_owns_it() {
-        let semaphore = Arc::new(Semaphore::new(1));
-        let (_shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
+    /// 队列 [userA 任务1, userA 任务2, userB 任务1]；userA active 时应跳到 userB 的任务。
+    #[test]
+    fn per_user_limit_skips_active_users() {
+        let active: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+        active.lock().unwrap().insert("userA".to_string());
 
-        let permit = acquire_judge_permit(Arc::clone(&semaphore), &mut shutdown_rx)
-            .await
-            .unwrap()
-            .expect("应获取到评测许可");
-        assert_eq!(semaphore.available_permits(), 0);
+        let queue = ["userA", "userA", "userB"];
+        let mut picked: Option<String> = None;
+        for user in queue {
+            let mut guard = active.lock().unwrap();
+            if guard.contains(user) {
+                continue;
+            }
+            guard.insert(user.to_string());
+            picked = Some(user.to_string());
+            break;
+        }
+        assert_eq!(picked.as_deref(), Some("userB"), "应跳过活跃用户取 userB");
+    }
 
-        drop(permit);
-        assert_eq!(semaphore.available_permits(), 1);
+    /// ActiveUserGuard 析构时自动释放用户槽位。
+    #[test]
+    fn active_user_guard_releases_on_drop() {
+        let active: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+        let user = "u-guard".to_string();
+        active.lock().unwrap().insert(user.clone());
+        {
+            let _guard = ActiveUserGuard::new(Arc::clone(&active), user.clone());
+            assert!(active.lock().unwrap().contains(&user));
+        }
+        assert!(!active.lock().unwrap().contains(&user));
+    }
+
+    /// JudgeTask 反序列化需要携带 user_id（公平调度字段）。
+    #[test]
+    fn judge_task_requires_user_id() {
+        let json = serde_json::json!({
+            "submission_id": "sid-1",
+            "problem_id": "1001",
+            "user_id": "u-1",
+            "runtime_config": {
+                "evaluator": {"image": "noj-evaluator-python", "command": "python3 /workspace/evaluate.py", "time_limit_ms": 5000, "memory_limit_mb": 512},
+                "solution": {"image": "noj-solution-python", "call_timeout_ms": 2000, "memory_limit_mb": 512}
+            },
+            "language": "python3",
+            "code": "print(1)"
+        });
+        let task: crate::types::JudgeTask = serde_json::from_value(json).unwrap();
+        assert_eq!(task.user_id, "u-1");
+    }
+
+    /// 保证 RuntimeConfig 相关导入在测试中可用（与生产结构保持一致）。
+    #[test]
+    fn runtime_config_shape_matches_protocol() {
+        let config = RuntimeConfig {
+            evaluator: EvaluatorRuntime {
+                image: "img".to_string(),
+                command: "cmd".to_string(),
+                time_limit_ms: 1000,
+                memory_limit_mb: 256,
+                network: None,
+            },
+            solution: SolutionRuntime {
+                image: "img".to_string(),
+                call_timeout_ms: 1000,
+                memory_limit_mb: 256,
+            },
+        };
+        assert_eq!(config.evaluator.time_limit_ms, 1000);
+        assert_eq!(config.solution.call_timeout_ms, 1000);
     }
 }

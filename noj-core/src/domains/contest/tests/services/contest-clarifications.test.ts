@@ -79,6 +79,7 @@ async function createContestWithWindow(
     start_time: new Date(Date.now() + startOffsetMs).toISOString(),
     end_time: new Date(Date.now() + endOffsetMs).toISOString(),
     type: "kaggle",
+    password: "InvitePass123",
     problems: problemIds.map((problemId, index) => ({
       problem_id: problemId,
       label: String.fromCharCode(65 + index),
@@ -118,7 +119,7 @@ Deno.test({
     const problemA = await createProblem(920001);
     const problemB = await createProblem(920002);
     const contestId = await createContestWithWindow(creatorId, [problemA]);
-    await registerForContest(contestId, participantId);
+    await registerForContest(contestId, participantId, "InvitePass123");
 
     // 挂题目提问成功
     const withProblem = await createClarification(contestId, participantId, {
@@ -180,8 +181,8 @@ Deno.test({
     );
     // ended 竞赛无法注册（registerForContest 拒绝），先以 running 窗口注册，再改为已结束
     const endedId = await createContestWithWindow(creatorId, [problemA]);
-    await registerForContest(pendingId, participantId);
-    await registerForContest(endedId, participantId);
+    await registerForContest(pendingId, participantId, "InvitePass123");
+    await registerForContest(endedId, participantId, "InvitePass123");
     await getDb().update(contests).set({
       start_time: new Date(Date.now() - 7_200_000).toISOString(),
       end_time: new Date(Date.now() - 3_600_000).toISOString(),
@@ -213,10 +214,10 @@ Deno.test({
     const otherParticipantId = await createUser("clar-reply-other");
     const problemA = await createProblem(920004);
     const contestId = await createContestWithWindow(creatorId, [problemA]);
-    await registerForContest(contestId, participantId);
-    await registerForContest(contestId, otherParticipantId);
+    await registerForContest(contestId, participantId, "InvitePass123");
+    await registerForContest(contestId, otherParticipantId, "InvitePass123");
     // 创建者提问场景：创建者本身也注册参赛
-    await registerForContest(contestId, creatorId);
+    await registerForContest(contestId, creatorId, "InvitePass123");
 
     const question = await createClarification(contestId, participantId, {
       content: "内存限制是多少？",
@@ -312,8 +313,8 @@ Deno.test({
     const otherParticipantId = await createUser("clar-list-other");
     const problemA = await createProblem(920005);
     const contestId = await createContestWithWindow(creatorId, [problemA]);
-    await registerForContest(contestId, askerId);
-    await registerForContest(contestId, otherParticipantId);
+    await registerForContest(contestId, askerId, "InvitePass123");
+    await registerForContest(contestId, otherParticipantId, "InvitePass123");
 
     const question = await createClarification(contestId, askerId, {
       content: "公开提问",

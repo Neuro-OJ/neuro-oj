@@ -12,6 +12,8 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 
 import {
   auditLogs,
+  contestParticipants,
+  contestProblems,
   contests,
   evaluationResults,
   problems,
@@ -21,7 +23,9 @@ import {
 } from "../../../../shared/db/schema.ts";
 import {
   BadRequestError,
+  ForbiddenError,
   NotFoundError,
+  RateLimitedError,
 } from "../../../../shared/base/errors.ts";
 import { eq, sql } from "drizzle-orm";
 import { enterTestContext } from "../../../system/index.ts";
@@ -117,6 +121,16 @@ async function handleConnection(
           reply = renderRespInteger(queueLengths.get(queue) ?? 0);
           break;
         }
+        case "INCR": {
+          const key = parsed.args[0] ?? "";
+          const value = (queueLengths.get(key) ?? 0) + 1;
+          queueLengths.set(key, value);
+          reply = renderRespInteger(value);
+          break;
+        }
+        case "EXPIRE":
+          reply = renderRespInteger(1);
+          break;
         case "EVAL": {
           // ioredis 参数顺序：script、numkeys、key、max、message。
           const queue = parsed.args[2] ?? "";
@@ -291,6 +305,69 @@ Deno.test({
 });
 
 Deno.test({
+  name: "submissions service: 普通入口提交他人 private 题 → Forbidden",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const privateOwnerId = `tst-private-owner-${Date.now()}-${
+      Math.random().toString(36).slice(2, 8)
+    }`;
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+      id: privateOwnerId,
+      username: `tstpo-${Date.now()}`,
+      email: `${privateOwnerId}@test.noj`,
+      password_hash: "hash",
+      created_at: now,
+      updated_at: now,
+    });
+    const privateProblemId = `tst-private-problem-${Date.now()}`;
+    await db.insert(problems).values({
+      id: privateProblemId,
+      title: `私有题 ${Date.now()}`,
+      description: "私有题面",
+      difficulty: "easy",
+      visibility: "private",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
+      number: 60000 + (Date.now() & 0x7fff),
+      owner_id: privateOwnerId,
+      type: "U",
+      created_at: now,
+      updated_at: now,
+    });
+    try {
+      await assertRejects(
+        () =>
+          createSubmission(TEST_USER_ID, {
+            problem_id: privateProblemId,
+            language: "python3",
+            code: "print(1)",
+          }),
+        ForbiddenError,
+        "无权对该题目提交",
+      );
+    } finally {
+      await db.delete(problems).where(eq(problems.id, privateProblemId));
+      await db.delete(users).where(eq(users.id, privateOwnerId));
+    }
+  },
+});
+
+Deno.test({
   name: "submissions service: getSubmission 不存在的提交抛出 NotFoundError",
   ignore: skip,
   sanitizeResources: false,
@@ -323,6 +400,18 @@ Deno.test({
       created_by: TEST_USER_ID,
       created_at: now,
       updated_at: now,
+    });
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: TEST_PROBLEM_ID,
+      sort_order: 0,
+      label: "A",
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: TEST_USER_ID,
+      registered_at: now,
     });
 
     resetRedisForTest();
@@ -391,6 +480,18 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: TEST_PROBLEM_ID,
+      sort_order: 0,
+      label: "A",
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: TEST_USER_ID,
+      registered_at: now,
+    });
 
     resetRedisForTest();
     const fakeRedis = await startFakeRedis();
@@ -431,6 +532,80 @@ Deno.test({
     } finally {
       for (const id of ids) {
         await db.delete(submissions).where(eq(submissions.id, id));
+      }
+      await db.delete(contests).where(eq(contests.id, contestId));
+      resetRedisForTest();
+      await fakeRedis.stop();
+      if (previousRedisUrl) Deno.env.set("REDIS_URL", previousRedisUrl);
+      else Deno.env.delete("REDIS_URL");
+    }
+  },
+});
+
+Deno.test({
+  name: "submissions service: 竞赛提交次数超限 → RateLimited",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.insert(contests).values({
+      id: contestId,
+      title: "限额竞赛",
+      start_time: new Date(Date.now() - 60_000).toISOString(),
+      end_time: new Date(Date.now() + 60_000).toISOString(),
+      type: "kaggle",
+      config: { submission_limits: { [TEST_PROBLEM_ID]: 1 } },
+      created_by: TEST_USER_ID,
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: TEST_PROBLEM_ID,
+      sort_order: 0,
+      label: "A",
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: TEST_USER_ID,
+      registered_at: now,
+    });
+
+    resetRedisForTest();
+    const fakeRedis = await startFakeRedis();
+    const previousRedisUrl = Deno.env.get("REDIS_URL");
+    Deno.env.set("REDIS_URL", fakeRedis.url);
+    const redis = getRedis();
+    await redis.connect();
+    await redis.ping();
+
+    let firstId: string | undefined;
+    try {
+      const first = await createSubmission(TEST_USER_ID, {
+        problem_id: TEST_PROBLEM_ID,
+        language: "python3",
+        code: "print(1)",
+        contest_id: contestId,
+      }, contestId);
+      firstId = first.id;
+      await assertRejects(
+        () =>
+          createSubmission(TEST_USER_ID, {
+            problem_id: TEST_PROBLEM_ID,
+            language: "python3",
+            code: "print(2)",
+            contest_id: contestId,
+          }, contestId),
+        RateLimitedError,
+        "提交次数已达上限",
+      );
+    } finally {
+      if (firstId) {
+        await db.delete(submissions).where(eq(submissions.id, firstId));
       }
       await db.delete(contests).where(eq(contests.id, contestId));
       resetRedisForTest();

@@ -18,6 +18,7 @@
 import {
   apiGet,
   apiPost,
+  apiPut,
   BASE_URL,
   e2eTest,
   getAdminToken,
@@ -299,6 +300,17 @@ e2eTest(
     if (!isE2E) return;
     const zip = await makeBundleZip();
     bundleProblemId = await importBundle(zip);
+    // U 型导入默认 private；普通用户提交前需公开
+    const pubRes = await apiPut(
+      `/api/v1/problems/${bundleProblemId}/visibility`,
+      { visibility: "public" },
+      adminToken,
+    );
+    if (pubRes.status !== 200) {
+      throw new Error(
+        `设置导入题目公开失败: ${pubRes.status} ${JSON.stringify(pubRes.body)}`,
+      );
+    }
     console.log(
       `  → 导入题目 ${bundleProblemId.slice(0, 8)} 成功（联网已开启）`,
     );

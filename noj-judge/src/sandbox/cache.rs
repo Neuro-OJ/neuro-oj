@@ -70,9 +70,10 @@ impl SupportPackageCache {
         })
     }
 
-    /// 尝试从缓存读取支持包。
+    /// 尝试从缓存读取支持包（仅测试使用，生产请用 [`get_path`]）。
     ///
     /// 返回 `Some(Vec<u8>)` 表示缓存命中，`None` 表示未命中。
+    #[cfg(test)]
     pub async fn get(&self, checksum: &str) -> Result<Option<Vec<u8>>> {
         if checksum.is_empty() {
             return Ok(None);
@@ -94,9 +95,34 @@ impl SupportPackageCache {
         Ok(Some(data))
     }
 
-    /// 写入缓存。
+    /// 返回缓存文件路径，不把文件内容读入内存。
+    ///
+    /// 内容寻址缓存直接以路径供下游流式读取；调用方应自行验证文件 SHA-256。
+    pub async fn get_path(&self, checksum: &str) -> Result<Option<PathBuf>> {
+        if checksum.is_empty() {
+            return Ok(None);
+        }
+        validate_checksum_key(checksum)?;
+
+        let _guard = self.lock.lock().await;
+
+        let path = self.cache_path(checksum);
+        if !path.exists() {
+            return Ok(None);
+        }
+
+        // 只更新 atime，不读取内容。
+        self.touch(&path).await?;
+
+        info!("支持包缓存命中: checksum={}, path={:?}", checksum, path);
+
+        Ok(Some(path))
+    }
+
+    /// 写入缓存（仅测试使用，生产请用 [`set_from_file`]）。
     ///
     /// 写入后检查是否超出上限，超出时按 LRU 淘汰。
+    #[cfg(test)]
     pub async fn set(&self, checksum: &str, data: &[u8]) -> Result<()> {
         if checksum.is_empty() {
             return Ok(());
@@ -133,6 +159,61 @@ impl SupportPackageCache {
         self.evict_if_needed().await?;
 
         Ok(())
+    }
+
+    /// 流式写入缓存：从源文件复制到缓存文件，避免整包驻留内存。
+    ///
+    /// 与测试用 [`set`] 一样使用原子写入（tmp + rename），并执行 LRU 淘汰。
+    pub async fn set_from_file(&self, checksum: &str, source: &Path) -> Result<()> {
+        if checksum.is_empty() {
+            return Ok(());
+        }
+        validate_checksum_key(checksum)?;
+
+        let _guard = self.lock.lock().await;
+
+        let path = self.cache_path(checksum);
+        let tmp_path = self
+            .dir
+            .join(format!(".{}.tmp.{}", checksum, uuid::Uuid::new_v4()));
+
+        let result = async {
+            let mut src = fs::File::open(source)
+                .await
+                .with_context(|| format!("打开缓存源文件失败: {}", source.display()))?;
+            let mut tmp = fs::File::create(&tmp_path)
+                .await
+                .context("创建缓存临时文件失败")?;
+            tokio::io::copy(&mut src, &mut tmp)
+                .await
+                .context("流式写入缓存临时文件失败")?;
+            tmp.sync_all().await.context("同步缓存临时文件失败")?;
+
+            // 临时文件权限收紧为 0600，rename 后保留该权限。
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ =
+                    fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600)).await;
+            }
+
+            fs::rename(&tmp_path, &path)
+                .await
+                .context("重命名缓存文件失败")?;
+            self.touch(&path).await?;
+            let meta = fs::metadata(&path).await?;
+            info!("支持包缓存写入: checksum={}, size={}", checksum, meta.len());
+
+            self.evict_if_needed().await?;
+            Ok::<(), anyhow::Error>(())
+        }
+        .await;
+
+        if result.is_err() {
+            // 失败时清理残留临时文件，避免磁盘堆积。
+            let _ = fs::remove_file(&tmp_path).await;
+        }
+        result
     }
 
     /// 检查是否超出上限，超出时按 atime 淘汰。
@@ -274,6 +355,31 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result, Some(data.to_vec()));
+    }
+
+    #[tokio::test]
+    async fn test_cache_set_from_file_and_get_path() {
+        let tmp = TempDir::new().unwrap();
+        let cache = SupportPackageCache::new(tmp.path(), 10, 100).await.unwrap();
+
+        let source = tmp.path().join("source.zip");
+        tokio::fs::write(&source, b"streamed zip data")
+            .await
+            .unwrap();
+
+        let checksum = "a".repeat(64);
+        cache.set_from_file(&checksum, &source).await.unwrap();
+
+        let path = cache
+            .get_path(&checksum)
+            .await
+            .unwrap()
+            .expect("流式写入后应命中缓存路径");
+        assert_eq!(tokio::fs::read(&path).await.unwrap(), b"streamed zip data");
+
+        // 旧的 Byte 读取接口在测试构建中仍应可用。
+        let data = cache.get(&checksum).await.unwrap().expect("get 应命中");
+        assert_eq!(data, b"streamed zip data");
     }
 
     #[tokio::test]

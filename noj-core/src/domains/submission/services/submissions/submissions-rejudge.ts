@@ -156,6 +156,7 @@ export async function rejudgeSubmission(id: string): Promise<void> {
   const task: JudgeTask = {
     submission_id: id,
     problem_id: submission.problem_id,
+    user_id: submission.user_id,
     runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
     download_url,
     language: submission.language,
@@ -373,6 +374,7 @@ export async function rejudgeProblemSubmissions(
       const task: JudgeTask = {
         submission_id: sub.id,
         problem_id: problemId,
+        user_id: sub.user_id,
         runtime_config: runtimeConfig as NonNullable<typeof runtimeConfig>,
         download_url,
         language: sub.language,

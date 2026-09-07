@@ -317,6 +317,7 @@ jobs:
             e2e/28_announcements.test.ts \
             e2e/28_clarifications.test.ts \
             e2e/29_avatar.test.ts \
+            e2e/30_contest_anti_cheat.test.ts \
             e2e/30_self_test.test.ts \
             e2e/31_tfa.test.ts \
             e2e/32_llm_gateway.test.ts \

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-
 import { useToast } from "~/composables/useToast"
 import { useDialog } from "~/composables/useDialog"
 import { extractApiError } from '~/utils/apiError'
@@ -23,6 +22,8 @@ interface Problem {
   display_id: string
   type: string
   owner_id: string
+  owner_username?: string
+  visibility?: string
   tags: { id: string; name: string; kind: 'problem' | 'algorithm' }[]
   created_at: string
 }
@@ -136,7 +137,7 @@ async function handleDelete() {
   }
 }
 
-const { toast } = useToast()
+const { toast, showToast } = useToast()
 const { dialog } = useDialog()
 const rejudgingProblemIds = ref(new Set<string>())
 const preflight = ref<{ problem_id: string; fingerprint: string; can_publish: boolean; checks: { name: string; status: string; message: string }[] } | null>(null)
@@ -165,7 +166,8 @@ async function batchRejudge(problemId: string) {
     const res = await api.post<{ message: string; total: number; queued: number; skipped: number }>(
       `/api/v1/admin/problems/${problemId}/rejudge`,
     )
-    toast.success(
+    showToast(
+      "success",
       `批量重测共 ${res.total} 条，已入队 ${res.queued} 条${res.skipped > 0 ? `，未入队 ${res.skipped} 条` : ""}`,
     )
     loadProblems(currentPage.value)
@@ -173,6 +175,85 @@ async function batchRejudge(problemId: string) {
     const next = new Set(rejudgingProblemIds.value)
     next.delete(problemId)
     rejudgingProblemIds.value = next
+  }
+}
+
+// ── 题目评定队列 ─────────────────────────────────────────────
+const activeTab = ref<'all' | 'review'>('all')
+const reviewQueue = ref<'public' | 'p'>('public')
+const reviewProblems = ref<Problem[]>([])
+const reviewLoading = ref(false)
+const reviewError = ref('')
+const selectedIds = ref<Set<string>>(new Set())
+const reviewing = ref(false)
+
+const reviewColumns: TableColumn<Problem>[] = [
+  { accessorKey: 'selected', header: '' },
+  { accessorKey: 'display_id', header: '题号' },
+  { accessorKey: 'title', header: '标题' },
+  { accessorKey: 'owner_username', header: '所有者' },
+  { accessorKey: 'created_at', header: '创建时间' },
+]
+
+const selectedCount = computed(() => selectedIds.value.size)
+
+async function loadReview() {
+  reviewLoading.value = true
+  reviewError.value = ''
+  selectedIds.value = new Set()
+  try {
+    const res = await api.get<{ data: Problem[]; total: number }>(
+      `/api/v1/admin/problems/review?queue=${reviewQueue.value}&page=1&limit=100`,
+      { silent: true },
+    )
+    reviewProblems.value = res.data
+  } catch (err: unknown) {
+    reviewError.value = extractApiError(err).message
+  } finally {
+    reviewLoading.value = false
+  }
+}
+
+watch(reviewQueue, () => void loadReview())
+watch(activeTab, (value) => {
+  if (value === 'review') void loadReview()
+})
+
+function toggleSelect(id: string) {
+  const next = new Set(selectedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedIds.value = next
+}
+
+function toggleSelectAll() {
+  if (reviewProblems.value.length > 0 &&
+    reviewProblems.value.every((p) => selectedIds.value.has(p.id))) {
+    selectedIds.value = new Set()
+  } else {
+    selectedIds.value = new Set(reviewProblems.value.map((p) => p.id))
+  }
+}
+
+async function batchReview(action: 'to_public' | 'to_p') {
+  if (selectedIds.value.size === 0) return
+  reviewing.value = true
+  try {
+    const res = await api.post<{ data: { updated: number } }>(
+      '/api/v1/admin/problems/review',
+      { problem_ids: [...selectedIds.value], action },
+    )
+    showToast(
+      'success',
+      action === 'to_public'
+        ? `已批量转公开 ${res.data.updated} 题`
+        : `已批量转为 P 型 ${res.data.updated} 题`,
+    )
+    await loadReview()
+  } catch (err: unknown) {
+    toast.error(extractApiError(err).message)
+  } finally {
+    reviewing.value = false
   }
 }
 </script>
@@ -196,39 +277,96 @@ async function batchRejudge(problemId: string) {
       </template>
     </PageHeader>
 
-    <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
-    <UTable
-      :columns="columns"
-      :data="problems"
-      :loading="tableLoading"
-      :empty="'暂无题目'">
-      <template #difficulty-cell="{ row }">
-        <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold" :class="row.original.difficulty === 'easy' ? 'bg-green-50 text-success-text' : row.original.difficulty === 'medium' ? 'bg-amber-50 text-warning-text' : 'bg-red-50 text-error-text'">
-          {{ difficultyLabels[row.original.difficulty] || row.original.difficulty }}
-        </span>
-      </template>
+    <div class="flex gap-1 border-b border-border">
+      <button
+        type="button"
+        class="px-3 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors"
+        :class="activeTab === 'all' ? 'border-signal text-text' : 'border-transparent text-text-muted hover:text-text'"
+        @click="activeTab = 'all'"
+      >全部题目</button>
+      <button
+        type="button"
+        class="px-3 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors"
+        :class="activeTab === 'review' ? 'border-signal text-text' : 'border-transparent text-text-muted hover:text-text'"
+        @click="activeTab = 'review'"
+      >题目评定</button>
+    </div>
 
-      <template #actions-cell="{ row }">
-        <div class="flex gap-1.5 justify-center">
-          <NuxtLink :to="`/admin/problem-edit/${row.original.display_id}`" class="inline-flex items-center justify-center w-9 h-9 border border-border rounded bg-transparent text-text-secondary cursor-pointer no-underline transition-all duration-150 hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑">
-            <UIcon name="i-lucide-pencil" class="size-3.5" />
-          </NuxtLink>
-          <UButton color="neutral" variant="outline" class="w-9 h-9 border-border text-text-secondary hover:bg-amber-50 hover:text-warning-600 hover:border-warning-600/30" :disabled="rejudgingProblemIds.has(row.original.id)" :title="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" :aria-label="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" @click="batchRejudge(row.original.display_id)">
-            <UIcon name="i-lucide-refresh-cw" class="size-3.5" />
-          </UButton>
-          <UButton color="neutral" variant="outline" class="w-9 h-9" title="发布前预检" aria-label="发布前预检" @click="runPreflight(row.original)"><UIcon name="i-lucide-clipboard-check" class="size-3.5" /></UButton>
-          <UButton color="neutral" variant="outline" class="w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row.original)">
-            <UIcon name="i-lucide-trash-2" class="size-3.5" />
-          </UButton>
-        </div>
-      </template>
-    </UTable>
+    <template v-if="activeTab === 'all'">
+      <div v-if="tableError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ tableError }}</span></div>
+      <UTable
+        :columns="columns"
+        :data="problems"
+        :loading="tableLoading"
+        :empty="'暂无题目'">
+        <template #difficulty-cell="{ row }">
+          <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold" :class="row.original.difficulty === 'easy' ? 'bg-green-50 text-success-text' : row.original.difficulty === 'medium' ? 'bg-amber-50 text-warning-text' : 'bg-red-50 text-error-text'">
+            {{ difficultyLabels[row.original.difficulty] || row.original.difficulty }}
+          </span>
+        </template>
 
-    <PaginationNav
-      :current-page="currentPage"
-      :total-pages="totalPages"
-      @page-change="onPageChange"
-    />
+        <template #actions-cell="{ row }">
+          <div class="flex gap-1.5 justify-center">
+            <NuxtLink :to="`/admin/problem-edit/${row.original.display_id}`" class="inline-flex items-center justify-center w-9 h-9 border border-border rounded bg-transparent text-text-secondary cursor-pointer no-underline transition-all duration-150 hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑">
+              <UIcon name="i-lucide-pencil" class="size-3.5" />
+            </NuxtLink>
+            <UButton color="neutral" variant="outline" class="w-9 h-9 border-border text-text-secondary hover:bg-amber-50 hover:text-warning-600 hover:border-warning-600/30" :disabled="rejudgingProblemIds.has(row.original.id)" :title="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" :aria-label="rejudgingProblemIds.has(row.original.id) ? '重测提交中' : '重测'" @click="batchRejudge(row.original.display_id)">
+              <UIcon name="i-lucide-refresh-cw" class="size-3.5" />
+            </UButton>
+            <UButton color="neutral" variant="outline" class="w-9 h-9" title="发布前预检" aria-label="发布前预检" @click="runPreflight(row.original)"><UIcon name="i-lucide-clipboard-check" class="size-3.5" /></UButton>
+            <UButton color="neutral" variant="outline" class="w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row.original)">
+              <UIcon name="i-lucide-trash-2" class="size-3.5" />
+            </UButton>
+          </div>
+        </template>
+      </UTable>
+
+      <PaginationNav
+        :current-page="currentPage"
+        :total-pages="totalPages"
+        @page-change="onPageChange"
+      />
+    </template>
+
+    <template v-else>
+      <div class="flex items-center gap-2">
+        <UButton
+          size="sm"
+          :variant="reviewQueue === 'public' ? 'solid' : 'outline'"
+          @click="reviewQueue = 'public'"
+        >待转公开</UButton>
+        <UButton
+          size="sm"
+          :variant="reviewQueue === 'p' ? 'solid' : 'outline'"
+          @click="reviewQueue = 'p'"
+        >待转 P</UButton>
+      </div>
+
+      <div v-if="reviewError" class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-sm text-error-text"><span>{{ reviewError }}</span></div>
+      <UTable
+        :columns="reviewColumns"
+        :data="reviewProblems"
+        :loading="reviewLoading"
+        :empty="'暂无待处理题目'">
+        <template #selected-cell="{ row }">
+          <input
+            type="checkbox"
+            class="size-4 accent-primary"
+            :checked="selectedIds.has(row.original.id)"
+            :aria-label="`选择 ${row.original.display_id}`"
+            @change="toggleSelect(row.original.id)"
+          />
+        </template>
+        <template #owner_username-cell="{ row }">{{ row.original.owner_username || row.original.owner_id }}</template>
+        <template #created_at-cell="{ row }">{{ new Date(row.original.created_at).toLocaleDateString("zh-CN") }}</template>
+      </UTable>
+
+      <div class="flex items-center gap-2">
+        <UButton color="primary" :loading="reviewing" :disabled="selectedCount === 0 || reviewing" @click="batchReview('to_public')">批量转公开</UButton>
+        <UButton color="primary" variant="outline" :loading="reviewing" :disabled="selectedCount === 0 || reviewing" @click="batchReview('to_p')">批量转 P</UButton>
+        <span class="text-xs text-text-muted">已选 {{ selectedCount }} 题</span>
+      </div>
+    </template>
   </div>
 
   <!-- 删除确认 -->

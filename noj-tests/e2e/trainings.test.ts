@@ -3,6 +3,7 @@ import {
   apiGet,
   apiPatch,
   apiPost,
+  apiPut,
   CODE_SAMPLES,
   e2eTest,
   getAdminToken,
@@ -52,6 +53,16 @@ e2eTest("training e2e: 建题单→加题→进度→可见性→删题清理", 
     throw new Error(`建题失败: ${JSON.stringify(problemRes.body)}`);
   }
   const problemId = (problemRes.body as { data: { id: string } }).data.id;
+  const publicRes = await apiPut(
+    `/api/v1/problems/${problemId}/visibility`,
+    { visibility: "public" },
+    adminToken,
+  );
+  if (publicRes.status !== 200) {
+    throw new Error(
+      `管理员设题目 public 失败: ${JSON.stringify(publicRes.body)}`,
+    );
+  }
   const sampleProblemId = await getProblemIdByNumber(1001);
 
   const created = await apiPost(

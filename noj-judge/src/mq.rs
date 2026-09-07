@@ -71,6 +71,29 @@ fn parse_task_message(value: &str) -> Option<JudgeTask> {
     }
 }
 
+/// 将已拉取的活跃用户任务放回主队列队尾（并从 processing 移除原消息）。
+///
+/// 用于公平调度：同一用户已有评测在跑时，后续任务轮给其他用户。
+pub async fn requeue_task(
+    redis_client: &redis::Client,
+    judge_queue: &str,
+    raw: &str,
+) -> Result<()> {
+    let mut conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .context("重试连接 Redis 失败")?;
+    let processing = processing_queue(judge_queue);
+    let _: usize = conn
+        .lrem(&processing, 1, raw)
+        .await
+        .context("从 processing 移除重投任务失败")?;
+    conn.rpush::<&str, &str, usize>(judge_queue, raw)
+        .await
+        .context("将任务放回主队列失败")?;
+    Ok(())
+}
+
 /// 确认任务完成：从 processing 列表移除原始消息。
 ///
 /// 返回 false 表示确认失败（消息将由 sweeper 重投，at-least-once 可接受）。
@@ -310,6 +333,7 @@ mod tests {
         let json = r#"{
             "submission_id":"sid-1",
             "problem_id":"1001",
+            "user_id": "u-1",
             "runtime_config":{
                 "evaluator":{"image":"noj-evaluator-python","command":"python3 /workspace/evaluate.py","time_limit_ms":5000,"memory_limit_mb":512},
                 "solution":{"image":"noj-solution-python","call_timeout_ms":2000,"memory_limit_mb":512}

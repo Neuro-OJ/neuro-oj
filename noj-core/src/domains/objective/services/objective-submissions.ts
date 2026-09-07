@@ -21,6 +21,7 @@ import {
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { checkPermission } from "./../../identity/index.ts";
+import { resolveProblemAccess } from "./../../catalog/index.ts";
 import { judgePaper } from "./objective-judge.ts";
 import {
   assertObjectivePaper,
@@ -96,18 +97,25 @@ function stripExpected(
 
 /**
  * 合并解析到判定详情（仅练习模式返回 explanation，防泄题）。
+ * includeExpected=false 时同时剥离 expected（private 套卷练习响应不泄标准答案）。
  */
 function withExplanation(
   details: Record<string, QuestionJudgement>,
   questions: QuestionWithAnswer[],
-): Record<string, QuestionJudgement & { explanation?: string }> {
-  const result: Record<string, QuestionJudgement & { explanation?: string }> =
-    {};
+  includeExpected = true,
+): Record<string, QuestionJudgement> {
+  const result: Record<string, QuestionJudgement> = {};
   for (const q of questions) {
-    result[q.id] = {
-      ...(details[q.id] ?? { correct: false, expected: [], given: [] }),
-      explanation: q.explanation || undefined,
+    const judgement = details[q.id] ?? { correct: false, given: [] };
+    const entry: QuestionJudgement = {
+      correct: judgement.correct,
+      given: judgement.given,
     };
+    if (includeExpected && judgement.expected !== undefined) {
+      entry.expected = judgement.expected;
+    }
+    entry.explanation = q.explanation || undefined;
+    result[q.id] = entry;
   }
   return result;
 }
@@ -121,11 +129,25 @@ export async function submitObjectivePaper(
   paperId: string,
   input: SubmitObjectiveInput,
   userId: string,
+  isAdmin = false,
 ): Promise<SubmitObjectiveResult> {
   const db = getDb();
   const paper = await getPaperOrThrow(paperId);
   assertObjectivePaper(paper);
   const paperUuid = paper.id;
+
+  // 练习/竞赛提交统一访问判定（F-05/C1）：private 套卷非 owner/admin 且无竞赛
+  // 上下文一律拒绝；竞赛上下文由 validateContestSubmission 独立校验，不接受伪造。
+  const contestId = input.contest_id ?? null;
+  if (!contestId) {
+    const access = resolveProblemAccess(paper, {
+      viewerId: userId,
+      isAdmin,
+    });
+    if (!access.allowed) {
+      throw new ForbiddenError("无权对该套卷提交");
+    }
+  }
 
   // 载荷校验
   try {
@@ -139,7 +161,6 @@ export async function submitObjectivePaper(
     .from(objectiveQuestions)
     .where(eq(objectiveQuestions.paper_id, paperUuid));
 
-  const contestId = input.contest_id ?? null;
   const contestMode = contestId !== null;
   if (contestMode) {
     await validateContestSubmission(contestId, paperUuid, userId);
@@ -158,6 +179,8 @@ export async function submitObjectivePaper(
 
   const now = new Date().toISOString();
   const submissionId = crypto.randomUUID();
+  // F-14：入库前剥离 expected，任何后续读路径都不可能泄露标准答案。
+  const storedDetails = stripExpected(judgement.details);
   const row = {
     id: submissionId,
     paper_id: paperUuid,
@@ -167,7 +190,7 @@ export async function submitObjectivePaper(
     answers: input.answers,
     status: "finished",
     score: judgement.score,
-    details: judgement.details,
+    details: storedDetails,
     created_at: now,
   };
 
@@ -193,7 +216,9 @@ export async function submitObjectivePaper(
     total_count: judgement.total_count,
     details: contestMode
       ? stripExpected(judgement.details)
-      : withExplanation(judgement.details, questions),
+      : paper.visibility === "public"
+      ? withExplanation(judgement.details, questions, true)
+      : withExplanation(judgement.details, questions, false),
     contest_mode: contestMode,
   };
 }
@@ -258,7 +283,16 @@ export async function getObjectiveSubmission(
       details: stripExpected(response.details),
     };
   }
-  // 练习模式：合并解析到逐题判定
+  // 练习模式：仅公开套卷或 owner/admin 可看到解析（F-01 解析门）
+  const paper = await getPaperOrThrow(row.paper_id);
+  const canExplain = paper.visibility === "public" ||
+    paper.owner_id === viewerId || isAdmin;
+  if (!canExplain) {
+    return {
+      ...response,
+      details: stripExpected(response.details),
+    };
+  }
   const questions = await db
     .select()
     .from(objectiveQuestions)
@@ -266,6 +300,7 @@ export async function getObjectiveSubmission(
   const details = withExplanation(
     row.details as Record<string, QuestionJudgement>,
     questions,
+    paper.visibility === "public",
   );
   return {
     ...response,

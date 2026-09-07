@@ -99,6 +99,7 @@ async function seedProblems() {
       },
       number: 1,
       type: "U",
+      visibility: "public",
       created_at: now,
       updated_at: now,
     },

@@ -40,6 +40,7 @@ export const problems = pgTable(
     type: text("type").notNull().default("U"),
     /** 客观题标记：true 表示该题目是客观题套卷（无评测容器，服务端即时判定） */
     is_objective: boolean("is_objective").notNull().default(false),
+    visibility: text("visibility").notNull().default("public"),
     /** 提交模式：code=单文件代码提交（默认），artifact=zip 产物提交 */
     submission_mode: text("submission_mode").notNull().default("code"),
     /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
@@ -63,6 +64,14 @@ export const problems = pgTable(
     submissionModeCheck: check(
       "problems_submission_mode_check",
       sql`${table.submission_mode} IN ('code', 'artifact')`,
+    ),
+    visibilityCheck: check(
+      "problems_visibility_check",
+      sql`${table.visibility} IN ('public', 'private')`,
+    ),
+    pVisibilityCheck: check(
+      "problems_p_visibility_check",
+      sql`${table.type} <> 'P' OR ${table.visibility} = 'public'`,
     ),
     searchVectorIdx: index("idx_problems_search_vector").using(
       "gin",

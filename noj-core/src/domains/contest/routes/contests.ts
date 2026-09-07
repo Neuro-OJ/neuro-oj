@@ -17,7 +17,7 @@ import {
 } from "./../../../shared/http/pagination.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { createFileStream } from "./../../../shared/http/file-stream.ts";
-import { checkPermission } from "./../../identity/index.ts";
+import { assertPermission, checkPermission } from "./../../identity/index.ts";
 import {
   getContestRankingView,
   getLatestContestRankingSnapshot,
@@ -29,6 +29,7 @@ import {
 } from "../services/contest-clarifications.ts";
 import {
   computeContestStatus,
+  createContest,
   getContest,
   getContestProblems,
   isParticipant,
@@ -41,9 +42,13 @@ import {
   createSubmission,
   listSubmissions,
 } from "../../submission/index.ts";
+import type { CreateContestInput } from "./../types/contests.ts";
 import { isValidContestType } from "./../types/contests.ts";
 import { createActivity } from "../../community/index.ts";
-import { enforceContestSubmissionRateLimit } from "../../system/index.ts";
+import {
+  enforceContestRegisterRateLimit,
+  enforceContestSubmissionRateLimit,
+} from "../../system/index.ts";
 
 const contests = new Hono<OptionalAuthEnv>();
 const MAX_CODE_LENGTH = 100 * 1024;
@@ -162,6 +167,19 @@ contests.get("/", async (c) => {
 });
 
 /**
+ * POST / —— 创建邀请赛（普通用户）或公开赛（管理员）。
+ * 权限：登录且具备 contest:create。body：CreateContestInput。
+ * 响应：201 { data }。
+ */
+contests.post("/", authMiddleware, async (c) => {
+  await assertPermission(c, "contest:create");
+  const body = await parseJsonBody<CreateContestInput>(c);
+  const isAdmin = await checkPermission(c, "submission:read_all");
+  const data = await createContest(body, c.var.userId as string, isAdmin);
+  return c.json({ data }, 201);
+});
+
+/**
  * POST /:id/register —— 注册参赛（公开竞赛自助注册，可带密码）。
  * 权限：登录。path：id（UUID/public_id）。body：{ password? }。
  * 响应：201 { message }。
@@ -177,6 +195,7 @@ contests.post("/:id/register", authMiddleware, async (c) => {
       throw new BadRequestError("请求体格式错误：需要有效的 JSON");
     }
   }
+  await enforceContestRegisterRateLimit(c, contestId);
   await registerForContest(
     contestId,
     c.var.userId as string,
@@ -326,9 +345,9 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
   ) {
     throw new ForbiddenError("仅可在竞赛进行期间提交");
   }
+  const isAdmin = await checkPermission(c, "submission:read_all");
   if (
-    !await isParticipant(contestId, userId) &&
-    !await checkPermission(c, "submission:read_all")
+    !await isParticipant(contestId, userId) && !isAdmin
   ) {
     throw new ForbiddenError("仅参赛者可提交");
   }
@@ -346,6 +365,8 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
       userId,
       { ...parsed, contest_id: contestId },
       contestId,
+      undefined,
+      isAdmin,
     );
     return c.json({ data }, 201);
   }
@@ -382,6 +403,8 @@ contests.post("/:id/submit", authMiddleware, async (c) => {
       contest_id: contestId,
     },
     contestId,
+    undefined,
+    isAdmin,
   );
   return c.json({ data }, 201);
 });

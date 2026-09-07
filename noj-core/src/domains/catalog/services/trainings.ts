@@ -499,7 +499,8 @@ export async function listTrainingProblems(
   viewerId?: string,
   isAdmin = false,
 ): Promise<TrainingProblemResponse[]> {
-  await getTraining(trainingId, viewerId, isAdmin);
+  const training = await getTraining(trainingId, viewerId, isAdmin);
+  const canViewAll = isAdmin || viewerId === training.created_by;
   const db = getDb();
   const rows = await db
     .select({
@@ -511,16 +512,35 @@ export async function listTrainingProblems(
       difficulty: problems.difficulty,
       display_id: sql<string>`${problems.type} || ${problems.number}`,
       type: problems.type,
+      visibility: problems.visibility,
+      owner_id: problems.owner_id,
       is_objective: problems.is_objective,
     })
     .from(trainingProblems)
     .innerJoin(problems, eq(trainingProblems.problem_id, problems.id))
     .where(eq(trainingProblems.training_id, trainingId))
     .orderBy(asc(trainingProblems.position));
+  const visibleRows = canViewAll
+    ? rows
+    : rows.filter((r) => r.visibility === "public");
   const accepted = viewerId
-    ? await getAcceptedProblemIds(viewerId, rows.map((r) => r.problem_id))
+    ? await getAcceptedProblemIds(
+      viewerId,
+      visibleRows.map((r) => r.problem_id),
+    )
     : new Set<string>();
-  return rows.map((r) => ({ ...r, accepted: accepted.has(r.problem_id) }));
+  return visibleRows.map((r) => ({
+    training_id: r.training_id,
+    problem_id: r.problem_id,
+    position: r.position,
+    title: r.title,
+    description: r.description,
+    difficulty: r.difficulty,
+    display_id: r.display_id,
+    type: r.type,
+    is_objective: r.is_objective,
+    accepted: accepted.has(r.problem_id),
+  }));
 }
 
 /**
@@ -563,6 +583,15 @@ export async function addTrainingProblem(
   )
     .limit(1);
   if (!problem) throw new NotFoundError("题目不存在");
+
+  // 与建赛加题同规则：普通用户只能加入公开题或自己拥有的题。
+  if (
+    !isAdmin && problem.visibility !== "public" &&
+    problem.owner_id !== actorId
+  ) {
+    throw new ForbiddenError("仅可加入公开题或自己拥有的题目");
+  }
+
   const [existing] = await db
     .select()
     .from(trainingProblems)

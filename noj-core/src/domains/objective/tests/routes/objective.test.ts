@@ -19,6 +19,28 @@ await resetDbForTest();
 await initRedisForTest();
 const db = getDb();
 
+/** 通过 visibility setter 将套卷转 public（owner 操作），供公开/他人访问场景。 */
+async function makePaperPublic(
+  app: ReturnType<typeof createApp>,
+  paperId: string,
+  token: string,
+): Promise<void> {
+  const res = await jsonRequest(
+    app,
+    `/api/v1/problems/${paperId}/visibility`,
+    {
+      method: "PUT",
+      token,
+      body: { visibility: "public" },
+    },
+  );
+  if (res.status !== 200) {
+    throw new Error(
+      `套卷转 public 失败: ${res.status} ${JSON.stringify(await res.json())}`,
+    );
+  }
+}
+
 Deno.test({
   name:
     "objective route: 创建客观题套卷（is_objective 无需 runtime_config）→ 201",
@@ -42,6 +64,8 @@ Deno.test({
     assertEquals(body.data.type, "U");
     assertEquals(body.data.is_objective, true);
     assertEquals(body.data.runtime_config, null);
+    // 新建 U 型默认 private（I1）
+    assertEquals(body.data.visibility, "private");
   },
 });
 
@@ -98,6 +122,7 @@ Deno.test({
     });
     const paper = (await created.json()).data;
     const displayId = `${paper.type}${paper.number}`;
+    await makePaperPublic(app, paper.id, token);
 
     const res = await jsonRequest(app, `/api/v1/problems/${displayId}`);
     assertEquals(res.status, 200);
@@ -126,6 +151,7 @@ Deno.test({
     });
     const paper = (await created.json()).data;
     const displayId = `${paper.type}${paper.number}`;
+    await makePaperPublic(app, paper.id, owner);
 
     // 用 display_id 创建小题（不再只支持 UUID）
     const qRes = await jsonRequest(
@@ -220,6 +246,7 @@ Deno.test({
       },
     });
     const paperId = (await created.json()).data.id;
+    await makePaperPublic(app, paperId, owner);
 
     // 创建单选小题
     const qRes = await jsonRequest(
@@ -331,6 +358,7 @@ Deno.test({
       },
     });
     const paperId = (await created.json()).data.id;
+    await makePaperPublic(app, paperId, owner);
 
     const qRes = await jsonRequest(
       app,

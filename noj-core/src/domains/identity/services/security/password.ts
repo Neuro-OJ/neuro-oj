@@ -30,3 +30,13 @@ export function comparePassword(
 ): Promise<boolean> {
   return bcrypt.compare(plain, hash);
 }
+
+/**
+ * 判断字符串是否为 bcrypt 哈希（$2a$/$2b$/$2y$ 前缀）。
+ *
+ * 竞赛邀请码历史迁移曾回填过明文，registerForContest 需要区分 bcrypt 与
+ * 遗留明文做兼容比较；新写入的邀请码一律为 bcrypt。
+ */
+export function isBcryptHash(value: string): boolean {
+  return /^\$2[aby]\$/.test(value);
+}

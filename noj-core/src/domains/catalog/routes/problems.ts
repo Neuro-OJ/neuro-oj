@@ -5,13 +5,16 @@ import {
   optionalAuthMiddleware,
 } from "./../../identity/index.ts";
 import { parseJsonBody } from "./../../../shared/http/request.ts";
+import { eq } from "drizzle-orm";
+import { getDb } from "./../../../shared/db/connection.ts";
+import { problems } from "./../../../shared/db/schema.ts";
 import {
   BadRequestError,
   ForbiddenError,
+  NotFoundError,
   UnauthorizedError,
 } from "./../../../shared/base/errors.ts";
 import { parsePagination } from "./../../../shared/http/pagination.ts";
-import { checkPermission } from "./../../identity/index.ts";
 import {
   enforceObjectiveSubmitRateLimit,
   enforceProblemCreateRateLimit,
@@ -21,13 +24,17 @@ import { withActorContext } from "../../system/index.ts";
 import {
   createProblem,
   deleteProblem,
+  getProblem,
   listProblems,
   updateProblem,
 } from "../services/problems/problems.ts";
 import { applyAlgorithmTagVisibility } from "../services/problems/problems-list.ts";
 import { resolveProblem } from "./../services/problem-resolve.ts";
+import { resolveProblemAccess } from "./../services/problem-access.ts";
 import {
   ADMIN_FULL_ACCESS,
+  assertPermission,
+  checkPermission,
   resolvePermissions,
 } from "./../../identity/index.ts";
 import type {
@@ -43,14 +50,11 @@ import {
 } from "../services/support-package.ts";
 import { importProblemBundle } from "../services/problems/problem-bundle.ts";
 import {
-  assertObjectivePaper,
   createQuestion,
   deleteQuestion,
   getObjectiveSubmission,
-  getPaperOrThrow,
-  isPaperOwnerOrAdmin,
   listObjectiveSubmissions,
-  listPaperQuestions,
+  listPaperQuestionsWithAccess,
   submitObjectivePaper,
   updateQuestion,
 } from "../../objective/index.ts";
@@ -101,25 +105,31 @@ router.get("/", optionalAuthMiddleware, async (c) => {
   const ownerId = c.req.query("owner_id");
   if (ownerId) query.owner_id = ownerId;
 
+  const viewerId = c.get("userId") as string | undefined;
+  const isAdmin = viewerId
+    ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
+    : false;
+
   // NOJ-103：禁止匿名/普通用户批量枚举他人 U 型题。
   // U 型列表只能查本人（或由 problem:read_all/admin 查全部）。
   const requestedType = (query.type || "P").toUpperCase();
   if (requestedType === "U") {
-    const userId = c.get("userId") as string | undefined;
-    if (!userId) {
+    if (!viewerId) {
       throw new UnauthorizedError("请先登录");
     }
-    const isAdmin = await checkPermission(c, "problem:read_all");
-    if (ownerId && ownerId !== userId && !isAdmin) {
+    if (ownerId && ownerId !== viewerId && !isAdmin) {
       throw new ForbiddenError("无权查看其他用户的 U 型题列表");
     }
     if (!ownerId && !isAdmin) {
       // 非管理员未指定 owner 时收窄为本人，避免匿名枚举全量 U 型题。
-      query.owner_id = userId;
+      query.owner_id = viewerId;
     }
   }
 
-  const result = await listProblems(query);
+  const result = await listProblems(query, {
+    userId: viewerId,
+    isAdmin,
+  });
   return c.json({
     data: result.items,
     total: result.total,
@@ -176,12 +186,21 @@ router.get("/submissions/:id", authMiddleware, async (c) => {
  */
 router.get("/:id", optionalAuthMiddleware, async (c) => {
   const id = c.req.param("id") as string;
-  const problem = await resolveProblem(id);
-
-  const userId = c.get("userId");
+  const userId = c.get("userId") as string | undefined;
   const isAdmin = userId
     ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
     : false;
+
+  // 统一题目访问解析：无权限一律 404，防存在性探测。
+  const problem = await resolveProblem(id, { userId, isAdmin });
+  const access = resolveProblemAccess(problem, {
+    viewerId: userId ?? null,
+    isAdmin,
+  });
+  if (!access.allowed) {
+    throw new NotFoundError("题目不存在");
+  }
+
   const data = await applyAlgorithmTagVisibility(problem, { userId, isAdmin });
 
   return c.json({ data });
@@ -259,6 +278,51 @@ router.put("/:id", authMiddleware, async (c) => {
     );
     return c.json({ data: updated });
   });
+});
+
+/**
+ * 修改题目可见性。
+ * PUT /api/v1/problems/:id/visibility
+ * owner 只能将题目转 public（需 problem:write_own）；admin/write_any 可任意设置。
+ */
+router.put("/:id/visibility", authMiddleware, async (c) => {
+  const id = c.req.param("id") as string;
+  const body = await parseJsonBody<{ visibility?: string }>(c);
+  const visibility = body.visibility;
+  if (visibility !== "public" && visibility !== "private") {
+    throw new BadRequestError("visibility 必须为 public 或 private");
+  }
+
+  const problem = await resolveProblem(id);
+  const userId = c.get("userId");
+  const isAdmin = await checkPermission(c, "problem:write_any");
+  const isOwner = problem.owner_id === userId;
+
+  if (!isOwner && !isAdmin) {
+    throw new ForbiddenError("无权修改题目可见性");
+  }
+  // P 型主题库恒 public（I1），不允许转为 private
+  if (problem.type === "P" && visibility !== "public") {
+    throw new BadRequestError("P 型主题库题目必须保持 public");
+  }
+  // owner 仅可转公开；改私有属于管理员操作
+  if (visibility !== "public" && !isAdmin) {
+    throw new ForbiddenError("仅管理员可将题目设为私有");
+  }
+
+  await assertPermission(
+    c,
+    isOwner ? "problem:write_own" : "problem:write_any",
+  );
+
+  const db = getDb();
+  await db.update(problems).set({
+    visibility,
+    updated_at: new Date().toISOString(),
+  }).where(eq(problems.id, problem.id));
+
+  const updated = await getProblem(problem.id);
+  return c.json({ data: updated });
 });
 
 /**
@@ -429,15 +493,22 @@ router.get("/:id/questions", optionalAuthMiddleware, async (c) => {
   const userId = c.get("userId") as string | undefined;
   const userRole = c.get("userRole") as string | undefined;
 
-  const paper = await getPaperOrThrow(paperId);
-  assertObjectivePaper(paper);
-  const includeAnswer = await isPaperOwnerOrAdmin(
-    paper,
+  // 套卷也走统一题目访问解析：private 套卷非 owner/admin 一律 404；
+  // 竞赛页可携带 contest_id 传入竞赛上下文放行。
+  // 竞赛上下文校验收敛在 objective 域服务内，catalog 域不反向依赖 contest 域。
+  const viewerId = userId ?? null;
+  const isAdmin = userId
+    ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
+    : false;
+  const contestId = c.req.query("contest_id");
+  const data = await listPaperQuestionsWithAccess(paperId, {
+    viewerId,
+    isAdmin,
+    contestId,
     userId,
     userRole,
     c,
-  );
-  const data = await listPaperQuestions(paper.id, includeAnswer);
+  });
   return c.json({ data });
 });
 
@@ -496,7 +567,8 @@ router.post("/:id/submit", authMiddleware, async (c) => {
   if (!body.answers) {
     throw new BadRequestError("缺少必填字段：answers");
   }
-  const result = await submitObjectivePaper(paperId, body, userId);
+  const isAdmin = await checkPermission(c, "submission:read_all");
+  const result = await submitObjectivePaper(paperId, body, userId, isAdmin);
   return c.json({ data: result }, 201);
 });
 

@@ -163,7 +163,7 @@ e2eTest("[e2e/contest] 3. 排名包含提交分数", async () => {
   }
 });
 
-e2eTest("[e2e/contest] 4. 结束竞赛后公开最终排名", async () => {
+e2eTest("[e2e/contest] 4. 结束竞赛并发布正式成绩后公开最终排名", async () => {
   if (!isE2E || !judgeAvailable) return;
   const updateResult = await apiPut(
     `/api/v1/admin/contests/${contestId}`,
@@ -178,15 +178,28 @@ e2eTest("[e2e/contest] 4. 结束竞赛后公开最终排名", async () => {
     );
   }
 
-  const [contestResult, rankingResult] = await Promise.all([
-    apiGet(`/api/v1/contests/${contestId}`),
-    apiGet(`/api/v1/contests/${contestId}/ranking`),
-  ]);
+  const contestResult = await apiGet(`/api/v1/contests/${contestId}`);
   const contest = (contestResult.body as { data: ContestData }).data;
-  const rows = (rankingResult.body as { data: KaggleRankingRow[] }).data;
   if (contestResult.status !== 200 || contest.status !== "ended") {
     throw new Error("竞赛结束后状态应为 ended");
   }
+
+  // 新结算门禁：竞赛结束后需先发布正式成绩快照，公开排名才会展示最终分数。
+  const publishResult = await apiPost(
+    `/api/v1/admin/contests/${contestId}/ranking-snapshots`,
+    { note: "E2E 发布正式成绩" },
+    adminToken,
+  );
+  if (publishResult.status !== 201) {
+    throw new Error(
+      `发布正式成绩失败: ${publishResult.status} ${
+        JSON.stringify(publishResult.body)
+      }`,
+    );
+  }
+
+  const rankingResult = await apiGet(`/api/v1/contests/${contestId}/ranking`);
+  const rows = (rankingResult.body as { data: KaggleRankingRow[] }).data;
   if (rankingResult.status !== 200 || rows[0]?.total_score <= 0) {
     throw new Error("竞赛结束后公开排名应显示最终分数");
   }

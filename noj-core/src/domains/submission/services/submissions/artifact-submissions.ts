@@ -15,6 +15,7 @@ import { problems, submissions } from "./../../../../shared/db/schema.ts";
 import {
   AppError,
   BadRequestError,
+  ForbiddenError,
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
 import { getStorageProvider } from "./../../../system/index.ts";
@@ -25,6 +26,8 @@ import {
 } from "../../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../../system/index.ts";
 import { assertContestSubmissionLimit } from "../../../contest/index.ts";
+import { verifyContestAccess } from "../../../contest/index.ts";
+import { resolveProblemAccess } from "../../../catalog/index.ts";
 import { buildJudgeTaskLlm } from "./../../../gateway/index.ts";
 import { buildJudgeTaskLlmForProvider } from "./../../../gateway/index.ts";
 import { getUserLlmProvider } from "../../../gateway/index.ts";
@@ -113,6 +116,7 @@ export async function createArtifactSubmission(
   },
   contestId?: string,
   clientIp?: string,
+  isAdmin = false,
 ): Promise<SubmissionResponse> {
   const db = getDb();
   if (contestId && input.contest_id && contestId !== input.contest_id) {
@@ -140,6 +144,24 @@ export async function createArtifactSubmission(
     throw new NotFoundError("题目不存在");
   }
   const problem = lockedRows[0];
+
+  // 统一访问解析：普通入口 private 题非 owner/admin 拒绝；
+  // 竞赛入口先经 verifyContestAccess 校验成员+窗口。
+  const contestAccess = resolvedContestId
+    ? await verifyContestAccess(userId, resolvedContestId, problem.id)
+    : null;
+  const access = resolveProblemAccess(problem, {
+    viewerId: userId,
+    isAdmin,
+    contestAccess,
+  });
+  if (!access.allowed) {
+    throw new ForbiddenError("无权对该题目提交");
+  }
+  // 服务层防御：竞赛提交只允许 running 窗口（contest 路由已拦截，这里防未来调用方绕过）。
+  if (resolvedContestId && contestAccess && !contestAccess.running) {
+    throw new ForbiddenError("仅可在竞赛进行期间提交");
+  }
 
   if (problem.submission_mode !== "artifact") {
     throw new BadRequestError("该题目不支持 artifact 提交");
@@ -275,6 +297,7 @@ export async function createArtifactSubmission(
   const task: JudgeTask = {
     submission_id: id,
     problem_id: input.problem_id,
+    user_id: userId,
     runtime_config: runtimeConfig,
     download_url,
     artifact_download_url: artifactDownloadUrl,

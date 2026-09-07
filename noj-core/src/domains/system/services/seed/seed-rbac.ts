@@ -38,6 +38,7 @@ const USER_DEFAULT_PERMISSIONS: Array<{ resource: string; action: string }> = [
   { resource: "submission", action: "read_own" },
   { resource: "user", action: "read_profile" },
   { resource: "tag", action: "read" },
+  { resource: "contest", action: "create" },
   { resource: "contest", action: "participate" },
   { resource: "community", action: "read" },
   { resource: "community", action: "create_solution" },

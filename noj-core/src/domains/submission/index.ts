@@ -1,5 +1,9 @@
 export * from "./services/submissions/submissions.ts";
 export {
+  applySubmissionProjection,
+  type ProjectionCtx,
+} from "./services/submissions/submission-projection.ts";
+export {
   DEFAULT_ARTIFACT_MAX_SIZE_BYTES,
   getArtifactHardLimit,
 } from "./services/submissions/artifact-submissions.ts";

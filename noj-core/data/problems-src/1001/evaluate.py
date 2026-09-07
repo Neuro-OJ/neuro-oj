@@ -96,6 +96,8 @@ def eval_split(
             "case_id": item["id"],
             "status": case_status,
             "visibility": visibility,
+            # 新契约：投影函数依赖该布尔标记区分可见/隐藏用例。
+            "hidden": visibility == "hidden",
             "time_ms": elapsed_ms,
         }
         if visibility == "visible":

@@ -26,20 +26,24 @@ export interface ProblemResponse {
   title: string;
   description: string;
   difficulty: string;
-  support_package_storage_url: string | null;
+  /** 仅 owner/admin 返回；非 owner/admin 不返回该字段 */
+  support_package_storage_url?: string | null;
   has_support_package: boolean;
-  runtime_config: RuntimeConfig;
+  /** 仅 owner/admin 返回；非 owner/admin 不返回该字段 */
+  runtime_config?: RuntimeConfig | null;
   number: number;
   owner_id: string;
   type: string;
+  /** 题目可见性：public / private */
+  visibility: "public" | "private";
   /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
   is_objective: boolean;
   /** 提交模式：code / artifact */
   submission_mode: "code" | "artifact";
   /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
   artifact_max_size_mb: number | null;
-  /** LLM 配置（可空） */
-  llm_config: LlmConfig | null;
+  /** LLM 配置（可空，仅 owner/admin 返回） */
+  llm_config?: LlmConfig | null;
   display_id: string;
   created_at: string;
   updated_at: string;
@@ -81,6 +85,8 @@ export interface AdminProblemListItem {
   owner_id: string;
   owner_username: string;
   type: string;
+  /** 题目可见性：public / private */
+  visibility: "public" | "private";
   submission_mode: "code" | "artifact";
   artifact_max_size_mb: number | null;
   display_id: string;

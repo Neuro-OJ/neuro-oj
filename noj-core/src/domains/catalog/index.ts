@@ -1,3 +1,5 @@
+export * from "./services/contest-access-info.ts";
+export * from "./services/problem-access.ts";
 export * from "./services/problems/problems.ts";
 export {
   applyAlgorithmTagVisibility,

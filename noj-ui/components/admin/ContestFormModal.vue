@@ -2,6 +2,7 @@
 import type {
   AdminContestDetail,
   AdminProblemOption,
+  ContestKind,
   ContestPayload,
   ContestProblemInput,
   ContestType,
@@ -19,13 +20,19 @@ const emit = defineEmits<{
   searchProblems: [keyword: string]
 }>()
 
+const { user } = useAuth()
+const canPublic = computed(() =>
+  user.value?.is_admin === true ||
+  user.value?.permissions?.includes('admin:full_access') === true
+)
+
 const title = ref('')
 const description = ref('')
 const announcement = ref('')
 const startTime = ref('')
 const endTime = ref('')
 const type = ref<ContestType>('kaggle')
-const isPublic = ref(true)
+const kind = ref<ContestKind>('invite')
 const password = ref('')
 const affectGlobalRanking = ref(false)
 const rankingVisibility = ref<'public' | 'participants' | 'hidden'>('public')
@@ -68,7 +75,7 @@ function resetForm() {
   startTime.value = toLocalDateTime(contest?.start_time) || toLocalDateTime(new Date(Date.now() + HOUR_MS).toISOString())
   endTime.value = toLocalDateTime(contest?.end_time) || toLocalDateTime(new Date(Date.now() + 3 * HOUR_MS).toISOString())
   type.value = contest?.type ?? 'kaggle'
-  isPublic.value = contest?.is_public ?? true
+  kind.value = contest?.kind ?? 'invite'
   password.value = ''
   affectGlobalRanking.value = contest?.affect_global_ranking ?? false
   rankingVisibility.value = contest?.ranking_visibility ?? 'public'
@@ -148,6 +155,10 @@ function submit() {
     localError.value = '请至少选择一道题目'
     return
   }
+  if (kind.value === 'invite' && !password.value && !contest?.has_password) {
+    localError.value = '邀请赛必须设置邀请码'
+    return
+  }
 
   const config = {
     ...(Object.keys(submissionLimits.value).length > 0
@@ -161,8 +172,9 @@ function submit() {
     start_time: new Date(startTime.value).toISOString(),
     end_time: new Date(endTime.value).toISOString(),
     type: type.value,
+    kind: kind.value,
     config,
-    is_public: isPublic.value,
+    is_public: kind.value === 'public',
     affect_global_ranking: affectGlobalRanking.value,
     ranking_visibility: rankingVisibility.value,
     freeze_duration_seconds: Math.max(0, Math.floor(freezeMinutes.value * 60)),
@@ -191,11 +203,21 @@ function submit() {
         <section class="space-y-4">
           <div><label class="mb-1 block text-xs font-semibold text-text">竞赛标题 *</label><input v-model="title" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-signal" placeholder="例如：NOJ 夏季挑战赛"></div>
           <div class="grid gap-3 sm:grid-cols-2"><div><label class="mb-1 block text-xs font-semibold text-text">开始时间 *</label><input v-model="startTime" type="datetime-local" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-signal"></div><div><label class="mb-1 block text-xs font-semibold text-text">结束时间 *</label><input v-model="endTime" type="datetime-local" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-signal"></div></div>
-          <div class="grid gap-3 sm:grid-cols-2"><div><label class="mb-1 block text-xs font-semibold text-text">赛制 *</label><span class="block rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm text-text-secondary">类 Kaggle 分数赛</span></div><div><label class="mb-1 block text-xs font-semibold text-text">竞赛密码</label><input v-model="password" type="password" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-signal" :placeholder="contest?.has_password ? '留空则保持原密码' : '留空表示无密码'"></div></div>
+          <div class="grid gap-3 sm:grid-cols-2"><div><label class="mb-1 block text-xs font-semibold text-text">赛制 *</label><span class="block rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm text-text-secondary">类 Kaggle 分数赛</span></div><div><label class="mb-1 block text-xs font-semibold text-text">{{ kind === 'invite' ? '邀请码' : '竞赛密码' }} <span v-if="kind === 'invite'" class="text-error-text">*</span></label><input v-model="password" type="password" class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-signal" :placeholder="contest?.has_password ? '留空则保持原邀请码' : (kind === 'invite' ? '必填，用于邀请用户参赛' : '留空表示无密码')"></div></div>
           <p class="text-xs text-text-muted">类 Kaggle 赛制：每题取历史最高分，总分求和；可在题目列表中为每道题设置提交次数上限。</p>
           <div><label class="mb-1 block text-xs font-semibold text-text">竞赛说明</label><textarea v-model="description" rows="4" class="w-full resize-y rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-signal" placeholder="支持 Markdown"></textarea></div>
           <div><label class="mb-1 block text-xs font-semibold text-text">竞赛公告</label><textarea v-model="announcement" rows="3" class="w-full resize-y rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-signal" placeholder="显示在竞赛详情页顶部"></textarea></div>
-          <div class="grid gap-2 sm:grid-cols-2"><label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text"><input v-model="isPublic" type="checkbox" class="size-4 accent-primary">公开竞赛</label><label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text"><input v-model="affectGlobalRanking" type="checkbox" class="size-4 accent-primary">计入全局统计</label></div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div class="rounded-lg border border-border p-3">
+              <p class="mb-2 text-xs font-semibold text-text">竞赛类型</p>
+              <div class="flex items-center gap-4 text-sm text-text">
+                <label class="flex items-center gap-2"><input v-model="kind" type="radio" value="invite" class="size-4 accent-primary">邀请赛</label>
+                <label class="flex items-center gap-2" :class="canPublic ? '' : 'opacity-50 cursor-not-allowed'"><input v-model="kind" type="radio" value="public" class="size-4 accent-primary" :disabled="!canPublic">公开赛</label>
+              </div>
+              <p v-if="!canPublic" class="mt-2 text-xs text-warning-text">公开赛需管理员权限，请联系管理员开通</p>
+            </div>
+            <label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text"><input v-model="affectGlobalRanking" type="checkbox" class="size-4 accent-primary">计入全局统计</label>
+          </div>
           <div class="grid gap-3 sm:grid-cols-2"><label class="block text-xs font-semibold text-text">榜单可见性<select v-model="rankingVisibility" class="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm font-normal"><option value="public">公开榜</option><option value="participants">仅参赛者</option><option value="hidden">完全隐藏</option></select></label><label class="block text-xs font-semibold text-text">结束前封榜（分钟）<input v-model.number="freezeMinutes" type="number" min="0" class="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm font-normal" placeholder="0 表示不封榜"></label></div>
           <p v-if="hasExplicitFreezeStart" class="text-xs text-warning-text">该竞赛已设置显式封榜起点；保存后将切换为“结束前 N 分钟”模式并清除显式起点。</p>
           <p class="text-xs text-text-muted">封榜从比赛结束前指定时刻开始，服务端会在 REST 与 SSE 中返回稳定冻结视图；管理员始终可查看实时完整榜。</p>

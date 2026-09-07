@@ -1,6 +1,7 @@
 import { formatDateTime } from '~/utils/submissionFormat';
 
 export type ContestType = 'kaggle';
+export type ContestKind = 'public' | 'invite';
 export type ContestStatus = 'pending' | 'running' | 'ended';
 export type RankingVisibility = 'public' | 'participants' | 'hidden';
 
@@ -19,6 +20,7 @@ export interface Contest {
   freeze_start_time: string | null;
   freeze_duration_seconds: number;
   type: ContestType;
+  kind: ContestKind;
   config: ContestConfig;
   is_public: boolean;
   has_password: boolean;
@@ -66,6 +68,7 @@ export interface ContestPayload {
   freeze_duration_seconds?: number;
   freeze_start_time?: string | null;
   type: ContestType;
+  kind: ContestKind;
   config: ContestConfig;
   is_public: boolean;
   password?: string | null;
