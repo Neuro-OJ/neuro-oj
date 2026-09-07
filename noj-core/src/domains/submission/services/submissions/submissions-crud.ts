@@ -45,6 +45,7 @@ import {
   NotFoundError,
 } from "./../../../../shared/base/errors.ts";
 import { getDb } from "./../../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import { checkPermission } from "./../../../identity/index.ts";
 import { resolveProblemAccess } from "../../../catalog/index.ts";
 import { verifyContestAccess } from "../../../contest/index.ts";
@@ -546,6 +547,8 @@ export async function createSubmission(
     );
   }
 
+  await publishSearchIndexEvent("submission", id, "upsert");
+
   return {
     id,
     public_id: publicId,
@@ -703,4 +706,5 @@ export async function deleteSubmission(id: string): Promise<void> {
   }
 
   await db.delete(submissions).where(eq(submissions.id, id));
+  await publishSearchIndexEvent("submission", id, "delete");
 }
