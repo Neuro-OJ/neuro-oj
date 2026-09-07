@@ -22,9 +22,18 @@ DATABASE_URL='postgres://...' NOJ_RUN_PERF=1 \
 ```
 
 该基准生成约 10 万条社区帖子，输出 `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`、P50 与
-P95。验证索引命中时，计划中应出现 `Bitmap Index Scan` 或 `Index Scan`，并包含
-`idx_community_posts_title_trgm` / `idx_community_posts_content_trgm`；短关键词或高命中
-查询出现 `Seq Scan` 属于预期边界。
+P95。`EXPLAIN` 使用与 `searchCommunity` 完全一致的 SQL（含 `problem_id`、`problems.title`
+和 FTS 分支），避免用简化查询高估索引收益。验证索引命中时，计划中应出现
+`Bitmap Index Scan` 或 `Index Scan`，并包含 `idx_community_posts_title_trgm` /
+`idx_community_posts_content_trgm`；短关键词或高命中查询出现 `Seq Scan` 属于预期边界。
+
+## 已知限制
+
+当前 trigram 索引只覆盖 `community_posts.title` 和 `community_posts.content`。真实搜索
+条件还包含 `problem_id`、`problems.title` 以及 `(problem.type || problem.number::text)`
+的 ILIKE 分支，这些字段没有 trigram 索引；当关键词只命中题目字段时，优化器仍可能选择
+Seq Scan。若后续社区搜索按题号/题名检索占比高，可考虑为 `problems.title` 增加 trigram
+索引，或调整查询结构。
 
 变更前后对比可在同一个隔离 schema 中先执行：
 
@@ -46,4 +55,5 @@ WHERE indexrelname IN (
 ```
 
 PGlite 测试运行时不包含 `pg_trgm`，测试 DDL 会尽力创建扩展/索引并在不可用时跳过；生产
-PostgreSQL 通过迁移严格创建扩展和索引。
+PostgreSQL 通过迁移严格创建扩展和索引。生产迁移账号需要具备创建 `pg_trgm` 扩展的权限，
+否则 `0070` 迁移会失败。

@@ -78,13 +78,22 @@ Deno.test({
     }
 
     await db.execute(sql`ANALYZE community_posts`);
+    // 与 searchCommunity 的真实查询保持一致（含 problem 字段与 FTS 分支），
+    // 避免 EXPLAIN 只验证简化查询而实际搜索仍走 Seq Scan。
     const explain = await db.execute(sql`
       EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-      SELECT id
-      FROM community_posts
-      WHERE status = 'published'
-        AND type IN ('solution', 'discussion')
-        AND (title ILIKE '%trigram_unique_0%' OR content ILIKE '%trigram_unique_0%')
+      SELECT p.id
+      FROM community_posts p
+      JOIN users u ON u.id = p.author_id
+      LEFT JOIN problems problem ON problem.id = p.problem_id
+      WHERE p.status = 'published'
+        AND p.type IN ('solution', 'discussion')
+        AND (p.title ILIKE '%trigram_unique_0%' ESCAPE '\\'
+          OR p.content ILIKE '%trigram_unique_0%' ESCAPE '\\'
+          OR p.problem_id ILIKE '%trigram_unique_0%' ESCAPE '\\'
+          OR (problem.type || problem.number::text) ILIKE '%trigram_unique_0%' ESCAPE '\\'
+          OR problem.title ILIKE '%trigram_unique_0%' ESCAPE '\\'
+          OR to_tsvector('simple', coalesce(p.title, '') || ' ' || p.content) @@ websearch_to_tsquery('simple', 'trigram_unique_0'))
     `);
     console.log("社区搜索 EXPLAIN:", JSON.stringify(explain));
 

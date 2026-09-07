@@ -498,8 +498,13 @@ export async function ensurePGliteSchemaForTest(): Promise<void> {
         for (const idx of OPTIONAL_EXTENSION_INDEXES) {
           try {
             await _pgliteInstance!.query(idx);
-          } catch {
+          } catch (err) {
             // 测试运行时缺少 pg_trgm 时保留 ILIKE 语义，接受顺序扫描。
+            logger.debug(
+              `可选扩展索引未创建（测试环境可忽略）: ${idx} - ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
           }
         }
       })();
