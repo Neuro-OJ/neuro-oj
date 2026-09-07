@@ -1,5 +1,6 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "./../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
 import {
   contestParticipants,
   contestProblems,
@@ -396,6 +397,8 @@ export async function createContest(
     );
   });
 
+  await publishSearchIndexEvent("contest", id, "upsert");
+
   return getContest(id);
 }
 
@@ -515,6 +518,8 @@ export async function updateContest(
     }
   });
 
+  await publishSearchIndexEvent("contest", id, "upsert");
+
   return getContest(id);
 }
 
@@ -533,6 +538,8 @@ export async function deleteContest(id: string): Promise<void> {
   if (deleted.length === 0) {
     throw new NotFoundError("竞赛不存在");
   }
+
+  await publishSearchIndexEvent("contest", id, "delete");
 }
 
 /**
@@ -670,6 +677,8 @@ export async function registerForContest(
   if (inserted.length === 0) {
     throw new ConflictError("已注册该竞赛");
   }
+
+  await publishSearchIndexEvent("contest", contestId, "upsert");
 }
 
 /**
@@ -708,6 +717,9 @@ export async function addParticipants(
       registered_at: registeredAt,
     })),
   ).onConflictDoNothing().returning({ user_id: contestParticipants.user_id });
+
+  await publishSearchIndexEvent("contest", contestId, "upsert");
+
   return inserted.length;
 }
 
@@ -732,6 +744,8 @@ export async function removeParticipant(
   if (deleted.length === 0) {
     throw new NotFoundError("竞赛参与者不存在");
   }
+
+  await publishSearchIndexEvent("contest", contestId, "upsert");
 }
 
 /**
