@@ -776,6 +776,18 @@ export const SCHEMA_INDEXES: string[] = [
   "CREATE INDEX IF NOT EXISTS idx_roles_parent_id ON roles (parent_id)",
 ];
 
+/**
+ * PostgreSQL 生产环境中的可选扩展索引。
+ *
+ * PGlite 测试运行时不打包 pg_trgm 扩展，因此 connection.ts 会尽力执行
+ * 这些语句并在扩展不可用时跳过；真实 PostgreSQL 由 0070 迁移强制创建。
+ */
+export const OPTIONAL_EXTENSION_INDEXES: string[] = [
+  "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+  "CREATE INDEX IF NOT EXISTS idx_community_posts_title_trgm ON community_posts USING GIN (title gin_trgm_ops)",
+  "CREATE INDEX IF NOT EXISTS idx_community_posts_content_trgm ON community_posts USING GIN (content gin_trgm_ops)",
+];
+
 export const ALL_TABLES = [
   "users",
   "oauth_accounts",

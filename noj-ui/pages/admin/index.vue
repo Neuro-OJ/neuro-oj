@@ -190,7 +190,7 @@ async function handleRefresh() {
         <div class="flex flex-col gap-0.5">
           <span class="text-2xl font-bold text-text leading-tight" :class="i === 0 ? 'lg:text-3xl' : ''">{{ card.value ?? "--" }}</span>
           <span class="text-xs text-text-secondary">{{ card.label }}</span>
-          <button v-if="card.error" class="text-left text-xs text-error-text underline" @click="loadStats">{{ card.error }}，重试</button>
+          <button v-if="card.error" class="text-left text-xs text-error-text underline" @click="loadStats()">{{ card.error }}，重试</button>
         </div>
       </div>
     </div>

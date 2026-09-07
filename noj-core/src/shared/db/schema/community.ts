@@ -122,6 +122,16 @@ export const communityPosts = pgTable(
     pendingIdx: index("idx_community_posts_pending").on(table.created_at).where(
       sql`${table.status} = 'pending'`,
     ),
+    // issue #453：ILIKE '%keyword%' 由 pg_trgm GIN 索引加速。
+    // pg_trgm 扩展只在生产 PostgreSQL 迁移中安装；PGlite 测试 DDL 会跳过这两项。
+    titleTrgmIdx: index("idx_community_posts_title_trgm").using(
+      "gin",
+      table.title.op("gin_trgm_ops"),
+    ),
+    contentTrgmIdx: index("idx_community_posts_content_trgm").using(
+      "gin",
+      table.content.op("gin_trgm_ops"),
+    ),
   }),
 );
 

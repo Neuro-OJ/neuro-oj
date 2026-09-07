@@ -4,7 +4,12 @@ import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { PGlite } from "@electric-sql/pglite";
 import * as schema from "./schema.ts";
-import { ALL_TABLES, SCHEMA_DDL, SCHEMA_INDEXES } from "./schema-ddl.ts";
+import {
+  ALL_TABLES,
+  OPTIONAL_EXTENSION_INDEXES,
+  SCHEMA_DDL,
+  SCHEMA_INDEXES,
+} from "./schema-ddl.ts";
 import { dirname, resolve } from "jsr:@std/path@^1";
 import { logger } from "../base/logging.ts";
 import { metrics } from "../base/metrics.ts";
@@ -487,6 +492,20 @@ export async function ensurePGliteSchemaForTest(): Promise<void> {
         }
         for (const idx of SCHEMA_INDEXES) {
           await _pgliteInstance!.query(idx);
+        }
+        // PGlite 不包含 pg_trgm；生产 PostgreSQL 由 0070 迁移创建这些索引。
+        // 尝试执行可选索引可让支持扩展的测试数据库也保持与生产一致。
+        for (const idx of OPTIONAL_EXTENSION_INDEXES) {
+          try {
+            await _pgliteInstance!.query(idx);
+          } catch (err) {
+            // 测试运行时缺少 pg_trgm 时保留 ILIKE 语义，接受顺序扫描。
+            logger.debug(
+              `可选扩展索引未创建（测试环境可忽略）: ${idx} - ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
         }
       })();
     }

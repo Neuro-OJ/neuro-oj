@@ -13,9 +13,14 @@
  * 9. searchUsers admin 守卫：isAdmin=false 抛 ForbiddenError
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { searchProblems, searchUsers } from "../../index.ts";
+import { searchCommunity, searchProblems, searchUsers } from "../../index.ts";
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
-import { problems, users } from "../../../../shared/db/schema.ts";
+import {
+  communityBoards,
+  communityPosts,
+  problems,
+  users,
+} from "../../../../shared/db/schema.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { ForbiddenError } from "../../../../shared/base/errors.ts";
 
@@ -137,6 +142,59 @@ async function seedUsers() {
     .onConflictDoNothing();
 }
 
+async function seedCommunityPosts() {
+  const db = getDb();
+  const now = new Date().toISOString();
+  await db.insert(communityBoards).values({
+    id: "search-board",
+    slug: "search-board",
+    name: "搜索测试板块",
+    description: "",
+    sort_order: 0,
+    is_archived: false,
+    created_at: now,
+    updated_at: now,
+  });
+  await db.insert(communityPosts).values([
+    {
+      id: "search-post-cn",
+      public_id: "post-search-cn",
+      type: "discussion",
+      author_id: "alice-id",
+      board_id: "search-board",
+      title: "动态规划与算法优化",
+      content: "讨论中文关键词的子串搜索行为。",
+      status: "published",
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: "search-post-en",
+      public_id: "post-search-en",
+      type: "discussion",
+      author_id: "alice-id",
+      board_id: "search-board",
+      title: "Performance tuning",
+      content: "GIN trigram index improves substring search.",
+      status: "published",
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: "search-post-mixed",
+      public_id: "post-search-mixed",
+      type: "discussion",
+      author_id: "alice-id",
+      board_id: "search-board",
+      title: "算法 AI 工程实践",
+      content: "Mixed 中文 English keyword matching.",
+      status: "published",
+      created_at: now,
+      updated_at: now,
+    },
+  ]);
+}
+
 Deno.test({
   name: "search service: 搜 'P1001' 命中 P 型题",
   sanitizeResources: false,
@@ -245,6 +303,57 @@ Deno.test({
     });
     assertEquals(result.items.length, 1);
     assertEquals(result.items[0]?.title, "Hello World");
+  },
+});
+
+Deno.test({
+  name: "search service: 社区搜索支持中文、英文和中英文混合关键词",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await seedUsers();
+    await seedCommunityPosts();
+
+    const chinese = await searchCommunity({
+      q: "动态规划",
+      page: 1,
+      limit: 20,
+    });
+    assertEquals(chinese.items.map((item) => item.id), ["search-post-cn"]);
+
+    const english = await searchCommunity({
+      q: "Performance",
+      page: 1,
+      limit: 20,
+    });
+    assertEquals(english.items.map((item) => item.id), ["search-post-en"]);
+
+    const mixed = await searchCommunity({
+      q: "算法 AI",
+      page: 1,
+      limit: 20,
+    });
+    assertEquals(mixed.items.map((item) => item.id), ["search-post-mixed"]);
+  },
+});
+
+Deno.test({
+  name: "search service: 社区短关键词保持 ILIKE 子串语义",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await seedUsers();
+    await seedCommunityPosts();
+    // pg_trgm 对少于 3 个字符的模式不能有效使用 GIN；结果仍必须正确，
+    // 由 PostgreSQL 优化器在该边界选择顺序扫描。
+    const result = await searchCommunity({
+      q: "动",
+      page: 1,
+      limit: 20,
+    });
+    assertEquals(result.items.map((item) => item.id), ["search-post-cn"]);
   },
 });
 
