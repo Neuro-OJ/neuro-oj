@@ -1,6 +1,6 @@
 {
-  "id": "c61f752d-a133-4045-83b7-4ff2782e550b",
-  "prevId": "2242a0e4-64f7-4b05-9f79-85edea5d68e1",
+  "id": "025b2e43-b1ff-4c76-8361-a211e38e12f2",
+  "prevId": "c61f752d-a133-4045-83b7-4ff2782e550b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5027,6 +5027,10 @@
         "problems_visibility_check": {
           "name": "problems_visibility_check",
           "value": "\"problems\".\"visibility\" IN ('public', 'private')"
+        },
+        "problems_p_visibility_check": {
+          "name": "problems_p_visibility_check",
+          "value": "\"problems\".\"type\" <> 'P' OR \"problems\".\"visibility\" = 'public'"
         },
         "problems_runtime_config_check": {
           "name": "problems_runtime_config_check",

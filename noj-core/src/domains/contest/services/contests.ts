@@ -15,7 +15,11 @@ import {
   RateLimitedError,
 } from "./../../../shared/base/errors.ts";
 import { getRedis } from "./../../../shared/mq/connection.ts";
-import { comparePassword, hashPassword } from "./../../identity/index.ts";
+import {
+  comparePassword,
+  hashPassword,
+  isBcryptHash,
+} from "./../../identity/index.ts";
 import {
   generatePublicId,
   resolvePublicId,
@@ -378,7 +382,8 @@ export async function createContest(
       type: input.type,
       kind,
       config,
-      is_public: input.is_public ?? true,
+      // kind 与 is_public 绑定：public 公开可见，invite 隐藏仅链接+邀请码（I4）
+      is_public: kind === "public",
       password: passwordHash,
       affect_global_ranking: input.affect_global_ranking ?? false,
       created_by: userId,
@@ -485,10 +490,11 @@ export async function updateContest(
     }
     if (input.type !== undefined) updates.type = input.type;
     if (input.kind !== undefined) updates.kind = input.kind;
+    // kind 与 is_public 绑定：任何更新都收敛为 kind 语义，忽略显式 is_public 差异（I4）
+    updates.is_public = kind === "public";
     if (input.config !== undefined || input.type !== undefined) {
       updates.config = config;
     }
-    if (input.is_public !== undefined) updates.is_public = input.is_public;
     if (passwordHash !== undefined) updates.password = passwordHash;
     if (input.affect_global_ranking !== undefined) {
       updates.affect_global_ranking = input.affect_global_ranking;
@@ -639,7 +645,13 @@ export async function registerForContest(
   }
 
   if (contest.kind === "invite") {
-    if (!password || !await comparePassword(password, contest.password ?? "")) {
+    const stored = contest.password ?? "";
+    const matches = stored
+      ? isBcryptHash(stored)
+        ? await comparePassword(password ?? "", stored)
+        : stored === password
+      : false;
+    if (!password || !matches) {
       throw new ForbiddenError("邀请码错误");
     }
   } else if (

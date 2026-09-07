@@ -17,6 +17,18 @@ Status: implemented
 - 客观题同样防泄露：入库前剥离 `expected`，竞赛模式不返回解析与标准答案（F-01/F-14）。
 - 文档同步：安全模型、出题指南、`noj-core/CLAUDE.md` 速查表已更新，内置样例题 `evaluate.py` 已按新契约输出 `hidden`。
 
+## Review fixes（2026-09-05 代码评审后补充）
+
+- 客观题练习提交封堵：`submitObjectivePaper` 增加 `isAdmin` 参数，非 owner/admin 对 private 套卷练习提交返回 403；路由透传 `submission:read_all`。
+- 邀请码迁移缺陷修复：`isBcryptHash` 兼容历史明文邀请码，移除会清空明文邀请码的 SQL 回填。
+- 竞赛题目页取题请求追加 `?contest_id=`，避免 private 套卷在竞赛页 404。
+- 创建/更新竞赛时 `is_public` 与 `kind` 绑定（public ↔ true，invite ↔ false）。
+- F-12 改为 fail-closed：`register_email_verify=true` 时注册直接拒绝，不再接受任意 `email_code`；补充路由失败路径测试。
+- U 型新建默认 private、P 型恒 public：新增 `problems_p_visibility_check` CHECK 约束与迁移 `0065`。
+- SSE `contest:submission:created` 仅参赛者/管理员订阅与重放。
+- 域边界收敛：`catalog/routes/problems.ts` 不再直接依赖 contest 域；竞赛上下文校验收敛到 objective 域 `listPaperQuestionsWithAccess`，保持 catalog 不依赖 contest。
+- F-14 响应侧：练习提交响应（含 owner/admin）统一剥离 `expected`，仅保留 correct/given/explanation。
+
 ## Alternatives considered
 
 - 只在路由层逐个加权限判断：入口多、容易遗漏，无法形成“读+提交+竞赛”统一防线，后续路径改动仍可能绕过。

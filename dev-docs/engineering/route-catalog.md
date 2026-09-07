@@ -124,6 +124,7 @@
 | GET | `/posts/counts` | noj-core/src/domains/community/routes/community.ts |
 | GET | `/problems` | noj-core/src/domains/catalog/routes/admin-problems.ts |
 | GET | `/problems/:id/preflight` | noj-core/src/domains/catalog/routes/admin-problems.ts |
+| GET | `/problems/review` | noj-core/src/domains/catalog/routes/admin-problems.ts |
 | GET | `/public/recent` | noj-core/src/domains/submission/routes/submissions.ts |
 | GET | `/queue/events` | noj-core/src/domains/submission/routes/sse.ts |
 | GET | `/queue/health` | noj-core/src/domains/submission/routes/admin-submissions.ts |
@@ -161,6 +162,7 @@
 | GET | `NOJ_RUN_E2E` | noj-core/src/domains/identity/routes/auth.ts |
 | GET | `userId` | noj-core/src/domains/catalog/routes/admin-trainings.ts |
 | GET | `userId` | noj-core/src/domains/catalog/routes/admin-trainings.ts |
+| GET | `userId` | noj-core/src/domains/catalog/routes/problems.ts |
 | GET | `userId` | noj-core/src/domains/catalog/routes/problems.ts |
 | GET | `userId` | noj-core/src/domains/catalog/routes/problems.ts |
 | GET | `userId` | noj-core/src/domains/catalog/routes/problems.ts |
@@ -266,6 +268,7 @@
 | PATCH | `/:id/messages/:messageId` | noj-core/src/domains/messaging/routes/conversations.ts |
 | PATCH | `/admin/boards/:boardId` | noj-core/src/domains/community/routes/community-admin.ts |
 | PATCH | `/comments/:commentId` | noj-core/src/domains/community/routes/community.ts |
+| PATCH | `/contests/:id/kind` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | PATCH | `/posts/:postId` | noj-core/src/domains/community/routes/community.ts |
 | PATCH | `/users/:id/ban` | noj-core/src/domains/identity/routes/admin-users.ts |
 | PATCH | `/users/:id/role` | noj-core/src/domains/identity/routes/admin-users.ts |
@@ -273,6 +276,7 @@
 | POST | `/` | noj-core/src/domains/catalog/routes/problems.ts |
 | POST | `/` | noj-core/src/domains/catalog/routes/tags.ts |
 | POST | `/` | noj-core/src/domains/catalog/routes/trainings.ts |
+| POST | `/` | noj-core/src/domains/contest/routes/contests.ts |
 | POST | `/` | noj-core/src/domains/identity/routes/checkin.ts |
 | POST | `/` | noj-core/src/domains/messaging/routes/conversations.ts |
 | POST | `/` | noj-core/src/domains/submission/routes/submissions.ts |
@@ -306,6 +310,7 @@
 | POST | `/contests` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | POST | `/contests/:id/participants` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | POST | `/contests/:id/ranking-snapshots` | noj-core/src/domains/contest/routes/admin-contests.ts |
+| POST | `/contests/:id/reset-code` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | POST | `/email-delivery/suppressions/:id/clear` | noj-core/src/domains/system/routes/admin-email-delivery.ts |
 | POST | `/email-events/:provider` | noj-core/src/domains/system/routes/email-delivery.ts |
 | POST | `/email/resend` | noj-core/src/domains/identity/routes/auth.ts |
@@ -330,6 +335,7 @@
 | POST | `/posts/:postId/like` | noj-core/src/domains/community/routes/community.ts |
 | POST | `/problems/:id/rejudge` | noj-core/src/domains/submission/routes/admin-submissions.ts |
 | POST | `/problems/:id/self-test` | noj-core/src/domains/submission/routes/self-tests.ts |
+| POST | `/problems/review` | noj-core/src/domains/catalog/routes/admin-problems.ts |
 | POST | `/register` | noj-core/src/domains/identity/routes/auth.ts |
 | POST | `/reports` | noj-core/src/domains/community/routes/community.ts |
 | POST | `/reset-password` | noj-core/src/domains/identity/routes/auth.ts |
@@ -350,6 +356,7 @@
 | PUT | `/:id/problems` | noj-core/src/domains/catalog/routes/trainings.ts |
 | PUT | `/:id/questions/:qid` | noj-core/src/domains/catalog/routes/problems.ts |
 | PUT | `/:id/remark` | noj-core/src/domains/messaging/routes/conversations.ts |
+| PUT | `/:id/visibility` | noj-core/src/domains/catalog/routes/problems.ts |
 | PUT | `/admin/boards/:boardId/role-grants/:roleId` | noj-core/src/domains/community/routes/community-admin.ts |
 | PUT | `/contests/:id` | noj-core/src/domains/contest/routes/admin-contests.ts |
 | PUT | `/judge-images/:id` | noj-core/src/domains/system/routes/admin-judge-images.ts |

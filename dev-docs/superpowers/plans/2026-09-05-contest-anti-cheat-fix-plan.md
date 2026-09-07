@@ -1004,12 +1004,25 @@ jj describe -m "docs(root): 竞赛防作弊修复文档同步与 Agent Note"
 jj new
 ```
 
+## 评审修复补充（2026-09-05 代码评审后）
+
+- [x] **C1**：客观题练习提交封堵——`submitObjectivePaper` 增加 `isAdmin` 参数，非 owner/admin 对 private 套卷练习提交返回 403；路由透传 `submission:read_all`。
+- [x] **C3**：邀请码迁移缺陷——`isBcryptHash` 兼容历史明文邀请码；移除会清空明文邀请码的 SQL 回填。
+- [x] **I2**：竞赛题目页取题请求追加 `?contest_id=`，避免 private 套卷在竞赛页 404。
+- [x] **I4**：创建/更新竞赛时 `is_public` 与 `kind` 绑定（public ↔ true，invite ↔ false）。
+- [x] **F-12 fail-closed**：`register_email_verify=true` 时注册直接拒绝，不再接受任意 `email_code`；补充路由失败路径测试。
+- [x] **U 默认 private / P 恒 public**：新增 `problems_p_visibility_check` CHECK 约束与迁移 `0065`；U 新建默认 private，P 恒 public。
+- [x] **SSE 成员过滤**：`contest:submission:created` 仅参赛者/管理员订阅与重放。
+- [x] **I5 域边界**：`catalog/routes/problems.ts` 不再直接依赖 contest 域；竞赛上下文校验收敛到 objective 域 `listPaperQuestionsWithAccess`，保持 catalog 不依赖 contest。
+- [x] **I6 失败路径测试**：F-12 fail-closed 路由测试已补；F-04 已有 service 层超限测试与 e2e 429 场景覆盖。
+- [x] **F-14 响应侧**：练习提交响应（含 owner/admin）统一剥离 `expected`，仅保留 correct/given/explanation。
+
 ## 收尾
 
-- [ ] `cd noj-core && deno task test:parallel` 全绿
-- [ ] `cd noj-judge && cargo fmt && cargo clippy && cargo nextest run --all-targets` 全绿零警告
-- [ ] `cd noj-tests && deno task test` e2e 全绿
-- [ ] 向用户报告，等待决定推送（禁直推 main）
+- [x] `cd noj-core && deno task test` 全量 PGlite 套件全绿（1020 passed / 0 failed / 55 ignored）
+- [x] `cd noj-judge && cargo fmt && cargo clippy && cargo nextest run --all-targets` 全绿零警告（236 passed / 0 failed / 38 skipped）
+- [x] `cd noj-tests` CI 3 组 E2E 清单（不含 staging-smoke）全绿（101 passed / 0 failed）
+- [x] 向用户报告，等待决定推送（禁直推 main）
 
 
 

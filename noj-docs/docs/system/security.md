@@ -17,6 +17,8 @@
 | `public` | 公开题：出现在题目列表 / 搜索 / 公开入口，匿名与登录用户可按规则访问和提交。 |
 | `private` | 私有题：默认仅题目创建者与管理员可见、可管理、可提交；他人不能通过普通列表、搜索或直链读取。 |
 
+新建 U 型（用户题）默认 `private`，owner 可通过“我的题目”一键转 `public`；P 型（主题库题）恒为 `public`（数据库 CHECK 兜底）。存量题目仍为 `public` 以保持升级前可见性。
+
 访问判定由 catalog 域纯函数 `resolveProblemAccess` 统一完成，读取与提交路径共用，判定顺序为：
 
 `admin → owner → 竞赛上下文（不回退 public）→ visibility`

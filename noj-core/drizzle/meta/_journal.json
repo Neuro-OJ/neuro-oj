@@ -512,6 +512,13 @@
       "when": 1788769055984,
       "tag": "0072_sweet_colleen_wing",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1788769286076,
+      "tag": "0073_glamorous_pestilence",
+      "breakpoints": true
     }
   ]
 }

@@ -90,6 +90,7 @@ async function seed() {
       },
       number: 1,
       type: "U",
+      visibility: "private",
       created_at: now,
       updated_at: now,
     },

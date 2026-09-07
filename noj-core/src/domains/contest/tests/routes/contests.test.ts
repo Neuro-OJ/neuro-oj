@@ -144,7 +144,8 @@ Deno.test({
             start_time: new Date(Date.now() + 60_000).toISOString(),
             end_time: new Date(Date.now() + 3_600_000).toISOString(),
             type: "kaggle",
-            is_public: false,
+            kind: "invite",
+            password: "InvitePass123",
             problems: [{
               problem_id: problemId,
               label: "A",

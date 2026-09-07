@@ -1,7 +1,7 @@
 import { assertEquals, assertMatch, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
-import { problems, users } from "../../../../shared/db/schema.ts";
+import { contests, problems, users } from "../../../../shared/db/schema.ts";
 import {
   addParticipants,
   computeContestStatus,
@@ -64,7 +64,7 @@ async function createProblem(number: number): Promise<string> {
     },
     number,
     owner_id: "0",
-    type: "P",
+    type: "U",
     created_at: now,
     updated_at: now,
   });
@@ -100,6 +100,8 @@ Deno.test({
 
     try {
       assertEquals(contest.status, "pending");
+      assertEquals(contest.kind, "invite");
+      assertEquals(contest.is_public, false);
       assertEquals(contest.problem_count, 1);
       assertEquals(contest.has_password, true);
       assertMatch(
@@ -110,8 +112,9 @@ Deno.test({
       assertEquals(await resolveContestId(contest.id), contest.id);
       assertEquals(computeContestStatus(startTime, endTime), "pending");
 
+      // invite 赛不进入公开列表（I4）
       const listed = await listContests({ page: 1, perPage: 20 });
-      assertEquals(listed.data.some((item) => item.id === contest.id), true);
+      assertEquals(listed.data.some((item) => item.id === contest.id), false);
 
       await assertRejects(
         () => registerForContest(contest.id, participantId, "wrong"),
@@ -304,6 +307,8 @@ Deno.test({
       true,
     );
     try {
+      assertEquals(contest.kind, "public");
+      assertEquals(contest.is_public, true);
       await registerForContest(contest.id, participant);
       assertEquals(await isParticipant(contest.id, participant), true);
     } finally {
@@ -344,6 +349,44 @@ Deno.test({
         ForbiddenError,
         "邀请码错误",
       );
+    } finally {
+      await deleteContest(contest.id).catch(() => {});
+      await db.delete(problems).where(eq(problems.id, problemId));
+      await db.delete(users).where(eq(users.id, participant));
+      await db.delete(users).where(eq(users.id, creator));
+    }
+  },
+});
+
+Deno.test({
+  name: "contests service: 历史明文邀请码兼容注册（C3）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const creator = await createUser("legacy-invite-owner");
+    const participant = await createUser("legacy-invite-user");
+    const problemId = await createProblem(950006);
+    const db = getDb();
+    const contest = await createContest({
+      title: "历史明文邀请赛",
+      start_time: new Date(Date.now() - 60_000).toISOString(),
+      end_time: new Date(Date.now() + 3_600_000).toISOString(),
+      type: "kaggle",
+      kind: "invite",
+      password: "HashedCode123",
+      problems: [{
+        problem_id: problemId,
+        label: "A",
+        sort_order: 0,
+        score: 10000,
+      }],
+    }, creator);
+    // 模拟 0064 迁移早期曾回填明文邀请码的存量数据
+    await db.update(contests).set({ password: "legacy-plain-code" })
+      .where(eq(contests.id, contest.id));
+    try {
+      await registerForContest(contest.id, participant, "legacy-plain-code");
+      assertEquals(await isParticipant(contest.id, participant), true);
     } finally {
       await deleteContest(contest.id).catch(() => {});
       await db.delete(problems).where(eq(problems.id, problemId));

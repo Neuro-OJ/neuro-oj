@@ -752,6 +752,26 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     await ensureRbacSeeds();
+    // resetDbForTest 会清空用户与角色关联，这里重建测试用户并挂上默认 user 角色
+    const db = getDb();
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+      id: REGULAR_USER_ID,
+      username: `user-${ts}`,
+      email: `user-${ts}@test.com`,
+      password_hash: "x",
+      created_at: now,
+      updated_at: now,
+    }).onConflictDoNothing();
+    const [userRole] = await db.select({ id: roles.id }).from(roles).where(
+      eq(roles.name, "user"),
+    ).limit(1);
+    if (userRole) {
+      await db.insert(userRoles).values({
+        user_id: REGULAR_USER_ID,
+        role_id: userRole.id,
+      }).onConflictDoNothing();
+    }
     const perms = await getUserPermissions(REGULAR_USER_ID);
     assert(perms.has("contest:create"), "默认角色应有 contest:create");
   },

@@ -109,7 +109,7 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     type: "boolean",
     default: false,
     description:
-      "注册邮箱验证开关（开启后 /api/v1/auth/register 必须携带 email_code）",
+      "注册邮箱验证开关（默认关；当前实现未完成，开启会 fail-closed 拒绝注册）",
     is_secret: false,
     envFallback: "REGISTER_EMAIL_VERIFY",
     category: "auth",

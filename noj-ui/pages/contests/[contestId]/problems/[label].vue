@@ -110,7 +110,7 @@ const accessHint = computed(() => {
 const paperId = computed(() => problem.value?.display_id ?? problem.value?.problem_id ?? '')
 const qUrl = computed(() =>
   paperId.value
-    ? `/api/v1/problems/${paperId.value}/questions`
+    ? `/api/v1/problems/${paperId.value}/questions?contest_id=${contestId}`
     : null
 )
 // Nuxt UseFetch 的 url getter 类型不接受 null，运行时支持返回 null 跳过请求；断言仅类型层面。

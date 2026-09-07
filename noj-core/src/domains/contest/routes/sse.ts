@@ -34,6 +34,8 @@ contestSse.get(
     if (!contest.is_public && !isAdmin && !contest.is_registered) {
       throw new NotFoundError("竞赛不存在");
     }
+    // 非成员（含公开赛未报名用户）不得接收竞赛提交事件；榜单仍按既有规则。
+    const canReceiveSubmissions = isAdmin || contest.is_registered === true;
 
     return streamSSE(c, async (stream) => {
       let streamClosed = false;
@@ -136,36 +138,41 @@ contestSse.get(
         Channels.contestRanking(contestId),
         () => void pushRanking("contest:ranking:updated"),
       );
-      unsubscribeSubmission = onEvent(
-        Channels.contestSubmission(contestId),
-        (_channel, message) => {
-          // 封榜/正式成绩期间普通用户不接收提交事件，避免从旁路推导实时变化。
-          if (streamClosed || (!isAdmin && isNonLiveView())) return;
-          // 非 admin 订阅者隐藏 user_id，避免泄露“谁在提交哪题”。
-          let payload = message;
-          if (!isAdmin) {
-            try {
-              const event = JSON.parse(message) as Record<string, unknown>;
-              delete event.user_id;
-              payload = JSON.stringify(event);
-            } catch {
-              // 解析失败时保持原样（不阻断推送）
+      if (canReceiveSubmissions) {
+        unsubscribeSubmission = onEvent(
+          Channels.contestSubmission(contestId),
+          (_channel, message) => {
+            // 封榜/正式成绩期间普通用户不接收提交事件，避免从旁路推导实时变化。
+            if (streamClosed || (!isAdmin && isNonLiveView())) return;
+            // 非 admin 订阅者隐藏 user_id，避免泄露“谁在提交哪题”。
+            let payload = message;
+            if (!isAdmin) {
+              try {
+                const event = JSON.parse(message) as Record<string, unknown>;
+                delete event.user_id;
+                payload = JSON.stringify(event);
+              } catch {
+                // 解析失败时保持原样（不阻断推送）
+              }
             }
-          }
-          stream.writeSSE({
-            event: "contest:submission:created",
-            data: payload,
-          }).catch(closeStream);
-        },
-      );
+            stream.writeSSE({
+              event: "contest:submission:created",
+              data: payload,
+            }).catch(closeStream);
+          },
+        );
+      }
 
       // 重放缺失事件（先订阅后重放，避免竞态）
       const after = lastEventId(c);
-      const missed = await replaySseEvents(
-        [
+      const replayChannels = canReceiveSubmissions
+        ? [
           Channels.contestRanking(contestId),
           Channels.contestSubmission(contestId),
-        ],
+        ]
+        : [Channels.contestRanking(contestId)];
+      const missed = await replaySseEvents(
+        replayChannels,
         after,
         200,
       );
@@ -173,7 +180,7 @@ contestSse.get(
         if (streamClosed) return;
         const payload = ev.payload as { type?: string };
         if (payload.type === "contest:submission:created") {
-          if (!isAdmin && isNonLiveView()) continue;
+          if (!canReceiveSubmissions || (!isAdmin && isNonLiveView())) continue;
           let data = JSON.stringify({ ...payload, seq: ev.id });
           if (!isAdmin) {
             try {

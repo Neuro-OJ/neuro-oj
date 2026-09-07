@@ -72,6 +72,7 @@ export const SCHEMA_DDL: string[] = [
     is_objective BOOLEAN NOT NULL DEFAULT false,
     visibility TEXT NOT NULL DEFAULT 'public'
       CHECK (visibility IN ('public', 'private')),
+    CONSTRAINT problems_p_visibility_check CHECK (type <> 'P' OR visibility = 'public'),
     submission_mode TEXT NOT NULL DEFAULT 'code'
       CHECK (submission_mode IN ('code', 'artifact')),
     artifact_max_size_mb INTEGER,

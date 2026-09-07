@@ -69,6 +69,10 @@ export const problems = pgTable(
       "problems_visibility_check",
       sql`${table.visibility} IN ('public', 'private')`,
     ),
+    pVisibilityCheck: check(
+      "problems_p_visibility_check",
+      sql`${table.type} <> 'P' OR ${table.visibility} = 'public'`,
+    ),
     searchVectorIdx: index("idx_problems_search_vector").using(
       "gin",
       table.searchVector,

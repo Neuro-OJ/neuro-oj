@@ -188,6 +188,11 @@ Deno.test({
       },
       tag_ids: [catId],
     });
+    // 新建 U 型默认 private；本用例验证公开详情/标签，需转 public
+    await db.update(problems).set({
+      visibility: "public",
+      updated_at: new Date().toISOString(),
+    }).where(eq(problems.id, problem.id));
     const res = await jsonRequest(app, `/api/v1/problems/${problem.id}`);
     assertEquals(res.status, 200);
 

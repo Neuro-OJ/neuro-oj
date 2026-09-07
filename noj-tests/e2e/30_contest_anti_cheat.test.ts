@@ -557,9 +557,10 @@ e2eTest("[e2e/anti-cheat] 6. 赛中提交详情/全局队列不泄判据", async
 });
 
 e2eTest(
-  "[e2e/anti-cheat] 7. 客观题练习提交不泄 expected（private paper）",
+  "[e2e/anti-cheat] 7. 私有套卷练习提交非 owner 被拒，owner 响应不泄 expected",
   async () => {
     if (!isE2E) return;
+    // 攻击者对 private 套卷做练习提交应 403（防止把练习当答案 oracle）
     const submit = await apiPost(
       `/api/v1/problems/${privatePaperId}/submit`,
       {
@@ -567,36 +568,43 @@ e2eTest(
       },
       attackerToken,
     );
-    if (submit.status !== 201) {
+    if (submit.status !== 403) {
       throw new Error(
-        `私有套卷练习提交失败: ${submit.status} ${JSON.stringify(submit.body)}`,
+        `私有套卷练习提交应 403，实际 ${submit.status} ${
+          JSON.stringify(submit.body)
+        }`,
       );
     }
-    const submitted = (submit.body as {
+
+    // owner 本人可练习提交；即使私有卷也不返回 expected（F-14 写入已剥离）
+    const ownerSubmit = await apiPost(
+      `/api/v1/problems/${privatePaperId}/submit`,
+      {
+        answers: { [privateQuestionId]: ["A"] },
+      },
+      ownerToken,
+    );
+    if (ownerSubmit.status !== 201) {
+      throw new Error(
+        `owner 私有套卷练习提交失败: ${ownerSubmit.status} ${
+          JSON.stringify(ownerSubmit.body)
+        }`,
+      );
+    }
+    const submitted = (ownerSubmit.body as {
       data: {
         submission_id: string;
         details: Record<string, { expected?: unknown; explanation?: unknown }>;
       };
     }).data;
-    const detailEntry = submitted.details?.[privateQuestionId];
-    if (
-      detailEntry?.expected !== undefined ||
-      detailEntry?.explanation !== undefined
-    ) {
-      throw new Error(
-        `练习提交响应不应含 expected/explanation: ${
-          JSON.stringify(detailEntry)
-        }`,
-      );
-    }
     if (JSON.stringify(submitted).includes("expected")) {
       throw new Error("练习提交响应 JSON 含 expected 字段");
     }
 
-    // 提交详情同样不泄
+    // owner 详情同样不泄 expected
     const detail = await apiGet(
       `/api/v1/problems/submissions/${submitted.submission_id}`,
-      attackerToken,
+      ownerToken,
     );
     if (detail.status !== 200) {
       throw new Error(
@@ -608,41 +616,10 @@ e2eTest(
         details: Record<string, { expected?: unknown; explanation?: unknown }>;
       };
     }).data.details?.[privateQuestionId];
-    if (
-      detailEntry2?.expected !== undefined ||
-      detailEntry2?.explanation !== undefined
-    ) {
+    if (detailEntry2?.expected !== undefined) {
       throw new Error(
-        `详情不应含 expected/explanation: ${JSON.stringify(detailEntry2)}`,
+        `详情不应含 expected: ${JSON.stringify(detailEntry2)}`,
       );
-    }
-
-    // 历史列表同样不泄
-    const history = await apiGet(
-      `/api/v1/problems/submissions?paper_id=${privatePaperId}`,
-      attackerToken,
-    );
-    if (history.status !== 200) {
-      throw new Error(
-        `客观题历史应 200，实际 ${history.status}`,
-      );
-    }
-    const historyDetails = (history.body as {
-      data: {
-        data: Array<
-          {
-            details: Record<
-              string,
-              { expected?: unknown; explanation?: unknown }
-            >;
-          }
-        >;
-      };
-    }).data.data;
-    for (const row of historyDetails) {
-      if (JSON.stringify(row).includes("expected")) {
-        throw new Error("历史列表泄露 expected");
-      }
     }
   },
 );

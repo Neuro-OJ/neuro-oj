@@ -149,12 +149,14 @@ auth.post("/register", async (c) => {
     throw new ValidationError(`密码长度不能少于 ${MIN_PASSWORD_LENGTH} 位`);
   }
 
-  // F-12：注册邮箱验证开关。开启时要求携带 email_code（默认关闭）。
+  // F-12：注册邮箱验证开关（默认关闭）。当前仅登记开关但未接入完整“发送验证码 →
+  // 校验并消费”链路；为避免“看起来已启用、实际任意字符串可通过”的假安全，开启时
+  // fail-closed 拒绝注册，待邮件验证服务落地后再放行。
   const emailVerifySetting = getSetting("register_email_verify");
   if (emailVerifySetting?.value === true) {
-    if (!body.email_code) {
-      throw new ValidationError("需要邮箱验证码");
-    }
+    throw new ValidationError(
+      "注册邮箱验证功能尚未开放，请联系管理员完成邮箱验证服务配置",
+    );
   }
 
   const clientIp = getClientIp(c);

@@ -16,6 +16,8 @@ import {
   NotFoundError,
 } from "./../../../shared/base/errors.ts";
 import { assertPermission } from "./../../identity/index.ts";
+import { resolveProblemAccess } from "./../../catalog/index.ts";
+import { verifyContestAccess } from "./../../contest/index.ts";
 import { isUuid } from "./../../../shared/security/public-id.ts";
 import {
   type CreateQuestionInput,
@@ -180,6 +182,48 @@ export async function listPaperQuestions(
     .where(eq(objectiveQuestions.paper_id, paperId))
     .orderBy(asc(objectiveQuestions.sort_order));
   return rows.map((row) => serializeQuestion(row, includeAnswer));
+}
+
+/**
+ * 获取套卷小题列表（带统一访问判定）。
+ *
+ * 供 catalog 路由在 `?contest_id=` 场景下使用：竞赛上下文由 contest 域
+ * `verifyContestAccess` 校验后传入 `resolveProblemAccess`，避免 catalog 域
+ * 反向依赖 contest 域（域边界约束）。
+ */
+export async function listPaperQuestionsWithAccess(
+  paperId: string,
+  options: {
+    viewerId: string | null;
+    isAdmin: boolean;
+    contestId?: string | null;
+    userId?: string;
+    userRole?: string;
+    c?: Context;
+  },
+): Promise<ObjectiveQuestionResponse[]> {
+  const paper = await getPaperOrThrow(paperId);
+  assertObjectivePaper(paper);
+
+  const contestAccess = options.contestId
+    ? await verifyContestAccess(options.viewerId, options.contestId, paper.id)
+    : null;
+  const access = resolveProblemAccess(paper, {
+    viewerId: options.viewerId,
+    isAdmin: options.isAdmin,
+    contestAccess,
+  });
+  if (!access.allowed) {
+    throw new NotFoundError("题目不存在");
+  }
+
+  const includeAnswer = await isPaperOwnerOrAdmin(
+    paper,
+    options.userId,
+    options.userRole,
+    options.c,
+  );
+  return listPaperQuestions(paper.id, includeAnswer);
 }
 
 /**

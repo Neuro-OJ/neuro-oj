@@ -7,6 +7,7 @@ export {
   isPaperOwnerOrAdmin,
   judgeOptions,
   listPaperQuestions,
+  listPaperQuestionsWithAccess,
   type PaperRow,
   resolvePaperId,
   resolvePaperIdToUuid,

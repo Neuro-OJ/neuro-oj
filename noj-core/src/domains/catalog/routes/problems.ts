@@ -31,7 +31,6 @@ import {
 import { applyAlgorithmTagVisibility } from "../services/problems/problems-list.ts";
 import { resolveProblem } from "./../services/problem-resolve.ts";
 import { resolveProblemAccess } from "./../services/problem-access.ts";
-import { verifyContestAccess } from "./../../contest/index.ts";
 import {
   ADMIN_FULL_ACCESS,
   assertPermission,
@@ -51,14 +50,11 @@ import {
 } from "../services/support-package.ts";
 import { importProblemBundle } from "../services/problems/problem-bundle.ts";
 import {
-  assertObjectivePaper,
   createQuestion,
   deleteQuestion,
   getObjectiveSubmission,
-  getPaperOrThrow,
-  isPaperOwnerOrAdmin,
   listObjectiveSubmissions,
-  listPaperQuestions,
+  listPaperQuestionsWithAccess,
   submitObjectivePaper,
   updateQuestion,
 } from "../../objective/index.ts";
@@ -305,6 +301,10 @@ router.put("/:id/visibility", authMiddleware, async (c) => {
   if (!isOwner && !isAdmin) {
     throw new ForbiddenError("无权修改题目可见性");
   }
+  // P 型主题库恒 public（I1），不允许转为 private
+  if (problem.type === "P" && visibility !== "public") {
+    throw new BadRequestError("P 型主题库题目必须保持 public");
+  }
   // owner 仅可转公开；改私有属于管理员操作
   if (visibility !== "public" && !isAdmin) {
     throw new ForbiddenError("仅管理员可将题目设为私有");
@@ -493,35 +493,22 @@ router.get("/:id/questions", optionalAuthMiddleware, async (c) => {
   const userId = c.get("userId") as string | undefined;
   const userRole = c.get("userRole") as string | undefined;
 
-  const paper = await getPaperOrThrow(paperId);
-  assertObjectivePaper(paper);
-
   // 套卷也走统一题目访问解析：private 套卷非 owner/admin 一律 404；
   // 竞赛页可携带 contest_id 传入竞赛上下文放行。
+  // 竞赛上下文校验收敛在 objective 域服务内，catalog 域不反向依赖 contest 域。
   const viewerId = userId ?? null;
   const isAdmin = userId
     ? (await resolvePermissions(c)).has(ADMIN_FULL_ACCESS)
     : false;
   const contestId = c.req.query("contest_id");
-  const contestAccess = contestId
-    ? await verifyContestAccess(viewerId, contestId, paper.id)
-    : null;
-  const access = resolveProblemAccess(paper, {
+  const data = await listPaperQuestionsWithAccess(paperId, {
     viewerId,
     isAdmin,
-    contestAccess,
-  });
-  if (!access.allowed) {
-    throw new NotFoundError("题目不存在");
-  }
-
-  const includeAnswer = await isPaperOwnerOrAdmin(
-    paper,
+    contestId,
     userId,
     userRole,
     c,
-  );
-  const data = await listPaperQuestions(paper.id, includeAnswer);
+  });
   return c.json({ data });
 });
 
@@ -580,7 +567,8 @@ router.post("/:id/submit", authMiddleware, async (c) => {
   if (!body.answers) {
     throw new BadRequestError("缺少必填字段：answers");
   }
-  const result = await submitObjectivePaper(paperId, body, userId);
+  const isAdmin = await checkPermission(c, "submission:read_all");
+  const result = await submitObjectivePaper(paperId, body, userId, isAdmin);
   return c.json({ data: result }, 201);
 });
 

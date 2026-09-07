@@ -45,8 +45,11 @@ async function makeUser(tag: string): Promise<string> {
   return id;
 }
 
-/** 创建客观题套卷，返回 id。 */
-async function makePaper(ownerId: string): Promise<string> {
+/** 创建客观题套卷，返回 id。默认 public 供练习模式测试；private 测试显式传 private。 */
+async function makePaper(
+  ownerId: string,
+  visibility: "public" | "private" = "public",
+): Promise<string> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await db.insert(problems).values({
@@ -58,6 +61,7 @@ async function makePaper(ownerId: string): Promise<string> {
     number: Math.floor(Math.random() * 90000) + 10000,
     owner_id: ownerId,
     type: "U",
+    visibility,
     is_objective: true,
     created_at: now,
     updated_at: now,
@@ -486,29 +490,41 @@ Deno.test({
 });
 
 Deno.test({
-  name: "objective submissions: private 套卷练习提交与详情不返回解析",
+  name:
+    "objective submissions: private 套卷练习提交对非 owner/admin 拒绝（C1）",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
     const owner = await makeUser("private-owner");
     const user = await makeUser("private-user");
-    const paper = await makePaper(owner);
+    const paper = await makePaper(owner, "private");
     const q1 = await makeQuestion(paper, 1, "single", ["A"], "私有解析");
-    await db.update(problems).set({ visibility: "private" }).where(
-      eq(problems.id, paper),
+
+    // 非 owner 练习提交被拒，杜绝答案 oracle
+    await assertRejects(
+      () =>
+        submitObjectivePaper(paper, {
+          answers: { [q1]: ["A"] },
+        }, user),
+      ForbiddenError,
+      "无权对该套卷提交",
     );
 
-    const result = await submitObjectivePaper(paper, {
+    // owner 本人仍可练习提交（得到解析）
+    const ownerResult = await submitObjectivePaper(paper, {
       answers: { [q1]: ["A"] },
-    }, user);
-    assertEquals(result.details[q1].explanation, undefined);
+    }, owner);
+    assertEquals(ownerResult.details[q1].explanation, "私有解析");
 
-    const mine = await getObjectiveSubmission(result.submission_id, user);
-    assertEquals(mine.details[q1].explanation, undefined);
-
-    // admin 仍可看到解析（owner/admin 解析门）
+    // admin 也可练习提交，并可在详情中看到解析（owner/admin 解析门）
+    const adminResult = await submitObjectivePaper(
+      paper,
+      { answers: { [q1]: ["A"] } },
+      "0",
+      true,
+    );
     const adminView = await getObjectiveSubmission(
-      result.submission_id,
+      adminResult.submission_id,
       "0",
       "admin",
     );

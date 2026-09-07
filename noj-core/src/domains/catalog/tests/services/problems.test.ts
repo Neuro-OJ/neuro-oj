@@ -8,7 +8,12 @@ import {
   updateProblem,
 } from "../../index.ts";
 import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
-import { auditLogs, tags, users } from "../../../../shared/db/schema.ts";
+import {
+  auditLogs,
+  problems,
+  tags,
+  users,
+} from "../../../../shared/db/schema.ts";
 import {
   BadRequestError,
   NotFoundError,
@@ -93,6 +98,29 @@ Deno.test({
     assertEquals(problem.difficulty, "easy");
     assertEquals(problem.tags, []);
     assertEquals(problem.has_hidden_algorithm_tags, false);
+    // 新建 U 型默认 private（I1）
+    assertEquals(problem.visibility, "private");
+  },
+});
+
+Deno.test({
+  name: "problems service: 新建 P 型默认 public",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const problem = await createProblem(
+      {
+        title: `临时 P 题 ${ts}`,
+        description: "用来测 P 默认公开",
+        difficulty: "easy",
+        type: "P",
+        runtime_config: VALID_RUNTIME_CONFIG,
+      },
+      "0",
+      "admin",
+    );
+    assertEquals(problem.visibility, "public");
   },
 });
 
@@ -219,6 +247,11 @@ Deno.test({
       difficulty: "easy",
       runtime_config: VALID_RUNTIME_CONFIG,
     });
+    // 搜索只覆盖 public 题；新建 U 默认 private，先转 public
+    await getDb().update(problems).set({
+      visibility: "public",
+      updated_at: new Date().toISOString(),
+    }).where(eq(problems.id, created.id));
     const result = await listProblems({ keyword, type: "U" });
     assertEquals(result.items.length, 1);
     assertEquals(result.items[0].id, created.id);

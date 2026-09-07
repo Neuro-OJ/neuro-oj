@@ -183,9 +183,9 @@ export async function listProblems(
     conditions.push(eq(problems.owner_id, query.owner_id));
   }
 
-  // 可见性：普通列表只允许 public；owner/admin 查看自己的 U 型列表时可包含 private。
-  const canSeeOwnPrivate = query.owner_id !== undefined &&
-    (viewer.isAdmin === true || viewer.userId === query.owner_id);
+  // 可见性：普通列表只允许 public；admin 可查看全部，owner 查看自己的 U 型列表时可包含 private。
+  const canSeeOwnPrivate = viewer.isAdmin === true ||
+    (query.owner_id !== undefined && viewer.userId === query.owner_id);
   if (!canSeeOwnPrivate) {
     conditions.push(eq(problems.visibility, "public"));
   }

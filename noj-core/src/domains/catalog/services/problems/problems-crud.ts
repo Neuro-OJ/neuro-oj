@@ -255,6 +255,7 @@ export async function createProblem(
         support_package_storage_url: input.support_package_storage_url ?? null,
         runtime_config: isObjective ? null : (input.runtime_config ?? null),
         is_objective: isObjective,
+        visibility: type === "P" ? "public" : "private",
         submission_mode: submissionMode,
         artifact_max_size_mb: input.artifact_max_size_mb ?? null,
         llm_config: llmConfig,

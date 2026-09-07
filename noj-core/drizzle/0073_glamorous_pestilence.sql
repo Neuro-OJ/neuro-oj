@@ -1,0 +1,1 @@
+ALTER TABLE "problems" ADD CONSTRAINT "problems_p_visibility_check" CHECK ("problems"."type" <> 'P' OR "problems"."visibility" = 'public');
