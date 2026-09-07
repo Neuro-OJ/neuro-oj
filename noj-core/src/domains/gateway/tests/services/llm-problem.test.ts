@@ -266,3 +266,60 @@ Deno.test("llm-limits: assertLlmLimitsWithinDefault 超默认抛 BadRequestError
     else Deno.env.set("NOJ_LLM_MAX_TOKENS", oldTokens);
   }
 });
+
+Deno.test("llm-limits: 非法环境变量回退默认值", () => {
+  const oldCalls = Deno.env.get("NOJ_LLM_MAX_CALLS");
+  const oldTokens = Deno.env.get("NOJ_LLM_MAX_TOKENS");
+  Deno.env.set("NOJ_LLM_MAX_CALLS", "abc");
+  Deno.env.set("NOJ_LLM_MAX_TOKENS", "-1");
+  try {
+    assertEquals(getDefaultLlmLimits(), { max_calls: 100, max_tokens: 50000 });
+  } finally {
+    if (oldCalls === undefined) Deno.env.delete("NOJ_LLM_MAX_CALLS");
+    else Deno.env.set("NOJ_LLM_MAX_CALLS", oldCalls);
+    if (oldTokens === undefined) Deno.env.delete("NOJ_LLM_MAX_TOKENS");
+    else Deno.env.set("NOJ_LLM_MAX_TOKENS", oldTokens);
+  }
+});
+
+Deno.test("llm-limits: resolveLlmLimits 对非正声明值钳制到 1", () => {
+  const oldCalls = Deno.env.get("NOJ_LLM_MAX_CALLS");
+  const oldTokens = Deno.env.get("NOJ_LLM_MAX_TOKENS");
+  Deno.env.set("NOJ_LLM_MAX_CALLS", "100");
+  Deno.env.set("NOJ_LLM_MAX_TOKENS", "50000");
+  try {
+    assertEquals(
+      resolveLlmLimits({ max_calls: 0, max_tokens: -10 }),
+      { max_calls: 1, max_tokens: 1 },
+    );
+  } finally {
+    if (oldCalls === undefined) Deno.env.delete("NOJ_LLM_MAX_CALLS");
+    else Deno.env.set("NOJ_LLM_MAX_CALLS", oldCalls);
+    if (oldTokens === undefined) Deno.env.delete("NOJ_LLM_MAX_TOKENS");
+    else Deno.env.set("NOJ_LLM_MAX_TOKENS", oldTokens);
+  }
+});
+
+Deno.test("llm-limits: assertLlmLimitsWithinDefault 拒绝非正整数", () => {
+  const oldCalls = Deno.env.get("NOJ_LLM_MAX_CALLS");
+  const oldTokens = Deno.env.get("NOJ_LLM_MAX_TOKENS");
+  Deno.env.set("NOJ_LLM_MAX_CALLS", "100");
+  Deno.env.set("NOJ_LLM_MAX_TOKENS", "50000");
+  try {
+    assertThrows(
+      () => assertLlmLimitsWithinDefault({ max_calls: 0 }),
+      BadRequestError,
+      "max_calls",
+    );
+    assertThrows(
+      () => assertLlmLimitsWithinDefault({ max_tokens: -1 }),
+      BadRequestError,
+      "max_tokens",
+    );
+  } finally {
+    if (oldCalls === undefined) Deno.env.delete("NOJ_LLM_MAX_CALLS");
+    else Deno.env.set("NOJ_LLM_MAX_CALLS", oldCalls);
+    if (oldTokens === undefined) Deno.env.delete("NOJ_LLM_MAX_TOKENS");
+    else Deno.env.set("NOJ_LLM_MAX_TOKENS", oldTokens);
+  }
+});
