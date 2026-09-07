@@ -1,5 +1,5 @@
 import { assert } from "jsr:@std/assert@^1";
-import { searchProblems, searchUsers } from "../../src/domains/query/index.ts";
+import { searchFlat } from "../../src/domains/search/index.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { problems, users } from "./../../src/shared/db/schema.ts";
 import { sql } from "drizzle-orm";
@@ -28,6 +28,16 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const db = getDb();
+    const publicCtx = {
+      userId: undefined,
+      isAdmin: false,
+      guestReadEnabled: true,
+    };
+    const adminCtx = {
+      userId: undefined,
+      isAdmin: true,
+      guestReadEnabled: true,
+    };
 
     try {
       // Seed 100k problems（分批插入，避免 PGlite OOM）
@@ -82,11 +92,12 @@ Deno.test({
 
       // 高选择性题目搜索：100 条命中，验证常见关键词路径。
       const pStart = performance.now();
-      const pResult = await searchProblems({
+      const pResult = await searchFlat({
         q: "perfuniquekeyword",
-        isAdmin: false,
+        type: "problem",
         page: 1,
-        limit: 20,
+        perPage: 20,
+        ctx: publicCtx,
       });
       const pElapsed = performance.now() - pStart;
       console.log(
@@ -98,11 +109,12 @@ Deno.test({
 
       // 全命中题目搜索：100k 条命中，监控最坏情景但允许共享 CI Runner 波动。
       const broadStart = performance.now();
-      const broadResult = await searchProblems({
+      const broadResult = await searchFlat({
         q: "题目",
-        isAdmin: false,
+        type: "problem",
         page: 1,
-        limit: 20,
+        perPage: 20,
+        ctx: publicCtx,
       });
       const broadElapsed = performance.now() - broadStart;
       console.log(
@@ -117,11 +129,12 @@ Deno.test({
 
       // 用户搜索基准
       const uStart = performance.now();
-      const uResult = await searchUsers({
+      const uResult = await searchFlat({
         q: "user_1",
-        isAdmin: true,
+        type: "user",
         page: 1,
-        limit: 20,
+        perPage: 20,
+        ctx: adminCtx,
       });
       const uElapsed = performance.now() - uStart;
       console.log(

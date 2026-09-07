@@ -1,6 +1,6 @@
 import { assert } from "jsr:@std/assert@^1";
 import { sql } from "drizzle-orm";
-import { searchCommunity } from "../../src/domains/query/index.ts";
+import { searchFlat } from "../../src/domains/search/index.ts";
 import { getDb, resetDbForTest } from "../../src/shared/db/connection.ts";
 import {
   communityBoards,
@@ -30,6 +30,7 @@ Deno.test({
   fn: async () => {
     await resetDbForTest();
     const db = getDb();
+    const ctx = { userId: undefined, isAdmin: false, guestReadEnabled: true };
     const now = new Date().toISOString();
 
     await db.insert(users).values({
@@ -78,7 +79,7 @@ Deno.test({
     }
 
     await db.execute(sql`ANALYZE community_posts`);
-    // 与 searchCommunity 的真实查询保持一致（含 problem 字段与 FTS 分支），
+    // 与 searchFlat 的真实查询保持一致（含 problem 字段与 FTS 分支），
     // 避免 EXPLAIN 只验证简化查询而实际搜索仍走 Seq Scan。
     const explain = await db.execute(sql`
       EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
@@ -100,10 +101,12 @@ Deno.test({
     const elapsed: number[] = [];
     for (let i = 0; i < 30; i++) {
       const start = performance.now();
-      const result = await searchCommunity({
+      const result = await searchFlat({
         q: "trigram_unique_0",
+        type: "community_post",
         page: 1,
-        limit: 20,
+        perPage: 20,
+        ctx,
       });
       elapsed.push(performance.now() - start);
       assert(result.items.length > 0);
