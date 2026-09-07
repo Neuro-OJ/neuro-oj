@@ -45,3 +45,39 @@ Deno.test("parseJudgeArgs: 解析选项", () => {
 Deno.test("parseJudgeArgs: 非法 panel 抛错", () => {
   assertThrows(() => parseJudgeArgs(["install", "--panel", "bad"]));
 });
+
+Deno.test("parseJudgeArgs: 混用等号与空格时后者覆盖 dir", () => {
+  const o = parseJudgeArgs(["install", "--dir=/a", "--dir", "/b"]);
+  assertEquals(o.dir, "/b");
+});
+
+Deno.test("parseJudgeArgs: 重复空格形式 dir 使用最后一个值", () => {
+  const o = parseJudgeArgs(["install", "--dir", "/a", "--dir", "/b"]);
+  assertEquals(o.dir, "/b");
+});
+
+Deno.test("parseJudgeArgs: 值缺失且下一个是选项时抛错", () => {
+  assertThrows(() => parseJudgeArgs(["install", "--dir", "--dry-run"]));
+});
+
+Deno.test("parseJudgeArgs: 非法 redis-port 抛错", () => {
+  assertThrows(() => parseJudgeArgs(["install", "--redis-port", "abc"]));
+});
+
+Deno.test("parseJudgeArgs: 等号风格选项", () => {
+  const o = parseJudgeArgs([
+    "install",
+    "--dir=/srv/noj",
+    "--env-file=/tmp/env",
+  ]);
+  assertEquals(o.dir, "/srv/noj");
+  assertEquals(o.envFile, "/tmp/env");
+});
+
+Deno.test("parseJudgeArgs: 缺少子命令抛错", () => {
+  assertThrows(() => parseJudgeArgs([]));
+});
+
+Deno.test("parseJudgeArgs: 未知参数抛错", () => {
+  assertThrows(() => parseJudgeArgs(["install", "--unknown"]));
+});

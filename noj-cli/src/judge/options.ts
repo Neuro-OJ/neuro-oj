@@ -60,12 +60,19 @@ export function parseJudgeArgs(args: string[]): JudgeOptions {
     follow: false,
   };
   let commandSet = false;
-  const takeValue = (flag: string): string => {
-    const i = args.indexOf(flag);
-    if (i === -1) throw new Error(`judge: ${flag} 缺少参数`);
+  const takeValue = (flag: string, i: number): string => {
     const value = args[i + 1];
-    if (value === undefined) throw new Error(`judge: ${flag} 缺少参数`);
+    if (value === undefined || value.startsWith("-")) {
+      throw new Error(`judge: ${flag} 缺少参数`);
+    }
     return value;
+  };
+  const parseRedisPort = (value: string): number => {
+    const port = Number(value);
+    if (Number.isNaN(port)) {
+      throw new Error(`judge: --redis-port 必须是数字: ${value}`);
+    }
+    return port;
   };
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
@@ -77,47 +84,47 @@ export function parseJudgeArgs(args: string[]): JudgeOptions {
     if (a.startsWith("--dir=")) {
       out.dir = a.slice(6);
     } else if (a === "--dir") {
-      out.dir = takeValue(a);
+      out.dir = takeValue(a, i);
       i++;
     } else if (a.startsWith("--env-file=")) {
       out.envFile = a.slice(11);
     } else if (a === "--env-file") {
-      out.envFile = takeValue(a);
+      out.envFile = takeValue(a, i);
       i++;
     } else if (a.startsWith("--compose-file=")) {
       out.composeFile = a.slice(15);
     } else if (a === "--compose-file") {
-      out.composeFile = takeValue(a);
+      out.composeFile = takeValue(a, i);
       i++;
     } else if (a.startsWith("--repo=")) {
       out.repo = a.slice(7);
     } else if (a === "--repo") {
-      out.repo = takeValue(a);
+      out.repo = takeValue(a, i);
       i++;
     } else if (a.startsWith("--ref=")) {
       out.ref = a.slice(6);
     } else if (a === "--ref") {
-      out.ref = takeValue(a);
+      out.ref = takeValue(a, i);
       i++;
     } else if (a.startsWith("--version=")) {
       out.version = a.slice(10);
     } else if (a === "--version") {
-      out.version = takeValue(a);
+      out.version = takeValue(a, i);
       i++;
     } else if (a.startsWith("--redis-container=")) {
       out.redisContainer = a.slice(18);
     } else if (a === "--redis-container") {
-      out.redisContainer = takeValue(a);
+      out.redisContainer = takeValue(a, i);
       i++;
     } else if (a.startsWith("--redis-port=")) {
-      out.redisPort = Number(a.slice(13));
+      out.redisPort = parseRedisPort(a.slice(13));
     } else if (a === "--redis-port") {
-      out.redisPort = Number(takeValue(a));
+      out.redisPort = parseRedisPort(takeValue(a, i));
       i++;
     } else if (a.startsWith("--panel=")) {
       out.panel = a.slice(8) as JudgeOptions["panel"];
     } else if (a === "--panel") {
-      out.panel = takeValue(a) as JudgeOptions["panel"];
+      out.panel = takeValue(a, i) as JudgeOptions["panel"];
       i++;
     } else if (a === "--non-interactive") {
       out.nonInteractive = true;
