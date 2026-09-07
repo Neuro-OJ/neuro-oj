@@ -22,6 +22,7 @@ const { open: openReportModal } = useReportModal()
 
 // 当前选中的会话
 const selectedConversationId = ref<string | null>(null)
+const route = useRoute()
 
 // 聊天状态
 const messages = ref<ConversationMessage[]>([])
@@ -426,6 +427,17 @@ async function onSelect(id: string) {
   await fetchOtherUserName()
   scrollToBottom()
 }
+
+// 从 URL 深链打开会话（搜索消息结果跳转 /messages?conversation=<id>）
+watch(
+  () => route.query.conversation,
+  (conversation) => {
+    if (typeof conversation === "string" && conversation) {
+      void onSelect(conversation)
+    }
+  },
+  { immediate: true },
+)
 
 // 返回默认界面（未选中会话），并刷新侧栏
 async function goBack() {

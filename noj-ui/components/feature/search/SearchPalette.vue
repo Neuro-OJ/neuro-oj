@@ -20,6 +20,7 @@
               ref="inputRef"
               v-model="query"
               type="text"
+              aria-label="搜索"
               placeholder="搜索题目、用户、帖子、竞赛、提交、消息、公告..."
               class="flex-1 h-full bg-transparent outline-none text-base text-text placeholder:text-text-muted"
               autocomplete="off"
@@ -141,7 +142,34 @@ watch(
   },
 );
 
+const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function getFocusableElements(): HTMLElement[] {
+  if (!panelRef.value) return [];
+  return Array.from(
+    panelRef.value.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+  ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+}
+
 function onKeydown(e: KeyboardEvent) {
+  if (e.key === "Tab") {
+    const focusables = getFocusableElements();
+    if (focusables.length === 0) return;
+    const first = focusables[0]!;
+    const last = focusables[focusables.length - 1]!;
+    const active = document.activeElement as HTMLElement | null;
+    const index = active ? focusables.indexOf(active) : -1;
+    if (e.shiftKey) {
+      if (index <= 0) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (index === -1 || index === focusables.length - 1) {
+      e.preventDefault();
+      first.focus();
+    }
+    return;
+  }
   if (e.key === "Escape") {
     e.preventDefault();
     close();
@@ -152,6 +180,8 @@ function onKeydown(e: KeyboardEvent) {
     e.preventDefault();
     selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
   } else if (e.key === "Enter") {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('a[href]')) return;
     e.preventDefault();
     const selected = flatItems.value[selectedIndex.value];
     if (selected) {

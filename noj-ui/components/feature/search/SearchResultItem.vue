@@ -15,6 +15,7 @@
         v-if="item.entity_type === 'user'"
         :user="{ id: item.entity_id, username: String(item.metadata.username ?? '') }"
         :show-username="false"
+        :link="false"
         size="md"
       />
       <span v-else>{{ iconText }}</span>

@@ -237,6 +237,7 @@ watch(query, () => {
     page.value = 1;
     fetchResults();
   } else {
+    searchRequestVersion++;
     items.value = [];
     groups.value = {};
     hasMore.value = false;
