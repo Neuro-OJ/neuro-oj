@@ -1,5 +1,6 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "./../../../../shared/db/connection.ts";
+import { publishSearchIndexEvent } from "./../../../../shared/search-events.ts";
 import {
   communityBoards,
   communityPosts,
@@ -189,6 +190,9 @@ export async function createPost(
       problem_id: input.problem_id,
     });
   }
+
+  await publishSearchIndexEvent("community_post", post.id, "upsert");
+
   return post;
 }
 
@@ -304,5 +308,8 @@ export async function updatePost(
     title: title || null,
     updated_at: nowIso(),
   }).where(eq(communityPosts.id, postId)).returning();
+
+  await publishSearchIndexEvent("community_post", postId, "upsert");
+
   return rows[0]!;
 }
