@@ -30,6 +30,9 @@ import { maintainReset } from "./maintain/reset.ts";
 import { realDriver } from "./maintain/backup_driver.ts";
 import { runServerForeground } from "./runtime/process.ts";
 import { PRODUCTION_COMMANDS, runProduction } from "./production.ts";
+import { alertDrill } from "./observability/alert_drill.ts";
+import { observabilityCheck } from "./observability/check.ts";
+import { realHttp } from "./observability/http.ts";
 
 /** CLI 执行上下文，供各子命令共享。 */
 export interface CommandContext {
@@ -75,6 +78,8 @@ export function printHelp(): string {
     "  uninstall     卸载生产服务；--all 删除全部数据，需确认",
     "",
     "JSON 配置部署工具（noj-deploy.json / noj-secrets.json）：",
+    "  observability check       检查 liveness/readiness/metrics（可选通知链路）",
+    "  observability alert-drill 向 Alertmanager 注入告警并发送恢复事件",
     "  doctor        环境检测",
     "  deploy        部署生命周期 init/up/down/restart/status",
     "  maintain      运维 logs/config/verify/reset/backup(create/verify/restore/drill)",
@@ -90,6 +95,7 @@ const KNOWN_TOP = new Set([
   "maintain",
   "run-server",
   "version",
+  "observability",
 ]);
 
 /** 解析 --port <n>，缺省 8080；非法值抛错。 */
@@ -224,6 +230,46 @@ export function parseBackupArgs(args: string[]): BackupArgs {
     }
   }
   out.snapshot = positional[0];
+  return out;
+}
+
+/** observability 子命令参数解析结果。 */
+export interface ObservabilityArgs {
+  sub: string;
+  baseUrl: string | undefined;
+  checkNotifications: boolean;
+  alertmanagerUrl: string | undefined;
+  holdSeconds: number;
+}
+
+/** 解析 observability 参数：子命令 + base-url/check-notifications/alertmanager-url/hold。 */
+export function parseObservabilityArgs(args: string[]): ObservabilityArgs {
+  const out: ObservabilityArgs = {
+    sub: args[0] ?? "",
+    baseUrl: undefined,
+    checkNotifications: false,
+    alertmanagerUrl: undefined,
+    holdSeconds: 300,
+  };
+  for (let i = 1; i < args.length; i++) {
+    const a = args[i]!;
+    switch (a) {
+      case "--base-url":
+        out.baseUrl = args[++i];
+        break;
+      case "--check-notifications":
+        out.checkNotifications = true;
+        break;
+      case "--alertmanager-url":
+        out.alertmanagerUrl = args[++i];
+        break;
+      case "--hold":
+        out.holdSeconds = Number(args[++i]);
+        break;
+      default:
+        throw new Error(`未知 observability 参数: ${a}`);
+    }
+  }
   return out;
 }
 
@@ -521,6 +567,39 @@ export async function dispatchCommand(
         "maintain: 需要子命令 logs/backup/restore/verify/reset/config",
       );
       return 1;
+    }
+    case "observability": {
+      const a = parseObservabilityArgs(args);
+      try {
+        if (a.sub === "check") {
+          const report = await observabilityCheck({
+            baseUrl: a.baseUrl,
+            checkNotifications: a.checkNotifications,
+            alertmanagerUrl: a.alertmanagerUrl,
+            http: realHttp(),
+          });
+          for (const item of report.items) {
+            console.log(`${item.ok ? "✓" : "✗"} ${item.name}: ${item.detail}`);
+          }
+          return report.pass ? 0 : 1;
+        }
+        if (a.sub === "alert-drill") {
+          const report = await alertDrill({
+            alertmanagerUrl: a.alertmanagerUrl,
+            holdSeconds: a.holdSeconds,
+            http: realHttp(),
+          });
+          console.log(
+            `告警演练完成：注入=${report.injected} 恢复=${report.resolved}`,
+          );
+          return 0;
+        }
+        console.error("observability: 需要子命令 check/alert-drill");
+        return 1;
+      } catch (e) {
+        console.error(`observability: ${(e as Error).message}`);
+        return 1;
+      }
     }
     case "run-server": {
       let dirOverride: string | undefined;

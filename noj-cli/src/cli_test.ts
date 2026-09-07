@@ -5,6 +5,7 @@ import {
   parseDeployArgs,
   parseInitOptions,
   parseMaintainArgs,
+  parseObservabilityArgs,
   parsePort,
   printHelp,
   run,
@@ -196,4 +197,36 @@ Deno.test("parseBackupArgs: drill report 旗标", () => {
   const a = parseBackupArgs(["drill", "x.nojbackup", "--report", "/r.json"]);
   assertEquals(a.sub, "drill");
   assertEquals(a.report, "/r.json");
+});
+
+Deno.test("parseObservabilityArgs: check 参数解析", () => {
+  const a = parseObservabilityArgs([
+    "check",
+    "--base-url",
+    "http://noj.test",
+    "--check-notifications",
+    "--alertmanager-url",
+    "http://am:9093",
+  ]);
+  assertEquals(a.sub, "check");
+  assertEquals(a.baseUrl, "http://noj.test");
+  assertEquals(a.checkNotifications, true);
+  assertEquals(a.alertmanagerUrl, "http://am:9093");
+});
+
+Deno.test("parseObservabilityArgs: alert-drill 参数解析", () => {
+  const a = parseObservabilityArgs([
+    "alert-drill",
+    "--alertmanager-url",
+    "http://am:9093",
+    "--hold",
+    "0",
+  ]);
+  assertEquals(a.sub, "alert-drill");
+  assertEquals(a.alertmanagerUrl, "http://am:9093");
+  assertEquals(a.holdSeconds, 0);
+});
+
+Deno.test("observability 无子命令返回 1", async () => {
+  assertEquals(await dispatchCommand("observability", [], ctx), 1);
 });
