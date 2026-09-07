@@ -44,7 +44,8 @@ contestSse.get(
       let unsubscribeRanking = () => {};
       let unsubscribeSubmission = () => {};
       let currentView: "live" | "frozen" | "official" = "live";
-      const isFrozenView = () => currentView === "frozen";
+      // 非 live 视图（frozen / official）都不应再向普通用户推送实时提交事件。
+      const isNonLiveView = () => currentView !== "live";
 
       const keepAlive = setInterval(() => {
         if (streamClosed) return;
@@ -138,8 +139,8 @@ contestSse.get(
       unsubscribeSubmission = onEvent(
         Channels.contestSubmission(contestId),
         (_channel, message) => {
-          // 封榜/待结算期间普通用户不接收提交事件，避免从旁路推导实时变化。
-          if (streamClosed || (!isAdmin && isFrozenView())) return;
+          // 封榜/正式成绩期间普通用户不接收提交事件，避免从旁路推导实时变化。
+          if (streamClosed || (!isAdmin && isNonLiveView())) return;
           // 非 admin 订阅者隐藏 user_id，避免泄露“谁在提交哪题”。
           let payload = message;
           if (!isAdmin) {
@@ -172,7 +173,7 @@ contestSse.get(
         if (streamClosed) return;
         const payload = ev.payload as { type?: string };
         if (payload.type === "contest:submission:created") {
-          if (!isAdmin && isFrozenView()) continue;
+          if (!isAdmin && isNonLiveView()) continue;
           let data = JSON.stringify({ ...payload, seq: ev.id });
           if (!isAdmin) {
             try {

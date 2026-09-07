@@ -74,6 +74,7 @@ const { state: eventState } = useEventSource({
       if (event.view) rankingView.value = event.view
       settlementPending.value = event.settlement_pending === true
       adminLive.value = event.admin_live === true
+      if (event.view === 'official' && !officialSnapshot.value) void loadRanking()
     },
     'contest:ranking:updated': (payload) => {
       if (officialSnapshot.value) return
@@ -82,6 +83,7 @@ const { state: eventState } = useEventSource({
       if (event.view) rankingView.value = event.view
       settlementPending.value = event.settlement_pending === true
       adminLive.value = event.admin_live === true
+      if (event.view === 'official' && !officialSnapshot.value) void loadRanking()
     },
   },
   fetchFn: loadRanking,

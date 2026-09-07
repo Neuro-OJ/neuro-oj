@@ -45,7 +45,8 @@ export async function publishContestRankingSnapshot(
     );
   }
   const db = getDb();
-  const rows = await getKaggleRanking(contestId);
+  // 快照需要保留提交/评测明细供 CSV/JSON 导出核对；实时榜默认不返回这些内部字段。
+  const rows = await getKaggleRanking(contestId, undefined, true);
   const created_at = new Date().toISOString();
   const id = crypto.randomUUID();
   const version = await db.transaction(async (tx) => {
@@ -122,8 +123,10 @@ export async function getContestSettlementStatus(
       FROM submissions s
       JOIN users u ON u.id = s.user_id
       JOIN problems p ON p.id = s.problem_id
+      JOIN contests c ON c.id = s.contest_id
       LEFT JOIN evaluation_results er ON er.submission_id = s.id
       WHERE s.contest_id = ${contestId}
+        AND s.created_at <= c.end_time
       UNION ALL
       SELECT os.id AS submission_id, os.user_id, u.username, os.paper_id,
         p.title AS problem_title, os.status,
@@ -131,7 +134,9 @@ export async function getContestSettlementStatus(
       FROM objective_submissions os
       JOIN users u ON u.id = os.user_id
       JOIN problems p ON p.id = os.paper_id
+      JOIN contests c ON c.id = os.contest_id
       WHERE os.contest_id = ${contestId}
+        AND os.created_at <= c.end_time
     )
     SELECT
       COUNT(*) FILTER (WHERE status IN ('pending', 'judging')
@@ -144,6 +149,20 @@ export async function getContestSettlementStatus(
   const [counts] = unwrapRows<Record<string, unknown>>(result as never);
   const pendingCount = Number(counts?.pending_count ?? 0);
   const failedCount = Number(counts?.failed_count ?? 0);
+
+  // 没有待处理/失败任务时无需再查明细，避免大竞赛每次 readiness 都扫描 500 行。
+  if (pendingCount === 0 && failedCount === 0) {
+    return {
+      contest_id: contestId,
+      contest_status: contest.status,
+      pending_count: pendingCount,
+      failed_count: failedCount,
+      ready: contest.status === "ended" && pendingCount === 0,
+      items: [],
+      truncated: false,
+    };
+  }
+
   const itemResult = await db.execute(sql`
     WITH contest_tasks AS (
       SELECT s.id AS submission_id, s.user_id, u.username, s.problem_id,
@@ -152,8 +171,10 @@ export async function getContestSettlementStatus(
       FROM submissions s
       JOIN users u ON u.id = s.user_id
       JOIN problems p ON p.id = s.problem_id
+      JOIN contests c ON c.id = s.contest_id
       LEFT JOIN evaluation_results er ON er.submission_id = s.id
       WHERE s.contest_id = ${contestId}
+        AND s.created_at <= c.end_time
       UNION ALL
       SELECT os.id AS submission_id, os.user_id, u.username, os.paper_id,
         p.title AS problem_title, os.status,
@@ -161,7 +182,9 @@ export async function getContestSettlementStatus(
       FROM objective_submissions os
       JOIN users u ON u.id = os.user_id
       JOIN problems p ON p.id = os.paper_id
+      JOIN contests c ON c.id = os.contest_id
       WHERE os.contest_id = ${contestId}
+        AND os.created_at <= c.end_time
     )
     SELECT submission_id, user_id, username, problem_id, problem_title,
       status, result_status, created_at, kind
@@ -171,9 +194,11 @@ export async function getContestSettlementStatus(
       OR result_status NOT IN ('finished', 'error')
       OR result_status = 'error'
     ORDER BY created_at ASC, submission_id ASC
-    LIMIT 500
+    LIMIT 501
   `);
-  const items = unwrapRows<Record<string, unknown>>(itemResult as never).map(
+  const rawItems = unwrapRows<Record<string, unknown>>(itemResult as never);
+  const truncated = rawItems.length > 500;
+  const items = rawItems.slice(0, 500).map(
     (row) => ({
       submission_id: String(row.submission_id),
       user_id: String(row.user_id),
@@ -197,7 +222,7 @@ export async function getContestSettlementStatus(
     failed_count: failedCount,
     ready: contest.status === "ended" && pendingCount === 0,
     items,
-    truncated: items.length >= 500,
+    truncated,
   };
 }
 
@@ -255,6 +280,7 @@ function parseJsonArray<T>(value: unknown): T[] {
 export async function getKaggleRanking(
   contestId: string,
   cutoffTime?: string,
+  includeDetails = false,
 ): Promise<KaggleRankingRow[]> {
   const contest = await getContest(contestId);
   if (contest.type !== "kaggle") {
@@ -413,17 +439,29 @@ export async function getKaggleRanking(
     ORDER BY rank
   `);
 
-  return unwrapRows<Record<string, unknown>>(result as never).map((row) => ({
-    rank: Number(row.rank),
-    user_id: row.user_id as string,
-    username: row.username as string,
-    avatar_url: (row.avatar_url as string | null) ?? null,
-    total_score: Number(row.total_score),
-    last_submission_at: row.last_submission_at === null
-      ? null
-      : String(row.last_submission_at),
-    problem_scores: parseJsonArray<KaggleProblemScore>(row.problem_scores),
-  }));
+  return unwrapRows<Record<string, unknown>>(result as never).map((row) => {
+    const problemScores = parseJsonArray<KaggleProblemScore>(
+      row.problem_scores,
+    );
+    return {
+      rank: Number(row.rank),
+      user_id: row.user_id as string,
+      username: row.username as string,
+      avatar_url: (row.avatar_url as string | null) ?? null,
+      total_score: Number(row.total_score),
+      last_submission_at: row.last_submission_at === null
+        ? null
+        : String(row.last_submission_at),
+      problem_scores: includeDetails
+        ? problemScores
+        : problemScores.map((ps) => ({
+          label: ps.label,
+          best_score: ps.best_score,
+          attempts: ps.attempts,
+          last_best_at: ps.last_best_at,
+        })),
+    };
+  });
 }
 
 export type ContestRankingView = "live" | "frozen" | "official";
@@ -499,7 +537,7 @@ export async function getContestRankingView(
 
   if (isAdmin) {
     return {
-      rows: await getKaggleRanking(contestId),
+      rows: await getKaggleRanking(contestId, undefined, true),
       view: "live",
       ranking_visibility: contest.ranking_visibility,
       freeze_start_time: window.start,
@@ -547,8 +585,12 @@ export async function getContestRankingView(
   if (contest.status === "running" && contest.is_registered !== true) {
     throw new ForbiddenError("仅参赛者可查看进行中的排名");
   }
+  const rows = await getKaggleRanking(contestId);
   return {
-    rows: await getKaggleRanking(contestId),
+    // 进行中非管理员保持旧语义：只返回自己的排名，避免泄露他人实时成绩。
+    rows: contest.status === "running"
+      ? rows.filter((row) => row.user_id === viewerId)
+      : rows,
     view: "live",
     ranking_visibility: contest.ranking_visibility,
     freeze_start_time: window.start,

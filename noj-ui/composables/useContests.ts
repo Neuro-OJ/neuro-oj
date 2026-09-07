@@ -64,6 +64,7 @@ export interface ContestPayload {
   end_time: string;
   ranking_visibility?: RankingVisibility;
   freeze_duration_seconds?: number;
+  freeze_start_time?: string | null;
   type: ContestType;
   config: ContestConfig;
   is_public: boolean;

@@ -111,7 +111,7 @@ const hljsLangMap: Record<string, string> = {
   c: "c",
   javascript: "javascript",
 }
-const codeRef = ref<HTMLElement>()
+const codeRef = ref<HTMLElement | null>(null)
 const codeLanguage = computed(() =>
   hljsLangMap[submission.value?.language ?? ""] || "plaintext",
 )
@@ -268,7 +268,7 @@ watch(
             <UIcon name="i-lucide-chevron-up" class="size-4" v-else/>
           </span>
         </button>
-        <pre v-if="submission.code !== null" v-show="showCode" class="p-4 overflow-x-auto text-xs leading-relaxed"><code :ref="codeRef" :class="`language-${codeLanguage}`" class="font-mono text-[#e6edf3] whitespace-pre">{{ submission.code }}</code></pre>
+        <pre v-if="submission.code !== null" v-show="showCode" class="p-4 overflow-x-auto text-xs leading-relaxed"><code ref="codeRef" :class="`language-${codeLanguage}`" class="font-mono text-[#e6edf3] whitespace-pre">{{ submission.code }}</code></pre>
         <div v-else class="flex flex-col items-center justify-center gap-2 py-12 text-[#8b949e] text-sm">
           <UIcon name="i-lucide-lock" class="size-6" />
           <span>登录后查看源代码</span>

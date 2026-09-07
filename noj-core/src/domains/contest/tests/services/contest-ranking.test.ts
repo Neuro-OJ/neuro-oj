@@ -14,6 +14,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import {
   getContestRanking,
+  getContestRankingView,
   getContestSettlementStatus,
   getLatestContestRankingSnapshot,
   publishContestRankingSnapshot,
@@ -634,6 +635,154 @@ Deno.test({
       await db.delete(contests).where(eq(contests.id, contestId));
       await db.delete(problems).where(eq(problems.id, problemA));
       await db.delete(users).where(inArray(users.id, [userA, userB]));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking view: 进行中非管理员仅返回自己的排名且剥离内部字段",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userA = crypto.randomUUID();
+    const userB = crypto.randomUUID();
+    const problemA = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await insertUser(userA, "kaggle-view-a");
+    await insertUser(userB, "kaggle-view-b");
+    await insertProblem(problemA, 920107, "视图访问控制题");
+
+    await db.insert(contests).values({
+      id: contestId,
+      title: "Kaggle 视图访问控制测试",
+      start_time: atMinutes(-60),
+      end_time: atMinutes(120),
+      type: "kaggle",
+      config: {},
+      created_by: userA,
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: problemA,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values([
+      { contest_id: contestId, user_id: userA, registered_at: atMinutes(0) },
+      { contest_id: contestId, user_id: userB, registered_at: atMinutes(0) },
+    ]);
+    await insertSubmission(contestId, userA, problemA, 5, 8000);
+    await insertSubmission(contestId, userB, problemA, 10, 7000);
+
+    try {
+      const own = await getContestRankingView(
+        contestId,
+        "kaggle",
+        false,
+        userA,
+      );
+      assertEquals(own.view, "live");
+      assertEquals(own.rows.length, 1);
+      assertEquals(own.rows[0].user_id, userA);
+      const score = own.rows[0].problem_scores[0];
+      assertEquals(score.label, "A");
+      assertEquals(score.best_score, 8000);
+      assertEquals(score.submission_id, undefined);
+      assertEquals(score.rejudge_seq, undefined);
+      assertEquals(score.evaluation_status, undefined);
+      assertEquals(score.evaluation_created_at, undefined);
+    } finally {
+      const submissionRows = await db.select({ id: submissions.id }).from(
+        submissions,
+      ).where(inArray(submissions.contest_id, [contestId]));
+      if (submissionRows.length > 0) {
+        await db.delete(evaluationResults).where(inArray(
+          evaluationResults.submission_id,
+          submissionRows.map((row) => row.id),
+        ));
+      }
+      await db.delete(submissions).where(inArray(
+        submissions.contest_id,
+        [contestId],
+      ));
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await db.delete(problems).where(eq(problems.id, problemA));
+      await db.delete(users).where(inArray(users.id, [userA, userB]));
+    }
+  },
+});
+
+Deno.test({
+  name: "contest ranking view: 管理员实时榜保留内部字段用于结算核对",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const db = getDb();
+    const userA = crypto.randomUUID();
+    const problemA = crypto.randomUUID();
+    const contestId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await insertUser(userA, "kaggle-view-admin");
+    await insertProblem(problemA, 920108, "视图管理员题");
+
+    await db.insert(contests).values({
+      id: contestId,
+      title: "Kaggle 视图管理员测试",
+      start_time: atMinutes(-60),
+      end_time: atMinutes(120),
+      type: "kaggle",
+      config: {},
+      created_by: userA,
+      created_at: now,
+      updated_at: now,
+    });
+    await db.insert(contestProblems).values({
+      contest_id: contestId,
+      problem_id: problemA,
+      label: "A",
+      sort_order: 0,
+      score: 10000,
+    });
+    await db.insert(contestParticipants).values({
+      contest_id: contestId,
+      user_id: userA,
+      registered_at: atMinutes(0),
+    });
+    await insertSubmission(contestId, userA, problemA, 5, 8000);
+
+    try {
+      const admin = await getContestRankingView(contestId, "kaggle", true);
+      assertEquals(admin.view, "live");
+      assertEquals(admin.rows.length, 1);
+      const score = admin.rows[0].problem_scores[0];
+      assertEquals(score.label, "A");
+      assertEquals(score.best_score, 8000);
+      assertExists(score.submission_id);
+      assertExists(score.evaluation_status);
+    } finally {
+      const submissionRows = await db.select({ id: submissions.id }).from(
+        submissions,
+      ).where(inArray(submissions.contest_id, [contestId]));
+      if (submissionRows.length > 0) {
+        await db.delete(evaluationResults).where(inArray(
+          evaluationResults.submission_id,
+          submissionRows.map((row) => row.id),
+        ));
+      }
+      await db.delete(submissions).where(inArray(
+        submissions.contest_id,
+        [contestId],
+      ));
+      await db.delete(contests).where(eq(contests.id, contestId));
+      await db.delete(problems).where(eq(problems.id, problemA));
+      await db.delete(users).where(inArray(users.id, [userA]));
     }
   },
 });
