@@ -1,5 +1,5 @@
 import { assert } from "jsr:@std/assert@^1";
-import { searchFlat } from "../../src/domains/search/index.ts";
+import { reindexAll, searchFlat } from "../../src/domains/search/index.ts";
 import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
 import { problems, users } from "./../../src/shared/db/schema.ts";
 import { sql } from "drizzle-orm";
@@ -86,9 +86,13 @@ Deno.test({
         await db.insert(users).values(batch);
       }
 
+      // 将源数据同步到统一搜索索引表，确保基准测量的是 search_entries 新路径
+      await reindexAll();
+
       // ANALYZE 让 planner 用上索引统计
       await db.execute(sql`ANALYZE problems`);
       await db.execute(sql`ANALYZE users`);
+      await db.execute(sql`ANALYZE search_entries`);
 
       // 高选择性题目搜索：100 条命中，验证常见关键词路径。
       const pStart = performance.now();
