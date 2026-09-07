@@ -5,6 +5,7 @@ import { auditLogs, users } from "../../../../shared/db/schema.ts";
 import { enterTestContext, leaveTestContext } from "../../../system/index.ts";
 import {
   adminAudit,
+  getAuditMeta,
   registerAudit,
   withAudit,
 } from "../../services/admin-audit.ts";
@@ -87,7 +88,6 @@ Deno.test({
     enterTestContext(TEST_CTX);
 
     await adminAudit(
-      {} as never,
       "users.unban",
       { action: "users.unban" },
       { type: "user", id: "target-2" },
@@ -97,5 +97,81 @@ Deno.test({
     const rows = await db.select().from(auditLogs);
     assertEquals(rows.length, 1);
     assertEquals(rows[0].action, "users.unban");
+  },
+});
+
+Deno.test({
+  name: "admin-audit: withAudit 非 2xx 不写审计",
+  ignore: skip,
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await clean();
+    enterTestContext(TEST_CTX);
+
+    const meta: AuditMeta = {
+      action: "users.unban",
+      buildDetail: () => ({ action: "users.unban" }),
+    };
+    const app = new Hono();
+    app.post(
+      "/test",
+      withAudit(meta)(async (c) => {
+        return await c.json({ error: "bad" }, 400);
+      }),
+    );
+
+    const res = await app.request("http://localhost/test", { method: "POST" });
+    assertEquals(res.status, 400);
+
+    const db = getDb();
+    const rows = await db.select().from(auditLogs);
+    assertEquals(rows.length, 0);
+  },
+});
+
+Deno.test({
+  name: "admin-audit: getAuditMeta 支持 :param 路由模式匹配",
+  fn: () => {
+    const meta: AuditMeta = {
+      action: "users.unban",
+      buildDetail: () => ({ action: "users.unban" }),
+    };
+    registerAudit("PATCH", "/api/v1/test/things/:id/action", meta);
+
+    const found = getAuditMeta(
+      "PATCH",
+      "/api/v1/test/things/target-1/action",
+    );
+    assertExists(found);
+    assertEquals(found.action, "users.unban");
+
+    const notFound = getAuditMeta(
+      "PATCH",
+      "/api/v1/test/things/target-1/other",
+    );
+    assertEquals(notFound, undefined);
+  },
+});
+
+Deno.test({
+  name: "admin-audit: buildDetail 抛错不改变业务响应",
+  fn: async () => {
+    const app = new Hono();
+    app.post(
+      "/test",
+      withAudit({
+        action: "users.unban",
+        buildDetail: () => {
+          throw new Error("boom");
+        },
+      })(async (c) => {
+        return await c.json({ ok: true }, 200);
+      }),
+    );
+
+    const res = await app.request("http://localhost/test", { method: "POST" });
+    assertEquals(res.status, 200);
+    assertEquals(await res.json(), { ok: true });
   },
 });

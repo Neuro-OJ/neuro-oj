@@ -97,7 +97,7 @@ export function createApp(): Hono {
         : developmentOrigins,
       credentials: true,
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type", "Authorization"],
+      allowHeaders: ["Content-Type", "Authorization", "If-Match"],
       exposeHeaders: [
         "Retry-After",
         "X-RateLimit-Limit",
