@@ -132,7 +132,7 @@ function formatExpires(value: string | null) {
       class="p-3 bg-red-50 border border-red-200 rounded-md text-13px text-error-text"
     >
       {{ tableError }}
-      <button class="ml-2 underline cursor-pointer" @click="load">重试</button>
+      <button class="ml-2 underline cursor-pointer" @click="load()">重试</button>
     </div>
 
     <!-- 表格 -->
