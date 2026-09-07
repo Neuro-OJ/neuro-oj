@@ -58,6 +58,12 @@ export const llmUsage = pgTable(
     prompt_tokens: integer("prompt_tokens").notNull().default(0),
     completion_tokens: integer("completion_tokens").notNull().default(0),
     total_tokens: integer("total_tokens").notNull().default(0),
+    /** 上游返回的缓存命中 prompt token 数 */
+    cached_prompt_tokens: integer("cached_prompt_tokens").notNull().default(0),
+    /** 实际计费 prompt token：prompt_tokens - cached_tokens */
+    billed_prompt_tokens: integer("billed_prompt_tokens").notNull().default(0),
+    /** 实际计费总 token：billed_prompt_tokens + completion_tokens */
+    billed_total_tokens: integer("billed_total_tokens").notNull().default(0),
     estimated_cost: integer("estimated_cost").notNull().default(0),
     latency_ms: integer("latency_ms").notNull().default(0),
     status: text("status").notNull().default("ok"),

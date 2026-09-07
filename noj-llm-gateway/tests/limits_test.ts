@@ -1,7 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import type { Db } from "../src/db.ts";
 import type { EvalTokenPayload } from "../src/crypto.ts";
-import { enforceAndCount } from "../src/limits.ts";
+import { enforceAndCount, settleUsage } from "../src/limits.ts";
 import type { RedisClient } from "../src/redis.ts";
 import { incrByWithTtl, incrWithTtl } from "../src/redis.ts";
 
@@ -114,4 +114,38 @@ Deno.test("limits: enforceAndCount passes independent minute limits", async () =
   };
   assertEquals(meta.limits[0], payload.max_calls);
   assertEquals(meta.incs[0], 1);
+});
+
+Deno.test("limits: settleUsage 按 billedTotal 计算 delta", async () => {
+  const redis = new FakeRedis();
+  // 先 enforce 预占：估算 prompt=100, completion=50 => 预占 150
+  await enforceAndCount(emptyDb, redis, { ...payload, max_tokens: 1000 }, {
+    model: "model-1",
+    promptTokens: 100,
+    completionTokens: 50,
+    estimatedCost: 1,
+    ip: "127.0.0.1",
+    ttlSeconds: 60,
+    userRateLimitPerMinute: 120,
+    ipRateLimitPerMinute: 30,
+  });
+
+  // 实际上游 billed total=30（prompt 20 未命中 + completion 10），应把 token 计数调低
+  await settleUsage(emptyDb, redis, { ...payload, max_tokens: 1000 }, {
+    promptTokens: 100,
+    completionTokens: 50,
+    estimatedCost: 1,
+    actualPromptTokens: 200,
+    actualCompletionTokens: 10,
+    actualBilledTotalTokens: 30,
+    actualCost: 0,
+    ip: "127.0.0.1",
+    ttlSeconds: 60,
+  });
+
+  const meta = JSON.parse(String(redis.lastEvalArgs[0])) as {
+    incs: number[];
+  };
+  // SETTLE_SCRIPT 的 ARGV[0] 是 meta；第一个 token counter inc = -120
+  assertEquals(meta.incs[0], -120);
 });
