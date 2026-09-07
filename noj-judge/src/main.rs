@@ -14,8 +14,7 @@ mod types;
 use anyhow::{Context, Result};
 use futures_util::{stream::FuturesUnordered, FutureExt, StreamExt};
 use std::collections::HashSet;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tracing::{error, info};
 
 use crate::config::Config;
@@ -30,6 +29,32 @@ const PULL_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// 评测结果 fallback 文件目录名（相对 work_dir）。
 const FALLBACK_RESULTS_DIR: &str = "fallback-results";
+
+/// 每用户活跃评测槽位的 RAII guard。
+///
+/// 评测任务开始前插入 `active_users`，guard 析构时自动移除，
+/// 避免任务 panic/异常路径导致用户槽位泄漏。
+struct ActiveUserGuard {
+    active_users: Arc<Mutex<HashSet<String>>>,
+    user_id: String,
+}
+
+impl ActiveUserGuard {
+    fn new(active_users: Arc<Mutex<HashSet<String>>>, user_id: String) -> Self {
+        Self {
+            active_users,
+            user_id,
+        }
+    }
+}
+
+impl Drop for ActiveUserGuard {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.active_users.lock() {
+            guard.remove(&self.user_id);
+        }
+    }
+}
 
 /// 初始化 Tokio 运行时，连接 Redis 与 Docker，进入主循环阻塞拉取评测任务。
 fn main() -> Result<()> {
@@ -166,23 +191,27 @@ fn main() -> Result<()> {
                     };
 
                     // F-07 公平调度：同一用户已有评测在跑时，把任务放回队尾轮给他人。
-                    {
-                        let mut guard = active_users.lock().await;
+                    let is_active_user = {
+                        let mut guard = active_users.lock().unwrap();
                         if guard.contains(&pulled.task.user_id) {
-                            drop(guard);
-                            if let Err(e) =
-                                mq::requeue_task(&redis_client, &judge_queue, &pulled.raw).await
-                            {
-                                error!(
-                                    submission_id = %pulled.task.submission_id,
-                                    error = %e,
-                                    "活跃用户任务重投失败"
-                                );
-                            }
-                            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                            continue;
+                            true
+                        } else {
+                            guard.insert(pulled.task.user_id.clone());
+                            false
                         }
-                        guard.insert(pulled.task.user_id.clone());
+                    };
+                    if is_active_user {
+                        if let Err(e) =
+                            mq::requeue_task(&redis_client, &judge_queue, &pulled.raw).await
+                        {
+                            error!(
+                                submission_id = %pulled.task.submission_id,
+                                error = %e,
+                                "活跃用户任务重投失败"
+                            );
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        continue;
                     }
 
                     info!(
@@ -208,6 +237,8 @@ fn main() -> Result<()> {
                     let handle = tokio::spawn(async move {
                         let raw = pulled.raw;
                         let task = pulled.task;
+                        // RAII guard：任务结束（含 panic/异常路径）时自动释放用户槽位。
+                        let _active_guard = ActiveUserGuard::new(active_users, task_user_id);
 
                         // 统一使用双容器模式（Evaluator + Solution）
                         let result = match judge::runner::evaluate_with_cpu_limit(
@@ -250,9 +281,7 @@ fn main() -> Result<()> {
                             task_metrics.result_push_failed();
                         }
                         task_metrics.task_finished(result.status == "error");
-
-                        // 评测结束（含 error）：释放该用户的并发名额。
-                        active_users.lock().await.remove(&task_user_id);
+                        // 用户槽位由 _active_guard 在任务退出时自动释放。
                     });
                     tasks.push(handle);
                 }
@@ -277,37 +306,37 @@ mod tests {
     use crate::types::{EvaluatorRuntime, RuntimeConfig, SolutionRuntime};
 
     /// F-07 公平调度纯逻辑测试：活跃用户集合的占位/释放语义。
-    #[tokio::test]
-    async fn active_user_slot_is_exclusive_and_released() {
+    #[test]
+    fn active_user_slot_is_exclusive_and_released() {
         let active: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
         let user = "u-a".to_string();
 
         {
-            let mut guard = active.lock().await;
+            let mut guard = active.lock().unwrap();
             assert!(!guard.contains(&user), "初始无活跃用户");
             guard.insert(user.clone());
         }
         {
-            let guard = active.lock().await;
+            let guard = active.lock().unwrap();
             assert!(guard.contains(&user), "占位后应包含该用户");
         }
         {
-            let mut guard = active.lock().await;
+            let mut guard = active.lock().unwrap();
             guard.remove(&user);
             assert!(!guard.contains(&user), "释放后应不再包含该用户");
         }
     }
 
     /// 队列 [userA 任务1, userA 任务2, userB 任务1]；userA active 时应跳到 userB 的任务。
-    #[tokio::test]
-    async fn per_user_limit_skips_active_users() {
+    #[test]
+    fn per_user_limit_skips_active_users() {
         let active: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
-        active.lock().await.insert("userA".to_string());
+        active.lock().unwrap().insert("userA".to_string());
 
         let queue = ["userA", "userA", "userB"];
         let mut picked: Option<String> = None;
         for user in queue {
-            let mut guard = active.lock().await;
+            let mut guard = active.lock().unwrap();
             if guard.contains(user) {
                 continue;
             }
@@ -316,6 +345,19 @@ mod tests {
             break;
         }
         assert_eq!(picked.as_deref(), Some("userB"), "应跳过活跃用户取 userB");
+    }
+
+    /// ActiveUserGuard 析构时自动释放用户槽位。
+    #[test]
+    fn active_user_guard_releases_on_drop() {
+        let active: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+        let user = "u-guard".to_string();
+        active.lock().unwrap().insert(user.clone());
+        {
+            let _guard = ActiveUserGuard::new(Arc::clone(&active), user.clone());
+            assert!(active.lock().unwrap().contains(&user));
+        }
+        assert!(!active.lock().unwrap().contains(&user));
     }
 
     /// JudgeTask 反序列化需要携带 user_id（公平调度字段）。

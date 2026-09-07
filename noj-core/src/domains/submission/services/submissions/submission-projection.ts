@@ -11,7 +11,7 @@ export type ProjectionCtx = {
   viewerId: string | null;
   /** 是否管理员（full access） */
   isAdmin: boolean;
-  /** 是否提交者本人或题目 owner（full access） */
+  /** 是否提交者本人（当前调用方仅传入提交者；题目 owner 未在此投影中特判） */
   isOwner: boolean;
   /** 竞赛上下文；无竞赛为 null */
   contest?: {
@@ -25,7 +25,7 @@ export type ProjectionCtx = {
 /**
  * 深拷贝并剥离竞赛视角下不可见字段。
  *
- * - admin / 提交者本人或题目 owner / 无竞赛上下文 → 原样返回；
+ * - admin / 提交者本人 / 无竞赛上下文 → 原样返回；
  * - 竞赛进行中 + 参赛者本人 → 保留 status/score，剥离 details 中的
  *   hidden 用例与 subtasks/testCases（旧脚本无 hidden 标记时 fail-safe 全剥）；
  * - 竞赛赛后 + 参赛者本人 → 保留 status/score，hidden 用例仍不返回；
@@ -105,8 +105,8 @@ export function applySubmissionProjection<
 
 /**
  * 竞赛视角下的 details 白名单裁剪：
- * - 仅保留带 hidden 标记的用例数据；
- * - 任何用例缺少 hidden 标记 → 视为旧脚本，fail-safe 整体剥离；
+ * - 仅保留带 hidden/visibility 标记的用例数据；
+ * - 任何用例缺少标记 → 视为旧脚本，fail-safe 整体剥离；
  * - 保留非 cases 的安全元数据。
  */
 function sanitizeContestDetails(details: unknown): unknown {
@@ -116,13 +116,19 @@ function sanitizeContestDetails(details: unknown): unknown {
   const cases = obj.cases;
   if (cases.length === 0) return undefined;
 
-  const allMarked = cases.every(
-    (c) => typeof c === "object" && c !== null && "hidden" in c,
-  );
+  const isMarked = (c: unknown): boolean =>
+    typeof c === "object" && c !== null &&
+    ("hidden" in c || "visibility" in c);
+  const isHidden = (c: unknown): boolean => {
+    if (typeof c !== "object" || c === null) return false;
+    const record = c as Record<string, unknown>;
+    if (record.hidden === true) return true;
+    return record.visibility === "hidden";
+  };
+
+  const allMarked = cases.every(isMarked);
   if (!allMarked) return undefined;
 
-  const visibleCases = cases.filter(
-    (c) => (c as Record<string, unknown>).hidden !== true,
-  );
+  const visibleCases = cases.filter((c) => !isHidden(c));
   return { ...obj, cases: visibleCases };
 }

@@ -126,3 +126,24 @@ Deno.test("projection: 旧脚本无 hidden 标记 fail-safe 全剥", () => {
   });
   assertEquals(result.details, undefined);
 });
+
+Deno.test("projection: visibility=hidden 同样被剥离", () => {
+  const input = {
+    ...baseSubmission(),
+    details: {
+      cases: [
+        { id: "c1", visibility: "visible", result: "ok" },
+        { id: "c2", visibility: "hidden", result: "fail" },
+      ],
+    },
+  };
+  const result = applySubmissionProjection(input, {
+    viewerId: "user-a",
+    isAdmin: false,
+    isOwner: true,
+    contest: { running: true, participant: true },
+  });
+  const cases = (result.details as { cases: Array<Record<string, unknown>> })
+    .cases;
+  assertEquals(cases, [{ id: "c1", visibility: "visible", result: "ok" }]);
+});

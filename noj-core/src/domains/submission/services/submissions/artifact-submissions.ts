@@ -158,6 +158,10 @@ export async function createArtifactSubmission(
   if (!access.allowed) {
     throw new ForbiddenError("无权对该题目提交");
   }
+  // 服务层防御：竞赛提交只允许 running 窗口（contest 路由已拦截，这里防未来调用方绕过）。
+  if (resolvedContestId && contestAccess && !contestAccess.running) {
+    throw new ForbiddenError("仅可在竞赛进行期间提交");
+  }
 
   if (problem.submission_mode !== "artifact") {
     throw new BadRequestError("该题目不支持 artifact 提交");
