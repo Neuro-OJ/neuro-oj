@@ -2,7 +2,8 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { users } from "../../../../shared/db/schema.ts";
 import { updateUserProfile } from "../../services/users/users-profile-edit.ts";
 import { assertSearchEventPublished } from "../../../../../tests/helper/search-events.ts";
-import { connectRedis } from "../../../../shared/mq/connection.ts";
+import { connectRedis, getRedis } from "../../../../shared/mq/connection.ts";
+import { SEARCH_INDEX_QUEUE } from "../../../../shared/search-events.ts";
 
 try {
   await connectRedis();
@@ -30,6 +31,7 @@ Deno.test({
       created_at: now,
       updated_at: now,
     });
+    await getRedis().del(SEARCH_INDEX_QUEUE);
     await updateUserProfile("u-event-1", "新简介");
     await assertSearchEventPublished("user", "u-event-1", "upsert");
   },

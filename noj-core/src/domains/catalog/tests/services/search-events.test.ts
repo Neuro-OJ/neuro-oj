@@ -1,7 +1,8 @@
 import { resetDbForTest } from "../../../../shared/db/connection.ts";
 import { createProblem } from "../../services/problems/problems-crud.ts";
 import { assertSearchEventPublished } from "../../../../../tests/helper/search-events.ts";
-import { connectRedis } from "../../../../shared/mq/connection.ts";
+import { connectRedis, getRedis } from "../../../../shared/mq/connection.ts";
+import { SEARCH_INDEX_QUEUE } from "../../../../shared/search-events.ts";
 
 try {
   await connectRedis();
@@ -33,6 +34,7 @@ Deno.test({
   sanitizeOps: false,
   fn: async () => {
     await resetDbForTest();
+    await getRedis().del(SEARCH_INDEX_QUEUE);
     const created = await createProblem({
       title: "事件测试题",
       description: "desc",

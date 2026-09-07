@@ -14,6 +14,7 @@
  * - 全部写操作写入审计（tags.create/update/delete/merge）
  */
 import { and, asc, count, eq, inArray } from "drizzle-orm";
+import { logger } from "./../../../shared/base/logging.ts";
 import { getDb } from "./../../../shared/db/connection.ts";
 import { problemTags, tags } from "./../../../shared/db/schema.ts";
 import { publishSearchIndexEvent } from "./../../../shared/search-events.ts";
@@ -70,15 +71,19 @@ function isUniqueViolation(err: unknown): boolean {
   return pgCode === "23505";
 }
 
-/** 标签增删改后，对关联题目发布搜索索引事件。 */
+/** 标签增删改后，对关联题目发布搜索索引事件（best-effort，失败不阻断业务）。 */
 async function publishTagProblemEvents(tagId: string): Promise<void> {
-  const db = getDb();
-  const rows = await db
-    .select({ problem_id: problemTags.problem_id })
-    .from(problemTags)
-    .where(eq(problemTags.tag_id, tagId));
-  for (const row of rows) {
-    await publishSearchIndexEvent("problem", row.problem_id, "upsert");
+  try {
+    const db = getDb();
+    const rows = await db
+      .select({ problem_id: problemTags.problem_id })
+      .from(problemTags)
+      .where(eq(problemTags.tag_id, tagId));
+    for (const row of rows) {
+      await publishSearchIndexEvent("problem", row.problem_id, "upsert");
+    }
+  } catch (err) {
+    logger.error("发布标签关联题目搜索索引事件失败", { tagId, err });
   }
 }
 

@@ -3,7 +3,8 @@ import { users } from "../../../../shared/db/schema.ts";
 import { createBoard } from "../../services/community/community-boards.ts";
 import { createPost } from "../../services/community/community-post-crud.ts";
 import { assertSearchEventPublished } from "../../../../../tests/helper/search-events.ts";
-import { connectRedis } from "../../../../shared/mq/connection.ts";
+import { connectRedis, getRedis } from "../../../../shared/mq/connection.ts";
+import { SEARCH_INDEX_QUEUE } from "../../../../shared/search-events.ts";
 
 try {
   await connectRedis();
@@ -32,6 +33,7 @@ Deno.test({
       updated_at: now,
     });
     const board = await createBoard({ slug: "event-board", name: "事件板块" });
+    await getRedis().del(SEARCH_INDEX_QUEUE);
     const post = await createPost("u-community-event", {
       type: "discussion",
       board_id: board.id,

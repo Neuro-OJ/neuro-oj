@@ -2,7 +2,8 @@ import { getDb, resetDbForTest } from "../../../../shared/db/connection.ts";
 import { problems } from "../../../../shared/db/schema.ts";
 import { createContest } from "../../services/contests.ts";
 import { assertSearchEventPublished } from "../../../../../tests/helper/search-events.ts";
-import { connectRedis } from "../../../../shared/mq/connection.ts";
+import { connectRedis, getRedis } from "../../../../shared/mq/connection.ts";
+import { SEARCH_INDEX_QUEUE } from "../../../../shared/search-events.ts";
 
 try {
   await connectRedis();
@@ -36,6 +37,7 @@ Deno.test({
     });
     const startTime = new Date(Date.now() + 60_000).toISOString();
     const endTime = new Date(Date.now() + 3_600_000).toISOString();
+    await getRedis().del(SEARCH_INDEX_QUEUE);
     const contest = await createContest(
       {
         title: "事件竞赛",
