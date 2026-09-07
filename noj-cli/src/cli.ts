@@ -80,14 +80,16 @@ export function printHelp(): string {
     "  uninstall     卸载生产服务；--all 删除全部数据，需确认",
     "",
     "JSON 配置部署工具（noj-deploy.json / noj-secrets.json）：",
-    "  observability check       检查 liveness/readiness/metrics（可选通知链路）",
-    "  observability alert-drill 向 Alertmanager 注入告警并发送恢复事件",
     "  doctor        环境检测",
     "  deploy        部署生命周期 init/up/down/restart/status",
     "  maintain      运维 logs/config/verify/reset/backup(create/verify/restore/drill)",
     "  run-server    前台运行 noj-server 二进制",
-    "  server <cmd>            容器内服务端管理命令（db/init/bootstrap/problems/dev-setup）",
     "  version       显示版本",
+    "",
+    "运维与观测命令：",
+    "  observability check       检查 liveness/readiness/metrics（可选通知链路）",
+    "  observability alert-drill 向 Alertmanager 注入告警并发送恢复事件",
+    "  server <cmd>            容器内服务端管理命令（db/init/bootstrap/problems/dev-setup）",
     "",
   ].join("\n");
 }
@@ -258,23 +260,55 @@ export function parseObservabilityArgs(args: string[]): ObservabilityArgs {
   for (let i = 1; i < args.length; i++) {
     const a = args[i]!;
     switch (a) {
-      case "--base-url":
-        out.baseUrl = args[++i];
+      case "--base-url": {
+        const value = args[i + 1];
+        if (value === undefined) throw new Error("--base-url 缺少值");
+        out.baseUrl = value;
+        i++;
         break;
+      }
       case "--check-notifications":
         out.checkNotifications = true;
         break;
-      case "--alertmanager-url":
-        out.alertmanagerUrl = args[++i];
+      case "--alertmanager-url": {
+        const value = args[i + 1];
+        if (value === undefined) throw new Error("--alertmanager-url 缺少值");
+        out.alertmanagerUrl = value;
+        i++;
         break;
-      case "--hold":
-        out.holdSeconds = Number(args[++i]);
+      }
+      case "--hold": {
+        const value = args[i + 1];
+        if (value === undefined) throw new Error("--hold 缺少值");
+        if (!/^\d+$/.test(value)) {
+          throw new Error(
+            `非法 --hold: ${value}，需要非负整数`,
+          );
+        }
+        out.holdSeconds = Number(value);
+        i++;
         break;
+      }
       default:
         throw new Error(`未知 observability 参数: ${a}`);
     }
   }
   return out;
+}
+
+/** server 顶层参数解析结果：仅剥离开头的全局 --dir；子命令内部 --dir 原样保留。 */
+export interface ServerCliArgs {
+  dir: string | undefined;
+  args: string[];
+}
+
+/** 解析 server 顶层参数：支持 `server --dir <path> <子命令>`。 */
+export function parseServerArgs(args: string[]): ServerCliArgs {
+  if (args[0] !== "--dir") return { dir: undefined, args };
+  if (args[1] === undefined) {
+    throw new Error("server: --dir 缺少目录参数");
+  }
+  return { dir: args[1], args: args.slice(2) };
 }
 
 /** 将命令分发到对应处理函数。供测试与 run 共用。 */
@@ -573,8 +607,8 @@ export async function dispatchCommand(
       return 1;
     }
     case "observability": {
-      const a = parseObservabilityArgs(args);
       try {
+        const a = parseObservabilityArgs(args);
         if (a.sub === "check") {
           const report = await observabilityCheck({
             baseUrl: a.baseUrl,
@@ -583,7 +617,9 @@ export async function dispatchCommand(
             http: realHttp(),
           });
           for (const item of report.items) {
-            console.log(`${item.ok ? "✓" : "✗"} ${item.name}: ${item.detail}`);
+            console.log(
+              `${item.ok ? "✓" : "✗"} ${item.name}: ${item.detail}`,
+            );
           }
           return report.pass ? 0 : 1;
         }
@@ -608,14 +644,19 @@ export async function dispatchCommand(
     case "server": {
       // 仅支持 `server --dir <path> <子命令>` 形式的全局 --dir；
       // 子命令自身（如 problems import --dir）的参数原样透传，不在这里剥离。
-      let parsedDir: string | undefined;
-      let serverArgs = args;
-      if (args[0] === "--dir" && args[1] !== undefined) {
-        parsedDir = args[1];
-        serverArgs = args.slice(2);
+      let parsed: ServerCliArgs;
+      try {
+        parsed = parseServerArgs(args);
+      } catch (e) {
+        console.error((e as Error).message);
+        return 1;
       }
-      const context = resolveContext({ cwd: ctx.cwd, dir: parsedDir });
-      return await runServerCommand({ context, args: serverArgs });
+      const context = resolveContext({ cwd: ctx.cwd, dir: parsed.dir });
+      return await runServerCommand({
+        context,
+        args: parsed.args,
+        sourceDir: parsed.dir,
+      });
     }
     case "run-server": {
       let dirOverride: string | undefined;

@@ -68,11 +68,35 @@ function resolvedPayload(startsAt: string, endsAt: string): string {
   ]);
 }
 
+async function resolveAlerts(
+  http: HttpClient,
+  url: string,
+  payload: string,
+): Promise<void> {
+  let lastError: unknown = new Error("未知错误");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await http.postJson(url, payload);
+      if (res.status === 200) return;
+      lastError = new Error(`HTTP ${res.status}`);
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  const detail = lastError instanceof Error
+    ? lastError.message
+    : String(lastError);
+  throw new Error(
+    `恢复告警失败：${detail}。告警 NojNotificationDrill 可能仍处于活跃状态，请手动清理 Alertmanager。`,
+  );
+}
+
 export async function alertDrill(
   opts: AlertDrillOptions = {},
 ): Promise<AlertDrillReport> {
   const http = opts.http ?? (await import("./http.ts")).realHttp();
-  const alertmanagerUrl = opts.alertmanagerUrl ?? DEFAULT_ALERTMANAGER_URL;
+  const alertmanagerUrl = opts.alertmanagerUrl ??
+    Deno.env.get("ALERTMANAGER_URL") ?? DEFAULT_ALERTMANAGER_URL;
   const holdSeconds = opts.holdSeconds ?? 300;
   const startsAt = new Date().toISOString();
   const url = `${alertmanagerUrl}/api/v2/alerts`;
@@ -86,13 +110,11 @@ export async function alertDrill(
     await new Promise((resolve) => setTimeout(resolve, holdSeconds * 1000));
   }
 
-  const resolved = await http.postJson(
+  await resolveAlerts(
+    http,
     url,
     resolvedPayload(startsAt, new Date().toISOString()),
   );
-  if (resolved.status !== 200) {
-    throw new Error(`恢复告警失败：HTTP ${resolved.status}`);
-  }
 
   return { injected: true, resolved: true, holdSeconds };
 }

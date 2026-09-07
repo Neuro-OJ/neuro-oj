@@ -7,6 +7,7 @@ import {
   parseMaintainArgs,
   parseObservabilityArgs,
   parsePort,
+  parseServerArgs,
   printHelp,
   run,
 } from "./cli.ts";
@@ -237,4 +238,103 @@ Deno.test("server 无上下文时返回 1", async () => {
 
 Deno.test("printHelp 包含 server", () => {
   assertEquals(printHelp().includes("server <cmd>"), true);
+});
+
+Deno.test("parseObservabilityArgs: 未知参数抛错", () => {
+  let threw = false;
+  try {
+    parseObservabilityArgs(["check", "--unknown"]);
+  } catch (e) {
+    threw = true;
+    assertEquals((e as Error).message.includes("未知 observability"), true);
+  }
+  assertEquals(threw, true);
+});
+
+Deno.test("parseObservabilityArgs: 缺少 --base-url/--alertmanager-url/--hold 值抛错", () => {
+  for (
+    const args of [
+      ["check", "--base-url"],
+      ["alert-drill", "--alertmanager-url"],
+      ["alert-drill", "--hold"],
+    ]
+  ) {
+    let threw = false;
+    try {
+      parseObservabilityArgs(args);
+    } catch (e) {
+      threw = true;
+      assertEquals((e as Error).message.includes("缺少值"), true);
+    }
+    assertEquals(threw, true, `应抛错: ${args.join(" ")}`);
+  }
+});
+
+Deno.test("parseObservabilityArgs: --hold 必须是非负整数", () => {
+  for (const bad of ["-1", "1.5", "abc", "0x10"]) {
+    let threw = false;
+    try {
+      parseObservabilityArgs(["alert-drill", "--hold", bad]);
+    } catch (e) {
+      threw = true;
+      assertEquals((e as Error).message.includes("非负整数"), true);
+    }
+    assertEquals(threw, true, `非法 --hold 应抛错: ${bad}`);
+  }
+});
+
+Deno.test("dispatch observability 参数错误返回 1", async () => {
+  assertEquals(await dispatchCommand("observability", ["--unknown"], ctx), 1);
+  assertEquals(
+    await dispatchCommand("observability", ["check", "--base-url"], ctx),
+    1,
+  );
+});
+
+Deno.test("parseServerArgs: 无全局 --dir 时原样透传", () => {
+  assertEquals(parseServerArgs(["db", "migrate"]), {
+    dir: undefined,
+    args: ["db", "migrate"],
+  });
+});
+
+Deno.test("parseServerArgs: 全局 --dir 被剥离并记录目录", () => {
+  assertEquals(parseServerArgs(["--dir", "/src", "db", "migrate"]), {
+    dir: "/src",
+    args: ["db", "migrate"],
+  });
+});
+
+Deno.test("parseServerArgs: 子命令内部 --dir 不被剥离", () => {
+  assertEquals(
+    parseServerArgs(["problems", "import", "--dir", "/data"]),
+    {
+      dir: undefined,
+      args: ["problems", "import", "--dir", "/data"],
+    },
+  );
+});
+
+Deno.test("parseServerArgs/server dispatch: 缺少 --dir 值时返回清晰错误并返回 1", async () => {
+  let threw = false;
+  try {
+    parseServerArgs(["--dir"]);
+  } catch (e) {
+    threw = true;
+    assertEquals((e as Error).message.includes("--dir 缺少目录参数"), true);
+  }
+  assertEquals(threw, true);
+  assertEquals(await dispatchCommand("server", ["--dir"], ctx), 1);
+});
+
+Deno.test("printHelp 将 observability/server 放在运维与观测分组", () => {
+  const help = printHelp();
+  const obsIndex = help.indexOf("observability check");
+  const serverIndex = help.indexOf("server <cmd>");
+  const jsonIndex = help.indexOf("JSON 配置部署工具");
+  const opsIndex = help.indexOf("运维与观测命令");
+  assertEquals(obsIndex > jsonIndex, true);
+  assertEquals(serverIndex > jsonIndex, true);
+  assertEquals(opsIndex !== -1 && opsIndex < obsIndex, true);
+  assertEquals(opsIndex !== -1 && opsIndex < serverIndex, true);
 });

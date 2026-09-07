@@ -85,6 +85,15 @@ noj-cli server problems import [--dir <dir>]
 noj-cli server dev-setup
 ```
 
+`observability check` 的 `--base-url` 缺省读取
+`NOJ_OBSERVABILITY_BASE_URL`（默认 `http://127.0.0.1:8000`）；
+`observability check`/`alert-drill` 的 `--alertmanager-url` 缺省读取
+`ALERTMANAGER_URL`。 `server` 支持顶层 `--dir <path>`（如
+`noj-cli server --dir /path/to/neuro-oj db migrate`），可从显式源码/部署
+目录定位 `noj-core`；子命令自身的 `--dir`（如 `problems import --dir`）
+原样透传。 `server bootstrap` 不接受 `--password` 命令行参数，请使用
+交互提示或环境变量。
+
 ## 开发与验证
 
 ```bash

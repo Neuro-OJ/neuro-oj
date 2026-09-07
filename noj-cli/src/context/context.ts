@@ -34,7 +34,11 @@ export function findContextDir(
   kind?: ContextKind,
 ): string | null {
   let current = start ?? Deno.cwd();
-  current = Deno.realPathSync(current);
+  try {
+    current = Deno.realPathSync(current);
+  } catch {
+    return null;
+  }
   while (true) {
     const detected = detectKind(current);
     if (detected !== null && (kind === undefined || detected === kind)) {
@@ -55,7 +59,7 @@ export function resolveContext(opts: {
   if (opts.dir !== undefined) {
     const abs = resolve(cwd, opts.dir);
     const kind = detectKind(abs);
-    if (kind === null) return { cwd, kind: "none", dir: null };
+    if (kind === null) return { cwd, kind: "none", dir: abs };
     if (opts.mode !== undefined && kind !== opts.mode) {
       throw new Error(`目录 ${abs} 不是 ${opts.mode} 上下文`);
     }

@@ -20,21 +20,19 @@ export interface ObservabilityReport {
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:8000";
 
-async function checkEndpoint(
+async function checkGet(
   http: HttpClient,
   name: string,
   url: string,
-  expected: string,
+  predicate: (body: string) => boolean,
 ): Promise<CheckItem> {
   try {
     const res = await http.get(url);
-    const ok = res.status === 200 && res.body.includes(expected);
+    const ok = res.status === 200 && predicate(res.body);
     return {
       name,
       ok,
-      detail: ok
-        ? `${url} 正常`
-        : `${url} 返回 ${res.status} 或缺少 ${expected}`,
+      detail: ok ? `${url} 正常` : `${url} 返回 ${res.status} 或未满足条件`,
     };
   } catch (e) {
     return {
@@ -49,54 +47,54 @@ export async function observabilityCheck(
   opts: ObservabilityCheckOptions = {},
 ): Promise<ObservabilityReport> {
   const http = opts.http ?? (await import("./http.ts")).realHttp();
-  const baseUrl = opts.baseUrl ?? DEFAULT_BASE_URL;
+  const baseUrl = opts.baseUrl ?? Deno.env.get("NOJ_OBSERVABILITY_BASE_URL") ??
+    DEFAULT_BASE_URL;
   const items: CheckItem[] = [];
   items.push(
-    await checkEndpoint(
+    await checkGet(
       http,
       "liveness",
       `${baseUrl}/health/live`,
-      '"status":"alive"',
+      (body) => body.includes('"status":"alive"'),
     ),
   );
   items.push(
-    await checkEndpoint(
+    await checkGet(
       http,
       "readiness",
       `${baseUrl}/health/ready`,
-      '"status":"ready"',
+      (body) => body.includes('"status":"ready"'),
     ),
   );
 
-  const metrics = await http.get(`${baseUrl}/metrics`);
-  const metricsOk = metrics.status === 200 &&
-    metrics.body.includes("noj_database_up") &&
-    metrics.body.includes("noj_judge_workers");
-  items.push({
-    name: "metrics",
-    ok: metricsOk,
-    detail: metricsOk
-      ? "metrics 包含关键指标"
-      : "metrics 缺少 noj_database_up 或 noj_judge_workers",
-  });
+  items.push(
+    await checkGet(
+      http,
+      "metrics",
+      `${baseUrl}/metrics`,
+      (body) =>
+        /^noj_database_up\s/m.test(body) && /^noj_judge_workers\s/m.test(body),
+    ),
+  );
 
   if (opts.checkNotifications) {
-    if (!opts.alertmanagerUrl) {
+    const alertmanagerUrl = opts.alertmanagerUrl ??
+      Deno.env.get("ALERTMANAGER_URL");
+    if (!alertmanagerUrl) {
       items.push({
         name: "notifications",
         ok: false,
         detail: "checkNotifications 需要 ALERTMANAGER_URL",
       });
     } else {
-      const amRes = await http.get(`${opts.alertmanagerUrl}/-/ready`);
-      const amOk = amRes.status === 200;
-      items.push({
-        name: "notifications",
-        ok: amOk,
-        detail: amOk
-          ? `${opts.alertmanagerUrl} 就绪`
-          : `${opts.alertmanagerUrl} 返回 ${amRes.status}`,
-      });
+      items.push(
+        await checkGet(
+          http,
+          "notifications",
+          `${alertmanagerUrl}/-/ready`,
+          () => true,
+        ),
+      );
     }
   }
 

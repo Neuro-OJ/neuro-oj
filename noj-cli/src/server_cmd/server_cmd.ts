@@ -8,6 +8,8 @@ export interface ServerCommandOptions {
   context: CliContext;
   args: string[];
   runner?: CommandRunner;
+  /** 显式 --dir 指定的源码/部署目录；在 context.dir 为空时作为查找起点。 */
+  sourceDir?: string;
 }
 
 const VALID_SUBCOMMANDS = new Set([
@@ -23,6 +25,16 @@ function validateArgs(args: string[]): void {
   const [sub, subsub] = args;
   if (!VALID_SUBCOMMANDS.has(sub!)) {
     throw new Error(`server: 未知子命令 ${sub}`);
+  }
+  if (sub === "bootstrap") {
+    const hasPassword = args.some((a) =>
+      a === "--password" || a.startsWith("--password=")
+    );
+    if (hasPassword) {
+      throw new Error(
+        "server: bootstrap 不接受 --password 命令行参数，请使用交互提示或环境变量",
+      );
+    }
   }
   if (sub === "dev-setup") {
     if (args.length !== 1) {
@@ -58,7 +70,12 @@ function validateArgs(args: string[]): void {
 }
 
 function findSourceRoot(start: string): string | null {
-  let current = Deno.realPathSync(start);
+  let current = start;
+  try {
+    current = Deno.realPathSync(current);
+  } catch {
+    return null;
+  }
   while (true) {
     try {
       if (Deno.statSync(`${current}/noj-core/deno.json`).isFile) {
@@ -155,7 +172,9 @@ export async function runServerCommand(
     return 1;
   }
 
-  const sourceRoot = findSourceRoot(context.cwd);
+  const sourceRoot = findSourceRoot(
+    context.dir ?? opts.sourceDir ?? context.cwd,
+  );
   if (sourceRoot !== null) {
     try {
       const launch = sourceCommand(args);
