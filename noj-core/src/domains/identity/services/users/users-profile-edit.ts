@@ -166,5 +166,7 @@ export async function adminUpdateUserProfile(
     .where(eq(users.id, targetUserId))
     .limit(1);
 
+  await publishSearchIndexEvent("user", targetUserId, "upsert");
+
   return updated;
 }

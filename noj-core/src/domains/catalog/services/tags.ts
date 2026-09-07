@@ -374,6 +374,20 @@ export async function mergeTags(
     throw new NotFoundError("目标标签不存在");
   }
 
+  // 合并前先记录 source 关联题目（best-effort；失败不阻断事务）
+  const affectedProblemIds = new Set<string>();
+  try {
+    const sourceRows = await db
+      .select({ problem_id: problemTags.problem_id })
+      .from(problemTags)
+      .where(eq(problemTags.tag_id, sourceId));
+    for (const row of sourceRows) {
+      affectedProblemIds.add(row.problem_id);
+    }
+  } catch (err) {
+    logger.error("查询合并源标签关联题目失败", { sourceId, err });
+  }
+
   await db.transaction(async (tx) => {
     // 1. 删除与 target 冲突的关联（题目同时关联 source 与 target 时保留 target 一行）
     await tx.delete(problemTags).where(
@@ -404,6 +418,26 @@ export async function mergeTags(
     },
     { type: "tag", id: sourceId },
   );
+
+  // 合并成功后收集受影响题目并发布搜索索引事件（best-effort，失败不阻断业务）
+  try {
+    const targetRows = await db
+      .select({ problem_id: problemTags.problem_id })
+      .from(problemTags)
+      .where(eq(problemTags.tag_id, targetId));
+    for (const row of targetRows) {
+      affectedProblemIds.add(row.problem_id);
+    }
+    for (const problemId of affectedProblemIds) {
+      await publishSearchIndexEvent("problem", problemId, "upsert");
+    }
+  } catch (err) {
+    logger.error("发布合并标签关联题目搜索索引事件失败", {
+      sourceId,
+      targetId,
+      err,
+    });
+  }
 }
 
 /**
