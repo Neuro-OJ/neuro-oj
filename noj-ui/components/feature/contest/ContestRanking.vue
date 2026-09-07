@@ -15,16 +15,31 @@ const contest = computed(() => contestData.value?.data ?? null)
 const rankingError = ref('')
 const rankingLoading = ref(true)
 const officialSnapshot = ref<{ version: number; note: string; created_at: string } | null>(null)
+const rankingView = ref<'live' | 'frozen' | 'official'>('live')
+const settlementPending = ref(false)
+const adminLive = ref(false)
 const resultLabel = computed(() => officialSnapshot.value
   ? `正式成绩 · 版本 ${officialSnapshot.value.version}`
-  : contest.value?.status === 'ended' ? '实时成绩 · 正式成绩尚未发布' : '实时成绩')
+  : rankingView.value === 'frozen'
+    ? '封榜冻结视图 · 待正式成绩发布'
+    : rankingView.value === 'live' && settlementPending.value
+      ? '管理员实时榜 · 待结算'
+      : '实时成绩')
 
 async function loadRanking() {
   rankingLoading.value = true
   rankingError.value = ''
   try {
-    const response = await api.get<{ data: KaggleRankingRow[] }>(`/api/v1/contests/${props.contestId}/ranking`, { silent: true })
+    const response = await api.get<{
+      data: KaggleRankingRow[]
+      view?: 'live' | 'frozen' | 'official'
+      settlement_pending?: boolean
+      admin_live?: boolean
+    }>(`/api/v1/contests/${props.contestId}/ranking`, { silent: true })
     rows.value = response.data
+    rankingView.value = response.view ?? 'live'
+    settlementPending.value = response.settlement_pending === true
+    adminLive.value = response.admin_live === true
     if (contest.value?.status === 'ended') {
       try {
         const official = await api.get<{
@@ -54,13 +69,21 @@ const { state: eventState } = useEventSource({
   onEvent: {
     'contest:ranking:snapshot': (payload) => {
       if (officialSnapshot.value) return
-      const event = payload as { data?: KaggleRankingRow[] }
+      const event = payload as { data?: KaggleRankingRow[]; view?: 'live' | 'frozen' | 'official'; settlement_pending?: boolean; admin_live?: boolean }
       if (event.data) rows.value = event.data
+      if (event.view) rankingView.value = event.view
+      settlementPending.value = event.settlement_pending === true
+      adminLive.value = event.admin_live === true
+      if (event.view === 'official' && !officialSnapshot.value) void loadRanking()
     },
     'contest:ranking:updated': (payload) => {
       if (officialSnapshot.value) return
-      const event = payload as { data?: KaggleRankingRow[] }
+      const event = payload as { data?: KaggleRankingRow[]; view?: 'live' | 'frozen' | 'official'; settlement_pending?: boolean; admin_live?: boolean }
       if (event.data) rows.value = event.data
+      if (event.view) rankingView.value = event.view
+      settlementPending.value = event.settlement_pending === true
+      adminLive.value = event.admin_live === true
+      if (event.view === 'official' && !officialSnapshot.value) void loadRanking()
     },
   },
   fetchFn: loadRanking,
@@ -90,6 +113,18 @@ function score(value: number) {
     <div v-if="officialSnapshot" class="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
       <UIcon name="i-lucide-lock-keyhole" class="size-4" />
       <span>这是已冻结的正式成绩（版本 {{ officialSnapshot.version }}，发布于 {{ formatDateTime(officialSnapshot.created_at) }}）。后续重测不会覆盖此版本。</span>
+    </div>
+    <div v-if="adminLive" class="flex flex-wrap items-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-900">
+      <UIcon name="i-lucide-eye" class="size-4" />
+      <span>管理员实时完整榜：此视图仅供结算与复核，不代表已向参赛者公开的成绩。</span>
+    </div>
+    <div v-else-if="rankingView === 'frozen'" class="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      <UIcon name="i-lucide-lock-keyhole" class="size-4" />
+      <span>当前为服务端封榜冻结视图，封榜期间的新提交与评测不会改变此榜单。</span>
+    </div>
+    <div v-else-if="rankingView === 'live' && settlementPending" class="flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+      <UIcon name="i-lucide-shield-check" class="size-4" />
+      <span>管理员实时榜：比赛已结束但正式成绩仍在待结算，当前数据不会对普通参赛者公开。</span>
     </div>
 
     <div v-if="rankingError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-error-text">{{ rankingError }}</div>

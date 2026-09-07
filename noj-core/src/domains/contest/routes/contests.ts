@@ -19,7 +19,7 @@ import { parseJsonBody } from "./../../../shared/http/request.ts";
 import { createFileStream } from "./../../../shared/http/file-stream.ts";
 import { checkPermission } from "./../../identity/index.ts";
 import {
-  getContestRanking,
+  getContestRankingView,
   getLatestContestRankingSnapshot,
 } from "../services/contest-ranking.ts";
 import {
@@ -237,24 +237,41 @@ contests.get("/:id/problems/:label", authMiddleware, async (c) => {
 contests.get("/:id/ranking", optionalAuthMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const contest = await getContest(contestId, c.var.userId);
+  const isAdmin = await checkPermission(c, "submission:read_all");
   if (
-    !contest.is_public && !await checkPermission(c, "submission:read_all") &&
+    !contest.is_public && !isAdmin &&
     !contest.is_registered
   ) {
     throw new NotFoundError("竞赛不存在");
+  }
+  if (!isAdmin && contest.ranking_visibility === "hidden") {
+    throw new NotFoundError("竞赛排名不可见");
+  }
+  if (
+    !isAdmin && contest.ranking_visibility === "participants" &&
+    !contest.is_registered
+  ) {
+    throw new ForbiddenError("仅参赛者可查看正式成绩");
   }
   const type = c.req.query("type") ?? contest.type;
   if (!isValidContestType(type)) {
     throw new BadRequestError("排名类型不合法");
   }
-  const isAdmin = await checkPermission(c, "submission:read_all");
-  const data = await getContestRanking(
+  const result = await getContestRankingView(
     contestId,
     type,
     isAdmin,
     c.var.userId,
   );
-  return c.json({ data });
+  return c.json({
+    data: result.rows,
+    view: result.view,
+    ranking_visibility: result.ranking_visibility,
+    freeze_start_time: result.freeze_start_time,
+    freeze_end_time: result.freeze_end_time,
+    settlement_pending: result.settlement_pending,
+    admin_live: isAdmin && result.view === "live",
+  });
 });
 
 /**
@@ -264,11 +281,21 @@ contests.get("/:id/ranking", optionalAuthMiddleware, async (c) => {
 contests.get("/:id/final-ranking", optionalAuthMiddleware, async (c) => {
   const contestId = await resolveContestId(c.req.param("id") as string);
   const contest = await getContest(contestId, c.var.userId);
+  const isAdmin = await checkPermission(c, "submission:read_all");
   if (
-    !contest.is_public && !await checkPermission(c, "submission:read_all") &&
+    !contest.is_public && !isAdmin &&
     !contest.is_registered
   ) {
     throw new NotFoundError("竞赛不存在");
+  }
+  if (!isAdmin && contest.ranking_visibility === "hidden") {
+    throw new NotFoundError("竞赛排名不可见");
+  }
+  if (
+    !isAdmin && contest.ranking_visibility === "participants" &&
+    !contest.is_registered
+  ) {
+    throw new ForbiddenError("仅参赛者可查看正式成绩");
   }
   const snapshot = await getLatestContestRankingSnapshot(contestId);
   if (!snapshot) throw new NotFoundError("尚未发布正式成绩");

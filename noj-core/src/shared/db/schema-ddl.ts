@@ -134,6 +134,11 @@ export const SCHEMA_DDL: string[] = [
     description TEXT NOT NULL DEFAULT '',
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
+    ranking_visibility TEXT NOT NULL DEFAULT 'public'
+      CHECK (ranking_visibility IN ('public', 'participants', 'hidden')),
+    freeze_start_time TEXT,
+    freeze_duration_seconds INTEGER NOT NULL DEFAULT 0
+      CHECK (freeze_duration_seconds >= 0),
     type TEXT NOT NULL CHECK (type IN ('kaggle')),
     config JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(config) = 'object'),
     is_public BOOLEAN NOT NULL DEFAULT true,

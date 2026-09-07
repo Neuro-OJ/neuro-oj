@@ -28,6 +28,9 @@ const type = ref<ContestType>('kaggle')
 const isPublic = ref(true)
 const password = ref('')
 const affectGlobalRanking = ref(false)
+const rankingVisibility = ref<'public' | 'participants' | 'hidden'>('public')
+const freezeMinutes = ref(0)
+const hasExplicitFreezeStart = ref(false)
 const submissionLimits = ref<Record<string, number>>({})
 const selectedProblems = ref<ContestProblemInput[]>([])
 const problemQuery = ref('')
@@ -68,6 +71,9 @@ function resetForm() {
   isPublic.value = contest?.is_public ?? true
   password.value = ''
   affectGlobalRanking.value = contest?.affect_global_ranking ?? false
+  rankingVisibility.value = contest?.ranking_visibility ?? 'public'
+  hasExplicitFreezeStart.value = Boolean(contest?.freeze_start_time)
+  freezeMinutes.value = Math.floor((contest?.freeze_duration_seconds ?? 0) / 60)
   submissionLimits.value = { ...(contest?.config.submission_limits ?? {}) }
   selectedProblems.value = (contest?.problems ?? []).map((problem, index) => ({
     problem_id: problem.problem_id,
@@ -158,6 +164,9 @@ function submit() {
     config,
     is_public: isPublic.value,
     affect_global_ranking: affectGlobalRanking.value,
+    ranking_visibility: rankingVisibility.value,
+    freeze_duration_seconds: Math.max(0, Math.floor(freezeMinutes.value * 60)),
+    freeze_start_time: null,
     problems: selectedProblems.value.map((problem, index) => ({
       ...problem,
       sort_order: index,
@@ -187,6 +196,9 @@ function submit() {
           <div><label class="mb-1 block text-xs font-semibold text-text">竞赛说明</label><textarea v-model="description" rows="4" class="w-full resize-y rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-signal" placeholder="支持 Markdown"></textarea></div>
           <div><label class="mb-1 block text-xs font-semibold text-text">竞赛公告</label><textarea v-model="announcement" rows="3" class="w-full resize-y rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-signal" placeholder="显示在竞赛详情页顶部"></textarea></div>
           <div class="grid gap-2 sm:grid-cols-2"><label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text"><input v-model="isPublic" type="checkbox" class="size-4 accent-primary">公开竞赛</label><label class="flex items-center gap-2 rounded-lg border border-border p-3 text-sm text-text"><input v-model="affectGlobalRanking" type="checkbox" class="size-4 accent-primary">计入全局统计</label></div>
+          <div class="grid gap-3 sm:grid-cols-2"><label class="block text-xs font-semibold text-text">榜单可见性<select v-model="rankingVisibility" class="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm font-normal"><option value="public">公开榜</option><option value="participants">仅参赛者</option><option value="hidden">完全隐藏</option></select></label><label class="block text-xs font-semibold text-text">结束前封榜（分钟）<input v-model.number="freezeMinutes" type="number" min="0" class="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm font-normal" placeholder="0 表示不封榜"></label></div>
+          <p v-if="hasExplicitFreezeStart" class="text-xs text-warning-text">该竞赛已设置显式封榜起点；保存后将切换为“结束前 N 分钟”模式并清除显式起点。</p>
+          <p class="text-xs text-text-muted">封榜从比赛结束前指定时刻开始，服务端会在 REST 与 SSE 中返回稳定冻结视图；管理员始终可查看实时完整榜。</p>
         </section>
 
         <section class="flex min-h-[520px] flex-col rounded-xl border border-border bg-bg-page p-4">

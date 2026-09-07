@@ -20,7 +20,9 @@ export {
   replyToClarification,
 } from "./services/contest-clarifications.ts";
 export {
+  getContestFreezeWindow,
   getContestRanking,
+  getContestRankingView,
   getContestSettlementStatus,
   getLatestContestRankingSnapshot,
   listContestRankingSnapshots,

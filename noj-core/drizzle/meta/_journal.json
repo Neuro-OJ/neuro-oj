@@ -498,6 +498,13 @@
       "when": 1788703515311,
       "tag": "0070_unusual_starfox",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1788709815628,
+      "tag": "0071_shiny_annihilus",
+      "breakpoints": true
     }
   ]
 }

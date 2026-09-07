@@ -4,6 +4,7 @@ import {
   BadRequestError,
   ConflictError,
   ForbiddenError,
+  NotFoundError,
   UnauthorizedError,
 } from "./../../../shared/base/errors.ts";
 import { unwrapRows } from "./../../../shared/base/sql-rows.ts";
@@ -11,8 +12,9 @@ import type {
   ContestType,
   KaggleProblemScore,
   KaggleRankingRow,
+  RankingVisibility,
 } from "./../types/contests.ts";
-import { getContest, isParticipant } from "./contests.ts";
+import { getContest } from "./contests.ts";
 import { contestRankingSnapshots } from "../../../shared/db/schema.ts";
 import { logAudit } from "../../system/index.ts";
 
@@ -44,7 +46,7 @@ export async function publishContestRankingSnapshot(
   }
   const db = getDb();
   // 快照需要保留提交/评测明细供 CSV/JSON 导出核对；实时榜默认不返回这些内部字段。
-  const rows = await getKaggleRanking(contestId, true);
+  const rows = await getKaggleRanking(contestId, undefined, true);
   const created_at = new Date().toISOString();
   const id = crypto.randomUUID();
   const version = await db.transaction(async (tx) => {
@@ -277,6 +279,7 @@ function parseJsonArray<T>(value: unknown): T[] {
  */
 export async function getKaggleRanking(
   contestId: string,
+  cutoffTime?: string,
   includeDetails = false,
 ): Promise<KaggleRankingRow[]> {
   const contest = await getContest(contestId);
@@ -299,6 +302,7 @@ export async function getKaggleRanking(
       JOIN contest_data c ON c.id = s.contest_id
       WHERE s.contest_id = ${contestId}
         AND s.created_at <= c.end_time
+        ${cutoffTime ? sql`AND s.created_at <= ${cutoffTime}` : sql``}
       UNION ALL
       SELECT os.id, os.user_id, os.paper_id, os.created_at, os.score,
         os.status AS evaluation_status, os.created_at AS evaluation_created_at,
@@ -307,6 +311,7 @@ export async function getKaggleRanking(
       JOIN contest_data c ON c.id = os.contest_id
       WHERE os.contest_id = ${contestId}
         AND os.created_at <= c.end_time
+        ${cutoffTime ? sql`AND os.created_at <= ${cutoffTime}` : sql``}
     ),
     ranked AS (
       SELECT
@@ -459,10 +464,143 @@ export async function getKaggleRanking(
   });
 }
 
+export type ContestRankingView = "live" | "frozen" | "official";
+
+export interface ContestRankingResult {
+  rows: KaggleRankingRow[];
+  view: ContestRankingView;
+  ranking_visibility: RankingVisibility;
+  freeze_start_time: string | null;
+  freeze_end_time: string;
+  settlement_pending: boolean;
+}
+
+/** 统一计算封榜边界，起点包含、终点不包含。 */
+export function getContestFreezeWindow(contest: {
+  end_time: string;
+  freeze_start_time: string | null;
+  freeze_duration_seconds: number;
+}): { start: string | null; end: string } {
+  const end = new Date(contest.end_time).toISOString();
+  if (contest.freeze_start_time) {
+    return { start: new Date(contest.freeze_start_time).toISOString(), end };
+  }
+  if (contest.freeze_duration_seconds <= 0) return { start: null, end };
+  const startMs = Date.parse(contest.end_time) -
+    contest.freeze_duration_seconds * 1000;
+  return { start: new Date(startMs).toISOString(), end };
+}
+
+function isContestFrozen(
+  window: { start: string | null; end: string },
+  now = Date.now(),
+): boolean {
+  if (!window.start) return false;
+  return now >= Date.parse(window.start) && now < Date.parse(window.end);
+}
+
+function assertRankingVisibility(
+  visibility: RankingVisibility,
+  isAdmin: boolean,
+  viewerId: string | undefined,
+  registered: boolean,
+): void {
+  if (isAdmin) return;
+  if (visibility === "hidden") throw new NotFoundError("竞赛排名不可见");
+  if (visibility === "participants" && !registered) {
+    if (!viewerId) throw new UnauthorizedError("登录后才可查看竞赛排名");
+    throw new ForbiddenError("仅参赛者可查看竞赛排名");
+  }
+}
+
 /**
- * 获取竞赛排名（类 Kaggle）。
- *
- * 实时榜/最终榜使用同一计算；进行中非管理员仅返回自己的排名。
+ * 返回带视图元数据的竞赛榜单。普通用户在封榜窗口及待结算期间只能读取
+ * freeze_start_time 之前的稳定视图，正式快照发布后才切换为 official。
+ */
+export async function getContestRankingView(
+  contestId: string,
+  type: ContestType,
+  isAdmin = false,
+  viewerId?: string,
+): Promise<ContestRankingResult> {
+  const contest = await getContest(contestId, viewerId);
+  if (contest.type !== type) {
+    throw new BadRequestError("排名类型与竞赛赛制不一致");
+  }
+  const window = getContestFreezeWindow(contest);
+  assertRankingVisibility(
+    contest.ranking_visibility,
+    isAdmin,
+    viewerId,
+    contest.is_registered === true,
+  );
+
+  if (isAdmin) {
+    return {
+      rows: await getKaggleRanking(contestId, undefined, true),
+      view: "live",
+      ranking_visibility: contest.ranking_visibility,
+      freeze_start_time: window.start,
+      freeze_end_time: window.end,
+      settlement_pending: contest.status === "ended" &&
+        !await getLatestContestRankingSnapshot(contestId),
+    };
+  }
+
+  const snapshot = contest.status === "ended"
+    ? await getLatestContestRankingSnapshot(contestId)
+    : null;
+  if (snapshot) {
+    return {
+      rows: snapshot.rows as KaggleRankingRow[],
+      view: "official",
+      ranking_visibility: contest.ranking_visibility,
+      freeze_start_time: window.start,
+      freeze_end_time: window.end,
+      settlement_pending: false,
+    };
+  }
+
+  const frozen = isContestFrozen(window) ||
+    (contest.status === "ended" && window.start !== null);
+  if (frozen) {
+    return {
+      rows: await getKaggleRanking(contestId, window.start!),
+      view: "frozen",
+      ranking_visibility: contest.ranking_visibility,
+      freeze_start_time: window.start,
+      freeze_end_time: window.end,
+      settlement_pending: contest.status === "ended",
+    };
+  }
+
+  if (contest.status === "ended") {
+    // 没有配置封榜时也不能因“结束”自动暴露尚未结算的实时榜。
+    throw new ConflictError("竞赛已结束，正式成绩尚未发布");
+  }
+
+  if (contest.status === "running" && !viewerId) {
+    throw new UnauthorizedError("竞赛进行期间需登录查看排名");
+  }
+  if (contest.status === "running" && contest.is_registered !== true) {
+    throw new ForbiddenError("仅参赛者可查看进行中的排名");
+  }
+  const rows = await getKaggleRanking(contestId);
+  return {
+    // 进行中非管理员保持旧语义：只返回自己的排名，避免泄露他人实时成绩。
+    rows: contest.status === "running"
+      ? rows.filter((row) => row.user_id === viewerId)
+      : rows,
+    view: "live",
+    ranking_visibility: contest.ranking_visibility,
+    freeze_start_time: window.start,
+    freeze_end_time: window.end,
+    settlement_pending: false,
+  };
+}
+
+/**
+ * 获取竞赛排名（类 Kaggle），保留旧数组返回接口供现有调用方使用。
  */
 export async function getContestRanking(
   contestId: string,
@@ -470,22 +608,30 @@ export async function getContestRanking(
   isAdmin = false,
   viewerId?: string,
 ): Promise<KaggleRankingRow[]> {
-  const contest = await getContest(contestId);
+  // 兼容仅供内部计算/历史调用方使用的数组接口：正式榜单的 REST/SSE
+  // 路由统一走 getContestRankingView，不能借此绕过结束后的结算门禁。
+  const contest = await getContest(contestId, viewerId);
   if (contest.type !== type) {
     throw new BadRequestError("排名类型与竞赛赛制不一致");
   }
-
-  const ranking = await getKaggleRanking(contestId);
-
-  if (contest.status === "running" && !isAdmin) {
-    if (!viewerId) {
-      throw new UnauthorizedError("竞赛进行期间需登录查看排名");
-    }
-    if (!await isParticipant(contestId, viewerId)) {
-      throw new ForbiddenError("仅参赛者可查看进行中的排名");
-    }
-    return ranking.filter((row) => row.user_id === viewerId);
+  if (contest.status === "ended" && !isAdmin) {
+    const snapshot = await getLatestContestRankingSnapshot(contestId);
+    if (!snapshot) return getKaggleRanking(contestId);
   }
-
-  return ranking;
+  const result = await getContestRankingView(
+    contestId,
+    type,
+    isAdmin,
+    viewerId,
+  );
+  if (isAdmin || result.ranking_visibility === "public") {
+    // 保留旧服务函数的进行中“仅返回本人”语义；REST 路由使用带元数据的
+    // getContestRankingView，可按显式 public 策略返回公开榜。
+    const contest = await getContest(contestId, viewerId);
+    if (!isAdmin && contest.status === "running") {
+      return result.rows.filter((row) => row.user_id === viewerId);
+    }
+    return result.rows;
+  }
+  return result.rows.filter((row) => row.user_id === viewerId);
 }

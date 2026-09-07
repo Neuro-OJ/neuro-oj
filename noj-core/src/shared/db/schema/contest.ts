@@ -27,6 +27,13 @@ export const contests = pgTable(
     description: text("description").notNull().default(""),
     start_time: text("start_time").notNull(),
     end_time: text("end_time").notNull(),
+    /** 榜单可见性：公开、仅参赛者或完全隐藏。 */
+    ranking_visibility: text("ranking_visibility").notNull().default("public"),
+    /** 可选的封榜开始时间（ISO 8601）；为空时由 freeze_duration_seconds 推导。 */
+    freeze_start_time: text("freeze_start_time"),
+    /** 比赛结束前冻结时长（秒），0 表示不启用封榜。 */
+    freeze_duration_seconds: integer("freeze_duration_seconds").notNull()
+      .default(0),
     type: text("type").notNull(),
     config: jsonb("config").notNull().default({}),
     is_public: boolean("is_public").notNull().default(true),
@@ -50,6 +57,14 @@ export const contests = pgTable(
     timeCheck: check(
       "contests_time_check",
       sql`${table.end_time} > ${table.start_time}`,
+    ),
+    rankingVisibilityCheck: check(
+      "contests_ranking_visibility_check",
+      sql`${table.ranking_visibility} IN ('public', 'participants', 'hidden')`,
+    ),
+    freezeDurationCheck: check(
+      "contests_freeze_duration_check",
+      sql`${table.freeze_duration_seconds} >= 0`,
     ),
     configCheck: check(
       "contests_config_check",

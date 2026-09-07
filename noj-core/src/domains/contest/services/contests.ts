@@ -31,6 +31,7 @@ import {
   type CreateContestInput,
   isValidContestConfig,
   isValidContestType,
+  isValidRankingVisibility,
   type UpdateContestInput,
 } from "./../types/contests.ts";
 
@@ -108,6 +109,53 @@ function validateTimes(startTime: string, endTime: string): void {
   if (end <= start) {
     throw new BadRequestError("end_time 必须晚于 start_time");
   }
+}
+
+function normalizeRankingPolicy(input: {
+  start_time: string;
+  end_time: string;
+  ranking_visibility?: string;
+  freeze_start_time?: string | null;
+  freeze_duration_seconds?: number;
+}): {
+  ranking_visibility: ContestResponse["ranking_visibility"];
+  freeze_start_time: string | null;
+  freeze_duration_seconds: number;
+} {
+  const visibility = input.ranking_visibility ?? "public";
+  if (!isValidRankingVisibility(visibility)) {
+    throw new BadRequestError(
+      "榜单可见性必须为 public、participants 或 hidden",
+    );
+  }
+  const duration = input.freeze_duration_seconds ?? 0;
+  if (!Number.isInteger(duration) || duration < 0) {
+    throw new BadRequestError("封榜时长必须为非负整数秒");
+  }
+  const start = Date.parse(input.start_time);
+  const end = Date.parse(input.end_time);
+  const explicit = input.freeze_start_time ?? null;
+  if (explicit !== null) {
+    const freezeStart = Date.parse(explicit);
+    if (
+      Number.isNaN(freezeStart) || freezeStart < start || freezeStart >= end
+    ) {
+      throw new BadRequestError("freeze_start_time 必须位于竞赛开始与结束之间");
+    }
+    if (duration !== 0) {
+      throw new BadRequestError(
+        "freeze_start_time 与 freeze_duration_seconds 只能配置一个",
+      );
+    }
+  }
+  if (duration > Math.floor((end - start) / 1000)) {
+    throw new BadRequestError("封榜时长不能超过竞赛总时长");
+  }
+  return {
+    ranking_visibility: visibility,
+    freeze_start_time: explicit,
+    freeze_duration_seconds: duration,
+  };
 }
 
 /**
@@ -210,6 +258,10 @@ function toContestResponse(
     start_time: row.start_time,
     end_time: row.end_time,
     type: row.type as ContestType,
+    ranking_visibility: row
+      .ranking_visibility as ContestResponse["ranking_visibility"],
+    freeze_start_time: row.freeze_start_time,
+    freeze_duration_seconds: row.freeze_duration_seconds,
     config: row.config as ContestConfig,
     is_public: row.is_public,
     has_password: row.password !== null,
@@ -273,6 +325,7 @@ export async function createContest(
     throw new BadRequestError("竞赛类型不合法");
   }
   validateTimes(input.start_time, input.end_time);
+  const rankingPolicy = normalizeRankingPolicy(input);
   const config = normalizeContestConfig(input.type, input.config);
   const problemInputs = normalizeProblems(input.type, input.problems);
   const passwordHash = input.password
@@ -292,6 +345,7 @@ export async function createContest(
       description: input.description ?? "",
       start_time: input.start_time,
       end_time: input.end_time,
+      ...rankingPolicy,
       type: input.type,
       config,
       is_public: input.is_public ?? true,
@@ -331,6 +385,16 @@ export async function updateContest(
   const startTime = input.start_time ?? existing.start_time;
   const endTime = input.end_time ?? existing.end_time;
   validateTimes(startTime, endTime);
+  const rankingPolicy = normalizeRankingPolicy({
+    start_time: startTime,
+    end_time: endTime,
+    ranking_visibility: input.ranking_visibility ?? existing.ranking_visibility,
+    freeze_start_time: input.freeze_start_time !== undefined
+      ? input.freeze_start_time
+      : existing.freeze_start_time,
+    freeze_duration_seconds: input.freeze_duration_seconds ??
+      existing.freeze_duration_seconds,
+  });
   if (input.title !== undefined && !input.title.trim()) {
     throw new BadRequestError("竞赛标题不能为空");
   }
@@ -362,6 +426,15 @@ export async function updateContest(
     }
     if (input.start_time !== undefined) updates.start_time = input.start_time;
     if (input.end_time !== undefined) updates.end_time = input.end_time;
+    if (input.ranking_visibility !== undefined) {
+      updates.ranking_visibility = rankingPolicy.ranking_visibility;
+    }
+    if (input.freeze_start_time !== undefined) {
+      updates.freeze_start_time = rankingPolicy.freeze_start_time;
+    }
+    if (input.freeze_duration_seconds !== undefined) {
+      updates.freeze_duration_seconds = rankingPolicy.freeze_duration_seconds;
+    }
     if (input.type !== undefined) updates.type = input.type;
     if (input.config !== undefined || input.type !== undefined) {
       updates.config = config;
